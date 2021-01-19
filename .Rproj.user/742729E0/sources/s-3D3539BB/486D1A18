@@ -1,0 +1,25 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1611066525660.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "486D1A18",
+    "lastKnownWriteTime" : 1607536927,
+    "last_content_update" : 1607536927,
+    "path" : "~/Github/GRAB/src/BGEN.cpp",
+    "project_path" : "src/BGEN.cpp",
+    "properties" : {
+        "cursorPosition" : "62,0",
+        "scrollLine" : "48"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 7,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "cpp"
+}
