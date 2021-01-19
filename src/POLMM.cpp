@@ -3,7 +3,7 @@
 #include <RcppArmadillo.h>
 
 #include "POLMM.hpp"
-#include "util.hpp"
+#include "UTIL.hpp"
 
 namespace POLMM {
 
