@@ -1,0 +1,25 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1611106935179.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "D96AABC7",
+    "lastKnownWriteTime" : 1611106942,
+    "last_content_update" : 1611106942544,
+    "path" : "~/Github/GRAB/src/Makevars.win",
+    "project_path" : "src/Makevars.win",
+    "properties" : {
+        "cursorPosition" : "38,3",
+        "scrollLine" : "11"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 4,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "makefile"
+}
