@@ -1,0 +1,23 @@
+
+#####
+
+data.simu = function(N, 
+                     EventRatio){
+  
+  scale0Mapping = read.csv("/net/snowwhite/home/wenjianb/SGWAS/Simulation-new/ScaleParameter/TableS1.csv")
+  scale0 = scale0Mapping$Lambda[scale0Mapping$Event.Rate==EventRatio]
+  
+  shape0 = 2
+  X1 = rnorm(N)
+  X2 = rbinom(N,1,0.5)
+  gammas = c(0.5, 0.5)
+  cens = rweibull(N, shape=1, scale=0.15) 
+  eps <- runif(N, 0, 1)
+  time = (-log(eps)*exp(-X1*gammas[1]-X2*gammas[2]))^(1/shape0)*scale0
+  surv.time = pmin(time, cens)
+  event = ifelse(time<cens, 1, 0)
+  out = data.frame(surv.time,event,cens,X1,X2)
+  return(out)
+}
+
+
