@@ -51,17 +51,17 @@
 #'                       SparseGRM, chrom, POLMM.control = list(max_maf_region = 0.5))
 #'      
 #' @export
-#' @import SKAT
+#' @import SKAT, data.table
 
 GRAB.Region = function(objNull,
                        GenoFile,
                        GenoFileIndex = NULL,
                        OutputFile,
+                       regionFile,              # column 1: marker Set ID, column 2: SNP ID, columns 3-n: Annotations similar as in STAAR
+                       regionAnnoHeader = NULL,
                        SparseGRM,
                        chrom,
-                       POLMM.control = NULL,
-                       AnnoFile,              # column 1: marker Set ID, column 2: SNP ID, columns 3-n: Annotations similar as in STAAR
-                       AnnoHeader = NULL)
+                       control = NULL)
 {
   NullModelClass = checkObjNull(objNull);
   checkOutputFile(OutputFile);
@@ -78,128 +78,30 @@ GRAB.Region = function(objNull,
   markers = objGeno$markers
   
   ## annotation
-  AnnoList = getAnnoList(AnnoFile, AnnoHeader)
+  regionList = getRegionList(regionFile, regionAnnoHeader)
+  nRegions = length(regionList)
   
   setRegion(NullModelClass, objNull, control)
   
-  OUT.Region = c()
-  for(i in 1:length(AnnoList)){
-    Region = names(AnnoList)[i]
-    print(paste0("Analyzing Region of ", Region,"......"))
-    AnnoGene = AnnoList[[i]]
-    markers = AnnoGene$SNP
-    AnnoMat = AnnoGene$AnnoMat
-    OutList = MAIN_REGION(markers,
-                          NonZero_cutoff,
-                          StdStat_cutoff,
-                          maxMarkers,
-                          OutputFile,
-                          POLMM.control$missing_cutoff,
-                          POLMM.control$max_maf_region,
-                          POLMM.control$kernel,
-                          POLMM.control$weights_beta)
+  for(i in 1:nRegions){
+    region = regionList[i]
+    regionName = names(region)
+    print(paste0("Analyzing Region of ", regionName, "......"))
     
-    StatVec = OutList$StatVec
-    VarSVec = diag(OutList$VarSMat)
-    # StdStatVec = OutList$StatVec / sqrt(VarSVec)
-    # QVec = StdStatVec^2
-    # adjPVec = PVec = pchisq(QVec, lower.tail = FALSE, df = 1)
-    pvalNormVec = OutList$pvalNormVec;
-    adjPVec = OutList$pvalVec;
-    adjVarSVec = StatVec^2 / qchisq(adjPVec, df = 1, lower.tail = F)
+    resRegion = mainRegion(region, NullModelClass, objNull, control)
     
-    # weights = Get_Weights(POLMM.control$kernel, OutList$freqVec, POLMM.control$weights_beta)
-    weights = OutList$weightVec
-    
-    # Annotation matrix: 2020-12-21 ("+1" because C++ starts from 0 and R starts from 1)
-    posVec = OutList$posVec + 1   # index of SNPs passing criterion (MAF, missing rate, et al.)
-    print(posVec)
-    print(length(posVec))
-    print(length(weights))
-    print(dim(AnnoMat))
-    AnnoMat = AnnoMat[posVec,,drop=F]
-    q = ncol(AnnoMat)   # number of annotation: column 1 is always 1s
-    
-    r0 = adjVarSVec / VarSVec 
-    r0 = pmax(r0, 1)
-    
-    Pval.BT = c()
-    Pval.SKAT = c()
-    Pval.SKATO = c()
-    Pval.ANNO = c()
-    Pval.error = c()
-    
-    for(i in 1:q){
-      AnnoName = colnames(AnnoMat)[i]
-      AnnoWeights = weights * AnnoMat[,i]
-      wr0 = sqrt(r0) * AnnoWeights
-      wStatVec = StatVec * AnnoWeights
-      wadjVarSMat = t(OutList$VarSMat * wr0) * wr0
-      wadjVarSMat = wadjVarSMat * max(OutList$rBT, 1)
-      
-      out_SKAT_List = try(SKAT:::Met_SKAT_Get_Pvalue(Score = wStatVec, 
-                                                     Phi = wadjVarSMat,
-                                                     r.corr = POLMM.control$r_corr, 
-                                                     method = "optimal.adj", 
-                                                     Score.Resampling = NULL),
-                          silent = TRUE)
-      
-      # betaVec = StatVec / adjVarSVec; 
-      if(class(out_SKAT_List) == "try-error"){
-        Pvalue = c(NA, NA, NA)
-        error.code = 2
-      }else if(!any(c(0,1) %in% out_SKAT_List$param$rho)){
-        Pvalue = c(NA, NA, NA)
-        error.code = 3
-      }else{
-        pos0 = which(out_SKAT_List$param$rho == 0)
-        pos1 = which(out_SKAT_List$param$rho == 1)
-        Pvalue = c(out_SKAT_List$p.value,                  # SKAT-O
-                   out_SKAT_List$param$p.val.each[pos0],   # SKAT
-                   out_SKAT_List$param$p.val.each[pos1])   # Burden Test
-        error.code = 0
-      }
-      
-      Pval.SKATO = c(Pval.SKATO, Pvalue[1])
-      Pval.SKAT = c(Pval.SKAT, Pvalue[2])
-      Pval.BT = c(Pval.BT, Pvalue[3])
-      Pval.ANNO = c(Pval.ANNO, AnnoName)
-      Pval.error = c(Pval.error, error.code)
+    quote = F
+    if(i == 1){
+      append = F; col.names = T
+    }else{
+      append = T; col.names = F
     }
     
-    ###################
-    
-    OUT.Region = rbind(OUT.Region,
-                       c(Region, 
-                         length(OutList$markerVec), 
-                         paste(Pval.SKATO, collapse = ","),
-                         paste(Pval.SKAT, collapse = ","),
-                         paste(Pval.BT, collapse = ","),
-                         paste(Pval.ANNO, collapse = ","),
-                         paste(Pval.error, collapse = ","),
-                         paste(OutList$markerVec, collapse = ","),
-                         paste(OutList$freqVec, collapse = ","),
-                         paste(OutList$flipVec, collapse = ","),
-                         paste(StatVec, collapse = ","),
-                         paste(adjVarSVec, collapse = ","),
-                         paste(adjPVec, collapse = ",")))
+    data.table::fwrite(resRegion, OutputFile, quote = quote, sep = "\t", append = append, col.names = col.names)
   }
-  
-  tempFiles = list.files(path = dirname(OutputFile),
-                         pattern = paste0("^",basename(OutputFile),".*\\.bin$"),
-                         full.names = T)
-  file.remove(tempFiles)
-  # out_Multi_Set = rnorm(1)
-  colnames(OUT.Region) = c("SetID", "nSNP", "P.SKAT-O", "P.SKAT", "P.Burden", "Annotation",
-                           "error.code", "markerInfo", "markerMAF","markerAlleleFlip",
-                           "markerStat","markerVarS","markerPvalue")
-  
-  data.table::fwrite(OUT.Region, OutputFile, quote=F, append = T, sep="\t")
-  
-  message = paste0("Output has been saved to ", OutputFile)
+    
+  message = paste0("The analysis results have been saved to '", OutputFile,"'.")
   return(message)
-  # return(out_Multi_Set)
-  # return(OUT.Region)
 }
 
 setRegion = function()
@@ -241,3 +143,103 @@ setRegion = function()
   
   StdStat_cutoff = POLMM.control$SPA_cutoff;
 }
+
+# calculate region-based p-values for any given annotations
+mainRegion = function(region, NullModelClass, objNull, control)
+{
+  markers = region$markers
+  annoMat = region$annoMat
+  
+  OutList = mainRegioninCPP(markers, NullModelClass)
+  
+  ## extract information from mainRegioninCPP(.)
+  StatVec = OutList$StatVec
+  VarSVec = diag(OutList$VarSMat)
+  pvalNormVec = OutList$pvalNormVec;
+  adjPVec = OutList$pvalVec;
+  adjVarSVec = StatVec^2 / qchisq(adjPVec, df = 1, lower.tail = F)
+  weightVec = OutList$weightVec
+  
+  # index of SNPs passing criterion (MAF, missing rate, et al.)
+  posVec = OutList$posVec + 1   # "+1" because C++ starts from 0 and R starts from 1
+  annoMat = annoMat[posVec,,drop=F]
+  q = ncol(annoMat)             # number of annotations: column 1 is always 1s
+  
+  r0 = adjVarSVec / VarSVec 
+  r0 = pmax(r0, 1)
+  
+  pvalVec.BT = c()
+  pvalVec.SKAT = c()
+  pvalVec.SKATO = c()
+  annoVec = c()
+  errVec = c()
+  
+  # cycle for multiple annotations
+  for(i in 1:q){
+    annoName = colnames(annoMat)[i]
+    annoWeights = weightVec * annoMat[,i]
+    wr0 = sqrt(r0) * annoWeights
+    wStatVec = StatVec * annoWeights
+    wadjVarSMat = t(OutList$VarSMat * wr0) * wr0
+    wadjVarSMat = wadjVarSMat * max(OutList$rBT, 1)
+    
+    out_SKAT_List = try(SKAT:::Met_SKAT_Get_Pvalue(Score = wStatVec, 
+                                                   Phi = wadjVarSMat,
+                                                   r.corr = control$r_corr, 
+                                                   method = "optimal.adj", 
+                                                   Score.Resampling = NULL),
+                        silent = TRUE)
+    
+    # betaVec = StatVec / adjVarSVec; 
+    if(class(out_SKAT_List) == "try-error"){
+      Pvalue = c(NA, NA, NA)
+      errCode = 2
+    }else if(!any(c(0,1) %in% out_SKAT_List$param$rho)){
+      Pvalue = c(NA, NA, NA)
+      errCode = 3
+    }else{
+      pos0 = which(out_SKAT_List$param$rho == 0)
+      pos1 = which(out_SKAT_List$param$rho == 1)
+      Pvalue = c(out_SKAT_List$p.value,                  # SKAT-O
+                 out_SKAT_List$param$p.val.each[pos0],   # SKAT
+                 out_SKAT_List$param$p.val.each[pos1])   # Burden Test
+      errCode = 0
+    }
+    
+    pvalVec.SKATO = c(pvalVec.SKATO, Pvalue[1])
+    pvalVec.SKAT = c(pvalVec.SKAT, Pvalue[2])
+    pvalVec.BT = c(pvalVec.BT, Pvalue[3])
+    annoVec = c(annoVec, annoName)
+    errVec = c(errVec, errCode)
+  }
+  
+  ###################
+  
+  OUT.Region = rbind(OUT.Region,
+                     c(Region, 
+                       length(OutList$markerVec), 
+                       paste(annoVec, collapse = ","),
+                       paste(pvalVec.SKATO, collapse = ","),
+                       paste(pvalVec.SKAT, collapse = ","),
+                       paste(pvalVec.BT, collapse = ","),
+                       paste(errVec, collapse = ","),
+                       paste(OutList$markerVec, collapse = ","),
+                       paste(OutList$freqVec, collapse = ","),
+                       paste(OutList$flipVec, collapse = ","),
+                       paste(StatVec, collapse = ","),
+                       paste(adjVarSVec, collapse = ","),
+                       paste(adjPVec, collapse = ",")))
+  
+  tempFiles = list.files(path = dirname(OutputFile),
+                         pattern = paste0("^",basename(OutputFile),".*\\.bin$"),
+                         full.names = T)
+  file.remove(tempFiles)
+  
+  # out_Multi_Set = rnorm(1)
+  colnames(OUT.Region) = c("regionName", "nMarkers", "Annotation", "P.SKAT-O", "P.SKAT", "P.Burden",
+                           "error.code", "markerInfo", "markerMAF","markerAlleleFlip",
+                           "markerStat","markerVarS","markerPvalue")
+  
+  return(resRegion)
+}
+

@@ -75,7 +75,7 @@ GRAB.Marker = function(objNull,
   {
     print(paste0("Analyzing Chunk ", i, "/", nChunks, " ......"))
     markers = markersList[[i]]
-    resMarker = mainMarker(markers, objNull, control)
+    resMarker = mainMarker(markers, NullModelClass, objNull, control)
     
     quote = F
     if(i == 1){
