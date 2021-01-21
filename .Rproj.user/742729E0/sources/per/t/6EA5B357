@@ -1,24 +1,24 @@
 {
     "collab_server" : "",
     "contents" : "",
-    "created" : 1611107036500.000,
+    "created" : 1611250281280.000,
     "dirty" : false,
     "encoding" : "UTF-8",
     "folds" : "",
-    "hash" : "0",
-    "id" : "B19FD88C",
+    "hash" : "1146730643",
+    "id" : "6EA5B357",
     "lastKnownWriteTime" : 1611163363,
-    "last_content_update" : 1611163363044,
+    "last_content_update" : 1611163363,
     "path" : "~/Github/GRAB/R/Geno.R",
     "project_path" : "R/Geno.R",
     "properties" : {
-        "cursorPosition" : "115,11",
-        "scrollLine" : "78"
+        "cursorPosition" : "50,31",
+        "scrollLine" : "32"
     },
     "read_only" : false,
     "read_only_alternatives" : [
     ],
-    "relative_order" : 5,
+    "relative_order" : 1,
     "source_on_save" : false,
     "source_window" : "",
     "type" : "r_source"
