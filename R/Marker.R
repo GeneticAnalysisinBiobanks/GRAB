@@ -91,7 +91,7 @@ GRAB.Marker = function(objNull,
   return(message)
 }
 
-setMarker(NullModelClass, objNull)
+setMarker = function(NullModelClass, objNull)
 {
   ######## POLMM
   if(NullModelClass == "POLMM"){
@@ -121,7 +121,7 @@ setMarker(NullModelClass, objNull)
   }
 }
 
-mainMarker()
+mainMarker = function(NullModelClass, objNull)
 {
   OutList = MAIN_Marker(markers,
                         POLMM.control$SPA_cutoff,
