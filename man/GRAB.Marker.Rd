@@ -2,7 +2,7 @@
 % Please edit documentation in R/Marker.R
 \name{GRAB.Marker}
 \alias{GRAB.Marker}
-\title{Single-marker analysis}
+\title{GRAB: Single-marker analysis}
 \usage{
 GRAB.Marker(
   objNull,
@@ -14,7 +14,7 @@ GRAB.Marker(
 )
 }
 \arguments{
-\item{objNull}{an output object of the POLMM_Null_Model() function with a class of "POLMM_NULL_Model".}
+\item{objNull}{an output object of the GRAB.NullModel() function with a class of "POLMM_NULL_Model".}
 
 \item{GenoFile}{a character of genotype file. Three types of genotype files are supported: PLINK ("prefix.bed"), BGEN ("prefix.bgen"), and VCF ("prefix.vcf" or "prefix.vcf.gz").}
 
@@ -37,10 +37,10 @@ The analysis results will be written to OutputFile with the following columns
 \item{Pvalue}{p-value from normal distribution approximation or saddlepoint approximation.}
 }
 \description{
-Single-marker analysis: Test for association between genetic variants and an ordinal categorical phenotype via POLMM
+Single-marker analysis: Test for association between genetic variants and a phenotype of interest
 }
 \details{
-More information about the list of 'POLMM.control'
+More information about the list of 'control'
 \itemize{
 \item{impute_method: imputation method when genotype data is missing [default="fixed"].}
 \item{missing_cutoff: exclude markers with missing rate greater than this cutoff [default=0.15].}

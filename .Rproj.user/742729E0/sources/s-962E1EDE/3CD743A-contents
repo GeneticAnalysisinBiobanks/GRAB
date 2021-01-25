@@ -98,6 +98,9 @@ setMarker = function(NullModelClass, objNull, control)
   
   if(NullModelClass == "SAIGE")
     obj.setMarker = setMarker.SAIGE(objNull, control)
+  
+  if(NullModelClass == "SPACox")
+    obj.setMarker = setMarker.SPACox(objNull, control)
     
   return(obj.setMarker)
 }
@@ -109,6 +112,9 @@ mainMarker = function(NullModelClass, objNull, control)
   
   if(NullModelClass == "SAIGE")
     obj.mainMarker = mainMarker.SAIGE(objNull, control)
+  
+  if(NullModelClass == "SPACox")
+    obj.mainMarker = mainMarker.SPACox(objNull, control)
   
   return(obj.mainMarker)
 }
