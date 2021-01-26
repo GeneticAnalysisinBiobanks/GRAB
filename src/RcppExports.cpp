@@ -6,33 +6,33 @@
 
 using namespace Rcpp;
 
-// setPLINKobjInR
-void setPLINKobjInR(std::string t_bimFile, std::string t_famFile, std::string t_bedFile, std::vector<std::string> t_SampleInModel);
-RcppExport SEXP _GRAB_setPLINKobjInR(SEXP t_bimFileSEXP, SEXP t_famFileSEXP, SEXP t_bedFileSEXP, SEXP t_SampleInModelSEXP) {
+// setPLINKobjInCPP
+void setPLINKobjInCPP(std::string t_bimFile, std::string t_famFile, std::string t_bedFile, std::vector<std::string> t_SampleInModel);
+RcppExport SEXP _GRAB_setPLINKobjInCPP(SEXP t_bimFileSEXP, SEXP t_famFileSEXP, SEXP t_bedFileSEXP, SEXP t_SampleInModelSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< std::string >::type t_bimFile(t_bimFileSEXP);
     Rcpp::traits::input_parameter< std::string >::type t_famFile(t_famFileSEXP);
     Rcpp::traits::input_parameter< std::string >::type t_bedFile(t_bedFileSEXP);
     Rcpp::traits::input_parameter< std::vector<std::string> >::type t_SampleInModel(t_SampleInModelSEXP);
-    setPLINKobjInR(t_bimFile, t_famFile, t_bedFile, t_SampleInModel);
+    setPLINKobjInCPP(t_bimFile, t_famFile, t_bedFile, t_SampleInModel);
     return R_NilValue;
 END_RCPP
 }
-// getGenoInR
-arma::mat getGenoInR(std::vector<std::string> t_MarkerReqstd);
-RcppExport SEXP _GRAB_getGenoInR(SEXP t_MarkerReqstdSEXP) {
+// getGenoInCPP
+arma::mat getGenoInCPP(std::vector<std::string> t_MarkerReqstd);
+RcppExport SEXP _GRAB_getGenoInCPP(SEXP t_MarkerReqstdSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< std::vector<std::string> >::type t_MarkerReqstd(t_MarkerReqstdSEXP);
-    rcpp_result_gen = Rcpp::wrap(getGenoInR(t_MarkerReqstd));
+    rcpp_result_gen = Rcpp::wrap(getGenoInCPP(t_MarkerReqstd));
     return rcpp_result_gen;
 END_RCPP
 }
-// setPOLMMobjInR
-void setPOLMMobjInR(arma::mat t_muMat, arma::mat t_iRMat, arma::mat t_Cova, arma::uvec t_yVec, Rcpp::List t_SPmatR, double t_tau, bool t_printPCGInfo, double t_tolPCG, int t_maxiterPCG);
-RcppExport SEXP _GRAB_setPOLMMobjInR(SEXP t_muMatSEXP, SEXP t_iRMatSEXP, SEXP t_CovaSEXP, SEXP t_yVecSEXP, SEXP t_SPmatRSEXP, SEXP t_tauSEXP, SEXP t_printPCGInfoSEXP, SEXP t_tolPCGSEXP, SEXP t_maxiterPCGSEXP) {
+// setPOLMMobjInCPP
+void setPOLMMobjInCPP(arma::mat t_muMat, arma::mat t_iRMat, arma::mat t_Cova, arma::uvec t_yVec, Rcpp::List t_SPmatR, double t_tau, bool t_printPCGInfo, double t_tolPCG, int t_maxiterPCG);
+RcppExport SEXP _GRAB_setPOLMMobjInCPP(SEXP t_muMatSEXP, SEXP t_iRMatSEXP, SEXP t_CovaSEXP, SEXP t_yVecSEXP, SEXP t_SPmatRSEXP, SEXP t_tauSEXP, SEXP t_printPCGInfoSEXP, SEXP t_tolPCGSEXP, SEXP t_maxiterPCGSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::mat >::type t_muMat(t_muMatSEXP);
@@ -44,23 +44,24 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< bool >::type t_printPCGInfo(t_printPCGInfoSEXP);
     Rcpp::traits::input_parameter< double >::type t_tolPCG(t_tolPCGSEXP);
     Rcpp::traits::input_parameter< int >::type t_maxiterPCG(t_maxiterPCGSEXP);
-    setPOLMMobjInR(t_muMat, t_iRMat, t_Cova, t_yVec, t_SPmatR, t_tau, t_printPCGInfo, t_tolPCG, t_maxiterPCG);
+    setPOLMMobjInCPP(t_muMat, t_iRMat, t_Cova, t_yVec, t_SPmatR, t_tau, t_printPCGInfo, t_tolPCG, t_maxiterPCG);
     return R_NilValue;
 END_RCPP
 }
-// MAIN_MARKER
-Rcpp::List MAIN_MARKER(std::vector<std::string> t_MarkerReqstd, double t_StdStat_cutoff, double t_missingRate_cutoff, double t_minMAF_cutoff, int t_minMAC_cutoff, double t_varRatio);
-RcppExport SEXP _GRAB_MAIN_MARKER(SEXP t_MarkerReqstdSEXP, SEXP t_StdStat_cutoffSEXP, SEXP t_missingRate_cutoffSEXP, SEXP t_minMAF_cutoffSEXP, SEXP t_minMAC_cutoffSEXP, SEXP t_varRatioSEXP) {
+// mainMarkerInCPP
+Rcpp::List mainMarkerInCPP(std::string t_method, std::string t_genoType, std::vector<std::string> t_MarkerReqstd, double t_StdStat_cutoff, double t_missingRate_cutoff, double t_minMAF_cutoff, int t_minMAC_cutoff);
+RcppExport SEXP _GRAB_mainMarkerInCPP(SEXP t_methodSEXP, SEXP t_genoTypeSEXP, SEXP t_MarkerReqstdSEXP, SEXP t_StdStat_cutoffSEXP, SEXP t_missingRate_cutoffSEXP, SEXP t_minMAF_cutoffSEXP, SEXP t_minMAC_cutoffSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type t_method(t_methodSEXP);
+    Rcpp::traits::input_parameter< std::string >::type t_genoType(t_genoTypeSEXP);
     Rcpp::traits::input_parameter< std::vector<std::string> >::type t_MarkerReqstd(t_MarkerReqstdSEXP);
     Rcpp::traits::input_parameter< double >::type t_StdStat_cutoff(t_StdStat_cutoffSEXP);
     Rcpp::traits::input_parameter< double >::type t_missingRate_cutoff(t_missingRate_cutoffSEXP);
     Rcpp::traits::input_parameter< double >::type t_minMAF_cutoff(t_minMAF_cutoffSEXP);
     Rcpp::traits::input_parameter< int >::type t_minMAC_cutoff(t_minMAC_cutoffSEXP);
-    Rcpp::traits::input_parameter< double >::type t_varRatio(t_varRatioSEXP);
-    rcpp_result_gen = Rcpp::wrap(MAIN_MARKER(t_MarkerReqstd, t_StdStat_cutoff, t_missingRate_cutoff, t_minMAF_cutoff, t_minMAC_cutoff, t_varRatio));
+    rcpp_result_gen = Rcpp::wrap(mainMarkerInCPP(t_method, t_genoType, t_MarkerReqstd, t_StdStat_cutoff, t_missingRate_cutoff, t_minMAF_cutoff, t_minMAC_cutoff));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -128,10 +129,10 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_GRAB_setPLINKobjInR", (DL_FUNC) &_GRAB_setPLINKobjInR, 4},
-    {"_GRAB_getGenoInR", (DL_FUNC) &_GRAB_getGenoInR, 1},
-    {"_GRAB_setPOLMMobjInR", (DL_FUNC) &_GRAB_setPOLMMobjInR, 9},
-    {"_GRAB_MAIN_MARKER", (DL_FUNC) &_GRAB_MAIN_MARKER, 6},
+    {"_GRAB_setPLINKobjInCPP", (DL_FUNC) &_GRAB_setPLINKobjInCPP, 4},
+    {"_GRAB_getGenoInCPP", (DL_FUNC) &_GRAB_getGenoInCPP, 1},
+    {"_GRAB_setPOLMMobjInCPP", (DL_FUNC) &_GRAB_setPOLMMobjInCPP, 9},
+    {"_GRAB_mainMarkerInCPP", (DL_FUNC) &_GRAB_mainMarkerInCPP, 7},
     {"_GRAB_MAIN_REGION", (DL_FUNC) &_GRAB_MAIN_REGION, 9},
     {"_GRAB_rcpparma_hello_world", (DL_FUNC) &_GRAB_rcpparma_hello_world, 0},
     {"_GRAB_rcpparma_outerproduct", (DL_FUNC) &_GRAB_rcpparma_outerproduct, 1},

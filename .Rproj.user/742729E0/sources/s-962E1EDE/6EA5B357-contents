@@ -46,7 +46,7 @@ readGeno = function(GenoFile,
   if(any(!MarkerIDs %in% markers))
     stop("At least one marker from 'MarkerIDs' are not in 'GenoFile' and 'GenoFileIndex'.")
   
-  GenoMat = getGenoInR(MarkerIDs)  # for more details about getGenoInR, please check Main.cpp
+  GenoMat = getGenoInCPP(MarkerIDs)  # for more details about getGenoInCPP, please check Main.cpp
   colnames(GenoMat) = MarkerIDs;
   rownames(GenoMat) = SampleIDs;
   return(GenoMat)
@@ -94,7 +94,7 @@ setGenoInput = function(GenoFile,
     if(is.null(SampleIDs))
       SampleIDs = samples;
     
-    setPLINKobjInR(bimFile, famFile, GenoFile, SampleIDs)
+    setPLINKobjInCPP(bimFile, famFile, GenoFile, SampleIDs)
   }
   
   ########## ----------  More formats such as BGEN and VCF ---------- ##########

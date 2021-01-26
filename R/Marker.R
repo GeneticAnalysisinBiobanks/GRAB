@@ -48,7 +48,7 @@ GRAB.Marker = function(objNull,
                        GenoFile,
                        GenoFileIndex = NULL,
                        OutputFile,
-                       chrom,
+                       chrom,             
                        control = NULL)
 {
   NullModelClass = checkObjNull(objNull);
@@ -62,20 +62,21 @@ GRAB.Marker = function(objNull,
   SampleInModel = as.character(objNull$subjIDs);
   
   ## add something in setGenoInput(.) to select specific markers requested by users
-  objGeno = setGenoInput(GenoFile, GenoFileIndex, SampleInModel)  
+  objGeno = setGenoInput(GenoFile, GenoFileIndex, SampleInModel)
+  genoType = objGeno$genoType
   markers = objGeno$markers
   nMarkersEachChunk = control$nMarkersEachChunk;
   markersList = splitMarker(markers, nMarkersEachChunk);
   print(paste("Markers are splitted into", length(markersList), "chunks, each of which includes <=", nMarkersEachChunk, "markers."))
   
-  setMarker(NullModelClass, objNull, control)
+  setMarker(NullModelClass, objNull, control, chrom)
   
   nChunks = length(markersList)
   for(i in 1:nChunks)
   {
     print(paste0("Analyzing Chunk ", i, "/", nChunks, " ......"))
     markers = markersList[[i]]
-    resMarker = mainMarker(markers, NullModelClass, objNull, control)
+    resMarker = mainMarker(NullModelClass, objNull, control, markers)
     
     quote = F
     if(i == 1){
@@ -91,13 +92,13 @@ GRAB.Marker = function(objNull,
   return(message)
 }
 
-setMarker = function(NullModelClass, objNull, control)
+setMarker = function(NullModelClass, objNull, control, chrom)
 {
   if(NullModelClass == "POLMM")
-    obj.setMarker = setMarker.POLMM(objNull, control)
+    obj.setMarker = setMarker.POLMM(objNull, control, chrom)
   
   if(NullModelClass == "SAIGE")
-    obj.setMarker = setMarker.SAIGE(objNull, control)
+    obj.setMarker = setMarker.SAIGE(objNull, control, chrom)
   
   if(NullModelClass == "SPACox")
     obj.setMarker = setMarker.SPACox(objNull, control)
@@ -105,16 +106,16 @@ setMarker = function(NullModelClass, objNull, control)
   return(obj.setMarker)
 }
 
-mainMarker = function(NullModelClass, objNull, control)
+mainMarker = function(NullModelClass, objNull, control, markers, genoType)
 {
   if(NullModelClass == "POLMM")
-    obj.mainMarker = mainMarker.POLMM(objNull, control)
+    obj.mainMarker = mainMarker.POLMM(objNull, control, markers, genoType)
   
   if(NullModelClass == "SAIGE")
-    obj.mainMarker = mainMarker.SAIGE(objNull, control)
+    obj.mainMarker = mainMarker.SAIGE(objNull, control, markers, genoType)
   
   if(NullModelClass == "SPACox")
-    obj.mainMarker = mainMarker.SPACox(objNull, control)
+    obj.mainMarker = mainMarker.SPACox(objNull, control, markers, genoType)
   
   return(obj.mainMarker)
 }

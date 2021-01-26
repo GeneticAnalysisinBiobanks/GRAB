@@ -1,0 +1,25 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1611609660987.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "B0C0B1C6",
+    "lastKnownWriteTime" : 1611614468,
+    "last_content_update" : 1611614468458,
+    "path" : "~/Github/GRAB/src/Main.cpp",
+    "project_path" : "src/Main.cpp",
+    "properties" : {
+        "cursorPosition" : "84,26",
+        "scrollLine" : "120"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 5,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "cpp"
+}

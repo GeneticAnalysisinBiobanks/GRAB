@@ -1,0 +1,26 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1611608227506.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "BED48858",
+    "lastKnownWriteTime" : 1611611496,
+    "last_content_update" : 1611611496242,
+    "path" : "~/Github/GRAB/R/POLMM.R",
+    "project_path" : "R/POLMM.R",
+    "properties" : {
+        "cursorPosition" : "15,25",
+        "scrollLine" : "0",
+        "tempName" : "Untitled1"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 4,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

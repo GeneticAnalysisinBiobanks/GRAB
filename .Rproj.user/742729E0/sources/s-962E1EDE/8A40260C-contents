@@ -1,0 +1,77 @@
+
+# cd /net/csgspare2/spare1/wenjianb/POLMM-Gene/Simulation/2020-11-23-WES-200k-liking/X20600.0.0
+# cp chr-13-anno.txt /net/snowwhite/home/wenjianb/POLMM-Gene/UKBB/2021-01-04-WES-200k-liking-anno/chr-13-anno.txt
+
+PvalAnno = c()
+for(chr in 1:22){
+  PvalFile = paste0("/net/csgspare2/spare1/wenjianb/POLMM-Gene/Simulation/2020-11-23-WES-200k-liking/X20600.0.0/chr-",chr,"-anno.txt")
+  PvalTemp = data.table::fread(PvalFile)
+  PvalAnno = rbind(PvalAnno, PvalTemp)
+}
+
+data.table::fwrite(PvalAnno, "/net/snowwhite/home/wenjianb/POLMM-Gene/UKBB/2021-01-04-WES-200k-liking-anno/X20600-anno.txt")
+
+##
+PvalAnno = data.table::fread("Y:/POLMM-Gene/UKBB/2021-01-04-WES-200k-liking-anno/X20600-anno.txt")
+PvalAnno = as.data.frame(PvalAnno)
+
+colnames(PvalAnno)
+
+PvalAnno$`P.SKAT-O`[1]
+
+Annotation = unlist(strsplit(PvalAnno$`Annotation`[1], ","))
+nPval = length(Annotation)
+nGene = nrow(PvalAnno)
+
+PvalMat = matrix(0, nGene, nPval)
+rownames(PvalMat) = PvalAnno[,1];
+colnames(PvalMat) = Annotation;
+
+for(i in 1:nGene){
+  P.SKATO = as.numeric(unlist(strsplit(PvalAnno$`P.SKAT-O`[i],",")))
+  for(j in 1:nPval){
+    PvalMat[i,j] = P.SKATO[j]
+  }
+}
+
+library(tidyr)
+library(ggplot2)
+
+ExpectPvalMat = PvalMat
+for(i in 1:ncol(PvalMat)){
+  ExpectPvalMat[,i] = rank(PvalMat[,i], na.last="keep")/length(!is.na(PvalMat[,i]))
+}
+
+PvalMat = as.data.frame(PvalMat)
+PvalMat$Gene = rownames(PvalMat)
+PvalMat.v1 = gather(PvalMat, "Annotation", "true-P-value", `All`:`NotSynonymousSNV`)
+
+ExpectPvalMat = as.data.frame(ExpectPvalMat)
+ExpectPvalMat$Gene = rownames(ExpectPvalMat)
+ExpectPvalMat.v1 = gather(ExpectPvalMat, "Annotation", "expect-P-value", `All`:`NotSynonymousSNV`)
+
+PvalMat.v1$`expect-P-value` = ExpectPvalMat.v1$`expect-P-value`
+
+p = ggplot(PvalMat.v1, aes(-log10(`expect-P-value`),-log10(`true-P-value`))) + 
+  geom_point() + facet_wrap(~Annotation) + geom_abline(slope=1,intercept=0,color="red")
+
+ggsave("Y:/POLMM-Gene/UKBB/2021-01-04-WES-200k-liking-anno/X20600-anno.jpeg", p, width=7, height=7)
+
+# PvalAnno$P.all = sapply(PvalAnno$`P.SKAT-O`, FUN=function(x){as.numeric(unlist(strsplit(x,","))[1])})
+# PvalAnno$pval.CADD = sapply(PvalAnno$`P.SKAT-O`, FUN=function(x){as.numeric(unlist(strsplit(x,","))[2])})
+# PvalAnno$pval.phastCons17way_primate = sapply(PvalAnno$`P.SKAT-O`, FUN=function(x){as.numeric(unlist(strsplit(x,","))[8])})
+# 
+# strsplit(PvalAnno$`P.SKAT-O`[59],",")
+# strsplit(PvalAnno$`P.SKAT-O`[166],",")
+# strsplit(PvalAnno$`P.SKAT-O`[321],",")
+# 
+# PvalAnno$Annotation[1]
+# 
+# layout(matrix(1:3,3,1))
+# hist(PvalAnno$P.all)
+# hist(PvalAnno$pval.CADD)
+# hist(PvalAnno$pval.phastCons17way_primate)
+
+#######
+
+

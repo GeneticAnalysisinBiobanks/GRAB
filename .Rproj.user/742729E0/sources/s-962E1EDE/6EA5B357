@@ -7,13 +7,13 @@
     "folds" : "",
     "hash" : "0",
     "id" : "6EA5B357",
-    "lastKnownWriteTime" : 1611163363,
-    "last_content_update" : 1611163363,
+    "lastKnownWriteTime" : 1611609745,
+    "last_content_update" : 1611609745176,
     "path" : "~/Github/GRAB/R/Geno.R",
     "project_path" : "R/Geno.R",
     "properties" : {
-        "cursorPosition" : "50,31",
-        "scrollLine" : "0"
+        "cursorPosition" : "73,15",
+        "scrollLine" : "44"
     },
     "read_only" : false,
     "read_only_alternatives" : [

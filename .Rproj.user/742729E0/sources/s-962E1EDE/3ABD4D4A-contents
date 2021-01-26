@@ -1,0 +1,106 @@
+
+# cd /net/snowwhite/home/wenjianb/POLMM-Gene/UKBB/2021-01-04-WES-200k-liking-anno
+# sbatch --exclude r6306,r6326,r6403,twins-mc02 -p nomosix,topmed -J step2 --mem=20000M -t 5-0:0 --array=1-3300 -o log/%A_%a.log --wrap='Rscript 2021-01-04-step2.R $SLURM_ARRAY_TASK_ID'
+
+args=commandArgs(TRUE)
+print(args)
+print(sessionInfo())
+n.cpu=as.numeric(args)
+
+# Data.OC = data.table::fread("/net/snowwhite/home/wenjianb/OLR/UKBB-v1-253-OC-traits/Data.OC.IA.Cova.clean.less.10.merge.v1.csv")
+# Data.OC = as.data.frame(Data.OC)
+# fid.tot = colnames(Data.OC)[15:125]
+DataPref = read.csv("/net/snowwhite/home/wenjianb/Data/UKBB_43082/ukb43082.csv")
+fid.tot = colnames(DataPref)[c(-1,-2,-153,-154)]
+
+par.tot = cbind(fid=rep(fid.tot, each=22),
+                chr=1:22)
+
+
+fid = par.tot[n.cpu,1];
+chr = par.tot[n.cpu,2];
+
+setwd(paste0("/net/csgspare2/spare1/wenjianb/POLMM-Gene/Simulation/2020-11-23-WES-200k-liking/",fid))
+
+# results in step 1
+load("Step1.RData")
+# obj_Null$subjIDs = Data.OC$Shawn[match(obj_Null$subjIDs, Data.OC$Goncalo)]
+mapping = read.csv("/net/snowwhite/home/wenjianb/Data/UKBiobank/mapping/mapping.csv")
+obj_Null$subjIDs = mapping$Shawn[match(obj_Null$subjIDs, mapping$Goncalo)]
+rm(Data.OC)
+rm(DataPref)
+# 0 to 26
+# n.cpu = n.cpu - 1
+
+# setid
+# SNPSet.file = paste0("/net/snowwhite/home/wenjianb/POLMM-Gene/UKBB/2020-10-20-WES-FE/obj.SNPSet.group/setid_anno_",
+#                      n.cpu,".RData")
+# SNPSet.file = paste0("/net/snowwhite/home/wenjianb/POLMM-Gene/UKBB/2020-10-20-WES-FE/obj.SNPSet.chr/chr-",
+#                      chr,".RData")
+# SNPSet.file = paste0("/net/snowwhite/home/wenjianb/POLMM-Gene/UKBB/2020-10-29-WES-200k/obj.SNPSet.chr/UKBexomeOQFE_chr",
+#                      chr,".gene.anno.hg38_multianno.RData")
+# load(SNPSet.file)
+# SNPSet.length = sapply(obj.SNPSet, length)
+
+# obj.SNPSet = obj.SNPSet[which(SNPSet.length < 2500)]
+# table(sapply(obj.SNPSet, length))
+
+# load SparseGRM object
+# load("/net/snowwhite/home/wenjianb/GCTA/sparse_GRM_UKBB/UKBB_Pairs_cutoff_0.05.RData")
+load("/net/snowwhite/home/wenjianb/GCTA/sparse_GRM_UKBB/Shawn/UKBB_Pairs_cutoff_0.05_Shawn.RData")
+SparseGRM = Pairs
+options(stringsAsFactors = F)
+for(i in names(SparseGRM)){
+  temp = as.data.frame(SparseGRM[[i]])
+  temp$ID1 = as.character(temp$ID1)
+  temp$ID2 = as.character(temp$ID2)
+  SparseGRM[[i]] = temp
+}
+names(SparseGRM)[1] = "none"
+class(SparseGRM) = "SparseGRM"
+
+# plink file
+# PlinkFile = "/net/snowwhite/home/wenjianb/POLMM-Gene/UKBB/2020-10-20-WES-FE/geno-FE/ukb_fe"
+# PlinkFile = "/net/snowwhite/home/wenjianb/POLMM-Gene/UKBB/2020-10-20-WES-FE/geno-FE/ukb_fe"
+PlinkFile = paste0("/net/csgspare2/spare1/wenjianb/Data/UKBB_WES_200k/ukb23155_c",chr,"_b0_v1")
+
+library(Matrix)
+library(POLMM)
+
+# output = POLMM.Gene.plink(obj_Null, PlinkFile, obj.SNPSet, chrom, SparseGRM)
+
+# objNull = obj_Null
+SKAT.control = NULL
+chrom = chr
+
+# obj.SNPSet1 = obj.SNPSet[1]
+
+OutputFile = paste0("chr-",chr,"-anno.txt")
+# file.remove(OutputFile)
+
+# AnnoFile = paste0("/net/csgspare2/spare1/wenjianb/Data/UKBB_WES_200k/group-v1/UKBexomeOQFE_chr",chr,".gene.anno.hg38_multianno.csv")
+AnnoFile = paste0("/net/snowwhite/home/wenjianb/Data/UKBB_WES_200k/group-POLMM-2021-01-04/UKBexomeOQFE_chr",chr,".avoutput.hg38_multianno.standardized.POLMM.csv");
+AnnoHeader = c("CADD_phred", "Eigen-phred_coding", "GERP++_NR", "phastCons17way_primate", 
+               # "phyloP17way_primate", 
+               "Polyphen2_HDIV_score", "SIFT_score", "NotSynonymousSNV")
+
+
+if(file.exists(OutputFile)){
+  # do nothing
+}else{
+  out = POLMM.Region(obj_Null,
+                     AnnoFile,
+                     AnnoHeader,
+                     GenoFile = paste0(PlinkFile,".bed"),
+                     GenoFileIndex = NULL,
+                     OutputFile,
+                     SparseGRM,
+                     chrom)
+  
+  # write.table(out,
+  #             OutputFile,
+  #             row.names = F,
+  #             col.names = T,
+  #             quote = F)
+}
+
