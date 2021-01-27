@@ -89,6 +89,7 @@ public:
                  arma::uvec t_posG1);
   
   void setSeqMat(int t_NonZero_cutoff);
+  void getMarkerPval(arma::vec t_GVec, double MAF, double& t_Beta, double& t_seBeta, double& t_pval);
   
 };
 

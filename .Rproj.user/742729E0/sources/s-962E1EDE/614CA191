@@ -2,18 +2,18 @@
     "collab_server" : "",
     "contents" : "",
     "created" : 1611678463385.000,
-    "dirty" : true,
+    "dirty" : false,
     "encoding" : "UTF-8",
     "folds" : "",
-    "hash" : "0",
+    "hash" : "3129289326",
     "id" : "614CA191",
-    "lastKnownWriteTime" : 1611767808,
-    "last_content_update" : 1611773433777,
+    "lastKnownWriteTime" : 1611783854,
+    "last_content_update" : 1611783854348,
     "path" : "~/Github/GRAB/src/SPACOX.hpp",
     "project_path" : "src/SPACOX.hpp",
     "properties" : {
-        "cursorPosition" : "71,41",
-        "scrollLine" : "67"
+        "cursorPosition" : "152,9",
+        "scrollLine" : "145"
     },
     "read_only" : false,
     "read_only_alternatives" : [

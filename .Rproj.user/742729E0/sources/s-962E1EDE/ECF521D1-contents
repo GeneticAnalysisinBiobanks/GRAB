@@ -65,7 +65,11 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
   setRPsiR();
 }
 
-void POLMMClass::getMarkerPval(double Beta, double seBeta, double pval)
+void POLMMClass::getMarkerPval(arma::vec t_GVec, 
+                               double MAF, 
+                               double& t_Beta, 
+                               double& t_seBeta, 
+                               double& t_pval)
 {
   // to be continued
 }

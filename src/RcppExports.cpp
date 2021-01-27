@@ -6,6 +6,42 @@
 
 using namespace Rcpp;
 
+// mainMarkerInCPP
+Rcpp::List mainMarkerInCPP(std::string t_method, std::string t_genoType, std::vector<std::string> t_MarkerReqstd, double t_StdStat_cutoff, double t_missingRate_cutoff, double t_minMAF_cutoff, int t_minMAC_cutoff);
+RcppExport SEXP _GRAB_mainMarkerInCPP(SEXP t_methodSEXP, SEXP t_genoTypeSEXP, SEXP t_MarkerReqstdSEXP, SEXP t_StdStat_cutoffSEXP, SEXP t_missingRate_cutoffSEXP, SEXP t_minMAF_cutoffSEXP, SEXP t_minMAC_cutoffSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type t_method(t_methodSEXP);
+    Rcpp::traits::input_parameter< std::string >::type t_genoType(t_genoTypeSEXP);
+    Rcpp::traits::input_parameter< std::vector<std::string> >::type t_MarkerReqstd(t_MarkerReqstdSEXP);
+    Rcpp::traits::input_parameter< double >::type t_StdStat_cutoff(t_StdStat_cutoffSEXP);
+    Rcpp::traits::input_parameter< double >::type t_missingRate_cutoff(t_missingRate_cutoffSEXP);
+    Rcpp::traits::input_parameter< double >::type t_minMAF_cutoff(t_minMAF_cutoffSEXP);
+    Rcpp::traits::input_parameter< int >::type t_minMAC_cutoff(t_minMAC_cutoffSEXP);
+    rcpp_result_gen = Rcpp::wrap(mainMarkerInCPP(t_method, t_genoType, t_MarkerReqstd, t_StdStat_cutoff, t_missingRate_cutoff, t_minMAF_cutoff, t_minMAC_cutoff));
+    return rcpp_result_gen;
+END_RCPP
+}
+// MAIN_REGION
+Rcpp::List MAIN_REGION(std::vector<std::string> t_MarkerReqstd, double t_NonZero_cutoff, double t_StdStat_cutoff, int t_maxMarkers, std::string t_outputFile, double t_missingRate_cutoff, double t_maxMAF_cutoff, std::string t_kernel, arma::vec t_wBeta);
+RcppExport SEXP _GRAB_MAIN_REGION(SEXP t_MarkerReqstdSEXP, SEXP t_NonZero_cutoffSEXP, SEXP t_StdStat_cutoffSEXP, SEXP t_maxMarkersSEXP, SEXP t_outputFileSEXP, SEXP t_missingRate_cutoffSEXP, SEXP t_maxMAF_cutoffSEXP, SEXP t_kernelSEXP, SEXP t_wBetaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::vector<std::string> >::type t_MarkerReqstd(t_MarkerReqstdSEXP);
+    Rcpp::traits::input_parameter< double >::type t_NonZero_cutoff(t_NonZero_cutoffSEXP);
+    Rcpp::traits::input_parameter< double >::type t_StdStat_cutoff(t_StdStat_cutoffSEXP);
+    Rcpp::traits::input_parameter< int >::type t_maxMarkers(t_maxMarkersSEXP);
+    Rcpp::traits::input_parameter< std::string >::type t_outputFile(t_outputFileSEXP);
+    Rcpp::traits::input_parameter< double >::type t_missingRate_cutoff(t_missingRate_cutoffSEXP);
+    Rcpp::traits::input_parameter< double >::type t_maxMAF_cutoff(t_maxMAF_cutoffSEXP);
+    Rcpp::traits::input_parameter< std::string >::type t_kernel(t_kernelSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_wBeta(t_wBetaSEXP);
+    rcpp_result_gen = Rcpp::wrap(MAIN_REGION(t_MarkerReqstd, t_NonZero_cutoff, t_StdStat_cutoff, t_maxMarkers, t_outputFile, t_missingRate_cutoff, t_maxMAF_cutoff, t_kernel, t_wBeta));
+    return rcpp_result_gen;
+END_RCPP
+}
 // setPLINKobjInCPP
 void setPLINKobjInCPP(std::string t_bimFile, std::string t_famFile, std::string t_bedFile, std::vector<std::string> t_SampleInModel);
 RcppExport SEXP _GRAB_setPLINKobjInCPP(SEXP t_bimFileSEXP, SEXP t_famFileSEXP, SEXP t_bedFileSEXP, SEXP t_SampleInModelSEXP) {
@@ -46,42 +82,6 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type t_maxiterPCG(t_maxiterPCGSEXP);
     setPOLMMobjInCPP(t_muMat, t_iRMat, t_Cova, t_yVec, t_SPmatR, t_tau, t_printPCGInfo, t_tolPCG, t_maxiterPCG);
     return R_NilValue;
-END_RCPP
-}
-// mainMarkerInCPP
-Rcpp::List mainMarkerInCPP(std::string t_method, std::string t_genoType, std::vector<std::string> t_MarkerReqstd, double t_StdStat_cutoff, double t_missingRate_cutoff, double t_minMAF_cutoff, int t_minMAC_cutoff);
-RcppExport SEXP _GRAB_mainMarkerInCPP(SEXP t_methodSEXP, SEXP t_genoTypeSEXP, SEXP t_MarkerReqstdSEXP, SEXP t_StdStat_cutoffSEXP, SEXP t_missingRate_cutoffSEXP, SEXP t_minMAF_cutoffSEXP, SEXP t_minMAC_cutoffSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< std::string >::type t_method(t_methodSEXP);
-    Rcpp::traits::input_parameter< std::string >::type t_genoType(t_genoTypeSEXP);
-    Rcpp::traits::input_parameter< std::vector<std::string> >::type t_MarkerReqstd(t_MarkerReqstdSEXP);
-    Rcpp::traits::input_parameter< double >::type t_StdStat_cutoff(t_StdStat_cutoffSEXP);
-    Rcpp::traits::input_parameter< double >::type t_missingRate_cutoff(t_missingRate_cutoffSEXP);
-    Rcpp::traits::input_parameter< double >::type t_minMAF_cutoff(t_minMAF_cutoffSEXP);
-    Rcpp::traits::input_parameter< int >::type t_minMAC_cutoff(t_minMAC_cutoffSEXP);
-    rcpp_result_gen = Rcpp::wrap(mainMarkerInCPP(t_method, t_genoType, t_MarkerReqstd, t_StdStat_cutoff, t_missingRate_cutoff, t_minMAF_cutoff, t_minMAC_cutoff));
-    return rcpp_result_gen;
-END_RCPP
-}
-// MAIN_REGION
-Rcpp::List MAIN_REGION(std::vector<std::string> t_MarkerReqstd, double t_NonZero_cutoff, double t_StdStat_cutoff, int t_maxMarkers, std::string t_outputFile, double t_missingRate_cutoff, double t_maxMAF_cutoff, std::string t_kernel, arma::vec t_wBeta);
-RcppExport SEXP _GRAB_MAIN_REGION(SEXP t_MarkerReqstdSEXP, SEXP t_NonZero_cutoffSEXP, SEXP t_StdStat_cutoffSEXP, SEXP t_maxMarkersSEXP, SEXP t_outputFileSEXP, SEXP t_missingRate_cutoffSEXP, SEXP t_maxMAF_cutoffSEXP, SEXP t_kernelSEXP, SEXP t_wBetaSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< std::vector<std::string> >::type t_MarkerReqstd(t_MarkerReqstdSEXP);
-    Rcpp::traits::input_parameter< double >::type t_NonZero_cutoff(t_NonZero_cutoffSEXP);
-    Rcpp::traits::input_parameter< double >::type t_StdStat_cutoff(t_StdStat_cutoffSEXP);
-    Rcpp::traits::input_parameter< int >::type t_maxMarkers(t_maxMarkersSEXP);
-    Rcpp::traits::input_parameter< std::string >::type t_outputFile(t_outputFileSEXP);
-    Rcpp::traits::input_parameter< double >::type t_missingRate_cutoff(t_missingRate_cutoffSEXP);
-    Rcpp::traits::input_parameter< double >::type t_maxMAF_cutoff(t_maxMAF_cutoffSEXP);
-    Rcpp::traits::input_parameter< std::string >::type t_kernel(t_kernelSEXP);
-    Rcpp::traits::input_parameter< arma::vec >::type t_wBeta(t_wBetaSEXP);
-    rcpp_result_gen = Rcpp::wrap(MAIN_REGION(t_MarkerReqstd, t_NonZero_cutoff, t_StdStat_cutoff, t_maxMarkers, t_outputFile, t_missingRate_cutoff, t_maxMAF_cutoff, t_kernel, t_wBeta));
-    return rcpp_result_gen;
 END_RCPP
 }
 // rcpparma_hello_world
@@ -129,11 +129,11 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
+    {"_GRAB_mainMarkerInCPP", (DL_FUNC) &_GRAB_mainMarkerInCPP, 7},
+    {"_GRAB_MAIN_REGION", (DL_FUNC) &_GRAB_MAIN_REGION, 9},
     {"_GRAB_setPLINKobjInCPP", (DL_FUNC) &_GRAB_setPLINKobjInCPP, 4},
     {"_GRAB_getGenoInCPP", (DL_FUNC) &_GRAB_getGenoInCPP, 1},
     {"_GRAB_setPOLMMobjInCPP", (DL_FUNC) &_GRAB_setPOLMMobjInCPP, 9},
-    {"_GRAB_mainMarkerInCPP", (DL_FUNC) &_GRAB_mainMarkerInCPP, 7},
-    {"_GRAB_MAIN_REGION", (DL_FUNC) &_GRAB_MAIN_REGION, 9},
     {"_GRAB_rcpparma_hello_world", (DL_FUNC) &_GRAB_rcpparma_hello_world, 0},
     {"_GRAB_rcpparma_outerproduct", (DL_FUNC) &_GRAB_rcpparma_outerproduct, 1},
     {"_GRAB_rcpparma_innerproduct", (DL_FUNC) &_GRAB_rcpparma_innerproduct, 1},

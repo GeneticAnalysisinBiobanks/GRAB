@@ -8,11 +8,13 @@
 #include "POLMM.hpp"
 #include "UTIL.hpp"
 #include "Main.hpp"
+#include "SPACOX.hpp"
 
 // need to pre-define "ptr_gPLINKobj" and "ptr_gPOLMMobj"
 
 static PLINK::PlinkClass* ptr_gPLINKobj = NULL;
 static POLMM::POLMMClass* ptr_gPOLMMobj = NULL;
+static SPACOX::SPACOXClass* ptr_gSPACOXobj = NULL;
 
 // [[Rcpp::export]]
 Rcpp::List mainMarkerInCPP(std::string t_method,
@@ -88,11 +90,11 @@ Rcpp::List mainMarkerInCPP(std::string t_method,
     double Beta, seBeta, pval;
     
     if(t_method == "POLMM"){
-      ptr_gPOLMMobj->getMarkerPval(GVec, Beta, seBeta, pval);
+      ptr_gPOLMMobj->getMarkerPval(GVec, MAF, Beta, seBeta, pval);
     }
     
     if(t_method == "SPACox"){
-      SPACOX::getMarkerPval(pval);
+      pval = ptr_gSPACOXobj->getMarkerPval(GVec, MAF);
     }
     
     // push back results to the output

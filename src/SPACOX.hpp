@@ -69,32 +69,76 @@ public:
     return out;
   }
   
+  Rcpp::List fastgetroot_K1(double t_initX,
+                            int N0, 
+                            double adjG0, 
+                            arma::vec adjG1,        // adjusted Genotype
+                            double q2)
+  {
+    double x = t_initX;
+    double K1 = 0;
+    double K2 = 0;
+    double diffX = arma::datum::inf;
+    bool converge = true;
+    double tol = 0.001;
+    int maxiter = 100;
+    int iter = 0;
+    
+    for(iter = 0; iter < maxiter; iter ++){
+      double oldX = x;
+      double oldDiffX = diffX;
+      double oldK1 = K1;
+      
+      double K1 = K_1(x, N0, adjG0, adjG1, q2);
+      double K2 = K_2(x, N0, adjG0, adjG1);
+      
+      diffX = -1 * K1 / K2;
+      
+      if(!std::isfinite(K1)){
+        // checked it on 07/05:
+        // if the solution 'x' tends to infinity, 'K2' tends to 0, and 'K1' tends to 0 very slowly.
+        // then we can set the one sided p value as 0 (instead of setting converge = F)
+        x = arma::datum::inf;
+        K2 = 0;
+        break;
+      }
+      
+      if(arma::sign(K1) != arma::sign(oldK1)){
+        while(std::abs(diffX) > std::abs(oldDiffX) - tol){
+          diffX = diffX / 2;
+        }
+      }
+      
+      if(std::abs(diffX) < tol) break;
+      
+      x = oldX + diffX;
+    }
+    
+    if(iter == maxiter - 1) 
+      converge = false;
+    
+    Rcpp::List yList = Rcpp::List::create(Rcpp::Named("root") = x,
+                                          Rcpp::Named("iter") = iter,
+                                          Rcpp::Named("converge") = converge,
+                                          Rcpp::Named("K2") = K2);
+    return yList;
+  }
+  
   double GetProb_SPA(double adjG0, 
                      arma::vec adjG1,
                      int N0, 
                      double q2, 
-                     bool lowerTail,
-                     Rcpp::Function m_K_0_emp,
-                     Rcpp::Function m_K_1_emp,
-                     Rcpp::Function m_K_2_emp)
+                     bool lowerTail)
   {
-    Rcpp::Environment pkg = Rcpp::Environment::namespace_env("stats");
-    Rcpp::Function uniroot = pkg["uniroot"];
-    arma::vec intervalVec = {-20, 20};
+    double initX;
+    if(q2 > 0) initX = 3;
+    if(q2 <= 0) initX = -3;
     
-    // Rcpp::List rootList = Rcpp::as<Rcpp::List>(uniroot(K_1, 
-    //                                                    Rcpp::Named("interval")=intervalVec, 
-    //                                                    Rcpp::Named("extendInt")="upX", 
-    //                                                    Rcpp::Named("N0")=N0, 
-    //                                                    Rcpp::Named("adjG0")=adjG0,
-    //                                                    Rcpp::Named("adjG1")=adjG1,
-    //                                                    Rcpp::Named("q2")=q2,
-    //                                                    Rcpp::Named("m_K_1_emp")=m_K_1_emp));
-    // double zeta = rootList["root"];
-    double zeta = 0;
+    Rcpp::List rootList = fastgetroot_K1(initX, N0, adjG0, adjG1, q2);
+    double zeta = rootList["root"];
     
-    double k1 = K_0(zeta,  N0, adjG0, adjG1, m_K_0_emp);
-    double k2 = K_2(zeta,  N0, adjG0, adjG1, m_K_2_emp);
+    double k1 = K_0(zeta,  N0, adjG0, adjG1);
+    double k2 = K_2(zeta,  N0, adjG0, adjG1);
     
     double temp1 = zeta * q2 - k1;
     
@@ -107,10 +151,7 @@ public:
   }
   
   double getMarkerPval(arma::vec t_GVec, 
-                       double t_MAF,
-                       Rcpp::Function m_K_0_emp,
-                       Rcpp::Function m_K_1_emp,
-                       Rcpp::Function m_K_2_emp)
+                       double t_MAF)
   {
     double S = sum(t_GVec * m_mresid);
     arma::vec adjGVec = t_GVec - 2 * t_MAF;
@@ -131,8 +172,8 @@ public:
     arma::vec adjG1 = adjGVecNorm.elem(N1set);
     double adjG0 = -2 * t_MAF / sqrt(VarS);  // all subjects with g=0 share the same normlized genotype, this is to reduce computation time
         
-    double pval1 = GetProb_SPA(adjG0, adjG1, N0, std::abs(z), false, m_K_0_emp, m_K_1_emp, m_K_2_emp);
-    double pval2 = GetProb_SPA(adjG0, adjG1, N0, -1*std::abs(z), true, m_K_0_emp, m_K_1_emp, m_K_2_emp);
+    double pval1 = GetProb_SPA(adjG0, adjG1, N0, std::abs(z), false);
+    double pval2 = GetProb_SPA(adjG0, adjG1, N0, -1*std::abs(z), true);
     double pval = pval1 + pval2;
     
     if(pval > m_pVal_covaAdj_Cutoff){
@@ -152,8 +193,8 @@ public:
     adjG1 = adjGVecNorm;
     adjG0 = 0;   // since N0=0, this value actually does not matter
 
-    pval1 = GetProb_SPA(adjG0, adjG1, N0, std::abs(z), false, m_K_0_emp, m_K_1_emp, m_K_2_emp);
-    pval2 = GetProb_SPA(adjG0, adjG1, N0, -1*std::abs(z), true, m_K_0_emp, m_K_1_emp, m_K_2_emp);
+    pval1 = GetProb_SPA(adjG0, adjG1, N0, std::abs(z), false);
+    pval2 = GetProb_SPA(adjG0, adjG1, N0, -1*std::abs(z), true);
     pval = pval1 + pval2;
     return pval;
   }
