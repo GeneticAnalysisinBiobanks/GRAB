@@ -4,6 +4,7 @@
 
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
+#include "approxfun.hpp"
 
 namespace SPACOX{
 
@@ -13,9 +14,10 @@ private:
   
   ////////////////////// -------------------- members ---------------------------------- //////////////////////
   
-  // Rcpp::Function m_K_0_emp;
-  // Rcpp::Function m_K_1_emp;
-  // Rcpp::Function m_K_2_emp;
+  approxfun::approxfunClass m_K_0_emp;
+  approxfun::approxfunClass m_K_1_emp;
+  approxfun::approxfunClass m_K_2_emp;
+
   arma::vec m_mresid;
   double m_varResid;
   arma::mat m_XinvXX, m_tX;
@@ -36,12 +38,11 @@ public:
   double K_0(double t, 
              int N0, 
              double adjG0, 
-             arma::vec adjG1,        // adjusted Genotype 
-             Rcpp::Function m_K_0_emp)
+             arma::vec adjG1)        // adjusted Genotype 
   {
     double t_adjG0 = t * adjG0;
     arma::vec t_adjG1 = t * adjG1;
-    double out = N0 * Rcpp::as<double>(m_K_0_emp(t_adjG0)) + arma::sum(Rcpp::as<arma::vec>(m_K_0_emp(t_adjG1)));
+    double out = N0 * m_K_0_emp.getValue(t_adjG0) + arma::sum(m_K_0_emp.getVector(t_adjG1));
     return out;
   }
   
@@ -49,24 +50,22 @@ public:
              int N0, 
              double adjG0, 
              arma::vec adjG1,        // adjusted Genotype
-             double q2,
-             Rcpp::Function m_K_1_emp)
+             double q2)
   {
     double t_adjG0 = t * adjG0;
     arma::vec t_adjG1 = t * adjG1;
-    double out = N0 * adjG0 * Rcpp::as<double>(m_K_1_emp(t_adjG0)) + arma::sum(Rcpp::as<arma::vec>(m_K_1_emp(t_adjG1))) - q2;
+    double out = N0 * adjG0 * m_K_1_emp.getValue(t_adjG0) + arma::sum(m_K_1_emp.getVector(t_adjG1)) - q2;
     return out;
   }
   
   double K_2(double t, 
              int N0, 
              double adjG0, 
-             arma::vec adjG1,       // adjusted Genotype
-             Rcpp::Function m_K_2_emp)
+             arma::vec adjG1)       // adjusted Genotype
   {
     double t_adjG0 = t * adjG0;
     arma::vec t_adjG1 = t * adjG1;
-    double out = N0 * pow(adjG0, 2) * Rcpp::as<double>(m_K_2_emp(t_adjG0)) + arma::sum(pow(t_adjG1, 2) * Rcpp::as<arma::vec>(m_K_2_emp(t_adjG1)));
+    double out = N0 * pow(adjG0, 2) * m_K_2_emp.getValue(t_adjG0) + arma::sum(pow(t_adjG1, 2) * m_K_2_emp.getVector(t_adjG1));
     return out;
   }
   

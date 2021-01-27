@@ -3,6 +3,7 @@
 #include <RcppArmadillo.h>
 
 #include "SPACOX.hpp"
+#include "approxfun.hpp"
 
 namespace SPACOX {
 
@@ -22,13 +23,9 @@ SPACOXClass::SPACOXClass(arma::mat t_cumul,
   m_pVal_covaAdj_Cutoff = t_pVal_covaAdj_Cutoff;
   m_pVal_SPA_Cutoff = t_pVal_SPA_Cutoff;
   
-  // Rcpp::Environment pkg = Rcpp::Environment::namespace_env("stats");
-  // Rcpp::Function approxfun = pkg["approxfun"];
-  
-  // It seems that Rcpp::Function cannot be in a C++ class
-  // m_K_0_emp = approxfun(t_cumul.col(1), t_cumul.col(2), Rcpp::Named("rule")=2);
-  // m_K_1_emp = approxfun(t_cumul.col(1), t_cumul.col(3), Rcpp::Named("rule")=2);
-  // m_K_2_emp = approxfun(t_cumul.col(1), t_cumul.col(4), Rcpp::Named("rule")=2);
+  m_K_0_emp.setApproxFun(t_cumul.col(1), t_cumul.col(2));
+  m_K_1_emp.setApproxFun(t_cumul.col(1), t_cumul.col(2));
+  m_K_2_emp.setApproxFun(t_cumul.col(1), t_cumul.col(2));
 }
 
 }
