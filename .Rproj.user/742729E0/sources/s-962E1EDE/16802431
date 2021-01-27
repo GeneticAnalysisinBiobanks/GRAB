@@ -1,0 +1,25 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1611678461943.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "2468605578",
+    "id" : "16802431",
+    "lastKnownWriteTime" : 1611701691,
+    "last_content_update" : 1611701691007,
+    "path" : "~/Github/GRAB/src/SPACOX.cpp",
+    "project_path" : "src/SPACOX.cpp",
+    "properties" : {
+        "cursorPosition" : "25,5",
+        "scrollLine" : "0"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 12,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "cpp"
+}

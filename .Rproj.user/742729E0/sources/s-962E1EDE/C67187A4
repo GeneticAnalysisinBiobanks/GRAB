@@ -1,0 +1,26 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1611622917986.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "C67187A4",
+    "lastKnownWriteTime" : 1611696467,
+    "last_content_update" : 1611696467431,
+    "path" : "C:/Users/wenji/Dropbox/software/check-load-R-Code.cpp",
+    "project_path" : null,
+    "properties" : {
+        "cursorPosition" : "49,54",
+        "scrollLine" : "31",
+        "tempName" : "Untitled1"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 11,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "cpp"
+}

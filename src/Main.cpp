@@ -15,73 +15,6 @@ static PLINK::PlinkClass* ptr_gPLINKobj = NULL;
 static POLMM::POLMMClass* ptr_gPOLMMobj = NULL;
 
 // [[Rcpp::export]]
-void setPLINKobjInCPP(std::string t_bimFile,
-                      std::string t_famFile,
-                      std::string t_bedFile,
-                      std::vector<std::string> t_SampleInModel)
-{
-  ptr_gPLINKobj = new PLINK::PlinkClass(t_bimFile,
-                                        t_famFile,
-                                        t_bedFile,
-                                        t_SampleInModel);
-  
-  int n = ptr_gPLINKobj->getN();
-  std::cout << "Number of samples:\t" << n << std::endl;
-  
-}
-
-// [[Rcpp::export]]
-arma::mat getGenoInCPP(std::vector<std::string> t_MarkerReqstd)
-{
-  std::vector<uint32_t> posMarkerInPlink = ptr_gPLINKobj->getPosMarkerInPlink(t_MarkerReqstd);
-  int n = ptr_gPLINKobj->getN();
-  int q = posMarkerInPlink.size();         // number of markers requested
-  
-  arma::mat GMat(n, q);
-  for(int i = 0; i < q; i++){
-    uint32_t posMarker = posMarkerInPlink.at(i);
-    double freq, missingRate;
-    std::vector<uint32_t> posMissingGeno;
-    std::string a1, a2, marker;
-    uint32_t pd;
-    uint8_t chr;
-    bool flagTrueGeno = true;
-    
-    arma::vec GVec = ptr_gPLINKobj->getOneMarker(posMarker, freq, missingRate, posMissingGeno,
-                                                 a1, a2, marker, pd, chr, flagTrueGeno);
-    GMat.col(i) = GVec;
-  }
-  return GMat;
-}
-
-
-// [[Rcpp::export]]
-void setPOLMMobjInCPP(arma::mat t_muMat,
-                      arma::mat t_iRMat,
-                      arma::mat t_Cova,
-                      arma::uvec t_yVec,
-                      Rcpp::List t_SPmatR,    // output of makeSPmatR()
-                      double t_tau,
-                      bool t_printPCGInfo,
-                      double t_tolPCG,
-                      int t_maxiterPCG)
-{
-  arma::umat locations = t_SPmatR["locations"];
-  arma::vec values = t_SPmatR["values"];
-  std::cout << "Setting Sparse GRM...." << std::endl;
-  arma::sp_mat SparseGRM = arma::sp_mat(locations, values);
-  ptr_gPOLMMobj = new POLMM::POLMMClass(t_muMat,
-                                        t_iRMat,
-                                        t_Cova,
-                                        t_yVec,
-                                        SparseGRM,
-                                        t_tau,
-                                        t_printPCGInfo,
-                                        t_tolPCG,
-                                        t_maxiterPCG);
-}
-
-// [[Rcpp::export]]
 Rcpp::List mainMarkerInCPP(std::string t_method,
                            std::string t_genoType,
                            std::vector<std::string> t_MarkerReqstd,
@@ -155,7 +88,11 @@ Rcpp::List mainMarkerInCPP(std::string t_method,
     double Beta, seBeta, pval;
     
     if(t_method == "POLMM"){
-      ptr_gPOLMMobj->getMarkerPval(Beta, seBeta, pval);
+      ptr_gPOLMMobj->getMarkerPval(GVec, Beta, seBeta, pval);
+    }
+    
+    if(t_method == "SPACox"){
+      SPACOX::getMarkerPval(pval);
     }
     
     // push back results to the output
@@ -445,3 +382,72 @@ Rcpp::List MAIN_REGION(std::vector<std::string> t_MarkerReqstd,
                                           Rcpp::Named("rBT") = rBT);
   return OutList;
 }
+
+// [[Rcpp::export]]
+void setPLINKobjInCPP(std::string t_bimFile,
+                      std::string t_famFile,
+                      std::string t_bedFile,
+                      std::vector<std::string> t_SampleInModel)
+{
+  ptr_gPLINKobj = new PLINK::PlinkClass(t_bimFile,
+                                        t_famFile,
+                                        t_bedFile,
+                                        t_SampleInModel);
+  
+  int n = ptr_gPLINKobj->getN();
+  std::cout << "Number of samples:\t" << n << std::endl;
+  
+}
+
+// [[Rcpp::export]]
+arma::mat getGenoInCPP(std::vector<std::string> t_MarkerReqstd)
+{
+  std::vector<uint32_t> posMarkerInPlink = ptr_gPLINKobj->getPosMarkerInPlink(t_MarkerReqstd);
+  int n = ptr_gPLINKobj->getN();
+  int q = posMarkerInPlink.size();         // number of markers requested
+  
+  arma::mat GMat(n, q);
+  for(int i = 0; i < q; i++){
+    uint32_t posMarker = posMarkerInPlink.at(i);
+    double freq, missingRate;
+    std::vector<uint32_t> posMissingGeno;
+    std::string a1, a2, marker;
+    uint32_t pd;
+    uint8_t chr;
+    bool flagTrueGeno = true;
+    
+    arma::vec GVec = ptr_gPLINKobj->getOneMarker(posMarker, freq, missingRate, posMissingGeno,
+                                                 a1, a2, marker, pd, chr, flagTrueGeno);
+    GMat.col(i) = GVec;
+  }
+  return GMat;
+}
+
+
+// [[Rcpp::export]]
+void setPOLMMobjInCPP(arma::mat t_muMat,
+                      arma::mat t_iRMat,
+                      arma::mat t_Cova,
+                      arma::uvec t_yVec,
+                      Rcpp::List t_SPmatR,    // output of makeSPmatR()
+                      double t_tau,
+                      bool t_printPCGInfo,
+                      double t_tolPCG,
+                      int t_maxiterPCG)
+{
+  arma::umat locations = t_SPmatR["locations"];
+  arma::vec values = t_SPmatR["values"];
+  std::cout << "Setting Sparse GRM...." << std::endl;
+  arma::sp_mat SparseGRM = arma::sp_mat(locations, values);
+  ptr_gPOLMMobj = new POLMM::POLMMClass(t_muMat,
+                                        t_iRMat,
+                                        t_Cova,
+                                        t_yVec,
+                                        SparseGRM,
+                                        t_tau,
+                                        t_printPCGInfo,
+                                        t_tolPCG,
+                                        t_maxiterPCG);
+}
+
+

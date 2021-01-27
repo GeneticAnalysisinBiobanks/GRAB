@@ -5,15 +5,15 @@
     "dirty" : false,
     "encoding" : "UTF-8",
     "folds" : "",
-    "hash" : "808823481",
+    "hash" : "0",
     "id" : "E18F676A",
     "lastKnownWriteTime" : 1611613394,
     "last_content_update" : 1611613394601,
     "path" : "~/Github/GRAB/src/POLMM.hpp",
     "project_path" : "src/POLMM.hpp",
     "properties" : {
-        "cursorPosition" : "59,62",
-        "scrollLine" : "28"
+        "cursorPosition" : "1,0",
+        "scrollLine" : "0"
     },
     "read_only" : false,
     "read_only_alternatives" : [
