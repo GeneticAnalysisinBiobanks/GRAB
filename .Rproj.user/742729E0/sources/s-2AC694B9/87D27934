@@ -1,0 +1,25 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1611784857618.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "655063122",
+    "id" : "87D27934",
+    "lastKnownWriteTime" : 1611787135,
+    "last_content_update" : 1611787135815,
+    "path" : "~/Github/GRAB/R/GRAB_Null_Model.R",
+    "project_path" : "R/GRAB_Null_Model.R",
+    "properties" : {
+        "cursorPosition" : "67,0",
+        "scrollLine" : "20"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 8,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}
