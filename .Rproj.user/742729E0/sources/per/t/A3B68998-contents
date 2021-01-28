@@ -14,15 +14,15 @@
 #' @return An R matrix, each row is for one sample and each column is for one marker.
 #' @examples
 #' GenoFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.bed", package = "GRAB")
-#' GenoMat = readGeno(GenoFile)
+#' GenoMat = GRAB.ReadGeno(GenoFile)
 #' head(GenoMat)
 #'      
 #' @export
 #' @import data.table
-readGeno = function(GenoFile,
-                    GenoFileIndex = NULL,
-                    SampleIDs = NULL,
-                    MarkerIDs = NULL)
+GRAB.ReadGeno = function(GenoFile,
+                         GenoFileIndex = NULL,
+                         SampleIDs = NULL,
+                         MarkerIDs = NULL)
 {
   objGeno = setGenoInput(GenoFile, GenoFileIndex, SampleIDs)
   

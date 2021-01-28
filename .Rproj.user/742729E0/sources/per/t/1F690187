@@ -1,19 +1,17 @@
 {
     "collab_server" : "",
     "contents" : "",
-    "created" : 1611592654605.000,
+    "created" : 1611854686141.000,
     "dirty" : false,
     "encoding" : "UTF-8",
     "folds" : "",
-    "hash" : "2508681675",
-    "id" : "8A40260C",
-    "lastKnownWriteTime" : 1611009223,
-    "last_content_update" : 1611009223,
-    "path" : "Y:/POLMM-Gene/UKBB/2021-01-04-WES-200k-liking-anno/2021-01-11-check.R",
+    "hash" : "3874969797",
+    "id" : "1F690187",
+    "lastKnownWriteTime" : 1610407946,
+    "last_content_update" : 1610407946,
+    "path" : "~/Github/POLMM/R/POLMM_Region.R",
     "project_path" : null,
     "properties" : {
-        "cursorPosition" : "58,0",
-        "scrollLine" : "0"
     },
     "read_only" : false,
     "read_only_alternatives" : [

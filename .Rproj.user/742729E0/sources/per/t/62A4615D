@@ -1,24 +1,24 @@
 {
     "collab_server" : "",
     "contents" : "",
-    "created" : 1611250281280.000,
+    "created" : 1611622554710.000,
     "dirty" : false,
     "encoding" : "UTF-8",
     "folds" : "",
-    "hash" : "0",
-    "id" : "6EA5B357",
-    "lastKnownWriteTime" : 1611609745,
-    "last_content_update" : 1611609745176,
-    "path" : "~/Github/GRAB/R/Geno.R",
-    "project_path" : "R/Geno.R",
+    "hash" : "750817981",
+    "id" : "62A4615D",
+    "lastKnownWriteTime" : 1611857793,
+    "last_content_update" : 1611857793959,
+    "path" : "~/Github/GRAB/R/SPACox.R",
+    "project_path" : "R/SPACox.R",
     "properties" : {
-        "cursorPosition" : "104,65",
+        "cursorPosition" : "92,11",
         "scrollLine" : "75"
     },
     "read_only" : false,
     "read_only_alternatives" : [
     ],
-    "relative_order" : 9,
+    "relative_order" : 7,
     "source_on_save" : false,
     "source_window" : "",
     "type" : "r_source"
