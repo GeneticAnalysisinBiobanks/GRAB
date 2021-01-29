@@ -27,37 +27,40 @@
 #' \item{Stat}{Score statistics (changed to beta later.) The direction depends on both "Info" and "Flip".}
 #' \item{Var}{Estimated variance of the score statistics (changed to se.beta later)}
 #' \item{Pvalue}{p-value from normal distribution approximation or saddlepoint approximation.}
-#' @examples
-#' famFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.fam", package = "POLMM")
-#' GenoFile = gsub("-ext.fam", "-ext.bed", famFile)
-#' AnnoFile = system.file("extdata", "AnnoFile.txt", package = "POLMM")
-#' OutputFile = gsub("AnnoFile","OutputFile",AnnoFile)
-#' SparseGRMFile = system.file("SparseGRM", "SparseGRM.RData", package = "POLMM")
-#' load(SparseGRMFile)
-#' objNullFile = system.file("objNull.RData", package = "POLMM")
-#' load(objNullFile)
-#' chrom = 1
+#' @examples 
+#' # Simulation phenotype and genotype
+#' GenoFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.bed", package = "GRAB")
+#' N = 100
+#' Pheno = data.frame(ID = paste0("f",1:N,"_1"),
+#'                    event=rbinom(N,1,0.5),
+#'                    time=runif(N),
+#'                    Cov1=rnorm(N),
+#'                    Cov2=rbinom(N,1,0.5))
+#' obj.SPACox = GRAB.NullModel(survival::Surv(time,event)~Cov1+Cov2, 
+#'                             data=Pheno, subjData = Pheno$ID, method = "SPACox", GenoFile = GenoFile)
 #' 
-#' OUTPUT = POLMM.Marker(objNull, AnnoFile, GenoFile, GenoFileIndex = NULL, OutputFile, 
-#'                       SparseGRM, chrom, POLMM.control = list(max_maf_region = 0.5))
-#'      
+#' GRAB.Marker(obj.SPACox, GenoFile, chrom=1)
+#' 
 #' @export
 #' @import data.table
 
 GRAB.Marker = function(objNull,
                        GenoFile,
                        GenoFileIndex = NULL,
-                       OutputFile,
+                       OutputFile = NULL,
                        chrom,             
                        control = NULL)
 {
   NullModelClass = checkObjNull(objNull);
-  checkOutputFile(OutputFile);
+  
+  if(!is.null(OutputFile)){
+    if(file.exists(OutputFile))
+      stop(paste0("'OutputFile' of '",OutputFile,"' has existed. Please use another 'OutputFile' or remove the existing one."))
+  }
+    
   
   # check the setting of control, if not specified, the default setting will be used
-  control = checkControl(control)
-  print("The below is the list of control parameters used in analysis.")
-  print(control)
+  control = checkControl.Marker(control, NullModelClass)
   
   SampleInModel = as.character(objNull$subjIDs);
   
@@ -67,16 +70,19 @@ GRAB.Marker = function(objNull,
   markers = objGeno$markers
   nMarkersEachChunk = control$nMarkersEachChunk;
   markersList = splitMarker(markers, nMarkersEachChunk);
-  print(paste("Markers are splitted into", length(markersList), "chunks, each of which includes <=", nMarkersEachChunk, "markers."))
+  
+  cat("Number of chunks for all markers:\t", length(markersList), "\n")
+  cat("Number of markers in each chunk:\t", nMarkersEachChunk, "\n")
   
   setMarker(NullModelClass, objNull, control, chrom)
   
   nChunks = length(markersList)
+  output = c()
   for(i in 1:nChunks)
   {
     print(paste0("Analyzing Chunk ", i, "/", nChunks, " ......"))
     markers = markersList[[i]]
-    resMarker = mainMarker(NullModelClass, objNull, control, markers)
+    resMarker = mainMarker(NullModelClass, objNull, control, markers, genoType)
     
     quote = F
     if(i == 1){
@@ -85,22 +91,29 @@ GRAB.Marker = function(objNull,
       append = T; col.names = F
     }
       
-    data.table::fwrite(resMarker, OutputFile, quote = quote, sep = "\t", append = append, col.names = col.names)
+    if(is.null(OutputFile)){
+      output = rbind(output, resMarker)
+    }else{
+      data.table::fwrite(resMarker, OutputFile, quote = quote, sep = "\t", append = append, col.names = col.names)
+    }
   }
   
-  message = paste0("The analysis results have been saved to '", OutputFile,"'.")
-  return(message)
+  if(!is.null(OutputFile)){
+    output = paste0("The analysis results have been saved to '", OutputFile,"'.")
+  }
+  
+  return(output)
 }
 
 setMarker = function(NullModelClass, objNull, control, chrom)
 {
-  if(NullModelClass == "POLMM")
+  if(NullModelClass == "POLMM_NULL_Model")
     obj.setMarker = setMarker.POLMM(objNull, control, chrom)
   
-  if(NullModelClass == "SAIGE")
+  if(NullModelClass == "SAIGE_NULL_Model")
     obj.setMarker = setMarker.SAIGE(objNull, control, chrom)
   
-  if(NullModelClass == "SPACox")
+  if(NullModelClass == "SPACox_NULL_Model")
     obj.setMarker = setMarker.SPACox(objNull, control)
     
   return(obj.setMarker)
@@ -108,15 +121,42 @@ setMarker = function(NullModelClass, objNull, control, chrom)
 
 mainMarker = function(NullModelClass, objNull, control, markers, genoType)
 {
-  if(NullModelClass == "POLMM")
+  if(NullModelClass == "POLMM_NULL_Model")
     obj.mainMarker = mainMarker.POLMM(objNull, control, markers, genoType)
   
-  if(NullModelClass == "SAIGE")
+  if(NullModelClass == "SAIGE_NULL_Model")
     obj.mainMarker = mainMarker.SAIGE(objNull, control, markers, genoType)
   
-  if(NullModelClass == "SPACox")
+  if(NullModelClass == "SPACox_NULL_Model")
     obj.mainMarker = mainMarker.SPACox(objNull, control, markers, genoType)
   
   return(obj.mainMarker)
 }
 
+checkControl.Marker = function(control, NullModelClass)
+{
+  # check if control is an R list
+  if(!is.null(control))
+    if(class(control) != "list")
+      stop("If specified, the argument of 'control' should be an R 'list'.")
+  
+  default.marker.control = list(impute_method = "fixed",  
+                                missing_cutoff = 0.15,
+                                min_maf_marker = 0.001,
+                                min_mac_marker = 20,
+                                nMarkersEachChunk = 10000)
+  
+  control = updateControl(control, default.marker.control)
+  
+  ######### SPACox method
+  if(NullModelClass == "SPACox_NULL_Model")
+    control = checkControl.Marker.SPACox(control)
+  
+  
+  ######### the below is for other methods
+  
+  print("The below is the list of control parameters used in marker-level genetic association analysis.")
+  print(control)
+  
+  return(control)
+}

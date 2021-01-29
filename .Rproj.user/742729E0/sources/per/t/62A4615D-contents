@@ -4,15 +4,7 @@ checkControl.NullModel.SPACox = function(control)
   default.control = list(range = c(-100, 100),
                          length.out = 10000)
   
-  # use the default setting or update it
-  if(!is.null(control)){
-    ctrl.nm = names(control)
-    for(nm in ctrl.nm){
-      default.control[[nm]] = control[[nm]]
-    }
-  }
-  
-  control = default.control
+  control = updateControl(control, default.control)
   
   # check the parameters
   range = control$range
@@ -94,21 +86,44 @@ fitNullModel.SPACox = function(formula, data, subjData, subjGeno, control, ...)
 }
 
 
+checkControl.Marker.SPACox = function(control)
+{
+  default.control = list(pVal_covaAdj_Cutoff = 5e-05,
+                         SPA_Cutoff = 2);
+  
+  control = updateControl(control, default.control)
+  
+  return(control)
+}
+
 setMarker.SPACox = function(objNull, control)
 {
-  # do nothing since SPACox does not need this step
+  cumul = objNull$cumul
+  mresid = objNull$mresid
+  XinvXX = objNull$X.invXX
+  tX = objNull$tX
+  N = length(mresid)
+  pVal_covaAdj_Cutoff = control$pVal_covaAdj_Cutoff
+  SPA_Cutoff = control$SPA_Cutoff
+  
+  setSPACoxobjInCPP(cumul,
+                    mresid,
+                    XinvXX,
+                    tX,
+                    N,
+                    pVal_covaAdj_Cutoff,
+                    SPA_Cutoff)
 }
 
 
-mainMarker.SPACox = function(objNull, control)
+mainMarker.SPACox = function(objNull, control, markers, genoType)
 {
   OutList = mainMarkerInCPP("SPACox",
                             genoType,
                             markers,
-                            control$SPA_cutoff,
                             control$missing_cutoff,
-                            control$min_maf_region,
-                            control$min_mac_region)  
+                            control$min_maf_marker,
+                            control$min_mac_marker)  
   
   markerVec = OutList$markerVec   # marker IDs
   infoVec = OutList$infoVec       # marker infomation: CHR:POS:REF:ALT

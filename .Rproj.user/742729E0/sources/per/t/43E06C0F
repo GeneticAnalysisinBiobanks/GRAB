@@ -1,0 +1,25 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1611877866476.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "85008556",
+    "id" : "43E06C0F",
+    "lastKnownWriteTime" : 1611877892,
+    "last_content_update" : 1611877892890,
+    "path" : "~/Github/GRAB/R/GRAB_Marker.R",
+    "project_path" : "R/GRAB_Marker.R",
+    "properties" : {
+        "cursorPosition" : "145,52",
+        "scrollLine" : "134"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 8,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

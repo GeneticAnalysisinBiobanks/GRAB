@@ -4,16 +4,16 @@
     "created" : 1611622554710.000,
     "dirty" : false,
     "encoding" : "UTF-8",
-    "folds" : "",
-    "hash" : "750817981",
+    "folds" : "2|1|19|0|\n22|1|85|0|\n",
+    "hash" : "1371764035",
     "id" : "62A4615D",
-    "lastKnownWriteTime" : 1611857793,
-    "last_content_update" : 1611857793959,
+    "lastKnownWriteTime" : 1611878231,
+    "last_content_update" : 1611878231811,
     "path" : "~/Github/GRAB/R/SPACox.R",
     "project_path" : "R/SPACox.R",
     "properties" : {
-        "cursorPosition" : "92,11",
-        "scrollLine" : "75"
+        "cursorPosition" : "120,0",
+        "scrollLine" : "113"
     },
     "read_only" : false,
     "read_only_alternatives" : [

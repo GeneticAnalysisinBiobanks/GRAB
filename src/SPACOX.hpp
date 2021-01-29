@@ -23,7 +23,7 @@ private:
   arma::mat m_XinvXX, m_tX;
   int m_N;
   double m_pVal_covaAdj_Cutoff;
-  double m_pVal_SPA_Cutoff;
+  double m_SPA_Cutoff;
   
 public:
   
@@ -33,7 +33,7 @@ public:
               arma::mat t_tX,
               int t_N,
               double t_pVal_covaAdj_Cutoff,
-              double t_pVal_SPA_Cutoff);
+              double t_SPA_Cutoff);
   
   double K_0(double t, 
              int N0, 
@@ -159,7 +159,7 @@ public:
     double VarS = m_varResid * sum(adjGVec2);
     double z = S / sqrt(VarS);
     
-    if(std::abs(z) < m_pVal_SPA_Cutoff){
+    if(std::abs(z) < m_SPA_Cutoff){
       double pval = arma::normcdf(-1*std::abs(z))*2;
       return pval;
     }

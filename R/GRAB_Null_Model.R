@@ -46,10 +46,10 @@ GRAB.NullModel = function(formula,
   objGeno = setGenoInput(GenoFile, GenoFileIndex)
   subjGeno = objGeno$samples      # subject IDs in genotype files
   
-  obj.NullModel = fitNullModel(formula, data, subjData, subjGeno, method, trait.type, control, ...)
-  # obj.NullModel$Call = Call;
+  objNull = fitNullModel(formula, data, subjData, subjGeno, method, trait.type, control, ...)
+  objNull$Call = Call;
   
-  return(obj.NullModel)
+  return(objNull)
 }
 
 checkControl.NullModel = function(control, method)
@@ -67,6 +67,7 @@ checkControl.NullModel = function(control, method)
   
   ######### the below is for other methods
   
+  print("The below is the list of control parameters used in null model fitting.")
   print(control)
   
   return(control)

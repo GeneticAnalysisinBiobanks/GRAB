@@ -5,14 +5,14 @@
     "dirty" : false,
     "encoding" : "UTF-8",
     "folds" : "",
-    "hash" : "3814717501",
+    "hash" : "372864314",
     "id" : "87D27934",
-    "lastKnownWriteTime" : 1611857703,
-    "last_content_update" : 1611857703573,
+    "lastKnownWriteTime" : 1611871045,
+    "last_content_update" : 1611871045583,
     "path" : "~/Github/GRAB/R/GRAB_Null_Model.R",
     "project_path" : "R/GRAB_Null_Model.R",
     "properties" : {
-        "cursorPosition" : "28,0",
+        "cursorPosition" : "25,103",
         "scrollLine" : "0"
     },
     "read_only" : false,
