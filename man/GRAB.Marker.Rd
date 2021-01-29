@@ -2,66 +2,50 @@
 % Please edit documentation in R/GRAB_Marker.R
 \name{GRAB.Marker}
 \alias{GRAB.Marker}
-\title{GRAB: Single-marker analysis}
+\title{GRAB: Marker-level genetic analysis}
 \usage{
 GRAB.Marker(
   objNull,
   GenoFile,
   GenoFileIndex = NULL,
   OutputFile = NULL,
-  chrom,
   control = NULL
 )
 }
 \arguments{
-\item{objNull}{an output object of the GRAB.NullModel() function with a class of "POLMM_NULL_Model".}
+\item{objNull}{output object of the GRAB.NullModel() function.}
 
 \item{GenoFile}{a character of genotype file. Three types of genotype files are supported: PLINK ("prefix.bed"), BGEN ("prefix.bgen"), and VCF ("prefix.vcf" or "prefix.vcf.gz").}
 
-\item{GenoFileIndex}{additional index files corresponding to the "GenoFile". The default is NULL, that is, to share the same prefix as GenoFile. PLINK: c("prefix.bim", "prefix.fam"), BGEN: c("prefix.bgi"), and VCF: c("prefix.vcf.tbi") or c("prefix.vcf.gz.tbi").}
+\item{GenoFileIndex}{additional index files corresponding to the "GenoFile". If Null (default), the same prefix as GenoFile is used. PLINK: c("prefix.bim", "prefix.fam"), BGEN: c("prefix.bgi"), and VCF: c("prefix.vcf.tbi") or c("prefix.vcf.gz.tbi").}
 
-\item{OutputFile}{a character of output file to store the analysis results}
+\item{OutputFile}{a character of output file to store the analysis results. If Null (default), the results are outputted to R.}
 
-\item{chrom}{a character to specify chromosome of the markers in analysis. Must be specified unless LOCO = F when fitting the null model.}
-
-\item{POLMM.control}{a list of parameters for controlling the POLMM.Marker(). The default is NULL, that is, to use the default parameters. Check 'Details' and 'Examples' for more details.}
+\item{control}{a list of parameters for controlling the GRAB.Marker().}
 }
 \value{
-The analysis results will be written to OutputFile with the following columns
-\item{Marker}{Marker IDs extracted from "GenoFile" or "GenoFileIndex".}
-\item{Info}{Marker Infomation of "CHR:POS:REF:ALT". This information is from "GenoFile" or "GenoFileIndex" and does not change even if the REF/ALT alleles are flipped in analysis}
+The results will be written in a file (if OutputFile != NULL) or be saved to an R data.frame (default, if OutputFile == NULL). The results include the following columns.
+\item{Marker}{Marker IDs extracted from "GenoFile" and "GenoFileIndex".}
+\item{Info}{Marker Infomation of "CHR:POS:REF:ALT". This information is from "GenoFile" or "GenoFileIndex" and does not change even if the REF/ALT alleles are flipped in analysis.}
 \item{Freq}{Minor allele frequency (always < 0.5) in analysis.}
-\item{Flip}{a logical value indicating if the REF/ALT alleles were switched in analysis. This information is useful to estimate the effect direction.}
-\item{Stat}{Score statistics (changed to beta later.) The direction depends on both "Info" and "Flip".}
-\item{Var}{Estimated variance of the score statistics (changed to se.beta later)}
-\item{Pvalue}{p-value from normal distribution approximation or saddlepoint approximation.}
+\item{Flip}{Logical value indicating if the REF/ALT alleles were switched in analysis. This information is useful to estimate the effect direction.}
+\item{Beta}{Estimated effect size. The sign (positive or negative) depends on "Info" and "Flip". For example, if 'Flip' is false and 'Beta' is positive, then ALT allele is to increase continuous trait (trait.type == "quantitative"), to increase the risk of being cases (trait.type == "binary"), or to xxxx}
+\item{seBeta}{Estimated standard error (se) of the effect size}
+\item{Pval}{p-value from normal distribution approximation or saddlepoint approximation.}
 }
 \description{
-Single-marker analysis: Test for association between genetic variants and a phenotype of interest
+Marker-level genetic analysis: test for association between a phenotype of interest and genome-wide genetic markers
 }
 \details{
-More information about the list of 'control'
+List of 'control' is different for different methods
 \itemize{
-\item{impute_method: imputation method when genotype data is missing [default="fixed"].}
-\item{missing_cutoff: exclude markers with missing rate greater than this cutoff [default=0.15].}
-\item{min_maf_marker: exclude markers with MAF less than this cutoff [default=0.001].}
-\item{min_mac_marker: exclude markers with MAC less than this cutoff [default=20].}
-\item{nMarkers_output: output results after analyzing each chunk of fixed number of markers [default=10000].}
-\item{SPA_cutoff: a cutoff to determine "normal distribution approximation" or "saddlepoint approximation" [default=2].}
+\item{SAIGE: to analyze binary phenotype, check ?GRAB.SAIGE for more details.}
+\item{POLMM: to analyze ordinal categorical phenotype, check ?GRAB.POLMM for more details.}
+\item{SPACox: to analyze time-to-event phenotype, check ?GRAB.SPACox for more details.}
+\item{SPAGE: to analyze gene-environment interaction effect for binary phenotype, check ?GRAB.SPAGE for more details.}
 }
 }
 \examples{
-# Simulation phenotype and genotype
-GenoFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.bed", package = "GRAB")
-N = 100
-Pheno = data.frame(ID = paste0("f",1:N,"_1"),
-                   event=rbinom(N,1,0.5),
-                   time=runif(N),
-                   Cov1=rnorm(N),
-                   Cov2=rbinom(N,1,0.5))
-obj.SPACox = GRAB.NullModel(survival::Surv(time,event)~Cov1+Cov2, 
-                            data=Pheno, subjData = Pheno$ID, method = "SPACox", GenoFile = GenoFile)
-
-GRAB.Marker(obj.SPACox, GenoFile, chrom=1)
-
+We put examples to the specific help pages for different methods. 
+For example, if you want to use "SPACox" method, please check ?GRAB.SPACox for more details. 
 }

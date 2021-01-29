@@ -8,13 +8,13 @@
 #include "POLMM.hpp"
 #include "UTIL.hpp"
 #include "Main.hpp"
-#include "SPACOX.hpp"
+#include "SPACox.hpp"
 
 // need to pre-define "ptr_gPLINKobj" and "ptr_gPOLMMobj"
 
 static PLINK::PlinkClass* ptr_gPLINKobj = NULL;
 static POLMM::POLMMClass* ptr_gPOLMMobj = NULL;
-static SPACOX::SPACOXClass* ptr_gSPACOXobj = NULL;
+static SPACox::SPACoxClass* ptr_gSPACoxobj = NULL;
 
 // [[Rcpp::export]]
 Rcpp::List mainMarkerInCPP(std::string t_method,
@@ -26,6 +26,7 @@ Rcpp::List mainMarkerInCPP(std::string t_method,
 {
   int n, q;
   std::vector<uint32_t> posMarkerInGeno;
+  
   if(t_genoType == "PLINK"){
     // extract information from global variable ptr_gPLINKobj
     n = ptr_gPLINKobj->getN();
@@ -93,7 +94,7 @@ Rcpp::List mainMarkerInCPP(std::string t_method,
     }
     
     if(t_method == "SPACox"){
-      pval = ptr_gSPACOXobj->getMarkerPval(GVec, MAF);
+      pval = ptr_gSPACoxobj->getMarkerPval(GVec, MAF);
     }
     
     // push back results to the output
@@ -460,7 +461,7 @@ void setSPACoxobjInCPP(arma::mat t_cumul,
                        double t_pVal_covaAdj_Cutoff,
                        double t_SPA_Cutoff)
 {
-  ptr_gSPACOXobj = new SPACOX::SPACOXClass(t_cumul,
+  ptr_gSPACoxobj = new SPACox::SPACoxClass(t_cumul,
                                            t_mresid,
                                            t_XinvXX,
                                            t_tX,

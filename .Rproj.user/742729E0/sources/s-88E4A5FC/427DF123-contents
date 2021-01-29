@@ -49,6 +49,7 @@ GRAB.ReadGeno = function(GenoFile,
   GenoMat = getGenoInCPP(MarkerIDs)  # for more details about getGenoInCPP, please check Main.cpp
   colnames(GenoMat) = MarkerIDs;
   rownames(GenoMat) = SampleIDs;
+  
   return(GenoMat)
 }
 
@@ -82,6 +83,7 @@ setGenoInput = function(GenoFile,
     
     bimFile = GenoFileIndex[1]
     famFile = GenoFileIndex[2]
+    bedFile = GenoFile
     
     if(!file.exists(bimFile)) stop(paste("Cannot find bim file of", bimFile))
     markerInfo = data.table::fread(bimFile)
@@ -94,7 +96,7 @@ setGenoInput = function(GenoFile,
     if(is.null(SampleIDs))
       SampleIDs = samples;
     
-    setPLINKobjInCPP(bimFile, famFile, GenoFile, SampleIDs)
+    setPLINKobjInCPP(bimFile, famFile, bedFile, SampleIDs)
   }
   
   ########## ----------  More formats such as BGEN and VCF ---------- ##########

@@ -1,29 +1,19 @@
-#' Fits a NULL model for SPACox
+#' Fits a NULL model
 #'
-#' Fits a null Cox proportional hazards model and then calculates the empirical cumulant generation function (CGF) of the martingale residuals
-#' @param formula a formula to be passed to function coxph(). For more details, please refer to package survival.
-#' @param data a data.frame in which to interpret the variables named in the formula
-#' @param subjData a character vector of subject IDs. NOTE: its order should be the same as the subjects order in the formula.
-#' @param method an R character, "SPACox", "SPAGE", "SAIGE", "POLMM", "GATE"
-#' @param trait.type an R character, "binary", "categorical", "quantitative", "time-to-event"
-#' @param GenoFile xxxxxxxxxxx
-#' @param GenoFileIndex xxxxxxxxxxx
-#' @param control xxxxxxxxxxx
-#' @param range a two-element numeric vector (default: c(-100,100)) to specify the domain of the empirical CGF.
-#' @param length.out a positive integer (default: 9999) for empirical CGF. Larger length.out corresponds to longer calculation time and more accurate estimated empirical CGF.
-#' @param ... Other arguments passed to function coxph(). For more details, please refer to package survival.
-#' @return an object with a class of "SPACox_NULL_Model".
+#' Fits a null model
+#' @param formula a formula object, with the response on the left of a ~ operator and the covariates on the right. 
+#' @param data a data.frame in which to interpret the variables named in the formula, or in the sugset and the weights argument (to be added later).
+#' @param subjData a character vector of subject IDs. Its order should be the same as the subjects order in the formula and data.
+#' @param method an R character, "SPACox", "SPAGE", "SAIGE", "POLMM", or "GATE"
+#' @param trait.type an R character, "binary", "categorical", "quantitative", or "time-to-event"
+#' @param GenoFile a character of genotype file. Three types of genotype files are supported: PLINK ("prefix.bed"), BGEN ("prefix.bgen"), and VCF ("prefix.vcf" or "prefix.vcf.gz"). 
+#' @param GenoFileIndex additional index files corresponding to the "GenoFile". If Null (default), the same prefix as GenoFile is used. PLINK: c("prefix.bim", "prefix.fam"), BGEN: c("prefix.bgi"), and VCF: c("prefix.vcf.tbi") or c("prefix.vcf.gz.tbi").
+#' @param control a list of parameters for controlling the GRAB.NullModel(). 
+#' @param ... Other arguments passed to function XXXX(). 
+#' @return an R object with a class of "XXXXX_NULL_Model" in which XXXXX is the 'method' used in analysis.
 #' @examples
-#' # Simulation phenotype and genotype
-#' GenoFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.bed", package = "GRAB")
-#' N = 100
-#' Pheno = data.frame(ID = paste0("f",1:N,"_1"),
-#'                    event=rbinom(N,1,0.5),
-#'                    time=runif(N),
-#'                    Cov1=rnorm(N),
-#'                    Cov2=rbinom(N,1,0.5))
-#' obj.SPACox = GRAB.NullModel(survival::Surv(time,event)~Cov1+Cov2, 
-#'                             data=Pheno, subjData = Pheno$ID, method = "SPACox", GenoFile = GenoFile)
+#' We put examples to the specific help pages for different methods. 
+#' For example, if you want to use "SPACox" method, please check ?GRAB.SPACox for more details. 
 #' @export
 #' @import survival
 GRAB.NullModel = function(formula,

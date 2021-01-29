@@ -2,12 +2,12 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
 
-#include "SPACOX.hpp"
+#include "SPACox.hpp"
 #include "approxfun.hpp"
 
-namespace SPACOX {
+namespace SPACox {
 
-SPACOXClass::SPACOXClass(arma::mat t_cumul,
+SPACoxClass::SPACoxClass(arma::mat t_cumul,
                          arma::vec t_mresid,
                          arma::mat t_XinvXX,
                          arma::mat t_tX,
