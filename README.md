@@ -6,10 +6,8 @@
 library(devtools)  # author version: 2.3.0
 install_github("GeneticAnalysisinBiobanks/GRAB")
 library(GRAB)
-?GRAB::readGeno  
-GenoFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.bed", package = "GRAB")
-GenoMat = GRAB.ReadGeno(GenoFile)
-head(GenoMat)
+?GRAB.ReadGeno
+?GRAB.SPACox
 ```
 
 ### More detailed information for package developers
