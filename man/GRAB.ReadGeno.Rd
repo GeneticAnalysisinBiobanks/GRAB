@@ -16,9 +16,9 @@ GRAB.ReadGeno(
 
 \item{GenoFileIndex}{additional index files corresponding to the "GenoFile". The default is NULL, that is, to share the same prefix as GenoFile. PLINK: c("prefix.bim", "prefix.fam"), BGEN: c("prefix.bgi"), and VCF: c("prefix.vcf.tbi") or c("prefix.vcf.gz.tbi").}
 
-\item{SampleIDs}{a character vector of sample IDs to extract. The default is NULL, that is, to use the all samples in GenoFile.}
+\item{SampleIDs}{a character vector of sample IDs to extract. The default is NULL, that is, to use all samples in GenoFile.}
 
-\item{MarkerIDs}{a character vector of marker IDs to extract. The default is NULL, the function will extract the first 10 markers.}
+\item{MarkerIDs}{a character vector of marker IDs to extract. The default is NULL, the first 10 markers will be extracted.}
 }
 \value{
 An R matrix, each row is for one sample and each column is for one marker.

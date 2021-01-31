@@ -9,8 +9,8 @@
 #' 
 #' @param GenoFile a character of genotype file. Three types of genotype files are supported: PLINK ("prefix.bed"), BGEN ("prefix.bgen"), and VCF ("prefix.vcf" or "prefix.vcf.gz"). 
 #' @param GenoFileIndex additional index files corresponding to the "GenoFile". The default is NULL, that is, to share the same prefix as GenoFile. PLINK: c("prefix.bim", "prefix.fam"), BGEN: c("prefix.bgi"), and VCF: c("prefix.vcf.tbi") or c("prefix.vcf.gz.tbi").
-#' @param SampleIDs a character vector of sample IDs to extract. The default is NULL, that is, to use the all samples in GenoFile.
-#' @param MarkerIDs a character vector of marker IDs to extract. The default is NULL, the function will extract the first 10 markers.
+#' @param SampleIDs a character vector of sample IDs to extract. The default is NULL, that is, to use all samples in GenoFile.
+#' @param MarkerIDs a character vector of marker IDs to extract. The default is NULL, the first 10 markers will be extracted.
 #' @return An R matrix, each row is for one sample and each column is for one marker.
 #' @examples
 #' GenoFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.bed", package = "GRAB")
