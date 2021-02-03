@@ -1,0 +1,12 @@
+prefix=/net/hunt/zhowei/project/imbalancedCaseCtrlMixedModel/Rpackage_SPAGMMAT/SAIGE_sync/SAIGE/thirdParty/cget/cget/pkg/xiaoyeli__superlu/install
+libdir=/net/hunt/zhowei/project/imbalancedCaseCtrlMixedModel/Rpackage_SPAGMMAT/SAIGE_sync/SAIGE/thirdParty/cget/cget/pkg/xiaoyeli__superlu/install/lib
+includedir=/net/hunt/zhowei/project/imbalancedCaseCtrlMixedModel/Rpackage_SPAGMMAT/SAIGE_sync/SAIGE/thirdParty/cget/cget/pkg/xiaoyeli__superlu/install/include
+
+Name: SuperLU
+Description: Direct solution of large, sparse systems of linear equations
+Version: 5.2.1
+URL: http://crd-legacy.lbl.gov/~xiaoye/SuperLU/
+
+Libs: -L${libdir} -lsuperlu
+Libs.private: blas -lm
+Cflags: -I${includedir}
