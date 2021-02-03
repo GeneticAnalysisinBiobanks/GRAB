@@ -28,13 +28,17 @@ PKG_CPPFLAGS = \
 
 CXX_STD = CXX11
 
-PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS) 
-PKG_LIBS = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) -L../bgen/3rd_party/boost_1_55_0/boost/iostreams
+#PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS) 
+#PKG_LIBS = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) -L../bgen/3rd_party/boost_1_55_0/boost/iostreams
+PKG_LIBS = $(ZLIB_LIB) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) -L../bgen/3rd_party/boost_1_55_0/boost/iostreams -L../thirdParty/cget/lib/ -L../thirdParty/cget/lib64/ -lsavvy -lhts -lsuperlu
+PKG_LIBS += $(shell ${R_HOME}/bin/Rscript -e "RcppParallel::RcppParallelLibs()")
+
+
 
 ## OBJECTS = $(wildcard ./*.o)
-## OBJECTS = Main.o UTIL.o PLINK.o POLMM.o $(wildcard ../thirdParty/bgen/build/src/*.o) ../thirdParty/bgen/build/db/libdb.a ../thirdParty/bgen/build/3rd_party/zstd-1.1.0/libzstd.a ../thirdParty/bgen/build/3rd_party/sqlite3/libsqlite3.a ../thirdParty/bgen/build/3rd_party/boost_1_55_0/libboost.a $(wildcard ../thirdParty/cget/lib64/*.a) BGEN.o 
+OBJECTS = Main.o UTIL.o SPACox.o VCF.o BGEN.o PLINK.o POLMM.o $(wildcard ../thirdParty/bgen/build/src/*.o) ../thirdParty/bgen/build/db/libdb.a ../thirdParty/bgen/build/3rd_party/zstd-1.1.0/libzstd.a ../thirdParty/bgen/build/3rd_party/sqlite3/libsqlite3.a ../thirdParty/bgen/build/3rd_party/boost_1_55_0/libboost.a $(wildcard ../thirdParty/cget/lib64/*.a)
 ## OBJECTS = Main.o UTIL.o PLINK.o POLMM.o 
 
-## all: $(SHLIB)
-## $(SHLIB): ${OBJECTS} Makevars
+all: $(SHLIB)
+$(SHLIB): ${OBJECTS} Makevars
 

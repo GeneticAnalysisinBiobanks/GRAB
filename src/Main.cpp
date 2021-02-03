@@ -4,15 +4,19 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
 
+#include "Main.hpp"
 #include "PLINK.hpp"
+#include "BGEN.hpp"
+#include "VCF.hpp"
 #include "POLMM.hpp"
 #include "UTIL.hpp"
-#include "Main.hpp"
 #include "SPACox.hpp"
 
 // need to pre-define "ptr_gPLINKobj" and "ptr_gPOLMMobj"
 
 static PLINK::PlinkClass* ptr_gPLINKobj = NULL;
+static BGEN::BgenClass* ptr_gBGENobj = NULL;
+static VCF::VcfClass* ptr_gVCFobj = NULL;
 static POLMM::POLMMClass* ptr_gPOLMMobj = NULL;
 static SPACox::SPACoxClass* ptr_gSPACoxobj = NULL;
 
