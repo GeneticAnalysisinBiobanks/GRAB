@@ -1,0 +1,26 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1612313603106.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "F1B7195D",
+    "lastKnownWriteTime" : 1611250842,
+    "last_content_update" : 1611250842,
+    "path" : "~/Github/GRAB/R/SAIGE.R",
+    "project_path" : "R/SAIGE.R",
+    "properties" : {
+        "cursorPosition" : "1,28",
+        "scrollLine" : "0",
+        "tempName" : "Untitled1"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 10,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

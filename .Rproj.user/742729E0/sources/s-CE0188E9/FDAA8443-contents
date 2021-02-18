@@ -1,0 +1,12 @@
+Package: GRAB
+Type: Package
+Title: Genome-wide Robust Analaysis in Biobank (GRAB)
+Version: 0.0.1
+Date: 2021-01-16
+Author: Wenjian Bi, Wei Zhou, Rounak Dey, Zhangchen Zhao, Seunggeun Lee
+Maintainer: Wenjian Bi <wenjianb@umich.edu>
+Description: A toolkit designed for large-scale biobank data
+License: What license is it under?
+Imports: Rcpp (>= 1.0.5), RcppArmadillo, BH, survival
+LinkingTo: Rcpp, RcppArmadillo, BH, survival
+RoxygenNote: 7.1.1
