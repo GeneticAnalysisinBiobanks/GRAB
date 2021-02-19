@@ -1,0 +1,25 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1613749689952.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "76368BF8",
+    "lastKnownWriteTime" : 1613749696,
+    "last_content_update" : 1613749696409,
+    "path" : "~/Github/GRAB/src/VCF.hpp",
+    "project_path" : "src/VCF.hpp",
+    "properties" : {
+        "cursorPosition" : "94,47",
+        "scrollLine" : "0"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 14,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "hpp"
+}

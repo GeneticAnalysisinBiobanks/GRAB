@@ -27,8 +27,12 @@ An R matrix, each row is for one sample and each column is for one marker.
 GRAB package provides functions to read genotype data from multiple formats (including plink) into R
 }
 \examples{
-GenoFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.bed", package = "GRAB")
-GenoMat = GRAB.ReadGeno(GenoFile)
+PlinkFile = system.file("extdata", "example.bed", package = "GRAB")
+GenoMat = GRAB.ReadGeno(PlinkFile)
 head(GenoMat)
-     
+
+RawFile = system.file("extdata", "example.raw", package = "GRAB")
+GenoMat = data.table::fread(RawFile)
+head(GenoMat[,1:15])
+      
 }

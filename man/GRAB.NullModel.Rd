@@ -7,6 +7,7 @@
 GRAB.NullModel(
   formula,
   data = NULL,
+  subset = NULL,
   subjData,
   method = "SPACox",
   trait.type = "time-to-event",
@@ -17,9 +18,11 @@ GRAB.NullModel(
 )
 }
 \arguments{
-\item{formula}{a formula object, with the response on the left of a ~ operator and the covariates on the right.}
+\item{formula}{a formula object, with the response on the left of a ~ operator and the covariates on the right. Do not add a column of intercept (e.g. a vector of ones) on the right. Missing values should be denoted by NA and the corresponding samples will be removed from analysis.}
 
-\item{data}{a data.frame in which to interpret the variables named in the formula, or in the sugset and the weights argument (to be added later).}
+\item{data}{a data.frame in which to interpret the variables named in the formula, or in the subset argument. Check ?model.frame for more details.}
+
+\item{subset}{a specification of the rows to be used: defaults to all rows. This can be any valid indexing vector for the rows of data or if that is not supplied, a data frame made up of the variables used in formula. Check ?model.frame for more details.}
 
 \item{subjData}{a character vector of subject IDs. Its order should be the same as the subjects order in the formula and data.}
 

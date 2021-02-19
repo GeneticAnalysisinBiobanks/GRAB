@@ -13,10 +13,14 @@
 #' @param MarkerIDs a character vector of marker IDs to extract. The default is NULL, the first 10 markers will be extracted.
 #' @return An R matrix, each row is for one sample and each column is for one marker.
 #' @examples
-#' GenoFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.bed", package = "GRAB")
-#' GenoMat = GRAB.ReadGeno(GenoFile)
+#' PlinkFile = system.file("extdata", "example.bed", package = "GRAB")
+#' GenoMat = GRAB.ReadGeno(PlinkFile)
 #' head(GenoMat)
-#'      
+#' 
+#' RawFile = system.file("extdata", "example.raw", package = "GRAB")
+#' GenoMat = data.table::fread(RawFile)
+#' head(GenoMat[,1:15])
+#'       
 #' @export
 #' @import data.table
 GRAB.ReadGeno = function(GenoFile,

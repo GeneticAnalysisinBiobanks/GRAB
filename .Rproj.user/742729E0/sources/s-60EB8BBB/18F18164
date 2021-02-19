@@ -1,19 +1,19 @@
 {
     "collab_server" : "",
     "contents" : "",
-    "created" : 1612313605232.000,
+    "created" : 1613749211006.000,
     "dirty" : false,
     "encoding" : "UTF-8",
     "folds" : "",
     "hash" : "0",
-    "id" : "4C616E03",
-    "lastKnownWriteTime" : 1612110229,
-    "last_content_update" : 1612110229,
-    "path" : "~/Github/GRAB/R/SPACox.R",
-    "project_path" : "R/SPACox.R",
+    "id" : "18F18164",
+    "lastKnownWriteTime" : 1613749511,
+    "last_content_update" : 1613749511710,
+    "path" : "~/Github/GRAB/src/BGEN.cpp",
+    "project_path" : "src/BGEN.cpp",
     "properties" : {
-        "cursorPosition" : "67,2",
-        "scrollLine" : "60"
+        "cursorPosition" : "8,21",
+        "scrollLine" : "0"
     },
     "read_only" : false,
     "read_only_alternatives" : [
@@ -21,5 +21,5 @@
     "relative_order" : 11,
     "source_on_save" : false,
     "source_window" : "",
-    "type" : "r_source"
+    "type" : "cpp"
 }

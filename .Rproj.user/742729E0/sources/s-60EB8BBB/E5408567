@@ -1,0 +1,25 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1613750536999.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "1762427543",
+    "id" : "E5408567",
+    "lastKnownWriteTime" : 1613751004,
+    "last_content_update" : 1613751004929,
+    "path" : "~/Github/GRAB/src/PLINK.cpp",
+    "project_path" : "src/PLINK.cpp",
+    "properties" : {
+        "cursorPosition" : "147,34",
+        "scrollLine" : "120"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 15,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "cpp"
+}

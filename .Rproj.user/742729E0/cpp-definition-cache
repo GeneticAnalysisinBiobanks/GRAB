@@ -2,8 +2,20 @@
     {
         "definitions" : [
         ],
+        "file" : "C:/Users/wenji/OneDrive/Documents/Github/GRAB/src/BGEN.cpp",
+        "file_last_write" : 1613749511.000000
+    },
+    {
+        "definitions" : [
+        ],
+        "file" : "C:/Users/wenji/OneDrive/Documents/Github/GRAB/src/BGEN.hpp",
+        "file_last_write" : 1613749626.000000
+    },
+    {
+        "definitions" : [
+        ],
         "file" : "C:/Users/wenji/OneDrive/Documents/Github/GRAB/src/Main.cpp",
-        "file_last_write" : 1611958872.000000
+        "file_last_write" : 1613749738.000000
     },
     {
         "definitions" : [
@@ -58,6 +70,18 @@
         ],
         "file" : "C:/Users/wenji/OneDrive/Documents/Github/GRAB/src/UTIL.hpp",
         "file_last_write" : 1605977200.000000
+    },
+    {
+        "definitions" : [
+        ],
+        "file" : "C:/Users/wenji/OneDrive/Documents/Github/GRAB/src/VCF.cpp",
+        "file_last_write" : 1613749687.000000
+    },
+    {
+        "definitions" : [
+        ],
+        "file" : "C:/Users/wenji/OneDrive/Documents/Github/GRAB/src/VCF.hpp",
+        "file_last_write" : 1613749696.000000
     },
     {
         "definitions" : [

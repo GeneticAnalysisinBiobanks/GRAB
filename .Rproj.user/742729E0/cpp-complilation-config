@@ -5,6 +5,7 @@
         "-IC:/Users/wenji/OneDrive/Documents/R/win-library/3.6/Rcpp/include",
         "-IC:/Users/wenji/OneDrive/Documents/R/win-library/3.6/RcppArmadillo/include",
         "-IC:/Users/wenji/OneDrive/Documents/R/win-library/3.6/BH/include",
+        "-IC:/Users/wenji/OneDrive/Documents/R/win-library/3.6/data.table/include",
         "-std=gnu++11",
         "-IC:/PROGRA~1/R/R-36~1.3/include",
         "-DNDEBUG",
@@ -12,7 +13,7 @@
         "-DARMA_64BIT_WORD=1",
         "-fopenmp"
     ],
-    "hash" : "161185437316111069321611106942",
+    "hash" : "161375035216136641851611106942",
     "is_cpp" : true,
     "pch" : "Rcpp"
 }

@@ -21,7 +21,7 @@
 #' }
 #' @examples 
 #' # Simulation phenotype and genotype
-#' GenoFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.bed", package = "GRAB")
+#' GenoFile = system.file("extdata", "example.bed", package = "GRAB")
 #' N = 100
 #' Pheno = data.frame(ID = paste0("f",1:N,"_1"),
 #'                    event=rbinom(N,1,0.5),
