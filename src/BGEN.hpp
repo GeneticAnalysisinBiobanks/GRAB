@@ -1,7 +1,6 @@
 #ifndef BGEN_HPP
 #define BGEN_HPP
 
-
 #include <Rcpp.h>
 
 namespace BGEN {
@@ -16,8 +15,8 @@ private:
   FILE *m_fin;
   std::vector <unsigned char> m_buf;
   std::vector <unsigned char> m_zBuf;
-  uint m_zBufLens;
-  uint m_bufLens; 
+  unsigned int m_zBufLens;
+  unsigned int m_bufLens; 
 
 
   std::vector<uint32_t> m_posSampleInBgen;
@@ -50,7 +49,7 @@ public:
 
   void setPosSampleInBgen(std::vector<std::string> & t_SampleInModel);
 
-  void Parse2(unsigned char *buf, uint bufLen, const unsigned char *zBuf, uint zBufLen,std::string & snpName,std::vector< double > & dosages, double & AC, double & AF, std::vector<int> & indexforMissing, double & info, std::vector<unsigned int> & iIndex);
+  void Parse2(unsigned char *buf, unsigned int bufLen, const unsigned char *zBuf, unsigned int zBufLen,std::string & snpName,std::vector< double > & dosages, double & AC, double & AF, std::vector<int> & indexforMissing, double & info, std::vector<unsigned int> & iIndex);
 
   Rcpp::List getOneMarker(int t_fileStartPos);
   // get dosages/genotypes of one marker

@@ -9,27 +9,18 @@
 ## And with R 3.4.0, and RcppArmadillo 0.7.960.*, we turn C++11 on as OpenMP
 ## support within Armadillo prefers / requires it
 
-PKG_CPPFLAGS = \
--I ../thirdParty/bgen/db/include \
--I ../thirdParty/bgen/genfile/include \
--I ../thirdParty/bgen/genfile/include/genfile \
--I ../thirdParty/bgen/genfile/include/genfile/bgen \
--I ../thirdParty/bgen/db/include/db \
--I ../thirdParty/bgen/3rd_party/boost_1_55_0 \
--I ../thirdParty/bgen/3rd_party/zstd-1.1.0 \
--I ../thirdParty/bgen/3rd_party/zstd-1.1.0/lib \
--I ../thirdParty/bgen/3rd_party/zstd-1.1.0/lib/compress \
--I ../thirdParty/bgen/3rd_party/zstd-1.1.0/lib/decompress \
--I ../thirdParty/bgen/3rd_party/sqlite3 \
--I ../thirdParty/bgen/3rd_party/boost_1_55_0/boost/iostreams \
--I ../thirdParty/cget/include \
--I ../thirdParty/cget/lib \
--D SQLITE_ENABLE_COLUMN_METADATA -O3 -fpic -Wall -Wextra -pedantic  -DARMA_64BIT_WORD=1  
+PKG_CPPFLAGS = -D SQLITE_ENABLE_COLUMN_METADATA -O3 -fpic -Wall -Wextra -pedantic  -DARMA_64BIT_WORD=1
+# -I ../thirdParty/cget/include \
+# -I ../thirdParty/cget/lib
 
 CXX_STD = CXX11
 
-PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS) 
-PKG_LIBS = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) -L../bgen/3rd_party/boost_1_55_0/boost/iostreams
+# PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS) 
+# PKG_LIBS = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) -L../bgen/3rd_party/boost_1_55_0/boost/iostreams
+# PKG_LIBS = $(ZLIB_LIB) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) -lsuperlu -lzstd 
+PKG_LIBS = $(ZLIB_LIB) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) 
+
+# PKG_LIBS += $(shell ${R_HOME}/bin/Rscript -e "RcppParallel::RcppParallelLibs()")
 
 ## OBJECTS = $(wildcard ./*.o)
 ## OBJECTS = Main.o UTIL.o PLINK.o POLMM.o $(wildcard ../thirdParty/bgen/build/src/*.o) ../thirdParty/bgen/build/db/libdb.a ../thirdParty/bgen/build/3rd_party/zstd-1.1.0/libzstd.a ../thirdParty/bgen/build/3rd_party/sqlite3/libsqlite3.a ../thirdParty/bgen/build/3rd_party/boost_1_55_0/libboost.a $(wildcard ../thirdParty/cget/lib64/*.a) BGEN.o 
@@ -38,3 +29,53 @@ PKG_LIBS = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) -L../bg
 ## all: $(SHLIB)
 ## $(SHLIB): ${OBJECTS} Makevars.win
 
+## using zstd for uncompressing
+PKG_CPPFLAGS += -I ../thirdParty/zstd/lib -I ../thirdParty/zstd/lib/common -I ../thirdParty/zstd/lib/legacy -D XXH_NAMESPACE=ZSTD_ -D ZSTD_LEGACY_SUPPORT=5
+
+ZSTD_OBJ = ../thirdParty/zstd/lib/common/debug.o \
+           ../thirdParty/zstd/lib/common/entropy_common.o \
+           ../thirdParty/zstd/lib/common/error_private.o \
+           ../thirdParty/zstd/lib/common/fse_decompress.o \
+           ../thirdParty/zstd/lib/common/pool.o \
+           ../thirdParty/zstd/lib/common/threading.o \
+           ../thirdParty/zstd/lib/common/xxhash.o \
+           ../thirdParty/zstd/lib/common/zstd_common.o \
+           ../thirdParty/zstd/lib/compress/fse_compress.o \
+           ../thirdParty/zstd/lib/compress/hist.o \
+           ../thirdParty/zstd/lib/compress/huf_compress.o \
+           ../thirdParty/zstd/lib/compress/zstd_compress.o \
+           ../thirdParty/zstd/lib/compress/zstd_double_fast.o \
+           ../thirdParty/zstd/lib/compress/zstd_fast.o \
+           ../thirdParty/zstd/lib/compress/zstd_lazy.o \
+           ../thirdParty/zstd/lib/compress/zstd_ldm.o \
+           ../thirdParty/zstd/lib/compress/zstd_opt.o \
+           ../thirdParty/zstd/lib/compress/zstdmt_compress.o \
+           ../thirdParty/zstd/lib/decompress/huf_decompress.o \
+           ../thirdParty/zstd/lib/decompress/zstd_decompress.o \
+           ../thirdParty/zstd/lib/deprecated/zbuff_common.o \
+           ../thirdParty/zstd/lib/deprecated/zbuff_compress.o \
+           ../thirdParty/zstd/lib/deprecated/zbuff_decompress.o \
+           ../thirdParty/zstd/lib/dictBuilder/cover.o \
+           ../thirdParty/zstd/lib/dictBuilder/divsufsort.o \
+           ../thirdParty/zstd/lib/dictBuilder/fastcover.o \
+           ../thirdParty/zstd/lib/dictBuilder/zdict.o \
+           ../thirdParty/zstd/lib/legacy/zstd_v05.o \
+           ../thirdParty/zstd/lib/legacy/zstd_v06.o \
+           ../thirdParty/zstd/lib/legacy/zstd_v07.o
+
+## using SQLITE for uncompressing
+PKG_CPPFLAGS+=-I. \
+             -DRSQLITE_USE_BUNDLED_SQLITE \
+             -DSQLITE_ENABLE_RTREE \
+             -DSQLITE_ENABLE_FTS3 \
+             -DSQLITE_ENABLE_FTS3_PARENTHESIS \
+             -DSQLITE_ENABLE_FTS5 \
+             -DSQLITE_ENABLE_JSON1 \
+             -DSQLITE_ENABLE_STAT4 \
+             -DSQLITE_SOUNDEX
+
+SQLITE_OBJ = ../thirdParty/sqlite/sqlite3.o
+
+PKG_LIBS += $(ZSTD_OBJ) $(SQLITE_OBJ)
+
+$(SHLIB): $(ZSTD_OBJ) $(SQLITE_OBJ)
