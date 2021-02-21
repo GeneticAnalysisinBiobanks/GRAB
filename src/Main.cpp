@@ -15,10 +15,88 @@
 // need to pre-define "ptr_gPLINKobj" and "ptr_gPOLMMobj"
 
 static PLINK::PlinkClass* ptr_gPLINKobj = NULL;
-// static BGEN::BgenClass* ptr_gBGENobj = NULL;
+static BGEN::BgenClass* ptr_gBGENobj = NULL;
 // static VCF::VcfClass* ptr_gVCFobj = NULL;
 static POLMM::POLMMClass* ptr_gPOLMMobj = NULL;
 static SPACox::SPACoxClass* ptr_gSPACoxobj = NULL;
+
+// [[Rcpp::export]]
+arma::mat getGenoInCPP(std::string t_genoType,
+                       Rcpp::List t_genoReqstdList)
+{
+  int n = t_genoReqstdList["n"];
+  int q = t_genoReqstdList["q"];         // number of markers requested
+  arma::mat GMat(n, q);
+  
+  if(t_genoType == "PLINK")
+  {
+    std::vector<std::string> MarkerReqstd = t_genoReqstdList["MarkerReqstd"];
+    std::vector<uint32_t> posMarkerInPlink = ptr_gPLINKobj->getPosMarkerInPlink(MarkerReqstd);
+    
+    for(int i = 0; i < q; i++){
+      uint32_t posMarker = posMarkerInPlink.at(i);
+      double freq, missingRate;
+      std::vector<uint32_t> posMissingGeno;
+      std::string a1, a2, marker;
+      uint32_t pd;
+      uint8_t chr;
+      bool flagTrueGeno = true;
+      
+      arma::vec GVec = ptr_gPLINKobj->getOneMarker(posMarker, freq, missingRate, posMissingGeno,
+                                                   a1, a2, marker, pd, chr, flagTrueGeno);
+      GMat.col(i) = GVec;
+    }
+  }
+  
+  if(t_genoType == "BGEN")
+  {
+    std::vector<unsigned long int> fileStartPosVec = t_genoReqstdList["fileStartPosVec"];
+    
+    for(int i = 0; i < q; i++){
+      unsigned long int fileStartPos = fileStartPosVec.at(i);
+      Rcpp::List BgenDosage = ptr_gBGENobj->getOneMarker(fileStartPos);
+      std::vector<double> dosageVec = BgenDosage["dosages"];
+      GMat.col(i) = arma::conv_to<arma::vec>::from(dosageVec);
+    }
+  }
+  
+  return GMat;
+}
+
+// [[Rcpp::export]]
+void setPLINKobjInCPP(std::string t_bimFile,
+                      std::string t_famFile,
+                      std::string t_bedFile,
+                      std::vector<std::string> t_SampleInModel)
+{
+  ptr_gPLINKobj = new PLINK::PlinkClass(t_bimFile,
+                                        t_famFile,
+                                        t_bedFile,
+                                        t_SampleInModel);
+  
+  int n = ptr_gPLINKobj->getN();
+  std::cout << "Number of samples:\t" << n << std::endl;
+  
+}
+
+// [[Rcpp::export]]
+void setBGENobjInCPP(std::string t_bgenFileName,
+                     std::string t_bgenFileIndex,
+                     std::vector<std::string> t_SampleInBgen,
+                     std::vector<std::string> t_SampleInModel,
+                     bool t_isSparseDosageInBgen,
+                     bool t_isDropmissingdosagesInBgen)
+{
+  ptr_gBGENobj = new BGEN::BgenClass(t_bgenFileName,
+                                     t_bgenFileIndex,
+                                     t_SampleInBgen,
+                                     t_SampleInModel,
+                                     t_isSparseDosageInBgen,
+                                     t_isDropmissingdosagesInBgen);
+  int n = ptr_gBGENobj->getN();
+  std::cout << "Number of samples:\t" << n << std::endl;
+}
+
 
 // [[Rcpp::export]]
 Rcpp::List mainMarkerInCPP(std::string t_method,
@@ -94,7 +172,7 @@ Rcpp::List mainMarkerInCPP(std::string t_method,
     double Beta, seBeta, pval;
     
     if(t_method == "POLMM"){
-      ptr_gPOLMMobj->getMarkerPval(GVec, MAF, Beta, seBeta, pval);
+      // ptr_gPOLMMobj->getMarkerPval(GVec, MAF, Beta, seBeta, pval);
     }
     
     if(t_method == "SPACox"){
@@ -388,47 +466,6 @@ Rcpp::List MAIN_REGION(std::vector<std::string> t_MarkerReqstd,
                                           Rcpp::Named("rBT") = rBT);
   return OutList;
 }
-
-// [[Rcpp::export]]
-void setPLINKobjInCPP(std::string t_bimFile,
-                      std::string t_famFile,
-                      std::string t_bedFile,
-                      std::vector<std::string> t_SampleInModel)
-{
-  ptr_gPLINKobj = new PLINK::PlinkClass(t_bimFile,
-                                        t_famFile,
-                                        t_bedFile,
-                                        t_SampleInModel);
-  
-  int n = ptr_gPLINKobj->getN();
-  std::cout << "Number of samples:\t" << n << std::endl;
-  
-}
-
-// [[Rcpp::export]]
-arma::mat getGenoInCPP(std::vector<std::string> t_MarkerReqstd)
-{
-  std::vector<uint32_t> posMarkerInPlink = ptr_gPLINKobj->getPosMarkerInPlink(t_MarkerReqstd);
-  int n = ptr_gPLINKobj->getN();
-  int q = posMarkerInPlink.size();         // number of markers requested
-  
-  arma::mat GMat(n, q);
-  for(int i = 0; i < q; i++){
-    uint32_t posMarker = posMarkerInPlink.at(i);
-    double freq, missingRate;
-    std::vector<uint32_t> posMissingGeno;
-    std::string a1, a2, marker;
-    uint32_t pd;
-    uint8_t chr;
-    bool flagTrueGeno = true;
-    
-    arma::vec GVec = ptr_gPLINKobj->getOneMarker(posMarker, freq, missingRate, posMissingGeno,
-                                                 a1, a2, marker, pd, chr, flagTrueGeno);
-    GMat.col(i) = GVec;
-  }
-  return GMat;
-}
-
 
 // [[Rcpp::export]]
 void setPOLMMobjInCPP(arma::mat t_muMat,

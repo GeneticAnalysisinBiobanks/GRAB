@@ -57,7 +57,7 @@ public:
              double t_tolPCG,
              int t_maxiterPCG);
   
-  void getMarkerPval(double Beta, double seBeta, double pval);
+  // void getMarkerPval(double Beta, double seBeta, double pval);
   
   arma::vec getadjGFast(arma::vec t_GVec);
   double getStatFast(arma::vec t_adjGVec);

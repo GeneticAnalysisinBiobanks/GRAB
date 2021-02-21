@@ -6,6 +6,46 @@
 
 using namespace Rcpp;
 
+// getGenoInCPP
+arma::mat getGenoInCPP(std::string t_genoType, Rcpp::List t_genoReqstdList);
+RcppExport SEXP _GRAB_getGenoInCPP(SEXP t_genoTypeSEXP, SEXP t_genoReqstdListSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type t_genoType(t_genoTypeSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_genoReqstdList(t_genoReqstdListSEXP);
+    rcpp_result_gen = Rcpp::wrap(getGenoInCPP(t_genoType, t_genoReqstdList));
+    return rcpp_result_gen;
+END_RCPP
+}
+// setPLINKobjInCPP
+void setPLINKobjInCPP(std::string t_bimFile, std::string t_famFile, std::string t_bedFile, std::vector<std::string> t_SampleInModel);
+RcppExport SEXP _GRAB_setPLINKobjInCPP(SEXP t_bimFileSEXP, SEXP t_famFileSEXP, SEXP t_bedFileSEXP, SEXP t_SampleInModelSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type t_bimFile(t_bimFileSEXP);
+    Rcpp::traits::input_parameter< std::string >::type t_famFile(t_famFileSEXP);
+    Rcpp::traits::input_parameter< std::string >::type t_bedFile(t_bedFileSEXP);
+    Rcpp::traits::input_parameter< std::vector<std::string> >::type t_SampleInModel(t_SampleInModelSEXP);
+    setPLINKobjInCPP(t_bimFile, t_famFile, t_bedFile, t_SampleInModel);
+    return R_NilValue;
+END_RCPP
+}
+// setBGENobjInCPP
+void setBGENobjInCPP(std::string t_bgenFileName, std::string t_bgenFileIndex, std::vector<std::string> t_SampleInBgen, std::vector<std::string> t_SampleInModel, bool t_isSparseDosageInBgen, bool t_isDropmissingdosagesInBgen);
+RcppExport SEXP _GRAB_setBGENobjInCPP(SEXP t_bgenFileNameSEXP, SEXP t_bgenFileIndexSEXP, SEXP t_SampleInBgenSEXP, SEXP t_SampleInModelSEXP, SEXP t_isSparseDosageInBgenSEXP, SEXP t_isDropmissingdosagesInBgenSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type t_bgenFileName(t_bgenFileNameSEXP);
+    Rcpp::traits::input_parameter< std::string >::type t_bgenFileIndex(t_bgenFileIndexSEXP);
+    Rcpp::traits::input_parameter< std::vector<std::string> >::type t_SampleInBgen(t_SampleInBgenSEXP);
+    Rcpp::traits::input_parameter< std::vector<std::string> >::type t_SampleInModel(t_SampleInModelSEXP);
+    Rcpp::traits::input_parameter< bool >::type t_isSparseDosageInBgen(t_isSparseDosageInBgenSEXP);
+    Rcpp::traits::input_parameter< bool >::type t_isDropmissingdosagesInBgen(t_isDropmissingdosagesInBgenSEXP);
+    setBGENobjInCPP(t_bgenFileName, t_bgenFileIndex, t_SampleInBgen, t_SampleInModel, t_isSparseDosageInBgen, t_isDropmissingdosagesInBgen);
+    return R_NilValue;
+END_RCPP
+}
 // mainMarkerInCPP
 Rcpp::List mainMarkerInCPP(std::string t_method, std::string t_genoType, std::vector<std::string> t_MarkerReqstd, double t_missingRate_cutoff, double t_minMAF_cutoff, int t_minMAC_cutoff);
 RcppExport SEXP _GRAB_mainMarkerInCPP(SEXP t_methodSEXP, SEXP t_genoTypeSEXP, SEXP t_MarkerReqstdSEXP, SEXP t_missingRate_cutoffSEXP, SEXP t_minMAF_cutoffSEXP, SEXP t_minMAC_cutoffSEXP) {
@@ -38,30 +78,6 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::string >::type t_kernel(t_kernelSEXP);
     Rcpp::traits::input_parameter< arma::vec >::type t_wBeta(t_wBetaSEXP);
     rcpp_result_gen = Rcpp::wrap(MAIN_REGION(t_MarkerReqstd, t_NonZero_cutoff, t_StdStat_cutoff, t_maxMarkers, t_outputFile, t_missingRate_cutoff, t_maxMAF_cutoff, t_kernel, t_wBeta));
-    return rcpp_result_gen;
-END_RCPP
-}
-// setPLINKobjInCPP
-void setPLINKobjInCPP(std::string t_bimFile, std::string t_famFile, std::string t_bedFile, std::vector<std::string> t_SampleInModel);
-RcppExport SEXP _GRAB_setPLINKobjInCPP(SEXP t_bimFileSEXP, SEXP t_famFileSEXP, SEXP t_bedFileSEXP, SEXP t_SampleInModelSEXP) {
-BEGIN_RCPP
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< std::string >::type t_bimFile(t_bimFileSEXP);
-    Rcpp::traits::input_parameter< std::string >::type t_famFile(t_famFileSEXP);
-    Rcpp::traits::input_parameter< std::string >::type t_bedFile(t_bedFileSEXP);
-    Rcpp::traits::input_parameter< std::vector<std::string> >::type t_SampleInModel(t_SampleInModelSEXP);
-    setPLINKobjInCPP(t_bimFile, t_famFile, t_bedFile, t_SampleInModel);
-    return R_NilValue;
-END_RCPP
-}
-// getGenoInCPP
-arma::mat getGenoInCPP(std::vector<std::string> t_MarkerReqstd);
-RcppExport SEXP _GRAB_getGenoInCPP(SEXP t_MarkerReqstdSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< std::vector<std::string> >::type t_MarkerReqstd(t_MarkerReqstdSEXP);
-    rcpp_result_gen = Rcpp::wrap(getGenoInCPP(t_MarkerReqstd));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -101,10 +117,11 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
+    {"_GRAB_getGenoInCPP", (DL_FUNC) &_GRAB_getGenoInCPP, 2},
+    {"_GRAB_setPLINKobjInCPP", (DL_FUNC) &_GRAB_setPLINKobjInCPP, 4},
+    {"_GRAB_setBGENobjInCPP", (DL_FUNC) &_GRAB_setBGENobjInCPP, 6},
     {"_GRAB_mainMarkerInCPP", (DL_FUNC) &_GRAB_mainMarkerInCPP, 6},
     {"_GRAB_MAIN_REGION", (DL_FUNC) &_GRAB_MAIN_REGION, 9},
-    {"_GRAB_setPLINKobjInCPP", (DL_FUNC) &_GRAB_setPLINKobjInCPP, 4},
-    {"_GRAB_getGenoInCPP", (DL_FUNC) &_GRAB_getGenoInCPP, 1},
     {"_GRAB_setPOLMMobjInCPP", (DL_FUNC) &_GRAB_setPOLMMobjInCPP, 9},
     {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},
     {NULL, NULL, 0}

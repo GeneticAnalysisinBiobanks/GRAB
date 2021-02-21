@@ -21,7 +21,7 @@ GRAB.ReadGeno(
 \item{MarkerIDs}{a character vector of marker IDs to extract. The default is NULL, the first 10 markers will be extracted.}
 }
 \value{
-An R matrix, each row is for one sample and each column is for one marker.
+An R list include an R genotype matrix (each row is for one sample and each column is for one marker) and an R SNP information matrix.
 }
 \description{
 GRAB package provides functions to read in genotype data from multiple format (including Plink, BGEN) into R
@@ -43,7 +43,7 @@ RawFile = system.file("extdata", "example.raw", package = "GRAB")
 GenoMat = data.table::fread(RawFile)
 head(GenoMat[,1:15])
 
-## The below is Plink format
+## The below is for Plink format
 PlinkFile = system.file("extdata", "example.bed", package = "GRAB")
 GenoList = GRAB.ReadGeno(PlinkFile)
 GenoMat = GenoList$GenoMat
@@ -51,7 +51,7 @@ markerInfo = GenoList$markerInfo
 head(GenoMat)
 markerInfo
 
-## The below is BGEN format
+## The below is for BGEN format
 BGENFile = system.file("extdata", "example_bgen_1.2_8bits.bgen", package = "GRAB")
 GenoList = GRAB.ReadGeno(BGENFile)
 GenoMat = GenoList$GenoMat

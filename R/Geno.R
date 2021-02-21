@@ -11,7 +11,7 @@
 #' @param GenoFileIndex additional index file(s) corresponding to the \code{GenoFile}. See \code{Details} section for more information.
 #' @param SampleIDs a character vector of sample IDs to extract. The default is NULL, that is, to use all samples in GenoFile.
 #' @param MarkerIDs a character vector of marker IDs to extract. The default is NULL, the first 10 markers will be extracted.
-#' @return An R matrix, each row is for one sample and each column is for one marker.
+#' @return An R list include an R genotype matrix (each row is for one sample and each column is for one marker) and an R SNP information matrix.
 #' @details
 #' We support three genotype format including Plink, BGEN, and VCF.
 #' The program will check the format based on the filename extension.  
@@ -28,7 +28,7 @@
 #' GenoMat = data.table::fread(RawFile)
 #' head(GenoMat[,1:15])
 #' 
-#' ## The below is Plink format
+#' ## The below is for Plink format
 #' PlinkFile = system.file("extdata", "example.bed", package = "GRAB")
 #' GenoList = GRAB.ReadGeno(PlinkFile)
 #' GenoMat = GenoList$GenoMat
@@ -36,7 +36,7 @@
 #' head(GenoMat)
 #' markerInfo
 #' 
-#' ## The below is BGEN format
+#' ## The below is for BGEN format
 #' BGENFile = system.file("extdata", "example_bgen_1.2_8bits.bgen", package = "GRAB")
 #' GenoList = GRAB.ReadGeno(BGENFile)
 #' GenoMat = GenoList$GenoMat
@@ -55,7 +55,7 @@ GRAB.ReadGeno = function(GenoFile,
   
   genoType = objGeno$genoType
   markerInfo = objGeno$markerInfo
-  SampleIDs = objGeno$samples
+  SampleIDs = objGeno$SampleIDs
   
   if(is.null(MarkerIDs)){
     print("Since 'MarkerIDs' not specified, we use the first 10 markers in 'GenoFile'.")
@@ -69,7 +69,21 @@ GRAB.ReadGeno = function(GenoFile,
   
   markerInfo = markerInfo[posMarker, ,drop=F]
   
-  GenoMat = getGenoInCPP(MarkerIDs)  # for more details about getGenoInCPP, please check Main.cpp
+  if(genoType == "PLINK")
+  {
+    GenoMat = getGenoInCPP(genoType, 
+                           list(MarkerReqstd = MarkerIDs,
+                                n = length(SampleIDs),
+                                q = length(posMarker)))  # for more details about getGenoInCPP, please check Main.cpp
+  }
+  if(genoType == "BGEN")
+  {
+    GenoMat = getGenoInCPP(genoType, 
+                           list(fileStartPosVec = markerInfo$StartPositionInBGEN,
+                                n = length(SampleIDs),
+                                q = length(posMarker)))  # for more details about getGenoInCPP, please check Main.cpp
+  }
+  
   colnames(GenoMat) = MarkerIDs;
   rownames(GenoMat) = SampleIDs;
   
@@ -117,6 +131,7 @@ setGenoInput = function(GenoFile,
     markerInfo = data.table::fread(bimFile)
     markerInfo = as.data.frame(markerInfo)
     markerInfo = markerInfo[,c(1,4,2,6,5)]  # https://www.cog-genomics.org/plink/2.0/formats#bim
+    colnames(markerInfo) = c("CHROM", "POS", "ID", "REF", "ALT")
     
     if(!file.exists(famFile)) stop(paste("Cannot find fam file of", famFile))
     sampleInfo = data.table::fread(famFile)
@@ -150,17 +165,18 @@ setGenoInput = function(GenoFile,
     bgiData = dplyr::tbl(db_con, "Variant")
     bgiData = as.data.frame(bgiData)
     
-    markerInfo = bgiData[,c(1,2,3,6,5)]  # https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
+    markerInfo = bgiData[,c(1,2,3,6,5,7)]  # https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
+    colnames(markerInfo) = c("CHROM", "POS", "ID", "REF", "ALT","StartPositionInBGEN")
     
     samplesInGeno = getSampleIDsFromBGEN(bgenFile)
     SampleIDs = updateSampleIDs(SampleIDs, samplesInGeno)
     
-    # setPLINKobjInCPP(bimFile, famFile, bedFile, SampleIDs)
+    setBGENobjInCPP(bgenFile, bgiFile, samplesInGeno, SampleIDs, F, F)
   }
   
   ########## ----------  More format such as BGEN and VCF ---------- ##########
   
-  colnames(markerInfo) = c("CHROM", "POS", "ID", "REF", "ALT")
+  
   
   # return genotype
   print(paste("Based on the 'GenoFile' and 'GenoFileIndex',", genoType, "format is used for genotype data."))
