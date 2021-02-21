@@ -54,7 +54,7 @@ add_library(shrinkwrap INTERFACE IMPORTED)
 
 set_target_properties(shrinkwrap PROPERTIES
   INTERFACE_INCLUDE_DIRECTORIES "${_IMPORT_PREFIX}/include"
-  INTERFACE_LINK_LIBRARIES "/net/hunt/zhowei/project/imbalancedCaseCtrlMixedModel/Rpackage_SPAGMMAT/SAIGE_sync/SAIGE/thirdParty/cget/lib/liblzma.a;/net/hunt/zhowei/project/imbalancedCaseCtrlMixedModel/Rpackage_SPAGMMAT/SAIGE_sync/SAIGE/thirdParty/cget/lib/libz.a;/net/hunt/zhowei/project/imbalancedCaseCtrlMixedModel/Rpackage_SPAGMMAT/SAIGE_sync/SAIGE/thirdParty/cget/lib/libzstd.a"
+  INTERFACE_LINK_LIBRARIES "/net/hunt/zhowei/project/imbalancedCaseCtrlMixedModel/Rpackage_SPAGMMAT/SAIGE_sync/GRAB/thirdParty/cget/lib/liblzma.a;/net/hunt/zhowei/project/imbalancedCaseCtrlMixedModel/Rpackage_SPAGMMAT/SAIGE_sync/GRAB/thirdParty/cget/lib/libz.a;/net/hunt/zhowei/project/imbalancedCaseCtrlMixedModel/Rpackage_SPAGMMAT/SAIGE_sync/GRAB/thirdParty/cget/lib/libzstd.a"
 )
 
 if(CMAKE_VERSION VERSION_LESS 3.1.0)

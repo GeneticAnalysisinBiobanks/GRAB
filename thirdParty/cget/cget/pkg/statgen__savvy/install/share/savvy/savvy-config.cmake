@@ -54,7 +54,7 @@ add_library(savvy STATIC IMPORTED)
 
 set_target_properties(savvy PROPERTIES
   INTERFACE_INCLUDE_DIRECTORIES "${_IMPORT_PREFIX}/include"
-  INTERFACE_LINK_LIBRARIES "/net/hunt/zhowei/project/imbalancedCaseCtrlMixedModel/Rpackage_SPAGMMAT/SAIGE_sync/SAIGE/thirdParty/cget/lib/libhts.a;/net/hunt/zhowei/project/imbalancedCaseCtrlMixedModel/Rpackage_SPAGMMAT/SAIGE_sync/SAIGE/thirdParty/cget/lib/libz.a;/net/hunt/zhowei/project/imbalancedCaseCtrlMixedModel/Rpackage_SPAGMMAT/SAIGE_sync/SAIGE/thirdParty/cget/lib/libzstd.a;-lpthread"
+  INTERFACE_LINK_LIBRARIES "/net/hunt/zhowei/project/imbalancedCaseCtrlMixedModel/Rpackage_SPAGMMAT/SAIGE_sync/GRAB/thirdParty/cget/lib/libhts.a;/net/hunt/zhowei/project/imbalancedCaseCtrlMixedModel/Rpackage_SPAGMMAT/SAIGE_sync/GRAB/thirdParty/cget/lib/libz.a;/net/hunt/zhowei/project/imbalancedCaseCtrlMixedModel/Rpackage_SPAGMMAT/SAIGE_sync/GRAB/thirdParty/cget/lib/libzstd.a;-lpthread"
 )
 
 if(CMAKE_VERSION VERSION_LESS 2.8.12)
