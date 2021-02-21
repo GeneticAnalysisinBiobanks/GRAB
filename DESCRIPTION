@@ -7,6 +7,6 @@ Author: Wenjian Bi, Wei Zhou, Rounak Dey, Zhangchen Zhao, Seunggeun Lee
 Maintainer: Wenjian Bi <wenjianb@umich.edu>
 Description: A toolkit designed for large-scale biobank data
 License: What license is it under?
-Imports: Rcpp (>= 1.0.5), RcppArmadillo, BH, survival, data.table
-LinkingTo: Rcpp, RcppArmadillo, BH, survival, data.table
+Imports: Rcpp (>= 1.0.5), RcppArmadillo, BH, survival, data.table, tidyr, dbplyr, RSQLite
+LinkingTo: Rcpp, RcppArmadillo, BH, survival, data.table, tidyr, dbplyr, RSQLite
 RoxygenNote: 7.1.1

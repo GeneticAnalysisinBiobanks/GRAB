@@ -2,7 +2,7 @@
 % Please edit documentation in R/Geno.R
 \name{GRAB.ReadGeno}
 \alias{GRAB.ReadGeno}
-\title{Read genotype data into R}
+\title{Read genotype data into R as a matrix}
 \usage{
 GRAB.ReadGeno(
   GenoFile,
@@ -12,9 +12,9 @@ GRAB.ReadGeno(
 )
 }
 \arguments{
-\item{GenoFile}{a character of genotype file. Three types of genotype files are supported: PLINK ("prefix.bed"), BGEN ("prefix.bgen"), and VCF ("prefix.vcf" or "prefix.vcf.gz").}
+\item{GenoFile}{a character of genotype file. See \code{Details} section for more information.}
 
-\item{GenoFileIndex}{additional index files corresponding to the "GenoFile". The default is NULL, that is, to share the same prefix as GenoFile. PLINK: c("prefix.bim", "prefix.fam"), BGEN: c("prefix.bgi"), and VCF: c("prefix.vcf.tbi") or c("prefix.vcf.gz.tbi").}
+\item{GenoFileIndex}{additional index file(s) corresponding to the \code{GenoFile}. See \code{Details} section for more information.}
 
 \item{SampleIDs}{a character vector of sample IDs to extract. The default is NULL, that is, to use all samples in GenoFile.}
 
@@ -24,15 +24,39 @@ GRAB.ReadGeno(
 An R matrix, each row is for one sample and each column is for one marker.
 }
 \description{
-GRAB package provides functions to read genotype data from multiple formats (including plink) into R
+GRAB package provides functions to read in genotype data from multiple format (including Plink, BGEN) into R
+}
+\details{
+We support three genotype format including Plink, BGEN, and VCF.
+The program will check the format based on the filename extension.  
+If \code{GenoFileIndex} is NULL (default), then it uses the same prefix as \code{GenoFile}.
+\describe{
+  \item{Plink}{\code{GenoFile}: "prefix.bed"; \code{GenoFileIndex}: c("prefix.bim", "prefix.fam")}
+  \item{BGEN}{\code{GenoFile}: "prefix.bgen"; \code{GenoFileIndex}: "prefix.bgen.bgi"}
+  \item{VCF}{Not available now. \code{GenoFile}: "prefix.vcf"; \code{GenoFileIndex}: "prefix.vcf.tbi"}
+}
 }
 \examples{
-PlinkFile = system.file("extdata", "example.bed", package = "GRAB")
-GenoMat = GRAB.ReadGeno(PlinkFile)
-head(GenoMat)
 
+## The below is raw data 
 RawFile = system.file("extdata", "example.raw", package = "GRAB")
 GenoMat = data.table::fread(RawFile)
 head(GenoMat[,1:15])
-      
+
+## The below is Plink format
+PlinkFile = system.file("extdata", "example.bed", package = "GRAB")
+GenoList = GRAB.ReadGeno(PlinkFile)
+GenoMat = GenoList$GenoMat
+markerInfo = GenoList$markerInfo
+head(GenoMat)
+markerInfo
+
+## The below is BGEN format
+BGENFile = system.file("extdata", "example_bgen_1.2_8bits.bgen", package = "GRAB")
+GenoList = GRAB.ReadGeno(BGENFile)
+GenoMat = GenoList$GenoMat
+markerInfo = GenoList$markerInfo
+head(GenoMat)
+markerInfo
+
 }
