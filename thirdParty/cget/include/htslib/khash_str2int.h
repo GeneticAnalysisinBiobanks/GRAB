@@ -1,0 +1,1 @@
+../../cget/pkg/htslib/install/include/htslib/khash_str2int.h
