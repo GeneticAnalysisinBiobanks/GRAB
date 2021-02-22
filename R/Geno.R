@@ -229,6 +229,9 @@ getSampleIDsFromBGEN = function(bgenFile)
     samplesInGeno[i] = sample
   }
   
+  # close connection
+  close(con)
+  
   return(samplesInGeno)
 }
 

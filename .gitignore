@@ -1,3 +1,12 @@
 .Rhistory
 .Rproj.user/
 .Rproj.user
+src/GRAB.dll
+src/Main.o
+src/PLINK.o
+src/POLMM.o
+src/RcppExports.o
+src/SPACox.o
+src/UTIL.o
+src/VCF.o
+.Rhistory
