@@ -56,6 +56,7 @@ GRAB.ReadGeno = function(GenoFile,
   genoType = objGeno$genoType
   markerInfo = objGeno$markerInfo
   SampleIDs = objGeno$SampleIDs
+  n = length(SampleIDs)
   
   if(is.null(MarkerIDs)){
     print("Since 'MarkerIDs' not specified, we use the first 10 markers in 'GenoFile'.")
@@ -68,22 +69,10 @@ GRAB.ReadGeno = function(GenoFile,
     stop("At least one marker from 'MarkerIDs' are not in 'GenoFile' and 'GenoFileIndex'.")
   
   markerInfo = markerInfo[posMarker, ,drop=F]
+  print(head(markerInfo))
   
-  if(genoType == "PLINK")
-  {
-    GenoMat = getGenoInCPP(genoType, 
-                           list(MarkerReqstd = MarkerIDs,
-                                n = length(SampleIDs),
-                                q = length(posMarker)))  # for more details about getGenoInCPP, please check Main.cpp
-  }
-  if(genoType == "BGEN")
-  {
-    GenoMat = getGenoInCPP(genoType, 
-                           list(fileStartPosVec = markerInfo$StartPositionInBGEN,
-                                n = length(SampleIDs),
-                                q = length(posMarker)))  # for more details about getGenoInCPP, please check Main.cpp
-  }
-  
+  GenoMat = getGenoInCPP(genoType, markerInfo, n)
+
   colnames(GenoMat) = MarkerIDs;
   rownames(GenoMat) = SampleIDs;
   
@@ -174,9 +163,8 @@ setGenoInput = function(GenoFile,
     setBGENobjInCPP(bgenFile, bgiFile, samplesInGeno, SampleIDs, F, F)
   }
   
-  ########## ----------  More format such as BGEN and VCF ---------- ##########
-  
-  
+  ########## ----------  More format such as VCF ---------- ##########
+
   
   # return genotype
   print(paste("Based on the 'GenoFile' and 'GenoFileIndex',", genoType, "format is used for genotype data."))

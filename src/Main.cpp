@@ -22,15 +22,15 @@ static SPACox::SPACoxClass* ptr_gSPACoxobj = NULL;
 
 // [[Rcpp::export]]
 arma::mat getGenoInCPP(std::string t_genoType,
-                       Rcpp::List t_genoReqstdList)
+                       Rcpp::DataFrame t_markerInfo,
+                       int n)
 {
-  int n = t_genoReqstdList["n"];
-  int q = t_genoReqstdList["q"];         // number of markers requested
+  int q = t_markerInfo.nrow();         // number of markers requested
   arma::mat GMat(n, q);
   
   if(t_genoType == "PLINK")
   {
-    std::vector<std::string> MarkerReqstd = t_genoReqstdList["MarkerReqstd"];
+    std::vector<std::string> MarkerReqstd = t_markerInfo["ID"];
     std::vector<uint32_t> posMarkerInPlink = ptr_gPLINKobj->getPosMarkerInPlink(MarkerReqstd);
     
     for(int i = 0; i < q; i++){
@@ -50,11 +50,13 @@ arma::mat getGenoInCPP(std::string t_genoType,
   
   if(t_genoType == "BGEN")
   {
-    std::vector<unsigned long int> fileStartPosVec = t_genoReqstdList["fileStartPosVec"];
+    std::vector<int> fileStartPosVec = t_markerInfo["StartPositionInBGEN"];
     
     for(int i = 0; i < q; i++){
-      unsigned long int fileStartPos = fileStartPosVec.at(i);
+      int fileStartPos = fileStartPosVec.at(i);
+      std::cout << fileStartPos << std::endl;
       Rcpp::List BgenDosage = ptr_gBGENobj->getOneMarker(fileStartPos);
+      std::cout << "step1" << std::endl;
       std::vector<double> dosageVec = BgenDosage["dosages"];
       GMat.col(i) = arma::conv_to<arma::vec>::from(dosageVec);
     }

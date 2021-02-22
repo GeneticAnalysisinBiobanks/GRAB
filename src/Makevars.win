@@ -11,8 +11,6 @@
 
 PKG_CPPFLAGS = -D SQLITE_ENABLE_COLUMN_METADATA -O3 -fpic -Wall -Wextra -pedantic -DARMA_64BIT_WORD=1 -I. -DNDEBUG
 PKG_LIBS = -lz -lws2_32
-# -I ../thirdParty/cget/include \
-# -I ../thirdParty/cget/lib
 
 CXX_STD = CXX11
 
@@ -64,19 +62,6 @@ ZSTD_OBJ = ../thirdParty/zstd/lib/common/debug.o \
            ../thirdParty/zstd/lib/legacy/zstd_v06.o \
            ../thirdParty/zstd/lib/legacy/zstd_v07.o
 
-## using SQLITE for uncompressing
-PKG_CPPFLAGS+=-I. \
-             -DRSQLITE_USE_BUNDLED_SQLITE \
-             -DSQLITE_ENABLE_RTREE \
-             -DSQLITE_ENABLE_FTS3 \
-             -DSQLITE_ENABLE_FTS3_PARENTHESIS \
-             -DSQLITE_ENABLE_FTS5 \
-             -DSQLITE_ENABLE_JSON1 \
-             -DSQLITE_ENABLE_STAT4 \
-             -DSQLITE_SOUNDEX
+PKG_LIBS += $(ZSTD_OBJ)
 
-SQLITE_OBJ = ../thirdParty/sqlite/sqlite3.o
-
-PKG_LIBS += $(ZSTD_OBJ) $(SQLITE_OBJ)
-
-$(SHLIB): $(ZSTD_OBJ) $(SQLITE_OBJ)
+$(SHLIB): $(ZSTD_OBJ)

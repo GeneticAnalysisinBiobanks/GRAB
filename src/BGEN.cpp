@@ -64,7 +64,7 @@ void BgenClass::setBgenObj(const std::string t_bgenFileName,
   unsigned int offset; fread(&offset, 4, 1, m_fin); //cout << "offset: " << offset << endl;
   unsigned int L_H; fread(&L_H, 4, 1, m_fin); //cout << "L_H: " << L_H << endl;
   unsigned int m_M0; fread(&m_M0, 4, 1, m_fin); std::cout << "snpBlocks (Mbgen): " << m_M0 << std::endl;
-  assert(Mbgen != 0);
+  assert(m_M0 != 0);
   //unsigned int Nbgen; fread(&Nbgen, 4, 1, m_fin); std::cout << "samples (Nbgen): " << Nbgen << std::endl;
   fread(&m_N0, 4, 1, m_fin); std::cout << "samples (Nbgen): " << m_N0 << std::endl;
   unsigned int m_Nsample = t_SampleInBgen.size();
