@@ -56,7 +56,6 @@ arma::mat getGenoInCPP(std::string t_genoType,
       int fileStartPos = fileStartPosVec.at(i);
       std::cout << fileStartPos << std::endl;
       Rcpp::List BgenDosage = ptr_gBGENobj->getOneMarker(fileStartPos);
-      std::cout << "step1" << std::endl;
       std::vector<double> dosageVec = BgenDosage["dosages"];
       GMat.col(i) = arma::conv_to<arma::vec>::from(dosageVec);
     }

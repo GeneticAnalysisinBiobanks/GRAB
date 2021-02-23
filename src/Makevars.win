@@ -10,7 +10,7 @@
 ## support within Armadillo prefers / requires it
 
 PKG_CPPFLAGS = -D SQLITE_ENABLE_COLUMN_METADATA -O3 -fpic -Wall -Wextra -pedantic -DARMA_64BIT_WORD=1 -I. -DNDEBUG
-PKG_LIBS = -lz -lws2_32
+PKG_LIBS = -lz
 
 CXX_STD = CXX11
 
