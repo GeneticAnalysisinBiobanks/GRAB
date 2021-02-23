@@ -18,7 +18,6 @@
 
 // #include <boost/iostreams/filter/zstd.hpp>
 // #include "zstd.h"
-// #include "zlib.h"
 #include <boost/date_time.hpp>
 
 #include <Rcpp.h>
@@ -61,9 +60,9 @@ void BgenClass::setBgenObj(const std::string t_bgenFileName,
   
   /********** READ HEADER v1.2**********/
   m_fin = fopen(t_bgenFileName.c_str(), "rb");
-  unsigned int offset; fread(&offset, 4, 1, m_fin); //cout << "offset: " << offset << endl;
-  unsigned int L_H; fread(&L_H, 4, 1, m_fin); //cout << "L_H: " << L_H << endl;
-  unsigned int m_M0; fread(&m_M0, 4, 1, m_fin); std::cout << "snpBlocks (Mbgen): " << m_M0 << std::endl;
+  uint32_t offset; fread(&offset, 4, 1, m_fin); //cout << "offset: " << offset << endl;
+  uint32_t L_H; fread(&L_H, 4, 1, m_fin); //cout << "L_H: " << L_H << endl;
+  fread(&m_M0, 4, 1, m_fin); std::cout << "snpBlocks (Mbgen): " << m_M0 << std::endl;
   assert(m_M0 != 0);
   //unsigned int Nbgen; fread(&Nbgen, 4, 1, m_fin); std::cout << "samples (Nbgen): " << Nbgen << std::endl;
   fread(&m_N0, 4, 1, m_fin); std::cout << "samples (Nbgen): " << m_N0 << std::endl;
@@ -75,10 +74,10 @@ void BgenClass::setBgenObj(const std::string t_bgenFileName,
   }
   char magic[5]; fread(magic, 1, 4, m_fin); magic[4] = '\0'; //cout << "magic bytes: " << string(magic) << endl;
   fseek(m_fin, L_H-20, SEEK_CUR); //cout << "skipping L_H-20 = " << L_H-20 << " bytes (free data area)" << endl;
-  unsigned int flags; fread(&flags, 4, 1, m_fin); //cout << "flags: " << flags << endl;
-  unsigned int CompressedSNPBlocks = flags&3; std::cout << "CompressedSNPBlocks: " << CompressedSNPBlocks << std::endl;
+  uint32_t flags; fread(&flags, 4, 1, m_fin); //cout << "flags: " << flags << endl;
+  uint32_t CompressedSNPBlocks = flags&3; std::cout << "CompressedSNPBlocks: " << CompressedSNPBlocks << std::endl;
   assert(CompressedSNPBlocks==1); // REQUIRE CompressedSNPBlocks==1
-  unsigned int Layout = (flags>>2)&0xf; std::cout << "Layout: " << Layout << std::endl;
+  uint32_t Layout = (flags>>2)&0xf; std::cout << "Layout: " << Layout << std::endl;
   assert(Layout==1 || Layout==2); // REQUIRE Layout==1 or Layout==2
   fseek(m_fin, offset+4, SEEK_SET);
 }
@@ -263,13 +262,13 @@ Rcpp::List BgenClass::getOneMarker(int t_fileStartPos)
   char *allele1, *allele0;
   allele1 = (char *) malloc(maxLA+1);
   allele0 = (char *) malloc(maxLB+1);
-  uint32_t LS; size_t numBoolRead = fread(&LS, 2, 1, m_fin); // cout << "LS: " << LS << " " << std::flush;
+  uint16_t LS; size_t numBoolRead = fread(&LS, 2, 1, m_fin); // cout << "LS: " << LS << " " << std::flush;
   bool isBoolRead;
   Rcpp::List result ;
   if ( numBoolRead > 0 ) {
     isBoolRead = true;
     fread(snpID, 1, LS, m_fin); snpID[LS] = '\0'; // cout << "snpID: " << string(snpID) << " " << std::flush;
-    uint32_t LR; fread(&LR, 2, 1, m_fin); // cout << "LR: " << LR << " " << std::flush;
+    uint16_t LR; fread(&LR, 2, 1, m_fin); // cout << "LR: " << LR << " " << std::flush;
     fread(rsID, 1, LR, m_fin); rsID[LR] = '\0'; // cout << "rsID: " << string(rsID) << " " << std::flush;
     RSID = std::string(rsID)=="." ? snpID : rsID;
     //std::string SNPID = string(snpID);
@@ -278,14 +277,14 @@ Rcpp::List BgenClass::getOneMarker(int t_fileStartPos)
     fread(chrStr, 1, LC, m_fin); chrStr[LC] = '\0';
     chromosome  = std::string(chrStr);
     
-    unsigned int physpos; fread(&physpos, 4, 1, m_fin); // cout << "physpos: " << physpos << " " << std::flush;
+    uint32_t physpos; fread(&physpos, 4, 1, m_fin); // cout << "physpos: " << physpos << " " << std::flush;
     position = physpos;
-    uint32_t K; fread(&K, 2, 1, m_fin); //cout << "K: " << K << endl;
+    uint16_t K; fread(&K, 2, 1, m_fin); //cout << "K: " << K << endl;
     if (K != 2) {
       std::cerr << "ERROR: Non-bi-allelic variant found: " << K << " alleles" << std::endl;
       exit(1);
     }
-    unsigned int LA; fread(&LA, 4, 1, m_fin); // cout << "LA: " << LA << " " << std::flush;
+    uint32_t LA; fread(&LA, 4, 1, m_fin); // cout << "LA: " << LA << " " << std::flush;
     if (LA > maxLA) {
       maxLA = 2*LA;
       free(allele1);
@@ -293,7 +292,7 @@ Rcpp::List BgenClass::getOneMarker(int t_fileStartPos)
     }
     fread(allele1, 1, LA, m_fin); allele1[LA] = '\0';
     second_allele = std::string(allele1);
-    unsigned int LB; fread(&LB, 4, 1, m_fin); // cout << "LB: " << LB << " " << std::flush;
+    uint32_t LB; fread(&LB, 4, 1, m_fin); // cout << "LB: " << LB << " " << std::flush;
     if (LB > maxLB) {
       maxLB = 2*LB;
       free(allele0);
@@ -302,10 +301,10 @@ Rcpp::List BgenClass::getOneMarker(int t_fileStartPos)
     fread(allele0, 1, LB, m_fin); allele0[LB] = '\0';
     first_allele = std::string(allele0);
     
-    unsigned int C; fread(&C, 4, 1, m_fin); //cout << "C: " << C << endl;
+    uint32_t C; fread(&C, 4, 1, m_fin); //cout << "C: " << C << endl;
     if (C > m_zBuf.size()) m_zBuf.resize(C-4);
     //std::cout << "m_zBuf.size() " << m_zBuf.size() << std::endl;
-    unsigned int D; fread(&D, 4, 1, m_fin); //cout << "D: " << D << endl;
+    uint32_t D; fread(&D, 4, 1, m_fin); //cout << "D: " << D << endl;
     m_zBufLens = C-4; m_bufLens = D;
     fread(&m_zBuf[0], 1, C-4, m_fin);
     AC = 0;
