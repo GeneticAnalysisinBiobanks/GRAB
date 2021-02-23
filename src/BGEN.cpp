@@ -273,7 +273,7 @@ Rcpp::List BgenClass::getOneMarker(int t_fileStartPos)
     RSID = std::string(rsID)=="." ? snpID : rsID;
     //std::string SNPID = string(snpID);
     
-    uint32_t LC; fread(&LC, 2, 1, m_fin); // cout << "LC: " << LC << " " << std::flush;
+    uint16_t LC; fread(&LC, 2, 1, m_fin); // cout << "LC: " << LC << " " << std::flush;
     std::cout << "11" << std::endl;
     std::cout << LC << std::endl;
     fread(chrStr, 1, LC, m_fin); chrStr[LC] = '\0';
