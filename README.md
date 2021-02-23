@@ -4,7 +4,7 @@
 
 ```{r}      
 library(devtools)  # author version: 2.3.0
-install_github("GeneticAnalysisinBiobanks/GRAB")
+install_github("GeneticAnalysisinBiobanks/GRAB", INSTALL_opts=c("--no-multiarch"))  # The INSTALL_opts is required in Windows OS.
 library(GRAB)
 ?GRAB.ReadGeno
 ?GRAB.SPACox

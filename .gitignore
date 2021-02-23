@@ -10,3 +10,4 @@ src/SPACox.o
 src/UTIL.o
 src/VCF.o
 .Rhistory
+src/BGEN.o
