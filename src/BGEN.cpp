@@ -274,10 +274,7 @@ Rcpp::List BgenClass::getOneMarker(int t_fileStartPos)
     //std::string SNPID = string(snpID);
     
     uint16_t LC; fread(&LC, 2, 1, m_fin); // cout << "LC: " << LC << " " << std::flush;
-    std::cout << "11" << std::endl;
-    std::cout << LC << std::endl;
     fread(chrStr, 1, LC, m_fin); chrStr[LC] = '\0';
-    std::cout << "22" << std::endl;
     chromosome  = std::string(chrStr);
     
     uint32_t physpos; fread(&physpos, 4, 1, m_fin); // cout << "physpos: " << physpos << " " << std::flush;
