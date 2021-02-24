@@ -11,3 +11,6 @@ src/UTIL.o
 src/VCF.o
 .Rhistory
 src/BGEN.o
+src/test_openmp.o
+src/GRAB.dll
+.Rhistory

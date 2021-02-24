@@ -116,6 +116,17 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// squares
+Rcpp::NumericVector squares(Rcpp::NumericVector data);
+RcppExport SEXP _GRAB_squares(SEXP dataSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type data(dataSEXP);
+    rcpp_result_gen = Rcpp::wrap(squares(data));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_getGenoInCPP", (DL_FUNC) &_GRAB_getGenoInCPP, 3},
@@ -125,6 +136,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_MAIN_REGION", (DL_FUNC) &_GRAB_MAIN_REGION, 9},
     {"_GRAB_setPOLMMobjInCPP", (DL_FUNC) &_GRAB_setPOLMMobjInCPP, 9},
     {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},
+    {"_GRAB_squares", (DL_FUNC) &_GRAB_squares, 1},
     {NULL, NULL, 0}
 };
 

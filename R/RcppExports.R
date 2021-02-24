@@ -29,3 +29,7 @@ setSPACoxobjInCPP <- function(t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_cov
     invisible(.Call(`_GRAB_setSPACoxobjInCPP`, t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_covaAdj_Cutoff, t_SPA_Cutoff))
 }
 
+squares <- function(data) {
+    .Call(`_GRAB_squares`, data)
+}
+
