@@ -10,6 +10,19 @@ library(GRAB)
 ?GRAB.SPACox
 ```
 
+### For BGEN file input
+
+The current version of GRAB package only supports BGEN v1.2 using 8 bits compression (faster than using 16 bits). For example, if plink2 is used to make BGEN file, please refer to https://www.cog-genomics.org/plink/2.0/data#export
+```
+plink2 --bfile input --out output --export bgen-1.2 bits=8
+```
+
+The index file for BGEN file is also required (filename extension is ".bgen.bgi"). Please refer to https://enkre.net/cgi-bin/code/bgen/wiki/bgenix 
+
+```
+theFolder/bgenix -g theFile.bgen -index
+```
+
 ### More detailed information for package developers
 
 For SPACox method, we should create the following files
