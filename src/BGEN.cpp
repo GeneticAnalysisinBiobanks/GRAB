@@ -110,7 +110,7 @@ void BgenClass::setPosSampleInBgen(std::vector<std::string> & t_SampleInModel)
 }
 
 
-void BgenClass::Parse2(unsigned char *buf, unsigned int bufLen, const unsigned char *zBuf, unsigned int zBufLen,std::string & snpName,std::vector< double > & dosages, double & AC, double & AF, std::vector<int> & indexforMissing, double & info, std::vector<unsigned int> & iIndex) {
+void BgenClass::Parse2(unsigned char *buf, unsigned int bufLen, const unsigned char *zBuf, unsigned int zBufLen,std::string & snpName,std::vector< double > & dosages, double & AC, double & AF, std::vector<int> & indexforMissing, double & info, std::vector<unsigned int> & indexNonZero) {
   
   uLong destLen = bufLen;
   if (uncompress(buf, &destLen, zBuf, zBufLen) != Z_OK || destLen != bufLen) {
@@ -192,7 +192,7 @@ void BgenClass::Parse2(unsigned char *buf, unsigned int bufLen, const unsigned c
         }else{
           if(2 - dosage > 0){
             dosages.push_back(2 - dosage);
-            iIndex.push_back(m_posSampleInModel[i]+1);
+            indexNonZero.push_back(m_posSampleInModel[i]+1);
           }
         }
         sum_eij_sub += eij;
@@ -235,7 +235,7 @@ void BgenClass::Parse2(unsigned char *buf, unsigned int bufLen, const unsigned c
           dosages[indexforMissing[i]] = imputeDosage;
         }else{
           dosages.push_back(imputeDosage);
-          iIndex.push_back(indexforMissing[i]+1);
+          indexNonZero.push_back(indexforMissing[i]+1);
         }
         AC = AC + imputeDosage;
       }
@@ -256,7 +256,7 @@ Rcpp::List BgenClass::getOneMarker(int t_fileStartPos)
   std::vector< double > dosages;
   double AC, AF, info;
   std::vector< int > indexforMissing;
-  std::vector< unsigned int > iIndex;
+  std::vector< unsigned int > indexNonZero;
   char snpID[65536], rsID[65536], chrStr[65536];
   unsigned int maxLA = 65536, maxLB = 65536;
   char *allele1, *allele0;
@@ -291,7 +291,7 @@ Rcpp::List BgenClass::getOneMarker(int t_fileStartPos)
       allele1 = (char *) malloc(maxLA+1);
     }
     fread(allele1, 1, LA, m_fin); allele1[LA] = '\0';
-    second_allele = std::string(allele1);
+    first_allele = std::string(allele1);
     uint32_t LB; fread(&LB, 4, 1, m_fin); // cout << "LB: " << LB << " " << std::flush;
     if (LB > maxLB) {
       maxLB = 2*LB;
@@ -299,7 +299,7 @@ Rcpp::List BgenClass::getOneMarker(int t_fileStartPos)
       allele0 = (char *) malloc(maxLB+1);
     }
     fread(allele0, 1, LB, m_fin); allele0[LB] = '\0';
-    first_allele = std::string(allele0);
+    second_allele = std::string(allele0);
     
     uint32_t C; fread(&C, 4, 1, m_fin); //cout << "C: " << C << endl;
     if (C > m_zBuf.size()) m_zBuf.resize(C-4);
@@ -311,7 +311,7 @@ Rcpp::List BgenClass::getOneMarker(int t_fileStartPos)
     AF = 0;
     info = 0;
     if (m_bufLens > m_buf.size()) m_buf.resize(m_bufLens); //fix the length
-    Parse2(&m_buf[0], m_bufLens, &m_zBuf[0], m_zBufLens, RSID, dosages, AC, AF, indexforMissing, info, iIndex);
+    Parse2(&m_buf[0], m_bufLens, &m_zBuf[0], m_zBufLens, RSID, dosages, AC, AF, indexforMissing, info, indexNonZero);
     Rcpp::DataFrame variants = Rcpp::DataFrame::create(
       Rcpp::Named("chromosome") = chromosome,
       Rcpp::Named("position") = position,
@@ -331,7 +331,7 @@ Rcpp::List BgenClass::getOneMarker(int t_fileStartPos)
     result[ "variants" ] = variants ;
     result["info"] = info;
     result[ "dosages" ] = dosages ;
-    result["iIndex"] = iIndex;
+    result["indexNonZero"] = indexNonZero;
     result["indexforMissing"] = indexforMissing;
     
   }else{
