@@ -171,8 +171,8 @@ mainMarker.SPACox = function(objNull, control, markers, genoType)
   infoVec = OutList$infoVec       # marker infomation: CHR:POS:REF:ALT
   flipVec = OutList$flipVec       # 
   freqVec = OutList$freqVec       # minor allele frequencies (freq of ALT if flip=F, freq of REF if flip=T)
-  # BetaVec = OutList$BetaVec       # beta for ALT if flip=F, beta for REF if flip=T
-  # seBetaVec = OutList$seBetaVec   # sebeta
+  # BetaVec = OutList$BetaVec     # beta for ALT if flip=F, beta for REF if flip=T
+  # seBetaVec = OutList$seBetaVec # sebeta
   PvalVec = OutList$pvalVec;      # marker-level p-values
   
   obj.mainMarker = data.frame(Marker = markerVec,

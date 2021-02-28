@@ -35,7 +35,7 @@ void PlinkClass::setPlinkobj(std::string t_bimFile,
   m_famFile = t_famFile;
   m_bedFile = t_bedFile;
   
-  setChrMaps();
+  // setChrMaps();
   readBimFile();
   readFamFile();
   m_ibedFile.open(m_bedFile.c_str(), std::ios::binary);
@@ -48,22 +48,23 @@ void PlinkClass::setPlinkobj(std::string t_bimFile,
     Rcpp::stop("The third magic number of the plink bed file is not 00000001. Please use SNP-major plink (plink version >= 1.9) files.");
 }
 
-void PlinkClass::setChrMaps()
-{
-  uint8_t last_chr_autosome = 22;
-  // Chromosome code (either an integer, or 'X'/'Y'/'XY'/'MT'; '0' indicates unknown) or name
-  for(uint8_t index = 0; index <= 26; index++){
-    m_chrMaps[std::to_string(index)] = index;
-  }
-  m_chrMaps["X"] = last_chr_autosome + 1;
-  m_chrMaps["x"] = last_chr_autosome + 1;
-  m_chrMaps["Y"] = last_chr_autosome + 2;
-  m_chrMaps["y"] = last_chr_autosome + 2;
-  m_chrMaps["XY"] = last_chr_autosome + 3;
-  m_chrMaps["xy"] = last_chr_autosome + 3;
-  m_chrMaps["MT"] = last_chr_autosome + 4;
-  m_chrMaps["mt"] = last_chr_autosome + 4;
-}    
+// not used after 2021-02-28
+// void PlinkClass::setChrMaps()
+// {
+//   uint8_t last_chr_autosome = 22;
+//   // Chromosome code (either an integer, or 'X'/'Y'/'XY'/'MT'; '0' indicates unknown) or name
+//   for(uint8_t index = 0; index <= 26; index++){
+//     m_chrMaps[std::to_string(index)] = index;
+//   }
+//   m_chrMaps["X"] = last_chr_autosome + 1;
+//   m_chrMaps["x"] = last_chr_autosome + 1;
+//   m_chrMaps["Y"] = last_chr_autosome + 2;
+//   m_chrMaps["y"] = last_chr_autosome + 2;
+//   m_chrMaps["XY"] = last_chr_autosome + 3;
+//   m_chrMaps["xy"] = last_chr_autosome + 3;
+//   m_chrMaps["MT"] = last_chr_autosome + 4;
+//   m_chrMaps["mt"] = last_chr_autosome + 4;
+// }    
 
 void PlinkClass::readBimFile()
 {
@@ -71,21 +72,21 @@ void PlinkClass::readBimFile()
   std::ifstream bim(m_bimFile);
   m_M0 = 0;
   std::string line;
-  uint8_t chr_item;
+  // uint8_t chr_item;
   while(getline(bim, line)){
     m_M0++;
     std::vector<std::string> line_elements;
     boost::split(line_elements, line, boost::is_any_of("\t "));
     boost::replace_all(line_elements[line_elements.size() - 1], "\r", "");
-    chr_item = m_chrMaps.at(line_elements[0]);
-    m_chr.push_back(chr_item);
+    // chr_item = m_chrMaps.at(line_elements[0]);
+    m_chr.push_back(line_elements[0]);
     m_MarkerInPlink.push_back(line_elements[1]);
     m_gd.push_back(std::stof(line_elements[2]));
     m_pd.push_back(std::stoi(line_elements[3]));
     std::transform(line_elements[4].begin(), line_elements[4].end(), line_elements[4].begin(), toupper);
     std::transform(line_elements[5].begin(), line_elements[5].end(), line_elements[5].begin(), toupper);
-    m_a1.push_back(line_elements[4]);
-    m_a2.push_back(line_elements[5]);
+    m_alt.push_back(line_elements[4]);  // allele 1, usually minor allele
+    m_ref.push_back(line_elements[5]);  // allele 2, usually major allele
   }
   m_M = m_M0;
 }
@@ -132,7 +133,7 @@ void PlinkClass::setPosSampleInPlink(std::vector<std::string> t_SampleInModel)
       Rcpp::stop("At least one subject requested is not in Plink file.");
     m_posSampleInPlink.at(i) = posSampleInPlink.at(i) - 1;   // convert "starting from 1" to "starting from 0"
   }
-
+  
   // m_posSampleInPlink.clear();
   // for(uint32_t i = 0; i < m_N; i++){
   //   std::string sample = t_SampleInModel.at(i);
@@ -161,31 +162,40 @@ std::vector<uint32_t> PlinkClass::getPosMarkerInPlink(std::vector<std::string> t
   return posMarkerInPlink;
 }
 
-arma::vec PlinkClass::getOneMarker(unsigned long long int t_posMarker, 
-                                   double& t_freq, 
-                                   double& t_missingRate,
-                                   std::vector<uint32_t>& t_posMissingGeno,
-                                   std::string& t_a1,
-                                   std::string& t_a2,
-                                   std::string& t_marker,
-                                   uint32_t& t_pd,
-                                   uint8_t& t_chr,
-                                   bool t_flagTrueGeno)
+arma::vec PlinkClass::getOneMarker(uint64_t t_gIndex,        // different meanings for different genoType
+                                   std::string& t_ref,       // REF allele
+                                   std::string& t_alt,       // ALT allele (should probably be minor allele, otherwise, computation time will increase)
+                                   std::string& t_marker,    // marker ID extracted from genotype file
+                                   uint32_t& t_pd,           // base position
+                                   std::string& t_chr,       // chromosome
+                                   double& t_altFreq,        // frequency of ALT allele
+                                   double& t_altCounts,      // counts of ALT allele
+                                   double& t_missingRate,    // missing rate
+                                   double& t_imputeInfo,     // imputation information score, i.e., R2 (all 1 for PLINK)
+                                   bool t_isOutputIndexForMissing,               // if true, output index of missing genotype data
+                                   std::vector<uint32_t>& t_indexForMissing,     // index of missing genotype data
+                                   bool t_isOnlyOutputNonZero,                   // is true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
+                                   std::vector<uint32_t>& t_indexForNonZero,
+                                   bool t_isTrueGenotype)    // only used in PLINK. check m_genoMaps for details about the genotype mapping in PLINK.
 {
   int sum = 0;
   int numMissing = 0;
-  arma::vec OneMarkerG1(m_N);
   
-  unsigned long long int posSeek = 3 + m_numBytesofEachMarker0 * t_posMarker;
+  std::vector<double> OneMarkerG1;
+  if(!t_isOnlyOutputNonZero){
+    OneMarkerG1.resize(m_N);
+  }
+  
+  uint64_t posSeek = 3 + m_numBytesofEachMarker0 * t_gIndex;
   m_ibedFile.seekg(posSeek);
   m_ibedFile.read((char*)(&m_OneMarkerG4[0]), m_numBytesofEachMarker0);
   
-  t_posMissingGeno.clear();
-  t_a1 = m_a1[t_posMarker];
-  t_a2 = m_a2[t_posMarker];
-  t_marker = m_MarkerInPlink[t_posMarker];
-  t_pd = m_pd[t_posMarker];
-  t_chr = m_chr[t_posMarker];
+  t_indexForMissing.clear();
+  t_ref = m_ref[t_gIndex];
+  t_alt = m_alt[t_gIndex];
+  t_marker = m_MarkerInPlink[t_gIndex];
+  t_pd = m_pd[t_gIndex];
+  t_chr = m_chr[t_gIndex];
   
   for(uint32_t i = 0; i < m_N; i++){
     uint32_t ind = m_posSampleInPlink[i];             // C++ start from 0
@@ -196,22 +206,31 @@ arma::vec PlinkClass::getOneMarker(unsigned long long int t_posMarker,
     case HOM_REF: break;
     case HET: sum+=1; break;
     case HOM_ALT: sum+=2; break;
-    case MISSING: numMissing++; t_posMissingGeno.push_back(i); break;  
+    case MISSING: numMissing++; if(t_isOutputIndexForMissing){t_indexForMissing.push_back(i);} break;  
     }
+    
     // OneMarkerG1[i] = bufferG1;
-    if(t_flagTrueGeno){
-      OneMarkerG1[i] = m_genoMaps[bufferG1];
-    }else{
-      OneMarkerG1[i] = bufferG1;
+    if(t_isTrueGenotype){
+      bufferG1 = m_genoMaps[bufferG1];
     }
+    
+    if(t_isOnlyOutputNonZero){
+      OneMarkerG1.push_back(bufferG1);
+    }else{
+      OneMarkerG1.at(i) = bufferG1;
+    }
+
   }
   
   int count = m_N - numMissing;
   t_missingRate = (double)numMissing / (double)m_N;
-  t_freq = (double)sum / (double)count;
-  t_freq = t_freq / 2;
+  t_imputeInfo = 1;
+  t_altCounts = (double)sum;
+  t_altFreq = t_altCounts/ (double)count / 2;
+  
   return OneMarkerG1;
 }
+
 
 }
 

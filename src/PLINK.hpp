@@ -14,13 +14,13 @@ private:
   
   // information from bim file
   uint32_t m_M0, m_M;
-  std::map<std::string, uint8_t> m_chrMaps;
-  std::vector<uint8_t> m_chr;                   // Chromosome code (either an integer, or 'X'/'Y'/'XY'/'MT'; '0' indicates unknown) or name
+  // std::map<std::string, uint8_t> m_chrMaps;  // not used after 2021-02-28
+  std::vector<std::string> m_chr;               // Chromosome code (either an integer, or 'X'/'Y'/'XY'/'MT'; '0' indicates unknown) or name
   std::vector<std::string> m_MarkerInPlink;     // Variant identifier
   std::vector<float> m_gd;                      // Position in morgans or centimorgans (safe to use dummy value of '0')
   std::vector<uint32_t> m_pd;                   // Base-pair coordinate (1-based; limited to 2^31-2)
-  std::vector<std::string> m_a1;                // Allele 1 (corresponding to clear bits in .bed; usually minor)
-  std::vector<std::string> m_a2;                // Allele 2 (corresponding to set bits in .bed; usually major)
+  std::vector<std::string> m_alt;               // Allele 1 (corresponding to clear bits in .bed; usually minor)
+  std::vector<std::string> m_ref;               // Allele 2 (corresponding to set bits in .bed; usually major)
   
   // information from fam file
   std::vector<std::string> m_SampleInPlink;
@@ -47,7 +47,7 @@ private:
   // pipeline: OneMarkerG4 --> bufferG4 --> bufferG1 --> OneMarkerG1
   std::vector<unsigned char> m_OneMarkerG4;
   
-  void setChrMaps();
+  // void setChrMaps();
   void readBimFile();
   void readFamFile();
   
@@ -71,17 +71,21 @@ public:
   void setPosSampleInPlink(std::vector<std::string> t_SampleInModel);
   std::vector<uint32_t> getPosMarkerInPlink(std::vector<std::string> t_MarkerReqstd);
   
-  // get genotype of one marker (and frequency and missing rate)
-  arma::vec getOneMarker(unsigned long long int t_posMarker, 
-                         double& t_freq, 
-                         double& t_missingRate,
-                         std::vector<uint32_t>& t_posMissingGeno,
-                         std::string& t_a1,
-                         std::string& t_a2,
-                         std::string& t_marker,
-                         uint32_t& t_pd,
-                         uint8_t& t_chr,
-                         bool t_flagTrueGeno);
+  arma::vec getOneMarker(uint64_t t_gIndex,        // different meanings for different genoType
+                         std::string& t_ref,       // REF allele
+                         std::string& t_alt,       // ALT allele (should probably be minor allele, otherwise, computation time will increase)
+                         std::string& t_marker,    // marker ID extracted from genotype file
+                         uint32_t& t_pd,           // base position
+                         std::string& t_chr,       // chromosome
+                         double& t_altFreq,        // frequency of ALT allele
+                         double& t_altCounts,      // counts of ALT allele
+                         double& t_missingRate,    // missing rate
+                         double& t_imputeInfo,     // imputation information score, i.e., R2 (all 1 for PLINK)
+                         bool t_isOutputIndexForMissing,               // if true, output index of missing genotype data
+                         std::vector<uint32_t>& t_indexForMissing,     // index of missing genotype data
+                         bool t_isOnlyOutputNonZero,                   // is true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
+                         std::vector<uint32_t>& t_indexForNonZero,
+                         bool t_isTrueGenotype);   // only used in PLINK. check m_genoMaps for details about the genotype mapping in PLINK.
   
 
   uint32_t getN0(){return m_N0;}

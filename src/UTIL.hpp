@@ -34,5 +34,9 @@ arma::mat sumCols(arma::mat t_xMat, int J);
 
 arma::vec getRPsiR(arma::mat t_muMat, arma::mat t_iRMat, int t_n, int t_J, int t_p); 
 
+bool imputeGenoAndFlip(arma::vec& t_GVec, 
+                       double t_altFreq, 
+                       std::vector<uint32_t> t_indexForMissing);
+
 #endif
 

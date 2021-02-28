@@ -55,9 +55,17 @@ public:
              double t_tau,
              bool t_printPCGInfo,
              double t_tolPCG,
-             int t_maxiterPCG);
+             int t_maxiterPCG,
+             double t_varRatio, 
+             double t_StdStat_cutoff);
   
-  // void getMarkerPval(double Beta, double seBeta, double pval);
+  void getMarkerPval(arma::vec t_GVec, 
+                     double& t_Beta, 
+                     double& t_seBeta, 
+                     double& t_pval, 
+                     double t_altFreq);
+  
+  double m_varRatio, m_StdStat_cutoff;
   
   arma::vec getadjGFast(arma::vec t_GVec);
   double getStatFast(arma::vec t_adjGVec);
@@ -89,7 +97,6 @@ public:
                  arma::uvec t_posG1);
   
   void setSeqMat(int t_NonZero_cutoff);
-  void getMarkerPval(arma::vec t_GVec, double MAF, double& t_Beta, double& t_seBeta, double& t_pval);
   
 };
 

@@ -120,7 +120,9 @@ setGenoInput = function(GenoFile,
     markerInfo = data.table::fread(bimFile)
     markerInfo = as.data.frame(markerInfo)
     markerInfo = markerInfo[,c(1,4,2,6,5)]  # https://www.cog-genomics.org/plink/2.0/formats#bim
+    
     colnames(markerInfo) = c("CHROM", "POS", "ID", "REF", "ALT")
+    markerInfo$genoIndex = 1:nrow(markerInfo) - 1  # -1 is to follow 
     
     if(!file.exists(famFile)) stop(paste("Cannot find fam file of", famFile))
     sampleInfo = data.table::fread(famFile)
@@ -155,7 +157,7 @@ setGenoInput = function(GenoFile,
     bgiData = as.data.frame(bgiData)
     
     markerInfo = bgiData[,c(1,2,3,6,5,7)]  # https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
-    colnames(markerInfo) = c("CHROM", "POS", "ID", "REF", "ALT","StartPositionInBGEN")
+    colnames(markerInfo) = c("CHROM", "POS", "ID", "REF", "ALT","genoIndex")
     
     samplesInGeno = getSampleIDsFromBGEN(bgenFile)
     SampleIDs = updateSampleIDs(SampleIDs, samplesInGeno)
@@ -185,31 +187,6 @@ updateSampleIDs = function(SampleIDs, samplesInGeno)
     stop("At least one sample from 'SampleIDs' are not in 'GenoFile' and 'GenoFileIndex'.")
   
   return(SampleIDs)
-}
-
-## split 'markers' into multiple chunks each of which includes no more than 'nMarkersEachChunk' markers
-# Examples to check:
-# splitMarker(1:10, 2)
-# splitMarker(1:10, 3)
-# splitMarker(1:10, 10)
-# splitMarker(1:10, 11)
-splitMarker = function(markers, nMarkersEachChunk)
-{
-  M = length(markers)
-  
-  idxStart = seq(1, M, nMarkersEachChunk)
-  idxEnd = idxStart + nMarkersEachChunk - 1
-  
-  nChunks = length(idxStart)
-  idxEnd[nChunks] = M
-  
-  markerList = list()
-  for(i in 1:nChunks){
-    idxMarker = idxStart[i]:idxEnd[i]
-    markerList[[i]] = markers[idxMarker]
-  }
-  
-  return(markerList)
 }
 
 # https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
