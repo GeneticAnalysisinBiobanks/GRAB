@@ -19,15 +19,20 @@ updateControl = function(control, default.control)
 checkObjNull = function(objNull)
 {
   NullModelClass = class(objNull)
+  nm = names(objNull)
   
   ## check objNull
   if(!NullModelClass %in% c("SPAGE_NULL_Model",       # SPAGE: GxE analysis 
                             "SPACox_NULL_Model",      # SPACox: Survival analysis for unrelated subjects
                             "POLMM_NULL_Model"))      # POLMM: categorical data analysis
   {
-    stop('class(objNull) should be from c("SPAGE_NULL_Model","SPACox_NULL_Model","POLMM_NULL_Model")')
+    stop('class(objNull) should be from c("SPAGE_NULL_Model", "SPACox_NULL_Model", "POLMM_NULL_Model")')
   }
     
+  if(any(nm %in% c("SampleIDs","n")))
+  {
+    stop("c('SampleIDs', 'n') should be in names(objNull).")
+  }
   
   ## More detailed information can be checked
   ##

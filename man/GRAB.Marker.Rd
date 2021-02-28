@@ -8,7 +8,7 @@ GRAB.Marker(
   objNull,
   GenoFile,
   GenoFileIndex = NULL,
-  OutputFile = NULL,
+  OutputFile,
   control = NULL
 )
 }
@@ -19,7 +19,7 @@ GRAB.Marker(
 
 \item{GenoFileIndex}{additional index files corresponding to the "GenoFile". If Null (default), the same prefix as GenoFile is used. PLINK: c("prefix.bim", "prefix.fam"), BGEN: c("prefix.bgi"), and VCF: c("prefix.vcf.tbi") or c("prefix.vcf.gz.tbi").}
 
-\item{OutputFile}{a character of output file to store the analysis results. If Null (default), the results are outputted to R.}
+\item{OutputFile}{a character of output file to store the analysis results.}
 
 \item{control}{a list of parameters for controlling the GRAB.Marker().}
 }

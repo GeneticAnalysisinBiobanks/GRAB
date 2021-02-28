@@ -15,7 +15,9 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
                        double t_tau,
                        bool t_printPCGInfo,
                        double t_tolPCG,
-                       int t_maxiterPCG)
+                       int t_maxiterPCG,
+                       double t_varRatio, 
+                       double t_StdStat_cutoff)
 {
   m_muMat = t_muMat;
   m_iRMat = t_iRMat;
@@ -66,12 +68,37 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
 }
 
 void POLMMClass::getMarkerPval(arma::vec t_GVec, 
-                               double MAF, 
                                double& t_Beta, 
                                double& t_seBeta, 
-                               double& t_pval)
+                               double& t_pval, 
+                               double t_altFreq)
 {
-  // to be continued
+  arma::vec adjGVec = getadjGFast(t_GVec);
+  double Stat = getStatFast(adjGVec);
+  arma::vec VarWVec = getVarWVec(adjGVec);
+  double VarW = sum(VarWVec);
+  double VarS = VarW * m_varRatio;
+  
+  double StdStat = std::abs(Stat) / sqrt(VarS);
+  double pvalNorm = 2 * arma::normcdf(-1*StdStat);
+  double pval = pvalNorm;
+  
+  arma::vec K1roots = {3, -3};
+  if(StdStat > m_StdStat_cutoff){
+    
+    arma::uvec posG1 = arma::find(t_GVec != 0);
+    std::cout << "posG1.size():\t" << posG1.size() << std::endl;
+    double VarW1 = sum(VarWVec(posG1));
+    double VarW0 = VarW - VarW1;
+    double Ratio0 = VarW0 / VarW;
+    
+    Rcpp::List resSPA = MAIN_SPA(Stat, adjGVec, K1roots, VarS, VarW, Ratio0, posG1);
+    pval = resSPA["pval"];
+  }
+  
+  t_pval = pval;
+  t_Beta = Stat / VarS;
+  t_seBeta = t_Beta / StdStat;
 }
 
 arma::vec POLMMClass::getadjGFast(arma::vec t_GVec)

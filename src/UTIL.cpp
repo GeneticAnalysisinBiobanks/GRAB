@@ -23,25 +23,26 @@ double getWeights(std::string t_kernel,
   return weights;
 }
 
-void imputeGeno(arma::vec& GVec, 
-                double freq, 
-                std::vector<uint32_t> posMissingGeno)
+// can support more options later
+bool imputeGenoAndFlip(arma::vec& t_GVec, 
+                       double t_altFreq, 
+                       std::vector<uint32_t> t_indexForMissing)
 {
-  int n = posMissingGeno.size();
+  int nMissing = t_indexForMissing.size();
   
-  // should be updated later
-  double imputeG = 2 * freq;
-  if(freq < 0.05){
-    imputeG = 0;
-  }
-  if(freq > 0.95){
-    imputeG = 2;
+  double imputeG = 2 * t_altFreq;
+  for(int i = 0; i < nMissing; i++){
+    uint32_t index = t_indexForMissing.at(i);
+    t_GVec.at(index) = imputeG;
   }
   
-  for(int i = 0; i < n; i++){
-    uint32_t posMissing = posMissingGeno.at(i);
-    GVec.at(posMissing) = imputeG;
+  bool flip = false;
+  if(t_altFreq > 0.5){
+    t_GVec = 2 - t_GVec;
+    flip = true;
   }
+    
+  return flip;
 }
 
 double getInnerProd(arma::mat& x1Mat, arma::mat& x2Mat)

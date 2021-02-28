@@ -38,6 +38,75 @@ GRAB.POLMM = function(){
   print("Check ?GRAB.POLMM for more details about 'POLMM' method.")
 }
 
+################### This file includes the following functions
+
+# ------------ used in 'GRAB_Marker.R' -----------
+# 1. checkControl.Marker.POLMM(control)
+# 2. setMarker.POLMM(objNull, control)
+# 3. mainMarker.POLMM()
+
+# check the control list in association testing
+checkControl.Marker.POLMM = function(control)
+{
+  default.control = list();
+  control = updateControl(control, default.control)  # This file is in 'Util.R'
+  
+  # check the parameter
+  
+  return(control)
+}
+
+# set up an object in C++
+setMarker.POLMM = function(objNull, control)
+{
+  muMat = objNull$muMat;
+  iRMat = objNull$iRMat;
+  Cova = objNull$Cova;
+  yVec = objNull$yVec;
+  SPmatR = objNull$SPmatR;
+  tau = objNull$tau;
+  printPCGInfo = control$printPCGInfo;
+  tolPCG = control$tolPCG;
+  maxiterPCG = control$maxiterPCG;
+  varRatio = objNull$varRatio; 
+  StdStat_cutoff = control$StaStat_cutoff;
+  
+  setPOLMMobjInCPP(muMat,
+                   iRMat,
+                   Cova,
+                   yVec,
+                   SPmatR,
+                   tau,
+                   printPCGInfo,
+                   tolPCG,
+                   maxiterPCG,
+                   varRatio,
+                   StdStat_cutoff)
+}
+
+# main function to calculae summary statistics
+mainMarker.POLMM = function(genoType, genoIndex)
+{
+  OutList = mainMarkerInCPP("POLMM",
+                            genoType,
+                            genoIndex);  
+  
+  markerVec = OutList$markerVec   # marker IDs
+  infoVec = OutList$infoVec       # marker infomation: CHR:POS:REF:ALT
+  altFreqVec = OutList$altFreqVec       # minor allele frequencies (freq of ALT if flip=F, freq of REF if flip=T)
+  BetaVec = OutList$BetaVec       # beta for ALT if flip=F, beta for REF if flip=T
+  seBetaVec = OutList$seBetaVec   # sebeta
+  pvalVec = OutList$pvalVec;      # marker-level p-values
+  
+  obj.mainMarker = data.frame(Marker = markerVec,
+                              Info = infoVec,
+                              AltFreq = altFreqVec,
+                              Beta = BetaVec,
+                              seBeta = seBetaVec,
+                              Pval = pvalVec)
+  return(obj.mainMarker)
+}
+
 # check the control list in null model fitting for POLMM method
 checkControl.NullModel.POLMM = function(control)
 {
@@ -97,30 +166,4 @@ setMarker.POLMM = function(objNull, control, chrom)
   print(paste0("The current POLMM.control$nMarkers_output is ", nMarkers_output,"."))
 }
 
-mainMarker.POLMM = function(objNull, control, markers, genoType)
-{
-  OutList = mainMarkerInCPP("POLMM",
-                            genoType,
-                            markers,
-                            control$SPA_cutoff,
-                            control$missing_cutoff,
-                            control$min_maf_region,
-                            control$min_mac_region)  
-  
-  markerVec = OutList$markerVec   # marker IDs
-  infoVec = OutList$infoVec       # marker infomation: CHR:POS:REF:ALT
-  flipVec = OutList$flipVec       # 
-  freqVec = OutList$freqVec       # minor allele frequencies (freq of ALT if flip=F, freq of REF if flip=T)
-  BetaVec = OutList$BetaVec       # beta for ALT if flip=F, beta for REF if flip=T
-  seBetaVec = OutList$seBetaVec   # sebeta
-  PvalVec = OutList$pvalVec;      # marker-level p-values
-  
-  obj.mainMarker = data.frame(Marker = markerVec,
-                              Info = infoVec,
-                              Flip = flipVec,
-                              Freq = freqVec,
-                              Beta = BetaVec,
-                              seBeta = seBetaVec,
-                              Pval = PvalVec)
-  return(obj.mainMarker)
-}
+
