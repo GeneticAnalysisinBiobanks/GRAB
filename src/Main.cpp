@@ -90,14 +90,14 @@ arma::vec Unified_getOneMarker(std::string t_genoType,   // "PLINK", "BGEN"
 }
 
 // a unified function to get marker-level p-value
-Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
-                      arma::vec t_GVec,
-                      bool t_isOnlyOutputNonZero,
-                      std::vector<uint32_t> t_indexForNonZero,
-                      double& t_Beta, 
-                      double& t_seBeta, 
-                      double& t_pval, 
-                      double t_altFreq)
+void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
+                           arma::vec t_GVec,
+                           bool t_isOnlyOutputNonZero,
+                           std::vector<uint32_t> t_indexForNonZero,
+                           double& t_Beta, 
+                           double& t_seBeta, 
+                           double& t_pval, 
+                           double t_altFreq)
 {
   if(t_method == "POLMM"){
     if(t_isOnlyOutputNonZero == true)
