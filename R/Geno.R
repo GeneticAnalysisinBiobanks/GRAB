@@ -212,6 +212,25 @@ getSampleIDsFromBGEN = function(bgenFile)
   return(samplesInGeno)
 }
 
-
+#' Check if sample identifiers are stored in a BGEN file (for BGEN v1.2)
+#' 
+#' Check if sample identifiers are stored in a BGEN file (for BGEN v1.2)
+#' 
+#' @param bgenFile a character of BGEN file. Sometimes, BGEN file does not include sample IDs. This information can be extracted from BGEN file. Please refer to https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html for more details. 
+#' @examples
+#' 
+#' BGENFile = system.file("extdata", "example_bgen_1.2_8bits.bgen", package = "GRAB")
+#' checkIfSampleIDsExist(BGENFile)
+#' @export
+checkIfSampleIDsExist = function(bgenFile)
+{
+  con = file(bgenFile, "rb")
+  seek(con, 4)
+  LH = readBin(con, n = 1, what = "integer", size = 4)
+  seek(con, 4 + LH - 4)
+  header = rawToBits(readBin(con, n = 4, what = "raw", size = 1, signed = FALSE))
+  close(con)
+  return(header[32] == 01)
+}
 
 
