@@ -18,7 +18,16 @@
 #' If \code{GenoFileIndex} is NULL (default), then it uses the same prefix as \code{GenoFile}.
 #' \describe{
 #'   \item{Plink}{\code{GenoFile}: "prefix.bed"; \code{GenoFileIndex}: c("prefix.bim", "prefix.fam")}
-#'   \item{BGEN}{\code{GenoFile}: "prefix.bgen"; \code{GenoFileIndex}: "prefix.bgen.bgi"}
+#'   \item{BGEN}{
+#'     \itemize{
+#'     \item \code{GenoFile}: "prefix.bgen"; \code{GenoFileIndex}: "prefix.bgen.bgi" or c("prefix.bgen.bgi", "prefix.bgen.samples").
+#'     \item If only one element is given for \code{GenoFileIndex}, then we assume it should be "prefix.bgen.bgi". 
+#'     \item Sometimes, BGEN file does not include sample identifiers, and thus file of "prefix.bgen.samples" is required.
+#'     \item NOTE that "prefix.bgen.samples" should be of only one column with the column name of "GRAB_BGEN_SAMPLE" (case insensitive).
+#'     \item One example can be found in \code{system.file("extdata", "example_bgen_1.2_8bits.bgen.samples", package = "GRAB")}.
+#'     \item If you are not sure if sample identifiers are in BGEN file, you can try function \code{?checkIfSampleIDsExist}.
+#'     }
+#'   }
 #'   \item{VCF}{Not available now. \code{GenoFile}: "prefix.vcf"; \code{GenoFileIndex}: "prefix.vcf.tbi"}
 #' }
 #' @examples
@@ -140,11 +149,32 @@ setGenoInput = function(GenoFile,
     
     if(is.null(GenoFileIndex)){  
       # If 'GenoFileIndex' is not given, we use the same prefix for 'bgen.bgi' file
-      GenoFileIndex = gsub("bgen$", "bgen.bgi", GenoFile)
+      GenoFileIndex = c(gsub("bgen$", "bgen.bgi", GenoFile),
+                        gsub("bgen$", "bgen.samples", GenoFile))
     }
     
-    if(length(GenoFileIndex) != 1)
-      stop("If BGEN format is used, argument 'GenoFileIndex' should be 'NULL' or a character of bgiFile.")
+    if(length(GenoFileIndex) != 1 & length(GenoFileIndex) != 2)
+      stop("For genotype input of BGEN format , 'GenoFileIndex' should be of length 1 or 2. Check 'Details' section in '?GRAB.ReadGeno' for more information.")
+    
+    if(length(GenoFileIndex) == 1){
+      samplesInGeno = getSampleIDsFromBGEN(bgenFile)
+    }
+      
+    if(length(GenoFileIndex) == 2){
+      sampleFile = GenoFileIndex[2]
+      if(!file.exists(sampleFile)){
+        if(!checkIfSampleIDsExist(bgenFile)){
+          stop(paste("Cannot find bgen.samples file of", sampleFile))
+        }else{
+          samplesInGeno = getSampleIDsFromBGEN(bgenFile)
+        }
+      }else{
+        sampleData = read.table(sampleFile, header=T, stringsAsFactors = F)
+        if(toupper(colnames(sampleData)[1]) != "GRAB_BGEN_SAMPLE")
+          stop("The header of the first column in bgen.samples file should be 'GRAB_BGEN_SAMPLE'.")
+        samplesInGeno = as.character(sampleData[,1])
+      }
+    }
     
     bgiFile = GenoFileIndex[1]
     bgenFile = GenoFile
@@ -159,7 +189,6 @@ setGenoInput = function(GenoFile,
     markerInfo = bgiData[,c(1,2,3,6,5,7)]  # https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
     colnames(markerInfo) = c("CHROM", "POS", "ID", "REF", "ALT","genoIndex")
     
-    samplesInGeno = getSampleIDsFromBGEN(bgenFile)
     SampleIDs = updateSampleIDs(SampleIDs, samplesInGeno)
     
     setBGENobjInCPP(bgenFile, bgiFile, samplesInGeno, SampleIDs, F, F)
@@ -190,8 +219,20 @@ updateSampleIDs = function(SampleIDs, samplesInGeno)
 }
 
 # https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
+#' Extract sample identifiers from BGEN file (for BGEN v1.2)
+#' 
+#' Extract sample identifiers from BGEN file (for BGEN v1.2)
+#' 
+#' @param bgenFile a character of BGEN file. 
+#' @examples
+#' 
+#' BGENFile = system.file("extdata", "example_bgen_1.2_8bits.bgen", package = "GRAB")
+#' getSampleIDsFromBGEN(BGENFile)
+#' @export
 getSampleIDsFromBGEN = function(bgenFile)
 {
+  if(!checkIfSampleIDsExist(bgenFile))
+    stop("The BGEN file does not include sample identifiers. Please refer to ?checkIfSampleIDsExist and ?GRAB.ReadGeno for more details")
   con = file(bgenFile, "rb")
   seek(con, 4)
   LH = readBin(con, n = 1, what = "integer", size = 4)

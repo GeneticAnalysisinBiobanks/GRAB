@@ -32,7 +32,16 @@ The program will check the format based on the filename extension.
 If \code{GenoFileIndex} is NULL (default), then it uses the same prefix as \code{GenoFile}.
 \describe{
   \item{Plink}{\code{GenoFile}: "prefix.bed"; \code{GenoFileIndex}: c("prefix.bim", "prefix.fam")}
-  \item{BGEN}{\code{GenoFile}: "prefix.bgen"; \code{GenoFileIndex}: "prefix.bgen.bgi"}
+  \item{BGEN}{
+    \itemize{
+    \item \code{GenoFile}: "prefix.bgen"; \code{GenoFileIndex}: "prefix.bgen.bgi" or c("prefix.bgen.bgi", "prefix.bgen.samples").
+    \item If only one element is given for \code{GenoFileIndex}, then we assume it should be "prefix.bgen.bgi". 
+    \item Sometimes, BGEN file does not include sample identifiers, and thus file of "prefix.bgen.samples" is required.
+    \item NOTE that "prefix.bgen.samples" should be of only one column with the column name of "GRAB_BGEN_SAMPLE" (case insensitive).
+    \item One example can be found in \code{system.file("extdata", "example_bgen_1.2_8bits.bgen.samples", package = "GRAB")}.
+    \item If you are not sure if sample identifiers are in BGEN file, you can try function \code{?checkIfSampleIDsExist}.
+    }
+  }
   \item{VCF}{Not available now. \code{GenoFile}: "prefix.vcf"; \code{GenoFileIndex}: "prefix.vcf.tbi"}
 }
 }
