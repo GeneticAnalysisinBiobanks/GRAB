@@ -11,20 +11,26 @@
 #' @param GenoFileIndex additional index file(s) corresponding to the \code{GenoFile}. See \code{Details} section for more information.
 #' @param SampleIDs a character vector of sample IDs to extract. The default is NULL, that is, to use all samples in GenoFile.
 #' @param MarkerIDs a character vector of marker IDs to extract. The default is NULL, the first 10 markers will be extracted.
+#' @param AlleleOrder (to be continued) "ref-first" or "alt-first", to determine whether the REF/major allele should appear first or second. Default is "alt-first" for PLINK and "ref-first" for BGEN.
 #' @return An R list include an R genotype matrix (each row is for one sample and each column is for one marker) and an R SNP information matrix.
 #' @details
 #' We support three genotype format including Plink, BGEN, and VCF.
 #' The program will check the format based on the filename extension.  
 #' If \code{GenoFileIndex} is NULL (default), then it uses the same prefix as \code{GenoFile}.
 #' \describe{
-#'   \item{Plink}{\code{GenoFile}: "prefix.bed"; \code{GenoFileIndex}: c("prefix.bim", "prefix.fam")}
+#'   \item{Plink}{
+#'   \itemize{
+#'   \item \code{GenoFile}: "prefix.bed"; 
+#'   \item \code{GenoFileIndex}: c("prefix.bim", "prefix.fam")
+#'   }
+#'   }
 #'   \item{BGEN}{
 #'     \itemize{
-#'     \item \code{GenoFile}: "prefix.bgen"; \code{GenoFileIndex}: "prefix.bgen.bgi" or c("prefix.bgen.bgi", "prefix.bgen.samples").
+#'     \item \code{GenoFile}: "prefix.bgen"; 
+#'     \item \code{GenoFileIndex}: "prefix.bgen.bgi" or c("prefix.bgen.bgi", "prefix.bgen.samples").
 #'     \item If only one element is given for \code{GenoFileIndex}, then we assume it should be "prefix.bgen.bgi". 
 #'     \item Sometimes, BGEN file does not include sample identifiers, and thus file of "prefix.bgen.samples" is required.
-#'     \item NOTE that "prefix.bgen.samples" should be of only one column with the column name of "GRAB_BGEN_SAMPLE" (case insensitive).
-#'     \item One example can be found in \code{system.file("extdata", "example_bgen_1.2_8bits.bgen.samples", package = "GRAB")}.
+#'     \item NOTE that "prefix.bgen.samples" should be of only one column with the column name of "GRAB_BGEN_SAMPLE" (case insensitive). One example can be found in \code{system.file("extdata", "example_bgen_1.2_8bits.bgen.samples", package = "GRAB")}.
 #'     \item If you are not sure if sample identifiers are in BGEN file, you can try function \code{?checkIfSampleIDsExist}.
 #'     }
 #'   }
@@ -58,9 +64,10 @@
 GRAB.ReadGeno = function(GenoFile,
                          GenoFileIndex = NULL,
                          SampleIDs = NULL,
-                         MarkerIDs = NULL)
+                         MarkerIDs = NULL,
+                         AlleleOrder = NULL)
 {
-  objGeno = setGenoInput(GenoFile, GenoFileIndex, SampleIDs)
+  objGeno = setGenoInput(GenoFile, GenoFileIndex, SampleIDs, AlleleOrder)
   
   genoType = objGeno$genoType
   markerInfo = objGeno$markerInfo
@@ -92,7 +99,8 @@ GRAB.ReadGeno = function(GenoFile,
 ## add something in setGenoInput(.) to select specific markers requested by users
 setGenoInput = function(GenoFile, 
                         GenoFileIndex = NULL, 
-                        SampleIDs = NULL)
+                        SampleIDs = NULL,
+                        AlleleOrder = NULL)
 {
   if(missing(GenoFile))
     stop("Argument 'GenoFile' is required.")
@@ -111,6 +119,7 @@ setGenoInput = function(GenoFile,
   if(GenoFileExt == "bed"){
     
     genoType = "PLINK"
+    if(is.null(AlleleOrder)) AlleleOrder = "alt-first"
     
     if(is.null(GenoFileIndex)){  
       # If 'GenoFileIndex' is not given, we use the same prefix for 'bim' and 'fam' files
@@ -146,6 +155,7 @@ setGenoInput = function(GenoFile,
   if(GenoFileExt == "bgen"){
     
     genoType = "BGEN"
+    if(is.null(AlleleOrder)) AlleleOrder = "ref-first"
     
     if(is.null(GenoFileIndex)){  
       # If 'GenoFileIndex' is not given, we use the same prefix for 'bgen.bgi' file

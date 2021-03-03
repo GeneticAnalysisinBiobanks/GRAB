@@ -1,4 +1,45 @@
 
+#' Information about the control in GRAB package
+#' 
+#' Information about the control in GRAB package
+#' 
+#' @details
+#' In GRAB package, we use control to specify parameters in multiple functions. Here, we only list generic parameters. 
+#' For the parameters only used in specific method, please refer to its own help page. 
+#' For example, check \code{?GRAB.SPACox} for more information about SPACox method.
+#' \describe{
+#'   \item{GRAB.ReadGeno}{
+#'   We only support one of \code{include.markers}, \code{exclude.markers}, \code{include.range}, and \code{include.range}.
+#'   \itemize{
+#'   \item \code{include.markers}: a character vector of marker IDs to include.
+#'   \item \code{exclude.markers}: a character vector of marker IDs to exclude.
+#'   \item \code{include.range}: 
+#'   \item \code{exclude.range}: 
+#'   \item \code{allele.order}: "ref-first" or "alt-first", to determine whether the REF/major allele should appear first or second. Default is "alt-first" for PLINK and "ref-first" for BGEN.
+#'   }
+#'   }
+#'   \item{GRAB.NullModel}{
+#'     \itemize{
+#'     \item \code{GenoFile}: "prefix.bgen"; 
+#'     \item \code{GenoFileIndex}: "prefix.bgen.bgi" or c("prefix.bgen.bgi", "prefix.bgen.samples").
+#'     \item If only one element is given for \code{GenoFileIndex}, then we assume it should be "prefix.bgen.bgi". 
+#'     \item Sometimes, BGEN file does not include sample identifiers, and thus file of "prefix.bgen.samples" is required.
+#'     \item NOTE that "prefix.bgen.samples" should be of only one column with the column name of "GRAB_BGEN_SAMPLE" (case insensitive). One example can be found in \code{system.file("extdata", "example_bgen_1.2_8bits.bgen.samples", package = "GRAB")}.
+#'     \item If you are not sure if sample identifiers are in BGEN file, you can try function \code{?checkIfSampleIDsExist}.
+#'     }
+#'   }
+#'   \item{GRAB.Marker}{
+#'   Please refer to the above sections for \code{include.markers}, \code{exclude.markers}, \code{include.range}, and \code{include.range}.
+#'   }
+#'   \item{GRAB.Region}{
+#'   Please refer to the above sections for \code{include.markers}, \code{exclude.markers}, \code{include.range}, and \code{include.range}.
+#'   }
+#' }
+#' @export
+GRAB.control = function(){
+  return("Check ?GRAB.control for more information about the 'control' in package GRAB.")
+}
+
 updateControl = function(control, default.control)
 {
   if(is.null(default.control))
