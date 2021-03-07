@@ -21,7 +21,7 @@ For example, check \code{?GRAB.SPACox} for more information about SPACox method.
   \item \code{exclude.markers}: a character vector of marker IDs to exclude.
   \item \code{include.range}: 
   \item \code{exclude.range}: 
-  \item \code{allele.order}: "ref-first" or "alt-first", to determine whether the REF/major allele should appear first or second. Default is "alt-first" for PLINK and "ref-first" for BGEN.
+  \item \code{allele.order}: "ref-first" or "alt-first", to determine whether the REF/major allele should appear first or second. Default is "alt-first" for PLINK and "ref-first" for BGEN. NOTE, if you use plink2 to convert Plink file to BGEN file, check if 'ref-first' modifier should be used.
   }
   }
   \item{GRAB.NullModel}{
