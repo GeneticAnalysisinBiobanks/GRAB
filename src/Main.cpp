@@ -23,7 +23,7 @@ static POLMM::POLMMClass* ptr_gPOLMMobj = NULL;
 static SPACox::SPACoxClass* ptr_gSPACoxobj = NULL;
 
 // global varables for marker-level analysis
-std::string g_impute_method;
+uint8_t g_indexForImpute;   // 0: "mean"; 1: "minor"
 double g_missingRate_cutoff;
 double g_marker_minMAF_cutoff;
 double g_marker_minMAC_cutoff;
@@ -35,7 +35,12 @@ void setMarker_GlobalVarsInCPP(std::string t_impute_method,
                                double t_min_maf_marker,
                                double t_min_mac_marker)
 {
-  g_impute_method = t_impute_method;
+  if(t_impute_method == "mean")
+    g_indexForImpute = 0;
+  
+  if(t_impute_method == "minor")
+    g_indexForImpute = 1;
+  
   g_missingRate_cutoff = t_missing_cutoff;
   g_marker_minMAF_cutoff = t_min_maf_marker;
   g_marker_minMAC_cutoff = t_min_mac_marker;
@@ -46,7 +51,12 @@ void setRegion_GlobalVarsInCPP(std::string t_impute_method,
                                double t_max_maf_region,
                                double t_max_mem_region)
 {
-  g_impute_method = t_impute_method;
+  if(t_impute_method == "mean")
+    g_indexForImpute = 0;
+  
+  if(t_impute_method == "minor")
+    g_indexForImpute = 1;
+  
   g_missingRate_cutoff = t_missing_cutoff;
   g_region_maxMAF_cutoff = t_max_maf_region;
   g_region_maxMEMORY = t_max_mem_region;
@@ -191,7 +201,7 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     }
     
     if(missingRate != 0){
-      flip = imputeGenoAndFlip(GVec, altFreq, indexForMissing);  // in UTIL.cpp
+      flip = imputeGenoAndFlip(GVec, altFreq, indexForMissing, g_indexForImpute);  // in UTIL.cpp
     }
     
     // analysis results for single-marker

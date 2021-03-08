@@ -36,7 +36,8 @@ arma::vec getRPsiR(arma::mat t_muMat, arma::mat t_iRMat, int t_n, int t_J, int t
 
 bool imputeGenoAndFlip(arma::vec& t_GVec, 
                        double t_altFreq, 
-                       std::vector<uint32_t> t_indexForMissing);
+                       std::vector<uint32_t> t_indexForMissing,
+                       uint8_t t_indexForImpute);
 
 #endif
 

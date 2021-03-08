@@ -23,14 +23,27 @@ double getWeights(std::string t_kernel,
   return weights;
 }
 
-// can support more options later
+// used in Main.cpp::mainMarkerInCPP
 bool imputeGenoAndFlip(arma::vec& t_GVec, 
                        double t_altFreq, 
-                       std::vector<uint32_t> t_indexForMissing)
+                       std::vector<uint32_t> t_indexForMissing,
+                       uint8_t t_indexForImpute)   // 0: "mean"; 1: "minor"
 {
   int nMissing = t_indexForMissing.size();
   
-  double imputeG = 2 * t_altFreq;
+  double imputeG;
+  if(t_indexForImpute == 0){
+    imputeG = 2 * t_altFreq;
+  }
+    
+  if(t_indexForImpute == 1){
+    if(t_altFreq > 0.5){
+      imputeG = 2;
+    }else{
+      imputeG = 0;
+    }
+  }
+
   for(int i = 0; i < nMissing; i++){
     uint32_t index = t_indexForMissing.at(i);
     t_GVec.at(index) = imputeG;
