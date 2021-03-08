@@ -23,10 +23,12 @@ static POLMM::POLMMClass* ptr_gPOLMMobj = NULL;
 static SPACox::SPACoxClass* ptr_gSPACoxobj = NULL;
 
 // global varables for marker-level analysis
+std::string g_impute_method;
 double g_missingRate_cutoff;
 double g_marker_minMAF_cutoff;
 double g_marker_minMAC_cutoff;
-std::string g_impute_method;
+double g_region_maxMAF_cutoff;
+double g_region_maxMEMORY;
 
 void setMarker_GlobalVarsInCPP(std::string t_impute_method,
                                double t_missing_cutoff,
@@ -37,6 +39,17 @@ void setMarker_GlobalVarsInCPP(std::string t_impute_method,
   g_missingRate_cutoff = t_missing_cutoff;
   g_marker_minMAF_cutoff = t_min_maf_marker;
   g_marker_minMAC_cutoff = t_min_mac_marker;
+}
+
+void setRegion_GlobalVarsInCPP(std::string t_impute_method,
+                               double t_missing_cutoff,
+                               double t_max_maf_region,
+                               double t_max_mem_region)
+{
+  g_impute_method = t_impute_method;
+  g_missingRate_cutoff = t_missing_cutoff;
+  g_region_maxMAF_cutoff = t_max_maf_region;
+  g_region_maxMEMORY = t_max_mem_region;
 }
 
 // global varables for region-level analysis

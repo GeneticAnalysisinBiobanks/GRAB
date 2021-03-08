@@ -11,8 +11,6 @@ GRAB.Region(
   OutputFile = NULL,
   regionFile,
   regionAnnoHeader = NULL,
-  SparseGRM,
-  chrom,
   control = NULL
 )
 }
@@ -25,13 +23,11 @@ GRAB.Region(
 
 \item{OutputFile}{a character of output file to store the analysis results}
 
-\item{SparseGRM}{an object of class "SparseGRM", check help(getSparseGRM) for more details.}
+\item{regionFile}{a character of annotation file. Column 1: marker ID, Column 2: Region ID, Columns 3-n annotation similar as in STAAR}
 
-\item{chrom}{a character to specify chromosome of the markers in analysis. Must be specified unless LOCO = F when fitting the null model.}
+\item{regionAnnoHeader}{a character of annotation file. Column 1: marker ID, Column 2: Region ID, Columns 3-n annotation similar as in STAAR}
 
-\item{AnnoFile}{a character of annotation file. Column 1: marker ID, Column 2: Region ID, Columns 3-n annotation similar as in STAAR}
-
-\item{POLMM.control}{a list of parameters for controlling the POLMM.Marker(). The default is NULL, that is, to use the default parameters. Check 'Details' and 'Examples' for more details.}
+\item{control}{a character to specify chromosome of the markers in analysis. Must be specified unless LOCO = F when fitting the null model.}
 }
 \value{
 an R matrix with the following elements

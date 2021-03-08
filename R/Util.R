@@ -83,6 +83,16 @@ checkObjNull = function(objNull)
   return(NullModelClass)
 }
 
+checkOutputFile = function(OutputFile)
+{
+  if(missing(OutputFile))
+    stop("Argument of 'OutputFile' is required.")
+  
+  if(file.exists(OutputFile))
+    stop(paste0("'OutputFile' of '", OutputFile, "' has existed. Please use another 'OutputFile' or remove the existing one."))
+}
+
+
 checkControl = function(control = NULL)  
 {
   default.control = list(impute_method = "fixed",  # the below are shared parameters for both single marker testing and region-based testing

@@ -37,16 +37,10 @@ GRAB.Marker = function(objNull,
                        control = NULL)
 {
   NullModelClass = checkObjNull(objNull);  # this function is in 'Util.R'
-  
-  if(missing(OutputFile))
-    stop("Argument of 'OutputFile' is required.")
-  
-  if(file.exists(OutputFile))
-    stop(paste0("'OutputFile' of '", OutputFile, "' has existed. Please use another 'OutputFile' or remove the existing one."))
+  checkOutputFile(OutputFile)              # this function is in 'Util.R'
   
   # check the setting of control, if not specified, the default setting will be used
   control = checkControl.Marker(control, NullModelClass)
-  print(control)
   
   SampleIDs = as.character(objNull$SampleIDs);
   

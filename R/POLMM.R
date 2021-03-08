@@ -45,8 +45,19 @@ GRAB.POLMM = function(){
 # 2. setMarker.POLMM(objNull, control)
 # 3. mainMarker.POLMM()
 
-# check the control list in association testing
+# check the control list in marker-level testing
 checkControl.Marker.POLMM = function(control)
+{
+  default.control = list();
+  control = updateControl(control, default.control)  # This file is in 'Util.R'
+  
+  # check the parameter
+  
+  return(control)
+}
+
+# check the control list in region-level testing
+checkControl.Region.POLMM = function(control)
 {
   default.control = list();
   control = updateControl(control, default.control)  # This file is in 'Util.R'
