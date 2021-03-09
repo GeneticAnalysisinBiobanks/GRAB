@@ -169,7 +169,7 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
                            std::string t_genoType,     // "PLINK", "BGEN"
                            std::vector<uint32_t> t_genoIndex,
                            std::string t_outputFile,
-                           unsigned int t_n)             // sample size  
+                           unsigned int t_n)           // sample size  
 {
   int q = t_genoIndex.size();               // number of markers (before QC) in one region
   
@@ -277,7 +277,6 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       GMat.col(i) = GVec;
     }
     
-    
     // index vector for markers passing QC
     std::vector<unsigned int> indexQCVecInChunk;
     for(unsigned int i = 0; i < m3; i++)
@@ -297,95 +296,99 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     
     GVecBurden += arma::sum(GMat, 1);
     
-    // To be added later
-    // calculate pval0Burden and pval1Burden
-    // Unified_getRegionPVec(t_method, GVec, Beta, seBeta, pval, P1Vec, P2Vec);
-    
     // save information to hard-drive to avoid very high memory usage
     if((nchunks > 0) & (mPassQC != 0)){ 
       P1Mat.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin");
       P2Mat.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin");
     }
-    
-    // calculate variance-covariance matrix VarMat = P1Mat %*% P2Mat
-    unsigned int mPassQCTot = std::accumulate(mPassQCVec.begin(), mPassQCVec.end(), 0);
-    
-    arma::mat VarMat(mPassQCTot, mPassQCTot);    // variance-covariance matrix (after QC)
-    
-    // not so many markers in the region, so everything is in memory
-    if(nchunks == 0)
-      VarMat = P1Mat * P2Mat;
-    
-    // the region includes more markers than limitation, so put P1Mat and P2Mat in hard-drive
-    if(nchunks > 0)
-    {
-      int first_row = 0, first_col = 0, last_row = 0, last_col = 0;
-      
-      for(int index1 = 0; index1 < nchunks; index1++)
-      {
-        last_row = first_row + mPassQCVec.at(index1) - 1;
-        P1Mat.load(t_outputFile + "_P1Mat_Chunk_" + std::to_string(index1) + ".bin");
-        
-        // off-diagonal sub-matrix
-        for(int index2 = 0; index2 < index1; index2++)
-        {
-          std::cout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " << index2 << "/" << nchunks - 1 << ")........" << std::endl;
-          P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index2) + ".bin");
-          arma::mat offVarMat = P1Mat * P2Mat;
-          
-          last_col = first_col + mPassQCVec.at(index2) - 1;
-          
-          VarMat.submat(first_row, first_col, last_row, last_col) = offVarMat;
-          VarMat.submat(first_col, first_row, last_col, last_row) = offVarMat.t();
-          
-          first_col = last_col + 1;
-        }
-        
-        // diagonal sub-matrix
-        last_col = first_col + mPassQCVec.at(index1) - 1;
-        std::cout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " << index1 << "/" << nchunks - 1 << ")........" << std::endl;
-        P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index1) + ".bin");
-        arma::mat diagVarMat = P1Mat * P2Mat;
-        
-        VarMat.submat(first_row, first_col, last_row, last_col) = diagVarMat;
-        
-        first_row = last_row + 1;
-        first_col = 0;
-        Rcpp::checkUserInterrupt();
-      }
-    }
-    
-    // index vector for markers passing QC
-    std::vector<unsigned int> indexQCVec;
-    for(unsigned int i = 0; i < m3; i++)
-    {
-      if(passQCVec.at(i)) 
-        indexQCVec.push_back(i);
-    }
-    
-    // remove markers that did not pass QC
-    markerVec = markerVec.elem(indexQCVec);
-    infoVec = infoVec.elem(indexQCVec);
-    altFreqVec = altFreqVec.elem(indexQCVec);
-    missingRateVec = missingRateVec.elem(indexQCVec);
-    StatVec = StatVec.elem(indexQCVec);
-    BetaVec = BetaVec.elem(indexQCVec);
-    seBetaVec = seBetaVec.elem(indexQCVec);
-    pval0Vec = pval0Vec.elem(indexQCVec);
-    pval1Vec = pval1Vec.elem(indexQCVec);
-
-    Rcpp::List OutList = Rcpp::List::create(Rcpp::Named("VarMat") = VarMat,
-                                            Rcpp::Named("markerVec") = markerVec,
-                                            Rcpp::Named("infoVec") = infoVec,
-                                            Rcpp::Named("altFreqVec") = altFreqVec,
-                                            Rcpp::Named("missingRateVec") = missingRateVec,
-                                            Rcpp::Named("StatVec") = StatVec,
-                                            Rcpp::Named("BetaVec") = BetaVec,
-                                            Rcpp::Named("seBetaVec") = seBetaVec,
-                                            Rcpp::Named("pval0Vec") = pval0Vec,
-                                            Rcpp::Named("pval1Vec") = pval1Vec);
-    
   }
+  
+  // calculate variance-covariance matrix VarMat = P1Mat %*% P2Mat
+  unsigned int mPassQCTot = std::accumulate(mPassQCVec.begin(), mPassQCVec.end(), 0);
+  
+  arma::mat VarMat(mPassQCTot, mPassQCTot);    // variance-covariance matrix (after QC)
+  
+  // not so many markers in the region, so everything is in memory
+  if(nchunks == 0)
+    VarMat = P1Mat * P2Mat;
+  
+  // the region includes more markers than limitation, so put P1Mat and P2Mat in hard-drive
+  if(nchunks > 0)
+  {
+    int first_row = 0, first_col = 0, last_row = 0, last_col = 0;
+    
+    for(int index1 = 0; index1 < nchunks; index1++)
+    {
+      last_row = first_row + mPassQCVec.at(index1) - 1;
+      P1Mat.load(t_outputFile + "_P1Mat_Chunk_" + std::to_string(index1) + ".bin");
+      
+      // off-diagonal sub-matrix
+      for(int index2 = 0; index2 < index1; index2++)
+      {
+        std::cout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " << index2 << "/" << nchunks - 1 << ")........" << std::endl;
+        P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index2) + ".bin");
+        arma::mat offVarMat = P1Mat * P2Mat;
+        
+        last_col = first_col + mPassQCVec.at(index2) - 1;
+        
+        VarMat.submat(first_row, first_col, last_row, last_col) = offVarMat;
+        VarMat.submat(first_col, first_row, last_col, last_row) = offVarMat.t();
+        
+        first_col = last_col + 1;
+      }
+      
+      // diagonal sub-matrix
+      last_col = first_col + mPassQCVec.at(index1) - 1;
+      std::cout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " << index1 << "/" << nchunks - 1 << ")........" << std::endl;
+      P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index1) + ".bin");
+      arma::mat diagVarMat = P1Mat * P2Mat;
+      
+      VarMat.submat(first_row, first_col, last_row, last_col) = diagVarMat;
+      
+      first_row = last_row + 1;
+      first_col = 0;
+      Rcpp::checkUserInterrupt();
+    }
+  }
+  
+  // index vector for markers passing QC
+  std::vector<unsigned int> indexQCVec;
+  for(unsigned int i = 0; i < q; i++)
+  {
+    if(passQCVec.at(i)) 
+      indexQCVec.push_back(i);
+  }
+  
+  // remove markers that did not pass QC
+  markerVec = markerVec.elem(indexQCVec);
+  infoVec = infoVec.elem(indexQCVec);
+  altFreqVec = altFreqVec.elem(indexQCVec);
+  missingRateVec = missingRateVec.elem(indexQCVec);
+  StatVec = StatVec.elem(indexQCVec);
+  BetaVec = BetaVec.elem(indexQCVec);
+  seBetaVec = seBetaVec.elem(indexQCVec);
+  pval0Vec = pval0Vec.elem(indexQCVec);
+  pval1Vec = pval1Vec.elem(indexQCVec);
+  
+  // calculate p-values for the burden test
+  
+  // To be added later
+  // calculate pval0Burden and pval1Burden
+  // Unified_getRegionPVec(t_method, GVec, Beta, seBeta, pval, P1Vec, P2Vec);
+  
+  Rcpp::List OutList = Rcpp::List::create(Rcpp::Named("VarMat") = VarMat,
+                                          Rcpp::Named("markerVec") = markerVec,
+                                          Rcpp::Named("infoVec") = infoVec,
+                                          Rcpp::Named("altFreqVec") = altFreqVec,
+                                          Rcpp::Named("missingRateVec") = missingRateVec,
+                                          Rcpp::Named("StatVec") = StatVec,
+                                          Rcpp::Named("BetaVec") = BetaVec,
+                                          Rcpp::Named("seBetaVec") = seBetaVec,
+                                          Rcpp::Named("pval0Vec") = pval0Vec,
+                                          Rcpp::Named("pval1Vec") = pval1Vec,
+                                          Rcpp::Named("pval0Burden") = pval0Burden,
+                                          Rcpp::Named("pval1Burden") = pval1Burden);
+  
 }
 
 
