@@ -22,13 +22,15 @@ static BGEN::BgenClass* ptr_gBGENobj = NULL;
 static POLMM::POLMMClass* ptr_gPOLMMobj = NULL;
 static SPACox::SPACoxClass* ptr_gSPACoxobj = NULL;
 
-// global varables for marker-level analysis
+// global variables for analysis
 uint8_t g_indexForImpute;   // 0: "mean"; 1: "minor"; 2: "drop"
 double g_missingRate_cutoff;
 double g_marker_minMAF_cutoff;
 double g_marker_minMAC_cutoff;
 double g_region_maxMAF_cutoff;
 unsigned int g_region_maxMarkers_cutoff;   // maximal number of markers in one chunk, only used for region-based analysis
+
+// set up global variables for analysis
 
 void setMarker_GlobalVarsInCPP(std::string t_impute_method,
                                double t_missing_cutoff,
@@ -66,63 +68,6 @@ void setRegion_GlobalVarsInCPP(std::string t_impute_method,
   g_missingRate_cutoff = t_missing_cutoff;
   g_region_maxMAF_cutoff = t_max_maf_region;
   g_region_maxMarkers_cutoff = t_max_markers_region;
-}
-
-// a unified function to get single marker from genotype file
-arma::vec Unified_getOneMarker(std::string t_genoType,   // "PLINK", "BGEN"
-                               uint64_t t_gIndex,        // different meanings for different genoType
-                               std::string& t_ref,       // REF allele
-                               std::string& t_alt,       // ALT allele (should probably be minor allele, otherwise, computation time will increase)
-                               std::string& t_marker,    // marker ID extracted from genotype file
-                               uint32_t& t_pd,           // base position
-                               std::string& t_chr,       // chromosome
-                               double& t_altFreq,        // frequency of ALT allele
-                               double& t_altCounts,      // counts of ALT allele
-                               double& t_missingRate,    // missing rate
-                               double& t_imputeInfo,     // imputation information score, i.e., R2 (all 1 for PLINK)
-                               bool t_isOutputIndexForMissing,               // if true, output index of missing genotype data
-                               std::vector<uint32_t>& t_indexForMissing,     // index of missing genotype data
-                               bool t_isOnlyOutputNonZero,                   // is true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
-                               std::vector<uint32_t>& t_indexForNonZero)     // the index of non-zero genotype in the all subjects. Only valid if t_isOnlyOutputNonZero == true.
-{
-  arma::vec GVec;
-  if(t_genoType == "PLINK"){
-    GVec = ptr_gPLINKobj->getOneMarker(t_gIndex, t_ref, t_alt, t_marker, t_pd, t_chr, t_altFreq, t_altCounts, t_missingRate, t_imputeInfo, 
-                                       t_isOutputIndexForMissing, t_indexForMissing, t_isOnlyOutputNonZero, t_indexForNonZero,
-                                       true);   // t_isTrueGenotype, only used for PLINK format.
-  }
-  
-  if(t_genoType == "BGEN"){
-    bool isBoolRead;
-    GVec = ptr_gBGENobj->getOneMarker(t_gIndex, t_ref, t_alt, t_marker, t_pd, t_chr, t_altFreq, t_altCounts, t_missingRate, t_imputeInfo, 
-                                      t_isOutputIndexForMissing, t_indexForMissing, t_isOnlyOutputNonZero, t_indexForNonZero,
-                                      isBoolRead);
-  }
-  
-  return GVec;
-}
-
-// a unified function to get marker-level p-value
-void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
-                           arma::vec t_GVec,
-                           bool t_isOnlyOutputNonZero,
-                           std::vector<uint32_t> t_indexForNonZero,
-                           double& t_Beta, 
-                           double& t_seBeta, 
-                           double& t_pval, 
-                           double t_altFreq)
-{
-  if(t_method == "POLMM"){
-    if(t_isOnlyOutputNonZero == true)
-      Rcpp::stop("When using POLMM method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
-      
-    ptr_gPOLMMobj->getMarkerPval(t_GVec, t_Beta, t_seBeta, t_pval, t_altFreq);
-  }
-    
-  if(t_method == "SPACox"){
-    // ptr_gSPACoxobj->getMarkerPval(t_GVec, t_Beta, t_seBeta, t_pval, t_altFreq);
-  }
-  
 }
 
 //////// ---------- Main function for marker-level analysis --------- ////////////
@@ -217,6 +162,232 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   return OutList;  
 }
 
+//////// ---------- Main function for region-level analysis --------- ////////////
+
+// [[Rcpp::export]]
+Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
+                           std::string t_genoType,     // "PLINK", "BGEN"
+                           std::vector<uint32_t> t_genoIndex,
+                           std::string t_outputFile,
+                           unsigned int t_n)             // sample size  
+{
+  int q = t_genoIndex.size();               // number of markers (before QC) in one region
+  
+  // set up output
+  std::vector<std::string> markerVec(q);    // marker IDs
+  std::vector<std::string> infoVec(q);      // marker information: CHR:POS:REF:ALT
+  arma::vec altFreqVec(q);        // allele frequencies of ALT allele, this is not always < 0.5.
+  arma::vec missingRateVec(q);    // missing rate
+  arma::vec StatVec(q);           // score statistics
+  arma::vec BetaVec(q);           // beta value for ALT allele
+  arma::vec seBetaVec(q);         // seBeta value
+  arma::vec pval0Vec(q);          // p values from normal distribution approximation
+  arma::vec pval1Vec(q);          // p values from more accurate methods including SPA and ER
+  std::vector<bool> passQCVec(q, true);
+  
+  // example #1: (q = 999, m1 = 10) -> (nchunks = 100, m2 = 9)
+  // example #2: (q = 1000, m1 = 10) -> (nchunks = 100, m2 = 10)
+  // example #3: (q = 1001, m1 = 10) -> (nchunks = 101, m2 = 1)
+  unsigned int m1 = g_region_maxMarkers_cutoff;  // number of markers in all chunks expect for the last chunk
+  unsigned int nchunks = (q-1) / m1 + 1;         // number of chunks.  e.g. 42 / 3 = 14, 2 / 3 = 0.
+  unsigned int m2 = (q-1) % m1 + 1;              // number of markers in the last chunk. e.g. 42 % 3 = 0, 2 % 3 = 2.
+  unsigned int m3 = m1;                          // number of markers in the current chunk
+  
+  std::cout << "In region-based analysis, all " << q << "markers are splitted into ", nchunks << " chunks." << std::endl;
+  
+  // Suppose that 
+  // n is the sample size in analysis 
+  // m (<q) is the number of markers that pass the marker-level QC (e.g., g_missingRate_cutoff and g_region_maxMAF_cutoff)
+  // VarMat (m x m) is the variance matrix of these m markers
+  // VarMat = P1Mat %*% P2Mat, where P1Mat is of (m x n) and P2Mat is of (n x m)
+  
+  arma::vec GVecBurden(t_n, arma::fill::zeros);
+  
+  // cycle for multiple chunks
+  for(unsigned int ichunk = 0; ichunk < nchunks; ichunk++) 
+  {
+    std::cout << "Start analyzing chunk " << ichunk << "/" << nchunks-1 << "." << std::endl;
+    
+    if(ichunk == nchunks-1) m3 = m2;  // number of markers in the last chunk
+    arma::mat P1Mat(m3, t_n);
+    arma::mat P2Mat(t_n, m3);
+    arma::mat GMat(t_n, m3, arma::fill::zeros);
+    
+    std::vector<bool> passQCVecInChunk(m3, true);
+    std::vector<unsigned int> mPassQCVec;
+    
+    // cycle for markers in each chunk
+    for(unsigned int i = 0; i < m3; i++)
+    {
+      unsigned int i1 = i + m1 * ichunk;  // index in all markers
+      
+      // information of marker
+      double altFreq, altCounts, missingRate, imputeInfo;
+      std::vector<uint32_t> indexForMissing, indexForNonZero;
+      std::string chr, ref, alt, marker;
+      uint32_t pd;
+      bool flip = false;
+      
+      uint32_t gIndex = t_genoIndex.at(i1);
+      
+      arma::vec GVec = Unified_getOneMarker(t_genoType, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
+                                            true, // bool t_isOutputIndexForMissing,
+                                            indexForMissing,
+                                            false, // bool t_isOnlyOutputNonZero,
+                                            indexForNonZero);
+      
+      std::string info = chr+":"+std::to_string(pd)+":"+ref+":"+alt;
+      
+      if(missingRate != 0){
+        flip = imputeGenoAndFlip(GVec, altFreq, indexForMissing, g_indexForImpute);  // in UTIL.cpp
+      }
+      
+      // record basic information for the marker
+      markerVec.at(i1) = marker;             // marker IDs
+      infoVec.at(i1) = info;                 // marker information: CHR:POS:REF:ALT
+      altFreqVec.at(i1) = altFreq;           // allele frequencies of ALT allele, this is not always < 0.5.
+      missingRateVec.at(i1) = missingRate;
+      
+      // MAF for Quality Control (QC)
+      double MAF = std::min(altFreq, 1 - altFreq);
+      // double MAC = MAF * n * (1 - missingRate);
+      
+      // Quality Control (QC) based on missing rate, MAF, and MAC
+      if((missingRate > g_missingRate_cutoff) || (MAF > g_region_maxMAF_cutoff)){
+        passQCVec.at(i1) = false;
+        passQCVecInChunk.at(i) = false;
+        continue;
+      }
+      
+      // analysis results for single-marker
+      double Stat, Beta, seBeta, pval0, pval1;
+      arma::vec P1Vec(t_n), P2Vec(t_n);
+      
+      // The below function should be the most important one in region-based analysis
+      // Unified_getRegionPVec(t_method, GVec, Beta, seBeta, pval, P1Vec, P2Vec);
+      
+      // insert results to pre-setup vectors and matrix
+      StatVec.at(i1) = Stat;        
+      BetaVec.at(i1) = Beta * (1 - 2*flip);  // Beta if flip = false, -1*Beta is flip = true       
+      seBetaVec.at(i1) = seBeta;       
+      pval0Vec.at(i1) = pval0;
+      pval1Vec.at(i1) = pval1;
+      P1Mat.row(i) = P1Vec.t();
+      P2Mat.col(i) = P2Vec;
+      GMat.col(i) = GVec;
+    }
+    
+    
+    // index vector for markers passing QC
+    std::vector<unsigned int> indexQCVecInChunk;
+    for(unsigned int i = 0; i < m3; i++)
+    {
+      if(passQCVecInChunk.at(i)) 
+        indexQCVecInChunk.push_back(i);
+    }
+    
+    mPassQC = indexQCVecInChunk.size();
+    mPassQCVec.push_back(mPassQC);
+    
+    std::cout << "In chunk " << ichunk << ", totally " << mPassQC << " markers pass QC." << std::endl;
+    
+    P1Mat = P1Mat.rows(indexQCVecInChunk);
+    P2Mat = P2Mat.cols(indexQCVecInChunk);
+    GMat = GMat.cols(indexQCVecInChunk);
+    
+    GVecBurden += arma::sum(GMat, 1);
+    
+    // To be added later
+    // calculate pval0Burden and pval1Burden
+    // Unified_getRegionPVec(t_method, GVec, Beta, seBeta, pval, P1Vec, P2Vec);
+    
+    // save information to hard-drive to avoid very high memory usage
+    if((nchunks > 0) & (mPassQC != 0)){ 
+      P1Mat.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin");
+      P2Mat.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin");
+    }
+    
+    // calculate variance-covariance matrix VarMat = P1Mat %*% P2Mat
+    unsigned int mPassQCTot = std::accumulate(mPassQCVec.begin(), mPassQCVec.end(), 0);
+    
+    arma::mat VarMat(mPassQCTot, mPassQCTot);    // variance-covariance matrix (after QC)
+    
+    // not so many markers in the region, so everything is in memory
+    if(nchunks == 0)
+      VarMat = P1Mat * P2Mat;
+    
+    // the region includes more markers than limitation, so put P1Mat and P2Mat in hard-drive
+    if(nchunks > 0)
+    {
+      int first_row = 0, first_col = 0, last_row = 0, last_col = 0;
+      
+      for(int index1 = 0; index1 < nchunks; index1++)
+      {
+        last_row = first_row + mPassQCVec.at(index1) - 1;
+        P1Mat.load(t_outputFile + "_P1Mat_Chunk_" + std::to_string(index1) + ".bin");
+        
+        // off-diagonal sub-matrix
+        for(int index2 = 0; index2 < index1; index2++)
+        {
+          std::cout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " << index2 << "/" << nchunks - 1 << ")........" << std::endl;
+          P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index2) + ".bin");
+          arma::mat offVarMat = P1Mat * P2Mat;
+          
+          last_col = first_col + mPassQCVec.at(index2) - 1;
+          
+          VarMat.submat(first_row, first_col, last_row, last_col) = offVarMat;
+          VarMat.submat(first_col, first_row, last_col, last_row) = offVarMat.t();
+          
+          first_col = last_col + 1;
+        }
+        
+        // diagonal sub-matrix
+        last_col = first_col + mPassQCVec.at(index1) - 1;
+        std::cout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " << index1 << "/" << nchunks - 1 << ")........" << std::endl;
+        P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index1) + ".bin");
+        arma::mat diagVarMat = P1Mat * P2Mat;
+        
+        VarMat.submat(first_row, first_col, last_row, last_col) = diagVarMat;
+        
+        first_row = last_row + 1;
+        first_col = 0;
+        Rcpp::checkUserInterrupt();
+      }
+    }
+    
+    // index vector for markers passing QC
+    std::vector<unsigned int> indexQCVec;
+    for(unsigned int i = 0; i < m3; i++)
+    {
+      if(passQCVec.at(i)) 
+        indexQCVec.push_back(i);
+    }
+    
+    // remove markers that did not pass QC
+    markerVec = markerVec.elem(indexQCVec);
+    infoVec = infoVec.elem(indexQCVec);
+    altFreqVec = altFreqVec.elem(indexQCVec);
+    missingRateVec = missingRateVec.elem(indexQCVec);
+    StatVec = StatVec.elem(indexQCVec);
+    BetaVec = BetaVec.elem(indexQCVec);
+    seBetaVec = seBetaVec.elem(indexQCVec);
+    pval0Vec = pval0Vec.elem(indexQCVec);
+    pval1Vec = pval1Vec.elem(indexQCVec);
+
+    Rcpp::List OutList = Rcpp::List::create(Rcpp::Named("VarMat") = VarMat,
+                                            Rcpp::Named("markerVec") = markerVec,
+                                            Rcpp::Named("infoVec") = infoVec,
+                                            Rcpp::Named("altFreqVec") = altFreqVec,
+                                            Rcpp::Named("missingRateVec") = missingRateVec,
+                                            Rcpp::Named("StatVec") = StatVec,
+                                            Rcpp::Named("BetaVec") = BetaVec,
+                                            Rcpp::Named("seBetaVec") = seBetaVec,
+                                            Rcpp::Named("pval0Vec") = pval0Vec,
+                                            Rcpp::Named("pval1Vec") = pval1Vec);
+    
+  }
+}
+
 
 //////// ---------- Main function for genotype extraction --------- ////////////
 
@@ -256,6 +427,84 @@ arma::mat getGenoInCPP(std::string t_genoType,
   
   return GMat;
 }
+
+// a unified function to get single marker from genotype file
+arma::vec Unified_getOneMarker(std::string t_genoType,   // "PLINK", "BGEN"
+                               uint64_t t_gIndex,        // different meanings for different genoType
+                               std::string& t_ref,       // REF allele
+                               std::string& t_alt,       // ALT allele (should probably be minor allele, otherwise, computation time will increase)
+                               std::string& t_marker,    // marker ID extracted from genotype file
+                               uint32_t& t_pd,           // base position
+                               std::string& t_chr,       // chromosome
+                               double& t_altFreq,        // frequency of ALT allele
+                               double& t_altCounts,      // counts of ALT allele
+                               double& t_missingRate,    // missing rate
+                               double& t_imputeInfo,     // imputation information score, i.e., R2 (all 1 for PLINK)
+                               bool t_isOutputIndexForMissing,               // if true, output index of missing genotype data
+                               std::vector<uint32_t>& t_indexForMissing,     // index of missing genotype data
+                               bool t_isOnlyOutputNonZero,                   // is true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
+                               std::vector<uint32_t>& t_indexForNonZero)     // the index of non-zero genotype in the all subjects. Only valid if t_isOnlyOutputNonZero == true.
+{
+  arma::vec GVec;
+  if(t_genoType == "PLINK"){
+    GVec = ptr_gPLINKobj->getOneMarker(t_gIndex, t_ref, t_alt, t_marker, t_pd, t_chr, t_altFreq, t_altCounts, t_missingRate, t_imputeInfo, 
+                                       t_isOutputIndexForMissing, t_indexForMissing, t_isOnlyOutputNonZero, t_indexForNonZero,
+                                       true);   // t_isTrueGenotype, only used for PLINK format.
+  }
+  
+  if(t_genoType == "BGEN"){
+    bool isBoolRead;
+    GVec = ptr_gBGENobj->getOneMarker(t_gIndex, t_ref, t_alt, t_marker, t_pd, t_chr, t_altFreq, t_altCounts, t_missingRate, t_imputeInfo, 
+                                      t_isOutputIndexForMissing, t_indexForMissing, t_isOnlyOutputNonZero, t_indexForNonZero,
+                                      isBoolRead);
+  }
+  
+  return GVec;
+}
+
+// a unified function to get marker-level p-value
+void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
+                           arma::vec t_GVec,
+                           bool t_isOnlyOutputNonZero,
+                           std::vector<uint32_t> t_indexForNonZero,
+                           double& t_Beta, 
+                           double& t_seBeta, 
+                           double& t_pval, 
+                           double t_altFreq)
+{
+  if(t_method == "POLMM"){
+    if(t_isOnlyOutputNonZero == true)
+      Rcpp::stop("When using POLMM method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+    
+    ptr_gPOLMMobj->getMarkerPval(t_GVec, t_Beta, t_seBeta, t_pval, t_altFreq);
+  }
+  
+  if(t_method == "SPACox"){
+    // ptr_gSPACoxobj->getMarkerPval(t_GVec, t_Beta, t_seBeta, t_pval, t_altFreq);
+  }
+  
+}
+
+// a unified function to get marker-level information for region-level analysis
+
+Unified_getRegionPVec(std::string t_method, 
+                      arma::vec t_GVec, 
+                      bool t_isOnlyOutputNonZero,
+                      std::vector<uint32_t> t_indexForNonZero,
+                      double& t_Beta, 
+                      double& t_seBeta, 
+                      double& t_pval0, 
+                      double& t_pval1,
+                      arma::vec& P1Vec, 
+                      arma::vec& P2Vec)
+{
+  // something to add
+  if(t_method == "POLMM")
+  {
+    ptr_gPOLMMobj->getRegionPVec(t_GVec, t_Beta, t_seBeta, t_pval0, t_pval1, P1Vec, P2Vec);
+  }
+}
+
 
 //////// ---------- Main functions to set objects for different genotype format --------- ////////////
 
@@ -344,205 +593,7 @@ void setSPACoxobjInCPP(arma::mat t_cumul,
                                            t_SPA_Cutoff);
 }
 
-//////// ---------- Main function for region-level analysis --------- ////////////
 
-// [[Rcpp::export]]
-Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
-                           std::string t_genoType,     // "PLINK", "BGEN"
-                           std::vector<uint32_t> t_genoIndex,
-                           std::string t_outputFile,
-                           unsigned int t_n)             // sample size  
-{
-  int q = t_genoIndex.size();               // number of markers (before QC) in one region
-  
-  // set up output
-  std::vector<std::string> markerVec(q);    // marker IDs
-  std::vector<std::string> infoVec(q);      // marker information: CHR:POS:REF:ALT
-  std::vector<double> altFreqVec(q);        // allele frequencies of ALT allele, this is not always < 0.5.
-  std::vector<double> missingRateVec(q);    // missing rate
-  std::vector<double> BetaVec(q);           // beta value for ALT allele
-  std::vector<double> seBetaVec(q);         // seBeta value
-  std::vector<double> pvalVec(q);           // p values
-  
-  // example #1: (q = 999, m1 = 10) -> (nchunks = 100, m2 = 9)
-  // example #2: (q = 1000, m1 = 10) -> (nchunks = 100, m2 = 10)
-  // example #3: (q = 1001, m1 = 10) -> (nchunks = 101, m2 = 1)
-  unsigned int m1 = g_region_maxMarkers_cutoff;  // number of markers in all chunks expect for the last chunk
-  unsigned int nchunks = (q-1) / m1 + 1;         // number of chunks.  e.g. 42 / 3 = 14, 2 / 3 = 0.
-  unsigned int m2 = (q-1) % m1 + 1;              // number of markers in the last chunk. e.g. 42 % 3 = 0, 2 % 3 = 2.
-  unsigned int m3 = m1;                          // number of markers in the current chunk
-  
-  std::cout << "In region-based analysis, all " << q << "markers are splitted into ", nchunks << " chunks." << std::endl;
-  
-  // Suppose that 
-  // n is the sample size in analysis 
-  // m (<q) is the number of markers that pass the marker-level QC (e.g., g_missingRate_cutoff and g_region_maxMAF_cutoff)
-  // VarMat (m x m) is the variance matrix of these m markers
-  // VarMat = P1Mat %*% P2Mat, where P1Mat is of (m x n) and P2Mat is of (n x m)
-  
-  // cycle for multiple chunks
-  for(unsigned int ichunk = 0; ichunk < nchunks; ichunk++) 
-  {
-    std::cout << "Start analyzing chunk " << ichunk << "/" << nchunks-1 << "." << std::endl;
-    
-    if(ichunk == nchunks-1) m3 = m2;  // number of markers in the last chunk
-    arma::mat P1Mat(m3, t_n);
-    arma::mat P2Mat(t_n, m3);
-    
-    std::vector<bool> passQCVecInChunk(m3, true);
-    std::vector<unsigned int> mPassQCVec;
-    
-    // cycle for markers in each chunk
-    for(unsigned int i = 0; i < m3; i++)
-    {
-      unsigned int i1 = i + m1 * ichunk;  // index in all markers
-      
-      // information of marker
-      double altFreq, altCounts, missingRate, imputeInfo;
-      std::vector<uint32_t> indexForMissing, indexForNonZero;
-      std::string chr, ref, alt, marker;
-      uint32_t pd;
-      bool flip = false;
-      
-      uint32_t gIndex = t_genoIndex.at(i1);
-      
-      arma::vec GVec = Unified_getOneMarker(t_genoType, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
-                                            true, // bool t_isOutputIndexForMissing,
-                                            indexForMissing,
-                                            false, // bool t_isOnlyOutputNonZero,
-                                            indexForNonZero);
-      
-      std::string info = chr+":"+std::to_string(pd)+":"+ref+":"+alt;
-      
-      if(missingRate != 0){
-        flip = imputeGenoAndFlip(GVec, altFreq, indexForMissing, g_indexForImpute);  // in UTIL.cpp
-      }
-      
-      // record basic information for the marker
-      markerVec.at(i1) = marker;             // marker IDs
-      infoVec.at(i1) = info;                 // marker information: CHR:POS:REF:ALT
-      altFreqVec.at(i1) = altFreq;           // allele frequencies of ALT allele, this is not always < 0.5.
-      missingRateVec.at(i1) = missingRate;
-      
-      // MAF for Quality Control (QC)
-      double MAF = std::min(altFreq, 1 - altFreq);
-      // double MAC = MAF * n * (1 - missingRate);
-      
-      // Quality Control (QC) based on missing rate, MAF, and MAC
-      if((missingRate > g_missingRate_cutoff) || (MAF > g_region_maxMAF_cutoff)){
-        BetaVec.at(i1) = arma::datum::nan;         
-        seBetaVec.at(i1) = arma::datum::nan;       
-        pvalVec.at(i1) = arma::datum::nan;
-        passQCVecInChunk.at(i) = false;
-        continue;
-      }
-      
-      // analysis results for single-marker
-      double Beta, seBeta, pval;
-      arma::vec P1Vec(t_n), P2Vec(t_n);
-      
-      // The below function should be the most important one in region-based analysis
-      // Unified_getRegionPVec(t_method, GVec, Beta, seBeta, pval, P1Vec, P2Vec);
-      
-      // insert results to pre-setup vectors and matrix
-      BetaVec.at(i1) = Beta * (1 - 2*flip);  // Beta if flip = false, -1*Beta is flip = true       
-      seBetaVec.at(i1) = seBeta;       
-      pvalVec.at(i1) = pval;
-      P1Mat.row(i) = P1Vec.t();
-      P2Mat.col(i) = P2Vec;
-    
-    }
-      
-    // index vector for markers passing QC
-    std::vector<unsigned int> indexQCVecInChunk;
-    for(unsigned int i = 0; i < m3; i++)
-    {
-      if(passQCVecInChunk.at(i)) 
-        indexQCVecInChunk.push_back(i);
-    }
-    
-    mPassQC = indexQCVecInChunk.size();
-    mPassQCVec.push_back(mPassQC);
-    
-    std::cout << "In chunk " << ichunk << ", totally " << mPassQC << " markers pass QC." << std::endl;
-    
-    P1Mat = P1Mat.rows(indexQCVecInChunk);
-    P2Mat = P2Mat.cols(indexQCVecInChunk);
-    
-    // save information to hard-drive to avoid very high memory usage
-    if((nchunks > 0) & (mPassQC != 0)){ 
-      P1Mat.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin");
-      P2Mat.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin");
-    }
-      
-    // calculate variance-covariance matrix VarMat = P1Mat %*% P2Mat
-    unsigned int mPassQCTot = std::accumulate(mPassQCVec.begin(), mPassQCVec.end(), 0);
-    
-    arma::mat VarMat(mPassQCTot, mPassQCTot);    // variance-covariance matrix (after QC)
-    
-    // not so many markers in the region, so everything is in memory
-    if(nchunks == 0)
-      VarMat = P1Mat * P2Mat;
-    
-    // the region includes more markers than limitation, so put P1Mat and P2Mat in hard-drive
-    if(nchunks > 0)
-    {
-      int first_row = 0, first_col = 0, last_row = 0, last_col = 0;
-      
-      for(int index1 = 0; index1 < nchunks; index1++)
-      {
-        last_row = first_row + mPassQCVec.at(index1) - 1;
-        P1Mat.load(t_outputFile + "_P1Mat_Chunk_" + std::to_string(index1) + ".bin");
-        
-        // off-diagonal sub-matrix
-        for(int index2 = 0; index2 < index1; index2++)
-        {
-          std::cout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " << index2 << "/" << nchunks - 1 << ")........" << std::endl;
-          P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index2) + ".bin");
-          arma::mat offVarMat = P1Mat * P2Mat;
-          
-          last_col = first_col + mPassQCVec.at(index2) - 1;
-          
-          VarMat.submat(first_row, first_col, last_row, last_col) = offVarMat;
-          VarMat.submat(first_col, first_row, last_col, last_row) = offVarMat.t();
-          
-          first_col = last_col + 1;
-        }
-        
-        // diagonal sub-matrix
-        last_col = first_col + mPassQCVec.at(index1) - 1;
-        std::cout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " << index1 << "/" << nchunks - 1 << ")........" << std::endl;
-        P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index1) + ".bin");
-        arma::mat diagVarMat = P1Mat * P2Mat;
-        
-        VarMat.submat(first_row, first_col, last_row, last_col) = diagVarMat;
-        
-        first_row = last_row + 1;
-        first_col = 0;
-        Rcpp::checkUserInterrupt();
-      }
-    }
-    
-    // record basic information for the marker
-    markerVec.at(i1) = marker;             // marker IDs
-    infoVec.at(i1) = info;                 // marker information: CHR:POS:REF:ALT
-    altFreqVec.at(i1) = altFreq;           // allele frequencies of ALT allele, this is not always < 0.5.
-    missingRateVec.at(i1) = missingRate;
-    BetaVec.at(i1) = Beta * (1 - 2*flip);  // Beta if flip = false, -1*Beta is flip = true       
-    seBetaVec.at(i1) = seBeta;       
-    pvalVec.at(i1) = pval;
-    
-    Rcpp::List OutList = Rcpp::List::create(Rcpp::Named("VarMat") = VarMat,
-                                            Rcpp::Named("markerVec") = markerVec,
-                                            Rcpp::Named("infoVec") = infoVec,
-                                            Rcpp::Named("altFreqVec") = altFreqVec,
-                                            Rcpp::Named("missingRateVec") = missingRateVec,
-                                            Rcpp::Named("BetaVec") = BetaVec,
-                                            Rcpp::Named("seBetaVec") = seBetaVec,
-                                            Rcpp::Named("pvalVec") = pvalVec);
-    
-  }
-}
 
 
 
