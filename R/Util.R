@@ -83,13 +83,27 @@ checkObjNull = function(objNull)
   return(NullModelClass)
 }
 
-checkOutputFile = function(OutputFile)
+
+checkOutputFile = function(OutputFile, OutputFileIndex)
 {
   if(missing(OutputFile))
     stop("Argument of 'OutputFile' is required.")
   
-  if(file.exists(OutputFile))
-    stop(paste0("'OutputFile' of '", OutputFile, "' has existed. Please use another 'OutputFile' or remove the existing one."))
+  if(file.exists(OutputFile)){
+    if(!file.exists(OutputFileIndex)){
+      stop(paste0("'OutputFile' of '", OutputFile, "' has existed. Please use another 'OutputFile' or remove the existing one."))
+    }
+    else{
+      outIndexData = read.table(OutputFileIndex)
+      if(outIndexData[1,1] != "GRAB.outIndex" | outIndexData[2,1] != "Please do not modify this file.")
+        stop("'OutputFileIndex' is not expected. Please use another 'OutputFileIndex' or remove the existing one.")
+      outIndex = as.numeric(outIndexData[nrow(outIndexData),1])
+    }
+  }else{
+    outIndex = 1;
+  }
+  
+  return(outIndex)
 }
 
 

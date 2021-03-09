@@ -33,11 +33,14 @@
 GRAB.Marker = function(objNull,
                        GenoFile,
                        GenoFileIndex = NULL,
-                       OutputFile, 
+                       OutputFile,
+                       OutputFileIndex = NULL,   ## check it later: record the end point, avoid letting the program starts from the very beginning
                        control = NULL)
 {
-  NullModelClass = checkObjNull(objNull);  # this function is in 'Util.R'
-  checkOutputFile(OutputFile)              # this function is in 'Util.R'
+  NullModelClass = checkObjNull(objNull);         # this function is in 'Util.R'
+  
+  if(is.null(OutputFileIndex)) OutputFileIndex = paste0(OutputFile, ".index")
+  outIndex = checkOutputFile(OutputFile, OutputFileIndex)    # this function is in 'Util.R'
   
   # check the setting of control, if not specified, the default setting will be used
   control = checkControl.Marker(control, NullModelClass)
@@ -67,7 +70,7 @@ GRAB.Marker = function(objNull,
   # set up objects that do not change for different variants
   setMarker(NullModelClass, objNull, control)
   
-  for(i in 1:nChunks)
+  for(i in outIndex:nChunks)
   {
     print(paste0("(",Sys.time(),") ---- Analyzing Chunk ", i, "/", nChunks, " ---- "))
     genoIndex = genoIndexList[[i]]
@@ -78,8 +81,12 @@ GRAB.Marker = function(objNull,
     # write summary statistics to output file
     if(i == 1){
       data.table::fwrite(resMarker, OutputFile, quote = F, sep = "\t", append = F, col.names = T)
+      write.table(matrix(c("GRAB.outIndex", "Please do not modify this file.", 1), ncol = 1), 
+                  OutputFileIndex, col.names = F, row.names = F, quote = F, append = F)
     }else{
       data.table::fwrite(resMarker, OutputFile, quote = F, sep = "\t", append = T, col.names = F)
+      write.table(matrix(i, ncol = 1), 
+                  OutputFileIndex, col.names = F, row.names = F, quote = F, append = T)
     }
   }
   

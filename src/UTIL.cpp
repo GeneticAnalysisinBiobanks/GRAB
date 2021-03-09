@@ -27,7 +27,7 @@ double getWeights(std::string t_kernel,
 bool imputeGenoAndFlip(arma::vec& t_GVec, 
                        double t_altFreq, 
                        std::vector<uint32_t> t_indexForMissing,
-                       uint8_t t_indexForImpute)   // 0: "mean"; 1: "minor"
+                       uint8_t t_indexForImpute)   // 0: "mean"; 1: "minor"; 2: "drop" (to be continued)
 {
   int nMissing = t_indexForMissing.size();
   
