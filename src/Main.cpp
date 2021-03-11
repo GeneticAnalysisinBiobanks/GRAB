@@ -176,13 +176,13 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   // set up output
   std::vector<std::string> markerVec(q);    // marker IDs
   std::vector<std::string> infoVec(q);      // marker information: CHR:POS:REF:ALT
-  arma::vec altFreqVec(q);        // allele frequencies of ALT allele, this is not always < 0.5.
-  arma::vec missingRateVec(q);    // missing rate
-  arma::vec StatVec(q);           // score statistics
-  arma::vec BetaVec(q);           // beta value for ALT allele
-  arma::vec seBetaVec(q);         // seBeta value
-  arma::vec pval0Vec(q);          // p values from normal distribution approximation
-  arma::vec pval1Vec(q);          // p values from more accurate methods including SPA and ER
+  arma::vec altFreqVec(q);                  // allele frequencies of ALT allele, this is not always < 0.5.
+  arma::vec missingRateVec(q);              // missing rate
+  arma::vec StatVec(q);                     // score statistics
+  arma::vec BetaVec(q);                     // beta value for ALT allele
+  arma::vec seBetaVec(q);                   // seBeta value
+  arma::vec pval0Vec(q);                    // p values from normal distribution approximation
+  arma::vec pval1Vec(q);                    // p values from more accurate methods including SPA and ER
   std::vector<bool> passQCVec(q, true);
   
   // example #1: (q = 999, m1 = 10) -> (nchunks = 100, m2 = 9)
