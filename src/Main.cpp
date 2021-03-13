@@ -82,15 +82,14 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   // set up output
   std::vector<std::string> markerVec(q);  // marker IDs
   std::vector<std::string> infoVec(q);    // marker information: CHR:POS:REF:ALT
-  std::vector<double> altFreqVec(q);         // allele frequencies of ALT allele, this is not always < 0.5.
-  std::vector<double> missingRateVec(q);         // allele frequencies of ALT allele, this is not always < 0.5.
+  std::vector<double> altFreqVec(q);      // allele frequencies of ALT allele, this is not always < 0.5.
+  std::vector<double> missingRateVec(q);  // allele frequencies of ALT allele, this is not always < 0.5.
   std::vector<double> BetaVec(q);         // beta value for ALT allele
   std::vector<double> seBetaVec(q);       
   std::vector<double> pvalVec(q);
   
   
   // loop for all markers
-  int indexPassingQC = 0;
   for(int i = 0; i < q; i++){
     
     if(i % 1000 == 0){
@@ -193,7 +192,7 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   unsigned int m2 = (q-1) % m1 + 1;              // number of markers in the last chunk. e.g. 42 % 3 = 0, 2 % 3 = 2.
   unsigned int m3 = m1;                          // number of markers in the current chunk
   
-  std::cout << "In region-based analysis, all " << q << "markers are splitted into ", nchunks << " chunks." << std::endl;
+  std::cout << "In region-based analysis, all " << q << "markers are splitted into " << nchunks << " chunks." << std::endl;
   
   // Suppose that 
   // n is the sample size in analysis 
@@ -201,6 +200,7 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   // VarMat (m x m) is the variance matrix of these m markers
   // VarMat = P1Mat %*% P2Mat, where P1Mat is of (m x n) and P2Mat is of (n x m)
   
+  std::vector<unsigned int> mPassQCVec;   
   arma::vec GVecBurden(t_n, arma::fill::zeros);
   
   // cycle for multiple chunks
@@ -214,7 +214,6 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     arma::mat GMat(t_n, m3, arma::fill::zeros);
     
     std::vector<bool> passQCVecInChunk(m3, true);
-    std::vector<unsigned int> mPassQCVec;
     
     // cycle for markers in each chunk
     for(unsigned int i = 0; i < m3; i++)
@@ -278,17 +277,21 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     }
     
     // index vector for markers passing QC
-    std::vector<unsigned int> indexQCVecInChunk;
+    arma::vec indexQCVecInChunk(m3);
+    unsigned int mPassQCInChunk = 0;
     for(unsigned int i = 0; i < m3; i++)
     {
-      if(passQCVecInChunk.at(i)) 
-        indexQCVecInChunk.push_back(i);
+      if(passQCVecInChunk.at(i)){
+        indexQCVecInChunk.at(mPassQCInChunk) = i;
+        mPassQCInChunk ++;
+      }
     }
     
-    mPassQC = indexQCVecInChunk.size();
-    mPassQCVec.push_back(mPassQC);
+    indexQCVecInChunk.resize(mPassQCInChunk);
     
-    std::cout << "In chunk " << ichunk << ", totally " << mPassQC << " markers pass QC." << std::endl;
+    mPassQCVec.push_back(mPassQCInChunk);
+    
+    std::cout << "In chunk " << ichunk << ", totally " << mPassQCInChunk << " markers pass QC." << std::endl;
     
     P1Mat = P1Mat.rows(indexQCVecInChunk);
     P2Mat = P2Mat.cols(indexQCVecInChunk);
@@ -297,7 +300,7 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     GVecBurden += arma::sum(GMat, 1);
     
     // save information to hard-drive to avoid very high memory usage
-    if((nchunks > 0) & (mPassQC != 0)){ 
+    if((nchunks > 0) & (mPassQCInChunk != 0)){ 
       P1Mat.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin");
       P2Mat.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin");
     }
@@ -352,11 +355,14 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   }
   
   // index vector for markers passing QC
-  std::vector<unsigned int> indexQCVec;
+  arma::uvec indexQCVec(mPassQCTot);
+  unsigned int iPassQC = 0;
   for(unsigned int i = 0; i < q; i++)
   {
-    if(passQCVec.at(i)) 
-      indexQCVec.push_back(i);
+    if(passQCVec.at(i)){
+      indexQCVec.at(iPassQC) = i;
+      iPassQC ++;
+    } 
   }
   
   // remove markers that did not pass QC
@@ -373,7 +379,7 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   // calculate p-values for the burden test
   
   // To be added later
-  // calculate pval0Burden and pval1Burden
+  double pval0Burden, pval1Burden;
   // Unified_getRegionPVec(t_method, GVec, Beta, seBeta, pval, P1Vec, P2Vec);
   
   Rcpp::List OutList = Rcpp::List::create(Rcpp::Named("VarMat") = VarMat,

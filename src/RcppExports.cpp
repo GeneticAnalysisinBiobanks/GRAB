@@ -19,6 +19,21 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// mainRegionInCPP
+Rcpp::List mainRegionInCPP(std::string t_method, std::string t_genoType, std::vector<uint32_t> t_genoIndex, std::string t_outputFile, unsigned int t_n);
+RcppExport SEXP _GRAB_mainRegionInCPP(SEXP t_methodSEXP, SEXP t_genoTypeSEXP, SEXP t_genoIndexSEXP, SEXP t_outputFileSEXP, SEXP t_nSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type t_method(t_methodSEXP);
+    Rcpp::traits::input_parameter< std::string >::type t_genoType(t_genoTypeSEXP);
+    Rcpp::traits::input_parameter< std::vector<uint32_t> >::type t_genoIndex(t_genoIndexSEXP);
+    Rcpp::traits::input_parameter< std::string >::type t_outputFile(t_outputFileSEXP);
+    Rcpp::traits::input_parameter< unsigned int >::type t_n(t_nSEXP);
+    rcpp_result_gen = Rcpp::wrap(mainRegionInCPP(t_method, t_genoType, t_genoIndex, t_outputFile, t_n));
+    return rcpp_result_gen;
+END_RCPP
+}
 // getGenoInCPP
 arma::mat getGenoInCPP(std::string t_genoType, Rcpp::DataFrame t_markerInfo, int n);
 RcppExport SEXP _GRAB_getGenoInCPP(SEXP t_genoTypeSEXP, SEXP t_markerInfoSEXP, SEXP nSEXP) {
@@ -96,25 +111,6 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
-// MAIN_REGION
-Rcpp::List MAIN_REGION(std::vector<std::string> t_MarkerReqstd, double t_NonZero_cutoff, double t_StdStat_cutoff, int t_maxMarkers, std::string t_outputFile, double t_missingRate_cutoff, double t_maxMAF_cutoff, std::string t_kernel, arma::vec t_wBeta);
-RcppExport SEXP _GRAB_MAIN_REGION(SEXP t_MarkerReqstdSEXP, SEXP t_NonZero_cutoffSEXP, SEXP t_StdStat_cutoffSEXP, SEXP t_maxMarkersSEXP, SEXP t_outputFileSEXP, SEXP t_missingRate_cutoffSEXP, SEXP t_maxMAF_cutoffSEXP, SEXP t_kernelSEXP, SEXP t_wBetaSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< std::vector<std::string> >::type t_MarkerReqstd(t_MarkerReqstdSEXP);
-    Rcpp::traits::input_parameter< double >::type t_NonZero_cutoff(t_NonZero_cutoffSEXP);
-    Rcpp::traits::input_parameter< double >::type t_StdStat_cutoff(t_StdStat_cutoffSEXP);
-    Rcpp::traits::input_parameter< int >::type t_maxMarkers(t_maxMarkersSEXP);
-    Rcpp::traits::input_parameter< std::string >::type t_outputFile(t_outputFileSEXP);
-    Rcpp::traits::input_parameter< double >::type t_missingRate_cutoff(t_missingRate_cutoffSEXP);
-    Rcpp::traits::input_parameter< double >::type t_maxMAF_cutoff(t_maxMAF_cutoffSEXP);
-    Rcpp::traits::input_parameter< std::string >::type t_kernel(t_kernelSEXP);
-    Rcpp::traits::input_parameter< arma::vec >::type t_wBeta(t_wBetaSEXP);
-    rcpp_result_gen = Rcpp::wrap(MAIN_REGION(t_MarkerReqstd, t_NonZero_cutoff, t_StdStat_cutoff, t_maxMarkers, t_outputFile, t_missingRate_cutoff, t_maxMAF_cutoff, t_kernel, t_wBeta));
-    return rcpp_result_gen;
-END_RCPP
-}
 // squares
 Rcpp::NumericVector squares(Rcpp::NumericVector data);
 RcppExport SEXP _GRAB_squares(SEXP dataSEXP) {
@@ -129,12 +125,12 @@ END_RCPP
 
 static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_mainMarkerInCPP", (DL_FUNC) &_GRAB_mainMarkerInCPP, 3},
+    {"_GRAB_mainRegionInCPP", (DL_FUNC) &_GRAB_mainRegionInCPP, 5},
     {"_GRAB_getGenoInCPP", (DL_FUNC) &_GRAB_getGenoInCPP, 3},
     {"_GRAB_setPLINKobjInCPP", (DL_FUNC) &_GRAB_setPLINKobjInCPP, 4},
     {"_GRAB_setBGENobjInCPP", (DL_FUNC) &_GRAB_setBGENobjInCPP, 6},
     {"_GRAB_setPOLMMobjInCPP", (DL_FUNC) &_GRAB_setPOLMMobjInCPP, 11},
     {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},
-    {"_GRAB_MAIN_REGION", (DL_FUNC) &_GRAB_MAIN_REGION, 9},
     {"_GRAB_squares", (DL_FUNC) &_GRAB_squares, 1},
     {NULL, NULL, 0}
 };

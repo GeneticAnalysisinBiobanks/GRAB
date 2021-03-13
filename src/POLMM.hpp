@@ -65,6 +65,14 @@ public:
                      double& t_pval, 
                      double t_altFreq);
   
+  getRegionPVec(arma::vec t_GVec, 
+                double& t_Beta, 
+                double& t_seBeta, 
+                double& t_pval0, 
+                double& t_pval1,
+                arma::vec& P1Vec, 
+                arma::vec& P2Vec);
+  
   double m_varRatio, m_StdStat_cutoff;
   
   arma::vec getadjGFast(arma::vec t_GVec);

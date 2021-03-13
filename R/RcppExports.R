@@ -5,6 +5,10 @@ mainMarkerInCPP <- function(t_method, t_genoType, t_genoIndex) {
     .Call(`_GRAB_mainMarkerInCPP`, t_method, t_genoType, t_genoIndex)
 }
 
+mainRegionInCPP <- function(t_method, t_genoType, t_genoIndex, t_outputFile, t_n) {
+    .Call(`_GRAB_mainRegionInCPP`, t_method, t_genoType, t_genoIndex, t_outputFile, t_n)
+}
+
 getGenoInCPP <- function(t_genoType, t_markerInfo, n) {
     .Call(`_GRAB_getGenoInCPP`, t_genoType, t_markerInfo, n)
 }
@@ -23,10 +27,6 @@ setPOLMMobjInCPP <- function(t_muMat, t_iRMat, t_Cova, t_yVec, t_SPmatR, t_tau, 
 
 setSPACoxobjInCPP <- function(t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_covaAdj_Cutoff, t_SPA_Cutoff) {
     invisible(.Call(`_GRAB_setSPACoxobjInCPP`, t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_covaAdj_Cutoff, t_SPA_Cutoff))
-}
-
-MAIN_REGION <- function(t_MarkerReqstd, t_NonZero_cutoff, t_StdStat_cutoff, t_maxMarkers, t_outputFile, t_missingRate_cutoff, t_maxMAF_cutoff, t_kernel, t_wBeta) {
-    .Call(`_GRAB_MAIN_REGION`, t_MarkerReqstd, t_NonZero_cutoff, t_StdStat_cutoff, t_maxMarkers, t_outputFile, t_missingRate_cutoff, t_maxMAF_cutoff, t_kernel, t_wBeta)
 }
 
 squares <- function(data) {
