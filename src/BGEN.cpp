@@ -1,4 +1,9 @@
+
+// [[Rcpp::depends(RcppArmadillo)]]
+#include <RcppArmadillo.h>
+
 // [[Rcpp::depends(BH)]]
+
 #include <cstring>
 #include <cstdio>
 #include <vector>
@@ -11,17 +16,15 @@
 #include <numeric>
 #include <utility>
 #include <stdexcept>
-#include <memory>
+// #include <memory>
 #include <time.h>
 #include <stdint.h>
 #include <zlib.h>
 
 // #include <boost/iostreams/filter/zstd.hpp>
 // #include "zstd.h"
-#include <boost/date_time.hpp>
+// #include <boost/date_time.hpp>
 
-// [[Rcpp::depends(RcppArmadillo)]]
-#include <RcppArmadillo.h>
 // #include <Rcpp.h>
 
 #include "BGEN.hpp"

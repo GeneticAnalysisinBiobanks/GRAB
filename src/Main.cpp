@@ -170,18 +170,18 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
                            std::string t_outputFile,
                            unsigned int t_n)           // sample size  
 {
-  int q = t_genoIndex.size();               // number of markers (before QC) in one region
+  unsigned int q = t_genoIndex.size();               // number of markers (before QC) in one region
   
   // set up output
   std::vector<std::string> markerVec(q);    // marker IDs
   std::vector<std::string> infoVec(q);      // marker information: CHR:POS:REF:ALT
-  arma::vec altFreqVec(q);                  // allele frequencies of ALT allele, this is not always < 0.5.
-  arma::vec missingRateVec(q);              // missing rate
-  arma::vec StatVec(q);                     // score statistics
-  arma::vec BetaVec(q);                     // beta value for ALT allele
-  arma::vec seBetaVec(q);                   // seBeta value
-  arma::vec pval0Vec(q);                    // p values from normal distribution approximation
-  arma::vec pval1Vec(q);                    // p values from more accurate methods including SPA and ER
+  std::vector<double> altFreqVec(q);        // allele frequencies of ALT allele, this is not always < 0.5.
+  std::vector<double> missingRateVec(q);    // missing rate
+  std::vector<double> StatVec(q);           // score statistics
+  std::vector<double> BetaVec(q);           // beta value for ALT allele
+  std::vector<double> seBetaVec(q);         // seBeta value
+  std::vector<double> pval0Vec(q);          // p values from normal distribution approximation
+  std::vector<double> pval1Vec(q);          // p values from more accurate methods including SPA and ER
   std::vector<bool> passQCVec(q, true);
   
   // example #1: (q = 999, m1 = 10) -> (nchunks = 100, m2 = 9)
@@ -203,14 +203,16 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   std::vector<unsigned int> mPassQCVec;   
   arma::vec GVecBurden(t_n, arma::fill::zeros);
   
+  arma::mat P1Mat, P2Mat;
+  
   // cycle for multiple chunks
   for(unsigned int ichunk = 0; ichunk < nchunks; ichunk++) 
   {
     std::cout << "Start analyzing chunk " << ichunk << "/" << nchunks-1 << "." << std::endl;
     
     if(ichunk == nchunks-1) m3 = m2;  // number of markers in the last chunk
-    arma::mat P1Mat(m3, t_n);
-    arma::mat P2Mat(t_n, m3);
+    P1Mat.resize(m3, t_n);
+    P2Mat.resize(t_n, m3);
     arma::mat GMat(t_n, m3, arma::fill::zeros);
     
     std::vector<bool> passQCVecInChunk(m3, true);
@@ -277,7 +279,7 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     }
     
     // index vector for markers passing QC
-    arma::vec indexQCVecInChunk(m3);
+    arma::uvec indexQCVecInChunk(m3);
     unsigned int mPassQCInChunk = 0;
     for(unsigned int i = 0; i < m3; i++)
     {
@@ -320,13 +322,13 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   {
     int first_row = 0, first_col = 0, last_row = 0, last_col = 0;
     
-    for(int index1 = 0; index1 < nchunks; index1++)
+    for(unsigned int index1 = 0; index1 < nchunks; index1++)
     {
       last_row = first_row + mPassQCVec.at(index1) - 1;
       P1Mat.load(t_outputFile + "_P1Mat_Chunk_" + std::to_string(index1) + ".bin");
       
       // off-diagonal sub-matrix
-      for(int index2 = 0; index2 < index1; index2++)
+      for(unsigned int index2 = 0; index2 < index1; index2++)
       {
         std::cout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " << index2 << "/" << nchunks - 1 << ")........" << std::endl;
         P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index2) + ".bin");
@@ -354,27 +356,24 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     }
   }
   
-  // index vector for markers passing QC
-  arma::uvec indexQCVec(mPassQCTot);
-  unsigned int iPassQC = 0;
+  // remove markers that did not pass QC
+  unsigned int tempIndex = 0;
   for(unsigned int i = 0; i < q; i++)
   {
-    if(passQCVec.at(i)){
-      indexQCVec.at(iPassQC) = i;
-      iPassQC ++;
-    } 
+    if(!passQCVec.at(i)){
+      markerVec.erase(markerVec.begin()+tempIndex);
+      infoVec.erase(infoVec.begin()+tempIndex);
+      altFreqVec.erase(altFreqVec.begin()+tempIndex);
+      missingRateVec.erase(missingRateVec.begin()+tempIndex);
+      StatVec.erase(StatVec.begin()+tempIndex);
+      BetaVec.erase(BetaVec.begin()+tempIndex);
+      seBetaVec.erase(seBetaVec.begin()+tempIndex);
+      pval0Vec.erase(pval0Vec.begin()+tempIndex);
+      pval1Vec.erase(pval1Vec.begin()+tempIndex);
+    }else{
+      tempIndex++;
+    }
   }
-  
-  // remove markers that did not pass QC
-  markerVec = markerVec.elem(indexQCVec);
-  infoVec = infoVec.elem(indexQCVec);
-  altFreqVec = altFreqVec.elem(indexQCVec);
-  missingRateVec = missingRateVec.elem(indexQCVec);
-  StatVec = StatVec.elem(indexQCVec);
-  BetaVec = BetaVec.elem(indexQCVec);
-  seBetaVec = seBetaVec.elem(indexQCVec);
-  pval0Vec = pval0Vec.elem(indexQCVec);
-  pval1Vec = pval1Vec.elem(indexQCVec);
   
   // calculate p-values for the burden test
   
@@ -395,6 +394,7 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
                                           Rcpp::Named("pval0Burden") = pval0Burden,
                                           Rcpp::Named("pval1Burden") = pval1Burden);
   
+  return OutList;
 }
 
 
@@ -496,16 +496,16 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
 
 // a unified function to get marker-level information for region-level analysis
 
-Unified_getRegionPVec(std::string t_method, 
-                      arma::vec t_GVec, 
-                      bool t_isOnlyOutputNonZero,
-                      std::vector<uint32_t> t_indexForNonZero,
-                      double& t_Beta, 
-                      double& t_seBeta, 
-                      double& t_pval0, 
-                      double& t_pval1,
-                      arma::vec& P1Vec, 
-                      arma::vec& P2Vec)
+void Unified_getRegionPVec(std::string t_method, 
+                           arma::vec t_GVec, 
+                           bool t_isOnlyOutputNonZero,
+                           std::vector<uint32_t> t_indexForNonZero,
+                           double& t_Beta, 
+                           double& t_seBeta, 
+                           double& t_pval0, 
+                           double& t_pval1,
+                           arma::vec& P1Vec, 
+                           arma::vec& P2Vec)
 {
   // something to add
   if(t_method == "POLMM")
