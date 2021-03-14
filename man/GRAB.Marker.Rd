@@ -9,6 +9,7 @@ GRAB.Marker(
   GenoFile,
   GenoFileIndex = NULL,
   OutputFile,
+  OutputFileIndex = NULL,
   control = NULL
 )
 }

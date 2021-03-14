@@ -4,13 +4,7 @@
 \alias{GRAB.ReadGeno}
 \title{Read genotype data into R as a matrix}
 \usage{
-GRAB.ReadGeno(
-  GenoFile,
-  GenoFileIndex = NULL,
-  SampleIDs = NULL,
-  MarkerIDs = NULL,
-  AlleleOrder = NULL
-)
+GRAB.ReadGeno(GenoFile, GenoFileIndex = NULL, SampleIDs = NULL, control = NULL)
 }
 \arguments{
 \item{GenoFile}{a character of genotype file. See \code{Details} section for more information.}
@@ -19,9 +13,7 @@ GRAB.ReadGeno(
 
 \item{SampleIDs}{a character vector of sample IDs to extract. The default is NULL, that is, to use all samples in GenoFile.}
 
-\item{MarkerIDs}{a character vector of marker IDs to extract. The default is NULL, the first 10 markers will be extracted.}
-
-\item{AlleleOrder}{(to be continued) "ref-first" or "alt-first", to determine whether the REF/major allele should appear first or second. Default is "alt-first" for PLINK and "ref-first" for BGEN.}
+\item{control}{a list of parameters. The default is NULL, the first 10 markers will be extracted. For more details, please check ?GRAB.control.}
 }
 \value{
 An R list include an R genotype matrix (each row is for one sample and each column is for one marker) and an R SNP information matrix.

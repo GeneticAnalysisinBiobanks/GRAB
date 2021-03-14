@@ -280,35 +280,6 @@ mainRegion = function(NullModelClass, genoType, genoIndex, regionMat)
 # }
 
 
-checkControl.Region = function(NullModelClass, control)
-{
-  # check if control is an R list
-  if(!is.null(control))
-    if(class(control) != "list")
-      stop("If specified, the argument of 'control' should be an R 'list'.")
-  
-  # uniform default control setting for marker-level analysis
-  default.region.control = list(impute_method = "fixed",  
-                                missing_cutoff = 0.15,
-                                max_maf_region = 0.01,
-                                max_mem_region = 4)
-  
-  control = updateControl(control, default.region.control)
-  
-  # specific default control setting for different approaches
-  if(NullModelClass == "POLMM_NULL_Model")
-    control = checkControl.Region.POLMM(control)    # This function is in 'POLMM.R'
-  
-  if(NullModelClass == "SPACox_NULL_Model")
-    control = checkControl.Region.SPACox(control)
-  
-  # print control list 
-  print("The below is the list of control parameters used in region-level genetic association analysis.")
-  print(control)
-  
-  return(control)
-}
-
 # extract region-marker mapping from regionFile
 getRegionList = function(regionFile,
                          regionAnnoHeader,

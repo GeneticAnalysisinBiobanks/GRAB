@@ -510,7 +510,7 @@ void Unified_getRegionPVec(std::string t_method,
   // something to add
   if(t_method == "POLMM")
   {
-    ptr_gPOLMMobj->getRegionPVec(t_GVec, t_Beta, t_seBeta, t_pval0, t_pval1, P1Vec, P2Vec);
+    // ptr_gPOLMMobj->getRegionPVec(t_GVec, t_Beta, t_seBeta, t_pval0, t_pval1, P1Vec, P2Vec);
   }
 }
 

@@ -10,8 +10,7 @@
 #' @param GenoFile a character of genotype file. See \code{Details} section for more information.
 #' @param GenoFileIndex additional index file(s) corresponding to the \code{GenoFile}. See \code{Details} section for more information.
 #' @param SampleIDs a character vector of sample IDs to extract. The default is NULL, that is, to use all samples in GenoFile.
-#' @param MarkerIDs a character vector of marker IDs to extract. The default is NULL, the first 10 markers will be extracted.
-#' @param AlleleOrder (to be continued) "ref-first" or "alt-first", to determine whether the REF/major allele should appear first or second. Default is "alt-first" for PLINK and "ref-first" for BGEN.
+#' @param control a list of parameters. The default is NULL, the first 10 markers will be extracted. For more details, please check ?GRAB.control.
 #' @return An R list include an R genotype matrix (each row is for one sample and each column is for one marker) and an R SNP information matrix.
 #' @details
 #' We support three genotype format including Plink, BGEN, and VCF.
@@ -64,18 +63,19 @@
 GRAB.ReadGeno = function(GenoFile,
                          GenoFileIndex = NULL,
                          SampleIDs = NULL,
-                         MarkerIDs = NULL,
-                         AlleleOrder = NULL)
+                         control = NULL)
 {
-  objGeno = setGenoInput(GenoFile, GenoFileIndex, SampleIDs, AlleleOrder)
+  checkControl.ReadGeno(control)  # this function is in 'control.R': indexGeno can be 0, 1, 2, 3, 4 depending on which argument is given.
+  
+  objGeno = setGenoInput(GenoFile, GenoFileIndex, SampleIDs, control)
   
   genoType = objGeno$genoType
   markerInfo = objGeno$markerInfo
   SampleIDs = objGeno$SampleIDs
   n = length(SampleIDs)
   
-  if(is.null(MarkerIDs)){
-    print("Since 'MarkerIDs' not specified, we use the first 10 markers in 'GenoFile'.")
+  if(indexGeno == 0){
+    print("Since no markers or regions were selected, we use the first 10 markers in 'GenoFile'.")
     markerInfo = markerInfo[1:min(10,nrow(markerInfo)),]
     MarkerIDs = markerInfo$ID
   }
@@ -100,7 +100,7 @@ GRAB.ReadGeno = function(GenoFile,
 setGenoInput = function(GenoFile, 
                         GenoFileIndex = NULL, 
                         SampleIDs = NULL,
-                        AlleleOrder = NULL)
+                        control = NULL)
 {
   if(missing(GenoFile))
     stop("Argument 'GenoFile' is required.")
@@ -114,11 +114,13 @@ setGenoInput = function(GenoFile,
   if(GenoFileExt != "bed" & GenoFileExt != "bgen")
     stop("Current version only supports genotype input of Plink (filename extension of '.bed') or BGEN (filename extension of '.bgen').")  
   
+  AlleleOrder = control$AlleleOrder
   ########## ----------  Plink format ---------- ##########
   
   if(GenoFileExt == "bed"){
     
     genoType = "PLINK"
+    
     if(is.null(AlleleOrder)) AlleleOrder = "alt-first"
     
     if(is.null(GenoFileIndex)){  
@@ -135,12 +137,16 @@ setGenoInput = function(GenoFile,
     bedFile = GenoFile
     
     if(!file.exists(bimFile)) stop(paste("Cannot find bim file of", bimFile))
-    markerInfo = data.table::fread(bimFile)
+    markerInfo = data.table::fread(bimFile, header = F)
     markerInfo = as.data.frame(markerInfo)
-    markerInfo = markerInfo[,c(1,4,2,6,5)]  # https://www.cog-genomics.org/plink/2.0/formats#bim
+    
+    if(AlleleOrder == "alt-first")
+      markerInfo = markerInfo[,c(1,4,2,6,5)]  # https://www.cog-genomics.org/plink/2.0/formats#bim
+    if(AlleleOrder == "ref-first")
+      markerInfo = markerInfo[,c(1,4,2,5,6)]  # https://www.cog-genomics.org/plink/2.0/formats#bim
     
     colnames(markerInfo) = c("CHROM", "POS", "ID", "REF", "ALT")
-    markerInfo$genoIndex = 1:nrow(markerInfo) - 1  # -1 is to follow 
+    markerInfo$genoIndex = 1:nrow(markerInfo) - 1  # -1 is to convert 'R' to 'C++' 
     
     if(!file.exists(famFile)) stop(paste("Cannot find fam file of", famFile))
     sampleInfo = data.table::fread(famFile)
@@ -179,7 +185,7 @@ setGenoInput = function(GenoFile,
           samplesInGeno = getSampleIDsFromBGEN(bgenFile)
         }
       }else{
-        sampleData = read.table(sampleFile, header=T, stringsAsFactors = F)
+        sampleData = data.table::fread(sampleFile, header=T, colClasses = c("character"))
         if(toupper(colnames(sampleData)[1]) != "GRAB_BGEN_SAMPLE")
           stop("The header of the first column in bgen.samples file should be 'GRAB_BGEN_SAMPLE'.")
         samplesInGeno = as.character(sampleData[,1])
@@ -196,7 +202,11 @@ setGenoInput = function(GenoFile,
     bgiData = dplyr::tbl(db_con, "Variant")
     bgiData = as.data.frame(bgiData)
     
-    markerInfo = bgiData[,c(1,2,3,6,5,7)]  # https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
+    if(AlleleOrder == "alt-first")
+      markerInfo = bgiData[,c(1,2,3,6,5,7)]  # https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
+    if(AlleleOrder == "ref-first")
+      markerInfo = bgiData[,c(1,2,3,5,6,7)]  # https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
+    
     colnames(markerInfo) = c("CHROM", "POS", "ID", "REF", "ALT","genoIndex")
     
     SampleIDs = updateSampleIDs(SampleIDs, samplesInGeno)
@@ -206,11 +216,92 @@ setGenoInput = function(GenoFile,
   
   ########## ----------  More format such as VCF ---------- ##########
 
+  Files = c("IDsToIncludeFile", "IDsToExcludeFile", "RangesToIncludeFile", "RangesToExcludeFile")
+  
+  anyInclude = FALSE
+  anyExclude = FALSE
+  
+  markersInclude = c()
+  markersExclude = c()
+  
+  if(!is.null(control$IDsToIncludeFile)){
+    IDsToInclude = data.table::fread(control$IDsToIncludeFile, 
+                                     header = F, colClasses = c("character"))
+    if(ncol(IDsToInclude) != 1)
+      stop("IDsToIncludeFile should include one column.")
+    IDsToInclude = IDsToInclude[,1]
+    
+    posRows = which(markerInfo$ID %in% IDsToInclude)
+    if(length(posRows) != 0) 
+      markersInclude = c(markersInclude, markerInfo$ID[posRows])
+    anyInclude = TRUE
+  }
+  
+  if(!is.null(control$RangesToIncludeFile)){
+    RangesToInclude = data.table::fread(control$RangesToIncludeFile, 
+                                        header = F, colClasses = c("character", "numeric", "numeric"))
+    if(ncol(RangesToInclude) != 3)
+      stop("RangesToIncludeFile should include three columns.")
+    
+    colnames(RangesToInclude) = c("CHROM","START","END")
+    
+    for(i in 1:nrow(RangesToInclude)){
+      CRHOM1 = RangesToInclude$CHROM[i]
+      START = RangesToInclude$START[i]
+      END = RangesToInclude$END[i]
+      posRows = with(markerInfo, which(CHROM == CHROM1 & POS >= START & POS <= END))
+      if(length(posRows) != 0) 
+        markersInclude = c(markersInclude, markerInfo$ID[posRows])
+    }
+    anyInclude = TRUE
+  }
+  
+  if(!is.null(control$IDsToExcludeFile)){
+    if(anyInclude) 
+      stop("We currently do not support both 'IncludeFile' and 'ExcludeFile'.")
+    IDsToExclude = data.table::fread(control$IDsToExcludeFile, 
+                                     header = F, colClasses = c("character"))
+    if(ncol(IDsToExclude) != 1)
+      stop("IDsToExcludeFile should include one column.")
+    IDsToExclude = IDsToExclude[,1]
+    
+    posRows = which(markerInfo$ID %in% IDsToExclude)
+    if(length(posRows) != 0) 
+      markersExclude = c(markersExclude, markerInfo$ID[posRows])
+    anyExclude = TRUE
+  }
+  
+  if(!is.null(control$RangesToExcludeFile)){
+    if(anyInclude) 
+      stop("We currently do not support both 'IncludeFile' and 'ExcludeFile'.")
+    
+    RangesToExclude = data.table::fread(control$RangesToExcludeFile, 
+                                        header = F, colClasses = c("character", "numeric", "numeric"))
+    if(ncol(RangesToExclude) != 3)
+      stop("RangesToExcludeFile should include three columns.")
+    
+    colnames(RangesToExclude) = c("CHROM","START","END")
+    
+    for(i in 1:nrow(RangesToExclude)){
+      CRHOM1 = RangesToExclude$CHROM[i]
+      START = RangesToExclude$START[i]
+      END = RangesToExclude$END[i]
+      posRows = with(markerInfo, which(CHROM == CHROM1 & POS >= START & POS <= END))
+      if(length(posRows) != 0) 
+        markersExclude = c(markersExclude, markerInfo$ID[posRows])
+    }
+    anyExclude = TRUE
+  }
+  
+  markersInclude = unique(markersInclude)
+  markersExclude = unique(markersExclude)
   
   # return genotype
   print(paste("Based on the 'GenoFile' and 'GenoFileIndex',", genoType, "format is used for genotype data."))
   
-  genoList = list(genoType = genoType, markerInfo = markerInfo, SampleIDs = SampleIDs)
+  genoList = list(genoType = genoType, markerInfo = markerInfo, SampleIDs = SampleIDs,
+                  markersInclude = markersInclude, anyInclude = anyInclude,
+                  markersExclude = markersExclude, anyExclude = anyExclude)
   
   return(genoList)
 }

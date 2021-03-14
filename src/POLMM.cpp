@@ -101,6 +101,17 @@ void POLMMClass::getMarkerPval(arma::vec t_GVec,
   t_seBeta = t_Beta / StdStat;
 }
 
+void getRegionPVec(arma::vec t_GVec, 
+                   double& t_Beta, 
+                   double& t_seBeta, 
+                   double& t_pval0, 
+                   double& t_pval1,
+                   arma::vec& P1Vec, 
+                   arma::vec& P2Vec)
+{
+  // do nothing
+}
+
 arma::vec POLMMClass::getadjGFast(arma::vec t_GVec)
 {
   // To increase computational efficiency when lots of GVec elements are 0

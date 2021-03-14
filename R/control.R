@@ -1,0 +1,141 @@
+
+#' Information about the control in GRAB package
+#' 
+#' Information about the control in GRAB package
+#' 
+#' @details
+#' In GRAB package, we use control to specify parameters in multiple functions. Here, we only list generic parameters. 
+#' For the parameters only used in specific method, please refer to its own help page. 
+#' For example, check \code{?GRAB.SPACox} for more information about SPACox method.
+#' \describe{
+#'   \item{GRAB.ReadGeno}{
+#'   We support two include files of (IDsToIncludeFile, RangesToIncludeFile) and two exclude files of (IDsToExcludeFile, RangesToExcludeFile), but do not support both include and exclude files.
+#'   \itemize{
+#'   \item \code{IDsToIncludeFile}: file of marker IDs to include, one column (no header) 
+#'   \item \code{IDsToExcludeFile}: file of marker IDs to exclude, one column (no header) 
+#'   \item \code{RangesToIncludeFile}: file of ranges to include, three columns (no header): chromosome, start position, end position
+#'   \item \code{RangesToExcludeFile}: file of ranges to exclude, three columns (no header): chromosome, start position, end position
+#'   \item \code{AlleleOrder}: "ref-first" or "alt-first", to determine whether the REF/major allele should appear first or second. Default is "alt-first" for PLINK and "ref-first" for BGEN. If the analysis results show the REF allele frequencies of most markers are > 0.5, you might should change this option. NOTE, if you use plink2 to convert Plink file to BGEN file, you probably need to set it as 'ref-first'.
+#'   }
+#'   }
+#'   \item{GRAB.NullModel}{
+#'     \itemize{
+#'     \item \code{GenoFile}: "prefix.bgen"; 
+#'     \item \code{GenoFileIndex}: "prefix.bgen.bgi" or c("prefix.bgen.bgi", "prefix.bgen.samples").
+#'     \item If only one element is given for \code{GenoFileIndex}, then we assume it should be "prefix.bgen.bgi". 
+#'     \item Sometimes, BGEN file does not include sample identifiers, and thus file of "prefix.bgen.samples" is required.
+#'     \item NOTE that "prefix.bgen.samples" should be of only one column with the column name of "GRAB_BGEN_SAMPLE" (case insensitive). One example can be found in \code{system.file("extdata", "example_bgen_1.2_8bits.bgen.samples", package = "GRAB")}.
+#'     \item If you are not sure if sample identifiers are in BGEN file, you can try function \code{?checkIfSampleIDsExist}.
+#'     }
+#'   }
+#'   \item{GRAB.Marker}{
+#'   Please refer to the above sections for \code{include.markers}, \code{exclude.markers}, \code{include.range}, and \code{include.range}.
+#'   }
+#'   \item{GRAB.Region}{
+#'   Please refer to the above sections for \code{include.markers}, \code{exclude.markers}, \code{include.range}, and \code{include.range}.
+#'   }
+#' }
+#' @export
+GRAB.control = function(){
+  return("Check ?GRAB.control for more information about the 'control' in package GRAB.")
+}
+
+updateControl = function(control, default.control)
+{
+  if(is.null(default.control))
+    return(control)
+  
+  # use the default setting or update it
+  if(!is.null(control)){
+    ctrl.nm = names(control)
+    for(nm in ctrl.nm){
+      default.control[[nm]] = control[[nm]]
+    }
+  }
+  
+  control = default.control
+  return(control)
+}
+
+checkControl.ReadGeno = function(control)
+{
+  # check if control is an R list
+  if(!is.null(control))
+    if(class(control) != "list")
+      stop("If specified, the argument of 'control' should be an R 'list'.")
+  
+  if(!is.null(control$allele.order))
+    if(control$allele.order != "ref-first" & control$allele.order != "alt-first")
+      stop("control$allele.order should be 'ref-first' or 'alt-first'.")
+  
+  Files = c("IDsToIncludeFile", "IDsToExcludeFile", "RangesToIncludeFile", "RangesToExcludeFile")
+  
+  # check if the files specified exist
+  for(file in Files){
+    if(file %in% names(control)){
+      if(!file.exists(file))
+        stop(paste0("Cannot find the file of ",file,"..."))
+    }
+  }
+}
+
+checkControl.Marker = function(NullModelClass, control)
+{
+  # check if control is an R list
+  if(!is.null(control))
+    if(class(control) != "list")
+      stop("If specified, the argument of 'control' should be an R 'list'.")
+  
+  # uniform default control setting for marker-level analysis
+  default.marker.control = list(impute_method = "fixed",  
+                                missing_cutoff = 0.15,
+                                min_maf_marker = 0.001,
+                                min_mac_marker = 20,
+                                nMarkersEachChunk = 10000)
+  
+  control = updateControl(control, default.marker.control)
+  
+  # specific default control setting for different approaches
+  if(NullModelClass == "POLMM_NULL_Model")
+    control = checkControl.Marker.POLMM(control)    # This function is in 'POLMM.R'
+  
+  if(NullModelClass == "SPACox_NULL_Model")
+    control = checkControl.Marker.SPACox(control)
+  
+  
+  # print control list 
+  print("The below is the list of control parameters used in marker-level genetic association analysis.")
+  print(control)
+  
+  return(control)
+}
+
+
+checkControl.Region = function(NullModelClass, control)
+{
+  # check if control is an R list
+  if(!is.null(control))
+    if(class(control) != "list")
+      stop("If specified, the argument of 'control' should be an R 'list'.")
+  
+  # uniform default control setting for marker-level analysis
+  default.region.control = list(impute_method = "fixed",  
+                                missing_cutoff = 0.15,
+                                max_maf_region = 0.01,
+                                max_mem_region = 4)
+  
+  control = updateControl(control, default.region.control)
+  
+  # specific default control setting for different approaches
+  if(NullModelClass == "POLMM_NULL_Model")
+    control = checkControl.Region.POLMM(control)    # This function is in 'POLMM.R'
+  
+  if(NullModelClass == "SPACox_NULL_Model")
+    control = checkControl.Region.SPACox(control)
+  
+  # print control list 
+  print("The below is the list of control parameters used in region-level genetic association analysis.")
+  print(control)
+  
+  return(control)
+}

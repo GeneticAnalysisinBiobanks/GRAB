@@ -96,36 +96,7 @@ GRAB.Marker = function(objNull,
   return(output)
 }
 
-checkControl.Marker = function(NullModelClass, control)
-{
-  # check if control is an R list
-  if(!is.null(control))
-    if(class(control) != "list")
-      stop("If specified, the argument of 'control' should be an R 'list'.")
-  
-  # uniform default control setting for marker-level analysis
-  default.marker.control = list(impute_method = "fixed",  
-                                missing_cutoff = 0.15,
-                                min_maf_marker = 0.001,
-                                min_mac_marker = 20,
-                                nMarkersEachChunk = 10000)
-  
-  control = updateControl(control, default.marker.control)
-  
-  # specific default control setting for different approaches
-  if(NullModelClass == "POLMM_NULL_Model")
-    control = checkControl.Marker.POLMM(control)    # This function is in 'POLMM.R'
-  
-  if(NullModelClass == "SPACox_NULL_Model")
-    control = checkControl.Marker.SPACox(control)
-  
-  
-  # print control list 
-  print("The below is the list of control parameters used in marker-level genetic association analysis.")
-  print(control)
-  
-  return(control)
-}
+
 
 setMarker = function(NullModelClass, objNull, control)
 {
