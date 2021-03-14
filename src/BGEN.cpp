@@ -36,7 +36,8 @@ BgenClass::BgenClass(std::string t_bgenFileName,
                      std::vector<std::string> t_SampleInBgen,
                      std::vector<std::string> t_SampleInModel,
                      bool t_isSparseDosageInBgen,
-                     bool t_isDropmissingdosagesInBgen)
+                     bool t_isDropmissingdosagesInBgen,
+                     std::string t_AlleleOrder)      // added by Wenjian Bi on 03/14/2021: "ref-first" or "alt-first"
 {
   setBgenObj(t_bgenFileName,
              t_bgenFileIndex,
@@ -47,7 +48,7 @@ BgenClass::BgenClass(std::string t_bgenFileName,
   setIsDropMissingDosagesInBgen(t_isDropmissingdosagesInBgen);
   
   setIsSparseDosageInBgen(t_isSparseDosageInBgen);
-  
+  m_AlleleOrder = t_AlleleOrder;
 }
 
 
@@ -197,7 +198,9 @@ void BgenClass::Parse2(unsigned char *buf, unsigned int bufLen, const unsigned c
         if(!m_isSparseDosagesInBgen){
           // dosages[m_posSampleInModel[i]] = 2 - dosage;
           // updated by BWJ on 2021-02-28
-          dosages[m_posSampleInModel[i]] = dosage;
+          // dosages[m_posSampleInModel[i]] = dosage;
+          // changed back by BWJ on 2021-03-14 (change default setting to "ref-first")
+          dosages[m_posSampleInModel[i]] = 2 - dosage;
         }else{
           if(2 - dosage > 0){
             // dosages.push_back(2 - dosage);
@@ -338,8 +341,10 @@ arma::vec BgenClass::getOneMarker(uint64_t t_gIndex,        // different meaning
     Parse2(&m_buf[0], m_bufLens, &m_zBuf[0], m_zBufLens, RSID, dosages, AC, AF, indexforMissing, info, indexNonZero);
     
     // output
-    t_alt = first_allele;       // ALT allele (usually minor allele)
-    t_ref = second_allele;       // REF allele (usually major allele)
+    // t_alt = first_allele;       // ALT allele (usually minor allele)
+    // t_ref = second_allele;       // REF allele (usually major allele)
+    t_alt = second_allele;  // default setting is "ref-first" (03-14-2021)
+    t_ref = first_allele;
     t_marker = RSID;    // marker ID extracted from genotype file
     t_pd = position;           // base position
     t_chr = chromosome;       // chromosome
@@ -349,6 +354,15 @@ arma::vec BgenClass::getOneMarker(uint64_t t_gIndex,        // different meaning
     t_indexForMissing = indexforMissing;     // index of missing genotype data
     t_missingRate = (double) t_indexForMissing.size() / (double) m_N;    // missing rate
     t_indexForNonZero = indexNonZero;
+    
+    if(m_AlleleOrder == "alt-first"){  // added by Wenjian Bi on 03/14/2021
+      t_alt = first_allele;
+      t_ref = second_allele;
+      t_altFreq = 1 - t_altFreq;
+      t_altCounts = t_altFreq * 2 * ((double)m_N - (double)t_indexForMissing.size());
+      for(unsigned int i = 0; i < dosages.size(); i++)
+        dosages.at(i) = 2 - dosages.at(i);
+    }
     
   }else{
     // isBoolRead = false;

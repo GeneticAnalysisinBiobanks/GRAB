@@ -11,10 +11,10 @@
 #'   \item{GRAB.ReadGeno}{
 #'   We support two include files of (IDsToIncludeFile, RangesToIncludeFile) and two exclude files of (IDsToExcludeFile, RangesToExcludeFile), but do not support both include and exclude files.
 #'   \itemize{
-#'   \item \code{IDsToIncludeFile}: file of marker IDs to include, one column (no header) 
-#'   \item \code{IDsToExcludeFile}: file of marker IDs to exclude, one column (no header) 
-#'   \item \code{RangesToIncludeFile}: file of ranges to include, three columns (no header): chromosome, start position, end position
-#'   \item \code{RangesToExcludeFile}: file of ranges to exclude, three columns (no header): chromosome, start position, end position
+#'   \item \code{IDsToIncludeFile}: a file of marker IDs to include, one column (no header) 
+#'   \item \code{IDsToExcludeFile}: a file of marker IDs to exclude, one column (no header) 
+#'   \item \code{RangesToIncludeFile}: a file of ranges to include, three columns (no header): chromosome, start position, end position
+#'   \item \code{RangesToExcludeFile}: a file of ranges to exclude, three columns (no header): chromosome, start position, end position
 #'   \item \code{AlleleOrder}: "ref-first" or "alt-first", to determine whether the REF/major allele should appear first or second. Default is "alt-first" for PLINK and "ref-first" for BGEN. If the analysis results show the REF allele frequencies of most markers are > 0.5, you might should change this option. NOTE, if you use plink2 to convert Plink file to BGEN file, you probably need to set it as 'ref-first'.
 #'   }
 #'   }

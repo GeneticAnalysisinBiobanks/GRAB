@@ -25,6 +25,7 @@ PlinkClass::PlinkClass(std::string t_bimFile,
 {
   setPlinkobj(t_bimFile, t_famFile, t_bedFile);
   setPosSampleInPlink(t_SampleInModel);
+  m_AlleleOrder = t_AlleleOrder;
 }
 
 // set PlinkClass by reading plink files
@@ -228,6 +229,16 @@ arma::vec PlinkClass::getOneMarker(uint64_t t_gIndex,        // different meanin
   t_imputeInfo = 1;
   t_altCounts = (double)sum;
   t_altFreq = t_altCounts/ (double)count / 2;
+  
+  // updated on 03/14/2021
+  if(m_AlleleOrder == "ref-first"){
+    t_ref = m_alt[t_gIndex];
+    t_alt = m_ref[t_gIndex];
+    t_altFreq = 1 - t_altFreq;
+    t_altCounts = 2 * (double)count * t_altFreq;
+    for(unsigned int i = 0; i < OneMarkerG1.size(); i++)
+      OneMarkerG1.at(i) = 2 - OneMarkerG1.at(i);
+  }
   
   return OneMarkerG1;
 }

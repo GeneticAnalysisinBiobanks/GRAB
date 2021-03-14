@@ -13,12 +13,12 @@ getGenoInCPP <- function(t_genoType, t_markerInfo, n) {
     .Call(`_GRAB_getGenoInCPP`, t_genoType, t_markerInfo, n)
 }
 
-setPLINKobjInCPP <- function(t_bimFile, t_famFile, t_bedFile, t_SampleInModel) {
-    invisible(.Call(`_GRAB_setPLINKobjInCPP`, t_bimFile, t_famFile, t_bedFile, t_SampleInModel))
+setPLINKobjInCPP <- function(t_bimFile, t_famFile, t_bedFile, t_SampleInModel, t_AlleleOrder) {
+    invisible(.Call(`_GRAB_setPLINKobjInCPP`, t_bimFile, t_famFile, t_bedFile, t_SampleInModel, t_AlleleOrder))
 }
 
-setBGENobjInCPP <- function(t_bgenFileName, t_bgenFileIndex, t_SampleInBgen, t_SampleInModel, t_isSparseDosageInBgen, t_isDropmissingdosagesInBgen) {
-    invisible(.Call(`_GRAB_setBGENobjInCPP`, t_bgenFileName, t_bgenFileIndex, t_SampleInBgen, t_SampleInModel, t_isSparseDosageInBgen, t_isDropmissingdosagesInBgen))
+setBGENobjInCPP <- function(t_bgenFileName, t_bgenFileIndex, t_SampleInBgen, t_SampleInModel, t_isSparseDosageInBgen, t_isDropmissingdosagesInBgen, t_AlleleOrder) {
+    invisible(.Call(`_GRAB_setBGENobjInCPP`, t_bgenFileName, t_bgenFileIndex, t_SampleInBgen, t_SampleInModel, t_isSparseDosageInBgen, t_isDropmissingdosagesInBgen, t_AlleleOrder))
 }
 
 setPOLMMobjInCPP <- function(t_muMat, t_iRMat, t_Cova, t_yVec, t_SPmatR, t_tau, t_printPCGInfo, t_tolPCG, t_maxiterPCG, t_varRatio, t_StdStat_cutoff) {

@@ -12,6 +12,9 @@ namespace PLINK {
 class PlinkClass{
 private:
   
+  // added on 03/14/2021
+  std::string m_AlleleOrder;           // "ref-first" (default for BGEN) or "alt-first" (default for PLINK)
+  
   // information from bim file
   uint32_t m_M0, m_M;
   // std::map<std::string, uint8_t> m_chrMaps;  // not used after 2021-02-28

@@ -50,7 +50,7 @@
 #' head(GenoMat)
 #' markerInfo
 #' 
-#' ## The below is for BGEN format
+#' ## The below is for BGEN format (Note the different REF/ALT order for BGEN and Plink formats)
 #' BGENFile = system.file("extdata", "example_bgen_1.2_8bits.bgen", package = "GRAB")
 #' GenoList = GRAB.ReadGeno(BGENFile)
 #' GenoMat = GenoList$GenoMat
@@ -219,7 +219,7 @@ setGenoInput = function(GenoFile,
     
     SampleIDs = updateSampleIDs(SampleIDs, samplesInGeno)
     
-    setBGENobjInCPP(bgenFile, bgiFile, samplesInGeno, SampleIDs, F, F)
+    setBGENobjInCPP(bgenFile, bgiFile, samplesInGeno, SampleIDs, F, F, AlleleOrder)
   }
   
   ########## ----------  More format such as VCF ---------- ##########

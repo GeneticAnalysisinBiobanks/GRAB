@@ -48,21 +48,22 @@ BEGIN_RCPP
 END_RCPP
 }
 // setPLINKobjInCPP
-void setPLINKobjInCPP(std::string t_bimFile, std::string t_famFile, std::string t_bedFile, std::vector<std::string> t_SampleInModel);
-RcppExport SEXP _GRAB_setPLINKobjInCPP(SEXP t_bimFileSEXP, SEXP t_famFileSEXP, SEXP t_bedFileSEXP, SEXP t_SampleInModelSEXP) {
+void setPLINKobjInCPP(std::string t_bimFile, std::string t_famFile, std::string t_bedFile, std::vector<std::string> t_SampleInModel, std::string t_AlleleOrder);
+RcppExport SEXP _GRAB_setPLINKobjInCPP(SEXP t_bimFileSEXP, SEXP t_famFileSEXP, SEXP t_bedFileSEXP, SEXP t_SampleInModelSEXP, SEXP t_AlleleOrderSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< std::string >::type t_bimFile(t_bimFileSEXP);
     Rcpp::traits::input_parameter< std::string >::type t_famFile(t_famFileSEXP);
     Rcpp::traits::input_parameter< std::string >::type t_bedFile(t_bedFileSEXP);
     Rcpp::traits::input_parameter< std::vector<std::string> >::type t_SampleInModel(t_SampleInModelSEXP);
-    setPLINKobjInCPP(t_bimFile, t_famFile, t_bedFile, t_SampleInModel);
+    Rcpp::traits::input_parameter< std::string >::type t_AlleleOrder(t_AlleleOrderSEXP);
+    setPLINKobjInCPP(t_bimFile, t_famFile, t_bedFile, t_SampleInModel, t_AlleleOrder);
     return R_NilValue;
 END_RCPP
 }
 // setBGENobjInCPP
-void setBGENobjInCPP(std::string t_bgenFileName, std::string t_bgenFileIndex, std::vector<std::string> t_SampleInBgen, std::vector<std::string> t_SampleInModel, bool t_isSparseDosageInBgen, bool t_isDropmissingdosagesInBgen);
-RcppExport SEXP _GRAB_setBGENobjInCPP(SEXP t_bgenFileNameSEXP, SEXP t_bgenFileIndexSEXP, SEXP t_SampleInBgenSEXP, SEXP t_SampleInModelSEXP, SEXP t_isSparseDosageInBgenSEXP, SEXP t_isDropmissingdosagesInBgenSEXP) {
+void setBGENobjInCPP(std::string t_bgenFileName, std::string t_bgenFileIndex, std::vector<std::string> t_SampleInBgen, std::vector<std::string> t_SampleInModel, bool t_isSparseDosageInBgen, bool t_isDropmissingdosagesInBgen, std::string t_AlleleOrder);
+RcppExport SEXP _GRAB_setBGENobjInCPP(SEXP t_bgenFileNameSEXP, SEXP t_bgenFileIndexSEXP, SEXP t_SampleInBgenSEXP, SEXP t_SampleInModelSEXP, SEXP t_isSparseDosageInBgenSEXP, SEXP t_isDropmissingdosagesInBgenSEXP, SEXP t_AlleleOrderSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< std::string >::type t_bgenFileName(t_bgenFileNameSEXP);
@@ -71,7 +72,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::vector<std::string> >::type t_SampleInModel(t_SampleInModelSEXP);
     Rcpp::traits::input_parameter< bool >::type t_isSparseDosageInBgen(t_isSparseDosageInBgenSEXP);
     Rcpp::traits::input_parameter< bool >::type t_isDropmissingdosagesInBgen(t_isDropmissingdosagesInBgenSEXP);
-    setBGENobjInCPP(t_bgenFileName, t_bgenFileIndex, t_SampleInBgen, t_SampleInModel, t_isSparseDosageInBgen, t_isDropmissingdosagesInBgen);
+    Rcpp::traits::input_parameter< std::string >::type t_AlleleOrder(t_AlleleOrderSEXP);
+    setBGENobjInCPP(t_bgenFileName, t_bgenFileIndex, t_SampleInBgen, t_SampleInModel, t_isSparseDosageInBgen, t_isDropmissingdosagesInBgen, t_AlleleOrder);
     return R_NilValue;
 END_RCPP
 }
@@ -127,8 +129,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_mainMarkerInCPP", (DL_FUNC) &_GRAB_mainMarkerInCPP, 3},
     {"_GRAB_mainRegionInCPP", (DL_FUNC) &_GRAB_mainRegionInCPP, 5},
     {"_GRAB_getGenoInCPP", (DL_FUNC) &_GRAB_getGenoInCPP, 3},
-    {"_GRAB_setPLINKobjInCPP", (DL_FUNC) &_GRAB_setPLINKobjInCPP, 4},
-    {"_GRAB_setBGENobjInCPP", (DL_FUNC) &_GRAB_setBGENobjInCPP, 6},
+    {"_GRAB_setPLINKobjInCPP", (DL_FUNC) &_GRAB_setPLINKobjInCPP, 5},
+    {"_GRAB_setBGENobjInCPP", (DL_FUNC) &_GRAB_setBGENobjInCPP, 7},
     {"_GRAB_setPOLMMobjInCPP", (DL_FUNC) &_GRAB_setPOLMMobjInCPP, 11},
     {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},
     {"_GRAB_squares", (DL_FUNC) &_GRAB_squares, 1},

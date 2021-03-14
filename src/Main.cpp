@@ -541,14 +541,16 @@ void setBGENobjInCPP(std::string t_bgenFileName,
                      std::vector<std::string> t_SampleInBgen,
                      std::vector<std::string> t_SampleInModel,
                      bool t_isSparseDosageInBgen,
-                     bool t_isDropmissingdosagesInBgen)
+                     bool t_isDropmissingdosagesInBgen,
+                     std::string t_AlleleOrder)
 {
   ptr_gBGENobj = new BGEN::BgenClass(t_bgenFileName,
                                      t_bgenFileIndex,
                                      t_SampleInBgen,
                                      t_SampleInModel,
                                      t_isSparseDosageInBgen,
-                                     t_isDropmissingdosagesInBgen);
+                                     t_isDropmissingdosagesInBgen,
+                                     t_AlleleOrder);
   int n = ptr_gBGENobj->getN();
   std::cout << "Number of samples:\t" << n << std::endl;
 }

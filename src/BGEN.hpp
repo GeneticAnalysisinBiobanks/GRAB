@@ -11,6 +11,8 @@ namespace BGEN {
 class BgenClass{
 private:
 
+  std::string m_AlleleOrder; // added by Wenjian Bi on 03/14/2021: "alt-first" or "ref-first"
+  
   // vcf file and the index file (.tbi)
   std::string m_bgenFileName, m_bgenFileIndex;
 
@@ -44,7 +46,8 @@ public:
             std::vector<std::string> t_SampleInBgen,
             std::vector<std::string> t_SampleInModel,
             bool t_isSparseDosageInBgen,
-            bool t_isDropmissingdosagesInBgen);
+            bool t_isDropmissingdosagesInBgen,
+            std::string t_AlleleOrder);
 	  
   void setBgenObj(const std::string t_bgenFileName,
                  const std::string t_bgenFileIndex,
