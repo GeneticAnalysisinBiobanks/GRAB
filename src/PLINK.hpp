@@ -61,7 +61,8 @@ public:
   PlinkClass(std::string t_bimFile,
              std::string t_famFile,
              std::string t_bedFile,
-             std::vector<std::string> t_SampleInModel);
+             std::vector<std::string> t_SampleInModel,
+             std::string t_AlleleOrder);
   
   // setup PlinkClass
   void setPlinkobj(std::string t_bimFile,

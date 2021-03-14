@@ -68,11 +68,12 @@ checkControl.ReadGeno = function(control)
     if(control$allele.order != "ref-first" & control$allele.order != "alt-first")
       stop("control$allele.order should be 'ref-first' or 'alt-first'.")
   
-  Files = c("IDsToIncludeFile", "IDsToExcludeFile", "RangesToIncludeFile", "RangesToExcludeFile")
+  FileType = c("IDsToIncludeFile", "IDsToExcludeFile", "RangesToIncludeFile", "RangesToExcludeFile")
   
   # check if the files specified exist
-  for(file in Files){
-    if(file %in% names(control)){
+  for(ft in FileType){
+    if(ft %in% names(control)){
+      file = control[[ft]]
       if(!file.exists(file))
         stop(paste0("Cannot find the file of ",file,"..."))
     }

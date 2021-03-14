@@ -58,6 +58,19 @@
 #' head(GenoMat)
 #' markerInfo
 #' 
+#' ## The below is to demonstrate parameters in control
+#' PlinkFile = system.file("extdata", "example.bed", package = "GRAB")
+#' IDsToIncludeFile = system.file("extdata", "example.IDsToIncludeFile.txt", package = "GRAB")
+#' RangesToIncludeFile = system.file("extdata", "example.RangesToIncludeFile.txt", package = "GRAB")
+#' GenoList = GRAB.ReadGeno(PlinkFile, 
+#'                          control = list(IDsToIncludeFile = IDsToIncludeFile, 
+#'                                         RangesToIncludeFile = RangesToIncludeFile,
+#'                                         AlleleOrder = "ref-first"))
+#' GenoMat = GenoList$GenoMat
+#' head(GenoMat)
+#' markerInfo = GenoList$markerInfo
+#' markerInfo
+#' 
 #' @export
 #' @import data.table, tidyr, dbplyr, RSQLite
 GRAB.ReadGeno = function(GenoFile,
@@ -72,21 +85,16 @@ GRAB.ReadGeno = function(GenoFile,
   genoType = objGeno$genoType
   markerInfo = objGeno$markerInfo
   SampleIDs = objGeno$SampleIDs
+  anyQueue = objGeno$anyQueue   # if FALSE, no include/exclude is specified
+  
   n = length(SampleIDs)
   
-  if(indexGeno == 0){
+  if(!anyQueue){
     print("Since no markers or regions were selected, we use the first 10 markers in 'GenoFile'.")
     markerInfo = markerInfo[1:min(10,nrow(markerInfo)),]
-    MarkerIDs = markerInfo$ID
   }
   
-  posMarker = match(MarkerIDs, markerInfo$ID, 0)
-  if(any(posMarker == 0))
-    stop("At least one marker from 'MarkerIDs' are not in 'GenoFile' and 'GenoFileIndex'.")
-  
-  markerInfo = markerInfo[posMarker, ,drop=F]
-  print(head(markerInfo))
-  
+  MarkerIDs = markerInfo$ID
   GenoMat = getGenoInCPP(genoType, markerInfo, n)
 
   colnames(GenoMat) = MarkerIDs;
@@ -153,7 +161,7 @@ setGenoInput = function(GenoFile,
     samplesInGeno = sampleInfo$V2
     SampleIDs = updateSampleIDs(SampleIDs, samplesInGeno)
       
-    setPLINKobjInCPP(bimFile, famFile, bedFile, SampleIDs)
+    setPLINKobjInCPP(bimFile, famFile, bedFile, SampleIDs, AlleleOrder)
   }
   
   ########## ----------  BGEN format ---------- ##########
@@ -246,7 +254,7 @@ setGenoInput = function(GenoFile,
     colnames(RangesToInclude) = c("CHROM","START","END")
     
     for(i in 1:nrow(RangesToInclude)){
-      CRHOM1 = RangesToInclude$CHROM[i]
+      CHROM1 = RangesToInclude$CHROM[i]
       START = RangesToInclude$START[i]
       END = RangesToInclude$END[i]
       posRows = with(markerInfo, which(CHROM == CHROM1 & POS >= START & POS <= END))
@@ -283,7 +291,7 @@ setGenoInput = function(GenoFile,
     colnames(RangesToExclude) = c("CHROM","START","END")
     
     for(i in 1:nrow(RangesToExclude)){
-      CRHOM1 = RangesToExclude$CHROM[i]
+      CHROM1 = RangesToExclude$CHROM[i]
       START = RangesToExclude$START[i]
       END = RangesToExclude$END[i]
       posRows = with(markerInfo, which(CHROM == CHROM1 & POS >= START & POS <= END))
@@ -299,9 +307,15 @@ setGenoInput = function(GenoFile,
   # return genotype
   print(paste("Based on the 'GenoFile' and 'GenoFileIndex',", genoType, "format is used for genotype data."))
   
-  genoList = list(genoType = genoType, markerInfo = markerInfo, SampleIDs = SampleIDs,
-                  markersInclude = markersInclude, anyInclude = anyInclude,
-                  markersExclude = markersExclude, anyExclude = anyExclude)
+  if(anyInclude)
+    markerInfo = subset(markerInfo, ID %in% markersInclude)
+  
+  if(anyExclude)
+    markerInfo = subset(markerInfo, !ID %in% markersExclude)
+  
+  anyQueue = anyInclude | anyExclude
+  
+  genoList = list(genoType = genoType, markerInfo = markerInfo, SampleIDs = SampleIDs, anyQueue = anyQueue)
   
   return(genoList)
 }

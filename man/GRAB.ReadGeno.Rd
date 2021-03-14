@@ -68,4 +68,17 @@ markerInfo = GenoList$markerInfo
 head(GenoMat)
 markerInfo
 
+## The below is to demonstrate parameters in control
+PlinkFile = system.file("extdata", "example.bed", package = "GRAB")
+IDsToIncludeFile = system.file("extdata", "example.IDsToIncludeFile.txt", package = "GRAB")
+RangesToIncludeFile = system.file("extdata", "example.RangesToIncludeFile.txt", package = "GRAB")
+GenoList = GRAB.ReadGeno(PlinkFile, 
+                         control = list(IDsToIncludeFile = IDsToIncludeFile, 
+                                        RangesToIncludeFile = RangesToIncludeFile,
+                                        AlleleOrder = "ref-first"))
+GenoMat = GenoList$GenoMat
+head(GenoMat)
+markerInfo = GenoList$markerInfo
+markerInfo
+
 }

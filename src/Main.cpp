@@ -521,12 +521,14 @@ void Unified_getRegionPVec(std::string t_method,
 void setPLINKobjInCPP(std::string t_bimFile,
                       std::string t_famFile,
                       std::string t_bedFile,
-                      std::vector<std::string> t_SampleInModel)
+                      std::vector<std::string> t_SampleInModel,
+                      std::string t_AlleleOrder)
 {
   ptr_gPLINKobj = new PLINK::PlinkClass(t_bimFile,
                                         t_famFile,
                                         t_bedFile,
-                                        t_SampleInModel);
+                                        t_SampleInModel,
+                                        t_AlleleOrder);
   
   int n = ptr_gPLINKobj->getN();
   std::cout << "Number of samples:\t" << n << std::endl;
