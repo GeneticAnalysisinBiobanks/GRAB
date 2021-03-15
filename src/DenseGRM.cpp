@@ -1,19 +1,20 @@
 
+// [[Rcpp::depends(RcppArmadillo)]]
+#include <RcppArmadillo.h>
+
 // [[Rcpp::depends(RcppParallel)]]
 #include <RcppParallel.h>
 
-#include <RcppArmadillo.h>
-
 #include "DenseGRM.hpp"
-#include "Plink.hpp"
-#include "SubFunc.hpp"
+#include "PLINK.hpp"
+#include "UTIL.hpp"
 
 namespace DenseGRM {
 
 using namespace Rcpp;
 using namespace RcppParallel;
 using namespace std;
-using namespace Plink;
+using namespace PLINK;
 
 void DenseGRMClass::setDenseGRMObj(PlinkClass* t_ptrPlinkObj, 
                                    double t_memoryChunk,     // unit is Gb
@@ -22,17 +23,17 @@ void DenseGRMClass::setDenseGRMObj(PlinkClass* t_ptrPlinkObj,
 {
   setArrays(t_ptrPlinkObj, t_memoryChunk);
   
-  cout << "Number of samples in Plink file:\t" << m_N0 << endl;
-  cout << "Number of markers in Plink file:\t" << m_M0 << endl;
-  cout << "Number of samples in model fitting:\t" << m_N << endl;
+  std::cout << "Number of samples in Plink file:\t" << m_N0 << std::endl;
+  std::cout << "Number of markers in Plink file:\t" << m_M0 << std::endl;
+  std::cout << "Number of samples in model fitting:\t" << m_N << std::endl;
   
-  cout << "numBytesofEachMarker in Plink file:\t" << m_numBytesofEachMarker0 << endl;
-  cout << "numBytesofEachMarker in model fitting:\t" << m_numBytesofEachMarker << endl;
-  cout << "numBytesReserve:\t" << m_numBytesReserve << " Gb" << endl << endl;
+  std::cout << "numBytesofEachMarker in Plink file:\t" << m_numBytesofEachMarker0 << std::endl;
+  std::cout << "numBytesofEachMarker in model fitting:\t" << m_numBytesofEachMarker << std::endl;
+  std::cout << "numBytesReserve:\t" << m_numBytesReserve << " Gb" << std::endl << std::endl;
   
-  cout << "numArrays:\t" << m_numArrays << endl;
-  cout << "numMarkersofEachArray:\t" << m_numMarkersofEachArray << endl;
-  cout << "numMarkersofLastArray:\t" << m_numMarkersofLastArray << endl << endl;
+  std::cout << "numArrays:\t" << m_numArrays << std::endl;
+  std::cout << "numMarkersofEachArray:\t" << m_numMarkersofEachArray << std::endl;
+  std::cout << "numMarkersofLastArray:\t" << m_numMarkersofLastArray << std::endl << std::endl;
   
   ///////////////////////////////////////// MAIN PART //////////////////////////////
   
@@ -40,18 +41,18 @@ void DenseGRMClass::setDenseGRMObj(PlinkClass* t_ptrPlinkObj,
   arma::vec t1  = getTime();
   m_M = 0;
   string bimTemp;
+  std::string chr;
   for(long long int i = 0; i < m_M0; i ++)
   {
     // OneMarkerG4 --> OneMarkerG1
-    m_OneMarkerG1 = t_ptrPlinkObj->getOneMarker(i, freq, missingRate);
-    Rcpp::String chr = m_chrVec0[i];
+    m_OneMarkerG1 = t_ptrPlinkObj->getOneMarker(i, freq, missingRate, chr);
     
     if(freq >= t_minMafGRM && freq <= 1-t_minMafGRM && missingRate <= t_maxMissingGRM){
       setOneMarkerArray(m_M);
       invStd = getinvStd(freq);
       m_freqVec.push_back(freq);
       m_invStdVec.push_back(invStd);
-      m_chrVec.push_back(chr);
+      m_chrVec.push_back((Rcpp::String)chr);
       m_M ++;
     }
     if((i+1) % 10000 == 0){
@@ -86,7 +87,6 @@ void DenseGRMClass::setArrays(PlinkClass* t_ptrPlinkObj, double t_memoryChunk)
   m_M0 = t_ptrPlinkObj->getM0();
   m_numBytesofEachMarker0 = t_ptrPlinkObj->getnumBytesofEachMarker0();
   m_numBytesofEachMarker = t_ptrPlinkObj->getnumBytesofEachMarker();
-  m_chrVec0 = t_ptrPlinkObj->getChrVec();
   
   m_numBytesReserve = (double)(m_numBytesofEachMarker+2) * m_M0 / pow(10.0, 9.0);
   m_numMarkersofEachArray = floor(t_memoryChunk * pow(10.0, 9.0) / m_numBytesofEachMarker);
@@ -278,9 +278,9 @@ arma::vec getKinbVec(arma::vec t_bVec, DenseGRMClass* t_ptrDenseGRM, string t_ex
 {
   // int M = t_ptrDenseGRM->getM();
   Rcpp::List chrIndexLOCO = t_ptrDenseGRM->getChrIndexLOCO();
-  
+
   arma::Mat<int> ChrIdx = chrIndexLOCO[t_excludeChr];
-  
+
   // declare the InnerProduct instance that takes a pointer to the vector data
   getKinbVecParallel getKinbVecParallel(t_bVec, t_ptrDenseGRM);
 

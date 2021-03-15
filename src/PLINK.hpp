@@ -92,6 +92,19 @@ public:
                          bool t_isTrueGenotype);   // only used in PLINK. check m_genoMaps for details about the genotype mapping in PLINK.
   
 
+  arma::vec getOneMarker(uint64_t t_gIndex,
+                         double& t_altFreq,
+                         double& t_missingRate,
+                         std::string& t_chr)
+  {
+    std::string ref, alt, marker;
+    uint32_t pd;
+    double altCounts, imputeInfo;
+    std::vector<uint32_t> indexForMissing, indexForNonZero;
+    getOneMarker(t_gIndex, ref, alt, marker, pd, t_chr, t_altFreq, altCounts, t_missingRate, imputeInfo,
+                 false, indexForMissing, false, indexForNonZero, false);
+  }
+  
   uint32_t getN0(){return m_N0;}
   uint32_t getN(){return m_N;}
   uint32_t getM0(){return m_M0;}

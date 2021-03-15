@@ -4,6 +4,7 @@
 
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
+#include <sys/time.h>
 
 double getWeights(std::string t_kernel, 
                   double t_freq, 
@@ -38,6 +39,12 @@ bool imputeGenoAndFlip(arma::vec& t_GVec,
                        double t_altFreq, 
                        std::vector<uint32_t> t_indexForMissing,
                        std::string t_impute_method);
+
+arma::vec getTime();
+
+void printTime(arma::vec t1, arma::vec t2, std::string message);
+
+double getinvStd(double t_freq);
 
 #endif
 

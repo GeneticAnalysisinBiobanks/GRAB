@@ -4,13 +4,13 @@
 
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
-#include "Plink.hpp"
+#include "PLINK.hpp"
 
 namespace DenseGRM {
 
 using namespace Rcpp;
 using namespace std;
-using namespace Plink;
+using namespace PLINK;
 
 class DenseGRMClass{
 private:

@@ -2,6 +2,7 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
 #include "UTIL.hpp"
+#include <sys/time.h>
 
 double getWeights(std::string t_kernel, 
                   double t_freq, 
@@ -62,6 +63,40 @@ double getInnerProd(arma::mat& x1Mat, arma::mat& x2Mat)
 {
   double innerProd = arma::accu(x1Mat % x2Mat);
   return(innerProd);
+}
+
+arma::vec getTime(){
+  arma::vec Time(2, arma::fill::zeros);
+  struct timeval time;
+  Time(0) = 0;
+  if(!gettimeofday(&time,NULL))
+    Time(0) = (double)time.tv_sec + (double)time.tv_usec * .000001;
+  Time(1) = (double)clock() / CLOCKS_PER_SEC;
+  return Time;
+}
+
+void printTime(arma::vec t1, arma::vec t2, std::string message){
+  double wallTime = t2(0) - t1(0);
+  double cpuTime = t2(1) - t1(1);
+  if(wallTime < 60){
+    Rprintf ("It took %f seconds (%f CPU seconds) to %s.\n",
+             wallTime, cpuTime, message.c_str());
+  }else if(wallTime < 3600){
+    Rprintf ("It took %f minutes (%f CPU minutes) to %s.\n",
+             wallTime/60, cpuTime/60, message.c_str());
+  }else{
+    Rprintf ("It took %f hours (%f CPU hours) to %s.\n",
+             wallTime/3600, cpuTime/3600, message.c_str());
+  }
+}
+
+double getinvStd(double t_freq)
+{
+  double Std = sqrt(2 * t_freq * (1-t_freq));
+  if(Std == 0)
+    return 0;
+  else
+    return 1/Std;
 }
 
 // duplicate each element for (J-1) times: n x 1 -> n(J-1) x 1 

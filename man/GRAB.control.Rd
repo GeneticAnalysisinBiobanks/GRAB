@@ -35,9 +35,9 @@ For example, check \code{?GRAB.SPACox} for more information about SPACox method.
     }
   }
   \item{GRAB.Marker}{
-  Please refer to other sections for \code{IDsToIncludeFile}, \code{IDsToExcludeFile}, \code{RangesToIncludeFile}, \code{RangesToExcludeFile}, and \code{AlleleOrder}.
+  For \code{IDsToIncludeFile}, \code{IDsToExcludeFile}, \code{RangesToIncludeFile}, \code{RangesToExcludeFile}, and \code{AlleleOrder}, please refer to other sections.
   \itemize{
-  \item \code{impute_method}: a character, "mean", "minor", or "drop".
+  \item \code{impute_method}: a character, "mean", "minor", or "drop". If "mean", impute genotype using 2 * AlleleFreq; if "minor", impute genotype using minor alleles; if "drop", drop the subject whose genotype is missing.
   \item \code{missing_cutoff}: a numeric value (default: 0.15). Any variant with missing rate > this value will be excluded from analysis.  
   \item \code{min_maf_marker}: a numeric value (default: 0.001). Any variants with MAF < this value will be excluded from analysis.  
   \item \code{min_mac_marker}: a numeric value (default: 20). Any variants with MAC < this value will be excluded from analysis.  
