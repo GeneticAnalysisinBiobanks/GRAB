@@ -23,7 +23,7 @@ static POLMM::POLMMClass* ptr_gPOLMMobj = NULL;
 static SPACox::SPACoxClass* ptr_gSPACoxobj = NULL;
 
 // global variables for analysis
-uint8_t g_indexForImpute;   // 0: "mean"; 1: "minor"; 2: "drop"
+std::string g_impute_method;      // "mean", "minor", or "drop"
 double g_missingRate_cutoff;
 double g_marker_minMAF_cutoff;
 double g_marker_minMAC_cutoff;
@@ -37,15 +37,7 @@ void setMarker_GlobalVarsInCPP(std::string t_impute_method,
                                double t_min_maf_marker,
                                double t_min_mac_marker)
 {
-  if(t_impute_method == "mean")
-    g_indexForImpute = 0;
-  
-  if(t_impute_method == "minor")
-    g_indexForImpute = 1;
-  
-  if(t_impute_method == "drop")
-    g_indexForImpute = 2;
-  
+  g_impute_method = t_impute_method;
   g_missingRate_cutoff = t_missing_cutoff;
   g_marker_minMAF_cutoff = t_min_maf_marker;
   g_marker_minMAC_cutoff = t_min_mac_marker;
@@ -56,15 +48,7 @@ void setRegion_GlobalVarsInCPP(std::string t_impute_method,
                                double t_max_maf_region,
                                unsigned int t_max_markers_region)
 {
-  if(t_impute_method == "mean")
-    g_indexForImpute = 0;
-  
-  if(t_impute_method == "minor")
-    g_indexForImpute = 1;
-  
-  if(t_impute_method == "drop")
-    g_indexForImpute = 2;
-  
+  g_impute_method = t_impute_method;
   g_missingRate_cutoff = t_missing_cutoff;
   g_region_maxMAF_cutoff = t_max_maf_region;
   g_region_maxMarkers_cutoff = t_max_markers_region;
@@ -135,7 +119,8 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     }
     
     if(missingRate != 0){
-      flip = imputeGenoAndFlip(GVec, altFreq, indexForMissing, g_indexForImpute);  // in UTIL.cpp
+      // Function imputeGenoAndFlip is in UTIL.cpp
+      flip = imputeGenoAndFlip(GVec, altFreq, indexForMissing, g_impute_method);  // in UTIL.cpp
     }
     
     // analysis results for single-marker
@@ -240,7 +225,8 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       std::string info = chr+":"+std::to_string(pd)+":"+ref+":"+alt;
       
       if(missingRate != 0){
-        flip = imputeGenoAndFlip(GVec, altFreq, indexForMissing, g_indexForImpute);  // in UTIL.cpp
+        // Function imputeGenoAndFlip is in UTIL.cpp
+        flip = imputeGenoAndFlip(GVec, altFreq, indexForMissing, g_impute_method);  // in UTIL.cpp
       }
       
       // record basic information for the marker
