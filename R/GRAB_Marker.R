@@ -43,6 +43,7 @@ GRAB.Marker = function(objNull,
   outIndex = checkOutputFile(OutputFile, OutputFileIndex)    # this function is in 'Util.R'
   
   # check the setting of control, if not specified, the default setting will be used
+  checkControl.ReadGeno(control)
   control = checkControl.Marker(control, NullModelClass)
   
   SampleIDs = as.character(objNull$SampleIDs);

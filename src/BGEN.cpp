@@ -94,24 +94,52 @@ void BgenClass::setPosSampleInBgen(std::vector<std::string> & t_SampleInModel)
   std::cout << "Setting position of samples in Bgen files...." << std::endl;	  
   m_N = t_SampleInModel.size();
   
+  // updated by BWJ on 03/14/2021
+  
+  Rcpp::CharacterVector SampleInBgen(m_N0);
+  for(uint32_t i = 0; i < m_N0; i++)
+    SampleInBgen(i) = m_SampleInBgen.at(i);
+  
+  Rcpp::CharacterVector SampleInModel(m_N);
+  for(uint32_t i = 0; i < m_N; i++)
+    SampleInModel(i) = t_SampleInModel.at(i);
+  
+  Rcpp::IntegerVector posSampleInBgen = Rcpp::match(SampleInModel, SampleInBgen);
   for(uint32_t i = 0; i < m_N; i++){
-    std::string sample = t_SampleInModel.at(i);
-    auto pos = std::find(m_SampleInBgen.begin(), m_SampleInBgen.end(), sample);
-    if(pos == m_SampleInBgen.end()){
+    if(Rcpp::IntegerVector::is_na(posSampleInBgen.at(i)))
       Rcpp::stop("At least one subject requested is not in Bgen file.");
+  }
+  
+  Rcpp::IntegerVector posSampleInModel = Rcpp::match(SampleInBgen, SampleInModel);
+  m_posSampleInModel.resize(m_N0);
+  for(uint32_t i = 0; i < m_N0; i++){
+    if(Rcpp::IntegerVector::is_na(posSampleInModel.at(i))){
+      m_posSampleInModel.at(i) = -1;
+    }else{
+      m_posSampleInModel.at(i) = posSampleInModel.at(i) - 1;   // convert "starting from 1" to "starting from 0"
     }
   }
   
-  m_posSampleInModel.clear();
-  for(uint32_t i = 0; i < m_N0; i++){
-    std::string sample = m_SampleInBgen.at(i);
-    auto pos = std::find(t_SampleInModel.begin(), t_SampleInModel.end(), sample);
-    if(pos != t_SampleInModel.end()){
-      m_posSampleInModel.push_back(pos - t_SampleInModel.begin());
-    }else{
-      m_posSampleInModel.push_back(-1);      
-    }
-  }
+  // end of the update on 03/14/2021
+  
+  // for(uint32_t i = 0; i < m_N; i++){
+  //   std::string sample = t_SampleInModel.at(i);
+  //   auto pos = std::find(m_SampleInBgen.begin(), m_SampleInBgen.end(), sample);
+  //   if(pos == m_SampleInBgen.end()){
+  //     Rcpp::stop("At least one subject requested is not in Bgen file.");
+  //   }
+  // }
+  // 
+  // m_posSampleInModel.clear();
+  // for(uint32_t i = 0; i < m_N0; i++){
+  //   std::string sample = m_SampleInBgen.at(i);
+  //   auto pos = std::find(t_SampleInModel.begin(), t_SampleInModel.end(), sample);
+  //   if(pos != t_SampleInModel.end()){
+  //     m_posSampleInModel.push_back(pos - t_SampleInModel.begin());
+  //   }else{
+  //     m_posSampleInModel.push_back(-1);      
+  //   }
+  // }
   
 }
 

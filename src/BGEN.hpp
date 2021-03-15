@@ -24,8 +24,8 @@ private:
   unsigned int m_bufLens; 
 
 
-  std::vector<uint32_t> m_posSampleInBgen;
-  std::vector<uint32_t> m_posSampleInModel;
+  std::vector<int32_t> m_posSampleInBgen;
+  std::vector<int32_t> m_posSampleInModel;
   bool m_isDropMissingDosagesInBgen;
   bool m_isQuery;
   bool m_isSparseDosagesInBgen;

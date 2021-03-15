@@ -15,7 +15,7 @@
 #'   \item \code{IDsToExcludeFile}: a file of marker IDs to exclude, one column (no header) 
 #'   \item \code{RangesToIncludeFile}: a file of ranges to include, three columns (no header): chromosome, start position, end position
 #'   \item \code{RangesToExcludeFile}: a file of ranges to exclude, three columns (no header): chromosome, start position, end position
-#'   \item \code{AlleleOrder}: "ref-first" or "alt-first", to determine whether the REF/major allele should appear first or second. Default is "alt-first" for PLINK and "ref-first" for BGEN. If the analysis results show the REF allele frequencies of most markers are > 0.5, you might should change this option. NOTE, if you use plink2 to convert Plink file to BGEN file, you probably need to set it as 'ref-first'.
+#'   \item \code{AlleleOrder}: a character, "ref-first" or "alt-first", to determine whether the REF/major allele should appear first or second. Default is "alt-first" for PLINK and "ref-first" for BGEN. If the analysis results show the REF allele frequencies of most markers are > 0.5, you might should change this option. NOTE, if you use plink2 to convert Plink file to BGEN file, you probably need to set it as 'ref-first'.
 #'   }
 #'   }
 #'   \item{GRAB.NullModel}{
@@ -29,7 +29,14 @@
 #'     }
 #'   }
 #'   \item{GRAB.Marker}{
-#'   Please refer to the above sections for \code{include.markers}, \code{exclude.markers}, \code{include.range}, and \code{include.range}.
+#'   Please refer to other sections for \code{IDsToIncludeFile}, \code{IDsToExcludeFile}, \code{RangesToIncludeFile}, \code{RangesToExcludeFile}, and \code{AlleleOrder}.
+#'   \itemize{
+#'   \item \code{impute_method}: a character, "mean", "minor", or "drop".
+#'   \item \code{missing_cutoff}: a numeric value (default: 0.15). Any variant with missing rate > this value will be excluded from analysis.  
+#'   \item \code{min_maf_marker}: a numeric value (default: 0.001). Any variants with MAF < this value will be excluded from analysis.  
+#'   \item \code{min_mac_marker}: a numeric value (default: 20). Any variants with MAC < this value will be excluded from analysis.  
+#'   \item \code{nMarkersEachChunk}: number of markers in one chunk to be outputted
+#'   }
 #'   }
 #'   \item{GRAB.Region}{
 #'   Please refer to the above sections for \code{include.markers}, \code{exclude.markers}, \code{include.range}, and \code{include.range}.
@@ -40,6 +47,7 @@ GRAB.control = function(){
   return("Check ?GRAB.control for more information about the 'control' in package GRAB.")
 }
 
+# update 'control' or use 'default.control' if the corresponding elements are not specified 
 updateControl = function(control, default.control)
 {
   if(is.null(default.control))
@@ -88,13 +96,29 @@ checkControl.Marker = function(NullModelClass, control)
       stop("If specified, the argument of 'control' should be an R 'list'.")
   
   # uniform default control setting for marker-level analysis
-  default.marker.control = list(impute_method = "fixed",  
+  default.marker.control = list(impute_method = "mean",  
                                 missing_cutoff = 0.15,
                                 min_maf_marker = 0.001,
                                 min_mac_marker = 20,
                                 nMarkersEachChunk = 10000)
   
   control = updateControl(control, default.marker.control)
+  
+  # check if 'control' is reasonable
+  if(!control$impute_method %in% c("mean", "minor", "drop"))
+    stop("control$impute_method should be 'mean', 'minor', or 'drop'.")
+  
+  if(!is.numeric(control$missing_cutoff) | control$missing_cutoff < 0 | control$missing_cutoff > 0.5)
+    stop("control$missing_cutoff should be a numeric value ranging from 0 to 0.5.")
+  
+  if(!is.numeric(control$min_maf_marker) | control$min_maf_marker < 0 | control$min_maf_marker > 0.1)
+    stop("control$min_maf_marker should be a numeric value ranging from 0 to 0.1.")
+  
+  if(!is.numeric(control$min_mac_marker) | control$min_mac_marker < 0 | control$min_mac_marker > 100)
+    stop("control$min_mac_marker should be a numeric value ranging from 0 to 100.")
+  
+  if(!is.numeric(control$nMarkersEachChunk) | control$nMarkersEachChunk < 1e3 | control$nMarkersEachChunk > 1e5)
+    stop("control$nMarkersEachChunk should be a numeric value ranging from 1e3 to 1e5.")
   
   # specific default control setting for different approaches
   if(NullModelClass == "POLMM_NULL_Model")
@@ -126,6 +150,19 @@ checkControl.Region = function(NullModelClass, control)
                                 max_mem_region = 4)
   
   control = updateControl(control, default.region.control)
+  
+  # check if 'control' is reasonable
+  if(!control$impute_method %in% c("mean", "minor", "drop"))
+    stop("control$impute_method should be 'mean', 'minor', or 'drop'.")
+  
+  if(!is.numeric(control$missing_cutoff) | control$missing_cutoff < 0 | control$missing_cutoff > 0.5)
+    stop("control$missing_cutoff should be a numeric value ranging from 0 to 0.5.")
+  
+  if(!is.numeric(control$max_maf_region) | control$max_maf_region < 0 | control$max_maf_region > 0.3)
+    stop("control$min_maf_marker should be a numeric value ranging from 0 to 0.3.")
+  
+  if(!is.numeric(control$max_mem_region) | control$max_mem_region <= 0)
+    stop("control$min_mac_marker should be a numeric value > 0.")
   
   # specific default control setting for different approaches
   if(NullModelClass == "POLMM_NULL_Model")

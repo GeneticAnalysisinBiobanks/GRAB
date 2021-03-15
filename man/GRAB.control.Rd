@@ -21,7 +21,7 @@ For example, check \code{?GRAB.SPACox} for more information about SPACox method.
   \item \code{IDsToExcludeFile}: a file of marker IDs to exclude, one column (no header) 
   \item \code{RangesToIncludeFile}: a file of ranges to include, three columns (no header): chromosome, start position, end position
   \item \code{RangesToExcludeFile}: a file of ranges to exclude, three columns (no header): chromosome, start position, end position
-  \item \code{AlleleOrder}: "ref-first" or "alt-first", to determine whether the REF/major allele should appear first or second. Default is "alt-first" for PLINK and "ref-first" for BGEN. If the analysis results show the REF allele frequencies of most markers are > 0.5, you might should change this option. NOTE, if you use plink2 to convert Plink file to BGEN file, you probably need to set it as 'ref-first'.
+  \item \code{AlleleOrder}: a character, "ref-first" or "alt-first", to determine whether the REF/major allele should appear first or second. Default is "alt-first" for PLINK and "ref-first" for BGEN. If the analysis results show the REF allele frequencies of most markers are > 0.5, you might should change this option. NOTE, if you use plink2 to convert Plink file to BGEN file, you probably need to set it as 'ref-first'.
   }
   }
   \item{GRAB.NullModel}{
@@ -35,7 +35,14 @@ For example, check \code{?GRAB.SPACox} for more information about SPACox method.
     }
   }
   \item{GRAB.Marker}{
-  Please refer to the above sections for \code{include.markers}, \code{exclude.markers}, \code{include.range}, and \code{include.range}.
+  Please refer to other sections for \code{IDsToIncludeFile}, \code{IDsToExcludeFile}, \code{RangesToIncludeFile}, \code{RangesToExcludeFile}, and \code{AlleleOrder}.
+  \itemize{
+  \item \code{impute_method}: a character, "mean", "minor", or "drop".
+  \item \code{missing_cutoff}: a numeric value (default: 0.15). Any variant with missing rate > this value will be excluded from analysis.  
+  \item \code{min_maf_marker}: a numeric value (default: 0.001). Any variants with MAF < this value will be excluded from analysis.  
+  \item \code{min_mac_marker}: a numeric value (default: 20). Any variants with MAC < this value will be excluded from analysis.  
+  \item \code{nMarkersEachChunk}: number of markers in one chunk to be outputted
+  }
   }
   \item{GRAB.Region}{
   Please refer to the above sections for \code{include.markers}, \code{exclude.markers}, \code{include.range}, and \code{include.range}.
