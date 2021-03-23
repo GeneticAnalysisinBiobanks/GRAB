@@ -39,11 +39,26 @@ GRAB.NullModel = function(formula,
   Call = match.call()
   control = checkControl.NullModel(control, method, traitType)
   
-  # check missing data in formula, data, and subjData
-  objFormula = handleFormula(formula, data, subset, subjData)  # check formula.R for more details
-  response = objFormula$response
-  designMat = objFormula$designMat   # note that the intercept column is not included
-  subjData = as.character(objFormula$subjData)
+  # extract information from formula, data, subset, and subjData
+  cl <- match.call()
+  mf <- match.call(expand.dots = FALSE)
+  
+  m <- match(x = c("formula", "data", "subset", "subjData"), 
+             table = names(mf), nomatch = 0L)
+  
+  mf <- mf[c(1L, m)]
+  mf$drop.unused.levels <- TRUE
+  mf[[1L]] <- quote(stats::model.frame)
+  mf <- eval(expr = mf, envir = parent.frame())
+  
+  mt = attr(x = mf, which = "terms")
+  
+  response = model.response(mf)
+  designMat = model.matrix(object = mt, data = mf)
+  subjData = model.extract(mf, "subjData")
+  
+  if(colnames(designMat)[1] == "(Intercept)")
+    designMat = designMat[,-1,drop=F]
   
   nData = length(subjData)
   cat("Number of subjects in 'formula':\t", nData,"\n")
@@ -51,29 +66,17 @@ GRAB.NullModel = function(formula,
   if(any(duplicated(subjData))) 
     stop("Duplicated subject IDs in 'formula' and 'data', i.e., 'subjData', is not supported!")
   
-  OptionGRM = "none"
-  
-  if(!missing(GenoFile) & !missing(SparseGRMFile))
-    stop("If 'DenseGRM' is used, please specify 'GenoFile', if 'SparseGRM' is used, please specify 'SparseGRMFile'. Cannot specify both files.")
-  
-  if(!missing(GenoFile))
-    OptionGRM = "Dense"
-  
-  if(!missing(SparseGRMFile))
+  if(!missing(SparseGRMFile)){
     OptionGRM = "Sparse"
- 
-  IfDenseGRM = IfSparseGRM = F 
-  
+  }else{
+    OptionGRM = "Dense"
+  }
     
-    {
-    # DenseGRM (FullGRM) if GenoFile is given
+  if(!missing(GenoFile)){
     genoList = setGenoInput(GenoFile, GenoFileIndex, subjData)   # check Geno.R for more details
     subjGeno = genoList$SampleIDs      # subjGeno should be the same as subjData
     if(genoList$genoType != "PLINK")
       stop("If DenseGRM is used when fitting a null model, then only Plink file is supported.")
-  }else{
-    # SparseGRM if missing(GenoFile)
-    
   }
   
   if(method == "POLMM"){

@@ -13,6 +13,7 @@ GRAB.NullModel(
   traitType = "time-to-event",
   GenoFile,
   GenoFileIndex = NULL,
+  SparseGRMFile,
   control = NULL,
   ...
 )
