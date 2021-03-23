@@ -121,8 +121,30 @@ mainMarker.POLMM = function(genoType, genoIndex)
 # check the control list in null model fitting for POLMM method
 checkControl.NullModel.POLMM = function(control)
 {
-  default.control = list(range = c(-100, 100),
-                         length.out = 10000)
+  # default setting of control for POLMM method
+  default.control = list(memoryChunk = 2,
+                         seed = 12345678,
+                         tracenrun = 30,
+                         maxiter = 100,
+                         tolBeta = 0.001,
+                         tolTau = 0.002,
+                         tau = 0.2,
+                         maxiterPCG = 100,
+                         tolPCG = 1e-6,
+                         maxiterEps = 100,
+                         tolEps = 1e-10,
+                         minMafVarRatio = 0.1,
+                         maxMissingVarRatio = 0.1, 
+                         nSNPsVarRatio = 20,
+                         CVcutoff = 0.0025,
+                         LOCO = T,
+                         numThreads = "auto",
+                         stackSize = "auto",
+                         grainSize = 1,
+                         minMafGRM = 0.01,
+                         maxMissingGRM = 0.1,
+                         showInfo = T,
+                         onlyCheckTime = F)
   
   control = updateControl(control, default.control)
   

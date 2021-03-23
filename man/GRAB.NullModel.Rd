@@ -10,7 +10,7 @@ GRAB.NullModel(
   subset = NULL,
   subjData,
   method = "SPACox",
-  trait.type = "time-to-event",
+  traitType = "time-to-event",
   GenoFile,
   GenoFileIndex = NULL,
   control = NULL,
@@ -28,7 +28,7 @@ GRAB.NullModel(
 
 \item{method}{an R character, "SPACox", "SPAGE", "SAIGE", "POLMM", or "GATE"}
 
-\item{trait.type}{an R character, "binary", "categorical", "quantitative", or "time-to-event"}
+\item{traitType}{an R character, "binary", "ordinal", "quantitative", or "time-to-event"}
 
 \item{GenoFile}{a character of genotype file. Three types of genotype files are supported: PLINK ("prefix.bed"), BGEN ("prefix.bgen"), and VCF ("prefix.vcf" or "prefix.vcf.gz").}
 
@@ -45,6 +45,10 @@ an R object with a class of "XXXXX_NULL_Model" in which XXXXX is the 'method' us
 Fits a null model
 }
 \examples{
-# We put examples to the specific help pages for different methods. 
+## Example using POLMM to analyze ordinal categorical data
+POLMM_data = read.csv(system.file("extdata", "POLMM_data.csv", package = "GRAB"))
+formula  = outcome ~ Cova1 + Cova2
+data = POLMM_data
+GRAB.NullModel(formula, data)
 # For example, if you want to use "SPACox" method, please check ?GRAB.SPACox for more details. 
 }

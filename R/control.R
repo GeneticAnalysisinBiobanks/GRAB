@@ -177,3 +177,38 @@ checkControl.Region = function(NullModelClass, control)
   
   return(control)
 }
+
+# check control list in null model fitting
+checkControl.NullModel = function(control, method, traitType)
+{
+  # check if control is an R list
+  if(!is.null(control))
+    if(class(control) != "list")
+      stop("If specified, the argument of 'control' should be an R 'list'.")
+  
+  # SPACox method
+  if(method == "SPACox"){
+    if(traitType != "time-to-event")
+      stop("For method of 'SPACox', only traitType of 'time-to-event' is supported.")
+    control = checkControl.NullModel.SPACox(control)
+  }
+  
+  # POLMM method
+  if(method == "POLMM"){
+    if(traitType != "ordinal")
+      stop("For method of 'POLMM', only traitType of 'ordinal' is supported.")
+    control = checkControl.NullModel.POLMM(control)
+  }
+  
+  # to be updated for other methods
+  #
+  # ------------------------------
+  #
+  # to be updated for other methods
+  
+  print("The below are the list of control parameters used in null model fitting.")
+  print(control)
+  
+  return(control)
+}
+
