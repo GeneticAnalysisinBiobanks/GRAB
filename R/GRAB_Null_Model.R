@@ -29,6 +29,7 @@ GRAB.NullModel = function(formula,
                           traitType = "time-to-event",  # "binary", "ordinal", "quantitative", "time-to-event"
                           GenoFile,
                           GenoFileIndex = NULL,
+                          SparseGRMFile,
                           control = NULL,
                           ...)
 {
@@ -50,8 +51,34 @@ GRAB.NullModel = function(formula,
   if(any(duplicated(subjData))) 
     stop("Duplicated subject IDs in 'formula' and 'data', i.e., 'subjData', is not supported!")
   
-  genoList = setGenoInput(GenoFile, GenoFileIndex, subjData)   # check Geno.R for more details
-  subjGeno = genoList$SampleIDs      # subjGeno should be the same as subjData
+  OptionGRM = "none"
+  
+  if(!missing(GenoFile) & !missing(SparseGRMFile))
+    stop("If 'DenseGRM' is used, please specify 'GenoFile', if 'SparseGRM' is used, please specify 'SparseGRMFile'. Cannot specify both files.")
+  
+  if(!missing(GenoFile))
+    OptionGRM = "Dense"
+  
+  if(!missing(SparseGRMFile))
+    OptionGRM = "Sparse"
+ 
+  IfDenseGRM = IfSparseGRM = F 
+  
+    
+    {
+    # DenseGRM (FullGRM) if GenoFile is given
+    genoList = setGenoInput(GenoFile, GenoFileIndex, subjData)   # check Geno.R for more details
+    subjGeno = genoList$SampleIDs      # subjGeno should be the same as subjData
+    if(genoList$genoType != "PLINK")
+      stop("If DenseGRM is used when fitting a null model, then only Plink file is supported.")
+  }else{
+    # SparseGRM if missing(GenoFile)
+    
+  }
+  
+  if(method == "POLMM"){
+    objNull = fitNullModel.POLMM(response, designMat, subjData, control)
+  }
   
   # # SPACox method
   # if(method == "SPACox")
