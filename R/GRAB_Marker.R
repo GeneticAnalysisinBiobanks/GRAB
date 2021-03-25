@@ -7,6 +7,7 @@
 #' @param GenoFile a character of genotype file. Three types of genotype files are supported: PLINK ("prefix.bed"), BGEN ("prefix.bgen"), and VCF ("prefix.vcf" or "prefix.vcf.gz"). 
 #' @param GenoFileIndex additional index files corresponding to the "GenoFile". If Null (default), the same prefix as GenoFile is used. PLINK: c("prefix.bim", "prefix.fam"), BGEN: c("prefix.bgi"), and VCF: c("prefix.vcf.tbi") or c("prefix.vcf.gz.tbi").
 #' @param OutputFile a character of output file to store the analysis results. 
+#' @param OutputFileIndex a character of output index file to record the end point in case that program ends unexpectedly
 #' @param control a list of parameters for controlling the GRAB.Marker(). 
 #' @details 
 #' List of 'control' is different for different methods
@@ -34,39 +35,37 @@ GRAB.Marker = function(objNull,
                        GenoFile,
                        GenoFileIndex = NULL,
                        OutputFile,
-                       OutputFileIndex = NULL,   ## check it later: record the end point, avoid letting the program starts from the very beginning
+                       OutputFileIndex = NULL,   
                        control = NULL)
 {
   NullModelClass = checkObjNull(objNull);         # this function is in 'Util.R'
   
-  if(is.null(OutputFileIndex)) OutputFileIndex = paste0(OutputFile, ".index")
-  outIndex = checkOutputFile(OutputFile, OutputFileIndex)    # this function is in 'Util.R'
+  if(is.null(OutputFileIndex)) 
+    OutputFileIndex = paste0(OutputFile, ".index")
   
   # check the setting of control, if not specified, the default setting will be used
   checkControl.ReadGeno(control)
   control = checkControl.Marker(control, NullModelClass)
+  nMarkersEachChunk = control$nMarkersEachChunk;
+  outIndex = checkOutputFile(OutputFile, OutputFileIndex, "Marker", format(nMarkersEachChunk, scientific=F))    # this function is in 'Util.R'
   
-  SampleIDs = as.character(objNull$SampleIDs);
+  subjData = as.character(objNull$subjData);
   
   ## set up an object for genotype
-  objGeno = setGenoInput(GenoFile, GenoFileIndex, SampleIDs)  # this function is in 'Geno.R'
+  objGeno = setGenoInput(GenoFile, GenoFileIndex, subjData)  # this function is in 'Geno.R'
   genoType = objGeno$genoType
   markerInfo = objGeno$markerInfo
-  
-  # different genotype format corresponds to different index
-  if(genoType == "PLINK")
-    genoIndex = markerInfo$PositionInPLINK
-  if(genoType == "BGEN")
-    genoIndex = markerInfo$StartPositionInBGEN
+  genoIndex = markerInfo$genoIndex
   
   # all markers were split into multiple chunks, 
-  nMarkersEachChunk = control$nMarkersEachChunk;
   genoIndexList = splitMarker(genoIndex, nMarkersEachChunk);
   nChunks = length(genoIndexList)
   
   cat("Number of all markers to test:\t", nrow(markerInfo), "\n")
   cat("Number of markers in each chunk:\t", nMarkersEachChunk, "\n")
   cat("Number of chunks for all markers:\t", nChunks, "\n")
+  if(outIndex != 1)
+    cat("Restart the analysis from chunk:\t", outIndex, "\n")
   
   # set up objects that do not change for different variants
   setMarker(NullModelClass, objNull, control)
@@ -81,11 +80,13 @@ GRAB.Marker = function(objNull,
     
     # write summary statistics to output file
     if(i == 1){
-      data.table::fwrite(resMarker, OutputFile, quote = F, sep = "\t", append = F, col.names = T)
-      write.table(matrix(c("GRAB.outIndex", "Please do not modify this file.", 1), ncol = 1), 
+      data.table::fwrite(resMarker, OutputFile, quote = F, sep = "\t", append = F, col.names = T, na="NA")
+      write.table(matrix(c("GRAB.outIndex", "Please_do_not_modify_this_file.", "Marker", 
+                           format(nMarkersEachChunk, scientific=F), 1), 
+                         ncol = 1), 
                   OutputFileIndex, col.names = F, row.names = F, quote = F, append = F)
     }else{
-      data.table::fwrite(resMarker, OutputFile, quote = F, sep = "\t", append = T, col.names = F)
+      data.table::fwrite(resMarker, OutputFile, quote = F, sep = "\t", append = T, col.names = F, na="NA")
       write.table(matrix(i, ncol = 1), 
                   OutputFileIndex, col.names = F, row.names = F, quote = F, append = T)
     }
@@ -93,6 +94,8 @@ GRAB.Marker = function(objNull,
   
   # information to users
   output = paste0("Done! The results have been saved to '", OutputFile,"'.")
+  write.table(matrix(-1, ncol = 1), 
+              OutputFileIndex, col.names = F, row.names = F, quote = F, append = T)
   
   return(output)
 }
@@ -101,7 +104,7 @@ GRAB.Marker = function(objNull,
 
 setMarker = function(NullModelClass, objNull, control)
 {
-  
+  # The following function is in Main.cpp
   setMarker_GlobalVarsInCPP(control$impute_method,
                             control$missing_cutoff,
                             control$min_maf_marker,
@@ -113,6 +116,7 @@ setMarker = function(NullModelClass, objNull, control)
   if(NullModelClass == "SAIGE_NULL_Model")
     obj.setMarker = setMarker.SAIGE(objNull, control)
   
+  # The following function is in SPACox.R
   if(NullModelClass == "SPACox_NULL_Model")
     obj.setMarker = setMarker.SPACox(objNull, control)
     
@@ -127,6 +131,7 @@ mainMarker = function(NullModelClass, genoType, genoIndex)
   if(NullModelClass == "SAIGE_NULL_Model")
     obj.mainMarker = mainMarker.SAIGE(genoType, genoIndex)
   
+  # The following function is in SPACox.R
   if(NullModelClass == "SPACox_NULL_Model")
     obj.mainMarker = mainMarker.SPACox(genoType, genoIndex)
   

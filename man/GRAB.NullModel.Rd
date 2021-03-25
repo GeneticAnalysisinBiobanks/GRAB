@@ -37,7 +37,7 @@ GRAB.NullModel(
 
 \item{control}{a list of parameters for controlling the GRAB.NullModel().}
 
-\item{...}{Other arguments passed to function XXXX().}
+\item{...}{Other arguments passed to or from other methods().}
 }
 \value{
 an R object with a class of "XXXXX_NULL_Model" in which XXXXX is the 'method' used in analysis.

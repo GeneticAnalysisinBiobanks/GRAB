@@ -22,6 +22,8 @@ GRAB.Marker(
 
 \item{OutputFile}{a character of output file to store the analysis results.}
 
+\item{OutputFileIndex}{a character of output index file to record the end point in case that program ends unexpectedly}
+
 \item{control}{a list of parameters for controlling the GRAB.Marker().}
 }
 \value{

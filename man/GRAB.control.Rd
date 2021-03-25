@@ -10,7 +10,7 @@ GRAB.control()
 Information about the control in GRAB package
 }
 \details{
-In GRAB package, we use control to specify parameters in multiple functions. Here, we only list generic parameters. 
+In GRAB package, we use \code{control} to specify parameters in multiple functions. Here, we only list generic parameters. 
 For the parameters only used in specific method, please refer to its own help page. 
 For example, check \code{?GRAB.SPACox} for more information about SPACox method.
 \describe{
@@ -35,17 +35,31 @@ For example, check \code{?GRAB.SPACox} for more information about SPACox method.
     }
   }
   \item{GRAB.Marker}{
-  For \code{IDsToIncludeFile}, \code{IDsToExcludeFile}, \code{RangesToIncludeFile}, \code{RangesToExcludeFile}, and \code{AlleleOrder}, please refer to other sections.
   \itemize{
+  \item \code{IDsToIncludeFile}: please refer to section \code{GRAB.ReadGeno}.
+  \item \code{IDsToExcludeFile}: please refer to section \code{GRAB.ReadGeno}.
+  \item \code{RangesToIncludeFile}: please refer to section \code{GRAB.ReadGeno}.
+  \item \code{RangesToExcludeFile}: please refer to section \code{GRAB.ReadGeno}.
+  \item \code{AlleleOrder}: please refer to section \code{GRAB.ReadGeno}.
   \item \code{impute_method}: a character, "mean", "minor", or "drop". If "mean", impute genotype using 2 * AlleleFreq; if "minor", impute genotype using minor alleles; if "drop", drop the subject whose genotype is missing.
   \item \code{missing_cutoff}: a numeric value (default: 0.15). Any variant with missing rate > this value will be excluded from analysis.  
   \item \code{min_maf_marker}: a numeric value (default: 0.001). Any variants with MAF < this value will be excluded from analysis.  
   \item \code{min_mac_marker}: a numeric value (default: 20). Any variants with MAC < this value will be excluded from analysis.  
-  \item \code{nMarkersEachChunk}: number of markers in one chunk to be outputted
+  \item \code{nMarkersEachChunk}: number of markers (default: 10000) in one chunk to be outputted
   }
   }
   \item{GRAB.Region}{
-  Please refer to the above sections for \code{include.markers}, \code{exclude.markers}, \code{include.range}, and \code{include.range}.
+  \itemize{
+  \item \code{IDsToIncludeFile}: please refer to section \code{GRAB.ReadGeno}.
+  \item \code{IDsToExcludeFile}: please refer to section \code{GRAB.ReadGeno}.
+  \item \code{RangesToIncludeFile}: please refer to section \code{GRAB.ReadGeno}.
+  \item \code{RangesToExcludeFile}: please refer to section \code{GRAB.ReadGeno}.
+  \item \code{AlleleOrder}: please refer to section \code{GRAB.ReadGeno}.
+  \item \code{impute_method}: a character, "mean", "minor", or "drop". If "mean", impute genotype using 2 * AlleleFreq; if "minor", impute genotype using minor alleles; if "drop", drop the subject whose genotype is missing.
+  \item \code{missing_cutoff}: a numeric value (default: 0.15). Any variant with missing rate > this value will be excluded from analysis.  
+  \item \code{max_maf_region}: a numeric value (default: 0.001). Any variants with MAF < this value will be excluded from analysis.  
+  \item \code{nRegionsEachChunk}: number of markers (default: 10000) in one chunk to be outputted
+  }
   }
 }
 }

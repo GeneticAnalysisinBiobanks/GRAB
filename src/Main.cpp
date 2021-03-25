@@ -32,6 +32,7 @@ unsigned int g_region_maxMarkers_cutoff;   // maximal number of markers in one c
 
 // set up global variables for analysis
 
+// [[Rcpp::export]]
 void setMarker_GlobalVarsInCPP(std::string t_impute_method,
                                double t_missing_cutoff,
                                double t_min_maf_marker,
@@ -43,6 +44,7 @@ void setMarker_GlobalVarsInCPP(std::string t_impute_method,
   g_marker_minMAC_cutoff = t_min_mac_marker;
 }
 
+// [[Rcpp::export]]
 void setRegion_GlobalVarsInCPP(std::string t_impute_method,
                                double t_missing_cutoff,
                                double t_max_maf_region,
@@ -67,11 +69,12 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   std::vector<std::string> markerVec(q);  // marker IDs
   std::vector<std::string> infoVec(q);    // marker information: CHR:POS:REF:ALT
   std::vector<double> altFreqVec(q);      // allele frequencies of ALT allele, this is not always < 0.5.
+  std::vector<double> altCountsVec(q);    // allele counts of ALT allele.
   std::vector<double> missingRateVec(q);  // allele frequencies of ALT allele, this is not always < 0.5.
   std::vector<double> BetaVec(q);         // beta value for ALT allele
   std::vector<double> seBetaVec(q);       
   std::vector<double> pvalVec(q);
-  
+  std::vector<double> zScoreVec(q);
   
   // loop for all markers
   for(int i = 0; i < q; i++){
@@ -104,6 +107,7 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     markerVec.at(i) = marker;               // marker IDs
     infoVec.at(i) = info;    // marker information: CHR:POS:REF:ALT
     altFreqVec.at(i) = altFreq;         // allele frequencies of ALT allele, this is not always < 0.5.
+    altCountsVec.at(i) = altCounts;         // allele frequencies of ALT allele, this is not always < 0.5.
     missingRateVec.at(i) = missingRate;
     
     // MAF and MAC are for Quality Control (QC)
@@ -124,24 +128,27 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     }
     
     // analysis results for single-marker
-    double Beta, seBeta, pval;
+    double Beta, seBeta, pval, zScore;
     
     Unified_getMarkerPval(t_method, GVec, 
                           false, // bool t_isOnlyOutputNonZero, 
-                          indexForNonZero, Beta, seBeta, pval, altFreq);
+                          indexForNonZero, Beta, seBeta, pval, zScore, altFreq);
     
     BetaVec.at(i) = Beta * (1 - 2*flip);  // Beta if flip = false, -1*Beta is flip = true       
     seBetaVec.at(i) = seBeta;       
     pvalVec.at(i) = pval;
+    zScoreVec.at(i) = zScore;
   }
   
   Rcpp::List OutList = Rcpp::List::create(Rcpp::Named("markerVec") = markerVec,
                                           Rcpp::Named("infoVec") = infoVec,
                                           Rcpp::Named("altFreqVec") = altFreqVec,
+                                          Rcpp::Named("altCountsVec") = altCountsVec,
                                           Rcpp::Named("missingRateVec") = missingRateVec,
                                           Rcpp::Named("BetaVec") = BetaVec,
                                           Rcpp::Named("seBetaVec") = seBetaVec,
-                                          Rcpp::Named("pvalVec") = pvalVec);
+                                          Rcpp::Named("pvalVec") = pvalVec,
+                                          Rcpp::Named("zScoreVec") = zScoreVec);
   
   return OutList;  
 }
@@ -464,7 +471,8 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
                            std::vector<uint32_t> t_indexForNonZero,
                            double& t_Beta, 
                            double& t_seBeta, 
-                           double& t_pval, 
+                           double& t_pval,
+                           double& t_zScore,
                            double t_altFreq)
 {
   if(t_method == "POLMM"){
@@ -475,7 +483,9 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
   }
   
   if(t_method == "SPACox"){
-    // ptr_gSPACoxobj->getMarkerPval(t_GVec, t_Beta, t_seBeta, t_pval, t_altFreq);
+    if(t_isOnlyOutputNonZero == true)
+      Rcpp::stop("When using SPACox method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+    t_pval = ptr_gSPACoxobj->getMarkerPval(t_GVec, t_altFreq, t_zScore);
   }
   
 }

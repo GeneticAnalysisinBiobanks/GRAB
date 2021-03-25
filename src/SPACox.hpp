@@ -150,16 +150,17 @@ public:
   }
   
   double getMarkerPval(arma::vec t_GVec, 
-                       double t_MAF)
+                       double t_MAF,
+                       double& t_zScore)
   {
     double S = sum(t_GVec % m_mresid);
     arma::vec adjGVec = t_GVec - 2 * t_MAF;
     arma::vec adjGVec2 = pow(adjGVec, 2);
     double VarS = m_varResid * sum(adjGVec2);
-    double z = S / sqrt(VarS);
+    t_zScore = S / sqrt(VarS);
     
-    if(std::abs(z) < m_SPA_Cutoff){
-      double pval = arma::normcdf(-1*std::abs(z))*2;
+    if(std::abs(t_zScore) < m_SPA_Cutoff){
+      double pval = arma::normcdf(-1*std::abs(t_zScore))*2;
       return pval;
     }
     
@@ -171,8 +172,8 @@ public:
     arma::vec adjG1 = adjGVecNorm.elem(N1set);
     double adjG0 = -2 * t_MAF / sqrt(VarS);  // all subjects with g=0 share the same normlized genotype, this is to reduce computation time
     
-    double pval1 = GetProb_SPA(adjG0, adjG1, N0, std::abs(z), false);
-    double pval2 = GetProb_SPA(adjG0, adjG1, N0, -1*std::abs(z), true);
+    double pval1 = GetProb_SPA(adjG0, adjG1, N0, std::abs(t_zScore), false);
+    double pval2 = GetProb_SPA(adjG0, adjG1, N0, -1*std::abs(t_zScore), true);
     double pval = pval1 + pval2;
     
     if(pval > m_pVal_covaAdj_Cutoff){
@@ -184,7 +185,7 @@ public:
     adjGVec = t_GVec - m_XinvXX * m_tX.cols(N1set) * t_GVec.elem(N1set);
     adjGVec2 = pow(adjGVec, 2);
     VarS = m_varResid * sum(adjGVec2);
-    z = S / sqrt(VarS);
+    t_zScore = S / sqrt(VarS);
             
     adjGVecNorm = adjGVec / sqrt(VarS);
             
@@ -192,9 +193,10 @@ public:
     adjG1 = adjGVecNorm;
     adjG0 = 0;   // since N0=0, this value actually does not matter
 
-    pval1 = GetProb_SPA(adjG0, adjG1, N0, std::abs(z), false);
-    pval2 = GetProb_SPA(adjG0, adjG1, N0, -1*std::abs(z), true);
+    pval1 = GetProb_SPA(adjG0, adjG1, N0, std::abs(t_zScore), false);
+    pval2 = GetProb_SPA(adjG0, adjG1, N0, -1*std::abs(t_zScore), true);
     pval = pval1 + pval2;
+    
     return pval;
   }
   

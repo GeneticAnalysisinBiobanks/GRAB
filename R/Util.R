@@ -27,7 +27,10 @@ checkObjNull = function(objNull)
 }
 
 
-checkOutputFile = function(OutputFile, OutputFileIndex)
+checkOutputFile = function(OutputFile, 
+                           OutputFileIndex, 
+                           AnalysisType,      ## "Marker" or "Region"
+                           nEachChunk)
 {
   if(missing(OutputFile))
     stop("Argument of 'OutputFile' is required.")
@@ -38,9 +41,15 @@ checkOutputFile = function(OutputFile, OutputFileIndex)
     }
     else{
       outIndexData = read.table(OutputFileIndex)
-      if(outIndexData[1,1] != "GRAB.outIndex" | outIndexData[2,1] != "Please do not modify this file.")
+      
+      if(outIndexData[1,1] != "GRAB.outIndex" | outIndexData[2,1] != "Please_do_not_modify_this_file." | outIndexData[3,1] != AnalysisType | outIndexData[4,1] != nEachChunk)
         stop("'OutputFileIndex' is not expected. Please use another 'OutputFileIndex' or remove the existing one.")
-      outIndex = as.numeric(outIndexData[nrow(outIndexData),1])
+      
+      outIndex = as.numeric(outIndexData[nrow(outIndexData),1]) + 1
+      if(outIndex == 0)
+        stop("Based on 'OutputFile' and 'OutputFileIndex', the analysis has been completed.")
+      
+      warning(paste0("Based on 'OutputFile' and 'OutputFileIndex', we restart the analysis from the ", outIndex, "-th chunks."))
     }
   }else{
     outIndex = 1;

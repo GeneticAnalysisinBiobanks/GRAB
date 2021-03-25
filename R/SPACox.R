@@ -4,35 +4,40 @@
 #' SPACox method is to analysis time-to-event phenotype for large-scale biobank data
 #' 
 #' @details 
-#' List of 'control' in GRAB.NullModel function
+#' Please check \code{?GRAB.control} for the generic list of \code{control} in \code{GRAB.NullModel()} and \code{GRAB.Marker()}.
+#' 
+#' Additional list of \code{control} in \code{GRAB.NullModel()} function
 #' \itemize{
-#' \item{range: a two-element numeric vector [default=c(-100,100)] to specify the domain of the empirical CGF.}
-#' \item{length.out: a positive integer [default=10000] for empirical CGF. Larger length.out corresponds to longer calculation time and more accurate estimated empirical CGF.}
+#' \item{\code{range}: a two-element numeric vector [default=c(-100,100)] to specify the domain of the empirical CGF.}
+#' \item{\code{length.out}: a positive integer [default=10000] for empirical CGF. Larger length.out corresponds to longer calculation time and more accurate estimated empirical CGF.}
 #' }
-#' List of 'control' in GRAB.Marker function
+#' Additional list of \code{control} in \code{GRAB.Marker()} function
 #' \itemize{
-#' \item{impute_method: a character string [default="fixed"] to specify the method to impute missing genotypes. "fixed" imputes missing genotypes (NA) by assigning the mean genotype value (i.e. 2p where p is MAF).}
-#' \item{missing_cutoff: a numeric value [default=0.15] to specify the cutoff of the missing rates. Any variant with missing rate higher than this cutoff will be excluded from the analysis.}
-#' \item{min_maf_marker: a numeric value [default=0.001] to specify the cutoff of the minimal MAF. Any SNP with MAF < cutoff will be excluded from the analysis.}
-#' \item{min_mac_marker: a numeric value [default=20] to specify the cutoff of the minimal MAC. Any SNP with MAC < cutoff will be excluded from the analysis.}
-#' \item{nMarkersEachChunk: a numeric value [default=10000] to specify the number of markers in each chunk.}
-#' \item{pVal_covaAdj_Cutoff: a numeric value [default=5e-5]. If the p-value is less than this cutoff, then we would use an additional technic to adjust for covariates.}
-#' \item{SPA_cutoff: a numeric value [default=2] to specify the standard deviation cutoff to be used. If the test statistic lies within the standard deviation cutoff, its p value is calculated based on a normal distribution approximation, otherwise, its p value is calculated based on a saddlepoint approximation.".}
+#' \item{\code{pVal_covaAdj_Cutoff}: a numeric value [default=5e-5]. If the p-value is less than this cutoff, then we would use an additional technic to adjust for covariates.}
+#' \item{\code{SPA_cutoff}: a numeric value [default=2] to specify the standard deviation cutoff to be used. If the test statistic lies within the standard deviation cutoff, its p value is calculated based on a normal distribution approximation, otherwise, its p value is calculated based on a saddlepoint approximation.".}
 #' }
 #' @examples 
 #' # Simulation phenotype and genotype
-#' GenoFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.bed", package = "GRAB")
+#' set.seed(1)
 #' N = 100
 #' Pheno = data.frame(ID = paste0("f",1:N,"_1"),
 #'                    event=rbinom(N,1,0.5),
 #'                    time=runif(N),
 #'                    Cov1=rnorm(N),
 #'                    Cov2=rbinom(N,1,0.5))
-#' obj.SPACox = GRAB.NullModel(survival::Surv(time,event)~Cov1+Cov2, 
-#'                             data=Pheno, subjData = Pheno$ID, method = "SPACox", GenoFile = GenoFile)
 #' 
-#' res.SPACox = GRAB.Marker(obj.SPACox, GenoFile)
-#' head(res.SPACox)
+#' # Step 1: fit a null model
+#' obj.SPACox = GRAB.NullModel(survival::Surv(time,event) ~ Cov1 + Cov2, 
+#'                             data = Pheno, subjData = Pheno$ID, 
+#'                             method = "SPACox", traitType = "time-to-event")
+#' 
+#' # Step 2: run score test
+#' GenoFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.bed", package = "GRAB")
+#' OutputDir = system.file("results", package = "GRAB")
+#' OutputFile = paste0(OutputDir, "/SPACoxMarkers.txt")
+#' GRAB.Marker(obj.SPACox, GenoFile = GenoFile,
+#'             OutputFile = OutputFile)
+#' 
 #' @export
 GRAB.SPACox = function(){
   print("Check ?GRAB.SPACox for more details about 'SPACox' method.")
@@ -60,14 +65,20 @@ checkControl.NullModel.SPACox = function(control)
 }
 
 # fit null model using SPACox method
-fitNullModel.SPACox = function(formula, data, subset, subjData, subjGeno, control, ...)
+# fitNullModel.SPACox = function(formula, data, subset, subjData, subjGeno, control, ...)
+fitNullModel.SPACox = function(response, designMat, subjData, control, ...)
 {
+  if(class(response) != "Surv") stop("For SPACox, the response variable should be of class 'Surv'.")
+  
+  formula = response ~ designMat
+  
   ### extract information from control
   range = control$range
   length.out = control$length.out
   
   ### Fit a Cox model using survival package
-  obj.coxph = survival::coxph(formula, data=data, subset=subset, x=T, na.action="na.omit", ...)
+  # obj.coxph = survival::coxph(formula, data=data, subset=subset, x=T, na.action="na.omit", ...)
+  obj.coxph = survival::coxph(formula, x=T, ...)
   
   ### The below is commented since it has been checked in fitNullModel() 
   ### By Wenjian Bi on 01-31-2021
@@ -120,8 +131,8 @@ fitNullModel.SPACox = function(formula, data, subset, subjData, subjGeno, contro
             cumul = cumul,
             tX = tX,
             X.invXX = X.invXX,
-            subjData = subjData, 
-            subjGeno = subjGeno)
+            subjData = subjData) 
+            # subjGeno = subjGeno)
   
   class(re) = "SPACox_NULL_Model"
   return(re)
@@ -148,6 +159,7 @@ setMarker.SPACox = function(objNull, control)
   pVal_covaAdj_Cutoff = control$pVal_covaAdj_Cutoff
   SPA_Cutoff = control$SPA_Cutoff
   
+  # The following function is in Main.cpp
   setSPACoxobjInCPP(cumul,
                     mresid,
                     XinvXX,
@@ -158,30 +170,42 @@ setMarker.SPACox = function(objNull, control)
 }
 
 
-mainMarker.SPACox = function(objNull, control, markers, genoType)
+# mainMarker.SPACox = function(objNull, control, markers, genoType)
+mainMarker.SPACox = function(genoType, genoIndex)
 {
+  # The following function is in Main.cpp
   OutList = mainMarkerInCPP("SPACox",
                             genoType,
-                            markers)
+                            genoIndex)
                             # control$missing_cutoff,
                             # control$min_maf_marker,
                             # control$min_mac_marker)  
   
+  # Rcpp::List OutList = Rcpp::List::create(Rcpp::Named("markerVec") = markerVec,
+  #                                         Rcpp::Named("infoVec") = infoVec,
+  #                                         Rcpp::Named("altFreqVec") = altFreqVec,
+  #                                         Rcpp::Named("missingRateVec") = missingRateVec,
+  #                                         Rcpp::Named("BetaVec") = BetaVec,
+  #                                         Rcpp::Named("seBetaVec") = seBetaVec,
+  #                                         Rcpp::Named("pvalVec") = pvalVec);
+  
   markerVec = OutList$markerVec   # marker IDs
   infoVec = OutList$infoVec       # marker infomation: CHR:POS:REF:ALT
-  flipVec = OutList$flipVec       # 
-  freqVec = OutList$freqVec       # minor allele frequencies (freq of ALT if flip=F, freq of REF if flip=T)
+  altFreqVec = OutList$altFreqVec       # 
+  altCountsVec = OutList$altCountsVec       # 
+  missingRateVec = OutList$missingRateVec       # minor allele frequencies (freq of ALT if flip=F, freq of REF if flip=T)
   # BetaVec = OutList$BetaVec     # beta for ALT if flip=F, beta for REF if flip=T
   # seBetaVec = OutList$seBetaVec # sebeta
-  PvalVec = OutList$pvalVec;      # marker-level p-values
+  pvalVec = OutList$pvalVec;      # marker-level p-values
+  zScoreVec = OutList$zScoreVec;
   
   obj.mainMarker = data.frame(Marker = markerVec,
                               Info = infoVec,
-                              Flip = flipVec,
-                              Freq = freqVec,
-                              # Beta = BetaVec,
-                              # seBeta = seBetaVec,
-                              Pval = PvalVec)
+                              AltFreq = altFreqVec,
+                              AltCounts = altCountsVec,
+                              MissingRate = missingRateVec,
+                              Pval = pvalVec,
+                              zScore = zScoreVec)
   
 }
 

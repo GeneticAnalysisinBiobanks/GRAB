@@ -54,7 +54,8 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
                            std::vector<uint32_t> t_indexForNonZero,
                            double& t_Beta, 
                            double& t_seBeta, 
-                           double& t_pval, 
+                           double& t_pval,
+                           double& t_zScore,
                            double t_altFreq);
   
 #endif

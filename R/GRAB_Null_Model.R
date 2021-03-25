@@ -10,7 +10,7 @@
 #' @param GenoFile a character of genotype file. Three types of genotype files are supported: PLINK ("prefix.bed"), BGEN ("prefix.bgen"), and VCF ("prefix.vcf" or "prefix.vcf.gz"). 
 #' @param GenoFileIndex additional index files corresponding to the "GenoFile". If Null (default), the same prefix as GenoFile is used. PLINK: c("prefix.bim", "prefix.fam"), BGEN: c("prefix.bgi"), and VCF: c("prefix.vcf.tbi") or c("prefix.vcf.gz.tbi").
 #' @param control a list of parameters for controlling the GRAB.NullModel(). 
-#' @param ... Other arguments passed to function XXXX(). 
+#' @param ... Other arguments passed to or from other methods(). 
 #' @return an R object with a class of "XXXXX_NULL_Model" in which XXXXX is the 'method' used in analysis.
 #' @examples
 #' ## Example using POLMM to analyze ordinal categorical data
@@ -39,8 +39,10 @@ GRAB.NullModel = function(formula,
   Call = match.call()
   control = checkControl.NullModel(control, method, traitType)
   
-  # extract information from formula, data, subset, and subjData
-  cl <- match.call()
+  #### START: formula.R
+  #### input: formula, data, subset, and subjData
+  #### output: response, designMat, subjData
+  
   mf <- match.call(expand.dots = FALSE)
   
   m <- match(x = c("formula", "data", "subset", "subjData"), 
@@ -66,43 +68,45 @@ GRAB.NullModel = function(formula,
   if(any(duplicated(subjData))) 
     stop("Duplicated subject IDs in 'formula' and 'data', i.e., 'subjData', is not supported!")
   
+  #### END: formula.R
+  
+  handleGRM(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
+  
+  if(method == "POLMM"){
+    objNull = fitNullModel.POLMM(response, designMat, subjData, control)
+  }
+  
+  if(method == "SPACox")
+    objNull = fitNullModel.SPACox(response, designMat, subjData, control, ...)
+  
+  objNull$subjData = subjData
+  
+  objNull$Call = Call;
+  objNull$sessionInfo = sessionInfo()
+  objNull$time = Sys.time()
+  
+  print(paste0("Complete null model fitting: ", objNull$time))
+  
+  return(objNull)
+}
+
+
+## to be updated later
+handleGRM = function(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
+{
   if(!missing(SparseGRMFile)){
     OptionGRM = "Sparse"
   }else{
     OptionGRM = "Dense"
   }
-    
+  
   if(!missing(GenoFile)){
     genoList = setGenoInput(GenoFile, GenoFileIndex, subjData)   # check Geno.R for more details
     subjGeno = genoList$SampleIDs      # subjGeno should be the same as subjData
     if(genoList$genoType != "PLINK" & OptionGRM == "Dense")
       stop("If DenseGRM is used when fitting a null model, then only Plink file is supported.")
   }
-  
-  if(method == "POLMM"){
-    objNull = fitNullModel.POLMM(response, designMat, subjData, control)
-  }
-  
-  # # SPACox method
-  # if(method == "SPACox")
-  #   objNull = fitNullModel.SPACox(formula, data, subset, subjData, subjGeno, control, ...);
-  # 
-  # # POLMM method
-  # if(method == "POLMM")
-  #   objNull = fitNullModel.POLMM(formula, data, subjData, subjGeno, control);
-  
-  objNull = list()
-  objNull$subjGeno = subjGeno
-  objNull$subjData = subjData
-  
-  objNull$Call = Call;
-  obj_Null$sessionInfo = sessionInfo()
-  obj_Null$time = Sys.time()
-  
-  return(objNull)
 }
-
-
 
 
 

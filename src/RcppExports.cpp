@@ -6,6 +6,32 @@
 
 using namespace Rcpp;
 
+// setMarker_GlobalVarsInCPP
+void setMarker_GlobalVarsInCPP(std::string t_impute_method, double t_missing_cutoff, double t_min_maf_marker, double t_min_mac_marker);
+RcppExport SEXP _GRAB_setMarker_GlobalVarsInCPP(SEXP t_impute_methodSEXP, SEXP t_missing_cutoffSEXP, SEXP t_min_maf_markerSEXP, SEXP t_min_mac_markerSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type t_impute_method(t_impute_methodSEXP);
+    Rcpp::traits::input_parameter< double >::type t_missing_cutoff(t_missing_cutoffSEXP);
+    Rcpp::traits::input_parameter< double >::type t_min_maf_marker(t_min_maf_markerSEXP);
+    Rcpp::traits::input_parameter< double >::type t_min_mac_marker(t_min_mac_markerSEXP);
+    setMarker_GlobalVarsInCPP(t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker);
+    return R_NilValue;
+END_RCPP
+}
+// setRegion_GlobalVarsInCPP
+void setRegion_GlobalVarsInCPP(std::string t_impute_method, double t_missing_cutoff, double t_max_maf_region, unsigned int t_max_markers_region);
+RcppExport SEXP _GRAB_setRegion_GlobalVarsInCPP(SEXP t_impute_methodSEXP, SEXP t_missing_cutoffSEXP, SEXP t_max_maf_regionSEXP, SEXP t_max_markers_regionSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type t_impute_method(t_impute_methodSEXP);
+    Rcpp::traits::input_parameter< double >::type t_missing_cutoff(t_missing_cutoffSEXP);
+    Rcpp::traits::input_parameter< double >::type t_max_maf_region(t_max_maf_regionSEXP);
+    Rcpp::traits::input_parameter< unsigned int >::type t_max_markers_region(t_max_markers_regionSEXP);
+    setRegion_GlobalVarsInCPP(t_impute_method, t_missing_cutoff, t_max_maf_region, t_max_markers_region);
+    return R_NilValue;
+END_RCPP
+}
 // mainMarkerInCPP
 Rcpp::List mainMarkerInCPP(std::string t_method, std::string t_genoType, std::vector<uint32_t> t_genoIndex);
 RcppExport SEXP _GRAB_mainMarkerInCPP(SEXP t_methodSEXP, SEXP t_genoTypeSEXP, SEXP t_genoIndexSEXP) {
@@ -126,6 +152,8 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
+    {"_GRAB_setMarker_GlobalVarsInCPP", (DL_FUNC) &_GRAB_setMarker_GlobalVarsInCPP, 4},
+    {"_GRAB_setRegion_GlobalVarsInCPP", (DL_FUNC) &_GRAB_setRegion_GlobalVarsInCPP, 4},
     {"_GRAB_mainMarkerInCPP", (DL_FUNC) &_GRAB_mainMarkerInCPP, 3},
     {"_GRAB_mainRegionInCPP", (DL_FUNC) &_GRAB_mainRegionInCPP, 5},
     {"_GRAB_getGenoInCPP", (DL_FUNC) &_GRAB_getGenoInCPP, 3},
