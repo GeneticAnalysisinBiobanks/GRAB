@@ -32,7 +32,7 @@ bool imputeGenoAndFlip(arma::vec& t_GVec,
 {
   int nMissing = t_indexForMissing.size();
   
-  double imputeG;
+  double imputeG = 0;
   if(t_impute_method == "mean"){
     imputeG = 2 * t_altFreq;
   }

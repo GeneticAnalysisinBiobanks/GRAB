@@ -1,0 +1,1 @@
+This folder is to store some result files in examples
