@@ -108,7 +108,8 @@ setMarker = function(NullModelClass, objNull, control)
   setMarker_GlobalVarsInCPP(control$impute_method,
                             control$missing_cutoff,
                             control$min_maf_marker,
-                            control$min_mac_marker)
+                            control$min_mac_marker,
+                            control$omp_num_threads)
   
   if(NullModelClass == "POLMM_NULL_Model")
     obj.setMarker = setMarker.POLMM(objNull, control)

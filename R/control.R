@@ -35,6 +35,7 @@
 #'   \item \code{RangesToIncludeFile}: please refer to section \code{GRAB.ReadGeno}.
 #'   \item \code{RangesToExcludeFile}: please refer to section \code{GRAB.ReadGeno}.
 #'   \item \code{AlleleOrder}: please refer to section \code{GRAB.ReadGeno}.
+#'   \item \code{omp_num_threads}: a numeric value (default: value from data.table::getDTthreads()) to specify the number of threads in OpenMP for parallel computation.
 #'   \item \code{impute_method}: a character, "mean", "minor", or "drop". If "mean", impute genotype using 2 * AlleleFreq; if "minor", impute genotype using minor alleles; if "drop", drop the subject whose genotype is missing.
 #'   \item \code{missing_cutoff}: a numeric value (default: 0.15). Any variant with missing rate > this value will be excluded from analysis.  
 #'   \item \code{min_maf_marker}: a numeric value (default: 0.001). Any variants with MAF < this value will be excluded from analysis.  
@@ -114,7 +115,8 @@ checkControl.Marker = function(control, NullModelClass)
                                 missing_cutoff = 0.15,
                                 min_maf_marker = 0.001,
                                 min_mac_marker = 20,
-                                nMarkersEachChunk = 10000)
+                                nMarkersEachChunk = 10000,
+                                omp_num_threads = data.table::getDTthreads())    # if 0, value is from omp_get_num_threads()
   
   control = updateControl(control, default.marker.control)
   
@@ -133,6 +135,9 @@ checkControl.Marker = function(control, NullModelClass)
   
   if(!is.numeric(control$nMarkersEachChunk) | control$nMarkersEachChunk < 1e3 | control$nMarkersEachChunk > 1e5)
     stop("control$nMarkersEachChunk should be a numeric value ranging from 1e3 to 1e5.")
+  
+  if(control$omp_num_threads < 0)
+    stop("control$omp_num_threads should be a positive integral value.")
   
   # specific default control setting for different approaches
   if(NullModelClass == "POLMM_NULL_Model")

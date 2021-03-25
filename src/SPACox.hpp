@@ -112,7 +112,6 @@ public:
       }
       
       if(arma::sign(K1) != arma::sign(oldK1)){
-        std::cout << "check" << std::endl;
         while(std::abs(diffX) > std::abs(oldDiffX) - tol){
           diffX = diffX / 2;
         }

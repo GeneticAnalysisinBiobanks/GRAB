@@ -4,6 +4,12 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
 
+// Currently, omp does not work well, will check it later
+// error: SET_VECTOR_ELT() can only be applied to a 'list', not a 'character'
+// remove all Rcpp::List to check if it works
+// #include <omp.h>
+// // [[Rcpp::plugins(openmp)]]]
+
 #include "Main.hpp"
 #include "PLINK.hpp"
 #include "BGEN.hpp"
@@ -25,6 +31,7 @@ static SPACox::SPACoxClass* ptr_gSPACoxobj = NULL;
 // global variables for analysis
 std::string g_impute_method;      // "mean", "minor", or "drop"
 double g_missingRate_cutoff;
+unsigned int g_omp_num_threads;
 double g_marker_minMAF_cutoff;
 double g_marker_minMAC_cutoff;
 double g_region_maxMAF_cutoff;
@@ -36,24 +43,28 @@ unsigned int g_region_maxMarkers_cutoff;   // maximal number of markers in one c
 void setMarker_GlobalVarsInCPP(std::string t_impute_method,
                                double t_missing_cutoff,
                                double t_min_maf_marker,
-                               double t_min_mac_marker)
+                               double t_min_mac_marker,
+                               unsigned int t_omp_num_threads)
 {
   g_impute_method = t_impute_method;
   g_missingRate_cutoff = t_missing_cutoff;
   g_marker_minMAF_cutoff = t_min_maf_marker;
   g_marker_minMAC_cutoff = t_min_mac_marker;
+  g_omp_num_threads = t_omp_num_threads;
 }
 
 // [[Rcpp::export]]
 void setRegion_GlobalVarsInCPP(std::string t_impute_method,
                                double t_missing_cutoff,
                                double t_max_maf_region,
-                               unsigned int t_max_markers_region)
+                               unsigned int t_max_markers_region,
+                               unsigned int t_omp_num_threads)
 {
   g_impute_method = t_impute_method;
   g_missingRate_cutoff = t_missing_cutoff;
   g_region_maxMAF_cutoff = t_max_maf_region;
   g_region_maxMarkers_cutoff = t_max_markers_region;
+  g_omp_num_threads = t_omp_num_threads;
 }
 
 //////// ---------- Main function for marker-level analysis --------- ////////////
@@ -75,8 +86,15 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   std::vector<double> seBetaVec(q);       
   std::vector<double> pvalVec(q);
   std::vector<double> zScoreVec(q);
+
+  // std::cout << "Totally " << g_omp_num_threads << " thread(s) were used for parallel computation." << std::endl;
   
   // loop for all markers
+//   omp_set_dynamic(0);     // Explicitly disable dynamic teams
+//   omp_set_num_threads(g_omp_num_threads); // Use 4 threads for all consecutive parallel regions
+//   
+// #pragma omp parallel
+// {
   for(int i = 0; i < q; i++){
     
     if(i % 1000 == 0){
@@ -139,7 +157,8 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     pvalVec.at(i) = pval;
     zScoreVec.at(i) = zScore;
   }
-  
+// }
+
   Rcpp::List OutList = Rcpp::List::create(Rcpp::Named("markerVec") = markerVec,
                                           Rcpp::Named("infoVec") = infoVec,
                                           Rcpp::Named("altFreqVec") = altFreqVec,
