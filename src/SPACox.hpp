@@ -54,7 +54,7 @@ public:
   {
     double t_adjG0 = t * adjG0;
     arma::vec t_adjG1 = t * adjG1;
-    double out = N0 * adjG0 * m_K_1_emp.getValue(t_adjG0) + arma::sum(m_K_1_emp.getVector(t_adjG1)) - q2;
+    double out = N0 * adjG0 * m_K_1_emp.getValue(t_adjG0) + arma::sum(adjG1 % m_K_1_emp.getVector(t_adjG1)) - q2;
     return out;
   }
   
@@ -65,7 +65,7 @@ public:
   {
     double t_adjG0 = t * adjG0;
     arma::vec t_adjG1 = t * adjG1;
-    double out = N0 * pow(adjG0, 2) * m_K_2_emp.getValue(t_adjG0) + arma::sum(pow(t_adjG1, 2) % m_K_2_emp.getVector(t_adjG1));
+    double out = N0 * pow(adjG0, 2) * m_K_2_emp.getValue(t_adjG0) + arma::sum(pow(adjG1, 2) % m_K_2_emp.getVector(t_adjG1));
     return out;
   }
   
@@ -75,24 +75,32 @@ public:
                             arma::vec adjG1,        // adjusted Genotype
                             double q2)
   {
-    double x = t_initX;
-    double K1 = 0;
-    double K2 = 0;
-    double diffX = arma::datum::inf;
+    double x = t_initX, oldX;
+    double K1 = 0, K2 = 0, oldK1;
+    double diffX = arma::datum::inf, oldDiffX;
     bool converge = true;
     double tol = 0.001;
     int maxiter = 100;
     int iter = 0;
     
     for(iter = 0; iter < maxiter; iter ++){
-      double oldX = x;
-      double oldDiffX = diffX;
-      double oldK1 = K1;
       
-      double K1 = K_1(x, N0, adjG0, adjG1, q2);
-      double K2 = K_2(x, N0, adjG0, adjG1);
+      oldX = x;
+      oldDiffX = diffX;
+      oldK1 = K1;
+      
+      K1 = K_1(x, N0, adjG0, adjG1, q2);
+      K2 = K_2(x, N0, adjG0, adjG1);
       
       diffX = -1 * K1 / K2;
+      
+      // Checked on 03/25/2021: Expected!!!!
+      // std::cout << "x:\t" << x << std::endl;
+      // std::cout << "K1:\t" << K1 << std::endl;
+      // std::cout << "arma::sign(K1):\t" << arma::sign(K1) << std::endl;
+      // std::cout << "arma::sign(oldK1):\t" << arma::sign(oldK1) << std::endl;
+      // std::cout << "K2:\t" << K2 << std::endl;
+      // std::cout << "diffX:\t" << diffX << std::endl;
       
       if(!std::isfinite(K1)){
         // checked it on 07/05:
@@ -104,6 +112,7 @@ public:
       }
       
       if(arma::sign(K1) != arma::sign(oldK1)){
+        std::cout << "check" << std::endl;
         while(std::abs(diffX) > std::abs(oldDiffX) - tol){
           diffX = diffX / 2;
         }
@@ -114,9 +123,9 @@ public:
       x = oldX + diffX;
     }
     
-    if(iter == maxiter - 1) 
+    if(iter == maxiter) 
       converge = false;
-    
+
     Rcpp::List yList = Rcpp::List::create(Rcpp::Named("root") = x,
                                           Rcpp::Named("iter") = iter,
                                           Rcpp::Named("converge") = converge,
@@ -130,7 +139,9 @@ public:
                      double q2, 
                      bool lowerTail)
   {
-    double initX;
+    double initX = 0;
+    
+    // The following initial values are validated on 03/25/2021
     if(q2 > 0) initX = 3;
     if(q2 <= 0) initX = -3;
     
@@ -141,11 +152,11 @@ public:
     double k2 = K_2(zeta,  N0, adjG0, adjG1);
     double temp1 = zeta * q2 - k1;
     
-    double w = arma::sign(zeta) * pow(2 * temp1, 1/2);
-    double v = zeta * pow(k2, 1/2);
+    double w = arma::sign(zeta) * sqrt(2 * temp1);
+    double v = zeta * sqrt(k2);
     
-    double pval = arma::normcdf(arma::sign(lowerTail-0.5) * w + 1/w * log(v/w));
-    
+    double pval = arma::normcdf(arma::sign(lowerTail-0.5) * (w + 1/w * log(v/w)));
+
     return pval;
   }
   

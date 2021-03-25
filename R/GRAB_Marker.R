@@ -52,7 +52,7 @@ GRAB.Marker = function(objNull,
   subjData = as.character(objNull$subjData);
   
   ## set up an object for genotype
-  objGeno = setGenoInput(GenoFile, GenoFileIndex, subjData)  # this function is in 'Geno.R'
+  objGeno = setGenoInput(GenoFile, GenoFileIndex, subjData, control)  # this function is in 'Geno.R'
   genoType = objGeno$genoType
   markerInfo = objGeno$markerInfo
   genoIndex = markerInfo$genoIndex
