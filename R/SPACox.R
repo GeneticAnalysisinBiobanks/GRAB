@@ -162,10 +162,10 @@ mainMarker.SPACox = function(objNull, control, markers, genoType)
 {
   OutList = mainMarkerInCPP("SPACox",
                             genoType,
-                            markers,
-                            control$missing_cutoff,
-                            control$min_maf_marker,
-                            control$min_mac_marker)  
+                            markers)
+                            # control$missing_cutoff,
+                            # control$min_maf_marker,
+                            # control$min_mac_marker)  
   
   markerVec = OutList$markerVec   # marker IDs
   infoVec = OutList$infoVec       # marker infomation: CHR:POS:REF:ALT

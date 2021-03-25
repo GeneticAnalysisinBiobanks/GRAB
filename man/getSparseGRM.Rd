@@ -2,7 +2,7 @@
 % Please edit documentation in R/SparseGRM.R
 \name{getSparseGRM}
 \alias{getSparseGRM}
-\title{Get an object of 'SparseGRM' for POLMM_Null_Model(). Only valid in Linux since GCTA software can only be used in Linux.}
+\title{Get an object of 'SparseGRM' for GRAB_Null_Model(). Only valid in Linux since GCTA software can only be used in Linux.}
 \usage{
 getSparseGRM(
   PlinkFile,
@@ -22,7 +22,7 @@ getSparseGRM(
 
 \item{SparseGRMFile}{a path to file of output to record SparseGRM}
 
-\item{tempDir}{a path to store temp files from getSparseGRMParallel(). This should be consistent to the input of getSparseGRMParallel(). Default is system.file("SparseGRM", "temp", package = "POLMM").}
+\item{tempDir}{a path to store temp files from getSparseGRMParallel(). This should be consistent to the input of getSparseGRMParallel(). Default is system.file("SparseGRM", "temp", package = "GRAB").}
 
 \item{relatednessCutoff}{a cutoff for sparse GRM, only kinship coefficient greater than this cutoff will be retained in sparse GRM.}
 
@@ -34,7 +34,7 @@ getSparseGRM(
 }
 \description{
 If the sample size is greater than 100,000, we recommend using sparse GRM to adjust for sample relatedness. 
-This function is to use GCTA software (gcta_1.93.1beta, https://cnsgenomics.com/software/gcta/#Overview) to get an object of 'SparseGRM' to be passed to function POLMM_Null_Model(). 
+This function is to use GCTA software (gcta_1.93.1beta, https://cnsgenomics.com/software/gcta/#Overview) to get an object of 'SparseGRM' to be passed to function GRAB_Null_Model(). 
 \cr\cr
 Step 1: Run getSparseGRMParallel(); please check help(getSparseGRMParallel) for more details. 
 \cr
@@ -42,7 +42,7 @@ Step 2: Run getSparseGRM().
 }
 \examples{
 ## Input data:
-famFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.fam", package = "POLMM")
+famFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.fam", package = "GRAB")
 PlinkFile = gsub(".fam", "", famFile)   # fam/bim/bed files should have the same prefix
 nPartsGRM = 2;   # nPartsGRM = 250 for UK Biobank data analysis
 
@@ -52,11 +52,11 @@ for(partParallel in 1:nPartsGRM){
   getTempFilesFullGRM(PlinkFile, nPartsGRM, partParallel)
 }
 
-## After step 1, the results are stored in "tempDir (default: system.file("SparseGRM", "temp", package = "POLMM"))", which might needs large amount of space.
+## After step 1, the results are stored in "tempDir (default: system.file("SparseGRM", "temp", package = "GRAB"))", which might needs large amount of space.
 
 ## Step 2:
-## Combine results in step 1 to calculate an object with class of SparseGRM for POLMM_Null_Model(),
-tempDir = system.file("SparseGRM", "temp", package = "POLMM")
+## Combine results in step 1 to calculate an object with class of SparseGRM for GRAB_Null_Model(),
+tempDir = system.file("SparseGRM", "temp", package = "GRAB")
 SparseGRMFile = gsub("temp", "SparseGRM.csv", tempDir)
 SparseGRM = getSparseGRM(PlinkFile, nPartsGRM, SparseGRMFile)
 

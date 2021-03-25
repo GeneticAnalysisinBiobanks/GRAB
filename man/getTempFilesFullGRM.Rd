@@ -22,7 +22,7 @@ getTempFilesFullGRM(
 
 \item{partParallel}{a numeric value (from 1 to nPartsGRM)}
 
-\item{tempDir}{a path to store temp files from getSparseGRMParallel(). This should be consistent to the input of getSparseGRM(). Default is system.file("SparseGRM", "temp", package = "POLMM").}
+\item{tempDir}{a path to store temp files from getSparseGRMParallel(). This should be consistent to the input of getSparseGRM(). Default is system.file("SparseGRM", "temp", package = "GRAB").}
 
 \item{subjData}{a character vector to specify subject IDs to retain (i.e. IID). Default is NULL, i.e. all subjects are retained in sparse GRM. If the number of subjects is less than 1,000, the GRM estimation might not be accurate.}
 

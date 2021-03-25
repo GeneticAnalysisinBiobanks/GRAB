@@ -5,7 +5,7 @@
 #' @param PlinkFile a path to Plink files. The current version (gcta_1.93.1beta) of gcta software does not support different prefix names for bim, bed and fam files. 
 #' @param partParallel a numeric value (from 1 to nPartsGRM)
 #' @param nPartsGRM a numeric value (e.g. 250): GCTA software can split subjects to multiple parts. For UK-Biobank analysis, it is recommanded to use 250 parts. 
-#' @param tempDir a path to store temp files from getSparseGRMParallel(). This should be consistent to the input of getSparseGRM(). Default is system.file("SparseGRM", "temp", package = "POLMM").
+#' @param tempDir a path to store temp files from getSparseGRMParallel(). This should be consistent to the input of getSparseGRM(). Default is system.file("SparseGRM", "temp", package = "GRAB").
 #' @param subjData a character vector to specify subject IDs to retain (i.e. IID). Default is NULL, i.e. all subjects are retained in sparse GRM. If the number of subjects is less than 1,000, the GRM estimation might not be accurate.
 #' @param minMafGRM Minimal value of MAF cutoff to select markers (from Plink files) to construct GRM.
 #' @param maxMissingGRM Maximal value of missing rate to select markers (from Plink files) to construct GRM.
@@ -35,11 +35,11 @@ getTempFilesFullGRM = function(PlinkFile,
   if(OS != "Linux") 
     stop(paste0("We generate GRM using gcta software which is only supported in Linux. Current OS is ", OS))
   
-  gcta64File = system.file("gcta_1.93.1beta", "gcta64", package = "POLMM");
+  gcta64File = system.file("gcta_1.93.1beta", "gcta64", package = "GRAB");
   system(paste("chmod +x",gcta64File))
   
   if(is.null(tempDir)) 
-    tempDir = system.file("SparseGRM", "temp", package = "POLMM")
+    tempDir = system.file("SparseGRM", "temp", package = "GRAB")
   
   PlinkName = basename(PlinkFile)
   tempFile = paste0(tempDir, "/Plink-",PlinkName,"-autosome-minMaf-",minMafGRM,"-maxMissing-",maxMissingGRM)
@@ -73,10 +73,10 @@ getTempFilesFullGRM = function(PlinkFile,
 }
 
 
-#' Get an object of 'SparseGRM' for POLMM_Null_Model(). Only valid in Linux since GCTA software can only be used in Linux.
+#' Get an object of 'SparseGRM' for GRAB_Null_Model(). Only valid in Linux since GCTA software can only be used in Linux.
 #' 
 #' If the sample size is greater than 100,000, we recommend using sparse GRM to adjust for sample relatedness. 
-#' This function is to use GCTA software (gcta_1.93.1beta, https://cnsgenomics.com/software/gcta/#Overview) to get an object of 'SparseGRM' to be passed to function POLMM_Null_Model(). 
+#' This function is to use GCTA software (gcta_1.93.1beta, https://cnsgenomics.com/software/gcta/#Overview) to get an object of 'SparseGRM' to be passed to function GRAB_Null_Model(). 
 #' \cr\cr
 #' Step 1: Run getSparseGRMParallel(); please check help(getSparseGRMParallel) for more details. 
 #' \cr
@@ -84,14 +84,14 @@ getTempFilesFullGRM = function(PlinkFile,
 #' @param PlinkFile a path to Plink files. The current version (gcta_1.93.1beta) of gcta software does not support different prefix names for bim, bed and fam files. 
 #' @param nPartsGRM a numeric value (e.g. 250): GCTA software can split subjects to multiple parts. For UK-Biobank analysis, it is recommanded to use 250 parts. 
 #' @param SparseGRMFile a path to file of output to record SparseGRM
-#' @param tempDir a path to store temp files from getSparseGRMParallel(). This should be consistent to the input of getSparseGRMParallel(). Default is system.file("SparseGRM", "temp", package = "POLMM").
+#' @param tempDir a path to store temp files from getSparseGRMParallel(). This should be consistent to the input of getSparseGRMParallel(). Default is system.file("SparseGRM", "temp", package = "GRAB").
 #' @param relatednessCutoff a cutoff for sparse GRM, only kinship coefficient greater than this cutoff will be retained in sparse GRM.
 #' @param minMafGRM Minimal value of MAF cutoff to select markers (from Plink files) to construct GRM.
 #' @param maxMissingGRM Maximal value of missing rate to select markers (from Plink files) to construct GRM.
 #' @param rm.tempFiles a logical value indicating if the temp files generated in getSparseGRMParallel will be deleted
 #' @examples 
 #' ## Input data:
-#' famFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.fam", package = "POLMM")
+#' famFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.fam", package = "GRAB")
 #' PlinkFile = gsub(".fam", "", famFile)   # fam/bim/bed files should have the same prefix
 #' nPartsGRM = 2;   # nPartsGRM = 250 for UK Biobank data analysis
 #' 
@@ -101,11 +101,11 @@ getTempFilesFullGRM = function(PlinkFile,
 #'   getTempFilesFullGRM(PlinkFile, nPartsGRM, partParallel)
 #' }
 #' 
-#' ## After step 1, the results are stored in "tempDir (default: system.file("SparseGRM", "temp", package = "POLMM"))", which might needs large amount of space.
+#' ## After step 1, the results are stored in "tempDir (default: system.file("SparseGRM", "temp", package = "GRAB"))", which might needs large amount of space.
 #' 
 #' ## Step 2:
-#' ## Combine results in step 1 to calculate an object with class of SparseGRM for POLMM_Null_Model(),
-#' tempDir = system.file("SparseGRM", "temp", package = "POLMM")
+#' ## Combine results in step 1 to calculate an object with class of SparseGRM for GRAB_Null_Model(),
+#' tempDir = system.file("SparseGRM", "temp", package = "GRAB")
 #' SparseGRMFile = gsub("temp", "SparseGRM.csv", tempDir)
 #' SparseGRM = getSparseGRM(PlinkFile, nPartsGRM, SparseGRMFile)
 #' 
@@ -129,7 +129,7 @@ getSparseGRM = function(PlinkFile,
   SparseGRM = c()
   
   if(is.null(tempDir)) 
-    tempDir = system.file("SparseGRM", "temp", package = "POLMM")
+    tempDir = system.file("SparseGRM", "temp", package = "GRAB")
   
   ## cycle for nPartsGRM
   for(i in 1:nPartsGRM){
