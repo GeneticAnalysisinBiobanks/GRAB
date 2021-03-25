@@ -149,27 +149,42 @@ checkControl.NullModel.POLMM = function(control)
   control = updateControl(control, default.control)
   
   # check the parameters
-  range = control$range
-  length.out = control$length.out
-  
-  if(range[1] >= -50 | range[2] <= 50 | length.out <= 1000)
-    stop("We suggest setting argument 'control$range=c(-100,100)' and 'control$length.out=10000'.")
-  
-  if(range[2]!=-1*range[1])
-    stop("range[2] should be -1*range[1]")
+  # range = control$range
+  # length.out = control$length.out
+  # 
+  # if(range[1] >= -50 | range[2] <= 50 | length.out <= 1000)
+  #   stop("We suggest setting argument 'control$range=c(-100,100)' and 'control$length.out=10000'.")
+  # 
+  # if(range[2]!=-1*range[1])
+  #   stop("range[2] should be -1*range[1]")
   
   return(control)
 }
 
 
 # fit null model using POLMM method
-fitNullModel.POLMM = function(formula, data, subjData, subjGeno, control, ...)
+fitNullModel.POLMM = function(response, designMat, subjData, control)
 {
-  ### extract information from control
-  range = control$range
-  length.out = control$length.out
-  print(range)
-  print(length.out)
+  ######## -------------- fit the null POLMM --------------  ###########
+  
+  bVec = rep(0, n)  # initiate random effect of 0
+  
+  objNull = fitPOLMMcpp(t_flagSparseGRM = flagSparseGRM,       # if 1, then use SparseGRM, otherwise, use DenseGRM
+                        t_flagGMatRatio = flagGMatRatio,       # if 1, then use GMatRatio, otherwise, extract from Plink files
+                        t_bimfile = bimFile,
+                        t_famfile = famFile,
+                        t_bedfile = bedFile,
+                        t_posSampleInPlink = posSampleInPlink,
+                        t_Cova = Cova,
+                        t_yVec = yVec,                         # should be from 1 to J
+                        t_beta = beta,
+                        t_bVec = bVec,
+                        t_eps = eps,
+                        t_tau = control$tau,
+                        t_GMatRatio = GMat,                    # only used if m_LOCO = FALSE
+                        t_SparseGRM = SparseGRM,
+                        t_controlList = control)
+  return(objNull)
 }
 
 setMarker.POLMM = function(objNull, control, chrom)

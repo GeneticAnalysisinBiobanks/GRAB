@@ -75,7 +75,7 @@ GRAB.NullModel = function(formula,
   if(!missing(GenoFile)){
     genoList = setGenoInput(GenoFile, GenoFileIndex, subjData)   # check Geno.R for more details
     subjGeno = genoList$SampleIDs      # subjGeno should be the same as subjData
-    if(genoList$genoType != "PLINK")
+    if(genoList$genoType != "PLINK" & OptionGRM == "Dense")
       stop("If DenseGRM is used when fitting a null model, then only Plink file is supported.")
   }
   
@@ -96,6 +96,8 @@ GRAB.NullModel = function(formula,
   objNull$subjData = subjData
   
   objNull$Call = Call;
+  obj_Null$sessionInfo = sessionInfo()
+  obj_Null$time = Sys.time()
   
   return(objNull)
 }

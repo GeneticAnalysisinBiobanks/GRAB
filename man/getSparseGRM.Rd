@@ -5,9 +5,9 @@
 \title{Get an object of 'SparseGRM' for POLMM_Null_Model(). Only valid in Linux since GCTA software can only be used in Linux.}
 \usage{
 getSparseGRM(
-  chrVec,
   PlinkFile,
   nPartsGRM,
+  SparseGRMFile,
   tempDir = NULL,
   relatednessCutoff = 0.05,
   minMafGRM = 0.01,
@@ -16,11 +16,11 @@ getSparseGRM(
 )
 }
 \arguments{
-\item{chrVec}{a character vector to specify all chromosomes (e.g. 1:22), better autosomes. This should be consistent to the input of getSparseGRMParallel().}
-
 \item{PlinkFile}{a path to Plink files. The current version (gcta_1.93.1beta) of gcta software does not support different prefix names for bim, bed and fam files.}
 
 \item{nPartsGRM}{a numeric value (e.g. 250): GCTA software can split subjects to multiple parts. For UK-Biobank analysis, it is recommanded to use 250 parts.}
+
+\item{SparseGRMFile}{a path to file of output to record SparseGRM}
 
 \item{tempDir}{a path to store temp files from getSparseGRMParallel(). This should be consistent to the input of getSparseGRMParallel(). Default is system.file("SparseGRM", "temp", package = "POLMM").}
 
@@ -45,21 +45,20 @@ Step 2: Run getSparseGRM().
 famFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.fam", package = "POLMM")
 PlinkFile = gsub(".fam", "", famFile)   # fam/bim/bed files should have the same prefix
 nPartsGRM = 2;   # nPartsGRM = 250 for UK Biobank data analysis
-chrVec = 1:22    # maybe paste0("chr",1:22), depending on the plink bim file
 
 ## Step 1:
 ## We strongly suggest parallel computing in high performance clusters (HPC) for different pairs of (chrParallel, partParallel). 
-for(chrParallel in chrVec){
-  for(partParallel in 1:nPartsGRM){
-    getSparseGRMParallel(chrParallel, partParallel, nPartsGRM, PlinkFile)
-  }
+for(partParallel in 1:nPartsGRM){
+  getTempFilesFullGRM(PlinkFile, nPartsGRM, partParallel)
 }
 
-## After step 1, in "tempDir (default: system.file("SparseGRM", "temp", package = "POLMM"))", there will be results (might needs large amount of space) corresponding to different pairs of (chrParallel, partParallel).
+## After step 1, the results are stored in "tempDir (default: system.file("SparseGRM", "temp", package = "POLMM"))", which might needs large amount of space.
 
 ## Step 2:
 ## Combine results in step 1 to calculate an object with class of SparseGRM for POLMM_Null_Model(),
-SparseGRM = getSparseGRM(chrVec, PlinkFile, nPartsGRM)
+tempDir = system.file("SparseGRM", "temp", package = "POLMM")
+SparseGRMFile = gsub("temp", "SparseGRM.csv", tempDir)
+SparseGRM = getSparseGRM(PlinkFile, nPartsGRM, SparseGRMFile)
 
 ## NOTE: You can change some options such as (minMafGRM, maxMissingGRM, nPartsGRM), but keep in mind that functions getSparseGRMParallel() and getSparseGRM() should use the same options.
 }
