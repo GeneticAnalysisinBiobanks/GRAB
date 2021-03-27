@@ -6,6 +6,31 @@
 
 using namespace Rcpp;
 
+// setDenseGRMInCPP
+void setDenseGRMInCPP(double t_memoryChunk, double t_minMafGRM, double t_maxMissingGRM);
+RcppExport SEXP _GRAB_setDenseGRMInCPP(SEXP t_memoryChunkSEXP, SEXP t_minMafGRMSEXP, SEXP t_maxMissingGRMSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< double >::type t_memoryChunk(t_memoryChunkSEXP);
+    Rcpp::traits::input_parameter< double >::type t_minMafGRM(t_minMafGRMSEXP);
+    Rcpp::traits::input_parameter< double >::type t_maxMissingGRM(t_maxMissingGRMSEXP);
+    setDenseGRMInCPP(t_memoryChunk, t_minMafGRM, t_maxMissingGRM);
+    return R_NilValue;
+END_RCPP
+}
+// getDenseGRMInCPP
+arma::vec getDenseGRMInCPP(arma::vec t_bVec, std::string t_excludeChr, int t_grainSize);
+RcppExport SEXP _GRAB_getDenseGRMInCPP(SEXP t_bVecSEXP, SEXP t_excludeChrSEXP, SEXP t_grainSizeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec >::type t_bVec(t_bVecSEXP);
+    Rcpp::traits::input_parameter< std::string >::type t_excludeChr(t_excludeChrSEXP);
+    Rcpp::traits::input_parameter< int >::type t_grainSize(t_grainSizeSEXP);
+    rcpp_result_gen = Rcpp::wrap(getDenseGRMInCPP(t_bVec, t_excludeChr, t_grainSize));
+    return rcpp_result_gen;
+END_RCPP
+}
 // setMarker_GlobalVarsInCPP
 void setMarker_GlobalVarsInCPP(std::string t_impute_method, double t_missing_cutoff, double t_min_maf_marker, double t_min_mac_marker, unsigned int t_omp_num_threads);
 RcppExport SEXP _GRAB_setMarker_GlobalVarsInCPP(SEXP t_impute_methodSEXP, SEXP t_missing_cutoffSEXP, SEXP t_min_maf_markerSEXP, SEXP t_min_mac_markerSEXP, SEXP t_omp_num_threadsSEXP) {
@@ -154,6 +179,8 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
+    {"_GRAB_setDenseGRMInCPP", (DL_FUNC) &_GRAB_setDenseGRMInCPP, 3},
+    {"_GRAB_getDenseGRMInCPP", (DL_FUNC) &_GRAB_getDenseGRMInCPP, 3},
     {"_GRAB_setMarker_GlobalVarsInCPP", (DL_FUNC) &_GRAB_setMarker_GlobalVarsInCPP, 5},
     {"_GRAB_setRegion_GlobalVarsInCPP", (DL_FUNC) &_GRAB_setRegion_GlobalVarsInCPP, 5},
     {"_GRAB_mainMarkerInCPP", (DL_FUNC) &_GRAB_mainMarkerInCPP, 3},

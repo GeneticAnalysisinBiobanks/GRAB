@@ -2,20 +2,32 @@
 % Please edit documentation in R/POLMM.R
 \name{GRAB.POLMM}
 \alias{GRAB.POLMM}
-\title{How to run POLMM method in GRAB package}
+\title{POLMM method in GRAB package}
 \usage{
 GRAB.POLMM()
 }
 \description{
-POLMM method is to analysis ordinal categorical phenotype for large-scale biobank data
+POLMM method is to analysis ordinal categorical data for related samples in a large-scale biobank.
 }
 \details{
-List of 'control' in GRAB.NullModel function
+Please check \code{?GRAB.control} for the generic list of \code{control} in \code{GRAB.NullModel()} and \code{GRAB.Marker()}.
+
+Additional list of \code{control} in \code{GRAB.NullModel()} function
 \itemize{
 \item{range: a two-element numeric vector [default=c(-100,100)] to specify the domain of the empirical CGF.}
 \item{length.out: a positive integer [default=10000] for empirical CGF. Larger length.out corresponds to longer calculation time and more accurate estimated empirical CGF.}
 }
-List of 'control' in GRAB.Marker function
+Additional list of \code{control} in \code{GRAB.Marker()} function
+\itemize{
+\item{impute_method: a character string [default="fixed"] to specify the method to impute missing genotypes. "fixed" imputes missing genotypes (NA) by assigning the mean genotype value (i.e. 2p where p is MAF).}
+\item{missing_cutoff: a numeric value [default=0.15] to specify the cutoff of the missing rates. Any variant with missing rate higher than this cutoff will be excluded from the analysis.}
+\item{min_maf_marker: a numeric value [default=0.001] to specify the cutoff of the minimal MAF. Any SNP with MAF < cutoff will be excluded from the analysis.}
+\item{min_mac_marker: a numeric value [default=20] to specify the cutoff of the minimal MAC. Any SNP with MAC < cutoff will be excluded from the analysis.}
+\item{nMarkersEachChunk: a numeric value [default=10000] to specify the number of markers in each chunk.}
+\item{pVal_covaAdj_Cutoff: a numeric value [default=5e-5]. If the p-value is less than this cutoff, then we would use an additional technic to adjust for covariates.}
+\item{SPA_cutoff: a numeric value [default=2] to specify the standard deviation cutoff to be used. If the test statistic lies within the standard deviation cutoff, its p value is calculated based on a normal distribution approximation, otherwise, its p value is calculated based on a saddlepoint approximation.".}
+}
+Additional list of \code{control} in \code{GRAB.Region()} function
 \itemize{
 \item{impute_method: a character string [default="fixed"] to specify the method to impute missing genotypes. "fixed" imputes missing genotypes (NA) by assigning the mean genotype value (i.e. 2p where p is MAF).}
 \item{missing_cutoff: a numeric value [default=0.15] to specify the cutoff of the missing rates. Any variant with missing rate higher than this cutoff will be excluded from the analysis.}

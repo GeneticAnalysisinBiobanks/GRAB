@@ -1,7 +1,7 @@
 
-#' How to run SPACox method in GRAB package
+#' SPACox method in GRAB package
 #' 
-#' SPACox method is to analysis time-to-event phenotype for large-scale biobank data
+#' SPACox method is to analysis time-to-event phenotype for unrelated samples in a large-scale biobank. 
 #' 
 #' @details 
 #' Please check \code{?GRAB.control} for the generic list of \code{control} in \code{GRAB.NullModel()} and \code{GRAB.Marker()}.
@@ -14,7 +14,7 @@
 #' Additional list of \code{control} in \code{GRAB.Marker()} function
 #' \itemize{
 #' \item{\code{pVal_covaAdj_Cutoff}: a numeric value [default=5e-5]. If the p-value is less than this cutoff, then we would use an additional technic to adjust for covariates.}
-#' \item{\code{SPA_cutoff}: a numeric value [default=2] to specify the standard deviation cutoff to be used. If the test statistic lies within the standard deviation cutoff, its p value is calculated based on a normal distribution approximation, otherwise, its p value is calculated based on a saddlepoint approximation.".}
+#' \item{\code{SPA_cutoff}: a numeric value [default=2] to specify the standard deviation cutoff to be used. If the test statistic lies within the standard deviation cutoff, its p value is calculated based on a normal distribution approximation, otherwise, its p value is calculated based on a saddlepoint approximation.}
 #' }
 #' @examples 
 #' # Simulation phenotype and genotype
@@ -31,7 +31,7 @@
 #'                             data = Pheno, subjData = Pheno$ID, 
 #'                             method = "SPACox", traitType = "time-to-event")
 #' 
-#' # Step 2: run score test
+#' # Step 2: perform score test
 #' GenoFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.bed", package = "GRAB")
 #' OutputDir = system.file("results", package = "GRAB")
 #' OutputFile = paste0(OutputDir, "/SPACoxMarkers.txt")

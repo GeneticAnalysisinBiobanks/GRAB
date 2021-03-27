@@ -42,12 +42,16 @@ void DenseGRMClass::setDenseGRMObj(PlinkClass* t_ptrPlinkObj,
   m_M = 0;
   string bimTemp;
   std::string chr;
+  
+  std::cout << "numMarkersofLastArray:\t" << m_numMarkersofLastArray << std::endl << std::endl;
+  
   for(long long int i = 0; i < m_M0; i ++)
   {
     // OneMarkerG4 --> OneMarkerG1
     m_OneMarkerG1 = t_ptrPlinkObj->getOneMarker(i, freq, missingRate, chr);
     
     if(freq >= t_minMafGRM && freq <= 1-t_minMafGRM && missingRate <= t_maxMissingGRM){
+      
       setOneMarkerArray(m_M);
       invStd = getinvStd(freq);
       m_freqVec.push_back(freq);
@@ -60,6 +64,8 @@ void DenseGRMClass::setDenseGRMObj(PlinkClass* t_ptrPlinkObj,
       cout << "Allele Frequency:\t" << freq << endl;
     }
   }
+  
+  std::cout << "numMarkersofLastArray:\t" << m_numMarkersofLastArray << std::endl << std::endl;
   
   arma::vec t2  = getTime();
   printTime(t1, t2, "read Plink files");
@@ -85,18 +91,19 @@ void DenseGRMClass::setArrays(PlinkClass* t_ptrPlinkObj, double t_memoryChunk)
   m_N = t_ptrPlinkObj->getN();
   m_N0 = t_ptrPlinkObj->getN0();
   m_M0 = t_ptrPlinkObj->getM0();
+
   m_numBytesofEachMarker0 = t_ptrPlinkObj->getnumBytesofEachMarker0();
   m_numBytesofEachMarker = t_ptrPlinkObj->getnumBytesofEachMarker();
-  
+
   m_numBytesReserve = (double)(m_numBytesofEachMarker+2) * m_M0 / pow(10.0, 9.0);
   m_numMarkersofEachArray = floor(t_memoryChunk * pow(10.0, 9.0) / m_numBytesofEachMarker);
   if(m_numMarkersofEachArray > m_M0)
     m_numMarkersofEachArray = m_M0;
   m_numArrays = (m_M0 - 1) / m_numMarkersofEachArray + 1;
   m_numMarkersofLastArray = m_M0 - (m_numArrays - 1) * m_numMarkersofEachArray;
-  
+
   m_OneMarkerG1.zeros(m_N);
-  
+
   // set m_genoVecofPointers
   m_genoVecofPointers.resize(m_numArrays);
   for (int i = 0; i < m_numArrays-1 ; i++){

@@ -11,30 +11,48 @@
 #'   \item{GRAB.ReadGeno}{
 #'   We support two include files of (IDsToIncludeFile, RangesToIncludeFile) and two exclude files of (IDsToExcludeFile, RangesToExcludeFile), but do not support both include and exclude files.
 #'   \itemize{
-#'   \item \code{IDsToIncludeFile}: a file of marker IDs to include, one column (no header) 
-#'   \item \code{IDsToExcludeFile}: a file of marker IDs to exclude, one column (no header) 
-#'   \item \code{RangesToIncludeFile}: a file of ranges to include, three columns (no header): chromosome, start position, end position
-#'   \item \code{RangesToExcludeFile}: a file of ranges to exclude, three columns (no header): chromosome, start position, end position
-#'   \item \code{AlleleOrder}: a character, "ref-first" or "alt-first", to determine whether the REF/major allele should appear first or second. Default is "alt-first" for PLINK and "ref-first" for BGEN. If the analysis results show the REF allele frequencies of most markers are > 0.5, you might should change this option. NOTE, if you use plink2 to convert Plink file to BGEN file, you probably need to set it as 'ref-first'.
+#'   \item \code{IDsToIncludeFile}: a file of marker IDs to include, one column (no header). Check \code{system.file("extdata", "IDsToInclude.txt", package = "GRAB")} for an example. 
+#'   \item \code{IDsToExcludeFile}: a file of marker IDs to exclude, one column (no header). 
+#'   \item \code{RangesToIncludeFile}: a file of ranges to include, three columns (no headers): chromosome, start position, end position. Check \code{system.file("extdata", "RangesToInclude.txt", package = "GRAB")} for an example.
+#'   \item \code{RangesToExcludeFile}: a file of ranges to exclude, three columns (no headers): chromosome, start position, end position.
+#'   \item \code{AlleleOrder}: a character, "ref-first" or "alt-first", to determine whether the REF/major allele should appear first or second. Default is "alt-first" for PLINK and "ref-first" for BGEN. If the analysis results show the ALT allele frequencies of most markers are > 0.5, you might should change this option. NOTE, if you use plink2 to convert Plink file to BGEN file, you probably need to set it as 'ref-first'.
 #'   }
 #'   }
 #'   \item{GRAB.NullModel}{
+#'   The following parameters are to handle dense GRM for mixed model approaches (\code{SAIGE}, \code{GATE}, and \code{POLMM})
 #'     \itemize{
-#'     \item \code{GenoFile}: "prefix.bgen"; 
-#'     \item \code{GenoFileIndex}: "prefix.bgen.bgi" or c("prefix.bgen.bgi", "prefix.bgen.samples").
-#'     \item If only one element is given for \code{GenoFileIndex}, then we assume it should be "prefix.bgen.bgi". 
-#'     \item Sometimes, BGEN file does not include sample identifiers, and thus file of "prefix.bgen.samples" is required.
-#'     \item NOTE that "prefix.bgen.samples" should be of only one column with the column name of "GRAB_BGEN_SAMPLE" (case insensitive). One example can be found in \code{system.file("extdata", "example_bgen_1.2_8bits.bgen.samples", package = "GRAB")}.
-#'     \item If you are not sure if sample identifiers are in BGEN file, you can try function \code{?checkIfSampleIDsExist}.
+#'     \item \code{memoryChunk}: xxx
+#'     \item \code{seed}: xxx
+#'     \item \code{tracenrun}: xxx
+#'     \item \code{maxiter}: xxx
+#'     \item \code{tolBeta}: xxx
+#'     \item \code{tolTau}: xxx
+#'     \item \code{tau}: xxx
+#'     \item \code{maxiterPCG}: xxx
+#'     \item \code{tolEps}: xxx
+#'     \item \code{minMafVarRatio}: xxx
+#'     \item \code{maxMissingVarRatio}: xxx
+#'     \item \code{nSNPsVarRatio}: xxx
+#'     \item \code{CVcutoff}: xxx
+#'     \item \code{LOCO}: xxx
+#'     \item \code{numThreads}: xxx
+#'     \item \code{stackSize}: xxx
+#'     \item \code{grainSize}: xxx
+#'     \item \code{minMafGRM}: xxx
+#'     \item \code{maxMissingGRM}: xxx
+#'     \item \code{showInfo }: xxx
+#'     \item \code{onlyCheckTime}: xxx
 #'     }
 #'   }
 #'   \item{GRAB.Marker}{
 #'   \itemize{
+#'   The following parameters are to specify Markers to analyze.
 #'   \item \code{IDsToIncludeFile}: please refer to section \code{GRAB.ReadGeno}.
 #'   \item \code{IDsToExcludeFile}: please refer to section \code{GRAB.ReadGeno}.
 #'   \item \code{RangesToIncludeFile}: please refer to section \code{GRAB.ReadGeno}.
 #'   \item \code{RangesToExcludeFile}: please refer to section \code{GRAB.ReadGeno}.
 #'   \item \code{AlleleOrder}: please refer to section \code{GRAB.ReadGeno}.
+#'   The following parameter are for analysis
 #'   \item \code{omp_num_threads}: a numeric value (default: value from data.table::getDTthreads()) to specify the number of threads in OpenMP for parallel computation.
 #'   \item \code{impute_method}: a character, "mean", "minor", or "drop". If "mean", impute genotype using 2 * AlleleFreq; if "minor", impute genotype using minor alleles; if "drop", drop the subject whose genotype is missing.
 #'   \item \code{missing_cutoff}: a numeric value (default: 0.15). Any variant with missing rate > this value will be excluded from analysis.  

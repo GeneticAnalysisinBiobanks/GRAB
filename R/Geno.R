@@ -10,7 +10,7 @@
 #' @param GenoFile a character of genotype file. See \code{Details} section for more information.
 #' @param GenoFileIndex additional index file(s) corresponding to the \code{GenoFile}. See \code{Details} section for more information.
 #' @param SampleIDs a character vector of sample IDs to extract. The default is NULL, that is, to use all samples in GenoFile.
-#' @param control a list of parameters. The default is NULL, the first 10 markers will be extracted. For more details, please check ?GRAB.control.
+#' @param control a list of parameters. The default is NULL, the first 10 markers will be extracted. For more details, please check \code{?GRAB.control}.
 #' @return An R list include an R genotype matrix (each row is for one sample and each column is for one marker) and an R SNP information matrix.
 #' @details
 #' We support three genotype format including Plink, BGEN, and VCF.
@@ -315,7 +315,7 @@ setGenoInput = function(GenoFile,
   
   anyQueue = anyInclude | anyExclude
   
-  genoList = list(genoType = genoType, markerInfo = markerInfo, SampleIDs = SampleIDs, anyQueue = anyQueue)
+  genoList = list(genoType = genoType, markerInfo = markerInfo, SampleIDs = SampleIDs, AlleleOrder = AlleleOrder, GenoFile = GenoFile, GenoFileIndex = GenoFileIndex, anyQueue = anyQueue)
   
   return(genoList)
 }

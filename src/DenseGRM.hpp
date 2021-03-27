@@ -16,8 +16,8 @@ class DenseGRMClass{
 private:
   
   // Basic information
-  int m_N0, m_N;                  // number of samples, before and after filter
-  int m_M0, m_M;                  // number of markers, before and after filter
+  uint32_t m_N0, m_N;                  // number of samples, before and after filter
+  uint32_t m_M0, m_M;                  // number of markers, before and after filter
   
   long long int m_numBytesofEachMarker0;
   long long int m_numBytesofEachMarker;
@@ -60,6 +60,14 @@ private:
   }
   
 public:
+  
+  DenseGRMClass(PlinkClass* t_ptrPlinkObj, 
+                double t_memoryChunk,     // unit is Gb
+                double t_minMafGRM, 
+                double t_maxMissingGRM)
+  {
+    setDenseGRMObj(t_ptrPlinkObj, t_memoryChunk, t_minMafGRM, t_maxMissingGRM);
+  }
   
   // setup DenseGRMClass
   void setDenseGRMObj(PlinkClass* t_ptrPlinkObj, 

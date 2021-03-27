@@ -4,6 +4,10 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
 
+#include <thread>         // std::this_thread::sleep_for
+#include <chrono>         // std::chrono::seconds
+// std::this_thread::sleep_for (std::chrono::seconds(1));
+
 // Currently, omp does not work well, will check it later
 // error: SET_VECTOR_ELT() can only be applied to a 'list', not a 'character'
 // remove all Rcpp::List to check if it works
@@ -17,6 +21,7 @@
 #include "POLMM.hpp"
 #include "UTIL.hpp"
 #include "SPACox.hpp"
+#include "DenseGRM.hpp"
 
 // global objects for different genotype formats
 
@@ -27,6 +32,7 @@ static BGEN::BgenClass* ptr_gBGENobj = NULL;
 // global objects for different analysis methods
 static POLMM::POLMMClass* ptr_gPOLMMobj = NULL;
 static SPACox::SPACoxClass* ptr_gSPACoxobj = NULL;
+static DenseGRM::DenseGRMClass* ptr_gDenseGRMobj = NULL;
 
 // global variables for analysis
 std::string g_impute_method;      // "mean", "minor", or "drop"
@@ -38,6 +44,23 @@ double g_region_maxMAF_cutoff;
 unsigned int g_region_maxMarkers_cutoff;   // maximal number of markers in one chunk, only used for region-based analysis
 
 // set up global variables for analysis
+
+// [[Rcpp::export]]
+void setDenseGRMInCPP(double t_memoryChunk,
+                      double t_minMafGRM,
+                      double t_maxMissingGRM)
+{
+  ptr_gDenseGRMobj = new DenseGRM::DenseGRMClass(ptr_gPLINKobj, t_memoryChunk, t_minMafGRM, t_maxMissingGRM);
+}
+
+// [[Rcpp::export]]
+arma::vec getDenseGRMInCPP(arma::vec t_bVec,
+                           std::string t_excludeChr, 
+                           int t_grainSize)
+{
+  arma::vec yVec = DenseGRM::getKinbVec(t_bVec, ptr_gDenseGRMobj, t_excludeChr, t_grainSize);
+  return yVec;
+}
 
 // [[Rcpp::export]]
 void setMarker_GlobalVarsInCPP(std::string t_impute_method,

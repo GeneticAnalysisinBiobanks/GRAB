@@ -101,8 +101,9 @@ public:
     uint32_t pd;
     double altCounts, imputeInfo;
     std::vector<uint32_t> indexForMissing, indexForNonZero;
-    getOneMarker(t_gIndex, ref, alt, marker, pd, t_chr, t_altFreq, altCounts, t_missingRate, imputeInfo,
-                 false, indexForMissing, false, indexForNonZero, false);
+    arma::vec OneMarkerG1 = getOneMarker(t_gIndex, ref, alt, marker, pd, t_chr, t_altFreq, altCounts, t_missingRate, imputeInfo,
+                                         false, indexForMissing, false, indexForNonZero, false);
+    return OneMarkerG1;
   }
   
   uint32_t getN0(){return m_N0;}
