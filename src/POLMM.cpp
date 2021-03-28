@@ -764,6 +764,331 @@ double getProb(arma::Mat<uint8_t> t_SeqMat,  // n x m matrix, where m \leq J^n i
   return prob;
 }
 
+// update (m_eta, m_WMat, m_muMat, m_mMat, m_nuMat, m_iRMat, m_YMat) based on (m_beta, m_bVec, m_eps)
+void POLMMClass::updateMats()
+{
+  // update (m_eta)
+  m_eta = m_Cova * m_beta + m_bVec;
+  
+  // update (m_WMat, m_muMat, m_mMat, m_nuMat)
+  double tmpExp, tmpnu0, tmpnu1;
+  for(int i = 0; i < m_n; i ++){  // loop for samples
+    tmpnu0 = 0;  // eps_0 = -Inf
+    for(int j = 0; j < m_J-1; j ++){  // loop from eps_1 to eps_{J-1}
+      tmpExp = exp(m_eps(j) - m_eta(i));
+      tmpnu1 = tmpExp / (1 + tmpExp);
+      m_muMat(i,j) = tmpnu1 - tmpnu0;
+      m_WMat(i,j) = tmpnu1 * (1 - tmpnu1);
+      m_mMat(i,j) = tmpnu1 + tmpnu0 - 1;
+      m_nuMat(i,j) = tmpnu1;
+      tmpnu0 = tmpnu1;
+    }
+    int j = m_J-1;      // eps_J = Inf
+    tmpnu1 = 1;
+    m_muMat(i,j) = tmpnu1 - tmpnu0;
+    m_WMat(i,j) = tmpnu1 * (1 - tmpnu1);
+    m_mMat(i,j) = tmpnu1 + tmpnu0 - 1;
+    m_nuMat(i,j) = tmpnu1;
+  }
+  
+  // update (iRMat)
+  for(int i = 0; i < m_n; i ++){
+    for(int j = 0; j < m_J-1; j ++){
+      m_iRMat(i,j) = 1 / (m_mMat(i,j) - m_mMat(i, m_J-1));
+    }
+  }
+  
+  // update (YMat)
+  arma::mat xMat = m_yMat.cols(0, m_J-2) - m_muMat.cols(0, m_J-2);
+  arma::mat iPsi_xMat = getiPsixMat(xMat);
+  for(int i = 0; i < m_n; i++){  // loop for samples
+    for(int j = 0; j < m_J-1; j++)
+      m_YMat(i,j) = m_eta(i) + (m_iRMat(i,j) * iPsi_xMat(i,j));
+  }
+}
+// need update in case that eps(k+1) < eps(k)
+void POLMMClass::updateEpsOneStep()
+{
+  // the first eps is fixed at 0
+  arma::vec d1eps(m_J-2, arma::fill::zeros);
+  arma::mat d2eps(m_J-2, m_J-2, arma::fill::zeros);
+  double temp1, temp2, temp3;
+  
+  for(int k = 1; k < m_J-1; k++){
+    for(int i = 0; i < m_n; i++){
+      temp1 = m_yMat(i, k) / m_muMat(i, k) - m_yMat(i, k+1) / m_muMat(i, k+1);
+      temp2 = - m_yMat(i, k) / m_muMat(i, k) / m_muMat(i, k) - m_yMat(i, k+1) / m_muMat(i, k+1) / m_muMat(i, k+1);
+      d1eps(k - 1) += m_WMat(i, k) * temp1;
+      d2eps(k - 1, k - 1) += m_WMat(i, k) * (1 - 2 * m_nuMat(i, k)) * temp1 + m_WMat(i, k) * m_WMat(i, k) * temp2;
+      if(k < m_J-2){
+        temp3 = m_WMat(i,k) * m_WMat(i, k+1) * m_yMat(i, k+1) / m_muMat(i, k+1) / m_muMat(i, k+1);
+        d2eps(k-1, k) += temp3;
+        d2eps(k, k-1) += temp3;
+      }
+    }
+  }
+  
+  arma::vec deps = -1 * inv(d2eps) * d1eps;
+  for(int k = 1; k < m_J-1; k ++){
+    m_eps(k) += deps(k-1);
+  }
+}
+
+void POLMMClass::updateEps()
+{
+  for(unsigned int iter = 0; iter < m_maxiterEps; iter ++){
+    
+    arma::vec eps0 = m_eps;
+    
+    updateEpsOneStep();
+    updateMats();
+    
+    double diffeps = max(abs(m_eps - eps0)/(abs(m_eps) + abs(eps0) + m_tolEps));
+    
+    if(diffeps < m_tolEps){
+      
+      std::cout << "UpdateEps iter: " << iter << std::endl;
+      std::cout << "eps: " << std::endl << m_eps << std::endl;
+      break;
+    }
+  }
+}
+
+void POLMMClass::updatePara(std::string t_excludechr)
+{
+  getPCGofSigmaAndCovaMat(m_CovaMat, m_iSigma_CovaMat, t_excludechr);
+  arma::vec YVec = convert1(m_YMat, m_n, m_J);
+  getPCGofSigmaAndVector(YVec, m_iSigma_YVec, t_excludechr); 
+  
+  // update beta
+  arma::mat XSigmaX = inv(m_CovaMat.t() * m_iSigma_CovaMat);
+  arma::vec Cova_iSigma_YVec = m_CovaMat.t() * m_iSigma_YVec;
+  m_beta = XSigmaX * Cova_iSigma_YVec;
+  m_iSigmaX_XSigmaX = m_iSigma_CovaMat * XSigmaX;
+  
+  // update bVec
+  arma::vec Z_iSigma_YVec = ZMat(m_iSigma_YVec);
+  arma::vec Z_iSigma_Xbeta = ZMat(m_iSigma_CovaMat * m_beta);
+  arma::vec tempVec = Z_iSigma_YVec - Z_iSigma_Xbeta;
+  m_bVec = m_tau * getKinbVecPOLMM(tempVec, t_excludechr);
+}
+
+arma::mat POLMMClass::getVarRatio(arma::mat t_GMatRatio, std::string t_excludechr)
+{
+  std::cout << "Start estimating variance ratio...." << std::endl;
+  Rcpp::List objP = getobjP(m_Cova, m_yMat, m_muMat, m_iRMat);
+  
+  arma::vec GVec(m_n);
+  arma::rowvec VarOneSNP(5);
+  
+  arma::mat VarRatioMat(m_nSNPsVarRatio, 5);
+  arma::mat newVarRatio(10, 5);
+  
+  unsigned int index = 0;
+  int indexTot = 0;
+  while(index < m_nSNPsVarRatio){
+    GVec = t_GMatRatio.col(index);
+    VarOneSNP = getVarOneSNP(GVec, t_excludechr, objP);
+    VarRatioMat.row(index) = VarOneSNP;
+    index++;
+    indexTot++;
+  }
+  
+  arma::vec VarRatio = VarRatioMat.col(4);
+  double CV = calCV(VarRatio);
+  std::cout << "nSNPs for CV: " << index << std::endl;
+  std::cout << "CV: " << CV << std::endl;
+  
+  while(CV > m_CVcutoff && VarRatioMat.n_rows <= 100){
+    int indexTemp = 0;
+    while(indexTemp < 10){
+      indexTot++;
+      GVec = t_GMatRatio.col(indexTot);
+      VarOneSNP = getVarOneSNP(GVec, t_excludechr, objP);
+      newVarRatio.row(indexTemp) = VarOneSNP;
+      index++;
+      indexTemp++;
+    }
+    VarRatioMat.insert_rows(0, newVarRatio);
+    arma::vec VarRatio = VarRatioMat.col(4);
+    CV = calCV(VarRatio);
+    std::cout << "nSNPs for CV: " << index << std::endl;
+    std::cout << "CV: " << CV << std::endl;
+  }
+  return(VarRatioMat);
+}
+
+arma::rowvec POLMMClass::getVarOneSNP(arma::vec GVec,
+                                      std::string excludechr,
+                                      Rcpp::List objP)
+{
+  arma::rowvec VarOut(5);
+  double AF = sum(GVec) / GVec.size() / 2;
+  if(AF > 0.5)
+    AF = 1 - AF;
+  
+  Rcpp::List adjGList = outputadjGFast(GVec, objP);
+  arma::vec adjGVec = adjGList["adjGVec"];
+  double Stat = adjGList["Stat"];
+  double VarW = adjGList["VarW"];
+  double VarP = getVarP(adjGVec, excludechr);
+  
+  VarOut(0) = AF;
+  VarOut(1) = Stat;
+  VarOut(2) = VarW;
+  VarOut(3) = VarP;
+  VarOut(4) = VarP/VarW;
+  return(VarOut);
+}
+
+// update parameters (except tau) until converge
+void POLMMClass::updateParaConv(std::string t_excludechr)
+{
+  for(unsigned int iter = 0; iter < m_maxiter; iter ++){
+    
+    arma::vec beta0 = m_beta;
+    
+    // update beta and bVec
+    updatePara(t_excludechr);
+    updateMats();
+    
+    // update eps (cutpoints)
+    updateEps();
+    updateMats();
+    
+    std::cout << "beta: " << std::endl << m_beta << std::endl;
+    
+    double diffBeta = max(abs(m_beta - beta0)/(abs(m_beta) + abs(beta0) + m_tolBeta));
+    std::cout << "diffBeta:\t" << diffBeta << std::endl << std::endl;
+    if(diffBeta < m_tolBeta)
+      break;
+  }
+}
+
+void POLMMClass::updateTau()
+{
+  std::cout << "Start updating tau..." << std::endl;
+  arma::vec YVec = convert1(m_YMat, m_n, m_J);
+  getPCGofSigmaAndCovaMat(m_CovaMat, m_iSigma_CovaMat, "none");
+  getPCGofSigmaAndVector(YVec, m_iSigma_YVec, "none"); 
+  m_iSigmaX_XSigmaX = m_iSigma_CovaMat * inv(m_CovaMat.t() * m_iSigma_CovaMat);
+  arma::vec PYVec = m_iSigma_YVec - m_iSigmaX_XSigmaX * (m_CovaMat.t() * m_iSigma_YVec);
+  arma::vec ZPYVec = ZMat(PYVec);
+  arma::vec VPYVec = tZMat(getKinbVecPOLMM(ZPYVec, "none"));
+  
+  getPCGofSigmaAndVector(VPYVec, m_iSigma_VPYVec, "none");
+  arma::vec PVPYVec = m_iSigma_VPYVec - m_iSigmaX_XSigmaX * (m_CovaMat.t() * m_iSigma_VPYVec);
+  double YPVPY = as_scalar(YVec.t() * PVPYVec);
+  double YPVPVPY = as_scalar(VPYVec.t() * PVPYVec);
+  // The below is to calculate trace
+  getPCGofSigmaAndCovaMat(m_V_TRM, m_iSigma_V_TRM, "none");
+  double tracePV = 0;
+  int m = m_TraceRandMat.n_cols;
+  for(int i = 0; i < m; i++){
+    arma::vec iSigma_V_TRM_col = m_iSigma_V_TRM.col(i);
+    arma::vec P_V_TRM_col = iSigma_V_TRM_col - m_iSigmaX_XSigmaX * (m_CovaMat.t() * iSigma_V_TRM_col);
+    tracePV += as_scalar(m_TraceRandMat.col(i).t() * P_V_TRM_col);
+  }
+  tracePV /= m;
+  // final step
+  double deriv = 0.5 * YPVPY - 0.5 * tracePV;
+  double AI = 0.5 * YPVPVPY;
+  double dtau = deriv / AI;
+  double tau0 = m_tau;
+  m_tau = tau0 + dtau;
+  while(m_tau < 0){
+    dtau = dtau / 2;
+    m_tau = tau0 + dtau;
+  }
+  if(m_tau < 1e-4){
+    m_tau = 0;
+  }
+}
+
+void POLMMClass::fitPOLMM()
+{
+  // initial vector
+  arma::vec t1  = getTime();
+  updateMats();
+  
+  // start iteration
+  std::cout << "Start iteration ....." << std::endl;
+  
+  for(m_iter = 0; m_iter < m_maxiter; m_iter ++){
+    
+    // update fixed effect coefficients
+    updateParaConv("none");
+    
+    // update tau
+    double tau0 = m_tau;
+    updateTau();
+    
+    if(std::isnan(m_tau))
+      Rcpp::stop("Parameter tau is NA.");
+    
+    std::cout << "iter: " << m_iter << std::endl;
+    std::cout << "beta: " << std::endl << m_beta << std::endl;
+    std::cout << "tau: " << m_tau << std::endl << std::endl;
+    
+    double diffTau = abs(m_tau - tau0) / (abs(m_tau) + abs(tau0) + m_tolTau);
+    if(diffTau < m_tolTau)
+      break;
+  }
+  
+  if(m_LOCO){
+    
+    // turn on LOCO option
+    Rcpp::StringVector chrVec = m_ptrPlinkObj->getChrVec();
+    Rcpp::StringVector uniqchr = unique(chrVec);
+    
+    if(m_flagSparseGRM){
+      Rcpp::StringVector uniqchr_sp = m_SparseGRM.names(); 
+      uniqchr = intersect(uniqchr, uniqchr_sp);
+    }
+    
+    std::cout << "uniqchr is " << uniqchr << std::endl;
+    
+    for(int i = 0; i < uniqchr.size(); i ++){
+      
+      
+      std::string excludechr = std::string(uniqchr(i));
+      std::cout << std::endl << "Leave One Chromosome Out: Chr " << excludechr << std::endl;
+      
+      updateParaConv(excludechr);
+      
+      m_GMatRatio = m_ptrPlinkObj->getGMat(100, excludechr, m_minMafVarRatio, m_maxMissingVarRatio);
+      arma::mat VarRatioMat = getVarRatio(m_GMatRatio, excludechr);
+      double VarRatio = arma::mean(VarRatioMat.col(4));
+      
+      Rcpp::List temp = Rcpp::List::create(Rcpp::Named("muMat") = m_muMat,
+                                           Rcpp::Named("iRMat") = m_iRMat,
+                                           Rcpp::Named("VarRatioMat") = VarRatioMat,
+                                           Rcpp::Named("VarRatio") = VarRatio);
+      
+      m_LOCOList[excludechr] = temp;
+    }
+    
+  }else{
+    
+    // turn off LOCO option
+    if(!m_flagGMatRatio){
+      m_GMatRatio = m_ptrPlinkObj->getGMat(100, "none", m_minMafVarRatio, m_maxMissingVarRatio);
+    }
+    arma::mat VarRatioMat = getVarRatio(m_GMatRatio, "none");
+    double VarRatio = arma::mean(VarRatioMat.col(4));
+    
+    Rcpp::List temp = Rcpp::List::create(Rcpp::Named("muMat") = m_muMat,
+                                         Rcpp::Named("iRMat") = m_iRMat,
+                                         Rcpp::Named("VarRatioMat") = VarRatioMat,
+                                         Rcpp::Named("VarRatio") = VarRatio);
+    m_LOCOList["LOCO=F"] = temp;
+  }
+  
+  // complete null POLMM fitting 
+  arma::vec t2  = getTime();
+  printTime(t1, t2, "fit the null POLMM.");
+}
+
 }
 // make a global variable for future usage
 // static POLMM::POLMMClass* ptr_gPOLMMobj = NULL;

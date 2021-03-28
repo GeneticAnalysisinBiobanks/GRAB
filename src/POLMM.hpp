@@ -187,6 +187,18 @@ private:
   
 public:
   
+  void fitPOLMM();
+  void updateMats();
+  void updateParaConv(std::string t_excludechr);
+  void updateTau();
+  void updatePara(std::string t_excludechr);
+  void updateEps();
+  void updateEpsOneStep();
+  arma::mat getVarRatio(arma::mat t_GMatRatio, std::string t_excludechr);
+  arma::rowvec getVarOneSNP(arma::vec GVec,
+                                        std::string excludechr,
+                                        Rcpp::List objP);
+  
   POLMMClass(bool t_flagSparseGRM,       // if 1, then use SparseGRM, otherwise, use DenseGRM
              DenseGRM::DenseGRMClass* t_ptrDenseGRMObj,
              arma::mat t_Cova,
@@ -281,24 +293,93 @@ public:
   
   void setSeqMat(int t_NonZero_cutoff);
   
-  // duplicate each row for (J-1) times: n x p -> n(J-1) x p
-  arma::mat getCovaMat(arma::mat t_Cova, unsigned int t_J)      
-  {
-    unsigned int n = t_Cova.n_rows;
-    unsigned int p = t_Cova.n_cols;
-    
-    arma::mat CovaMat(n * (t_J-1), p);
-    int index = 0;
-    for(unsigned int i = 0; i < n; i++){
-      for(unsigned int j = 0; j < t_J-1; j++){
-        CovaMat.row(index) = t_Cova.row(i);
-        index++;
+};
+
+// duplicate each row for (J-1) times: n x p -> n(J-1) x p
+arma::mat getCovaMat(arma::mat t_Cova, unsigned int t_J)      
+{
+  unsigned int n = t_Cova.n_rows;
+  unsigned int p = t_Cova.n_cols;
+  
+  arma::mat CovaMat(n * (t_J-1), p);
+  int index = 0;
+  for(unsigned int i = 0; i < n; i++){
+    for(unsigned int j = 0; j < t_J-1; j++){
+      CovaMat.row(index) = t_Cova.row(i);
+      index++;
+    }
+  }
+  return CovaMat;
+}
+
+// outMat = PsiMat %*% xMat, PsiMat is determined by muMat
+arma::mat getPsixMat(arma::mat t_xMat,    // matrix: n x (J-1)
+                     arma::mat t_muMat)   // matrix: n x J
+{
+  int n = t_muMat.n_rows;
+  int J = t_muMat.n_cols;
+  
+  arma::mat Psi_xMat(n, J-1);
+  // loop for samples
+  for(int i = 0; i < n; i++){
+    arma::rowvec muVec(J-1);
+    for(int j = 0; j < J-1; j++){
+      Psi_xMat(i,j) = t_muMat(i,j) * t_xMat(i,j);
+      muVec(j) = t_muMat(i,j);
+    }
+    double sum_mu_x = sum(Psi_xMat.row(i));
+    Psi_xMat.row(i) -= muVec * sum_mu_x; 
+  }
+  return(Psi_xMat);
+}
+
+// sum each (J-1) cols to 1 col: p x n(J-1) -> p x n (OR) p x (J-1) -> p x 1
+arma::mat sumCols(arma::mat t_xMat,
+                  int J)
+{
+  int n = t_xMat.n_cols / (J-1);
+  int p = t_xMat.n_rows;
+  arma::mat outMat(p, n, arma::fill::zeros);
+  int index = 0;
+  for(int i = 0; i < n; i++){
+    for(int j = 0; j < J-1; j++){
+      outMat.col(i) += t_xMat.col(index);
+      index++;
+    }
+  }
+  return(outMat);
+}
+
+double calCV(arma::vec t_xVec){
+  unsigned int n = t_xVec.size();
+  double Mean = arma::mean(t_xVec);
+  double Sd = arma::stddev(t_xVec);
+  double CV = (Sd/Mean)/n;
+  return CV;
+}
+
+// get RPsiP: (J-1) x (J-1) x n 
+// Only used in getVarWFast(): 
+arma::vec getRPsiR(arma::mat t_muMat,
+                   arma::mat t_iRMat,
+                   int t_n, int t_J, int t_p)   
+{
+  // arma::cube RPsiR(J-1, J-1, n, arma::fill::zeros);
+  arma::vec RPsiRVec(t_n, arma::fill::zeros);
+  arma::mat muRMat = t_muMat.cols(0, t_J-2) / t_iRMat;
+  for(int i = 0; i < t_n; i++){
+    for(int j1 = 0; j1 < t_J-1; j1++){
+      // RPsiR(j1,j1,i) += muRMat(i,j1) / iRMat(i,j1) - muRMat(i,j1) * muRMat(i,j1);
+      RPsiRVec(i) += muRMat(i,j1) / t_iRMat(i,j1) - muRMat(i,j1) * muRMat(i,j1);
+      for(int j2 = j1+1; j2 < t_J-1; j2++){
+        // RPsiR(j1,j2,i) -= muRMat(i,j1) * muRMat(i,j2);
+        RPsiRVec(i) -= 2* muRMat(i,j1) * muRMat(i,j2);
       }
     }
-    return CovaMat;
-  };
-  
-};
+  }
+  // return(RPsiR);
+  return(RPsiRVec);
+}
 
 double K0(double t_x,
           arma::mat t_muMat,     // N x (J-1)
@@ -352,6 +433,78 @@ double getProbOne(arma::Col<uint8_t> t_SeqVec,  // n x 1
 
 double getProb(arma::Mat<uint8_t> t_SeqMat,  // n x m matrix, where m \leq J^n is the number of resampling with abs(stat) > stat_obs
                arma::mat t_muMat);           // n x J matrix
+
+// convert: n x (J-1) -> n(J-1) x 1
+arma::vec convert1(arma::mat xMat, // matrix: n x (J-1)
+                   int n, int J) 
+{
+  arma::vec xVec(n*(J-1));
+  int index = 0;
+  for(int i = 0; i < n; i++){
+    for(int j = 0; j < J-1; j++){
+      xVec(index) = xMat(i,j);
+      index++;
+    }
+  }
+  return(xVec);
+}
+
+// convert: n(J-1) x 1 -> n x (J-1)
+arma::mat convert2(arma::vec xVec, // n(J-1) x 1 
+                   int n, int J)
+{
+  arma::mat xMat(n,(J-1));
+  int index = 0;
+  for(int i = 0; i < n; i++){
+    for(int j = 0; j < J-1; j++){
+      xMat(i,j) = xVec(index);
+      index++;
+    }
+  }
+  return(xMat);
+}
+
+// get a list for p value calculation in step 2
+// [[Rcpp::export]]
+Rcpp::List getobjP(arma::mat t_Cova,     // matrix: n x p
+                   arma::mat t_yMat,
+                   arma::mat t_muMat,    // matrix: n x J
+                   arma::mat t_iRMat)    // matrix: n x (J-1)
+{
+  int n = t_muMat.n_rows;
+  int J = t_muMat.n_cols;
+  int p = t_Cova.n_cols;
+  
+  // output for Step 2
+  arma::mat XR_Psi_R(p, n*(J-1));                // p x n(J-1)
+  arma::mat CovaMat = getCovaMat(t_Cova, J); // n(J-1) x p
+  for(int k = 0; k < p; k++){
+    arma::mat xMat = convert2(CovaMat.col(k), n, J);
+    arma::vec temp = convert1(getPsixMat(xMat / t_iRMat, t_muMat) / t_iRMat, n, J);
+    XR_Psi_R.row(k) = temp.t();
+  }
+  // arma::mat XXR_Psi_RX = CovaMat * inv(XR_Psi_R * CovaMat);             // (n(J-1) x p) * (p x p) = n(J-1) x p
+  arma::mat XXR_Psi_RX_new = t_Cova * inv(XR_Psi_R * CovaMat);               // (n x p) * (p x p) = n x p
+  
+  // sum each (J-1) rows to 1 row: p x n(J-1) -> p x n
+  arma::mat XR_Psi_R_new = sumCols(XR_Psi_R, J);      // p x n
+  arma::mat ymuMat = t_yMat - t_muMat;                    // n x J
+  arma::mat RymuMat = ymuMat.cols(0, J-2) / t_iRMat;    // n x (J-1): R %*% (y - mu)
+  arma::mat RymuVec = sumCols(RymuMat, J);            // n x 1
+  // arma::cube RPsiR = getRPsiR(muMat, iRMat, n, J, p); // (J-1) x (J-1) x n 
+  arma::vec RPsiR = getRPsiR(t_muMat, t_iRMat, n, J, p); // (J-1) x (J-1) x n 
+  
+  Rcpp::List objP = Rcpp::List::create(Rcpp::Named("n")=n,
+                                       Rcpp::Named("J")=J,
+                                       Rcpp::Named("p")=p,
+                                       Rcpp::Named("XXR_Psi_RX_new") = XXR_Psi_RX_new,
+                                       Rcpp::Named("XR_Psi_R_new") = XR_Psi_R_new,           
+                                       Rcpp::Named("RymuVec") = RymuVec,
+                                       Rcpp::Named("RPsiR") = RPsiR,
+                                       Rcpp::Named("muMat") = t_muMat,
+                                       Rcpp::Named("iRMat") = t_iRMat);
+  return(objP);
+}
 
 }
 
