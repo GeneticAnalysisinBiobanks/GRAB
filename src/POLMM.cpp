@@ -3,6 +3,7 @@
 #include <RcppArmadillo.h>
 
 #include "POLMM.hpp"
+#include "DenseGRM.hpp"
 #include "UTIL.hpp"
 
 namespace POLMM {
@@ -27,7 +28,7 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
   m_J = m_muMat.n_cols;
   m_p = m_Cova.n_cols;
   
-  m_CovaMat = getCovaMat(m_Cova, m_n, m_J, m_p);       // n(J-1) x p
+  m_CovaMat = getCovaMat(m_Cova, m_J);       // n(J-1) x p
   
   m_SparseGRM = t_SparseGRM;
   m_tau = t_tau;
@@ -65,6 +66,87 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
   arma::mat XSigmaX = inv(m_CovaMat.t() * iSigma_CovaMat);
   m_iSigmaX_XSigmaX = iSigma_CovaMat * XSigmaX;
   setRPsiR();
+}
+
+// http://thecoatlessprofessor.com/programming/set_rs_seed_in_rcpp_sequential_case/
+void set_seed(unsigned int seed){
+  Rcpp::Environment base_env("package:base");
+  Rcpp::Function set_seed_r = base_env["set.seed"];
+  set_seed_r(seed);
+}
+
+void POLMMClass::setPOLMMObj(bool t_flagSparseGRM,       // if 1, then use SparseGRM, otherwise, use DenseGRM
+                             DenseGRM::DenseGRMClass* t_ptrDenseGRMObj,
+                             arma::mat t_Cova,
+                             arma::uvec t_yVec,     // should be from 0 to J-1
+                             arma::vec t_beta,
+                             arma::vec t_bVec,
+                             arma::vec t_eps,           // 
+                             double t_tau,
+                             arma::sp_mat t_SparseGRM,    // results of function getKinMatList()
+                             Rcpp::List t_controlList)
+{
+  setControlList(t_controlList);
+  setPOLMMInner(t_Cova, t_yVec, t_beta,  t_bVec,  t_eps,  t_tau);
+  
+  // m_ptrPlinkObj = t_ptrPlinkObj;
+  m_ptrDenseGRMObj = t_ptrDenseGRMObj;
+  
+  // if t_flagSparseGRM = 1, then use "SparseGRM" methods, otherwise, use "DenseGRM" methods
+  m_flagSparseGRM = t_flagSparseGRM;
+  if(m_flagSparseGRM){
+    m_SparseGRM = t_SparseGRM; // edited on 03-27-2021, update later
+    m_ZMat_sp = setZMat_sp();
+    m_M = 0;
+  }else{
+    m_M = t_ptrDenseGRMObj->getM();
+  }
+
+  getTraceRandMat();
+}
+
+void POLMMClass::getTraceRandMat()
+{
+  arma::vec t1  = getTime();
+  for(unsigned int itrace = 0; itrace < m_tracenrun; itrace++)
+  {
+    arma::vec uVec = nb(m_n * (m_J-1));
+    uVec = uVec * 2 - 1;
+    m_TraceRandMat.col(itrace) = uVec;
+    arma::vec ZuVec = ZMat(uVec);
+    // m_V_TRM.col(itrace) = tZMat(getKinbVecPOLMM(ZuVec, "none"));
+    arma::vec tempVec = getKinbVecPOLMM(ZuVec, "none");
+    m_V_TRM.col(itrace) = tZMat(tempVec);
+  }
+  
+  arma::vec t2  = getTime();
+  std::string info = "calculate " + std::to_string(m_tracenrun) + " genKinbVec()";
+  printTime(t1, t2, info);
+}
+
+void POLMMClass::setPOLMMInner(arma::mat t_Cova,
+                               arma::uvec t_yVec,     // should be from 0 to J-1
+                               arma::vec t_beta,
+                               arma::vec t_bVec,
+                               arma::vec t_eps,           // 
+                               double t_tau)
+{
+  m_n = t_Cova.n_rows;
+  m_p = t_Cova.n_cols;
+  m_J = arma::max(t_yVec) + 1;
+  
+  m_CovaMat = getCovaMat(t_Cova, m_J);
+  m_yVec = t_yVec;
+  m_yMat = getyMat(t_yVec);
+  
+  m_Cova = t_Cova;
+  m_beta = t_beta;
+  m_bVec = t_bVec;
+  m_eps = t_eps;
+  m_tau = t_tau;
+  
+  setArray();
+  set_seed(m_seed);
 }
 
 void POLMMClass::getMarkerPval(arma::vec t_GVec, 
@@ -171,7 +253,7 @@ void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with len
   arma::mat y1Mat = Vec2Mat(t_y1Vec, m_n, m_J);
   
   // r2Vec and z2Vec are for the current step; r1Vec and z1Vec are for the previous step
-  int iter = 0;
+  unsigned int iter = 0;
   arma::mat r2Mat = y1Mat - getSigmaxMat(xMat);  // n x (J-1): r0 = y1Mat- Sigma %*% xMat
   double meanL2 = sqrt(getInnerProd(r2Mat, r2Mat)) / sqrt(m_n * (m_J-1));
   if(meanL2 <= m_tolPCG){
@@ -681,8 +763,6 @@ double getProb(arma::Mat<uint8_t> t_SeqMat,  // n x m matrix, where m \leq J^n i
   
   return prob;
 }
-
-
 
 }
 // make a global variable for future usage

@@ -40,15 +40,11 @@ Additional list of \code{control} in \code{GRAB.Region()} function
 }
 \examples{
 # Simulation phenotype and genotype
+PhenoData = read.table(system.file("extdata", "example.pheno", package = "GRAB"), header = T)
 GenoFile = system.file("extdata", "example.bed", package = "GRAB")
-N = 100
-Pheno = data.frame(ID = paste0("f",1:N,"_1"),
-                   event=rbinom(N,1,0.5),
-                   time=runif(N),
-                   Cov1=rnorm(N),
-                   Cov2=rbinom(N,1,0.5))
-obj.SPACox = GRAB.NullModel(survival::Surv(time,event)~Cov1+Cov2, 
-                            data=Pheno, subjData = Pheno$ID, method = "SPACox", GenoFile = GenoFile)
+obj.POLMM = GRAB.NullModel(factor(Ordinal) ~ Cova1 + Cova2,
+                           data = PhenoData, subjData = PhenoData$IID, method = "POLMM", traitType = "ordinal", 
+                           GenoFile = GenoFile)
 
 res.SPACox = GRAB.Marker(obj.SPACox, GenoFile)
 head(res.SPACox)

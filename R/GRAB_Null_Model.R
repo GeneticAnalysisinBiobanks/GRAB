@@ -37,6 +37,8 @@ GRAB.NullModel = function(formula,
     stop("Argument 'subjData' is required to specify the subjects IDs in 'formula' and/or 'data'.")
   
   Call = match.call()
+  
+  # The following function is in 'control.R'
   control = checkControl.NullModel(control, method, traitType)
   
   #### START: formula.R
@@ -73,6 +75,7 @@ GRAB.NullModel = function(formula,
   handleGRM(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
   
   if(method == "POLMM"){
+    # The following function is in 'POLMM.R'
     objNull = fitNullModel.POLMM(response, designMat, subjData, control)
   }
   

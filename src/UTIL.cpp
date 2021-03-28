@@ -4,6 +4,10 @@
 #include "UTIL.hpp"
 #include <sys/time.h>
 
+arma::vec nb(unsigned int n){
+  return(Rcpp::rbinom(n,1,0.5));
+}
+
 double getWeights(std::string t_kernel, 
                   double t_freq, 
                   arma::vec t_wBeta)
@@ -155,19 +159,6 @@ arma::vec Mat2Vec(arma::mat xMat, int n, int J)
   return(xVec);
 }
 
-// duplicate each row for (J-1) times: n x p -> n(J-1) x p
-arma::mat getCovaMat(arma::mat Cova, int n, int J, int p)      
-{
-  arma::mat CovaMat(n * (J-1), p);
-  int index = 0;
-  for(int i = 0; i < n; i++){
-    for(int j = 0; j < J-1; j++){
-      CovaMat.row(index) = Cova.row(i);
-      index++;
-    }
-  }
-  return CovaMat;
-}
 
 // sum each (J-1) cols to 1 col: p x n(J-1) -> p x n (OR) p x (J-1) -> p x 1
 arma::mat sumCols(arma::mat t_xMat,

@@ -41,6 +41,10 @@ setPOLMMobjInCPP <- function(t_muMat, t_iRMat, t_Cova, t_yVec, t_SPmatR, t_tau, 
     invisible(.Call(`_GRAB_setPOLMMobjInCPP`, t_muMat, t_iRMat, t_Cova, t_yVec, t_SPmatR, t_tau, t_printPCGInfo, t_tolPCG, t_maxiterPCG, t_varRatio, t_StdStat_cutoff))
 }
 
+setPOLMMobjInCPP_NULL <- function(t_flagSparseGRM, t_Cova, t_yVec, t_beta, t_bVec, t_eps, t_tau, t_SPmatR, t_controlList) {
+    invisible(.Call(`_GRAB_setPOLMMobjInCPP_NULL`, t_flagSparseGRM, t_Cova, t_yVec, t_beta, t_bVec, t_eps, t_tau, t_SPmatR, t_controlList))
+}
+
 setSPACoxobjInCPP <- function(t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_covaAdj_Cutoff, t_SPA_Cutoff) {
     invisible(.Call(`_GRAB_setSPACoxobjInCPP`, t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_covaAdj_Cutoff, t_SPA_Cutoff))
 }

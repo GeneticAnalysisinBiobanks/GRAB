@@ -627,6 +627,34 @@ void setPOLMMobjInCPP(arma::mat t_muMat,
 }
 
 // [[Rcpp::export]]
+void setPOLMMobjInCPP_NULL(bool t_flagSparseGRM,       // if 1, then use SparseGRM, otherwise, use DenseGRM
+                           arma::mat t_Cova,
+                           arma::uvec t_yVec,     // should be from 0 to J-1
+                           arma::vec t_beta,
+                           arma::vec t_bVec,
+                           arma::vec t_eps,           // 
+                           double t_tau,
+                           Rcpp::List t_SPmatR,    // output of makeSPmatR()
+                           Rcpp::List t_controlList)
+{
+  arma::umat locations = t_SPmatR["locations"];
+  arma::vec values = t_SPmatR["values"];
+  std::cout << "Setting Sparse GRM...." << std::endl;
+  arma::sp_mat SparseGRM = arma::sp_mat(locations, values);
+  ptr_gPOLMMobj = new POLMM::POLMMClass(t_flagSparseGRM,       // if 1, then use SparseGRM, otherwise, use DenseGRM
+                                        ptr_gDenseGRMobj,
+                                        t_Cova,
+                                        t_yVec,     // should be from 0 to J-1
+                                        t_beta,
+                                        t_bVec,
+                                        t_eps,           // 
+                                        t_tau,
+                                        SparseGRM,    // results of function getKinMatList()
+                                        t_controlList);
+}
+
+
+// [[Rcpp::export]]
 void setSPACoxobjInCPP(arma::mat t_cumul,
                        arma::vec t_mresid,
                        arma::mat t_XinvXX,
@@ -643,12 +671,4 @@ void setSPACoxobjInCPP(arma::mat t_cumul,
                                            t_pVal_covaAdj_Cutoff,
                                            t_SPA_Cutoff);
 }
-
-
-
-
-
-
-
-
 

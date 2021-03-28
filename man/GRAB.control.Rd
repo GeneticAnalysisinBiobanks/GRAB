@@ -27,27 +27,27 @@ For example, check \code{?GRAB.SPACox} for more information about SPACox method.
   \item{GRAB.NullModel}{
   The following parameters are to handle dense GRM for mixed model approaches (\code{SAIGE}, \code{GATE}, and \code{POLMM})
     \itemize{
-    \item \code{memoryChunk}: xxx
-    \item \code{seed}: xxx
-    \item \code{tracenrun}: xxx
-    \item \code{maxiter}: xxx
-    \item \code{tolBeta}: xxx
-    \item \code{tolTau}: xxx
-    \item \code{tau}: xxx
-    \item \code{maxiterPCG}: xxx
-    \item \code{tolEps}: xxx
-    \item \code{minMafVarRatio}: xxx
-    \item \code{maxMissingVarRatio}: xxx
-    \item \code{nSNPsVarRatio}: xxx
-    \item \code{CVcutoff}: xxx
-    \item \code{LOCO}: xxx
-    \item \code{numThreads}: xxx
-    \item \code{stackSize}: xxx
-    \item \code{grainSize}: xxx
-    \item \code{minMafGRM}: xxx
-    \item \code{maxMissingGRM}: xxx
-    \item \code{showInfo }: xxx
-    \item \code{onlyCheckTime}: xxx
+    \item \code{memoryChunk}: Size (Gb) for each memory chunk when reading in Plink file [default=2].
+    \item \code{seed}: An integer as a random seed [default=12345678].
+    \item \code{tracenrun}: Number of runs for trace estimator [default=30].
+    \item \code{maxiter}: Maximum number of iterations used to fit the null POLMM [default=100].
+    \item \code{tolBeta}: Positive tolerance: the iterations converge when |beta - beta_old| / (|beta| + |beta_old| + tolBeta) < tolBeta [default=0.001].
+    \item \code{tolTau}: Positive tolerance: the iterations converge when |tau - tau_old| / (|tau| + |tau_old| + tolTau) < tolTau [default=0.002].
+    \item \code{tau}: Initial value of the variance component (tau) [default=0.2].
+    \item \code{maxiterPCG}: Maximum number of iterations for PCG to converge [default=100].
+    \item \code{tolEps}: Positive tolerance for PCG to converge [default=1e-6].
+    \item \code{minMafVarRatio}: Minimal value of MAF cutoff to select markers (from Plink file) to estimate variance ratio [default=0.1].
+    \item \code{maxMissingVarRatio}: Maximal value of missing rate cutoff to select markers (from Plink file) to estimate variance ratio [default=0.1].
+    \item \code{nSNPsVarRatio}: Initial number of the selected markers to estimate variance ratio [default=20], the number will be automatically added by 10 until the coefficient of variantion (CV) of the variance ratio estimate is below CVcutoff.
+    \item \code{CVcutoff}: Minimal cutoff of coefficient of variantion (CV) for variance ratio estimation [default=0.0025].
+    \item \code{LOCO}: Whether to apply the leave-one-chromosome-out (LOCO) approach [default=TRUE].
+    \item \code{numThreads}: Number of threads (CPUs) to use. Only valid if dense GRM is used, default is "auto", that is, RcppParallel::defaultNumThreads() [default="auto"].
+    \item \code{stackSize}: Stack size (in bytes) to use for worker threads. For more details, check help(RcppParallel::setThreadOptions) [default="auto"].
+    \item \code{grainSize}: Grain size of a parallel algorithm sets a minimum chunk size for parallelization. In other words, at what point to stop processing input on separate threads [default=1].
+    \item \code{minMafGRM}: Minimal value of MAF cutoff to select markers (from Plink files) to construct dense GRM [default=0.01].
+    \item \code{maxMissingGRM}: Maximal value of missing rate to select markers (from Plink files) to construct dense GRM [default=0.1].
+    \item \code{showInfo }: Whether to show more detailed information for trouble shooting [default=TRUE].
+    \item \code{onlyCheckTime}: Not fit the null model, only check the computation time of reading Plink files and running 30 KinbVec() functions [default=FALSE].
     }
   }
   \item{GRAB.Marker}{

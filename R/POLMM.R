@@ -33,15 +33,11 @@
 #' }
 #' @examples 
 #' # Simulation phenotype and genotype
+#' PhenoData = read.table(system.file("extdata", "example.pheno", package = "GRAB"), header = T)
 #' GenoFile = system.file("extdata", "example.bed", package = "GRAB")
-#' N = 100
-#' Pheno = data.frame(ID = paste0("f",1:N,"_1"),
-#'                    event=rbinom(N,1,0.5),
-#'                    time=runif(N),
-#'                    Cov1=rnorm(N),
-#'                    Cov2=rbinom(N,1,0.5))
-#' obj.SPACox = GRAB.NullModel(survival::Surv(time,event)~Cov1+Cov2, 
-#'                             data=Pheno, subjData = Pheno$ID, method = "SPACox", GenoFile = GenoFile)
+#' obj.POLMM = GRAB.NullModel(factor(Ordinal) ~ Cova1 + Cova2,
+#'                            data = PhenoData, subjData = PhenoData$IID, method = "POLMM", traitType = "ordinal", 
+#'                            GenoFile = GenoFile)
 #' 
 #' res.SPACox = GRAB.Marker(obj.SPACox, GenoFile)
 #' head(res.SPACox)
@@ -179,26 +175,93 @@ checkControl.NullModel.POLMM = function(control)
 # fit null model using POLMM method
 fitNullModel.POLMM = function(response, designMat, subjData, control)
 {
+  
+  ######## -------------- first set up the object in C++ -------- ########
+  
+  if(class(response) != "factor")
+    stop("response in POLMM method should be a factor.")
+  
+  obj.clm = summary(ordinal::clm(response ~ designMat))
+  beta = c(-1 * obj.clm$alpha[1], obj.clm$beta)
+  eps = c(0, obj.clm$alpha[-1] - obj.clm$alpha[1])
+  bVec = rep(0, length(response))  # initiate random effect of 0
+  
+  yVec = as.numeric(response) - 1; # "-1" means change from R to C++
+  Cova = designMat
+  tau = control$tau
+  SPmatR = list(locations = matrix(c(0,0),2,1),
+                values = rep(0,1))
+  
+  # default.control = list(memoryChunk = 2,
+  #                        seed = 12345678,
+  #                        tracenrun = 30,
+  #                        maxiter = 100,
+  #                        tolBeta = 0.001,
+  #                        tolTau = 0.002,
+  #                        tau = 0.2,
+  #                        maxiterPCG = 100,
+  #                        tolPCG = 1e-6,
+  #                        maxiterEps = 100,
+  #                        tolEps = 1e-10,
+  #                        minMafVarRatio = 0.1,
+  #                        maxMissingVarRatio = 0.1, 
+  #                        nSNPsVarRatio = 20,
+  #                        CVcutoff = 0.0025,
+  #                        LOCO = T,
+  #                        numThreads = "auto",
+  #                        stackSize = "auto",
+  #                        grainSize = 1,
+  #                        minMafGRM = 0.01,
+  #                        maxMissingGRM = 0.1,
+  #                        showInfo = T,
+  #                        onlyCheckTime = F)
+  
+  controlList = control
+  
+  # The following function is in 'Main.cpp'
+  setPOLMMobjInCPP_NULL(FALSE,
+                        Cova,
+                        yVec,
+                        beta,
+                        bVec,
+                        eps,
+                        tau,
+                        SPmatR,
+                        controlList)
+  
+  return("Finished")
+  
+  # void setPOLMMobjInCPP_NULL(bool t_flagSparseGRM,       // if 1, then use SparseGRM, otherwise, use DenseGRM
+  #                            arma::mat t_Cova,
+  #                            arma::uvec t_yVec,     // should be from 0 to J-1
+  #                            arma::vec t_beta,
+  #                            arma::vec t_bVec,
+  #                            arma::vec t_eps,           // 
+  #                              double t_tau,
+  #                            arma::mat t_GMatRatio,     // only used if m_LOCO = FALSE
+  #                            Rcpp::List t_SPmatR,    // output of makeSPmatR()
+  #                            Rcpp::List t_controlList)
+  
   ######## -------------- fit the null POLMM --------------  ###########
   
-  bVec = rep(0, n)  # initiate random effect of 0
+  # bVec = rep(0, n)  # initiate random effect of 0
   
-  objNull = fitPOLMMcpp(t_flagSparseGRM = flagSparseGRM,       # if 1, then use SparseGRM, otherwise, use DenseGRM
-                        t_flagGMatRatio = flagGMatRatio,       # if 1, then use GMatRatio, otherwise, extract from Plink files
-                        t_bimfile = bimFile,
-                        t_famfile = famFile,
-                        t_bedfile = bedFile,
-                        t_posSampleInPlink = posSampleInPlink,
-                        t_Cova = Cova,
-                        t_yVec = yVec,                         # should be from 1 to J
-                        t_beta = beta,
-                        t_bVec = bVec,
-                        t_eps = eps,
-                        t_tau = control$tau,
-                        t_GMatRatio = GMat,                    # only used if m_LOCO = FALSE
-                        t_SparseGRM = SparseGRM,
-                        t_controlList = control)
-  return(objNull)
+  # objNull = fitPOLMMcpp(t_flagSparseGRM = flagSparseGRM,       # if 1, then use SparseGRM, otherwise, use DenseGRM
+  #                       t_flagGMatRatio = flagGMatRatio,       # if 1, then use GMatRatio, otherwise, extract from Plink files
+  #                       t_bimfile = bimFile,
+  #                       t_famfile = famFile,
+  #                       t_bedfile = bedFile,
+  #                       t_posSampleInPlink = posSampleInPlink,
+  #                       t_Cova = Cova,
+  #                       t_yVec = yVec,                         # should be from 1 to J
+  #                       t_beta = beta,
+  #                       t_bVec = bVec,
+  #                       t_eps = eps,
+  #                       t_tau = control$tau,
+  #                       t_GMatRatio = GMat,                    # only used if m_LOCO = FALSE
+  #                       t_SparseGRM = SparseGRM,
+  #                       t_controlList = control)
+  # return(objNull)
 }
 
 setMarker.POLMM = function(objNull, control, chrom)

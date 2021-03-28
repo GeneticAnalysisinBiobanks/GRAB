@@ -150,6 +150,24 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// setPOLMMobjInCPP_NULL
+void setPOLMMobjInCPP_NULL(bool t_flagSparseGRM, arma::mat t_Cova, arma::uvec t_yVec, arma::vec t_beta, arma::vec t_bVec, arma::vec t_eps, double t_tau, Rcpp::List t_SPmatR, Rcpp::List t_controlList);
+RcppExport SEXP _GRAB_setPOLMMobjInCPP_NULL(SEXP t_flagSparseGRMSEXP, SEXP t_CovaSEXP, SEXP t_yVecSEXP, SEXP t_betaSEXP, SEXP t_bVecSEXP, SEXP t_epsSEXP, SEXP t_tauSEXP, SEXP t_SPmatRSEXP, SEXP t_controlListSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< bool >::type t_flagSparseGRM(t_flagSparseGRMSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type t_Cova(t_CovaSEXP);
+    Rcpp::traits::input_parameter< arma::uvec >::type t_yVec(t_yVecSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_beta(t_betaSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_bVec(t_bVecSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_eps(t_epsSEXP);
+    Rcpp::traits::input_parameter< double >::type t_tau(t_tauSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_SPmatR(t_SPmatRSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_controlList(t_controlListSEXP);
+    setPOLMMobjInCPP_NULL(t_flagSparseGRM, t_Cova, t_yVec, t_beta, t_bVec, t_eps, t_tau, t_SPmatR, t_controlList);
+    return R_NilValue;
+END_RCPP
+}
 // setSPACoxobjInCPP
 void setSPACoxobjInCPP(arma::mat t_cumul, arma::vec t_mresid, arma::mat t_XinvXX, arma::mat t_tX, int t_N, double t_pVal_covaAdj_Cutoff, double t_SPA_Cutoff);
 RcppExport SEXP _GRAB_setSPACoxobjInCPP(SEXP t_cumulSEXP, SEXP t_mresidSEXP, SEXP t_XinvXXSEXP, SEXP t_tXSEXP, SEXP t_NSEXP, SEXP t_pVal_covaAdj_CutoffSEXP, SEXP t_SPA_CutoffSEXP) {
@@ -189,6 +207,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setPLINKobjInCPP", (DL_FUNC) &_GRAB_setPLINKobjInCPP, 5},
     {"_GRAB_setBGENobjInCPP", (DL_FUNC) &_GRAB_setBGENobjInCPP, 7},
     {"_GRAB_setPOLMMobjInCPP", (DL_FUNC) &_GRAB_setPOLMMobjInCPP, 11},
+    {"_GRAB_setPOLMMobjInCPP_NULL", (DL_FUNC) &_GRAB_setPOLMMobjInCPP_NULL, 9},
     {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},
     {"_GRAB_squares", (DL_FUNC) &_GRAB_squares, 1},
     {NULL, NULL, 0}

@@ -28,9 +28,6 @@ arma::mat Vec2Mat(arma::vec xVec, int n, int J);
 // convert: n x (J-1) -> n(J-1) x 1
 arma::vec Mat2Vec(arma::mat xMat, int n, int J);
 
-// duplicate each row for (J-1) times: n x p -> n(J-1) x p
-arma::mat getCovaMat(arma::mat Cova, int n, int J, int p);
-
 arma::mat sumCols(arma::mat t_xMat, int J);
 
 arma::vec getRPsiR(arma::mat t_muMat, arma::mat t_iRMat, int t_n, int t_J, int t_p); 
@@ -45,6 +42,20 @@ arma::vec getTime();
 void printTime(arma::vec t1, arma::vec t2, std::string message);
 
 double getinvStd(double t_freq);
+
+// http://thecoatlessprofessor.com/programming/set_rs_seed_in_rcpp_sequential_case/
+// void set_seed(unsigned int seed) {
+//   Rcpp::Environment base_env("package:base");
+//   Rcpp::Function set_seed_r = base_env["set.seed"];
+//   set_seed_r(seed);  
+// };
+
+// 
+// arma::vec nb(int n){
+//   return(Rcpp::rbinom(n,1,0.5));
+// }
+
+arma::vec nb(unsigned int n);
 
 #endif
 
