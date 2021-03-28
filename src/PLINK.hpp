@@ -106,12 +106,40 @@ public:
     return OneMarkerG1;
   }
   
+  arma::vec getOneMarker(uint64_t t_gIndex,
+                         double& t_altFreq,
+                         double& t_missingRate,
+                         std::vector<uint32_t>& t_indexForMissing)
+  {
+    std::string ref, alt, marker, chr;
+    uint32_t pd;
+    double altCounts, imputeInfo;
+    std::vector<uint32_t> indexForNonZero;
+    arma::vec OneMarkerG1 = getOneMarker(t_gIndex, ref, alt, marker, pd, chr, t_altFreq, altCounts, t_missingRate, imputeInfo,
+                                         false, t_indexForMissing, false, indexForNonZero, false);
+    return OneMarkerG1;
+  }
+  
+  arma::mat getGMat(int t_nMarker, 
+                    std::string t_chrName, 
+                    double t_minMafVarRatio, 
+                    double t_maxMissingVarRatio);
+  
   uint32_t getN0(){return m_N0;}
   uint32_t getN(){return m_N;}
   uint32_t getM0(){return m_M0;}
   uint32_t getM(){return m_M;}
   uint32_t getnumBytesofEachMarker0(){return m_numBytesofEachMarker0;}
   uint32_t getnumBytesofEachMarker(){return m_numBytesofEachMarker;}
+  
+  Rcpp::StringVector getChrVec()
+  {
+    Rcpp::StringVector chrVec(m_M0);
+    for(unsigned int i = 0; i < m_M0; i++){
+      chrVec[i] = Rcpp::String(m_chr.at(i));
+    }
+    return chrVec;
+  }
   
 };
 

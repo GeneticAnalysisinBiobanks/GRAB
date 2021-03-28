@@ -39,13 +39,14 @@ Additional list of \code{control} in \code{GRAB.Region()} function
 }
 }
 \examples{
-# Simulation phenotype and genotype
+# Step 1: fit a null model
 PhenoData = read.table(system.file("extdata", "example.pheno", package = "GRAB"), header = T)
 GenoFile = system.file("extdata", "example.bed", package = "GRAB")
 obj.POLMM = GRAB.NullModel(factor(Ordinal) ~ Cova1 + Cova2,
-                           data = PhenoData, subjData = PhenoData$IID, method = "POLMM", traitType = "ordinal", 
+                           data = PhenoData, subjData = PhenoData$IID, method = "POLMM", traitType = "ordinal",
                            GenoFile = GenoFile)
 
-res.SPACox = GRAB.Marker(obj.SPACox, GenoFile)
-head(res.SPACox)
+names(obj.POLMM)
+obj.POLMM$tau    # 1.379501
+
 }

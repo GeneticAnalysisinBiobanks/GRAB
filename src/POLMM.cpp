@@ -77,6 +77,7 @@ void set_seed(unsigned int seed){
 
 void POLMMClass::setPOLMMObj(bool t_flagSparseGRM,       // if 1, then use SparseGRM, otherwise, use DenseGRM
                              DenseGRM::DenseGRMClass* t_ptrDenseGRMObj,
+                             PLINK::PlinkClass* t_ptrPlinkObj,
                              arma::mat t_Cova,
                              arma::uvec t_yVec,     // should be from 0 to J-1
                              arma::vec t_beta,
@@ -89,7 +90,7 @@ void POLMMClass::setPOLMMObj(bool t_flagSparseGRM,       // if 1, then use Spars
   setControlList(t_controlList);
   setPOLMMInner(t_Cova, t_yVec, t_beta,  t_bVec,  t_eps,  t_tau);
   
-  // m_ptrPlinkObj = t_ptrPlinkObj;
+  m_ptrPlinkObj = t_ptrPlinkObj;
   m_ptrDenseGRMObj = t_ptrDenseGRMObj;
   
   // if t_flagSparseGRM = 1, then use "SparseGRM" methods, otherwise, use "DenseGRM" methods
@@ -245,6 +246,69 @@ void POLMMClass::getPCGofSigmaAndCovaMat(arma::mat t_xMat,              // matri
   }
 }
 
+
+// use PCG to calculate xVec = Sigma^-1 %*% yVec
+void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with length of n(J-1)
+                                        arma::vec& t_xVec,    // vector with length of n(J-1)
+                                        std::string t_excludechr)
+{
+  // if(m_flagSparseGRM){
+  // setSigmaMat_sp();
+  // t_xVec = spsolve(SigmaMat_sp, t_y1Vec);
+  // }else{
+  arma::mat xMat = convert2(t_xVec, m_n, m_J);
+  arma::mat y1Mat = convert2(t_y1Vec, m_n, m_J);
+  // r2Vec and z2Vec are for the current step; r1Vec and z1Vec are for the previous step
+  unsigned int iter = 0;
+  arma::mat r2Mat = y1Mat - getSigmaxMat(xMat, t_excludechr);  // n x (J-1): r0 = y1Mat- Sigma %*% xMat
+  double meanL2 = sqrt(getInnerProd(r2Mat, r2Mat)) / sqrt(m_n * (m_J-1));
+  if(meanL2 <= m_tolPCG){
+    // do nothing, xMat is already close to (Sigma)^-1 %*% y1Mat
+  }else{
+    iter++;
+    arma::cube InvBlockDiagSigma = getInvBlockDiagSigma();
+    arma::mat z2Mat = solverBlockDiagSigma(InvBlockDiagSigma, r2Mat);
+    //
+    arma::mat z1Mat, r1Mat;
+    double beta1 = 0;
+    arma::mat pMat = z2Mat;
+    arma::mat ApMat = getSigmaxMat(pMat, t_excludechr);
+    double alpha = getInnerProd(z2Mat, r2Mat) / getInnerProd(pMat, ApMat);
+    xMat = xMat + alpha * pMat;
+    r1Mat = r2Mat;
+    z1Mat = z2Mat;
+    r2Mat = r1Mat - alpha * ApMat;
+    
+    meanL2 = sqrt(getInnerProd(r2Mat, r2Mat)) / sqrt(m_n * (m_J-1));
+    
+    while (meanL2 > m_tolPCG && iter < m_maxiterPCG){
+      iter++;
+      
+      //  z2Mat = minvMat % r2Mat;
+      z2Mat = solverBlockDiagSigma(InvBlockDiagSigma, r2Mat);
+      //
+      beta1 = getInnerProd(z2Mat, r2Mat) / getInnerProd(z1Mat, r1Mat);
+      pMat = z2Mat + beta1 * pMat;
+      ApMat = getSigmaxMat(pMat, t_excludechr);
+      alpha = getInnerProd(z2Mat, r2Mat) / getInnerProd(pMat, ApMat);
+      
+      xMat = xMat + alpha * pMat;
+      r1Mat = r2Mat;
+      z1Mat = z2Mat;
+      r2Mat = r1Mat - alpha * ApMat;
+      meanL2 = sqrt(getInnerProd(r2Mat, r2Mat)) / sqrt(m_n * (m_J-1));
+    }
+  }
+  
+  t_xVec = convert1(xMat, m_n, m_J);
+  if (iter >= m_maxiterPCG){
+    std::cout << "pcg did not converge. You may increase maxiter number." << std::endl;
+  }
+  if(m_showInfo)
+    std::cout << "iter from getPCG1ofSigmaAndVector " << iter << std::endl; 
+  // }
+}
+
 // use PCG to calculate xVec = Sigma^-1 %*% yVec
 void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with length of n(J-1)
                                         arma::vec& t_xVec)    // vector with length of n(J-1)
@@ -347,18 +411,48 @@ arma::mat POLMMClass::getPsixMat(arma::mat t_xMat)   // matrix: n x (J-1)
   return Psi_xMat;
 }
 
+// // used in getPCGofSigmaAndVector()
+// arma::cube POLMMClass::getInvBlockDiagSigma()
+// {
+//   // get diagonal elements of GRM
+//   arma::vec DiagGRM;
+//   DiagGRM = m_tau * m_SparseGRM.diag();
+//   
+//   arma::cube InvBlockDiagSigma(m_J-1, m_J-1, m_n, arma::fill::zeros);
+//   for(int i = 0; i < m_n; i++){
+//     for(int j2 = 0; j2 < m_J-1; j2++){
+//       for(int j1 = 0; j1 < m_J-1; j1++){
+//         double temp = m_iRMat(i,j2) * (1 / m_muMat(i, m_J-1)) * m_iRMat(i,j1) + DiagGRM(i);
+//         if(j2 == j1){
+//           temp += m_iRMat(i,j2) * (1 / m_muMat(i,j2)) * m_iRMat(i,j1); 
+//         }
+//         InvBlockDiagSigma(j2, j1, i) = temp;
+//       }
+//     }
+//     InvBlockDiagSigma.slice(i) = inv(InvBlockDiagSigma.slice(i));
+//   }
+//   return InvBlockDiagSigma;
+// }
+
 // used in getPCGofSigmaAndVector()
 arma::cube POLMMClass::getInvBlockDiagSigma()
 {
   // get diagonal elements of GRM
   arma::vec DiagGRM;
-  DiagGRM = m_tau * m_SparseGRM.diag();
+  if(m_flagSparseGRM){
+    DiagGRM = m_tau * m_SparseGRM.diag();
+  }else{
+    arma::vec* pDiagStdGeno = m_ptrDenseGRMObj->getDiagStdGeno();
+    DiagGRM = m_tau * (*pDiagStdGeno);   // n x 1
+  }
   
+  double temp;
+  //
   arma::cube InvBlockDiagSigma(m_J-1, m_J-1, m_n, arma::fill::zeros);
   for(int i = 0; i < m_n; i++){
     for(int j2 = 0; j2 < m_J-1; j2++){
       for(int j1 = 0; j1 < m_J-1; j1++){
-        double temp = m_iRMat(i,j2) * (1 / m_muMat(i, m_J-1)) * m_iRMat(i,j1) + DiagGRM(i);
+        temp = m_iRMat(i,j2) * (1 / m_muMat(i, m_J-1)) * m_iRMat(i,j1) + DiagGRM(i);
         if(j2 == j1){
           temp += m_iRMat(i,j2) * (1 / m_muMat(i,j2)) * m_iRMat(i,j1); 
         }
@@ -818,6 +912,7 @@ void POLMMClass::updateEpsOneStep()
     for(int i = 0; i < m_n; i++){
       temp1 = m_yMat(i, k) / m_muMat(i, k) - m_yMat(i, k+1) / m_muMat(i, k+1);
       temp2 = - m_yMat(i, k) / m_muMat(i, k) / m_muMat(i, k) - m_yMat(i, k+1) / m_muMat(i, k+1) / m_muMat(i, k+1);
+      
       d1eps(k - 1) += m_WMat(i, k) * temp1;
       d2eps(k - 1, k - 1) += m_WMat(i, k) * (1 - 2 * m_nuMat(i, k)) * temp1 + m_WMat(i, k) * m_WMat(i, k) * temp2;
       if(k < m_J-2){
@@ -1041,23 +1136,17 @@ void POLMMClass::fitPOLMM()
     Rcpp::StringVector chrVec = m_ptrPlinkObj->getChrVec();
     Rcpp::StringVector uniqchr = unique(chrVec);
     
-    if(m_flagSparseGRM){
-      Rcpp::StringVector uniqchr_sp = m_SparseGRM.names(); 
-      uniqchr = intersect(uniqchr, uniqchr_sp);
-    }
-    
     std::cout << "uniqchr is " << uniqchr << std::endl;
     
     for(int i = 0; i < uniqchr.size(); i ++){
-      
       
       std::string excludechr = std::string(uniqchr(i));
       std::cout << std::endl << "Leave One Chromosome Out: Chr " << excludechr << std::endl;
       
       updateParaConv(excludechr);
       
-      m_GMatRatio = m_ptrPlinkObj->getGMat(100, excludechr, m_minMafVarRatio, m_maxMissingVarRatio);
-      arma::mat VarRatioMat = getVarRatio(m_GMatRatio, excludechr);
+      arma::mat GMatRatio = m_ptrPlinkObj->getGMat(100, excludechr, m_minMafVarRatio, m_maxMissingVarRatio);
+      arma::mat VarRatioMat = getVarRatio(GMatRatio, excludechr);
       double VarRatio = arma::mean(VarRatioMat.col(4));
       
       Rcpp::List temp = Rcpp::List::create(Rcpp::Named("muMat") = m_muMat,
@@ -1071,10 +1160,10 @@ void POLMMClass::fitPOLMM()
   }else{
     
     // turn off LOCO option
-    if(!m_flagGMatRatio){
-      m_GMatRatio = m_ptrPlinkObj->getGMat(100, "none", m_minMafVarRatio, m_maxMissingVarRatio);
-    }
-    arma::mat VarRatioMat = getVarRatio(m_GMatRatio, "none");
+    // if(!m_flagGMatRatio){
+    arma::mat GMatRatio = m_ptrPlinkObj->getGMat(100, "none", m_minMafVarRatio, m_maxMissingVarRatio);
+    // }
+    arma::mat VarRatioMat = getVarRatio(GMatRatio, "none");
     double VarRatio = arma::mean(VarRatioMat.col(4));
     
     Rcpp::List temp = Rcpp::List::create(Rcpp::Named("muMat") = m_muMat,
@@ -1087,6 +1176,300 @@ void POLMMClass::fitPOLMM()
   // complete null POLMM fitting 
   arma::vec t2  = getTime();
   printTime(t1, t2, "fit the null POLMM.");
+}
+
+
+
+arma::mat POLMMClass::solverBlockDiagSigma(arma::cube& InvBlockDiagSigma,   // (J-1) x (J-1) x n
+                                           arma::mat& xMat)                 // n x (J-1)
+{
+  arma::mat outMat(m_n, m_J-1);
+  for(int i = 0; i < m_n; i++){
+    outMat.row(i) = xMat.row(i) * InvBlockDiagSigma.slice(i); // could invert matrix?? be careful!
+  }
+  return(outMat);
+}
+
+// yMat = Sigma %*% xMat
+arma::mat POLMMClass::getSigmaxMat(arma::mat t_xMat,   // matrix: n x (J-1) 
+                                   std::string t_excludechr)
+{
+  arma::mat iR_xMat = m_iRMat % t_xMat;
+  arma::mat iPsi_iR_xMat = getiPsixMat(iR_xMat);
+  arma::mat yMat = m_iRMat % iPsi_iR_xMat;
+  if(m_tau == 0){}
+  else{
+    arma::vec tZ_xMat = getRowSums(t_xMat);  // rowSums(xMat): n x 1
+    arma::vec V_tZ_xMat = getKinbVecPOLMM(tZ_xMat, t_excludechr);
+    yMat.each_col() += m_tau * V_tZ_xMat;
+  }
+  return(yMat);
+}
+
+// use PCG to calculate iSigma_xMat = Sigma^-1 %*% xMat
+void POLMMClass::getPCGofSigmaAndCovaMat(arma::mat t_xMat,              // matrix with dim of n(J-1) x p
+                                         arma::mat& t_iSigma_xMat,      // matrix with dim of n(J-1) x p
+                                         std::string t_excludechr)
+{
+  int p1 = t_xMat.n_cols;
+  for(int i = 0; i < p1; i++){
+    arma::vec y1Vec = t_xMat.col(i);
+    arma::vec iSigma_y1Vec = t_iSigma_xMat.col(i);
+    getPCGofSigmaAndVector(y1Vec, iSigma_y1Vec, t_excludechr);
+    t_iSigma_xMat.col(i) = iSigma_y1Vec;
+  }
+}
+
+double POLMMClass::getVarP(arma::vec t_adjGVec,
+                           std::string t_excludechr)
+{
+  arma::vec adjGVecLong = tZMat(t_adjGVec);
+  arma::vec iSigmaGVec(m_n * (m_J-1), arma::fill::zeros);
+  getPCGofSigmaAndVector(adjGVecLong, iSigmaGVec, t_excludechr);
+  double VarP = as_scalar(adjGVecLong.t() * (iSigmaGVec - m_iSigmaX_XSigmaX * (m_CovaMat.t() * iSigmaGVec)));
+  return(VarP);
+}
+
+arma::vec convert1(arma::mat xMat, // matrix: n x (J-1)
+                   int n, int J) 
+{
+  arma::vec xVec(n*(J-1));
+  int index = 0;
+  for(int i = 0; i < n; i++){
+    for(int j = 0; j < J-1; j++){
+      xVec(index) = xMat(i,j);
+      index++;
+    }
+  }
+  return(xVec);
+}
+
+arma::mat convert2(arma::vec xVec, // n(J-1) x 1 
+                   int n, int J)
+{
+  arma::mat xMat(n,(J-1));
+  int index = 0;
+  for(int i = 0; i < n; i++){
+    for(int j = 0; j < J-1; j++){
+      xMat(i,j) = xVec(index);
+      index++;
+    }
+  }
+  return(xMat);
+}
+
+double getVarWFast(arma::vec adjGVec,  // n x 1
+                   arma::vec RPsiRVec) // n x 1
+{
+  int n = adjGVec.size();
+  double VarW = 0;
+  for(int i = 0; i < n; i++){
+    VarW += RPsiRVec(i) * adjGVec(i) * adjGVec(i);
+  }
+  return(VarW);
+}
+
+// get a list for p value calculation in step 2
+Rcpp::List getobjP(arma::mat t_Cova,     // matrix: n x p
+                   arma::mat t_yMat,
+                   arma::mat t_muMat,    // matrix: n x J
+                   arma::mat t_iRMat)    // matrix: n x (J-1)
+{
+  int n = t_muMat.n_rows;
+  int J = t_muMat.n_cols;
+  int p = t_Cova.n_cols;
+  
+  // output for Step 2
+  arma::mat XR_Psi_R(p, n*(J-1));                // p x n(J-1)
+  arma::mat CovaMat = getCovaMat(t_Cova, J); // n(J-1) x p
+  for(int k = 0; k < p; k++){
+    arma::mat xMat = convert2(CovaMat.col(k), n, J);
+    arma::vec temp = convert1(getPsixMat(xMat / t_iRMat, t_muMat) / t_iRMat, n, J);
+    XR_Psi_R.row(k) = temp.t();
+  }
+  // arma::mat XXR_Psi_RX = CovaMat * inv(XR_Psi_R * CovaMat);             // (n(J-1) x p) * (p x p) = n(J-1) x p
+  arma::mat XXR_Psi_RX_new = t_Cova * inv(XR_Psi_R * CovaMat);               // (n x p) * (p x p) = n x p
+  
+  // sum each (J-1) rows to 1 row: p x n(J-1) -> p x n
+  arma::mat XR_Psi_R_new = sumCols(XR_Psi_R, J);      // p x n
+  arma::mat ymuMat = t_yMat - t_muMat;                    // n x J
+  arma::mat RymuMat = ymuMat.cols(0, J-2) / t_iRMat;    // n x (J-1): R %*% (y - mu)
+  arma::mat RymuVec = sumCols(RymuMat, J);            // n x 1
+  // arma::cube RPsiR = getRPsiR(muMat, iRMat, n, J, p); // (J-1) x (J-1) x n 
+  arma::vec RPsiR = getRPsiR(t_muMat, t_iRMat, n, J, p); // (J-1) x (J-1) x n 
+  
+  Rcpp::List objP = Rcpp::List::create(Rcpp::Named("n")=n,
+                                       Rcpp::Named("J")=J,
+                                       Rcpp::Named("p")=p,
+                                       Rcpp::Named("XXR_Psi_RX_new") = XXR_Psi_RX_new,
+                                       Rcpp::Named("XR_Psi_R_new") = XR_Psi_R_new,           
+                                       Rcpp::Named("RymuVec") = RymuVec,
+                                       Rcpp::Named("RPsiR") = RPsiR,
+                                       Rcpp::Named("muMat") = t_muMat,
+                                       Rcpp::Named("iRMat") = t_iRMat);
+  return(objP);
+}
+
+arma::vec getadjGFast(arma::vec GVec,
+                      arma::mat XXR_Psi_RX_new,   // XXR_Psi_RX_new ( n x p )
+                      arma::mat XR_Psi_R_new,     // XR_Psi_R_new ( p x n ), sum up XR_Psi_R ( p x n(J-1) ) for each subject 
+                      int n, int p)
+{
+  // To increase computational efficiency when lots of GVec elements are 0
+  arma::vec XR_Psi_RG1(p, arma::fill::zeros);
+  for(int i = 0; i < n; i++){
+    if(GVec(i) != 0){
+      XR_Psi_RG1 += XR_Psi_R_new.col(i) * GVec(i);
+    }
+  }
+  
+  arma::vec adjGVec = GVec - XXR_Psi_RX_new * XR_Psi_RG1;
+  return(adjGVec);
+}
+
+double getStatFast(arma::vec GVec,         // n x 1
+                   arma::vec RymuVec)      // n x 1: row sum of the n x (J-1) matrix R %*% (yMat - muMat)
+{
+  int n = GVec.size();
+  double Stat = 0;
+  for(int i = 0; i < n; i++){
+    if(GVec(i) != 0){
+      Stat += GVec(i) * RymuVec(i);
+    }
+  }
+  return(Stat);
+}
+
+Rcpp::List outputadjGFast(arma::vec GVec,
+                          Rcpp::List objP)
+{
+  arma::vec adjGVec = getadjGFast(GVec, objP["XXR_Psi_RX_new"], objP["XR_Psi_R_new"], objP["n"], objP["p"]);
+  double Stat = getStatFast(adjGVec, objP["RymuVec"]);
+  double VarW = getVarWFast(adjGVec, objP["RPsiR"]);
+  Rcpp::List outList = Rcpp::List::create(Rcpp::Named("adjGVec")=adjGVec,
+                                          Rcpp::Named("Stat")=Stat,           
+                                          Rcpp::Named("VarW")=VarW);
+  
+  return(outList);
+}
+
+// sum up each row: n1 x n2 matrix -> n1 x 1 vector
+arma::vec getRowSums(arma::mat t_xMat)
+{
+  int n1 = t_xMat.n_rows;
+  int n2 = t_xMat.n_cols;
+  arma::vec y1Vec(n1, arma::fill::zeros);
+  for(int i = 0; i < n1; i++){
+    for(int j = 0; j < n2; j++){
+      y1Vec(i) += t_xMat(i,j);
+    }
+  }
+  return(y1Vec);
+}
+
+// get RPsiP: (J-1) x (J-1) x n 
+// Only used in getVarWFast(): 
+arma::vec getRPsiR(arma::mat t_muMat,
+                   arma::mat t_iRMat,
+                   int t_n, int t_J, int t_p)   
+{
+  // arma::cube RPsiR(J-1, J-1, n, arma::fill::zeros);
+  arma::vec RPsiRVec(t_n, arma::fill::zeros);
+  arma::mat muRMat = t_muMat.cols(0, t_J-2) / t_iRMat;
+  for(int i = 0; i < t_n; i++){
+    for(int j1 = 0; j1 < t_J-1; j1++){
+      // RPsiR(j1,j1,i) += muRMat(i,j1) / iRMat(i,j1) - muRMat(i,j1) * muRMat(i,j1);
+      RPsiRVec(i) += muRMat(i,j1) / t_iRMat(i,j1) - muRMat(i,j1) * muRMat(i,j1);
+      for(int j2 = j1+1; j2 < t_J-1; j2++){
+        // RPsiR(j1,j2,i) -= muRMat(i,j1) * muRMat(i,j2);
+        RPsiRVec(i) -= 2* muRMat(i,j1) * muRMat(i,j2);
+      }
+    }
+  }
+  // return(RPsiR);
+  return(RPsiRVec);
+}
+
+double calCV(arma::vec t_xVec){
+  unsigned int n = t_xVec.size();
+  double Mean = arma::mean(t_xVec);
+  double Sd = arma::stddev(t_xVec);
+  double CV = (Sd/Mean)/n;
+  return CV;
+}
+
+// sum each (J-1) cols to 1 col: p x n(J-1) -> p x n (OR) p x (J-1) -> p x 1
+arma::mat sumCols(arma::mat t_xMat,
+                  int J)
+{
+  int n = t_xMat.n_cols / (J-1);
+  int p = t_xMat.n_rows;
+  arma::mat outMat(p, n, arma::fill::zeros);
+  int index = 0;
+  for(int i = 0; i < n; i++){
+    for(int j = 0; j < J-1; j++){
+      outMat.col(i) += t_xMat.col(index);
+      index++;
+    }
+  }
+  return(outMat);
+}
+
+// outMat = PsiMat %*% xMat, PsiMat is determined by muMat
+arma::mat getPsixMat(arma::mat t_xMat,    // matrix: n x (J-1)
+                     arma::mat t_muMat)   // matrix: n x J
+{
+  int n = t_muMat.n_rows;
+  int J = t_muMat.n_cols;
+  
+  arma::mat Psi_xMat(n, J-1);
+  // loop for samples
+  for(int i = 0; i < n; i++){
+    arma::rowvec muVec(J-1);
+    for(int j = 0; j < J-1; j++){
+      Psi_xMat(i,j) = t_muMat(i,j) * t_xMat(i,j);
+      muVec(j) = t_muMat(i,j);
+    }
+    double sum_mu_x = sum(Psi_xMat.row(i));
+    Psi_xMat.row(i) -= muVec * sum_mu_x; 
+  }
+  return(Psi_xMat);
+}
+
+// duplicate each row for (J-1) times: n x p -> n(J-1) x p
+arma::mat getCovaMat(arma::mat t_Cova, unsigned int t_J)      
+{
+  unsigned int n = t_Cova.n_rows;
+  unsigned int p = t_Cova.n_cols;
+  
+  arma::mat CovaMat(n * (t_J-1), p);
+  int index = 0;
+  for(unsigned int i = 0; i < n; i++){
+    for(unsigned int j = 0; j < t_J-1; j++){
+      CovaMat.row(index) = t_Cova.row(i);
+      index++;
+    }
+  }
+  return CovaMat;
+}
+
+Rcpp::List POLMMClass::getPOLMM()
+{
+  Rcpp::List outList = Rcpp::List::create(Rcpp::Named("N") = m_n,              // number of samples
+                                          Rcpp::Named("M") = m_M,              // number of SNPs in Plink file
+                                          Rcpp::Named("iter") = m_iter,
+                                          Rcpp::Named("eta") = m_eta,          // X %*% beta + bVec
+                                          Rcpp::Named("yVec") = m_yVec,        // matrix with dim of n x 1: observation
+                                          Rcpp::Named("Cova") = m_Cova,        // matrix with dim of n(J-1) x p: covariates
+                                          Rcpp::Named("muMat") = m_muMat,      // matrix with dim of n x J: probability
+                                          Rcpp::Named("YMat") = m_YMat,        // matrix with dim of n x (J-1): working variables
+                                          Rcpp::Named("beta") = m_beta,        // parameter for covariates
+                                          Rcpp::Named("bVec") = m_bVec,        // terms of random effect 
+                                          Rcpp::Named("tau") = m_tau,          // variance component
+                                          Rcpp::Named("eps") = m_eps,          // cutpoints
+                                          Rcpp::Named("LOCOList") = m_LOCOList);         
+  
+  return(outList);
 }
 
 }

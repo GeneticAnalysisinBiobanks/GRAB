@@ -31,16 +31,18 @@
 #' \item{pVal_covaAdj_Cutoff: a numeric value [default=5e-5]. If the p-value is less than this cutoff, then we would use an additional technic to adjust for covariates.}
 #' \item{SPA_cutoff: a numeric value [default=2] to specify the standard deviation cutoff to be used. If the test statistic lies within the standard deviation cutoff, its p value is calculated based on a normal distribution approximation, otherwise, its p value is calculated based on a saddlepoint approximation.".}
 #' }
-#' @examples 
-#' # Simulation phenotype and genotype
+#' 
+#' @examples
+#' # Step 1: fit a null model
 #' PhenoData = read.table(system.file("extdata", "example.pheno", package = "GRAB"), header = T)
 #' GenoFile = system.file("extdata", "example.bed", package = "GRAB")
 #' obj.POLMM = GRAB.NullModel(factor(Ordinal) ~ Cova1 + Cova2,
-#'                            data = PhenoData, subjData = PhenoData$IID, method = "POLMM", traitType = "ordinal", 
+#'                            data = PhenoData, subjData = PhenoData$IID, method = "POLMM", traitType = "ordinal",
 #'                            GenoFile = GenoFile)
 #' 
-#' res.SPACox = GRAB.Marker(obj.SPACox, GenoFile)
-#' head(res.SPACox)
+#' names(obj.POLMM)
+#' obj.POLMM$tau    # 1.379501
+#'
 #' @export
 GRAB.POLMM = function(){
   print("Check ?GRAB.POLMM for more details about 'POLMM' method.")
@@ -187,7 +189,7 @@ fitNullModel.POLMM = function(response, designMat, subjData, control)
   bVec = rep(0, length(response))  # initiate random effect of 0
   
   yVec = as.numeric(response) - 1; # "-1" means change from R to C++
-  Cova = designMat
+  Cova = cbind(1, designMat)
   tau = control$tau
   SPmatR = list(locations = matrix(c(0,0),2,1),
                 values = rep(0,1))
@@ -219,7 +221,7 @@ fitNullModel.POLMM = function(response, designMat, subjData, control)
   controlList = control
   
   # The following function is in 'Main.cpp'
-  setPOLMMobjInCPP_NULL(FALSE,
+  objNull = setPOLMMobjInCPP_NULL(FALSE,
                         Cova,
                         yVec,
                         beta,
@@ -228,8 +230,7 @@ fitNullModel.POLMM = function(response, designMat, subjData, control)
                         tau,
                         SPmatR,
                         controlList)
-  
-  return("Finished")
+  return(objNull)
   
   # void setPOLMMobjInCPP_NULL(bool t_flagSparseGRM,       // if 1, then use SparseGRM, otherwise, use DenseGRM
   #                            arma::mat t_Cova,

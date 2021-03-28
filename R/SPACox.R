@@ -17,18 +17,10 @@
 #' \item{\code{SPA_cutoff}: a numeric value [default=2] to specify the standard deviation cutoff to be used. If the test statistic lies within the standard deviation cutoff, its p value is calculated based on a normal distribution approximation, otherwise, its p value is calculated based on a saddlepoint approximation.}
 #' }
 #' @examples 
-#' # Simulation phenotype and genotype
-#' set.seed(1)
-#' N = 100
-#' Pheno = data.frame(ID = paste0("f",1:N,"_1"),
-#'                    event=rbinom(N,1,0.5),
-#'                    time=runif(N),
-#'                    Cov1=rnorm(N),
-#'                    Cov2=rbinom(N,1,0.5))
-#' 
 #' # Step 1: fit a null model
-#' obj.SPACox = GRAB.NullModel(survival::Surv(time,event) ~ Cov1 + Cov2, 
-#'                             data = Pheno, subjData = Pheno$ID, 
+#' PhenoData = read.table(system.file("extdata", "example.pheno", package = "GRAB"), header = T)
+#' obj.SPACox = GRAB.NullModel(survival::Surv(time,event) ~ Cova1 + Cova2, 
+#'                             data = PhenoData, subjData = PhenoData$IID, 
 #'                             method = "SPACox", traitType = "time-to-event")
 #' 
 #' # Step 2: perform score test

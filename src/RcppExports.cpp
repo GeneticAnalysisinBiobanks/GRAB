@@ -151,9 +151,10 @@ BEGIN_RCPP
 END_RCPP
 }
 // setPOLMMobjInCPP_NULL
-void setPOLMMobjInCPP_NULL(bool t_flagSparseGRM, arma::mat t_Cova, arma::uvec t_yVec, arma::vec t_beta, arma::vec t_bVec, arma::vec t_eps, double t_tau, Rcpp::List t_SPmatR, Rcpp::List t_controlList);
+Rcpp::List setPOLMMobjInCPP_NULL(bool t_flagSparseGRM, arma::mat t_Cova, arma::uvec t_yVec, arma::vec t_beta, arma::vec t_bVec, arma::vec t_eps, double t_tau, Rcpp::List t_SPmatR, Rcpp::List t_controlList);
 RcppExport SEXP _GRAB_setPOLMMobjInCPP_NULL(SEXP t_flagSparseGRMSEXP, SEXP t_CovaSEXP, SEXP t_yVecSEXP, SEXP t_betaSEXP, SEXP t_bVecSEXP, SEXP t_epsSEXP, SEXP t_tauSEXP, SEXP t_SPmatRSEXP, SEXP t_controlListSEXP) {
 BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< bool >::type t_flagSparseGRM(t_flagSparseGRMSEXP);
     Rcpp::traits::input_parameter< arma::mat >::type t_Cova(t_CovaSEXP);
@@ -164,8 +165,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type t_tau(t_tauSEXP);
     Rcpp::traits::input_parameter< Rcpp::List >::type t_SPmatR(t_SPmatRSEXP);
     Rcpp::traits::input_parameter< Rcpp::List >::type t_controlList(t_controlListSEXP);
-    setPOLMMobjInCPP_NULL(t_flagSparseGRM, t_Cova, t_yVec, t_beta, t_bVec, t_eps, t_tau, t_SPmatR, t_controlList);
-    return R_NilValue;
+    rcpp_result_gen = Rcpp::wrap(setPOLMMobjInCPP_NULL(t_flagSparseGRM, t_Cova, t_yVec, t_beta, t_bVec, t_eps, t_tau, t_SPmatR, t_controlList));
+    return rcpp_result_gen;
 END_RCPP
 }
 // setSPACoxobjInCPP

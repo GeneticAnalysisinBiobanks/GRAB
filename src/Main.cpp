@@ -627,7 +627,7 @@ void setPOLMMobjInCPP(arma::mat t_muMat,
 }
 
 // [[Rcpp::export]]
-void setPOLMMobjInCPP_NULL(bool t_flagSparseGRM,       // if 1, then use SparseGRM, otherwise, use DenseGRM
+Rcpp::List setPOLMMobjInCPP_NULL(bool t_flagSparseGRM,       // if 1, then use SparseGRM, otherwise, use DenseGRM
                            arma::mat t_Cova,
                            arma::uvec t_yVec,     // should be from 0 to J-1
                            arma::vec t_beta,
@@ -643,6 +643,7 @@ void setPOLMMobjInCPP_NULL(bool t_flagSparseGRM,       // if 1, then use SparseG
   arma::sp_mat SparseGRM = arma::sp_mat(locations, values);
   ptr_gPOLMMobj = new POLMM::POLMMClass(t_flagSparseGRM,       // if 1, then use SparseGRM, otherwise, use DenseGRM
                                         ptr_gDenseGRMobj,
+                                        ptr_gPLINKobj,
                                         t_Cova,
                                         t_yVec,     // should be from 0 to J-1
                                         t_beta,
@@ -651,6 +652,13 @@ void setPOLMMobjInCPP_NULL(bool t_flagSparseGRM,       // if 1, then use SparseG
                                         t_tau,
                                         SparseGRM,    // results of function getKinMatList()
                                         t_controlList);
+  
+  ptr_gPOLMMobj->fitPOLMM();
+  
+  Rcpp::List outList = ptr_gPOLMMobj->getPOLMM();
+  
+  // ptr_gDenseGRMobj->closeDenseGRMObj();
+  return outList;
 }
 
 

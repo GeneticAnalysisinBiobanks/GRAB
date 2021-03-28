@@ -6,6 +6,10 @@
 
 #include <boost/algorithm/string.hpp>
 #include "PLINK.hpp"
+#include "UTIL.hpp"
+
+#include <RcppArmadilloExtensions/sample.h> // sample
+#include <string>
 
 // make a global variable for future usage
 // static PLINK::PlinkClass* ptr_gPLINKobj = NULL;
@@ -243,6 +247,71 @@ arma::vec PlinkClass::getOneMarker(uint64_t t_gIndex,        // different meanin
   return OneMarkerG1;
 }
 
+// C++ version of which(). Note: start from 0, not 1 
+std::vector<unsigned int> whichCPP(std::vector<std::string> strVec, 
+                                   std::string strValue)
+{
+  std::vector<unsigned int> indexVec;
+  for(unsigned int i = 0; i < strVec.size(); i++){
+    if(strVec.at(i)==strValue)
+      indexVec.push_back(i);
+  }
+  return(indexVec);
+}
+
+arma::mat PlinkClass::getGMat(int t_nMarker, 
+                              std::string t_chrName, 
+                              double t_minMafVarRatio, 
+                              double t_maxMissingVarRatio)
+{
+  arma::mat GMat(m_N, t_nMarker);
+  
+  std::vector<unsigned int> indexSNPs(m_M0);
+  std::iota (std::begin(indexSNPs), std::end(indexSNPs), 0);
+  
+  // std::vector<std::string> m_chr
+  if(t_chrName != "none")
+    indexSNPs = whichCPP(m_chr, t_chrName);
+  
+  indexSNPs = Rcpp::RcppArmadillo::sample(indexSNPs, indexSNPs.size(), FALSE);
+  
+  std::cout << "There are " << indexSNPs.size() << " markers in Plink files." << std::endl;
+  
+  double freq, missingRate;
+  int posGMat = 0;
+  unsigned int i;
+  std::vector<uint32_t> indexForMissing;
+  
+  for(i = 0; i < indexSNPs.size(); i ++){
+    
+    arma::vec oneMarker = getOneMarker(indexSNPs.at(i), freq, missingRate, indexForMissing);
+    
+    // cout << "freq is " << freq << " and missingRate is "<< missingRate << "." << endl << endl;
+    // cout << "t_minMafVarRatio is " << t_minMafVarRatio << " and t_maxMissingVarRatio is "<< t_maxMissingVarRatio << "." << endl << endl;
+    
+    if(freq >= t_minMafVarRatio && freq <= 1 - t_minMafVarRatio && missingRate <= t_maxMissingVarRatio){
+      
+      // long long int posMarker = indexSNPs[i];
+      // cout << "extract " << posMarker << "-th marker at chr " << m_chrVec[posMarker] << "." << endl;
+      // cout << "freq is " << freq << " and missingRate is "<< missingRate << "." << endl << endl;
+      
+      // imputeOneMarker(oneMarker, freq);
+      bool temp = imputeGenoAndFlip(oneMarker, freq, indexForMissing, "mean");   // 0: "mean"; 1: "minor"; 2: "drop" (to be continued)
+      GMat.col(posGMat) = oneMarker;
+      posGMat ++;
+    }
+    if(posGMat >= t_nMarker){
+      break;
+    }
+  }
+  
+  std::cout << "Extract" << posGMat << " markers!" << std::endl;
+  
+  if(i == indexSNPs.size())
+    Rcpp::stop("Cannot extract enough markers from plink files. Probably an incorrect chromosome name is given.");
+  
+  return GMat;
+}
 
 }
 
