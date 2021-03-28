@@ -108,6 +108,12 @@ handleGRM = function(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
     subjGeno = genoList$SampleIDs      # subjGeno should be the same as subjData
     if(genoList$genoType != "PLINK" & OptionGRM == "Dense")
       stop("If DenseGRM is used when fitting a null model, then only Plink file is supported.")
+    
+    memoryChunk = 2 # (GB)
+    minMafGRM = 0.01
+    maxMissingGRM = 0.1
+    
+    setDenseGRMInCPP(memoryChunk, minMafGRM, maxMissingGRM)
   }
 }
 
