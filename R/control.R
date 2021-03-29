@@ -162,7 +162,7 @@ checkControl.Marker = function(control, NullModelClass)
     control = checkControl.Marker.POLMM(control)    # This function is in 'POLMM.R'
   
   if(NullModelClass == "SPACox_NULL_Model")
-    control = checkControl.Marker.SPACox(control)
+    control = checkControl.Marker.SPACox(control)   # This function is in 'SPACox.R'
   
   
   # print control list 

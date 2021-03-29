@@ -116,7 +116,7 @@ public:
     double altCounts, imputeInfo;
     std::vector<uint32_t> indexForNonZero;
     arma::vec OneMarkerG1 = getOneMarker(t_gIndex, ref, alt, marker, pd, chr, t_altFreq, altCounts, t_missingRate, imputeInfo,
-                                         false, t_indexForMissing, false, indexForNonZero, false);
+                                         false, t_indexForMissing, false, indexForNonZero, true);
     return OneMarkerG1;
   }
   

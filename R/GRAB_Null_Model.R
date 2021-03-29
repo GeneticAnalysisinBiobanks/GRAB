@@ -87,6 +87,7 @@ GRAB.NullModel = function(formula,
   objNull$Call = Call;
   objNull$sessionInfo = sessionInfo()
   objNull$time = Sys.time()
+  objNull$control = control
   
   print(paste0("Complete null model fitting: ", objNull$time))
   

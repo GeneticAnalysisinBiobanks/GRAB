@@ -44,6 +44,7 @@ GRAB.Marker = function(objNull,
     OutputFileIndex = paste0(OutputFile, ".index")
   
   # check the setting of control, if not specified, the default setting will be used
+  # The following functions are in 'control.R'
   checkControl.ReadGeno(control)
   control = checkControl.Marker(control, NullModelClass)
   nMarkersEachChunk = control$nMarkersEachChunk;
@@ -55,10 +56,11 @@ GRAB.Marker = function(objNull,
   objGeno = setGenoInput(GenoFile, GenoFileIndex, subjData, control)  # this function is in 'Geno.R'
   genoType = objGeno$genoType
   markerInfo = objGeno$markerInfo
+  CHROM = markerInfo$CHROM
   genoIndex = markerInfo$genoIndex
   
   # all markers were split into multiple chunks, 
-  genoIndexList = splitMarker(genoIndex, nMarkersEachChunk);
+  genoIndexList = splitMarker(genoIndex, nMarkersEachChunk, CHROM);
   nChunks = length(genoIndexList)
   
   cat("Number of all markers to test:\t", nrow(markerInfo), "\n")
@@ -67,13 +69,20 @@ GRAB.Marker = function(objNull,
   if(outIndex != 1)
     cat("Restart the analysis from chunk:\t", outIndex, "\n")
   
-  # set up objects that do not change for different variants
-  setMarker(NullModelClass, objNull, control)
-  
+  chrom = "InitialChunk"
   for(i in outIndex:nChunks)
   {
-    print(paste0("(",Sys.time(),") ---- Analyzing Chunk ", i, "/", nChunks, " ---- "))
-    genoIndex = genoIndexList[[i]]
+    tempList = genoIndexList[[i]]
+    genoIndex = tempList$genoIndex
+    tempChrom = tempList$chrom
+    
+    # set up objects that do not change for different variants
+    if(tempChrom != chrom){
+      setMarker(NullModelClass, objNull, control, chrom)
+      chrom = tempChrom
+    }
+    
+    print(paste0("(",Sys.time(),") ---- Analyzing Chunk ", i, "/", nChunks, ": chrom ", chrom," ---- "))
     
     # main function to calculate summary statistics for markers in one chunk
     resMarker = mainMarker(NullModelClass, genoType, genoIndex)
@@ -100,9 +109,7 @@ GRAB.Marker = function(objNull,
   return(output)
 }
 
-
-
-setMarker = function(NullModelClass, objNull, control)
+setMarker = function(NullModelClass, objNull, control, chrom)
 {
   # The following function is in Main.cpp
   setMarker_GlobalVarsInCPP(control$impute_method,
@@ -111,8 +118,9 @@ setMarker = function(NullModelClass, objNull, control)
                             control$min_mac_marker,
                             control$omp_num_threads)
   
+  # The following function is in POLMM.R
   if(NullModelClass == "POLMM_NULL_Model")
-    obj.setMarker = setMarker.POLMM(objNull, control)
+    obj.setMarker = setMarker.POLMM(objNull, control, chrom)
   
   if(NullModelClass == "SAIGE_NULL_Model")
     obj.setMarker = setMarker.SAIGE(objNull, control)
@@ -126,6 +134,7 @@ setMarker = function(NullModelClass, objNull, control)
 
 mainMarker = function(NullModelClass, genoType, genoIndex)
 {
+  # The following function is in 'POLMM.R'
   if(NullModelClass == "POLMM_NULL_Model")
     obj.mainMarker = mainMarker.POLMM(genoType, genoIndex)
   
@@ -141,20 +150,29 @@ mainMarker = function(NullModelClass, genoType, genoIndex)
 
 
 ## split 'markerInfo' into multiple chunks, each of which includes no more than 'nMarkersEachChunk' markers
-splitMarker = function(genoIndex, nMarkersEachChunk)
+splitMarker = function(genoIndex, nMarkersEachChunk, CHROM)
 {
-  M = length(genoIndex)
-  
-  idxStart = seq(1, M, nMarkersEachChunk)
-  idxEnd = idxStart + nMarkersEachChunk - 1
-  
-  nChunks = length(idxStart)
-  idxEnd[nChunks] = M
-  
   genoIndexList = list()
-  for(i in 1:nChunks){
-    idxMarker = idxStart[i]:idxEnd[i]
-    genoIndexList[[i]] = genoIndex[idxMarker]
+  iTot = 1;
+  
+  uCHROM = unique(CHROM)
+  for(chrom in uCHROM){
+    pos = which(CHROM == chrom)
+    gIdx = genoIndex[pos]
+    M = length(gIdx)
+    
+    idxStart = seq(1, M, nMarkersEachChunk)
+    idxEnd = idxStart + nMarkersEachChunk - 1
+    
+    nChunks = length(idxStart)
+    idxEnd[nChunks] = M
+    
+    for(i in 1:nChunks){
+      idxMarker = idxStart[i]:idxEnd[i]
+      genoIndexList[[iTot]] = list(chrom = chrom,
+                                   genoIndex = gIdx[idxMarker])
+      iTot = iTot + 1;
+    }
   }
   
   return(genoIndexList)

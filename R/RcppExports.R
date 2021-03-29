@@ -37,8 +37,8 @@ setBGENobjInCPP <- function(t_bgenFileName, t_bgenFileIndex, t_SampleInBgen, t_S
     invisible(.Call(`_GRAB_setBGENobjInCPP`, t_bgenFileName, t_bgenFileIndex, t_SampleInBgen, t_SampleInModel, t_isSparseDosageInBgen, t_isDropmissingdosagesInBgen, t_AlleleOrder))
 }
 
-setPOLMMobjInCPP <- function(t_muMat, t_iRMat, t_Cova, t_yVec, t_SPmatR, t_tau, t_printPCGInfo, t_tolPCG, t_maxiterPCG, t_varRatio, t_StdStat_cutoff) {
-    invisible(.Call(`_GRAB_setPOLMMobjInCPP`, t_muMat, t_iRMat, t_Cova, t_yVec, t_SPmatR, t_tau, t_printPCGInfo, t_tolPCG, t_maxiterPCG, t_varRatio, t_StdStat_cutoff))
+setPOLMMobjInCPP <- function(t_muMat, t_iRMat, t_Cova, t_yVec, t_SPmatR, t_tau, t_printPCGInfo, t_tolPCG, t_maxiterPCG, t_varRatio, t_SPA_cutoff, t_flagSparseGRM) {
+    invisible(.Call(`_GRAB_setPOLMMobjInCPP`, t_muMat, t_iRMat, t_Cova, t_yVec, t_SPmatR, t_tau, t_printPCGInfo, t_tolPCG, t_maxiterPCG, t_varRatio, t_SPA_cutoff, t_flagSparseGRM))
 }
 
 setPOLMMobjInCPP_NULL <- function(t_flagSparseGRM, t_Cova, t_yVec, t_beta, t_bVec, t_eps, t_tau, t_SPmatR, t_controlList) {

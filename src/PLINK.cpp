@@ -297,6 +297,7 @@ arma::mat PlinkClass::getGMat(int t_nMarker,
       
       // imputeOneMarker(oneMarker, freq);
       bool temp = imputeGenoAndFlip(oneMarker, freq, indexForMissing, "mean");   // 0: "mean"; 1: "minor"; 2: "drop" (to be continued)
+      
       GMat.col(posGMat) = oneMarker;
       posGMat ++;
     }

@@ -38,11 +38,18 @@
 #' GenoFile = system.file("extdata", "example.bed", package = "GRAB")
 #' obj.POLMM = GRAB.NullModel(factor(Ordinal) ~ Cova1 + Cova2,
 #'                            data = PhenoData, subjData = PhenoData$IID, method = "POLMM", traitType = "ordinal",
-#'                            GenoFile = GenoFile)
+#'                            GenoFile = GenoFile,
+#'                            control = list(showInfo = FALSE, LOCO = FALSE, tolTau = 0.2, tolBeta = 0.1))
 #' 
 #' names(obj.POLMM)
-#' obj.POLMM$tau    # 1.379501
+#' obj.POLMM$tau    # 1.820102
 #'
+#' # Step 2: perform score test
+#' GenoFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.bed", package = "GRAB")
+#' OutputDir = system.file("results", package = "GRAB")
+#' OutputFile = paste0(OutputDir, "/POLMMMarkers.txt")
+#' GRAB.Marker(obj.POLMM, GenoFile = GenoFile,
+#'             OutputFile = OutputFile)
 #' @export
 GRAB.POLMM = function(){
   print("Check ?GRAB.POLMM for more details about 'POLMM' method.")
@@ -60,7 +67,7 @@ GRAB.POLMM = function(){
 # check the control list in marker-level testing
 checkControl.Marker.POLMM = function(control)
 {
-  default.control = list();
+  default.control = list(SPA_Cutoff = 2);
   control = updateControl(control, default.control)  # This file is in 'Util.R'
   
   # check the parameter
@@ -79,37 +86,10 @@ checkControl.Region.POLMM = function(control)
   return(control)
 }
 
-# set up an object in C++
-setMarker.POLMM = function(objNull, control)
-{
-  muMat = objNull$muMat;
-  iRMat = objNull$iRMat;
-  Cova = objNull$Cova;
-  yVec = objNull$yVec;
-  SPmatR = objNull$SPmatR;
-  tau = objNull$tau;
-  printPCGInfo = control$printPCGInfo;
-  tolPCG = control$tolPCG;
-  maxiterPCG = control$maxiterPCG;
-  varRatio = objNull$varRatio; 
-  StdStat_cutoff = control$StaStat_cutoff;
-  
-  setPOLMMobjInCPP(muMat,
-                   iRMat,
-                   Cova,
-                   yVec,
-                   SPmatR,
-                   tau,
-                   printPCGInfo,
-                   tolPCG,
-                   maxiterPCG,
-                   varRatio,
-                   StdStat_cutoff)
-}
-
 # main function to calculae summary statistics
 mainMarker.POLMM = function(genoType, genoIndex)
 {
+  # the following function is in 'Main.cpp'
   OutList = mainMarkerInCPP("POLMM",
                             genoType,
                             genoIndex);  
@@ -230,6 +210,8 @@ fitNullModel.POLMM = function(response, designMat, subjData, control)
                         tau,
                         SPmatR,
                         controlList)
+  
+  class(objNull) = "POLMM_NULL_Model"
   return(objNull)
   
   # void setPOLMMobjInCPP_NULL(bool t_flagSparseGRM,       // if 1, then use SparseGRM, otherwise, use DenseGRM
@@ -267,29 +249,37 @@ fitNullModel.POLMM = function(response, designMat, subjData, control)
 
 setMarker.POLMM = function(objNull, control, chrom)
 {
-  if(objNull$controlList$LOCO){
+  if(objNull$control$LOCO){
     if(!chrom %in% names(objNull$LOCOList))
       stop("'chrom' should be in names(objNull$LOCOList).")
     objCHR = objNull$LOCOList[[chrom]]
   }else{
-    # to be continued
+    objCHR = objNull$LOCOList[["LOCO=F"]]
   }
   
-  # single marker analysis does not require sparse GRM any more 
+  # marker-level analysis does not require the following parameters 
   # Note: it might be not so accurate if min_mac_marker is very low
-  SPmatR.CHR = list(locations = c(0,0), values = 1)
+  flagSparseGRM = FALSE;
+  SPmatR.CHR = list(locations = matrix(c(0,0), 2, 1), values = 1)
+  printPCGInfo = FALSE
+  tolPCG = 0.001
+  maxiterPCG = 100;
   
+  # The following function is in 'Main.cpp'
   setPOLMMobjInCPP(objCHR$muMat,
                    objCHR$iRMat,
                    objNull$Cova,
-                   objNull$yVec,          # 1 to J
+                   objNull$yVec,          # 0 to J-1
                    SPmatR.CHR,
                    objNull$tau,
-                   control$printPCGInfo,
-                   control$tolPCG,
-                   control$maxiterPCG)
+                   printPCGInfo,
+                   tolPCG,
+                   maxiterPCG,
+                   objCHR$VarRatio, 
+                   control$SPA_Cutoff,
+                   flagSparseGRM)
   
-  print(paste0("The current POLMM.control$nMarkers_output is ", nMarkers_output,"."))
+  print(paste0("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk,"."))
 }
 
 

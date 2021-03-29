@@ -18,11 +18,13 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
                        double t_tolPCG,
                        int t_maxiterPCG,
                        double t_varRatio, 
-                       double t_StdStat_cutoff)
+                       double t_StdStat_cutoff,
+                       bool flagSparseGRM)     // In region-based analysis, we use SparseGRM, in marker-based analysis, we do not use SparseGRM
 {
   m_muMat = t_muMat;
   m_iRMat = t_iRMat;
   m_Cova = t_Cova;
+  m_varRatio = t_varRatio;
   
   m_n = m_muMat.n_rows;
   m_J = m_muMat.n_cols;
@@ -30,13 +32,15 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
   
   m_CovaMat = getCovaMat(m_Cova, m_J);       // n(J-1) x p
   
-  m_SparseGRM = t_SparseGRM;
   m_tau = t_tau;
-  m_printPCGInfo = t_printPCGInfo;
-  m_tolPCG = t_tolPCG;
-  m_maxiterPCG = t_maxiterPCG;
   
-  m_InvBlockDiagSigma = getInvBlockDiagSigma();
+  if(flagSparseGRM == true){
+    m_SparseGRM = t_SparseGRM;
+    m_printPCGInfo = t_printPCGInfo;
+    m_tolPCG = t_tolPCG;
+    m_maxiterPCG = t_maxiterPCG;
+    m_InvBlockDiagSigma = getInvBlockDiagSigma();
+  }
   
   // output for Step 2
   arma::mat XR_Psi_R(m_p, m_n * (m_J-1));                // p x n(J-1)
@@ -51,7 +55,7 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
   // sum each (J-1) rows to 1 row: p x n(J-1) -> p x n
   m_XR_Psi_R = sumCols(XR_Psi_R, m_J);      // p x n
   
-  m_yVec = t_yVec - 1;
+  m_yVec = t_yVec;
   arma::mat yMat(m_n, m_J, arma::fill::zeros);
   for(int i = 0; i < m_n; i++)
     yMat(i, m_yVec(i)) = 1;
@@ -60,11 +64,13 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
   arma::mat RymuMat = ymuMat.cols(0, m_J-2) / t_iRMat;    // n x (J-1): R %*% (y - mu)
   m_RymuVec = sumCols(RymuMat, m_J);                      // n x 1
   
-  arma::mat iSigma_CovaMat(m_n * (m_J-1), m_p);
-  getPCGofSigmaAndCovaMat(m_CovaMat, iSigma_CovaMat);
+  if(flagSparseGRM == true){
+    arma::mat iSigma_CovaMat(m_n * (m_J-1), m_p);
+    getPCGofSigmaAndCovaMat(m_CovaMat, iSigma_CovaMat);
+    arma::mat XSigmaX = inv(m_CovaMat.t() * iSigma_CovaMat);
+    m_iSigmaX_XSigmaX = iSigma_CovaMat * XSigmaX;
+  }
   
-  arma::mat XSigmaX = inv(m_CovaMat.t() * iSigma_CovaMat);
-  m_iSigmaX_XSigmaX = iSigma_CovaMat * XSigmaX;
   setRPsiR();
 }
 
@@ -157,6 +163,7 @@ void POLMMClass::getMarkerPval(arma::vec t_GVec,
                                double t_altFreq)
 {
   arma::vec adjGVec = getadjGFast(t_GVec);
+  
   double Stat = getStatFast(adjGVec);
   arma::vec VarWVec = getVarWVec(adjGVec);
   double VarW = sum(VarWVec);
@@ -1018,7 +1025,9 @@ arma::rowvec POLMMClass::getVarOneSNP(arma::vec GVec,
                                       Rcpp::List objP)
 {
   arma::rowvec VarOut(5);
-  double AF = sum(GVec) / GVec.size() / 2;
+  
+  double AF = arma::sum(GVec) / GVec.size() / 2;
+  
   if(AF > 0.5)
     AF = 1 - AF;
   

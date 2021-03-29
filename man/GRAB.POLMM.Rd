@@ -44,9 +44,16 @@ PhenoData = read.table(system.file("extdata", "example.pheno", package = "GRAB")
 GenoFile = system.file("extdata", "example.bed", package = "GRAB")
 obj.POLMM = GRAB.NullModel(factor(Ordinal) ~ Cova1 + Cova2,
                            data = PhenoData, subjData = PhenoData$IID, method = "POLMM", traitType = "ordinal",
-                           GenoFile = GenoFile)
+                           GenoFile = GenoFile,
+                           control = list(showInfo = FALSE, LOCO = FALSE, tolTau = 0.2, tolBeta = 0.1))
 
 names(obj.POLMM)
-obj.POLMM$tau    # 1.379501
+obj.POLMM$tau    # 1.820102
 
+# Step 2: perform score test
+GenoFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.bed", package = "GRAB")
+OutputDir = system.file("results", package = "GRAB")
+OutputFile = paste0(OutputDir, "/POLMMMarkers.txt")
+GRAB.Marker(obj.POLMM, GenoFile = GenoFile,
+            OutputFile = OutputFile)
 }

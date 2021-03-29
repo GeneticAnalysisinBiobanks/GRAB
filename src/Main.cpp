@@ -596,6 +596,8 @@ void setBGENobjInCPP(std::string t_bgenFileName,
 
 //////// ---------- Main functions to set objects for different analysis methods --------- ////////////
 
+
+
 // [[Rcpp::export]]
 void setPOLMMobjInCPP(arma::mat t_muMat,
                       arma::mat t_iRMat,
@@ -607,12 +609,14 @@ void setPOLMMobjInCPP(arma::mat t_muMat,
                       double t_tolPCG,
                       int t_maxiterPCG,
                       double t_varRatio, 
-                      double t_StdStat_cutoff)
+                      double t_SPA_cutoff,
+                      bool t_flagSparseGRM)
 {
   arma::umat locations = t_SPmatR["locations"];
   arma::vec values = t_SPmatR["values"];
   std::cout << "Setting Sparse GRM...." << std::endl;
   arma::sp_mat SparseGRM = arma::sp_mat(locations, values);
+  
   ptr_gPOLMMobj = new POLMM::POLMMClass(t_muMat,
                                         t_iRMat,
                                         t_Cova,
@@ -623,7 +627,8 @@ void setPOLMMobjInCPP(arma::mat t_muMat,
                                         t_tolPCG,
                                         t_maxiterPCG,
                                         t_varRatio, 
-                                        t_StdStat_cutoff);
+                                        t_SPA_cutoff,
+                                        t_flagSparseGRM);
 }
 
 // [[Rcpp::export]]

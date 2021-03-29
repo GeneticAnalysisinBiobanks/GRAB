@@ -131,8 +131,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // setPOLMMobjInCPP
-void setPOLMMobjInCPP(arma::mat t_muMat, arma::mat t_iRMat, arma::mat t_Cova, arma::uvec t_yVec, Rcpp::List t_SPmatR, double t_tau, bool t_printPCGInfo, double t_tolPCG, int t_maxiterPCG, double t_varRatio, double t_StdStat_cutoff);
-RcppExport SEXP _GRAB_setPOLMMobjInCPP(SEXP t_muMatSEXP, SEXP t_iRMatSEXP, SEXP t_CovaSEXP, SEXP t_yVecSEXP, SEXP t_SPmatRSEXP, SEXP t_tauSEXP, SEXP t_printPCGInfoSEXP, SEXP t_tolPCGSEXP, SEXP t_maxiterPCGSEXP, SEXP t_varRatioSEXP, SEXP t_StdStat_cutoffSEXP) {
+void setPOLMMobjInCPP(arma::mat t_muMat, arma::mat t_iRMat, arma::mat t_Cova, arma::uvec t_yVec, Rcpp::List t_SPmatR, double t_tau, bool t_printPCGInfo, double t_tolPCG, int t_maxiterPCG, double t_varRatio, double t_SPA_cutoff, bool t_flagSparseGRM);
+RcppExport SEXP _GRAB_setPOLMMobjInCPP(SEXP t_muMatSEXP, SEXP t_iRMatSEXP, SEXP t_CovaSEXP, SEXP t_yVecSEXP, SEXP t_SPmatRSEXP, SEXP t_tauSEXP, SEXP t_printPCGInfoSEXP, SEXP t_tolPCGSEXP, SEXP t_maxiterPCGSEXP, SEXP t_varRatioSEXP, SEXP t_SPA_cutoffSEXP, SEXP t_flagSparseGRMSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::mat >::type t_muMat(t_muMatSEXP);
@@ -145,8 +145,9 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type t_tolPCG(t_tolPCGSEXP);
     Rcpp::traits::input_parameter< int >::type t_maxiterPCG(t_maxiterPCGSEXP);
     Rcpp::traits::input_parameter< double >::type t_varRatio(t_varRatioSEXP);
-    Rcpp::traits::input_parameter< double >::type t_StdStat_cutoff(t_StdStat_cutoffSEXP);
-    setPOLMMobjInCPP(t_muMat, t_iRMat, t_Cova, t_yVec, t_SPmatR, t_tau, t_printPCGInfo, t_tolPCG, t_maxiterPCG, t_varRatio, t_StdStat_cutoff);
+    Rcpp::traits::input_parameter< double >::type t_SPA_cutoff(t_SPA_cutoffSEXP);
+    Rcpp::traits::input_parameter< bool >::type t_flagSparseGRM(t_flagSparseGRMSEXP);
+    setPOLMMobjInCPP(t_muMat, t_iRMat, t_Cova, t_yVec, t_SPmatR, t_tau, t_printPCGInfo, t_tolPCG, t_maxiterPCG, t_varRatio, t_SPA_cutoff, t_flagSparseGRM);
     return R_NilValue;
 END_RCPP
 }
@@ -207,7 +208,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_getGenoInCPP", (DL_FUNC) &_GRAB_getGenoInCPP, 3},
     {"_GRAB_setPLINKobjInCPP", (DL_FUNC) &_GRAB_setPLINKobjInCPP, 5},
     {"_GRAB_setBGENobjInCPP", (DL_FUNC) &_GRAB_setBGENobjInCPP, 7},
-    {"_GRAB_setPOLMMobjInCPP", (DL_FUNC) &_GRAB_setPOLMMobjInCPP, 11},
+    {"_GRAB_setPOLMMobjInCPP", (DL_FUNC) &_GRAB_setPOLMMobjInCPP, 12},
     {"_GRAB_setPOLMMobjInCPP_NULL", (DL_FUNC) &_GRAB_setPOLMMobjInCPP_NULL, 9},
     {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},
     {"_GRAB_squares", (DL_FUNC) &_GRAB_squares, 1},

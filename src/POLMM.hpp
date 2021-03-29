@@ -251,7 +251,8 @@ public:
              double t_tolPCG,
              int t_maxiterPCG,
              double t_varRatio, 
-             double t_StdStat_cutoff);
+             double t_SPA_cutoff,
+             bool t_flagSparseGRM);
   
   
   void setPOLMMObj(bool t_flagSparseGRM,       // if 1, then use SparseGRM, otherwise, use DenseGRM
