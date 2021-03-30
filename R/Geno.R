@@ -3,38 +3,39 @@
 ## The package supports the following genotype format
 ## 1. plink files: bedFile as GenoFile, c(bimFile, famFile) as GenoFileIndex
 
-#' Read genotype data into R as a matrix
+#' Read in genotype data
 #' 
-#' GRAB package provides functions to read in genotype data from multiple format (including Plink, BGEN) into R
+#' GRAB package provides functions to read in genotype data from multiple format (including Plink, BGEN, and VCF) into R
 #' 
 #' @param GenoFile a character of genotype file. See \code{Details} section for more information.
 #' @param GenoFileIndex additional index file(s) corresponding to the \code{GenoFile}. See \code{Details} section for more information.
 #' @param SampleIDs a character vector of sample IDs to extract. The default is NULL, that is, to use all samples in GenoFile.
-#' @param control a list of parameters. The default is NULL, the first 10 markers will be extracted. For more details, please check \code{?GRAB.control}.
+#' @param control a list of parameters to decide which markers to extract. If not specified, the first 10 markers will be extracted. For more details, please check \code{?GRAB.control}.
 #' @return An R list include an R genotype matrix (each row is for one sample and each column is for one marker) and an R SNP information matrix.
 #' @details
-#' We support three genotype format including Plink, BGEN, and VCF.
-#' The program will check the format based on the filename extension.  
-#' If \code{GenoFileIndex} is NULL (default), then it uses the same prefix as \code{GenoFile}.
+#' We support three genotype formats including Plink, BGEN, and VCF. 
+#' Users do not need to specify the genotype format, GRAB package will check the filename extention for that purpose.  
+#' If \code{GenoFileIndex} is not specified, then GRAB uses the same prefix as \code{GenoFile}.
 #' \describe{
 #'   \item{Plink}{
 #'   \itemize{
-#'   \item \code{GenoFile}: "prefix.bed"; 
-#'   \item \code{GenoFileIndex}: c("prefix.bim", "prefix.fam")
+#'   \item \code{GenoFile}: "prefix.bed". 
+#'   \item \code{GenoFileIndex}: c("prefix.bim", "prefix.fam").
 #'   }
 #'   }
 #'   \item{BGEN}{
 #'     \itemize{
 #'     \item \code{GenoFile}: "prefix.bgen"; 
 #'     \item \code{GenoFileIndex}: "prefix.bgen.bgi" or c("prefix.bgen.bgi", "prefix.bgen.samples").
-#'     \item If only one element is given for \code{GenoFileIndex}, then we assume it should be "prefix.bgen.bgi". 
-#'     \item Sometimes, BGEN file does not include sample identifiers, and thus file of "prefix.bgen.samples" is required.
-#'     \item NOTE that "prefix.bgen.samples" should be of only one column with the column name of "GRAB_BGEN_SAMPLE" (case insensitive). One example can be found in \code{system.file("extdata", "example_bgen_1.2_8bits.bgen.samples", package = "GRAB")}.
-#'     \item If you are not sure if sample identifiers are in BGEN file, you can try function \code{?checkIfSampleIDsExist}.
+#'     \item IMPORTANT NOTE: If only one element is given for \code{GenoFileIndex}, then we assume it should be "prefix.bgen.bgi". 
+#'     If BGEN file does not include sample identifiers, then "prefix.bgen.samples" is required, which should be a file with only one column whose column name is "GRAB_BGEN_SAMPLE" (case insensitive). 
+#'     One example is \code{system.file("extdata", "example_bgen_1.2_8bits.bgen.samples", package = "GRAB")}.
+#'     If you are not sure if sample identifiers are in BGEN file, you can try function \code{?checkIfSampleIDsExist}.
 #'     }
 #'   }
 #'   \item{VCF}{Not available now. \code{GenoFile}: "prefix.vcf"; \code{GenoFileIndex}: "prefix.vcf.tbi"}
 #' }
+#' 
 #' @examples
 #' 
 #' ## The below is raw data 

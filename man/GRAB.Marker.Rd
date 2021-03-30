@@ -2,7 +2,7 @@
 % Please edit documentation in R/GRAB_Marker.R
 \name{GRAB.Marker}
 \alias{GRAB.Marker}
-\title{GRAB: Marker-level genetic analysis}
+\title{GRAB: Marker-level score test}
 \usage{
 GRAB.Marker(
   objNull,
@@ -37,7 +37,7 @@ The results will be written in a file (if OutputFile != NULL) or be saved to an 
 \item{Pval}{p-value from normal distribution approximation or saddlepoint approximation.}
 }
 \description{
-Marker-level genetic analysis: test for association between a phenotype of interest and genome-wide genetic markers
+GRAB package uses score test for GWAS: in step 1, we fit a null model (check \code{?GRAB.NullModel}) including response variable, covariates, and GRM (if needed). In step 2, we perform score test for marker-level analysis (check \code{?GRAB.Marker}) and region-level analysis (check \code{?GRAB.Region}).
 }
 \details{
 List of 'control' is different for different methods

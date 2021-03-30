@@ -1,24 +1,23 @@
-#' Fits a NULL model
+#' GRAB: NULL model fitting
 #'
-#' Fits a null model
+#' GRAB package uses score test for GWAS: in step 1, we fit a null model (check \code{?GRAB.NullModel}) including response variable, covariates, and GRM (if needed). In step 2, we perform score test for marker-level analysis (check \code{?GRAB.Marker}) and region-level analysis (check \code{?GRAB.Region}).
+#' 
 #' @param formula a formula object, with the response on the left of a ~ operator and the covariates on the right. Do not add a column of intercept (e.g. a vector of ones) on the right. Missing values should be denoted by NA and the corresponding samples will be removed from analysis.
-#' @param data a data.frame in which to interpret the variables named in the formula, or in the subset argument. Check ?model.frame for more details.
-#' @param subset a specification of the rows to be used: defaults to all rows. This can be any valid indexing vector for the rows of data or if that is not supplied, a data frame made up of the variables used in formula. Check ?model.frame for more details.
-#' @param subjData a character vector of subject IDs. Its order should be the same as the subjects order in the formula and data. 
-#' @param method an R character, "SPACox", "SPAGE", "SAIGE", "POLMM", or "GATE"
-#' @param traitType an R character, "binary", "ordinal", "quantitative", or "time-to-event"
-#' @param GenoFile a character of genotype file. Three types of genotype files are supported: PLINK ("prefix.bed"), BGEN ("prefix.bgen"), and VCF ("prefix.vcf" or "prefix.vcf.gz"). 
-#' @param GenoFileIndex additional index files corresponding to the "GenoFile". If Null (default), the same prefix as GenoFile is used. PLINK: c("prefix.bim", "prefix.fam"), BGEN: c("prefix.bgi"), and VCF: c("prefix.vcf.tbi") or c("prefix.vcf.gz.tbi").
-#' @param control a list of parameters for controlling the GRAB.NullModel(). 
-#' @param ... Other arguments passed to or from other methods(). 
-#' @return an R object with a class of "XXXXX_NULL_Model" in which XXXXX is the 'method' used in analysis.
+#' @param data a data.frame in which to interpret the variables named in the formula, or in the subset argument. Check \code{?model.frame} for more details.
+#' @param subset a specification of the rows to be used: defaults to all rows. This can be any valid indexing vector for the rows of data or if that is not supplied, a data frame made up of the variables used in formula. Check \code{?model.frame} for more details.
+#' @param subjData a character vector of subject IDs. Its order should be the same as the subject order in the formula and data. 
+#' @param method a character: "SPACox", "SPAGE", "SAIGE", "POLMM", or "GATE"
+#' @param traitType a character: "binary", "ordinal", "quantitative", or "time-to-event"
+#' @param GenoFile a character of genotype file. Three types of genotype files are supported: PLINK, BGEN, and VCF. More details are in \cdoe{?GRAB.ReadGeno}.
+#' @param GenoFileIndex additional index files corresponding to the "GenoFile". If Null (default), the same prefix as GenoFile is used. More details are in \cdoe{?GRAB.ReadGeno}.
+#' @param SparseGRMFile a character of sparseGRM file. An example is \code{system.file("SparseGRM","SparseGRM.txt",package="GRAB")}
+#' @param control a list of parameters for controlling the \code{GRAB.NullModel()}. For more details, please check \code{?GRAB.control}. 
+#' @param ... other arguments passed to or from other methods. 
+#' @return an R object with a class of "XXXXX_NULL_Model" in which XXXXX is the 'method' used in analysis. The object will be used in \code{GRAB.Marker()} and \code{GRAB.Region()}. Functions of \code{save()} and \code{load()} can be used to save and load the object for future usage.
 #' @examples
-#' ## Example using POLMM to analyze ordinal categorical data
-#' POLMM_data = read.csv(system.file("extdata", "POLMM_data.csv", package = "GRAB"))
-#' formula  = outcome ~ Cova1 + Cova2
-#' data = POLMM_data
-#' GRAB.NullModel(formula, data)
-#' # For example, if you want to use "SPACox" method, please check ?GRAB.SPACox for more details. 
+#' # Examples have been put in the specific help pages for specific methods. 
+#' # If you want to use "SPACox" method, please check ?GRAB.SPACox for more details.
+#' # If you want to use "POLMM" method, please check ?GRAB.POLMM for more details.
 #' @export
 #' @import survival
 GRAB.NullModel = function(formula,

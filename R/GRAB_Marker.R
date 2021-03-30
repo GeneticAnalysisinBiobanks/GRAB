@@ -1,7 +1,7 @@
 
-#' GRAB: Marker-level genetic analysis
+#' GRAB: Marker-level score test
 #' 
-#' Marker-level genetic analysis: test for association between a phenotype of interest and genome-wide genetic markers
+#' GRAB package uses score test for GWAS: in step 1, we fit a null model (check \code{?GRAB.NullModel}) including response variable, covariates, and GRM (if needed). In step 2, we perform score test for marker-level analysis (check \code{?GRAB.Marker}) and region-level analysis (check \code{?GRAB.Region}).
 #' 
 #' @param objNull output object of the GRAB.NullModel() function. 
 #' @param GenoFile a character of genotype file. Three types of genotype files are supported: PLINK ("prefix.bed"), BGEN ("prefix.bgen"), and VCF ("prefix.vcf" or "prefix.vcf.gz"). 
