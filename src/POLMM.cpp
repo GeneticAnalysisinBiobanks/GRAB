@@ -953,7 +953,7 @@ void POLMMClass::updateEps()
     updateEpsOneStep();
     updateMats();
     
-    double diffeps = max(abs(m_eps - eps0)/(abs(m_eps) + abs(eps0) + m_tolEps));
+    double diffeps = max(std::abs(m_eps - eps0)/(std::abs(m_eps) + std::abs(eps0) + m_tolEps));
     
     if(diffeps < m_tolEps){
       
@@ -1070,7 +1070,7 @@ void POLMMClass::updateParaConv(std::string t_excludechr)
     
     std::cout << "beta: " << std::endl << m_beta << std::endl;
     
-    double diffBeta = max(abs(m_beta - beta0)/(abs(m_beta) + abs(beta0) + m_tolBeta));
+    double diffBeta = max(std::abs(m_beta - beta0)/(std::abs(m_beta) + std::abs(beta0) + m_tolBeta));
     std::cout << "diffBeta:\t" << diffBeta << std::endl << std::endl;
     if(diffBeta < m_tolBeta)
       break;
@@ -1142,7 +1142,7 @@ void POLMMClass::fitPOLMM()
     std::cout << "beta: " << std::endl << m_beta << std::endl;
     std::cout << "tau: " << m_tau << std::endl << std::endl;
     
-    double diffTau = abs(m_tau - tau0) / (abs(m_tau) + abs(tau0) + m_tolTau);
+    double diffTau = std::abs(m_tau - tau0) / (std::abs(m_tau) + std::abs(tau0) + m_tolTau);
     
     std::cout << "m_tau:\t" << m_tau << std::endl;
     std::cout << "tau0:\t" << tau0 << std::endl;
