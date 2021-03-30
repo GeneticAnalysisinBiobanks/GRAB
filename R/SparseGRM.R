@@ -1,7 +1,7 @@
 
-#' Please run this function before running getTempFilesFullGRM(). 
+#' Please run this function before running getSparseGRM(). 
 #' 
-#' Please run this function before running getTempFilesFullGRM(). We strongly suggest using parallel computing for different pairs of (chrParallel, partParallel).
+#' Please run this function before running getSparseGRM(). We strongly suggest using parallel computing for different pairs of (chrParallel, partParallel).
 #' @param PlinkFile a path to Plink files. The current version (gcta_1.93.1beta) of gcta software does not support different prefix names for bim, bed and fam files. 
 #' @param partParallel a numeric value (from 1 to nPartsGRM)
 #' @param nPartsGRM a numeric value (e.g. 250): GCTA software can split subjects to multiple parts. For UK-Biobank analysis, it is recommanded to use 250 parts. 
@@ -78,7 +78,7 @@ getTempFilesFullGRM = function(PlinkFile,
 #' If the sample size is greater than 100,000, we recommend using sparse GRM to adjust for sample relatedness. 
 #' This function is to use GCTA software (gcta_1.93.1beta, https://cnsgenomics.com/software/gcta/#Overview) to get an object of 'SparseGRM' to be passed to function GRAB_Null_Model(). 
 #' \cr\cr
-#' Step 1: Run getSparseGRMParallel(); please check help(getSparseGRMParallel) for more details. 
+#' Step 1: Run getTempFilesFullGRM(); please check help(getSparseGRMParallel) for more details. 
 #' \cr
 #' Step 2: Run getSparseGRM().
 #' @param PlinkFile a path to Plink files. The current version (gcta_1.93.1beta) of gcta software does not support different prefix names for bim, bed and fam files. 
@@ -91,8 +91,8 @@ getTempFilesFullGRM = function(PlinkFile,
 #' @param rm.tempFiles a logical value indicating if the temp files generated in getSparseGRMParallel will be deleted
 #' @examples 
 #' ## Input data:
-#' famFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.fam", package = "GRAB")
-#' PlinkFile = gsub(".fam", "", famFile)   # fam/bim/bed files should have the same prefix
+#' GenoFile = system.file("extdata", "example.bed", package = "GRAB")
+#' PlinkFile = tools::file_path_sans_ext(GenoFile)   # fam/bim/bed files should have the same prefix
 #' nPartsGRM = 2;   # nPartsGRM = 250 for UK Biobank data analysis
 #' 
 #' ## Step 1:

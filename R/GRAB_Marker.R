@@ -27,7 +27,8 @@
 #' \item{Pval}{p-value from normal distribution approximation or saddlepoint approximation.}
 #' @examples
 #' # We put examples to the specific help pages for different methods. 
-#' # For example, if you want to use "SPACox" method, please check ?GRAB.SPACox for more details. 
+#' # If you want to use "SPACox" method, please check ?GRAB.SPACox for more details.
+#' # If you want to use "POLMM" method, please check ?GRAB.POLMM for more details.
 #' @export
 #' @import data.table
 

@@ -9,8 +9,8 @@ GRAB.Region(
   GenoFile,
   GenoFileIndex = NULL,
   OutputFile = NULL,
-  regionFile,
-  regionAnnoHeader = NULL,
+  RegionFile,
+  RegionAnnoHeader = NULL,
   control = NULL
 )
 }
@@ -23,9 +23,9 @@ GRAB.Region(
 
 \item{OutputFile}{a character of output file to store the analysis results}
 
-\item{regionFile}{a character of annotation file. Column 1: marker ID, Column 2: Region ID, Columns 3-n annotation similar as in STAAR}
+\item{RegionFile}{a character of annotation file. Column 1: region ID, Column 2: marker ID, Columns 3-n annotation (non-negative) similar as in STAAR. The header is required and the first two should be "REGION" and "MARKER".}
 
-\item{regionAnnoHeader}{a character of annotation file. Column 1: marker ID, Column 2: Region ID, Columns 3-n annotation similar as in STAAR}
+\item{RegionAnnoHeader}{a character vector of annotation in analysis. Optional, if not specified, all annotation columns will be used.}
 
 \item{control}{a character to specify chromosome of the markers in analysis. Must be specified unless LOCO = F when fitting the null model.}
 }
@@ -61,17 +61,7 @@ More information about the list of 'SKAT.control'
 }
 }
 \examples{
-famFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.fam", package = "POLMM")
-GenoFile = gsub("-ext.fam", "-ext.bed", famFile)
-AnnoFile = system.file("extdata", "AnnoFile.txt", package = "POLMM")
-OutputFile = gsub("AnnoFile","OutputFile",AnnoFile)
-SparseGRMFile = system.file("SparseGRM", "SparseGRM.RData", package = "POLMM")
-load(SparseGRMFile)
-objNullFile = system.file("objNull.RData", package = "POLMM")
-load(objNullFile)
-chrom = 1
-
-OUTPUT = POLMM.Region(objNull, AnnoFile, GenoFile, GenoFileIndex = NULL, OutputFile, 
-                      SparseGRM, chrom, POLMM.control = list(max_maf_region = 0.5))
-     
+# We put examples to the specific help pages for different methods. 
+# If you want to use "SPACox" method, please check ?GRAB.SPACox for more details.
+# If you want to use "POLMM" method, please check ?GRAB.POLMM for more details.
 }

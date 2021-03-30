@@ -7,8 +7,8 @@
 #' @param GenoFile a character of genotype file. Three types of genotype files are supported: PLINK ("prefix.bed"), BGEN ("prefix.bgen"), and VCF ("prefix.vcf" or "prefix.vcf.gz"). 
 #' @param GenoFileIndex additional index files corresponding to the "GenoFile". The default is NULL, that is, to share the same prefix as GenoFile. PLINK: c("prefix.bim", "prefix.fam"), BGEN: c("prefix.bgi"), and VCF: c("prefix.vcf.tbi") or c("prefix.vcf.gz.tbi").
 #' @param OutputFile a character of output file to store the analysis results
-#' @param regionFile a character of annotation file. Column 1: marker ID, Column 2: Region ID, Columns 3-n annotation similar as in STAAR
-#' @param regionAnnoHeader a character of annotation file. Column 1: marker ID, Column 2: Region ID, Columns 3-n annotation similar as in STAAR
+#' @param RegionFile a character of annotation file. Column 1: region ID, Column 2: marker ID, Columns 3-n annotation (non-negative) similar as in STAAR. The header is required and the first two should be "REGION" and "MARKER".
+#' @param RegionAnnoHeader a character vector of annotation in analysis. Optional, if not specified, all annotation columns will be used. 
 #' @param control a character to specify chromosome of the markers in analysis. Must be specified unless LOCO = F when fitting the null model.
 #' @return an R matrix with the following elements
 #' \item{ID}{Marker IDs from colnames(GMat)}
@@ -36,19 +36,9 @@
 #' \item{maxiterPCG:  [default=100].}
 #' }
 #' @examples 
-#' famFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.fam", package = "POLMM")
-#' GenoFile = gsub("-ext.fam", "-ext.bed", famFile)
-#' AnnoFile = system.file("extdata", "AnnoFile.txt", package = "POLMM")
-#' OutputFile = gsub("AnnoFile","OutputFile",AnnoFile)
-#' SparseGRMFile = system.file("SparseGRM", "SparseGRM.RData", package = "POLMM")
-#' load(SparseGRMFile)
-#' objNullFile = system.file("objNull.RData", package = "POLMM")
-#' load(objNullFile)
-#' chrom = 1
-#' 
-#' OUTPUT = POLMM.Region(objNull, AnnoFile, GenoFile, GenoFileIndex = NULL, OutputFile, 
-#'                       SparseGRM, chrom, POLMM.control = list(max_maf_region = 0.5))
-#'      
+#' # We put examples to the specific help pages for different methods. 
+#' # If you want to use "SPACox" method, please check ?GRAB.SPACox for more details.
+#' # If you want to use "POLMM" method, please check ?GRAB.POLMM for more details.
 #' @export
 #' @import SKAT, data.table
 
@@ -56,8 +46,8 @@ GRAB.Region = function(objNull,
                        GenoFile,
                        GenoFileIndex = NULL,
                        OutputFile = NULL,
-                       regionFile,              # column 1: marker Set ID, column 2: SNP ID, columns 3-n: Annotations similar as in STAAR
-                       regionAnnoHeader = NULL,
+                       RegionFile,              # column 1: marker Set ID, column 2: SNP ID, columns 3-n: Annotations similar as in STAAR
+                       RegionAnnoHeader = NULL,
                        control = NULL)
 {
   NullModelClass = checkObjNull(objNull);  # this function is in "Util.R"
