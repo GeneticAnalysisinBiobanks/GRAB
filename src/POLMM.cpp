@@ -953,7 +953,7 @@ void POLMMClass::updateEps()
     updateEpsOneStep();
     updateMats();
     
-    double diffeps = max(std::abs(m_eps - eps0)/(std::abs(m_eps) + std::abs(eps0) + m_tolEps));
+    double diffeps = arma::max(arma::abs(m_eps - eps0)/(arma::abs(m_eps) + arma::abs(eps0) + m_tolEps));
     
     if(diffeps < m_tolEps){
       
