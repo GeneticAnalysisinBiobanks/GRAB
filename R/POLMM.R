@@ -69,6 +69,7 @@
 #'      
 #'            
 #' @export
+#' @import ordinal
 GRAB.POLMM = function(){
   print("Check ?GRAB.POLMM for more details about 'POLMM' method.")
 }
