@@ -1070,7 +1070,7 @@ void POLMMClass::updateParaConv(std::string t_excludechr)
     
     std::cout << "beta: " << std::endl << m_beta << std::endl;
     
-    double diffBeta = std::max(std::abs(m_beta - beta0)/(std::abs(m_beta) + std::abs(beta0) + m_tolBeta));
+    double diffBeta = arma::max(arma::abs(m_beta - beta0)/(arma::abs(m_beta) + arma::abs(beta0) + m_tolBeta));
     std::cout << "diffBeta:\t" << diffBeta << std::endl << std::endl;
     if(diffBeta < m_tolBeta)
       break;
