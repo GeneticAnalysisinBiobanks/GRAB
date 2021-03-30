@@ -2,7 +2,7 @@
 % Please edit documentation in R/SparseGRM.R
 \name{getTempFilesFullGRM}
 \alias{getTempFilesFullGRM}
-\title{Please run this function before running getTempFilesFullGRM().}
+\title{Please run this function before running getSparseGRM().}
 \usage{
 getTempFilesFullGRM(
   PlinkFile,
@@ -33,7 +33,7 @@ getTempFilesFullGRM(
 \item{threadNum}{Number of threads (CPUs) to use.}
 }
 \description{
-Please run this function before running getTempFilesFullGRM(). We strongly suggest using parallel computing for different pairs of (chrParallel, partParallel).
+Please run this function before running getSparseGRM(). We strongly suggest using parallel computing for different pairs of (chrParallel, partParallel).
 }
 \examples{
 ## Please check help(getSparseGRM) for example codes.

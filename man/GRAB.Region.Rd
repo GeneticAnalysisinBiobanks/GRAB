@@ -62,6 +62,5 @@ More information about the list of 'SKAT.control'
 }
 \examples{
 # We put examples to the specific help pages for different methods. 
-# If you want to use "SPACox" method, please check ?GRAB.SPACox for more details.
 # If you want to use "POLMM" method, please check ?GRAB.POLMM for more details.
 }

@@ -1143,6 +1143,12 @@ void POLMMClass::fitPOLMM()
     std::cout << "tau: " << m_tau << std::endl << std::endl;
     
     double diffTau = abs(m_tau - tau0) / (abs(m_tau) + abs(tau0) + m_tolTau);
+    
+    std::cout << "m_tau:\t" << m_tau << std::endl;
+    std::cout << "tau0:\t" << tau0 << std::endl;
+    std::cout << "diffTau:\t" << diffTau << std::endl;
+    std::cout << "m_tolTau:\t" << m_tolTau << std::endl;
+    
     if(diffTau < m_tolTau)
       break;
   }

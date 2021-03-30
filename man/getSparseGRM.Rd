@@ -36,14 +36,14 @@ getSparseGRM(
 If the sample size is greater than 100,000, we recommend using sparse GRM to adjust for sample relatedness. 
 This function is to use GCTA software (gcta_1.93.1beta, https://cnsgenomics.com/software/gcta/#Overview) to get an object of 'SparseGRM' to be passed to function GRAB_Null_Model(). 
 \cr\cr
-Step 1: Run getSparseGRMParallel(); please check help(getSparseGRMParallel) for more details. 
+Step 1: Run getTempFilesFullGRM(); please check help(getSparseGRMParallel) for more details. 
 \cr
 Step 2: Run getSparseGRM().
 }
 \examples{
 ## Input data:
-famFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.fam", package = "GRAB")
-PlinkFile = gsub(".fam", "", famFile)   # fam/bim/bed files should have the same prefix
+GenoFile = system.file("extdata", "example.bed", package = "GRAB")
+PlinkFile = tools::file_path_sans_ext(GenoFile)   # fam/bim/bed files should have the same prefix
 nPartsGRM = 2;   # nPartsGRM = 250 for UK Biobank data analysis
 
 ## Step 1:
@@ -57,7 +57,7 @@ for(partParallel in 1:nPartsGRM){
 ## Step 2:
 ## Combine results in step 1 to calculate an object with class of SparseGRM for GRAB_Null_Model(),
 tempDir = system.file("SparseGRM", "temp", package = "GRAB")
-SparseGRMFile = gsub("temp", "SparseGRM.csv", tempDir)
+SparseGRMFile = gsub("temp", "SparseGRM.txt", tempDir)
 SparseGRM = getSparseGRM(PlinkFile, nPartsGRM, SparseGRMFile)
 
 ## NOTE: You can change some options such as (minMafGRM, maxMissingGRM, nPartsGRM), but keep in mind that functions getSparseGRMParallel() and getSparseGRM() should use the same options.

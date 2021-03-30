@@ -70,6 +70,9 @@ getTempFilesFullGRM = function(PlinkFile,
   }
   
   system(cmd)
+  
+  message = paste0("Temp files of Full GRM have been saved to ", tempFile)
+  return(message)
 }
 
 
@@ -106,7 +109,7 @@ getTempFilesFullGRM = function(PlinkFile,
 #' ## Step 2:
 #' ## Combine results in step 1 to calculate an object with class of SparseGRM for GRAB_Null_Model(),
 #' tempDir = system.file("SparseGRM", "temp", package = "GRAB")
-#' SparseGRMFile = gsub("temp", "SparseGRM.csv", tempDir)
+#' SparseGRMFile = gsub("temp", "SparseGRM.txt", tempDir)
 #' SparseGRM = getSparseGRM(PlinkFile, nPartsGRM, SparseGRMFile)
 #' 
 #' ## NOTE: You can change some options such as (minMafGRM, maxMissingGRM, nPartsGRM), but keep in mind that functions getSparseGRMParallel() and getSparseGRM() should use the same options.
@@ -150,7 +153,6 @@ getSparseGRM = function(PlinkFile,
     nData = (n1 - n0) * (n0 + n1 + 1) / 2
     
     grm = readBin(BinFile, n = nData, what = numeric(0), size = 4)
-    
     # nMarkers = readBin(NFile, n = nData, what = numeric(0), size = 4)
     
     pos = which(grm > relatednessCutoff)
@@ -163,7 +165,7 @@ getSparseGRM = function(PlinkFile,
   
   # class(SparseGRM) = "SparseGRM"
   colnames(SparseGRM) = c("ID1", "ID2", "Value")
-  write.csv(SparseGRM, SparseGRMFile, row.names=F)
+  write.table(SparseGRM, SparseGRMFile, row.names=F, quote=F)
   
   message = paste0("The SparseGRM has been stored in ", SparseGRMFile)
   

@@ -51,22 +51,22 @@
 #' GRAB.Marker(obj.POLMM, GenoFile = GenoFile,
 #'             OutputFile = OutputFile)
 #'             
+#' SparseGRMFile = system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
+#' 
 #' # Step 2(b): perform region-level score test
 #' GenoFile = system.file("extdata", "example.bed", package = "GRAB")
 #' RegionFile = system.file("extdata", "example.RegionFile.txt", package = "GRAB")
 #' OutputDir = system.file("results", package = "GRAB")
 #' OutputFile = paste0(OutputDir, "/POLMM_Regions.txt")
 #' 
-#' SparseGRMFile = system.file("SparseGRM", "SparseGRM.RData", package = "POLMM")
+#' SparseGRMFile = system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
 #' 
-#' load(SparseGRMFile)
 #' objNullFile = system.file("objNull.RData", package = "POLMM")
 #' load(objNullFile)
 #' chrom = 1
 #' 
 #' OUTPUT = GRAB.Region(objNull, AnnoFile, GenoFile, GenoFileIndex = NULL, OutputFile, 
 #'                       SparseGRM, chrom, POLMM.control = list(max_maf_region = 0.5))
-#'      
 #'            
 #' @export
 #' @import ordinal
