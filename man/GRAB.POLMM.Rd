@@ -50,10 +50,13 @@ obj.POLMM = GRAB.NullModel(factor(Ordinal) ~ Cova1 + Cova2,
 names(obj.POLMM)
 obj.POLMM$tau    # 1.820102
 
-# Step 2: perform score test
+# Step 2(a): perform marker-level score test
 GenoFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.bed", package = "GRAB")
 OutputDir = system.file("results", package = "GRAB")
 OutputFile = paste0(OutputDir, "/POLMMMarkers.txt")
 GRAB.Marker(obj.POLMM, GenoFile = GenoFile,
             OutputFile = OutputFile)
+            
+# Step 2(b): perform region-level score test
+           
 }

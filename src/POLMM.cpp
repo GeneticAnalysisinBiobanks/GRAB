@@ -18,13 +18,14 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
                        double t_tolPCG,
                        int t_maxiterPCG,
                        double t_varRatio, 
-                       double t_StdStat_cutoff,
+                       double t_SPA_Cutoff,
                        bool flagSparseGRM)     // In region-based analysis, we use SparseGRM, in marker-based analysis, we do not use SparseGRM
 {
   m_muMat = t_muMat;
   m_iRMat = t_iRMat;
   m_Cova = t_Cova;
   m_varRatio = t_varRatio;
+  m_SPA_Cutoff = t_SPA_Cutoff;
   
   m_n = m_muMat.n_rows;
   m_J = m_muMat.n_cols;
@@ -174,10 +175,9 @@ void POLMMClass::getMarkerPval(arma::vec t_GVec,
   double pval = pvalNorm;
   
   arma::vec K1roots = {3, -3};
-  if(StdStat > m_StdStat_cutoff){
+  if(StdStat > m_SPA_Cutoff){
     
     arma::uvec posG1 = arma::find(t_GVec != 0);
-    std::cout << "posG1.size():\t" << posG1.size() << std::endl;
     double VarW1 = sum(VarWVec(posG1));
     double VarW0 = VarW - VarW1;
     double Ratio0 = VarW0 / VarW;
@@ -525,6 +525,11 @@ double K0(double t_x,
   arma::mat temp1Mat = - t_muMat + t_muMat % exp(t_cMat * t_x);
   arma::vec temp1Vec = log(1 + arma::sum(temp1Mat, 1));   // arma::sum(Mat, 1) is rowSums()
   double y = sum(temp1Vec) - t_m1 * t_x;
+  
+  std::cout << "sum(temp1Vec):\t" << sum(temp1Vec) << std::endl;
+  std::cout << "t_m1:\t" << t_m1 << std::endl;
+  std::cout << "t_x:\t" << t_x << std::endl;
+  
   return y;
 }
 
@@ -562,7 +567,7 @@ Rcpp::List fastgetroot_K1(double t_Stat,
   double K2 = 0;
   double diffX = arma::datum::inf;
   bool converge = true;
-  double tol = 0.001;
+  double tol = 0.0001;
   int maxiter = 100;
   int iter = 0;
   
@@ -623,7 +628,7 @@ double fastGet_Saddle_Prob(double t_Stat,
                            double t_m1,          // sum(muMat * cMat)
                            bool t_lowerTail)
 {
-  double k1 = K0(t_zeta, t_muMat, t_cMat, t_m1) + 1/2 * pow(t_zeta, 2) * t_Ratio0;
+  double k1 = K0(t_zeta, t_muMat, t_cMat, t_m1) + 0.5 * pow(t_zeta, 2) * t_Ratio0;
   double k2 = t_K2;
   double pval = 0;
   if(std::isfinite(k1) && std::isfinite(k2))
@@ -695,6 +700,9 @@ Rcpp::List fastSaddle_Prob(double t_Stat,
     // K2 = outUni2["K2"];
     // std::cout << "outUni2:\t" << root << "\t" << K2 << std::endl;
     // std::cout << "p2:\t" << p2 << std::endl;
+    
+    std::cout << "test, t_Ratio0:\t" << t_Ratio0 << std::endl;
+    std::cout << "test, p1:\t" << p1 << "\tp2:\t" << p2 << std::endl;
     
     pval = p1 + p2;
     

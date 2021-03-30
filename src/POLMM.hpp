@@ -281,7 +281,7 @@ public:
                      arma::vec& P1Vec, 
                      arma::vec& P2Vec);
   
-  double m_varRatio, m_StdStat_cutoff;
+  double m_varRatio, m_SPA_Cutoff;
   
   arma::vec getadjGFast(arma::vec t_GVec);
   double getStatFast(arma::vec t_adjGVec);
