@@ -36,5 +36,5 @@ OutputDir = system.file("results", package = "GRAB")
 OutputFile = paste0(OutputDir, "/SPACoxMarkers.txt")
 GRAB.Marker(obj.SPACox, GenoFile = GenoFile,
             OutputFile = OutputFile)
-
+head(read.table(OutputFile, header=T))
 }

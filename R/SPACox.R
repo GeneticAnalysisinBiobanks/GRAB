@@ -29,7 +29,7 @@
 #' OutputFile = paste0(OutputDir, "/SPACoxMarkers.txt")
 #' GRAB.Marker(obj.SPACox, GenoFile = GenoFile,
 #'             OutputFile = OutputFile)
-#' 
+#' head(read.table(OutputFile, header=T))
 #' @export
 GRAB.SPACox = function(){
   print("Check ?GRAB.SPACox for more details about 'SPACox' method.")

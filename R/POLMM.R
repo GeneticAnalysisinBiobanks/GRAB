@@ -49,11 +49,8 @@
 #' 
 #' SparseGRMFile = system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
 #' 
-#' objNullFile = system.file("objNull.RData", package = "POLMM")
-#' load(objNullFile)
-#' chrom = 1
-#' 
-#' OUTPUT = GRAB.Region(objNull, AnnoFile, GenoFile, GenoFileIndex = NULL, OutputFile, 
+#' # To be continued
+#' # OUTPUT = GRAB.Region(objNull, AnnoFile, GenoFile, GenoFileIndex = NULL, OutputFile, 
 #'                       SparseGRM, chrom, POLMM.control = list(max_maf_region = 0.5))
 #'            
 #' @export

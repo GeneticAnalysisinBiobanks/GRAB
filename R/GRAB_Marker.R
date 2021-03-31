@@ -8,23 +8,25 @@
 #' @param GenoFileIndex additional index files corresponding to the "GenoFile". If Null (default), the same prefix as GenoFile is used. PLINK: c("prefix.bim", "prefix.fam"), BGEN: c("prefix.bgi"), and VCF: c("prefix.vcf.tbi") or c("prefix.vcf.gz.tbi").
 #' @param OutputFile a character of output file to store the analysis results. 
 #' @param OutputFileIndex a character of output index file to record the end point in case that program ends unexpectedly
-#' @param control a list of parameters for controlling the GRAB.Marker(). 
+#' @param control a list of parameters for controlling the GRAB.Marker(), more details can be found in \code{?GRAB.control}. 
 #' @details 
-#' List of 'control' is different for different methods
+#' Check \code{?GRAB.control} for a generic list of 'control'. For specific methods, check its help page for more information. 
 #' \itemize{
 #' \item{SAIGE: to analyze binary phenotype, check ?GRAB.SAIGE for more details.}
 #' \item{POLMM: to analyze ordinal categorical phenotype, check ?GRAB.POLMM for more details.}
 #' \item{SPACox: to analyze time-to-event phenotype, check ?GRAB.SPACox for more details.}
 #' \item{SPAGE: to analyze gene-environment interaction effect for binary phenotype, check ?GRAB.SPAGE for more details.}
 #' }
-#' @return The results will be written in a file (if OutputFile != NULL) or be saved to an R data.frame (default, if OutputFile == NULL). The results include the following columns.
+#' @return The results will be written in a file, i.e., OutputFile, which includes the following columns.
 #' \item{Marker}{Marker IDs extracted from "GenoFile" and "GenoFileIndex".}
-#' \item{Info}{Marker Infomation of "CHR:POS:REF:ALT". This information is from "GenoFile" or "GenoFileIndex" and does not change even if the REF/ALT alleles are flipped in analysis.}
-#' \item{Freq}{Minor allele frequency (always < 0.5) in analysis.}
-#' \item{Flip}{Logical value indicating if the REF/ALT alleles were switched in analysis. This information is useful to estimate the effect direction.}
-#' \item{Beta}{Estimated effect size. The sign (positive or negative) depends on "Info" and "Flip". For example, if 'Flip' is false and 'Beta' is positive, then ALT allele is to increase continuous trait (trait.type == "quantitative"), to increase the risk of being cases (trait.type == "binary"), or to xxxx}
-#' \item{seBeta}{Estimated standard error (se) of the effect size}
-#' \item{Pval}{p-value from normal distribution approximation or saddlepoint approximation.}
+#' \item{Info}{Marker Infomation of "CHR:POS:REF:ALT". This information is from "GenoFile" or "GenoFileIndex". Note that control of \code{AlleleOrder}, i.e. "ref-first" or "alt-first" may alter the order.}
+#' \item{AltFreq}{ALT allele frequency (mighe be > 0.5). If most of the AltFreq are > 0.5, you might should reset the control of \code{AlleleOrder}. Refer to section of \code{GRAB.ReadGeno} in \code{?GRAB.control} for more details.}
+#' \item{AltCounts}{ALT allele counts.}
+#' \item{MissingRate}{Missing rate of marker}
+#' \item{Beta}{Estimated effect size (if provided), of the ALT allele.}
+#' \item{seBeta}{Estimated standard error (se, if provided) of the effect size}
+#' \item{Pval}{Association test p-value}
+#' \item{zScore}{z value (if provided), standardized score statistics, usually follows a standard normal distribution}
 #' @examples
 #' # We put examples to the specific help pages for different methods. 
 #' # If you want to use "SPACox" method, please check ?GRAB.SPACox for more details.
