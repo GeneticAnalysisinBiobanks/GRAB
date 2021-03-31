@@ -71,7 +71,8 @@ GRAB.NullModel = function(formula,
   
   #### END: formula.R
   
-  optionGRM = handleGRM(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
+  if(method %in% c("POLMM", "SAIGE", "GATE"))
+    optionGRM = handleGRM(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
   
   if(method == "POLMM"){
     # The following function is in 'POLMM.R'
