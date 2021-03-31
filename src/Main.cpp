@@ -43,7 +43,44 @@ double g_marker_minMAC_cutoff;
 double g_region_maxMAF_cutoff;
 unsigned int g_region_maxMarkers_cutoff;   // maximal number of markers in one chunk, only used for region-based analysis
 
+// global variables for sparse GRM
+arma::sp_mat g_SparseGRM;
+
 // set up global variables for analysis
+
+// arma::sp_mat getKinMatList(Rcpp::List KinMatListR)
+// {
+  // int nKin = KinMatListR.size();
+  // Rcpp::CharacterVector NameKin = KinMatListR.names();
+  // Rcpp::List KinMatList_sp;
+  // for(int i = 0; i < nKin; i ++){
+  //   string excludeChr = string(NameKin[i]);
+  //   Rcpp::List KinMatTemp = KinMatListR[excludeChr];
+  //   arma::umat locations = KinMatTemp["locations"];
+  //   arma::vec values = KinMatTemp["values"];
+  //   int n = KinMatTemp["nSubj"];
+  //   // make a sparse matrix
+  //   arma::sp_mat KinMat(locations, values, n, n);
+  //   KinMatList_sp[excludeChr] = KinMat;
+  // }
+  // arma::umat locations = KinMatListR["locations"];
+  // arma::vec values = KinMatListR["values"];
+  // int n = KinMatListR["nSubj"];
+  // // make a sparse matrix
+  // arma::sp_mat KinMat(locations, values, n, n);
+  // return KinMat;
+// }
+
+// [[Rcpp::export]]
+void setSparseGRMInCPP(Rcpp::List t_KinMatListR)
+{
+  arma::umat locations = t_KinMatListR["locations"];
+  arma::vec values = t_KinMatListR["values"];
+  int n = t_KinMatListR["nSubj"];
+  // make a sparse matrix
+  arma::sp_mat KinMat(locations, values, n, n);
+  g_SparseGRM = KinMat;
+}
 
 // [[Rcpp::export]]
 void setDenseGRMInCPP(double t_memoryChunk,
@@ -633,19 +670,23 @@ void setPOLMMobjInCPP(arma::mat t_muMat,
 
 // [[Rcpp::export]]
 Rcpp::List setPOLMMobjInCPP_NULL(bool t_flagSparseGRM,       // if 1, then use SparseGRM, otherwise, use DenseGRM
-                           arma::mat t_Cova,
-                           arma::uvec t_yVec,     // should be from 0 to J-1
-                           arma::vec t_beta,
-                           arma::vec t_bVec,
-                           arma::vec t_eps,           // 
-                           double t_tau,
-                           Rcpp::List t_SPmatR,    // output of makeSPmatR()
-                           Rcpp::List t_controlList)
+                                 arma::mat t_Cova,
+                                 arma::uvec t_yVec,     // should be from 0 to J-1
+                                 arma::vec t_beta,
+                                 arma::vec t_bVec,
+                                 arma::vec t_eps,           // 
+                                 double t_tau,
+                                 Rcpp::List t_SPmatR,    // output of makeSPmatR()
+                                 Rcpp::List t_controlList)
 {
-  arma::umat locations = t_SPmatR["locations"];
-  arma::vec values = t_SPmatR["values"];
-  std::cout << "Setting Sparse GRM...." << std::endl;
-  arma::sp_mat SparseGRM = arma::sp_mat(locations, values);
+  // arma::umat locations = t_SPmatR["locations"];
+  // arma::vec values = t_SPmatR["values"];
+  // std::cout << "Setting Sparse GRM...." << std::endl;
+  // arma::sp_mat SparseGRM = arma::sp_mat(locations, values);
+  
+  std::cout << "test, t_flagSparseGRM" << t_flagSparseGRM << std::endl;
+  
+  // The following function is in POLMM.cpp
   ptr_gPOLMMobj = new POLMM::POLMMClass(t_flagSparseGRM,       // if 1, then use SparseGRM, otherwise, use DenseGRM
                                         ptr_gDenseGRMobj,
                                         ptr_gPLINKobj,
@@ -655,7 +696,7 @@ Rcpp::List setPOLMMobjInCPP_NULL(bool t_flagSparseGRM,       // if 1, then use S
                                         t_bVec,
                                         t_eps,           // 
                                         t_tau,
-                                        SparseGRM,    // results of function getKinMatList()
+                                        g_SparseGRM,    // results of function setSparseGRMInCPP()
                                         t_controlList);
   
   ptr_gPOLMMobj->fitPOLMM();

@@ -195,43 +195,39 @@ getPairs = function(pos, value, ID, n0, n1){
 # Suppose that subjData is only a subset of the subjects in SparseGRM
 # this function is to extract subjects from SparseGRM
 updateSparseGRM = function(SparseGRM, subjData){
-  names = names(SparseGRM)
-  KinMatListR = list();
   
-  print("names(SparseGRM) is")
-  print(names)
-  for(excludeChr in names){
-    
-    print(paste0("Updating chromosome ", excludeChr, " in 'SparseGRM' based on 'subjData'."))
-    
-    tempGRM1 = SparseGRM[[excludeChr]]
-    # updated on 05-14-2020
-    tempGRM2 = data.frame(ID1=tempGRM1$ID2,
-                          ID2=tempGRM1$ID1,
-                          value=tempGRM1$value)
-    
-    tempGRM = rbind(tempGRM1, tempGRM2)
-    tempGRM = tempGRM[-1*which(duplicated(tempGRM)),]
-    
-    ID1 = tempGRM$ID1;
-    ID2 = tempGRM$ID2;
-    value = tempGRM$value;
-    
-    if(any(!is.element(subjData, ID1)))
-      stop("At least one of subjects is not in SparseGRM.")
-    
-    location1 = match(ID1, subjData);
-    location2 = match(ID2, subjData);
-    pos = which(!is.na(location1) & !is.na(location2))
-    locations = rbind(location1[pos]-1,  # -1 is to convert R to C++
-                      location2[pos]-1)
-    
-    value = value[pos];
-    nSubj = length(subjData);
-    KinMatListR[[excludeChr]] = list(locations = locations,
-                                     values = value,
-                                     nSubj = nSubj)
-  }
+  # later add another column to specify the relationship degree
+  if(any(toupper(colnames(SparseGRM)) != c("ID1", "ID2", "VALUE")))
+    stop("The header in 'SparseGRMFile' should be c('ID1','ID2','Value')")
+  
+  colnames(SparseGRM) = toupper(colnames(SparseGRM))
+  
+  tempGRM1 = SparseGRM;
+  tempGRM2 = data.frame(ID1=tempGRM1$ID2,
+                        ID2=tempGRM1$ID1,
+                        VALUE=tempGRM1$VALUE)
+  
+  tempGRM = rbind(tempGRM1, tempGRM2)
+  tempGRM = tempGRM[-1*which(duplicated(tempGRM)),]
+  
+  ID1 = tempGRM$ID1;
+  ID2 = tempGRM$ID2;
+  value = tempGRM$VALUE;
+  
+  if(any(!is.element(subjData, ID1)))
+    stop("At least one of subjects is not in SparseGRM.")
+  
+  location1 = match(ID1, subjData);
+  location2 = match(ID2, subjData);
+  pos = which(!is.na(location1) & !is.na(location2))
+  locations = rbind(location1[pos]-1,  # -1 is to convert R to C++
+                    location2[pos]-1)
+  
+  value = value[pos];
+  nSubj = length(subjData);
+  KinMatListR = list(locations = locations,
+                     values = value,
+                     nSubj = nSubj)
   
   return(KinMatListR)
 }

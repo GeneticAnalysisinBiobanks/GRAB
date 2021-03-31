@@ -98,7 +98,6 @@ void POLMMClass::setPOLMMObj(bool t_flagSparseGRM,       // if 1, then use Spars
   setPOLMMInner(t_Cova, t_yVec, t_beta,  t_bVec,  t_eps,  t_tau);
   
   m_ptrPlinkObj = t_ptrPlinkObj;
-  m_ptrDenseGRMObj = t_ptrDenseGRMObj;
   
   // if t_flagSparseGRM = 1, then use "SparseGRM" methods, otherwise, use "DenseGRM" methods
   m_flagSparseGRM = t_flagSparseGRM;
@@ -108,6 +107,7 @@ void POLMMClass::setPOLMMObj(bool t_flagSparseGRM,       // if 1, then use Spars
     m_M = 0;
   }else{
     m_M = t_ptrDenseGRMObj->getM();
+    m_ptrDenseGRMObj = t_ptrDenseGRMObj;
   }
 
   getTraceRandMat();
@@ -123,6 +123,7 @@ void POLMMClass::getTraceRandMat()
     m_TraceRandMat.col(itrace) = uVec;
     arma::vec ZuVec = ZMat(uVec);
     // m_V_TRM.col(itrace) = tZMat(getKinbVecPOLMM(ZuVec, "none"));
+    
     arma::vec tempVec = getKinbVecPOLMM(ZuVec, "none");
     m_V_TRM.col(itrace) = tZMat(tempVec);
   }
@@ -700,9 +701,6 @@ Rcpp::List fastSaddle_Prob(double t_Stat,
     // K2 = outUni2["K2"];
     // std::cout << "outUni2:\t" << root << "\t" << K2 << std::endl;
     // std::cout << "p2:\t" << p2 << std::endl;
-    
-    std::cout << "test, t_Ratio0:\t" << t_Ratio0 << std::endl;
-    std::cout << "test, p1:\t" << p1 << "\tp2:\t" << p2 << std::endl;
     
     pval = p1 + p2;
     

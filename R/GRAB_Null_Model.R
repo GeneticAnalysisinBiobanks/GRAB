@@ -19,7 +19,7 @@
 #' # If you want to use "SPACox" method, please check ?GRAB.SPACox for more details.
 #' # If you want to use "POLMM" method, please check ?GRAB.POLMM for more details.
 #' @export
-#' @import survival
+#' @import survival, data.table
 GRAB.NullModel = function(formula,
                           data = NULL,
                           subset = NULL,
@@ -71,11 +71,11 @@ GRAB.NullModel = function(formula,
   
   #### END: formula.R
   
-  handleGRM(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
+  optionGRM = handleGRM(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
   
   if(method == "POLMM"){
     # The following function is in 'POLMM.R'
-    objNull = fitNullModel.POLMM(response, designMat, subjData, control)
+    objNull = fitNullModel.POLMM(response, designMat, subjData, control, optionGRM)
   }
   
   if(method == "SPACox")
@@ -98,23 +98,32 @@ GRAB.NullModel = function(formula,
 handleGRM = function(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
 {
   if(!missing(SparseGRMFile)){
-    OptionGRM = "Sparse"
+    print("Sparse GRM is used when fitting a null model.")
+    SparseGRM = data.table::fread(SparseGRMFile)
+    SparseGRM = as.data.frame(SparseGRM)
+    
+    KinMatListR = updateSparseGRM(SparseGRM, subjData)
+    
+    # the following function is in Main.cpp
+    setSparseGRMInCPP(KinMatListR)
+    optionGRM = "SparseGRM"
   }else{
-    OptionGRM = "Dense"
-  }
-  
-  if(!missing(GenoFile)){
+    print("Dense GRM is used when fitting a null model.")
     genoList = setGenoInput(GenoFile, GenoFileIndex, subjData)   # check Geno.R for more details
     subjGeno = genoList$SampleIDs      # subjGeno should be the same as subjData
-    if(genoList$genoType != "PLINK" & OptionGRM == "Dense")
+    if(genoList$genoType != "PLINK")
       stop("If DenseGRM is used when fitting a null model, then only Plink file is supported.")
     
     memoryChunk = 2 # (GB)
     minMafGRM = 0.01
     maxMissingGRM = 0.1
     
+    # the following function is in Main.cpp
     setDenseGRMInCPP(memoryChunk, minMafGRM, maxMissingGRM)
+    optionGRM = "DenseGRM"
   }
+  
+  return(optionGRM)
 }
 
 

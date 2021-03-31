@@ -6,6 +6,16 @@
 
 using namespace Rcpp;
 
+// setSparseGRMInCPP
+void setSparseGRMInCPP(Rcpp::List t_KinMatListR);
+RcppExport SEXP _GRAB_setSparseGRMInCPP(SEXP t_KinMatListRSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_KinMatListR(t_KinMatListRSEXP);
+    setSparseGRMInCPP(t_KinMatListR);
+    return R_NilValue;
+END_RCPP
+}
 // setDenseGRMInCPP
 void setDenseGRMInCPP(double t_memoryChunk, double t_minMafGRM, double t_maxMissingGRM);
 RcppExport SEXP _GRAB_setDenseGRMInCPP(SEXP t_memoryChunkSEXP, SEXP t_minMafGRMSEXP, SEXP t_maxMissingGRMSEXP) {
@@ -199,6 +209,7 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
+    {"_GRAB_setSparseGRMInCPP", (DL_FUNC) &_GRAB_setSparseGRMInCPP, 1},
     {"_GRAB_setDenseGRMInCPP", (DL_FUNC) &_GRAB_setDenseGRMInCPP, 3},
     {"_GRAB_getDenseGRMInCPP", (DL_FUNC) &_GRAB_getDenseGRMInCPP, 3},
     {"_GRAB_setMarker_GlobalVarsInCPP", (DL_FUNC) &_GRAB_setMarker_GlobalVarsInCPP, 5},

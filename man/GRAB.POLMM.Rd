@@ -27,7 +27,7 @@ Additional list of \code{control} in \code{GRAB.Region()} function
 }
 }
 \examples{
-# Step 1: fit a null model
+# Step 1(a): fit a null model using a dense (full) GRM
 PhenoData = read.table(system.file("extdata", "example.pheno", package = "GRAB"), header = T)
 GenoFile = system.file("extdata", "example.bed", package = "GRAB")
 obj.POLMM = GRAB.NullModel(factor(Ordinal) ~ Cova1 + Cova2,
@@ -37,6 +37,18 @@ obj.POLMM = GRAB.NullModel(factor(Ordinal) ~ Cova1 + Cova2,
 
 names(obj.POLMM)
 obj.POLMM$tau    # 1.820102
+
+# Step 1(b): fit a null model using a sparse GRM
+# First use getSparseGRM() function and plink file to get a sparse GRM file
+SparseGRMFile =  system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
+obj.POLMM = GRAB.NullModel(factor(Ordinal) ~ Cova1 + Cova2,
+                           data = PhenoData, subjData = PhenoData$IID, method = "POLMM", traitType = "ordinal",
+                           GenoFile = GenoFile,
+                           SparseGRMFile = SparseGRMFile,
+                           control = list(showInfo = FALSE, LOCO = FALSE, tolTau = 0.2, tolBeta = 0.1))
+
+names(obj.POLMM)
+obj.POLMM$tau    # 1.870175
 
 # Step 2(a): perform marker-level score test
 GenoFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.bed", package = "GRAB")

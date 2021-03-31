@@ -173,10 +173,11 @@ private:
   arma::vec getKinbVecPOLMM(arma::vec t_bVec, std::string t_excludeChr)
   {
     arma::vec KinbVec;
+    
     if(m_flagSparseGRM){
       // arma::sp_mat temp = m_SparseGRM[t_excludeChr];
-      arma::sp_mat temp = m_SparseGRM;
-      KinbVec = temp * t_bVec;
+      // arma::sp_mat temp = m_SparseGRM;
+      KinbVec = m_SparseGRM * t_bVec;
     }else{
       KinbVec = getKinbVec(t_bVec, m_ptrDenseGRMObj, t_excludeChr, m_grainSize);
     }

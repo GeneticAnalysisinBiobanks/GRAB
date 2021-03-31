@@ -21,7 +21,7 @@
 #' }
 #' 
 #' @examples
-#' # Step 1: fit a null model
+#' # Step 1(a): fit a null model using a dense (full) GRM
 #' PhenoData = read.table(system.file("extdata", "example.pheno", package = "GRAB"), header = T)
 #' GenoFile = system.file("extdata", "example.bed", package = "GRAB")
 #' obj.POLMM = GRAB.NullModel(factor(Ordinal) ~ Cova1 + Cova2,
@@ -31,6 +31,18 @@
 #' 
 #' names(obj.POLMM)
 #' obj.POLMM$tau    # 1.820102
+#'
+#' # Step 1(b): fit a null model using a sparse GRM
+#' # First use getSparseGRM() function and plink file to get a sparse GRM file
+#' SparseGRMFile =  system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
+#' obj.POLMM = GRAB.NullModel(factor(Ordinal) ~ Cova1 + Cova2,
+#'                            data = PhenoData, subjData = PhenoData$IID, method = "POLMM", traitType = "ordinal",
+#'                            GenoFile = GenoFile,
+#'                            SparseGRMFile = SparseGRMFile,
+#'                            control = list(showInfo = FALSE, LOCO = FALSE, tolTau = 0.2, tolBeta = 0.1))
+#' 
+#' names(obj.POLMM)
+#' obj.POLMM$tau    # 1.870175
 #'
 #' # Step 2(a): perform marker-level score test
 #' GenoFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.bed", package = "GRAB")
@@ -159,9 +171,8 @@ checkControl.NullModel.POLMM = function(control)
 
 
 # fit null model using POLMM method
-fitNullModel.POLMM = function(response, designMat, subjData, control)
+fitNullModel.POLMM = function(response, designMat, subjData, control, optionGRM)
 {
-  
   ######## -------------- first set up the object in C++ -------- ########
   
   if(class(response) != "factor")
@@ -175,6 +186,8 @@ fitNullModel.POLMM = function(response, designMat, subjData, control)
   yVec = as.numeric(response) - 1; # "-1" means change from R to C++
   Cova = cbind(1, designMat)
   tau = control$tau
+  
+  # This value is not used any more, remove it later. 03/31/2021
   SPmatR = list(locations = matrix(c(0,0),2,1),
                 values = rep(0,1))
   
@@ -203,17 +216,18 @@ fitNullModel.POLMM = function(response, designMat, subjData, control)
   #                        onlyCheckTime = F)
   
   controlList = control
+  flagSparseGRM = ifelse(optionGRM == "SparseGRM", TRUE, FALSE)
   
   # The following function is in 'Main.cpp'
-  objNull = setPOLMMobjInCPP_NULL(FALSE,
-                        Cova,
-                        yVec,
-                        beta,
-                        bVec,
-                        eps,
-                        tau,
-                        SPmatR,
-                        controlList)
+  objNull = setPOLMMobjInCPP_NULL(flagSparseGRM,
+                                  Cova,
+                                  yVec,
+                                  beta,
+                                  bVec,
+                                  eps,
+                                  tau,
+                                  SPmatR,
+                                  controlList)
   
   class(objNull) = "POLMM_NULL_Model"
   return(objNull)
