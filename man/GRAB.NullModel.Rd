@@ -31,9 +31,9 @@ GRAB.NullModel(
 
 \item{traitType}{a character: "binary", "ordinal", "quantitative", or "time-to-event"}
 
-\item{GenoFile}{a character of genotype file. Three types of genotype files are supported: PLINK, BGEN, and VCF. More details are in \cdoe{?GRAB.ReadGeno}.}
+\item{GenoFile}{a character of genotype file. Three types of genotype files are supported: PLINK, BGEN, and VCF. More details are in \code{?GRAB.ReadGeno}.}
 
-\item{GenoFileIndex}{additional index files corresponding to the "GenoFile". If Null (default), the same prefix as GenoFile is used. More details are in \cdoe{?GRAB.ReadGeno}.}
+\item{GenoFileIndex}{additional index files corresponding to the "GenoFile". If Null (default), the same prefix as GenoFile is used. More details are in \code{?GRAB.ReadGeno}.}
 
 \item{SparseGRMFile}{a character of sparseGRM file. An example is \code{system.file("SparseGRM","SparseGRM.txt",package="GRAB")}}
 

@@ -8,8 +8,8 @@
 #' @param subjData a character vector of subject IDs. Its order should be the same as the subject order in the formula and data. 
 #' @param method a character: "SPACox", "SPAGE", "SAIGE", "POLMM", or "GATE"
 #' @param traitType a character: "binary", "ordinal", "quantitative", or "time-to-event"
-#' @param GenoFile a character of genotype file. Three types of genotype files are supported: PLINK, BGEN, and VCF. More details are in \cdoe{?GRAB.ReadGeno}.
-#' @param GenoFileIndex additional index files corresponding to the "GenoFile". If Null (default), the same prefix as GenoFile is used. More details are in \cdoe{?GRAB.ReadGeno}.
+#' @param GenoFile a character of genotype file. Three types of genotype files are supported: PLINK, BGEN, and VCF. More details are in \code{?GRAB.ReadGeno}.
+#' @param GenoFileIndex additional index files corresponding to the "GenoFile". If Null (default), the same prefix as GenoFile is used. More details are in \code{?GRAB.ReadGeno}.
 #' @param SparseGRMFile a character of sparseGRM file. An example is \code{system.file("SparseGRM","SparseGRM.txt",package="GRAB")}
 #' @param control a list of parameters for controlling the \code{GRAB.NullModel()}. For more details, please check \code{?GRAB.control}. 
 #' @param ... other arguments passed to or from other methods. 
