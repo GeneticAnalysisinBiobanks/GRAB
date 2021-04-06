@@ -1151,8 +1151,6 @@ void POLMMClass::fitPOLMM()
       break;
   }
   
-  std::cout << "test, m_LOCO" << m_LOCO << std::endl;
-  
   if(m_LOCO){
     
     // turn on LOCO option
@@ -1185,16 +1183,9 @@ void POLMMClass::fitPOLMM()
     // turn off LOCO option
     // if(!m_flagGMatRatio){
     
-    std::cout << "test, 1" << std::endl;
-    
     arma::mat GMatRatio = m_ptrPlinkObj->getGMat(100, "none", m_minMafVarRatio, m_maxMissingVarRatio);
-    
-    std::cout << "test, 2" << std::endl;
-    
     arma::mat VarRatioMat = getVarRatio(GMatRatio, "none");
     double VarRatio = arma::mean(VarRatioMat.col(4));
-    
-    std::cout << "test, 3" << std::endl;
     
     Rcpp::List temp = Rcpp::List::create(Rcpp::Named("muMat") = m_muMat,
                                          Rcpp::Named("iRMat") = m_iRMat,

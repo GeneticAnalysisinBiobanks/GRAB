@@ -98,6 +98,8 @@ GRAB.NullModel = function(formula,
 ## to be updated later
 handleGRM = function(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
 {
+  genoList = setGenoInput(GenoFile, GenoFileIndex, subjData)   # check Geno.R for more details
+  
   if(!missing(SparseGRMFile)){
     print("Sparse GRM is used when fitting a null model.")
     SparseGRM = data.table::fread(SparseGRMFile)
@@ -110,7 +112,6 @@ handleGRM = function(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
     optionGRM = "SparseGRM"
   }else{
     print("Dense GRM is used when fitting a null model.")
-    genoList = setGenoInput(GenoFile, GenoFileIndex, subjData)   # check Geno.R for more details
     subjGeno = genoList$SampleIDs      # subjGeno should be the same as subjData
     if(genoList$genoType != "PLINK")
       stop("If DenseGRM is used when fitting a null model, then only Plink file is supported.")
