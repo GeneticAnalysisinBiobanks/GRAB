@@ -63,13 +63,13 @@ GRAB.Region = function(objNull,
   markerInfo = objGeno$markerInfo
   
   ## annotation
-  regionList = getRegionList(regionFile, regionAnnoHeader, markerInfo)
-  nRegions = length(regionList)
+  RegionList = getRegionList(RegionFile, RegionAnnoHeader, markerInfo)
+  nRegions = length(RegionList)
   
   setRegion(NullModelClass, objNull, control)
   
   for(i in 1:nRegions){
-    region = regionList[i]
+    region = RegionList[i]
     
     regionName = names(region)
     SNP = region$SNP
@@ -270,52 +270,52 @@ mainRegion = function(NullModelClass, genoType, genoIndex, regionMat)
 
 
 # extract region-marker mapping from regionFile
-getRegionList = function(regionFile,
-                         regionAnnoHeader,
+getRegionList = function(RegionFile,
+                         RegionAnnoHeader,
                          markerInfo)
 {
-  if(!file.exists(regionFile))
-    stop(paste("Cannot find 'regionFile' in", regionFile))
+  if(!file.exists(RegionFile))
+    stop(paste("Cannot find 'RegionFile' in", RegionFile))
   
-  regionData = data.table::fread(regionFile, header = T, stringsAsFactors = F);
-  regionData = as.data.frame(regionData)
-  colnames(regionData) = toupper(colnames(regionData))
-  HeaderInRegionData = colnames(regionData)
+  RegionData = data.table::fread(RegionFile, header = T, stringsAsFactors = F);
+  RegionData = as.data.frame(RegionData)
+  colnames(RegionData) = toupper(colnames(RegionData))
+  HeaderInRegionData = colnames(RegionData)
   
-  if(any(HeaderInRegionData[1:2] != c("REGION", "SNP")))
-    stop("The first two elements in the header of 'regionFile' should be c('REGION', 'SNP').")
+  if(any(HeaderInRegionData[1:2] != c("REGION", "MARKER")))
+    stop("The first two elements in the header of 'RegionFile' should be c('REGION', 'SNP').")
   
-  if(!is.null(regionAnnoHeader)){
-    if(any(!regionAnnoHeader %in% HeaderInRegionData))
-      stop("At least one element in 'regionAnnoHeader' is not in the header of regionFile")
-    posAnno = which(regionAnnoHeader %in% HeaderInRegionData)
+  if(!is.null(RegionAnnoHeader)){
+    if(any(!RegionAnnoHeader %in% HeaderInRegionData))
+      stop("At least one element in 'RegionAnnoHeader' is not in the header of RegionFile")
+    posAnno = which(HeaderInRegionData %in% RegionAnnoHeader)
   }else{
-    print("Since no 'regionAnnoHeader' is given, region-based testing will not incorporate any annotation information.")
+    print("Since no 'RegionAnnoHeader' is given, region-based testing will not incorporate any annotation information.")
     posAnno = NULL
   }
   
-  regionList = list()
-  uRegion = unique(regionData$REGION)
+  RegionList = list()
+  uRegion = unique(RegionData$REGION)
   for(r in uRegion){
-    posSNP = which(regionData$REGION == r)
-    SNP = regionData$SNP[posSNP]
+    posSNP = which(RegionData$REGION == r)
+    SNP = RegionData$MARKER[posSNP]
     
     if(any(duplicated(SNP)))
-      stop(paste0("Please check AnnoFile: in region ", r,", duplicated SNPs exist."))
+      stop(paste0("Please check RegionFile: in region ", r,", duplicated SNPs exist."))
     
     posMarker = match(SNP, markerInfo$ID, 0)
     if(any(posMarker == 0))
       stop(paste0("At least one marker in region ", r," are not in 'GenoFile' and 'GenoFileIndex'."))
     
-    regionMat = cbind(BASE=1, regionData[posSNP, posAnno, drop=F])
+    regionMat = cbind(BASE=1, RegionData[posSNP, posAnno, drop=F])
     rownames(regionMat) = SNP
     
     genoIndex = markerInfo$genoIndex[posMarker]
     
-    regionList[[r]] = list(SNP = SNP,
+    RegionList[[r]] = list(SNP = SNP,
                            regionMat = regionMat,
                            genoIndex = genoIndex)
   }
   
-  return(regionList)
+  return(RegionList)
 }

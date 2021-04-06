@@ -684,7 +684,7 @@ Rcpp::List setPOLMMobjInCPP_NULL(bool t_flagSparseGRM,       // if 1, then use S
   // std::cout << "Setting Sparse GRM...." << std::endl;
   // arma::sp_mat SparseGRM = arma::sp_mat(locations, values);
   
-  std::cout << "test, t_flagSparseGRM" << t_flagSparseGRM << std::endl;
+  // std::cout << "test, t_flagSparseGRM" << t_flagSparseGRM << std::endl;
   
   // The following function is in POLMM.cpp
   ptr_gPOLMMobj = new POLMM::POLMMClass(t_flagSparseGRM,       // if 1, then use SparseGRM, otherwise, use DenseGRM

@@ -170,20 +170,7 @@ private:
   // set up m_TraceRandMat (TRM) and m_V_TRM, only used once at setPOLMMObj()
   void getTraceRandMat();
   
-  arma::vec getKinbVecPOLMM(arma::vec t_bVec, std::string t_excludeChr)
-  {
-    arma::vec KinbVec;
-    
-    if(m_flagSparseGRM){
-      // arma::sp_mat temp = m_SparseGRM[t_excludeChr];
-      // arma::sp_mat temp = m_SparseGRM;
-      KinbVec = m_SparseGRM * t_bVec;
-    }else{
-      KinbVec = getKinbVec(t_bVec, m_ptrDenseGRMObj, t_excludeChr, m_grainSize);
-    }
-    Rcpp::checkUserInterrupt();
-    return KinbVec;
-  }
+  arma::vec getKinbVecPOLMM(arma::vec t_bVec, std::string t_excludeChr);
   
   ////////////////////// -------------------- functions ---------------------------------- //////////////////////
   
@@ -209,11 +196,11 @@ public:
   arma::mat getSigmaxMat(arma::mat t_xMat,   // matrix: n x (J-1) 
                          std::string t_excludechr);
   arma::mat solverBlockDiagSigma(arma::cube& InvBlockDiagSigma,   // (J-1) x (J-1) x n
-                                             arma::mat& xMat);                 // n x (J-1)
-
+                                 arma::mat& xMat);                 // n x (J-1)
+  
   void getPCGofSigmaAndCovaMat(arma::mat t_xMat,              // matrix with dim of n(J-1) x p
-                                           arma::mat& t_iSigma_xMat,      // matrix with dim of n(J-1) x p
-                                           std::string t_excludechr);
+                               arma::mat& t_iSigma_xMat,      // matrix with dim of n(J-1) x p
+                               std::string t_excludechr);
   double getVarP(arma::vec t_adjGVec,
                              std::string t_excludechr);
   

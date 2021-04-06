@@ -1078,6 +1078,7 @@ void POLMMClass::updateParaConv(std::string t_excludechr)
 void POLMMClass::updateTau()
 {
   std::cout << "Start updating tau..." << std::endl;
+  
   arma::vec YVec = convert1(m_YMat, m_n, m_J);
   getPCGofSigmaAndCovaMat(m_CovaMat, m_iSigma_CovaMat, "none");
   getPCGofSigmaAndVector(YVec, m_iSigma_YVec, "none"); 
@@ -1087,13 +1088,17 @@ void POLMMClass::updateTau()
   arma::vec VPYVec = tZMat(getKinbVecPOLMM(ZPYVec, "none"));
   
   getPCGofSigmaAndVector(VPYVec, m_iSigma_VPYVec, "none");
+  
   arma::vec PVPYVec = m_iSigma_VPYVec - m_iSigmaX_XSigmaX * (m_CovaMat.t() * m_iSigma_VPYVec);
   double YPVPY = as_scalar(YVec.t() * PVPYVec);
   double YPVPVPY = as_scalar(VPYVec.t() * PVPYVec);
   // The below is to calculate trace
+  
   getPCGofSigmaAndCovaMat(m_V_TRM, m_iSigma_V_TRM, "none");
+  
   double tracePV = 0;
   int m = m_TraceRandMat.n_cols;
+  
   for(int i = 0; i < m; i++){
     arma::vec iSigma_V_TRM_col = m_iSigma_V_TRM.col(i);
     arma::vec P_V_TRM_col = iSigma_V_TRM_col - m_iSigmaX_XSigmaX * (m_CovaMat.t() * iSigma_V_TRM_col);
@@ -1146,6 +1151,8 @@ void POLMMClass::fitPOLMM()
       break;
   }
   
+  std::cout << "test, m_LOCO" << m_LOCO << std::endl;
+  
   if(m_LOCO){
     
     // turn on LOCO option
@@ -1177,10 +1184,17 @@ void POLMMClass::fitPOLMM()
     
     // turn off LOCO option
     // if(!m_flagGMatRatio){
+    
+    std::cout << "test, 1" << std::endl;
+    
     arma::mat GMatRatio = m_ptrPlinkObj->getGMat(100, "none", m_minMafVarRatio, m_maxMissingVarRatio);
-    // }
+    
+    std::cout << "test, 2" << std::endl;
+    
     arma::mat VarRatioMat = getVarRatio(GMatRatio, "none");
     double VarRatio = arma::mean(VarRatioMat.col(4));
+    
+    std::cout << "test, 3" << std::endl;
     
     Rcpp::List temp = Rcpp::List::create(Rcpp::Named("muMat") = m_muMat,
                                          Rcpp::Named("iRMat") = m_iRMat,
@@ -1222,6 +1236,22 @@ arma::mat POLMMClass::getSigmaxMat(arma::mat t_xMat,   // matrix: n x (J-1)
   return(yMat);
 }
 
+arma::vec POLMMClass::getKinbVecPOLMM(arma::vec t_bVec, 
+                                      std::string t_excludeChr)
+{
+  arma::vec KinbVec;
+  
+  if(m_flagSparseGRM){
+    // arma::sp_mat temp = m_SparseGRM[t_excludeChr];
+    // arma::sp_mat temp = m_SparseGRM;
+    KinbVec = m_SparseGRM * t_bVec;
+  }else{
+    KinbVec = getKinbVec(t_bVec, m_ptrDenseGRMObj, t_excludeChr, m_grainSize);
+  }
+  Rcpp::checkUserInterrupt();
+  return KinbVec;
+}
+
 // use PCG to calculate iSigma_xMat = Sigma^-1 %*% xMat
 void POLMMClass::getPCGofSigmaAndCovaMat(arma::mat t_xMat,              // matrix with dim of n(J-1) x p
                                          arma::mat& t_iSigma_xMat,      // matrix with dim of n(J-1) x p
@@ -1229,9 +1259,11 @@ void POLMMClass::getPCGofSigmaAndCovaMat(arma::mat t_xMat,              // matri
 {
   int p1 = t_xMat.n_cols;
   for(int i = 0; i < p1; i++){
+    
     arma::vec y1Vec = t_xMat.col(i);
     arma::vec iSigma_y1Vec = t_iSigma_xMat.col(i);
     getPCGofSigmaAndVector(y1Vec, iSigma_y1Vec, t_excludechr);
+    
     t_iSigma_xMat.col(i) = iSigma_y1Vec;
   }
 }
