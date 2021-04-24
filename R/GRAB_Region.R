@@ -66,18 +66,20 @@ GRAB.Region = function(objNull,
   RegionList = getRegionList(RegionFile, RegionAnnoHeader, markerInfo)
   nRegions = length(RegionList)
   
-  setRegion(NullModelClass, objNull, control)
-  
   for(i in 1:nRegions){
-    region = RegionList[i]
+    
+    region = RegionList[[i]]
     
     regionName = names(region)
     SNP = region$SNP
     regionMat = region$regionMat  # annotation values
     genoIndex = region$genoIndex
+    chrom = region$chrom
     
     print(paste0("Analyzing Region of ", regionName, "......"))
     print(paste(SNP, collapse = ","))
+    
+    setRegion(NullModelClass, objNull, control, chrom)
     
     # main function to calculate summary statistics for markers in one chunk
     resRegion = mainRegion(NullModelClass, genoType, genoIndex, regionMat)
@@ -95,28 +97,31 @@ GRAB.Region = function(objNull,
 }
 
 
-setRegion = function(NullModelClass, objNull, control)
+setRegion = function(NullModelClass, objNull, control, chrom)
 {
-  
+  # The following function is in Main.cpp
   setRegion_GlobalVarsInCPP(control$impute_method,
                             control$missing_cutoff,
                             control$max_maf_region,
-                            control$max_mem_region)
+                            control$max_mem_region,
+                            control$omp_num_threads)
   
+  # The following function is in POLMM.R
   if(NullModelClass == "POLMM_NULL_Model")
-    obj.setRegion = setRegion.POLMM(objNull, control)
+    obj.setRegion = setRegion.POLMM(objNull, control, chrom)
   
   if(NullModelClass == "SAIGE_NULL_Model")
-    obj.setRegion = setRegion.SAIGE(objNull, control)
+    obj.setRegion = setRegion.SAIGE(objNull, control, chrom)
   
   if(NullModelClass == "SPACox_NULL_Model")
-    obj.setRegion = setRegion.SPACox(objNull, control)
+    obj.setRegion = setRegion.SPACox(objNull, control, chrom)
   
   return(obj.setRegion)
 }
 
 mainRegion = function(NullModelClass, genoType, genoIndex, regionMat)
 {
+  # the following function is in POLMM.R
   if(NullModelClass == "POLMM_NULL_Model")
     obj.mainRegion = mainRegion.POLMM(genoType, genoIndex, regionMat)
   
@@ -311,10 +316,16 @@ getRegionList = function(RegionFile,
     rownames(regionMat) = SNP
     
     genoIndex = markerInfo$genoIndex[posMarker]
+    chrom = markerInfo$CHROM[posMarker]
+    uchrom = unique(chrom)
+    
+    if(length(uchrom) != 1)
+      stop(paste0("In region ",r,", markers are from multiple chromosomes."))
     
     RegionList[[r]] = list(SNP = SNP,
                            regionMat = regionMat,
-                           genoIndex = genoIndex)
+                           genoIndex = genoIndex,
+                           chrom = uchrom)
   }
   
   return(RegionList)

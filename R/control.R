@@ -178,7 +178,8 @@ checkControl.Region = function(control, NullModelClass)
   default.region.control = list(impute_method = "minor",  
                                 missing_cutoff = 0.15,
                                 max_maf_region = 0.01,
-                                max_mem_region = 4)
+                                max_mem_region = 4,
+                                omp_num_threads = data.table::getDTthreads())
   
   control = updateControl(control, default.region.control)
   

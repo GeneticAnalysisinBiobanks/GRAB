@@ -301,3 +301,38 @@ setMarker.POLMM = function(objNull, control, chrom)
 }
 
 
+setRegion.POLMM = function(objNull, control, chrom)
+{
+  if(objNull$control$LOCO){
+    if(!chrom %in% names(objNull$LOCOList))
+      stop("'chrom' should be in names(objNull$LOCOList).")
+    objCHR = objNull$LOCOList[[chrom]]
+  }else{
+    objCHR = objNull$LOCOList[["LOCO=F"]]
+  }
+  
+  # marker-level analysis does not require the following parameters 
+  # Note: it might be not so accurate if min_mac_marker is very low
+  flagSparseGRM = FALSE;
+  SPmatR.CHR = list(locations = matrix(c(0,0), 2, 1), values = 1)
+  printPCGInfo = FALSE
+  tolPCG = 0.001
+  maxiterPCG = 100;
+  
+  # The following function is in 'Main.cpp'
+  setPOLMMobjInCPP(objCHR$muMat,
+                   objCHR$iRMat,
+                   objNull$Cova,
+                   objNull$yVec,          # 0 to J-1
+                   SPmatR.CHR,
+                   objNull$tau,
+                   printPCGInfo,
+                   tolPCG,
+                   maxiterPCG,
+                   objCHR$VarRatio, 
+                   control$SPA_Cutoff,
+                   flagSparseGRM)
+  
+  print(paste0("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk,"."))
+}
+
