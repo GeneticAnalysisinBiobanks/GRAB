@@ -941,7 +941,7 @@ void POLMMClass::updateEpsOneStep()
   
   arma::vec deps = -1 * inv(d2eps) * d1eps;
   
-  std::cout << "deps:\t" < deps << std::endl;
+  std::cout << "deps:\t" << deps << std::endl;
   
   for(int k = 1; k < m_J-1; k ++){
     m_eps(k) += deps(k-1);
