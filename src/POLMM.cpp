@@ -936,6 +936,10 @@ void POLMMClass::updateEpsOneStep()
     }
   }
   
+  std::cout << "d2eps:\t" << d2eps << std::endl;
+  std::cout << "d1eps:\t" << d1eps << std::endl;
+  std::cout << "deps:\t" < deps << std::endl;
+  
   arma::vec deps = -1 * inv(d2eps) * d1eps;
   for(int k = 1; k < m_J-1; k ++){
     m_eps(k) += deps(k-1);
@@ -950,6 +954,11 @@ void POLMMClass::updateEps()
     
     updateEpsOneStep();
     updateMats();
+    
+    std::cout << "iter:\t" << iter << std::endl;
+    std::cout << "m_eps:\t" << m_eps << std::endl;
+    std::cout << "eps0:\t" << eps0 << std::endl;
+    std::cout << "m_tolEps:\t" << m_tolEps << std::endl;
     
     double diffeps = arma::max(arma::abs(m_eps - eps0)/(arma::abs(m_eps) + arma::abs(eps0) + m_tolEps));
     
