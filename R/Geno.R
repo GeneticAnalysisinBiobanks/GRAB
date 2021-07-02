@@ -11,6 +11,7 @@
 #' @param GenoFileIndex additional index file(s) corresponding to the \code{GenoFile}. See \code{Details} section for more information.
 #' @param SampleIDs a character vector of sample IDs to extract. The default is NULL, that is, to use all samples in GenoFile.
 #' @param control a list of parameters to decide which markers to extract. If not specified, the first 10 markers will be extracted. For more details, please check \code{?GRAB.control}.
+#' @param sparse a logical value (default: FALSE) to indicate if sparse genotype matrix is outputted.
 #' @return An R list include an R genotype matrix (each row is for one sample and each column is for one marker) and an R SNP information matrix.
 #' @details
 #' We support three genotype formats including Plink, BGEN, and VCF. 
@@ -77,7 +78,8 @@
 GRAB.ReadGeno = function(GenoFile,
                          GenoFileIndex = NULL,
                          SampleIDs = NULL,
-                         control = NULL)
+                         control = NULL,
+                         sparse = FALSE)
 {
   checkControl.ReadGeno(control)  # this function is in 'control.R': indexGeno can be 0, 1, 2, 3, 4 depending on which argument is given.
   
@@ -96,8 +98,13 @@ GRAB.ReadGeno = function(GenoFile,
   }
   
   MarkerIDs = markerInfo$ID
-  GenoMat = getGenoInCPP(genoType, markerInfo, n)
-
+  
+  if(sparse == TRUE){
+    GenoMat = getSpGenoInCPP(genoType, markerInfo, n)
+  }else{
+    GenoMat = getGenoInCPP(genoType, markerInfo, n)  # This function is in Main.cpp
+  }
+    
   colnames(GenoMat) = MarkerIDs;
   rownames(GenoMat) = SampleIDs;
   
