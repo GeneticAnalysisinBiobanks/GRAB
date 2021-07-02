@@ -90,14 +90,17 @@ GRAB.ReadGeno = function(GenoFile,
   SampleIDs = objGeno$SampleIDs
   anyQueue = objGeno$anyQueue   # if FALSE, no include/exclude is specified
   
-  n = length(SampleIDs)
-  
   if(!anyQueue){
     print("Since no markers or regions were selected, we use the first 10 markers in 'GenoFile'.")
     markerInfo = markerInfo[1:min(10,nrow(markerInfo)),]
   }
   
   MarkerIDs = markerInfo$ID
+  
+  n = length(SampleIDs)
+  m = length(MarkerIDs)
+  
+  cat("Number of Samples:\t",n,"\nNumber of Markers:\t",m)
   
   if(sparse == TRUE){
     GenoMat = getSpGenoInCPP(genoType, markerInfo, n)
