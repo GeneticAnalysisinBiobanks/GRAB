@@ -74,7 +74,7 @@
 #' markerInfo
 #' 
 #' @export
-#' @import data.table, tidyr, dbplyr, RSQLite
+#' @import data.table, tidyr, dbplyr, RSQLite, Matrix
 GRAB.ReadGeno = function(GenoFile,
                          GenoFileIndex = NULL,
                          SampleIDs = NULL,
