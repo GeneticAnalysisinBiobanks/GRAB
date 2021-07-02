@@ -33,6 +33,10 @@ getGenoInCPP <- function(t_genoType, t_markerInfo, n) {
     .Call(`_GRAB_getGenoInCPP`, t_genoType, t_markerInfo, n)
 }
 
+getSpGenoInCPP <- function(t_genoType, t_markerInfo, n) {
+    .Call(`_GRAB_getSpGenoInCPP`, t_genoType, t_markerInfo, n)
+}
+
 setPLINKobjInCPP <- function(t_bimFile, t_famFile, t_bedFile, t_SampleInModel, t_AlleleOrder) {
     invisible(.Call(`_GRAB_setPLINKobjInCPP`, t_bimFile, t_famFile, t_bedFile, t_SampleInModel, t_AlleleOrder))
 }
