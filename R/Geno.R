@@ -170,6 +170,8 @@ setGenoInput = function(GenoFile,
   if(GenoFileExt == "bgen"){
     
     genoType = "BGEN"
+    bgenFile = GenoFile
+    
     if(is.null(AlleleOrder)) AlleleOrder = "ref-first"
     
     if(is.null(GenoFileIndex)){  
@@ -202,7 +204,6 @@ setGenoInput = function(GenoFile,
     }
     
     bgiFile = GenoFileIndex[1]
-    bgenFile = GenoFile
     
     if(!file.exists(bgiFile)) stop(paste("Cannot find bgi file of", bgiFile))
     
