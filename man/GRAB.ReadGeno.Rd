@@ -4,7 +4,13 @@
 \alias{GRAB.ReadGeno}
 \title{Read in genotype data}
 \usage{
-GRAB.ReadGeno(GenoFile, GenoFileIndex = NULL, SampleIDs = NULL, control = NULL)
+GRAB.ReadGeno(
+  GenoFile,
+  GenoFileIndex = NULL,
+  SampleIDs = NULL,
+  control = NULL,
+  sparse = FALSE
+)
 }
 \arguments{
 \item{GenoFile}{a character of genotype file. See \code{Details} section for more information.}
@@ -14,6 +20,8 @@ GRAB.ReadGeno(GenoFile, GenoFileIndex = NULL, SampleIDs = NULL, control = NULL)
 \item{SampleIDs}{a character vector of sample IDs to extract. The default is NULL, that is, to use all samples in GenoFile.}
 
 \item{control}{a list of parameters to decide which markers to extract. If not specified, the first 10 markers will be extracted. For more details, please check \code{?GRAB.control}.}
+
+\item{sparse}{a logical value (default: FALSE) to indicate if sparse genotype matrix is outputted.}
 }
 \value{
 An R list include an R genotype matrix (each row is for one sample and each column is for one marker) and an R SNP information matrix.

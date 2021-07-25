@@ -26,9 +26,9 @@ GRAB.NullModel = function(formula,
                           subjData,
                           method = "SPACox",
                           traitType = "time-to-event",  # "binary", "ordinal", "quantitative", "time-to-event"
-                          GenoFile,
+                          GenoFile = NULL,
                           GenoFileIndex = NULL,
-                          SparseGRMFile,
+                          SparseGRMFile = NULL,
                           control = NULL,
                           ...)
 {
@@ -41,6 +41,7 @@ GRAB.NullModel = function(formula,
   control = checkControl.NullModel(control, method, traitType)
   
   #### START: formula.R
+  
   #### input: formula, data, subset, and subjData
   #### output: response, designMat, subjData
   
@@ -72,7 +73,7 @@ GRAB.NullModel = function(formula,
   #### END: formula.R
   
   if(method %in% c("POLMM", "SAIGE", "GATE"))
-    optionGRM = handleGRM(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
+    optionGRM = handleGRM(GenoFile, GenoFileIndex, SparseGRMFile, subjData)  # This function is in SparseGRM.R
   
   if(method == "POLMM"){
     # The following function is in 'POLMM.R'
@@ -93,41 +94,6 @@ GRAB.NullModel = function(formula,
   
   return(objNull)
 }
-
-
-## to be updated later
-handleGRM = function(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
-{
-  genoList = setGenoInput(GenoFile, GenoFileIndex, subjData)   # check Geno.R for more details
-  
-  if(!missing(SparseGRMFile)){
-    print("Sparse GRM is used when fitting a null model.")
-    SparseGRM = data.table::fread(SparseGRMFile)
-    SparseGRM = as.data.frame(SparseGRM)
-    
-    KinMatListR = updateSparseGRM(SparseGRM, subjData)
-    
-    # the following function is in Main.cpp
-    setSparseGRMInCPP(KinMatListR)
-    optionGRM = "SparseGRM"
-  }else{
-    print("Dense GRM is used when fitting a null model.")
-    subjGeno = genoList$SampleIDs      # subjGeno should be the same as subjData
-    if(genoList$genoType != "PLINK")
-      stop("If DenseGRM is used when fitting a null model, then only Plink file is supported.")
-    
-    memoryChunk = 2 # (GB)
-    minMafGRM = 0.01
-    maxMissingGRM = 0.1
-    
-    # the following function is in Main.cpp
-    setDenseGRMInCPP(memoryChunk, minMafGRM, maxMissingGRM)
-    optionGRM = "DenseGRM"
-  }
-  
-  return(optionGRM)
-}
-
 
 
 

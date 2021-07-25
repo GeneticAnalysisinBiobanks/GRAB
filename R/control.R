@@ -174,7 +174,7 @@ checkControl.Region = function(control, NullModelClass)
     if(class(control) != "list")
       stop("If specified, the argument of 'control' should be an R 'list'.")
   
-  # uniform default control setting for marker-level analysis
+  # uniform default control setting for region-level analysis
   default.region.control = list(impute_method = "minor",  
                                 missing_cutoff = 0.15,
                                 max_maf_region = 0.01,

@@ -1,7 +1,7 @@
 
 #' POLMM method in GRAB package
 #' 
-#' POLMM method is to analysis ordinal categorical data for related samples in a large-scale biobank.
+#' POLMM method is to analyze ordinal categorical data for related samples in a large-scale biobank.
 #' 
 #' @details 
 #' Please check \code{?GRAB.control} for the generic list of \code{control} in \code{GRAB.NullModel()} and \code{GRAB.Marker()}.
@@ -34,6 +34,8 @@
 #'
 #' # Step 1(b): fit a null model using a sparse GRM
 #' # First use getSparseGRM() function and plink file to get a sparse GRM file
+#' PhenoData = read.table(system.file("extdata", "example.pheno", package = "GRAB"), header = T)
+#' GenoFile = system.file("extdata", "example.bed", package = "GRAB")
 #' SparseGRMFile =  system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
 #' obj.POLMM = GRAB.NullModel(factor(Ordinal) ~ Cova1 + Cova2,
 #'                            data = PhenoData, subjData = PhenoData$IID, method = "POLMM", traitType = "ordinal",
@@ -94,15 +96,18 @@ checkControl.Marker.POLMM = function(control)
 # check the control list in region-level testing
 checkControl.Region.POLMM = function(control)
 {
-  default.control = list();
+  default.control = list(SPA_Cutoff = 2);
+  
   control = updateControl(control, default.control)  # This file is in 'Util.R'
   
   # check the parameter
+  if(!is.numeric(control$SPA_Cutoff) | control$SPA_Cutoff <=0)
+    stop("control$SPA_Cutoff should be a numeric value > 0")
   
   return(control)
 }
 
-# main function to calculae summary statistics
+# main function to calculate summary statistics
 mainMarker.POLMM = function(genoType, genoIndex)
 {
   # the following function is in 'Main.cpp'
@@ -124,6 +129,13 @@ mainMarker.POLMM = function(genoType, genoIndex)
                               seBeta = seBetaVec,
                               Pval = pvalVec)
   return(obj.mainMarker)
+}
+
+# main function to calculate summary statistics for region-based test
+mainRegion.POLMM = function(genoType, genoIndex)
+{
+  # add something here
+  
 }
 
 # check the control list in null model fitting for POLMM method
@@ -269,7 +281,7 @@ setMarker.POLMM = function(objNull, control, chrom)
 {
   if(objNull$control$LOCO){
     if(!chrom %in% names(objNull$LOCOList))
-      stop("'chrom' should be in names(objNull$LOCOList).")
+      stop("If control$LOCO == TRUE, then 'chrom' should be in names(objNull$LOCOList).")
     objCHR = objNull$LOCOList[[chrom]]
   }else{
     objCHR = objNull$LOCOList[["LOCO=F"]]
@@ -278,17 +290,17 @@ setMarker.POLMM = function(objNull, control, chrom)
   # marker-level analysis does not require the following parameters 
   # Note: it might be not so accurate if min_mac_marker is very low
   flagSparseGRM = FALSE;
-  SPmatR.CHR = list(locations = matrix(c(0,0), 2, 1), values = 1)
+  # SPmatR.CHR = list(locations = matrix(c(0,0), 2, 1), values = 1)
   printPCGInfo = FALSE
   tolPCG = 0.001
   maxiterPCG = 100;
   
-  # The following function is in 'Main.cpp'
+  # Check 'Main.cpp'
   setPOLMMobjInCPP(objCHR$muMat,
                    objCHR$iRMat,
                    objNull$Cova,
                    objNull$yVec,          # 0 to J-1
-                   SPmatR.CHR,
+                   # SPmatR.CHR,
                    objNull$tau,
                    printPCGInfo,
                    tolPCG,
@@ -300,39 +312,45 @@ setMarker.POLMM = function(objNull, control, chrom)
   print(paste0("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk,"."))
 }
 
-
-setRegion.POLMM = function(objNull, control, chrom)
+# Used in setRegion() function in GRAB_Region.R
+setRegion.POLMM = function(objNull, control, chrom, SparseGRMFile)
 {
   if(objNull$control$LOCO){
     if(!chrom %in% names(objNull$LOCOList))
-      stop("'chrom' should be in names(objNull$LOCOList).")
+      stop("If control$LOCO == TRUE, then 'chrom' should be in names(objNull$LOCOList).")
     objCHR = objNull$LOCOList[[chrom]]
   }else{
     objCHR = objNull$LOCOList[["LOCO=F"]]
   }
   
-  # marker-level analysis does not require the following parameters 
-  # Note: it might be not so accurate if min_mac_marker is very low
-  flagSparseGRM = FALSE;
-  SPmatR.CHR = list(locations = matrix(c(0,0), 2, 1), values = 1)
+  # Since region-level analysis mainly focuses on rare variants, we use sparse GRM for all markers
+  
+  print("Sparse GRM is used for POLMM-GENE method.")
+  SparseGRM = data.table::fread(SparseGRMFile)
+  SparseGRM = as.data.frame(SparseGRM)
+  KinMatListR = updateSparseGRM(SparseGRM, objNull$subjData)
+  setSparseGRMInCPP(KinMatListR)    # check Main.cpp
+  
+  # The following parameters are not used any more
+  flagSparseGRM = TRUE;
   printPCGInfo = FALSE
   tolPCG = 0.001
   maxiterPCG = 100;
+  VarRatio = 1
   
-  # The following function is in 'Main.cpp'
+  # Check 'Main.cpp'
   setPOLMMobjInCPP(objCHR$muMat,
                    objCHR$iRMat,
                    objNull$Cova,
                    objNull$yVec,          # 0 to J-1
-                   SPmatR.CHR,
                    objNull$tau,
                    printPCGInfo,
                    tolPCG,
                    maxiterPCG,
-                   objCHR$VarRatio, 
+                   VarRatio, 
                    control$SPA_Cutoff,
                    flagSparseGRM)
-  
-  print(paste0("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk,"."))
+
+  # print(paste0("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk,"."))
 }
 

@@ -11,9 +11,9 @@ GRAB.NullModel(
   subjData,
   method = "SPACox",
   traitType = "time-to-event",
-  GenoFile,
+  GenoFile = NULL,
   GenoFileIndex = NULL,
-  SparseGRMFile,
+  SparseGRMFile = NULL,
   control = NULL,
   ...
 )

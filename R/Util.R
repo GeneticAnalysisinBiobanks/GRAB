@@ -13,9 +13,9 @@ checkObjNull = function(objNull)
     stop('class(objNull) should be from c("SPAGE_NULL_Model", "SPACox_NULL_Model", "POLMM_NULL_Model")')
   }
     
-  if(any(nm %in% c("SampleIDs","n")))
+  if(any(!c("subjData", "N") %in% nm))
   {
-    stop("c('SampleIDs', 'n') should be in names(objNull).")
+    stop("c('subjData', 'N') should be in names(objNull).")
   }
   
   ## More detailed information can be checked
@@ -37,25 +37,47 @@ checkOutputFile = function(OutputFile,
   
   if(file.exists(OutputFile)){
     if(!file.exists(OutputFileIndex)){
-      stop(paste0("'OutputFile' of '", OutputFile, "' has existed. Please use another 'OutputFile' or remove the existing one."))
+      stop(paste0("'OutputFile' of '", OutputFile, 
+                  "' has existed. Please use another 'OutputFile' or remove the existing one."))
     }
     else{
-      outIndexData = read.table(OutputFileIndex)
+      outIndexData = read.table(OutputFileIndex, header = F)
+    
       
-      if(outIndexData[1,1] != "GRAB.outIndex" | outIndexData[2,1] != "Please_do_not_modify_this_file." | outIndexData[3,1] != AnalysisType | outIndexData[4,1] != nEachChunk)
-        stop("'OutputFileIndex' is not expected. Please use another 'OutputFileIndex' or remove the existing one.")
+      if(outIndexData[1,1] != "GRAB.outIndex" | 
+         outIndexData[2,1] != "Please_do_not_modify_this_file" | 
+         outIndexData[3,1] != AnalysisType | 
+         outIndexData[4,1] != paste0("nEachChunk=",nEachChunk))
+        stop(paste0("'OutputFileIndex' of '", OutputFileIndex,
+                    "' is not as expected. Probably, it has been modified, which is not permitted. Please remove the existing file of 'OutputFileIndex'."))
       
-      outIndex = as.numeric(outIndexData[nrow(outIndexData),1]) + 1
-      if(outIndex == 0)
-        stop("Based on 'OutputFile' and 'OutputFileIndex', the analysis has been completed.")
-      
-      warning(paste0("Based on 'OutputFile' and 'OutputFileIndex', we restart the analysis from the ", outIndex, "-th chunks."))
+      outIndex = as.numeric(outIndexData[nrow(outIndexData), 1]) + 1
+      warning(paste0("Based on 'OutputFile' and 'OutputFileIndex', we restart the analysis from the ", outIndex, "-th chunk."))
     }
   }else{
     outIndex = 1;
   }
   
   return(outIndex)
+}
+
+writeOutputFile = function(Output,
+                           indexChunk,
+                           OutputFile,
+                           OutputFileIndex,
+                           AnalysisType,
+                           nEachChunk)
+{
+  
+  if(indexChunk == 1){
+    data.table::fwrite(Output, OutputFile, quote = F, sep = "\t", append = F, col.names = T)
+    write.table(c("GRAB.outIndex", "Please_do_not_modify_this_file", AnalysisType, paste0("nEachChunk=",nEachChunk), 
+                  1), 
+                OutputFileIndex, quote = F, sep = "\t", append = F, col.names = F, row.names = F)
+  }else{
+    data.table::fwrite(Output, OutputFile, quote = F, sep = "\t", append = T, col.names = F)
+    write.table(indexChunk, OutputFileIndex, quote = F, sep = "\t", append = T, col.names = F, row.names = F)
+  }
 }
 
 

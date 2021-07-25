@@ -6,6 +6,9 @@
 #include "DenseGRM.hpp"
 #include "UTIL.hpp"
 
+#include <thread>         // std::this_thread::sleep_for
+#include <chrono>         // std::chrono::seconds
+
 namespace POLMM {
 
 POLMMClass::POLMMClass(arma::mat t_muMat,
@@ -19,13 +22,19 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
                        int t_maxiterPCG,
                        double t_varRatio, 
                        double t_SPA_Cutoff,
-                       bool flagSparseGRM)     // In region-based analysis, we use SparseGRM, in marker-based analysis, we do not use SparseGRM
+                       bool t_flagSparseGRM)     // In region-based analysis, we use SparseGRM, in marker-based analysis, we do not use SparseGRM
 {
   m_muMat = t_muMat;
   m_iRMat = t_iRMat;
   m_Cova = t_Cova;
   m_varRatio = t_varRatio;
   m_SPA_Cutoff = t_SPA_Cutoff;
+  m_flagSparseGRM = t_flagSparseGRM;
+  
+  m_SparseGRM = t_SparseGRM;
+  m_printPCGInfo = t_printPCGInfo;
+  m_tolPCG = t_tolPCG;
+  m_maxiterPCG = t_maxiterPCG;
   
   m_n = m_muMat.n_rows;
   m_J = m_muMat.n_cols;
@@ -35,13 +44,19 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
   
   m_tau = t_tau;
   
-  if(flagSparseGRM == true){
-    m_SparseGRM = t_SparseGRM;
-    m_printPCGInfo = t_printPCGInfo;
-    m_tolPCG = t_tolPCG;
-    m_maxiterPCG = t_maxiterPCG;
+  // std::cout << "test0" << std::endl;
+  // std::this_thread::sleep_for (std::chrono::seconds(1));
+  
+  if(m_flagSparseGRM == true){
+    
+    // std::cout << "test01" << std::endl;
+    // std::this_thread::sleep_for (std::chrono::seconds(1));
+    
     m_InvBlockDiagSigma = getInvBlockDiagSigma();
   }
+  
+  // std::cout << "test1" << std::endl;
+  // std::this_thread::sleep_for (std::chrono::seconds(1));
   
   // output for Step 2
   arma::mat XR_Psi_R(m_p, m_n * (m_J-1));                // p x n(J-1)
@@ -65,7 +80,10 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
   arma::mat RymuMat = ymuMat.cols(0, m_J-2) / t_iRMat;    // n x (J-1): R %*% (y - mu)
   m_RymuVec = sumCols(RymuMat, m_J);                      // n x 1
   
-  if(flagSparseGRM == true){
+  // std::cout << "test2" << std::endl;
+  // std::this_thread::sleep_for (std::chrono::seconds(1));
+  
+  if(m_flagSparseGRM == true){
     arma::mat iSigma_CovaMat(m_n * (m_J-1), m_p);
     getPCGofSigmaAndCovaMat(m_CovaMat, iSigma_CovaMat);
     arma::mat XSigmaX = inv(m_CovaMat.t() * iSigma_CovaMat);
@@ -192,15 +210,17 @@ void POLMMClass::getMarkerPval(arma::vec t_GVec,
   t_seBeta = t_Beta / StdStat;
 }
 
-void getRegionPVec(arma::vec t_GVec, 
-                   double& t_Beta, 
-                   double& t_seBeta, 
-                   double& t_pval0, 
-                   double& t_pval1,
-                   arma::vec& P1Vec, 
-                   arma::vec& P2Vec)
+void POLMMClass::getRegionPVec(arma::vec t_GVec, 
+                               double& t_Stat,
+                               double& t_Beta, 
+                               double& t_seBeta, 
+                               double& t_pval0, 
+                               double& t_pval1,
+                               arma::vec& t_P1Vec, 
+                               arma::vec& t_P2Vec)
 {
-  // do nothing
+  double altFreq = 0.1;
+  getMarkerPval(t_GVec, t_Beta, t_seBeta, t_pval0, altFreq);
 }
 
 arma::vec POLMMClass::getadjGFast(arma::vec t_GVec)
@@ -445,10 +465,23 @@ arma::mat POLMMClass::getPsixMat(arma::mat t_xMat)   // matrix: n x (J-1)
 // used in getPCGofSigmaAndVector()
 arma::cube POLMMClass::getInvBlockDiagSigma()
 {
-  // get diagonal elements of GRM
+  
+  // std::cout << "test011" << std::endl;
+  // std::cout << m_flagSparseGRM << std::endl;
+  // std::this_thread::sleep_for (std::chrono::seconds(1));
+  
   arma::vec DiagGRM;
   if(m_flagSparseGRM){
+    // get diagonal elements of GRM
+    
+    // std::cout << "test02" << std::endl;
+    // std::this_thread::sleep_for (std::chrono::seconds(1));
+    
     DiagGRM = m_tau * m_SparseGRM.diag();
+    
+    // std::cout << "test03" << std::endl;
+    // std::this_thread::sleep_for (std::chrono::seconds(1));
+    
   }else{
     arma::vec* pDiagStdGeno = m_ptrDenseGRMObj->getDiagStdGeno();
     DiagGRM = m_tau * (*pDiagStdGeno);   // n x 1

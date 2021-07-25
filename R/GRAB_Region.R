@@ -44,21 +44,28 @@
 GRAB.Region = function(objNull,
                        GenoFile,
                        GenoFileIndex = NULL,
-                       OutputFile = NULL,
+                       OutputFile,
+                       OutputFileIndex = NULL,
                        RegionFile,              # column 1: marker Set ID, column 2: SNP ID, columns 3-n: Annotations similar as in STAAR
                        RegionAnnoHeader = NULL,
+                       SparseGRMFile = NULL,
                        control = NULL)
 {
   NullModelClass = checkObjNull(objNull);  # this function is in "Util.R"
-  checkOutputFile(OutputFile)              # this function is in 'Util.R'
+  
+  if(is.null(OutputFileIndex)) 
+    OutputFileIndex = paste0(OutputFile, ".index")
+  
+  outIndex = checkOutputFile(OutputFile, OutputFileIndex, "Region", 1) # this function is in 'Util.R'
   
   ## check the setting of control, if not specified, the default setting will be used
   control = checkControl.Region(control, NullModelClass)
   
-  SampleIDs = as.character(objNull$SampleIDs);
+  subjData = as.character(objNull$subjData);
+  n = length(subjData)
   
   ## set up an object for genotype
-  objGeno = setGenoInput(GenoFile, GenoFileIndex, SampleIDs)  # this function is in 'Geno.R'
+  objGeno = setGenoInput(GenoFile, GenoFileIndex, subjData, control)  # this function is in 'Geno.R'
   genoType = objGeno$genoType
   markerInfo = objGeno$markerInfo
   
@@ -66,38 +73,57 @@ GRAB.Region = function(objNull,
   RegionList = getRegionList(RegionFile, RegionAnnoHeader, markerInfo)
   nRegions = length(RegionList)
   
-  for(i in 1:nRegions){
+  if(outIndex == nRegions + 1)
+  {
+    message = paste0("The analysis has been completed in earlier analysis. Results can be seen in '", OutputFile, "'.",
+                     "If you want to change parameters and restart the analysis, please use another 'OutputFile'.")
+    return(message)
+  }
+    
+  for(i in outIndex:nRegions){
     
     region = RegionList[[i]]
+    regionName = names(RegionList)[i]
     
-    regionName = names(region)
     SNP = region$SNP
     regionMat = region$regionMat  # annotation values
     genoIndex = region$genoIndex
     chrom = region$chrom
     
     print(paste0("Analyzing Region of ", regionName, "......"))
-    print(paste(SNP, collapse = ","))
+    print(paste(SNP, collapse = ", "))
     
-    setRegion(NullModelClass, objNull, control, chrom)
+    obj.setRegion = setRegion(NullModelClass, objNull, control, chrom, SparseGRMFile)
     
-    # main function to calculate summary statistics for markers in one chunk
-    resRegion = mainRegion(NullModelClass, genoType, genoIndex, regionMat)
+    # main function to calculate summary statistics for region-based analysis 
+    obj.mainRegion = mainRegion(NullModelClass, genoType, genoIndex, regionMat, OutputFile, n)
+    
+    
+    
+    output.Region = data.frame(Region = regionName,
+                               nMarker = length(obj.mainRegion$markerVec),
+                               Markers = paste0(obj.mainRegion$markerVec, collapse = ","),
+                               Info = paste0(obj.mainRegion$infoVec, collapse = ","),
+                               AltFreq = paste0(obj.mainRegion$altFreqVec, collapse = ","),
+                               MissingRate = paste0(obj.mainRegion$missingRateVec, collapse = ","),
+                               Stat = paste0(obj.mainRegion$StatVec, collapse = ","),
+                               Beta = paste0(obj.mainRegion$BetaVec, collapse = ","),
+                               seBeta = paste0(obj.mainRegion$seBetaVec, collapse = ","),
+                               pval0 = paste0(obj.mainRegion$pval0Vec, collapse = ","),
+                               pval1 = paste0(obj.mainRegion$pval1Vec, collapse = ","),
+                               pval0Burden = obj.mainRegion$pval0Burden,
+                               pval1Burden = obj.mainRegion$pval1Burden)
     
     # write summary statistics to output file
-    if(i == 1){
-      data.table::fwrite(resRegion, OutputFile, quote = F, sep = "\t", append = F, col.names = T)
-    }else{
-      data.table::fwrite(resRegion, OutputFile, quote = F, sep = "\t", append = T, col.names = F)
-    }
+    writeOutputFile(output.Region, i, OutputFile, OutputFileIndex, "Region", 1)
   }
-    
+  
   message = paste0("The analysis results have been saved to '", OutputFile,"'.")
   return(message)
 }
 
 
-setRegion = function(NullModelClass, objNull, control, chrom)
+setRegion = function(NullModelClass, objNull, control, chrom, SparseGRMFile)
 {
   # The following function is in Main.cpp
   setRegion_GlobalVarsInCPP(control$impute_method,
@@ -108,10 +134,10 @@ setRegion = function(NullModelClass, objNull, control, chrom)
   
   # The following function is in POLMM.R
   if(NullModelClass == "POLMM_NULL_Model")
-    obj.setRegion = setRegion.POLMM(objNull, control, chrom)
+    obj.setRegion = setRegion.POLMM(objNull, control, chrom, SparseGRMFile)  # check POLMM.R
   
   if(NullModelClass == "SAIGE_NULL_Model")
-    obj.setRegion = setRegion.SAIGE(objNull, control, chrom)
+    obj.setRegion = setRegion.SAIGE(objNull, control, chrom, SparseGRMFile)
   
   if(NullModelClass == "SPACox_NULL_Model")
     obj.setRegion = setRegion.SPACox(objNull, control, chrom)
@@ -119,20 +145,39 @@ setRegion = function(NullModelClass, objNull, control, chrom)
   return(obj.setRegion)
 }
 
-mainRegion = function(NullModelClass, genoType, genoIndex, regionMat)
+mainRegion = function(NullModelClass, 
+                      genoType, 
+                      genoIndex, 
+                      regionMat,
+                      OutputFile,
+                      n)
 {
-  # the following function is in POLMM.R
   if(NullModelClass == "POLMM_NULL_Model")
-    obj.mainRegion = mainRegion.POLMM(genoType, genoIndex, regionMat)
-  
-  if(NullModelClass == "SAIGE_NULL_Model")
-    obj.mainRegion = mainRegion.SAIGE(genoType, genoIndex, regionMat)
-  
-  if(NullModelClass == "SPACox_NULL_Model")
-    obj.mainRegion = mainRegion.SPACox(genoType, genoIndex, regionMat)
+    obj.mainRegion = mainRegionInCPP("POLMM", genoType, genoIndex, OutputFile, n)
   
   return(obj.mainRegion)
 }
+
+# Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
+#                            std::string t_genoType,     // "PLINK", "BGEN"
+#                            std::vector<uint32_t> t_genoIndex,
+#                            std::string t_outputFile,
+#                            unsigned int t_n)           // sample size  
+
+# mainRegion = function(NullModelClass, genoType, genoIndex, regionMat)
+# {
+#   # the following function is in POLMM.R
+#   if(NullModelClass == "POLMM_NULL_Model")
+#     obj.mainRegion = mainRegion.POLMM(genoType, genoIndex, regionMat)
+#   
+#   if(NullModelClass == "SAIGE_NULL_Model")
+#     obj.mainRegion = mainRegion.SAIGE(genoType, genoIndex, regionMat)
+#   
+#   if(NullModelClass == "SPACox_NULL_Model")
+#     obj.mainRegion = mainRegion.SPACox(genoType, genoIndex, regionMat)
+#   
+#   return(obj.mainRegion)
+# }
 
 # setRegion = function()
 # {

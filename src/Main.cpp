@@ -7,6 +7,7 @@
 #include <thread>         // std::this_thread::sleep_for
 #include <chrono>         // std::chrono::seconds
 // std::this_thread::sleep_for (std::chrono::seconds(1));
+#include <cstdio>         // std::remove
 
 // Currently, omp does not work well, will check it later
 // error: SET_VECTOR_ELT() can only be applied to a 'list', not a 'character'
@@ -246,24 +247,26 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   // set up output
   std::vector<std::string> markerVec(q);    // marker IDs
   std::vector<std::string> infoVec(q);      // marker information: CHR:POS:REF:ALT
-  std::vector<double> altFreqVec(q);        // allele frequencies of ALT allele, this is not always < 0.5.
+  std::vector<double> altFreqVec(q);        // allele frequencies of the ALT allele, this is not always < 0.5.
   std::vector<double> missingRateVec(q);    // missing rate
   std::vector<double> StatVec(q);           // score statistics
   std::vector<double> BetaVec(q);           // beta value for ALT allele
   std::vector<double> seBetaVec(q);         // seBeta value
-  std::vector<double> pval0Vec(q);          // p values from normal distribution approximation
+  std::vector<double> pval0Vec(q);          // p values from normal distribution approximation  // might be confused, is this needed?
   std::vector<double> pval1Vec(q);          // p values from more accurate methods including SPA and ER
   std::vector<bool> passQCVec(q, true);
   
   // example #1: (q = 999, m1 = 10) -> (nchunks = 100, m2 = 9)
   // example #2: (q = 1000, m1 = 10) -> (nchunks = 100, m2 = 10)
   // example #3: (q = 1001, m1 = 10) -> (nchunks = 101, m2 = 1)
+  
   unsigned int m1 = g_region_maxMarkers_cutoff;  // number of markers in all chunks expect for the last chunk
   unsigned int nchunks = (q-1) / m1 + 1;         // number of chunks.  e.g. 42 / 3 = 14, 2 / 3 = 0.
   unsigned int m2 = (q-1) % m1 + 1;              // number of markers in the last chunk. e.g. 42 % 3 = 0, 2 % 3 = 2.
   unsigned int m3 = m1;                          // number of markers in the current chunk
   
-  std::cout << "In region-based analysis, all " << q << "markers are splitted into " << nchunks << " chunks." << std::endl;
+  std::cout << "In region-based analysis, all " << q << " markers are splitted into " << nchunks << " chunks." << std::endl;
+  std::cout<< "Each chunk includes no more than " << m1 << " markers." << std::endl;
   
   // Suppose that 
   // n is the sample size in analysis 
@@ -293,7 +296,7 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     {
       unsigned int i1 = i + m1 * ichunk;  // index in all markers
       
-      // information of marker
+      // marker-level information
       double altFreq, altCounts, missingRate, imputeInfo;
       std::vector<uint32_t> indexForMissing, indexForNonZero;
       std::string chr, ref, alt, marker;
@@ -315,7 +318,7 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
         flip = imputeGenoAndFlip(GVec, altFreq, indexForMissing, g_impute_method);  // in UTIL.cpp
       }
       
-      // record basic information for the marker
+      // store marker-level information in vectors
       markerVec.at(i1) = marker;             // marker IDs
       infoVec.at(i1) = info;                 // marker information: CHR:POS:REF:ALT
       altFreqVec.at(i1) = altFreq;           // allele frequencies of ALT allele, this is not always < 0.5.
@@ -332,16 +335,16 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
         continue;
       }
       
-      // analysis results for single-marker
+      // conduct marker-level analysis
       double Stat, Beta, seBeta, pval0, pval1;
       arma::vec P1Vec(t_n), P2Vec(t_n);
       
       // The below function should be the most important one in region-based analysis
-      // Unified_getRegionPVec(t_method, GVec, Beta, seBeta, pval, P1Vec, P2Vec);
+      Unified_getRegionPVec(t_method, GVec, Stat, Beta, seBeta, pval0, pval1, P1Vec, P2Vec);
       
       // insert results to pre-setup vectors and matrix
       StatVec.at(i1) = Stat;        
-      BetaVec.at(i1) = Beta * (1 - 2*flip);  // Beta if flip = false, -1*Beta is flip = true       
+      BetaVec.at(i1) = Beta * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true       
       seBetaVec.at(i1) = seBeta;       
       pval0Vec.at(i1) = pval0;
       pval1Vec.at(i1) = pval1;
@@ -373,7 +376,7 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     
     GVecBurden += arma::sum(GMat, 1);
     
-    // save information to hard-drive to avoid very high memory usage
+    // save information to hard drive to avoid high memory usage
     if((nchunks > 0) & (mPassQCInChunk != 0)){ 
       P1Mat.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin");
       P2Mat.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin");
@@ -385,11 +388,11 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   
   arma::mat VarMat(mPassQCTot, mPassQCTot);    // variance-covariance matrix (after QC)
   
-  // not so many markers in the region, so everything is in memory
+  // not so many markers in the region, so all matrix is in memory
   if(nchunks == 0)
     VarMat = P1Mat * P2Mat;
   
-  // the region includes more markers than limitation, so put P1Mat and P2Mat in hard-drive
+  // the region includes more markers than limitation, so P1Mat and P2Mat have been put in hard drive
   if(nchunks > 0)
   {
     int first_row = 0, first_col = 0, last_row = 0, last_col = 0;
@@ -397,13 +400,28 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     for(unsigned int index1 = 0; index1 < nchunks; index1++)
     {
       last_row = first_row + mPassQCVec.at(index1) - 1;
-      P1Mat.load(t_outputFile + "_P1Mat_Chunk_" + std::to_string(index1) + ".bin");
+      
+      std::string P1MatFile = t_outputFile + "_P1Mat_Chunk_" + std::to_string(index1) + ".bin";
+      
+      P1Mat.load(P1MatFile);
+      
+      std::cout << "P1Mat.n_rows: " << P1Mat.n_rows << std::endl;
+      std::cout << "P1Mat.n_cols: " << P1Mat.n_cols << std::endl;
+      
+      if(P1Mat.n_cols == 0) continue;
       
       // off-diagonal sub-matrix
       for(unsigned int index2 = 0; index2 < index1; index2++)
       {
         std::cout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " << index2 << "/" << nchunks - 1 << ")........" << std::endl;
+        
         P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index2) + ".bin");
+        
+        std::cout << "P2Mat.n_rows: " << P2Mat.n_rows << std::endl;
+        std::cout << "P2Mat.n_cols: " << P2Mat.n_cols << std::endl;
+        
+        if(P2Mat.n_cols == 0) continue;
+        
         arma::mat offVarMat = P1Mat * P2Mat;
         
         last_col = first_col + mPassQCVec.at(index2) - 1;
@@ -418,6 +436,10 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       last_col = first_col + mPassQCVec.at(index1) - 1;
       std::cout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " << index1 << "/" << nchunks - 1 << ")........" << std::endl;
       P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index1) + ".bin");
+      
+      std::cout << "P2Mat.n_rows: " << P2Mat.n_rows << std::endl;
+      std::cout << "P2Mat.n_cols: " << P2Mat.n_cols << std::endl;
+      
       arma::mat diagVarMat = P1Mat * P2Mat;
       
       VarMat.submat(first_row, first_col, last_row, last_col) = diagVarMat;
@@ -425,6 +447,17 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       first_row = last_row + 1;
       first_col = 0;
       Rcpp::checkUserInterrupt();
+      
+    }
+    
+    for(unsigned int index1 = 0; index1 < nchunks; index1++)
+    {
+      std::string P1MatFile = t_outputFile + "_P1Mat_Chunk_" + std::to_string(index1) + ".bin";
+      std::string P2MatFile = t_outputFile + "_P2Mat_Chunk_" + std::to_string(index1) + ".bin";
+      const char* File1 = P1MatFile.c_str();
+      const char* File2 = P2MatFile.c_str();
+      int temp1 = std::remove(File1);
+      int temp2 = std::remove(File2);
     }
   }
   
@@ -608,24 +641,23 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
 
 // a unified function to get marker-level information for region-level analysis
 
+// Unified_getRegionPVec(t_method, GVec, Stat, Beta, seBeta, pval0, pval1, P1Vec, P2Vec);
 void Unified_getRegionPVec(std::string t_method, 
                            arma::vec t_GVec, 
-                           bool t_isOnlyOutputNonZero,
-                           std::vector<uint32_t> t_indexForNonZero,
+                           double& t_Stat,
                            double& t_Beta, 
                            double& t_seBeta, 
                            double& t_pval0, 
                            double& t_pval1,
-                           arma::vec& P1Vec, 
-                           arma::vec& P2Vec)
+                           arma::vec& t_P1Vec, 
+                           arma::vec& t_P2Vec)
 {
   // something to add
   if(t_method == "POLMM")
   {
-    // ptr_gPOLMMobj->getRegionPVec(t_GVec, t_Beta, t_seBeta, t_pval0, t_pval1, P1Vec, P2Vec);
+    ptr_gPOLMMobj->getRegionPVec(t_GVec, t_Stat, t_Beta, t_seBeta, t_pval0, t_pval1, t_P1Vec, t_P2Vec);
   }
 }
-
 
 //////// ---------- Main functions to set objects for different genotype format --------- ////////////
 
@@ -670,14 +702,11 @@ void setBGENobjInCPP(std::string t_bgenFileName,
 
 //////// ---------- Main functions to set objects for different analysis methods --------- ////////////
 
-
-
 // [[Rcpp::export]]
 void setPOLMMobjInCPP(arma::mat t_muMat,
                       arma::mat t_iRMat,
                       arma::mat t_Cova,
                       arma::uvec t_yVec,
-                      Rcpp::List t_SPmatR,    // output of makeSPmatR()
                       double t_tau,
                       bool t_printPCGInfo,
                       double t_tolPCG,
@@ -686,16 +715,12 @@ void setPOLMMobjInCPP(arma::mat t_muMat,
                       double t_SPA_cutoff,
                       bool t_flagSparseGRM)
 {
-  arma::umat locations = t_SPmatR["locations"];
-  arma::vec values = t_SPmatR["values"];
-  std::cout << "Setting Sparse GRM...." << std::endl;
-  arma::sp_mat SparseGRM = arma::sp_mat(locations, values);
-  
+  // check POLMM.cpp
   ptr_gPOLMMobj = new POLMM::POLMMClass(t_muMat,
                                         t_iRMat,
                                         t_Cova,
                                         t_yVec,
-                                        SparseGRM,
+                                        g_SparseGRM,
                                         t_tau,
                                         t_printPCGInfo,
                                         t_tolPCG,
@@ -724,7 +749,7 @@ Rcpp::List setPOLMMobjInCPP_NULL(bool t_flagSparseGRM,       // if 1, then use S
   // std::cout << "test, t_flagSparseGRM" << t_flagSparseGRM << std::endl;
   
   // The following function is in POLMM.cpp
-  ptr_gPOLMMobj = new POLMM::POLMMClass(t_flagSparseGRM,       // if 1, then use SparseGRM, otherwise, use DenseGRM
+  ptr_gPOLMMobj = new POLMM::POLMMClass(t_flagSparseGRM,       // if 1, then use Sparse GRM, otherwise, use Dense GRM
                                         ptr_gDenseGRMobj,
                                         ptr_gPLINKobj,
                                         t_Cova,

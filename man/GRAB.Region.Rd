@@ -8,9 +8,11 @@ GRAB.Region(
   objNull,
   GenoFile,
   GenoFileIndex = NULL,
-  OutputFile = NULL,
+  OutputFile,
+  OutputFileIndex = NULL,
   RegionFile,
   RegionAnnoHeader = NULL,
+  SparseGRMFile = NULL,
   control = NULL
 )
 }

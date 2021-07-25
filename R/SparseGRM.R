@@ -232,4 +232,36 @@ updateSparseGRM = function(SparseGRM, subjData){
   return(KinMatListR)
 }
 
-
+## set up Dense GRM and Sparse GRM
+# to be updated later
+handleGRM = function(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
+{
+  genoList = setGenoInput(GenoFile, GenoFileIndex, subjData)   # check Geno.R for more details
+  
+  if(!is.null(SparseGRMFile)){
+    print("Sparse GRM is used when fitting a null model.")
+    SparseGRM = data.table::fread(SparseGRMFile)
+    SparseGRM = as.data.frame(SparseGRM)
+    
+    KinMatListR = updateSparseGRM(SparseGRM, subjData)
+    
+    # the following function is in Main.cpp
+    setSparseGRMInCPP(KinMatListR)
+    optionGRM = "SparseGRM"
+  }else{
+    print("Dense GRM is used when fitting a null model.")
+    subjGeno = genoList$SampleIDs      # subjGeno should be the same as subjData
+    if(genoList$genoType != "PLINK")
+      stop("If DenseGRM is used when fitting a null model, then only Plink file is supported.")
+    
+    memoryChunk = 2 # (GB)
+    minMafGRM = 0.01
+    maxMissingGRM = 0.1
+    
+    # the following function is in Main.cpp
+    setDenseGRMInCPP(memoryChunk, minMafGRM, maxMissingGRM)
+    optionGRM = "DenseGRM"
+  }
+  
+  return(optionGRM)
+}

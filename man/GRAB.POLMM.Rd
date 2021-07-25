@@ -7,7 +7,7 @@
 GRAB.POLMM()
 }
 \description{
-POLMM method is to analysis ordinal categorical data for related samples in a large-scale biobank.
+POLMM method is to analyze ordinal categorical data for related samples in a large-scale biobank.
 }
 \details{
 Please check \code{?GRAB.control} for the generic list of \code{control} in \code{GRAB.NullModel()} and \code{GRAB.Marker()}.
@@ -40,6 +40,8 @@ obj.POLMM$tau    # 1.820102
 
 # Step 1(b): fit a null model using a sparse GRM
 # First use getSparseGRM() function and plink file to get a sparse GRM file
+PhenoData = read.table(system.file("extdata", "example.pheno", package = "GRAB"), header = T)
+GenoFile = system.file("extdata", "example.bed", package = "GRAB")
 SparseGRMFile =  system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
 obj.POLMM = GRAB.NullModel(factor(Ordinal) ~ Cova1 + Cova2,
                            data = PhenoData, subjData = PhenoData$IID, method = "POLMM", traitType = "ordinal",

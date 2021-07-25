@@ -262,12 +262,13 @@ public:
                      double t_altFreq);
   
   void getRegionPVec(arma::vec t_GVec, 
+                     double& t_Stat,
                      double& t_Beta, 
                      double& t_seBeta, 
                      double& t_pval0, 
                      double& t_pval1,
-                     arma::vec& P1Vec, 
-                     arma::vec& P2Vec);
+                     arma::vec& t_P1Vec, 
+                     arma::vec& t_P2Vec);
   
   double m_varRatio, m_SPA_Cutoff;
   
