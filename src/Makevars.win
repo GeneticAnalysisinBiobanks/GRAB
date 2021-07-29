@@ -9,7 +9,8 @@
 ## And with R 3.4.0, and RcppArmadillo 0.7.960.*, we turn C++11 on as OpenMP
 ## support within Armadillo prefers / requires it
 
-PKG_CPPFLAGS = -D SQLITE_ENABLE_COLUMN_METADATA -O3 -fpic -Wall -Wextra -pedantic -DARMA_64BIT_WORD=1 -I. -DNDEBUG
+## -Wextra  ## This argument will cause lots of warning information
+PKG_CPPFLAGS = -D SQLITE_ENABLE_COLUMN_METADATA -O3 -fpic -Wall -pedantic -DARMA_64BIT_WORD=1 -I. -DNDEBUG
 PKG_LIBS = -lz
 
 CXX_STD = CXX11

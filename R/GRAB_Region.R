@@ -96,23 +96,81 @@ GRAB.Region = function(objNull,
     obj.setRegion = setRegion(NullModelClass, objNull, control, chrom, SparseGRMFile)
     
     # main function to calculate summary statistics for region-based analysis 
-    obj.mainRegion = mainRegion(NullModelClass, genoType, genoIndex, regionMat, OutputFile, n)
+    obj.mainRegion = mainRegion(NullModelClass, genoType, genoIndex, OutputFile, n)
     
+    ###
+    MAF = pmin(obj.mainRegion$altFreqVec, 1-obj.mainRegion$altFreqVec)
+    weights = dbeta(MAF, control$weights.beta[1], control$weights.beta[2])
     
+    StatVec = obj.mainRegion$StatVec
     
-    output.Region = data.frame(Region = regionName,
-                               nMarker = length(obj.mainRegion$markerVec),
-                               Markers = paste0(obj.mainRegion$markerVec, collapse = ","),
-                               Info = paste0(obj.mainRegion$infoVec, collapse = ","),
-                               AltFreq = paste0(obj.mainRegion$altFreqVec, collapse = ","),
-                               MissingRate = paste0(obj.mainRegion$missingRateVec, collapse = ","),
-                               Stat = paste0(obj.mainRegion$StatVec, collapse = ","),
-                               Beta = paste0(obj.mainRegion$BetaVec, collapse = ","),
-                               seBeta = paste0(obj.mainRegion$seBetaVec, collapse = ","),
-                               pval0 = paste0(obj.mainRegion$pval0Vec, collapse = ","),
-                               pval1 = paste0(obj.mainRegion$pval1Vec, collapse = ","),
-                               pval0Burden = obj.mainRegion$pval0Burden,
-                               pval1Burden = obj.mainRegion$pval1Burden)
+    VarSVec = diag(obj.mainRegion$VarMat)
+    adjPVec = obj.mainRegion$pval1Vec;
+    adjVarSVec = StatVec^2 / qchisq(adjPVec, df = 1, lower.tail = F)
+    
+    r0 = adjVarSVec / VarSVec 
+    r0 = pmax(r0, 1)
+    
+    info.Region = data.frame(Region = regionName,
+                             nMarker = length(obj.mainRegion$markerVec),
+                             Markers = paste0(obj.mainRegion$markerVec, collapse = ","),
+                             Info = paste0(obj.mainRegion$infoVec, collapse = ","),
+                             AltFreq = paste0(obj.mainRegion$altFreqVec, collapse = ","),
+                             MissingRate = paste0(obj.mainRegion$missingRateVec, collapse = ","),
+                             Stat = paste0(obj.mainRegion$StatVec, collapse = ","),
+                             Beta = paste0(obj.mainRegion$BetaVec, collapse = ","),
+                             seBeta = paste0(obj.mainRegion$seBetaVec, collapse = ","),
+                             pval0 = paste0(obj.mainRegion$pval0Vec, collapse = ","),
+                             pval1 = paste0(obj.mainRegion$pval1Vec, collapse = ","))
+    
+    pval.Region = data.frame()
+    
+    posMarker = match(obj.mainRegion$markerVec, SNP)
+    
+    # print(obj.mainRegion$markerVec)
+    # print(SNP)
+    # print(posMarker)
+    
+    for(j in 1:ncol(regionMat)){
+      AnnoName = colnames(regionMat)[j]
+      AnnoWeights = weights * regionMat[posMarker,j]
+      
+      # print(AnnoWeights)
+      
+      wr0 = sqrt(r0) * AnnoWeights
+      wStatVec = StatVec * AnnoWeights
+      wadjVarSMat = t(obj.mainRegion$VarMat * wr0) * wr0
+      
+      out_SKAT_List = try(SKAT:::Met_SKAT_Get_Pvalue(Score = wStatVec, 
+                                                     Phi = wadjVarSMat,
+                                                     r.corr = control$r.corr, 
+                                                     method = "optimal.adj", 
+                                                     Score.Resampling = NULL),
+                          silent = TRUE)
+      
+      if(class(out_SKAT_List) == "try-error"){
+        Pvalue = c(NA, NA, NA)
+        error.code = 2
+      }else if(!any(c(0,1) %in% out_SKAT_List$param$rho)){
+        Pvalue = c(NA, NA, NA)
+        error.code = 3
+      }else{
+        pos0 = which(out_SKAT_List$param$rho == 0)
+        pos1 = which(out_SKAT_List$param$rho == 1)
+        Pvalue = c(out_SKAT_List$p.value,                  # SKAT-O
+                   out_SKAT_List$param$p.val.each[pos0],   # SKAT
+                   out_SKAT_List$param$p.val.each[pos1])   # Burden Test
+        error.code = 0
+      }
+      
+      pval.Region = rbind.data.frame(pval.Region,
+                                     data.frame(Anno.Type = AnnoName,
+                                                pval.SKATO = Pvalue[1], 
+                                                pval.SKAT = Pvalue[2],
+                                                pval.Burden = Pvalue[3]))
+    }
+    
+    output.Region = cbind.data.frame(info.Region, pval.Region)
     
     # write summary statistics to output file
     writeOutputFile(output.Region, i, OutputFile, OutputFileIndex, "Region", 1)
@@ -148,7 +206,6 @@ setRegion = function(NullModelClass, objNull, control, chrom, SparseGRMFile)
 mainRegion = function(NullModelClass, 
                       genoType, 
                       genoIndex, 
-                      regionMat,
                       OutputFile,
                       n)
 {

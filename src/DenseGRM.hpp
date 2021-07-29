@@ -24,9 +24,9 @@ private:
   
   // arrays to store genotype data to avoid large continuous memory usage
   std::vector< std::vector<unsigned char>* > m_genoVecofPointers;
-  int m_numArrays;                  
-  int m_numMarkersofEachArray;
-  int m_numMarkersofLastArray;
+  unsigned int m_numArrays;                  
+  unsigned int m_numMarkersofEachArray;
+  unsigned int m_numMarkersofLastArray;
   double m_numBytesReserve;         // unit: Gb
   
   // OneMarkerG4 --> bufferG4 --> bufferG1 --> OneMarkerG1

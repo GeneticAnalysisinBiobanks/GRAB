@@ -176,6 +176,7 @@ void POLMMClass::setPOLMMInner(arma::mat t_Cova,
   set_seed(m_seed);
 }
 
+// This function only uses variance ratio and does not use sparse GRM
 void POLMMClass::getMarkerPval(arma::vec t_GVec, 
                                double& t_Beta, 
                                double& t_seBeta, 
@@ -210,6 +211,8 @@ void POLMMClass::getMarkerPval(arma::vec t_GVec,
   t_seBeta = t_Beta / StdStat;
 }
 
+// This function should use sparse GRM since in region-based analysis
+// since most of the variants are low-frequency variants or rare variants. 
 void POLMMClass::getRegionPVec(arma::vec t_GVec, 
                                double& t_Stat,
                                double& t_Beta, 
@@ -219,8 +222,40 @@ void POLMMClass::getRegionPVec(arma::vec t_GVec,
                                arma::vec& t_P1Vec, 
                                arma::vec& t_P2Vec)
 {
-  double altFreq = 0.1;
-  getMarkerPval(t_GVec, t_Beta, t_seBeta, t_pval0, altFreq);
+  arma::vec adjGVec = getadjGFast(t_GVec);
+  double Stat = getStatFast(adjGVec);
+  arma::vec ZPZ_adjGVec = get_ZPZ_adjGVec(adjGVec);
+  double VarS = as_scalar(adjGVec.t() * ZPZ_adjGVec);
+  double StdStat = std::abs(Stat) / sqrt(VarS);
+  double pvalNorm = 2 * arma::normcdf(-1*StdStat);
+  double pval = pvalNorm;
+  
+  arma::vec K1roots = {3, -3};
+  if(StdStat > m_SPA_Cutoff){
+    
+    arma::vec VarWVec = getVarWVec(adjGVec);
+    double VarW = sum(VarWVec);
+    double VarS = VarW * m_varRatio;
+    
+    arma::uvec posG1 = arma::find(t_GVec != 0);
+    double VarW1 = sum(VarWVec(posG1));
+    double VarW0 = VarW - VarW1;
+    double Ratio0 = VarW0 / VarW;
+    
+    Rcpp::List resSPA = MAIN_SPA(Stat, adjGVec, K1roots, VarS, VarW, Ratio0, posG1);
+    pval = resSPA["pval"];
+  }
+  
+  t_pval0 = pvalNorm;
+  t_pval1 = pval;
+  t_Stat = Stat;
+  t_Beta = Stat / VarS;
+  t_seBeta = t_Beta / StdStat;
+  
+  t_P1Vec = adjGVec;
+  t_P2Vec = ZPZ_adjGVec;
+  
+  // getMarkerPval(t_GVec, t_Beta, t_seBeta, t_pval0, altFreq);
 }
 
 arma::vec POLMMClass::getadjGFast(arma::vec t_GVec)

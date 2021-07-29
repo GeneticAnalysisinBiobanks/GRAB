@@ -121,7 +121,7 @@ void DenseGRMClass::setOneMarkerArray(int t_indexMarker)
   int whichArray = t_indexMarker / m_numMarkersofEachArray;
   
   unsigned char bufferG4 = 0;
-  for(int ind = 0; ind < m_N; ind++){
+  for(unsigned int ind = 0; ind < m_N; ind++){
     int posInByte = ind % 4;
     int bufferG1 = m_OneMarkerG1[ind];
     setGenotype(&bufferG4, posInByte, bufferG1);
@@ -173,7 +173,7 @@ void DenseGRMClass::setDiagStdGeno()
   arma::vec oneMarkerStd(m_N);
   
   // cycle for m_M markers
-  for(int i = 0; i < m_M; i ++){
+  for(unsigned int i = 0; i < m_M; i ++){
     getOneMarkerStd(i, &oneMarkerStd);  // write Standard Genotype to OneMarkerG1
     m_DiagStdGeno = m_DiagStdGeno + (oneMarkerStd) % (oneMarkerStd);
   }
@@ -220,7 +220,7 @@ arma::Mat<int> makeChrIndex(Rcpp::String t_excludeChr,
 
 void DenseGRMClass::setchrIndexLOCO(Rcpp::StringVector t_chrVecNames)
 {
-  arma::Mat<int> chrIndex = {0, m_M};
+  arma::Mat<int> chrIndex = {0, (int)m_M};
   Rcpp::List chrIndexLOCO = List::create(Named("none") = chrIndex);
   
   int uniqChrNum = t_chrVecNames.length();

@@ -456,8 +456,10 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       std::string P2MatFile = t_outputFile + "_P2Mat_Chunk_" + std::to_string(index1) + ".bin";
       const char* File1 = P1MatFile.c_str();
       const char* File2 = P2MatFile.c_str();
-      int temp1 = std::remove(File1);
-      int temp2 = std::remove(File2);
+      // int temp1 = std::remove(File1);
+      // int temp2 = std::remove(File2);
+      std::remove(File1);
+      std::remove(File2);
     }
   }
   
