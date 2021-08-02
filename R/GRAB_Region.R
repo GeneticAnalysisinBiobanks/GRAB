@@ -105,7 +105,7 @@ GRAB.Region = function(objNull,
     StatVec = obj.mainRegion$StatVec
     
     VarSVec = diag(obj.mainRegion$VarMat)
-    adjPVec = obj.mainRegion$pval1Vec;
+    adjPVec = obj.mainRegion$adjPVec;
     adjVarSVec = StatVec^2 / qchisq(adjPVec, df = 1, lower.tail = F)
     
     r0 = adjVarSVec / VarSVec 
@@ -117,7 +117,7 @@ GRAB.Region = function(objNull,
                              Info = paste0(obj.mainRegion$infoVec, collapse = ","),
                              AltFreq = paste0(obj.mainRegion$altFreqVec, collapse = ","),
                              MissingRate = paste0(obj.mainRegion$missingRateVec, collapse = ","),
-                             Stat = paste0(obj.mainRegion$StatVec, collapse = ","),
+                             # Stat = paste0(obj.mainRegion$StatVec, collapse = ","),
                              Beta = paste0(obj.mainRegion$BetaVec, collapse = ","),
                              seBeta = paste0(obj.mainRegion$seBetaVec, collapse = ","),
                              pval0 = paste0(obj.mainRegion$pval0Vec, collapse = ","),
@@ -140,6 +140,11 @@ GRAB.Region = function(objNull,
       wr0 = sqrt(r0) * AnnoWeights
       wStatVec = StatVec * AnnoWeights
       wadjVarSMat = t(obj.mainRegion$VarMat * wr0) * wr0
+      
+      print(r0)
+      print(StatVec)
+      print(wStatVec)
+      print(wadjVarSMat)
       
       out_SKAT_List = try(SKAT:::Met_SKAT_Get_Pvalue(Score = wStatVec, 
                                                      Phi = wadjVarSMat,
@@ -172,7 +177,7 @@ GRAB.Region = function(objNull,
     
     output.Region = cbind.data.frame(info.Region, pval.Region)
     
-    # write summary statistics to output file
+    # Util.R: write summary statistics to output file.
     writeOutputFile(output.Region, i, OutputFile, OutputFileIndex, "Region", 1)
   }
   
@@ -187,6 +192,7 @@ setRegion = function(NullModelClass, objNull, control, chrom, SparseGRMFile)
   setRegion_GlobalVarsInCPP(control$impute_method,
                             control$missing_cutoff,
                             control$max_maf_region,
+                            control$min_mac_region,
                             control$max_mem_region,
                             control$omp_num_threads)
   

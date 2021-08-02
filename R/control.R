@@ -178,6 +178,7 @@ checkControl.Region = function(control, NullModelClass)
   default.region.control = list(impute_method = "minor",  
                                 missing_cutoff = 0.15,
                                 max_maf_region = 0.01,
+                                min_mac_region = 10,
                                 max_mem_region = 4,
                                 r.corr = c(0, 0.1^2, 0.2^2, 0.3^2, 0.4^2, 0.5^2, 0.5, 1),
                                 weights.beta = c(1, 25),
@@ -193,7 +194,10 @@ checkControl.Region = function(control, NullModelClass)
     stop("control$missing_cutoff should be a numeric value ranging from 0 to 0.5.")
   
   if(!is.numeric(control$max_maf_region) | control$max_maf_region < 0 | control$max_maf_region > 0.3)
-    stop("control$min_maf_marker should be a numeric value ranging from 0 to 0.3.")
+    stop("control$max_maf_region should be a numeric value ranging from 0 to 0.3.")
+  
+  if(!is.numeric(control$min_mac_region) | control$min_mac_region < 0)
+    stop("control$min_mac_region should be a numeric value >= 0.")
   
   if(!is.numeric(control$max_mem_region) | control$max_mem_region <= 0)
     stop("control$min_mac_marker should be a numeric value > 0.")

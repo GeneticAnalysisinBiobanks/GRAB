@@ -17,8 +17,8 @@ setMarker_GlobalVarsInCPP <- function(t_impute_method, t_missing_cutoff, t_min_m
     invisible(.Call(`_GRAB_setMarker_GlobalVarsInCPP`, t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_omp_num_threads))
 }
 
-setRegion_GlobalVarsInCPP <- function(t_impute_method, t_missing_cutoff, t_max_maf_region, t_max_markers_region, t_omp_num_threads) {
-    invisible(.Call(`_GRAB_setRegion_GlobalVarsInCPP`, t_impute_method, t_missing_cutoff, t_max_maf_region, t_max_markers_region, t_omp_num_threads))
+setRegion_GlobalVarsInCPP <- function(t_impute_method, t_missing_cutoff, t_max_maf_region, t_min_mac_region, t_max_markers_region, t_omp_num_threads) {
+    invisible(.Call(`_GRAB_setRegion_GlobalVarsInCPP`, t_impute_method, t_missing_cutoff, t_max_maf_region, t_min_mac_region, t_max_markers_region, t_omp_num_threads))
 }
 
 mainMarkerInCPP <- function(t_method, t_genoType, t_genoIndex) {
