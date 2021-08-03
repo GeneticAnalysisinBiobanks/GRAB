@@ -392,15 +392,15 @@ getRegionList = function(RegionFile,
   
   RegionData = data.table::fread(RegionFile, header = T, stringsAsFactors = F);
   RegionData = as.data.frame(RegionData)
-  colnames(RegionData) = toupper(colnames(RegionData))
+  colnames(RegionData)[1:2] = toupper(colnames(RegionData)[1:2])
   HeaderInRegionData = colnames(RegionData)
   
   if(any(HeaderInRegionData[1:2] != c("REGION", "MARKER")))
-    stop("The first two elements in the header of 'RegionFile' should be c('REGION', 'SNP').")
+    stop("The first two elements in the header of 'RegionFile' should be c('REGION', 'MARKER').")
   
   if(!is.null(RegionAnnoHeader)){
     if(any(!RegionAnnoHeader %in% HeaderInRegionData))
-      stop("At least one element in 'RegionAnnoHeader' is not in the header of RegionFile")
+      stop("At least one element in 'RegionAnnoHeader' is not in the header of RegionFile.")
     posAnno = which(HeaderInRegionData %in% RegionAnnoHeader)
   }else{
     print("Since no 'RegionAnnoHeader' is given, region-based testing will not incorporate any annotation information.")

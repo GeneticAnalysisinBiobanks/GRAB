@@ -286,9 +286,9 @@ arma::mat PlinkClass::getGMat(int t_nMarker,
     
     arma::vec oneMarker = getOneMarker(indexSNPs.at(i), freq, missingRate, indexForMissing);
     
-    std::cout<< "i:\t" << i << std::endl;
-    std::cout << "freq is " << freq << " and missingRate is "<< missingRate << "." << std::endl << std::endl;
-    std::cout << "t_minMafVarRatio is " << t_minMafVarRatio << " and t_maxMissingVarRatio is "<< t_maxMissingVarRatio << "." << std::endl << std::endl;
+    // std::cout<< "i:\t" << i << std::endl;
+    // std::cout << "freq is " << freq << " and missingRate is "<< missingRate << "." << std::endl << std::endl;
+    // std::cout << "t_minMafVarRatio is " << t_minMafVarRatio << " and t_maxMissingVarRatio is "<< t_maxMissingVarRatio << "." << std::endl << std::endl;
     
     if(freq >= t_minMafVarRatio && freq <= 1 - t_minMafVarRatio && missingRate <= t_maxMissingVarRatio){
       
