@@ -357,7 +357,7 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
         passRVVec.at(i1) = 2;
         passRVVecInChunk.at(i) = 2;
       }else{
-        std::cout << "i1:\t" << i1 << std::endl; 
+        // std::cout << "i1:\t" << i1 << std::endl; 
         passRVVec.at(i1) = 1;
         passRVVecInChunk.at(i) = 1;
       }
@@ -459,8 +459,8 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       tempIndex++;
     }
     
-    std::cout << "StatVec:\t" << StatVec.size() << std::endl;
-    std::cout << "passRVVec.at(i):\t" << passRVVec.at(i) << std::endl; 
+    // std::cout << "StatVec:\t" << StatVec.size() << std::endl;
+    // std::cout << "passRVVec.at(i):\t" << passRVVec.at(i) << std::endl; 
     // std::cout << "passRVVec:\t" << passRVVec.size() << std::endl;
     
     if(passRVVec.at(i) != 1){
@@ -470,7 +470,7 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       tempIndex1++;
     }
     
-    std::cout << "StatVec:\t" << StatVec.size() << std::endl;
+    // std::cout << "StatVec:\t" << StatVec.size() << std::endl;
     
   }
   

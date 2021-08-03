@@ -62,15 +62,28 @@ GRAB.Marker(obj.POLMM, GenoFile = GenoFile,
 SparseGRMFile = system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
 
 # Step 2(b): perform region-level score test
-GenoFile = system.file("extdata", "example.bed", package = "GRAB")
+objNull = obj.POLMM
+GenoFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.bed", package = "GRAB")
+GenoFileIndex = NULL
+
 RegionFile = system.file("extdata", "example.RegionFile.txt", package = "GRAB")
+RegionAnnoHeader = c("ANNO1")
+
 OutputDir = system.file("results", package = "GRAB")
 OutputFile = paste0(OutputDir, "/POLMM_Regions.txt")
+OutputFileIndex = NULL
 
 SparseGRMFile = system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
+control = list(max_maf_region = 0.3)
 
-# To be continued
-# OUTPUT = GRAB.Region(objNull, AnnoFile, GenoFile, GenoFileIndex = NULL, OutputFile, 
-                      SparseGRM, chrom, POLMM.control = list(max_maf_region = 0.5))
+GRAB.Region(objNull,
+GenoFile,
+GenoFileIndex,
+OutputFile,
+OutputFileIndex,
+RegionFile,              # column 1: marker Set ID, column 2: SNP ID, columns 3-n: Annotations similar as in STAAR
+RegionAnnoHeader,
+SparseGRMFile,
+control)
            
 }

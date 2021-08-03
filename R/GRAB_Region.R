@@ -141,10 +141,10 @@ GRAB.Region = function(objNull,
       wStatVec = StatVec * AnnoWeights
       wadjVarSMat = t(obj.mainRegion$VarMat * wr0) * wr0
       
-      print(r0)
-      print(StatVec)
-      print(wStatVec)
-      print(wadjVarSMat)
+      # print(r0)
+      # print(StatVec)
+      # print(wStatVec)
+      # print(wadjVarSMat)
       
       out_SKAT_List = try(SKAT:::Met_SKAT_Get_Pvalue(Score = wStatVec, 
                                                      Phi = wadjVarSMat,
