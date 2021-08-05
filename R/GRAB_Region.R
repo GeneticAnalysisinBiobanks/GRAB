@@ -387,7 +387,7 @@ getRegionList = function(RegionFile,
                          RegionAnnoHeader,
                          markerInfo)
 {
-  print(paste0("Start extracting marker-level information from 'RegionFile' of ", RegionFile, "."))
+  # print(paste0("Start extracting marker-level information from 'RegionFile' of ", RegionFile, "."))
   
   if(!file.exists(RegionFile))
     stop(paste("Cannot find 'RegionFile' in", RegionFile))
