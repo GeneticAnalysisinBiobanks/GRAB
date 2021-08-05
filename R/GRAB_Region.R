@@ -387,17 +387,29 @@ getRegionList = function(RegionFile,
                          RegionAnnoHeader,
                          markerInfo)
 {
+  print(paste0("Start extracting marker-level information from 'RegionFile' of ", RegionFile, "."))
+  
   if(!file.exists(RegionFile))
     stop(paste("Cannot find 'RegionFile' in", RegionFile))
   
   RegionData = data.table::fread(RegionFile, header = T, stringsAsFactors = F);
   RegionData = as.data.frame(RegionData)
   colnames(RegionData)[1:2] = toupper(colnames(RegionData)[1:2])
-  HeaderInRegionData = colnames(RegionData)
   
-  if(any(HeaderInRegionData[1:2] != c("REGION", "MARKER")))
+  if(any(colnames(RegionData)[1:2] != c("REGION", "MARKER")))
     stop("The first two elements in the header of 'RegionFile' should be c('REGION', 'MARKER').")
   
+  # updated on 2021-08-05
+  colnames(markerInfo)[3] = "MARKER"
+  RegionData = merge(RegionData, markerInfo, by = "MARKER", all.x = T, sort = F)
+  posNA = which(is.na(RegionData$genoIndex))
+  
+  if(length(posNA) != 0){
+    print(head(RegionData[posNA,1:2]))
+    stop(paste0("Total ",length(posNA)," markers in 'RegionFile' are not in 'GenoFile'."))
+  }
+  
+  HeaderInRegionData = colnames(RegionData)
   if(!is.null(RegionAnnoHeader)){
     if(any(!RegionAnnoHeader %in% HeaderInRegionData))
       stop("At least one element in 'RegionAnnoHeader' is not in the header of RegionFile.")
@@ -410,21 +422,26 @@ getRegionList = function(RegionFile,
   RegionList = list()
   uRegion = unique(RegionData$REGION)
   for(r in uRegion){
+    
+    print(paste0("Analyzing region ",r,"...."))
+    
     posSNP = which(RegionData$REGION == r)
     SNP = RegionData$MARKER[posSNP]
     
     if(any(duplicated(SNP)))
-      stop(paste0("Please check RegionFile: in region ", r,", duplicated SNPs exist."))
+      stop(paste0("Please check RegionFile: in region ", r,": duplicated SNPs exist."))
     
-    posMarker = match(SNP, markerInfo$ID, 0)
-    if(any(posMarker == 0))
-      stop(paste0("At least one marker in region ", r," are not in 'GenoFile' and 'GenoFileIndex'."))
+    # posMarker = match(SNP, markerInfo$ID, 0)
+    # if(any(posMarker == 0))
+    #   stop(paste0("At least one marker in region ", r," are not in 'GenoFile' and 'GenoFileIndex'."))
     
     regionMat = cbind(BASE=1, RegionData[posSNP, posAnno, drop=F])
     rownames(regionMat) = SNP
     
-    genoIndex = markerInfo$genoIndex[posMarker]
-    chrom = markerInfo$CHROM[posMarker]
+    # genoIndex = markerInfo$genoIndex[posMarker]
+    # chrom = markerInfo$CHROM[posMarker]
+    genoIndex = RegionData$genoIndex[posSNP]
+    chrom = RegionData$CHROM[posSNP]
     uchrom = unique(chrom)
     
     if(length(uchrom) != 1)
