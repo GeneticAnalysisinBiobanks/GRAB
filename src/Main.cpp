@@ -477,6 +477,8 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   std::cout << "mPassQCTot:\t" << mPassQCTot << std::endl;
   std::cout << "mPassCVTot:\t" << mPassCVTot << std::endl;
   std::cout << "mPassRVTot:\t" << mPassRVTot << std::endl;
+  std::cout << "mPassCVVec:\t" << mPassCVVec << std::endl;
+  std::cout << "mPassCVVec.back():\t" << mPassCVVec.back() << std::endl;
   
   std::cout << "P1Mat.n_rows:\t" << P1Mat.n_rows << std::endl;
   std::cout << "P1Mat.n_cols:\t" << P1Mat.n_cols << std::endl;
@@ -488,8 +490,9 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     Unified_getRegionPVec(t_method, GVecRV, Stat, Beta, seBeta, pval0, pval1, P1Vec, P2Vec);
     StatVec.push_back(Stat);
     adjPVec.push_back(pval1);
-    P1Mat.insert_rows(mPassCVTot, P1Vec.t());
-    P2Mat.insert_cols(mPassCVTot, P2Vec);
+    
+    P1Mat.insert_rows(mPassCVVec.back(), P1Vec.t());
+    P2Mat.insert_cols(mPassCVVec.back(), P2Vec);
     if(nchunks > 1){ 
       P1Mat.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(nchunks-1) + ".bin");
       P2Mat.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(nchunks-1) + ".bin");
