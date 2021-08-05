@@ -509,7 +509,11 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     if(nchunks > 1){ 
       P1Mat.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(nchunks-1) + ".bin");
       P2Mat.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(nchunks-1) + ".bin");
-      mPassCVVec.at(nchunks) += 1;
+      
+      std::cout << "mPassCVVec.size():\t" << mPassCVVec.size() << std::endl;
+      std::cout << "nchunks:\t" << nchunks << std::endl;
+      
+      mPassCVVec.at(nchunks-1) += 1;
       // GVecRV.save(t_outputFile + "_GVecRV_Chunk_" + std::to_string(ichunk) + ".bin");
     }
   }
