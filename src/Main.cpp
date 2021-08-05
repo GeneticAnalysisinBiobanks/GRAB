@@ -419,8 +419,15 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     // P1Mat = P1Mat.rows(indexQCVecInChunk);
     // P2Mat = P2Mat.cols(indexQCVecInChunk);
     // StatVec = StatVec.rows(indexCVVecInChunk);
+    
+    std::cout << "before submitting, P1Mat.n_rows:\t" << P1Mat.n_rows << std::endl;
+    std::cout << "before submitting, P1Mat.n_cols:\t" << P1Mat.n_cols << std::endl;
+    
     P1Mat = P1Mat.rows(indexCVVecInChunk);
     P2Mat = P2Mat.cols(indexCVVecInChunk);
+    
+    std::cout << "after submitting, P1Mat.n_rows:\t" << P1Mat.n_rows << std::endl;
+    std::cout << "after submitting, P1Mat.n_cols:\t" << P1Mat.n_cols << std::endl;
     
     arma::mat GMatRV = GMat.cols(indexRVVecInChunk);
     arma::vec GVecRVInChunk = arma::sum(GMatRV, 1);
