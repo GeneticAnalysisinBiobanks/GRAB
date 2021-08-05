@@ -482,6 +482,8 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   
   std::cout << "P1Mat.n_rows:\t" << P1Mat.n_rows << std::endl;
   std::cout << "P1Mat.n_cols:\t" << P1Mat.n_cols << std::endl;
+  std::cout << "P2Mat.n_rows:\t" << P2Mat.n_rows << std::endl;
+  std::cout << "P2Mat.n_cols:\t" << P2Mat.n_cols << std::endl;
   
   arma::mat VarMat(mPassCVTot+1, mPassCVTot+1);    // variance-covariance matrix (after QC)
   if(mPassRVTot == 0){
@@ -491,8 +493,19 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     StatVec.push_back(Stat);
     adjPVec.push_back(pval1);
     
+    std::cout << "P1Mat.n_rows:\t" << P1Mat.n_rows << std::endl;
+    std::cout << "P1Mat.n_cols:\t" << P1Mat.n_cols << std::endl;
+    std::cout << "P2Mat.n_rows:\t" << P2Mat.n_rows << std::endl;
+    std::cout << "P2Mat.n_cols:\t" << P2Mat.n_cols << std::endl;
+    
     P1Mat.insert_rows(mPassCVVec.back(), P1Vec.t());
     P2Mat.insert_cols(mPassCVVec.back(), P2Vec);
+    
+    std::cout << "P1Mat.n_rows:\t" << P1Mat.n_rows << std::endl;
+    std::cout << "P1Mat.n_cols:\t" << P1Mat.n_cols << std::endl;
+    std::cout << "P2Mat.n_rows:\t" << P2Mat.n_rows << std::endl;
+    std::cout << "P2Mat.n_cols:\t" << P2Mat.n_cols << std::endl;
+    
     if(nchunks > 1){ 
       P1Mat.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(nchunks-1) + ".bin");
       P2Mat.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(nchunks-1) + ".bin");
