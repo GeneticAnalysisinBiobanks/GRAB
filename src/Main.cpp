@@ -474,6 +474,13 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     
   }
   
+  std::cout << "mPassQCTot:\t" << mPassQCTot << std::endl;
+  std::cout << "mPassCVTot:\t" << mPassCVTot << std::endl;
+  std::cout << "mPassRVTot:\t" << mPassRVTot << std::endl;
+  
+  std::cout << "P1Mat.n_rows:\t" << P1Mat.n_rows << std::endl;
+  std::cout << "P1Mat.n_cols:\t" << P1Mat.n_cols << std::endl;
+  
   arma::mat VarMat(mPassCVTot+1, mPassCVTot+1);    // variance-covariance matrix (after QC)
   if(mPassRVTot == 0){
     VarMat.resize(mPassCVTot, mPassCVTot);

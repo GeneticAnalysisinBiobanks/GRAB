@@ -423,7 +423,7 @@ getRegionList = function(RegionFile,
   uRegion = unique(RegionData$REGION)
   for(r in uRegion){
     
-    print(paste0("Analyzing region ",r,"...."))
+    # print(paste0("Analyzing region ",r,"...."))
     
     posSNP = which(RegionData$REGION == r)
     SNP = RegionData$MARKER[posSNP]
