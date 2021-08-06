@@ -367,7 +367,10 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       }
       
       // The below function should be the most important one in region-based analysis
+      std::cout << "MAC:\t" << MAC << std::endl;
       Unified_getRegionPVec(t_method, GVec, Stat, Beta, seBeta, pval0, pval1, P1Vec, P2Vec);
+      std::cout << "pval0:\t" << pval0 << std::endl;
+      std::cout << "pval1:\t" << pval1 << std::endl;
       
       // insert results to pre-setup vectors and matrix
       StatVec.at(i1) = Stat;        
