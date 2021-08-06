@@ -725,6 +725,9 @@ Rcpp::List fastSaddle_Prob(double t_Stat,
                            arma::mat t_muMat1,   // N1 x J
                            arma::mat t_iRMat1)   // N1 x (J-1)
 {
+  
+  std::cout<< "Start fastSaddle_Prob()....." << std::endl;
+  
   int J = t_muMat1.n_cols;
   int N1 = t_muMat1.n_rows;
   
