@@ -345,8 +345,12 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       double MAF = std::min(altFreq, 1 - altFreq);
       double MAC = MAF * 2 * t_n * (1 - missingRate);   // need to check if this is accurate later
       
+      std::cout << "MAC:\t" << MAC << std::endl;
+      std::cout << "altCounts:\t" << altCounts << std::endl;
+      std::cout << "g_region_minMAC_cutoff:\t" << g_region_minMAC_cutoff << std::endl;
+      
       // Quality Control (QC) based on missing rate, MAF, and MAC
-      if((missingRate > g_missingRate_cutoff) || (MAF > g_region_maxMAF_cutoff)){
+      if((missingRate > g_missingRate_cutoff) || (MAF > g_region_maxMAF_cutoff) || MAF == 0){
         continue;
       }
       
