@@ -557,6 +557,9 @@ Rcpp::List POLMMClass::MAIN_SPA(double t_Stat,
                                 double t_Ratio0,
                                 arma::uvec t_posG1)
 {
+  std::cout << "t_VarP:\t" << t_VarP << std::endl;
+  std::cout << "t_VarW:\t" << t_VarW << std::endl;
+  
   Rcpp::List resSPA = fastSaddle_Prob(t_Stat, t_VarP, t_VarW, t_Ratio0, t_K1roots,
                                       t_adjGVec.elem(t_posG1), m_muMat.rows(t_posG1), m_iRMat.rows(t_posG1));
   return resSPA;
