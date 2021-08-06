@@ -754,6 +754,11 @@ Rcpp::List fastSaddle_Prob(double t_Stat,
   bool outUnit1Converge = outUni1["converge"];
   bool outUnit2Converge = outUni2["converge"];
   
+  std::cout << "adjStat:\t" << adjStat << std::endl;
+  std::cout << "t_Ratio0:\t" << t_Ratio0 << std::endl;
+  std::cout << "outUni1.root:\t" << outUni1["root"] << std::endl;
+  std::cout << "outUni2.root:\t" << outUni2["root"] << std::endl;
+    
   if(outUnit1Converge == true && outUnit2Converge == true){
     
     double p1 = fastGet_Saddle_Prob(std::abs(adjStat), outUni1["root"], 
