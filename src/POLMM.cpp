@@ -655,13 +655,13 @@ Rcpp::List fastgetroot_K1(double t_Stat,
     
     diffX = -1 * K1 / K2;
     
-    std::cout << "iter:\t" << iter << std::endl;
-    std::cout << "x:\t" << x << std::endl;
-    std::cout << "K12Vec(1):\t" << K12Vec(1) << std::endl;
-    std::cout << "t_Ratio0:\t" << t_Ratio0 << std::endl;
-    std::cout << "K1:\t" << K1 << std::endl;
-    std::cout << "K2:\t" << K2 << std::endl;
-    std::cout << "diffX:\t" << diffX << std::endl;
+    // std::cout << "iter:\t" << iter << std::endl;
+    // std::cout << "x:\t" << x << std::endl;
+    // std::cout << "K12Vec(1):\t" << K12Vec(1) << std::endl;
+    // std::cout << "t_Ratio0:\t" << t_Ratio0 << std::endl;
+    // std::cout << "K1:\t" << K1 << std::endl;
+    // std::cout << "K2:\t" << K2 << std::endl;
+    // std::cout << "diffX:\t" << diffX << std::endl;
     
     if(!std::isfinite(K1)){
       // checked it on 07/05:
@@ -759,8 +759,8 @@ Rcpp::List fastSaddle_Prob(double t_Stat,
   bool outUnit1Converge = outUni1["converge"];
   bool outUnit2Converge = outUni2["converge"];
   
-  std::cout << "adjStat:\t" << adjStat << std::endl;
-  std::cout << "t_Ratio0:\t" << t_Ratio0 << std::endl;
+  // std::cout << "adjStat:\t" << adjStat << std::endl;
+  // std::cout << "t_Ratio0:\t" << t_Ratio0 << std::endl;
   double root1 = outUni1["root"];
   double root2 = outUni2["root"];
   std::cout << "outUni1.root:\t" << root1 << std::endl;

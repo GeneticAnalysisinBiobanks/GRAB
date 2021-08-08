@@ -127,13 +127,19 @@ GRAB.Region = function(objNull,
     
     posMarker = match(obj.mainRegion$markerVec, SNP)
     
+    print("length(posMarker)/length(weights)/length(r0):")
+    print(c(length(posMarker), length(weights), length(r0)))
+    
+    print("dim(obj.mainRegion$VarMat):")
+    print(dim(obj.mainRegion$VarMat))
+    
     # print(obj.mainRegion$markerVec)
     # print(SNP)
     # print(posMarker)
     
     for(j in 1:ncol(regionMat)){
       AnnoName = colnames(regionMat)[j]
-      AnnoWeights = weights * regionMat[posMarker,j]
+      AnnoWeights = weights * regionMat[posMarker, j]
       
       # print(AnnoWeights)
       
