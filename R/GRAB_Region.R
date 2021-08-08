@@ -147,6 +147,15 @@ GRAB.Region = function(objNull,
       wStatVec = StatVec * AnnoWeights
       wadjVarSMat = t(obj.mainRegion$VarMat * wr0) * wr0
       
+      print("length(wr0):")
+      print(length(wr0))
+      
+      print("length(wStatVec):")
+      print(length(wStatVec))
+      
+      print("dim(wadjVarSMat):")
+      print(dim(wadjVarSMat))
+      
       # print(r0)
       # print(StatVec)
       # print(wStatVec)
