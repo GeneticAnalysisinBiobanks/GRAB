@@ -129,8 +129,8 @@ GRAB.Region = function(objNull,
     posMarker = match(obj.mainRegion$markerVec, SNP)
     posMarkerURV = match(obj.mainRegion$markerURVVec, SNP)
     
-    print("length(posMarker)/length(weights)/length(r0):")
-    print(c(length(posMarker), length(weights), length(r0)))
+    print("length(posMarker)/length(posMarkerURV)/length(weights)/length(r0):")
+    print(c(length(posMarker), length(posMarkerURV), length(weights), length(r0)))
     
     print("dim(obj.mainRegion$VarMat):")
     print(dim(obj.mainRegion$VarMat))
@@ -153,10 +153,11 @@ GRAB.Region = function(objNull,
       
       # print(AnnoWeights)
       
-      print("length(wr0):")
-      print(length(wr0))
-      
       wr0 = sqrt(r0) * AnnoWeights
+      
+      print("length(wr0)/length(AnnoWeights):")
+      print(c(length(wr0), length(AnnoWeights)))
+      
       wStatVec = StatVec * AnnoWeights
       wadjVarSMat = t(obj.mainRegion$VarMat * wr0) * wr0
       
