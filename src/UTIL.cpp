@@ -63,6 +63,42 @@ bool imputeGenoAndFlip(arma::vec& t_GVec,
   return flip;
 }
 
+// used in Main.cpp::mainMarkerInCPP
+bool imputeGenoAndFlip(arma::vec& t_GVec, 
+                       double t_altFreq, 
+                       std::vector<uint32_t> t_indexForMissing,
+                       double missingRate,
+                       std::string t_impute_method)   // 0: "mean"; 1: "minor"; 2: "drop" (to be continued)
+{
+  int nMissing = t_indexForMissing.size();
+  
+  double imputeG = 0;
+  if(t_impute_method == "mean"){
+    imputeG = 2 * t_altFreq;
+  }
+  
+  if(t_impute_method == "minor"){
+    if(t_altFreq > 0.5){
+      imputeG = 2;
+    }else{
+      imputeG = 0;
+    }
+  }
+  
+  for(int i = 0; i < nMissing; i++){
+    uint32_t index = t_indexForMissing.at(i);
+    t_GVec.at(index) = imputeG;
+  }
+  
+  bool flip = false;
+  if(t_altFreq > 0.5){
+    t_GVec = 2 - t_GVec;
+    flip = true;
+  }
+  
+  return flip;
+}
+
 double getInnerProd(arma::mat& x1Mat, arma::mat& x2Mat)
 {
   double innerProd = arma::accu(x1Mat % x2Mat);

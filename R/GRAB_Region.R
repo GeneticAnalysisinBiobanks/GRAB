@@ -99,7 +99,8 @@ GRAB.Region = function(objNull,
     obj.mainRegion = mainRegion(NullModelClass, genoType, genoIndex, OutputFile, n)
     
     ###
-    MAF = pmin(obj.mainRegion$altFreqVec, 1-obj.mainRegion$altFreqVec)
+    # MAF = pmin(obj.mainRegion$altFreqVec, 1-obj.mainRegion$altFreqVec)
+    MAF = pmin(obj.mainRegion$MAFVec)
     weights = dbeta(MAF, control$weights.beta[1], control$weights.beta[2])
     
     StatVec = obj.mainRegion$StatVec
@@ -126,6 +127,7 @@ GRAB.Region = function(objNull,
     pval.Region = data.frame()
     
     posMarker = match(obj.mainRegion$markerVec, SNP)
+    posMarkerURV = match(obj.mainRegion$markerURVVec, SNP)
     
     print("length(posMarker)/length(weights)/length(r0):")
     print(c(length(posMarker), length(weights), length(r0)))
@@ -139,16 +141,24 @@ GRAB.Region = function(objNull,
     
     for(j in 1:ncol(regionMat)){
       AnnoName = colnames(regionMat)[j]
-      AnnoWeights = weights * regionMat[posMarker, j]
+      
+      regionDataTemp1 = regionMat[posMarker, j]
+      regionDataTemp2 = regionMat[posMarkerURV, j]
+      regionData = c(regionDataTemp1, mean(regionDataTemp2))
+      
+      print("length(regionDataTemp1)/length(regionDataTemp2)/length(regionData):")
+      print(c(length(regionDataTemp1), length(regionDataTemp2), length(regionData)))
+
+      AnnoWeights = weights * regionData 
       
       # print(AnnoWeights)
+      
+      print("length(wr0):")
+      print(length(wr0))
       
       wr0 = sqrt(r0) * AnnoWeights
       wStatVec = StatVec * AnnoWeights
       wadjVarSMat = t(obj.mainRegion$VarMat * wr0) * wr0
-      
-      print("length(wr0):")
-      print(length(wr0))
       
       print("length(wStatVec):")
       print(length(wStatVec))

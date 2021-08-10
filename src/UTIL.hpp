@@ -37,6 +37,12 @@ bool imputeGenoAndFlip(arma::vec& t_GVec,
                        std::vector<uint32_t> t_indexForMissing,
                        std::string t_impute_method);
 
+bool imputeGenoAndFlip(arma::vec& t_GVec, 
+                       double t_altFreq, 
+                       std::vector<uint32_t> t_indexForMissing,
+                       double missingRate,
+                       std::string t_impute_method);
+
 arma::vec getTime();
 
 void printTime(arma::vec t1, arma::vec t2, std::string message);
