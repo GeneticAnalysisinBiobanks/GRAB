@@ -513,15 +513,17 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       // std::cout << "mPassCVVec:\t" << mPassCVVec << std::endl;
       std::cout << "mPassCVVec.back():\t" << mPassCVVec.back() << std::endl;
       if(mPassRVTot != 0){
-        mPassCVTot += 1;
-        mPassCVVec.at(nchunks-1) += 1;
         Unified_getRegionPVec(t_method, GVecURV, Stat, Beta, seBeta, pval0, pval1, P1Vec, P2Vec);
         StatVec.push_back(Stat);
         adjPVec.push_back(pval1);
         double minMAF_cutoff = g_region_minMAC_cutoff / (2 * t_n);
         MAFVec.push_back(minMAF_cutoff);
+        
         P1Mat.insert_rows(mPassCVVec.back(), P1Vec.t());
         P2Mat.insert_cols(mPassCVVec.back(), P2Vec);
+        
+        mPassCVTot += 1;
+        mPassCVVec.at(nchunks-1) += 1;
       }
     }
     
