@@ -129,11 +129,11 @@ GRAB.Region = function(objNull,
     posMarker = match(obj.mainRegion$markerVec, SNP)
     posMarkerURV = match(obj.mainRegion$markerURVVec, SNP)
     
-    print("length(posMarker)/length(posMarkerURV)/length(weights)/length(r0):")
-    print(c(length(posMarker), length(posMarkerURV), length(weights), length(r0)))
-    
-    print("dim(obj.mainRegion$VarMat):")
-    print(dim(obj.mainRegion$VarMat))
+    # print("length(posMarker)/length(posMarkerURV)/length(weights)/length(r0):")
+    # print(c(length(posMarker), length(posMarkerURV), length(weights), length(r0)))
+    # 
+    # print("dim(obj.mainRegion$VarMat):")
+    # print(dim(obj.mainRegion$VarMat))
     
     # print(obj.mainRegion$markerVec)
     # print(SNP)
@@ -146,8 +146,8 @@ GRAB.Region = function(objNull,
       regionDataTemp2 = regionMat[posMarkerURV, j]
       regionData = c(regionDataTemp1, mean(regionDataTemp2))
       
-      print("length(regionDataTemp1)/length(regionDataTemp2)/length(regionData):")
-      print(c(length(regionDataTemp1), length(regionDataTemp2), length(regionData)))
+      # print("length(regionDataTemp1)/length(regionDataTemp2)/length(regionData):")
+      # print(c(length(regionDataTemp1), length(regionDataTemp2), length(regionData)))
 
       AnnoWeights = weights * regionData 
       
@@ -155,17 +155,17 @@ GRAB.Region = function(objNull,
       
       wr0 = sqrt(r0) * AnnoWeights
       
-      print("length(wr0)/length(AnnoWeights):")
-      print(c(length(wr0), length(AnnoWeights)))
+      # print("length(wr0)/length(AnnoWeights):")
+      # print(c(length(wr0), length(AnnoWeights)))
       
       wStatVec = StatVec * AnnoWeights
       wadjVarSMat = t(obj.mainRegion$VarMat * wr0) * wr0
       
-      print("length(wStatVec):")
-      print(length(wStatVec))
-      
-      print("dim(wadjVarSMat):")
-      print(dim(wadjVarSMat))
+      # print("length(wStatVec):")
+      # print(length(wStatVec))
+      # 
+      # print("dim(wadjVarSMat):")
+      # print(dim(wadjVarSMat))
       
       # print(r0)
       # print(StatVec)
