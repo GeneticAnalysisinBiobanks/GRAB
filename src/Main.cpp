@@ -607,8 +607,8 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
         
         P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index2) + ".bin");
         
-        std::cout << "P2Mat.n_rows: " << P2Mat.n_rows << std::endl;
-        std::cout << "P2Mat.n_cols: " << P2Mat.n_cols << std::endl;
+        // std::cout << "P2Mat.n_rows: " << P2Mat.n_rows << std::endl;
+        // std::cout << "P2Mat.n_cols: " << P2Mat.n_cols << std::endl;
         
         if(P2Mat.n_cols == 0) continue;
         
@@ -629,8 +629,8 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       std::cout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " << index1 << "/" << nchunks - 1 << ")........" << std::endl;
       P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index1) + ".bin");
       
-      std::cout << "P2Mat.n_rows: " << P2Mat.n_rows << std::endl;
-      std::cout << "P2Mat.n_cols: " << P2Mat.n_cols << std::endl;
+      // std::cout << "P2Mat.n_rows: " << P2Mat.n_rows << std::endl;
+      // std::cout << "P2Mat.n_cols: " << P2Mat.n_cols << std::endl;
       
       arma::mat diagVarMat = P1Mat * P2Mat;
       

@@ -112,17 +112,27 @@ GRAB.Region = function(objNull,
     r0 = adjVarSVec / VarSVec 
     r0 = pmax(r0, 1)
     
+    # info.Region = data.frame(Region = regionName,
+    #                          nMarker = length(obj.mainRegion$markerVec),
+    #                          Markers = paste0(obj.mainRegion$markerVec, collapse = ","),
+    #                          Info = paste0(obj.mainRegion$infoVec, collapse = ","),
+    #                          AltFreq = paste0(obj.mainRegion$altFreqVec, collapse = ","),
+    #                          MissingRate = paste0(obj.mainRegion$missingRateVec, collapse = ","),
+    #                          # Stat = paste0(obj.mainRegion$StatVec, collapse = ","),
+    #                          Beta = paste0(obj.mainRegion$BetaVec, collapse = ","),
+    #                          seBeta = paste0(obj.mainRegion$seBetaVec, collapse = ","),
+    #                          pval0 = paste0(obj.mainRegion$pval0Vec, collapse = ","),
+    #                          pval1 = paste0(obj.mainRegion$pval1Vec, collapse = ","))
+    
     info.Region = data.frame(Region = regionName,
-                             nMarker = length(obj.mainRegion$markerVec),
-                             Markers = paste0(obj.mainRegion$markerVec, collapse = ","),
-                             Info = paste0(obj.mainRegion$infoVec, collapse = ","),
-                             AltFreq = paste0(obj.mainRegion$altFreqVec, collapse = ","),
-                             MissingRate = paste0(obj.mainRegion$missingRateVec, collapse = ","),
-                             # Stat = paste0(obj.mainRegion$StatVec, collapse = ","),
-                             Beta = paste0(obj.mainRegion$BetaVec, collapse = ","),
-                             seBeta = paste0(obj.mainRegion$seBetaVec, collapse = ","),
-                             pval0 = paste0(obj.mainRegion$pval0Vec, collapse = ","),
-                             pval1 = paste0(obj.mainRegion$pval1Vec, collapse = ","))
+                             Marker = obj.mainRegion$markerVec,
+                             Info = obj.mainRegion$infoVec,
+                             AltFreq = obj.mainRegion$altFreqVec,
+                             MissingRate = obj.mainRegion$missingRateVec,
+                             Beta = obj.mainRegion$BetaVec,
+                             seBeta = obj.mainRegion$seBetaVec,
+                             pval0 = obj.mainRegion$pval0Vec,
+                             pval1 = obj.mainRegion$pval1Vec)
     
     pval.Region = data.frame()
     
@@ -139,7 +149,8 @@ GRAB.Region = function(objNull,
     # print(SNP)
     # print(posMarker)
     
-    for(j in 1:ncol(regionMat)){
+    for(j in 1:ncol(regionMat))
+    {
       AnnoName = colnames(regionMat)[j]
       
       regionDataTemp1 = regionMat[posMarker, j]
@@ -201,13 +212,17 @@ GRAB.Region = function(objNull,
                                                 pval.Burden = Pvalue[3]))
     }
     
-    output.Region = cbind.data.frame(info.Region, pval.Region)
+    # output.Region = cbind.data.frame(info.Region, pval.Region)
     
     # Util.R: write summary statistics to output file.
-    writeOutputFile(output.Region, i, OutputFile, OutputFileIndex, "Region", 1)
+    # writeOutputFile(output.Region, i, OutputFile, OutputFileIndex, "Region", 1)
+    writeOutputFile(c(pval.Region, info.Region), i, 
+                    c(OutputFile, paste0(OutputFile, ".markerInfo")), 
+                    OutputFileIndex, "Region", 1)
   }
   
-  message = paste0("The analysis results have been saved to '", OutputFile,"'.")
+  message = paste0("The analysis results have been saved to '", OutputFile,"' and '",
+                   paste0(OutputFile, ".markerInfo"),"'.")
   return(message)
 }
 

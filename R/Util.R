@@ -68,14 +68,20 @@ writeOutputFile = function(Output,
                            AnalysisType,
                            nEachChunk)
 {
+  n1 = length(Output)
+  n2 = length(OutputFile)
+  if(n1 != n2)
+    stop("length(Output) != length(OutputFile)")
   
   if(indexChunk == 1){
-    data.table::fwrite(Output, OutputFile, quote = F, sep = "\t", append = F, col.names = T)
+    for(i in 1:n1)
+      data.table::fwrite(Output[i], OutputFile[i], quote = F, sep = "\t", append = F, col.names = T)
     write.table(c("GRAB.outIndex", "Please_do_not_modify_this_file", AnalysisType, paste0("nEachChunk=",nEachChunk), 
                   1), 
                 OutputFileIndex, quote = F, sep = "\t", append = F, col.names = F, row.names = F)
   }else{
-    data.table::fwrite(Output, OutputFile, quote = F, sep = "\t", append = T, col.names = F)
+    for(i in 1:n1)
+      data.table::fwrite(Output[i], OutputFile[i], quote = F, sep = "\t", append = T, col.names = F)
     write.table(indexChunk, OutputFileIndex, quote = F, sep = "\t", append = T, col.names = F, row.names = F)
   }
 }
