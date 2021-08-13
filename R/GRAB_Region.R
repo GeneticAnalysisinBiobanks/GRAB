@@ -124,6 +124,12 @@ GRAB.Region = function(objNull,
     #                          pval0 = paste0(obj.mainRegion$pval0Vec, collapse = ","),
     #                          pval1 = paste0(obj.mainRegion$pval1Vec, collapse = ","))
     
+    nMarker = length(obj.mainRegion$markerVec)
+    nMarkerURV = length(obj.mainRegion$markerURVVec)
+    
+    if(nMarker <= control$min_nMarker)
+      next;
+    
     info.Marker.Region = data.frame(Region = regionName,
                                     Marker = obj.mainRegion$markerVec,
                                     IsUltraRareVariants = 0,
@@ -153,11 +159,6 @@ GRAB.Region = function(objNull,
     posMarker = match(obj.mainRegion$markerVec, SNP)
     posMarkerURV = match(obj.mainRegion$markerURVVec, SNP)
     
-    nMarker = length(obj.mainRegion$markerVec)
-    nMarkerURV = length(obj.mainRegion$markerURVVec)
-    
-    if(nMarker <= control$min_nMarker)
-      next;
     
     # print("length(posMarker)/length(posMarkerURV)/length(weights)/length(r0):")
     # print(c(length(posMarker), length(posMarkerURV), length(weights), length(r0)))

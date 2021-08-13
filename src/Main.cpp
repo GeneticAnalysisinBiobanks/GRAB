@@ -533,10 +533,10 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     // save information to hard drive to avoid high memory usage
     // if((nchunks > 1) & (mPassQCInChunk != 0)){ 
     if((nchunks > 1) & (P1Mat.n_rows != 0)){ 
-      std::cout << "P1Mat.n_rows:\t" << P1Mat.n_rows << std::endl;
-      std::cout << "P1Mat.n_cols:\t" << P1Mat.n_cols << std::endl;
-      std::cout << "P2Mat.n_rows:\t" << P2Mat.n_rows << std::endl;
-      std::cout << "P2Mat.n_cols:\t" << P2Mat.n_cols << std::endl;
+      // std::cout << "P1Mat.n_rows:\t" << P1Mat.n_rows << std::endl;
+      // std::cout << "P1Mat.n_cols:\t" << P1Mat.n_cols << std::endl;
+      // std::cout << "P2Mat.n_rows:\t" << P2Mat.n_rows << std::endl;
+      // std::cout << "P2Mat.n_cols:\t" << P2Mat.n_cols << std::endl;
       
       P1Mat.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin");
       P2Mat.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin");
