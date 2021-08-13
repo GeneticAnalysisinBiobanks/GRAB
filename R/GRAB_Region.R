@@ -216,7 +216,7 @@ GRAB.Region = function(objNull,
     
     # Util.R: write summary statistics to output file.
     # writeOutputFile(output.Region, i, OutputFile, OutputFileIndex, "Region", 1)
-    writeOutputFile(c(pval.Region, info.Region), i, 
+    writeOutputFile(list(pval.Region, info.Region), i, 
                     c(OutputFile, paste0(OutputFile, ".markerInfo")), 
                     OutputFileIndex, "Region", 1)
   }
