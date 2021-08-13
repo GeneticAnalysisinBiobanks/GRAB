@@ -598,8 +598,8 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       
       P1Mat.load(P1MatFile);
       
-      std::cout << "P1Mat.n_rows: " << P1Mat.n_rows << std::endl;
-      std::cout << "P1Mat.n_cols: " << P1Mat.n_cols << std::endl;
+      // std::cout << "P1Mat.n_rows: " << P1Mat.n_rows << std::endl;
+      // std::cout << "P1Mat.n_cols: " << P1Mat.n_cols << std::endl;
       
       if(P1Mat.n_cols == 0) continue;
       
