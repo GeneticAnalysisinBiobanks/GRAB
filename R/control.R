@@ -182,7 +182,8 @@ checkControl.Region = function(control, NullModelClass)
                                 max_mem_region = 4,
                                 r.corr = c(0, 0.1^2, 0.2^2, 0.3^2, 0.4^2, 0.5^2, 0.5, 1),
                                 weights.beta = c(1, 25),
-                                omp_num_threads = data.table::getDTthreads())
+                                omp_num_threads = data.table::getDTthreads(),
+                                min_nMarker = 3)
   
   control = updateControl(control, default.region.control)
   
@@ -207,6 +208,9 @@ checkControl.Region = function(control, NullModelClass)
   
   if(!is.numeric(control$weights.beta) | length(control$weights.beta) != 2 | min(control$weights.beta) < 0)
     stop("control$weights.beta should be a numeric vector with two non-negative elements.")
+  
+  if(!is.numeric(control$min_nMarker) | control$min_nMarker <= 0)
+    stop("control$min_nMarker should be a positive integer.")
   
   # specific default control setting for different approaches
   if(NullModelClass == "POLMM_NULL_Model")

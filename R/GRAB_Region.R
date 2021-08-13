@@ -124,20 +124,40 @@ GRAB.Region = function(objNull,
     #                          pval0 = paste0(obj.mainRegion$pval0Vec, collapse = ","),
     #                          pval1 = paste0(obj.mainRegion$pval1Vec, collapse = ","))
     
-    info.Region = data.frame(Region = regionName,
-                             Marker = obj.mainRegion$markerVec,
-                             Info = obj.mainRegion$infoVec,
-                             AltFreq = obj.mainRegion$altFreqVec,
-                             MissingRate = obj.mainRegion$missingRateVec,
-                             Beta = obj.mainRegion$BetaVec,
-                             seBeta = obj.mainRegion$seBetaVec,
-                             pval0 = obj.mainRegion$pval0Vec,
-                             pval1 = obj.mainRegion$pval1Vec)
+    info.Marker.Region = data.frame(Region = regionName,
+                                    Marker = obj.mainRegion$markerVec,
+                                    IsUltraRareVariants = 0,
+                                    Info = obj.mainRegion$infoVec,
+                                    AltFreq = obj.mainRegion$altFreqVec,
+                                    MAC = obj.mainRegion$MACVec,
+                                    MissingRate = obj.mainRegion$missingRateVec,
+                                    Beta = obj.mainRegion$BetaVec,
+                                    seBeta = obj.mainRegion$seBetaVec,
+                                    pval0 = obj.mainRegion$pval0Vec,
+                                    pval1 = obj.mainRegion$pval1Vec)
     
-    pval.Region = data.frame()
+    info.MarkerURV.Region = data.frame(Region = regionName,
+                                       Marker = obj.mainRegion$markerURVVec,
+                                       IsUltraRareVariants = 1,
+                                       Info = obj.mainRegion$infoURVVec,
+                                       AltFreq = obj.mainRegion$altFreqURVVec,
+                                       MAC = obj.mainRegion$MACURVVec,
+                                       MissingRate = obj.mainRegion$missingRateURVVec,
+                                       Beta = NA,
+                                       seBeta = NA,
+                                       pval0 = NA,
+                                       pval1 = NA)
+    
+    info.Region = rbind.data.frame(info.Marker.Region, info.MarkerURV.Region)
     
     posMarker = match(obj.mainRegion$markerVec, SNP)
     posMarkerURV = match(obj.mainRegion$markerURVVec, SNP)
+    
+    nMarker = length(obj.mainRegion$markerVec)
+    nMarkerURV = length(obj.mainRegion$markerURVVec)
+    
+    if(nMarker <= control$min_nMarker)
+      next;
     
     # print("length(posMarker)/length(posMarkerURV)/length(weights)/length(r0):")
     # print(c(length(posMarker), length(posMarkerURV), length(weights), length(r0)))
@@ -149,6 +169,7 @@ GRAB.Region = function(objNull,
     # print(SNP)
     # print(posMarker)
     
+    pval.Region = data.frame()
     for(j in 1:ncol(regionMat))
     {
       AnnoName = colnames(regionMat)[j]
@@ -206,7 +227,9 @@ GRAB.Region = function(objNull,
       }
       
       pval.Region = rbind.data.frame(pval.Region,
-                                     data.frame(Anno.Type = AnnoName,
+                                     data.frame(nMarkers = nMarker,
+                                                nMarkersURV = nMarkerURV,
+                                                Anno.Type = AnnoName,
                                                 pval.SKATO = Pvalue[1], 
                                                 pval.SKAT = Pvalue[2],
                                                 pval.Burden = Pvalue[3]))

@@ -249,14 +249,13 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
 {
   unsigned int q = t_genoIndex.size();                 // number of markers (before QC) in one region
   
-  // set up output
-  std::vector<std::string> markerVec(q);     // marker IDs
-  std::vector<std::string> markerURVVec(q);  // marker IDs (ultra-rare variants)
-  std::vector<std::string> infoVec(q);       // marker information: CHR:POS:REF:ALT
-  std::vector<double> altFreqVec(q);         // allele frequencies of the ALT allele, this is not always < 0.5.
-  std::vector<double> MACVec(q);
-  std::vector<double> MAFVec(q);
-  std::vector<double> missingRateVec(q);     // missing rate
+  // set up output (Ultra-Rare Variants, URV)
+  std::vector<std::string> markerVec(q), markerURVVec(q);      // marker IDs
+  std::vector<std::string> infoVec(q), infoURVVec(q);          // marker information: CHR:POS:REF:ALT
+  std::vector<double> altFreqVec(q), altFreqURVVec(q);         // allele frequencies of the ALT allele, this is not always < 0.5.
+  std::vector<double> MACVec(q), MACURVVec(q);
+  std::vector<double> MAFVec(q), MAFURVVec(q);
+  std::vector<double> missingRateVec(q), missingRateURVVec(q); // missing rate
   std::vector<double> BetaVec(q);            // beta value for ALT allele
   std::vector<double> seBetaVec(q);          // seBeta value
   std::vector<double> pval0Vec(q);           // p values from normal distribution approximation  // might be confused, is this needed?
@@ -349,13 +348,12 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       double MAC = MAF * 2 * t_n * (1 - missingRate);   // checked on 08-10-2021
       
       // store marker-level information in vectors
-      markerVec.at(i1) = marker;             // marker IDs
-      markerURVVec.at(i1) = marker;
-      infoVec.at(i1) = info;                 // marker information: CHR:POS:REF:ALT
-      altFreqVec.at(i1) = altFreq;           // allele frequencies of ALT allele, this is not always < 0.5.
-      missingRateVec.at(i1) = missingRate;
-      MACVec.at(i1) = MAC;
-      MAFVec.at(i1) = MAF;
+      markerVec.at(i1) = markerURVVec.at(i1) =marker;             // marker IDs
+      infoVec.at(i1) = infoURVVec.at(i1) = info;                 // marker information: CHR:POS:REF:ALT
+      altFreqVec.at(i1) = altFreqURVVec.at(i1) = altFreq;           // allele frequencies of ALT allele, this is not always < 0.5.
+      missingRateVec.at(i1) = missingRateURVVec.at(i1) = missingRate;
+      MACVec.at(i1) = MACURVVec.at(i1) = MAC;
+      MAFVec.at(i1) = MAFURVVec.at(i1) = MAF;
       
       // std::cout << "MAC:\t" << MAC << std::endl;
       // std::cout << "altCounts:\t" << altCounts << std::endl;
@@ -486,6 +484,11 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
         
         if(passRVVec.at(i) != 2){   // edited on 08-10-2021
           markerURVVec.erase(markerURVVec.begin()+tempIndex2);
+          infoURVVec.erase(infoURVVec.begin()+tempIndex2);
+          altFreqURVVec.erase(altFreqURVVec.begin()+tempIndex2);
+          missingRateURVVec.erase(missingRateURVVec.begin()+tempIndex2);
+          MACURVVec.erase(MACURVVec.begin()+tempIndex2);
+          MAFURVVec.erase(MAFURVVec.begin()+tempIndex2);
         }else{
           tempIndex2++;
         }
@@ -665,9 +668,15 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
                                           Rcpp::Named("markerVec") = markerVec,
                                           Rcpp::Named("markerURVVec") = markerURVVec,
                                           Rcpp::Named("infoVec") = infoVec,
+                                          Rcpp::Named("infoURVVec") = infoURVVec,
                                           Rcpp::Named("altFreqVec") = altFreqVec,
+                                          Rcpp::Named("altFreqURVVec") = altFreqURVVec,
                                           Rcpp::Named("MAFVec") = MAFVec,
+                                          Rcpp::Named("MAFURVVec") = MAFURVVec,
+                                          Rcpp::Named("MACVec") = MACVec,
+                                          Rcpp::Named("MACURVVec") = MACURVVec,
                                           Rcpp::Named("missingRateVec") = missingRateVec,
+                                          Rcpp::Named("missingRateURVVec") = missingRateURVVec,
                                           Rcpp::Named("StatVec") = StatVec,
                                           Rcpp::Named("BetaVec") = BetaVec,
                                           Rcpp::Named("seBetaVec") = seBetaVec,
