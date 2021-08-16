@@ -621,7 +621,7 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
         // std::cout << "P2Mat.n_rows: " << P2Mat.n_rows << std::endl;
         // std::cout << "P2Mat.n_cols: " << P2Mat.n_cols << std::endl;
         
-        if(P2Mat.n_cols == 0) continue;
+        if(P2Mat_DNS.n_cols == 0) continue;
         
         arma::mat offVarMat = P1Mat_DNS * P2Mat_DNS;
         
