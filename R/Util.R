@@ -74,14 +74,18 @@ writeOutputFile = function(Output,
     stop("length(Output) != length(OutputFile)")
   
   if(indexChunk == 1){
-    for(i in 1:n1)
-      write.table(Output[[i]], OutputFile[[i]], quote = F, sep = "\t", append = F, col.names = T, row.names = F)
+    if(n1 != 0){
+      for(i in 1:n1)
+        write.table(Output[[i]], OutputFile[[i]], quote = F, sep = "\t", append = F, col.names = T, row.names = F) 
+    }
     write.table(c("GRAB.outIndex", "Please_do_not_modify_this_file", AnalysisType, paste0("nEachChunk=",nEachChunk), 
                   1), 
                 OutputFileIndex, quote = F, sep = "\t", append = F, col.names = F, row.names = F)
   }else{
-    for(i in 1:n1)
-      write.table(Output[[i]], OutputFile[[i]], quote = F, sep = "\t", append = T, col.names = F, row.names = F)
+    if(n1 != 0){
+      for(i in 1:n1)
+        write.table(Output[[i]], OutputFile[[i]], quote = F, sep = "\t", append = T, col.names = F, row.names = F)
+    }
     write.table(indexChunk, OutputFileIndex, quote = F, sep = "\t", append = T, col.names = F, row.names = F)
   }
 }
