@@ -127,8 +127,12 @@ GRAB.Region = function(objNull,
     nMarker = length(obj.mainRegion$markerVec)
     nMarkerURV = length(obj.mainRegion$markerURVVec)
     
-    if(nMarker <= control$min_nMarker)
+    if(nMarker <= control$min_nMarker){
+      writeOutputFile(list(), i, 
+                      list(), 
+                      OutputFileIndex, "Region", 1)
       next;
+    }
     
     info.Marker.Region = data.frame(Region = regionName,
                                     Marker = obj.mainRegion$markerVec,
@@ -228,7 +232,8 @@ GRAB.Region = function(objNull,
       }
       
       pval.Region = rbind.data.frame(pval.Region,
-                                     data.frame(nMarkers = nMarker,
+                                     data.frame(Region = regionName,
+                                                nMarkers = nMarker,
                                                 nMarkersURV = nMarkerURV,
                                                 Anno.Type = AnnoName,
                                                 pval.SKATO = Pvalue[1], 
@@ -241,7 +246,7 @@ GRAB.Region = function(objNull,
     # Util.R: write summary statistics to output file.
     # writeOutputFile(output.Region, i, OutputFile, OutputFileIndex, "Region", 1)
     writeOutputFile(list(pval.Region, info.Region), i, 
-                    c(OutputFile, paste0(OutputFile, ".markerInfo")), 
+                    list(OutputFile, paste0(OutputFile, ".markerInfo")), 
                     OutputFileIndex, "Region", 1)
   }
   
