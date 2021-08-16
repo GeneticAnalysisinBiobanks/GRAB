@@ -293,7 +293,8 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   // arma::vec GVecBurden(t_n, arma::fill::zeros);
   // arma::vec GVecURV(t_n, arma::fill::zeros);
   
-  arma::mat P1Mat, P2Mat;
+  arma::sp_mat P1Mat, P2Mat;
+  arma::mat P1Mat_DNS, P2Mat_DNS;
   
   arma::vec GVecURV(t_n, arma::fill::zeros);    // aggregate ultra-rare variants (URV) whose MAC less than cutoff (g_region_minMAC_cutoff)
   
@@ -307,7 +308,8 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     std::cout << "Start analyzing chunk " << ichunk << "/" << nchunks - 1 << "." << std::endl;
     
     if(ichunk == nchunks - 1) m3 = m2;  // number of markers in the last chunk
-    P1Mat.resize(m3, t_n);
+    // P1Mat.resize(m3, t_n);
+    P1Mat.resize(t_n, m3);
     P2Mat.resize(t_n, m3);
     arma::mat GMat(t_n, m3, arma::fill::zeros);
     // arma::mat GMatRV(t_n, m3, arma::fill::zeros);
@@ -392,7 +394,8 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       pval0Vec.at(i1) = pval0;
       pval1Vec.at(i1) = pval1;
       adjPVec.at(i1) = pval1;
-      P1Mat.row(i) = P1Vec.t();
+      // P1Mat.row(i) = P1Vec.t();
+      P1Mat.col(i) = P1Vec;
       P2Mat.col(i) = P2Vec;
     }
     
@@ -442,8 +445,13 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     std::cout << "before submitting, P1Mat.n_rows:\t" << P1Mat.n_rows << std::endl;
     std::cout << "before submitting, P1Mat.n_cols:\t" << P1Mat.n_cols << std::endl;
     
-    P1Mat = P1Mat.rows(indexCVVecInChunk);
+    // P1Mat = P1Mat.rows(indexCVVecInChunk);
+    P1Mat = P1Mat.cols(indexCVVecInChunk);
     P2Mat = P2Mat.cols(indexCVVecInChunk);
+    
+    P1Mat_DNS = (arma::mat)P1Mat;
+    P1Mat_DNS = P1Mat_DNS.t();
+    P2Mat_DNS = (arma::mat)P2Mat;
     
     std::cout << "after submitting, P1Mat.n_rows:\t" << P1Mat.n_rows << std::endl;
     std::cout << "after submitting, P1Mat.n_cols:\t" << P1Mat.n_cols << std::endl;
@@ -522,8 +530,8 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
         double minMAF_cutoff = g_region_minMAC_cutoff / (2 * t_n);
         MAFVec.push_back(minMAF_cutoff);
         
-        P1Mat.insert_rows(mPassCVVec.back(), P1Vec.t());
-        P2Mat.insert_cols(mPassCVVec.back(), P2Vec);
+        P1Mat_DNS.insert_rows(mPassCVVec.back(), P1Vec.t());
+        P2Mat_DNS.insert_cols(mPassCVVec.back(), P2Vec);
         
         mPassCVTot += 1;
         mPassCVVec.at(nchunks-1) += 1;
@@ -532,14 +540,14 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     
     // save information to hard drive to avoid high memory usage
     // if((nchunks > 1) & (mPassQCInChunk != 0)){ 
-    if((nchunks > 1) & (P1Mat.n_rows != 0)){ 
+    if((nchunks > 1) & (P1Mat_DNS.n_rows != 0)){ 
       // std::cout << "P1Mat.n_rows:\t" << P1Mat.n_rows << std::endl;
       // std::cout << "P1Mat.n_cols:\t" << P1Mat.n_cols << std::endl;
       // std::cout << "P2Mat.n_rows:\t" << P2Mat.n_rows << std::endl;
       // std::cout << "P2Mat.n_cols:\t" << P2Mat.n_cols << std::endl;
       
-      P1Mat.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin");
-      P2Mat.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin");
+      P1Mat_DNS.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin");
+      P2Mat_DNS.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin");
       // GVecURV.save(t_outputFile + "_GVecURV_Chunk_" + std::to_string(ichunk) + ".bin");
     }
   }
@@ -582,7 +590,7 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   
   // not so many markers in the region, so all matrix is in memory
   if(nchunks == 1)
-    VarMat = P1Mat * P2Mat;
+    VarMat = P1Mat_DNS * P2Mat_DNS;
 
   // the region includes more markers than limitation, so P1Mat and P2Mat have been put in hard drive
   if(nchunks > 1)
@@ -596,26 +604,26 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       
       std::string P1MatFile = t_outputFile + "_P1Mat_Chunk_" + std::to_string(index1) + ".bin";
       
-      P1Mat.load(P1MatFile);
+      P1Mat_DNS.load(P1MatFile);
       
       // std::cout << "P1Mat.n_rows: " << P1Mat.n_rows << std::endl;
       // std::cout << "P1Mat.n_cols: " << P1Mat.n_cols << std::endl;
       
-      if(P1Mat.n_cols == 0) continue;
+      if(P1Mat_DNS.n_cols == 0) continue;
       
       // off-diagonal sub-matrix
       for(unsigned int index2 = 0; index2 < index1; index2++)
       {
         std::cout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " << index2 << "/" << nchunks - 1 << ")........" << std::endl;
         
-        P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index2) + ".bin");
+        P2Mat_DNS.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index2) + ".bin");
         
         // std::cout << "P2Mat.n_rows: " << P2Mat.n_rows << std::endl;
         // std::cout << "P2Mat.n_cols: " << P2Mat.n_cols << std::endl;
         
         if(P2Mat.n_cols == 0) continue;
         
-        arma::mat offVarMat = P1Mat * P2Mat;
+        arma::mat offVarMat = P1Mat_DNS * P2Mat_DNS;
         
         // last_col = first_col + mPassQCVec.at(index2) - 1;
         last_col = first_col + mPassCVVec.at(index2) - 1;
@@ -630,12 +638,12 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       // last_col = first_col + mPassQCVec.at(index1) - 1;
       last_col = first_col + mPassCVVec.at(index1) - 1;
       std::cout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " << index1 << "/" << nchunks - 1 << ")........" << std::endl;
-      P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index1) + ".bin");
+      P2Mat_DNS.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index1) + ".bin");
       
       // std::cout << "P2Mat.n_rows: " << P2Mat.n_rows << std::endl;
       // std::cout << "P2Mat.n_cols: " << P2Mat.n_cols << std::endl;
       
-      arma::mat diagVarMat = P1Mat * P2Mat;
+      arma::mat diagVarMat = P1Mat_DNS * P2Mat_DNS;
       
       VarMat.submat(first_row, first_col, last_row, last_col) = diagVarMat;
       
