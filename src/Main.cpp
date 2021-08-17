@@ -272,13 +272,14 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   // example #3: (q = 1001, m1 = 10) -> (nchunks = 101, m2 = 1)
   
   unsigned int m1 = g_region_maxMarkers_cutoff;  // number of markers in all chunks expect for the last chunk
-  unsigned int nchunks = (q-1) / m1 + 1;         // number of chunks.  e.g. 42 / 3 = 14, 2 / 3 = 0.
-  unsigned int m2 = (q-1) % m1 + 1;              // number of markers in the last chunk. e.g. 42 % 3 = 0, 2 % 3 = 2.
-  unsigned int m3 = m1;                          // number of markers in the current chunk
+  unsigned int nchunks = 0;
+  // unsigned int nchunks = (q-1) / m1 + 1;         // number of chunks.  e.g. 42 / 3 = 14, 2 / 3 = 0.
+  // unsigned int m2 = (q-1) % m1 + 1;              // number of markers in the last chunk. e.g. 42 % 3 = 0, 2 % 3 = 2.
+  // unsigned int m3 = m1;                          // number of markers in the current chunk
   
-  std::cout << "In region-based analysis, all " << q << " markers are splitted into " << nchunks << " chunks." << std::endl;
-  std::cout << "Each chunk includes no more than " << m1 << " markers." << std::endl;
-  std::cout << "The last chunk includes " << m2 << " markers." << std::endl;
+  // std::cout << "In region-based analysis, all " << q << " markers are splitted into " << nchunks << " chunks." << std::endl;
+  // std::cout << "Each chunk includes no more than " << m1 << " markers." << std::endl;
+  // std::cout << "The last chunk includes " << m2 << " markers." << std::endl;
   
   // Suppose that 
   // n is the sample size in analysis 
@@ -288,14 +289,14 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   // VarMat = P1Mat %*% P2Mat, where P1Mat is of (m+1 x n) and P2Mat is of (n x m+1)
   
   std::vector<unsigned int> mPassQCVec, mPassRVVec, mPassCVVec;
-  unsigned int mPassQCTot, mPassRVTot, mPassCVTot;
+  // unsigned int mPassQCTot, mPassRVTot, mPassCVTot;
     
   // arma::vec GVecBurden(t_n, arma::fill::zeros);
   // arma::vec GVecURV(t_n, arma::fill::zeros);
   
-  arma::sp_mat P1Mat, P2Mat;
-  arma::mat P1Mat_DNS, P2Mat_DNS;
-  
+  // arma::sp_mat P1Mat, P2Mat;
+  // arma::mat P1Mat_DNS, P2Mat_DNS;
+  arma::mat P1Mat, P2Mat;
   arma::vec GVecURV(t_n, arma::fill::zeros);    // aggregate ultra-rare variants (URV) whose MAC less than cutoff (g_region_minMAC_cutoff)
   
   // conduct marker-level analysis
@@ -303,86 +304,81 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   arma::vec P1Vec(t_n), P2Vec(t_n);
   
   // cycle for multiple chunks
-  for(unsigned int ichunk = 0; ichunk < nchunks; ichunk++) 
+  // for(unsigned int ichunk = 0; ichunk < nchunks; ichunk++)
+  unsigned int ichunk = 0;
+  unsigned int indexInChunk = 0;
+  unsigned int i1 = 0;    // index of Markers (non-URV)
+  unsigned int i2 = 0;    // index of Markers (Ultra-Rare Variants, URV)
+  
+  for(unsigned int i = 0; i < q; i++)
   {
-    std::cout << "Start analyzing chunk " << ichunk << "/" << nchunks - 1 << "." << std::endl;
+    if(indexInChunk == 0){
+      std::cout << "Start analyzing chunk " << ichunk << "....." << std::endl;
+      P1Mat.resize(t_n, m1);
+      P2Mat.resize(t_n, m1);
+      // arma::mat GMat(t_n, m1, arma::fill::zeros);
+      // GMatURV.resize(t_n, m1);
+    }
     
-    if(ichunk == nchunks - 1) m3 = m2;  // number of markers in the last chunk
+    // std::cout << "Start analyzing chunk " << ichunk << "/" << nchunks - 1 << "." << std::endl;
+    // if(ichunk == nchunks - 1) m3 = m2;  // number of markers in the last chunk
     // P1Mat.resize(m3, t_n);
-    P1Mat.resize(t_n, m3);
-    P2Mat.resize(t_n, m3);
-    arma::mat GMat(t_n, m3, arma::fill::zeros);
+    // P1Mat.resize(t_n, m3);
+    // P2Mat.resize(t_n, m3);
+    // arma::mat GMat(t_n, m3, arma::fill::zeros);
     // arma::mat GMatRV(t_n, m3, arma::fill::zeros);
     
-    std::vector<bool> passQCVecInChunk(m3, false);     // false: does not pass QC; true: pass QC
-    std::vector<unsigned int> passRVVecInChunk(m3, 0); // 0: does not pass QC; 1: pass QC, not ultra-rare variants; 2: pass QC, ultra-rare variants
+    // std::vector<bool> passQCVecInChunk(m3, false);     // false: does not pass QC; true: pass QC
+    // std::vector<unsigned int> passRVVecInChunk(m3, 0); // 0: does not pass QC; 1: pass QC, not ultra-rare variants; 2: pass QC, ultra-rare variants
     
     // cycle for markers in chunk
-    for(unsigned int i = 0; i < m3; i++)  // index of marker in the current chunk
-    {
-      unsigned int i1 = i + m1 * ichunk;  // index of marker in all markers
+    // for(unsigned int i = 0; i < m3; i++)  // index of marker in the current chunk
+    // {
+    //   unsigned int i1 = i + m1 * ichunk;  // index of marker in all markers
       
-      // marker-level information
-      double altFreq, altCounts, missingRate, imputeInfo;
-      std::vector<uint32_t> indexForMissing, indexForNonZero;
-      std::string chr, ref, alt, marker;
-      uint32_t pd;
-      bool flip = false;
-      
-      uint32_t gIndex = t_genoIndex.at(i1);
-      
-      arma::vec GVec = Unified_getOneMarker(t_genoType, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
-                                            true, // bool t_isOutputIndexForMissing,
-                                            indexForMissing,
-                                            false, // bool t_isOnlyOutputNonZero,
-                                            indexForNonZero);
-      
-      std::string info = chr+":"+std::to_string(pd)+":"+ref+":"+alt;
-      
+    // marker-level information
+    double altFreq, altCounts, missingRate, imputeInfo;
+    std::vector<uint32_t> indexForMissing, indexForNonZero;
+    std::string chr, ref, alt, marker;
+    uint32_t pd;
+    bool flip = false;
+    
+    // uint32_t gIndex = t_genoIndex.at(i1);
+    uint32_t gIndex = t_genoIndex.at(i);
+    
+    arma::vec GVec = Unified_getOneMarker(t_genoType, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
+                                          true, // bool t_isOutputIndexForMissing,
+                                          indexForMissing,
+                                          false, // bool t_isOnlyOutputNonZero,
+                                          indexForNonZero);
+    
+    std::string info = chr+":"+std::to_string(pd)+":"+ref+":"+alt;
+    
       // if(missingRate != 0){
         // Function imputeGenoAndFlip is in UTIL.cpp
         // flip = imputeGenoAndFlip(GVec, altFreq, indexForMissing, g_impute_method);  // in UTIL.cpp
-      flip = imputeGenoAndFlip(GVec, altFreq, indexForMissing, missingRate, g_impute_method);
+    flip = imputeGenoAndFlip(GVec, altFreq, indexForMissing, missingRate, g_impute_method);
       // }
       
       // MAF for Quality Control (QC)
-      double MAF = std::min(altFreq, 1 - altFreq);
-      double MAC = MAF * 2 * t_n * (1 - missingRate);   // checked on 08-10-2021
+    double MAF = std::min(altFreq, 1 - altFreq);
+    double MAC = MAF * 2 * t_n * (1 - missingRate);   // checked on 08-10-2021
+    
+    if((missingRate > g_missingRate_cutoff) || (MAF > g_region_maxMAF_cutoff) || MAF == 0){
+      continue;
+    }
+    
+    if(MAC > g_region_minMAC_cutoff){
       
-      // store marker-level information in vectors
-      markerVec.at(i1) = markerURVVec.at(i1) =marker;             // marker IDs
-      infoVec.at(i1) = infoURVVec.at(i1) = info;                 // marker information: CHR:POS:REF:ALT
-      altFreqVec.at(i1) = altFreqURVVec.at(i1) = altFreq;           // allele frequencies of ALT allele, this is not always < 0.5.
-      missingRateVec.at(i1) = missingRateURVVec.at(i1) = missingRate;
-      MACVec.at(i1) = MACURVVec.at(i1) = MAC;
-      MAFVec.at(i1) = MAFURVVec.at(i1) = MAF;
-      
-      // std::cout << "MAC:\t" << MAC << std::endl;
-      // std::cout << "altCounts:\t" << altCounts << std::endl;
-      // std::cout << "g_region_minMAC_cutoff:\t" << g_region_minMAC_cutoff << std::endl;
-      
-      // Quality Control (QC) based on missing rate, MAF, and MAC
-      if((missingRate > g_missingRate_cutoff) || (MAF > g_region_maxMAF_cutoff) || MAF == 0){
-        continue;
-      }
-      
-      passQCVec.at(i1) = true;
-      passQCVecInChunk.at(i) = true;
-      
-      GMat.col(i) = GVec;
-      if(MAC > g_region_minMAC_cutoff){
-        passRVVec.at(i1) = 1;
-        passRVVecInChunk.at(i) = 1;
-      }else{
-        // std::cout << "i1:\t" << i1 << std::endl; 
-        passRVVec.at(i1) = 2;
-        passRVVecInChunk.at(i) = 2;
-        continue;
-      }
+      markerVec.at(i1) = marker;             // marker IDs
+      infoVec.at(i1) = info;                 // marker information: CHR:POS:REF:ALT
+      altFreqVec.at(i1) = altFreq;           // allele frequencies of ALT allele, this is not always < 0.5.
+      missingRateVec.at(i1) = missingRate;
+      MACVec.at(i1) = MAC;
+      MAFVec.at(i1) = MAF;
       
       Unified_getRegionPVec(t_method, GVec, Stat, Beta, seBeta, pval0, pval1, P1Vec, P2Vec);
       
-      // The below function should be the most important one in region-based analysis
       std::cout << "MAC:\t" << MAC << std::endl;
       std::cout << "pval0:\t" << pval0 << std::endl;
       std::cout << "pval1:\t" << pval1 << std::endl;
@@ -395,162 +391,227 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       pval1Vec.at(i1) = pval1;
       adjPVec.at(i1) = pval1;
       // P1Mat.row(i) = P1Vec.t();
-      P1Mat.col(i) = P1Vec;
-      P2Mat.col(i) = P2Vec;
+      P1Mat.col(indexInChunk) = P1Vec;
+      P2Mat.col(indexInChunk) = P2Vec;
+      
+      i1 += 1;
+      indexInChunk += 1;
+    }else{
+      markerURVVec.at(i2) =marker;             // marker IDs
+      infoURVVec.at(i2) = info;                 // marker information: CHR:POS:REF:ALT
+      altFreqURVVec.at(i2) = altFreq;           // allele frequencies of ALT allele, this is not always < 0.5.
+      missingRateURVVec.at(i2) = missingRate;
+      MACURVVec.at(i2) = MAC;
+      MAFURVVec.at(i2) = MAF;
+      
+      GVecURV += GVec;
+      i2 += 1;
     }
+    
+    if(indexInChunk == m1 - 1){
+      std::cout << "In chunk " << ichunk << ", " << i2 << "markers are ultra-rare and " << i1 << " markers are not ultra-rare." << std::endl;
+      P1Mat.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin");
+      P2Mat.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin");
+      ichunk += 1;
+      indexInChunk = 0;
+    }
+  }
+  
+  nchunks = ichunk + 1;
+  
+  if(indexInChunk != 0){
+    P1Mat = P1Mat.cols(0, indexInChunk - 1);
+    P2Mat = P2Mat.cols(0, indexInChunk - 1);
+    if(nchunks != 1){
+      std::cout << "In chunk " << ichunk << ", " << i2 << "markers are ultra-rare and " << i1 << " markers are not ultra-rare." << std::endl;
+      P1Mat.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin");
+      P2Mat.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin");
+    }
+  }
+  
+  arma::mat VarMat(i1, i1);
+  
+    // std::cout << "MAC:\t" << MAC << std::endl;
+    // std::cout << "altCounts:\t" << altCounts << std::endl;
+    // std::cout << "g_region_minMAC_cutoff:\t" << g_region_minMAC_cutoff << std::endl;
+    
+    // Quality Control (QC) based on missing rate, MAF, and MAC
+    // if((missingRate > g_missingRate_cutoff) || (MAF > g_region_maxMAF_cutoff) || MAF == 0){
+    //   continue;
+    // }
+    
+    // passQCVec.at(i1) = true;
+    // passQCVecInChunk.at(i) = true;
+    
+    // GMat.col(i) = GVec;
+    // if(MAC > g_region_minMAC_cutoff){
+    //   passRVVec.at(i1) = 1;
+    //   passRVVecInChunk.at(i) = 1;
+    // }else{
+    //   // std::cout << "i1:\t" << i1 << std::endl; 
+    //   passRVVec.at(i1) = 2;
+    //   passRVVecInChunk.at(i) = 2;
+    //   continue;
+    // }
+      
+    // The below function should be the most important one in region-based analysis
+      
+      
+      
+    // }
     
     // index vector for markers passing QC
-    arma::uvec indexQCVecInChunk(m3);
-    arma::uvec indexRVVecInChunk(m3);
-    arma::uvec indexCVVecInChunk(m3);
+    // arma::uvec indexQCVecInChunk(m3);
+    // arma::uvec indexRVVecInChunk(m3);
+    // arma::uvec indexCVVecInChunk(m3);
+    // 
+    // unsigned int mPassQCInChunk = 0;
+    // unsigned int mPassRVInChunk = 0;
+    // unsigned int mPassCVInChunk = 0;
+    // 
+    // for(unsigned int i = 0; i < m3; i++)
+    // {
+    //   if(passQCVecInChunk.at(i)){   // index of markers that pass QC: output marker-level information
+    //     indexQCVecInChunk.at(mPassQCInChunk) = i;
+    //     mPassQCInChunk ++;
+    //   }
+    //   
+    //   if(passRVVecInChunk.at(i) == 2){   // index of markers that pass QC & MAC < cutoff (to be aggregated to one genotype)
+    //     indexRVVecInChunk.at(mPassRVInChunk) = i;
+    //     mPassRVInChunk ++;
+    //   }
+    //   
+    //   if(passRVVecInChunk.at(i) == 1){   // index of markers that pass QC & MAC > cutoff (to be used for gene-based analysis)
+    //     indexCVVecInChunk.at(mPassCVInChunk) = i;
+    //     mPassCVInChunk ++;
+    //   }
+    // }
+    // 
+    // indexQCVecInChunk.resize(mPassQCInChunk);
+    // indexRVVecInChunk.resize(mPassRVInChunk);
+    // indexCVVecInChunk.resize(mPassCVInChunk);
+    // 
+    // mPassQCVec.push_back(mPassQCInChunk);
+    // mPassRVVec.push_back(mPassRVInChunk);
+    // mPassCVVec.push_back(mPassCVInChunk);
     
-    unsigned int mPassQCInChunk = 0;
-    unsigned int mPassRVInChunk = 0;
-    unsigned int mPassCVInChunk = 0;
-    
-    for(unsigned int i = 0; i < m3; i++)
-    {
-      if(passQCVecInChunk.at(i)){   // index of markers that pass QC: output marker-level information
-        indexQCVecInChunk.at(mPassQCInChunk) = i;
-        mPassQCInChunk ++;
-      }
-      
-      if(passRVVecInChunk.at(i) == 2){   // index of markers that pass QC & MAC < cutoff (to be aggregated to one genotype)
-        indexRVVecInChunk.at(mPassRVInChunk) = i;
-        mPassRVInChunk ++;
-      }
-      
-      if(passRVVecInChunk.at(i) == 1){   // index of markers that pass QC & MAC > cutoff (to be used for gene-based analysis)
-        indexCVVecInChunk.at(mPassCVInChunk) = i;
-        mPassCVInChunk ++;
-      }
-    }
-    
-    indexQCVecInChunk.resize(mPassQCInChunk);
-    indexRVVecInChunk.resize(mPassRVInChunk);
-    indexCVVecInChunk.resize(mPassCVInChunk);
-    
-    mPassQCVec.push_back(mPassQCInChunk);
-    mPassRVVec.push_back(mPassRVInChunk);
-    mPassCVVec.push_back(mPassCVInChunk);
-    
-    std::cout << "In chunk " << ichunk << ", totally " << mPassQCInChunk << " markers pass QC." << std::endl;
-    std::cout << "Of which, " << mPassRVInChunk << " variants are ultra-rare variants with MAC < " << g_region_minMAC_cutoff << std::endl;
-    std::cout << "and " << mPassCVInChunk << " variants are not ultra-rare variants." << std::endl;
+    // std::cout << "In chunk " << ichunk << ", totally " << mPassQCInChunk << " markers pass QC." << std::endl;
+    // std::cout << "Of which, " << mPassRVInChunk << " variants are ultra-rare variants with MAC < " << g_region_minMAC_cutoff << std::endl;
+    // std::cout << "and " << mPassCVInChunk << " variants are not ultra-rare variants." << std::endl;
     
     // P1Mat = P1Mat.rows(indexQCVecInChunk);
     // P2Mat = P2Mat.cols(indexQCVecInChunk);
     // StatVec = StatVec.rows(indexCVVecInChunk);
     
-    std::cout << "before submitting, P1Mat.n_rows:\t" << P1Mat.n_rows << std::endl;
-    std::cout << "before submitting, P1Mat.n_cols:\t" << P1Mat.n_cols << std::endl;
-    
-    // P1Mat = P1Mat.rows(indexCVVecInChunk);
-    P1Mat = P1Mat.cols(indexCVVecInChunk);
-    P2Mat = P2Mat.cols(indexCVVecInChunk);
-    
-    P1Mat_DNS = (arma::mat)P1Mat;
-    P1Mat_DNS = P1Mat_DNS.t();
-    P2Mat_DNS = (arma::mat)P2Mat;
-    
-    std::cout << "after submitting, P1Mat.n_rows:\t" << P1Mat.n_rows << std::endl;
-    std::cout << "after submitting, P1Mat.n_cols:\t" << P1Mat.n_cols << std::endl;
-    
-    arma::mat GMatRV = GMat.cols(indexRVVecInChunk);
-    arma::vec GVecURVInChunk = arma::sum(GMatRV, 1);
-    GVecURV += GVecURVInChunk;
+    // std::cout << "before submitting, P1Mat.n_rows:\t" << P1Mat.n_rows << std::endl;
+    // std::cout << "before submitting, P1Mat.n_cols:\t" << P1Mat.n_cols << std::endl;
+    // 
+    // // P1Mat = P1Mat.rows(indexCVVecInChunk);
+    // P1Mat = P1Mat.cols(indexCVVecInChunk);
+    // P2Mat = P2Mat.cols(indexCVVecInChunk);
+    // 
+    // P1Mat_DNS = (arma::mat)P1Mat;
+    // P1Mat_DNS = P1Mat_DNS.t();
+    // P2Mat_DNS = (arma::mat)P2Mat;
+    // 
+    // std::cout << "after submitting, P1Mat.n_rows:\t" << P1Mat.n_rows << std::endl;
+    // std::cout << "after submitting, P1Mat.n_cols:\t" << P1Mat.n_cols << std::endl;
+    // 
+    // arma::mat GMatRV = GMat.cols(indexRVVecInChunk);
+    // arma::vec GVecURVInChunk = arma::sum(GMatRV, 1);
+    // GVecURV += GVecURVInChunk;
     // GVecBurden += arma::sum(GMat, 1);
     
-    if(ichunk == nchunks - 1){ // in the last chunk
-      
-      // remove markers that did not pass QC
-      unsigned int tempIndex = 0;
-      // unsigned int tempIndex1 = 0;
-      unsigned int tempIndex2 = 0;
-      for(unsigned int i = 0; i < q; i++)
-      {
-        // if(!passQCVec.at(i)){
-        if(passRVVec.at(i) != 1){   // edited on 08-10-2021
-          markerVec.erase(markerVec.begin()+tempIndex);
-          infoVec.erase(infoVec.begin()+tempIndex);
-          altFreqVec.erase(altFreqVec.begin()+tempIndex);
-          missingRateVec.erase(missingRateVec.begin()+tempIndex);
-          // StatVec.erase(StatVec.begin()+tempIndex);
-          BetaVec.erase(BetaVec.begin()+tempIndex);
-          seBetaVec.erase(seBetaVec.begin()+tempIndex);
-          pval0Vec.erase(pval0Vec.begin()+tempIndex);
-          pval1Vec.erase(pval1Vec.begin()+tempIndex);
-          // added on 08-10-2021
-          MACVec.erase(MACVec.begin()+tempIndex);
-          MAFVec.erase(MAFVec.begin()+tempIndex);
-          
-          StatVec.erase(StatVec.begin()+tempIndex);
-          adjPVec.erase(adjPVec.begin()+tempIndex);
-        }else{
-          tempIndex++;
-        }
-        
-        if(passRVVec.at(i) != 2){   // edited on 08-10-2021
-          markerURVVec.erase(markerURVVec.begin()+tempIndex2);
-          infoURVVec.erase(infoURVVec.begin()+tempIndex2);
-          altFreqURVVec.erase(altFreqURVVec.begin()+tempIndex2);
-          missingRateURVVec.erase(missingRateURVVec.begin()+tempIndex2);
-          MACURVVec.erase(MACURVVec.begin()+tempIndex2);
-          MAFURVVec.erase(MAFURVVec.begin()+tempIndex2);
-        }else{
-          tempIndex2++;
-        }
-        // std::cout << "StatVec:\t" << StatVec.size() << std::endl;
-        // std::cout << "passRVVec.at(i):\t" << passRVVec.at(i) << std::endl; 
-        // std::cout << "passRVVec:\t" << passRVVec.size() << std::endl;
-        
-        // if(passRVVec.at(i) != 1){
-        //   StatVec.erase(StatVec.begin()+tempIndex1);
-        //   adjPVec.erase(adjPVec.begin()+tempIndex1);
-        // }else{
-        //   tempIndex1++;
-        // }
-        
-        // std::cout << "StatVec:\t" << StatVec.size() << std::endl;
-      }
-      
-      mPassQCTot = std::accumulate(mPassQCVec.begin(), mPassQCVec.end(), 0);
-      mPassCVTot = std::accumulate(mPassCVVec.begin(), mPassCVVec.end(), 0);
-      mPassRVTot = std::accumulate(mPassRVVec.begin(), mPassRVVec.end(), 0);
-      
-      std::cout << "mPassQCTot:\t" << mPassQCTot << std::endl;
-      std::cout << "mPassCVTot:\t" << mPassCVTot << std::endl;
-      std::cout << "mPassRVTot:\t" << mPassRVTot << std::endl;
-      // std::cout << "mPassCVVec:\t" << mPassCVVec << std::endl;
-      std::cout << "mPassCVVec.back():\t" << mPassCVVec.back() << std::endl;
-      if(mPassRVTot != 0){
-        Unified_getRegionPVec(t_method, GVecURV, Stat, Beta, seBeta, pval0, pval1, P1Vec, P2Vec);
-        StatVec.push_back(Stat);
-        adjPVec.push_back(pval1);
-        double minMAF_cutoff = g_region_minMAC_cutoff / (2 * t_n);
-        MAFVec.push_back(minMAF_cutoff);
-        
-        P1Mat_DNS.insert_rows(mPassCVVec.back(), P1Vec.t());
-        P2Mat_DNS.insert_cols(mPassCVVec.back(), P2Vec);
-        
-        mPassCVTot += 1;
-        mPassCVVec.at(nchunks-1) += 1;
-      }
-    }
-    
-    // save information to hard drive to avoid high memory usage
-    // if((nchunks > 1) & (mPassQCInChunk != 0)){ 
-    if((nchunks > 1) & (P1Mat_DNS.n_rows != 0)){ 
-      // std::cout << "P1Mat.n_rows:\t" << P1Mat.n_rows << std::endl;
-      // std::cout << "P1Mat.n_cols:\t" << P1Mat.n_cols << std::endl;
-      // std::cout << "P2Mat.n_rows:\t" << P2Mat.n_rows << std::endl;
-      // std::cout << "P2Mat.n_cols:\t" << P2Mat.n_cols << std::endl;
-      
-      P1Mat_DNS.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin");
-      P2Mat_DNS.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin");
-      // GVecURV.save(t_outputFile + "_GVecURV_Chunk_" + std::to_string(ichunk) + ".bin");
-    }
-  }
+  //   if(ichunk == nchunks - 1){ // in the last chunk
+  //     
+  //     // remove markers that did not pass QC
+  //     unsigned int tempIndex = 0;
+  //     // unsigned int tempIndex1 = 0;
+  //     unsigned int tempIndex2 = 0;
+  //     for(unsigned int i = 0; i < q; i++)
+  //     {
+  //       // if(!passQCVec.at(i)){
+  //       if(passRVVec.at(i) != 1){   // edited on 08-10-2021
+  //         markerVec.erase(markerVec.begin()+tempIndex);
+  //         infoVec.erase(infoVec.begin()+tempIndex);
+  //         altFreqVec.erase(altFreqVec.begin()+tempIndex);
+  //         missingRateVec.erase(missingRateVec.begin()+tempIndex);
+  //         // StatVec.erase(StatVec.begin()+tempIndex);
+  //         BetaVec.erase(BetaVec.begin()+tempIndex);
+  //         seBetaVec.erase(seBetaVec.begin()+tempIndex);
+  //         pval0Vec.erase(pval0Vec.begin()+tempIndex);
+  //         pval1Vec.erase(pval1Vec.begin()+tempIndex);
+  //         // added on 08-10-2021
+  //         MACVec.erase(MACVec.begin()+tempIndex);
+  //         MAFVec.erase(MAFVec.begin()+tempIndex);
+  //         
+  //         StatVec.erase(StatVec.begin()+tempIndex);
+  //         adjPVec.erase(adjPVec.begin()+tempIndex);
+  //       }else{
+  //         tempIndex++;
+  //       }
+  //       
+  //       if(passRVVec.at(i) != 2){   // edited on 08-10-2021
+  //         markerURVVec.erase(markerURVVec.begin()+tempIndex2);
+  //         infoURVVec.erase(infoURVVec.begin()+tempIndex2);
+  //         altFreqURVVec.erase(altFreqURVVec.begin()+tempIndex2);
+  //         missingRateURVVec.erase(missingRateURVVec.begin()+tempIndex2);
+  //         MACURVVec.erase(MACURVVec.begin()+tempIndex2);
+  //         MAFURVVec.erase(MAFURVVec.begin()+tempIndex2);
+  //       }else{
+  //         tempIndex2++;
+  //       }
+  //       // std::cout << "StatVec:\t" << StatVec.size() << std::endl;
+  //       // std::cout << "passRVVec.at(i):\t" << passRVVec.at(i) << std::endl; 
+  //       // std::cout << "passRVVec:\t" << passRVVec.size() << std::endl;
+  //       
+  //       // if(passRVVec.at(i) != 1){
+  //       //   StatVec.erase(StatVec.begin()+tempIndex1);
+  //       //   adjPVec.erase(adjPVec.begin()+tempIndex1);
+  //       // }else{
+  //       //   tempIndex1++;
+  //       // }
+  //       
+  //       // std::cout << "StatVec:\t" << StatVec.size() << std::endl;
+  //     }
+  //     
+  //     mPassQCTot = std::accumulate(mPassQCVec.begin(), mPassQCVec.end(), 0);
+  //     mPassCVTot = std::accumulate(mPassCVVec.begin(), mPassCVVec.end(), 0);
+  //     mPassRVTot = std::accumulate(mPassRVVec.begin(), mPassRVVec.end(), 0);
+  //     
+  //     std::cout << "mPassQCTot:\t" << mPassQCTot << std::endl;
+  //     std::cout << "mPassCVTot:\t" << mPassCVTot << std::endl;
+  //     std::cout << "mPassRVTot:\t" << mPassRVTot << std::endl;
+  //     // std::cout << "mPassCVVec:\t" << mPassCVVec << std::endl;
+  //     std::cout << "mPassCVVec.back():\t" << mPassCVVec.back() << std::endl;
+  //     if(mPassRVTot != 0){
+  //       Unified_getRegionPVec(t_method, GVecURV, Stat, Beta, seBeta, pval0, pval1, P1Vec, P2Vec);
+  //       StatVec.push_back(Stat);
+  //       adjPVec.push_back(pval1);
+  //       double minMAF_cutoff = g_region_minMAC_cutoff / (2 * t_n);
+  //       MAFVec.push_back(minMAF_cutoff);
+  //       
+  //       P1Mat_DNS.insert_rows(mPassCVVec.back(), P1Vec.t());
+  //       P2Mat_DNS.insert_cols(mPassCVVec.back(), P2Vec);
+  //       
+  //       mPassCVTot += 1;
+  //       mPassCVVec.at(nchunks-1) += 1;
+  //     }
+  //   }
+  //   
+  //   // save information to hard drive to avoid high memory usage
+  //   // if((nchunks > 1) & (mPassQCInChunk != 0)){ 
+  //   if((nchunks > 1) & (P1Mat_DNS.n_rows != 0)){ 
+  //     // std::cout << "P1Mat.n_rows:\t" << P1Mat.n_rows << std::endl;
+  //     // std::cout << "P1Mat.n_cols:\t" << P1Mat.n_cols << std::endl;
+  //     // std::cout << "P2Mat.n_rows:\t" << P2Mat.n_rows << std::endl;
+  //     // std::cout << "P2Mat.n_cols:\t" << P2Mat.n_cols << std::endl;
+  //     
+  //     P1Mat_DNS.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin");
+  //     P2Mat_DNS.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin");
+  //     // GVecURV.save(t_outputFile + "_GVecURV_Chunk_" + std::to_string(ichunk) + ".bin");
+  //   }
+  // }
   
   // std::cout << "P1Mat.n_rows:\t" << P1Mat.n_rows << std::endl;
   // std::cout << "P1Mat.n_cols:\t" << P1Mat.n_cols << std::endl;
@@ -559,7 +620,7 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   
   // calculate variance-covariance matrix VarMat = P1Mat %*% P2Mat
   // arma::mat VarMat(mPassCVTot+1, mPassCVTot+1);    // variance-covariance matrix (after QC)
-  arma::mat VarMat(mPassCVTot, mPassCVTot);
+  // arma::mat VarMat(mPassCVTot, mPassCVTot);
   // if(mPassRVTot == 0){
   //   VarMat.resize(mPassCVTot, mPassCVTot);
   // }else{
@@ -589,8 +650,10 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   // }
   
   // not so many markers in the region, so all matrix is in memory
-  if(nchunks == 1)
-    VarMat = P1Mat_DNS * P2Mat_DNS;
+  if(nchunks == 1){
+    VarMat = P1Mat * P2Mat;
+  }
+    
 
   // the region includes more markers than limitation, so P1Mat and P2Mat have been put in hard drive
   if(nchunks > 1)
@@ -604,26 +667,27 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       
       std::string P1MatFile = t_outputFile + "_P1Mat_Chunk_" + std::to_string(index1) + ".bin";
       
-      P1Mat_DNS.load(P1MatFile);
+      // P1Mat_DNS.load(P1MatFile);
+      P1Mat.load(P1MatFile);
       
       // std::cout << "P1Mat.n_rows: " << P1Mat.n_rows << std::endl;
       // std::cout << "P1Mat.n_cols: " << P1Mat.n_cols << std::endl;
       
-      if(P1Mat_DNS.n_cols == 0) continue;
+      if(P1Mat.n_cols == 0) continue;
       
       // off-diagonal sub-matrix
       for(unsigned int index2 = 0; index2 < index1; index2++)
       {
         std::cout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " << index2 << "/" << nchunks - 1 << ")........" << std::endl;
         
-        P2Mat_DNS.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index2) + ".bin");
+        P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index2) + ".bin");
         
         // std::cout << "P2Mat.n_rows: " << P2Mat.n_rows << std::endl;
         // std::cout << "P2Mat.n_cols: " << P2Mat.n_cols << std::endl;
         
-        if(P2Mat_DNS.n_cols == 0) continue;
+        if(P2Mat.n_cols == 0) continue;
         
-        arma::mat offVarMat = P1Mat_DNS * P2Mat_DNS;
+        arma::mat offVarMat = P1Mat * P2Mat;
         
         // last_col = first_col + mPassQCVec.at(index2) - 1;
         last_col = first_col + mPassCVVec.at(index2) - 1;
@@ -638,12 +702,12 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       // last_col = first_col + mPassQCVec.at(index1) - 1;
       last_col = first_col + mPassCVVec.at(index1) - 1;
       std::cout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " << index1 << "/" << nchunks - 1 << ")........" << std::endl;
-      P2Mat_DNS.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index1) + ".bin");
+      P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index1) + ".bin");
       
       // std::cout << "P2Mat.n_rows: " << P2Mat.n_rows << std::endl;
       // std::cout << "P2Mat.n_cols: " << P2Mat.n_cols << std::endl;
       
-      arma::mat diagVarMat = P1Mat_DNS * P2Mat_DNS;
+      arma::mat diagVarMat = P1Mat * P2Mat;
       
       VarMat.submat(first_row, first_col, last_row, last_col) = diagVarMat;
       
