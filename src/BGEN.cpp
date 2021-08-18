@@ -200,7 +200,7 @@ void BgenClass::Parse2(unsigned char *buf, unsigned int bufLen, const unsigned c
   for (int i = 0; i <= 255; i++)
     lut[i] = i/255.0;
   
-  double sum_eij = 0, sum_fij_minus_eij2 = 0, sum_eij_sub = 0, sum_fij_minus_eij2_sub = 0; // for INFO
+  double sum_eij = 0, sum_fij_minus_eij2 = 0, sum_eij_sub = 0; // sum_fij_minus_eij2_sub = 0; // for INFO
   double p11,p10,p00,dosage,eij,fij, eijsub, fijsub;
   dosages.clear();
   dosages.reserve(m_N);

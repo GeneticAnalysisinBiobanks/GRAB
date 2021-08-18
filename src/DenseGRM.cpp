@@ -106,7 +106,7 @@ void DenseGRMClass::setArrays(PlinkClass* t_ptrPlinkObj, double t_memoryChunk)
 
   // set m_genoVecofPointers
   m_genoVecofPointers.resize(m_numArrays);
-  for (int i = 0; i < m_numArrays-1 ; i++){
+  for(unsigned int i = 0; i < m_numArrays-1 ; i++){
     m_genoVecofPointers[i] = new vector<unsigned char>;
     m_genoVecofPointers[i]->reserve(m_numMarkersofEachArray * m_numBytesofEachMarker);
   }
@@ -146,7 +146,7 @@ void DenseGRMClass::getOneMarkerStd(size_t t_indexMarker, arma::vec* t_oneMarker
   setStdGenoLookUpArr(m_freqVec[t_indexMarker], m_invStdVec[t_indexMarker], stdGenoLookUpArr);
   std::vector<unsigned char>* genoPtr = m_genoVecofPointers[whichArray];
   
-  int ind = 0;
+  unsigned int ind = 0;
   for(int BtIdx = startBtIdx; BtIdx < endBtIdx - 1; BtIdx ++){
     unsigned char bufferG4 = genoPtr->at(BtIdx); // unsigned char: 4 markers
     // for(posInByte = 0; (posInByte < 4) & (ind < N); posInByte++, ind++){ 
@@ -182,7 +182,7 @@ void DenseGRMClass::setDiagStdGeno()
 
 void DenseGRMClass::closeDenseGRMObj()
 {
-  for (int i = 0; i < m_numArrays; i++){
+  for (unsigned int i = 0; i < m_numArrays; i++){
     m_genoVecofPointers[i]->clear();	
     delete m_genoVecofPointers[i];
   }
@@ -191,14 +191,14 @@ void DenseGRMClass::closeDenseGRMObj()
 }
 
 
-arma::Mat<int> makeChrIndex(Rcpp::String t_excludeChr, 
+arma::Mat<unsigned int> makeChrIndex(Rcpp::String t_excludeChr, 
                             Rcpp::StringVector t_chrVec)
 {
-  int m = t_chrVec.length();
-  arma::Mat<int> chrIndex;
-  arma::Row<int> newChrIndex(2);
-  int indexStart = 0;
-  for(int i = 0; i < m; i ++){
+  unsigned int m = t_chrVec.length();
+  arma::Mat<unsigned int> chrIndex;
+  arma::Row<unsigned int> newChrIndex(2);
+  unsigned int indexStart = 0;
+  for(unsigned int i = 0; i < m; i ++){
     if(t_chrVec[i] == t_excludeChr){
       if(indexStart != i){
         newChrIndex(0) = indexStart;
@@ -220,14 +220,14 @@ arma::Mat<int> makeChrIndex(Rcpp::String t_excludeChr,
 
 void DenseGRMClass::setchrIndexLOCO(Rcpp::StringVector t_chrVecNames)
 {
-  arma::Mat<int> chrIndex = {0, (int)m_M};
+  arma::Mat<unsigned int> chrIndex = {0, (unsigned int)m_M};
   Rcpp::List chrIndexLOCO = List::create(Named("none") = chrIndex);
   
-  int uniqChrNum = t_chrVecNames.length();
+  unsigned int uniqChrNum = t_chrVecNames.length();
 
-  for(int i = 0; i < uniqChrNum; i ++){
+  for(unsigned int i = 0; i < uniqChrNum; i ++){
     Rcpp::String excludeChr = t_chrVecNames[i];
-    arma::Mat<int> chrIndex = makeChrIndex(excludeChr, m_chrVec);
+    arma::Mat<unsigned int> chrIndex = makeChrIndex(excludeChr, m_chrVec);
     chrIndexLOCO.push_back(chrIndex, excludeChr);
   }
   
@@ -286,15 +286,15 @@ arma::vec getKinbVec(arma::vec t_bVec, DenseGRMClass* t_ptrDenseGRM, string t_ex
   // int M = t_ptrDenseGRM->getM();
   Rcpp::List chrIndexLOCO = t_ptrDenseGRM->getChrIndexLOCO();
 
-  arma::Mat<int> ChrIdx = chrIndexLOCO[t_excludeChr];
+  arma::Mat<unsigned int> ChrIdx = chrIndexLOCO[t_excludeChr];
 
   // declare the InnerProduct instance that takes a pointer to the vector data
   getKinbVecParallel getKinbVecParallel(t_bVec, t_ptrDenseGRM);
 
-  int nIdx = ChrIdx.n_rows;
-  for(int i = 0; i < nIdx; i++){
-    int idxStart = ChrIdx(i,0);
-    int idxEnd = ChrIdx(i,1);
+  unsigned int nIdx = ChrIdx.n_rows;
+  for(unsigned int i = 0; i < nIdx; i++){
+    unsigned int idxStart = ChrIdx(i,0);
+    unsigned int idxEnd = ChrIdx(i,1);
     // cout << idxStart << "\t" << idxEnd << endl;
     // call paralleReduce to start the work
     parallelReduce(idxStart, idxEnd, getKinbVecParallel, t_grainSize);

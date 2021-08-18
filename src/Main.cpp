@@ -400,7 +400,7 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       i1 += 1;
       indexInChunk += 1;
     }else{   // Ultra-Rare Variants (URV)
-      markerURVVec.at(i2) =marker;             // marker IDs
+      markerURVVec.at(i2) = marker;             // marker IDs
       infoURVVec.at(i2) = info;                 // marker information: CHR:POS:REF:ALT
       altFreqURVVec.at(i2) = altFreq;           // allele frequencies of ALT allele, this is not always < 0.5.
       missingRateURVVec.at(i2) = missingRate;
@@ -431,8 +431,9 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   }
   
   if(i1 == 0){
-    std::cout << "Only ultra-rare variants are found. This region will be skipped."
-    continue;
+    std::cout << "Only ultra-rare variants are found. This region will be skipped." << std::endl;
+    Rcpp::List OutList = Rcpp::List::create();
+    return OutList;
   }
     
   
