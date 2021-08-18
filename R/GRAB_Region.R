@@ -98,7 +98,7 @@ GRAB.Region = function(objNull,
     # main function to calculate summary statistics for region-based analysis 
     obj.mainRegion = mainRegion(NullModelClass, genoType, genoIndex, OutputFile, n)
     
-    if(is.null(obj.mainRegion)){
+    if(length(obj.mainRegion) == 0){
       next;
     }
     
