@@ -360,17 +360,17 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     if((missingRate > g_missingRate_cutoff) || (MAF > g_region_maxMAF_cutoff) || MAF == 0){
       continue;  // does not pass QC
     }
-    
-    if(indexInChunk == 0){
-      std::cout << "Start analyzing chunk " << ichunk << "....." << std::endl;
-      // P1Mat.resize(t_n, m1);
-      P1Mat.resize(m1, t_n);
-      P2Mat.resize(t_n, m1);
-      // arma::mat GMat(t_n, m1, arma::fill::zeros);
-      // GMatURV.resize(t_n, m1);
-    }
-    
+
     if(MAC > g_region_minMAC_cutoff){  // not Ultra-Rare Variants
+      
+      if(indexInChunk == 0){
+        std::cout << "Start analyzing chunk " << ichunk << "....." << std::endl;
+        // P1Mat.resize(t_n, m1);
+        P1Mat.resize(m1, t_n);
+        P2Mat.resize(t_n, m1);
+        // arma::mat GMat(t_n, m1, arma::fill::zeros);
+        // GMatURV.resize(t_n, m1);
+      }
       
       markerVec.at(i1) = marker;             // marker IDs
       infoVec.at(i1) = info;                 // marker information: CHR:POS:REF:ALT
@@ -417,7 +417,11 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     }
     
     if(indexInChunk == m1){
-      std::cout << "In chunk " << ichunk << ", " << i2 << "markers are ultra-rare and " << i1 << " markers are not ultra-rare." << std::endl;
+      std::cout << "In chunks 0-" << ichunk << ", " << i2 << " markers are ultra-rare and " << i1 << " markers are not ultra-rare." << std::endl;
+      std::cout << "P1Mat.n_rows:\t" << P1Mat.n_rows << std::endl;
+      std::cout << "P1Mat.n_cols:\t" << P1Mat.n_cols << std::endl;
+      std::cout << "P2Mat.n_rows:\t" << P2Mat.n_rows << std::endl;
+      std::cout << "P2Mat.n_cols:\t" << P2Mat.n_cols << std::endl;
       P1Mat.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin");
       P2Mat.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin");
       mPassCVVec.push_back(m1);
@@ -464,7 +468,7 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     P2Mat.col(indexInChunk) = P2Vec;
     
     indexInChunk += 1;
-    
+    VarMat.resize(i1 + 1, i1 + 1);
     // mPassCVTot += 1;
     // mPassCVVec.at(nchunks-1) += 1;
   }
@@ -475,7 +479,11 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     P1Mat = P1Mat.rows(0, indexInChunk - 1);
     P2Mat = P2Mat.cols(0, indexInChunk - 1);
     if(nchunks != 1){
-      std::cout << "In chunk " << ichunk << ", " << i2 << "markers are ultra-rare and " << i1 << " markers are not ultra-rare." << std::endl;
+      std::cout << "In chunks 0-" << ichunk << ", " << i2 << "markers are ultra-rare and " << i1 << " markers are not ultra-rare." << std::endl;
+      std::cout << "P1Mat.n_rows:\t" << P1Mat.n_rows << std::endl;
+      std::cout << "P1Mat.n_cols:\t" << P1Mat.n_cols << std::endl;
+      std::cout << "P2Mat.n_rows:\t" << P2Mat.n_rows << std::endl;
+      std::cout << "P2Mat.n_cols:\t" << P2Mat.n_cols << std::endl;
       P1Mat.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin");
       P2Mat.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin");
     }

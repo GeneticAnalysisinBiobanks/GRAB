@@ -52,7 +52,7 @@ checkOutputFile = function(OutputFile,
                     "' is not as expected. Probably, it has been modified, which is not permitted. Please remove the existing file of 'OutputFileIndex'."))
       
       outIndex = as.numeric(outIndexData[nrow(outIndexData), 1]) + 1
-      warning(paste0("Based on 'OutputFile' and 'OutputFileIndex', we restart the analysis from the ", outIndex, "-th chunk."))
+      print(paste0("Based on 'OutputFile' and 'OutputFileIndex', we restart the analysis from the ", outIndex, "-th chunk."))
     }
   }else{
     outIndex = 1;
