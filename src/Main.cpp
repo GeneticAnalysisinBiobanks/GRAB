@@ -430,6 +430,12 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     }
   }
   
+  if(i1 == 0){
+    std::cout << "Only ultra-rare variants are found. This region will be skipped."
+    continue;
+  }
+    
+  
   nchunks = ichunk + 1;
   arma::mat VarMat(i1, i1);
   
@@ -479,7 +485,7 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
     P1Mat = P1Mat.rows(0, indexInChunk - 1);
     P2Mat = P2Mat.cols(0, indexInChunk - 1);
     if(nchunks != 1){
-      std::cout << "In chunks 0-" << ichunk << ", " << i2 << "markers are ultra-rare and " << i1 << " markers are not ultra-rare." << std::endl;
+      std::cout << "In chunks 0-" << ichunk << ", " << i2 << " markers are ultra-rare and " << i1 << " markers are not ultra-rare." << std::endl;
       std::cout << "P1Mat.n_rows:\t" << P1Mat.n_rows << std::endl;
       std::cout << "P1Mat.n_cols:\t" << P1Mat.n_cols << std::endl;
       std::cout << "P2Mat.n_rows:\t" << P2Mat.n_rows << std::endl;
