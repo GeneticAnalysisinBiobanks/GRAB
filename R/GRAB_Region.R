@@ -83,6 +83,7 @@ GRAB.Region = function(objNull,
   P1Mat = matrix(0, control$max_markers_region, n);
   P2Mat = matrix(0, n, control$max_markers_region);
   
+  chrom1 = "FakeCHR";
   for(i in outIndex:nRegions){
     
     region = RegionList[[i]]
@@ -96,7 +97,10 @@ GRAB.Region = function(objNull,
     print(paste0("Analyzing Region of ", regionName, " (",i,"/",nRegions,")."))
     print(paste(SNP, collapse = ", "))
     
-    obj.setRegion = setRegion(NullModelClass, objNull, control, chrom, SparseGRMFile)
+    if(chrom1 != chrom){
+      obj.setRegion = setRegion(NullModelClass, objNull, control, chrom, SparseGRMFile)
+      chrom1 = chrom
+    }
     
     # main function to calculate summary statistics for region-based analysis 
     obj.mainRegion = mainRegion(NullModelClass, genoType, genoIndex, OutputFile, n, P1Mat, P2Mat)
