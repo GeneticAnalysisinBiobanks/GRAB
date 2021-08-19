@@ -90,7 +90,7 @@ GRAB.Region = function(objNull,
     genoIndex = region$genoIndex
     chrom = region$chrom
     
-    print(paste0("Analyzing Region of ", regionName, "(",i,"/",nRegions,")."))
+    print(paste0("Analyzing Region of ", regionName, " (",i,"/",nRegions,")."))
     print(paste(SNP, collapse = ", "))
     
     obj.setRegion = setRegion(NullModelClass, objNull, control, chrom, SparseGRMFile)

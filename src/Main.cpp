@@ -297,8 +297,10 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   
   // arma::sp_mat P1Mat, P2Mat;
   // arma::mat P1Mat_DNS, P2Mat_DNS;
+  std::cout << "Before assigning memory for P1Mat and P2Mat" << std::endl;
   arma::mat P1Mat(m1, t_n);
   arma::mat P2Mat(t_n, m1);
+  std::cout << "After assigning memory for P1Mat and P2Mat" << std::endl;
   arma::vec GVecURV(t_n, arma::fill::zeros);    // aggregate ultra-rare variants (URV) whose MAC less than cutoff (g_region_minMAC_cutoff)
   
   // conduct marker-level analysis
@@ -434,6 +436,8 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   if(i1 == 0){
     std::cout << "Only ultra-rare variants are found. This region will be skipped." << std::endl;
     Rcpp::List OutList = Rcpp::List::create();
+    P1Mat.clear();
+    P2Mat.clear();
     return OutList;
   }
     
@@ -826,6 +830,8 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
                                           // Rcpp::Named("pval0Burden") = pval0Burden,
                                           // Rcpp::Named("pval1Burden") = pval1Burden);
   
+  P1Mat.clear();
+  P2Mat.clear();
   return OutList;
 }
 
