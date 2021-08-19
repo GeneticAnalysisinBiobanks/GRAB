@@ -45,7 +45,6 @@ double g_region_minMAC_cutoff;    // for Rare Variants (RVs) whose MAC < this va
 double g_region_maxMAF_cutoff;
 unsigned int g_region_maxMarkers_cutoff;   // maximal number of markers in one chunk, only used for region-based analysis to reduce memory usage
 
-
 // global variables for sparse GRM
 arma::sp_mat g_SparseGRM;
 
@@ -245,7 +244,9 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
                            std::string t_genoType,     // "PLINK", "BGEN"
                            std::vector<uint32_t> t_genoIndex,
                            std::string t_outputFile,
-                           unsigned int t_n)           // sample size  
+                           unsigned int t_n,           // sample size  
+                           arma::mat P1Mat,            // edited on 2021-08-19: to avoid repeated memory allocation of P1Mat and P2Mat
+                           arma::mat P2Mat)
 {
   unsigned int q = t_genoIndex.size();                 // number of markers (before QC) in one region
   
@@ -271,7 +272,10 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   // example #2: (q = 1000, m1 = 10) -> (nchunks = 100, m2 = 10)
   // example #3: (q = 1001, m1 = 10) -> (nchunks = 101, m2 = 1)
   
-  unsigned int m1 = g_region_maxMarkers_cutoff;  // number of markers in all chunks expect for the last chunk
+  unsigned int m1 = g_region_maxMarkers_cutoff;     // number of markers in all chunks expect for the last chunk
+  // P1Mat should be of dimension: m1 * t_n
+  // P2Mat should be of dimension: t_n * m1
+  
   unsigned int nchunks = 0;
   // unsigned int nchunks = (q-1) / m1 + 1;         // number of chunks.  e.g. 42 / 3 = 14, 2 / 3 = 0.
   // unsigned int m2 = (q-1) % m1 + 1;              // number of markers in the last chunk. e.g. 42 % 3 = 0, 2 % 3 = 2.
@@ -298,8 +302,8 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   // arma::sp_mat P1Mat, P2Mat;
   // arma::mat P1Mat_DNS, P2Mat_DNS;
   std::cout << "Before assigning memory for P1Mat and P2Mat" << std::endl;
-  arma::mat P1Mat(m1, t_n);
-  arma::mat P2Mat(t_n, m1);
+  // arma::mat P1Mat(m1, t_n);
+  // arma::mat P2Mat(t_n, m1);
   std::cout << "After assigning memory for P1Mat and P2Mat" << std::endl;
   arma::vec GVecURV(t_n, arma::fill::zeros);    // aggregate ultra-rare variants (URV) whose MAC less than cutoff (g_region_minMAC_cutoff)
   
@@ -447,7 +451,7 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   
   // non Ultra Rare Variants
   markerVec.resize(i1);
-  infoVec.resize(i1);                 // marker information: CHR:POS:REF:ALT
+  infoVec.resize(i1);              // marker information: CHR:POS:REF:ALT
   altFreqVec.resize(i1);           // allele frequencies of ALT allele, this is not always < 0.5.
   missingRateVec.resize(i1);
   MACVec.resize(i1);

@@ -80,6 +80,9 @@ GRAB.Region = function(objNull,
     return(message)
   }
     
+  P1Mat = matrix(0, control$max_markers_region, n);
+  P2Mat = matrix(0, n, control$max_markers_region);
+  
   for(i in outIndex:nRegions){
     
     region = RegionList[[i]]
@@ -96,7 +99,7 @@ GRAB.Region = function(objNull,
     obj.setRegion = setRegion(NullModelClass, objNull, control, chrom, SparseGRMFile)
     
     # main function to calculate summary statistics for region-based analysis 
-    obj.mainRegion = mainRegion(NullModelClass, genoType, genoIndex, OutputFile, n)
+    obj.mainRegion = mainRegion(NullModelClass, genoType, genoIndex, OutputFile, n, P1Mat, P2Mat)
     
     if(length(obj.mainRegion) == 0){
       writeOutputFile(list(), i, 
@@ -270,7 +273,7 @@ setRegion = function(NullModelClass, objNull, control, chrom, SparseGRMFile)
                             control$missing_cutoff,
                             control$max_maf_region,
                             control$min_mac_region,
-                            control$max_mem_region,
+                            control$max_markers_region,
                             control$omp_num_threads)
   
   # The following function is in POLMM.R
@@ -290,10 +293,12 @@ mainRegion = function(NullModelClass,
                       genoType, 
                       genoIndex, 
                       OutputFile,
-                      n)
+                      n,
+                      P1Mat,
+                      P2Mat)
 {
   if(NullModelClass == "POLMM_NULL_Model")
-    obj.mainRegion = mainRegionInCPP("POLMM", genoType, genoIndex, OutputFile, n)
+    obj.mainRegion = mainRegionInCPP("POLMM", genoType, genoIndex, OutputFile, n, P1Mat, P2Mat)
   
   return(obj.mainRegion)
 }

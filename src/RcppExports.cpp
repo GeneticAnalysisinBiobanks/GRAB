@@ -89,8 +89,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // mainRegionInCPP
-Rcpp::List mainRegionInCPP(std::string t_method, std::string t_genoType, std::vector<uint32_t> t_genoIndex, std::string t_outputFile, unsigned int t_n);
-RcppExport SEXP _GRAB_mainRegionInCPP(SEXP t_methodSEXP, SEXP t_genoTypeSEXP, SEXP t_genoIndexSEXP, SEXP t_outputFileSEXP, SEXP t_nSEXP) {
+Rcpp::List mainRegionInCPP(std::string t_method, std::string t_genoType, std::vector<uint32_t> t_genoIndex, std::string t_outputFile, unsigned int t_n, arma::mat P1Mat, arma::mat P2Mat);
+RcppExport SEXP _GRAB_mainRegionInCPP(SEXP t_methodSEXP, SEXP t_genoTypeSEXP, SEXP t_genoIndexSEXP, SEXP t_outputFileSEXP, SEXP t_nSEXP, SEXP P1MatSEXP, SEXP P2MatSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -99,7 +99,9 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::vector<uint32_t> >::type t_genoIndex(t_genoIndexSEXP);
     Rcpp::traits::input_parameter< std::string >::type t_outputFile(t_outputFileSEXP);
     Rcpp::traits::input_parameter< unsigned int >::type t_n(t_nSEXP);
-    rcpp_result_gen = Rcpp::wrap(mainRegionInCPP(t_method, t_genoType, t_genoIndex, t_outputFile, t_n));
+    Rcpp::traits::input_parameter< arma::mat >::type P1Mat(P1MatSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type P2Mat(P2MatSEXP);
+    rcpp_result_gen = Rcpp::wrap(mainRegionInCPP(t_method, t_genoType, t_genoIndex, t_outputFile, t_n, P1Mat, P2Mat));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -233,7 +235,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setMarker_GlobalVarsInCPP", (DL_FUNC) &_GRAB_setMarker_GlobalVarsInCPP, 5},
     {"_GRAB_setRegion_GlobalVarsInCPP", (DL_FUNC) &_GRAB_setRegion_GlobalVarsInCPP, 6},
     {"_GRAB_mainMarkerInCPP", (DL_FUNC) &_GRAB_mainMarkerInCPP, 3},
-    {"_GRAB_mainRegionInCPP", (DL_FUNC) &_GRAB_mainRegionInCPP, 5},
+    {"_GRAB_mainRegionInCPP", (DL_FUNC) &_GRAB_mainRegionInCPP, 7},
     {"_GRAB_getGenoInCPP", (DL_FUNC) &_GRAB_getGenoInCPP, 3},
     {"_GRAB_getSpGenoInCPP", (DL_FUNC) &_GRAB_getSpGenoInCPP, 3},
     {"_GRAB_setPLINKobjInCPP", (DL_FUNC) &_GRAB_setPLINKobjInCPP, 5},
