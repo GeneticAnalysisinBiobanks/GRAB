@@ -297,7 +297,8 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
   
   // arma::sp_mat P1Mat, P2Mat;
   // arma::mat P1Mat_DNS, P2Mat_DNS;
-  arma::mat P1Mat, P2Mat;
+  arma::mat P1Mat(m1, t_n);
+  arma::mat P2Mat(t_n, m1);
   arma::vec GVecURV(t_n, arma::fill::zeros);    // aggregate ultra-rare variants (URV) whose MAC less than cutoff (g_region_minMAC_cutoff)
   
   // conduct marker-level analysis
@@ -366,8 +367,8 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       if(indexInChunk == 0){
         std::cout << "Start analyzing chunk " << ichunk << "....." << std::endl;
         // P1Mat.resize(t_n, m1);
-        P1Mat.resize(m1, t_n);
-        P2Mat.resize(t_n, m1);
+        // P1Mat.resize(m1, t_n);
+        // P2Mat.resize(t_n, m1);
         // arma::mat GMat(t_n, m1, arma::fill::zeros);
         // GMatURV.resize(t_n, m1);
       }
