@@ -415,9 +415,11 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       MAFURVVec.at(i2) = MAF;
       
       if(altFreq < 0.5){
-        GVecURV += GVec;
+        // GVecURV += GVec;  
+        GVecURV = arma::max(GVecURV, GVec);  // edited on 2021-08-20
       }else{
-        GVecURV += 2 - GVec;
+        // GVecURV += 2 - GVec;
+        GVecURV += arma::max(GVecURV, 2 - GVec); // edited on 2021-08-20
       }
         
       i2 += 1;
@@ -504,8 +506,6 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
       P2Mat.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin");
     }
   }
-  
-  
   
     // std::cout << "MAC:\t" << MAC << std::endl;
     // std::cout << "altCounts:\t" << altCounts << std::endl;
