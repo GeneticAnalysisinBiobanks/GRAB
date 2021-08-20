@@ -419,7 +419,7 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
         GVecURV = arma::max(GVecURV, GVec);  // edited on 2021-08-20
       }else{
         // GVecURV += 2 - GVec;
-        GVecURV += arma::max(GVecURV, 2 - GVec); // edited on 2021-08-20
+        GVecURV = arma::max(GVecURV, 2 - GVec); // edited on 2021-08-20
       }
         
       i2 += 1;
