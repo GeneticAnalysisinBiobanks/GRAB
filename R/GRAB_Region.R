@@ -160,17 +160,22 @@ GRAB.Region = function(objNull,
                                     pval0 = obj.mainRegion$pval0Vec,
                                     pval1 = obj.mainRegion$pval1Vec)
     
-    info.MarkerURV.Region = data.frame(Region = regionName,
-                                       Marker = obj.mainRegion$markerURVVec,
-                                       IsUltraRareVariants = 1,
-                                       Info = obj.mainRegion$infoURVVec,
-                                       AltFreq = obj.mainRegion$altFreqURVVec,
-                                       MAC = obj.mainRegion$MACURVVec,
-                                       MissingRate = obj.mainRegion$missingRateURVVec,
-                                       Beta = NA,
-                                       seBeta = NA,
-                                       pval0 = NA,
-                                       pval1 = NA)
+    if(length(obj.mainRegion$markerURVVec) == 0){
+      info.MarkerURV.Region = NULL;
+    }else{
+      info.MarkerURV.Region = data.frame(Region = regionName,
+                                         Marker = obj.mainRegion$markerURVVec,
+                                         IsUltraRareVariants = 1,
+                                         Info = obj.mainRegion$infoURVVec,
+                                         AltFreq = obj.mainRegion$altFreqURVVec,
+                                         MAC = obj.mainRegion$MACURVVec,
+                                         MissingRate = obj.mainRegion$missingRateURVVec,
+                                         Beta = NA,
+                                         seBeta = NA,
+                                         pval0 = NA,
+                                         pval1 = NA)
+    }
+
     
     info.Region = rbind.data.frame(info.Marker.Region, info.MarkerURV.Region)
     
