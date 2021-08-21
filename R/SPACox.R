@@ -161,6 +161,11 @@ setMarker.SPACox = function(objNull, control)
                     SPA_Cutoff)
 }
 
+setRegion.SPACox = function(objNull, control)
+{
+  setMarker.SPACox(objNull, control)
+}
+
 
 # mainMarker.SPACox = function(objNull, control, markers, genoType)
 mainMarker.SPACox = function(genoType, genoIndex)

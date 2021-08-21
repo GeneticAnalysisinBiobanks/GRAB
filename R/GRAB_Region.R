@@ -285,15 +285,17 @@ setRegion = function(NullModelClass, objNull, control, chrom, SparseGRMFile)
                             control$max_markers_region,
                             control$omp_num_threads)
   
-  # The following function is in POLMM.R
+  # Check POLMM.R
   if(NullModelClass == "POLMM_NULL_Model")
-    obj.setRegion = setRegion.POLMM(objNull, control, chrom, SparseGRMFile)  # check POLMM.R
+    obj.setRegion = setRegion.POLMM(objNull, control, chrom, SparseGRMFile)  
   
+  # To be continued
   if(NullModelClass == "SAIGE_NULL_Model")
     obj.setRegion = setRegion.SAIGE(objNull, control, chrom, SparseGRMFile)
   
+  # Check SPACox.R
   if(NullModelClass == "SPACox_NULL_Model")
-    obj.setRegion = setRegion.SPACox(objNull, control, chrom)
+    obj.setRegion = setRegion.SPACox(objNull, control)
   
   return(obj.setRegion)
 }
@@ -308,6 +310,9 @@ mainRegion = function(NullModelClass,
 {
   if(NullModelClass == "POLMM_NULL_Model")
     obj.mainRegion = mainRegionInCPP("POLMM", genoType, genoIndex, OutputFile, n, P1Mat, P2Mat)
+  
+  if(NullModelClass == "SPACox_NULL_Model")
+    obj.mainRegion = mainRegionInCPP("SPACox", genoType, genoIndex, OutputFile, n, P1Mat, P2Mat)
   
   return(obj.mainRegion)
 }

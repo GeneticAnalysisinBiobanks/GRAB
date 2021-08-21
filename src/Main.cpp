@@ -240,7 +240,7 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
 //////// ---------- Main function for region-level analysis --------- ////////////
 
 // [[Rcpp::export]]
-Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
+Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SAIGE" (to be continued)
                            std::string t_genoType,     // "PLINK", "BGEN"
                            std::vector<uint32_t> t_genoIndex,
                            std::string t_outputFile,
@@ -989,11 +989,18 @@ void Unified_getRegionPVec(std::string t_method,
                            arma::vec& t_P1Vec, 
                            arma::vec& t_P2Vec)
 {
-  // something to add
+  // Check src/POLMM.cpp and src/POLMM.hpp
   if(t_method == "POLMM")
   {
     ptr_gPOLMMobj->getRegionPVec(t_GVec, t_Stat, t_Beta, t_seBeta, t_pval0, t_pval1, t_P1Vec, t_P2Vec);
   }
+  
+  // Check src/SPACox.cpp and src/SPACox.hpp
+  if(t_method == "SPACox")
+  {
+    ptr_gSPACoxobj->getRegionPVec(t_GVec, t_Stat, t_pval0, t_pval1, t_P1Vec, t_P2Vec);
+  }
+  
 }
 
 //////// ---------- Main functions to set objects for different genotype format --------- ////////////
