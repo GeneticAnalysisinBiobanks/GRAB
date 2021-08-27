@@ -870,12 +870,12 @@ arma::mat getGenoInCPP(std::string t_genoType,
                                           altCounts,           // counts of ALT allele
                                           missingRate,         // missing rate
                                           imputeInfo,          // imputation information score, i.e., R2 (all 1 for PLINK)
-                                          false,               // if true, output index of missing genotype data
+                                          true,                // if true, output index of missing genotype data
                                           indexForMissing,     // index of missing genotype data
                                           false,               // if true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
                                           indexForNonZero);    // the index of non-zero genotype in the all subjects. Only valid if t_isOnlyOutputNonZero == true.
     
-    imputeGeno(GVec, altFreq, indexForMissing, t_imputeMethod);  // check UTIL.hpp
+    imputeGeno(GVec, altFreq, indexForMissing, t_imputeMethod);  // check UTIL.cpp
     GMat.col(i) = GVec;
   }
   
@@ -910,7 +910,7 @@ arma::sp_mat getSpGenoInCPP(std::string t_genoType,
                                           altCounts,     // counts of ALT allele
                                           missingRate,   // missing rate
                                           imputeInfo,    // imputation information score, i.e., R2 (all 1 for PLINK)
-                                          false,         // if true, output index of missing genotype data
+                                          true,         // if true, output index of missing genotype data
                                           indexForMissing,     // index of missing genotype data
                                           false,               // is true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
                                           indexForNonZero);    // the index of non-zero genotype in the all subjects. Only valid if t_isOnlyOutputNonZero == true.

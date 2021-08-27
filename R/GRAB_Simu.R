@@ -250,23 +250,39 @@ plink.make = function(Geno.mat,
   if(!is.null(Pheno) & length(Pheno) != n)
     stop("length(Pheno) should be the same as nrow(Geno.mat).")
   
+  if(is.null(Pheno))
+    Pheno = rep(-9, n)
+  
   if(!is.null(SEX) & length(SEX) != n)
-    stop("length(SEX) should be the same as nrow(Geno.mat).")  
+    stop("length(SEX) should be the same as nrow(Geno.mat).") 
+  
+  if(is.null(SEX))
+    SEX = rep(1, n)
   
   if(!is.null(BP) & length(SEX) != m)
     stop("length(BP) should be the same as ncol(Geno.mat).")
+  
+  if(is.null(BP))
+    BP = 1:m
+  
+  if(mCHRs){
+    CHR = sample(1:22, m, replace=T)
+  }else{
+    CHR = rep(1, m)
+  }
+    
   
   PED = cbind(FID=FID, 
               IID=IID, 
               PID=0, 
               MID=0, 
-              Sex = ifelse(is.null(SEX), 1, SEX), 
-              Phen = ifelse(is.null(Pheno), -9, Pheno));
+              Sex = SEX, 
+              Phen = Pheno);
   
-  MAP = cbind(CHR = ifelse(mCHRs, sample(1:22, m, replace=T), 1), 
+  MAP = cbind(CHR = CHR, 
               SNP = SNPs, 
               GeneDist = 0,
-              BP = ifelse(is.null(BP), 1:m, BP));
+              BP = BP);
   
   Geno.ped1 = Geno.ped2 = ifelse(Geno.mat == -9, "0", "G")
   Geno.ped1 = ifelse(Geno.mat>=1, "A", Geno.ped1)

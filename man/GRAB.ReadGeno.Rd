@@ -62,9 +62,9 @@ but do not support both include and exclude files at the same time.
   \item \code{RangesToExcludeFile}: a file of ranges to exclude, three columns (no headers): chromosome, start position, end position.
   \item \code{AlleleOrder}: a character, "ref-first" or "alt-first", to determine whether the REF/major allele should appear first or second. Default is "alt-first" for PLINK and "ref-first" for BGEN. If the ALT allele frequencies of most markers are > 0.5, you might consider resetting this option. NOTE, if you use plink2 to convert PLINK file to BGEN file, then the BGEN file probably is 'ref-first'.
   \item \code{AllMarkers}: a logical value (default: FALSE) to indicate if all markers are extracted. It might take too much memory to put genotype of all markers in R. This parameter is to remind users.  
-  \item \code{ImputeMethod}: a character, "none" (default), "minor", or "mean". By default, missing genotype is NA. Suppose alternative allele frequency is p < 0.5, then missing genotype is imputed as 2p (ImputeMethod = "mean") or round(2p) (ImputeMethod = "bestguess").
+  \item \code{ImputeMethod}: a character, "none" (default), "bestguess", or "mean". By default, missing genotype is NA. Suppose alternative allele frequency is p < 0.5, then missing genotype is imputed as 2p (ImputeMethod = "mean") or round(2p) (ImputeMethod = "bestguess").
   }
-  }
+}
 }
 \examples{
 
@@ -101,5 +101,10 @@ GenoMat = GenoList$GenoMat
 head(GenoMat)
 markerInfo = GenoList$markerInfo
 markerInfo
+
+## The below is for plink files with missing data
+PLINKFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
+GenoList = GRAB.ReadGeno(PLINKFile, control = list(AllMarkers = TRUE))
+head(GenoList$GenoMat)
 
 }
