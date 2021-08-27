@@ -63,5 +63,9 @@ double getinvStd(double t_freq);
 
 arma::vec nb(unsigned int n);
 
+void imputeGeno(arma::vec& t_GVec, 
+                double t_altFreq, 
+                std::vector<uint32_t> t_indexForMissing,
+                std::string t_imputeMethod);
 #endif
 

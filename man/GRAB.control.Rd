@@ -2,17 +2,17 @@
 % Please edit documentation in R/control.R
 \name{GRAB.control}
 \alias{GRAB.control}
-\title{Information about the control in GRAB package}
+\title{Details about the argument of \code{control} in \code{GRAB} package}
 \usage{
 GRAB.control()
 }
 \description{
-Information about the control in GRAB package
+In \code{GRAB} package, the most of parameters are specified in argument of \code{control}.
 }
 \details{
-In GRAB package, we use \code{control} to specify parameters in multiple functions. Here, we only list generic parameters. 
+In \code{GRAB} package, we use \code{control} to specify function parameters. Here, we only list generic parameters. 
 For the parameters only used in specific method, please refer to its own help page. 
-For example, check \code{?GRAB.SPACox} for more information about SPACox method.
+For example, check \code{?GRAB.POLMM} for more information about POLMM method.
 \describe{
   \item{GRAB.ReadGeno}{
   We support two include files of (IDsToIncludeFile, RangesToIncludeFile) and two exclude files of (IDsToExcludeFile, RangesToExcludeFile), but do not support both include and exclude files.

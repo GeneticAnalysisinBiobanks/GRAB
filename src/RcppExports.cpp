@@ -106,28 +106,30 @@ BEGIN_RCPP
 END_RCPP
 }
 // getGenoInCPP
-arma::mat getGenoInCPP(std::string t_genoType, Rcpp::DataFrame t_markerInfo, int n);
-RcppExport SEXP _GRAB_getGenoInCPP(SEXP t_genoTypeSEXP, SEXP t_markerInfoSEXP, SEXP nSEXP) {
+arma::mat getGenoInCPP(std::string t_genoType, Rcpp::DataFrame t_markerInfo, int n, std::string t_imputeMethod);
+RcppExport SEXP _GRAB_getGenoInCPP(SEXP t_genoTypeSEXP, SEXP t_markerInfoSEXP, SEXP nSEXP, SEXP t_imputeMethodSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< std::string >::type t_genoType(t_genoTypeSEXP);
     Rcpp::traits::input_parameter< Rcpp::DataFrame >::type t_markerInfo(t_markerInfoSEXP);
     Rcpp::traits::input_parameter< int >::type n(nSEXP);
-    rcpp_result_gen = Rcpp::wrap(getGenoInCPP(t_genoType, t_markerInfo, n));
+    Rcpp::traits::input_parameter< std::string >::type t_imputeMethod(t_imputeMethodSEXP);
+    rcpp_result_gen = Rcpp::wrap(getGenoInCPP(t_genoType, t_markerInfo, n, t_imputeMethod));
     return rcpp_result_gen;
 END_RCPP
 }
 // getSpGenoInCPP
-arma::sp_mat getSpGenoInCPP(std::string t_genoType, Rcpp::DataFrame t_markerInfo, int n);
-RcppExport SEXP _GRAB_getSpGenoInCPP(SEXP t_genoTypeSEXP, SEXP t_markerInfoSEXP, SEXP nSEXP) {
+arma::sp_mat getSpGenoInCPP(std::string t_genoType, Rcpp::DataFrame t_markerInfo, int n, std::string t_imputeMethod);
+RcppExport SEXP _GRAB_getSpGenoInCPP(SEXP t_genoTypeSEXP, SEXP t_markerInfoSEXP, SEXP nSEXP, SEXP t_imputeMethodSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< std::string >::type t_genoType(t_genoTypeSEXP);
     Rcpp::traits::input_parameter< Rcpp::DataFrame >::type t_markerInfo(t_markerInfoSEXP);
     Rcpp::traits::input_parameter< int >::type n(nSEXP);
-    rcpp_result_gen = Rcpp::wrap(getSpGenoInCPP(t_genoType, t_markerInfo, n));
+    Rcpp::traits::input_parameter< std::string >::type t_imputeMethod(t_imputeMethodSEXP);
+    rcpp_result_gen = Rcpp::wrap(getSpGenoInCPP(t_genoType, t_markerInfo, n, t_imputeMethod));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -236,8 +238,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setRegion_GlobalVarsInCPP", (DL_FUNC) &_GRAB_setRegion_GlobalVarsInCPP, 6},
     {"_GRAB_mainMarkerInCPP", (DL_FUNC) &_GRAB_mainMarkerInCPP, 3},
     {"_GRAB_mainRegionInCPP", (DL_FUNC) &_GRAB_mainRegionInCPP, 7},
-    {"_GRAB_getGenoInCPP", (DL_FUNC) &_GRAB_getGenoInCPP, 3},
-    {"_GRAB_getSpGenoInCPP", (DL_FUNC) &_GRAB_getSpGenoInCPP, 3},
+    {"_GRAB_getGenoInCPP", (DL_FUNC) &_GRAB_getGenoInCPP, 4},
+    {"_GRAB_getSpGenoInCPP", (DL_FUNC) &_GRAB_getSpGenoInCPP, 4},
     {"_GRAB_setPLINKobjInCPP", (DL_FUNC) &_GRAB_setPLINKobjInCPP, 5},
     {"_GRAB_setBGENobjInCPP", (DL_FUNC) &_GRAB_setBGENobjInCPP, 7},
     {"_GRAB_setPOLMMobjInCPP", (DL_FUNC) &_GRAB_setPOLMMobjInCPP, 11},

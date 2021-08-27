@@ -54,44 +54,26 @@ void PlinkClass::setPlinkobj(std::string t_bimFile,
     Rcpp::stop("The third magic number of the plink bed file is not 00000001. Please use SNP-major plink (plink version >= 1.9) files.");
 }
 
-// not used after 2021-02-28
-// void PlinkClass::setChrMaps()
-// {
-//   uint8_t last_chr_autosome = 22;
-//   // Chromosome code (either an integer, or 'X'/'Y'/'XY'/'MT'; '0' indicates unknown) or name
-//   for(uint8_t index = 0; index <= 26; index++){
-//     m_chrMaps[std::to_string(index)] = index;
-//   }
-//   m_chrMaps["X"] = last_chr_autosome + 1;
-//   m_chrMaps["x"] = last_chr_autosome + 1;
-//   m_chrMaps["Y"] = last_chr_autosome + 2;
-//   m_chrMaps["y"] = last_chr_autosome + 2;
-//   m_chrMaps["XY"] = last_chr_autosome + 3;
-//   m_chrMaps["xy"] = last_chr_autosome + 3;
-//   m_chrMaps["MT"] = last_chr_autosome + 4;
-//   m_chrMaps["mt"] = last_chr_autosome + 4;
-// }    
-
 void PlinkClass::readBimFile()
 {
   std::cout << "Reading bim file...." << std::endl;
   std::ifstream bim(m_bimFile);
   m_M0 = 0;
   std::string line;
-  // uint8_t chr_item;
+  
   while(getline(bim, line)){
     m_M0++;
     std::vector<std::string> line_elements;
     boost::split(line_elements, line, boost::is_any_of("\t "));
     boost::replace_all(line_elements[line_elements.size() - 1], "\r", "");
-    // chr_item = m_chrMaps.at(line_elements[0]);
+    
     m_chr.push_back(line_elements[0]);
     m_MarkerInPlink.push_back(line_elements[1]);
     m_gd.push_back(std::stof(line_elements[2]));
     m_pd.push_back(std::stoi(line_elements[3]));
     std::transform(line_elements[4].begin(), line_elements[4].end(), line_elements[4].begin(), toupper);
     std::transform(line_elements[5].begin(), line_elements[5].end(), line_elements[5].begin(), toupper);
-    m_alt.push_back(line_elements[4]);  // allele 1, usually minor allele
+    m_alt.push_back(line_elements[4]);  // allele 1, usually minor allele, alt-first
     m_ref.push_back(line_elements[5]);  // allele 2, usually major allele
   }
   m_M = m_M0;
@@ -107,8 +89,7 @@ void PlinkClass::readFamFile()
     m_N0 ++;
     std::vector<std::string> line_elements;
     boost::split(line_elements, line, boost::is_any_of("\t "));
-    // boost::replace_all(line_elements[line_elements.size() - 1], "\r", "");
-    m_SampleInPlink.push_back(line_elements[1]);
+    m_SampleInPlink.push_back(line_elements[1]);  // put IID to m_SampleInPlink
   }
   m_N = m_N0;
   m_numBytesofEachMarker0 = (m_N0 + 3) / 4;
@@ -123,15 +104,18 @@ void PlinkClass::setPosSampleInPlink(std::vector<std::string> t_SampleInModel)
   m_N = t_SampleInModel.size();
   m_numBytesofEachMarker = (m_N + 3) / 4;
   
+  // convert from std::vector<std::string> to Rcpp::CharacterVector
   Rcpp::CharacterVector SampleInModel(m_N);
   for(uint32_t i = 0; i < m_N; i++)
     SampleInModel(i) = t_SampleInModel.at(i);
   
+  // convert from std::vector<std::string> to Rcpp::CharacterVector
   uint32_t N_plink = m_SampleInPlink.size();
   Rcpp::CharacterVector SampleInPlink(N_plink);
   for(uint32_t i = 0; i < N_plink; i++)
     SampleInPlink(i) = m_SampleInPlink.at(i);
     
+  // Rcpp::match is much faster than loop
   Rcpp::IntegerVector posSampleInPlink = Rcpp::match(SampleInModel, SampleInPlink);
   m_posSampleInPlink.resize(m_N);
   for(uint32_t i = 0; i < m_N; i++){
@@ -139,34 +123,23 @@ void PlinkClass::setPosSampleInPlink(std::vector<std::string> t_SampleInModel)
       Rcpp::stop("At least one subject requested is not in Plink file.");
     m_posSampleInPlink.at(i) = posSampleInPlink.at(i) - 1;   // convert "starting from 1" to "starting from 0"
   }
-  
-  // m_posSampleInPlink.clear();
-  // for(uint32_t i = 0; i < m_N; i++){
-  //   std::string sample = t_SampleInModel.at(i);
-  //   auto pos = std::find(m_SampleInPlink.begin(), m_SampleInPlink.end(), sample);
-  //   if(pos != m_SampleInPlink.end()){
-  //     m_posSampleInPlink.push_back(pos - m_SampleInPlink.begin());
-  //   }else{
-  //     Rcpp::stop("At least one subject requested is not in Plink file.");
-  //   }
-  // }
 }
 
-std::vector<uint32_t> PlinkClass::getPosMarkerInPlink(std::vector<std::string> t_MarkerReqstd)
-{
-  int M = t_MarkerReqstd.size();
-  std::vector<uint32_t> posMarkerInPlink;
-  for(int i = 0; i < M; i++){
-    std::string marker = t_MarkerReqstd.at(i);
-    auto pos = std::find(m_MarkerInPlink.begin(), m_MarkerInPlink.end(), marker);
-    if(pos != m_MarkerInPlink.end()){
-      posMarkerInPlink.push_back(pos - m_MarkerInPlink.begin());
-    }else{
-      Rcpp::warning("Marker %s is not found in plink file.", marker);
-    }
-  }
-  return posMarkerInPlink;
-}
+// std::vector<uint32_t> PlinkClass::getPosMarkerInPlink(std::vector<std::string> t_MarkerReqstd)
+// {
+//   int M = t_MarkerReqstd.size();
+//   std::vector<uint32_t> posMarkerInPlink;
+//   for(int i = 0; i < M; i++){
+//     std::string marker = t_MarkerReqstd.at(i);
+//     auto pos = std::find(m_MarkerInPlink.begin(), m_MarkerInPlink.end(), marker);
+//     if(pos != m_MarkerInPlink.end()){
+//       posMarkerInPlink.push_back(pos - m_MarkerInPlink.begin());
+//     }else{
+//       Rcpp::warning("Marker %s is not found in plink file.", marker);
+//     }
+//   }
+//   return posMarkerInPlink;
+// }
 
 arma::vec PlinkClass::getOneMarker(uint64_t t_gIndex,        // different meanings for different genoType
                                    std::string& t_ref,       // REF allele
@@ -180,34 +153,60 @@ arma::vec PlinkClass::getOneMarker(uint64_t t_gIndex,        // different meanin
                                    double& t_imputeInfo,     // imputation information score, i.e., R2 (all 1 for PLINK)
                                    bool t_isOutputIndexForMissing,               // if true, output index of missing genotype data
                                    std::vector<uint32_t>& t_indexForMissing,     // index of missing genotype data
-                                   bool t_isOnlyOutputNonZero,                   // is true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
-                                   std::vector<uint32_t>& t_indexForNonZero,
+                                   bool t_isOnlyOutputNonZero,                   // if true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
+                                   std::vector<uint32_t>& t_indexForNonZero,     // only used when t_isOnlyOutputNonZero = TRUE
                                    bool t_isTrueGenotype)    // only used in PLINK. check m_genoMaps for details about the genotype mapping in PLINK.
 {
   int sum = 0;
   int numMissing = 0;
   
   std::vector<double> OneMarkerG1;
-  if(!t_isOnlyOutputNonZero){
-    OneMarkerG1.resize(m_N);
+  
+  // t_isTrueGenotype = FALSE is used only when calculating GRM
+  if(!t_isTrueGenotype){
+    if(t_isOutputIndexForMissing)
+      Rcpp::stop("Check PlinkClass::getOneMarker, if t_isTrueGenotype = FALSE, then t_isOutputIndexForMissing should be FALSE.");
+    if(t_isOnlyOutputNonZero)
+      Rcpp::stop("Check PlinkClass::getOneMarker, if t_isTrueGenotype = FALSE, then t_isOnlyOutputNonZero should be FALSE.");
   }
+  
+  if(!t_isOnlyOutputNonZero)
+    OneMarkerG1.resize(m_N);
   
   uint64_t posSeek = 3 + m_numBytesofEachMarker0 * t_gIndex;
   m_ibedFile.seekg(posSeek);
   m_ibedFile.read((char*)(&m_OneMarkerG4[0]), m_numBytesofEachMarker0);
   
   t_indexForMissing.clear();
-  t_ref = m_ref[t_gIndex];
-  t_alt = m_alt[t_gIndex];
+  t_indexForNonZero.clear();
+  
   t_marker = m_MarkerInPlink[t_gIndex];
   t_pd = m_pd[t_gIndex];
   t_chr = m_chr[t_gIndex];
   
-  for(uint32_t i = 0; i < m_N; i++){
+  std::map<int8_t, int8_t> genoMaps;
+  
+  if(m_AlleleOrder == "alt-first"){
+    t_ref = m_ref[t_gIndex];
+    t_alt = m_alt[t_gIndex];
+    genoMaps = m_genoMaps_alt_first;
+  }
+    
+  if(m_AlleleOrder == "ref-first"){
+    t_ref = m_alt[t_gIndex];
+    t_alt = m_ref[t_gIndex];
+    genoMaps = m_genoMaps_ref_first;
+  }
+  
+  for(uint32_t i = 0; i < m_N; i++)
+  {
     uint32_t ind = m_posSampleInPlink[i];             // C++ start from 0
     unsigned char bufferG4 = m_OneMarkerG4[ind/4];    // unsigned char: 1 byte for 4 genotypes (4 samples)
     int bufferG1;                                     // int: 1 genotype (1 sample)
+    
+    // https://www.cog-genomics.org/plink/1.9/formats#bed
     getGenotype(&bufferG4, ind%4, bufferG1);          // bufferG4 -> bufferG1
+    
     switch(bufferG1){
     case HOM_REF: break;
     case HET: sum+=1; break;
@@ -215,17 +214,17 @@ arma::vec PlinkClass::getOneMarker(uint64_t t_gIndex,        // different meanin
     case MISSING: numMissing++; if(t_isOutputIndexForMissing){t_indexForMissing.push_back(i);} break;  
     }
     
-    // OneMarkerG1[i] = bufferG1;
-    if(t_isTrueGenotype){
-      bufferG1 = m_genoMaps[bufferG1];
-    }
-    
+    if(t_isTrueGenotype)
+      bufferG1 = genoMaps[bufferG1];
+
     if(t_isOnlyOutputNonZero){
-      OneMarkerG1.push_back(bufferG1);
+      if(bufferG1 > 0){
+        t_indexForNonZero.push_back(i);
+        OneMarkerG1.push_back(bufferG1);
+      }
     }else{
       OneMarkerG1.at(i) = bufferG1;
     }
-
   }
   
   int count = m_N - numMissing;
@@ -236,12 +235,8 @@ arma::vec PlinkClass::getOneMarker(uint64_t t_gIndex,        // different meanin
   
   // updated on 03/14/2021
   if(m_AlleleOrder == "ref-first"){
-    t_ref = m_alt[t_gIndex];
-    t_alt = m_ref[t_gIndex];
     t_altFreq = 1 - t_altFreq;
     t_altCounts = 2 * (double)count * t_altFreq;
-    for(unsigned int i = 0; i < OneMarkerG1.size(); i++)
-      OneMarkerG1.at(i) = 2 - OneMarkerG1.at(i);
   }
   
   return OneMarkerG1;

@@ -180,7 +180,7 @@ public:
     arma::vec adjGVecNorm = adjGVec / sqrt(VarS); // normalized genotype (such that sd=1)
     
     arma::vec adjG1 = adjGVecNorm.elem(N1set);
-    double adjG0 = -2 * t_MAF / sqrt(VarS);  // all subjects with g=0 share the same normlized genotype, this is to reduce computation time
+    double adjG0 = -2 * t_MAF / sqrt(VarS);  // all subjects with g=0 share the same normalized genotype, this is to reduce computation time
     
     double pval1 = GetProb_SPA(adjG0, adjG1, N0, std::abs(t_zScore), false);
     double pval2 = GetProb_SPA(adjG0, adjG1, N0, -1*std::abs(t_zScore), true);

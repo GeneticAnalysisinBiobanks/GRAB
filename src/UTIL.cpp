@@ -28,6 +28,30 @@ double getWeights(std::string t_kernel,
   return weights;
 }
 
+void imputeGeno(arma::vec& t_GVec, 
+                double t_altFreq, 
+                std::vector<uint32_t> t_indexForMissing,
+                std::string t_imputeMethod)   
+{
+  int nMissing = t_indexForMissing.size();
+  
+  double imputeG = 0;
+  
+  if(t_imputeMethod == "mean")
+    imputeG = 2 * t_altFreq;
+  
+  if(t_imputeMethod == "none")
+    imputeG = arma::datum::nan;
+  
+  if(t_imputeMethod == "bestguess")
+    imputeG = std::round(2 * t_altFreq);
+  
+  for(int i = 0; i < nMissing; i++){
+    uint32_t index = t_indexForMissing.at(i);
+    t_GVec.at(index) = imputeG;
+  }
+}
+
 // used in Main.cpp::mainMarkerInCPP
 bool imputeGenoAndFlip(arma::vec& t_GVec, 
                        double t_altFreq, 

@@ -153,7 +153,7 @@ void DenseGRMClass::getOneMarkerStd(size_t t_indexMarker, arma::vec* t_oneMarker
     // added on 2020/04/04 to avoid checking (ind < N) on each iteration
     for(unsigned char posInByte = 0; posInByte < 4; posInByte ++, ind ++){
       // getGenotype(unsigned char* c, const int pos, int& geno)
-      int bufferG1 = (bufferG4 >> (posInByte << 1)) & 0b11;
+      int bufferG1 = (bufferG4 >> (posInByte << 1)) & 0x3;     // 0b11 = 0x3
       t_oneMarkerStd->at(ind) = stdGenoLookUpArr(bufferG1);
     }
   }
@@ -161,7 +161,7 @@ void DenseGRMClass::getOneMarkerStd(size_t t_indexMarker, arma::vec* t_oneMarker
   // added on 2020/04/04 to avoid checking (ind < N) on each iteration
   unsigned char bufferG4 = genoPtr->at(endBtIdx - 1); // unsigned char: 4 markers
   for(unsigned char posInByte = 0; (posInByte < 4) & (ind < m_N); posInByte++, ind++){
-    int bufferG1 = (bufferG4 >> (posInByte << 1)) & 0b11;
+    int bufferG1 = (bufferG4 >> (posInByte << 1)) & 0x3;         // 0b11 = 0x3
     t_oneMarkerStd->at(ind) = stdGenoLookUpArr(bufferG1);
   }
   

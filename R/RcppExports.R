@@ -29,12 +29,12 @@ mainRegionInCPP <- function(t_method, t_genoType, t_genoIndex, t_outputFile, t_n
     .Call(`_GRAB_mainRegionInCPP`, t_method, t_genoType, t_genoIndex, t_outputFile, t_n, P1Mat, P2Mat)
 }
 
-getGenoInCPP <- function(t_genoType, t_markerInfo, n) {
-    .Call(`_GRAB_getGenoInCPP`, t_genoType, t_markerInfo, n)
+getGenoInCPP <- function(t_genoType, t_markerInfo, n, t_imputeMethod) {
+    .Call(`_GRAB_getGenoInCPP`, t_genoType, t_markerInfo, n, t_imputeMethod)
 }
 
-getSpGenoInCPP <- function(t_genoType, t_markerInfo, n) {
-    .Call(`_GRAB_getSpGenoInCPP`, t_genoType, t_markerInfo, n)
+getSpGenoInCPP <- function(t_genoType, t_markerInfo, n, t_imputeMethod) {
+    .Call(`_GRAB_getSpGenoInCPP`, t_genoType, t_markerInfo, n, t_imputeMethod)
 }
 
 setPLINKobjInCPP <- function(t_bimFile, t_famFile, t_bedFile, t_SampleInModel, t_AlleleOrder) {

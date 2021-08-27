@@ -17,7 +17,6 @@ private:
   
   // information from bim file
   uint32_t m_M0, m_M;
-  // std::map<std::string, uint8_t> m_chrMaps;  // not used after 2021-02-28
   std::vector<std::string> m_chr;               // Chromosome code (either an integer, or 'X'/'Y'/'XY'/'MT'; '0' indicates unknown) or name
   std::vector<std::string> m_MarkerInPlink;     // Variant identifier
   std::vector<float> m_gd;                      // Position in morgans or centimorgans (safe to use dummy value of '0')
@@ -37,15 +36,23 @@ private:
   std::string m_bimFile, m_famFile, m_bedFile;
   std::vector<uint32_t> m_posSampleInPlink;
   
+  // https://www.cog-genomics.org/plink/1.9/formats#bed
   // PLINK format
+  // The two-bit genotype codes have the following meanings:
+  // 00	Homozygous for first allele in .bim file
+  // 01	Missing genotype
+  // 10	Heterozygous
+  // 11	Homozygous for second allele in .bim file
+  
   const static unsigned char HOM_REF = 0x3;  // 0b11 ;
   const static unsigned char HET = 0x2;      // 0b10 ;
   const static unsigned char HOM_ALT = 0x0;  // 0b00 ;
   const static unsigned char MISSING = 0x1;  // 0b01 ;
   
   // or use "arma::datum::nan"
-  std::map<int8_t, int8_t> m_genoMaps = {{3, 0},{2, 1},{0, 2},{1, -1}};
-  
+  // std::map<int8_t, int8_t> m_genoMaps = {{3, 0},{2, 1},{0, 2},{1, -1}};
+  std::map<int8_t, int8_t> m_genoMaps_alt_first = {{3, 0},{2, 1},{0, 2},{1, -1}};
+  std::map<int8_t, int8_t> m_genoMaps_ref_first = {{3, 2},{2, 1},{0, 0},{1, -1}};
   
   // pipeline: OneMarkerG4 --> bufferG4 --> bufferG1 --> OneMarkerG1
   std::vector<unsigned char> m_OneMarkerG4;
@@ -56,7 +63,7 @@ private:
   
   // extract geno (0,1,2,3) at specific pos (0,1,2,3) of address c (1 byte)  
   void getGenotype(unsigned char* c, const int pos, int& geno) {
-    geno = ((*c) >> (pos << 1)) & 0b11; 
+    geno = ((*c) >> (pos << 1)) & 0x3;  // 0b11 = 0x3 
   }
   
 public:

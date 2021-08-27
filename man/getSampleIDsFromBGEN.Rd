@@ -2,7 +2,7 @@
 % Please edit documentation in R/Geno.R
 \name{getSampleIDsFromBGEN}
 \alias{getSampleIDsFromBGEN}
-\title{Extract sample identifiers from BGEN file (for BGEN v1.2)}
+\title{Get sample identifiers from BGEN file}
 \usage{
 getSampleIDsFromBGEN(bgenFile)
 }
@@ -10,7 +10,7 @@ getSampleIDsFromBGEN(bgenFile)
 \item{bgenFile}{a character of BGEN file.}
 }
 \description{
-Extract sample identifiers from BGEN file (for BGEN v1.2)
+Extract sample identifiers from BGEN file (only support BGEN v1.2, https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html)
 }
 \examples{
 

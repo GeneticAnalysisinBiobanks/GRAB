@@ -1,58 +1,67 @@
 
-## R codes to read in genotype data
-## The package supports the following genotype format
-## 1. plink files: bedFile as GenoFile, c(bimFile, famFile) as GenoFileIndex
-
 #' Read in genotype data
 #' 
-#' GRAB package provides functions to read in genotype data from multiple format (including Plink, BGEN, and VCF) into R
+#' \code{GRAB} package provides functions to read in genotype data. Currently, we support genotype format of PLINK and BGEN. Other formats such as VCF will be added later.
 #' 
-#' @param GenoFile a character of genotype file. See \code{Details} section for more information.
-#' @param GenoFileIndex additional index file(s) corresponding to the \code{GenoFile}. See \code{Details} section for more information.
-#' @param SampleIDs a character vector of sample IDs to extract. The default is NULL, that is, to use all samples in GenoFile.
-#' @param control a list of parameters to decide which markers to extract. If not specified, the first 10 markers will be extracted. For more details, please check \code{?GRAB.control}.
-#' @param sparse a logical value (default: FALSE) to indicate if sparse genotype matrix is outputted.
-#' @return An R list include an R genotype matrix (each row is for one sample and each column is for one marker) and an R SNP information matrix.
+#' @param GenoFile a character of genotype file. See \code{Details} section for more details.
+#' @param GenoFileIndex additional index file(s) corresponding to \code{GenoFile}. See \code{Details} section for more details.
+#' @param SampleIDs a character vector of sample IDs to extract. The default is NULL, that is, all samples in \code{GenoFile} will be extracted.
+#' @param control a list of parameters to decide which markers to extract. See \code{Details} section for more details.
+#' @param sparse a logical value (default: FALSE) to indicate if the output of genotype matrix is sparse.
+#' @return An R list include a genotype matrix and an information matrix. For the genotype matrix, each row is for one sample and each column is for one marker. For the information matrix, 
 #' @details
-#' We support three genotype formats including Plink, BGEN, and VCF. 
-#' Users do not need to specify the genotype format, GRAB package will check the filename extention for that purpose.  
-#' If \code{GenoFileIndex} is not specified, then GRAB uses the same prefix as \code{GenoFile}.
+#' Currently, we support two formats of genotype input including PLINK and BGEN. Other formats such as VCF will be added later. 
+#' Users do not need to specify the genotype format, \code{GRAB} package will check the extension of the file name for that purpose.  
+#' If \code{GenoFileIndex} is not specified, \code{GRAB} package uses the same prefix as \code{GenoFile}.
 #' \describe{
-#'   \item{Plink}{
+#'   PLINK
 #'   \itemize{
-#'   \item \code{GenoFile}: "prefix.bed". 
-#'   \item \code{GenoFileIndex}: c("prefix.bim", "prefix.fam").
+#'   \item \code{GenoFile}: "prefix.bed". The full file name (including the extension ".bed") of the PLINK binary \code{bed} file. 
+#'   \item \code{GenoFileIndex}: c("prefix.bim", "prefix.fam"). If not specified, \code{GRAB} package assumes that \code{bim} and \code{fam} files have the same prefix as the \code{bed} file.
 #'   }
-#'   }
-#'   \item{BGEN}{
+#'   BGEN (Currently, only version 1.2 with 8 bits suppression is supported)
 #'     \itemize{
-#'     \item \code{GenoFile}: "prefix.bgen"; 
-#'     \item \code{GenoFileIndex}: "prefix.bgen.bgi" or c("prefix.bgen.bgi", "prefix.bgen.samples").
-#'     \item IMPORTANT NOTE: If only one element is given for \code{GenoFileIndex}, then we assume it should be "prefix.bgen.bgi". 
-#'     If BGEN file does not include sample identifiers, then "prefix.bgen.samples" is required, which should be a file with only one column whose column name is "GRAB_BGEN_SAMPLE" (case insensitive). 
+#'     \item \code{GenoFile}: "prefix.bgen". The full file name (including the extension ".bgen") of the BGEN binary \code{bgen} file. 
+#'     \item \code{GenoFileIndex}: "prefix.bgen.bgi" or c("prefix.bgen.bgi", "prefix.bgen.samples"). If not specified, \code{GRAB} package assumes that the prefix of \code{bgi} and \code{samples} files is \code{bgen} file.
+#'     \item If only one element is given for \code{GenoFileIndex}, then it is assumed to be \code{bgi} file. 
+#'     \item If the \code{bgen} file does not include sample identifiers, then \code{samples} file is required, which should be a file with only one column whose column name is "GRAB_BGEN_SAMPLE" (case insensitive). 
 #'     One example is \code{system.file("extdata", "example_bgen_1.2_8bits.bgen.samples", package = "GRAB")}.
-#'     If you are not sure if sample identifiers are in BGEN file, you can try function \code{?checkIfSampleIDsExist}.
+#'     If you are not sure if sample identifiers are in BGEN file, you can try \code{?checkIfSampleIDsExist}.
 #'     }
-#'   }
-#'   \item{VCF}{Not available now. \code{GenoFile}: "prefix.vcf"; \code{GenoFileIndex}: "prefix.vcf.tbi"}
+#'   VCF format Will be supported later. \code{GenoFile}: "prefix.vcf"; \code{GenoFileIndex}: "prefix.vcf.tbi"
 #' }
+#' 
+#' Argument \code{control} is used to include and exclude markers for function \code{GRAB.ReadGeno}. 
+#' The function supports two include files of (\code{IDsToIncludeFile}, \code{RangesToIncludeFile}) and two exclude files of (\code{IDsToExcludeFile}, \code{RangesToExcludeFile}), 
+#' but do not support both include and exclude files at the same time.
+#' \describe{
+#'   \itemize{
+#'   \item \code{IDsToIncludeFile}: a file of marker IDs to include, one column (no header). Check \code{system.file("extdata", "IDsToInclude.txt", package = "GRAB")} for an example. 
+#'   \item \code{IDsToExcludeFile}: a file of marker IDs to exclude, one column (no header). 
+#'   \item \code{RangesToIncludeFile}: a file of ranges to include, three columns (no headers): chromosome, start position, end position. Check \code{system.file("extdata", "RangesToInclude.txt", package = "GRAB")} for an example.
+#'   \item \code{RangesToExcludeFile}: a file of ranges to exclude, three columns (no headers): chromosome, start position, end position.
+#'   \item \code{AlleleOrder}: a character, "ref-first" or "alt-first", to determine whether the REF/major allele should appear first or second. Default is "alt-first" for PLINK and "ref-first" for BGEN. If the ALT allele frequencies of most markers are > 0.5, you might consider resetting this option. NOTE, if you use plink2 to convert PLINK file to BGEN file, then the BGEN file probably is 'ref-first'.
+#'   \item \code{AllMarkers}: a logical value (default: FALSE) to indicate if all markers are extracted. It might take too much memory to put genotype of all markers in R. This parameter is to remind users.  
+#'   \item \code{ImputeMethod}: a character, "none" (default), "minor", or "mean". By default, missing genotype is NA. Suppose alternative allele frequency is p < 0.5, then missing genotype is imputed as 2p (ImputeMethod = "mean") or round(2p) (ImputeMethod = "bestguess").
+#'   }
+#'   }
 #' 
 #' @examples
 #' 
-#' ## The below is raw data 
+#' ## The below is from raw data 
 #' RawFile = system.file("extdata", "example.raw", package = "GRAB")
 #' GenoMat = data.table::fread(RawFile)
 #' head(GenoMat[,1:15])
 #' 
-#' ## The below is for Plink format
-#' PlinkFile = system.file("extdata", "example.bed", package = "GRAB")
-#' GenoList = GRAB.ReadGeno(PlinkFile)
+#' ## The below is from PLINK input
+#' PLINKFile = system.file("extdata", "example.bed", package = "GRAB")
+#' GenoList = GRAB.ReadGeno(PLINKFile, control = list(AllMarkers = TRUE)) # If include/exclude files are not specified, then control$AllMarker should be TRUE
 #' GenoMat = GenoList$GenoMat
 #' markerInfo = GenoList$markerInfo
-#' head(GenoMat)
+#' head(GenoMat[,1:15])
 #' markerInfo
 #' 
-#' ## The below is for BGEN format (Note the different REF/ALT order for BGEN and Plink formats)
+#' ## The below is from BGEN input (Note the different REF/ALT order for BGEN and PLINK formats)
 #' BGENFile = system.file("extdata", "example_bgen_1.2_8bits.bgen", package = "GRAB")
 #' GenoList = GRAB.ReadGeno(BGENFile)
 #' GenoMat = GenoList$GenoMat
@@ -61,10 +70,10 @@
 #' markerInfo
 #' 
 #' ## The below is to demonstrate parameters in control
-#' PlinkFile = system.file("extdata", "example.bed", package = "GRAB")
+#' PLINKFile = system.file("extdata", "example.bed", package = "GRAB")
 #' IDsToIncludeFile = system.file("extdata", "example.IDsToIncludeFile.txt", package = "GRAB")
 #' RangesToIncludeFile = system.file("extdata", "example.RangesToIncludeFile.txt", package = "GRAB")
-#' GenoList = GRAB.ReadGeno(PlinkFile, 
+#' GenoList = GRAB.ReadGeno(PLINKFile, 
 #'                          control = list(IDsToIncludeFile = IDsToIncludeFile, 
 #'                                         RangesToIncludeFile = RangesToIncludeFile,
 #'                                         AlleleOrder = "ref-first"))
@@ -81,7 +90,7 @@ GRAB.ReadGeno = function(GenoFile,
                          control = NULL,
                          sparse = FALSE)
 {
-  checkControl.ReadGeno(control)  # this function is in 'control.R': indexGeno can be 0, 1, 2, 3, 4 depending on which argument is given.
+  control = checkControl.ReadGeno(control)  # check 'control.R'
   
   objGeno = setGenoInput(GenoFile, GenoFileIndex, SampleIDs, control)
   
@@ -90,32 +99,32 @@ GRAB.ReadGeno = function(GenoFile,
   SampleIDs = objGeno$SampleIDs
   anyQueue = objGeno$anyQueue   # if FALSE, no include/exclude is specified
   
-  if(!anyQueue){
-    print("Since no markers or regions were selected, we use the first 10 markers in 'GenoFile'.")
-    markerInfo = markerInfo[1:min(10,nrow(markerInfo)),]
-  }
-  
+  if(!anyQueue)
+    if(!control$AllMarkers)
+      stop("If include/exclude files are not specified, control$AllMarkers should be TRUE.")
+
   MarkerIDs = markerInfo$ID
   
   n = length(SampleIDs)
   m = length(MarkerIDs)
   
-  cat("Number of Samples:\t",n,"\nNumber of Markers:\t",m)
+  cat("Number of Samples:\t", n, "\nNumber of Markers:\t", m, "\n")
   
   if(sparse == TRUE){
-    GenoMat = getSpGenoInCPP(genoType, markerInfo, n)
+    GenoMat = getSpGenoInCPP(genoType, markerInfo, n, control$ImputeMethod)  # check Main.cpp
   }else{
-    GenoMat = getGenoInCPP(genoType, markerInfo, n)  # This function is in Main.cpp
+    GenoMat = getGenoInCPP(genoType, markerInfo, n, control$ImputeMethod)  # check Main.cpp
   }
     
   colnames(GenoMat) = MarkerIDs;
   rownames(GenoMat) = SampleIDs;
   
+  markerInfo = markerInfo[,1:5]
+  
   return(list(GenoMat = GenoMat,
               markerInfo = markerInfo))
 }
 
-## add something in setGenoInput(.) to select specific markers requested by users
 setGenoInput = function(GenoFile, 
                         GenoFileIndex = NULL, 
                         SampleIDs = NULL,
@@ -125,16 +134,18 @@ setGenoInput = function(GenoFile,
     stop("Argument 'GenoFile' is required.")
   
   if(!file.exists(GenoFile))
-    stop(paste("Cannot find genotype file of", GenoFile))
+    stop("Cannot find genotype file of ", GenoFile, ".")
   
   GenoFileExt = tools::file_ext(GenoFile);
   
-  # support more genotype format later
+  # Currently, only support PLINK and BGEN
+  
   if(GenoFileExt != "bed" & GenoFileExt != "bgen")
-    stop("Current version only supports genotype input of Plink (filename extension of '.bed') or BGEN (filename extension of '.bgen').")  
+    stop("The current version only supports genotype input of PLINK (filename extension is '.bed') and BGEN (filename extension is '.bgen').")  
   
   AlleleOrder = control$AlleleOrder
-  ########## ----------  Plink format ---------- ##########
+  
+  ########## ----------  PLINK format ---------- ##########
   
   if(GenoFileExt == "bed"){
     
@@ -149,15 +160,20 @@ setGenoInput = function(GenoFile,
     }
     
     if(length(GenoFileIndex) != 2)
-      stop("If Plink format is used, argument 'GenoFileIndex' should be 'NULL' or a character vector of c(bimFile, famFile).")
+      stop("If PLINK format is used, argument 'GenoFileIndex' should be 'NULL' or a character vector of c(bimFile, famFile).")
     
     bimFile = GenoFileIndex[1]
     famFile = GenoFileIndex[2]
     bedFile = GenoFile
     
+    # Read in BIM file
+    
     if(!file.exists(bimFile)) stop(paste("Cannot find bim file of", bimFile))
-    markerInfo = data.table::fread(bimFile, header = F)
+    markerInfo = data.table::fread(bimFile, header = F, sep = "\t")
     markerInfo = as.data.frame(markerInfo)
+    
+    if(ncol(markerInfo) != 6)
+      stop("bim file should include 6 columns seperated by '\t'.")
     
     if(AlleleOrder == "alt-first")
       markerInfo = markerInfo[,c(1,4,2,6,5)]  # https://www.cog-genomics.org/plink/2.0/formats#bim
@@ -167,8 +183,13 @@ setGenoInput = function(GenoFile,
     colnames(markerInfo) = c("CHROM", "POS", "ID", "REF", "ALT")
     markerInfo$genoIndex = 1:nrow(markerInfo) - 1  # -1 is to convert 'R' to 'C++' 
     
+    # Read in FAM file
+    
     if(!file.exists(famFile)) stop(paste("Cannot find fam file of", famFile))
-    sampleInfo = data.table::fread(famFile)
+    sampleInfo = data.table::fread(famFile, header = F, sep = " ")
+    if(ncol(sampleInfo) != 6)
+      stop("fam file should include 6 columns seperated by space.")
+    
     samplesInGeno = sampleInfo$V2
     SampleIDs = updateSampleIDs(SampleIDs, samplesInGeno)
       
@@ -181,6 +202,9 @@ setGenoInput = function(GenoFile,
     
     genoType = "BGEN"
     bgenFile = GenoFile
+    
+    if(getVersionFromBGEN(bgenFile) != "v1.2")
+      stop("Package GRAB currently only supports version 1.2 of BGEN format.")
     
     if(is.null(AlleleOrder)) AlleleOrder = "ref-first"
     
@@ -234,7 +258,7 @@ setGenoInput = function(GenoFile,
     setBGENobjInCPP(bgenFile, bgiFile, samplesInGeno, SampleIDs, F, F, AlleleOrder)
   }
   
-  ########## ----------  More format such as VCF ---------- ##########
+  ########## ----------  More format such as VCF will be supported later ---------- ##########
 
   Files = c("IDsToIncludeFile", "IDsToExcludeFile", "RangesToIncludeFile", "RangesToExcludeFile")
   
@@ -245,10 +269,9 @@ setGenoInput = function(GenoFile,
   markersExclude = c()
   
   if(!is.null(control$IDsToIncludeFile)){
-    IDsToInclude = data.table::fread(control$IDsToIncludeFile, 
-                                     header = F, colClasses = c("character"))
+    IDsToInclude = data.table::fread(control$IDsToIncludeFile, header = F, colClasses = c("character"))
     if(ncol(IDsToInclude) != 1)
-      stop("IDsToIncludeFile should include one column.")
+      stop("'IDsToIncludeFile' of ", control$IDsToIncludeFile, " should only include one column.")
     IDsToInclude = IDsToInclude[,1]
     
     posRows = which(markerInfo$ID %in% IDsToInclude)
@@ -258,12 +281,11 @@ setGenoInput = function(GenoFile,
   }
   
   if(!is.null(control$RangesToIncludeFile)){
-    RangesToInclude = data.table::fread(control$RangesToIncludeFile, 
-                                        header = F, colClasses = c("character", "numeric", "numeric"))
+    RangesToInclude = data.table::fread(control$RangesToIncludeFile, header = F, colClasses = c("character", "numeric", "numeric"))
     if(ncol(RangesToInclude) != 3)
-      stop("RangesToIncludeFile should include three columns.")
+      stop("RangesToIncludeFile should only include three columns.")
     
-    colnames(RangesToInclude) = c("CHROM","START","END")
+    colnames(RangesToInclude) = c("CHROM", "START", "END")
     
     for(i in 1:nrow(RangesToInclude)){
       CHROM1 = RangesToInclude$CHROM[i]
@@ -278,11 +300,10 @@ setGenoInput = function(GenoFile,
   
   if(!is.null(control$IDsToExcludeFile)){
     if(anyInclude) 
-      stop("We currently do not support both 'IncludeFile' and 'ExcludeFile'.")
-    IDsToExclude = data.table::fread(control$IDsToExcludeFile, 
-                                     header = F, colClasses = c("character"))
+      stop("We currently do not support both 'IncludeFile' and 'ExcludeFile' at the same time.")
+    IDsToExclude = data.table::fread(control$IDsToExcludeFile, header = F, colClasses = c("character"))
     if(ncol(IDsToExclude) != 1)
-      stop("IDsToExcludeFile should include one column.")
+      stop("IDsToExcludeFile should only include one column.")
     IDsToExclude = IDsToExclude[,1]
     
     posRows = which(markerInfo$ID %in% IDsToExclude)
@@ -293,14 +314,12 @@ setGenoInput = function(GenoFile,
   
   if(!is.null(control$RangesToExcludeFile)){
     if(anyInclude) 
-      stop("We currently do not support both 'IncludeFile' and 'ExcludeFile'.")
-    
-    RangesToExclude = data.table::fread(control$RangesToExcludeFile, 
-                                        header = F, colClasses = c("character", "numeric", "numeric"))
+      stop("We currently do not support both 'IncludeFile' and 'ExcludeFile' at the same time.")
+    RangesToExclude = data.table::fread(control$RangesToExcludeFile, header = F, colClasses = c("character", "numeric", "numeric"))
     if(ncol(RangesToExclude) != 3)
-      stop("RangesToExcludeFile should include three columns.")
+      stop("RangesToExcludeFile should only include three columns.")
     
-    colnames(RangesToExclude) = c("CHROM","START","END")
+    colnames(RangesToExclude) = c("CHROM", "START", "END")
     
     for(i in 1:nrow(RangesToExclude)){
       CHROM1 = RangesToExclude$CHROM[i]
@@ -317,7 +336,7 @@ setGenoInput = function(GenoFile,
   markersExclude = unique(markersExclude)
   
   # return genotype
-  print(paste("Based on the 'GenoFile' and 'GenoFileIndex',", genoType, "format is used for genotype data."))
+  cat("Based on the 'GenoFile' and 'GenoFileIndex',", genoType, "format is used for genotype data.\n")
   
   if(anyInclude)
     markerInfo = subset(markerInfo, ID %in% markersInclude)
@@ -335,20 +354,22 @@ setGenoInput = function(GenoFile,
 updateSampleIDs = function(SampleIDs, samplesInGeno)
 {
   if(is.null(SampleIDs)){
-    print("Since 'SampleIDs' not specified, we use all samples in 'GenoFile'.")
+    cat("Since 'SampleIDs' is not specified, all samples in 'GenoFile' are used.\n")
     SampleIDs = samplesInGeno;
   }
   
-  if(any(!SampleIDs %in% samplesInGeno))
-    stop("At least one sample from 'SampleIDs' are not in 'GenoFile' and 'GenoFileIndex'.")
+  if(any(!SampleIDs %in% samplesInGeno)){
+    print(SampleIDs[!SampleIDs %in% samplesInGeno])
+    stop("The above samples from 'SampleIDs' are not in 'GenoFile' and 'GenoFileIndex'.")
+  }
   
   return(SampleIDs)
 }
 
 # https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
-#' Extract sample identifiers from BGEN file (for BGEN v1.2)
+#' Get sample identifiers from BGEN file
 #' 
-#' Extract sample identifiers from BGEN file (for BGEN v1.2)
+#' Extract sample identifiers from BGEN file (only support BGEN v1.2, https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html)
 #' 
 #' @param bgenFile a character of BGEN file. 
 #' @examples
@@ -359,7 +380,7 @@ updateSampleIDs = function(SampleIDs, samplesInGeno)
 getSampleIDsFromBGEN = function(bgenFile)
 {
   if(!checkIfSampleIDsExist(bgenFile))
-    stop("The BGEN file does not include sample identifiers. Please refer to ?checkIfSampleIDsExist and ?GRAB.ReadGeno for more details")
+    stop("The BGEN file does not include sample identifiers. Please refer to ?checkIfSampleIDsExist for more details")
   con = file(bgenFile, "rb")
   seek(con, 4)
   LH = readBin(con, n = 1, what = "integer", size = 4)
@@ -370,7 +391,7 @@ getSampleIDsFromBGEN = function(bgenFile)
   # cycle for all samples to extract IDs
   for(i in 1:N){
     LS = readBin(con, n = 1, what = "integer", size = 2)
-    sample = readChar(con, nchars = LS)
+    sample = readChar(con, nchars = LS, useBytes = T)
     samplesInGeno[i] = sample
   }
   
@@ -380,9 +401,59 @@ getSampleIDsFromBGEN = function(bgenFile)
   return(samplesInGeno)
 }
 
-#' Check if sample identifiers are stored in a BGEN file (for BGEN v1.2)
+# https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
+#' Get version information from BGEN file
 #' 
-#' Check if sample identifiers are stored in a BGEN file (for BGEN v1.2)
+#' Get version information from BGEN file (https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html)
+#' 
+#' @param bgenFile a character of BGEN file. 
+#' @examples
+#' 
+#' BGENFile = system.file("extdata", "example_bgen_1.2_8bits.bgen", package = "GRAB")
+#' getVersionFromBGEN(BGENFile)
+#' @export
+getVersionFromBGEN = function(bgenFile)
+{
+  con = file(bgenFile, "rb")
+  seek(con, 4)
+  LH = readBin(con, n = 1, what = "integer", size = 4)
+  seek(con, 4 + LH - 4)
+  header = rawToBits(readBin(con, n = 4, what = "raw", size = 1, signed = FALSE))
+  
+  VersionNum = convert4BitsToNumber(header[3:6])
+  if(VersionNum == 0)
+    version = "Version Layout = 0, which is not supported. Please check https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html for more details."
+  
+  if(VersionNum == 1)
+    version = "v1.1"
+  
+  if(VersionNum == 2)
+    version = "v1.2"
+  
+  if(VersionNum > 2)
+    version = "Version Layout > 2, which is reserved for future use. Please check https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html for more details."
+  
+  close(con)
+  return(version)
+}
+
+# https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
+convert4BitsToNumber = function(leastSignificantBit)
+{
+  leastSignificantBit = as.numeric(leastSignificantBit)
+  if(length(leastSignificantBit) != 4)
+    stop("Input should be 4 bits in which least-significant first.")
+  
+  Number  = 0;
+  for(i in 1:4){
+    Number = Number + 2^(i-1) * leastSignificantBit[i];
+  }
+  return(Number)
+}
+
+#' Check if sample identifiers are stored in a BGEN file
+#' 
+#' Check if sample identifiers are stored in a BGEN file, only support BGEN v1.2. Check https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html for more details.
 #' 
 #' @param bgenFile a character of BGEN file. Sometimes, BGEN file does not include sample IDs. This information can be extracted from BGEN file. Please refer to https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html for more details. 
 #' @examples

@@ -845,7 +845,8 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
 // [[Rcpp::export]]
 arma::mat getGenoInCPP(std::string t_genoType,
                        Rcpp::DataFrame t_markerInfo,
-                       int n)
+                       int n,
+                       std::string t_imputeMethod)
 {
   int q = t_markerInfo.nrow();         // number of markers requested
   std::vector<uint64_t> gIndexVec = t_markerInfo["genoIndex"];
@@ -858,21 +859,23 @@ arma::mat getGenoInCPP(std::string t_genoType,
   
   for(int i = 0; i < q; i++){
     uint64_t gIndex = gIndexVec.at(i);
-    arma::vec GVec = Unified_getOneMarker(t_genoType,    // "PLINK", "BGEN"
-                                          gIndex,        // different meanings for different genoType
-                                          ref,           // REF allele
-                                          alt,           // ALT allele (should probably be minor allele, otherwise, computation time will increase)
-                                          marker,        // marker ID extracted from genotype file
-                                          pd,            // base position
-                                          chr,           // chromosome
-                                          altFreq,       // frequency of ALT allele
-                                          altCounts,     // counts of ALT allele
-                                          missingRate,   // missing rate
-                                          imputeInfo,    // imputation information score, i.e., R2 (all 1 for PLINK)
-                                          false,         // if true, output index of missing genotype data
+    arma::vec GVec = Unified_getOneMarker(t_genoType,          // "PLINK", "BGEN"
+                                          gIndex,              // different meanings for different genoType
+                                          ref,                 // REF allele
+                                          alt,                 // ALT allele (should probably be minor allele, otherwise, computation time will increase)
+                                          marker,              // marker ID extracted from genotype file
+                                          pd,                  // base position
+                                          chr,                 // chromosome
+                                          altFreq,             // frequency of ALT allele
+                                          altCounts,           // counts of ALT allele
+                                          missingRate,         // missing rate
+                                          imputeInfo,          // imputation information score, i.e., R2 (all 1 for PLINK)
+                                          false,               // if true, output index of missing genotype data
                                           indexForMissing,     // index of missing genotype data
-                                          false,               // is true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
+                                          false,               // if true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
                                           indexForNonZero);    // the index of non-zero genotype in the all subjects. Only valid if t_isOnlyOutputNonZero == true.
+    
+    imputeGeno(GVec, altFreq, indexForMissing, t_imputeMethod);  // check UTIL.hpp
     GMat.col(i) = GVec;
   }
   
@@ -882,7 +885,8 @@ arma::mat getGenoInCPP(std::string t_genoType,
 // [[Rcpp::export]]
 arma::sp_mat getSpGenoInCPP(std::string t_genoType,
                             Rcpp::DataFrame t_markerInfo,
-                            int n)
+                            int n,
+                            std::string t_imputeMethod)
 {
   int q = t_markerInfo.nrow();         // number of markers requested
   std::vector<uint64_t> gIndexVec = t_markerInfo["genoIndex"];
@@ -910,6 +914,8 @@ arma::sp_mat getSpGenoInCPP(std::string t_genoType,
                                           indexForMissing,     // index of missing genotype data
                                           false,               // is true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
                                           indexForNonZero);    // the index of non-zero genotype in the all subjects. Only valid if t_isOnlyOutputNonZero == true.
+    
+    imputeGeno(GVec, altFreq, indexForMissing, t_imputeMethod);  // check UTIL.hpp
     GMat.col(i) = arma::sp_mat(GVec); // change #2 compared to getGenoInCPP()
   }
   
@@ -930,7 +936,7 @@ arma::vec Unified_getOneMarker(std::string t_genoType,   // "PLINK", "BGEN"
                                double& t_imputeInfo,     // imputation information score, i.e., R2 (all 1 for PLINK)
                                bool t_isOutputIndexForMissing,               // if true, output index of missing genotype data
                                std::vector<uint32_t>& t_indexForMissing,     // index of missing genotype data
-                               bool t_isOnlyOutputNonZero,                   // is true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
+                               bool t_isOnlyOutputNonZero,                   // if true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
                                std::vector<uint32_t>& t_indexForNonZero)     // the index of non-zero genotype in the all subjects. Only valid if t_isOnlyOutputNonZero == true.
 {
   arma::vec GVec;

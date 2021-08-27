@@ -1,12 +1,12 @@
 
-#' Information about the control in GRAB package
+#' Details about the argument of \code{control} in \code{GRAB} package
 #' 
-#' Information about the control in GRAB package
+#' In \code{GRAB} package, the most of parameters are specified in argument of \code{control}. 
 #' 
 #' @details
-#' In GRAB package, we use \code{control} to specify parameters in multiple functions. Here, we only list generic parameters. 
+#' In \code{GRAB} package, we use \code{control} to specify function parameters. Here, we only list generic parameters. 
 #' For the parameters only used in specific method, please refer to its own help page. 
-#' For example, check \code{?GRAB.SPACox} for more information about SPACox method.
+#' For example, check \code{?GRAB.POLMM} for more information about POLMM method.
 #' \describe{
 #'   \item{GRAB.ReadGeno}{
 #'   We support two include files of (IDsToIncludeFile, RangesToIncludeFile) and two exclude files of (IDsToExcludeFile, RangesToExcludeFile), but do not support both include and exclude files.
@@ -71,7 +71,7 @@
 #' }
 #' @export
 GRAB.control = function(){
-  return("Check ?GRAB.control for more information about the 'control' in package GRAB.")
+  return("Check ?GRAB.control for more details about the argument of 'control' in package GRAB.")
 }
 
 # update 'control' or use 'default.control' if the corresponding elements are not specified 
@@ -99,9 +99,19 @@ checkControl.ReadGeno = function(control)
     if(class(control) != "list")
       stop("If specified, the argument of 'control' should be an R 'list'.")
   
-  if(!is.null(control$allele.order))
-    if(control$allele.order != "ref-first" & control$allele.order != "alt-first")
-      stop("control$allele.order should be 'ref-first' or 'alt-first'.")
+  if(!is.null(control$AlleleOrder))
+    if(control$AlleleOrder != "ref-first" & control$AlleleOrder != "alt-first")
+      stop("control$AlleleOrder should be 'ref-first' or 'alt-first'.")
+  
+  if(is.null(control$ImputeMethod)){
+    control$ImputeMethod = "none"
+  }
+  
+  if(!control$ImputeMethod %in% c("none", "bestguess", "mean"))
+    stop("control$ImputeMethod should be 'none', 'bestguess', or 'mean'.")
+  
+  if(is.null(control$AllMarkers))
+    control$AllMarkers = FALSE
   
   FileType = c("IDsToIncludeFile", "IDsToExcludeFile", "RangesToIncludeFile", "RangesToExcludeFile")
   
@@ -113,6 +123,8 @@ checkControl.ReadGeno = function(control)
         stop(paste0("Cannot find the file of ",file,"..."))
     }
   }
+  
+  return(control)
 }
 
 checkControl.Marker = function(control, NullModelClass)

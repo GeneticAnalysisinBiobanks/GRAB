@@ -4,10 +4,18 @@
 \alias{plink.make}
 \title{GRAB: make plink files using Geno.mat}
 \usage{
-plink.make(Geno.mat, work.dir, out.prefix, mCHRs = T, BP = NULL)
+plink.make(
+  Geno.mat,
+  work.dir,
+  out.prefix,
+  mCHRs = T,
+  BP = NULL,
+  Pheno = NULL,
+  SEX = NULL
+)
 }
 \arguments{
-\item{Geno.mat}{Genotype matrix with row names of subject IDs and column names of SNP IDs}
+\item{Geno.mat}{a numeric Genotype matrix (0,1,2,-9). Each row is for one subject and each column is for one marker. Row names of subject IDs and column names of marker IDs are required.}
 
 \item{work.dir}{working directory to store the plink files}
 
@@ -16,23 +24,39 @@ plink.make(Geno.mat, work.dir, out.prefix, mCHRs = T, BP = NULL)
 \item{mCHRs}{if TRUE, then SNPs were randomly assigned to chromosomes 1-22; if FALSE, then all SNPs are in chromosome 1}
 
 \item{BP}{if NULL, then Base Position (BP) is 1:length(SNPs), otherwise, the length(BP) should be the same as ncol(Geno.mat)}
+
+\item{Pheno}{if NULL, then phenotype is -9, otherwise, the length(Pheno) should be the same as nrow(Geno.mat)}
+
+\item{SEX}{if NULL, then all sex is 1, otherwise, the length(SEX) should be the same as nrow(Geno.mat)}
 }
 \value{
-Plink files are stored in 'work.dir' with prefix of 'out.prefix'.
+Plink files (PED and MAP) are stored in 'work.dir' with prefix of 'out.prefix'. Genotype of 0,1,2,-9 will be coded as GG, AG, AA, 00. If Plink binary files (BED, BIM, and FAM) are required, please download Plink software and use "--make-bed".
 }
 \description{
-Make plink files using Geno.mat, rownames(Geno.mat) should be subject IDs and colnames(Geno.mat) should be SNP IDs
+Make plink files using numeric matrix Geno.mat (0,1,2,-9), rownames(Geno.mat) should be subject IDs and colnames(Geno.mat) should be SNP IDs
 }
 \examples{
+### Step 1: make a numeric genotype matrix
 n = 1000
 m = 20
 MAF = 0.3
 Geno.mat = matrix(rbinom(n*m, 2, MAF), n, m)
-rownames(Geno.mat) = paste0("subj-",1:n)
+rownames(Geno.mat) = paste0("Subj-",1:n)
 colnames(Geno.mat) = paste0("SNP-",1:m)
+
+### Step 2(a): make Plink files without missing genotype
 work.dir = system.file("results", package = "GRAB")
-out.prefix = "test"
-mCHRs = FALSE
+out.prefix = "simuPLINK"
+mCHRs = FALSE   # if FALSE, chromosomes of all markers are 1
+BP = NULL
+plink.make(Geno.mat, work.dir, out.prefix, mCHRs, BP)
+
+### Step 2(b): make Plink files with genotype missing rate of 0.1
+indexMissing = sample(n*m, 0.1*n*m)
+Geno.mat[indexMissing] = -9
+work.dir = system.file("results", package = "GRAB")
+out.prefix = "simuPLINK"
+mCHRs = FALSE   # if FALSE, chromosomes of all markers are 1
 BP = NULL
 plink.make(Geno.mat, work.dir, out.prefix, mCHRs, BP)
      

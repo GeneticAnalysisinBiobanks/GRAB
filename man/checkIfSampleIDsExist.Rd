@@ -2,7 +2,7 @@
 % Please edit documentation in R/Geno.R
 \name{checkIfSampleIDsExist}
 \alias{checkIfSampleIDsExist}
-\title{Check if sample identifiers are stored in a BGEN file (for BGEN v1.2)}
+\title{Check if sample identifiers are stored in a BGEN file}
 \usage{
 checkIfSampleIDsExist(bgenFile)
 }
@@ -10,7 +10,7 @@ checkIfSampleIDsExist(bgenFile)
 \item{bgenFile}{a character of BGEN file. Sometimes, BGEN file does not include sample IDs. This information can be extracted from BGEN file. Please refer to https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html for more details.}
 }
 \description{
-Check if sample identifiers are stored in a BGEN file (for BGEN v1.2)
+Check if sample identifiers are stored in a BGEN file, only support BGEN v1.2. Check https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html for more details.
 }
 \examples{
 
