@@ -107,7 +107,7 @@ void BgenClass::setPosSampleInBgen(std::vector<std::string> & t_SampleInModel)
   Rcpp::IntegerVector posSampleInBgen = Rcpp::match(SampleInModel, SampleInBgen);
   for(uint32_t i = 0; i < m_N; i++){
     if(Rcpp::IntegerVector::is_na(posSampleInBgen.at(i)))
-      Rcpp::stop("At least one subject requested is not in Bgen file.");
+      Rcpp::stop("At least one subject requested is not in BGEN file.");
   }
   
   Rcpp::IntegerVector posSampleInModel = Rcpp::match(SampleInBgen, SampleInModel);
@@ -121,26 +121,6 @@ void BgenClass::setPosSampleInBgen(std::vector<std::string> & t_SampleInModel)
   }
   
   // end of the update on 03/14/2021
-  
-  // for(uint32_t i = 0; i < m_N; i++){
-  //   std::string sample = t_SampleInModel.at(i);
-  //   auto pos = std::find(m_SampleInBgen.begin(), m_SampleInBgen.end(), sample);
-  //   if(pos == m_SampleInBgen.end()){
-  //     Rcpp::stop("At least one subject requested is not in Bgen file.");
-  //   }
-  // }
-  // 
-  // m_posSampleInModel.clear();
-  // for(uint32_t i = 0; i < m_N0; i++){
-  //   std::string sample = m_SampleInBgen.at(i);
-  //   auto pos = std::find(t_SampleInModel.begin(), t_SampleInModel.end(), sample);
-  //   if(pos != t_SampleInModel.end()){
-  //     m_posSampleInModel.push_back(pos - t_SampleInModel.begin());
-  //   }else{
-  //     m_posSampleInModel.push_back(-1);      
-  //   }
-  // }
-  
 }
 
 
@@ -201,7 +181,7 @@ void BgenClass::Parse2(unsigned char *buf, unsigned int bufLen, const unsigned c
     lut[i] = i/255.0;
   
   double sum_eij = 0, sum_fij_minus_eij2 = 0, sum_eij_sub = 0; // sum_fij_minus_eij2_sub = 0; // for INFO
-  double p11,p10,p00,dosage,eij,fij, eijsub, fijsub;
+  double p11,p10,dosage,eij,fij;  // p00, eijsub, fijsub
   dosages.clear();
   dosages.reserve(m_N);
   if(!m_isSparseDosagesInBgen){
@@ -215,7 +195,7 @@ void BgenClass::Parse2(unsigned char *buf, unsigned int bufLen, const unsigned c
       //bufAt += 2;
       p11 = lut[*bufAt]; bufAt++;
       p10 = lut[*bufAt]; bufAt++;
-      p00 = 1 - p11 - p10; //can remove
+      // p00 = 1 - p11 - p10; //can remove
       dosage = 2*p11 + p10;
       
       eij = dosage;
@@ -264,27 +244,27 @@ void BgenClass::Parse2(unsigned char *buf, unsigned int bufLen, const unsigned c
   info = thetaHat==0 || thetaHat==1 ? 1 :
     1 - sum_fij_minus_eij2 / (2*(m_N - missing_cnt)*thetaHat*(1-thetaHat));
   
-  if(missing_cnt > 0){
-    std::cout << "AC: " << AC << std::endl;
-    std::cout << "sample index with missing dosages for snpName " << snpName << " :";
-    
-    if(!m_isDropMissingDosagesInBgen){
-      double imputeDosage = 2*AF;
-      for (unsigned int i = 0; i < indexforMissing.size(); i++)
-      {
-        std::cout << indexforMissing[i]+1 << ",";
-        if(!m_isSparseDosagesInBgen){
-          dosages[indexforMissing[i]] = imputeDosage;
-        }else{
-          dosages.push_back(imputeDosage);
-          indexNonZero.push_back(indexforMissing[i]+1);
-        }
-        AC = AC + imputeDosage;
-      }
-      std::cout << "AC new: " << AC << std::endl;
-    }
-  }
-  
+  // updated on 2021-08-27: the imputation part was put in UTIL.cpp
+  // if(missing_cnt > 0){
+  //   // std::cout << "AC: " << AC << std::endl;
+  //   // std::cout << "sample index with missing dosages for snpName " << snpName << " :";
+  //   
+  //   if(!m_isDropMissingDosagesInBgen){
+  //     double imputeDosage = 2*AF;
+  //     for (unsigned int i = 0; i < indexforMissing.size(); i++)
+  //     {
+  //       // std::cout << indexforMissing[i]+1 << ",";
+  //       if(!m_isSparseDosagesInBgen){
+  //         dosages[indexforMissing[i]] = imputeDosage;
+  //       }else{
+  //         dosages.push_back(imputeDosage);
+  //         indexNonZero.push_back(indexforMissing[i]+1);
+  //       }
+  //       AC = AC + imputeDosage;
+  //     }
+  //     // std::cout << "AC new: " << AC << std::endl;
+  //   }
+  // }
 }
 
 arma::vec BgenClass::getOneMarker(uint64_t t_gIndex,        // different meanings for different genoType
@@ -402,105 +382,6 @@ arma::vec BgenClass::getOneMarker(uint64_t t_gIndex,        // different meaning
   // indexforMissing.clear();
   return dosages;
 }
-
-
-// get dosages/genotypes of one marker
-// Rcpp::List BgenClass::getOneMarker(int t_fileStartPos)
-// {
-//   if(t_fileStartPos > 0){fseek(m_fin, t_fileStartPos, SEEK_SET);}
-//   std::string SNPID, RSID, chromosome, first_allele,second_allele ;
-//   unsigned int position;
-//   std::vector< std::string > alleles ;
-//   std::vector< double > dosages;
-//   double AC, AF, info;
-//   std::vector< int > indexforMissing;
-//   std::vector< unsigned int > indexNonZero;
-//   char snpID[65536], rsID[65536], chrStr[65536];
-//   unsigned int maxLA = 65536, maxLB = 65536;
-//   char *allele1, *allele0;
-//   allele1 = (char *) malloc(maxLA+1);
-//   allele0 = (char *) malloc(maxLB+1);
-//   uint16_t LS; size_t numBoolRead = fread(&LS, 2, 1, m_fin); // cout << "LS: " << LS << " " << std::flush;
-//   bool isBoolRead;
-//   Rcpp::List result ;
-//   if ( numBoolRead > 0 ) {
-//     isBoolRead = true;
-//     fread(snpID, 1, LS, m_fin); snpID[LS] = '\0'; // cout << "snpID: " << string(snpID) << " " << std::flush;
-//     uint16_t LR; fread(&LR, 2, 1, m_fin); // cout << "LR: " << LR << " " << std::flush;
-//     fread(rsID, 1, LR, m_fin); rsID[LR] = '\0'; // cout << "rsID: " << string(rsID) << " " << std::flush;
-//     RSID = std::string(rsID)=="." ? snpID : rsID;
-//     //std::string SNPID = string(snpID);
-//     
-//     uint16_t LC; fread(&LC, 2, 1, m_fin); // cout << "LC: " << LC << " " << std::flush;
-//     fread(chrStr, 1, LC, m_fin); chrStr[LC] = '\0';
-//     chromosome  = std::string(chrStr);
-//     
-//     uint32_t physpos; fread(&physpos, 4, 1, m_fin); // cout << "physpos: " << physpos << " " << std::flush;
-//     position = physpos;
-//     uint16_t K; fread(&K, 2, 1, m_fin); //cout << "K: " << K << endl;
-//     if (K != 2) {
-//       std::cerr << "ERROR: Non-bi-allelic variant found: " << K << " alleles" << std::endl;
-//       exit(1);
-//     }
-//     uint32_t LA; fread(&LA, 4, 1, m_fin); // cout << "LA: " << LA << " " << std::flush;
-//     if (LA > maxLA) {
-//       maxLA = 2*LA;
-//       free(allele1);
-//       allele1 = (char *) malloc(maxLA+1);
-//     }
-//     fread(allele1, 1, LA, m_fin); allele1[LA] = '\0';
-//     first_allele = std::string(allele1);
-//     uint32_t LB; fread(&LB, 4, 1, m_fin); // cout << "LB: " << LB << " " << std::flush;
-//     if (LB > maxLB) {
-//       maxLB = 2*LB;
-//       free(allele0);
-//       allele0 = (char *) malloc(maxLB+1);
-//     }
-//     fread(allele0, 1, LB, m_fin); allele0[LB] = '\0';
-//     second_allele = std::string(allele0);
-//     
-//     uint32_t C; fread(&C, 4, 1, m_fin); //cout << "C: " << C << endl;
-//     if (C > m_zBuf.size()) m_zBuf.resize(C-4);
-//     //std::cout << "m_zBuf.size() " << m_zBuf.size() << std::endl;
-//     uint32_t D; fread(&D, 4, 1, m_fin); //cout << "D: " << D << endl;
-//     m_zBufLens = C-4; m_bufLens = D;
-//     fread(&m_zBuf[0], 1, C-4, m_fin);
-//     AC = 0;
-//     AF = 0;
-//     info = 0;
-//     if (m_bufLens > m_buf.size()) m_buf.resize(m_bufLens); //fix the length
-//     Parse2(&m_buf[0], m_bufLens, &m_zBuf[0], m_zBufLens, RSID, dosages, AC, AF, indexforMissing, info, indexNonZero);
-//     Rcpp::DataFrame variants = Rcpp::DataFrame::create(
-//       Rcpp::Named("chromosome") = chromosome,
-//       Rcpp::Named("position") = position,
-//       Rcpp::Named("rsid") = RSID,
-//       //        Named("number_of_alleles") = number_of_allele,
-//       Rcpp::Named("allele0") = first_allele,
-//       Rcpp::Named("allele1") = second_allele,
-//       //       _["stringsAsFactors"] = false,
-//       Rcpp::Named("AC") = AC,
-//       Rcpp::Named("AF") = AF
-//       // Named("info") = info
-//       //Named("homN_cases") = homN_cases,
-//       //Named("hetN_cases") = hetN_cases,
-//       //Named("homN_ctrls") = homN_ctrls,
-//       //Named("hetN_ctrls") = hetN_ctrls
-//     );
-//     result[ "variants" ] = variants ;
-//     result["info"] = info;
-//     result[ "dosages" ] = dosages ;
-//     result["indexNonZero"] = indexNonZero;
-//     result["indexforMissing"] = indexforMissing;
-//     
-//   }else{
-//     isBoolRead = false;
-//     Rcpp::DataFrame variants = NULL;
-//     result["isBoolRead"] = isBoolRead;
-//   }
-//   dosages.clear();
-//   indexforMissing.clear();
-//   return(result);
-// }
 
 
 void BgenClass::setIsSparseDosageInBgen (bool t_isSparseDosageInBgen){

@@ -60,8 +60,9 @@ mCHRs = FALSE   # if FALSE, chromosomes of all markers are 1
 BP = NULL
 plink.make(Geno.mat, work.dir, out.prefix, mCHRs, BP)
      
-# cmd = paste0("plink --file ", OUT.file,  " --make-bed --out ", OUT.file)
-# system(cmd)
-# system(paste("rm", MAP.file, PED.file))
+## The following are in shell environment
+plink --file simuPLINK --make-bed --out simuPLINK
+plink2 --bfile simuPLINK --export bgen-1.2 bits=8 ref-first --out simuBGEN
+bgenix -g simuBGEN.bgen --index
      
 }

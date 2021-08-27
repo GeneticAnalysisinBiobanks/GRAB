@@ -219,9 +219,10 @@ Get_One_Set_10_members = function(start.pos,
 #' BP = NULL
 #' plink.make(Geno.mat, work.dir, out.prefix, mCHRs, BP)
 #'      
-#' # cmd = paste0("plink --file ", OUT.file,  " --make-bed --out ", OUT.file)
-#' # system(cmd)
-#' # system(paste("rm", MAP.file, PED.file))
+#' ## The following are in shell environment
+#' plink --file simuPLINK --make-bed --out simuPLINK
+#' plink2 --bfile simuPLINK --export bgen-1.2 bits=8 ref-first --out simuBGEN
+#' bgenix -g simuBGEN.bgen --index
 #'      
 #' @export
 plink.make = function(Geno.mat,
@@ -306,9 +307,5 @@ plink.make = function(Geno.mat,
   
   message = paste0("Check directory of ", work.dir, " for the PLINK files.")
   return(message)
-  
-  # cmd = paste0("plink --file ", OUT.file,  " --make-bed --out ", OUT.file)
-  # system(cmd)
-  # system(paste("rm", MAP.file, PED.file))
 }
 
