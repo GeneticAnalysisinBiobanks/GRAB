@@ -2,7 +2,7 @@
 % Please edit documentation in R/SparseGRM.R
 \name{getSparseGRM}
 \alias{getSparseGRM}
-\title{Get an object of 'SparseGRM' for GRAB_Null_Model(). Only valid in Linux since GCTA software can only be used in Linux.}
+\title{Make a \code{SparseGRMFile} for \code{\link{GRAB_Null_Model}}.}
 \usage{
 getSparseGRM(
   PlinkFile,
@@ -12,39 +12,44 @@ getSparseGRM(
   relatednessCutoff = 0.05,
   minMafGRM = 0.01,
   maxMissingGRM = 0.1,
-  rm.tempFiles = F
+  rm.tempFiles = FALSE
 )
 }
 \arguments{
-\item{PlinkFile}{a path to Plink files. The current version (gcta_1.93.1beta) of gcta software does not support different prefix names for bim, bed and fam files.}
+\item{PlinkFile}{a path to PLINK files (without file extensions of bed/bim/fam). Note that the current version (gcta_1.93.1beta) of gcta software does not support different prefix names for bim, bed, and fam files.}
 
-\item{nPartsGRM}{a numeric value (e.g. 250): GCTA software can split subjects to multiple parts. For UK-Biobank analysis, it is recommanded to use 250 parts.}
+\item{nPartsGRM}{a numeric value (e.g. 250): GCTA software can split subjects to multiple parts. For UK Biobank analysis, it is recommended to set \code{nPartsGRM=250}.}
 
-\item{SparseGRMFile}{a path to file of output to record SparseGRM}
+\item{SparseGRMFile}{a path to file of output to be passed to \code{\link{GRAB.NullModel}}.}
 
-\item{tempDir}{a path to store temp files from getSparseGRMParallel(). This should be consistent to the input of getSparseGRMParallel(). Default is system.file("SparseGRM", "temp", package = "GRAB").}
+\item{tempDir}{a path to store temp files from \code{\link{getTempFilesFullGRM}}. This should be consistent to the input of \code{\link{getTempFilesFullGRM}}. Default is system.file("SparseGRM", "temp", package = "GRAB").}
 
-\item{relatednessCutoff}{a cutoff for sparse GRM, only kinship coefficient greater than this cutoff will be retained in sparse GRM.}
+\item{relatednessCutoff}{a cutoff for sparse GRM, only kinship coefficient greater than this cutoff will be retained in sparse GRM. [default=0.05].}
 
-\item{minMafGRM}{Minimal value of MAF cutoff to select markers (from Plink files) to construct GRM.}
+\item{minMafGRM}{Minimal value of MAF cutoff to select markers (from PLINK files) to make sparse GRM. [default=0.01]}
 
-\item{maxMissingGRM}{Maximal value of missing rate to select markers (from Plink files) to construct GRM.}
+\item{maxMissingGRM}{Maximal value of missing rate to select markers (from PLINK files) to make sparse GRM. [default=0.1]}
 
-\item{rm.tempFiles}{a logical value indicating if the temp files generated in getSparseGRMParallel will be deleted}
+\item{rm.tempFiles}{a logical value indicating if the temp files generated in \code{\link{getTempFilesFullGRM}} will be deleted. [default=FALSE].}
 }
 \description{
-If the sample size is greater than 100,000, we recommend using sparse GRM to adjust for sample relatedness. 
-This function is to use GCTA software (gcta_1.93.1beta, https://cnsgenomics.com/software/gcta/#Overview) to get an object of 'SparseGRM' to be passed to function GRAB_Null_Model(). 
-\cr\cr
-Step 1: Run getTempFilesFullGRM(); please check help(getSparseGRMParallel) for more details. 
-\cr
-Step 2: Run getSparseGRM().
+If the sample size in analysis is greater than 100,000, we recommend using sparse GRM (instead of dense GRM) to adjust for sample relatedness. 
+This function is to use \code{GCTA} software (gcta_1.93.1beta, \link{https://cnsgenomics.com/software/gcta/#Overview}) to make a \code{SparseGRMFile} to be passed to function \code{\link{GRAB_Null_Model}}.
+This function can only support \code{Linux} and \code{PLINK} files as required by \code{GCTA} software. To make a \code{SparseGRMFile}, two steps are needed. Please check \code{Details} section for more details.
+}
+\details{
+\describe{
+\itemize{
+  \item \code{Step 1}: Run \code{\link{getTempFilesFullGRM}} to get temporary files.
+  \item \code{Step 2}: Run \code{getSparseGRM} to combine the temporary files to make a \code{SparseGRMFile} to be passed to \code{\link{GRAB.NullModel}}.
+  }
+}
 }
 \examples{
 ## Input data:
 GenoFile = system.file("extdata", "example.bed", package = "GRAB")
 PlinkFile = tools::file_path_sans_ext(GenoFile)   # fam/bim/bed files should have the same prefix
-nPartsGRM = 2;   # nPartsGRM = 250 for UK Biobank data analysis
+nPartsGRM = 2;   # nPartsGRM = 250 for UK Biobank data analysis with 500K samples.
 
 ## Step 1:
 ## We strongly suggest parallel computing in high performance clusters (HPC) for different pairs of (chrParallel, partParallel). 

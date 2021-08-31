@@ -2,7 +2,7 @@
 % Please edit documentation in R/SparseGRM.R
 \name{getTempFilesFullGRM}
 \alias{getTempFilesFullGRM}
-\title{Please run this function before running getSparseGRM().}
+\title{Make temporary files to be passed to function \code{\link{getSparseGRM}}.}
 \usage{
 getTempFilesFullGRM(
   PlinkFile,
@@ -16,25 +16,33 @@ getTempFilesFullGRM(
 )
 }
 \arguments{
-\item{PlinkFile}{a path to Plink files. The current version (gcta_1.93.1beta) of gcta software does not support different prefix names for bim, bed and fam files.}
+\item{PlinkFile}{a path to PLINK files (without file extensions of bed/bim/fam). Note that the current version (gcta_1.93.1beta) of gcta software does not support different prefix names for bim, bed, and fam files.}
 
-\item{nPartsGRM}{a numeric value (e.g. 250): GCTA software can split subjects to multiple parts. For UK-Biobank analysis, it is recommanded to use 250 parts.}
+\item{nPartsGRM}{a numeric value (e.g. 250): GCTA software can split subjects to multiple parts. For UK Biobank analysis, it is recommended to set \code{nPartsGRM=250}.}
 
-\item{partParallel}{a numeric value (from 1 to nPartsGRM)}
+\item{partParallel}{a numeric value (from 1 to \code{nPartsGRM}) to split all jobs for parallele computation.}
 
-\item{tempDir}{a path to store temp files from getSparseGRMParallel(). This should be consistent to the input of getSparseGRM(). Default is system.file("SparseGRM", "temp", package = "GRAB").}
+\item{tempDir}{a path to store temp files from \code{\link{getTempFilesFullGRM}}. This should be consistent to the input of \code{\link{getTempFilesFullGRM}}. Default is system.file("SparseGRM", "temp", package = "GRAB").}
 
 \item{subjData}{a character vector to specify subject IDs to retain (i.e. IID). Default is NULL, i.e. all subjects are retained in sparse GRM. If the number of subjects is less than 1,000, the GRM estimation might not be accurate.}
 
-\item{minMafGRM}{Minimal value of MAF cutoff to select markers (from Plink files) to construct GRM.}
+\item{minMafGRM}{Minimal value of MAF cutoff to select markers (from PLINK files) to make sparse GRM. [default=0.01]}
 
-\item{maxMissingGRM}{Maximal value of missing rate to select markers (from Plink files) to construct GRM.}
+\item{maxMissingGRM}{Maximal value of missing rate to select markers (from PLINK files) to make sparse GRM. [default=0.1]}
 
 \item{threadNum}{Number of threads (CPUs) to use.}
 }
 \description{
-Please run this function before running getSparseGRM(). We strongly suggest using parallel computing for different pairs of (chrParallel, partParallel).
+Make temporary files to be passed to function \code{\link{getSparseGRM}}. We strongly suggest using parallel computing for different \code{partParallel}.
+}
+\details{
+\describe{
+\itemize{
+  \item \code{Step 1}: Run \code{getTempFilesFullGRM} to get temporary files.
+  \item \code{Step 2}: Run \code{\link{getSparseGRM}} to combine the temporary files to make a \code{SparseGRMFile} to be passed to \code{\link{GRAB.NullModel}}.
+  }
+}
 }
 \examples{
-## Please check help(getSparseGRM) for example codes.
+## Please check help(getSparseGRM) for an example.
 }
