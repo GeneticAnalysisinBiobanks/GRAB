@@ -1,32 +1,59 @@
 
-#' GRAB: Marker-level score test
+#' Conduct marker-level genetic association testing
 #' 
-#' GRAB package uses score test for GWAS: in step 1, we fit a null model (check \code{?GRAB.NullModel}) including response variable, covariates, and GRM (if needed). In step 2, we perform score test for marker-level analysis (check \code{?GRAB.Marker}) and region-level analysis (check \code{?GRAB.Region}).
+#' Test for association between phenotype of interest and genetic marker.
 #' 
-#' @param objNull output object of the GRAB.NullModel() function. 
-#' @param GenoFile a character of genotype file. Three types of genotype files are supported: PLINK ("prefix.bed"), BGEN ("prefix.bgen"), and VCF ("prefix.vcf" or "prefix.vcf.gz"). 
-#' @param GenoFileIndex additional index files corresponding to the "GenoFile". If Null (default), the same prefix as GenoFile is used. PLINK: c("prefix.bim", "prefix.fam"), BGEN: c("prefix.bgi"), and VCF: c("prefix.vcf.tbi") or c("prefix.vcf.gz.tbi").
-#' @param OutputFile a character of output file to store the analysis results. 
-#' @param OutputFileIndex a character of output index file to record the end point in case that program ends unexpectedly
-#' @param control a list of parameters for controlling the GRAB.Marker(), more details can be found in \code{?GRAB.control}. 
+#' @param objNull the output object of function \code{\link{GRAB.NullModel}}. 
+#' @param GenoFile a character of genotype file. Currently, two types of genotype formats are supported: PLINK and BGEN. Check \code{\link{GRAB.ReadGeno}} for more details.
+#' @param GenoFileIndex additional index files corresponding to the \code{GenoFile}. If \code{NULL} (default), the prefix is the same as GenoFile. Check \code{\link{GRAB.ReadGeno}} for more details.
+#' @param OutputFile a character of output file to save the analysis results. 
+#' @param OutputFileIndex a character of output index file to record the end point. If the program ends unexpectedly, the end point can help \code{GRAB} package understand where to restart the analysis. If \code{NULL} (default), \code{OutputFileIndex = paste0(OutputFile, ".index")}. 
+#' @param control a list of parameters for controlling function \code{GRAB.Marker}, more details can be seen in \code{Details} section. 
 #' @details 
-#' Check \code{?GRAB.control} for a generic list of 'control'. For specific methods, check its help page for more information. 
-#' \itemize{
-#' \item{SAIGE: to analyze binary phenotype, check ?GRAB.SAIGE for more details.}
-#' \item{POLMM: to analyze ordinal categorical phenotype, check ?GRAB.POLMM for more details.}
-#' \item{SPACox: to analyze time-to-event phenotype, check ?GRAB.SPACox for more details.}
-#' \item{SPAGE: to analyze gene-environment interaction effect for binary phenotype, check ?GRAB.SPAGE for more details.}
-#' }
-#' @return The results will be written in a file, i.e., OutputFile, which includes the following columns.
-#' \item{Marker}{Marker IDs extracted from "GenoFile" and "GenoFileIndex".}
-#' \item{Info}{Marker Infomation of "CHR:POS:REF:ALT". This information is from "GenoFile" or "GenoFileIndex". Note that control of \code{AlleleOrder}, i.e. "ref-first" or "alt-first" may alter the order.}
-#' \item{AltFreq}{ALT allele frequency (mighe be > 0.5). If most of the AltFreq are > 0.5, you might should reset the control of \code{AlleleOrder}. Refer to section of \code{GRAB.ReadGeno} in \code{?GRAB.control} for more details.}
-#' \item{AltCounts}{ALT allele counts.}
-#' \item{MissingRate}{Missing rate of marker}
-#' \item{Beta}{Estimated effect size (if provided), of the ALT allele.}
-#' \item{seBeta}{Estimated standard error (se, if provided) of the effect size}
-#' \item{Pval}{Association test p-value}
-#' \item{zScore}{z value (if provided), standardized score statistics, usually follows a standard normal distribution}
+#' \code{GRAB} package supports \code{SAIGE}, \code{POLMM}, and \code{SPACox} methods. 
+#' Detailed information about the analysis methods is given in the \code{Details} section of \code{\link{GRAB.NullModel}}. 
+#' Users do not need to specify them since functions \code{GRAB.Marker} and \code{\link{GRAB.Region}} will check the \code{class(objNull)}.
+#' 
+#' ## The following details are about argument \code{control}
+#' The below is to let users customize markers to include in analysis. If these parameters are not specified, \code{GRAB} package will include all markers in analysis. 
+#' For PLINK files, the default \code{control$AlleleOrder = "alt-first"}; for BGEN files, the default \code{control$AlleleOrder = "alt-first"}.
+#'   \itemize{
+#'   \item \code{IDsToIncludeFile}: please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
+#'   \item \code{IDsToExcludeFile}: please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
+#'   \item \code{RangesToIncludeFile}: please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
+#'   \item \code{RangesToExcludeFile}: please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
+#'   \item \code{AlleleOrder}: please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
+#'   }
+#' The below is to customize the quality-control (QC) process.
+#'   \itemize{
+#'   \item \code{omp_num_threads}: (To be added later) a numeric value (default: value from data.table::getDTthreads()) to specify the number of threads in OpenMP for parallel computation.
+#'   \item \code{ImputeMethod}: a character, "mean", "bestguess", or "drop" (to be added later). please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
+#'   \item \code{MissingRateCutoff}: a numeric value *(default=0.15)*. Markers with missing rate > this value will be excluded from analysis.  
+#'   \item \code{MinMAFCutoff}: a numeric value *(default=0.001)*. Markers with MAF < this value will be excluded from analysis.  
+#'   \item \code{MinMACCutoff}: a numeric value *(default=20)*. Markers with MAC < this value will be excluded from analysis.  
+#'   \item \code{nMarkersEachChunk}: number of markers *(default=10000)* in one chunk to output.
+#'   }
+#'  The below is to customize the columns in the \code{OutputFile}. 
+#'  Columns of \code{Marker}, \code{Info}, \code{AltFreq}, \code{AltCounts}, \code{MissingRate}, \code{Pvalue} are included for methods.
+#'  \itemize{
+#'  \item \code{outputColumns}: For example, for POLMM method, users can set \code{control$outputColumns = c("beta", "seBeta", "AltFreqInGroup")}. 
+#'     \itemize{
+#'     \item \code{POLMM}: Default: \code{beta}, \code{seBeta}; Optional: \code{PvalueNorm}, \code{zScore}, \code{AltFreqInGroup}
+#'     \item \code{SPACox}: Optional: \code{PvalueNorm}, \code{zScore}
+#'     }
+#'  }
+#' @return The results is written in a file of \code{OutputFile}, which includes the following columns.
+#' \item{Marker}{Marker IDs extracted from \code{GenoFile} and \code{GenoFileIndex}.}
+#' \item{Info}{Marker Information of "CHR:POS:REF:ALT". The order of REF/ALT depends on \code{control$AlleleOrder}: "ref-first" or "alt-first".}
+#' \item{AltFreq}{Alternative allele frequency (before genotype imputation, might be > 0.5). If the \code{AltFreq} of most markers are > 0.5, you should consider resetting \code{control$AlleleOrder}.}
+#' \item{AltCounts}{Alternative allele counts (before genotype imputation).}
+#' \item{MissingRate}{Missing rate for each marker}
+#' \item{Pvalue}{Association test p-value}
+#' The following columns can be customized in \code{control$outputColumns}.
+#' \item{Beta}{Estimated effect size of the ALT allele.}
+#' \item{seBeta}{Estimated standard error (se) of the effect size.}
+#' \item{zScore}{z score, standardized score statistics, usually follows a standard normal distribution.}
+#' \item{altFreqInGroup}{Alternative frequency (before genotype imputation) in different phenotype groups.}
 #' @examples
 #' # We put examples to the specific help pages for different methods. 
 #' # If you want to use "SPACox" method, please check ?GRAB.SPACox for more details.

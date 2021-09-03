@@ -32,7 +32,7 @@ PlinkClass::PlinkClass(std::string t_bimFile,
   m_AlleleOrder = t_AlleleOrder;
 }
 
-// set PlinkClass by reading plink files
+// set PlinkClass by reading PLINK files
 void PlinkClass::setPlinkobj(std::string t_bimFile,
                              std::string t_famFile,
                              std::string t_bedFile)
@@ -100,7 +100,7 @@ void PlinkClass::readFamFile()
 
 void PlinkClass::setPosSampleInPlink(std::vector<std::string> t_SampleInModel)
 {
-  std::cout << "Setting position of samples in plink files...." << std::endl;
+  std::cout << "Setting position of samples in PLINK files...." << std::endl;
   m_N = t_SampleInModel.size();
   m_numBytesofEachMarker = (m_N + 3) / 4;
   
@@ -272,7 +272,7 @@ arma::mat PlinkClass::getGMat(int t_nMarker,
   
   indexSNPs = Rcpp::RcppArmadillo::sample(indexSNPs, indexSNPs.size(), FALSE);
   
-  std::cout << "There are " << indexSNPs.size() << " markers in Plink files." << std::endl;
+  std::cout << "There are " << indexSNPs.size() << " markers in PLINK files." << std::endl;
   
   double freq, missingRate;
   int posGMat = 0;
@@ -307,7 +307,7 @@ arma::mat PlinkClass::getGMat(int t_nMarker,
   std::cout << "Extract" << posGMat << " markers!" << std::endl;
   
   if(i == indexSNPs.size())
-    Rcpp::stop("Cannot extract enough markers from plink files. Probably an incorrect chromosome name is given.");
+    Rcpp::stop("Cannot extract enough markers from PLINK files. Probably an incorrect chromosome name is given.");
   
   return GMat;
 }

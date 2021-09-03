@@ -182,112 +182,124 @@ Get_One_Set_10_members = function(start.pos,
 }
 
 
-#' GRAB: make plink files using Geno.mat
+#' Make PLINK files using a numeric R matrix
 #' 
-#' Make plink files using numeric matrix Geno.mat (0,1,2,-9), rownames(Geno.mat) should be subject IDs and colnames(Geno.mat) should be SNP IDs
+#' Make PLINK files using a numeric matrix \code{GenoMat} (0,1,2,-9), \code{rownames(GenoMat)} are subject IDs and \code{colnames(GenoMat)} are marker IDs
 #' 
-#' @param Geno.mat a numeric Genotype matrix (0,1,2,-9). Each row is for one subject and each column is for one marker. Row names of subject IDs and column names of marker IDs are required.
-#' @param work.dir working directory to store the plink files
-#' @param out.prefix prefix of the output Plink files
-#' @param mCHRs if TRUE, then SNPs were randomly assigned to chromosomes 1-22; if FALSE, then all SNPs are in chromosome 1
-#' @param BP if NULL, then Base Position (BP) is 1:length(SNPs), otherwise, the length(BP) should be the same as ncol(Geno.mat)
-#' @param Pheno if NULL, then phenotype is -9, otherwise, the length(Pheno) should be the same as nrow(Geno.mat)
-#' @param SEX if NULL, then all sex is 1, otherwise, the length(SEX) should be the same as nrow(Geno.mat)
-#' @return Plink files (PED and MAP) are stored in 'work.dir' with prefix of 'out.prefix'. Genotype of 0,1,2,-9 will be coded as GG, AG, AA, 00. If Plink binary files (BED, BIM, and FAM) are required, please download Plink software and use "--make-bed".
+#' @param GenoMat a numeric \code{n*m} genotype matrix (0,1,2,-9). Each row is for one subject and each column is for one marker. Row names of subject IDs and column names of marker IDs are required.
+#' @param OutputPrefix a character, prefix of the PLINK files to output (including path).
+#' @param A1 a character to specify allele 1 (*default="G"*), usually minor (ALT).
+#' @param A2 a character to specify allele 2 (*default="A"*), usually major (REF).
+#' @param CHR a character vector of the chromosome numbers for all markers. *Default=NULL*, that is, \code{CHR=rep(1, m)}.
+#' @param BP a numeric vector of the base positions for all markers. *Default=NULL*, that is, \code{BP=1:m)}.
+#' @param Pheno a character vector of the phenotypes for all subjects. *Default=NULL*, that is, \code{Pheno=rep(-9, n)}.
+#' @param Sex a numeric vector of the sex for all subjects. *Default=NULL*, that is, \code{Sex=rep(1, n))}.
+#' @return PLINK text files (PED and MAP) are stored in 'OutputPrefix'. Suppose A1 is "G" and A2 is "A", then genotype of 0,1,2,-9 will be coded as "GG", "AG", "AA", "00". If PLINK binary files (BED, BIM, and FAM) are required, please download PLINK software and use option of "--make-bed".
+#' Please check \code{Details} section for the downstream process.
+#' @details 
+#' Check [link](https://www.cog-genomics.org/plink/2.0/) for detailed information of \code{PLINK} 2.00 alpha. Check [link](https://enkre.net/cgi-bin/code/bgen/doc/trunk/doc/wiki/bgenix.md) for detailed information of \code{bgenix} tool.
+#' ## Convert PLINK text files to binary files
+#' Run \code{plink --file simuPLINK --make-bed --out simuPLINK} to convert PLINK text files (MAP and PED) to binary files (BED, BIM, and FAM).
+#' ## Convert PLINK binary files to bgen files
+#' RUN \code{plink2 --bfile simuPLINK --export bgen-1.2 bits=8 ref-first --out simuBGEN} to convert PLINK binary files (BED, BIM, and FAM) to BGEN binary files (BGEN).
+#' ## Make bgi file using \code{bgenix} tool
+#' RUN \code{bgenix -g simuBGEN.bgen --index}
 #' @examples 
-#' ### Step 1: make a numeric genotype matrix
+#' ### Step 1: simulate a numeric genotype matrix
 #' n = 1000
 #' m = 20
 #' MAF = 0.3
-#' Geno.mat = matrix(rbinom(n*m, 2, MAF), n, m)
-#' rownames(Geno.mat) = paste0("Subj-",1:n)
-#' colnames(Geno.mat) = paste0("SNP-",1:m)
+#' set.seed(123)
+#' GenoMat = matrix(rbinom(n*m, 2, MAF), n, m)
+#' rownames(GenoMat) = paste0("Subj-",1:n)
+#' colnames(GenoMat) = paste0("SNP-",1:m)
+#' outputDir = system.file("results", package = "GRAB")
+#' outputPrefix = paste0(outputDir, "/simuPLINK")
 #' 
-#' ### Step 2(a): make Plink files without missing genotype
-#' work.dir = system.file("results", package = "GRAB")
-#' out.prefix = "simuPLINK"
-#' mCHRs = FALSE   # if FALSE, chromosomes of all markers are 1
-#' BP = NULL
-#' plink.make(Geno.mat, work.dir, out.prefix, mCHRs, BP)
+#' ### Step 2(a): make PLINK files without missing genotype
+#' makePlink(GenoMat, outputPrefix)
 #' 
-#' ### Step 2(b): make Plink files with genotype missing rate of 0.1
+#' ### Step 2(b): make PLINK files with genotype missing rate of 0.1
 #' indexMissing = sample(n*m, 0.1*n*m)
-#' Geno.mat[indexMissing] = -9
-#' work.dir = system.file("results", package = "GRAB")
-#' out.prefix = "simuPLINK"
-#' mCHRs = FALSE   # if FALSE, chromosomes of all markers are 1
-#' BP = NULL
-#' plink.make(Geno.mat, work.dir, out.prefix, mCHRs, BP)
+#' GenoMat[indexMissing] = -9
+#' makePlink(GenoMat, outputPrefix)
 #'      
 #' ## The following are in shell environment
-#' plink --file simuPLINK --make-bed --out simuPLINK
-#' plink2 --bfile simuPLINK --export bgen-1.2 bits=8 ref-first --out simuBGEN
-#' bgenix -g simuBGEN.bgen --index
+#' # plink --file simuPLINK --make-bed --out simuPLINK
+#' # plink2 --bfile simuPLINK --export bgen-1.2 bits=8 ref-first --out simuBGEN  # UK Biobank use 'ref-first'
+#' # bgenix -g simuBGEN.bgen --index
 #'      
 #' @export
-plink.make = function(Geno.mat,
-                      work.dir,
-                      out.prefix,
-                      mCHRs = T,         # multiple CHRs
-                      BP = NULL,
-                      Pheno = NULL,
-                      SEX = NULL)
+makePlink = function(GenoMat,
+                     OutputPrefix,
+                     A1 = "G",
+                     A2 = "A",
+                     CHR = NULL,      
+                     BP = NULL,
+                     Pheno = NULL,
+                     Sex = NULL)
 {
-  if(!is.numeric(Geno.mat))
-    stop("'Geno.mat' should be a numeric matrix.")
+  if(!is.numeric(GenoMat))
+    stop("'GenoMat' should be a numeric matrix.")
   
-  if(any(!unique(as.numeric(Geno.mat)) %in% c(0, 1, 2, -9)))
-    stop("'Geno.mat' should only include elements of 0, 1, 2, -9.")
+  if(any(!unique(as.numeric(GenoMat)) %in% c(0, 1, 2, -9)))
+    stop("'GenoMat' should only include elements of 0, 1, 2, -9.")
   
-  SNPs = colnames(Geno.mat)
-  FID = IID = rownames(Geno.mat)
+  SNP = colnames(GenoMat)
+  FID = IID = rownames(GenoMat)
   
-  if(is.null(SNPs) | is.null(IID))
-    stop("rownames and colnames of Geno.mat should be given.")
+  if(is.null(SNP) | is.null(IID))
+    stop("rownames and colnames of GenoMat should be specified.")
   
-  m = length(SNPs)
+  m = length(SNP)
   n = length(IID)
   
-  if(!is.null(Pheno) & length(Pheno) != n)
-    stop("length(Pheno) should be the same as nrow(Geno.mat).")
+  cat("number of markers:\t", m, "\n")
+  cat("number of samples:\t", n, "\n")
   
-  if(is.null(Pheno))
+  if(is.null(Pheno)){
     Pheno = rep(-9, n)
-  
-  if(!is.null(SEX) & length(SEX) != n)
-    stop("length(SEX) should be the same as nrow(Geno.mat).") 
-  
-  if(is.null(SEX))
-    SEX = rep(1, n)
-  
-  if(!is.null(BP) & length(SEX) != m)
-    stop("length(BP) should be the same as ncol(Geno.mat).")
-  
-  if(is.null(BP))
-    BP = 1:m
-  
-  if(mCHRs){
-    CHR = sample(1:22, m, replace=T)
   }else{
-    CHR = rep(1, m)
+    if(length(Pheno != n))
+      stop("length(Pheno) should be the same as nrow(GenoMat).")  
   }
-    
+  
+  if(is.null(Sex)){
+    Sex = rep(1, n)
+  }else{
+    if(length(Sex) != n)
+      stop("length(Sex) should be the same as nrow(GenoMat).") 
+  }
+  
+  if(is.null(BP)){
+    BP = 1:m
+  }else{
+    if(length(BP) != m)
+      stop("length(BP) should be the same as ncol(GenoMat).")
+  }
+
+  if(is.null(CHR)){
+    CHR = rep(1, m)
+  }else{
+    if(length(CHR) != m)
+      stop("length(CHR) should be the same as ncol(GenoMat).")
+  }
   
   PED = cbind(FID=FID, 
               IID=IID, 
               PID=0, 
               MID=0, 
-              Sex = SEX, 
+              Sex = Sex, 
               Phen = Pheno);
   
   MAP = cbind(CHR = CHR, 
-              SNP = SNPs, 
+              SNP = SNP, 
               GeneDist = 0,
               BP = BP);
   
-  Geno.ped1 = Geno.ped2 = ifelse(Geno.mat == -9, "0", "G")
-  Geno.ped1 = ifelse(Geno.mat>=1, "A", Geno.ped1)
-  Geno.ped2 = ifelse(Geno.mat>=2, "A", Geno.ped2)
+  Geno.ped1 = Geno.ped2 = ifelse(GenoMat == -9, "0", A1)
+  Geno.ped1 = ifelse(GenoMat>=1, A2, Geno.ped1)
+  Geno.ped2 = ifelse(GenoMat>=2, A2, Geno.ped2)
   
   Geno.ped = matrix(nrow = n, ncol = 2*m)
   Geno.ped[,seq(1,2*m,2)] = Geno.ped1;
@@ -295,17 +307,18 @@ plink.make = function(Geno.mat,
   
   PED = cbind(PED, Geno.ped)
   
-  MAP.file = paste0(work.dir, "/", out.prefix,".map")
-  PED.file = paste0(work.dir, "/", out.prefix,".ped")
+  MAP.file = paste0(OutputPrefix, ".map")
+  PED.file = paste0(OutputPrefix, ".ped")
   # OUT.file = paste0(work.dir, "/", out.prefix)
   
   write.table(MAP, MAP.file, quote = F, col.names = F, row.names = F)
   write.table(PED, PED.file, quote = F, col.names = F, row.names = F)
   
+  cat("Working directory:\t", getwd(), "\n")
   cat("PED file:\t", PED.file, "\n")
   cat("MAP file:\t", MAP.file, "\n")
   
-  message = paste0("Check directory of ", work.dir, " for the PLINK files.")
+  message = paste0("PLINK files have been saved to ", OutputPrefix, ".")
   return(message)
 }
 

@@ -2,7 +2,7 @@
 % Please edit documentation in R/SparseGRM.R
 \name{getSparseGRM}
 \alias{getSparseGRM}
-\title{Make a \code{SparseGRMFile} for \code{\link{GRAB_Null_Model}}.}
+\title{Make a \code{SparseGRMFile} for \code{\link{GRAB.NullModel}}.}
 \usage{
 getSparseGRM(
   PlinkFile,
@@ -16,54 +16,55 @@ getSparseGRM(
 )
 }
 \arguments{
-\item{PlinkFile}{a path to PLINK files (without file extensions of bed/bim/fam). Note that the current version (gcta_1.93.1beta) of gcta software does not support different prefix names for bim, bed, and fam files.}
+\item{PlinkFile}{a path to PLINK binary files (without file extension). Note that the current version (gcta_1.93.1beta) of \code{GCTA} software does not support different prefix names for BIM, BED, and FAM files.}
 
-\item{nPartsGRM}{a numeric value (e.g. 250): GCTA software can split subjects to multiple parts. For UK Biobank analysis, it is recommended to set \code{nPartsGRM=250}.}
+\item{nPartsGRM}{a numeric value (e.g. 250): \code{GCTA} software can split subjects to multiple parts. For UK Biobank data analysis, it is recommended to set \code{nPartsGRM=250}.}
 
 \item{SparseGRMFile}{a path to file of output to be passed to \code{\link{GRAB.NullModel}}.}
 
-\item{tempDir}{a path to store temp files from \code{\link{getTempFilesFullGRM}}. This should be consistent to the input of \code{\link{getTempFilesFullGRM}}. Default is system.file("SparseGRM", "temp", package = "GRAB").}
+\item{tempDir}{a path to store temp files from \code{\link{getTempFilesFullGRM}}. This should be consistent to the input of \code{\link{getTempFilesFullGRM}}. Default is \code{system.file("SparseGRM", "temp", package = "GRAB")}.}
 
-\item{relatednessCutoff}{a cutoff for sparse GRM, only kinship coefficient greater than this cutoff will be retained in sparse GRM. [default=0.05].}
+\item{relatednessCutoff}{a cutoff for sparse GRM, only kinship coefficient greater than this cutoff will be retained in sparse GRM. \emph{(default=0.05)}}
 
-\item{minMafGRM}{Minimal value of MAF cutoff to select markers (from PLINK files) to make sparse GRM. [default=0.01]}
+\item{minMafGRM}{Minimal value of MAF cutoff to select markers (from PLINK files) to make sparse GRM. \emph{(default=0.01)}}
 
-\item{maxMissingGRM}{Maximal value of missing rate to select markers (from PLINK files) to make sparse GRM. [default=0.1]}
+\item{maxMissingGRM}{Maximal value of missing rate to select markers (from PLINK files) to make sparse GRM. \emph{(default=0.1)}}
 
-\item{rm.tempFiles}{a logical value indicating if the temp files generated in \code{\link{getTempFilesFullGRM}} will be deleted. [default=FALSE].}
+\item{rm.tempFiles}{a logical value indicating if the temp files generated in \code{\link{getTempFilesFullGRM}} will be deleted. \emph{(default=FALSE)}}
 }
 \description{
-If the sample size in analysis is greater than 100,000, we recommend using sparse GRM (instead of dense GRM) to adjust for sample relatedness. 
-This function is to use \code{GCTA} software (gcta_1.93.1beta, \link{https://cnsgenomics.com/software/gcta/#Overview}) to make a \code{SparseGRMFile} to be passed to function \code{\link{GRAB_Null_Model}}.
+If the sample size in analysis is greater than 100,000, we recommend using sparse GRM (instead of dense GRM) to adjust for sample relatedness.
+This function is to use \code{GCTA} software (gcta_1.93.1beta, \href{https://cnsgenomics.com/software/gcta/#Overview}{link}) to make a \code{SparseGRMFile} to be passed to function \code{\link{GRAB.NullModel}}.
 This function can only support \code{Linux} and \code{PLINK} files as required by \code{GCTA} software. To make a \code{SparseGRMFile}, two steps are needed. Please check \code{Details} section for more details.
 }
 \details{
 \describe{
 \itemize{
-  \item \code{Step 1}: Run \code{\link{getTempFilesFullGRM}} to get temporary files.
-  \item \code{Step 2}: Run \code{getSparseGRM} to combine the temporary files to make a \code{SparseGRMFile} to be passed to \code{\link{GRAB.NullModel}}.
-  }
+\item \code{Step 1}: Run \code{\link{getTempFilesFullGRM}} to save temporary files to \code{tempDir}.
+\item \code{Step 2}: Run \code{getSparseGRM} to combine the temporary files to make a \code{SparseGRMFile} to be passed to function \code{\link{GRAB.NullModel}}.
 }
+}
+Users can customize parameters including \code{(minMafGRM, maxMissingGRM, nPartsGRM)}, but functions \code{\link{getTempFilesFullGRM}} and \code{getSparseGRM} should use the same ones.
+Otherwise, package \code{GRAB} cannot accurately identify temporary files.
 }
 \examples{
 ## Input data:
 GenoFile = system.file("extdata", "example.bed", package = "GRAB")
 PlinkFile = tools::file_path_sans_ext(GenoFile)   # fam/bim/bed files should have the same prefix
-nPartsGRM = 2;   # nPartsGRM = 250 for UK Biobank data analysis with 500K samples.
+nPartsGRM = 2;   # we recommend setting nPartsGRM = 250 for UK Biobank data analysis with 500K samples.
 
-## Step 1:
-## We strongly suggest parallel computing in high performance clusters (HPC) for different pairs of (chrParallel, partParallel). 
+# Step 1:
+# We strongly recommend parallel computing in high performance clusters (HPC). 
 for(partParallel in 1:nPartsGRM){
   getTempFilesFullGRM(PlinkFile, nPartsGRM, partParallel)
 }
 
-## After step 1, the results are stored in "tempDir (default: system.file("SparseGRM", "temp", package = "GRAB"))", which might needs large amount of space.
+# After step 1, the temporary files are in tempDir (default: system.file("SparseGRM", "temp", package = "GRAB")), which might needs a large amount of space.
 
-## Step 2:
-## Combine results in step 1 to calculate an object with class of SparseGRM for GRAB_Null_Model(),
+# Step 2:
+# Combine files in Step 1 to make a SparseGRMFile,
 tempDir = system.file("SparseGRM", "temp", package = "GRAB")
 SparseGRMFile = gsub("temp", "SparseGRM.txt", tempDir)
-SparseGRM = getSparseGRM(PlinkFile, nPartsGRM, SparseGRMFile)
+getSparseGRM(PlinkFile, nPartsGRM, SparseGRMFile)
 
-## NOTE: You can change some options such as (minMafGRM, maxMissingGRM, nPartsGRM), but keep in mind that functions getSparseGRMParallel() and getSparseGRM() should use the same options.
 }

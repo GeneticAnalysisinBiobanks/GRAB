@@ -14,12 +14,12 @@ Please check \code{?GRAB.control} for the generic list of \code{control} in \cod
 
 Additional list of \code{control} in \code{GRAB.NullModel()} function
 \itemize{
-\item{range: a two-element numeric vector [default=c(-100,100)] to specify the domain of the empirical CGF.}
-\item{length.out: a positive integer [default=10000] for empirical CGF. Larger length.out corresponds to longer calculation time and more accurate estimated empirical CGF.}
+\item{range: a two-element numeric vector \link{default=c(-100,100)} to specify the domain of the empirical CGF.}
+\item{length.out: a positive integer \link{default=10000} for empirical CGF. Larger length.out corresponds to longer calculation time and more accurate estimated empirical CGF.}
 }
 Additional list of \code{control} in \code{GRAB.Marker()} function
 \itemize{
-\item{impute_method: a character string [default="fixed"] to specify the method to impute missing genotypes. "fixed" imputes missing genotypes (NA) by assigning the mean genotype value (i.e. 2p where p is MAF).}
+\item{impute_method: a character string \link{default="fixed"} to specify the method to impute missing genotypes. "fixed" imputes missing genotypes (NA) by assigning the mean genotype value (i.e. 2p where p is MAF).}
 }
 Additional list of \code{control} in \code{GRAB.Region()} function
 \itemize{

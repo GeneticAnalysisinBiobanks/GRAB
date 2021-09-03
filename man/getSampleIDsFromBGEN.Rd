@@ -10,7 +10,7 @@ getSampleIDsFromBGEN(bgenFile)
 \item{bgenFile}{a character of BGEN file.}
 }
 \description{
-Extract sample identifiers from BGEN file (only support BGEN v1.2, https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html)
+Extract sample identifiers from BGEN file (only support BGEN v1.2, check \href{https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html}{link})
 }
 \examples{
 

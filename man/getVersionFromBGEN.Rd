@@ -10,7 +10,7 @@ getVersionFromBGEN(bgenFile)
 \item{bgenFile}{a character of BGEN file.}
 }
 \description{
-Get version information from BGEN file (https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html)
+Get version information from BGEN file (check \href{https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html}{link})
 }
 \examples{
 

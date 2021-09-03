@@ -10,69 +10,69 @@ GRAB.control()
 In \code{GRAB} package, the most of parameters are specified in argument of \code{control}.
 }
 \details{
-In \code{GRAB} package, we use \code{control} to specify function parameters. Here, we only list generic parameters. 
-For the parameters only used in specific method, please refer to its own help page. 
+In \code{GRAB} package, we use \code{control} to specify function parameters. Here, we only list generic parameters.
+For the parameters only used in specific method, please refer to its own help page.
 For example, check \code{?GRAB.POLMM} for more information about POLMM method.
 \describe{
-  \item{GRAB.ReadGeno}{
-  We support two include files of (IDsToIncludeFile, RangesToIncludeFile) and two exclude files of (IDsToExcludeFile, RangesToExcludeFile), but do not support both include and exclude files.
-  \itemize{
-  \item \code{IDsToIncludeFile}: a file of marker IDs to include, one column (no header). Check \code{system.file("extdata", "IDsToInclude.txt", package = "GRAB")} for an example. 
-  \item \code{IDsToExcludeFile}: a file of marker IDs to exclude, one column (no header). 
-  \item \code{RangesToIncludeFile}: a file of ranges to include, three columns (no headers): chromosome, start position, end position. Check \code{system.file("extdata", "RangesToInclude.txt", package = "GRAB")} for an example.
-  \item \code{RangesToExcludeFile}: a file of ranges to exclude, three columns (no headers): chromosome, start position, end position.
-  \item \code{AlleleOrder}: a character, "ref-first" or "alt-first", to determine whether the REF/major allele should appear first or second. Default is "alt-first" for PLINK and "ref-first" for BGEN. If the analysis results show the ALT allele frequencies of most markers are > 0.5, you might should change this option. NOTE, if you use plink2 to convert Plink file to BGEN file, you probably need to set it as 'ref-first'.
-  }
-  }
-  \item{GRAB.NullModel}{
-  The following parameters are to handle dense GRM for mixed model approaches (\code{SAIGE}, \code{GATE}, and \code{POLMM})
-    \itemize{
-    \item \code{memoryChunk}: Size (Gb) for each memory chunk when reading in Plink file [default=2].
-    \item \code{seed}: An integer as a random seed [default=12345678].
-    \item \code{tracenrun}: Number of runs for trace estimator [default=30].
-    \item \code{maxiter}: Maximum number of iterations used to fit the null POLMM [default=100].
-    \item \code{tolBeta}: Positive tolerance: the iterations converge when |beta - beta_old| / (|beta| + |beta_old| + tolBeta) < tolBeta [default=0.001].
-    \item \code{tolTau}: Positive tolerance: the iterations converge when |tau - tau_old| / (|tau| + |tau_old| + tolTau) < tolTau [default=0.002].
-    \item \code{tau}: Initial value of the variance component (tau) [default=0.2].
-    \item \code{maxiterPCG}: Maximum number of iterations for PCG to converge [default=100].
-    \item \code{tolEps}: Positive tolerance for PCG to converge [default=1e-6].
-    \item \code{minMafVarRatio}: Minimal value of MAF cutoff to select markers (from Plink file) to estimate variance ratio [default=0.1].
-    \item \code{maxMissingVarRatio}: Maximal value of missing rate cutoff to select markers (from Plink file) to estimate variance ratio [default=0.1].
-    \item \code{nSNPsVarRatio}: Initial number of the selected markers to estimate variance ratio [default=20], the number will be automatically added by 10 until the coefficient of variantion (CV) of the variance ratio estimate is below CVcutoff.
-    \item \code{CVcutoff}: Minimal cutoff of coefficient of variantion (CV) for variance ratio estimation [default=0.0025].
-    \item \code{LOCO}: Whether to apply the leave-one-chromosome-out (LOCO) approach [default=TRUE].
-    \item \code{numThreads}: Number of threads (CPUs) to use. Only valid if dense GRM is used, default is "auto", that is, RcppParallel::defaultNumThreads() [default="auto"].
-    \item \code{stackSize}: Stack size (in bytes) to use for worker threads. For more details, check help(RcppParallel::setThreadOptions) [default="auto"].
-    \item \code{grainSize}: Grain size of a parallel algorithm sets a minimum chunk size for parallelization. In other words, at what point to stop processing input on separate threads [default=1].
-    \item \code{minMafGRM}: Minimal value of MAF cutoff to select markers (from Plink files) to construct dense GRM [default=0.01].
-    \item \code{maxMissingGRM}: Maximal value of missing rate to select markers (from Plink files) to construct dense GRM [default=0.1].
-    \item \code{showInfo }: Whether to show more detailed information for trouble shooting [default=TRUE].
-    \item \code{onlyCheckTime}: Not fit the null model, only check the computation time of reading Plink files and running 30 KinbVec() functions [default=FALSE].
-    }
-  }
-  \item{GRAB.Marker}{
-  \itemize{
-  The following parameters are to specify Markers to analyze.
-  \item \code{IDsToIncludeFile}: please refer to section \code{GRAB.ReadGeno}.
-  \item \code{IDsToExcludeFile}: please refer to section \code{GRAB.ReadGeno}.
-  \item \code{RangesToIncludeFile}: please refer to section \code{GRAB.ReadGeno}.
-  \item \code{RangesToExcludeFile}: please refer to section \code{GRAB.ReadGeno}.
-  \item \code{AlleleOrder}: please refer to section \code{GRAB.ReadGeno}.
-  }
-  \itemize{
-  The following parameter are for score test.
-  \item \code{omp_num_threads}: a numeric value (default: value from data.table::getDTthreads()) to specify the number of threads in OpenMP for parallel computation.
-  \item \code{impute_method}: a character, "mean", "minor", or "drop". If "mean", impute genotype using 2 * AlleleFreq; if "minor", impute genotype using minor alleles; if "drop", drop the subject whose genotype is missing.
-  \item \code{missing_cutoff}: a numeric value (default: 0.15). Any variant with missing rate > this value will be excluded from analysis.  
-  \item \code{min_maf_marker}: a numeric value (default: 0.001). Any variants with MAF < this value will be excluded from analysis.  
-  \item \code{min_mac_marker}: a numeric value (default: 20). Any variants with MAC < this value will be excluded from analysis.  
-  \item \code{nMarkersEachChunk}: number of markers (default: 10000) in one chunk to be outputted
-  }
-  }
-  \item{GRAB.Region}{
-  \itemize{
-  \item \code{xxx}: xxx
-  }
-  }
+\item{GRAB.ReadGeno}{
+We support two include files of (IDsToIncludeFile, RangesToIncludeFile) and two exclude files of (IDsToExcludeFile, RangesToExcludeFile), but do not support both include and exclude files.
+\itemize{
+\item \code{IDsToIncludeFile}: a file of marker IDs to include, one column (no header). Check \code{system.file("extdata", "IDsToInclude.txt", package = "GRAB")} for an example.
+\item \code{IDsToExcludeFile}: a file of marker IDs to exclude, one column (no header).
+\item \code{RangesToIncludeFile}: a file of ranges to include, three columns (no headers): chromosome, start position, end position. Check \code{system.file("extdata", "RangesToInclude.txt", package = "GRAB")} for an example.
+\item \code{RangesToExcludeFile}: a file of ranges to exclude, three columns (no headers): chromosome, start position, end position.
+\item \code{AlleleOrder}: a character, "ref-first" or "alt-first", to determine whether the REF/major allele should appear first or second. Default is "alt-first" for PLINK and "ref-first" for BGEN. If the analysis results show the ALT allele frequencies of most markers are > 0.5, you might should change this option. NOTE, if you use plink2 to convert Plink file to BGEN file, you probably need to set it as 'ref-first'.
+}
+}
+\item{GRAB.NullModel}{
+The following parameters are to handle dense GRM for mixed model approaches (\code{SAIGE}, \code{GATE}, and \code{POLMM})
+\itemize{
+\item \code{memoryChunk}: Size (Gb) for each memory chunk when reading in Plink file \link{default=2}.
+\item \code{seed}: An integer as a random seed \link{default=12345678}.
+\item \code{tracenrun}: Number of runs for trace estimator \link{default=30}.
+\item \code{maxiter}: Maximum number of iterations used to fit the null POLMM \link{default=100}.
+\item \code{tolBeta}: Positive tolerance: the iterations converge when |beta - beta_old| / (|beta| + |beta_old| + tolBeta) < tolBeta \link{default=0.001}.
+\item \code{tolTau}: Positive tolerance: the iterations converge when |tau - tau_old| / (|tau| + |tau_old| + tolTau) < tolTau \link{default=0.002}.
+\item \code{tau}: Initial value of the variance component (tau) \link{default=0.2}.
+\item \code{maxiterPCG}: Maximum number of iterations for PCG to converge \link{default=100}.
+\item \code{tolEps}: Positive tolerance for PCG to converge \link{default=1e-6}.
+\item \code{minMafVarRatio}: Minimal value of MAF cutoff to select markers (from Plink file) to estimate variance ratio \link{default=0.1}.
+\item \code{maxMissingVarRatio}: Maximal value of missing rate cutoff to select markers (from Plink file) to estimate variance ratio \link{default=0.1}.
+\item \code{nSNPsVarRatio}: Initial number of the selected markers to estimate variance ratio \link{default=20}, the number will be automatically added by 10 until the coefficient of variantion (CV) of the variance ratio estimate is below CVcutoff.
+\item \code{CVcutoff}: Minimal cutoff of coefficient of variantion (CV) for variance ratio estimation \link{default=0.0025}.
+\item \code{LOCO}: Whether to apply the leave-one-chromosome-out (LOCO) approach \link{default=TRUE}.
+\item \code{numThreads}: Number of threads (CPUs) to use. Only valid if dense GRM is used, default is "auto", that is, RcppParallel::defaultNumThreads() \link{default="auto"}.
+\item \code{stackSize}: Stack size (in bytes) to use for worker threads. For more details, check help(RcppParallel::setThreadOptions) \link{default="auto"}.
+\item \code{grainSize}: Grain size of a parallel algorithm sets a minimum chunk size for parallelization. In other words, at what point to stop processing input on separate threads \link{default=1}.
+\item \code{minMafGRM}: Minimal value of MAF cutoff to select markers (from Plink files) to construct dense GRM \link{default=0.01}.
+\item \code{maxMissingGRM}: Maximal value of missing rate to select markers (from Plink files) to construct dense GRM \link{default=0.1}.
+\item \code{showInfo }: Whether to show more detailed information for trouble shooting \link{default=TRUE}.
+\item \code{onlyCheckTime}: Not fit the null model, only check the computation time of reading Plink files and running 30 KinbVec() functions \link{default=FALSE}.
+}
+}
+\item{GRAB.Marker}{
+\itemize{
+The following parameters are to specify Markers to analyze.
+\item \code{IDsToIncludeFile}: please refer to section \code{GRAB.ReadGeno}.
+\item \code{IDsToExcludeFile}: please refer to section \code{GRAB.ReadGeno}.
+\item \code{RangesToIncludeFile}: please refer to section \code{GRAB.ReadGeno}.
+\item \code{RangesToExcludeFile}: please refer to section \code{GRAB.ReadGeno}.
+\item \code{AlleleOrder}: please refer to section \code{GRAB.ReadGeno}.
+}
+\itemize{
+The following parameter are for score test.
+\item \code{omp_num_threads}: a numeric value (default: value from data.table::getDTthreads()) to specify the number of threads in OpenMP for parallel computation.
+\item \code{impute_method}: a character, "mean", "minor", or "drop". If "mean", impute genotype using 2 * AlleleFreq; if "minor", impute genotype using minor alleles; if "drop", drop the subject whose genotype is missing.
+\item \code{missing_cutoff}: a numeric value (default: 0.15). Any variant with missing rate > this value will be excluded from analysis.
+\item \code{min_maf_marker}: a numeric value (default: 0.001). Any variants with MAF < this value will be excluded from analysis.
+\item \code{min_mac_marker}: a numeric value (default: 20). Any variants with MAC < this value will be excluded from analysis.
+\item \code{nMarkersEachChunk}: number of markers (default: 10000) in one chunk to be outputted
+}
+}
+\item{GRAB.Region}{
+\itemize{
+\item \code{xxx}: xxx
+}
+}
 }
 }
