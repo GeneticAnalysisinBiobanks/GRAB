@@ -54,9 +54,9 @@
 #' @examples
 #' 
 #' ## Raw genotype data 
-#' RawFile = system.file("extdata", "example.raw", package = "GRAB")
+#' RawFile = system.file("extdata", "simuRAW.raw", package = "GRAB")
 #' GenoMat = data.table::fread(RawFile)
-#' head(GenoMat[,1:6])
+#' GenoMat[1:10,1:10]
 #' 
 #' ## PLINK files
 #' PLINKFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")

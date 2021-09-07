@@ -68,5 +68,5 @@ GRM1
 GRM2
 }
 \seealso{
-\code{\link{makePlink}} can make \code{PLINK} files using the genotype matrix.
+\code{\link{GRAB.makePlink}} can make \code{PLINK} files using the genotype matrix.
 }
