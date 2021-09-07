@@ -8,7 +8,11 @@
 #' @param SampleIDs a character vector of sample IDs to extract. The default is \code{NULL}, that is, all samples in \code{GenoFile} will be extracted.
 #' @param control a list of parameters to decide which markers to extract. See \code{Details} section for more details.
 #' @param sparse a logical value *(default: FALSE)* to indicate if the output of genotype matrix is sparse.
-#' @return An R list include a genotype matrix and an information matrix. For the genotype matrix, each row is for one sample and each column is for one marker. The information matrix includes 5 columns of CHROM, POS, ID, REF, and ALT.
+#' @return An R list including a genotype matrix and an information matrix. 
+#' \itemize{
+#'  \item \code{GenoMat}: Genotype matrix, each row is for one sample and each column is for one marker. 
+#'  \item \code{markerInfo}: Information matrix including 5 columns of CHROM, POS, ID, REF, and ALT.
+#' }
 #' @details
 #' ## Details about \code{GenoFile} and \code{GenoFileIndex}
 #' Currently, we support two formats of genotype input including PLINK and BGEN. Other formats such as VCF will be added later. 

@@ -24,7 +24,11 @@ GRAB.ReadGeno(
 \item{sparse}{a logical value \emph{(default: FALSE)} to indicate if the output of genotype matrix is sparse.}
 }
 \value{
-An R list include a genotype matrix and an information matrix. For the genotype matrix, each row is for one sample and each column is for one marker. The information matrix includes 5 columns of CHROM, POS, ID, REF, and ALT.
+An R list including a genotype matrix and an information matrix.
+\itemize{
+\item \code{GenoMat}: Genotype matrix, each row is for one sample and each column is for one marker.
+\item \code{markerInfo}: Information matrix including 5 columns of CHROM, POS, ID, REF, and ALT.
+}
 }
 \description{
 \code{GRAB} package provides functions to read in genotype data. Currently, we support genotype formats of PLINK and BGEN. Other formats such as VCF will be added later.

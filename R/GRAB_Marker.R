@@ -34,7 +34,7 @@
 #'   \item \code{nMarkersEachChunk}: number of markers *(default=10000)* in one chunk to output.
 #'   }
 #'  The below is to customize the columns in the \code{OutputFile}. 
-#'  Columns of \code{Marker}, \code{Info}, \code{AltFreq}, \code{AltCounts}, \code{MissingRate}, \code{Pvalue} are included for methods.
+#'  Columns of \code{Marker}, \code{Info}, \code{AltFreq}, \code{AltCounts}, \code{MissingRate}, \code{Pvalue} are included for all methods.
 #'  \itemize{
 #'  \item \code{outputColumns}: For example, for POLMM method, users can set \code{control$outputColumns = c("beta", "seBeta", "AltFreqInGroup")}. 
 #'     \itemize{

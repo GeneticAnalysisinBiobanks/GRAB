@@ -1,4 +1,252 @@
 
+#' Simulate an R matrix of genotype data
+#' 
+#' \code{GRAB} package provides functions to simulate genotype data. We support simulations based on unrelated subjects and related subjects.
+#' 
+#' @param nSub the number of unrelated subjects in simulations, if \code{nSub = 0}, then all subjects are related to at least one of the others.
+#' @param nFam the number of families in simulation, if \code{nFam = 0}, then all subjects are unrelated to each other.
+#' @param FamMode \code{"4-members"}, \code{"10-members"}, or \code{"20-members"}. Check \code{Details} section for more details.
+#' @param nSNP number of markers to simulate
+#' @param MaxMAF a numeric value *(default=0.5)*, haplotype is simulated with allele frequency <= this value.
+#' @param MinMAF a numeric value *(default=0.05)*, haplotype is simulated with allele frequency >= this value.
+#' @return an R list including genotype matrix and marker information
+#' \itemize{
+#'   \item \code{GenoMat} a numeric matrix of genotype: each row is for one subject and each column is for one SNP
+#'   \item \code{markerInfo} a data frame with the following 2 columns: SNP ID and minor allele frequency
+#' } 
+#' @seealso \code{\link{makePlink}} can make \code{PLINK} files using the genotype matrix.
+#' @details 
+#' Currently, function \code{GRAB.SimuGMatCommon} supports both unrelated and related subjects. 
+#' Genotype data is simulated following Hardy-Weinberg Equilibrium with allele frequency ~ \code{runif(MinMAF, MaxMAF)}.
+#' 
+#' ## If \code{FamMode = "4-members"}
+#' Total number of subjects is \code{nSub + 4 * nFam}. Each family includes 4 members with the family structure as below: 1+2->3+4.
+#' 
+#' ## If \code{FamMode = "10-members"}
+#' Total number of subjects is \code{nSub + 10 * nFam}. Each family includes 10 members with the family structure as below: 1+2->5+6, 3+5->7+8, 4+6->9+10.
+#' 
+#' ## If \code{FamMode = "20-members"}
+#' Total number of subjects is \code{nSub + 20 * nFam}. Each family includes 20 members with the family structure as below: 1+2->9+10, 3+9->11+12, 4+10->13+14, 5+11->15+16, 6+12->17, 7+13->18, 8+14->19+20.
+#' 
+#' @examples 
+#' nSub = 100
+#' nFam = 10
+#' FamMode = "10-members"
+#' nSNP = 10000
+#' OutList = GRAB.SimuGMatCommon(nSub, nFam, FamMode, nSNP)      
+#' GenoMat = OutList$GenoMat
+#' markerInfo = OutList$markerInfo
+#' GenoMat[1:10,1:10]
+#' head(markerInfo)
+#' 
+#' ## The following is to calculate GRM
+#' MAF = apply(GenoMat, 2, mean)/2
+#' GenoMatSD = t(t(GenoMat) - 2*MAF)/sqrt(2*MAF*(1-MAF))
+#' GRM = GenoMatSD %*% t(GenoMatSD) / ncol(GenoMat)
+#' GRM1 = GRM[1:10, 1:10];
+#' GRM2 = GRM[100+1:10, 100+1:10];
+#' GRM1
+#' GRM2
+#' @export
+GRAB.SimuGMatCommon = function(nSub,
+                               nFam,
+                               FamMode,
+                               nSNP,
+                               MaxMAF = 0.5,
+                               MinMAF = 0.05)
+{
+  if(FamMode == "4-members"){
+    nSubInEachFam = 4
+    nHaploInEachFam = 4
+    fam.mat = example.fam.4.members(nFam)
+  }
+    
+  if(FamMode == "10-members"){
+    nSubInEachFam = 10
+    nHaploInEachFam = 8
+    fam.mat = example.fam.10.members(nFam)
+  }
+  
+  if(FamMode == "20-members"){
+    nSubInEachFam = 20
+    nHaploInEachFam = 16
+    fam.mat = example.fam.20.members(nFam)
+  }
+  
+  if(!is.element(FamMode, c("4-members","10-members","20-members")))
+    stop("FamMode should be one of '4-members', '10-members', or '20-members'.")
+  
+  n = nSub + nFam * nSubInEachFam
+  nHaplo = nFam * nHaploInEachFam
+  
+  cat("Number of unrelated subjects:\t", nSub, "\n")
+  cat("Number of families:\t", nFam, "\n")
+  cat("Number of subjects in each family:\t", nSubInEachFam, "\n")
+  cat("Number of all subjects:\t", n, "\n")
+  
+  MAF = runif(nSNP, MinMAF, MaxMAF)
+  SNP.info = make.SNP.info(nSNP, MAF)
+    
+  cat("Step 1. Simulating Haplotype Information....\n")
+  haplo.mat = haplo.simu(nHaplo, SNP.info) 
+    
+  cat("Step 2. Simulationg Genotype Information....")
+  GenoMat1 = from.haplo.to.geno(haplo.mat, fam.mat)    # output of example.fam(): n x 5 where n is sample size
+  
+  GenoMat2 = geno.simu(nSub, SNP.info)
+  
+  GenoMat = rbind(GenoMat1, GenoMat2)
+  
+  return(list(GenoMat = GenoMat,
+              markerInfo = SNP.info))
+}
+
+### an example of family structure including 20 memebers in each family
+## 1+2->9+10; 3+9->11+12; 4+10->13+14; 5+11->15+16; 6+12->17; 7+13->18; 8+14->19+20 
+example.fam.20.members = function(n.fam)           # family numbers
+{
+  m = 20  # family members in each family
+  fam.mat = c()
+  c.h = 0 # count of haplotype
+  for(i in 1:n.fam){
+    FID = paste0("f",i)
+    IID = paste0(FID,"_",1:m)
+    Role = c(rep("Founder",8),
+             rep("Offspring",12))
+    Source1 = c(paste0("haplo-",c.h+1:8),
+                IID[c(1,1,3,3,4,4,5,5,6,7,8,8)])
+    Source2 = c(paste0("haplo-",c.h+9:16),
+                IID[c(2,2,9,9,10,10,11,11,12,13,14,14)])
+    c.h = c.h+16
+    fam.mat = rbind(fam.mat,
+                    cbind(FID,IID,Role,Source1,Source2))
+  }
+  fam.mat = data.frame(fam.mat,stringsAsFactors = F)
+  return(fam.mat)  # five columns of FID, IID, Role, Source1, and Source2
+}
+
+### an example of family structure including 10 memebers in each family
+## 1+2->5+6; 3+5->7+8; 4+6->9+10 
+example.fam.10.members = function(n.fam)           # family numbers
+{
+  m = 10  # family members in each family
+  fam.mat=c()
+  c.h = 0 # count of haplotype
+  for(i in 1:n.fam){
+    FID = paste0("f",i)
+    IID = paste0(FID,"_",1:m)
+    Role = c(rep("Founder",4),
+             rep("Offspring",6))
+    Source1 = c(paste0("haplo-",c.h+1:4),
+                IID[c(1,1,3,3,4,4)])
+    Source2 = c(paste0("haplo-",c.h+5:8),
+                IID[c(2,2,5,5,6,6)])
+    c.h = c.h+8
+    fam.mat = rbind(fam.mat,
+                    cbind(FID,IID,Role,Source1,Source2))
+  }
+  fam.mat = data.frame(fam.mat,stringsAsFactors = F)
+  return(fam.mat)  # five columns of FID, IID, Role, Source1, and Source2
+}
+
+### an example of family structure including 4 memebers in each family
+## 1+2->3+4
+example.fam.4.members = function(n.fam)           # family numbers
+{
+  m = 4  # family members in each family
+  fam.mat=c()
+  c.h = 0 # count of haplotype
+  for(i in 1:n.fam){
+    FID = paste0("f",i)
+    IID = paste0(FID,"_",1:m)
+    Role = c(rep("Founder",2),
+             rep("Offspring",2))
+    Source1 = c(paste0("haplo-",c.h+1:2),
+                IID[c(1,1)])
+    Source2 = c(paste0("haplo-",c.h+3:4),
+                IID[c(2,2)])
+    c.h = c.h+4
+    fam.mat = rbind(fam.mat,
+                    cbind(FID,IID,Role,Source1,Source2))
+  }
+  fam.mat = data.frame(fam.mat,stringsAsFactors = F)
+  return(fam.mat)  # five columns of FID, IID, Role, Source1, and Source2
+}
+
+## Make a data.frame with each row for one SNPs. Column 1: SNP id; Column 2: beta.g; Column 3: maf 
+## Example: SNP.info = make.SNP.info.example(1000,1000,0.2,0.3)
+make.SNP.info = function(nSNP,  # number of null SNPs
+                         MAF)   # fixed value of MAF for all SNPs
+{
+  SNP.info = data.frame(SNP=paste0("SNP_",1:nSNP),
+                        MAF=MAF,
+                        stringsAsFactors = F)
+  return(SNP.info)
+}
+
+geno.simu = function(nSub, SNP.info)
+{
+  n.SNPs = nrow(SNP.info)
+  MAFs = SNP.info$MAF
+  GenoMat = sapply(MAFs, FUN = function(x){rbinom(nSub, 2, x)})
+  colnames(GenoMat) = SNP.info$SNP
+  rownames(GenoMat) = paste0("Subj-",1:nSub)
+  return(GenoMat)  # matrix of m x n, where m is number of SNPs, n is number of subjects
+}
+
+## haplotype simulation for all founders
+haplo.simu = function(n.haplo,   # number of haplotypes
+                      SNP.info)  # a number or a vector with length of n.SNPs
+{
+  # check input
+  n.SNPs = nrow(SNP.info)
+  MAFs = SNP.info$MAF
+  
+  # generate haplotype matrix with each row for one haplotype and each column for one SNP
+  haplo.mat = sapply(MAFs, 
+                     FUN = function(x){
+                       rbinom(n.haplo,1,x)
+                     })
+  colnames(haplo.mat) = SNP.info$SNP
+  rownames(haplo.mat) = paste0("haplo-",1:n.haplo)
+  return(haplo.mat)   # matrix of m x p, where m is number of SNPs, p is number of founders
+}
+
+### genotype simulation based on haplotype
+from.haplo.to.geno = function(haplo.mat,  # output of haplo.simu():  m x p where m is number of confounder alleles, and p is number of SNPs
+                              fam.mat)    # output of example.fam(): n x 5 where n is sample size
+{
+  n = nrow(fam.mat)     # number of subjects
+  m = ncol(haplo.mat)   # number of SNPs
+  Haplo1.mat = matrix(nrow = n, ncol = m)
+  Haplo2.mat = matrix(nrow = n, ncol = m)
+  rownames(Haplo1.mat) = rownames(Haplo2.mat) = fam.mat$IID
+  for(i in 1:n){  # cycle for all subjects
+    if(i %% 1000 == 0) print(paste0("Complete Genotype Simulation for ",i," Subjects."))
+    Role = fam.mat$Role[i]
+    S1 = fam.mat$Source1[i]
+    S2 = fam.mat$Source2[i]
+    if(Role == "Founder"){  # directly extract from haplotype data
+      Haplo1.mat[i,] = haplo.mat[S1,]
+      Haplo2.mat[i,] = haplo.mat[S2,]
+    }
+    if(Role == "Offspring"){ # pass from Founders
+      ## Haplotype 1 is from Founder S1, randomly selected from two haplotypes of Founder S1.
+      S1.pass.H1=rbinom(m,1,0.5) 
+      S1.pass.H2=1-S1.pass.H1
+      Haplo1.mat[i,] = Haplo1.mat[S1,]*S1.pass.H1+Haplo2.mat[S1,]*S1.pass.H2
+      ## Haplotype 2 is from Founder S2, randomly selected from two haplotypes of Founder S2.
+      S2.pass.H1=rbinom(m,1,0.5) 
+      S2.pass.H2=1-S2.pass.H1
+      Haplo2.mat[i,] = Haplo1.mat[S2,]*S2.pass.H1+Haplo2.mat[S2,]*S2.pass.H2
+    }
+  }
+  Geno.mat=Haplo1.mat+Haplo2.mat
+  colnames(Geno.mat)=colnames(haplo.mat)
+  Geno.mat=data.frame(Geno.mat,stringsAsFactors = F)
+  return(Geno.mat)
+}
+
 #' GRAB: simulate random effect (i.e. bVec) based on family structure
 #' 
 #' Simulate random effect (i.e. bVec) based on family structure
@@ -194,7 +442,7 @@ Get_One_Set_10_members = function(start.pos,
 #' @param BP a numeric vector of the base positions for all markers. *Default=NULL*, that is, \code{BP=1:m)}.
 #' @param Pheno a character vector of the phenotypes for all subjects. *Default=NULL*, that is, \code{Pheno=rep(-9, n)}.
 #' @param Sex a numeric vector of the sex for all subjects. *Default=NULL*, that is, \code{Sex=rep(1, n))}.
-#' @return PLINK text files (PED and MAP) are stored in 'OutputPrefix'. Suppose A1 is "G" and A2 is "A", then genotype of 0,1,2,-9 will be coded as "GG", "AG", "AA", "00". If PLINK binary files (BED, BIM, and FAM) are required, please download PLINK software and use option of "--make-bed".
+#' @return \code{PLINK} text files (PED and MAP) are stored in 'OutputPrefix'. Suppose A1 is "G" and A2 is "A", then genotype of 0,1,2,-9 will be coded as "GG", "AG", "AA", "00". If PLINK binary files (BED, BIM, and FAM) are required, please download PLINK software and use option of "--make-bed".
 #' Please check \code{Details} section for the downstream process.
 #' @details 
 #' Check [link](https://www.cog-genomics.org/plink/2.0/) for detailed information of \code{PLINK} 2.00 alpha. Check [link](https://enkre.net/cgi-bin/code/bgen/doc/trunk/doc/wiki/bgenix.md) for detailed information of \code{bgenix} tool.

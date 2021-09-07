@@ -37,6 +37,7 @@ GRAB.Region(
 }
 \value{
 Region-based analysis results are saved in two files: \code{OutputFile} and \code{OutputMarkerFile = paste0(OutputFile, ".markerInfo")}.
+
 The file of \code{OutputMarkerFile} is the same as the results of \code{\link{GRAB.Marker}}. The file of \code{OutputFile} includes columns as below.
 \item{Region}{Region IDs from \code{RegionFile}}
 \item{nMarkers}{Number of markers whose MAF < \code{control$MaxMAFCutoff} and MAC > \code{control$MinMACCutoff}.}
