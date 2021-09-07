@@ -33,7 +33,7 @@ indexMissing = sample(length(GenoMat), MissingRate * length(GenoMat))
 GenoMat[indexMissing] = -9
 extDir = system.file("extdata", package = "GRAB")
 extPrefix = paste0(extDir, "/simuPLINK")
-makePlink(GenoMat, extPrefix)
+GRAB.makePlink(GenoMat, extPrefix)
 
 setwd(extDir)
 system("plink --file simuPLINK --make-bed --out simuPLINK")
