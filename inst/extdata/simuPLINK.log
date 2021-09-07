@@ -1,0 +1,28 @@
+PLINK v1.90b6.4 64-bit (7 Aug 2018)
+Options in effect:
+  --file simuPLINK
+  --make-bed
+  --out simuPLINK
+
+Hostname: mendel
+Working directory: /net/snowwhite/home/wenjianb/R/x86_64-pc-linux-gnu-library/4.0/GRAB/extdata
+Start time: Tue Sep  7 04:39:56 2021
+
+Random number seed: 1631003996
+257569 MB RAM detected; reserving 128784 MB for main workspace.
+Allocated 54330 MB successfully, after larger attempt(s) failed.
+Scanning .ped file... done.
+Performing single-pass .bed write (10000 variants, 1000 people).
+--file: simuPLINK-temporary.bed + simuPLINK-temporary.bim +
+simuPLINK-temporary.fam written.
+10000 variants loaded from .bim file.
+1000 people (1000 males, 0 females) loaded from .fam.
+Using 1 thread (no multithreaded calculations invoked).
+Before main variant filters, 1000 founders and 0 nonfounders present.
+Calculating allele frequencies... done.
+Total genotyping rate is 0.95.
+10000 variants and 1000 people pass filters and QC.
+Note: No phenotypes present.
+--make-bed to simuPLINK.bed + simuPLINK.bim + simuPLINK.fam ... done.
+
+End time: Tue Sep  7 04:39:56 2021
