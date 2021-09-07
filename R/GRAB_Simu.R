@@ -14,7 +14,7 @@
 #'   \item \code{GenoMat} a numeric matrix of genotype: each row is for one subject and each column is for one SNP
 #'   \item \code{markerInfo} a data frame with the following 2 columns: SNP ID and minor allele frequency
 #' } 
-#' @seealso \code{\link{makePlink}} can make \code{PLINK} files using the genotype matrix.
+#' @seealso \code{\link{GRAB.makePlink}} can make \code{PLINK} files using the genotype matrix.
 #' @details 
 #' Currently, function \code{GRAB.SimuGMatCommon} supports both unrelated and related subjects. 
 #' Genotype data is simulated following Hardy-Weinberg Equilibrium with allele frequency ~ \code{runif(MinMAF, MaxMAF)}.
@@ -448,6 +448,8 @@ Get_One_Set_10_members = function(start.pos,
 #' Check [link](https://www.cog-genomics.org/plink/2.0/) for detailed information of \code{PLINK} 2.00 alpha. Check [link](https://enkre.net/cgi-bin/code/bgen/doc/trunk/doc/wiki/bgenix.md) for detailed information of \code{bgenix} tool.
 #' ## Convert PLINK text files to binary files
 #' Run \code{plink --file simuPLINK --make-bed --out simuPLINK} to convert PLINK text files (MAP and PED) to binary files (BED, BIM, and FAM).
+#' ## Convert PLINK binary files to raw files
+#' Run \code{plink --bfile simuPLINK --recode A --out simuRAW} to convert PLINK binary files (BED, BIM, and FAM) to raw files (raw).
 #' ## Convert PLINK binary files to bgen files
 #' RUN \code{plink2 --bfile simuPLINK --export bgen-1.2 bits=8 ref-first --out simuBGEN} to convert PLINK binary files (BED, BIM, and FAM) to BGEN binary files (BGEN).
 #' ## Make bgi file using \code{bgenix} tool
@@ -465,27 +467,28 @@ Get_One_Set_10_members = function(start.pos,
 #' outputPrefix = paste0(outputDir, "/simuPLINK")
 #' 
 #' ### Step 2(a): make PLINK files without missing genotype
-#' makePlink(GenoMat, outputPrefix)
+#' GRAB.makePlink(GenoMat, outputPrefix)
 #' 
 #' ### Step 2(b): make PLINK files with genotype missing rate of 0.1
 #' indexMissing = sample(n*m, 0.1*n*m)
 #' GenoMat[indexMissing] = -9
-#' makePlink(GenoMat, outputPrefix)
+#' GRAB.makePlink(GenoMat, outputPrefix)
 #'      
 #' ## The following are in shell environment
 #' # plink --file simuPLINK --make-bed --out simuPLINK
+#' # plink --bfile simuPLINK --recode A --out simuRAW 
 #' # plink2 --bfile simuPLINK --export bgen-1.2 bits=8 ref-first --out simuBGEN  # UK Biobank use 'ref-first'
 #' # bgenix -g simuBGEN.bgen --index
 #'      
 #' @export
-makePlink = function(GenoMat,
-                     OutputPrefix,
-                     A1 = "G",
-                     A2 = "A",
-                     CHR = NULL,      
-                     BP = NULL,
-                     Pheno = NULL,
-                     Sex = NULL)
+GRAB.makePlink = function(GenoMat,
+                          OutputPrefix,
+                          A1 = "G",
+                          A2 = "A",
+                          CHR = NULL,      
+                          BP = NULL,
+                          Pheno = NULL,
+                          Sex = NULL)
 {
   if(!is.numeric(GenoMat))
     stop("'GenoMat' should be a numeric matrix.")

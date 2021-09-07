@@ -4,13 +4,10 @@
 
 Rtools (https://cran.rstudio.com/bin/windows/Rtools/) should be installed before installing this package.
 
-
 ```{r}      
 library(devtools)  # author version: 2.3.0, use install.packages("devtools") first
 install_github("GeneticAnalysisinBiobanks/GRAB", INSTALL_opts=c("--no-multiarch"))  # The INSTALL_opts is required in Windows OS.
 library(GRAB)
-?GRAB.ReadGeno
-?GRAB.SPACox
 ```
 
 ### For BGEN file input
@@ -24,6 +21,25 @@ The index file for BGEN file is also required (filename extension is ".bgen.bgi"
 
 ```
 theFolder/bgenix -g theFile.bgen -index
+```
+
+### Replicate the data simulation in the package
+```{r}   
+set.seed(12345)
+OutList = GRAB.SimuGMatCommon(nSub = 500, nFam = 50, FamMode = "10-members", nSNP = 10000)
+GenoMat = OutList$GenoMat 
+MissingRate = 0.05
+indexMissing = sample(length(GenoMat), MissingRate * length(GenoMat))
+GenoMat[indexMissing] = -9
+extDir = system.file("extdata", package = "GRAB")
+extPrefix = paste0(extDir, "/simuPLINK")
+makePlink(GenoMat, extPrefix)
+
+setwd(extDir)
+system("plink --file simuPLINK --make-bed --out simuPLINK")
+system("plink --bfile simuPLINK --recode A --out simuRAW")
+system("plink2 --bfile simuPLINK --export bgen-1.2 bits=8 ref-first --out simuBGEN  # UK Biobank use 'ref-first'")
+system(bgenix -g simuBGEN.bgen --index)
 ```
 
 ### More detailed information for package developers

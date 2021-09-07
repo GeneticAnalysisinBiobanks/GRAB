@@ -33,7 +33,7 @@ makePlink(
 \item{Sex}{a numeric vector of the sex for all subjects. \emph{Default=NULL}, that is, \code{Sex=rep(1, n))}.}
 }
 \value{
-PLINK text files (PED and MAP) are stored in 'OutputPrefix'. Suppose A1 is "G" and A2 is "A", then genotype of 0,1,2,-9 will be coded as "GG", "AG", "AA", "00". If PLINK binary files (BED, BIM, and FAM) are required, please download PLINK software and use option of "--make-bed".
+\code{PLINK} text files (PED and MAP) are stored in 'OutputPrefix'. Suppose A1 is "G" and A2 is "A", then genotype of 0,1,2,-9 will be coded as "GG", "AG", "AA", "00". If PLINK binary files (BED, BIM, and FAM) are required, please download PLINK software and use option of "--make-bed".
 Please check \code{Details} section for the downstream process.
 }
 \description{
@@ -44,6 +44,11 @@ Check \href{https://www.cog-genomics.org/plink/2.0/}{link} for detailed informat
 \subsection{Convert PLINK text files to binary files}{
 
 Run \code{plink --file simuPLINK --make-bed --out simuPLINK} to convert PLINK text files (MAP and PED) to binary files (BED, BIM, and FAM).
+}
+
+\subsection{Convert PLINK binary files to raw files}{
+
+Run \code{plink --bfile simuPLINK --recode A --out simuRAW} to convert PLINK binary files (BED, BIM, and FAM) to raw files (raw).
 }
 
 \subsection{Convert PLINK binary files to bgen files}{
@@ -78,6 +83,7 @@ makePlink(GenoMat, outputPrefix)
      
 ## The following are in shell environment
 # plink --file simuPLINK --make-bed --out simuPLINK
+# plink --bfile simuPLINK --recode A --out simuRAW 
 # plink2 --bfile simuPLINK --export bgen-1.2 bits=8 ref-first --out simuBGEN  # UK Biobank use 'ref-first'
 # bgenix -g simuBGEN.bgen --index
      
