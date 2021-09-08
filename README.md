@@ -10,7 +10,7 @@ install_github("GeneticAnalysisinBiobanks/GRAB", INSTALL_opts=c("--no-multiarch"
 library(GRAB)
 ```
 
-### Replicate the data simulation in the package
+### Replicate the genotype simulation in the package
 ```{r}   
 set.seed(12345)
 OutList = GRAB.SimuGMatCommon(nSub = 500, nFam = 50, FamMode = "10-members", nSNP = 10000)
@@ -67,7 +67,7 @@ SparseGRMFile = system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
 
 objNull = GRAB.NullModel(as.factor(ordinal) ~ Cova1 + Cova2, 
                          data = Pheno, 
-                         subset = (event==1), 
+                         subset = (event==0), 
                          subjData = Pheno$IID, 
                          method = "POLMM", 
                          traitType = "ordinal", 
@@ -76,7 +76,10 @@ objNull = GRAB.NullModel(as.factor(ordinal) ~ Cova1 + Cova2,
 
 ### Step 2: Perform a genome-wide analysis for marker-level and region-level
 ```{r}
-something to add
+OutputFile = system.file("results", "simuOUTPUT.txt", package = "GRAB")
+GRAB.Marker(objNull, 
+            GenoFile = ,
+            OutputFile = OutputFile)
 ```
 
 ### NOTE for BGEN file input
