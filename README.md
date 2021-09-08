@@ -10,19 +10,6 @@ install_github("GeneticAnalysisinBiobanks/GRAB", INSTALL_opts=c("--no-multiarch"
 library(GRAB)
 ```
 
-### For BGEN file input
-
-The current version of GRAB package only supports BGEN v1.2 using 8 bits compression (faster than using 16 bits). For example, if plink2 is used to make BGEN file, please refer to https://www.cog-genomics.org/plink/2.0/data#export
-```
-plink2 --bfile input --out output --export bgen-1.2 bits=8
-```
-
-The index file for BGEN file is also required (filename extension is ".bgen.bgi"). Please refer to https://enkre.net/cgi-bin/code/bgen/wiki/bgenix 
-
-```
-theFolder/bgenix -g theFile.bgen -index
-```
-
 ### Replicate the data simulation in the package
 ```{r}   
 set.seed(12345)
@@ -41,6 +28,66 @@ system("plink --bfile simuPLINK --recode A --out simuRAW")
 system("plink2 --bfile simuPLINK --export bgen-1.2 bits=8 ref-first --out simuBGEN  # UK Biobank use 'ref-first'")
 system("bgenix -g simuBGEN.bgen -index")
 ```
+
+### Replicate the sparse GRM generation in the package
+```{r}
+GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
+PlinkFile = tools::file_path_sans_ext(GenoFile)  # remove file extension
+nPartsGRM = 2
+for(partParallel in 1:nPartsGRM){
+  getTempFilesFullGRM(PlinkFile, nPartsGRM, partParallel) # this function only supports Linux
+}
+SparseGRMFile = system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
+getSparseGRM(PlinkFile, nPartsGRM, SparseGRMFile)
+```
+
+### Replicate the phenotype simulation in the package
+```{r}
+FamFile = system.file("extdata", "simuPLINK.fam", package = "GRAB")
+FamData = read.table(FamFile)
+IID = FamData$V2  # Individual ID
+n = length(IID)
+set.seed(678910)
+## The below is just to demonstrate the functions of GRAB package
+Pheno = data.frame(IID = IID, Cova1 = rnorm(n), Cova2 = rbinom(n, 1, 0.5), 
+                   binary = rbinom(n, 1, 0.5),
+                   ordinal = rbinom(n, 3, 0.3),
+                   quantitative = rnorm(n),
+                   time = runif(n),
+                   event = rbinom(n, 1, 0.2))
+PhenoFile = system.file("extdata", "simuPHENO.txt", package = "GRAB")
+write.table(Pheno, PhenoFile, row.names = F, quote = F, sep = "\t")
+```
+
+### Step 1: Fit a null model using the sparse GRM and phenotype data
+```{r}
+PhenoFile = system.file("extdata", "simuPHENO.txt", package = "GRAB")
+Pheno = read.table(PhenoFile)
+SparseGRMFile = system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
+
+objNull = GRAB.NullModel(as.factor(ordinal) ~ Cova1 + Cova2, 
+                         data = Pheno, 
+                         subset = (event==1), 
+                         subjData = Pheno$IID, 
+                         method = "POLMM", 
+                         traitType = "ordinal", 
+                         SparseGRMFile = SparseGRMFile)
+```
+
+### Step 2: Perform a genome-wide analysis for marker-level and region-level
+```{r}
+something to add
+```
+
+### NOTE for BGEN file input
+
+The current version of GRAB package only supports BGEN v1.2 using 8 bits compression (faster than using 16 bits). For example, if plink2 is used to make BGEN file, please refer to https://www.cog-genomics.org/plink/2.0/data#export
+```
+plink2 --bfile input --out output --export bgen-1.2 bits=8
+```
+
+The index file for BGEN file is also required (filename extension is ".bgen.bgi"). Please refer to https://enkre.net/cgi-bin/code/bgen/wiki/bgenix 
+
 
 ### More detailed information for package developers
 
