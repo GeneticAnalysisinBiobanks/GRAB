@@ -75,6 +75,8 @@ objNull = GRAB.NullModel(as.factor(ordinal) ~ Cova1 + Cova2,
                          traitType = "ordinal", 
                          GenoFile = GenoFile,
                          SparseGRMFile = SparseGRMFile)
+
+objNull$tau    # 0.5655751
                          
 save(objNull, file = objNullFile)
 ```
@@ -82,7 +84,7 @@ save(objNull, file = objNullFile)
 ### Step 2: Perform a genome-wide analysis for marker-level and region-level
 ```{r}
 objNullFile = system.file("results", "objNull.RData", package = "GRAB")
-load(objNull)
+load(objNullFile)
 
 OutputFile = system.file("results", "simuOUTPUT.txt", package = "GRAB")
 GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
