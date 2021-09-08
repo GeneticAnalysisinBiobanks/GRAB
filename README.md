@@ -61,9 +61,11 @@ write.table(Pheno, PhenoFile, row.names = F, quote = F, sep = "\t")
 
 ### Step 1: Fit a null model using the sparse GRM and phenotype data
 ```{r}
+GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
 PhenoFile = system.file("extdata", "simuPHENO.txt", package = "GRAB")
-Pheno = read.table(PhenoFile)
+Pheno = read.table(PhenoFile, header = T)
 SparseGRMFile = system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
+objNullFile = system.file("results", "objNull.RData", package = "GRAB")
 
 objNull = GRAB.NullModel(as.factor(ordinal) ~ Cova1 + Cova2, 
                          data = Pheno, 
@@ -71,15 +73,25 @@ objNull = GRAB.NullModel(as.factor(ordinal) ~ Cova1 + Cova2,
                          subjData = Pheno$IID, 
                          method = "POLMM", 
                          traitType = "ordinal", 
+                         GenoFile = GenoFile,
                          SparseGRMFile = SparseGRMFile)
+                         
+save(objNull, file = objNullFile)
 ```
 
 ### Step 2: Perform a genome-wide analysis for marker-level and region-level
 ```{r}
+objNullFile = system.file("results", "objNull.RData", package = "GRAB")
+load(objNull)
+
 OutputFile = system.file("results", "simuOUTPUT.txt", package = "GRAB")
+GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
+
 GRAB.Marker(objNull, 
-            GenoFile = ,
+            GenoFile = GenoFile,
             OutputFile = OutputFile)
+            
+## Check 'OutputFile' for the analysis results
 ```
 
 ### NOTE for BGEN file input
