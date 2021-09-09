@@ -7,7 +7,7 @@ Author: Wenjian Bi, Wei Zhou, Rounak Dey, Zhangchen Zhao, Seunggeun Lee
 Maintainer: Wenjian Bi <wenjianb@pku.edu.cn>
 Description: A toolkit designed for large-scale biobank data analysis
 License: GPL (>= 2)
-Depends: ordinal, Matrix, SKAT
+Depends: ordinal, Matrix, SKAT, R (>= 3.5.0)
 Imports: Rcpp (>= 1.0.5), RcppArmadillo, RcppParallel, BH, survival, data.table, tidyr, dbplyr, RSQLite, ordinal, Matrix
 LinkingTo: Rcpp, RcppArmadillo, RcppParallel, BH, survival, data.table, tidyr, dbplyr, RSQLite, ordinal, Matrix
 RoxygenNote: 7.1.1

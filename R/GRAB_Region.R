@@ -33,7 +33,7 @@
 #'   \item \code{MinMACCutoff}: a numeric value *(default=10)*. Markers with MAC < this value will be treated as Ultra-Rare Variants (URV) and collapsed as one value.  
 #'   \item \code{nMarkersEachChunk}: number of markers *(default=300)* in one chunk to output.
 #'   }
-#'   The below is for kernel-based approaches including SKAT and SKAT-O. For more details, please refer to \code{\link(SKAT)}.
+#'   The below is for kernel-based approaches including SKAT and SKAT-O. For more details, please refer to \code{\link{SKAT}}.
 #'   \itemize{
 #'   \item \code{kernel}: a type of kernel (default= "linear.weighted"). *(default="linear.weighted")*
 #'   \item \code{weights_beta}: a numeric vector of parameters for the beta weights for the weighted kernels. If you want to use your own weights, please use the \code{control$weights} parameter. It will be ignored if \code{control$weights} parameter is not \code{NULL}. *(default=c(1,25))*
