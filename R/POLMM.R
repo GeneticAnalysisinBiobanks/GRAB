@@ -152,7 +152,7 @@ mainRegion.POLMM = function(genoType, genoIndex)
 }
 
 # check the control list in null model fitting for POLMM method
-checkControl.NullModel.POLMM = function(control)
+checkControl.NullModel.POLMM = function(control, optionGRM)
 {
   # default setting of control for POLMM method
   default.control = list(memoryChunk = 2,
@@ -170,7 +170,7 @@ checkControl.NullModel.POLMM = function(control)
                          maxMissingVarRatio = 0.1, 
                          nSNPsVarRatio = 20,
                          CVcutoff = 0.0025,
-                         LOCO = T,
+                         # LOCO = TRUE,
                          numThreads = "auto",
                          stackSize = "auto",
                          grainSize = 1,
@@ -178,6 +178,12 @@ checkControl.NullModel.POLMM = function(control)
                          maxMissingGRM = 0.1,
                          showInfo = T,
                          onlyCheckTime = F)
+  
+  if(optionGRM == "DenseGRM")
+    default.control$LOCO = TRUE;
+  
+  if(optionGRM == "SparseGRM")
+    default.control$LOCO = FALSE;
   
   control = updateControl(control, default.control)
   

@@ -119,9 +119,6 @@ GRAB.NullModel = function(formula,
   
   Call = match.call()
   
-  # check 'control.R'
-  control = checkControl.NullModel(control, method, traitType)
-  
   #### START: formula.R
     
   #### input: formula, data, subset, subjData
@@ -154,8 +151,12 @@ GRAB.NullModel = function(formula,
   
   #### END: formula.R
   
+  optionGRM = NULL
   if(method %in% c("POLMM", "SAIGE", "GATE"))
     optionGRM = handleGRM(GenoFile, GenoFileIndex, SparseGRMFile, subjData)  # Check 'SparseGRM.R'
+  
+  # check 'control.R'
+  control = checkControl.NullModel(control, method, traitType, optionGRM)
   
   if(method == "POLMM"){
     # Check 'POLMM.R'

@@ -239,7 +239,7 @@ checkControl.Region = function(control, NullModelClass)
 }
 
 # check control list in null model fitting
-checkControl.NullModel = function(control, method, traitType)
+checkControl.NullModel = function(control, method, traitType, optionGRM)
 {
   # check if control is an R list
   if(!is.null(control))
@@ -257,8 +257,8 @@ checkControl.NullModel = function(control, method, traitType)
   if(method == "POLMM"){
     if(traitType != "ordinal")
       stop("For method of 'POLMM', only traitType of 'ordinal' is supported.")
-    # The following function is in 'POLMM.R'
-    control = checkControl.NullModel.POLMM(control)
+    # Check 'POLMM.R'
+    control = checkControl.NullModel.POLMM(control, optionGRM)
   }
   
   # to be updated for other methods
