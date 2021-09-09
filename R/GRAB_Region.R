@@ -45,7 +45,7 @@
 #'  \itemize{
 #'  \item \code{outputColumns}: For example, for POLMM method, users can set \code{control$outputColumns = c("beta", "seBeta", "AltFreqInGroup")}. 
 #'     \itemize{
-#'     \item \code{POLMM}: Default: \code{beta}, \code{seBeta}; Optional: \code{PvalueNorm}, \code{zScore}, \code{AltFreqInGroup}
+#'     \item \code{POLMM}: Default: \code{beta}, \code{seBeta}; Optional: \code{zScore}, \code{altFreqInGroup}
 #'     \item \code{SPACox}: Optional: \code{PvalueNorm}, \code{zScore}
 #'     }
 #'  } 
@@ -293,7 +293,7 @@ GRAB.Region = function(objNull,
                     OutputFileIndex, "Region", 1)
   }
   
-  message = paste0("The analysis results have been saved to '", OutputFile,"' and '",
+  message = paste0("Analysis done! The results have been saved to '", OutputFile,"' and '",
                    paste0(OutputFile, ".markerInfo"),"'.")
   return(message)
 }

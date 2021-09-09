@@ -98,7 +98,9 @@ GRAB.POLMM = function(){
 # check the control list in marker-level testing
 checkControl.Marker.POLMM = function(control)
 {
-  default.control = list(SPA_Cutoff = 2);
+  default.control = list(SPA_Cutoff = 2,
+                         outputColumns = c("beta", "seBeta"));
+  
   control = updateControl(control, default.control)  # This file is in 'Util.R'
   
   # check the parameter
@@ -109,7 +111,8 @@ checkControl.Marker.POLMM = function(control)
 # check the control list in region-level testing
 checkControl.Region.POLMM = function(control)
 {
-  default.control = list(SPA_Cutoff = 2);
+  default.control = list(SPA_Cutoff = 2,
+                         outputColumns = c("beta", "seBeta"));
   
   control = updateControl(control, default.control)  # This file is in 'Util.R'
   
@@ -121,26 +124,29 @@ checkControl.Region.POLMM = function(control)
 }
 
 # main function to calculate summary statistics
-mainMarker.POLMM = function(genoType, genoIndex)
+mainMarker.POLMM = function(genoType, genoIndex, outputColumns)
 {
-  # the following function is in 'Main.cpp'
+  # Check 'Main.cpp'
   OutList = mainMarkerInCPP("POLMM",
                             genoType,
                             genoIndex);  
   
-  markerVec = OutList$markerVec   # marker IDs
-  infoVec = OutList$infoVec       # marker infomation: CHR:POS:REF:ALT
-  altFreqVec = OutList$altFreqVec       # minor allele frequencies (freq of ALT if flip=F, freq of REF if flip=T)
-  BetaVec = OutList$BetaVec       # beta for ALT if flip=F, beta for REF if flip=T
-  seBetaVec = OutList$seBetaVec   # sebeta
-  pvalVec = OutList$pvalVec;      # marker-level p-values
+  obj.mainMarker = data.frame(Marker = OutList$markerVec,           # marker IDs
+                              Info = OutList$infoVec,               # marker infomation: CHR:POS:REF:ALT
+                              AltFreq = OutList$altFreqVec,         # alternative allele frequencies
+                              AltCounts = OutList$altCountsVec,     # alternative allele counts
+                              MissingRate = OutList$missingRateVec, # alternative allele counts
+                              Pvalue = OutList$pvalVec)             # marker-level p-values
   
-  obj.mainMarker = data.frame(Marker = markerVec,
-                              Info = infoVec,
-                              AltFreq = altFreqVec,
-                              Beta = BetaVec,
-                              seBeta = seBetaVec,
-                              Pval = pvalVec)
+  ## optional ouput columns include c("beta", "seBeta", "zScore", "PvalueNorm", "altFreqInGroup", "AltCountsInGroup")
+  
+  optionalColumns = c("beta", "seBeta", "zScore", "PvalueNorm", "altFreqInGroup", "AltCountsInGroup")
+  additionalColumns = intersect(optionalColumns, outputColumns)
+  
+  if(length(additionalColumns) > 0)
+    obj.mainMarker = cbind.data.frame(obj.mainMarker, 
+                                      as.data.frame(OutList[additionalColumns]))
+  
   return(obj.mainMarker)
 }
 

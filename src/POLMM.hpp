@@ -259,7 +259,8 @@ public:
                      double& t_Beta, 
                      double& t_seBeta, 
                      double& t_pval, 
-                     double t_altFreq);
+                     double t_altFreq,
+                     double& t_zScore);
   
   void getRegionPVec(arma::vec t_GVec, 
                      double& t_Stat,

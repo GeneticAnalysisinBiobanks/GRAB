@@ -146,10 +146,13 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   std::vector<double> altFreqVec(q);      // allele frequencies of ALT allele, this is not always < 0.5.
   std::vector<double> altCountsVec(q);    // allele counts of ALT allele.
   std::vector<double> missingRateVec(q);  // allele frequencies of ALT allele, this is not always < 0.5.
-  std::vector<double> BetaVec(q);         // beta value for ALT allele
-  std::vector<double> seBetaVec(q);       
-  std::vector<double> pvalVec(q);
-  std::vector<double> zScoreVec(q);
+  std::vector<double> BetaVec(q, arma::datum::nan);         // beta value for ALT allele
+  std::vector<double> seBetaVec(q, arma::datum::nan);       
+  std::vector<double> pvalVec(q, arma::datum::nan);
+  std::vector<double> zScoreVec(q, arma::datum::nan);
+
+  // std::vector<std::string> AltFreqInGroupVec(q);
+  // std::vector<std::string> AltCountsInGroupVec(q);
 
   // std::cout << "Totally " << g_omp_num_threads << " thread(s) were used for parallel computation." << std::endl;
   
@@ -197,18 +200,11 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     double MAC = MAF * n * (1 - missingRate);
     
     // Quality Control (QC) based on missing rate, MAF, and MAC
-    if((missingRate > g_missingRate_cutoff) || (MAF < g_marker_minMAF_cutoff) || (MAC < g_marker_minMAC_cutoff)){
-      BetaVec.at(i) = arma::datum::nan;         
-      seBetaVec.at(i) = arma::datum::nan;       
-      pvalVec.at(i) = arma::datum::nan;
+    if((missingRate > g_missingRate_cutoff) || (MAF < g_marker_minMAF_cutoff) || (MAC < g_marker_minMAC_cutoff))
       continue;
-    }
     
-    // if(missingRate != 0){
-      // Function imputeGenoAndFlip is in UTIL.cpp
-      // flip = imputeGenoAndFlip(GVec, altFreq, indexForMissing, g_impute_method);  // in UTIL.cpp
+    // Check UTIL.cpp
     flip = imputeGenoAndFlip(GVec, altFreq, indexForMissing, missingRate, g_impute_method);
-    // }
     
     // analysis results for single-marker
     double Beta, seBeta, pval, zScore;
@@ -222,17 +218,16 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     pvalVec.at(i) = pval;
     zScoreVec.at(i) = zScore;
   }
-// }
 
   Rcpp::List OutList = Rcpp::List::create(Rcpp::Named("markerVec") = markerVec,
                                           Rcpp::Named("infoVec") = infoVec,
                                           Rcpp::Named("altFreqVec") = altFreqVec,
                                           Rcpp::Named("altCountsVec") = altCountsVec,
                                           Rcpp::Named("missingRateVec") = missingRateVec,
-                                          Rcpp::Named("BetaVec") = BetaVec,
-                                          Rcpp::Named("seBetaVec") = seBetaVec,
                                           Rcpp::Named("pvalVec") = pvalVec,
-                                          Rcpp::Named("zScoreVec") = zScoreVec);
+                                          Rcpp::Named("beta") = BetaVec,
+                                          Rcpp::Named("seBeta") = seBetaVec,
+                                          Rcpp::Named("zScore") = zScoreVec);
   
   return OutList;  
 }
@@ -971,7 +966,7 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
     if(t_isOnlyOutputNonZero == true)
       Rcpp::stop("When using POLMM method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
     
-    ptr_gPOLMMobj->getMarkerPval(t_GVec, t_Beta, t_seBeta, t_pval, t_altFreq);
+    ptr_gPOLMMobj->getMarkerPval(t_GVec, t_Beta, t_seBeta, t_pval, t_altFreq, t_zScore);
   }
   
   if(t_method == "SPACox"){

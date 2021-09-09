@@ -144,7 +144,7 @@ checkControl.Marker = function(control, NullModelClass)
   
   control = updateControl(control, default.marker.control)
   
-  # check if 'control' is reasonable
+  # check if argument of 'control' is reasonable
   if(!control$impute_method %in% c("mean", "minor", "drop"))
     stop("control$impute_method should be 'mean', 'minor', or 'drop'.")
   

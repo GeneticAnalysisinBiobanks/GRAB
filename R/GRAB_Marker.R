@@ -38,7 +38,7 @@
 #'  \itemize{
 #'  \item \code{outputColumns}: For example, for POLMM method, users can set \code{control$outputColumns = c("beta", "seBeta", "AltFreqInGroup")}. 
 #'     \itemize{
-#'     \item \code{POLMM}: Default: \code{beta}, \code{seBeta}; Optional: \code{PvalueNorm}, \code{zScore}, \code{AltFreqInGroup}
+#'     \item \code{POLMM}: Default: \code{beta}, \code{seBeta}; Optional: \code{PvalueNorm}, \code{zScore}, \code{AltFreqInGroup}, \code{AltCountsInGroup}
 #'     \item \code{SPACox}: Optional: \code{PvalueNorm}, \code{zScore}
 #'     }
 #'  }
@@ -50,14 +50,38 @@
 #' \item{MissingRate}{Missing rate for each marker}
 #' \item{Pvalue}{Association test p-value}
 #' The following columns can be customized in \code{control$outputColumns}.
-#' \item{Beta}{Estimated effect size of the ALT allele.}
+#' \item{beta}{Estimated effect size of the ALT allele.}
 #' \item{seBeta}{Estimated standard error (se) of the effect size.}
 #' \item{zScore}{z score, standardized score statistics, usually follows a standard normal distribution.}
-#' \item{altFreqInGroup}{Alternative frequency (before genotype imputation) in different phenotype groups.}
+#' \item{PvalueNorm}{p-value calculated from z score and normal distribution approximation.}
+#' \item{AltFreqInGroup}{Alternative allele frequency (before genotype imputation) in different phenotype groups.}
+#' \item{AltCountsInGroup}{Alternative allele counts (before genotype imputation) in different phenotype groups.}
 #' @examples
-#' # We put examples to the specific help pages for different methods. 
-#' # If you want to use "SPACox" method, please check ?GRAB.SPACox for more details.
-#' # If you want to use "POLMM" method, please check ?GRAB.POLMM for more details.
+#' objNullFile = system.file("results", "objNull.RData", package = "GRAB")
+#' load(objNullFile)
+#' 
+#' OutputFile = system.file("results", "simuOUTPUT.txt", package = "GRAB")
+#' GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
+#' 
+#' ## make sure the output files does not exist at first
+#' file.remove(OutputFile)
+#' file.remove(paste0(OutputFile, ".index"))
+#' 
+#' GRAB.Marker(objNull,
+#'             GenoFile = GenoFile,
+#'             OutputFile = OutputFile)
+#'             
+#' data.table::fread(OutputFile)
+#' 
+#' ## add one more columns of 'zScore'
+#' file.remove(OutputFile)
+#' file.remove(paste0(OutputFile, ".index"))
+#' GRAB.Marker(objNull,
+#'             GenoFile = GenoFile,
+#'             OutputFile = OutputFile,
+#'             control = list(outputColumns = c("beta", "seBeta", "zScore")))
+#' data.table::fread(OutputFile)
+#'             
 #' @export
 #' @import data.table
 
@@ -112,10 +136,10 @@ GRAB.Marker = function(objNull,
       chrom = tempChrom
     }
     
-    print(paste0("(",Sys.time(),") ---- Analyzing Chunk ", i, "/", nChunks, ": chrom ", chrom," ---- "))
+    cat(paste0("(",Sys.time(),") ---- Analyzing Chunk ", i, "/", nChunks, ": chrom ", chrom," ---- \n"))
     
     # main function to calculate summary statistics for markers in one chunk
-    resMarker = mainMarker(NullModelClass, genoType, genoIndex)
+    resMarker = mainMarker(NullModelClass, genoType, genoIndex, control$outputColumns)
     
     # write summary statistics to output file
     if(i == 1){
@@ -132,7 +156,7 @@ GRAB.Marker = function(objNull,
   }
   
   # information to users
-  output = paste0("Done! The results have been saved to '", OutputFile,"'.")
+  output = paste0("Analysis done! The results have been saved to '", OutputFile,"'.")
   write.table(matrix(-1, ncol = 1), 
               OutputFileIndex, col.names = F, row.names = F, quote = F, append = T)
   
@@ -141,39 +165,41 @@ GRAB.Marker = function(objNull,
 
 setMarker = function(NullModelClass, objNull, control, chrom)
 {
-  # The following function is in Main.cpp
+  # Check Main.cpp
   setMarker_GlobalVarsInCPP(control$impute_method,
                             control$missing_cutoff,
                             control$min_maf_marker,
                             control$min_mac_marker,
                             control$omp_num_threads)
   
-  # The following function is in POLMM.R
+  # Check POLMM.R
   if(NullModelClass == "POLMM_NULL_Model")
     obj.setMarker = setMarker.POLMM(objNull, control, chrom)
   
+  # Check SAIGE.R
   if(NullModelClass == "SAIGE_NULL_Model")
     obj.setMarker = setMarker.SAIGE(objNull, control)
   
-  # The following function is in SPACox.R
+  # Check SPACox.R
   if(NullModelClass == "SPACox_NULL_Model")
     obj.setMarker = setMarker.SPACox(objNull, control)
     
   return(obj.setMarker)
 }
 
-mainMarker = function(NullModelClass, genoType, genoIndex)
+mainMarker = function(NullModelClass, genoType, genoIndex, outputColumns)
 {
-  # The following function is in 'POLMM.R'
+  # Check 'POLMM.R'
   if(NullModelClass == "POLMM_NULL_Model")
-    obj.mainMarker = mainMarker.POLMM(genoType, genoIndex)
+    obj.mainMarker = mainMarker.POLMM(genoType, genoIndex, outputColumns)
   
+  # Check 'SAIGE.R'
   if(NullModelClass == "SAIGE_NULL_Model")
-    obj.mainMarker = mainMarker.SAIGE(genoType, genoIndex)
+    obj.mainMarker = mainMarker.SAIGE(genoType, genoIndex, outputColumns)
   
-  # The following function is in SPACox.R
+  # Check 'SPACox.R'
   if(NullModelClass == "SPACox_NULL_Model")
-    obj.mainMarker = mainMarker.SPACox(genoType, genoIndex)
+    obj.mainMarker = mainMarker.SPACox(genoType, genoIndex, outputColumns)
   
   return(obj.mainMarker)
 }

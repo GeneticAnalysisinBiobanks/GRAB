@@ -181,7 +181,8 @@ void POLMMClass::getMarkerPval(arma::vec t_GVec,
                                double& t_Beta, 
                                double& t_seBeta, 
                                double& t_pval, 
-                               double t_altFreq)
+                               double t_altFreq,
+                               double& t_zScore)
 {
   arma::vec adjGVec = getadjGFast(t_GVec);
   
@@ -209,6 +210,7 @@ void POLMMClass::getMarkerPval(arma::vec t_GVec,
   t_pval = pval;
   t_Beta = Stat / VarS;
   t_seBeta = t_Beta / StdStat;
+  t_zScore = Stat / sqrt(VarS);
 }
 
 // This function should use sparse GRM since in region-based analysis
@@ -557,8 +559,8 @@ Rcpp::List POLMMClass::MAIN_SPA(double t_Stat,
                                 double t_Ratio0,
                                 arma::uvec t_posG1)
 {
-  std::cout << "t_VarP:\t" << t_VarP << std::endl;
-  std::cout << "t_VarW:\t" << t_VarW << std::endl;
+  // std::cout << "t_VarP:\t" << t_VarP << std::endl;
+  // std::cout << "t_VarW:\t" << t_VarW << std::endl;
   
   Rcpp::List resSPA = fastSaddle_Prob(t_Stat, t_VarP, t_VarW, t_Ratio0, t_K1roots,
                                       t_adjGVec.elem(t_posG1), m_muMat.rows(t_posG1), m_iRMat.rows(t_posG1));
@@ -598,9 +600,9 @@ double K0(double t_x,
   arma::vec temp1Vec = log(1 + arma::sum(temp1Mat, 1));   // arma::sum(Mat, 1) is rowSums()
   double y = sum(temp1Vec) - t_m1 * t_x;
   
-  std::cout << "sum(temp1Vec):\t" << sum(temp1Vec) << std::endl;
-  std::cout << "t_m1:\t" << t_m1 << std::endl;
-  std::cout << "t_x:\t" << t_x << std::endl;
+  // std::cout << "sum(temp1Vec):\t" << sum(temp1Vec) << std::endl;
+  // std::cout << "t_m1:\t" << t_m1 << std::endl;
+  // std::cout << "t_x:\t" << t_x << std::endl;
   
   return y;
 }
@@ -727,8 +729,7 @@ Rcpp::List fastSaddle_Prob(double t_Stat,
                            arma::mat t_muMat1,   // N1 x J
                            arma::mat t_iRMat1)   // N1 x (J-1)
 {
-  
-  std::cout<< "Start fastSaddle_Prob()....." << std::endl;
+  // std::cout<< "Start fastSaddle_Prob()....." << std::endl;
   
   int J = t_muMat1.n_cols;
   int N1 = t_muMat1.n_rows;
@@ -761,10 +762,10 @@ Rcpp::List fastSaddle_Prob(double t_Stat,
   
   // std::cout << "adjStat:\t" << adjStat << std::endl;
   // std::cout << "t_Ratio0:\t" << t_Ratio0 << std::endl;
-  double root1 = outUni1["root"];
-  double root2 = outUni2["root"];
-  std::cout << "outUni1.root:\t" << root1 << std::endl;
-  std::cout << "outUni2.root:\t" << root2 << std::endl;
+  // double root1 = outUni1["root"];
+  // double root2 = outUni2["root"];
+  // std::cout << "outUni1.root:\t" << root1 << std::endl;
+  // std::cout << "outUni2.root:\t" << root2 << std::endl;
     
   if(outUnit1Converge == true && outUnit2Converge == true){
     

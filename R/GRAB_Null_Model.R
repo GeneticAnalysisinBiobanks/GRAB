@@ -155,7 +155,7 @@ GRAB.NullModel = function(formula,
   if(method %in% c("POLMM", "SAIGE", "GATE"))
     optionGRM = handleGRM(GenoFile, GenoFileIndex, SparseGRMFile, subjData)  # Check 'SparseGRM.R'
   
-  # check 'control.R'
+  # Check 'control.R'
   control = checkControl.NullModel(control, method, traitType, optionGRM)
   
   if(method == "POLMM"){

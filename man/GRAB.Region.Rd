@@ -71,7 +71,7 @@ The below is to customize the quality-control (QC) process.
 \item \code{MinMACCutoff}: a numeric value \emph{(default=10)}. Markers with MAC < this value will be treated as Ultra-Rare Variants (URV) and collapsed as one value.
 \item \code{nMarkersEachChunk}: number of markers \emph{(default=300)} in one chunk to output.
 }
-The below is for kernel-based approaches including SKAT and SKAT-O. For more details, please refer to \code{\link(SKAT)}.
+The below is for kernel-based approaches including SKAT and SKAT-O. For more details, please refer to \code{\link{SKAT}}.
 \itemize{
 \item \code{kernel}: a type of kernel (default= "linear.weighted"). \emph{(default="linear.weighted")}
 \item \code{weights_beta}: a numeric vector of parameters for the beta weights for the weighted kernels. If you want to use your own weights, please use the \code{control$weights} parameter. It will be ignored if \code{control$weights} parameter is not \code{NULL}. \emph{(default=c(1,25))}
@@ -83,7 +83,7 @@ Columns of \code{Marker}, \code{Info}, \code{AltFreq}, \code{AltCounts}, \code{M
 \itemize{
 \item \code{outputColumns}: For example, for POLMM method, users can set \code{control$outputColumns = c("beta", "seBeta", "AltFreqInGroup")}.
 \itemize{
-\item \code{POLMM}: Default: \code{beta}, \code{seBeta}; Optional: \code{PvalueNorm}, \code{zScore}, \code{AltFreqInGroup}
+\item \code{POLMM}: Default: \code{beta}, \code{seBeta}; Optional: \code{zScore}, \code{altFreqInGroup}
 \item \code{SPACox}: Optional: \code{PvalueNorm}, \code{zScore}
 }
 }

@@ -89,6 +89,7 @@ load(objNullFile)
 OutputFile = system.file("results", "simuOUTPUT.txt", package = "GRAB")
 GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
 
+# If 'OutputFile' and 'OutputFileIndex' have existed, users might need to remove them first.
 GRAB.Marker(objNull, 
             GenoFile = GenoFile,
             OutputFile = OutputFile)
