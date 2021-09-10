@@ -10,18 +10,8 @@ GRAB.SPACox()
 SPACox method is to analysis time-to-event phenotype for unrelated samples in a large-scale biobank.
 }
 \details{
-Please check \code{?GRAB.control} for the generic list of \code{control} in \code{GRAB.NullModel()} and \code{GRAB.Marker()}.
-
 Additional list of \code{control} in \code{GRAB.NullModel()} function
-\itemize{
-\item{\code{range}: a two-element numeric vector \link{default=c(-100,100)} to specify the domain of the empirical CGF.}
-\item{\code{length.out}: a positive integer \link{default=10000} for empirical CGF. Larger length.out corresponds to longer calculation time and more accurate estimated empirical CGF.}
-}
 Additional list of \code{control} in \code{GRAB.Marker()} function
-\itemize{
-\item{\code{pVal_covaAdj_Cutoff}: a numeric value \link{default=5e-5}. If the p-value is less than this cutoff, then we would use an additional technic to adjust for covariates.}
-\item{\code{SPA_cutoff}: a numeric value \link{default=2} to specify the standard deviation cutoff to be used. If the test statistic lies within the standard deviation cutoff, its p value is calculated based on a normal distribution approximation, otherwise, its p value is calculated based on a saddlepoint approximation.}
-}
 }
 \examples{
 # Step 1: fit a null model

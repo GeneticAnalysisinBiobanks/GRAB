@@ -12,8 +12,10 @@ library(GRAB)
 
 ### Replicate the genotype simulation in the package
 ```{r}   
+## Commen Variants with MAF ranging from (0.05, 0.5)
 set.seed(12345)
-OutList = GRAB.SimuGMatCommon(nSub = 500, nFam = 50, FamMode = "10-members", nSNP = 10000)
+OutList = GRAB.SimuGMat(nSub = 500, nFam = 50, FamMode = "10-members", nSNP = 10000,
+                        MaxMAF = 0.5, MinMAF = 0.05)
 GenoMat = OutList$GenoMat 
 MissingRate = 0.05
 indexMissing = sample(length(GenoMat), MissingRate * length(GenoMat))
@@ -27,6 +29,24 @@ system("plink --file simuPLINK --make-bed --out simuPLINK")
 system("plink --bfile simuPLINK --recode A --out simuRAW")
 system("plink2 --bfile simuPLINK --export bgen-1.2 bits=8 ref-first --out simuBGEN  # UK Biobank use 'ref-first'")
 system("bgenix -g simuBGEN.bgen -index")
+
+## Rare Variants with MAF ranging from (0.0001, 0.01)
+set.seed(34567)
+OutList = GRAB.SimuGMat(nSub = 500, nFam = 50, FamMode = "10-members", nSNP = 10000,
+                        MaxMAF = 0.01, MinMAF = 0.0001)
+GenoMat = OutList$GenoMat 
+MissingRate = 0.05
+indexMissing = sample(length(GenoMat), MissingRate * length(GenoMat))
+GenoMat[indexMissing] = -9
+extDir = system.file("extdata", package = "GRAB")
+extPrefix = paste0(extDir, "/simuPLINK_RV")
+GRAB.makePlink(GenoMat, extPrefix)
+
+setwd(extDir)
+system("plink --file simuPLINK_RV --make-bed --out simuPLINK_RV")
+system("plink --bfile simuPLINK_RV --recode A --out simuRAW_RV")
+system("plink2 --bfile simuPLINK_RV --export bgen-1.2 bits=8 ref-first --out simuBGEN_RV  # UK Biobank use 'ref-first'")
+system("bgenix -g simuBGEN_RV.bgen -index")
 ```
 
 ### Replicate the sparse GRM generation in the package
@@ -81,18 +101,38 @@ objNull$tau    # 0.5655751
 save(objNull, file = objNullFile)
 ```
 
-### Step 2: Perform a genome-wide analysis for marker-level and region-level
+### Step 2a: Perform a genome-wide marker-level analysis
 ```{r}
 objNullFile = system.file("results", "objNull.RData", package = "GRAB")
 load(objNullFile)
 
-OutputFile = system.file("results", "simuOUTPUT.txt", package = "GRAB")
+OutputDir = system.file("results", package = "GRAB")
+OutputFile = paste0(OutputDir, "/simuMarkerOutput.txt")
 GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
 
 # If 'OutputFile' and 'OutputFileIndex' have existed, users might need to remove them first.
 GRAB.Marker(objNull, 
             GenoFile = GenoFile,
             OutputFile = OutputFile)
+            
+## Check 'OutputFile' for the analysis results
+```
+
+### Step 2a: Perform a genome-wide region-level analysis
+```{r}
+objNullFile = system.file("results", "objNull.RData", package = "GRAB")
+load(objNullFile)
+
+OutputDir = system.file("results", package = "GRAB")
+OutputFile = paste0(OutputDir, "/simuRegionOutput.txt")
+GenoFile = system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
+RegionFile = system.file("extdata", "simuRegion.txt", package = "GRAB")
+
+# If 'OutputFile' and 'OutputFileIndex' have existed, users might need to remove them first.
+GRAB.Region(objNull, 
+            GenoFile = GenoFile,
+            OutputFile = OutputFile,
+            RegionFile = RegionFile)
             
 ## Check 'OutputFile' for the analysis results
 ```

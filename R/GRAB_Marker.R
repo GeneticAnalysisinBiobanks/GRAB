@@ -15,8 +15,10 @@
 #' Users do not need to specify them since functions \code{GRAB.Marker} and \code{\link{GRAB.Region}} will check the \code{class(objNull)}.
 #' 
 #' ## The following details are about argument \code{control}
-#' The below is to let users customize markers to include in analysis. If these parameters are not specified, \code{GRAB} package will include all markers in analysis. 
-#' For PLINK files, the default \code{control$AlleleOrder = "alt-first"}; for BGEN files, the default \code{control$AlleleOrder = "alt-first"}.
+#' The below is to let users customize markers to include in analysis. 
+#' If these parameters are not specified, \code{GRAB} package will include all markers in analysis. 
+#' For PLINK files, the default \code{control$AlleleOrder = "alt-first"}; 
+#' for BGEN files, the default \code{control$AlleleOrder = "ref-first"}.
 #'   \itemize{
 #'   \item \code{IDsToIncludeFile}: please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
 #'   \item \code{IDsToExcludeFile}: please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
@@ -60,6 +62,7 @@
 #' @examples
 #' objNullFile = system.file("results", "objNull.RData", package = "GRAB")
 #' load(objNullFile)
+#' class(objNull)    # "POLMM_NULL_Model", that indicates an object from POLMM method.
 #' 
 #' OutputDir = system.file("results", package = "GRAB")
 #' OutputFile = paste0(OutputDir, "/simuOUTPUT.txt")
@@ -206,11 +209,11 @@ mainMarker = function(NullModelClass, genoType, genoIndex, outputColumns)
   if(NullModelClass == "POLMM_NULL_Model")
     obj.mainMarker = mainMarker.POLMM(genoType, genoIndex, outputColumns)
   
-  # Check 'SAIGE.R'
+  # # Check 'SAIGE.R'
   if(NullModelClass == "SAIGE_NULL_Model")
     obj.mainMarker = mainMarker.SAIGE(genoType, genoIndex, outputColumns)
-  
-  # Check 'SPACox.R'
+  # 
+  # # Check 'SPACox.R'
   if(NullModelClass == "SPACox_NULL_Model")
     obj.mainMarker = mainMarker.SPACox(genoType, genoIndex, outputColumns)
   

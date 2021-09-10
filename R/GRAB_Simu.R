@@ -16,7 +16,7 @@
 #' } 
 #' @seealso \code{\link{GRAB.makePlink}} can make \code{PLINK} files using the genotype matrix.
 #' @details 
-#' Currently, function \code{GRAB.SimuGMatCommon} supports both unrelated and related subjects. 
+#' Currently, function \code{GRAB.SimuGMat} supports both unrelated and related subjects. 
 #' Genotype data is simulated following Hardy-Weinberg Equilibrium with allele frequency ~ \code{runif(MinMAF, MaxMAF)}.
 #' 
 #' ## If \code{FamMode = "4-members"}
@@ -33,7 +33,7 @@
 #' nFam = 10
 #' FamMode = "10-members"
 #' nSNP = 10000
-#' OutList = GRAB.SimuGMatCommon(nSub, nFam, FamMode, nSNP)      
+#' OutList = GRAB.SimuGMat(nSub, nFam, FamMode, nSNP)      
 #' GenoMat = OutList$GenoMat
 #' markerInfo = OutList$markerInfo
 #' GenoMat[1:10,1:10]
@@ -48,7 +48,7 @@
 #' GRM1
 #' GRM2
 #' @export
-GRAB.SimuGMatCommon = function(nSub,
+GRAB.SimuGMat = function(nSub,
                                nFam,
                                FamMode,
                                nSNP,

@@ -52,8 +52,10 @@ Detailed information about the analysis methods is given in the \code{Details} s
 Users do not need to specify them since functions \code{GRAB.Marker} and \code{\link{GRAB.Region}} will check the \code{class(objNull)}.
 \subsection{The following details are about argument \code{control}}{
 
-The below is to let users customize markers to include in analysis. If these parameters are not specified, \code{GRAB} package will include all markers in analysis.
-For PLINK files, the default \code{control$AlleleOrder = "alt-first"}; for BGEN files, the default \code{control$AlleleOrder = "alt-first"}.
+The below is to let users customize markers to include in analysis.
+If these parameters are not specified, \code{GRAB} package will include all markers in analysis.
+For PLINK files, the default \code{control$AlleleOrder = "alt-first"};
+for BGEN files, the default \code{control$AlleleOrder = "ref-first"}.
 \itemize{
 \item \code{IDsToIncludeFile}: please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
 \item \code{IDsToExcludeFile}: please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
@@ -84,6 +86,7 @@ Columns of \code{Marker}, \code{Info}, \code{AltFreq}, \code{AltCounts}, \code{M
 \examples{
 objNullFile = system.file("results", "objNull.RData", package = "GRAB")
 load(objNullFile)
+class(objNull)    # "POLMM_NULL_Model", that indicates an object from POLMM method.
 
 OutputDir = system.file("results", package = "GRAB")
 OutputFile = paste0(OutputDir, "/simuOUTPUT.txt")

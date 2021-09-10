@@ -36,13 +36,15 @@ GRAB.Region(
 \item{control}{a list of parameters for controlling function \code{GRAB.Region}, more details can be seen in \code{Details} section.}
 }
 \value{
-Region-based analysis results are saved in two files: \code{OutputFile} and \code{OutputMarkerFile = paste0(OutputFile, ".markerInfo")}.
+Region-based analysis results are saved into two files: \code{OutputFile} and \code{OutputMarkerFile = paste0(OutputFile, ".markerInfo")}.
 
 The file of \code{OutputMarkerFile} is the same as the results of \code{\link{GRAB.Marker}}. The file of \code{OutputFile} includes columns as below.
 \item{Region}{Region IDs from \code{RegionFile}}
+\item{Anno.Type}{Annotation type from \code{RegionFile}}
+\item{maxMAF}{the maximal cutoff of the MAF to select low-frequency/rare variants into analysis.}
+\item{nSamples}{Number of samples in analysis, subjects with annotation value <= 0 will be excluded from analysis.}
 \item{nMarkers}{Number of markers whose MAF < \code{control$MaxMAFCutoff} and MAC > \code{control$MinMACCutoff}.}
 \item{nMarkersURV}{Number of Ultra-Rare Variants (URV) whose MAC < \code{control$MinMACCutoff}.}
-\item{Anno.Type}{Annotation type from \code{RegionFile}}
 \item{pval.SKATO}{p-values based on SKAT-O method}
 \item{pval.SKAT}{p-values based on SKAT method}
 \item{pval.Burden}{p-values based on Burden test}
@@ -54,37 +56,40 @@ Test for association between phenotype of interest and regions including multipl
 \code{GRAB} package supports \code{SAIGE}, \code{POLMM}, and \code{SPACox} methods.
 Detailed information about the analysis methods is given in the \code{Details} section of \code{\link{GRAB.NullModel}}.
 Users do not need to specify them since functions \code{\link{GRAB.Marker}} and \code{GRAB.Region} will check the \code{class(objNull)}.
+\subsection{Region-based approaches are mostly for low-frequency and rare variants.}{
+}
 
-Region-based approaches are mostly for low-frequency and rare variants.
 \subsection{The following details are about argument \code{control}}{
 
-For PLINK files, the default \code{control$AlleleOrder = "alt-first"}; for BGEN files, the default \code{control$AlleleOrder = "alt-first"}.
+For PLINK files, the default \code{control$AlleleOrder = "alt-first"}; for BGEN files, the default \code{control$AlleleOrder = "ref-first"}.
 \itemize{
 \item \code{AlleleOrder}: please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
 }
 The below is to customize the quality-control (QC) process.
 \itemize{
 \item \code{omp_num_threads}: (To be added later) a numeric value (default: value from data.table::getDTthreads()) to specify the number of threads in OpenMP for parallel computation.
-\item \code{ImputeMethod}: a character, "mean", "bestguess", or "drop" (to be added later). Please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
+\item \code{ImputeMethod}: a character, "mean", "bestguess" (default), or "drop" (to be added later). Please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
 \item \code{MissingRateCutoff}: a numeric value \emph{(default=0.15)}. Markers with missing rate > this value will be excluded from analysis.
 \item \code{MaxMAFCutoff}: a numeric value \emph{(default=0.01)}. Markers with MAF > this value will be excluded from analysis.
 \item \code{MinMACCutoff}: a numeric value \emph{(default=10)}. Markers with MAC < this value will be treated as Ultra-Rare Variants (URV) and collapsed as one value.
-\item \code{nMarkersEachChunk}: number of markers \emph{(default=300)} in one chunk to output.
+\item \code{nRegionsEachChunk}: number of regions \emph{(default=10)} in one chunk to output.
 }
 The below is for kernel-based approaches including SKAT and SKAT-O. For more details, please refer to \code{\link{SKAT}}.
 \itemize{
-\item \code{kernel}: a type of kernel (default= "linear.weighted"). \emph{(default="linear.weighted")}
-\item \code{weights_beta}: a numeric vector of parameters for the beta weights for the weighted kernels. If you want to use your own weights, please use the \code{control$weights} parameter. It will be ignored if \code{control$weights} parameter is not \code{NULL}. \emph{(default=c(1,25))}
-\item \code{weights}: a numeric vector of weights for the weighted kernels. If it is \code{NULL}, the beta weight with the \code{control$weights.beta} parameter is used. \emph{(default=NULL)}
-\item \code{r.corr}: the rho parameter for the compound symmetric correlation structure kernels. If you give a vector value, SKAT will conduct the optimal test. It will be ignored if method=“optimal” or method=“optimal.adj” \emph{(default=c(0, 0.1^2, 0.2^2, 0.3^2, 0.4^2, 0.5^2, 0.5, 1))}.
+\item \code{kernel}: a type of kernel \emph{(default="linear.weighted")}.
+\item \code{weights_beta}: a numeric vector of parameters for the beta weights for the weighted kernels \emph{(default=c(1,25))}.
+If you want to use your own weights, please use the \code{control$weights} parameter. It will be ignored if \code{control$weights} parameter is not \code{NULL}.
+\item \code{weights}: a numeric vector of weights for the weighted kernels. If it is \code{NULL} (default), the beta weight with the \code{control$weights.beta} parameter is used.
+\item \code{r.corr}: the rho parameter for the compound symmetric correlation structure kernels. If you give a vector value, SKAT will conduct the optimal test.
+It will be ignored if method="optimal" or method="optimal.adj" \emph{(default=c(0, 0.1^2, 0.2^2, 0.3^2, 0.4^2, 0.5^2, 0.5, 1))}.
 }
-The below is to customize the columns in the \code{OutputFile}.
-Columns of \code{Marker}, \code{Info}, \code{AltFreq}, \code{AltCounts}, \code{MissingRate}, \code{Pvalue} are included for methods.
+The below is to customize the columns in the \code{OutputMarkerFile}.
+Columns of \code{Marker}, \code{Info}, \code{AltFreq}, \code{AltCounts}, \code{MissingRate}, \code{Pvalue} are included for all methods.
 \itemize{
 \item \code{outputColumns}: For example, for POLMM method, users can set \code{control$outputColumns = c("beta", "seBeta", "AltFreqInGroup")}.
 \itemize{
-\item \code{POLMM}: Default: \code{beta}, \code{seBeta}; Optional: \code{zScore}, \code{altFreqInGroup}
-\item \code{SPACox}: Optional: \code{PvalueNorm}, \code{zScore}
+\item \code{POLMM}: Default: \code{beta}, \code{seBeta}; Optional: \code{zScore}, \code{AltFreqInGroup}, \code{nSamplesInGroup}, \code{AltCountsInGroup}
+\item \code{SPACox}: Optional: \code{zScore}
 }
 }
 }

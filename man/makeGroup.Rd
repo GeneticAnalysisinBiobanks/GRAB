@@ -7,7 +7,7 @@
 makeGroup(yVec)
 }
 \arguments{
-\item{yVec}{the phenotype recorded in \code{objNull}, the output object of function \code{\link{GRAB.NullModel}}.}
+\item{yVec}{the phenotype recorded in \code{objNull$yVec}, the output object of function \code{\link{GRAB.NullModel}}.}
 }
 \value{
 a numeric vector (\code{Group}, starting from 0) for group information.
@@ -16,5 +16,5 @@ a numeric vector (\code{Group}, starting from 0) for group information.
 In functions \code{\link{GRAB.Marker}} and \code{\link{GRAB.Region}}, users can get detailed information for each markers in different groups.
 }
 \details{
-If \code{yVec} is categorical with <= groups, then \code{Group} is the same as \code{yVec}. Otherwise, \code{Group} is calcualted based on the rank of \code{yVec}.
+If \code{yVec} is categorical with groups <= 10, then \code{Group} is the same as \code{yVec}. Otherwise, \code{Group} is calcualted based on the rank of \code{yVec}.
 }
