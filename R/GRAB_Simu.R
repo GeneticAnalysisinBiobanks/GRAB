@@ -243,7 +243,7 @@ from.haplo.to.geno = function(haplo.mat,  # output of haplo.simu():  m x p where
   }
   Geno.mat=Haplo1.mat+Haplo2.mat
   colnames(Geno.mat)=colnames(haplo.mat)
-  Geno.mat=data.frame(Geno.mat,stringsAsFactors = F)
+  # Geno.mat=data.frame(Geno.mat, stringsAsFactors = F)
   return(Geno.mat)
 }
 

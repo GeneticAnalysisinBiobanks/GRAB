@@ -95,6 +95,33 @@ Columns of \code{Marker}, \code{Info}, \code{AltFreq}, \code{AltCounts}, \code{M
 }
 }
 \examples{
-# We put examples to the specific help pages for different methods. 
-# If you want to use "POLMM" method, please check ?GRAB.POLMM for more details.
+objNullFile = system.file("results", "objNull.RData", package = "GRAB")
+load(objNullFile)
+class(objNull)    # "POLMM_NULL_Model", that indicates an object from POLMM method.
+
+OutputDir = system.file("results", package = "GRAB")
+OutputFile = paste0(OutputDir, "/simuOUTPUT.txt")
+GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
+
+## make sure the output files does not exist at first
+file.remove(OutputFile)
+file.remove(paste0(OutputFile, ".index"))
+
+GRAB.Marker(objNull,
+            GenoFile = GenoFile,
+            OutputFile = OutputFile)
+            
+data.table::fread(OutputFile)
+
+## additional columns of "zScore", "nSamplesInGroup", "AltCountsInGroup", "AltFreqInGroup"
+## We do not recommend adding too many columns for all markers
+
+file.remove(OutputFile)
+file.remove(paste0(OutputFile, ".index"))
+GRAB.Marker(objNull,
+            GenoFile = GenoFile,
+            OutputFile = OutputFile,
+            control = list(outputColumns = c("beta", "seBeta", "zScore","nSamplesInGroup","AltCountsInGroup","AltFreqInGroup")))
+data.table::fread(OutputFile)
+    
 }
