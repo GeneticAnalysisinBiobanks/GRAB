@@ -79,6 +79,15 @@ PhenoFile = system.file("extdata", "simuPHENO.txt", package = "GRAB")
 write.table(Pheno, PhenoFile, row.names = F, quote = F, sep = "\t")
 ```
 
+### Replicate the regionFile in the package
+```{r}
+set.seed(101112)
+RegionData = data.frame(REGION = paste0("Region_", rep(1:100,each=100)),
+                        MARKER = paste0("SNP_",1:10000),
+                        ANNO1 = rbinom(10000, 1, 0.5),
+                        ANNO2 = runif(10000))
+```
+
 ### Step 1: Fit a null model using the sparse GRM and phenotype data
 ```{r}
 GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
@@ -96,12 +105,12 @@ objNull = GRAB.NullModel(as.factor(ordinal) ~ Cova1 + Cova2,
                          GenoFile = GenoFile,
                          SparseGRMFile = SparseGRMFile)
 
-objNull$tau    # 0.5655751
+objNull$tau    # 0.5681122
                          
 save(objNull, file = objNullFile)
 ```
 
-### Step 2a: Perform a genome-wide marker-level analysis
+### Step 2a: Perform a marker-level association analysis
 ```{r}
 objNullFile = system.file("results", "objNull.RData", package = "GRAB")
 load(objNullFile)
@@ -118,7 +127,7 @@ GRAB.Marker(objNull,
 ## Check 'OutputFile' for the analysis results
 ```
 
-### Step 2a: Perform a genome-wide region-level analysis
+### Step 2b: Perform a genome-wide region-level association analysis
 ```{r}
 objNullFile = system.file("results", "objNull.RData", package = "GRAB")
 load(objNullFile)
@@ -127,12 +136,14 @@ OutputDir = system.file("results", package = "GRAB")
 OutputFile = paste0(OutputDir, "/simuRegionOutput.txt")
 GenoFile = system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
 RegionFile = system.file("extdata", "simuRegion.txt", package = "GRAB")
+SparseGRMFile = system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
 
 # If 'OutputFile' and 'OutputFileIndex' have existed, users might need to remove them first.
 GRAB.Region(objNull, 
             GenoFile = GenoFile,
             OutputFile = OutputFile,
-            RegionFile = RegionFile)
+            RegionFile = RegionFile,
+            SparseGRMFile = SparseGRMFile)
             
 ## Check 'OutputFile' for the analysis results
 ```
