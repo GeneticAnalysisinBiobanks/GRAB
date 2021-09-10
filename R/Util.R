@@ -1,4 +1,25 @@
-
+#' A lower function to make groups based on phenotype
+#' 
+#' In functions \code{\link{GRAB.Marker}} and \code{\link{GRAB.Region}}, users can get detailed information for each markers in different groups.
+#' 
+#' @param yVec the phenotype recorded in \code{objNull}, the output object of function \code{\link{GRAB.NullModel}}. 
+#' @return a numeric vector (\code{Group}, starting from 0) for group information.
+#' @details 
+#' If \code{yVec} is categorical with <= groups, then \code{Group} is the same as \code{yVec}. Otherwise, \code{Group} is calcualted based on the rank of \code{yVec}.
+ 
+makeGroup = function(yVec)
+{
+  # yVec is categorical data
+  m1 = length(unique(yVec))
+  if(m1 <= 10)
+    Group = as.numeric(as.factor(yVec))-1  # from 0 to (m1-1)
+  
+  # yVec is quantitative data
+  if(length(unique(yVec)) > 10)
+    Group = floor((rank(yVec, ties.method = "max")-1) / length(yVec) * 10)  # from 0 to 9
+  
+  return(Group)
+}
 
 checkObjNull = function(objNull)
 {

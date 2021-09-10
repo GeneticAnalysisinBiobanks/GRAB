@@ -27,20 +27,21 @@ GRAB.Marker(
 \item{control}{a list of parameters for controlling function \code{GRAB.Marker}, more details can be seen in \code{Details} section.}
 }
 \value{
-The results is written in a file of \code{OutputFile}, which includes the following columns.
+The analysis results are written in a file of \code{OutputFile}, which includes the following columns.
 \item{Marker}{Marker IDs extracted from \code{GenoFile} and \code{GenoFileIndex}.}
 \item{Info}{Marker Information of "CHR:POS:REF:ALT". The order of REF/ALT depends on \code{control$AlleleOrder}: "ref-first" or "alt-first".}
 \item{AltFreq}{Alternative allele frequency (before genotype imputation, might be > 0.5). If the \code{AltFreq} of most markers are > 0.5, you should consider resetting \code{control$AlleleOrder}.}
 \item{AltCounts}{Alternative allele counts (before genotype imputation).}
 \item{MissingRate}{Missing rate for each marker}
 \item{Pvalue}{Association test p-value}
-The following columns can be customized in \code{control$outputColumns}.
+The following columns can be customized using \code{control$outputColumns}. Check \code{\link{makeGroup}} for details about phenotype grouping which are used for
+\code{nSamplesInGroup}, \code{AltCountsInGroup}, and \code{AltFreqInGroup}.
 \item{beta}{Estimated effect size of the ALT allele.}
 \item{seBeta}{Estimated standard error (se) of the effect size.}
 \item{zScore}{z score, standardized score statistics, usually follows a standard normal distribution.}
-\item{PvalueNorm}{p-value calculated from z score and normal distribution approximation.}
-\item{AltFreqInGroup}{Alternative allele frequency (before genotype imputation) in different phenotype groups.}
+\item{nSamplesInGroup}{Number of samples in different phenotype groups. This can be slightly different from the original distribution due to the genotype missing.}
 \item{AltCountsInGroup}{Alternative allele counts (before genotype imputation) in different phenotype groups.}
+\item{AltFreqInGroup}{Alternative allele frequency (before genotype imputation) in different phenotype groups.}
 }
 \description{
 Test for association between phenotype of interest and genetic marker.
@@ -63,7 +64,7 @@ For PLINK files, the default \code{control$AlleleOrder = "alt-first"}; for BGEN 
 The below is to customize the quality-control (QC) process.
 \itemize{
 \item \code{omp_num_threads}: (To be added later) a numeric value (default: value from data.table::getDTthreads()) to specify the number of threads in OpenMP for parallel computation.
-\item \code{ImputeMethod}: a character, "mean", "bestguess", or "drop" (to be added later). please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
+\item \code{ImputeMethod}: a character, "mean" (default), "bestguess", or "drop" (to be added later). Please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
 \item \code{MissingRateCutoff}: a numeric value \emph{(default=0.15)}. Markers with missing rate > this value will be excluded from analysis.
 \item \code{MinMAFCutoff}: a numeric value \emph{(default=0.001)}. Markers with MAF < this value will be excluded from analysis.
 \item \code{MinMACCutoff}: a numeric value \emph{(default=20)}. Markers with MAC < this value will be excluded from analysis.
@@ -74,8 +75,8 @@ Columns of \code{Marker}, \code{Info}, \code{AltFreq}, \code{AltCounts}, \code{M
 \itemize{
 \item \code{outputColumns}: For example, for POLMM method, users can set \code{control$outputColumns = c("beta", "seBeta", "AltFreqInGroup")}.
 \itemize{
-\item \code{POLMM}: Default: \code{beta}, \code{seBeta}; Optional: \code{PvalueNorm}, \code{zScore}, \code{AltFreqInGroup}, \code{AltCountsInGroup}
-\item \code{SPACox}: Optional: \code{PvalueNorm}, \code{zScore}
+\item \code{POLMM}: Default: \code{beta}, \code{seBeta}; Optional: \code{zScore}, \code{AltFreqInGroup}, \code{nSamplesInGroup}, \code{AltCountsInGroup}
+\item \code{SPACox}: Optional: \code{zScore}
 }
 }
 }
@@ -84,7 +85,8 @@ Columns of \code{Marker}, \code{Info}, \code{AltFreq}, \code{AltCounts}, \code{M
 objNullFile = system.file("results", "objNull.RData", package = "GRAB")
 load(objNullFile)
 
-OutputFile = system.file("results", "simuOUTPUT.txt", package = "GRAB")
+OutputDir = system.file("results", package = "GRAB")
+OutputFile = paste0(OutputDir, "/simuOUTPUT.txt")
 GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
 
 ## make sure the output files does not exist at first
@@ -97,13 +99,15 @@ GRAB.Marker(objNull,
             
 data.table::fread(OutputFile)
 
-## add one more columns of 'zScore'
+## additional columns of "zScore", "nSamplesInGroup", "AltCountsInGroup", "AltFreqInGroup"
+## We do not recommend adding too many columns for all markers
+
 file.remove(OutputFile)
 file.remove(paste0(OutputFile, ".index"))
 GRAB.Marker(objNull,
             GenoFile = GenoFile,
             OutputFile = OutputFile,
-            control = list(outputColumns = c("beta", "seBeta", "zScore")))
+            control = list(outputColumns = c("beta", "seBeta", "zScore","nSamplesInGroup","AltCountsInGroup","AltFreqInGroup")))
 data.table::fread(OutputFile)
             
 }

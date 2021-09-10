@@ -13,7 +13,17 @@
 #' @param SparseGRMFile a character of sparseGRM file. An example is \code{system.file("SparseGRM","SparseGRM.txt",package="GRAB")}
 #' @param control a list of parameters for controlling the model fitting process. For more details, please check \code{Details} section. 
 #' @param ... other arguments passed to or from other methods. 
-#' @return an R object with a class of "XXXXX_NULL_Model" in which XXXXX is the 'method' used in analysis. 
+#' @return an R object with a class of "XXXXX_NULL_Model" in which XXXXX is the 'method' used in analysis. The following elements are required for all methods.
+#' \itemize{
+#'   \item{N}: Sample size in analysis
+#'   \item{yVec}: Phenotype data
+#'   \item{beta}: Coefficient parameters corresponding to covariates
+#'   \item{subjData}: Subject IDs in analysis
+#'   \item{sessionInfo}: Version information about R, the OS and attached or loaded packages.
+#'   \item{Call}: A call in which all of the specified arguments are specified by their full names.
+#'   \item{time}: The time when analysis is finished
+#'   \item{control}: The R list of control in null model fitting
+#' }
 #' @details
 #' \code{GRAB} package uses score testing which consists of two steps. In Step 1, function \code{GRAB.NullModel} fits a null model including response variable, covariates, and Genetic Relationship Matrix (GRM) if needed.
 #' In Step 2, functions \code{\link{GRAB.Marker}} and \code{\link{GRAB.Region}} perform genome-wide marker-level analysis and region-level analysis, respectively. 

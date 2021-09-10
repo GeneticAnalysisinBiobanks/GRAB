@@ -88,6 +88,13 @@ GRAB.Region = function(objNull,
   subjData = as.character(objNull$subjData);
   n = length(subjData)
   
+  Group = makeGroup(objNull$yVec)
+  if(any(c("AltFreqInGroup", "AltCountsInGroup") %in% control$outputColumns)){
+    ifOutGroup = TRUE
+  }else{
+    ifOutGroup = FALSE
+  }
+  
   ## set up an object for genotype
   objGeno = setGenoInput(GenoFile, GenoFileIndex, subjData, control)  # this function is in 'Geno.R'
   genoType = objGeno$genoType
@@ -122,7 +129,7 @@ GRAB.Region = function(objNull,
     print(paste(SNP, collapse = ", "))
     
     if(chrom1 != chrom){
-      obj.setRegion = setRegion(NullModelClass, objNull, control, chrom, SparseGRMFile)
+      obj.setRegion = setRegion(NullModelClass, objNull, control, chrom, SparseGRMFile, Group, ifOutGroup)
       chrom1 = chrom
     }
     
@@ -299,15 +306,17 @@ GRAB.Region = function(objNull,
 }
 
 
-setRegion = function(NullModelClass, objNull, control, chrom, SparseGRMFile)
+setRegion = function(NullModelClass, objNull, control, chrom, SparseGRMFile, Group, ifOutGroup)
 {
   # The following function is in Main.cpp
+  nGroup = length(unique(Group))
   setRegion_GlobalVarsInCPP(control$impute_method,
                             control$missing_cutoff,
                             control$max_maf_region,
                             control$min_mac_region,
                             control$max_markers_region,
-                            control$omp_num_threads)
+                            control$omp_num_threads,
+                            Group, ifOutGroup, nGroup)
   
   # Check POLMM.R
   if(NullModelClass == "POLMM_NULL_Model")

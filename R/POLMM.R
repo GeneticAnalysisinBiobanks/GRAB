@@ -127,6 +127,7 @@ checkControl.Region.POLMM = function(control)
 mainMarker.POLMM = function(genoType, genoIndex, outputColumns)
 {
   # Check 'Main.cpp'
+  
   OutList = mainMarkerInCPP("POLMM",
                             genoType,
                             genoIndex);  
@@ -140,8 +141,11 @@ mainMarker.POLMM = function(genoType, genoIndex, outputColumns)
   
   ## optional ouput columns include c("beta", "seBeta", "zScore", "PvalueNorm", "altFreqInGroup", "AltCountsInGroup")
   
-  optionalColumns = c("beta", "seBeta", "zScore", "PvalueNorm", "altFreqInGroup", "AltCountsInGroup")
+  optionalColumns = c("beta", "seBeta", "zScore", "PvalueNorm", "AltFreqInGroup", "AltCountsInGroup", "nSamplesInGroup")
   additionalColumns = intersect(optionalColumns, outputColumns)
+  
+  # print(head(as.data.frame(OutList["AltFreqInGroup"])))
+  # print(head(as.data.frame(OutList["AltCountsInGroup"])))
   
   if(length(additionalColumns) > 0)
     obj.mainMarker = cbind.data.frame(obj.mainMarker, 

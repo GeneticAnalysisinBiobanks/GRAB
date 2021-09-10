@@ -45,6 +45,10 @@ double g_region_minMAC_cutoff;    // for Rare Variants (RVs) whose MAC < this va
 double g_region_maxMAF_cutoff;
 unsigned int g_region_maxMarkers_cutoff;   // maximal number of markers in one chunk, only used for region-based analysis to reduce memory usage
 
+arma::uvec g_group;
+bool g_ifOutGroup;
+unsigned int g_nGroup;
+
 // global variables for sparse GRM
 arma::sp_mat g_SparseGRM;
 
@@ -106,13 +110,19 @@ void setMarker_GlobalVarsInCPP(std::string t_impute_method,
                                double t_missing_cutoff,
                                double t_min_maf_marker,
                                double t_min_mac_marker,
-                               unsigned int t_omp_num_threads)
+                               unsigned int t_omp_num_threads,
+                               arma::uvec t_group,
+                               bool t_ifOutGroup,
+                               unsigned int t_nGroup)
 {
   g_impute_method = t_impute_method;
   g_missingRate_cutoff = t_missing_cutoff;
   g_marker_minMAF_cutoff = t_min_maf_marker;
   g_marker_minMAC_cutoff = t_min_mac_marker;
   g_omp_num_threads = t_omp_num_threads;
+  g_group = t_group;
+  g_ifOutGroup = t_ifOutGroup;
+  g_nGroup = t_nGroup;
 }
 
 // [[Rcpp::export]]
@@ -121,7 +131,10 @@ void setRegion_GlobalVarsInCPP(std::string t_impute_method,
                                double t_max_maf_region,
                                double t_min_mac_region,
                                unsigned int t_max_markers_region,
-                               unsigned int t_omp_num_threads)
+                               unsigned int t_omp_num_threads,
+                               arma::uvec t_group,
+                               bool t_ifOutGroup,
+                               unsigned int t_nGroup)
 {
   g_impute_method = t_impute_method;
   g_missingRate_cutoff = t_missing_cutoff;
@@ -129,6 +142,39 @@ void setRegion_GlobalVarsInCPP(std::string t_impute_method,
   g_region_maxMAF_cutoff = t_max_maf_region;
   g_region_maxMarkers_cutoff = t_max_markers_region;
   g_omp_num_threads = t_omp_num_threads;
+  g_group = t_group;
+  g_ifOutGroup = t_ifOutGroup;
+  g_nGroup = t_nGroup;
+}
+
+void updateGroupInfo(arma::vec t_GVec,
+                     std::vector<uint32_t> t_indexForMissing,
+                     arma::vec& nSamplesInGroupVec,
+                     arma::vec& AltCountsInGroupVec,
+                     arma::vec& AltFreqInGroupVec)
+{
+  unsigned int n1 = t_GVec.size();
+  nSamplesInGroupVec.zeros();
+  AltCountsInGroupVec.zeros();
+  
+  unsigned int i1 = 0;
+  for(unsigned int i = 0; i < n1; i++){
+    if(i == t_indexForMissing.at(i1)){
+      if(i1 < t_indexForMissing.size() - 1)
+        i1 ++;
+    }else{
+      unsigned int grp = g_group.at(i);
+      
+      // std::cout << "grp:\t" << grp << std::endl;
+      // std::cout << "i:\t" << i << std::endl;
+      // std::cout << "i1:\t" << i1 << std::endl;
+      
+      nSamplesInGroupVec.at(grp) += 1;
+      AltCountsInGroupVec.at(grp) += t_GVec.at(i);
+    }
+  }
+  
+  AltFreqInGroupVec = AltCountsInGroupVec / nSamplesInGroupVec / 2;
 }
 
 //////// ---------- Main function for marker-level analysis --------- ////////////
@@ -150,7 +196,17 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   std::vector<double> seBetaVec(q, arma::datum::nan);       
   std::vector<double> pvalVec(q, arma::datum::nan);
   std::vector<double> zScoreVec(q, arma::datum::nan);
+  
+  arma::mat nSamplesInGroup;
+  arma::mat AltCountsInGroup;
+  arma::mat AltFreqInGroup;
 
+  if(g_ifOutGroup){
+    nSamplesInGroup.resize(q, g_nGroup);
+    AltCountsInGroup.resize(q, g_nGroup);
+    AltFreqInGroup.resize(q, g_nGroup);
+  }
+  
   // std::vector<std::string> AltFreqInGroupVec(q);
   // std::vector<std::string> AltCountsInGroupVec(q);
 
@@ -184,6 +240,25 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
                                           indexForNonZero);
     
     int n = GVec.size();
+    
+    // std::cout << "test1.1" << std::endl;
+    
+    if(g_ifOutGroup){
+      arma::vec nSamplesInGroupVec(g_nGroup);
+      arma::vec AltCountsInGroupVec(g_nGroup);
+      arma::vec AltFreqInGroupVec(g_nGroup);
+      
+      // std::cout << "test1.2" << std::endl;
+      // std::cout << "g_nGroup:\t" << g_nGroup << std::endl;
+      
+      updateGroupInfo(GVec, indexForMissing, nSamplesInGroupVec, AltCountsInGroupVec, AltFreqInGroupVec);
+      
+      // std::cout << "test1.3" << std::endl;
+      
+      nSamplesInGroup.row(i) = nSamplesInGroupVec.t();
+      AltCountsInGroup.row(i) = AltCountsInGroupVec.t();
+      AltFreqInGroup.row(i) = AltFreqInGroupVec.t();
+    }
     
     // e.g. 21:1000234:A:T
     std::string info = chr+":"+std::to_string(pd)+":"+ref+":"+alt;
@@ -227,7 +302,10 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
                                           Rcpp::Named("pvalVec") = pvalVec,
                                           Rcpp::Named("beta") = BetaVec,
                                           Rcpp::Named("seBeta") = seBetaVec,
-                                          Rcpp::Named("zScore") = zScoreVec);
+                                          Rcpp::Named("zScore") = zScoreVec,
+                                          Rcpp::Named("nSamplesInGroup") = nSamplesInGroup,
+                                          Rcpp::Named("AltCountsInGroup") = AltCountsInGroup,
+                                          Rcpp::Named("AltFreqInGroup") = AltFreqInGroup);
   
   return OutList;  
 }
