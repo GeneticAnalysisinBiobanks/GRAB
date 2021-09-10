@@ -6,9 +6,9 @@ Options in effect:
 
 Hostname: mendel
 Working directory: /net/snowwhite/home/wenjianb/R/x86_64-pc-linux-gnu-library/4.0/GRAB/extdata
-Start time: Tue Sep  7 04:41:03 2021
+Start time: Fri Sep 10 02:52:10 2021
 
-Random number seed: 1631004063
+Random number seed: 1631256730
 257569 MiB RAM detected; reserving 128784 MiB for main workspace.
 Allocated 54330 MiB successfully, after larger attempt(s) failed.
 Using up to 88 threads (change this with --threads).
@@ -20,4 +20,4 @@ reconstruct them. Consider rerunning with a suitable --export id-delim= value.
 Writing simuBGEN.bgen ... done.
 Writing simuBGEN.sample ... done.
 
-End time: Tue Sep  7 04:41:03 2021
+End time: Fri Sep 10 02:52:10 2021
