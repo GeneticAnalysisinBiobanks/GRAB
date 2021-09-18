@@ -8,10 +8,11 @@
 #' @param GenoFileIndex additional index files corresponding to the \code{GenoFile}. If \code{NULL} (default), the prefix is the same as GenoFile. Check \code{\link{GRAB.ReadGeno}} for more details.
 #' @param OutputFile a character of output file to save the analysis results. 
 #' @param OutputFileIndex a character of output index file to record the end point. If the program ends unexpectedly, the end point can help \code{GRAB} package understand where to restart the analysis. If \code{NULL} (default), \code{OutputFileIndex = paste0(OutputFile, ".index")}. 
-#' @param RegionFile a character of region file to specify region-marker mapping with annotation information. Column 1: region ID, Column 2: marker ID, Columns 3-n annotation (non-negative) similar as in STAAR. The header is required and the first two should be "REGION" and "MARKER".
+#' @param RegionFile a character of region file to specify region-marker mapping with annotation information. Columns are separated by 'tab'. Column 1: region ID, Column 2: marker ID, Columns 3-n annotation (non-negative) similar as in STAAR. The header is required and the first two should be "REGION" and "MARKER".
 #' @param RegionAnnoHeader a character vector of annotation in analysis. Optional, if not specified, all annotation columns are used in analysis. 
-#' @param control a list of parameters for controlling function \code{GRAB.Region}, more details can be seen in \code{Details} section.
 #' @param SparseGRMFile a character of sparseGRM file. An example is \code{system.file("SparseGRM","SparseGRM.txt",package="GRAB")}.
+#' @param MaxMAFVec a numeric vector of max MAF cutoff to include markers for region-level analysis. Default setting is \code{c(0.05, 0.01, 0.005)}.
+#' @param control a list of parameters for controlling function \code{GRAB.Region}, more details can be seen in \code{Details} section.
 #' @details 
 #' \code{GRAB} package supports \code{SAIGE}, \code{POLMM}, and \code{SPACox} methods. 
 #' Detailed information about the analysis methods is given in the \code{Details} section of \code{\link{GRAB.NullModel}}. 
@@ -29,14 +30,13 @@
 #'   \item \code{omp_num_threads}: (To be added later) a numeric value (default: value from data.table::getDTthreads()) to specify the number of threads in OpenMP for parallel computation.
 #'   \item \code{ImputeMethod}: a character, "mean", "bestguess" (default), or "drop" (to be added later). Please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
 #'   \item \code{MissingRateCutoff}: a numeric value *(default=0.15)*. Markers with missing rate > this value will be excluded from analysis.  
-#'   \item \code{MaxMAFCutoff}: a numeric value *(default=0.01)*. Markers with MAF > this value will be excluded from analysis.  
-#'   \item \code{MinMACCutoff}: a numeric value *(default=10)*. Markers with MAC < this value will be treated as Ultra-Rare Variants (URV) and collapsed as one value.  
-#'   \item \code{nRegionsEachChunk}: number of regions *(default=10)* in one chunk to output.
+#'   \item \code{MinMACCutoff}: a numeric value *(default=5)*. Markers with MAC < this value will be treated as Ultra-Rare Variants (URV) and collapsed as one value.  
+#'   \item \code{nRegionsEachChunk}: number of regions *(default=1)* in one chunk to output.
 #'   }
 #'   The below is for kernel-based approaches including SKAT and SKAT-O. For more details, please refer to \code{\link{SKAT}}.
 #'   \itemize{
 #'   \item \code{kernel}: a type of kernel *(default="linear.weighted")*.
-#'   \item \code{weights_beta}: a numeric vector of parameters for the beta weights for the weighted kernels *(default=c(1,25))*. 
+#'   \item \code{weights_beta}: a numeric vector of parameters for the beta weights for the weighted kernels *(default=c(1, 25))*. 
 #'   If you want to use your own weights, please use the \code{control$weights} parameter. It will be ignored if \code{control$weights} parameter is not \code{NULL}. 
 #'   \item \code{weights}: a numeric vector of weights for the weighted kernels. If it is \code{NULL} (default), the beta weight with the \code{control$weights.beta} parameter is used.
 #'   \item \code{r.corr}: the rho parameter for the compound symmetric correlation structure kernels. If you give a vector value, SKAT will conduct the optimal test. 
@@ -57,9 +57,9 @@
 #' \item{Region}{Region IDs from \code{RegionFile}}
 #' \item{Anno.Type}{Annotation type from \code{RegionFile}}
 #' \item{maxMAF}{the maximal cutoff of the MAF to select low-frequency/rare variants into analysis.}
-#' \item{nSamples}{Number of samples in analysis, subjects with annotation value <= 0 will be excluded from analysis.}
-#' \item{nMarkers}{Number of markers whose MAF < \code{control$MaxMAFCutoff} and MAC > \code{control$MinMACCutoff}.}
-#' \item{nMarkersURV}{Number of Ultra-Rare Variants (URV) whose MAC < \code{control$MinMACCutoff}.}
+#' \item{nSamples}{Number of samples in analysis.}
+#' \item{nMarkers}{Number of markers whose MAF < \code{control$MaxMAFCutoff} and MAC > \code{control$MinMACCutoff}. Markers with annotation value <= 0 will be excluded from analysis.}
+#' \item{nMarkersURV}{Number of Ultra-Rare Variants (URV) whose MAC < \code{control$MinMACCutoff}. Markers with annotation value <= 0 will be excluded from analysis.}
 #' \item{pval.SKATO}{p-values based on SKAT-O method}
 #' \item{pval.SKAT}{p-values based on SKAT method}
 #' \item{pval.Burden}{p-values based on Burden test}
@@ -69,16 +69,21 @@
 #' class(objNull)    # "POLMM_NULL_Model", that indicates an object from POLMM method.
 #' 
 #' OutputDir = system.file("results", package = "GRAB")
-#' OutputFile = paste0(OutputDir, "/simuOUTPUT.txt")
-#' GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
+#' OutputFile = paste0(OutputDir, "/simuRegionOutput.txt")
+#' GenoFile = system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
+#' RegionFile = system.file("extdata", "simuRegion.txt", package = "GRAB")
+#' SparseGRMFile = system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
 #' 
 #' ## make sure the output files does not exist at first
 #' file.remove(OutputFile)
+#' file.remove(paste0(OutputFile, ".markerInfo"))
 #' file.remove(paste0(OutputFile, ".index"))
 #' 
-#' GRAB.Marker(objNull,
+#' GRAB.Region(objNull, 
 #'             GenoFile = GenoFile,
-#'             OutputFile = OutputFile)
+#'             OutputFile = OutputFile,
+#'             RegionFile = RegionFile,
+#'             SparseGRMFile = SparseGRMFile)
 #'             
 #' data.table::fread(OutputFile)
 #' 
@@ -86,11 +91,16 @@
 #' ## We do not recommend adding too many columns for all markers
 #' 
 #' file.remove(OutputFile)
+#' file.remove(paste0(OutputFile, ".markerInfo"))
 #' file.remove(paste0(OutputFile, ".index"))
-#' GRAB.Marker(objNull,
+#' GRAB.Region(objNull, 
 #'             GenoFile = GenoFile,
 #'             OutputFile = OutputFile,
+#'             RegionFile = RegionFile,
+#'             RegionAnnoHeader = c("ANNO1", "ANNO2"),
+#'             SparseGRMFile = SparseGRMFile,
 #'             control = list(outputColumns = c("beta", "seBeta", "zScore","nSamplesInGroup","AltCountsInGroup","AltFreqInGroup")))
+#'             
 #' data.table::fread(OutputFile)
 #'     
 #' @export
@@ -104,49 +114,55 @@ GRAB.Region = function(objNull,
                        RegionFile,              # column 1: marker Set ID, column 2: SNP ID, columns 3-n: Annotations similar as in STAAR
                        RegionAnnoHeader = NULL,
                        SparseGRMFile = NULL,
+                       MaxMAFVec = c(0.05, 0.01, 0.005),
                        control = NULL)
 {
-  NullModelClass = checkObjNull(objNull);  # this function is in "Util.R"
+  NullModelClass = checkObjNull(objNull);  # Check "Util.R"
   
   if(is.null(OutputFileIndex)) 
     OutputFileIndex = paste0(OutputFile, ".index")
   
-  outIndex = checkOutputFile(OutputFile, OutputFileIndex, "Region", 1) # this function is in 'Util.R'
+  outList = checkOutputFile(OutputFile, OutputFileIndex, "Region", 1) # Check 'Util.R'
   
-  ## check the setting of control, if not specified, the default setting will be used
+  indexChunk = outList$indexChunk
+  Start = outList$Start
+  End = outList$End
+  
+  if(End)
+  {
+    message = paste0("The analysis has been completed in earlier analysis. Results are saved in '", OutputFile, "'. ",
+                     "If you want to change parameters and restart the analysis, please use another 'OutputFile'.")
+    return(message)
+  }
+  
+  ## Check "control.R": if the setting of control is not specified, the default setting will be used
   control = checkControl.Region(control, NullModelClass)
+  
+  MaxMAF = max(MaxMAFVec)
+  if(MaxMAF > 0.05) 
+    stop("Maximal value of 'MaxMAFVec' should be <= 0.05.")
+  control$max_maf_region = MaxMAF
   
   subjData = as.character(objNull$subjData);
   n = length(subjData)
   
   Group = makeGroup(objNull$yVec)
-  if(any(c("AltFreqInGroup", "AltCountsInGroup") %in% control$outputColumns)){
-    ifOutGroup = TRUE
-  }else{
-    ifOutGroup = FALSE
-  }
+  ifOutGroup = any(c("AltFreqInGroup", "AltCountsInGroup") %in% control$outputColumns)
   
-  ## set up an object for genotype
-  objGeno = setGenoInput(GenoFile, GenoFileIndex, subjData, control)  # this function is in 'Geno.R'
+  ## set up an object for genotype data
+  objGeno = setGenoInput(GenoFile, GenoFileIndex, subjData, control)  # Check 'Geno.R'
   genoType = objGeno$genoType
   markerInfo = objGeno$markerInfo
   
-  ## annotation
+  ## annotation in region
   RegionList = getRegionList(RegionFile, RegionAnnoHeader, markerInfo)
   nRegions = length(RegionList)
   
-  if(outIndex == nRegions + 1)
-  {
-    message = paste0("The analysis has been completed in earlier analysis. Results can be seen in '", OutputFile, "'.",
-                     "If you want to change parameters and restart the analysis, please use another 'OutputFile'.")
-    return(message)
-  }
-    
   P1Mat = matrix(0, control$max_markers_region, n);
   P2Mat = matrix(0, n, control$max_markers_region);
   
   chrom1 = "FakeCHR";
-  for(i in outIndex:nRegions){
+  for(i in (indexChunk+1):nRegions){
     
     region = RegionList[[i]]
     regionName = names(RegionList)[i]
@@ -167,60 +183,24 @@ GRAB.Region = function(objNull,
     # main function to calculate summary statistics for region-based analysis 
     obj.mainRegion = mainRegion(NullModelClass, genoType, genoIndex, OutputFile, n, P1Mat, P2Mat)
     
-    if(length(obj.mainRegion) == 0){
-      writeOutputFile(list(), i, 
-                      list(), 
-                      OutputFileIndex, "Region", 1)
-      next;
+    ### 1. Record marker-level basic information
+    
+    if(length(obj.mainRegion$markerVec) == 0){
+      info.Marker.Region = NULL;
+    }else{
+      info.Marker.Region = data.frame(Region = regionName,
+                                      Marker = obj.mainRegion$markerVec,
+                                      IsUltraRareVariants = 0,
+                                      Info = obj.mainRegion$infoVec,
+                                      AltFreq = obj.mainRegion$altFreqVec,
+                                      MAC = obj.mainRegion$MACVec,
+                                      MAF = obj.mainRegion$MAFVec,
+                                      MissingRate = obj.mainRegion$missingRateVec,
+                                      Beta = obj.mainRegion$BetaVec,
+                                      seBeta = obj.mainRegion$seBetaVec,
+                                      pval0 = obj.mainRegion$pval0Vec,
+                                      pval1 = obj.mainRegion$pval1Vec)
     }
-    
-    ###
-    # MAF = pmin(obj.mainRegion$altFreqVec, 1-obj.mainRegion$altFreqVec)
-    MAF = pmin(obj.mainRegion$MAFVec)
-    weights = dbeta(MAF, control$weights.beta[1], control$weights.beta[2])
-    
-    StatVec = obj.mainRegion$StatVec
-    
-    VarSVec = diag(obj.mainRegion$VarMat)
-    adjPVec = obj.mainRegion$adjPVec;
-    adjVarSVec = StatVec^2 / qchisq(adjPVec, df = 1, lower.tail = F)
-    
-    r0 = adjVarSVec / VarSVec 
-    r0 = pmax(r0, 1)
-    
-    # info.Region = data.frame(Region = regionName,
-    #                          nMarker = length(obj.mainRegion$markerVec),
-    #                          Markers = paste0(obj.mainRegion$markerVec, collapse = ","),
-    #                          Info = paste0(obj.mainRegion$infoVec, collapse = ","),
-    #                          AltFreq = paste0(obj.mainRegion$altFreqVec, collapse = ","),
-    #                          MissingRate = paste0(obj.mainRegion$missingRateVec, collapse = ","),
-    #                          # Stat = paste0(obj.mainRegion$StatVec, collapse = ","),
-    #                          Beta = paste0(obj.mainRegion$BetaVec, collapse = ","),
-    #                          seBeta = paste0(obj.mainRegion$seBetaVec, collapse = ","),
-    #                          pval0 = paste0(obj.mainRegion$pval0Vec, collapse = ","),
-    #                          pval1 = paste0(obj.mainRegion$pval1Vec, collapse = ","))
-    
-    nMarker = length(obj.mainRegion$markerVec)
-    nMarkerURV = length(obj.mainRegion$markerURVVec)
-    
-    if(nMarker <= control$min_nMarker){
-      writeOutputFile(list(), i, 
-                      list(), 
-                      OutputFileIndex, "Region", 1)
-      next;
-    }
-    
-    info.Marker.Region = data.frame(Region = regionName,
-                                    Marker = obj.mainRegion$markerVec,
-                                    IsUltraRareVariants = 0,
-                                    Info = obj.mainRegion$infoVec,
-                                    AltFreq = obj.mainRegion$altFreqVec,
-                                    MAC = obj.mainRegion$MACVec,
-                                    MissingRate = obj.mainRegion$missingRateVec,
-                                    Beta = obj.mainRegion$BetaVec,
-                                    seBeta = obj.mainRegion$seBetaVec,
-                                    pval0 = obj.mainRegion$pval0Vec,
-                                    pval1 = obj.mainRegion$pval1Vec)
     
     if(length(obj.mainRegion$markerURVVec) == 0){
       info.MarkerURV.Region = NULL;
@@ -231,106 +211,134 @@ GRAB.Region = function(objNull,
                                          Info = obj.mainRegion$infoURVVec,
                                          AltFreq = obj.mainRegion$altFreqURVVec,
                                          MAC = obj.mainRegion$MACURVVec,
+                                         MAF = obj.mainRegion$MAFURVVec,
                                          MissingRate = obj.mainRegion$missingRateURVVec,
                                          Beta = NA,
                                          seBeta = NA,
                                          pval0 = NA,
                                          pval1 = NA)
     }
-
     
-    info.Region = rbind.data.frame(info.Marker.Region, info.MarkerURV.Region)
+    ### 2. Record marker-level annotation information
     
     posMarker = match(obj.mainRegion$markerVec, SNP)
     posMarkerURV = match(obj.mainRegion$markerURVVec, SNP)
     
+    regionData = regionMat[posMarker, ,drop=F]
+    regionDataURV = regionMat[posMarkerURV, ,drop=F]
+    genoIndexURV = genoIndex[posMarkerURV]
     
-    # print("length(posMarker)/length(posMarkerURV)/length(weights)/length(r0):")
-    # print(c(length(posMarker), length(posMarkerURV), length(weights), length(r0)))
-    # 
-    # print("dim(obj.mainRegion$VarMat):")
-    # print(dim(obj.mainRegion$VarMat))
+    # annotation value <= 0 will be excluded from further analysis
+    regionData[regionData <= 0] = 0
+    regionDataURV[regionDataURV <= 0] = 0
     
-    # print(obj.mainRegion$markerVec)
-    # print(SNP)
-    # print(posMarker)
+    info.Marker.Region = cbind.data.frame(info.Marker.Region, regionData)
+    info.MarkerURV.Region = cbind.data.frame(info.MarkerURV.Region, regionDataURV)
+    
+    info.Region = rbind.data.frame(info.Marker.Region, info.MarkerURV.Region)
+    
+    ### 3. Adjust for saddlepoint approximation
+    StatVec = obj.mainRegion$StatVec
+    VarSVec = diag(obj.mainRegion$VarMat)
+    adjPVec = obj.mainRegion$pval1Vec;
+    adjVarSVec = StatVec^2 / qchisq(adjPVec, df = 1, lower.tail = F)
+    
+    r0 = adjVarSVec / VarSVec 
+    r0 = pmax(r0, 1)
+    weights = dbeta(obj.mainRegion$MAFVec, 
+                    control$weights.beta[1], control$weights.beta[2])
+    weightsURV = dbeta(obj.mainRegion$MAFURVVec, 
+                       control$weights.beta[1], control$weights.beta[2])
     
     pval.Region = data.frame()
-    for(j in 1:ncol(regionMat))
-    {
-      AnnoName = colnames(regionMat)[j]
-      
-      regionDataTemp1 = regionMat[posMarker, j]
-      regionDataTemp2 = regionMat[posMarkerURV, j]
-      regionData = c(regionDataTemp1, mean(regionDataTemp2))
-      
-      # print("length(regionDataTemp1)/length(regionDataTemp2)/length(regionData):")
-      # print(c(length(regionDataTemp1), length(regionDataTemp2), length(regionData)))
-
-      AnnoWeights = weights * regionData 
-      
-      # print(AnnoWeights)
+    
+    for(j in 1:ncol(regionData)){  # cycle for annotation
+      # j = 2
+      AnnoName = colnames(regionData)[j]
+      AnnoWeights = weights * regionData[,j]
+      AnnoWeightsURV = weightsURV * regionDataURV[,j]
       
       wr0 = sqrt(r0) * AnnoWeights
-      
-      # print("length(wr0)/length(AnnoWeights):")
-      # print(c(length(wr0), length(AnnoWeights)))
-      
       wStatVec = StatVec * AnnoWeights
       wadjVarSMat = t(obj.mainRegion$VarMat * wr0) * wr0
       
-      # print("length(wStatVec):")
-      # print(length(wStatVec))
-      # 
-      # print("dim(wadjVarSMat):")
-      # print(dim(wadjVarSMat))
+      tempPosURV = which(regionDataURV[,j] > 0)
+      nMarkersURV = length(tempPosURV)
       
-      # print(r0)
-      # print(StatVec)
-      # print(wStatVec)
-      # print(wadjVarSMat)
-      
-      out_SKAT_List = try(SKAT:::Met_SKAT_Get_Pvalue(Score = wStatVec, 
-                                                     Phi = wadjVarSMat,
-                                                     r.corr = control$r.corr, 
-                                                     method = "optimal.adj", 
-                                                     Score.Resampling = NULL),
-                          silent = TRUE)
-      
-      if(class(out_SKAT_List) == "try-error"){
-        Pvalue = c(NA, NA, NA)
-        error.code = 2
-      }else if(!any(c(0,1) %in% out_SKAT_List$param$rho)){
-        Pvalue = c(NA, NA, NA)
-        error.code = 3
+      if(length(tempPosURV) <= 3){
+        wStatURV = wadjVarSURV = NULL
       }else{
-        pos0 = which(out_SKAT_List$param$rho == 0)
-        pos1 = which(out_SKAT_List$param$rho == 1)
-        Pvalue = c(out_SKAT_List$p.value,                  # SKAT-O
-                   out_SKAT_List$param$p.val.each[pos0],   # SKAT
-                   out_SKAT_List$param$p.val.each[pos1])   # Burden Test
-        error.code = 0
+        obj.mainRegionURV = mainRegionURV(NullModelClass, genoType, genoIndexURV[tempPosURV], n)
+        
+        StatURV = obj.mainRegionURV$Stat;
+        adjPURV = obj.mainRegionURV$pval1;
+        adjVarSURV = StatURV^2 / qchisq(adjPURV, df = 1, lower.tail = F)
+        mAnnoWeightsURV = mean(AnnoWeightsURV[tempPosURV])
+        wStatURV = StatURV * mAnnoWeightsURV
+        wadjVarSURV = adjVarSURV * mAnnoWeightsURV^2
       }
       
-      pval.Region = rbind.data.frame(pval.Region,
-                                     data.frame(Region = regionName,
-                                                nMarkers = nMarker,
-                                                nMarkersURV = nMarkerURV,
-                                                Anno.Type = AnnoName,
-                                                pval.SKATO = Pvalue[1], 
-                                                pval.SKAT = Pvalue[2],
-                                                pval.Burden = Pvalue[3]))
+      for(tempMaxMAF in MaxMAFVec){  # cycle for max MAF cutoff
+        # tempMaxMAF = MaxMAFVec[1]
+        tempPos = which(regionData[,j] > 0 & obj.mainRegion$MAFVec <= tempMaxMAF)
+        nMarkers = length(tempPos)
+        
+        if(nMarkers < control$min_nMarker){
+          pval.Region = rbind.data.frame(pval.Region,
+                                         data.frame(Region = regionName,
+                                                    nMarkers = nMarkers,
+                                                    nMarkersURV = nMarkersURV,
+                                                    Anno.Type = AnnoName,
+                                                    MaxMAF.Cutoff = tempMaxMAF,
+                                                    pval.SKATO = NA, 
+                                                    pval.SKAT = NA,
+                                                    pval.Burden = NA))
+        }else{
+          out_SKAT_List = try(SKAT:::Met_SKAT_Get_Pvalue(Score = c(wStatVec[tempPos], wStatURV), 
+                                                         Phi = as.matrix(Matrix::bdiag(wadjVarSMat[tempPos, tempPos], wadjVarSURV)),  # ignore the correlation between URV and non-URV
+                                                         r.corr = control$r.corr, 
+                                                         method = "optimal.adj", 
+                                                         Score.Resampling = NULL),
+                              silent = TRUE)
+          
+          if(class(out_SKAT_List) == "try-error"){
+            Pvalue = c(NA, NA, NA)
+            error.code = 2
+          }else if(!any(c(0,1) %in% out_SKAT_List$param$rho)){
+            Pvalue = c(NA, NA, NA)
+            error.code = 3
+          }else{
+            pos0 = which(out_SKAT_List$param$rho == 0)
+            pos1 = which(out_SKAT_List$param$rho == 1)
+            Pvalue = c(out_SKAT_List$p.value,                  # SKAT-O
+                       out_SKAT_List$param$p.val.each[pos0],   # SKAT
+                       out_SKAT_List$param$p.val.each[pos1])   # Burden Test
+            error.code = 0
+          }
+          
+          pval.Region = rbind.data.frame(pval.Region,
+                                         data.frame(Region = regionName,
+                                                    nMarkers = nMarkers,
+                                                    nMarkersURV = nMarkersURV,
+                                                    Anno.Type = AnnoName,
+                                                    MaxMAF.Cutoff = tempMaxMAF,
+                                                    pval.SKATO = Pvalue[1], 
+                                                    pval.SKAT = Pvalue[2],
+                                                    pval.Burden = Pvalue[3])) 
+        }
+      }
     }
     
-    # output.Region = cbind.data.frame(info.Region, pval.Region)
-    
-    # Util.R: write summary statistics to output file.
-    # writeOutputFile(output.Region, i, OutputFile, OutputFileIndex, "Region", 1)
-    writeOutputFile(list(pval.Region, info.Region), i, 
-                    list(OutputFile, paste0(OutputFile, ".markerInfo")), 
-                    OutputFileIndex, "Region", 1)
+    writeOutputFile(Output = list(pval.Region, info.Region), 
+                    OutputFile = list(OutputFile, paste0(OutputFile, ".markerInfo")), 
+                    OutputFileIndex = OutputFileIndex,
+                    AnalysisType = "Region",
+                    nEachChunk = 1,
+                    indexChunk = i,
+                    Start = (i==1),
+                    End = (i==nRegions))
   }
-  
+      
   message = paste0("Analysis done! The results have been saved to '", OutputFile,"' and '",
                    paste0(OutputFile, ".markerInfo"),"'.")
   return(message)
@@ -379,6 +387,20 @@ mainRegion = function(NullModelClass,
     obj.mainRegion = mainRegionInCPP("SPACox", genoType, genoIndex, OutputFile, n, P1Mat, P2Mat)
   
   return(obj.mainRegion)
+}
+
+mainRegionURV = function(NullModelClass,
+                         genoType,
+                         genoIndex,
+                         n)
+{
+  if(NullModelClass == "POLMM_NULL_Model")
+    obj.mainRegionURV = mainRegionURVInCPP("POLMM", genoType, genoIndex, n)
+  
+  if(NullModelClass == "SPACox_NULL_Model")
+    obj.mainRegionURV = mainRegionURVInCPP("SPACox", genoType, genoIndex, n)
+  
+  return(obj.mainRegionURV)
 }
 
 # Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
@@ -547,12 +569,12 @@ getRegionList = function(RegionFile,
                          RegionAnnoHeader,
                          markerInfo)
 {
-  print(paste0("Start extracting marker-level information from 'RegionFile' of ", RegionFile, "."))
+  cat("Start extracting marker-level information from 'RegionFile' of", RegionFile, "....\n")
   
   if(!file.exists(RegionFile))
-    stop(paste("Cannot find 'RegionFile' in", RegionFile))
+    stop("Cannot find 'RegionFile' in ", RegionFile)
   
-  RegionData = data.table::fread(RegionFile, header = T, stringsAsFactors = F);
+  RegionData = data.table::fread(RegionFile, header = T, stringsAsFactors = F, sep = "\t");
   RegionData = as.data.frame(RegionData)
   colnames(RegionData)[1:2] = toupper(colnames(RegionData)[1:2])
   
@@ -566,7 +588,8 @@ getRegionList = function(RegionFile,
   
   if(length(posNA) != 0){
     print(head(RegionData[posNA,1:2]))
-    stop(paste0("Total ",length(posNA)," markers in 'RegionFile' are not in 'GenoFile'."))
+    stop("Total ",length(posNA)," markers in 'RegionFile' are not in 'GenoFile'. 
+         Please remove these markers before region-level analysis.")
   }
   
   HeaderInRegionData = colnames(RegionData)
@@ -589,7 +612,7 @@ getRegionList = function(RegionFile,
     SNP = RegionData$MARKER[posSNP]
     
     if(any(duplicated(SNP)))
-      stop(paste0("Please check RegionFile: in region ", r,": duplicated SNPs exist."))
+      stop("Please check RegionFile: in region ", r,": duplicated SNPs exist.")
     
     # posMarker = match(SNP, markerInfo$ID, 0)
     # if(any(posMarker == 0))
@@ -605,7 +628,7 @@ getRegionList = function(RegionFile,
     uchrom = unique(chrom)
     
     if(length(uchrom) != 1)
-      stop(paste0("In region ",r,", markers are from multiple chromosomes."))
+      stop("In region ",r,", markers are from multiple chromosomes.")
     
     RegionList[[r]] = list(SNP = SNP,
                            regionMat = regionMat,

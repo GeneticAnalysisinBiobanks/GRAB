@@ -94,6 +94,20 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// mainRegionURVInCPP
+Rcpp::List mainRegionURVInCPP(std::string t_method, std::string t_genoType, std::vector<uint32_t> t_genoIndex, unsigned int t_n);
+RcppExport SEXP _GRAB_mainRegionURVInCPP(SEXP t_methodSEXP, SEXP t_genoTypeSEXP, SEXP t_genoIndexSEXP, SEXP t_nSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type t_method(t_methodSEXP);
+    Rcpp::traits::input_parameter< std::string >::type t_genoType(t_genoTypeSEXP);
+    Rcpp::traits::input_parameter< std::vector<uint32_t> >::type t_genoIndex(t_genoIndexSEXP);
+    Rcpp::traits::input_parameter< unsigned int >::type t_n(t_nSEXP);
+    rcpp_result_gen = Rcpp::wrap(mainRegionURVInCPP(t_method, t_genoType, t_genoIndex, t_n));
+    return rcpp_result_gen;
+END_RCPP
+}
 // mainRegionInCPP
 Rcpp::List mainRegionInCPP(std::string t_method, std::string t_genoType, std::vector<uint32_t> t_genoIndex, std::string t_outputFile, unsigned int t_n, arma::mat P1Mat, arma::mat P2Mat);
 RcppExport SEXP _GRAB_mainRegionInCPP(SEXP t_methodSEXP, SEXP t_genoTypeSEXP, SEXP t_genoIndexSEXP, SEXP t_outputFileSEXP, SEXP t_nSEXP, SEXP P1MatSEXP, SEXP P2MatSEXP) {
@@ -243,6 +257,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setMarker_GlobalVarsInCPP", (DL_FUNC) &_GRAB_setMarker_GlobalVarsInCPP, 8},
     {"_GRAB_setRegion_GlobalVarsInCPP", (DL_FUNC) &_GRAB_setRegion_GlobalVarsInCPP, 9},
     {"_GRAB_mainMarkerInCPP", (DL_FUNC) &_GRAB_mainMarkerInCPP, 3},
+    {"_GRAB_mainRegionURVInCPP", (DL_FUNC) &_GRAB_mainRegionURVInCPP, 4},
     {"_GRAB_mainRegionInCPP", (DL_FUNC) &_GRAB_mainRegionInCPP, 7},
     {"_GRAB_getGenoInCPP", (DL_FUNC) &_GRAB_getGenoInCPP, 4},
     {"_GRAB_getSpGenoInCPP", (DL_FUNC) &_GRAB_getSpGenoInCPP, 4},

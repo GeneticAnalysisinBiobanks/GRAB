@@ -13,6 +13,7 @@ GRAB.Region(
   RegionFile,
   RegionAnnoHeader = NULL,
   SparseGRMFile = NULL,
+  MaxMAFVec = c(0.05, 0.01, 0.005),
   control = NULL
 )
 }
@@ -27,11 +28,13 @@ GRAB.Region(
 
 \item{OutputFileIndex}{a character of output index file to record the end point. If the program ends unexpectedly, the end point can help \code{GRAB} package understand where to restart the analysis. If \code{NULL} (default), \code{OutputFileIndex = paste0(OutputFile, ".index")}.}
 
-\item{RegionFile}{a character of region file to specify region-marker mapping with annotation information. Column 1: region ID, Column 2: marker ID, Columns 3-n annotation (non-negative) similar as in STAAR. The header is required and the first two should be "REGION" and "MARKER".}
+\item{RegionFile}{a character of region file to specify region-marker mapping with annotation information. Columns are separated by 'tab'. Column 1: region ID, Column 2: marker ID, Columns 3-n annotation (non-negative) similar as in STAAR. The header is required and the first two should be "REGION" and "MARKER".}
 
 \item{RegionAnnoHeader}{a character vector of annotation in analysis. Optional, if not specified, all annotation columns are used in analysis.}
 
 \item{SparseGRMFile}{a character of sparseGRM file. An example is \code{system.file("SparseGRM","SparseGRM.txt",package="GRAB")}.}
+
+\item{MaxMAFVec}{a numeric vector of max MAF cutoff to include markers for region-level analysis. Default setting is \code{c(0.01, 0.001)}.}
 
 \item{control}{a list of parameters for controlling function \code{GRAB.Region}, more details can be seen in \code{Details} section.}
 }
@@ -42,9 +45,9 @@ The file of \code{OutputMarkerFile} is the same as the results of \code{\link{GR
 \item{Region}{Region IDs from \code{RegionFile}}
 \item{Anno.Type}{Annotation type from \code{RegionFile}}
 \item{maxMAF}{the maximal cutoff of the MAF to select low-frequency/rare variants into analysis.}
-\item{nSamples}{Number of samples in analysis, subjects with annotation value <= 0 will be excluded from analysis.}
-\item{nMarkers}{Number of markers whose MAF < \code{control$MaxMAFCutoff} and MAC > \code{control$MinMACCutoff}.}
-\item{nMarkersURV}{Number of Ultra-Rare Variants (URV) whose MAC < \code{control$MinMACCutoff}.}
+\item{nSamples}{Number of samples in analysis.}
+\item{nMarkers}{Number of markers whose MAF < \code{control$MaxMAFCutoff} and MAC > \code{control$MinMACCutoff}. Markers with annotation value <= 0 will be excluded from analysis.}
+\item{nMarkersURV}{Number of Ultra-Rare Variants (URV) whose MAC < \code{control$MinMACCutoff}. Markers with annotation value <= 0 will be excluded from analysis.}
 \item{pval.SKATO}{p-values based on SKAT-O method}
 \item{pval.SKAT}{p-values based on SKAT method}
 \item{pval.Burden}{p-values based on Burden test}
@@ -70,9 +73,8 @@ The below is to customize the quality-control (QC) process.
 \item \code{omp_num_threads}: (To be added later) a numeric value (default: value from data.table::getDTthreads()) to specify the number of threads in OpenMP for parallel computation.
 \item \code{ImputeMethod}: a character, "mean", "bestguess" (default), or "drop" (to be added later). Please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
 \item \code{MissingRateCutoff}: a numeric value \emph{(default=0.15)}. Markers with missing rate > this value will be excluded from analysis.
-\item \code{MaxMAFCutoff}: a numeric value \emph{(default=0.01)}. Markers with MAF > this value will be excluded from analysis.
-\item \code{MinMACCutoff}: a numeric value \emph{(default=10)}. Markers with MAC < this value will be treated as Ultra-Rare Variants (URV) and collapsed as one value.
-\item \code{nRegionsEachChunk}: number of regions \emph{(default=10)} in one chunk to output.
+\item \code{MinMACCutoff}: a numeric value \emph{(default=5)}. Markers with MAC < this value will be treated as Ultra-Rare Variants (URV) and collapsed as one value.
+\item \code{nRegionsEachChunk}: number of regions \emph{(default=1)} in one chunk to output.
 }
 The below is for kernel-based approaches including SKAT and SKAT-O. For more details, please refer to \code{\link{SKAT}}.
 \itemize{
@@ -100,16 +102,21 @@ load(objNullFile)
 class(objNull)    # "POLMM_NULL_Model", that indicates an object from POLMM method.
 
 OutputDir = system.file("results", package = "GRAB")
-OutputFile = paste0(OutputDir, "/simuOUTPUT.txt")
-GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
+OutputFile = paste0(OutputDir, "/simuRegionOutput.txt")
+GenoFile = system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
+RegionFile = system.file("extdata", "simuRegion.txt", package = "GRAB")
+SparseGRMFile = system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
 
 ## make sure the output files does not exist at first
 file.remove(OutputFile)
+file.remove(paste0(OutputFile, ".markerInfo"))
 file.remove(paste0(OutputFile, ".index"))
 
-GRAB.Marker(objNull,
+GRAB.Region(objNull, 
             GenoFile = GenoFile,
-            OutputFile = OutputFile)
+            OutputFile = OutputFile,
+            RegionFile = RegionFile,
+            SparseGRMFile = SparseGRMFile)
             
 data.table::fread(OutputFile)
 
@@ -117,11 +124,16 @@ data.table::fread(OutputFile)
 ## We do not recommend adding too many columns for all markers
 
 file.remove(OutputFile)
+file.remove(paste0(OutputFile, ".markerInfo"))
 file.remove(paste0(OutputFile, ".index"))
-GRAB.Marker(objNull,
+GRAB.Region(objNull, 
             GenoFile = GenoFile,
             OutputFile = OutputFile,
+            RegionFile = RegionFile,
+            RegionAnnoHeader = c("ANNO1", "ANNO2"),
+            SparseGRMFile = SparseGRMFile,
             control = list(outputColumns = c("beta", "seBeta", "zScore","nSamplesInGroup","AltCountsInGroup","AltFreqInGroup")))
+            
 data.table::fread(OutputFile)
     
 }

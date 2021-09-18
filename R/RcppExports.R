@@ -25,6 +25,10 @@ mainMarkerInCPP <- function(t_method, t_genoType, t_genoIndex) {
     .Call(`_GRAB_mainMarkerInCPP`, t_method, t_genoType, t_genoIndex)
 }
 
+mainRegionURVInCPP <- function(t_method, t_genoType, t_genoIndex, t_n) {
+    .Call(`_GRAB_mainRegionURVInCPP`, t_method, t_genoType, t_genoIndex, t_n)
+}
+
 mainRegionInCPP <- function(t_method, t_genoType, t_genoIndex, t_outputFile, t_n, P1Mat, P2Mat) {
     .Call(`_GRAB_mainRegionInCPP`, t_method, t_genoType, t_genoIndex, t_outputFile, t_n, P1Mat, P2Mat)
 }

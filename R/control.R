@@ -113,8 +113,7 @@ checkControl.Region = function(control, NullModelClass)
   # uniform default control setting for region-level analysis
   default.region.control = list(impute_method = "minor",  
                                 missing_cutoff = 0.15,
-                                max_maf_region = 0.01,
-                                min_mac_region = 10,
+                                min_mac_region = 5,
                                 max_markers_region = 100,
                                 r.corr = c(0, 0.1^2, 0.2^2, 0.3^2, 0.4^2, 0.5^2, 0.5, 1),
                                 weights.beta = c(1, 25),
@@ -129,9 +128,6 @@ checkControl.Region = function(control, NullModelClass)
   
   if(!is.numeric(control$missing_cutoff) | control$missing_cutoff < 0 | control$missing_cutoff > 0.5)
     stop("control$missing_cutoff should be a numeric value ranging from 0 to 0.5.")
-  
-  if(!is.numeric(control$max_maf_region) | control$max_maf_region < 0 | control$max_maf_region > 0.3)
-    stop("control$max_maf_region should be a numeric value ranging from 0 to 0.3.")
   
   if(!is.numeric(control$min_mac_region) | control$min_mac_region < 0)
     stop("control$min_mac_region should be a numeric value >= 0.")
@@ -150,7 +146,7 @@ checkControl.Region = function(control, NullModelClass)
   
   # specific default control setting for different approaches
   if(NullModelClass == "POLMM_NULL_Model")
-    control = checkControl.Region.POLMM(control)    # This function is in 'POLMM.R'
+    control = checkControl.Region.POLMM(control)    # Check 'POLMM.R'
   
   if(NullModelClass == "SPACox_NULL_Model")
     control = checkControl.Region.SPACox(control)

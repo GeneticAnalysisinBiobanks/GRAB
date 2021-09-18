@@ -47,71 +47,104 @@ checkObjNull = function(objNull)
   return(NullModelClass)
 }
 
-
 checkOutputFile = function(OutputFile, 
                            OutputFileIndex, 
                            AnalysisType,      ## "Marker" or "Region"
                            nEachChunk)
 {
+  ## The following messages are for 'OutputFileIndex'
+  message1 = "This is the output index file for GRAB package to record the end point in case users want to restart the analysis. Please do not modify this file."
+  message2 = paste("This is a", AnalysisType, "level analysis.")
+  message3 = paste("nEachChunk =", nEachChunk)
+  # message4 = paste("Have completed the analysis of chunk", indexChunk)
+  message5 = "Have completed the analyses of all chunks."
+  
+  ## an R list of output
   if(missing(OutputFile))
     stop("Argument of 'OutputFile' is required.")
   
   if(file.exists(OutputFile)){
     if(!file.exists(OutputFileIndex)){
-      stop(paste0("'OutputFile' of '", OutputFile, 
-                  "' has existed. Please use another 'OutputFile' or remove the existing one."))
+      stop(paste0("'OutputFile' of '", OutputFile,"' has existed. 
+                  Please use another 'OutputFile' or remove the existing one."))
     }
     else{
-      outIndexData = read.table(OutputFileIndex, header = F)
-    
+      outIndexData = read.table(OutputFileIndex, header = F, sep="\t")
       
-      if(outIndexData[1,1] != "GRAB.outIndex" | 
-         outIndexData[2,1] != "Please_do_not_modify_this_file" | 
-         outIndexData[3,1] != AnalysisType | 
-         outIndexData[4,1] != paste0("nEachChunk=",nEachChunk))
-        stop(paste0("'OutputFileIndex' of '", OutputFileIndex,
-                    "' is not as expected. Probably, it has been modified, which is not permitted. Please remove the existing file of 'OutputFileIndex'."))
+      if(outIndexData[1,1] != message1 | outIndexData[2,1] != message2 | outIndexData[3,1] != message3)
+        stop(paste0("'OutputFileIndex' of '", OutputFileIndex, "' is not as expected. 
+                    Probably, it has been modified by user, which is not permitted. 
+                    Please remove the existing files of 'OutputFile' and 'OutputFileIndex'."))
       
-      outIndex = as.numeric(outIndexData[nrow(outIndexData), 1]) + 1
-      print(paste0("Based on 'OutputFile' and 'OutputFileIndex', we restart the analysis from the ", outIndex, "-th chunk."))
+      lastMessage = outIndexData[nrow(outIndexData), 1]
+      if(lastMessage == message5){
+        End = TRUE
+        indexChunk = outIndexData[nrow(outIndexData)-1, 1];
+        indexChunk = as.numeric(gsub("Have completed the analysis of chunk ", "", indexChunk))
+        cat("Based on 'OutputFile' and 'OutputFileIndex', the analysis has been completed for the toal", indexChunk, "chunks.\n")
+      }else{
+        End = FALSE;
+        indexChunk = lastMessage;
+        indexChunk = as.numeric(gsub("Have completed the analysis of chunk ", "", indexChunk))
+        cat("Based on 'OutputFile' and 'OutputFileIndex', we restart the analysis from the", indexChunk+1, "chunk.\n")
+      }
     }
+    Start = FALSE
   }else{
-    outIndex = 1;
+    Start = TRUE;
+    End = FALSE;
+    indexChunk = 0;
   }
   
-  return(outIndex)
+  returnList = list(Start = Start, End = End, indexChunk = indexChunk)
+  return(returnList)
 }
 
 writeOutputFile = function(Output,
-                           indexChunk,
                            OutputFile,
                            OutputFileIndex,
                            AnalysisType,
-                           nEachChunk)
+                           nEachChunk,
+                           indexChunk,
+                           Start,   # TRUE or FALSE, to indicate is the 'Output' is the first one to save into 'OutputFile'
+                           End)     # TRUE or FALSE, to indicate is the 'Output' is the last one to save into 'OutputFile'
 {
+  ## The following messages are for 'OutputFileIndex'
+  message1 = "This is the output index file for GRAB package to record the end point in case users want to restart the analysis. Please do not modify this file."
+  message2 = paste("This is a", AnalysisType, "level analysis.")
+  message3 = paste("nEachChunk =", nEachChunk)
+  message4 = paste("Have completed the analysis of chunk", indexChunk)
+  message5 = "Have completed the analyses of all chunks."
+  
   n1 = length(Output)
   n2 = length(OutputFile)
+  
   if(n1 != n2)
     stop("length(Output) != length(OutputFile)")
   
   if(n1 != 0){
-    for(i in 1:n1)
-      if(file.exists(OutputFile[[i]])){
-        write.table(Output[[i]], OutputFile[[i]], quote = F, sep = "\t", append = T, col.names = F, row.names = F)
+    for(i in 1:n1){
+      if(Start){
+        write.table(Output[[i]], OutputFile[[i]], quote = F, sep = "\t", append = F, col.names = T, row.names = F)
       }else{
-        write.table(Output[[i]], OutputFile[[i]], quote = F, sep = "\t", append = F, col.names = T, row.names = F) 
+        write.table(Output[[i]], OutputFile[[i]], quote = F, sep = "\t", append = T, col.names = F, row.names = F)
       }
+    }
   }
+
+  if(Start)
+    write.table(c(message1, message2, message3), OutputFileIndex, 
+                quote = F, sep = "\t", append = F, col.names = F, row.names = F)
   
-  if(file.exists(OutputFileIndex)){
-    write.table(indexChunk, OutputFileIndex, quote = F, sep = "\t", append = T, col.names = F, row.names = F)
-  }else{
-    write.table(c("GRAB.outIndex", "Please_do_not_modify_this_file", AnalysisType, paste0("nEachChunk=",nEachChunk), 
-                  1), 
-                OutputFileIndex, quote = F, sep = "\t", append = F, col.names = F, row.names = F)
-  }
+  write.table(message4, OutputFileIndex, quote = F, sep = "\t", append = T, col.names = F, row.names = F)
+  
+  if(End)
+    write.table(message5, OutputFileIndex, quote = F, sep = "\t", append = T, col.names = F, row.names = F)
 }
 
+# This is the output index file for GRAB package. This file is to record the end point in case users want to restart the analysis. Please do not modify this file.
+# This is a region/marker level analysis.
+# The analysis has been completed.
 
 checkControl = function(control = NULL)  
 {

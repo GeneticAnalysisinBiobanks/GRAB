@@ -114,11 +114,7 @@ GRAB.Marker = function(objNull,
   subjData = as.character(objNull$subjData);
   
   Group = makeGroup(objNull$yVec)  # Check Util.R
-  if(any(c("AltFreqInGroup", "AltCountsInGroup") %in% control$outputColumns)){
-    ifOutGroup = TRUE
-  }else{
-    ifOutGroup = FALSE
-  }
+  ifOutGroup = any(c("AltFreqInGroup", "AltCountsInGroup") %in% control$outputColumns)
   
   ## set up an object for genotype
   objGeno = setGenoInput(GenoFile, GenoFileIndex, subjData, control)  # this function is in 'Geno.R'
@@ -155,25 +151,19 @@ GRAB.Marker = function(objNull,
     # main function to calculate summary statistics for markers in one chunk
     resMarker = mainMarker(NullModelClass, genoType, genoIndex, control$outputColumns)
     
-    # write summary statistics to output file
-    if(i == 1){
-      data.table::fwrite(resMarker, OutputFile, quote = F, sep = "\t", append = F, col.names = T, na="NA")
-      write.table(matrix(c("GRAB.outIndex", "Please_do_not_modify_this_file.", "Marker", 
-                           format(nMarkersEachChunk, scientific=F), 1), 
-                         ncol = 1), 
-                  OutputFileIndex, col.names = F, row.names = F, quote = F, append = F)
-    }else{
-      data.table::fwrite(resMarker, OutputFile, quote = F, sep = "\t", append = T, col.names = F, na="NA")
-      write.table(matrix(i, ncol = 1), 
-                  OutputFileIndex, col.names = F, row.names = F, quote = F, append = T)
-    }
+    writeOutputFile(Output = list(resMarker), 
+                    OutputFile = list(OutputFile), 
+                    OutputFileIndex = OutputFileIndex,
+                    AnalysisType = "Marker",
+                    nEachChunk = format(nMarkersEachChunk, scientific=F),
+                    indexChunk = i,
+                    Start = (i==1),
+                    End = (i==nRegions))
   }
   
   # information to users
   output = paste0("Analysis done! The results have been saved to '", OutputFile,"'.")
-  write.table(matrix(-1, ncol = 1), 
-              OutputFileIndex, col.names = F, row.names = F, quote = F, append = T)
-  
+
   return(output)
 }
 

@@ -226,6 +226,7 @@ void POLMMClass::getRegionPVec(arma::vec t_GVec,
 {
   arma::vec adjGVec = getadjGFast(t_GVec);
   double Stat = getStatFast(adjGVec);
+  
   arma::vec ZPZ_adjGVec = get_ZPZ_adjGVec(adjGVec);
   double VarS = as_scalar(adjGVec.t() * ZPZ_adjGVec);
   double StdStat = std::abs(Stat) / sqrt(VarS);

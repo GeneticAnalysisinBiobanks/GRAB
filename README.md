@@ -138,12 +138,34 @@ GenoFile = system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
 RegionFile = system.file("extdata", "simuRegion.txt", package = "GRAB")
 SparseGRMFile = system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
 
-# If 'OutputFile' and 'OutputFileIndex' have existed, users might need to remove them first.
+## make sure the output files does not exist at first
+file.remove(OutputFile)
+file.remove(paste0(OutputFile, ".markerInfo"))
+file.remove(paste0(OutputFile, ".index"))
+
 GRAB.Region(objNull, 
             GenoFile = GenoFile,
             OutputFile = OutputFile,
             RegionFile = RegionFile,
             SparseGRMFile = SparseGRMFile)
+            
+data.table::fread(OutputFile)
+
+## additional columns of "zScore", "nSamplesInGroup", "AltCountsInGroup", "AltFreqInGroup"
+## We do not recommend adding too many columns for all markers
+
+file.remove(OutputFile)
+file.remove(paste0(OutputFile, ".markerInfo"))
+file.remove(paste0(OutputFile, ".index"))
+GRAB.Region(objNull, 
+            GenoFile = GenoFile,
+            OutputFile = OutputFile,
+            RegionFile = RegionFile,
+            RegionAnnoHeader = c("ANNO1", "ANNO2"),
+            SparseGRMFile = SparseGRMFile,
+            control = list(outputColumns = c("beta", "seBeta", "zScore","nSamplesInGroup","AltCountsInGroup","AltFreqInGroup")))
+            
+data.table::fread(OutputFile)
             
 ## Check 'OutputFile' for the analysis results
 ```
