@@ -196,9 +196,26 @@ setMarker = function(NullModelClass, objNull, control, chrom, Group, ifOutGroup)
 mainMarker = function(NullModelClass, genoType, genoIndex, outputColumns)
 {
   # Check 'POLMM.R'
-  if(NullModelClass == "POLMM_NULL_Model")
-    obj.mainMarker = mainMarker.POLMM(genoType, genoIndex, outputColumns)
-  
+  if(NullModelClass == "POLMM_NULL_Model"){
+    
+    # Check 'Main.cpp'
+    OutList = mainMarkerInCPP("POLMM", genoType, genoIndex);  
+    
+    obj.mainMarker = data.frame(Marker = OutList$markerVec,           # marker IDs
+                                Info = OutList$infoVec,               # marker infomation: CHR:POS:REF:ALT
+                                AltFreq = OutList$altFreqVec,         # alternative allele frequencies
+                                AltCounts = OutList$altCountsVec,     # alternative allele counts
+                                MissingRate = OutList$missingRateVec, # alternative allele counts
+                                Pvalue = OutList$pvalVec)             # marker-level p-values
+    
+    optionalColumns = c("beta", "seBeta", "zScore", "PvalueNorm", "AltFreqInGroup", "AltCountsInGroup", "nSamplesInGroup")
+    additionalColumns = intersect(optionalColumns, outputColumns)
+    
+    if(length(additionalColumns) > 0)
+      obj.mainMarker = cbind.data.frame(obj.mainMarker, 
+                                        as.data.frame(OutList[additionalColumns]))
+  }
+
   # # Check 'SAIGE.R'
   if(NullModelClass == "SAIGE_NULL_Model")
     obj.mainMarker = mainMarker.SAIGE(genoType, genoIndex, outputColumns)

@@ -180,75 +180,36 @@ GRAB.Region = function(objNull,
       chrom1 = chrom
     }
     
-    # main function to calculate summary statistics for region-based analysis 
-    obj.mainRegion = mainRegion(NullModelClass, genoType, genoIndex, OutputFile, n, P1Mat, P2Mat)
+    ### Main function to calculate summary statistics for region-based analysis 
+    outList = mainRegion(NullModelClass, genoType, genoIndex, OutputFile, n, P1Mat, P2Mat, control$outputColumns)
     
-    ### 1. Record marker-level basic information
+    info.Region = outList$info.Region
     
-    if(length(obj.mainRegion$markerVec) == 0){
-      info.Marker.Region = NULL;
-    }else{
-      info.Marker.Region = data.frame(Region = regionName,
-                                      Marker = obj.mainRegion$markerVec,
-                                      IsUltraRareVariants = 0,
-                                      Info = obj.mainRegion$infoVec,
-                                      AltFreq = obj.mainRegion$altFreqVec,
-                                      MAC = obj.mainRegion$MACVec,
-                                      MAF = obj.mainRegion$MAFVec,
-                                      MissingRate = obj.mainRegion$missingRateVec,
-                                      Beta = obj.mainRegion$BetaVec,
-                                      seBeta = obj.mainRegion$seBetaVec,
-                                      pval0 = obj.mainRegion$pval0Vec,
-                                      pval1 = obj.mainRegion$pval1Vec)
-    }
+    ### Get marker-level annotation information
     
-    if(length(obj.mainRegion$markerURVVec) == 0){
-      info.MarkerURV.Region = NULL;
-    }else{
-      info.MarkerURV.Region = data.frame(Region = regionName,
-                                         Marker = obj.mainRegion$markerURVVec,
-                                         IsUltraRareVariants = 1,
-                                         Info = obj.mainRegion$infoURVVec,
-                                         AltFreq = obj.mainRegion$altFreqURVVec,
-                                         MAC = obj.mainRegion$MACURVVec,
-                                         MAF = obj.mainRegion$MAFURVVec,
-                                         MissingRate = obj.mainRegion$missingRateURVVec,
-                                         Beta = NA,
-                                         seBeta = NA,
-                                         pval0 = NA,
-                                         pval1 = NA)
-    }
-    
-    ### 2. Record marker-level annotation information
-    
-    posMarker = match(obj.mainRegion$markerVec, SNP)
-    posMarkerURV = match(obj.mainRegion$markerURVVec, SNP)
-    
+    posMarker = match(info.Region$Marker, SNP)
     regionData = regionMat[posMarker, ,drop=F]
-    regionDataURV = regionMat[posMarkerURV, ,drop=F]
-    genoIndexURV = genoIndex[posMarkerURV]
     
     # annotation value <= 0 will be excluded from further analysis
     regionData[regionData <= 0] = 0
-    regionDataURV[regionDataURV <= 0] = 0
+    info.Region = cbind.data.frame(info.Region, regionData)
     
-    info.Marker.Region = cbind.data.frame(info.Marker.Region, regionData)
-    info.MarkerURV.Region = cbind.data.frame(info.MarkerURV.Region, regionDataURV)
-    
-    info.Region = rbind.data.frame(info.Marker.Region, info.MarkerURV.Region)
+    genoIndexMarker = genoIndex[posMarker]
     
     ### 3. Adjust for saddlepoint approximation
-    StatVec = obj.mainRegion$StatVec
-    VarSVec = diag(obj.mainRegion$VarMat)
-    adjPVec = obj.mainRegion$pval1Vec;
+    StatVec = outList$StatVec
+    VarSVec = diag(outList$VarMat)
+    adjPVec = outList$pval1Vec;
     adjVarSVec = StatVec^2 / qchisq(adjPVec, df = 1, lower.tail = F)
     
     r0 = adjVarSVec / VarSVec 
     r0 = pmax(r0, 1)
-    weights = dbeta(obj.mainRegion$MAFVec, 
-                    control$weights.beta[1], control$weights.beta[2])
-    weightsURV = dbeta(obj.mainRegion$MAFURVVec, 
-                       control$weights.beta[1], control$weights.beta[2])
+    weights = dbeta(info.Region$MAF, control$weights.beta[1], control$weights.beta[2])
+    
+    pos0 = which(info.Region$IsUltraRareVariants == 0)
+    pos1 = which(info.Region$IsUltraRareVariants == 1)
+    info.Region0 = info.Region[pos0,]
+    regionData0 = regionData[pos0,]
     
     pval.Region = data.frame()
     
@@ -256,31 +217,31 @@ GRAB.Region = function(objNull,
       # j = 2
       AnnoName = colnames(regionData)[j]
       AnnoWeights = weights * regionData[,j]
-      AnnoWeightsURV = weightsURV * regionDataURV[,j]
+      AnnoWeights0 = AnnoWeights[pos0]
       
-      wr0 = sqrt(r0) * AnnoWeights
-      wStatVec = StatVec * AnnoWeights
-      wadjVarSMat = t(obj.mainRegion$VarMat * wr0) * wr0
+      wr0 = sqrt(r0) * AnnoWeights0
+      wStatVec = StatVec * AnnoWeights0
+      wadjVarSMat = t(outList$VarMat * wr0) * wr0
       
-      tempPosURV = which(regionDataURV[,j] > 0)
+      tempPosURV = which(regionData[,j] > 0 & info.Region$IsUltraRareVariants == 1)
       nMarkersURV = length(tempPosURV)
       
       if(length(tempPosURV) <= 3){
         wStatURV = wadjVarSURV = NULL
       }else{
-        obj.mainRegionURV = mainRegionURV(NullModelClass, genoType, genoIndexURV[tempPosURV], n)
+        obj.mainRegionURV = mainRegionURV(NullModelClass, genoType, genoIndexMarker[tempPosURV], n)
         
         StatURV = obj.mainRegionURV$Stat;
         adjPURV = obj.mainRegionURV$pval1;
         adjVarSURV = StatURV^2 / qchisq(adjPURV, df = 1, lower.tail = F)
-        mAnnoWeightsURV = mean(AnnoWeightsURV[tempPosURV])
+        mAnnoWeightsURV = mean(AnnoWeights[tempPosURV])
         wStatURV = StatURV * mAnnoWeightsURV
         wadjVarSURV = adjVarSURV * mAnnoWeightsURV^2
       }
       
       for(tempMaxMAF in MaxMAFVec){  # cycle for max MAF cutoff
-        # tempMaxMAF = MaxMAFVec[1]
-        tempPos = which(regionData[,j] > 0 & obj.mainRegion$MAFVec <= tempMaxMAF)
+        
+        tempPos = which(regionData0[, j] > 0 & info.Region0$MAF <= tempMaxMAF)
         nMarkers = length(tempPos)
         
         if(nMarkers < control$min_nMarker){
@@ -308,11 +269,11 @@ GRAB.Region = function(objNull,
             Pvalue = c(NA, NA, NA)
             error.code = 3
           }else{
-            pos0 = which(out_SKAT_List$param$rho == 0)
-            pos1 = which(out_SKAT_List$param$rho == 1)
+            pos00 = which(out_SKAT_List$param$rho == 0)
+            pos01 = which(out_SKAT_List$param$rho == 1)
             Pvalue = c(out_SKAT_List$p.value,                  # SKAT-O
-                       out_SKAT_List$param$p.val.each[pos0],   # SKAT
-                       out_SKAT_List$param$p.val.each[pos1])   # Burden Test
+                       out_SKAT_List$param$p.val.each[pos00],   # SKAT
+                       out_SKAT_List$param$p.val.each[pos01])   # Burden Test
             error.code = 0
           }
           
@@ -372,21 +333,49 @@ setRegion = function(NullModelClass, objNull, control, chrom, SparseGRMFile, Gro
   return(obj.setRegion)
 }
 
-mainRegion = function(NullModelClass, 
-                      genoType, 
-                      genoIndex, 
-                      OutputFile,
-                      n,
-                      P1Mat,
-                      P2Mat)
+mainRegion = function(NullModelClass, genoType, genoIndex, OutputFile, n, P1Mat, P2Mat, outputColumns)
 {
+  method = gsub("_NULL_Model$", "", NullModelClass)
+  
+  obj.mainRegion = mainRegionInCPP(method, genoType, genoIndex, OutputFile, n, P1Mat, P2Mat)
+  
+  ## required columns for all methods
+  info.Region = with(obj.mainRegion, data.frame(Marker = markerVec,
+                                                Info = infoVec,
+                                                AltFreq = altFreqVec,
+                                                MAC = MACVec,
+                                                MAF = MAFVec,
+                                                MissingRate = missingRateVec, 
+                                                IsUltraRareVariants = indicatorVec - 1,
+                                                stringsAsFactors = F))
+  
   if(NullModelClass == "POLMM_NULL_Model")
-    obj.mainRegion = mainRegionInCPP("POLMM", genoType, genoIndex, OutputFile, n, P1Mat, P2Mat)
-  
+  {
+    optionalColumns = c("beta", "seBeta", "PvalueNorm", "AltFreqInGroup", "AltCountsInGroup", "nSamplesInGroup")
+    additionalColumns = intersect(optionalColumns, outputColumns)
+    
+    if(length(additionalColumns) > 0)
+      info.Region = cbind.data.frame(info.Region, 
+                                     as.data.frame(obj.mainRegion[additionalColumns]))
+  }
+    
   if(NullModelClass == "SPACox_NULL_Model")
-    obj.mainRegion = mainRegionInCPP("SPACox", genoType, genoIndex, OutputFile, n, P1Mat, P2Mat)
+  {
+    # obj.mainRegion = mainRegionInCPP("SPACox", genoType, genoIndex, OutputFile, n, P1Mat, P2Mat)
+  }
   
-  return(obj.mainRegion)
+  ### remove rows whose markers do not pass QC
+  
+  info.Region = subset(info.Region, IsUltraRareVariants != -1)
+  pos = which(info.Region$IsUltraRareVariants == 0)
+  
+  info.Region$Pvalue = NA
+  info.Region$Pvalue[pos] = obj.mainRegion$pval1Vec
+  
+  return(list(StatVec = obj.mainRegion$StatVec,
+              pval1Vec = obj.mainRegion$pval1Vec,
+              VarMat = obj.mainRegion$VarMat,
+              info.Region = info.Region))
 }
 
 mainRegionURV = function(NullModelClass,

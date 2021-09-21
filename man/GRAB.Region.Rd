@@ -34,7 +34,7 @@ GRAB.Region(
 
 \item{SparseGRMFile}{a character of sparseGRM file. An example is \code{system.file("SparseGRM","SparseGRM.txt",package="GRAB")}.}
 
-\item{MaxMAFVec}{a numeric vector of max MAF cutoff to include markers for region-level analysis. Default setting is \code{c(0.01, 0.001)}.}
+\item{MaxMAFVec}{a numeric vector of max MAF cutoff to include markers for region-level analysis. Default setting is \code{c(0.05, 0.01, 0.005)}.}
 
 \item{control}{a list of parameters for controlling function \code{GRAB.Region}, more details can be seen in \code{Details} section.}
 }
@@ -79,7 +79,7 @@ The below is to customize the quality-control (QC) process.
 The below is for kernel-based approaches including SKAT and SKAT-O. For more details, please refer to \code{\link{SKAT}}.
 \itemize{
 \item \code{kernel}: a type of kernel \emph{(default="linear.weighted")}.
-\item \code{weights_beta}: a numeric vector of parameters for the beta weights for the weighted kernels \emph{(default=c(1,25))}.
+\item \code{weights_beta}: a numeric vector of parameters for the beta weights for the weighted kernels \emph{(default=c(1, 25))}.
 If you want to use your own weights, please use the \code{control$weights} parameter. It will be ignored if \code{control$weights} parameter is not \code{NULL}.
 \item \code{weights}: a numeric vector of weights for the weighted kernels. If it is \code{NULL} (default), the beta weight with the \code{control$weights.beta} parameter is used.
 \item \code{r.corr}: the rho parameter for the compound symmetric correlation structure kernels. If you give a vector value, SKAT will conduct the optimal test.

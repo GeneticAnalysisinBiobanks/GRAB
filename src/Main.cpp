@@ -206,9 +206,6 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     AltCountsInGroup.resize(q, g_nGroup);
     AltFreqInGroup.resize(q, g_nGroup);
   }
-  
-  // std::vector<std::string> AltFreqInGroupVec(q);
-  // std::vector<std::string> AltCountsInGroupVec(q);
 
   // std::cout << "Totally " << g_omp_num_threads << " thread(s) were used for parallel computation." << std::endl;
   
@@ -366,20 +363,39 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
 {
   unsigned int q = t_genoIndex.size();                 // number of markers (before QC) in one region
   
-  // set up output (Ultra-Rare Variants, URV)
-  std::vector<std::string> markerVec(q), markerURVVec(q);      // marker IDs
-  std::vector<std::string> infoVec(q), infoURVVec(q);          // marker information: CHR:POS:REF:ALT
-  std::vector<double> altFreqVec(q), altFreqURVVec(q);         // allele frequencies of the ALT allele, this is not always < 0.5.
-  std::vector<double> MACVec(q), MACURVVec(q);
-  std::vector<double> MAFVec(q), MAFURVVec(q);
-  std::vector<double> missingRateVec(q), missingRateURVVec(q); // missing rate
+  // set up output (Ultra-Rare Variants, URV)  removed on 09-18-2021
+  // std::vector<std::string> markerVec(q), markerURVVec(q);      // marker IDs
+  // std::vector<std::string> infoVec(q), infoURVVec(q);          // marker information: CHR:POS:REF:ALT
+  // std::vector<double> altFreqVec(q), altFreqURVVec(q);         // allele frequencies of the ALT allele, this is not always < 0.5.
+  // std::vector<double> MACVec(q), MACURVVec(q);
+  // std::vector<double> MAFVec(q), MAFURVVec(q);
+  // std::vector<double> missingRateVec(q), missingRateURVVec(q); // missing rate
+  
+  // added on 09-18-2021
+  arma::uvec indicatorVec(q, arma::fill::zeros);       // 0: does not pass QC, 1: non-URV, 2: URV
+  Rcpp::StringVector markerVec(q);
+  Rcpp::StringVector infoVec(q);
+  arma::vec altFreqVec(q);         // allele frequencies of the ALT allele, this is not always < 0.5.
+  arma::vec MACVec(q);
+  arma::vec MAFVec(q);
+  arma::vec missingRateVec(q);     // missing rate
+  
   std::vector<double> BetaVec(q);            // beta value for ALT allele
   std::vector<double> seBetaVec(q);          // seBeta value
   std::vector<double> pval0Vec(q);           // p values from normal distribution approximation  // might be confused, is this needed?
   std::vector<double> pval1Vec(q);           // p values from more accurate methods including SPA and ER
   
   std::vector<double> StatVec(q);            // score statistics
-  // std::vector<double> adjPVec(q);            // adjusted p-values
+
+  arma::mat nSamplesInGroup;
+  arma::mat AltCountsInGroup;
+  arma::mat AltFreqInGroup;
+  
+  if(g_ifOutGroup){
+    nSamplesInGroup.resize(q, g_nGroup);
+    AltCountsInGroup.resize(q, g_nGroup);
+    AltFreqInGroup.resize(q, g_nGroup);
+  }
   
   // example #1: (q = 999, m1 = 10) -> (nchunks = 100, m2 = 9)
   // example #2: (q = 1000, m1 = 10) -> (nchunks = 100, m2 = 10)
@@ -441,26 +457,57 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
       continue;  // does not pass QC
     }
 
+    if(g_ifOutGroup){
+      arma::vec nSamplesInGroupVec(g_nGroup);
+      arma::vec AltCountsInGroupVec(g_nGroup);
+      arma::vec AltFreqInGroupVec(g_nGroup);
+      
+      // std::cout << "test1.2" << std::endl;
+      // std::cout << "g_nGroup:\t" << g_nGroup << std::endl;
+      
+      updateGroupInfo(GVec, indexForMissing, nSamplesInGroupVec, AltCountsInGroupVec, AltFreqInGroupVec);
+      
+      // std::cout << "test1.3" << std::endl;
+      
+      nSamplesInGroup.row(i) = nSamplesInGroupVec.t();
+      AltCountsInGroup.row(i) = AltCountsInGroupVec.t();
+      AltFreqInGroup.row(i) = AltFreqInGroupVec.t();
+    }
+    
+    markerVec.at(i) = marker;             // marker IDs
+    infoVec.at(i) = info;                 // marker information: CHR:POS:REF:ALT
+    altFreqVec.at(i) = altFreq;           // allele frequencies of ALT allele, this is not always < 0.5.
+    missingRateVec.at(i) = missingRate;
+    MACVec.at(i) = MAC;
+    MAFVec.at(i) = MAF;
+    
     if(MAC > g_region_minMAC_cutoff){  // not Ultra-Rare Variants
+      
+      indicatorVec.at(i) = 1;
       
       if(i1InChunk == 0){
         std::cout << "Start analyzing chunk " << ichunk << "....." << std::endl;
       }
       
-      markerVec.at(i1) = marker;             // marker IDs
-      infoVec.at(i1) = info;                 // marker information: CHR:POS:REF:ALT
-      altFreqVec.at(i1) = altFreq;           // allele frequencies of ALT allele, this is not always < 0.5.
-      missingRateVec.at(i1) = missingRate;
-      MACVec.at(i1) = MAC;
-      MAFVec.at(i1) = MAF;
+      // markerVec.at(i1) = marker;             // marker IDs
+      // infoVec.at(i1) = info;                 // marker information: CHR:POS:REF:ALT
+      // altFreqVec.at(i1) = altFreq;           // allele frequencies of ALT allele, this is not always < 0.5.
+      // missingRateVec.at(i1) = missingRate;
+      // MACVec.at(i1) = MAC;
+      // MAFVec.at(i1) = MAF;
       
       Unified_getRegionPVec(t_method, GVec, Stat, Beta, seBeta, pval0, pval1, P1Vec, P2Vec);
       
       // insert results to pre-setup vectors and matrix
       StatVec.at(i1) = Stat;        
-      BetaVec.at(i1) = Beta * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true       
-      seBetaVec.at(i1) = seBeta;       
-      pval0Vec.at(i1) = pval0;
+      
+      // BetaVec.at(i1) = Beta * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true       
+      // seBetaVec.at(i1) = seBeta;       
+      // pval0Vec.at(i1) = pval0;
+      BetaVec.at(i) = Beta * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true       
+      seBetaVec.at(i) = seBeta;       
+      pval0Vec.at(i) = pval0;
+      
       pval1Vec.at(i1) = pval1;
       // adjPVec.at(i1) = pval1;
       
@@ -472,12 +519,14 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
       
     }else{   // Ultra-Rare Variants (URV)
       
-      markerURVVec.at(i2) = marker;             // marker IDs
-      infoURVVec.at(i2) = info;                 // marker information: CHR:POS:REF:ALT
-      altFreqURVVec.at(i2) = altFreq;           // allele frequencies of ALT allele, this is not always < 0.5.
-      missingRateURVVec.at(i2) = missingRate;
-      MACURVVec.at(i2) = MAC;
-      MAFURVVec.at(i2) = MAF;
+      indicatorVec.at(i) = 2;
+      
+      // markerURVVec.at(i2) = marker;             // marker IDs
+      // infoURVVec.at(i2) = info;                 // marker information: CHR:POS:REF:ALT
+      // altFreqURVVec.at(i2) = altFreq;           // allele frequencies of ALT allele, this is not always < 0.5.
+      // missingRateURVVec.at(i2) = missingRate;
+      // MACURVVec.at(i2) = MAC;
+      // MAFURVVec.at(i2) = MAF;
         
       i2 += 1;
     }
@@ -505,26 +554,26 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   arma::mat VarMat(i1, i1);
   
   // non Ultra Rare Variants
-  markerVec.resize(i1);
-  infoVec.resize(i1);              // marker information: CHR:POS:REF:ALT
-  altFreqVec.resize(i1);           // allele frequencies of ALT allele, this is not always < 0.5.
-  missingRateVec.resize(i1);
-  MACVec.resize(i1);
-  MAFVec.resize(i1);
+  // markerVec.resize(i1);
+  // infoVec.resize(i1);              // marker information: CHR:POS:REF:ALT
+  // altFreqVec.resize(i1);           // allele frequencies of ALT allele, this is not always < 0.5.
+  // missingRateVec.resize(i1);
+  // MACVec.resize(i1);
+  // MAFVec.resize(i1);
   StatVec.resize(i1);        
-  BetaVec.resize(i1);              // Beta if flip = false, -1 * Beta is flip = true       
-  seBetaVec.resize(i1);       
-  pval0Vec.resize(i1);
+  // BetaVec.resize(i1);              // Beta if flip = false, -1 * Beta is flip = true       
+  // seBetaVec.resize(i1);       
+  // pval0Vec.resize(i1);
   pval1Vec.resize(i1);
   // adjPVec.resize(i1);
   
   // Ultra Rare Variants
-  markerURVVec.resize(i2);          // marker IDs
-  infoURVVec.resize(i2);            // marker information: CHR:POS:REF:ALT
-  altFreqURVVec.resize(i2);         // allele frequencies of ALT allele, this is not always < 0.5.
-  missingRateURVVec.resize(i2);
-  MACURVVec.resize(i2);
-  MAFURVVec.resize(i2);
+  // markerURVVec.resize(i2);          // marker IDs
+  // infoURVVec.resize(i2);            // marker information: CHR:POS:REF:ALT
+  // altFreqURVVec.resize(i2);         // allele frequencies of ALT allele, this is not always < 0.5.
+  // missingRateURVVec.resize(i2);
+  // MACURVVec.resize(i2);
+  // MAFURVVec.resize(i2);
   
   mPassCVVec.push_back(i1InChunk);
 
@@ -610,24 +659,27 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   // Unified_getRegionPVec(t_method, GVec, Beta, seBeta, pval, P1Vec, P2Vec);
   
   Rcpp::List OutList = Rcpp::List::create(Rcpp::Named("VarMat") = VarMat,
+                                          Rcpp::Named("indicatorVec") = indicatorVec,
                                           Rcpp::Named("markerVec") = markerVec,
-                                          Rcpp::Named("markerURVVec") = markerURVVec,
+                                          // Rcpp::Named("markerURVVec") = markerURVVec,
                                           Rcpp::Named("infoVec") = infoVec,
-                                          Rcpp::Named("infoURVVec") = infoURVVec,
+                                          // Rcpp::Named("infoURVVec") = infoURVVec,
                                           Rcpp::Named("altFreqVec") = altFreqVec,
-                                          Rcpp::Named("altFreqURVVec") = altFreqURVVec,
+                                          // Rcpp::Named("altFreqURVVec") = altFreqURVVec,
                                           Rcpp::Named("MAFVec") = MAFVec,
-                                          Rcpp::Named("MAFURVVec") = MAFURVVec,
+                                          // Rcpp::Named("MAFURVVec") = MAFURVVec,
                                           Rcpp::Named("MACVec") = MACVec,
-                                          Rcpp::Named("MACURVVec") = MACURVVec,
+                                          // Rcpp::Named("MACURVVec") = MACURVVec,
                                           Rcpp::Named("missingRateVec") = missingRateVec,
-                                          Rcpp::Named("missingRateURVVec") = missingRateURVVec,
+                                          // Rcpp::Named("missingRateURVVec") = missingRateURVVec,
                                           Rcpp::Named("StatVec") = StatVec,
-                                          Rcpp::Named("BetaVec") = BetaVec,
-                                          Rcpp::Named("seBetaVec") = seBetaVec,
-                                          Rcpp::Named("pval0Vec") = pval0Vec,
-                                          Rcpp::Named("pval1Vec") = pval1Vec);
-                                          // Rcpp::Named("adjPVec") = adjPVec);
+                                          Rcpp::Named("beta") = BetaVec,
+                                          Rcpp::Named("seBeta") = seBetaVec,
+                                          Rcpp::Named("PvalueNorm") = pval0Vec,  // If this line is uncommented, then error comes up, maybe reach a number limit?
+                                          Rcpp::Named("pval1Vec") = pval1Vec,
+                                          Rcpp::Named("nSamplesInGroup") = nSamplesInGroup,
+                                          Rcpp::Named("AltCountsInGroup") = AltCountsInGroup,
+                                          Rcpp::Named("AltFreqInGroup") = AltFreqInGroup);
   
   return OutList;
 }
