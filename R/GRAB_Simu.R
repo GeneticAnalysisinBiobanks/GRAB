@@ -86,15 +86,21 @@ GRAB.SimuGMat = function(nSub,
   
   MAF = runif(nSNP, MinMAF, MaxMAF)
   SNP.info = make.SNP.info(nSNP, MAF)
-    
-  cat("Step 1. Simulating haplotype data for related subjects....\n")
-  haplo.mat = haplo.simu(nHaplo, SNP.info) 
-    
-  cat("Step 2. Simulating genotype data for related subjects....\n")
-  GenoMat1 = from.haplo.to.geno(haplo.mat, fam.mat)    # output of example.fam(): n x 5 where n is sample size
   
-  cat("Step 3. Simulationg Genotype data for unrelated subjects....\n")
-  GenoMat2 = geno.simu(nSub, SNP.info)
+  GenoMat1 = GenoMat2 = NULL
+    
+  if(nHaplo != 0){
+    cat("Simulating haplotype data for related subjects....\n")
+    haplo.mat = haplo.simu(nHaplo, SNP.info) 
+    
+    cat("Simulating genotype data for related subjects....\n")
+    GenoMat1 = from.haplo.to.geno(haplo.mat, fam.mat)    # output of example.fam(): n x 5 where n is sample size
+  }
+  
+  if(nSub != 0){
+    cat("Simulationg Genotype data for unrelated subjects....\n")
+    GenoMat2 = geno.simu(nSub, SNP.info)
+  }
   
   GenoMat = rbind(GenoMat1, GenoMat2)
   
