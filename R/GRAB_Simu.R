@@ -49,11 +49,11 @@
 #' GRM2
 #' @export
 GRAB.SimuGMat = function(nSub,
-                               nFam,
-                               FamMode,
-                               nSNP,
-                               MaxMAF = 0.5,
-                               MinMAF = 0.05)
+                         nFam,
+                         FamMode,
+                         nSNP,
+                         MaxMAF = 0.5,
+                         MinMAF = 0.05)
 {
   if(FamMode == "4-members"){
     nSubInEachFam = 4
@@ -87,12 +87,13 @@ GRAB.SimuGMat = function(nSub,
   MAF = runif(nSNP, MinMAF, MaxMAF)
   SNP.info = make.SNP.info(nSNP, MAF)
     
-  cat("Step 1. Simulating Haplotype Information....\n")
+  cat("Step 1. Simulating haplotype data for related subjects....\n")
   haplo.mat = haplo.simu(nHaplo, SNP.info) 
     
-  cat("Step 2. Simulationg Genotype Information....")
+  cat("Step 2. Simulating genotype data for related subjects....\n")
   GenoMat1 = from.haplo.to.geno(haplo.mat, fam.mat)    # output of example.fam(): n x 5 where n is sample size
   
+  cat("Step 3. Simulationg Genotype data for unrelated subjects....\n")
   GenoMat2 = geno.simu(nSub, SNP.info)
   
   GenoMat = rbind(GenoMat1, GenoMat2)
@@ -186,9 +187,11 @@ make.SNP.info = function(nSNP,  # number of null SNPs
 
 geno.simu = function(nSub, SNP.info)
 {
-  n.SNPs = nrow(SNP.info)
+  nSNPs = nrow(SNP.info)
   MAFs = SNP.info$MAF
   GenoMat = sapply(MAFs, FUN = function(x){rbinom(nSub, 2, x)})
+  if(nSub == 1)
+    GenoMat = matrix(GenoMat, nSNPs, 1)
   colnames(GenoMat) = SNP.info$SNP
   rownames(GenoMat) = paste0("Subj-",1:nSub)
   return(GenoMat)  # matrix of m x n, where m is number of SNPs, n is number of subjects
