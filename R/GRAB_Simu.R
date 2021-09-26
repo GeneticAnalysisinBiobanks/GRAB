@@ -197,7 +197,7 @@ geno.simu = function(nSub, SNP.info)
   MAFs = SNP.info$MAF
   GenoMat = sapply(MAFs, FUN = function(x){rbinom(nSub, 2, x)})
   if(nSub == 1)
-    GenoMat = matrix(GenoMat, nSNPs, 1)
+    GenoMat = matrix(GenoMat, 1, nSNPs)
   colnames(GenoMat) = SNP.info$SNP
   rownames(GenoMat) = paste0("Subj-",1:nSub)
   return(GenoMat)  # matrix of m x n, where m is number of SNPs, n is number of subjects
