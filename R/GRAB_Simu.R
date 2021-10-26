@@ -41,7 +41,7 @@
 #' 
 #' ## The following is to calculate GRM
 #' MAF = apply(GenoMat, 2, mean)/2
-#' GenoMatSD = t(t(GenoMat) - 2*MAF)/sqrt(2*MAF*(1-MAF))
+#' GenoMatSD = t((t(GenoMat) - 2*MAF)/sqrt(2*MAF*(1-MAF)))
 #' GRM = GenoMatSD %*% t(GenoMatSD) / ncol(GenoMat)
 #' GRM1 = GRM[1:10, 1:10];
 #' GRM2 = GRM[100+1:10, 100+1:10];
