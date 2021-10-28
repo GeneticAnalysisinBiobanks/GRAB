@@ -57,6 +57,16 @@ GRAB.SimuGMat = function(nSub,
                          MinMAF = 0.05,
                          MAF = NULL)
 {
+  
+  if(missing(FamMode) & missing(nFam)){
+    cat("Since both 'FamMode' and 'nFam' are not specified, only unrelated subjects are simulated.")
+    nFam = 0;
+    FamMode = "Unrelated";
+  }
+  
+  if(missing(nSub))
+    nSub = 0;
+  
   if(FamMode == "4-members"){
     nSubInEachFam = 4
     nHaploInEachFam = 4
@@ -75,11 +85,15 @@ GRAB.SimuGMat = function(nSub,
     fam.mat = example.fam.20.members(nFam)
   }
   
-  if(!is.element(FamMode, c("4-members","10-members","20-members")))
+  if(!is.element(FamMode, c("Unrelated", "4-members", "10-members", "20-members")))
     stop("FamMode should be one of '4-members', '10-members', or '20-members'.")
   
   n = nSub + nFam * nSubInEachFam
   nHaplo = nFam * nHaploInEachFam
+  
+  if(n == 0){
+    stop("Please give at least one of 'nSub' and 'nFam'.")
+  }
   
   cat("Number of unrelated subjects:\t", nSub, "\n")
   cat("Number of families:\t", nFam, "\n")
@@ -110,7 +124,7 @@ GRAB.SimuGMat = function(nSub,
     cat("Simulationg Genotype data for unrelated subjects....\n")
     GenoMat2 = geno.simu(nSub, SNP.info)
   }
-  
+
   GenoMat = rbind(GenoMat1, GenoMat2)
   
   return(list(GenoMat = GenoMat,
