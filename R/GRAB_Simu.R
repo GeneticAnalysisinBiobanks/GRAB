@@ -9,6 +9,7 @@
 #' @param nSNP number of markers to simulate
 #' @param MaxMAF a numeric value *(default=0.5)*, haplotype is simulated with allele frequency <= this value.
 #' @param MinMAF a numeric value *(default=0.05)*, haplotype is simulated with allele frequency >= this value.
+#' @param MAF a numeric vector with a length of *nSNP*. If this argument is given, then arguments of *MaxMAF* and *MinMAF* would be ignored.
 #' @return an R list including genotype matrix and marker information
 #' \itemize{
 #'   \item \code{GenoMat} a numeric matrix of genotype: each row is for one subject and each column is for one SNP
@@ -53,7 +54,8 @@ GRAB.SimuGMat = function(nSub,
                          FamMode,
                          nSNP,
                          MaxMAF = 0.5,
-                         MinMAF = 0.05)
+                         MinMAF = 0.05,
+                         MAF = NULL)
 {
   if(FamMode == "4-members"){
     nSubInEachFam = 4
@@ -84,7 +86,14 @@ GRAB.SimuGMat = function(nSub,
   cat("Number of subjects in each family:\t", nSubInEachFam, "\n")
   cat("Number of all subjects:\t", n, "\n")
   
-  MAF = runif(nSNP, MinMAF, MaxMAF)
+  if(is.null(MAF)){
+    MAF = runif(nSNP, MinMAF, MaxMAF)
+  }else{
+    if(length(MAF) != nSNP)
+      stop("length(MAF) should equal to nSNP.")
+    cat("Since argument 'MAF' is given, arguments of 'MaxMAF' and 'MinMAF' will be ignored.\n")
+  }
+  
   SNP.info = make.SNP.info(nSNP, MAF)
   
   GenoMat1 = GenoMat2 = NULL
