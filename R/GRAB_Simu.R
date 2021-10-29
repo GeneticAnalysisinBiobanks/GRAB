@@ -594,8 +594,8 @@ GRAB.makePlink = function(GenoMat,
   PED.file = paste0(OutputPrefix, ".ped")
   # OUT.file = paste0(work.dir, "/", out.prefix)
   
-  write.table(MAP, MAP.file, quote = F, col.names = F, row.names = F)
-  write.table(PED, PED.file, quote = F, col.names = F, row.names = F)
+  data.table::fwrite(MAP, MAP.file, quote = F, col.names = F, row.names = F, sep = " ")
+  data.table::fwrite(PED, PED.file, quote = F, col.names = F, row.names = F, sep = " ")
   
   cat("Working directory:\t", getwd(), "\n")
   cat("PED file:\t", PED.file, "\n")
