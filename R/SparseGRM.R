@@ -40,7 +40,7 @@ getTempFilesFullGRM = function(PlinkFile,
   
   OS = Sys.info()['sysname']
   if(OS != "Linux") 
-    stop(paste0("We generate GRM using gcta software which is only supported in Linux. Current OS is ", OS))
+    stop(paste0("We generate GRM using gcta software which only support Linux. Current OS is ", OS))
   
   gcta64File = system.file("gcta_1.93.1beta", "gcta64", package = "GRAB");
   system(paste("chmod +x",gcta64File))

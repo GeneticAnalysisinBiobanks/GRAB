@@ -17,7 +17,8 @@ CXX_STD = CXX11
 
 PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS) 
 #PKG_LIBS = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) -L../bgen/3rd_party/boost_1_55_0/boost/iostreams
-PKG_LIBS += $(ZLIB_LIB) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) $(SHLIB_OPENMP_CXXFLAGS) -lsuperlu -lzstd 
+#PKG_LIBS += $(ZLIB_LIB) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) $(SHLIB_OPENMP_CXXFLAGS) -lsuperlu -lzstd 
+PKG_LIBS += $(ZLIB_LIB) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) $(SHLIB_OPENMP_CXXFLAGS) -lzstd # 2021-11-09 remove -lsuperlu
 
 #-L../thirdParty/cget/lib/ -L../thirdParty/cget/lib64/ -lsuperlu -lzstd
 
