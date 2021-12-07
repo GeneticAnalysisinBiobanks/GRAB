@@ -384,6 +384,8 @@ updateSampleIDs = function(SampleIDs, samplesInGeno)
     stop("The above samples from 'SampleIDs' are not in 'GenoFile' and 'GenoFileIndex'.")
   }
   
+  SampleIDs = as.character(SampleIDs)
+  
   return(SampleIDs)
 }
 

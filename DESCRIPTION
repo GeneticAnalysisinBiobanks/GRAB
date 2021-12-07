@@ -10,6 +10,5 @@ License: GPL (>= 2)
 Depends: ordinal, Matrix, SKAT, R (>= 3.5.0)
 Imports: Rcpp (>= 1.0.5), RcppArmadillo, RcppParallel, BH, survival, data.table, tidyr, dbplyr, RSQLite, ordinal, Matrix
 LinkingTo: Rcpp, RcppArmadillo, RcppParallel, BH, survival, data.table, tidyr, dbplyr, RSQLite, ordinal, Matrix
-RoxygenNote: 7.1.1
+RoxygenNote: 7.1.2
 Roxygen: list(markdown = TRUE)
-
