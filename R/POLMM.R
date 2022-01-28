@@ -165,12 +165,15 @@ checkControl.NullModel.POLMM = function(control, optionGRM)
 
 
 # fit null model using POLMM method
-fitNullModel.POLMM = function(response, designMat, subjData, control, optionGRM)
+fitNullModel.POLMM = function(response, designMat, subjData, control, optionGRM, 
+                              genoType,    # "PLINK" or "BGEN"
+                              markerInfo)  # colnames: CHROM, POS, ID, REF, ALT, genoIndex
 {
   ######## -------------- first set up the object in C++ -------- ########
   
   if(class(response) != "factor")
-    stop("response in POLMM method should be a factor.")
+    stop("The response variable in POLMM method should be a factor. The class of the current response variable is '", 
+         class(response), "'.")
   
   obj.clm = summary(ordinal::clm(response ~ designMat))
   beta = c(-1 * obj.clm$alpha[1], obj.clm$beta)
@@ -184,6 +187,34 @@ fitNullModel.POLMM = function(response, designMat, subjData, control, optionGRM)
   # This value is not used any more, remove it later. 03/31/2021
   SPmatR = list(locations = matrix(c(0,0),2,1),
                 values = rep(0,1))
+  
+  LOCO = control$LOCO
+  
+  if(LOCO)
+    stop("Option of LOCO will be supported later. (2022-01-28)")
+  
+  # 
+  # if(m < 200)
+  #   stop("number of variants in ", genoType, " files should be >= 200.")
+  
+  m = nrow(markerInfo)
+  markerInfo = markerInfo[sample(m), ]
+  
+  # Main.cpp
+  GenoMat = getGenoInCPP_fixedNumber(genoType, markerInfo, length(yVec), "mean", 100, 
+                                     control$maxMissingVarRatio, 
+                                     control$minMafVarRatio)
+  
+  # if(LOCO){
+  #   markerInfo = data.table::as.data.table(markerInfo)
+  #   uCHR = unique(markerInfo$CHROM)
+  #   for(iCHR in uCHR){
+  #     temp = markerInfo %>% filter(CHROM == iCHR)
+  #   }
+  # }else{
+  #   markerInfo = markerInfo[sample(m, 100),]
+  #   GenoMat = getGenoInCPP(genoType, markerInfo, n, control$ImputeMethod)  # check Main.cpp
+  # }
   
   # default.control = list(memoryChunk = 2,
   #                        seed = 12345678,
@@ -221,7 +252,8 @@ fitNullModel.POLMM = function(response, designMat, subjData, control, optionGRM)
                                   eps,
                                   tau,
                                   SPmatR,
-                                  controlList)
+                                  controlList,
+                                  GenoMat)
   
   class(objNull) = "POLMM_NULL_Model"
   return(objNull)

@@ -162,15 +162,19 @@ GRAB.NullModel = function(formula,
   #### END: formula.R
   
   optionGRM = NULL
-  if(method %in% c("POLMM", "SAIGE", "GATE"))
-    optionGRM = handleGRM(GenoFile, GenoFileIndex, SparseGRMFile, subjData)  # Check 'SparseGRM.R'
-  
+  if(method %in% c("POLMM", "SAIGE", "GATE")){
+    outHandleGRM = handleGRM(GenoFile, GenoFileIndex, SparseGRMFile, subjData)  # Check 'SparseGRM.R'
+    optionGRM = outHandleGRM$optionGRM
+    genoType = outHandleGRM$genoType  # "PLINK" or "BGEN"
+    markerInfo = outHandleGRM$markerInfo  # Columns: "CHROM", "POS", "ID", "REF", "ALT", "genoIndex"
+  }
+    
   # Check 'control.R'
   control = checkControl.NullModel(control, method, traitType, optionGRM)
   
   if(method == "POLMM"){
     # Check 'POLMM.R'
-    objNull = fitNullModel.POLMM(response, designMat, subjData, control, optionGRM)
+    objNull = fitNullModel.POLMM(response, designMat, subjData, control, optionGRM, genoType, markerInfo)
   }
   
   if(method == "SPACox"){

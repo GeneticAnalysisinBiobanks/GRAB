@@ -687,11 +687,13 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
 
 //////// ---------- Main function for genotype extraction --------- ////////////
 
+// This function will be removed later (2022-01-28)
+
 // [[Rcpp::export]]
 arma::mat getGenoInCPP(std::string t_genoType,
                        Rcpp::DataFrame t_markerInfo,
                        int n,
-                       std::string t_imputeMethod)
+                       std::string t_imputeMethod) // 0: "mean"; 1: "minor"; 2: "drop" (to be continued)
 {
   int q = t_markerInfo.nrow();         // number of markers requested
   std::vector<uint64_t> gIndexVec = t_markerInfo["genoIndex"];
@@ -723,6 +725,61 @@ arma::mat getGenoInCPP(std::string t_genoType,
     imputeGeno(GVec, altFreq, indexForMissing, t_imputeMethod);  // check UTIL.cpp
     GMat.col(i) = GVec;
   }
+  
+  return GMat;
+}
+
+// This function will replace the above function (2022-01-28)
+
+// [[Rcpp::export]]
+arma::mat getGenoInCPP_fixedNumber(std::string t_genoType,
+                                   Rcpp::DataFrame t_markerInfo,
+                                   int n,
+                                   std::string t_imputeMethod, // 0: "mean"; 1: "minor"; 2: "drop" (to be continued)
+                                   int m,  // number of selected markers
+                                   double missingRateCutoff,
+                                   double minMAFCutoff)
+{
+  int q = t_markerInfo.nrow();         // number of markers requested
+  std::vector<uint64_t> gIndexVec = t_markerInfo["genoIndex"];
+  
+  arma::mat GMat(n, m);
+  int index = 0;
+  
+  std::string ref, alt, marker, chr;
+  uint32_t pd;
+  double altFreq, altCounts, missingRate, imputeInfo;
+  std::vector<uint32_t> indexForMissing, indexForNonZero;
+  
+  for(int i = 0; i < q; i++){
+    uint64_t gIndex = gIndexVec.at(i);
+    arma::vec GVec = Unified_getOneMarker(t_genoType,          // "PLINK", "BGEN"
+                                          gIndex,              // different meanings for different genoType
+                                          ref,                 // REF allele
+                                          alt,                 // ALT allele (should probably be minor allele, otherwise, computation time will increase)
+                                          marker,              // marker ID extracted from genotype file
+                                          pd,                  // base position
+                                          chr,                 // chromosome
+                                          altFreq,             // frequency of ALT allele
+                                          altCounts,           // counts of ALT allele
+                                          missingRate,         // missing rate
+                                          imputeInfo,          // imputation information score, i.e., R2 (all 1 for PLINK)
+                                          true,                // if true, output index of missing genotype data
+                                          indexForMissing,     // index of missing genotype data
+                                          false,               // if true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
+                                          indexForNonZero);    // the index of non-zero genotype in the all subjects. Only valid if t_isOnlyOutputNonZero == true.
+    
+    if(altFreq < minMAFCutoff | altFreq > 1-minMAFCutoff | missingRate > missingRateCutoff)
+      continue;
+    
+    imputeGeno(GVec, altFreq, indexForMissing, t_imputeMethod);  // check UTIL.cpp
+    GMat.col(index) = GVec;
+    index ++;
+    if(index == m) break;
+  }
+  
+  if(index < m)
+    Rcpp::stop("No enough variants are for variance ratio estimation.");
   
   return GMat;
 }
@@ -934,7 +991,8 @@ Rcpp::List setPOLMMobjInCPP_NULL(bool t_flagSparseGRM,       // if 1, then use S
                                  arma::vec t_eps,           // 
                                  double t_tau,
                                  Rcpp::List t_SPmatR,    // output of makeSPmatR()
-                                 Rcpp::List t_controlList)
+                                 Rcpp::List t_controlList,
+                                 arma::mat GenoMat)
 {
   // arma::umat locations = t_SPmatR["locations"];
   // arma::vec values = t_SPmatR["values"];
@@ -947,6 +1005,7 @@ Rcpp::List setPOLMMobjInCPP_NULL(bool t_flagSparseGRM,       // if 1, then use S
   ptr_gPOLMMobj = new POLMM::POLMMClass(t_flagSparseGRM,       // if 1, then use Sparse GRM, otherwise, use Dense GRM
                                         ptr_gDenseGRMobj,
                                         ptr_gPLINKobj,
+                                        ptr_gBGENobj,
                                         t_Cova,
                                         t_yVec,     // should be from 0 to J-1
                                         t_beta,
@@ -957,6 +1016,51 @@ Rcpp::List setPOLMMobjInCPP_NULL(bool t_flagSparseGRM,       // if 1, then use S
                                         t_controlList);
   
   ptr_gPOLMMobj->fitPOLMM();
+  
+  // bool LOCO = t_controlList["LOCO"];
+  
+  // if(LOCO){
+  //   
+  //   // turn on LOCO option
+  //   Rcpp::StringVector chrVec = m_ptrPlinkObj->getChrVec();
+  //   Rcpp::StringVector uniqchr = unique(chrVec);
+  //   
+  //   std::cout << "uniqchr is " << uniqchr << std::endl;
+  //   
+  //   for(int i = 0; i < uniqchr.size(); i ++){
+  //     
+  //     std::string excludechr = std::string(uniqchr(i));
+  //     std::cout << std::endl << "Leave One Chromosome Out: Chr " << excludechr << std::endl;
+  //     
+  //     updateParaConv(excludechr);
+  //     
+  //     arma::mat GMatRatio = m_ptrPlinkObj->getGMat(100, excludechr, m_minMafVarRatio, m_maxMissingVarRatio);
+  //     arma::mat VarRatioMat = getVarRatio(GMatRatio, excludechr);
+  //     double VarRatio = arma::mean(VarRatioMat.col(4));
+  //     
+  //     Rcpp::List temp = Rcpp::List::create(Rcpp::Named("muMat") = m_muMat,
+  //                                          Rcpp::Named("iRMat") = m_iRMat,
+  //                                          Rcpp::Named("VarRatioMat") = VarRatioMat,
+  //                                          Rcpp::Named("VarRatio") = VarRatio);
+  //     
+  //     m_LOCOList[excludechr] = temp;
+  //   }
+  //   
+  // }else{
+  //   
+  //   // turn off LOCO option
+  //   arma::mat GMatRatio = m_ptrPlinkObj->getGMat(100, "none", m_minMafVarRatio, m_maxMissingVarRatio);
+  //   arma::mat VarRatioMat = getVarRatio(GMatRatio, "none");
+  //   double VarRatio = arma::mean(VarRatioMat.col(4));
+  //   
+  //   Rcpp::List temp = Rcpp::List::create(Rcpp::Named("muMat") = m_muMat,
+  //                                        Rcpp::Named("iRMat") = m_iRMat,
+  //                                        Rcpp::Named("VarRatioMat") = VarRatioMat,
+  //                                        Rcpp::Named("VarRatio") = VarRatio);
+  //   m_LOCOList["LOCO=F"] = temp;
+  // }
+  
+  ptr_gPOLMMobj->estVarRatio(GenoMat);
   
   Rcpp::List outList = ptr_gPOLMMobj->getPOLMM();
   

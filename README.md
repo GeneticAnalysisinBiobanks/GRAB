@@ -59,7 +59,23 @@ for(partParallel in 1:nPartsGRM){
 }
 SparseGRMFile = system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
 getSparseGRM(PlinkFile, nPartsGRM, SparseGRMFile)
+data.table::fread(SparseGRMFile)
+#            ID1      ID2     Value
+#    1:     f1_1     f1_1 0.9591102
+#    2:     f1_2     f1_2 1.0227757
+#    3:     f1_3     f1_3 1.0278691
+#    4:     f1_4     f1_4 1.0138606
+#    5:     f1_5     f1_1 0.4640743
+#   ---                            
+# 2546: Subj-496 Subj-496 1.0031059
+# 2547: Subj-497 Subj-497 0.9952855
+# 2548: Subj-498 Subj-498 0.9829549
+# 2549: Subj-499 Subj-499 1.0086861
+# 2550: Subj-500 Subj-500 0.9786987
 ```
+
+### 
+
 
 ### Replicate the phenotype simulation in the package
 ```{r}
@@ -91,6 +107,7 @@ RegionData = data.frame(REGION = paste0("Region_", rep(1:100,each=100)),
 ### Step 1: Fit a null model using the sparse GRM and phenotype data
 ```{r}
 GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
+# GenoFile = system.file("extdata", "simuBGEN.bgen", package = "GRAB")  # BGEN file input is also supported in null model fitting
 PhenoFile = system.file("extdata", "simuPHENO.txt", package = "GRAB")
 Pheno = read.table(PhenoFile, header = T)
 SparseGRMFile = system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")

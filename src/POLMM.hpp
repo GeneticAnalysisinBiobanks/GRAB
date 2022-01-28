@@ -6,6 +6,7 @@
 #include <RcppArmadillo.h>
 
 #include "DenseGRM.hpp"
+#include "BGEN.hpp"
 
 namespace POLMM{
 
@@ -50,6 +51,8 @@ private:
   arma::vec m_RPsiR;
   
   PLINK::PlinkClass* m_ptrPlinkObj;
+  BGEN::BgenClass* m_ptrBgenObj;
+  
   DenseGRM::DenseGRMClass* m_ptrDenseGRMObj;
   
   arma::cube m_InvBlockDiagSigma;
@@ -167,7 +170,7 @@ private:
     return(y1Vec);
   }
   
-  // set up m_TraceRandMat (TRM) and m_V_TRM, only used once at setPOLMMObj()
+  // set up m_TraceRandMat (TRM) and m_V_TRM, only used once at ()
   void getTraceRandMat();
   
   arma::vec getKinbVecPOLMM(arma::vec t_bVec, std::string t_excludeChr);
@@ -177,6 +180,7 @@ private:
 public:
   
   void fitPOLMM();
+  void estVarRatio(arma::mat GenoMat);
   void updateMats();
   void updateParaConv(std::string t_excludechr);
   void updateTau();
@@ -207,6 +211,7 @@ public:
   POLMMClass(bool t_flagSparseGRM,       // if 1, then use SparseGRM, otherwise, use DenseGRM
              DenseGRM::DenseGRMClass* t_ptrDenseGRMObj,
              PLINK::PlinkClass* t_ptrPlinkObj,
+             BGEN::BgenClass* t_ptrBgenObj,
              arma::mat t_Cova,
              arma::uvec t_yVec,     // should be from 0 to J-1
              arma::vec t_beta,
@@ -219,6 +224,7 @@ public:
     setPOLMMObj(t_flagSparseGRM,       // if 1, then use SparseGRM, otherwise, use DenseGRM
                 t_ptrDenseGRMObj,
                 t_ptrPlinkObj,
+                t_ptrBgenObj,
                 t_Cova,
                 t_yVec,     // should be from 0 to J-1
                 t_beta,
@@ -246,6 +252,7 @@ public:
   void setPOLMMObj(bool t_flagSparseGRM,       // if 1, then use SparseGRM, otherwise, use DenseGRM
                    DenseGRM::DenseGRMClass* t_ptrDenseGRMObj,
                    PLINK::PlinkClass* t_ptrPlinkObj,
+                   BGEN::BgenClass* t_ptrBgenObj,
                    arma::mat t_Cova,
                    arma::uvec t_yVec,     // should be from 1 to J
                    arma::vec t_beta,

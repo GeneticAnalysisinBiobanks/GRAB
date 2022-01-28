@@ -139,6 +139,23 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// getGenoInCPP_fixedNumber
+arma::mat getGenoInCPP_fixedNumber(std::string t_genoType, Rcpp::DataFrame t_markerInfo, int n, std::string t_imputeMethod, int m, double missingRateCutoff, double minMAFCutoff);
+RcppExport SEXP _GRAB_getGenoInCPP_fixedNumber(SEXP t_genoTypeSEXP, SEXP t_markerInfoSEXP, SEXP nSEXP, SEXP t_imputeMethodSEXP, SEXP mSEXP, SEXP missingRateCutoffSEXP, SEXP minMAFCutoffSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type t_genoType(t_genoTypeSEXP);
+    Rcpp::traits::input_parameter< Rcpp::DataFrame >::type t_markerInfo(t_markerInfoSEXP);
+    Rcpp::traits::input_parameter< int >::type n(nSEXP);
+    Rcpp::traits::input_parameter< std::string >::type t_imputeMethod(t_imputeMethodSEXP);
+    Rcpp::traits::input_parameter< int >::type m(mSEXP);
+    Rcpp::traits::input_parameter< double >::type missingRateCutoff(missingRateCutoffSEXP);
+    Rcpp::traits::input_parameter< double >::type minMAFCutoff(minMAFCutoffSEXP);
+    rcpp_result_gen = Rcpp::wrap(getGenoInCPP_fixedNumber(t_genoType, t_markerInfo, n, t_imputeMethod, m, missingRateCutoff, minMAFCutoff));
+    return rcpp_result_gen;
+END_RCPP
+}
 // getSpGenoInCPP
 arma::sp_mat getSpGenoInCPP(std::string t_genoType, Rcpp::DataFrame t_markerInfo, int n, std::string t_imputeMethod);
 RcppExport SEXP _GRAB_getSpGenoInCPP(SEXP t_genoTypeSEXP, SEXP t_markerInfoSEXP, SEXP nSEXP, SEXP t_imputeMethodSEXP) {
@@ -204,8 +221,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // setPOLMMobjInCPP_NULL
-Rcpp::List setPOLMMobjInCPP_NULL(bool t_flagSparseGRM, arma::mat t_Cova, arma::uvec t_yVec, arma::vec t_beta, arma::vec t_bVec, arma::vec t_eps, double t_tau, Rcpp::List t_SPmatR, Rcpp::List t_controlList);
-RcppExport SEXP _GRAB_setPOLMMobjInCPP_NULL(SEXP t_flagSparseGRMSEXP, SEXP t_CovaSEXP, SEXP t_yVecSEXP, SEXP t_betaSEXP, SEXP t_bVecSEXP, SEXP t_epsSEXP, SEXP t_tauSEXP, SEXP t_SPmatRSEXP, SEXP t_controlListSEXP) {
+Rcpp::List setPOLMMobjInCPP_NULL(bool t_flagSparseGRM, arma::mat t_Cova, arma::uvec t_yVec, arma::vec t_beta, arma::vec t_bVec, arma::vec t_eps, double t_tau, Rcpp::List t_SPmatR, Rcpp::List t_controlList, arma::mat GenoMat);
+RcppExport SEXP _GRAB_setPOLMMobjInCPP_NULL(SEXP t_flagSparseGRMSEXP, SEXP t_CovaSEXP, SEXP t_yVecSEXP, SEXP t_betaSEXP, SEXP t_bVecSEXP, SEXP t_epsSEXP, SEXP t_tauSEXP, SEXP t_SPmatRSEXP, SEXP t_controlListSEXP, SEXP GenoMatSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -218,7 +235,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type t_tau(t_tauSEXP);
     Rcpp::traits::input_parameter< Rcpp::List >::type t_SPmatR(t_SPmatRSEXP);
     Rcpp::traits::input_parameter< Rcpp::List >::type t_controlList(t_controlListSEXP);
-    rcpp_result_gen = Rcpp::wrap(setPOLMMobjInCPP_NULL(t_flagSparseGRM, t_Cova, t_yVec, t_beta, t_bVec, t_eps, t_tau, t_SPmatR, t_controlList));
+    Rcpp::traits::input_parameter< arma::mat >::type GenoMat(GenoMatSEXP);
+    rcpp_result_gen = Rcpp::wrap(setPOLMMobjInCPP_NULL(t_flagSparseGRM, t_Cova, t_yVec, t_beta, t_bVec, t_eps, t_tau, t_SPmatR, t_controlList, GenoMat));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -260,11 +278,12 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_mainRegionURVInCPP", (DL_FUNC) &_GRAB_mainRegionURVInCPP, 4},
     {"_GRAB_mainRegionInCPP", (DL_FUNC) &_GRAB_mainRegionInCPP, 7},
     {"_GRAB_getGenoInCPP", (DL_FUNC) &_GRAB_getGenoInCPP, 4},
+    {"_GRAB_getGenoInCPP_fixedNumber", (DL_FUNC) &_GRAB_getGenoInCPP_fixedNumber, 7},
     {"_GRAB_getSpGenoInCPP", (DL_FUNC) &_GRAB_getSpGenoInCPP, 4},
     {"_GRAB_setPLINKobjInCPP", (DL_FUNC) &_GRAB_setPLINKobjInCPP, 5},
     {"_GRAB_setBGENobjInCPP", (DL_FUNC) &_GRAB_setBGENobjInCPP, 7},
     {"_GRAB_setPOLMMobjInCPP", (DL_FUNC) &_GRAB_setPOLMMobjInCPP, 11},
-    {"_GRAB_setPOLMMobjInCPP_NULL", (DL_FUNC) &_GRAB_setPOLMMobjInCPP_NULL, 9},
+    {"_GRAB_setPOLMMobjInCPP_NULL", (DL_FUNC) &_GRAB_setPOLMMobjInCPP_NULL, 10},
     {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},
     {"_GRAB_squares", (DL_FUNC) &_GRAB_squares, 1},
     {NULL, NULL, 0}

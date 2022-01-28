@@ -247,9 +247,12 @@ updateSparseGRM = function(SparseGRM, subjData){
 }
 
 ## set up Dense GRM and Sparse GRM
-# to be updated later
 handleGRM = function(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
 {
+  # NOTE on 2022-01-27: for approaches using GRM, variance ratio is required, which needs 'GenoFile' and 'GenoFileIndex'.
+  if(is.null(GenoFile))
+    stop("Argument of 'GenoFile' is required to estimate variance ratio.")
+  
   genoList = setGenoInput(GenoFile, GenoFileIndex, subjData)   # check Geno.R for more details
   
   if(!is.null(SparseGRMFile)){
@@ -277,5 +280,7 @@ handleGRM = function(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
     optionGRM = "DenseGRM"
   }
   
-  return(optionGRM)
+  return(list(optionGRM = optionGRM,
+              genoType = genoList$genoType,
+              markerInfo = genoList$markerInfo))
 }

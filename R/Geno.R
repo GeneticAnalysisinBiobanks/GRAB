@@ -111,7 +111,7 @@ GRAB.ReadGeno = function(GenoFile,
   
   objGeno = setGenoInput(GenoFile, GenoFileIndex, SampleIDs, control)
   
-  genoType = objGeno$genoType
+  genoType = objGeno$genoType   # "PLINK" or "BGEN"
   markerInfo = objGeno$markerInfo
   SampleIDs = objGeno$SampleIDs
   anyQueue = objGeno$anyQueue   # if FALSE, no include/exclude is specified
@@ -142,6 +142,9 @@ GRAB.ReadGeno = function(GenoFile,
               markerInfo = markerInfo))
 }
 
+# setGenoInput() is to setup the following object in C++ (Main.cpp)
+# PLINK format: ptr_gPLINKobj;
+# BGEN format: ptr_gBGENobj;
 setGenoInput = function(GenoFile, 
                         GenoFileIndex = NULL, 
                         SampleIDs = NULL,

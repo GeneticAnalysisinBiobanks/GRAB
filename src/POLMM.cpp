@@ -103,6 +103,7 @@ void set_seed(unsigned int seed){
 void POLMMClass::setPOLMMObj(bool t_flagSparseGRM,       // if 1, then use SparseGRM, otherwise, use DenseGRM
                              DenseGRM::DenseGRMClass* t_ptrDenseGRMObj,
                              PLINK::PlinkClass* t_ptrPlinkObj,
+                             BGEN::BgenClass* t_ptrBgenObj,
                              arma::mat t_Cova,
                              arma::uvec t_yVec,     // should be from 0 to J-1
                              arma::vec t_beta,
@@ -116,6 +117,7 @@ void POLMMClass::setPOLMMObj(bool t_flagSparseGRM,       // if 1, then use Spars
   setPOLMMInner(t_Cova, t_yVec, t_beta,  t_bVec,  t_eps,  t_tau);
   
   m_ptrPlinkObj = t_ptrPlinkObj;
+  m_ptrBgenObj = t_ptrBgenObj;
   
   // if t_flagSparseGRM = 1, then use "SparseGRM" methods, otherwise, use "DenseGRM" methods
   m_flagSparseGRM = t_flagSparseGRM;
@@ -1247,52 +1249,54 @@ void POLMMClass::fitPOLMM()
       break;
   }
   
-  if(m_LOCO){
-    
-    // turn on LOCO option
-    Rcpp::StringVector chrVec = m_ptrPlinkObj->getChrVec();
-    Rcpp::StringVector uniqchr = unique(chrVec);
-    
-    std::cout << "uniqchr is " << uniqchr << std::endl;
-    
-    for(int i = 0; i < uniqchr.size(); i ++){
-      
-      std::string excludechr = std::string(uniqchr(i));
-      std::cout << std::endl << "Leave One Chromosome Out: Chr " << excludechr << std::endl;
-      
-      updateParaConv(excludechr);
-      
-      arma::mat GMatRatio = m_ptrPlinkObj->getGMat(100, excludechr, m_minMafVarRatio, m_maxMissingVarRatio);
-      arma::mat VarRatioMat = getVarRatio(GMatRatio, excludechr);
-      double VarRatio = arma::mean(VarRatioMat.col(4));
-      
-      Rcpp::List temp = Rcpp::List::create(Rcpp::Named("muMat") = m_muMat,
-                                           Rcpp::Named("iRMat") = m_iRMat,
-                                           Rcpp::Named("VarRatioMat") = VarRatioMat,
-                                           Rcpp::Named("VarRatio") = VarRatio);
-      
-      m_LOCOList[excludechr] = temp;
-    }
-    
-  }else{
-    
-    // turn off LOCO option
-    // if(!m_flagGMatRatio){
-    
-    arma::mat GMatRatio = m_ptrPlinkObj->getGMat(100, "none", m_minMafVarRatio, m_maxMissingVarRatio);
-    arma::mat VarRatioMat = getVarRatio(GMatRatio, "none");
-    double VarRatio = arma::mean(VarRatioMat.col(4));
-    
-    Rcpp::List temp = Rcpp::List::create(Rcpp::Named("muMat") = m_muMat,
-                                         Rcpp::Named("iRMat") = m_iRMat,
-                                         Rcpp::Named("VarRatioMat") = VarRatioMat,
-                                         Rcpp::Named("VarRatio") = VarRatio);
-    m_LOCOList["LOCO=F"] = temp;
-  }
-  
   // complete null POLMM fitting 
   arma::vec t2  = getTime();
   printTime(t1, t2, "fit the null POLMM.");
+}
+
+void POLMMClass::estVarRatio(arma::mat GenoMat)
+{
+  // if(m_LOCO){
+  //   
+  //   // turn on LOCO option
+  //   Rcpp::StringVector chrVec = m_ptrPlinkObj->getChrVec();
+  //   Rcpp::StringVector uniqchr = unique(chrVec);
+  //   
+  //   std::cout << "uniqchr is " << uniqchr << std::endl;
+  //   
+  //   for(int i = 0; i < uniqchr.size(); i ++){
+  //     
+  //     std::string excludechr = std::string(uniqchr(i));
+  //     std::cout << std::endl << "Leave One Chromosome Out: Chr " << excludechr << std::endl;
+  //     
+  //     updateParaConv(excludechr);
+  //     
+  //     arma::mat GMatRatio = m_ptrPlinkObj->getGMat(100, excludechr, m_minMafVarRatio, m_maxMissingVarRatio);
+  //     arma::mat VarRatioMat = getVarRatio(GMatRatio, excludechr);
+  //     double VarRatio = arma::mean(VarRatioMat.col(4));
+  //     
+  //     Rcpp::List temp = Rcpp::List::create(Rcpp::Named("muMat") = m_muMat,
+  //                                          Rcpp::Named("iRMat") = m_iRMat,
+  //                                          Rcpp::Named("VarRatioMat") = VarRatioMat,
+  //                                          Rcpp::Named("VarRatio") = VarRatio);
+  //     
+  //     m_LOCOList[excludechr] = temp;
+  //   }
+  //   
+  // }else{
+  //   
+  //   // turn off LOCO option
+  //   arma::mat GMatRatio = m_ptrPlinkObj->getGMat(100, "none", m_minMafVarRatio, m_maxMissingVarRatio);
+  //   arma::mat VarRatioMat = getVarRatio(GMatRatio, "none");
+  arma::mat VarRatioMat = getVarRatio(GenoMat, "none");
+  double VarRatio = arma::mean(VarRatioMat.col(4));
+  
+  Rcpp::List temp = Rcpp::List::create(Rcpp::Named("muMat") = m_muMat,
+                                       Rcpp::Named("iRMat") = m_iRMat,
+                                       Rcpp::Named("VarRatioMat") = VarRatioMat,
+                                       Rcpp::Named("VarRatio") = VarRatio);
+  m_LOCOList["LOCO=F"] = temp;
+  // }
 }
 
 

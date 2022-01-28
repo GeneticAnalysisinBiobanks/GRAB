@@ -37,6 +37,10 @@ getGenoInCPP <- function(t_genoType, t_markerInfo, n, t_imputeMethod) {
     .Call(`_GRAB_getGenoInCPP`, t_genoType, t_markerInfo, n, t_imputeMethod)
 }
 
+getGenoInCPP_fixedNumber <- function(t_genoType, t_markerInfo, n, t_imputeMethod, m, missingRateCutoff, minMAFCutoff) {
+    .Call(`_GRAB_getGenoInCPP_fixedNumber`, t_genoType, t_markerInfo, n, t_imputeMethod, m, missingRateCutoff, minMAFCutoff)
+}
+
 getSpGenoInCPP <- function(t_genoType, t_markerInfo, n, t_imputeMethod) {
     .Call(`_GRAB_getSpGenoInCPP`, t_genoType, t_markerInfo, n, t_imputeMethod)
 }
@@ -53,8 +57,8 @@ setPOLMMobjInCPP <- function(t_muMat, t_iRMat, t_Cova, t_yVec, t_tau, t_printPCG
     invisible(.Call(`_GRAB_setPOLMMobjInCPP`, t_muMat, t_iRMat, t_Cova, t_yVec, t_tau, t_printPCGInfo, t_tolPCG, t_maxiterPCG, t_varRatio, t_SPA_cutoff, t_flagSparseGRM))
 }
 
-setPOLMMobjInCPP_NULL <- function(t_flagSparseGRM, t_Cova, t_yVec, t_beta, t_bVec, t_eps, t_tau, t_SPmatR, t_controlList) {
-    .Call(`_GRAB_setPOLMMobjInCPP_NULL`, t_flagSparseGRM, t_Cova, t_yVec, t_beta, t_bVec, t_eps, t_tau, t_SPmatR, t_controlList)
+setPOLMMobjInCPP_NULL <- function(t_flagSparseGRM, t_Cova, t_yVec, t_beta, t_bVec, t_eps, t_tau, t_SPmatR, t_controlList, GenoMat) {
+    .Call(`_GRAB_setPOLMMobjInCPP_NULL`, t_flagSparseGRM, t_Cova, t_yVec, t_beta, t_bVec, t_eps, t_tau, t_SPmatR, t_controlList, GenoMat)
 }
 
 setSPACoxobjInCPP <- function(t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_covaAdj_Cutoff, t_SPA_Cutoff) {
