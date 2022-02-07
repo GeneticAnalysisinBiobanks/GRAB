@@ -122,7 +122,7 @@ objNull = GRAB.NullModel(as.factor(ordinal) ~ Cova1 + Cova2,
                          GenoFile = GenoFile,
                          SparseGRMFile = SparseGRMFile)
 
-objNull$tau    # 0.5681122
+objNull$tau    # 0.5655751
                          
 save(objNull, file = objNullFile)
 ```
