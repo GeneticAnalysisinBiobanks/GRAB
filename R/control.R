@@ -64,7 +64,7 @@ checkControl.Marker = function(control, NullModelClass)
                                 min_maf_marker = 0.001,
                                 min_mac_marker = 20,
                                 nMarkersEachChunk = 10000,
-                                omp_num_threads = data.table::getDTthreads())    # if 0, value is from omp_get_num_threads()
+                                omp_num_threads = data.table::getDTthreads())    # if 0, value is from omp_get_num_threads(). Not supported on 2022-02-07
   
   control = updateControl(control, default.marker.control)
   

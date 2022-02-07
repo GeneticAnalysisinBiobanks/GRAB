@@ -130,10 +130,19 @@ GRAB.Region = function(objNull,
   
   if(End)
   {
-    message = paste0("The analysis has been completed in earlier analysis. Results are saved in '", OutputFile, "'. ",
+    message = paste0("The analysis has been completed in earlier analysis. Results have been saved in '", OutputFile, "'. ",
                      "If you want to change parameters and restart the analysis, please use another 'OutputFile'.")
     return(message)
   }
+  
+  if(!Start){
+    message = paste0("We detected that parts of analysis have been conducted from file:\t",
+                     OutputFileIndex,"\n",
+                     "We restart the analysis from chunk:\t",indexChunk+1,"\n");
+    cat(message)
+  }
+  
+  
   
   ## Check "control.R": if the setting of control is not specified, the default setting will be used
   control = checkControl.Region(control, NullModelClass)

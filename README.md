@@ -142,6 +142,29 @@ GRAB.Marker(objNull,
             OutputFile = OutputFile)
             
 ## Check 'OutputFile' for the analysis results
+data.table::fread(OutputFile)
+#           Marker        Info   AltFreq AltCounts MissingRate     Pvalue        beta     seBeta
+#     1:     SNP_1     1:1:G:A 0.3934316       587  0.04481434 0.77381083  0.03200175  0.1113516
+#     2:     SNP_2     1:2:G:A 0.4561995       677  0.04993598 0.30789980 -0.10816640 -0.1060831
+#     3:     SNP_3     1:3:G:A 0.3899329       581  0.04609475 0.77397169  0.03153778  0.1098174
+#     4:     SNP_4     1:4:G:A 0.4433834       650  0.06145967 0.33178713  0.10265438  0.1057725
+#     5:     SNP_5     1:5:G:A 0.2355705       351  0.04609475 0.59348431  0.06879171  0.1288732
+#    ---                                                                                        
+#  9996:  SNP_9996  1:9996:G:A 0.3424566       513  0.04097311 0.04678621 -0.21914094 -0.1102191
+#  9997:  SNP_9997  1:9997:G:A 0.2686062       397  0.05377721 0.84223235 -0.02476919 -0.1244440
+#  9998:  SNP_9998  1:9998:G:A 0.0669344       100  0.04353393 0.75590206 -0.06695376 -0.2153778
+#  9999:  SNP_9999  1:9999:G:A 0.2377384       349  0.06017926 0.45544541 -0.09688906 -0.1298141
+# 10000: SNP_10000 1:10000:G:A 0.1361186       202  0.04993598 0.37979954 -0.13401746 -0.1525933
+
+# The below is to show some parameters in control list. For more details, please check the Details section in ?GRAB.Marker
+GRAB.Marker(objNull, 
+            GenoFile = GenoFile,
+            OutputFile = OutputFile,
+            control = list(nMarkersEachChunk = 1000,
+                           ImputeMethod = "mean",
+                           MissingRateCutoff = 0.05,
+                           MinMAFCutoff = 0.1))
+
 ```
 
 ### Step 2b: Perform a genome-wide region-level association analysis

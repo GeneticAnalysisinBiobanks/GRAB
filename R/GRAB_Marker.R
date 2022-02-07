@@ -109,7 +109,25 @@ GRAB.Marker = function(objNull,
   checkControl.ReadGeno(control)
   control = checkControl.Marker(control, NullModelClass)
   nMarkersEachChunk = control$nMarkersEachChunk;
-  outIndex = checkOutputFile(OutputFile, OutputFileIndex, "Marker", format(nMarkersEachChunk, scientific=F))    # this function is in 'Util.R'
+  outList = checkOutputFile(OutputFile, OutputFileIndex, "Marker", format(nMarkersEachChunk, scientific=F))    # this function is in 'Util.R'
+  
+  indexChunk = outList$indexChunk
+  Start = outList$Start
+  End = outList$End
+  
+  if(End)
+  {
+    message = paste0("The analysis has been completed in earlier analysis. Results have been saved in '", OutputFile, "'. ",
+                     "If you want to change parameters and restart the analysis, please use another 'OutputFile'.")
+    return(message)
+  }
+  
+  if(!Start){
+    message = paste0("We detected that parts of analysis have been conducted from file:\t",
+                     OutputFileIndex,"\n",
+                     "We restart the analysis from chunk:\t",indexChunk+1,"\n");
+    cat(message)
+  }
   
   subjData = as.character(objNull$subjData);
   
@@ -130,11 +148,9 @@ GRAB.Marker = function(objNull,
   cat("Number of all markers to test:\t", nrow(markerInfo), "\n")
   cat("Number of markers in each chunk:\t", nMarkersEachChunk, "\n")
   cat("Number of chunks for all markers:\t", nChunks, "\n")
-  if(outIndex != 1)
-    cat("Restart the analysis from chunk:\t", outIndex, "\n")
   
   chrom = "InitialChunk"
-  for(i in outIndex:nChunks)
+  for(i in (indexChunk+1):nChunks)
   {
     tempList = genoIndexList[[i]]
     genoIndex = tempList$genoIndex
@@ -158,7 +174,7 @@ GRAB.Marker = function(objNull,
                     nEachChunk = format(nMarkersEachChunk, scientific=F),
                     indexChunk = i,
                     Start = (i==1),
-                    End = (i==nRegions))
+                    End = (i==nChunks))
   }
   
   # information to users
