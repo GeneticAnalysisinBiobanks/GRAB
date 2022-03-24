@@ -57,15 +57,19 @@ GRAB.SimuGMat = function(nSub,
                          MinMAF = 0.05,
                          MAF = NULL)
 {
-  
   if(missing(FamMode) & missing(nFam)){
-    cat("Since both 'FamMode' and 'nFam' are not specified, only unrelated subjects are simulated.")
+    cat("Since both 'FamMode' and 'nFam' are not specified, we only simulate genotype for unrelated subjects.\n")
     nFam = 0;
     FamMode = "Unrelated";
   }
   
-  if(missing(nSub))
+  if(missing(nSub)){
+    cat("Since 'nSub' is not specified, we only simulate genotype for family members.\n")
     nSub = 0;
+  }
+    
+  if(!is.element(FamMode, c("Unrelated", "4-members", "10-members", "20-members")))
+    stop("FamMode should be one of 'Unrelated', '4-members', '10-members', and '20-members'. Other input is not supported.")
   
   if(FamMode == "4-members"){
     nSubInEachFam = 4
@@ -85,9 +89,6 @@ GRAB.SimuGMat = function(nSub,
     fam.mat = example.fam.20.members(nFam)
   }
   
-  if(!is.element(FamMode, c("Unrelated", "4-members", "10-members", "20-members")))
-    stop("FamMode should be one of '4-members', '10-members', or '20-members'.")
-  
   n = nSub + nFam * nSubInEachFam
   nHaplo = nFam * nHaploInEachFam
   
@@ -105,7 +106,7 @@ GRAB.SimuGMat = function(nSub,
   }else{
     if(length(MAF) != nSNP)
       stop("length(MAF) should equal to nSNP.")
-    cat("Since argument 'MAF' is given, arguments of 'MaxMAF' and 'MinMAF' will be ignored.\n")
+    cat("Since argument 'MAF' is given, arguments of 'MaxMAF' and 'MinMAF' are ignored.\n")
   }
   
   SNP.info = make.SNP.info(nSNP, MAF)
@@ -126,6 +127,7 @@ GRAB.SimuGMat = function(nSub,
   }
 
   GenoMat = rbind(GenoMat1, GenoMat2)
+  GenoMat = data.table::as.data.table(GenoMat, keep.rownames = TRUE)
   
   return(list(GenoMat = GenoMat,
               markerInfo = SNP.info))
@@ -208,9 +210,9 @@ example.fam.4.members = function(n.fam)           # family numbers
 make.SNP.info = function(nSNP,  # number of null SNPs
                          MAF)   # fixed value of MAF for all SNPs
 {
-  SNP.info = data.frame(SNP=paste0("SNP_",1:nSNP),
-                        MAF=MAF,
-                        stringsAsFactors = F)
+  SNP.info = data.table::data.table(SNP=paste0("SNP_",1:nSNP),
+                                    MAF=MAF,
+                                    stringsAsFactors = F)
   return(SNP.info)
 }
 

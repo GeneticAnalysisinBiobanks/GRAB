@@ -5,7 +5,7 @@ Version: 0.0.2.5
 Date: 2022-02-07
 Author: Wenjian Bi, Wei Zhou, Rounak Dey, Zhangchen Zhao, Seunggeun Lee
 Maintainer: Wenjian Bi <wenjianb@pku.edu.cn>
-Description: A toolkit designed for large-scale biobank data analysis
+Description: A toolkit designed for large-scale biobank data analysis, currently, multiple phenotype types are supported.
 License: GPL (>= 2)
 Depends: ordinal, Matrix, SKAT, tidyr, dbplyr, R (>= 3.5.0)
 Imports: Rcpp (>= 1.0.5), RcppArmadillo, RcppParallel, BH, survival, data.table, tidyr, dbplyr, RSQLite, ordinal, Matrix
