@@ -127,7 +127,8 @@ GRAB.SimuGMat = function(nSub,
   }
 
   GenoMat = rbind(GenoMat1, GenoMat2)
-  GenoMat = data.table::as.data.table(GenoMat, keep.rownames = TRUE)
+  GenoMat = data.table::as.data.table(GenoMat)
+  rownames(GenoMat) = c(rownames(GenoMat1), rownames(GenoMat2))
   
   return(list(GenoMat = GenoMat,
               markerInfo = SNP.info))
