@@ -127,8 +127,6 @@ GRAB.SimuGMat = function(nSub,
   }
 
   GenoMat = rbind(GenoMat1, GenoMat2)
-  GenoMat = data.table::as.data.table(GenoMat)
-  rownames(GenoMat) = c(rownames(GenoMat1), rownames(GenoMat2))
   
   return(list(GenoMat = GenoMat,
               markerInfo = SNP.info))
@@ -608,3 +606,119 @@ GRAB.makePlink = function(GenoMat,
   return(message)
 }
 
+#' Simulate phenotype using linear predictor \code(eta)
+#' 
+#' \code{GRAB} package can help simulate a wide variaty of phenotypes
+#' 
+#' @param eta linear predictors, usually covar \times beta.cova + genotype \times beta.genotype 
+#' @param traitType "quantitative", "binary", "ordinal", or "time-to-event"
+#' @param control a list of parameters for controlling the simulation process
+#' @return a numeric vector of phenotype
+#' @export
+GRAB.SimuPheno = function(eta, 
+                          traitType = "binary", 
+                          control = list(pCase = 0.1,
+                                         sdError = 1,
+                                         pEachGroup = c(1,1,1)))
+{
+  if(!traitType %in% c("quantitative", "binary", "ordinal", "time-to-event"))
+    stop('traitType is limited to "quantitative", "binary", "ordinal", and "time-to-event".')
+  
+  if(traitType == "binary")
+    if(!"pCase" %in% names(control))
+      stop("For binary phenotype, argument 'control' should include 'pCase' which is the proportion of cases.")
+  
+  if(traitType == "quantitative")
+    if(!"sdError" %in% names(control))
+      cat("For quantitative phenotype, argument 'control' should include 'sdError' which is the stardard derivation of the error term.")
+  
+  if(traitType == "ordinal")
+    if(!"pEachGroup" %in% names(control))
+      cat("For quantitative phenotype, argument 'control' should include 'pEachGroup' which is ratio of sample size in each group.")
+  
+  n = length(eta)
+  
+  seed = sample(1e9,1)
+  cat("Random number seed:\t", seed, "\n")
+  
+  ### quantitative trait
+  if(traitType == "quantitative"){
+    sdError = control$sdError
+    set.seed(seed)
+    error = rnorm(n, sd = sdError)
+    pheno = eta + error
+    return(pheno)
+  }
+  
+  ### binary trait
+  if(traitType == "binary"){
+    pCase = control$pCase
+    eta0 = uniroot(f.binary, c(-100,100), eta = eta, pCase = pCase,seed = seed)
+    eta0 = eta0$root
+    set.seed(seed)
+    eta.new = eta0 + eta
+    mu = exp(eta.new) / (1 + exp(eta.new))   # The probability being a case given the covariates, genotypes, and addition effect
+    pheno = rbinom(n, 1, mu)                     # Case-control status
+    return(pheno)
+  }
+  
+  ### quantitative trait
+  if(traitType == "ordinal"){
+    pEachGroup = control$pEachGroup
+    Eps = getEps(pEachGroup, eta, seed)
+    set.seed(seed)
+    pheno.latent = runif(n)
+    pheno = rep(0, n)
+    for(g in 1:length(Eps)){
+      mu = exp(Eps[g]-eta)/(1+exp(Eps[g]-eta))
+      pheno[pheno.latent > mu] = g
+    }
+    return(pheno)
+  }
+}
+
+
+#### lower function to estimate eta0 given a prevalence. Will be used in data.simu.binary().
+f.binary = function(eta,               # Sample size
+                    pCase,             # Prevalence
+                    eta0,              # Intercept
+                    seed)     
+{
+  set.seed(seed)
+  n = length(eta)
+  eta.new = eta0 + eta
+  mu = exp(eta.new) / (1 + exp(eta.new))   # The probability being a case given the covariates, genotypes, and addition effect
+  Y = rbinom(n, 1, mu)                     # Case-control status
+  re = mean(Y) - pCase
+  return(re)
+}
+
+#### lower function to estimate epsilons given a ratio(phenotypic distribution). Will be used in data.simu.categorical().
+getProb = function(eps,
+                   eta.true,
+                   prob,
+                   seed)
+{
+  set.seed(seed)
+  n = length(eta.true)
+  mu = exp(eps-eta.true) / (1+exp(eps-eta.true))
+  Y.latent = runif(n)
+  diffprob = mean(Y.latent < mu) - prob
+  return(diffprob)
+}
+
+getEps = function(ratios,
+                  eta.true,
+                  seed)
+{
+  sumR = sum(ratios)
+  cumR = 0
+  J = length(ratios)
+  Eps = c()
+  for(i in 1:(J-1)){
+    cumR = cumR + ratios[i]
+    eps = uniroot(getProb, c(-100,100), eta.true = eta.true, prob = cumR/sumR, seed = seed)
+    Eps = c(Eps, eps$root)
+  }
+  return(Eps)
+}
