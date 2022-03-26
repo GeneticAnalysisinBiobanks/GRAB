@@ -606,11 +606,11 @@ GRAB.makePlink = function(GenoMat,
   return(message)
 }
 
-#' Simulate phenotype using linear predictor \code(eta)
+#' Simulate phenotype using linear predictor \code{eta}
 #' 
 #' \code{GRAB} package can help simulate a wide variaty of phenotypes
 #' 
-#' @param eta linear predictors, usually covar \times beta.cova + genotype \times beta.genotype 
+#' @param eta linear predictors, usually covar x beta.covar + genotype x beta.genotype 
 #' @param traitType "quantitative", "binary", "ordinal", or "time-to-event"
 #' @param control a list of parameters for controlling the simulation process
 #' @return a numeric vector of phenotype

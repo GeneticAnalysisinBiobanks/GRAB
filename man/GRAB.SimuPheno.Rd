@@ -2,7 +2,7 @@
 % Please edit documentation in R/GRAB_Simu.R
 \name{GRAB.SimuPheno}
 \alias{GRAB.SimuPheno}
-\title{Simulate phenotype using linear predictor \code(eta)}
+\title{Simulate phenotype using linear predictor \code{eta}}
 \usage{
 GRAB.SimuPheno(
   eta,
@@ -11,7 +11,7 @@ GRAB.SimuPheno(
 )
 }
 \arguments{
-\item{eta}{linear predictors, usually covar \times beta.cova + genotype \times beta.genotype}
+\item{eta}{linear predictors, usually covar x beta.covar + genotype x beta.genotype}
 
 \item{traitType}{"quantitative", "binary", "ordinal", or "time-to-event"}
 
