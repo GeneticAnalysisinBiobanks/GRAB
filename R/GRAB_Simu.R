@@ -638,6 +638,7 @@ GRAB.SimuPheno = function(eta,
     if(!"pEachGroup" %in% names(control))
       cat("For quantitative phenotype, argument 'control' should include 'pEachGroup' which is ratio of sample size in each group.")
   
+  eta = eta - mean(eta)
   n = length(eta)
   
   seed = sample(1e9,1)
