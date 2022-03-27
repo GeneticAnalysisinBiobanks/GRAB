@@ -71,6 +71,8 @@ GRAB.SimuGMat = function(nSub,
   if(!is.element(FamMode, c("Unrelated", "4-members", "10-members", "20-members")))
     stop("FamMode should be one of 'Unrelated', '4-members', '10-members', and '20-members'. Other input is not supported.")
   
+  nSubInEachFam = 0;
+  
   if(FamMode == "4-members"){
     nSubInEachFam = 4
     nHaploInEachFam = 4
