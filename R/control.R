@@ -87,12 +87,14 @@ checkControl.Marker = function(control, NullModelClass)
   if(control$omp_num_threads < 0)
     stop("control$omp_num_threads should be a positive integral value.")
   
+  textToParse = paste0("control = checkControl.Marker.", method, "(control)")
+  eval(parse(text = textToParse))
   # specific default control setting for different approaches
-  if(NullModelClass == "POLMM_NULL_Model")
-    control = checkControl.Marker.POLMM(control)    # This function is in 'POLMM.R'
-  
-  if(NullModelClass == "SPACox_NULL_Model")
-    control = checkControl.Marker.SPACox(control)   # This function is in 'SPACox.R'
+  # if(NullModelClass == "POLMM_NULL_Model")
+  #   control = checkControl.Marker.POLMM(control)    # This function is in 'POLMM.R'
+  # 
+  # if(NullModelClass == "SPACox_NULL_Model")
+  #   control = checkControl.Marker.SPACox(control)   # This function is in 'SPACox.R'
   
   
   # print control list 
@@ -144,12 +146,14 @@ checkControl.Region = function(control, NullModelClass)
   if(!is.numeric(control$min_nMarker) | control$min_nMarker <= 0)
     stop("control$min_nMarker should be a positive integer.")
   
+  textToParse = paste0("control = checkControl.Region.", method, "(control)")
+  eval(parse(text = textToParse))
   # specific default control setting for different approaches
-  if(NullModelClass == "POLMM_NULL_Model")
-    control = checkControl.Region.POLMM(control)    # Check 'POLMM.R'
-  
-  if(NullModelClass == "SPACox_NULL_Model")
-    control = checkControl.Region.SPACox(control)
+  # if(NullModelClass == "POLMM_NULL_Model")
+  #   control = checkControl.Region.POLMM(control)    # Check 'POLMM.R'
+  # 
+  # if(NullModelClass == "SPACox_NULL_Model")
+  #   control = checkControl.Region.SPACox(control)
   
   # print control list 
   print("The below is the list of control parameters used in region-level genetic association analysis.")
@@ -166,20 +170,23 @@ checkControl.NullModel = function(control, method, traitType, optionGRM)
     if(class(control) != "list")
       stop("If specified, the argument of 'control' should be an R 'list'.")
   
+  textToParse = paste0("control = checkControl.NullModel.", method, "(control, optionGRM)")
+  eval(parse(text = textToParse))
+  
   # SPACox method
-  if(method == "SPACox"){
-    if(traitType != "time-to-event")
-      stop("For method of 'SPACox', only traitType of 'time-to-event' is supported.")
-    control = checkControl.NullModel.SPACox(control)
-  }
+  # if(method == "SPACox"){
+  #   if(traitType != "time-to-event")
+  #     stop("For method of 'SPACox', only traitType of 'time-to-event' is supported.")
+  #   control = checkControl.NullModel.SPACox(control)
+  # }
   
   # POLMM method
-  if(method == "POLMM"){
-    if(traitType != "ordinal")
-      stop("For method of 'POLMM', only traitType of 'ordinal' is supported.")
-    # Check 'POLMM.R'
-    control = checkControl.NullModel.POLMM(control, optionGRM)
-  }
+  # if(method == "POLMM"){
+  #   if(traitType != "ordinal")
+  #     stop("For method of 'POLMM', only traitType of 'ordinal' is supported.")
+  #   # Check 'POLMM.R'
+  #   control = checkControl.NullModel.POLMM(control, optionGRM)
+  # }
   
   # to be updated for other methods
   #
@@ -187,7 +194,7 @@ checkControl.NullModel = function(control, method, traitType, optionGRM)
   #
   # to be updated for other methods
   
-  print("The below are the list of control parameters used in null model fitting.")
+  cat("The below are the list of control parameters used in null model fitting.\n")
   print(control)
   
   return(control)

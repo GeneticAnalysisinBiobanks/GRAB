@@ -214,8 +214,6 @@ arma::vec PlinkClass::getOneMarker(uint64_t t_gIndex,        // different meanin
     case MISSING: numMissing++; if(t_isOutputIndexForMissing){t_indexForMissing.push_back(i);} break;  
     }
     
-    
-    
     if(t_isTrueGenotype)
       bufferG1 = genoMaps[bufferG1];
 

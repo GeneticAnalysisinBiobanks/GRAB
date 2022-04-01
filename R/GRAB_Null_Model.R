@@ -163,33 +163,36 @@ GRAB.NullModel = function(formula,
   
   optionGRM = NULL
   if(method %in% c("POLMM", "SAIGE", "GATE")){
-    outHandleGRM = handleGRM(GenoFile, GenoFileIndex, SparseGRMFile, subjData)  # Check 'SparseGRM.R'
-    optionGRM = outHandleGRM$optionGRM
-    genoType = outHandleGRM$genoType  # "PLINK" or "BGEN"
-    markerInfo = outHandleGRM$markerInfo  # Columns: "CHROM", "POS", "ID", "REF", "ALT", "genoIndex"
+    objGRM = setGRM(GenoFile, GenoFileIndex, SparseGRMFile, subjData)  # Check 'SparseGRM.R'
+    optionGRM = objGRM$optionGRM
+    genoType = objGRM$genoType      # "PLINK" or "BGEN"
+    markerInfo = objGRM$markerInfo  # Columns: "CHROM", "POS", "ID", "REF", "ALT", "genoIndex"
   }
     
   # Check 'control.R'
   control = checkControl.NullModel(control, method, traitType, optionGRM)
   
-  if(method == "POLMM"){
-    # Check 'POLMM.R'
-    objNull = fitNullModel.POLMM(response, designMat, subjData, control, optionGRM, genoType, markerInfo)
-  }
+  textToParse = paste0("objNull = fitNullModel.", method, "(response, designMat, subjData, control, optionGRM, genoType, markerInfo)")
+  eval(parse(text = textToParse))
   
-  if(method == "SPACox"){
-    # Check 'SPACox.R'
-    objNull = fitNullModel.SPACox(response, designMat, subjData, control, ...)
-  }
+  # if(method == "POLMM"){
+  #   # Check 'POLMM.R'
+  #   objNull = fitNullModel.POLMM(response, designMat, subjData, control, optionGRM, genoType, markerInfo)
+  # }
+  
+  # if(method == "SPACox"){
+  #   # Check 'SPACox.R'
+  #   objNull = fitNullModel.SPACox(response, designMat, subjData, control, ...)
+  # }
   
   objNull$subjData = subjData
   
   objNull$Call = Call;
   objNull$sessionInfo = sessionInfo()
-  objNull$time = Sys.time()
+  objNull$time = paste0("Complete Time: ",Sys.time())
   objNull$control = control
   
-  print(paste0("Complete the null model fitting in package GRAB: ", objNull$time))
+  cat("Complete the null model fitting in package GRAB:\t", objNull$time,"\n")
   
   return(objNull)
 }

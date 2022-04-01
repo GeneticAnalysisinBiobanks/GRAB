@@ -57,39 +57,11 @@ GRAB.SimuGMat = function(nSub,
                          MinMAF = 0.05,
                          MAF = NULL)
 {
-  if(missing(FamMode) & missing(nFam)){
-    cat("Since both 'FamMode' and 'nFam' are not specified, we only simulate genotype for unrelated subjects.\n")
-    nFam = 0;
-    FamMode = "Unrelated";
-  }
+  inputList = checkInput(nSub, nFam, FamMode)
   
-  if(missing(nSub)){
-    cat("Since 'nSub' is not specified, we only simulate genotype for family members.\n")
-    nSub = 0;
-  }
-    
-  if(!is.element(FamMode, c("Unrelated", "4-members", "10-members", "20-members")))
-    stop("FamMode should be one of 'Unrelated', '4-members', '10-members', and '20-members'. Other input is not supported.")
-  
-  nSubInEachFam = 0;
-  
-  if(FamMode == "4-members"){
-    nSubInEachFam = 4
-    nHaploInEachFam = 4
-    fam.mat = example.fam.4.members(nFam)
-  }
-    
-  if(FamMode == "10-members"){
-    nSubInEachFam = 10
-    nHaploInEachFam = 8
-    fam.mat = example.fam.10.members(nFam)
-  }
-  
-  if(FamMode == "20-members"){
-    nSubInEachFam = 20
-    nHaploInEachFam = 16
-    fam.mat = example.fam.20.members(nFam)
-  }
+  nSubInEachFam = inputList$nSubInEachFam
+  nHaploInEachFam = inputList$nHaploInEachFam
+  fam.mat = inputList$fam.mat
   
   n = nSub + nFam * nSubInEachFam
   nHaplo = nFam * nHaploInEachFam
@@ -132,6 +104,49 @@ GRAB.SimuGMat = function(nSub,
   
   return(list(GenoMat = GenoMat,
               markerInfo = SNP.info))
+}
+
+checkInput = function(nSub, nFam, FamMode)
+{
+  if(missing(FamMode) & missing(nFam)){
+    cat("Since both 'FamMode' and 'nFam' are not specified, we only simulate genotype for unrelated subjects.\n")
+    nFam = 0;
+    FamMode = "Unrelated";
+  }
+  
+  if(missing(nSub)){
+    cat("Since 'nSub' is not specified, we only simulate genotype for family members.\n")
+    nSub = 0;
+  }
+  
+  if(!is.element(FamMode, c("Unrelated", "4-members", "10-members", "20-members")))
+    stop("FamMode should be one of 'Unrelated', '4-members', '10-members', and '20-members'. Other input is not supported.")
+  
+  nSubInEachFam = 0;
+  
+  if(FamMode == "4-members"){
+    nSubInEachFam = 4
+    nHaploInEachFam = 4
+    fam.mat = example.fam.4.members(nFam)
+  }
+  
+  if(FamMode == "10-members"){
+    nSubInEachFam = 10
+    nHaploInEachFam = 8
+    fam.mat = example.fam.10.members(nFam)
+  }
+  
+  if(FamMode == "20-members"){
+    nSubInEachFam = 20
+    nHaploInEachFam = 16
+    fam.mat = example.fam.20.members(nFam)
+  }
+
+  
+  inputList = list(nSubInEachFam = nSubInEachFam,
+                   nHaploInEachFam = nHaploInEachFam,
+                   fam.mat = fam.mat);
+  return(inputList)
 }
 
 ### an example of family structure including 20 memebers in each family
@@ -247,6 +262,21 @@ haplo.simu = function(n.haplo,   # number of haplotypes
   return(haplo.mat)   # matrix of m x p, where m is number of SNPs, p is number of founders
 }
 
+from.geno.to.haplo = function(geno.mat) # n x p: n is sample size, p is number of loci
+{
+  haplo.mat1 = haplo.mat2 = geno.mat/2  # 2 -> 1; 1 -> 0.5; 0 -> 0; -9 -> -4.5
+  
+  posMissing = which(geno.mat == -9)
+  haplo.mat1[posMissing] = haplo.mat2[posMissing] = -9
+  
+  posHetero = which(geno.mat == 1)
+  haplo.mat1[posHetero] = rbinom(length(posHetero), 1, 0.5)
+  haplo.mat2[posHetero] = 1 - haplo.mat1[posHetero]
+  
+  haplo.mat = rbind(haplo.mat1, haplo.mat2)
+  return(haplo.mat)  # 2n x p: each sample corresponds to two confounder alleles
+}
+
 ### genotype simulation based on haplotype
 from.haplo.to.geno = function(haplo.mat,  # output of haplo.simu():  m x p where m is number of confounder alleles, and p is number of SNPs
                               fam.mat)    # output of example.fam(): n x 5 where n is sample size
@@ -314,154 +344,108 @@ GRAB.SimubVec = function(n.fam,
 
 #' GRAB: simulate genotype matrix based on family structure
 #'
-#' Simulate genotype matrix based on family structure using Haplotype stored in SKAT package
+#' Simulate genotype matrix based on family structure using haplotype information from genotype files. This function is mainly to simulate genotype data for rare variants analysis. NOTE: if simulating related subjects, the genotype of two allele will be assigned to two haplotypes of one allele randomly. Hence, please be careful to use this function if LD is important. 
 #'
-#' @param n.fam number of families in simulation
-#' @param n.subj number of unrelated subjects in simulation
-#' @param fam.kin.mode "4-members" or "10-members" to simulate two family structures. "10-members" corresponds to system.file("extdata", "example_10members.kin.txt", package = "GRAB")
-#' @param min.MAF minimal MAF in simulation
-#' @param max.MAF maximal MAF in simulation
-#' @param seedNum seed number for random simulation
-#' @param region.length length of region to simulate. Default value is 2000, i.e., 2KB. 
-#' @param n.region number of regions to simulate
-#' @return a matrix of genotype data including multiple Genes
+#' @param nFam number of families in simulation
+#' @param nSub number of unrelated subjects in simulation
+#' @param FamMode "4-members", "10-members", or "20-members". Check Details section for more details.
+#' @param GenoFile this parameter is passed to \code{GRAB.ReadGeno} to read in genotype data.
+#' @param GenoFileIndex this parameter is passed to \code{GRAB.ReadGeno} to read in genotype data.
+#' @param SampleIDs this parameter is passed to \code{GRAB.ReadGeno} to read in genotype data.
+#' @param control this parameter is passed to \code{GRAB.ReadGeno} to read in genotype data. 
+#' @return a genotype matrix of genotype data including multiple Genes
+#' @details 
+#' Currently, function \code{GRAB.SimuGMatFromGenoFile} supports both unrelated and related subjects. 
+#' Genotype data of founders is from \code{GenoFile} and \code{GenoFileIndex}.
+#' 
+#' ## If \code{FamMode = "4-members"}
+#' Total number of subjects is \code{nSub + 4 * nFam}. Each family includes 4 members with the family structure as below: 1+2->3+4.
+#' 
+#' ## If \code{FamMode = "10-members"}
+#' Total number of subjects is \code{nSub + 10 * nFam}. Each family includes 10 members with the family structure as below: 1+2->5+6, 3+5->7+8, 4+6->9+10.
+#' 
+#' ## If \code{FamMode = "20-members"}
+#' Total number of subjects is \code{nSub + 20 * nFam}. Each family includes 20 members with the family structure as below: 1+2->9+10, 3+9->11+12, 4+10->13+14, 5+11->15+16, 6+12->17, 7+13->18, 8+14->19+20.
 #' @examples
-#' fam.kin.10.members = read.table(system.file("extdata", "example_10members.kin.txt", package = "GRAB"))
-#' fam.kin.10.members = as.matrix(fam.kin.10.members)
-#' n.fam = 500
-#' n.subj = 5000
-#' fam.kin.mode = "10-members"  # "10-members" corresponds to fam.kin.10.members
-#' min.MAF = 0
-#' max.MAF = 0.3
-#' seedNum = 1234
-#' region.length = 2000
-#' n.region = 2
-#' GMat = GRAB.SimuGMatSKAT(n.fam, n.subj, fam.kin.mode, min.MAF, max.MAF, seedNum, region.length, n.region)
-#'
+#' nFam = 2
+#' nSub = 3
+#' FamMode = "10-members"
+#' PLINKFile = system.file("extdata", "example.bed", package = "GRAB")
+#' IDsToIncludeFile = system.file("extdata", "example.IDsToIncludeFile.txt", package = "GRAB")
+#' RangesToIncludeFile = system.file("extdata", "example.RangesToIncludeFile.txt", package = "GRAB")
+#' 
+#' GenoList = GRAB.SimuGMatFromGenoFile(nFam, nSub, FamMode, PLINKFile,
+#'                                      control = list(IDsToIncludeFile = IDsToIncludeFile,
+#'                                                    RangesToIncludeFile = RangesToIncludeFile))
 #' @export
-#' @import SKAT
-GRAB.SimuGMatSKAT = function(n.fam,
-                             n.subj, 
-                             fam.kin.mode,   # "4-members" or "10-members" 
-                             min.MAF, 
-                             max.MAF,
-                             seedNum, 
-                             region.length = 2000, 
-                             n.region,
-                             prob = 1)
+GRAB.SimuGMatFromGenoFile = function(nFam,
+                                     nSub, 
+                                     FamMode,   # "4-members", "10-members", and "20-members"
+                                     GenoFile,
+                                     GenoFileIndex = NULL,
+                                     SampleIDs = NULL,
+                                     control = NULL)
 {
-  data(SKAT.haplotypes)
-  attach(SKAT.haplotypes)
-  SNPInfo = SKAT.haplotypes$SNPInfo
-  Haplotype = SKAT.haplotypes$Haplotype
+  inputList = checkInput(nSub, nFam, FamMode)
   
-  set.seed(seedNum)
-  min.pos = 79
-  max.pos = 199956
-  start.posVec = floor(runif(n.region, min.pos, max.pos-region.length))
-  end.posVec = start.posVec + region.length
+  nSubInEachFam = inputList$nSubInEachFam
+  nHaploInEachFam = inputList$nHaploInEachFam
+  fam.mat = inputList$fam.mat
   
-  G_FAM_Set = c()
-  for(i in 1:n.region){
-    G_FAM = Get_One_Set(start.posVec[i], end.posVec[i], Haplotype, SNPInfo, n.fam, n.subj, prob, fam.kin.mode)
+  n = nSub + nFam * nSubInEachFam
+  nHaplo = nFam * nHaploInEachFam
+  
+  if(n == 0){
+    stop("Please give at least one of 'nSub' and 'nFam'.")
+  }
+  
+  cat("Number of unrelated subjects:\t", nSub, "\n")
+  cat("Number of families:\t", nFam, "\n")
+  cat("Number of subjects in each family:\t", nSubInEachFam, "\n")
+  cat("Number of all subjects:\t", n, "\n")
+  
+  ####
+  
+  GenoFileExt = tools::file_ext(GenoFile);
+  if(GenoFileExt != "bed" & nFam != 0) 
+    stop("Current version of 'GRAB.SimuGMatFromGenoFile()' only supports PLINK files when simulating related subjects.")
+  
+  GenoList = GRAB.ReadGeno(GenoFile, GenoFileIndex, SampleIDs, control)
+  GenoMat = GenoList$GenoMat
+  markerInfo = GenoList$markerInfo
+  nSubInGeno = nrow(GenoMat)
+  
+  if(nSubInGeno < nSub + nHaplo*2)
+    stop("Number of subjects in Genotype File < Number of subjects requested.")
+  
+  ####
+  
+  GenoMat1 = GenoMat2 = NULL
+  
+  randomRow = sample(nSubInGeno)
+  rowForHaplo = randomRow[1:(nHaplo/2)]
+  rowForSub = randomRow[1:nSub + nHaplo/2]
+  
+  if(nHaplo != 0){
+    cat("Extracting haplotype data for related subjects....\n")
+    GenoMatTemp = GenoMat[rowForHaplo, ] 
+    haplo.mat = from.geno.to.haplo(GenoMatTemp)
+    rownames(haplo.mat) = paste0("haplo-",1:nHaplo)
     
-    MAF = colMeans(G_FAM) / 2
-    MAF = ifelse(MAF > 0.5, 1 - MAF, MAF)
-    idx.MAF = which(MAF > min.MAF & MAF < max.MAF)
-    G_FAM = G_FAM[,idx.MAF]
-    colnames(G_FAM) = paste0("GENE-",i,"-",colnames(G_FAM))
-    G_FAM_Set = cbind(G_FAM_Set, G_FAM)
+    cat("Simulating genotype data for related subjects....\n")
+    GenoMat1 = from.haplo.to.geno(haplo.mat, fam.mat)    # output of example.fam(): n x 5 where n is sample size
   }
   
-  return(G_FAM_Set)
-}
-
-Get_One_Set = function(start.pos, 
-                       end.pos, 
-                       Haplotype, 
-                       SNPInfo, 
-                       n.fam,
-                       n.subj,
-                       prob,
-                       fam.kin.mode)
-{
-  if(fam.kin.mode == "10-members")
-    G_FAM = Get_One_Set_10_members(start.pos, 
-                                   end.pos, 
-                                   Haplotype, 
-                                   SNPInfo, 
-                                   n.fam,
-                                   n.subj,
-                                   prob)
-  
-  return(G_FAM)
-}
-
-## 1+2->5+6; 3+5->7+8; 4+6->9+10 
-Get_One_Set_10_members = function(start.pos, 
-                                  end.pos, 
-                                  Haplotype, 
-                                  SNPInfo, 
-                                  n.fam,
-                                  n.subj,
-                                  prob)
-{
-  idx = which(SNPInfo$CHROM_POS >= start.pos & SNPInfo$CHROM_POS <= end.pos);
-  idx = idx[which(rbinom(length(idx), 1, prob)==1)]
-  n = n.fam * 10 + n.subj
-  m = length(idx)
-  
-  if(m <= 1) 
-    stop("double check Get_One_Set_10_members()")
-  
-  ID = list()
-  
-  G_FAM = matrix(0, n, m)
-  idxSubj = 1
-  for(j in 1:n.fam){
-    if(j %% 100 == 0) 
-      sprintf("Finished simulation for %d/%d families.", j, n.fam)
-    
-    # random select 2 haplotypes from 10,000 haplotypes
-    ID[[1]] = sample.int(10000, 2)
-    ID[[2]] = sample.int(10000, 2)
-    ID[[3]] = sample.int(10000, 2)
-    ID[[4]] = sample.int(10000, 2)
-    ID[[5]] = c(sample(ID[[1]],1), sample(ID[[2]], 1))
-    ID[[6]] = c(sample(ID[[1]],1), sample(ID[[2]], 1))
-    ID[[7]] = c(sample(ID[[3]],1), sample(ID[[5]], 1))
-    ID[[8]] = c(sample(ID[[3]],1), sample(ID[[5]], 1))
-    ID[[9]] = c(sample(ID[[4]],1), sample(ID[[6]], 1))
-    ID[[10]] = c(sample(ID[[4]],1), sample(ID[[6]], 1))	
-    
-    for(i in 1:10){
-      G = colSums(Haplotype[ID[[i]], idx])
-      G_FAM[idxSubj,] = G
-      idxSubj = idxSubj + 1
-    }
+  if(nSub != 0){
+    cat("Extracting Genotype data for unrelated subjects....\n")
+    GenoMat2 = GenoMat[rowForSub, ]
+    rownames(GenoMat2) =  paste0("Subj-",1:nSub)
   }
   
-  if(n.subj > 0){
-    for(j in 1:n.subj){
-      if(j %% 1000 == 0) sprintf("Finished simulation for %d/%d unrelated subjects.", j, n.subj)
-      
-      ID = sample.int(10000, 2)
-      G = colSums(Haplotype[ID, idx])
-      G_FAM[idxSubj,] = G
-      idxSubj = idxSubj + 1
-    }
-  }
+  GenoMat = rbind(GenoMat1, GenoMat2)
   
-  if(n.subj > 0){
-    rownames(G_FAM) = c(paste0("f",rep(1:n.fam, each=10), "_", rep(1:10, n.fam)),
-                        paste0("fid",1:n.subj,"_","iid",1:n.subj))
-  }else{
-    rownames(G_FAM) = paste0("f",rep(1:n.fam, each=10), "_", rep(1:10, n.fam))
-  }
-  
-  colnames(G_FAM) = paste0("SNP_",SNPInfo$CHROM_POS[idx])
-  
-  return(G_FAM)
+  return(list(GenoMat = GenoMat,
+              markerInfo = markerInfo))
 }
 
 

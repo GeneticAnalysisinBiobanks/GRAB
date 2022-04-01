@@ -1,5 +1,5 @@
 
-// This includes the main codes to connect C++ and R
+// This file includes the main codes to connect C++ and R
 
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
@@ -93,6 +93,9 @@ void setDenseGRMInCPP(double t_memoryChunk,
                       double t_minMafGRM,
                       double t_maxMissingGRM)
 {
+  if(ptr_gDenseGRMobj)
+    delete ptr_gDenseGRMobj;
+  
   ptr_gDenseGRMobj = new DenseGRM::DenseGRMClass(ptr_gPLINKobj, t_memoryChunk, t_minMafGRM, t_maxMissingGRM);
 }
 
@@ -191,7 +194,7 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   std::vector<std::string> infoVec(q);    // marker information: CHR:POS:REF:ALT
   std::vector<double> altFreqVec(q);      // allele frequencies of ALT allele, this is not always < 0.5.
   std::vector<double> altCountsVec(q);    // allele counts of ALT allele.
-  std::vector<double> missingRateVec(q);  // allele frequencies of ALT allele, this is not always < 0.5.
+  std::vector<double> missingRateVec(q);  // missing rate of markers
   std::vector<double> BetaVec(q, arma::datum::nan);         // beta value for ALT allele
   std::vector<double> seBetaVec(q, arma::datum::nan);       
   std::vector<double> pvalVec(q, arma::datum::nan);
@@ -206,20 +209,19 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     AltCountsInGroup.resize(q, g_nGroup);
     AltFreqInGroup.resize(q, g_nGroup);
   }
-
+  
   // std::cout << "Totally " << g_omp_num_threads << " thread(s) were used for parallel computation." << std::endl;
   
   // loop for all markers
-//   omp_set_dynamic(0);     // Explicitly disable dynamic teams
-//   omp_set_num_threads(g_omp_num_threads); // Use 4 threads for all consecutive parallel regions
-//   
-// #pragma omp parallel
-// {
-  for(int i = 0; i < q; i++){
-    
-    if(i % 1000 == 0){
+  //   omp_set_dynamic(0);     // Explicitly disable dynamic teams
+  //   omp_set_num_threads(g_omp_num_threads); // Use 4 threads for all consecutive parallel regions
+  //   
+  // #pragma omp parallel
+  // {
+  for(int i = 0; i < q; i++)
+  {
+    if(i % 1000 == 0)
       std::cout << "Completed " << i << "/" << q << " markers in the chunk." << std::endl;
-    }
     
     // information of marker
     double altFreq, altCounts, missingRate, imputeInfo;
@@ -262,12 +264,12 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     
     // record basic information for the marker
     markerVec.at(i) = marker;               // marker IDs
-    infoVec.at(i) = info;    // marker information: CHR:POS:REF:ALT
-    altFreqVec.at(i) = altFreq;         // allele frequencies of ALT allele, this is not always < 0.5.
-    altCountsVec.at(i) = altCounts;         // allele frequencies of ALT allele, this is not always < 0.5.
-    missingRateVec.at(i) = missingRate;
+    infoVec.at(i) = info;                   // marker information: CHR:POS:REF:ALT
+    altFreqVec.at(i) = altFreq;             // allele frequencies of ALT allele, this is not always < 0.5
+    altCountsVec.at(i) = altCounts;         // allele counts of ALT allele
+    missingRateVec.at(i) = missingRate;     // missing rate
     
-    // MAF and MAC are for Quality Control (QC)
+    // c(MAF, MAC) for Quality Control (QC)
     double MAF = std::min(altFreq, 1 - altFreq);
     double MAC = MAF * n * (1 - missingRate);
     
@@ -920,6 +922,9 @@ void setPLINKobjInCPP(std::string t_bimFile,
                       std::vector<std::string> t_SampleInModel,
                       std::string t_AlleleOrder)
 {
+  if(ptr_gPLINKobj)
+    delete ptr_gPLINKobj;
+  
   ptr_gPLINKobj = new PLINK::PlinkClass(t_bimFile,
                                         t_famFile,
                                         t_bedFile,
@@ -940,6 +945,9 @@ void setBGENobjInCPP(std::string t_bgenFileName,
                      bool t_isDropmissingdosagesInBgen,
                      std::string t_AlleleOrder)
 {
+  if(ptr_gBGENobj)
+    delete ptr_gBGENobj;
+  
   ptr_gBGENobj = new BGEN::BgenClass(t_bgenFileName,
                                      t_bgenFileIndex,
                                      t_SampleInBgen,
@@ -967,6 +975,9 @@ void setPOLMMobjInCPP(arma::mat t_muMat,
                       double t_SPA_cutoff,
                       bool t_flagSparseGRM)
 {
+  if(ptr_gPOLMMobj)
+    delete ptr_gPOLMMobj;
+  
   // check POLMM.cpp
   ptr_gPOLMMobj = new POLMM::POLMMClass(t_muMat,
                                         t_iRMat,
@@ -1002,6 +1013,9 @@ Rcpp::List setPOLMMobjInCPP_NULL(bool t_flagSparseGRM,       // if 1, then use S
   // std::cout << "test, t_flagSparseGRM" << t_flagSparseGRM << std::endl;
   
   // The following function is in POLMM.cpp
+  if(ptr_gPOLMMobj)
+    delete ptr_gPOLMMobj;
+  
   ptr_gPOLMMobj = new POLMM::POLMMClass(t_flagSparseGRM,       // if 1, then use Sparse GRM, otherwise, use Dense GRM
                                         ptr_gDenseGRMobj,
                                         ptr_gPLINKobj,
@@ -1078,6 +1092,9 @@ void setSPACoxobjInCPP(arma::mat t_cumul,
                        double t_pVal_covaAdj_Cutoff,
                        double t_SPA_Cutoff)
 {
+  if(ptr_gSPACoxobj)
+    delete ptr_gSPACoxobj;
+  
   ptr_gSPACoxobj = new SPACox::SPACoxClass(t_cumul,
                                            t_mresid,
                                            t_XinvXX,
