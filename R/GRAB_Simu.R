@@ -124,6 +124,7 @@ checkInput = function(nSub, nFam, FamMode)
   
   nSubInEachFam = 0;
   nHaploInEachFam = 0;
+  fam.mat = NULL;
   
   if(FamMode == "4-members"){
     nSubInEachFam = 4
