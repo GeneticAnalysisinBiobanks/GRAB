@@ -123,6 +123,7 @@ checkInput = function(nSub, nFam, FamMode)
     stop("FamMode should be one of 'Unrelated', '4-members', '10-members', and '20-members'. Other input is not supported.")
   
   nSubInEachFam = 0;
+  nHaploInEachFam = 0;
   
   if(FamMode == "4-members"){
     nSubInEachFam = 4
@@ -344,7 +345,7 @@ GRAB.SimubVec = function(n.fam,
 
 #' GRAB: simulate genotype matrix based on family structure
 #'
-#' Simulate genotype matrix based on family structure using haplotype information from genotype files. This function is mainly to simulate genotype data for rare variants analysis. NOTE: if simulating related subjects, the genotype of two allele will be assigned to two haplotypes of one allele randomly. Hence, please be careful to use this function if LD is important. 
+#' Simulate genotype matrix based on family structure using haplotype information from genotype files. This function is mainly to simulate genotype data for rare variants analysis. NOTE: if simulating related subjects, the genotype of two allele will be assigned to two haplotypes of one allele randomly. Hence, please be careful to use this function if LD is important for your purpose. 
 #'
 #' @param nFam number of families in simulation
 #' @param nSub number of unrelated subjects in simulation
@@ -353,7 +354,7 @@ GRAB.SimubVec = function(n.fam,
 #' @param GenoFileIndex this parameter is passed to \code{GRAB.ReadGeno} to read in genotype data.
 #' @param SampleIDs this parameter is passed to \code{GRAB.ReadGeno} to read in genotype data.
 #' @param control this parameter is passed to \code{GRAB.ReadGeno} to read in genotype data. 
-#' @return a genotype matrix of genotype data including multiple Genes
+#' @return a genotype matrix of genotype data
 #' @details 
 #' Currently, function \code{GRAB.SimuGMatFromGenoFile} supports both unrelated and related subjects. 
 #' Genotype data of founders is from \code{GenoFile} and \code{GenoFileIndex}.
@@ -599,6 +600,7 @@ GRAB.makePlink = function(GenoMat,
 #' @param eta linear predictors, usually covar x beta.covar + genotype x beta.genotype 
 #' @param traitType "quantitative", "binary", "ordinal", or "time-to-event"
 #' @param control a list of parameters for controlling the simulation process
+#' @details Check https://wenjianbi.github.io//grab.github.io/docs/simulation_phenotype.html for more details.
 #' @return a numeric vector of phenotype
 #' @export
 GRAB.SimuPheno = function(eta, 
