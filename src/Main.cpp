@@ -945,9 +945,11 @@ void setBGENobjInCPP(std::string t_bgenFileName,
                      bool t_isDropmissingdosagesInBgen,
                      std::string t_AlleleOrder)
 {
-  if(ptr_gBGENobj)
+  if(ptr_gBGENobj){
+    std::cout << "Deleting `ptr_gBGENobj`...." << std::endl;
     delete ptr_gBGENobj;
-  
+  }
+    
   ptr_gBGENobj = new BGEN::BgenClass(t_bgenFileName,
                                      t_bgenFileIndex,
                                      t_SampleInBgen,
