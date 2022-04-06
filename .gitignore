@@ -14,3 +14,4 @@ src/BGEN.o
 src/test_openmp.o
 src/GRAB.dll
 .Rhistory
+.Rhistory

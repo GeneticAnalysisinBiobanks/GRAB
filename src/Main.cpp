@@ -948,6 +948,7 @@ void setBGENobjInCPP(std::string t_bgenFileName,
   if(ptr_gBGENobj){
     std::cout << "Deleting `ptr_gBGENobj`...." << std::endl;
     delete ptr_gBGENobj;
+    ptr_gBGENobj = NULL;
   }
     
   ptr_gBGENobj = new BGEN::BgenClass(t_bgenFileName,
