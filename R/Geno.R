@@ -138,9 +138,14 @@ GRAB.ReadGeno = function(GenoFile,
   
   markerInfo = markerInfo[,1:5]
   
+  cat("Complete the genotype reading.\n")
+  
+  closeGenoInputInCPP(genoType)  # "PLINK" or "BGEN"
+  
   return(list(GenoMat = GenoMat,
               markerInfo = markerInfo))
 }
+
 
 # setGenoInput() is to setup the following object in C++ (Main.cpp)
 # PLINK format: ptr_gPLINKobj;

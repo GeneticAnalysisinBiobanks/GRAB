@@ -200,6 +200,16 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// closeGenoInputInCPP
+void closeGenoInputInCPP(std::string t_genoType);
+RcppExport SEXP _GRAB_closeGenoInputInCPP(SEXP t_genoTypeSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type t_genoType(t_genoTypeSEXP);
+    closeGenoInputInCPP(t_genoType);
+    return R_NilValue;
+END_RCPP
+}
 // setPOLMMobjInCPP
 void setPOLMMobjInCPP(arma::mat t_muMat, arma::mat t_iRMat, arma::mat t_Cova, arma::uvec t_yVec, double t_tau, bool t_printPCGInfo, double t_tolPCG, int t_maxiterPCG, double t_varRatio, double t_SPA_cutoff, bool t_flagSparseGRM);
 RcppExport SEXP _GRAB_setPOLMMobjInCPP(SEXP t_muMatSEXP, SEXP t_iRMatSEXP, SEXP t_CovaSEXP, SEXP t_yVecSEXP, SEXP t_tauSEXP, SEXP t_printPCGInfoSEXP, SEXP t_tolPCGSEXP, SEXP t_maxiterPCGSEXP, SEXP t_varRatioSEXP, SEXP t_SPA_cutoffSEXP, SEXP t_flagSparseGRMSEXP) {
@@ -282,6 +292,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_getSpGenoInCPP", (DL_FUNC) &_GRAB_getSpGenoInCPP, 4},
     {"_GRAB_setPLINKobjInCPP", (DL_FUNC) &_GRAB_setPLINKobjInCPP, 5},
     {"_GRAB_setBGENobjInCPP", (DL_FUNC) &_GRAB_setBGENobjInCPP, 7},
+    {"_GRAB_closeGenoInputInCPP", (DL_FUNC) &_GRAB_closeGenoInputInCPP, 1},
     {"_GRAB_setPOLMMobjInCPP", (DL_FUNC) &_GRAB_setPOLMMobjInCPP, 11},
     {"_GRAB_setPOLMMobjInCPP_NULL", (DL_FUNC) &_GRAB_setPOLMMobjInCPP_NULL, 10},
     {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},

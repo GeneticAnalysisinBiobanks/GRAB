@@ -27,7 +27,7 @@
 // global objects for different genotype formats
 
 static PLINK::PlinkClass* ptr_gPLINKobj = NULL;
-BGEN::BgenClass* ptr_gBGENobj = NULL;
+static BGEN::BgenClass* ptr_gBGENobj = NULL;
 // static VCF::VcfClass* ptr_gVCFobj = NULL;
 
 // global objects for different analysis methods
@@ -962,7 +962,21 @@ void setBGENobjInCPP(std::string t_bgenFileName,
   std::cout << "Number of samples:\t" << n << std::endl;
 }
 
-
+// [[Rcpp::export]]
+void closeGenoInputInCPP(std::string t_genoType)  // "PLINK" or "BGEN"
+{
+  if(t_genoType == "PLINK")
+  {
+    delete ptr_gPLINKobj;
+    ptr_gPLINKobj = NULL;
+  }
+  if(t_genoType == "BGEN")
+  {
+    delete ptr_gBGENobj;
+    ptr_gBGENobj = NULL;
+  }
+}
+  
 //////// ---------- Main functions to set objects for different analysis methods --------- ////////////
 
 // [[Rcpp::export]]
