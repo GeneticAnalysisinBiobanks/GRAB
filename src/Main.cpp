@@ -27,7 +27,7 @@
 // global objects for different genotype formats
 
 static PLINK::PlinkClass* ptr_gPLINKobj = NULL;
-static BGEN::BgenClass* ptr_gBGENobj = NULL;
+BGEN::BgenClass* ptr_gBGENobj = NULL;
 // static VCF::VcfClass* ptr_gVCFobj = NULL;
 
 // global objects for different analysis methods
