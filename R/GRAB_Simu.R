@@ -517,6 +517,9 @@ GRAB.makePlink = function(GenoMat,
   if(any(!unique(as.numeric(GenoMat)) %in% c(0, 1, 2, -9)))
     stop("'GenoMat' should only include elements of 0, 1, 2, -9.")
   
+  if(length(A1)!=1 | length(A2)!=1)
+    stop("Argument A1 and A2 should be a character, not a character vector.")
+  
   SNP = colnames(GenoMat)
   FID = IID = rownames(GenoMat)
   
