@@ -37,6 +37,10 @@ getGenoInCPP <- function(t_genoType, t_markerInfo, n, t_imputeMethod) {
     .Call(`_GRAB_getGenoInCPP`, t_genoType, t_markerInfo, n, t_imputeMethod)
 }
 
+getGenoInCPPTemp <- function(t_genoType, t_gIndexVec, n, t_imputeMethod) {
+    .Call(`_GRAB_getGenoInCPPTemp`, t_genoType, t_gIndexVec, n, t_imputeMethod)
+}
+
 getGenoInCPP_fixedNumber <- function(t_genoType, t_markerInfo, n, t_imputeMethod, m, missingRateCutoff, minMAFCutoff) {
     .Call(`_GRAB_getGenoInCPP_fixedNumber`, t_genoType, t_markerInfo, n, t_imputeMethod, m, missingRateCutoff, minMAFCutoff)
 }
