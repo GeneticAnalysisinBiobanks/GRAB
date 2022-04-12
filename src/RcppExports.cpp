@@ -139,20 +139,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// getGenoInCPPTemp
-arma::mat getGenoInCPPTemp(std::string t_genoType, std::vector<uint64_t> t_gIndexVec, int n, std::string t_imputeMethod);
-RcppExport SEXP _GRAB_getGenoInCPPTemp(SEXP t_genoTypeSEXP, SEXP t_gIndexVecSEXP, SEXP nSEXP, SEXP t_imputeMethodSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< std::string >::type t_genoType(t_genoTypeSEXP);
-    Rcpp::traits::input_parameter< std::vector<uint64_t> >::type t_gIndexVec(t_gIndexVecSEXP);
-    Rcpp::traits::input_parameter< int >::type n(nSEXP);
-    Rcpp::traits::input_parameter< std::string >::type t_imputeMethod(t_imputeMethodSEXP);
-    rcpp_result_gen = Rcpp::wrap(getGenoInCPPTemp(t_genoType, t_gIndexVec, n, t_imputeMethod));
-    return rcpp_result_gen;
-END_RCPP
-}
 // getGenoInCPP_fixedNumber
 arma::mat getGenoInCPP_fixedNumber(std::string t_genoType, Rcpp::DataFrame t_markerInfo, int n, std::string t_imputeMethod, int m, double missingRateCutoff, double minMAFCutoff);
 RcppExport SEXP _GRAB_getGenoInCPP_fixedNumber(SEXP t_genoTypeSEXP, SEXP t_markerInfoSEXP, SEXP nSEXP, SEXP t_imputeMethodSEXP, SEXP mSEXP, SEXP missingRateCutoffSEXP, SEXP minMAFCutoffSEXP) {
@@ -302,7 +288,6 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_mainRegionURVInCPP", (DL_FUNC) &_GRAB_mainRegionURVInCPP, 4},
     {"_GRAB_mainRegionInCPP", (DL_FUNC) &_GRAB_mainRegionInCPP, 7},
     {"_GRAB_getGenoInCPP", (DL_FUNC) &_GRAB_getGenoInCPP, 4},
-    {"_GRAB_getGenoInCPPTemp", (DL_FUNC) &_GRAB_getGenoInCPPTemp, 4},
     {"_GRAB_getGenoInCPP_fixedNumber", (DL_FUNC) &_GRAB_getGenoInCPP_fixedNumber, 7},
     {"_GRAB_getSpGenoInCPP", (DL_FUNC) &_GRAB_getSpGenoInCPP, 4},
     {"_GRAB_setPLINKobjInCPP", (DL_FUNC) &_GRAB_setPLINKobjInCPP, 5},
