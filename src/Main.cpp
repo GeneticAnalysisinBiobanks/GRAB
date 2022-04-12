@@ -699,7 +699,6 @@ arma::mat getGenoInCPP(std::string t_genoType,
 {
   int q = t_markerInfo.nrow();         // number of markers requested
   std::vector<uint64_t> gIndexVec = t_markerInfo["genoIndex"];
-  std::cout << "gIndexVec:\t" << gIndexVec << std::endl;
   arma::mat GMat(n, q);
   
   std::string ref, alt, marker, chr;
