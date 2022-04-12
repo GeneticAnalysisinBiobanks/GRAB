@@ -127,6 +127,7 @@ GRAB.ReadGeno = function(GenoFile,
   
   cat("Number of Samples:\t", n, "\n")
   cat("Number of Markers:\t", m, "\n")
+  print(summary(markerInfo))
   print(head(markerInfo))
   
   if(sparse == TRUE){
@@ -377,7 +378,13 @@ setGenoInput = function(GenoFile,
   
   anyQueue = anyInclude | anyExclude
   
-  genoList = list(genoType = genoType, markerInfo = markerInfo, SampleIDs = SampleIDs, AlleleOrder = AlleleOrder, GenoFile = GenoFile, GenoFileIndex = GenoFileIndex, anyQueue = anyQueue)
+  genoList = list(genoType = genoType, 
+                  markerInfo = markerInfo, 
+                  SampleIDs = SampleIDs, 
+                  AlleleOrder = AlleleOrder, 
+                  GenoFile = GenoFile, 
+                  GenoFileIndex = GenoFileIndex, 
+                  anyQueue = anyQueue)
   
   return(genoList)
 }
