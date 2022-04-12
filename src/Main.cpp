@@ -735,7 +735,7 @@ arma::mat getGenoInCPP(std::string t_genoType,
 }
 
 // [[Rcpp::export]]
-arma::mat getGenoInCPP(std::string t_genoType,
+arma::mat getGenoInCPP1(std::string t_genoType,
                        std::vector<uint64_t> t_gIndexVec,
                        int n,
                        std::string t_imputeMethod) // 0: "mean"; 1: "minor"; 2: "drop" (to be continued)
