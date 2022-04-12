@@ -699,7 +699,6 @@ arma::mat getGenoInCPP(std::string t_genoType,
 {
   int q = t_markerInfo.nrow();         // number of markers requested
   std::vector<uint64_t> gIndexVec = t_markerInfo["genoIndex"];
-  std::cout << "gIndexVec.at(0):\t" << gIndexVec.at(0) << std::endl;
   arma::mat GMat(n, q);
   
   std::string ref, alt, marker, chr;
@@ -709,52 +708,6 @@ arma::mat getGenoInCPP(std::string t_genoType,
   
   for(int i = 0; i < q; i++){
     uint64_t gIndex = gIndexVec.at(i);
-    if(i <= 10)
-      std::cout << "gIndex:\t" << gIndex << std::endl;
-    arma::vec GVec = Unified_getOneMarker(t_genoType,          // "PLINK", "BGEN"
-                                          gIndex,              // different meanings for different genoType
-                                          ref,                 // REF allele
-                                          alt,                 // ALT allele (should probably be minor allele, otherwise, computation time will increase)
-                                          marker,              // marker ID extracted from genotype file
-                                          pd,                  // base position
-                                          chr,                 // chromosome
-                                          altFreq,             // frequency of ALT allele
-                                          altCounts,           // counts of ALT allele
-                                          missingRate,         // missing rate
-                                          imputeInfo,          // imputation information score, i.e., R2 (all 1 for PLINK)
-                                          true,                // if true, output index of missing genotype data
-                                          indexForMissing,     // index of missing genotype data
-                                          false,               // if true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
-                                          indexForNonZero);    // the index of non-zero genotype in the all subjects. Only valid if t_isOnlyOutputNonZero == true.
-    
-    imputeGeno(GVec, altFreq, indexForMissing, t_imputeMethod);  // check UTIL.cpp
-    GMat.col(i) = GVec;
-  }
-  
-  return GMat;
-}
-
-// [[Rcpp::export]]
-arma::mat getGenoInCPPTemp(std::string t_genoType,
-                       std::vector<uint64_t> t_gIndexVec,
-                       int n,
-                       std::string t_imputeMethod) // 0: "mean"; 1: "minor"; 2: "drop" (to be continued)
-{
-  // int q = t_markerInfo.nrow();         // number of markers requested
-  // std::vector<uint64_t> gIndexVec = t_markerInfo["genoIndex"];
-  int q = t_gIndexVec.size();
-  std::cout << "gIndexVec.at(0):\t" << t_gIndexVec.at(0) << std::endl;
-  arma::mat GMat(n, q);
-  
-  std::string ref, alt, marker, chr;
-  uint32_t pd;
-  double altFreq, altCounts, missingRate, imputeInfo;
-  std::vector<uint32_t> indexForMissing, indexForNonZero;
-  
-  for(int i = 0; i < q; i++){
-    uint64_t gIndex = t_gIndexVec.at(i);
-    if(i <= 10)
-      std::cout << "gIndex:\t" << gIndex << std::endl;
     arma::vec GVec = Unified_getOneMarker(t_genoType,          // "PLINK", "BGEN"
                                           gIndex,              // different meanings for different genoType
                                           ref,                 // REF allele

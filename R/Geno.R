@@ -127,17 +127,11 @@ GRAB.ReadGeno = function(GenoFile,
   
   cat("Number of Samples:\t", n, "\n")
   cat("Number of Markers:\t", m, "\n")
-  print(summary(markerInfo))
-  print(head(markerInfo))
   
   if(sparse == TRUE){
     GenoMat = getSpGenoInCPP(genoType, markerInfo, n, control$ImputeMethod)  # check Main.cpp
   }else{
-    # GenoMat = getGenoInCPP(genoType, markerInfo, n, control$ImputeMethod)  # check Main.cpp
-    # genoIndex = markerInfo$genoIndex
-    genoIndex = as.numeric(markerInfo$genoIndex)  # "integer64" is not well supported between C++ and R 
-    cat("head(genoIndex):\t", head(genoIndex),"\n")
-    GenoMat = getGenoInCPPTemp(genoType, genoIndex, n, control$ImputeMethod)  # check Main.cpp
+    GenoMat = getGenoInCPP(genoType, markerInfo, n, control$ImputeMethod)  # check Main.cpp
   }
     
   colnames(GenoMat) = MarkerIDs;
@@ -381,6 +375,8 @@ setGenoInput = function(GenoFile,
     markerInfo = subset(markerInfo, !ID %in% markersExclude)
   
   anyQueue = anyInclude | anyExclude
+  
+  markerInfo$genoIndex = as.numeric(markerInfo$genoIndex) # added on 2022-04-07: avoid potential error due to "integer64", which is not well supported between C++ and R
   
   genoList = list(genoType = genoType, 
                   markerInfo = markerInfo, 
