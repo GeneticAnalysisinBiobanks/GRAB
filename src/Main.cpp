@@ -740,8 +740,9 @@ arma::mat getGenoInCPP(std::string t_genoType,
                        int n,
                        std::string t_imputeMethod) // 0: "mean"; 1: "minor"; 2: "drop" (to be continued)
 {
-  int q = t_markerInfo.nrow();         // number of markers requested
+  // int q = t_markerInfo.nrow();         // number of markers requested
   // std::vector<uint64_t> gIndexVec = t_markerInfo["genoIndex"];
+  int q = t_gIndexVec.size();
   std::cout << "gIndexVec.at(0):\t" << t_gIndexVec.at(0) << std::endl;
   arma::mat GMat(n, q);
   
