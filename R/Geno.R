@@ -125,7 +125,8 @@ GRAB.ReadGeno = function(GenoFile,
   n = length(SampleIDs)
   m = length(MarkerIDs)
   
-  cat("Number of Samples:\t", n, "\nNumber of Markers:\t", m, "\n")
+  cat("Number of Samples:\t", n, "\n")
+  cat("Number of Markers:\t", m, "\n")
   
   if(sparse == TRUE){
     GenoMat = getSpGenoInCPP(genoType, markerInfo, n, control$ImputeMethod)  # check Main.cpp
@@ -138,9 +139,14 @@ GRAB.ReadGeno = function(GenoFile,
   
   markerInfo = markerInfo[,1:5]
   
+  cat("Complete the genotype reading.\n")
+  
+  closeGenoInputInCPP(genoType)  # "PLINK" or "BGEN"
+  
   return(list(GenoMat = GenoMat,
               markerInfo = markerInfo))
 }
+
 
 # setGenoInput() is to setup the following object in C++ (Main.cpp)
 # PLINK format: ptr_gPLINKobj;
@@ -370,7 +376,15 @@ setGenoInput = function(GenoFile,
   
   anyQueue = anyInclude | anyExclude
   
-  genoList = list(genoType = genoType, markerInfo = markerInfo, SampleIDs = SampleIDs, AlleleOrder = AlleleOrder, GenoFile = GenoFile, GenoFileIndex = GenoFileIndex, anyQueue = anyQueue)
+  markerInfo$genoIndex = as.numeric(markerInfo$genoIndex) # added on 2022-04-07: avoid potential error due to "integer64", which is not well supported between C++ and R
+  
+  genoList = list(genoType = genoType, 
+                  markerInfo = markerInfo, 
+                  SampleIDs = SampleIDs, 
+                  AlleleOrder = AlleleOrder, 
+                  GenoFile = GenoFile, 
+                  GenoFileIndex = GenoFileIndex, 
+                  anyQueue = anyQueue)
   
   return(genoList)
 }

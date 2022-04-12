@@ -23,3 +23,6 @@ a numeric vector of phenotype
 \description{
 \code{GRAB} package can help simulate a wide variaty of phenotypes
 }
+\details{
+Check https://wenjianbi.github.io//grab.github.io/docs/simulation_phenotype.html for more details.
+}

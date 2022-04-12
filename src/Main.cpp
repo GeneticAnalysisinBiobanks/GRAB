@@ -755,6 +755,7 @@ arma::mat getGenoInCPP_fixedNumber(std::string t_genoType,
   
   for(int i = 0; i < q; i++){
     uint64_t gIndex = gIndexVec.at(i);
+    std::cout << "gIndex:\t" << gIndex << std::endl;
     arma::vec GVec = Unified_getOneMarker(t_genoType,          // "PLINK", "BGEN"
                                           gIndex,              // different meanings for different genoType
                                           ref,                 // REF allele
@@ -771,7 +772,7 @@ arma::mat getGenoInCPP_fixedNumber(std::string t_genoType,
                                           false,               // if true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
                                           indexForNonZero);    // the index of non-zero genotype in the all subjects. Only valid if t_isOnlyOutputNonZero == true.
     
-    if(altFreq < minMAFCutoff | altFreq > 1-minMAFCutoff | missingRate > missingRateCutoff)
+    if((altFreq < minMAFCutoff) | (altFreq > 1-minMAFCutoff) | (missingRate > missingRateCutoff))
       continue;
     
     imputeGeno(GVec, altFreq, indexForMissing, t_imputeMethod);  // check UTIL.cpp
@@ -962,7 +963,21 @@ void setBGENobjInCPP(std::string t_bgenFileName,
   std::cout << "Number of samples:\t" << n << std::endl;
 }
 
-
+// [[Rcpp::export]]
+void closeGenoInputInCPP(std::string t_genoType)  // "PLINK" or "BGEN"
+{
+  if(t_genoType == "PLINK")
+  {
+    delete ptr_gPLINKobj;
+    ptr_gPLINKobj = NULL;
+  }
+  if(t_genoType == "BGEN")
+  {
+    delete ptr_gBGENobj;
+    ptr_gBGENobj = NULL;
+  }
+}
+  
 //////// ---------- Main functions to set objects for different analysis methods --------- ////////////
 
 // [[Rcpp::export]]

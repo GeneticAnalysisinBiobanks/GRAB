@@ -30,10 +30,10 @@ GRAB.SimuGMatFromGenoFile(
 \item{control}{this parameter is passed to \code{GRAB.ReadGeno} to read in genotype data.}
 }
 \value{
-a genotype matrix of genotype data including multiple Genes
+a genotype matrix of genotype data
 }
 \description{
-Simulate genotype matrix based on family structure using haplotype information from genotype files. This function is mainly to simulate genotype data for rare variants analysis. NOTE: if simulating related subjects, the genotype of two allele will be assigned to two haplotypes of one allele randomly. Hence, please be careful to use this function if LD is important.
+Simulate genotype matrix based on family structure using haplotype information from genotype files. This function is mainly to simulate genotype data for rare variants analysis. NOTE: if simulating related subjects, the genotype of two allele will be assigned to two haplotypes of one allele randomly. Hence, please be careful to use this function if LD is important for your purpose.
 }
 \details{
 Currently, function \code{GRAB.SimuGMatFromGenoFile} supports both unrelated and related subjects.
