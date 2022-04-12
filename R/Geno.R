@@ -135,7 +135,7 @@ GRAB.ReadGeno = function(GenoFile,
   }else{
     # GenoMat = getGenoInCPP(genoType, markerInfo, n, control$ImputeMethod)  # check Main.cpp
     genoIndex = markerInfo$genoIndex
-    GenoMat = getGenoInCPP1(genoType, genoIndex, n, control$ImputeMethod)  # check Main.cpp
+    GenoMat = getGenoInCPPTemp(genoType, genoIndex, n, control$ImputeMethod)  # check Main.cpp
   }
     
   colnames(GenoMat) = MarkerIDs;
