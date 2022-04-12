@@ -699,6 +699,7 @@ arma::mat getGenoInCPP(std::string t_genoType,
 {
   int q = t_markerInfo.nrow();         // number of markers requested
   std::vector<uint64_t> gIndexVec = t_markerInfo["genoIndex"];
+  std::cout << "gIndexVec.at(0):\t" << gIndexVec.at(0) << std::endl;
   arma::mat GMat(n, q);
   
   std::string ref, alt, marker, chr;
@@ -708,7 +709,8 @@ arma::mat getGenoInCPP(std::string t_genoType,
   
   for(int i = 0; i < q; i++){
     uint64_t gIndex = gIndexVec.at(i);
-    std::cout << "gIndex:\t" << gIndex << std::endl;
+    if(i <= 10)
+      std::cout << "gIndex:\t" << gIndex << std::endl;
     arma::vec GVec = Unified_getOneMarker(t_genoType,          // "PLINK", "BGEN"
                                           gIndex,              // different meanings for different genoType
                                           ref,                 // REF allele
