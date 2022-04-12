@@ -125,7 +125,9 @@ GRAB.ReadGeno = function(GenoFile,
   n = length(SampleIDs)
   m = length(MarkerIDs)
   
-  cat("Number of Samples:\t", n, "\nNumber of Markers:\t", m, "\n")
+  cat("Number of Samples:\t", n, "\n")
+  cat("Number of Markers:\t", m, "\n")
+  print(head(markerInfo))
   
   if(sparse == TRUE){
     GenoMat = getSpGenoInCPP(genoType, markerInfo, n, control$ImputeMethod)  # check Main.cpp
