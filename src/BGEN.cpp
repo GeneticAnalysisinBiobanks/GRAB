@@ -284,7 +284,7 @@ arma::vec BgenClass::getOneMarker(uint64_t t_gIndex,        // different meaning
                                   bool& t_isBoolRead)        // only used in BGEN, Wei, if you want, you can add details here.
 {
   if(t_gIndex > 0){fseek(m_fin, t_gIndex, SEEK_SET);}
-  std::string SNPID, RSID, chromosome, first_allele,second_allele ;
+  std::string SNPID, RSID, chromosome, first_allele,second_allele;
   uint32_t position;
   std::vector< std::string > alleles ;
   std::vector< double > dosages;
