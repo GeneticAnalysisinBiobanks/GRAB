@@ -134,7 +134,8 @@ GRAB.ReadGeno = function(GenoFile,
     GenoMat = getSpGenoInCPP(genoType, markerInfo, n, control$ImputeMethod)  # check Main.cpp
   }else{
     # GenoMat = getGenoInCPP(genoType, markerInfo, n, control$ImputeMethod)  # check Main.cpp
-    genoIndex = markerInfo$genoIndex
+    # genoIndex = markerInfo$genoIndex
+    genoIndex = as.numeric(markerInfo$genoIndex)  # "integer64" is not well supported between C++ and R 
     cat("head(genoIndex):\t", head(genoIndex),"\n")
     GenoMat = getGenoInCPPTemp(genoType, genoIndex, n, control$ImputeMethod)  # check Main.cpp
   }
