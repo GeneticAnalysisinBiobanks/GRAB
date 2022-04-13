@@ -327,6 +327,8 @@ arma::vec BgenClass::getOneMarker(uint64_t t_gIndex,        // different meaning
     }
     fread(allele1, 1, LA, m_fin); allele1[LA] = '\0';
     first_allele = std::string(allele1);
+    free(allele1);
+    
     uint32_t LB; fread(&LB, 4, 1, m_fin); // cout << "LB: " << LB << " " << std::flush;
     if (LB > maxLB) {
       maxLB = 2*LB;
@@ -335,6 +337,7 @@ arma::vec BgenClass::getOneMarker(uint64_t t_gIndex,        // different meaning
     }
     fread(allele0, 1, LB, m_fin); allele0[LB] = '\0';
     second_allele = std::string(allele0);
+    free(allele0);
     
     uint32_t C; fread(&C, 4, 1, m_fin); //cout << "C: " << C << endl;
     if (C > m_zBuf.size()) m_zBuf.resize(C-4);
