@@ -535,7 +535,7 @@ GRAB.makePlink = function(GenoMat,
   if(is.null(Pheno)){
     Pheno = rep(-9, n)
   }else{
-    if(length(Pheno != n))
+    if(length(Pheno) != n)
       stop("length(Pheno) should be the same as nrow(GenoMat).")  
   }
   
