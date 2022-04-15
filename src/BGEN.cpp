@@ -138,9 +138,19 @@ void BgenClass::Parse2(unsigned char *buf,
 {
   uLong destLen = bufLen;
   if (uncompress(buf, &destLen, zBuf, zBufLen) != Z_OK || destLen != bufLen) {
-    std::cout << "ERROR:\t" << uncompress(buf, &destLen, zBuf, zBufLen) << std::endl;
+    
     std::cout << "destLen\t" << destLen << std::endl;
     std::cout << "bufLen\t" << bufLen << std::endl;
+    
+    if(uncompress(buf, &destLen, zBuf, zBufLen) == Z_BUF_ERROR)
+      Rcpp::stop("ERROR: uncompress() failed: The buffer dest was not large enough to hold the uncompressed data.");
+    
+    if(uncompress(buf, &destLen, zBuf, zBufLen) == Z_MEM_ERROR)
+      Rcpp::stop("ERROR: uncompress() failed: Insufficient memory.");
+    
+    if(uncompress(buf, &destLen, zBuf, zBufLen) == Z_DATA_ERROR)
+      Rcpp::stop("ERROR: uncompress() failed: The compressed data (referenced by source) was corrupted.");
+    
     Rcpp::stop("ERROR: uncompress() failed");
   }
   

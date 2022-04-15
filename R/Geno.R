@@ -195,6 +195,8 @@ setGenoInput = function(GenoFile,
     # Read in BIM file
     
     if(!file.exists(bimFile)) stop(paste("Cannot find bim file of", bimFile))
+    
+    cat("Reading bim file:\t", bimFile, "\n")
     markerInfo = data.table::fread(bimFile, header = F, sep = "\t")
     markerInfo = as.data.frame(markerInfo)
     
@@ -212,6 +214,8 @@ setGenoInput = function(GenoFile,
     # Read in FAM file
     
     if(!file.exists(famFile)) stop(paste("Cannot find fam file of", famFile))
+    
+    cat("Reading fam file:\t", famFile, "\n")
     sampleInfo = data.table::fread(famFile, header = F, sep = " ")
     if(ncol(sampleInfo) != 6)
       stop("fam file should include 6 columns seperated by space.")
@@ -219,6 +223,7 @@ setGenoInput = function(GenoFile,
     samplesInGeno = sampleInfo$V2
     SampleIDs = updateSampleIDs(SampleIDs, samplesInGeno)
       
+    cat("setting PLINK object in CPP....\n")
     setPLINKobjInCPP(bimFile, famFile, bedFile, SampleIDs, AlleleOrder)
   }
   
@@ -256,6 +261,7 @@ setGenoInput = function(GenoFile,
           samplesInGeno = getSampleIDsFromBGEN(bgenFile)
         }
       }else{
+        cat("Reading sample file:\t", sampleFile, "\n")
         sampleData = data.table::fread(sampleFile, header=T, sep = " ")
         if(ncol(sampleData) < 4)
           stop("Column number of sample file should be >= 4.")
@@ -271,6 +277,7 @@ setGenoInput = function(GenoFile,
     
     if(!file.exists(bgiFile)) stop(paste("Cannot find bgi file of", bgiFile))
     
+    cat("Reading bgi file:\t", bgiFile, "\n")
     db_con <- RSQLite::dbConnect(RSQLite::SQLite(), bgiFile)
     on.exit(RSQLite::dbDisconnect(db_con), add = TRUE)
     bgiData = dplyr::tbl(db_con, "Variant")
@@ -421,6 +428,8 @@ getSampleIDsFromBGEN = function(bgenFile)
 {
   if(!checkIfSampleIDsExist(bgenFile))
     stop("The BGEN file does not include sample identifiers. Please refer to help(checkIfSampleIDsExist) for more details")
+  
+  cat("extracting sample information from bgen file\n")
   con = file(bgenFile, "rb")
   seek(con, 4)
   LH = readBin(con, n = 1, what = "integer", size = 4)
