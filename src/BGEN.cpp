@@ -138,13 +138,6 @@ void BgenClass::Parse2(unsigned char *buf,
 {
   uLong destLen = bufLen;
   if (uncompress(buf, &destLen, zBuf, zBufLen) != Z_OK || destLen != bufLen) {
-    
-    // std::cout << "*zBuf.size():\t" << *buf.size() << std::endl;
-    std::cout << "zBufLen:\t" << zBufLen << std::endl;
-    // std::cout << "*buf.size():\t" << *buf.size() << std::endl;
-    std::cout << "destLen\t" << destLen << std::endl;
-    std::cout << "bufLen\t" << bufLen << std::endl;
-    
     if(uncompress(buf, &destLen, zBuf, zBufLen) == Z_BUF_ERROR)
       Rcpp::stop("ERROR: uncompress() failed: The buffer dest was not large enough to hold the uncompressed data.");
     
