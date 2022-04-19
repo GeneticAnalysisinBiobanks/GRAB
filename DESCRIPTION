@@ -7,7 +7,7 @@ Author: Wenjian Bi, Wei Zhou, Rounak Dey, Zhangchen Zhao, Seunggeun Lee
 Maintainer: Wenjian Bi <wenjianb@pku.edu.cn>
 Description: A toolkit designed for large-scale biobank data analysis, currently, multiple phenotype types are supported.
 License: GPL (>= 2)
-Depends: ordinal, Matrix, SKAT, tidyr, dplyr, R, Rcpp
+Depends: ordinal, Matrix, SKAT, tidyr, dplyr, Rcpp
 Imports: Rcpp, RcppArmadillo, RcppParallel, BH, survival, data.table, tidyr, dplyr, RSQLite, ordinal, Matrix
 LinkingTo: Rcpp, RcppArmadillo, RcppParallel, BH, survival, data.table, tidyr, dbplyr, RSQLite, ordinal, Matrix
 RoxygenNote: 7.1.2
