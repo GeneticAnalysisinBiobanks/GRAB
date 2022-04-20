@@ -217,8 +217,12 @@ setGenoInput = function(GenoFile,
     
     cat("Reading fam file:\t", famFile, "\n")
     sampleInfo = data.table::fread(famFile, header = F, sep = " ")
+    
+    if(ncol(sampleInfo) == 1)
+      sampleInfo = data.table::fread(famFile, header = F, sep = "\t")
+      
     if(ncol(sampleInfo) != 6)
-      stop("fam file should include 6 columns seperated by space.")
+      stop("fam file should include 6 columns seperated by space or '\t'.")
     
     samplesInGeno = sampleInfo$V2
     SampleIDs = updateSampleIDs(SampleIDs, samplesInGeno)
