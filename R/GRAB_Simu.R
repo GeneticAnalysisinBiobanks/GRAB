@@ -417,7 +417,7 @@ GRAB.SimuGMatFromGenoFile = function(nFam,
   markerInfo = GenoList$markerInfo
   nSubInGeno = nrow(GenoMat)
   
-  if(nSubInGeno < nSub + nHaplo*2)
+  if(nSubInGeno < nSub + nHaplo/2)
     stop("Number of subjects in Genotype File < Number of subjects requested.")
   
   ####
