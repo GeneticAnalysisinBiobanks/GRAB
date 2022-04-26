@@ -122,7 +122,8 @@ GRAB.Region = function(objNull,
   if(is.null(OutputFileIndex)) 
     OutputFileIndex = paste0(OutputFile, ".index")
   
-  outList = checkOutputFile(OutputFile, OutputFileIndex, "Region", 1) # Check 'Util.R'
+  outList = checkOutputFile(OutputFile, OutputFileIndex, "Region", 
+                            nEachChunk = 1) # Check 'Util.R'
   
   indexChunk = outList$indexChunk
   Start = outList$Start
@@ -132,17 +133,16 @@ GRAB.Region = function(objNull,
   {
     message = paste0("The analysis has been completed in earlier analysis. Results have been saved in '", OutputFile, "'. ",
                      "If you want to change parameters and restart the analysis, please use another 'OutputFile'.")
+    cat(message)
     return(message)
   }
   
   if(!Start){
-    message = paste0("We detected that parts of analysis have been conducted from file:\t",
+    message = paste0("Parts of analysis have been conducted based on the index file:\n",
                      OutputFileIndex,"\n",
-                     "We restart the analysis from chunk:\t",indexChunk+1,"\n");
+                     "The analysis will be restarted from chunk:\t",indexChunk+1,"\n");
     cat(message)
   }
-  
-  
   
   ## Check "control.R": if the setting of control is not specified, the default setting will be used
   control = checkControl.Region(control, NullModelClass)
