@@ -86,9 +86,12 @@ checkControl.Marker = function(control, NullModelClass)
   
   if(control$omp_num_threads < 0)
     stop("control$omp_num_threads should be a positive integral value.")
+    
+  method = gsub("_NULL_Model", "", NullModelClass)  # updated on 2022-04-26: "POLMM_NULL_Model" -> "POLMM"
   
   textToParse = paste0("control = checkControl.Marker.", method, "(control)")
   eval(parse(text = textToParse))
+  
   # specific default control setting for different approaches
   # if(NullModelClass == "POLMM_NULL_Model")
   #   control = checkControl.Marker.POLMM(control)    # This function is in 'POLMM.R'
