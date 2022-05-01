@@ -137,8 +137,8 @@ checkControl.Region = function(control, NullModelClass)
   if(!is.numeric(control$min_mac_region) | control$min_mac_region < 0)
     stop("control$min_mac_region should be a numeric value >= 0.")
   
-  if(!is.numeric(control$max_markers_region) | control$max_markers_region < 100)
-    stop("control$max_markers_region should be a integer >= 100.")
+  if(!is.numeric(control$max_markers_region) | control$max_markers_region < 50)
+    stop("control$max_markers_region should be a integer >= 50.")
   
   if(!is.numeric(control$r.corr) | min(control$r.corr) < 0 | max(control$r.corr) > 1)
     stop("control$r.corr should be a numeric vector whose elements are between 0 and 1.")

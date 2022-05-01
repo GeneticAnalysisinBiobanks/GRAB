@@ -10,10 +10,12 @@ GRAB.Region(
   GenoFileIndex = NULL,
   OutputFile,
   OutputFileIndex = NULL,
-  RegionFile,
-  RegionAnnoHeader = NULL,
+  GroupFile,
   SparseGRMFile = NULL,
   MaxMAFVec = c(0.05, 0.01, 0.005),
+  annoVec = c("stoploss:nonframeshift insertion:nonsynonymous SNV",
+    "stoploss:nonframeshift insertion:nonsynonymous SNV:synonymous SNV:frameshift deletion:nonframeshift deletion:frameshift insertion:stopgain:splicing:startloss"),
+  chrom = "LOCO=F",
   control = NULL
 )
 }
@@ -28,15 +30,15 @@ GRAB.Region(
 
 \item{OutputFileIndex}{a character of output index file to record the end point. If the program ends unexpectedly, the end point can help \code{GRAB} package understand where to restart the analysis. If \code{NULL} (default), \code{OutputFileIndex = paste0(OutputFile, ".index")}.}
 
-\item{RegionFile}{a character of region file to specify region-marker mapping with annotation information. Columns are separated by 'tab'. Column 1: region ID, Column 2: marker ID, Columns 3-n annotation (non-negative) similar as in STAAR. The header is required and the first two should be "REGION" and "MARKER".}
-
-\item{RegionAnnoHeader}{a character vector of annotation in analysis. Optional, if not specified, all annotation columns are used in analysis.}
-
 \item{SparseGRMFile}{a character of sparseGRM file. An example is \code{system.file("SparseGRM","SparseGRM.txt",package="GRAB")}.}
 
 \item{MaxMAFVec}{a numeric vector of max MAF cutoff to include markers for region-level analysis. Default setting is \code{c(0.05, 0.01, 0.005)}.}
 
 \item{control}{a list of parameters for controlling function \code{GRAB.Region}, more details can be seen in \code{Details} section.}
+
+\item{RegionFile}{a character of region file to specify region-marker mapping with annotation information. Columns are separated by 'tab'. Column 1: region ID, Column 2: marker ID, Columns 3-n annotation (non-negative) similar as in STAAR. The header is required and the first two should be "REGION" and "MARKER".}
+
+\item{RegionAnnoHeader}{a character vector of annotation in analysis. Optional, if not specified, all annotation columns are used in analysis.}
 }
 \value{
 Region-based analysis results are saved into two files: \code{OutputFile} and \code{OutputMarkerFile = paste0(OutputFile, ".markerInfo")}.

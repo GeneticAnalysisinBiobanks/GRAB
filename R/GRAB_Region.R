@@ -111,13 +111,17 @@ GRAB.Region = function(objNull,
                        GenoFileIndex = NULL,
                        OutputFile,
                        OutputFileIndex = NULL,
-                       RegionFile,              # column 1: marker Set ID, column 2: SNP ID, columns 3-n: Annotations similar as in STAAR
-                       RegionAnnoHeader = NULL,
+                       GroupFile,              # column 1: marker Set ID, column 2: SNP ID, columns 3-n: Annotations similar as in STAAR
+                       # RegionAnnoHeader = NULL,
                        SparseGRMFile = NULL,
                        MaxMAFVec = c(0.05, 0.01, 0.005),
+                       annoVec = c("stoploss:nonframeshift insertion:nonsynonymous SNV",
+                                   "stoploss:nonframeshift insertion:nonsynonymous SNV:synonymous SNV:frameshift deletion:nonframeshift deletion:frameshift insertion:stopgain:splicing:startloss"),
+                       chrom = "LOCO=F",
                        control = NULL)
 {
   NullModelClass = checkObjNull(objNull);  # Check "Util.R"
+  method = gsub("_NULL_Model", "", NullModelClass)
   
   if(is.null(OutputFileIndex)) 
     OutputFileIndex = paste0(OutputFile, ".index")
@@ -152,155 +156,180 @@ GRAB.Region = function(objNull,
     stop("Maximal value of 'MaxMAFVec' should be <= 0.05.")
   control$max_maf_region = MaxMAF
   
+  annoList = annoVec %>% 
+    strsplit(split = ":") 
+  
+  allAnno = annoList %>% 
+    unlist() %>% 
+    unique()
+  
   subjData = as.character(objNull$subjData);
   n = length(subjData)
   
-  Group = makeGroup(objNull$yVec)
-  ifOutGroup = any(c("AltFreqInGroup", "AltCountsInGroup") %in% control$outputColumns)
-  
+  # note on 2022-04-26: check it later
+  # Group = makeGroup(objNull$yVec)
+  # ifOutGroup = any(c("AltFreqInGroup", "AltCountsInGroup") %in% control$outputColumns)
+
+
   ## set up an object for genotype data
   objGeno = setGenoInput(GenoFile, GenoFileIndex, subjData, control)  # Check 'Geno.R'
   genoType = objGeno$genoType
   markerInfo = objGeno$markerInfo
   
   ## annotation in region
-  RegionList = getRegionList(RegionFile, RegionAnnoHeader, markerInfo)
+  # RegionList = getRegionList(RegionFile, RegionAnnoHeader, markerInfo)
+  
+  RegionList = getInfoGroupFile(GroupFile)
   nRegions = length(RegionList)
   
-  P1Mat = matrix(0, control$max_markers_region, n);
-  P2Mat = matrix(0, n, control$max_markers_region);
+  # P1Mat = matrix(0, control$max_markers_region, n);
+  # P2Mat = matrix(0, n, control$max_markers_region);
   
-  chrom1 = "FakeCHR";
+  # chrom1 = "FakeCHR";
   for(i in (indexChunk+1):nRegions){
     
     region = RegionList[[i]]
-    regionName = names(RegionList)[i]
     
-    SNP = region$SNP
-    regionMat = region$regionMat  # annotation values
-    genoIndex = region$genoIndex
-    chrom = region$chrom
+    regionID = region$regionID
+    regionInfo = region$regionInfo
     
-    print(paste0("Analyzing Region of ", regionName, " (",i,"/",nRegions,")."))
-    print(paste(SNP, collapse = ", "))
+    regionInfo = markerInfo %>% 
+      select(ID, genoIndex) %>% 
+      merge(regionInfo, by = "ID") %>% 
+      arrange(genoIndex) %>%
+      filter(Annos %in% allAnno)
     
-    if(chrom1 != chrom){
-      obj.setRegion = setRegion(NullModelClass, objNull, control, chrom, SparseGRMFile, Group, ifOutGroup)
-      chrom1 = chrom
+    nMarkers = nrow(regionInfo)
+    if(nMarkers == 0)
+      stop("nrow(regionInfo) == 0: no markers are found for region '", regionID, "'.")
+    
+    nAnno = length(annoList)
+    annoMat = matrix(0, nrow = nMarkers, ncol = nAnno)
+    colnames(annoMat) = annoVec
+    
+    for(iAnno in 1:nAnno)
+      annoMat[,iAnno] = ifelse(regionInfo$Annos %in% annoList[[iAnno]], 1, 0)
+    
+    genoIndex = regionInfo$genoIndex
+    weightVec = regionInfo$Weights
+    
+    weightExists = T  # update weight parts later: 2022-05-01
+    if(all(is.na(weightVec))){
+      weightExists = F
+      weightVec = rep(1, nMarkers)
+    }else{
+      if(any(is.na(weightVec) | weightVec <= 0))
+        stop("The provided marker weights cannot be non-positive (<= 0) or NA.")
     }
     
-    ### Main function to calculate summary statistics for region-based analysis 
-    outList = mainRegion(NullModelClass, genoType, genoIndex, OutputFile, n, P1Mat, P2Mat, control$outputColumns)
+    print(paste0("Analyzing Region of ", regionID, " (",i,"/",nRegions,")."))
+    print(paste(regionInfo$ID, collapse = ", "))
     
-    info.Region = outList$info.Region
+    with(control, 
+         setRegion_GlobalVarsInCPP(impute_method, 
+                                   missing_cutoff, 
+                                   max_maf_region, 
+                                   min_mac_region, 
+                                   max_markers_region, 
+                                   omp_num_threads))
+    textToParse = paste0("obj.setRegion = setRegion.", method, "(objNull, control, chrom, SparseGRMFile)")
+    eval(parse(text = textToParse))
     
-    ### Get marker-level annotation information
+    subjLabel = rep(0, n)  # 2022-04-27: give labels to each subject (e.g. 0 for control and 1 for case), to be extended later. Start from 0.
+    nLabel = max(subjLabel) + 1
     
-    posMarker = match(info.Region$Marker, SNP)
-    regionData = regionMat[posMarker, ,drop=F]
+    obj.mainRegionInCPP = mainRegionInCPPcheck(method, genoType, genoIndex, weightVec, OutputFile, 
+                                               subjLabel, nLabel, 
+                                               annoMat, annoVec)
     
-    # annotation value <= 0 will be excluded from further analysis
-    regionData[regionData <= 0] = 0
-    info.Region = cbind.data.frame(info.Region, regionData)
+    textToParse = paste0("obj.mainRegion = mainRegion.", method, ".Check(genoType, genoIndex, OutputFile, control, n, obj.setRegion, obj.mainRegionInCPP)")
+    eval(parse(text = textToParse))
     
-    genoIndexMarker = genoIndex[posMarker]
+    Other.Markers = obj.mainRegion$Other.Markers %>% mutate(Region = regionID, .before = ID)
+    VarMat = obj.mainRegion$VarMat
+    RV.Markers0 = obj.mainRegion$RV.Markers %>% mutate(Region = regionID, .before = ID)
     
-    ### 3. Adjust for saddlepoint approximation
-    StatVec = outList$StatVec
-    VarSVec = diag(outList$VarMat)
-    adjPVec = outList$pval1Vec;
-    adjVarSVec = StatVec^2 / qchisq(adjPVec, df = 1, lower.tail = F)
+    if(nrow(VarMat) != nrow(RV.Markers))
+      stop("nrow(VarMat) != nrow(RV.Markers)!")
     
-    r0 = adjVarSVec / VarSVec 
-    r0 = pmax(r0, 1)
-    weights = dbeta(info.Region$MAF, control$weights.beta[1], control$weights.beta[2])
+    RV.Markers = RV.Markers0 %>% 
+      mutate(betaWeights = dbeta(MAF, control$weights.beta[1], control$weights.beta[2]),
+             adjVarSVec = StatVec^2 / qchisq(pval1Vec, df = 1, lower.tail = F),
+             r0 = adjVarSVec / diag(VarMat),
+             wr0 = sqrt(r0) * betaWeights,
+             wStatVec = StatVec * betaWeights)
+    # check given weights version later: 2022-05-01
     
-    pos0 = which(info.Region$IsUltraRareVariants == 0)
-    pos1 = which(info.Region$IsUltraRareVariants == 1)
-    info.Region0 = info.Region[pos0,]
-    regionData0 = regionData[pos0,]
+    wr0 = RV.Markers$wr0
+    
+    wadjVarSMat = t(VarMat * wr0) * wr0
+    
+    # RV.Markers %>% head()
+    
+    RV.MarkersWithAnno = regionInfo %>% 
+      select(-genoIndex) %>% 
+      merge(RV.Markers %>% select(ID, MAF, posRow), by = "ID")
+    
+    Other.MarkersWithAnno = regionInfo %>% 
+      select(ID, Annos) %>% 
+      merge(Other.Markers %>% filter(IndicatorVec == 2) %>% select(ID), by = "ID")
+    
+    RV.MarkersURV = RV.Markers %>% filter(Info == "Ultra-Rare Variants") %>% select(ID, posRow)
     
     pval.Region = data.frame()
-    
-    for(j in 1:ncol(regionData)){  # cycle for annotation
-      # j = 2
-      AnnoName = colnames(regionData)[j]
-      AnnoWeights = weights * regionData[,j]
-      AnnoWeights0 = AnnoWeights[pos0]
+    for(anno in annoVec)
+    {
+      posURV = RV.MarkersURV %>% filter(ID == anno) %>% select(posRow) %>% unlist()
+      nMarkersURV = Other.MarkersWithAnno %>% filter(Annos %in% annoTemp) %>% nrow()
+      if(length(posURV) != 1)
+        stop("length(posURV) != 1")
       
-      wr0 = sqrt(r0) * AnnoWeights0
-      wStatVec = StatVec * AnnoWeights0
-      wadjVarSMat = t(outList$VarMat * wr0) * wr0
-      
-      tempPosURV = which(regionData[,j] > 0 & info.Region$IsUltraRareVariants == 1)
-      nMarkersURV = length(tempPosURV)
-      
-      if(length(tempPosURV) <= 3){
-        wStatURV = wadjVarSURV = NULL
-      }else{
-        obj.mainRegionURV = mainRegionURV(NullModelClass, genoType, genoIndexMarker[tempPosURV], n)
+      annoTemp = unlist(strsplit(anno, split = ":"))
+      for(MaxMAF in MaxMAFVec)
+      {
+        posRV = RV.MarkersWithAnno %>% filter(MAF < MaxMAF & Annos %in% annoTemp) %>% select(posRow) %>% unlist()
+        pos = c(posRV, posURV)
+        n1 = length(pos)
+        out_SKAT_List = with(RV.Markers, try(SKAT:::Met_SKAT_Get_Pvalue(Score = wStatVec[pos], 
+                                                                        Phi = wadjVarSMat[pos, pos],  
+                                                                        r.corr = control$r.corr, 
+                                                                        method = "optimal.adj", 
+                                                                        Score.Resampling = NULL),
+                                             silent = TRUE))
         
-        StatURV = obj.mainRegionURV$Stat;
-        adjPURV = obj.mainRegionURV$pval1;
-        adjVarSURV = StatURV^2 / qchisq(adjPURV, df = 1, lower.tail = F)
-        mAnnoWeightsURV = mean(AnnoWeights[tempPosURV])
-        wStatURV = StatURV * mAnnoWeightsURV
-        wadjVarSURV = adjVarSURV * mAnnoWeightsURV^2
-      }
-      
-      for(tempMaxMAF in MaxMAFVec){  # cycle for max MAF cutoff
-        
-        tempPos = which(regionData0[, j] > 0 & info.Region0$MAF <= tempMaxMAF)
-        nMarkers = length(tempPos)
-        
-        if(nMarkers < control$min_nMarker){
-          pval.Region = rbind.data.frame(pval.Region,
-                                         data.frame(Region = regionName,
-                                                    nMarkers = nMarkers,
-                                                    nMarkersURV = nMarkersURV,
-                                                    Anno.Type = AnnoName,
-                                                    MaxMAF.Cutoff = tempMaxMAF,
-                                                    pval.SKATO = NA, 
-                                                    pval.SKAT = NA,
-                                                    pval.Burden = NA))
+        if(class(out_SKAT_List) == "try-error"){
+          Pvalue = c(NA, NA, NA)
+          error.code = 2
+        }else if(!any(c(0,1) %in% out_SKAT_List$param$rho)){
+          Pvalue = c(NA, NA, NA)
+          error.code = 3
         }else{
-          out_SKAT_List = try(SKAT:::Met_SKAT_Get_Pvalue(Score = c(wStatVec[tempPos], wStatURV), 
-                                                         Phi = as.matrix(Matrix::bdiag(wadjVarSMat[tempPos, tempPos], wadjVarSURV)),  # ignore the correlation between URV and non-URV
-                                                         r.corr = control$r.corr, 
-                                                         method = "optimal.adj", 
-                                                         Score.Resampling = NULL),
-                              silent = TRUE)
-          
-          if(class(out_SKAT_List) == "try-error"){
-            Pvalue = c(NA, NA, NA)
-            error.code = 2
-          }else if(!any(c(0,1) %in% out_SKAT_List$param$rho)){
-            Pvalue = c(NA, NA, NA)
-            error.code = 3
-          }else{
-            pos00 = which(out_SKAT_List$param$rho == 0)
-            pos01 = which(out_SKAT_List$param$rho == 1)
-            Pvalue = c(out_SKAT_List$p.value,                  # SKAT-O
-                       out_SKAT_List$param$p.val.each[pos00],   # SKAT
-                       out_SKAT_List$param$p.val.each[pos01])   # Burden Test
-            error.code = 0
-          }
-          
-          pval.Region = rbind.data.frame(pval.Region,
-                                         data.frame(Region = regionName,
-                                                    nMarkers = nMarkers,
-                                                    nMarkersURV = nMarkersURV,
-                                                    Anno.Type = AnnoName,
-                                                    MaxMAF.Cutoff = tempMaxMAF,
-                                                    pval.SKATO = Pvalue[1], 
-                                                    pval.SKAT = Pvalue[2],
-                                                    pval.Burden = Pvalue[3])) 
+          pos00 = which(out_SKAT_List$param$rho == 0)
+          pos01 = which(out_SKAT_List$param$rho == 1)
+          Pvalue = c(out_SKAT_List$p.value,                  # SKAT-O
+                     out_SKAT_List$param$p.val.each[pos00],   # SKAT
+                     out_SKAT_List$param$p.val.each[pos01])   # Burden Test
+          error.code = 0
         }
+        
+        pval.Region = rbind.data.frame(pval.Region,
+                                       data.frame(Region = regionID,
+                                                  nMarkers = length(posRV),
+                                                  nMarkersURV = nMarkersURV,
+                                                  Anno.Type = anno,
+                                                  MaxMAF.Cutoff = MaxMAF,
+                                                  pval.SKATO = Pvalue[1], 
+                                                  pval.SKAT = Pvalue[2],
+                                                  pval.Burden = Pvalue[3]))
       }
     }
     
-    writeOutputFile(Output = list(pval.Region, info.Region), 
-                    OutputFile = list(OutputFile, paste0(OutputFile, ".markerInfo")), 
+    writeOutputFile(Output = list(pval.Region, 
+                                  RV.Markers0, 
+                                  Other.Markers), 
+                    OutputFile = list(OutputFile, 
+                                      paste0(OutputFile, ".markerInfo"), 
+                                      paste0(OutputFile, ".otherMarkerInfo")), 
                     OutputFileIndex = OutputFileIndex,
                     AnalysisType = "Region",
                     nEachChunk = 1,
@@ -309,97 +338,102 @@ GRAB.Region = function(objNull,
                     End = (i==nRegions))
   }
       
-  message = paste0("Analysis done! The results have been saved to '", OutputFile,"' and '",
-                   paste0(OutputFile, ".markerInfo"),"'.")
+  cat("Analysis done! The results have been saved to the below files:\n", 
+      OutputFile, "\n",
+      paste0(OutputFile, ".markerInfo\n"),
+      paste0(OutputFile, ".otherMarkerInfo\n"))
+  
+  message = paste0("Analysis done! The main results have been saved to '", OutputFile,"'")
+  
   return(message)
 }
 
 
-setRegion = function(NullModelClass, objNull, control, chrom, SparseGRMFile, Group, ifOutGroup)
-{
-  # The following function is in Main.cpp
-  nGroup = length(unique(Group))
-  setRegion_GlobalVarsInCPP(control$impute_method,
-                            control$missing_cutoff,
-                            control$max_maf_region,
-                            control$min_mac_region,
-                            control$max_markers_region,
-                            control$omp_num_threads,
-                            Group, ifOutGroup, nGroup)
-  
-  # Check POLMM.R
-  if(NullModelClass == "POLMM_NULL_Model")
-    obj.setRegion = setRegion.POLMM(objNull, control, chrom, SparseGRMFile)  
-  
-  # To be continued
-  if(NullModelClass == "SAIGE_NULL_Model")
-    obj.setRegion = setRegion.SAIGE(objNull, control, chrom, SparseGRMFile)
-  
-  # Check SPACox.R
-  if(NullModelClass == "SPACox_NULL_Model")
-    obj.setRegion = setRegion.SPACox(objNull, control)
-  
-  return(obj.setRegion)
-}
+# setRegion = function(NullModelClass, objNull, control, chrom, SparseGRMFile, Group, ifOutGroup)
+# {
+#   # The following function is in Main.cpp
+#   nGroup = length(unique(Group))
+#   setRegion_GlobalVarsInCPP(control$impute_method,
+#                             control$missing_cutoff,
+#                             control$max_maf_region,
+#                             control$min_mac_region,
+#                             control$max_markers_region,
+#                             control$omp_num_threads,
+#                             Group, ifOutGroup, nGroup)
+#   
+#   # Check POLMM.R
+#   if(NullModelClass == "POLMM_NULL_Model")
+#     obj.setRegion = setRegion.POLMM(objNull, control, chrom, SparseGRMFile)  
+#   
+#   # To be continued
+#   if(NullModelClass == "SAIGE_NULL_Model")
+#     obj.setRegion = setRegion.SAIGE(objNull, control, chrom, SparseGRMFile)
+#   
+#   # Check SPACox.R
+#   if(NullModelClass == "SPACox_NULL_Model")
+#     obj.setRegion = setRegion.SPACox(objNull, control)
+#   
+#   return(obj.setRegion)
+# }
 
-mainRegion = function(NullModelClass, genoType, genoIndex, OutputFile, n, P1Mat, P2Mat, outputColumns)
-{
-  method = gsub("_NULL_Model$", "", NullModelClass)
-  
-  obj.mainRegion = mainRegionInCPP(method, genoType, genoIndex, OutputFile, n, P1Mat, P2Mat)
-  
-  ## required columns for all methods
-  info.Region = with(obj.mainRegion, data.frame(Marker = markerVec,
-                                                Info = infoVec,
-                                                AltFreq = altFreqVec,
-                                                MAC = MACVec,
-                                                MAF = MAFVec,
-                                                MissingRate = missingRateVec, 
-                                                IsUltraRareVariants = indicatorVec - 1,
-                                                stringsAsFactors = F))
-  
-  if(NullModelClass == "POLMM_NULL_Model")
-  {
-    optionalColumns = c("beta", "seBeta", "PvalueNorm", "AltFreqInGroup", "AltCountsInGroup", "nSamplesInGroup")
-    additionalColumns = intersect(optionalColumns, outputColumns)
-    
-    if(length(additionalColumns) > 0)
-      info.Region = cbind.data.frame(info.Region, 
-                                     as.data.frame(obj.mainRegion[additionalColumns]))
-  }
-    
-  if(NullModelClass == "SPACox_NULL_Model")
-  {
-    # obj.mainRegion = mainRegionInCPP("SPACox", genoType, genoIndex, OutputFile, n, P1Mat, P2Mat)
-  }
-  
-  ### remove rows whose markers do not pass QC
-  
-  info.Region = subset(info.Region, IsUltraRareVariants != -1)
-  pos = which(info.Region$IsUltraRareVariants == 0)
-  
-  info.Region$Pvalue = NA
-  info.Region$Pvalue[pos] = obj.mainRegion$pval1Vec
-  
-  return(list(StatVec = obj.mainRegion$StatVec,
-              pval1Vec = obj.mainRegion$pval1Vec,
-              VarMat = obj.mainRegion$VarMat,
-              info.Region = info.Region))
-}
-
-mainRegionURV = function(NullModelClass,
-                         genoType,
-                         genoIndex,
-                         n)
-{
-  if(NullModelClass == "POLMM_NULL_Model")
-    obj.mainRegionURV = mainRegionURVInCPP("POLMM", genoType, genoIndex, n)
-  
-  if(NullModelClass == "SPACox_NULL_Model")
-    obj.mainRegionURV = mainRegionURVInCPP("SPACox", genoType, genoIndex, n)
-  
-  return(obj.mainRegionURV)
-}
+# mainRegion = function(NullModelClass, genoType, genoIndex, OutputFile, n, P1Mat, P2Mat, outputColumns)
+# {
+#   method = gsub("_NULL_Model$", "", NullModelClass)
+#   
+#   obj.mainRegion = mainRegionInCPP(method, genoType, genoIndex, OutputFile, n, P1Mat, P2Mat)
+#   
+#   ## required columns for all methods
+#   info.Region = with(obj.mainRegion, data.frame(Marker = markerVec,
+#                                                 Info = infoVec,
+#                                                 AltFreq = altFreqVec,
+#                                                 MAC = MACVec,
+#                                                 MAF = MAFVec,
+#                                                 MissingRate = missingRateVec, 
+#                                                 IsUltraRareVariants = indicatorVec - 1,
+#                                                 stringsAsFactors = F))
+#   
+#   if(NullModelClass == "POLMM_NULL_Model")
+#   {
+#     optionalColumns = c("beta", "seBeta", "PvalueNorm", "AltFreqInGroup", "AltCountsInGroup", "nSamplesInGroup")
+#     additionalColumns = intersect(optionalColumns, outputColumns)
+#     
+#     if(length(additionalColumns) > 0)
+#       info.Region = cbind.data.frame(info.Region, 
+#                                      as.data.frame(obj.mainRegion[additionalColumns]))
+#   }
+#     
+#   if(NullModelClass == "SPACox_NULL_Model")
+#   {
+#     # obj.mainRegion = mainRegionInCPP("SPACox", genoType, genoIndex, OutputFile, n, P1Mat, P2Mat)
+#   }
+#   
+#   ### remove rows whose markers do not pass QC
+#   
+#   info.Region = subset(info.Region, IsUltraRareVariants != -1)
+#   pos = which(info.Region$IsUltraRareVariants == 0)
+#   
+#   info.Region$Pvalue = NA
+#   info.Region$Pvalue[pos] = obj.mainRegion$pval1Vec
+#   
+#   return(list(StatVec = obj.mainRegion$StatVec,
+#               pval1Vec = obj.mainRegion$pval1Vec,
+#               VarMat = obj.mainRegion$VarMat,
+#               info.Region = info.Region))
+# }
+# 
+# mainRegionURV = function(NullModelClass,
+#                          genoType,
+#                          genoIndex,
+#                          n)
+# {
+#   if(NullModelClass == "POLMM_NULL_Model")
+#     obj.mainRegionURV = mainRegionURVInCPP("POLMM", genoType, genoIndex, n)
+#   
+#   if(NullModelClass == "SPACox_NULL_Model")
+#     obj.mainRegionURV = mainRegionURVInCPP("SPACox", genoType, genoIndex, n)
+#   
+#   return(obj.mainRegionURV)
+# }
 
 # Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
 #                            std::string t_genoType,     // "PLINK", "BGEN"
@@ -563,76 +597,189 @@ mainRegionURV = function(NullModelClass,
 
 
 # extract region-marker mapping from regionFile
-getRegionList = function(RegionFile,
-                         RegionAnnoHeader,
-                         markerInfo)
+# getRegionList = function(RegionFile,
+#                          RegionAnnoHeader,
+#                          markerInfo)
+# {
+#   cat("Start extracting marker-level information from 'RegionFile' of", RegionFile, "....\n")
+#   
+#   if(!file.exists(RegionFile))
+#     stop("Cannot find 'RegionFile' in ", RegionFile)
+#   
+#   RegionData = data.table::fread(RegionFile, header = T, stringsAsFactors = F, sep = "\t");
+#   RegionData = as.data.frame(RegionData)
+#   colnames(RegionData)[1:2] = toupper(colnames(RegionData)[1:2])
+#   
+#   if(any(colnames(RegionData)[1:2] != c("REGION", "MARKER")))
+#     stop("The first two elements in the header of 'RegionFile' should be c('REGION', 'MARKER').")
+#   
+#   # updated on 2021-08-05
+#   colnames(markerInfo)[3] = "MARKER"
+#   RegionData = merge(RegionData, markerInfo, by = "MARKER", all.x = T, sort = F)
+#   posNA = which(is.na(RegionData$genoIndex))
+#   
+#   if(length(posNA) != 0){
+#     print(head(RegionData[posNA,1:2]))
+#     stop("Total ",length(posNA)," markers in 'RegionFile' are not in 'GenoFile'. 
+#          Please remove these markers before region-level analysis.")
+#   }
+#   
+#   HeaderInRegionData = colnames(RegionData)
+#   if(!is.null(RegionAnnoHeader)){
+#     if(any(!RegionAnnoHeader %in% HeaderInRegionData))
+#       stop("At least one element in 'RegionAnnoHeader' is not in the header of RegionFile.")
+#     posAnno = which(HeaderInRegionData %in% RegionAnnoHeader)
+#   }else{
+#     print("Since no 'RegionAnnoHeader' is given, region-based testing will not incorporate any annotation information.")
+#     posAnno = NULL
+#   }
+#   
+#   RegionList = list()
+#   uRegion = unique(RegionData$REGION)
+#   for(r in uRegion){
+#     
+#     # print(paste0("Analyzing region ",r,"...."))
+#     
+#     posSNP = which(RegionData$REGION == r)
+#     SNP = RegionData$MARKER[posSNP]
+#     
+#     if(any(duplicated(SNP)))
+#       stop("Please check RegionFile: in region ", r,": duplicated SNPs exist.")
+#     
+#     # posMarker = match(SNP, markerInfo$ID, 0)
+#     # if(any(posMarker == 0))
+#     #   stop(paste0("At least one marker in region ", r," are not in 'GenoFile' and 'GenoFileIndex'."))
+#     
+#     regionMat = cbind(BASE=1, RegionData[posSNP, posAnno, drop=F])
+#     rownames(regionMat) = SNP
+#     
+#     # genoIndex = markerInfo$genoIndex[posMarker]
+#     # chrom = markerInfo$CHROM[posMarker]
+#     genoIndex = RegionData$genoIndex[posSNP]
+#     chrom = RegionData$CHROM[posSNP]
+#     uchrom = unique(chrom)
+#     
+#     if(length(uchrom) != 1)
+#       stop("In region ",r,", markers are from multiple chromosomes.")
+#     
+#     RegionList[[r]] = list(SNP = SNP,
+#                            regionMat = regionMat,
+#                            genoIndex = genoIndex,
+#                            chrom = uchrom)
+#   }
+#   
+#   return(RegionList)
+# }
+
+getInfoGroupLine = function(markerGroupLine, nLine)
 {
-  cat("Start extracting marker-level information from 'RegionFile' of", RegionFile, "....\n")
+  if(length(markerGroupLine) == 0)
+    stop("The line ", nLine," in `groupFile` is empty.")
   
-  if(!file.exists(RegionFile))
-    stop("Cannot find 'RegionFile' in ", RegionFile)
+  info = unlist(strsplit(markerGroupLine, split = "\t"))
+  if(length(info) < 3)
+    stop("The line ", nLine, " in `groupFile` includes < 3 elements, please note that each line should be seperated by 'tab'.")
   
-  RegionData = data.table::fread(RegionFile, header = T, stringsAsFactors = F, sep = "\t");
-  RegionData = as.data.frame(RegionData)
-  colnames(RegionData)[1:2] = toupper(colnames(RegionData)[1:2])
+  geneID = info[1];
+  type = info[2];
+  values = info[c(-1,-2)]
   
-  if(any(colnames(RegionData)[1:2] != c("REGION", "MARKER")))
-    stop("The first two elements in the header of 'RegionFile' should be c('REGION', 'MARKER').")
+  if(!type %in% c("var", "anno", "weight"))
+    stop("The second column of the groupFile (tab-seperated) should be one of 'var', 'anno', and 'weight'.\n
+         Please double check line ", nLine, ".")
   
-  # updated on 2021-08-05
-  colnames(markerInfo)[3] = "MARKER"
-  RegionData = merge(RegionData, markerInfo, by = "MARKER", all.x = T, sort = F)
-  posNA = which(is.na(RegionData$genoIndex))
+  if(type == "weight")
+    values = as.numeric(values)
   
-  if(length(posNA) != 0){
-    print(head(RegionData[posNA,1:2]))
-    stop("Total ",length(posNA)," markers in 'RegionFile' are not in 'GenoFile'. 
-         Please remove these markers before region-level analysis.")
+  n = length(values)
+  infoList = list(geneID = geneID,
+                  type = type,
+                  values = values,
+                  n = n)
+  return(infoList)
+}
+
+getInfoGroupFile = function(GroupFile)
+{
+  cat("Start extracting marker-level information from 'GroupFile':\n", 
+      GroupFile, "\n")	
+  if(!file.exists(GroupFile))
+    stop("cannot find the below file:\n", GroupFile)
+  
+  gf = file(GroupFile, "r")
+  nRegion = 0
+  regionList = list()
+  nLine = 1
+  
+  previousType = "first";
+  previousGene = "first";
+  Weights = NA
+  nRegion = 1;
+  
+  while(TRUE)
+  {
+    markerGroupLine = readLines(gf, n = 1)
+    
+    if(length(markerGroupLine) == 0)
+    {
+      if(nRegion == 0)
+        stop("Cannot find any region information in 'GroupFile'.")
+      regionList[[nRegion]] = list(regionID = previousGene,
+                                   regionInfo = data.frame(ID = Markers,
+                                                           Annos = Annos,
+                                                           Weights = Weights))
+      close(gf);
+      break;
+    }
+    
+    infoList = getInfoGroupLine(markerGroupLine, nLine)
+    nLine = nLine + 1
+    
+    geneID = infoList$geneID
+    type = infoList$type
+    values = infoList$values
+    n = infoList$n
+    
+    if(type == "var")
+    {
+      if(previousType == "var")
+        stop("Cannot find 'anno' line for region ", previousGene, ".")
+      if(previousType != "first"){
+        regionList[[nRegion]] = list(regionID = previousGene,
+                                     regionInfo = data.frame(ID = Markers,
+                                                             Annos = Annos,
+                                                             Weights = Weights))
+        nRegion = nRegion + 1;
+      }
+      
+      # cat("Region ", geneID, " includes ", n, "variants.\n")
+      Markers = values
+      n1 = n
+      Weights = NA
+    }
+    
+    if(type == "anno")
+    {
+      if(n != n1)
+        stop("The length of annotations for markers is not equal to the length of marker IDs")
+      if(previousType != "var")
+        stop("In the 'GroupFile', the 'anno' line should follow the 'var' line.")
+      Annos = values;
+    }
+    
+    if(type == "weight")
+    {
+      if(n != n1)
+        stop("The length of weights for markers is not equal to the length of marker IDs")
+      if(previousType != "anno")
+        stop("In the 'GroupFile', the 'weight' line should follow the 'anno' line.")
+      Weights = values
+    }
+    
+    previousType = type
+    previousGene = geneID
   }
   
-  HeaderInRegionData = colnames(RegionData)
-  if(!is.null(RegionAnnoHeader)){
-    if(any(!RegionAnnoHeader %in% HeaderInRegionData))
-      stop("At least one element in 'RegionAnnoHeader' is not in the header of RegionFile.")
-    posAnno = which(HeaderInRegionData %in% RegionAnnoHeader)
-  }else{
-    print("Since no 'RegionAnnoHeader' is given, region-based testing will not incorporate any annotation information.")
-    posAnno = NULL
-  }
-  
-  RegionList = list()
-  uRegion = unique(RegionData$REGION)
-  for(r in uRegion){
-    
-    # print(paste0("Analyzing region ",r,"...."))
-    
-    posSNP = which(RegionData$REGION == r)
-    SNP = RegionData$MARKER[posSNP]
-    
-    if(any(duplicated(SNP)))
-      stop("Please check RegionFile: in region ", r,": duplicated SNPs exist.")
-    
-    # posMarker = match(SNP, markerInfo$ID, 0)
-    # if(any(posMarker == 0))
-    #   stop(paste0("At least one marker in region ", r," are not in 'GenoFile' and 'GenoFileIndex'."))
-    
-    regionMat = cbind(BASE=1, RegionData[posSNP, posAnno, drop=F])
-    rownames(regionMat) = SNP
-    
-    # genoIndex = markerInfo$genoIndex[posMarker]
-    # chrom = markerInfo$CHROM[posMarker]
-    genoIndex = RegionData$genoIndex[posSNP]
-    chrom = RegionData$CHROM[posSNP]
-    uchrom = unique(chrom)
-    
-    if(length(uchrom) != 1)
-      stop("In region ",r,", markers are from multiple chromosomes.")
-    
-    RegionList[[r]] = list(SNP = SNP,
-                           regionMat = regionMat,
-                           genoIndex = genoIndex,
-                           chrom = uchrom)
-  }
-  
-  return(RegionList)
+  cat("Total ", nRegion, " groups are in 'GroupFile'.\n\n")
+  return(regionList)
 }

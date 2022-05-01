@@ -285,3 +285,11 @@ setGRM = function(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
               genoType = genoList$genoType,
               markerInfo = genoList$markerInfo))
 }
+
+setSparseGRMInStep2 = function(SparseGRMFile, subjNull)
+{
+  SparseGRM = data.table::fread(SparseGRMFile)
+  SparseGRM = as.data.frame(SparseGRM)
+  KinMatListR = updateSparseGRM(SparseGRM, objNull$subjData)
+  setSparseGRMInCPP(KinMatListR)    # check Main.cpp
+}

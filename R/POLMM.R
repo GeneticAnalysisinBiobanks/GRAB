@@ -76,8 +76,6 @@ GRAB.POLMM = function(){
   print("Check ?GRAB.POLMM for more details about 'POLMM' method.")
 }
 
-
-
 ################### This file includes the following functions
 
 # ------------ used in 'GRAB_Marker.R' -----------
@@ -329,21 +327,20 @@ setMarker.POLMM = function(objNull, control, chrom)
 # Used in setRegion() function in GRAB_Region.R
 setRegion.POLMM = function(objNull, control, chrom, SparseGRMFile)
 {
-  if(objNull$control$LOCO){
-    if(!chrom %in% names(objNull$LOCOList))
-      stop("If control$LOCO == TRUE, then 'chrom' should be in names(objNull$LOCOList).")
-    objCHR = objNull$LOCOList[[chrom]]
-  }else{
-    objCHR = objNull$LOCOList[["LOCO=F"]]
+  if(chrom != "LOCO=F")
+  {
+    cat("Argument 'chrom' is:\t", chrom, "\n")
+    if(!"LOCOList" %in% names(objNull))
+      stop("If argument 'chrom' is not 'LOCO=F', then objNull should includes element of 'LOCOList'.")
   }
+  
+  objCHR = objNull$LOCOList[[chrom]]
   
   # Since region-level analysis mainly focuses on rare variants, we use sparse GRM for all markers
   
-  print("Sparse GRM is used for POLMM-GENE method.")
-  SparseGRM = data.table::fread(SparseGRMFile)
-  SparseGRM = as.data.frame(SparseGRM)
-  KinMatListR = updateSparseGRM(SparseGRM, objNull$subjData)
-  setSparseGRMInCPP(KinMatListR)    # check Main.cpp
+  cat("Sparse GRM is used for POLMM-GENE method.\n")
+  
+  setSparseGRMInStep2(SparseGRMFile, objNull)  # check SparseGRM.R
   
   # The following parameters are not used any more
   flagSparseGRM = TRUE;
@@ -366,5 +363,90 @@ setRegion.POLMM = function(objNull, control, chrom, SparseGRMFile)
                    flagSparseGRM)
 
   # print(paste0("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk,"."))
+}
+
+mainRegion.POLMM = function(genoType, genoIndex, OutputFile, control, n, obj.setRegion, obj.mainRegionInCPP)
+{
+  outputColumns = control$outputColumns
+  
+  ## required columns for all methods
+  info.Region = with(obj.mainRegionInCPP, data.frame(Marker = markerVec,
+                                                Info = infoVec,
+                                                AltFreq = altFreqVec,
+                                                MAC = MACVec,
+                                                MAF = MAFVec,
+                                                MissingRate = missingRateVec, 
+                                                IsUltraRareVariants = indicatorVec - 1,
+                                                stringsAsFactors = F))
+  
+  optionalColumns = c("beta", "seBeta", "PvalueNorm", "AltFreqInGroup", "AltCountsInGroup", "nSamplesInGroup")
+  additionalColumns = intersect(optionalColumns, outputColumns)
+  
+  if(length(additionalColumns) > 0)
+    info.Region = cbind.data.frame(info.Region, 
+                                   as.data.frame(obj.mainRegion[additionalColumns]))
+  
+
+  info.Region = subset(info.Region, IsUltraRareVariants != -1)
+  pos = which(info.Region$IsUltraRareVariants == 0)
+  
+  info.Region$Pvalue = NA
+  info.Region$Pvalue[pos] = obj.mainRegionInCPP$pval1Vec
+  
+  return(list(StatVec = obj.mainRegionInCPP$StatVec,
+              pval1Vec = obj.mainRegionInCPP$pval1Vec,
+              VarMat = obj.mainRegionInCPP$VarMat,
+              info.Region = info.Region))
+}
+
+mainRegion.POLMM.Check = function(genoType, genoIndex, OutputFile, control, n, obj.setRegion, obj.mainRegionInCPP)
+{
+  outputColumns = control$outputColumns
+  
+  cat("summary(obj.mainRegionInCPP)\n")
+  print(summary(obj.mainRegionInCPP))
+  
+  ## required columns for all methods
+  info.Region = with(obj.mainRegionInCPP, data.frame(
+    ID = markerVec,
+    Info = infoVec,
+    AltFreq = altFreqVec,
+    MAC = MACVec,
+    MAF = MAFVec,
+    MissingRate = missingRateVec, 
+    IndicatorVec = indicatorVec,
+    StatVec = StatVec,
+    altBetaVec = altBetaVec,
+    seBetaVec = seBetaVec,
+    pval0Vec = pval0Vec,
+    pval1Vec = pval1Vec,
+    stringsAsFactors = F))
+  
+  # optionalColumns = c("beta", "seBeta", "PvalueNorm", "AltFreqInLabel", "AltCountsInLabel", "nSamplesInLabel")
+  # additionalColumns = intersect(optionalColumns, outputColumns)
+  # 
+  # if(length(additionalColumns) > 0)
+  #   info.Region = cbind.data.frame(info.Region, 
+  #                                  as.data.frame(obj.mainRegion[additionalColumns]))
+  
+  RV.Markers = info.Region %>% 
+    filter(IndicatorVec == 1 | IndicatorVec == 3) 
+  
+  RV.Markers = RV.Markers %>% 
+    mutate(posRow = 1:nrow(RV.Markers))
+  
+  Other.Markers = info.Region %>% 
+    filter(IndicatorVec == 2 | IndicatorVec == 0) %>%
+    select(-(StatVec:pval1Vec))
+  
+  # info.Region = subset(info.Region, IsUltraRareVariants != -1)
+  # pos = which(info.Region$IsUltraRareVariants == 0)
+  # 
+  # info.Region$Pvalue = NA
+  # info.Region$Pvalue[pos] = obj.mainRegionInCPP$pval1Vec
+  
+  return(list(RV.Markers = RV.Markers,
+              Other.Markers = Other.Markers,
+              VarMat = obj.mainRegionInCPP$VarMat))
 }
 
