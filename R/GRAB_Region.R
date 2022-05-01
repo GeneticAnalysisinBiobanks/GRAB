@@ -279,12 +279,13 @@ GRAB.Region = function(objNull,
     pval.Region = data.frame()
     for(anno in annoVec)
     {
+      annoTemp = unlist(strsplit(anno, split = ":"))
+      
       posURV = RV.MarkersURV %>% filter(ID == anno) %>% select(posRow) %>% unlist()
       nMarkersURV = Other.MarkersWithAnno %>% filter(Annos %in% annoTemp) %>% nrow()
       if(length(posURV) != 1)
         stop("length(posURV) != 1")
       
-      annoTemp = unlist(strsplit(anno, split = ":"))
       for(MaxMAF in MaxMAFVec)
       {
         posRV = RV.MarkersWithAnno %>% filter(MAF < MaxMAF & Annos %in% annoTemp) %>% select(posRow) %>% unlist()
