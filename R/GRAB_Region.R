@@ -249,8 +249,8 @@ GRAB.Region = function(objNull,
     VarMat = obj.mainRegion$VarMat
     RV.Markers0 = obj.mainRegion$RV.Markers %>% mutate(Region = regionID, .before = ID)
     
-    if(nrow(VarMat) != nrow(RV.Markers))
-      stop("nrow(VarMat) != nrow(RV.Markers)!")
+    if(nrow(VarMat) != nrow(RV.Markers0))
+      stop("nrow(VarMat) != nrow(RV.Markers0)!")
     
     RV.Markers = RV.Markers0 %>% 
       mutate(betaWeights = dbeta(MAF, control$weights.beta[1], control$weights.beta[2]),
