@@ -542,10 +542,10 @@ Rcpp::List mainRegionInCPPcheck(std::string t_method,       // "POLMM", "SPACox"
     pval0Vec.at(q+iAnno) = pval0;
     pval1Vec.at(q+iAnno) = pval1;
     
-    if(i1InChunk > m1)
+    if(i1InChunk >= m1)
     {
-      P1Mat.resize(i1InChunk, n);
-      P2Mat.resize(n, i1InChunk);
+      P1Mat.resize(i1InChunk+1, n);
+      P2Mat.resize(n, i1InChunk+1);
     }
     
     P1Mat.row(i1InChunk) = P1Vec.t();
@@ -554,19 +554,19 @@ Rcpp::List mainRegionInCPPcheck(std::string t_method,       // "POLMM", "SPACox"
     i1InChunk += 1;
   }
   
-  if(i2 != 0){
-    
-  }
+  if(i2 == 0)
+    std::cout << "i2 == 0." << std::endl;
    
   if((i1 == 0) & (i2 == 0))
     std::cout << "Cannot find any valid rare variants. This region will be skipped." << std::endl;
 
   mPassCVVec.push_back(i1InChunk);
+  nchunks = ichunk + 1;
   
   if(i1InChunk != 0){
     P1Mat = P1Mat.rows(0, i1InChunk - 1);
     P2Mat = P2Mat.cols(0, i1InChunk - 1);
-    if(ichunk != 0){
+    if(nchunks != 1){
       std::cout << "In chunks 0-" << ichunk << ", " << i2 << " markers are ultra-rare and " << i1 << " markers are not ultra-rare." << std::endl;
       P1Mat.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin");
       P2Mat.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin");
@@ -575,7 +575,6 @@ Rcpp::List mainRegionInCPPcheck(std::string t_method,       // "POLMM", "SPACox"
   
   arma::mat VarMat(i1, i1);
   
-  nchunks = ichunk + 1;
   // the number of non-ultra-rare markers in the region is less than limitation, so all data is in memory
   if(nchunks == 1){
     VarMat = P1Mat * P2Mat;

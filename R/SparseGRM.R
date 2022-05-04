@@ -286,7 +286,7 @@ setGRM = function(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
               markerInfo = genoList$markerInfo))
 }
 
-setSparseGRMInStep2 = function(SparseGRMFile, subjNull)
+setSparseGRMInStep2 = function(SparseGRMFile, objNull)
 {
   SparseGRM = data.table::fread(SparseGRMFile)
   SparseGRM = as.data.frame(SparseGRM)
