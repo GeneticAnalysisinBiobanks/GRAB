@@ -16,6 +16,11 @@ private:
   
   ////////////////////// -------------------- members ---------------------------------- //////////////////////
   
+  arma::vec m_diffTimePOLMM1;
+  arma::vec m_diffTimePOLMM2;
+  arma::vec m_diffTimePOLMM3;
+  arma::vec m_diffTimePOLMM4;
+  
   // MAIN Dimensions: sample size, number of categories, number of covariates
   int m_n, m_J, m_p, m_M;
   
@@ -178,6 +183,11 @@ private:
   ////////////////////// -------------------- functions ---------------------------------- //////////////////////
   
 public:
+  
+  arma::vec getTestTime1(){return m_diffTimePOLMM1;}
+  arma::vec getTestTime2(){return m_diffTimePOLMM2;}
+  arma::vec getTestTime3(){return m_diffTimePOLMM3;}
+  arma::vec getTestTime4(){return m_diffTimePOLMM4;}
   
   void fitPOLMM();
   void estVarRatio(arma::mat GenoMat);

@@ -24,6 +24,11 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
                        double t_SPA_Cutoff,
                        bool t_flagSparseGRM)     // In region-based analysis, we use SparseGRM, in marker-based analysis, we do not use SparseGRM
 {
+  m_diffTimePOLMM1.zeros(2);
+  m_diffTimePOLMM2.zeros(2);
+  m_diffTimePOLMM3.zeros(2);
+  m_diffTimePOLMM4.zeros(2);
+  
   m_muMat = t_muMat;
   m_iRMat = t_iRMat;
   m_Cova = t_Cova;
@@ -59,6 +64,7 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
   // std::this_thread::sleep_for (std::chrono::seconds(1));
   
   // output for Step 2
+  
   arma::mat XR_Psi_R(m_p, m_n * (m_J-1));                // p x n(J-1)
   for(int k = 0; k < m_p; k++){
     arma::mat xMat = Vec2Mat(m_CovaMat.col(k), m_n, m_J);
@@ -226,10 +232,18 @@ void POLMMClass::getRegionPVec(arma::vec t_GVec,
                                arma::vec& t_P1Vec, 
                                arma::vec& t_P2Vec)
 {
+  arma::vec test11 = getTime();
+  
+  arma::vec test21 = getTime();
   arma::vec adjGVec = getadjGFast(t_GVec);
+  
+  arma::vec test22 = getTime();
   double Stat = getStatFast(adjGVec);
   
+  arma::vec test23 = getTime();
   arma::vec ZPZ_adjGVec = get_ZPZ_adjGVec(adjGVec);
+  
+  arma::vec test24 = getTime();
   double VarS = as_scalar(adjGVec.t() * ZPZ_adjGVec);
   double StdStat = std::abs(Stat) / sqrt(VarS);
   double pvalNorm = 2 * arma::normcdf(-1*StdStat);
@@ -261,6 +275,12 @@ void POLMMClass::getRegionPVec(arma::vec t_GVec,
   t_P2Vec = ZPZ_adjGVec;
   
   // getMarkerPval(t_GVec, t_Beta, t_seBeta, t_pval0, altFreq);
+  arma::vec test12 = getTime();
+  
+  m_diffTimePOLMM1 += (test12 - test11);
+  m_diffTimePOLMM2 += (test22 - test21);
+  m_diffTimePOLMM3 += (test23 - test22);
+  m_diffTimePOLMM4 += (test24 - test23);
 }
 
 arma::vec POLMMClass::getadjGFast(arma::vec t_GVec)

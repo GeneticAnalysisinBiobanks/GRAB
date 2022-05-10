@@ -225,6 +225,13 @@ GRAB.Region = function(objNull,
                                  max_markers_region, 
                                  omp_num_threads))
   
+  textToParse = paste0("obj.setRegion = setRegion.", method, "(objNull, control, chrom, SparseGRMFile)")
+  eval(parse(text = textToParse))
+  
+  diffTime1 = 0
+  diffTime2 = 0
+  diffTime3 = 0
+  
   for(i in (indexChunk+1):nRegions){
     
     region = RegionList[[i]]
@@ -265,13 +272,12 @@ GRAB.Region = function(objNull,
     cat("Total", length(regionInfo$ID), "markers:\t", 
         paste0(head(regionInfo$ID), collapse = ", "), "\n")
 
-    
-    textToParse = paste0("obj.setRegion = setRegion.", method, "(objNull, control, chrom, SparseGRMFile)")
-    eval(parse(text = textToParse))
-    
+    t11 = Sys.time()
     obj.mainRegionInCPP = mainRegionInCPP(method, genoType, genoIndex, weightVec, OutputFile, 
                                           SampleLabelNumber, nLabel, 
                                           annoMat, annoVec)
+    t12 = Sys.time()
+    diffTime1 = diffTime1 + (t12-t11)
     
     ## add annotation information
     obj.mainRegionInCPP$AnnoVec = c(regionInfo$Annos, annoVec)
@@ -317,6 +323,7 @@ GRAB.Region = function(objNull,
     
     RV.MarkersURV = RV.Markers %>% filter(Info == "Ultra-Rare Variants") %>% select(ID, posRow)
     
+    t21 = Sys.time()
     pval.Region = data.frame()
     for(anno in annoVec)
     {
@@ -332,12 +339,15 @@ GRAB.Region = function(objNull,
         posRV = RV.MarkersWithAnno %>% filter(MAF < MaxMAF & Annos %in% annoTemp) %>% select(posRow) %>% unlist()
         pos = c(posRV, posURV)
         n1 = length(pos)
+        t31 = Sys.time()
         out_SKAT_List = with(RV.Markers, try(SKAT:::Met_SKAT_Get_Pvalue(Score = wStatVec[pos], 
                                                                         Phi = wadjVarSMat[pos, pos],  
                                                                         r.corr = control$r.corr, 
                                                                         method = "optimal.adj", 
                                                                         Score.Resampling = NULL),
                                              silent = TRUE))
+        t32 = Sys.time()
+        diffTime3 = diffTime3 + (t32-t31)
         
         if(class(out_SKAT_List) == "try-error"){
           Pvalue = c(NA, NA, NA)
@@ -366,6 +376,13 @@ GRAB.Region = function(objNull,
       }
     }
     
+    t22 = Sys.time()
+    diffTime2 = diffTime2 + (t22-t21)
+    
+    cat("diffTime1:\t", diffTime1,"\n")
+    cat("diffTime2:\t", diffTime2,"\n")
+    cat("diffTime3:\t", diffTime3,"\n")
+    
     writeOutputFile(Output = list(pval.Region, 
                                   RV.Markers0, 
                                   Other.Markers), 
@@ -380,6 +397,10 @@ GRAB.Region = function(objNull,
                     End = (i==nRegions))
   }
       
+  cat("diffTime1:\t", diffTime1,"\n")
+  cat("diffTime2:\t", diffTime2,"\n")
+  cat("diffTime3:\t", diffTime3,"\n")
+  
   cat("Analysis done! The results have been saved to the below files:\n", 
       OutputFile, "\n",
       paste0(OutputFile, ".markerInfo\n"),

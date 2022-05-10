@@ -54,29 +54,9 @@ unsigned int g_nGroup;
 arma::sp_mat g_SparseGRM;
 
 // set up global variables for analysis
-
-// arma::sp_mat getKinMatList(Rcpp::List KinMatListR)
-// {
-// int nKin = KinMatListR.size();
-// Rcpp::CharacterVector NameKin = KinMatListR.names();
-// Rcpp::List KinMatList_sp;
-// for(int i = 0; i < nKin; i ++){
-//   string excludeChr = string(NameKin[i]);
-//   Rcpp::List KinMatTemp = KinMatListR[excludeChr];
-//   arma::umat locations = KinMatTemp["locations"];
-//   arma::vec values = KinMatTemp["values"];
-//   int n = KinMatTemp["nSubj"];
-//   // make a sparse matrix
-//   arma::sp_mat KinMat(locations, values, n, n);
-//   KinMatList_sp[excludeChr] = KinMat;
-// }
-// arma::umat locations = KinMatListR["locations"];
-// arma::vec values = KinMatListR["values"];
-// int n = KinMatListR["nSubj"];
-// // make a sparse matrix
-// arma::sp_mat KinMat(locations, values, n, n);
-// return KinMat;
-// }
+arma::vec g_compTime1(2, arma::fill::zeros);
+arma::vec g_compTime2(2, arma::fill::zeros);
+arma::vec g_compTime3(2, arma::fill::zeros);
 
 // [[Rcpp::export]]
 void setSparseGRMInCPP(Rcpp::List t_KinMatListR)
@@ -254,7 +234,6 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
                                           indexForMissing,
                                           false, // bool t_isOnlyOutputNonZero,
                                           indexForNonZero);
-    
     int n = GVec.size();
     
     // std::cout << "test1.1" << std::endl;
@@ -465,11 +444,16 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     
     uint32_t gIndex = t_genoIndex.at(i);
     
+    arma::vec test11 = getTime();
+    
     arma::vec GVec = Unified_getOneMarker(t_genoType, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
                                           true, // bool t_isOutputIndexForMissing,
                                           indexForMissing,
                                           false, // bool t_isOnlyOutputNonZero,
                                           indexForNonZero);
+    
+    arma::vec test12 = getTime();
+    g_compTime1 += test12 - test11;
     
     std::string info = chr+":"+std::to_string(pd)+":"+ref+":"+alt;
     
@@ -484,6 +468,8 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     missingRateVec.at(i) = missingRate;
     MACVec.at(i) = MAC;
     MAFVec.at(i) = MAF;
+    
+    arma::vec test21 = getTime();
     
     // Quality Control (QC)
     if((missingRate > g_missingRate_cutoff) || (MAF > g_region_maxMAF_cutoff) || MAF == 0){
@@ -547,8 +533,14 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
       i1InChunk = 0;
     }
     
+    arma::vec test22 = getTime();
+    g_compTime2 += test22 - test21;
+    
     Rcpp::checkUserInterrupt();
   }
+  
+  std::cout << "g_compTime1:\t" << g_compTime1 << std::endl;
+  std::cout << "g_compTime2:\t" << g_compTime2 << std::endl;
   
   for(unsigned int iAnno = 0; iAnno < nAnno; iAnno++)
   {
@@ -677,6 +669,11 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   std::cout << "m1:\t" << m1 << std::endl;
   
   // Rcpp::Named("GVecURV") = GVecURV
+  
+  printTimeDiff(ptr_gPOLMMobj->getTestTime1(), "Time #1");
+  printTimeDiff(ptr_gPOLMMobj->getTestTime2(), "Time #2");
+  printTimeDiff(ptr_gPOLMMobj->getTestTime3(), "Time #3");
+  printTimeDiff(ptr_gPOLMMobj->getTestTime4(), "Time #4");
   
   Rcpp::List OutList = Rcpp::List::create(Rcpp::Named("markerVec") = markerVec,
                                           Rcpp::Named("infoVec") = infoVec,

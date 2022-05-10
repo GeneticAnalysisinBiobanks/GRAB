@@ -147,5 +147,4 @@ data.table::fread(paste0(OutputFile,".markerInfo"))
 data.table::fread(paste0(OutputFile,".otherMarkerInfo"))
 data.table::fread(paste0(OutputFile,".index"), sep="\t", header=F)
 
-
 }
