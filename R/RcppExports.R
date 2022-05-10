@@ -29,12 +29,8 @@ mainRegionURVInCPP <- function(t_method, t_genoType, t_genoIndex, t_n) {
     .Call(`_GRAB_mainRegionURVInCPP`, t_method, t_genoType, t_genoIndex, t_n)
 }
 
-mainRegionInCPPcheck <- function(t_method, t_genoType, t_genoIndex, t_weightVec, t_outputFile, t_labelVec, t_nLabel, t_annoMat, t_annoVec) {
-    .Call(`_GRAB_mainRegionInCPPcheck`, t_method, t_genoType, t_genoIndex, t_weightVec, t_outputFile, t_labelVec, t_nLabel, t_annoMat, t_annoVec)
-}
-
-mainRegionInCPP <- function(t_method, t_genoType, t_genoIndex, t_weightVec, t_outputFile, t_labelVec, t_nLabel) {
-    .Call(`_GRAB_mainRegionInCPP`, t_method, t_genoType, t_genoIndex, t_weightVec, t_outputFile, t_labelVec, t_nLabel)
+mainRegionInCPP <- function(t_method, t_genoType, t_genoIndex, t_weightVec, t_outputFile, t_labelVec, t_nLabel, t_annoMat, t_annoVec) {
+    .Call(`_GRAB_mainRegionInCPP`, t_method, t_genoType, t_genoIndex, t_weightVec, t_outputFile, t_labelVec, t_nLabel, t_annoMat, t_annoVec)
 }
 
 getGenoInCPP <- function(t_genoType, t_markerInfo, n, t_imputeMethod) {

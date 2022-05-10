@@ -1,8 +1,9 @@
 
 # cd /home/wenjianb/Docker/GRAB
-# docker build --build-arg version=0.0.2.8 -t grab_0.0.2.8 .
-# docker tag grab_0.0.2.8 wenjianb/grab:0.0.2.8
-# docker push wenjianb/grab:0.0.2.8
+# docker build --build-arg version=0.0.2.9 -t wenjianb/grab:0.0.2.9 .
+# docker push wenjianb/grab:0.0.2.9
+# docker save wenjianb/grab:0.0.2.9 > grab_0.0.2.9.tar
+# gzip grab_0.0.2.9.tar
 
 FROM rocker/tidyverse:4.0.0
 
@@ -13,9 +14,14 @@ RUN apt-get update && \
     python3-pip \
     libzstd-dev
 
+WORKDIR /grab
+ADD code.R .
+ADD GRAB.Region.R .
+ADD GRAB.ReadGeno.R .
+
 RUN R -e "devtools::install_github('GeneticAnalysisinBiobanks/GRAB', ref='dev1')"
 
 RUN echo "Complete installing GRAB package\n"
 
-CMD echo "Example: docker run -v /home/wenjianb/Docker/GRAB/:/grab/ grab:0.0.2.8 Rscript /grab/code.R"
+CMD echo "Example: docker run -v /home/wenjianb/Docker/GRAB/:/grab/ wenjianb/grab:0.0.2.9 Rscript /grab/code.R"
 

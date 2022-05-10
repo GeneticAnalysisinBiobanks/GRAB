@@ -105,9 +105,9 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// mainRegionInCPPcheck
-Rcpp::List mainRegionInCPPcheck(std::string t_method, std::string t_genoType, std::vector<uint64_t> t_genoIndex, std::vector<double> t_weightVec, std::string t_outputFile, std::vector<unsigned int> t_labelVec, unsigned int t_nLabel, arma::mat t_annoMat, std::vector<std::string> t_annoVec);
-RcppExport SEXP _GRAB_mainRegionInCPPcheck(SEXP t_methodSEXP, SEXP t_genoTypeSEXP, SEXP t_genoIndexSEXP, SEXP t_weightVecSEXP, SEXP t_outputFileSEXP, SEXP t_labelVecSEXP, SEXP t_nLabelSEXP, SEXP t_annoMatSEXP, SEXP t_annoVecSEXP) {
+// mainRegionInCPP
+Rcpp::List mainRegionInCPP(std::string t_method, std::string t_genoType, std::vector<uint64_t> t_genoIndex, std::vector<double> t_weightVec, std::string t_outputFile, std::vector<unsigned int> t_labelVec, unsigned int t_nLabel, arma::mat t_annoMat, std::vector<std::string> t_annoVec);
+RcppExport SEXP _GRAB_mainRegionInCPP(SEXP t_methodSEXP, SEXP t_genoTypeSEXP, SEXP t_genoIndexSEXP, SEXP t_weightVecSEXP, SEXP t_outputFileSEXP, SEXP t_labelVecSEXP, SEXP t_nLabelSEXP, SEXP t_annoMatSEXP, SEXP t_annoVecSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -120,24 +120,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< unsigned int >::type t_nLabel(t_nLabelSEXP);
     Rcpp::traits::input_parameter< arma::mat >::type t_annoMat(t_annoMatSEXP);
     Rcpp::traits::input_parameter< std::vector<std::string> >::type t_annoVec(t_annoVecSEXP);
-    rcpp_result_gen = Rcpp::wrap(mainRegionInCPPcheck(t_method, t_genoType, t_genoIndex, t_weightVec, t_outputFile, t_labelVec, t_nLabel, t_annoMat, t_annoVec));
-    return rcpp_result_gen;
-END_RCPP
-}
-// mainRegionInCPP
-Rcpp::List mainRegionInCPP(std::string t_method, std::string t_genoType, std::vector<uint64_t> t_genoIndex, std::vector<double> t_weightVec, std::string t_outputFile, std::vector<unsigned int> t_labelVec, unsigned int t_nLabel);
-RcppExport SEXP _GRAB_mainRegionInCPP(SEXP t_methodSEXP, SEXP t_genoTypeSEXP, SEXP t_genoIndexSEXP, SEXP t_weightVecSEXP, SEXP t_outputFileSEXP, SEXP t_labelVecSEXP, SEXP t_nLabelSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< std::string >::type t_method(t_methodSEXP);
-    Rcpp::traits::input_parameter< std::string >::type t_genoType(t_genoTypeSEXP);
-    Rcpp::traits::input_parameter< std::vector<uint64_t> >::type t_genoIndex(t_genoIndexSEXP);
-    Rcpp::traits::input_parameter< std::vector<double> >::type t_weightVec(t_weightVecSEXP);
-    Rcpp::traits::input_parameter< std::string >::type t_outputFile(t_outputFileSEXP);
-    Rcpp::traits::input_parameter< std::vector<unsigned int> >::type t_labelVec(t_labelVecSEXP);
-    Rcpp::traits::input_parameter< unsigned int >::type t_nLabel(t_nLabelSEXP);
-    rcpp_result_gen = Rcpp::wrap(mainRegionInCPP(t_method, t_genoType, t_genoIndex, t_weightVec, t_outputFile, t_labelVec, t_nLabel));
+    rcpp_result_gen = Rcpp::wrap(mainRegionInCPP(t_method, t_genoType, t_genoIndex, t_weightVec, t_outputFile, t_labelVec, t_nLabel, t_annoMat, t_annoVec));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -302,8 +285,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setRegion_GlobalVarsInCPP", (DL_FUNC) &_GRAB_setRegion_GlobalVarsInCPP, 6},
     {"_GRAB_mainMarkerInCPP", (DL_FUNC) &_GRAB_mainMarkerInCPP, 3},
     {"_GRAB_mainRegionURVInCPP", (DL_FUNC) &_GRAB_mainRegionURVInCPP, 4},
-    {"_GRAB_mainRegionInCPPcheck", (DL_FUNC) &_GRAB_mainRegionInCPPcheck, 9},
-    {"_GRAB_mainRegionInCPP", (DL_FUNC) &_GRAB_mainRegionInCPP, 7},
+    {"_GRAB_mainRegionInCPP", (DL_FUNC) &_GRAB_mainRegionInCPP, 9},
     {"_GRAB_getGenoInCPP", (DL_FUNC) &_GRAB_getGenoInCPP, 4},
     {"_GRAB_getGenoInCPP_fixedNumber", (DL_FUNC) &_GRAB_getGenoInCPP_fixedNumber, 7},
     {"_GRAB_getSpGenoInCPP", (DL_FUNC) &_GRAB_getSpGenoInCPP, 4},

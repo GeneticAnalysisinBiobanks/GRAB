@@ -21,12 +21,14 @@ print(sessionInfo())
 ## set list of cmd line arguments
 option_list <- list(
   make_option("--GenoFile", type="character", default="",
-              help="a character of genotype file"),
-  make_option("--GenoFileIndex", type="character", default=NULL,
-              help="additional index file(s) corresponding to GenoFile."),
+              help="a character of genotype file, bed file or bgen file"),
+  make_option("--GenoMarkerIndexFile", type="character", default=NULL,
+              help="marker index file corresponding to GenoFile, bim file or bgi file."),
+  make_option("--GenoSampleFile", type="character", default=NULL,
+              help="sample file corresponding to GenoFile, fam file or sample file."),
   make_option("--SampleIDFile", type="character", default=NULL,
               help="a file to store sample IDs, one column (no header)."),
-  make_option("--ControlFile", type="character", default=NULL,
+  make_option("--IDsToIncludeFile", type="character", default=NULL,
               help="a file to store control list, two tab-seperated columns (no headers): column 1 is name and column 2 is value."),
   make_option("--OutputPrefix", type="character", default=NULL,
               help="a file to store control list, two tab-seperated columns (no headers): column 1 is name and column 2 is value.")
@@ -52,32 +54,32 @@ extractSampleIDs = function(SampleIDFile)
   return(SampleIDs)
 }
 
-extractControl = function(ControlFile)
-{
-  if(is.null(ControlFile))
-    return(NULL)
-  
-  control.dataframe = read.table(ControlFile, header = F, sep = "\t")
-  if(ncol(control.dataframe) != 2)
-    stop("ncol(control.dataframe) != 2")
-  
-  m = nrow(control.dataframe)
-  if(m == 0)
-    stop("nrow(control.dataframe) == 0")
-  
-  control.list = list()
-  for(i in 1:m)
-  {
-    name = control.dataframe[i, 1]
-    value = control.dataframe[i, 2]
-    control.list[[name]] = value
-  }
-  
-  return(control.list)
-}
+# extractControl = function(ControlFile)
+# {
+#   if(is.null(ControlFile))
+#     return(NULL)
+#   
+#   control.dataframe = read.table(ControlFile, header = F, sep = "\t")
+#   if(ncol(control.dataframe) != 2)
+#     stop("ncol(control.dataframe) != 2")
+#   
+#   m = nrow(control.dataframe)
+#   if(m == 0)
+#     stop("nrow(control.dataframe) == 0")
+#   
+#   control.list = list()
+#   for(i in 1:m)
+#   {
+#     name = control.dataframe[i, 1]
+#     value = control.dataframe[i, 2]
+#     control.list[[name]] = value
+#   }
+#   
+#   return(control.list)
+# }
 
 SampleIDs = extractSampleIDs(opt$SampleIDFile)
-control = extractControl(opt$ControlFile)
+# control = extractControl(opt$ControlFile)
 
 if(is.null(opt$OutputPrefix))
   stop("argument of OutputPrefix is required.")
@@ -85,10 +87,12 @@ if(is.null(opt$OutputPrefix))
 OutputFile.GenoMat = paste0(opt$OutputPrefix, ".GenoMat.txt")
 OutputFile.markerInfo = paste0(opt$OutputPrefix, ".markerInfo.txt")
 
+GenoFileIndex = c(opt$GenoMarkerIndexFile, opt$GenoSampleFile)
+
 GenoList = GRAB.ReadGeno(opt$GenoFile,
-                         opt$GenoFileIndex,
+                         GenoFileIndex,
                          SampleIDs,
-                         control,
+                         control = list(IDsToIncludeFile = opt$IDsToIncludeFile),
                          sparse = FALSE)
 
 GenoMat = data.table::data.table(GenoList$GenoMat, keep.rownames = T)

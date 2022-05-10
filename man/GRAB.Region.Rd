@@ -12,9 +12,9 @@ GRAB.Region(
   OutputFileIndex = NULL,
   GroupFile,
   SparseGRMFile = NULL,
-  MaxMAFVec = c(0.05, 0.01, 0.005),
-  annoVec = c("stoploss:nonframeshift insertion:nonsynonymous SNV",
-    "stoploss:nonframeshift insertion:nonsynonymous SNV:synonymous SNV:frameshift deletion:nonframeshift deletion:frameshift insertion:stopgain:splicing:startloss"),
+  SampleFile = NULL,
+  MaxMAFVec = "0.05,0.01,0.005",
+  annoVec = "lof,lof:missense,lof:missense:synonymous",
   chrom = "LOCO=F",
   control = NULL
 )
@@ -30,15 +30,19 @@ GRAB.Region(
 
 \item{OutputFileIndex}{a character of output index file to record the end point. If the program ends unexpectedly, the end point can help \code{GRAB} package understand where to restart the analysis. If \code{NULL} (default), \code{OutputFileIndex = paste0(OutputFile, ".index")}.}
 
+\item{GroupFile}{a character of region file to specify region-marker mapping with annotation information. Each region includes two or three rows. Only alphabet, numbers, and \link{:,_+-} symbols are supported. Columns are separated by 'tab'.}
+
 \item{SparseGRMFile}{a character of sparseGRM file. An example is \code{system.file("SparseGRM","SparseGRM.txt",package="GRAB")}.}
 
-\item{MaxMAFVec}{a numeric vector of max MAF cutoff to include markers for region-level analysis. Default setting is \code{c(0.05, 0.01, 0.005)}.}
+\item{SampleFile}{a character of file to include sample information with header.}
+
+\item{MaxMAFVec}{a character of multiple max MAF cutoffs (comma separated) to include markers for region-level analysis. Default value is \code{"0.05,0.01,0.005"}.}
+
+\item{annoVec}{a character of multiple annotation groups (comma separated) to include markers for region-level analysis. Default value is \code{"lof,lof:missense,lof:missense:synonymous"}.}
+
+\item{chrom}{to be continued}
 
 \item{control}{a list of parameters for controlling function \code{GRAB.Region}, more details can be seen in \code{Details} section.}
-
-\item{RegionFile}{a character of region file to specify region-marker mapping with annotation information. Columns are separated by 'tab'. Column 1: region ID, Column 2: marker ID, Columns 3-n annotation (non-negative) similar as in STAAR. The header is required and the first two should be "REGION" and "MARKER".}
-
-\item{RegionAnnoHeader}{a character vector of annotation in analysis. Optional, if not specified, all annotation columns are used in analysis.}
 }
 \value{
 Region-based analysis results are saved into two files: \code{OutputFile} and \code{OutputMarkerFile = paste0(OutputFile, ".markerInfo")}.
@@ -106,7 +110,7 @@ class(objNull)    # "POLMM_NULL_Model", that indicates an object from POLMM meth
 OutputDir = system.file("results", package = "GRAB")
 OutputFile = paste0(OutputDir, "/simuRegionOutput.txt")
 GenoFile = system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
-RegionFile = system.file("extdata", "simuRegion.txt", package = "GRAB")
+GroupFile = system.file("extdata", "example.GroupFile.txt", package = "GRAB")
 SparseGRMFile = system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
 
 ## make sure the output files does not exist at first
@@ -114,28 +118,34 @@ file.remove(OutputFile)
 file.remove(paste0(OutputFile, ".markerInfo"))
 file.remove(paste0(OutputFile, ".index"))
 
-GRAB.Region(objNull, 
+GRAB.Region(objNull = objNull,
             GenoFile = GenoFile,
+            GenoFileIndex = NULL,
             OutputFile = OutputFile,
-            RegionFile = RegionFile,
+            OutputFileIndex = NULL,
+            GroupFile = GroupFile,
             SparseGRMFile = SparseGRMFile)
             
 data.table::fread(OutputFile)
+data.table::fread(paste0(OutputFile,".markerInfo"))
+data.table::fread(paste0(OutputFile,".otherMarkerInfo"))
+data.table::fread(paste0(OutputFile,".index"), sep="\t", header=F)
 
-## additional columns of "zScore", "nSamplesInGroup", "AltCountsInGroup", "AltFreqInGroup"
-## We do not recommend adding too many columns for all markers
-
-file.remove(OutputFile)
-file.remove(paste0(OutputFile, ".markerInfo"))
-file.remove(paste0(OutputFile, ".index"))
-GRAB.Region(objNull, 
+SampleFile = system.file("extdata", "simuPHENO.txt", package = "GRAB")
+GRAB.Region(objNull = objNull,
             GenoFile = GenoFile,
+            GenoFileIndex = NULL,
             OutputFile = OutputFile,
-            RegionFile = RegionFile,
-            RegionAnnoHeader = c("ANNO1", "ANNO2"),
+            OutputFileIndex = NULL,
+            GroupFile = GroupFile,
             SparseGRMFile = SparseGRMFile,
-            control = list(outputColumns = c("beta", "seBeta", "zScore","nSamplesInGroup","AltCountsInGroup","AltFreqInGroup")))
+            SampleFile = SampleFile,
+            control = list(SampleLabelCol = "OrdinalPheno"))
             
 data.table::fread(OutputFile)
-    
+data.table::fread(paste0(OutputFile,".markerInfo"))
+data.table::fread(paste0(OutputFile,".otherMarkerInfo"))
+data.table::fread(paste0(OutputFile,".index"), sep="\t", header=F)
+
+
 }

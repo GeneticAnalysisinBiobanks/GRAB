@@ -365,51 +365,18 @@ setRegion.POLMM = function(objNull, control, chrom, SparseGRMFile)
   # print(paste0("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk,"."))
 }
 
-mainRegion.POLMM = function(genoType, genoIndex, OutputFile, control, n, obj.setRegion, obj.mainRegionInCPP)
+mainRegion.POLMM = function(genoType, genoIndex, OutputFile, control, n, obj.setRegion, obj.mainRegionInCPP, nLabel)
 {
   outputColumns = control$outputColumns
   
-  ## required columns for all methods
-  info.Region = with(obj.mainRegionInCPP, data.frame(Marker = markerVec,
-                                                Info = infoVec,
-                                                AltFreq = altFreqVec,
-                                                MAC = MACVec,
-                                                MAF = MAFVec,
-                                                MissingRate = missingRateVec, 
-                                                IsUltraRareVariants = indicatorVec - 1,
-                                                stringsAsFactors = F))
-  
-  optionalColumns = c("beta", "seBeta", "PvalueNorm", "AltFreqInGroup", "AltCountsInGroup", "nSamplesInGroup")
-  additionalColumns = intersect(optionalColumns, outputColumns)
-  
-  if(length(additionalColumns) > 0)
-    info.Region = cbind.data.frame(info.Region, 
-                                   as.data.frame(obj.mainRegion[additionalColumns]))
-  
-
-  info.Region = subset(info.Region, IsUltraRareVariants != -1)
-  pos = which(info.Region$IsUltraRareVariants == 0)
-  
-  info.Region$Pvalue = NA
-  info.Region$Pvalue[pos] = obj.mainRegionInCPP$pval1Vec
-  
-  return(list(StatVec = obj.mainRegionInCPP$StatVec,
-              pval1Vec = obj.mainRegionInCPP$pval1Vec,
-              VarMat = obj.mainRegionInCPP$VarMat,
-              info.Region = info.Region))
-}
-
-mainRegion.POLMM.Check = function(genoType, genoIndex, OutputFile, control, n, obj.setRegion, obj.mainRegionInCPP)
-{
-  outputColumns = control$outputColumns
-  
-  cat("summary(obj.mainRegionInCPP)\n")
-  print(summary(obj.mainRegionInCPP))
+  # cat("summary(obj.mainRegionInCPP)\n")
+  # print(summary(obj.mainRegionInCPP))
   
   ## required columns for all methods
   info.Region = with(obj.mainRegionInCPP, data.frame(
     ID = markerVec,
     Info = infoVec,
+    Anno = AnnoVec,
     AltFreq = altFreqVec,
     MAC = MACVec,
     MAF = MAFVec,
@@ -421,6 +388,10 @@ mainRegion.POLMM.Check = function(genoType, genoIndex, OutputFile, control, n, o
     pval0Vec = pval0Vec,
     pval1Vec = pval1Vec,
     stringsAsFactors = F))
+  
+  if(nLabel != 1)
+    info.Region = with(obj.mainRegionInCPP, 
+                       cbind(info.Region, MACLabelMat, MAFLabelMat))
   
   # optionalColumns = c("beta", "seBeta", "PvalueNorm", "AltFreqInLabel", "AltCountsInLabel", "nSamplesInLabel")
   # additionalColumns = intersect(optionalColumns, outputColumns)

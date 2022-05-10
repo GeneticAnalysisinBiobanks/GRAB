@@ -8,10 +8,12 @@
 #' @param GenoFileIndex additional index files corresponding to the \code{GenoFile}. If \code{NULL} (default), the prefix is the same as GenoFile. Check \code{\link{GRAB.ReadGeno}} for more details.
 #' @param OutputFile a character of output file to save the analysis results. 
 #' @param OutputFileIndex a character of output index file to record the end point. If the program ends unexpectedly, the end point can help \code{GRAB} package understand where to restart the analysis. If \code{NULL} (default), \code{OutputFileIndex = paste0(OutputFile, ".index")}. 
-#' @param RegionFile a character of region file to specify region-marker mapping with annotation information. Columns are separated by 'tab'. Column 1: region ID, Column 2: marker ID, Columns 3-n annotation (non-negative) similar as in STAAR. The header is required and the first two should be "REGION" and "MARKER".
-#' @param RegionAnnoHeader a character vector of annotation in analysis. Optional, if not specified, all annotation columns are used in analysis. 
+#' @param GroupFile a character of region file to specify region-marker mapping with annotation information. Each region includes two or three rows. Only alphabet, numbers, and [:,_+-] symbols are supported. Columns are separated by 'tab'. 
 #' @param SparseGRMFile a character of sparseGRM file. An example is \code{system.file("SparseGRM","SparseGRM.txt",package="GRAB")}.
-#' @param MaxMAFVec a numeric vector of max MAF cutoff to include markers for region-level analysis. Default setting is \code{c(0.05, 0.01, 0.005)}.
+#' @param SampleFile a character of file to include sample information with header.
+#' @param MaxMAFVec a character of multiple max MAF cutoffs (comma separated) to include markers for region-level analysis. Default value is \code{"0.05,0.01,0.005"}.
+#' @param annoVec a character of multiple annotation groups (comma separated) to include markers for region-level analysis. Default value is \code{"lof,lof:missense,lof:missense:synonymous"}.
+#' @param chrom to be continued 
 #' @param control a list of parameters for controlling function \code{GRAB.Region}, more details can be seen in \code{Details} section.
 #' @details 
 #' \code{GRAB} package supports \code{SAIGE}, \code{POLMM}, and \code{SPACox} methods. 
@@ -71,7 +73,7 @@
 #' OutputDir = system.file("results", package = "GRAB")
 #' OutputFile = paste0(OutputDir, "/simuRegionOutput.txt")
 #' GenoFile = system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
-#' RegionFile = system.file("extdata", "simuRegion.txt", package = "GRAB")
+#' GroupFile = system.file("extdata", "example.GroupFile.txt", package = "GRAB")
 #' SparseGRMFile = system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
 #' 
 #' ## make sure the output files does not exist at first
@@ -79,30 +81,35 @@
 #' file.remove(paste0(OutputFile, ".markerInfo"))
 #' file.remove(paste0(OutputFile, ".index"))
 #' 
-#' GRAB.Region(objNull, 
+#' GRAB.Region(objNull = objNull,
 #'             GenoFile = GenoFile,
+#'             GenoFileIndex = NULL,
 #'             OutputFile = OutputFile,
-#'             RegionFile = RegionFile,
+#'             OutputFileIndex = NULL,
+#'             GroupFile = GroupFile,
 #'             SparseGRMFile = SparseGRMFile)
 #'             
 #' data.table::fread(OutputFile)
+#' data.table::fread(paste0(OutputFile,".markerInfo"))
+#' data.table::fread(paste0(OutputFile,".otherMarkerInfo"))
+#' data.table::fread(paste0(OutputFile,".index"), sep="\t", header=F)
 #' 
-#' ## additional columns of "zScore", "nSamplesInGroup", "AltCountsInGroup", "AltFreqInGroup"
-#' ## We do not recommend adding too many columns for all markers
-#' 
-#' file.remove(OutputFile)
-#' file.remove(paste0(OutputFile, ".markerInfo"))
-#' file.remove(paste0(OutputFile, ".index"))
-#' GRAB.Region(objNull, 
+#' SampleFile = system.file("extdata", "simuPHENO.txt", package = "GRAB")
+#' GRAB.Region(objNull = objNull,
 #'             GenoFile = GenoFile,
+#'             GenoFileIndex = NULL,
 #'             OutputFile = OutputFile,
-#'             RegionFile = RegionFile,
-#'             RegionAnnoHeader = c("ANNO1", "ANNO2"),
+#'             OutputFileIndex = NULL,
+#'             GroupFile = GroupFile,
 #'             SparseGRMFile = SparseGRMFile,
-#'             control = list(outputColumns = c("beta", "seBeta", "zScore","nSamplesInGroup","AltCountsInGroup","AltFreqInGroup")))
+#'             SampleFile = SampleFile,
+#'             control = list(SampleLabelCol = "OrdinalPheno"))
 #'             
 #' data.table::fread(OutputFile)
-#'     
+#' data.table::fread(paste0(OutputFile,".markerInfo"))
+#' data.table::fread(paste0(OutputFile,".otherMarkerInfo"))
+#' data.table::fread(paste0(OutputFile,".index"), sep="\t", header=F)
+#' 
 #' @export
 #' @import SKAT, data.table
 
@@ -111,12 +118,11 @@ GRAB.Region = function(objNull,
                        GenoFileIndex = NULL,
                        OutputFile,
                        OutputFileIndex = NULL,
-                       GroupFile,              # column 1: marker Set ID, column 2: SNP ID, columns 3-n: Annotations similar as in STAAR
-                       # RegionAnnoHeader = NULL,
+                       GroupFile,             
                        SparseGRMFile = NULL,
-                       MaxMAFVec = c(0.05, 0.01, 0.005),
-                       annoVec = c("stoploss:nonframeshift insertion:nonsynonymous SNV",
-                                   "stoploss:nonframeshift insertion:nonsynonymous SNV:synonymous SNV:frameshift deletion:nonframeshift deletion:frameshift insertion:stopgain:splicing:startloss"),
+                       SampleFile = NULL,
+                       MaxMAFVec = "0.05,0.01,0.005",
+                       annoVec = "lof,lof:missense,lof:missense:synonymous",
                        chrom = "LOCO=F",
                        control = NULL)
 {
@@ -149,43 +155,76 @@ GRAB.Region = function(objNull,
   }
   
   ## Check "control.R": if the setting of control is not specified, the default setting will be used
-  control = checkControl.Region(control, NullModelClass)
+  control = checkControl.Region(control)
+  
+  textToParse = paste0("control = checkControl.Region.", method, "(control)")
+  eval(parse(text = textToParse))
+  
+  # print control list 
+  print("The below is the list of control parameters used in region-level genetic association analysis.")
+  print(control)
+  
+  MaxMAFVec = MaxMAFVec %>% strsplit(split = ",") %>% unlist() %>% as.numeric()
+  if(any(is.na(MaxMAFVec)))
+    stop("any(is.na(MaxMAFVec)):\t")
   
   MaxMAF = max(MaxMAFVec)
   if(MaxMAF > 0.05) 
     stop("Maximal value of 'MaxMAFVec' should be <= 0.05.")
   control$max_maf_region = MaxMAF
   
-  annoList = annoVec %>% 
-    strsplit(split = ":") 
-  
-  allAnno = annoList %>% 
-    unlist() %>% 
-    unique()
-  
+  annoVec = annoVec %>% strsplit(split = ",") %>% unlist()
+  annoList = annoVec %>% strsplit(split = ":")
+  allAnno = annoList %>% unlist() %>% unique()
+
   subjData = as.character(objNull$subjData);
   n = length(subjData)
   
-  # note on 2022-04-26: check it later
-  # Group = makeGroup(objNull$yVec)
-  # ifOutGroup = any(c("AltFreqInGroup", "AltCountsInGroup") %in% control$outputColumns)
-
-
+  # updated on 2022-05-09: record MAC and MAF in each sample group (not marker group), to be continued
+  SampleLabelNumber = rep(1, n)
+  SampleLabelLevels = NULL
+  if(!is.null(SampleFile))
+  {
+    SampleInfo = data.table::fread(SampleFile)
+    if(colnames(SampleInfo)[1] != "IID")
+      stop("The header of the first column in 'SampleFile' should be 'IID'.")
+    
+    pos = which(!subjData %in% SampleInfo$IID)
+    if(length(pos) > 0)
+      stop("At least one subject in null model fitting does not in 'SampleFile'.\n",
+           paste0(subjData[pos], collapse = "\t"))
+    
+    if(!is.null(control$SampleLabelCol))
+    {
+      SampleLabelColName = control$SampleLabelCol
+      if(!SampleLabelColName %in% colnames(SampleInfo))
+        stop("'SampleFile' should include one column with header of:\t", SampleLabelColName)
+      
+      posInSampleInfo = match(subjData, SampleInfo$IID)
+      SampleLabel = SampleInfo[[SampleLabelColName]][posInSampleInfo]
+      SampleLabelFactor = as.factor(SampleLabel)
+      SampleLabelNumber = as.numeric(SampleLabelFactor)
+      SampleLabelLevels = levels(SampleLabelFactor)
+    }
+  }
+  nLabel = max(SampleLabelNumber)
+  
   ## set up an object for genotype data
   objGeno = setGenoInput(GenoFile, GenoFileIndex, subjData, control)  # Check 'Geno.R'
   genoType = objGeno$genoType
   markerInfo = objGeno$markerInfo
-  
-  ## annotation in region
-  # RegionList = getRegionList(RegionFile, RegionAnnoHeader, markerInfo)
-  
+
   RegionList = getInfoGroupFile(GroupFile)
   nRegions = length(RegionList)
   
-  # P1Mat = matrix(0, control$max_markers_region, n);
-  # P2Mat = matrix(0, n, control$max_markers_region);
+  with(control, 
+       setRegion_GlobalVarsInCPP(impute_method, 
+                                 missing_cutoff, 
+                                 max_maf_region, 
+                                 min_mac_region, 
+                                 max_markers_region, 
+                                 omp_num_threads))
   
-  # chrom1 = "FakeCHR";
   for(i in (indexChunk+1):nRegions){
     
     region = RegionList[[i]]
@@ -219,35 +258,37 @@ GRAB.Region = function(objNull,
       weightVec = rep(1, nMarkers)
     }else{
       if(any(is.na(weightVec) | weightVec <= 0))
-        stop("The provided marker weights cannot be non-positive (<= 0) or NA.")
+        stop("Marker weights cannot be non-positive (<= 0) or NA.")
     }
     
     print(paste0("Analyzing Region of ", regionID, " (",i,"/",nRegions,")."))
-    print(paste(regionInfo$ID, collapse = ", "))
+    cat("Total", length(regionInfo$ID), "markers:\t", 
+        paste0(head(regionInfo$ID), collapse = ", "), "\n")
+
     
-    with(control, 
-         setRegion_GlobalVarsInCPP(impute_method, 
-                                   missing_cutoff, 
-                                   max_maf_region, 
-                                   min_mac_region, 
-                                   max_markers_region, 
-                                   omp_num_threads))
     textToParse = paste0("obj.setRegion = setRegion.", method, "(objNull, control, chrom, SparseGRMFile)")
     eval(parse(text = textToParse))
     
-    subjLabel = rep(0, n)  # 2022-04-27: give labels to each subject (e.g. 0 for control and 1 for case), to be extended later. Start from 0.
-    nLabel = max(subjLabel) + 1
+    obj.mainRegionInCPP = mainRegionInCPP(method, genoType, genoIndex, weightVec, OutputFile, 
+                                          SampleLabelNumber, nLabel, 
+                                          annoMat, annoVec)
     
-    obj.mainRegionInCPP = mainRegionInCPPcheck(method, genoType, genoIndex, weightVec, OutputFile, 
-                                               subjLabel, nLabel, 
-                                               annoMat, annoVec)
+    ## add annotation information
+    obj.mainRegionInCPP$AnnoVec = c(regionInfo$Annos, annoVec)
+    if(!is.null(SampleLabelLevels))
+    {
+      colnames(obj.mainRegionInCPP$MACLabelMat) = paste0("MAC_", SampleLabelLevels)
+      colnames(obj.mainRegionInCPP$MAFLabelMat) = paste0("MAF_", SampleLabelLevels)
+    }
     
-    textToParse = paste0("obj.mainRegion = mainRegion.", method, ".Check(genoType, genoIndex, OutputFile, control, n, obj.setRegion, obj.mainRegionInCPP)")
+    textToParse = paste0("obj.mainRegion = mainRegion.", method, "(genoType, genoIndex, OutputFile, control, n, obj.setRegion, obj.mainRegionInCPP, nLabel)")
     eval(parse(text = textToParse))
     
     Other.Markers = obj.mainRegion$Other.Markers %>% mutate(Region = regionID, .before = ID)
     VarMat = obj.mainRegion$VarMat
     RV.Markers0 = obj.mainRegion$RV.Markers %>% mutate(Region = regionID, .before = ID)
+    
+    Other.Markers = regionInfo %>% select(ID, Annos) %>% merge(Other.Markers, by = "ID")
     
     if(nrow(VarMat) != nrow(RV.Markers0))
       stop("nrow(VarMat) != nrow(RV.Markers0)!")
@@ -349,346 +390,30 @@ GRAB.Region = function(objNull,
   return(message)
 }
 
-
-# setRegion = function(NullModelClass, objNull, control, chrom, SparseGRMFile, Group, ifOutGroup)
-# {
-#   # The following function is in Main.cpp
-#   nGroup = length(unique(Group))
-#   setRegion_GlobalVarsInCPP(control$impute_method,
-#                             control$missing_cutoff,
-#                             control$max_maf_region,
-#                             control$min_mac_region,
-#                             control$max_markers_region,
-#                             control$omp_num_threads,
-#                             Group, ifOutGroup, nGroup)
-#   
-#   # Check POLMM.R
-#   if(NullModelClass == "POLMM_NULL_Model")
-#     obj.setRegion = setRegion.POLMM(objNull, control, chrom, SparseGRMFile)  
-#   
-#   # To be continued
-#   if(NullModelClass == "SAIGE_NULL_Model")
-#     obj.setRegion = setRegion.SAIGE(objNull, control, chrom, SparseGRMFile)
-#   
-#   # Check SPACox.R
-#   if(NullModelClass == "SPACox_NULL_Model")
-#     obj.setRegion = setRegion.SPACox(objNull, control)
-#   
-#   return(obj.setRegion)
-# }
-
-# mainRegion = function(NullModelClass, genoType, genoIndex, OutputFile, n, P1Mat, P2Mat, outputColumns)
-# {
-#   method = gsub("_NULL_Model$", "", NullModelClass)
-#   
-#   obj.mainRegion = mainRegionInCPP(method, genoType, genoIndex, OutputFile, n, P1Mat, P2Mat)
-#   
-#   ## required columns for all methods
-#   info.Region = with(obj.mainRegion, data.frame(Marker = markerVec,
-#                                                 Info = infoVec,
-#                                                 AltFreq = altFreqVec,
-#                                                 MAC = MACVec,
-#                                                 MAF = MAFVec,
-#                                                 MissingRate = missingRateVec, 
-#                                                 IsUltraRareVariants = indicatorVec - 1,
-#                                                 stringsAsFactors = F))
-#   
-#   if(NullModelClass == "POLMM_NULL_Model")
-#   {
-#     optionalColumns = c("beta", "seBeta", "PvalueNorm", "AltFreqInGroup", "AltCountsInGroup", "nSamplesInGroup")
-#     additionalColumns = intersect(optionalColumns, outputColumns)
-#     
-#     if(length(additionalColumns) > 0)
-#       info.Region = cbind.data.frame(info.Region, 
-#                                      as.data.frame(obj.mainRegion[additionalColumns]))
-#   }
-#     
-#   if(NullModelClass == "SPACox_NULL_Model")
-#   {
-#     # obj.mainRegion = mainRegionInCPP("SPACox", genoType, genoIndex, OutputFile, n, P1Mat, P2Mat)
-#   }
-#   
-#   ### remove rows whose markers do not pass QC
-#   
-#   info.Region = subset(info.Region, IsUltraRareVariants != -1)
-#   pos = which(info.Region$IsUltraRareVariants == 0)
-#   
-#   info.Region$Pvalue = NA
-#   info.Region$Pvalue[pos] = obj.mainRegion$pval1Vec
-#   
-#   return(list(StatVec = obj.mainRegion$StatVec,
-#               pval1Vec = obj.mainRegion$pval1Vec,
-#               VarMat = obj.mainRegion$VarMat,
-#               info.Region = info.Region))
-# }
-# 
-# mainRegionURV = function(NullModelClass,
-#                          genoType,
-#                          genoIndex,
-#                          n)
-# {
-#   if(NullModelClass == "POLMM_NULL_Model")
-#     obj.mainRegionURV = mainRegionURVInCPP("POLMM", genoType, genoIndex, n)
-#   
-#   if(NullModelClass == "SPACox_NULL_Model")
-#     obj.mainRegionURV = mainRegionURVInCPP("SPACox", genoType, genoIndex, n)
-#   
-#   return(obj.mainRegionURV)
-# }
-
-# Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SAIGE"
-#                            std::string t_genoType,     // "PLINK", "BGEN"
-#                            std::vector<uint32_t> t_genoIndex,
-#                            std::string t_outputFile,
-#                            unsigned int t_n)           // sample size  
-
-# mainRegion = function(NullModelClass, genoType, genoIndex, regionMat)
-# {
-#   # the following function is in POLMM.R
-#   if(NullModelClass == "POLMM_NULL_Model")
-#     obj.mainRegion = mainRegion.POLMM(genoType, genoIndex, regionMat)
-#   
-#   if(NullModelClass == "SAIGE_NULL_Model")
-#     obj.mainRegion = mainRegion.SAIGE(genoType, genoIndex, regionMat)
-#   
-#   if(NullModelClass == "SPACox_NULL_Model")
-#     obj.mainRegion = mainRegion.SPACox(genoType, genoIndex, regionMat)
-#   
-#   return(obj.mainRegion)
-# }
-
-# setRegion = function()
-# {
-#   if(objNull$controlList$LOCO){
-#     if(!chrom %in% names(objNull$LOCOList))
-#       stop("'chrom' should be in names(objNull$LOCOList).")
-#     obj.CHR = objNull$LOCOList[[chrom]]
-#     
-#     if(!chrom %in% names(SparseGRM))
-#       stop("'chrom' should be in names(SparseGRM).")
-#     SparseGRM.CHR = SparseGRM[[chrom]]
-#   }
-#   
-#   SPmatR.CHR = makeSPmatR(SparseGRM.CHR, objNull$subjIDs)
-#   
-#   setPOLMMobjInR(obj.CHR$muMat,
-#                  obj.CHR$iRMat,
-#                  objNull$Cova,
-#                  objNull$yVec,          # 1 to J
-#                  SPmatR.CHR,
-#                  objNull$tau,
-#                  POLMM.control$printPCGInfo,
-#                  POLMM.control$tolPCG,
-#                  POLMM.control$maxiterPCG)
-#   
-#   memory_chunk = POLMM.control$memory_chunk
-#   
-#   # to be continued
-#   n = length(SubjID.step1)
-#   J = max(objNull$yVec)
-#   p = ncol(objNull$Cova)
-#   NonZero_cutoff = floor(log(1e7, J))  # for efficient resampling (ER)
-#   maxMarkers = getMaxMarkers(memory_chunk, n, J, p);
-#   
-#   print(paste0("The current POLMM.control$memory_chunk is ", memory_chunk,"(GB)."))
-#   print(paste0("Based on the sample size, we divide region with more than ", maxMarkers, " markers into multiple chunks to save memory usage."))
-#   print("If the memory usage still exceed the memory you request, please set a smaller POLMM.control$memory_chunk.")
-#   
-#   StdStat_cutoff = POLMM.control$SPA_cutoff;
-# }
-
-# calculate region-based p-values for any given annotations
-# mainRegion = function(region, NullModelClass, objNull, control)
-# {
-#   markers = region$markers
-#   annoMat = region$annoMat
-#   
-#   OutList = mainRegioninCPP(markers, NullModelClass)
-#   
-#   ## extract information from mainRegioninCPP(.)
-#   StatVec = OutList$StatVec
-#   VarSVec = diag(OutList$VarSMat)
-#   pvalNormVec = OutList$pvalNormVec;
-#   adjPVec = OutList$pvalVec;
-#   adjVarSVec = StatVec^2 / qchisq(adjPVec, df = 1, lower.tail = F)
-#   weightVec = OutList$weightVec
-#   
-#   # index of SNPs passing criterion (MAF, missing rate, et al.)
-#   posVec = OutList$posVec + 1   # "+1" because C++ starts from 0 and R starts from 1
-#   annoMat = annoMat[posVec,,drop=F]
-#   q = ncol(annoMat)             # number of annotations: column 1 is always 1s
-#   
-#   r0 = adjVarSVec / VarSVec 
-#   r0 = pmax(r0, 1)
-#   
-#   pvalVec.BT = c()
-#   pvalVec.SKAT = c()
-#   pvalVec.SKATO = c()
-#   annoVec = c()
-#   errVec = c()
-#   
-#   # cycle for multiple annotations
-#   for(i in 1:q){
-#     annoName = colnames(annoMat)[i]
-#     annoWeights = weightVec * annoMat[,i]
-#     wr0 = sqrt(r0) * annoWeights
-#     wStatVec = StatVec * annoWeights
-#     wadjVarSMat = t(OutList$VarSMat * wr0) * wr0
-#     wadjVarSMat = wadjVarSMat * max(OutList$rBT, 1)
-#     
-#     out_SKAT_List = try(SKAT:::Met_SKAT_Get_Pvalue(Score = wStatVec, 
-#                                                    Phi = wadjVarSMat,
-#                                                    r.corr = control$r_corr, 
-#                                                    method = "optimal.adj", 
-#                                                    Score.Resampling = NULL),
-#                         silent = TRUE)
-#     
-#     # betaVec = StatVec / adjVarSVec; 
-#     if(class(out_SKAT_List) == "try-error"){
-#       Pvalue = c(NA, NA, NA)
-#       errCode = 2
-#     }else if(!any(c(0,1) %in% out_SKAT_List$param$rho)){
-#       Pvalue = c(NA, NA, NA)
-#       errCode = 3
-#     }else{
-#       pos0 = which(out_SKAT_List$param$rho == 0)
-#       pos1 = which(out_SKAT_List$param$rho == 1)
-#       Pvalue = c(out_SKAT_List$p.value,                  # SKAT-O
-#                  out_SKAT_List$param$p.val.each[pos0],   # SKAT
-#                  out_SKAT_List$param$p.val.each[pos1])   # Burden Test
-#       errCode = 0
-#     }
-#     
-#     pvalVec.SKATO = c(pvalVec.SKATO, Pvalue[1])
-#     pvalVec.SKAT = c(pvalVec.SKAT, Pvalue[2])
-#     pvalVec.BT = c(pvalVec.BT, Pvalue[3])
-#     annoVec = c(annoVec, annoName)
-#     errVec = c(errVec, errCode)
-#   }
-#   
-#   ###################
-#   
-#   OUT.Region = rbind(OUT.Region,
-#                      c(Region, 
-#                        length(OutList$markerVec), 
-#                        paste(annoVec, collapse = ","),
-#                        paste(pvalVec.SKATO, collapse = ","),
-#                        paste(pvalVec.SKAT, collapse = ","),
-#                        paste(pvalVec.BT, collapse = ","),
-#                        paste(errVec, collapse = ","),
-#                        paste(OutList$markerVec, collapse = ","),
-#                        paste(OutList$freqVec, collapse = ","),
-#                        paste(OutList$flipVec, collapse = ","),
-#                        paste(StatVec, collapse = ","),
-#                        paste(adjVarSVec, collapse = ","),
-#                        paste(adjPVec, collapse = ",")))
-#   
-#   tempFiles = list.files(path = dirname(OutputFile),
-#                          pattern = paste0("^",basename(OutputFile),".*\\.bin$"),
-#                          full.names = T)
-#   file.remove(tempFiles)
-#   
-#   # out_Multi_Set = rnorm(1)
-#   colnames(OUT.Region) = c("regionName", "nMarkers", "Annotation", "P.SKAT-O", "P.SKAT", "P.Burden",
-#                            "error.code", "markerInfo", "markerMAF","markerAlleleFlip",
-#                            "markerStat","markerVarS","markerPvalue")
-#   
-#   return(resRegion)
-# }
-
-
-# extract region-marker mapping from regionFile
-# getRegionList = function(RegionFile,
-#                          RegionAnnoHeader,
-#                          markerInfo)
-# {
-#   cat("Start extracting marker-level information from 'RegionFile' of", RegionFile, "....\n")
-#   
-#   if(!file.exists(RegionFile))
-#     stop("Cannot find 'RegionFile' in ", RegionFile)
-#   
-#   RegionData = data.table::fread(RegionFile, header = T, stringsAsFactors = F, sep = "\t");
-#   RegionData = as.data.frame(RegionData)
-#   colnames(RegionData)[1:2] = toupper(colnames(RegionData)[1:2])
-#   
-#   if(any(colnames(RegionData)[1:2] != c("REGION", "MARKER")))
-#     stop("The first two elements in the header of 'RegionFile' should be c('REGION', 'MARKER').")
-#   
-#   # updated on 2021-08-05
-#   colnames(markerInfo)[3] = "MARKER"
-#   RegionData = merge(RegionData, markerInfo, by = "MARKER", all.x = T, sort = F)
-#   posNA = which(is.na(RegionData$genoIndex))
-#   
-#   if(length(posNA) != 0){
-#     print(head(RegionData[posNA,1:2]))
-#     stop("Total ",length(posNA)," markers in 'RegionFile' are not in 'GenoFile'. 
-#          Please remove these markers before region-level analysis.")
-#   }
-#   
-#   HeaderInRegionData = colnames(RegionData)
-#   if(!is.null(RegionAnnoHeader)){
-#     if(any(!RegionAnnoHeader %in% HeaderInRegionData))
-#       stop("At least one element in 'RegionAnnoHeader' is not in the header of RegionFile.")
-#     posAnno = which(HeaderInRegionData %in% RegionAnnoHeader)
-#   }else{
-#     print("Since no 'RegionAnnoHeader' is given, region-based testing will not incorporate any annotation information.")
-#     posAnno = NULL
-#   }
-#   
-#   RegionList = list()
-#   uRegion = unique(RegionData$REGION)
-#   for(r in uRegion){
-#     
-#     # print(paste0("Analyzing region ",r,"...."))
-#     
-#     posSNP = which(RegionData$REGION == r)
-#     SNP = RegionData$MARKER[posSNP]
-#     
-#     if(any(duplicated(SNP)))
-#       stop("Please check RegionFile: in region ", r,": duplicated SNPs exist.")
-#     
-#     # posMarker = match(SNP, markerInfo$ID, 0)
-#     # if(any(posMarker == 0))
-#     #   stop(paste0("At least one marker in region ", r," are not in 'GenoFile' and 'GenoFileIndex'."))
-#     
-#     regionMat = cbind(BASE=1, RegionData[posSNP, posAnno, drop=F])
-#     rownames(regionMat) = SNP
-#     
-#     # genoIndex = markerInfo$genoIndex[posMarker]
-#     # chrom = markerInfo$CHROM[posMarker]
-#     genoIndex = RegionData$genoIndex[posSNP]
-#     chrom = RegionData$CHROM[posSNP]
-#     uchrom = unique(chrom)
-#     
-#     if(length(uchrom) != 1)
-#       stop("In region ",r,", markers are from multiple chromosomes.")
-#     
-#     RegionList[[r]] = list(SNP = SNP,
-#                            regionMat = regionMat,
-#                            genoIndex = genoIndex,
-#                            chrom = uchrom)
-#   }
-#   
-#   return(RegionList)
-# }
-
+ 
 getInfoGroupLine = function(markerGroupLine, nLine)
 {
   if(length(markerGroupLine) == 0)
     stop("The line ", nLine," in `groupFile` is empty.")
   
-  info = unlist(strsplit(markerGroupLine, split = "\t"))
+  info = markerGroupLine %>% strsplit(split="\t") %>% unlist()
   if(length(info) < 3)
-    stop("The line ", nLine, " in `groupFile` includes < 3 elements, please note that each line should be seperated by 'tab'.")
+    stop("The line ", nLine, " in 'groupFile' includes < 3 elements, please note that each line should be seperated by 'tab'.")
   
   geneID = info[1];
   type = info[2];
   values = info[c(-1,-2)]
   
-  if(!type %in% c("var", "anno", "weight"))
-    stop("The second column of the groupFile (tab-seperated) should be one of 'var', 'anno', and 'weight'.\n
-         Please double check line ", nLine, ".")
+  grepTemp = grep(" ", values, value = T)
+  if(length(grepTemp) > 0)
+    stop("'GroupFile' cannot contain 'space':\n", 
+         grepTemp %>% unique() %>% paste0(collapse = "\t"))
   
+  grepTemp = grep(";", values, value = T)
+  if(length(grepTemp) > 0)
+    stop("'GroupFile' cannot contain ';':\n", 
+         grepTemp %>% unique() %>% paste0(collapse = "\t"))
+
   if(type == "weight")
     values = as.numeric(values)
   
@@ -708,7 +433,6 @@ getInfoGroupFile = function(GroupFile)
     stop("cannot find the below file:\n", GroupFile)
   
   gf = file(GroupFile, "r")
-  nRegion = 0
   regionList = list()
   nLine = 1
   
@@ -723,7 +447,7 @@ getInfoGroupFile = function(GroupFile)
     
     if(length(markerGroupLine) == 0)
     {
-      if(nRegion == 0)
+      if(nRegion == 1)
         stop("Cannot find any region information in 'GroupFile'.")
       regionList[[nRegion]] = list(regionID = previousGene,
                                    regionInfo = data.frame(ID = Markers,
@@ -740,6 +464,10 @@ getInfoGroupFile = function(GroupFile)
     type = infoList$type
     values = infoList$values
     n = infoList$n
+  
+    if(!type %in% c("var", "anno", "weight"))
+      stop("The second column of the groupFile (tab-seperated) should be one of 'var', 'anno', and 'weight'.\n
+         Please double check line ", nLine, ".")
     
     if(type == "var")
     {
