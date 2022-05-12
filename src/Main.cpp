@@ -670,10 +670,14 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   
   // Rcpp::Named("GVecURV") = GVecURV
   
-  printTimeDiff(ptr_gPOLMMobj->getTestTime1(), "Time #1");
-  printTimeDiff(ptr_gPOLMMobj->getTestTime2(), "Time #2");
-  printTimeDiff(ptr_gPOLMMobj->getTestTime3(), "Time #3");
-  printTimeDiff(ptr_gPOLMMobj->getTestTime4(), "Time #4");
+  printTimeDiff(ptr_gPOLMMobj->getTestTime1(), "getRegionPVec");
+  printTimeDiff(ptr_gPOLMMobj->getTestTime2(), "getadjGFast");
+  printTimeDiff(ptr_gPOLMMobj->getTestTime3(), "arma::find");
+  printTimeDiff(ptr_gPOLMMobj->getTestTime4(), "get_ZPZ_adjGVec");
+  printTimeDiff(ptr_gPOLMMobj->getTestTime5(), "getadjGFast Step 1");
+  printTimeDiff(ptr_gPOLMMobj->getTestTime6(), "getadjGFast Step 2");
+  printTimeDiff(ptr_gPOLMMobj->getTestTime7(), "get_ZPZ_adjGVec Step 1");
+  printTimeDiff(ptr_gPOLMMobj->getTestTime8(), "get_ZPZ_adjGVec Step 2");
   
   Rcpp::List OutList = Rcpp::List::create(Rcpp::Named("markerVec") = markerVec,
                                           Rcpp::Named("infoVec") = infoVec,

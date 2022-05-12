@@ -28,6 +28,10 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
   m_diffTimePOLMM2.zeros(2);
   m_diffTimePOLMM3.zeros(2);
   m_diffTimePOLMM4.zeros(2);
+  m_diffTimePOLMM5.zeros(2);
+  m_diffTimePOLMM6.zeros(2);
+  m_diffTimePOLMM7.zeros(2);
+  m_diffTimePOLMM8.zeros(2);
   
   m_muMat = t_muMat;
   m_iRMat = t_iRMat;
@@ -238,9 +242,11 @@ void POLMMClass::getRegionPVec(arma::vec t_GVec,
   arma::vec adjGVec = getadjGFast(t_GVec);
   
   arma::vec test22 = getTime();
-  double Stat = getStatFast(adjGVec);
+  arma::uvec testposG1 = arma::find(t_GVec != 0);
   
   arma::vec test23 = getTime();
+  double Stat = getStatFast(adjGVec);
+  
   arma::vec ZPZ_adjGVec = get_ZPZ_adjGVec(adjGVec);
   
   arma::vec test24 = getTime();
@@ -286,13 +292,24 @@ void POLMMClass::getRegionPVec(arma::vec t_GVec,
 arma::vec POLMMClass::getadjGFast(arma::vec t_GVec)
 {
   // To increase computational efficiency when lots of GVec elements are 0
+  arma::vec test111 = getTime();
+  
   arma::vec XR_Psi_RG(m_p, arma::fill::zeros);
+  
   for(int i = 0; i < m_n; i++){
     if(t_GVec(i) != 0){
       XR_Psi_RG += m_XR_Psi_R.col(i) * t_GVec(i);
     }
   }
+  
+  arma::vec test112 = getTime();
   arma::vec adjGVec = t_GVec - m_XXR_Psi_RX * XR_Psi_RG;
+  
+  arma::vec test113 = getTime();
+  
+  m_diffTimePOLMM5 += (test112 - test111);
+  m_diffTimePOLMM6 += (test113 - test112);
+  
   return adjGVec;
 }
 
@@ -309,14 +326,23 @@ double POLMMClass::getStatFast(arma::vec t_adjGVec)         // n x 1
 
 arma::vec POLMMClass::get_ZPZ_adjGVec(arma::vec t_adjGVec)
 {
+  arma::vec test111 = getTime();
+  
   arma::vec adjGVecLong = Vec2LongVec(t_adjGVec, m_n, m_J);  // that is Z %*% adjGVec
   
   arma::vec iSigmaGVec(m_n * (m_J-1), arma::fill::zeros);
   
   getPCGofSigmaAndVector(adjGVecLong, iSigmaGVec);  // iSigmaGVec = Sigma^-1 %*% Z %*% adjGVec
   
+  arma::vec test112 = getTime();
+  
   arma::vec PZ_adjGVec = iSigmaGVec - m_iSigmaX_XSigmaX * (m_CovaMat.t() * iSigmaGVec);
   arma::vec ZPZ_adjGVec = LongVec2Vec(PZ_adjGVec, m_n, m_J);
+  
+  arma::vec test113 = getTime();
+  
+  m_diffTimePOLMM7 += (test112 - test111);
+  m_diffTimePOLMM8 += (test113 - test112);
   
   return ZPZ_adjGVec;
 }
@@ -1477,9 +1503,12 @@ arma::vec getadjGFast(arma::vec GVec,
   // To increase computational efficiency when lots of GVec elements are 0
   arma::vec XR_Psi_RG1(p, arma::fill::zeros);
   for(int i = 0; i < n; i++){
+    unsigned int testCount = 0;
     if(GVec(i) != 0){
+      testCount += 1;
       XR_Psi_RG1 += XR_Psi_R_new.col(i) * GVec(i);
     }
+    std::cout << "testCount:\t" << testCount << std::endl;
   }
   
   arma::vec adjGVec = GVec - XXR_Psi_RX_new * XR_Psi_RG1;
