@@ -125,28 +125,6 @@ void setRegion_GlobalVarsInCPP(std::string t_impute_method,
   g_omp_num_threads = t_omp_num_threads;
 }
 
-// // [[Rcpp::export]]
-// void setRegion_GlobalVarsInCPP(std::string t_impute_method,
-//                                double t_missing_cutoff,
-//                                double t_max_maf_region,
-//                                double t_min_mac_region,
-//                                unsigned int t_max_markers_region,
-//                                unsigned int t_omp_num_threads,
-//                                arma::uvec t_group,
-//                                bool t_ifOutGroup,
-//                                unsigned int t_nGroup)
-// {
-//   g_impute_method = t_impute_method;
-//   g_missingRate_cutoff = t_missing_cutoff;
-//   g_region_minMAC_cutoff = t_min_mac_region;
-//   g_region_maxMAF_cutoff = t_max_maf_region;
-//   g_region_maxMarkers_cutoff = t_max_markers_region;
-//   g_omp_num_threads = t_omp_num_threads;
-//   g_group = t_group;
-//   g_ifOutGroup = t_ifOutGroup;
-//   g_nGroup = t_nGroup;
-// }
-
 void updateGroupInfo(arma::vec t_GVec,
                      std::vector<uint32_t> t_indexForMissing,
                      arma::vec& nSamplesInGroupVec,
@@ -539,8 +517,8 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     Rcpp::checkUserInterrupt();
   }
   
-  std::cout << "g_compTime1:\t" << g_compTime1 << std::endl;
-  std::cout << "g_compTime2:\t" << g_compTime2 << std::endl;
+// std::cout << "g_compTime1:\t" << g_compTime1 << std::endl;
+//  std::cout << "g_compTime2:\t" << g_compTime2 << std::endl;
   
   for(unsigned int iAnno = 0; iAnno < nAnno; iAnno++)
   {
@@ -670,15 +648,6 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   
   // Rcpp::Named("GVecURV") = GVecURV
   
-  printTimeDiff(ptr_gPOLMMobj->getTestTime1(), "getRegionPVec");
-  printTimeDiff(ptr_gPOLMMobj->getTestTime2(), "getadjGFast");
-  printTimeDiff(ptr_gPOLMMobj->getTestTime3(), "arma::find");
-  printTimeDiff(ptr_gPOLMMobj->getTestTime4(), "get_ZPZ_adjGVec");
-  printTimeDiff(ptr_gPOLMMobj->getTestTime5(), "getadjGFast Step 1");
-  printTimeDiff(ptr_gPOLMMobj->getTestTime6(), "getadjGFast Step 2");
-  printTimeDiff(ptr_gPOLMMobj->getTestTime7(), "get_ZPZ_adjGVec Step 1");
-  printTimeDiff(ptr_gPOLMMobj->getTestTime8(), "get_ZPZ_adjGVec Step 2");
-  
   Rcpp::List OutList = Rcpp::List::create(Rcpp::Named("markerVec") = markerVec,
                                           Rcpp::Named("infoVec") = infoVec,
                                           Rcpp::Named("missingRateVec") = missingRateVec,
@@ -698,6 +667,18 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   return OutList;
 }
 
+// [[Rcpp::export]]
+void printTimeDiffInCPP()
+{
+  printTimeDiff(ptr_gPOLMMobj->getTestTime1(), "getRegionPVec");
+  printTimeDiff(ptr_gPOLMMobj->getTestTime2(), "getSigmaxMat");
+  printTimeDiff(ptr_gPOLMMobj->getTestTime3(), "solverBlockDiagSigma");
+  printTimeDiff(ptr_gPOLMMobj->getTestTime4(), "get_ZPZ_adjGVec");
+  printTimeDiff(ptr_gPOLMMobj->getTestTime5(), "getadjGFast Step 1");
+  printTimeDiff(ptr_gPOLMMobj->getTestTime6(), "getadjGFast Step 2");
+  printTimeDiff(ptr_gPOLMMobj->getTestTime7(), "get_ZPZ_adjGVec Step 1");
+  printTimeDiff(ptr_gPOLMMobj->getTestTime8(), "get_ZPZ_adjGVec Step 2");
+}
 
 //////// ---------- Main function for genotype extraction --------- ////////////
 

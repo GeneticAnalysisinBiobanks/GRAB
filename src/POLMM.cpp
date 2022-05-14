@@ -284,9 +284,9 @@ void POLMMClass::getRegionPVec(arma::vec t_GVec,
   arma::vec test12 = getTime();
   
   m_diffTimePOLMM1 += (test12 - test11);
-  m_diffTimePOLMM2 += (test22 - test21);
-  m_diffTimePOLMM3 += (test23 - test22);
-  m_diffTimePOLMM4 += (test24 - test23);
+  // m_diffTimePOLMM2 += (test22 - test21);
+  // m_diffTimePOLMM3 += (test23 - test22);
+  // m_diffTimePOLMM4 += (test24 - test23);
 }
 
 arma::vec POLMMClass::getadjGFast(arma::vec t_GVec)
@@ -366,10 +366,6 @@ void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with len
                                         arma::vec& t_xVec,    // vector with length of n(J-1)
                                         std::string t_excludechr)
 {
-  // if(m_flagSparseGRM){
-  // setSigmaMat_sp();
-  // t_xVec = spsolve(SigmaMat_sp, t_y1Vec);
-  // }else{
   arma::mat xMat = convert2(t_xVec, m_n, m_J);
   arma::mat y1Mat = convert2(t_y1Vec, m_n, m_J);
   // r2Vec and z2Vec are for the current step; r1Vec and z1Vec are for the previous step
@@ -427,9 +423,11 @@ void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with len
 void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with length of n(J-1)
                                         arma::vec& t_xVec)    // vector with length of n(J-1)
 {
+  arma::vec test11 = getTime();
   arma::mat xMat = Vec2Mat(t_xVec, m_n, m_J);
   arma::mat y1Mat = Vec2Mat(t_y1Vec, m_n, m_J);
-  
+  arma::vec test12 = getTime();
+  m_diffTimePOLMM4 += (test12 - test11);
   // r2Vec and z2Vec are for the current step; r1Vec and z1Vec are for the previous step
   unsigned int iter = 0;
   arma::mat r2Mat = y1Mat - getSigmaxMat(xMat);  // n x (J-1): r0 = y1Mat- Sigma %*% xMat
@@ -483,6 +481,8 @@ void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with len
 // yMat = Sigma %*% xMat
 arma::mat POLMMClass::getSigmaxMat(arma::mat& t_xMat)   // matrix: n x (J-1) 
 {
+  arma::vec test11 = getTime();
+  
   arma::mat iR_xMat = m_iRMat % t_xMat;
   arma::mat iPsi_iR_xMat = getiPsixMat(iR_xMat);
   arma::mat yMat = m_iRMat % iPsi_iR_xMat;
@@ -492,6 +492,8 @@ arma::mat POLMMClass::getSigmaxMat(arma::mat& t_xMat)   // matrix: n x (J-1)
     arma::vec V_tZ_xMat = m_SparseGRM * tZ_xMat;
     yMat.each_col() += m_tau * V_tZ_xMat;
   }
+  arma::vec test12 = getTime();
+  m_diffTimePOLMM2 += (test12 - test11);
   return yMat;
 }
 
@@ -551,22 +553,10 @@ arma::mat POLMMClass::getPsixMat(arma::mat t_xMat)   // matrix: n x (J-1)
 // used in getPCGofSigmaAndVector()
 arma::cube POLMMClass::getInvBlockDiagSigma()
 {
-  
-  // std::cout << "test011" << std::endl;
-  // std::cout << m_flagSparseGRM << std::endl;
-  // std::this_thread::sleep_for (std::chrono::seconds(1));
-  
   arma::vec DiagGRM;
   if(m_flagSparseGRM){
     // get diagonal elements of GRM
-    
-    // std::cout << "test02" << std::endl;
-    // std::this_thread::sleep_for (std::chrono::seconds(1));
-    
     DiagGRM = m_tau * m_SparseGRM.diag();
-    
-    // std::cout << "test03" << std::endl;
-    // std::this_thread::sleep_for (std::chrono::seconds(1));
     
   }else{
     arma::vec* pDiagStdGeno = m_ptrDenseGRMObj->getDiagStdGeno();
@@ -593,10 +583,13 @@ arma::cube POLMMClass::getInvBlockDiagSigma()
 
 arma::mat POLMMClass::solverBlockDiagSigma(arma::mat& t_xMat)     // n x (J-1)
 {
+  arma::vec test11 = getTime();
   arma::mat outMat(m_n, m_J-1);
   for(int i = 0; i < m_n; i++){
     outMat.row(i) = t_xMat.row(i) * m_InvBlockDiagSigma.slice(i); // could invert matrix?? be careful!
   }
+  arma::vec test12 = getTime();
+  m_diffTimePOLMM3 += (test12 - test11);
   return outMat;
 }
 

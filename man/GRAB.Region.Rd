@@ -13,7 +13,7 @@ GRAB.Region(
   GroupFile,
   SparseGRMFile = NULL,
   SampleFile = NULL,
-  MaxMAFVec = "0.05,0.01,0.005",
+  MaxMAFVec = "0.01,0.001,0.0005",
   annoVec = "lof,lof:missense,lof:missense:synonymous",
   chrom = "LOCO=F",
   control = NULL

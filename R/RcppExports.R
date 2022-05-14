@@ -33,6 +33,10 @@ mainRegionInCPP <- function(t_method, t_genoType, t_genoIndex, t_weightVec, t_ou
     .Call(`_GRAB_mainRegionInCPP`, t_method, t_genoType, t_genoIndex, t_weightVec, t_outputFile, t_labelVec, t_nLabel, t_annoMat, t_annoVec)
 }
 
+printTimeDiffInCPP <- function() {
+    invisible(.Call(`_GRAB_printTimeDiffInCPP`))
+}
+
 getGenoInCPP <- function(t_genoType, t_markerInfo, n, t_imputeMethod) {
     .Call(`_GRAB_getGenoInCPP`, t_genoType, t_markerInfo, n, t_imputeMethod)
 }

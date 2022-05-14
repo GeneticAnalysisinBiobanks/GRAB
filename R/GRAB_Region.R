@@ -121,7 +121,7 @@ GRAB.Region = function(objNull,
                        GroupFile,             
                        SparseGRMFile = NULL,
                        SampleFile = NULL,
-                       MaxMAFVec = "0.05,0.01,0.005",
+                       MaxMAFVec = "0.01,0.001,0.0005",
                        annoVec = "lof,lof:missense,lof:missense:synonymous",
                        chrom = "LOCO=F",
                        control = NULL)
@@ -379,9 +379,9 @@ GRAB.Region = function(objNull,
     t22 = Sys.time()
     diffTime2 = diffTime2 + (t22-t21)
     
-    cat("diffTime1:\t", diffTime1,"\n")
-    cat("diffTime2:\t", diffTime2,"\n")
-    cat("diffTime3:\t", diffTime3,"\n")
+    # cat("diffTime1:\t", diffTime1,"\n")
+    # cat("diffTime2:\t", diffTime2,"\n")
+    # cat("diffTime3:\t", diffTime3,"\n")
     
     writeOutputFile(Output = list(pval.Region, 
                                   RV.Markers0, 
@@ -397,9 +397,10 @@ GRAB.Region = function(objNull,
                     End = (i==nRegions))
   }
       
-  cat("diffTime1:\t", diffTime1,"\n")
-  cat("diffTime2:\t", diffTime2,"\n")
-  cat("diffTime3:\t", diffTime3,"\n")
+  cat("mainRegionInCPP():\t", diffTime1,"seconds.\n")
+  # cat("SKATO:\t", diffTime2,"seconds.\n")
+  cat("SKATO::\t", diffTime3,"\n")
+  printTimeDiffInCPP()
   
   cat("Analysis done! The results have been saved to the below files:\n", 
       OutputFile, "\n",
