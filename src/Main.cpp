@@ -54,8 +54,8 @@ unsigned int g_nGroup;
 arma::sp_mat g_SparseGRM;
 
 // set up global variables for analysis
-arma::vec g_compTime1(2, arma::fill::zeros);
-arma::vec g_compTime2(2, arma::fill::zeros);
+arma::vec g_compTime1(2, arma::fill::zeros);   // Unified_getOneMarker
+arma::vec g_compTime2(2, arma::fill::zeros);   // Unified_getRegionPVec
 arma::vec g_compTime3(2, arma::fill::zeros);
 
 // [[Rcpp::export]]
@@ -447,8 +447,6 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     MACVec.at(i) = MAC;
     MAFVec.at(i) = MAF;
     
-    arma::vec test21 = getTime();
-    
     // Quality Control (QC)
     if((missingRate > g_missingRate_cutoff) || (MAF > g_region_maxMAF_cutoff) || MAF == 0){
       continue;  // does not pass QC
@@ -462,7 +460,11 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
         std::cout << "Start analyzing chunk " << ichunk << "....." << std::endl;
       }
       
+      arma::vec test21 = getTime();
       Unified_getRegionPVec(t_method, GVec, Stat, Beta, seBeta, pval0, pval1, P1Vec, P2Vec);
+      
+      arma::vec test22 = getTime();
+      g_compTime2 += test22 - test21;
       
       // insert results to pre-setup vectors and matrix
       StatVec.at(i) = Stat;        
@@ -510,15 +512,12 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
       ichunk += 1;
       i1InChunk = 0;
     }
-    
-    arma::vec test22 = getTime();
-    g_compTime2 += test22 - test21;
-    
+
     Rcpp::checkUserInterrupt();
   }
   
-// std::cout << "g_compTime1:\t" << g_compTime1 << std::endl;
-//  std::cout << "g_compTime2:\t" << g_compTime2 << std::endl;
+  printTimeDiff(g_compTime1, "Unified_getOneMarker");
+  printTimeDiff(g_compTime2, "Unified_getRegionPVec");
   
   for(unsigned int iAnno = 0; iAnno < nAnno; iAnno++)
   {
