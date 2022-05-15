@@ -118,7 +118,7 @@ checkControl.Region = function(control)
   # uniform default control setting for region-level analysis
   default.region.control = list(impute_method = "minor",  
                                 missing_cutoff = 0.15,
-                                min_mac_region = 10,
+                                min_mac_region = 5,
                                 max_markers_region = 100,
                                 r.corr = c(0, 0.1^2, 0.2^2, 0.3^2, 0.4^2, 0.5^2, 0.5, 1),
                                 weights.beta = c(1, 25),
