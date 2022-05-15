@@ -372,6 +372,7 @@ void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with len
   unsigned int iter = 0;
   arma::mat r2Mat = y1Mat - getSigmaxMat(xMat, t_excludechr);  // n x (J-1): r0 = y1Mat- Sigma %*% xMat
   double meanL2 = sqrt(getInnerProd(r2Mat, r2Mat)) / sqrt(m_n * (m_J-1));
+
   if(meanL2 <= m_tolPCG){
     // do nothing, xMat is already close to (Sigma)^-1 %*% y1Mat
   }else{
@@ -432,6 +433,7 @@ void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with len
   unsigned int iter = 0;
   arma::mat r2Mat = y1Mat - getSigmaxMat(xMat);  // n x (J-1): r0 = y1Mat- Sigma %*% xMat
   double meanL2 = sqrt(getInnerProd(r2Mat, r2Mat)) / sqrt(m_n * (m_J-1));
+  
   if(meanL2 <= m_tolPCG){
     // do nothing, xMat is already close to (Sigma)^-1 %*% y1Mat
   }else{
@@ -466,6 +468,10 @@ void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with len
       z1Mat = z2Mat;
       r2Mat = r1Mat - alpha * ApMat;
       meanL2 = sqrt(getInnerProd(r2Mat, r2Mat)) / sqrt(m_n * (m_J-1));
+      
+      // std::cout << "iter:\t" << iter << std::endl;
+      // std::cout << "meanL2:\t" << meanL2 << std::endl;
+      // std::cout << "m_tolPCG:\t" << m_tolPCG << std::endl;
     }
   }
   
@@ -481,19 +487,23 @@ void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with len
 // yMat = Sigma %*% xMat
 arma::mat POLMMClass::getSigmaxMat(arma::mat& t_xMat)   // matrix: n x (J-1) 
 {
+  arma::mat iR_xMat = m_iRMat % t_xMat;
+  
   arma::vec test11 = getTime();
   
-  arma::mat iR_xMat = m_iRMat % t_xMat;
   arma::mat iPsi_iR_xMat = getiPsixMat(iR_xMat);
+  
+  arma::vec test12 = getTime();
+  m_diffTimePOLMM2 += (test12 - test11);
+  
   arma::mat yMat = m_iRMat % iPsi_iR_xMat;
+  
   if(m_tau == 0){}
   else{
     arma::vec tZ_xMat = arma::sum(t_xMat, 1);  // rowSums(xMat): n x 1
     arma::vec V_tZ_xMat = m_SparseGRM * tZ_xMat;
     yMat.each_col() += m_tau * V_tZ_xMat;
   }
-  arma::vec test12 = getTime();
-  m_diffTimePOLMM2 += (test12 - test11);
   return yMat;
 }
 
@@ -503,8 +513,10 @@ arma::mat POLMMClass::getiPsixMat(arma::mat t_xMat)   // matrix with dim of n x 
   arma::mat iPsi_xMat(m_n, m_J-1);
   for(int i = 0; i < m_n; i ++){   // loop for samples
     double sumx = arma::sum(t_xMat.row(i));
+    double sumx_divided_by_mu = sumx / m_muMat(i, m_J-1);
     for(int j = 0; j < m_J-1; j++){
-      iPsi_xMat(i,j) = sumx / m_muMat(i, m_J-1) + t_xMat(i,j) / m_muMat(i,j);
+      // iPsi_xMat(i,j) = sumx / m_muMat(i, m_J-1) + t_xMat(i,j) / m_muMat(i,j);
+      iPsi_xMat(i,j) = sumx_divided_by_mu + t_xMat(i,j) / m_muMat(i,j);
     }
   }
   return iPsi_xMat;
