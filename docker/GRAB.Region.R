@@ -34,9 +34,9 @@ option_list <- list(
               help="a file to store sparse GRM information, three tab-seperated columns (no headers): columns 1 and 2 are subject IDs and column 3 is the kinship coefficient."),
   make_option("--ControlFile", type="character", default=NULL,
               help="a file to store information in control list, two tab-seperated columns (no headers): columns 1 is the list key and column 2 is the list value."),
-  make_option("--MaxMAF", type="character", default="0.05;0.01;0.001;0.0001",
+  make_option("--MaxMAFVec", type="character", default="0.05,0.01,0.001,0.0001",
               help="max MAF cutoff to include markers for region-level analysis. Multiple cutoffs separated with ';' is supported."),
-  make_option("--anno", type="character", default="lof;lof:missense;lof:missense:synonymous",
+  make_option("--annoVec", type="character", default="lof,lof:missense,lof:missense:synonymous",
               help="annotation list used in analysis. Multiple annotations seperated with ';' is supported"),
   make_option("--OutputPrefix", type="character", default=NULL,
               help="a file to store control list, two tab-seperated columns (no headers): column 1 is name and column 2 is value.")
@@ -95,12 +95,12 @@ extractControl = function(ControlFile)
 
 ###############
 
-MaxMAFVec = as.numeric(strsplit(opt$MaxMAF, split=";")[[1]])
-if(any(is.na(MaxMAFVec)))
-  stop("any(is.na(MaxMAFVec)): please check argument --MaxMAF carefully.")
-
-annoVec = strsplit(opt$anno, split = ";")[[1]]
-control = extractControl(opt$ControlFile)
+# MaxMAFVec = as.numeric(strsplit(opt$MaxMAF, split=",")[[1]])
+# if(any(is.na(MaxMAFVec)))
+#   stop("any(is.na(MaxMAFVec)): please check argument --MaxMAF carefully.")
+# 
+# annoVec = strsplit(opt$anno, split = ",")[[1]]
+# control = extractControl(opt$ControlFile)
 
 GRAB.Region(objNull,
             opt$GenoFile,
@@ -109,6 +109,6 @@ GRAB.Region(objNull,
             OutputFileIndex = NULL,
             opt$GroupFile,
             opt$SparseGRMFile,
-            MaxMAFVec,  # c(0.05, 0.01, 0.001, 0.0001)
-            annoVec,    # c("lof", "lof:missense", "lof:missense:synonymous")
+            MaxMAFVec = opt$MaxMAFVec,  
+            annoVec = opt$annoVec,    
             control = control)
