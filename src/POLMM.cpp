@@ -1508,12 +1508,12 @@ arma::vec getadjGFast(arma::vec GVec,
   // To increase computational efficiency when lots of GVec elements are 0
   arma::vec XR_Psi_RG1(p, arma::fill::zeros);
   for(int i = 0; i < n; i++){
-    unsigned int testCount = 0;
+    // unsigned int testCount = 0;
     if(GVec(i) != 0){
-      testCount += 1;
+      // testCount += 1;
       XR_Psi_RG1 += XR_Psi_R_new.col(i) * GVec(i);
     }
-    std::cout << "testCount:\t" << testCount << std::endl;
+    // std::cout << "testCount:\t" << testCount << std::endl;
   }
   
   arma::vec adjGVec = GVec - XXR_Psi_RX_new * XR_Psi_RG1;
