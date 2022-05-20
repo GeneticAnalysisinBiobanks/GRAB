@@ -246,8 +246,11 @@ GRAB.Region = function(objNull,
       filter(Annos %in% allAnno)
     
     nMarkers = nrow(regionInfo)
+    
+    # if(nMarkers == 0)
+    #   stop("nrow(regionInfo) == 0: no markers are found for region '", regionID, "'.")
     if(nMarkers == 0)
-      stop("nrow(regionInfo) == 0: no markers are found for region '", regionID, "'.")
+      next;
     
     nAnno = length(annoList)
     annoMat = matrix(0, nrow = nMarkers, ncol = nAnno)

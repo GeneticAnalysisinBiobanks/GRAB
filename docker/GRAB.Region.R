@@ -100,7 +100,7 @@ extractControl = function(ControlFile)
 #   stop("any(is.na(MaxMAFVec)): please check argument --MaxMAF carefully.")
 # 
 # annoVec = strsplit(opt$anno, split = ",")[[1]]
-# control = extractControl(opt$ControlFile)
+control = extractControl(opt$ControlFile)
 
 GRAB.Region(objNull,
             opt$GenoFile,
