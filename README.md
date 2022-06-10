@@ -6,7 +6,7 @@ Rtools (https://cran.rstudio.com/bin/windows/Rtools/) should be installed before
 
 ```{r}      
 library(remotes)  # remotes library requires less dependency packages than devtools
-install_github("GeneticAnalysisinBiobanks/GRAB", INSTALL_opts=c("--no-multiarch"))  # The INSTALL_opts is required in Windows OS.
+install_github("GeneticAnalysisinBiobanks/GRAB", INSTALL_opts=c("--no-multiarch"), ref="main")  # The INSTALL_opts is required in Windows OS.
 library(GRAB)
 ```
 
