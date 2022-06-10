@@ -154,6 +154,23 @@ void printTime(arma::vec t1, arma::vec t2, std::string message){
   }
 }
 
+void printTimeDiff(arma::vec t_timeDiff,
+                   std::string t_message)
+{
+  double wallTime = t_timeDiff(0);
+  double cpuTime = t_timeDiff(1);
+  if(wallTime < 60){
+    Rprintf ("It took %f seconds (%f CPU seconds) to %s.\n",
+             wallTime, cpuTime, t_message.c_str());
+  }else if(wallTime < 3600){
+    Rprintf ("It took %f minutes (%f CPU minutes) to %s.\n",
+             wallTime/60, cpuTime/60, t_message.c_str());
+  }else{
+    Rprintf ("It took %f hours (%f CPU hours) to %s.\n",
+             wallTime/3600, cpuTime/3600, t_message.c_str());
+  }
+}
+
 double getinvStd(double t_freq)
 {
   double Std = sqrt(2 * t_freq * (1-t_freq));

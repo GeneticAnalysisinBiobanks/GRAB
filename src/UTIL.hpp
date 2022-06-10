@@ -46,6 +46,7 @@ bool imputeGenoAndFlip(arma::vec& t_GVec,
 arma::vec getTime();
 
 void printTime(arma::vec t1, arma::vec t2, std::string message);
+void printTimeDiff(arma::vec t_timeDiff, std::string t_message);
 
 double getinvStd(double t_freq);
 

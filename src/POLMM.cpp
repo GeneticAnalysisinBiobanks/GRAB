@@ -24,6 +24,15 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
                        double t_SPA_Cutoff,
                        bool t_flagSparseGRM)     // In region-based analysis, we use SparseGRM, in marker-based analysis, we do not use SparseGRM
 {
+  m_diffTimePOLMM1.zeros(2);
+  m_diffTimePOLMM2.zeros(2);
+  m_diffTimePOLMM3.zeros(2);
+  m_diffTimePOLMM4.zeros(2);
+  m_diffTimePOLMM5.zeros(2);
+  m_diffTimePOLMM6.zeros(2);
+  m_diffTimePOLMM7.zeros(2);
+  m_diffTimePOLMM8.zeros(2);
+  
   m_muMat = t_muMat;
   m_iRMat = t_iRMat;
   m_Cova = t_Cova;
@@ -59,6 +68,7 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
   // std::this_thread::sleep_for (std::chrono::seconds(1));
   
   // output for Step 2
+  
   arma::mat XR_Psi_R(m_p, m_n * (m_J-1));                // p x n(J-1)
   for(int k = 0; k < m_p; k++){
     arma::mat xMat = Vec2Mat(m_CovaMat.col(k), m_n, m_J);
@@ -226,10 +236,20 @@ void POLMMClass::getRegionPVec(arma::vec t_GVec,
                                arma::vec& t_P1Vec, 
                                arma::vec& t_P2Vec)
 {
+  arma::vec test11 = getTime();
+  
+  arma::vec test21 = getTime();
   arma::vec adjGVec = getadjGFast(t_GVec);
+  
+  arma::vec test22 = getTime();
+  arma::uvec testposG1 = arma::find(t_GVec != 0);
+  
+  arma::vec test23 = getTime();
   double Stat = getStatFast(adjGVec);
   
   arma::vec ZPZ_adjGVec = get_ZPZ_adjGVec(adjGVec);
+  
+  arma::vec test24 = getTime();
   double VarS = as_scalar(adjGVec.t() * ZPZ_adjGVec);
   double StdStat = std::abs(Stat) / sqrt(VarS);
   double pvalNorm = 2 * arma::normcdf(-1*StdStat);
@@ -261,18 +281,35 @@ void POLMMClass::getRegionPVec(arma::vec t_GVec,
   t_P2Vec = ZPZ_adjGVec;
   
   // getMarkerPval(t_GVec, t_Beta, t_seBeta, t_pval0, altFreq);
+  arma::vec test12 = getTime();
+  
+  m_diffTimePOLMM1 += (test12 - test11);
+  // m_diffTimePOLMM2 += (test22 - test21);
+  // m_diffTimePOLMM3 += (test23 - test22);
+  // m_diffTimePOLMM4 += (test24 - test23);
 }
 
 arma::vec POLMMClass::getadjGFast(arma::vec t_GVec)
 {
   // To increase computational efficiency when lots of GVec elements are 0
+  arma::vec test111 = getTime();
+  
   arma::vec XR_Psi_RG(m_p, arma::fill::zeros);
+  
   for(int i = 0; i < m_n; i++){
     if(t_GVec(i) != 0){
       XR_Psi_RG += m_XR_Psi_R.col(i) * t_GVec(i);
     }
   }
+  
+  arma::vec test112 = getTime();
   arma::vec adjGVec = t_GVec - m_XXR_Psi_RX * XR_Psi_RG;
+  
+  arma::vec test113 = getTime();
+  
+  m_diffTimePOLMM5 += (test112 - test111);
+  m_diffTimePOLMM6 += (test113 - test112);
+  
   return adjGVec;
 }
 
@@ -289,14 +326,23 @@ double POLMMClass::getStatFast(arma::vec t_adjGVec)         // n x 1
 
 arma::vec POLMMClass::get_ZPZ_adjGVec(arma::vec t_adjGVec)
 {
+  arma::vec test111 = getTime();
+  
   arma::vec adjGVecLong = Vec2LongVec(t_adjGVec, m_n, m_J);  // that is Z %*% adjGVec
   
   arma::vec iSigmaGVec(m_n * (m_J-1), arma::fill::zeros);
   
   getPCGofSigmaAndVector(adjGVecLong, iSigmaGVec);  // iSigmaGVec = Sigma^-1 %*% Z %*% adjGVec
   
+  arma::vec test112 = getTime();
+  
   arma::vec PZ_adjGVec = iSigmaGVec - m_iSigmaX_XSigmaX * (m_CovaMat.t() * iSigmaGVec);
   arma::vec ZPZ_adjGVec = LongVec2Vec(PZ_adjGVec, m_n, m_J);
+  
+  arma::vec test113 = getTime();
+  
+  m_diffTimePOLMM7 += (test112 - test111);
+  m_diffTimePOLMM8 += (test113 - test112);
   
   return ZPZ_adjGVec;
 }
@@ -320,16 +366,13 @@ void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with len
                                         arma::vec& t_xVec,    // vector with length of n(J-1)
                                         std::string t_excludechr)
 {
-  // if(m_flagSparseGRM){
-  // setSigmaMat_sp();
-  // t_xVec = spsolve(SigmaMat_sp, t_y1Vec);
-  // }else{
   arma::mat xMat = convert2(t_xVec, m_n, m_J);
   arma::mat y1Mat = convert2(t_y1Vec, m_n, m_J);
   // r2Vec and z2Vec are for the current step; r1Vec and z1Vec are for the previous step
   unsigned int iter = 0;
   arma::mat r2Mat = y1Mat - getSigmaxMat(xMat, t_excludechr);  // n x (J-1): r0 = y1Mat- Sigma %*% xMat
   double meanL2 = sqrt(getInnerProd(r2Mat, r2Mat)) / sqrt(m_n * (m_J-1));
+
   if(meanL2 <= m_tolPCG){
     // do nothing, xMat is already close to (Sigma)^-1 %*% y1Mat
   }else{
@@ -381,13 +424,16 @@ void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with len
 void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with length of n(J-1)
                                         arma::vec& t_xVec)    // vector with length of n(J-1)
 {
+  arma::vec test11 = getTime();
   arma::mat xMat = Vec2Mat(t_xVec, m_n, m_J);
   arma::mat y1Mat = Vec2Mat(t_y1Vec, m_n, m_J);
-  
+  arma::vec test12 = getTime();
+  m_diffTimePOLMM4 += (test12 - test11);
   // r2Vec and z2Vec are for the current step; r1Vec and z1Vec are for the previous step
   unsigned int iter = 0;
   arma::mat r2Mat = y1Mat - getSigmaxMat(xMat);  // n x (J-1): r0 = y1Mat- Sigma %*% xMat
   double meanL2 = sqrt(getInnerProd(r2Mat, r2Mat)) / sqrt(m_n * (m_J-1));
+  
   if(meanL2 <= m_tolPCG){
     // do nothing, xMat is already close to (Sigma)^-1 %*% y1Mat
   }else{
@@ -422,6 +468,10 @@ void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with len
       z1Mat = z2Mat;
       r2Mat = r1Mat - alpha * ApMat;
       meanL2 = sqrt(getInnerProd(r2Mat, r2Mat)) / sqrt(m_n * (m_J-1));
+      
+      // std::cout << "iter:\t" << iter << std::endl;
+      // std::cout << "meanL2:\t" << meanL2 << std::endl;
+      // std::cout << "m_tolPCG:\t" << m_tolPCG << std::endl;
     }
   }
   
@@ -438,8 +488,16 @@ void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with len
 arma::mat POLMMClass::getSigmaxMat(arma::mat& t_xMat)   // matrix: n x (J-1) 
 {
   arma::mat iR_xMat = m_iRMat % t_xMat;
+  
+  arma::vec test11 = getTime();
+  
   arma::mat iPsi_iR_xMat = getiPsixMat(iR_xMat);
+  
+  arma::vec test12 = getTime();
+  m_diffTimePOLMM2 += (test12 - test11);
+  
   arma::mat yMat = m_iRMat % iPsi_iR_xMat;
+  
   if(m_tau == 0){}
   else{
     arma::vec tZ_xMat = arma::sum(t_xMat, 1);  // rowSums(xMat): n x 1
@@ -455,8 +513,10 @@ arma::mat POLMMClass::getiPsixMat(arma::mat t_xMat)   // matrix with dim of n x 
   arma::mat iPsi_xMat(m_n, m_J-1);
   for(int i = 0; i < m_n; i ++){   // loop for samples
     double sumx = arma::sum(t_xMat.row(i));
+    double sumx_divided_by_mu = sumx / m_muMat(i, m_J-1);
     for(int j = 0; j < m_J-1; j++){
-      iPsi_xMat(i,j) = sumx / m_muMat(i, m_J-1) + t_xMat(i,j) / m_muMat(i,j);
+      // iPsi_xMat(i,j) = sumx / m_muMat(i, m_J-1) + t_xMat(i,j) / m_muMat(i,j);
+      iPsi_xMat(i,j) = sumx_divided_by_mu + t_xMat(i,j) / m_muMat(i,j);
     }
   }
   return iPsi_xMat;
@@ -505,22 +565,10 @@ arma::mat POLMMClass::getPsixMat(arma::mat t_xMat)   // matrix: n x (J-1)
 // used in getPCGofSigmaAndVector()
 arma::cube POLMMClass::getInvBlockDiagSigma()
 {
-  
-  // std::cout << "test011" << std::endl;
-  // std::cout << m_flagSparseGRM << std::endl;
-  // std::this_thread::sleep_for (std::chrono::seconds(1));
-  
   arma::vec DiagGRM;
   if(m_flagSparseGRM){
     // get diagonal elements of GRM
-    
-    // std::cout << "test02" << std::endl;
-    // std::this_thread::sleep_for (std::chrono::seconds(1));
-    
     DiagGRM = m_tau * m_SparseGRM.diag();
-    
-    // std::cout << "test03" << std::endl;
-    // std::this_thread::sleep_for (std::chrono::seconds(1));
     
   }else{
     arma::vec* pDiagStdGeno = m_ptrDenseGRMObj->getDiagStdGeno();
@@ -547,10 +595,13 @@ arma::cube POLMMClass::getInvBlockDiagSigma()
 
 arma::mat POLMMClass::solverBlockDiagSigma(arma::mat& t_xMat)     // n x (J-1)
 {
+  arma::vec test11 = getTime();
   arma::mat outMat(m_n, m_J-1);
   for(int i = 0; i < m_n; i++){
     outMat.row(i) = t_xMat.row(i) * m_InvBlockDiagSigma.slice(i); // could invert matrix?? be careful!
   }
+  arma::vec test12 = getTime();
+  m_diffTimePOLMM3 += (test12 - test11);
   return outMat;
 }
 
@@ -1457,9 +1508,12 @@ arma::vec getadjGFast(arma::vec GVec,
   // To increase computational efficiency when lots of GVec elements are 0
   arma::vec XR_Psi_RG1(p, arma::fill::zeros);
   for(int i = 0; i < n; i++){
+    // unsigned int testCount = 0;
     if(GVec(i) != 0){
+      // testCount += 1;
       XR_Psi_RG1 += XR_Psi_R_new.col(i) * GVec(i);
     }
+    // std::cout << "testCount:\t" << testCount << std::endl;
   }
   
   arma::vec adjGVec = GVec - XXR_Psi_RX_new * XR_Psi_RG1;

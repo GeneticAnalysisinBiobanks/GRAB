@@ -108,7 +108,7 @@ checkControl.Marker = function(control, NullModelClass)
 }
 
 
-checkControl.Region = function(control, NullModelClass)
+checkControl.Region = function(control)
 {
   # check if control is an R list
   if(!is.null(control))
@@ -137,8 +137,8 @@ checkControl.Region = function(control, NullModelClass)
   if(!is.numeric(control$min_mac_region) | control$min_mac_region < 0)
     stop("control$min_mac_region should be a numeric value >= 0.")
   
-  if(!is.numeric(control$max_markers_region) | control$max_markers_region < 100)
-    stop("control$max_markers_region should be a integer >= 100.")
+  if(!is.numeric(control$max_markers_region) | control$max_markers_region < 50)
+    stop("control$max_markers_region should be a integer >= 50.")
   
   if(!is.numeric(control$r.corr) | min(control$r.corr) < 0 | max(control$r.corr) > 1)
     stop("control$r.corr should be a numeric vector whose elements are between 0 and 1.")
@@ -148,22 +148,6 @@ checkControl.Region = function(control, NullModelClass)
   
   if(!is.numeric(control$min_nMarker) | control$min_nMarker <= 0)
     stop("control$min_nMarker should be a positive integer.")
-  
-  method = gsub("_NULL_Model", "", NullModelClass)  # updated on 2022-04-26: "POLMM_NULL_Model" -> "POLMM"
-  
-  textToParse = paste0("control = checkControl.Region.", method, "(control)")
-  eval(parse(text = textToParse))
-  
-  # specific default control setting for different approaches
-  # if(NullModelClass == "POLMM_NULL_Model")
-  #   control = checkControl.Region.POLMM(control)    # Check 'POLMM.R'
-  # 
-  # if(NullModelClass == "SPACox_NULL_Model")
-  #   control = checkControl.Region.SPACox(control)
-  
-  # print control list 
-  print("The below is the list of control parameters used in region-level genetic association analysis.")
-  print(control)
   
   return(control)
 }

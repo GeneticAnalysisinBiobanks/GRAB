@@ -17,8 +17,8 @@ setMarker_GlobalVarsInCPP <- function(t_impute_method, t_missing_cutoff, t_min_m
     invisible(.Call(`_GRAB_setMarker_GlobalVarsInCPP`, t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_omp_num_threads, t_group, t_ifOutGroup, t_nGroup))
 }
 
-setRegion_GlobalVarsInCPP <- function(t_impute_method, t_missing_cutoff, t_max_maf_region, t_min_mac_region, t_max_markers_region, t_omp_num_threads, t_group, t_ifOutGroup, t_nGroup) {
-    invisible(.Call(`_GRAB_setRegion_GlobalVarsInCPP`, t_impute_method, t_missing_cutoff, t_max_maf_region, t_min_mac_region, t_max_markers_region, t_omp_num_threads, t_group, t_ifOutGroup, t_nGroup))
+setRegion_GlobalVarsInCPP <- function(t_impute_method, t_missing_cutoff, t_max_maf_region, t_min_mac_region, t_max_markers_region, t_omp_num_threads) {
+    invisible(.Call(`_GRAB_setRegion_GlobalVarsInCPP`, t_impute_method, t_missing_cutoff, t_max_maf_region, t_min_mac_region, t_max_markers_region, t_omp_num_threads))
 }
 
 mainMarkerInCPP <- function(t_method, t_genoType, t_genoIndex) {
@@ -29,8 +29,12 @@ mainRegionURVInCPP <- function(t_method, t_genoType, t_genoIndex, t_n) {
     .Call(`_GRAB_mainRegionURVInCPP`, t_method, t_genoType, t_genoIndex, t_n)
 }
 
-mainRegionInCPP <- function(t_method, t_genoType, t_genoIndex, t_outputFile, t_n, P1Mat, P2Mat) {
-    .Call(`_GRAB_mainRegionInCPP`, t_method, t_genoType, t_genoIndex, t_outputFile, t_n, P1Mat, P2Mat)
+mainRegionInCPP <- function(t_method, t_genoType, t_genoIndex, t_weightVec, t_outputFile, t_labelVec, t_nLabel, t_annoMat, t_annoVec) {
+    .Call(`_GRAB_mainRegionInCPP`, t_method, t_genoType, t_genoIndex, t_weightVec, t_outputFile, t_labelVec, t_nLabel, t_annoMat, t_annoVec)
+}
+
+printTimeDiffInCPP <- function() {
+    invisible(.Call(`_GRAB_printTimeDiffInCPP`))
 }
 
 getGenoInCPP <- function(t_genoType, t_markerInfo, n, t_imputeMethod) {
