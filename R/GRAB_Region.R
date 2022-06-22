@@ -305,9 +305,11 @@ GRAB.Region = function(objNull,
     RV.Markers = RV.Markers0 %>% 
       mutate(betaWeights = dbeta(MAF, control$weights.beta[1], control$weights.beta[2]),
              adjVarSVec = StatVec^2 / qchisq(pval1Vec, df = 1, lower.tail = F),
-             r0 = adjVarSVec / diag(VarMat),
+             # r0 = adjVarSVec / diag(VarMat),  # edited on 06/22/2022
+             r0 = pmax(adjVarSVec / diag(VarMat), 1),
              wr0 = sqrt(r0) * betaWeights,
              wStatVec = StatVec * betaWeights)
+    
     # check given weights version later: 2022-05-01
     
     wr0 = RV.Markers$wr0
