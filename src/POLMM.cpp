@@ -221,7 +221,7 @@ void POLMMClass::getMarkerPval(arma::vec t_GVec,
   
   t_pval = pval;
   t_Beta = Stat / VarS;
-  t_seBeta = t_Beta / StdStat;
+  t_seBeta = std::abs(t_Beta) / StdStat;
   t_zScore = Stat / sqrt(VarS);
 }
 
@@ -260,7 +260,7 @@ void POLMMClass::getRegionPVec(arma::vec t_GVec,
     
     arma::vec VarWVec = getVarWVec(adjGVec);
     double VarW = sum(VarWVec);
-    double VarS = VarW * m_varRatio;
+    // double VarS = VarW * m_varRatio;
     
     arma::uvec posG1 = arma::find(t_GVec != 0);
     double VarW1 = sum(VarWVec(posG1));

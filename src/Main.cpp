@@ -1,8 +1,10 @@
 
 // This file includes the main codes to connect C++ and R
 
+// [[Rcpp::depends(BH)]]
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
+#include <boost/math/distributions/beta.hpp>
 
 #include <thread>         // std::this_thread::sleep_for
 #include <chrono>         // std::chrono::seconds
@@ -44,6 +46,8 @@ double g_marker_minMAC_cutoff;
 double g_region_minMAC_cutoff;    // for Rare Variants (RVs) whose MAC < this value, we aggregate these variants like SAIGE-GENE+ 
 double g_region_maxMAF_cutoff;
 unsigned int g_region_maxMarkers_cutoff;   // maximal number of markers in one chunk, only used for region-based analysis to reduce memory usage
+arma::vec g_region_weight_beta;
+arma::vec g_region_max_maf_vec;
 
 // the below is only valid for POLMM
 arma::uvec g_group;
@@ -115,7 +119,9 @@ void setRegion_GlobalVarsInCPP(std::string t_impute_method,
                                double t_max_maf_region,
                                double t_min_mac_region,
                                unsigned int t_max_markers_region,
-                               unsigned int t_omp_num_threads)
+                               unsigned int t_omp_num_threads,
+                               arma::vec t_region_weight_beta,
+                               arma::vec t_region_max_maf_vec)
 {
   g_impute_method = t_impute_method;
   g_missingRate_cutoff = t_missing_cutoff;
@@ -123,6 +129,8 @@ void setRegion_GlobalVarsInCPP(std::string t_impute_method,
   g_region_maxMAF_cutoff = t_max_maf_region;
   g_region_maxMarkers_cutoff = t_max_markers_region;
   g_omp_num_threads = t_omp_num_threads;
+  g_region_weight_beta = t_region_weight_beta;
+  g_region_max_maf_vec = t_region_max_maf_vec;
 }
 
 void updateGroupInfo(arma::vec t_GVec,
@@ -408,6 +416,12 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   // arma::vec GVecURV(n, arma::fill::zeros);
   arma::mat GMatURV(n, nAnno, arma::fill::zeros);
   
+  // updated on 2022-06-24 (save sum of genotype to conduct burden test and adjust p-values using SPA)
+  unsigned int n_max_maf = g_region_max_maf_vec.size();
+  arma::mat GMatBurden(n, nAnno * n_max_maf, arma::fill::zeros);
+  arma::mat pvalBurden(nAnno * n_max_maf, 2, arma::fill::zeros);
+  boost::math::beta_distribution<> beta_dist(g_region_weight_beta[0], g_region_weight_beta[1]);
+  
   // cycle for q markers
   for(unsigned int i = 0; i < q; i++)
   {
@@ -482,11 +496,36 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
       i1 += 1;
       i1InChunk += 1;
       
+      // updated on 2022-06-24 (save sum of genotype to conduct burden test and adjust p-values using SPA)
+      double w0 = boost::math::pdf(beta_dist, MAF);
+      for(unsigned int j = 0; j < n; j++)
+      {
+        if(GVec.at(j) != 0)
+        {
+          for(unsigned int iAnno = 0; iAnno < nAnno; iAnno++)
+          {
+            if(t_annoMat(i, iAnno) == 1)  // 1 or 0
+            {
+              for(unsigned int i_max_maf = 0; i_max_maf < n_max_maf; i_max_maf++)
+              {
+                double max_maf = g_region_max_maf_vec.at(i_max_maf);
+                if(MAF < max_maf)
+                {
+                  GMatBurden(j, iAnno*n_max_maf+i_max_maf) += w0 * GVec.at(j);    // anno0,maf0; anno0,maf1; anno0,maf2; anno1,maf0; anno1,maf1, anno1,maf2; ...
+                  // GMatBurden(j, iAnno) += w0 * weight * GVec.at(j); check it later (2022-06-24)
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      
     }else{  // Ultra-Rare Variants
       
       indicatorVec.at(i) = 2;
       
-      double weight = t_weightVec.at(i);
+      // double weight = t_weightVec.at(i);
       for(unsigned int j = 0; j < n; j++)
       {
         if(GVec.at(j) != 0)
@@ -523,10 +562,26 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   {
     arma::vec GVecURV = GMatURV.col(iAnno);
     
+    // updated on 2022-06-24 (save sum of genotype to conduct burden test and adjust p-values using SPA)
+    double MAFURV = mean(GVecURV) / 2;
+    double w0URV = boost::math::pdf(beta_dist, MAFURV);
+    for(unsigned int i_max_maf = 0; i_max_maf < n_max_maf; i_max_maf++)
+    {
+      unsigned int i_pos = iAnno*n_max_maf+i_max_maf;
+      GMatBurden.col(i_pos) += w0URV * GVecURV; 
+      Unified_getRegionPVec(t_method, GMatBurden.col(i_pos), Stat, Beta, seBeta, pval0, pval1, P1Vec, P2Vec); // use Unified_getMarkerPval to replace it later
+      pvalBurden.at(i_pos, 0) = pval0;
+      pvalBurden.at(i_pos, 1) = pval1;
+      // std::cout << "iAnno:\t" << iAnno << std::endl;
+      // std::cout << "i_max_maf:\t" << i_max_maf << std::endl;
+      // std::cout << "pval0:\t" << pval0 << std::endl;
+      // std::cout << "pval1:\t" << pval1 << std::endl;
+    }
+    
     indicatorVec.at(q+iAnno) = 3;
     markerVec.at(q+iAnno) = t_annoVec.at(iAnno);
     infoVec.at(q+iAnno) = "Ultra-Rare Variants";
-    altFreqVec.at(q+iAnno) = MAFVec.at(q+iAnno) = mean(GVecURV) / 2;
+    altFreqVec.at(q+iAnno) = MAFVec.at(q+iAnno) = MAFURV;
     MACVec.at(q+iAnno) = sum(GVecURV);
     missingRateVec.at(q+iAnno) = 0;
     
@@ -661,7 +716,8 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
                                           Rcpp::Named("pval0Vec") = pval0Vec,
                                           Rcpp::Named("pval1Vec") = pval1Vec,
                                           Rcpp::Named("indicatorVec") = indicatorVec,
-                                          Rcpp::Named("VarMat") = VarMat);
+                                          Rcpp::Named("VarMat") = VarMat,
+                                          Rcpp::Named("pvalBurden") = pvalBurden);
   
   return OutList;
 }

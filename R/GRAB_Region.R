@@ -87,7 +87,8 @@
 #'             OutputFile = OutputFile,
 #'             OutputFileIndex = NULL,
 #'             GroupFile = GroupFile,
-#'             SparseGRMFile = SparseGRMFile)
+#'             SparseGRMFile = SparseGRMFile,
+#'             MaxMAFVec = "0.01,0.005")
 #'             
 #' data.table::fread(OutputFile)
 #' data.table::fread(paste0(OutputFile,".markerInfo"))
@@ -223,7 +224,9 @@ GRAB.Region = function(objNull,
                                  max_maf_region, 
                                  min_mac_region, 
                                  max_markers_region, 
-                                 omp_num_threads))
+                                 omp_num_threads,
+                                 weights.beta,
+                                 MaxMAFVec))
   
   textToParse = paste0("obj.setRegion = setRegion.", method, "(objNull, control, chrom, SparseGRMFile)")
   eval(parse(text = textToParse))
@@ -282,6 +285,11 @@ GRAB.Region = function(objNull,
     t12 = Sys.time()
     diffTime1 = diffTime1 + (t12-t11)
     
+    # updated on 2022-06-24 (save sum of genotype to conduct burden test and adjust p-values using SPA)
+    pvalBurden = obj.mainRegionInCPP$pvalBurden
+    # print(class(pvalBurden))
+    # print(pvalBurden)
+    
     ## add annotation information
     obj.mainRegionInCPP$AnnoVec = c(regionInfo$Annos, annoVec)
     if(!is.null(SampleLabelLevels))
@@ -305,9 +313,11 @@ GRAB.Region = function(objNull,
     RV.Markers = RV.Markers0 %>% 
       mutate(betaWeights = dbeta(MAF, control$weights.beta[1], control$weights.beta[2]),
              adjVarSVec = StatVec^2 / qchisq(pval1Vec, df = 1, lower.tail = F),
-             r0 = adjVarSVec / diag(VarMat),
+             # r0 = adjVarSVec / diag(VarMat),  # edited on 06/22/2022
+             r0 = pmax(adjVarSVec / diag(VarMat), 1),
              wr0 = sqrt(r0) * betaWeights,
              wStatVec = StatVec * betaWeights)
+    
     # check given weights version later: 2022-05-01
     
     wr0 = RV.Markers$wr0
@@ -328,6 +338,7 @@ GRAB.Region = function(objNull,
     
     t21 = Sys.time()
     pval.Region = data.frame()
+    iSPA = 1
     for(anno in annoVec)
     {
       annoTemp = unlist(strsplit(anno, split = ":"))
@@ -342,13 +353,23 @@ GRAB.Region = function(objNull,
         posRV = RV.MarkersWithAnno %>% filter(MAF < MaxMAF & Annos %in% annoTemp) %>% select(posRow) %>% unlist()
         pos = c(posRV, posURV)
         n1 = length(pos)
+        
+        ScoreBurden = sum(RV.Markers$wStatVec[pos])
+        VarBurden = sum(wadjVarSMat[pos, pos])
+        pvalBurdenSPA = pvalBurden[iSPA,2]
+        VarBurdenSPA = ScoreBurden^2 / qchisq(pvalBurdenSPA, df = 1, lower.tail = F)
+        ratioBurdenSPA = max(VarBurdenSPA/VarBurden, 1)
+        iSPA = iSPA + 1
+        
         t31 = Sys.time()
         out_SKAT_List = with(RV.Markers, try(SKAT:::Met_SKAT_Get_Pvalue(Score = wStatVec[pos], 
-                                                                        Phi = wadjVarSMat[pos, pos],  
+                                                                        # Phi = wadjVarSMat[pos, pos],  
+                                                                        Phi = ratioBurdenSPA * wadjVarSMat[pos, pos],  
                                                                         r.corr = control$r.corr, 
                                                                         method = "optimal.adj", 
                                                                         Score.Resampling = NULL),
                                              silent = TRUE))
+
         t32 = Sys.time()
         diffTime3 = diffTime3 + (t32-t31)
         

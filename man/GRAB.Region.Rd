@@ -124,7 +124,8 @@ GRAB.Region(objNull = objNull,
             OutputFile = OutputFile,
             OutputFileIndex = NULL,
             GroupFile = GroupFile,
-            SparseGRMFile = SparseGRMFile)
+            SparseGRMFile = SparseGRMFile,
+            MaxMAFVec = "0.01,0.005")
             
 data.table::fread(OutputFile)
 data.table::fread(paste0(OutputFile,".markerInfo"))
