@@ -221,7 +221,7 @@ void POLMMClass::getMarkerPval(arma::vec t_GVec,
   
   t_pval = pval;
   t_Beta = Stat / VarS;
-  t_seBeta = t_Beta / StdStat;
+  t_seBeta = std::abs(t_Beta) / StdStat;
   t_zScore = Stat / sqrt(VarS);
 }
 
