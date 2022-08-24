@@ -172,6 +172,9 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
 {
   int q = t_genoIndex.size();  // number of markers
   
+  // debug for Jen (2022-08-24: #1)
+  std::cout << "q:\t" << q << std::endl; 
+  
   // set up output
   std::vector<std::string> markerVec(q);  // marker IDs
   std::vector<std::string> infoVec(q);    // marker information: CHR:POS:REF:ALT
@@ -214,6 +217,9 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     bool flip = false;
     
     uint32_t gIndex = t_genoIndex.at(i);
+    
+    // debug for Jen (2022-08-24: #2)
+    std::cout << "gIndex:\t" << gIndex << std::endl;
     
     arma::vec GVec = Unified_getOneMarker(t_genoType, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
                                           true, // bool t_isOutputIndexForMissing,
