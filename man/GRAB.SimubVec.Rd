@@ -4,26 +4,28 @@
 \alias{GRAB.SimubVec}
 \title{GRAB: simulate random effect (i.e. bVec) based on family structure}
 \usage{
-GRAB.SimubVec(n.fam, fam.kin, tau)
+GRAB.SimubVec(nSub, nFam, FamMode, tau)
 }
 \arguments{
-\item{n.fam}{number of families in simulation}
+\item{nSub}{the number of unrelated subjects in simulations, if \code{nSub = 0}, then all subjects are related to at least one of the others.}
 
-\item{fam.kin}{a matrix of GRM (kinship matrix)}
+\item{nFam}{the number of families in simulation, if \code{nFam = 0}, then all subjects are unrelated to each other.}
+
+\item{FamMode}{\code{"4-members"}, \code{"10-members"}, or \code{"20-members"}. Check \code{Details} section for more details.}
 
 \item{tau}{variance component}
 }
 \value{
-a random effect following a multivariate normal distribution
+a data frame including two columns: ID and random effect following a multivariate normal distribution
 }
 \description{
 Simulate random effect (i.e. bVec) based on family structure
 }
 \examples{
-fam.kin = read.table(system.file("extdata", "example_10members.kin.txt", package = "GRAB"))
-fam.kin = as.matrix(fam.kin)
-n.fam = 100
+nSub = 10
+nFam = 1
+FamMode = "10-members"
 tau = 2
-bVec = GRAB.SimubVec(n.fam, fam.kin, tau)
+bVec = GRAB.SimubVec(nSub, nFam, FamMode, tau)
      
 }
