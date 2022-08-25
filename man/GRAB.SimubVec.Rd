@@ -11,7 +11,7 @@ GRAB.SimubVec(nSub, nFam, FamMode, tau)
 
 \item{nFam}{the number of families in simulation, if \code{nFam = 0}, then all subjects are unrelated to each other.}
 
-\item{FamMode}{\code{"4-members"}, \code{"10-members"}, or \code{"20-members"}. Check \code{Details} section for more details.}
+\item{FamMode}{\code{"4-members"}, \code{"10-members"}, or \code{"20-members"}. Check \code{Details} section of function \code{help(GRAB.SimuGMat)} for more details.}
 
 \item{tau}{variance component}
 }
