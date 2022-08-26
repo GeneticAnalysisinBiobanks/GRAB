@@ -168,10 +168,10 @@ void updateGroupInfo(arma::vec t_GVec,
 // [[Rcpp::export]]
 Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SAIGE"
                            std::string t_genoType,     // "PLINK", "BGEN"
-                           std::vector<uint32_t> t_genoIndex)  
+                           std::vector<uint64_t> t_genoIndex)  
 {
   int q = t_genoIndex.size();  // number of markers
-  
+
   // set up output
   std::vector<std::string> markerVec(q);  // marker IDs
   std::vector<std::string> infoVec(q);    // marker information: CHR:POS:REF:ALT
@@ -213,8 +213,8 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     uint32_t pd;
     bool flip = false;
     
-    uint32_t gIndex = t_genoIndex.at(i);
-    
+    uint64_t gIndex = t_genoIndex.at(i);
+
     arma::vec GVec = Unified_getOneMarker(t_genoType, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
                                           true, // bool t_isOutputIndexForMissing,
                                           indexForMissing,
@@ -312,7 +312,7 @@ Rcpp::List mainRegionURVInCPP(std::string t_method,       // "POLMM", "SPACox", 
     std::string chr, ref, alt, marker;
     uint32_t pd;
     
-    uint32_t gIndex = t_genoIndex.at(i);
+    uint64_t gIndex = t_genoIndex.at(i);
     arma::vec GVec = Unified_getOneMarker(t_genoType, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
                                           true, // bool t_isOutputIndexForMissing,
                                           indexForMissing,
@@ -434,7 +434,7 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     uint32_t pd;
     bool flip = false;
     
-    uint32_t gIndex = t_genoIndex.at(i);
+    uint64_t gIndex = t_genoIndex.at(i);
     
     arma::vec test11 = getTime();
     

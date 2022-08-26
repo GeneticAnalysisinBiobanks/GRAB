@@ -62,6 +62,8 @@ GRAB.SimuGMat = function(nSub,
   nSubInEachFam = inputList$nSubInEachFam
   nHaploInEachFam = inputList$nHaploInEachFam
   fam.mat = inputList$fam.mat
+  nSub = inputList$nSub
+  nFam = inputList$nFam
   
   n = nSub + nFam * nSubInEachFam
   nHaplo = nFam * nHaploInEachFam
@@ -109,7 +111,7 @@ GRAB.SimuGMat = function(nSub,
 checkInput = function(nSub, nFam, FamMode)
 {
   if(missing(FamMode) & missing(nFam)){
-    cat("Since both 'FamMode' and 'nFam' are not specified, we only simulate genotype for unrelated subjects.\n")
+    cat("Since both 'FamMode' and 'nFam' are not specified, we only simulate genotype/bVec for unrelated subjects.\n")
     nFam = 0;
     FamMode = "Unrelated";
   }
@@ -147,7 +149,10 @@ checkInput = function(nSub, nFam, FamMode)
   
   inputList = list(nSubInEachFam = nSubInEachFam,
                    nHaploInEachFam = nHaploInEachFam,
-                   fam.mat = fam.mat);
+                   fam.mat = fam.mat,
+                   nSub = nSub,
+                   nFam = nFam,
+                   FamMode = FamMode);
   return(inputList)
 }
 
@@ -299,17 +304,17 @@ from.haplo.to.geno = function(haplo.mat,  # output of haplo.simu():  m x p where
     }
     if(Role == "Offspring"){ # pass from Founders
       ## Haplotype 1 is from Founder S1, randomly selected from two haplotypes of Founder S1.
-      S1.pass.H1=rbinom(m,1,0.5) 
-      S1.pass.H2=1-S1.pass.H1
-      Haplo1.mat[i,] = Haplo1.mat[S1,]*S1.pass.H1+Haplo2.mat[S1,]*S1.pass.H2
+      S1.pass.H1 = rbinom(m,1,0.5) 
+      S1.pass.H2 = 1 - S1.pass.H1
+      Haplo1.mat[i,] = Haplo1.mat[S1,] * S1.pass.H1 + Haplo2.mat[S1,] * S1.pass.H2
       ## Haplotype 2 is from Founder S2, randomly selected from two haplotypes of Founder S2.
-      S2.pass.H1=rbinom(m,1,0.5) 
-      S2.pass.H2=1-S2.pass.H1
-      Haplo2.mat[i,] = Haplo1.mat[S2,]*S2.pass.H1+Haplo2.mat[S2,]*S2.pass.H2
+      S2.pass.H1 = rbinom(m,1,0.5) 
+      S2.pass.H2 = 1 - S2.pass.H1
+      Haplo2.mat[i,] = Haplo1.mat[S2,] * S2.pass.H1 + Haplo2.mat[S2,] * S2.pass.H2
     }
   }
-  Geno.mat=Haplo1.mat+Haplo2.mat
-  colnames(Geno.mat)=colnames(haplo.mat)
+  Geno.mat = Haplo1.mat + Haplo2.mat
+  colnames(Geno.mat) = colnames(haplo.mat)
   # Geno.mat=data.frame(Geno.mat, stringsAsFactors = F)
   return(Geno.mat)
 }
@@ -318,35 +323,80 @@ from.haplo.to.geno = function(haplo.mat,  # output of haplo.simu():  m x p where
 #' 
 #' Simulate random effect (i.e. bVec) based on family structure
 #' 
-#' @param n.fam number of families in simulation
-#' @param fam.kin a matrix of GRM (kinship matrix)
+#' @param nSub the number of unrelated subjects in simulations, if \code{nSub = 0}, then all subjects are related to at least one of the others.
+#' @param nFam the number of families in simulation, if \code{nFam = 0}, then all subjects are unrelated to each other.
+#' @param FamMode \code{"4-members"}, \code{"10-members"}, or \code{"20-members"}. Check \code{Details} section of function \code{help(GRAB.SimuGMat)} for more details.
 #' @param tau variance component
-#' @return a random effect following a multivariate normal distribution
+#' @return a data frame including two columns: ID and random effect following a multivariate normal distribution
 #' @examples 
-#' fam.kin = read.table(system.file("extdata", "example_10members.kin.txt", package = "GRAB"))
-#' fam.kin = as.matrix(fam.kin)
-#' n.fam = 100
+#' nSub = 10
+#' nFam = 1
+#' FamMode = "10-members"
 #' tau = 2
-#' bVec = GRAB.SimubVec(n.fam, fam.kin, tau)
+#' bVec = GRAB.SimubVec(nSub, nFam, FamMode, tau)
 #'      
 #' @export
-GRAB.SimubVec = function(n.fam,
-                         fam.kin,
+GRAB.SimubVec = function(nSub, 
+                         nFam, 
+                         FamMode,
                          tau)
 {
-  fam.kin = as.matrix(fam.kin)
-  n = n.fam * nrow(fam.kin)
-  out.eigen = eigen(fam.kin)
-  factor = t(out.eigen$vectors) * sqrt(out.eigen$values)
-  kin.chol = diag(n.fam) %x% factor
-  b.true = t(kin.chol) %*% rnorm(n) * sqrt(tau) 
-  return(b.true)
+  inputList = checkInput(nSub, nFam, FamMode)
+  
+  nSubInEachFam = inputList$nSubInEachFam
+  nSub = inputList$nSub
+  nFam = inputList$nFam
+  FamMode = inputList$FamMode
+  fam.mat = inputList$fam.mat
+  
+  n = nSub + nFam * nSubInEachFam
+  
+  if(n == 0){
+    stop("Please give at least one of 'nSub' and 'nFam'.")
+  }
+  
+  cat("Number of unrelated subjects:\t", nSub, "\n")
+  cat("Number of families:\t", nFam, "\n")
+  cat("Number of subjects in each family:\t", nSubInEachFam, "\n")
+  cat("Number of all subjects:\t", n, "\n")
+  
+  if(FamMode == "Unrelated"){
+    bVec.Related = data.table::data.table()
+  }else{
+    if(FamMode == "4-members")
+      fam.kin.file = system.file("extdata", "example_4-members.kin.txt", package = "GRAB")
+    
+    if(FamMode == "10-members")
+      fam.kin.file = system.file("extdata", "example_10-members.kin.txt", package = "GRAB")
+    
+    if(FamMode == "20-members")
+      fam.kin.file = system.file("extdata", "example_20-members.kin.txt", package = "GRAB")
+    
+    fam.kin = data.table::fread(fam.kin.file)
+    fam.kin = as.matrix(fam.kin)
+    
+    n = nFam * nrow(fam.kin)
+    out.eigen = eigen(fam.kin)
+    factor = t(out.eigen$vectors) * sqrt(out.eigen$values)
+    kin.chol = diag(nFam) %x% factor
+    b.true = t(kin.chol) %*% rnorm(n) * sqrt(tau)
+    bVec.Related = data.table::data.table(IID = fam.mat$IID,
+                                          bVec = as.numeric(b.true))
+  }
+  
+  if(nSub != 0){
+    bVec.Unrelated = data.table::data.table(IID = paste0("Subj-",1:nSub),
+                                            bVec = rnorm(nSub, sd = tau))
+  }
+  
+  bVec = rbind(bVec.Related, bVec.Unrelated)
+  
+  return(bVec)
 }
-
 
 #' GRAB: simulate genotype matrix based on family structure
 #'
-#' Simulate genotype matrix based on family structure using haplotype information from genotype files. This function is mainly to simulate genotype data for rare variants analysis. NOTE: if simulating related subjects, the genotype of two allele will be assigned to two haplotypes of one allele randomly. Hence, please be careful to use this function if LD is important for your purpose. 
+#' Simulate genotype matrix based on family structure using haplotype information from genotype files. This function is mainly to simulate genotype data for rare variants analysis. NOTE: if simulating related subjects, the genotype of two allele will be assigned to two haplotypes of one allele randomly.  
 #'
 #' @param nFam number of families in simulation
 #' @param nSub number of unrelated subjects in simulation
@@ -369,16 +419,23 @@ GRAB.SimubVec = function(n.fam,
 #' ## If \code{FamMode = "20-members"}
 #' Total number of subjects is \code{nSub + 20 * nFam}. Each family includes 20 members with the family structure as below: 1+2->9+10, 3+9->11+12, 4+10->13+14, 5+11->15+16, 6+12->17, 7+13->18, 8+14->19+20.
 #' @examples
-#' nFam = 2
-#' nSub = 3
+#' nFam = 50
+#' nSub = 500
 #' FamMode = "10-members"
-#' PLINKFile = system.file("extdata", "example.bed", package = "GRAB")
-#' IDsToIncludeFile = system.file("extdata", "example.IDsToIncludeFile.txt", package = "GRAB")
-#' RangesToIncludeFile = system.file("extdata", "example.RangesToIncludeFile.txt", package = "GRAB")
+#' 
+#' # PLINK data format
+#' PLINKFile = system.file("extdata", "example_n1000_m236.bed", package = "GRAB")
+#' IDsToIncludeFile = system.file("extdata", "example_n1000_m236.IDsToInclude", package = "GRAB")
 #' 
 #' GenoList = GRAB.SimuGMatFromGenoFile(nFam, nSub, FamMode, PLINKFile,
-#'                                      control = list(IDsToIncludeFile = IDsToIncludeFile,
-#'                                                    RangesToIncludeFile = RangesToIncludeFile))
+#'                                      control = list(IDsToIncludeFile = IDsToIncludeFile))
+#' 
+#' # Currently, this function does not support BGEN data format
+#' BGENFile = system.file("extdata", "example_n1000_m240.bgen", package = "GRAB")
+#' IDsToIncludeFile = system.file("extdata", "example_n1000_m240.IDsToInclude", package = "GRAB")
+#' 
+#' GenoList = GRAB.SimuGMatFromGenoFile(nFam, nSub, FamMode, BGENFile,
+#'                                      control = list(IDsToIncludeFile = IDsToIncludeFile))
 #' @export
 GRAB.SimuGMatFromGenoFile = function(nFam,
                                      nSub, 
@@ -393,6 +450,8 @@ GRAB.SimuGMatFromGenoFile = function(nFam,
   nSubInEachFam = inputList$nSubInEachFam
   nHaploInEachFam = inputList$nHaploInEachFam
   fam.mat = inputList$fam.mat
+  nSub = inputList$nSub
+  nFam = inputList$nFam
   
   n = nSub + nFam * nSubInEachFam
   nHaplo = nFam * nHaploInEachFam

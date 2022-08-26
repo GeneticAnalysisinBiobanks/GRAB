@@ -33,7 +33,7 @@ GRAB.SimuGMatFromGenoFile(
 a genotype matrix of genotype data
 }
 \description{
-Simulate genotype matrix based on family structure using haplotype information from genotype files. This function is mainly to simulate genotype data for rare variants analysis. NOTE: if simulating related subjects, the genotype of two allele will be assigned to two haplotypes of one allele randomly. Hence, please be careful to use this function if LD is important for your purpose.
+Simulate genotype matrix based on family structure using haplotype information from genotype files. This function is mainly to simulate genotype data for rare variants analysis. NOTE: if simulating related subjects, the genotype of two allele will be assigned to two haplotypes of one allele randomly.
 }
 \details{
 Currently, function \code{GRAB.SimuGMatFromGenoFile} supports both unrelated and related subjects.
@@ -54,14 +54,21 @@ Total number of subjects is \code{nSub + 20 * nFam}. Each family includes 20 mem
 }
 }
 \examples{
-nFam = 2
-nSub = 3
+nFam = 50
+nSub = 500
 FamMode = "10-members"
-PLINKFile = system.file("extdata", "example.bed", package = "GRAB")
-IDsToIncludeFile = system.file("extdata", "example.IDsToIncludeFile.txt", package = "GRAB")
-RangesToIncludeFile = system.file("extdata", "example.RangesToIncludeFile.txt", package = "GRAB")
+
+# PLINK data format
+PLINKFile = system.file("extdata", "example_n1000_m236.bed", package = "GRAB")
+IDsToIncludeFile = system.file("extdata", "example_n1000_m236.IDsToInclude", package = "GRAB")
 
 GenoList = GRAB.SimuGMatFromGenoFile(nFam, nSub, FamMode, PLINKFile,
-                                     control = list(IDsToIncludeFile = IDsToIncludeFile,
-                                                   RangesToIncludeFile = RangesToIncludeFile))
+                                     control = list(IDsToIncludeFile = IDsToIncludeFile))
+
+# Currently, this function does not support BGEN data format
+BGENFile = system.file("extdata", "example_n1000_m240.bgen", package = "GRAB")
+IDsToIncludeFile = system.file("extdata", "example_n1000_m240.IDsToInclude", package = "GRAB")
+
+GenoList = GRAB.SimuGMatFromGenoFile(nFam, nSub, FamMode, BGENFile,
+                                     control = list(IDsToIncludeFile = IDsToIncludeFile))
 }

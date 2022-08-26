@@ -1,28 +1,27 @@
-PLINK v1.90b6.4 64-bit (7 Aug 2018)
+PLINK v1.90b6.24 64-bit (6 Jun 2021)
 Options in effect:
   --file simuPLINK_RV
   --make-bed
   --out simuPLINK_RV
 
-Hostname: mendel
-Working directory: /net/snowwhite/home/wenjianb/R/x86_64-pc-linux-gnu-library/4.0/GRAB/extdata
-Start time: Fri Sep 10 02:55:16 2021
+Hostname: master
+Working directory: /home/wenjianb/.conda/envs/myEnvR4.0/lib/R/library/GRAB/extdata
+Start time: Thu Aug 25 15:11:24 2022
 
-Random number seed: 1631256916
-257569 MB RAM detected; reserving 128784 MB for main workspace.
-Allocated 54330 MB successfully, after larger attempt(s) failed.
+Random number seed: 1661411484
+644265 MB RAM detected; reserving 322132 MB for main workspace.
 Scanning .ped file... done.
-Performing single-pass .bed write (10000 variants, 1000 people).
+Performing single-pass .bed write (200 variants, 1000 people).
 --file: simuPLINK_RV-temporary.bed + simuPLINK_RV-temporary.bim +
 simuPLINK_RV-temporary.fam written.
-10000 variants loaded from .bim file.
+200 variants loaded from .bim file.
 1000 people (1000 males, 0 females) loaded from .fam.
 Using 1 thread (no multithreaded calculations invoked).
 Before main variant filters, 1000 founders and 0 nonfounders present.
 Calculating allele frequencies... done.
-Total genotyping rate is 0.95.
-10000 variants and 1000 people pass filters and QC.
+Total genotyping rate is 0.99299.
+200 variants and 1000 people pass filters and QC.
 Note: No phenotypes present.
 --make-bed to simuPLINK_RV.bed + simuPLINK_RV.bim + simuPLINK_RV.fam ... done.
 
-End time: Fri Sep 10 02:55:17 2021
+End time: Thu Aug 25 15:11:24 2022

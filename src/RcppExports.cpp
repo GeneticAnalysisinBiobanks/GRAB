@@ -81,14 +81,14 @@ BEGIN_RCPP
 END_RCPP
 }
 // mainMarkerInCPP
-Rcpp::List mainMarkerInCPP(std::string t_method, std::string t_genoType, std::vector<uint32_t> t_genoIndex);
+Rcpp::List mainMarkerInCPP(std::string t_method, std::string t_genoType, std::vector<uint64_t> t_genoIndex);
 RcppExport SEXP _GRAB_mainMarkerInCPP(SEXP t_methodSEXP, SEXP t_genoTypeSEXP, SEXP t_genoIndexSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< std::string >::type t_method(t_methodSEXP);
     Rcpp::traits::input_parameter< std::string >::type t_genoType(t_genoTypeSEXP);
-    Rcpp::traits::input_parameter< std::vector<uint32_t> >::type t_genoIndex(t_genoIndexSEXP);
+    Rcpp::traits::input_parameter< std::vector<uint64_t> >::type t_genoIndex(t_genoIndexSEXP);
     rcpp_result_gen = Rcpp::wrap(mainMarkerInCPP(t_method, t_genoType, t_genoIndex));
     return rcpp_result_gen;
 END_RCPP
