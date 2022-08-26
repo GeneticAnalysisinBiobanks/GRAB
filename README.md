@@ -1,5 +1,11 @@
 # GRAB
 
+## Note on 2022-08-26
+
+We make a website for GRAB package: https://wenjianbi.github.io/grab.github.io/. Please check it for more recent update. 
+
+## Previous README before 2022-08-26
+
 ### How to install and load this package
 
 Rtools (https://cran.rstudio.com/bin/windows/Rtools/) should be installed before installing this package.
