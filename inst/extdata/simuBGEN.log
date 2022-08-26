@@ -1,17 +1,16 @@
-PLINK v2.00a3LM 64-bit Intel (20 Apr 2021)
+PLINK v2.00a3LM 64-bit Intel (20 Sep 2021)
 Options in effect:
   --bfile simuPLINK
   --export bgen-1.2 bits=8 ref-first
   --out simuBGEN
 
-Hostname: mendel
-Working directory: /net/snowwhite/home/wenjianb/R/x86_64-pc-linux-gnu-library/4.0/GRAB/extdata
-Start time: Fri Sep 10 02:52:10 2021
+Hostname: master
+Working directory: /home/wenjianb/.conda/envs/myEnvR4.0/lib/R/library/GRAB/extdata
+Start time: Thu Aug 25 15:10:05 2022
 
-Random number seed: 1631256730
-257569 MiB RAM detected; reserving 128784 MiB for main workspace.
-Allocated 54330 MiB successfully, after larger attempt(s) failed.
-Using up to 88 threads (change this with --threads).
+Random number seed: 1661411405
+644265 MiB RAM detected; reserving 322132 MiB for main workspace.
+Using up to 48 threads (change this with --threads).
 1000 samples (0 females, 1000 males; 1000 founders) loaded from simuPLINK.fam.
 10000 variants loaded from simuPLINK.bim.
 Note: No phenotype data present.
@@ -20,4 +19,4 @@ reconstruct them. Consider rerunning with a suitable --export id-delim= value.
 Writing simuBGEN.bgen ... done.
 Writing simuBGEN.sample ... done.
 
-End time: Fri Sep 10 02:52:10 2021
+End time: Thu Aug 25 15:10:05 2022
