@@ -288,7 +288,15 @@ GRAB.Region = function(objNull,
     # updated on 2022-06-24 (save sum of genotype to conduct burden test and adjust p-values using SPA)
     pvalBurden = obj.mainRegionInCPP$pvalBurden
     # print(class(pvalBurden))
-    # print(pvalBurden)
+    
+    # updated on 2023-02-06 (record summary statistics for sum of genotype for a region)
+    infoBurdenNoWeight = obj.mainRegionInCPP$infoBurdenNoWeight
+    infoBurdenNoWeight = as.data.frame(infoBurdenNoWeight)
+    infoBurdenNoWeight = cbind(regionID, infoBurdenNoWeight)
+    colnames(infoBurdenNoWeight) = c("region", "anno", "max_maf", "sum", "Stat", "beta", "se.beta", "pvalue")
+    
+    infoBurdenNoWeight$anno = annoVec[infoBurdenNoWeight$anno + 1]
+    infoBurdenNoWeight$max_maf = MaxMAFVec[infoBurdenNoWeight$max_maf + 1]
     
     ## add annotation information
     obj.mainRegionInCPP$AnnoVec = c(regionInfo$Annos, annoVec)
@@ -400,6 +408,21 @@ GRAB.Region = function(objNull,
       }
     }
     
+    ## Cauchy Combination
+    pval.Cauchy.SKATO = CCT(pval.Region$pval.SKATO)
+    pval.Cauchy.SKAT = CCT(pval.Region$pval.SKAT)
+    pval.Cauchy.Burden = CCT(pval.Region$pval.Burden)
+    
+    pval.Region = rbind.data.frame(pval.Region,
+                                   data.frame(Region = regionID,
+                                              nMarkers = NA,
+                                              nMarkersURV = NA,
+                                              Anno.Type = "Cauchy",
+                                              MaxMAF.Cutoff = NA,
+                                              pval.SKATO = pval.Cauchy.SKATO, 
+                                              pval.SKAT = pval.Cauchy.SKAT,
+                                              pval.Burden = pval.Cauchy.Burden))
+    
     t22 = Sys.time()
     diffTime2 = diffTime2 + (t22-t21)
     
@@ -409,10 +432,12 @@ GRAB.Region = function(objNull,
     
     writeOutputFile(Output = list(pval.Region, 
                                   RV.Markers0, 
-                                  Other.Markers), 
+                                  Other.Markers,
+                                  infoBurdenNoWeight), 
                     OutputFile = list(OutputFile, 
                                       paste0(OutputFile, ".markerInfo"), 
-                                      paste0(OutputFile, ".otherMarkerInfo")), 
+                                      paste0(OutputFile, ".otherMarkerInfo"),
+                                      paste0(OutputFile, ".infoBurdenNoWeight")), 
                     OutputFileIndex = OutputFileIndex,
                     AnalysisType = "Region",
                     nEachChunk = 1,
