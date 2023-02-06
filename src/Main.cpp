@@ -419,7 +419,21 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   // updated on 2022-06-24 (save sum of genotype to conduct burden test and adjust p-values using SPA)
   unsigned int n_max_maf = g_region_max_maf_vec.size();
   arma::mat GMatBurden(n, nAnno * n_max_maf, arma::fill::zeros);
-  arma::mat pvalBurden(nAnno * n_max_maf, 2, arma::fill::zeros);
+  arma::mat pvalBurden(nAnno * n_max_maf, 2, arma::fill::zeros);   // (only for GMatBurden) column 1: normal distribution; column 2: SPA.
+  
+  // updated on 2023-02-06
+  arma::mat GMatBurdenNoWeight(n, nAnno * n_max_maf, arma::fill::zeros);       // no weights
+    // column 1: Anno; 
+    // column 2: MAF;
+    // column 3: Sum; 
+    // column 4: Beta; 
+    // column 5: se.beta; 
+    // column 6: normal distribution p-value; 
+    // column 7: SPA p-value
+  arma::mat infoBurdenNoWeight(nAnno * n_max_maf, 7, arma::fill::zeros);   
+  
+  
+  
   boost::math::beta_distribution<> beta_dist(g_region_weight_beta[0], g_region_weight_beta[1]);
   
   // cycle for q markers
@@ -513,14 +527,13 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
                 {
                   GMatBurden(j, iAnno*n_max_maf+i_max_maf) += w0 * GVec.at(j);    // anno0,maf0; anno0,maf1; anno0,maf2; anno1,maf0; anno1,maf1, anno1,maf2; ...
                   // GMatBurden(j, iAnno) += w0 * weight * GVec.at(j); check it later (2022-06-24)
+                  GMatBurdenNoWeight(j, iAnno*n_max_maf+i_max_maf) += GVec.at(j);
                 }
               }
             }
           }
         }
       }
-      
-      
     }else{  // Ultra-Rare Variants
       
       indicatorVec.at(i) = 2;
@@ -534,7 +547,13 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
           for(unsigned iAnno = 0; iAnno < nAnno; iAnno++)
           {
             if(t_annoMat(i, iAnno) == 1)  // 1 or 0
+            {
               GMatURV(j, iAnno) = std::max(GMatURV(j, iAnno), weight * GVec.at(j)); 
+              for(unsigned int i_max_maf = 0; i_max_maf < n_max_maf; i_max_maf++)
+              {
+                GMatBurdenNoWeight(j, iAnno*n_max_maf+i_max_maf) += GVec.at(j);
+              }
+            }
           }
         }
       }
@@ -576,6 +595,15 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
       // std::cout << "i_max_maf:\t" << i_max_maf << std::endl;
       // std::cout << "pval0:\t" << pval0 << std::endl;
       // std::cout << "pval1:\t" << pval1 << std::endl;
+      
+      Unified_getRegionPVec(t_method, GMatBurdenNoWeight.col(i_pos), Stat, Beta, seBeta, pval0, pval1, P1Vec, P2Vec);
+      infoBurdenNoWeight.at(i_pos, 0) = iAnno;
+      infoBurdenNoWeight.at(i_pos, 1) = i_max_maf;
+      infoBurdenNoWeight.at(i_pos, 2) = sum(GMatBurdenNoWeight.col(i_pos));
+      infoBurdenNoWeight.at(i_pos, 3) = Stat;
+      infoBurdenNoWeight.at(i_pos, 4) = Beta;
+      infoBurdenNoWeight.at(i_pos, 5) = seBeta;
+      infoBurdenNoWeight.at(i_pos, 6) = pval1;
     }
     
     indicatorVec.at(q+iAnno) = 3;
@@ -717,7 +745,8 @@ Rcpp::List mainRegionInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
                                           Rcpp::Named("pval1Vec") = pval1Vec,
                                           Rcpp::Named("indicatorVec") = indicatorVec,
                                           Rcpp::Named("VarMat") = VarMat,
-                                          Rcpp::Named("pvalBurden") = pvalBurden);
+                                          Rcpp::Named("pvalBurden") = pvalBurden,
+                                          Rcpp::Named("infoBurdenNoWeight") = infoBurdenNoWeight);
   
   return OutList;
 }
