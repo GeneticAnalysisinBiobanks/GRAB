@@ -81,7 +81,7 @@ void PlinkClass::readBimFile()
 
 void PlinkClass::readFamFile()
 {
-  std::cout << "Reading fam file...." << std::endl;
+  std::cout << "Reading fam file:\t" << m_famFile << std::endl;
   std::ifstream fam(m_famFile);
   m_N0 = 0;
   std::string line;
@@ -89,9 +89,17 @@ void PlinkClass::readFamFile()
     m_N0 ++;
     std::vector<std::string> line_elements;
     boost::split(line_elements, line, boost::is_any_of("\t "));
+    
+    std::cout << "line:\t" << line << std::endl;
+    std::cout << "line_elements[0]:\t" << line_elements[0] << std::endl;
+    std::cout << "line_elements[1]:\t" << line_elements[1] << std::endl;
+    
     m_SampleInPlink.push_back(line_elements[1]);  // put IID to m_SampleInPlink
   }
   m_N = m_N0;
+  
+  std::cout << "m_N:\t" << m_N << std::endl;
+  
   m_numBytesofEachMarker0 = (m_N0 + 3) / 4;
   m_OneMarkerG4.reserve(m_numBytesofEachMarker0);  
   m_OneMarkerG4.resize(m_numBytesofEachMarker0);
