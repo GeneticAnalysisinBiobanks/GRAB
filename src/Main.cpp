@@ -25,6 +25,7 @@
 #include "UTIL.hpp"
 #include "SPACox.hpp"
 #include "DenseGRM.hpp"
+#include "SPAmix.hpp"
 
 // global objects for different genotype formats
 

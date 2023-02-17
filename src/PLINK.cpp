@@ -117,6 +117,11 @@ void PlinkClass::setPosSampleInPlink(std::vector<std::string> t_SampleInModel)
     
   // Rcpp::match is much faster than loop
   Rcpp::IntegerVector posSampleInPlink = Rcpp::match(SampleInModel, SampleInPlink);
+  
+  std::cout << "posSampleInPlink:\t" << posSampleInPlink << std::endl;
+  std::cout << "SampleInModel:\t" << SampleInModel << std::endl;
+  std::cout << "SampleInPlink:\t" << SampleInPlink << std::endl;
+  
   m_posSampleInPlink.resize(m_N);
   for(uint32_t i = 0; i < m_N; i++){
     if(Rcpp::IntegerVector::is_na(posSampleInPlink.at(i)))
