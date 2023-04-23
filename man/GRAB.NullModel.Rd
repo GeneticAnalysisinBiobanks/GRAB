@@ -116,8 +116,8 @@ If dense GRM is used to adjust for sample relatedness, \code{GenoFile} should be
 \examples{
 # For POLMM method (ordinal categorical data analysis while adjusting for sample relatedness)
 # Step 1(a): fit a null model using a dense GRM
-PhenoData = read.table(system.file("extdata", "example.pheno", package = "GRAB"), header = T)
-GenoFile = system.file("extdata", "example.bed", package = "GRAB")
+PhenoData = read.table(system.file("extdata", "simuPheno.txt", package = "GRAB"), header = T)
+GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
 obj.POLMM = GRAB.NullModel(factor(Ordinal) ~ Cova1 + Cova2,
                            data = PhenoData, subjData = PhenoData$IID, method = "POLMM", traitType = "ordinal",
                            GenoFile = GenoFile,

@@ -1,14 +1,13 @@
 
-#ifndef SPAMIX_HPP
-#define SPAMIX_HPP
+#ifndef SPAGRM_HPP
+#define SPAGRM_HPP
 
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
-#include "UTIL.hpp"
 
-namespace SPAmix{
+namespace SPAGRM{
 
-class SPAmixClass
+class SPAGRMClass
 {
 private:
   
@@ -16,31 +15,19 @@ private:
   
   arma::vec m_resid;  // residuals
   arma::vec m_resid2; // residuals^2
-  // arma::mat m_XinvXX, m_tX;
-  arma::mat m_onePlusPCs;
+  arma::mat m_XinvXX, m_tX;
   int m_N;             // sample size
   double m_SPA_Cutoff;
   arma::mat m_PCs;     // SNP-derived principal components (PCs)
-  arma::vec m_sqrt_XTX_inv_diag; // derived from PCs, check SPAmix.cpp for more details
-  
-  arma::vec m_diffTime1, m_diffTime2;
-  arma::uvec m_posOutlier;
-  arma::uvec m_posNonOutlier;
   
 public:
   
-  SPAmixClass(arma::vec t_resid,
+  SPAGRMClass(arma::vec t_resid,
+              arma::mat t_XinvXX,
+              arma::mat t_tX,
               arma::mat t_PCs,
               int t_N,
-              double t_SPA_Cutoff,
-              arma::uvec t_posOutlier,
-              arma::uvec t_posNonOutlier);
-  
-  arma::vec getTestTime1(){return m_diffTime1;}
-  arma::vec getTestTime2(){return m_diffTime2;}
-  
-  // a major update on 2023-04-23 to improve SPA process
-  
+              double t_SPA_Cutoff);
   
   // The MGF of G (genotype)
   arma::vec M_G0(arma::vec t, arma::vec MAF){
@@ -96,31 +83,6 @@ public:
     return out;
   }
   
-  
-  // partial normal distribution approximation
-  
-  arma::vec H1_adj_H2(double t, arma::vec R, double s, const arma::vec MAFVec)
-  {
-    arma::vec H1_adj_H2_vec(2);
-    arma::vec t_R = t * R;
-    arma::vec exp_tR = arma::exp(t_R);
-    arma::vec MAF_exp_tR = MAFVec % exp_tR;
-    arma::vec M_G0_vec = pow((1 - MAFVec + MAF_exp_tR), 2);;
-    arma::vec M_G1_vec = 2 * (MAF_exp_tR) % (1 - MAFVec + MAF_exp_tR);
-    arma::vec M_G2_vec = 2 * pow(MAF_exp_tR, 2) + 2 * (MAF_exp_tR) % (1 - MAFVec + MAF_exp_tR);
-    arma::vec K_G1_vec = M_G1_vec / M_G0_vec;
-    arma::vec K_G2_vec = (M_G0_vec % M_G2_vec - pow(M_G1_vec, 2)) / pow(M_G0_vec, 2);
-    double H1_adj = sum(R % K_G1_vec) - s;
-    double H2 = sum(pow(R, 2) % K_G2_vec);
-    // double H1_adj = sum(R % K_G1(t * R, MAFVec)) - s;
-    // double H2 = sum(pow(R, 2) % K_G2(t * R, MAFVec));
-    H1_adj_H2_vec.at(0) = H1_adj;
-    H1_adj_H2_vec.at(1) = H2;
-    return H1_adj_H2_vec;
-  }
-  
-  // END of the major update on 2023-04-23 to improve SPA process
-  
   // The below code is from SPACox.hpp
   Rcpp::List fastgetroot_K1(double t_initX,
                             arma::vec R,
@@ -141,23 +103,9 @@ public:
       oldDiffX = diffX;
       oldK1 = K1;
       
-      // K1 = H1_adj(x, R, s, MAFVec);
-      // K2 = H2(x, R, MAFVec);
+      K1 = H1_adj(x, R, s, MAFVec);
+      K2 = H2(x, R, MAFVec);
       
-      // put the below objects as a global object
-      arma::vec R_outlier = R(m_posOutlier);
-      arma::vec MAF_outlier = MAFVec(m_posOutlier);
-      arma::vec R_nonOutlier = R(m_posNonOutlier);
-      arma::vec MAF_nonOutlier = MAFVec(m_posNonOutlier);
-      
-      double mean_nonOutlier = sum(R_nonOutlier % MAF_nonOutlier) * 2;
-      double var_nonOutlier = sum(pow(R_nonOutlier,2) % MAF_nonOutlier % (1-MAF_nonOutlier)) * 2;
-      
-      arma::vec H1_adj_H2_vec = H1_adj_H2(x, R_outlier, s, MAF_outlier);
-      
-      K1 = H1_adj_H2_vec.at(0) + mean_nonOutlier + var_nonOutlier * x;
-      K2 = H1_adj_H2_vec.at(1) + var_nonOutlier;
-            
       diffX = -1 * K1 / K2;
       
       if(!std::isfinite(K1)){
@@ -190,7 +138,7 @@ public:
     return yList;
   }
   
-  double GetProb_SPA_G(const arma::vec MAFVec, const arma::vec R, double s, bool lower_tail)
+  double GetProb_SPA_G(arma::vec MAFVec, arma::vec R, double s, bool lower_tail)
   {
     double initX = 0;
     
@@ -201,7 +149,7 @@ public:
     Rcpp::List rootList = fastgetroot_K1(initX, R, s, MAFVec);
     double zeta = rootList["root"];
     
-    // std::cout << "zeta:\t" << zeta << std::endl;
+    std::cout << "zeta:\t" << zeta << std::endl;
     
     double k1 = H_org(zeta, R, MAFVec);
     double k2 = H2(zeta, R, MAFVec);
@@ -222,31 +170,24 @@ public:
     return vec;
   }
   
-  // NOTE about the udpate (2023-04-20): PCs (and some objects calculated based on PCs) are the same for all genetic variants
-  // arma::vec fit_lm(const arma::mat& PCs, const arma::vec& g, arma::vec& pvalues) 
-  arma::vec fit_lm(const arma::vec& g, arma::vec& pvalues) 
+  arma::vec fit_lm(const arma::mat& PCs, const arma::vec& g, arma::vec& pvalues) 
   {
-    // int n = PCs.n_rows;
-    int n = m_N;
-    int k = m_PCs.n_cols;
+    int n = PCs.n_rows;
+    int k = PCs.n_cols;
     
-    // NOTE (2023-04-20): the below part has been moved to SPAmix.cpp since they are shared for all genetic variants
-    // arma::mat X = arma::join_horiz(arma::ones(n), PCs);
-    // arma::mat X_t = X.t();
-    // arma::mat XTX = X_t * X;
-    // arma::mat XTX_inv = arma::inv(XTX);
-    // arma::vec XTX_inv_diag = XTX_inv.diag();
+    arma::mat X = arma::join_horiz(arma::ones(n), PCs);
+    arma::vec coef = arma::solve(X, g);
     
-    // arma::vec coef = arma::solve(X, g);  // can be improved: 2023-04-20
-    // arma::vec fittedValues = X * coef;
-    
-    arma::vec coef = arma::solve(m_onePlusPCs, g);  // can be improved: 2023-04-20: checked by BWJ, SVD idea and QR idea does not work
-    arma::vec fittedValues = m_onePlusPCs * coef;
+    arma::vec fittedValues = X * coef;
     
     double s2 = sum(square(g - fittedValues)) / (n - k - 1);
     
-    // arma::vec se = arma::sqrt(m_XTX_inv_diag * s2);
-    arma::vec se = m_sqrt_XTX_inv_diag * sqrt(s2);
+    arma::mat X_t = X.t();
+    arma::mat XTX = X_t * X;
+    arma::mat XTX_inv = arma::inv(XTX);
+    arma::vec XTX_inv_diag = XTX_inv.diag();
+    
+    arma::vec se = arma::sqrt(XTX_inv_diag * s2);
     arma::vec t = coef / se;
     
     for(int i = 0; i < k; i++){
@@ -297,46 +238,42 @@ public:
     return MAFest;
   }
   
-  arma::vec getMAFest(arma::vec g,
-                      double t_altFreq,
+  arma::vec getMAFest(arma::mat PCs,
+                      arma::vec g,
                       double MAC_cutoff = 20,
                       double PCs_pvalue_cutoff = 0.05,
                       double MAF_est_negative_ratio_cutoff = 0.1) 
   {
     int N = g.n_elem;
     arma::vec g0(N, arma::fill::zeros);  // 0 if g < 0.5, 1 if g > 0.5.
-    // arma::vec MAF_all = arma::vec(N, arma::fill::value(arma::mean(g)/2.0));  // check NA later
-    // double MAC = arma::accu(g);
-    arma::vec MAF_all = arma::vec(N, arma::fill::value(t_altFreq));  // check NA later
-    double MAC = t_altFreq * 2 * N; // what if the alternative allele is not minor allele? 2023-04-20
-    
-    int PC_number = m_PCs.n_cols;
+    arma::vec MAF_all = arma::vec(N, arma::fill::value(arma::mean(g)/2.0));  // check NA later
+    double MAC = arma::accu(g);
+    int PC_number = PCs.n_cols;
     double MAF0 = 0;
     
     arma::vec pvalues(PC_number);
     arma::vec MAF_est, topPCs_pvalueVec;
     
-    // std::cout << "MAC:\t" << MAC << std::endl;
-    // std::cout << "MAC_cutoff:\t" << MAC_cutoff << std::endl;
+    std::cout << "MAC:\t" << MAC << std::endl;
+    std::cout << "MAC_cutoff:\t" << MAC_cutoff << std::endl;
     
     if(MAC <= MAC_cutoff){
       MAF_est = MAF_all;
     }else{
-      // arma::vec fit = fit_lm(m_PCs, g, pvalues);
-      arma::vec fit = fit_lm(g, pvalues);  // PCs (and some objects calculated based on PCs) are the same for all genetic variants
+      arma::vec fit = fit_lm(PCs, g, pvalues);
       
       arma::uvec posZero = arma::find(fit < 0);
       arma::uvec posOne = arma::find(fit > 1);
       int nError = posZero.n_elem + posOne.n_elem; 
       double propError = nError / N;
       
-      // std::cout << "propError:\t" << propError << std::endl;
-      // std::cout << "MAF_est_negative_ratio_cutoff:\t" << MAF_est_negative_ratio_cutoff << std::endl;
+      std::cout << "propError:\t" << propError << std::endl;
+      std::cout << "MAF_est_negative_ratio_cutoff:\t" << MAF_est_negative_ratio_cutoff << std::endl;
       
       if(propError < MAF_est_negative_ratio_cutoff){
         fit.elem(posZero).fill(MAF0);
         fit.elem(posOne).fill(1-MAF0);
-        MAF_est = fit / 2;  // updated on 2023-04-23
+        MAF_est = fit;
       }else{
         arma::uvec posSigPCs = arma::find(pvalues < PCs_pvalue_cutoff);
         
@@ -345,7 +282,7 @@ public:
         if(posSigPCs.n_elem == 0){
           MAF_est = MAF_all;
         }else{
-          arma::mat sigPCs = m_PCs.cols(posSigPCs);
+          arma::mat sigPCs = PCs.cols(posSigPCs);
           arma::uvec posg12 = arma::find(g > 0.5);
           g0.elem(posg12).fill(1);
           
@@ -364,60 +301,21 @@ public:
                        double t_altFreq,
                        double& t_zScore)
   {
-    // std::cout << "part1" << std::endl;
-    
-    // estimate allele frequency based on PC information and raw genotpe
-    // arma::vec AFVec = getMAFest(m_PCs, t_GVec, t_altFreq);
-    arma::vec time1 = getTime();
-    
-    arma::vec AFVec = getMAFest(t_GVec, t_altFreq);  // PCs are global variables and can be loaded when necessary
-    
-    arma::vec time2 = getTime();
-    arma::vec diffTime = time2 - time1;
-    // std::cout << "part2" << std::endl;
-    
-    std::cout << "(MAF) diffTime:\t" << diffTime << std::endl;
-    
-    m_diffTime2 += diffTime;
+    arma::vec AFVec = getMAFest(m_PCs, t_GVec);
     
     arma::vec GVarVec = 2 * AFVec % (1 - AFVec);
     double S = sum(t_GVec % m_resid);
     double VarS = sum(m_resid2 % GVarVec);
+    double z = S / sqrt(VarS);
     
-    // updated on 2023-04-23
-    double S_mean = 2 * sum(m_resid % AFVec); // NOTE: I think S_mean is somewhat weird and should be checked later (2023-04-22)
-    t_zScore = (S-S_mean) / sqrt(VarS);
-    
-    // std::cout << "part3" << std::endl;
-    // std::cout << "S:\t" << S << std::endl;
-    // std::cout << "VarS:\t" << VarS << std::endl;
-    // std::cout << "t_zScore:\t" << t_zScore << std::endl;
-    
-    if(std::abs(t_zScore) < m_SPA_Cutoff){
-      double pval = arma::normcdf(-1*std::abs(t_zScore))*2;
+    if(std::abs(z) < m_SPA_Cutoff){
+      double pval = arma::normcdf(-1*std::abs(z))*2;
       return pval;
     }
     
-    // std::cout << "part4" << std::endl;
-    
-    // double pval1 = GetProb_SPA_G(AFVec, m_resid, std::abs(t_zScore), false);
-    // double pval2 = GetProb_SPA_G(AFVec, m_resid, -1*std::abs(t_zScore), true);
-
-    time1 = getTime();
-    
-    double pval1 = GetProb_SPA_G(AFVec, m_resid, std::abs(S-S_mean)+S_mean, false);
-    double pval2 = GetProb_SPA_G(AFVec, m_resid, -1*std::abs(S-S_mean)+S_mean, true);
-    
-    time2 = getTime();
-    diffTime = time2 - time1;
-    
-    std::cout << "(SPA_G) diffTime:\t" << diffTime << std::endl;
-    
-    m_diffTime1 += diffTime;
-    
+    double pval1 = GetProb_SPA_G(AFVec, m_resid, std::abs(z), false);
+    double pval2 = GetProb_SPA_G(AFVec, m_resid, -1*std::abs(z), true);
     double pval = pval1 + pval2;
-    
-    // std::cout << "part5" << std::endl;
     
     return pval;
   }

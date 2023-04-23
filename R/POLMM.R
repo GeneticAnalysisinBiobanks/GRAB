@@ -113,8 +113,11 @@ checkControl.Region.POLMM = function(control)
 
 
 # check the control list in null model fitting for POLMM method
-checkControl.NullModel.POLMM = function(control, optionGRM)
+checkControl.NullModel.POLMM = function(control, traitType, optionGRM)
 {
+  if(traitType != "ordinal")
+    stop("For method of 'POLMM', only traitType of 'ordinal' is supported.")
+  
   # default setting of control for POLMM method
   default.control = list(memoryChunk = 2,
                          seed = 12345678,
