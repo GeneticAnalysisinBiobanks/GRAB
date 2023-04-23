@@ -27,6 +27,9 @@ private:
   arma::uvec m_posOutlier;
   arma::uvec m_posNonOutlier;
   
+  arma::vec m_R_outlier;
+  arma::vec m_R_nonOutlier;
+  
 public:
   
   SPAmixClass(arma::vec t_resid,
@@ -96,8 +99,25 @@ public:
     return out;
   }
   
-  
   // partial normal distribution approximation
+  
+  arma::vec Horg_H2(double t, arma::vec R, const arma::vec MAFVec)
+  {
+    arma::vec Horg_H2_vec(2);
+    arma::vec t_R = t * R;
+    arma::vec exp_tR = arma::exp(t_R);
+    arma::vec MAF_exp_tR = MAFVec % exp_tR;
+    arma::vec M_G0_vec = pow((1 - MAFVec + MAF_exp_tR), 2);;
+    arma::vec M_G1_vec = 2 * (MAF_exp_tR) % (1 - MAFVec + MAF_exp_tR);
+    arma::vec M_G2_vec = 2 * pow(MAF_exp_tR, 2) + 2 * (MAF_exp_tR) % (1 - MAFVec + MAF_exp_tR);
+    arma::vec K_G0_vec = arma::log(M_G0_vec);
+    arma::vec K_G2_vec = (M_G0_vec % M_G2_vec - pow(M_G1_vec, 2)) / pow(M_G0_vec, 2);
+    double Horg = sum(K_G0_vec);
+    double H2 = sum(pow(R, 2) % K_G2_vec);
+    Horg_H2_vec.at(0) = Horg;
+    Horg_H2_vec.at(1) = H2;
+    return Horg_H2_vec;
+  }
   
   arma::vec H1_adj_H2(double t, arma::vec R, double s, const arma::vec MAFVec)
   {
@@ -123,9 +143,10 @@ public:
   
   // The below code is from SPACox.hpp
   Rcpp::List fastgetroot_K1(double t_initX,
-                            arma::vec R,
                             const double& s,
-                            const arma::vec& MAFVec)
+                            const arma::vec MAF_outlier,
+                            double mean_nonOutlier,
+                            double var_nonOutlier)
   {
     double x = t_initX, oldX;
     double K1 = 0, K2 = 0, oldK1;
@@ -144,16 +165,7 @@ public:
       // K1 = H1_adj(x, R, s, MAFVec);
       // K2 = H2(x, R, MAFVec);
       
-      // put the below objects as a global object
-      arma::vec R_outlier = R(m_posOutlier);
-      arma::vec MAF_outlier = MAFVec(m_posOutlier);
-      arma::vec R_nonOutlier = R(m_posNonOutlier);
-      arma::vec MAF_nonOutlier = MAFVec(m_posNonOutlier);
-      
-      double mean_nonOutlier = sum(R_nonOutlier % MAF_nonOutlier) * 2;
-      double var_nonOutlier = sum(pow(R_nonOutlier,2) % MAF_nonOutlier % (1-MAF_nonOutlier)) * 2;
-      
-      arma::vec H1_adj_H2_vec = H1_adj_H2(x, R_outlier, s, MAF_outlier);
+      arma::vec H1_adj_H2_vec = H1_adj_H2(x, m_R_outlier, s, MAF_outlier);
       
       K1 = H1_adj_H2_vec.at(0) + mean_nonOutlier + var_nonOutlier * x;
       K2 = H1_adj_H2_vec.at(1) + var_nonOutlier;
@@ -190,7 +202,9 @@ public:
     return yList;
   }
   
-  double GetProb_SPA_G(const arma::vec MAFVec, const arma::vec R, double s, bool lower_tail)
+  double GetProb_SPA_G(const arma::vec MAF_outlier, const arma::vec R, double s, bool lower_tail,
+                       double mean_nonOutlier,
+                       double var_nonOutlier)
   {
     double initX = 0;
     
@@ -198,13 +212,16 @@ public:
     // if(q2 > 0) initX = 3;
     // if(q2 <= 0) initX = -3;
     
-    Rcpp::List rootList = fastgetroot_K1(initX, R, s, MAFVec);
+    Rcpp::List rootList = fastgetroot_K1(initX, s, MAF_outlier, mean_nonOutlier, var_nonOutlier);
     double zeta = rootList["root"];
     
     // std::cout << "zeta:\t" << zeta << std::endl;
     
-    double k1 = H_org(zeta, R, MAFVec);
-    double k2 = H2(zeta, R, MAFVec);
+    // double k1 = H_org(zeta, R, MAFVec);
+    // double k2 = H2(zeta, R, MAFVec);
+    arma::vec k12 = Horg_H2(zeta, m_R_outlier, MAF_outlier);
+    double k1 = k12.at(0) + mean_nonOutlier * zeta + 0.5 * var_nonOutlier * pow(zeta, 2);
+    double k2 = k12.at(1) + var_nonOutlier;
     
     double temp1 = zeta * s - k1;
     
@@ -349,9 +366,13 @@ public:
           arma::uvec posg12 = arma::find(g > 0.5);
           g0.elem(posg12).fill(1);
           
-          MAF_est = logistic_regression(sigPCs, g0);
-          // Fit.logistic = glm(cbind(round(g), 2-round(g))~selected.PCs, family = binomial)
-          // MAF.est = Fit.logistic$fitted.values
+          // updated on 2023-04-23: caution! should be checked later
+          double MAC_after = sum(g0);
+          if(MAC_after <= MAC_cutoff){
+            MAF_est = MAF_all;  // end of the update on 2023-04-23
+          }else{
+            MAF_est = logistic_regression(sigPCs, g0);
+          }
         }
       }
     }
@@ -376,7 +397,7 @@ public:
     arma::vec diffTime = time2 - time1;
     // std::cout << "part2" << std::endl;
     
-    std::cout << "(MAF) diffTime:\t" << diffTime << std::endl;
+    // std::cout << "(MAF) diffTime:\t" << diffTime << std::endl;
     
     m_diffTime2 += diffTime;
     
@@ -405,13 +426,24 @@ public:
 
     time1 = getTime();
     
-    double pval1 = GetProb_SPA_G(AFVec, m_resid, std::abs(S-S_mean)+S_mean, false);
-    double pval2 = GetProb_SPA_G(AFVec, m_resid, -1*std::abs(S-S_mean)+S_mean, true);
+    // put the below objects as a global object
+    arma::vec MAF_outlier = AFVec(m_posOutlier);
+    arma::vec MAF_nonOutlier = AFVec(m_posNonOutlier);
+    
+    double mean_nonOutlier = sum(m_R_nonOutlier % MAF_nonOutlier) * 2;
+    double var_nonOutlier = sum(pow(m_R_nonOutlier,2) % MAF_nonOutlier % (1-MAF_nonOutlier)) * 2;
+    
+    double pval1 = GetProb_SPA_G(MAF_outlier, m_resid, std::abs(S-S_mean)+S_mean, false,
+                                 mean_nonOutlier,
+                                 var_nonOutlier);
+    double pval2 = GetProb_SPA_G(MAF_outlier, m_resid, -1*std::abs(S-S_mean)+S_mean, true,
+                                 mean_nonOutlier,
+                                 var_nonOutlier);
     
     time2 = getTime();
     diffTime = time2 - time1;
     
-    std::cout << "(SPA_G) diffTime:\t" << diffTime << std::endl;
+    // std::cout << "(SPA_G) diffTime:\t" << diffTime << std::endl;
     
     m_diffTime1 += diffTime;
     

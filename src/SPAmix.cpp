@@ -23,6 +23,9 @@ SPAmixClass::SPAmixClass(arma::vec t_resid,
   m_posOutlier = t_posOutlier;
   m_posNonOutlier = t_posNonOutlier;
   
+  m_R_outlier = m_resid(m_posOutlier);  // what if no residuals are outlier?? check later (2023-04-23)
+  m_R_nonOutlier = m_resid(m_posNonOutlier);  
+  
   arma::mat X = arma::join_horiz(arma::ones(t_N), t_PCs);
   arma::mat X_t = X.t();
   arma::mat XTX = X_t * X;
