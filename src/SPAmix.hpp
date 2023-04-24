@@ -347,7 +347,7 @@ public:
       arma::uvec posOne = arma::find(fit > 1);
       
       std::cout << "posZero:\t" << posZero.size() << std::endl;
-      std::cout << "posOne:\t" << posZero.size() << std::endl;
+      std::cout << "posOne:\t" << posOne.size() << std::endl;
       
       int nError = posZero.n_elem + posOne.n_elem; 
       double propError = nError / N;
