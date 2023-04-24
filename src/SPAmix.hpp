@@ -350,7 +350,7 @@ public:
       // std::cout << "posOne:\t" << posOne.size() << std::endl;
       
       int nError = posZero.n_elem + posOne.n_elem; 
-      double propError = nError / N;
+      double propError = (double)nError / N;
       
       std::cout << "propError:\t" << propError << std::endl;
       std::cout << "MAF_est_negative_ratio_cutoff:\t" << MAF_est_negative_ratio_cutoff << std::endl;
@@ -362,7 +362,7 @@ public:
       }else{
         arma::uvec posSigPCs = arma::find(pvalues < PCs_pvalue_cutoff);
         
-        std::cout << "posSigPCs:\t" << posSigPCs << std::endl;
+        std::cout << "posSigPCs.n_elem:\t" << posSigPCs.n_elem << std::endl;
         
         if(posSigPCs.n_elem == 0){
           MAF_est = MAF_all;
