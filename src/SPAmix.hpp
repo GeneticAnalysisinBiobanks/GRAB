@@ -341,9 +341,14 @@ public:
     }else{
       // arma::vec fit = fit_lm(m_PCs, g, pvalues);
       arma::vec fit = fit_lm(g, pvalues);  // PCs (and some objects calculated based on PCs) are the same for all genetic variants
+      fit = fit / 2;
       
       arma::uvec posZero = arma::find(fit < 0);
       arma::uvec posOne = arma::find(fit > 1);
+      
+      std::cout << "posZero:\t" << posZero.size() << std::endl;
+      std::cout << "posOne:\t" << posZero.size() << std::endl;
+      
       int nError = posZero.n_elem + posOne.n_elem; 
       double propError = nError / N;
       
@@ -353,7 +358,7 @@ public:
       if(propError < MAF_est_negative_ratio_cutoff){
         fit.elem(posZero).fill(MAF0);
         fit.elem(posOne).fill(1-MAF0);
-        MAF_est = fit / 2;  // updated on 2023-04-23
+        MAF_est = fit;  // updated on 2023-04-23
       }else{
         arma::uvec posSigPCs = arma::find(pvalues < PCs_pvalue_cutoff);
         
