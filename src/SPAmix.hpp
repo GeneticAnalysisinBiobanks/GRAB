@@ -352,8 +352,8 @@ public:
       int nError = posZero.n_elem + posOne.n_elem; 
       double propError = (double)nError / N;
       
-      std::cout << "propError:\t" << propError << std::endl;
-      std::cout << "MAF_est_negative_ratio_cutoff:\t" << MAF_est_negative_ratio_cutoff << std::endl;
+      // std::cout << "propError:\t" << propError << std::endl;
+      // std::cout << "MAF_est_negative_ratio_cutoff:\t" << MAF_est_negative_ratio_cutoff << std::endl;
       
       if(propError < MAF_est_negative_ratio_cutoff){
         fit.elem(posZero).fill(MAF0);
@@ -361,9 +361,7 @@ public:
         MAF_est = fit;  // updated on 2023-04-23
       }else{
         arma::uvec posSigPCs = arma::find(pvalues < PCs_pvalue_cutoff);
-        
-        std::cout << "posSigPCs.n_elem:\t" << posSigPCs.n_elem << std::endl;
-        
+
         if(posSigPCs.n_elem == 0){
           MAF_est = MAF_all;
         }else{
@@ -377,10 +375,6 @@ public:
             MAF_est = MAF_all;  // end of the update on 2023-04-23
           }else{
             MAF_est = logistic_regression(sigPCs, g0);
-            
-            std::cout << "sigPCs.n_cols:\t" << sigPCs.n_cols << std::endl;
-            std::cout << "MAF_est:\t" << MAF_est.at(0) << "\t" << MAF_est.at(1) << "\t"<< MAF_est.at(2) << std::endl;
-            std::cout << "sum(MAF_est):\t" << sum(MAF_est) << std::endl;
           }
         }
       }
