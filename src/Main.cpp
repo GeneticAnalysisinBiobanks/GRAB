@@ -239,7 +239,7 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
                                           indexForNonZero);
     int n = GVec.size();
     
-    std::cout << "marker:\t" << marker << std::endl;
+    // std::cout << "marker:\t" << marker << std::endl;
     // std::cout << "test1.1" << std::endl;
     // std::cout << "GVec.size():\t" << n << std::endl;
     // std::cout << "g_ifOutGroup:\t" << g_ifOutGroup << std::endl;
