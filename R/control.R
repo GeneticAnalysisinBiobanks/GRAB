@@ -160,23 +160,9 @@ checkControl.NullModel = function(control, method, traitType, optionGRM)
     if(class(control) != "list")
       stop("If specified, the argument of 'control' should be an R 'list'.")
   
-  textToParse = paste0("control = checkControl.NullModel.", method, "(control, optionGRM)")
+  # if(method == "POLMM"){control = checkControl.NullModel.POLMM(control, traitType, optionGRM)}
+  textToParse = paste0("control = checkControl.NullModel.", method, "(control, traitType, optionGRM)")
   eval(parse(text = textToParse))
-  
-  # SPACox method
-  # if(method == "SPACox"){
-  #   if(traitType != "time-to-event")
-  #     stop("For method of 'SPACox', only traitType of 'time-to-event' is supported.")
-  #   control = checkControl.NullModel.SPACox(control)
-  # }
-  
-  # POLMM method
-  # if(method == "POLMM"){
-  #   if(traitType != "ordinal")
-  #     stop("For method of 'POLMM', only traitType of 'ordinal' is supported.")
-  #   # Check 'POLMM.R'
-  #   control = checkControl.NullModel.POLMM(control, optionGRM)
-  # }
   
   # to be updated for other methods
   #

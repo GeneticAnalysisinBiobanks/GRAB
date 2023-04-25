@@ -27,8 +27,11 @@ GRAB.SPACox = function(){
 }
 
 # check the control list in null model fitting for SPACox method
-checkControl.NullModel.SPACox = function(control)
+checkControl.NullModel.SPACox = function(control, traitType, ...)
 {
+  if(traitType != "time-to-event")
+    stop("For method of 'SPACox', only traitType of 'time-to-event' is supported.")
+  
   default.control = list(range = c(-100, 100),
                          length.out = 10000)
   

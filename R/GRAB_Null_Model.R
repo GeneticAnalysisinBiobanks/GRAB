@@ -82,8 +82,8 @@
 #' @examples
 #' # For POLMM method (ordinal categorical data analysis while adjusting for sample relatedness)
 #' # Step 1(a): fit a null model using a dense GRM
-#' PhenoData = read.table(system.file("extdata", "example.pheno", package = "GRAB"), header = T)
-#' GenoFile = system.file("extdata", "example.bed", package = "GRAB")
+#' PhenoData = read.table(system.file("extdata", "simuPheno.txt", package = "GRAB"), header = T)
+#' GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' obj.POLMM = GRAB.NullModel(factor(Ordinal) ~ Cova1 + Cova2,
 #'                            data = PhenoData, subjData = PhenoData$IID, method = "POLMM", traitType = "ordinal",
 #'                            GenoFile = GenoFile,
@@ -161,29 +161,25 @@ GRAB.NullModel = function(formula,
   
   #### END: formula.R
   
+  ## Only the below methods requires 'GenoFile' related information to adjust for sample relatedness
   optionGRM = NULL
   if(method %in% c("POLMM", "SAIGE", "GATE")){
     objGRM = setGRM(GenoFile, GenoFileIndex, SparseGRMFile, subjData)  # Check 'SparseGRM.R'
     optionGRM = objGRM$optionGRM
     genoType = objGRM$genoType      # "PLINK" or "BGEN"
     markerInfo = objGRM$markerInfo  # Columns: "CHROM", "POS", "ID", "REF", "ALT", "genoIndex"
+    
+    # Check 'control.R'
+    control = checkControl.NullModel(control, method, traitType, optionGRM)
+    textToParse = paste0("objNull = fitNullModel.", method, "(response, designMat, subjData, control, optionGRM, genoType, markerInfo)")
+  }else{
+    # Check 'control.R'
+    control = checkControl.NullModel(control, method, traitType)
+    textToParse = paste0("objNull = fitNullModel.", method, "(response, designMat, subjData, control)")
   }
     
-  # Check 'control.R'
-  control = checkControl.NullModel(control, method, traitType, optionGRM)
-  
-  textToParse = paste0("objNull = fitNullModel.", method, "(response, designMat, subjData, control, optionGRM, genoType, markerInfo)")
+  # e.g. if(method == "POLMM"){objNull = fitNullModel.POLMM(...)}  # fitNullModel.POLMM() function is in POLMM.R
   eval(parse(text = textToParse))
-  
-  # if(method == "POLMM"){
-  #   # Check 'POLMM.R'
-  #   objNull = fitNullModel.POLMM(response, designMat, subjData, control, optionGRM, genoType, markerInfo)
-  # }
-  
-  # if(method == "SPACox"){
-  #   # Check 'SPACox.R'
-  #   objNull = fitNullModel.SPACox(response, designMat, subjData, control, ...)
-  # }
   
   objNull$subjData = subjData
   

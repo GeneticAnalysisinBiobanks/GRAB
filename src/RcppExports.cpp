@@ -135,6 +135,15 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// printTimeDiffSPAmixInCPP
+void printTimeDiffSPAmixInCPP();
+RcppExport SEXP _GRAB_printTimeDiffSPAmixInCPP() {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    printTimeDiffSPAmixInCPP();
+    return R_NilValue;
+END_RCPP
+}
 // getGenoInCPP
 arma::mat getGenoInCPP(std::string t_genoType, Rcpp::DataFrame t_markerInfo, int n, std::string t_imputeMethod);
 RcppExport SEXP _GRAB_getGenoInCPP(SEXP t_genoTypeSEXP, SEXP t_markerInfoSEXP, SEXP nSEXP, SEXP t_imputeMethodSEXP) {
@@ -260,19 +269,33 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// setSPACoxobjInCPP
-void setSPACoxobjInCPP(arma::mat t_cumul, arma::vec t_mresid, arma::mat t_XinvXX, arma::mat t_tX, int t_N, double t_pVal_covaAdj_Cutoff, double t_SPA_Cutoff);
-RcppExport SEXP _GRAB_setSPACoxobjInCPP(SEXP t_cumulSEXP, SEXP t_mresidSEXP, SEXP t_XinvXXSEXP, SEXP t_tXSEXP, SEXP t_NSEXP, SEXP t_pVal_covaAdj_CutoffSEXP, SEXP t_SPA_CutoffSEXP) {
+// setSPAGRMobjInCPP
+void setSPAGRMobjInCPP(arma::vec t_resid, arma::mat t_XinvXX, arma::mat t_tX, arma::mat t_PCs, int t_N, double t_SPA_Cutoff);
+RcppExport SEXP _GRAB_setSPAGRMobjInCPP(SEXP t_residSEXP, SEXP t_XinvXXSEXP, SEXP t_tXSEXP, SEXP t_PCsSEXP, SEXP t_NSEXP, SEXP t_SPA_CutoffSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::mat >::type t_cumul(t_cumulSEXP);
-    Rcpp::traits::input_parameter< arma::vec >::type t_mresid(t_mresidSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_resid(t_residSEXP);
     Rcpp::traits::input_parameter< arma::mat >::type t_XinvXX(t_XinvXXSEXP);
     Rcpp::traits::input_parameter< arma::mat >::type t_tX(t_tXSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type t_PCs(t_PCsSEXP);
     Rcpp::traits::input_parameter< int >::type t_N(t_NSEXP);
-    Rcpp::traits::input_parameter< double >::type t_pVal_covaAdj_Cutoff(t_pVal_covaAdj_CutoffSEXP);
     Rcpp::traits::input_parameter< double >::type t_SPA_Cutoff(t_SPA_CutoffSEXP);
-    setSPACoxobjInCPP(t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_covaAdj_Cutoff, t_SPA_Cutoff);
+    setSPAGRMobjInCPP(t_resid, t_XinvXX, t_tX, t_PCs, t_N, t_SPA_Cutoff);
+    return R_NilValue;
+END_RCPP
+}
+// setSPAmixobjInCPP
+void setSPAmixobjInCPP(arma::vec t_resid, arma::mat t_PCs, int t_N, double t_SPA_Cutoff, arma::uvec t_posOutlier, arma::uvec t_posNonOutlier);
+RcppExport SEXP _GRAB_setSPAmixobjInCPP(SEXP t_residSEXP, SEXP t_PCsSEXP, SEXP t_NSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_posOutlierSEXP, SEXP t_posNonOutlierSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec >::type t_resid(t_residSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type t_PCs(t_PCsSEXP);
+    Rcpp::traits::input_parameter< int >::type t_N(t_NSEXP);
+    Rcpp::traits::input_parameter< double >::type t_SPA_Cutoff(t_SPA_CutoffSEXP);
+    Rcpp::traits::input_parameter< arma::uvec >::type t_posOutlier(t_posOutlierSEXP);
+    Rcpp::traits::input_parameter< arma::uvec >::type t_posNonOutlier(t_posNonOutlierSEXP);
+    setSPAmixobjInCPP(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_posOutlier, t_posNonOutlier);
     return R_NilValue;
 END_RCPP
 }
@@ -298,6 +321,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_mainRegionURVInCPP", (DL_FUNC) &_GRAB_mainRegionURVInCPP, 4},
     {"_GRAB_mainRegionInCPP", (DL_FUNC) &_GRAB_mainRegionInCPP, 9},
     {"_GRAB_printTimeDiffInCPP", (DL_FUNC) &_GRAB_printTimeDiffInCPP, 0},
+    {"_GRAB_printTimeDiffSPAmixInCPP", (DL_FUNC) &_GRAB_printTimeDiffSPAmixInCPP, 0},
     {"_GRAB_getGenoInCPP", (DL_FUNC) &_GRAB_getGenoInCPP, 4},
     {"_GRAB_getGenoInCPP_fixedNumber", (DL_FUNC) &_GRAB_getGenoInCPP_fixedNumber, 7},
     {"_GRAB_getSpGenoInCPP", (DL_FUNC) &_GRAB_getSpGenoInCPP, 4},
@@ -306,7 +330,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_closeGenoInputInCPP", (DL_FUNC) &_GRAB_closeGenoInputInCPP, 1},
     {"_GRAB_setPOLMMobjInCPP", (DL_FUNC) &_GRAB_setPOLMMobjInCPP, 11},
     {"_GRAB_setPOLMMobjInCPP_NULL", (DL_FUNC) &_GRAB_setPOLMMobjInCPP_NULL, 10},
-    {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},
+    {"_GRAB_setSPAGRMobjInCPP", (DL_FUNC) &_GRAB_setSPAGRMobjInCPP, 6},
+    {"_GRAB_setSPAmixobjInCPP", (DL_FUNC) &_GRAB_setSPAmixobjInCPP, 6},
     {"_GRAB_squares", (DL_FUNC) &_GRAB_squares, 1},
     {NULL, NULL, 0}
 };

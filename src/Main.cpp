@@ -26,6 +26,7 @@
 #include "SPACox.hpp"
 #include "DenseGRM.hpp"
 #include "SPAmix.hpp"
+#include "SPAGRM.hpp"
 
 // global objects for different genotype formats
 
@@ -33,10 +34,13 @@ static PLINK::PlinkClass* ptr_gPLINKobj = NULL;
 static BGEN::BgenClass* ptr_gBGENobj = NULL;
 // static VCF::VcfClass* ptr_gVCFobj = NULL;
 
+static DenseGRM::DenseGRMClass* ptr_gDenseGRMobj = NULL;
+
 // global objects for different analysis methods
 static POLMM::POLMMClass* ptr_gPOLMMobj = NULL;
 static SPACox::SPACoxClass* ptr_gSPACoxobj = NULL;
-static DenseGRM::DenseGRMClass* ptr_gDenseGRMobj = NULL;
+static SPAmix::SPAmixClass* ptr_gSPAmixobj = NULL;
+static SPAGRM::SPAGRMClass* ptr_gSPAGRMobj = NULL;
 
 // global variables for analysis
 std::string g_impute_method;      // "mean", "minor", or "drop"
@@ -144,6 +148,16 @@ void updateGroupInfo(arma::vec t_GVec,
   nSamplesInGroupVec.zeros();
   AltCountsInGroupVec.zeros();
   
+  // std::cout << "test1.21" << std::endl;
+  // std::cout << "n1:\t" << n1 << std::endl;
+  // std::cout << "t_indexForMissing.size()\t" << t_indexForMissing.size() << std::endl;
+  
+  // debug on 2023-04-21
+  if(t_indexForMissing.size() == 0)
+    t_indexForMissing.push_back(n1);
+  
+  // std::cout << "t_indexForMissing.size()\t" << t_indexForMissing.size() << std::endl;
+    
   unsigned int i1 = 0;
   for(unsigned int i = 0; i < n1; i++){
     if(i == t_indexForMissing.at(i1)){
@@ -161,13 +175,15 @@ void updateGroupInfo(arma::vec t_GVec,
     }
   }
   
+  // std::cout << "test1.22" << std::endl;
+  
   AltFreqInGroupVec = AltCountsInGroupVec / nSamplesInGroupVec / 2;
 }
 
 //////// ---------- Main function for marker-level analysis --------- ////////////
 
 // [[Rcpp::export]]
-Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SAIGE"
+Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SAIGE", "SPAmix", "SPAGRM"
                            std::string t_genoType,     // "PLINK", "BGEN"
                            std::vector<uint64_t> t_genoIndex)  
 {
@@ -223,7 +239,11 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
                                           indexForNonZero);
     int n = GVec.size();
     
+    std::cout << "marker:\t" << marker << std::endl;
     // std::cout << "test1.1" << std::endl;
+    // std::cout << "GVec.size():\t" << n << std::endl;
+    // std::cout << "g_ifOutGroup:\t" << g_ifOutGroup << std::endl;
+    // std::cout << "g_nGroup:\t" << g_nGroup << std::endl;
     
     if(g_ifOutGroup){
       arma::vec nSamplesInGroupVec(g_nGroup);
@@ -241,6 +261,8 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
       AltCountsInGroup.row(i) = AltCountsInGroupVec.t();
       AltFreqInGroup.row(i) = AltFreqInGroupVec.t();
     }
+    
+    // std::cout << "test1.2" << std::endl;
     
     // e.g. 21:1000234:A:T
     std::string info = chr+":"+std::to_string(pd)+":"+ref+":"+alt;
@@ -765,6 +787,14 @@ void printTimeDiffInCPP()
   printTimeDiff(ptr_gPOLMMobj->getTestTime8(), "get_ZPZ_adjGVec Step 2");
 }
 
+// [[Rcpp::export]]
+void printTimeDiffSPAmixInCPP()
+{
+  printTimeDiff(ptr_gSPAmixobj->getTestTime1(), "SPAmix_SPA");
+  printTimeDiff(ptr_gSPAmixobj->getTestTime2(), "SPAmix_MAF");
+}
+
+
 //////// ---------- Main function for genotype extraction --------- ////////////
 
 // This function will be removed later (2022-01-28)
@@ -940,7 +970,7 @@ arma::vec Unified_getOneMarker(std::string t_genoType,   // "PLINK", "BGEN"
 }
 
 // a unified function to get marker-level p-value
-void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
+void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE", "SPAmix", and "SPAGRM"
                            arma::vec t_GVec,
                            bool t_isOnlyOutputNonZero,
                            std::vector<uint32_t> t_indexForNonZero,
@@ -950,6 +980,9 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
                            double& t_zScore,
                            double t_altFreq)
 {
+  // (BWJ) updated on 2023-04-20: I forgot what "t_isOnlyOutputNonZero" means, please let me know if anyone knows it,
+  // (BWJ) it seems the "t_isOnlyOutputNonZero" can further save storage by removing the genotype == 0,
+  // (BWJ) which is especially useful for region-based testing.
   if(t_method == "POLMM"){
     if(t_isOnlyOutputNonZero == true)
       Rcpp::stop("When using POLMM method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
@@ -962,6 +995,19 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
       Rcpp::stop("When using SPACox method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
     t_pval = ptr_gSPACoxobj->getMarkerPval(t_GVec, t_altFreq, t_zScore);
   }
+  
+  if(t_method == "SPAmix"){
+    if(t_isOnlyOutputNonZero == true)
+      Rcpp::stop("When using SPAmix method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+    t_pval = ptr_gSPAmixobj->getMarkerPval(t_GVec, t_altFreq, t_zScore);
+  }
+  
+  if(t_method == "SPAGRM"){
+    if(t_isOnlyOutputNonZero == true)
+      Rcpp::stop("When using SPAGRM method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+    t_pval = ptr_gSPAGRMobj->getMarkerPval(t_GVec, t_altFreq, t_zScore);
+  }
+  
   
 }
 
@@ -1180,23 +1226,41 @@ Rcpp::List setPOLMMobjInCPP_NULL(bool t_flagSparseGRM,       // if 1, then use S
 
 
 // [[Rcpp::export]]
-void setSPACoxobjInCPP(arma::mat t_cumul,
-                       arma::vec t_mresid,
+void setSPAGRMobjInCPP(arma::vec t_resid,
                        arma::mat t_XinvXX,
                        arma::mat t_tX,
+                       arma::mat t_PCs,
                        int t_N,
-                       double t_pVal_covaAdj_Cutoff,
                        double t_SPA_Cutoff)
 {
-  if(ptr_gSPACoxobj)
-    delete ptr_gSPACoxobj;
+  if(ptr_gSPAGRMobj)
+    delete ptr_gSPAGRMobj;
   
-  ptr_gSPACoxobj = new SPACox::SPACoxClass(t_cumul,
-                                           t_mresid,
+  ptr_gSPAGRMobj = new SPAGRM::SPAGRMClass(t_resid,
                                            t_XinvXX,
                                            t_tX,
+                                           t_PCs,
                                            t_N,
-                                           t_pVal_covaAdj_Cutoff,
                                            t_SPA_Cutoff);
 }
 
+// [[Rcpp::export]]
+void setSPAmixobjInCPP(arma::vec t_resid,
+                       arma::mat t_PCs,
+                       int t_N,
+                       double t_SPA_Cutoff,
+                       arma::uvec t_posOutlier,
+                       arma::uvec t_posNonOutlier)
+{
+  if(ptr_gSPAmixobj)
+    delete ptr_gSPAmixobj;
+  
+  ptr_gSPAmixobj = new SPAmix::SPAmixClass(t_resid,
+                                           // t_XinvXX,
+                                           // t_tX,
+                                           t_PCs,
+                                           t_N,
+                                           t_SPA_Cutoff,
+                                           t_posOutlier,
+                                           t_posNonOutlier);
+}

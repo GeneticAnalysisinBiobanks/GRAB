@@ -37,6 +37,10 @@ printTimeDiffInCPP <- function() {
     invisible(.Call(`_GRAB_printTimeDiffInCPP`))
 }
 
+printTimeDiffSPAmixInCPP <- function() {
+    invisible(.Call(`_GRAB_printTimeDiffSPAmixInCPP`))
+}
+
 getGenoInCPP <- function(t_genoType, t_markerInfo, n, t_imputeMethod) {
     .Call(`_GRAB_getGenoInCPP`, t_genoType, t_markerInfo, n, t_imputeMethod)
 }
@@ -69,8 +73,12 @@ setPOLMMobjInCPP_NULL <- function(t_flagSparseGRM, t_Cova, t_yVec, t_beta, t_bVe
     .Call(`_GRAB_setPOLMMobjInCPP_NULL`, t_flagSparseGRM, t_Cova, t_yVec, t_beta, t_bVec, t_eps, t_tau, t_SPmatR, t_controlList, GenoMat)
 }
 
-setSPACoxobjInCPP <- function(t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_covaAdj_Cutoff, t_SPA_Cutoff) {
-    invisible(.Call(`_GRAB_setSPACoxobjInCPP`, t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_covaAdj_Cutoff, t_SPA_Cutoff))
+setSPAGRMobjInCPP <- function(t_resid, t_XinvXX, t_tX, t_PCs, t_N, t_SPA_Cutoff) {
+    invisible(.Call(`_GRAB_setSPAGRMobjInCPP`, t_resid, t_XinvXX, t_tX, t_PCs, t_N, t_SPA_Cutoff))
+}
+
+setSPAmixobjInCPP <- function(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_posOutlier, t_posNonOutlier) {
+    invisible(.Call(`_GRAB_setSPAmixobjInCPP`, t_resid, t_PCs, t_N, t_SPA_Cutoff, t_posOutlier, t_posNonOutlier))
 }
 
 squares <- function(data) {
