@@ -41,6 +41,10 @@ printTimeDiffSPAmixInCPP <- function() {
     invisible(.Call(`_GRAB_printTimeDiffSPAmixInCPP`))
 }
 
+getGenoInfoInCPP <- function(t_genoType, t_markerInfo, t_imputeMethod) {
+    .Call(`_GRAB_getGenoInfoInCPP`, t_genoType, t_markerInfo, t_imputeMethod)
+}
+
 getGenoInCPP <- function(t_genoType, t_markerInfo, n, t_imputeMethod) {
     .Call(`_GRAB_getGenoInCPP`, t_genoType, t_markerInfo, n, t_imputeMethod)
 }
@@ -73,8 +77,8 @@ setPOLMMobjInCPP_NULL <- function(t_flagSparseGRM, t_Cova, t_yVec, t_beta, t_bVe
     .Call(`_GRAB_setPOLMMobjInCPP_NULL`, t_flagSparseGRM, t_Cova, t_yVec, t_beta, t_bVec, t_eps, t_tau, t_SPmatR, t_controlList, GenoMat)
 }
 
-setSPAGRMobjInCPP <- function(t_resid, t_XinvXX, t_tX, t_PCs, t_N, t_SPA_Cutoff) {
-    invisible(.Call(`_GRAB_setSPAGRMobjInCPP`, t_resid, t_XinvXX, t_tX, t_PCs, t_N, t_SPA_Cutoff))
+setSPAGRMobjInCPP <- function(t_resid, t_resid_unrelated_outliers, t_sum_R_nonOutlier, t_R_GRM_R_nonOutlier, t_R_GRM_R_TwoSubjOutlier, t_R_GRM_R, t_MAF_interval, t_TwoSubj_list, t_ThreeSubj_list, t_SPA_Cutoff, t_zeta, t_tol) {
+    invisible(.Call(`_GRAB_setSPAGRMobjInCPP`, t_resid, t_resid_unrelated_outliers, t_sum_R_nonOutlier, t_R_GRM_R_nonOutlier, t_R_GRM_R_TwoSubjOutlier, t_R_GRM_R, t_MAF_interval, t_TwoSubj_list, t_ThreeSubj_list, t_SPA_Cutoff, t_zeta, t_tol))
 }
 
 setSPAmixobjInCPP <- function(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_posOutlier, t_posNonOutlier) {
