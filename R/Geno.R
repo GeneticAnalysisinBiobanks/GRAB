@@ -147,6 +147,50 @@ GRAB.ReadGeno = function(GenoFile,
               markerInfo = markerInfo))
 }
 
+# (2023-05-03) Get allele frequency and missing rate information from genotype data
+
+#' Get allele frequency and missing rate information from genotype data
+#' 
+#' This function shares input as in function \code{GRAB.ReadGeno}, please check \code{?GRAB.ReadGeno} for more details.
+#' 
+#' @param GenoFile a character of genotype file. See \code{Details} section for more details.
+#' @param GenoFileIndex additional index file(s) corresponding to \code{GenoFile}. See \code{Details} section for more details.
+#' @param SampleIDs a character vector of sample IDs to extract. The default is \code{NULL}, that is, all samples in \code{GenoFile} will be extracted.
+#' @param control a list of parameters to decide which markers to extract. See \code{Details} section for more details.
+GRAB.getGenoInfo = function(GenoFile,
+                            GenoFileIndex = NULL,
+                            SampleIDs = NULL,
+                            control = NULL)
+{
+  control = checkControl.ReadGeno(control)  # check 'control.R'
+  
+  objGeno = setGenoInput(GenoFile, GenoFileIndex, SampleIDs, control)
+  
+  genoType = objGeno$genoType   # "PLINK" or "BGEN"
+  markerInfo = objGeno$markerInfo
+  SampleIDs = objGeno$SampleIDs
+  anyQueue = objGeno$anyQueue   # if FALSE, no include/exclude is specified
+  
+  if(!anyQueue)
+    if(!control$AllMarkers)
+      stop("If include/exclude files are not specified, control$AllMarkers should be TRUE.")
+  
+  MarkerIDs = markerInfo$ID
+  
+  n = length(SampleIDs)
+  m = length(MarkerIDs)
+  
+  cat("Number of Samples:\t", n, "\n")
+  cat("Number of Markers:\t", m, "\n")
+  
+  GenoInfoMat = getGenoInfoInCPP(genoType, markerInfo, control$ImputeMethod)  # check Main.cpp
+  GenoInfoMat = as.data.frame(GenoInfoMat)
+  colnames(GenoInfoMat) = c("altFreq", "missingRate")
+  
+  GenoInfoMat = cbind(markerInfo, GenoInfoMat)
+  return(GenoInfoMat)
+}
+
 
 # setGenoInput() is to setup the following object in C++ (Main.cpp)
 # PLINK format: ptr_gPLINKobj;

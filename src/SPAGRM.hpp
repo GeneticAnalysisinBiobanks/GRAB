@@ -4,6 +4,8 @@
 
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
+#include <exception>
+#include <string>
 
 namespace SPAGRM{
 
@@ -13,308 +15,309 @@ private:
   
   ////////////////////// -------------------- members ---------------------------------- //////////////////////
   
-  arma::vec m_resid;  // residuals
-  arma::vec m_resid2; // residuals^2
-  arma::mat m_XinvXX, m_tX;
-  int m_N;             // sample size
-  double m_SPA_Cutoff;
-  arma::mat m_PCs;     // SNP-derived principal components (PCs)
+  arma::vec m_resid;                     // residuals
+  arma::vec m_resid_unrelated_outliers;  // unrelated outlier residuals
+  double m_sum_unrelated_outliers2;      // sum of squares of unrelated outlier residuals
+  double m_sum_R_nonOutlier;             // sum of non-outlier residuals
+  double m_R_GRM_R_nonOutlier;           // residuals x GRM x residuals for non-outlier families
+  double m_R_GRM_R_TwoSubjOutlier;       // residuals x GRM x residuals for outlier families (n = 2)
+  double m_R_GRM_R;                      // residuals x GRM x residuals
+  arma::vec m_MAF_interval;              // MAF interval divides the MAFs into several intervals
+  Rcpp::List m_TwoSubj_list;             // List of residuals and IBD probabilities in outlier families (n = 2)
+  Rcpp::List m_ThreeSubj_list;           // List of residuals and Chow-Liu tree in outlier families (n > 2)
+  
+  double m_SPA_Cutoff;                   // cutoff of standardized score to use normal approximation or SPA
+  double m_zeta;                         // initial saddle point for negative side, default is zero
+  double m_tol;                          // accuracy of Newton's methods, default 1e-4 for beta; 1e-5 for tau 
   
 public:
   
   SPAGRMClass(arma::vec t_resid,
-              arma::mat t_XinvXX,
-              arma::mat t_tX,
-              arma::mat t_PCs,
-              int t_N,
-              double t_SPA_Cutoff);
+              arma::vec t_resid_unrelated_outliers,
+              double t_sum_R_nonOutlier,
+              double t_R_GRM_R_nonOutlier,
+              double t_R_GRM_R_TwoSubjOutlier,
+              double t_R_GRM_R,
+              arma::vec t_MAF_interval,
+              Rcpp::List t_TwoSubj_list,
+              Rcpp::List t_ThreeSubj_list,
+              double t_SPA_Cutoff,
+              double t_zeta,
+              double t_tol);
   
-  // The MGF of G (genotype)
-  arma::vec M_G0(arma::vec t, arma::vec MAF){
-    arma::vec re = pow((1 - MAF + MAF % arma::exp(t)), 2);
-    return re;
-  }
-  
-  // The first derivative of the MGF of G (genotype)
-  arma::vec M_G1(arma::vec t, arma::vec MAF){
-    arma::vec re = 2 * (MAF % arma::exp(t)) % (1 - MAF + MAF % arma::exp(t));
-    return re;                           
-  }
-  
-  // The second derivative of the MGF of G (genotype)
-  arma::vec M_G2(arma::vec t, arma::vec MAF){
-    arma::vec re = 2 * pow(MAF % arma::exp(t), 2) + 2 * (MAF % arma::exp(t)) % (1 - MAF + MAF % arma::exp(t));
-    return re;
-  }
-  
-  // The CGF of G (genotype)
-  arma::vec K_G0(arma::vec t, arma::vec MAF){
-    arma::vec re = arma::log(M_G0(t, MAF));
-    return re;
-  }
-  
-  // The first derivative of the CGF of G (genotype)
-  arma::vec K_G1(arma::vec t, arma::vec MAF){
-    arma::vec re = M_G1(t, MAF) / M_G0(t, MAF);
-    return re;
-  }
-  
-  // The second derivative of the CGF of G (genotype)
-  arma::vec K_G2(arma::vec t, arma::vec MAF){
-    arma::vec re = (M_G0(t, MAF) % M_G2(t, MAF) - pow(M_G1(t, MAF), 2)) / pow(M_G0(t, MAF), 2);
-    return re;
-  }
-  
-  // The CGF of score test statistic 
-  double H_org(double t, arma::vec R, const arma::vec& MAFVec) {
-    double out = sum(K_G0(t * R, MAFVec));
-    return out;
-  }
-  
-  // The first derivative of the CGF of score test statistic
-  double H1_adj(double t, arma::vec R, const double& s, const arma::vec& MAFVec) {
-    double out = sum(R % K_G1(t * R, MAFVec)) - s;
-    return out;
-  }
-  
-  // The second derivative of the CGF of score test statistic 
-  double H2(double t, arma::vec R, const arma::vec& MAFVec) {
-    double out = sum(pow(R, 2) % K_G2(t * R, MAFVec));
-    return out;
-  }
-  
-  // The below code is from SPACox.hpp
-  Rcpp::List fastgetroot_K1(double t_initX,
-                            arma::vec R,
-                            const double& s,
-                            const arma::vec& MAFVec)
+  // The MGF and its first and second derivative MGF of G (genotype)
+  arma::mat MGF_cpp(double t, 
+                    const Rcpp::List update_ThreeSubj_list,
+                    double MAF)
   {
-    double x = t_initX, oldX;
-    double K1 = 0, K2 = 0, oldK1;
-    double diffX = arma::datum::inf, oldDiffX;
-    bool converge = true;
-    double tol = 0.001;
-    int maxiter = 100;
-    int iter = 0;
+    // Unrelated subjects.
+    arma::vec lambda = arma::exp(t * m_resid_unrelated_outliers);
     
-    for(iter = 0; iter < maxiter; iter ++){
+    arma::vec alpha = 1 - MAF + MAF * lambda; 
+    arma::vec alpha_1 = MAF * m_resid_unrelated_outliers % lambda; 
+    arma::vec alpha_2 = m_resid_unrelated_outliers % alpha_1;
+    
+    arma::vec M_G0_all = alpha % alpha;
+    arma::vec M_G1_all = 2 * alpha % alpha_1;
+    arma::vec M_G2_all = 2 * (alpha_1 % alpha_1 + alpha % alpha_2);
+    
+    // Two related subjects in a family.
+    int n1 = m_TwoSubj_list.length();
+    if (n1 != 0)
+    {
+      for (int i = 0; i < n1; i++)
+      {
+        Rcpp::List TwoSubj_list_temp = m_TwoSubj_list[i];
+        // arma::vec Resid = Rcpp::as<arma::vec>(TwoSubj_list_temp["Resid"]);
+        // arma::vec Rho = Rcpp::as<arma::vec>(TwoSubj_list_temp["Rho"]);
+        arma::vec Resid = TwoSubj_list_temp["Resid"];
+        arma::vec Rho = TwoSubj_list_temp["Rho"];
+        
+        arma::vec temp = (1 - Rho) * MAF * (1 - MAF);
+        
+        double R1 = Resid[0]; double etR1 = exp(t * R1);
+        double R2 = Resid[1]; double etR2 = exp(t * R2);
+        double Rsum = R1 + R2;
+        
+        arma::vec midterm1 = etR1 * temp;
+        arma::vec midterm2 = etR2 * temp;
+        arma::vec midterm3 = etR1 * etR2 * (MAF - temp);
+        
+        arma::vec M_G0 = midterm1 + midterm2 + midterm3 - temp + 1 - MAF;
+        arma::vec M_G1 = R1 * midterm1 + R2 * midterm2 + Rsum * midterm3;
+        arma::vec M_G2 = R1*R1 * midterm1 + R2*R2 * midterm2 + Rsum*Rsum * midterm3;
+        
+        M_G0_all = arma::join_cols(M_G0_all, M_G0);
+        M_G1_all = arma::join_cols(M_G1_all, M_G1);
+        M_G2_all = arma::join_cols(M_G2_all, M_G2);
+      }
+    }
+    
+    // Three above Related Subjects.
+    int n2 = update_ThreeSubj_list.length();
+    if (n2 != 0)
+    {
+      for (int i = 0; i < n2; i++)
+      {
+        Rcpp::List ThreeSubj_list_temp = update_ThreeSubj_list[i];
+        // arma::vec stand_S = Rcpp::as<arma::vec>(ThreeSubj_list_temp["stand.S"]);
+        // arma::vec arr_prob = Rcpp::as<arma::vec>(ThreeSubj_list_temp["arr.prob"]);
+        arma::vec stand_S = ThreeSubj_list_temp["stand.S"];
+        arma::vec arr_prob = ThreeSubj_list_temp["arr.prob"];
+        
+        arma::vec midterm0 = exp(t * stand_S) % arr_prob;
+        arma::vec midterm1 = stand_S % midterm0;
+        arma::vec midterm2 = stand_S % midterm1;
+        
+        M_G0_all = arma::join_cols(M_G0_all, arma::vec{arma::accu(midterm0)});
+        M_G1_all = arma::join_cols(M_G1_all, arma::vec{arma::accu(midterm1)});
+        M_G2_all = arma::join_cols(M_G2_all, arma::vec{arma::accu(midterm2)});
+      }
+    }
+    
+    return arma::join_rows(M_G0_all, M_G1_all, M_G2_all);
+  }
+  
+  // Newton's method to get the saddle point
+  double fastgetroot_cpp(const Rcpp::List update_ThreeSubj_list,
+                         double Score,
+                         double MAF,
+                         double init_t,
+                         double tol,
+                         int maxiter = 50)
+  {
+    double t = init_t;
+    arma::vec MGF0; arma::vec MGF1; arma::vec MGF2;
+    double CGF1 = 0; double CGF2 = 0;
+    double diff_t = R_PosInf;
+    int iter;
+    
+    double mean = 2 * MAF * m_sum_R_nonOutlier;
+    double var = 2 * MAF * (1 - MAF) * m_R_GRM_R_nonOutlier;
+    
+    for (iter = 1; iter < maxiter; iter++)
+    {
+      double old_t = t;
+      double old_diff_t = diff_t;
+      double old_CGF1 = CGF1;
       
-      oldX = x;
-      oldDiffX = diffX;
-      oldK1 = K1;
+      arma::mat MGF_all = MGF_cpp(t, update_ThreeSubj_list, MAF);
       
-      K1 = H1_adj(x, R, s, MAFVec);
-      K2 = H2(x, R, MAFVec);
+      MGF0 = MGF_all.col(0);
+      MGF1 = MGF_all.col(1);
+      MGF2 = MGF_all.col(2);
       
-      diffX = -1 * K1 / K2;
+      arma::vec temp = MGF1 / MGF0;
+      CGF1 = arma::accu(temp) + mean + var * t - Score;
+      CGF2 = arma::accu(MGF2 / MGF0) - arma::accu(temp % temp) + var;
       
-      if(!std::isfinite(K1)){
-        // checked it on 07/05:
-        // if the solution 'x' tends to infinity, 'K2' tends to 0, and 'K1' tends to 0 very slowly.
-        // then we can set the one sided p value as 0 (instead of setting converge = F)
-        x = arma::datum::inf;
-        K2 = 0;
-        break;
+      diff_t = - CGF1/CGF2;
+      
+      // std::cout << "iter:\t" << iter << std::endl;
+      // std::cout << "t:\t" << t << std::endl;
+      // std::cout << "CGF1:\t" << CGF1 << std::endl;
+      // std::cout << "CGF2:\t" << CGF2 << std::endl;
+      // std::cout << "diff_t:\t" << diff_t << std::endl;
+      // std::cout << std::endl;
+      
+      if (std::isnan(diff_t) || std::isinf(CGF2))
+      {
+        t = t / 2;
+        diff_t = std::min(std::abs(t), 1.0) * arma::sign(Score);
+        continue;
       }
       
-      if(arma::sign(K1) != arma::sign(oldK1)){
-        while(std::abs(diffX) > std::abs(oldDiffX) - tol){
-          diffX = diffX / 2;
+      if (std::isnan(old_CGF1) || (arma::sign(old_CGF1) != 0 && arma::sign(CGF1) != arma::sign(old_CGF1))) 
+      {
+        if (std::abs(diff_t) < tol) 
+        {
+          t = old_t + diff_t;
+          break;
+        } else {
+          while (std::abs(old_diff_t) > tol && std::abs(diff_t) > std::abs(old_diff_t) - tol) 
+          {
+            diff_t = diff_t / 2;
+          }
+          t = old_t + diff_t;
+          continue;
         }
       }
       
-      if(std::abs(diffX) < tol) break;
+      if (arma::sign(Score) != arma::sign(old_t + diff_t) && 
+          (arma::sign(old_CGF1) == 0 || arma::sign(CGF1) == arma::sign(old_CGF1))) 
+      {
+        while (arma::sign(Score) != arma::sign(old_t + diff_t)) 
+        {
+          diff_t = diff_t / 2;
+        }
+        t = old_t + diff_t;
+        continue;
+      }
       
-      x = oldX + diffX;
+      t = old_t + diff_t;
+      if (std::abs(diff_t) < tol) break;
     }
     
-    if(iter == maxiter) 
-      converge = false;
+    // return Rcpp::List::create(Named("root") = t,
+    //                           Named("iter") = iter);
     
-    Rcpp::List yList = Rcpp::List::create(Rcpp::Named("root") = x,
-                                          Rcpp::Named("iter") = iter,
-                                          Rcpp::Named("converge") = converge,
-                                          Rcpp::Named("K2") = K2);
-    return yList;
+    return t;
   }
   
-  double GetProb_SPA_G(arma::vec MAFVec, arma::vec R, double s, bool lower_tail)
+  // function to get one side p value
+  double GetProb_SPA(const Rcpp::List update_ThreeSubj_list,
+                     double Score,
+                     double MAF,
+                     bool lower_tail,
+                     double zeta,
+                     double tol)
   {
-    double initX = 0;
+    zeta = fastgetroot_cpp(update_ThreeSubj_list, Score, MAF, zeta, tol);
     
-    // The following initial values are validated on 03/25/2021
-    // if(q2 > 0) initX = 3;
-    // if(q2 <= 0) initX = -3;
+    arma::mat MGF_all = MGF_cpp(zeta, update_ThreeSubj_list, MAF);
     
-    Rcpp::List rootList = fastgetroot_K1(initX, R, s, MAFVec);
-    double zeta = rootList["root"];
+    arma::vec MGF0 = MGF_all.col(0);
+    arma::vec MGF1 = MGF_all.col(1);
+    arma::vec MGF2 = MGF_all.col(2);
     
-    std::cout << "zeta:\t" << zeta << std::endl;
+    double mean = 2 * MAF * m_sum_R_nonOutlier;
+    double var = 2 * MAF * (1 - MAF) * m_R_GRM_R_nonOutlier;
     
-    double k1 = H_org(zeta, R, MAFVec);
-    double k2 = H2(zeta, R, MAFVec);
+    arma::vec temp = MGF1 / MGF0;
+    double CGF0 = arma::accu(log(MGF0)) + mean * zeta + 0.5 * var * zeta * zeta;
+    double CGF2 = arma::accu(MGF2 / MGF0) - arma::accu(temp % temp) + var;
     
-    double temp1 = zeta * s - k1;
+    double w = arma::sign(zeta) * sqrt(2 * (zeta * Score - CGF0));
+    double v = zeta * sqrt(CGF2);
     
-    double w = arma::sign(zeta) * sqrt(2 * temp1);
-    double v = zeta * sqrt(k2);
+    double u = w + 1/w * log(v/w);
+    double pval = R::pnorm(u, 0, 1, lower_tail, false);
     
-    double pval = arma::normcdf(arma::sign(lower_tail - 0.5) * (w + log(v/w) / w));
+    // std::cout << "zeta:\t" << zeta << std::endl;
+    // std::cout << "p value:\t" << pval << std::endl;
+    // std::cout << std::endl;
+    
     return pval;
   }
   
-  arma::vec simulate_uniform(int n, double lower, double upper) {
-    arma::vec vec(n);
-    vec.randu();
-    vec = lower + (upper - lower) * vec;
-    return vec;
-  }
-  
-  arma::vec fit_lm(const arma::mat& PCs, const arma::vec& g, arma::vec& pvalues) 
-  {
-    int n = PCs.n_rows;
-    int k = PCs.n_cols;
-    
-    arma::mat X = arma::join_horiz(arma::ones(n), PCs);
-    arma::vec coef = arma::solve(X, g);
-    
-    arma::vec fittedValues = X * coef;
-    
-    double s2 = sum(square(g - fittedValues)) / (n - k - 1);
-    
-    arma::mat X_t = X.t();
-    arma::mat XTX = X_t * X;
-    arma::mat XTX_inv = arma::inv(XTX);
-    arma::vec XTX_inv_diag = XTX_inv.diag();
-    
-    arma::vec se = arma::sqrt(XTX_inv_diag * s2);
-    arma::vec t = coef / se;
-    
-    for(int i = 0; i < k; i++){
-      pvalues[i] = 2 * R::pt(abs(t[i+1]), n-k-1, 0, 0);
-    }
-    return fittedValues;
-  }
-  
-  arma::vec logistic_regression(const arma::mat& X, const arma::vec& y) {
-    
-    int n = X.n_rows;
-    int p = X.n_cols;
-    
-    // arma::mat X_new(n, p + 1);
-    arma::mat WX_new(n, p + 1);
-    // X_new.col(0) = arma::ones<vec>(n);
-    // X_new.cols(1, p) = X;
-    arma::mat X_new = arma::join_horiz(arma::ones(n), X);
-    
-    arma::vec beta(p+1, arma::fill::zeros);
-    double tol = 1e-6;
-    int max_iter = 100;
-    arma::vec mu(n);
-    
-    for (int i = 0; i < max_iter; i++) {
-      mu = 1 / (1 + exp(-X_new * beta));
-      
-      // arma::mat W = diagmat(mu % (1 - mu));
-      // arma::vec z = X_new * beta + inv(W) * (y - mu);
-      // arma::vec beta_new = inv(X_new.t() * W * X_new) * X_new.t() * W * z;
-      
-      arma::vec W = mu % (1 - mu);
-      arma::vec z = X_new * beta + (y - mu) / W;
-      
-      for(int j = 0; j < p+1; j++){
-        WX_new.col(j) = X_new.col(j) % W;
-      }
-      arma::vec beta_new = inv(X_new.t() * WX_new) * X_new.t() * (W % z);
-      
-      if (norm(beta_new - beta) < tol) {
-        break;
-      }
-      beta = beta_new;
-    }
-    
-    arma::vec MAFest = 1 - sqrt(1 - mu);
-    
-    return MAFest;
-  }
-  
-  arma::vec getMAFest(arma::mat PCs,
-                      arma::vec g,
-                      double MAC_cutoff = 20,
-                      double PCs_pvalue_cutoff = 0.05,
-                      double MAF_est_negative_ratio_cutoff = 0.1) 
-  {
-    int N = g.n_elem;
-    arma::vec g0(N, arma::fill::zeros);  // 0 if g < 0.5, 1 if g > 0.5.
-    arma::vec MAF_all = arma::vec(N, arma::fill::value(arma::mean(g)/2.0));  // check NA later
-    double MAC = arma::accu(g);
-    int PC_number = PCs.n_cols;
-    double MAF0 = 0;
-    
-    arma::vec pvalues(PC_number);
-    arma::vec MAF_est, topPCs_pvalueVec;
-    
-    std::cout << "MAC:\t" << MAC << std::endl;
-    std::cout << "MAC_cutoff:\t" << MAC_cutoff << std::endl;
-    
-    if(MAC <= MAC_cutoff){
-      MAF_est = MAF_all;
-    }else{
-      arma::vec fit = fit_lm(PCs, g, pvalues);
-      
-      arma::uvec posZero = arma::find(fit < 0);
-      arma::uvec posOne = arma::find(fit > 1);
-      int nError = posZero.n_elem + posOne.n_elem; 
-      double propError = nError / N;
-      
-      std::cout << "propError:\t" << propError << std::endl;
-      std::cout << "MAF_est_negative_ratio_cutoff:\t" << MAF_est_negative_ratio_cutoff << std::endl;
-      
-      if(propError < MAF_est_negative_ratio_cutoff){
-        fit.elem(posZero).fill(MAF0);
-        fit.elem(posOne).fill(1-MAF0);
-        MAF_est = fit;
-      }else{
-        arma::uvec posSigPCs = arma::find(pvalues < PCs_pvalue_cutoff);
-        
-        std::cout << "posSigPCs:\t" << posSigPCs << std::endl;
-        
-        if(posSigPCs.n_elem == 0){
-          MAF_est = MAF_all;
-        }else{
-          arma::mat sigPCs = PCs.cols(posSigPCs);
-          arma::uvec posg12 = arma::find(g > 0.5);
-          g0.elem(posg12).fill(1);
-          
-          MAF_est = logistic_regression(sigPCs, g0);
-          // Fit.logistic = glm(cbind(round(g), 2-round(g))~selected.PCs, family = binomial)
-          // MAF.est = Fit.logistic$fitted.values
-        }
-      }
-    }
-    
-    return MAF_est;
-  }
-  
-  // (BWJ) 2023-04-20: Current version does not use t_altFreq and t_zScore, will check them later
+  // function to get two side p values
   double getMarkerPval(arma::vec t_GVec, 
                        double t_altFreq,
                        double& t_zScore)
   {
-    arma::vec AFVec = getMAFest(m_PCs, t_GVec);
+    double MAF = std::min(t_altFreq, 1 - t_altFreq);
     
-    arma::vec GVarVec = 2 * AFVec % (1 - AFVec);
-    double S = sum(t_GVec % m_resid);
-    double VarS = sum(m_resid2 % GVarVec);
-    double z = S / sqrt(VarS);
+    double Score = sum(t_GVec % m_resid);
+    double G_var = 2 * MAF * (1 - MAF);
+    double Score_var = G_var * m_R_GRM_R;
+    t_zScore = Score/sqrt(Score_var);
     
-    if(std::abs(z) < m_SPA_Cutoff){
-      double pval = arma::normcdf(-1*std::abs(z))*2;
-      return pval;
+    // std::cout << "t_zScore is\t" << t_zScore << std::endl;
+    
+    if (std::abs(t_zScore) <= m_SPA_Cutoff)
+    {
+      double pval = R::pnorm(std::abs(t_zScore), 0, 1, false, false);
+      return 2 * pval;
     }
     
-    double pval1 = GetProb_SPA_G(AFVec, m_resid, std::abs(z), false);
-    double pval2 = GetProb_SPA_G(AFVec, m_resid, -1*std::abs(z), true);
+    int order2 = arma::index_max(m_MAF_interval >= MAF);
+    int order1 = order2 - 1;
+    
+    // std::cout << order2 << " " << order1 << "\t";
+    
+    if (MAF <= 0.0001 || MAF > 0.5)
+    {
+      Rcpp::stop("Minor allele frequency is out of MAF_interval, MAF is\t", MAF);
+    }
+    
+    double MAF_ratio = (m_MAF_interval[order2] - MAF)/(m_MAF_interval[order2] - m_MAF_interval[order1]);
+    
+    double Var_ThreeOutlier = 0;
+    
+    int n1 = m_ThreeSubj_list.length();
+    Rcpp::List update_ThreeSubj_list(n1);
+    
+    if (n1 != 0)
+    {
+      for (int i = 0; i < n1; i++)
+      {
+        Rcpp::List ThreeSubj_list_temp = m_ThreeSubj_list[i];
+        
+        // arma::vec CLT_temp1(243, arma::fill::zeros);
+        // arma::vec CLT_temp2(243, arma::fill::zeros);
+        // arma::vec stand_S(243, arma::fill::zeros);
+        
+        arma::mat CLT_temp =  ThreeSubj_list_temp["CLT"];
+        arma::vec stand_S = ThreeSubj_list_temp["stand.S"];
+        arma::vec CLT_temp1 = CLT_temp.col(order1);
+        arma::vec CLT_temp2 = CLT_temp.col(order2);
+          
+        arma::vec arr_prob = MAF_ratio * CLT_temp1 + (1 - MAF_ratio) * CLT_temp2;
+        
+        update_ThreeSubj_list[i] = Rcpp::List::create(Rcpp::Named("stand.S") = stand_S,
+                                                      Rcpp::Named("arr.prob") = arr_prob);
+        
+        arma::vec temp1 = stand_S % arr_prob;
+        
+        double temp2 = arma::accu(temp1);
+        double Var_ThreeOutlier_temp = arma::accu(stand_S % temp1) - temp2 * temp2;
+        Var_ThreeOutlier = Var_ThreeOutlier + Var_ThreeOutlier_temp;
+      }
+    }
+    
+    double Var_nonOutlier = G_var * m_R_GRM_R_nonOutlier;
+    double Var_unrelated_outliers = G_var * m_sum_unrelated_outliers2;
+    double Var_TwoOutlier = G_var * m_R_GRM_R_TwoSubjOutlier;
+    
+    double EmpVar = Var_nonOutlier + Var_unrelated_outliers + Var_TwoOutlier + Var_ThreeOutlier;
+    double Var_Ratio = Score_var / EmpVar;
+    double Score_adj = Score / sqrt(Var_Ratio);
+    
+    double zeta1 = std::abs(Score_adj) / Score_var; zeta1 = std::min(zeta1, 1.2);
+    double zeta2 = - std::abs(m_zeta);
+    
+    double pval1 = GetProb_SPA(update_ThreeSubj_list, std::abs(Score_adj), MAF, false, zeta1, 1e-4);
+    double pval2 = GetProb_SPA(update_ThreeSubj_list, -std::abs(Score_adj), MAF, true, zeta2, m_tol);
     double pval = pval1 + pval2;
     
     return pval;

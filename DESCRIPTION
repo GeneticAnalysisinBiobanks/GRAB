@@ -1,14 +1,14 @@
 Package: GRAB
 Type: Package
 Title: Genome-wide Robust Analaysis for Biobank data (GRAB)
-Version: 0.0.3.6
-Date: 2023-04-20
+Version: 0.0.3.7
+Date: 2023-05-08
 Author: Wenjian Bi, Wei Zhou, Rounak Dey, Zhangchen Zhao, Seunggeun Lee
 Maintainer: Wenjian Bi <wenjianb@pku.edu.cn>
 Description: A toolkit designed for large-scale biobank data analysis, currently, multiple phenotype types are supported.
 License: GPL (>= 2)
-Depends: survival, ordinal, Matrix, SKAT, tidyr, dplyr, dbplyr, Rcpp, R (>= 3.5.0)
+Depends: survival, ordinal, Matrix, SKAT, tidyr, dplyr, dbplyr, igraph, Rcpp, R (>= 3.5.0)
 Imports: Rcpp, RcppArmadillo, RcppParallel, BH, survival, data.table, tidyr, dplyr, dbplyr, RSQLite, ordinal, Matrix, optparse
 LinkingTo: Rcpp, RcppArmadillo, RcppParallel, BH, survival, data.table, tidyr, dplyr, dbplyr, RSQLite, ordinal, Matrix, optparse
-RoxygenNote: 7.1.2
+RoxygenNote: 7.2.1
 Roxygen: list(markdown = TRUE)
