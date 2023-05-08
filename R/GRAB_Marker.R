@@ -159,8 +159,12 @@ GRAB.Marker = function(objNull,
     tempChrom = tempList$chrom
     
     # set up objects that do not change for different variants
+    print(c(tempChrom, chrom))
+    
     if(tempChrom != chrom){
+      # print("test1")
       setMarker(NullModelClass, objNull, control, chrom, Group, ifOutGroup)
+      # print("test2")
       chrom = tempChrom
     }
     

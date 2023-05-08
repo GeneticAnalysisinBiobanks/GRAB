@@ -144,6 +144,19 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// getGenoInfoInCPP
+arma::mat getGenoInfoInCPP(std::string t_genoType, Rcpp::DataFrame t_markerInfo, std::string t_imputeMethod);
+RcppExport SEXP _GRAB_getGenoInfoInCPP(SEXP t_genoTypeSEXP, SEXP t_markerInfoSEXP, SEXP t_imputeMethodSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type t_genoType(t_genoTypeSEXP);
+    Rcpp::traits::input_parameter< Rcpp::DataFrame >::type t_markerInfo(t_markerInfoSEXP);
+    Rcpp::traits::input_parameter< std::string >::type t_imputeMethod(t_imputeMethodSEXP);
+    rcpp_result_gen = Rcpp::wrap(getGenoInfoInCPP(t_genoType, t_markerInfo, t_imputeMethod));
+    return rcpp_result_gen;
+END_RCPP
+}
 // getGenoInCPP
 arma::mat getGenoInCPP(std::string t_genoType, Rcpp::DataFrame t_markerInfo, int n, std::string t_imputeMethod);
 RcppExport SEXP _GRAB_getGenoInCPP(SEXP t_genoTypeSEXP, SEXP t_markerInfoSEXP, SEXP nSEXP, SEXP t_imputeMethodSEXP) {
@@ -270,17 +283,23 @@ BEGIN_RCPP
 END_RCPP
 }
 // setSPAGRMobjInCPP
-void setSPAGRMobjInCPP(arma::vec t_resid, arma::mat t_XinvXX, arma::mat t_tX, arma::mat t_PCs, int t_N, double t_SPA_Cutoff);
-RcppExport SEXP _GRAB_setSPAGRMobjInCPP(SEXP t_residSEXP, SEXP t_XinvXXSEXP, SEXP t_tXSEXP, SEXP t_PCsSEXP, SEXP t_NSEXP, SEXP t_SPA_CutoffSEXP) {
+void setSPAGRMobjInCPP(arma::vec t_resid, arma::vec t_resid_unrelated_outliers, double t_sum_R_nonOutlier, double t_R_GRM_R_nonOutlier, double t_R_GRM_R_TwoSubjOutlier, double t_R_GRM_R, arma::vec t_MAF_interval, Rcpp::List t_TwoSubj_list, Rcpp::List t_ThreeSubj_list, double t_SPA_Cutoff, double t_zeta, double t_tol);
+RcppExport SEXP _GRAB_setSPAGRMobjInCPP(SEXP t_residSEXP, SEXP t_resid_unrelated_outliersSEXP, SEXP t_sum_R_nonOutlierSEXP, SEXP t_R_GRM_R_nonOutlierSEXP, SEXP t_R_GRM_R_TwoSubjOutlierSEXP, SEXP t_R_GRM_RSEXP, SEXP t_MAF_intervalSEXP, SEXP t_TwoSubj_listSEXP, SEXP t_ThreeSubj_listSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_zetaSEXP, SEXP t_tolSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::vec >::type t_resid(t_residSEXP);
-    Rcpp::traits::input_parameter< arma::mat >::type t_XinvXX(t_XinvXXSEXP);
-    Rcpp::traits::input_parameter< arma::mat >::type t_tX(t_tXSEXP);
-    Rcpp::traits::input_parameter< arma::mat >::type t_PCs(t_PCsSEXP);
-    Rcpp::traits::input_parameter< int >::type t_N(t_NSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_resid_unrelated_outliers(t_resid_unrelated_outliersSEXP);
+    Rcpp::traits::input_parameter< double >::type t_sum_R_nonOutlier(t_sum_R_nonOutlierSEXP);
+    Rcpp::traits::input_parameter< double >::type t_R_GRM_R_nonOutlier(t_R_GRM_R_nonOutlierSEXP);
+    Rcpp::traits::input_parameter< double >::type t_R_GRM_R_TwoSubjOutlier(t_R_GRM_R_TwoSubjOutlierSEXP);
+    Rcpp::traits::input_parameter< double >::type t_R_GRM_R(t_R_GRM_RSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_MAF_interval(t_MAF_intervalSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_TwoSubj_list(t_TwoSubj_listSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_ThreeSubj_list(t_ThreeSubj_listSEXP);
     Rcpp::traits::input_parameter< double >::type t_SPA_Cutoff(t_SPA_CutoffSEXP);
-    setSPAGRMobjInCPP(t_resid, t_XinvXX, t_tX, t_PCs, t_N, t_SPA_Cutoff);
+    Rcpp::traits::input_parameter< double >::type t_zeta(t_zetaSEXP);
+    Rcpp::traits::input_parameter< double >::type t_tol(t_tolSEXP);
+    setSPAGRMobjInCPP(t_resid, t_resid_unrelated_outliers, t_sum_R_nonOutlier, t_R_GRM_R_nonOutlier, t_R_GRM_R_TwoSubjOutlier, t_R_GRM_R, t_MAF_interval, t_TwoSubj_list, t_ThreeSubj_list, t_SPA_Cutoff, t_zeta, t_tol);
     return R_NilValue;
 END_RCPP
 }
@@ -322,6 +341,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_mainRegionInCPP", (DL_FUNC) &_GRAB_mainRegionInCPP, 9},
     {"_GRAB_printTimeDiffInCPP", (DL_FUNC) &_GRAB_printTimeDiffInCPP, 0},
     {"_GRAB_printTimeDiffSPAmixInCPP", (DL_FUNC) &_GRAB_printTimeDiffSPAmixInCPP, 0},
+    {"_GRAB_getGenoInfoInCPP", (DL_FUNC) &_GRAB_getGenoInfoInCPP, 3},
     {"_GRAB_getGenoInCPP", (DL_FUNC) &_GRAB_getGenoInCPP, 4},
     {"_GRAB_getGenoInCPP_fixedNumber", (DL_FUNC) &_GRAB_getGenoInCPP_fixedNumber, 7},
     {"_GRAB_getSpGenoInCPP", (DL_FUNC) &_GRAB_getSpGenoInCPP, 4},
@@ -330,7 +350,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_closeGenoInputInCPP", (DL_FUNC) &_GRAB_closeGenoInputInCPP, 1},
     {"_GRAB_setPOLMMobjInCPP", (DL_FUNC) &_GRAB_setPOLMMobjInCPP, 11},
     {"_GRAB_setPOLMMobjInCPP_NULL", (DL_FUNC) &_GRAB_setPOLMMobjInCPP_NULL, 10},
-    {"_GRAB_setSPAGRMobjInCPP", (DL_FUNC) &_GRAB_setSPAGRMobjInCPP, 6},
+    {"_GRAB_setSPAGRMobjInCPP", (DL_FUNC) &_GRAB_setSPAGRMobjInCPP, 12},
     {"_GRAB_setSPAmixobjInCPP", (DL_FUNC) &_GRAB_setSPAmixobjInCPP, 6},
     {"_GRAB_squares", (DL_FUNC) &_GRAB_squares, 1},
     {NULL, NULL, 0}

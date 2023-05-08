@@ -221,7 +221,7 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   for(int i = 0; i < q; i++)
   {
     if(i % 1000 == 0)
-      std::cout << "Completed " << i << "/" << q << " markers in the chunk." << std::endl;
+    std::cout << "Completed " << i << "/" << q << " markers in the chunk." << std::endl;
     
     // information of marker
     double altFreq, altCounts, missingRate, imputeInfo;
@@ -288,14 +288,22 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     // analysis results for single-marker
     double Beta, seBeta, pval, zScore;
     
-    Unified_getMarkerPval(t_method, GVec, 
-                          false, // bool t_isOnlyOutputNonZero, 
+    // std::cout << "test1.4" << std::endl;
+    
+    Unified_getMarkerPval(t_method, GVec,
+                          false, // bool t_isOnlyOutputNonZero,
                           indexForNonZero, Beta, seBeta, pval, zScore, altFreq);
     
+    // std::cout << "test1.5" << std::endl;
+    
     BetaVec.at(i) = Beta * (1 - 2*flip);  // Beta if flip = false, -1*Beta is flip = true       
+    // std::cout << "test1.51" << std::endl;
     seBetaVec.at(i) = seBeta;       
+    // std::cout << "test1.52" << std::endl;
     pvalVec.at(i) = pval;
-    zScoreVec.at(i) = zScore;
+    // std::cout << "test1.53" << std::endl;
+    zScoreVec.at(i) = zScore;    
+    // std::cout << "zScore is\t" << zScore << std::endl;
   }
   
   Rcpp::List OutList = Rcpp::List::create(Rcpp::Named("markerVec") = markerVec,
@@ -797,8 +805,51 @@ void printTimeDiffSPAmixInCPP()
 
 //////// ---------- Main function for genotype extraction --------- ////////////
 
-// This function will be removed later (2022-01-28)
+// (2023-05-03): output two columns: column #1 is allele frequency and column #2 is missing rate
 
+// [[Rcpp::export]]
+arma::mat getGenoInfoInCPP(std::string t_genoType,
+                           Rcpp::DataFrame t_markerInfo,
+                           std::string t_imputeMethod) // 0: "mean"; 1: "minor"; 2: "drop" (to be continued)
+{
+  int q = t_markerInfo.nrow();         // number of markers requested
+  arma::mat genoInfoMat(q, 2);
+  
+  std::vector<uint64_t> gIndexVec = t_markerInfo["genoIndex"];
+  
+  std::string ref, alt, marker, chr;
+  uint32_t pd;
+  double altFreq, altCounts, missingRate, imputeInfo;
+  std::vector<uint32_t> indexForMissing, indexForNonZero;
+  
+  for(int i = 0; i < q; i++){
+    uint64_t gIndex = gIndexVec.at(i);
+    arma::vec GVec = Unified_getOneMarker(t_genoType,          // "PLINK", "BGEN"
+                                          gIndex,              // different meanings for different genoType
+                                          ref,                 // REF allele
+                                          alt,                 // ALT allele (should probably be minor allele, otherwise, computation time will increase)
+                                          marker,              // marker ID extracted from genotype file
+                                          pd,                  // base position
+                                          chr,                 // chromosome
+                                          altFreq,             // frequency of ALT allele
+                                          altCounts,           // counts of ALT allele
+                                          missingRate,         // missing rate
+                                          imputeInfo,          // imputation information score, i.e., R2 (all 1 for PLINK)
+                                          true,                // if true, output index of missing genotype data
+                                          indexForMissing,     // index of missing genotype data
+                                          false,               // if true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
+                                          indexForNonZero);    // the index of non-zero genotype in the all subjects. Only valid if t_isOnlyOutputNonZero == true.
+    
+    // The below is not needed for information extraction
+    // imputeGeno(GVec, altFreq, indexForMissing, t_imputeMethod);  // check UTIL.cpp
+    genoInfoMat.at(i, 0) = altFreq;
+    genoInfoMat.at(i, 1) = missingRate;
+  }
+  
+  return genoInfoMat;
+}
+                         
+                                          
 // [[Rcpp::export]]
 arma::mat getGenoInCPP(std::string t_genoType,
                        Rcpp::DataFrame t_markerInfo,
@@ -1007,7 +1058,6 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
       Rcpp::stop("When using SPAGRM method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
     t_pval = ptr_gSPAGRMobj->getMarkerPval(t_GVec, t_altFreq, t_zScore);
   }
-  
   
 }
 
@@ -1224,24 +1274,35 @@ Rcpp::List setPOLMMobjInCPP_NULL(bool t_flagSparseGRM,       // if 1, then use S
   return outList;
 }
 
-
 // [[Rcpp::export]]
 void setSPAGRMobjInCPP(arma::vec t_resid,
-                       arma::mat t_XinvXX,
-                       arma::mat t_tX,
-                       arma::mat t_PCs,
-                       int t_N,
-                       double t_SPA_Cutoff)
+                       arma::vec t_resid_unrelated_outliers,
+                       double t_sum_R_nonOutlier,
+                       double t_R_GRM_R_nonOutlier,
+                       double t_R_GRM_R_TwoSubjOutlier,
+                       double t_R_GRM_R,
+                       arma::vec t_MAF_interval,
+                       Rcpp::List t_TwoSubj_list,
+                       Rcpp::List t_ThreeSubj_list,
+                       double t_SPA_Cutoff,
+                       double t_zeta,
+                       double t_tol)
 {
   if(ptr_gSPAGRMobj)
     delete ptr_gSPAGRMobj;
   
   ptr_gSPAGRMobj = new SPAGRM::SPAGRMClass(t_resid,
-                                           t_XinvXX,
-                                           t_tX,
-                                           t_PCs,
-                                           t_N,
-                                           t_SPA_Cutoff);
+                                           t_resid_unrelated_outliers,
+                                           t_sum_R_nonOutlier,
+                                           t_R_GRM_R_nonOutlier,
+                                           t_R_GRM_R_TwoSubjOutlier,
+                                           t_R_GRM_R,
+                                           t_MAF_interval,
+                                           t_TwoSubj_list,
+                                           t_ThreeSubj_list,
+                                           t_SPA_Cutoff,
+                                           t_zeta,
+                                           t_tol);
 }
 
 // [[Rcpp::export]]
