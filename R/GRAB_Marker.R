@@ -110,6 +110,13 @@ GRAB.Marker = function(objNull,
   nMarkersEachChunk = control$nMarkersEachChunk;
   outList = checkOutputFile(OutputFile, OutputFileIndex, "Marker", format(nMarkersEachChunk, scientific=F))    # this function is in 'Util.R'
   
+  # added by XH-2023-05-09
+  if(NullModelClass == "SPAGRM_NULL_Model")
+  {
+    if(control$min_maf_marker <= min(objNull$MAF_interval))
+      stop("min_maf_marker is out of MAF_interval, Please reset min_maf_marker or check MAF_interval.")
+  }
+  
   indexChunk = outList$indexChunk
   Start = outList$Start
   End = outList$End

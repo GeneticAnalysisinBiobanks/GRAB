@@ -4,6 +4,8 @@
 
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
+#include <exception>
+#include <string>
 
 namespace SPAGRM{
 
@@ -263,10 +265,10 @@ public:
     
     // std::cout << order2 << " " << order1 << "\t";
     
-    // if (MAF <= m_MAF_interval[0] || MAF > 0.5)
-    // {
-    //   Rcpp::stop("Minor allele frequency is out of MAF_interval, MAF is\t", MAF);
-    // }
+    if (MAF <= 0.0001 || MAF > 0.5)
+    {
+      Rcpp::stop("Minor allele frequency is out of MAF_interval, MAF is\t", MAF);
+    }
     
     double MAF_ratio = (m_MAF_interval[order2] - MAF)/(m_MAF_interval[order2] - m_MAF_interval[order1]);
     
