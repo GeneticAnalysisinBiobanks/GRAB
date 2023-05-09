@@ -99,7 +99,6 @@ mainMarker.SPAGRM = function(genoType, genoIndex, outputColumns)
                               zScore = OutList$zScore,              # standardized score statistics
                               Pvalue = OutList$pvalVec)             # marker-level p-value
                               
-  
   return(obj.mainMarker)
 }
 
