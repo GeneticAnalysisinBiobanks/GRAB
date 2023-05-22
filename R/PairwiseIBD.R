@@ -29,23 +29,26 @@ getPairwiseIBD = function(PlinkFile,            # a path to PLINK file (without 
   
   # read in the Sparse GRM.
   SparseGRMData = data.table::fread(SparseGRMFile)
+  SparseGRMData$ID1 = as.character(SparseGRMData$ID1);
+  SparseGRMData$ID2 = as.character(SparseGRMData$ID2)
   
   # read in the bim and fam data.
   bim = data.table::fread(bimFile)
   fam = data.table::fread(famFile)
   
   # check SNPs of frqFile and subjects of SparseGRMFile correspond to PlinkFile.
-  SubjID = unique(c(SparseGRMData$ID1, SparseGRMData$ID2))
+  SubjID_related = SparseGRMData %>% filter(ID1 != ID2) %>% select(ID1, ID2) %>%
+    unlist(use.names = F) %>% unique
   
   if(any(GenoInfoMat$SNP != bim$V2))
     stop("Please check if SNPs in FrqFile match with PlinkFile")
   
-  if(!all(SubjID %in% fam$V2))
-    stop("Please check if subjects in SparseGRMFile but not in PlinkFile")
+  if(!all(SubjID_related %in% fam$V2))
+    stop("Please check if related subjects in SparseGRMFile but not in PlinkFile")
   
   GenoInfoMat = GenoInfoMat %>% filter(MAF > minMafIBD)
   
-  cat("Analyzing Number of Subjects:\t", length(SubjID), "\n")
+  cat("Analyzing Number of Subjects:\t", length(SubjID_related), "\n")
   cat("Remaining Number of Markers:\t", nrow(GenoInfoMat), "\n")
   
   if(nrow(GenoInfoMat) < 1e4)
