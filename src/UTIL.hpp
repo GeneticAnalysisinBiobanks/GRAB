@@ -68,5 +68,10 @@ void imputeGeno(arma::vec& t_GVec,
                 double t_altFreq, 
                 std::vector<uint32_t> t_indexForMissing,
                 std::string t_imputeMethod);
+
+void gethwepval(arma::vec t_GVec,
+                double& t_hwepval,
+                double t_hwepvalCutoff);
+
 #endif
 

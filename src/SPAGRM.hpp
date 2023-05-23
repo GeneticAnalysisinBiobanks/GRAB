@@ -5,6 +5,8 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
 
+#include "UTIL.hpp"
+
 namespace SPAGRM{
 
 class SPAGRMClass
@@ -241,8 +243,13 @@ public:
   // function to get two side p values
   double getMarkerPval(arma::vec t_GVec, 
                        double t_altFreq,
-                       double& t_zScore)
+                       double& t_zScore,
+                       double& t_hwepval,
+                       double t_hwepvalCutoff)
   {
+    // updated on 2023-05-23 to get hwe pvalue
+    gethwepval(t_GVec, t_hwepval, t_hwepvalCutoff);
+    
     double MAF = std::min(t_altFreq, 1 - t_altFreq);
     
     double Score = sum(t_GVec % m_resid);

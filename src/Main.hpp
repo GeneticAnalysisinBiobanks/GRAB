@@ -58,6 +58,19 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
                            double& t_zScore,
                            double t_altFreq);
 
+// updated on 2023-05-22: add option to output hwepvalue, mainly for SPAGRM
+void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
+                           arma::vec t_GVec,
+                           bool t_isOnlyOutputNonZero,
+                           std::vector<uint32_t> t_indexForNonZero,
+                           double& t_Beta, 
+                           double& t_seBeta, 
+                           double& t_pval,
+                           double& t_zScore,
+                           double t_altFreq,
+                           double& t_hwepval,
+                           double t_hwepvalCutoff); // default value = 0.1
+
 void Unified_getRegionPVec(std::string t_method, 
                            arma::vec t_GVec, 
                            double& t_Stat,

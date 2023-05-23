@@ -276,3 +276,49 @@ arma::vec getRPsiR(arma::mat t_muMat,
   // return(RPsiR);
   return(RPsiRVec);
 }
+
+void gethwepval(arma::vec t_GVec,
+                double& t_hwepval,
+                double t_hwepvalCutoff)
+{
+  int n = t_GVec.size();
+  double n0 = 0;
+  double n1 = 0;
+  double n2 = 0;
+  for(int i = 0; i < n; i++)
+  {
+    double g = t_GVec.at(i);
+    if(g < t_hwepvalCutoff){
+      n0 += 1;
+      continue;
+    }
+    
+    if(g > 2 - t_hwepvalCutoff)
+    {
+      n2 += 1;
+      continue;
+    }
+    
+    // 2023-05-23: what if g is mean imputed and the MAF is 0.5?
+    if((g > 1 - t_hwepvalCutoff) & (g < 1 + t_hwepvalCutoff))
+    {
+      n1 += 1;
+      continue;
+    }
+  }
+  
+  // the below is updated by He Xu
+  double nsum = n0 + n1 + n2;
+  
+  if(nsum == 0){
+    t_hwepval = 0;
+  }else{
+    double Gfreq = (0.5 * n1 + n2) / nsum;
+    
+    arma::vec exp_GVec = {(1-Gfreq)*(1-Gfreq) * nsum, 2*Gfreq*(1-Gfreq) * nsum, Gfreq*Gfreq * nsum};
+    
+    double hwechisq = arma::accu(arma::square(arma::vec{n0, n1, n2} - exp_GVec) / exp_GVec);
+    
+    t_hwepval = R::pchisq(hwechisq, 1, 0, false);
+  }
+}

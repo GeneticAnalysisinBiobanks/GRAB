@@ -97,7 +97,8 @@ mainMarker.SPAGRM = function(genoType, genoIndex, outputColumns)
                               AltCounts = OutList$altCountsVec,     # alternative allele counts
                               MissingRate = OutList$missingRateVec, # alternative allele counts
                               zScore = OutList$zScore,              # standardized score statistics
-                              Pvalue = OutList$pvalVec)             # marker-level p-value
+                              Pvalue = OutList$pvalVec,             # marker-level p-value
+                              hwepvalVec = OutList$hwepvalVec)
                               
   return(obj.mainMarker)
 }
