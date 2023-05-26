@@ -199,6 +199,7 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   std::vector<double> seBetaVec(q, arma::datum::nan);       
   std::vector<double> pvalVec(q, arma::datum::nan);
   std::vector<double> zScoreVec(q, arma::datum::nan);
+  std::vector<double> hwepvalVec(q, arma::datum::nan);
   
   arma::mat nSamplesInGroup;
   arma::mat AltCountsInGroup;
@@ -290,9 +291,11 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     
     // std::cout << "test1.4" << std::endl;
     
+    double hwepvalCutoff = 0.1;  // to be changed to a option, instead of a default value, later
+    double hwepval = 0;
     Unified_getMarkerPval(t_method, GVec,
                           false, // bool t_isOnlyOutputNonZero,
-                          indexForNonZero, Beta, seBeta, pval, zScore, altFreq);
+                          indexForNonZero, Beta, seBeta, pval, zScore, altFreq, hwepval, hwepvalCutoff);
     
     // std::cout << "test1.5" << std::endl;
     
@@ -304,6 +307,7 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     // std::cout << "test1.53" << std::endl;
     zScoreVec.at(i) = zScore;    
     // std::cout << "zScore is\t" << zScore << std::endl;
+    hwepvalVec.at(i) = hwepval;
   }
   
   Rcpp::List OutList = Rcpp::List::create(Rcpp::Named("markerVec") = markerVec,
@@ -317,7 +321,8 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
                                           Rcpp::Named("zScore") = zScoreVec,
                                           Rcpp::Named("nSamplesInGroup") = nSamplesInGroup,
                                           Rcpp::Named("AltCountsInGroup") = AltCountsInGroup,
-                                          Rcpp::Named("AltFreqInGroup") = AltFreqInGroup);
+                                          Rcpp::Named("AltFreqInGroup") = AltFreqInGroup,
+                                          Rcpp::Named("hwepvalVec") = hwepvalVec);
   
   return OutList;  
 }
@@ -1052,13 +1057,31 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
       Rcpp::stop("When using SPAmix method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
     t_pval = ptr_gSPAmixobj->getMarkerPval(t_GVec, t_altFreq, t_zScore);
   }
-  
+
+}
+
+// a unified function to get marker-level p-value
+void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE", "SPAmix", and "SPAGRM"
+                           arma::vec t_GVec,
+                           bool t_isOnlyOutputNonZero,
+                           std::vector<uint32_t> t_indexForNonZero,
+                           double& t_Beta, 
+                           double& t_seBeta, 
+                           double& t_pval,
+                           double& t_zScore,
+                           double t_altFreq,
+                           double& t_hwepval,
+                           double t_hwepvalCutoff)
+{
   if(t_method == "SPAGRM"){
     if(t_isOnlyOutputNonZero == true)
       Rcpp::stop("When using SPAGRM method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
-    t_pval = ptr_gSPAGRMobj->getMarkerPval(t_GVec, t_altFreq, t_zScore);
+    t_pval = ptr_gSPAGRMobj->getMarkerPval(t_GVec, t_altFreq, t_zScore, t_hwepval, t_hwepvalCutoff);
+  }else{
+    Unified_getMarkerPval(t_method, t_GVec,
+                          false, // bool t_isOnlyOutputNonZero,
+                          t_indexForNonZero, t_Beta, t_seBeta, t_pval, t_zScore, t_altFreq);
   }
-  
 }
 
 // a unified function to get marker-level information for region-level analysis

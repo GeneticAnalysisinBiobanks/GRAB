@@ -159,6 +159,9 @@ GRAB.NullModel = function(formula,
   if(any(duplicated(subjData))) 
     stop("Duplicated subject IDs in 'subjData' is not supported!")
   
+  if(traitType == "Residual")
+    class(response) = "Residual"
+  
   #### END: formula.R
   
   ## Only the below methods requires 'GenoFile' related information to adjust for sample relatedness

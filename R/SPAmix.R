@@ -87,20 +87,33 @@ mainMarker.SPAmix = function(genoType, genoIndex, outputColumns)
 fitNullModel.SPAmix = function(response, designMat, subjData, control, ...)
 {
   ######## -------------- first set up the object in C++ -------- ########
-  if(class(response) != "Surv") stop("For SPAmix, the response variable should be of class 'Surv'.")
+  if(!class(response) %in% c("Surv", "Residual")) 
+    stop("For SPAmix, the response variable should be of class 'Surv' or 'Residual'.")
   
-  formula = response ~ designMat
+  if(class(response) == "Surv")
+  {
+    formula = response ~ designMat
+    
+    obj.coxph = coxph(formula, x=T, ...)
+    
+    ### Check input arguments
+    # p2g = check_input(pIDs, gIDs, obj.coxph, range)
+    
+    y = obj.coxph$y
+    yVec = y[,ncol(y)]
+    
+    mresid = obj.coxph$residuals
+    Cova = obj.coxph$x
+  }
   
-  obj.coxph = coxph(formula, x=T, ...)
+  if(class(response) == "Residual")
+  {
+    yVec = mresid = response
+    Cova = designMat
+  }
   
-  ### Check input arguments
-  # p2g = check_input(pIDs, gIDs, obj.coxph, range)
-  
-  y = obj.coxph$y
-  yVec = y[,ncol(y)]
-  
-  mresid = obj.coxph$residuals
-  Cova = obj.coxph$x
+  if(length(mresid)!=length(subjData))
+    stop("Please check the consistency between 'formula' and 'subjData'.")
   
   PC_columns = control$PC_columns
   
@@ -153,8 +166,8 @@ fitNullModel.SPAmix = function(response, designMat, subjData, control, ...)
 # check the control list in null model fitting for SPACox method
 checkControl.NullModel.SPAmix = function(control, traitType, ...)
 {
-  if(traitType != "time-to-event")
-    stop("For 'SPAmix' method, only traitType of 'time-to-event' is supported.")
+  if(!traitType %in% c("time-to-event", "Residual"))
+    stop("For 'SPAmix' method, only traitType of 'time-to-event' or 'Residual' is supported.")
 
   if(is.null(control$PC_columns))
     stop("control$PC_columns (e.g. 'PC1,PC2,PC3,PC4') is required for 'SPAmix' method.")

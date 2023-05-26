@@ -97,13 +97,14 @@ mainMarker.SPAGRM = function(genoType, genoIndex, outputColumns)
                               AltCounts = OutList$altCountsVec,     # alternative allele counts
                               MissingRate = OutList$missingRateVec, # alternative allele counts
                               zScore = OutList$zScore,              # standardized score statistics
-                              Pvalue = OutList$pvalVec)             # marker-level p-value
+                              Pvalue = OutList$pvalVec,             # marker-level p-value
+                              hwepval = OutList$hwepvalVec)
                               
   return(obj.mainMarker)
 }
 
-SPAGRM.NullModel = function(ResidMatFile, # two columns: column 1 is subjID, column 2 is Resid
-                            SparseGRMFile, # a path of SparseGRMFile get from getSparseGRM() function.
+SPAGRM.NullModel = function(ResidMatFile,    # two columns: column 1 is subjID, column 2 is Resid
+                            SparseGRMFile,   # a path of SparseGRMFile get from getSparseGRM() function.
                             PairwiseIBDFile, # a path of PairwiseIBDFile get from getPairwiseIBD() function.
                             control = list(MaxQuantile = 0.75,
                                            MinQuantile = 0.25,
