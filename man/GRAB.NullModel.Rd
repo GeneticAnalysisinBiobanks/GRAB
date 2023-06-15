@@ -65,9 +65,11 @@ Step 1 fits a null model to get an R object, which is passed to Step 2 for assoc
 \describe{
 \code{GRAB} package includes multiple methods which support a wide variety of phenotypes as follows.
 \itemize{
-\item \code{SAIGE}: Support \code{traitType} = \code{"quantitative"} or \code{"binary"}. Will be added later.
+\item \code{SAIGE}: Support \code{traitType} = \code{"quantitative"} or \code{"binary"}. Will be supported later.
 \item \code{POLMM}: Support \code{traitType} = \code{"ordinal"}. Check \code{\link{GRAB.POLMM}} for more details.
-\item \code{SPACox}: Support \code{traitType} = \code{"time-to-event"}. Check \code{\link{GRAB.SPACox}} for more details.
+\item \code{SPACox}: Support \code{traitType} = \code{"time-to-event"} or \code{"Residual"}. Check \code{\link{GRAB.SPACox}} for more details.
+\item \code{SPAmix}: Support \code{traitType} = \code{"time-to-event"} or \code{"Residual"}. Check \code{\link{GRAB.SPAmix}} for more details.
+\item \code{SPAGRM}: Support \code{traitType} = \code{"time-to-event"} or \code{"Residual"}. Check \code{\link{GRAB.SPAGRM}} for more details.
 }
 }
 
@@ -116,10 +118,11 @@ If dense GRM is used to adjust for sample relatedness, \code{GenoFile} should be
 \examples{
 # For POLMM method (ordinal categorical data analysis while adjusting for sample relatedness)
 # Step 1(a): fit a null model using a dense GRM
-PhenoData = read.table(system.file("extdata", "simuPheno.txt", package = "GRAB"), header = T)
+PhenoData = read.table(system.file("extdata", "simuPHENO.txt", package = "GRAB"), header = T)
 GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
-obj.POLMM = GRAB.NullModel(factor(Ordinal) ~ Cova1 + Cova2,
-                           data = PhenoData, subjData = PhenoData$IID, method = "POLMM", traitType = "ordinal",
+obj.POLMM = GRAB.NullModel(factor(OrdinalPheno) ~ AGE + GENDER,
+                           data = PhenoData, subjData = IID, 
+                           method = "POLMM", traitType = "ordinal",
                            GenoFile = GenoFile,
                            control = list(showInfo = FALSE, LOCO = FALSE, tolTau = 0.2, tolBeta = 0.1))
 
@@ -128,11 +131,12 @@ obj.POLMM$tau    # 1.820102
 
 # Step 1(b): fit a null model using a sparse GRM
 # First use getSparseGRM() function to get a sparse GRM file
-PhenoData = read.table(system.file("extdata", "example.pheno", package = "GRAB"), header = T)
-GenoFile = system.file("extdata", "example.bed", package = "GRAB")
+PhenoData = read.table(system.file("extdata", "simuPHENO.txt", package = "GRAB"), header = T)
+GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
 SparseGRMFile =  system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
-obj.POLMM = GRAB.NullModel(factor(Ordinal) ~ Cova1 + Cova2,
-                           data = PhenoData, subjData = PhenoData$IID, method = "POLMM", traitType = "ordinal",
+obj.POLMM = GRAB.NullModel(factor(OrdinalPheno) ~ AGE + GENDER,
+                           data = PhenoData, subjData = IID, 
+                           method = "POLMM", traitType = "ordinal",
                            GenoFile = GenoFile,
                            SparseGRMFile = SparseGRMFile,
                            control = list(showInfo = FALSE, LOCO = FALSE, tolTau = 0.2, tolBeta = 0.1))
@@ -142,6 +146,7 @@ obj.POLMM$tau    # 1.870175
 
 # save(obj.POLMM, "obj.POLMM.RData")  # save the object for analysis in step 2
 
-# For SPACox method (time-to-event data analysis)
+# For SPACox method, check ?GRAB.SPACox.
+# For SPAmix method, check ?GRAB.SPAmix.
 
 }

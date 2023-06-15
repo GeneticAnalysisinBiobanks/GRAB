@@ -7,24 +7,35 @@
 GRAB.SPACox()
 }
 \description{
-SPACox method is to analysis time-to-event phenotype for unrelated samples in a large-scale biobank.
+SPACox method is an empirical approach to analyzing complex traits (including but not limited to time-to-event trait) for unrelated samples in a large-scale biobank.
 }
 \details{
-Additional list of \code{control} in \code{GRAB.NullModel()} function
-Additional list of \code{control} in \code{GRAB.Marker()} function
+Additional list of \code{control} in \code{GRAB.NullModel()} function.
+
+Additional list of \code{control} in \code{GRAB.Marker()} function.
 }
 \examples{
 # Step 1: fit a null model
-PhenoData = read.table(system.file("extdata", "example.pheno", package = "GRAB"), header = T)
-obj.SPACox = GRAB.NullModel(survival::Surv(time,event) ~ Cova1 + Cova2, 
-                            data = PhenoData, subjData = PhenoData$IID, 
-                            method = "SPACox", traitType = "time-to-event")
+PhenoFile = system.file("extdata", "simuPHENO.txt", package = "GRAB")
+PhenoData = data.table::fread(PhenoFile, header = T)
+obj.SPACox = GRAB.NullModel(Surv(SurvTime, SurvEvent)~AGE+GENDER, 
+                            data = PhenoData, 
+                            subjData = IID, 
+                            method = "SPACox", 
+                            traitType = "time-to-event")
 
-# Step 2: perform score test
-GenoFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.bed", package = "GRAB")
+# Using model residuals performs exactly the same as the above. Note that confounding factors are still required in the right of the formula.
+obj.coxph = coxph(Surv(SurvTime, SurvEvent)~AGE+GENDER, data = PhenoData, x=T)
+obj.SPACox = GRAB.NullModel(obj.coxph$residuals~AGE+GENDER, 
+                            data = PhenoData, 
+                            subjData = IID, 
+                            method = "SPACox", 
+                            traitType = "Residual")
+
+# Step 2: conduct score test
+GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
 OutputDir = system.file("results", package = "GRAB")
-OutputFile = paste0(OutputDir, "/SPACoxMarkers.txt")
-GRAB.Marker(obj.SPACox, GenoFile = GenoFile,
-            OutputFile = OutputFile)
-head(read.table(OutputFile, header=T))
+OutputFile = paste0(OutputDir, "/Results_SPACox.txt")
+GRAB.Marker(obj.SPACox, GenoFile = GenoFile, OutputFile = OutputFile, control = list(outputColumns = "zScore"))
+data.table::fread(OutputFile)
 }
