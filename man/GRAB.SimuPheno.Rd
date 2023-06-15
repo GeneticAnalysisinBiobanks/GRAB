@@ -7,7 +7,7 @@
 GRAB.SimuPheno(
   eta,
   traitType = "binary",
-  control = list(pCase = 0.1, sdError = 1, pEachGroup = c(1, 1, 1))
+  control = list(pCase = 0.1, sdError = 1, pEachGroup = c(1, 1, 1), eventRate = 0.1)
 )
 }
 \arguments{

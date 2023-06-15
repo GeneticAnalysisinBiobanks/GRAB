@@ -29,8 +29,8 @@ GRAB.SPACox = function(){
 # check the control list in null model fitting for SPACox method
 checkControl.NullModel.SPACox = function(control, traitType, ...)
 {
-  if(traitType != "time-to-event")
-    stop("For method of 'SPACox', only traitType of 'time-to-event' is supported.")
+  if(!traitType %in% c("time-to-event", "Residual"))
+    stop("For 'SPACox' method, only traitType of 'time-to-event' or 'Residual' is supported.")
   
   default.control = list(range = c(-100, 100),
                          length.out = 10000)
@@ -54,9 +54,23 @@ checkControl.NullModel.SPACox = function(control, traitType, ...)
 # fitNullModel.SPACox = function(formula, data, subset, subjData, subjGeno, control, ...)
 fitNullModel.SPACox = function(response, designMat, subjData, control, ...)
 {
-  if(class(response) != "Surv") stop("For SPACox, the response variable should be of class 'Surv'.")
+  if(!class(response) %in% c("Surv", "Residual")) 
+    stop("For SPAcox, the response variable should be of class 'Surv' or 'Residual'.")
   
-  formula = response ~ designMat
+  if(class(response) == "Surv")
+  {
+    formula = response ~ designMat
+    obj.coxph = survival::coxph(formula, x=T, ...)
+    mresid = obj.coxph$residuals
+    # Cova = obj.coxph$x
+    Cova = designMat
+  }
+  
+  if(class(response) == "Residual")
+  {
+    mresid = response
+    Cova = designMat
+  }
   
   ### extract information from control
   range = control$range
@@ -64,7 +78,7 @@ fitNullModel.SPACox = function(response, designMat, subjData, control, ...)
   
   ### Fit a Cox model using survival package
   # obj.coxph = survival::coxph(formula, data=data, subset=subset, x=T, na.action="na.omit", ...)
-  obj.coxph = survival::coxph(formula, x=T, ...)
+  
   
   ### The below is commented since it has been checked in fitNullModel() 
   ### By Wenjian Bi on 01-31-2021
@@ -80,13 +94,11 @@ fitNullModel.SPACox = function(response, designMat, subjData, control, ...)
   #   subjData = subjData[-1*posNA]  # remove IDs with missing data
   # }
   
-  mresid = obj.coxph$residuals
-  
   if(length(mresid)!=length(subjData))
     stop("Please check the consistency between 'formula' and 'subjData'.")
   
   ### Get the covariate matrix to adjust for genotype
-  Cova = obj.coxph$x
+  
   
   X = cbind(1, Cova)
   X.invXX = X %*% solve(t(X)%*%X)
@@ -113,7 +125,8 @@ fitNullModel.SPACox = function(response, designMat, subjData, control, ...)
     if(c %% 1000 == 0) print(paste0("Complete ",c,"/",length.out,"."))
   }
   
-  re = list(mresid = mresid,
+  re = list(N = length(mresid),
+            mresid = mresid,
             cumul = cumul,
             tX = tX,
             X.invXX = X.invXX,
@@ -165,39 +178,23 @@ setRegion.SPACox = function(objNull, control)
 mainMarker.SPACox = function(genoType, genoIndex, outputColumns)
 {
   # The following function is in Main.cpp
-  OutList = mainMarkerInCPP("SPACox",
-                            genoType,
-                            genoIndex)
-                            # control$missing_cutoff,
-                            # control$min_maf_marker,
-                            # control$min_mac_marker)  
+  OutList = mainMarkerInCPP("SPACox", genoType, genoIndex)
+  obj.mainMarker = data.frame(Marker = OutList$markerVec,           # marker IDs
+                              Info = OutList$infoVec,               # marker information: CHR:POS:REF:ALT
+                              AltFreq = OutList$altFreqVec,         # alternative allele frequencies
+                              AltCounts = OutList$altCountsVec,     # alternative allele counts
+                              MissingRate = OutList$missingRateVec, # alternative allele counts
+                              Pvalue = OutList$pvalVec)             # marker-level p-values
   
-  # Rcpp::List OutList = Rcpp::List::create(Rcpp::Named("markerVec") = markerVec,
-  #                                         Rcpp::Named("infoVec") = infoVec,
-  #                                         Rcpp::Named("altFreqVec") = altFreqVec,
-  #                                         Rcpp::Named("missingRateVec") = missingRateVec,
-  #                                         Rcpp::Named("BetaVec") = BetaVec,
-  #                                         Rcpp::Named("seBetaVec") = seBetaVec,
-  #                                         Rcpp::Named("pvalVec") = pvalVec);
+  # optionalColumns = c("beta", "seBeta", "zScore", "PvalueNorm", "AltFreqInGroup", "AltCountsInGroup", "nSamplesInGroup")
+  optionalColumns = c("zScore", "PvalueNorm", "AltFreqInGroup", "AltCountsInGroup", "nSamplesInGroup")
+  additionalColumns = intersect(optionalColumns, outputColumns)
   
-  markerVec = OutList$markerVec   # marker IDs
-  infoVec = OutList$infoVec       # marker infomation: CHR:POS:REF:ALT
-  altFreqVec = OutList$altFreqVec       # 
-  altCountsVec = OutList$altCountsVec       # 
-  missingRateVec = OutList$missingRateVec       # minor allele frequencies (freq of ALT if flip=F, freq of REF if flip=T)
-  # BetaVec = OutList$BetaVec     # beta for ALT if flip=F, beta for REF if flip=T
-  # seBetaVec = OutList$seBetaVec # sebeta
-  pvalVec = OutList$pvalVec;      # marker-level p-values
-  zScoreVec = OutList$zScoreVec;
+  if(length(additionalColumns) > 0)
+    obj.mainMarker = cbind.data.frame(obj.mainMarker, 
+                                      as.data.frame(OutList[additionalColumns]))
   
-  obj.mainMarker = data.frame(Marker = markerVec,
-                              Info = infoVec,
-                              AltFreq = altFreqVec,
-                              AltCounts = altCountsVec,
-                              MissingRate = missingRateVec,
-                              Pval = pvalVec,
-                              zScore = zScoreVec)
-  
+  return(obj.mainMarker)
 }
 
 

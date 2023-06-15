@@ -1348,3 +1348,26 @@ void setSPAmixobjInCPP(arma::vec t_resid,
                                            t_posOutlier,
                                            t_posNonOutlier);
 }
+
+
+// [[Rcpp::export]]
+void setSPACoxobjInCPP(arma::mat t_cumul,
+                       arma::vec t_mresid,
+                       arma::mat t_XinvXX,
+                       arma::mat t_tX,
+                       int t_N,
+                       double t_pVal_covaAdj_Cutoff,
+                       double t_SPA_Cutoff)
+{
+  if(ptr_gSPACoxobj)
+    delete ptr_gSPACoxobj;
+  
+  ptr_gSPACoxobj = new SPACox::SPACoxClass(t_cumul,
+                                           t_mresid,
+                                           t_XinvXX,
+                                           t_tX,
+                                           t_N,
+                                           t_pVal_covaAdj_Cutoff,
+                                           t_SPA_Cutoff);
+}
+

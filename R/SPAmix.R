@@ -86,7 +86,6 @@ mainMarker.SPAmix = function(genoType, genoIndex, outputColumns)
 # fit null model using SPAmix method
 fitNullModel.SPAmix = function(response, designMat, subjData, control, ...)
 {
-  ######## -------------- first set up the object in C++ -------- ########
   if(!class(response) %in% c("Surv", "Residual")) 
     stop("For SPAmix, the response variable should be of class 'Surv' or 'Residual'.")
   

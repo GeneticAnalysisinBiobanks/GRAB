@@ -318,6 +318,22 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// setSPACoxobjInCPP
+void setSPACoxobjInCPP(arma::mat t_cumul, arma::vec t_mresid, arma::mat t_XinvXX, arma::mat t_tX, int t_N, double t_pVal_covaAdj_Cutoff, double t_SPA_Cutoff);
+RcppExport SEXP _GRAB_setSPACoxobjInCPP(SEXP t_cumulSEXP, SEXP t_mresidSEXP, SEXP t_XinvXXSEXP, SEXP t_tXSEXP, SEXP t_NSEXP, SEXP t_pVal_covaAdj_CutoffSEXP, SEXP t_SPA_CutoffSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::mat >::type t_cumul(t_cumulSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_mresid(t_mresidSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type t_XinvXX(t_XinvXXSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type t_tX(t_tXSEXP);
+    Rcpp::traits::input_parameter< int >::type t_N(t_NSEXP);
+    Rcpp::traits::input_parameter< double >::type t_pVal_covaAdj_Cutoff(t_pVal_covaAdj_CutoffSEXP);
+    Rcpp::traits::input_parameter< double >::type t_SPA_Cutoff(t_SPA_CutoffSEXP);
+    setSPACoxobjInCPP(t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_covaAdj_Cutoff, t_SPA_Cutoff);
+    return R_NilValue;
+END_RCPP
+}
 // squares
 std::vector<double> squares(Rcpp::NumericVector data);
 RcppExport SEXP _GRAB_squares(SEXP dataSEXP) {
@@ -352,6 +368,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setPOLMMobjInCPP_NULL", (DL_FUNC) &_GRAB_setPOLMMobjInCPP_NULL, 10},
     {"_GRAB_setSPAGRMobjInCPP", (DL_FUNC) &_GRAB_setSPAGRMobjInCPP, 12},
     {"_GRAB_setSPAmixobjInCPP", (DL_FUNC) &_GRAB_setSPAmixobjInCPP, 6},
+    {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},
     {"_GRAB_squares", (DL_FUNC) &_GRAB_squares, 1},
     {NULL, NULL, 0}
 };
