@@ -85,6 +85,10 @@ setSPAmixobjInCPP <- function(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_posOutlier, t
     invisible(.Call(`_GRAB_setSPAmixobjInCPP`, t_resid, t_PCs, t_N, t_SPA_Cutoff, t_posOutlier, t_posNonOutlier))
 }
 
+setSPACoxobjInCPP <- function(t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_covaAdj_Cutoff, t_SPA_Cutoff) {
+    invisible(.Call(`_GRAB_setSPACoxobjInCPP`, t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_covaAdj_Cutoff, t_SPA_Cutoff))
+}
+
 squares <- function(data) {
     .Call(`_GRAB_squares`, data)
 }

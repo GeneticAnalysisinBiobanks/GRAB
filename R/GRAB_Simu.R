@@ -670,10 +670,11 @@ GRAB.SimuPheno = function(eta,
                           traitType = "binary", 
                           control = list(pCase = 0.1,
                                          sdError = 1,
-                                         pEachGroup = c(1,1,1)))
+                                         pEachGroup = c(1,1,1),
+                                         eventRate = 0.1))
 {
   if(!traitType %in% c("quantitative", "binary", "ordinal", "time-to-event"))
-    stop('traitType is limited to "quantitative", "binary", "ordinal", and "time-to-event".')
+    stop('"traitType" is limited to "quantitative", "binary", "ordinal", and "time-to-event".')
   
   if(traitType == "binary")
     if(!"pCase" %in% names(control))
@@ -685,7 +686,11 @@ GRAB.SimuPheno = function(eta,
   
   if(traitType == "ordinal")
     if(!"pEachGroup" %in% names(control))
-      cat("For quantitative phenotype, argument 'control' should include 'pEachGroup' which is ratio of sample size in each group.")
+      cat("For ordinal categorical phenotype, argument 'control' should include 'pEachGroup' which is ratio of sample size in each group.")
+  
+  if(traitType == "time-to-event")
+    if(!"eventRate" %in% names(control))
+      cat("For time-to-event phenotype, argument 'control' should include 'eventRate' which is the event rate.")
   
   eta = eta - mean(eta)
   n = length(eta)
@@ -725,6 +730,31 @@ GRAB.SimuPheno = function(eta,
       mu = exp(Eps[g]-eta)/(1+exp(Eps[g]-eta))
       pheno[pheno.latent > mu] = g
     }
+    return(pheno)
+  }
+  
+  ### time-to-event trait
+  if(traitType == "time-to-event"){
+    eventRate = control$eventRate
+    
+    shape0 = 2
+    cens.shape = 1
+    cens.scale = 0.15
+    
+    scale0 = uniroot(f.surv, c(-100,100), eta.true = eta, event.rate = eventRate, seed = seed, 
+                     shape0 = shape0, cens.shape = cens.shape, cens.scale = cens.scale)
+    scale0 = scale0$root
+    
+    set.seed(seed)
+    
+    cens = rweibull(length(eta), shape = cens.shape, scale = cens.scale)
+    eps <- runif(length(eta), 0, 1)
+    time = (-log(eps) * exp(-1 * eta)) ^ (1/shape0) * scale0
+    surv.time = pmin(time, cens)
+    event = ifelse(time < cens, 1, 0)
+    
+    # pheno = survival::Surv(surv.time, event)
+    pheno = data.frame(SurvTime = surv.time, SurvEvent = event)
     return(pheno)
   }
 }
@@ -773,4 +803,23 @@ getEps = function(ratios,
     Eps = c(Eps, eps$root)
   }
   return(Eps)
+}
+
+#### lower function to estimate beta0 given an event rate. Will be used in data.simu.surv().
+f.surv = function(scale0,              # Scale parameter
+                  eta.true,
+                  event.rate,         # Event rate
+                  seed,
+                  shape0 = 2,
+                  cens.shape = 1,
+                  cens.scale = 0.15)          
+{
+  set.seed(seed)
+  cens = rweibull(length(eta.true), shape = cens.shape, scale = cens.scale)
+  eps <- runif(length(eta.true), 0, 1)
+  time = (-log(eps) * exp(-1 * eta.true)) ^ (1/shape0) * scale0
+  surv.time = pmin(time, cens)
+  event = ifelse(time < cens, 1, 0)
+  re = mean(event) - event.rate
+  return(re)
 }

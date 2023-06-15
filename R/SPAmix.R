@@ -1,13 +1,38 @@
 #' SPAmix method in GRAB package
 #' 
-#' SPAmix method is to analyze complex trait (such as time-to-event data) for unrelated admixture samples.
+#' SPAmix method is an empirical approach to analyzing complex traits (including but not limited to time-to-event trait) for unrelated samples in a large-scale biobank. SPAmix extend SPACox to support an admixture population or multiple populations. 
 #' 
 #' @details 
-#' Please check \code{?GRAB.control} for the generic list of \code{control} in \code{GRAB.NullModel()} and \code{GRAB.Marker()}.
-#'            
-#' @examples
-#' PhenoData = read.table(system.file("extdata", "simuPheno.txt", package = "GRAB"), header = T)
+#' For ```SPAmix```, the confounding factors of SNP-derived PCs are required and should be specified in ```control```.
+#' 
+#' @examples 
+#' # Step 1: fit a null model
+#' PhenoFile = system.file("extdata", "simuPHENO.txt", package = "GRAB")
+#' PhenoData = data.table::fread(PhenoFile, header = T)
+#' N = nrow(PhenoData)
+#' PhenoData = PhenoData %>% mutate(PC1 = rnorm(N), PC2 = rnorm(N))  # add two PCs
+#' obj.SPAmix = GRAB.NullModel(Surv(SurvTime, SurvEvent)~AGE+GENDER+PC1+PC2, 
+#'                             data = PhenoData, 
+#'                             subjData = IID, 
+#'                             method = "SPAmix", 
+#'                             traitType = "time-to-event",
+#'                             control = list(PC_columns = "PC1,PC2"))
+#' 
+#' # Using model residuals performs exactly the same as the above. Note that confounding factors are still required in the right of the formula.
+#' obj.coxph = coxph(Surv(SurvTime, SurvEvent)~AGE+GENDER+PC1+PC2, data = PhenoData, x=T)
+#' obj.SPAmix = GRAB.NullModel(obj.coxph$residuals~AGE+GENDER+PC1+PC2, 
+#'                             data = PhenoData, 
+#'                             subjData = IID, 
+#'                             method = "SPAmix", 
+#'                             traitType = "Residual",
+#'                             control = list(PC_columns = "PC1,PC2"))
+#' 
+#' # Step 2: conduct score test
 #' GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
+#' OutputDir = system.file("results", package = "GRAB")
+#' OutputFile = paste0(OutputDir, "/Results_SPAmix.txt")
+#' GRAB.Marker(obj.SPAmix, GenoFile = GenoFile, OutputFile = OutputFile, control = list(outputColumns = "zScore"))
+#' data.table::fread(OutputFile)
 #' @export
 GRAB.SPAmix = function(){
   print("Check ?GRAB.SPAmix for more details about 'SPAmix' method.")
@@ -86,7 +111,6 @@ mainMarker.SPAmix = function(genoType, genoIndex, outputColumns)
 # fit null model using SPAmix method
 fitNullModel.SPAmix = function(response, designMat, subjData, control, ...)
 {
-  ######## -------------- first set up the object in C++ -------- ########
   if(!class(response) %in% c("Surv", "Residual")) 
     stop("For SPAmix, the response variable should be of class 'Surv' or 'Residual'.")
   
@@ -148,7 +172,7 @@ fitNullModel.SPAmix = function(response, designMat, subjData, control, ...)
   
   cat("The outlier of residuals will be passed to SPA analysis.\n")
   cat("Cutoffs to define residuals:\t", signif(cutoff,2),"\n")
-  cat("Totally, ", length(posOutlier),"/", length(mresid), " are defined as outliers.")
+  cat("Totally, ", length(posOutlier),"/", length(mresid), " are defined as outliers.\n")
     
   objNull = list(resid = mresid,
                  var.resid = var.resid,
