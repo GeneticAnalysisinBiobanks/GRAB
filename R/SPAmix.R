@@ -148,6 +148,8 @@ fitNullModel.SPAmix = function(response, designMat, subjData, control, ...)
     
     if(length(mresid) != length(subjData))
       stop("Please check the consistency between 'formula' and 'subjData'.")
+    
+    mresid = matrix(mresid, ncol=1)
   }
   
   if(class(response) == "Residual")
@@ -181,9 +183,8 @@ fitNullModel.SPAmix = function(response, designMat, subjData, control, ...)
   # X.invXX = X %*% solve(t(X)%*%X)
   # tX = t(X)
   
-  nPheno = ncol(mresid)
-  
   outLierList = list()
+  nPheno = ncol(mresid)
   for(i in 1:nPheno)
   {
     mresid.temp = mresid[,i]

@@ -174,25 +174,28 @@ GRAB.NullModel = function(formula,
   subjData = model.extract(mf, "subjData")
   
   ### The below is to support multiple response variables for SPAmix with residuals as input
-  if(LeftIncludesAdd){
-    noValueInAnyPheno = paste(rep(NA, nInLeft), collapse = " ")
-    posNoValue = which(response == noValueInAnyPheno)
-    response.temp = response
-    
-    if(length(posNoValue) > 0){
-      cat("We remove",length(posNoValue),"individuals without any phenotyeps in analysis.\n")
-      response.temp = response[-1*posNoValue]
-      designMat = designMat[-1*posNoValue,,drop=F]
-      subjData = subjData[-1*posNoValue]
+  if(traitType == "Residual"){
+    if(LeftIncludesAdd){
+      noValueInAnyPheno = paste(rep(NA, nInLeft), collapse = " ")
+      posNoValue = which(response == noValueInAnyPheno)
+      response.temp = response
+      
+      if(length(posNoValue) > 0){
+        cat("We remove",length(posNoValue),"individuals without any phenotyeps in analysis.\n")
+        response.temp = response[-1*posNoValue]
+        designMat = designMat[-1*posNoValue,,drop=F]
+        subjData = subjData[-1*posNoValue]
+      }
+      
+      nRes = length(response.temp)
+      response = matrix(NA, nRes, nInLeft)
+      for(i in 1:nRes)
+        response[i,] = as.numeric(unlist(strsplit(response.temp[i], split = " ")))
+      
+    }else{
+      response = matrix(response, ncol=1)
     }
-    
-    nRes = length(response.temp)
-    response = matrix(NA, nRes, nInLeft)
-    for(i in 1:nRes)
-      response[i,] = as.numeric(unlist(strsplit(response.temp[i], split = " ")))
-
-  }else{
-    response = matrix(response, ncol=1)
+    class(response) = "Residual"
   }
   
   if(colnames(designMat)[1] == "(Intercept)")
@@ -203,9 +206,6 @@ GRAB.NullModel = function(formula,
   
   if(any(duplicated(subjData))) 
     stop("Duplicated subject IDs in 'subjData' is not supported!")
-  
-  if(traitType == "Residual")
-    class(response) = "Residual"
   
   #### END: formula.R
   
