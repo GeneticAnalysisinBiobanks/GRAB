@@ -6,25 +6,31 @@
 
 namespace SPAmix {
 
-SPAmixClass::SPAmixClass(arma::vec t_resid,
+SPAmixClass::SPAmixClass(arma::mat t_resid,
                          arma::mat t_PCs,
                          int t_N,
                          double t_SPA_Cutoff,
-                         arma::uvec t_posOutlier,
-                         arma::uvec t_posNonOutlier)
+                         Rcpp::List t_outlierList)
+                         // arma::uvec t_posOutlier,
+                         // arma::uvec t_posNonOutlier)
 {
   m_resid = t_resid;
-  m_resid2 = pow(m_resid, 2);
-  // m_XinvXX = t_XinvXX;
-  // m_tX = t_tX;
+  // m_resid2 = pow(m_resid, 2);
+  m_Npheno = t_resid.n_cols;
+  
+  m_pvalVec.resize(m_Npheno);
+  m_zScoreVec.resize(m_Npheno);
+  
   m_N = t_N;
   m_SPA_Cutoff = t_SPA_Cutoff;
   m_PCs = t_PCs;
-  m_posOutlier = t_posOutlier;
-  m_posNonOutlier = t_posNonOutlier;
+  m_outlierList = t_outlierList;
   
-  m_R_outlier = m_resid(m_posOutlier);  // what if no residuals are outlier?? check later (2023-04-23)
-  m_R_nonOutlier = m_resid(m_posNonOutlier);  
+  // m_posOutlier = t_posOutlier;
+  // m_posNonOutlier = t_posNonOutlier;
+  
+  // m_R_outlier = m_resid(m_posOutlier);  // what if no residuals are outlier?? check later (2023-04-23)
+  // m_R_nonOutlier = m_resid(m_posNonOutlier);  
   
   arma::mat X = arma::join_horiz(arma::ones(t_N), t_PCs);
   arma::mat X_t = X.t();

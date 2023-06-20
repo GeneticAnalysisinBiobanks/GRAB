@@ -304,17 +304,16 @@ BEGIN_RCPP
 END_RCPP
 }
 // setSPAmixobjInCPP
-void setSPAmixobjInCPP(arma::vec t_resid, arma::mat t_PCs, int t_N, double t_SPA_Cutoff, arma::uvec t_posOutlier, arma::uvec t_posNonOutlier);
-RcppExport SEXP _GRAB_setSPAmixobjInCPP(SEXP t_residSEXP, SEXP t_PCsSEXP, SEXP t_NSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_posOutlierSEXP, SEXP t_posNonOutlierSEXP) {
+void setSPAmixobjInCPP(arma::mat t_resid, arma::mat t_PCs, int t_N, double t_SPA_Cutoff, Rcpp::List t_outlierList);
+RcppExport SEXP _GRAB_setSPAmixobjInCPP(SEXP t_residSEXP, SEXP t_PCsSEXP, SEXP t_NSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_outlierListSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::vec >::type t_resid(t_residSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type t_resid(t_residSEXP);
     Rcpp::traits::input_parameter< arma::mat >::type t_PCs(t_PCsSEXP);
     Rcpp::traits::input_parameter< int >::type t_N(t_NSEXP);
     Rcpp::traits::input_parameter< double >::type t_SPA_Cutoff(t_SPA_CutoffSEXP);
-    Rcpp::traits::input_parameter< arma::uvec >::type t_posOutlier(t_posOutlierSEXP);
-    Rcpp::traits::input_parameter< arma::uvec >::type t_posNonOutlier(t_posNonOutlierSEXP);
-    setSPAmixobjInCPP(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_posOutlier, t_posNonOutlier);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_outlierList(t_outlierListSEXP);
+    setSPAmixobjInCPP(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList);
     return R_NilValue;
 END_RCPP
 }
@@ -367,7 +366,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setPOLMMobjInCPP", (DL_FUNC) &_GRAB_setPOLMMobjInCPP, 11},
     {"_GRAB_setPOLMMobjInCPP_NULL", (DL_FUNC) &_GRAB_setPOLMMobjInCPP_NULL, 10},
     {"_GRAB_setSPAGRMobjInCPP", (DL_FUNC) &_GRAB_setSPAGRMobjInCPP, 12},
-    {"_GRAB_setSPAmixobjInCPP", (DL_FUNC) &_GRAB_setSPAmixobjInCPP, 6},
+    {"_GRAB_setSPAmixobjInCPP", (DL_FUNC) &_GRAB_setSPAmixobjInCPP, 5},
     {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},
     {"_GRAB_squares", (DL_FUNC) &_GRAB_squares, 1},
     {NULL, NULL, 0}

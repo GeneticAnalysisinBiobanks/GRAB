@@ -142,6 +142,23 @@ GRAB.NullModel = function(formula,
   
   mf <- match.call(expand.dots = FALSE)
   
+  ### The below is to support multiple response variables for SPAmix with residuals as input
+  
+  LeftInFormula = deparse(formula[[2]])
+  LeftIncludesAdd = grepl("\\+", LeftInFormula)
+  
+  if(LeftIncludesAdd){
+    if(method != "SPAmix" | traitType != "Residual")
+      stop("Only 'SPAmix' method with traitType of 'Residual' supports multiple responses variables in 'formula'.")
+    
+    nInLeft = length(strsplit(LeftInFormula, "\\+")[[1]])
+    cat("SPAmix method supports multiple response variables of model residuals.\n")
+    RightInFormula = deparse(formula[[3]])
+    NewLeftInFormla = paste0("paste(", gsub("\\+", ",", LeftInFormula), ")")
+    mf$formula = as.formula(paste(NewLeftInFormla, "~", RightInFormula))
+  }
+  ##
+  
   m <- match(x = c("formula", "data", "subset", "subjData"), 
              table = names(mf), nomatch = 0L)
   
@@ -155,6 +172,28 @@ GRAB.NullModel = function(formula,
   response = model.response(mf)
   designMat = model.matrix(object = mt, data = mf)
   subjData = model.extract(mf, "subjData")
+  
+  ### The below is to support multiple response variables for SPAmix with residuals as input
+  if(LeftIncludesAdd){
+    noValueInAnyPheno = paste(rep(NA, nInLeft), collapse = " ")
+    posNoValue = which(response == noValueInAnyPheno)
+    response.temp = response
+    
+    if(length(posNoValue) > 0){
+      cat("We remove",length(posNoValue),"individuals without any phenotyeps in analysis.\n")
+      response.temp = response[-1*posNoValue]
+      designMat = designMat[-1*posNoValue,,drop=F]
+      subjData = subjData[-1*posNoValue]
+    }
+    
+    nRes = length(response.temp)
+    response = matrix(NA, nRes, nInLeft)
+    for(i in 1:nRes)
+      response[i,] = as.numeric(unlist(strsplit(response.temp[i], split = " ")))
+
+  }else{
+    response = matrix(response, ncol=1)
+  }
   
   if(colnames(designMat)[1] == "(Intercept)")
     designMat = designMat[,-1,drop=F]
