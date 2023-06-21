@@ -155,7 +155,9 @@ GRAB.NullModel = function(formula,
     cat("SPAmix method supports multiple response variables of model residuals.\n")
     RightInFormula = deparse(formula[[3]])
     NewLeftInFormla = paste0("paste(", gsub("\\+", ",", LeftInFormula), ")")
-    mf$formula = as.formula(paste(NewLeftInFormla, "~", RightInFormula))
+    NewRightInFormula = paste0(RightInFormula, collapse = " ")   # c("cov1 + cov2 +", "cov3") -> "cov1 + cov2 + cov3"
+    # mf$formula = as.formula(paste(NewLeftInFormla, "~", RightInFormula))
+    mf$formula = as.formula(paste(NewLeftInFormla, "~", NewRightInFormula))
   }
   ##
   
