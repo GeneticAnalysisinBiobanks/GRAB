@@ -17,8 +17,10 @@ For \code{SPAmix}, the confounding factors of SNP-derived PCs are required and s
 PhenoFile = system.file("extdata", "simuPHENO.txt", package = "GRAB")
 PhenoData = data.table::fread(PhenoFile, header = T)
 N = nrow(PhenoData)
-PhenoData = PhenoData \%>\% mutate(PC1 = rnorm(N), PC2 = rnorm(N))  # add two PCs
-obj.SPAmix = GRAB.NullModel(Surv(SurvTime, SurvEvent)~AGE+GENDER+PC1+PC2, 
+PhenoData = PhenoData \%>\% mutate(PC1 = rnorm(N), PC2 = rnorm(N))  # add two PCs, which are required for SPAmix
+
+# Users can directly specify a time-to-event trait to analyze
+obj.SPAmix = GRAB.NullModel(Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2, 
                             data = PhenoData, 
                             subjData = IID, 
                             method = "SPAmix", 
@@ -26,14 +28,24 @@ obj.SPAmix = GRAB.NullModel(Surv(SurvTime, SurvEvent)~AGE+GENDER+PC1+PC2,
                             control = list(PC_columns = "PC1,PC2"))
 
 # Using model residuals performs exactly the same as the above. Note that confounding factors are still required in the right of the formula.
-obj.coxph = coxph(Surv(SurvTime, SurvEvent)~AGE+GENDER+PC1+PC2, data = PhenoData, x=T)
-obj.SPAmix = GRAB.NullModel(obj.coxph$residuals~AGE+GENDER+PC1+PC2, 
+obj.coxph = coxph(Surv(SurvTime, SurvEvent)~AGE+GENDER+PC1+PC2, data = PhenoData)
+obj.SPAmix = GRAB.NullModel(obj.coxph$residuals ~ AGE + GENDER + PC1 + PC2, 
                             data = PhenoData, 
                             subjData = IID, 
                             method = "SPAmix", 
                             traitType = "Residual",
                             control = list(PC_columns = "PC1,PC2"))
-
+                            
+# SPAmix also supports multiple residuals as below                           
+obj.coxph = coxph(Surv(SurvTime, SurvEvent)~AGE+GENDER+PC1+PC2, data = PhenoData)
+obj.lm = lm(QuantPheno ~ AGE+GENDER+PC1+PC2, data = PhenoData)
+obj.SPAmix = GRAB.NullModel(obj.coxph$residuals + obj.lm$residuals ~ AGE + GENDER + PC1 + PC2, 
+                            data = PhenoData, 
+                            subjData = IID, 
+                            method = "SPAmix", 
+                            traitType = "Residual",
+                            control = list(PC_columns = "PC1,PC2"))
+                             
 # Step 2: conduct score test
 GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
 OutputDir = system.file("results", package = "GRAB")

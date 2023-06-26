@@ -178,7 +178,7 @@ GRAB.Marker = function(objNull,
     cat(paste0("(",Sys.time(),") ---- Analyzing Chunk ", i, "/", nChunks, ": chrom ", chrom," ---- \n"))
     
     # main function to calculate summary statistics for markers in one chunk
-    resMarker = mainMarker(NullModelClass, genoType, genoIndex, control$outputColumns)
+    resMarker = mainMarker(NullModelClass, genoType, genoIndex, control$outputColumns, objNull)
     
     writeOutputFile(Output = list(resMarker), 
                     OutputFile = list(OutputFile), 
@@ -230,7 +230,7 @@ setMarker = function(NullModelClass, objNull, control, chrom, Group, ifOutGroup)
   return(obj.setMarker)
 }
 
-mainMarker = function(NullModelClass, genoType, genoIndex, outputColumns)
+mainMarker = function(NullModelClass, genoType, genoIndex, outputColumns, objNull)
 {
   # Check 'POLMM.R'
   if(NullModelClass == "POLMM_NULL_Model"){
@@ -263,7 +263,7 @@ mainMarker = function(NullModelClass, genoType, genoIndex, outputColumns)
   
   # Check 'SPAmix.R'
   if(NullModelClass == "SPAmix_NULL_Model")
-    obj.mainMarker = mainMarker.SPAmix(genoType, genoIndex, outputColumns)
+    obj.mainMarker = mainMarker.SPAmix(genoType, genoIndex, outputColumns, objNull)
   
   # Check 'SPAGRM.R'
   if(NullModelClass == "SPAGRM_NULL_Model")

@@ -197,9 +197,14 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   std::vector<double> missingRateVec(q);  // missing rate of markers
   std::vector<double> BetaVec(q, arma::datum::nan);         // beta value for ALT allele
   std::vector<double> seBetaVec(q, arma::datum::nan);       
-  std::vector<double> pvalVec(q, arma::datum::nan);
-  std::vector<double> zScoreVec(q, arma::datum::nan);
   std::vector<double> hwepvalVec(q, arma::datum::nan);
+  
+  int Npheno = 1;
+  if(t_method == "SPAmix")
+    Npheno = ptr_gSPAmixobj->getNpheno();
+
+  std::vector<double> pvalVec(q*Npheno, arma::datum::nan);
+  std::vector<double> zScoreVec(q*Npheno, arma::datum::nan);
   
   arma::mat nSamplesInGroup;
   arma::mat AltCountsInGroup;
@@ -303,10 +308,21 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     // std::cout << "test1.51" << std::endl;
     seBetaVec.at(i) = seBeta;       
     // std::cout << "test1.52" << std::endl;
-    pvalVec.at(i) = pval;
-    // std::cout << "test1.53" << std::endl;
-    zScoreVec.at(i) = zScore;    
-    // std::cout << "zScore is\t" << zScore << std::endl;
+    
+    if(t_method == "SPAmix"){
+      arma::vec pvalVecTemp = ptr_gSPAmixobj->getpvalVec();
+      arma::vec zScoreVecTemp = ptr_gSPAmixobj->getzScoreVec();
+      
+      for(int j = 0; j < Npheno; j++){
+        pvalVec.at(i*Npheno+j) = pvalVecTemp.at(j);
+        zScoreVec.at(i*Npheno+j) = zScoreVecTemp.at(j);
+      }
+      
+    }else{
+      pvalVec.at(i) = pval;
+      zScoreVec.at(i) = zScore;    
+    }
+    
     hwepvalVec.at(i) = hwepval;
   }
   
@@ -1055,9 +1071,8 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
   if(t_method == "SPAmix"){
     if(t_isOnlyOutputNonZero == true)
       Rcpp::stop("When using SPAmix method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
-    t_pval = ptr_gSPAmixobj->getMarkerPval(t_GVec, t_altFreq, t_zScore);
+    t_pval = ptr_gSPAmixobj->getMarkerPval(t_GVec, t_altFreq);
   }
-
 }
 
 // a unified function to get marker-level p-value
@@ -1329,12 +1344,11 @@ void setSPAGRMobjInCPP(arma::vec t_resid,
 }
 
 // [[Rcpp::export]]
-void setSPAmixobjInCPP(arma::vec t_resid,
+void setSPAmixobjInCPP(arma::mat t_resid,
                        arma::mat t_PCs,
                        int t_N,
                        double t_SPA_Cutoff,
-                       arma::uvec t_posOutlier,
-                       arma::uvec t_posNonOutlier)
+                       Rcpp::List t_outlierList)
 {
   if(ptr_gSPAmixobj)
     delete ptr_gSPAmixobj;
@@ -1345,8 +1359,7 @@ void setSPAmixobjInCPP(arma::vec t_resid,
                                            t_PCs,
                                            t_N,
                                            t_SPA_Cutoff,
-                                           t_posOutlier,
-                                           t_posNonOutlier);
+                                           t_outlierList);
 }
 
 

@@ -14,34 +14,42 @@ private:
   
   ////////////////////// -------------------- members ---------------------------------- //////////////////////
   
-  arma::vec m_resid;  // residuals
-  arma::vec m_resid2; // residuals^2
+  arma::mat m_resid;  // residuals
+  // arma::mat m_resid2; // residuals^2
   // arma::mat m_XinvXX, m_tX;
   arma::mat m_onePlusPCs;
+  
   int m_N;             // sample size
+  int m_Npheno;        // number of phenotypes (>= 1)
+  
   double m_SPA_Cutoff;
   arma::mat m_PCs;     // SNP-derived principal components (PCs)
   arma::vec m_sqrt_XTX_inv_diag; // derived from PCs, check SPAmix.cpp for more details
-  
   arma::vec m_diffTime1, m_diffTime2;
-  arma::uvec m_posOutlier;
-  arma::uvec m_posNonOutlier;
   
-  arma::vec m_R_outlier;
-  arma::vec m_R_nonOutlier;
+  Rcpp::List m_outlierList;
+  
+  arma::vec m_pvalVec;
+  arma::vec m_zScoreVec;
+  // arma::uvec m_posOutlier;
+  // arma::uvec m_posNonOutlier;
+  // 
+  // arma::vec m_R_outlier;
+  // arma::vec m_R_nonOutlier;
   
 public:
   
-  SPAmixClass(arma::vec t_resid,
+  SPAmixClass(arma::mat t_resid,
               arma::mat t_PCs,
               int t_N,
               double t_SPA_Cutoff,
-              arma::uvec t_posOutlier,
-              arma::uvec t_posNonOutlier);
+              Rcpp::List t_outlierList);
   
   arma::vec getTestTime1(){return m_diffTime1;}
   arma::vec getTestTime2(){return m_diffTime2;}
-  
+  int getNpheno(){return m_Npheno;}
+  arma::vec getpvalVec(){return m_pvalVec;}
+  arma::vec getzScoreVec(){return m_zScoreVec;}
   // a major update on 2023-04-23 to improve SPA process
   
   
@@ -146,7 +154,8 @@ public:
                             const double& s,
                             const arma::vec MAF_outlier,
                             double mean_nonOutlier,
-                            double var_nonOutlier)
+                            double var_nonOutlier,
+                            const arma::vec residOutlier)
   {
     double x = t_initX, oldX;
     double K1 = 0, K2 = 0, oldK1;
@@ -165,7 +174,7 @@ public:
       // K1 = H1_adj(x, R, s, MAFVec);
       // K2 = H2(x, R, MAFVec);
       
-      arma::vec H1_adj_H2_vec = H1_adj_H2(x, m_R_outlier, s, MAF_outlier);
+      arma::vec H1_adj_H2_vec = H1_adj_H2(x, residOutlier, s, MAF_outlier);
       
       K1 = H1_adj_H2_vec.at(0) + mean_nonOutlier + var_nonOutlier * x;
       K2 = H1_adj_H2_vec.at(1) + var_nonOutlier;
@@ -202,7 +211,10 @@ public:
     return yList;
   }
   
-  double GetProb_SPA_G(const arma::vec MAF_outlier, const arma::vec R, double s, bool lower_tail,
+  double GetProb_SPA_G(const arma::vec MAF_outlier, 
+                       const arma::vec residOutlier, 
+                       double s, 
+                       bool lower_tail,
                        double mean_nonOutlier,
                        double var_nonOutlier)
   {
@@ -212,14 +224,14 @@ public:
     // if(q2 > 0) initX = 3;
     // if(q2 <= 0) initX = -3;
     
-    Rcpp::List rootList = fastgetroot_K1(initX, s, MAF_outlier, mean_nonOutlier, var_nonOutlier);
+    Rcpp::List rootList = fastgetroot_K1(initX, s, MAF_outlier, mean_nonOutlier, var_nonOutlier, residOutlier);
     double zeta = rootList["root"];
     
     // std::cout << "zeta:\t" << zeta << std::endl;
     
     // double k1 = H_org(zeta, R, MAFVec);
     // double k2 = H2(zeta, R, MAFVec);
-    arma::vec k12 = Horg_H2(zeta, m_R_outlier, MAF_outlier);
+    arma::vec k12 = Horg_H2(zeta, residOutlier, MAF_outlier);
     double k1 = k12.at(0) + mean_nonOutlier * zeta + 0.5 * var_nonOutlier * pow(zeta, 2);
     double k2 = k12.at(1) + var_nonOutlier;
     
@@ -383,10 +395,8 @@ public:
     return MAF_est;
   }
   
-  // (BWJ) 2023-04-20: Current version does not use t_altFreq and t_zScore, will check them later
   double getMarkerPval(arma::vec t_GVec, 
-                       double t_altFreq,
-                       double& t_zScore)
+                       double t_altFreq)  // later update score and variance here (2023-06-20)
   {
     // std::cout << "part1" << std::endl;
     
@@ -405,55 +415,84 @@ public:
     m_diffTime2 += diffTime;
     
     arma::vec GVarVec = 2 * AFVec % (1 - AFVec);
-    double S = sum(t_GVec % m_resid);
-    double VarS = sum(m_resid2 % GVarVec);
     
-    // updated on 2023-04-23
-    double S_mean = 2 * sum(m_resid % AFVec); // NOTE: I think S_mean is somewhat weird and should be checked later (2023-04-22)
-    t_zScore = (S-S_mean) / sqrt(VarS);
-    
-    // std::cout << "part3" << std::endl;
-    // std::cout << "S:\t" << S << std::endl;
-    // std::cout << "VarS:\t" << VarS << std::endl;
-    // std::cout << "t_zScore:\t" << t_zScore << std::endl;
-    
-    if(std::abs(t_zScore) < m_SPA_Cutoff){
-      double pval = arma::normcdf(-1*std::abs(t_zScore))*2;
-      return pval;
+    // (BWJ) 2023-06-20: Support multiple phenotypes
+    // outLierList[[i]] = list(posValue = posValue - 1,
+    //                         posOutlier = posOutlier - 1,
+    //                         posNonOutlier = posNonOutlier - 1,
+    //                         resid = mresid.temp[posValue],
+    //                         resid2 = mresid.temp[posValue]^2,
+    //                         residOutleir = mresid.temp[posOutlier],
+    //                         residNonOutlier = mresid.temp[posNonOutlier])
+    for(int i = 0; i < m_Npheno; i++){
+      Rcpp::List tempOutlierList = m_outlierList[i];
+      arma::uvec posValue = tempOutlierList["posValue"];
+      arma::uvec posOutlier = tempOutlierList["posOutlier"];
+      arma::uvec posNonOutlier = tempOutlierList["posNonOutlier"];
+      arma::vec resid = tempOutlierList["resid"];
+      arma::vec resid2 = tempOutlierList["resid2"];
+      arma::vec residOutlier = tempOutlierList["residOutlier"];
+      arma::vec residNonOutlier = tempOutlierList["residNonOutlier"];
+      arma::vec resid2NonOutlier = tempOutlierList["resid2NonOutlier"];
+      
+      double S = sum(t_GVec.elem(posValue) % resid);
+      double VarS = sum(resid2 % GVarVec.elem(posValue));
+      
+      // updated on 2023-04-23
+      double S_mean = 2 * sum(resid % AFVec.elem(posValue)); // NOTE: I think S_mean is somewhat weird and should be checked later (2023-04-22)
+      double zScore = (S-S_mean) / sqrt(VarS);
+      
+      m_zScoreVec.at(i) = zScore;
+      // std::cout << "part3" << std::endl;
+      // std::cout << "S:\t" << S << std::endl;
+      // std::cout << "VarS:\t" << VarS << std::endl;
+      // std::cout << "t_zScore:\t" << t_zScore << std::endl;
+      
+      if(std::abs(zScore) < m_SPA_Cutoff){
+        m_pvalVec.at(i) = arma::normcdf(-1*std::abs(zScore))*2;
+        continue;
+        // return pval;
+      }
+      
+      // std::cout << "part4" << std::endl;
+      
+      // double pval1 = GetProb_SPA_G(AFVec, m_resid, std::abs(t_zScore), false);
+      // double pval2 = GetProb_SPA_G(AFVec, m_resid, -1*std::abs(t_zScore), true);
+      
+      time1 = getTime();
+      
+      // put the below objects as a global object
+      arma::vec MAF_outlier = AFVec.elem(posOutlier);
+      arma::vec MAF_nonOutlier = AFVec.elem(posNonOutlier);
+      
+      double mean_nonOutlier = sum(residNonOutlier % MAF_nonOutlier) * 2;
+      double var_nonOutlier = sum(resid2NonOutlier % MAF_nonOutlier % (1-MAF_nonOutlier)) * 2;
+      
+      double pval1 = GetProb_SPA_G(MAF_outlier, 
+                                   residOutlier, 
+                                   std::abs(S-S_mean)+S_mean, 
+                                   false,
+                                   mean_nonOutlier,
+                                   var_nonOutlier);
+      double pval2 = GetProb_SPA_G(MAF_outlier, 
+                                   residOutlier, 
+                                   -1*std::abs(S-S_mean)+S_mean, 
+                                   true,
+                                   mean_nonOutlier,
+                                   var_nonOutlier);
+      
+      time2 = getTime();
+      diffTime = time2 - time1;
+      
+      // std::cout << "(SPA_G) diffTime:\t" << diffTime << std::endl;
+      
+      m_diffTime1 += diffTime;
+
+      m_pvalVec.at(i) = pval1 + pval2;
     }
     
-    // std::cout << "part4" << std::endl;
-    
-    // double pval1 = GetProb_SPA_G(AFVec, m_resid, std::abs(t_zScore), false);
-    // double pval2 = GetProb_SPA_G(AFVec, m_resid, -1*std::abs(t_zScore), true);
-
-    time1 = getTime();
-    
-    // put the below objects as a global object
-    arma::vec MAF_outlier = AFVec(m_posOutlier);
-    arma::vec MAF_nonOutlier = AFVec(m_posNonOutlier);
-    
-    double mean_nonOutlier = sum(m_R_nonOutlier % MAF_nonOutlier) * 2;
-    double var_nonOutlier = sum(pow(m_R_nonOutlier,2) % MAF_nonOutlier % (1-MAF_nonOutlier)) * 2;
-    
-    double pval1 = GetProb_SPA_G(MAF_outlier, m_resid, std::abs(S-S_mean)+S_mean, false,
-                                 mean_nonOutlier,
-                                 var_nonOutlier);
-    double pval2 = GetProb_SPA_G(MAF_outlier, m_resid, -1*std::abs(S-S_mean)+S_mean, true,
-                                 mean_nonOutlier,
-                                 var_nonOutlier);
-    
-    time2 = getTime();
-    diffTime = time2 - time1;
-    
-    // std::cout << "(SPA_G) diffTime:\t" << diffTime << std::endl;
-    
-    m_diffTime1 += diffTime;
-    
-    double pval = pval1 + pval2;
-    
     // std::cout << "part5" << std::endl;
-    
+    double pval = 0; // we modify the codes to save pval to m_pvalVec and thus the function does not output pvalue any more.
     return pval;
   }
   

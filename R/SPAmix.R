@@ -10,8 +10,10 @@
 #' PhenoFile = system.file("extdata", "simuPHENO.txt", package = "GRAB")
 #' PhenoData = data.table::fread(PhenoFile, header = T)
 #' N = nrow(PhenoData)
-#' PhenoData = PhenoData %>% mutate(PC1 = rnorm(N), PC2 = rnorm(N))  # add two PCs
-#' obj.SPAmix = GRAB.NullModel(Surv(SurvTime, SurvEvent)~AGE+GENDER+PC1+PC2, 
+#' PhenoData = PhenoData %>% mutate(PC1 = rnorm(N), PC2 = rnorm(N))  # add two PCs, which are required for SPAmix
+#' 
+#' # Users can directly specify a time-to-event trait to analyze
+#' obj.SPAmix = GRAB.NullModel(Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2, 
 #'                             data = PhenoData, 
 #'                             subjData = IID, 
 #'                             method = "SPAmix", 
@@ -19,14 +21,24 @@
 #'                             control = list(PC_columns = "PC1,PC2"))
 #' 
 #' # Using model residuals performs exactly the same as the above. Note that confounding factors are still required in the right of the formula.
-#' obj.coxph = coxph(Surv(SurvTime, SurvEvent)~AGE+GENDER+PC1+PC2, data = PhenoData, x=T)
-#' obj.SPAmix = GRAB.NullModel(obj.coxph$residuals~AGE+GENDER+PC1+PC2, 
+#' obj.coxph = coxph(Surv(SurvTime, SurvEvent)~AGE+GENDER+PC1+PC2, data = PhenoData)
+#' obj.SPAmix = GRAB.NullModel(obj.coxph$residuals ~ AGE + GENDER + PC1 + PC2, 
 #'                             data = PhenoData, 
 #'                             subjData = IID, 
 #'                             method = "SPAmix", 
 #'                             traitType = "Residual",
 #'                             control = list(PC_columns = "PC1,PC2"))
-#' 
+#'                             
+#' # SPAmix also supports multiple residuals as below                           
+#' obj.coxph = coxph(Surv(SurvTime, SurvEvent)~AGE+GENDER+PC1+PC2, data = PhenoData)
+#' obj.lm = lm(QuantPheno ~ AGE+GENDER+PC1+PC2, data = PhenoData)
+#' obj.SPAmix = GRAB.NullModel(obj.coxph$residuals + obj.lm$residuals ~ AGE + GENDER + PC1 + PC2, 
+#'                             data = PhenoData, 
+#'                             subjData = IID, 
+#'                             method = "SPAmix", 
+#'                             traitType = "Residual",
+#'                             control = list(PC_columns = "PC1,PC2"))
+#'                              
 #' # Step 2: conduct score test
 #' GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' OutputDir = system.file("results", package = "GRAB")
@@ -79,21 +91,26 @@ setMarker.SPAmix = function(objNull, control)
                     objNull$PCs,
                     objNull$N,
                     control$SPA_Cutoff,
-                    objNull$posOutlier - 1,
-                    setdiff(1:objNull$N, objNull$posOutlier) - 1)  # "-1" is to convert R style (index starting from 1) to C++ style (index starting from 0)
+                    objNull$outLierList)  
   
+  # outLierList[[i]] = list(posValue = posValue - 1,
+  #                         posOutlier = posOutlier - 1,
+  #                         posNonOutlier = posNonOutlier - 1)
   print(paste0("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk,"."))
 }
 
 # mainMarker.SPAmix(genoType, genoIndex, outputColumns)
-mainMarker.SPAmix = function(genoType, genoIndex, outputColumns)
+mainMarker.SPAmix = function(genoType, genoIndex, outputColumns, objNull)
 {
-  OutList = mainMarkerInCPP("SPAmix", genoType, genoIndex);  
-  obj.mainMarker = data.frame(Marker = OutList$markerVec,           # marker IDs
-                              Info = OutList$infoVec,               # marker information: CHR:POS:REF:ALT
-                              AltFreq = OutList$altFreqVec,         # alternative allele frequencies
-                              AltCounts = OutList$altCountsVec,     # alternative allele counts
-                              MissingRate = OutList$missingRateVec, # alternative allele counts
+  OutList = mainMarkerInCPP("SPAmix", genoType, genoIndex);
+  
+  nPheno = objNull$nPheno;
+  obj.mainMarker = data.frame(Pheno = paste0("pheno_", 1:nPheno),
+                              Marker = rep(OutList$markerVec, each = nPheno),           # marker IDs
+                              Info = rep(OutList$infoVec, each = nPheno),               # marker information: CHR:POS:REF:ALT
+                              AltFreq = rep(OutList$altFreqVec, each = nPheno),         # alternative allele frequencies
+                              AltCounts = rep(OutList$altCountsVec, each = nPheno),     # alternative allele counts
+                              MissingRate = rep(OutList$missingRateVec, each = nPheno), # alternative allele counts
                               Pvalue = OutList$pvalVec)             # marker-level p-values
   
   # optionalColumns = c("beta", "seBeta", "zScore", "PvalueNorm", "AltFreqInGroup", "AltCountsInGroup", "nSamplesInGroup")
@@ -128,17 +145,23 @@ fitNullModel.SPAmix = function(response, designMat, subjData, control, ...)
     
     mresid = obj.coxph$residuals
     Cova = obj.coxph$x
+    
+    if(length(mresid) != length(subjData))
+      stop("Please check the consistency between 'formula' and 'subjData'.")
+    
+    mresid = matrix(mresid, ncol=1)
   }
   
   if(class(response) == "Residual")
   {
     yVec = mresid = response
     Cova = designMat
+    
+    print(head(mresid))
+    if(nrow(mresid) != length(subjData))
+      stop("Please check the consistency between 'formula' and 'subjData'.")
   }
-  
-  if(length(mresid)!=length(subjData))
-    stop("Please check the consistency between 'formula' and 'subjData'.")
-  
+
   PC_columns = control$PC_columns
   
   # Remove the below if checked later
@@ -160,28 +183,52 @@ fitNullModel.SPAmix = function(response, designMat, subjData, control, ...)
   # X.invXX = X %*% solve(t(X)%*%X)
   # tX = t(X)
   
-  var.resid = var(mresid)
-  
-  ## outliers or not depending on the residuals (0.25%-1.5IQR, 0.75%+1.5IQR)
-  q25 = quantile(mresid, 0.25)
-  q75 = quantile(mresid, 0.75)
-  IQR = q75 - q25
-  r.outlier = 1.5    # put this to the control argument later
-  cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
-  posOutlier = which(mresid < cutoff[1] | mresid > cutoff[2])
-  
-  cat("The outlier of residuals will be passed to SPA analysis.\n")
-  cat("Cutoffs to define residuals:\t", signif(cutoff,2),"\n")
-  cat("Totally, ", length(posOutlier),"/", length(mresid), " are defined as outliers.\n")
+  outLierList = list()
+  nPheno = ncol(mresid)
+  for(i in 1:nPheno)
+  {
+    mresid.temp = mresid[,i]
+    
+    # var.resid = var(mresid.temp, na.rm = T)
+    ## outliers or not depending on the residuals (0.25%-1.5IQR, 0.75%+1.5IQR)
+    q25 = quantile(mresid.temp, 0.25, na.rm = T)
+    q75 = quantile(mresid.temp, 0.75, na.rm = T)
+    IQR = q75 - q25
+    r.outlier = 1.5    # put this to the control argument later
+    cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
+    posOutlier = which(mresid.temp < cutoff[1] | mresid.temp > cutoff[2])
+    
+    posValue = which(!is.na(mresid.temp))
+    posNonOutlier = setdiff(posValue, posOutlier)
+    
+    cat("The outlier of residuals will be passed to SPA analysis.\n")
+    cat("Cutoffs to define residuals:\t", signif(cutoff,2),"\n")
+    cat("Totally, ", length(posOutlier),"/", length(posValue), " are defined as outliers.\n")
+    
+    if(length(posOutlier) == 0)
+      stop("No outlier is observed. SPA is not required in this case.")
+    
+    # "-1" is to convert R style (index starting from 1) to C++ style (index starting from 0)
+    outLierList[[i]] = list(posValue = posValue - 1,
+                            posOutlier = posOutlier - 1,
+                            posNonOutlier = posNonOutlier - 1,
+                            resid = mresid.temp[posValue],
+                            resid2 = mresid.temp[posValue]^2,
+                            residOutlier = mresid.temp[posOutlier],
+                            residNonOutlier = mresid.temp[posNonOutlier],
+                            resid2NonOutlier = mresid.temp[posNonOutlier]^2)
+  }
     
   objNull = list(resid = mresid,
-                 var.resid = var.resid,
+                 # var.resid = var.resid,
                  # tX = tX,
                  # X.invXX = X.invXX,
                  N = nrow(Cova),
                  yVec = yVec,          # event variable: 0 or 1
                  PCs = PCs,
-                 posOutlier = posOutlier)
+                 # posOutlier = posOutlier,
+                 nPheno = nPheno,
+                 outLierList = outLierList)
   
   class(objNull) = "SPAmix_NULL_Model"
   return(objNull)
