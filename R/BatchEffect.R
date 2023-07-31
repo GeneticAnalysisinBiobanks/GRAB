@@ -2,36 +2,32 @@
 #'
 #' Quality control to check batch effect between study cohort and reference population.
 #' 
-#' @param GenoFile XXX.
-#' @param GenoFileIndex XXX.
-#' @param PhenoData XXX.
-#' @param RefAFfile XXX.
-#' @param RefPrev XXX.
-#' @param SNPnum XXX.
-#' @param control XXX.
+#' @param GenoFile a character of genotype file. See Details section for more details.
+#' @param GenoFileIndex additional index file(s) corresponding to GenoFile. See Details section for more details.
+#' @param PhenoData a dataframe. must have at least two columns \code{SampleID} and \code{Indicator}, \code{SampleID} hold the personal identifiers for all individuals, and \code{Indicator} hold wether the event occurred, and the value must be 0 or 1 or NA 
+#' @param RefAFfile a character of reference file. The reference file must be a \code{txt} file (header are required) including at least 7 columns \code{CHROM}, \code{POS}, \code{ID}, \code{REF}, \code{ALT}, \code{AF_ref}, \code{AN_ref}  
+#' @param RefPrev a numeric of the event rate in the population
+#' @param SNPnum a int. The least number of markers. The default is 1e4
+#' @param control a list of parameters to decide which markers to extract.See \code{Details} section for more details
 #' @return an R object with a class of "QCforBatchEffect".
 #' \itemize{
-#'   \item{mergeGenoInfo}: XXX.
-#'   \item{cutoff}: XXX.
-#'   \item{count}: XXX.
-#'   \item{PhenoData}: XXX.
-#'   \item{control}: XXX.
+#'   \item{mergeGenoInfo}: a dataframe of marker info and reference MAF
+#'   \item{cutoff}: a numeric, the cut off of batcheffect.
+#'   \item{count}: a dataframe of the frequency of the batch effect pvalue.
+#'   \item{PhenoData}: a dataframe of the input PhenoData.
+#'   \item{control}: a list of parameters to decide which markers to extract.
 #' }
 #' @details
-#' something
-#'  
-#' \describe{
-#' something
-#' }
-#' 
 #' ## The following details are about argument \code{control}
 #' \describe{
-#' Argument \code{control} includes a list of parameters for controlling the null model fitting process.  
+#' Argument \code{control} is used to include and exclude markers. The function supports two include files of (\code{IDsToIncludeFile}, \code{RangesToIncludeFile}) and two exclude files of (\code{IDsToExcludeFile}, \code{RangesToExcludeFile}), but does not support both include and exclude files at the same time. 
 #'   \itemize{
-#'     \item \code{maxiter}: Maximum number of iterations used to fit the null model. *(default=100)*
-#'     \item \code{seed}: An integer as a random seed. Used when random process is involved. *(default=12345678)*
-#'     \item \code{tolBeta}: Positive tolerance: the iterations converge when |beta - beta_old| / (|beta| + |beta_old| + tolBeta) < tolBeta. *(default=0.001)*
-#'     \item \code{showInfo}: Whether to show more detailed information for trouble shooting. *(default=FALSE)*
+#'     \item \code{AlleleOrder}: a character, \code{"ref-first"} or \code{"alt-first"}, to determine whether the REF/major allele should appear first or second. 
+#'     \item \code{AllMarkers}:  a logical value (default: \code{FALSE}) to indicate if all markers are extracted. It might take too much memory to put genotype of all markers in R. 
+#'     \item \code{IDsToIncludeFile}: a file of marker IDs to include, one column (no header). Check \code{system.file("extdata", "IDsToInclude.txt", package = "GRAB")} for an example.
+#'     \item \code{IDsToExcludeFile}: a file of marker IDs to exclude, one column (no header).
+#'     \item \code{RangesToIncludeFile}: a file of ranges to include, three columns (no headers): chromosome, start position, end position. Check \code{system.file("extdata", "RangesToInclude.txt", package = "GRAB")} for an example.
+#'     \item \code{RangesToExcludeFile}: a file of ranges to exclude, three columns (no headers): chromosome, start position, end position.
 #'   }
 #' }
 #' 
@@ -159,11 +155,8 @@ QCforBatchEffect = function(GenoFile              #a character of file names of 
 #' @param ... other output R lists of function QCforBatchEffect().
 #' @return an R object with a class of "QCforBatchEffect".
 #' \itemize{
-#'   \item{mergeGenoInfo}: XXX.
-#'   \item{cutoff}: XXX.
-#'   \item{count}: XXX.
-#'   \item{PhenoData}: XXX.
-#'   \item{control}: XXX.
+#'   \item{cutoff}: a numeric. A new cutoff calculated by using merged QcResults .
+#'   \item{allcount}: a dataframe. Record the frequency of all the batch effect pvalue from \code{qcResults}
 #' }
 mergeQCresults = function(qcResult1,...){ #  allQcResults is a list including all the QC results from QCforBatchEffect
   
@@ -201,16 +194,12 @@ mergeQCresults = function(qcResult1,...){ #  allQcResults is a list including al
 #'
 #' Get model residuals using a weighted Cox regression model.
 #' 
-#' @param formula an R formula
-#' @param PhenoData a dataframe including at least 3 columns c("SampleID","Indicator","time")
-#' @param RefPrevalence consisitent with the RefPrevalence used in QCforBatchEffect.
+#' @param formula an refression formula: a symbolic description of the null model to be fitted
+#' @param PhenoData a dataframe including at least 3 columns \code{SampleID}, \code{Indicator} and \code{time}
+#' @param RefPrevalence a numeric of the event rate in the population, which is consisitent with the input in QCforBatchEffect.
 #' @return an R object with a class of "QCforBatchEffect".
 #' \itemize{
-#'   \item{mergeGenoInfo}: XXX.
-#'   \item{cutoff}: XXX.
-#'   \item{count}: XXX.
-#'   \item{PhenoData}: XXX.
-#'   \item{control}: XXX.
+#'   \item{Residual}: A dataframe with 2 columns, \code{SampleID} and \code{Residuals}, and \code{Residuals} are calculated by fitting null model.
 #' }
 getResid.wCox = function(formula
                          ,PhenoData # a dataframe including at least 3 columns c("SampleID","Indicator","time")

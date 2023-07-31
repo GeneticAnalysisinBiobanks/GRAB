@@ -14,11 +14,8 @@ mergeQCresults(qcResult1, ...)
 \value{
 an R object with a class of "QCforBatchEffect".
 \itemize{
-\item{mergeGenoInfo}: XXX.
-\item{cutoff}: XXX.
-\item{count}: XXX.
-\item{PhenoData}: XXX.
-\item{control}: XXX.
+\item{cutoff}: a numeric. A new cutoff calculated by using merged QcResults .
+\item{allcount}: a dataframe. Record the frequency of all the batch effect pvalue from \code{qcResults}
 }
 }
 \description{

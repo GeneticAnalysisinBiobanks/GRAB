@@ -7,20 +7,16 @@
 getResid.wCox(formula, PhenoData, RefPrevalence)
 }
 \arguments{
-\item{formula}{an R formula}
+\item{formula}{an refression formula: a symbolic description of the null model to be fitted}
 
-\item{PhenoData}{a dataframe including at least 3 columns c("SampleID","Indicator","time")}
+\item{PhenoData}{a dataframe including at least 3 columns \code{SampleID}, \code{Indicator} and \code{time}}
 
-\item{RefPrevalence}{consisitent with the RefPrevalence used in QCforBatchEffect.}
+\item{RefPrevalence}{a numeric of the event rate in the population, which is consisitent with the input in QCforBatchEffect.}
 }
 \value{
 an R object with a class of "QCforBatchEffect".
 \itemize{
-\item{mergeGenoInfo}: XXX.
-\item{cutoff}: XXX.
-\item{count}: XXX.
-\item{PhenoData}: XXX.
-\item{control}: XXX.
+\item{Residual}: A dataframe with 2 columns, \code{SampleID} and \code{Residuals}, and \code{Residuals} are calculated by fitting null model.
 }
 }
 \description{
