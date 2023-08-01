@@ -861,6 +861,9 @@ arma::mat getGenoInfoInCPP(std::string t_genoType,
                                           false,               // if true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
                                           indexForNonZero);    // the index of non-zero genotype in the all subjects. Only valid if t_isOnlyOutputNonZero == true.
     
+    if((i+1) % 1000 == 0)
+      std::cout << "Completed " << (i+1) << "/" << q << " genetic variants." << std::endl;
+    
     // The below is not needed for information extraction
     // imputeGeno(GVec, altFreq, indexForMissing, t_imputeMethod);  // check UTIL.cpp
     genoInfoMat.at(i, 0) = altFreq;
