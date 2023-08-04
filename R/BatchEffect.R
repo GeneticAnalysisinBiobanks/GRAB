@@ -154,7 +154,7 @@ getCutoff = function(count){
     diff = abs(count$Freq[i]-right_mean[i])/right_mean[i]
     cat("The diff between ",i,"th interval with the rest intervals:"
         , diff,"\n")
-    if(diff<0.5){
+    if(diff<0.1){
       cutoff = count$breaks[i]
       cat("cutoff=", cutoff,"\n")
       break
