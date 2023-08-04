@@ -31,8 +31,10 @@
 #'   }
 #' }
 #' 
+#' 
+#' @export
+#' @import dplyr, data.table
 #' @examples
-#' # something of comments followed by R codes
 #' setwd(system.file("wSPAg", package = "GRAB"))
 #' load("Example.RData")
 #'
@@ -58,27 +60,6 @@
 #' Residual = getResid.wCox(formula = Surv(time, Indicator) ~ X1 + X2
 #'                          , PhenoData = PhenoData
 #'                          , RefPrevalence = RefPrevalence)
-#' @export
-#' @import dplyr, data.table
-getCutoff = function(count){
-  right_mean= lapply(2:nrow(count)-1,function(i){
-    m = count[(i+1):nrow(count), "Freq"]%>%mean()
-    return(m)
-  }) %>% unlist()
-  
-  for(i in 2:nrow(count)-1){
-    diff = abs(count$Freq[i]-right_mean[i])/right_mean[i]
-    cat("The diff between ",i,"th interval with the rest intervals:"
-        , diff,"\n")
-    if(diff<0.1){
-      cutoff = count$breaks[i]
-      cat("cutoff=", cutoff,"\n")
-      break
-    }
-  }
-  return(cutoff)
-}
-
 QCforBatchEffect = function(GenoFile              #a character of file names of genotype files
                             ,GenoFileIndex         #additional index file(s) corresponding to GenoFile
                             ,control=list(AlleleOrder = "ref-first")  
@@ -163,6 +144,27 @@ QCforBatchEffect = function(GenoFile              #a character of file names of 
               control = control))
 }
 
+getCutoff = function(count){
+  right_mean= lapply(2:nrow(count)-1,function(i){
+    m = count[(i+1):nrow(count), "Freq"]%>%mean()
+    return(m)
+  }) %>% unlist()
+  
+  for(i in 2:nrow(count)-1){
+    diff = abs(count$Freq[i]-right_mean[i])/right_mean[i]
+    cat("The diff between ",i,"th interval with the rest intervals:"
+        , diff,"\n")
+    if(diff<0.5){
+      cutoff = count$breaks[i]
+      cat("cutoff=", cutoff,"\n")
+      break
+    }
+  }
+  return(cutoff)
+}
+
+
+
 #' Merge quality control results from multiple genotype files.
 #'
 #' Merge quality control results from multiple genotype files.
@@ -177,7 +179,7 @@ QCforBatchEffect = function(GenoFile              #a character of file names of 
 #' 
 mergeQCresults = function(qcResult1,...){ #  allQcResults is a list including all the QC results from QCforBatchEffect
   
-  allQcResults = list(...)
+  allQcResults = list(qcResult1,...)
   #check wehter the inputs of QCforBatchEffect function are consistent
   QcInfo = lapply(allQcResults, function(obj){
     n1 = sum(obj$PhenoData$Indicator)
