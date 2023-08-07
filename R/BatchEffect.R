@@ -151,10 +151,10 @@ getCutoff = function(count){
   }) %>% unlist()
   
   for(i in 2:nrow(count)-1){
-    diff = abs(count$Freq[i]-right_mean[i])/right_mean[i]
+    diff = (count$Freq[i]-right_mean[i])/right_mean[i]
     cat("The diff between ",i,"th interval with the rest intervals:"
         , diff,"\n")
-    if(diff<0.1){
+    if(abs(diff)<0.1){
       cutoff = count$breaks[i]
       cat("cutoff=", cutoff,"\n")
       break
