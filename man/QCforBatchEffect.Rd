@@ -59,33 +59,29 @@ Argument \code{control} is used to include and exclude markers. The function sup
 }
 }
 \examples{
-# something of comments followed by R codes
-load("/gdata01/user/liying/UKB/AD_step2/chr21_1_step2.RData")
-PhenoData = PheData1[,c("ID","PC1","PC2","PC3","time","event")]\%>\%rename( SampleID =ID,Indicator=event )
+setwd(system.file("wSPAg", package = "GRAB"))
+load("Example.RData")
 
-qcResult1 = QCforBatchEffect(GenoFile = c("/gdata02/master_data1/UK_Biobank/ukb22828_imp/ukb22828_c21_b0_v3.bgen")
-                             ,GenoFileIndex = c("/gdata02/master_data1/UK_Biobank/ukb22828_imp/ukb_imp_chr21_v3.bgen.bgi", 
-                                                "/gdata02/master_data1/UK_Biobank/ukb22828_imp/ukb22828_c1_b0_v3_s487203.sample")
-                             ,control=list(AlleleOrder = "ref-first", IDsToIncludeFile = list.files("/gdata02/master_data1/UK_Biobank/ukb22828_imp/split_R2_0.6_MAF_5e-04",paste0("chr_",21,"_chunk_",1,".txt"),full.names = T))
+qcResult1 = QCforBatchEffect(GenoFile = c("simuBGEN1.bgen")
+                             ,GenoFileIndex = c("simuBGEN1.bgen.bgi", 
+                                                "simuBGEN1.sample")
+                             ,control=list(AlleleOrder = "ref-first", AllMarkers=T)
                              ,PhenoData=PhenoData
-                             ,RefAfFile = "/gdata01/user/liying/gnomAD/uk10k.txt"
-                             ,RefPrevalence = 0.02
+                             ,RefAfFile = "RefMAFs.txt"
+                             ,RefPrevalence = RefPrevalence
                              ,SNPnum=1e4
 )
-
-
-qcResult2 = QCforBatchEffect(GenoFile = c("/gdata02/master_data1/UK_Biobank/ukb22828_imp/ukb22828_c22_b0_v3.bgen")
-                             ,GenoFileIndex = c("/gdata02/master_data1/UK_Biobank/ukb22828_imp/ukb_imp_chr22_v3.bgen.bgi", 
-                                                "/gdata02/master_data1/UK_Biobank/ukb22828_imp/ukb22828_c1_b0_v3_s487203.sample")
-                             ,control=list(AlleleOrder ="ref-first", IDsToIncludeFile = list.files("/gdata02/master_data1/UK_Biobank/ukb22828_imp/split_R2_0.6_MAF_5e-04",paste0("chr_",22,"_chunk_",1,".txt"),full.names = T))
+qcResult2 = QCforBatchEffect(GenoFile = c("simuBGEN2.bgen")
+                             ,GenoFileIndex = c("simuBGEN2.bgen.bgi", 
+                                                "simuBGEN2.sample")
+                             ,control=list(AlleleOrder = "ref-first", AllMarkers=T)
                              ,PhenoData=PhenoData
-                             ,RefAfFile = "/gdata01/user/liying/gnomAD/uk10k.txt"
-                             ,RefPrevalence = 0.02
+                             ,RefAfFile = "RefMAFs.txt"
+                             ,RefPrevalence = RefPrevalence
                              ,SNPnum=1e4
 )
-
 allQC = mergeQCresults(qcResult1,qcResult2)
-Residual = getResid.wCox(formula = Surv(time, Indicator) ~ .
-                         , PhenoData=PhenoData
-                         , RefPrevalence=0.02)
+Residual = getResid.wCox(formula = Surv(time, Indicator) ~ X1 + X2
+                         , PhenoData = PhenoData
+                         , RefPrevalence = RefPrevalence)
 }

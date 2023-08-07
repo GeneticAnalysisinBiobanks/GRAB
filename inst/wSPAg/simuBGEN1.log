@@ -1,0 +1,24 @@
+PLINK v2.00a3LM 64-bit Intel (20 Sep 2021)
+Options in effect:
+  --bfile /gdata01/user/liying/simulation-2023-04-12/test/GenoMat1
+  --export bgen-1.2 bits=8 ref-first
+  --out /gdata01/user/liying/simulation-2023-04-12/test/simuBGEN1
+
+Hostname: node01
+Working directory: /gdata01/user/liying
+Start time: Fri Aug  4 18:58:24 2023
+
+Random number seed: 1691146704
+515145 MiB RAM detected; reserving 257572 MiB for main workspace.
+Using up to 48 threads (change this with --threads).
+2000 samples (0 females, 2000 males; 2000 founders) loaded from
+/gdata01/user/liying/simulation-2023-04-12/test/GenoMat1.fam.
+50000 variants loaded from
+/gdata01/user/liying/simulation-2023-04-12/test/GenoMat1.bim.
+Note: No phenotype data present.
+Writing /gdata01/user/liying/simulation-2023-04-12/test/simuBGEN1.bgen ...
+done.
+Writing /gdata01/user/liying/simulation-2023-04-12/test/simuBGEN1.sample ...
+done.
+
+End time: Fri Aug  4 18:58:24 2023
