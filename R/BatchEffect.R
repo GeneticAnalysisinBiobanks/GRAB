@@ -31,38 +31,35 @@
 #'   }
 #' }
 #' 
-#' @examples
-#' # something of comments followed by R codes
-#' load("/gdata01/user/liying/UKB/AD_step2/chr21_1_step2.RData")
-#' PhenoData = PheData1[,c("ID","PC1","PC2","PC3","time","event")]%>%rename( SampleID =ID,Indicator=event )
 #' 
-#' qcResult1 = QCforBatchEffect(GenoFile = c("/gdata02/master_data1/UK_Biobank/ukb22828_imp/ukb22828_c21_b0_v3.bgen")
-#'                              ,GenoFileIndex = c("/gdata02/master_data1/UK_Biobank/ukb22828_imp/ukb_imp_chr21_v3.bgen.bgi", 
-#'                                                 "/gdata02/master_data1/UK_Biobank/ukb22828_imp/ukb22828_c1_b0_v3_s487203.sample")
-#'                              ,control=list(AlleleOrder = "ref-first", IDsToIncludeFile = list.files("/gdata02/master_data1/UK_Biobank/ukb22828_imp/split_R2_0.6_MAF_5e-04",paste0("chr_",21,"_chunk_",1,".txt"),full.names = T))
-#'                              ,PhenoData=PhenoData
-#'                              ,RefAfFile = "/gdata01/user/liying/gnomAD/uk10k.txt"
-#'                              ,RefPrevalence = 0.02
-#'                              ,SNPnum=1e4
-#' )
-#' 
-#' 
-#' qcResult2 = QCforBatchEffect(GenoFile = c("/gdata02/master_data1/UK_Biobank/ukb22828_imp/ukb22828_c22_b0_v3.bgen")
-#'                              ,GenoFileIndex = c("/gdata02/master_data1/UK_Biobank/ukb22828_imp/ukb_imp_chr22_v3.bgen.bgi", 
-#'                                                 "/gdata02/master_data1/UK_Biobank/ukb22828_imp/ukb22828_c1_b0_v3_s487203.sample")
-#'                              ,control=list(AlleleOrder ="ref-first", IDsToIncludeFile = list.files("/gdata02/master_data1/UK_Biobank/ukb22828_imp/split_R2_0.6_MAF_5e-04",paste0("chr_",22,"_chunk_",1,".txt"),full.names = T))
-#'                              ,PhenoData=PhenoData
-#'                              ,RefAfFile = "/gdata01/user/liying/gnomAD/uk10k.txt"
-#'                              ,RefPrevalence = 0.02
-#'                              ,SNPnum=1e4
-#' )
-#' 
-#' allQC = mergeQCresults(qcResult1,qcResult2)
-#' Residual = getResid.wCox(formula = Surv(time, Indicator) ~ .
-#'                          , PhenoData=PhenoData
-#'                          , RefPrevalence=0.02)
 #' @export
 #' @import dplyr, data.table
+#' @examples
+#' setwd(system.file("wSPAg", package = "GRAB"))
+#' load("Example.RData")
+#'
+#' qcResult1 = QCforBatchEffect(GenoFile = c("simuBGEN1.bgen")
+#'                              ,GenoFileIndex = c("simuBGEN1.bgen.bgi", 
+#'                                                 "simuBGEN1.sample")
+#'                              ,control=list(AlleleOrder = "ref-first", AllMarkers=T)
+#'                              ,PhenoData=PhenoData
+#'                              ,RefAfFile = "RefMAFs.txt"
+#'                              ,RefPrevalence = RefPrevalence
+#'                              ,SNPnum=1e4
+#' )
+#' qcResult2 = QCforBatchEffect(GenoFile = c("simuBGEN2.bgen")
+#'                              ,GenoFileIndex = c("simuBGEN2.bgen.bgi", 
+#'                                                 "simuBGEN2.sample")
+#'                              ,control=list(AlleleOrder = "ref-first", AllMarkers=T)
+#'                              ,PhenoData=PhenoData
+#'                              ,RefAfFile = "RefMAFs.txt"
+#'                              ,RefPrevalence = RefPrevalence
+#'                              ,SNPnum=1e4
+#' )
+#' allQC = mergeQCresults(qcResult1,qcResult2)
+#' Residual = getResid.wCox(formula = Surv(time, Indicator) ~ X1 + X2
+#'                          , PhenoData = PhenoData
+#'                          , RefPrevalence = RefPrevalence)
 QCforBatchEffect = function(GenoFile              #a character of file names of genotype files
                             ,GenoFileIndex         #additional index file(s) corresponding to GenoFile
                             ,control=list(AlleleOrder = "ref-first")  
@@ -147,6 +144,27 @@ QCforBatchEffect = function(GenoFile              #a character of file names of 
               control = control))
 }
 
+getCutoff = function(count){
+  right_mean= lapply(2:nrow(count)-1,function(i){
+    m = count[(i+1):nrow(count), "Freq"]%>%mean()
+    return(m)
+  }) %>% unlist()
+  
+  for(i in 2:nrow(count)-1){
+    diff = (count$Freq[i]-right_mean[i])/right_mean[i]
+    cat("The diff between ",i,"th interval with the rest intervals:"
+        , diff,"\n")
+    if(abs(diff)<0.1){
+      cutoff = count$breaks[i]
+      cat("cutoff=", cutoff,"\n")
+      break
+    }
+  }
+  return(cutoff)
+}
+
+
+
 #' Merge quality control results from multiple genotype files.
 #'
 #' Merge quality control results from multiple genotype files.
@@ -158,9 +176,10 @@ QCforBatchEffect = function(GenoFile              #a character of file names of 
 #'   \item{cutoff}: a numeric. A new cutoff calculated by using merged QcResults .
 #'   \item{allcount}: a dataframe. Record the frequency of all the batch effect pvalue from \code{qcResults}
 #' }
+#' 
 mergeQCresults = function(qcResult1,...){ #  allQcResults is a list including all the QC results from QCforBatchEffect
   
-  allQcResults = list(...)
+  allQcResults = list(qcResult1,...)
   #check wehter the inputs of QCforBatchEffect function are consistent
   QcInfo = lapply(allQcResults, function(obj){
     n1 = sum(obj$PhenoData$Indicator)
