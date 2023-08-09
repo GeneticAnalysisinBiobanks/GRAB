@@ -89,6 +89,14 @@ setSPACoxobjInCPP <- function(t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_cov
     invisible(.Call(`_GRAB_setSPACoxobjInCPP`, t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_covaAdj_Cutoff, t_SPA_Cutoff))
 }
 
+setWtSPAGobjInCPP <- function(t_mresid, t_weight, t_N, t_SPA_Cutoff) {
+    invisible(.Call(`_GRAB_setWtSPAGobjInCPP`, t_mresid, t_weight, t_N, t_SPA_Cutoff))
+}
+
+updateQCInCPP <- function(t_AF_ref, t_AN_ref, t_pvalue_bat, t_pvalue_bat_cutoff) {
+    invisible(.Call(`_GRAB_updateQCInCPP`, t_AF_ref, t_AN_ref, t_pvalue_bat, t_pvalue_bat_cutoff))
+}
+
 squares <- function(data) {
     .Call(`_GRAB_squares`, data)
 }
