@@ -56,12 +56,30 @@
 #'                              ,RefPrevalence = RefPrevalence
 #'                              ,SNPnum=1e4
 #' )
+#' 
+#'  # PLINK file
+#' qcResult1 = QCforBatchEffect(GenoFile = c("GenoMat1.bed")
+#'                              ,control=list(AlleleOrder = "ref-first", AllMarkers=T)
+#'                              ,PhenoData=PhenoData
+#'                              ,RefAfFile = "RefMAFs.txt"
+#'                              ,RefPrevalence = RefPrevalence
+#'                              ,SNPnum=1e4
+#' )
+# 
+#' qcResult2 = QCforBatchEffect(GenoFile = c("GenoMat2.bed")
+#'                              ,control=list(AlleleOrder = "ref-first", AllMarkers=T)
+#'                              ,PhenoData=PhenoData
+#'                              ,RefAfFile = "RefMAFs.txt"
+#'                              ,RefPrevalence = RefPrevalence
+#'                              ,SNPnum=1e4
+#' )
+
 #' allQC = mergeQCresults(qcResult1,qcResult2)
 #' Residual = getResid.wCox(formula = Surv(time, Indicator) ~ X1 + X2
 #'                          , PhenoData = PhenoData
 #'                          , RefPrevalence = RefPrevalence)
 QCforBatchEffect = function(GenoFile              #a character of file names of genotype files
-                            ,GenoFileIndex         #additional index file(s) corresponding to GenoFile
+                            ,GenoFileIndex = NULL         #additional index file(s) corresponding to GenoFile
                             ,control=list(AlleleOrder = "ref-first")  
                             ,PhenoData             #a dataframe with at least two columns, headers are required and should include c("SampleID", "Indicator"), the "Indicator" column should be 0, 1, or NA. 
                             ,RefAfFile             #a character of file name of refInfo, which including at least 7 columns, header are required and should include c("CHROM", "POS", "ID", "REF", "ALT", "AF_ref","AN_ref")  
@@ -97,13 +115,23 @@ QCforBatchEffect = function(GenoFile              #a character of file names of 
                                    ,SampleIDs = with(PhenoData,SampleID[Indicator==0])
                                    ,control = control)%>%
     rename(mu0 = altFreq, mr0 = missingRate ) %>% select(mu0, mr0)
-  mergeGenoInfo = GRAB.getGenoInfo(GenoFile = GenoFile
+  
+  
+  GenoInfo = GRAB.getGenoInfo(GenoFile = GenoFile
                                    ,GenoFileIndex = GenoFileIndex
                                    ,SampleIDs = with(PhenoData,SampleID[Indicator==1])
                                    ,control = control) %>% 
     rename(mu1 = altFreq , mr1 = missingRate) %>% 
     cbind(., GenoInfo.ctrl)%>%as_tibble()%>%
-    merge(.,refGenoInfo,by=c("CHROM", "POS", "REF", "ALT","ID"),all.x=T)
+    mutate(RA = ifelse(REF<ALT, paste0(REF, ALT), paste0(ALT,REF)))
+  
+    mergeGenoInfo = refGenoInfo %>% 
+      mutate(RA = ifelse(REF<ALT, paste0(REF, ALT), paste0(ALT,REF))) %>% 
+      merge(.,GenoInfo,by=c("CHROM", "POS", "RA"),all.y=T) %>% 
+      rename(REF = REF.y, ALT= ALT.y, ID = ID.y)%>% 
+      mutate(AF_ref = ifelse(REF == REF.x, AF_ref , 1-AF_ref  ))%>%
+      select(-REF.x,-ALT.x, -ID.x, -RA)
+  
   
   ## evaluate batch effect and calculate pvalue----------------------------------
   test = function(n0,n1,n2,w0,w1, p1,p2){
