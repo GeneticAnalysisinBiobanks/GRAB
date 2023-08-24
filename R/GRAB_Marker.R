@@ -106,7 +106,7 @@ GRAB.Marker = function(objNull,
   # check the setting of control, if not specified, the default setting will be used
   # The following functions are in 'control.R'
   checkControl.ReadGeno(control)
-  control = checkControl.Marker(control, NullModelClass)  # this function is in 'control.R'
+  control = checkControl.Marker(control, NullModelClass)  
   nMarkersEachChunk = control$nMarkersEachChunk;
   outList = checkOutputFile(OutputFile, OutputFileIndex, "Marker", format(nMarkersEachChunk, scientific=F))    # this function is in 'Util.R'
   
@@ -166,11 +166,11 @@ GRAB.Marker = function(objNull,
     tempChrom = tempList$chrom
     
     # set up objects that do not change for different variants
-    print(c(tempChrom, chrom))
+    # print(c(tempChrom, chrom))
     
     if(tempChrom != chrom){
       # print("test1")
-      setMarker(NullModelClass, objNull, control, chrom, Group, ifOutGroup)
+      obj.setMarker = setMarker(NullModelClass, objNull, control, chrom, Group, ifOutGroup)
       # print("test2")
       chrom = tempChrom
     }
@@ -178,7 +178,7 @@ GRAB.Marker = function(objNull,
     cat(paste0("(",Sys.time(),") ---- Analyzing Chunk ", i, "/", nChunks, ": chrom ", chrom," ---- \n"))
     
     # main function to calculate summary statistics for markers in one chunk
-    resMarker = mainMarker(NullModelClass, genoType, genoIndex, control$outputColumns, objNull)
+    resMarker = mainMarker(NullModelClass, genoType, genoIndex, control$outputColumns, objNull, obj.setMarker)
     
     writeOutputFile(Output = list(resMarker), 
                     OutputFile = list(OutputFile), 
@@ -226,11 +226,15 @@ setMarker = function(NullModelClass, objNull, control, chrom, Group, ifOutGroup)
   # Check SPAGRM.R
   if(NullModelClass == "SPAGRM_NULL_Model")
     obj.setMarker = setMarker.SPAGRM(objNull, control)
+  
+  # Check WtSPAG.R
+  if(NullModelClass == "WtSPAG_NULL_Model")
+    obj.setMarker = setMarker.WtSPAG(objNull, control)
     
   return(obj.setMarker)
 }
 
-mainMarker = function(NullModelClass, genoType, genoIndex, outputColumns, objNull)
+mainMarker = function(NullModelClass, genoType, genoIndex, outputColumns, objNull, obj.setMarker)
 {
   # Check 'POLMM.R'
   if(NullModelClass == "POLMM_NULL_Model"){
@@ -268,6 +272,10 @@ mainMarker = function(NullModelClass, genoType, genoIndex, outputColumns, objNul
   # Check 'SPAGRM.R'
   if(NullModelClass == "SPAGRM_NULL_Model")
     obj.mainMarker = mainMarker.SPAGRM(genoType, genoIndex, outputColumns)
+  
+  # Check 'WtSPAG.R'
+  if(NullModelClass == "WtSPAG_NULL_Model")
+    obj.mainMarker = mainMarker.WtSPAG(genoType, genoIndex, outputColumns, obj.setMarker)
   
   return(obj.mainMarker)
 }

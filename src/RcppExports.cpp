@@ -333,6 +333,32 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// setWtSPAGobjInCPP
+void setWtSPAGobjInCPP(arma::vec t_mresid, arma::vec t_weight, int t_N, double t_SPA_Cutoff);
+RcppExport SEXP _GRAB_setWtSPAGobjInCPP(SEXP t_mresidSEXP, SEXP t_weightSEXP, SEXP t_NSEXP, SEXP t_SPA_CutoffSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec >::type t_mresid(t_mresidSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_weight(t_weightSEXP);
+    Rcpp::traits::input_parameter< int >::type t_N(t_NSEXP);
+    Rcpp::traits::input_parameter< double >::type t_SPA_Cutoff(t_SPA_CutoffSEXP);
+    setWtSPAGobjInCPP(t_mresid, t_weight, t_N, t_SPA_Cutoff);
+    return R_NilValue;
+END_RCPP
+}
+// updateQCInCPP
+void updateQCInCPP(arma::vec t_AF_ref, arma::vec t_AN_ref, arma::vec t_pvalue_bat, double t_pvalue_bat_cutoff);
+RcppExport SEXP _GRAB_updateQCInCPP(SEXP t_AF_refSEXP, SEXP t_AN_refSEXP, SEXP t_pvalue_batSEXP, SEXP t_pvalue_bat_cutoffSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec >::type t_AF_ref(t_AF_refSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_AN_ref(t_AN_refSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_pvalue_bat(t_pvalue_batSEXP);
+    Rcpp::traits::input_parameter< double >::type t_pvalue_bat_cutoff(t_pvalue_bat_cutoffSEXP);
+    updateQCInCPP(t_AF_ref, t_AN_ref, t_pvalue_bat, t_pvalue_bat_cutoff);
+    return R_NilValue;
+END_RCPP
+}
 // squares
 std::vector<double> squares(Rcpp::NumericVector data);
 RcppExport SEXP _GRAB_squares(SEXP dataSEXP) {
@@ -368,6 +394,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setSPAGRMobjInCPP", (DL_FUNC) &_GRAB_setSPAGRMobjInCPP, 12},
     {"_GRAB_setSPAmixobjInCPP", (DL_FUNC) &_GRAB_setSPAmixobjInCPP, 5},
     {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},
+    {"_GRAB_setWtSPAGobjInCPP", (DL_FUNC) &_GRAB_setWtSPAGobjInCPP, 4},
+    {"_GRAB_updateQCInCPP", (DL_FUNC) &_GRAB_updateQCInCPP, 4},
     {"_GRAB_squares", (DL_FUNC) &_GRAB_squares, 1},
     {NULL, NULL, 0}
 };

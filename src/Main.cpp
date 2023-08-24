@@ -27,6 +27,7 @@
 #include "DenseGRM.hpp"
 #include "SPAmix.hpp"
 #include "SPAGRM.hpp"
+#include "WtSPAG.hpp"
 
 // global objects for different genotype formats
 
@@ -41,6 +42,7 @@ static POLMM::POLMMClass* ptr_gPOLMMobj = NULL;
 static SPACox::SPACoxClass* ptr_gSPACoxobj = NULL;
 static SPAmix::SPAmixClass* ptr_gSPAmixobj = NULL;
 static SPAGRM::SPAGRMClass* ptr_gSPAGRMobj = NULL;
+static WtSPAG::WtSPAGClass* ptr_gWtSPAGobj = NULL;
 
 // global variables for analysis
 std::string g_impute_method;      // "mean", "minor", or "drop"
@@ -298,9 +300,17 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     
     double hwepvalCutoff = 0.1;  // to be changed to a option, instead of a default value, later
     double hwepval = 0;
-    Unified_getMarkerPval(t_method, GVec,
-                          false, // bool t_isOnlyOutputNonZero,
-                          indexForNonZero, Beta, seBeta, pval, zScore, altFreq, hwepval, hwepvalCutoff);
+    
+    if(t_method != "WtSPAG"){
+      Unified_getMarkerPval(t_method, GVec,
+                            false, // bool t_isOnlyOutputNonZero,
+                            indexForNonZero, Beta, seBeta, pval, zScore, altFreq, hwepval, hwepvalCutoff);
+    }
+    
+    if(t_method == "WtSPAG"){
+      pval = ptr_gWtSPAGobj->getMarkerPval(GVec, altFreq, zScore, flip, i);
+    }
+    
     
     // std::cout << "test1.5" << std::endl;
     
@@ -317,7 +327,6 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
         pvalVec.at(i*Npheno+j) = pvalVecTemp.at(j);
         zScoreVec.at(i*Npheno+j) = zScoreVecTemp.at(j);
       }
-      
     }else{
       pvalVec.at(i) = pval;
       zScoreVec.at(i) = zScore;    
@@ -1386,4 +1395,32 @@ void setSPACoxobjInCPP(arma::mat t_cumul,
                                            t_pVal_covaAdj_Cutoff,
                                            t_SPA_Cutoff);
 }
+
+// [[Rcpp::export]]
+void setWtSPAGobjInCPP(arma::vec t_mresid,
+                       arma::vec t_weight,
+                       int t_N,
+                       double t_SPA_Cutoff)
+{
+  if(ptr_gWtSPAGobj)
+    delete ptr_gWtSPAGobj;
+  
+  ptr_gWtSPAGobj = new WtSPAG::WtSPAGClass(t_mresid,
+                                           t_weight,
+                                           t_N,
+                                           t_SPA_Cutoff);
+}
+
+// [[Rcpp::export]]
+void updateQCInCPP(arma::vec t_AF_ref,
+                   arma::vec t_AN_ref,
+                   arma::vec t_pvalue_bat,
+                   double t_pvalue_bat_cutoff)
+{
+  ptr_gWtSPAGobj->set_AF_ref(t_AF_ref);
+  ptr_gWtSPAGobj->set_AN_ref(t_AN_ref);
+  ptr_gWtSPAGobj->set_pvalue_bat(t_pvalue_bat);
+  ptr_gWtSPAGobj->set_pvalue_bat_cutoff(t_pvalue_bat_cutoff);
+}
+
 

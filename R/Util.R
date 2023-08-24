@@ -33,10 +33,11 @@ checkObjNull = function(objNull)
                             "SPACox_NULL_Model",      # SPACox: Survival analysis for unrelated subjects
                             "POLMM_NULL_Model",       # POLMM: categorical data analysis
                             "SPAmix_NULL_Model",      # SPAmix: mixture population analysis
-                            "SPAGRM_NULL_Model"))     # SPAGRM: related subjects 
+                            "SPAGRM_NULL_Model",
+                            "WtSPAG_NULL_Model"))     # SPAGRM: related subjects 
   {
     stop('class(objNull) should be one of 
-         c("SPAGE_NULL_Model", "SPACox_NULL_Model", "POLMM_NULL_Model", "SPAmix_NULL_Model", "SPAGRM_NULL_Model")')
+         c("SPAGE_NULL_Model", "SPACox_NULL_Model", "POLMM_NULL_Model", "SPAmix_NULL_Model", "SPAGRM_NULL_Model", "WtSPAG_NULL_Model")')
   }
     
   if(any(!c("subjData", "N") %in% nm))
