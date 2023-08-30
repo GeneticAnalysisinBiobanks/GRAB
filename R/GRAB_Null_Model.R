@@ -183,7 +183,7 @@ GRAB.NullModel = function(formula,
       response.temp = response
       
       if(length(posNoValue) > 0){
-        cat("We remove",length(posNoValue),"individuals without any phenotyeps in analysis.\n")
+        cat("We remove", length(posNoValue), "individuals without any phenotyeps in analysis.\n")
         response.temp = response[-1*posNoValue]
         designMat = designMat[-1*posNoValue,,drop=F]
         subjData = subjData[-1*posNoValue]
@@ -232,6 +232,9 @@ GRAB.NullModel = function(formula,
   eval(parse(text = textToParse))
   
   objNull$subjData = subjData
+  
+  # (BWJ: 2023-08-09): not sure if the below works? 
+  # objNull$N = length(subjData)
   
   objNull$Call = Call;
   objNull$sessionInfo = sessionInfo()

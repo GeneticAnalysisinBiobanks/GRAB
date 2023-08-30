@@ -6,7 +6,7 @@
 \usage{
 QCforBatchEffect(
   GenoFile,
-  GenoFileIndex,
+  GenoFileIndex = NULL,
   control = list(AlleleOrder = "ref-first"),
   PhenoData,
   RefAfFile,
@@ -74,6 +74,22 @@ qcResult1 = QCforBatchEffect(GenoFile = c("simuBGEN1.bgen")
 qcResult2 = QCforBatchEffect(GenoFile = c("simuBGEN2.bgen")
                              ,GenoFileIndex = c("simuBGEN2.bgen.bgi", 
                                                 "simuBGEN2.sample")
+                             ,control=list(AlleleOrder = "ref-first", AllMarkers=T)
+                             ,PhenoData=PhenoData
+                             ,RefAfFile = "RefMAFs.txt"
+                             ,RefPrevalence = RefPrevalence
+                             ,SNPnum=1e4
+)
+
+ # PLINK file
+qcResult1 = QCforBatchEffect(GenoFile = c("GenoMat1.bed")
+                             ,control=list(AlleleOrder = "ref-first", AllMarkers=T)
+                             ,PhenoData=PhenoData
+                             ,RefAfFile = "RefMAFs.txt"
+                             ,RefPrevalence = RefPrevalence
+                             ,SNPnum=1e4
+)
+qcResult2 = QCforBatchEffect(GenoFile = c("GenoMat2.bed")
                              ,control=list(AlleleOrder = "ref-first", AllMarkers=T)
                              ,PhenoData=PhenoData
                              ,RefAfFile = "RefMAFs.txt"
