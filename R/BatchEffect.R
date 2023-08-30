@@ -35,49 +35,67 @@
 #' @export
 #' @import dplyr, data.table
 #' @examples
-#' Check ?GRAB.WtSPAG for examples
-QCforBatchEffect = function(GenoFile               # a character of file names of genotype files
-                            ,GenoFileIndex         # additional index file(s) corresponding to GenoFile
-                            ,OutputFile
+#' setwd(system.file("wSPAg", package = "GRAB"))
+#' load("Example.RData")
+#'
+#' qcResult1 = QCforBatchEffect(GenoFile = c("simuBGEN1.bgen")
+#'                              ,GenoFileIndex = c("simuBGEN1.bgen.bgi", 
+#'                                                 "simuBGEN1.sample")
+#'                              ,control=list(AlleleOrder = "ref-first", AllMarkers=T)
+#'                              ,PhenoData=PhenoData
+#'                              ,RefAfFile = "RefMAFs.txt"
+#'                              ,RefPrevalence = RefPrevalence
+#'                              ,SNPnum=1e4
+#' )
+#' qcResult2 = QCforBatchEffect(GenoFile = c("simuBGEN2.bgen")
+#'                              ,GenoFileIndex = c("simuBGEN2.bgen.bgi", 
+#'                                                 "simuBGEN2.sample")
+#'                              ,control=list(AlleleOrder = "ref-first", AllMarkers=T)
+#'                              ,PhenoData=PhenoData
+#'                              ,RefAfFile = "RefMAFs.txt"
+#'                              ,RefPrevalence = RefPrevalence
+#'                              ,SNPnum=1e4
+#' )
+#' 
+#'  # PLINK file
+#' qcResult1 = QCforBatchEffect(GenoFile = c("GenoMat1.bed")
+#'                              ,control=list(AlleleOrder = "ref-first", AllMarkers=T)
+#'                              ,PhenoData=PhenoData
+#'                              ,RefAfFile = "RefMAFs.txt"
+#'                              ,RefPrevalence = RefPrevalence
+#'                              ,SNPnum=1e4
+#' )
+# 
+#' qcResult2 = QCforBatchEffect(GenoFile = c("GenoMat2.bed")
+#'                              ,control=list(AlleleOrder = "ref-first", AllMarkers=T)
+#'                              ,PhenoData=PhenoData
+#'                              ,RefAfFile = "RefMAFs.txt"
+#'                              ,RefPrevalence = RefPrevalence
+#'                              ,SNPnum=1e4
+#' )
+
+#' allQC = mergeQCresults(qcResult1,qcResult2)
+#' Residual = getResid.wCox(formula = Surv(time, Indicator) ~ X1 + X2
+#'                          , PhenoData = PhenoData
+#'                          , RefPrevalence = RefPrevalence)
+QCforBatchEffect = function(GenoFile              #a character of file names of genotype files
+                            ,GenoFileIndex = NULL         #additional index file(s) corresponding to GenoFile
                             ,control=list(AlleleOrder = "ref-first")  
-                            ,PhenoData             # an R data frame with at least two columns, headers are required and should include c("SampleID", "Indicator"), the "Indicator" column should be 0, 1, or NA. 
-                            ,RefAfFile             # a character of file name of refInfo, which including at least 7 columns, header are required and should include c("CHROM", "POS", "ID", "REF", "ALT", "AF_ref","AN_ref")  
-                            ,RefPrevalence         # refernce population prevalence, the proportion of indicator == 1.
-                            ,SNPnum=1e4            # default least number of SNPs is 1e4
+                            ,PhenoData             #a dataframe with at least two columns, headers are required and should include c("SampleID", "Indicator"), the "Indicator" column should be 0, 1, or NA. 
+                            ,RefAfFile             #a character of file name of refInfo, which including at least 7 columns, header are required and should include c("CHROM", "POS", "ID", "REF", "ALT", "AF_ref","AN_ref")  
+                            ,RefPrevalence         #refernce population prevalence, the proportion of indicator == 1.
+                            ,SNPnum=1e4            #default least number of SNPs is 1e4
                             
 ){
-  if(is.null(OutputFile))
-    stop("Argument of 'OutputFile' is required to store information for the follow-up analysis.")
-  
   # check if there are c("Indicator", "SampleID") in PhenoData-------------------
-  if(!is.null(control$IndicatorColumn))
-  {
-    if(!control$IndicatorColumn %in% colnames(PhenoData))
-      stop(paste0("Cannot find a column of '",
-                  control$IndicatorColumn,
-                  "' (i.e. control$IndicatorColumn) in colnames(PhenoData)"))
-    posCol = which(colnames(PhenoData) == control$IndicatorColumn)
-    colnames(PhenoData)[posCol] = "Indicator"
-  }
-  
-  if(!is.null(control$SampleIDColumn))
-  {
-    if(!control$SampleIDColumn %in% colnames(PhenoData))
-      stop(paste0("Cannot find a column of '",
-                  control$IndicatorColumn,
-                  "' (i.e. control$SampleIDColumn) in colnames(PhenoData)"))
-    posCol = which(colnames(PhenoData) == control$SampleIDColumn)
-    colnames(PhenoData)[posCol] = "SampleID"
-  }  
-  
   if(!"Indicator" %in% colnames(PhenoData))
-    stop("The column of 'Indicator' is required in PhenoData!")
+    stop("Indicator is missing in PhenoData!")
   
   if(any(!unique(PhenoData$Indicator) %in% c(0,1,NA)))
     stop("The value of Indicator should be 0,1 or NA")
   
   if(!"SampleID" %in% colnames(PhenoData))
-    stop("The column of 'SampleID' is required in PhenoData!")
+    stop("SampleID is missing in PhenoData!")
   
   #step1: quality control--------------------------------------------------------
   suppressPackageStartupMessages(library("GRAB",quietly = T))
@@ -97,13 +115,23 @@ QCforBatchEffect = function(GenoFile               # a character of file names o
                                    ,SampleIDs = with(PhenoData,SampleID[Indicator==0])
                                    ,control = control)%>%
     rename(mu0 = altFreq, mr0 = missingRate ) %>% select(mu0, mr0)
-  mergeGenoInfo = GRAB.getGenoInfo(GenoFile = GenoFile
+  
+  
+  GenoInfo = GRAB.getGenoInfo(GenoFile = GenoFile
                                    ,GenoFileIndex = GenoFileIndex
                                    ,SampleIDs = with(PhenoData,SampleID[Indicator==1])
                                    ,control = control) %>% 
     rename(mu1 = altFreq , mr1 = missingRate) %>% 
     cbind(., GenoInfo.ctrl)%>%as_tibble()%>%
-    merge(.,refGenoInfo,by=c("CHROM", "POS", "REF", "ALT", "ID"), all.x=T)
+    mutate(RA = ifelse(REF<ALT, paste0(REF, ALT), paste0(ALT,REF)))
+  
+    mergeGenoInfo = refGenoInfo %>% 
+      mutate(RA = ifelse(REF<ALT, paste0(REF, ALT), paste0(ALT,REF))) %>% 
+      merge(.,GenoInfo,by=c("CHROM", "POS", "RA"),all.y=T) %>% 
+      rename(REF = REF.y, ALT= ALT.y, ID = ID.y)%>% 
+      mutate(AF_ref = ifelse(REF == REF.x, AF_ref , 1-AF_ref  ))%>%
+      select(-REF.x,-ALT.x, -ID.x, -RA)
+  
   
   ## evaluate batch effect and calculate pvalue----------------------------------
   test = function(n0,n1,n2,w0,w1, p1,p2){
@@ -137,9 +165,7 @@ QCforBatchEffect = function(GenoFile               # a character of file names o
     cutoff = getCutoff(count)
   }
   
-  data.table::fwrite(mergeGenoInfo, OutputFile, row.names = F, col.names = T, quote = F, sep = "\t")
-  
-  return(list(# mergeGenoInfo=mergeGenoInfo, 
+  return(list(mergeGenoInfo=mergeGenoInfo, 
               cutoff=cutoff, 
               count=count,
               PhenoData = PhenoData ,
@@ -209,4 +235,42 @@ mergeQCresults = function(qcResult1,...){ #  allQcResults is a list including al
   #calculate new cutoff 
   cutoff=getCutoff(allcount)
   return(list(cutoff=cutoff, allcount=allcount ))
+}
+
+#' Get model residuals using a weighted Cox regression model.
+#'
+#' Get model residuals using a weighted Cox regression model.
+#' 
+#' @param formula an refression formula: a symbolic description of the null model to be fitted
+#' @param PhenoData a dataframe including at least 3 columns \code{SampleID}, \code{Indicator} and \code{time}
+#' @param RefPrevalence a numeric of the event rate in the population, which is consisitent with the input in QCforBatchEffect.
+#' @return an R object with a class of "QCforBatchEffect".
+#' \itemize{
+#'   \item{Residual}: A dataframe with 2 columns, \code{SampleID} and \code{Residuals}, and \code{Residuals} are calculated by fitting null model.
+#' }
+getResid.wCox = function(formula
+                         ,PhenoData # a dataframe including at least 3 columns c("SampleID","Indicator","time")
+                         ,RefPrevalence # consisitent with the RefPrevalence used in QCforBatchEffect
+){
+  suppressPackageStartupMessages(library("survival",quietly = T))
+  
+  # check 
+  if(!"Indicator" %in% colnames(PhenoData))
+    stop("Indicator is missing in PhenoData!")
+  
+  if(any(!unique(PhenoData$Indicator) %in% c(0,1,NA)))
+    stop("The value of Indicator should be 0,1 or NA")
+  
+  if(!"SampleID" %in% colnames(PhenoData))
+    stop("SampleID is missing in PhenoData!")
+  
+  if(!"time" %in% colnames(PhenoData))
+    stop("time is missing in PhenoData!")
+  
+  #calculate weight
+  PhenoData = PhenoData %>% mutate(weight = ifelse(PhenoData$Indicator == 1,1,(1-RefPrevalence)/RefPrevalence*sum(PhenoData$Indicator)/sum(1-PhenoData$Indicator)))
+  #fit null model
+  obj.null = coxph(formula, PhenoData, weight = weight, robust = T)
+  Residual = data.frame(Resid = obj.null$residuals,SampleID = PhenoData$SampleID )
+  return(Residual)
 }

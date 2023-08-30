@@ -6,8 +6,7 @@
 \usage{
 QCforBatchEffect(
   GenoFile,
-  GenoFileIndex,
-  OutputFile,
+  GenoFileIndex = NULL,
   control = list(AlleleOrder = "ref-first"),
   PhenoData,
   RefAfFile,
@@ -60,5 +59,45 @@ Argument \code{control} is used to include and exclude markers. The function sup
 }
 }
 \examples{
-Check ?GRAB.WtSPAG for examples
+setwd(system.file("wSPAg", package = "GRAB"))
+load("Example.RData")
+
+qcResult1 = QCforBatchEffect(GenoFile = c("simuBGEN1.bgen")
+                             ,GenoFileIndex = c("simuBGEN1.bgen.bgi", 
+                                                "simuBGEN1.sample")
+                             ,control=list(AlleleOrder = "ref-first", AllMarkers=T)
+                             ,PhenoData=PhenoData
+                             ,RefAfFile = "RefMAFs.txt"
+                             ,RefPrevalence = RefPrevalence
+                             ,SNPnum=1e4
+)
+qcResult2 = QCforBatchEffect(GenoFile = c("simuBGEN2.bgen")
+                             ,GenoFileIndex = c("simuBGEN2.bgen.bgi", 
+                                                "simuBGEN2.sample")
+                             ,control=list(AlleleOrder = "ref-first", AllMarkers=T)
+                             ,PhenoData=PhenoData
+                             ,RefAfFile = "RefMAFs.txt"
+                             ,RefPrevalence = RefPrevalence
+                             ,SNPnum=1e4
+)
+
+ # PLINK file
+qcResult1 = QCforBatchEffect(GenoFile = c("GenoMat1.bed")
+                             ,control=list(AlleleOrder = "ref-first", AllMarkers=T)
+                             ,PhenoData=PhenoData
+                             ,RefAfFile = "RefMAFs.txt"
+                             ,RefPrevalence = RefPrevalence
+                             ,SNPnum=1e4
+)
+qcResult2 = QCforBatchEffect(GenoFile = c("GenoMat2.bed")
+                             ,control=list(AlleleOrder = "ref-first", AllMarkers=T)
+                             ,PhenoData=PhenoData
+                             ,RefAfFile = "RefMAFs.txt"
+                             ,RefPrevalence = RefPrevalence
+                             ,SNPnum=1e4
+)
+allQC = mergeQCresults(qcResult1,qcResult2)
+Residual = getResid.wCox(formula = Surv(time, Indicator) ~ X1 + X2
+                         , PhenoData = PhenoData
+                         , RefPrevalence = RefPrevalence)
 }
