@@ -1398,7 +1398,6 @@ void setSPACoxobjInCPP(arma::mat t_cumul,
 
 // [[Rcpp::export]]
 void setWtSPAGobjInCPP(arma::vec t_mresid,
-                       arma::vec t_weight,
                        int t_N,
                        double t_SPA_Cutoff)
 {
@@ -1406,7 +1405,6 @@ void setWtSPAGobjInCPP(arma::vec t_mresid,
     delete ptr_gWtSPAGobj;
   
   ptr_gWtSPAGobj = new WtSPAG::WtSPAGClass(t_mresid,
-                                           t_weight,
                                            t_N,
                                            t_SPA_Cutoff);
 }

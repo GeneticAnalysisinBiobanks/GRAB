@@ -177,7 +177,7 @@ setMarker.WtSPAG = function(objNull, control)
   
   # The following function is in Main.cpp
   setWtSPAGobjInCPP(mresid,
-                    weight,
+                    # weight,
                     N,
                     SPA_Cutoff)
   
