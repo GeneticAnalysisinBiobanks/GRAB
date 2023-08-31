@@ -238,7 +238,7 @@ public:
     if(t_flip)  // t_altFreq>0.5
     {
       t_GVec = 2-t_GVec;                 //g=2-g
-      t_altFreq =2 - t_altFreq; 
+      t_altFreq =1 - t_altFreq; 
       AF_ref = 1 - AF_ref;
     }
     
@@ -248,15 +248,15 @@ public:
     
     // The below is from WtCoxG-2023-07-27-LY.R
     
-    double AF = (m_N * t_altFreq + AN_ref * AF_ref) / (m_N + AN_ref);
+    double AF = (m_N * t_altFreq + AN_ref/2 * AF_ref) / (m_N + AN_ref/2);
     double S = sum(m_mresid % (t_GVec - 2 * AF));
     
     double G_var = 2 * AF * (1 - AF);
     
     double meanR = mean(m_mresid);
-    double tildeR = meanR * m_N / (m_N + AN_ref);
+    double tildeR = meanR * m_N / (m_N + AN_ref/2);
     
-    double S_var = (sum(pow(m_mresid - tildeR, 2)) + AN_ref * pow(tildeR, 2)) * G_var;
+    double S_var = (sum(pow(m_mresid - tildeR, 2)) + AN_ref/2 * pow(tildeR, 2)) * G_var;
     t_zScore = S / sqrt(S_var);
     
     double pval = 0;
@@ -266,8 +266,8 @@ public:
     return pval;
     }
     
-    double mean_nonOutlier = (sum(residNonOutlier-tildeR) - AN_ref * tildeR ) *2*AF;
-    double var_nonOutlier = (sum(pow((residNonOutlier-tildeR), 2) + AN_ref * pow(tildeR, 2))) * G_var;
+    double mean_nonOutlier = (sum(residNonOutlier-tildeR) - AN_ref/2 * tildeR ) *2*AF;
+    double var_nonOutlier = (sum(pow((residNonOutlier-tildeR), 2) + AN_ref/2 * pow(tildeR, 2))) * G_var;
     // Saddlepoint approximation (check SPAmix.hpp for more details)
     // The MGF of G (genotype)
     // return pval;
