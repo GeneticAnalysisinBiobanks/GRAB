@@ -334,14 +334,15 @@ BEGIN_RCPP
 END_RCPP
 }
 // setWtSPAGobjInCPP
-void setWtSPAGobjInCPP(arma::vec t_mresid, int t_N, double t_SPA_Cutoff);
-RcppExport SEXP _GRAB_setWtSPAGobjInCPP(SEXP t_mresidSEXP, SEXP t_NSEXP, SEXP t_SPA_CutoffSEXP) {
+void setWtSPAGobjInCPP(arma::vec t_mresid, int t_N, double t_SPA_Cutoff, Rcpp::List t_outlierList);
+RcppExport SEXP _GRAB_setWtSPAGobjInCPP(SEXP t_mresidSEXP, SEXP t_NSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_outlierListSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::vec >::type t_mresid(t_mresidSEXP);
     Rcpp::traits::input_parameter< int >::type t_N(t_NSEXP);
     Rcpp::traits::input_parameter< double >::type t_SPA_Cutoff(t_SPA_CutoffSEXP);
-    setWtSPAGobjInCPP(t_mresid, t_N, t_SPA_Cutoff);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_outlierList(t_outlierListSEXP);
+    setWtSPAGobjInCPP(t_mresid, t_N, t_SPA_Cutoff, t_outlierList);
     return R_NilValue;
 END_RCPP
 }
@@ -393,7 +394,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setSPAGRMobjInCPP", (DL_FUNC) &_GRAB_setSPAGRMobjInCPP, 12},
     {"_GRAB_setSPAmixobjInCPP", (DL_FUNC) &_GRAB_setSPAmixobjInCPP, 5},
     {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},
-    {"_GRAB_setWtSPAGobjInCPP", (DL_FUNC) &_GRAB_setWtSPAGobjInCPP, 3},
+    {"_GRAB_setWtSPAGobjInCPP", (DL_FUNC) &_GRAB_setWtSPAGobjInCPP, 4},
     {"_GRAB_updateQCInCPP", (DL_FUNC) &_GRAB_updateQCInCPP, 4},
     {"_GRAB_squares", (DL_FUNC) &_GRAB_squares, 1},
     {NULL, NULL, 0}

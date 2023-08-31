@@ -129,7 +129,43 @@ fitNullModel.WtSPAG = function(response, designMat, subjData, control, ...)
   #   Cova = designMat
   # }
   
-  re = list(mresid = mresid, Cova = Cova, yVec = yVec, weight = weight, RefPrevalence = RefPrevalence, N = length(mresid))
+  # var.resid = var(mresid, na.rm = T)
+  ## outliers or not depending on the residuals (0.25%-1.5IQR, 0.75%+1.5IQR)
+  q25 = quantile(mresid, 0.25, na.rm = T)
+  q75 = quantile(mresid, 0.75, na.rm = T)
+  IQR = q75 - q25
+  
+  # r.outlier = 1.5    # put this to the control argument later
+  r.outlier = 0    # put this to the control argument later
+  cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
+  posOutlier = which(mresid < cutoff[1] | mresid > cutoff[2])
+  
+  # The original code is from SPAmix in which multiple residuals were analysis simultaneously 
+  # posValue = which(!is.na(mresid))
+  # posNonOutlier = setdiff(posValue, posOutlier)
+  posValue = 1:length(mresid)
+  posNonOutlier = setdiff(posValue, posOutlier)
+  
+  cat("The outlier of residuals will be passed to SPA analysis.\n")
+  cat("Cutoffs to define residuals:\t", signif(cutoff,2),"\n")
+  cat("Totally, ", length(posOutlier),"/", length(posValue), " are defined as outliers.\n")
+  
+  if(length(posOutlier) == 0)
+    stop("No outlier is observed. SPA is not required in this case.")
+  
+  # "-1" is to convert R style (index starting from 1) to C++ style (index starting from 0)
+  outLierList = list(posOutlier = posOutlier - 1,
+                     posNonOutlier = posNonOutlier - 1,
+                     resid = mresid,
+                     resid2 = mresid^2,
+                     residOutlier = mresid[posOutlier],
+                     residNonOutlier = mresid[posNonOutlier],
+                     resid2NonOutlier = mresid[posNonOutlier]^2)
+  
+  re = list(mresid = mresid, Cova = Cova, yVec = yVec, weight = weight, 
+            RefPrevalence = RefPrevalence, 
+            N = length(mresid),
+            outLierList = outLierList)
   
   class(re) = "WtSPAG_NULL_Model"
   return(re)
@@ -177,7 +213,8 @@ setMarker.WtSPAG = function(objNull, control)
   setWtSPAGobjInCPP(mresid,
                     # weight,
                     N,
-                    SPA_Cutoff)
+                    SPA_Cutoff,
+                    objNull$outLierList)
   
   return(obj.setMarker)
 }

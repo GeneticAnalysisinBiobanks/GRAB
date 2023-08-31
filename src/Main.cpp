@@ -1399,14 +1399,16 @@ void setSPACoxobjInCPP(arma::mat t_cumul,
 // [[Rcpp::export]]
 void setWtSPAGobjInCPP(arma::vec t_mresid,
                        int t_N,
-                       double t_SPA_Cutoff)
+                       double t_SPA_Cutoff,
+                       Rcpp::List t_outlierList)
 {
   if(ptr_gWtSPAGobj)
     delete ptr_gWtSPAGobj;
   
   ptr_gWtSPAGobj = new WtSPAG::WtSPAGClass(t_mresid,
                                            t_N,
-                                           t_SPA_Cutoff);
+                                           t_SPA_Cutoff,
+                                           t_outlierList);
 }
 
 // [[Rcpp::export]]

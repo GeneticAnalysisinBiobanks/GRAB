@@ -20,14 +20,34 @@ private:
   arma::vec m_AN_ref;             // reference MAC   
   arma::vec m_pvalue_bat;         // batch effect pvalue
   double m_pvalue_bat_cutoff;     // batch effect cut off 
-  arma::vec residNonOutlier;      //non-outlier residual 
-  arma::vec residOutlier;         //outlier residual:R-R
+  
+  arma::uvec m_posOutlier;
+  arma::uvec m_posNonOutlier;
+  arma::vec m_resid;
+  arma::vec m_resid2;
+  arma::vec m_residOutlier;
+  arma::vec m_residNonOutlier;
+  arma::vec m_resid2NonOutlier;
+  
+  double m_sum_resid2;
+  double m_sum_resid;
+  double m_sum_resid2NonOutlier;
+  double m_sum_residNonOutlier;
+  
+  unsigned int m_N_NonOutlier;
+  
+  // Rcpp::List m_outlierList;
+  // arma::vec residNonOutlier;      //non-outlier residual 
+  // arma::vec residOutlier;         //outlier residual:R-R
+  
+  
 public:
   
   WtSPAGClass(arma::mat t_mresid,
               // arma::vec t_weight,
               int t_N,
-              double t_SPA_Cutoff);
+              double t_SPA_Cutoff,
+              Rcpp::List t_outlierList);
   
   void set_AF_ref(arma::vec t_AF_ref){m_AF_ref = t_AF_ref;}
   void set_AN_ref(arma::vec t_AN_ref){m_AN_ref = t_AN_ref;}
@@ -255,39 +275,51 @@ public:
     
     double meanR = mean(m_mresid);
     double tildeR = meanR * m_N / (m_N + AN_ref/2);
+    double tildeR2 = pow(tildeR, 2);
     
-    double S_var = (sum(pow(m_mresid - tildeR, 2)) + AN_ref/2 * pow(tildeR, 2)) * G_var;
+    // we denote the below as diff2
+    // sum(pow(m_mresid - tildeR, 2)) = m_sum_resid2 - 2 * tildeR * m_sum_resid + m_N * tildeR2;
+    double sum_diff2 = m_sum_resid2 - 2 * tildeR * m_sum_resid + m_N * tildeR2;
+    double S_var = (sum_diff2 + AN_ref/2 * tildeR2) * G_var;
     t_zScore = S / sqrt(S_var);
     
     double pval = 0;
     
     if(std::abs(t_zScore) < m_SPA_Cutoff){
-    pval = arma::normcdf(-1*std::abs(t_zScore))*2;
-    return pval;
+      pval = arma::normcdf(-1*std::abs(t_zScore))*2;
+      return pval;
     }
     
-    double mean_nonOutlier = (sum(residNonOutlier-tildeR) - AN_ref/2 * tildeR ) *2*AF;
-    double var_nonOutlier = (sum(pow((residNonOutlier-tildeR), 2) + AN_ref/2 * pow(tildeR, 2))) * G_var;
+    // we denote the below as sum_diff_nonOutlier
+    // sum(m_residNonOutlier-tildeR) = m_sum_resid - m_N * tildeR;
+    double sum_diff_nonOutlier = m_sum_residNonOutlier - m_N_NonOutlier * tildeR;
+    double sum_diff2_nonOutlier = m_sum_resid2NonOutlier - 2 * tildeR * m_sum_residNonOutlier + m_N_NonOutlier * tildeR2;
+    
+    double mean_nonOutlier = (sum_diff_nonOutlier - AN_ref/2 * tildeR ) *2*AF;
+    double var_nonOutlier = (sum_diff2_nonOutlier + AN_ref/2 * tildeR2) * G_var;
+    
     // Saddlepoint approximation (check SPAmix.hpp for more details)
     // The MGF of G (genotype)
     // return pval;
     double pval1 = GetProb_SPA_G(AF, 
-                                 residOutlier-tildeR, 
+                                 m_residOutlier-tildeR, 
                                  std::abs(S), 
                                  false,
                                  mean_nonOutlier,
                                  var_nonOutlier);
     
     double pval2 = GetProb_SPA_G(AF, 
-                                 residOutlier-tildeR, 
+                                 m_residOutlier-tildeR, 
                                  -1 * std::abs(S), 
                                  false,
                                  mean_nonOutlier,
                                  var_nonOutlier);
+    
+    std::cout << "pval1:\t" << pval1 << std::endl;
+    std::cout << "pval2:\t" << pval2 << std::endl;
+    
     pval = pval1 + pval2;
     return(pval);
-    
-    
   }
   
 };
