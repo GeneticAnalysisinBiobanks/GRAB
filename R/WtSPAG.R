@@ -14,7 +14,7 @@
 #' PhenoData = read.table(system.file("WtSPAG", "simuPHENO_WtSPAG.txt", package = "GRAB"), header = T)
 #' RefPrevalence = 0.1
 #' 
-#' qcResult1 = QCforBatchEffect(GenoFile = "simuBGEN1.bgen",
+#' qcResult1 = QCforBatchEffect(GenoFile = "simuBGEN1.bgen", 
 #'                              GenoFileIndex = c("simuBGEN1.bgen.bgi", 
 #'                                                 "simuBGEN1.sample"),
 #'                              OutputFile = "qcBGEN1.txt",
@@ -26,9 +26,7 @@
 #'                              RefPrevalence = RefPrevalence,
 #'                              SNPnum=1e4)
 #' 
-#' qcResult2 = QCforBatchEffect(GenoFile = "simuBGEN2.bgen",
-#'                              GenoFileIndex = c("simuBGEN2.bgen.bgi", 
-#'                                                 "simuBGEN2.sample"),
+#' qcResult2 = QCforBatchEffect(GenoFile = "GenoMat2.bed",
 #'                              OutputFile = "qcBGEN2.txt",
 #'                              control=list(AlleleOrder = "ref-first", 
 #'                                           AllMarkers = T,
