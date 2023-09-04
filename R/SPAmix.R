@@ -126,7 +126,7 @@ mainMarker.SPAmix = function(genoType, genoIndex, outputColumns, objNull)
 
 
 # fit null model using SPAmix method
-fitNullModel.SPAmix = function(response, designMat, subjData, control, ...)
+fitNullModel.SPAmix = function(response, designMat, subjData, control=list(OutlierRatio=1.5), ...)
 {
   if(!class(response) %in% c("Surv", "Residual")) 
     stop("For SPAmix, the response variable should be of class 'Surv' or 'Residual'.")
@@ -194,9 +194,20 @@ fitNullModel.SPAmix = function(response, designMat, subjData, control, ...)
     q25 = quantile(mresid.temp, 0.25, na.rm = T)
     q75 = quantile(mresid.temp, 0.75, na.rm = T)
     IQR = q75 - q25
-    r.outlier = 1.5    # put this to the control argument later
+    r.outlier =   r.outlier = ifelse(is.null(control$OutlierRatio), 1.5, control$OutlierRatio)  # put this to the control argument later
+    # put this to the control argument later
     cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
     posOutlier = which(mresid.temp < cutoff[1] | mresid.temp > cutoff[2])
+    
+    while(length(posOutlier)==0){
+      r.outlier = r.outlier*0.8
+      cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
+      posOutlier = which(mresid < cutoff[1] | mresid > cutoff[2])
+      cat("The current outlier ratio is:",r.outlier,"\n")
+      cat("The number of outlier is:",length(posOutlier),"\n")
+      
+    }
+    
     
     posValue = which(!is.na(mresid.temp))
     posNonOutlier = setdiff(posValue, posOutlier)
