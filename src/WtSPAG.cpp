@@ -19,7 +19,7 @@ WtSPAGClass::WtSPAGClass(arma::mat t_mresid,
   
   arma::uvec posOutlier = t_outlierList["posOutlier"];
   arma::uvec posNonOutlier = t_outlierList["posNonOutlier"];
-  m_N_NonOutlier = m_posNonOutlier.size();
+ // m_N_NonOutlier = m_posNonOutlier.size();
   
   // m_resid is the same as m_mresid, might be updated later 2023-08-31
   arma::vec resid = t_outlierList["resid"];
@@ -30,6 +30,8 @@ WtSPAGClass::WtSPAGClass(arma::mat t_mresid,
   
   m_posOutlier = posOutlier;
   m_posNonOutlier = posNonOutlier;
+  m_N_NonOutlier = m_posNonOutlier.size();
+  
   m_resid = resid;
   m_resid2 = resid2;
   m_residOutlier = residOutlier;
