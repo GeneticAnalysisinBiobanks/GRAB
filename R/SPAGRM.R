@@ -142,6 +142,17 @@ SPAGRM.NullModel = function(ResidMatFile,    # two columns: column 1 is subjID, 
   ResidMat$Outlier = ifelse(Resid < cutoffVec[1] | Resid > cutoffVec[2],
                             TRUE, FALSE)
   
+  while(length(ResidMat$Outlier)==0){
+    OutlierRatio=OutlierRatio*0.8
+    cutoffVec = c(min(Quant) - OutlierRatio * Range, max(Quant) + OutlierRatio * Range)
+    cat("cutoffVec:\t",cutoffVec,"\n")
+    ResidMat$Outlier = ifelse(Resid < cutoffVec[1] | Resid > cutoffVec[2],
+                              TRUE, FALSE)
+    cat("The number of outlier is:",length(ResidMat$Outlier),"\n")
+    
+  }
+  
+  
   cat("Outliers information is as below\n")
   print(ResidMat %>% filter(Outlier == TRUE) %>% dplyr::select(SubjID, Resid, Outlier) %>% arrange(Resid))
   

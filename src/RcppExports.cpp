@@ -334,15 +334,15 @@ BEGIN_RCPP
 END_RCPP
 }
 // setWtSPAGobjInCPP
-void setWtSPAGobjInCPP(arma::vec t_mresid, arma::vec t_weight, int t_N, double t_SPA_Cutoff);
-RcppExport SEXP _GRAB_setWtSPAGobjInCPP(SEXP t_mresidSEXP, SEXP t_weightSEXP, SEXP t_NSEXP, SEXP t_SPA_CutoffSEXP) {
+void setWtSPAGobjInCPP(arma::vec t_mresid, int t_N, double t_SPA_Cutoff, Rcpp::List t_outlierList);
+RcppExport SEXP _GRAB_setWtSPAGobjInCPP(SEXP t_mresidSEXP, SEXP t_NSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_outlierListSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::vec >::type t_mresid(t_mresidSEXP);
-    Rcpp::traits::input_parameter< arma::vec >::type t_weight(t_weightSEXP);
     Rcpp::traits::input_parameter< int >::type t_N(t_NSEXP);
     Rcpp::traits::input_parameter< double >::type t_SPA_Cutoff(t_SPA_CutoffSEXP);
-    setWtSPAGobjInCPP(t_mresid, t_weight, t_N, t_SPA_Cutoff);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_outlierList(t_outlierListSEXP);
+    setWtSPAGobjInCPP(t_mresid, t_N, t_SPA_Cutoff, t_outlierList);
     return R_NilValue;
 END_RCPP
 }

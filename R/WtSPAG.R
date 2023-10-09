@@ -14,7 +14,7 @@
 #' PhenoData = read.table(system.file("WtSPAG", "simuPHENO_WtSPAG.txt", package = "GRAB"), header = T)
 #' RefPrevalence = 0.1
 #' 
-#' qcResult1 = QCforBatchEffect(GenoFile = "simuBGEN1.bgen",
+#' qcResult1 = QCforBatchEffect(GenoFile = "simuBGEN1.bgen", 
 #'                              GenoFileIndex = c("simuBGEN1.bgen.bgi", 
 #'                                                 "simuBGEN1.sample"),
 #'                              OutputFile = "qcBGEN1.txt",
@@ -26,9 +26,7 @@
 #'                              RefPrevalence = RefPrevalence,
 #'                              SNPnum=1e4)
 #' 
-#' qcResult2 = QCforBatchEffect(GenoFile = "simuBGEN2.bgen",
-#'                              GenoFileIndex = c("simuBGEN2.bgen.bgi", 
-#'                                                 "simuBGEN2.sample"),
+#' qcResult2 = QCforBatchEffect(GenoFile = "GenoMat2.bed",
 #'                              OutputFile = "qcBGEN2.txt",
 #'                              control=list(AlleleOrder = "ref-first", 
 #'                                           AllMarkers = T,
@@ -99,7 +97,8 @@ getWeight.WtSPAG = function(Indicator, RefPrevalence)
 }
 
 # fit null model using WtSPAG method
-fitNullModel.WtSPAG = function(response, designMat, subjData, control, ...)
+fitNullModel.WtSPAG = function(response, designMat, subjData,
+                               control=list(OutlierRatio=1.5), ...)
 {
   if(!class(response) %in% c("Surv", "Residual"))   # later support binary trait and Residual
     stop("For WtSPAG, the response variable should be of class 'Surv' or 'Residual'.")
@@ -131,7 +130,52 @@ fitNullModel.WtSPAG = function(response, designMat, subjData, control, ...)
   #   Cova = designMat
   # }
   
-  re = list(mresid = mresid, Cova = Cova, yVec = yVec, weight = weight, RefPrevalence = RefPrevalence, N = length(mresid))
+  # var.resid = var(mresid, na.rm = T)
+  ## outliers or not depending on the residuals (0.25%-1.5IQR, 0.75%+1.5IQR)
+  q25 = quantile(mresid, 0.25, na.rm = T)
+  q75 = quantile(mresid, 0.75, na.rm = T)
+  IQR = q75 - q25
+  
+  # r.outlier = 1.5    # put this to the control argument later
+  r.outlier = ifelse(is.null(control$OutlierRatio), 1.5, control$OutlierRatio)  # put this to the control argument later
+  cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
+  posOutlier = which(mresid < cutoff[1] | mresid > cutoff[2])
+  cat("The r.outlier is:",r.outlier,"\n")
+  while(length(posOutlier)==0){
+    r.outlier = r.outlier*0.8
+    cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
+    posOutlier = which(mresid < cutoff[1] | mresid > cutoff[2])
+    cat("The curent outlier ratio is:",r.outlier,"\n")
+    cat("The number of outlier is:",length(posOutlier),"\n")
+
+  }
+  
+  # The original code is from SPAmix in which multiple residuals were analysis simultaneously 
+  # posValue = which(!is.na(mresid))
+  # posNonOutlier = setdiff(posValue, posOutlier)
+  posValue = 1:length(mresid)
+  posNonOutlier = setdiff(posValue, posOutlier)
+  
+  cat("The outlier of residuals will be passed to SPA analysis.\n")
+  cat("Cutoffs to define residuals:\t", signif(cutoff,2),"\n")
+  cat("Totally, ", length(posOutlier),"/", length(posValue), " are defined as outliers.\n")
+  
+  if(length(posOutlier) == 0)
+    stop("No outlier is observed. SPA is not required in this case.")
+  
+  # "-1" is to convert R style (index starting from 1) to C++ style (index starting from 0)
+  outLierList = list(posOutlier = posOutlier - 1,
+                     posNonOutlier = posNonOutlier - 1,
+                     resid = mresid,
+                     resid2 = mresid^2,
+                     residOutlier = mresid[posOutlier],
+                     residNonOutlier = mresid[posNonOutlier],
+                     resid2NonOutlier = mresid[posNonOutlier]^2)
+  
+  re = list(mresid = mresid, Cova = Cova, yVec = yVec, weight = weight, 
+            RefPrevalence = RefPrevalence, 
+            N = length(mresid),
+            outLierList = outLierList)
   
   class(re) = "WtSPAG_NULL_Model"
   return(re)
@@ -177,9 +221,10 @@ setMarker.WtSPAG = function(objNull, control)
   
   # The following function is in Main.cpp
   setWtSPAGobjInCPP(mresid,
-                    weight,
+                    # weight,
                     N,
-                    SPA_Cutoff)
+                    SPA_Cutoff,
+                    objNull$outLierList)
   
   return(obj.setMarker)
 }
