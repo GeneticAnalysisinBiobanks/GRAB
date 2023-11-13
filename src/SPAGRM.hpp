@@ -251,8 +251,11 @@ public:
     gethwepval(t_GVec, t_hwepval, t_hwepvalCutoff);
     
     double MAF = std::min(t_altFreq, 1 - t_altFreq);
+
+    // std::cout << arma::mean(t_GVec) << std::endl;
+    // std::cout << t_altFreq << std::endl;
     
-    double Score = sum(t_GVec % m_resid);
+    double Score = sum(t_GVec % m_resid) - mean(t_GVec) * sum(m_resid); // i.e. sum((t_GVec - mean(t_GVec)) % m_resid)
     double G_var = 2 * MAF * (1 - MAF);
     double Score_var = G_var * m_R_GRM_R;
     t_zScore = Score/sqrt(Score_var);

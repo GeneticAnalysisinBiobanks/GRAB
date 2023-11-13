@@ -144,6 +144,7 @@ SPAGRM.NullModel = function(ResidMatFile,    # two columns: column 1 is subjID, 
   MaxQuantile = control$MaxQuantile;
   MinQuantile = control$MinQuantile;
   OutlierRatio = control$OutlierRatio;
+  ControlOutlier = control$ControlOutlier;
   MaxNuminFam = control$MaxNuminFam;
   MAF_interval = control$MAF_interval;
   
