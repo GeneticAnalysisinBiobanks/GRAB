@@ -125,28 +125,46 @@ public:
   }
   
   
-  // partial normal distribution approximation
-  arma::vec Horg_H2(double t, arma::vec R, const double MAF)
-  {
-    arma::vec Horg_H2_vec(2);
-    double Horg = H_org(t, R, MAF);
-    double H_2 = H2(t, R, MAF)  ;
-    Horg_H2_vec.at(0) = Horg;
-    Horg_H2_vec.at(1) = H_2;
-    return Horg_H2_vec;
-  }
+ // partial normal distribution approximation
+    arma::vec Horg_H2(double t, arma::vec R, const double MAFVec)
+    {
+      arma::vec Horg_H2_vec(2);
+      arma::vec t_R = t * R;
+      arma::vec exp_tR = arma::exp(t_R);
+      arma::vec MAF_exp_tR = MAFVec * exp_tR;
+      arma::vec M_G0_vec = pow((1 - MAFVec + MAF_exp_tR), 2);;
+      arma::vec M_G1_vec = 2 * (MAF_exp_tR) % (1 - MAFVec + MAF_exp_tR);
+      arma::vec M_G2_vec = 2 * pow(MAF_exp_tR, 2) + 2 * (MAF_exp_tR) % (1 - MAFVec + MAF_exp_tR);
+      arma::vec K_G0_vec = arma::log(M_G0_vec);
+      arma::vec K_G2_vec = (M_G0_vec % M_G2_vec - pow(M_G1_vec, 2)) / pow(M_G0_vec, 2);
+      double Horg = sum(K_G0_vec);
+      double H2 = sum(pow(R, 2) % K_G2_vec);
+      Horg_H2_vec.at(0) = Horg;
+      Horg_H2_vec.at(1) = H2;
+      return Horg_H2_vec;
+    }
   
-  arma::vec H1_adj_H2(double t, arma::vec R, double s,const double MAF)
+  arma::vec H1_adj_H2(double t, arma::vec R, double s, const double MAFVec)
   {
     arma::vec H1_adj_H2_vec(2);
-    double H_1_adj = H1_adj(t, R, MAF, s);
-    double H_2 = H2(t, R, MAF) ;
-    // double H1_adj = sum(R % K_G1(t * R, MAF)) - s;
-    // double H2 = sum(pow(R, 2) % K_G2(t * R, MAF));
-    H1_adj_H2_vec.at(0) = H_1_adj;
-    H1_adj_H2_vec.at(1) = H_2;
+    arma::vec t_R = t * R;
+    arma::vec exp_tR = arma::exp(t_R);
+    arma::vec MAF_exp_tR = MAFVec * exp_tR;
+    arma::vec M_G0_vec = pow((1 - MAFVec + MAF_exp_tR), 2);;
+    arma::vec M_G1_vec = 2 * (MAF_exp_tR) % (1 - MAFVec + MAF_exp_tR);
+    arma::vec M_G2_vec = 2 * pow(MAF_exp_tR, 2) + 2 * (MAF_exp_tR) % (1 - MAFVec + MAF_exp_tR);
+    arma::vec K_G1_vec = M_G1_vec / M_G0_vec;
+    arma::vec K_G2_vec = (M_G0_vec % M_G2_vec - pow(M_G1_vec, 2)) / pow(M_G0_vec, 2);
+    double H1_adj = sum(R % K_G1_vec) - s;
+    double H2 = sum(pow(R, 2) % K_G2_vec);
+    // double H1_adj = sum(R % K_G1(t * R, MAFVec)) - s;
+    // double H2 = sum(pow(R, 2) % K_G2(t * R, MAFVec));
+    H1_adj_H2_vec.at(0) = H1_adj;
+    H1_adj_H2_vec.at(1) = H2;
     return H1_adj_H2_vec;
   }
+  
+
   
   // The below code is from SPACox.hpp
   Rcpp::List fastgetroot_K1(double t_initX,
@@ -265,6 +283,14 @@ public:
     // If pvalue for batch effect is less than the cutoff, then we do not use reference (external) allele frequency information
     if(pvalue_bat < m_pvalue_bat_cutoff)
       AN_ref = 0;
+    if(std::isnan(AF_ref)){
+      AN_ref = 0;
+      AF_ref = 0;
+      
+    }
+    //std::cout << "AN_ref:\t" << AN_ref << std::endl;
+    //std::cout << "AF_ref:\t" << AF_ref << std::endl;
+    
     
     // The below is from WtCoxG-2023-07-27-LY.R
     
@@ -282,13 +308,8 @@ public:
     double sum_diff2 = m_sum_resid2 - 2 * tildeR * m_sum_resid + m_N * tildeR2;
     double S_var = (sum_diff2 + AN_ref/2 * tildeR2) * G_var;
     t_zScore = S / sqrt(S_var);
-    
-    double pval = 0;
-    
-    if(std::abs(t_zScore) < m_SPA_Cutoff){
-      pval = arma::normcdf(-1*std::abs(t_zScore))*2;
-      return pval;
-    }
+   // std::cout << "t_zScore:\t" << t_zScore << std::endl;
+
     
     // we denote the below as sum_diff_nonOutlier
     // sum(m_residNonOutlier-tildeR) = m_sum_resid - m_N * tildeR;
@@ -297,7 +318,29 @@ public:
     
     double mean_nonOutlier = (sum_diff_nonOutlier - AN_ref/2 * tildeR ) *2*AF;
     double var_nonOutlier = (sum_diff2_nonOutlier + AN_ref/2 * tildeR2) * G_var;
+    //double var_Outlier = sum(pow(m_residOutlier-tildeR, 2))
     
+    std::cout << "m_sum_residNonOutlier:\t" << m_sum_residNonOutlier << std::endl;
+    std::cout << "m_sum_residNonOutlier_true:\t" << sum(m_residNonOutlier) << std::endl;
+    std::cout << "m_N_NonOutlier:\t" << m_N_NonOutlier << std::endl;
+    std::cout << "tildeR:\t" << tildeR << std::endl;
+    
+    std::cout << "sum_diff_nonOutlier:\t" << sum_diff_nonOutlier << std::endl;
+    std::cout << "sum_diff_nonOutlier_true:\t" << sum(m_residNonOutlier-tildeR) << std::endl;
+    std::cout << "sum_diff2_nonOutlier:\t" << sum_diff2_nonOutlier << std::endl;
+    std::cout << "sum_diff2_nonOutlier_true:\t" << sum(pow(m_residNonOutlier-tildeR,2)) << std::endl;
+    
+    
+    double pval = 0;
+    if(std::abs(t_zScore) < m_SPA_Cutoff){
+      pval = arma::normcdf(-1*std::abs(t_zScore))*2;
+      
+      std::cout << "pvalnorm:\t" << pval << std::endl;
+      
+      return pval;
+      
+      
+    }
     // Saddlepoint approximation (check SPAmix.hpp for more details)
     // The MGF of G (genotype)
     // return pval;
@@ -311,12 +354,11 @@ public:
     double pval2 = GetProb_SPA_G(AF, 
                                  m_residOutlier-tildeR, 
                                  -1 * std::abs(S), 
-                                 false,
+                                 true,
                                  mean_nonOutlier,
                                  var_nonOutlier);
     
-    std::cout << "pval1:\t" << pval1 << std::endl;
-    std::cout << "pval2:\t" << pval2 << std::endl;
+
     
     pval = pval1 + pval2;
     return(pval);

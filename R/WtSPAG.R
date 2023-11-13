@@ -97,7 +97,8 @@ getWeight.WtSPAG = function(Indicator, RefPrevalence)
 }
 
 # fit null model using WtSPAG method
-fitNullModel.WtSPAG = function(response, designMat, subjData, control, ...)
+fitNullModel.WtSPAG = function(response, designMat, subjData,
+                               control=list(OutlierRatio=1.5), ...)
 {
   if(!class(response) %in% c("Surv", "Residual"))   # later support binary trait and Residual
     stop("For WtSPAG, the response variable should be of class 'Surv' or 'Residual'.")
@@ -136,9 +137,18 @@ fitNullModel.WtSPAG = function(response, designMat, subjData, control, ...)
   IQR = q75 - q25
   
   # r.outlier = 1.5    # put this to the control argument later
-  r.outlier = 0    # put this to the control argument later
+  r.outlier = ifelse(is.null(control$OutlierRatio), 1.5, control$OutlierRatio)  # put this to the control argument later
   cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
   posOutlier = which(mresid < cutoff[1] | mresid > cutoff[2])
+  cat("The r.outlier is:",r.outlier,"\n")
+  while(length(posOutlier)==0){
+    r.outlier = r.outlier*0.8
+    cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
+    posOutlier = which(mresid < cutoff[1] | mresid > cutoff[2])
+    cat("The curent outlier ratio is:",r.outlier,"\n")
+    cat("The number of outlier is:",length(posOutlier),"\n")
+
+  }
   
   # The original code is from SPAmix in which multiple residuals were analysis simultaneously 
   # posValue = which(!is.na(mresid))
