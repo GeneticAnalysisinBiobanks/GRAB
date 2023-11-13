@@ -49,11 +49,29 @@ checkControl.SPAGRM.NullModel = function(control,
                                          SparseGRM,
                                          PairwiseIBD)
 {
+  default.control = list(MaxQuantile = 0.75,
+                         MinQuantile = 0.25,
+                         OutlierRatio = 1.5,
+                         ControlOutlier = TRUE,
+                         MaxNuminFam = 5,
+                         MAF_interval = c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5))
+  
+  control = updateControl(control, default.control)  # This file is in 'control.R'
+  
   if(control$MaxQuantile < control$MinQuantile)
     stop("MaxQuantile(default is 0.75) should be larger than MinQuantile(default is 0.25).")
   
   if(control$OutlierRatio < 0)
     stop("OutlierRatio should be larger than or equal 0 (default is 1.5).")
+  
+  if(any(colnames(ResidMat) != c("SubjID", "Resid")))
+    stop("The column names of ResidMat should be ['SubjID', 'Resid'].")
+  
+  if(any(colnames(SparseGRM) != c("ID1", "ID2", "Value")))
+    stop("The column names of SparseGRM should be ['ID1', 'ID2', 'Value'].")
+  
+  if(any(colnames(PairwiseIBD) != c("ID1", "ID2", "pa", "pb", "pc")))
+    stop("The column names of PairwiseIBD should be ['ID1', 'ID2', 'pa', 'pb', 'pc'].")
   
   SubjID.In.Resid = ResidMat$SubjID
   SubjID.In.GRM = unique(c(SparseGRM$ID1, SparseGRM$ID2))
@@ -109,6 +127,7 @@ SPAGRM.NullModel = function(ResidMatFile,    # two columns: column 1 is subjID, 
                             control = list(MaxQuantile = 0.75,
                                            MinQuantile = 0.25,
                                            OutlierRatio = 1.5,
+                                           ControlOutlier = TRUE,
                                            MaxNuminFam = 5,
                                            MAF_interval = c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5)))
 {
@@ -125,6 +144,7 @@ SPAGRM.NullModel = function(ResidMatFile,    # two columns: column 1 is subjID, 
   MaxQuantile = control$MaxQuantile;
   MinQuantile = control$MinQuantile;
   OutlierRatio = control$OutlierRatio;
+  ControlOutlier = control$ControlOutlier;
   MaxNuminFam = control$MaxNuminFam;
   MAF_interval = control$MAF_interval;
   
@@ -142,16 +162,30 @@ SPAGRM.NullModel = function(ResidMatFile,    # two columns: column 1 is subjID, 
   ResidMat$Outlier = ifelse(Resid < cutoffVec[1] | Resid > cutoffVec[2],
                             TRUE, FALSE)
   
-  while(length(ResidMat$Outlier)==0){
-    OutlierRatio=OutlierRatio*0.8
-    cutoffVec = c(min(Quant) - OutlierRatio * Range, max(Quant) + OutlierRatio * Range)
-    cat("cutoffVec:\t",cutoffVec,"\n")
-    ResidMat$Outlier = ifelse(Resid < cutoffVec[1] | Resid > cutoffVec[2],
-                              TRUE, FALSE)
-    cat("The number of outlier is:",length(ResidMat$Outlier),"\n")
+  if(ControlOutlier)
+  {
+    cat("By default, ControlOutlier = TRUE to keep the outliers within a certain range to improve computational efficiency.\n")
     
+    while(sum(ResidMat$Outlier) == 0)
+    {
+      OutlierRatio = OutlierRatio*0.8
+      cutoffVec = c(min(Quant) - OutlierRatio * Range, max(Quant) + OutlierRatio * Range)
+      cat("cutoffVec:\t",cutoffVec,"\n")
+      ResidMat$Outlier = ifelse(Resid < cutoffVec[1] | Resid > cutoffVec[2],
+                                TRUE, FALSE)
+      cat("The number of outlier is:", sum(ResidMat$Outlier),"\n")
+    }
+    
+    while(sum(ResidMat$Outlier)/nrow(ResidMat) > 0.05)
+    {
+      OutlierRatio = OutlierRatio + 0.5
+      cutoffVec = c(min(Quant) - OutlierRatio * Range, max(Quant) + OutlierRatio * Range)
+      cat("cutoffVec:\t",cutoffVec,"\n")
+      ResidMat$Outlier = ifelse(Resid < cutoffVec[1] | Resid > cutoffVec[2],
+                                TRUE, FALSE)
+      cat("The number of outlier is:", sum(ResidMat$Outlier),"\n")
+    }
   }
-  
   
   cat("Outliers information is as below\n")
   print(ResidMat %>% filter(Outlier == TRUE) %>% dplyr::select(SubjID, Resid, Outlier) %>% arrange(Resid))
