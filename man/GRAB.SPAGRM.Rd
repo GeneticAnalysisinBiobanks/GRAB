@@ -2,28 +2,34 @@
 % Please edit documentation in R/SPAGRM.R
 \name{GRAB.SPAGRM}
 \alias{GRAB.SPAGRM}
-\title{SPAGRM method in GRAB package}
+\title{SPA\if{html}{\out{<sub>}}GRM\if{html}{\out{</sub>}} method in GRAB package}
 \usage{
 GRAB.SPAGRM()
 }
 \description{
-SPAGRM method is to analysis longitudinal phenotype for related samples in a large-scale biobank.
+SPA\if{html}{\out{<sub>}}GRM\if{html}{\out{</sub>}} method is an empirical approach to analyzing complex traits (including but not limited to longitudinal trait) for related samples in a large-scale biobank. SPA\if{html}{\out{<sub>}}GRM\if{html}{\out{</sub>}} extend SPACox to support an related populations.
 }
 \details{
-Please check \code{?GRAB.control} for the generic list of \code{control} in \code{GRAB.NullModel()} and \code{GRAB.Marker()}.
+Additional list of \code{control} in \code{SPAGRM.NullModel()} function.
+
+Additional list of \code{control} in \code{GRAB.Marker()} function.
 }
 \examples{
-# Step 1: fit a null model
-PhenoData = read.table(system.file("extdata", "example.pheno", package = "GRAB"), header = T)
-obj.SPAGRM = GRAB.NullModel(survival::Surv(time,event) ~ Cova1 + Cova2, 
-                            data = PhenoData, subjData = PhenoData$IID, 
-                            method = "SPAGRM", traitType = "time-to-event")
+# Step 2a: process model residuals
+ResidMatFile = system.file("extdata", "ResidMat.txt", package = "GRAB")
+SparseGRMFile = system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
+PairwiseIBDFile = system.file("PairwiseIBD", "PairwiseIBD.txt", package = "GRAB")
+obj.SPAGRM = SPAGRM.NullModel(ResidMatFile = ResidMatFile, 
+                              SparseGRMFile = SparseGRMFile, 
+                              PairwiseIBDFile = PairwiseIBDFile,
+                              control = list(ControlOutlier = FALSE))
 
-# Step 2: perform score test
-GenoFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.bed", package = "GRAB")
+# Step 2b: perform score test
+GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
 OutputDir = system.file("results", package = "GRAB")
 OutputFile = paste0(OutputDir, "/SPAGRMMarkers.txt")
-GRAB.Marker(obj.SPAGRM, GenoFile = GenoFile,
+GRAB.Marker(objNull = obj.SPAGRM,
+            GenoFile = GenoFile,
             OutputFile = OutputFile)
 head(read.table(OutputFile, header=T))
 }
