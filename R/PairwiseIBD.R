@@ -24,7 +24,7 @@ getPairwiseIBD = function(PlinkFile,            # input path to PLINK file (with
     stop("Please check frqFile name ", frqFile, " is correct or this file exists!")
   
   if(is.null(tempDir))
-    tempDir = system.file("SparseGRM", "temp", package = "GRAB")
+    tempDir = system.file("PairwiseIBD", "temp", package = "GRAB")
   
   # read all genotype and pass to QC.
   GenoInfoMat = data.table::fread(frqFile)
@@ -129,7 +129,9 @@ getPairwiseIBD = function(PlinkFile,            # input path to PLINK file (with
           pa = 2*tempGRM$Value[j] + pc - 1
           
           if(pb < 0)
+          {
             pa = pa + 0.5*pb; pb = 0; pc = 0;
+          }
           
           PairwiseIBD = rbind(PairwiseIBD,
                               c(ID1 = tempGRM$ID1[j], ID2 = tempGRM$ID2[j], pa = pa, pb = pb, pc = pc))
