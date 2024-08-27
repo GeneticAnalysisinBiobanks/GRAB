@@ -2,12 +2,12 @@
 % Please edit documentation in R/SPAGRM.R
 \name{GRAB.SPAGRM}
 \alias{GRAB.SPAGRM}
-\title{SPA\if{html}{\out{<sub>}}GRM\if{html}{\out{</sub>}} method in GRAB package}
+\title{SPA<sub>GRM</sub> method in GRAB package}
 \usage{
 GRAB.SPAGRM()
 }
 \description{
-SPA\if{html}{\out{<sub>}}GRM\if{html}{\out{</sub>}} method is an empirical approach to analyzing complex traits (including but not limited to longitudinal trait) for related samples in a large-scale biobank. SPA\if{html}{\out{<sub>}}GRM\if{html}{\out{</sub>}} extend SPACox to support an related populations.
+SPA<sub>GRM</sub> method is an empirical approach to analyzing complex traits (including but not limited to longitudinal trait) for related samples in a large-scale biobank. SPA<sub>GRM</sub> extend SPACox to support an related populations.
 }
 \details{
 Additional list of \code{control} in \code{SPAGRM.NullModel()} function.

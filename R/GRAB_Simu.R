@@ -281,11 +281,11 @@ from.geno.to.haplo = function(geno.mat) # n x p: n is sample size, p is number o
   haplo.mat2[posHetero] = 1 - haplo.mat1[posHetero]
   
   haplo.mat = rbind(haplo.mat1, haplo.mat2)
-  return(haplo.mat)  # 2n x p: each sample corresponds to two confounder alleles
+  return(haplo.mat)  # 2n x p: each sample corresponds to two founder alleles
 }
 
 ### genotype simulation based on haplotype
-from.haplo.to.geno = function(haplo.mat,  # output of haplo.simu():  m x p where m is number of confounder alleles, and p is number of SNPs
+from.haplo.to.geno = function(haplo.mat,  # output of haplo.simu():  m x p where m is number of founder alleles, and p is number of SNPs
                               fam.mat)    # output of example.fam(): n x 5 where n is sample size
 {
   n = nrow(fam.mat)     # number of subjects
@@ -404,6 +404,7 @@ GRAB.SimubVec = function(nSub,
 #' @param GenoFile this parameter is passed to \code{GRAB.ReadGeno} to read in genotype data.
 #' @param GenoFileIndex this parameter is passed to \code{GRAB.ReadGeno} to read in genotype data.
 #' @param SampleIDs this parameter is passed to \code{GRAB.ReadGeno} to read in genotype data.
+#' @param SampleIDs.Random If TRUE (default), genotypes from \code{GenoFile} will be randomly assigned as haplotype information of founders. Otherwise, check \code{details} for more information.
 #' @param control this parameter is passed to \code{GRAB.ReadGeno} to read in genotype data. 
 #' @return a genotype matrix of genotype data
 #' @details 
@@ -418,6 +419,13 @@ GRAB.SimubVec = function(nSub,
 #' 
 #' ## If \code{FamMode = "20-members"}
 #' Total number of subjects is \code{nSub + 20 * nFam}. Each family includes 20 members with the family structure as below: 1+2->9+10, 3+9->11+12, 4+10->13+14, 5+11->15+16, 6+12->17, 7+13->18, 8+14->19+20.
+#' 
+#' ## If \code{SampleIDs.Random = FALSE}
+#' The genotypes from \code{GenoFile} will be assigned as haplotype information of founders based on the subject name in \code{GenoFile}. The options of \code{nFam} and \cdoe{nSub} will be invalid. 
+#' If \code{FamMode = "4-members"}, the name should be "FamID_1" or "FamID_2" for the two fouders.
+#' If \code{FamMode = "10-members"}, the name should be "FamID_1", "FamID_2", "FamID_3", or "FamID_4" for the four fouders.
+#' If \code{FamMode = "20-members"}, the name should be "FamID_1", ..., or "FamID_8" for the eight fouders.
+#' 
 #' @examples
 #' nFam = 50
 #' nSub = 500
@@ -443,8 +451,14 @@ GRAB.SimuGMatFromGenoFile = function(nFam,
                                      GenoFile,
                                      GenoFileIndex = NULL,
                                      SampleIDs = NULL,
+                                     SampleIDs.Random = TRUE,
                                      control = NULL)
 {
+  if(!SampleIDs.Random){
+    nFam = 1;
+    nSub = 0;
+  }
+  
   inputList = checkInput(nSub, nFam, FamMode)
   
   nSubInEachFam = inputList$nSubInEachFam
@@ -456,8 +470,10 @@ GRAB.SimuGMatFromGenoFile = function(nFam,
   n = nSub + nFam * nSubInEachFam
   nHaplo = nFam * nHaploInEachFam
   
-  if(n == 0){
-    stop("Please give at least one of 'nSub' and 'nFam'.")
+  if(SampleIDs.Random){
+    if(n == 0){
+      stop("Please give at least one of 'nSub' and 'nFam'.")
+    }
   }
   
   cat("Number of unrelated subjects:\t", nSub, "\n")
@@ -476,37 +492,120 @@ GRAB.SimuGMatFromGenoFile = function(nFam,
   markerInfo = GenoList$markerInfo
   nSubInGeno = nrow(GenoMat)
   
-  if(nSubInGeno < nSub + nHaplo/2)
-    stop("Number of subjects in Genotype File < Number of subjects requested.")
+  if(!SampleIDs.Random){  # check details section
+    SampleIDs = rownames(GenoMat)
+    checkSampleID.out = checkSampleID(SampleIDs, FamMode)
+    uniqFIDs = checkSampleID.out$uniqFIDs
+    nFounders = checkSampleID.out$nFounders
+  }else{
+    if(nSubInGeno < nSub + nHaplo/2)
+      stop("Number of subjects in Genotype File < Number of subjects requested.")
+  }
   
-  ####
-  
-  GenoMat1 = GenoMat2 = NULL
-  
-  randomRow = sample(nSubInGeno)
-  rowForHaplo = randomRow[1:(nHaplo/2)]
-  rowForSub = randomRow[1:nSub + nHaplo/2]
-  
-  if(nHaplo != 0){
-    cat("Extracting haplotype data for related subjects....\n")
-    GenoMatTemp = GenoMat[rowForHaplo, ] 
-    haplo.mat = from.geno.to.haplo(GenoMatTemp)
-    rownames(haplo.mat) = paste0("haplo-",1:nHaplo)
+  #### before 2024-08-27
+  if(SampleIDs.Random)
+  {
+    GenoMat1 = GenoMat2 = NULL
     
-    cat("Simulating genotype data for related subjects....\n")
-    GenoMat1 = from.haplo.to.geno(haplo.mat, fam.mat)    # output of example.fam(): n x 5 where n is sample size
+    randomRow = sample(nSubInGeno)    # randomly re-order the subjects in GenoFile
+    rowForHaplo = randomRow[1:(nHaplo/2)]
+    rowForSub = randomRow[1:nSub + nHaplo/2]
+    
+    if(nHaplo != 0){
+      cat("Extracting haplotype data for related subjects....\n")
+      GenoMatTemp = GenoMat[rowForHaplo, ] 
+      haplo.mat = from.geno.to.haplo(GenoMatTemp)      # nxp to rbind(nxp, nxp)
+      rownames(haplo.mat) = paste0("haplo-",1:nHaplo)
+      
+      cat("Simulating genotype data for related subjects....\n")
+      GenoMat1 = from.haplo.to.geno(haplo.mat, fam.mat)    # fam.mat is the output of example.fam(): n x 5 where n is sample size
+    }
+    
+    if(nSub != 0){
+      cat("Extracting Genotype data for unrelated subjects....\n")
+      GenoMat2 = GenoMat[rowForSub, ]
+      rownames(GenoMat2) =  paste0("Subj-",1:nSub)
+    }
+    
+    GenoMat = rbind(GenoMat1, GenoMat2)
   }
   
-  if(nSub != 0){
-    cat("Extracting Genotype data for unrelated subjects....\n")
-    GenoMat2 = GenoMat[rowForSub, ]
-    rownames(GenoMat2) =  paste0("Subj-",1:nSub)
+  #### updated on 2024-08-27
+  if(!SampleIDs.Random)
+  {
+    nFID = length(uniqFIDs)
+    nEachFID = nrow(fam.mat)
+    nSNP = ncol(GenoMat)
+    GenoMat.NonRandom = matrix(NA, nFID * nEachFID, nSNP)
+    i = 1
+    for(FID in uniqFIDs){
+      
+      cat("Simulating genotype data for family", FID, "\n")
+      
+      SampleIDs = paste0(FID, "_", 1:nFounders)
+      GenoMatTemp = GenoMat[SampleIDs, ]
+      haplo.mat = from.geno.to.haplo(GenoMatTemp)      # nxp to rbind(nxp, nxp)
+      rownames(haplo.mat) = paste0("haplo-",1:nHaplo)
+      GenoMat1 = from.haplo.to.geno(haplo.mat, fam.mat)
+      
+      GenoMat.NonRandom[(i-1)*nEachFID+1:nEachFID,] = GenoMat1
+      
+      i = i + 1
+    }
+    
+    GenoMat = GenoMat.NonRandom
+    rownames(GenoMat) = paste0(rep(uniqFIDs, each=nEachFID), "_", 1:nrow(fam.mat))
+    
   }
-  
-  GenoMat = rbind(GenoMat1, GenoMat2)
   
   return(list(GenoMat = GenoMat,
               markerInfo = markerInfo))
+}
+
+checkSampleID = function(SampleIDs, FamMode)
+{
+  if(any(duplicated(SampleIDs)))
+    stop("any(duplicated(SampleIDs))")
+  
+  n = length(SampleIDs)
+  
+  FIDsMat = matrix(NA, n, 2)  # column 1 is FID and column 2 is IID (from 1 to nFounders)
+  
+  if(FamMode == "4-members") 
+    nFounders = 2
+    
+  if(FamMode == "10-members")
+    nFounders = 4
+      
+  if(FamMode == "20-members")
+    nFounders = 8
+  
+  for(i in 1:n){
+    ID = SampleIDs[i]
+    ID = unlist(strsplit(ID, "_"))
+    
+    if(length(ID) != 2)
+      stop("SampleID should be 'FID_IID'.")
+    
+    FID = ID[1]
+    IID = ID[2]
+    
+    if(!is.element(IID, 1:nFounders))
+      stop("!is.element(IID, 1:nFounders)")
+    
+    FIDsMat[i,] = c(FID, IID)
+  }
+  
+  uniqFIDs = unique(FIDsMat[,1])
+  n1 = length(uniqFIDs)
+  
+  if(n != n1 * nFounders)
+    stop("n != n1 * nFounders")
+  
+  checkSampleID.out = list(uniqFIDs = uniqFIDs,
+                           nFounders = nFounders)
+  
+  return(checkSampleID.out)
 }
 
 

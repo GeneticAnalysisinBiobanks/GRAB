@@ -11,6 +11,7 @@ GRAB.SimuGMatFromGenoFile(
   GenoFile,
   GenoFileIndex = NULL,
   SampleIDs = NULL,
+  SampleIDs.Random = TRUE,
   control = NULL
 )
 }
@@ -26,6 +27,8 @@ GRAB.SimuGMatFromGenoFile(
 \item{GenoFileIndex}{this parameter is passed to \code{GRAB.ReadGeno} to read in genotype data.}
 
 \item{SampleIDs}{this parameter is passed to \code{GRAB.ReadGeno} to read in genotype data.}
+
+\item{SampleIDs.Random}{If TRUE (default), genotypes from \code{GenoFile} will be randomly assigned as haplotype information of founders. Otherwise, check \code{details} for more information.}
 
 \item{control}{this parameter is passed to \code{GRAB.ReadGeno} to read in genotype data.}
 }
@@ -51,6 +54,14 @@ Total number of subjects is \code{nSub + 10 * nFam}. Each family includes 10 mem
 \subsection{If \code{FamMode = "20-members"}}{
 
 Total number of subjects is \code{nSub + 20 * nFam}. Each family includes 20 members with the family structure as below: 1+2->9+10, 3+9->11+12, 4+10->13+14, 5+11->15+16, 6+12->17, 7+13->18, 8+14->19+20.
+}
+
+\subsection{If \code{SampleIDs.Random = FALSE}}{
+
+The genotypes from \code{GenoFile} will be assigned as haplotype information of founders based on the subject name in \code{GenoFile}. The options of \code{nFam} and \cdoe{nSub} will be invalid.
+If \code{FamMode = "4-members"}, the name should be "FamID_1" or "FamID_2" for the two fouders.
+If \code{FamMode = "10-members"}, the name should be "FamID_1", "FamID_2", "FamID_3", or "FamID_4" for the four fouders.
+If \code{FamMode = "20-members"}, the name should be "FamID_1", ..., or "FamID_8" for the eight fouders.
 }
 }
 \examples{
