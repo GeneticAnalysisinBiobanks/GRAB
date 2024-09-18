@@ -538,7 +538,7 @@ SPAGRMGE.NullModel = function(NullModel = NULL,   # a fitted null model from lme
   bedfile = paste0(PlinkFile, ".bed")
   bimfile = paste0(PlinkFile, ".bim")
   
-  totalSNPs = data.table::fread(bimfile, header = FALSE); totalSNPs = totalSNPs[, 1]
+  totalSNPs = data.table::fread(bimfile, header = FALSE); totalSNPs = totalSNPs$V2
   
   if(length(totalSNPs) > 2e3)
   {
