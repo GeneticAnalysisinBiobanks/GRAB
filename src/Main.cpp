@@ -284,7 +284,7 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     
     // c(MAF, MAC) for Quality Control (QC)
     double MAF = std::min(altFreq, 1 - altFreq);
-    double MAC = MAF * n * (1 - missingRate);
+    double MAC = 2 * MAF * n * (1 - missingRate);
     
     // Quality Control (QC) based on missing rate, MAF, and MAC
     if((missingRate > g_missingRate_cutoff) || (MAF < g_marker_minMAF_cutoff) || (MAC < g_marker_minMAC_cutoff))
