@@ -629,7 +629,8 @@ SPAGRMGE.NullModel = function(NullModel = NULL,   # a fitted null model from lme
   
   Resid_data = Pheno_data %>% select(all_of(SubjIDColname)) %>% mutate(Resid = update_residuals * (TT[, 2] - lambda))
   colnames(Resid_data) = c("SubjID", "Resid")
-  Resid_data = Resid_data %>% group_by(SubjID) %>% summarize(Resid = sum(Resid)) %>% ungroup()
+  # Resid_data = Resid_data %>% group_by(SubjID) %>% summarize(Resid = sum(Resid)) %>% ungroup()
+  Resid_data = Resid_data %>% group_by(SubjID) %>% summarize(Resid = sum(Resid)) %>% mutate(Resid = scale(Resid)) %>% ungroup()
   
   output = SPAGRM.NullModel(ResidMatFile = Resid_data, SparseGRMFile = SparseGRMFile, PairwiseIBDFile = PairwiseIBDFile, control = control)
   
