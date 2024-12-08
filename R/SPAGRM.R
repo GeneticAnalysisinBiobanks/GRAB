@@ -454,10 +454,22 @@ SPAGRMGE.NullModel = function(NullModel = NULL,   # a fitted null model from lme
   cat("Process the null model product...\n")
   
   # Extract variance components and compute penalty matrix (P)
-  varcor = lme4::VarCorr(null_model)
-  cmd = paste0("varcor$", SubjIDColname); G = eval(parse(text = cmd))
-  sig = attr(varcor, "sc")
-  P = solve(G / sig ^ 2)
+  if(inherits(null_model, "merMod"))
+  {
+    varcor = VarCorr(null_model)
+    cmd = paste0("varcor$", SubjIDColname); G = eval(parse(text = cmd))
+    sig = attr(varcor, "sc")
+    P = solve(G / sig ^ 2)
+  }else if(inherits(null_model, "glmmTMB"))
+  {
+    varcor = VarCorr(null_model)$cond
+    cmd = paste0("varcor$", SubjIDColname); G = eval(parse(text = cmd))
+    sig = attr(varcor, "sc")
+    P = solve(G / sig ^ 2)
+  }else
+  {
+    stop("Currently we only support fitted models fitted by 'LME4' and 'glmmTMB'.")
+  }
   
   # Put data in convenient arrays and vector
   cmd = paste0("unique(Pheno_data$", SubjIDColname, ")"); SubjID = eval(parse(text = cmd)); SubjID = as.character(SubjID)
@@ -602,7 +614,16 @@ SPAGRMGE.NullModel = function(NullModel = NULL,   # a fitted null model from lme
   
   cat("Calculate model residuals...\n")
   
-  coeffs = summary(null_model)$coefficients[,1]; 
+  if(inherits(null_model, "merMod"))
+  {
+    coeffs = summary(null_model)$coefficients[,1]
+  }else if(inherits(null_model, "glmmTMB"))
+  {
+    coeffs = summary(null_model)$coefficients$cond[,1]
+  }else
+  {
+    stop("Currently we only support fitted models fitted by 'LME4' and 'glmmTMB'.")
+  }
   coeffs = c(coeffs[1], coeffs[Envcolname], coeffs[CovaColname], -1)
   update_residuals = - as.numeric(XY %*% coeffs)
   
@@ -629,8 +650,7 @@ SPAGRMGE.NullModel = function(NullModel = NULL,   # a fitted null model from lme
   
   Resid_data = Pheno_data %>% select(all_of(SubjIDColname)) %>% mutate(Resid = update_residuals * (TT[, 2] - lambda))
   colnames(Resid_data) = c("SubjID", "Resid")
-  # Resid_data = Resid_data %>% group_by(SubjID) %>% summarize(Resid = sum(Resid)) %>% ungroup()
-  Resid_data = Resid_data %>% group_by(SubjID) %>% summarize(Resid = sum(Resid)) %>% mutate(Resid = scale(Resid)) %>% ungroup()
+  Resid_data = Resid_data %>% group_by(SubjID) %>% summarize(Resid = sum(Resid)) %>% ungroup()
   
   output = SPAGRM.NullModel(ResidMatFile = Resid_data, SparseGRMFile = SparseGRMFile, PairwiseIBDFile = PairwiseIBDFile, control = control)
   
