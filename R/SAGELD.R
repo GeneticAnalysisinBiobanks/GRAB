@@ -689,11 +689,6 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
           {
             TwofamID.index = TwofamID.index + 1;
             
-            R_GRM_R_G.temp = as.numeric(t(Resid_G[pos1]) %*% block_GRM %*% Resid_G[pos1])
-            R_GRM_R_GxE.temp = as.numeric(t(Resid_GxE[pos1]) %*% block_GRM %*% Resid_GxE[pos1])
-            R_GRM_R_G_GxE.temp = as.numeric(t(Resid_G[pos1]) %*% block_GRM %*% Resid_GxE[pos1]) * 2
-            R_GRM_R.temp = R_GRM_R_GxE.temp + lambda^2 * R_GRM_R_G.temp - lambda * R_GRM_R_G_GxE.temp
-            
             R_GRM_R_TwoSubjOutlier_G.temp = as.numeric(t(Resid_G.temp) %*% block_GRM %*% Resid_G.temp)
             R_GRM_R_TwoSubjOutlier_GxE.temp = as.numeric(t(Resid_GxE.temp) %*% block_GRM %*% Resid_GxE.temp)
             R_GRM_R_TwoSubjOutlier_G_GxE.temp = as.numeric(t(Resid_G.temp) %*% block_GRM %*% Resid_GxE.temp) * 2
