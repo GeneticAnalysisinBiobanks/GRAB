@@ -308,9 +308,9 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
   {
     obj = list(subjData = SubjID, N = length(SubjID), Method = "GALLOP",
                XTs = XTs, SS = SS, AtS = AtS, Q = Q, A21 = A21, TTs = TTs, Tys = Tys, sol = sol, blups = blups, sig = sig,
-               Resid = c(), Resid_G = c(), Resid_GxE = c(), Resid.unrelated.outliers = c(),
+               Resid = c(), Resid_G = c(), Resid_GxE = c(), Resid_E = c(), Resid.unrelated.outliers = c(),
                Resid.unrelated.outliers_G = c(), Resid.unrelated.outliers_GxE = c(),
-               R_GRM_R = 0, R_GRM_R_G = 0, R_GRM_R_GxE = 0, R_GRM_R_G_GxE = 0,
+               R_GRM_R = 0, R_GRM_R_G = 0, R_GRM_R_GxE = 0, R_GRM_R_G_GxE = 0, R_GRM_R_E = 0,
                R_GRM_R_TwoSubjOutlier = 0, R_GRM_R_TwoSubjOutlier_G = 0,
                R_GRM_R_TwoSubjOutlier_GxE = 0, R_GRM_R_TwoSubjOutlier_G_GxE = 0,
                sum_R_nonOutlier = 0, sum_R_nonOutlier_G = 0, sum_R_nonOutlier_GxE = 0,
@@ -729,9 +729,9 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
     
     obj = list(subjData = SubjID, N = length(SubjID), Method = "SAGELD",
                XTs = XTs, SS = SS, AtS = AtS, Q = Q, A21 = A21, TTs = TTs, Tys = Tys, sol = sol, blups = blups, sig = sig,
-               Resid = Resid, Resid_G = Resid_G, Resid_GxE = Resid_GxE, Resid.unrelated.outliers = Resid.unrelated.outliers,
+               Resid = Resid, Resid_G = Resid_G, Resid_GxE = Resid_GxE, Resid_E = Resid_E, Resid.unrelated.outliers = Resid.unrelated.outliers,
                Resid.unrelated.outliers_G = Resid.unrelated.outliers_G, Resid.unrelated.outliers_GxE = Resid.unrelated.outliers_GxE,
-               R_GRM_R = R_GRM_R, R_GRM_R_G = R_GRM_R_G, R_GRM_R_GxE = R_GRM_R_GxE, R_GRM_R_G_GxE = R_GRM_R_G_GxE,
+               R_GRM_R = R_GRM_R, R_GRM_R_G = R_GRM_R_G, R_GRM_R_GxE = R_GRM_R_GxE, R_GRM_R_G_GxE = R_GRM_R_G_GxE, R_GRM_R_E = R_GRM_R_E,
                R_GRM_R_TwoSubjOutlier = R_GRM_R_TwoSubjOutlier, R_GRM_R_TwoSubjOutlier_G = R_GRM_R_TwoSubjOutlier_G,
                R_GRM_R_TwoSubjOutlier_GxE = R_GRM_R_TwoSubjOutlier_GxE, R_GRM_R_TwoSubjOutlier_G_GxE = R_GRM_R_TwoSubjOutlier_G_GxE,
                sum_R_nonOutlier = sum_R_nonOutlier, sum_R_nonOutlier_G = sum_R_nonOutlier_G, sum_R_nonOutlier_GxE = sum_R_nonOutlier_GxE,
