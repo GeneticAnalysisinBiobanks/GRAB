@@ -427,9 +427,7 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
         Cfix = solve(Q, R)
         Cran = H2 - A21 %*% Cfix
         GtG = matrix(crossprod(si ^ 2, TTs), 2, 2)
-        Gty = matrix(crossprod(si, Tys), 2, 1)
         V = GtG - crossprod(H1, Cfix) - crossprod(H2, Cran)
-        v = Gty - crossprod(H1, sol) - crossprod(H2, blups)
         
         lambda = V[1,2]/V[1,1]
         
