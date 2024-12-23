@@ -370,7 +370,13 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
     # R_GRM_R = R_GRM_R_GxE + lambda^2 * R_GRM_R_G - lambda * R_GRM_R_G_GxE
     
     # threshold for G to E
-    zScoreE_cutoff = qnorm(PvalueCutoff/2,lower.tail=FALSE)
+    if(PvalueCutoff >= 0 & PvalueCutoff <= 1)
+    {
+      zScoreE_cutoff = qnorm(PvalueCutoff/2,lower.tail=FALSE)
+    }else
+    {
+      stop("Please check ", PvalueCutoff, ". It should be a p value.")
+    }
     
     # read in the Plink file to random select SNPs to calculate mean lambda.
     bedfile = paste0(PlinkFile, ".bed")
