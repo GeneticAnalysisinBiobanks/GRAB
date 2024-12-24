@@ -105,6 +105,7 @@ setMarker.SAGELD = function(objNull, control)
                     objNull$Resid,
                     objNull$Resid_G,
                     objNull$Resid_GxE,
+                    objNull$Resid_E,
                     objNull$Resid.unrelated.outliers,
                     objNull$Resid.unrelated.outliers_G,
                     objNull$Resid.unrelated.outliers_GxE,
@@ -115,6 +116,7 @@ setMarker.SAGELD = function(objNull, control)
                     objNull$R_GRM_R_G,
                     objNull$R_GRM_R_GxE,
                     objNull$R_GRM_R_G_GxE,
+                    objNull$R_GRM_R_E,
                     objNull$R_GRM_R_nonOutlier,
                     objNull$R_GRM_R_nonOutlier_G,
                     objNull$R_GRM_R_nonOutlier_GxE,
@@ -127,7 +129,6 @@ setMarker.SAGELD = function(objNull, control)
                     objNull$ThreeSubj_list,
                     objNull$MAF_interval,
                     objNull$zScoreE_cutoff,
-                    objNull$lambda,
                     control$SPA_Cutoff,
                     control$zeta,
                     control$tol)
@@ -151,10 +152,10 @@ mainMarker.SAGELD = function(genoType, genoIndex, outputColumns, objNull)
                                 AltCounts = OutList$altCountsVec,               # alternative allele counts
                                 MissingRate = OutList$missingRateVec,           # alternative allele counts
                                 Method = Method,                                # method
-                                zScore_G = OutList$zScoreVec[1:(2*n_marker-1)], # standardized score statistics for G
-                                zScore_GxE = OutList$zScoreVec[2*1:n_marker],   # standardized score statistics for GxE
-                                Pvalue_G = OutList$pvalVec[1:(2*n_marker-1)],   # marker-level p-value for G
-                                Pvalue_GxE = OutList$zScoreVec[2*1:n_marker],   # marker-level p-value for GxE
+                                zScore_G = OutList$zScore[2*1:n_marker-1], # standardized score statistics for G
+                                zScore_GxE = OutList$zScore[2*1:n_marker],   # standardized score statistics for GxE
+                                Pvalue_G = OutList$pvalVec[2*1:n_marker-1],   # marker-level p-value for G
+                                Pvalue_GxE = OutList$pvalVec[2*1:n_marker],   # marker-level p-value for GxE
                                 hwepval = OutList$hwepvalVec)                   # marker-level HWE pvalue
   }else if(Method == "GALLOP")
   {
@@ -164,12 +165,12 @@ mainMarker.SAGELD = function(genoType, genoIndex, outputColumns, objNull)
                                 AltCounts = OutList$altCountsVec,               # alternative allele counts
                                 MissingRate = OutList$missingRateVec,           # alternative allele counts
                                 Method = Method,                                # method
-                                Beta_G = OutList$BetaVec[1:(2*n_marker-1)],     # beta estimate for G
-                                Beta_GxE = OutList$BetaVec[2*1:n_marker],       # beta estimate for GxE
-                                SE_G = OutList$seBetaVec[1:(2*n_marker-1)],       # SE estimate for G
-                                SE_GxE = OutList$seBetaVec[2*1:n_marker],         # SE estimate for GxE
-                                Pvalue_G = OutList$pvalVec[1:(2*n_marker-1)],   # marker-level p-value for G
-                                Pvalue_GxE = OutList$zScoreVec[2*1:n_marker],   # marker-level p-value for GxE
+                                Beta_G = OutList$beta[2*1:n_marker-1],     # beta estimate for G
+                                Beta_GxE = OutList$beta[2*1:n_marker],       # beta estimate for GxE
+                                SE_G = OutList$seBeta[2*1:n_marker-1],       # SE estimate for G
+                                SE_GxE = OutList$seBeta[2*1:n_marker],         # SE estimate for GxE
+                                Pvalue_G = OutList$pvalVec[2*1:n_marker-1],   # marker-level p-value for G
+                                Pvalue_GxE = OutList$pvalVec[2*1:n_marker],   # marker-level p-value for GxE
                                 hwepval = OutList$hwepvalVec)                   # marker-level HWE pvalue
   }
                               
@@ -308,15 +309,15 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
   {
     obj = list(subjData = SubjID, N = length(SubjID), Method = "GALLOP",
                XTs = XTs, SS = SS, AtS = AtS, Q = Q, A21 = A21, TTs = TTs, Tys = Tys, sol = sol, blups = blups, sig = sig,
-               Resid = c(), Resid_G = c(), Resid_GxE = c(), Resid_E = c(), Resid.unrelated.outliers = c(),
-               Resid.unrelated.outliers_G = c(), Resid.unrelated.outliers_GxE = c(),
+               Resid = numeric(0), Resid_G = numeric(0), Resid_GxE = numeric(0), Resid_E = numeric(0), Resid.unrelated.outliers = numeric(0),
+               Resid.unrelated.outliers_G = numeric(0), Resid.unrelated.outliers_GxE = numeric(0),
                R_GRM_R = 0, R_GRM_R_G = 0, R_GRM_R_GxE = 0, R_GRM_R_G_GxE = 0, R_GRM_R_E = 0,
                R_GRM_R_TwoSubjOutlier = 0, R_GRM_R_TwoSubjOutlier_G = 0,
                R_GRM_R_TwoSubjOutlier_GxE = 0, R_GRM_R_TwoSubjOutlier_G_GxE = 0,
                sum_R_nonOutlier = 0, sum_R_nonOutlier_G = 0, sum_R_nonOutlier_GxE = 0,
                R_GRM_R_nonOutlier = 0, R_GRM_R_nonOutlier_G = 0,
                R_GRM_R_nonOutlier_GxE = 0, R_GRM_R_nonOutlier_G_GxE = 0,
-               TwoSubj_list = list(), ThreeSubj_list = list(), MAF_interval = c(), zScoreE_cutoff = 0, lambda = 0)
+               TwoSubj_list = list(), ThreeSubj_list = list(), MAF_interval = numeric(0), zScoreE_cutoff = 0)
     
     class(obj) = "SAGELD_NULL_Model"
     
@@ -741,9 +742,9 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
                sum_R_nonOutlier = sum_R_nonOutlier, sum_R_nonOutlier_G = sum_R_nonOutlier_G, sum_R_nonOutlier_GxE = sum_R_nonOutlier_GxE,
                R_GRM_R_nonOutlier = R_GRM_R_nonOutlier, R_GRM_R_nonOutlier_G = R_GRM_R_nonOutlier_G,
                R_GRM_R_nonOutlier_GxE = R_GRM_R_nonOutlier_GxE, R_GRM_R_nonOutlier_G_GxE = R_GRM_R_nonOutlier_G_GxE,
-               TwoSubj_list = TwoSubj_list, ThreeSubj_list = ThreeSubj_list, MAF_interval = MAF_interval, zScoreE_cutoff = zScoreE_cutoff, lambda = lambda)
+               TwoSubj_list = TwoSubj_list, ThreeSubj_list = ThreeSubj_list, MAF_interval = MAF_interval, zScoreE_cutoff = zScoreE_cutoff)
     
-    class(obj) = "SPAGRM_NULL_Model"
+    class(obj) = "SAGELD_NULL_Model"
     
   }else
   {
