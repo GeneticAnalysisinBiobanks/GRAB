@@ -200,11 +200,14 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
     P = solve(G / sig ^ 2)
   }else if(inherits(NullModel, "glmmTMB"))
   {
+    cat("Warning: when you use glmmTMB to fit the null model, you should library(glmmTMB), before you library(GRAB)!\n")
+    
     Pheno_data = NullModel$frame
     
     SubjIDColname = colnames(Pheno_data)[ncol(Pheno_data)]
     
-    varcor = glmmTMB::VarCorr(NullModel)$cond
+    # varcor = glmmTMB::VarCorr(NullModel)$cond
+    cmd="varcor = glmmTMB::VarCorr(NullModel)$cond"; eval(parse(text = cmd))
     cmd = paste0("varcor$", SubjIDColname); G = eval(parse(text = cmd))
     sig = attr(varcor, "sc")
     P = solve(G / sig ^ 2)
