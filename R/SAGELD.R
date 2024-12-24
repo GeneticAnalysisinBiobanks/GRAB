@@ -194,7 +194,7 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
     
     SubjIDColname = colnames(Pheno_data)[ncol(Pheno_data)]
     
-    varcor = VarCorr(NullModel)
+    varcor = lme4::VarCorr(NullModel)
     cmd = paste0("varcor$", SubjIDColname); G = eval(parse(text = cmd))
     sig = attr(varcor, "sc")
     P = solve(G / sig ^ 2)
@@ -204,7 +204,7 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
     
     SubjIDColname = colnames(Pheno_data)[ncol(Pheno_data)]
     
-    varcor = VarCorr(NullModel)$cond
+    varcor = glmmTMB::VarCorr(NullModel)$cond
     cmd = paste0("varcor$", SubjIDColname); G = eval(parse(text = cmd))
     sig = attr(varcor, "sc")
     P = solve(G / sig ^ 2)
