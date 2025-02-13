@@ -27,6 +27,7 @@
 #include "DenseGRM.hpp"
 #include "SPAmix.hpp"
 #include "SPAGRM.hpp"
+#include "SAGELD.hpp"
 #include "WtSPAG.hpp"
 
 // global objects for different genotype formats
@@ -42,6 +43,7 @@ static POLMM::POLMMClass* ptr_gPOLMMobj = NULL;
 static SPACox::SPACoxClass* ptr_gSPACoxobj = NULL;
 static SPAmix::SPAmixClass* ptr_gSPAmixobj = NULL;
 static SPAGRM::SPAGRMClass* ptr_gSPAGRMobj = NULL;
+static SAGELD::SAGELDClass* ptr_gSAGELDobj = NULL;
 static WtSPAG::WtSPAGClass* ptr_gWtSPAGobj = NULL;
 
 // global variables for analysis
@@ -197,16 +199,21 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   std::vector<double> altFreqVec(q);      // allele frequencies of ALT allele, this is not always < 0.5.
   std::vector<double> altCountsVec(q);    // allele counts of ALT allele.
   std::vector<double> missingRateVec(q);  // missing rate of markers
-  std::vector<double> BetaVec(q, arma::datum::nan);         // beta value for ALT allele
-  std::vector<double> seBetaVec(q, arma::datum::nan);       
+  // std::vector<double> BetaVec(q, arma::datum::nan);         // beta value for ALT allele
+  // std::vector<double> seBetaVec(q, arma::datum::nan);
   std::vector<double> hwepvalVec(q, arma::datum::nan);
   
   int Npheno = 1;
   if(t_method == "SPAmix")
     Npheno = ptr_gSPAmixobj->getNpheno();
+  
+  if(t_method == "SAGELD")
+    Npheno = 2;
 
   std::vector<double> pvalVec(q*Npheno, arma::datum::nan);
   std::vector<double> zScoreVec(q*Npheno, arma::datum::nan);
+  std::vector<double> BetaVec(q*Npheno, arma::datum::nan);         // beta value for ALT allele
+  std::vector<double> seBetaVec(q*Npheno, arma::datum::nan);  
   
   arma::mat nSamplesInGroup;
   arma::mat AltCountsInGroup;
@@ -284,7 +291,7 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     
     // c(MAF, MAC) for Quality Control (QC)
     double MAF = std::min(altFreq, 1 - altFreq);
-    double MAC = MAF * n * (1 - missingRate);
+    double MAC = 2 * MAF * n * (1 - missingRate);
     
     // Quality Control (QC) based on missing rate, MAF, and MAC
     if((missingRate > g_missingRate_cutoff) || (MAF < g_marker_minMAF_cutoff) || (MAC < g_marker_minMAC_cutoff))
@@ -314,9 +321,9 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     
     // std::cout << "test1.5" << std::endl;
     
-    BetaVec.at(i) = Beta * (1 - 2*flip);  // Beta if flip = false, -1*Beta is flip = true       
+    // BetaVec.at(i) = Beta * (1 - 2*flip);  // Beta if flip = false, -1*Beta is flip = true       
     // std::cout << "test1.51" << std::endl;
-    seBetaVec.at(i) = seBeta;       
+    // seBetaVec.at(i) = seBeta;       
     // std::cout << "test1.52" << std::endl;
     
     if(t_method == "SPAmix"){
@@ -327,9 +334,23 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
         pvalVec.at(i*Npheno+j) = pvalVecTemp.at(j);
         zScoreVec.at(i*Npheno+j) = zScoreVecTemp.at(j);
       }
+    }else if(t_method == "SAGELD"){
+      arma::vec pvalVecTemp = ptr_gSAGELDobj->getpvalVec();
+      arma::vec zScoreVecTemp = ptr_gSAGELDobj->getzScoreVec();
+      arma::vec BetaVecTemp = ptr_gSAGELDobj->getBetaVec();
+      arma::vec seBetaVecTemp = ptr_gSAGELDobj->getseBetaVec();
+      
+      for(int j = 0; j < 2; j++){
+        pvalVec.at(2*i+j) = pvalVecTemp.at(j);
+        zScoreVec.at(2*i+j) = zScoreVecTemp.at(j);
+        BetaVec.at(2*i+j) = BetaVecTemp.at(j) * (1 - 2*flip);
+        seBetaVec.at(2*i+j) = seBetaVecTemp.at(j);
+      }
     }else{
       pvalVec.at(i) = pval;
-      zScoreVec.at(i) = zScore;    
+      zScoreVec.at(i) = zScore; 
+      BetaVec.at(i) = Beta * (1 - 2*flip);  // Beta if flip = false, -1*Beta is flip = true   
+      seBetaVec.at(i) = seBeta;       
     }
     
     hwepvalVec.at(i) = hwepval;
@@ -1104,6 +1125,10 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
     if(t_isOnlyOutputNonZero == true)
       Rcpp::stop("When using SPAGRM method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
     t_pval = ptr_gSPAGRMobj->getMarkerPval(t_GVec, t_altFreq, t_zScore, t_hwepval, t_hwepvalCutoff);
+  }else if(t_method == "SAGELD"){
+    if(t_isOnlyOutputNonZero == true)
+      Rcpp::stop("When using SAGELD method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+    t_pval = ptr_gSAGELDobj->getMarkerPval(t_GVec, t_altFreq, t_hwepval, t_hwepvalCutoff);
   }else{
     Unified_getMarkerPval(t_method, t_GVec,
                           false, // bool t_isOnlyOutputNonZero,
@@ -1353,6 +1378,60 @@ void setSPAGRMobjInCPP(arma::vec t_resid,
                                            t_SPA_Cutoff,
                                            t_zeta,
                                            t_tol);
+}
+
+// [[Rcpp::export]]
+void setSAGELDobjInCPP(std::string t_Method,
+                       arma::mat t_XTs,
+                       arma::mat t_SS,
+                       arma::mat t_AtS,
+                       arma::mat t_Q,
+                       arma::mat t_A21,
+                       arma::mat t_TTs,
+                       arma::mat t_Tys,
+                       arma::vec t_sol,
+                       arma::vec t_blups,
+                       double t_sig,
+                       arma::vec t_resid,
+                       arma::vec t_resid_G,
+                       arma::vec t_resid_GxE,
+                       arma::vec t_resid_E,
+                       arma::vec t_resid_unrelated_outliers,
+                       arma::vec t_resid_unrelated_outliers_G,
+                       arma::vec t_resid_unrelated_outliers_GxE,
+                       double t_sum_R_nonOutlier,
+                       double t_sum_R_nonOutlier_G,
+                       double t_sum_R_nonOutlier_GxE,
+                       double t_R_GRM_R,
+                       double t_R_GRM_R_G,
+                       double t_R_GRM_R_GxE,
+                       double t_R_GRM_R_G_GxE,
+                       double t_R_GRM_R_E,
+                       double t_R_GRM_R_nonOutlier,
+                       double t_R_GRM_R_nonOutlier_G,
+                       double t_R_GRM_R_nonOutlier_GxE,
+                       double t_R_GRM_R_nonOutlier_G_GxE,
+                       double t_R_GRM_R_TwoSubjOutlier,
+                       double t_R_GRM_R_TwoSubjOutlier_G,
+                       double t_R_GRM_R_TwoSubjOutlier_GxE,
+                       double t_R_GRM_R_TwoSubjOutlier_G_GxE,
+                       Rcpp::List t_TwoSubj_list,
+                       Rcpp::List t_ThreeSubj_list,
+                       arma::vec t_MAF_interval,
+                       double t_zScoreE_cutoff,
+                       double t_SPA_Cutoff,
+                       double t_zeta,
+                       double t_tol)
+{
+  if(ptr_gSAGELDobj)
+    delete ptr_gSAGELDobj;
+  
+  ptr_gSAGELDobj = new SAGELD::SAGELDClass(t_Method, t_XTs, t_SS, t_AtS, t_Q, t_A21, t_TTs, t_Tys, t_sol, t_blups, t_sig, 
+                                           t_resid, t_resid_G, t_resid_GxE, t_resid_E, t_resid_unrelated_outliers, t_resid_unrelated_outliers_G, t_resid_unrelated_outliers_GxE, 
+                                           t_sum_R_nonOutlier, t_sum_R_nonOutlier_G, t_sum_R_nonOutlier_GxE, t_R_GRM_R, t_R_GRM_R_G, t_R_GRM_R_GxE, t_R_GRM_R_G_GxE, t_R_GRM_R_E, 
+                                           t_R_GRM_R_nonOutlier, t_R_GRM_R_nonOutlier_G, t_R_GRM_R_nonOutlier_GxE, t_R_GRM_R_nonOutlier_G_GxE, t_R_GRM_R_TwoSubjOutlier, 
+                                           t_R_GRM_R_TwoSubjOutlier_G, t_R_GRM_R_TwoSubjOutlier_GxE, t_R_GRM_R_TwoSubjOutlier_G_GxE, t_TwoSubj_list, t_ThreeSubj_list, 
+                                           t_MAF_interval, t_zScoreE_cutoff, t_SPA_Cutoff, t_zeta, t_tol);
 }
 
 // [[Rcpp::export]]

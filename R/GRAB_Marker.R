@@ -113,8 +113,20 @@ GRAB.Marker = function(objNull,
   # added by XH-2023-05-09
   if(NullModelClass == "SPAGRM_NULL_Model")
   {
-    if(control$min_maf_marker <= min(objNull$MAF_interval))
-      stop("min_maf_marker is out of MAF_interval, Please reset min_maf_marker or check MAF_interval.")
+    if(length(objNull$MAF_interval) > 1)
+    {
+      if(control$min_maf_marker <= min(objNull$MAF_interval))
+        stop("min_maf_marker is out of MAF_interval, Please reset min_maf_marker or check MAF_interval.")
+    }
+  }
+  
+  if(NullModelClass == "SAGELD_NULL_Model")
+  {
+    if(length(objNull$MAF_interval) > 1)
+    {
+      if(control$min_maf_marker <= min(objNull$MAF_interval))
+        stop("min_maf_marker is out of MAF_interval, Please reset min_maf_marker or check MAF_interval.")
+    }
   }
   
   indexChunk = outList$indexChunk
@@ -227,6 +239,10 @@ setMarker = function(NullModelClass, objNull, control, chrom, Group, ifOutGroup)
   if(NullModelClass == "SPAGRM_NULL_Model")
     obj.setMarker = setMarker.SPAGRM(objNull, control)
   
+  # Check SAGELD.R
+  if(NullModelClass == "SAGELD_NULL_Model")
+    obj.setMarker = setMarker.SAGELD(objNull, control)
+  
   # Check WtSPAG.R
   if(NullModelClass == "WtSPAG_NULL_Model")
     obj.setMarker = setMarker.WtSPAG(objNull, control)
@@ -272,6 +288,10 @@ mainMarker = function(NullModelClass, genoType, genoIndex, outputColumns, objNul
   # Check 'SPAGRM.R'
   if(NullModelClass == "SPAGRM_NULL_Model")
     obj.mainMarker = mainMarker.SPAGRM(genoType, genoIndex, outputColumns)
+  
+  # Check 'SAGELD.R'
+  if(NullModelClass == "SAGELD_NULL_Model")
+    obj.mainMarker = mainMarker.SAGELD(genoType, genoIndex, outputColumns, objNull)
   
   # Check 'WtSPAG.R'
   if(NullModelClass == "WtSPAG_NULL_Model")
