@@ -50,9 +50,9 @@ checkControl.Marker.SPAyuzhuoma = function(control)
 }
 
 checkControl.SPAyuzhuoma.NullModel = function(control,
-                                         ResidMat,
-                                         SparseGRM,
-                                         PairwiseIBD)
+                                              ResidMat,
+                                              SparseGRM,
+                                              PairwiseIBD)
 {
   default.control = list(MaxQuantile = 0.75,
                          MinQuantile = 0.25,
@@ -95,17 +95,17 @@ setMarker.SPAyuzhuoma = function(objNull, control)
 {
   # the below function is in 'Main.cpp'
   setSPAyuzhuomaobjInCPP(objNull$Resid,
-                    objNull$Resid.unrelated.outliers,
-                    objNull$sum_R_nonOutlier,
-                    objNull$R_GRM_R_nonOutlier,
-                    objNull$R_GRM_R_TwoSubjOutlier,
-                    objNull$R_GRM_R,
-                    objNull$MAF_interval,
-                    objNull$TwoSubj_list,
-                    objNull$ThreeSubj_list,
-                    control$SPA_Cutoff,
-                    control$zeta,
-                    control$tol)
+                         objNull$Resid.unrelated.outliers,
+                         objNull$sum_R_nonOutlier,
+                         objNull$R_GRM_R_nonOutlier,
+                         objNull$R_GRM_R_TwoSubjOutlier,
+                         objNull$R_GRM_R,
+                         objNull$MAF_interval,
+                         objNull$TwoSubj_list,
+                         objNull$ThreeSubj_list,
+                         control$SPA_Cutoff,
+                         control$zeta,
+                         control$tol)
   
   print(paste0("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk,".")) # This file is in 'control.R'
 }
@@ -127,14 +127,14 @@ mainMarker.SPAyuzhuoma = function(genoType, genoIndex, outputColumns)
 }
 
 SPAyuzhuoma.NullModel = function(ResidMatFile,    # two columns: column 1 is subjID, column 2 is Resid
-                            SparseGRMFile,   # a path of SparseGRMFile get from getSparseGRM() function.
-                            PairwiseIBDFile, # a path of PairwiseIBDFile get from getPairwiseIBD() function.
-                            control = list(MaxQuantile = 0.75,
-                                           MinQuantile = 0.25,
-                                           OutlierRatio = 1.5,
-                                           ControlOutlier = TRUE,
-                                           MaxNuminFam = 5,
-                                           MAF_interval = c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5)))
+                                 SparseGRMFile,   # a path of SparseGRMFile get from getSparseGRM() function.
+                                 PairwiseIBDFile, # a path of PairwiseIBDFile get from getPairwiseIBD() function.
+                                 control = list(MaxQuantile = 0.75,
+                                                MinQuantile = 0.25,
+                                                OutlierRatio = 1.5,
+                                                ControlOutlier = TRUE,
+                                                MaxNuminFam = 5,
+                                                MAF_interval = c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5)))
 {
   if(is.data.frame(ResidMatFile))
   {
@@ -418,15 +418,15 @@ SPAyuzhuoma.NullModel = function(ResidMatFile,    # two columns: column 1 is sub
 }
 
 SPAyuzhuomaGE.NullModel = function(NullModel = NULL,   # a fitted null model from lme4.
-                              PhenoFile,          # a file path to read in the phenotype.
-                              SubjIDColname,      # a character to specifie the column name of the subject ID.
-                              PhenoColname,       # a character to specifie the column name of the phenotype.
-                              CovaColname,        # a character (vector) to specifie the column name of the covariates (except for Envcolname).
-                              Envcolname,         # a character to specifie the column name of the environment variable.
-                              PlinkFile,          # a PLINK file path to read in some genotypes (without file suffix like ".bim", "bed" or "fam").
-                              SparseGRMFile,      # a path of SparseGRMFile get from getSparseGRM() function.
-                              PairwiseIBDFile,    # a path of PairwiseIBDFile get from getPairwiseIBD() function.
-                              control = list())   # control command used in 'SPAyuzhuoma.NullModel', see also 'SPAyuzhuoma.NullModel'.
+                                   PhenoFile,          # a file path to read in the phenotype.
+                                   SubjIDColname,      # a character to specifie the column name of the subject ID.
+                                   PhenoColname,       # a character to specifie the column name of the phenotype.
+                                   CovaColname,        # a character (vector) to specifie the column name of the covariates (except for Envcolname).
+                                   Envcolname,         # a character to specifie the column name of the environment variable.
+                                   PlinkFile,          # a PLINK file path to read in some genotypes (without file suffix like ".bim", "bed" or "fam").
+                                   SparseGRMFile,      # a path of SparseGRMFile get from getSparseGRM() function.
+                                   PairwiseIBDFile,    # a path of PairwiseIBDFile get from getPairwiseIBD() function.
+                                   control = list())   # control command used in 'SPAyuzhuoma.NullModel', see also 'SPAyuzhuoma.NullModel'.
 {
   if(is.data.frame(PhenoFile))
   {
