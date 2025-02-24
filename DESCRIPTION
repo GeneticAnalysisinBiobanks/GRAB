@@ -1,7 +1,7 @@
 Package: GRAB
 Type: Package
 Title: Genome-wide Robust Analaysis for Biobank data (GRAB)
-Version: 0.1.2
+Version: 0.1.4
 Date: 2023-06-15
 Author: Wenjian Bi, Wei Zhou, Rounak Dey, Zhangchen Zhao, Seunggeun Lee
 Maintainer: Wenjian Bi <wenjianb@pku.edu.cn>
