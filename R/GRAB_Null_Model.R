@@ -37,6 +37,7 @@
 #'   \item \code{SPACox}: Support \code{traitType} = \code{"time-to-event"} or \code{"Residual"}. Check \code{\link{GRAB.SPACox}} for more details.
 #'   \item \code{SPAmix}: Support \code{traitType} = \code{"time-to-event"} or \code{"Residual"}. Check \code{\link{GRAB.SPAmix}} for more details.
 #'   \item \code{SPAGRM}: Support \code{traitType} = \code{"time-to-event"} or \code{"Residual"}. Check \code{\link{GRAB.SPAGRM}} for more details.
+#'   \item \code{SPAyuzhuoma}: Support \code{traitType} = \code{"time-to-event"} or \code{"Residual"}. Check \code{\link{GRAB.SPAyuzhuoma}} for more details.
 #' }
 #' }
 #' 
@@ -115,6 +116,7 @@
 #' # For SPACox method, check ?GRAB.SPACox.
 #' # For SPAmix method, check ?GRAB.SPAmix.
 #' # For SPAGRM method, check ?GRAB.SPAGRM
+#' # For SPAyuzhuoma method, check ?GRAB.SPAyuzhuoma
 #' 
 #' @export
 #' @import survival, data.table
