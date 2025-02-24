@@ -32,9 +32,11 @@
 #' \describe{
 #' \code{GRAB} package includes multiple methods which support a wide variety of phenotypes as follows.
 #' \itemize{
-#'   \item \code{SAIGE}: Support \code{traitType} = \code{"quantitative"} or \code{"binary"}. Will be added later.
+#'   \item \code{SAIGE}: Support \code{traitType} = \code{"quantitative"} or \code{"binary"}. Will be supported later.
 #'   \item \code{POLMM}: Support \code{traitType} = \code{"ordinal"}. Check \code{\link{GRAB.POLMM}} for more details.
-#'   \item \code{SPACox}: Support \code{traitType} = \code{"time-to-event"}. Check \code{\link{GRAB.SPACox}} for more details.
+#'   \item \code{SPACox}: Support \code{traitType} = \code{"time-to-event"} or \code{"Residual"}. Check \code{\link{GRAB.SPACox}} for more details.
+#'   \item \code{SPAmix}: Support \code{traitType} = \code{"time-to-event"} or \code{"Residual"}. Check \code{\link{GRAB.SPAmix}} for more details.
+#'   \item \code{SPAGRM}: Support \code{traitType} = \code{"time-to-event"} or \code{"Residual"}. Check \code{\link{GRAB.SPAGRM}} for more details.
 #' }
 #' }
 #' 
@@ -81,34 +83,38 @@
 #' 
 #' @examples
 #' # For POLMM method (ordinal categorical data analysis while adjusting for sample relatedness)
-#' # Step 1(a): fit a null model using a dense GRM
-#' PhenoData = read.table(system.file("extdata", "example.pheno", package = "GRAB"), header = T)
-#' GenoFile = system.file("extdata", "example.bed", package = "GRAB")
-#' obj.POLMM = GRAB.NullModel(factor(Ordinal) ~ Cova1 + Cova2,
-#'                            data = PhenoData, subjData = PhenoData$IID, method = "POLMM", traitType = "ordinal",
+#' # Step 1(a): fit a null model using a dense GRM (recommand using Linux OS)
+#' PhenoData = read.table(system.file("extdata", "simuPHENO.txt", package = "GRAB"), header = T)
+#' GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
+#' obj.POLMM = GRAB.NullModel(factor(OrdinalPheno) ~ AGE + GENDER,
+#'                            data = PhenoData, subjData = IID, 
+#'                            method = "POLMM", traitType = "ordinal",
 #'                            GenoFile = GenoFile,
 #'                            control = list(showInfo = FALSE, LOCO = FALSE, tolTau = 0.2, tolBeta = 0.1))
 #' 
 #' names(obj.POLMM)
-#' obj.POLMM$tau    # 1.820102
+#' obj.POLMM$tau    
 #'
-#' # Step 1(b): fit a null model using a sparse GRM
+#' # Step 1(b): fit a null model using a sparse GRM (recommand using Linux OS)
 #' # First use getSparseGRM() function to get a sparse GRM file
-#' PhenoData = read.table(system.file("extdata", "example.pheno", package = "GRAB"), header = T)
-#' GenoFile = system.file("extdata", "example.bed", package = "GRAB")
+#' PhenoData = read.table(system.file("extdata", "simuPHENO.txt", package = "GRAB"), header = T)
+#' GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' SparseGRMFile =  system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
-#' obj.POLMM = GRAB.NullModel(factor(Ordinal) ~ Cova1 + Cova2,
-#'                            data = PhenoData, subjData = PhenoData$IID, method = "POLMM", traitType = "ordinal",
+#' obj.POLMM = GRAB.NullModel(factor(OrdinalPheno) ~ AGE + GENDER,
+#'                            data = PhenoData, subjData = IID, 
+#'                            method = "POLMM", traitType = "ordinal",
 #'                            GenoFile = GenoFile,
 #'                            SparseGRMFile = SparseGRMFile,
 #'                            control = list(showInfo = FALSE, LOCO = FALSE, tolTau = 0.2, tolBeta = 0.1))
 #' 
 #' names(obj.POLMM)
-#' obj.POLMM$tau    # 1.870175
+#' obj.POLMM$tau    
 #' 
 #' # save(obj.POLMM, "obj.POLMM.RData")  # save the object for analysis in step 2
 #' 
-#' # For SPACox method (time-to-event data analysis)
+#' # For SPACox method, check ?GRAB.SPACox.
+#' # For SPAmix method, check ?GRAB.SPAmix.
+#' # For SPAGRM method, check ?GRAB.SPAGRM
 #' 
 #' @export
 #' @import survival, data.table
@@ -136,6 +142,25 @@ GRAB.NullModel = function(formula,
   
   mf <- match.call(expand.dots = FALSE)
   
+  ### The below is to support multiple response variables for SPAmix with residuals as input
+  
+  LeftInFormula = deparse(formula[[2]])
+  LeftIncludesAdd = grepl("\\+", LeftInFormula)
+  
+  if(LeftIncludesAdd){
+    if(method != "SPAmix" | traitType != "Residual")
+      stop("Only 'SPAmix' method with traitType of 'Residual' supports multiple responses variables in 'formula'.")
+    
+    nInLeft = length(strsplit(LeftInFormula, "\\+")[[1]])
+    cat("SPAmix method supports multiple response variables of model residuals.\n")
+    RightInFormula = deparse(formula[[3]])
+    NewLeftInFormla = paste0("paste(", gsub("\\+", ",", LeftInFormula), ")")
+    NewRightInFormula = paste0(RightInFormula, collapse = " ")   # c("cov1 + cov2 +", "cov3") -> "cov1 + cov2 + cov3"
+    # mf$formula = as.formula(paste(NewLeftInFormla, "~", RightInFormula))
+    mf$formula = as.formula(paste(NewLeftInFormla, "~", NewRightInFormula))
+  }
+  ##
+  
   m <- match(x = c("formula", "data", "subset", "subjData"), 
              table = names(mf), nomatch = 0L)
   
@@ -150,6 +175,31 @@ GRAB.NullModel = function(formula,
   designMat = model.matrix(object = mt, data = mf)
   subjData = model.extract(mf, "subjData")
   
+  ### The below is to support multiple response variables for SPAmix with residuals as input
+  if(traitType == "Residual"){
+    if(LeftIncludesAdd){
+      noValueInAnyPheno = paste(rep(NA, nInLeft), collapse = " ")
+      posNoValue = which(response == noValueInAnyPheno)
+      response.temp = response
+      
+      if(length(posNoValue) > 0){
+        cat("We remove", length(posNoValue), "individuals without any phenotyeps in analysis.\n")
+        response.temp = response[-1*posNoValue]
+        designMat = designMat[-1*posNoValue,,drop=F]
+        subjData = subjData[-1*posNoValue]
+      }
+      
+      nRes = length(response.temp)
+      response = matrix(NA, nRes, nInLeft)
+      for(i in 1:nRes)
+        response[i,] = as.numeric(unlist(strsplit(response.temp[i], split = " ")))
+      
+    }else{
+      response = matrix(response, ncol=1)
+    }
+    class(response) = "Residual"
+  }
+  
   if(colnames(designMat)[1] == "(Intercept)")
     designMat = designMat[,-1,drop=F]
   
@@ -161,35 +211,37 @@ GRAB.NullModel = function(formula,
   
   #### END: formula.R
   
+  ## Only the below methods requires 'GenoFile' related information to adjust for sample relatedness
   optionGRM = NULL
   if(method %in% c("POLMM", "SAIGE", "GATE")){
-    outHandleGRM = handleGRM(GenoFile, GenoFileIndex, SparseGRMFile, subjData)  # Check 'SparseGRM.R'
-    optionGRM = outHandleGRM$optionGRM
-    genoType = outHandleGRM$genoType  # "PLINK" or "BGEN"
-    markerInfo = outHandleGRM$markerInfo  # Columns: "CHROM", "POS", "ID", "REF", "ALT", "genoIndex"
+    objGRM = setGRM(GenoFile, GenoFileIndex, SparseGRMFile, subjData)  # Check 'SparseGRM.R'
+    optionGRM = objGRM$optionGRM
+    genoType = objGRM$genoType      # "PLINK" or "BGEN"
+    markerInfo = objGRM$markerInfo  # Columns: "CHROM", "POS", "ID", "REF", "ALT", "genoIndex"
+    
+    # Check 'control.R'
+    control = checkControl.NullModel(control, method, traitType, optionGRM)
+    textToParse = paste0("objNull = fitNullModel.", method, "(response, designMat, subjData, control, optionGRM, genoType, markerInfo)")
+  }else{
+    # Check 'control.R'
+    control = checkControl.NullModel(control, method, traitType)
+    textToParse = paste0("objNull = fitNullModel.", method, "(response, designMat, subjData, control)")
   }
     
-  # Check 'control.R'
-  control = checkControl.NullModel(control, method, traitType, optionGRM)
-  
-  if(method == "POLMM"){
-    # Check 'POLMM.R'
-    objNull = fitNullModel.POLMM(response, designMat, subjData, control, optionGRM, genoType, markerInfo)
-  }
-  
-  if(method == "SPACox"){
-    # Check 'SPACox.R'
-    objNull = fitNullModel.SPACox(response, designMat, subjData, control, ...)
-  }
+  # e.g. if(method == "POLMM"){objNull = fitNullModel.POLMM(...)}  # fitNullModel.POLMM() function is in POLMM.R
+  eval(parse(text = textToParse))
   
   objNull$subjData = subjData
   
+  # (BWJ: 2023-08-09): not sure if the below works? 
+  # objNull$N = length(subjData)
+  
   objNull$Call = Call;
   objNull$sessionInfo = sessionInfo()
-  objNull$time = Sys.time()
+  objNull$time = paste0("Complete Time: ",Sys.time())
   objNull$control = control
   
-  print(paste0("Complete the null model fitting in package GRAB: ", objNull$time))
+  cat("Complete the null model fitting in package GRAB:\t", objNull$time,"\n")
   
   return(objNull)
 }

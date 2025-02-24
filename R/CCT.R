@@ -5,7 +5,7 @@
 #' vector of non-negative weights, and return the aggregated p-value using Cauchy method.
 #' 
 #' @param pvals a numeric vector of p-values, where each of the element is
-#' between 0 to 1, to be combined.
+#' between 0 to 1, to be combined. If a p-value equals to 1, we set it as 0.999. If a p-value equals to 0, an error action is executed.
 #' @param weights a numeric vector of non-negative weights. If \code{NULL}, the
 #' equal weights are assumed.
 #' @return the aggregated p-value combining p-values from the vector \code{pvals}.
@@ -31,7 +31,8 @@ CCT <- function(pvals, weights=NULL){
 
   #### check if there are p-values that are either exactly 0 or 1.
   is.zero <- (sum(pvals==0)>=1)
-  is.one <- (sum(pvals==1)>=1)
+  which.one = which(pvals==1)
+  is.one <- (length(which.one)>=1)
   if(is.zero && is.one){
     stop("Cannot have both 0 and 1 p-values!")
   }
@@ -40,7 +41,7 @@ CCT <- function(pvals, weights=NULL){
   }
   if(is.one){
     warning("There are p-values that are exactly 1!")
-    return(1)
+    pvals[which.one] = 0.999
   }
 
   #### check the validity of weights (default: equal weights) and standardize them.

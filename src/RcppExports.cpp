@@ -64,8 +64,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // setRegion_GlobalVarsInCPP
-void setRegion_GlobalVarsInCPP(std::string t_impute_method, double t_missing_cutoff, double t_max_maf_region, double t_min_mac_region, unsigned int t_max_markers_region, unsigned int t_omp_num_threads, arma::uvec t_group, bool t_ifOutGroup, unsigned int t_nGroup);
-RcppExport SEXP _GRAB_setRegion_GlobalVarsInCPP(SEXP t_impute_methodSEXP, SEXP t_missing_cutoffSEXP, SEXP t_max_maf_regionSEXP, SEXP t_min_mac_regionSEXP, SEXP t_max_markers_regionSEXP, SEXP t_omp_num_threadsSEXP, SEXP t_groupSEXP, SEXP t_ifOutGroupSEXP, SEXP t_nGroupSEXP) {
+void setRegion_GlobalVarsInCPP(std::string t_impute_method, double t_missing_cutoff, double t_max_maf_region, double t_min_mac_region, unsigned int t_max_markers_region, unsigned int t_omp_num_threads, arma::vec t_region_weight_beta, arma::vec t_region_max_maf_vec);
+RcppExport SEXP _GRAB_setRegion_GlobalVarsInCPP(SEXP t_impute_methodSEXP, SEXP t_missing_cutoffSEXP, SEXP t_max_maf_regionSEXP, SEXP t_min_mac_regionSEXP, SEXP t_max_markers_regionSEXP, SEXP t_omp_num_threadsSEXP, SEXP t_region_weight_betaSEXP, SEXP t_region_max_maf_vecSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< std::string >::type t_impute_method(t_impute_methodSEXP);
@@ -74,54 +74,86 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type t_min_mac_region(t_min_mac_regionSEXP);
     Rcpp::traits::input_parameter< unsigned int >::type t_max_markers_region(t_max_markers_regionSEXP);
     Rcpp::traits::input_parameter< unsigned int >::type t_omp_num_threads(t_omp_num_threadsSEXP);
-    Rcpp::traits::input_parameter< arma::uvec >::type t_group(t_groupSEXP);
-    Rcpp::traits::input_parameter< bool >::type t_ifOutGroup(t_ifOutGroupSEXP);
-    Rcpp::traits::input_parameter< unsigned int >::type t_nGroup(t_nGroupSEXP);
-    setRegion_GlobalVarsInCPP(t_impute_method, t_missing_cutoff, t_max_maf_region, t_min_mac_region, t_max_markers_region, t_omp_num_threads, t_group, t_ifOutGroup, t_nGroup);
+    Rcpp::traits::input_parameter< arma::vec >::type t_region_weight_beta(t_region_weight_betaSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_region_max_maf_vec(t_region_max_maf_vecSEXP);
+    setRegion_GlobalVarsInCPP(t_impute_method, t_missing_cutoff, t_max_maf_region, t_min_mac_region, t_max_markers_region, t_omp_num_threads, t_region_weight_beta, t_region_max_maf_vec);
     return R_NilValue;
 END_RCPP
 }
 // mainMarkerInCPP
-Rcpp::List mainMarkerInCPP(std::string t_method, std::string t_genoType, std::vector<uint32_t> t_genoIndex);
+Rcpp::List mainMarkerInCPP(std::string t_method, std::string t_genoType, std::vector<uint64_t> t_genoIndex);
 RcppExport SEXP _GRAB_mainMarkerInCPP(SEXP t_methodSEXP, SEXP t_genoTypeSEXP, SEXP t_genoIndexSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< std::string >::type t_method(t_methodSEXP);
     Rcpp::traits::input_parameter< std::string >::type t_genoType(t_genoTypeSEXP);
-    Rcpp::traits::input_parameter< std::vector<uint32_t> >::type t_genoIndex(t_genoIndexSEXP);
+    Rcpp::traits::input_parameter< std::vector<uint64_t> >::type t_genoIndex(t_genoIndexSEXP);
     rcpp_result_gen = Rcpp::wrap(mainMarkerInCPP(t_method, t_genoType, t_genoIndex));
     return rcpp_result_gen;
 END_RCPP
 }
 // mainRegionURVInCPP
-Rcpp::List mainRegionURVInCPP(std::string t_method, std::string t_genoType, std::vector<uint32_t> t_genoIndex, unsigned int t_n);
+Rcpp::List mainRegionURVInCPP(std::string t_method, std::string t_genoType, std::vector<uint64_t> t_genoIndex, unsigned int t_n);
 RcppExport SEXP _GRAB_mainRegionURVInCPP(SEXP t_methodSEXP, SEXP t_genoTypeSEXP, SEXP t_genoIndexSEXP, SEXP t_nSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< std::string >::type t_method(t_methodSEXP);
     Rcpp::traits::input_parameter< std::string >::type t_genoType(t_genoTypeSEXP);
-    Rcpp::traits::input_parameter< std::vector<uint32_t> >::type t_genoIndex(t_genoIndexSEXP);
+    Rcpp::traits::input_parameter< std::vector<uint64_t> >::type t_genoIndex(t_genoIndexSEXP);
     Rcpp::traits::input_parameter< unsigned int >::type t_n(t_nSEXP);
     rcpp_result_gen = Rcpp::wrap(mainRegionURVInCPP(t_method, t_genoType, t_genoIndex, t_n));
     return rcpp_result_gen;
 END_RCPP
 }
 // mainRegionInCPP
-Rcpp::List mainRegionInCPP(std::string t_method, std::string t_genoType, std::vector<uint32_t> t_genoIndex, std::string t_outputFile, unsigned int t_n, arma::mat P1Mat, arma::mat P2Mat);
-RcppExport SEXP _GRAB_mainRegionInCPP(SEXP t_methodSEXP, SEXP t_genoTypeSEXP, SEXP t_genoIndexSEXP, SEXP t_outputFileSEXP, SEXP t_nSEXP, SEXP P1MatSEXP, SEXP P2MatSEXP) {
+Rcpp::List mainRegionInCPP(std::string t_method, std::string t_genoType, std::vector<uint64_t> t_genoIndex, std::vector<double> t_weightVec, std::string t_outputFile, std::vector<unsigned int> t_labelVec, unsigned int t_nLabel, arma::mat t_annoMat, std::vector<std::string> t_annoVec);
+RcppExport SEXP _GRAB_mainRegionInCPP(SEXP t_methodSEXP, SEXP t_genoTypeSEXP, SEXP t_genoIndexSEXP, SEXP t_weightVecSEXP, SEXP t_outputFileSEXP, SEXP t_labelVecSEXP, SEXP t_nLabelSEXP, SEXP t_annoMatSEXP, SEXP t_annoVecSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< std::string >::type t_method(t_methodSEXP);
     Rcpp::traits::input_parameter< std::string >::type t_genoType(t_genoTypeSEXP);
-    Rcpp::traits::input_parameter< std::vector<uint32_t> >::type t_genoIndex(t_genoIndexSEXP);
+    Rcpp::traits::input_parameter< std::vector<uint64_t> >::type t_genoIndex(t_genoIndexSEXP);
+    Rcpp::traits::input_parameter< std::vector<double> >::type t_weightVec(t_weightVecSEXP);
     Rcpp::traits::input_parameter< std::string >::type t_outputFile(t_outputFileSEXP);
-    Rcpp::traits::input_parameter< unsigned int >::type t_n(t_nSEXP);
-    Rcpp::traits::input_parameter< arma::mat >::type P1Mat(P1MatSEXP);
-    Rcpp::traits::input_parameter< arma::mat >::type P2Mat(P2MatSEXP);
-    rcpp_result_gen = Rcpp::wrap(mainRegionInCPP(t_method, t_genoType, t_genoIndex, t_outputFile, t_n, P1Mat, P2Mat));
+    Rcpp::traits::input_parameter< std::vector<unsigned int> >::type t_labelVec(t_labelVecSEXP);
+    Rcpp::traits::input_parameter< unsigned int >::type t_nLabel(t_nLabelSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type t_annoMat(t_annoMatSEXP);
+    Rcpp::traits::input_parameter< std::vector<std::string> >::type t_annoVec(t_annoVecSEXP);
+    rcpp_result_gen = Rcpp::wrap(mainRegionInCPP(t_method, t_genoType, t_genoIndex, t_weightVec, t_outputFile, t_labelVec, t_nLabel, t_annoMat, t_annoVec));
+    return rcpp_result_gen;
+END_RCPP
+}
+// printTimeDiffInCPP
+void printTimeDiffInCPP();
+RcppExport SEXP _GRAB_printTimeDiffInCPP() {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    printTimeDiffInCPP();
+    return R_NilValue;
+END_RCPP
+}
+// printTimeDiffSPAmixInCPP
+void printTimeDiffSPAmixInCPP();
+RcppExport SEXP _GRAB_printTimeDiffSPAmixInCPP() {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    printTimeDiffSPAmixInCPP();
+    return R_NilValue;
+END_RCPP
+}
+// getGenoInfoInCPP
+arma::mat getGenoInfoInCPP(std::string t_genoType, Rcpp::DataFrame t_markerInfo, std::string t_imputeMethod);
+RcppExport SEXP _GRAB_getGenoInfoInCPP(SEXP t_genoTypeSEXP, SEXP t_markerInfoSEXP, SEXP t_imputeMethodSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type t_genoType(t_genoTypeSEXP);
+    Rcpp::traits::input_parameter< Rcpp::DataFrame >::type t_markerInfo(t_markerInfoSEXP);
+    Rcpp::traits::input_parameter< std::string >::type t_imputeMethod(t_imputeMethodSEXP);
+    rcpp_result_gen = Rcpp::wrap(getGenoInfoInCPP(t_genoType, t_markerInfo, t_imputeMethod));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -200,6 +232,16 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// closeGenoInputInCPP
+void closeGenoInputInCPP(std::string t_genoType);
+RcppExport SEXP _GRAB_closeGenoInputInCPP(SEXP t_genoTypeSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type t_genoType(t_genoTypeSEXP);
+    closeGenoInputInCPP(t_genoType);
+    return R_NilValue;
+END_RCPP
+}
 // setPOLMMobjInCPP
 void setPOLMMobjInCPP(arma::mat t_muMat, arma::mat t_iRMat, arma::mat t_Cova, arma::uvec t_yVec, double t_tau, bool t_printPCGInfo, double t_tolPCG, int t_maxiterPCG, double t_varRatio, double t_SPA_cutoff, bool t_flagSparseGRM);
 RcppExport SEXP _GRAB_setPOLMMobjInCPP(SEXP t_muMatSEXP, SEXP t_iRMatSEXP, SEXP t_CovaSEXP, SEXP t_yVecSEXP, SEXP t_tauSEXP, SEXP t_printPCGInfoSEXP, SEXP t_tolPCGSEXP, SEXP t_maxiterPCGSEXP, SEXP t_varRatioSEXP, SEXP t_SPA_cutoffSEXP, SEXP t_flagSparseGRMSEXP) {
@@ -240,6 +282,91 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// setSPAGRMobjInCPP
+void setSPAGRMobjInCPP(arma::vec t_resid, arma::vec t_resid_unrelated_outliers, double t_sum_R_nonOutlier, double t_R_GRM_R_nonOutlier, double t_R_GRM_R_TwoSubjOutlier, double t_R_GRM_R, arma::vec t_MAF_interval, Rcpp::List t_TwoSubj_list, Rcpp::List t_ThreeSubj_list, double t_SPA_Cutoff, double t_zeta, double t_tol);
+RcppExport SEXP _GRAB_setSPAGRMobjInCPP(SEXP t_residSEXP, SEXP t_resid_unrelated_outliersSEXP, SEXP t_sum_R_nonOutlierSEXP, SEXP t_R_GRM_R_nonOutlierSEXP, SEXP t_R_GRM_R_TwoSubjOutlierSEXP, SEXP t_R_GRM_RSEXP, SEXP t_MAF_intervalSEXP, SEXP t_TwoSubj_listSEXP, SEXP t_ThreeSubj_listSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_zetaSEXP, SEXP t_tolSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec >::type t_resid(t_residSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_resid_unrelated_outliers(t_resid_unrelated_outliersSEXP);
+    Rcpp::traits::input_parameter< double >::type t_sum_R_nonOutlier(t_sum_R_nonOutlierSEXP);
+    Rcpp::traits::input_parameter< double >::type t_R_GRM_R_nonOutlier(t_R_GRM_R_nonOutlierSEXP);
+    Rcpp::traits::input_parameter< double >::type t_R_GRM_R_TwoSubjOutlier(t_R_GRM_R_TwoSubjOutlierSEXP);
+    Rcpp::traits::input_parameter< double >::type t_R_GRM_R(t_R_GRM_RSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_MAF_interval(t_MAF_intervalSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_TwoSubj_list(t_TwoSubj_listSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_ThreeSubj_list(t_ThreeSubj_listSEXP);
+    Rcpp::traits::input_parameter< double >::type t_SPA_Cutoff(t_SPA_CutoffSEXP);
+    Rcpp::traits::input_parameter< double >::type t_zeta(t_zetaSEXP);
+    Rcpp::traits::input_parameter< double >::type t_tol(t_tolSEXP);
+    setSPAGRMobjInCPP(t_resid, t_resid_unrelated_outliers, t_sum_R_nonOutlier, t_R_GRM_R_nonOutlier, t_R_GRM_R_TwoSubjOutlier, t_R_GRM_R, t_MAF_interval, t_TwoSubj_list, t_ThreeSubj_list, t_SPA_Cutoff, t_zeta, t_tol);
+    return R_NilValue;
+END_RCPP
+}
+// setSAGELDobjInCPP
+void setSAGELDobjInCPP(std::string t_Method, arma::mat t_XTs, arma::mat t_SS, arma::mat t_AtS, arma::mat t_Q, arma::mat t_A21, arma::mat t_TTs, arma::mat t_Tys, arma::vec t_sol, arma::vec t_blups, double t_sig, arma::vec t_resid, arma::vec t_resid_G, arma::vec t_resid_GxE, arma::vec t_resid_E, arma::vec t_resid_unrelated_outliers, arma::vec t_resid_unrelated_outliers_G, arma::vec t_resid_unrelated_outliers_GxE, double t_sum_R_nonOutlier, double t_sum_R_nonOutlier_G, double t_sum_R_nonOutlier_GxE, double t_R_GRM_R, double t_R_GRM_R_G, double t_R_GRM_R_GxE, double t_R_GRM_R_G_GxE, double t_R_GRM_R_E, double t_R_GRM_R_nonOutlier, double t_R_GRM_R_nonOutlier_G, double t_R_GRM_R_nonOutlier_GxE, double t_R_GRM_R_nonOutlier_G_GxE, double t_R_GRM_R_TwoSubjOutlier, double t_R_GRM_R_TwoSubjOutlier_G, double t_R_GRM_R_TwoSubjOutlier_GxE, double t_R_GRM_R_TwoSubjOutlier_G_GxE, Rcpp::List t_TwoSubj_list, Rcpp::List t_ThreeSubj_list, arma::vec t_MAF_interval, double t_zScoreE_cutoff, double t_SPA_Cutoff, double t_zeta, double t_tol);
+RcppExport SEXP _GRAB_setSAGELDobjInCPP(SEXP t_MethodSEXP, SEXP t_XTsSEXP, SEXP t_SSSEXP, SEXP t_AtSSEXP, SEXP t_QSEXP, SEXP t_A21SEXP, SEXP t_TTsSEXP, SEXP t_TysSEXP, SEXP t_solSEXP, SEXP t_blupsSEXP, SEXP t_sigSEXP, SEXP t_residSEXP, SEXP t_resid_GSEXP, SEXP t_resid_GxESEXP, SEXP t_resid_ESEXP, SEXP t_resid_unrelated_outliersSEXP, SEXP t_resid_unrelated_outliers_GSEXP, SEXP t_resid_unrelated_outliers_GxESEXP, SEXP t_sum_R_nonOutlierSEXP, SEXP t_sum_R_nonOutlier_GSEXP, SEXP t_sum_R_nonOutlier_GxESEXP, SEXP t_R_GRM_RSEXP, SEXP t_R_GRM_R_GSEXP, SEXP t_R_GRM_R_GxESEXP, SEXP t_R_GRM_R_G_GxESEXP, SEXP t_R_GRM_R_ESEXP, SEXP t_R_GRM_R_nonOutlierSEXP, SEXP t_R_GRM_R_nonOutlier_GSEXP, SEXP t_R_GRM_R_nonOutlier_GxESEXP, SEXP t_R_GRM_R_nonOutlier_G_GxESEXP, SEXP t_R_GRM_R_TwoSubjOutlierSEXP, SEXP t_R_GRM_R_TwoSubjOutlier_GSEXP, SEXP t_R_GRM_R_TwoSubjOutlier_GxESEXP, SEXP t_R_GRM_R_TwoSubjOutlier_G_GxESEXP, SEXP t_TwoSubj_listSEXP, SEXP t_ThreeSubj_listSEXP, SEXP t_MAF_intervalSEXP, SEXP t_zScoreE_cutoffSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_zetaSEXP, SEXP t_tolSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type t_Method(t_MethodSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type t_XTs(t_XTsSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type t_SS(t_SSSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type t_AtS(t_AtSSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type t_Q(t_QSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type t_A21(t_A21SEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type t_TTs(t_TTsSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type t_Tys(t_TysSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_sol(t_solSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_blups(t_blupsSEXP);
+    Rcpp::traits::input_parameter< double >::type t_sig(t_sigSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_resid(t_residSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_resid_G(t_resid_GSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_resid_GxE(t_resid_GxESEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_resid_E(t_resid_ESEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_resid_unrelated_outliers(t_resid_unrelated_outliersSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_resid_unrelated_outliers_G(t_resid_unrelated_outliers_GSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_resid_unrelated_outliers_GxE(t_resid_unrelated_outliers_GxESEXP);
+    Rcpp::traits::input_parameter< double >::type t_sum_R_nonOutlier(t_sum_R_nonOutlierSEXP);
+    Rcpp::traits::input_parameter< double >::type t_sum_R_nonOutlier_G(t_sum_R_nonOutlier_GSEXP);
+    Rcpp::traits::input_parameter< double >::type t_sum_R_nonOutlier_GxE(t_sum_R_nonOutlier_GxESEXP);
+    Rcpp::traits::input_parameter< double >::type t_R_GRM_R(t_R_GRM_RSEXP);
+    Rcpp::traits::input_parameter< double >::type t_R_GRM_R_G(t_R_GRM_R_GSEXP);
+    Rcpp::traits::input_parameter< double >::type t_R_GRM_R_GxE(t_R_GRM_R_GxESEXP);
+    Rcpp::traits::input_parameter< double >::type t_R_GRM_R_G_GxE(t_R_GRM_R_G_GxESEXP);
+    Rcpp::traits::input_parameter< double >::type t_R_GRM_R_E(t_R_GRM_R_ESEXP);
+    Rcpp::traits::input_parameter< double >::type t_R_GRM_R_nonOutlier(t_R_GRM_R_nonOutlierSEXP);
+    Rcpp::traits::input_parameter< double >::type t_R_GRM_R_nonOutlier_G(t_R_GRM_R_nonOutlier_GSEXP);
+    Rcpp::traits::input_parameter< double >::type t_R_GRM_R_nonOutlier_GxE(t_R_GRM_R_nonOutlier_GxESEXP);
+    Rcpp::traits::input_parameter< double >::type t_R_GRM_R_nonOutlier_G_GxE(t_R_GRM_R_nonOutlier_G_GxESEXP);
+    Rcpp::traits::input_parameter< double >::type t_R_GRM_R_TwoSubjOutlier(t_R_GRM_R_TwoSubjOutlierSEXP);
+    Rcpp::traits::input_parameter< double >::type t_R_GRM_R_TwoSubjOutlier_G(t_R_GRM_R_TwoSubjOutlier_GSEXP);
+    Rcpp::traits::input_parameter< double >::type t_R_GRM_R_TwoSubjOutlier_GxE(t_R_GRM_R_TwoSubjOutlier_GxESEXP);
+    Rcpp::traits::input_parameter< double >::type t_R_GRM_R_TwoSubjOutlier_G_GxE(t_R_GRM_R_TwoSubjOutlier_G_GxESEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_TwoSubj_list(t_TwoSubj_listSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_ThreeSubj_list(t_ThreeSubj_listSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_MAF_interval(t_MAF_intervalSEXP);
+    Rcpp::traits::input_parameter< double >::type t_zScoreE_cutoff(t_zScoreE_cutoffSEXP);
+    Rcpp::traits::input_parameter< double >::type t_SPA_Cutoff(t_SPA_CutoffSEXP);
+    Rcpp::traits::input_parameter< double >::type t_zeta(t_zetaSEXP);
+    Rcpp::traits::input_parameter< double >::type t_tol(t_tolSEXP);
+    setSAGELDobjInCPP(t_Method, t_XTs, t_SS, t_AtS, t_Q, t_A21, t_TTs, t_Tys, t_sol, t_blups, t_sig, t_resid, t_resid_G, t_resid_GxE, t_resid_E, t_resid_unrelated_outliers, t_resid_unrelated_outliers_G, t_resid_unrelated_outliers_GxE, t_sum_R_nonOutlier, t_sum_R_nonOutlier_G, t_sum_R_nonOutlier_GxE, t_R_GRM_R, t_R_GRM_R_G, t_R_GRM_R_GxE, t_R_GRM_R_G_GxE, t_R_GRM_R_E, t_R_GRM_R_nonOutlier, t_R_GRM_R_nonOutlier_G, t_R_GRM_R_nonOutlier_GxE, t_R_GRM_R_nonOutlier_G_GxE, t_R_GRM_R_TwoSubjOutlier, t_R_GRM_R_TwoSubjOutlier_G, t_R_GRM_R_TwoSubjOutlier_GxE, t_R_GRM_R_TwoSubjOutlier_G_GxE, t_TwoSubj_list, t_ThreeSubj_list, t_MAF_interval, t_zScoreE_cutoff, t_SPA_Cutoff, t_zeta, t_tol);
+    return R_NilValue;
+END_RCPP
+}
+// setSPAmixobjInCPP
+void setSPAmixobjInCPP(arma::mat t_resid, arma::mat t_PCs, int t_N, double t_SPA_Cutoff, Rcpp::List t_outlierList);
+RcppExport SEXP _GRAB_setSPAmixobjInCPP(SEXP t_residSEXP, SEXP t_PCsSEXP, SEXP t_NSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_outlierListSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::mat >::type t_resid(t_residSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type t_PCs(t_PCsSEXP);
+    Rcpp::traits::input_parameter< int >::type t_N(t_NSEXP);
+    Rcpp::traits::input_parameter< double >::type t_SPA_Cutoff(t_SPA_CutoffSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_outlierList(t_outlierListSEXP);
+    setSPAmixobjInCPP(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList);
+    return R_NilValue;
+END_RCPP
+}
 // setSPACoxobjInCPP
 void setSPACoxobjInCPP(arma::mat t_cumul, arma::vec t_mresid, arma::mat t_XinvXX, arma::mat t_tX, int t_N, double t_pVal_covaAdj_Cutoff, double t_SPA_Cutoff);
 RcppExport SEXP _GRAB_setSPACoxobjInCPP(SEXP t_cumulSEXP, SEXP t_mresidSEXP, SEXP t_XinvXXSEXP, SEXP t_tXSEXP, SEXP t_NSEXP, SEXP t_pVal_covaAdj_CutoffSEXP, SEXP t_SPA_CutoffSEXP) {
@@ -253,6 +380,32 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type t_pVal_covaAdj_Cutoff(t_pVal_covaAdj_CutoffSEXP);
     Rcpp::traits::input_parameter< double >::type t_SPA_Cutoff(t_SPA_CutoffSEXP);
     setSPACoxobjInCPP(t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_covaAdj_Cutoff, t_SPA_Cutoff);
+    return R_NilValue;
+END_RCPP
+}
+// setWtSPAGobjInCPP
+void setWtSPAGobjInCPP(arma::vec t_mresid, int t_N, double t_SPA_Cutoff, Rcpp::List t_outlierList);
+RcppExport SEXP _GRAB_setWtSPAGobjInCPP(SEXP t_mresidSEXP, SEXP t_NSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_outlierListSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec >::type t_mresid(t_mresidSEXP);
+    Rcpp::traits::input_parameter< int >::type t_N(t_NSEXP);
+    Rcpp::traits::input_parameter< double >::type t_SPA_Cutoff(t_SPA_CutoffSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_outlierList(t_outlierListSEXP);
+    setWtSPAGobjInCPP(t_mresid, t_N, t_SPA_Cutoff, t_outlierList);
+    return R_NilValue;
+END_RCPP
+}
+// updateQCInCPP
+void updateQCInCPP(arma::vec t_AF_ref, arma::vec t_AN_ref, arma::vec t_pvalue_bat, double t_pvalue_bat_cutoff);
+RcppExport SEXP _GRAB_updateQCInCPP(SEXP t_AF_refSEXP, SEXP t_AN_refSEXP, SEXP t_pvalue_batSEXP, SEXP t_pvalue_bat_cutoffSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec >::type t_AF_ref(t_AF_refSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_AN_ref(t_AN_refSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_pvalue_bat(t_pvalue_batSEXP);
+    Rcpp::traits::input_parameter< double >::type t_pvalue_bat_cutoff(t_pvalue_bat_cutoffSEXP);
+    updateQCInCPP(t_AF_ref, t_AN_ref, t_pvalue_bat, t_pvalue_bat_cutoff);
     return R_NilValue;
 END_RCPP
 }
@@ -273,18 +426,27 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setDenseGRMInCPP", (DL_FUNC) &_GRAB_setDenseGRMInCPP, 3},
     {"_GRAB_getDenseGRMInCPP", (DL_FUNC) &_GRAB_getDenseGRMInCPP, 3},
     {"_GRAB_setMarker_GlobalVarsInCPP", (DL_FUNC) &_GRAB_setMarker_GlobalVarsInCPP, 8},
-    {"_GRAB_setRegion_GlobalVarsInCPP", (DL_FUNC) &_GRAB_setRegion_GlobalVarsInCPP, 9},
+    {"_GRAB_setRegion_GlobalVarsInCPP", (DL_FUNC) &_GRAB_setRegion_GlobalVarsInCPP, 8},
     {"_GRAB_mainMarkerInCPP", (DL_FUNC) &_GRAB_mainMarkerInCPP, 3},
     {"_GRAB_mainRegionURVInCPP", (DL_FUNC) &_GRAB_mainRegionURVInCPP, 4},
-    {"_GRAB_mainRegionInCPP", (DL_FUNC) &_GRAB_mainRegionInCPP, 7},
+    {"_GRAB_mainRegionInCPP", (DL_FUNC) &_GRAB_mainRegionInCPP, 9},
+    {"_GRAB_printTimeDiffInCPP", (DL_FUNC) &_GRAB_printTimeDiffInCPP, 0},
+    {"_GRAB_printTimeDiffSPAmixInCPP", (DL_FUNC) &_GRAB_printTimeDiffSPAmixInCPP, 0},
+    {"_GRAB_getGenoInfoInCPP", (DL_FUNC) &_GRAB_getGenoInfoInCPP, 3},
     {"_GRAB_getGenoInCPP", (DL_FUNC) &_GRAB_getGenoInCPP, 4},
     {"_GRAB_getGenoInCPP_fixedNumber", (DL_FUNC) &_GRAB_getGenoInCPP_fixedNumber, 7},
     {"_GRAB_getSpGenoInCPP", (DL_FUNC) &_GRAB_getSpGenoInCPP, 4},
     {"_GRAB_setPLINKobjInCPP", (DL_FUNC) &_GRAB_setPLINKobjInCPP, 5},
     {"_GRAB_setBGENobjInCPP", (DL_FUNC) &_GRAB_setBGENobjInCPP, 7},
+    {"_GRAB_closeGenoInputInCPP", (DL_FUNC) &_GRAB_closeGenoInputInCPP, 1},
     {"_GRAB_setPOLMMobjInCPP", (DL_FUNC) &_GRAB_setPOLMMobjInCPP, 11},
     {"_GRAB_setPOLMMobjInCPP_NULL", (DL_FUNC) &_GRAB_setPOLMMobjInCPP_NULL, 10},
+    {"_GRAB_setSPAGRMobjInCPP", (DL_FUNC) &_GRAB_setSPAGRMobjInCPP, 12},
+    {"_GRAB_setSAGELDobjInCPP", (DL_FUNC) &_GRAB_setSAGELDobjInCPP, 41},
+    {"_GRAB_setSPAmixobjInCPP", (DL_FUNC) &_GRAB_setSPAmixobjInCPP, 5},
     {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},
+    {"_GRAB_setWtSPAGobjInCPP", (DL_FUNC) &_GRAB_setWtSPAGobjInCPP, 4},
+    {"_GRAB_updateQCInCPP", (DL_FUNC) &_GRAB_updateQCInCPP, 4},
     {"_GRAB_squares", (DL_FUNC) &_GRAB_squares, 1},
     {NULL, NULL, 0}
 };

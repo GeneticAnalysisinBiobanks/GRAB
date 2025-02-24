@@ -125,7 +125,8 @@ GRAB.ReadGeno = function(GenoFile,
   n = length(SampleIDs)
   m = length(MarkerIDs)
   
-  cat("Number of Samples:\t", n, "\nNumber of Markers:\t", m, "\n")
+  cat("Number of Samples:\t", n, "\n")
+  cat("Number of Markers:\t", m, "\n")
   
   if(sparse == TRUE){
     GenoMat = getSpGenoInCPP(genoType, markerInfo, n, control$ImputeMethod)  # check Main.cpp
@@ -138,9 +139,58 @@ GRAB.ReadGeno = function(GenoFile,
   
   markerInfo = markerInfo[,1:5]
   
+  cat("Complete the genotype reading.\n")
+  
+  closeGenoInputInCPP(genoType)  # "PLINK" or "BGEN"
+  
   return(list(GenoMat = GenoMat,
               markerInfo = markerInfo))
 }
+
+# (2023-05-03) Get allele frequency and missing rate information from genotype data
+
+#' Get allele frequency and missing rate information from genotype data
+#' 
+#' This function shares input as in function \code{GRAB.ReadGeno}, please check \code{?GRAB.ReadGeno} for more details.
+#' 
+#' @param GenoFile a character of genotype file. See \code{Details} section for more details.
+#' @param GenoFileIndex additional index file(s) corresponding to \code{GenoFile}. See \code{Details} section for more details.
+#' @param SampleIDs a character vector of sample IDs to extract. The default is \code{NULL}, that is, all samples in \code{GenoFile} will be extracted.
+#' @param control a list of parameters to decide which markers to extract. See \code{Details} section for more details.
+GRAB.getGenoInfo = function(GenoFile,
+                            GenoFileIndex = NULL,
+                            SampleIDs = NULL,
+                            control = NULL)
+{
+  control = checkControl.ReadGeno(control)  # check 'control.R'
+  
+  objGeno = setGenoInput(GenoFile, GenoFileIndex, SampleIDs, control)
+  
+  genoType = objGeno$genoType   # "PLINK" or "BGEN"
+  markerInfo = objGeno$markerInfo
+  SampleIDs = objGeno$SampleIDs
+  anyQueue = objGeno$anyQueue   # if FALSE, no include/exclude is specified
+  
+  if(!anyQueue)
+    if(!control$AllMarkers)
+      stop("If include/exclude files are not specified, control$AllMarkers should be TRUE.")
+  
+  MarkerIDs = markerInfo$ID
+  
+  n = length(SampleIDs)
+  m = length(MarkerIDs)
+  
+  cat("Number of Samples:\t", n, "\n")
+  cat("Number of Markers:\t", m, "\n")
+  
+  GenoInfoMat = getGenoInfoInCPP(genoType, markerInfo, control$ImputeMethod)  # check Main.cpp
+  GenoInfoMat = as.data.frame(GenoInfoMat)
+  colnames(GenoInfoMat) = c("altFreq", "missingRate")
+  
+  GenoInfoMat = cbind(markerInfo, GenoInfoMat)
+  return(GenoInfoMat)
+}
+
 
 # setGenoInput() is to setup the following object in C++ (Main.cpp)
 # PLINK format: ptr_gPLINKobj;
@@ -189,6 +239,8 @@ setGenoInput = function(GenoFile,
     # Read in BIM file
     
     if(!file.exists(bimFile)) stop(paste("Cannot find bim file of", bimFile))
+    
+    cat("Reading bim file:\t", bimFile, "\n")
     markerInfo = data.table::fread(bimFile, header = F, sep = "\t")
     markerInfo = as.data.frame(markerInfo)
     
@@ -206,13 +258,20 @@ setGenoInput = function(GenoFile,
     # Read in FAM file
     
     if(!file.exists(famFile)) stop(paste("Cannot find fam file of", famFile))
+    
+    cat("Reading fam file:\t", famFile, "\n")
     sampleInfo = data.table::fread(famFile, header = F, sep = " ")
+    
+    if(ncol(sampleInfo) == 1)
+      sampleInfo = data.table::fread(famFile, header = F, sep = "\t")
+      
     if(ncol(sampleInfo) != 6)
-      stop("fam file should include 6 columns seperated by space.")
+      stop("fam file should include 6 columns seperated by space or '\t'.")
     
     samplesInGeno = sampleInfo$V2
     SampleIDs = updateSampleIDs(SampleIDs, samplesInGeno)
       
+    cat("setting PLINK object in CPP....\n")
     setPLINKobjInCPP(bimFile, famFile, bedFile, SampleIDs, AlleleOrder)
   }
   
@@ -250,6 +309,7 @@ setGenoInput = function(GenoFile,
           samplesInGeno = getSampleIDsFromBGEN(bgenFile)
         }
       }else{
+        cat("Reading sample file:\t", sampleFile, "\n")
         sampleData = data.table::fread(sampleFile, header=T, sep = " ")
         if(ncol(sampleData) < 4)
           stop("Column number of sample file should be >= 4.")
@@ -265,6 +325,7 @@ setGenoInput = function(GenoFile,
     
     if(!file.exists(bgiFile)) stop(paste("Cannot find bgi file of", bgiFile))
     
+    cat("Reading bgi file:\t", bgiFile, "\n")
     db_con <- RSQLite::dbConnect(RSQLite::SQLite(), bgiFile)
     on.exit(RSQLite::dbDisconnect(db_con), add = TRUE)
     bgiData = dplyr::tbl(db_con, "Variant")
@@ -370,7 +431,15 @@ setGenoInput = function(GenoFile,
   
   anyQueue = anyInclude | anyExclude
   
-  genoList = list(genoType = genoType, markerInfo = markerInfo, SampleIDs = SampleIDs, AlleleOrder = AlleleOrder, GenoFile = GenoFile, GenoFileIndex = GenoFileIndex, anyQueue = anyQueue)
+  markerInfo$genoIndex = as.numeric(markerInfo$genoIndex) # added on 2022-04-07: avoid potential error due to "integer64", which is not well supported between C++ and R
+  
+  genoList = list(genoType = genoType, 
+                  markerInfo = markerInfo, 
+                  SampleIDs = SampleIDs, 
+                  AlleleOrder = AlleleOrder, 
+                  GenoFile = GenoFile, 
+                  GenoFileIndex = GenoFileIndex, 
+                  anyQueue = anyQueue)
   
   return(genoList)
 }
@@ -407,6 +476,8 @@ getSampleIDsFromBGEN = function(bgenFile)
 {
   if(!checkIfSampleIDsExist(bgenFile))
     stop("The BGEN file does not include sample identifiers. Please refer to help(checkIfSampleIDsExist) for more details")
+  
+  cat("extracting sample information from bgen file\n")
   con = file(bgenFile, "rb")
   seek(con, 4)
   LH = readBin(con, n = 1, what = "integer", size = 4)

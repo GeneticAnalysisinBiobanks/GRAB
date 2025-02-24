@@ -208,8 +208,8 @@ getPairs = function(pos, value, ID, n0, n1){
 
 # Suppose that subjData is only a subset of the subjects in SparseGRM
 # this function is to extract subjects from SparseGRM
-updateSparseGRM = function(SparseGRM, subjData){
-  
+updateSparseGRM = function(SparseGRM, subjData)
+{
   # later add another column to specify the relationship degree
   if(any(toupper(colnames(SparseGRM)) != c("ID1", "ID2", "VALUE")))
     stop("The header in 'SparseGRMFile' should be c('ID1','ID2','Value')")
@@ -247,7 +247,7 @@ updateSparseGRM = function(SparseGRM, subjData){
 }
 
 ## set up Dense GRM and Sparse GRM
-handleGRM = function(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
+setGRM = function(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
 {
   # NOTE on 2022-01-27: for approaches using GRM, variance ratio is required, which needs 'GenoFile' and 'GenoFileIndex'.
   if(is.null(GenoFile))
@@ -255,8 +255,9 @@ handleGRM = function(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
   
   genoList = setGenoInput(GenoFile, GenoFileIndex, subjData)   # check Geno.R for more details
   
-  if(!is.null(SparseGRMFile)){
-    print("Sparse GRM is used when fitting a null model.")
+  if(!is.null(SparseGRMFile))
+  {
+    cat("Sparse GRM is used when fitting a null model.")
     SparseGRM = data.table::fread(SparseGRMFile)
     SparseGRM = as.data.frame(SparseGRM)
     
@@ -266,10 +267,10 @@ handleGRM = function(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
     setSparseGRMInCPP(KinMatListR)
     optionGRM = "SparseGRM"
   }else{
-    print("Dense GRM is used when fitting a null model.")
+    cat("Dense GRM is used when fitting a null model.")
     subjGeno = genoList$SampleIDs      # subjGeno should be the same as subjData
     if(genoList$genoType != "PLINK")
-      stop("If DenseGRM is used when fitting a null model, then only Plink file is supported.")
+      stop("If DenseGRM is used when fitting a null model, then only PLINK format is supported.")
     
     memoryChunk = 2 # (GB)
     minMafGRM = 0.01
@@ -283,4 +284,12 @@ handleGRM = function(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
   return(list(optionGRM = optionGRM,
               genoType = genoList$genoType,
               markerInfo = genoList$markerInfo))
+}
+
+setSparseGRMInStep2 = function(SparseGRMFile, objNull)
+{
+  SparseGRM = data.table::fread(SparseGRMFile)
+  SparseGRM = as.data.frame(SparseGRM)
+  KinMatListR = updateSparseGRM(SparseGRM, objNull$subjData)
+  setSparseGRMInCPP(KinMatListR)    # check Main.cpp
 }

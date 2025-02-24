@@ -91,7 +91,6 @@
 #'             
 #' @export
 #' @import data.table
-
 GRAB.Marker = function(objNull,
                        GenoFile,
                        GenoFileIndex = NULL,
@@ -107,9 +106,28 @@ GRAB.Marker = function(objNull,
   # check the setting of control, if not specified, the default setting will be used
   # The following functions are in 'control.R'
   checkControl.ReadGeno(control)
-  control = checkControl.Marker(control, NullModelClass)
+  control = checkControl.Marker(control, NullModelClass)  
   nMarkersEachChunk = control$nMarkersEachChunk;
   outList = checkOutputFile(OutputFile, OutputFileIndex, "Marker", format(nMarkersEachChunk, scientific=F))    # this function is in 'Util.R'
+  
+  # added by XH-2023-05-09
+  if(NullModelClass == "SPAGRM_NULL_Model")
+  {
+    if(length(objNull$MAF_interval) > 1)
+    {
+      if(control$min_maf_marker <= min(objNull$MAF_interval))
+        stop("min_maf_marker is out of MAF_interval, Please reset min_maf_marker or check MAF_interval.")
+    }
+  }
+  
+  if(NullModelClass == "SAGELD_NULL_Model")
+  {
+    if(length(objNull$MAF_interval) > 1)
+    {
+      if(control$min_maf_marker <= min(objNull$MAF_interval))
+        stop("min_maf_marker is out of MAF_interval, Please reset min_maf_marker or check MAF_interval.")
+    }
+  }
   
   indexChunk = outList$indexChunk
   Start = outList$Start
@@ -131,7 +149,7 @@ GRAB.Marker = function(objNull,
   
   subjData = as.character(objNull$subjData);
   
-  Group = makeGroup(objNull$yVec)  # Check Util.R
+  Group = makeGroup(objNull$yVec)  # this function is in Util.R: categorize subjects into multiple groups and check AltFreq/AltCoutns in each group.
   ifOutGroup = any(c("AltFreqInGroup", "AltCountsInGroup") %in% control$outputColumns)
   
   ## set up an object for genotype
@@ -142,7 +160,10 @@ GRAB.Marker = function(objNull,
   genoIndex = markerInfo$genoIndex
   
   # all markers were split into multiple chunks, 
-  genoIndexList = splitMarker(genoIndex, nMarkersEachChunk, CHROM);
+  # 1. SNPs in the same CHROM will be grouped into the chunk
+  # 2. the chunks will be ordered based on CHROM
+  genoIndexList = splitMarker(genoIndex, nMarkersEachChunk, CHROM);  
+  
   nChunks = length(genoIndexList)
   
   cat("Number of all markers to test:\t", nrow(markerInfo), "\n")
@@ -157,15 +178,19 @@ GRAB.Marker = function(objNull,
     tempChrom = tempList$chrom
     
     # set up objects that do not change for different variants
+    # print(c(tempChrom, chrom))
+    
     if(tempChrom != chrom){
-      setMarker(NullModelClass, objNull, control, chrom, Group, ifOutGroup)
+      # print("test1")
+      obj.setMarker = setMarker(NullModelClass, objNull, control, chrom, Group, ifOutGroup)
+      # print("test2")
       chrom = tempChrom
     }
     
     cat(paste0("(",Sys.time(),") ---- Analyzing Chunk ", i, "/", nChunks, ": chrom ", chrom," ---- \n"))
     
     # main function to calculate summary statistics for markers in one chunk
-    resMarker = mainMarker(NullModelClass, genoType, genoIndex, control$outputColumns)
+    resMarker = mainMarker(NullModelClass, genoType, genoIndex, control$outputColumns, objNull, obj.setMarker)
     
     writeOutputFile(Output = list(resMarker), 
                     OutputFile = list(OutputFile), 
@@ -205,11 +230,27 @@ setMarker = function(NullModelClass, objNull, control, chrom, Group, ifOutGroup)
   # Check SPACox.R
   if(NullModelClass == "SPACox_NULL_Model")
     obj.setMarker = setMarker.SPACox(objNull, control)
+  
+  # Check SPAmix.R
+  if(NullModelClass == "SPAmix_NULL_Model")
+    obj.setMarker = setMarker.SPAmix(objNull, control)
+  
+  # Check SPAGRM.R
+  if(NullModelClass == "SPAGRM_NULL_Model")
+    obj.setMarker = setMarker.SPAGRM(objNull, control)
+  
+  # Check SAGELD.R
+  if(NullModelClass == "SAGELD_NULL_Model")
+    obj.setMarker = setMarker.SAGELD(objNull, control)
+  
+  # Check WtSPAG.R
+  if(NullModelClass == "WtSPAG_NULL_Model")
+    obj.setMarker = setMarker.WtSPAG(objNull, control)
     
   return(obj.setMarker)
 }
 
-mainMarker = function(NullModelClass, genoType, genoIndex, outputColumns)
+mainMarker = function(NullModelClass, genoType, genoIndex, outputColumns, objNull, obj.setMarker)
 {
   # Check 'POLMM.R'
   if(NullModelClass == "POLMM_NULL_Model"){
@@ -218,7 +259,7 @@ mainMarker = function(NullModelClass, genoType, genoIndex, outputColumns)
     OutList = mainMarkerInCPP("POLMM", genoType, genoIndex);  
     
     obj.mainMarker = data.frame(Marker = OutList$markerVec,           # marker IDs
-                                Info = OutList$infoVec,               # marker infomation: CHR:POS:REF:ALT
+                                Info = OutList$infoVec,               # marker information: CHR:POS:REF:ALT
                                 AltFreq = OutList$altFreqVec,         # alternative allele frequencies
                                 AltCounts = OutList$altCountsVec,     # alternative allele counts
                                 MissingRate = OutList$missingRateVec, # alternative allele counts
@@ -232,13 +273,29 @@ mainMarker = function(NullModelClass, genoType, genoIndex, outputColumns)
                                         as.data.frame(OutList[additionalColumns]))
   }
 
-  # # Check 'SAIGE.R'
+  # Check 'SAIGE.R'
   if(NullModelClass == "SAIGE_NULL_Model")
     obj.mainMarker = mainMarker.SAIGE(genoType, genoIndex, outputColumns)
-  # 
-  # # Check 'SPACox.R'
+   
+  # Check 'SPACox.R'
   if(NullModelClass == "SPACox_NULL_Model")
     obj.mainMarker = mainMarker.SPACox(genoType, genoIndex, outputColumns)
+  
+  # Check 'SPAmix.R'
+  if(NullModelClass == "SPAmix_NULL_Model")
+    obj.mainMarker = mainMarker.SPAmix(genoType, genoIndex, outputColumns, objNull)
+  
+  # Check 'SPAGRM.R'
+  if(NullModelClass == "SPAGRM_NULL_Model")
+    obj.mainMarker = mainMarker.SPAGRM(genoType, genoIndex, outputColumns)
+  
+  # Check 'SAGELD.R'
+  if(NullModelClass == "SAGELD_NULL_Model")
+    obj.mainMarker = mainMarker.SAGELD(genoType, genoIndex, outputColumns, objNull)
+  
+  # Check 'WtSPAG.R'
+  if(NullModelClass == "WtSPAG_NULL_Model")
+    obj.mainMarker = mainMarker.WtSPAG(genoType, genoIndex, outputColumns, obj.setMarker)
   
   return(obj.mainMarker)
 }

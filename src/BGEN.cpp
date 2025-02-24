@@ -124,14 +124,30 @@ void BgenClass::setPosSampleInBgen(std::vector<std::string> & t_SampleInModel)
 }
 
 
-void BgenClass::Parse2(unsigned char *buf, unsigned int bufLen, const unsigned char *zBuf, unsigned int zBufLen,std::string & snpName,std::vector< double > & dosages, double & AC, double & AF, 
+void BgenClass::Parse2(unsigned char *buf, 
+                       unsigned int bufLen, 
+                       const unsigned char *zBuf, 
+                       unsigned int zBufLen,
+                       std::string & snpName,
+                       std::vector< double > & dosages, 
+                       double & AC, 
+                       double & AF, 
                        std::vector<uint32_t> & indexforMissing, 
-                       double & info, std::vector<unsigned int> & indexNonZero) {
-  
+                       double & info, 
+                       std::vector<unsigned int> & indexNonZero)
+{
   uLong destLen = bufLen;
   if (uncompress(buf, &destLen, zBuf, zBufLen) != Z_OK || destLen != bufLen) {
-    std::cerr << "ERROR: uncompress() failed" << std::endl;
-    exit(1);
+    if(uncompress(buf, &destLen, zBuf, zBufLen) == Z_BUF_ERROR)
+      Rcpp::stop("ERROR: uncompress() failed: The buffer dest was not large enough to hold the uncompressed data.");
+    
+    if(uncompress(buf, &destLen, zBuf, zBufLen) == Z_MEM_ERROR)
+      Rcpp::stop("ERROR: uncompress() failed: Insufficient memory.");
+    
+    if(uncompress(buf, &destLen, zBuf, zBufLen) == Z_DATA_ERROR)
+      Rcpp::stop("ERROR: uncompress() failed: The compressed data (referenced by source) was corrupted.");
+    
+    Rcpp::stop("ERROR: uncompress() failed");
   }
   
   unsigned char *bufAt = buf;
@@ -284,7 +300,7 @@ arma::vec BgenClass::getOneMarker(uint64_t t_gIndex,        // different meaning
                                   bool& t_isBoolRead)        // only used in BGEN, Wei, if you want, you can add details here.
 {
   if(t_gIndex > 0){fseek(m_fin, t_gIndex, SEEK_SET);}
-  std::string SNPID, RSID, chromosome, first_allele,second_allele ;
+  std::string SNPID, RSID, chromosome, first_allele, second_allele;
   uint32_t position;
   std::vector< std::string > alleles ;
   std::vector< double > dosages;
@@ -298,7 +314,7 @@ arma::vec BgenClass::getOneMarker(uint64_t t_gIndex,        // different meaning
   allele0 = (char *) malloc(maxLB+1);
   uint16_t LS; size_t numBoolRead = fread(&LS, 2, 1, m_fin); // cout << "LS: " << LS << " " << std::flush;
   // bool isBoolRead;  // BWJ (2021-02-28): I think it will not be used since we currently use t_gIndex to specify bytes position. This bool value can still be outputted through a reference. If we are sure it is not useful any more, we can remove it.
-  Rcpp::List result ;
+  // Rcpp::List result;
   if ( numBoolRead > 0 ) {
     // isBoolRead = true;
     t_isBoolRead = true;
@@ -327,6 +343,8 @@ arma::vec BgenClass::getOneMarker(uint64_t t_gIndex,        // different meaning
     }
     fread(allele1, 1, LA, m_fin); allele1[LA] = '\0';
     first_allele = std::string(allele1);
+    free(allele1);
+    
     uint32_t LB; fread(&LB, 4, 1, m_fin); // cout << "LB: " << LB << " " << std::flush;
     if (LB > maxLB) {
       maxLB = 2*LB;
@@ -335,6 +353,7 @@ arma::vec BgenClass::getOneMarker(uint64_t t_gIndex,        // different meaning
     }
     fread(allele0, 1, LB, m_fin); allele0[LB] = '\0';
     second_allele = std::string(allele0);
+    free(allele0);
     
     uint32_t C; fread(&C, 4, 1, m_fin); //cout << "C: " << C << endl;
     if (C > m_zBuf.size()) m_zBuf.resize(C-4);
@@ -346,6 +365,7 @@ arma::vec BgenClass::getOneMarker(uint64_t t_gIndex,        // different meaning
     AF = 0;
     info = 0;
     if (m_bufLens > m_buf.size()) m_buf.resize(m_bufLens); //fix the length
+    
     Parse2(&m_buf[0], m_bufLens, &m_zBuf[0], m_zBufLens, RSID, dosages, AC, AF, indexforMissing, info, indexNonZero);
     
     // output

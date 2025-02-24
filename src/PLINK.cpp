@@ -81,7 +81,7 @@ void PlinkClass::readBimFile()
 
 void PlinkClass::readFamFile()
 {
-  std::cout << "Reading fam file...." << std::endl;
+  std::cout << "Reading fam file:\t" << m_famFile << std::endl;
   std::ifstream fam(m_famFile);
   m_N0 = 0;
   std::string line;
@@ -89,9 +89,13 @@ void PlinkClass::readFamFile()
     m_N0 ++;
     std::vector<std::string> line_elements;
     boost::split(line_elements, line, boost::is_any_of("\t "));
+    
     m_SampleInPlink.push_back(line_elements[1]);  // put IID to m_SampleInPlink
   }
   m_N = m_N0;
+  
+  std::cout << "m_N:\t" << m_N << std::endl;
+  
   m_numBytesofEachMarker0 = (m_N0 + 3) / 4;
   m_OneMarkerG4.reserve(m_numBytesofEachMarker0);  
   m_OneMarkerG4.resize(m_numBytesofEachMarker0);
@@ -117,6 +121,11 @@ void PlinkClass::setPosSampleInPlink(std::vector<std::string> t_SampleInModel)
     
   // Rcpp::match is much faster than loop
   Rcpp::IntegerVector posSampleInPlink = Rcpp::match(SampleInModel, SampleInPlink);
+  
+  std::cout << "posSampleInPlink:\t" << posSampleInPlink[0] << " " << posSampleInPlink[1] << " " << posSampleInPlink[2] << std::endl;
+  std::cout << "SampleInModel:\t" << SampleInModel[0] << " " << SampleInModel[1] << " " << SampleInModel[2] << std::endl;
+  std::cout << "SampleInPlink:\t" << SampleInPlink[0] << " " << SampleInPlink[1] << " " << SampleInPlink[2] << std::endl;
+  
   m_posSampleInPlink.resize(m_N);
   for(uint32_t i = 0; i < m_N; i++){
     if(Rcpp::IntegerVector::is_na(posSampleInPlink.at(i)))
@@ -213,8 +222,6 @@ arma::vec PlinkClass::getOneMarker(uint64_t t_gIndex,        // different meanin
     case HOM_ALT: sum+=2; break;
     case MISSING: numMissing++; if(t_isOutputIndexForMissing){t_indexForMissing.push_back(i);} break;  
     }
-    
-    
     
     if(t_isTrueGenotype)
       bufferG1 = genoMaps[bufferG1];

@@ -1,13 +1,24 @@
 # GRAB
 
+## Note on 2022-08-26
+
+We make a website for GRAB package: https://wenjianbi.github.io/grab.github.io/. Please check it for more recent update. 
+
+## Previous README before 2022-08-26
+
 ### How to install and load this package
 
 Rtools (https://cran.rstudio.com/bin/windows/Rtools/) should be installed before installing this package.
 
 ```{r}      
-library(devtools)  # author version: 2.3.0, use install.packages("devtools") first
-install_github("GeneticAnalysisinBiobanks/GRAB", INSTALL_opts=c("--no-multiarch"))  # The INSTALL_opts is required in Windows OS.
+library(remotes)  # remotes library requires less dependency packages than devtools
+install_github("GeneticAnalysisinBiobanks/GRAB", INSTALL_opts=c("--no-multiarch"), ref="main")  # The INSTALL_opts is required in Windows OS.
 library(GRAB)
+
+library(devtools)  # author version: 2.4.5
+install_github("YuzhuoMa97/GRAB")
+library(GRAB)
+?GRAB  # manual of GRABtest package
 ```
 
 ### Replicate the genotype simulation in the package
