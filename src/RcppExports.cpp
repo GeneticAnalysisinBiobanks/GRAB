@@ -303,6 +303,27 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// setSPAyuzhuomaobjInCPP
+void setSPAyuzhuomaobjInCPP(arma::vec t_resid, arma::vec t_resid_unrelated_outliers, double t_sum_R_nonOutlier, double t_R_GRM_R_nonOutlier, double t_R_GRM_R_TwoSubjOutlier, double t_R_GRM_R, arma::vec t_MAF_interval, Rcpp::List t_TwoSubj_list, Rcpp::List t_ThreeSubj_list, double t_SPA_Cutoff, double t_zeta, double t_tol);
+RcppExport SEXP _GRAB_setSPAyuzhuomaobjInCPP(SEXP t_residSEXP, SEXP t_resid_unrelated_outliersSEXP, SEXP t_sum_R_nonOutlierSEXP, SEXP t_R_GRM_R_nonOutlierSEXP, SEXP t_R_GRM_R_TwoSubjOutlierSEXP, SEXP t_R_GRM_RSEXP, SEXP t_MAF_intervalSEXP, SEXP t_TwoSubj_listSEXP, SEXP t_ThreeSubj_listSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_zetaSEXP, SEXP t_tolSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec >::type t_resid(t_residSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_resid_unrelated_outliers(t_resid_unrelated_outliersSEXP);
+    Rcpp::traits::input_parameter< double >::type t_sum_R_nonOutlier(t_sum_R_nonOutlierSEXP);
+    Rcpp::traits::input_parameter< double >::type t_R_GRM_R_nonOutlier(t_R_GRM_R_nonOutlierSEXP);
+    Rcpp::traits::input_parameter< double >::type t_R_GRM_R_TwoSubjOutlier(t_R_GRM_R_TwoSubjOutlierSEXP);
+    Rcpp::traits::input_parameter< double >::type t_R_GRM_R(t_R_GRM_RSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_MAF_interval(t_MAF_intervalSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_TwoSubj_list(t_TwoSubj_listSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_ThreeSubj_list(t_ThreeSubj_listSEXP);
+    Rcpp::traits::input_parameter< double >::type t_SPA_Cutoff(t_SPA_CutoffSEXP);
+    Rcpp::traits::input_parameter< double >::type t_zeta(t_zetaSEXP);
+    Rcpp::traits::input_parameter< double >::type t_tol(t_tolSEXP);
+    setSPAyuzhuomaobjInCPP(t_resid, t_resid_unrelated_outliers, t_sum_R_nonOutlier, t_R_GRM_R_nonOutlier, t_R_GRM_R_TwoSubjOutlier, t_R_GRM_R, t_MAF_interval, t_TwoSubj_list, t_ThreeSubj_list, t_SPA_Cutoff, t_zeta, t_tol);
+    return R_NilValue;
+END_RCPP
+}
 // setSAGELDobjInCPP
 void setSAGELDobjInCPP(std::string t_Method, arma::mat t_XTs, arma::mat t_SS, arma::mat t_AtS, arma::mat t_Q, arma::mat t_A21, arma::mat t_TTs, arma::mat t_Tys, arma::vec t_sol, arma::vec t_blups, double t_sig, arma::vec t_resid, arma::vec t_resid_G, arma::vec t_resid_GxE, arma::vec t_resid_E, arma::vec t_resid_unrelated_outliers, arma::vec t_resid_unrelated_outliers_G, arma::vec t_resid_unrelated_outliers_GxE, double t_sum_R_nonOutlier, double t_sum_R_nonOutlier_G, double t_sum_R_nonOutlier_GxE, double t_R_GRM_R, double t_R_GRM_R_G, double t_R_GRM_R_GxE, double t_R_GRM_R_G_GxE, double t_R_GRM_R_E, double t_R_GRM_R_nonOutlier, double t_R_GRM_R_nonOutlier_G, double t_R_GRM_R_nonOutlier_GxE, double t_R_GRM_R_nonOutlier_G_GxE, double t_R_GRM_R_TwoSubjOutlier, double t_R_GRM_R_TwoSubjOutlier_G, double t_R_GRM_R_TwoSubjOutlier_GxE, double t_R_GRM_R_TwoSubjOutlier_G_GxE, Rcpp::List t_TwoSubj_list, Rcpp::List t_ThreeSubj_list, arma::vec t_MAF_interval, double t_zScoreE_cutoff, double t_SPA_Cutoff, double t_zeta, double t_tol);
 RcppExport SEXP _GRAB_setSAGELDobjInCPP(SEXP t_MethodSEXP, SEXP t_XTsSEXP, SEXP t_SSSEXP, SEXP t_AtSSEXP, SEXP t_QSEXP, SEXP t_A21SEXP, SEXP t_TTsSEXP, SEXP t_TysSEXP, SEXP t_solSEXP, SEXP t_blupsSEXP, SEXP t_sigSEXP, SEXP t_residSEXP, SEXP t_resid_GSEXP, SEXP t_resid_GxESEXP, SEXP t_resid_ESEXP, SEXP t_resid_unrelated_outliersSEXP, SEXP t_resid_unrelated_outliers_GSEXP, SEXP t_resid_unrelated_outliers_GxESEXP, SEXP t_sum_R_nonOutlierSEXP, SEXP t_sum_R_nonOutlier_GSEXP, SEXP t_sum_R_nonOutlier_GxESEXP, SEXP t_R_GRM_RSEXP, SEXP t_R_GRM_R_GSEXP, SEXP t_R_GRM_R_GxESEXP, SEXP t_R_GRM_R_G_GxESEXP, SEXP t_R_GRM_R_ESEXP, SEXP t_R_GRM_R_nonOutlierSEXP, SEXP t_R_GRM_R_nonOutlier_GSEXP, SEXP t_R_GRM_R_nonOutlier_GxESEXP, SEXP t_R_GRM_R_nonOutlier_G_GxESEXP, SEXP t_R_GRM_R_TwoSubjOutlierSEXP, SEXP t_R_GRM_R_TwoSubjOutlier_GSEXP, SEXP t_R_GRM_R_TwoSubjOutlier_GxESEXP, SEXP t_R_GRM_R_TwoSubjOutlier_G_GxESEXP, SEXP t_TwoSubj_listSEXP, SEXP t_ThreeSubj_listSEXP, SEXP t_MAF_intervalSEXP, SEXP t_zScoreE_cutoffSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_zetaSEXP, SEXP t_tolSEXP) {
@@ -442,6 +463,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setPOLMMobjInCPP", (DL_FUNC) &_GRAB_setPOLMMobjInCPP, 11},
     {"_GRAB_setPOLMMobjInCPP_NULL", (DL_FUNC) &_GRAB_setPOLMMobjInCPP_NULL, 10},
     {"_GRAB_setSPAGRMobjInCPP", (DL_FUNC) &_GRAB_setSPAGRMobjInCPP, 12},
+    {"_GRAB_setSPAyuzhuomaobjInCPP", (DL_FUNC) &_GRAB_setSPAyuzhuomaobjInCPP, 12},
     {"_GRAB_setSAGELDobjInCPP", (DL_FUNC) &_GRAB_setSAGELDobjInCPP, 41},
     {"_GRAB_setSPAmixobjInCPP", (DL_FUNC) &_GRAB_setSPAmixobjInCPP, 5},
     {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},

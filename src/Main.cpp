@@ -27,6 +27,7 @@
 #include "DenseGRM.hpp"
 #include "SPAmix.hpp"
 #include "SPAGRM.hpp"
+#include "SPAyuzhuoma.hpp"
 #include "SAGELD.hpp"
 #include "WtSPAG.hpp"
 
@@ -43,6 +44,7 @@ static POLMM::POLMMClass* ptr_gPOLMMobj = NULL;
 static SPACox::SPACoxClass* ptr_gSPACoxobj = NULL;
 static SPAmix::SPAmixClass* ptr_gSPAmixobj = NULL;
 static SPAGRM::SPAGRMClass* ptr_gSPAGRMobj = NULL;
+static SPAyuzhuoma::SPAyuzhuomaClass* ptr_gSPAyuzhuomaobj = NULL;
 static SAGELD::SAGELDClass* ptr_gSAGELDobj = NULL;
 static WtSPAG::WtSPAGClass* ptr_gWtSPAGobj = NULL;
 
@@ -187,7 +189,7 @@ void updateGroupInfo(arma::vec t_GVec,
 //////// ---------- Main function for marker-level analysis --------- ////////////
 
 // [[Rcpp::export]]
-Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SAIGE", "SPAmix", "SPAGRM"
+Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SAIGE", "SPAmix", "SPAGRM", "SPAyuzhuoma"
                            std::string t_genoType,     // "PLINK", "BGEN"
                            std::vector<uint64_t> t_genoIndex)  
 {
@@ -1075,7 +1077,7 @@ arma::vec Unified_getOneMarker(std::string t_genoType,   // "PLINK", "BGEN"
 }
 
 // a unified function to get marker-level p-value
-void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE", "SPAmix", and "SPAGRM"
+void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE", "SPAmix", and "SPAGRM", and "SPAyuzhuoma"
                            arma::vec t_GVec,
                            bool t_isOnlyOutputNonZero,
                            std::vector<uint32_t> t_indexForNonZero,
@@ -1109,7 +1111,7 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
 }
 
 // a unified function to get marker-level p-value
-void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE", "SPAmix", and "SPAGRM"
+void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE", "SPAmix", and "SPAGRM", and "SPAyuzhuoma"
                            arma::vec t_GVec,
                            bool t_isOnlyOutputNonZero,
                            std::vector<uint32_t> t_indexForNonZero,
@@ -1125,6 +1127,10 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
     if(t_isOnlyOutputNonZero == true)
       Rcpp::stop("When using SPAGRM method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
     t_pval = ptr_gSPAGRMobj->getMarkerPval(t_GVec, t_altFreq, t_zScore, t_hwepval, t_hwepvalCutoff);
+  }else if(t_method == "SPAyuzhuoma"){
+    if(t_isOnlyOutputNonZero == true)
+      Rcpp::stop("When using SPAyuzhuoma method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+    t_pval = ptr_gSPAyuzhuomaobj->getMarkerPval(t_GVec, t_altFreq, t_zScore, t_hwepval, t_hwepvalCutoff);
   }else if(t_method == "SAGELD"){
     if(t_isOnlyOutputNonZero == true)
       Rcpp::stop("When using SAGELD method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
@@ -1378,6 +1384,37 @@ void setSPAGRMobjInCPP(arma::vec t_resid,
                                            t_SPA_Cutoff,
                                            t_zeta,
                                            t_tol);
+}
+
+// [[Rcpp::export]]
+void setSPAyuzhuomaobjInCPP(arma::vec t_resid,
+                            arma::vec t_resid_unrelated_outliers,
+                            double t_sum_R_nonOutlier,
+                            double t_R_GRM_R_nonOutlier,
+                            double t_R_GRM_R_TwoSubjOutlier,
+                            double t_R_GRM_R,
+                            arma::vec t_MAF_interval,
+                            Rcpp::List t_TwoSubj_list,
+                            Rcpp::List t_ThreeSubj_list,
+                            double t_SPA_Cutoff,
+                            double t_zeta,
+                            double t_tol)
+{
+  if(ptr_gSPAyuzhuomaobj)
+    delete ptr_gSPAyuzhuomaobj;
+  
+  ptr_gSPAyuzhuomaobj = new SPAyuzhuoma::SPAyuzhuomaClass(t_resid,
+                                                          t_resid_unrelated_outliers,
+                                                          t_sum_R_nonOutlier,
+                                                          t_R_GRM_R_nonOutlier,
+                                                          t_R_GRM_R_TwoSubjOutlier,
+                                                          t_R_GRM_R,
+                                                          t_MAF_interval,
+                                                          t_TwoSubj_list,
+                                                          t_ThreeSubj_list,
+                                                          t_SPA_Cutoff,
+                                                          t_zeta,
+                                                          t_tol);
 }
 
 // [[Rcpp::export]]
