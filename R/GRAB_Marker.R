@@ -129,6 +129,22 @@ GRAB.Marker = function(objNull,
     }
   }
   
+  
+  
+  # added by yuzhuoma
+  if(NullModelClass == "SPAyuzhuoma_NULL_Model")
+  {
+    if(length(objNull$MAF_interval) > 1)
+    {
+      if(control$min_maf_marker <= min(objNull$MAF_interval))
+        stop("min_maf_marker is out of MAF_interval, Please reset min_maf_marker or check MAF_interval.")
+    }
+  }
+  
+  
+  
+  
+  
   indexChunk = outList$indexChunk
   Start = outList$Start
   End = outList$End
@@ -235,9 +251,17 @@ setMarker = function(NullModelClass, objNull, control, chrom, Group, ifOutGroup)
   if(NullModelClass == "SPAmix_NULL_Model")
     obj.setMarker = setMarker.SPAmix(objNull, control)
   
+  # Check SPAmixPlusV4.R
+  if(NullModelClass == "SPAmixPlusV4_NULL_Model")
+    obj.setMarker = setMarker.SPAmixPlusV4(objNull, control)
+  
   # Check SPAGRM.R
   if(NullModelClass == "SPAGRM_NULL_Model")
     obj.setMarker = setMarker.SPAGRM(objNull, control)
+  
+  # Check SPAyuzhuoma.R
+  if(NullModelClass == "SPAyuzhuoma_NULL_Model")
+    obj.setMarker = setMarker.SPAyuzhuoma(objNull, control)
   
   # Check SAGELD.R
   if(NullModelClass == "SAGELD_NULL_Model")
@@ -285,9 +309,17 @@ mainMarker = function(NullModelClass, genoType, genoIndex, outputColumns, objNul
   if(NullModelClass == "SPAmix_NULL_Model")
     obj.mainMarker = mainMarker.SPAmix(genoType, genoIndex, outputColumns, objNull)
   
+  # Check 'SPAmixPlusV4.R'
+  if(NullModelClass == "SPAmixPlusV4_NULL_Model")
+    obj.mainMarker = mainMarker.SPAmixPlusV4(genoType, genoIndex, outputColumns, objNull)
+  
   # Check 'SPAGRM.R'
   if(NullModelClass == "SPAGRM_NULL_Model")
     obj.mainMarker = mainMarker.SPAGRM(genoType, genoIndex, outputColumns)
+  
+  # Check 'SPAyuzhuoma.R'
+  if(NullModelClass == "SPAyuzhuoma_NULL_Model")
+    obj.mainMarker = mainMarker.SPAyuzhuoma(genoType, genoIndex, outputColumns)
   
   # Check 'SAGELD.R'
   if(NullModelClass == "SAGELD_NULL_Model")

@@ -26,6 +26,7 @@
 #include "SPACox.hpp"
 #include "DenseGRM.hpp"
 #include "SPAmix.hpp"
+#include "SPAmixPlusV4.hpp"
 #include "SPAGRM.hpp"
 #include "SPAyuzhuoma.hpp"
 #include "SAGELD.hpp"
@@ -43,6 +44,7 @@ static DenseGRM::DenseGRMClass* ptr_gDenseGRMobj = NULL;
 static POLMM::POLMMClass* ptr_gPOLMMobj = NULL;
 static SPACox::SPACoxClass* ptr_gSPACoxobj = NULL;
 static SPAmix::SPAmixClass* ptr_gSPAmixobj = NULL;
+static SPAmixPlusV4::SPAmixPlusV4Class* ptr_gSPAmixPlusV4obj = NULL;
 static SPAGRM::SPAGRMClass* ptr_gSPAGRMobj = NULL;
 static SPAyuzhuoma::SPAyuzhuomaClass* ptr_gSPAyuzhuomaobj = NULL;
 static SAGELD::SAGELDClass* ptr_gSAGELDobj = NULL;
@@ -189,7 +191,7 @@ void updateGroupInfo(arma::vec t_GVec,
 //////// ---------- Main function for marker-level analysis --------- ////////////
 
 // [[Rcpp::export]]
-Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SAIGE", "SPAmix", "SPAGRM", "SPAyuzhuoma"
+Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SAIGE", "SPAmix", "SPAmixPlusV4", "SPAGRM", "SPAyuzhuoma"
                            std::string t_genoType,     // "PLINK", "BGEN"
                            std::vector<uint64_t> t_genoIndex)  
 {
@@ -208,6 +210,9 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   int Npheno = 1;
   if(t_method == "SPAmix")
     Npheno = ptr_gSPAmixobj->getNpheno();
+  
+  if(t_method == "SPAmixPlusV4")
+    Npheno = ptr_gSPAmixPlusV4obj->getNpheno();
   
   if(t_method == "SAGELD")
     Npheno = 2;
@@ -331,6 +336,14 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     if(t_method == "SPAmix"){
       arma::vec pvalVecTemp = ptr_gSPAmixobj->getpvalVec();
       arma::vec zScoreVecTemp = ptr_gSPAmixobj->getzScoreVec();
+      
+      for(int j = 0; j < Npheno; j++){
+        pvalVec.at(i*Npheno+j) = pvalVecTemp.at(j);
+        zScoreVec.at(i*Npheno+j) = zScoreVecTemp.at(j);
+      }
+    }else if(t_method == "SPAmixPlusV4"){
+      arma::vec pvalVecTemp = ptr_gSPAmixPlusV4obj->getpvalVec();
+      arma::vec zScoreVecTemp = ptr_gSPAmixPlusV4obj->getzScoreVec();
       
       for(int j = 0; j < Npheno; j++){
         pvalVec.at(i*Npheno+j) = pvalVecTemp.at(j);
@@ -855,6 +868,12 @@ void printTimeDiffSPAmixInCPP()
   printTimeDiff(ptr_gSPAmixobj->getTestTime2(), "SPAmix_MAF");
 }
 
+// [[Rcpp::export]]
+void printTimeDiffSPAmixPlusV4InCPP()
+{
+  printTimeDiff(ptr_gSPAmixPlusV4obj->getTestTime1(), "SPAmixPlusV4_SPA");
+  printTimeDiff(ptr_gSPAmixPlusV4obj->getTestTime2(), "SPAmixPlusV4_MAF");
+}
 
 //////// ---------- Main function for genotype extraction --------- ////////////
 
@@ -1077,7 +1096,7 @@ arma::vec Unified_getOneMarker(std::string t_genoType,   // "PLINK", "BGEN"
 }
 
 // a unified function to get marker-level p-value
-void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE", "SPAmix", and "SPAGRM", and "SPAyuzhuoma"
+void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE", "SPAmix", "SPAmixPlusV4", and "SPAGRM", and "SPAyuzhuoma"
                            arma::vec t_GVec,
                            bool t_isOnlyOutputNonZero,
                            std::vector<uint32_t> t_indexForNonZero,
@@ -1108,10 +1127,17 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
       Rcpp::stop("When using SPAmix method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
     t_pval = ptr_gSPAmixobj->getMarkerPval(t_GVec, t_altFreq);
   }
+  
+  if(t_method == "SPAmixPlusV4"){
+    if(t_isOnlyOutputNonZero == true)
+      Rcpp::stop("When using SPAmixPlusV4 method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+    t_pval = ptr_gSPAmixPlusV4obj->getMarkerPval(t_GVec, t_altFreq);
+  }
+  
 }
 
 // a unified function to get marker-level p-value
-void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE", "SPAmix", and "SPAGRM", and "SPAyuzhuoma"
+void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE", "SPAmix", "SPAmixPlusV4", and "SPAGRM", and "SPAyuzhuoma"
                            arma::vec t_GVec,
                            bool t_isOnlyOutputNonZero,
                            std::vector<uint32_t> t_indexForNonZero,
@@ -1488,6 +1514,28 @@ void setSPAmixobjInCPP(arma::mat t_resid,
                                            t_N,
                                            t_SPA_Cutoff,
                                            t_outlierList);
+}
+
+
+
+
+// [[Rcpp::export]]
+void setSPAmixPlusV4objInCPP(arma::mat t_resid,
+                             arma::mat t_PCs,
+                             int t_N,
+                             double t_SPA_Cutoff,
+                             Rcpp::List t_outlierList)
+{
+  if(ptr_gSPAmixPlusV4obj)
+    delete ptr_gSPAmixPlusV4obj;
+  
+  ptr_gSPAmixPlusV4obj = new SPAmixPlusV4::SPAmixPlusV4Class(t_resid,
+                                                             // t_XinvXX,
+                                                             // t_tX,
+                                                             t_PCs,
+                                                             t_N,
+                                                             t_SPA_Cutoff,
+                                                             t_outlierList);
 }
 
 

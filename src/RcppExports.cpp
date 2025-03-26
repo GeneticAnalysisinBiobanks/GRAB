@@ -144,6 +144,15 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// printTimeDiffSPAmixPlusV4InCPP
+void printTimeDiffSPAmixPlusV4InCPP();
+RcppExport SEXP _GRAB_printTimeDiffSPAmixPlusV4InCPP() {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    printTimeDiffSPAmixPlusV4InCPP();
+    return R_NilValue;
+END_RCPP
+}
 // getGenoInfoInCPP
 arma::mat getGenoInfoInCPP(std::string t_genoType, Rcpp::DataFrame t_markerInfo, std::string t_imputeMethod);
 RcppExport SEXP _GRAB_getGenoInfoInCPP(SEXP t_genoTypeSEXP, SEXP t_markerInfoSEXP, SEXP t_imputeMethodSEXP) {
@@ -388,6 +397,20 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// setSPAmixPlusV4objInCPP
+void setSPAmixPlusV4objInCPP(arma::mat t_resid, arma::mat t_PCs, int t_N, double t_SPA_Cutoff, Rcpp::List t_outlierList);
+RcppExport SEXP _GRAB_setSPAmixPlusV4objInCPP(SEXP t_residSEXP, SEXP t_PCsSEXP, SEXP t_NSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_outlierListSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::mat >::type t_resid(t_residSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type t_PCs(t_PCsSEXP);
+    Rcpp::traits::input_parameter< int >::type t_N(t_NSEXP);
+    Rcpp::traits::input_parameter< double >::type t_SPA_Cutoff(t_SPA_CutoffSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_outlierList(t_outlierListSEXP);
+    setSPAmixPlusV4objInCPP(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList);
+    return R_NilValue;
+END_RCPP
+}
 // setSPACoxobjInCPP
 void setSPACoxobjInCPP(arma::mat t_cumul, arma::vec t_mresid, arma::mat t_XinvXX, arma::mat t_tX, int t_N, double t_pVal_covaAdj_Cutoff, double t_SPA_Cutoff);
 RcppExport SEXP _GRAB_setSPACoxobjInCPP(SEXP t_cumulSEXP, SEXP t_mresidSEXP, SEXP t_XinvXXSEXP, SEXP t_tXSEXP, SEXP t_NSEXP, SEXP t_pVal_covaAdj_CutoffSEXP, SEXP t_SPA_CutoffSEXP) {
@@ -453,6 +476,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_mainRegionInCPP", (DL_FUNC) &_GRAB_mainRegionInCPP, 9},
     {"_GRAB_printTimeDiffInCPP", (DL_FUNC) &_GRAB_printTimeDiffInCPP, 0},
     {"_GRAB_printTimeDiffSPAmixInCPP", (DL_FUNC) &_GRAB_printTimeDiffSPAmixInCPP, 0},
+    {"_GRAB_printTimeDiffSPAmixPlusV4InCPP", (DL_FUNC) &_GRAB_printTimeDiffSPAmixPlusV4InCPP, 0},
     {"_GRAB_getGenoInfoInCPP", (DL_FUNC) &_GRAB_getGenoInfoInCPP, 3},
     {"_GRAB_getGenoInCPP", (DL_FUNC) &_GRAB_getGenoInCPP, 4},
     {"_GRAB_getGenoInCPP_fixedNumber", (DL_FUNC) &_GRAB_getGenoInCPP_fixedNumber, 7},
@@ -466,6 +490,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setSPAyuzhuomaobjInCPP", (DL_FUNC) &_GRAB_setSPAyuzhuomaobjInCPP, 12},
     {"_GRAB_setSAGELDobjInCPP", (DL_FUNC) &_GRAB_setSAGELDobjInCPP, 41},
     {"_GRAB_setSPAmixobjInCPP", (DL_FUNC) &_GRAB_setSPAmixobjInCPP, 5},
+    {"_GRAB_setSPAmixPlusV4objInCPP", (DL_FUNC) &_GRAB_setSPAmixPlusV4objInCPP, 5},
     {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},
     {"_GRAB_setWtSPAGobjInCPP", (DL_FUNC) &_GRAB_setWtSPAGobjInCPP, 4},
     {"_GRAB_updateQCInCPP", (DL_FUNC) &_GRAB_updateQCInCPP, 4},

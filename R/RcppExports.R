@@ -41,6 +41,10 @@ printTimeDiffSPAmixInCPP <- function() {
     invisible(.Call(`_GRAB_printTimeDiffSPAmixInCPP`))
 }
 
+printTimeDiffSPAmixPlusV4InCPP <- function() {
+    invisible(.Call(`_GRAB_printTimeDiffSPAmixPlusV4InCPP`))
+}
+
 getGenoInfoInCPP <- function(t_genoType, t_markerInfo, t_imputeMethod) {
     .Call(`_GRAB_getGenoInfoInCPP`, t_genoType, t_markerInfo, t_imputeMethod)
 }
@@ -81,12 +85,20 @@ setSPAGRMobjInCPP <- function(t_resid, t_resid_unrelated_outliers, t_sum_R_nonOu
     invisible(.Call(`_GRAB_setSPAGRMobjInCPP`, t_resid, t_resid_unrelated_outliers, t_sum_R_nonOutlier, t_R_GRM_R_nonOutlier, t_R_GRM_R_TwoSubjOutlier, t_R_GRM_R, t_MAF_interval, t_TwoSubj_list, t_ThreeSubj_list, t_SPA_Cutoff, t_zeta, t_tol))
 }
 
+setSPAyuzhuomaobjInCPP <- function(t_resid, t_resid_unrelated_outliers, t_sum_R_nonOutlier, t_R_GRM_R_nonOutlier, t_R_GRM_R_TwoSubjOutlier, t_R_GRM_R, t_MAF_interval, t_TwoSubj_list, t_ThreeSubj_list, t_SPA_Cutoff, t_zeta, t_tol) {
+    invisible(.Call(`_GRAB_setSPAyuzhuomaobjInCPP`, t_resid, t_resid_unrelated_outliers, t_sum_R_nonOutlier, t_R_GRM_R_nonOutlier, t_R_GRM_R_TwoSubjOutlier, t_R_GRM_R, t_MAF_interval, t_TwoSubj_list, t_ThreeSubj_list, t_SPA_Cutoff, t_zeta, t_tol))
+}
+
 setSAGELDobjInCPP <- function(t_Method, t_XTs, t_SS, t_AtS, t_Q, t_A21, t_TTs, t_Tys, t_sol, t_blups, t_sig, t_resid, t_resid_G, t_resid_GxE, t_resid_E, t_resid_unrelated_outliers, t_resid_unrelated_outliers_G, t_resid_unrelated_outliers_GxE, t_sum_R_nonOutlier, t_sum_R_nonOutlier_G, t_sum_R_nonOutlier_GxE, t_R_GRM_R, t_R_GRM_R_G, t_R_GRM_R_GxE, t_R_GRM_R_G_GxE, t_R_GRM_R_E, t_R_GRM_R_nonOutlier, t_R_GRM_R_nonOutlier_G, t_R_GRM_R_nonOutlier_GxE, t_R_GRM_R_nonOutlier_G_GxE, t_R_GRM_R_TwoSubjOutlier, t_R_GRM_R_TwoSubjOutlier_G, t_R_GRM_R_TwoSubjOutlier_GxE, t_R_GRM_R_TwoSubjOutlier_G_GxE, t_TwoSubj_list, t_ThreeSubj_list, t_MAF_interval, t_zScoreE_cutoff, t_SPA_Cutoff, t_zeta, t_tol) {
     invisible(.Call(`_GRAB_setSAGELDobjInCPP`, t_Method, t_XTs, t_SS, t_AtS, t_Q, t_A21, t_TTs, t_Tys, t_sol, t_blups, t_sig, t_resid, t_resid_G, t_resid_GxE, t_resid_E, t_resid_unrelated_outliers, t_resid_unrelated_outliers_G, t_resid_unrelated_outliers_GxE, t_sum_R_nonOutlier, t_sum_R_nonOutlier_G, t_sum_R_nonOutlier_GxE, t_R_GRM_R, t_R_GRM_R_G, t_R_GRM_R_GxE, t_R_GRM_R_G_GxE, t_R_GRM_R_E, t_R_GRM_R_nonOutlier, t_R_GRM_R_nonOutlier_G, t_R_GRM_R_nonOutlier_GxE, t_R_GRM_R_nonOutlier_G_GxE, t_R_GRM_R_TwoSubjOutlier, t_R_GRM_R_TwoSubjOutlier_G, t_R_GRM_R_TwoSubjOutlier_GxE, t_R_GRM_R_TwoSubjOutlier_G_GxE, t_TwoSubj_list, t_ThreeSubj_list, t_MAF_interval, t_zScoreE_cutoff, t_SPA_Cutoff, t_zeta, t_tol))
 }
 
 setSPAmixobjInCPP <- function(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList) {
     invisible(.Call(`_GRAB_setSPAmixobjInCPP`, t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList))
+}
+
+setSPAmixPlusV4objInCPP <- function(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList) {
+    invisible(.Call(`_GRAB_setSPAmixPlusV4objInCPP`, t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList))
 }
 
 setSPACoxobjInCPP <- function(t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_covaAdj_Cutoff, t_SPA_Cutoff) {
