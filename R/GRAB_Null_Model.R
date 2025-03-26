@@ -148,9 +148,9 @@ GRAB.NullModel = function(formula,
   
   ### The below is to support multiple response variables for SPAmix with residuals as input
   
-  # LeftInFormula = deparse(formula[[2]])
-  # LeftIncludesAdd = grepl("\\+", LeftInFormula)
-  # 
+  LeftInFormula = deparse(formula[[2]])
+  LeftIncludesAdd = grepl("\\+", LeftInFormula)
+
   # if(LeftIncludesAdd){
   #   if(method != "SPAmix" | traitType != "Residual")
   #     stop("Only 'SPAmix' method with traitType of 'Residual' supports multiple responses variables in 'formula'.")
