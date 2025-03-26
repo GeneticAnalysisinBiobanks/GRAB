@@ -7,10 +7,10 @@
 namespace SPAmixPlusV4 {
 
 SPAmixPlusV4Class::SPAmixPlusV4Class(arma::mat t_resid,
-                                     arma::mat t_PCs,
-                                     int t_N,
-                                     double t_SPA_Cutoff,
-                                     Rcpp::List t_outlierList)
+                         arma::mat t_PCs,
+                         int t_N,
+                         double t_SPA_Cutoff,
+                         Rcpp::List t_outlierList)
 // arma::uvec t_posOutlier,
 // arma::uvec t_posNonOutlier)
 {
