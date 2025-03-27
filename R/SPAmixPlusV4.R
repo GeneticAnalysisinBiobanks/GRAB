@@ -374,18 +374,20 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   )
   colnames(ResidMat)[2:(nPheno+1)] = paste0("Resid_", 1:nPheno)  # 假设 mresid 有 nPheno 列
   
+  head(ResidMat)
+  
   #### # update on 2024-09-11 ###############################################################
   
-  sparseGRM$ID1 = as.character(sparseGRM$ID1); sparseGRM$ID2 = as.character(sparseGRM$ID2)
-  
-  SubjID.In.Resid = ResidMat$SubjID
-  SubjID.In.GRM = unique(c(sparseGRM$ID1, sparseGRM$ID2))
-  
-  if(any(!SubjID.In.Resid %in% SubjID.In.GRM))
-    stop("At least one subject in residual matrix does not have GRM information.")
-  
-  # SubjID = SubjID.In.Resid
-  sparseGRM = sparseGRM %>% filter(ID1 %in% SubjID.In.Resid & ID2 %in% SubjID.In.Resid)
+  # sparseGRM$ID1 = as.character(sparseGRM$ID1); sparseGRM$ID2 = as.character(sparseGRM$ID2)
+  # 
+  # SubjID.In.Resid = ResidMat$SubjID
+  # SubjID.In.GRM = unique(c(sparseGRM$ID1, sparseGRM$ID2))
+  # 
+  # if(any(!SubjID.In.Resid %in% SubjID.In.GRM))
+  #   stop("At least one subject in residual matrix does not have GRM information.")
+  # 
+  # # SubjID = SubjID.In.Resid
+  # sparseGRM = sparseGRM %>% filter(ID1 %in% SubjID.In.Resid & ID2 %in% SubjID.In.Resid)
   
   #####
   
