@@ -361,12 +361,18 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   # ResidMat = data.table::data.table(SubjID = subjData, mresid) # update on 2025-03-27
   
   # 假设 mresid 是矩阵或数据框，且每列对应一个表型（nPheno列）
-  # 需要明确命名残差列（例如 Resid_1, Resid_2, ..., Resid_nPheno）
+  # # 需要明确命名残差列（例如 Resid_1, Resid_2, ..., Resid_nPheno）
+  # ResidMat = data.table::data.table(
+  #   SubjID = subjData,
+  #   mresid %>% as.data.table() %>% setnames(paste0("Resid_", 1:nPheno))
+  # )
+  
+  # 修正后的代码（方案1：直接命名列）
   ResidMat = data.table::data.table(
     SubjID = subjData,
-    mresid %>% as.data.table() %>% setnames(paste0("Resid_", 1:nPheno))
+    mresid
   )
-  
+  colnames(ResidMat)[2:(nPheno+1)] = paste0("Resid_", 1:nPheno)  # 假设 mresid 有 nPheno 列
   
   #### # update on 2024-09-11 ###############################################################
   
