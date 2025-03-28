@@ -301,8 +301,11 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   
   if(class(response) == "Residual")
   {
-    yVec = mresid = response
+    # yVec = mresid = response
+    yVec = mresid = as.matrix(response)    
     Cova = designMat
+    
+    cat("Class of mresid:", class(mresid), "\n") # 2025-03-28
     
     print(head(mresid))
     if(nrow(mresid) != length(subjData))
@@ -393,7 +396,8 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   # 修正后的代码（方案1：直接命名列）
   ResidMat = data.table::data.table(
     SubjID = subjData,
-    mresid
+    # mresid
+    as.data.frame(mresid)  # 转换为数据框 2025-03-28
   )
   colnames(ResidMat)[2:(nPheno+1)] = paste0("Resid_", 1:nPheno)  # 假设 mresid 有 nPheno 列
   
