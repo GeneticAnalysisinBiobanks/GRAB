@@ -248,19 +248,27 @@ mainMarker.SPAmixPlusV4 = function(genoType, genoIndex, outputColumns, objNull)
 
 # fit null model using SPAmixPlusV4 method
 fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
-                                     # sparseGRM, # update on 2025-03-27
+                                     sparseGRM = NULL, # update on 2025-03-27
+                                     sparseGRMFile = NULL, # update on 2025-03-27
+                                     
                                      ResidMat = NULL,  # update on 2025-03-27
                                      control=list(OutlierRatio=1.5), ...)
 {
   # #### # update on 2024-09-11 ###############################################################
-  # 
-  # print(head(sparseGRM))
-  # 
-  # sparseGRM$ID1 = as.character(sparseGRM$ID1); sparseGRM$ID2 = as.character(sparseGRM$ID2)
-  # 
-  # SubjID.In.GRM = unique(c(sparseGRM$ID1, sparseGRM$ID2))
-  # 
-  # print(head(SubjID.In.GRM))
+
+  cat(paste0("sparseGRMFile is :", sparseGRMFile, "\n"))  
+  
+  sparseGRM = data.table::fread(sparseGRMFile)
+  
+  cat("sparseGRM is\n")
+  
+  print(head(sparseGRM))
+
+  sparseGRM$ID1 = as.character(sparseGRM$ID1); sparseGRM$ID2 = as.character(sparseGRM$ID2)
+
+  SubjID.In.GRM = unique(c(sparseGRM$ID1, sparseGRM$ID2))
+
+  print(head(SubjID.In.GRM))
   
   
   ############# old SPAmix code #############################################################
@@ -403,18 +411,18 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   
   # print(head(SubjID.In.GRM))
   
-  # # 
-  # if(any(!SubjID.In.Resid %in% SubjID.In.GRM))
-  #   stop("At least one subject in residual matrix does not have GRM information.")
-  # # 
-  # # # SubjID = SubjID.In.Resid
-  # sparseGRM_new = sparseGRM %>% filter(ID1 %in% SubjID.In.Resid & ID2 %in% SubjID.In.Resid)
-  # 
+  #
+  if(any(!SubjID.In.Resid %in% SubjID.In.GRM))
+    stop("At least one subject in residual matrix does not have GRM information.")
+  #
+  # # SubjID = SubjID.In.Resid
+  sparseGRM_new = sparseGRM %>% filter(ID1 %in% SubjID.In.Resid & ID2 %in% SubjID.In.Resid)
+
   #####
   
   objNull = list(resid = mresid,
                  ResidMat = ResidMat,   # update on 2025-03-27
-                 # sparseGRM_new = sparseGRM_new, # update on 2025-03-27
+                 sparseGRM_new = sparseGRM_new, # update on 2025-03-27
                  subjData = subjData,
                  # ResidMat = data.table::data.table(SubjID = subjData, Resid = mresid), # update on 2025-03-27
                  # var.resid = var.resid,
