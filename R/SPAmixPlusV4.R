@@ -403,7 +403,8 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   ResidMat = data.table::data.table(
     SubjID = subjData,
     # mresid
-    as.data.frame(as.matrix(mresid))  # 关键修复点
+    # as.data.frame(as.matrix(mresid))  # 关键修复点
+    as.data.frame(unclass(mresid))  # 使用 unclass() 彻底剥离类属性
   )
   colnames(ResidMat)[2:(nPheno+1)] = paste0("Resid_", 1:nPheno)  # 假设 mresid 有 nPheno 列
   
