@@ -270,6 +270,9 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
 
   SubjID.In.GRM = unique(c(sparseGRM$ID1, sparseGRM$ID2))
 
+  
+  cat("SubjID.In.GRM is\n")
+  
   print(head(SubjID.In.GRM))
   
   
@@ -400,9 +403,12 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   ResidMat = data.table::data.table(
     SubjID = subjData,
     # mresid
-    as.data.frame(mresid)  # 转换为数据框 2025-03-28
+    as.data.frame(as.matrix(mresid))  # 关键修复点
   )
   colnames(ResidMat)[2:(nPheno+1)] = paste0("Resid_", 1:nPheno)  # 假设 mresid 有 nPheno 列
+  
+  
+  cat("ResidMat is\n")
   
   print(head(ResidMat))
   
