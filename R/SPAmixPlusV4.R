@@ -378,10 +378,18 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   
   #### # update on 2024-09-11 ###############################################################
   
+  print(sparseGRM)
+  
   sparseGRM$ID1 = as.character(sparseGRM$ID1); sparseGRM$ID2 = as.character(sparseGRM$ID2)
   # 
   SubjID.In.Resid = ResidMat$SubjID
+  
+  print(SubjID.In.Resid)
+  
   SubjID.In.GRM = unique(c(sparseGRM$ID1, sparseGRM$ID2))
+  
+  print(SubjID.In.GRM)
+  
   # 
   if(any(!SubjID.In.Resid %in% SubjID.In.GRM))
     stop("At least one subject in residual matrix does not have GRM information.")
