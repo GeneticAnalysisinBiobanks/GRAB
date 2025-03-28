@@ -132,6 +132,9 @@ GRAB.NullModel = function(formula,
                           GenoFileIndex = NULL,
                           SparseGRMFile = NULL,
                           control = NULL,
+                          
+                          sparseGRMFile = NULL, # update by Yuzhuo Ma on 2025-03-28
+                          sparseGRM = NULL,     # update by Yuzhuo Ma on 2025-03-28
                           ...)
 {
   if(missing(subjData))
