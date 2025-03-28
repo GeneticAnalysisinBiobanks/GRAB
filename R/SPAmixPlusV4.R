@@ -252,6 +252,19 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
                                      ResidMat = NULL,  # update on 2025-03-27
                                      control=list(OutlierRatio=1.5), ...)
 {
+  #### # update on 2024-09-11 ###############################################################
+
+  print(head(sparseGRM))
+
+  sparseGRM$ID1 = as.character(sparseGRM$ID1); sparseGRM$ID2 = as.character(sparseGRM$ID2)
+  
+  SubjID.In.GRM = unique(c(sparseGRM$ID1, sparseGRM$ID2))
+  
+  print(head(SubjID.In.GRM))
+  
+  
+  ############# old SPAmix code #############################################################
+  
   if(!class(response) %in% c("Surv", "Residual")) 
     stop("For SPAmixPlusV4, the response variable should be of class 'Surv' or 'Residual'.")
   
@@ -376,19 +389,19 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   
   print(head(ResidMat))
   
-  #### # update on 2024-09-11 ###############################################################
-  
-  print(head(sparseGRM))
-  
-  sparseGRM$ID1 = as.character(sparseGRM$ID1); sparseGRM$ID2 = as.character(sparseGRM$ID2)
+  # #### # update on 2024-09-11 ###############################################################
+  # 
+  # print(head(sparseGRM))
+  # 
+  # sparseGRM$ID1 = as.character(sparseGRM$ID1); sparseGRM$ID2 = as.character(sparseGRM$ID2)
   # 
   SubjID.In.Resid = ResidMat$SubjID
   
   print(head(SubjID.In.Resid))
   
-  SubjID.In.GRM = unique(c(sparseGRM$ID1, sparseGRM$ID2))
+  # SubjID.In.GRM = unique(c(sparseGRM$ID1, sparseGRM$ID2))
   
-  print(head(SubjID.In.GRM))
+  # print(head(SubjID.In.GRM))
   
   # 
   if(any(!SubjID.In.Resid %in% SubjID.In.GRM))
