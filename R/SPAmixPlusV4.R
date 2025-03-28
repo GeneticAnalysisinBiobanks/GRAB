@@ -378,22 +378,22 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   
   #### # update on 2024-09-11 ###############################################################
   
-  # sparseGRM$ID1 = as.character(sparseGRM$ID1); sparseGRM$ID2 = as.character(sparseGRM$ID2)
+  sparseGRM$ID1 = as.character(sparseGRM$ID1); sparseGRM$ID2 = as.character(sparseGRM$ID2)
   # 
-  # SubjID.In.Resid = ResidMat$SubjID
-  # SubjID.In.GRM = unique(c(sparseGRM$ID1, sparseGRM$ID2))
+  SubjID.In.Resid = ResidMat$SubjID
+  SubjID.In.GRM = unique(c(sparseGRM$ID1, sparseGRM$ID2))
   # 
-  # if(any(!SubjID.In.Resid %in% SubjID.In.GRM))
-  #   stop("At least one subject in residual matrix does not have GRM information.")
+  if(any(!SubjID.In.Resid %in% SubjID.In.GRM))
+    stop("At least one subject in residual matrix does not have GRM information.")
   # 
   # # SubjID = SubjID.In.Resid
-  # sparseGRM = sparseGRM %>% filter(ID1 %in% SubjID.In.Resid & ID2 %in% SubjID.In.Resid)
+  sparseGRM_new = sparseGRM %>% filter(ID1 %in% SubjID.In.Resid & ID2 %in% SubjID.In.Resid)
   
   #####
   
   objNull = list(resid = mresid,
                  ResidMat = ResidMat,   # update on 2025-03-27
-                 sparseGRM = sparseGRM, # update on 2025-03-27
+                 sparseGRM_new = sparseGRM_new, # update on 2025-03-27
                  subjData = subjData,
                  # ResidMat = data.table::data.table(SubjID = subjData, Resid = mresid), # update on 2025-03-27
                  # var.resid = var.resid,
