@@ -248,11 +248,13 @@ mainMarker.SPAmixPlusV4 = function(genoType, genoIndex, outputColumns, objNull)
 
 # fit null model using SPAmixPlusV4 method
 fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
-                                     sparseGRM = NULL, # update on 2025-03-27
+                                     # sparseGRM = NULL, # update on 2025-03-27
+                                     # sparseGRMFile_SPAmixPlus = NULL, # update on 2025-03-27
+                                     # ResidMat = NULL,  # update on 2025-03-27
+                                     control=list(OutlierRatio=1.5),                                
+                                     sparseGRM_SPAmixPlus = NULL, # update on 2025-03-27
                                      sparseGRMFile_SPAmixPlus = NULL, # update on 2025-03-27
-                                     
-                                     ResidMat = NULL,  # update on 2025-03-27
-                                     control=list(OutlierRatio=1.5), ...)
+                                     ...)
 {
   # #### # update on 2024-09-11 ###############################################################
 

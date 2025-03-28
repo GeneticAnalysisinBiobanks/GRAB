@@ -247,6 +247,10 @@ GRAB.NullModel = function(formula,
     # Check 'control.R'
     control = checkControl.NullModel(control, method, traitType, optionGRM)
     textToParse = paste0("objNull = fitNullModel.", method, "(response, designMat, subjData, control, optionGRM, genoType, markerInfo)")
+  }else if(method == "SPAmixPlusV4"){
+    # Check 'control.R'
+    control = checkControl.NullModel(control, method, traitType)
+    textToParse = paste0("objNull = fitNullModel.", method, "(response, designMat, subjData, control, sparseGRM_SPAmixPlus, sparseGRMFile_SPAmixPlus)")
   }else{
     # Check 'control.R'
     control = checkControl.NullModel(control, method, traitType)
