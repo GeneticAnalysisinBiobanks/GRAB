@@ -249,16 +249,16 @@ mainMarker.SPAmixPlusV4 = function(genoType, genoIndex, outputColumns, objNull)
 # fit null model using SPAmixPlusV4 method
 fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
                                      sparseGRM = NULL, # update on 2025-03-27
-                                     sparseGRMFile = NULL, # update on 2025-03-27
+                                     sparseGRMFile_SPAmixPlus = NULL, # update on 2025-03-27
                                      
                                      ResidMat = NULL,  # update on 2025-03-27
                                      control=list(OutlierRatio=1.5), ...)
 {
   # #### # update on 2024-09-11 ###############################################################
 
-  cat(paste0("sparseGRMFile is :", sparseGRMFile, "\n"))  
+  cat(paste0("sparseGRMFile is :", sparseGRMFile_SPAmixPlus, "\n"))  
   
-  sparseGRM = data.table::fread(sparseGRMFile)
+  sparseGRM = data.table::fread(sparseGRMFile_SPAmixPlus)
   
   cat("sparseGRM is\n")
   
