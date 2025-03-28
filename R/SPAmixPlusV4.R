@@ -374,21 +374,21 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   )
   colnames(ResidMat)[2:(nPheno+1)] = paste0("Resid_", 1:nPheno)  # 假设 mresid 有 nPheno 列
   
-  head(ResidMat)
+  print(head(ResidMat))
   
   #### # update on 2024-09-11 ###############################################################
   
-  print(sparseGRM)
+  print(head(sparseGRM))
   
   sparseGRM$ID1 = as.character(sparseGRM$ID1); sparseGRM$ID2 = as.character(sparseGRM$ID2)
   # 
   SubjID.In.Resid = ResidMat$SubjID
   
-  print(SubjID.In.Resid)
+  print(head(SubjID.In.Resid))
   
   SubjID.In.GRM = unique(c(sparseGRM$ID1, sparseGRM$ID2))
   
-  print(SubjID.In.GRM)
+  print(head(SubjID.In.GRM))
   
   # 
   if(any(!SubjID.In.Resid %in% SubjID.In.GRM))
