@@ -11,8 +11,9 @@
 #' @param GenoFile a character of genotype file. Currently, two types of genotype formats are supported: PLINK and BGEN. Check \code{\link{GRAB.ReadGeno}} for more details.
 #' @param GenoFileIndex additional index files corresponding to the \code{GenoFile}. If \code{NULL} (default), the same prefix as GenoFile is used. Check \code{\link{GRAB.ReadGeno}} for more details.
 #' @param SparseGRMFile a character of sparseGRM file. An example is \code{system.file("SparseGRM","SparseGRM.txt",package="GRAB")}
-#' @param SparseGRMFile_SPAmixPlus (MYZ) a character of sparseGRM file. An example is \code{system.file("SparseGRM","SparseGRM.txt",package="GRAB")} 
 #' @param control a list of parameters for controlling the model fitting process. For more details, please check \code{Details} section. 
+#' @param sparseGRM_SPAmixPlus (MYZ) a character of sparseGRM file. An example is \code{system.file("SparseGRM","SparseGRM.txt",package="GRAB")} 
+#' @param sparseGRMFile_SPAmixPlus (MYZ) a character of sparseGRM file. An example is \code{system.file("SparseGRM","SparseGRM.txt",package="GRAB")} 
 #' @param ... other arguments passed to or from other methods. 
 #' @return an R object with a class of "XXXXX_NULL_Model" in which XXXXX is the 'method' used in analysis. The following elements are required for all methods.
 #' \itemize{
@@ -134,8 +135,8 @@ GRAB.NullModel = function(formula,
                           SparseGRMFile = NULL,
                           control = NULL,
                           
+                          sparseGRM_SPAmixPlus = NULL,     # update by Yuzhuo Ma on 2025-03-28
                           sparseGRMFile_SPAmixPlus = NULL, # update by Yuzhuo Ma on 2025-03-28
-                          sparseGRM = NULL,     # update by Yuzhuo Ma on 2025-03-28
                           ...)
 {
   if(missing(subjData))
