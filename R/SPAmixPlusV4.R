@@ -537,15 +537,17 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   }
   
   # ---- 5. 创建整数ID映射表 ----
-  sparseGRM[, ID1 := as.character(ID1)]  # 已确保sparseGRM是data.table
-  sparseGRM[, ID2 := as.character(ID2)]
+  # 使用 data.table::set 显式修改列类型
+  data.table::set(sparseGRM, j = "ID1", value = as.character(sparseGRM$ID1))
+  data.table::set(sparseGRM, j = "ID2", value = as.character(sparseGRM$ID2))
+  
   subjData = as.character(subjData)
   all_ids = unique(c(subjData, sparseGRM$ID1, sparseGRM$ID2))
-  id_map = data.table(
+  id_map = data.table::data.table(
     OriginalID = all_ids,
     Index = seq_along(all_ids) - 1
   )
-  setkey(id_map, OriginalID)
+  data.table::setkey(id_map, OriginalID)
   
   # ---- 6. 转换ResidMat的SubjID为整数 ----
   ResidMat = data.table(
