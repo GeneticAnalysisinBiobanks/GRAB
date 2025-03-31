@@ -605,15 +605,14 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   # ---- 7. 转换稀疏GRM的ID为整数 ----
   cat("\n===== sparseGRM验证 =====\n")
   cat("sparseGRM列名:", names(sparseGRM), "\n")
-  cat("ID1前3个值:", head(sparseGRM$ID1, 3), "\n")
-  cat("ID2前3个值:", head(sparseGRM$ID2, 3), "\n")
+  cat("Value列是否存在:", "Value" %in% names(sparseGRM), "\n")  # 新增检查
   
   sparseGRM_new = sparseGRM[
     sparseGRM$ID1 %in% id_map$OriginalID & sparseGRM$ID2 %in% id_map$OriginalID,
     list(
       ID1 = id_map[["Index"]][match(sparseGRM$ID1, id_map[["OriginalID"]])],
       ID2 = id_map[["Index"]][match(sparseGRM$ID2, id_map[["OriginalID"]])],
-      Value = Value
+      Value = sparseGRM$Value  # 显式引用
     )
   ]
   data.table::setDT(sparseGRM_new)
