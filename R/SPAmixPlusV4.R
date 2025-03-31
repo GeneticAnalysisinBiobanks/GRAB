@@ -603,14 +603,15 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   sparseGRM_new = sparseGRM[
     ID1 %in% id_map$OriginalID & ID2 %in% id_map$OriginalID,
     list(
-      ID1 = id_map$Index[match(ID1, id_map$OriginalID)],
-      ID2 = id_map$Index[match(ID2, id_map$OriginalID)],
+      ID1 = id_map[["Index"]][match(ID1, id_map[["OriginalID"]])],
+      ID2 = id_map[["Index"]][match(ID2, id_map[["OriginalID"]])],
       Value
     )
   ]
   data.table::setDT(sparseGRM_new)
   
   # 检查转换结果
+  cat("\nsparseGRM_new列名:", names(sparseGRM_new))
   cat("\nsparseGRM_new前6行:\n")
   print(head(sparseGRM_new))
   
