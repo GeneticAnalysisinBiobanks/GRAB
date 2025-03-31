@@ -457,7 +457,7 @@ mainMarker.SPAmixPlusV4 = function(genoType, genoIndex, outputColumns, objNull)
 #   return(objNull)
 # }
 
-
+library(data.table)  # 确保:=操作符可用
 
 fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
                                      control=list(OutlierRatio=1.5),                                
@@ -468,6 +468,7 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   # ---- 1. 读取稀疏GRM文件 ----
   cat(paste0("sparseGRMFile is :", sparseGRMFile_SPAmixPlus, "\n"))  
   sparseGRM = data.table::fread(sparseGRMFile_SPAmixPlus)
+  setDT(sparseGRM)  # 新增：确保为data.table
   cat("Initial sparseGRM:\n")
   print(head(sparseGRM))
   
@@ -536,13 +537,13 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   }
   
   # ---- 5. 创建整数ID映射表 ----
-  sparseGRM[, ID1 := as.character(ID1)]
+  sparseGRM[, ID1 := as.character(ID1)]  # 已确保sparseGRM是data.table
   sparseGRM[, ID2 := as.character(ID2)]
   subjData = as.character(subjData)
   all_ids = unique(c(subjData, sparseGRM$ID1, sparseGRM$ID2))
   id_map = data.table(
     OriginalID = all_ids,
-    Index = seq_along(all_ids) - 1  # C++兼容索引
+    Index = seq_along(all_ids) - 1
   )
   setkey(id_map, OriginalID)
   
@@ -556,12 +557,12 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   ResidMat[, SubjID := NULL]
   setnames(ResidMat, "SubjID_int", "SubjID")
   
-  # ---- 7. 转换稀疏GRM的ID为整数 ----
+  # ---- 7. 转换稀疏GRM的ID为整数（修复管道操作）----
   sparseGRM_new = sparseGRM[
     ID1 %in% id_map$OriginalID & ID2 %in% id_map$OriginalID,
     .(
-      ID1 = id_map[.SD, .(Index), on = .(OriginalID = ID1)]$Index,
-      ID2 = id_map[.SD, .(Index), on = .(OriginalID = ID2)]$Index,
+      ID1 = id_map[.SD, Index, on = .(OriginalID = ID1)],
+      ID2 = id_map[.SD, Index, on = .(OriginalID = ID2)],
       Value
     )
   ]
