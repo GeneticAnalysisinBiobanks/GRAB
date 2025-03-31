@@ -608,11 +608,11 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   cat("Value列是否存在:", "Value" %in% names(sparseGRM), "\n")
   
   sparseGRM_new = sparseGRM[
-    get("ID1") %in% id_map$OriginalID & get("ID2") %in% id_map$OriginalID,
-    list(
-      ID1 = id_map[["Index"]][match(get("ID1"), id_map[["OriginalID"]])],
-      ID2 = id_map[["Index"]][match(get("ID2"), id_map[["OriginalID"]])],
-      Value = get("Value")
+    ID1 %in% id_map$OriginalID & ID2 %in% id_map$OriginalID,
+    .(
+      ID1 = id_map[["Index"]][match(ID1, id_map[["OriginalID"]])],
+      ID2 = id_map[["Index"]][match(ID2, id_map[["OriginalID"]])],
+      Value = Value
     )
   ]
   data.table::setDT(sparseGRM_new)
