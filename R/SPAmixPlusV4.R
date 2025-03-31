@@ -554,10 +554,24 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
     SubjID = subjData,
     as.data.frame(mresid)
   )
+  data.table::setDT(ResidMat)
   colnames(ResidMat)[2:(nPheno+1)] = paste0("Resid_", 1:nPheno)
-  ResidMat[, SubjID_int := id_map[ResidMat, .(Index), on = .(OriginalID = SubjID)]$Index]
+  
+  # 使用 merge 替代直接索引
+  ResidMat = merge(
+    ResidMat,
+    id_map[, .(OriginalID, Index)],
+    by.x = "SubjID",
+    by.y = "OriginalID",
+    all.x = TRUE
+  )
   ResidMat[, SubjID := NULL]
-  setnames(ResidMat, "SubjID_int", "SubjID")
+  data.table::setnames(ResidMat, "Index", "SubjID")
+  
+  # 确保无缺失值
+  if (anyNA(ResidMat$SubjID)) {
+    stop("Missing SubjID in ResidMat after conversion!")
+  }
   
   # ---- 7. 转换稀疏GRM的ID为整数（修复管道操作）----
   sparseGRM_new = sparseGRM[
