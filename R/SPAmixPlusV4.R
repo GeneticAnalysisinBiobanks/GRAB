@@ -566,6 +566,7 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
     OriginalID = all_ids,
     Index = seq_along(all_ids) - 1
   )
+  data.table::setDT(id_map)  # 强制转换
   data.table::setkey(id_map, "OriginalID")
   
   # 调试：输出id_map结构
@@ -585,10 +586,10 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   data.table::setDT(ResidMat)
   colnames(ResidMat)[2:(nPheno+1)] = paste0("Resid_", 1:nPheno)
   
-  # 使用 merge 替代直接索引
+  # 使用字符向量指定列名
   ResidMat = data.table::merge.data.table(
     ResidMat,
-    id_map[, list(OriginalID, Index)],
+    id_map[, c("OriginalID", "Index")],
     by.x = "SubjID",
     by.y = "OriginalID",
     all.x = TRUE
