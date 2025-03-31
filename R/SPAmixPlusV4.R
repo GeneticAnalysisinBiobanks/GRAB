@@ -468,7 +468,7 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   # ---- 1. 读取稀疏GRM文件 ----
   cat(paste0("sparseGRMFile is :", sparseGRMFile_SPAmixPlus, "\n"))  
   sparseGRM = data.table::fread(sparseGRMFile_SPAmixPlus)
-  setDT(sparseGRM)  # 新增：确保为data.table
+  data.table::setDT(sparseGRM)  # 新增：确保为data.table
   cat("Initial sparseGRM:\n")
   print(head(sparseGRM))
   
@@ -550,7 +550,7 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   data.table::setkey(id_map, OriginalID)
   
   # ---- 6. 转换ResidMat的SubjID为整数 ----
-  ResidMat = data.table(
+  ResidMat = data.table::data.table(
     SubjID = subjData,
     as.data.frame(mresid)
   )
@@ -558,27 +558,23 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   colnames(ResidMat)[2:(nPheno+1)] = paste0("Resid_", 1:nPheno)
   
   # 使用 merge 替代直接索引
-  ResidMat = merge(
+  ResidMat = data.table::merge.data.table(
     ResidMat,
-    id_map[, .(OriginalID, Index)],
+    id_map[, list(OriginalID, Index)],
     by.x = "SubjID",
     by.y = "OriginalID",
     all.x = TRUE
   )
   ResidMat[, SubjID := NULL]
   data.table::setnames(ResidMat, "Index", "SubjID")
+  if (anyNA(ResidMat$SubjID)) stop("Missing SubjID after conversion.")
   
-  # 确保无缺失值
-  if (anyNA(ResidMat$SubjID)) {
-    stop("Missing SubjID in ResidMat after conversion!")
-  }
-  
-  # ---- 7. 转换稀疏GRM的ID为整数（修复管道操作）----
+  # ---- 7. 转换稀疏GRM的ID为整数 ----
   sparseGRM_new = sparseGRM[
     ID1 %in% id_map$OriginalID & ID2 %in% id_map$OriginalID,
-    .(
-      ID1 = id_map[.SD, Index, on = .(OriginalID = ID1)],
-      ID2 = id_map[.SD, Index, on = .(OriginalID = ID2)],
+    list(
+      ID1 = id_map[.SD, Index, on = list(OriginalID = ID1)],  # list替代.
+      ID2 = id_map[.SD, Index, on = list(OriginalID = ID2)],
       Value
     )
   ]
@@ -594,9 +590,6 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
     sparseGRM = sparseGRM_new,
     id_map = id_map,
     subjData = subjData,
-    # var.resid = apply(mresid, 2, var, na.rm=TRUE),
-    # X.invXX = cbind(1, PCs) %*% solve(t(cbind(1, PCs)) %*% cbind(1, PCs)),
-    # tX = t(cbind(1, PCs)),
     N = nrow(Cova),
     yVec = yVec,
     PCs = PCs,
