@@ -586,7 +586,7 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   data.table::setDT(ResidMat)
   colnames(ResidMat)[2:(nPheno+1)] = paste0("Resid_", 1:nPheno)
   
-  # 使用字符向量指定列名
+  # 合并操作
   ResidMat = data.table::merge.data.table(
     ResidMat,
     id_map[, c("OriginalID", "Index")],
@@ -594,7 +594,9 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
     by.y = "OriginalID",
     all.x = TRUE
   )
-  ResidMat[, SubjID := NULL]
+  
+  # 显式删除列
+  data.table::set(ResidMat, j = "SubjID", value = NULL)
   data.table::setnames(ResidMat, "Index", "SubjID")
   if (anyNA(ResidMat$SubjID)) stop("Missing SubjID after conversion.")
   
