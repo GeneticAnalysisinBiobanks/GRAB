@@ -609,7 +609,7 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   
   sparseGRM_new = sparseGRM[
     ID1 %in% id_map$OriginalID & ID2 %in% id_map$OriginalID,
-    .(
+    list(  # 关键修改：使用 list()
       ID1 = id_map[["Index"]][match(ID1, id_map[["OriginalID"]])],
       ID2 = id_map[["Index"]][match(ID2, id_map[["OriginalID"]])],
       Value = Value
