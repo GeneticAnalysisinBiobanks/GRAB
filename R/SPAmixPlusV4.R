@@ -472,6 +472,10 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   cat("Initial sparseGRM:\n")
   print(head(sparseGRM))
   
+  
+  cat("Part1:\n")
+  
+  
   # ---- 2. 处理响应变量（保持原有逻辑）----
   if(!class(response) %in% c("Surv", "Residual")) 
     stop("For SPAmixPlusV4, the response variable should be of class 'Surv' or 'Residual'.")
@@ -495,12 +499,17 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
     nPheno = ncol(mresid)
   }
   
+  cat("Part2:\n")
+  
+  
   # ---- 3. 处理主成分（PC）列 ----
   PC_columns = control$PC_columns
   if(any(!PC_columns %in% colnames(designMat)))
     stop("PC columns specified in 'control$PC_columns' should be in 'formula'.")
   pos_col = match(PC_columns, colnames(designMat))
   PCs = Cova[,pos_col,drop=FALSE]
+  
+  cat("Part3:\n")
   
   # ---- 4. 检测异常值（完整保留原有逻辑）----
   outLierList = list()
@@ -536,18 +545,37 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
     )
   }
   
+  cat("Part4:\n")
+  
+  
   # ---- 5. 创建整数ID映射表 ----
   data.table::set(sparseGRM, j = "ID1", value = as.character(sparseGRM$ID1))
   data.table::set(sparseGRM, j = "ID2", value = as.character(sparseGRM$ID2))
+  
+  # 检查列名和类型
+  cat("\nsparseGRM列名:", names(sparseGRM))
+  cat("\nID1类型:", class(sparseGRM$ID1))  # 应输出 "character"
+  cat("\nID2类型:", class(sparseGRM$ID2))  # 应输出 "character"
+  
+  # 生成唯一ID列表
   subjData = as.character(subjData)
   all_ids = unique(c(subjData, sparseGRM$ID1, sparseGRM$ID2))
   
-  # 显式定义列名
+  # 显式定义id_map列名
   id_map = data.table::data.table(
     OriginalID = all_ids,
     Index = seq_along(all_ids) - 1
   )
   data.table::setkey(id_map, "OriginalID")
+  
+  # 调试：输出id_map结构
+  cat("\nid_map列名:", names(id_map))
+  cat("\nid_map前3行:\n")
+  print(head(id_map, 3))
+  
+  
+  cat("Part5:\n")
+  
   
   # ---- 6. 转换ResidMat的SubjID为整数 ----
   ResidMat = data.table::data.table(
@@ -569,6 +597,8 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   data.table::setnames(ResidMat, "Index", "SubjID")
   if (anyNA(ResidMat$SubjID)) stop("Missing SubjID after conversion.")
   
+  cat("Part6:\n")
+  
   # ---- 7. 转换稀疏GRM的ID为整数 ----
   sparseGRM_new = sparseGRM[
     ID1 %in% id_map$OriginalID & ID2 %in% id_map$OriginalID,
@@ -578,16 +608,21 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
       Value
     )
   ]
+  data.table::setDT(sparseGRM_new)
   
-  # 调试输出
-  cat("\n===== ID映射表结构 =====")
-  cat("\nid_map列名:", names(id_map))
-  cat("\nid_map前6行:\n")
-  print(head(id_map))
+  # 检查转换结果
+  cat("\nsparseGRM_new前6行:\n")
+  print(head(sparseGRM_new))
+  
+  cat("Part7:\n")
+  
   
   # ---- 8. 验证数据一致性 ----
   if(nrow(sparseGRM_new) == 0) stop("No valid GRM entries after ID conversion!")
   if(anyNA(ResidMat$SubjID)) stop("Missing SubjID in ResidMat!")
+  
+  
+  cat("Part8:\n")
   
   # ---- 9. 构建完整Null模型对象 ----
   objNull = list(
@@ -604,6 +639,9 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
     control = control
   )
   class(objNull) = "SPAmixPlusV4_NULL_Model"
+  
+  cat("Part9:\n")
+  
   
   # ---- 10. 调试输出 ----
   cat("\n===== Final Object Structure =====")
