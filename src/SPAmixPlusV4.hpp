@@ -6,17 +6,34 @@
 #include <RcppArmadillo.h>
 #include "UTIL.hpp"
 
+#include <armadillo>       // update by Yuzhuo Ma
+#include <unordered_map>   // update by Yuzhuo Ma
+#include <string>          // update by Yuzhuo Ma
+#include <vector>          // update by Yuzhuo Ma
+#include <cassert>         // update by Yuzhuo Ma
+
+
+
+
 namespace SPAmixPlusV4{
 
 class SPAmixPlusV4Class
 {
 private:
   
+  
+  // 修改4：更新成员变量类型
+  // ----------------------------------------------------------
+  std::vector<int> m_SubjID_to_Index;   // 整数索引向量替代哈希表
+  arma::uvec m_sparseGRM_ID1;  // 整数ID
+  arma::uvec m_sparseGRM_ID2;
+  arma::vec m_sparseGRM_Value;         // GRM值
+  arma::mat m_ResidMat_Residuals;      // 残差矩阵（不含SubjID）
+  
+  
   ////////////////////// -------------------- members ---------------------------------- //////////////////////
   
   arma::mat m_resid;  // residuals
-  // arma::mat m_resid2; // residuals^2
-  // arma::mat m_XinvXX, m_tX;
   arma::mat m_onePlusPCs;
   
   int m_N;             // sample size
@@ -43,7 +60,17 @@ public:
               arma::mat t_PCs,
               int t_N,
               double t_SPA_Cutoff,
-              Rcpp::List t_outlierList);
+              Rcpp::List t_outlierList,
+              
+              const arma::mat& t_sparseGRM,   // update by Yuzhuo Ma  // 输入应为整数ID矩阵
+              const arma::mat& t_ResidMat);   // update by Yuzhuo Ma  // 第一列为整数ID
+  
+  // 核心方法
+  // double ComputeSparseGRMVariance(const arma::vec& MAF_est); // update by Yuzhuo Ma
+  // double getMarkerPval(arma::vec t_GVec, double t_altFreq);  // update by Yuzhuo Ma
+  
+  // 其他方法声明保持不变
+  
   
   arma::vec getTestTime1(){return m_diffTime1;}
   arma::vec getTestTime2(){return m_diffTime2;}
@@ -395,6 +422,83 @@ public:
     return MAF_est;
   }
   
+  
+  
+  
+  
+  // update by Yuzhuo Ma
+  
+  // // 修改3：优化方差计算函数（整数ID直接访问）
+  // double ComputeSparseGRMVariance(const arma::vec& MAF_est) {
+  //   // 使用第一个表型的残差（假设列顺序正确）
+  //   arma::vec R = m_ResidMat_Residuals.col(0);  
+  //   arma::vec R_new = R % sqrt(2 * MAF_est % (1 - MAF_est));
+  //   
+  //   double cov_sum = 0.0;
+  //   for (uword i = 0; i < m_sparseGRM_Value.n_elem; ++i) {
+  //     int id1 = m_sparseGRM_ID1(i);
+  //     int id2 = m_sparseGRM_ID2(i);
+  //     double value = m_sparseGRM_Value(i);
+  //     
+  //     // 直接通过索引向量访问（无哈希开销）
+  //     if (id1 < m_SubjID_to_Index.size() && 
+  //         id2 < m_SubjID_to_Index.size()) {
+  //       int idx1 = m_SubjID_to_Index[id1];
+  //       int idx2 = m_SubjID_to_Index[id2];
+  //       if (idx1 != -1 && idx2 != -1) {
+  //         cov_sum += value * R_new(idx1) * R_new(idx2);
+  //       }
+  //     }
+  //   }
+  //   
+  //   arma::vec g_var_est = 2 * MAF_est % (1 - MAF_est);
+  //   return 2 * cov_sum - sum(R % R % g_var_est);
+  // }
+  // 
+  
+  
+  
+  
+  
+  
+  
+  // 计算基于稀疏GRM的方差（整数ID优化版）
+  double ComputeSparseGRMVariance(const arma::vec& MAF_est) {
+    // 1. 调整残差
+    arma::vec R = m_ResidMat_Residuals.col(0);  // 使用第一个表型的残差
+    arma::vec R_new = R % sqrt(2 * MAF_est % (1 - MAF_est));
+    
+    // 2. 计算协方差项
+    double cov_sum = 0.0;
+    for (arma::uword i = 0; i < m_sparseGRM_Value.n_elem; ++i) {
+      int id1 = m_sparseGRM_ID1(i);
+      int id2 = m_sparseGRM_ID2(i);
+      double value = m_sparseGRM_Value(i);
+      
+      // 直接通过索引向量访问（无哈希开销）
+      if (id1 < m_SubjID_to_Index.size() && 
+          id2 < m_SubjID_to_Index.size()) {
+        int idx1 = m_SubjID_to_Index[id1];
+        int idx2 = m_SubjID_to_Index[id2];
+        if (idx1 != -1 && idx2 != -1) {
+          cov_sum += value * R_new(idx1) * R_new(idx2);
+        }
+      }
+    }
+    
+    // 3. 计算最终方差
+    arma::vec g_var_est = 2 * MAF_est % (1 - MAF_est);
+    return 2 * cov_sum - sum(R % R % g_var_est);
+  }
+  
+  
+  
+  
+  
+  
+  
+  
+  
   double getMarkerPval(arma::vec t_GVec, 
                        double t_altFreq)  // later update score and variance here (2023-06-20)
   {
@@ -436,7 +540,9 @@ public:
       arma::vec resid2NonOutlier = tempOutlierList["resid2NonOutlier"];
       
       double S = sum(t_GVec.elem(posValue) % resid);
-      double VarS = sum(resid2 % GVarVec.elem(posValue));
+      // double VarS = sum(resid2 % GVarVec.elem(posValue));
+      // 调用优化后的方差计算
+      double VarS = ComputeSparseGRMVariance(AFVec); // update by Yuzhuo Ma
       
       // updated on 2023-04-23
       double S_mean = 2 * sum(resid % AFVec.elem(posValue)); // NOTE: I think S_mean is somewhat weird and should be checked later (2023-04-22)
