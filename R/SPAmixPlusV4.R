@@ -125,125 +125,125 @@ mainMarker.SPAmixPlusV4 = function(genoType, genoIndex, outputColumns, objNull)
 }
 
 
-# # fit null model using SPAmixPlusV4 method
-# fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData, control=list(OutlierRatio=1.5), ...)
-# {
-#   if(!class(response) %in% c("Surv", "Residual")) 
-#     stop("For SPAmixPlusV4, the response variable should be of class 'Surv' or 'Residual'.")
-#   
-#   if(class(response) == "Surv")
-#   {
-#     formula = response ~ designMat
-#     
-#     obj.coxph = coxph(formula, x=T, ...)
-#     
-#     ### Check input arguments
-#     # p2g = check_input(pIDs, gIDs, obj.coxph, range)
-#     
-#     y = obj.coxph$y
-#     yVec = y[,ncol(y)]
-#     
-#     mresid = obj.coxph$residuals
-#     Cova = obj.coxph$x
-#     
-#     if(length(mresid) != length(subjData))
-#       stop("Please check the consistency between 'formula' and 'subjData'.")
-#     
-#     mresid = matrix(mresid, ncol=1)
-#   }
-#   
-#   if(class(response) == "Residual")
-#   {
-#     yVec = mresid = response
-#     Cova = designMat
-#     
-#     print(head(mresid))
-#     if(nrow(mresid) != length(subjData))
-#       stop("Please check the consistency between 'formula' and 'subjData'.")
-#   }
-#   
-#   PC_columns = control$PC_columns
-#   
-#   # Remove the below if checked later
-#   cat("colnames(designMat):\n")
-#   print(colnames(designMat))
-#   cat("PC columns specified in 'control':\n")
-#   print(PC_columns)
-#   cat("dimension of 'designMat' and 'Cova':\n")
-#   print(dim(designMat))
-#   print(dim(Cova))
-#   
-#   if(any(!PC_columns %in% colnames(designMat)))
-#     stop("PC columns specified in 'control$PC_columns' should be in 'formula'.")
-#   
-#   pos_col = match(PC_columns, colnames(designMat))
-#   
-#   PCs = Cova[,pos_col,drop=F]  
-#   # X = cbind(1, PCs)
-#   # X.invXX = X %*% solve(t(X)%*%X)
-#   # tX = t(X)
-#   
-#   outLierList = list()
-#   nPheno = ncol(mresid)
-#   for(i in 1:nPheno)
-#   {
-#     mresid.temp = mresid[,i]
-#     
-#     # var.resid = var(mresid.temp, na.rm = T)
-#     ## outliers or not depending on the residuals (0.25%-1.5IQR, 0.75%+1.5IQR)
-#     q25 = quantile(mresid.temp, 0.25, na.rm = T)
-#     q75 = quantile(mresid.temp, 0.75, na.rm = T)
-#     IQR = q75 - q25
-#     r.outlier =   r.outlier = ifelse(is.null(control$OutlierRatio), 1.5, control$OutlierRatio)  # put this to the control argument later
-#     # put this to the control argument later
-#     cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
-#     posOutlier = which(mresid.temp < cutoff[1] | mresid.temp > cutoff[2])
-#     
-#     while(length(posOutlier)==0){
-#       r.outlier = r.outlier*0.8
-#       cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
-#       posOutlier = which(mresid < cutoff[1] | mresid > cutoff[2])
-#       cat("The current outlier ratio is:",r.outlier,"\n")
-#       cat("The number of outlier is:",length(posOutlier),"\n")
-#       
-#     }
-#     
-#     
-#     posValue = which(!is.na(mresid.temp))
-#     posNonOutlier = setdiff(posValue, posOutlier)
-#     
-#     cat("The outlier of residuals will be passed to SPA analysis.\n")
-#     cat("Cutoffs to define residuals:\t", signif(cutoff,2),"\n")
-#     cat("Totally, ", length(posOutlier),"/", length(posValue), " are defined as outliers.\n")
-#     
-#     if(length(posOutlier) == 0)
-#       stop("No outlier is observed. SPA is not required in this case.")
-#     
-#     # "-1" is to convert R style (index starting from 1) to C++ style (index starting from 0)
-#     outLierList[[i]] = list(posValue = posValue - 1,
-#                             posOutlier = posOutlier - 1,
-#                             posNonOutlier = posNonOutlier - 1,
-#                             resid = mresid.temp[posValue],
-#                             resid2 = mresid.temp[posValue]^2,
-#                             residOutlier = mresid.temp[posOutlier],
-#                             residNonOutlier = mresid.temp[posNonOutlier],
-#                             resid2NonOutlier = mresid.temp[posNonOutlier]^2)
-#   }
-#   
-#   objNull = list(resid = mresid,
-#                  # var.resid = var.resid,
-#                  # tX = tX,
-#                  # X.invXX = X.invXX,
-#                  N = nrow(Cova),
-#                  yVec = yVec,          # event variable: 0 or 1
-#                  PCs = PCs,
-#                  # posOutlier = posOutlier,
-#                  nPheno = nPheno,
-#                  outLierList = outLierList)
-#   
-#   class(objNull) = "SPAmixPlusV4_NULL_Model"
-#   return(objNull)
-# }
+# fit null model using SPAmixPlusV4 method
+fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData, control=list(OutlierRatio=1.5), ...)
+{
+  if(!class(response) %in% c("Surv", "Residual"))
+    stop("For SPAmixPlusV4, the response variable should be of class 'Surv' or 'Residual'.")
+
+  if(class(response) == "Surv")
+  {
+    formula = response ~ designMat
+
+    obj.coxph = coxph(formula, x=T, ...)
+
+    ### Check input arguments
+    # p2g = check_input(pIDs, gIDs, obj.coxph, range)
+
+    y = obj.coxph$y
+    yVec = y[,ncol(y)]
+
+    mresid = obj.coxph$residuals
+    Cova = obj.coxph$x
+
+    if(length(mresid) != length(subjData))
+      stop("Please check the consistency between 'formula' and 'subjData'.")
+
+    mresid = matrix(mresid, ncol=1)
+  }
+
+  if(class(response) == "Residual")
+  {
+    yVec = mresid = response
+    Cova = designMat
+
+    print(head(mresid))
+    if(nrow(mresid) != length(subjData))
+      stop("Please check the consistency between 'formula' and 'subjData'.")
+  }
+
+  PC_columns = control$PC_columns
+
+  # Remove the below if checked later
+  cat("colnames(designMat):\n")
+  print(colnames(designMat))
+  cat("PC columns specified in 'control':\n")
+  print(PC_columns)
+  cat("dimension of 'designMat' and 'Cova':\n")
+  print(dim(designMat))
+  print(dim(Cova))
+
+  if(any(!PC_columns %in% colnames(designMat)))
+    stop("PC columns specified in 'control$PC_columns' should be in 'formula'.")
+
+  pos_col = match(PC_columns, colnames(designMat))
+
+  PCs = Cova[,pos_col,drop=F]
+  # X = cbind(1, PCs)
+  # X.invXX = X %*% solve(t(X)%*%X)
+  # tX = t(X)
+
+  outLierList = list()
+  nPheno = ncol(mresid)
+  for(i in 1:nPheno)
+  {
+    mresid.temp = mresid[,i]
+
+    # var.resid = var(mresid.temp, na.rm = T)
+    ## outliers or not depending on the residuals (0.25%-1.5IQR, 0.75%+1.5IQR)
+    q25 = quantile(mresid.temp, 0.25, na.rm = T)
+    q75 = quantile(mresid.temp, 0.75, na.rm = T)
+    IQR = q75 - q25
+    r.outlier =   r.outlier = ifelse(is.null(control$OutlierRatio), 1.5, control$OutlierRatio)  # put this to the control argument later
+    # put this to the control argument later
+    cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
+    posOutlier = which(mresid.temp < cutoff[1] | mresid.temp > cutoff[2])
+
+    while(length(posOutlier)==0){
+      r.outlier = r.outlier*0.8
+      cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
+      posOutlier = which(mresid < cutoff[1] | mresid > cutoff[2])
+      cat("The current outlier ratio is:",r.outlier,"\n")
+      cat("The number of outlier is:",length(posOutlier),"\n")
+
+    }
+
+
+    posValue = which(!is.na(mresid.temp))
+    posNonOutlier = setdiff(posValue, posOutlier)
+
+    cat("The outlier of residuals will be passed to SPA analysis.\n")
+    cat("Cutoffs to define residuals:\t", signif(cutoff,2),"\n")
+    cat("Totally, ", length(posOutlier),"/", length(posValue), " are defined as outliers.\n")
+
+    if(length(posOutlier) == 0)
+      stop("No outlier is observed. SPA is not required in this case.")
+
+    # "-1" is to convert R style (index starting from 1) to C++ style (index starting from 0)
+    outLierList[[i]] = list(posValue = posValue - 1,
+                            posOutlier = posOutlier - 1,
+                            posNonOutlier = posNonOutlier - 1,
+                            resid = mresid.temp[posValue],
+                            resid2 = mresid.temp[posValue]^2,
+                            residOutlier = mresid.temp[posOutlier],
+                            residNonOutlier = mresid.temp[posNonOutlier],
+                            resid2NonOutlier = mresid.temp[posNonOutlier]^2)
+  }
+
+  objNull = list(resid = mresid,
+                 # var.resid = var.resid,
+                 # tX = tX,
+                 # X.invXX = X.invXX,
+                 N = nrow(Cova),
+                 yVec = yVec,          # event variable: 0 or 1
+                 PCs = PCs,
+                 # posOutlier = posOutlier,
+                 nPheno = nPheno,
+                 outLierList = outLierList)
+
+  class(objNull) = "SPAmixPlusV4_NULL_Model"
+  return(objNull)
+}
 
 
 #### 2025-03-28 #####################################################################################
@@ -457,217 +457,217 @@ mainMarker.SPAmixPlusV4 = function(genoType, genoIndex, outputColumns, objNull)
 #   return(objNull)
 # }
 
-library(data.table)  # 确保:=操作符可用
-
-fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
-                                     control=list(OutlierRatio=1.5),                                
-                                     sparseGRM_SPAmixPlus = NULL,
-                                     sparseGRMFile_SPAmixPlus = NULL,
-                                     ...) 
-{
-  # ---- 1. 读取稀疏GRM文件 ----
-  cat(paste0("sparseGRMFile is :", sparseGRMFile_SPAmixPlus, "\n"))  
-  sparseGRM = data.table::fread(sparseGRMFile_SPAmixPlus)
-  data.table::setDT(sparseGRM)  # 新增：确保为data.table
-  cat("Initial sparseGRM:\n")
-  print(head(sparseGRM))
-  
-  
-  cat("Part1:\n")
-  
-  
-  # ---- 2. 处理响应变量（保持原有逻辑）----
-  if(!class(response) %in% c("Surv", "Residual")) 
-    stop("For SPAmixPlusV4, the response variable should be of class 'Surv' or 'Residual'.")
-  
-  if(class(response) == "Surv") {
-    formula = response ~ designMat
-    obj.coxph = survival::coxph(formula, x=TRUE, ...)
-    y = obj.coxph$y
-    yVec = y[,ncol(y)]
-    mresid = residuals(obj.coxph)
-    Cova = obj.coxph$x
-    if(length(mresid) != length(subjData))
-      stop("Please check the consistency between 'formula' and 'subjData'.")
-    mresid = matrix(mresid, ncol=1)
-    nPheno = 1
-  } else if (class(response) == "Residual") {
-    yVec = mresid = response
-    Cova = designMat
-    if(nrow(mresid) != length(subjData))
-      stop("Please check the consistency between 'formula' and 'subjData'.")
-    nPheno = ncol(mresid)
-  }
-  
-  cat("Part2:\n")
-  
-  
-  # ---- 3. 处理主成分（PC）列 ----
-  PC_columns = control$PC_columns
-  if(any(!PC_columns %in% colnames(designMat)))
-    stop("PC columns specified in 'control$PC_columns' should be in 'formula'.")
-  pos_col = match(PC_columns, colnames(designMat))
-  PCs = Cova[,pos_col,drop=FALSE]
-  
-  cat("Part3:\n")
-  
-  # ---- 4. 检测异常值（完整保留原有逻辑）----
-  outLierList = list()
-  for(i in 1:nPheno) {
-    mresid.temp = mresid[,i]
-    q25 = quantile(mresid.temp, 0.25, na.rm = TRUE)
-    q75 = quantile(mresid.temp, 0.75, na.rm = TRUE)
-    IQR = q75 - q25
-    r.outlier = ifelse(is.null(control$OutlierRatio), 1.5, control$OutlierRatio)
-    cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
-    posOutlier = which(mresid.temp < cutoff[1] | mresid.temp > cutoff[2])
-    
-    # 动态调整异常值阈值
-    while(length(posOutlier) == 0) {
-      r.outlier = r.outlier * 0.8
-      cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
-      posOutlier = which(mresid.temp < cutoff[1] | mresid.temp > cutoff[2])
-      cat("Adjusted outlier ratio:", r.outlier, "| Outliers found:", length(posOutlier), "\n")
-    }
-    
-    posValue = which(!is.na(mresid.temp))
-    posNonOutlier = setdiff(posValue, posOutlier)
-    
-    outLierList[[i]] = list(
-      posValue = posValue - 1,  # R索引转C++索引（从0开始）
-      posOutlier = posOutlier - 1,
-      posNonOutlier = posNonOutlier - 1,
-      resid = mresid.temp[posValue],
-      resid2 = (mresid.temp[posValue])^2,
-      residOutlier = mresid.temp[posOutlier],
-      residNonOutlier = mresid.temp[posNonOutlier],
-      resid2NonOutlier = (mresid.temp[posNonOutlier])^2
-    )
-  }
-  
-  cat("Part4:\n")
-  
-  
-  # ---- 5. 创建整数ID映射表 ----
-  data.table::set(sparseGRM, j = "ID1", value = as.character(sparseGRM$ID1))
-  data.table::set(sparseGRM, j = "ID2", value = as.character(sparseGRM$ID2))
-  
-  # 检查列名和类型
-  cat("\nsparseGRM列名:", names(sparseGRM))
-  cat("\nID1类型:", class(sparseGRM$ID1))  # 应输出 "character"
-  cat("\nID2类型:", class(sparseGRM$ID2))  # 应输出 "character"
-  
-  # 生成唯一ID列表
-  subjData = as.character(subjData)
-  all_ids = unique(c(subjData, sparseGRM$ID1, sparseGRM$ID2))
-  
-  # 显式定义id_map列名
-  id_map = data.table::data.table(
-    OriginalID = all_ids,
-    Index = seq_along(all_ids) - 1
-  )
-  data.table::setDT(id_map)  # 强制转换
-  data.table::setkey(id_map, "OriginalID")
-  
-  # 调试：输出id_map结构
-  cat("\nid_map列名:", names(id_map))
-  cat("\nid_map前3行:\n")
-  print(head(id_map, 3))
-  
-  
-  cat("Part5:\n")
-  
-  
-  # ---- 6. 转换ResidMat的SubjID为整数 ----
-  ResidMat = data.table::data.table(
-    SubjID = subjData,
-    as.data.frame(mresid)
-  )
-  data.table::setDT(ResidMat)
-  colnames(ResidMat)[2:(nPheno+1)] = paste0("Resid_", 1:nPheno)
-  
-  # 合并操作
-  ResidMat = data.table::merge.data.table(
-    ResidMat,
-    id_map[, c("OriginalID", "Index")],
-    by.x = "SubjID",
-    by.y = "OriginalID",
-    all.x = TRUE
-  )
-  
-  # 显式删除列
-  data.table::set(ResidMat, j = "SubjID", value = NULL)
-  data.table::setnames(ResidMat, "Index", "SubjID")
-  if (anyNA(ResidMat$SubjID)) stop("Missing SubjID after conversion.")
-  
-  cat("Part6:\n")
-  
-  # ---- 7. 转换稀疏GRM的ID为整数 ----
-  cat("\n===== sparseGRM验证 =====\n")
-  cat("sparseGRM列名:", names(sparseGRM), "\n")
-  cat("Value列是否存在:", "Value" %in% names(sparseGRM), "\n")
-  
-  # 显式提取列并验证类型
-  id1_values <- sparseGRM$ID1
-  id2_values <- sparseGRM$ID2
-  value_values <- sparseGRM$Value
-  
-  # 筛选符合条件的行
-  filter_condition <- id1_values %in% id_map$OriginalID & id2_values %in% id_map$OriginalID
-  
-  # 转换ID为索引
-  id1_indices <- id_map$Index[match(id1_values[filter_condition], id_map$OriginalID)]
-  id2_indices <- id_map$Index[match(id2_values[filter_condition], id_map$OriginalID)]
-  
-  # 构建新数据表
-  sparseGRM_new <- data.table::data.table(
-    ID1 = id1_indices,
-    ID2 = id2_indices,
-    Value = value_values[filter_condition]
-  )
-  
-  # 检查转换结果
-  cat("\nsparseGRM_new列名:", names(sparseGRM_new))
-  cat("\nsparseGRM_new前6行:\n")
-  print(head(sparseGRM_new))
-  
-  cat("Part7:\n")
-  
-  
-  # ---- 8. 验证数据一致性 ----
-  if(nrow(sparseGRM_new) == 0) stop("No valid GRM entries after ID conversion!")
-  if(anyNA(ResidMat$SubjID)) stop("Missing SubjID in ResidMat!")
-  
-  
-  cat("Part8:\n")
-  
-  # ---- 9. 构建完整Null模型对象 ----
-  objNull = list(
-    resid = mresid,
-    ResidMat = ResidMat,
-    sparseGRM = sparseGRM_new,
-    id_map = id_map,
-    subjData = subjData,
-    N = nrow(Cova),
-    yVec = yVec,
-    PCs = PCs,
-    nPheno = nPheno,
-    outLierList = outLierList,
-    control = control
-  )
-  class(objNull) = "SPAmixPlusV4_NULL_Model"
-  
-  cat("Part9:\n")
-  
-  
-  # ---- 10. 调试输出 ----
-  cat("\n===== Final Object Structure =====")
-  cat("\nResidMat dimensions:", dim(ResidMat))
-  cat("\nsparseGRM entries:", nrow(sparseGRM_new))
-  cat("\nID mapping table size:", nrow(id_map), "\n")
-  
-  return(objNull)
-}
+# library(data.table)  # 确保:=操作符可用
+# 
+# fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
+#                                      control=list(OutlierRatio=1.5),                                
+#                                      sparseGRM_SPAmixPlus = NULL,
+#                                      sparseGRMFile_SPAmixPlus = NULL,
+#                                      ...) 
+# {
+#   # ---- 1. 读取稀疏GRM文件 ----
+#   cat(paste0("sparseGRMFile is :", sparseGRMFile_SPAmixPlus, "\n"))  
+#   sparseGRM = data.table::fread(sparseGRMFile_SPAmixPlus)
+#   data.table::setDT(sparseGRM)  # 新增：确保为data.table
+#   cat("Initial sparseGRM:\n")
+#   print(head(sparseGRM))
+#   
+#   
+#   cat("Part1:\n")
+#   
+#   
+#   # ---- 2. 处理响应变量（保持原有逻辑）----
+#   if(!class(response) %in% c("Surv", "Residual")) 
+#     stop("For SPAmixPlusV4, the response variable should be of class 'Surv' or 'Residual'.")
+#   
+#   if(class(response) == "Surv") {
+#     formula = response ~ designMat
+#     obj.coxph = survival::coxph(formula, x=TRUE, ...)
+#     y = obj.coxph$y
+#     yVec = y[,ncol(y)]
+#     mresid = residuals(obj.coxph)
+#     Cova = obj.coxph$x
+#     if(length(mresid) != length(subjData))
+#       stop("Please check the consistency between 'formula' and 'subjData'.")
+#     mresid = matrix(mresid, ncol=1)
+#     nPheno = 1
+#   } else if (class(response) == "Residual") {
+#     yVec = mresid = response
+#     Cova = designMat
+#     if(nrow(mresid) != length(subjData))
+#       stop("Please check the consistency between 'formula' and 'subjData'.")
+#     nPheno = ncol(mresid)
+#   }
+#   
+#   cat("Part2:\n")
+#   
+#   
+#   # ---- 3. 处理主成分（PC）列 ----
+#   PC_columns = control$PC_columns
+#   if(any(!PC_columns %in% colnames(designMat)))
+#     stop("PC columns specified in 'control$PC_columns' should be in 'formula'.")
+#   pos_col = match(PC_columns, colnames(designMat))
+#   PCs = Cova[,pos_col,drop=FALSE]
+#   
+#   cat("Part3:\n")
+#   
+#   # ---- 4. 检测异常值（完整保留原有逻辑）----
+#   outLierList = list()
+#   for(i in 1:nPheno) {
+#     mresid.temp = mresid[,i]
+#     q25 = quantile(mresid.temp, 0.25, na.rm = TRUE)
+#     q75 = quantile(mresid.temp, 0.75, na.rm = TRUE)
+#     IQR = q75 - q25
+#     r.outlier = ifelse(is.null(control$OutlierRatio), 1.5, control$OutlierRatio)
+#     cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
+#     posOutlier = which(mresid.temp < cutoff[1] | mresid.temp > cutoff[2])
+#     
+#     # 动态调整异常值阈值
+#     while(length(posOutlier) == 0) {
+#       r.outlier = r.outlier * 0.8
+#       cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
+#       posOutlier = which(mresid.temp < cutoff[1] | mresid.temp > cutoff[2])
+#       cat("Adjusted outlier ratio:", r.outlier, "| Outliers found:", length(posOutlier), "\n")
+#     }
+#     
+#     posValue = which(!is.na(mresid.temp))
+#     posNonOutlier = setdiff(posValue, posOutlier)
+#     
+#     outLierList[[i]] = list(
+#       posValue = posValue - 1,  # R索引转C++索引（从0开始）
+#       posOutlier = posOutlier - 1,
+#       posNonOutlier = posNonOutlier - 1,
+#       resid = mresid.temp[posValue],
+#       resid2 = (mresid.temp[posValue])^2,
+#       residOutlier = mresid.temp[posOutlier],
+#       residNonOutlier = mresid.temp[posNonOutlier],
+#       resid2NonOutlier = (mresid.temp[posNonOutlier])^2
+#     )
+#   }
+#   
+#   cat("Part4:\n")
+#   
+#   
+#   # ---- 5. 创建整数ID映射表 ----
+#   data.table::set(sparseGRM, j = "ID1", value = as.character(sparseGRM$ID1))
+#   data.table::set(sparseGRM, j = "ID2", value = as.character(sparseGRM$ID2))
+#   
+#   # 检查列名和类型
+#   cat("\nsparseGRM列名:", names(sparseGRM))
+#   cat("\nID1类型:", class(sparseGRM$ID1))  # 应输出 "character"
+#   cat("\nID2类型:", class(sparseGRM$ID2))  # 应输出 "character"
+#   
+#   # 生成唯一ID列表
+#   subjData = as.character(subjData)
+#   all_ids = unique(c(subjData, sparseGRM$ID1, sparseGRM$ID2))
+#   
+#   # 显式定义id_map列名
+#   id_map = data.table::data.table(
+#     OriginalID = all_ids,
+#     Index = seq_along(all_ids) - 1
+#   )
+#   data.table::setDT(id_map)  # 强制转换
+#   data.table::setkey(id_map, "OriginalID")
+#   
+#   # 调试：输出id_map结构
+#   cat("\nid_map列名:", names(id_map))
+#   cat("\nid_map前3行:\n")
+#   print(head(id_map, 3))
+#   
+#   
+#   cat("Part5:\n")
+#   
+#   
+#   # ---- 6. 转换ResidMat的SubjID为整数 ----
+#   ResidMat = data.table::data.table(
+#     SubjID = subjData,
+#     as.data.frame(mresid)
+#   )
+#   data.table::setDT(ResidMat)
+#   colnames(ResidMat)[2:(nPheno+1)] = paste0("Resid_", 1:nPheno)
+#   
+#   # 合并操作
+#   ResidMat = data.table::merge.data.table(
+#     ResidMat,
+#     id_map[, c("OriginalID", "Index")],
+#     by.x = "SubjID",
+#     by.y = "OriginalID",
+#     all.x = TRUE
+#   )
+#   
+#   # 显式删除列
+#   data.table::set(ResidMat, j = "SubjID", value = NULL)
+#   data.table::setnames(ResidMat, "Index", "SubjID")
+#   if (anyNA(ResidMat$SubjID)) stop("Missing SubjID after conversion.")
+#   
+#   cat("Part6:\n")
+#   
+#   # ---- 7. 转换稀疏GRM的ID为整数 ----
+#   cat("\n===== sparseGRM验证 =====\n")
+#   cat("sparseGRM列名:", names(sparseGRM), "\n")
+#   cat("Value列是否存在:", "Value" %in% names(sparseGRM), "\n")
+#   
+#   # 显式提取列并验证类型
+#   id1_values <- sparseGRM$ID1
+#   id2_values <- sparseGRM$ID2
+#   value_values <- sparseGRM$Value
+#   
+#   # 筛选符合条件的行
+#   filter_condition <- id1_values %in% id_map$OriginalID & id2_values %in% id_map$OriginalID
+#   
+#   # 转换ID为索引
+#   id1_indices <- id_map$Index[match(id1_values[filter_condition], id_map$OriginalID)]
+#   id2_indices <- id_map$Index[match(id2_values[filter_condition], id_map$OriginalID)]
+#   
+#   # 构建新数据表
+#   sparseGRM_new <- data.table::data.table(
+#     ID1 = id1_indices,
+#     ID2 = id2_indices,
+#     Value = value_values[filter_condition]
+#   )
+#   
+#   # 检查转换结果
+#   cat("\nsparseGRM_new列名:", names(sparseGRM_new))
+#   cat("\nsparseGRM_new前6行:\n")
+#   print(head(sparseGRM_new))
+#   
+#   cat("Part7:\n")
+#   
+#   
+#   # ---- 8. 验证数据一致性 ----
+#   if(nrow(sparseGRM_new) == 0) stop("No valid GRM entries after ID conversion!")
+#   if(anyNA(ResidMat$SubjID)) stop("Missing SubjID in ResidMat!")
+#   
+#   
+#   cat("Part8:\n")
+#   
+#   # ---- 9. 构建完整Null模型对象 ----
+#   objNull = list(
+#     resid = mresid,
+#     ResidMat = ResidMat,
+#     sparseGRM = sparseGRM_new,
+#     id_map = id_map,
+#     subjData = subjData,
+#     N = nrow(Cova),
+#     yVec = yVec,
+#     PCs = PCs,
+#     nPheno = nPheno,
+#     outLierList = outLierList,
+#     control = control
+#   )
+#   class(objNull) = "SPAmixPlusV4_NULL_Model"
+#   
+#   cat("Part9:\n")
+#   
+#   
+#   # ---- 10. 调试输出 ----
+#   cat("\n===== Final Object Structure =====")
+#   cat("\nResidMat dimensions:", dim(ResidMat))
+#   cat("\nsparseGRM entries:", nrow(sparseGRM_new))
+#   cat("\nID mapping table size:", nrow(id_map), "\n")
+#   
+#   return(objNull)
+# }
 
 
 
