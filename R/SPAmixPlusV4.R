@@ -607,19 +607,24 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   cat("sparseGRM列名:", names(sparseGRM), "\n")
   cat("Value列是否存在:", "Value" %in% names(sparseGRM), "\n")
   
-  # 显式通过列名引用
-  sparseGRM_new = sparseGRM[
-    # 筛选条件
-    sparseGRM[, "ID1", with = FALSE][[1]] %in% id_map$OriginalID &
-      sparseGRM[, "ID2", with = FALSE][[1]] %in% id_map$OriginalID,
-    # 列操作
-    list(
-      ID1 = id_map[["Index"]][match(sparseGRM[, "ID1", with = FALSE][[1]], id_map[["OriginalID"]])],
-      ID2 = id_map[["Index"]][match(sparseGRM[, "ID2", with = FALSE][[1]], id_map[["OriginalID"]])],
-      Value = sparseGRM[, "Value", with = FALSE][[1]]
-    )
-  ]
-  data.table::setDT(sparseGRM_new)
+  # 显式提取列并验证类型
+  id1_values <- sparseGRM$ID1
+  id2_values <- sparseGRM$ID2
+  value_values <- sparseGRM$Value
+  
+  # 筛选符合条件的行
+  filter_condition <- id1_values %in% id_map$OriginalID & id2_values %in% id_map$OriginalID
+  
+  # 转换ID为索引
+  id1_indices <- id_map$Index[match(id1_values[filter_condition], id_map$OriginalID)]
+  id2_indices <- id_map$Index[match(id2_values[filter_condition], id_map$OriginalID)]
+  
+  # 构建新数据表
+  sparseGRM_new <- data.table::data.table(
+    ID1 = id1_indices,
+    ID2 = id2_indices,
+    Value = value_values[filter_condition]
+  )
   
   # 检查转换结果
   cat("\nsparseGRM_new列名:", names(sparseGRM_new))
