@@ -125,45 +125,205 @@ mainMarker.SPAmixPlusV4 = function(genoType, genoIndex, outputColumns, objNull)
 }
 
 
-# fit null model using SPAmixPlusV4 method
-fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData, control=list(OutlierRatio=1.5), ...)
-{
-  if(!class(response) %in% c("Surv", "Residual"))
-    stop("For SPAmixPlusV4, the response variable should be of class 'Surv' or 'Residual'.")
+# # fit null model using SPAmixPlusV4 method
+# fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData, control=list(OutlierRatio=1.5), ...)
+# {
+#   if(!class(response) %in% c("Surv", "Residual"))
+#     stop("For SPAmixPlusV4, the response variable should be of class 'Surv' or 'Residual'.")
+# 
+#   if(class(response) == "Surv")
+#   {
+#     formula = response ~ designMat
+# 
+#     obj.coxph = coxph(formula, x=T, ...)
+# 
+#     ### Check input arguments
+#     # p2g = check_input(pIDs, gIDs, obj.coxph, range)
+# 
+#     y = obj.coxph$y
+#     yVec = y[,ncol(y)]
+# 
+#     mresid = obj.coxph$residuals
+#     Cova = obj.coxph$x
+# 
+#     if(length(mresid) != length(subjData))
+#       stop("Please check the consistency between 'formula' and 'subjData'.")
+# 
+#     mresid = matrix(mresid, ncol=1)
+#   }
+# 
+#   if(class(response) == "Residual")
+#   {
+#     yVec = mresid = response
+#     Cova = designMat
+# 
+#     print(head(mresid))
+#     if(nrow(mresid) != length(subjData))
+#       stop("Please check the consistency between 'formula' and 'subjData'.")
+#   }
+# 
+#   PC_columns = control$PC_columns
+# 
+#   # Remove the below if checked later
+#   cat("colnames(designMat):\n")
+#   print(colnames(designMat))
+#   cat("PC columns specified in 'control':\n")
+#   print(PC_columns)
+#   cat("dimension of 'designMat' and 'Cova':\n")
+#   print(dim(designMat))
+#   print(dim(Cova))
+# 
+#   if(any(!PC_columns %in% colnames(designMat)))
+#     stop("PC columns specified in 'control$PC_columns' should be in 'formula'.")
+# 
+#   pos_col = match(PC_columns, colnames(designMat))
+# 
+#   PCs = Cova[,pos_col,drop=F]
+#   # X = cbind(1, PCs)
+#   # X.invXX = X %*% solve(t(X)%*%X)
+#   # tX = t(X)
+# 
+#   outLierList = list()
+#   nPheno = ncol(mresid)
+#   for(i in 1:nPheno)
+#   {
+#     mresid.temp = mresid[,i]
+# 
+#     # var.resid = var(mresid.temp, na.rm = T)
+#     ## outliers or not depending on the residuals (0.25%-1.5IQR, 0.75%+1.5IQR)
+#     q25 = quantile(mresid.temp, 0.25, na.rm = T)
+#     q75 = quantile(mresid.temp, 0.75, na.rm = T)
+#     IQR = q75 - q25
+#     r.outlier =   r.outlier = ifelse(is.null(control$OutlierRatio), 1.5, control$OutlierRatio)  # put this to the control argument later
+#     # put this to the control argument later
+#     cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
+#     posOutlier = which(mresid.temp < cutoff[1] | mresid.temp > cutoff[2])
+# 
+#     while(length(posOutlier)==0){
+#       r.outlier = r.outlier*0.8
+#       cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
+#       posOutlier = which(mresid < cutoff[1] | mresid > cutoff[2])
+#       cat("The current outlier ratio is:",r.outlier,"\n")
+#       cat("The number of outlier is:",length(posOutlier),"\n")
+# 
+#     }
+# 
+# 
+#     posValue = which(!is.na(mresid.temp))
+#     posNonOutlier = setdiff(posValue, posOutlier)
+# 
+#     cat("The outlier of residuals will be passed to SPA analysis.\n")
+#     cat("Cutoffs to define residuals:\t", signif(cutoff,2),"\n")
+#     cat("Totally, ", length(posOutlier),"/", length(posValue), " are defined as outliers.\n")
+# 
+#     if(length(posOutlier) == 0)
+#       stop("No outlier is observed. SPA is not required in this case.")
+# 
+#     # "-1" is to convert R style (index starting from 1) to C++ style (index starting from 0)
+#     outLierList[[i]] = list(posValue = posValue - 1,
+#                             posOutlier = posOutlier - 1,
+#                             posNonOutlier = posNonOutlier - 1,
+#                             resid = mresid.temp[posValue],
+#                             resid2 = mresid.temp[posValue]^2,
+#                             residOutlier = mresid.temp[posOutlier],
+#                             residNonOutlier = mresid.temp[posNonOutlier],
+#                             resid2NonOutlier = mresid.temp[posNonOutlier]^2)
+#   }
+# 
+#   objNull = list(resid = mresid,
+#                  # var.resid = var.resid,
+#                  # tX = tX,
+#                  # X.invXX = X.invXX,
+#                  N = nrow(Cova),
+#                  yVec = yVec,          # event variable: 0 or 1
+#                  PCs = PCs,
+#                  # posOutlier = posOutlier,
+#                  nPheno = nPheno,
+#                  outLierList = outLierList)
+# 
+#   class(objNull) = "SPAmixPlusV4_NULL_Model"
+#   return(objNull)
+# }
 
+
+
+
+
+
+# fit null model using SPAmixPlusV4 method
+fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
+                                     # sparseGRM = NULL, # update on 2025-03-27
+                                     # sparseGRMFile_SPAmixPlus = NULL, # update on 2025-03-27
+                                     # ResidMat = NULL,  # update on 2025-03-27
+                                     control=list(OutlierRatio=1.5),                                
+                                     sparseGRM_SPAmixPlus = NULL, # update on 2025-03-27
+                                     sparseGRMFile_SPAmixPlus = NULL, # update on 2025-03-27
+                                     ...)
+{
+  # #### # update on 2024-09-11 ###############################################################
+  
+  cat(paste0("sparseGRMFile is :", sparseGRMFile_SPAmixPlus, "\n"))  
+  
+  sparseGRM = data.table::fread(sparseGRMFile_SPAmixPlus)
+  
+  cat("sparseGRM is\n")
+  
+  print(head(sparseGRM))
+  
+  sparseGRM$ID1 = as.character(sparseGRM$ID1); sparseGRM$ID2 = as.character(sparseGRM$ID2)
+  
+  SubjID.In.GRM = unique(c(sparseGRM$ID1, sparseGRM$ID2))
+  
+  
+  cat("SubjID.In.GRM is\n")
+  
+  print(head(SubjID.In.GRM))
+  
+  
+  ############# old SPAmix code #############################################################
+  
+  if(!class(response) %in% c("Surv", "Residual")) 
+    stop("For SPAmixPlusV4, the response variable should be of class 'Surv' or 'Residual'.")
+  
   if(class(response) == "Surv")
   {
     formula = response ~ designMat
-
+    
     obj.coxph = coxph(formula, x=T, ...)
-
+    
     ### Check input arguments
     # p2g = check_input(pIDs, gIDs, obj.coxph, range)
-
+    
     y = obj.coxph$y
     yVec = y[,ncol(y)]
-
+    
     mresid = obj.coxph$residuals
     Cova = obj.coxph$x
-
+    
     if(length(mresid) != length(subjData))
       stop("Please check the consistency between 'formula' and 'subjData'.")
-
+    
     mresid = matrix(mresid, ncol=1)
   }
-
+  
   if(class(response) == "Residual")
   {
     yVec = mresid = response
+    # yVec = mresid = as.matrix(response)    
     Cova = designMat
-
+    
+    # 调试输出 mresid 的类和维度
+    cat("Class of mresid:", class(mresid), "\n")
+    cat("Dimension of mresid:", dim(mresid), "\n")
+    
+    
     print(head(mresid))
     if(nrow(mresid) != length(subjData))
       stop("Please check the consistency between 'formula' and 'subjData'.")
   }
-
+  
   PC_columns = control$PC_columns
-
+  
   # Remove the below if checked later
   cat("colnames(designMat):\n")
   print(colnames(designMat))
@@ -172,23 +332,23 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData, control=list
   cat("dimension of 'designMat' and 'Cova':\n")
   print(dim(designMat))
   print(dim(Cova))
-
+  
   if(any(!PC_columns %in% colnames(designMat)))
     stop("PC columns specified in 'control$PC_columns' should be in 'formula'.")
-
+  
   pos_col = match(PC_columns, colnames(designMat))
-
-  PCs = Cova[,pos_col,drop=F]
+  
+  PCs = Cova[,pos_col,drop=F]  
   # X = cbind(1, PCs)
   # X.invXX = X %*% solve(t(X)%*%X)
   # tX = t(X)
-
+  
   outLierList = list()
   nPheno = ncol(mresid)
   for(i in 1:nPheno)
   {
     mresid.temp = mresid[,i]
-
+    
     # var.resid = var(mresid.temp, na.rm = T)
     ## outliers or not depending on the residuals (0.25%-1.5IQR, 0.75%+1.5IQR)
     q25 = quantile(mresid.temp, 0.25, na.rm = T)
@@ -198,27 +358,27 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData, control=list
     # put this to the control argument later
     cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
     posOutlier = which(mresid.temp < cutoff[1] | mresid.temp > cutoff[2])
-
+    
     while(length(posOutlier)==0){
       r.outlier = r.outlier*0.8
       cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
       posOutlier = which(mresid < cutoff[1] | mresid > cutoff[2])
       cat("The current outlier ratio is:",r.outlier,"\n")
       cat("The number of outlier is:",length(posOutlier),"\n")
-
+      
     }
-
-
+    
+    
     posValue = which(!is.na(mresid.temp))
     posNonOutlier = setdiff(posValue, posOutlier)
-
+    
     cat("The outlier of residuals will be passed to SPA analysis.\n")
     cat("Cutoffs to define residuals:\t", signif(cutoff,2),"\n")
     cat("Totally, ", length(posOutlier),"/", length(posValue), " are defined as outliers.\n")
-
+    
     if(length(posOutlier) == 0)
       stop("No outlier is observed. SPA is not required in this case.")
-
+    
     # "-1" is to convert R style (index starting from 1) to C++ style (index starting from 0)
     outLierList[[i]] = list(posValue = posValue - 1,
                             posOutlier = posOutlier - 1,
@@ -229,8 +389,62 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData, control=list
                             residNonOutlier = mresid.temp[posNonOutlier],
                             resid2NonOutlier = mresid.temp[posNonOutlier]^2)
   }
-
+  
+  
+  
+  
+  # ResidMat = data.table::data.table(SubjID = subjData, Resid = mresid) # update on 2025-03-27
+  # ResidMat = data.table::data.table(SubjID = subjData, mresid) # update on 2025-03-27
+  
+  # 假设 mresid 是矩阵或数据框，且每列对应一个表型（nPheno列）
+  # # 需要明确命名残差列（例如 Resid_1, Resid_2, ..., Resid_nPheno）
+  # ResidMat = data.table::data.table(
+  #   SubjID = subjData,
+  #   mresid %>% as.data.table() %>% setnames(paste0("Resid_", 1:nPheno))
+  # )
+  
+  # 修正后的代码（方案1：直接命名列）
+  ResidMat = data.table::data.table(
+    SubjID = subjData,
+    # mresid
+    # as.data.frame(as.matrix(mresid))  # 关键修复点
+    as.data.frame(unclass(mresid))  # 使用 unclass() 彻底剥离类属性
+  )
+  colnames(ResidMat)[2:(nPheno+1)] = paste0("Resid_", 1:nPheno)  # 假设 mresid 有 nPheno 列
+  
+  
+  cat("ResidMat is\n")
+  
+  print(head(ResidMat))
+  
+  # #### # update on 2024-09-11 ###############################################################
+  # 
+  # print(head(sparseGRM))
+  # 
+  # sparseGRM$ID1 = as.character(sparseGRM$ID1); sparseGRM$ID2 = as.character(sparseGRM$ID2)
+  # 
+  SubjID.In.Resid = ResidMat$SubjID
+  
+  print(head(SubjID.In.Resid))
+  
+  # SubjID.In.GRM = unique(c(sparseGRM$ID1, sparseGRM$ID2))
+  
+  # print(head(SubjID.In.GRM))
+  
+  #
+  if(any(!SubjID.In.Resid %in% SubjID.In.GRM))
+    stop("At least one subject in residual matrix does not have GRM information.")
+  #
+  # # SubjID = SubjID.In.Resid
+  sparseGRM_new = sparseGRM %>% filter(ID1 %in% SubjID.In.Resid & ID2 %in% SubjID.In.Resid)
+  
+  #####
+  
   objNull = list(resid = mresid,
+                 ResidMat = ResidMat,   # update on 2025-03-27
+                 sparseGRM_new = sparseGRM_new, # update on 2025-03-27
+                 subjData = subjData,
+                 # ResidMat = data.table::data.table(SubjID = subjData, Resid = mresid), # update on 2025-03-27
                  # var.resid = var.resid,
                  # tX = tX,
                  # X.invXX = X.invXX,
@@ -240,10 +454,16 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData, control=list
                  # posOutlier = posOutlier,
                  nPheno = nPheno,
                  outLierList = outLierList)
-
+  
   class(objNull) = "SPAmixPlusV4_NULL_Model"
   return(objNull)
 }
+
+
+
+
+
+
 
 
 #### 2025-03-28 #####################################################################################
