@@ -904,9 +904,6 @@ mainMarker.SPAmixPlusV4 = function(genoType, genoIndex, outputColumns, objNull)
 
 
 #### 20250407 map ID new ID and old ID ------------------------------------------------------------------
-
-library(data.table)
-
 library(data.table)
 
 fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
@@ -924,7 +921,7 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   
   cat("Part1:\n")
   
-  # ---- 2. 处理响应变量（修复多表型支持）----
+  # ---- 2. 处理响应变量 ----
   if(!inherits(response, c("Surv", "matrix", "data.frame")))
     stop("For SPAmixPlusV4, the response variable should be of class 'Surv' or residual matrix.")
   
@@ -938,14 +935,12 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
     mresid = matrix(mresid, ncol=1)
     nPheno = 1
   } else {
-    # 处理多表型残差
     mresid = as.matrix(response)
     yVec = mresid
     Cova = designMat
     nPheno = ncol(mresid)
   }
   
-  # 统一维度检查
   if(nrow(mresid) != length(subjData))
     stop(paste("Dimension mismatch: mresid has", nrow(mresid), 
                "rows but subjData has", length(subjData), "elements"))
@@ -972,7 +967,6 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
     cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
     posOutlier = which(mresid.temp < cutoff[1] | mresid.temp > cutoff[2])
     
-    # 动态调整异常值阈值
     while(length(posOutlier) == 0) {
       r.outlier = r.outlier * 0.8
       cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
@@ -1013,19 +1007,27 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   
   cat("Part5:\n")
   
-  # ---- 6. 构建ResidMat（优化列顺序）----
-  # 创建基础结构
-  ResidMat = data.table::data.table(
+  # ---- 6. 构建ResidMat（关键修复）----
+  # 使用set函数避免:=作用域问题
+  ResidMat <- data.table::data.table(
     SubjID = subjData,
     SubjID_Index = id_map$Index[match(subjData, id_map$OriginalID)]
   )
   
-  # 添加残差列（保持原始顺序）
-  for(i in 1:nPheno) {
-    ResidMat[, paste0("Resid_", i) := mresid[,i]]
+  # 预分配列名
+  resid_cols <- paste0("Resid_", 1:nPheno)
+  for(col in resid_cols) {
+    data.table::set(ResidMat, j = col, value = NA_real_)
   }
   
-  # 验证顺序一致性
+  # 填充数据
+  for(i in 1:nPheno) {
+    data.table::set(ResidMat, 
+                    j = resid_cols[i], 
+                    value = mresid[,i])
+  }
+  
+  # 验证
   if(!identical(ResidMat$SubjID, subjData)) 
     stop("ResidMat ID order corrupted!")
   if(anyNA(ResidMat$SubjID_Index)) 
@@ -1083,8 +1085,7 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
 
 
 
-
-
+#########################################################################################################
 
 # check the control list in null model fitting for SPACox method
 checkControl.NullModel.SPAmixPlusV4 = function(control, traitType, ...)
