@@ -1010,24 +1010,44 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   
   cat("Part5:\n")
   
-  # ---- 6. 处理ResidMat，保留原始ID并添加索引列 ----
+  # # ---- 6. 处理ResidMat，保留原始ID并添加索引列 ----
+  # ResidMat = data.table::data.table(
+  #   SubjID = subjData,
+  #   as.data.frame(mresid)
+  # )
+  # data.table::setDT(ResidMat)
+  # colnames(ResidMat)[2:(nPheno+1)] = paste0("Resid_", 1:nPheno)
+  # 
+  # # 合并索引信息
+  # ResidMat = data.table::merge.data.table(
+  #   ResidMat,
+  #   id_map[, c("OriginalID", "Index")],
+  #   by.x = "SubjID",
+  #   by.y = "OriginalID",
+  #   all.x = TRUE
+  # )
+  # data.table::setnames(ResidMat, "Index", "SubjID_Index")
+  # if (anyNA(ResidMat$SubjID_Index)) stop("Missing SubjID_Index after conversion.")
+  
+  
+  
+  # ---- 6. 处理ResidMat，保持subjData原始顺序 ----
+  # 创建基础ResidMat（保持subjData顺序）
   ResidMat = data.table::data.table(
-    SubjID = subjData,
+    SubjID = subjData,  # 直接使用原始顺序
     as.data.frame(mresid)
   )
   data.table::setDT(ResidMat)
   colnames(ResidMat)[2:(nPheno+1)] = paste0("Resid_", 1:nPheno)
   
-  # 合并索引信息
-  ResidMat = data.table::merge.data.table(
-    ResidMat,
-    id_map[, c("OriginalID", "Index")],
-    by.x = "SubjID",
-    by.y = "OriginalID",
-    all.x = TRUE
-  )
-  data.table::setnames(ResidMat, "Index", "SubjID_Index")
-  if (anyNA(ResidMat$SubjID_Index)) stop("Missing SubjID_Index after conversion.")
+  # 通过直接匹配添加索引（避免merge改变顺序）
+  ResidMat[, SubjID_Index := id_map$Index[match(SubjID, id_map$OriginalID)]]
+  
+  # 验证顺序一致性
+  if(!identical(ResidMat$SubjID, subjData)) 
+    stop("ResidMat ID order corrupted!")
+  if(anyNA(ResidMat$SubjID_Index)) 
+    stop("Missing SubjID_Index in ResidMat")
   
   cat("Part6:\n")
   
