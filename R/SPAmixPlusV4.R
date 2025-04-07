@@ -907,6 +907,8 @@ mainMarker.SPAmixPlusV4 = function(genoType, genoIndex, outputColumns, objNull)
 
 library(data.table)
 
+library(data.table)
+
 fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
                                      control=list(OutlierRatio=1.5),
                                      sparseGRM_SPAmixPlus = NULL,
@@ -922,9 +924,9 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   
   cat("Part1:\n")
   
-  # ---- 2. 处理响应变量（关键修复点）----
-  if(!inherits(response, c("Surv", "Residual")))
-    stop("For SPAmixPlusV4, the response variable should be of class 'Surv' or 'Residual'.")
+  # ---- 2. 处理响应变量（修复多表型支持）----
+  if(!inherits(response, c("Surv", "matrix", "data.frame")))
+    stop("For SPAmixPlusV4, the response variable should be of class 'Surv' or residual matrix.")
   
   if(inherits(response, "Surv")) {
     formula = response ~ designMat
@@ -933,20 +935,20 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
     yVec = y[,ncol(y)]
     mresid = residuals(obj.coxph)
     Cova = obj.coxph$x
-    if(length(mresid) != length(subjData))
-      stop("Please check the consistency between 'formula' and 'subjData'.")
     mresid = matrix(mresid, ncol=1)
     nPheno = 1
-  } else if (inherits(response, "Residual")) {
-    # 关键修复：确保残差转换为数值矩阵
-    mresid = matrix(as.numeric(response), ncol = 1)  # 强制转换为数值矩阵
-    colnames(mresid) = "Residual"
+  } else {
+    # 处理多表型残差
+    mresid = as.matrix(response)
     yVec = mresid
     Cova = designMat
-    if(nrow(mresid) != length(subjData))
-      stop("Please check the consistency between 'formula' and 'subjData'.")
     nPheno = ncol(mresid)
   }
+  
+  # 统一维度检查
+  if(nrow(mresid) != length(subjData))
+    stop(paste("Dimension mismatch: mresid has", nrow(mresid), 
+               "rows but subjData has", length(subjData), "elements"))
   
   cat("Part2:\n")
   
@@ -1011,22 +1013,19 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   
   cat("Part5:\n")
   
-  # ---- 6. 处理ResidMat（关键修复点）----
-  # 直接构建data.table，避免as.data.frame转换
+  # ---- 6. 构建ResidMat（优化列顺序）----
+  # 创建基础结构
   ResidMat = data.table::data.table(
     SubjID = subjData,
-    Residual = mresid[,1]  # 直接使用矩阵列
+    SubjID_Index = id_map$Index[match(subjData, id_map$OriginalID)]
   )
-  if(nPheno > 1) {
-    for(i in 2:nPheno) {
-      ResidMat[, paste0("Resid_", i) := mresid[,i]]
-    }
+  
+  # 添加残差列（保持原始顺序）
+  for(i in 1:nPheno) {
+    ResidMat[, paste0("Resid_", i) := mresid[,i]]
   }
   
-  data.table::set(ResidMat, 
-                  j = "SubjID_Index", 
-                  value = id_map$Index[match(ResidMat$SubjID, id_map$OriginalID)])
-  
+  # 验证顺序一致性
   if(!identical(ResidMat$SubjID, subjData)) 
     stop("ResidMat ID order corrupted!")
   if(anyNA(ResidMat$SubjID_Index)) 
@@ -1081,8 +1080,6 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   
   return(objNull)
 }
-
-
 
 
 
