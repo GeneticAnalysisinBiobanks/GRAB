@@ -905,8 +905,6 @@ mainMarker.SPAmixPlusV4 = function(genoType, genoIndex, outputColumns, objNull)
 
 #### 20250407 map ID new ID and old ID ------------------------------------------------------------------
 
-
-
 library(data.table)
 
 fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
@@ -924,7 +922,7 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   
   cat("Part1:\n")
   
-  # ---- 2. 处理响应变量 ----
+  # ---- 2. 处理响应变量（关键修复点）----
   if(!inherits(response, c("Surv", "Residual")))
     stop("For SPAmixPlusV4, the response variable should be of class 'Surv' or 'Residual'.")
   
@@ -940,8 +938,9 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
     mresid = matrix(mresid, ncol=1)
     nPheno = 1
   } else if (inherits(response, "Residual")) {
-    # 关键修复：确保残差转换为矩阵
-    mresid = as.matrix(response)
+    # 关键修复：确保残差转换为数值矩阵
+    mresid = matrix(as.numeric(response), ncol = 1)  # 强制转换为数值矩阵
+    colnames(mresid) = "Residual"
     yVec = mresid
     Cova = designMat
     if(nrow(mresid) != length(subjData))
@@ -1012,12 +1011,17 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   
   cat("Part5:\n")
   
-  # ---- 6. 处理ResidMat ----
+  # ---- 6. 处理ResidMat（关键修复点）----
+  # 直接构建data.table，避免as.data.frame转换
   ResidMat = data.table::data.table(
     SubjID = subjData,
-    as.data.frame(mresid)  # 此时mresid已确保是矩阵
+    Residual = mresid[,1]  # 直接使用矩阵列
   )
-  colnames(ResidMat)[2:(nPheno+1)] = paste0("Resid_", 1:nPheno)
+  if(nPheno > 1) {
+    for(i in 2:nPheno) {
+      ResidMat[, paste0("Resid_", i) := mresid[,i]]
+    }
+  }
   
   data.table::set(ResidMat, 
                   j = "SubjID_Index", 
@@ -1077,9 +1081,6 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   
   return(objNull)
 }
-
-
-
 
 
 
