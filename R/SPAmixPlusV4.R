@@ -905,6 +905,12 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
 
 #### 20250407 map ID new ID and old ID ------------------------------------------------------------------
 
+
+
+
+
+
+
 library(data.table)  # 确保:=操作符可用
 
 fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
@@ -916,7 +922,7 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   # ---- 1. 读取稀疏GRM文件 ----
   cat(paste0("sparseGRMFile is :", sparseGRMFile_SPAmixPlus, "\n"))
   sparseGRM = data.table::fread(sparseGRMFile_SPAmixPlus)
-  data.table::setDT(sparseGRM)  # 新增：确保为data.table
+  data.table::setDT(sparseGRM)  # 确保为data.table
   cat("Initial sparseGRM:\n")
   print(head(sparseGRM))
   
@@ -1010,38 +1016,17 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   
   cat("Part5:\n")
   
-  # # ---- 6. 处理ResidMat，保留原始ID并添加索引列 ----
-  # ResidMat = data.table::data.table(
-  #   SubjID = subjData,
-  #   as.data.frame(mresid)
-  # )
-  # data.table::setDT(ResidMat)
-  # colnames(ResidMat)[2:(nPheno+1)] = paste0("Resid_", 1:nPheno)
-  # 
-  # # 合并索引信息
-  # ResidMat = data.table::merge.data.table(
-  #   ResidMat,
-  #   id_map[, c("OriginalID", "Index")],
-  #   by.x = "SubjID",
-  #   by.y = "OriginalID",
-  #   all.x = TRUE
-  # )
-  # data.table::setnames(ResidMat, "Index", "SubjID_Index")
-  # if (anyNA(ResidMat$SubjID_Index)) stop("Missing SubjID_Index after conversion.")
-  
-  
-  
   # ---- 6. 处理ResidMat，保持subjData原始顺序 ----
-  # 创建基础ResidMat（保持subjData顺序）
   ResidMat = data.table::data.table(
     SubjID = subjData,  # 直接使用原始顺序
     as.data.frame(mresid)
   )
-  data.table::setDT(ResidMat)
   colnames(ResidMat)[2:(nPheno+1)] = paste0("Resid_", 1:nPheno)
   
-  # 通过直接匹配添加索引（避免merge改变顺序）
-  ResidMat[, SubjID_Index := id_map$Index[match(SubjID, id_map$OriginalID)]]
+  # 使用data.table::set添加列（修复:=操作符问题）
+  data.table::set(ResidMat, 
+                  j = "SubjID_Index", 
+                  value = id_map$Index[match(ResidMat$SubjID, id_map$OriginalID)])
   
   # 验证顺序一致性
   if(!identical(ResidMat$SubjID, subjData)) 
@@ -1100,12 +1085,6 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   
   return(objNull)
 }
-
-
-
-
-
-
 
 
 
