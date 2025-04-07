@@ -677,6 +677,9 @@ mainMarker.SPAmixPlusV4 = function(genoType, genoIndex, outputColumns, objNull)
 #   return(objNull)
 # }
 
+
+#### 20250407 map ID only new ID ------------------------------------------------------------------
+
 library(data.table)  # 确保:=操作符可用
 
 fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
@@ -888,6 +891,206 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
 
   return(objNull)
 }
+
+
+
+
+
+
+
+
+
+
+
+
+#### 20250407 map ID new ID and old ID ------------------------------------------------------------------
+
+library(data.table)  # 确保:=操作符可用
+
+fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
+                                     control=list(OutlierRatio=1.5),
+                                     sparseGRM_SPAmixPlus = NULL,
+                                     sparseGRMFile_SPAmixPlus = NULL,
+                                     ...)
+{
+  # ---- 1. 读取稀疏GRM文件 ----
+  cat(paste0("sparseGRMFile is :", sparseGRMFile_SPAmixPlus, "\n"))
+  sparseGRM = data.table::fread(sparseGRMFile_SPAmixPlus)
+  data.table::setDT(sparseGRM)  # 新增：确保为data.table
+  cat("Initial sparseGRM:\n")
+  print(head(sparseGRM))
+  
+  cat("Part1:\n")
+  
+  # ---- 2. 处理响应变量（保持原有逻辑）----
+  if(!class(response) %in% c("Surv", "Residual"))
+    stop("For SPAmixPlusV4, the response variable should be of class 'Surv' or 'Residual'.")
+  
+  if(class(response) == "Surv") {
+    formula = response ~ designMat
+    obj.coxph = survival::coxph(formula, x=TRUE, ...)
+    y = obj.coxph$y
+    yVec = y[,ncol(y)]
+    mresid = residuals(obj.coxph)
+    Cova = obj.coxph$x
+    if(length(mresid) != length(subjData))
+      stop("Please check the consistency between 'formula' and 'subjData'.")
+    mresid = matrix(mresid, ncol=1)
+    nPheno = 1
+  } else if (class(response) == "Residual") {
+    yVec = mresid = response
+    Cova = designMat
+    if(nrow(mresid) != length(subjData))
+      stop("Please check the consistency between 'formula' and 'subjData'.")
+    nPheno = ncol(mresid)
+  }
+  
+  cat("Part2:\n")
+  
+  # ---- 3. 处理主成分（PC）列 ----
+  PC_columns = control$PC_columns
+  if(any(!PC_columns %in% colnames(designMat)))
+    stop("PC columns specified in 'control$PC_columns' should be in 'formula'.")
+  pos_col = match(PC_columns, colnames(designMat))
+  PCs = Cova[,pos_col,drop=FALSE]
+  
+  cat("Part3:\n")
+  
+  # ---- 4. 检测异常值（完整保留原有逻辑）----
+  outLierList = list()
+  for(i in 1:nPheno) {
+    mresid.temp = mresid[,i]
+    q25 = quantile(mresid.temp, 0.25, na.rm = TRUE)
+    q75 = quantile(mresid.temp, 0.75, na.rm = TRUE)
+    IQR = q75 - q25
+    r.outlier = ifelse(is.null(control$OutlierRatio), 1.5, control$OutlierRatio)
+    cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
+    posOutlier = which(mresid.temp < cutoff[1] | mresid.temp > cutoff[2])
+    
+    # 动态调整异常值阈值
+    while(length(posOutlier) == 0) {
+      r.outlier = r.outlier * 0.8
+      cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
+      posOutlier = which(mresid.temp < cutoff[1] | mresid.temp > cutoff[2])
+      cat("Adjusted outlier ratio:", r.outlier, "| Outliers found:", length(posOutlier), "\n")
+    }
+    
+    posValue = which(!is.na(mresid.temp))
+    posNonOutlier = setdiff(posValue, posOutlier)
+    
+    outLierList[[i]] = list(
+      posValue = posValue - 1,  # R索引转C++索引（从0开始）
+      posOutlier = posOutlier - 1,
+      posNonOutlier = posNonOutlier - 1,
+      resid = mresid.temp[posValue],
+      resid2 = (mresid.temp[posValue])^2,
+      residOutlier = mresid.temp[posOutlier],
+      residNonOutlier = mresid.temp[posNonOutlier],
+      resid2NonOutlier = (mresid.temp[posNonOutlier])^2
+    )
+  }
+  
+  cat("Part4:\n")
+  
+  # ---- 5. 创建整数ID映射表 ----
+  data.table::set(sparseGRM, j = "ID1", value = as.character(sparseGRM$ID1))
+  data.table::set(sparseGRM, j = "ID2", value = as.character(sparseGRM$ID2))
+  
+  # 生成唯一ID列表
+  subjData = as.character(subjData)
+  all_ids = unique(c(subjData, sparseGRM$ID1, sparseGRM$ID2))
+  
+  # 创建映射表
+  id_map = data.table::data.table(
+    OriginalID = all_ids,
+    Index = seq_along(all_ids) - 1
+  )
+  data.table::setDT(id_map)
+  data.table::setkey(id_map, "OriginalID")
+  
+  cat("Part5:\n")
+  
+  # ---- 6. 处理ResidMat，保留原始ID并添加索引列 ----
+  ResidMat = data.table::data.table(
+    SubjID = subjData,
+    as.data.frame(mresid)
+  )
+  data.table::setDT(ResidMat)
+  colnames(ResidMat)[2:(nPheno+1)] = paste0("Resid_", 1:nPheno)
+  
+  # 合并索引信息
+  ResidMat = data.table::merge.data.table(
+    ResidMat,
+    id_map[, c("OriginalID", "Index")],
+    by.x = "SubjID",
+    by.y = "OriginalID",
+    all.x = TRUE
+  )
+  data.table::setnames(ResidMat, "Index", "SubjID_Index")
+  if (anyNA(ResidMat$SubjID_Index)) stop("Missing SubjID_Index after conversion.")
+  
+  cat("Part6:\n")
+  
+  # ---- 7. 处理稀疏GRM，保留原始ID并添加索引列 ----
+  id1_values <- sparseGRM$ID1
+  id2_values <- sparseGRM$ID2
+  value_values <- sparseGRM$Value
+  
+  # 筛选有效行
+  filter_condition <- id1_values %in% id_map$OriginalID & id2_values %in% id_map$OriginalID
+  
+  # 创建包含原始ID和索引的GRM
+  sparseGRM_new <- data.table::data.table(
+    ID1 = id1_values[filter_condition],
+    ID2 = id2_values[filter_condition],
+    ID1_Index = id_map$Index[match(id1_values[filter_condition], id_map$OriginalID)],
+    ID2_Index = id_map$Index[match(id2_values[filter_condition], id_map$OriginalID)],
+    Value = value_values[filter_condition]
+  )
+  
+  cat("Part7:\n")
+  
+  # ---- 8. 验证数据一致性 ----
+  if(nrow(sparseGRM_new) == 0) stop("No valid GRM entries after ID conversion!")
+  if(anyNA(ResidMat$SubjID_Index)) stop("Missing SubjID_Index in ResidMat!")
+  
+  cat("Part8:\n")
+  
+  # ---- 9. 构建完整Null模型对象 ----
+  objNull = list(
+    resid = mresid,
+    ResidMat = ResidMat,          # 包含SubjID和SubjID_Index
+    sparseGRM = sparseGRM_new,    # 包含ID1/ID2和ID1_Index/ID2_Index
+    id_map = id_map,              # 完整映射表
+    subjData = subjData,
+    N = nrow(Cova),
+    yVec = yVec,
+    PCs = PCs,
+    nPheno = nPheno,
+    outLierList = outLierList,
+    control = control
+  )
+  class(objNull) = "SPAmixPlusV4_NULL_Model"
+  
+  # ---- 10. 调试输出 ----
+  cat("\n===== Final Object Structure =====")
+  cat("\nResidMat columns:", names(ResidMat))
+  cat("\nsparseGRM columns:", names(sparseGRM_new))
+  cat("\nID mapping table size:", nrow(id_map), "\n")
+  
+  return(objNull)
+}
+
+
+
+
+
+
+
+
+
+
+
 
 
 
