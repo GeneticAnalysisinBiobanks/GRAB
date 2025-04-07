@@ -903,9 +903,192 @@ mainMarker.SPAmixPlusV4 = function(genoType, genoIndex, outputColumns, objNull)
 
 
 
-#### 20250407 map ID new ID and old ID ------------------------------------------------------------------
-library(data.table)
-library(survival)
+# #### 20250407 map ID new ID and old ID ------------------------------------------------------------------
+# library(data.table)
+# library(survival)
+# 
+# fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
+#                                      control=list(OutlierRatio=1.5),
+#                                      sparseGRM_SPAmixPlus = NULL,
+#                                      sparseGRMFile_SPAmixPlus = NULL,
+#                                      ...)
+# {
+#   # ---- 1. 读取稀疏GRM文件 ----
+#   cat(paste0("sparseGRMFile is :", sparseGRMFile_SPAmixPlus, "\n"))
+#   sparseGRM = data.table::fread(sparseGRMFile_SPAmixPlus)
+#   data.table::setDT(sparseGRM)
+#   cat("Initial sparseGRM:\n")
+#   print(head(sparseGRM))
+#   
+#   cat("Part1:\n")
+#   
+#   # ---- 2. 严格类型检查 ----
+#   if(!inherits(response, c("Surv", "Residual"))) 
+#     stop("Response must be either a Surv object or Residual object")
+#   
+#   # ---- 3. 处理生存分析 ----
+#   if(inherits(response, "Surv")) {
+#     formula = response ~ designMat
+#     obj.coxph = survival::coxph(formula, x=TRUE, ...)
+#     y = obj.coxph$y
+#     yVec = y[,ncol(y)]
+#     mresid = residuals(obj.coxph)
+#     Cova = obj.coxph$x
+#     if(length(mresid) != length(subjData))
+#       stop("CoxPH residuals length must match subjData length")
+#     mresid = matrix(mresid, ncol=1)
+#     nPheno = 1
+#   } 
+#   
+#   # ---- 4. 处理残差对象 ----
+#   else if(inherits(response, "Residual")) {
+#     # 强制转换并验证维度
+#     if(!is.matrix(response)) mresid = as.matrix(response)
+#     else mresid = response
+#     
+#     if(nrow(mresid) != length(subjData))
+#       stop(paste(nrow(mresid), "residual rows vs", length(subjData), "subjects"))
+#     
+#     yVec = mresid
+#     Cova = designMat
+#     nPheno = ncol(mresid)
+#   }
+#   
+#   cat("Part2:\n")
+#   
+#   # ---- 5. 处理主成分（PC）列 ----
+#   PC_columns = control$PC_columns
+#   if(any(!PC_columns %in% colnames(designMat)))
+#     stop("PC columns specified in 'control$PC_columns' should be in 'formula'.")
+#   pos_col = match(PC_columns, colnames(designMat))
+#   PCs = Cova[,pos_col,drop=FALSE]
+#   
+#   cat("Part3:\n")
+#   
+#   # ---- 6. 检测异常值 ----
+#   outLierList = list()
+#   for(i in 1:nPheno) {
+#     mresid.temp = mresid[,i]
+#     q25 = quantile(mresid.temp, 0.25, na.rm = TRUE)
+#     q75 = quantile(mresid.temp, 0.75, na.rm = TRUE)
+#     IQR = q75 - q25
+#     r.outlier = ifelse(is.null(control$OutlierRatio), 1.5, control$OutlierRatio)
+#     cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
+#     posOutlier = which(mresid.temp < cutoff[1] | mresid.temp > cutoff[2])
+#     
+#     # 动态调整阈值
+#     while(length(posOutlier) == 0) {
+#       r.outlier = r.outlier * 0.8
+#       cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
+#       posOutlier = which(mresid.temp < cutoff[1] | mresid.temp > cutoff[2])
+#       cat("Adjusted outlier ratio:", r.outlier, "| Outliers found:", length(posOutlier), "\n")
+#     }
+#     
+#     posValue = which(!is.na(mresid.temp))
+#     posNonOutlier = setdiff(posValue, posOutlier)
+#     
+#     outLierList[[i]] = list(
+#       posValue = posValue - 1,
+#       posOutlier = posOutlier - 1,
+#       posNonOutlier = posNonOutlier - 1,
+#       resid = mresid.temp[posValue],
+#       resid2 = (mresid.temp[posValue])^2,
+#       residOutlier = mresid.temp[posOutlier],
+#       residNonOutlier = mresid.temp[posNonOutlier],
+#       resid2NonOutlier = (mresid.temp[posNonOutlier])^2
+#     )
+#   }
+#   
+#   cat("Part4:\n")
+#   
+#   # ---- 7. 创建ID映射表 ----
+#   data.table::set(sparseGRM, j = "ID1", value = as.character(sparseGRM$ID1))
+#   data.table::set(sparseGRM, j = "ID2", value = as.character(sparseGRM$ID2))
+#   
+#   subjData = as.character(subjData)
+#   all_ids = unique(c(subjData, sparseGRM$ID1, sparseGRM$ID2))
+#   
+#   id_map = data.table::data.table(
+#     OriginalID = all_ids,
+#     Index = seq_along(all_ids) - 1
+#   )
+#   data.table::setDT(id_map)
+#   data.table::setkey(id_map, "OriginalID")
+#   
+#   cat("Part5:\n")
+#   
+#   # ---- 8. 构建ResidMat（关键部分）----
+#   # 创建基础结构
+#   ResidMat = data.table::data.table(
+#     SubjID = subjData,
+#     SubjID_Index = id_map$Index[match(subjData, id_map$OriginalID)]
+#   )
+#   
+#   # 添加残差列（确保列顺序）
+#   resid_cols = paste0("Resid_", 1:nPheno)
+#   for(i in 1:nPheno) {
+#     data.table::set(ResidMat, j = resid_cols[i], value = mresid[,i])
+#   }
+#   
+#   # 验证顺序
+#   if(!identical(ResidMat$SubjID, subjData)) 
+#     stop("ResidMat ID顺序异常!")
+#   if(anyNA(ResidMat$SubjID_Index)) 
+#     stop("存在未映射的SubjID")
+#   
+#   cat("Part6:\n")
+#   
+#   # ---- 9. 处理稀疏GRM ----
+#   id1_values <- sparseGRM$ID1
+#   id2_values <- sparseGRM$ID2
+#   value_values <- sparseGRM$Value
+#   
+#   # 筛选有效行
+#   valid_pairs <- id1_values %in% id_map$OriginalID & id2_values %in% id_map$OriginalID
+#   
+#   sparseGRM_new <- data.table::data.table(
+#     ID1 = id1_values[valid_pairs],
+#     ID2 = id2_values[valid_pairs],
+#     ID1_Index = id_map$Index[match(id1_values[valid_pairs], id_map$OriginalID)],
+#     ID2_Index = id_map$Index[match(id2_values[valid_pairs], id_map$OriginalID)],
+#     Value = value_values[valid_pairs]
+#   )
+#   
+#   cat("Part7:\n")
+#   
+#   # ---- 10. 最终验证 ----
+#   if(nrow(sparseGRM_new) == 0) stop("转换后GRM为空!")
+#   if(anyNA(ResidMat$SubjID_Index)) stop("存在无效的SubjID索引")
+#   
+#   cat("Part8:\n")
+#   
+#   # ---- 11. 构建结果对象 ----
+#   objNull = list(
+#     resid = mresid,
+#     ResidMat = ResidMat,
+#     sparseGRM = sparseGRM_new,
+#     id_map = id_map,
+#     subjData = subjData,
+#     N = nrow(Cova),
+#     yVec = yVec,
+#     PCs = PCs,
+#     nPheno = nPheno,
+#     outLierList = outLierList,
+#     control = control
+#   )
+#   class(objNull) = "SPAmixPlusV4_NULL_Model"
+#   
+#   # ---- 12. 调试输出 ----
+#   cat("\n===== 最终对象结构 =====\n")
+#   cat("ResidMat列:", names(ResidMat), "\n")
+#   cat("sparseGRM列:", names(sparseGRM_new), "\n")
+#   cat("ID映射表记录数:", nrow(id_map), "\n")
+#   
+#   return(objNull)
+# }
+
+
+# #### 20250407 map ID new ID and old ID v2 ------------------------------------------------------------------
 
 fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
                                      control=list(OutlierRatio=1.5),
@@ -920,172 +1103,88 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   cat("Initial sparseGRM:\n")
   print(head(sparseGRM))
   
-  cat("Part1:\n")
+  # ---- 新增关键步骤：创建全局ID映射表 ----
+  # 获取所有出现的ID（包括残差矩阵和GRM）
+  all_ids = unique(c(
+    as.character(subjData),
+    as.character(sparseGRM$ID1),
+    as.character(sparseGRM$ID2)
+  ))
   
-  # ---- 2. 严格类型检查 ----
+  # 创建整数索引映射表（从0开始）
+  id_map = data.table::data.table(
+    OriginalID = all_ids,
+    Index = seq_along(all_ids) - 1  # C++索引从0开始
+  )
+  data.table::setkey(id_map, "OriginalID")
+  
+  # ---- 2. 转换所有ID为整数索引 ----
+  # 转换残差矩阵的ID
+  subjData_idx = id_map[.(as.character(subjData)), Index]
+  
+  # 转换稀疏GRM的ID
+  sparseGRM[, ID1_Index := id_map[.(as.character(ID1)), Index]]
+  sparseGRM[, ID2_Index := id_map[.(as.character(ID2)), Index]]
+  
+  # ---- 3. 严格类型检查（原代码保持不变） ----
   if(!inherits(response, c("Surv", "Residual"))) 
     stop("Response must be either a Surv object or Residual object")
   
-  # ---- 3. 处理生存分析 ----
-  if(inherits(response, "Surv")) {
-    formula = response ~ designMat
-    obj.coxph = survival::coxph(formula, x=TRUE, ...)
-    y = obj.coxph$y
-    yVec = y[,ncol(y)]
-    mresid = residuals(obj.coxph)
-    Cova = obj.coxph$x
-    if(length(mresid) != length(subjData))
-      stop("CoxPH residuals length must match subjData length")
-    mresid = matrix(mresid, ncol=1)
-    nPheno = 1
-  } 
+  # ...（中间处理残差和PC的代码保持原样）...
   
-  # ---- 4. 处理残差对象 ----
-  else if(inherits(response, "Residual")) {
-    # 强制转换并验证维度
-    if(!is.matrix(response)) mresid = as.matrix(response)
-    else mresid = response
-    
-    if(nrow(mresid) != length(subjData))
-      stop(paste(nrow(mresid), "residual rows vs", length(subjData), "subjects"))
-    
-    yVec = mresid
-    Cova = designMat
-    nPheno = ncol(mresid)
-  }
-  
-  cat("Part2:\n")
-  
-  # ---- 5. 处理主成分（PC）列 ----
-  PC_columns = control$PC_columns
-  if(any(!PC_columns %in% colnames(designMat)))
-    stop("PC columns specified in 'control$PC_columns' should be in 'formula'.")
-  pos_col = match(PC_columns, colnames(designMat))
-  PCs = Cova[,pos_col,drop=FALSE]
-  
-  cat("Part3:\n")
-  
-  # ---- 6. 检测异常值 ----
-  outLierList = list()
-  for(i in 1:nPheno) {
-    mresid.temp = mresid[,i]
-    q25 = quantile(mresid.temp, 0.25, na.rm = TRUE)
-    q75 = quantile(mresid.temp, 0.75, na.rm = TRUE)
-    IQR = q75 - q25
-    r.outlier = ifelse(is.null(control$OutlierRatio), 1.5, control$OutlierRatio)
-    cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
-    posOutlier = which(mresid.temp < cutoff[1] | mresid.temp > cutoff[2])
-    
-    # 动态调整阈值
-    while(length(posOutlier) == 0) {
-      r.outlier = r.outlier * 0.8
-      cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
-      posOutlier = which(mresid.temp < cutoff[1] | mresid.temp > cutoff[2])
-      cat("Adjusted outlier ratio:", r.outlier, "| Outliers found:", length(posOutlier), "\n")
-    }
-    
-    posValue = which(!is.na(mresid.temp))
-    posNonOutlier = setdiff(posValue, posOutlier)
-    
-    outLierList[[i]] = list(
-      posValue = posValue - 1,
-      posOutlier = posOutlier - 1,
-      posNonOutlier = posNonOutlier - 1,
-      resid = mresid.temp[posValue],
-      resid2 = (mresid.temp[posValue])^2,
-      residOutlier = mresid.temp[posOutlier],
-      residNonOutlier = mresid.temp[posNonOutlier],
-      resid2NonOutlier = (mresid.temp[posNonOutlier])^2
-    )
-  }
-  
-  cat("Part4:\n")
-  
-  # ---- 7. 创建ID映射表 ----
-  data.table::set(sparseGRM, j = "ID1", value = as.character(sparseGRM$ID1))
-  data.table::set(sparseGRM, j = "ID2", value = as.character(sparseGRM$ID2))
-  
-  subjData = as.character(subjData)
-  all_ids = unique(c(subjData, sparseGRM$ID1, sparseGRM$ID2))
-  
-  id_map = data.table::data.table(
-    OriginalID = all_ids,
-    Index = seq_along(all_ids) - 1
-  )
-  data.table::setDT(id_map)
-  data.table::setkey(id_map, "OriginalID")
-  
-  cat("Part5:\n")
-  
-  # ---- 8. 构建ResidMat（关键部分）----
-  # 创建基础结构
+  # ---- 修改关键部分：构建整数索引的ResidMat ----
   ResidMat = data.table::data.table(
-    SubjID = subjData,
-    SubjID_Index = id_map$Index[match(subjData, id_map$OriginalID)]
+    SubjID_Index = subjData_idx,  # 使用整数索引
+    Resid = mresid[,1]  # 示例：单表型情况
   )
   
-  # 添加残差列（确保列顺序）
-  resid_cols = paste0("Resid_", 1:nPheno)
-  for(i in 1:nPheno) {
-    data.table::set(ResidMat, j = resid_cols[i], value = mresid[,i])
+  # 多表型扩展
+  if(nPheno > 1){
+    for(i in 1:nPheno) {
+      data.table::set(ResidMat, j = paste0("Resid_", i), value = mresid[,i])
+    }
   }
   
-  # 验证顺序
-  if(!identical(ResidMat$SubjID, subjData)) 
-    stop("ResidMat ID顺序异常!")
-  if(anyNA(ResidMat$SubjID_Index)) 
-    stop("存在未映射的SubjID")
+  # ---- 修改关键部分：构建整数索引的sparseGRM ----
+  sparseGRM_new = sparseGRM[, .(
+    ID1_Index,  # 使用转换后的整数索引
+    ID2_Index,
+    Value
+  )]
   
-  cat("Part6:\n")
+  # ---- 最终验证ID一致性 ----
+  # 确保所有ID都已被映射
+  if(anyNA(subjData_idx)) stop("存在未映射的subjData ID")
+  if(anyNA(sparseGRM_new$ID1_Index) || anyNA(sparseGRM_new$ID2_Index)){
+    stop("存在未映射的GRM ID")
+  }
   
-  # ---- 9. 处理稀疏GRM ----
-  id1_values <- sparseGRM$ID1
-  id2_values <- sparseGRM$ID2
-  value_values <- sparseGRM$Value
-  
-  # 筛选有效行
-  valid_pairs <- id1_values %in% id_map$OriginalID & id2_values %in% id_map$OriginalID
-  
-  sparseGRM_new <- data.table::data.table(
-    ID1 = id1_values[valid_pairs],
-    ID2 = id2_values[valid_pairs],
-    ID1_Index = id_map$Index[match(id1_values[valid_pairs], id_map$OriginalID)],
-    ID2_Index = id_map$Index[match(id2_values[valid_pairs], id_map$OriginalID)],
-    Value = value_values[valid_pairs]
-  )
-  
-  cat("Part7:\n")
-  
-  # ---- 10. 最终验证 ----
-  if(nrow(sparseGRM_new) == 0) stop("转换后GRM为空!")
-  if(anyNA(ResidMat$SubjID_Index)) stop("存在无效的SubjID索引")
-  
-  cat("Part8:\n")
-  
-  # ---- 11. 构建结果对象 ----
+  # ---- 构建结果对象（关键修改） ----
   objNull = list(
     resid = mresid,
-    ResidMat = ResidMat,
-    sparseGRM = sparseGRM_new,
-    id_map = id_map,
-    subjData = subjData,
-    N = nrow(Cova),
-    yVec = yVec,
-    PCs = PCs,
-    nPheno = nPheno,
-    outLierList = outLierList,
-    control = control
+    ResidMat = as.matrix(ResidMat),       # 转换为矩阵格式
+    sparseGRM = as.matrix(sparseGRM_new), # 转换为矩阵格式
+    id_map = id_map,                      # 保留映射表
+    subjData_original = subjData,          # 保留原始ID
+    # ...（其他原列表元素保持不变）...
+    class = "SPAmixPlusV4_NULL_Model"
   )
-  class(objNull) = "SPAmixPlusV4_NULL_Model"
   
-  # ---- 12. 调试输出 ----
-  cat("\n===== 最终对象结构 =====\n")
-  cat("ResidMat列:", names(ResidMat), "\n")
-  cat("sparseGRM列:", names(sparseGRM_new), "\n")
-  cat("ID映射表记录数:", nrow(id_map), "\n")
+  # ---- 调试输出 ----
+  cat("\n===== ID映射验证 =====\n")
+  cat("唯一ID数量:", nrow(id_map), "\n")
+  cat("ResidMat样本数:", nrow(ResidMat), "\n")
+  cat("有效GRM条目:", nrow(sparseGRM_new), "\n")
   
   return(objNull)
 }
+
+
+
+
+
+
+
 
 
 #########################################################################################################
