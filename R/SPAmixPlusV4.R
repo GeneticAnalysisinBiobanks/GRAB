@@ -904,7 +904,9 @@ mainMarker.SPAmixPlusV4 = function(genoType, genoIndex, outputColumns, objNull)
 
 
 #### 20250407 map ID new ID and old ID ------------------------------------------------------------------
+
 library(data.table)
+library(survival)
 
 fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
                                      control=list(OutlierRatio=1.5),
@@ -921,9 +923,15 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   
   cat("Part1:\n")
   
-  # ---- 2. 处理响应变量 ----
-  if(!inherits(response, c("Surv", "matrix", "data.frame")))
-    stop("For SPAmixPlusV4, the response variable should be of class 'Surv' or residual matrix.")
+  # ---- 2. 处理响应变量（增强公式解析）----
+  if(inherits(response, "formula")) {
+    # 解析公式获取响应变量
+    response_var <- all.vars(response[[2]])
+    if(length(response_var) > 1) stop("Multi-phenotype residual should be passed as matrix")
+    mresid <- eval(response[[2]], envir = parent.frame())
+  } else if(!inherits(response, c("Surv", "matrix", "numeric"))) {
+    stop("Response should be formula, Surv object, numeric vector or matrix")
+  }
   
   if(inherits(response, "Surv")) {
     formula = response ~ designMat
@@ -935,7 +943,8 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
     mresid = matrix(mresid, ncol=1)
     nPheno = 1
   } else {
-    mresid = as.matrix(response)
+    # 统一转换为矩阵
+    mresid = as.matrix(mresid)
     yVec = mresid
     Cova = designMat
     nPheno = ncol(mresid)
@@ -1007,24 +1016,16 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   
   cat("Part5:\n")
   
-  # ---- 6. 构建ResidMat（关键修复）----
-  # 使用set函数避免:=作用域问题
+  # ---- 6. 构建ResidMat ----
   ResidMat <- data.table::data.table(
     SubjID = subjData,
     SubjID_Index = id_map$Index[match(subjData, id_map$OriginalID)]
   )
   
-  # 预分配列名
+  # 动态添加残差列
   resid_cols <- paste0("Resid_", 1:nPheno)
-  for(col in resid_cols) {
-    data.table::set(ResidMat, j = col, value = NA_real_)
-  }
-  
-  # 填充数据
   for(i in 1:nPheno) {
-    data.table::set(ResidMat, 
-                    j = resid_cols[i], 
-                    value = mresid[,i])
+    ResidMat[, (resid_cols[i]) := mresid[,i]]
   }
   
   # 验证
