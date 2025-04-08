@@ -40,10 +40,13 @@ private:
 public:
   
   SPAmixPlusV4Class(arma::mat t_resid,
-              arma::mat t_PCs,
-              int t_N,
-              double t_SPA_Cutoff,
-              Rcpp::List t_outlierList);
+                    arma::mat t_PCs,
+                    int t_N,
+                    double t_SPA_Cutoff,
+                    Rcpp::List t_outlierList,
+                    
+                    Rcpp::DataFrame t_sparseGRM, // update by Yuzhuo Ma
+                    Rcpp::DataFrame t_ResidMat); // update by Yuzhuo Ma
   
   arma::vec getTestTime1(){return m_diffTime1;}
   arma::vec getTestTime2(){return m_diffTime2;}

@@ -1214,8 +1214,12 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   # ---- 11. 构建结果对象 ----
   objNull = list(
     resid = mresid,
-    ResidMat = ResidMat,
-    sparseGRM = sparseGRM_new,
+    # ResidMat = ResidMat,
+    ResidMat = as.data.frame(ResidMat),
+    
+    # sparseGRM = sparseGRM_new,
+    sparseGRM = as.data.frame(sparseGRM_new),
+    
     id_map = id_map,
     subjData = subjData,
     N = nrow(Cova),
