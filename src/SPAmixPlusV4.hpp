@@ -37,6 +37,12 @@ private:
   // arma::vec m_R_outlier;
   // arma::vec m_R_nonOutlier;
   
+  
+  // 其他成员变量...
+  Rcpp::DataFrame m_sparseGRM;   // 新增：稀疏GRM数据框
+  Rcpp::DataFrame m_ResidMat;    // 新增：残差矩阵数据框
+  
+  
 public:
   
   SPAmixPlusV4Class(arma::mat t_resid,

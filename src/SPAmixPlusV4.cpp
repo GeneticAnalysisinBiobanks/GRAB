@@ -12,9 +12,8 @@ SPAmixPlusV4Class::SPAmixPlusV4Class(arma::mat t_resid,
                                      double t_SPA_Cutoff,
                                      Rcpp::List t_outlierList,
                                      Rcpp::DataFrame t_sparseGRM,    // 新增参数：稀疏GRM数据
-                                     Rcpp::DataFrame t_ResidMat)     // 新增参数：残差矩阵数据
-// arma::uvec t_posOutlier,
-// arma::uvec t_posNonOutlier)
+                                     Rcpp::DataFrame t_ResidMat     // 新增参数：残差矩阵数据
+)
 {
   m_resid = t_resid;
   // m_resid2 = pow(m_resid, 2);
@@ -28,8 +27,8 @@ SPAmixPlusV4Class::SPAmixPlusV4Class(arma::mat t_resid,
   m_PCs = t_PCs;
   m_outlierList = t_outlierList;
   
-  // m_sparseGRM = t_sparseGRM // update by Yuzhuo Ma
-  // m_ResidMat = t_ResidMat   // update by Yuzhuo Ma
+  m_sparseGRM = t_sparseGRM; // update by Yuzhuo Ma
+  m_ResidMat = t_ResidMat;   // update by Yuzhuo Ma
   
   // m_posOutlier = t_posOutlier;
   // m_posNonOutlier = t_posNonOutlier;
