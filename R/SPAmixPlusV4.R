@@ -1099,12 +1099,15 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
                                      sparseGRMFile_SPAmixPlus = NULL,
                                      ...) 
 {
-  # ---- 1. 读取稀疏GRM文件 ----
+  # ---- 1. 读取稀疏GRM文件（修复列名问题）----
   cat(paste0("sparseGRMFile is :", sparseGRMFile_SPAmixPlus, "\n"))
-  sparseGRM = data.table::fread(sparseGRMFile_SPAmixPlus)
+  sparseGRM = data.table::fread(
+    file = sparseGRMFile_SPAmixPlus,
+    col.names = c("ID1", "ID2", "Value")  # 关键修复：明确指定列名
+  )
   data.table::setDT(sparseGRM)
   
-  ########################### 新增关键代码：ID一致性过滤 ###########################
+  ########################### ID一致性过滤 ###########################
   # 获取所有GRM中的ID
   grm_ids = unique(c(sparseGRM$ID1, sparseGRM$ID2))
   # 过滤subjData只保留与GRM的交集
@@ -1113,7 +1116,6 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   designMat = designMat[keep_idx, , drop = FALSE]
   # 过滤GRM只保留与subjData的交集
   sparseGRM = sparseGRM[ID1 %in% subjData & ID2 %in% subjData]
-  ##############################################################################
   
   cat("Initial sparseGRM:\n")
   print(head(sparseGRM))
