@@ -6,11 +6,22 @@
 #include <RcppArmadillo.h>
 #include "UTIL.hpp"
 
+#include <unordered_map>   // 新增
+#include <vector>          // 新增
+
+
 namespace SPAmixPlusV4{
 
 class SPAmixPlusV4Class
 {
 private:
+  
+  // ==== 修改1：新增成员 ====
+  std::unordered_map<std::string, int> m_idMap;  // ID映射表
+  arma::mat m_ResidMat;                          // 多表型残差矩阵（N×M）
+  std::vector<std::tuple<int, int, double>> m_sparseTriplets; // 稀疏矩阵三元组
+  arma::vec m_MAFVec;                            // MAF估计值
+  
   
   ////////////////////// -------------------- members ---------------------------------- //////////////////////
   
@@ -40,7 +51,7 @@ private:
   
   // 其他成员变量...
   Rcpp::DataFrame m_sparseGRM;   // 新增：稀疏GRM数据框
-  Rcpp::DataFrame m_ResidMat;    // 新增：残差矩阵数据框
+  // Rcpp::DataFrame m_ResidMat;    // 新增：残差矩阵数据框
   
   
 public:
@@ -504,6 +515,39 @@ public:
     double pval = 0; // we modify the codes to save pval to m_pvalVec and thus the function does not output pvalue any more.
     return pval;
   }
+  
+  
+  
+  
+  
+  ////////////////////////////////////////////////////////////////////////////////////////
+  
+  
+  
+  // ==== 新增4：稀疏矩阵方差计算 ====
+  double calculateSparseVariance(const arma::vec& R_new) {
+    double covSum = 0.0;
+    for(const auto& triplet : m_sparseTriplets){
+      int i = std::get<0>(triplet);
+      int j = std::get<1>(triplet);
+      double val = std::get<2>(triplet);
+      covSum += val * R_new(i) * R_new(j);
+    }
+    return 2 * covSum - sum(square(R_new) % (2 * m_MAFVec % (1 - m_MAFVec)));
+  }
+  
+  
+  // ==== 修改2：添加新方法 ====
+  arma::vec getResidualsForPheno(int phenoIndex) const {
+    return m_ResidMat.col(phenoIndex); // 按表型索引获取残差
+  }
+  
+  
+  
+
+// double calculateSparseVariance(const arma::vec& R_new);
+
+  
   
 };
 
