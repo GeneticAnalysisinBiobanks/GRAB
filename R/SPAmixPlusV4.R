@@ -1066,13 +1066,9 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   sparseGRM = data.table::fread(sparseGRMFile_SPAmixPlus)
   data.table::setDT(sparseGRM)
   
-  ########################### 关键修复：确保列名正确 ###########################
-  # 强制设置列名（兼容无表头文件）
-  if(ncol(sparseGRM) == 3){
-    names(sparseGRM) <- c("ID1", "ID2", "Value")
-  } else {
-    stop("GRM文件必须是三列格式：ID1, ID2, Value")
-  }
+  ########################### 关键修复1：安全设置列名 ###########################
+  if(ncol(sparseGRM) != 3) stop("GRM文件必须是三列格式")
+  data.table::setnames(sparseGRM, c("ID1", "ID2", "Value"))
   
   cat("Initial sparseGRM:\n")
   print(head(sparseGRM))
@@ -1112,7 +1108,7 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   
   cat("Part2:\n")
   
-  # ---- 5. 处理主成分（PC）列（保持原有逻辑）----
+  # ---- 5. 处理主成分（PC）列 ----
   PC_columns = control$PC_columns
   if(any(!PC_columns %in% colnames(designMat)))
     stop("PC columns specified in 'control$PC_columns' should be in 'formula'.")
@@ -1158,9 +1154,9 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   cat("Part4:\n")
   
   # ---- 7. 创建ID映射表 ----
-  ########################### 关键修复：类型转换 ###########################
-  sparseGRM[, ID1 := as.character(ID1)]
-  sparseGRM[, ID2 := as.character(ID2)]
+  ########################### 关键修复2：安全的类型转换 ###########################
+  data.table::set(sparseGRM, j = "ID1", value = as.character(sparseGRM$ID1))
+  data.table::set(sparseGRM, j = "ID2", value = as.character(sparseGRM$ID2))
   subjData = as.character(subjData)
   
   all_ids = unique(c(subjData, sparseGRM$ID1, sparseGRM$ID2))
@@ -1174,7 +1170,7 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   
   cat("Part5:\n")
   
-  # ---- 8. 构建ResidMat（关键部分）----
+  # ---- 8. 构建ResidMat ----
   ResidMat = data.table::data.table(
     SubjID = subjData,
     SubjID_Index = id_map$Index[match(subjData, id_map$OriginalID)]
