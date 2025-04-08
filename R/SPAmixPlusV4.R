@@ -1103,19 +1103,29 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   cat(paste0("sparseGRMFile is :", sparseGRMFile_SPAmixPlus, "\n"))
   sparseGRM = data.table::fread(
     file = sparseGRMFile_SPAmixPlus,
-    col.names = c("ID1", "ID2", "Value")  # 关键修复：明确指定列名
+    col.names = c("ID1", "ID2", "Value")
   )
   data.table::setDT(sparseGRM)
+  
+  ########################### 关键修复：显式设置列名 ###########################
+  # 确保列名正确应用
+  names(sparseGRM) <- c("ID1", "ID2", "Value")
   
   ########################### ID一致性过滤 ###########################
   # 获取所有GRM中的ID
   grm_ids = unique(c(sparseGRM$ID1, sparseGRM$ID2))
+  
+  # 将subjData转换为字符型
+  subjData_char <- as.character(subjData)
+  
   # 过滤subjData只保留与GRM的交集
-  keep_idx = subjData %in% grm_ids
-  subjData = subjData[keep_idx]
+  keep_idx = subjData_char %in% grm_ids
+  subjData = subjData_char[keep_idx]
   designMat = designMat[keep_idx, , drop = FALSE]
-  # 过滤GRM只保留与subjData的交集
-  sparseGRM = sparseGRM[ID1 %in% subjData & ID2 %in% subjData]
+  
+  # 过滤GRM只保留与subjData的交集（使用显式列名访问）
+  sparseGRM = sparseGRM[sparseGRM[["ID1"]] %in% subjData & 
+                          sparseGRM[["ID2"]] %in% subjData]
   
   cat("Initial sparseGRM:\n")
   print(head(sparseGRM))
