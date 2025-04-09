@@ -1228,71 +1228,80 @@ library(data.table)
 library(survival)
 
 fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
-                                     control=list(OutlierRatio=1.5),
+                                     control = list(OutlierRatio = 1.5),
                                      sparseGRM_SPAmixPlus = NULL,
                                      sparseGRMFile_SPAmixPlus = NULL,
                                      ...) 
 {
-  # ---- 1. 读取稀疏GRM文件 ----
+  # ---- 1. 加载必要包 ----
+  if (!requireNamespace("data.table", quietly = TRUE)) {
+    stop("请安装data.table包：install.packages('data.table')")
+  }
+  data.table::setDTthreads(threads = 0)  # 启用多线程加速
+  
+  # ---- 2. 读取稀疏GRM文件 ----
   cat(paste0("sparseGRMFile is :", sparseGRMFile_SPAmixPlus, "\n"))
   sparseGRM = data.table::fread(sparseGRMFile_SPAmixPlus)
   data.table::setDT(sparseGRM)
   
-  ########################### 关键修复1：安全设置列名 ###########################
-  if(ncol(sparseGRM) != 3) stop("GRM文件必须是三列格式")
+  # ---- 3. 校验GRM格式 ----
+  if (ncol(sparseGRM) != 3) {
+    stop("GRM文件必须是三列格式：ID1, ID2, Value")
+  }
   data.table::setnames(sparseGRM, c("ID1", "ID2", "Value"))
   
   cat("Initial sparseGRM:\n")
   print(head(sparseGRM))
   
-  cat("Part1:\n")
-  
-  # ---- 2. 严格类型检查 ----
-  if(!inherits(response, c("Surv", "Residual")))
-    stop("Response必须为Surv或Residual对象")
-  
-  # ---- 3. 处理生存分析 ----
-  if(inherits(response, "Surv")) {
-    formula = response ~ designMat
-    obj.coxph = survival::coxph(formula, x=TRUE, ...)
-    y = obj.coxph$y
-    yVec = y[,ncol(y)]
-    mresid = residuals(obj.coxph)
-    Cova = obj.coxph$x
-    if(length(mresid) != length(subjData))
-      stop("CoxPH残差长度必须与subjData一致")
-    mresid = matrix(mresid, ncol=1)
-    nPheno = 1
+  # ---- 4. 处理响应变量（生存分析/残差） ----
+  if (!inherits(response, c("Surv", "Residual"))) {
+    stop("响应变量必须是Surv或Residual类型")
   }
   
-  # ---- 4. 处理残差对象 ----
-  else if(inherits(response, "Residual")) {
-    if(!is.matrix(response)) mresid = as.matrix(response)
-    else mresid = response
+  if (inherits(response, "Surv")) {
+    # ---- 生存分析逻辑 ----
+    formula = response ~ designMat
+    obj.coxph = survival::coxph(formula, x = TRUE, ...)
+    y = obj.coxph$y
+    yVec = y[, ncol(y)]
+    mresid = residuals(obj.coxph)
+    Cova = obj.coxph$x
     
-    if(nrow(mresid) != length(subjData))
-      stop(paste(nrow(mresid), "残差行数 vs", length(subjData), "样本数"))
+    if (length(mresid) != length(subjData)) {
+      stop("CoxPH残差长度必须与subjData一致")
+    }
+    
+    mresid = matrix(mresid, ncol = 1)
+    nPheno = 1
+  } else if (inherits(response, "Residual")) {
+    # ---- 残差对象逻辑 ----
+    if (!is.matrix(response)) {
+      mresid = as.matrix(response)
+    } else {
+      mresid = response
+    }
+    
+    if (nrow(mresid) != length(subjData)) {
+      stop(paste("残差行数（", nrow(mresid), "）与样本数（", length(subjData), "）不匹配"))
+    }
     
     yVec = mresid
     Cova = designMat
     nPheno = ncol(mresid)
   }
   
-  cat("Part2:\n")
-  
-  # ---- 5. 处理主成分（PC）列 ----
+  # ---- 5. 处理主成分（PC）列（保持原样） ----
   PC_columns = control$PC_columns
-  if(any(!PC_columns %in% colnames(designMat)))
-    stop("control$PC_columns指定的PC列必须在formula中存在")
+  if (any(!PC_columns %in% colnames(designMat))) {
+    stop("control$PC_columns中指定的PC列必须在设计矩阵中存在")
+  }
   pos_col = match(PC_columns, colnames(designMat))
-  PCs = Cova[,pos_col,drop=FALSE]
+  PCs = Cova[, pos_col, drop = FALSE]
   
-  cat("Part3:\n")
-  
-  # ---- 6. 检测异常值 ----
+  # ---- 6. 检测异常值（保持原样） ----
   outLierList = list()
-  for(i in 1:nPheno) {
-    mresid.temp = mresid[,i]
+  for (i in 1:nPheno) {
+    mresid.temp = mresid[, i]
     q25 = quantile(mresid.temp, 0.25, na.rm = TRUE)
     q75 = quantile(mresid.temp, 0.75, na.rm = TRUE)
     IQR = q75 - q25
@@ -1301,7 +1310,7 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
     posOutlier = which(mresid.temp < cutoff[1] | mresid.temp > cutoff[2])
     
     # 动态调整阈值
-    while(length(posOutlier) == 0) {
+    while (length(posOutlier) == 0) {
       r.outlier = r.outlier * 0.8
       cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
       posOutlier = which(mresid.temp < cutoff[1] | mresid.temp > cutoff[2])
@@ -1323,10 +1332,7 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
     )
   }
   
-  cat("Part4:\n")
-  
-  # ---- 7. 创建ID映射表 ----
-  ########################### 关键修复2：严格的类型转换 ###########################
+  # ---- 7. 创建ID映射表（保持原样） ----
   data.table::set(sparseGRM, j = "ID1", value = as.character(sparseGRM$ID1))
   data.table::set(sparseGRM, j = "ID2", value = as.character(sparseGRM$ID2))
   subjData = as.character(subjData)
@@ -1339,30 +1345,28 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   )
   data.table::setkey(id_map, "OriginalID")
   
-  cat("Part5:\n")
-  
-  # ---- 8. 构建ResidMat（关键预处理） ----
+  # ---- 8. 构建ResidMat（修复data.table作用域问题） ----
   ResidMat = data.table::data.table(
     SubjID = subjData,
-    SubjID_Index = as.integer(id_map$Index[match(subjData, id_map$OriginalID)])  # 强制为整型
+    SubjID_Index = as.integer(id_map$Index[match(subjData, id_map$OriginalID)])
   )
   
-  # 强制所有Resid_列为双精度
+  # 动态添加Resid_*列（使用data.table::set避免作用域问题）
   resid_cols = paste0("Resid_", 1:nPheno)
-  for(i in 1:nPheno) {
-    ResidMat[, (resid_cols[i]) := as.numeric(mresid[,i])]
+  for (i in 1:nPheno) {
+    data.table::set(ResidMat, j = resid_cols[i], value = as.numeric(mresid[, i]))
   }
   
-  # 验证ResidMat类型
-  if(!all(sapply(ResidMat[, .SD, .SDcols = patterns("^Resid_")], is.numeric)))
-    stop("Resid_*列必须为双精度")
-  if(!is.integer(ResidMat$SubjID_Index))
-    stop("SubjID_Index必须为整型")
+  # 验证ResidMat数据类型
+  if (!all(sapply(ResidMat[, .SD, .SDcols = patterns("^Resid_")], is.numeric))) {
+    stop("Resid_*列必须为双精度（numeric）")
+  }
+  if (!is.integer(ResidMat$SubjID_Index)) {
+    stop("SubjID_Index必须为整型（integer）")
+  }
   
-  cat("Part6:\n")
-  
-  # ---- 9. 处理稀疏GRM（关键预处理） ----
-  sparseGRM_new <- data.table::data.table(
+  # ---- 9. 处理稀疏GRM（保持原样） ----
+  sparseGRM_new = data.table::data.table(
     ID1 = sparseGRM$ID1,
     ID2 = sparseGRM$ID2,
     ID1_Index = as.integer(id_map$Index[match(sparseGRM$ID1, id_map$OriginalID)]),
@@ -1370,14 +1374,16 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
     Value = as.numeric(sparseGRM$Value)
   )
   
-  # 移除无效行并验证类型
-  sparseGRM_new = sparseGRM_new[complete.cases(sparseGRM_new)]
-  if(!is.integer(sparseGRM_new$ID1_Index) || !is.integer(sparseGRM_new$ID2_Index))
-    stop("GRM索引必须为整型")
+  # 移除无效行并验证
+  sparseGRM_new = na.omit(sparseGRM_new)
+  if (nrow(sparseGRM_new) == 0) {
+    stop("转换后的稀疏GRM为空，请检查ID映射")
+  }
+  if (!is.integer(sparseGRM_new$ID1_Index) || !is.integer(sparseGRM_new$ID2_Index)) {
+    stop("GRM索引列必须为整型")
+  }
   
-  cat("Part7:\n")
-  
-  # ---- 10. 构建结果对象 ----
+  # ---- 10. 构建最终对象 ----
   objNull = list(
     resid = mresid,
     ResidMat = as.data.frame(ResidMat),
@@ -1395,14 +1401,13 @@ fitNullModel.SPAmixPlusV4 = function(response, designMat, subjData,
   
   # ---- 11. 调试输出 ----
   cat("\n===== 最终对象结构 =====\n")
-  cat("ResidMat列类型:", sapply(ResidMat, class), "\n")
-  cat("sparseGRM列类型:", sapply(sparseGRM_new, class), "\n")
+  cat("ResidMat列类型:\n")
+  print(sapply(ResidMat, class))
+  cat("\nsparseGRM列类型:\n")
+  print(sapply(sparseGRM_new, class))
   
   return(objNull)
 }
-
-
-
 
 
 #########################################################################################################
