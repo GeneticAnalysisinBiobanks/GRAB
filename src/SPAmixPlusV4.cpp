@@ -19,8 +19,7 @@ SPAmixPlusV4Class::SPAmixPlusV4Class(arma::mat t_resid,
                                      Rcpp::DataFrame t_ResidMat)     // 新增参数：残差矩阵
 {
   
-  // ==== 处理ResidMat：直接提取数值列 ====
-  // 动态识别Resid_前缀的列（例如Resid_1, Resid_2）
+  // ==== 处理ResidMat ====
   Rcpp::CharacterVector colNames = t_ResidMat.names();
   std::vector<std::string> residCols;
   for(int i=0; i<colNames.size(); ++i){
@@ -30,7 +29,6 @@ SPAmixPlusV4Class::SPAmixPlusV4Class(arma::mat t_resid,
     }
   }
   
-  // 提取残差列并构建Armadillo矩阵
   int numSamples = t_ResidMat.nrows();
   int numPheno = residCols.size();
   arma::mat residMat(numSamples, numPheno);
@@ -40,12 +38,11 @@ SPAmixPlusV4Class::SPAmixPlusV4Class(arma::mat t_resid,
   }
   m_ResidMat = residMat;
   
-  // ==== 处理sparseGRM：直接使用整数索引 ====
+  // ==== 处理sparseGRM ====
   Rcpp::IntegerVector id1_indices = t_sparseGRM["ID1_Index"];
   Rcpp::IntegerVector id2_indices = t_sparseGRM["ID2_Index"];
   Rcpp::NumericVector values = Rcpp::as<Rcpp::NumericVector>(t_sparseGRM["Value"]);
   
-  // 构建稀疏三元组（直接使用预处理的整数索引）
   std::vector<std::tuple<int, int, double>> sparseTriplets;
   for(int i=0; i<values.size(); ++i){
     int id1 = id1_indices[i];
