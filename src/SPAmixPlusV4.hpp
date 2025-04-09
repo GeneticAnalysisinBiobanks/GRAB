@@ -582,8 +582,8 @@ public:
       double S = sum(t_GVec.elem(posValue) % resid.elem(posValue));
       double S_mean = 2 * sum(resid.elem(posValue) % AF_subset);
 
-      // double zScore = (S - S_mean) / sqrt(VarS);
-      double zScore = -1 + (S - S_mean) / sqrt(VarS);  //  test !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      double zScore = (S - S_mean) / sqrt(VarS);
+      // double zScore = -1 + (S - S_mean) / sqrt(VarS);  //  test !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       
       m_zScoreVec.at(i) = zScore;
 
@@ -603,7 +603,9 @@ public:
 
 
       if(std::abs(zScore) < m_SPA_Cutoff){
-        m_pvalVec.at(i) = arma::normcdf(-1*std::abs(zScore))*2;
+        // m_pvalVec.at(i) = arma::normcdf(-1*std::abs(zScore))*2;
+        m_pvalVec.at(i) = arma::normcdf(-1*std::abs(zScore));     //  test !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        
         continue;
         // return pval;
       }
