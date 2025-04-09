@@ -19,38 +19,36 @@ SPAmixPlusV4Class::SPAmixPlusV4Class(arma::mat t_resid,
                                      Rcpp::DataFrame t_ResidMat)     // 新增参数：残差矩阵
 {
   
-  // ==== 修改点1：提取ResidMat的SubjID_Index（整数列）====
-  Rcpp::IntegerVector subjID_Index = t_ResidMat["SubjID_Index"];  // 显式提取为整型
-  arma::ivec subjIndices = Rcpp::as<arma::ivec>(subjID_Index);    // 转换为Armadillo整数向量
+  // ==== 处理ResidMat ====
+  Rcpp::IntegerVector subjID_Index = t_ResidMat["SubjID_Index"];
+  arma::ivec subjIndices = Rcpp::as<arma::ivec>(subjID_Index);
   
-  // ==== 修改点2：处理Resid_*列（双精度列）====
+  // 提取Resid_*列（双精度）
   Rcpp::CharacterVector colNames = t_ResidMat.names();
   std::vector<std::string> residCols;
-  for (int i = 0; i < colNames.size(); ++i) {
+  for(int i=0; i<colNames.size(); ++i){
     std::string colName = Rcpp::as<std::string>(colNames[i]);
-    if (colName.find("Resid_") != std::string::npos) {
+    if(colName.find("Resid_") != std::string::npos) {
       residCols.push_back(colName);
     }
   }
   
-  // 构建残差矩阵（双精度）
   int numSamples = t_ResidMat.nrows();
   int numPheno = residCols.size();
   arma::mat residMat(numSamples, numPheno);
-  for (int i = 0; i < numPheno; ++i) {
+  for(int i=0; i<numPheno; ++i){
     Rcpp::NumericVector residVec = Rcpp::as<Rcpp::NumericVector>(t_ResidMat[residCols[i]]);
-    residMat.col(i) = arma::vec(residVec.begin(), residVec.size(), false); // 直接内存访问
+    residMat.col(i) = arma::vec(residVec.begin(), residVec.size(), false);
   }
   m_ResidMat = residMat;
   
-  // ==== 修改点3：处理sparseGRM的整数索引列 ====
-  Rcpp::IntegerVector id1_indices = t_sparseGRM["ID1_Index"];  // 整型
-  Rcpp::IntegerVector id2_indices = t_sparseGRM["ID2_Index"];  // 整型
-  Rcpp::NumericVector values = Rcpp::as<Rcpp::NumericVector>(t_sparseGRM["Value"]); // 双精度
+  // ==== 处理sparseGRM ====
+  Rcpp::IntegerVector id1_indices = t_sparseGRM["ID1_Index"];
+  Rcpp::IntegerVector id2_indices = t_sparseGRM["ID2_Index"];
+  Rcpp::NumericVector values = Rcpp::as<Rcpp::NumericVector>(t_sparseGRM["Value"]);
   
-  // 构建稀疏三元组
   std::vector<std::tuple<int, int, double>> sparseTriplets;
-  for (int i = 0; i < values.size(); ++i) {
+  for(int i=0; i<values.size(); ++i){
     int id1 = id1_indices[i];
     int id2 = id2_indices[i];
     double val = values[i];
@@ -75,8 +73,8 @@ SPAmixPlusV4Class::SPAmixPlusV4Class(arma::mat t_resid,
   m_PCs = t_PCs;
   m_outlierList = t_outlierList;
   
-  m_sparseGRM = t_sparseGRM; // update by Yuzhuo Ma
-  m_ResidMat = t_ResidMat;   // update by Yuzhuo Ma
+  // m_sparseGRM = t_sparseGRM; // update by Yuzhuo Ma
+  // m_ResidMat = t_ResidMat;   // update by Yuzhuo Ma
   
   // m_posOutlier = t_posOutlier;
   // m_posNonOutlier = t_posNonOutlier;
