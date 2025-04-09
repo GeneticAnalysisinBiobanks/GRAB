@@ -16,8 +16,7 @@ SPAmixPlusV4Class::SPAmixPlusV4Class(arma::mat t_resid,
                                      double t_SPA_Cutoff,
                                      Rcpp::List t_outlierList,
                                      Rcpp::DataFrame t_sparseGRM,    // 新增参数：稀疏GRM数据
-                                     Rcpp::DataFrame t_ResidMat     // 新增参数：残差矩阵数据
-)
+                                     Rcpp::DataFrame t_ResidMat)     // 新增参数：残差矩阵
 {
   
   // ==== 新增1：ID映射系统 ====
