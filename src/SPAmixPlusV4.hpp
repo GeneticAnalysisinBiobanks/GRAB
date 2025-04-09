@@ -17,7 +17,7 @@ class SPAmixPlusV4Class
 private:
   
   // ==== 修改1：新增成员 ====
-  std::unordered_map<std::string, int> m_idMap;  // ID映射表
+  // std::unordered_map<std::string, int> m_idMap;  // ID映射表
   arma::mat m_ResidMat;                          // 多表型残差矩阵（N×M）
   std::vector<std::tuple<int, int, double>> m_sparseTriplets; // 稀疏矩阵三元组
   arma::vec m_MAFVec;                            // MAF估计值
@@ -677,46 +677,72 @@ public:
   
   
   
+  //  优化方差计算函数 2025-04-09
   
-  
-  
-  
-  
-  
-  
-  // 修改1：为calculateSparseVariance添加posValue参数，并调整方差计算公式
   double calculateSparseVariance(const arma::vec& R_new, 
                                  const arma::uvec& posValue,
                                  const arma::vec& GVarVec) {
     double covSum = 0.0;
     
-    // 创建posValue的查找表以加速查询
-    std::unordered_set<int> validIndices;
-    for(auto idx : posValue) {
-      validIndices.insert(static_cast<int>(idx));
-    }
+    // 快速查找：使用unordered_set存储有效索引
+    std::unordered_set<int> validIndices(posValue.begin(), posValue.end());
     
-    // 仅处理双方都在posValue中的GRM对
     for(const auto& triplet : m_sparseTriplets) {
       int i = std::get<0>(triplet);
       int j = std::get<1>(triplet);
       
-      // 修改2：严格检查索引是否在posValue范围内
+      // 仅处理双方都在posValue中的GRM对
       if(validIndices.count(i) && validIndices.count(j)) {
         double val = std::get<2>(triplet);
         covSum += val * R_new(i) * R_new(j) * GVarVec(i) * GVarVec(j);
       }
     }
     
-    // 修改3：调整方差计算公式（包含稀疏GRM的协方差项）
-    double independentVar = sum(square(R_new) % GVarVec);  // 原独立方差项
-    double covarianceTerm = 2 * covSum;                    // 新增GRM协方差项
+    // 方差公式：独立项 + 协方差项
+    double independentVar = sum(square(R_new) % GVarVec);
+    double covarianceTerm = 2 * covSum;
     
     return independentVar + covarianceTerm;
   }
   
+  
+  
+  
+  // // 修改1：为calculateSparseVariance添加posValue参数，并调整方差计算公式
+  // double calculateSparseVariance(const arma::vec& R_new, 
+  //                                const arma::uvec& posValue,
+  //                                const arma::vec& GVarVec) {
+  //   double covSum = 0.0;
+  //   
+  //   // 创建posValue的查找表以加速查询
+  //   std::unordered_set<int> validIndices;
+  //   for(auto idx : posValue) {
+  //     validIndices.insert(static_cast<int>(idx));
+  //   }
+  //   
+  //   // 仅处理双方都在posValue中的GRM对
+  //   for(const auto& triplet : m_sparseTriplets) {
+  //     int i = std::get<0>(triplet);
+  //     int j = std::get<1>(triplet);
+  //     
+  //     // 修改2：严格检查索引是否在posValue范围内
+  //     if(validIndices.count(i) && validIndices.count(j)) {
+  //       double val = std::get<2>(triplet);
+  //       covSum += val * R_new(i) * R_new(j) * GVarVec(i) * GVarVec(j);
+  //     }
+  //   }
+  //   
+  //   // 修改3：调整方差计算公式（包含稀疏GRM的协方差项）
+  //   double independentVar = sum(square(R_new) % GVarVec);  // 原独立方差项
+  //   double covarianceTerm = 2 * covSum;                    // 新增GRM协方差项
+  //   
+  //   return independentVar + covarianceTerm;
+  // }
+  
 
 // double calculateSparseVariance(const arma::vec& R_new);
+
+
 
   
   
