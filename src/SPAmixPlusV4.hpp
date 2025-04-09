@@ -582,7 +582,9 @@ public:
       double S = sum(t_GVec.elem(posValue) % resid.elem(posValue));
       double S_mean = 2 * sum(resid.elem(posValue) % AF_subset);
 
-      double zScore = (S - S_mean) / sqrt(VarS);
+      // double zScore = (S - S_mean) / sqrt(VarS);
+      double zScore = -1 + (S - S_mean) / sqrt(VarS);  //  test !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      
       m_zScoreVec.at(i) = zScore;
 
 
