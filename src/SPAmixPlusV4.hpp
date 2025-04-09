@@ -18,10 +18,14 @@ private:
   
   // ==== 修改1：新增成员 ====
   // std::unordered_map<std::string, int> m_idMap;  // ID映射表
-  arma::mat m_ResidMat;                          // 多表型残差矩阵（N×M）
-  std::vector<std::tuple<int, int, double>> m_sparseTriplets; // 稀疏矩阵三元组
+  // arma::mat m_ResidMat;                          // 多表型残差矩阵（N×M）
+  // std::vector<std::tuple<int, int, double>> m_sparseTriplets; // 稀疏矩阵三元组
   arma::vec m_MAFVec;                            // MAF估计值
   
+  // ==== 新增成员 ====
+  arma::ivec m_subjIndices;  // 存储SubjID_Index（整数索引）
+  arma::mat m_ResidMat;      // 存储Resid_*列（双精度矩阵）
+  std::vector<std::tuple<int, int, double>> m_sparseTriplets; // 稀疏矩阵三元组
   
   ////////////////////// -------------------- members ---------------------------------- //////////////////////
   
@@ -50,7 +54,7 @@ private:
   
   
   // 其他成员变量...
-  Rcpp::DataFrame m_sparseGRM;   // 新增：稀疏GRM数据框
+  // Rcpp::DataFrame m_sparseGRM;   // 新增：稀疏GRM数据框
   // Rcpp::DataFrame m_ResidMat;    // 新增：残差矩阵数据框
   
   
