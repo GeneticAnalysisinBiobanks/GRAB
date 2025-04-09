@@ -19,7 +19,78 @@ SPAmixPlusV4Class::SPAmixPlusV4Class(arma::mat t_resid,
                                      Rcpp::DataFrame t_ResidMat)     // 新增参数：残差矩阵
 {
   
-  // ==== 新增1：ID映射系统 ====
+  // // ==== 新增1：ID映射系统 ====
+  // Rcpp::CharacterVector subjIDs = t_ResidMat["SubjID"];
+  // Rcpp::NumericVector indices = t_ResidMat["SubjID_Index"];
+  // std::unordered_map<std::string, int> idMap;
+  // for(int i=0; i<subjIDs.size(); ++i){
+  //   idMap[Rcpp::as<std::string>(subjIDs[i])] = indices[i];
+  // }
+  // 
+  // // ==== 新增2：稀疏矩阵预处理 ====
+  // Rcpp::CharacterVector id1 = t_sparseGRM["ID1"];
+  // Rcpp::CharacterVector id2 = t_sparseGRM["ID2"];
+  // // Rcpp::NumericVector values = t_sparseGRM["Value"];
+  // // 修改后（显式转换）：
+  // Rcpp::NumericVector values = Rcpp::as<Rcpp::NumericVector>(t_sparseGRM["Value"]);
+  // 
+  // std::vector<std::tuple<int, int, double>> sparseTriplets;
+  // for(int i=0; i<values.size(); ++i){
+  //   auto it1 = idMap.find(Rcpp::as<std::string>(id1[i]));
+  //   auto it2 = idMap.find(Rcpp::as<std::string>(id2[i]));
+  //   if(it1 != idMap.end() && it2 != idMap.end()){
+  //     sparseTriplets.emplace_back(it1->second, it2->second, values[i]);
+  //   }
+  // }
+  // m_sparseTriplets = sparseTriplets; // 存储预处理结果
+  // 
+  // // // ==== 修改3：多表型残差矩阵 ====
+  // // Rcpp::NumericMatrix residR = t_ResidMat["Resid"];
+  // // m_ResidMat = Rcpp::as<arma::mat>(residR); // 转换为N×M矩阵(N样本数,M表型数)
+  // 
+  // // 新代码：处理Resid列为列表（每个元素为表型的残差向量）
+  // Rcpp::List residList = t_ResidMat["Resid"];
+  // int numPheno = residList.size();
+  // int numSamples = Rcpp::as<arma::vec>(residList[0]).n_elem;
+  // arma::mat residMat(numSamples, numPheno);
+  // 
+  // // 逐列提取残差向量
+  // for(int i = 0; i < numPheno; ++i) {
+  //   residMat.col(i) = Rcpp::as<arma::vec>(residList[i]);
+  // }
+  // m_ResidMat = residMat;
+  
+  
+  // ==== 处理ResidMat ====
+  // 获取所有列名
+  Rcpp::CharacterVector colNames = t_ResidMat.names();
+  
+  // 动态识别残差列（例如Resid_1, Resid_2）
+  std::vector<std::string> residCols;
+  for(int i=0; i<colNames.size(); ++i){
+    std::string colName = Rcpp::as<std::string>(colNames[i]);
+    if(colName.find("Resid_") != std::string::npos) {
+      residCols.push_back(colName);
+    }
+  }
+  
+  // 提取残差列并构建矩阵
+  int numSamples = t_ResidMat.nrows();
+  int numPheno = residCols.size();
+  arma::mat residMat(numSamples, numPheno);
+  
+  for(int i=0; i<numPheno; ++i){
+    Rcpp::NumericVector residVec = t_ResidMat[residCols[i]];
+    residMat.col(i) = Rcpp::as<arma::vec>(residVec);
+  }
+  m_ResidMat = residMat;
+  
+  // ==== 处理稀疏GRM ====
+  Rcpp::CharacterVector id1 = t_sparseGRM["ID1"];
+  Rcpp::CharacterVector id2 = t_sparseGRM["ID2"];
+  Rcpp::NumericVector values = Rcpp::as<Rcpp::NumericVector>(t_sparseGRM["Value"]); // 显式转换
+  
+  // 构建ID到索引的映射表
   Rcpp::CharacterVector subjIDs = t_ResidMat["SubjID"];
   Rcpp::NumericVector indices = t_ResidMat["SubjID_Index"];
   std::unordered_map<std::string, int> idMap;
@@ -27,10 +98,7 @@ SPAmixPlusV4Class::SPAmixPlusV4Class(arma::mat t_resid,
     idMap[Rcpp::as<std::string>(subjIDs[i])] = indices[i];
   }
   
-  // ==== 新增2：稀疏矩阵预处理 ====
-  Rcpp::CharacterVector id1 = t_sparseGRM["ID1"];
-  Rcpp::CharacterVector id2 = t_sparseGRM["ID2"];
-  Rcpp::NumericVector values = t_sparseGRM["Value"];
+  // 构建稀疏矩阵三元组
   std::vector<std::tuple<int, int, double>> sparseTriplets;
   for(int i=0; i<values.size(); ++i){
     auto it1 = idMap.find(Rcpp::as<std::string>(id1[i]));
@@ -39,16 +107,7 @@ SPAmixPlusV4Class::SPAmixPlusV4Class(arma::mat t_resid,
       sparseTriplets.emplace_back(it1->second, it2->second, values[i]);
     }
   }
-  m_sparseTriplets = sparseTriplets; // 存储预处理结果
-  
-  // ==== 修改3：多表型残差矩阵 ====
-  Rcpp::NumericMatrix residR = t_ResidMat["Resid"];
-  m_ResidMat = Rcpp::as<arma::mat>(residR); // 转换为N×M矩阵(N样本数,M表型数)
-  
-  
-  
-  
-  
+  m_sparseTriplets = sparseTriplets;
   
   
   
