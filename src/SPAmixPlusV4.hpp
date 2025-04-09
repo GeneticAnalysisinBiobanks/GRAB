@@ -238,6 +238,9 @@ public:
                        double mean_nonOutlier,
                        double var_nonOutlier)
   {
+    std::cout << "SPAmixPlus_GetProb_SPA_G:\t" << std::endl;
+    
+    
     double initX = 0;
     
     // The following initial values are validated on 03/25/2021
@@ -523,6 +526,9 @@ public:
                        double t_altFreq)  // later update score and variance here (2023-06-20)
   {
 
+    std::cout << "SPAmixPlus_getMarkerPval" << std::endl;
+    
+    
     arma::vec time1 = getTime();
 
     arma::vec AFVec = getMAFest(t_GVec, t_altFreq);  // PCs are global variables and can be loaded when necessary
