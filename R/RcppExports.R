@@ -97,8 +97,8 @@ setSPAmixobjInCPP <- function(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList) 
     invisible(.Call(`_GRAB_setSPAmixobjInCPP`, t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList))
 }
 
-setSPAmixPlusV4objInCPP <- function(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList) {
-    invisible(.Call(`_GRAB_setSPAmixPlusV4objInCPP`, t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList))
+setSPAmixPlusV4objInCPP <- function(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList, t_sparseGRM, t_ResidMat) {
+    invisible(.Call(`_GRAB_setSPAmixPlusV4objInCPP`, t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList, t_sparseGRM, t_ResidMat))
 }
 
 setSPACoxobjInCPP <- function(t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_covaAdj_Cutoff, t_SPA_Cutoff) {

@@ -398,8 +398,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // setSPAmixPlusV4objInCPP
-void setSPAmixPlusV4objInCPP(arma::mat t_resid, arma::mat t_PCs, int t_N, double t_SPA_Cutoff, Rcpp::List t_outlierList);
-RcppExport SEXP _GRAB_setSPAmixPlusV4objInCPP(SEXP t_residSEXP, SEXP t_PCsSEXP, SEXP t_NSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_outlierListSEXP) {
+void setSPAmixPlusV4objInCPP(arma::mat t_resid, arma::mat t_PCs, int t_N, double t_SPA_Cutoff, Rcpp::List t_outlierList, Rcpp::DataFrame t_sparseGRM, Rcpp::DataFrame t_ResidMat);
+RcppExport SEXP _GRAB_setSPAmixPlusV4objInCPP(SEXP t_residSEXP, SEXP t_PCsSEXP, SEXP t_NSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_outlierListSEXP, SEXP t_sparseGRMSEXP, SEXP t_ResidMatSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::mat >::type t_resid(t_residSEXP);
@@ -407,7 +407,9 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type t_N(t_NSEXP);
     Rcpp::traits::input_parameter< double >::type t_SPA_Cutoff(t_SPA_CutoffSEXP);
     Rcpp::traits::input_parameter< Rcpp::List >::type t_outlierList(t_outlierListSEXP);
-    setSPAmixPlusV4objInCPP(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList);
+    Rcpp::traits::input_parameter< Rcpp::DataFrame >::type t_sparseGRM(t_sparseGRMSEXP);
+    Rcpp::traits::input_parameter< Rcpp::DataFrame >::type t_ResidMat(t_ResidMatSEXP);
+    setSPAmixPlusV4objInCPP(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList, t_sparseGRM, t_ResidMat);
     return R_NilValue;
 END_RCPP
 }
@@ -490,7 +492,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setSPAyuzhuomaobjInCPP", (DL_FUNC) &_GRAB_setSPAyuzhuomaobjInCPP, 12},
     {"_GRAB_setSAGELDobjInCPP", (DL_FUNC) &_GRAB_setSAGELDobjInCPP, 41},
     {"_GRAB_setSPAmixobjInCPP", (DL_FUNC) &_GRAB_setSPAmixobjInCPP, 5},
-    {"_GRAB_setSPAmixPlusV4objInCPP", (DL_FUNC) &_GRAB_setSPAmixPlusV4objInCPP, 5},
+    {"_GRAB_setSPAmixPlusV4objInCPP", (DL_FUNC) &_GRAB_setSPAmixPlusV4objInCPP, 7},
     {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},
     {"_GRAB_setWtSPAGobjInCPP", (DL_FUNC) &_GRAB_setWtSPAGobjInCPP, 4},
     {"_GRAB_updateQCInCPP", (DL_FUNC) &_GRAB_updateQCInCPP, 4},

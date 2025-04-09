@@ -20,31 +20,6 @@
 #'                             traitType = "time-to-event",
 #'                             control = list(PC_columns = "PC1,PC2"))
 #' 
-#' # Using model residuals performs exactly the same as the above. Note that confounding factors are still required in the right of the formula.
-#' obj.coxph = coxph(Surv(SurvTime, SurvEvent)~AGE+GENDER+PC1+PC2, data = PhenoData)
-#' obj.SPAmixPlusV4 = GRAB.NullModel(obj.coxph$residuals ~ AGE + GENDER + PC1 + PC2, 
-#'                             data = PhenoData, 
-#'                             subjData = IID, 
-#'                             method = "SPAmixPlusV4", 
-#'                             traitType = "Residual",
-#'                             control = list(PC_columns = "PC1,PC2"))
-#'                             
-#' # SPAmixPlusV4 also supports multiple residuals as below                           
-#' obj.coxph = coxph(Surv(SurvTime, SurvEvent)~AGE+GENDER+PC1+PC2, data = PhenoData)
-#' obj.lm = lm(QuantPheno ~ AGE+GENDER+PC1+PC2, data = PhenoData)
-#' obj.SPAmixPlusV4 = GRAB.NullModel(obj.coxph$residuals + obj.lm$residuals ~ AGE + GENDER + PC1 + PC2, 
-#'                             data = PhenoData, 
-#'                             subjData = IID, 
-#'                             method = "SPAmixPlusV4", 
-#'                             traitType = "Residual",
-#'                             control = list(PC_columns = "PC1,PC2"))
-#'                              
-#' # Step 2: conduct score test
-#' GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
-#' OutputDir = system.file("results", package = "GRAB")
-#' OutputFile = paste0(OutputDir, "/Results_SPAmixPlusV4.txt")
-#' GRAB.Marker(obj.SPAmixPlusV4, GenoFile = GenoFile, OutputFile = OutputFile, control = list(outputColumns = "zScore"))
-#' data.table::fread(OutputFile)
 #' @export
 GRAB.SPAmixPlusV4 = function(){
   print("Check ?GRAB.SPAmixPlusV4 for more details about 'SPAmixPlusV4' method.")
@@ -91,7 +66,11 @@ setMarker.SPAmixPlusV4 = function(objNull, control)
                           objNull$PCs,
                           objNull$N,
                           control$SPA_Cutoff,
-                          objNull$outLierList)  
+                          objNull$outLierList,
+                          
+                          objNull$sparseGRM,  # update by Yuzhuo Ma
+                          objNull$ResidMat    # update by Yuzhuo Ma
+                          )  
   
   # outLierList[[i]] = list(posValue = posValue - 1,
   #                         posOutlier = posOutlier - 1,

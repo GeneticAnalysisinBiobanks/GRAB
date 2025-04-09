@@ -1524,7 +1524,10 @@ void setSPAmixPlusV4objInCPP(arma::mat t_resid,
                              arma::mat t_PCs,
                              int t_N,
                              double t_SPA_Cutoff,
-                             Rcpp::List t_outlierList)
+                             Rcpp::List t_outlierList,
+                             Rcpp::DataFrame t_sparseGRM,    // 新增参数：稀疏GRM数据
+                             Rcpp::DataFrame t_ResidMat     // 新增参数：残差矩阵数据
+                             )
 {
   if(ptr_gSPAmixPlusV4obj)
     delete ptr_gSPAmixPlusV4obj;
@@ -1535,7 +1538,10 @@ void setSPAmixPlusV4objInCPP(arma::mat t_resid,
                                                              t_PCs,
                                                              t_N,
                                                              t_SPA_Cutoff,
-                                                             t_outlierList);
+                                                             t_outlierList,
+                                                             t_sparseGRM,    // 新增参数：稀疏GRM数据
+                                                             t_ResidMat      // 新增参数：残差矩阵数据
+                                                             );
 }
 
 
