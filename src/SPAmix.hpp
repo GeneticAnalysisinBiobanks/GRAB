@@ -218,7 +218,7 @@ public:
                        double mean_nonOutlier,
                        double var_nonOutlier)
   {
-    std::cout << "SPAmix_GetProb_SPA_G:\t" << std::endl;
+    // std::cout << "SPAmix_GetProb_SPA_G:\t" << std::endl;
     
     
     double initX = 0;
@@ -401,7 +401,7 @@ public:
   double getMarkerPval(arma::vec t_GVec, 
                        double t_altFreq)  // later update score and variance here (2023-06-20)
   {
-    std::cout << "SPAmix_getMarkerPval" << std::endl;
+    // std::cout << "SPAmix_getMarkerPval" << std::endl;
     
     // estimate allele frequency based on PC information and raw genotpe
     // arma::vec AFVec = getMAFest(m_PCs, t_GVec, t_altFreq);
@@ -412,7 +412,7 @@ public:
     arma::vec time2 = getTime();
     arma::vec diffTime = time2 - time1;
     // std::cout << "part2" << std::endl;
-    
+    //
     // std::cout << "(MAF) diffTime:\t" << diffTime << std::endl;
     
     m_diffTime2 += diffTime;

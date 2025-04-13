@@ -241,7 +241,7 @@ public:
                        double mean_nonOutlier,
                        double var_nonOutlier)
   {
-    std::cout << "SPAmixPlus_GetProb_SPA_G:\t" << std::endl;
+    //std::cout << "SPAmixPlus_GetProb_SPA_G:\t" << std::endl;
     
     
     double initX = 0;
@@ -678,7 +678,7 @@ public:
                       double t_altFreq)  // later update score and variance here (2023-06-20)
  {
 
-   std::cout << "SPAmixPlus_getMarkerPval" << std::endl;
+   //std::cout << "SPAmixPlus_getMarkerPval" << std::endl;
 
 
    arma::vec time1 = getTime();

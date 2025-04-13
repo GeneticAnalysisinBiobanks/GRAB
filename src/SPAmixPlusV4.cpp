@@ -75,7 +75,7 @@ SPAmixPlusV4Class::SPAmixPlusV4Class(arma::mat t_resid,
   
   // m_sparseGRM = t_sparseGRM; // update by Yuzhuo Ma
   // m_ResidMat = t_ResidMat;   // update by Yuzhuo Ma
-  
+  //
   // m_posOutlier = t_posOutlier;
   // m_posNonOutlier = t_posNonOutlier;
   
