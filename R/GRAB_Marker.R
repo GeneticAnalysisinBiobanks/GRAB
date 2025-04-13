@@ -310,13 +310,13 @@ mainMarker = function(NullModelClass, genoType, genoIndex, outputColumns, objNul
   # Check 'SPAmix.R'
   if(NullModelClass == "SPAmix_NULL_Model")
     obj.mainMarker = mainMarker.SPAmix(genoType, genoIndex, outputColumns, objNull)
-    cat(paste0("NullModelClass is SPAmix_NULL_Model \n")) # added by Yuzhuo Ma
+    # cat(paste0("NullModelClass is SPAmix_NULL_Model \n")) # added by Yuzhuo Ma
   
   
   # Check 'SPAmixPlusV4.R'
   if(NullModelClass == "SPAmixPlusV4_NULL_Model")
     obj.mainMarker = mainMarker.SPAmixPlusV4(genoType, genoIndex, outputColumns, objNull)
-    cat(paste0("NullModelClass is SPAmixPlusV4_NULL_Model \n")) # added by Yuzhuo Ma
+    # cat(paste0("NullModelClass is SPAmixPlusV4_NULL_Model \n")) # added by Yuzhuo Ma
   
   
   # Check 'SPAGRM.R'
