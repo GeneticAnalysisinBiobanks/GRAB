@@ -27,6 +27,7 @@
 #include "DenseGRM.hpp"
 #include "SPAmix.hpp"
 #include "SPAmixPlusV4.hpp"
+#include "SPAGxEmixPlus.hpp"
 #include "SPAGRM.hpp"
 #include "SPAyuzhuoma.hpp"
 #include "SAGELD.hpp"
@@ -45,6 +46,7 @@ static POLMM::POLMMClass* ptr_gPOLMMobj = NULL;
 static SPACox::SPACoxClass* ptr_gSPACoxobj = NULL;
 static SPAmix::SPAmixClass* ptr_gSPAmixobj = NULL;
 static SPAmixPlusV4::SPAmixPlusV4Class* ptr_gSPAmixPlusV4obj = NULL;
+static SPAGxEmixPlus::SPAGxEmixPlusClass* ptr_gSPAGxEmixPlusobj = NULL;
 static SPAGRM::SPAGRMClass* ptr_gSPAGRMobj = NULL;
 static SPAyuzhuoma::SPAyuzhuomaClass* ptr_gSPAyuzhuomaobj = NULL;
 static SAGELD::SAGELDClass* ptr_gSAGELDobj = NULL;
@@ -191,7 +193,7 @@ void updateGroupInfo(arma::vec t_GVec,
 //////// ---------- Main function for marker-level analysis --------- ////////////
 
 // [[Rcpp::export]]
-Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SAIGE", "SPAmix", "SPAmixPlusV4", "SPAGRM", "SPAyuzhuoma"
+Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SAIGE", "SPAmix", "SPAmixPlusV4", "SPAGxEmixPlus, "SPAGRM", "SPAyuzhuoma"
                            std::string t_genoType,     // "PLINK", "BGEN"
                            std::vector<uint64_t> t_genoIndex)  
 {
@@ -213,6 +215,9 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   
   if(t_method == "SPAmixPlusV4")
     Npheno = ptr_gSPAmixPlusV4obj->getNpheno();
+  
+  if(t_method == "SPAGxEmixPlus")
+    Npheno = ptr_gSPAGxEmixPlusobj->getNpheno();
   
   if(t_method == "SAGELD")
     Npheno = 2;
@@ -344,6 +349,14 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     }else if(t_method == "SPAmixPlusV4"){
       arma::vec pvalVecTemp = ptr_gSPAmixPlusV4obj->getpvalVec();
       arma::vec zScoreVecTemp = ptr_gSPAmixPlusV4obj->getzScoreVec();
+      
+      for(int j = 0; j < Npheno; j++){
+        pvalVec.at(i*Npheno+j) = pvalVecTemp.at(j);
+        zScoreVec.at(i*Npheno+j) = zScoreVecTemp.at(j);
+      }
+    }else if(t_method == "SPAGxEmixPlus"){
+      arma::vec pvalVecTemp = ptr_gSPAGxEmixPlusobj->getpvalVec();
+      arma::vec zScoreVecTemp = ptr_gSPAGxEmixPlusobj->getzScoreVec();
       
       for(int j = 0; j < Npheno; j++){
         pvalVec.at(i*Npheno+j) = pvalVecTemp.at(j);
@@ -875,6 +888,15 @@ void printTimeDiffSPAmixPlusV4InCPP()
   printTimeDiff(ptr_gSPAmixPlusV4obj->getTestTime2(), "SPAmixPlusV4_MAF");
 }
 
+// [[Rcpp::export]]
+void printTimeDiffSPAGxEmixPlusInCPP()
+{
+  printTimeDiff(ptr_gSPAGxEmixPlusobj->getTestTime1(), "SPAGxEmixPlus_SPA");
+  printTimeDiff(ptr_gSPAGxEmixPlusobj->getTestTime2(), "SPAGxEmixPlus_MAF");
+}
+
+
+
 //////// ---------- Main function for genotype extraction --------- ////////////
 
 // (2023-05-03): output two columns: column #1 is allele frequency and column #2 is missing rate
@@ -1096,7 +1118,7 @@ arma::vec Unified_getOneMarker(std::string t_genoType,   // "PLINK", "BGEN"
 }
 
 // a unified function to get marker-level p-value
-void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE", "SPAmix", "SPAmixPlusV4", and "SPAGRM", and "SPAyuzhuoma"
+void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE", "SPAmix", "SPAmixPlusV4", "SPAGxEmixPlus", and "SPAGRM", and "SPAyuzhuoma"
                            arma::vec t_GVec,
                            bool t_isOnlyOutputNonZero,
                            std::vector<uint32_t> t_indexForNonZero,
@@ -1134,10 +1156,17 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
     t_pval = ptr_gSPAmixPlusV4obj->getMarkerPval(t_GVec, t_altFreq);
   }
   
+  if(t_method == "SPAGxEmixPlus"){
+    if(t_isOnlyOutputNonZero == true)
+      Rcpp::stop("When using SPAGxEmixPlus method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+    t_pval = ptr_gSPAGxEmixPlusobj->getMarkerPval(t_GVec, t_altFreq);
+  }
+  
+  
 }
 
 // a unified function to get marker-level p-value
-void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE", "SPAmix", "SPAmixPlusV4", and "SPAGRM", and "SPAyuzhuoma"
+void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE", "SPAmix", "SPAmixPlusV4", "SPAGxEmixPlus", and "SPAGRM", and "SPAyuzhuoma"
                            arma::vec t_GVec,
                            bool t_isOnlyOutputNonZero,
                            std::vector<uint32_t> t_indexForNonZero,
@@ -1543,6 +1572,39 @@ void setSPAmixPlusV4objInCPP(arma::mat t_resid,
                                                              t_ResidMat      // 新增参数：残差矩阵数据
                                                              );
 }
+
+
+
+
+// [[Rcpp::export]]
+void setSPAGxEmixPlusobjInCPP(arma::mat t_resid,
+                              arma::mat t_PCs,
+                              int t_N,
+                              double t_SPA_Cutoff,
+                              Rcpp::List t_outlierList,
+                              Rcpp::DataFrame t_sparseGRM,    // 新增参数：稀疏GRM数据
+                              Rcpp::DataFrame t_ResidMat     // 新增参数：残差矩阵数据
+)
+{
+  if(ptr_gSPAGxEmixPlusobj)
+    delete ptr_gSPAGxEmixPlusobj;
+  
+  ptr_gSPAGxEmixPlusobj = new SPAGxEmixPlus::SPAGxEmixPlusClass(t_resid,
+                                                                // t_XinvXX,
+                                                                // t_tX,
+                                                                t_PCs,
+                                                                t_N,
+                                                                t_SPA_Cutoff,
+                                                                t_outlierList,
+                                                                t_sparseGRM,    // 新增参数：稀疏GRM数据
+                                                                t_ResidMat      // 新增参数：残差矩阵数据
+  );
+}
+
+
+
+
+
 
 
 // [[Rcpp::export]]

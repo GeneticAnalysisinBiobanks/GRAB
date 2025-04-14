@@ -35,6 +35,8 @@ checkObjNull = function(objNull)
                             "SPAmix_NULL_Model",      # SPAmix: mixture population analysis
                             
                             "SPAmixPlusV4_NULL_Model",      # SPAmixPlusV4: mixture population analysis
+                            "SPAGxEmixPlus_NULL_Model",     # SPAGxEmixPlus: GxE analysis of admixed population 
+                            
                             
                             "SPAGRM_NULL_Model",      # SPAGRM: related subjects
                             
@@ -44,7 +46,7 @@ checkObjNull = function(objNull)
                             "WtSPAG_NULL_Model"))      
   {
     stop('class(objNull) should be one of 
-         c("SPAGE_NULL_Model", "SPACox_NULL_Model", "POLMM_NULL_Model", "SPAmix_NULL_Model", "SPAmixPlusV4_NULL_Model", "SPAGRM_NULL_Model", "SPAyuzhuoma_NULL_Model", "SAGELD_NULL_Model", "WtSPAG_NULL_Model")')
+         c("SPAGE_NULL_Model", "SPACox_NULL_Model", "POLMM_NULL_Model", "SPAmix_NULL_Model", "SPAmixPlusV4_NULL_Model", "SPAGxEmixPlus_NULL_Model", "SPAGRM_NULL_Model", "SPAyuzhuoma_NULL_Model", "SAGELD_NULL_Model", "WtSPAG_NULL_Model")')
   }
     
   if(any(!c("subjData", "N") %in% nm))
