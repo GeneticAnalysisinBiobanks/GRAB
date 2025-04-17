@@ -276,7 +276,17 @@ GRAB.NullModel = function(formula,
   }else if(method == "SPAGxEmixPlus"){ # update by Yuzhuo Ma on 2025-04-14
     # Check 'control.R'
     control = checkControl.NullModel(control, method, traitType)
-    textToParse = paste0("objNull = fitNullModel.", method, "(response, designMat, subjData, control, sparseGRM_SPAmixPlus, sparseGRMFile_SPAmixPlus, EnviColName)")
+    # textToParse = paste0("objNull = fitNullModel.", method, "(response, designMat, subjData, control, sparseGRM_SPAmixPlus, sparseGRMFile_SPAmixPlus, EnviColName)")
+    # 显式传递 EnviColName 到 fitNullModel.SPAGxEmixPlus
+    textToParse = paste0("objNull = fitNullModel.SPAGxEmixPlus(
+    response = response,
+    designMat = designMat,
+    subjData = subjData,
+    control = control,
+    sparseGRM_SPAmixPlus = sparseGRM_SPAmixPlus,
+    sparseGRMFile_SPAmixPlus = sparseGRMFile_SPAmixPlus,
+    EnviColName = '", EnviColName, "'  
+  )")
   }else{
     # Check 'control.R'
     control = checkControl.NullModel(control, method, traitType)

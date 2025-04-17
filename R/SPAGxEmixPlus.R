@@ -118,6 +118,10 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
                                       # EnviData,            # update by Yuzhuo Ma : the first column is SubjID, and the second column is environmental factor
                                       ...) 
 {
+  
+  cat("Received EnviColName:", EnviColName, "\n")
+  cat("designMat columns:", colnames(designMat), "\n")
+  
   # ---- 1. 加载必要包 ----
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("请安装data.table包：install.packages('data.table')")
