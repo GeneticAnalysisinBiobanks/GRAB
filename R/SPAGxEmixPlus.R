@@ -112,7 +112,7 @@ library(survival)
 
 fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
                                       control = list(OutlierRatio = 1.5),
-                                      # sparseGRM_SPAmixPlus = NULL,
+                                      sparseGRM_SPAmixPlus = NULL,
                                       sparseGRMFile_SPAmixPlus = NULL,
                                       EnviColName,            # update by Yuzhuo Ma : column name of Environmental factor in designMat or PhenoMat
                                       # EnviData,            # update by Yuzhuo Ma : the first column is SubjID, and the second column is environmental factor
