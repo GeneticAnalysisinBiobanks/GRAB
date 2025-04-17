@@ -216,6 +216,10 @@ GRAB.NullModel = function(formula,
   
   response = model.response(mf)
   designMat = model.matrix(object = mt, data = mf)
+  
+  # 添加列名检查
+  cat("designMat 的列名:", colnames(designMat), "\n")
+  
   subjData = model.extract(mf, "subjData")
   
   ### The below is to support multiple response variables for SPAmix/SPAmixPlusV4/SPAGxEmixPlus with residuals as input
