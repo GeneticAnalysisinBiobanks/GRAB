@@ -372,7 +372,7 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
 #########################################################################################################
 
 # check the control list in null model fitting for SPACox method
-checkControl.NullModel.SPAGxEmixPlus = function(control, traitType, ResidMat, SparseGRM, ...) # update by Yuzhuo Ma 
+checkControl.NullModel.SPAGxEmixPlus = function(control, traitType, ...) # update by Yuzhuo Ma 
 {
   if(!traitType %in% c("time-to-event", "Residual"))
     stop("For 'SPAGxEmixPlus' method, only traitType of 'time-to-event' or 'Residual' is supported.")
@@ -385,16 +385,16 @@ checkControl.NullModel.SPAGxEmixPlus = function(control, traitType, ResidMat, Sp
   
   control$PC_columns = unlist(strsplit(control$PC_columns, split=","))
   if(length(control$PC_columns) == 1)
-    warning("We detected that only one PC column exsits, is that what you want? Note that control$PC_columns (e.g. 'PC1,PC2,PC3,PC4') should be a character splitted using ','.")
+    warning("We detected that only one PC column exists, is that what you want? Note that control$PC_columns (e.g. 'PC1,PC2,PC3,PC4') should be a character splitted using ','.")
   
   
-  # update by Yuzhuo Ma 
-  
-  SubjID.In.Resid = ResidMat$SubjID
-  SubjID.In.GRM = unique(c(SparseGRM$ID1, SparseGRM$ID2))
-  
-  if(any(!SubjID.In.Resid %in% SubjID.In.GRM))
-    stop("At least one subject in residual matrix does not have GRM information.")
+  # # update by Yuzhuo Ma 
+  # 
+  # SubjID.In.Resid = ResidMat$SubjID
+  # SubjID.In.GRM = unique(c(SparseGRM$ID1, SparseGRM$ID2))
+  # 
+  # if(any(!SubjID.In.Resid %in% SubjID.In.GRM))
+  #   stop("At least one subject in residual matrix does not have GRM information.")
   
   # default.control = list(range = c(-100, 100),
   #                        length.out = 10000)
