@@ -152,6 +152,9 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
     mresid = residuals(obj.coxph)
     Cova = obj.coxph$x
     
+    cat(paste0("Class of is designMat is :", class(designMat), "\n"))
+    head(designMat)
+    
     # mresid.by.E = mresid * designMat$EnviColName # update by Yuzhuo Ma
     mresid.by.E = mresid * designMat[, EnviColName]  # 关键修正：矩阵列名索引
     # 在函数内添加检查
@@ -166,10 +169,14 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
     mresid = matrix(mresid, ncol = 1)
     nPheno = 1
   } else if (inherits(response, "Residual")) {
+    
+    cat(paste0("Class of is designMat is :", class(designMat), "\n"))
+    head(designMat)
+    
     # ---- 残差对象逻辑 ----
     if (!is.matrix(response)) {
       mresid = as.matrix(response)
-      mresid.by.E = mresid * designMat$EnviColName # update by Yuzhuo Ma
+      mresid.by.E = mresid * designMat[, EnviColName] # update by Yuzhuo Ma
     } else {
       mresid = response
       # mresid.by.E = mresid * designMat$EnviColName # update by Yuzhuo Ma
