@@ -139,6 +139,7 @@ GRAB.NullModel = function(formula,
                           
                           sparseGRM_SPAmixPlus = NULL,     # update by Yuzhuo Ma on 2025-03-28
                           sparseGRMFile_SPAmixPlus = NULL, # update by Yuzhuo Ma on 2025-03-28
+                          EnviColName,                     # update by Yuzhuo Ma on 2025-04-17
                           ...)
 {
   if(missing(subjData))

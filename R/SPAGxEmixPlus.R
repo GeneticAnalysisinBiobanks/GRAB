@@ -119,8 +119,8 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
                                       ...) 
 {
   
-  cat("Received EnviColName:", EnviColName, "\n")
-  cat("designMat columns:", colnames(designMat), "\n")
+  cat("[DEBUG] EnviColName received:", EnviColName, "\n")
+  cat("[DEBUG] designMat columns:", paste(colnames(designMat), collapse = ", "), "\n")
   
   # ---- 1. 加载必要包 ----
   if (!requireNamespace("data.table", quietly = TRUE)) {
