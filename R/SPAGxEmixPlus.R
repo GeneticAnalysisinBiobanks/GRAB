@@ -152,8 +152,12 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
     mresid = residuals(obj.coxph)
     Cova = obj.coxph$x
     
-    mresid.by.E = mresid * designMat$EnviColName # update by Yuzhuo Ma
-    
+    # mresid.by.E = mresid * designMat$EnviColName # update by Yuzhuo Ma
+    mresid.by.E = mresid * designMat[, EnviColName]  # 关键修正：矩阵列名索引
+    # 在函数内添加检查
+    if (!EnviColName %in% colnames(designMat)) {
+      stop(paste("环境因子列", EnviColName, "不存在于 designMat 中"))
+    }
     
     if (length(mresid) != length(subjData)) {
       stop("CoxPH残差长度必须与subjData一致")
@@ -168,7 +172,13 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
       mresid.by.E = mresid * designMat$EnviColName # update by Yuzhuo Ma
     } else {
       mresid = response
-      mresid.by.E = mresid * designMat$EnviColName # update by Yuzhuo Ma
+      # mresid.by.E = mresid * designMat$EnviColName # update by Yuzhuo Ma
+      mresid.by.E = mresid * designMat[, EnviColName]  # 关键修正：矩阵列名索引
+      # 在函数内添加检查
+      if (!EnviColName %in% colnames(designMat)) {
+        stop(paste("环境因子列", EnviColName, "不存在于 designMat 中"))
+      }
+      
     }
     
     if (nrow(mresid) != length(subjData)) {
