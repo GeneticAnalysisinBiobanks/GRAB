@@ -324,7 +324,7 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
   # 动态添加ResidByEnvi_*列（使用data.table::set避免作用域问题）
   ResidByEnvi_cols = paste0("ResidByEnvi_", 1:nPheno)
   for (i in 1:nPheno) {
-    data.table::set(ResidByEnviMat, j = ResidByEnvi_cols[i], value = as.numeric(mresid[, i]))
+    data.table::set(ResidByEnviMat, j = ResidByEnvi_cols[i], value = as.numeric(mresid.by.E[, i]))
   }
   
   # 验证ResidByEnviMat数据类型
@@ -362,9 +362,9 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
   # ---- 10. 构建最终对象 ----
   objNull = list(
     resid = mresid,
-    resid.by.E = mresid.by.E,                             # update by Yuzhuo Ma
+    resid.by.E = as.numeric(mresid.by.E),                             # update by Yuzhuo Ma
     ResidMat = as.data.frame(ResidMat),
-    E = designMat[, EnviColName],
+    E = as.numeric(designMat[, EnviColName]),
     ResidByEnviMat = as.data.frame(ResidByEnviMat),       # update by Yuzhuo Ma
     sparseGRM = as.data.frame(sparseGRM_new),
     id_map = id_map,
