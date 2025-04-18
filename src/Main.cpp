@@ -1583,7 +1583,8 @@ void setSPAGxEmixPlusobjInCPP(arma::mat t_resid,
                               double t_SPA_Cutoff,
                               Rcpp::List t_outlierList,
                               Rcpp::DataFrame t_sparseGRM,    // 新增参数：稀疏GRM数据
-                              Rcpp::DataFrame t_ResidMat     // 新增参数：残差矩阵数据
+                              Rcpp::DataFrame t_ResidMat,     // 新增参数：残差矩阵数据
+                              arma::vec t_E                   // 新增参数
 )
 {
   if(ptr_gSPAGxEmixPlusobj)
@@ -1597,7 +1598,8 @@ void setSPAGxEmixPlusobjInCPP(arma::mat t_resid,
                                                                 t_SPA_Cutoff,
                                                                 t_outlierList,
                                                                 t_sparseGRM,    // 新增参数：稀疏GRM数据
-                                                                t_ResidMat      // 新增参数：残差矩阵数据
+                                                                t_ResidMat,      // 新增参数：残差矩阵数据
+                                                                t_E
   );
 }
 

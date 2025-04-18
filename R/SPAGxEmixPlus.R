@@ -68,8 +68,9 @@ setMarker.SPAGxEmixPlus = function(objNull, control)
                            control$SPA_Cutoff,
                            objNull$outLierList,
                            
-                           objNull$sparseGRM,  # update by Yuzhuo Ma
-                           objNull$ResidMat    # update by Yuzhuo Ma
+                           objNull$sparseGRM,   # update by Yuzhuo Ma
+                           objNull$ResidMat,    # update by Yuzhuo Ma
+                           objNull$E            # 新增环境因子参数
   )  
   
   # outLierList[[i]] = list(posValue = posValue - 1,
