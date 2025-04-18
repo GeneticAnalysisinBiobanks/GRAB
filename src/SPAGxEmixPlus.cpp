@@ -11,6 +11,7 @@
 namespace SPAGxEmixPlus {
 
 SPAGxEmixPlusClass::SPAGxEmixPlusClass(arma::mat t_resid,
+                                       arma::mat t_resid_by_E,  // 新增参数：
                                        arma::mat t_PCs,
                                        int t_N,
                                        double t_SPA_Cutoff,
@@ -23,7 +24,7 @@ SPAGxEmixPlusClass::SPAGxEmixPlusClass(arma::mat t_resid,
   
   // ==== 新增环境因子处理 ====
   // 检查环境因子维度
-  if(t_E.n_elem != static_cast<arma::uword>(t_N)) {  // ✅ 修正符号问题
+  if(t_E.n_elem != static_cast<arma::uword>(t_N)) {  // 修正符号问题
     Rcpp::stop("Environment factor dimension mismatch...");
   }
   m_E = t_E;  // 存储环境因子
@@ -75,6 +76,10 @@ SPAGxEmixPlusClass::SPAGxEmixPlusClass(arma::mat t_resid,
   //////////////////////////////////////////////////////////////////
   
   m_resid = t_resid;
+  
+  m_resid_by_E = t_resid_by_E;    // update by Yuzhuo Ma
+  
+  
   // m_resid2 = pow(m_resid, 2);
   m_Npheno = t_resid.n_cols;
   

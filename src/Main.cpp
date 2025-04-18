@@ -1578,6 +1578,7 @@ void setSPAmixPlusV4objInCPP(arma::mat t_resid,
 
 // [[Rcpp::export]]
 void setSPAGxEmixPlusobjInCPP(arma::mat t_resid,
+                              arma::mat t_resid_by_E,         // 新增参数
                               arma::mat t_PCs,
                               int t_N,
                               double t_SPA_Cutoff,
@@ -1591,6 +1592,7 @@ void setSPAGxEmixPlusobjInCPP(arma::mat t_resid,
     delete ptr_gSPAGxEmixPlusobj;
   
   ptr_gSPAGxEmixPlusobj = new SPAGxEmixPlus::SPAGxEmixPlusClass(t_resid,
+                                                                t_resid_by_E,   // 新增参数
                                                                 // t_XinvXX,
                                                                 // t_tX,
                                                                 t_PCs,
@@ -1598,7 +1600,7 @@ void setSPAGxEmixPlusobjInCPP(arma::mat t_resid,
                                                                 t_SPA_Cutoff,
                                                                 t_outlierList,
                                                                 t_sparseGRM,    // 新增参数：稀疏GRM数据
-                                                                t_ResidMat,      // 新增参数：残差矩阵数据
+                                                                t_ResidMat,     // 新增参数：残差矩阵数据
                                                                 t_E
   );
 }

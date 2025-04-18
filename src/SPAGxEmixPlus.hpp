@@ -34,6 +34,11 @@ private:
   ////////////////////// -------------------- members ---------------------------------- //////////////////////
   
   arma::mat m_resid;  // residuals
+  
+  arma::mat m_resid_by_E;  // update by Yuzhuo Ma
+  
+  
+  
   // arma::mat m_resid2; // residuals^2
   // arma::mat m_XinvXX, m_tX;
   arma::mat m_onePlusPCs;
@@ -65,6 +70,7 @@ private:
 public:
   
   SPAGxEmixPlusClass(arma::mat t_resid,
+                     arma::mat t_resid_by_E,  // 新增参数：
                      arma::mat t_PCs,
                      int t_N,
                      double t_SPA_Cutoff,
