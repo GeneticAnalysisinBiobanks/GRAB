@@ -363,6 +363,7 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
     resid = mresid,
     resid.by.E = mresid.by.E,                             # update by Yuzhuo Ma
     ResidMat = as.data.frame(ResidMat),
+    E = designMat[, EnviColName],
     ResidByEnviMat = as.data.frame(ResidByEnviMat),       # update by Yuzhuo Ma
     sparseGRM = as.data.frame(sparseGRM_new),
     id_map = id_map,
