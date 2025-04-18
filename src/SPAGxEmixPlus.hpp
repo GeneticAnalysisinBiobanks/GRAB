@@ -217,6 +217,12 @@ public:
       
       diffX = -1 * K1 / K2;
       
+      // 新增：显式检查 NaN
+      if (std::isnan(diffX)) {
+        diffX = 5;
+      }
+      
+      
       if(!std::isfinite(K1)){
         // checked it on 07/05:
         // if the solution 'x' tends to infinity, 'K2' tends to 0, and 'K1' tends to 0 very slowly.
@@ -231,6 +237,14 @@ public:
           diffX = diffX / 2;
         }
       }
+      
+      
+      // 新增：显式检查 NaN
+      if (std::isnan(diffX)) {
+        diffX = 5;
+      }
+      
+      
       
       if(std::abs(diffX) < tol) break;
       
