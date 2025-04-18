@@ -23,10 +23,8 @@ SPAGxEmixPlusClass::SPAGxEmixPlusClass(arma::mat t_resid,
   
   // ==== 新增环境因子处理 ====
   // 检查环境因子维度
-  if(t_E.n_elem != t_N) {
-    Rcpp::stop("Environment factor dimension mismatch. Expected: " + 
-      std::to_string(t_N) + ", Actual: " + 
-      std::to_string(t_E.n_elem));
+  if(t_E.n_elem != static_cast<arma::uword>(t_N)) {  // ✅ 修正符号问题
+    Rcpp::stop("Environment factor dimension mismatch...");
   }
   m_E = t_E;  // 存储环境因子
   
