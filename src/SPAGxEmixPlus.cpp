@@ -16,8 +16,23 @@ SPAGxEmixPlusClass::SPAGxEmixPlusClass(arma::mat t_resid,
                                        double t_SPA_Cutoff,
                                        Rcpp::List t_outlierList,
                                        Rcpp::DataFrame t_sparseGRM,    // 新增参数：稀疏GRM数据
-                                       Rcpp::DataFrame t_ResidMat)     // 新增参数：残差矩阵
+                                       Rcpp::DataFrame t_ResidMat,      // 新增参数：残差矩阵
+                                       arma::vec t_E)     // 新增环境因子参数
+                                       // Rcpp::DataFrame t_ResidByEnviMat)     // 新增环境因子残差
 {
+  
+  // ==== 新增环境因子处理 ====
+  // 检查环境因子维度
+  if(t_E.n_elem != t_N) {
+    Rcpp::stop("Environment factor dimension mismatch. Expected: " + 
+      std::to_string(t_N) + ", Actual: " + 
+      std::to_string(t_E.n_elem));
+  }
+  m_E = t_E;  // 存储环境因子
+  
+  // // ==== 新增：处理环境因子交互残差 ====
+  // Rcpp::NumericVector residByEnvi = t_ResidByEnviMat["ResidByEnvi"];
+  // m_ResidByEnviMat = arma::vec(residByEnvi.begin(), residByEnvi.size());
   
   // ==== 处理ResidMat ====
   Rcpp::IntegerVector subjID_Index = t_ResidMat["SubjID_Index"];

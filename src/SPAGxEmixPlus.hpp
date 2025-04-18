@@ -16,6 +16,10 @@ class SPAGxEmixPlusClass
 {
 private:
   
+  
+  // ==== 新增环境因子成员 ====
+  arma::vec m_E;  // 必须与.cpp中的使用保持一致
+  
   // ==== 修改1：新增成员 ====
   // std::unordered_map<std::string, int> m_idMap;  // ID映射表
   // arma::mat m_ResidMat;                          // 多表型残差矩阵（N×M）
@@ -61,12 +65,13 @@ private:
 public:
   
   SPAGxEmixPlusClass(arma::mat t_resid,
-                    arma::mat t_PCs,
-                    int t_N,
-                    double t_SPA_Cutoff,
-                    Rcpp::List t_outlierList,
-                    Rcpp::DataFrame t_sparseGRM, // update by Yuzhuo Ma
-                    Rcpp::DataFrame t_ResidMat); // update by Yuzhuo Ma
+                     arma::mat t_PCs,
+                     int t_N,
+                     double t_SPA_Cutoff,
+                     Rcpp::List t_outlierList,
+                     Rcpp::DataFrame t_sparseGRM, // update by Yuzhuo Ma
+                     Rcpp::DataFrame t_ResidMat,  // update by Yuzhuo Ma
+                     arma::vec t_E);              // update by Yuzhuo Ma
   
   arma::vec getTestTime1(){return m_diffTime1;}
   arma::vec getTestTime2(){return m_diffTime2;}
