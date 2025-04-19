@@ -479,27 +479,27 @@ public:
   // double getMarkerPval(arma::vec t_GVec,
   //                      double t_altFreq)  // later update score and variance here (2023-06-20)
   // {
-  //   
+  // 
   //   //std::cout << "SPAmixPlus_getMarkerPval" << std::endl;
-  //   
-  //   
+  // 
+  // 
   //   arma::vec time1 = getTime();
-  //   
+  // 
   //   arma::vec AFVec = getMAFest(t_GVec, t_altFreq);  // PCs are global variables and can be loaded when necessary
-  //   
+  // 
   //   m_MAFVec = AFVec;  // 存储到成员变量
-  //   
-  //   
+  // 
+  // 
   //   arma::vec time2 = getTime();
   //   arma::vec diffTime = time2 - time1;
   //   // std::cout << "part2" << std::endl;
-  //   
+  // 
   //   // std::cout << "(MAF) diffTime:\t" << diffTime << std::endl;
-  //   
+  // 
   //   m_diffTime2 += diffTime;
-  //   
+  // 
   //   arma::vec GVarVec = 2 * AFVec % (1 - AFVec);
-  //   
+  // 
   //   // (BWJ) 2023-06-20: Support multiple phenotypes
   //   // outLierList[[i]] = list(posValue = posValue - 1,
   //   //                         posOutlier = posOutlier - 1,
@@ -518,98 +518,98 @@ public:
   //     arma::vec residOutlier = tempOutlierList["residOutlier"];
   //     arma::vec residNonOutlier = tempOutlierList["residNonOutlier"];
   //     arma::vec resid2NonOutlier = tempOutlierList["resid2NonOutlier"];
-  //     
-  //     
+  // 
+  // 
   //     // 修改5：严格限制在posValue范围内计算
   //     arma::vec R_subset = resid.elem(posValue);       // 残差子集
   //     arma::vec GVar_subset = GVarVec.elem(posValue);  // 基因型方差子集
   //     // arma::vec AF_subset = AFVec.elem(posValue);      // MAF子集
-  //     
+  // 
   //     // 计算调整后的残差（仅考虑posValue个体）
   //     // arma::vec R_new = R_subset % sqrt(GVar_subset);
   //     // 计算调整残差 R_new = R * sqrt(g.var.est)
   //     arma::vec R_new = R_subset % arma::sqrt(GVar_subset);
-  //     
-  //     
+  // 
+  // 
   //     // 修改6：传入posValue和GVar子集
   //     double VarS = calculateSparseVariance(R_new, posValue);
-  //     
-  //     
-  //     
-  //     
+  // 
+  // 
+  // 
+  // 
   //     // ==== 5. 后续p值计算逻辑保持不变 ====
-  //     
+  // 
   //     // ===== 5. 统计量计算 =====
   //     double S = sum(t_GVec.elem(posValue) % R_subset);
   //     double S_mean = 2 * sum(R_subset % AFVec.elem(posValue));
   //     double zScore = (S - S_mean) / sqrt(VarS);
   //     // double zScore = -1 + (S - S_mean) / sqrt(VarS);  //  test !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  //     
+  // 
   //     m_zScoreVec.at(i) = zScore;
-  //     
-  //     
-  //     
-  //     
-  //     
+  // 
+  // 
+  // 
+  // 
+  // 
   //     // double S = sum(t_GVec.elem(posValue) % resid);
-  //     
+  // 
   //     // double VarS = sum(resid2 % GVarVec.elem(posValue));
-  //     
+  // 
   //     // // updated on 2023-04-23
   //     // double S_mean = 2 * sum(resid % AFVec.elem(posValue)); // NOTE: I think S_mean is somewhat weird and should be checked later (2023-04-22)
   //     // double zScore = (S-S_mean) / sqrt(VarS);
   //     //
   //     // m_zScoreVec.at(i) = zScore;
-  //     
-  //     
+  // 
+  // 
   //     if(std::abs(zScore) < m_SPA_Cutoff){
   //       m_pvalVec.at(i) = arma::normcdf(-1*std::abs(zScore))*2;
   //       // m_pvalVec.at(i) = arma::normcdf(-1*std::abs(zScore));     //  test !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  //       
+  // 
   //       continue;
   //       // return pval;
   //     }
-  //     
-  //     
-  //     
-  //     
-  //     
+  // 
+  // 
+  // 
+  // 
+  // 
   //     // ===== SPA-G调整（核心修改）=====
   //     time1 = getTime();
-  //     
+  // 
   //     // 计算方差比率
   //     double S_var_SPAmix = arma::sum(arma::square(R_subset) % GVar_subset);
   //     double Var_ratio = S_var_SPAmix / VarS;
-  //     
+  // 
   //     // 调整统计量
   //     double S_new = S * std::sqrt(Var_ratio);
   //     double S_mean_new = S_mean * std::sqrt(Var_ratio);
-  //     
+  // 
   //     // 对称统计量计算
   //     double S_upper = std::max(S_new, 2*S_mean_new - S_new);
   //     double S_lower = std::min(S_new, 2*S_mean_new - S_new);
-  //     
-  //     
-  //     
-  //     
+  // 
+  // 
+  // 
+  // 
   //     // std::cout << "part4" << std::endl;
-  //     
+  // 
   //     // double pval1 = GetProb_SPA_G(AFVec, m_resid, std::abs(t_zScore), false);
   //     // double pval2 = GetProb_SPA_G(AFVec, m_resid, -1*std::abs(t_zScore), true);
-  //     
+  // 
   //     // time1 = getTime();
-  //     
+  // 
   //     // put the below objects as a global object
   //     arma::vec MAF_outlier = AFVec.elem(posOutlier);
   //     arma::vec MAF_nonOutlier = AFVec.elem(posNonOutlier);
-  //     
+  // 
   //     double mean_nonOutlier = sum(residNonOutlier % MAF_nonOutlier) * 2;
   //     double var_nonOutlier = sum(resid2NonOutlier % MAF_nonOutlier % (1-MAF_nonOutlier)) * 2;
-  //     
-  //     
-  //     
-  //     
-  //     
+  // 
+  // 
+  // 
+  // 
+  // 
   //     // 调用SPA-G函数
   //     double pval1 = GetProb_SPA_G(MAF_outlier,
   //                                  residOutlier,
@@ -617,15 +617,15 @@ public:
   //                                  false,
   //                                  mean_nonOutlier,
   //                                  var_nonOutlier);
-  //     
+  // 
   //     double pval2 = GetProb_SPA_G(MAF_outlier,
   //                                  residOutlier,
   //                                  S_lower,
   //                                  true,
   //                                  mean_nonOutlier,
   //                                  var_nonOutlier);
-  //     
-  //     
+  // 
+  // 
   //     // double pval1 = GetProb_SPA_G(MAF_outlier,
   //     //                              residOutlier,
   //     //                              // std::abs(S-S_mean)+S_mean,
@@ -640,23 +640,23 @@ public:
   //     //                              true,
   //     //                              mean_nonOutlier,
   //     //                              var_nonOutlier);
-  //     
+  // 
   //     time2 = getTime();
   //     diffTime = time2 - time1;
-  //     
+  // 
   //     // std::cout << "(SPA_G) diffTime:\t" << diffTime << std::endl;
-  //     
+  // 
   //     m_diffTime1 += diffTime;
-  //     
+  // 
   //     m_pvalVec.at(i) = pval1 + pval2;
   //   }
-  //   
+  // 
   //   // std::cout << "part5" << std::endl;
   //   double pval = 0; // we modify the codes to save pval to m_pvalVec and thus the function does not output pvalue any more.
   //   return pval;
   // }
-  
-  
+  // 
+
   
   
   
@@ -688,14 +688,6 @@ public:
     
     arma::vec GVarVec = 2 * AFVec % (1 - AFVec);
     
-    // (BWJ) 2023-06-20: Support multiple phenotypes
-    // outLierList[[i]] = list(posValue = posValue - 1,
-    //                         posOutlier = posOutlier - 1,
-    //                         posNonOutlier = posNonOutlier - 1,
-    //                         resid = mresid.temp[posValue],
-    //                         resid2 = mresid.temp[posValue]^2,
-    //                         residOutleir = mresid.temp[posOutlier],
-    //                         residNonOutlier = mresid.temp[posNonOutlier])
     for(int i = 0; i < m_Npheno; i++){
       Rcpp::List tempOutlierList = m_outlierList[i];
       arma::uvec posValue = tempOutlierList["posValue"];
@@ -716,11 +708,11 @@ public:
       // 计算调整后的残差（仅考虑posValue个体）
       // arma::vec R_new = R_subset % sqrt(GVar_subset);
       // 计算调整残差 R_new = R * sqrt(g.var.est)
-      arma::vec R_new = R_subset % arma::sqrt(GVar_subset);
+      arma::vec R_sqrtMAF = R_subset % arma::sqrt(GVar_subset);
       
       
       // 修改6：传入posValue和GVar子集
-      double VarS = calculateSparseVariance(R_new, posValue);
+      double VarS1 = calculateSparseVariance(R_sqrtMAF, posValue);
       
       
       
@@ -728,115 +720,173 @@ public:
       // ==== 5. 后续p值计算逻辑保持不变 ====
       
       // ===== 5. 统计量计算 =====
-      double S = sum(t_GVec.elem(posValue) % R_subset);
-      double S_mean = 2 * sum(R_subset % AFVec.elem(posValue));
-      double zScore = (S - S_mean) / sqrt(VarS);
+      double S1 = sum(t_GVec.elem(posValue) % R_subset);
+      double S1_mean = 2 * sum(R_subset % AFVec.elem(posValue));
+      double zScore = (S1 - S1_mean) / sqrt(VarS1);
       // double zScore = -1 + (S - S_mean) / sqrt(VarS);  //  test !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       
       m_zScoreVec.at(i) = zScore;
       
+      // update /////////////////////////////////////////////////////////////////
+      double pval_norm1 = arma::normcdf(-1*std::abs(zScore))*2;
+
       
       
       
-      
-      // double S = sum(t_GVec.elem(posValue) % resid);
-      
-      // double VarS = sum(resid2 % GVarVec.elem(posValue));
-      
-      // // updated on 2023-04-23
-      // double S_mean = 2 * sum(resid % AFVec.elem(posValue)); // NOTE: I think S_mean is somewhat weird and should be checked later (2023-04-22)
-      // double zScore = (S-S_mean) / sqrt(VarS);
-      //
-      // m_zScoreVec.at(i) = zScore;
-      
-      
-      if(std::abs(zScore) < m_SPA_Cutoff){
-        m_pvalVec.at(i) = arma::normcdf(-1*std::abs(zScore))*2;
-        // m_pvalVec.at(i) = arma::normcdf(-1*std::abs(zScore));     //  test !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      // 在getMarkerPval或类似函数中添加以下逻辑
+      if(pval_norm1 > epsilon){
         
-        continue;
-        // return pval;
+        arma::vec E_subset = m_E.elem(posValue);
+        arma::vec RE_subset = m_resid_by_E.elem(posValue);
+        
+        // ===== GxE效应计算 =====
+        // 步骤1：计算基础统计量
+        // arma::vec RE = E % R; // E为环境因子，R为残差
+        double S2 = arma::sum(t_GVec.elem(posValue) % RE_subset);
+        
+        // 步骤2：计算调整残差
+        arma::vec RE_sqrtMAF = RE_subset % arma::sqrt(GVar_subset);
+        // arma::vec R_sqrtMAF = R % arma::sqrt(gVarEst);
+        
+        // 步骤3：交叉协方差计算（优化实现）
+        double Cov_S1_S2 = calculateCrossCovariance(R_sqrtMAF, RE_sqrtMAF, posValue) 
+          - arma::sum(GVar_subset % E_subset % arma::square(R_subset));
+        
+        // 步骤4：计算lambda和新残差
+        double lambda = Cov_S1_S2 / VarS1;
+        arma::vec R_new = (E_subset - lambda) % R_subset;
+        
+        // 步骤5：计算新残差的调整方差
+        arma::vec R_new_sqrtMAF = R_new % arma::sqrt(GVar_subset);
+        double S_GxE_var = calculateSparseVariance(R_new_sqrtMAF, posValue);
+        
+        // 步骤6：标准化统计量
+        double S_GxE = S2 - lambda * S1;
+        double S_GxE_mean = 2 * arma::sum(R_new % AFVec.elem(posValue));
+        double z_GxE = (S_GxE - S_GxE_mean) / std::sqrt(S_GxE_var);
+        
+        // ===== p值计算 =====
+        if(std::abs(z_GxE) < m_SPA_Cutoff){
+          // ... 正态近似 ...
+          double pval_norm_GxE = arma::normcdf(-1*std::abs(z_GxE))*2;
+          m_pvalVec.at(i) = pval_norm_GxE;
+        }else{
+          // 方差比率调整
+          double S_GxE_var_SPA = arma::sum(arma::square(R_new) % GVar_subset);
+          double Var_ratio = S_GxE_var_SPA / S_GxE_var;
+          
+          // 对称统计量边界
+          double S_upper = std::max(S_GxE, 2*S_GxE_mean - S_GxE);
+          double S_lower = std::min(S_GxE, 2*S_GxE_mean - S_GxE);
+          
+          // // SPA-G计算（含异常处理）
+          // double pval1 = GetProb_SPA_G(MAF_outlier, residOutlier, 
+          //                              S_upper * std::sqrt(Var_ratio), false,
+          //                              mean_nonOutlier, var_nonOutlier);
+          // double pval2 = GetProb_SPA_G(MAF_outlier, residOutlier, 
+          //                              S_lower * std::sqrt(Var_ratio), true,
+          //                              mean_nonOutlier, var_nonOutlier);
+          
+          // SPA-G计算（含异常处理）
+          double pval1 = GetProb_SPA_G(AFVec.elem(posValue),
+                                       R_new, 
+                                       S_upper * std::sqrt(Var_ratio), 
+                                       false,
+                                       0,
+                                       0);
+          
+          double pval2 = GetProb_SPA_G(AFVec.elem(posValue),
+                                       R_new, 
+                                       S_lower * std::sqrt(Var_ratio),
+                                       true,
+                                       0,
+                                       0);
+          
+          // 处理NaN
+          // pval1 = std::isnan(pval1) ? 0.0 : pval1;
+          // pval2 = std::isnan(pval2) ? 0.0 : pval2;
+          m_pvalVec.at(i) = pval1 + pval2;
+        }
+      }else{
+        
+        // fake codes
+        arma::vec E_subset = m_E.elem(posValue);
+        arma::vec RE_subset = m_resid_by_E.elem(posValue);
+        
+        // ===== GxE效应计算 =====
+        // 步骤1：计算基础统计量
+        // arma::vec RE = E % R; // E为环境因子，R为残差
+        double S2 = arma::sum(t_GVec.elem(posValue) % RE_subset);
+        
+        // 步骤2：计算调整残差
+        arma::vec RE_sqrtMAF = RE_subset % arma::sqrt(GVar_subset);
+        // arma::vec R_sqrtMAF = R % arma::sqrt(gVarEst);
+        
+        // 步骤3：交叉协方差计算（优化实现）
+        double Cov_S1_S2 = calculateCrossCovariance(R_sqrtMAF, RE_sqrtMAF, posValue) 
+          - arma::sum(GVar_subset % E_subset % arma::square(R_subset));
+        
+        // 步骤4：计算lambda和新残差
+        double lambda = Cov_S1_S2 / VarS1;
+        arma::vec R_new = (E_subset - lambda) % R_subset;
+        
+        // 步骤5：计算新残差的调整方差
+        arma::vec R_new_sqrtMAF = R_new % arma::sqrt(GVar_subset);
+        double S_GxE_var = calculateSparseVariance(R_new_sqrtMAF, posValue);
+        
+        // 步骤6：标准化统计量
+        double S_GxE = S2 - lambda * S1;
+        double S_GxE_mean = 2 * arma::sum(R_new % AFVec.elem(posValue));
+        double z_GxE = (S_GxE - S_GxE_mean) / std::sqrt(S_GxE_var);
+        
+        // ===== p值计算 =====
+        if(std::abs(z_GxE) < m_SPA_Cutoff){
+          // ... 正态近似 ...
+          double pval_norm_GxE = arma::normcdf(-1*std::abs(z_GxE))*2;
+          m_pvalVec.at(i) = pval_norm_GxE;
+        }else{
+          // 方差比率调整
+          double S_GxE_var_SPA = arma::sum(arma::square(R_new) % GVar_subset);
+          double Var_ratio = S_GxE_var_SPA / S_GxE_var;
+          
+          // 对称统计量边界
+          double S_upper = std::max(S_GxE, 2*S_GxE_mean - S_GxE);
+          double S_lower = std::min(S_GxE, 2*S_GxE_mean - S_GxE);
+          
+          // // SPA-G计算（含异常处理）
+          // double pval1 = GetProb_SPA_G(MAF_outlier, residOutlier, 
+          //                              S_upper * std::sqrt(Var_ratio), false,
+          //                              mean_nonOutlier, var_nonOutlier);
+          // double pval2 = GetProb_SPA_G(MAF_outlier, residOutlier, 
+          //                              S_lower * std::sqrt(Var_ratio), true,
+          //                              mean_nonOutlier, var_nonOutlier);
+          
+          // SPA-G计算（含异常处理）
+          double pval1 = GetProb_SPA_G(AFVec.elem(posValue),
+                                       R_new, 
+                                       S_upper * std::sqrt(Var_ratio), 
+                                       false,
+                                       0,
+                                       0);
+          
+          double pval2 = GetProb_SPA_G(AFVec.elem(posValue),
+                                       R_new, 
+                                       S_lower * std::sqrt(Var_ratio),
+                                       true,
+                                       0,
+                                       0);
+          
+          // 处理NaN
+          // pval1 = std::isnan(pval1) ? 0.0 : pval1;
+          // pval2 = std::isnan(pval2) ? 0.0 : pval2;
+          m_pvalVec.at(i) = pval1 + pval2;
+        }
       }
       
       
       
       
-      
-      // ===== SPA-G调整（核心修改）=====
-      time1 = getTime();
-      
-      // 计算方差比率
-      double S_var_SPAmix = arma::sum(arma::square(R_subset) % GVar_subset);
-      double Var_ratio = S_var_SPAmix / VarS;
-      
-      // 调整统计量
-      double S_new = S * std::sqrt(Var_ratio);
-      double S_mean_new = S_mean * std::sqrt(Var_ratio);
-      
-      // 对称统计量计算
-      double S_upper = std::max(S_new, 2*S_mean_new - S_new);
-      double S_lower = std::min(S_new, 2*S_mean_new - S_new);
-      
-      
-      
-      
-      // std::cout << "part4" << std::endl;
-      
-      // double pval1 = GetProb_SPA_G(AFVec, m_resid, std::abs(t_zScore), false);
-      // double pval2 = GetProb_SPA_G(AFVec, m_resid, -1*std::abs(t_zScore), true);
-      
-      // time1 = getTime();
-      
-      // put the below objects as a global object
-      arma::vec MAF_outlier = AFVec.elem(posOutlier);
-      arma::vec MAF_nonOutlier = AFVec.elem(posNonOutlier);
-      
-      double mean_nonOutlier = sum(residNonOutlier % MAF_nonOutlier) * 2;
-      double var_nonOutlier = sum(resid2NonOutlier % MAF_nonOutlier % (1-MAF_nonOutlier)) * 2;
-      
-      
-      
-      
-      
-      // 调用SPA-G函数
-      double pval1 = GetProb_SPA_G(MAF_outlier,
-                                   residOutlier,
-                                   S_upper,
-                                   false,
-                                   mean_nonOutlier,
-                                   var_nonOutlier);
-      
-      double pval2 = GetProb_SPA_G(MAF_outlier,
-                                   residOutlier,
-                                   S_lower,
-                                   true,
-                                   mean_nonOutlier,
-                                   var_nonOutlier);
-      
-      
-      // double pval1 = GetProb_SPA_G(MAF_outlier,
-      //                              residOutlier,
-      //                              // std::abs(S-S_mean)+S_mean,
-      //                              std::max(S_new, 2*S_mean_new - S_new),
-      //                              false,
-      //                              mean_nonOutlier,
-      //                              var_nonOutlier);
-      // double pval2 = GetProb_SPA_G(MAF_outlier,
-      //                              residOutlier,
-      //                              // -1*std::abs(S-S_mean)+S_mean,
-      //                              std::min(S_new, 2*S_mean_new - S_new),
-      //                              true,
-      //                              mean_nonOutlier,
-      //                              var_nonOutlier);
-      
-      time2 = getTime();
-      diffTime = time2 - time1;
-      
-      // std::cout << "(SPA_G) diffTime:\t" << diffTime << std::endl;
-      
-      m_diffTime1 += diffTime;
-      
-      m_pvalVec.at(i) = pval1 + pval2;
+
     }
     
     // std::cout << "part5" << std::endl;
@@ -913,7 +963,40 @@ public:
   
   
   
+  /////////////////////////////////////////////////////////////////////////////////////////
   
+  // 在cpp文件中实现核心逻辑
+  double calculateCrossCovariance(const arma::vec& R_sqrtMAF,
+                                  const arma::vec& RE_sqrtMAF,
+                                  const arma::uvec& posValue)
+  {
+    double covSum_part1 = 0.0, covSum_part2 = 0.0;
+    
+    // 创建快速索引查询表
+    std::unordered_map<int, int> indexMap;
+    for(size_t i=0; i<posValue.n_elem; ++i){
+      indexMap[posValue[i]] = i;
+    }
+    
+    // 遍历稀疏GRM三元组
+    for(const auto& triplet : m_sparseTriplets){
+      int i = std::get<0>(triplet);
+      int j = std::get<1>(triplet);
+      
+      // 检查双方是否都在有效样本中
+      if(indexMap.count(i) && indexMap.count(j)){
+        double value = std::get<2>(triplet);
+        int idx_i = indexMap[i];
+        int idx_j = indexMap[j];
+        
+        // 计算两个交叉项
+        covSum_part1 += value * R_sqrtMAF[idx_i] * RE_sqrtMAF[idx_j];
+        covSum_part2 += value * R_sqrtMAF[idx_j] * RE_sqrtMAF[idx_i];
+      }
+    }
+    
+    return covSum_part1 + covSum_part2;
+  }
   
   
   
