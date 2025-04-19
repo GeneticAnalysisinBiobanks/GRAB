@@ -11,6 +11,10 @@
 
 #include <cmath>  // 需要包含此头文件以使用 std::isnan
 
+// #define ARMA_DONT_USE_WRAPPER // 提升Armadillo性能
+// #include <RcppArmadillo.h>
+// using namespace arma;
+
 
 namespace SPAGxEmixPlus{
 
@@ -809,78 +813,64 @@ public:
         }
       }else{
         
-        // fake codes
-        arma::vec E_subset = m_E.elem(posValue);
-        arma::vec RE_subset = m_resid_by_E.elem(posValue);
+        // 1. 构造W矩阵
+        arma::mat W = arma::join_rows(arma::ones(posValue.n_elem), t_GVec.elem(posValue));
         
-        // ===== GxE效应计算 =====
-        // 步骤1：计算基础统计量
-        // arma::vec RE = E % R; // E为环境因子，R为残差
-        double S2 = arma::sum(t_GVec.elem(posValue) % RE_subset);
+        // 2. 投影矩阵计算 (R0 = R - W(W^TW)^{-1}W^TR)
+        arma::mat WtW = W.t() * W;
+        arma::mat inv_WtW = arma::inv(WtW);
+        arma::vec R_subset = resid.elem(posValue);  // 从原有代码获取
+        arma::vec R0 = R_subset - W * inv_WtW * W.t() * R_subset;
         
-        // 步骤2：计算调整残差
-        arma::vec RE_sqrtMAF = RE_subset % arma::sqrt(GVar_subset);
-        // arma::vec R_sqrtMAF = R % arma::sqrt(gVarEst);
+        // 3. 基础统计量计算
+        arma::vec E_subset = m_E.elem(posValue);  // 假设E是成员变量
+        double S_GxE0 = arma::sum(t_GVec.elem(posValue) % E_subset % R0);
         
-        // 步骤3：交叉协方差计算（优化实现）
-        double Cov_S1_S2 = calculateCrossCovariance(R_sqrtMAF, RE_sqrtMAF, posValue) 
-          - arma::sum(GVar_subset % E_subset % arma::square(R_subset));
+        // 4. 调整残差计算
+        arma::vec R_new0 = E_subset % R0;
+        arma::vec R_new0_sqrtMAF = R_new0 % arma::sqrt(GVar_subset);
         
-        // 步骤4：计算lambda和新残差
-        double lambda = Cov_S1_S2 / VarS1;
-        arma::vec R_new = (E_subset - lambda) % R_subset;
+        // 5. 协方差计算（需要已实现的函数）
+        // double Cov_sum = calculateSparseGRMCovariance(R_new0_sqrtMAF); 
+        double S_GxE0_var = calculateSparseVariance(R_new0_sqrtMAF, posValue);
         
-        // 步骤5：计算新残差的调整方差
-        arma::vec R_new_sqrtMAF = R_new % arma::sqrt(GVar_subset);
-        double S_GxE_var = calculateSparseVariance(R_new_sqrtMAF, posValue);
+        // // 步骤3：交叉协方差计算（优化实现）
+        // double Cov_S1_S2 = calculateCrossCovariance(R_sqrtMAF, RE_sqrtMAF, posValue)
+        //   - arma::sum(GVar_subset % E_subset % arma::square(R_subset));
         
-        // 步骤6：标准化统计量
-        double S_GxE = S2 - lambda * S1;
-        double S_GxE_mean = 2 * arma::sum(R_new % AFVec.elem(posValue));
-        double z_GxE = (S_GxE - S_GxE_mean) / std::sqrt(S_GxE_var);
         
-        // ===== p值计算 =====
-        if(std::abs(z_GxE) < m_SPA_Cutoff){
-          // ... 正态近似 ...
-          double pval_norm_GxE = arma::normcdf(-1*std::abs(z_GxE))*2;
-          m_pvalVec.at(i) = pval_norm_GxE;
-        }else{
-          // 方差比率调整
-          double S_GxE_var_SPA = arma::sum(arma::square(R_new) % GVar_subset);
-          double Var_ratio = S_GxE_var_SPA / S_GxE_var;
+        // 6. 标准化统计量
+        double S_GxE0_mean = 2 * arma::sum(R_new0 % AFVec.elem(posValue));
+        double z_GxE0 = (S_GxE0 - S_GxE0_mean) / std::sqrt(S_GxE0_var);
+        
+        // 7. p值计算分支
+        if(std::abs(z_GxE0) < m_SPA_Cutoff) {
+          m_pvalVec.at(i) = 2 * arma::normcdf(-std::abs(z_GxE0));
+        } else {
+          double S_GxE0_var_SPA = arma::sum(arma::square(R_new0) % GVar_subset);
+          double Var_ratio = S_GxE0_var_SPA / S_GxE0_var;
           
-          // 对称统计量边界
-          double S_upper = std::max(S_GxE, 2*S_GxE_mean - S_GxE);
-          double S_lower = std::min(S_GxE, 2*S_GxE_mean - S_GxE);
+          double S_upper = std::max(S_GxE0, 2*S_GxE0_mean - S_GxE0);
+          double S_lower = std::min(S_GxE0, 2*S_GxE0_mean - S_GxE0);
           
-          // // SPA-G计算（含异常处理）
-          // double pval1 = GetProb_SPA_G(MAF_outlier, residOutlier, 
-          //                              S_upper * std::sqrt(Var_ratio), false,
-          //                              mean_nonOutlier, var_nonOutlier);
-          // double pval2 = GetProb_SPA_G(MAF_outlier, residOutlier, 
-          //                              S_lower * std::sqrt(Var_ratio), true,
-          //                              mean_nonOutlier, var_nonOutlier);
-          
-          // SPA-G计算（含异常处理）
           double pval1 = GetProb_SPA_G(AFVec.elem(posValue),
-                                       R_new, 
-                                       S_upper * std::sqrt(Var_ratio), 
-                                       false,
-                                       0,
-                                       0);
+                                       R_new0,
+                                       S_upper * std::sqrt(Var_ratio),
+                                       false, 0, 0);
           
           double pval2 = GetProb_SPA_G(AFVec.elem(posValue),
-                                       R_new, 
+                                       R_new0,
                                        S_lower * std::sqrt(Var_ratio),
-                                       true,
-                                       0,
-                                       0);
+                                       true, 0, 0);
           
-          // 处理NaN
-          // pval1 = std::isnan(pval1) ? 0.0 : pval1;
-          // pval2 = std::isnan(pval2) ? 0.0 : pval2;
+          // 异常值处理
+          pval1 = std::isnan(pval1) ? 0.0 : pval1;
+          pval2 = std::isnan(pval2) ? 0.0 : pval2;
           m_pvalVec.at(i) = pval1 + pval2;
         }
+        
+        
+        
       }
       
       
