@@ -173,7 +173,7 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
     head(designMat)
     
     # mresid.by.E = mresid * designMat$EnviColName # update by Yuzhuo Ma
-    mresid.by.E = mresid * designMat[, EnviColName, drop=TRUE]  # 关键修正：矩阵列名索引
+    mresid.by.E = mresid * designMat[, EnviColName]  # 关键修正：矩阵列名索引
     # 在函数内添加检查
     if (!EnviColName %in% colnames(designMat)) {
       stop(paste("环境因子列", EnviColName, "不存在于 designMat 中"))
@@ -193,11 +193,11 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
     # ---- 残差对象逻辑 ----
     if (!is.matrix(response)) {
       mresid = as.matrix(response)
-      mresid.by.E = mresid * designMat[, EnviColName, drop=TRUE] # update by Yuzhuo Ma
+      mresid.by.E = mresid * designMat[, EnviColName] # update by Yuzhuo Ma
     } else {
       mresid = response
       # mresid.by.E = mresid * designMat$EnviColName # update by Yuzhuo Ma
-      mresid.by.E = mresid * designMat[, EnviColName, drop=TRUE]  # 关键修正：矩阵列名索引
+      mresid.by.E = mresid * designMat[, EnviColName]  # 关键修正：矩阵列名索引
       # 在函数内添加检查
       if (!EnviColName %in% colnames(designMat)) {
         stop(paste("环境因子列", EnviColName, "不存在于 designMat 中"))
@@ -374,9 +374,11 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
   # ---- 10. 构建最终对象 ----
   objNull = list(
     resid = mresid,
-    resid.by.E = as.numeric(mresid.by.E),                             # update by Yuzhuo Ma
+    # resid.by.E = as.numeric(mresid.by.E),                             # update by Yuzhuo Ma
+    resid.by.E = as.matrix(mresid.by.E),                             # update by Yuzhuo Ma
+    
     ResidMat = as.data.frame(ResidMat),
-    E = as.numeric(designMat[, EnviColName, drop=TRUE]),
+    E = as.numeric(designMat[, EnviColName]),
     ResidByEnviMat = as.data.frame(ResidByEnviMat),       # update by Yuzhuo Ma
     sparseGRM = as.data.frame(sparseGRM_new),
     id_map = id_map,
