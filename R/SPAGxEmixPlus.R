@@ -60,18 +60,30 @@ checkControl.Marker.SPAGxEmixPlus = function(control)
 setMarker.SPAGxEmixPlus = function(objNull, control)
 {
   # the below function is in 'Main.cpp'
-  setSPAGxEmixPlusobjInCPP(objNull$resid,
-                           # objNull$X.invXX,
-                           # objNull$tX,
-                           objNull$PCs,
-                           objNull$N,
-                           control$SPA_Cutoff,
-                           objNull$outLierList,
-                           
-                           objNull$sparseGRM,   # update by Yuzhuo Ma
-                           objNull$ResidMat,    # update by Yuzhuo Ma
-                           objNull$E            # 新增环境因子参数
-  )  
+  # setSPAGxEmixPlusobjInCPP(objNull$resid,
+  #                          # objNull$X.invXX,
+  #                          # objNull$tX,
+  #                          objNull$PCs,
+  #                          objNull$N,
+  #                          control$SPA_Cutoff,
+  #                          objNull$outLierList,
+  #                          
+  #                          objNull$sparseGRM,   # update by Yuzhuo Ma
+  #                          objNull$ResidMat,    # update by Yuzhuo Ma
+  #                          objNull$E            # 新增环境因子参数
+  # )  
+  
+  setSPAGxEmixPlusobjInCPP(
+    objNull$resid,
+    objNull$resid.by.E,  # 新增环境因子交互残差
+    objNull$PCs,
+    objNull$N,
+    control$SPA_Cutoff,
+    objNull$outLierList,
+    objNull$sparseGRM,
+    objNull$ResidMat,
+    objNull$E  # 传递环境因子向量 作为最后一个参数
+  )
   
   # outLierList[[i]] = list(posValue = posValue - 1,
   #                         posOutlier = posOutlier - 1,
@@ -161,7 +173,7 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
     head(designMat)
     
     # mresid.by.E = mresid * designMat$EnviColName # update by Yuzhuo Ma
-    mresid.by.E = mresid * designMat[, EnviColName]  # 关键修正：矩阵列名索引
+    mresid.by.E = mresid * designMat[, EnviColName, drop=TRUE]  # 关键修正：矩阵列名索引
     # 在函数内添加检查
     if (!EnviColName %in% colnames(designMat)) {
       stop(paste("环境因子列", EnviColName, "不存在于 designMat 中"))
@@ -181,11 +193,11 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
     # ---- 残差对象逻辑 ----
     if (!is.matrix(response)) {
       mresid = as.matrix(response)
-      mresid.by.E = mresid * designMat[, EnviColName] # update by Yuzhuo Ma
+      mresid.by.E = mresid * designMat[, EnviColName, drop=TRUE] # update by Yuzhuo Ma
     } else {
       mresid = response
       # mresid.by.E = mresid * designMat$EnviColName # update by Yuzhuo Ma
-      mresid.by.E = mresid * designMat[, EnviColName]  # 关键修正：矩阵列名索引
+      mresid.by.E = mresid * designMat[, EnviColName, drop=TRUE]  # 关键修正：矩阵列名索引
       # 在函数内添加检查
       if (!EnviColName %in% colnames(designMat)) {
         stop(paste("环境因子列", EnviColName, "不存在于 designMat 中"))
@@ -364,7 +376,7 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
     resid = mresid,
     resid.by.E = as.numeric(mresid.by.E),                             # update by Yuzhuo Ma
     ResidMat = as.data.frame(ResidMat),
-    E = as.numeric(designMat[, EnviColName]),
+    E = as.numeric(designMat[, EnviColName, drop=TRUE]),
     ResidByEnviMat = as.data.frame(ResidByEnviMat),       # update by Yuzhuo Ma
     sparseGRM = as.data.frame(sparseGRM_new),
     id_map = id_map,
