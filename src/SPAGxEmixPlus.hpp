@@ -807,8 +807,8 @@ public:
                                        0);
           
           // 处理NaN
-          // pval1 = std::isnan(pval1) ? 0.0 : pval1;
-          // pval2 = std::isnan(pval2) ? 0.0 : pval2;
+          pval1 = std::isnan(pval1) ? 0.0 : pval1;
+          pval2 = std::isnan(pval2) ? 0.0 : pval2;
           m_pvalVec.at(i) = pval1 + pval2;
         }
       }else{
