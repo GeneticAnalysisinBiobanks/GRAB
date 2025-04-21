@@ -1117,40 +1117,40 @@ public:
   
   
   // 修改后的calculateGLMResidual函数
+  // 修改后的calculateGLMResidual函数（关键修复）
   arma::vec calculateGLMResidual(const arma::vec& y, const arma::vec& g) {
     try {
       // 1. 输入校验
       if (y.n_elem != g.n_elem) 
-        Rcpp::stop("Input vectors have different lengths");
+        Rcpp::stop("输入向量长度不一致");
       
-      // 2. 类型转换（使用显式内存拷贝）
-      Rcpp::NumericVector r_y = Rcpp::clone(Rcpp::wrap(y)); // 关键修改1：显式拷贝
+      // 2. 类型转换（显式深拷贝）
+      Rcpp::NumericVector r_y = Rcpp::clone(Rcpp::wrap(y));
       Rcpp::NumericVector r_g = Rcpp::clone(Rcpp::wrap(g));
       
-      // 3. 数据框构造（强制列类型）
+      // 3. 数据框构造（列名必须与公式变量严格匹配）
       Rcpp::DataFrame data = Rcpp::DataFrame::create(
         Rcpp::Named("response") = r_y,
         Rcpp::Named("genotype") = r_g,
         Rcpp::_["stringsAsFactors"] = false
       );
       
-      // 4. 公式构造（使用R语言原生语法）
-      Rcpp::Language formula("~ response genotype"); // 关键修改2：避免Rcpp::Formula的歧义
+      // 4. 关键修复：正确构造公式对象
+      Rcpp::Formula formula = Rcpp::Formula("response ~ genotype"); // 
       
-      // 5. 获取glm函数（使用显式环境调用）
+      // 5. 获取glm函数（显式指定命名空间）
       Rcpp::Function glm = Rcpp::Environment::namespace_env("stats")["glm"];
       
-      // 6. 调用glm（参数顺序调整）
+      // 6. 调用glm（参数顺序修正）
       Rcpp::List model = glm(
-        formula,
-        data,
+        formula,                            // 公式参数直接传递
+        Rcpp::_["data"] = data,             // 必须使用命名参数
         Rcpp::_["family"] = Rcpp::Function("binomial")()
       );
       
-      // 7. 安全类型转换（避免引用问题）
-      Rcpp::NumericVector mu = Rcpp::as<Rcpp::NumericVector>(model["fitted.values"]);
-      Rcpp::NumericVector residual = r_y - mu;
-      return arma::vec(residual.begin(), residual.size(), true); // 关键修改3：直接构造
+      // 7. 残差提取（安全类型转换）
+      Rcpp::NumericVector mu = model["fitted.values"];
+      return arma::vec(r_y.begin(), r_y.size()) - arma::vec(mu.begin(), mu.size());
       
     } catch(const std::exception& e) {
       Rcpp::Rcerr << "GLM Error: " << e.what() << std::endl;
