@@ -142,7 +142,7 @@ GRAB.NullModel = function(formula,
                           EnviColName = NULL,              # update by Yuzhuo Ma on 2025-04-17
                           # 新增以下参数
                           ResidTraitType = NULL,
-                          PhenoColName = NULL,
+                          PhenoMat = NULL,
                           CovarColNames = NULL,
                           ...)
 {
