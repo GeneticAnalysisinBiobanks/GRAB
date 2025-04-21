@@ -437,7 +437,7 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
       "; PhenoColName=", PhenoColName, 
       "; CovarColNames=", paste(CovarColNames, collapse = ","), "\n")
   
-  
+  cat("[DEBUG] designMat columns:", paste(colnames(designMat), collapse = ", "), "\n")
   
   # ---- 关键修复1：正确校验ResidTraitType的值 ----
   allowed_Types = c("Quantitative", "Binary")
@@ -447,17 +447,15 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
   
   # ---- 关键修复2：二分类校验逻辑 ----
   if (ResidTraitType == "Binary") {
-    if (is.null(PhenoColName)) stop("必须指定PhenoColName")
-    if (is.null(CovarColNames)) stop("必须指定CovarColNames")
-    
-    missing_cols = setdiff(c(PhenoColName, CovarColNames, EnviColName), colnames(designMat))
-    if (length(missing_cols) > 0) {
-      stop(paste("以下列名不存在于designMat中:", paste(missing_cols, collapse = ", ")))
+    # 从原始数据中获取表型列，而不是designMat
+    if (!PhenoColName %in% colnames(designMat)) {
+      stop(paste("表型列", PhenoColName, "不存在于输入数据中"))
     }
+    Phenotype = data[, PhenoColName]
     
-    # 检查二分类表型值
-    if (!all(designMat[[PhenoColName]] %in% c(0, 1))) {
-      stop("二分类表型必须为0/1值")
+    # 验证是否为二分类
+    if (!all(Phenotype %in% c(0, 1))) {
+      stop("表型必须是二分类的0/1值")
     }
   }
   
