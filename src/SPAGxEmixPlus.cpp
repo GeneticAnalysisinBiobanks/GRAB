@@ -18,7 +18,11 @@ SPAGxEmixPlusClass::SPAGxEmixPlusClass(arma::mat t_resid,
                                        Rcpp::List t_outlierList,
                                        Rcpp::DataFrame t_sparseGRM,    // 新增参数：稀疏GRM数据
                                        Rcpp::DataFrame t_ResidMat,      // 新增参数：残差矩阵
-                                       arma::vec t_E):     // 新增环境因子参数
+                                       arma::vec t_E,                  // 新增环境因子参数
+                                       std::string t_ResidTraitType,
+                                       arma::mat t_PhenoMat,
+                                       arma::mat t_Covariates
+                                       ):     
 
 // // 关键初始化必须在此处（成员初始化列表）
 // m_statsEnv(Environment::namespace_env("stats")),
@@ -33,10 +37,16 @@ m_resid_by_E(t_resid_by_E),
 m_PCs(t_PCs),
 m_N(t_N),
 m_SPA_Cutoff(t_SPA_Cutoff),
-m_outlierList(t_outlierList)
-
+m_outlierList(t_outlierList),
+m_ResidTraitType(t_ResidTraitType),  // 新增
+m_PhenoMat(t_PhenoMat),             // 新增
+m_Covariates(t_Covariates)         // 新增
 
 {
+  
+  m_ResidTraitType = t_ResidTraitType;
+  m_PhenoMat = t_PhenoMat;
+  m_Covariates = t_Covariates;
   
   
   // ==== 新增环境因子处理 ====

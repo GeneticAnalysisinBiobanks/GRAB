@@ -27,6 +27,10 @@ class SPAGxEmixPlusClass
 {
 private:
   
+  std::string m_ResidTraitType; // 表征类型成员变量
+  arma::mat m_PhenoMat;
+  arma::mat m_Covariates;
+  
   
   // 修改后（正确）
   Environment m_statsEnv;

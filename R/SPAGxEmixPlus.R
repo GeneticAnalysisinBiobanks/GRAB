@@ -83,7 +83,9 @@ setMarker.SPAGxEmixPlus = function(objNull, control)
     objNull$sparseGRM,
     objNull$ResidMat,
     objNull$E,  # 传递环境因子向量 作为最后一个参数
-    objNull$ResidTraitType # update by Yuzhuo Ma
+    objNull$ResidTraitType, # update by Yuzhuo Ma
+    objNull$PhenoMat,
+    objNull$CovarColNames
   )
   
   # outLierList[[i]] = list(posValue = posValue - 1,
