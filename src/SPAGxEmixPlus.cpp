@@ -30,17 +30,17 @@ SPAGxEmixPlusClass::SPAGxEmixPlusClass(arma::mat t_resid,
 
 // 成员初始化列表
 m_statsEnv(Environment::namespace_env("stats")),
-m_glm(m_statsEnv["glm"]),
-m_E(t_E),
-m_resid(t_resid),
-m_resid_by_E(t_resid_by_E),
-m_PCs(t_PCs),
-m_N(t_N),
-m_SPA_Cutoff(t_SPA_Cutoff),
-m_outlierList(t_outlierList),
-m_ResidTraitType(t_ResidTraitType),  // 新增
-m_PhenoMat(t_PhenoMat),             // 新增
-m_Covariates(t_Covariates)         // 新增
+m_glm(m_statsEnv["glm"])
+// m_E(t_E),
+// m_resid(t_resid),
+// m_resid_by_E(t_resid_by_E),
+// m_PCs(t_PCs),
+// m_N(t_N),
+// m_SPA_Cutoff(t_SPA_Cutoff),
+// m_outlierList(t_outlierList),
+// m_ResidTraitType(t_ResidTraitType),  // 新增
+// m_PhenoMat(t_PhenoMat),             // 新增
+// m_Covariates(t_Covariates)         // 新增
 
 {
   

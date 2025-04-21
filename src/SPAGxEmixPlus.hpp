@@ -99,7 +99,10 @@ public:
                      Rcpp::List t_outlierList,
                      Rcpp::DataFrame t_sparseGRM, // update by Yuzhuo Ma
                      Rcpp::DataFrame t_ResidMat,  // update by Yuzhuo Ma
-                     arma::vec t_E);              // update by Yuzhuo Ma
+                     arma::vec t_E,               // update by Yuzhuo Ma
+                     std::string t_ResidTraitType,
+                     arma::mat t_PhenoMat,
+                     arma::mat t_Covariates);              // update by Yuzhuo Ma
   
   arma::vec getTestTime1(){return m_diffTime1;}
   arma::vec getTestTime2(){return m_diffTime2;}
