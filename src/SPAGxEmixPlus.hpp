@@ -837,14 +837,31 @@ public:
         }
       }else{
         
-        // 1. 构造W矩阵
-        arma::mat W = arma::join_rows(arma::ones(posValue.n_elem), t_GVec.elem(posValue));
+        // quantitative phenotype
         
-        // 2. 投影矩阵计算 (R0 = R - W(W^TW)^{-1}W^TR)
-        arma::mat WtW = W.t() * W;
-        arma::mat inv_WtW = arma::inv(WtW);
-        arma::vec R_subset = resid.elem(posValue);  // 从原有代码获取
-        arma::vec R0 = R_subset - W * inv_WtW * W.t() * R_subset;
+        // // 1. 构造W矩阵
+        // arma::mat W = arma::join_rows(arma::ones(posValue.n_elem), t_GVec.elem(posValue));
+        // 
+        // // 2. 投影矩阵计算 (R0 = R - W(W^TW)^{-1}W^TR)
+        // arma::mat WtW = W.t() * W;
+        // arma::mat inv_WtW = arma::inv(WtW);
+        // arma::vec R_subset = resid.elem(posValue);  // 从原有代码获取
+        // arma::vec R0 = R_subset - W * inv_WtW * W.t() * R_subset;
+        
+        
+        // binary phenotype
+        
+        // 替换为逻辑回归原始残差计算
+        arma::vec R0 = calculateLogisticRawResidual(R_subset, 
+                                                    t_GVec.elem(posValue)); // t_GVec为基因型向量
+        
+        // 示例输出前5个残差
+        Rcpp::Rcout << "Head residuals: " << R0.head(5).t() << std::endl;
+        
+        
+        
+        
+        //////////////////////////////////////////////////////////////////////////////////////////////////////
         
         // 3. 基础统计量计算
         arma::vec E_subset = m_E.elem(posValue);  // 假设E是成员变量
@@ -1029,6 +1046,47 @@ public:
   
   
   
+  
+  
+  // 修改后的逻辑回归原始残差计算函数
+  arma::vec calculateLogisticRawResidual(const arma::vec& y, const arma::vec& g) {
+    int n = y.n_elem;
+    
+    // 1. 构造设计矩阵（包含截距项）
+    arma::mat X = arma::join_horiz(arma::ones<arma::vec>(n), g);
+    
+    // 2. 初始化参数（beta[0]截距，beta[1]基因型效应）
+    arma::vec beta = arma::zeros<arma::vec>(2);
+    
+    // 3. 迭代加权最小二乘法（IRLS）
+    double tol = 1e-6;
+    int max_iter = 25;
+    for (int iter = 0; iter < max_iter; ++iter) {
+      arma::vec eta = X * beta;
+      arma::vec mu = 1.0 / (1.0 + arma::exp(-eta));
+      
+      // 计算权重矩阵（对角阵）
+      arma::vec weights = mu % (1 - mu);
+      arma::mat W = arma::diagmat(weights);
+      
+      // 工作响应量计算（带数值稳定处理）
+      arma::vec z = eta + (y - mu) / (weights + 1e-16);
+      
+      // 更新参数（优化矩阵运算）
+      arma::mat XtW = X.t() * W;
+      arma::vec beta_new = arma::solve(XtW * X, XtW * z);
+      
+      // 收敛判断（L2范数变化）
+      if (arma::norm(beta_new - beta, 2) < tol) break;
+      beta = beta_new;
+    }
+    
+    // 4. 计算原始残差（观测值 - 预测概率）
+    arma::vec mu = 1.0 / (1.0 + arma::exp(X * beta));
+    arma::vec R0 = y - mu;  // 原始残差
+    
+    return R0;
+  }
   
   
   
