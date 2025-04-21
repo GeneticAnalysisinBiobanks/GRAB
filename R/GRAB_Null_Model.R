@@ -139,7 +139,7 @@ GRAB.NullModel = function(formula,
                           
                           sparseGRM_SPAmixPlus = NULL,     # update by Yuzhuo Ma on 2025-03-28
                           sparseGRMFile_SPAmixPlus = NULL, # update by Yuzhuo Ma on 2025-03-28
-                          EnviColName,                     # update by Yuzhuo Ma on 2025-04-17
+                          EnviColName = NULL,              # update by Yuzhuo Ma on 2025-04-17
                           ...)
 {
   if(missing(subjData))
@@ -279,6 +279,17 @@ GRAB.NullModel = function(formula,
     control = checkControl.NullModel(control, method, traitType)
     # textToParse = paste0("objNull = fitNullModel.", method, "(response, designMat, subjData, control, sparseGRM_SPAmixPlus, sparseGRMFile_SPAmixPlus, EnviColName)")
     # 显式传递 EnviColName 到 fitNullModel.SPAGxEmixPlus
+  #   textToParse = paste0("objNull = fitNullModel.SPAGxEmixPlus(
+  #   response = response,
+  #   designMat = designMat,
+  #   subjData = subjData,
+  #   control = control,
+  #   sparseGRM_SPAmixPlus = sparseGRM_SPAmixPlus,
+  #   sparseGRMFile_SPAmixPlus = sparseGRMFile_SPAmixPlus,
+  #   EnviColName = '", EnviColName, "'  
+  # )")
+    
+    # 修改后的代码（完整参数传递）
     textToParse = paste0("objNull = fitNullModel.SPAGxEmixPlus(
     response = response,
     designMat = designMat,
@@ -286,8 +297,12 @@ GRAB.NullModel = function(formula,
     control = control,
     sparseGRM_SPAmixPlus = sparseGRM_SPAmixPlus,
     sparseGRMFile_SPAmixPlus = sparseGRMFile_SPAmixPlus,
-    EnviColName = '", EnviColName, "'  
+    EnviColName = '", EnviColName, "',
+    ResidTraitType = '", ResidTraitType, "',
+    PhenoColName = '", PhenoColName, "',
+    CovarColNames = c(", paste0("'", paste(CovarColNames, collapse = "','"), "'"), ")
   )")
+    
   }else{
     # Check 'control.R'
     control = checkControl.NullModel(control, method, traitType)
