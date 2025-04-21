@@ -672,7 +672,7 @@ public:
                        double epsilon = 0.001)                  // update by Yuzhuo Ma
   {
     
-    std::cout << "SPAGxEmixPlus_getMarkerPval" << std::endl; // update by Yuzhuo Ma
+    // std::cout << "SPAGxEmixPlus_getMarkerPval" << std::endl; // update by Yuzhuo Ma
     
     
     arma::vec time1 = getTime();
@@ -717,7 +717,7 @@ public:
       
       // 修改6：传入posValue和GVar子集
       double VarS1 = calculateSparseVariance(R_sqrtMAF, posValue);
-      std::cout << "VarS1:\t" << VarS1 << std::endl; // update by Yuzhuo Ma
+      // std::cout << "VarS1:\t" << VarS1 << std::endl; // update by Yuzhuo Ma
       
       
       
@@ -733,16 +733,16 @@ public:
       m_zScoreVec.at(i) = zScore;
       
       
-      std::cout << "S1:\t" << S1 << std::endl; // update by Yuzhuo Ma
-      std::cout << "S1_mean:\t" << S1_mean << std::endl; // update by Yuzhuo Ma
-      std::cout << "zScore:\t" << zScore << std::endl; // update by Yuzhuo Ma
+      // std::cout << "S1:\t" << S1 << std::endl; // update by Yuzhuo Ma
+      // std::cout << "S1_mean:\t" << S1_mean << std::endl; // update by Yuzhuo Ma
+      // std::cout << "zScore:\t" << zScore << std::endl; // update by Yuzhuo Ma
       
       
       
       // update /////////////////////////////////////////////////////////////////
       double pval_norm1 = arma::normcdf(-1*std::abs(zScore))*2;
 
-      std::cout << "pval_norm1:\t" << pval_norm1 << std::endl; // update by Yuzhuo Ma
+      // std::cout << "pval_norm1:\t" << pval_norm1 << std::endl; // update by Yuzhuo Ma
       
       
       
@@ -765,14 +765,14 @@ public:
         double Cov_S1_S2 = calculateCrossCovariance(R_sqrtMAF, RE_sqrtMAF, posValue) 
           - arma::sum(GVar_subset % E_subset % arma::square(R_subset));
         
-        std::cout << "Cov_S1_S2:\t" << Cov_S1_S2 << std::endl; // update by Yuzhuo Ma
+        // std::cout << "Cov_S1_S2:\t" << Cov_S1_S2 << std::endl; // update by Yuzhuo Ma
         
         
         // 步骤4：计算lambda和新残差
         double lambda = Cov_S1_S2 / VarS1;
         arma::vec R_new = (E_subset - lambda) % R_subset;
         
-        std::cout << "lambda:\t" << lambda << std::endl; // update by Yuzhuo Ma
+        // std::cout << "lambda:\t" << lambda << std::endl; // update by Yuzhuo Ma
         
         
         // 步骤5：计算新残差的调整方差
@@ -785,9 +785,9 @@ public:
         double z_GxE = (S_GxE - S_GxE_mean) / std::sqrt(S_GxE_var);
         
         
-        std::cout << "S_GxE:\t" << S_GxE << std::endl; // update by Yuzhuo Ma
-        std::cout << "S_GxE_mean:\t" << S_GxE_mean << std::endl; // update by Yuzhuo Ma
-        std::cout << "z_GxE:\t" << z_GxE << std::endl; // update by Yuzhuo Ma
+        // std::cout << "S_GxE:\t" << S_GxE << std::endl; // update by Yuzhuo Ma
+        // std::cout << "S_GxE_mean:\t" << S_GxE_mean << std::endl; // update by Yuzhuo Ma
+        // std::cout << "z_GxE:\t" << z_GxE << std::endl; // update by Yuzhuo Ma
         
         
         // ===== p值计算 =====
@@ -832,8 +832,8 @@ public:
           pval2 = std::isnan(pval2) ? 0.0 : pval2;
           m_pvalVec.at(i) = pval1 + pval2;
           
-          std::cout << "pval1:\t" << pval1 << std::endl; // update by Yuzhuo Ma
-          std::cout << "pval2:\t" << pval2 << std::endl; // update by Yuzhuo Ma
+          // std::cout << "pval1:\t" << pval1 << std::endl; // update by Yuzhuo Ma
+          // std::cout << "pval2:\t" << pval2 << std::endl; // update by Yuzhuo Ma
         }
       }else{
         
@@ -867,7 +867,7 @@ public:
         arma::vec E_subset = m_E.elem(posValue);  // 假设E是成员变量
         double S_GxE0 = arma::sum(t_GVec.elem(posValue) % E_subset % R0);
         
-        std::cout << "S_GxE0:\t" << S_GxE0 << std::endl; // update by Yuzhuo Ma
+        // std::cout << "S_GxE0:\t" << S_GxE0 << std::endl; // update by Yuzhuo Ma
         
         
         // 4. 调整残差计算
@@ -878,7 +878,7 @@ public:
         // double Cov_sum = calculateSparseGRMCovariance(R_new0_sqrtMAF); 
         double S_GxE0_var = calculateSparseVariance(R_new0_sqrtMAF, posValue);
         
-        std::cout << "S_GxE0_var:\t" << S_GxE0_var << std::endl; // update by Yuzhuo Ma
+        // std::cout << "S_GxE0_var:\t" << S_GxE0_var << std::endl; // update by Yuzhuo Ma
         
         
         // // 步骤3：交叉协方差计算（优化实现）
@@ -890,8 +890,8 @@ public:
         double S_GxE0_mean = 2 * arma::sum(R_new0 % AFVec.elem(posValue));
         double z_GxE0 = (S_GxE0 - S_GxE0_mean) / std::sqrt(S_GxE0_var);
         
-        std::cout << "S_GxE0_mean:\t" << S_GxE0_mean << std::endl; // update by Yuzhuo Ma
-        std::cout << "z_GxE0:\t" << z_GxE0 << std::endl; // update by Yuzhuo Ma
+        // std::cout << "S_GxE0_mean:\t" << S_GxE0_mean << std::endl; // update by Yuzhuo Ma
+        // std::cout << "z_GxE0:\t" << z_GxE0 << std::endl; // update by Yuzhuo Ma
         
         
         // 7. p值计算分支
@@ -919,8 +919,8 @@ public:
           pval2 = std::isnan(pval2) ? 0.0 : pval2;
           m_pvalVec.at(i) = pval1 + pval2;
           
-          std::cout << "pval1:\t" << pval1 << std::endl; // update by Yuzhuo Ma
-          std::cout << "pval2:\t" << pval2 << std::endl; // update by Yuzhuo Ma
+          // std::cout << "pval1:\t" << pval1 << std::endl; // update by Yuzhuo Ma
+          // std::cout << "pval2:\t" << pval2 << std::endl; // update by Yuzhuo Ma
           
         }
         
