@@ -432,27 +432,26 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
                                       ...)
 {
 
-  if (!inherits(ResidTraitType, c("Quantitative", "Binary"))) {
-    stop("响应变量必须是Quantitative或Binary类型")
+  # ---- 关键修复1：正确校验ResidTraitType的值 ----
+  allowed_Types = c("Quantitative", "Binary")
+  if (!(ResidTraitType %in% allowed_Types)) {  # 使用%in%代替inherits
+    stop(paste("ResidTraitType必须是以下值:", paste(allowed_Types, collapse = ", ")))
   }
   
-  # update for binary phenotype
+  # ---- 关键修复2：二分类校验逻辑 ----
   if (ResidTraitType == "Binary") {
-    if (missing(PhenoColName)) stop("必须指定PhenoColName")
-    if (missing(CovarColNames)) stop("必须指定CovarColNames")
-    if (!all(c(PhenoColName, CovarColNames) %in% colnames(designMat))) {
-      stop(paste("以下列名不存在于designMat中:", 
-                 paste(setdiff(c(PhenoColName, CovarColNames), colnames(designMat)), collapse = ", ")))
+    if (is.null(PhenoColName)) stop("必须指定PhenoColName")
+    if (is.null(CovarColNames)) stop("必须指定CovarColNames")
+    
+    missing_cols = setdiff(c(PhenoColName, CovarColNames, EnviColName), colnames(designMat))
+    if (length(missing_cols) > 0) {
+      stop(paste("以下列名不存在于designMat中:", paste(missing_cols, collapse = ", ")))
     }
     
-    
-    # 检查表型值合法性
-    if (!all(designMat[, PhenoColName] %in% c(0, 1))) {
+    # 检查二分类表型值
+    if (!all(designMat[[PhenoColName]] %in% c(0, 1))) {
       stop("二分类表型必须为0/1值")
     }
-    
-    
-    
   }
   
 
