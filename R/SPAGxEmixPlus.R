@@ -432,6 +432,13 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
                                       ...)
 {
 
+  # 参数校验前添加调试输出
+  cat("[DEBUG] 接收参数: ResidTraitType=", ResidTraitType, 
+      "; PhenoColName=", PhenoColName, 
+      "; CovarColNames=", paste(CovarColNames, collapse = ","), "\n")
+  
+  
+  
   # ---- 关键修复1：正确校验ResidTraitType的值 ----
   allowed_Types = c("Quantitative", "Binary")
   if (!(ResidTraitType %in% allowed_Types)) {  # 使用%in%代替inherits

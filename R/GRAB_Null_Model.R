@@ -140,6 +140,10 @@ GRAB.NullModel = function(formula,
                           sparseGRM_SPAmixPlus = NULL,     # update by Yuzhuo Ma on 2025-03-28
                           sparseGRMFile_SPAmixPlus = NULL, # update by Yuzhuo Ma on 2025-03-28
                           EnviColName = NULL,              # update by Yuzhuo Ma on 2025-04-17
+                          # 新增以下参数
+                          ResidTraitType = NULL,
+                          PhenoColName = NULL,
+                          CovarColNames = NULL,
                           ...)
 {
   if(missing(subjData))
@@ -289,19 +293,24 @@ GRAB.NullModel = function(formula,
   #   EnviColName = '", EnviColName, "'  
   # )")
     
+    # 构建动态调用字符串
+    CovarColNames_Formatted = ifelse(is.null(CovarColNames), 
+                                     "NULL", 
+                                     paste0("c('", paste(CovarColNames, collapse = "','"), "')"))
+    
     # 修改后的代码（完整参数传递）
     textToParse = paste0("objNull = fitNullModel.SPAGxEmixPlus(
-    response = response,
-    designMat = designMat,
-    subjData = subjData,
-    control = control,
-    sparseGRM_SPAmixPlus = sparseGRM_SPAmixPlus,
-    sparseGRMFile_SPAmixPlus = sparseGRMFile_SPAmixPlus,
-    EnviColName = '", EnviColName, "',
-    ResidTraitType = '", ResidTraitType, "',
-    PhenoColName = '", PhenoColName, "',
-    CovarColNames = c(", paste0("'", paste(CovarColNames, collapse = "','"), "'"), ")
-  )")
+        response = response,
+        designMat = designMat,
+        subjData = subjData,
+        control = control,
+        sparseGRM_SPAmixPlus = sparseGRM_SPAmixPlus,
+        sparseGRMFile_SPAmixPlus = sparseGRMFile_SPAmixPlus,
+        EnviColName = '", EnviColName, "',
+        ResidTraitType = '", ResidTraitType, "',
+        PhenoColName = '", PhenoColName, "',
+        CovarColNames = ", CovarColNames_Formatted, "
+      )")
     
   }else{
     # Check 'control.R'
