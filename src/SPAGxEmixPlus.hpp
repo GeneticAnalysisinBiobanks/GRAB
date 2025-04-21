@@ -3,13 +3,18 @@
 #define SPAGxEMIXPLUS_HPP
 
 // [[Rcpp::depends(RcppArmadillo)]]
+#include <Rcpp.h>  // 必须包含以使用Rcpp环境
 #include <RcppArmadillo.h>
 #include "UTIL.hpp"
-
 #include <unordered_map>   // 新增
 #include <vector>          // 新增
-
 #include <cmath>  // 需要包含此头文件以使用 std::isnan
+#include <Rcpp/Formula.h>  // 必须包含Formula支持
+
+
+
+
+using namespace Rcpp;           // 声明命名空间
 
 // #define ARMA_DONT_USE_WRAPPER // 提升Armadillo性能
 // #include <RcppArmadillo.h>
@@ -22,6 +27,13 @@ class SPAGxEmixPlusClass
 {
 private:
   
+  
+  // 修改后（正确）
+  Environment m_statsEnv;
+  Function m_glm;
+  
+  // Environment m_statsEnv = Environment::namespace_env("stats");
+  // Function m_glm = m_statsEnv["glm"];
   
   // ==== 新增环境因子成员 ====
   arma::vec m_E;  // 必须与.cpp中的使用保持一致
@@ -91,6 +103,8 @@ public:
   arma::vec getpvalVec(){return m_pvalVec;}
   arma::vec getzScoreVec(){return m_zScoreVec;}
   // a major update on 2023-04-23 to improve SPA process
+  
+  
   
   
   // The MGF of G (genotype)
@@ -851,14 +865,22 @@ public:
         
         // binary phenotype
         
-        // 替换为逻辑回归原始残差计算
-        arma::vec R0 = calculateLogisticRawResidual(R_subset, 
-                                                    t_GVec.elem(posValue)); // t_GVec为基因型向量
+        // // 替换为逻辑回归原始残差计算
+        // arma::vec R0 = calculateLogisticRawResidual(R_subset, 
+        //                                             t_GVec.elem(posValue)); // t_GVec为基因型向量
         
-        // 示例输出前5个残差
-        Rcpp::Rcout << "Head residuals: " << R0.head(5).t() << std::endl;
+        // // 示例输出前5个残差
+        // Rcpp::Rcout << "Head residuals: " << R0.head(5).t() << std::endl;
         
+        // ==== 替换为调用R glm的残差计算 ====
+        arma::vec R0 = calculateGLMResidual(R_subset, t_GVec.elem(posValue));
         
+        // // 残差验证输出
+        // if(m_debugMode) {
+        //   Rcout << "Head residuals (R glm): " << R0.head(5).t() << "\n";
+        //   Rcout << "Residual mean: " << arma::mean(R0) << "\n";
+        //   Rcout << "Residual variance: " << arma::var(R0) << "\n";
+        // }
         
         
         //////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1048,45 +1070,96 @@ public:
   
   
   
-  // 修改后的逻辑回归原始残差计算函数
-  arma::vec calculateLogisticRawResidual(const arma::vec& y, const arma::vec& g) {
-    int n = y.n_elem;
-    
-    // 1. 构造设计矩阵（包含截距项）
-    arma::mat X = arma::join_horiz(arma::ones<arma::vec>(n), g);
-    
-    // 2. 初始化参数（beta[0]截距，beta[1]基因型效应）
-    arma::vec beta = arma::zeros<arma::vec>(2);
-    
-    // 3. 迭代加权最小二乘法（IRLS）
-    double tol = 1e-6;
-    int max_iter = 25;
-    for (int iter = 0; iter < max_iter; ++iter) {
-      arma::vec eta = X * beta;
-      arma::vec mu = 1.0 / (1.0 + arma::exp(-eta));
+  // // 修改后的逻辑回归原始残差计算函数
+  // arma::vec calculateLogisticRawResidual(const arma::vec& y, const arma::vec& g) {
+  //   int n = y.n_elem;
+  //   
+  //   // 1. 构造设计矩阵（包含截距项）
+  //   arma::mat X = arma::join_horiz(arma::ones<arma::vec>(n), g);
+  //   
+  //   // 2. 初始化参数（beta[0]截距，beta[1]基因型效应）
+  //   arma::vec beta = arma::zeros<arma::vec>(2);
+  //   
+  //   // 3. 迭代加权最小二乘法（IRLS）
+  //   double tol = 1e-6;
+  //   int max_iter = 25;
+  //   for (int iter = 0; iter < max_iter; ++iter) {
+  //     arma::vec eta = X * beta;
+  //     arma::vec mu = 1.0 / (1.0 + arma::exp(-eta));
+  //     
+  //     // 计算权重矩阵（对角阵）
+  //     arma::vec weights = mu % (1 - mu);
+  //     arma::mat W = arma::diagmat(weights);
+  //     
+  //     // 工作响应量计算（带数值稳定处理）
+  //     arma::vec z = eta + (y - mu) / (weights + 1e-16);
+  //     
+  //     // 更新参数（优化矩阵运算）
+  //     arma::mat XtW = X.t() * W;
+  //     arma::vec beta_new = arma::solve(XtW * X, XtW * z);
+  //     
+  //     // 收敛判断（L2范数变化）
+  //     if (arma::norm(beta_new - beta, 2) < tol) break;
+  //     beta = beta_new;
+  //   }
+  //   
+  //   // 4. 计算原始残差（观测值 - 预测概率）
+  //   arma::vec mu = 1.0 / (1.0 + arma::exp(X * beta));
+  //   arma::vec R0 = y - mu;  // 原始残差
+  //   
+  //   return R0;
+  // }
+  // 
+  
+  
+  
+  
+  
+  
+  // 修改后的calculateGLMResidual函数
+  arma::vec calculateGLMResidual(const arma::vec& y, const arma::vec& g) {
+    try {
+      // 1. 输入校验
+      if (y.n_elem != g.n_elem) 
+        Rcpp::stop("Input vectors have different lengths");
       
-      // 计算权重矩阵（对角阵）
-      arma::vec weights = mu % (1 - mu);
-      arma::mat W = arma::diagmat(weights);
+      // 2. 类型转换（使用显式内存拷贝）
+      Rcpp::NumericVector r_y = Rcpp::clone(Rcpp::wrap(y)); // 关键修改1：显式拷贝
+      Rcpp::NumericVector r_g = Rcpp::clone(Rcpp::wrap(g));
       
-      // 工作响应量计算（带数值稳定处理）
-      arma::vec z = eta + (y - mu) / (weights + 1e-16);
+      // 3. 数据框构造（强制列类型）
+      Rcpp::DataFrame data = Rcpp::DataFrame::create(
+        Rcpp::Named("response") = r_y,
+        Rcpp::Named("genotype") = r_g,
+        Rcpp::_["stringsAsFactors"] = false
+      );
       
-      // 更新参数（优化矩阵运算）
-      arma::mat XtW = X.t() * W;
-      arma::vec beta_new = arma::solve(XtW * X, XtW * z);
+      // 4. 公式构造（使用R语言原生语法）
+      Rcpp::Language formula("~ response genotype"); // 关键修改2：避免Rcpp::Formula的歧义
       
-      // 收敛判断（L2范数变化）
-      if (arma::norm(beta_new - beta, 2) < tol) break;
-      beta = beta_new;
+      // 5. 获取glm函数（使用显式环境调用）
+      Rcpp::Function glm = Rcpp::Environment::namespace_env("stats")["glm"];
+      
+      // 6. 调用glm（参数顺序调整）
+      Rcpp::List model = glm(
+        formula,
+        data,
+        Rcpp::_["family"] = Rcpp::Function("binomial")()
+      );
+      
+      // 7. 安全类型转换（避免引用问题）
+      Rcpp::NumericVector mu = Rcpp::as<Rcpp::NumericVector>(model["fitted.values"]);
+      Rcpp::NumericVector residual = r_y - mu;
+      return arma::vec(residual.begin(), residual.size(), true); // 关键修改3：直接构造
+      
+    } catch(const std::exception& e) {
+      Rcpp::Rcerr << "GLM Error: " << e.what() << std::endl;
+      return arma::zeros<arma::vec>(y.n_elem);
     }
-    
-    // 4. 计算原始残差（观测值 - 预测概率）
-    arma::vec mu = 1.0 / (1.0 + arma::exp(X * beta));
-    arma::vec R0 = y - mu;  // 原始残差
-    
-    return R0;
   }
+  
+  
+  
   
   
   
