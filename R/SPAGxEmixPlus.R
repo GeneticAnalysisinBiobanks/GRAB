@@ -427,15 +427,12 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
                                       sparseGRMFile_SPAmixPlus = NULL,
                                       EnviColName,            # update by Yuzhuo Ma : column name of Environmental factor in designMat or PhenoMat
                                       ResidTraitType = "Quantitative/Binary",
-                                      PhenoColName = NULL,          # 新增：表型列名
+                                      PhenoMat = NULL,          # 新增：表型列名
                                       CovarColNames = NULL,         # 新增：协变量列名（向量）
                                       ...)
 {
 
   # 参数校验前添加调试输出
-  cat("[DEBUG] 接收参数: ResidTraitType=", ResidTraitType, 
-      "; PhenoColName=", PhenoColName, 
-      "; CovarColNames=", paste(CovarColNames, collapse = ","), "\n")
   
   cat("[DEBUG] designMat columns:", paste(colnames(designMat), collapse = ", "), "\n")
   
@@ -447,14 +444,11 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
   
   # ---- 关键修复2：二分类校验逻辑 ----
   if (ResidTraitType == "Binary") {
-    # 从原始数据中获取表型列，而不是designMat
-    if (!PhenoColName %in% colnames(designMat)) {
-      stop(paste("表型列", PhenoColName, "不存在于输入数据中"))
-    }
-    Phenotype = data[, PhenoColName]
+
+    PhenoMat = as.matrix(PhenoMat)
     
     # 验证是否为二分类
-    if (!all(Phenotype %in% c(0, 1))) {
+    if (!all(PhenoMat %in% c(0, 1))) {
       stop("表型必须是二分类的0/1值")
     }
   }
@@ -743,9 +737,9 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
       outLierList = outLierList,
       outLierList_ResidByE = outLierList_ResidByE,          # update by Yuzhuo Ma
       control = control,
-      ResidTraitType,                                        # update by Yuzhuo Ma
+      ResidTraitType = ResidTraitType,                                        # update by Yuzhuo Ma
       # 新增输出字段
-      Phenotype = designMat[, PhenoColName, drop = FALSE],     # 表型矩阵
+      PhenoMat = PhenoMat,     # 表型矩阵
       Covariates = designMat[, CovarColNames, drop = FALSE]    # 协变量矩阵
     )
   }  

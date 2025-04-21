@@ -308,7 +308,7 @@ GRAB.NullModel = function(formula,
         sparseGRMFile_SPAmixPlus = sparseGRMFile_SPAmixPlus,
         EnviColName = '", EnviColName, "',
         ResidTraitType = '", ResidTraitType, "',
-        PhenoColName = '", PhenoColName, "',
+        PhenoMat = PhenoMat,
         CovarColNames = ", CovarColNames_Formatted, "
       )")
     
