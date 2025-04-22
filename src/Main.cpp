@@ -1159,7 +1159,7 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
   if(t_method == "SPAGxEmixPlus"){
     if(t_isOnlyOutputNonZero == true)
       Rcpp::stop("When using SPAGxEmixPlus method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
-    t_pval = ptr_gSPAGxEmixPlusobj->getMarkerPval(t_GVec, t_altFreq);
+    t_pval = ptr_gSPAGxEmixPlusobj->getMarkerPval(t_GVec, t_altFreq, t_PhenoMat, t_Covariates, 0.001, t_ResidTraitType);
   }
   
   
