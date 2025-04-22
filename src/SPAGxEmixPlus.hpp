@@ -778,7 +778,7 @@ public:
       // update /////////////////////////////////////////////////////////////////
       double pval_norm1 = arma::normcdf(-1*std::abs(zScore))*2;
 
-      // std::cout << "pval_norm1:\t" << pval_norm1 << std::endl; // update by Yuzhuo Ma
+      std::cout << "pval_norm1:\t" << pval_norm1 << std::endl; // update by Yuzhuo Ma
       
       
       
