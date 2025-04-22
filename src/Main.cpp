@@ -1260,6 +1260,8 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
     Unified_getMarkerPval(t_method, t_GVec,
                           false, // bool t_isOnlyOutputNonZero,
                           t_indexForNonZero, t_Beta, t_seBeta, t_pval, t_zScore, t_altFreq,
+                          t_hwepval,         // 添加第10个参数
+                          t_hwepvalCutoff,   // 添加第11个参数
                           t_ResidTraitType, t_PhenoMat, t_Covariates); // update
   }
 }
