@@ -696,7 +696,7 @@ public:
                        double epsilon = 0.001)              
   {
     
-    std::cout << "ResidTraitType:\t" << t_ResidTraitType << std::endl; // update by Yuzhuo Ma
+    // std::cout << "ResidTraitType:\t" << t_ResidTraitType << std::endl; // update by Yuzhuo Ma
     
     
     // 新增输入校验
@@ -705,7 +705,7 @@ public:
         Rcpp::stop("Binary性状必须提供PhenoMat和Covariates矩阵");
     }
     
-    std::cout << "SPAGxEmixPlus_getMarkerPval part1" << std::endl; // update by Yuzhuo Ma
+    // std::cout << "SPAGxEmixPlus_getMarkerPval part1" << std::endl; // update by Yuzhuo Ma
     
     
     arma::vec time1 = getTime();
@@ -725,7 +725,7 @@ public:
     
     arma::vec GVarVec = 2 * AFVec % (1 - AFVec);
     
-    std::cout << "SPAGxEmixPlus_getMarkerPval part2" << std::endl; // update by Yuzhuo Ma
+    // std::cout << "SPAGxEmixPlus_getMarkerPval part2" << std::endl; // update by Yuzhuo Ma
     
     
     for(int i = 0; i < m_Npheno; i++){
@@ -753,7 +753,7 @@ public:
       
       // 修改6：传入posValue和GVar子集
       double VarS1 = calculateSparseVariance(R_sqrtMAF, posValue);
-      std::cout << "VarS1:\t" << VarS1 << std::endl; // update by Yuzhuo Ma
+      // std::cout << "VarS1:\t" << VarS1 << std::endl; // update by Yuzhuo Ma
       
       
       
@@ -769,16 +769,16 @@ public:
       m_zScoreVec.at(i) = zScore;
       
       
-      std::cout << "S1:\t" << S1 << std::endl; // update by Yuzhuo Ma
-      std::cout << "S1_mean:\t" << S1_mean << std::endl; // update by Yuzhuo Ma
-      std::cout << "zScore:\t" << zScore << std::endl; // update by Yuzhuo Ma
+      // std::cout << "S1:\t" << S1 << std::endl; // update by Yuzhuo Ma
+      // std::cout << "S1_mean:\t" << S1_mean << std::endl; // update by Yuzhuo Ma
+      // std::cout << "zScore:\t" << zScore << std::endl; // update by Yuzhuo Ma
       
       
       
       // update /////////////////////////////////////////////////////////////////
       double pval_norm1 = arma::normcdf(-1*std::abs(zScore))*2;
 
-      std::cout << "pval_norm1:\t" << pval_norm1 << std::endl; // update by Yuzhuo Ma
+      // std::cout << "pval_norm1:\t" << pval_norm1 << std::endl; // update by Yuzhuo Ma
       
       
       
@@ -801,14 +801,14 @@ public:
         double Cov_S1_S2 = calculateCrossCovariance(R_sqrtMAF, RE_sqrtMAF, posValue) 
           - arma::sum(GVar_subset % E_subset % arma::square(R_subset));
         
-        std::cout << "Cov_S1_S2:\t" << Cov_S1_S2 << std::endl; // update by Yuzhuo Ma
+        // std::cout << "Cov_S1_S2:\t" << Cov_S1_S2 << std::endl; // update by Yuzhuo Ma
         
         
         // 步骤4：计算lambda和新残差
         double lambda = Cov_S1_S2 / VarS1;
         arma::vec R_new = (E_subset - lambda) % R_subset;
         
-        std::cout << "lambda:\t" << lambda << std::endl; // update by Yuzhuo Ma
+        // std::cout << "lambda:\t" << lambda << std::endl; // update by Yuzhuo Ma
         
         
         // 步骤5：计算新残差的调整方差
@@ -821,9 +821,9 @@ public:
         double z_GxE = (S_GxE - S_GxE_mean) / std::sqrt(S_GxE_var);
         
         
-        std::cout << "S_GxE:\t" << S_GxE << std::endl; // update by Yuzhuo Ma
-        std::cout << "S_GxE_mean:\t" << S_GxE_mean << std::endl; // update by Yuzhuo Ma
-        std::cout << "z_GxE:\t" << z_GxE << std::endl; // update by Yuzhuo Ma
+        // std::cout << "S_GxE:\t" << S_GxE << std::endl; // update by Yuzhuo Ma
+        // std::cout << "S_GxE_mean:\t" << S_GxE_mean << std::endl; // update by Yuzhuo Ma
+        // std::cout << "z_GxE:\t" << z_GxE << std::endl; // update by Yuzhuo Ma
         
         
         // ===== p值计算 =====
@@ -909,7 +909,7 @@ public:
                                               cov_subset);
           
           // 调试输出（与图片中的Rcout位置对应）
-          Rcpp::Rcout << "Head residuals: " << R0.head(5).t() << std::endl;
+          // Rcpp::Rcout << "Head residuals: " << R0.head(5).t() << std::endl;
           
         }
         
