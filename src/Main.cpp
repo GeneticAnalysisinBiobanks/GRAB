@@ -201,6 +201,10 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
                            Rcpp::Nullable<Rcpp::NumericMatrix> t_Covariates = R_NilValue)  // 传递外部参数
 {
   
+  // 在mainMarkerInCPP函数顶部添加
+  double hwepvalCutoff = 0.1; // 或从参数获取
+  double hwepval = 0;
+  
   // 转换为 arma::mat（处理空值）
   arma::mat PhenoMat = t_PhenoMat.isNotNull() 
   ? Rcpp::as<arma::mat>(t_PhenoMat) 
