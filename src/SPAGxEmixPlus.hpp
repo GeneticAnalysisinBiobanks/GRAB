@@ -690,11 +690,20 @@ public:
   
   double getMarkerPval(arma::vec t_GVec,
                        double t_altFreq,  // later update score and variance here (2023-06-20)
-                       arma::mat t_PhenoMat = arma::mat(),
-                       arma::mat t_Covariates = arma::mat(),
+                       arma::mat t_PhenoMat,
+                       arma::mat t_Covariates,
                        double epsilon = 0.001,
                        std::string t_ResidTraitType = "Quantitative")   // 必须放在最后              
   {
+    
+    std::cout << "ResidTraitType:\t" << t_ResidTraitType << std::endl; // update by Yuzhuo Ma
+    
+    
+    // 新增输入校验
+    if(t_ResidTraitType == "Binary") {
+      if(t_PhenoMat.n_elem == 0 || t_Covariates.n_elem == 0)
+        Rcpp::stop("Binary性状必须提供PhenoMat和Covariates矩阵");
+    }
     
     std::cout << "SPAGxEmixPlus_getMarkerPval part1" << std::endl; // update by Yuzhuo Ma
     
