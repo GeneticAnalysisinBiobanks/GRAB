@@ -696,7 +696,33 @@ public:
                        double epsilon = 0.001)              
   {
     
+    Rcpp::Rcout << "Head t_GVec: " << t_GVec.head(5).t() << std::endl;
+    Rcpp::Rcout << "Head t_altFreq: " << t_altFreq.head(5).t() << std::endl;
+    
+    
+    
+    
+    
     // std::cout << "ResidTraitType:\t" << t_ResidTraitType << std::endl; // update by Yuzhuo Ma
+    // ==== 新增调试输出 ====
+    // 检查矩阵是否为空
+    if(t_PhenoMat.n_elem == 0) {
+      Rcpp::Rcout << "WARNING: t_PhenoMat is empty!" << std::endl;
+    } else {
+      Rcpp::Rcout << "=== Debug: Head of t_PhenoMat (first 5 rows) ===" << std::endl;
+      for(int i=0; i < 5 && i < t_PhenoMat.n_rows; ++i) {
+        Rcpp::Rcout << "Row " << i+1 << ": " << t_PhenoMat.row(i) << std::endl;
+      }
+    }
+    
+    if(t_Covariates.n_elem == 0) {
+      Rcpp::Rcout << "WARNING: t_Covariates is empty!" << std::endl;
+    } else {
+      Rcpp::Rcout << "=== Debug: Head of t_Covariates (first 5 rows) ===" << std::endl;
+      for(int i=0; i < 5 && i < t_Covariates.n_rows; ++i) {
+        Rcpp::Rcout << "Row " << i+1 << ": " << t_Covariates.row(i) << std::endl;
+      }
+    }
     
     
     // 新增输入校验
@@ -769,7 +795,7 @@ public:
       m_zScoreVec.at(i) = zScore;
       
       
-      std::cout << "S1:\t" << S1 << std::endl; // update by Yuzhuo Ma
+      // std::cout << "S1:\t" << S1 << std::endl; // update by Yuzhuo Ma
       // std::cout << "S1_mean:\t" << S1_mean << std::endl; // update by Yuzhuo Ma
       // std::cout << "zScore:\t" << zScore << std::endl; // update by Yuzhuo Ma
       
