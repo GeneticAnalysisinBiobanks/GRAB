@@ -769,7 +769,7 @@ public:
       m_zScoreVec.at(i) = zScore;
       
       
-      // std::cout << "S1:\t" << S1 << std::endl; // update by Yuzhuo Ma
+      std::cout << "S1:\t" << S1 << std::endl; // update by Yuzhuo Ma
       // std::cout << "S1_mean:\t" << S1_mean << std::endl; // update by Yuzhuo Ma
       // std::cout << "zScore:\t" << zScore << std::endl; // update by Yuzhuo Ma
       
@@ -778,7 +778,7 @@ public:
       // update /////////////////////////////////////////////////////////////////
       double pval_norm1 = arma::normcdf(-1*std::abs(zScore))*2;
 
-      std::cout << "pval_norm1:\t" << pval_norm1 << std::endl; // update by Yuzhuo Ma
+      // std::cout << "pval_norm1:\t" << pval_norm1 << std::endl; // update by Yuzhuo Ma
       
       
       
