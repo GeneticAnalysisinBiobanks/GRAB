@@ -697,7 +697,7 @@ public:
   {
     
     Rcpp::Rcout << "Head t_GVec: " << t_GVec.head(5).t() << std::endl;
-    Rcpp::Rcout << "Head t_altFreq: " << t_altFreq.head(5).t() << std::endl;
+    Rcpp::Rcout << "Head t_altFreq: " << t_altFreq << std::endl;
     
     
     
