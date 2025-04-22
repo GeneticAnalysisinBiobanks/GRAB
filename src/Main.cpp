@@ -195,8 +195,23 @@ void updateGroupInfo(arma::vec t_GVec,
 // [[Rcpp::export]]
 Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SAIGE", "SPAmix", "SPAmixPlusV4", "SPAGxEmixPlus, "SPAGRM", "SPAyuzhuoma"
                            std::string t_genoType,     // "PLINK", "BGEN"
-                           std::vector<uint64_t> t_genoIndex)  
+                           std::vector<uint64_t> t_genoIndex,
+                           std::string t_ResidTraitType = "",     // 传递外部参数
+                           Rcpp::Nullable<Rcpp::NumericMatrix> t_PhenoMat = R_NilValue,
+                           Rcpp::Nullable<Rcpp::NumericMatrix> t_Covariates = R_NilValue)  // 传递外部参数
 {
+  
+  // 转换为 arma::mat（处理空值）
+  arma::mat PhenoMat = t_PhenoMat.isNotNull() 
+  ? Rcpp::as<arma::mat>(t_PhenoMat) 
+    : arma::mat();
+  
+  arma::mat Covariates = t_Covariates.isNotNull() 
+    ? Rcpp::as<arma::mat>(t_Covariates) 
+      : arma::mat();
+  
+  ////////////////////////////////////////////////////////////
+  
   int q = t_genoIndex.size();  // number of markers
 
   // set up output

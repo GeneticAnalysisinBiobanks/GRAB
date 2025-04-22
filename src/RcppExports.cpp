@@ -81,15 +81,18 @@ BEGIN_RCPP
 END_RCPP
 }
 // mainMarkerInCPP
-Rcpp::List mainMarkerInCPP(std::string t_method, std::string t_genoType, std::vector<uint64_t> t_genoIndex);
-RcppExport SEXP _GRAB_mainMarkerInCPP(SEXP t_methodSEXP, SEXP t_genoTypeSEXP, SEXP t_genoIndexSEXP) {
+Rcpp::List mainMarkerInCPP(std::string t_method, std::string t_genoType, std::vector<uint64_t> t_genoIndex, std::string t_ResidTraitType, Rcpp::Nullable<Rcpp::NumericMatrix> t_PhenoMat, Rcpp::Nullable<Rcpp::NumericMatrix> t_Covariates);
+RcppExport SEXP _GRAB_mainMarkerInCPP(SEXP t_methodSEXP, SEXP t_genoTypeSEXP, SEXP t_genoIndexSEXP, SEXP t_ResidTraitTypeSEXP, SEXP t_PhenoMatSEXP, SEXP t_CovariatesSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< std::string >::type t_method(t_methodSEXP);
     Rcpp::traits::input_parameter< std::string >::type t_genoType(t_genoTypeSEXP);
     Rcpp::traits::input_parameter< std::vector<uint64_t> >::type t_genoIndex(t_genoIndexSEXP);
-    rcpp_result_gen = Rcpp::wrap(mainMarkerInCPP(t_method, t_genoType, t_genoIndex));
+    Rcpp::traits::input_parameter< std::string >::type t_ResidTraitType(t_ResidTraitTypeSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::NumericMatrix> >::type t_PhenoMat(t_PhenoMatSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::NumericMatrix> >::type t_Covariates(t_CovariatesSEXP);
+    rcpp_result_gen = Rcpp::wrap(mainMarkerInCPP(t_method, t_genoType, t_genoIndex, t_ResidTraitType, t_PhenoMat, t_Covariates));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -503,7 +506,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_getDenseGRMInCPP", (DL_FUNC) &_GRAB_getDenseGRMInCPP, 3},
     {"_GRAB_setMarker_GlobalVarsInCPP", (DL_FUNC) &_GRAB_setMarker_GlobalVarsInCPP, 8},
     {"_GRAB_setRegion_GlobalVarsInCPP", (DL_FUNC) &_GRAB_setRegion_GlobalVarsInCPP, 8},
-    {"_GRAB_mainMarkerInCPP", (DL_FUNC) &_GRAB_mainMarkerInCPP, 3},
+    {"_GRAB_mainMarkerInCPP", (DL_FUNC) &_GRAB_mainMarkerInCPP, 6},
     {"_GRAB_mainRegionURVInCPP", (DL_FUNC) &_GRAB_mainRegionURVInCPP, 4},
     {"_GRAB_mainRegionInCPP", (DL_FUNC) &_GRAB_mainRegionInCPP, 9},
     {"_GRAB_printTimeDiffInCPP", (DL_FUNC) &_GRAB_printTimeDiffInCPP, 0},

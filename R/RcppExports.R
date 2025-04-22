@@ -21,8 +21,8 @@ setRegion_GlobalVarsInCPP <- function(t_impute_method, t_missing_cutoff, t_max_m
     invisible(.Call(`_GRAB_setRegion_GlobalVarsInCPP`, t_impute_method, t_missing_cutoff, t_max_maf_region, t_min_mac_region, t_max_markers_region, t_omp_num_threads, t_region_weight_beta, t_region_max_maf_vec))
 }
 
-mainMarkerInCPP <- function(t_method, t_genoType, t_genoIndex) {
-    .Call(`_GRAB_mainMarkerInCPP`, t_method, t_genoType, t_genoIndex)
+mainMarkerInCPP <- function(t_method, t_genoType, t_genoIndex, t_ResidTraitType = "", t_PhenoMat = NULL, t_Covariates = NULL) {
+    .Call(`_GRAB_mainMarkerInCPP`, t_method, t_genoType, t_genoIndex, t_ResidTraitType, t_PhenoMat, t_Covariates)
 }
 
 mainRegionURVInCPP <- function(t_method, t_genoType, t_genoIndex, t_n) {
