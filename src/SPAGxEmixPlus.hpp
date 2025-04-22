@@ -690,7 +690,10 @@ public:
   
   double getMarkerPval(arma::vec t_GVec,
                        double t_altFreq,  // later update score and variance here (2023-06-20)
-                       double epsilon = 0.001)                  // update by Yuzhuo Ma
+                       arma::mat t_PhenoMat = arma::mat(),
+                       arma::mat t_Covariates = arma::mat(),
+                       double epsilon = 0.001,
+                       std::string t_ResidTraitType = "Quantitative")   // 必须放在最后              
   {
     
     // std::cout << "SPAGxEmixPlus_getMarkerPval" << std::endl; // update by Yuzhuo Ma
@@ -858,19 +861,44 @@ public:
         }
       }else{
         
+        arma::vec R0; // 在父作用域声明
+        
         // quantitative phenotype
         
-        // // 1. 构造W矩阵
-        // arma::mat W = arma::join_rows(arma::ones(posValue.n_elem), t_GVec.elem(posValue));
-        // 
-        // // 2. 投影矩阵计算 (R0 = R - W(W^TW)^{-1}W^TR)
-        // arma::mat WtW = W.t() * W;
-        // arma::mat inv_WtW = arma::inv(WtW);
-        // arma::vec R_subset = resid.elem(posValue);  // 从原有代码获取
-        // arma::vec R0 = R_subset - W * inv_WtW * W.t() * R_subset;
+        if(t_ResidTraitType == "Quantitative"){
+          // 1. 构造W矩阵
+          arma::mat W = arma::join_rows(arma::ones(posValue.n_elem), t_GVec.elem(posValue));
+          
+          // 2. 投影矩阵计算 (R0 = R - W(W^TW)^{-1}W^TR)
+          arma::mat WtW = W.t() * W;
+          arma::mat inv_WtW = arma::inv(WtW);
+          arma::vec R_subset = resid.elem(posValue);  // 从原有代码获取
+          arma::vec R0 = R_subset - W * inv_WtW * W.t() * R_subset;
+        }else if(t_ResidTraitType == "Binary") {
+          // 检查输入完整性
+          if(t_PhenoMat.n_elem == 0 || t_Covariates.n_elem == 0) {
+            Rcpp::stop("Binary性状需要非空表型矩阵和协变量矩阵");
+          }
+          
+          // 获取当前表型列（第i列）
+          // arma::vec y = t_PhenoMat.col(i).elem(posValue); 
+          // 修复后代码
+          arma::vec y_col = t_PhenoMat.col(i).eval();
+          arma::vec y = y_col.elem(posValue);
+          
+          // 提取协变量子集（需与posValue对齐）
+          arma::mat cov_subset = t_Covariates.rows(posValue);
+          
+          // 调用改进后的残差计算
+          arma::vec R0 = calculateGLMResidual(y, 
+                                              t_GVec.elem(posValue),
+                                              cov_subset);
+          
+          // 调试输出（与图片中的Rcout位置对应）
+          Rcpp::Rcout << "Head residuals: " << R0.head(5).t() << std::endl;
+          
+        }
         
-        
-        // binary phenotype
         
         // // 替换为逻辑回归原始残差计算
         // arma::vec R0 = calculateLogisticRawResidual(R_subset, 
@@ -880,7 +908,7 @@ public:
         // Rcpp::Rcout << "Head residuals: " << R0.head(5).t() << std::endl;
         
         // ==== 替换为调用R glm的残差计算 ====
-        arma::vec R0 = calculateGLMResidual(R_subset, t_GVec.elem(posValue));
+        // arma::vec R0 = calculateGLMResidual(R_subset, t_GVec.elem(posValue));
         
         // // 残差验证输出
         // if(m_debugMode) {
@@ -1124,44 +1152,56 @@ public:
   
   
   // 修改后的calculateGLMResidual函数
-  // 修改后的calculateGLMResidual函数（关键修复）
-  arma::vec calculateGLMResidual(const arma::vec& y, const arma::vec& g) {
+  // 新增函数：带协变量的逻辑回归残差计算
+  arma::vec calculateGLMResidual(const arma::vec& y, 
+                                 const arma::vec& g,
+                                 const arma::mat& covariates) 
+  {
     try {
-      // 1. 输入校验
-      if (y.n_elem != g.n_elem) 
-        Rcpp::stop("输入向量长度不一致");
+      // ==== 输入校验 ====
+      if (y.n_elem != g.n_elem || y.n_elem != covariates.n_rows) 
+        Rcpp::stop("维度不匹配: y(%d), g(%d), cov(%dx%d)", 
+                   y.n_elem, g.n_elem, covariates.n_rows, covariates.n_cols);
       
-      // 2. 类型转换（显式深拷贝）
-      Rcpp::NumericVector r_y = Rcpp::clone(Rcpp::wrap(y));
-      Rcpp::NumericVector r_g = Rcpp::clone(Rcpp::wrap(g));
-      
-      // 3. 数据框构造（列名必须与公式变量严格匹配）
+      // ==== 构造R数据框 ====
       Rcpp::DataFrame data = Rcpp::DataFrame::create(
-        Rcpp::Named("response") = r_y,
-        Rcpp::Named("genotype") = r_g,
+        Rcpp::Named("response") = Rcpp::clone(Rcpp::wrap(y)),
+        Rcpp::Named("genotype") = Rcpp::clone(Rcpp::wrap(g)),
         Rcpp::_["stringsAsFactors"] = false
       );
       
-      // 4. 关键修复：正确构造公式对象
-      Rcpp::Formula formula = Rcpp::Formula("response ~ genotype"); // 
+      // ==== 动态添加协变量列 ====
+      for(arma::uword i=0; i < covariates.n_cols; ++i) {
+        std::string cov_name = "cov" + std::to_string(i+1);
+        data[cov_name] = Rcpp::clone(Rcpp::wrap(covariates.col(i)));
+      }
       
-      // 5. 获取glm函数（显式指定命名空间）
+      // ==== 动态构造公式 ====
+      std::string formula_str = "response ~ genotype";
+      for(arma::uword i=0; i < covariates.n_cols; ++i) {
+        formula_str += " + cov" + std::to_string(i+1);
+      }
+      Rcpp::Formula formula(formula_str);
+      
+      // ==== 调用R的glm ====
       Rcpp::Function glm = Rcpp::Environment::namespace_env("stats")["glm"];
-      
-      // 6. 调用glm（参数顺序修正）
       Rcpp::List model = glm(
-        formula,                            // 公式参数直接传递
-        Rcpp::_["data"] = data,             // 必须使用命名参数
+        formula,
+        Rcpp::_["data"] = data,
         Rcpp::_["family"] = Rcpp::Function("binomial")()
       );
       
-      // 7. 残差提取（安全类型转换）
+      // ==== 提取残差 ====
       Rcpp::NumericVector mu = model["fitted.values"];
-      return arma::vec(r_y.begin(), r_y.size()) - arma::vec(mu.begin(), mu.size());
+      return arma::vec(Rcpp::as<arma::vec>(mu)); // 返回原始残差 y - mu
       
     } catch(const std::exception& e) {
-      Rcpp::Rcerr << "GLM Error: " << e.what() << std::endl;
-      return arma::zeros<arma::vec>(y.n_elem);
+      Rcpp::Rcerr << "\nGLM Error: " << e.what() << std::endl;
+      Rcpp::Rcout << "当前数据摘要:\n";
+      Rcpp::Rcout << "样本量: " << y.n_elem 
+                  << ", 基因型范围: [" << arma::min(g) << "," << arma::max(g) << "]\n";
+      Rcpp::Rcout << "协变量维度: " << covariates.n_rows << "x" << covariates.n_cols << "\n";
+      return arma::vec(); // 返回空向量表示错误
     }
   }
   
