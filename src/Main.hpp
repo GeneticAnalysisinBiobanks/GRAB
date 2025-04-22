@@ -56,7 +56,10 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
                            double& t_seBeta, 
                            double& t_pval,
                            double& t_zScore,
-                           double t_altFreq);
+                           double t_altFreq,
+                           std::string t_ResidTraitType,   // update by Yuzhuo Ma
+                           arma::mat t_PhenoMat,           // update by Yuzhuo Ma
+                           arma::mat t_Covariates);
 
 // updated on 2023-05-22: add option to output hwepvalue, mainly for SPAGRM
 void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
