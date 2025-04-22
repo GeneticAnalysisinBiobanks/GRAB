@@ -436,6 +436,8 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
                                       ...)
 {
 
+  Covariates = designMat[, CovarColNames, drop = FALSE]
+  
   # 参数校验前添加调试输出
   
   cat("[DEBUG] designMat columns:", paste(colnames(designMat), collapse = ", "), "\n")
@@ -718,7 +720,7 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
     control = control,
     ResidTraitType,                                        # update by Yuzhuo Ma
     PhenoMat = if (is.null(PhenoMat)) matrix(nrow = 0, ncol = 0) else as.matrix(PhenoMat),  # 默认空矩阵                     # update by Yuzhuo Ma
-    Covariates = if (is.null(Covariates)) matrix(nrow = 0, ncol = 0) else as.matrix(Covariates) # 默认空矩阵                     # update by Yuzhuo Ma
+    Covariates = Covariates # 默认空矩阵                     # update by Yuzhuo Ma
   )
   
   
@@ -746,7 +748,7 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
       ResidTraitType = ResidTraitType,                                        # update by Yuzhuo Ma
       # 新增输出字段
       PhenoMat = PhenoMat,     # 表型矩阵
-      Covariates = designMat[, CovarColNames, drop = FALSE]    # 协变量矩阵
+      Covariates = Covariates    # 协变量矩阵
     )
   }  
   
