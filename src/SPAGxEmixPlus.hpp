@@ -690,10 +690,10 @@ public:
   
   double getMarkerPval(arma::vec t_GVec,
                        double t_altFreq,  // later update score and variance here (2023-06-20)
+                       std::string t_ResidTraitType,
                        arma::mat t_PhenoMat,
                        arma::mat t_Covariates,
-                       double epsilon = 0.001,
-                       std::string t_ResidTraitType = "Quantitative")   // 必须放在最后              
+                       double epsilon = 0.001)              
   {
     
     std::cout << "ResidTraitType:\t" << t_ResidTraitType << std::endl; // update by Yuzhuo Ma

@@ -1126,7 +1126,10 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
                            double& t_seBeta, 
                            double& t_pval,
                            double& t_zScore,
-                           double t_altFreq)
+                           double t_altFreq,
+                           std::string t_ResidTraitType,   // update by Yuzhuo Ma
+                           arma::mat t_PhenoMat,           // update by Yuzhuo Ma
+                           arma::mat t_Covariates)
 {
   // (BWJ) updated on 2023-04-20: I forgot what "t_isOnlyOutputNonZero" means, please let me know if anyone knows it,
   // (BWJ) it seems the "t_isOnlyOutputNonZero" can further save storage by removing the genotype == 0,
@@ -1159,7 +1162,7 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
   if(t_method == "SPAGxEmixPlus"){
     if(t_isOnlyOutputNonZero == true)
       Rcpp::stop("When using SPAGxEmixPlus method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
-    t_pval = ptr_gSPAGxEmixPlusobj->getMarkerPval(t_GVec, t_altFreq, t_PhenoMat, t_Covariates, 0.001, t_ResidTraitType);
+    t_pval = ptr_gSPAGxEmixPlusobj->getMarkerPval(t_GVec, t_altFreq, t_ResidTraitType, t_PhenoMat, t_Covariates, 0.001);
   }
   
   
