@@ -85,7 +85,7 @@ setMarker.SPAGxEmixPlus = function(objNull, control)
     objNull$E,  # 传递环境因子向量 作为最后一个参数
     objNull$ResidTraitType, # update by Yuzhuo Ma
     objNull$PhenoMat,
-    objNull$CovarColNames
+    objNull$Covariates
   )
   
   # outLierList[[i]] = list(posValue = posValue - 1,
@@ -97,7 +97,9 @@ setMarker.SPAGxEmixPlus = function(objNull, control)
 # mainMarker.SPAGxEmixPlus(genoType, genoIndex, outputColumns)
 mainMarker.SPAGxEmixPlus = function(genoType, genoIndex, outputColumns, objNull)
 {
-  OutList = mainMarkerInCPP("SPAGxEmixPlus", genoType, genoIndex);
+  # OutList = mainMarkerInCPP("SPAGxEmixPlus", genoType, genoIndex);
+  OutList = mainMarkerInCPP("SPAGxEmixPlus", genoType, genoIndex, objNull$ResidTraitType, objNull$PhenoMat, objNull$Covariates); # update by Yuzhuo Ma
+  
   
   nPheno = objNull$nPheno;
   obj.mainMarker = data.frame(Pheno = paste0("pheno_", 1:nPheno),
@@ -715,8 +717,8 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
     outLierList_ResidByE = outLierList_ResidByE,          # update by Yuzhuo Ma
     control = control,
     ResidTraitType,                                        # update by Yuzhuo Ma
-    PhenoMat = matrix(),  # 默认空矩阵                     # update by Yuzhuo Ma
-    Covariates = matrix() # 默认空矩阵                     # update by Yuzhuo Ma
+    PhenoMat = if (is.null(PhenoMat)) matrix(nrow = 0, ncol = 0) else as.matrix(PhenoMat),  # 默认空矩阵                     # update by Yuzhuo Ma
+    Covariates = if (is.null(Covariates)) matrix(nrow = 0, ncol = 0) else as.matrix(Covariates) # 默认空矩阵                     # update by Yuzhuo Ma
   )
   
   
@@ -743,8 +745,8 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
       control = control,
       ResidTraitType = ResidTraitType,                                        # update by Yuzhuo Ma
       # 新增输出字段
-      PhenoMat = PhenoMat,     # 表型矩阵
-      Covariates = designMat[, CovarColNames, drop = FALSE]    # 协变量矩阵
+      PhenoMat = as.matrix(PhenoMat),     # 表型矩阵
+      Covariates = as.matrix(designMat[, CovarColNames, drop = FALSE])    # 协变量矩阵
     )
   }  
   

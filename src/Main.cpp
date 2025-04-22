@@ -205,14 +205,26 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   double hwepvalCutoff = 0.1; // 或从参数获取
   double hwepval = 0;
   
-  // 转换时处理空矩阵
-  arma::mat PhenoMat = t_PhenoMat.isNotNull() 
-    ? Rcpp::as<arma::mat>(t_PhenoMat) 
-      : arma::mat(0, 0);
+  // 转换时处理空矩阵和非连续内存矩阵
+  arma::mat PhenoMat;
+  if (t_PhenoMat.isNotNull()) {
+    Rcpp::NumericMatrix tmpPheno = Rcpp::as<Rcpp::NumericMatrix>(t_PhenoMat);
+    PhenoMat = arma::mat(tmpPheno.begin(), tmpPheno.nrow(), tmpPheno.ncol(), false);
+  } else {
+    PhenoMat = arma::mat(0, 0);
+  }
   
-  arma::mat Covariates = t_Covariates.isNotNull() 
-    ? Rcpp::as<arma::mat>(t_Covariates) 
-      : arma::mat(0, 0);
+  arma::mat Covariates;
+  if (t_Covariates.isNotNull()) {
+    Rcpp::NumericMatrix tmpCovar = Rcpp::as<Rcpp::NumericMatrix>(t_Covariates);
+    Covariates = arma::mat(tmpCovar.begin(), tmpCovar.nrow(), tmpCovar.ncol(), false);
+  } else {
+    Covariates = arma::mat(0, 0);
+  }
+  
+  // 在转换后添加调试输出
+  Rcpp::Rcout << "PhenoMat dimensions: " << PhenoMat.n_rows << " x " << PhenoMat.n_cols << std::endl;
+  Rcpp::Rcout << "Covariates dimensions: " << Covariates.n_rows << " x " << Covariates.n_cols << std::endl;
   
   ////////////////////////////////////////////////////////////
   
