@@ -338,7 +338,7 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     if(t_method != "WtSPAG"){
       Unified_getMarkerPval(t_method, GVec,
                             false, // bool t_isOnlyOutputNonZero,
-                            indexForNonZero, Beta, seBeta, pval, zScore, altFreq, hwepval, hwepvalCutoff);
+                            indexForNonZero, Beta, seBeta, pval, zScore, altFreq, hwepval, hwepvalCutoff, t_ResidTraitType, PhenoMat, Covariates);
     }
     
     if(t_method == "WtSPAG"){
@@ -1255,7 +1255,8 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
   }else{
     Unified_getMarkerPval(t_method, t_GVec,
                           false, // bool t_isOnlyOutputNonZero,
-                          t_indexForNonZero, t_Beta, t_seBeta, t_pval, t_zScore, t_altFreq);
+                          t_indexForNonZero, t_Beta, t_seBeta, t_pval, t_zScore, t_altFreq,
+                          t_ResidTraitType, t_PhenoMat, t_Covariates); // update
   }
 }
 
