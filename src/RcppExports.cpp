@@ -423,8 +423,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // setSPAGxEmixPlusobjInCPP
-void setSPAGxEmixPlusobjInCPP(arma::mat t_resid, arma::mat t_resid_by_E, arma::mat t_PCs, int t_N, double t_SPA_Cutoff, Rcpp::List t_outlierList, Rcpp::DataFrame t_sparseGRM, Rcpp::DataFrame t_ResidMat, arma::vec t_E);
-RcppExport SEXP _GRAB_setSPAGxEmixPlusobjInCPP(SEXP t_residSEXP, SEXP t_resid_by_ESEXP, SEXP t_PCsSEXP, SEXP t_NSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_outlierListSEXP, SEXP t_sparseGRMSEXP, SEXP t_ResidMatSEXP, SEXP t_ESEXP) {
+void setSPAGxEmixPlusobjInCPP(arma::mat t_resid, arma::mat t_resid_by_E, arma::mat t_PCs, int t_N, double t_SPA_Cutoff, Rcpp::List t_outlierList, Rcpp::DataFrame t_sparseGRM, Rcpp::DataFrame t_ResidMat, arma::vec t_E, std::string t_ResidTraitType, arma::mat t_PhenoMat, arma::mat t_Covariates);
+RcppExport SEXP _GRAB_setSPAGxEmixPlusobjInCPP(SEXP t_residSEXP, SEXP t_resid_by_ESEXP, SEXP t_PCsSEXP, SEXP t_NSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_outlierListSEXP, SEXP t_sparseGRMSEXP, SEXP t_ResidMatSEXP, SEXP t_ESEXP, SEXP t_ResidTraitTypeSEXP, SEXP t_PhenoMatSEXP, SEXP t_CovariatesSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::mat >::type t_resid(t_residSEXP);
@@ -436,7 +436,10 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< Rcpp::DataFrame >::type t_sparseGRM(t_sparseGRMSEXP);
     Rcpp::traits::input_parameter< Rcpp::DataFrame >::type t_ResidMat(t_ResidMatSEXP);
     Rcpp::traits::input_parameter< arma::vec >::type t_E(t_ESEXP);
-    setSPAGxEmixPlusobjInCPP(t_resid, t_resid_by_E, t_PCs, t_N, t_SPA_Cutoff, t_outlierList, t_sparseGRM, t_ResidMat, t_E);
+    Rcpp::traits::input_parameter< std::string >::type t_ResidTraitType(t_ResidTraitTypeSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type t_PhenoMat(t_PhenoMatSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type t_Covariates(t_CovariatesSEXP);
+    setSPAGxEmixPlusobjInCPP(t_resid, t_resid_by_E, t_PCs, t_N, t_SPA_Cutoff, t_outlierList, t_sparseGRM, t_ResidMat, t_E, t_ResidTraitType, t_PhenoMat, t_Covariates);
     return R_NilValue;
 END_RCPP
 }
@@ -521,7 +524,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setSAGELDobjInCPP", (DL_FUNC) &_GRAB_setSAGELDobjInCPP, 41},
     {"_GRAB_setSPAmixobjInCPP", (DL_FUNC) &_GRAB_setSPAmixobjInCPP, 5},
     {"_GRAB_setSPAmixPlusV4objInCPP", (DL_FUNC) &_GRAB_setSPAmixPlusV4objInCPP, 7},
-    {"_GRAB_setSPAGxEmixPlusobjInCPP", (DL_FUNC) &_GRAB_setSPAGxEmixPlusobjInCPP, 9},
+    {"_GRAB_setSPAGxEmixPlusobjInCPP", (DL_FUNC) &_GRAB_setSPAGxEmixPlusobjInCPP, 12},
     {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},
     {"_GRAB_setWtSPAGobjInCPP", (DL_FUNC) &_GRAB_setWtSPAGobjInCPP, 4},
     {"_GRAB_updateQCInCPP", (DL_FUNC) &_GRAB_updateQCInCPP, 4},
