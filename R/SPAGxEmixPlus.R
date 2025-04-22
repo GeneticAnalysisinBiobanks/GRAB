@@ -745,8 +745,8 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
       control = control,
       ResidTraitType = ResidTraitType,                                        # update by Yuzhuo Ma
       # 新增输出字段
-      PhenoMat = as.matrix(PhenoMat),     # 表型矩阵
-      Covariates = as.matrix(designMat[, CovarColNames, drop = FALSE])    # 协变量矩阵
+      PhenoMat = PhenoMat,     # 表型矩阵
+      Covariates = designMat[, CovarColNames, drop = FALSE]    # 协变量矩阵
     )
   }  
   
