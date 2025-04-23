@@ -916,7 +916,8 @@ public:
           arma::mat WtW = W.t() * W;
           arma::mat inv_WtW = arma::inv(WtW);
           arma::vec R_subset = resid.elem(posValue);  // 从原有代码获取
-          arma::vec R0 = R_subset - W * inv_WtW * W.t() * R_subset;
+          // ===== 修改点1：移除内部变量声明 =====
+          R0 = R_subset - W * inv_WtW * W.t() * R_subset;
         }else if(t_ResidTraitType == "Binary") {
           // 检查输入完整性
           if(t_PhenoMat.n_elem == 0 || t_Covariates.n_elem == 0) {
@@ -939,9 +940,9 @@ public:
           //                                     t_GVec.elem(posValue),
           //                                     cov_subset);
           
-          arma::vec R0 = calculateGLMResidual_R(y, 
-                                                t_GVec.elem(posValue),
-                                                cov_subset);
+          R0 = calculateGLMResidual_R(y, 
+                                      t_GVec.elem(posValue),
+                                      cov_subset);
           
      
 
@@ -951,23 +952,14 @@ public:
         }
         
         
-        // // 替换为逻辑回归原始残差计算
-        // arma::vec R0 = calculateLogisticRawResidual(R_subset, 
-        //                                             t_GVec.elem(posValue)); // t_GVec为基因型向量
+        // ==== 后续统一使用父作用域的R0 ====
+        if(R0.is_empty()) {
+          Rcpp::stop("残差计算失败，R0为空");
+        }
         
-        // // 示例输出前5个残差
-        // Rcpp::Rcout << "Head residuals: " << R0.head(5).t() << std::endl;
-        
-        // ==== 替换为调用R glm的残差计算 ====
-        // arma::vec R0 = calculateGLMResidual(R_subset, t_GVec.elem(posValue));
-        
-        // // 残差验证输出
-        // if(m_debugMode) {
-        //   Rcout << "Head residuals (R glm): " << R0.head(5).t() << "\n";
-        //   Rcout << "Residual mean: " << arma::mean(R0) << "\n";
-        //   Rcout << "Residual variance: " << arma::var(R0) << "\n";
-        // }
-        
+        // 在getMarkerPval函数中添加状态日志
+        Rcpp::Rcout << "当前表型类型: " << t_ResidTraitType 
+                    << " | R0维度: " << R0.n_elem << std::endl;
         
         Rcpp::Rcout << "Head R0: " << R0.head(5).t() << std::endl;
         
