@@ -1364,50 +1364,61 @@ public:
                                    const arma::vec& g,
                                    const arma::mat& covariates) {
     try {
-      // 输入校验
+      // =============== 输入校验增强 ===============
       if(y.n_elem != g.n_elem || y.n_elem != covariates.n_rows) {
         Rcpp::stop("Dimension mismatch: y(%d), g(%d), covariates(%d x %d)",
                    y.n_elem, g.n_elem, covariates.n_rows, covariates.n_cols);
       }
       
-      // 转换为R数据类型
+      // =============== 数据转换优化 ===============
       Rcpp::NumericVector r_y = Rcpp::wrap(y);
       Rcpp::NumericVector r_g = Rcpp::wrap(g);
       
-      // 构建协变量数据框
-      Rcpp::DataFrame cov_df;
-      for(int i=0; i<covariates.n_cols; ++i){
-        cov_df.push_back(Rcpp::NumericVector(covariates.colptr(i), 
-                                             covariates.colptr(i)+covariates.n_rows));
+      // =============== 协变量处理关键修正 ===============
+      Rcpp::List cov_list;
+      for(int i=0; i<covariates.n_cols; ++i) {
+        std::string colname = "V" + std::to_string(i+1);
+        cov_list[colname] = Rcpp::NumericVector(
+          covariates.colptr(i),
+          covariates.colptr(i) + covariates.n_rows
+        );
       }
+      Rcpp::DataFrame cov_df(cov_list);
       
-      // 合并所有数据到单一数据框
+      // =============== 合并数据集 ===============
       Rcpp::DataFrame df = Rcpp::DataFrame::create(
         Rcpp::Named("response") = r_y,
         Rcpp::Named("genotype") = r_g,
-        cov_df
+        cov_df,
+        Rcpp::_["stringsAsFactors"] = false
       );
       
-      // 动态构建公式
+      // =============== 动态公式构建 ===============
       std::string formula_str = "response ~ genotype";
-      for(int i=0; i<covariates.n_cols; ++i){
-        formula_str += " + V" + std::to_string(i+1); // R自动命名协变量列为V1,V2...
+      for(int i=0; i<covariates.n_cols; ++i) {
+        formula_str += " + V" + std::to_string(i+1);
       }
       
-      // 调用R的glm函数
-      Rcpp::Function glm = Rcpp::Environment::namespace_env("stats")["glm"];
+      // =============== R环境调用优化 ===============
+      Rcpp::Environment stats = Rcpp::Environment::namespace_env("stats");
+      Rcpp::Function glm = stats["glm"];
+      
+      // =============== 模型拟合 ===============
       Rcpp::List model = glm(
         Rcpp::Formula(formula_str),
-        Rcpp::_["data"] = df,
-        Rcpp::_["family"] = Rcpp::Function("binomial")()
+        Rcpp::_["data"]    = df,
+        Rcpp::_["family"]  = Rcpp::Function("binomial")()
       );
       
-      // 提取拟合值并计算残差
+      // =============== 残差计算 ===============
       Rcpp::NumericVector fitted = model["fitted.values"];
       return r_y - fitted;
       
     } catch(const std::exception& e) {
       Rcpp::Rcerr << "GLM Error: " << e.what() << std::endl;
+      return arma::vec();
+    } catch(...) {
+      Rcpp::Rcerr << "Unknown error occurred in GLM calculation" << std::endl;
       return arma::vec();
     }
   }
