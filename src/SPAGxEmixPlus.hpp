@@ -697,7 +697,7 @@ public:
   {
     
     // Rcpp::Rcout << "Head t_GVec: " << t_GVec.head(5).t() << std::endl;
-    // Rcpp::Rcout << "Head t_altFreq: " << t_altFreq << std::endl;
+    Rcpp::Rcout << "Head t_altFreq: " << t_altFreq << std::endl;
     
     
     
@@ -772,12 +772,12 @@ public:
       }
       
       
-      // +++ 修改数据提取方式（使用成员变量中的完整数据）+++
-      arma::vec y_full = m_PhenoMat.col(i); // 使用类成员变量
-      arma::vec y = y_full.elem(posValue);  // 用全局索引取子集
-      
-      arma::mat cov_full = m_Covariates;    // 使用类成员变量
-      arma::mat cov_subset = cov_full.rows(posValue);
+      // // +++ 修改数据提取方式（使用成员变量中的完整数据）+++
+      // arma::vec y_full = m_PhenoMat.col(i); // 使用类成员变量
+      // arma::vec y = y_full.elem(posValue);  // 用全局索引取子集
+      // 
+      // arma::mat cov_full = m_Covariates;    // 使用类成员变量
+      // arma::mat cov_subset = cov_full.rows(posValue);
       
       ///////////////////////////////////////////////////////////////////////////////////
       
@@ -937,6 +937,24 @@ public:
             Rcpp::stop("Binary性状需要非空表型矩阵和协变量矩阵");
           }
           
+          
+          // +++ 修改数据提取方式（使用成员变量中的完整数据）+++
+          arma::vec y_full = m_PhenoMat.col(i); // 使用类成员变量
+          arma::vec y = arma::round(y_full.elem(posValue));  // 四舍五入消除浮点误差
+          y = arma::clamp(y, 0, 1);  // 确保严格0/1
+          
+          // 调试输出实际表型值
+          Rcpp::Rcout << "Unique y values: " 
+                      << arma::unique(y).t() << std::endl;
+          
+          arma::mat cov_full = m_Covariates;    // 使用类成员变量
+          arma::mat cov_subset = arma::conv_to<arma::mat>::from(
+            cov_full.rows(posValue).eval() // 确保内存连续性
+          );          
+          
+
+          
+          
           // // 获取当前表型列（第i列）
           // // arma::vec y = t_PhenoMat.col(i).elem(posValue); 
           // // 修复后代码
@@ -971,15 +989,7 @@ public:
           }
           
           
-          
-          // 强制转换表型为整型
-          arma::vec y = arma::conv_to<arma::vec>::from(
-            arma::round(y_full.elem(posValue)) // 四舍五入消除浮点误差
-          );
-          
-          // 调试输出实际表型值
-          Rcpp::Rcout << "Unique y values: " 
-                      << arma::unique(y).t() << std::endl;
+
           
           R0 = calculateGLMResidual_R(y, 
                                       t_GVec.elem(posValue),
