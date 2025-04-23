@@ -766,6 +766,11 @@ public:
       arma::vec resid2NonOutlier = tempOutlierList["resid2NonOutlier"];
       
       
+      // ==== 新增检查：posValue是否为空 ====
+      if(posValue.n_elem == 0) {
+        Rcpp::stop("No valid samples (posValue is empty) for phenotype %d.", i);
+      }
+      
       // 修改5：严格限制在posValue范围内计算
       arma::vec R_subset = resid.elem(posValue);       // 残差子集
       arma::vec GVar_subset = GVarVec.elem(posValue);  // 基因型方差子集
@@ -1253,21 +1258,70 @@ public:
   //   }
   // }
   
+  // 
+  // arma::vec calculateGLMResidual(const arma::vec& y, 
+  //                                const arma::vec& g,
+  //                                const arma::mat& covariates) 
+  // {
+  //   try {
+  //     // ==== 输入校验 ====
+  //     if (y.n_elem != g.n_elem || y.n_elem != covariates.n_rows) 
+  //       Rcpp::stop("维度不匹配: y(%d), g(%d), cov(%dx%d)", 
+  //                  y.n_elem, g.n_elem, covariates.n_rows, covariates.n_cols);
+  //     
+  //     // ==== 构造设计矩阵（包含截距项和协变量）====
+  //     arma::mat X = arma::join_horiz(arma::ones<arma::vec>(y.n_elem), g, covariates);
+  //     
+  //     // ==== 迭代加权最小二乘法（IRLS）====
+  //     int max_iter = 25;
+  //     double tol = 1e-6;
+  //     arma::vec beta(X.n_cols, arma::fill::zeros); // 初始化系数
+  //     
+  //     for(int iter = 0; iter < max_iter; ++iter) {
+  //       arma::vec eta = X * beta;
+  //       arma::vec mu = 1.0 / (1.0 + arma::exp(-eta));
+  //       
+  //       // 计算权重和对角矩阵
+  //       arma::vec W_vec = mu % (1 - mu);
+  //       arma::mat W = arma::diagmat(W_vec);
+  //       
+  //       // 工作响应量（带数值稳定处理）
+  //       arma::vec z = eta + (y - mu) / (W_vec + 1e-16);
+  //       
+  //       // 更新系数
+  //       arma::mat XtW = X.t() * W;
+  //       arma::vec beta_new = arma::solve(XtW * X, XtW * z, arma::solve_opts::equilibrate);
+  //       
+  //       // 收敛检查
+  //       if (arma::norm(beta_new - beta, 2) < tol) break;
+  //       beta = beta_new;
+  //     }
+  //     
+  //     // ==== 计算残差（观测值 - 预测概率）====
+  //     arma::vec mu = 1.0 / (1.0 + arma::exp(X * beta));
+  //     return y - mu;
+  //     
+  //   } catch(...) {
+  //     Rcpp::Rcerr << "逻辑回归计算失败" << std::endl;
+  //     return arma::vec();
+  //   }
+  // }
   
   arma::vec calculateGLMResidual(const arma::vec& y, 
                                  const arma::vec& g,
                                  const arma::mat& covariates) 
   {
     try {
-      // ==== 输入校验 ====
-      if (y.n_elem != g.n_elem || y.n_elem != covariates.n_rows) 
-        Rcpp::stop("维度不匹配: y(%d), g(%d), cov(%dx%d)", 
+      // 输入维度校验
+      if (y.n_elem != g.n_elem || y.n_elem != covariates.n_rows) {
+        Rcpp::stop("Dimension mismatch: y(%d), g(%d), covariates(%d x %d).", 
                    y.n_elem, g.n_elem, covariates.n_rows, covariates.n_cols);
+      }
       
-      // ==== 构造设计矩阵（包含截距项和协变量）====
+      // 构造设计矩阵（包含截距项、基因型和协变量）
       arma::mat X = arma::join_horiz(arma::ones<arma::vec>(y.n_elem), g, covariates);
       
-      // ==== 迭代加权最小二乘法（IRLS）====
+      // IRLS拟合逻辑回归模型
       int max_iter = 25;
       double tol = 1e-6;
       arma::vec beta(X.n_cols, arma::fill::zeros); // 初始化系数
@@ -1275,34 +1329,27 @@ public:
       for(int iter = 0; iter < max_iter; ++iter) {
         arma::vec eta = X * beta;
         arma::vec mu = 1.0 / (1.0 + arma::exp(-eta));
-        
-        // 计算权重和对角矩阵
         arma::vec W_vec = mu % (1 - mu);
         arma::mat W = arma::diagmat(W_vec);
+        arma::vec z = eta + (y - mu) / (W_vec + 1e-16); // 添加小数避免除零
         
-        // 工作响应量（带数值稳定处理）
-        arma::vec z = eta + (y - mu) / (W_vec + 1e-16);
-        
-        // 更新系数
         arma::mat XtW = X.t() * W;
         arma::vec beta_new = arma::solve(XtW * X, XtW * z, arma::solve_opts::equilibrate);
         
-        // 收敛检查
-        if (arma::norm(beta_new - beta, 2) < tol) break;
+        if (arma::norm(beta_new - beta, "fro") < tol) 
+          break;
         beta = beta_new;
       }
       
-      // ==== 计算残差（观测值 - 预测概率）====
+      // 计算残差：y - 预测概率
       arma::vec mu = 1.0 / (1.0 + arma::exp(X * beta));
       return y - mu;
       
-    } catch(...) {
-      Rcpp::Rcerr << "逻辑回归计算失败" << std::endl;
-      return arma::vec();
+    } catch(const std::exception& e) {
+      Rcpp::Rcerr << "Error in logistic regression: " << e.what() << std::endl;
+      return arma::vec(); // 返回空向量表示错误
     }
   }
-  
-  
   
   
   
