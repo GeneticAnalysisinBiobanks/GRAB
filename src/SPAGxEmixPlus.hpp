@@ -715,14 +715,14 @@ public:
     //   }
     // }
     // 
-    // if(t_Covariates.n_elem == 0) {
-    //   Rcpp::Rcout << "WARNING: t_Covariates is empty!" << std::endl;
-    // } else {
-    //   // Rcpp::Rcout << "=== Debug: Head of t_Covariates (first 5 rows) ===" << std::endl;
-    //   // for(int i=0; i < 5 && i < t_Covariates.n_rows; ++i) {
-    //     // Rcpp::Rcout << "Row " << i+1 << ": " << t_Covariates.row(i) << std::endl;
-    //   }
-    // }
+    if(t_Covariates.n_elem == 0) {
+      Rcpp::Rcout << "WARNING: t_Covariates is empty!" << std::endl;
+    } else {
+      Rcpp::Rcout << "=== Debug: Head of t_Covariates (first 5 rows) ===" << std::endl;
+      for(int i=0; i < 5 && i < t_Covariates.n_rows; ++i) {
+        Rcpp::Rcout << "Row " << i+1 << ": " << t_Covariates.row(i) << std::endl;
+      }
+    }
     
     
     // 新增输入校验
@@ -957,9 +957,15 @@ public:
           Rcpp::Rcout << "Unique y values: " 
                       << arma::unique(y).t() << std::endl;
           
-          arma::mat cov_full = m_Covariates;    // 使用类成员变量
+          
+          arma::mat cov_full = arma::mat();
+          cov_full = m_Covariates;    // 使用类成员变量
           // ==== 关键修复1：强制协变量为数值矩阵 ====
-          arma::mat cov_subset = arma::conv_to<arma::mat>::from(
+          
+          arma::mat cov_subset = arma::mat();
+          
+          
+          cov_subset = arma::conv_to<arma::mat>::from(
             cov_full.rows(posValue).eval() // 确保内存连续性
           );      
           
@@ -1612,6 +1618,20 @@ public:
                                    const arma::vec& g,
                                    const arma::mat& covariates) 
   {
+    // ==== 新增：强制刷新输出缓冲区 ====
+    Rcpp::Rcout << "=== 进入残差计算 ===" << std::endl << std::flush;
+    
+    // // ==== 协变量矩阵严格校验 ====
+    // if(covariates.has_nan() || covariates.has_inf()) {
+    //   Rcpp::Rcerr << "协变量包含非法值(NaN/Inf)，已自动替换为0" << std::endl;
+    //   arma::mat cov_clean = covariates;
+    //   cov_clean.replace(arma::datum::nan, 0);
+    //   cov_clean.replace(arma::datum::inf, 1e6);
+    //   return calculateGLMResidual_R(y, g, cov_clean); // 递归调用清洗后版本
+    // }
+    
+    
+    
     try {
       // =============== 初始化与基本校验 ===============
       const int n = y.n_elem;
