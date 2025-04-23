@@ -425,7 +425,7 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
     outLierList = outLierList,
     outLierList_ResidByE = outLierList_ResidByE,          # update by Yuzhuo Ma
     control = control,
-    ResidTraitType,                                        # update by Yuzhuo Ma
+    ResidTraitType = ResidTraitType,                                        # update by Yuzhuo Ma
     PhenoMat = if (is.null(PhenoMat)) matrix(nrow = 0, ncol = 0) else as.matrix(PhenoMat),  # 默认空矩阵                     # update by Yuzhuo Ma
     Covariates = Covariates # 默认空矩阵                     # update by Yuzhuo Ma
   )
