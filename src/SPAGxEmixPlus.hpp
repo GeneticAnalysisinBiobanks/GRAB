@@ -972,6 +972,15 @@ public:
           
           
           
+          // 强制转换表型为整型
+          arma::vec y = arma::conv_to<arma::vec>::from(
+            arma::round(y_full.elem(posValue)) // 四舍五入消除浮点误差
+          );
+          
+          // 调试输出实际表型值
+          Rcpp::Rcout << "Unique y values: " 
+                      << arma::unique(y).t() << std::endl;
+          
           R0 = calculateGLMResidual_R(y, 
                                       t_GVec.elem(posValue),
                                       cov_subset);
@@ -1609,7 +1618,14 @@ public:
       if(arma::any(y < 0) || arma::any(y > 1)) {
         Rcpp::Rcerr << "ERROR: Invalid phenotype values (must be 0 or 1)" << std::endl;
         return y - arma::mean(y); // 返回中心化残差
+        
+        // 调试输出实际表型值
+        Rcpp::Rcout << "Unique y values: " 
+                    << arma::unique(y).t() << std::endl;
+        
       }
+      
+      
       
       // 情况3：表型无变异
       if(arma::var(y) < 1e-6) {
