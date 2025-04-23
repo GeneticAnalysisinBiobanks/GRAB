@@ -935,12 +935,16 @@ public:
           arma::mat cov_subset = t_Covariates.rows(posValue).eval(); // 强制转换为连续内存矩阵
           
           // 调用改进后的残差计算
-          arma::vec R0 = calculateGLMResidual(y, 
-                                              t_GVec.elem(posValue),
-                                              cov_subset);
+          // arma::vec R0 = calculateGLMResidual(y, 
+          //                                     t_GVec.elem(posValue),
+          //                                     cov_subset);
           
+          arma::vec R0 = calculateGLMResidual_R(y, 
+                                                t_GVec.elem(posValue),
+                                                cov_subset);
+          
+     
 
-          
           // 调试输出（与图片中的Rcout位置对应）
           Rcpp::Rcout << "Head residuals: " << R0.head(5).t() << std::endl;
           
@@ -1307,49 +1311,111 @@ public:
   //   }
   // }
   
-  arma::vec calculateGLMResidual(const arma::vec& y, 
-                                 const arma::vec& g,
-                                 const arma::mat& covariates) 
-  {
+  // arma::vec calculateGLMResidual(const arma::vec& y, 
+  //                                const arma::vec& g,
+  //                                const arma::mat& covariates) 
+  // {
+  //   try {
+  //     // 输入维度校验
+  //     if (y.n_elem != g.n_elem || y.n_elem != covariates.n_rows) {
+  //       Rcpp::stop("Dimension mismatch: y(%d), g(%d), covariates(%d x %d).", 
+  //                  y.n_elem, g.n_elem, covariates.n_rows, covariates.n_cols);
+  //     }
+  //     
+  //     // 构造设计矩阵（包含截距项、基因型和协变量）
+  //     arma::mat X = arma::join_horiz(arma::ones<arma::vec>(y.n_elem), g, covariates);
+  //     
+  //     // IRLS拟合逻辑回归模型
+  //     int max_iter = 25;
+  //     double tol = 1e-6;
+  //     arma::vec beta(X.n_cols, arma::fill::zeros); // 初始化系数
+  //     
+  //     for(int iter = 0; iter < max_iter; ++iter) {
+  //       arma::vec eta = X * beta;
+  //       arma::vec mu = 1.0 / (1.0 + arma::exp(-eta));
+  //       arma::vec W_vec = mu % (1 - mu);
+  //       arma::mat W = arma::diagmat(W_vec);
+  //       arma::vec z = eta + (y - mu) / (W_vec + 1e-16); // 添加小数避免除零
+  //       
+  //       arma::mat XtW = X.t() * W;
+  //       arma::vec beta_new = arma::solve(XtW * X, XtW * z, arma::solve_opts::equilibrate);
+  //       
+  //       if (arma::norm(beta_new - beta, "fro") < tol) 
+  //         break;
+  //       beta = beta_new;
+  //     }
+  //     
+  //     // 计算残差：y - 预测概率
+  //     arma::vec mu = 1.0 / (1.0 + arma::exp(X * beta));
+  //     return y - mu;
+  //     
+  //   } catch(const std::exception& e) {
+  //     Rcpp::Rcerr << "Error in logistic regression: " << e.what() << std::endl;
+  //     return arma::vec(); // 返回空向量表示错误
+  //   }
+  // }
+  
+  
+  
+  
+  
+  // [[Rcpp::export]]
+  arma::vec calculateGLMResidual_R(const arma::vec& y, 
+                                   const arma::vec& g,
+                                   const arma::mat& covariates) {
     try {
-      // 输入维度校验
-      if (y.n_elem != g.n_elem || y.n_elem != covariates.n_rows) {
-        Rcpp::stop("Dimension mismatch: y(%d), g(%d), covariates(%d x %d).", 
+      // 输入校验
+      if(y.n_elem != g.n_elem || y.n_elem != covariates.n_rows) {
+        Rcpp::stop("Dimension mismatch: y(%d), g(%d), covariates(%d x %d)",
                    y.n_elem, g.n_elem, covariates.n_rows, covariates.n_cols);
       }
       
-      // 构造设计矩阵（包含截距项、基因型和协变量）
-      arma::mat X = arma::join_horiz(arma::ones<arma::vec>(y.n_elem), g, covariates);
+      // 转换为R数据类型
+      Rcpp::NumericVector r_y = Rcpp::wrap(y);
+      Rcpp::NumericVector r_g = Rcpp::wrap(g);
       
-      // IRLS拟合逻辑回归模型
-      int max_iter = 25;
-      double tol = 1e-6;
-      arma::vec beta(X.n_cols, arma::fill::zeros); // 初始化系数
-      
-      for(int iter = 0; iter < max_iter; ++iter) {
-        arma::vec eta = X * beta;
-        arma::vec mu = 1.0 / (1.0 + arma::exp(-eta));
-        arma::vec W_vec = mu % (1 - mu);
-        arma::mat W = arma::diagmat(W_vec);
-        arma::vec z = eta + (y - mu) / (W_vec + 1e-16); // 添加小数避免除零
-        
-        arma::mat XtW = X.t() * W;
-        arma::vec beta_new = arma::solve(XtW * X, XtW * z, arma::solve_opts::equilibrate);
-        
-        if (arma::norm(beta_new - beta, "fro") < tol) 
-          break;
-        beta = beta_new;
+      // 构建协变量数据框
+      Rcpp::DataFrame cov_df;
+      for(int i=0; i<covariates.n_cols; ++i){
+        cov_df.push_back(Rcpp::NumericVector(covariates.colptr(i), 
+                                             covariates.colptr(i)+covariates.n_rows));
       }
       
-      // 计算残差：y - 预测概率
-      arma::vec mu = 1.0 / (1.0 + arma::exp(X * beta));
-      return y - mu;
+      // 合并所有数据到单一数据框
+      Rcpp::DataFrame df = Rcpp::DataFrame::create(
+        Rcpp::Named("response") = r_y,
+        Rcpp::Named("genotype") = r_g,
+        cov_df
+      );
+      
+      // 动态构建公式
+      std::string formula_str = "response ~ genotype";
+      for(int i=0; i<covariates.n_cols; ++i){
+        formula_str += " + V" + std::to_string(i+1); // R自动命名协变量列为V1,V2...
+      }
+      
+      // 调用R的glm函数
+      Rcpp::Function glm = Rcpp::Environment::namespace_env("stats")["glm"];
+      Rcpp::List model = glm(
+        Rcpp::Formula(formula_str),
+        Rcpp::_["data"] = df,
+        Rcpp::_["family"] = Rcpp::Function("binomial")()
+      );
+      
+      // 提取拟合值并计算残差
+      Rcpp::NumericVector fitted = model["fitted.values"];
+      return r_y - fitted;
       
     } catch(const std::exception& e) {
-      Rcpp::Rcerr << "Error in logistic regression: " << e.what() << std::endl;
-      return arma::vec(); // 返回空向量表示错误
+      Rcpp::Rcerr << "GLM Error: " << e.what() << std::endl;
+      return arma::vec();
     }
   }
+  
+  
+  
+  
+  
   
   
   
