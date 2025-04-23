@@ -1148,56 +1148,56 @@ arma::vec Unified_getOneMarker(std::string t_genoType,   // "PLINK", "BGEN"
   return GVec;
 }
 
-// // a unified function to get marker-level p-value
-// void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE", "SPAmix", "SPAmixPlusV4", "SPAGxEmixPlus", and "SPAGRM", and "SPAyuzhuoma"
-//                            arma::vec t_GVec,
-//                            bool t_isOnlyOutputNonZero,
-//                            std::vector<uint32_t> t_indexForNonZero,
-//                            double& t_Beta, 
-//                            double& t_seBeta, 
-//                            double& t_pval,
-//                            double& t_zScore,
-//                            double t_altFreq,
-//                            std::string t_ResidTraitType,   // update by Yuzhuo Ma
-//                            arma::mat t_PhenoMat,           // update by Yuzhuo Ma
-//                            arma::mat t_Covariates)
-// {
-//   // (BWJ) updated on 2023-04-20: I forgot what "t_isOnlyOutputNonZero" means, please let me know if anyone knows it,
-//   // (BWJ) it seems the "t_isOnlyOutputNonZero" can further save storage by removing the genotype == 0,
-//   // (BWJ) which is especially useful for region-based testing.
-//   if(t_method == "POLMM"){
-//     if(t_isOnlyOutputNonZero == true)
-//       Rcpp::stop("When using POLMM method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
-//     
-//     ptr_gPOLMMobj->getMarkerPval(t_GVec, t_Beta, t_seBeta, t_pval, t_altFreq, t_zScore);
-//   }
-//   
-//   if(t_method == "SPACox"){
-//     if(t_isOnlyOutputNonZero == true)
-//       Rcpp::stop("When using SPACox method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
-//     t_pval = ptr_gSPACoxobj->getMarkerPval(t_GVec, t_altFreq, t_zScore);
-//   }
-//   
-//   if(t_method == "SPAmix"){
-//     if(t_isOnlyOutputNonZero == true)
-//       Rcpp::stop("When using SPAmix method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
-//     t_pval = ptr_gSPAmixobj->getMarkerPval(t_GVec, t_altFreq);
-//   }
-//   
-//   if(t_method == "SPAmixPlusV4"){
-//     if(t_isOnlyOutputNonZero == true)
-//       Rcpp::stop("When using SPAmixPlusV4 method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
-//     t_pval = ptr_gSPAmixPlusV4obj->getMarkerPval(t_GVec, t_altFreq);
-//   }
-//   
-//   if(t_method == "SPAGxEmixPlus"){
-//     if(t_isOnlyOutputNonZero == true)
-//       Rcpp::stop("When using SPAGxEmixPlus method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
-//     t_pval = ptr_gSPAGxEmixPlusobj->getMarkerPval(t_GVec, t_altFreq, t_ResidTraitType, t_PhenoMat, t_Covariates, 0.001);
-//   }
-//   
-//   
-// }
+// a unified function to get marker-level p-value
+void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE", "SPAmix", "SPAmixPlusV4", "SPAGxEmixPlus", and "SPAGRM", and "SPAyuzhuoma"
+                           arma::vec t_GVec,
+                           bool t_isOnlyOutputNonZero,
+                           std::vector<uint32_t> t_indexForNonZero,
+                           double& t_Beta,
+                           double& t_seBeta,
+                           double& t_pval,
+                           double& t_zScore,
+                           double t_altFreq,
+                           std::string t_ResidTraitType,   // update by Yuzhuo Ma
+                           arma::mat t_PhenoMat,           // update by Yuzhuo Ma
+                           arma::mat t_Covariates)
+{
+  // (BWJ) updated on 2023-04-20: I forgot what "t_isOnlyOutputNonZero" means, please let me know if anyone knows it,
+  // (BWJ) it seems the "t_isOnlyOutputNonZero" can further save storage by removing the genotype == 0,
+  // (BWJ) which is especially useful for region-based testing.
+  if(t_method == "POLMM"){
+    if(t_isOnlyOutputNonZero == true)
+      Rcpp::stop("When using POLMM method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+
+    ptr_gPOLMMobj->getMarkerPval(t_GVec, t_Beta, t_seBeta, t_pval, t_altFreq, t_zScore);
+  }
+
+  if(t_method == "SPACox"){
+    if(t_isOnlyOutputNonZero == true)
+      Rcpp::stop("When using SPACox method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+    t_pval = ptr_gSPACoxobj->getMarkerPval(t_GVec, t_altFreq, t_zScore);
+  }
+
+  if(t_method == "SPAmix"){
+    if(t_isOnlyOutputNonZero == true)
+      Rcpp::stop("When using SPAmix method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+    t_pval = ptr_gSPAmixobj->getMarkerPval(t_GVec, t_altFreq);
+  }
+
+  if(t_method == "SPAmixPlusV4"){
+    if(t_isOnlyOutputNonZero == true)
+      Rcpp::stop("When using SPAmixPlusV4 method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+    t_pval = ptr_gSPAmixPlusV4obj->getMarkerPval(t_GVec, t_altFreq);
+  }
+
+  if(t_method == "SPAGxEmixPlus"){
+    if(t_isOnlyOutputNonZero == true)
+      Rcpp::stop("When using SPAGxEmixPlus method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+    t_pval = ptr_gSPAGxEmixPlusobj->getMarkerPval(t_GVec, t_altFreq, t_ResidTraitType, t_PhenoMat, t_Covariates, 0.001);
+  }
+
+
+}
 
 // a unified function to get marker-level p-value
 void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE", "SPAmix", "SPAmixPlusV4", "SPAGxEmixPlus", and "SPAGRM", and "SPAyuzhuoma"
@@ -1218,42 +1218,42 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
   
   
   
-  // (BWJ) updated on 2023-04-20: I forgot what "t_isOnlyOutputNonZero" means, please let me know if anyone knows it,
-  // (BWJ) it seems the "t_isOnlyOutputNonZero" can further save storage by removing the genotype == 0,
-  // (BWJ) which is especially useful for region-based testing.
-  if(t_method == "POLMM"){
-    if(t_isOnlyOutputNonZero == true)
-      Rcpp::stop("When using POLMM method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
-    
-    ptr_gPOLMMobj->getMarkerPval(t_GVec, t_Beta, t_seBeta, t_pval, t_altFreq, t_zScore);
-  }
-  
-  if(t_method == "SPACox"){
-    if(t_isOnlyOutputNonZero == true)
-      Rcpp::stop("When using SPACox method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
-    t_pval = ptr_gSPACoxobj->getMarkerPval(t_GVec, t_altFreq, t_zScore);
-  }
-  
-  if(t_method == "SPAmix"){
-    if(t_isOnlyOutputNonZero == true)
-      Rcpp::stop("When using SPAmix method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
-    t_pval = ptr_gSPAmixobj->getMarkerPval(t_GVec, t_altFreq);
-  }
-  
-  if(t_method == "SPAmixPlusV4"){
-    if(t_isOnlyOutputNonZero == true)
-      Rcpp::stop("When using SPAmixPlusV4 method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
-    t_pval = ptr_gSPAmixPlusV4obj->getMarkerPval(t_GVec, t_altFreq);
-  }
-  
-  if(t_method == "SPAGxEmixPlus"){
-    if(t_isOnlyOutputNonZero == true)
-      Rcpp::stop("When using SPAGxEmixPlus method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
-    t_pval = ptr_gSPAGxEmixPlusobj->getMarkerPval(t_GVec, t_altFreq, t_ResidTraitType, t_PhenoMat, t_Covariates, 0.001);
-  }
-  
-  
-  
+  // // (BWJ) updated on 2023-04-20: I forgot what "t_isOnlyOutputNonZero" means, please let me know if anyone knows it,
+  // // (BWJ) it seems the "t_isOnlyOutputNonZero" can further save storage by removing the genotype == 0,
+  // // (BWJ) which is especially useful for region-based testing.
+  // if(t_method == "POLMM"){
+  //   if(t_isOnlyOutputNonZero == true)
+  //     Rcpp::stop("When using POLMM method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+  //   
+  //   ptr_gPOLMMobj->getMarkerPval(t_GVec, t_Beta, t_seBeta, t_pval, t_altFreq, t_zScore);
+  // }
+  // 
+  // if(t_method == "SPACox"){
+  //   if(t_isOnlyOutputNonZero == true)
+  //     Rcpp::stop("When using SPACox method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+  //   t_pval = ptr_gSPACoxobj->getMarkerPval(t_GVec, t_altFreq, t_zScore);
+  // }
+  // 
+  // if(t_method == "SPAmix"){
+  //   if(t_isOnlyOutputNonZero == true)
+  //     Rcpp::stop("When using SPAmix method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+  //   t_pval = ptr_gSPAmixobj->getMarkerPval(t_GVec, t_altFreq);
+  // }
+  // 
+  // if(t_method == "SPAmixPlusV4"){
+  //   if(t_isOnlyOutputNonZero == true)
+  //     Rcpp::stop("When using SPAmixPlusV4 method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+  //   t_pval = ptr_gSPAmixPlusV4obj->getMarkerPval(t_GVec, t_altFreq);
+  // }
+  // 
+  // if(t_method == "SPAGxEmixPlus"){
+  //   if(t_isOnlyOutputNonZero == true)
+  //     Rcpp::stop("When using SPAGxEmixPlus method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+  //   t_pval = ptr_gSPAGxEmixPlusobj->getMarkerPval(t_GVec, t_altFreq, t_ResidTraitType, t_PhenoMat, t_Covariates, 0.001);
+  // }
+  // 
+  // 
+  // 
   
   
   if(t_method == "SPAGRM"){

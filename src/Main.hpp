@@ -47,19 +47,19 @@ arma::vec Unified_getOneMarker(std::string t_genoType,   // "PLINK", "BGEN"
                                bool t_isOnlyOutputNonZero,                   // is true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
                                std::vector<uint32_t>& t_indexForNonZero);    // the index of non-zero genotype in the all subjects. Only valid if t_isOnlyOutputNonZero == true.
 
-// // a unified function to get marker-level p-value
-// void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
-//                            arma::vec t_GVec,
-//                            bool t_isOnlyOutputNonZero,
-//                            std::vector<uint32_t> t_indexForNonZero,
-//                            double& t_Beta, 
-//                            double& t_seBeta, 
-//                            double& t_pval,
-//                            double& t_zScore,
-//                            double t_altFreq,
-//                            std::string t_ResidTraitType,   // update by Yuzhuo Ma
-//                            arma::mat t_PhenoMat,           // update by Yuzhuo Ma
-//                            arma::mat t_Covariates);
+// a unified function to get marker-level p-value
+void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
+                           arma::vec t_GVec,
+                           bool t_isOnlyOutputNonZero,
+                           std::vector<uint32_t> t_indexForNonZero,
+                           double& t_Beta,
+                           double& t_seBeta,
+                           double& t_pval,
+                           double& t_zScore,
+                           double t_altFreq,
+                           std::string t_ResidTraitType,   // update by Yuzhuo Ma
+                           arma::mat t_PhenoMat,           // update by Yuzhuo Ma
+                           arma::mat t_Covariates);
 
 // updated on 2023-05-22: add option to output hwepvalue, mainly for SPAGRM
 void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
