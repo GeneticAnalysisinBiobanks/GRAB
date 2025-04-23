@@ -771,6 +771,16 @@ public:
         Rcpp::stop("No valid samples (posValue is empty) for phenotype %d.", i);
       }
       
+      
+      // +++ 修改数据提取方式（使用成员变量中的完整数据）+++
+      arma::vec y_full = m_PhenoMat.col(i); // 使用类成员变量
+      arma::vec y = y_full.elem(posValue);  // 用全局索引取子集
+      
+      arma::mat cov_full = m_Covariates;    // 使用类成员变量
+      arma::mat cov_subset = cov_full.rows(posValue);
+      
+      ///////////////////////////////////////////////////////////////////////////////////
+      
       // 修改5：严格限制在posValue范围内计算
       arma::vec R_subset = resid.elem(posValue);       // 残差子集
       arma::vec GVar_subset = GVarVec.elem(posValue);  // 基因型方差子集
@@ -904,7 +914,10 @@ public:
         }
       }else{
         
-        arma::vec R0; // 在父作用域声明
+        // arma::vec R0; // 在父作用域声明
+        arma::vec R0 = arma::vec(); // 显式初始化为空向量
+        
+        
         
         // quantitative phenotype
         
@@ -924,21 +937,40 @@ public:
             Rcpp::stop("Binary性状需要非空表型矩阵和协变量矩阵");
           }
           
-          // 获取当前表型列（第i列）
-          // arma::vec y = t_PhenoMat.col(i).elem(posValue); 
-          // 修复后代码
-          arma::vec y_col = t_PhenoMat.col(i).eval();
-          arma::vec y = y_col.elem(posValue);
+          // // 获取当前表型列（第i列）
+          // // arma::vec y = t_PhenoMat.col(i).elem(posValue); 
+          // // 修复后代码
+          // arma::vec y_col = t_PhenoMat.col(i).eval();
+          // arma::vec y = y_col.elem(posValue);
+          // 
+          // // 提取协变量子集（需与posValue对齐）
+          // // arma::mat cov_subset = t_Covariates.rows(posValue);
+          // // 修复后代码
+          // arma::mat cov_subset = t_Covariates.rows(posValue).eval(); // 强制转换为连续内存矩阵
           
-          // 提取协变量子集（需与posValue对齐）
-          // arma::mat cov_subset = t_Covariates.rows(posValue);
-          // 修复后代码
-          arma::mat cov_subset = t_Covariates.rows(posValue).eval(); // 强制转换为连续内存矩阵
+
           
-          // 调用改进后的残差计算
-          // arma::vec R0 = calculateGLMResidual(y, 
-          //                                     t_GVec.elem(posValue),
-          //                                     cov_subset);
+          // // 原错误代码：
+          // // arma::vec y_col = t_PhenoMat.col(i).eval();
+          // // 修改后：
+          // arma::vec y_full = m_PhenoMat.col(i); // 使用成员变量获取完整表型
+          // arma::vec y = y_full.elem(posValue);  // 用全局索引取子集
+          // 
+          // arma::mat cov_full = m_Covariates;    // 使用成员变量获取完整协变量
+          // arma::mat cov_subset = cov_full.rows(posValue);
+          
+          // +++ 添加调试输出 +++
+          Rcpp::Rcout << "Checking binary phenotype values:\n";
+          Rcpp::Rcout << "Min: " << arma::min(y) 
+                      << " Max: " << arma::max(y) 
+                      << " N(1): " << arma::sum(y) << "\n";
+          
+          // +++ 新增响应变量有效性检查 +++
+          if(arma::any(y < 0) || arma::any(y > 1)) {
+            Rcpp::stop("Invalid phenotype values (must be 0 or 1)");
+          }
+          
+          
           
           R0 = calculateGLMResidual_R(y, 
                                       t_GVec.elem(posValue),
@@ -948,6 +980,11 @@ public:
 
           // 调试输出（与图片中的Rcout位置对应）
           Rcpp::Rcout << "Head R0: " << R0.head(5).t() << std::endl;
+          
+          // +++ 新增残差检查 +++
+          if(arma::var(R0) < 1e-6) {
+            Rcpp::Rcout << "WARNING: Constant residuals detected.\n";
+          }
           
         }
         
@@ -1458,23 +1495,144 @@ public:
   
   
   
+  // 
+  // // [[Rcpp::export]]
+  // arma::vec calculateGLMResidual_R(const arma::vec& y, 
+  //                                  const arma::vec& g,
+  //                                  const arma::mat& covariates) {
+  //   try {
+  //     // =============== 输入校验增强 ===============
+  //     if(y.n_elem != g.n_elem || y.n_elem != covariates.n_rows) {
+  //       Rcpp::stop("Dimension mismatch: y(%d), g(%d), covariates(%d x %d)",
+  //                  y.n_elem, g.n_elem, covariates.n_rows, covariates.n_cols);
+  //     }
+  //     
+  //     // =============== 协变量列名唯一性 ===============
+  //     Rcpp::List cov_list;
+  //     std::set<std::string> used_names{"response", "genotype"};
+  //     for(int i=0; i<covariates.n_cols; ++i) {
+  //       std::string base = "V";
+  //       int counter = 1;
+  //       std::string colname;
+  //       do {
+  //         colname = base + std::to_string(counter++);
+  //       } while(used_names.count(colname));
+  //       
+  //       used_names.insert(colname);
+  //       cov_list[colname] = Rcpp::NumericVector(
+  //         covariates.colptr(i),
+  //         covariates.colptr(i) + covariates.n_rows
+  //       );
+  //     }
+  //     
+  //     // =============== 合并数据集 ===============
+  //     Rcpp::DataFrame df = Rcpp::DataFrame::create(
+  //       Rcpp::Named("response") = Rcpp::wrap(y),
+  //       Rcpp::Named("genotype") = Rcpp::wrap(g),
+  //       cov_list,
+  //       Rcpp::_["stringsAsFactors"] = false
+  //     );
+  //     
+  //     // =============== 动态公式构建 ===============
+  //     std::string formula_str = "response ~ genotype";
+  //     for(int i=0; i<covariates.n_cols; ++i) {
+  //       formula_str += " + V" + std::to_string(i+1);
+  //     }
+  //     
+  //     // =============== 模型拟合 ===============
+  //     Rcpp::Environment stats = Rcpp::Environment::namespace_env("stats");
+  //     Rcpp::Function glm = stats["glm"];
+  //     Rcpp::List model = glm(
+  //       Rcpp::Formula(formula_str),
+  //       Rcpp::_["data"]    = df,
+  //       Rcpp::_["family"]  = Rcpp::Function("binomial")()
+  //     );
+  //     
+  //     // =============== 残差严格校验 ===============
+  //     if(!model.containsElementNamed("fitted.values")) {
+  //       Rcpp::Rcerr << "Missing fitted values in model object" << std::endl;
+  //       return arma::vec(y.n_elem, arma::fill::zeros);
+  //     }
+  //     
+  //     Rcpp::NumericVector fitted = model["fitted.values"];
+  //     arma::vec residuals = Rcpp::as<arma::vec>(Rcpp::wrap(y)) - Rcpp::as<arma::vec>(fitted);
+  //     
+  //     if(residuals.n_elem != y.n_elem) {
+  //       Rcpp::Rcerr << "Residual dimension corrupted! Actual: " 
+  //                   << residuals.n_elem << " vs Expected: " << y.n_elem << std::endl;
+  //       return arma::vec(y.n_elem, arma::fill::zeros);
+  //     }
+  //     
+  //     return residuals;
+  //     
+  //   } catch(const std::exception& e) {
+  //     Rcpp::Rcerr << "GLM Error: " << e.what() << std::endl;
+  //     return arma::vec(y.n_elem, arma::fill::zeros);
+  //   } catch(...) {
+  //     Rcpp::Rcerr << "Unknown GLM error" << std::endl;
+  //     return arma::vec(y.n_elem, arma::fill::zeros);
+  //   }
+  // }
+  
+  
+  
   
   // [[Rcpp::export]]
   arma::vec calculateGLMResidual_R(const arma::vec& y, 
                                    const arma::vec& g,
-                                   const arma::mat& covariates) {
+                                   const arma::mat& covariates) 
+  {
     try {
-      // =============== 输入校验增强 ===============
-      if(y.n_elem != g.n_elem || y.n_elem != covariates.n_rows) {
-        Rcpp::stop("Dimension mismatch: y(%d), g(%d), covariates(%d x %d)",
-                   y.n_elem, g.n_elem, covariates.n_rows, covariates.n_cols);
+      // =============== 初始化与基本校验 ===============
+      const int n = y.n_elem;
+      arma::vec residuals(n, arma::fill::zeros);
+      
+      // 调试信息：输出关键统计量
+      Rcpp::Rcout << "\n=== DEBUG: calculateGLMResidual_R ===" << std::endl;
+      Rcpp::Rcout << "Sample size: " << n << std::endl;
+      Rcpp::Rcout << "Genotype summary: "
+                  << "min=" << arma::min(g) << ", "
+                  << "max=" << arma::max(g) << ", "
+                  << "mean=" << arma::mean(g) << std::endl;
+      Rcpp::Rcout << "Phenotype distribution: "
+                  << "N0=" << arma::sum(y == 0) << ", "
+                  << "N1=" << arma::sum(y == 1) << std::endl;
+      
+      // =============== 异常情况处理 ===============
+      // 情况1：全零基因型
+      if(arma::all(g < 1e-6)) {
+        Rcpp::Rcout << "WARNING: All genotypes are zero. Returning zero residuals." << std::endl;
+        return residuals;
       }
       
-      // =============== 协变量列名唯一性 ===============
+      // 情况2：无效表型值
+      if(arma::any(y < 0) || arma::any(y > 1)) {
+        Rcpp::Rcerr << "ERROR: Invalid phenotype values (must be 0 or 1)" << std::endl;
+        return y - arma::mean(y); // 返回中心化残差
+      }
+      
+      // 情况3：表型无变异
+      if(arma::var(y) < 1e-6) {
+        Rcpp::Rcout << "WARNING: Constant phenotype. Returning centered residuals." << std::endl;
+        return y - arma::mean(y);
+      }
+      
+      // =============== 数据准备 ===============
+      // 构造数据框
+      Rcpp::DataFrame df = Rcpp::DataFrame::create(
+        Rcpp::Named("response") = Rcpp::wrap(y),
+        Rcpp::Named("genotype") = Rcpp::wrap(g),
+        Rcpp::_["stringsAsFactors"] = false
+      );
+      
+      // 动态构造公式
+      std::string formula_str = "response ~ genotype";
       Rcpp::List cov_list;
+      
+      // 处理协变量（带唯一性检查）
       std::set<std::string> used_names{"response", "genotype"};
-      for(int i=0; i<covariates.n_cols; ++i) {
-        std::string base = "V";
+      for(int i = 0; i < covariates.n_cols; ++i) {
+        std::string base = "Cov";
         int counter = 1;
         std::string colname;
         do {
@@ -1486,58 +1644,66 @@ public:
           covariates.colptr(i),
           covariates.colptr(i) + covariates.n_rows
         );
+        
+        formula_str += " + " + colname;
+        Rcpp::Rcout << "Added covariate: " << colname << std::endl;
       }
       
-      // =============== 合并数据集 ===============
-      Rcpp::DataFrame df = Rcpp::DataFrame::create(
-        Rcpp::Named("response") = Rcpp::wrap(y),
-        Rcpp::Named("genotype") = Rcpp::wrap(g),
-        cov_list,
-        Rcpp::_["stringsAsFactors"] = false
-      );
-      
-      // =============== 动态公式构建 ===============
-      std::string formula_str = "response ~ genotype";
-      for(int i=0; i<covariates.n_cols; ++i) {
-        formula_str += " + V" + std::to_string(i+1);
+      // 添加协变量到数据框
+      if(covariates.n_cols > 0) {
+        df = Rcpp::DataFrame::create(df, cov_list);
       }
       
       // =============== 模型拟合 ===============
       Rcpp::Environment stats = Rcpp::Environment::namespace_env("stats");
       Rcpp::Function glm = stats["glm"];
-      Rcpp::List model = glm(
-        Rcpp::Formula(formula_str),
-        Rcpp::_["data"]    = df,
-        Rcpp::_["family"]  = Rcpp::Function("binomial")()
-      );
+      Rcpp::List model;
       
-      // =============== 残差严格校验 ===============
-      if(!model.containsElementNamed("fitted.values")) {
-        Rcpp::Rcerr << "Missing fitted values in model object" << std::endl;
-        return arma::vec(y.n_elem, arma::fill::zeros);
+      try {
+        model = glm(
+          Rcpp::Formula(formula_str),
+          Rcpp::_["data"]    = df,
+          Rcpp::_["family"]  = Rcpp::Function("binomial")()
+        );
+      } catch(const std::exception& e) {
+        Rcpp::Rcerr << "\nGLM Fitting Error: " << e.what() 
+                    << "\nFormula: " << formula_str
+                    << "\nReturning mean-centered residuals." << std::endl;
+        return y - arma::mean(y);
       }
       
+      // =============== 残差提取与后处理 ===============
+      // 检查模型有效性
+      if(!model.inherits("glm")) {
+        Rcpp::Rcerr << "ERROR: Model object is invalid" << std::endl;
+        return y - arma::mean(y);
+      }
+      
+      // 提取预测值
       Rcpp::NumericVector fitted = model["fitted.values"];
-      arma::vec residuals = Rcpp::as<arma::vec>(Rcpp::wrap(y)) - Rcpp::as<arma::vec>(fitted);
+      residuals = Rcpp::as<arma::vec>(Rcpp::wrap(y)) - Rcpp::as<arma::vec>(fitted);
       
-      if(residuals.n_elem != y.n_elem) {
-        Rcpp::Rcerr << "Residual dimension corrupted! Actual: " 
-                    << residuals.n_elem << " vs Expected: " << y.n_elem << std::endl;
-        return arma::vec(y.n_elem, arma::fill::zeros);
-      }
+      // 后处理：限制精度
+      residuals.transform( [](double val) { 
+        return std::abs(val) < 1e-8 ? 0.0 : val; 
+      });
+      
+      // =============== 最终校验 ===============
+      Rcpp::Rcout << "Residual summary: "
+                  << "min=" << arma::min(residuals) << ", "
+                  << "max=" << arma::max(residuals) << ", "
+                  << "sd=" << arma::stddev(residuals) << std::endl;
       
       return residuals;
       
     } catch(const std::exception& e) {
-      Rcpp::Rcerr << "GLM Error: " << e.what() << std::endl;
+      Rcpp::Rcerr << "Fatal Error: " << e.what() << std::endl;
       return arma::vec(y.n_elem, arma::fill::zeros);
     } catch(...) {
-      Rcpp::Rcerr << "Unknown GLM error" << std::endl;
+      Rcpp::Rcerr << "Unknown Error" << std::endl;
       return arma::vec(y.n_elem, arma::fill::zeros);
     }
   }
-  
-  
   
   
   
