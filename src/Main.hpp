@@ -72,10 +72,7 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
                            double& t_zScore,
                            double t_altFreq,
                            double& t_hwepval,
-                           double t_hwepvalCutoff,         // default value = 0.1
-                           std::string t_ResidTraitType,   // update by Yuzhuo Ma
-                           arma::mat t_PhenoMat,           // update by Yuzhuo Ma
-                           arma::mat t_Covariates); 
+                           double t_hwepvalCutoff); 
 
 void Unified_getRegionPVec(std::string t_method, 
                            arma::vec t_GVec, 

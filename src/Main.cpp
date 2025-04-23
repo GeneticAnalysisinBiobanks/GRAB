@@ -201,9 +201,7 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
                            Rcpp::Nullable<Rcpp::NumericMatrix> t_Covariates = R_NilValue)  // 传递外部参数
 {
   
-  // 在mainMarkerInCPP函数顶部添加
-  double hwepvalCutoff = 0.1; // 或从参数获取
-  double hwepval = 0;
+
   
   // 转换时处理空矩阵和非连续内存矩阵
   arma::mat PhenoMat;
@@ -278,6 +276,10 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   // {
   for(int i = 0; i < q; i++)
   {
+    
+    std::cout << "Completed " << i << "/" << q << " markers in the chunk." << std::endl;
+    
+    
     if(i % 1000 == 0)
     std::cout << "Completed " << i << "/" << q << " markers in the chunk." << std::endl;
     
@@ -295,6 +297,10 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
                                           indexForMissing,
                                           false, // bool t_isOnlyOutputNonZero,
                                           indexForNonZero);
+    
+    Rcpp::Rcout << "Head GVec: " << GVec.head(5).t() << std::endl;
+    
+    
     int n = GVec.size();
     
     // std::cout << "marker:\t" << marker << std::endl;
@@ -351,7 +357,12 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     double hwepvalCutoff = 0.1;  // to be changed to a option, instead of a default value, later
     double hwepval = 0;
     
-    if(t_method != "WtSPAG"){
+    // update 
+    if(t_method == "SPAGxEmixPlus"){
+      pval = ptr_gSPAGxEmixPlusobj->getMarkerPval(GVec, altFreq, t_ResidTraitType, PhenoMat, Covariates, 0.001);
+    }
+    
+    if(t_method != "WtSPAG" & t_method != "SPAGxEmixPlus"){
       Unified_getMarkerPval(t_method, GVec,
                             false, // bool t_isOnlyOutputNonZero,
                             indexForNonZero, Beta, seBeta, pval, zScore, altFreq, hwepval, hwepvalCutoff, t_ResidTraitType, PhenoMat, Covariates);
@@ -361,6 +372,7 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
       pval = ptr_gWtSPAGobj->getMarkerPval(GVec, altFreq, zScore, flip, i);
     }
     
+
     
     // std::cout << "test1.5" << std::endl;
     
@@ -1210,10 +1222,7 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
                            double& t_zScore,
                            double t_altFreq,
                            double& t_hwepval,
-                           double t_hwepvalCutoff,
-                           std::string t_ResidTraitType,   // update by Yuzhuo Ma
-                           arma::mat t_PhenoMat,           // update by Yuzhuo Ma
-                           arma::mat t_Covariates)
+                           double t_hwepvalCutoff)
 {
   
   
@@ -1273,8 +1282,7 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
                           false, // bool t_isOnlyOutputNonZero,
                           t_indexForNonZero, t_Beta, t_seBeta, t_pval, t_zScore, t_altFreq,
                           t_hwepval,         // 添加第10个参数
-                          t_hwepvalCutoff,   // 添加第11个参数
-                          t_ResidTraitType, t_PhenoMat, t_Covariates); // update
+                          t_hwepvalCutoff); // update
   }
 }
 
