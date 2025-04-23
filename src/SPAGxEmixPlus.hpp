@@ -10,7 +10,7 @@
 #include <vector>          // 新增
 #include <cmath>  // 需要包含此头文件以使用 std::isnan
 #include <Rcpp/Formula.h>  // 必须包含Formula支持
-
+#include <set>
 
 
 
@@ -946,7 +946,7 @@ public:
      
 
           // 调试输出（与图片中的Rcout位置对应）
-          Rcpp::Rcout << "Head residuals: " << R0.head(5).t() << std::endl;
+          Rcpp::Rcout << "Head R0: " << R0.head(5).t() << std::endl;
           
         }
         
@@ -969,24 +969,39 @@ public:
         // }
         
         
+        Rcpp::Rcout << "Head R0: " << R0.head(5).t() << std::endl;
+        
+        
         //////////////////////////////////////////////////////////////////////////////////////////////////////
         
         // 3. 基础统计量计算
         arma::vec E_subset = m_E.elem(posValue);  // 假设E是成员变量
+        
+        Rcpp::Rcout << "E_subset: " << E_subset.head(5).t() << std::endl;
+        
+        
         double S_GxE0 = arma::sum(t_GVec.elem(posValue) % E_subset % R0);
         
-        // std::cout << "S_GxE0:\t" << S_GxE0 << std::endl; // update by Yuzhuo Ma
+        std::cout << "S_GxE0:\t" << S_GxE0 << std::endl; // update by Yuzhuo Ma
         
         
         // 4. 调整残差计算
         arma::vec R_new0 = E_subset % R0;
+        
+        Rcpp::Rcout << "R_new0: " << R_new0.head(5).t() << std::endl;
+        
+        
         arma::vec R_new0_sqrtMAF = R_new0 % arma::sqrt(GVar_subset);
+        
+        Rcpp::Rcout << "R_new0_sqrtMAF: " << R_new0_sqrtMAF.head(5).t() << std::endl;
+        
+        
         
         // 5. 协方差计算（需要已实现的函数）
         // double Cov_sum = calculateSparseGRMCovariance(R_new0_sqrtMAF); 
         double S_GxE0_var = calculateSparseVariance(R_new0_sqrtMAF, posValue);
         
-        // std::cout << "S_GxE0_var:\t" << S_GxE0_var << std::endl; // update by Yuzhuo Ma
+        std::cout << "S_GxE0_var:\t" << S_GxE0_var << std::endl; // update by Yuzhuo Ma
         
         
         // // 步骤3：交叉协方差计算（优化实现）
@@ -998,8 +1013,8 @@ public:
         double S_GxE0_mean = 2 * arma::sum(R_new0 % AFVec.elem(posValue));
         double z_GxE0 = (S_GxE0 - S_GxE0_mean) / std::sqrt(S_GxE0_var);
         
-        // std::cout << "S_GxE0_mean:\t" << S_GxE0_mean << std::endl; // update by Yuzhuo Ma
-        // std::cout << "z_GxE0:\t" << z_GxE0 << std::endl; // update by Yuzhuo Ma
+        std::cout << "S_GxE0_mean:\t" << S_GxE0_mean << std::endl; // update by Yuzhuo Ma
+        std::cout << "z_GxE0:\t" << z_GxE0 << std::endl; // update by Yuzhuo Ma
         
         
         // 7. p值计算分支
@@ -1027,8 +1042,8 @@ public:
           pval2 = std::isnan(pval2) ? 0.0 : pval2;
           m_pvalVec.at(i) = pval1 + pval2;
           
-          // std::cout << "pval1:\t" << pval1 << std::endl; // update by Yuzhuo Ma
-          // std::cout << "pval2:\t" << pval2 << std::endl; // update by Yuzhuo Ma
+          std::cout << "pval1:\t" << pval1 << std::endl; // update by Yuzhuo Ma
+          std::cout << "pval2:\t" << pval2 << std::endl; // update by Yuzhuo Ma
           
         }
         
@@ -1361,6 +1376,97 @@ public:
   
 
   
+  // // [[Rcpp::export]]
+  // arma::vec calculateGLMResidual_R(const arma::vec& y, 
+  //                                  const arma::vec& g,
+  //                                  const arma::mat& covariates) {
+  //   try {
+  //     // =============== 输入校验增强 ===============
+  //     if(y.n_elem != g.n_elem || y.n_elem != covariates.n_rows) {
+  //       Rcpp::stop("Dimension mismatch: y(%d), g(%d), covariates(%d x %d)",
+  //                  y.n_elem, g.n_elem, covariates.n_rows, covariates.n_cols);
+  //     }
+  //     
+  //     // =============== 数据转换优化 ===============
+  //     Rcpp::NumericVector r_y = Rcpp::wrap(y);
+  //     Rcpp::NumericVector r_g = Rcpp::wrap(g);
+  //     
+  //     // =============== 协变量处理关键修正 ===============
+  //     Rcpp::List cov_list;
+  //     for(int i=0; i<covariates.n_cols; ++i) {
+  //       std::string colname = "V" + std::to_string(i+1);
+  //       cov_list[colname] = Rcpp::NumericVector(
+  //         covariates.colptr(i),
+  //         covariates.colptr(i) + covariates.n_rows
+  //       );
+  //     }
+  //     Rcpp::DataFrame cov_df(cov_list);
+  //     
+  //     // =============== 合并数据集 ===============
+  //     Rcpp::DataFrame df = Rcpp::DataFrame::create(
+  //       Rcpp::Named("response") = r_y,
+  //       Rcpp::Named("genotype") = r_g,
+  //       cov_df,
+  //       Rcpp::_["stringsAsFactors"] = false
+  //     );
+  //     
+  //     // =============== 动态公式构建 ===============
+  //     std::string formula_str = "response ~ genotype";
+  //     for(int i=0; i<covariates.n_cols; ++i) {
+  //       formula_str += " + V" + std::to_string(i+1);
+  //     }
+  //     
+  //     // =============== R环境调用优化 ===============
+  //     Rcpp::Environment stats = Rcpp::Environment::namespace_env("stats");
+  //     Rcpp::Function glm = stats["glm"];
+  //     
+  //     // =============== 模型拟合 ===============
+  //     Rcpp::List model;
+  //     try {
+  //       model = glm(
+  //         Rcpp::Formula(formula_str),
+  //         Rcpp::_["data"]    = df,
+  //         Rcpp::_["family"]  = Rcpp::Function("binomial")()
+  //       );
+  //     } catch(const std::exception& e) {
+  //       Rcpp::Rcerr << "GLM Fitting Error: " << e.what() << std::endl;
+  //       return arma::vec(y.n_elem, arma::fill::zeros);
+  //     }
+  //     
+  //     // =============== 残差提取与校验 ===============
+  //     // 修正1：使用正确的元素存在性检查方法
+  //     if(!model.containsElementNamed("fitted.values")) {
+  //       Rcpp::Rcerr << "Model object missing fitted.values" << std::endl;
+  //       return arma::vec(y.n_elem, arma::fill::zeros);
+  //     }
+  //     
+  //     Rcpp::NumericVector fitted = model["fitted.values"];
+  //     
+  //     // 维度二次校验
+  //     if(fitted.size() != y.n_elem) {
+  //       Rcpp::Rcerr << "Fitted values dimension mismatch: " 
+  //                   << fitted.size() << " vs " << y.n_elem << std::endl;
+  //       return arma::vec(y.n_elem, arma::fill::zeros);
+  //     }
+  //     
+  //     // 修正2：正确的类型转换
+  //     return Rcpp::as<arma::vec>(r_y) - Rcpp::as<arma::vec>(fitted);
+  //     
+  //   } catch(const std::exception& e) {
+  //     Rcpp::Rcerr << "GLM Calculation Error: " << e.what() << std::endl;
+  //     return arma::vec(y.n_elem, arma::fill::zeros);
+  //   } catch(...) {
+  //     Rcpp::Rcerr << "Unknown error occurred in GLM calculation" << std::endl;
+  //     return arma::vec(y.n_elem, arma::fill::zeros);
+  //   }
+  // }
+  
+
+  
+  
+  
+  
+  
   // [[Rcpp::export]]
   arma::vec calculateGLMResidual_R(const arma::vec& y, 
                                    const arma::vec& g,
@@ -1372,26 +1478,29 @@ public:
                    y.n_elem, g.n_elem, covariates.n_rows, covariates.n_cols);
       }
       
-      // =============== 数据转换优化 ===============
-      Rcpp::NumericVector r_y = Rcpp::wrap(y);
-      Rcpp::NumericVector r_g = Rcpp::wrap(g);
-      
-      // =============== 协变量处理关键修正 ===============
+      // =============== 协变量列名唯一性 ===============
       Rcpp::List cov_list;
+      std::set<std::string> used_names{"response", "genotype"};
       for(int i=0; i<covariates.n_cols; ++i) {
-        std::string colname = "V" + std::to_string(i+1);
+        std::string base = "V";
+        int counter = 1;
+        std::string colname;
+        do {
+          colname = base + std::to_string(counter++);
+        } while(used_names.count(colname));
+        
+        used_names.insert(colname);
         cov_list[colname] = Rcpp::NumericVector(
           covariates.colptr(i),
           covariates.colptr(i) + covariates.n_rows
         );
       }
-      Rcpp::DataFrame cov_df(cov_list);
       
       // =============== 合并数据集 ===============
       Rcpp::DataFrame df = Rcpp::DataFrame::create(
-        Rcpp::Named("response") = r_y,
-        Rcpp::Named("genotype") = r_g,
-        cov_df,
+        Rcpp::Named("response") = Rcpp::wrap(y),
+        Rcpp::Named("genotype") = Rcpp::wrap(g),
+        cov_list,
         Rcpp::_["stringsAsFactors"] = false
       );
       
@@ -1401,52 +1510,40 @@ public:
         formula_str += " + V" + std::to_string(i+1);
       }
       
-      // =============== R环境调用优化 ===============
+      // =============== 模型拟合 ===============
       Rcpp::Environment stats = Rcpp::Environment::namespace_env("stats");
       Rcpp::Function glm = stats["glm"];
+      Rcpp::List model = glm(
+        Rcpp::Formula(formula_str),
+        Rcpp::_["data"]    = df,
+        Rcpp::_["family"]  = Rcpp::Function("binomial")()
+      );
       
-      // =============== 模型拟合 ===============
-      Rcpp::List model;
-      try {
-        model = glm(
-          Rcpp::Formula(formula_str),
-          Rcpp::_["data"]    = df,
-          Rcpp::_["family"]  = Rcpp::Function("binomial")()
-        );
-      } catch(const std::exception& e) {
-        Rcpp::Rcerr << "GLM Fitting Error: " << e.what() << std::endl;
-        return arma::vec(y.n_elem, arma::fill::zeros);
-      }
-      
-      // =============== 残差提取与校验 ===============
-      // 修正1：使用正确的元素存在性检查方法
+      // =============== 残差严格校验 ===============
       if(!model.containsElementNamed("fitted.values")) {
-        Rcpp::Rcerr << "Model object missing fitted.values" << std::endl;
+        Rcpp::Rcerr << "Missing fitted values in model object" << std::endl;
         return arma::vec(y.n_elem, arma::fill::zeros);
       }
       
       Rcpp::NumericVector fitted = model["fitted.values"];
+      arma::vec residuals = Rcpp::as<arma::vec>(Rcpp::wrap(y)) - Rcpp::as<arma::vec>(fitted);
       
-      // 维度二次校验
-      if(fitted.size() != y.n_elem) {
-        Rcpp::Rcerr << "Fitted values dimension mismatch: " 
-                    << fitted.size() << " vs " << y.n_elem << std::endl;
+      if(residuals.n_elem != y.n_elem) {
+        Rcpp::Rcerr << "Residual dimension corrupted! Actual: " 
+                    << residuals.n_elem << " vs Expected: " << y.n_elem << std::endl;
         return arma::vec(y.n_elem, arma::fill::zeros);
       }
       
-      // 修正2：正确的类型转换
-      return Rcpp::as<arma::vec>(r_y) - Rcpp::as<arma::vec>(fitted);
+      return residuals;
       
     } catch(const std::exception& e) {
-      Rcpp::Rcerr << "GLM Calculation Error: " << e.what() << std::endl;
+      Rcpp::Rcerr << "GLM Error: " << e.what() << std::endl;
       return arma::vec(y.n_elem, arma::fill::zeros);
     } catch(...) {
-      Rcpp::Rcerr << "Unknown error occurred in GLM calculation" << std::endl;
+      Rcpp::Rcerr << "Unknown GLM error" << std::endl;
       return arma::vec(y.n_elem, arma::fill::zeros);
     }
   }
-  
-  
   
   
   
