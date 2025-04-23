@@ -1359,6 +1359,8 @@ public:
   
   
   
+
+  
   // [[Rcpp::export]]
   arma::vec calculateGLMResidual_R(const arma::vec& y, 
                                    const arma::vec& g,
@@ -1404,22 +1406,43 @@ public:
       Rcpp::Function glm = stats["glm"];
       
       // =============== 模型拟合 ===============
-      Rcpp::List model = glm(
-        Rcpp::Formula(formula_str),
-        Rcpp::_["data"]    = df,
-        Rcpp::_["family"]  = Rcpp::Function("binomial")()
-      );
+      Rcpp::List model;
+      try {
+        model = glm(
+          Rcpp::Formula(formula_str),
+          Rcpp::_["data"]    = df,
+          Rcpp::_["family"]  = Rcpp::Function("binomial")()
+        );
+      } catch(const std::exception& e) {
+        Rcpp::Rcerr << "GLM Fitting Error: " << e.what() << std::endl;
+        return arma::vec(y.n_elem, arma::fill::zeros);
+      }
       
-      // =============== 残差计算 ===============
+      // =============== 残差提取与校验 ===============
+      // 修正1：使用正确的元素存在性检查方法
+      if(!model.containsElementNamed("fitted.values")) {
+        Rcpp::Rcerr << "Model object missing fitted.values" << std::endl;
+        return arma::vec(y.n_elem, arma::fill::zeros);
+      }
+      
       Rcpp::NumericVector fitted = model["fitted.values"];
-      return r_y - fitted;
+      
+      // 维度二次校验
+      if(fitted.size() != y.n_elem) {
+        Rcpp::Rcerr << "Fitted values dimension mismatch: " 
+                    << fitted.size() << " vs " << y.n_elem << std::endl;
+        return arma::vec(y.n_elem, arma::fill::zeros);
+      }
+      
+      // 修正2：正确的类型转换
+      return Rcpp::as<arma::vec>(r_y) - Rcpp::as<arma::vec>(fitted);
       
     } catch(const std::exception& e) {
-      Rcpp::Rcerr << "GLM Error: " << e.what() << std::endl;
-      return arma::vec();
+      Rcpp::Rcerr << "GLM Calculation Error: " << e.what() << std::endl;
+      return arma::vec(y.n_elem, arma::fill::zeros);
     } catch(...) {
       Rcpp::Rcerr << "Unknown error occurred in GLM calculation" << std::endl;
-      return arma::vec();
+      return arma::vec(y.n_elem, arma::fill::zeros);
     }
   }
   
