@@ -940,7 +940,17 @@ public:
           
           // +++ 修改数据提取方式（使用成员变量中的完整数据）+++
           arma::vec y_full = m_PhenoMat.col(i); // 使用类成员变量
+          // 调试输出实际表型值
+          Rcpp::Rcout << "Unique y_full values: " 
+                      << arma::unique(y_full).t() << std::endl;
+          
+          
           arma::vec y = arma::round(y_full.elem(posValue));  // 四舍五入消除浮点误差
+          
+          // 调试输出实际表型值
+          Rcpp::Rcout << "Unique y values: " 
+                      << arma::unique(y).t() << std::endl;
+          
           y = arma::clamp(y, 0, 1);  // 确保严格0/1
           
           // 调试输出实际表型值
@@ -948,9 +958,10 @@ public:
                       << arma::unique(y).t() << std::endl;
           
           arma::mat cov_full = m_Covariates;    // 使用类成员变量
+          // ==== 关键修复1：强制协变量为数值矩阵 ====
           arma::mat cov_subset = arma::conv_to<arma::mat>::from(
             cov_full.rows(posValue).eval() // 确保内存连续性
-          );          
+          );      
           
 
           
