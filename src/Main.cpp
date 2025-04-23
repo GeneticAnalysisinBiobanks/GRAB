@@ -366,10 +366,16 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
       pval = ptr_gSPAGxEmixPlusobj->getMarkerPval(GVec, altFreq, t_ResidTraitType, PhenoMat, Covariates, 0.001);
     }
     
-    if(t_method != "WtSPAG" & t_method != "SPAGxEmixPlus"){
+    // if(t_method != "WtSPAG"){
+    //   Unified_getMarkerPval(t_method, GVec,
+    //                         false, // bool t_isOnlyOutputNonZero,
+    //                         indexForNonZero, Beta, seBeta, pval, zScore, altFreq, hwepval, hwepvalCutoff);
+    // }
+    
+    if((t_method != "WtSPAG") && (t_method != "SPAGxEmixPlus")){
       Unified_getMarkerPval(t_method, GVec,
                             false, // bool t_isOnlyOutputNonZero,
-                            indexForNonZero, Beta, seBeta, pval, zScore, altFreq, hwepval, hwepvalCutoff, t_ResidTraitType, PhenoMat, Covariates);
+                            indexForNonZero, Beta, seBeta, pval, zScore, altFreq, hwepval, hwepvalCutoff);
     }
     
     if(t_method == "WtSPAG"){
