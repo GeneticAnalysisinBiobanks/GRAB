@@ -3,18 +3,13 @@
 #define SPAGxEMIXPLUS_HPP
 
 // [[Rcpp::depends(RcppArmadillo)]]
-#include <Rcpp.h>  // 必须包含以使用Rcpp环境
 #include <RcppArmadillo.h>
 #include "UTIL.hpp"
+
 #include <unordered_map>   // 新增
 #include <vector>          // 新增
+
 #include <cmath>  // 需要包含此头文件以使用 std::isnan
-#include <Rcpp/Formula.h>  // 必须包含Formula支持
-#include <set>
-
-
-
-using namespace Rcpp;           // 声明命名空间
 
 // #define ARMA_DONT_USE_WRAPPER // 提升Armadillo性能
 // #include <RcppArmadillo.h>
@@ -27,17 +22,6 @@ class SPAGxEmixPlusClass
 {
 private:
   
-  std::string m_ResidTraitType; // 表征类型成员变量
-  arma::mat m_PhenoMat;
-  arma::mat m_Covariates;
-  
-  
-  // 修改后（正确）
-  Environment m_statsEnv;
-  Function m_glm;
-  
-  // Environment m_statsEnv = Environment::namespace_env("stats");
-  // Function m_glm = m_statsEnv["glm"];
   
   // ==== 新增环境因子成员 ====
   arma::vec m_E;  // 必须与.cpp中的使用保持一致
@@ -99,10 +83,7 @@ public:
                      Rcpp::List t_outlierList,
                      Rcpp::DataFrame t_sparseGRM, // update by Yuzhuo Ma
                      Rcpp::DataFrame t_ResidMat,  // update by Yuzhuo Ma
-                     arma::vec t_E,               // update by Yuzhuo Ma
-                     std::string t_ResidTraitType,
-                     arma::mat t_PhenoMat,
-                     arma::mat t_Covariates);              // update by Yuzhuo Ma
+                     arma::vec t_E);              // update by Yuzhuo Ma
   
   arma::vec getTestTime1(){return m_diffTime1;}
   arma::vec getTestTime2(){return m_diffTime2;}
@@ -110,8 +91,6 @@ public:
   arma::vec getpvalVec(){return m_pvalVec;}
   arma::vec getzScoreVec(){return m_zScoreVec;}
   // a major update on 2023-04-23 to improve SPA process
-  
-  
   
   
   // The MGF of G (genotype)
@@ -690,48 +669,10 @@ public:
   
   double getMarkerPval(arma::vec t_GVec,
                        double t_altFreq,  // later update score and variance here (2023-06-20)
-                       std::string t_ResidTraitType,
-                       arma::mat t_PhenoMat,
-                       arma::mat t_Covariates,
-                       double epsilon = 0.001)              
+                       double epsilon = 0.001)                  // update by Yuzhuo Ma
   {
     
-    // Rcpp::Rcout << "Head t_GVec: " << t_GVec.head(5).t() << std::endl;
-    Rcpp::Rcout << "Head t_altFreq: " << t_altFreq << std::endl;
-    
-    
-    
-    
-    
-    // std::cout << "ResidTraitType:\t" << t_ResidTraitType << std::endl; // update by Yuzhuo Ma
-    // ==== 新增调试输出 ====
-    // 检查矩阵是否为空
-    // if(t_PhenoMat.n_elem == 0) {
-    //   Rcpp::Rcout << "WARNING: t_PhenoMat is empty!" << std::endl;
-    // } else {
-    //   // Rcpp::Rcout << "=== Debug: Head of t_PhenoMat (first 5 rows) ===" << std::endl;
-    //   // for(int i=0; i < 5 && i < t_PhenoMat.n_rows; ++i) {
-    //     // Rcpp::Rcout << "Row " << i+1 << ": " << t_PhenoMat.row(i) << std::endl;
-    //   }
-    // }
-    // 
-    if(t_Covariates.n_elem == 0) {
-      Rcpp::Rcout << "WARNING: t_Covariates is empty!" << std::endl;
-    } else {
-      Rcpp::Rcout << "=== Debug: Head of t_Covariates (first 5 rows) ===" << std::endl;
-      for(int i=0; i < 5 && i < t_Covariates.n_rows; ++i) {
-        Rcpp::Rcout << "Row " << i+1 << ": " << t_Covariates.row(i) << std::endl;
-      }
-    }
-    
-    
-    // 新增输入校验
-    if(t_ResidTraitType == "Binary") {
-      if(t_PhenoMat.n_elem == 0 || t_Covariates.n_elem == 0)
-        Rcpp::stop("Binary性状必须提供PhenoMat和Covariates矩阵");
-    }
-    
-    // std::cout << "SPAGxEmixPlus_getMarkerPval part1" << std::endl; // update by Yuzhuo Ma
+    std::cout << "SPAGxEmixPlus_getMarkerPval" << std::endl; // update by Yuzhuo Ma
     
     
     arma::vec time1 = getTime();
@@ -751,9 +692,6 @@ public:
     
     arma::vec GVarVec = 2 * AFVec % (1 - AFVec);
     
-    // std::cout << "SPAGxEmixPlus_getMarkerPval part2" << std::endl; // update by Yuzhuo Ma
-    
-    
     for(int i = 0; i < m_Npheno; i++){
       Rcpp::List tempOutlierList = m_outlierList[i];
       arma::uvec posValue = tempOutlierList["posValue"];
@@ -765,21 +703,6 @@ public:
       arma::vec residNonOutlier = tempOutlierList["residNonOutlier"];
       arma::vec resid2NonOutlier = tempOutlierList["resid2NonOutlier"];
       
-      
-      // ==== 新增检查：posValue是否为空 ====
-      if(posValue.n_elem == 0) {
-        Rcpp::stop("No valid samples (posValue is empty) for phenotype %d.", i);
-      }
-      
-      
-      // // +++ 修改数据提取方式（使用成员变量中的完整数据）+++
-      // arma::vec y_full = m_PhenoMat.col(i); // 使用类成员变量
-      // arma::vec y = y_full.elem(posValue);  // 用全局索引取子集
-      // 
-      // arma::mat cov_full = m_Covariates;    // 使用类成员变量
-      // arma::mat cov_subset = cov_full.rows(posValue);
-      
-      ///////////////////////////////////////////////////////////////////////////////////
       
       // 修改5：严格限制在posValue范围内计算
       arma::vec R_subset = resid.elem(posValue);       // 残差子集
@@ -794,7 +717,7 @@ public:
       
       // 修改6：传入posValue和GVar子集
       double VarS1 = calculateSparseVariance(R_sqrtMAF, posValue);
-      // std::cout << "VarS1:\t" << VarS1 << std::endl; // update by Yuzhuo Ma
+      std::cout << "VarS1:\t" << VarS1 << std::endl; // update by Yuzhuo Ma
       
       
       
@@ -810,16 +733,16 @@ public:
       m_zScoreVec.at(i) = zScore;
       
       
-      // std::cout << "S1:\t" << S1 << std::endl; // update by Yuzhuo Ma
-      // std::cout << "S1_mean:\t" << S1_mean << std::endl; // update by Yuzhuo Ma
-      // std::cout << "zScore:\t" << zScore << std::endl; // update by Yuzhuo Ma
+      std::cout << "S1:\t" << S1 << std::endl; // update by Yuzhuo Ma
+      std::cout << "S1_mean:\t" << S1_mean << std::endl; // update by Yuzhuo Ma
+      std::cout << "zScore:\t" << zScore << std::endl; // update by Yuzhuo Ma
       
       
       
       // update /////////////////////////////////////////////////////////////////
       double pval_norm1 = arma::normcdf(-1*std::abs(zScore))*2;
 
-      // std::cout << "pval_norm1:\t" << pval_norm1 << std::endl; // update by Yuzhuo Ma
+      std::cout << "pval_norm1:\t" << pval_norm1 << std::endl; // update by Yuzhuo Ma
       
       
       
@@ -842,14 +765,14 @@ public:
         double Cov_S1_S2 = calculateCrossCovariance(R_sqrtMAF, RE_sqrtMAF, posValue) 
           - arma::sum(GVar_subset % E_subset % arma::square(R_subset));
         
-        // std::cout << "Cov_S1_S2:\t" << Cov_S1_S2 << std::endl; // update by Yuzhuo Ma
+        std::cout << "Cov_S1_S2:\t" << Cov_S1_S2 << std::endl; // update by Yuzhuo Ma
         
         
         // 步骤4：计算lambda和新残差
         double lambda = Cov_S1_S2 / VarS1;
         arma::vec R_new = (E_subset - lambda) % R_subset;
         
-        // std::cout << "lambda:\t" << lambda << std::endl; // update by Yuzhuo Ma
+        std::cout << "lambda:\t" << lambda << std::endl; // update by Yuzhuo Ma
         
         
         // 步骤5：计算新残差的调整方差
@@ -862,9 +785,9 @@ public:
         double z_GxE = (S_GxE - S_GxE_mean) / std::sqrt(S_GxE_var);
         
         
-        // std::cout << "S_GxE:\t" << S_GxE << std::endl; // update by Yuzhuo Ma
-        // std::cout << "S_GxE_mean:\t" << S_GxE_mean << std::endl; // update by Yuzhuo Ma
-        // std::cout << "z_GxE:\t" << z_GxE << std::endl; // update by Yuzhuo Ma
+        std::cout << "S_GxE:\t" << S_GxE << std::endl; // update by Yuzhuo Ma
+        std::cout << "S_GxE_mean:\t" << S_GxE_mean << std::endl; // update by Yuzhuo Ma
+        std::cout << "z_GxE:\t" << z_GxE << std::endl; // update by Yuzhuo Ma
         
         
         // ===== p值计算 =====
@@ -909,144 +832,22 @@ public:
           pval2 = std::isnan(pval2) ? 0.0 : pval2;
           m_pvalVec.at(i) = pval1 + pval2;
           
-          // std::cout << "pval1:\t" << pval1 << std::endl; // update by Yuzhuo Ma
-          // std::cout << "pval2:\t" << pval2 << std::endl; // update by Yuzhuo Ma
+          std::cout << "pval1:\t" << pval1 << std::endl; // update by Yuzhuo Ma
+          std::cout << "pval2:\t" << pval2 << std::endl; // update by Yuzhuo Ma
         }
       }else{
         
-        // arma::vec R0; // 在父作用域声明
-        arma::vec R0 = arma::vec(); // 显式初始化为空向量
+        // 1. 构造W矩阵
+        arma::mat W = arma::join_rows(arma::ones(posValue.n_elem), t_GVec.elem(posValue));
         
-        
-        
-        // quantitative phenotype
-        
-        if(t_ResidTraitType == "Quantitative"){
-          // 1. 构造W矩阵
-          arma::mat W = arma::join_rows(arma::ones(posValue.n_elem), t_GVec.elem(posValue));
-          
-          // 2. 投影矩阵计算 (R0 = R - W(W^TW)^{-1}W^TR)
-          arma::mat WtW = W.t() * W;
-          arma::mat inv_WtW = arma::inv(WtW);
-          arma::vec R_subset = resid.elem(posValue);  // 从原有代码获取
-          // ===== 修改点1：移除内部变量声明 =====
-          R0 = R_subset - W * inv_WtW * W.t() * R_subset;
-        }else if(t_ResidTraitType == "Binary") {
-          // 检查输入完整性
-          if(t_PhenoMat.n_elem == 0 || t_Covariates.n_elem == 0) {
-            Rcpp::stop("Binary性状需要非空表型矩阵和协变量矩阵");
-          }
-          
-          
-          // +++ 修改数据提取方式（使用成员变量中的完整数据）+++
-          arma::vec y_full = m_PhenoMat.col(i); // 使用类成员变量
-          // 调试输出实际表型值
-          Rcpp::Rcout << "Unique y_full values: " 
-                      << arma::unique(y_full).t() << std::endl;
-          
-          
-          arma::vec y = arma::round(y_full.elem(posValue));  // 四舍五入消除浮点误差
-          
-          // 调试输出实际表型值
-          Rcpp::Rcout << "Unique y values: " 
-                      << arma::unique(y).t() << std::endl;
-          
-          y = arma::clamp(y, 0, 1);  // 确保严格0/1
-          
-          // 调试输出实际表型值
-          Rcpp::Rcout << "Unique y values: " 
-                      << arma::unique(y).t() << std::endl;
-          
-          ///////////////////////////////////////////////////////////
-          
-          arma::mat cov_full = arma::mat();
-          cov_full = m_Covariates;    // 使用类成员变量
-          // ==== 关键修复：重新生成连续内存的协变量子集 ====
-          arma::mat cov_subset = arma::mat(cov_full.rows(posValue)); // 显式拷贝
-          cov_subset = arma::conv_to<arma::mat>::from(cov_subset);   // 确保连续
-          
-          // ==== 调试输出协变量子集 ====
-          Rcpp::Rcout << "协变量子集维度: " << cov_subset.n_rows << "x" 
-                      << cov_subset.n_cols << std::endl;
-          Rcpp::Rcout << "首行数据: " << arma::rowvec(cov_subset.row(0)) << std::endl;
-          
-          
-
-          
-          
-          // // 获取当前表型列（第i列）
-          // // arma::vec y = t_PhenoMat.col(i).elem(posValue); 
-          // // 修复后代码
-          // arma::vec y_col = t_PhenoMat.col(i).eval();
-          // arma::vec y = y_col.elem(posValue);
-          // 
-          // // 提取协变量子集（需与posValue对齐）
-          // // arma::mat cov_subset = t_Covariates.rows(posValue);
-          // // 修复后代码
-          // arma::mat cov_subset = t_Covariates.rows(posValue).eval(); // 强制转换为连续内存矩阵
-          
-
-          
-          // // 原错误代码：
-          // // arma::vec y_col = t_PhenoMat.col(i).eval();
-          // // 修改后：
-          // arma::vec y_full = m_PhenoMat.col(i); // 使用成员变量获取完整表型
-          // arma::vec y = y_full.elem(posValue);  // 用全局索引取子集
-          // 
-          // arma::mat cov_full = m_Covariates;    // 使用成员变量获取完整协变量
-          // arma::mat cov_subset = cov_full.rows(posValue);
-          
-          // +++ 添加调试输出 +++
-          Rcpp::Rcout << "Checking binary phenotype values:\n";
-          Rcpp::Rcout << "Min: " << arma::min(y) 
-                      << " Max: " << arma::max(y) 
-                      << " N(1): " << arma::sum(y) << "\n";
-          
-          // +++ 新增响应变量有效性检查 +++
-          if(arma::any(y < 0) || arma::any(y > 1)) {
-            Rcpp::stop("Invalid phenotype values (must be 0 or 1)");
-          }
-          
-          
-
-          
-          R0 = calculateGLMResidual_R(y, 
-                                      t_GVec.elem(posValue),
-                                      cov_subset);
-          
-     
-
-          // 调试输出（与图片中的Rcout位置对应）
-          Rcpp::Rcout << "Head R0: " << R0.head(5).t() << std::endl;
-          
-          // +++ 新增残差检查 +++
-          if(arma::var(R0) < 1e-6) {
-            Rcpp::Rcout << "WARNING: Constant residuals detected.\n";
-          }
-          
-        }
-        
-        
-        // ==== 后续统一使用父作用域的R0 ====
-        if(R0.is_empty()) {
-          Rcpp::stop("残差计算失败，R0为空");
-        }
-        
-        // 在getMarkerPval函数中添加状态日志
-        Rcpp::Rcout << "当前表型类型: " << t_ResidTraitType 
-                    << " | R0维度: " << R0.n_elem << std::endl;
-        
-        Rcpp::Rcout << "Head R0: " << R0.head(5).t() << std::endl;
-        
-        
-        //////////////////////////////////////////////////////////////////////////////////////////////////////
+        // 2. 投影矩阵计算 (R0 = R - W(W^TW)^{-1}W^TR)
+        arma::mat WtW = W.t() * W;
+        arma::mat inv_WtW = arma::inv(WtW);
+        arma::vec R_subset = resid.elem(posValue);  // 从原有代码获取
+        arma::vec R0 = R_subset - W * inv_WtW * W.t() * R_subset;
         
         // 3. 基础统计量计算
         arma::vec E_subset = m_E.elem(posValue);  // 假设E是成员变量
-        
-        Rcpp::Rcout << "E_subset: " << E_subset.head(5).t() << std::endl;
-        
-        
         double S_GxE0 = arma::sum(t_GVec.elem(posValue) % E_subset % R0);
         
         std::cout << "S_GxE0:\t" << S_GxE0 << std::endl; // update by Yuzhuo Ma
@@ -1054,15 +855,7 @@ public:
         
         // 4. 调整残差计算
         arma::vec R_new0 = E_subset % R0;
-        
-        Rcpp::Rcout << "R_new0: " << R_new0.head(5).t() << std::endl;
-        
-        
         arma::vec R_new0_sqrtMAF = R_new0 % arma::sqrt(GVar_subset);
-        
-        Rcpp::Rcout << "R_new0_sqrtMAF: " << R_new0_sqrtMAF.head(5).t() << std::endl;
-        
-        
         
         // 5. 协方差计算（需要已实现的函数）
         // double Cov_sum = calculateSparseGRMCovariance(R_new0_sqrtMAF); 
@@ -1238,563 +1031,6 @@ public:
   
   
   
-  // // 修改后的逻辑回归原始残差计算函数
-  // arma::vec calculateLogisticRawResidual(const arma::vec& y, const arma::vec& g) {
-  //   int n = y.n_elem;
-  //   
-  //   // 1. 构造设计矩阵（包含截距项）
-  //   arma::mat X = arma::join_horiz(arma::ones<arma::vec>(n), g);
-  //   
-  //   // 2. 初始化参数（beta[0]截距，beta[1]基因型效应）
-  //   arma::vec beta = arma::zeros<arma::vec>(2);
-  //   
-  //   // 3. 迭代加权最小二乘法（IRLS）
-  //   double tol = 1e-6;
-  //   int max_iter = 25;
-  //   for (int iter = 0; iter < max_iter; ++iter) {
-  //     arma::vec eta = X * beta;
-  //     arma::vec mu = 1.0 / (1.0 + arma::exp(-eta));
-  //     
-  //     // 计算权重矩阵（对角阵）
-  //     arma::vec weights = mu % (1 - mu);
-  //     arma::mat W = arma::diagmat(weights);
-  //     
-  //     // 工作响应量计算（带数值稳定处理）
-  //     arma::vec z = eta + (y - mu) / (weights + 1e-16);
-  //     
-  //     // 更新参数（优化矩阵运算）
-  //     arma::mat XtW = X.t() * W;
-  //     arma::vec beta_new = arma::solve(XtW * X, XtW * z);
-  //     
-  //     // 收敛判断（L2范数变化）
-  //     if (arma::norm(beta_new - beta, 2) < tol) break;
-  //     beta = beta_new;
-  //   }
-  //   
-  //   // 4. 计算原始残差（观测值 - 预测概率）
-  //   arma::vec mu = 1.0 / (1.0 + arma::exp(X * beta));
-  //   arma::vec R0 = y - mu;  // 原始残差
-  //   
-  //   return R0;
-  // }
-  // 
-  
-  
-  
-  
-  
-  
-  // 修改后的calculateGLMResidual函数
-  // 新增函数：带协变量的逻辑回归残差计算
-  // =============== 在calculateGLMResidual函数中修改 ===============
-  // 修改位置：图片第906-915行附近
-  // 原错误代码构造数据框部分：
-  // Rcpp::DataFrame data = Rcpp::DataFrame::create(...)
-  
-  // // 修改后代码（完整函数）：
-  // arma::vec calculateGLMResidual(const arma::vec& y, 
-  //                                const arma::vec& g,
-  //                                const arma::mat& covariates) 
-  // {
-  //   try {
-  //     // ==== 输入校验增强 ====
-  //     if (y.n_elem != g.n_elem || y.n_elem != covariates.n_rows) 
-  //       Rcpp::stop("维度不匹配: y(%d), g(%d), cov(%dx%d)", 
-  //                  y.n_elem, g.n_elem, covariates.n_rows, covariates.n_cols);
-  //     
-  //     // ==== 显式类型转换 ====
-  //     Rcpp::NumericVector y_vec = Rcpp::wrap(y);  // Armadillo转Rcpp向量
-  //     Rcpp::NumericVector g_vec = Rcpp::wrap(g);
-  //     
-  //     // ==== 构造数据框 ====
-  //     Rcpp::DataFrame data = Rcpp::DataFrame::create(
-  //       Rcpp::Named("response") = y_vec,
-  //       Rcpp::Named("genotype") = g_vec,
-  //       Rcpp::_["stringsAsFactors"] = false
-  //     );
-  //     
-  //     // ==== 协变量列添加优化 ====
-  //     for(int i=0; i<covariates.n_cols; i++) {
-  //       std::string colname = "cov" + std::to_string(i+1);
-  //       data[colname] = Rcpp::NumericVector(covariates.colptr(i), 
-  //                                           covariates.colptr(i)+covariates.n_rows);
-  //     }
-  //     
-  //     // ==== 动态公式构造 ====
-  //     std::string formula_str = "response ~ genotype";
-  //     for(int i=0; i<covariates.n_cols; i++) {
-  //       formula_str += " + cov" + std::to_string(i+1);
-  //     }
-  //     Rcpp::Formula formula(formula_str);
-  //     
-  //     // ==== 调用R的glm ====
-  //     Rcpp::Function glm = Rcpp::Environment::namespace_env("stats")["glm"];
-  //     Rcpp::List model = glm(
-  //       formula,
-  //       Rcpp::_["data"] = data,
-  //       Rcpp::_["family"] = Rcpp::Function("binomial")()
-  //     );
-  //     
-  //     // ==== 残差提取 ====
-  //     Rcpp::NumericVector mu = model["fitted.values"];
-  //     return y_vec - mu;  // 返回原始残差
-  //     
-  //   } catch(...) {
-  //     return arma::vec(); // 错误处理
-  //   }
-  // }
-  
-  // 
-  // arma::vec calculateGLMResidual(const arma::vec& y, 
-  //                                const arma::vec& g,
-  //                                const arma::mat& covariates) 
-  // {
-  //   try {
-  //     // ==== 输入校验 ====
-  //     if (y.n_elem != g.n_elem || y.n_elem != covariates.n_rows) 
-  //       Rcpp::stop("维度不匹配: y(%d), g(%d), cov(%dx%d)", 
-  //                  y.n_elem, g.n_elem, covariates.n_rows, covariates.n_cols);
-  //     
-  //     // ==== 构造设计矩阵（包含截距项和协变量）====
-  //     arma::mat X = arma::join_horiz(arma::ones<arma::vec>(y.n_elem), g, covariates);
-  //     
-  //     // ==== 迭代加权最小二乘法（IRLS）====
-  //     int max_iter = 25;
-  //     double tol = 1e-6;
-  //     arma::vec beta(X.n_cols, arma::fill::zeros); // 初始化系数
-  //     
-  //     for(int iter = 0; iter < max_iter; ++iter) {
-  //       arma::vec eta = X * beta;
-  //       arma::vec mu = 1.0 / (1.0 + arma::exp(-eta));
-  //       
-  //       // 计算权重和对角矩阵
-  //       arma::vec W_vec = mu % (1 - mu);
-  //       arma::mat W = arma::diagmat(W_vec);
-  //       
-  //       // 工作响应量（带数值稳定处理）
-  //       arma::vec z = eta + (y - mu) / (W_vec + 1e-16);
-  //       
-  //       // 更新系数
-  //       arma::mat XtW = X.t() * W;
-  //       arma::vec beta_new = arma::solve(XtW * X, XtW * z, arma::solve_opts::equilibrate);
-  //       
-  //       // 收敛检查
-  //       if (arma::norm(beta_new - beta, 2) < tol) break;
-  //       beta = beta_new;
-  //     }
-  //     
-  //     // ==== 计算残差（观测值 - 预测概率）====
-  //     arma::vec mu = 1.0 / (1.0 + arma::exp(X * beta));
-  //     return y - mu;
-  //     
-  //   } catch(...) {
-  //     Rcpp::Rcerr << "逻辑回归计算失败" << std::endl;
-  //     return arma::vec();
-  //   }
-  // }
-  
-  // arma::vec calculateGLMResidual(const arma::vec& y, 
-  //                                const arma::vec& g,
-  //                                const arma::mat& covariates) 
-  // {
-  //   try {
-  //     // 输入维度校验
-  //     if (y.n_elem != g.n_elem || y.n_elem != covariates.n_rows) {
-  //       Rcpp::stop("Dimension mismatch: y(%d), g(%d), covariates(%d x %d).", 
-  //                  y.n_elem, g.n_elem, covariates.n_rows, covariates.n_cols);
-  //     }
-  //     
-  //     // 构造设计矩阵（包含截距项、基因型和协变量）
-  //     arma::mat X = arma::join_horiz(arma::ones<arma::vec>(y.n_elem), g, covariates);
-  //     
-  //     // IRLS拟合逻辑回归模型
-  //     int max_iter = 25;
-  //     double tol = 1e-6;
-  //     arma::vec beta(X.n_cols, arma::fill::zeros); // 初始化系数
-  //     
-  //     for(int iter = 0; iter < max_iter; ++iter) {
-  //       arma::vec eta = X * beta;
-  //       arma::vec mu = 1.0 / (1.0 + arma::exp(-eta));
-  //       arma::vec W_vec = mu % (1 - mu);
-  //       arma::mat W = arma::diagmat(W_vec);
-  //       arma::vec z = eta + (y - mu) / (W_vec + 1e-16); // 添加小数避免除零
-  //       
-  //       arma::mat XtW = X.t() * W;
-  //       arma::vec beta_new = arma::solve(XtW * X, XtW * z, arma::solve_opts::equilibrate);
-  //       
-  //       if (arma::norm(beta_new - beta, "fro") < tol) 
-  //         break;
-  //       beta = beta_new;
-  //     }
-  //     
-  //     // 计算残差：y - 预测概率
-  //     arma::vec mu = 1.0 / (1.0 + arma::exp(X * beta));
-  //     return y - mu;
-  //     
-  //   } catch(const std::exception& e) {
-  //     Rcpp::Rcerr << "Error in logistic regression: " << e.what() << std::endl;
-  //     return arma::vec(); // 返回空向量表示错误
-  //   }
-  // }
-  
-  
-  
-  
-  
-
-  
-  // // [[Rcpp::export]]
-  // arma::vec calculateGLMResidual_R(const arma::vec& y, 
-  //                                  const arma::vec& g,
-  //                                  const arma::mat& covariates) {
-  //   try {
-  //     // =============== 输入校验增强 ===============
-  //     if(y.n_elem != g.n_elem || y.n_elem != covariates.n_rows) {
-  //       Rcpp::stop("Dimension mismatch: y(%d), g(%d), covariates(%d x %d)",
-  //                  y.n_elem, g.n_elem, covariates.n_rows, covariates.n_cols);
-  //     }
-  //     
-  //     // =============== 数据转换优化 ===============
-  //     Rcpp::NumericVector r_y = Rcpp::wrap(y);
-  //     Rcpp::NumericVector r_g = Rcpp::wrap(g);
-  //     
-  //     // =============== 协变量处理关键修正 ===============
-  //     Rcpp::List cov_list;
-  //     for(int i=0; i<covariates.n_cols; ++i) {
-  //       std::string colname = "V" + std::to_string(i+1);
-  //       cov_list[colname] = Rcpp::NumericVector(
-  //         covariates.colptr(i),
-  //         covariates.colptr(i) + covariates.n_rows
-  //       );
-  //     }
-  //     Rcpp::DataFrame cov_df(cov_list);
-  //     
-  //     // =============== 合并数据集 ===============
-  //     Rcpp::DataFrame df = Rcpp::DataFrame::create(
-  //       Rcpp::Named("response") = r_y,
-  //       Rcpp::Named("genotype") = r_g,
-  //       cov_df,
-  //       Rcpp::_["stringsAsFactors"] = false
-  //     );
-  //     
-  //     // =============== 动态公式构建 ===============
-  //     std::string formula_str = "response ~ genotype";
-  //     for(int i=0; i<covariates.n_cols; ++i) {
-  //       formula_str += " + V" + std::to_string(i+1);
-  //     }
-  //     
-  //     // =============== R环境调用优化 ===============
-  //     Rcpp::Environment stats = Rcpp::Environment::namespace_env("stats");
-  //     Rcpp::Function glm = stats["glm"];
-  //     
-  //     // =============== 模型拟合 ===============
-  //     Rcpp::List model;
-  //     try {
-  //       model = glm(
-  //         Rcpp::Formula(formula_str),
-  //         Rcpp::_["data"]    = df,
-  //         Rcpp::_["family"]  = Rcpp::Function("binomial")()
-  //       );
-  //     } catch(const std::exception& e) {
-  //       Rcpp::Rcerr << "GLM Fitting Error: " << e.what() << std::endl;
-  //       return arma::vec(y.n_elem, arma::fill::zeros);
-  //     }
-  //     
-  //     // =============== 残差提取与校验 ===============
-  //     // 修正1：使用正确的元素存在性检查方法
-  //     if(!model.containsElementNamed("fitted.values")) {
-  //       Rcpp::Rcerr << "Model object missing fitted.values" << std::endl;
-  //       return arma::vec(y.n_elem, arma::fill::zeros);
-  //     }
-  //     
-  //     Rcpp::NumericVector fitted = model["fitted.values"];
-  //     
-  //     // 维度二次校验
-  //     if(fitted.size() != y.n_elem) {
-  //       Rcpp::Rcerr << "Fitted values dimension mismatch: " 
-  //                   << fitted.size() << " vs " << y.n_elem << std::endl;
-  //       return arma::vec(y.n_elem, arma::fill::zeros);
-  //     }
-  //     
-  //     // 修正2：正确的类型转换
-  //     return Rcpp::as<arma::vec>(r_y) - Rcpp::as<arma::vec>(fitted);
-  //     
-  //   } catch(const std::exception& e) {
-  //     Rcpp::Rcerr << "GLM Calculation Error: " << e.what() << std::endl;
-  //     return arma::vec(y.n_elem, arma::fill::zeros);
-  //   } catch(...) {
-  //     Rcpp::Rcerr << "Unknown error occurred in GLM calculation" << std::endl;
-  //     return arma::vec(y.n_elem, arma::fill::zeros);
-  //   }
-  // }
-  
-
-  
-  
-  
-  
-  // 
-  // // [[Rcpp::export]]
-  // arma::vec calculateGLMResidual_R(const arma::vec& y, 
-  //                                  const arma::vec& g,
-  //                                  const arma::mat& covariates) {
-  //   try {
-  //     // =============== 输入校验增强 ===============
-  //     if(y.n_elem != g.n_elem || y.n_elem != covariates.n_rows) {
-  //       Rcpp::stop("Dimension mismatch: y(%d), g(%d), covariates(%d x %d)",
-  //                  y.n_elem, g.n_elem, covariates.n_rows, covariates.n_cols);
-  //     }
-  //     
-  //     // =============== 协变量列名唯一性 ===============
-  //     Rcpp::List cov_list;
-  //     std::set<std::string> used_names{"response", "genotype"};
-  //     for(int i=0; i<covariates.n_cols; ++i) {
-  //       std::string base = "V";
-  //       int counter = 1;
-  //       std::string colname;
-  //       do {
-  //         colname = base + std::to_string(counter++);
-  //       } while(used_names.count(colname));
-  //       
-  //       used_names.insert(colname);
-  //       cov_list[colname] = Rcpp::NumericVector(
-  //         covariates.colptr(i),
-  //         covariates.colptr(i) + covariates.n_rows
-  //       );
-  //     }
-  //     
-  //     // =============== 合并数据集 ===============
-  //     Rcpp::DataFrame df = Rcpp::DataFrame::create(
-  //       Rcpp::Named("response") = Rcpp::wrap(y),
-  //       Rcpp::Named("genotype") = Rcpp::wrap(g),
-  //       cov_list,
-  //       Rcpp::_["stringsAsFactors"] = false
-  //     );
-  //     
-  //     // =============== 动态公式构建 ===============
-  //     std::string formula_str = "response ~ genotype";
-  //     for(int i=0; i<covariates.n_cols; ++i) {
-  //       formula_str += " + V" + std::to_string(i+1);
-  //     }
-  //     
-  //     // =============== 模型拟合 ===============
-  //     Rcpp::Environment stats = Rcpp::Environment::namespace_env("stats");
-  //     Rcpp::Function glm = stats["glm"];
-  //     Rcpp::List model = glm(
-  //       Rcpp::Formula(formula_str),
-  //       Rcpp::_["data"]    = df,
-  //       Rcpp::_["family"]  = Rcpp::Function("binomial")()
-  //     );
-  //     
-  //     // =============== 残差严格校验 ===============
-  //     if(!model.containsElementNamed("fitted.values")) {
-  //       Rcpp::Rcerr << "Missing fitted values in model object" << std::endl;
-  //       return arma::vec(y.n_elem, arma::fill::zeros);
-  //     }
-  //     
-  //     Rcpp::NumericVector fitted = model["fitted.values"];
-  //     arma::vec residuals = Rcpp::as<arma::vec>(Rcpp::wrap(y)) - Rcpp::as<arma::vec>(fitted);
-  //     
-  //     if(residuals.n_elem != y.n_elem) {
-  //       Rcpp::Rcerr << "Residual dimension corrupted! Actual: " 
-  //                   << residuals.n_elem << " vs Expected: " << y.n_elem << std::endl;
-  //       return arma::vec(y.n_elem, arma::fill::zeros);
-  //     }
-  //     
-  //     return residuals;
-  //     
-  //   } catch(const std::exception& e) {
-  //     Rcpp::Rcerr << "GLM Error: " << e.what() << std::endl;
-  //     return arma::vec(y.n_elem, arma::fill::zeros);
-  //   } catch(...) {
-  //     Rcpp::Rcerr << "Unknown GLM error" << std::endl;
-  //     return arma::vec(y.n_elem, arma::fill::zeros);
-  //   }
-  // }
-  
-  
-  
-  
-  
-  // 
-  // // [[Rcpp::export]]
-  // arma::vec calculateGLMResidual_R(const arma::vec& y,
-  //                                  const arma::vec& g,
-  //                                  const arma::mat& covariates)
-  // {
-  //   // ===== 初始化阶段 =====
-  //   Rcpp::Rcout << "\n=== 开始残差计算 ===" << std::endl;
-  //   const clock_t start_time = clock();
-  //   
-  //   try {
-  //     // ===== 输入校验 =====
-  //     if(y.n_elem != g.n_elem || y.n_elem != covariates.n_rows) {
-  //       Rcpp::stop("维度不匹配: y(%d), g(%d), cov(%dx%d)", 
-  //                  y.n_elem, g.n_elem, covariates.n_rows, covariates.n_cols);
-  //     }
-  //     
-  //     // ===== 强制内存连续性 =====
-  //     arma::mat cov_contig = covariates.eval();
-  //     Rcpp::Rcout << "协变量矩阵验证通过 | 行数=" << cov_contig.n_rows 
-  //                 << " 列数=" << cov_contig.n_cols << std::endl;
-  //     
-  //     // ===== 构建数据框架 =====
-  //     Rcpp::DataFrame df = Rcpp::DataFrame::create(
-  //       Rcpp::Named("response") = y,
-  //       Rcpp::Named("genotype") = g,
-  //       Rcpp::_["stringsAsFactors"] = false
-  //     );
-  //     
-  //     // ===== 动态添加协变量列 =====
-  //     std::vector<std::string> colnames;
-  //     std::set<std::string> used_names{"response", "genotype"};
-  //     
-  //     for(int i = 0; i < cov_contig.n_cols; ++i) {
-  //       std::string colname;
-  //       int suffix = 1;
-  //       do {
-  //         colname = "Cov_" + std::to_string(suffix++);
-  //       } while(used_names.count(colname));
-  //       
-  //       used_names.insert(colname);
-  //       colnames.push_back(colname);
-  //       
-  //       // 关键修复：安全转换协变量列
-  //       arma::vec col_data = cov_contig.col(i);
-  //       df[colname] = Rcpp::NumericVector(col_data.begin(), col_data.end());
-  //     }
-  //     
-  //     // ===== 模型拟合 =====
-  //     Rcpp::Function glm = Rcpp::Environment("package:stats")["glm"];
-  //     Rcpp::List model = glm(
-  //       Rcpp::Formula("response ~ ."),
-  //       Rcpp::_["data"] = df,
-  //       Rcpp::_["family"] = Rcpp::Function("binomial")()
-  //     );
-  //     
-  //     // ===== 残差提取（关键修复部分）=====
-  //     Rcpp::NumericVector fitted = model["fitted.values"];
-  //     
-  //     // 修复方法1：显式类型转换
-  //     arma::vec residuals = Rcpp::as<arma::vec>(Rcpp::wrap(fitted));
-  //     
-  //     // 或修复方法2：直接构造（任选其一）
-  //     // arma::vec residuals(fitted.begin(), fitted.end());
-  //     
-  //     // ===== 数值稳定性处理 =====
-  //     residuals.transform([](double val) { 
-  //       return std::abs(val) < 1e-10 ? 0.0 : val; 
-  //     });
-  //     
-  //     Rcpp::Rcout << "残差计算成功 | 耗时: " 
-  //                 << (double)(clock() - start_time)/CLOCKS_PER_SEC << "秒"
-  //                 << "\n残差统计:"
-  //                 << "\n  Min: " << arma::min(residuals)
-  //                 << "\n  Max: " << arma::max(residuals)
-  //                 << "\n  SD: " << arma::stddev(residuals)
-  //                 << std::endl;
-  //     
-  //     return residuals;
-  //     
-  //   } catch(const Rcpp::exception& e) {
-  //     Rcpp::Rcerr << "\n!!! 异常捕获 !!!\n原因: " << e.what() << std::endl;
-  //     return arma::vec(y.n_elem, arma::fill::zeros);
-  //   }
-  // }
-  // 
-  
-  
-  
-  
-  // [[Rcpp::export]]
-  arma::vec calculateGLMResidual_R(const arma::vec& y,
-                                   const arma::vec& g,
-                                   const arma::mat& covariates)
-  {
-    // ===== 初始化阶段 =====
-    Rcpp::Rcout << "\n=== 开始残差计算 ===" << std::endl;
-    const clock_t start_time = clock();
-    
-    try {
-      // ===== 输入校验 =====
-      if(y.n_elem != g.n_elem || y.n_elem != covariates.n_rows) {
-        Rcpp::stop("维度不匹配: y(%d), g(%d), cov(%dx%d)", 
-                   y.n_elem, g.n_elem, covariates.n_rows, covariates.n_cols);
-      }
-      
-      // ===== 强制内存连续性 =====
-      arma::mat cov_contig = covariates.eval();
-      Rcpp::Rcout << "协变量矩阵验证通过 | 行数=" << cov_contig.n_rows 
-                  << " 列数=" << cov_contig.n_cols << std::endl;
-      
-      // ===== 构建数据框架 =====
-      Rcpp::DataFrame df = Rcpp::DataFrame::create(
-        Rcpp::Named("response") = y,
-        Rcpp::Named("genotype") = g,
-        Rcpp::_["stringsAsFactors"] = false
-      );
-      
-      // ===== 动态添加协变量列 =====
-      std::vector<std::string> colnames;
-      std::set<std::string> used_names{"response", "genotype"};
-      
-      for(int i = 0; i < cov_contig.n_cols; ++i) {
-        std::string colname;
-        int suffix = 1;
-        do {
-          colname = "Cov_" + std::to_string(suffix++);
-        } while(used_names.count(colname));
-        
-        used_names.insert(colname);
-        colnames.push_back(colname);
-        
-        // 安全注入协变量列
-        arma::vec col_data = cov_contig.col(i);
-        df[colname] = Rcpp::NumericVector(col_data.begin(), col_data.end());
-      }
-      
-      // ===== 模型拟合 =====
-      Rcpp::Function glm = Rcpp::Environment("package:stats")["glm"];
-      Rcpp::List model = glm(
-        Rcpp::Formula("response ~ ."),
-        Rcpp::_["data"] = df,
-        Rcpp::_["family"] = Rcpp::Function("binomial")(),
-        Rcpp::_["control"] = Rcpp::List::create(
-          Rcpp::Named("maxit") = 100,
-          Rcpp::Named("epsilon") = 1e-8
-        )
-      );
-      
-      // ===== 关键修复：正确构造arma::vec =====
-      Rcpp::NumericVector fitted = model["fitted.values"];
-      arma::vec mu = Rcpp::as<arma::vec>(fitted); // 正确转换方式
-      
-      // ===== 残差计算 =====
-      arma::vec residuals = y - mu;
-      residuals.transform([](double val) { 
-        return std::abs(val) < 1e-12 ? 0.0 : val; 
-      });
-      
-      // ===== 结果验证 =====
-      Rcpp::Rcout << "残差和: " << arma::sum(residuals) 
-                  << " | 理论值应接近0"
-                  << "\n计算耗时: " 
-                  << (double)(clock() - start_time)/CLOCKS_PER_SEC << "秒"
-                  << std::endl;
-      
-      return residuals;
-      
-    } catch(const Rcpp::exception& e) {
-      Rcpp::Rcerr << "\n!!! 异常捕获 !!!\n原因: " << e.what() << std::endl;
-      return arma::vec(y.n_elem, arma::fill::zeros);
-    }
-  }
-  
-  
-  
-  
-  
-
   
   
   
