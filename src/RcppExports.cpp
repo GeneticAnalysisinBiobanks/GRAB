@@ -488,19 +488,6 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
-// calculateGLMResidual_R
-arma::vec calculateGLMResidual_R(const arma::vec& y, const arma::vec& g, const arma::mat& covariates);
-RcppExport SEXP _GRAB_calculateGLMResidual_R(SEXP ySEXP, SEXP gSEXP, SEXP covariatesSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const arma::vec& >::type y(ySEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type g(gSEXP);
-    Rcpp::traits::input_parameter< const arma::mat& >::type covariates(covariatesSEXP);
-    rcpp_result_gen = Rcpp::wrap(calculateGLMResidual_R(y, g, covariates));
-    return rcpp_result_gen;
-END_RCPP
-}
 // squares
 std::vector<double> squares(Rcpp::NumericVector data);
 RcppExport SEXP _GRAB_squares(SEXP dataSEXP) {
@@ -544,7 +531,6 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},
     {"_GRAB_setWtSPAGobjInCPP", (DL_FUNC) &_GRAB_setWtSPAGobjInCPP, 4},
     {"_GRAB_updateQCInCPP", (DL_FUNC) &_GRAB_updateQCInCPP, 4},
-    {"_GRAB_calculateGLMResidual_R", (DL_FUNC) &_GRAB_calculateGLMResidual_R, 3},
     {"_GRAB_squares", (DL_FUNC) &_GRAB_squares, 1},
     {NULL, NULL, 0}
 };

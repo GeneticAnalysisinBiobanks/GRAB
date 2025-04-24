@@ -10,5 +10,5 @@ License: GPL (>= 2)
 Depends: survival, ordinal, Matrix, SKAT, tidyr, dplyr, dbplyr, igraph, Rcpp, R (>= 3.5.0)
 Imports: Rcpp, RcppArmadillo, RcppParallel, BH, survival, data.table, tidyr, dplyr, dbplyr, RSQLite, ordinal, Matrix, optparse, lme4
 LinkingTo: Rcpp, RcppArmadillo, RcppParallel, BH, survival, data.table, tidyr, dplyr, dbplyr, RSQLite, ordinal, Matrix, optparse, lme4
-RoxygenNote: 7.3.1
+RoxygenNote: 7.2.3
 Roxygen: list(markdown = TRUE)
