@@ -546,7 +546,7 @@ public:
       arma::vec Theta = m_intV * m_v;
       arma::vec SD = m_intV.diag();
       arma::vec SE = m_sig * sqrt(SD);
-      arma::vec pval = 2 * arma::normcdf(-abs(Theta / SE));
+      arma::vec pval = 2 * arma::normcdf(-1.0 * abs(Theta / SE));
 
       m_pvalVec.at(0) = pval.at(0); m_pvalVec.at(1) = pval.at(1);
       m_BetaVec.at(0) = Theta.at(0); m_BetaVec.at(1) = Theta.at(1);
@@ -562,7 +562,7 @@ public:
       double zScore_E = Score_E/sqrt(G_var * m_R_GRM_R_E);
 
       zScore_G = sum(t_GVec % m_resid_G)/sqrt(G_var * m_R_GRM_R_G);
-      pval_G = 2 * arma::normcdf(-abs(zScore_G));
+      pval_G = 2 * arma::normcdf(-1.0 * abs(zScore_G));
 
       if(abs(zScore_E) < m_zScoreE_cutoff)
       {
@@ -572,7 +572,7 @@ public:
 
         if(abs(zScore_GxE) <= m_SPA_Cutoff)
         {
-          pval_GxE = 2 * arma::normcdf(-abs(zScore_GxE));
+          pval_GxE = 2 * arma::normcdf(-1.0 * abs(zScore_GxE));
         }else
         {
           int order2 = arma::index_max(m_MAF_interval >= MAF);
@@ -655,7 +655,7 @@ public:
 
         if(abs(zScore_GxE) <= m_SPA_Cutoff)
         {
-          pval_GxE = 2 * arma::normcdf(-abs(zScore_GxE));
+          pval_GxE = 2 * arma::normcdf(-1.0 * abs(zScore_GxE));
         }else
         {
           int order2 = arma::index_max(m_MAF_interval >= MAF);
