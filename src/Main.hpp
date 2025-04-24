@@ -80,5 +80,5 @@ void Unified_getRegionPVec(std::string t_method,
                            double& t_pval1,
                            arma::vec& t_P1Vec, 
                            arma::vec& t_P2Vec);
-  
+
 #endif
