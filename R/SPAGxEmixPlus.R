@@ -82,10 +82,7 @@ setMarker.SPAGxEmixPlus = function(objNull, control)
     objNull$outLierList,
     objNull$sparseGRM,
     objNull$ResidMat,
-    objNull$E,  # 传递环境因子向量 作为最后一个参数
-    objNull$ResidTraitType, # update by Yuzhuo Ma
-    objNull$PhenoMat,
-    objNull$Covariates
+    objNull$E  # 传递环境因子向量 作为最后一个参数
   )
   
   # outLierList[[i]] = list(posValue = posValue - 1,
@@ -97,9 +94,7 @@ setMarker.SPAGxEmixPlus = function(objNull, control)
 # mainMarker.SPAGxEmixPlus(genoType, genoIndex, outputColumns)
 mainMarker.SPAGxEmixPlus = function(genoType, genoIndex, outputColumns, objNull)
 {
-  # OutList = mainMarkerInCPP("SPAGxEmixPlus", genoType, genoIndex);
-  OutList = mainMarkerInCPP("SPAGxEmixPlus", genoType, genoIndex, objNull$ResidTraitType, objNull$PhenoMat, objNull$Covariates); # update by Yuzhuo Ma
-  
+  OutList = mainMarkerInCPP("SPAGxEmixPlus", genoType, genoIndex);
   
   nPheno = objNull$nPheno;
   obj.mainMarker = data.frame(Pheno = paste0("pheno_", 1:nPheno),
@@ -128,73 +123,43 @@ mainMarker.SPAGxEmixPlus = function(genoType, genoIndex, outputColumns, objNull)
 library(data.table)
 library(survival)
 
-
-
-# update for binary phenotype ----------------------------------------------------------------
-
 fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
                                       control = list(OutlierRatio = 1.5),
                                       sparseGRM_SPAmixPlus = NULL,
                                       sparseGRMFile_SPAmixPlus = NULL,
                                       EnviColName,            # update by Yuzhuo Ma : column name of Environmental factor in designMat or PhenoMat
-                                      ResidTraitType = "Quantitative/Binary",
-                                      PhenoMat = NULL,          # 新增：表型列名
-                                      CovarColNames = NULL,         # 新增：协变量列名（向量）
-                                      ...)
+                                      # EnviData,            # update by Yuzhuo Ma : the first column is SubjID, and the second column is environmental factor
+                                      ...) 
 {
-
-  Covariates = designMat[, CovarColNames, drop = FALSE]
   
-  # 参数校验前添加调试输出
-  
-  cat("[DEBUG] designMat columns:", paste(colnames(designMat), collapse = ", "), "\n")
-  
-  # ---- 关键修复1：正确校验ResidTraitType的值 ----
-  allowed_Types = c("Quantitative", "Binary")
-  if (!(ResidTraitType %in% allowed_Types)) {  # 使用%in%代替inherits
-    stop(paste("ResidTraitType必须是以下值:", paste(allowed_Types, collapse = ", ")))
-  }
-  
-  # ---- 关键修复2：二分类校验逻辑 ----
-  if (ResidTraitType == "Binary") {
-
-    PhenoMat = as.matrix(PhenoMat)
-    
-    # 验证是否为二分类
-    if (!all(PhenoMat %in% c(0, 1))) {
-      stop("表型必须是二分类的0/1值")
-    }
-  }
-  
-
   cat("[DEBUG] EnviColName received:", EnviColName, "\n")
   cat("[DEBUG] designMat columns:", paste(colnames(designMat), collapse = ", "), "\n")
-
+  
   # ---- 1. 加载必要包 ----
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("请安装data.table包：install.packages('data.table')")
   }
   data.table::setDTthreads(threads = 0)  # 启用多线程加速
-
+  
   # ---- 2. 读取稀疏GRM文件 ----
   cat(paste0("sparseGRMFile is :", sparseGRMFile_SPAmixPlus, "\n"))
   sparseGRM = data.table::fread(sparseGRMFile_SPAmixPlus)
   data.table::setDT(sparseGRM)
-
+  
   # ---- 3. 校验GRM格式 ----
   if (ncol(sparseGRM) != 3) {
     stop("GRM文件必须是三列格式：ID1, ID2, Value")
   }
   data.table::setnames(sparseGRM, c("ID1", "ID2", "Value"))
-
+  
   cat("Initial sparseGRM:\n")
   print(head(sparseGRM))
-
+  
   # ---- 4. 处理响应变量（生存分析/残差） ----
   if (!inherits(response, c("Surv", "Residual"))) {
     stop("响应变量必须是Surv或Residual类型")
   }
-
+  
   if (inherits(response, "Surv")) {
     # ---- 生存分析逻辑 ----
     formula = response ~ designMat
@@ -203,28 +168,28 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
     yVec = y[, ncol(y)]
     mresid = residuals(obj.coxph)
     Cova = obj.coxph$x
-
+    
     cat(paste0("Class of is designMat is :", class(designMat), "\n"))
     head(designMat)
-
+    
     # mresid.by.E = mresid * designMat$EnviColName # update by Yuzhuo Ma
     mresid.by.E = mresid * designMat[, EnviColName]  # 关键修正：矩阵列名索引
     # 在函数内添加检查
     if (!EnviColName %in% colnames(designMat)) {
       stop(paste("环境因子列", EnviColName, "不存在于 designMat 中"))
     }
-
+    
     if (length(mresid) != length(subjData)) {
       stop("CoxPH残差长度必须与subjData一致")
     }
-
+    
     mresid = matrix(mresid, ncol = 1)
     nPheno = 1
   } else if (inherits(response, "Residual")) {
-
+    
     cat(paste0("Class of is designMat is :", class(designMat), "\n"))
     head(designMat)
-
+    
     # ---- 残差对象逻辑 ----
     if (!is.matrix(response)) {
       mresid = as.matrix(response)
@@ -237,18 +202,18 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
       if (!EnviColName %in% colnames(designMat)) {
         stop(paste("环境因子列", EnviColName, "不存在于 designMat 中"))
       }
-
+      
     }
-
+    
     if (nrow(mresid) != length(subjData)) {
       stop(paste("残差行数（", nrow(mresid), "）与样本数（", length(subjData), "）不匹配"))
     }
-
+    
     yVec = mresid
     Cova = designMat
     nPheno = ncol(mresid)
   }
-
+  
   # ---- 5. 处理主成分（PC）列（保持原样） ----
   PC_columns = control$PC_columns
   if (any(!PC_columns %in% colnames(designMat))) {
@@ -256,7 +221,7 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
   }
   pos_col = match(PC_columns, colnames(designMat))
   PCs = Cova[, pos_col, drop = FALSE]
-
+  
   # ---- 6. 检测异常值（保持原样） ----
   outLierList = list()
   for (i in 1:nPheno) {
@@ -267,7 +232,7 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
     r.outlier = ifelse(is.null(control$OutlierRatio), 1.5, control$OutlierRatio)
     cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
     posOutlier = which(mresid.temp < cutoff[1] | mresid.temp > cutoff[2])
-
+    
     # 动态调整阈值
     while (length(posOutlier) == 0) {
       r.outlier = r.outlier * 0.8
@@ -275,10 +240,10 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
       posOutlier = which(mresid.temp < cutoff[1] | mresid.temp > cutoff[2])
       cat("调整后异常值阈值:", r.outlier, "| 发现异常值:", length(posOutlier), "\n")
     }
-
+    
     posValue = which(!is.na(mresid.temp))
     posNonOutlier = setdiff(posValue, posOutlier)
-
+    
     outLierList[[i]] = list(
       posValue = posValue - 1,
       posOutlier = posOutlier - 1,
@@ -290,8 +255,8 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
       resid2NonOutlier = (mresid.temp[posNonOutlier])^2
     )
   }
-
-
+  
+  
   # ---- 6. 检测异常值（Resid x Envi） ---- update by Yuzhuo Ma
   outLierList_ResidByE = list()
   for (i in 1:nPheno) {
@@ -302,7 +267,7 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
     r.outlier = ifelse(is.null(control$OutlierRatio), 1.5, control$OutlierRatio)
     cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
     posOutlier = which(mresid.by.E.temp < cutoff[1] | mresid.by.E.temp > cutoff[2])
-
+    
     # 动态调整阈值
     while (length(posOutlier) == 0) {
       r.outlier = r.outlier * 0.8
@@ -310,10 +275,10 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
       posOutlier = which(mresid.by.E.temp < cutoff[1] | mresid.by.E.temp > cutoff[2])
       cat("调整后异常值阈值:", r.outlier, "| 发现异常值:", length(posOutlier), "\n")
     }
-
+    
     posValue = which(!is.na(mresid.by.E.temp))
     posNonOutlier = setdiff(posValue, posOutlier)
-
+    
     outLierList_ResidByE[[i]] = list(
       posValue = posValue - 1,
       posOutlier = posOutlier - 1,
@@ -325,33 +290,33 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
       resid.by.Envi2NonOutlier = (mresid.by.E.temp[posNonOutlier])^2
     )
   }
-
-
+  
+  
   # ---- 7. 创建ID映射表（保持原样） ----
   data.table::set(sparseGRM, j = "ID1", value = as.character(sparseGRM$ID1))
   data.table::set(sparseGRM, j = "ID2", value = as.character(sparseGRM$ID2))
   subjData = as.character(subjData)
-
+  
   all_ids = unique(c(subjData, sparseGRM$ID1, sparseGRM$ID2))
-
+  
   id_map = data.table::data.table(
     OriginalID = all_ids,
     Index = as.integer(seq_along(all_ids) - 1)  # 强制为整型
   )
   data.table::setkey(id_map, "OriginalID")
-
+  
   # ---- 8. 构建ResidMat（修复data.table作用域问题） ----
   ResidMat = data.table::data.table(
     SubjID = subjData,
     SubjID_Index = as.integer(id_map$Index[match(subjData, id_map$OriginalID)])
   )
-
+  
   # 动态添加Resid_*列（使用data.table::set避免作用域问题）
   resid_cols = paste0("Resid_", 1:nPheno)
   for (i in 1:nPheno) {
     data.table::set(ResidMat, j = resid_cols[i], value = as.numeric(mresid[, i]))
   }
-
+  
   # 验证ResidMat数据类型
   if (!all(sapply(ResidMat[, .SD, .SDcols = patterns("^Resid_")], is.numeric))) {
     stop("Resid_*列必须为双精度（numeric）")
@@ -359,21 +324,21 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
   if (!is.integer(ResidMat$SubjID_Index)) {
     stop("SubjID_Index必须为整型（integer）")
   }
-
-
-
+  
+  
+  
   # ---- 8. 构建ResidByEnviMat ---- update by Yuzhuo Ma
   ResidByEnviMat = data.table::data.table(
     SubjID = subjData,
     SubjID_Index = as.integer(id_map$Index[match(subjData, id_map$OriginalID)])
   )
-
+  
   # 动态添加ResidByEnvi_*列（使用data.table::set避免作用域问题）
   ResidByEnvi_cols = paste0("ResidByEnvi_", 1:nPheno)
   for (i in 1:nPheno) {
     data.table::set(ResidByEnviMat, j = ResidByEnvi_cols[i], value = as.numeric(mresid.by.E[, i]))
   }
-
+  
   # 验证ResidByEnviMat数据类型
   if (!all(sapply(ResidByEnviMat[, .SD, .SDcols = patterns("^ResidByEnvi_")], is.numeric))) {
     stop("ResidByEnvi_*列必须为双精度（numeric）")
@@ -381,13 +346,13 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
   if (!is.integer(ResidByEnviMat$SubjID_Index)) {
     stop("SubjID_Index必须为整型（integer）")
   }
-
-
-
-
-
-
-
+  
+  
+  
+  
+  
+  
+  
   # ---- 9. 处理稀疏GRM（保持原样） ----
   sparseGRM_new = data.table::data.table(
     ID1 = sparseGRM$ID1,
@@ -396,7 +361,7 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
     ID2_Index = as.integer(id_map$Index[match(sparseGRM$ID2, id_map$OriginalID)]),
     Value = as.numeric(sparseGRM$Value)
   )
-
+  
   # 移除无效行并验证
   sparseGRM_new = na.omit(sparseGRM_new)
   if (nrow(sparseGRM_new) == 0) {
@@ -405,13 +370,13 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
   if (!is.integer(sparseGRM_new$ID1_Index) || !is.integer(sparseGRM_new$ID2_Index)) {
     stop("GRM索引列必须为整型")
   }
-
+  
   # ---- 10. 构建最终对象 ----
   objNull = list(
     resid = mresid,
     # resid.by.E = as.numeric(mresid.by.E),                             # update by Yuzhuo Ma
     resid.by.E = as.matrix(mresid.by.E),                             # update by Yuzhuo Ma
-
+    
     ResidMat = as.data.frame(ResidMat),
     E = as.numeric(designMat[, EnviColName]),
     ResidByEnviMat = as.data.frame(ResidByEnviMat),       # update by Yuzhuo Ma
@@ -424,44 +389,10 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
     nPheno = nPheno,
     outLierList = outLierList,
     outLierList_ResidByE = outLierList_ResidByE,          # update by Yuzhuo Ma
-    control = control,
-    ResidTraitType = ResidTraitType,                                        # update by Yuzhuo Ma
-    PhenoMat = if (is.null(PhenoMat)) matrix(nrow = 0, ncol = 0) else as.matrix(PhenoMat),  # 默认空矩阵                     # update by Yuzhuo Ma
-    Covariates = Covariates # 默认空矩阵                     # update by Yuzhuo Ma
+    control = control
   )
-  
-  
-  # update for binary phenotype 
-  
-  if (ResidTraitType == "Binary") {
-    objNull = list(
-      resid = mresid,
-      # resid.by.E = as.numeric(mresid.by.E),                             # update by Yuzhuo Ma
-      resid.by.E = as.matrix(mresid.by.E),                             # update by Yuzhuo Ma
-      
-      ResidMat = as.data.frame(ResidMat),
-      E = as.numeric(designMat[, EnviColName]),
-      ResidByEnviMat = as.data.frame(ResidByEnviMat),       # update by Yuzhuo Ma
-      sparseGRM = as.data.frame(sparseGRM_new),
-      id_map = id_map,
-      subjData = subjData,
-      N = nrow(Cova),
-      yVec = yVec,
-      PCs = PCs,
-      nPheno = nPheno,
-      outLierList = outLierList,
-      outLierList_ResidByE = outLierList_ResidByE,          # update by Yuzhuo Ma
-      control = control,
-      ResidTraitType = ResidTraitType,                                        # update by Yuzhuo Ma
-      # 新增输出字段
-      PhenoMat = PhenoMat,     # 表型矩阵
-      Covariates = Covariates    # 协变量矩阵
-    )
-  }  
-  
-  # -----------------------------------------------
   class(objNull) = "SPAGxEmixPlus_NULL_Model"
-
+  
   # ---- 11. 调试输出 ----
   cat("\n===== 最终对象结构 =====\n")
   cat("ResidMat列类型:\n")
@@ -471,21 +402,8 @@ fitNullModel.SPAGxEmixPlus = function(response, designMat, subjData,
   cat("\nsparseGRM列类型:\n")
   print(sapply(sparseGRM_new, class))
   
-  cat("\nResidTraitType:\n")
-  print(ResidTraitType)
-
   return(objNull)
 }
-
-
-
-
-
-
-
-
-
-
 
 
 #########################################################################################################
