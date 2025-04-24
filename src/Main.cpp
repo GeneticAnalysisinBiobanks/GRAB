@@ -195,8 +195,37 @@ void updateGroupInfo(arma::vec t_GVec,
 // [[Rcpp::export]]
 Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SAIGE", "SPAmix", "SPAmixPlusV4", "SPAGxEmixPlus, "SPAGRM", "SPAyuzhuoma"
                            std::string t_genoType,     // "PLINK", "BGEN"
-                           std::vector<uint64_t> t_genoIndex)  
+                           std::vector<uint64_t> t_genoIndex,
+                           std::string t_ResidTraitType = "",     // 传递外部参数
+                           Rcpp::Nullable<Rcpp::NumericMatrix> t_PhenoMat = R_NilValue,
+                           Rcpp::Nullable<Rcpp::NumericMatrix> t_Covariates = R_NilValue)  // 传递外部参数
 {
+  
+
+  
+  // 转换时处理空矩阵和非连续内存矩阵
+  arma::mat PhenoMat;
+  if (t_PhenoMat.isNotNull()) {
+    Rcpp::NumericMatrix tmpPheno = Rcpp::as<Rcpp::NumericMatrix>(t_PhenoMat);
+    PhenoMat = arma::mat(tmpPheno.begin(), tmpPheno.nrow(), tmpPheno.ncol(), false);
+  } else {
+    PhenoMat = arma::mat(0, 0);
+  }
+  
+  arma::mat Covariates;
+  if (t_Covariates.isNotNull()) {
+    Rcpp::NumericMatrix tmpCovar = Rcpp::as<Rcpp::NumericMatrix>(t_Covariates);
+    Covariates = arma::mat(tmpCovar.begin(), tmpCovar.nrow(), tmpCovar.ncol(), false);
+  } else {
+    Covariates = arma::mat(0, 0);
+  }
+  
+  // 在转换后添加调试输出
+  Rcpp::Rcout << "PhenoMat dimensions: " << PhenoMat.n_rows << " x " << PhenoMat.n_cols << std::endl;
+  Rcpp::Rcout << "Covariates dimensions: " << Covariates.n_rows << " x " << Covariates.n_cols << std::endl;
+  
+  ////////////////////////////////////////////////////////////
+  
   int q = t_genoIndex.size();  // number of markers
 
   // set up output
@@ -222,6 +251,10 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   if(t_method == "SAGELD")
     Npheno = 2;
 
+  
+  Rcpp::Rcout << "Npheno: " << Npheno << std::endl;
+  
+  
   std::vector<double> pvalVec(q*Npheno, arma::datum::nan);
   std::vector<double> zScoreVec(q*Npheno, arma::datum::nan);
   std::vector<double> BetaVec(q*Npheno, arma::datum::nan);         // beta value for ALT allele
@@ -247,6 +280,10 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
   // {
   for(int i = 0; i < q; i++)
   {
+    
+    std::cout << "Completed " << i << "/" << q << " markers in the chunk." << std::endl;
+    
+    
     if(i % 1000 == 0)
     std::cout << "Completed " << i << "/" << q << " markers in the chunk." << std::endl;
     
@@ -264,6 +301,10 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
                                           indexForMissing,
                                           false, // bool t_isOnlyOutputNonZero,
                                           indexForNonZero);
+    
+    Rcpp::Rcout << "Head GVec: " << GVec.head(5).t() << std::endl;
+    
+    
     int n = GVec.size();
     
     // std::cout << "marker:\t" << marker << std::endl;
@@ -320,7 +361,18 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
     double hwepvalCutoff = 0.1;  // to be changed to a option, instead of a default value, later
     double hwepval = 0;
     
-    if(t_method != "WtSPAG"){
+    // update 
+    if(t_method == "SPAGxEmixPlus"){
+      pval = ptr_gSPAGxEmixPlusobj->getMarkerPval(GVec, altFreq, t_ResidTraitType, PhenoMat, Covariates, 0.001);
+    }
+    
+    // if(t_method != "WtSPAG"){
+    //   Unified_getMarkerPval(t_method, GVec,
+    //                         false, // bool t_isOnlyOutputNonZero,
+    //                         indexForNonZero, Beta, seBeta, pval, zScore, altFreq, hwepval, hwepvalCutoff);
+    // }
+    
+    if((t_method != "WtSPAG") && (t_method != "SPAGxEmixPlus")){
       Unified_getMarkerPval(t_method, GVec,
                             false, // bool t_isOnlyOutputNonZero,
                             indexForNonZero, Beta, seBeta, pval, zScore, altFreq, hwepval, hwepvalCutoff);
@@ -330,6 +382,7 @@ Rcpp::List mainMarkerInCPP(std::string t_method,       // "POLMM", "SPACox", "SA
       pval = ptr_gWtSPAGobj->getMarkerPval(GVec, altFreq, zScore, flip, i);
     }
     
+
     
     // std::cout << "test1.5" << std::endl;
     
@@ -1117,6 +1170,9 @@ arma::vec Unified_getOneMarker(std::string t_genoType,   // "PLINK", "BGEN"
   return GVec;
 }
 
+
+
+
 // a unified function to get marker-level p-value
 void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE", "SPAmix", "SPAmixPlusV4", "SPAGxEmixPlus", and "SPAGRM", and "SPAyuzhuoma"
                            arma::vec t_GVec,
@@ -1156,11 +1212,12 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
     t_pval = ptr_gSPAmixPlusV4obj->getMarkerPval(t_GVec, t_altFreq);
   }
   
-  if(t_method == "SPAGxEmixPlus"){
-    if(t_isOnlyOutputNonZero == true)
-      Rcpp::stop("When using SPAGxEmixPlus method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
-    t_pval = ptr_gSPAGxEmixPlusobj->getMarkerPval(t_GVec, t_altFreq);
-  }
+  // if(t_method == "SPAGxEmixPlus"){
+  //   if(t_isOnlyOutputNonZero == true)
+  //     Rcpp::stop("When using SPAGxEmixPlus method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+  //   // t_pval = ptr_gSPAGxEmixPlusobj->getMarkerPval(t_GVec, t_altFreq);
+  //   t_pval = ptr_gSPAGxEmixPlusobj->getMarkerPval(t_GVec, t_altFreq, t_ResidTraitType, t_PhenoMat, t_Covariates, 0.001);
+  // }
   
   
 }
@@ -1196,6 +1253,134 @@ void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE"
                           t_indexForNonZero, t_Beta, t_seBeta, t_pval, t_zScore, t_altFreq);
   }
 }
+
+
+
+// // a unified function to get marker-level p-value
+// void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE", "SPAmix", "SPAmixPlusV4", "SPAGxEmixPlus", and "SPAGRM", and "SPAyuzhuoma"
+//                            arma::vec t_GVec,
+//                            bool t_isOnlyOutputNonZero,
+//                            std::vector<uint32_t> t_indexForNonZero,
+//                            double& t_Beta,
+//                            double& t_seBeta,
+//                            double& t_pval,
+//                            double& t_zScore,
+//                            double t_altFreq,
+//                            std::string t_ResidTraitType,   // update by Yuzhuo Ma
+//                            arma::mat t_PhenoMat,           // update by Yuzhuo Ma
+//                            arma::mat t_Covariates)
+// {
+//   // (BWJ) updated on 2023-04-20: I forgot what "t_isOnlyOutputNonZero" means, please let me know if anyone knows it,
+//   // (BWJ) it seems the "t_isOnlyOutputNonZero" can further save storage by removing the genotype == 0,
+//   // (BWJ) which is especially useful for region-based testing.
+//   if(t_method == "POLMM"){
+//     if(t_isOnlyOutputNonZero == true)
+//       Rcpp::stop("When using POLMM method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+// 
+//     ptr_gPOLMMobj->getMarkerPval(t_GVec, t_Beta, t_seBeta, t_pval, t_altFreq, t_zScore);
+//   }
+// 
+//   if(t_method == "SPACox"){
+//     if(t_isOnlyOutputNonZero == true)
+//       Rcpp::stop("When using SPACox method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+//     t_pval = ptr_gSPACoxobj->getMarkerPval(t_GVec, t_altFreq, t_zScore);
+//   }
+// 
+//   if(t_method == "SPAmix"){
+//     if(t_isOnlyOutputNonZero == true)
+//       Rcpp::stop("When using SPAmix method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+//     t_pval = ptr_gSPAmixobj->getMarkerPval(t_GVec, t_altFreq);
+//   }
+// 
+//   if(t_method == "SPAmixPlusV4"){
+//     if(t_isOnlyOutputNonZero == true)
+//       Rcpp::stop("When using SPAmixPlusV4 method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+//     t_pval = ptr_gSPAmixPlusV4obj->getMarkerPval(t_GVec, t_altFreq);
+//   }
+// 
+//   if(t_method == "SPAGxEmixPlus"){
+//     if(t_isOnlyOutputNonZero == true)
+//       Rcpp::stop("When using SPAGxEmixPlus method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+//     t_pval = ptr_gSPAGxEmixPlusobj->getMarkerPval(t_GVec, t_altFreq, t_ResidTraitType, t_PhenoMat, t_Covariates, 0.001);
+//   }
+// 
+// 
+// }
+// 
+// // a unified function to get marker-level p-value
+// void Unified_getMarkerPval(std::string t_method,   // "POLMM", "SPACox", "SAIGE", "SPAmix", "SPAmixPlusV4", "SPAGxEmixPlus", and "SPAGRM", and "SPAyuzhuoma"
+//                            arma::vec t_GVec,
+//                            bool t_isOnlyOutputNonZero,
+//                            std::vector<uint32_t> t_indexForNonZero,
+//                            double& t_Beta, 
+//                            double& t_seBeta, 
+//                            double& t_pval,
+//                            double& t_zScore,
+//                            double t_altFreq,
+//                            double& t_hwepval,
+//                            double t_hwepvalCutoff)
+// {
+//   
+//   
+//   
+//   // // (BWJ) updated on 2023-04-20: I forgot what "t_isOnlyOutputNonZero" means, please let me know if anyone knows it,
+//   // // (BWJ) it seems the "t_isOnlyOutputNonZero" can further save storage by removing the genotype == 0,
+//   // // (BWJ) which is especially useful for region-based testing.
+//   // if(t_method == "POLMM"){
+//   //   if(t_isOnlyOutputNonZero == true)
+//   //     Rcpp::stop("When using POLMM method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+//   //   
+//   //   ptr_gPOLMMobj->getMarkerPval(t_GVec, t_Beta, t_seBeta, t_pval, t_altFreq, t_zScore);
+//   // }
+//   // 
+//   // if(t_method == "SPACox"){
+//   //   if(t_isOnlyOutputNonZero == true)
+//   //     Rcpp::stop("When using SPACox method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+//   //   t_pval = ptr_gSPACoxobj->getMarkerPval(t_GVec, t_altFreq, t_zScore);
+//   // }
+//   // 
+//   // if(t_method == "SPAmix"){
+//   //   if(t_isOnlyOutputNonZero == true)
+//   //     Rcpp::stop("When using SPAmix method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+//   //   t_pval = ptr_gSPAmixobj->getMarkerPval(t_GVec, t_altFreq);
+//   // }
+//   // 
+//   // if(t_method == "SPAmixPlusV4"){
+//   //   if(t_isOnlyOutputNonZero == true)
+//   //     Rcpp::stop("When using SPAmixPlusV4 method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+//   //   t_pval = ptr_gSPAmixPlusV4obj->getMarkerPval(t_GVec, t_altFreq);
+//   // }
+//   // 
+//   // if(t_method == "SPAGxEmixPlus"){
+//   //   if(t_isOnlyOutputNonZero == true)
+//   //     Rcpp::stop("When using SPAGxEmixPlus method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+//   //   t_pval = ptr_gSPAGxEmixPlusobj->getMarkerPval(t_GVec, t_altFreq, t_ResidTraitType, t_PhenoMat, t_Covariates, 0.001);
+//   // }
+//   // 
+//   // 
+//   // 
+//   
+//   
+//   if(t_method == "SPAGRM"){
+//     if(t_isOnlyOutputNonZero == true)
+//       Rcpp::stop("When using SPAGRM method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+//     t_pval = ptr_gSPAGRMobj->getMarkerPval(t_GVec, t_altFreq, t_zScore, t_hwepval, t_hwepvalCutoff);
+//   }else if(t_method == "SPAyuzhuoma"){
+//     if(t_isOnlyOutputNonZero == true)
+//       Rcpp::stop("When using SPAyuzhuoma method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+//     t_pval = ptr_gSPAyuzhuomaobj->getMarkerPval(t_GVec, t_altFreq, t_zScore, t_hwepval, t_hwepvalCutoff);
+//   }else if(t_method == "SAGELD"){
+//     if(t_isOnlyOutputNonZero == true)
+//       Rcpp::stop("When using SAGELD method to calculate marker-level p-values, 't_isOnlyOutputNonZero' shold be false.");
+//     t_pval = ptr_gSAGELDobj->getMarkerPval(t_GVec, t_altFreq, t_hwepval, t_hwepvalCutoff);
+//   }else{
+//     Unified_getMarkerPval(t_method, t_GVec,
+//                           false, // bool t_isOnlyOutputNonZero,
+//                           t_indexForNonZero, t_Beta, t_seBeta, t_pval, t_zScore, t_altFreq,
+//                           t_hwepval,         // 添加第10个参数
+//                           t_hwepvalCutoff); // update
+//   }
+// }
 
 // a unified function to get marker-level information for region-level analysis
 
@@ -1585,7 +1770,10 @@ void setSPAGxEmixPlusobjInCPP(arma::mat t_resid,
                               Rcpp::List t_outlierList,
                               Rcpp::DataFrame t_sparseGRM,    // 新增参数：稀疏GRM数据
                               Rcpp::DataFrame t_ResidMat,     // 新增参数：残差矩阵数据
-                              arma::vec t_E                   // 新增参数
+                              arma::vec t_E,                   
+                              std::string t_ResidTraitType,
+                              arma::mat t_PhenoMat,
+                              arma::mat t_Covariates
 )
 {
   if(ptr_gSPAGxEmixPlusobj)
@@ -1601,7 +1789,11 @@ void setSPAGxEmixPlusobjInCPP(arma::mat t_resid,
                                                                 t_outlierList,
                                                                 t_sparseGRM,    // 新增参数：稀疏GRM数据
                                                                 t_ResidMat,     // 新增参数：残差矩阵数据
-                                                                t_E
+                                                                t_E,
+                                                                t_ResidTraitType,
+                                                                t_PhenoMat,
+                                                                t_Covariates
+                                                                
   );
 }
 

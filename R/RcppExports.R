@@ -21,8 +21,8 @@ setRegion_GlobalVarsInCPP <- function(t_impute_method, t_missing_cutoff, t_max_m
     invisible(.Call(`_GRAB_setRegion_GlobalVarsInCPP`, t_impute_method, t_missing_cutoff, t_max_maf_region, t_min_mac_region, t_max_markers_region, t_omp_num_threads, t_region_weight_beta, t_region_max_maf_vec))
 }
 
-mainMarkerInCPP <- function(t_method, t_genoType, t_genoIndex) {
-    .Call(`_GRAB_mainMarkerInCPP`, t_method, t_genoType, t_genoIndex)
+mainMarkerInCPP <- function(t_method, t_genoType, t_genoIndex, t_ResidTraitType = "", t_PhenoMat = NULL, t_Covariates = NULL) {
+    .Call(`_GRAB_mainMarkerInCPP`, t_method, t_genoType, t_genoIndex, t_ResidTraitType, t_PhenoMat, t_Covariates)
 }
 
 mainRegionURVInCPP <- function(t_method, t_genoType, t_genoIndex, t_n) {
@@ -105,8 +105,8 @@ setSPAmixPlusV4objInCPP <- function(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlier
     invisible(.Call(`_GRAB_setSPAmixPlusV4objInCPP`, t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList, t_sparseGRM, t_ResidMat))
 }
 
-setSPAGxEmixPlusobjInCPP <- function(t_resid, t_resid_by_E, t_PCs, t_N, t_SPA_Cutoff, t_outlierList, t_sparseGRM, t_ResidMat, t_E) {
-    invisible(.Call(`_GRAB_setSPAGxEmixPlusobjInCPP`, t_resid, t_resid_by_E, t_PCs, t_N, t_SPA_Cutoff, t_outlierList, t_sparseGRM, t_ResidMat, t_E))
+setSPAGxEmixPlusobjInCPP <- function(t_resid, t_resid_by_E, t_PCs, t_N, t_SPA_Cutoff, t_outlierList, t_sparseGRM, t_ResidMat, t_E, t_ResidTraitType, t_PhenoMat, t_Covariates) {
+    invisible(.Call(`_GRAB_setSPAGxEmixPlusobjInCPP`, t_resid, t_resid_by_E, t_PCs, t_N, t_SPA_Cutoff, t_outlierList, t_sparseGRM, t_ResidMat, t_E, t_ResidTraitType, t_PhenoMat, t_Covariates))
 }
 
 setSPACoxobjInCPP <- function(t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_covaAdj_Cutoff, t_SPA_Cutoff) {
@@ -119,6 +119,10 @@ setWtSPAGobjInCPP <- function(t_mresid, t_N, t_SPA_Cutoff, t_outlierList) {
 
 updateQCInCPP <- function(t_AF_ref, t_AN_ref, t_pvalue_bat, t_pvalue_bat_cutoff) {
     invisible(.Call(`_GRAB_updateQCInCPP`, t_AF_ref, t_AN_ref, t_pvalue_bat, t_pvalue_bat_cutoff))
+}
+
+calculateGLMResidual_R <- function(y, g, covariates) {
+    .Call(`_GRAB_calculateGLMResidual_R`, y, g, covariates)
 }
 
 squares <- function(data) {

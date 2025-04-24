@@ -140,6 +140,10 @@ GRAB.NullModel = function(formula,
                           sparseGRM_SPAmixPlus = NULL,     # update by Yuzhuo Ma on 2025-03-28
                           sparseGRMFile_SPAmixPlus = NULL, # update by Yuzhuo Ma on 2025-03-28
                           EnviColName = NULL,              # update by Yuzhuo Ma on 2025-04-17
+                          # 新增以下参数
+                          ResidTraitType = NULL,
+                          PhenoMat = NULL,
+                          CovarColNames = NULL,
                           ...)
 {
   if(missing(subjData))
@@ -279,15 +283,35 @@ GRAB.NullModel = function(formula,
     control = checkControl.NullModel(control, method, traitType)
     # textToParse = paste0("objNull = fitNullModel.", method, "(response, designMat, subjData, control, sparseGRM_SPAmixPlus, sparseGRMFile_SPAmixPlus, EnviColName)")
     # 显式传递 EnviColName 到 fitNullModel.SPAGxEmixPlus
+  #   textToParse = paste0("objNull = fitNullModel.SPAGxEmixPlus(
+  #   response = response,
+  #   designMat = designMat,
+  #   subjData = subjData,
+  #   control = control,
+  #   sparseGRM_SPAmixPlus = sparseGRM_SPAmixPlus,
+  #   sparseGRMFile_SPAmixPlus = sparseGRMFile_SPAmixPlus,
+  #   EnviColName = '", EnviColName, "'  
+  # )")
+    
+    # 构建动态调用字符串
+    CovarColNames_Formatted = ifelse(is.null(CovarColNames), 
+                                     "NULL", 
+                                     paste0("c('", paste(CovarColNames, collapse = "','"), "')"))
+    
+    # 修改后的代码（完整参数传递）
     textToParse = paste0("objNull = fitNullModel.SPAGxEmixPlus(
-    response = response,
-    designMat = designMat,
-    subjData = subjData,
-    control = control,
-    sparseGRM_SPAmixPlus = sparseGRM_SPAmixPlus,
-    sparseGRMFile_SPAmixPlus = sparseGRMFile_SPAmixPlus,
-    EnviColName = '", EnviColName, "'  
-  )")
+        response = response,
+        designMat = designMat,
+        subjData = subjData,
+        control = control,
+        sparseGRM_SPAmixPlus = sparseGRM_SPAmixPlus,
+        sparseGRMFile_SPAmixPlus = sparseGRMFile_SPAmixPlus,
+        EnviColName = '", EnviColName, "',
+        ResidTraitType = '", ResidTraitType, "',
+        PhenoMat = PhenoMat,
+        CovarColNames = ", CovarColNames_Formatted, "
+      )")
+    
   }else{
     # Check 'control.R'
     control = checkControl.NullModel(control, method, traitType)
