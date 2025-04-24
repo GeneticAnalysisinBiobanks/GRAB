@@ -114,7 +114,7 @@ public:
   
   
   
-  // [[Rcpp::export]]
+  // calculateGLMResidual_R
   arma::vec calculateGLMResidual_R(const arma::vec& y,
                                    const arma::vec& g,
                                    const arma::mat& covariates)

@@ -121,10 +121,6 @@ updateQCInCPP <- function(t_AF_ref, t_AN_ref, t_pvalue_bat, t_pvalue_bat_cutoff)
     invisible(.Call(`_GRAB_updateQCInCPP`, t_AF_ref, t_AN_ref, t_pvalue_bat, t_pvalue_bat_cutoff))
 }
 
-calculateGLMResidual_R <- function(y, g, covariates) {
-    .Call(`_GRAB_calculateGLMResidual_R`, y, g, covariates)
-}
-
 squares <- function(data) {
     .Call(`_GRAB_squares`, data)
 }
