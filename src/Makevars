@@ -1,0 +1,35 @@
+
+## With R 3.1.0 or later, you can uncomment the following line to tell R to 
+## enable compilation with C++11 (where available)
+##
+## Also, OpenMP support in Armadillo prefers C++11 support. However, for wider
+## availability of the package we do not yet enforce this here.  It is however
+## recommended for client packages to set it.
+##
+## And with R 3.4.0, and RcppArmadillo 0.7.960.*, we turn C++11 on as OpenMP
+## support within Armadillo prefers / requires it
+
+## -Wextra
+PKG_CPPFLAGS = -D SQLITE_ENABLE_COLUMN_METADATA -O3 -fpic -Wall -pedantic -DARMA_64BIT_WORD=1 -I. -DNDEBUG
+PKG_LIBS = -lz
+
+#CXX_STD = CXX11
+CXX_STD = CXX14
+
+PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS) 
+#PKG_LIBS = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) -L../bgen/3rd_party/boost_1_55_0/boost/iostreams
+#PKG_LIBS += $(ZLIB_LIB) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) $(SHLIB_OPENMP_CXXFLAGS) -lsuperlu -lzstd 
+PKG_LIBS += $(ZLIB_LIB) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) $(SHLIB_OPENMP_CXXFLAGS) -lzstd # 2021-11-09 remove -lsuperlu
+
+#-L../thirdParty/cget/lib/ -L../thirdParty/cget/lib64/ -lsuperlu -lzstd
+
+PKG_LIBS += $(shell ${R_HOME}/bin/Rscript -e "RcppParallel::RcppParallelLibs()")
+
+## OBJECTS = $(wildcard ./*.o)
+## OBJECTS = Main.o UTIL.o SPACox.o BGEN.o PLINK.o POLMM.o 
+#$(wildcard ../thirdParty/cget/lib64/*.a)
+## OBJECTS = Main.o UTIL.o PLINK.o POLMM.o 
+
+## all: $(SHLIB)
+## $(SHLIB): ${OBJECTS} Makevars
+
