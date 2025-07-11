@@ -39,13 +39,15 @@ An R list including a genotype matrix and an information matrix.
 Currently, we support two formats of genotype input including PLINK and BGEN. Other formats such as VCF will be added later.
 Users do not need to specify the genotype format, \code{GRAB} package will check the extension of the file name for that purpose.
 If \code{GenoFileIndex} is not specified, \code{GRAB} package assumes the prefix is the same as \code{GenoFile}.
-\describe{
-PLINK format (Check \href{https://www.cog-genomics.org/plink/2.0/}{link} for more details about this format)
+\subsection{PLINK format}{
+Check \href{https://www.cog-genomics.org/plink/2.0/}{link} for more details about this format
 \itemize{
 \item \code{GenoFile}: "prefix.bed". The full file name (including the extension ".bed") of the PLINK binary \code{bed} file.
 \item \code{GenoFileIndex}: c("prefix.bim", "prefix.fam"). If not specified, \code{GRAB} package assumes that \code{bim} and \code{fam} files have the same prefix as the \code{bed} file.
 }
-BGEN format (Check \href{https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html}{link} for more details about this format. Currently, only version 1.2 with 8 bits suppression is supported)
+}
+\subsection{BGEN format}{
+Check \href{https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html}{link} for more details about this format. Currently, only version 1.2 with 8 bits suppression is supported
 \itemize{
 \item \code{GenoFile}: "prefix.bgen". The full file name (including the extension ".bgen") of the BGEN binary \code{bgen} file.
 \item \code{GenoFileIndex}: "prefix.bgen.bgi" or c("prefix.bgen.bgi", "prefix.sample"). If not specified, \code{GRAB} package assumes that \code{bgi} and \code{sample} files have the same prefix as the \code{bgen} file.
@@ -53,7 +55,9 @@ If only one element is given for \code{GenoFileIndex}, then it should be a \code
 \item If the \code{bgen} file does not include sample identifiers, then \code{sample} file is required, whose detailed description can ben seen in \href{https://www.cog-genomics.org/plink/2.0/formats#sample}{link}.
 If you are not sure if sample identifiers are in BGEN file, please refer to \code{\link{checkIfSampleIDsExist}}.
 }
-VCF format will be supported later. \code{GenoFile}: "prefix.vcf"; \code{GenoFileIndex}: "prefix.vcf.tbi"
+}
+\subsection{VCF format}{
+will be supported later. \code{GenoFile}: "prefix.vcf"; \code{GenoFileIndex}: "prefix.vcf.tbi"
 }
 }
 
@@ -62,7 +66,6 @@ VCF format will be supported later. \code{GenoFile}: "prefix.vcf"; \code{GenoFil
 Argument \code{control} is used to include and exclude markers for function \code{GRAB.ReadGeno}.
 The function supports two include files of (\code{IDsToIncludeFile}, \code{RangesToIncludeFile}) and two exclude files of (\code{IDsToExcludeFile}, \code{RangesToExcludeFile}),
 but does not support both include and exclude files at the same time.
-\describe{
 \itemize{
 \item \code{IDsToIncludeFile}: a file of marker IDs to include, one column (no header). Check \code{system.file("extdata", "IDsToInclude.txt", package = "GRAB")} for an example.
 \item \code{IDsToExcludeFile}: a file of marker IDs to exclude, one column (no header).
@@ -74,17 +77,17 @@ but does not support both include and exclude files at the same time.
 }
 }
 }
-}
 \examples{
 
 ## Raw genotype data 
-RawFile = system.file("extdata", "simuRAW.raw", package = "GRAB")
+RawFile = system.file("extdata", "simuRAW.raw.gz", package = "GRAB")
 GenoMat = data.table::fread(RawFile)
 GenoMat[1:10,1:10]
 
 ## PLINK files
 PLINKFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
-GenoList = GRAB.ReadGeno(PLINKFile, control = list(AllMarkers = TRUE)) # If include/exclude files are not specified, then control$AllMarker should be TRUE
+# If include/exclude files are not specified, then control$AllMarker should be TRUE
+GenoList = GRAB.ReadGeno(PLINKFile, control = list(AllMarkers = TRUE))
 GenoMat = GenoList$GenoMat
 markerInfo = GenoList$markerInfo
 head(GenoMat[,1:6])
@@ -99,9 +102,9 @@ head(GenoMat[,1:6])
 head(markerInfo)
 
 ## The below is to demonstrate parameters in control
-PLINKFile = system.file("extdata", "example.bed", package = "GRAB")
-IDsToIncludeFile = system.file("extdata", "example.IDsToIncludeFile.txt", package = "GRAB")
-RangesToIncludeFile = system.file("extdata", "example.RangesToIncludeFile.txt", package = "GRAB")
+PLINKFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
+IDsToIncludeFile = system.file("extdata", "simuGENO.IDsToInclude", package = "GRAB")
+RangesToIncludeFile = system.file("extdata", "RangesToInclude.txt", package = "GRAB")
 GenoList = GRAB.ReadGeno(PLINKFile, 
                          control = list(IDsToIncludeFile = IDsToIncludeFile, 
                                         RangesToIncludeFile = RangesToIncludeFile,

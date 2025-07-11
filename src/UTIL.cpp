@@ -1,7 +1,7 @@
 
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
-#include "UTIL.hpp"
+#include "UTIL.h"
 #include <sys/time.h>
 
 arma::vec nb(unsigned int n){
@@ -92,7 +92,8 @@ bool imputeGenoAndFlip(arma::vec& t_GVec,
                        double t_altFreq, 
                        std::vector<uint32_t> t_indexForMissing,
                        double missingRate,
-                       std::string t_impute_method)   // 0: "mean"; 1: "minor"; 2: "drop" (to be continued)
+                       std::string t_impute_method,   // 0: "mean"; 1: "minor"; 2: "drop" (to be continued)
+                       const std::string& t_method)   // For WtCoxG, must not flip genotypes 
 {
   int nMissing = t_indexForMissing.size();
   
@@ -115,11 +116,13 @@ bool imputeGenoAndFlip(arma::vec& t_GVec,
   }
   
   bool flip = false;
-  if(t_altFreq > 0.5){
-    t_GVec = 2 - t_GVec;
-    flip = true;
+
+  if (t_method != "WtCoxG") {  
+    if(t_altFreq > 0.5){
+      t_GVec = 2 - t_GVec;
+      flip = true;
+    }
   }
-  
   return flip;
 }
 

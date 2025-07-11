@@ -9,7 +9,6 @@
 #' @examples
 #' # Check ?getDenseGRM() for an example.
 #' @export
-
 setDenseGRM = function(GenoFile, GenoFileIndex = NULL, subjData = NULL)
 {
   genoList = setGenoInput(GenoFile, GenoFileIndex, subjData)   # check Geno.R for more details
@@ -32,7 +31,7 @@ setDenseGRM = function(GenoFile, GenoFileIndex = NULL, subjData = NULL)
 #' @return a numeric vector of Phi * bVec
 #' @examples
 #' # set up the dense GRM in C++
-#' GenoFile = system.file("extdata", "nSNPs-10000-nsubj-1000-ext.bed", package = "GRAB")
+#' GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' famData = read.table(gsub("bed","fam", GenoFile))
 #' subjData = famData$V2
 #' genoList = setDenseGRM(GenoFile, subjData = subjData)
@@ -42,8 +41,8 @@ setDenseGRM = function(GenoFile, GenoFileIndex = NULL, subjData = NULL)
 #' KinbVec = getDenseGRM(bVec)
 #' 
 #' # The following is based on the definition of GRM to validate the DenseGRM object
-#' PlinkFile = system.file("extdata", "example.bed", package = "GRAB")
-#' IDsToIncludeFile = system.file("extdata", "example.IDsToIncludeFile.txt", package = "GRAB")
+#' PlinkFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
+#' IDsToIncludeFile = system.file("extdata", "simuGENO.IDsToInclude", package = "GRAB")
 #' GenoList = GRAB.ReadGeno(PlinkFile, control = list(IDsToExcludeFile = IDsToIncludeFile))
 #' GenoMat = GenoList$GenoMat
 #' markerInfo = GenoList$markerInfo
@@ -53,11 +52,10 @@ setDenseGRM = function(GenoFile, GenoFileIndex = NULL, subjData = NULL)
 #' stdGenoMat = (t(GenoMat) - 2*MAF) / sqrt(2*MAF*(1-MAF)) / sqrt(ncol(GenoMat))
 #' KinMat = t(stdGenoMat) %*% stdGenoMat
 #' KinbVec1 = KinMat %*% bVec
-#' plot(KinbVec, KinbVec1)
+#' # plot(KinbVec, KinbVec1)
 #' head(cbind(KinbVec, KinbVec1))
 #' 
 #' @export
-
 getDenseGRM = function(bVec)
 {
   excludeChr = "1"

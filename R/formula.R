@@ -43,18 +43,3 @@ handleFormula = function(formula, data, subset, subjData)  {
               designMat = designMat,          
               subjData = subjData))
 }
-
-
-# 
-# handleFormula(event~x1*x2+as.factor(x3), subset = x2>=(-1))
-# handleFormula(time~x1*x2+as.factor(x3), subset = x2>=(-1))
-# out = handleFormula(survival::Surv(time,event)~x1*x2+as.factor(x3), subset = x2>=(-1))
-# 
-# survival::coxph(out$response ~ out$designMat)
-
-
-
-
-
-
-

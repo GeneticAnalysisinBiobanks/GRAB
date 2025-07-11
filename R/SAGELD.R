@@ -3,28 +3,10 @@
 #' SAGELD method is Scalable and Accurate algorithm for Gene-Environment interaction analysis using Longitudinal Data for related samples in a large-scale biobank. SAGELD extended SPA<sub>GRM</sub> to support gene-environment interaction analysis.
 #' 
 #' @details 
-#' Additional list of \code{control} in \code{SPAGRM.NullModel()} function.
+#' Additional list of \code{control} in \code{SAGELD.NullModel()} function.
 #' 
 #' Additional list of \code{control} in \code{GRAB.Marker()} function.
 #' 
-#' @examples 
-#' # Step 2a: process model residuals
-#' ResidMatFile = system.file("extdata", "ResidMat.txt", package = "GRAB")
-#' SparseGRMFile = system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
-#' PairwiseIBDFile = system.file("PairwiseIBD", "PairwiseIBD.txt", package = "GRAB")
-#' obj.SPAGRM = SPAGRM.NullModel(ResidMatFile = ResidMatFile, 
-#'                               SparseGRMFile = SparseGRMFile, 
-#'                               PairwiseIBDFile = PairwiseIBDFile,
-#'                               control = list(ControlOutlier = FALSE))
-#' 
-#' # Step 2b: perform score test
-#' GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
-#' OutputDir = system.file("results", package = "GRAB")
-#' OutputFile = paste0(OutputDir, "/SPAGRMMarkers.txt")
-#' GRAB.Marker(objNull = obj.SPAGRM,
-#'             GenoFile = GenoFile,
-#'             OutputFile = OutputFile)
-#' head(read.table(OutputFile, header=T))
 #' @export
 GRAB.SAGELD = function(){
   print("Check ?GRAB.SAGELD for more details about 'SAGELD' method.")
@@ -177,6 +159,19 @@ mainMarker.SAGELD = function(genoType, genoIndex, outputColumns, objNull)
   return(obj.mainMarker)
 }
 
+#' Fit a SAGELD Null Model
+#' 
+#' @param NullModel A fitted null model object from either \code{lme4::lmer()} or \code{glmmTMB::glmmTMB()}. This model should include the phenotype, environmental variable, covariates, and random effects structure.
+#' @param UsedMethod A character string specifying the method to use. Options are "SAGELD" (default) for gene-environment interaction analysis, or "GALLOP" for analysis using only unrelated samples.
+#' @param PlinkFile A character string specifying the path to PLINK files (without file extensions like ".bed", ".bim", or ".fam"). Used to read genotype data for calculating lambda values in gene-environment interaction models.
+#' @param SparseGRMFile A character string specifying the path to a sparse genetic relationship matrix (GRM) file. This file should be generated using the \code{getSparseGRM()} function and contain three columns: 'ID1', 'ID2', and 'Value'.
+#' @param PairwiseIBDFile A character string specifying the path to a pairwise identity-by-descent (IBD) file. This file should be generated using the \code{getPairwiseIBD()} function and contain five columns: 'ID1', 'ID2', 'pa', 'pb', and 'pc'.
+#' @param PvalueCutoff A numeric value (default: 0.001) specifying the p-value cutoff for marginal genetic effect on the environmental variable. Used to filter SNPs when calculating lambda values for gene-environment interaction models.
+#' @param control A list of control parameters for the null model fitting process. Available options include:
+#' 
+#' @return A SAGELD null model object
+#' 
+#' @export
 SAGELD.NullModel = function(NullModel,             # a fitted null model from lme4 or glmmTMB.
                             UsedMethod = "SAGELD", # default running "SAGELD", user can also run "GALLOP" using unrelated samples.
                             PlinkFile,             # a PLINK file path to read in some genotypes (without file suffix like ".bim", "bed" or "fam").
@@ -494,12 +489,12 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
     
     # group samples into families
     edges = t(SparseGRM1[, c("ID1", "ID2")])
-    graph_GRM = make_graph(edges, directed = FALSE)
-    graph_list_all = graph_GRM %>% decompose()
+    graph_GRM = igraph::make_graph(edges, directed = FALSE)
+    graph_list_all = graph_GRM %>% igraph::decompose()
     graph_length = lapply(graph_list_all, length)
     
     graph_list_1 = graph_list_all[graph_length == 1]
-    SubjID.unrelated = lapply(graph_list_1, get.vertex.attribute) %>% unlist(use.names = FALSE)
+    SubjID.unrelated = lapply(graph_list_1, igraph::get.vertex.attribute) %>% unlist(use.names = FALSE)
     Resid_data.unrelated = Resid_data %>% filter(SubjID %in% SubjID.unrelated)
     SubjID.unrelated.nonOutlier = Resid_data.unrelated %>% filter(Outlier == FALSE) %>% select(SubjID) %>% unlist(use.names = FALSE)
     
@@ -539,7 +534,7 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
           cat("Processing the related residual information:\t", i,"/",nGraph,"\n")
         
         comp1 = graph_list[[i]]
-        comp3 = V(comp1)$name
+        comp3 = igraph::V(comp1)$name
         
         # Step 0: calculate variance for the family
         pos1 = match(comp3, SubjID)
@@ -567,7 +562,7 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
         
         # cat("Family ", i, " (with outliers) includes ", length(comp3), " subjects:", comp3, "\n")
         
-        vcount = vcount(comp1)   # number of vertices 
+        vcount = igraph::vcount(comp1)   # number of vertices 
         
         if(vcount <= MaxNuminFam)
         {
@@ -584,8 +579,8 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
         {
           # cat("j:\t",j,"\n")
           edgesToRemove = paste0(tempGRM1$ID1[j],"|",tempGRM1$ID2[j])
-          comp1.temp = delete.edges(comp1.temp, edgesToRemove)
-          vcount = decompose(comp1.temp) %>% sapply(vcount)  # vertices count for the new graph after edge removal
+          comp1.temp = igraph::delete.edges(comp1.temp, edgesToRemove)
+          vcount = igraph::decompose(comp1.temp) %>% sapply(igraph::vcount)  # vertices count for the new graph after edge removal
           # cat("vcount:\t",vcount,"\n")
           if(max(vcount) <= MaxNuminFam)
             break;
@@ -601,23 +596,23 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
         {
           # cat("k:\t",k,"\n")
           edgesToAdd = c(tempGRM1$ID1[k], tempGRM1$ID2[k])
-          comp1.temp = add.edges(comp1, edgesToAdd)
+          comp1.temp = igraph::add.edges(comp1, edgesToAdd)
           
-          vcount = decompose(comp1.temp) %>% sapply(vcount)  # vertices count for the new graph after edge removal
+          vcount = igraph::decompose(comp1.temp) %>% sapply(igraph::vcount)  # vertices count for the new graph after edge removal
           # cat("vcount:\t",vcount,"\n")
           
           if(max(vcount) <= MaxNuminFam)
             comp1 = comp1.temp
         }
         
-        comp1 = decompose(comp1)
+        comp1 = igraph::decompose(comp1)
         
-        # cat("Edge add complete. Counts of vertices:\t", comp1 %>% sapply(vcount),"\n")
+        # cat("Edge add complete. Counts of vertices:\t", comp1 %>% sapply(igraph::vcount),"\n")
         
         for(k in 1:length(comp1))
         {
           comp11 = comp1[[k]]
-          comp13 = V(comp11)$name
+          comp13 = igraph::V(comp11)$name
           
           pos2 = match(comp13, SubjID)
           outlierInFam = any(Resid_data$Outlier[pos2])
@@ -675,7 +670,7 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
             cat("Processing the CLT for families with outliers:\t", TwofamID.index, ", ", ThreefamID.index, "/", nGraph, "\n")
           
           comp1 = graph_list_updated[[index.outlier]]
-          comp3 = V(comp1)$name
+          comp3 = igraph::V(comp1)$name
           n1 = length(comp3)
           pos3 = match(comp3, SubjID)
           

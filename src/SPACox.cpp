@@ -2,8 +2,8 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
 
-#include "SPACox.hpp"
-#include "approxfun.hpp"
+#include "SPACox.h"
+#include "approxfun.h"
 
 namespace SPACox {
 
@@ -26,11 +26,6 @@ SPACoxClass::SPACoxClass(arma::mat t_cumul,
   m_K_0_emp.setApproxFun(t_cumul.col(0), t_cumul.col(1));
   m_K_1_emp.setApproxFun(t_cumul.col(0), t_cumul.col(2));
   m_K_2_emp.setApproxFun(t_cumul.col(0), t_cumul.col(3));
-  
-  // Checked on 03/25/2021: Expected!!!!
-  // std::cout << m_K_0_emp.getValue(1) << std::endl;
-  // std::cout << m_K_1_emp.getValue(1) << std::endl;
-  // std::cout << m_K_2_emp.getValue(1) << std::endl;
 }
 
 }

@@ -27,7 +27,7 @@ GRAB.NullModel(
 
 \item{subjData}{a character vector of subject IDs. Its order should be the same as the subject order in the formula and data (before subset process).}
 
-\item{method}{a character: "SPACox" (check \code{\link{GRAB.SPACox}}), "POLMM" (check \code{\link{GRAB.POLMM}}), "SPAGE" (will be supported later), "SAIGE" (will be supported later), or "GATE" (will be supported later).}
+\item{method}{a character: "SPACox" (check \code{\link{GRAB.SPACox}}), "POLMM" (check \code{\link{GRAB.POLMM}}), "SPAGE" (will be supported later), or "GATE" (will be supported later).}
 
 \item{traitType}{a character: "binary", "ordinal" (check \code{\link{GRAB.POLMM}}), "quantitative", or "time-to-event" (check \code{\link{GRAB.SPACox}}).}
 
@@ -62,15 +62,12 @@ We fit a null model including response variable, covariates, and Genetic Relatio
 In Step 2, functions \code{\link{GRAB.Marker}} and \code{\link{GRAB.Region}} perform genome-wide marker-level analysis and region-level analysis, respectively.
 Step 1 fits a null model to get an R object, which is passed to Step 2 for association testing. Functions of \code{\link{save}} and \code{\link{load}} can save and load the object.
 
-\describe{
 \code{GRAB} package includes multiple methods which support a wide variety of phenotypes as follows.
 \itemize{
-\item \code{SAIGE}: Support \code{traitType} = \code{"quantitative"} or \code{"binary"}. Will be supported later.
 \item \code{POLMM}: Support \code{traitType} = \code{"ordinal"}. Check \code{\link{GRAB.POLMM}} for more details.
 \item \code{SPACox}: Support \code{traitType} = \code{"time-to-event"} or \code{"Residual"}. Check \code{\link{GRAB.SPACox}} for more details.
 \item \code{SPAmix}: Support \code{traitType} = \code{"time-to-event"} or \code{"Residual"}. Check \code{\link{GRAB.SPAmix}} for more details.
 \item \code{SPAGRM}: Support \code{traitType} = \code{"time-to-event"} or \code{"Residual"}. Check \code{\link{GRAB.SPAGRM}} for more details.
-}
 }
 
 \code{GRAB} package supports both Dense and Sparse GRM to adjust for sample relatedness.
@@ -78,14 +75,12 @@ If Dense GRM is used, then \code{GenoFile} is required to construct GRM.
 If Sparse GRM is used, then \code{SparseGRMFile} is required, whose details can be seen in \code{\link{getTempFilesFullGRM}} and \code{\link{getSparseGRM}}.
 \subsection{The following details are about argument \code{control}}{
 
-\describe{
 Argument \code{control} includes a list of parameters for controlling the null model fitting process.
 \itemize{
 \item \code{maxiter}: Maximum number of iterations used to fit the null model. \emph{(default=100)}
 \item \code{seed}: An integer as a random seed. Used when random process is involved. \emph{(default=12345678)}
 \item \code{tolBeta}: Positive tolerance: the iterations converge when |beta - beta_old| / (|beta| + |beta_old| + tolBeta) < tolBeta. \emph{(default=0.001)}
 \item \code{showInfo}: Whether to show more detailed information for trouble shooting. \emph{(default=FALSE)}
-}
 }
 
 To adjust for sample relatedness, mixed effect model incorporates a random effect with a variance component.
@@ -104,8 +99,8 @@ If dense GRM is used to adjust for sample relatedness, \code{GenoFile} should be
 \item \code{nSNPsVarRatio}: Initial number of the selected markers to estimate variance ratio \emph{(default=20)} the number will be automatically added by 10 until the coefficient of variantion (CV) of the variance ratio estimate is below CVcutoff.
 \item \code{CVcutoff}: Minimal cutoff of coefficient of variantion (CV) to estimate variance ratio \emph{(default=0.0025)}
 \item \code{LOCO}: Whether to apply the leave-one-chromosome-out (LOCO) approach. \emph{(default=TRUE)}
-\item \code{numThreads}: Number of threads (CPUs) to use. Only valid if dense GRM is used, check \code{\link{defaultNumThreads}}. \emph{(default="auto")}
-\item \code{stackSize}: Stack size (in bytes) to use for worker threads. For more details, check \code{\link{setThreadOptions}}. \emph{(default="auto")}
+\item \code{numThreads}: Number of threads (CPUs) to use. Only valid if dense GRM is used, check \code{\link[RcppParallel]{defaultNumThreads}}. \emph{(default="auto")}
+\item \code{stackSize}: Stack size (in bytes) to use for worker threads. For more details, check \code{\link[RcppParallel]{setThreadOptions}}. \emph{(default="auto")}
 \item \code{grainSize}: Grain size of a parallel algorithm sets a minimum chunk size for parallelization. In other words, at what point to stop processing input on separate threads. \emph{(default=1)}
 \item \code{minMafGRM}: Minimal value of MAF cutoff to select markers (from PLINK files) to construct dense GRM. \emph{(default=0.01)}
 \item \code{memoryChunk}: Size (Gb) for each memory chunk when reading in PLINK files. \emph{(default=2)}
@@ -117,37 +112,30 @@ If dense GRM is used to adjust for sample relatedness, \code{GenoFile} should be
 }
 \examples{
 # For POLMM method (ordinal categorical data analysis while adjusting for sample relatedness)
-# Step 1(a): fit a null model using a dense GRM (recommand using Linux OS)
-PhenoData = read.table(system.file("extdata", "simuPHENO.txt", package = "GRAB"), header = T)
-GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
-obj.POLMM = GRAB.NullModel(factor(OrdinalPheno) ~ AGE + GENDER,
-                           data = PhenoData, subjData = IID, 
-                           method = "POLMM", traitType = "ordinal",
-                           GenoFile = GenoFile,
-                           control = list(showInfo = FALSE, LOCO = FALSE, tolTau = 0.2, tolBeta = 0.1))
+
+# Step 1: fit a null model using a sparse GRM
+# A sparse GRM file can be obtained by getSparseGRM().
+# If SparseGRMFile isn't provided, GRAB.NullModel() will calculate dense GRM from GenoFile.
+
+PhenoData <- read.table(system.file("extdata", "simuPHENO.txt", package = "GRAB"), header = TRUE)
+GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+SparseGRMFile <- system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
+obj.POLMM <- GRAB.NullModel(factor(OrdinalPheno) ~ AGE + GENDER,
+  data = PhenoData, subjData = IID,
+  method = "POLMM", traitType = "ordinal",
+  GenoFile = GenoFile,
+  SparseGRMFile = SparseGRMFile,
+  control = list(showInfo = FALSE, LOCO = FALSE, tolTau = 0.2, tolBeta = 0.1)
+)
 
 names(obj.POLMM)
-obj.POLMM$tau    
-
-# Step 1(b): fit a null model using a sparse GRM (recommand using Linux OS)
-# First use getSparseGRM() function to get a sparse GRM file
-PhenoData = read.table(system.file("extdata", "simuPHENO.txt", package = "GRAB"), header = T)
-GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
-SparseGRMFile =  system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
-obj.POLMM = GRAB.NullModel(factor(OrdinalPheno) ~ AGE + GENDER,
-                           data = PhenoData, subjData = IID, 
-                           method = "POLMM", traitType = "ordinal",
-                           GenoFile = GenoFile,
-                           SparseGRMFile = SparseGRMFile,
-                           control = list(showInfo = FALSE, LOCO = FALSE, tolTau = 0.2, tolBeta = 0.1))
-
-names(obj.POLMM)
-obj.POLMM$tau    
+obj.POLMM$tau
 
 # save(obj.POLMM, "obj.POLMM.RData")  # save the object for analysis in step 2
 
 # For SPACox method, check ?GRAB.SPACox.
 # For SPAmix method, check ?GRAB.SPAmix.
 # For SPAGRM method, check ?GRAB.SPAGRM
+# For WtCoxG method, check ?GRAB.WtCoxG
 
 }

@@ -93,15 +93,11 @@ setSPACoxobjInCPP <- function(t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_cov
     invisible(.Call(`_GRAB_setSPACoxobjInCPP`, t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_covaAdj_Cutoff, t_SPA_Cutoff))
 }
 
-setWtSPAGobjInCPP <- function(t_mresid, t_N, t_SPA_Cutoff, t_outlierList) {
-    invisible(.Call(`_GRAB_setWtSPAGobjInCPP`, t_mresid, t_N, t_SPA_Cutoff, t_outlierList))
+setWtCoxGobjInCPP <- function(t_mresid, t_weight, t_imputeMethod, t_cutoff) {
+    invisible(.Call(`_GRAB_setWtCoxGobjInCPP`, t_mresid, t_weight, t_imputeMethod, t_cutoff))
 }
 
-updateQCInCPP <- function(t_AF_ref, t_AN_ref, t_pvalue_bat, t_pvalue_bat_cutoff) {
-    invisible(.Call(`_GRAB_updateQCInCPP`, t_AF_ref, t_AN_ref, t_pvalue_bat, t_pvalue_bat_cutoff))
-}
-
-squares <- function(data) {
-    .Call(`_GRAB_squares`, data)
+updateWtCoxGChunkInCPP <- function(t_mergeGenoInfo_subset) {
+    invisible(.Call(`_GRAB_updateWtCoxGChunkInCPP`, t_mergeGenoInfo_subset))
 }
 

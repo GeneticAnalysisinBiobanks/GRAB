@@ -1,2 +1,27 @@
-^.*\.Rproj$
+# R project and IDE files
 ^\.Rproj\.user$
+^\.Rproj\.user/
+^GRAB\.Rproj$
+^\.vscode$
+^\.vscode/
+
+# R session files
+^\.Rhistory$
+^\.Rdata$
+^\.RData$
+^\.Renviron$
+^\.index$
+
+# Compiled object files
+^src/.*\.o$
+^src/.*\.so$
+^src/.*\.dll$
+
+# Top-level R scripts (not part of package)
+^[^/]+\.R$
+
+# Exclude cran-comments.md from package build
+^cran-comments\.md$
+
+# Exclude tar.gz package archives
+^.*\.tar\.gz$

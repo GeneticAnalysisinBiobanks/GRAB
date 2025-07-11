@@ -24,7 +24,7 @@
 #' GRAB.Marker(objNull = obj.SPAGRM,
 #'             GenoFile = GenoFile,
 #'             OutputFile = OutputFile)
-#' head(read.table(OutputFile, header=T))
+#' head(read.table(OutputFile, header = TRUE))
 #' @export
 GRAB.SPAGRM = function(){
   print("Check ?GRAB.SPAGRM for more details about 'SPAGRM' method.")
@@ -126,6 +126,16 @@ mainMarker.SPAGRM = function(genoType, genoIndex, outputColumns)
   return(obj.mainMarker)
 }
 
+#' Fit a SPAGRM Null Model
+#' 
+#' @param ResidMatFile A file path (character) or data.frame containing residuals. If a file path, it should point to a tab-delimited file with two columns: 'SubjID' (subject IDs) and 'Resid' (residual values). If a data.frame, it should have the same structure with columns named 'SubjID' and 'Resid'.
+#' @param SparseGRMFile A file path (character) to a sparse genetic relationship matrix (GRM) file. This file should be generated using the \code{getSparseGRM()} function and contain three columns: 'ID1', 'ID2', and 'Value' representing the genetic relationships between pairs of individuals.
+#' @param PairwiseIBDFile A file path (character) to a pairwise identity-by-descent (IBD) file. This file should be generated using the \code{getPairwiseIBD()} function and contain five columns: 'ID1', 'ID2', 'pa', 'pb', and 'pc' representing IBD probabilities between pairs of individuals.
+#' @param control A list of control parameters for the null model fitting process. Available options include:
+#' 
+#' @return A SPAGRM null model object
+#' 
+#' @export
 SPAGRM.NullModel = function(ResidMatFile,    # two columns: column 1 is subjID, column 2 is Resid
                             SparseGRMFile,   # a path of SparseGRMFile get from getSparseGRM() function.
                             PairwiseIBDFile, # a path of PairwiseIBDFile get from getPairwiseIBD() function.
@@ -208,12 +218,12 @@ SPAGRM.NullModel = function(ResidMatFile,    # two columns: column 1 is subjID, 
   SparseGRM1 = SparseGRM1 %>% mutate(Cov = abs(Value * pos1 * pos2))
   
   edges = t(SparseGRM1[, c("ID1", "ID2")])
-  graph_GRM = make_graph(edges, directed = F)
-  graph_list_all = graph_GRM %>% decompose()
+  graph_GRM = igraph::make_graph(edges, directed = F)
+  graph_list_all = graph_GRM %>% igraph::decompose()
   graph_length = lapply(graph_list_all, length)
   
   graph_list_1 = graph_list_all[graph_length == 1]
-  SubjID.unrelated = lapply(graph_list_1, get.vertex.attribute) %>% unlist(use.names = FALSE)
+  SubjID.unrelated = lapply(graph_list_1, igraph::get.vertex.attribute) %>% unlist(use.names = FALSE)
   ResidMat.unrelated = ResidMat %>% filter(SubjID %in% SubjID.unrelated)
   SubjID.unrelated.nonOutlier = ResidMat.unrelated %>% filter(Outlier == FALSE) %>% select(SubjID) %>% unlist(use.names = F)
   
@@ -240,7 +250,7 @@ SPAGRM.NullModel = function(ResidMatFile,    # two columns: column 1 is subjID, 
         cat("Processing the related residual information:\t", i,"/",nGraph,"\n")
       
       comp1 = graph_list[[i]]
-      comp3 = V(comp1)$name
+      comp3 = igraph::V(comp1)$name
       
       # Step 0: calculate variance for the family
       pos1 = match(comp3, SubjID)
@@ -260,7 +270,7 @@ SPAGRM.NullModel = function(ResidMatFile,    # two columns: column 1 is subjID, 
       
       # cat("Family ", i, " (with outliers) includes ", length(comp3), " subjects:", comp3, "\n")
       
-      vcount = vcount(comp1)   # number of vertices 
+      vcount = igraph::vcount(comp1)   # number of vertices 
       
       if(vcount <= MaxNuminFam)
       {
@@ -277,8 +287,8 @@ SPAGRM.NullModel = function(ResidMatFile,    # two columns: column 1 is subjID, 
       {
         # cat("j:\t",j,"\n")
         edgesToRemove = paste0(tempGRM1$ID1[j],"|",tempGRM1$ID2[j])
-        comp1.temp = delete.edges(comp1.temp, edgesToRemove)
-        vcount = decompose(comp1.temp) %>% sapply(vcount)  # vertices count for the new graph after edge removal
+        comp1.temp = igraph::delete.edges(comp1.temp, edgesToRemove)
+        vcount = igraph::decompose(comp1.temp) %>% sapply(igraph::vcount)  # vertices count for the new graph after edge removal
         # cat("vcount:\t",vcount,"\n")
         if(max(vcount) <= MaxNuminFam)
           break;
@@ -294,23 +304,23 @@ SPAGRM.NullModel = function(ResidMatFile,    # two columns: column 1 is subjID, 
       {
         # cat("k:\t",k,"\n")
         edgesToAdd = c(tempGRM1$ID1[k], tempGRM1$ID2[k])
-        comp1.temp = add.edges(comp1, edgesToAdd)
+        comp1.temp = igraph::add.edges(comp1, edgesToAdd)
         
-        vcount = decompose(comp1.temp) %>% sapply(vcount)  # vertices count for the new graph after edge removal
+        vcount = igraph::decompose(comp1.temp) %>% sapply(igraph::vcount)  # vertices count for the new graph after edge removal
         # cat("vcount:\t",vcount,"\n")
         
         if(max(vcount) <= MaxNuminFam)
           comp1 = comp1.temp
       }
       
-      comp1 = decompose(comp1)
+      comp1 = igraph::decompose(comp1)
       
       # cat("Edge add complete. Counts of vertices:\t", comp1 %>% sapply(vcount),"\n")
       
       for(k in 1:length(comp1))
       {
         comp11 = comp1[[k]]
-        comp13 = V(comp11)$name
+        comp13 = igraph::V(comp11)$name
         
         pos2 = match(comp13, SubjID)
         outlierInFam = any(ResidMat$Outlier[pos2])
@@ -359,7 +369,7 @@ SPAGRM.NullModel = function(ResidMatFile,    # two columns: column 1 is subjID, 
           cat("Processing the CLT for families with outliers:\t", TwofamID.index, ", ", ThreefamID.index, "/", nGraph, "\n")
         
         comp1 = graph_list_updated[[index.outlier]]
-        comp3 = V(comp1)$name
+        comp3 = igraph::V(comp1)$name
         n1 = length(comp3)
         pos3 = match(comp3, SubjID)
         
@@ -660,13 +670,13 @@ SPAGRMGE.NullModel = function(NullModel = NULL,   # a fitted null model from lme
 make.block.GRM = function(graph, 
                           GRM)    # three columns: "ID1", "ID2", and "Value"
 {
-  comp2 = get.data.frame(graph)
+  comp2 = igraph::get.data.frame(graph)
   
   # igraph gives an unexpected additional loop, which may change the block GRM
   # the below is to remove the additional loop
   comp2 = comp2[!duplicated(comp2),]
   
-  comp3 = V(graph)$name
+  comp3 = igraph::V(graph)$name
   
   colnames(GRM) = c("to", "from", "Value")
   
@@ -677,7 +687,7 @@ make.block.GRM = function(graph,
   if(n1 != n2)
     stop("Ask Wenjian Bi (wenjianb@pku.edu.cn) to check why 'n1 != n2'.")
   
-  block_GRM = sparseMatrix(i = match(comp2$from, comp3),
+  block_GRM = Matrix::sparseMatrix(i = match(comp2$from, comp3),
                            j = match(comp2$to, comp3),
                            x = comp2$Value,
                            symmetric = T)
@@ -717,8 +727,8 @@ chow.liu.tree = function(N,
     }
     
     # use the "prim" lgorithm to bulid a maximum spanning tree.
-    Max_span_tree = IBD %>% graph_from_data_frame(directed = T) %>% 
-      mst(weights = - IBD$entropy, algorithm = "prim") %>% get.edgelist() %>% 
+    Max_span_tree = IBD %>% igraph::graph_from_data_frame(directed = T) %>% 
+      igraph::mst(weights = - IBD$entropy, algorithm = "prim") %>% igraph::get.edgelist() %>% 
       data.table::as.data.table() %>% rename(ID1 = V1, ID2 = V2)
     
     mst.IBD = merge(Max_span_tree, IBD, all.x = T) %>%

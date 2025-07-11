@@ -14,6 +14,6 @@ Get version information from BGEN file (check \href{https://www.well.ox.ac.uk/~g
 }
 \examples{
 
-BGENFile = system.file("extdata", "example_bgen_1.2_8bits.bgen", package = "GRAB")
+BGENFile = system.file("extdata", "simuBGEN.bgen", package = "GRAB")
 getVersionFromBGEN(BGENFile)
 }

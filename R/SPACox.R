@@ -11,15 +11,18 @@
 #' @examples 
 #' # Step 1: fit a null model
 #' PhenoFile = system.file("extdata", "simuPHENO.txt", package = "GRAB")
-#' PhenoData = data.table::fread(PhenoFile, header = T)
-#' obj.SPACox = GRAB.NullModel(Surv(SurvTime, SurvEvent)~AGE+GENDER, 
+#' PhenoData = data.table::fread(PhenoFile, header = TRUE)
+#' obj.SPACox = GRAB.NullModel(survival::Surv(SurvTime, SurvEvent)~AGE+GENDER, 
 #'                             data = PhenoData, 
 #'                             subjData = IID, 
 #'                             method = "SPACox", 
 #'                             traitType = "time-to-event")
 #' 
-#' # Using model residuals performs exactly the same as the above. Note that confounding factors are still required in the right of the formula.
-#' obj.coxph = coxph(Surv(SurvTime, SurvEvent)~AGE+GENDER, data = PhenoData, x=T)
+#' # Using model residuals performs exactly the same as the above. Note that
+#' # confounding factors are still required in the right of the formula.
+#' obj.coxph = survival::coxph(survival::Surv(SurvTime, SurvEvent)~AGE+GENDER, 
+#'                             data = PhenoData,
+#'                             x=TRUE)
 #' obj.SPACox = GRAB.NullModel(obj.coxph$residuals~AGE+GENDER, 
 #'                             data = PhenoData, 
 #'                             subjData = IID, 
@@ -30,7 +33,8 @@
 #' GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' OutputDir = system.file("results", package = "GRAB")
 #' OutputFile = paste0(OutputDir, "/Results_SPACox.txt")
-#' GRAB.Marker(obj.SPACox, GenoFile = GenoFile, OutputFile = OutputFile, control = list(outputColumns = "zScore"))
+#' GRAB.Marker(obj.SPACox, GenoFile = GenoFile, OutputFile = OutputFile,
+#'              control = list(outputColumns = "zScore"))
 #' data.table::fread(OutputFile)
 #' @export
 GRAB.SPACox = function(){
@@ -65,10 +69,10 @@ checkControl.NullModel.SPACox = function(control, traitType, ...)
 # fitNullModel.SPACox = function(formula, data, subset, subjData, subjGeno, control, ...)
 fitNullModel.SPACox = function(response, designMat, subjData, control, ...)
 {
-  if(!class(response) %in% c("Surv", "Residual")) 
+  if(!(inherits(response, "Surv") || inherits(response, "Residual"))) 
     stop("For SPAcox, the response variable should be of class 'Surv' or 'Residual'.")
   
-  if(class(response) == "Surv")
+  if(inherits(response, "Surv"))
   {
     formula = response ~ designMat
     obj.coxph = survival::coxph(formula, x=T, ...)
@@ -81,7 +85,7 @@ fitNullModel.SPACox = function(response, designMat, subjData, control, ...)
     Cova = designMat
   }
   
-  if(class(response) == "Residual")
+  if(inherits(response, "Residual"))
   {
     yVec = mresid = response
     Cova = designMat
@@ -216,7 +220,7 @@ mainMarker.SPACox = function(genoType, genoIndex, outputColumns)
 
 check_input1 = function(obj.null, Geno.mtx, par.list)
 {
-  if(class(obj.null)!="SPACox_NULL_Model")
+  if(!inherits(obj.null, "SPACox_NULL_Model"))
     stop("obj.null should be a returned outcome from SPACox_Null_Model()")
 
   if(any(obj.null$gIDs != rownames(Geno.mtx))) stop("gIDs should be the same as rownames(Geno.mtx).")

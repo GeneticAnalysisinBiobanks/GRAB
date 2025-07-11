@@ -31,5 +31,5 @@ OutputFile = paste0(OutputDir, "/SPAGRMMarkers.txt")
 GRAB.Marker(objNull = obj.SPAGRM,
             GenoFile = GenoFile,
             OutputFile = OutputFile)
-head(read.table(OutputFile, header=T))
+head(read.table(OutputFile, header = TRUE))
 }

@@ -423,19 +423,13 @@ GRAB.SimubVec = function(nSub,
 #' nSub = 500
 #' FamMode = "10-members"
 #' 
-#' # PLINK data format
+#' # PLINK data format. Currently, this function does not support BGEN data format.
 #' PLINKFile = system.file("extdata", "example_n1000_m236.bed", package = "GRAB")
 #' IDsToIncludeFile = system.file("extdata", "example_n1000_m236.IDsToInclude", package = "GRAB")
 #' 
 #' GenoList = GRAB.SimuGMatFromGenoFile(nFam, nSub, FamMode, PLINKFile,
 #'                                      control = list(IDsToIncludeFile = IDsToIncludeFile))
 #' 
-#' # Currently, this function does not support BGEN data format
-#' BGENFile = system.file("extdata", "example_n1000_m240.bgen", package = "GRAB")
-#' IDsToIncludeFile = system.file("extdata", "example_n1000_m240.IDsToInclude", package = "GRAB")
-#' 
-#' GenoList = GRAB.SimuGMatFromGenoFile(nFam, nSub, FamMode, BGENFile,
-#'                                      control = list(IDsToIncludeFile = IDsToIncludeFile))
 #' @export
 GRAB.SimuGMatFromGenoFile = function(nFam,
                                      nSub, 
@@ -557,7 +551,8 @@ GRAB.SimuGMatFromGenoFile = function(nFam,
 #' ## The following are in shell environment
 #' # plink --file simuPLINK --make-bed --out simuPLINK
 #' # plink --bfile simuPLINK --recode A --out simuRAW 
-#' # plink2 --bfile simuPLINK --export bgen-1.2 bits=8 ref-first --out simuBGEN  # UK Biobank use 'ref-first'
+#' # plink2 --bfile simuPLINK --export bgen-1.2 bits=8 ref-first --out simuBGEN
+#' # UK Biobank use 'ref-first'
 #' # bgenix -g simuBGEN.bgen --index
 #'      
 #' @export

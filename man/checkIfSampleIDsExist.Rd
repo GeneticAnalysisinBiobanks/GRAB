@@ -14,6 +14,6 @@ Check if sample identifiers are stored in a BGEN file, only support BGEN v1.2. C
 }
 \examples{
 
-BGENFile = system.file("extdata", "example_bgen_1.2_8bits.bgen", package = "GRAB")
+BGENFile = system.file("extdata", "simuBGEN.bgen", package = "GRAB")
 checkIfSampleIDsExist(BGENFile)
 }

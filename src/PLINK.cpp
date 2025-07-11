@@ -5,8 +5,8 @@
 #include <RcppArmadillo.h>
 
 #include <boost/algorithm/string.hpp>
-#include "PLINK.hpp"
-#include "UTIL.hpp"
+#include "PLINK.h"
+#include "UTIL.h"
 
 #include <RcppArmadilloExtensions/sample.h> // sample
 #include <string>
@@ -56,7 +56,7 @@ void PlinkClass::setPlinkobj(std::string t_bimFile,
 
 void PlinkClass::readBimFile()
 {
-  std::cout << "Reading bim file...." << std::endl;
+  Rcpp::Rcout << "Reading bim file...." << std::endl;
   std::ifstream bim(m_bimFile);
   m_M0 = 0;
   std::string line;
@@ -81,7 +81,7 @@ void PlinkClass::readBimFile()
 
 void PlinkClass::readFamFile()
 {
-  std::cout << "Reading fam file:\t" << m_famFile << std::endl;
+  Rcpp::Rcout << "Reading fam file:\t" << m_famFile << std::endl;
   std::ifstream fam(m_famFile);
   m_N0 = 0;
   std::string line;
@@ -94,7 +94,7 @@ void PlinkClass::readFamFile()
   }
   m_N = m_N0;
   
-  std::cout << "m_N:\t" << m_N << std::endl;
+  Rcpp::Rcout << "m_N:\t" << m_N << std::endl;
   
   m_numBytesofEachMarker0 = (m_N0 + 3) / 4;
   m_OneMarkerG4.reserve(m_numBytesofEachMarker0);  
@@ -104,7 +104,7 @@ void PlinkClass::readFamFile()
 
 void PlinkClass::setPosSampleInPlink(std::vector<std::string> t_SampleInModel)
 {
-  std::cout << "Setting position of samples in PLINK files...." << std::endl;
+  Rcpp::Rcout << "Setting position of samples in PLINK files...." << std::endl;
   m_N = t_SampleInModel.size();
   m_numBytesofEachMarker = (m_N + 3) / 4;
   
@@ -122,9 +122,9 @@ void PlinkClass::setPosSampleInPlink(std::vector<std::string> t_SampleInModel)
   // Rcpp::match is much faster than loop
   Rcpp::IntegerVector posSampleInPlink = Rcpp::match(SampleInModel, SampleInPlink);
   
-  std::cout << "posSampleInPlink:\t" << posSampleInPlink[0] << " " << posSampleInPlink[1] << " " << posSampleInPlink[2] << std::endl;
-  std::cout << "SampleInModel:\t" << SampleInModel[0] << " " << SampleInModel[1] << " " << SampleInModel[2] << std::endl;
-  std::cout << "SampleInPlink:\t" << SampleInPlink[0] << " " << SampleInPlink[1] << " " << SampleInPlink[2] << std::endl;
+  Rcpp::Rcout << "posSampleInPlink:\t" << posSampleInPlink[0] << " " << posSampleInPlink[1] << " " << posSampleInPlink[2] << std::endl;
+  Rcpp::Rcout << "SampleInModel:\t" << SampleInModel[0] << " " << SampleInModel[1] << " " << SampleInModel[2] << std::endl;
+  Rcpp::Rcout << "SampleInPlink:\t" << SampleInPlink[0] << " " << SampleInPlink[1] << " " << SampleInPlink[2] << std::endl;
   
   m_posSampleInPlink.resize(m_N);
   for(uint32_t i = 0; i < m_N; i++){
@@ -279,7 +279,7 @@ arma::mat PlinkClass::getGMat(int t_nMarker,
   
   indexSNPs = Rcpp::RcppArmadillo::sample(indexSNPs, indexSNPs.size(), FALSE);
   
-  std::cout << "There are " << indexSNPs.size() << " markers in PLINK files." << std::endl;
+  Rcpp::Rcout << "There are " << indexSNPs.size() << " markers in PLINK files." << std::endl;
   
   double freq, missingRate;
   int posGMat = 0;
@@ -290,9 +290,9 @@ arma::mat PlinkClass::getGMat(int t_nMarker,
     
     arma::vec oneMarker = getOneMarker(indexSNPs.at(i), freq, missingRate, indexForMissing);
     
-    // std::cout<< "i:\t" << i << std::endl;
-    // std::cout << "freq is " << freq << " and missingRate is "<< missingRate << "." << std::endl << std::endl;
-    // std::cout << "t_minMafVarRatio is " << t_minMafVarRatio << " and t_maxMissingVarRatio is "<< t_maxMissingVarRatio << "." << std::endl << std::endl;
+    // Rcpp::Rcout<< "i:\t" << i << std::endl;
+    // Rcpp::Rcout << "freq is " << freq << " and missingRate is "<< missingRate << "." << std::endl << std::endl;
+    // Rcpp::Rcout << "t_minMafVarRatio is " << t_minMafVarRatio << " and t_maxMissingVarRatio is "<< t_maxMissingVarRatio << "." << std::endl << std::endl;
     
     if(freq >= t_minMafVarRatio && freq <= 1 - t_minMafVarRatio && missingRate <= t_maxMissingVarRatio){
       
@@ -311,7 +311,7 @@ arma::mat PlinkClass::getGMat(int t_nMarker,
     }
   }
   
-  std::cout << "Extract" << posGMat << " markers!" << std::endl;
+  Rcpp::Rcout << "Extract" << posGMat << " markers!" << std::endl;
   
   if(i == indexSNPs.size())
     Rcpp::stop("Cannot extract enough markers from PLINK files. Probably an incorrect chromosome name is given.");
@@ -342,7 +342,7 @@ arma::mat PlinkClass::getGMat(int t_nMarker,
 //                                         t_SampleInModel);
 //   
 //   int n = ptr_gPLINKobj->getN();
-//   std::cout << "n:\t" << n << std::endl;
+//   Rcpp::Rcout << "n:\t" << n << std::endl;
 // }
 
 

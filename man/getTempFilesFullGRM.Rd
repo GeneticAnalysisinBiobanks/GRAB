@@ -8,6 +8,7 @@ getTempFilesFullGRM(
   PlinkFile,
   nPartsGRM,
   partParallel,
+  gcta64File,
   tempDir = NULL,
   subjData = NULL,
   minMafGRM = 0.01,
@@ -21,6 +22,8 @@ getTempFilesFullGRM(
 \item{nPartsGRM}{a numeric value (e.g. 250): \code{GCTA} software can split subjects to multiple parts. For UK Biobank data analysis, it is recommended to set \code{nPartsGRM=250}.}
 
 \item{partParallel}{a numeric value (from 1 to \code{nPartsGRM}) to split all jobs for parallel computation.}
+
+\item{gcta64File}{a path to \code{GCTA} program. GCTA can be downloaded from \href{https://yanglab.westlake.edu.cn/software/gcta/#Download}{link}.}
 
 \item{tempDir}{a path to store temp files to be passed to \code{\link{getSparseGRM}}. This should be consistent to the input of \code{\link{getSparseGRM}}. Default is system.file("SparseGRM", "temp", package = "GRAB").}
 
@@ -36,11 +39,9 @@ getTempFilesFullGRM(
 Make temporary files to be passed to function \code{\link{getSparseGRM}}. We strongly suggest using parallel computing for different \code{partParallel}.
 }
 \details{
-\describe{
 \itemize{
 \item \code{Step 1}: Run \code{getTempFilesFullGRM} to get temporary files.
 \item \code{Step 2}: Run \code{\link{getSparseGRM}} to combine the temporary files to make a \code{SparseGRMFile} to be passed to \code{\link{GRAB.NullModel}}.
-}
 }
 }
 \examples{

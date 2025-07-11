@@ -1,8 +1,22 @@
 # GRAB
 
+## Note on 2025-07-17
+
+Add a new method, WtCoxG, and bump version to 0.2.0.
+
+We reorganized the `Depends`, `Imports`, `Suggests` and `LinkingTo` fields in the `DESCRIPTION` file for clarity and correctness. Additionally, we consolidated `Makevars` and `Makevars.win` into a single `Makevars` file for simplified build configuration.
+
+In previous versions, GRAB automatically imported all functions and objects from its dependent packages and exported all package objects to the user's workspace. We have updated the NAMESPACE file so that GRAB now only imports specific functions as needed from dependencies and only exports user-facing functions. This results in a cleaner namespace and avoids cluttering the user's environment with unnecessary objects.
+
+We no longer include a copy of GCTA program within the package. Instead, users have to specify the path of the GCTA executable on their system using `gcta64File` parameter when calling `getTempFilesFullGRM()`. We have successfully tested getTempFilesFullGRM() with GCTA v1.94.4 on Windows. Despite previous documentation indicating Linux-only support, this function works on Windows systems as well.
+
+We have tested and debugged all examples included in the function help files, and verified that they execute correctly. We have minimized the package size and example running time. Additionally, we have made all necessary changes to ensure the package complies with CRAN policies and requirements, passing `R CMD check --as-cran` with no ERRORs or WARNINGs, and as few NOTEs as possible (one left: one possibly misspelled word, biobank, in DESCRIPTION).
+
+The old version 0.1.2 can be found in branch release/v0.1.2. This branch will serve as an archive and will no longer be actively maintained.
+
 ## Note on 2022-08-26
 
-We make a website for GRAB package: https://wenjianbi.github.io/grab.github.io/. Please check it for more recent update. 
+We make a website for GRAB package: https://wenjianbi.github.io/grab.github.io/. Please check it for more recent update.
 
 ## Previous README before 2022-08-26
 
@@ -10,14 +24,15 @@ We make a website for GRAB package: https://wenjianbi.github.io/grab.github.io/.
 
 Rtools (https://cran.rstudio.com/bin/windows/Rtools/) should be installed before installing this package.
 
-```{r}      
+```r
 library(remotes)  # remotes library requires less dependency packages than devtools
 install_github("GeneticAnalysisinBiobanks/GRAB", INSTALL_opts=c("--no-multiarch"), ref="main")  # The INSTALL_opts is required in Windows OS.
 library(GRAB)
 ```
 
 ### Replicate the genotype simulation in the package
-```{r}   
+
+```r
 ## Commen Variants with MAF ranging from (0.05, 0.5)
 set.seed(12345)
 OutList = GRAB.SimuGMat(nSub = 500, nFam = 50, FamMode = "10-members", nSNP = 10000,
@@ -56,7 +71,8 @@ system("bgenix -g simuBGEN_RV.bgen -index")
 ```
 
 ### Replicate the sparse GRM generation in the package
-```{r}
+
+```r
 GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
 PlinkFile = tools::file_path_sans_ext(GenoFile)  # remove file extension
 nPartsGRM = 2
@@ -80,11 +96,9 @@ data.table::fread(SparseGRMFile)
 # 2550: Subj-500 Subj-500 0.9786987
 ```
 
-### 
-
-
 ### Replicate the phenotype simulation in the package
-```{r}
+
+```r
 FamFile = system.file("extdata", "simuPLINK.fam", package = "GRAB")
 FamData = read.table(FamFile)
 IID = FamData$V2  # Individual ID
@@ -102,7 +116,8 @@ write.table(Pheno, PhenoFile, row.names = F, quote = F, sep = "\t")
 ```
 
 ### Replicate the regionFile in the package
-```{r}
+
+```r
 set.seed(101112)
 RegionData = data.frame(REGION = paste0("Region_", rep(1:100,each=100)),
                         MARKER = paste0("SNP_",1:10000),
@@ -111,7 +126,8 @@ RegionData = data.frame(REGION = paste0("Region_", rep(1:100,each=100)),
 ```
 
 ### Step 1: Fit a null model using the sparse GRM and phenotype data
-```{r}
+
+```r
 GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
 # GenoFile = system.file("extdata", "simuBGEN.bgen", package = "GRAB")  # BGEN file input is also supported in null model fitting
 PhenoFile = system.file("extdata", "simuPHENO.txt", package = "GRAB")
@@ -134,7 +150,8 @@ save(objNull, file = objNullFile)
 ```
 
 ### Step 2a: Perform a marker-level association analysis
-```{r}
+
+```r
 objNullFile = system.file("results", "objNull.RData", package = "GRAB")
 load(objNullFile)
 
@@ -174,7 +191,8 @@ GRAB.Marker(objNull,
 ```
 
 ### Step 2b: Perform a genome-wide region-level association analysis
-```{r}
+
+```r
 objNullFile = system.file("results", "objNull.RData", package = "GRAB")
 load(objNullFile)
 
@@ -219,25 +237,26 @@ data.table::fread(OutputFile)
 ### NOTE for BGEN file input
 
 The current version of GRAB package only supports BGEN v1.2 using 8 bits compression (faster than using 16 bits). For example, if plink2 is used to make BGEN file, please refer to https://www.cog-genomics.org/plink/2.0/data#export
-```
+
+```sh
 plink2 --bfile input --out output --export bgen-1.2 bits=8
 ```
 
-The index file for BGEN file is also required (filename extension is ".bgen.bgi"). Please refer to https://enkre.net/cgi-bin/code/bgen/wiki/bgenix 
-
+The index file for BGEN file is also required (filename extension is ".bgen.bgi"). Please refer to https://enkre.net/cgi-bin/code/bgen/wiki/bgenix
 
 ### More detailed information for package developers
 
 For SPACox method, we should create the following files
 
-```{r}
+```r
 /src/SPACox.cpp
 /src/SPACox.hpp
 /R/SPACox.R
 ```
+
 and modify the following codes
 
-```{r}
+```r
 /src/Main.cpp  
 # static SPACox::SPACoxClass* ptr_gSPACoxobj = NULL;
 # void setSPACoxobjInCPP()

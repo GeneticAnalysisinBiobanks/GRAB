@@ -5,9 +5,9 @@
 // [[Rcpp::depends(RcppParallel)]]
 #include <RcppParallel.h>
 
-#include "DenseGRM.hpp"
-#include "PLINK.hpp"
-#include "UTIL.hpp"
+#include "DenseGRM.h"
+#include "PLINK.h"
+#include "UTIL.h"
 
 namespace DenseGRM {
 
@@ -23,17 +23,17 @@ void DenseGRMClass::setDenseGRMObj(PlinkClass* t_ptrPlinkObj,
 {
   setArrays(t_ptrPlinkObj, t_memoryChunk);
   
-  std::cout << "Number of samples in Plink file:\t" << m_N0 << std::endl;
-  std::cout << "Number of markers in Plink file:\t" << m_M0 << std::endl;
-  std::cout << "Number of samples in model fitting:\t" << m_N << std::endl;
+  Rcpp::Rcout << "Number of samples in Plink file:\t" << m_N0 << std::endl;
+  Rcpp::Rcout << "Number of markers in Plink file:\t" << m_M0 << std::endl;
+  Rcpp::Rcout << "Number of samples in model fitting:\t" << m_N << std::endl;
   
-  std::cout << "numBytesofEachMarker in Plink file:\t" << m_numBytesofEachMarker0 << std::endl;
-  std::cout << "numBytesofEachMarker in model fitting:\t" << m_numBytesofEachMarker << std::endl;
-  std::cout << "numBytesReserve:\t" << m_numBytesReserve << " Gb" << std::endl << std::endl;
+  Rcpp::Rcout << "numBytesofEachMarker in Plink file:\t" << m_numBytesofEachMarker0 << std::endl;
+  Rcpp::Rcout << "numBytesofEachMarker in model fitting:\t" << m_numBytesofEachMarker << std::endl;
+  Rcpp::Rcout << "numBytesReserve:\t" << m_numBytesReserve << " Gb" << std::endl << std::endl;
   
-  std::cout << "numArrays:\t" << m_numArrays << std::endl;
-  std::cout << "numMarkersofEachArray:\t" << m_numMarkersofEachArray << std::endl;
-  std::cout << "numMarkersofLastArray:\t" << m_numMarkersofLastArray << std::endl << std::endl;
+  Rcpp::Rcout << "numArrays:\t" << m_numArrays << std::endl;
+  Rcpp::Rcout << "numMarkersofEachArray:\t" << m_numMarkersofEachArray << std::endl;
+  Rcpp::Rcout << "numMarkersofLastArray:\t" << m_numMarkersofLastArray << std::endl << std::endl;
   
   ///////////////////////////////////////// MAIN PART //////////////////////////////
   
@@ -43,7 +43,7 @@ void DenseGRMClass::setDenseGRMObj(PlinkClass* t_ptrPlinkObj,
   string bimTemp;
   std::string chr;
   
-  std::cout << "numMarkersofLastArray:\t" << m_numMarkersofLastArray << std::endl << std::endl;
+  Rcpp::Rcout << "numMarkersofLastArray:\t" << m_numMarkersofLastArray << std::endl << std::endl;
   
   for(long long int i = 0; i < m_M0; i ++)
   {
@@ -60,27 +60,27 @@ void DenseGRMClass::setDenseGRMObj(PlinkClass* t_ptrPlinkObj,
       m_M ++;
     }
     if((i+1) % 10000 == 0){
-      cout << "Complete\t" << i+1 <<"\tSNPs!!!!" << endl;
-      cout << "Allele Frequency:\t" << freq << endl;
+      Rcpp::Rcout << "Complete\t" << i+1 <<"\tSNPs!!!!" << std::endl;
+      Rcpp::Rcout << "Allele Frequency:\t" << freq << std::endl;
     }
   }
   
-  std::cout << "numMarkersofLastArray:\t" << m_numMarkersofLastArray << std::endl << std::endl;
+  Rcpp::Rcout << "numMarkersofLastArray:\t" << m_numMarkersofLastArray << std::endl << std::endl;
   
   arma::vec t2  = getTime();
   printTime(t1, t2, "read Plink files");
   
-  cout << endl << "Remove markers with MAF < " << t_minMafGRM << " and missing rate > " << t_maxMissingGRM << endl;
-  cout << "Number of markers:\t" << m_M << endl << endl;
+  Rcpp::Rcout << std::endl << "Remove markers with MAF < " << t_minMafGRM << " and missing rate > " << t_maxMissingGRM << std::endl;
+  Rcpp::Rcout << "Number of markers:\t" << m_M << std::endl << std::endl;
   
   Rcpp::IntegerVector chrVecCounts = table(m_chrVec);
   Rcpp::StringVector chrVecNames = chrVecCounts.names();
   setchrIndexLOCO(chrVecNames);
   
   for(int i = 0; i < chrVecCounts.size(); i++){
-    cout << "Number of markers in chr " << chrVecNames(i) << ":\t" << chrVecCounts(i) << endl;
+    Rcpp::Rcout << "Number of markers in chr " << chrVecNames(i) << ":\t" << chrVecCounts(i) << std::endl;
   }
-  cout << endl;
+  Rcpp::Rcout << std::endl;
   
   setDiagStdGeno();
   
@@ -187,7 +187,7 @@ void DenseGRMClass::closeDenseGRMObj()
     delete m_genoVecofPointers[i];
   }
   m_genoVecofPointers.clear();
-  cout << "Close the genotype object!\n";
+  Rcpp::Rcout << "Close the genotype object!\n";
 }
 
 

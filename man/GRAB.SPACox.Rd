@@ -17,15 +17,18 @@ Additional list of \code{control} in \code{GRAB.Marker()} function.
 \examples{
 # Step 1: fit a null model
 PhenoFile = system.file("extdata", "simuPHENO.txt", package = "GRAB")
-PhenoData = data.table::fread(PhenoFile, header = T)
-obj.SPACox = GRAB.NullModel(Surv(SurvTime, SurvEvent)~AGE+GENDER, 
+PhenoData = data.table::fread(PhenoFile, header = TRUE)
+obj.SPACox = GRAB.NullModel(survival::Surv(SurvTime, SurvEvent)~AGE+GENDER, 
                             data = PhenoData, 
                             subjData = IID, 
                             method = "SPACox", 
                             traitType = "time-to-event")
 
-# Using model residuals performs exactly the same as the above. Note that confounding factors are still required in the right of the formula.
-obj.coxph = coxph(Surv(SurvTime, SurvEvent)~AGE+GENDER, data = PhenoData, x=T)
+# Using model residuals performs exactly the same as the above. Note that
+# confounding factors are still required in the right of the formula.
+obj.coxph = survival::coxph(survival::Surv(SurvTime, SurvEvent)~AGE+GENDER, 
+                            data = PhenoData,
+                            x=TRUE)
 obj.SPACox = GRAB.NullModel(obj.coxph$residuals~AGE+GENDER, 
                             data = PhenoData, 
                             subjData = IID, 
@@ -36,6 +39,7 @@ obj.SPACox = GRAB.NullModel(obj.coxph$residuals~AGE+GENDER,
 GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
 OutputDir = system.file("results", package = "GRAB")
 OutputFile = paste0(OutputDir, "/Results_SPACox.txt")
-GRAB.Marker(obj.SPACox, GenoFile = GenoFile, OutputFile = OutputFile, control = list(outputColumns = "zScore"))
+GRAB.Marker(obj.SPACox, GenoFile = GenoFile, OutputFile = OutputFile,
+             control = list(outputColumns = "zScore"))
 data.table::fread(OutputFile)
 }
