@@ -84,7 +84,8 @@ GRAB.makePlink(GenoMat, outputPrefix)
 ## The following are in shell environment
 # plink --file simuPLINK --make-bed --out simuPLINK
 # plink --bfile simuPLINK --recode A --out simuRAW 
-# plink2 --bfile simuPLINK --export bgen-1.2 bits=8 ref-first --out simuBGEN  # UK Biobank use 'ref-first'
+# plink2 --bfile simuPLINK --export bgen-1.2 bits=8 ref-first --out simuBGEN
+# UK Biobank use 'ref-first'
 # bgenix -g simuBGEN.bgen --index
      
 }

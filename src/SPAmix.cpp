@@ -2,7 +2,7 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
 
-#include "SPAmix.hpp"
+#include "SPAmix.h"
 
 namespace SPAmix {
 

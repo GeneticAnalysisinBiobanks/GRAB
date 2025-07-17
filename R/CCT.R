@@ -17,7 +17,6 @@
 #' \emph{Journal of the American Statistical Association 115}(529), 393-402.
 #' (\href{https://www.tandfonline.com/doi/full/10.1080/01621459.2018.1554485}{pub})
 #' @export
-
 CCT <- function(pvals, weights=NULL){
   #### check if there is NA
   if(sum(is.na(pvals)) > 0){

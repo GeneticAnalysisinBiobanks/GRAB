@@ -383,41 +383,27 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
-// setWtSPAGobjInCPP
-void setWtSPAGobjInCPP(arma::vec t_mresid, int t_N, double t_SPA_Cutoff, Rcpp::List t_outlierList);
-RcppExport SEXP _GRAB_setWtSPAGobjInCPP(SEXP t_mresidSEXP, SEXP t_NSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_outlierListSEXP) {
+// setWtCoxGobjInCPP
+void setWtCoxGobjInCPP(arma::vec t_mresid, arma::vec t_weight, std::string t_imputeMethod, double t_cutoff);
+RcppExport SEXP _GRAB_setWtCoxGobjInCPP(SEXP t_mresidSEXP, SEXP t_weightSEXP, SEXP t_imputeMethodSEXP, SEXP t_cutoffSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::vec >::type t_mresid(t_mresidSEXP);
-    Rcpp::traits::input_parameter< int >::type t_N(t_NSEXP);
-    Rcpp::traits::input_parameter< double >::type t_SPA_Cutoff(t_SPA_CutoffSEXP);
-    Rcpp::traits::input_parameter< Rcpp::List >::type t_outlierList(t_outlierListSEXP);
-    setWtSPAGobjInCPP(t_mresid, t_N, t_SPA_Cutoff, t_outlierList);
+    Rcpp::traits::input_parameter< arma::vec >::type t_weight(t_weightSEXP);
+    Rcpp::traits::input_parameter< std::string >::type t_imputeMethod(t_imputeMethodSEXP);
+    Rcpp::traits::input_parameter< double >::type t_cutoff(t_cutoffSEXP);
+    setWtCoxGobjInCPP(t_mresid, t_weight, t_imputeMethod, t_cutoff);
     return R_NilValue;
 END_RCPP
 }
-// updateQCInCPP
-void updateQCInCPP(arma::vec t_AF_ref, arma::vec t_AN_ref, arma::vec t_pvalue_bat, double t_pvalue_bat_cutoff);
-RcppExport SEXP _GRAB_updateQCInCPP(SEXP t_AF_refSEXP, SEXP t_AN_refSEXP, SEXP t_pvalue_batSEXP, SEXP t_pvalue_bat_cutoffSEXP) {
+// updateWtCoxGChunkInCPP
+void updateWtCoxGChunkInCPP(DataFrame t_mergeGenoInfo_subset);
+RcppExport SEXP _GRAB_updateWtCoxGChunkInCPP(SEXP t_mergeGenoInfo_subsetSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::vec >::type t_AF_ref(t_AF_refSEXP);
-    Rcpp::traits::input_parameter< arma::vec >::type t_AN_ref(t_AN_refSEXP);
-    Rcpp::traits::input_parameter< arma::vec >::type t_pvalue_bat(t_pvalue_batSEXP);
-    Rcpp::traits::input_parameter< double >::type t_pvalue_bat_cutoff(t_pvalue_bat_cutoffSEXP);
-    updateQCInCPP(t_AF_ref, t_AN_ref, t_pvalue_bat, t_pvalue_bat_cutoff);
+    Rcpp::traits::input_parameter< DataFrame >::type t_mergeGenoInfo_subset(t_mergeGenoInfo_subsetSEXP);
+    updateWtCoxGChunkInCPP(t_mergeGenoInfo_subset);
     return R_NilValue;
-END_RCPP
-}
-// squares
-std::vector<double> squares(Rcpp::NumericVector data);
-RcppExport SEXP _GRAB_squares(SEXP dataSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type data(dataSEXP);
-    rcpp_result_gen = Rcpp::wrap(squares(data));
-    return rcpp_result_gen;
 END_RCPP
 }
 
@@ -445,9 +431,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setSAGELDobjInCPP", (DL_FUNC) &_GRAB_setSAGELDobjInCPP, 41},
     {"_GRAB_setSPAmixobjInCPP", (DL_FUNC) &_GRAB_setSPAmixobjInCPP, 5},
     {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},
-    {"_GRAB_setWtSPAGobjInCPP", (DL_FUNC) &_GRAB_setWtSPAGobjInCPP, 4},
-    {"_GRAB_updateQCInCPP", (DL_FUNC) &_GRAB_updateQCInCPP, 4},
-    {"_GRAB_squares", (DL_FUNC) &_GRAB_squares, 1},
+    {"_GRAB_setWtCoxGobjInCPP", (DL_FUNC) &_GRAB_setWtCoxGobjInCPP, 4},
+    {"_GRAB_updateWtCoxGChunkInCPP", (DL_FUNC) &_GRAB_updateWtCoxGChunkInCPP, 1},
     {NULL, NULL, 0}
 };
 

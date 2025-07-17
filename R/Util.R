@@ -6,7 +6,8 @@
 #' @return a numeric vector (\code{Group}, starting from 0) for group information.
 #' @details 
 #' If \code{yVec} is categorical with groups <= 10, then \code{Group} is the same as \code{yVec}. Otherwise, \code{Group} is calcualted based on the rank of \code{yVec}.
- 
+#'
+#' @export
 makeGroup = function(yVec)
 {
   # yVec is categorical data
@@ -35,21 +36,16 @@ checkObjNull = function(objNull)
                             "SPAmix_NULL_Model",      # SPAmix: mixture population analysis
                             "SPAGRM_NULL_Model",      # SPAGRM: related subjects
                             "SAGELD_NULL_Model",      # SAGELD: GxE for longitudinal data
-                            "WtSPAG_NULL_Model"))      
+                            "WtCoxG_NULL_Model"))      
   {
     stop('class(objNull) should be one of 
-         c("SPAGE_NULL_Model", "SPACox_NULL_Model", "POLMM_NULL_Model", "SPAmix_NULL_Model", "SPAGRM_NULL_Model", "SAGELD_NULL_Model", "WtSPAG_NULL_Model")')
+         c("SPAGE_NULL_Model", "SPACox_NULL_Model", "POLMM_NULL_Model", "SPAmix_NULL_Model", "SPAGRM_NULL_Model", "SAGELD_NULL_Model", "WtCoxG_NULL_Model")')
   }
     
   if(any(!c("subjData", "N") %in% nm))
   {
     stop("c('subjData', 'N') should be in names(objNull).")
   }
-  
-  ## More detailed information can be checked
-  ##
-  ##
-  ##
     
   return(NullModelClass)
 }
@@ -173,7 +169,7 @@ checkControl = function(control = NULL)
   
   # use the default setting or update it
   if(!is.null(control)){
-    if(class(control) != "list"){
+    if(!is.list(control)){
       stop("Argument of 'control' should be 'list'.")
     }
     ctrl.nm = names(control)

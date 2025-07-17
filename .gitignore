@@ -1,17 +1,29 @@
-.Rhistory
+# R Project Files
 .Rproj.user/
-.Rproj.user
-src/GRAB.dll
-src/Main.o
-src/PLINK.o
-src/POLMM.o
-src/RcppExports.o
-src/SPACox.o
-src/UTIL.o
-src/VCF.o
+*.Rproj
+
+# R Session Files
 .Rhistory
-src/BGEN.o
-src/test_openmp.o
-src/GRAB.dll
-.Rhistory
-.Rhistory
+.Rdata
+.RData
+.Renviron
+
+# IDE Files
+GRAB.Rproj
+.vscode/
+.index
+
+# Compiled Object Files
+src/*.o
+src/*.so
+src/*.dll
+
+# Package Build Files
+*.tar.gz
+*.zip
+
+# Temporary Files
+*~
+.DS_Store
+Thumbs.db
+GRAB.Rcheck/

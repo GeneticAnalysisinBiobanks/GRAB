@@ -20,7 +20,7 @@ checkControl.ReadGeno = function(control)
 {
   # check if control is an R list
   if(!is.null(control))
-    if(class(control) != "list")
+    if(!is.list(control))
       stop("If specified, the argument of 'control' should be an R 'list'.")
   
   if(!is.null(control$AlleleOrder))
@@ -55,7 +55,7 @@ checkControl.Marker = function(control, NullModelClass)
 {
   # check if control is an R list
   if(!is.null(control))
-    if(class(control) != "list")
+    if(!is.list(control))
       stop("If specified, the argument of 'control' should be an R 'list'.")
   
   # uniform default control setting for marker-level analysis
@@ -112,7 +112,7 @@ checkControl.Region = function(control)
 {
   # check if control is an R list
   if(!is.null(control))
-    if(class(control) != "list")
+    if(!is.list(control))
       stop("If specified, the argument of 'control' should be an R 'list'.")
   
   # uniform default control setting for region-level analysis
@@ -157,7 +157,7 @@ checkControl.NullModel = function(control, method, traitType, optionGRM)
 {
   # check if control is an R list
   if(!is.null(control))
-    if(class(control) != "list")
+    if(!is.list(control))
       stop("If specified, the argument of 'control' should be an R 'list'.")
   
   # if(method == "POLMM"){control = checkControl.NullModel.POLMM(control, traitType, optionGRM)}

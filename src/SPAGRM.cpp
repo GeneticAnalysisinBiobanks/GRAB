@@ -2,7 +2,7 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
 
-#include "SPAGRM.hpp"
+#include "SPAGRM.h"
 
 namespace SPAGRM {
 

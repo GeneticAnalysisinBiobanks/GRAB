@@ -28,14 +28,17 @@ GRAB.Marker(
 }
 \value{
 The analysis results are written in a file of \code{OutputFile}, which includes the following columns.
+\describe{
 \item{Marker}{Marker IDs extracted from \code{GenoFile} and \code{GenoFileIndex}.}
 \item{Info}{Marker Information of "CHR:POS:REF:ALT". The order of REF/ALT depends on \code{control$AlleleOrder}: "ref-first" or "alt-first".}
 \item{AltFreq}{Alternative allele frequency (before genotype imputation, might be > 0.5). If the \code{AltFreq} of most markers are > 0.5, you should consider resetting \code{control$AlleleOrder}.}
 \item{AltCounts}{Alternative allele counts (before genotype imputation).}
 \item{MissingRate}{Missing rate for each marker}
 \item{Pvalue}{Association test p-value}
+}
 The following columns can be customized using \code{control$outputColumns}. Check \code{\link{makeGroup}} for details about phenotype grouping which are used for
 \code{nSamplesInGroup}, \code{AltCountsInGroup}, and \code{AltFreqInGroup}.
+\describe{
 \item{beta}{Estimated effect size of the ALT allele.}
 \item{seBeta}{Estimated standard error (se) of the effect size.}
 \item{zScore}{z score, standardized score statistics, usually follows a standard normal distribution.}
@@ -43,11 +46,12 @@ The following columns can be customized using \code{control$outputColumns}. Chec
 \item{AltCountsInGroup}{Alternative allele counts (before genotype imputation) in different phenotype groups.}
 \item{AltFreqInGroup}{Alternative allele frequency (before genotype imputation) in different phenotype groups.}
 }
+}
 \description{
 Test for association between phenotype of interest and genetic marker.
 }
 \details{
-\code{GRAB} package supports \code{SAIGE}, \code{POLMM}, and \code{SPACox} methods.
+\code{GRAB} package supports \code{POLMM}, \code{SPACox}, \code{SPAGRM}, \code{SPAmix}, and \code{WtCoxG} methods.
 Detailed information about the analysis methods is given in the \code{Details} section of \code{\link{GRAB.NullModel}}.
 Users do not need to specify them since functions \code{GRAB.Marker} and \code{\link{GRAB.Region}} will check the \code{class(objNull)}.
 \subsection{The following details are about argument \code{control}}{
@@ -75,7 +79,7 @@ The below is to customize the quality-control (QC) process.
 The below is to customize the columns in the \code{OutputFile}.
 Columns of \code{Marker}, \code{Info}, \code{AltFreq}, \code{AltCounts}, \code{MissingRate}, \code{Pvalue} are included for all methods.
 \itemize{
-\item \code{outputColumns}: For example, for POLMM method, users can set \code{control$outputColumns = c("beta", "seBeta", "AltFreqInGroup")}.
+\item \code{outputColumns}: For example, for POLMM method, users can set \code{control$outputColumns = c("beta", "seBeta", "AltFreqInGroup")}:
 \itemize{
 \item \code{POLMM}: Default: \code{beta}, \code{seBeta}; Optional: \code{zScore}, \code{AltFreqInGroup}, \code{nSamplesInGroup}, \code{AltCountsInGroup}
 \item \code{SPACox}: Optional: \code{zScore}
@@ -84,33 +88,37 @@ Columns of \code{Marker}, \code{Info}, \code{AltFreq}, \code{AltCounts}, \code{M
 }
 }
 \examples{
-objNullFile = system.file("results", "objNull.RData", package = "GRAB")
+objNullFile <- system.file("results", "objPOLMMFile.RData", package = "GRAB")
 load(objNullFile)
-class(objNull)    # "POLMM_NULL_Model", that indicates an object from POLMM method.
+class(obj.POLMM) # "POLMM_NULL_Model", that indicates an object from POLMM method.
 
-OutputDir = system.file("results", package = "GRAB")
-OutputFile = paste0(OutputDir, "/simuOUTPUT.txt")
-GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
+OutputDir <- system.file("results", package = "GRAB")
+OutputFile <- paste0(OutputDir, "/simuOUTPUT.txt")
+GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 
 ## make sure the output files does not exist at first
-file.remove(OutputFile)
-file.remove(paste0(OutputFile, ".index"))
+if (file.exists(OutputFile)) file.remove(OutputFile)
+if (file.exists(paste0(OutputFile, ".index"))) file.remove(paste0(OutputFile, ".index"))
 
-GRAB.Marker(objNull,
-            GenoFile = GenoFile,
-            OutputFile = OutputFile)
-            
+GRAB.Marker(obj.POLMM,
+  GenoFile = GenoFile,
+  OutputFile = OutputFile
+)
+
 data.table::fread(OutputFile)
 
 ## additional columns of "zScore", "nSamplesInGroup", "AltCountsInGroup", "AltFreqInGroup"
 ## We do not recommend adding too many columns for all markers
 
-file.remove(OutputFile)
-file.remove(paste0(OutputFile, ".index"))
-GRAB.Marker(objNull,
-            GenoFile = GenoFile,
-            OutputFile = OutputFile,
-            control = list(outputColumns = c("beta", "seBeta", "zScore","nSamplesInGroup","AltCountsInGroup","AltFreqInGroup")))
+if (file.exists(OutputFile)) file.remove(OutputFile)
+if (file.exists(paste0(OutputFile, ".index"))) file.remove(paste0(OutputFile, ".index"))
+GRAB.Marker(obj.POLMM,
+  GenoFile = GenoFile,
+  OutputFile = OutputFile,
+  control = list(outputColumns = c("beta", "seBeta", "zScore", 
+                                   "nSamplesInGroup", "AltCountsInGroup", 
+                                   "AltFreqInGroup"))
+)
 data.table::fread(OutputFile)
-            
+
 }

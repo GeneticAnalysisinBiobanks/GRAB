@@ -58,17 +58,11 @@ nFam = 50
 nSub = 500
 FamMode = "10-members"
 
-# PLINK data format
+# PLINK data format. Currently, this function does not support BGEN data format.
 PLINKFile = system.file("extdata", "example_n1000_m236.bed", package = "GRAB")
 IDsToIncludeFile = system.file("extdata", "example_n1000_m236.IDsToInclude", package = "GRAB")
 
 GenoList = GRAB.SimuGMatFromGenoFile(nFam, nSub, FamMode, PLINKFile,
                                      control = list(IDsToIncludeFile = IDsToIncludeFile))
 
-# Currently, this function does not support BGEN data format
-BGENFile = system.file("extdata", "example_n1000_m240.bgen", package = "GRAB")
-IDsToIncludeFile = system.file("extdata", "example_n1000_m240.IDsToInclude", package = "GRAB")
-
-GenoList = GRAB.SimuGMatFromGenoFile(nFam, nSub, FamMode, BGENFile,
-                                     control = list(IDsToIncludeFile = IDsToIncludeFile))
 }

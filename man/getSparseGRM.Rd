@@ -34,37 +34,46 @@ getSparseGRM(
 }
 \description{
 If the sample size in analysis is greater than 100,000, we recommend using sparse GRM (instead of dense GRM) to adjust for sample relatedness.
-This function is to use \code{GCTA} software (gcta_1.93.1beta, \href{https://cnsgenomics.com/software/gcta/#Overview}{link}) to make a \code{SparseGRMFile} to be passed to function \code{\link{GRAB.NullModel}}.
+This function is to use \code{GCTA} (\href{https://cnsgenomics.com/software/gcta/#Overview}{link}) to make a \code{SparseGRMFile} to be passed to function \code{\link{GRAB.NullModel}}.
 This function can only support \code{Linux} and \code{PLINK} files as required by \code{GCTA} software. To make a \code{SparseGRMFile}, two steps are needed. Please check \code{Details} section for more details.
 }
 \details{
-\describe{
 \itemize{
 \item \code{Step 1}: Run \code{\link{getTempFilesFullGRM}} to save temporary files to \code{tempDir}.
 \item \code{Step 2}: Run \code{getSparseGRM} to combine the temporary files to make a \code{SparseGRMFile} to be passed to function \code{\link{GRAB.NullModel}}.
 }
-}
 Users can customize parameters including \code{(minMafGRM, maxMissingGRM, nPartsGRM)}, but functions \code{\link{getTempFilesFullGRM}} and \code{getSparseGRM} should use the same ones.
 Otherwise, package \code{GRAB} cannot accurately identify temporary files.
 }
-\examples{
-## Input data:
-GenoFile = system.file("extdata", "example.bed", package = "GRAB")
-PlinkFile = tools::file_path_sans_ext(GenoFile)   # remove file extension
-nPartsGRM = 2;   # we recommend setting nPartsGRM = 250 for UK Biobank data analysis with 500K samples.
+\section{The following shows a typical workflow for creating a sparse GRM:}{
+\code{# Input data (We recommend setting nPartsGRM=250 for UKBB with N=500K):}
 
-# Step 1:
-# We strongly recommend parallel computing in high performance clusters (HPC). 
-for(partParallel in 1:nPartsGRM){
-  getTempFilesFullGRM(PlinkFile, nPartsGRM, partParallel)  # this function only supports Linux
+\code{GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")}
+
+\code{PlinkFile = tools::file_path_sans_ext(GenoFile)}
+
+\code{nPartsGRM = 2}
 }
 
-# After step 1, the temporary files are in tempDir (default: system.file("SparseGRM", "temp", package = "GRAB")), which might needs a large amount of space.
+\section{Step 1: We strongly recommend parallel computing in high performance clusters (HPC).}{
+\code{# For Linux, get the file path of gcta64 by which command:}
 
-# Step 2:
-# Combine files in Step 1 to make a SparseGRMFile,
-tempDir = system.file("SparseGRM", "temp", package = "GRAB")
-SparseGRMFile = gsub("temp", "SparseGRM.txt", tempDir)
-getSparseGRM(PlinkFile, nPartsGRM, SparseGRMFile)
+\code{gcta64File <- system("which gcta64", intern = TRUE)}
 
+\code{# For Windows, set the file path directly:}
+
+\code{gcta64File <- "C:\\\\path\\\\to\\\\gcta64.exe"}
+
+\code{# The temp outputs (may be large) will be in system.file("SparseGRM", "temp", package = "GRAB") by default:}
+
+\code{for(partParallel in 1:nPartsGRM) getTempFilesFullGRM(PlinkFile, nPartsGRM, partParallel, gcta64File)}
 }
+
+\section{Step 2: Combine files in Step 1 to make a SparseGRMFile}{
+\code{tempDir = system.file("SparseGRM", "temp", package = "GRAB")}
+
+\code{SparseGRMFile = gsub("temp", "SparseGRM.txt", tempDir)}
+
+\code{getSparseGRM(PlinkFile, nPartsGRM, SparseGRMFile)}
+}
+

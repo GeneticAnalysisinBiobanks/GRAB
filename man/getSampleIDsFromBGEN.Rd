@@ -14,6 +14,6 @@ Extract sample identifiers from BGEN file (only support BGEN v1.2, check \href{h
 }
 \examples{
 
-BGENFile = system.file("extdata", "example_bgen_1.2_8bits.bgen", package = "GRAB")
+BGENFile = system.file("extdata", "simuBGEN.bgen", package = "GRAB")
 getSampleIDsFromBGEN(BGENFile)
 }

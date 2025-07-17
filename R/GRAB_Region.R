@@ -1,14 +1,25 @@
 
 #' Conduct region-level genetic association testing
 #' 
-#' Test for association between phenotype of interest and regions including multiple genetic marker (mostly low-frequency or rare variants).
+#' Test for association between phenotype of interest and regions including
+#' multiple genetic marker (mostly low-frequency or rare variants).
 #' 
 #' @param objNull the output object of function \code{\link{GRAB.NullModel}}. 
-#' @param GenoFile a character of genotype file. Currently, two types of genotype formats are supported: PLINK and BGEN. Check \code{\link{GRAB.ReadGeno}} for more details.
-#' @param GenoFileIndex additional index files corresponding to the \code{GenoFile}. If \code{NULL} (default), the prefix is the same as GenoFile. Check \code{\link{GRAB.ReadGeno}} for more details.
+#' @param GenoFile a character of genotype file. Currently, two types of
+#'   genotype formats are supported: PLINK and BGEN. Check
+#'   \code{\link{GRAB.ReadGeno}} for more details.
+#' @param GenoFileIndex additional index files corresponding to the
+#'   \code{GenoFile}. If \code{NULL} (default), the prefix is the same as
+#'   GenoFile. Check \code{\link{GRAB.ReadGeno}} for more details.
 #' @param OutputFile a character of output file to save the analysis results. 
-#' @param OutputFileIndex a character of output index file to record the end point. If the program ends unexpectedly, the end point can help \code{GRAB} package understand where to restart the analysis. If \code{NULL} (default), \code{OutputFileIndex = paste0(OutputFile, ".index")}. 
-#' @param GroupFile a character of region file to specify region-marker mapping with annotation information. Each region includes two or three rows. Only alphabet, numbers, and [:,_+-] symbols are supported. Columns are separated by 'tab'. 
+#' @param OutputFileIndex a character of output index file to record the end
+#'   point. If the program ends unexpectedly, the end point can help
+#'   \code{GRAB} package understand where to restart the analysis. If
+#'   \code{NULL} (default), \code{OutputFileIndex = paste0(OutputFile, ".index")}. 
+#' @param GroupFile a character of region file to specify region-marker
+#'   mapping with annotation information. Each region includes two or three
+#'   rows. Only alphabet, numbers, and \code{:,_+-} symbols are supported.
+#'   Columns are separated by 'tab'. 
 #' @param SparseGRMFile a character of sparseGRM file. An example is \code{system.file("SparseGRM","SparseGRM.txt",package="GRAB")}.
 #' @param SampleFile a character of file to include sample information with header.
 #' @param MaxMAFVec a character of multiple max MAF cutoffs (comma separated) to include markers for region-level analysis. Default value is \code{"0.05,0.01,0.005"}.
@@ -16,11 +27,10 @@
 #' @param chrom to be continued 
 #' @param control a list of parameters for controlling function \code{GRAB.Region}, more details can be seen in \code{Details} section.
 #' @details 
-#' \code{GRAB} package supports \code{SAIGE}, \code{POLMM}, and \code{SPACox} methods. 
+#' \code{GRAB} package supports \code{POLMM}, \code{SPACox}, \code{SPAGRM}, \code{SPAmix}, and \code{WtCoxG} methods. 
 #' Detailed information about the analysis methods is given in the \code{Details} section of \code{\link{GRAB.NullModel}}. 
 #' Users do not need to specify them since functions \code{\link{GRAB.Marker}} and \code{GRAB.Region} will check the \code{class(objNull)}.
-#' 
-#' ## Region-based approaches are mostly for low-frequency and rare variants. 
+#'  
 #' 
 #' ## The following details are about argument \code{control}
 #' For PLINK files, the default \code{control$AlleleOrder = "alt-first"}; for BGEN files, the default \code{control$AlleleOrder = "ref-first"}.
@@ -35,7 +45,7 @@
 #'   \item \code{MinMACCutoff}: a numeric value *(default=5)*. Markers with MAC < this value will be treated as Ultra-Rare Variants (URV) and collapsed as one value.  
 #'   \item \code{nRegionsEachChunk}: number of regions *(default=1)* in one chunk to output.
 #'   }
-#'   The below is for kernel-based approaches including SKAT and SKAT-O. For more details, please refer to \code{\link{SKAT}}.
+#'   The below is for kernel-based approaches including SKAT and SKAT-O. For more details, please refer to the \href{https://cran.r-project.org/package=SKAT}{SKAT package}.
 #'   \itemize{
 #'   \item \code{kernel}: a type of kernel *(default="linear.weighted")*.
 #'   \item \code{weights_beta}: a numeric vector of parameters for the beta weights for the weighted kernels *(default=c(1, 25))*. 
@@ -47,15 +57,16 @@
 #'  The below is to customize the columns in the \code{OutputMarkerFile}. 
 #'  Columns of \code{Marker}, \code{Info}, \code{AltFreq}, \code{AltCounts}, \code{MissingRate}, \code{Pvalue} are included for all methods.
 #'  \itemize{
-#'  \item \code{outputColumns}: For example, for POLMM method, users can set \code{control$outputColumns = c("beta", "seBeta", "AltFreqInGroup")}. 
+#'  \item \code{outputColumns}: For example, for POLMM method, users can set \code{control$outputColumns = c("beta", "seBeta", "AltFreqInGroup")}:
 #'     \itemize{
 #'     \item \code{POLMM}: Default: \code{beta}, \code{seBeta}; Optional: \code{zScore}, \code{AltFreqInGroup}, \code{nSamplesInGroup}, \code{AltCountsInGroup}
 #'     \item \code{SPACox}: Optional: \code{zScore}
 #'     }
-#'  } 
+#'  }
 #' @return Region-based analysis results are saved into two files: \code{OutputFile} and \code{OutputMarkerFile = paste0(OutputFile, ".markerInfo")}. 
 #' 
 #' The file of \code{OutputMarkerFile} is the same as the results of \code{\link{GRAB.Marker}}. The file of \code{OutputFile} includes columns as below.
+#' \describe{
 #' \item{Region}{Region IDs from \code{RegionFile}}
 #' \item{Anno.Type}{Annotation type from \code{RegionFile}}
 #' \item{maxMAF}{the maximal cutoff of the MAF to select low-frequency/rare variants into analysis.}
@@ -65,15 +76,16 @@
 #' \item{pval.SKATO}{p-values based on SKAT-O method}
 #' \item{pval.SKAT}{p-values based on SKAT method}
 #' \item{pval.Burden}{p-values based on Burden test}
+#' }
 #' @examples 
-#' objNullFile = system.file("results", "objNull.RData", package = "GRAB")
+#' objNullFile = system.file("results", "objPOLMMFile.RData", package = "GRAB")
 #' load(objNullFile)
-#' class(objNull)    # "POLMM_NULL_Model", that indicates an object from POLMM method.
+#' class(obj.POLMM)    # "POLMM_NULL_Model", that indicates an object from POLMM method.
 #' 
 #' OutputDir = system.file("results", package = "GRAB")
 #' OutputFile = paste0(OutputDir, "/simuRegionOutput.txt")
 #' GenoFile = system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
-#' GroupFile = system.file("extdata", "example.GroupFile.txt", package = "GRAB")
+#' GroupFile = system.file("extdata", "simuPLINK_RV.group", package = "GRAB")
 #' SparseGRMFile = system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
 #' 
 #' ## make sure the output files does not exist at first
@@ -81,7 +93,7 @@
 #' file.remove(paste0(OutputFile, ".markerInfo"))
 #' file.remove(paste0(OutputFile, ".index"))
 #' 
-#' GRAB.Region(objNull = objNull,
+#' GRAB.Region(objNull = obj.POLMM,
 #'             GenoFile = GenoFile,
 #'             GenoFileIndex = NULL,
 #'             OutputFile = OutputFile,
@@ -93,10 +105,10 @@
 #' data.table::fread(OutputFile)
 #' data.table::fread(paste0(OutputFile,".markerInfo"))
 #' data.table::fread(paste0(OutputFile,".otherMarkerInfo"))
-#' data.table::fread(paste0(OutputFile,".index"), sep="\t", header=F)
+#' data.table::fread(paste0(OutputFile,".index"), sep="\t", header=FALSE)
 #' 
 #' SampleFile = system.file("extdata", "simuPHENO.txt", package = "GRAB")
-#' GRAB.Region(objNull = objNull,
+#' GRAB.Region(objNull = obj.POLMM,
 #'             GenoFile = GenoFile,
 #'             GenoFileIndex = NULL,
 #'             OutputFile = OutputFile,
@@ -109,11 +121,9 @@
 #' data.table::fread(OutputFile)
 #' data.table::fread(paste0(OutputFile,".markerInfo"))
 #' data.table::fread(paste0(OutputFile,".otherMarkerInfo"))
-#' data.table::fread(paste0(OutputFile,".index"), sep="\t", header=F)
+#' data.table::fread(paste0(OutputFile,".index"), sep="\t", header=FALSE)
 #' 
 #' @export
-#' @import SKAT, data.table
-
 GRAB.Region = function(objNull,
                        GenoFile,
                        GenoFileIndex = NULL,
@@ -235,6 +245,9 @@ GRAB.Region = function(objNull,
   diffTime2 = 0
   diffTime3 = 0
   
+  # Use SKAT.Met_SKAT_Get_Pvalue instead of SKAT:::Met_SKAT_Get_Pvalue to be CRAN-compliant
+  SKAT.Met_SKAT_Get_Pvalue <- getFromNamespace("Met_SKAT_Get_Pvalue", "SKAT")
+
   for(i in (indexChunk+1):nRegions){
     
     region = RegionList[[i]]
@@ -370,7 +383,7 @@ GRAB.Region = function(objNull,
         iSPA = iSPA + 1
         
         t31 = Sys.time()
-        out_SKAT_List = with(RV.Markers, try(SKAT:::Met_SKAT_Get_Pvalue(Score = wStatVec[pos], 
+        out_SKAT_List = with(RV.Markers, try(SKAT.Met_SKAT_Get_Pvalue(Score = wStatVec[pos], 
                                                                         # Phi = wadjVarSMat[pos, pos],  
                                                                         Phi = ratioBurdenSPA * wadjVarSMat[pos, pos],  
                                                                         r.corr = control$r.corr, 
@@ -381,7 +394,7 @@ GRAB.Region = function(objNull,
         t32 = Sys.time()
         diffTime3 = diffTime3 + (t32-t31)
         
-        if(class(out_SKAT_List) == "try-error"){
+        if(inherits(out_SKAT_List, "try-error")){
           Pvalue = c(NA, NA, NA)
           error.code = 2
         }else if(!any(c(0,1) %in% out_SKAT_List$param$rho)){

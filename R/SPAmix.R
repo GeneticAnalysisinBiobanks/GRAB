@@ -7,21 +7,25 @@
 #' 
 #' @examples 
 #' # Step 1: fit a null model
+#' library(dplyr)
 #' PhenoFile = system.file("extdata", "simuPHENO.txt", package = "GRAB")
-#' PhenoData = data.table::fread(PhenoFile, header = T)
+#' PhenoData = data.table::fread(PhenoFile, header = TRUE)
 #' N = nrow(PhenoData)
-#' PhenoData = PhenoData %>% mutate(PC1 = rnorm(N), PC2 = rnorm(N))  # add two PCs, which are required for SPAmix
+#' PhenoData = PhenoData %>% mutate(PC1 = rnorm(N), PC2 = rnorm(N))
+#' # add two PCs, which are required for SPAmix
 #' 
 #' # Users can directly specify a time-to-event trait to analyze
-#' obj.SPAmix = GRAB.NullModel(Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2, 
+#' obj.SPAmix = GRAB.NullModel(survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2, 
 #'                             data = PhenoData, 
 #'                             subjData = IID, 
 #'                             method = "SPAmix", 
 #'                             traitType = "time-to-event",
 #'                             control = list(PC_columns = "PC1,PC2"))
 #' 
-#' # Using model residuals performs exactly the same as the above. Note that confounding factors are still required in the right of the formula.
-#' obj.coxph = coxph(Surv(SurvTime, SurvEvent)~AGE+GENDER+PC1+PC2, data = PhenoData)
+#' # Using model residuals performs exactly the same as the above. Note that
+#' # confounding factors are still required in the right of the formula.
+#' obj.coxph = survival::coxph(survival::Surv(SurvTime, SurvEvent) ~
+#'                             AGE + GENDER + PC1 + PC2, data = PhenoData)
 #' obj.SPAmix = GRAB.NullModel(obj.coxph$residuals ~ AGE + GENDER + PC1 + PC2, 
 #'                             data = PhenoData, 
 #'                             subjData = IID, 
@@ -30,7 +34,8 @@
 #'                             control = list(PC_columns = "PC1,PC2"))
 #'                             
 #' # SPAmix also supports multiple residuals as below                           
-#' obj.coxph = coxph(Surv(SurvTime, SurvEvent)~AGE+GENDER+PC1+PC2, data = PhenoData)
+#' obj.coxph = survival::coxph(survival::Surv(SurvTime, SurvEvent) ~
+#'                             AGE + GENDER + PC1 + PC2, data = PhenoData)
 #' obj.lm = lm(QuantPheno ~ AGE+GENDER+PC1+PC2, data = PhenoData)
 #' obj.SPAmix = GRAB.NullModel(obj.coxph$residuals + obj.lm$residuals ~ AGE + GENDER + PC1 + PC2, 
 #'                             data = PhenoData, 
@@ -43,7 +48,8 @@
 #' GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' OutputDir = system.file("results", package = "GRAB")
 #' OutputFile = paste0(OutputDir, "/Results_SPAmix.txt")
-#' GRAB.Marker(obj.SPAmix, GenoFile = GenoFile, OutputFile = OutputFile, control = list(outputColumns = "zScore"))
+#' GRAB.Marker(obj.SPAmix, GenoFile = GenoFile, OutputFile = OutputFile,
+#'              control = list(outputColumns = "zScore"))
 #' data.table::fread(OutputFile)
 #' @export
 GRAB.SPAmix = function(){
@@ -128,14 +134,14 @@ mainMarker.SPAmix = function(genoType, genoIndex, outputColumns, objNull)
 # fit null model using SPAmix method
 fitNullModel.SPAmix = function(response, designMat, subjData, control=list(OutlierRatio=1.5), ...)
 {
-  if(!class(response) %in% c("Surv", "Residual")) 
+  if(!(inherits(response, "Surv") || inherits(response, "Residual"))) 
     stop("For SPAmix, the response variable should be of class 'Surv' or 'Residual'.")
   
-  if(class(response) == "Surv")
+  if(inherits(response, "Surv"))
   {
     formula = response ~ designMat
     
-    obj.coxph = coxph(formula, x=T, ...)
+    obj.coxph = survival::coxph(formula, x=T, ...)
     
     ### Check input arguments
     # p2g = check_input(pIDs, gIDs, obj.coxph, range)
@@ -152,7 +158,7 @@ fitNullModel.SPAmix = function(response, designMat, subjData, control=list(Outli
     mresid = matrix(mresid, ncol=1)
   }
   
-  if(class(response) == "Residual")
+  if(inherits(response, "Residual"))
   {
     yVec = mresid = response
     Cova = designMat

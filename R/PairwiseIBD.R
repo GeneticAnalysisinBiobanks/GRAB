@@ -83,8 +83,8 @@ getPairwiseIBD = function(PlinkFile,            # input path to PLINK file (with
                        row.names = F, col.names = F, quote = F, sep = "\t")
     
     edges = t(SparseGRMData[, c("ID1", "ID2")])
-    graph_GRM = make_graph(edges, directed = F)
-    graph_list_all = graph_GRM %>% decompose()
+    graph_GRM = igraph::make_graph(edges, directed = F)
+    graph_list_all = graph_GRM %>% igraph::decompose()
     graph_length = lapply(graph_list_all, length)
     
     graph_list = graph_list_all[graph_length > 1]
@@ -100,7 +100,7 @@ getPairwiseIBD = function(PlinkFile,            # input path to PLINK file (with
     for(i in 1:length(graph_list))
     {
       tSampleNums = tSampleNums + graph_length[i];
-      tSampleIDs = c(tSampleIDs, V(graph_list[[i]])$name);
+      tSampleIDs = c(tSampleIDs, igraph::V(graph_list[[i]])$name);
       
       if(tSampleNums >= maxSampleNums | i == length(graph_list))
       {

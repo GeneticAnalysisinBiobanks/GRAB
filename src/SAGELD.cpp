@@ -2,7 +2,7 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
 
-#include "SAGELD.hpp"
+#include "SAGELD.h"
 
 namespace SAGELD {
 

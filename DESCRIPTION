@@ -1,14 +1,34 @@
 Package: GRAB
 Type: Package
-Title: Genome-wide Robust Analaysis for Biobank data (GRAB)
-Version: 0.1.2
-Date: 2023-06-15
-Author: Wenjian Bi, Wei Zhou, Rounak Dey, Zhangchen Zhao, Seunggeun Lee
-Maintainer: Wenjian Bi <wenjianb@pku.edu.cn>
-Description: A toolkit designed for large-scale biobank data analysis, currently, multiple phenotype types are supported.
+Title: Genome-Wide Robust Analysis for Biobank Data (GRAB)
+Version: 0.2.0
+Date: 2025-07-17
+Authors@R: c(person(given = "Wenjian",
+                    family = "Bi",
+                    role = "aut"),
+             person(given = "Wei",
+                    family = "Zhou",
+                    role = "aut"),
+             person(given = "Rounak",
+                    family = "Dey",
+                    role = "aut"),
+             person(given = "Zhangchen",
+                    family = "Zhao",
+                    role = "aut"),
+             person(given = "Seunggeun",
+                    family = "Lee",
+                    role = "aut"),
+             person(given = "Woody",
+                    family = "Miao",
+                    role = "cre",
+                    email = "miaolin@pku.edu.cn"))
+Description: A toolkit for large-scale biobank data analysis supporting multiple phenotype types.
 License: GPL (>= 2)
-Depends: survival, ordinal, Matrix, SKAT, tidyr, dplyr, dbplyr, igraph, Rcpp, R (>= 3.5.0)
-Imports: Rcpp, RcppArmadillo, RcppParallel, BH, survival, data.table, tidyr, dplyr, dbplyr, RSQLite, ordinal, Matrix, optparse, lme4
-LinkingTo: Rcpp, RcppArmadillo, RcppParallel, BH, survival, data.table, tidyr, dplyr, dbplyr, RSQLite, ordinal, Matrix, optparse, lme4
-RoxygenNote: 7.2.3
+Encoding: UTF-8
+Depends: R (>= 3.5.0)
+Imports: dplyr, data.table, mvtnorm, Matrix, RSQLite, lme4, ordinal, survival, Rcpp, RcppParallel, igraph
+Suggests: dbplyr, optparse, tidyr, R.utils, SKAT
+LinkingTo: Rcpp, RcppArmadillo, RcppParallel, BH
+RoxygenNote: 7.3.2
 Roxygen: list(markdown = TRUE)
+NeedsCompilation: yes

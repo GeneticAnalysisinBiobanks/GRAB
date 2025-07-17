@@ -2,9 +2,9 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
 
-#include "POLMM.hpp"
-#include "DenseGRM.hpp"
-#include "UTIL.hpp"
+#include "POLMM.h"
+#include "DenseGRM.h"
+#include "UTIL.h"
 
 #include <thread>         // std::this_thread::sleep_for
 #include <chrono>         // std::chrono::seconds
@@ -53,18 +53,18 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
   
   m_tau = t_tau;
   
-  // std::cout << "test0" << std::endl;
+  // Rcpp::Rcout << "test0" << std::endl;
   // std::this_thread::sleep_for (std::chrono::seconds(1));
   
   if(m_flagSparseGRM == true){
     
-    // std::cout << "test01" << std::endl;
+    // Rcpp::Rcout << "test01" << std::endl;
     // std::this_thread::sleep_for (std::chrono::seconds(1));
     
     m_InvBlockDiagSigma = getInvBlockDiagSigma();
   }
   
-  // std::cout << "test1" << std::endl;
+  // Rcpp::Rcout << "test1" << std::endl;
   // std::this_thread::sleep_for (std::chrono::seconds(1));
   
   // output for Step 2
@@ -90,7 +90,7 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
   arma::mat RymuMat = ymuMat.cols(0, m_J-2) / t_iRMat;    // n x (J-1): R %*% (y - mu)
   m_RymuVec = sumCols(RymuMat, m_J);                      // n x 1
   
-  // std::cout << "test2" << std::endl;
+  // Rcpp::Rcout << "test2" << std::endl;
   // std::this_thread::sleep_for (std::chrono::seconds(1));
   
   if(m_flagSparseGRM == true){
@@ -413,10 +413,10 @@ void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with len
   
   t_xVec = convert1(xMat, m_n, m_J);
   if (iter >= m_maxiterPCG){
-    std::cout << "pcg did not converge. You may increase maxiter number." << std::endl;
+    Rcpp::Rcout << "pcg did not converge. You may increase maxiter number." << std::endl;
   }
   if(m_showInfo)
-    std::cout << "iter from getPCG1ofSigmaAndVector " << iter << std::endl; 
+    Rcpp::Rcout << "iter from getPCG1ofSigmaAndVector " << iter << std::endl; 
   // }
 }
 
@@ -469,18 +469,18 @@ void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with len
       r2Mat = r1Mat - alpha * ApMat;
       meanL2 = sqrt(getInnerProd(r2Mat, r2Mat)) / sqrt(m_n * (m_J-1));
       
-      // std::cout << "iter:\t" << iter << std::endl;
-      // std::cout << "meanL2:\t" << meanL2 << std::endl;
-      // std::cout << "m_tolPCG:\t" << m_tolPCG << std::endl;
+      // Rcpp::Rcout << "iter:\t" << iter << std::endl;
+      // Rcpp::Rcout << "meanL2:\t" << meanL2 << std::endl;
+      // Rcpp::Rcout << "m_tolPCG:\t" << m_tolPCG << std::endl;
     }
   }
   
   t_xVec = Mat2Vec(xMat, m_n, m_J);
   if (iter >= m_maxiterPCG){
-    std::cout << "pcg did not converge. You may increase maxiter number." << std::endl;
+    Rcpp::Rcout << "pcg did not converge. You may increase maxiter number." << std::endl;
   }
   if(m_printPCGInfo)
-    std::cout << "iter from getPCG1ofSigmaAndVector " << iter << std::endl; 
+    Rcpp::Rcout << "iter from getPCG1ofSigmaAndVector " << iter << std::endl; 
   // }
 }
 
@@ -613,8 +613,8 @@ Rcpp::List POLMMClass::MAIN_SPA(double t_Stat,
                                 double t_Ratio0,
                                 arma::uvec t_posG1)
 {
-  // std::cout << "t_VarP:\t" << t_VarP << std::endl;
-  // std::cout << "t_VarW:\t" << t_VarW << std::endl;
+  // Rcpp::Rcout << "t_VarP:\t" << t_VarP << std::endl;
+  // Rcpp::Rcout << "t_VarW:\t" << t_VarW << std::endl;
   
   Rcpp::List resSPA = fastSaddle_Prob(t_Stat, t_VarP, t_VarW, t_Ratio0, t_K1roots,
                                       t_adjGVec.elem(t_posG1), m_muMat.rows(t_posG1), m_iRMat.rows(t_posG1));
@@ -654,9 +654,9 @@ double K0(double t_x,
   arma::vec temp1Vec = log(1 + arma::sum(temp1Mat, 1));   // arma::sum(Mat, 1) is rowSums()
   double y = sum(temp1Vec) - t_m1 * t_x;
   
-  // std::cout << "sum(temp1Vec):\t" << sum(temp1Vec) << std::endl;
-  // std::cout << "t_m1:\t" << t_m1 << std::endl;
-  // std::cout << "t_x:\t" << t_x << std::endl;
+  // Rcpp::Rcout << "sum(temp1Vec):\t" << sum(temp1Vec) << std::endl;
+  // Rcpp::Rcout << "t_m1:\t" << t_m1 << std::endl;
+  // Rcpp::Rcout << "t_x:\t" << t_x << std::endl;
   
   return y;
 }
@@ -711,13 +711,13 @@ Rcpp::List fastgetroot_K1(double t_Stat,
     
     diffX = -1 * K1 / K2;
     
-    // std::cout << "iter:\t" << iter << std::endl;
-    // std::cout << "x:\t" << x << std::endl;
-    // std::cout << "K12Vec(1):\t" << K12Vec(1) << std::endl;
-    // std::cout << "t_Ratio0:\t" << t_Ratio0 << std::endl;
-    // std::cout << "K1:\t" << K1 << std::endl;
-    // std::cout << "K2:\t" << K2 << std::endl;
-    // std::cout << "diffX:\t" << diffX << std::endl;
+    // Rcpp::Rcout << "iter:\t" << iter << std::endl;
+    // Rcpp::Rcout << "x:\t" << x << std::endl;
+    // Rcpp::Rcout << "K12Vec(1):\t" << K12Vec(1) << std::endl;
+    // Rcpp::Rcout << "t_Ratio0:\t" << t_Ratio0 << std::endl;
+    // Rcpp::Rcout << "K1:\t" << K1 << std::endl;
+    // Rcpp::Rcout << "K2:\t" << K2 << std::endl;
+    // Rcpp::Rcout << "diffX:\t" << diffX << std::endl;
     
     if(!std::isfinite(K1)){
       // checked it on 07/05:
@@ -783,7 +783,7 @@ Rcpp::List fastSaddle_Prob(double t_Stat,
                            arma::mat t_muMat1,   // N1 x J
                            arma::mat t_iRMat1)   // N1 x (J-1)
 {
-  // std::cout<< "Start fastSaddle_Prob()....." << std::endl;
+  // Rcpp::Rcout<< "Start fastSaddle_Prob()....." << std::endl;
   
   int J = t_muMat1.n_cols;
   int N1 = t_muMat1.n_rows;
@@ -814,12 +814,12 @@ Rcpp::List fastSaddle_Prob(double t_Stat,
   bool outUnit1Converge = outUni1["converge"];
   bool outUnit2Converge = outUni2["converge"];
   
-  // std::cout << "adjStat:\t" << adjStat << std::endl;
-  // std::cout << "t_Ratio0:\t" << t_Ratio0 << std::endl;
+  // Rcpp::Rcout << "adjStat:\t" << adjStat << std::endl;
+  // Rcpp::Rcout << "t_Ratio0:\t" << t_Ratio0 << std::endl;
   // double root1 = outUni1["root"];
   // double root2 = outUni2["root"];
-  // std::cout << "outUni1.root:\t" << root1 << std::endl;
-  // std::cout << "outUni2.root:\t" << root2 << std::endl;
+  // Rcpp::Rcout << "outUni1.root:\t" << root1 << std::endl;
+  // Rcpp::Rcout << "outUni2.root:\t" << root2 << std::endl;
     
   if(outUnit1Converge == true && outUnit2Converge == true){
     
@@ -829,29 +829,29 @@ Rcpp::List fastSaddle_Prob(double t_Stat,
     // double root = outUni1["root"];
     // double K2 = outUni1["K2"];
     
-    // std::cout << "outUni1:\t" << root << "\t" << K2 << std::endl;
-    // std::cout << "p1:\t" << p1 << std::endl;
+    // Rcpp::Rcout << "outUni1:\t" << root << "\t" << K2 << std::endl;
+    // Rcpp::Rcout << "p1:\t" << p1 << std::endl;
     
     double p2 = fastGet_Saddle_Prob(-1 * std::abs(adjStat), outUni2["root"], 
                                     outUni2["K2"], t_Ratio0, t_muMat1, cMat, m1, true);
     
     // root = outUni2["root"];
     // K2 = outUni2["K2"];
-    // std::cout << "outUni2:\t" << root << "\t" << K2 << std::endl;
-    // std::cout << "p2:\t" << p2 << std::endl;
+    // Rcpp::Rcout << "outUni2:\t" << root << "\t" << K2 << std::endl;
+    // Rcpp::Rcout << "p2:\t" << p2 << std::endl;
     
     pval = p1 + p2;
     
     converge = true;
     K1roots = {outUni1["root"], outUni2["root"]};
   }else{
-    std::cout << "SPA does not converge, use normal approximation p value." << std::endl;
+    Rcpp::Rcout << "SPA does not converge, use normal approximation p value." << std::endl;
     pval = 2 * arma::normcdf(-1 * std::abs(adjStat));
     K1roots = t_K1roots;
   }
   
   if((!std::isfinite(pval)) || (pval == 0)){
-    std::cout << "SPA does not give a valid p value, use normal approximation p value." << std::endl;
+    Rcpp::Rcout << "SPA does not give a valid p value, use normal approximation p value." << std::endl;
     pval = 2 * arma::normcdf(-1 * std::abs(adjStat));
     K1roots = t_K1roots;
   }
@@ -865,7 +865,7 @@ Rcpp::List fastSaddle_Prob(double t_Stat,
 void POLMMClass::setSeqMat(int t_NonZero_cutoff)         // number of subjects, if the number of subjects is less than or equal to this value, we use ER
 {
   int n = t_NonZero_cutoff;
-  std::cout << "Setting m_SeqMat for Efficient Resampling (ER)...." << std::endl;
+  Rcpp::Rcout << "Setting m_SeqMat for Efficient Resampling (ER)...." << std::endl;
   uint32_t nER = pow(m_J, n);       // J^n
   arma::Col<uint32_t> y = arma::linspace<arma::Col<uint32_t>>(0, nER-1, nER);  // nER x 1 matrix: seq(0, nER-1, 1)
   m_SeqMat.resize(n, nER);
@@ -942,8 +942,8 @@ double getPvalER(arma::uvec t_yVec,     // N1 x 1 vector, from 0 to J-1
     }
   }
   
-  // std::cout << "pvalER_pos:\t" << pvalER_pos << std::endl;
-  // std::cout << "pvalER_neg:\t" << pvalER_neg << std::endl;
+  // Rcpp::Rcout << "pvalER_pos:\t" << pvalER_pos << std::endl;
+  // Rcpp::Rcout << "pvalER_neg:\t" << pvalER_neg << std::endl;
   double pvalER = pvalER_pos + pvalER_neg;
   return pvalER;
 }
@@ -1074,12 +1074,12 @@ void POLMMClass::updateEpsOneStep()
     }
   }
   
-  std::cout << "d2eps:\t" << d2eps << std::endl;
-  std::cout << "d1eps:\t" << d1eps << std::endl;
+  Rcpp::Rcout << "d2eps:\t" << d2eps << std::endl;
+  Rcpp::Rcout << "d1eps:\t" << d1eps << std::endl;
   
   arma::vec deps = -1 * inv(d2eps) * d1eps;
   
-  std::cout << "deps:\t" << deps << std::endl;
+  Rcpp::Rcout << "deps:\t" << deps << std::endl;
   
   for(int k = 1; k < m_J-1; k ++){
     m_eps(k) += deps(k-1);
@@ -1095,17 +1095,17 @@ void POLMMClass::updateEps()
     updateEpsOneStep();
     updateMats();
     
-    std::cout << "iter:\t" << iter << std::endl;
-    std::cout << "m_eps:\t" << m_eps << std::endl;
-    std::cout << "eps0:\t" << eps0 << std::endl;
-    std::cout << "m_tolEps:\t" << m_tolEps << std::endl;
+    Rcpp::Rcout << "iter:\t" << iter << std::endl;
+    Rcpp::Rcout << "m_eps:\t" << m_eps << std::endl;
+    Rcpp::Rcout << "eps0:\t" << eps0 << std::endl;
+    Rcpp::Rcout << "m_tolEps:\t" << m_tolEps << std::endl;
     
     double diffeps = arma::max(arma::abs(m_eps - eps0)/(arma::abs(m_eps) + arma::abs(eps0) + m_tolEps));
     
     if(diffeps < m_tolEps){
       
-      std::cout << "UpdateEps iter: " << iter << std::endl;
-      std::cout << "eps: " << std::endl << m_eps << std::endl;
+      Rcpp::Rcout << "UpdateEps iter: " << iter << std::endl;
+      Rcpp::Rcout << "eps: " << std::endl << m_eps << std::endl;
       break;
     }
   }
@@ -1132,7 +1132,7 @@ void POLMMClass::updatePara(std::string t_excludechr)
 
 arma::mat POLMMClass::getVarRatio(arma::mat t_GMatRatio, std::string t_excludechr)
 {
-  std::cout << "Start estimating variance ratio...." << std::endl;
+  Rcpp::Rcout << "Start estimating variance ratio...." << std::endl;
   Rcpp::List objP = getobjP(m_Cova, m_yMat, m_muMat, m_iRMat);
   
   arma::vec GVec(m_n);
@@ -1153,8 +1153,8 @@ arma::mat POLMMClass::getVarRatio(arma::mat t_GMatRatio, std::string t_excludech
   
   arma::vec VarRatio = VarRatioMat.col(4);
   double CV = calCV(VarRatio);
-  std::cout << "nSNPs for CV: " << index << std::endl;
-  std::cout << "CV: " << CV << std::endl;
+  Rcpp::Rcout << "nSNPs for CV: " << index << std::endl;
+  Rcpp::Rcout << "CV: " << CV << std::endl;
   
   while(CV > m_CVcutoff && VarRatioMat.n_rows <= 100){
     int indexTemp = 0;
@@ -1169,8 +1169,8 @@ arma::mat POLMMClass::getVarRatio(arma::mat t_GMatRatio, std::string t_excludech
     VarRatioMat.insert_rows(0, newVarRatio);
     arma::vec VarRatio = VarRatioMat.col(4);
     CV = calCV(VarRatio);
-    std::cout << "nSNPs for CV: " << index << std::endl;
-    std::cout << "CV: " << CV << std::endl;
+    Rcpp::Rcout << "nSNPs for CV: " << index << std::endl;
+    Rcpp::Rcout << "CV: " << CV << std::endl;
   }
   return(VarRatioMat);
 }
@@ -1215,10 +1215,10 @@ void POLMMClass::updateParaConv(std::string t_excludechr)
     updateEps();
     updateMats();
     
-    std::cout << "beta: " << std::endl << m_beta << std::endl;
+    Rcpp::Rcout << "beta: " << std::endl << m_beta << std::endl;
     
     double diffBeta = arma::max(arma::abs(m_beta - beta0)/(arma::abs(m_beta) + arma::abs(beta0) + m_tolBeta));
-    std::cout << "diffBeta:\t" << diffBeta << std::endl << std::endl;
+    Rcpp::Rcout << "diffBeta:\t" << diffBeta << std::endl << std::endl;
     if(diffBeta < m_tolBeta)
       break;
   }
@@ -1226,7 +1226,7 @@ void POLMMClass::updateParaConv(std::string t_excludechr)
 
 void POLMMClass::updateTau()
 {
-  std::cout << "Start updating tau..." << std::endl;
+  Rcpp::Rcout << "Start updating tau..." << std::endl;
   
   arma::vec YVec = convert1(m_YMat, m_n, m_J);
   getPCGofSigmaAndCovaMat(m_CovaMat, m_iSigma_CovaMat, "none");
@@ -1276,7 +1276,7 @@ void POLMMClass::fitPOLMM()
   updateMats();
   
   // start iteration
-  std::cout << "Start iteration ....." << std::endl;
+  Rcpp::Rcout << "Start iteration ....." << std::endl;
   
   for(m_iter = 0; m_iter < m_maxiter; m_iter ++){
     
@@ -1290,9 +1290,9 @@ void POLMMClass::fitPOLMM()
     if(std::isnan(m_tau))
       Rcpp::stop("Parameter tau is NA.");
     
-    std::cout << "iter: " << m_iter << std::endl;
-    std::cout << "beta: " << std::endl << m_beta << std::endl;
-    std::cout << "tau: " << m_tau << std::endl << std::endl;
+    Rcpp::Rcout << "iter: " << m_iter << std::endl;
+    Rcpp::Rcout << "beta: " << std::endl << m_beta << std::endl;
+    Rcpp::Rcout << "tau: " << m_tau << std::endl << std::endl;
     
     double diffTau = std::abs(m_tau - tau0) / (std::abs(m_tau) + std::abs(tau0) + m_tolTau);
     
@@ -1313,12 +1313,12 @@ void POLMMClass::estVarRatio(arma::mat GenoMat)
   //   Rcpp::StringVector chrVec = m_ptrPlinkObj->getChrVec();
   //   Rcpp::StringVector uniqchr = unique(chrVec);
   //   
-  //   std::cout << "uniqchr is " << uniqchr << std::endl;
+  //   Rcpp::Rcout << "uniqchr is " << uniqchr << std::endl;
   //   
   //   for(int i = 0; i < uniqchr.size(); i ++){
   //     
   //     std::string excludechr = std::string(uniqchr(i));
-  //     std::cout << std::endl << "Leave One Chromosome Out: Chr " << excludechr << std::endl;
+  //     Rcpp::Rcout << std::endl << "Leave One Chromosome Out: Chr " << excludechr << std::endl;
   //     
   //     updateParaConv(excludechr);
   //     
@@ -1513,7 +1513,7 @@ arma::vec getadjGFast(arma::vec GVec,
       // testCount += 1;
       XR_Psi_RG1 += XR_Psi_R_new.col(i) * GVec(i);
     }
-    // std::cout << "testCount:\t" << testCount << std::endl;
+    // Rcpp::Rcout << "testCount:\t" << testCount << std::endl;
   }
   
   arma::vec adjGVec = GVec - XXR_Psi_RX_new * XR_Psi_RG1;

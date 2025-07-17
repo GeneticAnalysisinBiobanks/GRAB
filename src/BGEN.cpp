@@ -16,18 +16,10 @@
 #include <numeric>
 #include <utility>
 #include <stdexcept>
-// #include <memory>
 #include <time.h>
 #include <stdint.h>
 #include <zlib.h>
-
-// #include <boost/iostreams/filter/zstd.hpp>
-// #include "zstd.h"
-// #include <boost/date_time.hpp>
-
-// #include <Rcpp.h>
-
-#include "BGEN.hpp"
+#include "BGEN.h"
 
 namespace BGEN {
 
@@ -59,31 +51,30 @@ void BgenClass::setBgenObj(const std::string t_bgenFileName,
   m_isQuery = false;
   if(t_bgenFileIndex == ""){
     m_isQuery = false;
-    std::cout << "no index file for bgen is provided" << std::endl;
+    Rcpp::Rcout << "no index file for bgen is provided" << std::endl;
   }  
   
   /****code from BOLT-LMM v2.3.4***/
   
   /********** READ HEADER v1.2**********/
   m_fin = fopen(t_bgenFileName.c_str(), "rb");
-  uint32_t offset; fread(&offset, 4, 1, m_fin); //cout << "offset: " << offset << endl;
-  uint32_t L_H; fread(&L_H, 4, 1, m_fin); //cout << "L_H: " << L_H << endl;
-  fread(&m_M0, 4, 1, m_fin); std::cout << "snpBlocks (Mbgen): " << m_M0 << std::endl;
+  uint32_t offset; size_t bytesRead = fread(&offset, 4, 1, m_fin); (void)bytesRead; //cout << "offset: " << offset << endl;
+  uint32_t L_H; bytesRead = fread(&L_H, 4, 1, m_fin); (void)bytesRead; //cout << "L_H: " << L_H << endl;
+  bytesRead = fread(&m_M0, 4, 1, m_fin); (void)bytesRead; Rcpp::Rcout << "snpBlocks (Mbgen): " << m_M0 << std::endl;
   assert(m_M0 != 0);
-  //unsigned int Nbgen; fread(&Nbgen, 4, 1, m_fin); std::cout << "samples (Nbgen): " << Nbgen << std::endl;
-  fread(&m_N0, 4, 1, m_fin); std::cout << "samples (Nbgen): " << m_N0 << std::endl;
+  //unsigned int Nbgen; fread(&Nbgen, 4, 1, m_fin); Rcpp::Rcout << "samples (Nbgen): " << Nbgen << std::endl;
+  bytesRead = fread(&m_N0, 4, 1, m_fin); (void)bytesRead; Rcpp::Rcout << "samples (Nbgen): " << m_N0 << std::endl;
   unsigned int m_Nsample = t_SampleInBgen.size();
   m_SampleInBgen = t_SampleInBgen;
   if (m_N0 != m_Nsample) {
-    std::cerr << "ERROR: Number of samples in BGEN header does not match sample file" << std::endl;
-    exit(1);
+    Rcpp::stop("ERROR: Number of samples in BGEN header does not match sample file");
   }
-  char magic[5]; fread(magic, 1, 4, m_fin); magic[4] = '\0'; //cout << "magic bytes: " << string(magic) << endl;
+  char magic[5]; bytesRead = fread(magic, 1, 4, m_fin); (void)bytesRead; magic[4] = '\0'; //cout << "magic bytes: " << string(magic) << endl;
   fseek(m_fin, L_H-20, SEEK_CUR); //cout << "skipping L_H-20 = " << L_H-20 << " bytes (free data area)" << endl;
-  uint32_t flags; fread(&flags, 4, 1, m_fin); //cout << "flags: " << flags << endl;
-  uint32_t CompressedSNPBlocks = flags&3; std::cout << "CompressedSNPBlocks: " << CompressedSNPBlocks << std::endl;
+  uint32_t flags; bytesRead = fread(&flags, 4, 1, m_fin); (void)bytesRead; //cout << "flags: " << flags << endl;
+  uint32_t CompressedSNPBlocks = flags&3; Rcpp::Rcout << "CompressedSNPBlocks: " << CompressedSNPBlocks << std::endl;
   assert(CompressedSNPBlocks==1); // REQUIRE CompressedSNPBlocks==1
-  uint32_t Layout = (flags>>2)&0xf; std::cout << "Layout: " << Layout << std::endl;
+  uint32_t Layout = (flags>>2)&0xf; Rcpp::Rcout << "Layout: " << Layout << std::endl;
   assert(Layout==1 || Layout==2); // REQUIRE Layout==1 or Layout==2
   fseek(m_fin, offset+4, SEEK_SET);
 }
@@ -91,7 +82,7 @@ void BgenClass::setBgenObj(const std::string t_bgenFileName,
 
 void BgenClass::setPosSampleInBgen(std::vector<std::string> & t_SampleInModel)
 {
-  std::cout << "Setting position of samples in Bgen files...." << std::endl;	  
+  Rcpp::Rcout << "Setting position of samples in Bgen files...." << std::endl;	  
   m_N = t_SampleInModel.size();
   
   // updated by BWJ on 03/14/2021
@@ -154,43 +145,35 @@ void BgenClass::Parse2(unsigned char *buf,
   unsigned int N = bufAt[0]|(bufAt[1]<<8)|(bufAt[2]<<16)|(bufAt[3]<<24); bufAt += 4;
   
   if (N != m_N0) {
-    std::cerr << "ERROR: " << snpName << " has N = " << N << " (mismatch with header block)" << std::endl;
-    exit(1);
+    Rcpp::stop("ERROR: " + snpName + " has N = " + std::to_string(N) + " (mismatch with header block)");
   }
   unsigned int K = bufAt[0]|(bufAt[1]<<8); bufAt += 2;
   if (K != 2U) {
-    std::cerr << "ERROR: " << snpName << " has K = " << K << " (non-bi-allelic)" << std::endl;
-    exit(1);
+    Rcpp::stop("ERROR: " + snpName + " has K = " + std::to_string(K) + " (non-bi-allelic)");
   }
   unsigned int Pmin = *bufAt; bufAt++;
   if (Pmin != 2U) {
-    std::cerr << "ERROR: " << snpName << " has minimum ploidy = " << Pmin << " (not 2)" << std::endl;
-    exit(1);
+    Rcpp::stop("ERROR: " + snpName + " has minimum ploidy = " + std::to_string(Pmin) + " (not 2)");
   }
   unsigned int Pmax = *bufAt; bufAt++;
   if (Pmax != 2U) {
-    std::cerr << "ERROR: " << snpName << " has maximum ploidy = " << Pmax << " (not 2)" << std::endl;
-    exit(1);
+    Rcpp::stop("ERROR: " + snpName + " has maximum ploidy = " + std::to_string(Pmax) + " (not 2)");
   }
   
   const unsigned char *ploidyMissBytes = bufAt;
   for (unsigned int i = 0; i < N; i++) {
     unsigned int ploidyMiss = *bufAt; bufAt++;
     if (ploidyMiss != 2U && ploidyMiss != 130U) {
-      std::cerr << "ERROR: " << snpName << " has ploidy/missingness byte = " << ploidyMiss
-                << " (not 2 or 130)" << std::endl;
-      exit(1);
+      Rcpp::stop("ERROR: " + snpName + " has ploidy/missingness byte = " + std::to_string(ploidyMiss) + " (not 2 or 130)");
     }
   }
   unsigned int Phased = *bufAt; bufAt++;
   if (Phased != 0U) {
-    std::cerr << "ERROR: " << snpName << " has Phased = " << Pmax << " (not 0)" << std::endl;
-    exit(1);
+    Rcpp::stop("ERROR: " + snpName + " has Phased = " + std::to_string(Pmax) + " (not 0)");
   }
   unsigned int B = *bufAt; bufAt++;
   if (B != 8U) {
-    std::cerr << "ERROR: " << snpName << " has B = " << B << " (not 8)" << std::endl;
-    exit(1);
+    Rcpp::stop("ERROR: " + snpName + " has B = " + std::to_string(B) + " (not 8)");
   }
   double lut[256];
   for (int i = 0; i <= 255; i++)
@@ -206,7 +189,7 @@ void BgenClass::Parse2(unsigned char *buf,
   std::size_t missing_cnt = 0;
   
   for (unsigned int i = 0; i < N; i++) {
-    //if(i == 1){std::cout << "ploidyMissBytes[i] " << ploidyMissBytes[i] << std::endl;}
+    //if(i == 1){Rcpp::Rcout << "ploidyMissBytes[i] " << ploidyMissBytes[i] << std::endl;}
     if (ploidyMissBytes[i] != 130U){
       //bufAt += 2;
       p11 = lut[*bufAt]; bufAt++;
@@ -246,7 +229,7 @@ void BgenClass::Parse2(unsigned char *buf,
       }
     }
   }
-  //std::cout << "sum_eij_sub: " << sum_eij_sub << std::endl;
+  //Rcpp::Rcout << "sum_eij_sub: " << sum_eij_sub << std::endl;
   AC = 2* ((double) (m_N - missing_cnt)) - sum_eij_sub;
   if(m_N == missing_cnt){
     AF = 0;
@@ -255,21 +238,21 @@ void BgenClass::Parse2(unsigned char *buf,
   }
   
   double thetaHat = sum_eij / (2* (m_N - missing_cnt));
-  //std::cout << "sum_eij " << sum_eij << std::endl;
-  //std::cout << "missing_cnt " << sum_eij << std::endl;
+  //Rcpp::Rcout << "sum_eij " << sum_eij << std::endl;
+  //Rcpp::Rcout << "missing_cnt " << sum_eij << std::endl;
   info = thetaHat==0 || thetaHat==1 ? 1 :
     1 - sum_fij_minus_eij2 / (2*(m_N - missing_cnt)*thetaHat*(1-thetaHat));
   
   // updated on 2021-08-27: the imputation part was put in UTIL.cpp
   // if(missing_cnt > 0){
-  //   // std::cout << "AC: " << AC << std::endl;
-  //   // std::cout << "sample index with missing dosages for snpName " << snpName << " :";
+  //   // Rcpp::Rcout << "AC: " << AC << std::endl;
+  //   // Rcpp::Rcout << "sample index with missing dosages for snpName " << snpName << " :";
   //   
   //   if(!m_isDropMissingDosagesInBgen){
   //     double imputeDosage = 2*AF;
   //     for (unsigned int i = 0; i < indexforMissing.size(); i++)
   //     {
-  //       // std::cout << indexforMissing[i]+1 << ",";
+  //       // Rcpp::Rcout << indexforMissing[i]+1 << ",";
   //       if(!m_isSparseDosagesInBgen){
   //         dosages[indexforMissing[i]] = imputeDosage;
   //       }else{
@@ -278,7 +261,7 @@ void BgenClass::Parse2(unsigned char *buf,
   //       }
   //       AC = AC + imputeDosage;
   //     }
-  //     // std::cout << "AC new: " << AC << std::endl;
+  //     // Rcpp::Rcout << "AC new: " << AC << std::endl;
   //   }
   // }
 }
@@ -318,49 +301,48 @@ arma::vec BgenClass::getOneMarker(uint64_t t_gIndex,        // different meaning
   if ( numBoolRead > 0 ) {
     // isBoolRead = true;
     t_isBoolRead = true;
-    fread(snpID, 1, LS, m_fin); snpID[LS] = '\0'; // cout << "snpID: " << string(snpID) << " " << std::flush;
-    uint16_t LR; fread(&LR, 2, 1, m_fin); // cout << "LR: " << LR << " " << std::flush;
-    fread(rsID, 1, LR, m_fin); rsID[LR] = '\0'; // cout << "rsID: " << string(rsID) << " " << std::flush;
+    size_t bytesRead = fread(snpID, 1, LS, m_fin); (void)bytesRead; snpID[LS] = '\0'; // cout << "snpID: " << string(snpID) << " " << std::flush;
+    uint16_t LR; bytesRead = fread(&LR, 2, 1, m_fin); (void)bytesRead; // cout << "LR: " << LR << " " << std::flush;
+    bytesRead = fread(rsID, 1, LR, m_fin); (void)bytesRead; rsID[LR] = '\0'; // cout << "rsID: " << string(rsID) << " " << std::flush;
     RSID = std::string(rsID)=="." ? snpID : rsID;
     //std::string SNPID = string(snpID);
     
-    uint16_t LC; fread(&LC, 2, 1, m_fin); // cout << "LC: " << LC << " " << std::flush;
-    fread(chrStr, 1, LC, m_fin); chrStr[LC] = '\0';
+    uint16_t LC; bytesRead = fread(&LC, 2, 1, m_fin); (void)bytesRead; // cout << "LC: " << LC << " " << std::flush;
+    bytesRead = fread(chrStr, 1, LC, m_fin); (void)bytesRead; chrStr[LC] = '\0';
     chromosome  = std::string(chrStr);
     
-    uint32_t physpos; fread(&physpos, 4, 1, m_fin); // cout << "physpos: " << physpos << " " << std::flush;
+    uint32_t physpos; bytesRead = fread(&physpos, 4, 1, m_fin); (void)bytesRead; // cout << "physpos: " << physpos << " " << std::flush;
     position = physpos;
-    uint16_t K; fread(&K, 2, 1, m_fin); //cout << "K: " << K << endl;
+    uint16_t K; bytesRead = fread(&K, 2, 1, m_fin); (void)bytesRead; //cout << "K: " << K << endl;
     if (K != 2) {
-      std::cerr << "ERROR: Non-bi-allelic variant found: " << K << " alleles" << std::endl;
-      exit(1);
+      Rcpp::stop("ERROR: Non-bi-allelic variant found: " + std::to_string(K) + " alleles");
     }
-    uint32_t LA; fread(&LA, 4, 1, m_fin); // cout << "LA: " << LA << " " << std::flush;
+    uint32_t LA; bytesRead = fread(&LA, 4, 1, m_fin); (void)bytesRead; // cout << "LA: " << LA << " " << std::flush;
     if (LA > maxLA) {
       maxLA = 2*LA;
       free(allele1);
       allele1 = (char *) malloc(maxLA+1);
     }
-    fread(allele1, 1, LA, m_fin); allele1[LA] = '\0';
+    bytesRead = fread(allele1, 1, LA, m_fin); (void)bytesRead; allele1[LA] = '\0';
     first_allele = std::string(allele1);
     free(allele1);
     
-    uint32_t LB; fread(&LB, 4, 1, m_fin); // cout << "LB: " << LB << " " << std::flush;
+    uint32_t LB; bytesRead = fread(&LB, 4, 1, m_fin); (void)bytesRead; // cout << "LB: " << LB << " " << std::flush;
     if (LB > maxLB) {
       maxLB = 2*LB;
       free(allele0);
       allele0 = (char *) malloc(maxLB+1);
     }
-    fread(allele0, 1, LB, m_fin); allele0[LB] = '\0';
+    bytesRead = fread(allele0, 1, LB, m_fin); (void)bytesRead; allele0[LB] = '\0';
     second_allele = std::string(allele0);
     free(allele0);
     
-    uint32_t C; fread(&C, 4, 1, m_fin); //cout << "C: " << C << endl;
+    uint32_t C; bytesRead = fread(&C, 4, 1, m_fin); (void)bytesRead; //cout << "C: " << C << endl;
     if (C > m_zBuf.size()) m_zBuf.resize(C-4);
-    //std::cout << "m_zBuf.size() " << m_zBuf.size() << std::endl;
-    uint32_t D; fread(&D, 4, 1, m_fin); //cout << "D: " << D << endl;
+    //Rcpp::Rcout << "m_zBuf.size() " << m_zBuf.size() << std::endl;
+    uint32_t D; bytesRead = fread(&D, 4, 1, m_fin); (void)bytesRead; //cout << "D: " << D << endl;
     m_zBufLens = C-4; m_bufLens = D;
-    fread(&m_zBuf[0], 1, C-4, m_fin);
+    bytesRead = fread(&m_zBuf[0], 1, C-4, m_fin); (void)bytesRead;
     AC = 0;
     AF = 0;
     info = 0;
