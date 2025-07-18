@@ -112,17 +112,34 @@ If dense GRM is used to adjust for sample relatedness, \code{GenoFile} should be
 }
 \examples{
 # For POLMM method (ordinal categorical data analysis while adjusting for sample relatedness)
+# Step 1(a): fit a null model using a dense GRM (recommand using Linux OS)
+PhenoFile = system.file("extdata", "simuPHENO.txt", package = "GRAB")
+PhenoData = read.table(PhenoFile, header = TRUE)
+GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
+obj.POLMM = GRAB.NullModel(
+  factor(OrdinalPheno) ~ AGE + GENDER,
+  data = PhenoData,
+  subjData = IID, 
+  method = "POLMM",
+  traitType = "ordinal",
+  GenoFile = GenoFile,
+  control = list(showInfo = FALSE, LOCO = FALSE, tolTau = 0.2, tolBeta = 0.1)
+)
 
-# Step 1: fit a null model using a sparse GRM
-# A sparse GRM file can be obtained by getSparseGRM().
-# If SparseGRMFile isn't provided, GRAB.NullModel() will calculate dense GRM from GenoFile.
+names(obj.POLMM)
+obj.POLMM$tau    
 
-PhenoData <- read.table(system.file("extdata", "simuPHENO.txt", package = "GRAB"), header = TRUE)
-GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-SparseGRMFile <- system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
-obj.POLMM <- GRAB.NullModel(factor(OrdinalPheno) ~ AGE + GENDER,
-  data = PhenoData, subjData = IID,
-  method = "POLMM", traitType = "ordinal",
+# Step 1(b): fit a null model using a sparse GRM (recommand using Linux OS)
+# First use getSparseGRM() function to get a sparse GRM file
+PhenoData = read.table(PhenoFile, header = TRUE)
+GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
+SparseGRMFile =  system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
+obj.POLMM = GRAB.NullModel(
+  factor(OrdinalPheno) ~ AGE + GENDER,
+  data = PhenoData,
+  subjData = IID,
+  method = "POLMM",
+  traitType = "ordinal",
   GenoFile = GenoFile,
   SparseGRMFile = SparseGRMFile,
   control = list(showInfo = FALSE, LOCO = FALSE, tolTau = 0.2, tolBeta = 0.1)
