@@ -101,8 +101,8 @@ checkControl.Marker = function(control, NullModelClass)
   
   
   # print control list 
-  print("The below is the list of control parameters used in marker-level genetic association analysis.")
-  print(control)
+  message("The below is the list of control parameters used in marker-level genetic association analysis.")
+  message(control)
   
   return(control)
 }
@@ -170,8 +170,8 @@ checkControl.NullModel = function(control, method, traitType, optionGRM)
   #
   # to be updated for other methods
   
-  cat("The below are the list of control parameters used in null model fitting.\n")
-  print(control)
+  message("The below are the list of control parameters used in null model fitting.")
+  message(control)
   
   return(control)
 }

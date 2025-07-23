@@ -10,6 +10,8 @@
 #' Additional list of \code{control} in \code{GRAB.Marker()} function
 #' Additional list of \code{control} in \code{GRAB.Region()} function
 #' 
+#' @return No return value, called for side effects (prints information about the POLMM method to the console).
+#'
 #' @examples
 #' ### First, Read Data and Convert Phenotype to a Factor
 #' library(dplyr)
@@ -82,7 +84,7 @@
 #'            
 #' @export
 GRAB.POLMM = function(){
-  print("Check ?GRAB.POLMM for more details about 'POLMM' method.")
+  message("Check ?GRAB.POLMM for more details about 'POLMM' method.")
 }
 
 ################### This file includes the following functions
@@ -129,7 +131,7 @@ checkControl.NullModel.POLMM = function(control, traitType, optionGRM)
   
   # default setting of control for POLMM method
   default.control = list(memoryChunk = 2,
-                         seed = 12345678,
+                         seed = -1, # use -1 to indicate no seed should be set
                          tracenrun = 30,
                          maxiter = 100,
                          tolBeta = 0.001,
@@ -140,17 +142,17 @@ checkControl.NullModel.POLMM = function(control, traitType, optionGRM)
                          maxiterEps = 100,
                          tolEps = 1e-10,
                          minMafVarRatio = 0.1,
-                         maxMissingVarRatio = 0.1, 
+                         maxMissingVarRatio = 0.1,
                          nSNPsVarRatio = 20,
                          CVcutoff = 0.0025,
                          # LOCO = TRUE,
-                         numThreads = "auto",
+                         # numThreads = "auto",
                          stackSize = "auto",
                          grainSize = 1,
                          minMafGRM = 0.01,
                          maxMissingGRM = 0.1,
-                         showInfo = T,
-                         onlyCheckTime = F)
+                         showInfo = TRUE,
+                         onlyCheckTime = FALSE)
   
   if(optionGRM == "DenseGRM")
     default.control$LOCO = TRUE;
@@ -333,7 +335,7 @@ setMarker.POLMM = function(objNull, control, chrom)
                    control$SPA_Cutoff,
                    flagSparseGRM)
   
-  print(paste0("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk,"."))
+  message("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk,".")
 }
 
 # Used in setRegion() function in GRAB_Region.R
@@ -341,7 +343,7 @@ setRegion.POLMM = function(objNull, control, chrom, SparseGRMFile)
 {
   if(chrom != "LOCO=F")
   {
-    cat("Argument 'chrom' is:\t", chrom, "\n")
+    message("Argument 'chrom' is:\t", chrom)
     if(!"LOCOList" %in% names(objNull))
       stop("If argument 'chrom' is not 'LOCO=F', then objNull should includes element of 'LOCOList'.")
   }
@@ -350,7 +352,7 @@ setRegion.POLMM = function(objNull, control, chrom, SparseGRMFile)
   
   # Since region-level analysis mainly focuses on rare variants, we use sparse GRM for all markers
   
-  cat("Sparse GRM is used for POLMM-GENE method.\n")
+  message("Sparse GRM is used for POLMM-GENE method.")
   
   setSparseGRMInStep2(SparseGRMFile, objNull)  # check SparseGRM.R
   

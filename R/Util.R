@@ -84,12 +84,12 @@ checkOutputFile = function(OutputFile,
         End = TRUE
         indexChunk = outIndexData[nrow(outIndexData)-1, 1];
         indexChunk = as.numeric(gsub("Have completed the analysis of chunk ", "", indexChunk))
-        cat("Based on 'OutputFile' and 'OutputFileIndex', the analysis has been completed for the toal", indexChunk, "chunks.\n")
+        message("Based on 'OutputFile' and 'OutputFileIndex', the analysis has been completed for the toal", indexChunk, "chunks.")
       }else{
         End = FALSE;
         indexChunk = lastMessage;
         indexChunk = as.numeric(gsub("Have completed the analysis of chunk ", "", indexChunk))
-        cat("Based on 'OutputFile' and 'OutputFileIndex', we restart the analysis from the", indexChunk+1, "chunk.\n")
+        message("Based on 'OutputFile' and 'OutputFileIndex', we restart the analysis from the", indexChunk+1, "chunk.")
       }
     }
     Start = FALSE

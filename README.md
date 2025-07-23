@@ -1,6 +1,19 @@
 # GRAB
 
-## Note on 2025-07-17
+## Release v0.2.1 (2025-08-01)
+
+Resolved all issues raised by the CRAN manual review to meet publication requirements, including:
+
+- Updated the Description field in DESCRIPTION to a single-paragraph summary with relevant references
+- Added a @return section to the documentation of all exported functions where absent
+- Replaced all print() and cat() statements with message() to allow users to suppress output if desired.
+- Removed code that set specific random seeds inside functions
+
+Increased the number of markers (which was decreased from 10k to 1k to minimize package size and running time) in the example dataset from 1k to 1.1k to ensure the number of markers exceeds the number of subjects.
+
+Moved inst/docker back to the project root and excluded it from the package build.
+
+## Relesae v0.2.0 (2025-07-17)
 
 Add a new method, WtCoxG, and bump version to 0.2.0.
 

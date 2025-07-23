@@ -7,6 +7,8 @@
 #' 
 #' Additional list of \code{control} in \code{GRAB.Marker()} function.
 #' 
+#' @return No return value, called for side effects (prints information about the SPAGRM method to the console).
+#'
 #' @examples 
 #' # Step 2a: process model residuals
 #' ResidMatFile = system.file("extdata", "ResidMat.txt", package = "GRAB")
@@ -27,7 +29,7 @@
 #' head(read.table(OutputFile, header = TRUE))
 #' @export
 GRAB.SPAGRM = function(){
-  print("Check ?GRAB.SPAGRM for more details about 'SPAGRM' method.")
+    message("Check ?GRAB.SPAGRM for more details about 'SPAGRM' method.")
 }
 
 ################### This file includes the following functions
@@ -107,7 +109,7 @@ setMarker.SPAGRM = function(objNull, control)
                     control$zeta,
                     control$tol)
   
-  print(paste0("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk,".")) # This file is in 'control.R'
+  message("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk,".") # This file is in 'control.R'
 }
 
 mainMarker.SPAGRM = function(genoType, genoIndex, outputColumns)
@@ -179,37 +181,37 @@ SPAGRM.NullModel = function(ResidMatFile,    # two columns: column 1 is subjID, 
   Range = max(Quant) - min(Quant)
   cutoffVec = c(min(Quant) - OutlierRatio * Range, max(Quant) + OutlierRatio * Range)
   
-  cat("cutoffVec:\t",cutoffVec,"\n")
+  message("cutoffVec:\t",cutoffVec)
   ResidMat$Outlier = ifelse(Resid < cutoffVec[1] | Resid > cutoffVec[2],
                             TRUE, FALSE)
   
   if(ControlOutlier)
   {
-    cat("ControlOutlier = TRUE (default) to keep the outliers < 5%;\nSet ControlOutlier = FALSE for higher accuracy.\n")
+    message("ControlOutlier = TRUE (default) to keep the outliers < 5%;\nSet ControlOutlier = FALSE for higher accuracy.")
     
     while(sum(ResidMat$Outlier) == 0)
     {
       OutlierRatio = OutlierRatio*0.8
       cutoffVec = c(min(Quant) - OutlierRatio * Range, max(Quant) + OutlierRatio * Range)
-      cat("cutoffVec:\t",cutoffVec,"\n")
+      message("cutoffVec:\t",cutoffVec)
       ResidMat$Outlier = ifelse(Resid < cutoffVec[1] | Resid > cutoffVec[2],
                                 TRUE, FALSE)
-      cat("The number of outlier is:", sum(ResidMat$Outlier),"\n")
+      message("The number of outlier is:", sum(ResidMat$Outlier))
     }
     
     while(sum(ResidMat$Outlier)/nrow(ResidMat) > 0.05)
     {
       OutlierRatio = OutlierRatio + 0.5
       cutoffVec = c(min(Quant) - OutlierRatio * Range, max(Quant) + OutlierRatio * Range)
-      cat("cutoffVec:\t",cutoffVec,"\n")
+      message("cutoffVec:\t",cutoffVec)
       ResidMat$Outlier = ifelse(Resid < cutoffVec[1] | Resid > cutoffVec[2],
                                 TRUE, FALSE)
-      cat("The number of outlier is:", sum(ResidMat$Outlier),"\n")
+      message("The number of outlier is:", sum(ResidMat$Outlier))
     }
   }
   
-  cat("Outliers information is as below\n")
-  print(ResidMat %>% filter(Outlier == TRUE) %>% dplyr::select(SubjID, Resid, Outlier) %>% arrange(Resid))
+  message("Outliers information is as below")
+  message(ResidMat %>% filter(Outlier == TRUE) %>% dplyr::select(SubjID, Resid, Outlier) %>% arrange(Resid))
   
   # Decompose the subjects based on family structure and use a greedy algorithm to reduce family size if needed
   SparseGRM1 = SparseGRM
@@ -242,12 +244,12 @@ SPAGRM.NullModel = function(ResidMatFile,    # two columns: column 1 is subjID, 
   
   if(nGraph != 0)
   {
-    cat("Start process the related residual information.\n")
+    message("Start process the related residual information.")
     
     for(i in 1:nGraph)
     {
       if(i %% 1000 == 0)
-        cat("Processing the related residual information:\t", i,"/",nGraph,"\n")
+        message("Processing the related residual information:\t", i,"/",nGraph)
       
       comp1 = graph_list[[i]]
       comp3 = igraph::V(comp1)$name
@@ -339,7 +341,7 @@ SPAGRM.NullModel = function(ResidMatFile,    # two columns: column 1 is subjID, 
       }
     }
     
-    cat("Start process the Chow-Liu tree.\n")
+    message("Start process the Chow-Liu tree.")
     
     # Make a list of array index.
     arr.index = list()
@@ -366,7 +368,7 @@ SPAGRM.NullModel = function(ResidMatFile,    # two columns: column 1 is subjID, 
       for(index.outlier in 1:n.outliers)
       {
         if(index.outlier %% 1000 == 0)
-          cat("Processing the CLT for families with outliers:\t", TwofamID.index, ", ", ThreefamID.index, "/", nGraph, "\n")
+          message("Processing the CLT for families with outliers:\t", TwofamID.index, ", ", ThreefamID.index, "/", nGraph)
         
         comp1 = graph_list_updated[[index.outlier]]
         comp3 = igraph::V(comp1)$name
@@ -412,7 +414,7 @@ SPAGRM.NullModel = function(ResidMatFile,    # two columns: column 1 is subjID, 
         ThreeSubj_list[[ThreefamID.index]] = list(CLT = CLT,
                                                   stand.S = c(stand.S.temp))
       }
-      cat("Completed processing the CLT for families with outliers:\t", TwofamID.index, ", ", ThreefamID.index, "/", nGraph, "\n")
+      message("Completed processing the CLT for families with outliers:\t", TwofamID.index, ", ", ThreefamID.index, "/", nGraph)
     }
   }
   
@@ -450,18 +452,18 @@ SPAGRMGE.NullModel = function(NullModel = NULL,   # a fitted null model from lme
   
   if(is.null(NullModel))
   {
-    cat("Model formula is...\n")
+    message("Model formula is...")
     model_formula = as.formula(paste(PhenoColname, "~", paste(CovaColname, collapse = "+"), "+", Envcolname, "+ (", Envcolname, "|", SubjIDColname, ")"))
-    print(model_formula)
+    message(model_formula)
     
-    cat("Fit the null model...\n")
+    message("Fit the null model...")
     null_model = lme4::lmer(model_formula, data = Pheno_data)
   }else
   {
     null_model = NullModel
   }
   
-  cat("Process the null model product...\n")
+  message("Process the null model product...")
   
   # Extract variance components and compute penalty matrix (P)
   if(inherits(null_model, "merMod"))
@@ -564,7 +566,7 @@ SPAGRMGE.NullModel = function(NullModel = NULL,   # a fitted null model from lme
   
   if(length(totalSNPs) > 2e3)
   {
-    cat("Too many SNPs in the PLINK file! We randomly select 2000 SNPs.\n")
+    message("Too many SNPs in the PLINK file! We randomly select 2000 SNPs.")
     
     random_SNPs = sample(totalSNPs, 2000)
     
@@ -616,13 +618,13 @@ SPAGRMGE.NullModel = function(NullModel = NULL,   # a fitted null model from lme
   if(length(lambdaObs) > 1e2)
   {
     lambda = mean(lambdaObs, na.rm = TRUE)
-    cat("lambda:\t", lambda, "\n")
+    message("lambda:\t", lambda)
   }else
   {
     stop("Less than 100 common SNPs (MAF > 0.05) in the PLINK file!\n")
   }
   
-  cat("Calculate model residuals...\n")
+  message("Calculate model residuals...")
   
   if(inherits(null_model, "merMod"))
   {
@@ -640,7 +642,7 @@ SPAGRMGE.NullModel = function(NullModel = NULL,   # a fitted null model from lme
   uk = 0
   for(i in 1:n)
   {
-    if(i %% 10000 == 0) cat(i, "\n")
+    if(i %% 10000 == 0) message(i)
     
     ki = k[i]
     uk = max(uk) + 1:ki

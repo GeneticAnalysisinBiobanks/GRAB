@@ -151,7 +151,7 @@ GRAB.Marker <- function(objNull,
       OutputFileIndex, "\n",
       "We restart the analysis from chunk:\t", indexChunk + 1, "\n"
     )
-    cat(message)
+    message(message)
   }
 
   subjData <- as.character(objNull$subjData)
@@ -173,9 +173,9 @@ GRAB.Marker <- function(objNull,
 
   nChunks <- length(genoIndexList)
 
-  cat("Number of all markers to test:\t", nrow(markerInfo), "\n")
-  cat("Number of markers in each chunk:\t", nMarkersEachChunk, "\n")
-  cat("Number of chunks for all markers:\t", nChunks, "\n")
+  message("Number of all markers to test:\t", nrow(markerInfo))
+  message("Number of markers in each chunk:\t", nMarkersEachChunk)
+  message("Number of chunks for all markers:\t", nChunks)
 
   chrom <- "InitialChunk"
   for (i in (indexChunk + 1):nChunks)
@@ -192,7 +192,7 @@ GRAB.Marker <- function(objNull,
       chrom <- tempChrom
     }
 
-    cat(paste0("(", Sys.time(), ") ---- Analyzing Chunk ", i, "/", nChunks, ": chrom ", chrom, " ---- \n"))
+    message("(", Sys.time(), ") ---- Analyzing Chunk ", i, "/", nChunks, ": chrom ", chrom, " ----")
 
     # main function to calculate summary statistics for markers in one chunk
     resMarker <- mainMarker(NullModelClass, genoType, genoIndex, control, objNull, obj.setMarker)

@@ -5,6 +5,8 @@
 #' @details 
 #' For ```SPAmix```, the confounding factors of SNP-derived PCs are required and should be specified in ```control```.
 #' 
+#' @return No return value, called for side effects (prints information about the SPAmix method to the console).
+#'
 #' @examples 
 #' # Step 1: fit a null model
 #' library(dplyr)
@@ -53,7 +55,7 @@
 #' data.table::fread(OutputFile)
 #' @export
 GRAB.SPAmix = function(){
-  print("Check ?GRAB.SPAmix for more details about 'SPAmix' method.")
+  message("Check ?GRAB.SPAmix for more details about 'SPAmix' method.")
 }
 
 ################### This file includes the following functions
@@ -102,7 +104,7 @@ setMarker.SPAmix = function(objNull, control)
   # outLierList[[i]] = list(posValue = posValue - 1,
   #                         posOutlier = posOutlier - 1,
   #                         posNonOutlier = posNonOutlier - 1)
-  print(paste0("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk,"."))
+  message("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk,".")
 }
 
 # mainMarker.SPAmix(genoType, genoIndex, outputColumns)
@@ -163,7 +165,7 @@ fitNullModel.SPAmix = function(response, designMat, subjData, control=list(Outli
     yVec = mresid = response
     Cova = designMat
     
-    print(head(mresid))
+    message(head(mresid))
     if(nrow(mresid) != length(subjData))
       stop("Please check the consistency between 'formula' and 'subjData'.")
   }
@@ -171,13 +173,13 @@ fitNullModel.SPAmix = function(response, designMat, subjData, control=list(Outli
   PC_columns = control$PC_columns
   
   # Remove the below if checked later
-  cat("colnames(designMat):\n")
-  print(colnames(designMat))
-  cat("PC columns specified in 'control':\n")
-  print(PC_columns)
-  cat("dimension of 'designMat' and 'Cova':\n")
-  print(dim(designMat))
-  print(dim(Cova))
+  message("colnames(designMat):")
+  message(colnames(designMat))
+  message("PC columns specified in 'control':")
+  message(PC_columns)
+  message("dimension of 'designMat' and 'Cova':")
+  message(dim(designMat))
+  message(dim(Cova))
   
   if(any(!PC_columns %in% colnames(designMat)))
     stop("PC columns specified in 'control$PC_columns' should be in 'formula'.")
@@ -209,8 +211,8 @@ fitNullModel.SPAmix = function(response, designMat, subjData, control=list(Outli
       r.outlier = r.outlier*0.8
       cutoff = c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
       posOutlier = which(mresid < cutoff[1] | mresid > cutoff[2])
-      cat("The current outlier ratio is:",r.outlier,"\n")
-      cat("The number of outlier is:",length(posOutlier),"\n")
+      message("The current outlier ratio is:",r.outlier)
+      message("The number of outlier is:",length(posOutlier))
       
     }
     
@@ -218,9 +220,9 @@ fitNullModel.SPAmix = function(response, designMat, subjData, control=list(Outli
     posValue = which(!is.na(mresid.temp))
     posNonOutlier = setdiff(posValue, posOutlier)
     
-    cat("The outlier of residuals will be passed to SPA analysis.\n")
-    cat("Cutoffs to define residuals:\t", signif(cutoff,2),"\n")
-    cat("Totally, ", length(posOutlier),"/", length(posValue), " are defined as outliers.\n")
+    message("The outlier of residuals will be passed to SPA analysis.")
+    message("Cutoffs to define residuals:\t", signif(cutoff,2))
+    message("Totally, ", length(posOutlier),"/", length(posValue), " are defined as outliers.")
     
     if(length(posOutlier) == 0)
       stop("No outlier is observed. SPA is not required in this case.")

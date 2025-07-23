@@ -185,7 +185,11 @@ void POLMMClass::setPOLMMInner(arma::mat t_Cova,
   m_tau = t_tau;
   
   setArray();
-  set_seed(m_seed);
+  
+  // Only set seed if it's not -1 (which indicates no seed)
+  if(m_seed != -1){
+    set_seed(static_cast<unsigned int>(m_seed));
+  }
 }
 
 // This function only uses variance ratio and does not use sparse GRM

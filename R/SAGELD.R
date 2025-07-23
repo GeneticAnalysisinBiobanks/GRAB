@@ -6,10 +6,11 @@
 #' Additional list of \code{control} in \code{SAGELD.NullModel()} function.
 #' 
 #' Additional list of \code{control} in \code{GRAB.Marker()} function.
-#' 
+#'
+#' @return No return value, called for side effects (prints information about the SAGELD method to the console).
 #' @export
 GRAB.SAGELD = function(){
-  print("Check ?GRAB.SAGELD for more details about 'SAGELD' method.")
+  message("Check ?GRAB.SAGELD for more details about 'SAGELD' method.")
 }
 
 ################### This file includes the following functions
@@ -115,7 +116,7 @@ setMarker.SAGELD = function(objNull, control)
                     control$zeta,
                     control$tol)
   
-  print(paste0("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk,".")) # This file is in 'control.R'
+  message("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk,".") # This file is in 'control.R'
 }
 
 mainMarker.SAGELD = function(genoType, genoIndex, outputColumns, objNull)
@@ -180,7 +181,7 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
                             PvalueCutoff = 0.001,  # a p value cutoff for marginal genetic effect on environmental variable.
                             control = list())      # control command used in 'SPAGRM.NullModel', see also 'SPAGRM.NullModel'.
 {
-  cat("Process the null model product...\n")
+  message("Process the null model product...")
   
   # Extract variance components and compute penalty matrix (P)
   if(inherits(NullModel, "merMod"))
@@ -195,7 +196,7 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
     P = solve(G / sig ^ 2)
   }else if(inherits(NullModel, "glmmTMB"))
   {
-    cat("Warning: when you use glmmTMB to fit the null model, you should library(glmmTMB), before you library(GRAB)!\n")
+    message("Warning: when you use glmmTMB to fit the null model, you should library(glmmTMB), before you library(GRAB)!")
     
     Pheno_data = NullModel$frame
     
@@ -385,7 +386,7 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
     
     if(length(totalSNPs) > 2e3)
     {
-      cat("Too many SNPs in the PLINK file! We randomly select 2000 SNPs.\n")
+      message("Too many SNPs in the PLINK file! We randomly select 2000 SNPs.")
       
       random_SNPs = sample(totalSNPs, 2000)
       
@@ -437,7 +438,7 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
     if(length(lambdaObs) > 1e2)
     {
       lambda = mean(lambdaObs, na.rm = TRUE)
-      cat("Mean lambda:\t", lambda, "\n")
+      message("Mean lambda:\t", lambda)
     }else
     {
       stop("Less than 100 common SNPs (MAF > 0.05 & Pvalue(G-E) > ", PvalueCutoff, ") in the PLINK file!\n")
@@ -455,37 +456,37 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
     Range = max(Quant) - min(Quant)
     cutoffVec = c(min(Quant) - OutlierRatio * Range, max(Quant) + OutlierRatio * Range)
     
-    cat("cutoffVec:\t",cutoffVec,"\n")
+    message("cutoffVec:\t",cutoffVec)
     Resid_data$Outlier = ifelse(Resid < cutoffVec[1] | Resid > cutoffVec[2],
                                 TRUE, FALSE)
     
     if(ControlOutlier)
     {
-      cat("ControlOutlier = TRUE (default) to keep the outliers < 5%;\nSet ControlOutlier = FALSE for higher accuracy.\n")
+      message("ControlOutlier = TRUE (default) to keep the outliers < 5%;\nSet ControlOutlier = FALSE for higher accuracy.")
       
       while(sum(Resid_data$Outlier) == 0)
       {
         OutlierRatio = OutlierRatio*0.8
         cutoffVec = c(min(Quant) - OutlierRatio * Range, max(Quant) + OutlierRatio * Range)
-        cat("cutoffVec:\t",cutoffVec,"\n")
+        message("cutoffVec:\t",cutoffVec)
         Resid_data$Outlier = ifelse(Resid < cutoffVec[1] | Resid > cutoffVec[2],
                                     TRUE, FALSE)
-        cat("The number of outlier is:", sum(Resid_data$Outlier),"\n")
+        message("The number of outlier is:", sum(Resid_data$Outlier))
       }
       
       while(sum(Resid_data$Outlier)/nrow(Resid_data) > 0.05)
       {
         OutlierRatio = OutlierRatio + 0.5
         cutoffVec = c(min(Quant) - OutlierRatio * Range, max(Quant) + OutlierRatio * Range)
-        cat("cutoffVec:\t",cutoffVec,"\n")
+        message("cutoffVec:\t",cutoffVec)
         Resid_data$Outlier = ifelse(Resid < cutoffVec[1] | Resid > cutoffVec[2],
                                     TRUE, FALSE)
-        cat("The number of outlier is:", sum(Resid_data$Outlier),"\n")
+        message("The number of outlier is:", sum(Resid_data$Outlier))
       }
     }
     
-    cat("Outliers information is as below\n")
-    print(Resid_data %>% filter(Outlier == TRUE) %>% dplyr::select(SubjID, Resid, Outlier) %>% arrange(Resid))
+    message("Outliers information is as below")
+    message(Resid_data %>% filter(Outlier == TRUE) %>% dplyr::select(SubjID, Resid, Outlier) %>% arrange(Resid))
     
     # group samples into families
     edges = t(SparseGRM1[, c("ID1", "ID2")])
@@ -526,12 +527,12 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
     
     if(nGraph != 0)
     {
-      cat("Start process the related residual information.\n")
+      message("Start process the related residual information.")
       
       for(i in 1:nGraph)
       {
         if(i %% 1000 == 0)
-          cat("Processing the related residual information:\t", i,"/",nGraph,"\n")
+          message("Processing the related residual information:\t", i,"/",nGraph)
         
         comp1 = graph_list[[i]]
         comp3 = igraph::V(comp1)$name
@@ -640,7 +641,7 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
         }
       }
       
-      cat("Start process the Chow-Liu tree.\n")
+      message("Start process the Chow-Liu tree.")
       
       # Make a list of array index.
       arr.index = list()
@@ -667,7 +668,7 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
         for(index.outlier in 1:n.outliers)
         {
           if(index.outlier %% 1000 == 0)
-            cat("Processing the CLT for families with outliers:\t", TwofamID.index, ", ", ThreefamID.index, "/", nGraph, "\n")
+            message("Processing the CLT for families with outliers:\t", TwofamID.index, ", ", ThreefamID.index, "/", nGraph)
           
           comp1 = graph_list_updated[[index.outlier]]
           comp3 = igraph::V(comp1)$name
@@ -726,7 +727,7 @@ SAGELD.NullModel = function(NullModel,             # a fitted null model from lm
                                                     stand.S_G = c(stand.S_G.temp),
                                                     stand.S_GxE = c(stand.S_GxE.temp))
         }
-        cat("Completed processing the CLT for families with outliers:\t", TwofamID.index, ", ", ThreefamID.index, "/", nGraph, "\n")
+        message("Completed processing the CLT for families with outliers:\t", TwofamID.index, ", ", ThreefamID.index, "/", nGraph)
       }
     }
     

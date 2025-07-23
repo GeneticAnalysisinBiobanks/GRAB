@@ -35,6 +35,9 @@ getTempFilesFullGRM(
 
 \item{threadNum}{Number of threads (CPUs) to use.}
 }
+\value{
+A character string message indicating the completion status and location of the temporary files.
+}
 \description{
 Make temporary files to be passed to function \code{\link{getSparseGRM}}. We strongly suggest using parallel computing for different \code{partParallel}.
 }

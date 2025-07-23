@@ -23,6 +23,8 @@
 #'   \item \code{cutoff}: A numeric value specifying the batch effect p-value cutoff for method selection of an assocition test. Default is 0.1.
 #' }
 #'
+#' @return No return value, called for side effects (prints information about the WtCoxG method to the console).
+#' 
 #' @examples
 #' # Step0&1: fit a null model and estimate parameters according to batch effect p-values
 #' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
@@ -70,7 +72,7 @@
 #' resultStep2[, c("CHROM", "POS", "WtCoxG.noext", "WtCoxG.ext")]
 #' @export
 GRAB.WtCoxG <- function() {
-  print("Check ?GRAB.WtCoxG for more details about 'WtCoxG' method.")
+  message("Check ?GRAB.WtCoxG for more details about 'WtCoxG' method.")
 }
 
 
@@ -155,13 +157,13 @@ fitNullModel.WtCoxG <- function(response, designMat, subjData,
   r.outlier <- ifelse(is.null(control$OutlierRatio), 1.5, control$OutlierRatio) # put this to the control argument later
   cutoff <- c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
   posOutlier <- which(mresid < cutoff[1] | mresid > cutoff[2])
-  cat("The r.outlier is:", r.outlier, "\n")
+  message("The r.outlier is:", r.outlier)
   while (length(posOutlier) == 0) {
     r.outlier <- r.outlier * 0.8
     cutoff <- c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
     posOutlier <- which(mresid < cutoff[1] | mresid > cutoff[2])
-    cat("The curent outlier ratio is:", r.outlier, "\n")
-    cat("The number of outlier is:", length(posOutlier), "\n")
+    message("The curent outlier ratio is:", r.outlier)
+    message("The number of outlier is:", length(posOutlier))
   }
 
   # The original code is from SPAmix in which multiple residuals were analysis simultaneously
@@ -170,9 +172,9 @@ fitNullModel.WtCoxG <- function(response, designMat, subjData,
   posValue <- 1:length(mresid)
   posNonOutlier <- setdiff(posValue, posOutlier)
 
-  cat("The outlier of residuals will be passed to SPA analysis.\n")
-  cat("Cutoffs to define residuals:\t", signif(cutoff, 2), "\n")
-  cat("Totally, ", length(posOutlier), "/", length(posValue), " are defined as outliers.\n")
+  message("The outlier of residuals will be passed to SPA analysis.")
+  message("Cutoffs to define residuals:\t", signif(cutoff, 2))
+  message("Totally, ", length(posOutlier), "/", length(posValue), " are defined as outliers.")
 
   if (length(posOutlier) == 0) {
     stop("No outlier is observed. SPA is not required in this case.")
@@ -362,10 +364,10 @@ TestforBatchEffect <- function(
   rm(pvalue_bat)
 
   #### estimate unknown parameters according to batch effect p-values---------------------------------
-  cat("Estimate TPR and sigma2--------------\n")
+  message("Estimate TPR and sigma2--------------")
   maf.group <- c(seq(-1e-4, 0.4, 0.05), max(mergeGenoInfo$mu.int))
   mergeGenoInfo <- lapply(1:(length(maf.group) - 1), function(i) {
-    cat(i, "\n")
+    message(i)
 
     ## assume that genotypes with MAF in [ maf.group[i] , maf.group[i+1]] have the same mixture distribution
     mergeGenoInfo_1 <- mergeGenoInfo %>% filter(mu.int > maf.group[i] & mu.int <= maf.group[i + 1])
@@ -496,7 +498,7 @@ fun.est.param <- function(vec_p_bat,
 
   ####### estimate TPR and sigma2 for each SNP
   var.diff <- lapply(1:length(vec_var_Sbat), function(i) {
-    if (i %% 100 == 0) cat(i, "\n")
+    if (i %% 100 == 0) message(i)
 
     obj <- optim(
       par = c(0.01, 0.01),
@@ -588,7 +590,7 @@ setMarker.WtCoxG <- function(objNull, control) {
     ImputeMethod,
     cutoff
   )
-  print(paste0("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk, "."))
+  message("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk, ".")
 }
 
 mainMarker.WtCoxG <- function(genoType, genoIndex, control, objNull) {

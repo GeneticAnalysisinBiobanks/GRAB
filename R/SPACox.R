@@ -8,6 +8,8 @@
 #' 
 #' Additional list of \code{control} in \code{GRAB.Marker()} function.
 #' 
+#' @return No return value, called for side effects (prints information about the SPACox method to the console).
+#' 
 #' @examples 
 #' # Step 1: fit a null model
 #' PhenoFile = system.file("extdata", "simuPHENO.txt", package = "GRAB")
@@ -38,7 +40,7 @@
 #' data.table::fread(OutputFile)
 #' @export
 GRAB.SPACox = function(){
-  print("Check ?GRAB.SPACox for more details about 'SPACox' method.")
+  message("Check ?GRAB.SPACox for more details about 'SPACox' method.")
 }
 
 # check the control list in null model fitting for SPACox method
@@ -128,7 +130,7 @@ fitNullModel.SPACox = function(response, designMat, subjData, control, ...)
   idx1 = idx0 * max(range) / max(idx0)
   
   cumul = NULL
-  print("Start calculating empirical CGF for martingale residuals...")
+  message("Start calculating empirical CGF for martingale residuals...")
   c = 0
   for(i in idx1){
     c = c+1
@@ -141,7 +143,7 @@ fitNullModel.SPACox = function(response, designMat, subjData, control, ...)
     K1 = M1/M0
     K2 = (M0*M2-M1^2)/M0^2
     cumul = rbind(cumul, c(t, K0, K1, K2))
-    if(c %% 1000 == 0) print(paste0("Complete ",c,"/",length.out,"."))
+    if(c %% 1000 == 0) message("Complete ",c,"/",length.out,".")
   }
   
   re = list(N = length(mresid),

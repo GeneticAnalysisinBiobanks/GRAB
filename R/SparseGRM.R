@@ -1,6 +1,6 @@
 
-#' Make temporary files to be passed to function \code{\link{getSparseGRM}}. 
-#' 
+#' Make temporary files to be passed to function \code{\link{getSparseGRM}}.
+#'
 #' Make temporary files to be passed to function \code{\link{getSparseGRM}}. We strongly suggest using parallel computing for different \code{partParallel}.
 #' @param PlinkFile a path to PLINK files (without file extensions of bed/bim/fam). Note that the current version (gcta_1.93.1beta) of gcta software does not support different prefix names for bim, bed, and fam files. 
 #' @param nPartsGRM a numeric value (e.g. 250): \code{GCTA} software can split subjects to multiple parts. For UK Biobank data analysis, it is recommended to set \code{nPartsGRM=250}.
@@ -11,12 +11,14 @@
 #' @param minMafGRM Minimal value of MAF cutoff to select markers (from PLINK files) to make sparse GRM. *(default=0.01)*
 #' @param maxMissingGRM Maximal value of missing rate to select markers (from PLINK files) to make sparse GRM. *(default=0.1)*
 #' @param threadNum Number of threads (CPUs) to use.
-#' @details 
+#' @details
 #' \itemize{
 #'   \item \code{Step 1}: Run \code{getTempFilesFullGRM} to get temporary files.
 #'   \item \code{Step 2}: Run \code{\link{getSparseGRM}} to combine the temporary files to make a \code{SparseGRMFile} to be passed to \code{\link{GRAB.NullModel}}.
 #' }
-#' @examples 
+#'
+#' @return A character string message indicating the completion status and location of the temporary files.
+#' @examples
 #' ## Please check help(getSparseGRM) for an example.
 #' @export
  
@@ -155,7 +157,7 @@ getSparseGRM = function(PlinkFile,
   
   ## cycle for nPartsGRM
   for(i in 1:nPartsGRM){
-    cat("Analyzing part", i, "of total", nPartsGRM, "parts.\n")
+    message("Analyzing part", i, "of total", nPartsGRM, "parts.")
     tempList = list()
     
     ##
@@ -264,7 +266,7 @@ setGRM = function(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
   
   if(!is.null(SparseGRMFile))
   {
-    cat("Sparse GRM is used when fitting a null model.")
+    message("Sparse GRM is used when fitting a null model.")
     SparseGRM = data.table::fread(SparseGRMFile)
     SparseGRM = as.data.frame(SparseGRM)
     
@@ -274,7 +276,7 @@ setGRM = function(GenoFile, GenoFileIndex, SparseGRMFile, subjData)
     setSparseGRMInCPP(KinMatListR)
     optionGRM = "SparseGRM"
   }else{
-    cat("Dense GRM is used when fitting a null model.")
+    message("Dense GRM is used when fitting a null model.")
     subjGeno = genoList$SampleIDs      # subjGeno should be the same as subjData
     if(genoList$genoType != "PLINK")
       stop("If DenseGRM is used when fitting a null model, then only PLINK format is supported.")

@@ -6,6 +6,9 @@
 \usage{
 GRAB.SPAGRM()
 }
+\value{
+No return value, called for side effects (prints information about the SPAGRM method to the console).
+}
 \description{
 SPA\if{html}{\out{<sub>}}GRM\if{html}{\out{</sub>}} method is an empirical approach to analyzing complex traits (including but not limited to longitudinal trait) for related samples in a large-scale biobank. SPA\if{html}{\out{<sub>}}GRM\if{html}{\out{</sub>}} extend SPACox to support an related populations.
 }

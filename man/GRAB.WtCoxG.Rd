@@ -6,6 +6,9 @@
 \usage{
 GRAB.WtCoxG()
 }
+\value{
+No return value, called for side effects (prints information about the WtCoxG method to the console).
+}
 \description{
 WtCoxG is an accurate, powerful, and computationally efficient Cox-based approach to perform genome-wide time-to-event data analyses in study cohorts with case ascertainment.
 }

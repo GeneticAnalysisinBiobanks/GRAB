@@ -79,51 +79,54 @@ but does not support both include and exclude files at the same time.
 }
 \examples{
 
-## Raw genotype data 
-RawFile = system.file("extdata", "simuRAW.raw.gz", package = "GRAB")
-GenoMat = data.table::fread(RawFile)
-GenoMat[1:10,1:10]
+## Raw genotype data
+RawFile <- system.file("extdata", "simuRAW.raw.gz", package = "GRAB")
+GenoMat <- data.table::fread(RawFile)
+GenoMat[1:10, 1:10]
 
 ## PLINK files
-PLINKFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
+PLINKFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 # If include/exclude files are not specified, then control$AllMarker should be TRUE
-GenoList = GRAB.ReadGeno(PLINKFile, control = list(AllMarkers = TRUE))
-GenoMat = GenoList$GenoMat
-markerInfo = GenoList$markerInfo
-head(GenoMat[,1:6])
+GenoList <- GRAB.ReadGeno(PLINKFile, control = list(AllMarkers = TRUE))
+GenoMat <- GenoList$GenoMat
+markerInfo <- GenoList$markerInfo
+head(GenoMat[, 1:6])
 head(markerInfo)
 
 ## BGEN files (Note the different REF/ALT order for BGEN and PLINK formats)
-BGENFile = system.file("extdata", "simuBGEN.bgen", package = "GRAB")
-GenoList = GRAB.ReadGeno(BGENFile, control = list(AllMarkers = TRUE))
-GenoMat = GenoList$GenoMat
-markerInfo = GenoList$markerInfo
-head(GenoMat[,1:6])
+BGENFile <- system.file("extdata", "simuBGEN.bgen", package = "GRAB")
+GenoList <- GRAB.ReadGeno(BGENFile, control = list(AllMarkers = TRUE))
+GenoMat <- GenoList$GenoMat
+markerInfo <- GenoList$markerInfo
+head(GenoMat[, 1:6])
 head(markerInfo)
 
 ## The below is to demonstrate parameters in control
-PLINKFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
-IDsToIncludeFile = system.file("extdata", "simuGENO.IDsToInclude", package = "GRAB")
-RangesToIncludeFile = system.file("extdata", "RangesToInclude.txt", package = "GRAB")
-GenoList = GRAB.ReadGeno(PLINKFile, 
-                         control = list(IDsToIncludeFile = IDsToIncludeFile, 
-                                        RangesToIncludeFile = RangesToIncludeFile,
-                                        AlleleOrder = "ref-first"))
-GenoMat = GenoList$GenoMat
+PLINKFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+IDsToIncludeFile <- system.file("extdata", "simuGENO.IDsToInclude", package = "GRAB")
+RangesToIncludeFile <- system.file("extdata", "RangesToInclude.txt", package = "GRAB")
+GenoList <- GRAB.ReadGeno(PLINKFile,
+  control = list(
+    IDsToIncludeFile = IDsToIncludeFile,
+    RangesToIncludeFile = RangesToIncludeFile,
+    AlleleOrder = "ref-first"
+  )
+)
+GenoMat <- GenoList$GenoMat
 head(GenoMat)
-markerInfo = GenoList$markerInfo
+markerInfo <- GenoList$markerInfo
 head(markerInfo)
 
 ## The below is for PLINK/BGEN files with missing data
-PLINKFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
-GenoList = GRAB.ReadGeno(PLINKFile, control = list(AllMarkers = TRUE))
+PLINKFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+GenoList <- GRAB.ReadGeno(PLINKFile, control = list(AllMarkers = TRUE))
 head(GenoList$GenoMat)
 
-GenoList = GRAB.ReadGeno(PLINKFile, control = list(AllMarkers = TRUE, ImputeMethod = "mean"))
+GenoList <- GRAB.ReadGeno(PLINKFile, control = list(AllMarkers = TRUE, ImputeMethod = "mean"))
 head(GenoList$GenoMat)
 
-BGENFile = system.file("extdata", "simuBGEN.bgen", package = "GRAB")
-GenoList = GRAB.ReadGeno(BGENFile, control = list(AllMarkers = TRUE))
+BGENFile <- system.file("extdata", "simuBGEN.bgen", package = "GRAB")
+GenoList <- GRAB.ReadGeno(BGENFile, control = list(AllMarkers = TRUE))
 head(GenoList$GenoMat)
 
 }

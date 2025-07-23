@@ -154,7 +154,7 @@ GRAB.Region = function(objNull,
   {
     message = paste0("The analysis has been completed in earlier analysis. Results have been saved in '", OutputFile, "'. ",
                      "If you want to change parameters and restart the analysis, please use another 'OutputFile'.")
-    cat(message)
+    message(message)
     return(message)
   }
   
@@ -162,7 +162,7 @@ GRAB.Region = function(objNull,
     message = paste0("Parts of analysis have been conducted based on the index file:\n",
                      OutputFileIndex,"\n",
                      "The analysis will be restarted from chunk:\t",indexChunk+1,"\n");
-    cat(message)
+    message(message)
   }
   
   ## Check "control.R": if the setting of control is not specified, the default setting will be used
@@ -172,8 +172,8 @@ GRAB.Region = function(objNull,
   eval(parse(text = textToParse))
   
   # print control list 
-  print("The below is the list of control parameters used in region-level genetic association analysis.")
-  print(control)
+  message("The below is the list of control parameters used in region-level genetic association analysis.")
+  message(control)
   
   MaxMAFVec = MaxMAFVec %>% strsplit(split = ",") %>% unlist() %>% as.numeric()
   if(any(is.na(MaxMAFVec)))
@@ -287,9 +287,9 @@ GRAB.Region = function(objNull,
         stop("Marker weights cannot be non-positive (<= 0) or NA.")
     }
     
-    print(paste0("Analyzing Region of ", regionID, " (",i,"/",nRegions,")."))
-    cat("Total", length(regionInfo$ID), "markers:\t", 
-        paste0(head(regionInfo$ID), collapse = ", "), "\n")
+    message("Analyzing Region of ", regionID, " (",i,"/",nRegions,").")
+    message("Total", length(regionInfo$ID), "markers:\t", 
+        paste0(head(regionInfo$ID), collapse = ", "))
 
     t11 = Sys.time()
     obj.mainRegionInCPP = mainRegionInCPP(method, genoType, genoIndex, weightVec, OutputFile, 
@@ -459,12 +459,12 @@ GRAB.Region = function(objNull,
                     End = (i==nRegions))
   }
       
-  cat("mainRegionInCPP():\t", diffTime1,"seconds.\n")
-  # cat("SKATO:\t", diffTime2,"seconds.\n")
-  cat("SKATO::\t", diffTime3,"\n")
+  message("mainRegionInCPP():\t", diffTime1,"seconds.")
+  # message("SKATO:\t", diffTime2,"seconds.")
+  message("SKATO::\t", diffTime3)
   printTimeDiffInCPP()
   
-  cat("Analysis done! The results have been saved to the below files:\n", 
+  message("Analysis done! The results have been saved to the below files:\n", 
       OutputFile, "\n",
       paste0(OutputFile, ".markerInfo\n"),
       paste0(OutputFile, ".otherMarkerInfo\n"))
@@ -511,8 +511,8 @@ getInfoGroupLine = function(markerGroupLine, nLine)
 
 getInfoGroupFile = function(GroupFile)
 {
-  cat("Start extracting marker-level information from 'GroupFile':\n", 
-      GroupFile, "\n")	
+  message("Start extracting marker-level information from 'GroupFile':\n", 
+      GroupFile)	
   if(!file.exists(GroupFile))
     stop("cannot find the below file:\n", GroupFile)
   
@@ -593,6 +593,6 @@ getInfoGroupFile = function(GroupFile)
     previousGene = geneID
   }
   
-  cat("Total ", nRegion, " groups are in 'GroupFile'.\n\n")
+  message("Total ", nRegion, " groups are in 'GroupFile'.")
   return(regionList)
 }

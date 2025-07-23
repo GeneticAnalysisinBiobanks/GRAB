@@ -9,11 +9,14 @@ getSampleIDsFromBGEN(bgenFile)
 \arguments{
 \item{bgenFile}{a character of BGEN file.}
 }
+\value{
+A character vector of sample identifiers extracted from the BGEN file.
+}
 \description{
 Extract sample identifiers from BGEN file (only support BGEN v1.2, check \href{https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html}{link})
 }
 \examples{
 
-BGENFile = system.file("extdata", "simuBGEN.bgen", package = "GRAB")
+BGENFile <- system.file("extdata", "simuBGEN.bgen", package = "GRAB")
 getSampleIDsFromBGEN(BGENFile)
 }

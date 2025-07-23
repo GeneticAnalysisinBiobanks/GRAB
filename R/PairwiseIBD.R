@@ -9,7 +9,7 @@ getPairwiseIBD = function(PlinkFile,            # input path to PLINK file (with
                           minMafIBD = 0.01,     # Minimal value of MAF cutoff to select markers (default=0.01).
                           rm.tempFile = FALSE)  # a logical value indicating if the temp files will be deleted. (default=FALSE)
 {
-  cat("Noting that PlinkFile name here has no suffix (e.g. .bed or .frq).\n")
+  message("Noting that PlinkFile name here has no suffix (e.g. .bed or .frq).")
   
   bedFile = paste0(PlinkFile, ".bed")
   bimFile = paste0(PlinkFile, ".bim")
@@ -63,8 +63,8 @@ getPairwiseIBD = function(PlinkFile,            # input path to PLINK file (with
     
     GenoInfoMat = GenoInfoMat %>% filter(MAF > minMafIBD)
     
-    cat("Analyzing Number of Subjects:\t", length(SubjID_related), "\n")
-    cat("Remaining Number of Markers:\t", nrow(GenoInfoMat), "\n")
+    message("Analyzing Number of Subjects:\t", length(SubjID_related))
+    message("Remaining Number of Markers:\t", nrow(GenoInfoMat))
     
     if(nrow(GenoInfoMat) < 1e4)
       warning("Number of Markers is a bit small, we recommend nSNPs > 10,000.\n")
@@ -104,7 +104,7 @@ getPairwiseIBD = function(PlinkFile,            # input path to PLINK file (with
       
       if(tSampleNums >= maxSampleNums | i == length(graph_list))
       {
-        cat("\nProcessing the", nParts, "block(s) of Samples.\n")
+        message("\nProcessing the", nParts, "block(s) of Samples.")
         
         GenoList = GRAB.ReadGeno(bedFile,
                                  SampleIDs = tSampleIDs, 
@@ -137,7 +137,7 @@ getPairwiseIBD = function(PlinkFile,            # input path to PLINK file (with
                               c(ID1 = tempGRM$ID1[j], ID2 = tempGRM$ID2[j], pa = pa, pb = pb, pc = pc))
         }
         
-        cat("Completed analyzing the", nParts, "block(s) of Samples.\n")
+        message("Completed analyzing the", nParts, "block(s) of Samples.")
         
         tSampleNums = 0; 
         tSampleIDs = c();

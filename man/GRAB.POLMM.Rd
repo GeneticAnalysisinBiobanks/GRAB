@@ -6,6 +6,9 @@
 \usage{
 GRAB.POLMM()
 }
+\value{
+No return value, called for side effects (prints information about the POLMM method to the console).
+}
 \description{
 POLMM method is to analyze ordinal categorical data for related samples in a large-scale biobank.
 }

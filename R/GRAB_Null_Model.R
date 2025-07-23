@@ -66,7 +66,6 @@
 #'   \item \code{nSNPsVarRatio}: Initial number of the selected markers to estimate variance ratio *(default=20)* the number will be automatically added by 10 until the coefficient of variantion (CV) of the variance ratio estimate is below CVcutoff.
 #'   \item \code{CVcutoff}: Minimal cutoff of coefficient of variantion (CV) to estimate variance ratio *(default=0.0025)*
 #'   \item \code{LOCO}: Whether to apply the leave-one-chromosome-out (LOCO) approach. *(default=TRUE)*
-#'   \item \code{numThreads}: Number of threads (CPUs) to use. Only valid if dense GRM is used, check \code{\link[RcppParallel]{defaultNumThreads}}. *(default="auto")*
 #'   \item \code{stackSize}: Stack size (in bytes) to use for worker threads. For more details, check \code{\link[RcppParallel]{setThreadOptions}}. *(default="auto")*
 #'   \item \code{grainSize}: Grain size of a parallel algorithm sets a minimum chunk size for parallelization. In other words, at what point to stop processing input on separate threads. *(default=1)*
 #'   \item \code{minMafGRM}: Minimal value of MAF cutoff to select markers (from PLINK files) to construct dense GRM. *(default=0.01)*
@@ -82,6 +81,10 @@
 #' PhenoFile = system.file("extdata", "simuPHENO.txt", package = "GRAB")
 #' PhenoData = read.table(PhenoFile, header = TRUE)
 #' GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
+#' 
+#' # Limit threads for CRAN checks (optional for users).
+#' Sys.setenv(RCPP_PARALLEL_NUM_THREADS = 2)
+#' 
 #' obj.POLMM = GRAB.NullModel(
 #'   factor(OrdinalPheno) ~ AGE + GENDER,
 #'   data = PhenoData,
@@ -100,6 +103,7 @@
 #' PhenoData = read.table(PhenoFile, header = TRUE)
 #' GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' SparseGRMFile =  system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
+#' 
 #' obj.POLMM = GRAB.NullModel(
 #'   factor(OrdinalPheno) ~ AGE + GENDER,
 #'   data = PhenoData,
@@ -172,7 +176,7 @@ GRAB.NullModel <- function(formula,
     }
 
     nInLeft <- length(strsplit(LeftInFormula, "\\+")[[1]])
-    cat("SPAmix method supports multiple response variables of model residuals.\n")
+    message("SPAmix method supports multiple response variables of model residuals.")
     RightInFormula <- deparse(formula[[3]])
     NewLeftInFormla <- paste0("paste(", gsub("\\+", ",", LeftInFormula), ")")
     NewRightInFormula <- paste0(RightInFormula, collapse = " ") # c("cov1 + cov2 +", "cov3") -> "cov1 + cov2 + cov3"
@@ -205,7 +209,7 @@ GRAB.NullModel <- function(formula,
       response.temp <- response
 
       if (length(posNoValue) > 0) {
-        cat("We remove", length(posNoValue), "individuals without any phenotyeps in analysis.\n")
+        message("We remove", length(posNoValue), "individuals without any phenotyeps in analysis.")
         response.temp <- response[-1 * posNoValue]
         designMat <- designMat[-1 * posNoValue, , drop = F]
         subjData <- subjData[-1 * posNoValue]
@@ -227,7 +231,7 @@ GRAB.NullModel <- function(formula,
   }
 
   nData <- length(subjData)
-  cat("Number of subjects in 'formula':\t", nData, "\n")
+  message("Number of subjects in 'formula':\t", nData)
 
   if (any(duplicated(subjData))) {
     stop("Duplicated subject IDs in 'subjData' is not supported!")
@@ -276,6 +280,6 @@ GRAB.NullModel <- function(formula,
     )
   }
 
-  cat("Complete the null model fitting in package GRAB:\t", objNull$time, "\n")
+  message("Complete the null model fitting in package GRAB:\t", objNull$time)
   return(objNull)
 }

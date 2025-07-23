@@ -72,17 +72,17 @@ GRAB.SimuGMat = function(nSub,
     stop("Please give at least one of 'nSub' and 'nFam'.")
   }
   
-  cat("Number of unrelated subjects:\t", nSub, "\n")
-  cat("Number of families:\t", nFam, "\n")
-  cat("Number of subjects in each family:\t", nSubInEachFam, "\n")
-  cat("Number of all subjects:\t", n, "\n")
+  message("Number of unrelated subjects:\t", nSub)
+  message("Number of families:\t", nFam)
+  message("Number of subjects in each family:\t", nSubInEachFam)
+  message("Number of all subjects:\t", n)
   
   if(is.null(MAF)){
     MAF = runif(nSNP, MinMAF, MaxMAF)
   }else{
     if(length(MAF) != nSNP)
       stop("length(MAF) should equal to nSNP.")
-    cat("Since argument 'MAF' is given, arguments of 'MaxMAF' and 'MinMAF' are ignored.\n")
+    message("Since argument 'MAF' is given, arguments of 'MaxMAF' and 'MinMAF' are ignored.")
   }
   
   SNP.info = make.SNP.info(nSNP, MAF)
@@ -90,15 +90,15 @@ GRAB.SimuGMat = function(nSub,
   GenoMat1 = GenoMat2 = NULL
     
   if(nHaplo != 0){
-    cat("Simulating haplotype data for related subjects....\n")
+    message("Simulating haplotype data for related subjects....")
     haplo.mat = haplo.simu(nHaplo, SNP.info) 
     
-    cat("Simulating genotype data for related subjects....\n")
+    message("Simulating genotype data for related subjects....")
     GenoMat1 = from.haplo.to.geno(haplo.mat, fam.mat)    # output of example.fam(): n x 5 where n is sample size
   }
   
   if(nSub != 0){
-    cat("Simulationg Genotype data for unrelated subjects....\n")
+    message("Simulationg Genotype data for unrelated subjects....")
     GenoMat2 = geno.simu(nSub, SNP.info)
   }
 
@@ -111,13 +111,13 @@ GRAB.SimuGMat = function(nSub,
 checkInput = function(nSub, nFam, FamMode)
 {
   if(missing(FamMode) & missing(nFam)){
-    cat("Since both 'FamMode' and 'nFam' are not specified, we only simulate genotype/bVec for unrelated subjects.\n")
+    message("Since both 'FamMode' and 'nFam' are not specified, we only simulate genotype/bVec for unrelated subjects.")
     nFam = 0;
     FamMode = "Unrelated";
   }
   
   if(missing(nSub)){
-    cat("Since 'nSub' is not specified, we only simulate genotype for family members.\n")
+    message("Since 'nSub' is not specified, we only simulate genotype for family members.")
     nSub = 0;
   }
   
@@ -294,7 +294,7 @@ from.haplo.to.geno = function(haplo.mat,  # output of haplo.simu():  m x p where
   Haplo2.mat = matrix(nrow = n, ncol = m)
   rownames(Haplo1.mat) = rownames(Haplo2.mat) = fam.mat$IID
   for(i in 1:n){  # cycle for all subjects
-    if(i %% 1000 == 0) print(paste0("Complete Genotype Simulation for ",i," Subjects."))
+    if(i %% 1000 == 0) message("Complete Genotype Simulation for ", i, " Subjects.")
     Role = fam.mat$Role[i]
     S1 = fam.mat$Source1[i]
     S2 = fam.mat$Source2[i]
@@ -355,10 +355,10 @@ GRAB.SimubVec = function(nSub,
     stop("Please give at least one of 'nSub' and 'nFam'.")
   }
   
-  cat("Number of unrelated subjects:\t", nSub, "\n")
-  cat("Number of families:\t", nFam, "\n")
-  cat("Number of subjects in each family:\t", nSubInEachFam, "\n")
-  cat("Number of all subjects:\t", n, "\n")
+  message("Number of unrelated subjects:\t", nSub)
+  message("Number of families:\t", nFam)
+  message("Number of subjects in each family:\t", nSubInEachFam)
+  message("Number of all subjects:\t", n)
   
   if(FamMode == "Unrelated"){
     bVec.Related = data.table::data.table()
@@ -454,10 +454,10 @@ GRAB.SimuGMatFromGenoFile = function(nFam,
     stop("Please give at least one of 'nSub' and 'nFam'.")
   }
   
-  cat("Number of unrelated subjects:\t", nSub, "\n")
-  cat("Number of families:\t", nFam, "\n")
-  cat("Number of subjects in each family:\t", nSubInEachFam, "\n")
-  cat("Number of all subjects:\t", n, "\n")
+  message("Number of unrelated subjects:\t", nSub)
+  message("Number of families:\t", nFam)
+  message("Number of subjects in each family:\t", nSubInEachFam)
+  message("Number of all subjects:\t", n)
   
   ####
   
@@ -482,17 +482,17 @@ GRAB.SimuGMatFromGenoFile = function(nFam,
   rowForSub = randomRow[1:nSub + nHaplo/2]
   
   if(nHaplo != 0){
-    cat("Extracting haplotype data for related subjects....\n")
+    message("Extracting haplotype data for related subjects....")
     GenoMatTemp = GenoMat[rowForHaplo, ] 
     haplo.mat = from.geno.to.haplo(GenoMatTemp)
     rownames(haplo.mat) = paste0("haplo-",1:nHaplo)
     
-    cat("Simulating genotype data for related subjects....\n")
+    message("Simulating genotype data for related subjects....")
     GenoMat1 = from.haplo.to.geno(haplo.mat, fam.mat)    # output of example.fam(): n x 5 where n is sample size
   }
   
   if(nSub != 0){
-    cat("Extracting Genotype data for unrelated subjects....\n")
+    message("Extracting Genotype data for unrelated subjects....")
     GenoMat2 = GenoMat[rowForSub, ]
     rownames(GenoMat2) =  paste0("Subj-",1:nSub)
   }
@@ -583,8 +583,8 @@ GRAB.makePlink = function(GenoMat,
   m = length(SNP)
   n = length(IID)
   
-  cat("number of markers:\t", m, "\n")
-  cat("number of samples:\t", n, "\n")
+  message("number of markers:\t", m)
+  message("number of samples:\t", n)
   
   if(is.null(Pheno)){
     Pheno = rep(-9, n)
@@ -643,9 +643,9 @@ GRAB.makePlink = function(GenoMat,
   data.table::fwrite(MAP, MAP.file, quote = F, col.names = F, row.names = F, sep = " ")
   data.table::fwrite(PED, PED.file, quote = F, col.names = F, row.names = F, sep = " ")
   
-  cat("Working directory:\t", getwd(), "\n")
-  cat("PED file:\t", PED.file, "\n")
-  cat("MAP file:\t", MAP.file, "\n")
+  message("Working directory:\t", getwd())
+  message("PED file:\t", PED.file)
+  message("MAP file:\t", MAP.file)
   
   message = paste0("PLINK files have been saved to ", OutputPrefix, ".")
   return(message)
@@ -658,15 +658,15 @@ GRAB.makePlink = function(GenoMat,
 #' @param eta linear predictors, usually covar x beta.covar + genotype x beta.genotype 
 #' @param traitType "quantitative", "binary", "ordinal", or "time-to-event"
 #' @param control a list of parameters for controlling the simulation process
+#' @param seed a random number seed for reproducibility
 #' @details Check https://wenjianbi.github.io//grab.github.io/docs/simulation_phenotype.html for more details.
 #' @return a numeric vector of phenotype
 #' @export
-GRAB.SimuPheno = function(eta, 
-                          traitType = "binary", 
-                          control = list(pCase = 0.1,
-                                         sdError = 1,
-                                         pEachGroup = c(1,1,1),
-                                         eventRate = 0.1))
+GRAB.SimuPheno = function(
+  eta, 
+  traitType = "binary", 
+  control = list(pCase = 0.1, sdError = 1, pEachGroup = c(1,1,1), eventRate = 0.1),
+  seed = NULL)
 {
   if(!traitType %in% c("quantitative", "binary", "ordinal", "time-to-event"))
     stop('"traitType" is limited to "quantitative", "binary", "ordinal", and "time-to-event".')
@@ -677,26 +677,27 @@ GRAB.SimuPheno = function(eta,
   
   if(traitType == "quantitative")
     if(!"sdError" %in% names(control))
-      cat("For quantitative phenotype, argument 'control' should include 'sdError' which is the stardard derivation of the error term.")
+      message("For quantitative phenotype, argument 'control' should include 'sdError' which is the stardard derivation of the error term.")
   
   if(traitType == "ordinal")
     if(!"pEachGroup" %in% names(control))
-      cat("For ordinal categorical phenotype, argument 'control' should include 'pEachGroup' which is ratio of sample size in each group.")
+      message("For ordinal categorical phenotype, argument 'control' should include 'pEachGroup' which is ratio of sample size in each group.")
   
   if(traitType == "time-to-event")
     if(!"eventRate" %in% names(control))
-      cat("For time-to-event phenotype, argument 'control' should include 'eventRate' which is the event rate.")
+      message("For time-to-event phenotype, argument 'control' should include 'eventRate' which is the event rate.")
   
   eta = eta - mean(eta)
   n = length(eta)
   
-  seed = sample(1e9,1)
-  cat("Random number seed:\t", seed, "\n")
+  if(!is.null(seed)) set.seed(seed)
+  # seed = sample(1e9,1)
+  # message("Random number seed:\t", seed)
   
   ### quantitative trait
   if(traitType == "quantitative"){
     sdError = control$sdError
-    set.seed(seed)
+    # set.seed(seed)
     error = rnorm(n, sd = sdError)
     pheno = eta + error
     return(pheno)
@@ -705,9 +706,9 @@ GRAB.SimuPheno = function(eta,
   ### binary trait
   if(traitType == "binary"){
     pCase = control$pCase
-    eta0 = uniroot(f.binary, c(-100,100), eta = eta, pCase = pCase,seed = seed)
+    eta0 = uniroot(f.binary, c(-100, 100), eta = eta, pCase = pCase, seed = seed)
     eta0 = eta0$root
-    set.seed(seed)
+    # set.seed(seed)
     eta.new = eta0 + eta
     mu = exp(eta.new) / (1 + exp(eta.new))   # The probability being a case given the covariates, genotypes, and addition effect
     pheno = rbinom(n, 1, mu)                     # Case-control status
@@ -718,7 +719,7 @@ GRAB.SimuPheno = function(eta,
   if(traitType == "ordinal"){
     pEachGroup = control$pEachGroup
     Eps = getEps(pEachGroup, eta, seed)
-    set.seed(seed)
+    # set.seed(seed)
     pheno.latent = runif(n)
     pheno = rep(0, n)
     for(g in 1:length(Eps)){
@@ -739,9 +740,7 @@ GRAB.SimuPheno = function(eta,
     scale0 = uniroot(f.surv, c(-100,100), eta.true = eta, event.rate = eventRate, seed = seed, 
                      shape0 = shape0, cens.shape = cens.shape, cens.scale = cens.scale)
     scale0 = scale0$root
-    
-    set.seed(seed)
-    
+    # set.seed(seed)
     cens = rweibull(length(eta), shape = cens.shape, scale = cens.scale)
     eps <- runif(length(eta), 0, 1)
     time = (-log(eps) * exp(-1 * eta)) ^ (1/shape0) * scale0
@@ -761,7 +760,8 @@ f.binary = function(eta,               # Sample size
                     eta0,              # Intercept
                     seed)     
 {
-  set.seed(seed)
+  # set.seed(seed)
+  if(!is.null(seed)) set.seed(seed)
   n = length(eta)
   eta.new = eta0 + eta
   mu = exp(eta.new) / (1 + exp(eta.new))   # The probability being a case given the covariates, genotypes, and addition effect
@@ -776,7 +776,8 @@ getProb = function(eps,
                    prob,
                    seed)
 {
-  set.seed(seed)
+  # set.seed(seed)
+  if(!is.null(seed)) set.seed(seed)
   n = length(eta.true)
   mu = exp(eps-eta.true) / (1+exp(eps-eta.true))
   Y.latent = runif(n)
@@ -809,7 +810,8 @@ f.surv = function(scale0,              # Scale parameter
                   cens.shape = 1,
                   cens.scale = 0.15)          
 {
-  set.seed(seed)
+  # set.seed(seed)
+  if(!is.null(seed)) set.seed(seed)
   cens = rweibull(length(eta.true), shape = cens.shape, scale = cens.scale)
   eps <- runif(length(eta.true), 0, 1)
   time = (-log(eps) * exp(-1 * eta.true)) ^ (1/shape0) * scale0
