@@ -13,6 +13,9 @@ GRAB.Rproj
 .vscode/
 .index
 
+# Lintr config
+.lintr
+
 # Compiled Object Files
 src/*.o
 src/*.so

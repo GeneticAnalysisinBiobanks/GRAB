@@ -1,3 +1,6 @@
+# Lintr config
+^\.lintr$
+
 # R project and IDE files
 ^\.Rproj\.user$
 ^\.Rproj\.user/

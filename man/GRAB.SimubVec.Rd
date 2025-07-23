@@ -22,10 +22,10 @@ a data frame including two columns: ID and random effect following a multivariat
 Simulate random effect (i.e. bVec) based on family structure
 }
 \examples{
-nSub = 10
-nFam = 1
-FamMode = "10-members"
-tau = 2
-bVec = GRAB.SimubVec(nSub, nFam, FamMode, tau)
-     
+nSub <- 10
+nFam <- 1
+FamMode <- "10-members"
+tau <- 2
+bVec <- GRAB.SimubVec(nSub, nFam, FamMode, tau)
+
 }

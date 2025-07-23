@@ -58,22 +58,22 @@ Total number of subjects is \code{nSub + 20 * nFam}. Each family includes 20 mem
 }
 }
 \examples{
-nSub = 100
-nFam = 10
-FamMode = "10-members"
-nSNP = 10000
-OutList = GRAB.SimuGMat(nSub, nFam, FamMode, nSNP)      
-GenoMat = OutList$GenoMat
-markerInfo = OutList$markerInfo
-GenoMat[1:10,1:10]
+nSub <- 100
+nFam <- 10
+FamMode <- "10-members"
+nSNP <- 10000
+OutList <- GRAB.SimuGMat(nSub, nFam, FamMode, nSNP)
+GenoMat <- OutList$GenoMat
+markerInfo <- OutList$markerInfo
+GenoMat[1:10, 1:10]
 head(markerInfo)
 
 ## The following is to calculate GRM
-MAF = apply(GenoMat, 2, mean)/2
-GenoMatSD = t((t(GenoMat) - 2*MAF)/sqrt(2*MAF*(1-MAF)))
-GRM = GenoMatSD \%*\% t(GenoMatSD) / ncol(GenoMat)
-GRM1 = GRM[1:10, 1:10];
-GRM2 = GRM[100+1:10, 100+1:10];
+MAF <- apply(GenoMat, 2, mean) / 2
+GenoMatSD <- t((t(GenoMat) - 2 * MAF) / sqrt(2 * MAF * (1 - MAF)))
+GRM <- GenoMatSD \%*\% t(GenoMatSD) / ncol(GenoMat)
+GRM1 <- GRM[1:10, 1:10]
+GRM2 <- GRM[100 + 1:10, 100 + 1:10]
 GRM1
 GRM2
 }

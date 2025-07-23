@@ -90,9 +90,11 @@
 #' GRAB.Marker(obj.POLMM,
 #'   GenoFile = GenoFile,
 #'   OutputFile = OutputFile,
-#'   control = list(outputColumns = c("beta", "seBeta", "zScore", 
-#'                                    "nSamplesInGroup", "AltCountsInGroup", 
-#'                                    "AltFreqInGroup"))
+#'   control = list(outputColumns = c(
+#'     "beta", "seBeta", "zScore",
+#'     "nSamplesInGroup", "AltCountsInGroup",
+#'     "AltFreqInGroup"
+#'   ))
 #' )
 #' data.table::fread(OutputFile)
 #'
@@ -114,7 +116,7 @@ GRAB.Marker <- function(objNull,
   checkControl.ReadGeno(control)
   control <- checkControl.Marker(control, NullModelClass)
   nMarkersEachChunk <- control$nMarkersEachChunk
-  outList <- checkOutputFile(OutputFile, OutputFileIndex, "Marker", format(nMarkersEachChunk, scientific = F)) # this function is in 'Util.R'
+  outList <- checkOutputFile(OutputFile, OutputFileIndex, "Marker", format(nMarkersEachChunk, scientific = FALSE)) # this function is in 'Util.R'
 
   # added by XH-2023-05-09
   if (NullModelClass == "SPAGRM_NULL_Model") {
@@ -202,7 +204,7 @@ GRAB.Marker <- function(objNull,
       OutputFile = list(OutputFile),
       OutputFileIndex = OutputFileIndex,
       AnalysisType = "Marker",
-      nEachChunk = format(nMarkersEachChunk, scientific = F),
+      nEachChunk = format(nMarkersEachChunk, scientific = FALSE),
       indexChunk = i,
       Start = (i == 1),
       End = (i == nChunks)
@@ -305,10 +307,10 @@ mainMarker <- function(NullModelClass, genoType, genoIndex, control, objNull, ob
   if (NullModelClass == "SAGELD_NULL_Model") {
     obj.mainMarker <- mainMarker.SAGELD(genoType, genoIndex, control$outputColumns, objNull)
   }
-  
+
   # Check 'WtCoxG.R'
   if (NullModelClass == "WtCoxG_NULL_Model") {
-    obj.mainMarker = mainMarker.WtCoxG(genoType, genoIndex, control, objNull)
+    obj.mainMarker <- mainMarker.WtCoxG(genoType, genoIndex, control, objNull)
   }
 
   return(obj.mainMarker)

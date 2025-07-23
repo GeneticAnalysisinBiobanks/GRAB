@@ -225,7 +225,7 @@ setGenoInput <- function(GenoFile,
 
   # Currently, only support PLINK and BGEN
 
-  if (GenoFileExt != "bed" & GenoFileExt != "bgen") {
+  if (GenoFileExt != "bed" && GenoFileExt != "bgen") {
     stop("The current version only supports genotype input of PLINK (filename extension is '.bed') and BGEN (filename extension is '.bgen').")
   }
 
@@ -259,7 +259,7 @@ setGenoInput <- function(GenoFile,
     if (!file.exists(bimFile)) stop(paste("Cannot find bim file of", bimFile))
 
     message("Reading bim file:\t", bimFile)
-    markerInfo <- data.table::fread(bimFile, header = F, sep = "\t")
+    markerInfo <- data.table::fread(bimFile, header = FALSE, sep = "\t")
     markerInfo <- as.data.frame(markerInfo)
 
     if (ncol(markerInfo) != 6) {
@@ -274,17 +274,17 @@ setGenoInput <- function(GenoFile,
     } # https://www.cog-genomics.org/plink/2.0/formats#bim
 
     colnames(markerInfo) <- c("CHROM", "POS", "ID", "REF", "ALT")
-    markerInfo$genoIndex <- 1:nrow(markerInfo) - 1 # -1 is to convert 'R' to 'C++'
+    markerInfo$genoIndex <- seq_len(nrow(markerInfo)) - 1 # -1 is to convert 'R' to 'C++'
 
     # Read in FAM file
 
     if (!file.exists(famFile)) stop(paste("Cannot find fam file of", famFile))
 
     message("Reading fam file:\t", famFile)
-    sampleInfo <- data.table::fread(famFile, header = F, sep = " ")
+    sampleInfo <- data.table::fread(famFile, header = FALSE, sep = " ")
 
     if (ncol(sampleInfo) == 1) {
-      sampleInfo <- data.table::fread(famFile, header = F, sep = "\t")
+      sampleInfo <- data.table::fread(famFile, header = FALSE, sep = "\t")
     }
 
     if (ncol(sampleInfo) != 6) {
@@ -318,7 +318,7 @@ setGenoInput <- function(GenoFile,
       )
     }
 
-    if (length(GenoFileIndex) != 1 & length(GenoFileIndex) != 2) {
+    if (length(GenoFileIndex) != 1 && length(GenoFileIndex) != 2) {
       stop("For genotype input of BGEN format, 'GenoFileIndex' should be of length 1 or 2. Check 'Details' section in '?GRAB.ReadGeno' for more details.")
     }
 
@@ -336,12 +336,12 @@ setGenoInput <- function(GenoFile,
         }
       } else {
         message("Reading sample file:\t", sampleFile)
-        sampleData <- data.table::fread(sampleFile, header = T, sep = " ")
+        sampleData <- data.table::fread(sampleFile, header = TRUE, sep = " ")
         if (ncol(sampleData) < 4) {
           stop("Column number of sample file should be >= 4.")
         }
 
-        if (any(colnames(sampleData)[1:4] != c("ID_1", "ID_2", "missing", "sex")) | any(sampleData[1, 1:4] != c(0, 0, 0, "D"))) {
+        if (any(colnames(sampleData)[1:4] != c("ID_1", "ID_2", "missing", "sex")) || any(sampleData[1, 1:4] != c(0, 0, 0, "D"))) {
           stop("Column names of sample file should be c('ID_1', 'ID_2', 'missing', 'sex') and the first row of sample file should be c(0,0,0,'D')")
         }
 
@@ -370,12 +370,12 @@ setGenoInput <- function(GenoFile,
 
     SampleIDs <- updateSampleIDs(SampleIDs, samplesInGeno)
 
-    setBGENobjInCPP(bgenFile, bgiFile, samplesInGeno, SampleIDs, F, F, AlleleOrder)
+    setBGENobjInCPP(bgenFile, bgiFile, samplesInGeno, SampleIDs, FALSE, FALSE, AlleleOrder)
   }
 
   ########## ----------  More format such as VCF will be supported later ---------- ##########
 
-  Files <- c("IDsToIncludeFile", "IDsToExcludeFile", "RangesToIncludeFile", "RangesToExcludeFile")
+  # Files <- c("IDsToIncludeFile", "IDsToExcludeFile", "RangesToIncludeFile", "RangesToExcludeFile")
 
   anyInclude <- FALSE
   anyExclude <- FALSE
@@ -384,7 +384,7 @@ setGenoInput <- function(GenoFile,
   markersExclude <- c()
 
   if (!is.null(control$IDsToIncludeFile)) {
-    IDsToInclude <- data.table::fread(control$IDsToIncludeFile, header = F, colClasses = c("character"))
+    IDsToInclude <- data.table::fread(control$IDsToIncludeFile, header = FALSE, colClasses = c("character"))
     if (ncol(IDsToInclude) != 1) {
       stop("'IDsToIncludeFile' of ", control$IDsToIncludeFile, " should only include one column.")
     }
@@ -398,18 +398,19 @@ setGenoInput <- function(GenoFile,
   }
 
   if (!is.null(control$RangesToIncludeFile)) {
-    RangesToInclude <- data.table::fread(control$RangesToIncludeFile, header = F, colClasses = c("character", "numeric", "numeric"))
+    RangesToInclude <- data.table::fread(control$RangesToIncludeFile, header = FALSE, colClasses = c("character", "numeric", "numeric"))
     if (ncol(RangesToInclude) != 3) {
       stop("RangesToIncludeFile should only include three columns.")
     }
 
     colnames(RangesToInclude) <- c("CHROM", "START", "END")
 
-    for (i in 1:nrow(RangesToInclude)) {
-      CHROM1 <- RangesToInclude$CHROM[i]
-      START <- RangesToInclude$START[i]
-      END <- RangesToInclude$END[i]
-      posRows <- with(markerInfo, which(CHROM == CHROM1 & POS >= START & POS <= END))
+    for (i in seq_len(nrow(RangesToInclude))) {
+      posRows <- which(
+        markerInfo$CHROM == RangesToInclude$CHROM[i] &
+          markerInfo$POS >= RangesToInclude$START[i] &
+          markerInfo$POS <= RangesToInclude$END[i]
+      )
       if (length(posRows) != 0) {
         markersInclude <- c(markersInclude, markerInfo$ID[posRows])
       }
@@ -421,7 +422,7 @@ setGenoInput <- function(GenoFile,
     if (anyInclude) {
       stop("We currently do not support both 'IncludeFile' and 'ExcludeFile' at the same time.")
     }
-    IDsToExclude <- data.table::fread(control$IDsToExcludeFile, header = F, colClasses = c("character"))
+    IDsToExclude <- data.table::fread(control$IDsToExcludeFile, header = FALSE, colClasses = c("character"))
     if (ncol(IDsToExclude) != 1) {
       stop("IDsToExcludeFile should only include one column.")
     }
@@ -438,18 +439,19 @@ setGenoInput <- function(GenoFile,
     if (anyInclude) {
       stop("We currently do not support both 'IncludeFile' and 'ExcludeFile' at the same time.")
     }
-    RangesToExclude <- data.table::fread(control$RangesToExcludeFile, header = F, colClasses = c("character", "numeric", "numeric"))
+    RangesToExclude <- data.table::fread(control$RangesToExcludeFile, header = FALSE, colClasses = c("character", "numeric", "numeric"))
     if (ncol(RangesToExclude) != 3) {
       stop("RangesToExcludeFile should only include three columns.")
     }
 
     colnames(RangesToExclude) <- c("CHROM", "START", "END")
 
-    for (i in 1:nrow(RangesToExclude)) {
-      CHROM1 <- RangesToExclude$CHROM[i]
-      START <- RangesToExclude$START[i]
-      END <- RangesToExclude$END[i]
-      posRows <- with(markerInfo, which(CHROM == CHROM1 & POS >= START & POS <= END))
+    for (i in seq_len(nrow(RangesToExclude))) {
+      posRows <- which(
+        markerInfo$CHROM == RangesToExclude$CHROM[i] &
+          markerInfo$POS >= RangesToExclude$START[i] &
+          markerInfo$POS <= RangesToExclude$END[i]
+      )
       if (length(posRows) != 0) {
         markersExclude <- c(markersExclude, markerInfo$ID[posRows])
       }
@@ -532,7 +534,7 @@ getSampleIDsFromBGEN <- function(bgenFile) {
   # cycle for all samples to extract IDs
   for (i in 1:N) {
     LS <- readBin(con, n = 1, what = "integer", size = 2)
-    sample <- readChar(con, nchars = LS, useBytes = T)
+    sample <- readChar(con, nchars = LS, useBytes = TRUE)
     samplesInGeno[i] <- sample
   }
 

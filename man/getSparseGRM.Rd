@@ -32,6 +32,10 @@ getSparseGRM(
 
 \item{rm.tempFiles}{a logical value indicating if the temp files generated in \code{\link{getTempFilesFullGRM}} will be deleted. \emph{(default=FALSE)}}
 }
+\value{
+A character string containing a message with the path to the output file
+where the sparse Genetic Relationship Matrix (SparseGRM) has been stored.
+}
 \description{
 If the sample size in analysis is greater than 100,000, we recommend using sparse GRM (instead of dense GRM) to adjust for sample relatedness.
 This function is to use \code{GCTA} (\href{https://cnsgenomics.com/software/gcta/#Overview}{link}) to make a \code{SparseGRMFile} to be passed to function \code{\link{GRAB.NullModel}}.

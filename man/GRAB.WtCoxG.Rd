@@ -55,8 +55,10 @@ obj.WtCoxG <- GRAB.NullModel(
   traitType = "time-to-event",
   GenoFile = GenoFile,
   SparseGRMFile = SparseGRMFile,
-  control = list(AlleleOrder = "ref-first", AllMarkers = TRUE, RefPrevalence = RefPrevalence,
-                 SNPnum = 1000), # minimum number of SNPs for to call TestforBatchEffect
+  control = list(
+    AlleleOrder = "ref-first", AllMarkers = TRUE, RefPrevalence = RefPrevalence,
+    SNPnum = 1000
+  ), # minimum number of SNPs for to call TestforBatchEffect
   RefAfFile = RefAfFile,
   OutputFile = OutputStep1,
   SampleIDColumn = "IID",
@@ -72,8 +74,10 @@ GRAB.Marker(
   objNull = obj.WtCoxG,
   GenoFile = GenoFile,
   OutputFile = OutputStep2,
-  control = list(AlleleOrder = "ref-first", AllMarkers = TRUE,
-                 cutoff = 0.1, nMarkersEachChunk = 5000)
+  control = list(
+    AlleleOrder = "ref-first", AllMarkers = TRUE,
+    cutoff = 0.1, nMarkersEachChunk = 5000
+  )
 )
 
 resultStep2 <- data.table::fread(OutputStep2)

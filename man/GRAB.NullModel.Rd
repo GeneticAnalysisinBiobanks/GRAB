@@ -112,17 +112,17 @@ If dense GRM is used to adjust for sample relatedness, \code{GenoFile} should be
 \examples{
 # For POLMM method (ordinal categorical data analysis while adjusting for sample relatedness)
 # Step 1(a): fit a null model using a dense GRM (recommand using Linux OS)
-PhenoFile = system.file("extdata", "simuPHENO.txt", package = "GRAB")
-PhenoData = read.table(PhenoFile, header = TRUE)
-GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
+PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
+PhenoData <- read.table(PhenoFile, header = TRUE)
+GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 
 # Limit threads for CRAN checks (optional for users).
 Sys.setenv(RCPP_PARALLEL_NUM_THREADS = 2)
 
-obj.POLMM = GRAB.NullModel(
+obj.POLMM <- GRAB.NullModel(
   factor(OrdinalPheno) ~ AGE + GENDER,
   data = PhenoData,
-  subjData = IID, 
+  subjData = IID,
   method = "POLMM",
   traitType = "ordinal",
   GenoFile = GenoFile,
@@ -130,15 +130,15 @@ obj.POLMM = GRAB.NullModel(
 )
 
 names(obj.POLMM)
-obj.POLMM$tau    
+obj.POLMM$tau
 
 # Step 1(b): fit a null model using a sparse GRM (recommand using Linux OS)
 # First use getSparseGRM() function to get a sparse GRM file
-PhenoData = read.table(PhenoFile, header = TRUE)
-GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
-SparseGRMFile =  system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
+PhenoData <- read.table(PhenoFile, header = TRUE)
+GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+SparseGRMFile <- system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
 
-obj.POLMM = GRAB.NullModel(
+obj.POLMM <- GRAB.NullModel(
   factor(OrdinalPheno) ~ AGE + GENDER,
   data = PhenoData,
   subjData = IID,

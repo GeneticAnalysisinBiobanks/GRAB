@@ -115,9 +115,11 @@ if (file.exists(paste0(OutputFile, ".index"))) file.remove(paste0(OutputFile, ".
 GRAB.Marker(obj.POLMM,
   GenoFile = GenoFile,
   OutputFile = OutputFile,
-  control = list(outputColumns = c("beta", "seBeta", "zScore", 
-                                   "nSamplesInGroup", "AltCountsInGroup", 
-                                   "AltFreqInGroup"))
+  control = list(outputColumns = c(
+    "beta", "seBeta", "zScore",
+    "nSamplesInGroup", "AltCountsInGroup",
+    "AltFreqInGroup"
+  ))
 )
 data.table::fread(OutputFile)
 

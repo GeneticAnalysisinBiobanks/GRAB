@@ -125,7 +125,7 @@ Pheno = data.frame(IID = IID, Cova1 = rnorm(n), Cova2 = rbinom(n, 1, 0.5),
                    time = runif(n),
                    event = rbinom(n, 1, 0.2))
 PhenoFile = system.file("extdata", "simuPHENO.txt", package = "GRAB")
-write.table(Pheno, PhenoFile, row.names = F, quote = F, sep = "\t")
+write.table(Pheno, PhenoFile, row.names = FALSE, quote = F, sep = "\t")
 ```
 
 ### Replicate the regionFile in the package
