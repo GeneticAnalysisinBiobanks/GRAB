@@ -35,9 +35,9 @@
 #' RefAfFile <- system.file("extdata", "simuRefAf.txt", package = "GRAB")
 #' RefPrevalence <- 0.1 # population-level disease prevalence
 #'
-#' OutputDir <- system.file("results", package = "GRAB")
-#' OutputStep1 <- paste0(OutputDir, "/WtCoxG_step1_out.txt")
-#' OutputStep2 <- paste0(OutputDir, "/WtCoxG_step2_out.txt")
+#' OutputDir <- tempdir()
+#' OutputStep1 <- file.path(OutputDir, "WtCoxG_step1_out.txt")
+#' OutputStep2 <- file.path(OutputDir, "WtCoxG_step2_out.txt")
 #'
 #' obj.WtCoxG <- GRAB.NullModel(
 #'   formula = survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,

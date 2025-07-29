@@ -81,8 +81,8 @@
 #' load(objNullFile)
 #' class(obj.POLMM) # "POLMM_NULL_Model", that indicates an object from POLMM method.
 #'
-#' OutputDir <- system.file("results", package = "GRAB")
-#' OutputFile <- paste0(OutputDir, "/simuRegionOutput.txt")
+#' OutputDir <- tempdir()
+#' OutputFile <- file.path(OutputDir, "simuRegionOutput.txt")
 #' GenoFile <- system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
 #' GroupFile <- system.file("extdata", "simuPLINK_RV.group", package = "GRAB")
 #' SparseGRMFile <- system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")

@@ -579,8 +579,8 @@ GRAB.SimuGMatFromGenoFile <- function(nFam,
 #' GenoMat <- matrix(rbinom(n * m, 2, MAF), n, m)
 #' rownames(GenoMat) <- paste0("Subj-", 1:n)
 #' colnames(GenoMat) <- paste0("SNP-", 1:m)
-#' outputDir <- system.file("results", package = "GRAB")
-#' outputPrefix <- paste0(outputDir, "/simuPLINK")
+#' OutputDir <- tempdir()
+#' outputPrefix <- file.path(OutputDir, "simuPLINK")
 #'
 #' ### Step 2(a): make PLINK files without missing genotype
 #' GRAB.makePlink(GenoMat, outputPrefix)

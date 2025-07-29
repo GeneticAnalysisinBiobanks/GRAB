@@ -35,8 +35,8 @@
 #'
 #' # Step 2: conduct score test
 #' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-#' OutputDir <- system.file("results", package = "GRAB")
-#' OutputFile <- paste0(OutputDir, "/Results_SPACox.txt")
+#' OutputDir <- tempdir()
+#' OutputFile <- file.path(OutputDir, "Results_SPACox.txt")
 #' GRAB.Marker(obj.SPACox,
 #'   GenoFile = GenoFile, OutputFile = OutputFile,
 #'   control = list(outputColumns = "zScore")

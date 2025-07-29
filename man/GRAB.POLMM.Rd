@@ -59,8 +59,8 @@ objPOLMMFile <- system.file("results", "objPOLMMFile.RData", package = "GRAB")
 load(objPOLMMFile) # read in an R object of "obj.POLMM"
 
 GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-OutputDir <- system.file("results", package = "GRAB")
-OutputFile <- paste0(OutputDir, "/simuMarkerOutput.txt")
+OutputDir <- tempdir()
+OutputFile <- file.path(OutputDir, "simuMarkerOutput.txt")
 GRAB.Marker(obj.POLMM,
   GenoFile = GenoFile,
   OutputFile = OutputFile
@@ -75,8 +75,8 @@ objPOLMMFile <- system.file("results", "objPOLMMFile.RData", package = "GRAB")
 load(objPOLMMFile) # read in an R object of "obj.POLMM"
 
 GenoFile <- system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
-OutputDir <- system.file("results", package = "GRAB")
-OutputFile <- paste0(OutputDir, "/simuRegionOutput.txt")
+OutputDir <- tempdir()
+OutputFile <- file.path(OutputDir, "simuRegionOutput.txt")
 GroupFile <- system.file("extdata", "simuPLINK_RV.group", package = "GRAB")
 SparseGRMFile <- system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
 

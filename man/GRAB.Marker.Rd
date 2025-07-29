@@ -92,8 +92,8 @@ objNullFile <- system.file("results", "objPOLMMFile.RData", package = "GRAB")
 load(objNullFile)
 class(obj.POLMM) # "POLMM_NULL_Model", that indicates an object from POLMM method.
 
-OutputDir <- system.file("results", package = "GRAB")
-OutputFile <- paste0(OutputDir, "/simuOUTPUT.txt")
+OutputDir <- tempdir()
+OutputFile <- file.path(OutputDir, "simuOUTPUT.txt")
 GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 
 ## make sure the output files does not exist at first
