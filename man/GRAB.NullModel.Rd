@@ -99,7 +99,6 @@ If dense GRM is used to adjust for sample relatedness, \code{GenoFile} should be
 \item \code{nSNPsVarRatio}: Initial number of the selected markers to estimate variance ratio \emph{(default=20)} the number will be automatically added by 10 until the coefficient of variantion (CV) of the variance ratio estimate is below CVcutoff.
 \item \code{CVcutoff}: Minimal cutoff of coefficient of variantion (CV) to estimate variance ratio \emph{(default=0.0025)}
 \item \code{LOCO}: Whether to apply the leave-one-chromosome-out (LOCO) approach. \emph{(default=TRUE)}
-\item \code{numThreads}: Number of threads (CPUs) to use. Only valid if dense GRM is used, check \code{\link[RcppParallel]{defaultNumThreads}}. \emph{(default="auto")}
 \item \code{stackSize}: Stack size (in bytes) to use for worker threads. For more details, check \code{\link[RcppParallel]{setThreadOptions}}. \emph{(default="auto")}
 \item \code{grainSize}: Grain size of a parallel algorithm sets a minimum chunk size for parallelization. In other words, at what point to stop processing input on separate threads. \emph{(default=1)}
 \item \code{minMafGRM}: Minimal value of MAF cutoff to select markers (from PLINK files) to construct dense GRM. \emph{(default=0.01)}
@@ -112,17 +111,39 @@ If dense GRM is used to adjust for sample relatedness, \code{GenoFile} should be
 }
 \examples{
 # For POLMM method (ordinal categorical data analysis while adjusting for sample relatedness)
+# Step 1(a): fit a null model using a dense GRM (recommand using Linux OS)
+PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
+PhenoData <- read.table(PhenoFile, header = TRUE)
+GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 
-# Step 1: fit a null model using a sparse GRM
-# A sparse GRM file can be obtained by getSparseGRM().
-# If SparseGRMFile isn't provided, GRAB.NullModel() will calculate dense GRM from GenoFile.
+# Limit threads for CRAN checks (optional for users).
+Sys.setenv(RCPP_PARALLEL_NUM_THREADS = 2)
 
-PhenoData <- read.table(system.file("extdata", "simuPHENO.txt", package = "GRAB"), header = TRUE)
+obj.POLMM <- GRAB.NullModel(
+  factor(OrdinalPheno) ~ AGE + GENDER,
+  data = PhenoData,
+  subjData = IID,
+  method = "POLMM",
+  traitType = "ordinal",
+  GenoFile = GenoFile,
+  control = list(showInfo = FALSE, LOCO = FALSE, tolTau = 0.2, tolBeta = 0.1)
+)
+
+names(obj.POLMM)
+obj.POLMM$tau
+
+# Step 1(b): fit a null model using a sparse GRM (recommand using Linux OS)
+# First use getSparseGRM() function to get a sparse GRM file
+PhenoData <- read.table(PhenoFile, header = TRUE)
 GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 SparseGRMFile <- system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
-obj.POLMM <- GRAB.NullModel(factor(OrdinalPheno) ~ AGE + GENDER,
-  data = PhenoData, subjData = IID,
-  method = "POLMM", traitType = "ordinal",
+
+obj.POLMM <- GRAB.NullModel(
+  factor(OrdinalPheno) ~ AGE + GENDER,
+  data = PhenoData,
+  subjData = IID,
+  method = "POLMM",
+  traitType = "ordinal",
   GenoFile = GenoFile,
   SparseGRMFile = SparseGRMFile,
   control = list(showInfo = FALSE, LOCO = FALSE, tolTau = 0.2, tolBeta = 0.1)

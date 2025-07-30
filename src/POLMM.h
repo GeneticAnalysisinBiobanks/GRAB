@@ -43,10 +43,11 @@ private:
   double m_tau;
   
   // Control parameters
-  unsigned int m_iter, m_maxiter, m_maxiterPCG, m_maxiterEps, m_tracenrun, m_seed, m_nSNPsVarRatio, m_grainSize; 
+  unsigned int m_iter, m_maxiter, m_maxiterPCG, m_maxiterEps, m_tracenrun, m_nSNPsVarRatio, m_grainSize; 
   double m_tolBeta, m_tolTau, m_tolPCG, m_tolEps, m_CVcutoff, m_minMafVarRatio, m_maxMissingVarRatio, m_memoryChunk, m_minMafGRM, m_maxMissingGRM; 
   bool m_LOCO, m_showInfo, m_printPCGInfo, m_flagSparseGRM;
   Rcpp::List m_LOCOList;
+  int m_seed;
   
   // working vectors/matrix
   arma::mat m_WMat, m_muMat, m_mMat, m_nuMat, m_iRMat, m_YMat, m_iSigma_CovaMat, m_iSigmaX_XSigmaX;
@@ -89,7 +90,10 @@ private:
     m_tolPCG = t_controlList["tolPCG"]; 
     m_tolEps = t_controlList["tolEps"];
     m_tracenrun = t_controlList["tracenrun"]; 
+    
+    // Handle seed - use -1 to indicate no seed should be set
     m_seed = t_controlList["seed"];
+    
     m_minMafVarRatio = t_controlList["minMafVarRatio"];
     m_maxMissingVarRatio = t_controlList["maxMissingVarRatio"];
     m_nSNPsVarRatio = t_controlList["nSNPsVarRatio"];

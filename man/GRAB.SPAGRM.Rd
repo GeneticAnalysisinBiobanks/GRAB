@@ -6,6 +6,9 @@
 \usage{
 GRAB.SPAGRM()
 }
+\value{
+No return value, called for side effects (prints information about the SPAGRM method to the console).
+}
 \description{
 SPA\if{html}{\out{<sub>}}GRM\if{html}{\out{</sub>}} method is an empirical approach to analyzing complex traits (including but not limited to longitudinal trait) for related samples in a large-scale biobank. SPA\if{html}{\out{<sub>}}GRM\if{html}{\out{</sub>}} extend SPACox to support an related populations.
 }
@@ -16,20 +19,24 @@ Additional list of \code{control} in \code{GRAB.Marker()} function.
 }
 \examples{
 # Step 2a: process model residuals
-ResidMatFile = system.file("extdata", "ResidMat.txt", package = "GRAB")
-SparseGRMFile = system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
-PairwiseIBDFile = system.file("PairwiseIBD", "PairwiseIBD.txt", package = "GRAB")
-obj.SPAGRM = SPAGRM.NullModel(ResidMatFile = ResidMatFile, 
-                              SparseGRMFile = SparseGRMFile, 
-                              PairwiseIBDFile = PairwiseIBDFile,
-                              control = list(ControlOutlier = FALSE))
+ResidMatFile <- system.file("extdata", "ResidMat.txt", package = "GRAB")
+SparseGRMFile <- system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
+PairwiseIBDFile <- system.file("PairwiseIBD", "PairwiseIBD.txt", package = "GRAB")
+obj.SPAGRM <- SPAGRM.NullModel(
+  ResidMatFile = ResidMatFile,
+  SparseGRMFile = SparseGRMFile,
+  PairwiseIBDFile = PairwiseIBDFile,
+  control = list(ControlOutlier = FALSE)
+)
 
 # Step 2b: perform score test
-GenoFile = system.file("extdata", "simuPLINK.bed", package = "GRAB")
-OutputDir = system.file("results", package = "GRAB")
-OutputFile = paste0(OutputDir, "/SPAGRMMarkers.txt")
-GRAB.Marker(objNull = obj.SPAGRM,
-            GenoFile = GenoFile,
-            OutputFile = OutputFile)
+GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+OutputDir <- tempdir()
+OutputFile <- file.path(OutputDir, "SPAGRMMarkers.txt")
+GRAB.Marker(
+  objNull = obj.SPAGRM,
+  GenoFile = GenoFile,
+  OutputFile = OutputFile
+)
 head(read.table(OutputFile, header = TRUE))
 }

@@ -6,6 +6,9 @@
 \usage{
 GRAB.WtCoxG()
 }
+\value{
+No return value, called for side effects (prints information about the WtCoxG method to the console).
+}
 \description{
 WtCoxG is an accurate, powerful, and computationally efficient Cox-based approach to perform genome-wide time-to-event data analyses in study cohorts with case ascertainment.
 }
@@ -40,9 +43,9 @@ GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 RefAfFile <- system.file("extdata", "simuRefAf.txt", package = "GRAB")
 RefPrevalence <- 0.1 # population-level disease prevalence
 
-OutputDir <- system.file("results", package = "GRAB")
-OutputStep1 <- paste0(OutputDir, "/WtCoxG_step1_out.txt")
-OutputStep2 <- paste0(OutputDir, "/WtCoxG_step2_out.txt")
+OutputDir <- tempdir()
+OutputStep1 <- file.path(OutputDir, "WtCoxG_step1_out.txt")
+OutputStep2 <- file.path(OutputDir, "WtCoxG_step2_out.txt")
 
 obj.WtCoxG <- GRAB.NullModel(
   formula = survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
@@ -52,8 +55,10 @@ obj.WtCoxG <- GRAB.NullModel(
   traitType = "time-to-event",
   GenoFile = GenoFile,
   SparseGRMFile = SparseGRMFile,
-  control = list(AlleleOrder = "ref-first", AllMarkers = TRUE, RefPrevalence = RefPrevalence,
-                 SNPnum = 1000), # minimum number of SNPs for to call TestforBatchEffect
+  control = list(
+    AlleleOrder = "ref-first", AllMarkers = TRUE, RefPrevalence = RefPrevalence,
+    SNPnum = 1000
+  ), # minimum number of SNPs for to call TestforBatchEffect
   RefAfFile = RefAfFile,
   OutputFile = OutputStep1,
   SampleIDColumn = "IID",
@@ -69,8 +74,10 @@ GRAB.Marker(
   objNull = obj.WtCoxG,
   GenoFile = GenoFile,
   OutputFile = OutputStep2,
-  control = list(AlleleOrder = "ref-first", AllMarkers = TRUE,
-                 cutoff = 0.1, nMarkersEachChunk = 5000)
+  control = list(
+    AlleleOrder = "ref-first", AllMarkers = TRUE,
+    cutoff = 0.1, nMarkersEachChunk = 5000
+  )
 )
 
 resultStep2 <- data.table::fread(OutputStep2)

@@ -23,6 +23,8 @@
 #'   \item \code{cutoff}: A numeric value specifying the batch effect p-value cutoff for method selection of an assocition test. Default is 0.1.
 #' }
 #'
+#' @return No return value, called for side effects (prints information about the WtCoxG method to the console).
+#'
 #' @examples
 #' # Step0&1: fit a null model and estimate parameters according to batch effect p-values
 #' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
@@ -33,9 +35,9 @@
 #' RefAfFile <- system.file("extdata", "simuRefAf.txt", package = "GRAB")
 #' RefPrevalence <- 0.1 # population-level disease prevalence
 #'
-#' OutputDir <- system.file("results", package = "GRAB")
-#' OutputStep1 <- paste0(OutputDir, "/WtCoxG_step1_out.txt")
-#' OutputStep2 <- paste0(OutputDir, "/WtCoxG_step2_out.txt")
+#' OutputDir <- tempdir()
+#' OutputStep1 <- file.path(OutputDir, "WtCoxG_step1_out.txt")
+#' OutputStep2 <- file.path(OutputDir, "WtCoxG_step2_out.txt")
 #'
 #' obj.WtCoxG <- GRAB.NullModel(
 #'   formula = survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
@@ -45,8 +47,10 @@
 #'   traitType = "time-to-event",
 #'   GenoFile = GenoFile,
 #'   SparseGRMFile = SparseGRMFile,
-#'   control = list(AlleleOrder = "ref-first", AllMarkers = TRUE, RefPrevalence = RefPrevalence,
-#'                  SNPnum = 1000), # minimum number of SNPs for to call TestforBatchEffect
+#'   control = list(
+#'     AlleleOrder = "ref-first", AllMarkers = TRUE, RefPrevalence = RefPrevalence,
+#'     SNPnum = 1000
+#'   ), # minimum number of SNPs for to call TestforBatchEffect
 #'   RefAfFile = RefAfFile,
 #'   OutputFile = OutputStep1,
 #'   SampleIDColumn = "IID",
@@ -62,15 +66,17 @@
 #'   objNull = obj.WtCoxG,
 #'   GenoFile = GenoFile,
 #'   OutputFile = OutputStep2,
-#'   control = list(AlleleOrder = "ref-first", AllMarkers = TRUE,
-#'                  cutoff = 0.1, nMarkersEachChunk = 5000)
+#'   control = list(
+#'     AlleleOrder = "ref-first", AllMarkers = TRUE,
+#'     cutoff = 0.1, nMarkersEachChunk = 5000
+#'   )
 #' )
 #'
 #' resultStep2 <- data.table::fread(OutputStep2)
 #' resultStep2[, c("CHROM", "POS", "WtCoxG.noext", "WtCoxG.ext")]
 #' @export
 GRAB.WtCoxG <- function() {
-  print("Check ?GRAB.WtCoxG for more details about 'WtCoxG' method.")
+  message("Check ?GRAB.WtCoxG for more details about 'WtCoxG' method.")
 }
 
 
@@ -127,7 +133,7 @@ fitNullModel.WtCoxG <- function(response, designMat, subjData,
 
     weight <- getWeight.WtCoxG(Indicator, RefPrevalence)
 
-    obj.coxph <- survival::coxph(formula, x = T, weight = weight, robust = T, ...)
+    obj.coxph <- survival::coxph(formula, x = TRUE, weight = weight, robust = TRUE, ...)
 
     y <- obj.coxph$y
     yVec <- y[, ncol(y)] # status
@@ -145,23 +151,23 @@ fitNullModel.WtCoxG <- function(response, designMat, subjData,
   #   Cova = designMat
   # }
 
-  # var.resid = var(mresid, na.rm = T)
+  # var.resid = var(mresid, na.rm = TRUE)
   ## outliers or not depending on the residuals (0.25%-1.5IQR, 0.75%+1.5IQR)
-  q25 <- quantile(mresid, 0.25, na.rm = T)
-  q75 <- quantile(mresid, 0.75, na.rm = T)
+  q25 <- quantile(mresid, 0.25, na.rm = TRUE)
+  q75 <- quantile(mresid, 0.75, na.rm = TRUE)
   IQR <- q75 - q25
 
   # r.outlier = 1.5    # put this to the control argument later
   r.outlier <- ifelse(is.null(control$OutlierRatio), 1.5, control$OutlierRatio) # put this to the control argument later
   cutoff <- c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
   posOutlier <- which(mresid < cutoff[1] | mresid > cutoff[2])
-  cat("The r.outlier is:", r.outlier, "\n")
+  message("The r.outlier is:", r.outlier)
   while (length(posOutlier) == 0) {
     r.outlier <- r.outlier * 0.8
     cutoff <- c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
     posOutlier <- which(mresid < cutoff[1] | mresid > cutoff[2])
-    cat("The curent outlier ratio is:", r.outlier, "\n")
-    cat("The number of outlier is:", length(posOutlier), "\n")
+    message("The curent outlier ratio is:", r.outlier)
+    message("The number of outlier is:", length(posOutlier))
   }
 
   # The original code is from SPAmix in which multiple residuals were analysis simultaneously
@@ -170,9 +176,9 @@ fitNullModel.WtCoxG <- function(response, designMat, subjData,
   posValue <- 1:length(mresid)
   posNonOutlier <- setdiff(posValue, posOutlier)
 
-  cat("The outlier of residuals will be passed to SPA analysis.\n")
-  cat("Cutoffs to define residuals:\t", signif(cutoff, 2), "\n")
-  cat("Totally, ", length(posOutlier), "/", length(posValue), " are defined as outliers.\n")
+  message("The outlier of residuals will be passed to SPA analysis.")
+  message("Cutoffs to define residuals:\t", signif(cutoff, 2))
+  message("Totally, ", length(posOutlier), "/", length(posValue), " are defined as outliers.")
 
   if (length(posOutlier) == 0) {
     stop("No outlier is observed. SPA is not required in this case.")
@@ -267,7 +273,7 @@ TestforBatchEffect <- function(
   }
 
   ## merge sample genoInfo and ref genoInfo--------------------------------------
-  if(is.null(Geno.mtx)){
+  if (is.null(Geno.mtx)) {
     GenoInfo.ctrl <- GRAB.getGenoInfo(
       GenoFile = GenoFile,
       GenoFileIndex = GenoFileIndex,
@@ -295,7 +301,7 @@ TestforBatchEffect <- function(
 
     mergeGenoInfo <- refGenoInfo %>%
       mutate(RA = paste0(pmin(REF, ALT), pmax(REF, ALT))) %>%
-      merge(., GenoInfo, by = c("CHROM", "POS", "RA"), all.y = T, sort = F) %>%
+      merge(., GenoInfo, by = c("CHROM", "POS", "RA"), all.y = TRUE, sort = FALSE) %>%
       rename(REF = REF.y, ALT = ALT.y, ID = ID.y) %>%
       mutate(AF_ref = ifelse(REF == REF.x, AF_ref, 1 - AF_ref)) %>%
       select(-REF.x, -ALT.x, -ID.x, -RA) %>%
@@ -306,19 +312,29 @@ TestforBatchEffect <- function(
         mu.int = 0.5 * mu1 + 0.5 * mu0,
         mu.int = ifelse(mu.int > 0.5, 1 - mu.int, mu.int)
       )
-  }else{
+  } else {
     GenoInfo <- data.frame(
       ID = colnames(Geno.mtx),
-      mu0 = apply(Geno.mtx[data$Indicator==0,], 2 , function(x){mean(na.omit(x)/2)}),
-      mu1 = apply(Geno.mtx[data$Indicator==1,], 2 ,  function(x){mean(na.omit(x)/2)}),
-      n0 = apply(Geno.mtx[data$Indicator==0,], 2 , function(x){sum(!is.na(x))}),
-      n1 = apply(Geno.mtx[data$Indicator==1,], 2 , function(x){sum(!is.na(x))})) %>%
-      mutate(mu.int = 0.5*mu1 + 0.5*mu0,
-             mu.int = ifelse(mu.int>0.5, 1-mu.int, mu.int),
-             index= 1:n()
+      mu0 = apply(Geno.mtx[data$Indicator == 0, ], 2, function(x) {
+        mean(na.omit(x) / 2)
+      }),
+      mu1 = apply(Geno.mtx[data$Indicator == 1, ], 2, function(x) {
+        mean(na.omit(x) / 2)
+      }),
+      n0 = apply(Geno.mtx[data$Indicator == 0, ], 2, function(x) {
+        sum(!is.na(x))
+      }),
+      n1 = apply(Geno.mtx[data$Indicator == 1, ], 2, function(x) {
+        sum(!is.na(x))
+      })
+    ) %>%
+      mutate(
+        mu.int = 0.5 * mu1 + 0.5 * mu0,
+        mu.int = ifelse(mu.int > 0.5, 1 - mu.int, mu.int),
+        index = 1:n()
       )
-    mergeGenoInfo <- merge(GenoInfo, refGenoInfo, by = "ID", all.x=T, sort=F ) %>%
-      filter( !duplicated(index) )
+    mergeGenoInfo <- merge(GenoInfo, refGenoInfo, by = "ID", all.x = TRUE, sort = FALSE) %>%
+      filter(!duplicated(index))
   }
 
   #### calculate batch effect p-value for each genetic variant------------------------------------
@@ -345,7 +361,7 @@ TestforBatchEffect <- function(
       var.ratio.int = var.ratio.int
     )
 
-  pvalue_bat <- lapply(1:nrow(mergeGenoInfo), function(ind) {
+  pvalue_bat <- lapply(seq_len(nrow(mergeGenoInfo)), function(ind) {
     p.test <- Batcheffect.Test(
       n0 = mergeGenoInfo$n0[ind],
       n1 = mergeGenoInfo$n1[ind],
@@ -362,10 +378,10 @@ TestforBatchEffect <- function(
   rm(pvalue_bat)
 
   #### estimate unknown parameters according to batch effect p-values---------------------------------
-  cat("Estimate TPR and sigma2--------------\n")
+  message("Estimate TPR and sigma2--------------")
   maf.group <- c(seq(-1e-4, 0.4, 0.05), max(mergeGenoInfo$mu.int))
   mergeGenoInfo <- lapply(1:(length(maf.group) - 1), function(i) {
-    cat(i, "\n")
+    message(i)
 
     ## assume that genotypes with MAF in [ maf.group[i] , maf.group[i+1]] have the same mixture distribution
     mergeGenoInfo_1 <- mergeGenoInfo %>% filter(mu.int > maf.group[i] & mu.int <= maf.group[i + 1])
@@ -424,7 +440,7 @@ TestforBatchEffect <- function(
   data.table::fwrite(
     mergeGenoInfo,
     OutputFile,
-    row.names = F, col.names = T, quote = F, sep = "\t"
+    row.names = FALSE, col.names = TRUE, quote = FALSE, sep = "\t"
   )
   return(mergeGenoInfo)
 }
@@ -484,8 +500,8 @@ fun.est.param <- function(vec_p_bat,
       ub <- qnorm(1 - p_cut / 2) * sqrt(var_Sbat)
       p_deno <- vec_p_deno[j]
 
-      c <- pnorm(ub, 0, sqrt(var_Sbat + par[2]), log.p = T)
-      d <- pnorm(lb, 0, sqrt(var_Sbat + par[2]), log.p = T)
+      c <- pnorm(ub, 0, sqrt(var_Sbat + par[2]), log.p = TRUE)
+      d <- pnorm(lb, 0, sqrt(var_Sbat + par[2]), log.p = TRUE)
 
       pro.cut <- par[1] * (exp(d) * (exp(c - d) - 1)) + (1 - par[1]) * (1 - p_cut)
       t <- ((p_deno - pro.cut) / p_deno)^2
@@ -496,7 +512,7 @@ fun.est.param <- function(vec_p_bat,
 
   ####### estimate TPR and sigma2 for each SNP
   var.diff <- lapply(1:length(vec_var_Sbat), function(i) {
-    if (i %% 100 == 0) cat(i, "\n")
+    if (i %% 100 == 0) message(i)
 
     obj <- optim(
       par = c(0.01, 0.01),
@@ -540,8 +556,8 @@ fun.optimalWeight <- function(par, pop.prev, R, y, mu1, w, mu, N, n.ext, sigma2,
     p_cut <- 0.1
     lb <- -qnorm(1 - p_cut / 2) * sqrt(var_Sbat)
     ub <- qnorm(1 - p_cut / 2) * sqrt(var_Sbat)
-    c <- pnorm(ub, 0, sqrt(var_Sbat + sigma2), log.p = T)
-    d <- pnorm(lb, 0, sqrt(var_Sbat + sigma2), log.p = T)
+    c <- pnorm(ub, 0, sqrt(var_Sbat + sigma2), log.p = TRUE)
+    d <- pnorm(lb, 0, sqrt(var_Sbat + sigma2), log.p = TRUE)
     p_deno <- TPR * (exp(d) * (exp(c - d) - 1)) + (1 - TPR) * (1 - p_cut)
 
     ## sigma2=0
@@ -588,7 +604,7 @@ setMarker.WtCoxG <- function(objNull, control) {
     ImputeMethod,
     cutoff
   )
-  print(paste0("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk, "."))
+  message("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk, ".")
 }
 
 mainMarker.WtCoxG <- function(genoType, genoIndex, control, objNull) {

@@ -16,7 +16,7 @@ options(stringsAsFactors=F)
 library(GRAB)
 library(optparse)
 
-print(sessionInfo())
+message(paste(capture.output(sessionInfo()), collapse = "\n"))
 
 ## set list of cmd line arguments
 option_list <- list(
@@ -39,7 +39,7 @@ option_list <- list(
 parser <- OptionParser(usage="%prog [options]", option_list=option_list)
 args <- parse_args(parser, positional_arguments = 0)
 opt <- args$options
-print(opt)
+message(paste(capture.output(print(opt)), collapse = "\n"))
 
 extractSampleIDs = function(SampleIDFile)
 {

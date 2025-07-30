@@ -1,8 +1,8 @@
 Package: GRAB
 Type: Package
 Title: Genome-Wide Robust Analysis for Biobank Data (GRAB)
-Version: 0.2.0
-Date: 2025-07-17
+Version: 0.2.2
+Date: 2025-08-01
 Authors@R: c(person(given = "Wenjian",
                     family = "Bi",
                     role = "aut"),
@@ -22,7 +22,13 @@ Authors@R: c(person(given = "Wenjian",
                     family = "Miao",
                     role = "cre",
                     email = "miaolin@pku.edu.cn"))
-Description: A toolkit for large-scale biobank data analysis supporting multiple phenotype types.
+Description: Provides a comprehensive suite of genome-wide association study (GWAS) methods
+    specifically designed for biobank-scale data. The package offers computationally efficient
+    and robust association tests for time-to-event traits (e.g., Bi et al., 2020 
+    <doi:10.1016/j.ajhg.2020.06.003>), ordinal categorical traits (e.g., Bi et al., 2021 
+    <doi:10.1016/j.ajhg.2021.03.019>), and longitudinal traits (Xu et al., 2025 
+    <doi:10.1038/s41467-025-56669-1>). Additionally, it includes functions for 
+    simulating genotype and phenotype data to support research and method development.
 License: GPL (>= 2)
 Encoding: UTF-8
 Depends: R (>= 3.5.0)

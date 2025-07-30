@@ -21,8 +21,8 @@ The \code{CCT} function takes in a numeric vector of p-values, a numeric
 vector of non-negative weights, and return the aggregated p-value using Cauchy method.
 }
 \examples{
-pvalues <- c(2e-02,4e-04,0.2,0.1,0.8)
-CCT(pvals=pvalues)
+pvalues <- c(2e-02, 4e-04, 0.2, 0.1, 0.8)
+CCT(pvals = pvalues)
 }
 \references{
 Liu, Y., & Xie, J. (2020). Cauchy combination test: a powerful test

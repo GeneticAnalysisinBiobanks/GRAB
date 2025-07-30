@@ -22,12 +22,12 @@ an R list with elements of 'response', 'designMat', and 'subjData'.
 handle a formula (used in GRAB.NullModel function), this function can help users better understand the input of GRAB.NullModel() function
 }
 \examples{
-n = 20
-subjData = paste0("ID-",1:n)
-pheno = rbinom(n, 1, 0.5)
-x1 = rnorm(n)
-x2 = rnorm(n)
-x3 = rbinom(n, 2, 0.5)
-objFormula = handleFormula(pheno ~ x1+x2*x3, subset = x2>0, subjData = subjData)
+n <- 20
+subjData <- paste0("ID-", 1:n)
+pheno <- rbinom(n, 1, 0.5)
+x1 <- rnorm(n)
+x2 <- rnorm(n)
+x3 <- rbinom(n, 2, 0.5)
+objFormula <- handleFormula(pheno ~ x1 + x2 * x3, subset = x2 > 0, subjData = subjData)
 objFormula
 }

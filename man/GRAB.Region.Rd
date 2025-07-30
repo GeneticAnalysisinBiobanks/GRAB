@@ -113,49 +113,53 @@ Columns of \code{Marker}, \code{Info}, \code{AltFreq}, \code{AltCounts}, \code{M
 }
 }
 \examples{
-objNullFile = system.file("results", "objPOLMMFile.RData", package = "GRAB")
+objNullFile <- system.file("results", "objPOLMMFile.RData", package = "GRAB")
 load(objNullFile)
-class(obj.POLMM)    # "POLMM_NULL_Model", that indicates an object from POLMM method.
+class(obj.POLMM) # "POLMM_NULL_Model", that indicates an object from POLMM method.
 
-OutputDir = system.file("results", package = "GRAB")
-OutputFile = paste0(OutputDir, "/simuRegionOutput.txt")
-GenoFile = system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
-GroupFile = system.file("extdata", "simuPLINK_RV.group", package = "GRAB")
-SparseGRMFile = system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
+OutputDir <- tempdir()
+OutputFile <- file.path(OutputDir, "simuRegionOutput.txt")
+GenoFile <- system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
+GroupFile <- system.file("extdata", "simuPLINK_RV.group", package = "GRAB")
+SparseGRMFile <- system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
 
 ## make sure the output files does not exist at first
 file.remove(OutputFile)
 file.remove(paste0(OutputFile, ".markerInfo"))
 file.remove(paste0(OutputFile, ".index"))
 
-GRAB.Region(objNull = obj.POLMM,
-            GenoFile = GenoFile,
-            GenoFileIndex = NULL,
-            OutputFile = OutputFile,
-            OutputFileIndex = NULL,
-            GroupFile = GroupFile,
-            SparseGRMFile = SparseGRMFile,
-            MaxMAFVec = "0.01,0.005")
-            
-data.table::fread(OutputFile)
-data.table::fread(paste0(OutputFile,".markerInfo"))
-data.table::fread(paste0(OutputFile,".otherMarkerInfo"))
-data.table::fread(paste0(OutputFile,".index"), sep="\t", header=FALSE)
+GRAB.Region(
+  objNull = obj.POLMM,
+  GenoFile = GenoFile,
+  GenoFileIndex = NULL,
+  OutputFile = OutputFile,
+  OutputFileIndex = NULL,
+  GroupFile = GroupFile,
+  SparseGRMFile = SparseGRMFile,
+  MaxMAFVec = "0.01,0.005"
+)
 
-SampleFile = system.file("extdata", "simuPHENO.txt", package = "GRAB")
-GRAB.Region(objNull = obj.POLMM,
-            GenoFile = GenoFile,
-            GenoFileIndex = NULL,
-            OutputFile = OutputFile,
-            OutputFileIndex = NULL,
-            GroupFile = GroupFile,
-            SparseGRMFile = SparseGRMFile,
-            SampleFile = SampleFile,
-            control = list(SampleLabelCol = "OrdinalPheno"))
-            
 data.table::fread(OutputFile)
-data.table::fread(paste0(OutputFile,".markerInfo"))
-data.table::fread(paste0(OutputFile,".otherMarkerInfo"))
-data.table::fread(paste0(OutputFile,".index"), sep="\t", header=FALSE)
+data.table::fread(paste0(OutputFile, ".markerInfo"))
+data.table::fread(paste0(OutputFile, ".otherMarkerInfo"))
+data.table::fread(paste0(OutputFile, ".index"), sep = "\t", header = FALSE)
+
+SampleFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
+GRAB.Region(
+  objNull = obj.POLMM,
+  GenoFile = GenoFile,
+  GenoFileIndex = NULL,
+  OutputFile = OutputFile,
+  OutputFileIndex = NULL,
+  GroupFile = GroupFile,
+  SparseGRMFile = SparseGRMFile,
+  SampleFile = SampleFile,
+  control = list(SampleLabelCol = "OrdinalPheno")
+)
+
+data.table::fread(OutputFile)
+data.table::fread(paste0(OutputFile, ".markerInfo"))
+data.table::fread(paste0(OutputFile, ".otherMarkerInfo"))
+data.table::fread(paste0(OutputFile, ".index"), sep = "\t", header = FALSE)
 
 }

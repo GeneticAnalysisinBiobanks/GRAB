@@ -63,29 +63,29 @@ RUN \code{bgenix -g simuBGEN.bgen --index}
 }
 \examples{
 ### Step 1: simulate a numeric genotype matrix
-n = 1000
-m = 20
-MAF = 0.3
+n <- 1000
+m <- 20
+MAF <- 0.3
 set.seed(123)
-GenoMat = matrix(rbinom(n*m, 2, MAF), n, m)
-rownames(GenoMat) = paste0("Subj-",1:n)
-colnames(GenoMat) = paste0("SNP-",1:m)
-outputDir = system.file("results", package = "GRAB")
-outputPrefix = paste0(outputDir, "/simuPLINK")
+GenoMat <- matrix(rbinom(n * m, 2, MAF), n, m)
+rownames(GenoMat) <- paste0("Subj-", 1:n)
+colnames(GenoMat) <- paste0("SNP-", 1:m)
+OutputDir <- tempdir()
+outputPrefix <- file.path(OutputDir, "simuPLINK")
 
 ### Step 2(a): make PLINK files without missing genotype
 GRAB.makePlink(GenoMat, outputPrefix)
 
 ### Step 2(b): make PLINK files with genotype missing rate of 0.1
-indexMissing = sample(n*m, 0.1*n*m)
-GenoMat[indexMissing] = -9
+indexMissing <- sample(n * m, 0.1 * n * m)
+GenoMat[indexMissing] <- -9
 GRAB.makePlink(GenoMat, outputPrefix)
-     
+
 ## The following are in shell environment
 # plink --file simuPLINK --make-bed --out simuPLINK
-# plink --bfile simuPLINK --recode A --out simuRAW 
+# plink --bfile simuPLINK --recode A --out simuRAW
 # plink2 --bfile simuPLINK --export bgen-1.2 bits=8 ref-first --out simuBGEN
 # UK Biobank use 'ref-first'
 # bgenix -g simuBGEN.bgen --index
-     
+
 }

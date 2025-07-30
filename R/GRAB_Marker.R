@@ -67,8 +67,8 @@
 #' load(objNullFile)
 #' class(obj.POLMM) # "POLMM_NULL_Model", that indicates an object from POLMM method.
 #'
-#' OutputDir <- system.file("results", package = "GRAB")
-#' OutputFile <- paste0(OutputDir, "/simuOUTPUT.txt")
+#' OutputDir <- tempdir()
+#' OutputFile <- file.path(OutputDir, "simuOUTPUT.txt")
 #' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #'
 #' ## make sure the output files does not exist at first
@@ -90,9 +90,11 @@
 #' GRAB.Marker(obj.POLMM,
 #'   GenoFile = GenoFile,
 #'   OutputFile = OutputFile,
-#'   control = list(outputColumns = c("beta", "seBeta", "zScore", 
-#'                                    "nSamplesInGroup", "AltCountsInGroup", 
-#'                                    "AltFreqInGroup"))
+#'   control = list(outputColumns = c(
+#'     "beta", "seBeta", "zScore",
+#'     "nSamplesInGroup", "AltCountsInGroup",
+#'     "AltFreqInGroup"
+#'   ))
 #' )
 #' data.table::fread(OutputFile)
 #'
@@ -114,7 +116,7 @@ GRAB.Marker <- function(objNull,
   checkControl.ReadGeno(control)
   control <- checkControl.Marker(control, NullModelClass)
   nMarkersEachChunk <- control$nMarkersEachChunk
-  outList <- checkOutputFile(OutputFile, OutputFileIndex, "Marker", format(nMarkersEachChunk, scientific = F)) # this function is in 'Util.R'
+  outList <- checkOutputFile(OutputFile, OutputFileIndex, "Marker", format(nMarkersEachChunk, scientific = FALSE)) # this function is in 'Util.R'
 
   # added by XH-2023-05-09
   if (NullModelClass == "SPAGRM_NULL_Model") {
@@ -151,7 +153,7 @@ GRAB.Marker <- function(objNull,
       OutputFileIndex, "\n",
       "We restart the analysis from chunk:\t", indexChunk + 1, "\n"
     )
-    cat(message)
+    message(message)
   }
 
   subjData <- as.character(objNull$subjData)
@@ -173,9 +175,9 @@ GRAB.Marker <- function(objNull,
 
   nChunks <- length(genoIndexList)
 
-  cat("Number of all markers to test:\t", nrow(markerInfo), "\n")
-  cat("Number of markers in each chunk:\t", nMarkersEachChunk, "\n")
-  cat("Number of chunks for all markers:\t", nChunks, "\n")
+  message("Number of all markers to test:\t", nrow(markerInfo))
+  message("Number of markers in each chunk:\t", nMarkersEachChunk)
+  message("Number of chunks for all markers:\t", nChunks)
 
   chrom <- "InitialChunk"
   for (i in (indexChunk + 1):nChunks)
@@ -192,7 +194,7 @@ GRAB.Marker <- function(objNull,
       chrom <- tempChrom
     }
 
-    cat(paste0("(", Sys.time(), ") ---- Analyzing Chunk ", i, "/", nChunks, ": chrom ", chrom, " ---- \n"))
+    message("(", Sys.time(), ") ---- Analyzing Chunk ", i, "/", nChunks, ": chrom ", chrom, " ----")
 
     # main function to calculate summary statistics for markers in one chunk
     resMarker <- mainMarker(NullModelClass, genoType, genoIndex, control, objNull, obj.setMarker)
@@ -202,7 +204,7 @@ GRAB.Marker <- function(objNull,
       OutputFile = list(OutputFile),
       OutputFileIndex = OutputFileIndex,
       AnalysisType = "Marker",
-      nEachChunk = format(nMarkersEachChunk, scientific = F),
+      nEachChunk = format(nMarkersEachChunk, scientific = FALSE),
       indexChunk = i,
       Start = (i == 1),
       End = (i == nChunks)
@@ -305,10 +307,10 @@ mainMarker <- function(NullModelClass, genoType, genoIndex, control, objNull, ob
   if (NullModelClass == "SAGELD_NULL_Model") {
     obj.mainMarker <- mainMarker.SAGELD(genoType, genoIndex, control$outputColumns, objNull)
   }
-  
+
   # Check 'WtCoxG.R'
   if (NullModelClass == "WtCoxG_NULL_Model") {
-    obj.mainMarker = mainMarker.WtCoxG(genoType, genoIndex, control, objNull)
+    obj.mainMarker <- mainMarker.WtCoxG(genoType, genoIndex, control, objNull)
   }
 
   return(obj.mainMarker)

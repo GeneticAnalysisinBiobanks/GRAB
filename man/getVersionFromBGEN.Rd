@@ -9,11 +9,20 @@ getVersionFromBGEN(bgenFile)
 \arguments{
 \item{bgenFile}{a character of BGEN file.}
 }
+\value{
+A character string indicating the BGEN file version. Possible values include:
+\describe{
+\item{v1.1}{BGEN format version 1.1}
+\item{v1.2}{BGEN format version 1.2}
+\item{Version Layout = 0, which is not supported...}{Error message for unsupported version 0}
+\item{Version Layout > 2, which is reserved for future use...}{Warning message for future versions}
+}
+}
 \description{
 Get version information from BGEN file (check \href{https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html}{link})
 }
 \examples{
 
-BGENFile = system.file("extdata", "simuBGEN.bgen", package = "GRAB")
+BGENFile <- system.file("extdata", "simuBGEN.bgen", package = "GRAB")
 getVersionFromBGEN(BGENFile)
 }

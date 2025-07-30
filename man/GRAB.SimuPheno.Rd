@@ -7,7 +7,8 @@
 GRAB.SimuPheno(
   eta,
   traitType = "binary",
-  control = list(pCase = 0.1, sdError = 1, pEachGroup = c(1, 1, 1), eventRate = 0.1)
+  control = list(pCase = 0.1, sdError = 1, pEachGroup = c(1, 1, 1), eventRate = 0.1),
+  seed = NULL
 )
 }
 \arguments{
@@ -16,6 +17,8 @@ GRAB.SimuPheno(
 \item{traitType}{"quantitative", "binary", "ordinal", or "time-to-event"}
 
 \item{control}{a list of parameters for controlling the simulation process}
+
+\item{seed}{a random number seed for reproducibility}
 }
 \value{
 a numeric vector of phenotype

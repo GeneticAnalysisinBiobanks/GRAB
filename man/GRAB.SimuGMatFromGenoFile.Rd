@@ -54,15 +54,16 @@ Total number of subjects is \code{nSub + 20 * nFam}. Each family includes 20 mem
 }
 }
 \examples{
-nFam = 50
-nSub = 500
-FamMode = "10-members"
+nFam <- 50
+nSub <- 500
+FamMode <- "10-members"
 
 # PLINK data format. Currently, this function does not support BGEN data format.
-PLINKFile = system.file("extdata", "example_n1000_m236.bed", package = "GRAB")
-IDsToIncludeFile = system.file("extdata", "example_n1000_m236.IDsToInclude", package = "GRAB")
+PLINKFile <- system.file("extdata", "example_n1000_m236.bed", package = "GRAB")
+IDsToIncludeFile <- system.file("extdata", "example_n1000_m236.IDsToInclude", package = "GRAB")
 
-GenoList = GRAB.SimuGMatFromGenoFile(nFam, nSub, FamMode, PLINKFile,
-                                     control = list(IDsToIncludeFile = IDsToIncludeFile))
+GenoList <- GRAB.SimuGMatFromGenoFile(nFam, nSub, FamMode, PLINKFile,
+  control = list(IDsToIncludeFile = IDsToIncludeFile)
+)
 
 }
