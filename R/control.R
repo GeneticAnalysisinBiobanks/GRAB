@@ -197,7 +197,8 @@ checkControl.NullModel <- function(control, method, traitType, optionGRM) {
   # to be updated for other methods
 
   message("The below are the list of control parameters used in null model fitting.")
-  message(control)
+  tmp <- capture.output(str(control))
+  for (line in tmp) message(line)
 
   return(control)
 }

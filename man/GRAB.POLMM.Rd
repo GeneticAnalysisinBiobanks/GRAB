@@ -20,20 +20,17 @@ Additional list of \code{control} in \code{GRAB.Marker()} function
 Additional list of \code{control} in \code{GRAB.Region()} function
 }
 \examples{
-### First, Read Data and Convert Phenotype to a Factor
-library(dplyr)
+### First, read phenotype data and convert to a factor
 PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
 PhenoData <- data.table::fread(PhenoFile, header = TRUE)
-PhenoData <- PhenoData \%>\% mutate(OrdinalPheno = factor(OrdinalPheno,
-  levels = c(0, 1, 2)
-))
+PhenoData$OrdinalPheno <- factor(PhenoData$OrdinalPheno, levels = c(0, 1, 2))
 
 ### Step 1: Fit a null model
-# If a sparse GRM is used in model fitting, SparseGRMFile is required.
+# If SparseGRMFile is provided, the sparse GRM will be used in model fitting.
 # If SparseGRMFile isn't provided, GRAB.NullModel() will calculate dense GRM from GenoFile.
-
 SparseGRMFile <- system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
 GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+
 obj.POLMM <- GRAB.NullModel(
   formula = OrdinalPheno ~ AGE + GENDER,
   data = PhenoData,
@@ -50,40 +47,22 @@ obj.POLMM <- GRAB.NullModel(
   )
 )
 
-objPOLMMFile <- system.file("results", "objPOLMMFile.RData", package = "GRAB")
-save(obj.POLMM, file = objPOLMMFile)
-
-
 ### Step 2(a): Single-variant tests using POLMM
-objPOLMMFile <- system.file("results", "objPOLMMFile.RData", package = "GRAB")
-load(objPOLMMFile) # read in an R object of "obj.POLMM"
-
 GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-OutputDir <- tempdir()
-OutputFile <- file.path(OutputDir, "simuMarkerOutput.txt")
+OutputFile <- file.path(tempdir(), "simuMarkerOutput.txt")
+
 GRAB.Marker(obj.POLMM,
   GenoFile = GenoFile,
   OutputFile = OutputFile
 )
 
-results <- data.table::fread(OutputFile)
-hist(results$Pvalue)
-
+data.table::fread(OutputFile)
 
 ### Step 2(b): Set-based tests using POLMM-GENE
-objPOLMMFile <- system.file("results", "objPOLMMFile.RData", package = "GRAB")
-load(objPOLMMFile) # read in an R object of "obj.POLMM"
-
 GenoFile <- system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
-OutputDir <- tempdir()
-OutputFile <- file.path(OutputDir, "simuRegionOutput.txt")
+OutputFile <- file.path(tempdir(), "simuRegionOutput.txt")
 GroupFile <- system.file("extdata", "simuPLINK_RV.group", package = "GRAB")
 SparseGRMFile <- system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
-
-## make sure the output files does not exist at first
-file.remove(OutputFile)
-file.remove(paste0(OutputFile, ".markerInfo"))
-file.remove(paste0(OutputFile, ".index"))
 
 GRAB.Region(
   objNull = obj.POLMM,
