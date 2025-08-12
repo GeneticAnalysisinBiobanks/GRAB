@@ -7,7 +7,7 @@
 #' @return no result is returned
 #' @examples
 #' # Check ?getDenseGRM() for an example.
-#' @export
+#'
 setDenseGRM <- function(GenoFile, GenoFileIndex = NULL, subjData = NULL) {
   genoList <- setGenoInput(GenoFile, GenoFileIndex, subjData) # check Geno.R for more details
 
@@ -54,7 +54,6 @@ setDenseGRM <- function(GenoFile, GenoFileIndex = NULL, subjData = NULL) {
 #' # plot(KinbVec, KinbVec1)
 #' head(cbind(KinbVec, KinbVec1))
 #'
-#' @export
 getDenseGRM <- function(bVec) {
   excludeChr <- "1"
   grainSize <- 1

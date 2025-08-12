@@ -104,7 +104,7 @@
 #' GenoList <- GRAB.ReadGeno(BGENFile, control = list(AllMarkers = TRUE))
 #' head(GenoList$GenoMat)
 #'
-#' @export
+#'
 GRAB.ReadGeno <- function(GenoFile,
                           GenoFileIndex = NULL,
                           SampleIDs = NULL,
@@ -169,7 +169,7 @@ GRAB.ReadGeno <- function(GenoFile,
 #'   \item{altFreq}{Alternative allele frequency (before genotype imputation)}
 #'   \item{missingRate}{Missing rate for each marker}
 #' }
-#' @export
+#'
 GRAB.getGenoInfo <- function(GenoFile,
                              GenoFileIndex = NULL,
                              SampleIDs = NULL,
@@ -517,7 +517,7 @@ updateSampleIDs <- function(SampleIDs, samplesInGeno) {
 #'
 #' BGENFile <- system.file("extdata", "simuBGEN.bgen", package = "GRAB")
 #' getSampleIDsFromBGEN(BGENFile)
-#' @export
+#'
 getSampleIDsFromBGEN <- function(bgenFile) {
   if (!checkIfSampleIDsExist(bgenFile)) {
     stop("The BGEN file does not include sample identifiers. Please refer to help(checkIfSampleIDsExist) for more details")
@@ -561,7 +561,7 @@ getSampleIDsFromBGEN <- function(bgenFile) {
 #'
 #' BGENFile <- system.file("extdata", "simuBGEN.bgen", package = "GRAB")
 #' getVersionFromBGEN(BGENFile)
-#' @export
+#'
 getVersionFromBGEN <- function(bgenFile) {
   con <- file(bgenFile, "rb")
   seek(con, 4)
@@ -614,7 +614,7 @@ convert4BitsToNumber <- function(leastSignificantBit) {
 #'
 #' BGENFile <- system.file("extdata", "simuBGEN.bgen", package = "GRAB")
 #' checkIfSampleIDsExist(BGENFile)
-#' @export
+#'
 checkIfSampleIDsExist <- function(bgenFile) {
   con <- file(bgenFile, "rb")
   seek(con, 4)

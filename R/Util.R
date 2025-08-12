@@ -7,7 +7,6 @@
 #' @details
 #' If \code{yVec} is categorical with groups <= 10, then \code{Group} is the same as \code{yVec}. Otherwise, \code{Group} is calcualted based on the rank of \code{yVec}.
 #'
-#' @export
 makeGroup <- function(yVec) {
   # yVec is categorical data
   m1 <- length(unique(yVec))
@@ -31,7 +30,6 @@ checkObjNull <- function(objNull) {
 
   ## check objNull
   if (!NullModelClass %in% c(
-    "SPAGE_NULL_Model", # SPAGE: GxE analysis
     "SPACox_NULL_Model", # SPACox: Survival analysis for unrelated subjects
     "POLMM_NULL_Model", # POLMM: categorical data analysis
     "SPAmix_NULL_Model", # SPAmix: mixture population analysis
@@ -40,7 +38,7 @@ checkObjNull <- function(objNull) {
     "WtCoxG_NULL_Model"
   )) {
     stop('class(objNull) should be one of
-         c("SPAGE_NULL_Model", "SPACox_NULL_Model", "POLMM_NULL_Model", "SPAmix_NULL_Model", "SPAGRM_NULL_Model", "SAGELD_NULL_Model", "WtCoxG_NULL_Model")')
+         c("SPACox_NULL_Model", "POLMM_NULL_Model", "SPAmix_NULL_Model", "SPAGRM_NULL_Model", "SAGELD_NULL_Model", "WtCoxG_NULL_Model")')
   }
 
   if (any(!c("subjData", "N") %in% nm)) {

@@ -9,15 +9,12 @@
 #'
 #' @examples
 #' # Step 1: fit a null model
-#' library(dplyr)
 #' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
 #' PhenoData <- data.table::fread(PhenoFile, header = TRUE)
-#' N <- nrow(PhenoData)
-#' PhenoData <- PhenoData %>% mutate(PC1 = rnorm(N), PC2 = rnorm(N))
-#' # add two PCs, which are required for SPAmix
 #'
 #' # Users can directly specify a time-to-event trait to analyze
-#' obj.SPAmix <- GRAB.NullModel(survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
+#' obj.SPAmix <- GRAB.NullModel(
+#'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
 #'   data = PhenoData,
 #'   subjData = IID,
 #'   method = "SPAmix",
@@ -27,9 +24,13 @@
 #'
 #' # Using model residuals performs exactly the same as the above. Note that
 #' # confounding factors are still required in the right of the formula.
-#' obj.coxph <- survival::coxph(survival::Surv(SurvTime, SurvEvent) ~
-#'   AGE + GENDER + PC1 + PC2, data = PhenoData)
-#' obj.SPAmix <- GRAB.NullModel(obj.coxph$residuals ~ AGE + GENDER + PC1 + PC2,
+#' obj.coxph <- survival::coxph(
+#'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
+#'   data = PhenoData
+#' )
+#' 
+#' obj.SPAmix <- GRAB.NullModel(
+#'   obj.coxph$residuals ~ AGE + GENDER + PC1 + PC2,
 #'   data = PhenoData,
 #'   subjData = IID,
 #'   method = "SPAmix",
@@ -38,10 +39,14 @@
 #' )
 #'
 #' # SPAmix also supports multiple residuals as below
-#' obj.coxph <- survival::coxph(survival::Surv(SurvTime, SurvEvent) ~
-#'   AGE + GENDER + PC1 + PC2, data = PhenoData)
+#' obj.coxph <- survival::coxph(
+#'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2, 
+#'   data = PhenoData
+#' )
 #' obj.lm <- lm(QuantPheno ~ AGE + GENDER + PC1 + PC2, data = PhenoData)
-#' obj.SPAmix <- GRAB.NullModel(obj.coxph$residuals + obj.lm$residuals ~ AGE + GENDER + PC1 + PC2,
+#' 
+#' obj.SPAmix <- GRAB.NullModel(
+#'   obj.coxph$residuals + obj.lm$residuals ~ AGE + GENDER + PC1 + PC2,
 #'   data = PhenoData,
 #'   subjData = IID,
 #'   method = "SPAmix",
@@ -53,12 +58,14 @@
 #' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' OutputDir <- tempdir()
 #' OutputFile <- file.path(OutputDir, "Results_SPAmix.txt")
-#' GRAB.Marker(obj.SPAmix,
-#'   GenoFile = GenoFile, OutputFile = OutputFile,
+#' GRAB.Marker(
+#'   objNull = obj.SPAmix,
+#'   GenoFile = GenoFile,
+#'   OutputFile = OutputFile,
 #'   control = list(outputColumns = "zScore")
 #' )
 #' data.table::fread(OutputFile)
-#' @export
+#'
 GRAB.SPAmix <- function() {
   message("Check ?GRAB.SPAmix for more details about 'SPAmix' method.")
 }
@@ -176,7 +183,7 @@ fitNullModel.SPAmix <- function(response, designMat, subjData, control = list(Ou
     yVec <- mresid <- response
     Cova <- designMat
 
-    message(head(mresid))
+    message("Head of mresid: ", paste(head(mresid), collapse = ", "))
     if (nrow(mresid) != length(subjData)) {
       stop("Please check the consistency between 'formula' and 'subjData'.")
     }
@@ -185,13 +192,10 @@ fitNullModel.SPAmix <- function(response, designMat, subjData, control = list(Ou
   PC_columns <- control$PC_columns
 
   # Remove the below if checked later
-  message("colnames(designMat):")
-  message(colnames(designMat))
-  message("PC columns specified in 'control':")
-  message(PC_columns)
-  message("dimension of 'designMat' and 'Cova':")
-  message(dim(designMat))
-  message(dim(Cova))
+  message("colnames(designMat): ", paste(colnames(designMat), collapse = ", "))
+  message("PC columns specified in 'control': ", paste(PC_columns, collapse = ", "))
+  message("dimension of 'designMat': ", paste(dim(designMat), collapse = " x "))
+  message("dimension of 'Cova': ", paste(dim(Cova), collapse = " x "))
 
   if (any(!PC_columns %in% colnames(designMat))) {
     stop("PC columns specified in 'control$PC_columns' should be in 'formula'.")

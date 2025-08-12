@@ -77,27 +77,21 @@
 #' \item{pval.Burden}{p-values based on Burden test}
 #' }
 #' @examples
-#' objNullFile <- system.file("results", "objPOLMMFile.RData", package = "GRAB")
+#' # Load a precomputed example object to perform step 2 without repeating step 1
+#' objNullFile <- system.file("extdata", "objPOLMMnull.RData", package = "GRAB")
 #' load(objNullFile)
-#' class(obj.POLMM) # "POLMM_NULL_Model", that indicates an object from POLMM method.
+#' class(obj.POLMM) # "POLMM_NULL_Model" is an object from POLMM method.
 #'
 #' OutputDir <- tempdir()
 #' OutputFile <- file.path(OutputDir, "simuRegionOutput.txt")
 #' GenoFile <- system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
 #' GroupFile <- system.file("extdata", "simuPLINK_RV.group", package = "GRAB")
-#' SparseGRMFile <- system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
-#'
-#' ## make sure the output files does not exist at first
-#' file.remove(OutputFile)
-#' file.remove(paste0(OutputFile, ".markerInfo"))
-#' file.remove(paste0(OutputFile, ".index"))
+#' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
 #'
 #' GRAB.Region(
 #'   objNull = obj.POLMM,
 #'   GenoFile = GenoFile,
-#'   GenoFileIndex = NULL,
 #'   OutputFile = OutputFile,
-#'   OutputFileIndex = NULL,
 #'   GroupFile = GroupFile,
 #'   SparseGRMFile = SparseGRMFile,
 #'   MaxMAFVec = "0.01,0.005"
@@ -108,37 +102,20 @@
 #' data.table::fread(paste0(OutputFile, ".otherMarkerInfo"))
 #' data.table::fread(paste0(OutputFile, ".index"), sep = "\t", header = FALSE)
 #'
-#' SampleFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
-#' GRAB.Region(
-#'   objNull = obj.POLMM,
-#'   GenoFile = GenoFile,
-#'   GenoFileIndex = NULL,
-#'   OutputFile = OutputFile,
-#'   OutputFileIndex = NULL,
-#'   GroupFile = GroupFile,
-#'   SparseGRMFile = SparseGRMFile,
-#'   SampleFile = SampleFile,
-#'   control = list(SampleLabelCol = "OrdinalPheno")
-#' )
-#'
-#' data.table::fread(OutputFile)
-#' data.table::fread(paste0(OutputFile, ".markerInfo"))
-#' data.table::fread(paste0(OutputFile, ".otherMarkerInfo"))
-#' data.table::fread(paste0(OutputFile, ".index"), sep = "\t", header = FALSE)
-#'
-#' @export
-GRAB.Region <- function(objNull,
-                        GenoFile,
-                        GenoFileIndex = NULL,
-                        OutputFile,
-                        OutputFileIndex = NULL,
-                        GroupFile,
-                        SparseGRMFile = NULL,
-                        SampleFile = NULL,
-                        MaxMAFVec = "0.01,0.001,0.0005",
-                        annoVec = "lof,lof:missense,lof:missense:synonymous",
-                        chrom = "LOCO=F",
-                        control = NULL) {
+GRAB.Region <- function(
+  objNull,
+  GenoFile,
+  GenoFileIndex = NULL,
+  OutputFile,
+  OutputFileIndex = NULL,
+  GroupFile,
+  SparseGRMFile = NULL,
+  SampleFile = NULL,
+  MaxMAFVec = "0.01,0.001,0.0005",
+  annoVec = "lof,lof:missense,lof:missense:synonymous",
+  chrom = "LOCO=F",
+  control = NULL
+) {
   NullModelClass <- checkObjNull(objNull) # Check "Util.R"
   method <- gsub("_NULL_Model", "", NullModelClass)
 
@@ -395,8 +372,7 @@ GRAB.Region <- function(objNull,
     t21 <- Sys.time()
     pval.Region <- data.frame()
     iSPA <- 1
-    for (anno in annoVec)
-    {
+    for (anno in annoVec) {
       annoTemp <- unlist(strsplit(anno, split = ":"))
 
       posURV <- RV.MarkersURV %>%
@@ -410,8 +386,7 @@ GRAB.Region <- function(objNull,
         stop("length(posURV) != 1")
       }
 
-      for (MaxMAF in MaxMAFVec)
-      {
+      for (MaxMAF in MaxMAFVec) {
         posRV <- RV.MarkersWithAnno %>%
           filter(MAF < MaxMAF & Annos %in% annoTemp) %>%
           select(posRow) %>%

@@ -5,7 +5,7 @@
 #' @param nPartsGRM a numeric value (e.g. 250): \code{GCTA} software can split subjects to multiple parts. For UK Biobank data analysis, it is recommended to set \code{nPartsGRM=250}.
 #' @param partParallel a numeric value (from 1 to \code{nPartsGRM}) to split all jobs for parallel computation.
 #' @param gcta64File a path to \code{GCTA} program. GCTA can be downloaded from [link](https://yanglab.westlake.edu.cn/software/gcta/#Download).
-#' @param tempDir a path to store temp files to be passed to \code{\link{getSparseGRM}}. This should be consistent to the input of \code{\link{getSparseGRM}}. Default is system.file("SparseGRM", "temp", package = "GRAB").
+#' @param tempDir a path to store temp files to be passed to \code{\link{getSparseGRM}}. This should be consistent to the input of \code{\link{getSparseGRM}}. Default is \code{tempdir()}.
 #' @param subjData a character vector to specify subject IDs to retain (i.e. IID). Default is \code{NULL}, i.e. all subjects are retained in sparse GRM. If the number of subjects is less than 1,000, the GRM estimation might not be accurate.
 #' @param minMafGRM Minimal value of MAF cutoff to select markers (from PLINK files) to make sparse GRM. *(default=0.01)*
 #' @param maxMissingGRM Maximal value of missing rate to select markers (from PLINK files) to make sparse GRM. *(default=0.1)*
@@ -19,17 +19,19 @@
 #' @return A character string message indicating the completion status and location of the temporary files.
 #' @examples
 #' ## Please check help(getSparseGRM) for an example.
-#' @export
+#'
 
-getTempFilesFullGRM <- function(PlinkFile,
-                                nPartsGRM,
-                                partParallel,
-                                gcta64File,
-                                tempDir = NULL,
-                                subjData = NULL,
-                                minMafGRM = 0.01,
-                                maxMissingGRM = 0.1,
-                                threadNum = 8) {
+getTempFilesFullGRM <- function(
+  PlinkFile,
+  nPartsGRM,
+  partParallel,
+  gcta64File,
+  tempDir = NULL,
+  subjData = NULL,
+  minMafGRM = 0.01,
+  maxMissingGRM = 0.1,
+  threadNum = 8
+) {
   bimFile <- paste0(PlinkFile, ".bim")
   bedFile <- paste0(PlinkFile, ".bed")
   famFile <- paste0(PlinkFile, ".fam")
@@ -43,7 +45,7 @@ getTempFilesFullGRM <- function(PlinkFile,
   #   stop(paste0("We generate GRM using gcta software which only support Linux. Current OS is ", OS))
 
   if (is.null(tempDir)) {
-    tempDir <- system.file("SparseGRM", "temp", package = "GRAB")
+    tempDir <- tempdir()
   }
 
   PlinkName <- basename(PlinkFile)
@@ -97,7 +99,7 @@ getTempFilesFullGRM <- function(PlinkFile,
 #' @param PlinkFile a path to PLINK binary files (without file extension). Note that the current version (gcta_1.93.1beta) of \code{GCTA} software does not support different prefix names for BIM, BED, and FAM files.
 #' @param nPartsGRM a numeric value (e.g. 250): \code{GCTA} software can split subjects to multiple parts. For UK Biobank data analysis, it is recommended to set \code{nPartsGRM=250}.
 #' @param SparseGRMFile a path to file of output to be passed to \code{\link{GRAB.NullModel}}.
-#' @param tempDir a path to store temp files from \code{\link{getTempFilesFullGRM}}. This should be consistent to the input of \code{\link{getTempFilesFullGRM}}. Default is \code{system.file("SparseGRM", "temp", package = "GRAB")}.
+#' @param tempDir a path to store temp files from \code{\link{getTempFilesFullGRM}}. This should be consistent to the input of \code{\link{getTempFilesFullGRM}}. Default is \code{tempdir()}.
 #' @param relatednessCutoff a cutoff for sparse GRM, only kinship coefficient greater than this cutoff will be retained in sparse GRM. *(default=0.05)*
 #' @param minMafGRM Minimal value of MAF cutoff to select markers (from PLINK files) to make sparse GRM. *(default=0.01)*
 #' @param maxMissingGRM Maximal value of missing rate to select markers (from PLINK files) to make sparse GRM. *(default=0.1)*
@@ -130,30 +132,32 @@ getTempFilesFullGRM <- function(PlinkFile,
 #'
 #' \code{gcta64File <- "C:\\\\path\\\\to\\\\gcta64.exe"}
 #'
-#' \code{# The temp outputs (may be large) will be in system.file("SparseGRM", "temp", package = "GRAB") by default:}
+#' \code{# The temp outputs (may be large) will be in tempdir() by default:}
 #'
 #' \code{for(partParallel in 1:nPartsGRM) getTempFilesFullGRM(PlinkFile, nPartsGRM, partParallel, gcta64File)}
 #'
 #' # Step 2: Combine files in Step 1 to make a SparseGRMFile
 #'
-#' \code{tempDir = system.file("SparseGRM", "temp", package = "GRAB")}
+#' \code{tempDir = tempdir()}
 #'
-#' \code{SparseGRMFile = gsub("temp", "SparseGRM.txt", tempDir)}
+#' \code{SparseGRMFile = file.path(tempDir, "SparseGRM.txt")}
 #'
 #' \code{getSparseGRM(PlinkFile, nPartsGRM, SparseGRMFile)}
 #'
 #' @return
 #' A character string containing a message with the path to the output file
 #' where the sparse Genetic Relationship Matrix (SparseGRM) has been stored.
-#' @export
-getSparseGRM <- function(PlinkFile,
-                         nPartsGRM,
-                         SparseGRMFile,
-                         tempDir = NULL,
-                         relatednessCutoff = 0.05,
-                         minMafGRM = 0.01,
-                         maxMissingGRM = 0.1,
-                         rm.tempFiles = FALSE) {
+#'
+getSparseGRM <- function(
+  PlinkFile,
+  nPartsGRM,
+  SparseGRMFile,
+  tempDir = NULL,
+  relatednessCutoff = 0.05,
+  minMafGRM = 0.01,
+  maxMissingGRM = 0.1,
+  rm.tempFiles = FALSE
+) {
   PlinkName <- basename(PlinkFile)
   nDigits <- floor(log10(nPartsGRM)) + 1 # 1-9 -> 1; 10-99 -> 2; 100:999 -> 3.
 
@@ -162,7 +166,7 @@ getSparseGRM <- function(PlinkFile,
   SparseGRM <- c()
 
   if (is.null(tempDir)) {
-    tempDir <- system.file("SparseGRM", "temp", package = "GRAB")
+    tempDir <- tempdir()
   }
 
   ## cycle for nPartsGRM

@@ -25,7 +25,7 @@ getTempFilesFullGRM(
 
 \item{gcta64File}{a path to \code{GCTA} program. GCTA can be downloaded from \href{https://yanglab.westlake.edu.cn/software/gcta/#Download}{link}.}
 
-\item{tempDir}{a path to store temp files to be passed to \code{\link{getSparseGRM}}. This should be consistent to the input of \code{\link{getSparseGRM}}. Default is system.file("SparseGRM", "temp", package = "GRAB").}
+\item{tempDir}{a path to store temp files to be passed to \code{\link{getSparseGRM}}. This should be consistent to the input of \code{\link{getSparseGRM}}. Default is \code{tempdir()}.}
 
 \item{subjData}{a character vector to specify subject IDs to retain (i.e. IID). Default is \code{NULL}, i.e. all subjects are retained in sparse GRM. If the number of subjects is less than 1,000, the GRM estimation might not be accurate.}
 
@@ -49,4 +49,5 @@ Make temporary files to be passed to function \code{\link{getSparseGRM}}. We str
 }
 \examples{
 ## Please check help(getSparseGRM) for an example.
+
 }

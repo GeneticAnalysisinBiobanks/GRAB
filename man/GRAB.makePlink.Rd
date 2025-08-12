@@ -88,4 +88,5 @@ GRAB.makePlink(GenoMat, outputPrefix)
 # UK Biobank use 'ref-first'
 # bgenix -g simuBGEN.bgen --index
 
+
 }

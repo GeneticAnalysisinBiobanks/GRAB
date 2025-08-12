@@ -1,7 +1,7 @@
 /**
  * @file Main.cpp
  * @brief Main interface between C++ and R for the GRAB package
- * 
+ *
  * This file contains the core C++ functions that are exposed to R via Rcpp.
  * It serves as the main entry point for genetic association analysis methods
  * including POLMM, SPACox, SPAmix, SPAGRM, SAGELD and WtCoxG.
@@ -20,7 +20,7 @@
 
 // Include headers for various components of the GRAB package
 #include "PLINK.h"     // PLINK format genotype file handler
-#include "BGEN.h"      // BGEN format genotype file handler  
+#include "BGEN.h"      // BGEN format genotype file handler
 #include "POLMM.h"     // Polytomous Logistic Mixed Model analysis
 #include "UTIL.h"      // Utility functions for statistical computations
 #include "SPACox.h"    // Score test with Pooled Approximate likelihood (Cox regression)
@@ -60,7 +60,7 @@ static unsigned int g_omp_num_threads;       // Number of OpenMP threads for par
 static double g_marker_minMAF_cutoff;         // Minimum Minor Allele Frequency for single markers
 static double g_marker_minMAC_cutoff;         // Minimum Minor Allele Count for single markers
 
-// Quality control thresholds for region-based analysis  
+// Quality control thresholds for region-based analysis
 static double g_region_minMAC_cutoff;  // Min MAC for rare variants aggregation (like SAIGE-GENE+)
 static double g_region_maxMAF_cutoff;         // Maximum MAF to consider variants as "rare"
 static unsigned int g_region_maxMarkers_cutoff;  // Max markers per chunk (memory management)
@@ -77,7 +77,7 @@ static arma::sp_mat g_SparseGRM;
 
 // Performance monitoring variables
 static arma::vec g_compTime1(2, arma::fill::zeros);  // Timing for Unified_getOneMarker function
-static arma::vec g_compTime2(2, arma::fill::zeros);  // Timing for Unified_getRegionPVec function  
+static arma::vec g_compTime2(2, arma::fill::zeros);  // Timing for Unified_getRegionPVec function
 static arma::vec g_compTime3(2, arma::fill::zeros);  // Additional timing measurements
 
 
@@ -96,7 +96,7 @@ void setSparseGRMInCPP(
   arma::umat locations = t_KinMatListR["locations"];  // Row/column indices of non-zero elements
   arma::vec values = t_KinMatListR["values"];         // Values at those locations
   int n = t_KinMatListR["nSubj"];                     // Number of subjects (matrix dimension)
-  
+
   // Construct sparse matrix from triplet format (locations, values, dimensions)
   arma::sp_mat KinMat(
     locations,  // Row/column indices of non-zero elements
@@ -164,7 +164,7 @@ void setMarker_GlobalVarsInCPP(
   g_marker_minMAF_cutoff = t_min_maf_marker;
   g_marker_minMAC_cutoff = t_min_mac_marker;
   g_omp_num_threads = t_omp_num_threads;
-  
+
   // Set group-specific variables for stratified analysis
   g_group = t_group;
   g_ifOutGroup = t_ifOutGroup;
@@ -188,19 +188,19 @@ void setRegion_GlobalVarsInCPP(
   g_impute_method = t_impute_method;
   g_missingRate_cutoff = t_missing_cutoff;
   g_omp_num_threads = t_omp_num_threads;
-  
+
   // Set region-specific analysis parameters
   g_region_minMAC_cutoff = t_min_mac_region;
   g_region_maxMAF_cutoff = t_max_maf_region;
   g_region_maxMarkers_cutoff = t_max_markers_region;
-  
+
   // Set variant weighting parameters
   g_region_weight_beta = t_region_weight_beta;
   g_region_max_maf_vec = t_region_max_maf_vec;
 }
 
 //==============================================================================
-// SECTION 3: CORE UTILITY FUNCTIONS  
+// SECTION 3: CORE UTILITY FUNCTIONS
 // Helper functions used by main analysis routines
 //==============================================================================
 
@@ -232,7 +232,7 @@ void updateGroupInfo(
     } else {
       // Individual has non-missing genotype - update group statistics
       unsigned int grp = g_group.at(i);  // Get group assignment for this individual
-      
+
       nSamplesInGroupVec.at(grp) += 1;              // Increment sample count for this group
       AltCountsInGroupVec.at(grp) += t_GVec.at(i);  // Add genotype to allele count
     }
@@ -242,7 +242,7 @@ void updateGroupInfo(
   AltFreqInGroupVec = AltCountsInGroupVec / nSamplesInGroupVec / 2;
 }
 
-// Computes label-stratified allele statistics for case-control or 
+// Computes label-stratified allele statistics for case-control or
 // multi-group analysis designs.
 void getLabelInfo(
   arma::vec t_GVec,                    // Genotype vector after imputation
@@ -253,16 +253,16 @@ void getLabelInfo(
 ) {
   unsigned int n = t_labelVec.size();
   unsigned int nLabel = t_MACLabelMat.n_cols;
-  
+
   arma::vec MACLabelVec(nLabel, arma::fill::zeros);
   arma::vec counttLabelVec(nLabel, arma::fill::zeros);
-  
+
   // Count samples and alleles per label
   for (unsigned int i = 0; i < n; i++) {
     counttLabelVec.at(t_labelVec.at(i) - 1) += 1;            // Sample count per label
     MACLabelVec.at(t_labelVec.at(i) - 1) += t_GVec.at(i);    // Allele count per label
   }
-  
+
   // Calculate allele frequencies (divide by 2 for diploid)
   arma::vec MAFLabelVec = MACLabelVec / (counttLabelVec * 2);
 
@@ -296,7 +296,7 @@ arma::vec Unified_getOneMarker(
   std::vector<uint32_t> &t_indexForNonZero   // Indices of non-zero genotypes (output)
 ) {
   arma::vec GVec;
-  
+
   if (t_genoType == "PLINK") {
     GVec = ptr_gPLINKobj->getOneMarker(
       t_gIndex,                        // Marker index in genotype file
@@ -359,7 +359,7 @@ void Unified_getMarkerPval(
     if (t_isOnlyOutputNonZero == true)
       Rcpp::stop("When using POLMM method to calculate marker-level p-values, "
                  "'t_isOnlyOutputNonZero' shold be false.");
-    
+
     ptr_gPOLMMobj->getMarkerPval(
       t_GVec,    // Genotype vector
       t_Beta,    // Effect size estimate (output)
@@ -374,7 +374,7 @@ void Unified_getMarkerPval(
     if (t_isOnlyOutputNonZero == true)
       Rcpp::stop("When using SPACox method to calculate marker-level p-values, "
                  "'t_isOnlyOutputNonZero' shold be false.");
-    
+
     t_pval = ptr_gSPACoxobj->getMarkerPval(
       t_GVec,     // Genotype vector
       t_altFreq,  // Alternate allele frequency
@@ -386,7 +386,7 @@ void Unified_getMarkerPval(
     if (t_isOnlyOutputNonZero == true)
       Rcpp::stop("When using SPAmix method to calculate marker-level p-values, "
                  "'t_isOnlyOutputNonZero' shold be false.");
-    
+
     t_pval = ptr_gSPAmixobj->getMarkerPval(
       t_GVec,    // Genotype vector
       t_altFreq  // Alternate allele frequency
@@ -434,7 +434,7 @@ void Unified_getMarkerPval(
     if (t_isOnlyOutputNonZero == true)
       Rcpp::stop("When using SPAGRM method to calculate marker-level p-values, "
                  "'t_isOnlyOutputNonZero' shold be false.");
-    
+
     t_pval = ptr_gSPAGRMobj->getMarkerPval(
       t_GVec,           // Genotype vector
       t_altFreq,        // Alternative allele frequency
@@ -446,7 +446,7 @@ void Unified_getMarkerPval(
     if (t_isOnlyOutputNonZero == true)
       Rcpp::stop("When using SAGELD method to calculate marker-level p-values, "
                  "'t_isOnlyOutputNonZero' shold be false.");
-    
+
     t_pval = ptr_gSAGELDobj->getMarkerPval(
       t_GVec,           // Genotype vector
       t_altFreq,        // Alternative allele frequency
@@ -502,13 +502,13 @@ void Unified_getRegionPVec(
       t_P1Vec, // First component vector for variance calculation (output)
       t_P2Vec  // Second component vector for variance calculation (output)
     );
-    
+
     // Set default values for missing outputs
     t_Stat = zScore;
     t_Beta = 0.0;
     t_seBeta = 0.0;
   } else {
-    // For methods without getRegionPVec (SPAmix, SPAGRM, SAGELD), 
+    // For methods without getRegionPVec (SPAmix, SPAGRM, SAGELD),
     // set default values - these methods may not support region-based analysis
     t_Stat = 0.0;
     t_Beta = 0.0;
@@ -517,8 +517,8 @@ void Unified_getRegionPVec(
     t_pval1 = 1.0;
     t_P1Vec.zeros();
     t_P2Vec.zeros();
-    
-    Rcpp::warning("Method " + t_method + 
+
+    Rcpp::warning("Method " + t_method +
                    " does not support region-based analysis via getRegionPVec");
   }
 }
@@ -529,7 +529,7 @@ void Unified_getRegionPVec(
 //==============================================================================
 
 // Performs genome-wide association analysis on specified markers using the chosen
-// statistical method. Handles quality control, missing data imputation, and 
+// statistical method. Handles quality control, missing data imputation, and
 // group-stratified analysis when requested.
 // [[Rcpp::export]]
 Rcpp::List mainMarkerInCPP(
@@ -564,7 +564,7 @@ Rcpp::List mainMarkerInCPP(
 
   // Initialize group-stratified analysis matrices (if requested)
   arma::mat nSamplesInGroup;   // Sample counts per group
-  arma::mat AltCountsInGroup;  // Allele counts per group  
+  arma::mat AltCountsInGroup;  // Allele counts per group
   arma::mat AltFreqInGroup;    // Allele frequencies per group
 
   if (g_ifOutGroup) {
@@ -656,8 +656,8 @@ Rcpp::List mainMarkerInCPP(
     double MAC = 2 * MAF * n * (1 - missingRate); // Account for diploid genotypes and missing data
 
     // Quality Control: check if marker passes MAF, MAC, and missing rate thresholds
-    if ((missingRate > g_missingRate_cutoff) || 
-        (MAF < g_marker_minMAF_cutoff) || 
+    if ((missingRate > g_missingRate_cutoff) ||
+        (MAF < g_marker_minMAF_cutoff) ||
         (MAC < g_marker_minMAC_cutoff))
       continue;
 
@@ -778,7 +778,7 @@ Rcpp::List mainRegionURVInCPP(
     uint32_t pd;
 
     uint64_t gIndex = t_genoIndex.at(i);
-    
+
     // Extract genotype data for current marker
     arma::vec GVec = Unified_getOneMarker(
       t_genoType,                      // Genotype file format
@@ -845,7 +845,7 @@ Rcpp::List mainRegionURVInCPP(
 
 // Performs comprehensive gene-based analysis including:
 // - Individual variant association tests
-// - Burden tests with different MAF thresholds  
+// - Burden tests with different MAF thresholds
 // - Ultra-rare variant collapsing
 // - Annotation-stratified analysis
 // - Variance component tests
@@ -874,7 +874,7 @@ Rcpp::List mainRegionInCPP(
   Rcpp::StringVector infoVec(q + nAnno);                   // Marker information
   arma::vec altFreqVec(q + nAnno);                         // Alternate allele frequencies
   arma::vec MACVec(q + nAnno);                             // Minor allele counts
-  arma::vec MAFVec(q + nAnno);                             // Minor allele frequencies  
+  arma::vec MAFVec(q + nAnno);                             // Minor allele frequencies
   arma::vec missingRateVec(q + nAnno);                     // Missing rates
 
   // Statistical results vectors
@@ -950,7 +950,7 @@ Rcpp::List mainRegionInCPP(
   // MAIN ANALYSIS LOOP: Process each marker in the region
   for (unsigned int i = 0; i < q; i++) {
     double weight = t_weightVec.at(i);                 // Variant-specific weight
-    
+
     // Extract marker information and genotype data
     double altFreq, altCounts, missingRate, imputeInfo;
     std::vector<uint32_t> indexForMissing, indexForNonZero;
@@ -1016,7 +1016,7 @@ Rcpp::List mainRegionInCPP(
       continue; // Marker fails QC
     }
 
-    if (MAC > g_region_minMAC_cutoff) { 
+    if (MAC > g_region_minMAC_cutoff) {
       // NON-ULTRA-RARE VARIANT: Perform individual marker analysis
       indicatorVec.at(i) = 1;
 
@@ -1026,11 +1026,11 @@ Rcpp::List mainRegionInCPP(
 
       // Statistical analysis timing
       arma::vec test21 = getTime();
-      
+
       // Individual marker association testing
       double Stat, Beta, seBeta, pval0, pval1;
       arma::vec P1Vec(n), P2Vec(n);
-      
+
       Unified_getRegionPVec(
         t_method,             // Statistical method
         GVec,                 // Genotype vector for current marker
@@ -1075,7 +1075,7 @@ Rcpp::List mainRegionInCPP(
         beta_dist, // Beta distribution object
         MAF        // Minor allele frequency value
       );  // Beta-distribution weight
-      
+
       for (unsigned int j = 0; j < n; j++) {
         if (GVec.at(j) != 0) {
           for (unsigned int iAnno = 0; iAnno < nAnno; iAnno++) {
@@ -1093,7 +1093,7 @@ Rcpp::List mainRegionInCPP(
           }
         }
       }
-    } else { 
+    } else {
       // ULTRA-RARE VARIANT: Aggregate for burden testing
       indicatorVec.at(i) = 2;
 
@@ -1106,7 +1106,7 @@ Rcpp::List mainRegionInCPP(
                 GMatURV(j, iAnno),    // Current aggregated value
                 weight * GVec.at(j)   // Weighted current variant value
               );
-              
+
               // Also add to burden scores
               for (unsigned int i_max_maf = 0; i_max_maf < n_max_maf; i_max_maf++) {
                 GMatBurdenNoWeight(j, iAnno * n_max_maf + i_max_maf) += GVec.at(j);
@@ -1120,9 +1120,9 @@ Rcpp::List mainRegionInCPP(
 
     // Chunk management: Save intermediate results if chunk is full
     if (i1InChunk == m1) {
-      Rcpp::Rcout << "In chunks 0-" << ichunk << ", " << i2 << " markers are ultra-rare and " 
+      Rcpp::Rcout << "In chunks 0-" << ichunk << ", " << i2 << " markers are ultra-rare and "
                 << i1 << " markers are not ultra-rare." << std::endl;
-      
+
       P1Mat.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin");
       P2Mat.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin");
 
@@ -1154,17 +1154,17 @@ Rcpp::List mainRegionInCPP(
       beta_dist, // Beta distribution object
       MAFURV     // Ultra-rare variant frequency value
     );
-    
+
     for (unsigned int i_max_maf = 0; i_max_maf < n_max_maf; i_max_maf++) {
       unsigned int i_pos = iAnno * n_max_maf + i_max_maf;
-      
+
       // Add weighted URV contribution to burden scores
       GMatBurden.col(i_pos) += w0URV * GVecURV;
-      
+
       // Test weighted burden score
       double Stat, Beta, seBeta, pval0, pval1;
       arma::vec P1Vec(n), P2Vec(n);
-      
+
       Unified_getRegionPVec(
         t_method,                     // Statistical method
         GMatBurden.col(i_pos),        // Weighted burden vector for this annotation/MAF combination
@@ -1221,7 +1221,7 @@ Rcpp::List mainRegionInCPP(
     // Statistical testing for aggregated URV
     double Stat, Beta, seBeta, pval0, pval1;
     arma::vec P1Vec(n), P2Vec(n);
-    
+
     Unified_getRegionPVec(
       t_method,  // Statistical method
       GVecURV,   // Aggregated ultra-rare variant genotype vector
@@ -1280,9 +1280,9 @@ Rcpp::List mainRegionInCPP(
       0,              // Starting column
       i1InChunk - 1   // Ending column
     );
-    
+
     if (nchunks != 1) {
-      Rcpp::Rcout << "In chunks 0-" << ichunk << ", " << i2 << " markers are ultra-rare and " 
+      Rcpp::Rcout << "In chunks 0-" << ichunk << ", " << i2 << " markers are ultra-rare and "
                 << i1 << " markers are not ultra-rare." << std::endl;
       P1Mat.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin");
       P2Mat.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin");
@@ -1309,7 +1309,7 @@ Rcpp::List mainRegionInCPP(
 
       // Compute off-diagonal blocks
       for (unsigned int index2 = 0; index2 < index1; index2++) {
-        Rcpp::Rcout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " 
+        Rcpp::Rcout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", "
                   << index2 << "/" << nchunks - 1 << ")........" << std::endl;
 
         P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index2) + ".bin");
@@ -1322,7 +1322,7 @@ Rcpp::List mainRegionInCPP(
 
         VarMat.submat(
           first_row,  // Starting row
-          first_col,  // Starting column  
+          first_col,  // Starting column
           last_row,   // Ending row
           last_col    // Ending column
         ) = offVarMat;
@@ -1338,9 +1338,9 @@ Rcpp::List mainRegionInCPP(
 
       // Compute diagonal block
       last_col = first_col + mPassCVVec.at(index1) - 1;
-      Rcpp::Rcout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " 
+      Rcpp::Rcout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", "
                 << index1 << "/" << nchunks - 1 << ")........" << std::endl;
-      
+
       P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index1) + ".bin");
       arma::mat diagVarMat = P1Mat * P2Mat;
       VarMat.submat(
@@ -1371,7 +1371,7 @@ Rcpp::List mainRegionInCPP(
   // PREPARE OUTPUT: Comprehensive results list
   Rcpp::List OutList = Rcpp::List::create(
     Rcpp::Named("markerVec") = markerVec,                        // Marker IDs
-    Rcpp::Named("infoVec") = infoVec,                            // Marker information  
+    Rcpp::Named("infoVec") = infoVec,                            // Marker information
     Rcpp::Named("missingRateVec") = missingRateVec,              // Missing rates
     Rcpp::Named("altFreqVec") = altFreqVec,                      // Allele frequencies
     Rcpp::Named("MACVec") = MACVec,                              // Minor allele counts
@@ -1537,8 +1537,8 @@ arma::mat getGenoInCPP(
       imputeInfo,          // imputation information score, i.e., R2 (all 1 for PLINK)
       true,                // if true, output index of missing genotype data
       indexForMissing,     // index of missing genotype data
-      false,               // if true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
-      indexForNonZero      // the index of non-zero genotype in the all subjects. Only valid if t_isOnlyOutputNonZero == true.
+      false,               // if true, only output a vector of non-zero genotype
+      indexForNonZero      // the index of non-zero genotype. Only valid if t_isOnlyOutputNonZero == true
     );
     imputeGeno(GVec, altFreq, indexForMissing, t_imputeMethod);  // check UTIL.cpp
     GMat.col(i) = GVec;
@@ -1787,7 +1787,7 @@ Rcpp::List setPOLMMobjInCPP_NULL(
   arma::mat t_Cova,                          // Covariate matrix for fixed effects
   arma::uvec t_yVec,                         // Response vector (values from 0 to J-1 for J categories)
   arma::vec t_beta,                          // Fixed effect coefficients
-  arma::vec t_bVec,                          // Random effect coefficients  
+  arma::vec t_bVec,                          // Random effect coefficients
   arma::vec t_eps,                           // Residual vector
   double t_tau,                              // Variance component parameter
   Rcpp::List t_SPmatR,                       // Sparse matrix representation (output of makeSPmatR())
@@ -1862,7 +1862,7 @@ void setSAGELDobjInCPP(
   std::string t_Method,                      // Analysis method ("SAIGE-Gene", "SAIGE-Gene+", etc.)
   arma::mat t_XTs,                           // Transpose of design matrix X
   arma::mat t_SS,                            // Matrix S'*S for efficient computation
-  arma::mat t_AtS,                           // Matrix A'*S 
+  arma::mat t_AtS,                           // Matrix A'*S
   arma::mat t_Q,                             // Q matrix from QR decomposition
   arma::mat t_A21,                           // A21 matrix component
   arma::mat t_TTs,                           // Matrix T'*T
@@ -2027,7 +2027,7 @@ void updateWtCoxGChunkInCPP(
   if (ptr_gWtCoxGobj == nullptr) {
     Rcpp::stop("WtCoxG object not initialized. Call setWtCoxGobjInCPP first.");
   }
-  
+
   // Update the WtCoxG object with the subset of marker information for this chunk
   ptr_gWtCoxGobj->updateMarkerInfo(t_mergeGenoInfo_subset);
 }

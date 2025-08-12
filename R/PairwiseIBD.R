@@ -1,13 +1,14 @@
 # This function follows function getSparseGRM()
-getPairwiseIBD <- function(PlinkFile, # input path to PLINK file (without file extensions of bed/bim/fam).
-                           SparseGRMFile, # input path to SparseGRMFile from getSparseGRM() function.
-                           PairwiseIBDFile, # output path to save pairwise IBD to PairwiseIBDFile.
-                           frqFile = NULL, # input path to frq file corresponding to Plink file, default is PlinkFile.
-                           tempDir = NULL, # output path to save the temp files.
-                           maxSampleNums = 2500, # read in at most 2500 subjects' genotypes for analysis.
-                           minMafIBD = 0.01, # Minimal value of MAF cutoff to select markers (default=0.01).
-                           rm.tempFile = FALSE) # a logical value indicating if the temp files will be deleted. (default=FALSE)
-{
+getPairwiseIBD <- function(
+  PlinkFile, # input path to PLINK file (without file extensions of bed/bim/fam).
+  SparseGRMFile, # input path to SparseGRMFile from getSparseGRM() function.
+  PairwiseIBDFile, # output path to save pairwise IBD to PairwiseIBDFile.
+  frqFile = NULL, # input path to frq file corresponding to Plink file, default is PlinkFile.
+  tempDir = NULL, # output path to save the temp files.
+  maxSampleNums = 2500, # read in at most 2500 subjects' genotypes for analysis.
+  minMafIBD = 0.01, # Minimal value of MAF cutoff to select markers (default=0.01).
+  rm.tempFile = FALSE # a logical value indicating if the temp files will be deleted. (default=FALSE)
+) {
   message("Noting that PlinkFile name here has no suffix (e.g. .bed or .frq).")
 
   bedFile <- paste0(PlinkFile, ".bed")
@@ -24,7 +25,7 @@ getPairwiseIBD <- function(PlinkFile, # input path to PLINK file (without file e
   }
 
   if (is.null(tempDir)) {
-    tempDir <- system.file("PairwiseIBD", "temp", package = "GRAB")
+    tempDir <- tempdir()
   }
 
   # read all genotype and pass to QC.

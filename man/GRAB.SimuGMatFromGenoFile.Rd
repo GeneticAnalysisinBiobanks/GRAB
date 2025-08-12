@@ -66,4 +66,5 @@ GenoList <- GRAB.SimuGMatFromGenoFile(nFam, nSub, FamMode, PLINKFile,
   control = list(IDsToIncludeFile = IDsToIncludeFile)
 )
 
+
 }

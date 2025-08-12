@@ -8,7 +8,7 @@
 #' Additional list of \code{control} in \code{GRAB.Marker()} function.
 #'
 #' @return No return value, called for side effects (prints information about the SAGELD method to the console).
-#' @export
+#'
 GRAB.SAGELD <- function() {
   message("Check ?GRAB.SAGELD for more details about 'SAGELD' method.")
 }
@@ -182,7 +182,7 @@ mainMarker.SAGELD <- function(genoType, genoIndex, outputColumns, objNull) {
 #'
 #' @return A SAGELD null model object
 #'
-#' @export
+#'
 SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmTMB.
                              UsedMethod = "SAGELD", # default running "SAGELD", user can also run "GALLOP" using unrelated samples.
                              PlinkFile, # a PLINK file path to read in some genotypes (without file suffix like ".bim", "bed" or "fam").
@@ -407,7 +407,7 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
 
       random_SNPs <- sample(totalSNPs, 2000)
 
-      SNPIDfile <- system.file("PairwiseIBD", "temp", package = "GRAB")
+      SNPIDfile <- tempdir()
       SNPIDfile <- paste0(SNPIDfile, "/tempSNPID", sample(1:1e9, 1), ".txt")
 
       data.table::fwrite(data.frame(random_SNPs),

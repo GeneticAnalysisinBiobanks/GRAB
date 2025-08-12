@@ -76,6 +76,7 @@ GRM1 <- GRM[1:10, 1:10]
 GRM2 <- GRM[100 + 1:10, 100 + 1:10]
 GRM1
 GRM2
+
 }
 \seealso{
 \code{\link{GRAB.makePlink}} can make \code{PLINK} files using the genotype matrix.

@@ -21,4 +21,5 @@ Set up a dense GRM (only for developers), other users can ignore this function
 }
 \examples{
 # Check ?getDenseGRM() for an example.
+
 }

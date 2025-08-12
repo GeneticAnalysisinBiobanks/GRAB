@@ -20,7 +20,7 @@
 #'
 #' Additional arguments in list \code{control} in \code{GRAB.Marker()}:
 #' \itemize{
-#'   \item \code{cutoff}: A numeric value specifying the batch effect p-value cutoff for method selection of an assocition test. Default is 0.1.
+#'   \item \code{cutoff}: A numeric value specifying the batch effect p-value cutoff for method selection of an association test. Default is 0.1.
 #' }
 #'
 #' @return No return value, called for side effects (prints information about the WtCoxG method to the console).
@@ -29,7 +29,7 @@
 #' # Step0&1: fit a null model and estimate parameters according to batch effect p-values
 #' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
 #' PhenoData <- data.table::fread(PhenoFile, header = TRUE)
-#' SparseGRMFile <- system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
+#' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
 #'
 #' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' RefAfFile <- system.file("extdata", "simuRefAf.txt", package = "GRAB")
@@ -48,9 +48,11 @@
 #'   GenoFile = GenoFile,
 #'   SparseGRMFile = SparseGRMFile,
 #'   control = list(
-#'     AlleleOrder = "ref-first", AllMarkers = TRUE, RefPrevalence = RefPrevalence,
-#'     SNPnum = 1000
-#'   ), # minimum number of SNPs for to call TestforBatchEffect
+#'     AlleleOrder = "ref-first", 
+#'     AllMarkers = TRUE, 
+#'     RefPrevalence = RefPrevalence,
+#'     SNPnum = 1000  # the minimum number of SNPs that TestforBatchEffect() needs
+#'   ), 
 #'   RefAfFile = RefAfFile,
 #'   OutputFile = OutputStep1,
 #'   SampleIDColumn = "IID",
@@ -67,14 +69,16 @@
 #'   GenoFile = GenoFile,
 #'   OutputFile = OutputStep2,
 #'   control = list(
-#'     AlleleOrder = "ref-first", AllMarkers = TRUE,
-#'     cutoff = 0.1, nMarkersEachChunk = 5000
+#'     AlleleOrder = "ref-first", 
+#'     AllMarkers = TRUE,
+#'     cutoff = 0.1, 
+#'     nMarkersEachChunk = 5000
 #'   )
 #' )
 #'
 #' resultStep2 <- data.table::fread(OutputStep2)
 #' resultStep2[, c("CHROM", "POS", "WtCoxG.noext", "WtCoxG.ext")]
-#' @export
+#'
 GRAB.WtCoxG <- function() {
   message("Check ?GRAB.WtCoxG for more details about 'WtCoxG' method.")
 }
@@ -223,7 +227,7 @@ fitNullModel.WtCoxG <- function(response, designMat, subjData,
 #' @param SurvTimeColumn A character string of the column name in \code{data} that indicates the survival time.
 #' @param SampleIDColumn A character string of the column name in \code{data} that indicates the sample ID.
 #' @return A dataframe of marker info and reference MAF.
-#' @export
+#'
 TestforBatchEffect <- function(
     objNull,
     data,

@@ -1,8 +1,5 @@
-# Enable SQLite column metadata, use 64-bit words in Armadillo, disable debug
-PKG_CPPFLAGS = -D SQLITE_ENABLE_COLUMN_METADATA -DARMA_64BIT_WORD=1 -DNDEBUG 
-
-# CRAN recommends using the default. Try CXX14 if your compilor doesn't support the default.
-# CXX_STD = CXX14
+# Enables 64-bit indexing in Armadillo
+PKG_CPPFLAGS = -DARMA_64BIT_WORD=1
 
 # Link against zlib, LAPACK, BLAS, and Fortran libraries
 PKG_LIBS = -lz $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)

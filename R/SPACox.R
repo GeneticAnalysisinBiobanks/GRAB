@@ -13,7 +13,8 @@
 #' # Step 1: fit a null model
 #' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
 #' PhenoData <- data.table::fread(PhenoFile, header = TRUE)
-#' obj.SPACox <- GRAB.NullModel(survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
+#' obj.SPACox <- GRAB.NullModel(
+#'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
 #'   data = PhenoData,
 #'   subjData = IID,
 #'   method = "SPACox",
@@ -22,11 +23,14 @@
 #'
 #' # Using model residuals performs exactly the same as the above. Note that
 #' # confounding factors are still required in the right of the formula.
-#' obj.coxph <- survival::coxph(survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
+#' obj.coxph <- survival::coxph(
+#'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
 #'   data = PhenoData,
 #'   x = TRUE
 #' )
-#' obj.SPACox <- GRAB.NullModel(obj.coxph$residuals ~ AGE + GENDER,
+#' 
+#' obj.SPACox <- GRAB.NullModel(
+#'   obj.coxph$residuals ~ AGE + GENDER,
 #'   data = PhenoData,
 #'   subjData = IID,
 #'   method = "SPACox",
@@ -37,12 +41,14 @@
 #' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' OutputDir <- tempdir()
 #' OutputFile <- file.path(OutputDir, "Results_SPACox.txt")
-#' GRAB.Marker(obj.SPACox,
-#'   GenoFile = GenoFile, OutputFile = OutputFile,
+#' GRAB.Marker(
+#'   objNull = obj.SPACox,
+#'   GenoFile = GenoFile,
+#'   OutputFile = OutputFile,
 #'   control = list(outputColumns = "zScore")
 #' )
 #' data.table::fread(OutputFile)
-#' @export
+#'
 GRAB.SPACox <- function() {
   message("Check ?GRAB.SPACox for more details about 'SPACox' method.")
 }

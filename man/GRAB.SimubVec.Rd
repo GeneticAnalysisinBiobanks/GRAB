@@ -28,4 +28,5 @@ FamMode <- "10-members"
 tau <- 2
 bVec <- GRAB.SimubVec(nSub, nFam, FamMode, tau)
 
+
 }

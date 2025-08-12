@@ -12,8 +12,8 @@
 #' @examples
 #' # Step 2a: process model residuals
 #' ResidMatFile <- system.file("extdata", "ResidMat.txt", package = "GRAB")
-#' SparseGRMFile <- system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
-#' PairwiseIBDFile <- system.file("PairwiseIBD", "PairwiseIBD.txt", package = "GRAB")
+#' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
+#' PairwiseIBDFile <- system.file("extdata", "PairwiseIBD.txt", package = "GRAB")
 #' obj.SPAGRM <- SPAGRM.NullModel(
 #'   ResidMatFile = ResidMatFile,
 #'   SparseGRMFile = SparseGRMFile,
@@ -31,7 +31,7 @@
 #'   OutputFile = OutputFile
 #' )
 #' head(read.table(OutputFile, header = TRUE))
-#' @export
+#'
 GRAB.SPAGRM <- function() {
   message("Check ?GRAB.SPAGRM for more details about 'SPAGRM' method.")
 }
@@ -152,7 +152,7 @@ mainMarker.SPAGRM <- function(genoType, genoIndex, outputColumns) {
 #'
 #' @return A SPAGRM null model object
 #'
-#' @export
+#'
 SPAGRM.NullModel <- function(ResidMatFile, # two columns: column 1 is subjID, column 2 is Resid
                              SparseGRMFile, # a path of SparseGRMFile get from getSparseGRM() function.
                              PairwiseIBDFile, # a path of PairwiseIBDFile get from getPairwiseIBD() function.
@@ -609,7 +609,7 @@ SPAGRMGE.NullModel <- function(NullModel = NULL, # a fitted null model from lme4
 
     random_SNPs <- sample(totalSNPs, 2000)
 
-    SNPIDfile <- system.file("PairwiseIBD", "temp", package = "GRAB")
+    SNPIDfile <- tempdir()
     SNPIDfile <- paste0(SNPIDfile, "/tempSNPID", sample(1:1e9, 1), ".txt")
 
     data.table::fwrite(data.frame(random_SNPs),

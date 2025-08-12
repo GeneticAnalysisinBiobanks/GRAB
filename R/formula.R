@@ -15,7 +15,7 @@
 #' x3 <- rbinom(n, 2, 0.5)
 #' objFormula <- handleFormula(pheno ~ x1 + x2 * x3, subset = x2 > 0, subjData = subjData)
 #' objFormula
-#' @export
+#'
 handleFormula <- function(formula, data, subset, subjData) {
   cl <- match.call()
   mf <- match.call(expand.dots = FALSE)

@@ -20,7 +20,7 @@
 #' ### Step 1: Fit a null model
 #' # If SparseGRMFile is provided, the sparse GRM will be used in model fitting.
 #' # If SparseGRMFile isn't provided, GRAB.NullModel() will calculate dense GRM from GenoFile.
-#' SparseGRMFile <- system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
+#' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
 #' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' 
 #' obj.POLMM <- GRAB.NullModel(
@@ -43,7 +43,8 @@
 #' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' OutputFile <- file.path(tempdir(), "simuMarkerOutput.txt")
 #' 
-#' GRAB.Marker(obj.POLMM,
+#' GRAB.Marker(
+#'   objNull = obj.POLMM,
 #'   GenoFile = GenoFile,
 #'   OutputFile = OutputFile
 #' )
@@ -54,7 +55,7 @@
 #' GenoFile <- system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
 #' OutputFile <- file.path(tempdir(), "simuRegionOutput.txt")
 #' GroupFile <- system.file("extdata", "simuPLINK_RV.group", package = "GRAB")
-#' SparseGRMFile <- system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
+#' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
 #'
 #' GRAB.Region(
 #'   objNull = obj.POLMM,
@@ -69,7 +70,6 @@
 #'
 #' data.table::fread(OutputFile)
 #'
-#' @export
 GRAB.POLMM <- function() {
   message("Check ?GRAB.POLMM for more details about 'POLMM' method.")
 }

@@ -47,14 +47,16 @@
 #' GRM2 <- GRM[100 + 1:10, 100 + 1:10]
 #' GRM1
 #' GRM2
-#' @export
-GRAB.SimuGMat <- function(nSub,
-                          nFam,
-                          FamMode,
-                          nSNP,
-                          MaxMAF = 0.5,
-                          MinMAF = 0.05,
-                          MAF = NULL) {
+#'
+GRAB.SimuGMat <- function(
+  nSub,
+  nFam,
+  FamMode,
+  nSNP,
+  MaxMAF = 0.5,
+  MinMAF = 0.05,
+  MAF = NULL
+) {
   inputList <- checkInput(nSub, nFam, FamMode)
 
   nSubInEachFam <- inputList$nSubInEachFam
@@ -97,7 +99,7 @@ GRAB.SimuGMat <- function(nSub,
   }
 
   if (nSub != 0) {
-    message("Simulationg Genotype data for unrelated subjects....")
+    message("Simulating Genotype data for unrelated subjects....")
     GenoMat2 <- geno.simu(nSub, SNP.info)
   }
 
@@ -159,7 +161,7 @@ checkInput <- function(nSub, nFam, FamMode) {
   return(inputList)
 }
 
-### an example of family structure including 20 memebers in each family
+### an example of family structure including 20 members in each family
 ## 1+2->9+10; 3+9->11+12; 4+10->13+14; 5+11->15+16; 6+12->17; 7+13->18; 8+14->19+20
 example.fam.20.members <- function(n.fam) # family numbers
 {
@@ -191,7 +193,7 @@ example.fam.20.members <- function(n.fam) # family numbers
   return(fam.mat) # five columns of FID, IID, Role, Source1, and Source2
 }
 
-### an example of family structure including 10 memebers in each family
+### an example of family structure including 10 members in each family
 ## 1+2->5+6; 3+5->7+8; 4+6->9+10
 example.fam.10.members <- function(n.fam) # family numbers
 {
@@ -223,7 +225,7 @@ example.fam.10.members <- function(n.fam) # family numbers
   return(fam.mat) # five columns of FID, IID, Role, Source1, and Source2
 }
 
-### an example of family structure including 4 memebers in each family
+### an example of family structure including 4 members in each family
 ## 1+2->3+4
 example.fam.4.members <- function(n.fam) # family numbers
 {
@@ -367,7 +369,7 @@ from.haplo.to.geno <- function(haplo.mat, # output of haplo.simu():  m x p where
 #' tau <- 2
 #' bVec <- GRAB.SimubVec(nSub, nFam, FamMode, tau)
 #'
-#' @export
+#'
 GRAB.SimubVec <- function(nSub,
                           nFam,
                           FamMode,
@@ -469,7 +471,7 @@ GRAB.SimubVec <- function(nSub,
 #'   control = list(IDsToIncludeFile = IDsToIncludeFile)
 #' )
 #'
-#' @export
+#'
 GRAB.SimuGMatFromGenoFile <- function(nFam,
                                       nSub,
                                       FamMode, # "4-members", "10-members", and "20-members"
@@ -597,7 +599,7 @@ GRAB.SimuGMatFromGenoFile <- function(nFam,
 #' # UK Biobank use 'ref-first'
 #' # bgenix -g simuBGEN.bgen --index
 #'
-#' @export
+#'
 GRAB.makePlink <- function(GenoMat,
                            OutputPrefix,
                            A1 = "G",
@@ -714,7 +716,7 @@ GRAB.makePlink <- function(GenoMat,
 #' @param seed a random number seed for reproducibility
 #' @details Check https://wenjianbi.github.io//grab.github.io/docs/simulation_phenotype.html for more details.
 #' @return a numeric vector of phenotype
-#' @export
+#'
 GRAB.SimuPheno <- function(
     eta,
     traitType = "binary",

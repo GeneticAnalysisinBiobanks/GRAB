@@ -14,113 +14,131 @@ GRAB.Marker(
 )
 }
 \arguments{
-\item{objNull}{the output object of function \code{\link{GRAB.NullModel}}.}
+\item{objNull}{The output object from function \code{\link{GRAB.NullModel}}.}
 
-\item{GenoFile}{a character of genotype file. Currently, two types of genotype formats are supported: PLINK and BGEN. Check \code{\link{GRAB.ReadGeno}} for more details.}
+\item{GenoFile}{A character string specifying the genotype file path. Currently, two
+genotype formats are supported: PLINK and BGEN. See \code{\link{GRAB.ReadGeno}} for details.}
 
-\item{GenoFileIndex}{additional index files corresponding to the \code{GenoFile}. If \code{NULL} (default), the prefix is the same as GenoFile. Check \code{\link{GRAB.ReadGeno}} for more details.}
+\item{GenoFileIndex}{Additional index files corresponding to \code{GenoFile}. If \code{NULL}
+(default), the same prefix as GenoFile is used. See \code{\link{GRAB.ReadGeno}} for details.}
 
-\item{OutputFile}{a character of output file to save the analysis results.}
+\item{OutputFile}{A character string specifying the output file path to save analysis results.}
 
-\item{OutputFileIndex}{a character of output index file to record the end point. If the program ends unexpectedly, the end point can help \code{GRAB} package understand where to restart the analysis. If \code{NULL} (default), \code{OutputFileIndex = paste0(OutputFile, ".index")}.}
+\item{OutputFileIndex}{A character string specifying the output index file to record the
+end point. If the program terminates unexpectedly, this helps \code{GRAB} understand where
+to restart the analysis. If \code{NULL} (default),
+\code{OutputFileIndex = paste0(OutputFile, ".index")}.}
 
-\item{control}{a list of parameters for controlling function \code{GRAB.Marker}, more details can be seen in \code{Details} section.}
+\item{control}{A list of parameters for controlling \code{GRAB.Marker} function behavior.
+See the \code{Details} section for more information.}
 }
 \value{
-The analysis results are written in a file of \code{OutputFile}, which includes the following columns.
+The analysis results are written to \code{OutputFile}, which includes the following
+columns:
 \describe{
 \item{Marker}{Marker IDs extracted from \code{GenoFile} and \code{GenoFileIndex}.}
-\item{Info}{Marker Information of "CHR:POS:REF:ALT". The order of REF/ALT depends on \code{control$AlleleOrder}: "ref-first" or "alt-first".}
-\item{AltFreq}{Alternative allele frequency (before genotype imputation, might be > 0.5). If the \code{AltFreq} of most markers are > 0.5, you should consider resetting \code{control$AlleleOrder}.}
+\item{Info}{Marker information in format "CHR:POS:REF:ALT". The order of REF/ALT depends
+on \code{control$AlleleOrder}: "ref-first" or "alt-first".}
+\item{AltFreq}{Alternative allele frequency (before genotype imputation, might be > 0.5).
+If most markers have \code{AltFreq} > 0.5, consider resetting \code{control$AlleleOrder}.}
 \item{AltCounts}{Alternative allele counts (before genotype imputation).}
-\item{MissingRate}{Missing rate for each marker}
-\item{Pvalue}{Association test p-value}
+\item{MissingRate}{Missing rate for each marker.}
+\item{Pvalue}{Association test p-value.}
 }
-The following columns can be customized using \code{control$outputColumns}. Check \code{\link{makeGroup}} for details about phenotype grouping which are used for
+
+The following columns can be customized using \code{control$outputColumns}.
+See \code{\link{makeGroup}} for details about phenotype grouping, which is used for
 \code{nSamplesInGroup}, \code{AltCountsInGroup}, and \code{AltFreqInGroup}.
 \describe{
 \item{beta}{Estimated effect size of the ALT allele.}
-\item{seBeta}{Estimated standard error (se) of the effect size.}
-\item{zScore}{z score, standardized score statistics, usually follows a standard normal distribution.}
-\item{nSamplesInGroup}{Number of samples in different phenotype groups. This can be slightly different from the original distribution due to the genotype missing.}
-\item{AltCountsInGroup}{Alternative allele counts (before genotype imputation) in different phenotype groups.}
-\item{AltFreqInGroup}{Alternative allele frequency (before genotype imputation) in different phenotype groups.}
+\item{seBeta}{Estimated standard error of the effect size.}
+\item{zScore}{Standardized score statistic, usually follows a standard normal distribution.}
+\item{nSamplesInGroup}{Number of samples in different phenotype groups. This may differ
+slightly from the original distribution due to genotype missingness.}
+\item{AltCountsInGroup}{Alternative allele counts (before genotype imputation) in different
+phenotype groups.}
+\item{AltFreqInGroup}{Alternative allele frequency (before genotype imputation) in different
+phenotype groups.}
 }
 }
 \description{
-Test for association between phenotype of interest and genetic marker.
+Performs genome-wide association study (GWAS) testing for association between a phenotype
+of interest and individual genetic markers.
 }
 \details{
-\code{GRAB} package supports \code{POLMM}, \code{SPACox}, \code{SPAGRM}, \code{SPAmix}, and \code{WtCoxG} methods.
-Detailed information about the analysis methods is given in the \code{Details} section of \code{\link{GRAB.NullModel}}.
-Users do not need to specify them since functions \code{GRAB.Marker} and \code{\link{GRAB.Region}} will check the \code{class(objNull)}.
-\subsection{The following details are about argument \code{control}}{
+The \code{GRAB} package supports multiple statistical methods: \code{POLMM}, \code{SPACox},
+\code{SPAGRM}, \code{SPAmix}, and \code{WtCoxG}.
+Detailed information about these analysis methods is provided in the \code{Details} section
+of \code{\link{GRAB.NullModel}}.
+Users do not need to specify the method explicitly since \code{GRAB.Marker} and
+\code{\link{GRAB.Region}} automatically detect it from \code{class(objNull)}.
+\subsection{Control Parameters}{
 
-The below is to let users customize markers to include in analysis.
-If these parameters are not specified, \code{GRAB} package will include all markers in analysis.
-For PLINK files, the default \code{control$AlleleOrder = "alt-first"};
-for BGEN files, the default \code{control$AlleleOrder = "ref-first"}.
+The following parameters allow users to customize which markers to include in the analysis.
+If these parameters are not specified, \code{GRAB} will analyze all markers in the file.
+For PLINK files, the default is \code{control$AlleleOrder = "alt-first"};
+for BGEN files, the default is \code{control$AlleleOrder = "ref-first"}.
 \itemize{
-\item \code{IDsToIncludeFile}: please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
-\item \code{IDsToExcludeFile}: please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
-\item \code{RangesToIncludeFile}: please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
-\item \code{RangesToExcludeFile}: please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
-\item \code{AlleleOrder}: please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
+\item \code{IDsToIncludeFile}: See the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
+\item \code{IDsToExcludeFile}: See the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
+\item \code{RangesToIncludeFile}: See the \code{Details} section of
+\code{\link{GRAB.ReadGeno}}.
+\item \code{RangesToExcludeFile}: See the \code{Details} section of
+\code{\link{GRAB.ReadGeno}}.
+\item \code{AlleleOrder}: See the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
 }
-The below is to customize the quality-control (QC) process.
+
+The following parameters customize the quality control (QC) process:
 \itemize{
-\item \code{omp_num_threads}: (To be added later) a numeric value (default: value from data.table::getDTthreads()) to specify the number of threads in OpenMP for parallel computation.
-\item \code{ImputeMethod}: a character, "mean" (default), "bestguess", or "drop" (to be added later). Please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
-\item \code{MissingRateCutoff}: a numeric value \emph{(default=0.15)}. Markers with missing rate > this value will be excluded from analysis.
-\item \code{MinMAFCutoff}: a numeric value \emph{(default=0.001)}. Markers with MAF < this value will be excluded from analysis.
-\item \code{MinMACCutoff}: a numeric value \emph{(default=20)}. Markers with MAC < this value will be excluded from analysis.
-\item \code{nMarkersEachChunk}: number of markers \emph{(default=10000)} in one chunk to output.
+\item \code{ImputeMethod}: A character string specifying imputation method: "mean"
+(default), "bestguess", or "drop". See the \code{Details} section of
+\code{\link{GRAB.ReadGeno}}.
+\item \code{MissingRateCutoff}: A numeric value \emph{(default=0.15)}. Markers with missing
+rate exceeding this value will be excluded from analysis.
+\item \code{MinMAFCutoff}: A numeric value \emph{(default=0.001)}. Markers with minor allele
+frequency (MAF) below this value will be excluded from analysis.
+\item \code{MinMACCutoff}: A numeric value \emph{(default=20)}. Markers with minor allele
+count (MAC) below this value will be excluded from analysis.
+\item \code{nMarkersEachChunk}: Number of markers \emph{(default=10000)} processed in each
+output chunk.
 }
-The below is to customize the columns in the \code{OutputFile}.
-Columns of \code{Marker}, \code{Info}, \code{AltFreq}, \code{AltCounts}, \code{MissingRate}, \code{Pvalue} are included for all methods.
+
+The following parameters customize the columns in the \code{OutputFile}.
+The columns \code{Marker}, \code{Info}, \code{AltFreq}, \code{AltCounts},
+\code{MissingRate}, and \code{Pvalue} are included for all methods.
 \itemize{
-\item \code{outputColumns}: For example, for POLMM method, users can set \code{control$outputColumns = c("beta", "seBeta", "AltFreqInGroup")}:
+\item \code{outputColumns}: Specifies additional columns to include in the output.
+For example, for the POLMM method, users can set
+\code{control$outputColumns = c("beta", "seBeta", "AltFreqInGroup")}:
 \itemize{
-\item \code{POLMM}: Default: \code{beta}, \code{seBeta}; Optional: \code{zScore}, \code{AltFreqInGroup}, \code{nSamplesInGroup}, \code{AltCountsInGroup}
+\item \code{POLMM}: Default: \code{beta}, \code{seBeta};
+Optional: \code{zScore}, \code{AltFreqInGroup}, \code{nSamplesInGroup},
+\code{AltCountsInGroup}
 \item \code{SPACox}: Optional: \code{zScore}
 }
 }
 }
 }
 \examples{
-objNullFile <- system.file("results", "objPOLMMFile.RData", package = "GRAB")
+# Load a precomputed POLMM_NULL_Model object to perform step 2 without repeating step 1
+objNullFile <- system.file("extdata", "objPOLMMnull.RData", package = "GRAB")
 load(objNullFile)
-class(obj.POLMM) # "POLMM_NULL_Model", that indicates an object from POLMM method.
+class(obj.POLMM)
 
-OutputDir <- tempdir()
-OutputFile <- file.path(OutputDir, "simuOUTPUT.txt")
 GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-
-## make sure the output files does not exist at first
-if (file.exists(OutputFile)) file.remove(OutputFile)
-if (file.exists(paste0(OutputFile, ".index"))) file.remove(paste0(OutputFile, ".index"))
-
-GRAB.Marker(obj.POLMM,
-  GenoFile = GenoFile,
-  OutputFile = OutputFile
+OutputFile <- file.path(tempdir(), "simuOUTPUT.txt")
+outputColumns <- c(
+  "beta", "seBeta", "zScore", 
+  "nSamplesInGroup", "AltCountsInGroup", "AltFreqInGroup"
 )
 
-data.table::fread(OutputFile)
-
-## additional columns of "zScore", "nSamplesInGroup", "AltCountsInGroup", "AltFreqInGroup"
-## We do not recommend adding too many columns for all markers
-
-if (file.exists(OutputFile)) file.remove(OutputFile)
-if (file.exists(paste0(OutputFile, ".index"))) file.remove(paste0(OutputFile, ".index"))
-GRAB.Marker(obj.POLMM,
+GRAB.Marker(
+  obj.POLMM,
   GenoFile = GenoFile,
   OutputFile = OutputFile,
-  control = list(outputColumns = c(
-    "beta", "seBeta", "zScore",
-    "nSamplesInGroup", "AltCountsInGroup",
-    "AltFreqInGroup"
-  ))
+  control = list(outputColumns = outputColumns)
 )
+
 data.table::fread(OutputFile)
 
 }

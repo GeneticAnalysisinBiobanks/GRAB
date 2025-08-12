@@ -19,4 +19,5 @@ Extract sample identifiers from BGEN file (only support BGEN v1.2, check \href{h
 
 BGENFile <- system.file("extdata", "simuBGEN.bgen", package = "GRAB")
 getSampleIDsFromBGEN(BGENFile)
+
 }

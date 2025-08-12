@@ -107,17 +107,9 @@ checkControl.Marker <- function(control, NullModelClass) {
   textToParse <- paste0("control = checkControl.Marker.", method, "(control)")
   eval(parse(text = textToParse))
 
-  # specific default control setting for different approaches
-  # if(NullModelClass == "POLMM_NULL_Model")
-  #   control = checkControl.Marker.POLMM(control)    # This function is in 'POLMM.R'
-  #
-  # if(NullModelClass == "SPACox_NULL_Model")
-  #   control = checkControl.Marker.SPACox(control)   # This function is in 'SPACox.R'
-
-
-  # print control list
   message("The below is the list of control parameters used in marker-level genetic association analysis.")
-  message(control)
+  tmp <- capture.output(str(control))
+  for (line in tmp) message(line)
 
   return(control)
 }
