@@ -50,11 +50,11 @@
 #' data.table::fread(OutputFile)
 #'
 GRAB.SPACox <- function() {
-  message("Check ?GRAB.SPACox for more details about 'SPACox' method.")
+  .message("Using SPACox method - see ?GRAB.SPACox for details")
 }
 
 # check the control list in null model fitting for SPACox method
-checkControl.NullModel.SPACox <- function(control, traitType, ...) {
+checkControl.NullModel.SPACox <- function(control, traitType) {
   if (!traitType %in% c("time-to-event", "Residual")) {
     stop("For 'SPACox' method, only traitType of 'time-to-event' or 'Residual' is supported.")
   }
@@ -143,7 +143,7 @@ fitNullModel.SPACox <- function(response, designMat, subjData, control, ...) {
   idx1 <- idx0 * max(range) / max(idx0)
 
   cumul <- NULL
-  message("Start calculating empirical CGF for martingale residuals...")
+  .message("Calculating empirical CGF for martingale residuals")
   c <- 0
   for (i in idx1) {
     c <- c + 1
@@ -156,7 +156,7 @@ fitNullModel.SPACox <- function(response, designMat, subjData, control, ...) {
     K1 <- M1 / M0
     K2 <- (M0 * M2 - M1^2) / M0^2
     cumul <- rbind(cumul, c(t, K0, K1, K2))
-    if (c %% 1000 == 0) message("Complete ", c, "/", length.out, ".")
+    if (c %% 1000 == 0) .message("CGF progress: %d/%d", c, length.out)
   }
 
   re <- list(

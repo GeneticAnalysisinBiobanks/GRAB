@@ -2,8 +2,9 @@
 
 ## v0.2.3 (2025-08-25)
 
-- Refined logging information.
+- Reformatted and significantly improved logging output.
 - Refined function help documentation and examples.
+- Move the TestforBatchEffect call from GRAB.NullModel() to fitNullModel.WtCoxG().
 - Fixed bugs.
 
 ## v0.2.2 (2025-08-01)

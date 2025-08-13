@@ -171,7 +171,7 @@ getSparseGRM <- function(
 
   ## cycle for nPartsGRM
   for (i in 1:nPartsGRM) {
-    message("Analyzing part", i, "of total", nPartsGRM, "parts.")
+    .message("Processing GRM part %d/%d", i, nPartsGRM)
     # tempList <- list()
 
     ##
@@ -288,7 +288,7 @@ setGRM <- function(GenoFile, GenoFileIndex, SparseGRMFile, subjData) {
   genoList <- setGenoInput(GenoFile, GenoFileIndex, subjData) # check Geno.R for more details
 
   if (!is.null(SparseGRMFile)) {
-    message("Sparse GRM is used when fitting a null model.")
+    .message("Using sparse GRM for null model")
     SparseGRM <- data.table::fread(SparseGRMFile)
     SparseGRM <- as.data.frame(SparseGRM)
 
@@ -298,7 +298,7 @@ setGRM <- function(GenoFile, GenoFileIndex, SparseGRMFile, subjData) {
     setSparseGRMInCPP(KinMatListR)
     optionGRM <- "SparseGRM"
   } else {
-    message("Dense GRM is used when fitting a null model.")
+    .message("Using dense GRM for null model")
     # subjGeno <- genoList$SampleIDs # subjGeno should be the same as subjData
     if (genoList$genoType != "PLINK") {
       stop("If DenseGRM is used when fitting a null model, then only PLINK format is supported.")

@@ -72,10 +72,8 @@ GRAB.SimuGMat <- function(
     stop("Please give at least one of 'nSub' and 'nFam'.")
   }
 
-  message("Number of unrelated subjects:\t", nSub)
-  message("Number of families:\t", nFam)
-  message("Number of subjects in each family:\t", nSubInEachFam)
-  message("Number of all subjects:\t", n)
+  .message("Simulation design: %d unrelated subjects, %d families (%d per family)", nSub, nFam, nSubInEachFam)
+  .message("Total subjects: %d", n)
 
   if (is.null(MAF)) {
     MAF <- runif(nSNP, MinMAF, MaxMAF)
@@ -83,7 +81,7 @@ GRAB.SimuGMat <- function(
     if (length(MAF) != nSNP) {
       stop("length(MAF) should equal to nSNP.")
     }
-    message("Since argument 'MAF' is given, arguments of 'MaxMAF' and 'MinMAF' are ignored.")
+    .message("Using provided MAF values (ignoring MaxMAF and MinMAF)")
   }
 
   SNP.info <- make.SNP.info(nSNP, MAF)
@@ -91,15 +89,15 @@ GRAB.SimuGMat <- function(
   GenoMat1 <- GenoMat2 <- NULL
 
   if (nHaplo != 0) {
-    message("Simulating haplotype data for related subjects....")
+    .message("Simulating haplotype data for %d related subjects", nHaplo)
     haplo.mat <- haplo.simu(nHaplo, SNP.info)
 
-    message("Simulating genotype data for related subjects....")
+    .message("Converting haplotypes to genotypes")
     GenoMat1 <- from.haplo.to.geno(haplo.mat, fam.mat) # output of example.fam(): n x 5 where n is sample size
   }
 
   if (nSub != 0) {
-    message("Simulating Genotype data for unrelated subjects....")
+    .message("Simulating genotype data for %d unrelated subjects", nSub)
     GenoMat2 <- geno.simu(nSub, SNP.info)
   }
 
@@ -113,13 +111,13 @@ GRAB.SimuGMat <- function(
 
 checkInput <- function(nSub, nFam, FamMode) {
   if (missing(FamMode) & missing(nFam)) {
-    message("Since both 'FamMode' and 'nFam' are not specified, we only simulate genotype/bVec for unrelated subjects.")
+    .message("Simulating unrelated subjects only (no family structure specified)")
     nFam <- 0
     FamMode <- "Unrelated"
   }
 
   if (missing(nSub)) {
-    message("Since 'nSub' is not specified, we only simulate genotype for family members.")
+    .message("Simulating family members only (no unrelated subjects)")
     nSub <- 0
   }
 
@@ -328,7 +326,7 @@ from.haplo.to.geno <- function(haplo.mat, # output of haplo.simu():  m x p where
   Haplo2.mat <- matrix(nrow = n, ncol = m)
   rownames(Haplo1.mat) <- rownames(Haplo2.mat) <- fam.mat$IID
   for (i in 1:n) { # cycle for all subjects
-    if (i %% 1000 == 0) message("Complete Genotype Simulation for ", i, " Subjects.")
+    if (i %% 1000 == 0) .message("Genotype simulation progress: %d subjects", i)
     Role <- fam.mat$Role[i]
     S1 <- fam.mat$Source1[i]
     S2 <- fam.mat$Source2[i]
@@ -388,10 +386,8 @@ GRAB.SimubVec <- function(nSub,
     stop("Please give at least one of 'nSub' and 'nFam'.")
   }
 
-  message("Number of unrelated subjects:\t", nSub)
-  message("Number of families:\t", nFam)
-  message("Number of subjects in each family:\t", nSubInEachFam)
-  message("Number of all subjects:\t", n)
+  .message("bVec simulation: %d unrelated subjects, %d families (%d per family)", nSub, nFam, nSubInEachFam)
+  .message("Total subjects: %d", n)
 
   if (FamMode == "Unrelated") {
     bVec.Related <- data.table::data.table()
@@ -494,10 +490,8 @@ GRAB.SimuGMatFromGenoFile <- function(nFam,
     stop("Please give at least one of 'nSub' and 'nFam'.")
   }
 
-  message("Number of unrelated subjects:\t", nSub)
-  message("Number of families:\t", nFam)
-  message("Number of subjects in each family:\t", nSubInEachFam)
-  message("Number of all subjects:\t", n)
+  .message("Genotype matrix simulation: %d unrelated subjects, %d families (%d per family)", nSub, nFam, nSubInEachFam)
+  .message("Total subjects: %d", n)
 
   ####
 
@@ -524,17 +518,17 @@ GRAB.SimuGMatFromGenoFile <- function(nFam,
   rowForSub <- randomRow[1:nSub + nHaplo / 2]
 
   if (nHaplo != 0) {
-    message("Extracting haplotype data for related subjects....")
+    .message("Extracting haplotype data for %d related subjects", nHaplo)
     GenoMatTemp <- GenoMat[rowForHaplo, ]
     haplo.mat <- from.geno.to.haplo(GenoMatTemp)
     rownames(haplo.mat) <- paste0("haplo-", 1:nHaplo)
 
-    message("Simulating genotype data for related subjects....")
+    .message("Converting haplotypes to genotypes for related subjects")
     GenoMat1 <- from.haplo.to.geno(haplo.mat, fam.mat) # output of example.fam(): n x 5 where n is sample size
   }
 
   if (nSub != 0) {
-    message("Extracting Genotype data for unrelated subjects....")
+    .message("Extracting genotype data for %d unrelated subjects", nSub)
     GenoMat2 <- GenoMat[rowForSub, ]
     rownames(GenoMat2) <- paste0("Subj-", 1:nSub)
   }
@@ -630,8 +624,7 @@ GRAB.makePlink <- function(GenoMat,
   m <- length(SNP)
   n <- length(IID)
 
-  message("number of markers:\t", m)
-  message("number of samples:\t", n)
+  .message("Creating PLINK files: %d markers, %d samples", m, n)
 
   if (is.null(Pheno)) {
     Pheno <- rep(-9, n)
@@ -698,9 +691,8 @@ GRAB.makePlink <- function(GenoMat,
   data.table::fwrite(MAP, MAP.file, quote = FALSE, col.names = FALSE, row.names = FALSE, sep = " ")
   data.table::fwrite(PED, PED.file, quote = FALSE, col.names = FALSE, row.names = FALSE, sep = " ")
 
-  message("Working directory:\t", getwd())
-  message("PED file:\t", PED.file)
-  message("MAP file:\t", MAP.file)
+  .message("PLINK files saved to: %s", OutputPrefix)
+  .message("Working directory: %s", getwd())
 
   message <- paste0("PLINK files have been saved to ", OutputPrefix, ".")
   return(message)
@@ -734,19 +726,19 @@ GRAB.SimuPheno <- function(
 
   if (traitType == "quantitative") {
     if (!"sdError" %in% names(control)) {
-      message("For quantitative phenotype, argument 'control' should include 'sdError' which is the stardard derivation of the error term.")
+      .message("Note: For quantitative phenotype, 'control$sdError' should specify error term standard deviation")
     }
   }
 
   if (traitType == "ordinal") {
     if (!"pEachGroup" %in% names(control)) {
-      message("For ordinal categorical phenotype, argument 'control' should include 'pEachGroup' which is ratio of sample size in each group.")
+      .message("Note: For ordinal categorical phenotype, 'control$pEachGroup' should specify group proportions")
     }
   }
 
   if (traitType == "time-to-event") {
     if (!"eventRate" %in% names(control)) {
-      message("For time-to-event phenotype, argument 'control' should include 'eventRate' which is the event rate.")
+      .message("Note: For time-to-event phenotype, 'control$eventRate' should specify event rate")
     }
   }
 
@@ -754,8 +746,6 @@ GRAB.SimuPheno <- function(
   n <- length(eta)
 
   if (!is.null(seed)) set.seed(seed)
-  # seed = sample(1e9,1)
-  # message("Random number seed:\t", seed)
 
   ### quantitative trait
   if (traitType == "quantitative") {

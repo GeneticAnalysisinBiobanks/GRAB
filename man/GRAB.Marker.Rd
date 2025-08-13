@@ -25,7 +25,7 @@ genotype formats are supported: PLINK and BGEN. See \code{\link{GRAB.ReadGeno}} 
 \item{OutputFile}{A character string specifying the output file path to save analysis results.}
 
 \item{OutputFileIndex}{A character string specifying the output index file to record the
-end point. If the program terminates unexpectedly, this helps \code{GRAB} understand where
+progress. If the program terminates unexpectedly, this helps \code{GRAB} understand where
 to restart the analysis. If \code{NULL} (default),
 \code{OutputFileIndex = paste0(OutputFile, ".index")}.}
 
@@ -53,8 +53,8 @@ See \code{\link{makeGroup}} for details about phenotype grouping, which is used 
 \item{beta}{Estimated effect size of the ALT allele.}
 \item{seBeta}{Estimated standard error of the effect size.}
 \item{zScore}{Standardized score statistic, usually follows a standard normal distribution.}
-\item{nSamplesInGroup}{Number of samples in different phenotype groups. This may differ
-slightly from the original distribution due to genotype missingness.}
+\item{nSamplesInGroup}{Number of subjects in different phenotype groups. This may differ
+slightly from the original distribution due to missing genotypes.}
 \item{AltCountsInGroup}{Alternative allele counts (before genotype imputation) in different
 phenotype groups.}
 \item{AltFreqInGroup}{Alternative allele frequency (before genotype imputation) in different
@@ -62,8 +62,7 @@ phenotype groups.}
 }
 }
 \description{
-Performs genome-wide association study (GWAS) testing for association between a phenotype
-of interest and individual genetic markers.
+Performs GWAS between a trait and individual genetic markers.
 }
 \details{
 The \code{GRAB} package supports multiple statistical methods: \code{POLMM}, \code{SPACox},

@@ -32,6 +32,7 @@
 #' @param control A list of parameters for controlling the model fitting process. 
 #'   See the \code{Details} section for comprehensive information.
 #' @param ... Additional arguments passed to or from other methods.
+
 #' @return A list object with class "XXXXX_NULL_Model" where XXXXX is the specified \code{method}.
 #'   The returned object contains the following components:
 #'   \describe{
@@ -161,8 +162,9 @@
 #' # For SPAGRM method, check ?GRAB.SPAGRM
 #' # For WtCoxG method, check ?GRAB.WtCoxG
 #'
-GRAB.NullModel <- function(formula,
-                           data = NULL,
+GRAB.NullModel <- function(
+  formula,
+  data,
   subset = NULL,
   subjData,
   method,
@@ -176,24 +178,6 @@ GRAB.NullModel <- function(formula,
   # Validate required arguments
   if (missing(subjData)) {
     stop("Argument 'subjData' is required to specify the subject IDs in 'formula' and/or 'data'.")
-  }
-  
-  # Validate method-specific requirements for wtCoxG
-  if (method == "wtCoxG") {
-    required_args <- c("RefAfFile", "OutputFile", "SampleIDColumn", "SurvTimeColumn", "IndicatorColumn")
-    dots <- list(...)
-    missing_args <- required_args[!required_args %in% names(dots)]
-    if (length(missing_args) > 0) {
-      stop("The following arguments are missing for wtCoxG method: ", 
-           paste(missing_args, collapse = ", "))
-    }
-
-    required_columns <- c(SampleIDColumn, SurvTimeColumn, IndicatorColumn)
-    missing_columns <- required_columns[!required_columns %in% colnames(data)]
-    if (length(missing_columns) > 0) {
-      stop("The following columns are missing in 'data': ", 
-           paste(missing_columns, collapse = ", "))
-    }
   }
 
   # Store function call for output
@@ -215,14 +199,14 @@ GRAB.NullModel <- function(formula,
     }
 
     nInLeft <- length(strsplit(LeftInFormula, "\\+")[[1]])
-    message("SPAmix method supports multiple response variables of model residuals.")
+    .message("SPAmix method supports multiple response variables of model residuals")
     
     # Parse and reconstruct formula for multiple responses
     RightInFormula <- deparse(formula[[3]])
-    NewLeftInFormla <- paste0("paste(", gsub("\\+", ",", LeftInFormula), ")")
+    NewLeftInFormula <- paste0("paste(", gsub("\\+", ",", LeftInFormula), ")")
     NewRightInFormula <- paste0(RightInFormula, collapse = " ")
     # Convert "cov1 + cov2 +" and "cov3" to "cov1 + cov2 + cov3"
-    mf$formula <- as.formula(paste(NewLeftInFormla, "~", NewRightInFormula))
+    mf$formula <- as.formula(paste(NewLeftInFormula, "~", NewRightInFormula))
   }
 
   # Match and extract components from model frame
@@ -253,8 +237,7 @@ GRAB.NullModel <- function(formula,
 
       # Remove individuals without any phenotype data
       if (length(posNoValue) > 0) {
-        message("Removing ", length(posNoValue), 
-                " individuals without any phenotype data in analysis.")
+        .message("Removing %d subjects with no phenotype", length(posNoValue))
         response.temp <- response[-posNoValue]
         designMat <- designMat[-posNoValue, , drop = FALSE]
         subjData <- subjData[-posNoValue]
@@ -279,16 +262,15 @@ GRAB.NullModel <- function(formula,
   }
 
   nData <- length(subjData)
-  message("Number of subjects in 'formula':\t", nData)
+  .message("Number of subjects with phenotype: %d", nData)
 
   # Check for duplicate subject IDs
   if (any(duplicated(subjData))) {
     stop("Duplicated subject IDs in 'subjData' are not supported!")
   }
-
   #### END: Handle formula and data processing ####
 
-  #### START: Setup genetic relationship matrix (GRM) ####
+  #### Setup genetic relationship matrix (GRM) ####
   # Only certain methods require 'GenoFile' information to adjust for sample relatedness
   optionGRM <- NULL
   if (method %in% c("POLMM")) {
@@ -297,46 +279,53 @@ GRAB.NullModel <- function(formula,
     optionGRM <- objGRM$optionGRM
     genoType <- objGRM$genoType # "PLINK" or "BGEN"
     markerInfo <- objGRM$markerInfo # Columns: "CHROM", "POS", "ID", "REF", "ALT", "genoIndex"
-
-    # Validate and set control parameters (see 'control.R')
-    control <- checkControl.NullModel(control, method, traitType, optionGRM)
-    
-    # Prepare function call for null model fitting with GRM
-    textToParse <- paste0("objNull = fitNullModel.", method,
-                          "(response, designMat, subjData, control, optionGRM, genoType, markerInfo)")
-  } else {
-    # Validate and set control parameters for methods without GRM (see 'control.R')
-    control <- checkControl.NullModel(control, method, traitType)
-    
-    # Prepare function call for null model fitting without GRM
-    textToParse <- paste0("objNull = fitNullModel.", method, 
-                          "(response, designMat, subjData, control)")
   }
 
-  #### START: Fit the null model ####
-  # Dynamically call the appropriate method-specific fitting function
-  # e.g., if method == "POLMM", then call fitNullModel.POLMM()
-  eval(parse(text = textToParse))
+  #### Check control list in null model fitting ####
+  if (!is.null(control) && !is.list(control)) {
+    stop("If specified, the argument of 'control' should be an R 'list'.")
+  }
+
+  if (method == "POLMM") {
+    control <- checkControl.NullModel.POLMM(control, traitType, optionGRM)
+  } else if (method == "SPACox") {
+    control <- checkControl.NullModel.SPACox(control, traitType)
+  } else if (method == "SPAmix") {
+    control <- checkControl.NullModel.SPAmix(control, traitType)
+  } else if (method == "WtCoxG") {
+    control <- checkControl.NullModel.WtCoxG(control, traitType)
+  }
+
+  .message("Control parameters for null model fitting:")
+  tmp <- capture.output(str(control))
+  for (line in tmp) {
+    if (startsWith(line, " $")) {
+      message(sub("^ \\$", strrep(" ", 8), line))
+    }
+  }
+
+  #### Fit the null model ####
+  # Call the appropriate method-specific fitting function directly
+  if (method == "POLMM") {
+    objNull <- fitNullModel.POLMM(response, designMat, subjData, control, optionGRM, genoType, markerInfo)
+  } else if (method == "SPACox") {
+    objNull <- fitNullModel.SPACox(response, designMat, subjData, control)
+  } else if (method == "SPAmix") {
+    objNull <- fitNullModel.SPAmix(response, designMat, subjData, control)
+  } else if (method == "WtCoxG") {
+    objNull <- fitNullModel.WtCoxG(
+      response, designMat, subjData, control, data,
+      GenoFile, GenoFileIndex, SparseGRMFile, ...
+    )
+  } 
 
   # Add additional information to the fitted null model object
   objNull$subjData <- subjData
   objNull$Call <- Call
   objNull$sessionInfo <- sessionInfo()
-  objNull$time <- paste0("Analysis completed at: ", Sys.time())
+  objNull$time <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
   objNull$control <- control
 
-  # Special handling for WtCoxG method
-  if (method == "WtCoxG") {
-    objNull$mergeGenoInfo <- TestforBatchEffect(
-      objNull = objNull,
-      data = data,
-      GenoFile = GenoFile,
-      GenoFileIndex = GenoFileIndex,
-      SparseGRMFile = SparseGRMFile,
-      ...
-    )
-  }
-
-  message("Successfully completed null model fitting in GRAB package:\t", objNull$time)
+  .message("Successfully finished fitting the null model")
   return(objNull)
 }

@@ -1,7 +1,6 @@
 # GRAB
 
-[![GitHub source](https://img.shields.io/badge/GitHub-source-black?logo=github)](https://github.com/GeneticAnalysisinBiobanks/GRAB)
-[![License: GPL v2+](https://img.shields.io/badge/License-GPL%20v2%2B-blue.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html)
+[![GitHub main](https://img.shields.io/badge/GitHub-main-black?logo=github)](https://github.com/GeneticAnalysisinBiobanks/GRAB)
 
 **GRAB** is an R package that provides a comprehensive suite of GWAS methods for biobank-scale data. For detailed instructions, see the [GRAB manual page](https://wenjianbi.github.io/grab.github.io/).
 
@@ -14,7 +13,6 @@ GRAB is an R package, with part of its code written in C++ for improved performa
 ### Install via CRAN
 
 [![CRAN Status](https://www.r-pkg.org/badges/version/GRAB)](https://CRAN.R-project.org/package=GRAB)
-[![CRAN Downloads](https://cranlogs.r-pkg.org/badges/grand-total/GRAB)](https://CRAN.R-project.org/package=GRAB)
 
 Install GRAB from CRAN in your R console:
 
@@ -25,7 +23,6 @@ install.packages("GRAB")
 ### Install via Conda
 
 [![Conda-Forge](https://img.shields.io/conda/vn/conda-forge/r-grab.svg)](https://anaconda.org/conda-forge/r-grab)
-[![Anaconda-Server Badge](https://anaconda.org/conda-forge/r-grab/badges/downloads.svg)](https://anaconda.org/conda-forge/r-grab)
 
 Install GRAB in a new Conda environment named `grab_env` from the `conda-forge` channel:
 
@@ -58,13 +55,8 @@ obj.SPAmix <- GRAB.NullModel(
 
 ```r
 GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-OutputFile <- file.path(tempdir(), "Results_SPACox.txt")
+OutputFile <- file.path(tempdir(), "Results_SPAmix.txt")
 
-GRAB.Marker(
-  objNull = obj.SPACox,
-  GenoFile = GenoFile,
-  OutputFile = OutputFile,
-  control = list(outputColumns = "zScore")
-)
+GRAB.Marker(obj.SPAmix, GenoFile = GenoFile, OutputFile = OutputFile)
 data.table::fread(OutputFile)
 ```

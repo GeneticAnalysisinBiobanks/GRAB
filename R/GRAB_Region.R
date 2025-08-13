@@ -132,21 +132,21 @@ GRAB.Region <- function(
   End <- outList$End
 
   if (End) {
-    message <- paste0(
+    msg_text <- paste0(
       "The analysis has been completed in earlier analysis. Results have been saved in '", OutputFile, "'. ",
       "If you want to change parameters and restart the analysis, please use another 'OutputFile'."
     )
-    message(message)
-    return(message)
+    .message("%s", msg_text)
+    return(msg_text)
   }
 
   if (!Start) {
-    message <- paste0(
+    msg_text <- paste0(
       "Parts of analysis have been conducted based on the index file:\n",
       OutputFileIndex, "\n",
-      "The analysis will be restarted from chunk:\t", indexChunk + 1, "\n"
+      "The analysis will be restarted from chunk ", indexChunk + 1, "\n"
     )
-    message(message)
+    .message("%s", msg_text)
   }
 
   ## Check "control.R": if the setting of control is not specified, the default setting will be used
@@ -156,15 +156,21 @@ GRAB.Region <- function(
   eval(parse(text = textToParse))
 
   # print control list
-  message("The below is the list of control parameters used in region-level genetic association analysis.")
-  message(control)
+  .message("Control parameters for region-level genetic association analysis:")
+  tmp <- capture.output(str(control))
+  for (line in tmp) {
+    if (startsWith(line, " $")) {
+      message(sub("^ \\$", strrep(" ", 8), line))
+    }
+  }
+
 
   MaxMAFVec <- MaxMAFVec %>%
     strsplit(split = ",") %>%
     unlist() %>%
     as.numeric()
   if (any(is.na(MaxMAFVec))) {
-    stop("any(is.na(MaxMAFVec)):\t")
+    stop("MaxMAFVec contains invalid (NA) values. Please check your input.")
   }
 
   MaxMAF <- max(MaxMAFVec)
@@ -204,7 +210,7 @@ GRAB.Region <- function(
     if (!is.null(control$SampleLabelCol)) {
       SampleLabelColName <- control$SampleLabelCol
       if (!SampleLabelColName %in% colnames(SampleInfo)) {
-        stop("'SampleFile' should include one column with header of:\t", SampleLabelColName)
+        stop("'SampleFile' should include one column with the header: ", SampleLabelColName)
       }
 
       posInSampleInfo <- match(subjData, SampleInfo$IID)
@@ -289,10 +295,11 @@ GRAB.Region <- function(
       }
     }
 
-    message("Analyzing Region of ", regionID, " (", i, "/", nRegions, ").")
-    message(
-      "Total", length(regionInfo$ID), "markers:\t",
-      paste0(head(regionInfo$ID), collapse = ", ")
+    .message("Analyzing region %s (%d/%d)", regionID, i, nRegions)
+    .message(
+      "Region contains %d markers: %s", 
+      length(regionInfo$ID), 
+      paste0(head(regionInfo$ID, 6), collapse = ", ")
     )
 
     t11 <- Sys.time()
@@ -498,21 +505,17 @@ GRAB.Region <- function(
     )
   }
 
-  message("mainRegionInCPP():\t", diffTime1, "seconds.")
-  # message("SKATO:\t", diffTime2,"seconds.")
-  message("SKATO::\t", diffTime3)
-  printTimeDiffInCPP()
+  .message("Region analysis timing: mainRegionInCPP %.2f seconds, SKATO %.2f seconds", diffTime1, diffTime3)
+  # printTimeDiffInCPP()
 
-  message(
-    "Analysis done! The results have been saved to the below files:\n",
-    OutputFile, "\n",
-    paste0(OutputFile, ".markerInfo\n"),
-    paste0(OutputFile, ".otherMarkerInfo\n")
+  .message(
+    "Analysis complete! Results saved to:\n    %s\n    %s\n    %s", 
+    OutputFile, 
+    paste0(OutputFile, ".markerInfo"), 
+    paste0(OutputFile, ".otherMarkerInfo")
   )
 
-  message <- paste0("Analysis done! The main results have been saved to '", OutputFile, "'")
-
-  return(message)
+  return(invisible(NULL))
 }
 
 
@@ -563,10 +566,8 @@ getInfoGroupLine <- function(markerGroupLine, nLine) {
 }
 
 getInfoGroupFile <- function(GroupFile) {
-  message(
-    "Start extracting marker-level information from 'GroupFile':\n",
-    GroupFile
-  )
+  .message("Extracting marker information from GroupFile: %s", GroupFile)
+  
   if (!file.exists(GroupFile)) {
     stop("cannot find the below file:\n", GroupFile)
   }
@@ -658,6 +659,6 @@ getInfoGroupFile <- function(GroupFile) {
     previousGene <- geneID
   }
 
-  message("Total ", nRegion, " groups are in 'GroupFile'.")
+  .message("Found %d groups in GroupFile", nRegion)
   return(regionList)
 }

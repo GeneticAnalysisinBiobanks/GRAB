@@ -61,7 +61,7 @@ message(paste(capture.output(print(opt)), collapse = "\n"))
 load(opt$objNullFile)
 
 if(!"objNull" %in% ls())
-  stop('!"objNull" %in% ls()', ":\t objNullFile include includes an R object named with 'objNull'.")
+  stop("objNullFile does not contain an object named 'objNull'.")
 
 if(is.null(opt$OutputPrefix))
   stop("argument of OutputPrefix is required.")

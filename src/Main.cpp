@@ -587,7 +587,7 @@ Rcpp::List mainMarkerInCPP(
   for (int i = 0; i < q; i++) {
     // Progress reporting for large analyses
     if (i % 1000 == 0)
-      Rcpp::Rcout << "Completed " << i << "/" << q << " markers in the chunk." << std::endl;
+      Rcpp::Rcout << "    Completed " << i << "/" << q << " markers in the chunk." << std::endl;
 
     // Variables to store marker-specific information
     double altFreq, altCounts, missingRate, imputeInfo;
@@ -674,7 +674,7 @@ Rcpp::List mainMarkerInCPP(
     // analysis results for single-marker
     double Beta, seBeta, pval, zScore;
 
-    // Rcpp::Rcout << "test1.4" << std::endl;
+    // Rcpp::Rcout << "    test1.4" << std::endl;
 
     double hwepvalCutoff = 0.1; // to be changed to a option, instead of a default value, later
     double hwepval = 0;
@@ -1021,7 +1021,7 @@ Rcpp::List mainRegionInCPP(
       indicatorVec.at(i) = 1;
 
       if (i1InChunk == 0) {
-        Rcpp::Rcout << "Start analyzing chunk " << ichunk << "....." << std::endl;
+        Rcpp::Rcout << "    Start analyzing chunk " << ichunk << " ..." << std::endl;
       }
 
       // Statistical analysis timing
@@ -1120,7 +1120,7 @@ Rcpp::List mainRegionInCPP(
 
     // Chunk management: Save intermediate results if chunk is full
     if (i1InChunk == m1) {
-      Rcpp::Rcout << "In chunks 0-" << ichunk << ", " << i2 << " markers are ultra-rare and "
+      Rcpp::Rcout << "    In chunks 0-" << ichunk << ", " << i2 << " markers are ultra-rare and "
                 << i1 << " markers are not ultra-rare." << std::endl;
 
       P1Mat.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin");
@@ -1261,10 +1261,10 @@ Rcpp::List mainRegionInCPP(
 
   // Validation checks
   if (i2 == 0)
-    Rcpp::Rcout << "i2 == 0." << std::endl;
+    Rcpp::Rcout << "    i2 == 0." << std::endl;
 
   if ((i1 == 0) & (i2 == 0))
-    Rcpp::Rcout << "Cannot find any valid rare variants. This region will be skipped." << std::endl;
+    Rcpp::Rcout << "    Cannot find any valid rare variants. This region will be skipped." << std::endl;
 
   // Finalize chunk management
   mPassCVVec.push_back(i1InChunk);
@@ -1282,7 +1282,7 @@ Rcpp::List mainRegionInCPP(
     );
 
     if (nchunks != 1) {
-      Rcpp::Rcout << "In chunks 0-" << ichunk << ", " << i2 << " markers are ultra-rare and "
+      Rcpp::Rcout << "    In chunks 0-" << ichunk << ", " << i2 << " markers are ultra-rare and "
                 << i1 << " markers are not ultra-rare." << std::endl;
       P1Mat.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin");
       P2Mat.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin");
@@ -1309,8 +1309,8 @@ Rcpp::List mainRegionInCPP(
 
       // Compute off-diagonal blocks
       for (unsigned int index2 = 0; index2 < index1; index2++) {
-        Rcpp::Rcout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", "
-                  << index2 << "/" << nchunks - 1 << ")........" << std::endl;
+        Rcpp::Rcout << "    Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", "
+                  << index2 << "/" << nchunks - 1 << ") ..." << std::endl;
 
         P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index2) + ".bin");
 
@@ -1338,8 +1338,8 @@ Rcpp::List mainRegionInCPP(
 
       // Compute diagonal block
       last_col = first_col + mPassCVVec.at(index1) - 1;
-      Rcpp::Rcout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", "
-                << index1 << "/" << nchunks - 1 << ")........" << std::endl;
+      Rcpp::Rcout << "    Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", "
+                << index1 << "/" << nchunks - 1 << ") ..." << std::endl;
 
       P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index1) + ".bin");
       arma::mat diagVarMat = P1Mat * P2Mat;
@@ -1366,7 +1366,7 @@ Rcpp::List mainRegionInCPP(
     }
   }
 
-  Rcpp::Rcout << "m1:\t" << m1 << std::endl;
+  // Rcpp::Rcout << "    m1:\t" << m1 << std::endl;
 
   // PREPARE OUTPUT: Comprehensive results list
   Rcpp::List OutList = Rcpp::List::create(
@@ -1494,7 +1494,7 @@ arma::mat getGenoInfoInCPP(
     );
 
     if ((i + 1) % 1000 == 0)
-      Rcpp::Rcout << "Completed " << (i + 1) << "/" << q << " genetic variants." << std::endl;
+      Rcpp::Rcout << "    Completed " << (i + 1) << "/" << q << " genetic variants." << std::endl;
 
     // The below is not needed for information extraction
     // imputeGeno(GVec, altFreq, indexForMissing, t_imputeMethod);  // check UTIL.cpp
@@ -1571,7 +1571,7 @@ arma::mat getGenoInCPP_fixedNumber(
 
   for (int i = 0; i < q; i++) {
     uint64_t gIndex = gIndexVec.at(i);
-    Rcpp::Rcout << "gIndex:\t" << gIndex << std::endl;
+    // Rcpp::Rcout << "    gIndex:\t" << gIndex << std::endl;
     arma::vec GVec = Unified_getOneMarker(
       t_genoType,             // Genotype file format ("PLINK", "BGEN")
       gIndex,                 // Marker index (different meanings for different formats)
@@ -1687,7 +1687,7 @@ void setPLINKobjInCPP(
   );
 
   int n = ptr_gPLINKobj->getN();
-  Rcpp::Rcout << "Number of samples:\t" << n << std::endl;
+  Rcpp::Rcout << "    Number of subjects with genotype: " << n << std::endl;
 }
 
 // Creates and configures a BGEN file reader for efficient genotype data access.
@@ -1703,7 +1703,7 @@ void setBGENobjInCPP(
   std::string t_AlleleOrder                  // Allele ordering convention ("alt-first" or "ref-first")
 ) {
   if (ptr_gBGENobj) {
-    Rcpp::Rcout << "Deleting `ptr_gBGENobj`...." << std::endl;
+    // Rcpp::Rcout << "    Deleting `ptr_gBGENobj` ..." << std::endl;
     delete ptr_gBGENobj;
     ptr_gBGENobj = nullptr;
   }
@@ -1718,7 +1718,7 @@ void setBGENobjInCPP(
     t_AlleleOrder                            // Allele ordering convention ("alt-first" or "ref-first")
   );
   int n = ptr_gBGENobj->getN();
-  Rcpp::Rcout << "Number of samples:\t" << n << std::endl;
+  Rcpp::Rcout << "    Number of subjects with genotype: " << n << std::endl;
 }
 
 // Safely closes and cleans up genotype file readers to prevent memory leaks.

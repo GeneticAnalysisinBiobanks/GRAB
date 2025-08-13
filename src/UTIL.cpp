@@ -146,13 +146,13 @@ void printTime(arma::vec t1, arma::vec t2, std::string message){
   double wallTime = t2(0) - t1(0);
   double cpuTime = t2(1) - t1(1);
   if(wallTime < 60){
-    Rprintf ("It took %f seconds (%f CPU seconds) to %s.\n",
+    Rprintf ("    It took %.2f seconds (%.2f CPU seconds) to %s.\n",
              wallTime, cpuTime, message.c_str());
   }else if(wallTime < 3600){
-    Rprintf ("It took %f minutes (%f CPU minutes) to %s.\n",
+    Rprintf ("    It took %.2f minutes (%.2f CPU minutes) to %s.\n",
              wallTime/60, cpuTime/60, message.c_str());
   }else{
-    Rprintf ("It took %f hours (%f CPU hours) to %s.\n",
+    Rprintf ("    It took %.2f hours (%.2f CPU hours) to %s.\n",
              wallTime/3600, cpuTime/3600, message.c_str());
   }
 }
@@ -163,13 +163,13 @@ void printTimeDiff(arma::vec t_timeDiff,
   double wallTime = t_timeDiff(0);
   double cpuTime = t_timeDiff(1);
   if(wallTime < 60){
-    Rprintf ("It took %f seconds (%f CPU seconds) to %s.\n",
+    Rprintf ("    It took %.2f seconds (%.2f CPU seconds) to %s.\n",
              wallTime, cpuTime, t_message.c_str());
   }else if(wallTime < 3600){
-    Rprintf ("It took %f minutes (%f CPU minutes) to %s.\n",
+    Rprintf ("    It took %.2f minutes (%.2f CPU minutes) to %s.\n",
              wallTime/60, cpuTime/60, t_message.c_str());
   }else{
-    Rprintf ("It took %f hours (%f CPU hours) to %s.\n",
+    Rprintf ("    It took %.2f hours (%.2f CPU hours) to %s.\n",
              wallTime/3600, cpuTime/3600, t_message.c_str());
   }
 }

@@ -6,7 +6,7 @@
 \usage{
 GRAB.NullModel(
   formula,
-  data = NULL,
+  data,
   subset = NULL,
   subjData,
   method,

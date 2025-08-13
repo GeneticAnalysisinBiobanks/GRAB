@@ -194,7 +194,7 @@ namespace WtCoxG
             zeta = find_root_brent(h1_func, a, b_bound, 1e-8);
         } catch (...) {
             // If root finding fails, return NaN (don't use fallback like before)
-            Rcpp::Rcout << "CPP DEBUG: Root finding failed, returning NaN" << std::endl;
+            Rcpp::Rcout << "    Root finding failed, returning NaN" << std::endl;
             return arma::datum::nan;
         }
 
@@ -425,13 +425,13 @@ double WtCoxG_test_cpp(const arma::vec &g_input, const arma::vec &R, const arma:
     
     // Debug: Check if p_spa_s0 is causing issues
     if (std::isnan(p_spa_s0) || p_spa_s0 <= 0.0) {
-        Rcpp::Rcout << "DEBUG: Invalid p_spa_s0 = " << p_spa_s0 << std::endl;
+        Rcpp::Rcout << "    Invalid p_spa_s0: " << p_spa_s0 << std::endl;
         return arma::datum::nan;
     }
     
     double qchisq_val = WtCoxG::qchisq_boost(p_spa_s0, 1.0, false, false);
     if (std::isnan(qchisq_val) || qchisq_val <= 0.0) {
-        Rcpp::Rcout << "DEBUG: Invalid qchisq_val = " << qchisq_val << " for p_spa_s0 = " << p_spa_s0 << std::endl;
+        Rcpp::Rcout << "    Invalid qchisq_val: " << qchisq_val << " (p_spa_s0=" << p_spa_s0 << ")" << std::endl;
         return arma::datum::nan;
     }
     
@@ -445,15 +445,15 @@ double WtCoxG_test_cpp(const arma::vec &g_input, const arma::vec &R, const arma:
                         2.0 * b * sumR * var_mu_ext;
     double denominator = var_int + 4.0 * b * b * sumR * sumR * var_mu_ext;
     if (denominator <= 0.0) {
-        Rcpp::Rcout << "DEBUG: Invalid denominator = " << denominator << std::endl;
+        Rcpp::Rcout << "    Invalid denominator: " << denominator << std::endl;
         return arma::datum::nan;
     }
     cov_Sbat_S = cov_Sbat_S * std::sqrt(var_S / denominator);
     
     // Debug: Check if covariance values are valid
     if (std::isnan(var_S) || std::isnan(cov_Sbat_S) || var_S <= 0.0) {
-        Rcpp::Rcout << "DEBUG: Invalid variance/covariance: var_S = " << var_S 
-                    << ", cov_Sbat_S = " << cov_Sbat_S << std::endl;
+        Rcpp::Rcout << "    Invalid variance/covariance: var_S=" << var_S 
+                    << ", cov_Sbat_S=" << cov_Sbat_S << std::endl;
         return arma::datum::nan;
     }
     
@@ -482,7 +482,7 @@ double WtCoxG_test_cpp(const arma::vec &g_input, const arma::vec &R, const arma:
     
     // Debug: Check p0 result
     if (std::isnan(p0)) {
-        Rcpp::Rcout << "DEBUG: Invalid p0 = " << p0 << std::endl;
+        Rcpp::Rcout << "    Invalid p0: " << p0 << std::endl;
         return arma::datum::nan;
     }
     

@@ -10,7 +10,7 @@
 #' @return No return value, called for side effects (prints information about the SAGELD method to the console).
 #'
 GRAB.SAGELD <- function() {
-  message("Check ?GRAB.SAGELD for more details about 'SAGELD' method.")
+  .message("Using SAGELD method - see ?GRAB.SAGELD for details")
 }
 
 ################### This file includes the following functions
@@ -80,7 +80,6 @@ checkControl.SAGELD.NullModel <- function(control,
 }
 
 setMarker.SAGELD <- function(objNull, control) {
-  # the below function is in 'Main.cpp'
   setSAGELDobjInCPP(
     objNull$Method,
     objNull$XTs,
@@ -124,8 +123,6 @@ setMarker.SAGELD <- function(objNull, control) {
     control$zeta,
     control$tol
   )
-
-  message("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk, ".") # This file is in 'control.R'
 }
 
 mainMarker.SAGELD <- function(genoType, genoIndex, outputColumns, objNull) {
@@ -191,7 +188,7 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
                              PvalueCutoff = 0.001, # a p value cutoff for marginal genetic effect on environmental variable.
                              control = list()) # control command used in 'SPAGRM.NullModel', see also 'SPAGRM.NullModel'.
 {
-  message("Process the null model product...")
+  .message("Processing null model ...")
 
   # Extract variance components and compute penalty matrix (P)
   if (inherits(NullModel, "merMod")) {
@@ -205,7 +202,7 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
     sig <- attr(varcor, "sc")
     P <- solve(G / sig^2)
   } else if (inherits(NullModel, "glmmTMB")) {
-    message("Warning: when you use glmmTMB to fit the null model, you should library(glmmTMB), before you library(GRAB)!")
+    .message("Warning: Load glmmTMB before GRAB when using glmmTMB null model")
 
     Pheno_data <- NullModel$frame
 
@@ -403,7 +400,7 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
     totalSNPs <- totalSNPs$V2
 
     if (length(totalSNPs) > 2e3) {
-      message("Too many SNPs in the PLINK file! We randomly select 2000 SNPs.")
+      .message("Too many SNPs (%d), randomly selecting 2000", length(totalSNPs))
 
       random_SNPs <- sample(totalSNPs, 2000)
 
@@ -462,7 +459,7 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
 
     if (length(lambdaObs) > 1e2) {
       lambda <- mean(lambdaObs, na.rm = TRUE)
-      message("Mean lambda:\t", lambda)
+      .message("Lambda estimate: %.4f", lambda)
     } else {
       stop("Less than 100 common SNPs (MAF > 0.05 & Pvalue(G-E) > ", PvalueCutoff, ") in the PLINK file!\n")
     }
@@ -479,37 +476,41 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
     Range <- max(Quant) - min(Quant)
     cutoffVec <- c(min(Quant) - OutlierRatio * Range, max(Quant) + OutlierRatio * Range)
 
-    message("cutoffVec:\t", cutoffVec)
+    .message("Outlier cutoffs: [%.3f, %.3f]", cutoffVec[1], cutoffVec[2])
     Resid_data$Outlier <- ifelse(Resid < cutoffVec[1] | Resid > cutoffVec[2],
       TRUE, FALSE
     )
 
     if (ControlOutlier) {
-      message("ControlOutlier = TRUE (default) to keep the outliers < 5%;\nSet ControlOutlier = FALSE for higher accuracy.")
+      .message("Outlier control enabled (keeps outliers < 5%)")
 
       while (sum(Resid_data$Outlier) == 0) {
         OutlierRatio <- OutlierRatio * 0.8
         cutoffVec <- c(min(Quant) - OutlierRatio * Range, max(Quant) + OutlierRatio * Range)
-        message("cutoffVec:\t", cutoffVec)
+        .message("Adjusted cutoffs: [%.3f, %.3f]", cutoffVec[1], cutoffVec[2])
         Resid_data$Outlier <- ifelse(Resid < cutoffVec[1] | Resid > cutoffVec[2],
           TRUE, FALSE
         )
-        message("The number of outlier is:", sum(Resid_data$Outlier))
+        .message("Outliers found: %d", sum(Resid_data$Outlier))
       }
 
       while (sum(Resid_data$Outlier) / nrow(Resid_data) > 0.05) {
         OutlierRatio <- OutlierRatio + 0.5
         cutoffVec <- c(min(Quant) - OutlierRatio * Range, max(Quant) + OutlierRatio * Range)
-        message("cutoffVec:\t", cutoffVec)
+        .message("Expanded cutoffs: [%.3f, %.3f]", cutoffVec[1], cutoffVec[2])
         Resid_data$Outlier <- ifelse(Resid < cutoffVec[1] | Resid > cutoffVec[2],
           TRUE, FALSE
         )
-        message("The number of outlier is:", sum(Resid_data$Outlier))
+        .message("Outliers reduced to: %d", sum(Resid_data$Outlier))
       }
     }
 
-    message("Outliers information is as below")
-    message(Resid_data %>% filter(Outlier == TRUE) %>% dplyr::select(SubjID, Resid, Outlier) %>% arrange(Resid))
+    outlier_count <- sum(Resid_data$Outlier)
+    .message("Identified %d outliers", outlier_count)
+    if (outlier_count > 0) {
+      outlier_info <- Resid_data %>% filter(Outlier == TRUE) %>% dplyr::select(SubjID, Resid, Outlier) %>% arrange(Resid)
+      print(outlier_info)
+    }
 
     # group samples into families
     edges <- t(SparseGRM1[, c("ID1", "ID2")])
@@ -573,12 +574,12 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
     index.outlier <- 1
 
     if (nGraph != 0) {
-      message("Start process the related residual information.")
+      .message("Processing related residual information for %d families", nGraph)
 
       for (i in 1:nGraph)
       {
         if (i %% 1000 == 0) {
-          message("Processing the related residual information:\t", i, "/", nGraph)
+          .message("Progress: %d/%d families processed", i, nGraph)
         }
 
         comp1 <- graph_list[[i]]
@@ -690,7 +691,7 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
         }
       }
 
-      message("Start process the Chow-Liu tree.")
+      .message("Building Chow-Liu trees")
 
       # Make a list of array index.
       arr.index <- list()
@@ -716,7 +717,7 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
         for (index.outlier in 1:n.outliers)
         {
           if (index.outlier %% 1000 == 0) {
-            message("Processing the CLT for families with outliers:\t", TwofamID.index, ", ", ThreefamID.index, "/", nGraph)
+            .message("CLT progress: %d families processed", index.outlier)
           }
 
           comp1 <- graph_list_updated[[index.outlier]]
@@ -782,7 +783,7 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
             stand.S_GxE = c(stand.S_GxE.temp)
           )
         }
-        message("Completed processing the CLT for families with outliers:\t", TwofamID.index, ", ", ThreefamID.index, "/", nGraph)
+        .message("CLT processing completed for families with outliers")
       }
     }
 

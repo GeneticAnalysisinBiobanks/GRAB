@@ -71,7 +71,7 @@
 #' data.table::fread(OutputFile)
 #'
 GRAB.POLMM <- function() {
-  message("Check ?GRAB.POLMM for more details about 'POLMM' method.")
+  .message("Using POLMM method - see ?GRAB.POLMM for details")
 }
 
 ################### This file includes the following functions
@@ -340,14 +340,12 @@ setMarker.POLMM <- function(objNull, control, chrom) {
     control$SPA_Cutoff,
     flagSparseGRM
   )
-
-  message("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk, ".")
 }
 
 # Used in setRegion() function in GRAB_Region.R
 setRegion.POLMM <- function(objNull, control, chrom, SparseGRMFile) {
   if (chrom != "LOCO=F") {
-    message("Argument 'chrom' is:\t", chrom)
+    .message("Chromosome: %s", chrom)
     if (!"LOCOList" %in% names(objNull)) {
       stop("If argument 'chrom' is not 'LOCO=FALSE', then objNull should includes element of 'LOCOList'.")
     }
@@ -357,7 +355,7 @@ setRegion.POLMM <- function(objNull, control, chrom, SparseGRMFile) {
 
   # Since region-level analysis mainly focuses on rare variants, we use sparse GRM for all markers
 
-  message("Sparse GRM is used for POLMM-GENE method.")
+  .message("Using sparse GRM for POLMM-GENE analysis")
 
   setSparseGRMInStep2(SparseGRMFile, objNull) # check SparseGRM.R
 

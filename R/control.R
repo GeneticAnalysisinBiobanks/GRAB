@@ -107,9 +107,13 @@ checkControl.Marker <- function(control, NullModelClass) {
   textToParse <- paste0("control = checkControl.Marker.", method, "(control)")
   eval(parse(text = textToParse))
 
-  message("The below is the list of control parameters used in marker-level genetic association analysis.")
+  .message("Control parameters for marker-level association tests:")
   tmp <- capture.output(str(control))
-  for (line in tmp) message(line)
+  for (line in tmp) {
+    if (startsWith(line, " $")) {
+      message(sub("^ \\$", strrep(" ", 8), line))
+    }
+  }
 
   return(control)
 }
@@ -165,32 +169,6 @@ checkControl.Region <- function(control) {
   if (!is.numeric(control$min_nMarker) | control$min_nMarker <= 0) {
     stop("control$min_nMarker should be a positive integer.")
   }
-
-  return(control)
-}
-
-# check control list in null model fitting
-checkControl.NullModel <- function(control, method, traitType, optionGRM) {
-  # check if control is an R list
-  if (!is.null(control)) {
-    if (!is.list(control)) {
-      stop("If specified, the argument of 'control' should be an R 'list'.")
-    }
-  }
-
-  # if(method == "POLMM"){control = checkControl.NullModel.POLMM(control, traitType, optionGRM)}
-  textToParse <- paste0("control = checkControl.NullModel.", method, "(control, traitType, optionGRM)")
-  eval(parse(text = textToParse))
-
-  # to be updated for other methods
-  #
-  # ------------------------------
-  #
-  # to be updated for other methods
-
-  message("The below are the list of control parameters used in null model fitting.")
-  tmp <- capture.output(str(control))
-  for (line in tmp) message(line)
 
   return(control)
 }
