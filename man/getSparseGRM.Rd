@@ -22,7 +22,7 @@ getSparseGRM(
 
 \item{SparseGRMFile}{a path to file of output to be passed to \code{\link{GRAB.NullModel}}.}
 
-\item{tempDir}{a path to store temp files from \code{\link{getTempFilesFullGRM}}. This should be consistent to the input of \code{\link{getTempFilesFullGRM}}. Default is \code{system.file("SparseGRM", "temp", package = "GRAB")}.}
+\item{tempDir}{a path to store temp files from \code{\link{getTempFilesFullGRM}}. This should be consistent to the input of \code{\link{getTempFilesFullGRM}}. Default is \code{tempdir()}.}
 
 \item{relatednessCutoff}{a cutoff for sparse GRM, only kinship coefficient greater than this cutoff will be retained in sparse GRM. \emph{(default=0.05)}}
 
@@ -68,15 +68,15 @@ Otherwise, package \code{GRAB} cannot accurately identify temporary files.
 
 \code{gcta64File <- "C:\\\\path\\\\to\\\\gcta64.exe"}
 
-\code{# The temp outputs (may be large) will be in system.file("SparseGRM", "temp", package = "GRAB") by default:}
+\code{# The temp outputs (may be large) will be in tempdir() by default:}
 
 \code{for(partParallel in 1:nPartsGRM) getTempFilesFullGRM(PlinkFile, nPartsGRM, partParallel, gcta64File)}
 }
 
 \section{Step 2: Combine files in Step 1 to make a SparseGRMFile}{
-\code{tempDir = system.file("SparseGRM", "temp", package = "GRAB")}
+\code{tempDir = tempdir()}
 
-\code{SparseGRMFile = gsub("temp", "SparseGRM.txt", tempDir)}
+\code{SparseGRMFile = file.path(tempDir, "SparseGRM.txt")}
 
 \code{getSparseGRM(PlinkFile, nPartsGRM, SparseGRMFile)}
 }

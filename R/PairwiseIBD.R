@@ -1,14 +1,15 @@
 # This function follows function getSparseGRM()
-getPairwiseIBD <- function(PlinkFile, # input path to PLINK file (without file extensions of bed/bim/fam).
-                           SparseGRMFile, # input path to SparseGRMFile from getSparseGRM() function.
-                           PairwiseIBDFile, # output path to save pairwise IBD to PairwiseIBDFile.
-                           frqFile = NULL, # input path to frq file corresponding to Plink file, default is PlinkFile.
-                           tempDir = NULL, # output path to save the temp files.
-                           maxSampleNums = 2500, # read in at most 2500 subjects' genotypes for analysis.
-                           minMafIBD = 0.01, # Minimal value of MAF cutoff to select markers (default=0.01).
-                           rm.tempFile = FALSE) # a logical value indicating if the temp files will be deleted. (default=FALSE)
-{
-  message("Noting that PlinkFile name here has no suffix (e.g. .bed or .frq).")
+getPairwiseIBD <- function(
+  PlinkFile, # input path to PLINK file (without file extensions of bed/bim/fam).
+  SparseGRMFile, # input path to SparseGRMFile from getSparseGRM() function.
+  PairwiseIBDFile, # output path to save pairwise IBD to PairwiseIBDFile.
+  frqFile = NULL, # input path to frq file corresponding to Plink file, default is PlinkFile.
+  tempDir = NULL, # output path to save the temp files.
+  maxSampleNums = 2500, # read in at most 2500 subjects' genotypes for analysis.
+  minMafIBD = 0.01, # Minimal value of MAF cutoff to select markers (default=0.01).
+  rm.tempFile = FALSE # a logical value indicating if the temp files will be deleted. (default=FALSE)
+) {
+  .message("Note: PlinkFile should be specified without suffix (e.g., without .bed or .frq)")
 
   bedFile <- paste0(PlinkFile, ".bed")
   bimFile <- paste0(PlinkFile, ".bim")
@@ -24,7 +25,7 @@ getPairwiseIBD <- function(PlinkFile, # input path to PLINK file (without file e
   }
 
   if (is.null(tempDir)) {
-    tempDir <- system.file("PairwiseIBD", "temp", package = "GRAB")
+    tempDir <- tempdir()
   }
 
   # read all genotype and pass to QC.
@@ -69,8 +70,7 @@ getPairwiseIBD <- function(PlinkFile, # input path to PLINK file (without file e
 
     GenoInfoMat <- GenoInfoMat %>% filter(MAF > minMafIBD)
 
-    message("Analyzing Number of Subjects:\t", length(SubjID_related))
-    message("Remaining Number of Markers:\t", nrow(GenoInfoMat))
+    .message("IBD analysis: %d subjects, %d markers", length(SubjID_related), nrow(GenoInfoMat))
 
     if (nrow(GenoInfoMat) < 1e4) {
       warning("Number of Markers is a bit small, we recommend nSNPs > 10,000.\n")
@@ -112,7 +112,7 @@ getPairwiseIBD <- function(PlinkFile, # input path to PLINK file (without file e
       tSampleIDs <- c(tSampleIDs, igraph::V(graph_list[[i]])$name)
 
       if (tSampleNums >= maxSampleNums | i == length(graph_list)) {
-        message("\nProcessing the", nParts, "block(s) of Samples.")
+        .message("Processing block %d with %d samples", nParts, tSampleNums)
 
         GenoList <- GRAB.ReadGeno(bedFile,
           SampleIDs = tSampleIDs,
@@ -150,8 +150,7 @@ getPairwiseIBD <- function(PlinkFile, # input path to PLINK file (without file e
             c(ID1 = tempGRM$ID1[j], ID2 = tempGRM$ID2[j], pa = pa, pb = pb, pc = pc)
           )
         }
-
-        message("Completed analyzing the", nParts, "block(s) of Samples.")
+        .message("Completed block %d", nParts)
 
         tSampleNums <- 0
         tSampleIDs <- c()

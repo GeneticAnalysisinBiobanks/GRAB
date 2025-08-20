@@ -9,15 +9,12 @@
 #'
 #' @examples
 #' # Step 1: fit a null model
-#' library(dplyr)
 #' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
 #' PhenoData <- data.table::fread(PhenoFile, header = TRUE)
-#' N <- nrow(PhenoData)
-#' PhenoData <- PhenoData %>% mutate(PC1 = rnorm(N), PC2 = rnorm(N))
-#' # add two PCs, which are required for SPAmix
 #'
 #' # Users can directly specify a time-to-event trait to analyze
-#' obj.SPAmix <- GRAB.NullModel(survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
+#' obj.SPAmix <- GRAB.NullModel(
+#'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
 #'   data = PhenoData,
 #'   subjData = IID,
 #'   method = "SPAmix",
@@ -27,9 +24,13 @@
 #'
 #' # Using model residuals performs exactly the same as the above. Note that
 #' # confounding factors are still required in the right of the formula.
-#' obj.coxph <- survival::coxph(survival::Surv(SurvTime, SurvEvent) ~
-#'   AGE + GENDER + PC1 + PC2, data = PhenoData)
-#' obj.SPAmix <- GRAB.NullModel(obj.coxph$residuals ~ AGE + GENDER + PC1 + PC2,
+#' obj.coxph <- survival::coxph(
+#'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
+#'   data = PhenoData
+#' )
+#' 
+#' obj.SPAmix <- GRAB.NullModel(
+#'   obj.coxph$residuals ~ AGE + GENDER + PC1 + PC2,
 #'   data = PhenoData,
 #'   subjData = IID,
 #'   method = "SPAmix",
@@ -38,10 +39,14 @@
 #' )
 #'
 #' # SPAmix also supports multiple residuals as below
-#' obj.coxph <- survival::coxph(survival::Surv(SurvTime, SurvEvent) ~
-#'   AGE + GENDER + PC1 + PC2, data = PhenoData)
+#' obj.coxph <- survival::coxph(
+#'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2, 
+#'   data = PhenoData
+#' )
 #' obj.lm <- lm(QuantPheno ~ AGE + GENDER + PC1 + PC2, data = PhenoData)
-#' obj.SPAmix <- GRAB.NullModel(obj.coxph$residuals + obj.lm$residuals ~ AGE + GENDER + PC1 + PC2,
+#' 
+#' obj.SPAmix <- GRAB.NullModel(
+#'   obj.coxph$residuals + obj.lm$residuals ~ AGE + GENDER + PC1 + PC2,
 #'   data = PhenoData,
 #'   subjData = IID,
 #'   method = "SPAmix",
@@ -53,14 +58,16 @@
 #' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' OutputDir <- tempdir()
 #' OutputFile <- file.path(OutputDir, "Results_SPAmix.txt")
-#' GRAB.Marker(obj.SPAmix,
-#'   GenoFile = GenoFile, OutputFile = OutputFile,
+#' GRAB.Marker(
+#'   objNull = obj.SPAmix,
+#'   GenoFile = GenoFile,
+#'   OutputFile = OutputFile,
 #'   control = list(outputColumns = "zScore")
 #' )
 #' data.table::fread(OutputFile)
-#' @export
+#'
 GRAB.SPAmix <- function() {
-  message("Check ?GRAB.SPAmix for more details about 'SPAmix' method.")
+  .message("Using SPAmix method - see ?GRAB.SPAmix for details")
 }
 
 ################### This file includes the following functions
@@ -71,7 +78,7 @@ GRAB.SPAmix <- function() {
 # 3. mainMarker.SPAmix()
 
 # check the control list in marker-level testing
-# unified control list (such as nMarkersEachChunk) can be found in checkControl.Marker() in contro.R
+# unified control list (such as nMarkersEachChunk) can be found in checkControl.Marker() in control.R
 checkControl.Marker.SPAmix <- function(control) {
   default.control <- list(
     SPA_Cutoff = 2,
@@ -90,15 +97,7 @@ checkControl.Marker.SPAmix <- function(control) {
   return(control)
 }
 
-# SPAmixClass::SPAmixClass(arma::vec t_resid,
-#                          arma::mat t_XinvXX,
-#                          arma::mat t_tX,
-#                          arma::mat t_PCs,
-#                          int t_N,
-#                          double t_SPA_Cutoff)
-
 setMarker.SPAmix <- function(objNull, control) {
-  # the below function is in 'Main.cpp'
   setSPAmixobjInCPP(
     objNull$resid,
     # objNull$X.invXX,
@@ -112,7 +111,6 @@ setMarker.SPAmix <- function(objNull, control) {
   # outLierList[[i]] = list(posValue = posValue - 1,
   #                         posOutlier = posOutlier - 1,
   #                         posNonOutlier = posNonOutlier - 1)
-  message("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk, ".")
 }
 
 # mainMarker.SPAmix(genoType, genoIndex, outputColumns)
@@ -176,7 +174,7 @@ fitNullModel.SPAmix <- function(response, designMat, subjData, control = list(Ou
     yVec <- mresid <- response
     Cova <- designMat
 
-    message(head(mresid))
+    .message("Design matrix: %d samples x %d covariates", nrow(designMat), ncol(designMat))
     if (nrow(mresid) != length(subjData)) {
       stop("Please check the consistency between 'formula' and 'subjData'.")
     }
@@ -184,14 +182,10 @@ fitNullModel.SPAmix <- function(response, designMat, subjData, control = list(Ou
 
   PC_columns <- control$PC_columns
 
-  # Remove the below if checked later
-  message("colnames(designMat):")
-  message(colnames(designMat))
-  message("PC columns specified in 'control':")
-  message(PC_columns)
-  message("dimension of 'designMat' and 'Cova':")
-  message(dim(designMat))
-  message(dim(Cova))
+  # Debug info for covariate structure
+  if (length(PC_columns) > 0) {
+    .message("PC columns: %s", paste(PC_columns, collapse = ", "))
+  }
 
   if (any(!PC_columns %in% colnames(designMat))) {
     stop("PC columns specified in 'control$PC_columns' should be in 'formula'.")
@@ -223,17 +217,17 @@ fitNullModel.SPAmix <- function(response, designMat, subjData, control = list(Ou
       r.outlier <- r.outlier * 0.8
       cutoff <- c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
       posOutlier <- which(mresid < cutoff[1] | mresid > cutoff[2])
-      message("The current outlier ratio is:", r.outlier)
-      message("The number of outlier is:", length(posOutlier))
+      .message("Outlier ratio adjusted to: %.2f (%d outliers)", r.outlier, length(posOutlier))
     }
 
 
     posValue <- which(!is.na(mresid.temp))
     posNonOutlier <- setdiff(posValue, posOutlier)
 
-    message("The outlier of residuals will be passed to SPA analysis.")
-    message("Cutoffs to define residuals:\t", signif(cutoff, 2))
-    message("Totally, ", length(posOutlier), "/", length(posValue), " are defined as outliers.")
+    .message("Outlier cutoffs: [%.2f, %.2f]", cutoff[1], cutoff[2])
+    .message("Outliers for SPA analysis: %d/%d (%.1f%%)", 
+             length(posOutlier), length(posValue), 
+             100 * length(posOutlier) / length(posValue))
 
     if (length(posOutlier) == 0) {
       stop("No outlier is observed. SPA is not required in this case.")
@@ -270,7 +264,7 @@ fitNullModel.SPAmix <- function(response, designMat, subjData, control = list(Ou
 }
 
 # check the control list in null model fitting for SPACox method
-checkControl.NullModel.SPAmix <- function(control, traitType, ...) {
+checkControl.NullModel.SPAmix <- function(control, traitType) {
   if (!traitType %in% c("time-to-event", "Residual")) {
     stop("For 'SPAmix' method, only traitType of 'time-to-event' or 'Residual' is supported.")
   }

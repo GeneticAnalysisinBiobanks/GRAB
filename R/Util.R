@@ -1,3 +1,10 @@
+# Helper function for structured logging
+.message <- function(msg, ...) {
+  timestamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+  formatted_msg <- paste0("[INFO] ", timestamp, " ", sprintf(msg, ...))
+  message(formatted_msg)
+}
+
 #' A lower function to make groups based on phenotype
 #'
 #' In functions \code{\link{GRAB.Marker}} and \code{\link{GRAB.Region}}, users can get detailed information for each markers in different groups.
@@ -7,7 +14,6 @@
 #' @details
 #' If \code{yVec} is categorical with groups <= 10, then \code{Group} is the same as \code{yVec}. Otherwise, \code{Group} is calcualted based on the rank of \code{yVec}.
 #'
-#' @export
 makeGroup <- function(yVec) {
   # yVec is categorical data
   m1 <- length(unique(yVec))
@@ -31,7 +37,6 @@ checkObjNull <- function(objNull) {
 
   ## check objNull
   if (!NullModelClass %in% c(
-    "SPAGE_NULL_Model", # SPAGE: GxE analysis
     "SPACox_NULL_Model", # SPACox: Survival analysis for unrelated subjects
     "POLMM_NULL_Model", # POLMM: categorical data analysis
     "SPAmix_NULL_Model", # SPAmix: mixture population analysis
@@ -40,7 +45,7 @@ checkObjNull <- function(objNull) {
     "WtCoxG_NULL_Model"
   )) {
     stop('class(objNull) should be one of
-         c("SPAGE_NULL_Model", "SPACox_NULL_Model", "POLMM_NULL_Model", "SPAmix_NULL_Model", "SPAGRM_NULL_Model", "SAGELD_NULL_Model", "WtCoxG_NULL_Model")')
+         c("SPACox_NULL_Model", "POLMM_NULL_Model", "SPAmix_NULL_Model", "SPAGRM_NULL_Model", "SAGELD_NULL_Model", "WtCoxG_NULL_Model")')
   }
 
   if (any(!c("subjData", "N") %in% nm)) {
@@ -84,12 +89,12 @@ checkOutputFile <- function(OutputFile,
         End <- TRUE
         indexChunk <- outIndexData[nrow(outIndexData) - 1, 1]
         indexChunk <- as.numeric(gsub("Have completed the analysis of chunk ", "", indexChunk))
-        message("Based on 'OutputFile' and 'OutputFileIndex', the analysis has been completed for the toal", indexChunk, "chunks.")
+        .message("Analysis completed: %d chunks processed", indexChunk)
       } else {
         End <- FALSE
         indexChunk <- lastMessage
         indexChunk <- as.numeric(gsub("Have completed the analysis of chunk ", "", indexChunk))
-        message("Based on 'OutputFile' and 'OutputFileIndex', we restart the analysis from the", indexChunk + 1, "chunk.")
+        .message("Restarting analysis from chunk %d", indexChunk + 1)
       }
     }
     Start <- FALSE
@@ -234,7 +239,7 @@ checkControl <- function(control = NULL) {
     if (method_region == "Burden") control$r_corr <- 1
     if (method_region == "SKAT-O") control$r_corr <- c(0, 0.1^2, 0.2^2, 0.3^2, 0.5^2, 0.5, 1) # r_corr = 0 is SKAT, r_corr = 1 is Burden Test
   } else {
-    message("Since 'r_corr' is specified, the 'method_region' is ignored.")
+    .message("Custom r_corr specified, ignoring method_region")
   }
 
   if (any(control$r_corr < 0 | control$r_corr > 1)) {

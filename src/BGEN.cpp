@@ -49,10 +49,10 @@ void BgenClass::setBgenObj(const std::string t_bgenFileName,
                            std::vector<std::string> & t_SampleInBgen)
 {
   m_isQuery = false;
-  if(t_bgenFileIndex == ""){
-    m_isQuery = false;
-    Rcpp::Rcout << "no index file for bgen is provided" << std::endl;
-  }  
+  // if(t_bgenFileIndex == ""){
+  //   m_isQuery = false;
+  //   Rcpp::Rcout << "    no index file for bgen is provided" << std::endl;
+  // }  
   
   /****code from BOLT-LMM v2.3.4***/
   
@@ -60,10 +60,10 @@ void BgenClass::setBgenObj(const std::string t_bgenFileName,
   m_fin = fopen(t_bgenFileName.c_str(), "rb");
   uint32_t offset; size_t bytesRead = fread(&offset, 4, 1, m_fin); (void)bytesRead; //cout << "offset: " << offset << endl;
   uint32_t L_H; bytesRead = fread(&L_H, 4, 1, m_fin); (void)bytesRead; //cout << "L_H: " << L_H << endl;
-  bytesRead = fread(&m_M0, 4, 1, m_fin); (void)bytesRead; Rcpp::Rcout << "snpBlocks (Mbgen): " << m_M0 << std::endl;
+  bytesRead = fread(&m_M0, 4, 1, m_fin); (void)bytesRead; //Rcpp::Rcout << "    snpBlocks (Mbgen): " << m_M0 << std::endl;
   assert(m_M0 != 0);
-  //unsigned int Nbgen; fread(&Nbgen, 4, 1, m_fin); Rcpp::Rcout << "samples (Nbgen): " << Nbgen << std::endl;
-  bytesRead = fread(&m_N0, 4, 1, m_fin); (void)bytesRead; Rcpp::Rcout << "samples (Nbgen): " << m_N0 << std::endl;
+  //unsigned int Nbgen; fread(&Nbgen, 4, 1, m_fin); Rcpp::Rcout << "    samples (Nbgen): " << Nbgen << std::endl;
+  bytesRead = fread(&m_N0, 4, 1, m_fin); (void)bytesRead; //Rcpp::Rcout << "    samples (Nbgen): " << m_N0 << std::endl;
   unsigned int m_Nsample = t_SampleInBgen.size();
   m_SampleInBgen = t_SampleInBgen;
   if (m_N0 != m_Nsample) {
@@ -72,9 +72,9 @@ void BgenClass::setBgenObj(const std::string t_bgenFileName,
   char magic[5]; bytesRead = fread(magic, 1, 4, m_fin); (void)bytesRead; magic[4] = '\0'; //cout << "magic bytes: " << string(magic) << endl;
   fseek(m_fin, L_H-20, SEEK_CUR); //cout << "skipping L_H-20 = " << L_H-20 << " bytes (free data area)" << endl;
   uint32_t flags; bytesRead = fread(&flags, 4, 1, m_fin); (void)bytesRead; //cout << "flags: " << flags << endl;
-  uint32_t CompressedSNPBlocks = flags&3; Rcpp::Rcout << "CompressedSNPBlocks: " << CompressedSNPBlocks << std::endl;
+  uint32_t CompressedSNPBlocks = flags&3; //Rcpp::Rcout << "    CompressedSNPBlocks: " << CompressedSNPBlocks << std::endl;
   assert(CompressedSNPBlocks==1); // REQUIRE CompressedSNPBlocks==1
-  uint32_t Layout = (flags>>2)&0xf; Rcpp::Rcout << "Layout: " << Layout << std::endl;
+  uint32_t Layout = (flags>>2)&0xf; //Rcpp::Rcout << "    Layout: " << Layout << std::endl;
   assert(Layout==1 || Layout==2); // REQUIRE Layout==1 or Layout==2
   fseek(m_fin, offset+4, SEEK_SET);
 }
@@ -82,7 +82,7 @@ void BgenClass::setBgenObj(const std::string t_bgenFileName,
 
 void BgenClass::setPosSampleInBgen(std::vector<std::string> & t_SampleInModel)
 {
-  Rcpp::Rcout << "Setting position of samples in Bgen files...." << std::endl;	  
+  // Rcpp::Rcout << "    Setting positions in BGEN files ..." << std::endl;	  
   m_N = t_SampleInModel.size();
   
   // updated by BWJ on 03/14/2021
@@ -189,9 +189,9 @@ void BgenClass::Parse2(unsigned char *buf,
   std::size_t missing_cnt = 0;
   
   for (unsigned int i = 0; i < N; i++) {
-    //if(i == 1){Rcpp::Rcout << "ploidyMissBytes[i] " << ploidyMissBytes[i] << std::endl;}
+    // if(i == 1){Rcpp::Rcout << "    ploidyMissBytes[i] " << ploidyMissBytes[i] << std::endl;}
     if (ploidyMissBytes[i] != 130U){
-      //bufAt += 2;
+      // bufAt += 2;
       p11 = lut[*bufAt]; bufAt++;
       p10 = lut[*bufAt]; bufAt++;
       // p00 = 1 - p11 - p10; //can remove
@@ -229,7 +229,7 @@ void BgenClass::Parse2(unsigned char *buf,
       }
     }
   }
-  //Rcpp::Rcout << "sum_eij_sub: " << sum_eij_sub << std::endl;
+  // Rcpp::Rcout << "    sum_eij_sub: " << sum_eij_sub << std::endl;
   AC = 2* ((double) (m_N - missing_cnt)) - sum_eij_sub;
   if(m_N == missing_cnt){
     AF = 0;
@@ -238,15 +238,15 @@ void BgenClass::Parse2(unsigned char *buf,
   }
   
   double thetaHat = sum_eij / (2* (m_N - missing_cnt));
-  //Rcpp::Rcout << "sum_eij " << sum_eij << std::endl;
-  //Rcpp::Rcout << "missing_cnt " << sum_eij << std::endl;
+  // Rcpp::Rcout << "    sum_eij " << sum_eij << std::endl;
+  // Rcpp::Rcout << "    missing_cnt " << sum_eij << std::endl;
   info = thetaHat==0 || thetaHat==1 ? 1 :
     1 - sum_fij_minus_eij2 / (2*(m_N - missing_cnt)*thetaHat*(1-thetaHat));
   
   // updated on 2021-08-27: the imputation part was put in UTIL.cpp
   // if(missing_cnt > 0){
-  //   // Rcpp::Rcout << "AC: " << AC << std::endl;
-  //   // Rcpp::Rcout << "sample index with missing dosages for snpName " << snpName << " :";
+  //   // Rcpp::Rcout << "    AC: " << AC << std::endl;
+  //   // Rcpp::Rcout << "    sample index with missing dosages for snpName " << snpName << " :";
   //   
   //   if(!m_isDropMissingDosagesInBgen){
   //     double imputeDosage = 2*AF;
@@ -261,7 +261,7 @@ void BgenClass::Parse2(unsigned char *buf,
   //       }
   //       AC = AC + imputeDosage;
   //     }
-  //     // Rcpp::Rcout << "AC new: " << AC << std::endl;
+  //     // Rcpp::Rcout << "    AC new: " << AC << std::endl;
   //   }
   // }
 }
@@ -339,7 +339,7 @@ arma::vec BgenClass::getOneMarker(uint64_t t_gIndex,        // different meaning
     
     uint32_t C; bytesRead = fread(&C, 4, 1, m_fin); (void)bytesRead; //cout << "C: " << C << endl;
     if (C > m_zBuf.size()) m_zBuf.resize(C-4);
-    //Rcpp::Rcout << "m_zBuf.size() " << m_zBuf.size() << std::endl;
+    //Rcpp::Rcout << "    m_zBuf.size() " << m_zBuf.size() << std::endl;
     uint32_t D; bytesRead = fread(&D, 4, 1, m_fin); (void)bytesRead; //cout << "D: " << D << endl;
     m_zBufLens = C-4; m_bufLens = D;
     bytesRead = fread(&m_zBuf[0], 1, C-4, m_fin); (void)bytesRead;

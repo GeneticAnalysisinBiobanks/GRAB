@@ -20,8 +20,8 @@ Additional list of \code{control} in \code{GRAB.Marker()} function.
 \examples{
 # Step 2a: process model residuals
 ResidMatFile <- system.file("extdata", "ResidMat.txt", package = "GRAB")
-SparseGRMFile <- system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
-PairwiseIBDFile <- system.file("PairwiseIBD", "PairwiseIBD.txt", package = "GRAB")
+SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
+PairwiseIBDFile <- system.file("extdata", "PairwiseIBD.txt", package = "GRAB")
 obj.SPAGRM <- SPAGRM.NullModel(
   ResidMatFile = ResidMatFile,
   SparseGRMFile = SparseGRMFile,
@@ -39,4 +39,5 @@ GRAB.Marker(
   OutputFile = OutputFile
 )
 head(read.table(OutputFile, header = TRUE))
+
 }

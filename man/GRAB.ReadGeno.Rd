@@ -129,4 +129,5 @@ BGENFile <- system.file("extdata", "simuBGEN.bgen", package = "GRAB")
 GenoList <- GRAB.ReadGeno(BGENFile, control = list(AllMarkers = TRUE))
 head(GenoList$GenoMat)
 
+
 }

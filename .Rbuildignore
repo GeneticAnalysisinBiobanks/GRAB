@@ -32,3 +32,6 @@
 # Ignore docker and all its contents
 ^docker$
 ^docker/
+
+# Release notes
+^NEW\.md$

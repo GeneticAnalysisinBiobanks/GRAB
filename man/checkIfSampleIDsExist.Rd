@@ -19,4 +19,5 @@ Check if sample identifiers are stored in a BGEN file, only support BGEN v1.2. C
 
 BGENFile <- system.file("extdata", "simuBGEN.bgen", package = "GRAB")
 checkIfSampleIDsExist(BGENFile)
+
 }

@@ -12,8 +12,8 @@
 #' @examples
 #' # Step 2a: process model residuals
 #' ResidMatFile <- system.file("extdata", "ResidMat.txt", package = "GRAB")
-#' SparseGRMFile <- system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
-#' PairwiseIBDFile <- system.file("PairwiseIBD", "PairwiseIBD.txt", package = "GRAB")
+#' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
+#' PairwiseIBDFile <- system.file("extdata", "PairwiseIBD.txt", package = "GRAB")
 #' obj.SPAGRM <- SPAGRM.NullModel(
 #'   ResidMatFile = ResidMatFile,
 #'   SparseGRMFile = SparseGRMFile,
@@ -31,9 +31,9 @@
 #'   OutputFile = OutputFile
 #' )
 #' head(read.table(OutputFile, header = TRUE))
-#' @export
+#'
 GRAB.SPAGRM <- function() {
-  message("Check ?GRAB.SPAGRM for more details about 'SPAGRM' method.")
+  .message("Using SPAGRM method - see ?GRAB.SPAGRM for details")
 }
 
 ################### This file includes the following functions
@@ -107,7 +107,6 @@ checkControl.SPAGRM.NullModel <- function(control,
 }
 
 setMarker.SPAGRM <- function(objNull, control) {
-  # the below function is in 'Main.cpp'
   setSPAGRMobjInCPP(
     objNull$Resid,
     objNull$Resid.unrelated.outliers,
@@ -122,8 +121,6 @@ setMarker.SPAGRM <- function(objNull, control) {
     control$zeta,
     control$tol
   )
-
-  message("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk, ".") # This file is in 'control.R'
 }
 
 mainMarker.SPAGRM <- function(genoType, genoIndex, outputColumns) {
@@ -152,7 +149,7 @@ mainMarker.SPAGRM <- function(genoType, genoIndex, outputColumns) {
 #'
 #' @return A SPAGRM null model object
 #'
-#' @export
+#'
 SPAGRM.NullModel <- function(ResidMatFile, # two columns: column 1 is subjID, column 2 is Resid
                              SparseGRMFile, # a path of SparseGRMFile get from getSparseGRM() function.
                              PairwiseIBDFile, # a path of PairwiseIBDFile get from getPairwiseIBD() function.
@@ -197,37 +194,44 @@ SPAGRM.NullModel <- function(ResidMatFile, # two columns: column 1 is subjID, co
   Range <- max(Quant) - min(Quant)
   cutoffVec <- c(min(Quant) - OutlierRatio * Range, max(Quant) + OutlierRatio * Range)
 
-  message("cutoffVec:\t", cutoffVec)
+  .message("Outlier cutoffs: [%.3f, %.3f]", cutoffVec[1], cutoffVec[2])
   ResidMat$Outlier <- ifelse(Resid < cutoffVec[1] | Resid > cutoffVec[2],
     TRUE, FALSE
   )
 
   if (ControlOutlier) {
-    message("ControlOutlier = TRUE (default) to keep the outliers < 5%;\nSet ControlOutlier = FALSE for higher accuracy.")
+    .message("ControlOutlier=TRUE: keeping outliers <5%% (set FALSE for higher accuracy)")
 
     while (sum(ResidMat$Outlier) == 0) {
       OutlierRatio <- OutlierRatio * 0.8
       cutoffVec <- c(min(Quant) - OutlierRatio * Range, max(Quant) + OutlierRatio * Range)
-      message("cutoffVec:\t", cutoffVec)
+      .message("Adjusted cutoffs: [%.3f, %.3f]", cutoffVec[1], cutoffVec[2])
       ResidMat$Outlier <- ifelse(Resid < cutoffVec[1] | Resid > cutoffVec[2],
         TRUE, FALSE
       )
-      message("The number of outlier is:", sum(ResidMat$Outlier))
+      .message("Outliers found: %d", sum(ResidMat$Outlier))
     }
 
     while (sum(ResidMat$Outlier) / nrow(ResidMat) > 0.05) {
       OutlierRatio <- OutlierRatio + 0.5
       cutoffVec <- c(min(Quant) - OutlierRatio * Range, max(Quant) + OutlierRatio * Range)
-      message("cutoffVec:\t", cutoffVec)
+      .message("Reducing outliers: cutoffs [%.3f, %.3f]", cutoffVec[1], cutoffVec[2])
       ResidMat$Outlier <- ifelse(Resid < cutoffVec[1] | Resid > cutoffVec[2],
         TRUE, FALSE
       )
-      message("The number of outlier is:", sum(ResidMat$Outlier))
+      .message("Outliers: %d (%.1f%%)", sum(ResidMat$Outlier), 
+               100 * sum(ResidMat$Outlier) / nrow(ResidMat))
     }
   }
 
-  message("Outliers information is as below")
-  message(ResidMat %>% filter(Outlier == TRUE) %>% dplyr::select(SubjID, Resid, Outlier) %>% arrange(Resid))
+  .message("Outlier summary:")
+  # Only show outlier info in debug mode to avoid cluttering console
+  if (nrow(ResidMat %>% filter(Outlier == TRUE)) > 0) {
+    outlier_summary <- ResidMat %>% filter(Outlier == TRUE) %>% 
+                      dplyr::select(SubjID, Resid, Outlier) %>% arrange(Resid)
+    .message("Found %d outliers (range: %.3f to %.3f)", 
+             nrow(outlier_summary), min(outlier_summary$Resid), max(outlier_summary$Resid))
+  }
 
   # Decompose the subjects based on family structure and use a greedy algorithm to reduce family size if needed
   SparseGRM1 <- SparseGRM
@@ -275,12 +279,12 @@ SPAGRM.NullModel <- function(ResidMatFile, # two columns: column 1 is subjID, co
   index.outlier <- 1
 
   if (nGraph != 0) {
-    message("Start process the related residual information.")
+    .message("Processing %d family groups with related residuals", nGraph)
 
     for (i in 1:nGraph)
     {
       if (i %% 1000 == 0) {
-        message("Processing the related residual information:\t", i, "/", nGraph)
+        .message("Processing family group %d/%d", i, nGraph)
       }
 
       comp1 <- graph_list[[i]]
@@ -375,7 +379,7 @@ SPAGRM.NullModel <- function(ResidMatFile, # two columns: column 1 is subjID, co
       }
     }
 
-    message("Start process the Chow-Liu tree.")
+    .message("Building Chow-Liu tree for family outliers")
 
     # Make a list of array index.
     arr.index <- list()
@@ -401,7 +405,7 @@ SPAGRM.NullModel <- function(ResidMatFile, # two columns: column 1 is subjID, co
       for (index.outlier in 1:n.outliers)
       {
         if (index.outlier %% 1000 == 0) {
-          message("Processing the CLT for families with outliers:\t", TwofamID.index, ", ", ThreefamID.index, "/", nGraph)
+          .message("Processing CLT for outlier families: %d, %d/%d", TwofamID.index, ThreefamID.index, nGraph)
         }
 
         comp1 <- graph_list_updated[[index.outlier]]
@@ -452,7 +456,7 @@ SPAGRM.NullModel <- function(ResidMatFile, # two columns: column 1 is subjID, co
           stand.S = c(stand.S.temp)
         )
       }
-      message("Completed processing the CLT for families with outliers:\t", TwofamID.index, ", ", ThreefamID.index, "/", nGraph)
+      .message("Completed CLT processing for %d families (%d, %d/%d)", n.outliers, TwofamID.index, ThreefamID.index, nGraph)
     }
   }
 
@@ -490,17 +494,17 @@ SPAGRMGE.NullModel <- function(NullModel = NULL, # a fitted null model from lme4
   eval(parse(text = cmd))
 
   if (is.null(NullModel)) {
-    message("Model formula is...")
+    .message("Building null model with formula:")
     model_formula <- as.formula(paste(PhenoColname, "~", paste(CovaColname, collapse = "+"), "+", Envcolname, "+ (", Envcolname, "|", SubjIDColname, ")"))
-    message(model_formula)
+    .message("%s", deparse(model_formula))
 
-    message("Fit the null model...")
+    .message("Fitting null model ...")
     null_model <- lme4::lmer(model_formula, data = Pheno_data)
   } else {
     null_model <- NullModel
   }
 
-  message("Process the null model product...")
+  .message("Processing null model results ...")
 
   # Extract variance components and compute penalty matrix (P)
   if (inherits(null_model, "merMod")) {
@@ -605,11 +609,11 @@ SPAGRMGE.NullModel <- function(NullModel = NULL, # a fitted null model from lme4
   totalSNPs <- totalSNPs$V2
 
   if (length(totalSNPs) > 2e3) {
-    message("Too many SNPs in the PLINK file! We randomly select 2000 SNPs.")
+    .message("Too many SNPs (%d), randomly selecting 2000", length(totalSNPs))
 
     random_SNPs <- sample(totalSNPs, 2000)
 
-    SNPIDfile <- system.file("PairwiseIBD", "temp", package = "GRAB")
+    SNPIDfile <- tempdir()
     SNPIDfile <- paste0(SNPIDfile, "/tempSNPID", sample(1:1e9, 1), ".txt")
 
     data.table::fwrite(data.frame(random_SNPs),
@@ -664,12 +668,12 @@ SPAGRMGE.NullModel <- function(NullModel = NULL, # a fitted null model from lme4
 
   if (length(lambdaObs) > 1e2) {
     lambda <- mean(lambdaObs, na.rm = TRUE)
-    message("lambda:\t", lambda)
+    .message("Lambda estimate: %.4f", lambda)
   } else {
     stop("Less than 100 common SNPs (MAF > 0.05) in the PLINK file!\n")
   }
 
-  message("Calculate model residuals...")
+  .message("Calculating model residuals ...")
 
   if (inherits(null_model, "merMod")) {
     coeffs <- summary(null_model)$coefficients[, 1]
@@ -684,7 +688,7 @@ SPAGRMGE.NullModel <- function(NullModel = NULL, # a fitted null model from lme4
   uk <- 0
   for (i in 1:n)
   {
-    if (i %% 10000 == 0) message(i)
+    if (i %% 10000 == 0) .message("Processing residuals: %d/%d", i, n)
 
     ki <- k[i]
     uk <- max(uk) + 1:ki

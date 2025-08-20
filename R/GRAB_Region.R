@@ -77,27 +77,21 @@
 #' \item{pval.Burden}{p-values based on Burden test}
 #' }
 #' @examples
-#' objNullFile <- system.file("results", "objPOLMMFile.RData", package = "GRAB")
+#' # Load a precomputed example object to perform step 2 without repeating step 1
+#' objNullFile <- system.file("extdata", "objPOLMMnull.RData", package = "GRAB")
 #' load(objNullFile)
-#' class(obj.POLMM) # "POLMM_NULL_Model", that indicates an object from POLMM method.
+#' class(obj.POLMM) # "POLMM_NULL_Model" is an object from POLMM method.
 #'
 #' OutputDir <- tempdir()
 #' OutputFile <- file.path(OutputDir, "simuRegionOutput.txt")
 #' GenoFile <- system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
 #' GroupFile <- system.file("extdata", "simuPLINK_RV.group", package = "GRAB")
-#' SparseGRMFile <- system.file("SparseGRM", "SparseGRM.txt", package = "GRAB")
-#'
-#' ## make sure the output files does not exist at first
-#' file.remove(OutputFile)
-#' file.remove(paste0(OutputFile, ".markerInfo"))
-#' file.remove(paste0(OutputFile, ".index"))
+#' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
 #'
 #' GRAB.Region(
 #'   objNull = obj.POLMM,
 #'   GenoFile = GenoFile,
-#'   GenoFileIndex = NULL,
 #'   OutputFile = OutputFile,
-#'   OutputFileIndex = NULL,
 #'   GroupFile = GroupFile,
 #'   SparseGRMFile = SparseGRMFile,
 #'   MaxMAFVec = "0.01,0.005"
@@ -108,37 +102,20 @@
 #' data.table::fread(paste0(OutputFile, ".otherMarkerInfo"))
 #' data.table::fread(paste0(OutputFile, ".index"), sep = "\t", header = FALSE)
 #'
-#' SampleFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
-#' GRAB.Region(
-#'   objNull = obj.POLMM,
-#'   GenoFile = GenoFile,
-#'   GenoFileIndex = NULL,
-#'   OutputFile = OutputFile,
-#'   OutputFileIndex = NULL,
-#'   GroupFile = GroupFile,
-#'   SparseGRMFile = SparseGRMFile,
-#'   SampleFile = SampleFile,
-#'   control = list(SampleLabelCol = "OrdinalPheno")
-#' )
-#'
-#' data.table::fread(OutputFile)
-#' data.table::fread(paste0(OutputFile, ".markerInfo"))
-#' data.table::fread(paste0(OutputFile, ".otherMarkerInfo"))
-#' data.table::fread(paste0(OutputFile, ".index"), sep = "\t", header = FALSE)
-#'
-#' @export
-GRAB.Region <- function(objNull,
-                        GenoFile,
-                        GenoFileIndex = NULL,
-                        OutputFile,
-                        OutputFileIndex = NULL,
-                        GroupFile,
-                        SparseGRMFile = NULL,
-                        SampleFile = NULL,
-                        MaxMAFVec = "0.01,0.001,0.0005",
-                        annoVec = "lof,lof:missense,lof:missense:synonymous",
-                        chrom = "LOCO=F",
-                        control = NULL) {
+GRAB.Region <- function(
+  objNull,
+  GenoFile,
+  GenoFileIndex = NULL,
+  OutputFile,
+  OutputFileIndex = NULL,
+  GroupFile,
+  SparseGRMFile = NULL,
+  SampleFile = NULL,
+  MaxMAFVec = "0.01,0.001,0.0005",
+  annoVec = "lof,lof:missense,lof:missense:synonymous",
+  chrom = "LOCO=F",
+  control = NULL
+) {
   NullModelClass <- checkObjNull(objNull) # Check "Util.R"
   method <- gsub("_NULL_Model", "", NullModelClass)
 
@@ -155,21 +132,21 @@ GRAB.Region <- function(objNull,
   End <- outList$End
 
   if (End) {
-    message <- paste0(
+    msg_text <- paste0(
       "The analysis has been completed in earlier analysis. Results have been saved in '", OutputFile, "'. ",
       "If you want to change parameters and restart the analysis, please use another 'OutputFile'."
     )
-    message(message)
-    return(message)
+    .message("%s", msg_text)
+    return(msg_text)
   }
 
   if (!Start) {
-    message <- paste0(
+    msg_text <- paste0(
       "Parts of analysis have been conducted based on the index file:\n",
       OutputFileIndex, "\n",
-      "The analysis will be restarted from chunk:\t", indexChunk + 1, "\n"
+      "The analysis will be restarted from chunk ", indexChunk + 1, "\n"
     )
-    message(message)
+    .message("%s", msg_text)
   }
 
   ## Check "control.R": if the setting of control is not specified, the default setting will be used
@@ -179,15 +156,21 @@ GRAB.Region <- function(objNull,
   eval(parse(text = textToParse))
 
   # print control list
-  message("The below is the list of control parameters used in region-level genetic association analysis.")
-  message(control)
+  .message("Control parameters for region-level genetic association analysis:")
+  tmp <- capture.output(str(control))
+  for (line in tmp) {
+    if (startsWith(line, " $")) {
+      message(sub("^ \\$", strrep(" ", 8), line))
+    }
+  }
+
 
   MaxMAFVec <- MaxMAFVec %>%
     strsplit(split = ",") %>%
     unlist() %>%
     as.numeric()
   if (any(is.na(MaxMAFVec))) {
-    stop("any(is.na(MaxMAFVec)):\t")
+    stop("MaxMAFVec contains invalid (NA) values. Please check your input.")
   }
 
   MaxMAF <- max(MaxMAFVec)
@@ -227,7 +210,7 @@ GRAB.Region <- function(objNull,
     if (!is.null(control$SampleLabelCol)) {
       SampleLabelColName <- control$SampleLabelCol
       if (!SampleLabelColName %in% colnames(SampleInfo)) {
-        stop("'SampleFile' should include one column with header of:\t", SampleLabelColName)
+        stop("'SampleFile' should include one column with the header: ", SampleLabelColName)
       }
 
       posInSampleInfo <- match(subjData, SampleInfo$IID)
@@ -312,10 +295,11 @@ GRAB.Region <- function(objNull,
       }
     }
 
-    message("Analyzing Region of ", regionID, " (", i, "/", nRegions, ").")
-    message(
-      "Total", length(regionInfo$ID), "markers:\t",
-      paste0(head(regionInfo$ID), collapse = ", ")
+    .message("Analyzing region %s (%d/%d)", regionID, i, nRegions)
+    .message(
+      "Region contains %d markers: %s", 
+      length(regionInfo$ID), 
+      paste0(head(regionInfo$ID, 6), collapse = ", ")
     )
 
     t11 <- Sys.time()
@@ -395,8 +379,7 @@ GRAB.Region <- function(objNull,
     t21 <- Sys.time()
     pval.Region <- data.frame()
     iSPA <- 1
-    for (anno in annoVec)
-    {
+    for (anno in annoVec) {
       annoTemp <- unlist(strsplit(anno, split = ":"))
 
       posURV <- RV.MarkersURV %>%
@@ -410,8 +393,7 @@ GRAB.Region <- function(objNull,
         stop("length(posURV) != 1")
       }
 
-      for (MaxMAF in MaxMAFVec)
-      {
+      for (MaxMAF in MaxMAFVec) {
         posRV <- RV.MarkersWithAnno %>%
           filter(MAF < MaxMAF & Annos %in% annoTemp) %>%
           select(posRow) %>%
@@ -523,21 +505,17 @@ GRAB.Region <- function(objNull,
     )
   }
 
-  message("mainRegionInCPP():\t", diffTime1, "seconds.")
-  # message("SKATO:\t", diffTime2,"seconds.")
-  message("SKATO::\t", diffTime3)
-  printTimeDiffInCPP()
+  .message("Region analysis timing: mainRegionInCPP %.2f seconds, SKATO %.2f seconds", diffTime1, diffTime3)
+  # printTimeDiffInCPP()
 
-  message(
-    "Analysis done! The results have been saved to the below files:\n",
-    OutputFile, "\n",
-    paste0(OutputFile, ".markerInfo\n"),
-    paste0(OutputFile, ".otherMarkerInfo\n")
+  .message(
+    "Analysis complete! Results saved to:\n    %s\n    %s\n    %s", 
+    OutputFile, 
+    paste0(OutputFile, ".markerInfo"), 
+    paste0(OutputFile, ".otherMarkerInfo")
   )
 
-  message <- paste0("Analysis done! The main results have been saved to '", OutputFile, "'")
-
-  return(message)
+  return(invisible(NULL))
 }
 
 
@@ -588,10 +566,8 @@ getInfoGroupLine <- function(markerGroupLine, nLine) {
 }
 
 getInfoGroupFile <- function(GroupFile) {
-  message(
-    "Start extracting marker-level information from 'GroupFile':\n",
-    GroupFile
-  )
+  .message("Extracting marker information from GroupFile: %s", GroupFile)
+  
   if (!file.exists(GroupFile)) {
     stop("cannot find the below file:\n", GroupFile)
   }
@@ -683,6 +659,6 @@ getInfoGroupFile <- function(GroupFile) {
     previousGene <- geneID
   }
 
-  message("Total ", nRegion, " groups are in 'GroupFile'.")
+  .message("Found %d groups in GroupFile", nRegion)
   return(regionList)
 }

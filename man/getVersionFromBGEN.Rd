@@ -25,4 +25,5 @@ Get version information from BGEN file (check \href{https://www.well.ox.ac.uk/~g
 
 BGENFile <- system.file("extdata", "simuBGEN.bgen", package = "GRAB")
 getVersionFromBGEN(BGENFile)
+
 }

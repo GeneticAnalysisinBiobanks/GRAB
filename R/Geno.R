@@ -104,7 +104,7 @@
 #' GenoList <- GRAB.ReadGeno(BGENFile, control = list(AllMarkers = TRUE))
 #' head(GenoList$GenoMat)
 #'
-#' @export
+#'
 GRAB.ReadGeno <- function(GenoFile,
                           GenoFileIndex = NULL,
                           SampleIDs = NULL,
@@ -130,8 +130,7 @@ GRAB.ReadGeno <- function(GenoFile,
   n <- length(SampleIDs)
   m <- length(MarkerIDs)
 
-  message("Number of Samples:\t", n)
-  message("Number of Markers:\t", m)
+  .message("Reading genotypes: %d samples, %d markers", n, m)
 
   if (sparse == TRUE) {
     GenoMat <- getSpGenoInCPP(genoType, markerInfo, n, control$ImputeMethod) # check Main.cpp
@@ -144,7 +143,7 @@ GRAB.ReadGeno <- function(GenoFile,
 
   markerInfo <- markerInfo[, 1:5]
 
-  message("Complete the genotype reading.")
+  .message("Genotype reading completed")
 
   closeGenoInputInCPP(genoType) # "PLINK" or "BGEN"
 
@@ -169,7 +168,7 @@ GRAB.ReadGeno <- function(GenoFile,
 #'   \item{altFreq}{Alternative allele frequency (before genotype imputation)}
 #'   \item{missingRate}{Missing rate for each marker}
 #' }
-#' @export
+#'
 GRAB.getGenoInfo <- function(GenoFile,
                              GenoFileIndex = NULL,
                              SampleIDs = NULL,
@@ -194,8 +193,7 @@ GRAB.getGenoInfo <- function(GenoFile,
   n <- length(SampleIDs)
   m <- length(MarkerIDs)
 
-  message("Number of Samples:\t", n)
-  message("Number of Markers:\t", m)
+  .message("Getting genotype info: %d subjects, %d markers", n, m)
 
   GenoInfoMat <- getGenoInfoInCPP(genoType, markerInfo, control$ImputeMethod) # check Main.cpp
   GenoInfoMat <- as.data.frame(GenoInfoMat)
@@ -258,7 +256,7 @@ setGenoInput <- function(GenoFile,
 
     if (!file.exists(bimFile)) stop(paste("Cannot find bim file of", bimFile))
 
-    message("Reading bim file:\t", bimFile)
+    .message("Reading bim file: %s", basename(bimFile))
     markerInfo <- data.table::fread(bimFile, header = FALSE, sep = "\t")
     markerInfo <- as.data.frame(markerInfo)
 
@@ -280,7 +278,7 @@ setGenoInput <- function(GenoFile,
 
     if (!file.exists(famFile)) stop(paste("Cannot find fam file of", famFile))
 
-    message("Reading fam file:\t", famFile)
+    .message("Reading fam file: %s", basename(famFile))
     sampleInfo <- data.table::fread(famFile, header = FALSE, sep = " ")
 
     if (ncol(sampleInfo) == 1) {
@@ -294,7 +292,7 @@ setGenoInput <- function(GenoFile,
     samplesInGeno <- sampleInfo$V2
     SampleIDs <- updateSampleIDs(SampleIDs, samplesInGeno)
 
-    message("setting PLINK object in CPP....")
+    .message("Setting up PLINK object in C++ ...")
     setPLINKobjInCPP(bimFile, famFile, bedFile, SampleIDs, AlleleOrder)
   }
 
@@ -335,7 +333,7 @@ setGenoInput <- function(GenoFile,
           samplesInGeno <- getSampleIDsFromBGEN(bgenFile)
         }
       } else {
-        message("Reading sample file:\t", sampleFile)
+        .message("Reading sample file: %s", basename(sampleFile))
         sampleData <- data.table::fread(sampleFile, header = TRUE, sep = " ")
         if (ncol(sampleData) < 4) {
           stop("Column number of sample file should be >= 4.")
@@ -353,7 +351,7 @@ setGenoInput <- function(GenoFile,
 
     if (!file.exists(bgiFile)) stop(paste("Cannot find bgi file of", bgiFile))
 
-    message("Reading bgi file:\t", bgiFile)
+    .message("Reading bgi file: %s", basename(bgiFile))
     db_con <- RSQLite::dbConnect(RSQLite::SQLite(), bgiFile)
     on.exit(RSQLite::dbDisconnect(db_con), add = TRUE)
     bgiData <- dplyr::tbl(db_con, "Variant")
@@ -370,6 +368,7 @@ setGenoInput <- function(GenoFile,
 
     SampleIDs <- updateSampleIDs(SampleIDs, samplesInGeno)
 
+    .message("Setting up BGEN object in C++ ...")
     setBGENobjInCPP(bgenFile, bgiFile, samplesInGeno, SampleIDs, FALSE, FALSE, AlleleOrder)
   }
 
@@ -463,7 +462,7 @@ setGenoInput <- function(GenoFile,
   markersExclude <- unique(markersExclude)
 
   # return genotype
-  message("Based on the 'GenoFile' and 'GenoFileIndex',", genoType, "format is used for genotype data.")
+  # .message("Using %s format for genotype data", genoType)
 
   if (anyInclude) {
     markerInfo <- subset(markerInfo, ID %in% markersInclude)
@@ -492,12 +491,13 @@ setGenoInput <- function(GenoFile,
 
 updateSampleIDs <- function(SampleIDs, samplesInGeno) {
   if (is.null(SampleIDs)) {
-    message("Since 'SampleIDs' is not specified, all samples in 'GenoFile' are used.")
+    .message("Using all samples from genotype file (%d samples)", length(samplesInGeno))
     SampleIDs <- samplesInGeno
   }
 
   if (any(!SampleIDs %in% samplesInGeno)) {
-    message(paste(SampleIDs[!SampleIDs %in% samplesInGeno], collapse = "\n"))
+    missing_samples <- SampleIDs[!SampleIDs %in% samplesInGeno]
+    .message("Warning: %d samples not found in genotype file", length(missing_samples))
     stop("The above samples from 'SampleIDs' are not in 'GenoFile' and 'GenoFileIndex'.")
   }
 
@@ -517,13 +517,13 @@ updateSampleIDs <- function(SampleIDs, samplesInGeno) {
 #'
 #' BGENFile <- system.file("extdata", "simuBGEN.bgen", package = "GRAB")
 #' getSampleIDsFromBGEN(BGENFile)
-#' @export
+#'
 getSampleIDsFromBGEN <- function(bgenFile) {
   if (!checkIfSampleIDsExist(bgenFile)) {
     stop("The BGEN file does not include sample identifiers. Please refer to help(checkIfSampleIDsExist) for more details")
   }
 
-  message("extracting sample information from bgen file")
+  .message("Extracting sample information from BGEN file")
   con <- file(bgenFile, "rb")
   seek(con, 4)
   LH <- readBin(con, n = 1, what = "integer", size = 4)
@@ -561,7 +561,7 @@ getSampleIDsFromBGEN <- function(bgenFile) {
 #'
 #' BGENFile <- system.file("extdata", "simuBGEN.bgen", package = "GRAB")
 #' getVersionFromBGEN(BGENFile)
-#' @export
+#'
 getVersionFromBGEN <- function(bgenFile) {
   con <- file(bgenFile, "rb")
   seek(con, 4)
@@ -614,7 +614,7 @@ convert4BitsToNumber <- function(leastSignificantBit) {
 #'
 #' BGENFile <- system.file("extdata", "simuBGEN.bgen", package = "GRAB")
 #' checkIfSampleIDsExist(BGENFile)
-#' @export
+#'
 checkIfSampleIDsExist <- function(bgenFile) {
   con <- file(bgenFile, "rb")
   seek(con, 4)
