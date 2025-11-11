@@ -2,7 +2,7 @@
 % Please edit documentation in R/GRAB_Simu.R
 \name{GRAB.SimuGMatFromGenoFile}
 \alias{GRAB.SimuGMatFromGenoFile}
-\title{GRAB: simulate genotype matrix based on family structure}
+\title{Simulate genotype matrix from external genotype file}
 \usage{
 GRAB.SimuGMatFromGenoFile(
   nFam,
@@ -15,42 +15,50 @@ GRAB.SimuGMatFromGenoFile(
 )
 }
 \arguments{
-\item{nFam}{number of families in simulation}
+\item{nFam}{Number of families to simulate.}
 
-\item{nSub}{number of unrelated subjects in simulation}
+\item{nSub}{Number of unrelated subjects to simulate.}
 
-\item{FamMode}{"4-members", "10-members", or "20-members". Check Details section for more details.}
+\item{FamMode}{Family structure: "4-members", "10-members", or "20-members".
+See Details for pedigree structures.}
 
-\item{GenoFile}{this parameter is passed to \code{GRAB.ReadGeno} to read in genotype data.}
+\item{GenoFile}{Path to genotype file (passed to \code{\link{GRAB.ReadGeno}}).}
 
-\item{GenoFileIndex}{this parameter is passed to \code{GRAB.ReadGeno} to read in genotype data.}
+\item{GenoFileIndex}{Index file for genotype data (optional, for BGEN files).}
 
-\item{SampleIDs}{this parameter is passed to \code{GRAB.ReadGeno} to read in genotype data.}
+\item{SampleIDs}{Vector of sample IDs to include (optional).}
 
-\item{control}{this parameter is passed to \code{GRAB.ReadGeno} to read in genotype data.}
+\item{control}{List of control parameters passed to \code{\link{GRAB.ReadGeno}}.}
 }
 \value{
-a genotype matrix of genotype data
+List containing:
+\describe{
+\item{GenoMat}{Simulated genotype matrix (subjects × variants).}
+\item{SubjIDs}{Subject identifiers for simulated samples.}
+\item{markerInfo}{Variant information from input file.}
+}
 }
 \description{
-Simulate genotype matrix based on family structure using haplotype information from genotype files. This function is mainly to simulate genotype data for rare variants analysis. NOTE: if simulating related subjects, the genotype of two allele will be assigned to two haplotypes of one allele randomly.
+Generates genotype matrices for families and unrelated subjects using
+haplotype data from existing genotype files. Primarily designed for
+rare variant analysis simulations.
 }
 \details{
-Currently, function \code{GRAB.SimuGMatFromGenoFile} supports both unrelated and related subjects.
-Genotype data of founders is from \code{GenoFile} and \code{GenoFileIndex}.
-\subsection{If \code{FamMode = "4-members"}}{
+This function supports both unrelated and related subjects. Founder genotypes
+are sampled from the input genotype file, and offspring genotypes are generated
+through Mendelian inheritance.
 
-Total number of subjects is \code{nSub + 4 * nFam}. Each family includes 4 members with the family structure as below: 1+2->3+4.
+\strong{Note}: When simulating related subjects, alleles are randomly assigned to
+haplotypes during the phasing process.
+\subsection{Family Structures:}{
+\itemize{
+\item \strong{4-members}: Total subjects = nSub + 4×nFam. Structure: 1+2→3+4
+\item \strong{10-members}: Total subjects = nSub + 10×nFam.
+Structure: 1+2→5+6, 3+5→7+8, 4+6→9+10
+\item \strong{20-members}: Total subjects = nSub + 20×nFam.
+Structure: 1+2→9+10, 3+9→11+12, 4+10→13+14, 5+11→15+16,
+6+12→17, 7+13→18, 8+14→19+20
 }
-
-\subsection{If \code{FamMode = "10-members"}}{
-
-Total number of subjects is \code{nSub + 10 * nFam}. Each family includes 10 members with the family structure as below: 1+2->5+6, 3+5->7+8, 4+6->9+10.
-}
-
-\subsection{If \code{FamMode = "20-members"}}{
-
-Total number of subjects is \code{nSub + 20 * nFam}. Each family includes 20 members with the family structure as below: 1+2->9+10, 3+9->11+12, 4+10->13+14, 5+11->15+16, 6+12->17, 7+13->18, 8+14->19+20.
 }
 }
 \examples{

@@ -1,6 +1,9 @@
 #' SAGELD method in GRAB package
 #'
-#' SAGELD method is Scalable and Accurate algorithm for Gene-Environment interaction analysis using Longitudinal Data for related samples in a large-scale biobank. SAGELD extended SPA<sub>GRM</sub> to support gene-environment interaction analysis.
+#' SAGELD method is Scalable and Accurate algorithm for Gene-Environment
+#' interaction analysis using Longitudinal Data for related samples in a
+#' large-scale biobank. SAGELD extended SPA<sub>GRM</sub> to support
+#' gene-environment interaction analysis.
 #'
 #' @details
 #' Additional list of \code{control} in \code{SAGELD.NullModel()} function.
@@ -13,37 +16,28 @@ GRAB.SAGELD <- function() {
   .message("Using SAGELD method - see ?GRAB.SAGELD for details")
 }
 
-################### This file includes the following functions
 
-# ------------ used in 'GRAB_Marker.R' -----------
-# 1. checkControl.Marker.SAGELD(control)
-# 2. setMarker.SAGELD(objNull, control)
-# 3. mainMarker.SAGELD()
-
-# check the control list in marker-level testing
-checkControl.Marker.SAGELD <- function(control) {
-  default.control <- list(
-    SPA_Cutoff = 2,
-    zeta = 0,
-    tol = 1e-4
-  )
-
-  control <- updateControl(control, default.control) # This file is in 'control.R'
-
-  return(control)
-}
-
-checkControl.SAGELD.NullModel <- function(control,
-                                          ResidMat,
-                                          SparseGRM,
-                                          PairwiseIBD) {
+#' @title Validate control parameters for SAGELD null model
+#' @param control List of control parameters for null model fitting.
+#' @param ResidMat Matrix of residuals from the fitted model.
+#' @param SparseGRM Sparse genetic relationship matrix data.
+#' @param PairwiseIBD Pairwise identity-by-descent data.
+#' @return Updated control list with validated parameters and defaults.
+#' @keywords internal
+checkControl.SAGELD.NullModel <- function(
+  control,
+  ResidMat,
+  SparseGRM,
+  PairwiseIBD
+) {
   default.control <- list(
     MaxQuantile = 0.75,
     MinQuantile = 0.25,
     OutlierRatio = 1.5,
     ControlOutlier = TRUE,
     MaxNuminFam = 5,
-    MAF_interval = c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5)
+    MAF_interval = c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05,
+                     0.1, 0.2, 0.3, 0.4, 0.5)
   )
 
   control <- updateControl(control, default.control) # This file is in 'control.R'
@@ -79,115 +73,41 @@ checkControl.SAGELD.NullModel <- function(control,
   return(control)
 }
 
-setMarker.SAGELD <- function(objNull, control) {
-  setSAGELDobjInCPP(
-    objNull$Method,
-    objNull$XTs,
-    objNull$SS,
-    objNull$AtS,
-    objNull$Q,
-    objNull$A21,
-    objNull$TTs,
-    objNull$Tys,
-    objNull$sol,
-    objNull$blups,
-    objNull$sig,
-    objNull$Resid,
-    objNull$Resid_G,
-    objNull$Resid_GxE,
-    objNull$Resid_E,
-    objNull$Resid.unrelated.outliers,
-    objNull$Resid.unrelated.outliers_G,
-    objNull$Resid.unrelated.outliers_GxE,
-    objNull$sum_R_nonOutlier,
-    objNull$sum_R_nonOutlier_G,
-    objNull$sum_R_nonOutlier_GxE,
-    objNull$R_GRM_R,
-    objNull$R_GRM_R_G,
-    objNull$R_GRM_R_GxE,
-    objNull$R_GRM_R_G_GxE,
-    objNull$R_GRM_R_E,
-    objNull$R_GRM_R_nonOutlier,
-    objNull$R_GRM_R_nonOutlier_G,
-    objNull$R_GRM_R_nonOutlier_GxE,
-    objNull$R_GRM_R_nonOutlier_G_GxE,
-    objNull$R_GRM_R_TwoSubjOutlier,
-    objNull$R_GRM_R_TwoSubjOutlier_G,
-    objNull$R_GRM_R_TwoSubjOutlier_GxE,
-    objNull$R_GRM_R_TwoSubjOutlier_G_GxE,
-    objNull$TwoSubj_list,
-    objNull$ThreeSubj_list,
-    objNull$MAF_interval,
-    objNull$zScoreE_cutoff,
-    control$SPA_Cutoff,
-    control$zeta,
-    control$tol
-  )
-}
-
-mainMarker.SAGELD <- function(genoType, genoIndex, outputColumns, objNull) {
-  OutList <- mainMarkerInCPP("SAGELD", genoType, genoIndex)
-
-  Method <- objNull$Method
-
-  n_marker <- length(OutList$markerVec)
-
-  if (Method == "SAGELD") {
-    obj.mainMarker <- data.frame(
-      Marker = OutList$markerVec, # marker IDs
-      Info = OutList$infoVec, # marker information: CHR:POS:REF:ALT
-      AltFreq = OutList$altFreqVec, # alternative allele frequencies
-      AltCounts = OutList$altCountsVec, # alternative allele counts
-      MissingRate = OutList$missingRateVec, # alternative allele counts
-      Method = Method, # method
-      zScore_G = OutList$zScore[2 * 1:n_marker - 1], # standardized score statistics for G
-      zScore_GxE = OutList$zScore[2 * 1:n_marker], # standardized score statistics for GxE
-      Pvalue_G = OutList$pvalVec[2 * 1:n_marker - 1], # marker-level p-value for G
-      Pvalue_GxE = OutList$pvalVec[2 * 1:n_marker], # marker-level p-value for GxE
-      hwepval = OutList$hwepvalVec
-    ) # marker-level HWE pvalue
-  } else if (Method == "GALLOP") {
-    obj.mainMarker <- data.frame(
-      Marker = OutList$markerVec, # marker IDs
-      Info = OutList$infoVec, # marker information: CHR:POS:REF:ALT
-      AltFreq = OutList$altFreqVec, # alternative allele frequencies
-      AltCounts = OutList$altCountsVec, # alternative allele counts
-      MissingRate = OutList$missingRateVec, # alternative allele counts
-      Method = Method, # method
-      Beta_G = OutList$beta[2 * 1:n_marker - 1], # beta estimate for G
-      Beta_GxE = OutList$beta[2 * 1:n_marker], # beta estimate for GxE
-      SE_G = OutList$seBeta[2 * 1:n_marker - 1], # SE estimate for G
-      SE_GxE = OutList$seBeta[2 * 1:n_marker], # SE estimate for GxE
-      Pvalue_G = OutList$pvalVec[2 * 1:n_marker - 1], # marker-level p-value for G
-      Pvalue_GxE = OutList$pvalVec[2 * 1:n_marker], # marker-level p-value for GxE
-      hwepval = OutList$hwepvalVec
-    ) # marker-level HWE pvalue
-  }
-
-  return(obj.mainMarker)
-}
 
 #' Fit a SAGELD Null Model
 #'
-#' @param NullModel A fitted null model object from either \code{lme4::lmer()} or \code{glmmTMB::glmmTMB()}. This model should include the phenotype, environmental variable, covariates, and random effects structure.
-#' @param UsedMethod A character string specifying the method to use. Options are "SAGELD" (default) for gene-environment interaction analysis, or "GALLOP" for analysis using only unrelated samples.
-#' @param PlinkFile A character string specifying the path to PLINK files (without file extensions like ".bed", ".bim", or ".fam"). Used to read genotype data for calculating lambda values in gene-environment interaction models.
-#' @param SparseGRMFile A character string specifying the path to a sparse genetic relationship matrix (GRM) file. This file should be generated using the \code{getSparseGRM()} function and contain three columns: 'ID1', 'ID2', and 'Value'.
-#' @param PairwiseIBDFile A character string specifying the path to a pairwise identity-by-descent (IBD) file. This file should be generated using the \code{getPairwiseIBD()} function and contain five columns: 'ID1', 'ID2', 'pa', 'pb', and 'pc'.
-#' @param PvalueCutoff A numeric value (default: 0.001) specifying the p-value cutoff for marginal genetic effect on the environmental variable. Used to filter SNPs when calculating lambda values for gene-environment interaction models.
-#' @param control A list of control parameters for the null model fitting process. Available options include:
+#' @param NullModel A fitted null model object from either \code{lme4::lmer()} or
+#'   \code{glmmTMB::glmmTMB()}. This model should include the phenotype,
+#'   environmental variable, covariates, and random effects structure.
+#' @param UsedMethod A character string specifying the method to use. Options are
+#'   "SAGELD" (default) for gene-environment interaction analysis, or "GALLOP"
+#'   for analysis using only unrelated samples.
+#' @param PlinkFile A character string specifying the path to PLINK files
+#'   (without file extensions like ".bed", ".bim", or ".fam"). Used to read
+#'   genotype data for calculating lambda values in gene-environment interaction models.
+#' @param SparseGRMFile A character string specifying the path to a sparse genetic
+#'   relationship matrix (GRM) file. This file should be generated using the
+#'   \code{getSparseGRM()} function and contain three columns: 'ID1', 'ID2', and 'Value'.
+#' @param PairwiseIBDFile A character string specifying the path to a pairwise
+#'   identity-by-descent (IBD) file. This file should be generated using the
+#'   \code{getPairwiseIBD()} function and contain five columns: 'ID1', 'ID2', 'pa', 'pb', and 'pc'.
+#' @param PvalueCutoff A numeric value (default: 0.001) specifying the p-value
+#'   cutoff for marginal genetic effect on the environmental variable. Used to
+#'   filter SNPs when calculating lambda values for gene-environment interaction models.
+#' @param control A list of control parameters for the null model fitting process.
+#'   Available options include:
 #'
 #' @return A SAGELD null model object
 #'
-#'
-SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmTMB.
-                             UsedMethod = "SAGELD", # default running "SAGELD", user can also run "GALLOP" using unrelated samples.
-                             PlinkFile, # a PLINK file path to read in some genotypes (without file suffix like ".bim", "bed" or "fam").
-                             SparseGRMFile, # a path of SparseGRMFile get from getSparseGRM() function.
-                             PairwiseIBDFile, # a path of PairwiseIBDFile get from getPairwiseIBD() function.
-                             PvalueCutoff = 0.001, # a p value cutoff for marginal genetic effect on environmental variable.
-                             control = list()) # control command used in 'SPAGRM.NullModel', see also 'SPAGRM.NullModel'.
-{
+SAGELD.NullModel <- function(
+  NullModel, # a fitted null model from lme4 or glmmTMB.
+  UsedMethod = "SAGELD", # default running "SAGELD", user can also run "GALLOP" using unrelated samples.
+  PlinkFile, # a PLINK file path to read in some genotypes (without file suffix like ".bim", "bed" or "fam").
+  SparseGRMFile, # a path of SparseGRMFile get from getSparseGRM() function.
+  PairwiseIBDFile, # a path of PairwiseIBDFile get from getPairwiseIBD() function.
+  PvalueCutoff = 0.001, # a p value cutoff for marginal genetic effect on environmental variable.
+  control = list() # control command used in 'SPAGRM.NullModel', see also 'SPAGRM.NullModel'.
+) {
   .message("Processing null model ...")
 
   # Extract variance components and compute penalty matrix (P)
@@ -208,7 +128,6 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
 
     SubjIDColname <- colnames(Pheno_data)[ncol(Pheno_data)]
 
-    # varcor = glmmTMB::VarCorr(NullModel)$cond
     cmd <- "varcor = glmmTMB::VarCorr(NullModel)$cond"
     eval(parse(text = cmd))
     cmd <- paste0("varcor$", SubjIDColname)
@@ -263,8 +182,7 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
   SS <- matrix(NA, 2 * n, 2)
 
   uk <- 0
-  for (i in 1:n)
-  {
+  for (i in 1:n) {
     ki <- k[i]
     uk <- max(uk) + 1:ki
     u2 <- (i - 1) * 2 + 1:2
@@ -298,8 +216,7 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
   AtS <- matrix(0, n, 2 * nx)
 
   uk <- 0
-  for (i in 1:n)
-  {
+  for (i in 1:n) {
     ki <- k[i]
     uk <- max(uk) + 1:ki
     if (ki == 1) {
@@ -319,7 +236,8 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
     obj <- list(
       subjData = SubjID, N = length(SubjID), Method = "GALLOP",
       XTs = XTs, SS = SS, AtS = AtS, Q = Q, A21 = A21, TTs = TTs, Tys = Tys, sol = sol, blups = blups, sig = sig,
-      Resid = numeric(0), Resid_G = numeric(0), Resid_GxE = numeric(0), Resid_E = numeric(0), Resid.unrelated.outliers = numeric(0),
+      Resid = numeric(0), Resid_G = numeric(0), Resid_GxE = numeric(0), Resid_E = numeric(0), 
+      Resid.unrelated.outliers = numeric(0),
       Resid.unrelated.outliers_G = numeric(0), Resid.unrelated.outliers_GxE = numeric(0),
       R_GRM_R = 0, R_GRM_R_G = 0, R_GRM_R_GxE = 0, R_GRM_R_G_GxE = 0, R_GRM_R_E = 0,
       R_GRM_R_TwoSubjOutlier = 0, R_GRM_R_TwoSubjOutlier_G = 0,
@@ -383,10 +301,9 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
     R_GRM_R_GxE <- sum(SparseGRM2$GxE_Cov)
     R_GRM_R_G_GxE <- sum(SparseGRM2$G_GxE_Cov1 + SparseGRM2$G_GxE_Cov2)
     R_GRM_R_E <- sum(SparseGRM2$E_Cov)
-    # R_GRM_R = R_GRM_R_GxE + lambda^2 * R_GRM_R_G - lambda * R_GRM_R_G_GxE
 
     # threshold for G to E
-    if (PvalueCutoff >= 0 & PvalueCutoff <= 1) {
+    if (PvalueCutoff >= 0 && PvalueCutoff <= 1) {
       zScoreE_cutoff <- qnorm(PvalueCutoff / 2, lower.tail = FALSE)
     } else {
       stop("Please check ", PvalueCutoff, ". It should be a p value.")
@@ -433,14 +350,13 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
     }
 
     lambdaObs <- c()
-    for (i in seq_len(nrow(GenoMatInfo$markerInfo)))
-    {
+    for (i in seq_len(nrow(GenoMatInfo$markerInfo))) {
       si <- GenoMatInfo$GenoMat[, i]
       mu <- mean(si) / 2
 
       zScoreE <- sum(Resid_E * si) / sqrt(2 * mu * (1 - mu) * R_GRM_R_E)
 
-      if (mu > 0.05 & mu < 0.95 & abs(zScoreE) < zScoreE_cutoff) {
+      if (mu > 0.05 && mu < 0.95 && abs(zScoreE) < zScoreE_cutoff) {
         snp2 <- rep(si, each = 2)
         H1 <- matrix(crossprod(si, XTs), nx, 2)
         H2 <- snp2 * SS
@@ -508,7 +424,10 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
     outlier_count <- sum(Resid_data$Outlier)
     .message("Identified %d outliers", outlier_count)
     if (outlier_count > 0) {
-      outlier_info <- Resid_data %>% filter(Outlier == TRUE) %>% dplyr::select(SubjID, Resid, Outlier) %>% arrange(Resid)
+      outlier_info <- Resid_data %>% 
+        filter(Outlier == TRUE) %>% 
+        dplyr::select(SubjID, Resid, Outlier) %>% 
+        arrange(Resid)
       print(outlier_info)
     }
 
@@ -563,7 +482,8 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
       unlist(use.names = FALSE)
     Resid.unrelated.outliers <- Resid.unrelated.outliers_GxE - lambda * Resid.unrelated.outliers_G
 
-    R_GRM_R_TwoSubjOutlier <- R_GRM_R_TwoSubjOutlier_G <- R_GRM_R_TwoSubjOutlier_GxE <- R_GRM_R_TwoSubjOutlier_G_GxE <- 0
+    R_GRM_R_TwoSubjOutlier <- R_GRM_R_TwoSubjOutlier_G <- 0
+    R_GRM_R_TwoSubjOutlier_GxE <- R_GRM_R_TwoSubjOutlier_G_GxE <- 0
 
     TwoSubj_list <- ThreeSubj_list <- list()
 
@@ -576,8 +496,7 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
     if (nGraph != 0) {
       .message("Processing related residual information for %d families", nGraph)
 
-      for (i in 1:nGraph)
-      {
+      for (i in 1:nGraph) {
         if (i %% 1000 == 0) {
           .message("Progress: %d/%d families processed", i, nGraph)
         }
@@ -608,8 +527,6 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
           next
         }
 
-        # cat("Family ", i, " (with outliers) includes ", length(comp3), " subjects:", comp3, "\n")
-
         vcount <- igraph::vcount(comp1) # number of vertices
 
         if (vcount <= MaxNuminFam) {
@@ -624,32 +541,25 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
         tempGRM1 <- SparseGRM1 %>%
           filter(ID1 %in% comp3 | ID2 %in% comp3) %>%
           arrange(Cov)
-        for (j in seq_len(nrow(tempGRM1)))
-        {
-          # cat("j:\t",j,"\n")
+        for (j in seq_len(nrow(tempGRM1))) {
           edgesToRemove <- paste0(tempGRM1$ID1[j], "|", tempGRM1$ID2[j])
           comp1.temp <- igraph::delete.edges(comp1.temp, edgesToRemove)
-          vcount <- igraph::decompose(comp1.temp) %>% sapply(igraph::vcount) # vertices count for the new graph after edge removal
-          # cat("vcount:\t",vcount,"\n")
+          # vertices count for the new graph after edge removal
+          vcount <- igraph::decompose(comp1.temp) %>% sapply(igraph::vcount)
           if (max(vcount) <= MaxNuminFam) {
             break
           }
         }
 
-        # cat("Edge removal complete. Counts of vertices:\t", vcount,"\n")
-
         # Step 2: add the (removed) edges while keeping the largest family size <= MaxNuminFam, default is 5.
 
         tempGRM1 <- tempGRM1[1:j, ] %>% arrange(desc(Cov))
         comp1 <- comp1.temp
-        for (k in seq_len(nrow(tempGRM1)))
-        {
-          # cat("k:\t",k,"\n")
+        for (k in seq_len(nrow(tempGRM1))) {
           edgesToAdd <- c(tempGRM1$ID1[k], tempGRM1$ID2[k])
           comp1.temp <- igraph::add.edges(comp1, edgesToAdd)
 
-          vcount <- igraph::decompose(comp1.temp) %>% sapply(igraph::vcount) # vertices count for the new graph after edge removal
-          # cat("vcount:\t",vcount,"\n")
+          vcount <- igraph::decompose(comp1.temp) %>% sapply(igraph::vcount)
 
           if (max(vcount) <= MaxNuminFam) {
             comp1 <- comp1.temp
@@ -658,10 +568,7 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
 
         comp1 <- igraph::decompose(comp1)
 
-        # cat("Edge add complete. Counts of vertices:\t", comp1 %>% sapply(igraph::vcount),"\n")
-
-        for (k in 1:length(comp1))
-        {
+        for (k in seq_along(comp1)) {
           comp11 <- comp1[[k]]
           comp13 <- igraph::V(comp11)$name
 
@@ -695,11 +602,9 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
 
       # Make a list of array index.
       arr.index <- list()
-      for (n in 1:MaxNuminFam)
-      {
+      for (n in 1:MaxNuminFam) {
         temp <- c()
-        for (i in 1:n)
-        {
+        for (i in 1:n) {
           indexString <- rep("c(1, 1, 1)", n)
           indexString[i] <- "0:2"
           indexString <- paste0(indexString, collapse = "%o%")
@@ -714,8 +619,7 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
       if (n.outliers != 0) {
         ## The below values are only used in chou.liu.tree
         TwofamID.index <- ThreefamID.index <- 0
-        for (index.outlier in 1:n.outliers)
-        {
+        for (index.outlier in 1:n.outliers) {
           if (index.outlier %% 1000 == 0) {
             .message("CLT progress: %d families processed", index.outlier)
           }
@@ -746,7 +650,8 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
             R_GRM_R_TwoSubjOutlier_G.temp <- as.numeric(t(Resid_G.temp) %*% block_GRM %*% Resid_G.temp)
             R_GRM_R_TwoSubjOutlier_GxE.temp <- as.numeric(t(Resid_GxE.temp) %*% block_GRM %*% Resid_GxE.temp)
             R_GRM_R_TwoSubjOutlier_G_GxE.temp <- as.numeric(t(Resid_G.temp) %*% block_GRM %*% Resid_GxE.temp) * 2
-            R_GRM_R_TwoSubjOutlier.temp <- R_GRM_R_TwoSubjOutlier_GxE.temp + lambda^2 * R_GRM_R_TwoSubjOutlier_G.temp - lambda * R_GRM_R_TwoSubjOutlier_G_GxE.temp
+            R_GRM_R_TwoSubjOutlier.temp <- R_GRM_R_TwoSubjOutlier_GxE.temp + 
+              lambda^2 * R_GRM_R_TwoSubjOutlier_G.temp - lambda * R_GRM_R_TwoSubjOutlier_G_GxE.temp
 
             R_GRM_R_TwoSubjOutlier <- R_GRM_R_TwoSubjOutlier + R_GRM_R_TwoSubjOutlier.temp
             R_GRM_R_TwoSubjOutlier_G <- R_GRM_R_TwoSubjOutlier_G + R_GRM_R_TwoSubjOutlier_G.temp
@@ -789,16 +694,25 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
 
     obj <- list(
       subjData = SubjID, N = length(SubjID), Method = "SAGELD",
-      XTs = XTs, SS = SS, AtS = AtS, Q = Q, A21 = A21, TTs = TTs, Tys = Tys, sol = sol, blups = blups, sig = sig,
-      Resid = Resid, Resid_G = Resid_G, Resid_GxE = Resid_GxE, Resid_E = Resid_E, Resid.unrelated.outliers = Resid.unrelated.outliers,
-      Resid.unrelated.outliers_G = Resid.unrelated.outliers_G, Resid.unrelated.outliers_GxE = Resid.unrelated.outliers_GxE,
-      R_GRM_R = R_GRM_R, R_GRM_R_G = R_GRM_R_G, R_GRM_R_GxE = R_GRM_R_GxE, R_GRM_R_G_GxE = R_GRM_R_G_GxE, R_GRM_R_E = R_GRM_R_E,
-      R_GRM_R_TwoSubjOutlier = R_GRM_R_TwoSubjOutlier, R_GRM_R_TwoSubjOutlier_G = R_GRM_R_TwoSubjOutlier_G,
-      R_GRM_R_TwoSubjOutlier_GxE = R_GRM_R_TwoSubjOutlier_GxE, R_GRM_R_TwoSubjOutlier_G_GxE = R_GRM_R_TwoSubjOutlier_G_GxE,
-      sum_R_nonOutlier = sum_R_nonOutlier, sum_R_nonOutlier_G = sum_R_nonOutlier_G, sum_R_nonOutlier_GxE = sum_R_nonOutlier_GxE,
+      XTs = XTs, SS = SS, AtS = AtS, Q = Q, A21 = A21, TTs = TTs, Tys = Tys, 
+      sol = sol, blups = blups, sig = sig,
+      Resid = Resid, Resid_G = Resid_G, Resid_GxE = Resid_GxE, Resid_E = Resid_E, 
+      Resid.unrelated.outliers = Resid.unrelated.outliers,
+      Resid.unrelated.outliers_G = Resid.unrelated.outliers_G, 
+      Resid.unrelated.outliers_GxE = Resid.unrelated.outliers_GxE,
+      R_GRM_R = R_GRM_R, R_GRM_R_G = R_GRM_R_G, R_GRM_R_GxE = R_GRM_R_GxE, 
+      R_GRM_R_G_GxE = R_GRM_R_G_GxE, R_GRM_R_E = R_GRM_R_E,
+      R_GRM_R_TwoSubjOutlier = R_GRM_R_TwoSubjOutlier, 
+      R_GRM_R_TwoSubjOutlier_G = R_GRM_R_TwoSubjOutlier_G,
+      R_GRM_R_TwoSubjOutlier_GxE = R_GRM_R_TwoSubjOutlier_GxE, 
+      R_GRM_R_TwoSubjOutlier_G_GxE = R_GRM_R_TwoSubjOutlier_G_GxE,
+      sum_R_nonOutlier = sum_R_nonOutlier, sum_R_nonOutlier_G = sum_R_nonOutlier_G, 
+      sum_R_nonOutlier_GxE = sum_R_nonOutlier_GxE,
       R_GRM_R_nonOutlier = R_GRM_R_nonOutlier, R_GRM_R_nonOutlier_G = R_GRM_R_nonOutlier_G,
-      R_GRM_R_nonOutlier_GxE = R_GRM_R_nonOutlier_GxE, R_GRM_R_nonOutlier_G_GxE = R_GRM_R_nonOutlier_G_GxE,
-      TwoSubj_list = TwoSubj_list, ThreeSubj_list = ThreeSubj_list, MAF_interval = MAF_interval, zScoreE_cutoff = zScoreE_cutoff
+      R_GRM_R_nonOutlier_GxE = R_GRM_R_nonOutlier_GxE, 
+      R_GRM_R_nonOutlier_G_GxE = R_GRM_R_nonOutlier_G_GxE,
+      TwoSubj_list = TwoSubj_list, ThreeSubj_list = ThreeSubj_list, 
+      MAF_interval = MAF_interval, zScoreE_cutoff = zScoreE_cutoff
     )
 
     class(obj) <- "SAGELD_NULL_Model"
@@ -807,4 +721,132 @@ SAGELD.NullModel <- function(NullModel, # a fitted null model from lme4 or glmmT
   }
 
   return(obj)
+}
+
+
+# check the control list in marker-level testing
+#' @title Validate control parameters for SAGELD marker testing
+#' @param control List of control parameters for marker-level analysis.
+#' @return Updated control list with validated parameters and defaults.
+#' @keywords internal
+checkControl.Marker.SAGELD <- function(control) {
+  default.control <- list(
+    SPA_Cutoff = 2,
+    zeta = 0,
+    tol = 1e-4
+  )
+
+  control <- updateControl(control, default.control) # This file is in 'control.R'
+
+  return(control)
+}
+
+
+#' @title Set up marker-level testing for SAGELD method
+#' @param objNull Null model object from SAGELD.NullModel().
+#' @param control List of control parameters.
+#' @return List containing setup parameters for marker testing.
+#' @keywords internal
+setMarker.SAGELD <- function(
+  objNull,
+  control
+) {
+  setSAGELDobjInCPP(
+    objNull$Method,
+    objNull$XTs,
+    objNull$SS,
+    objNull$AtS,
+    objNull$Q,
+    objNull$A21,
+    objNull$TTs,
+    objNull$Tys,
+    objNull$sol,
+    objNull$blups,
+    objNull$sig,
+    objNull$Resid,
+    objNull$Resid_G,
+    objNull$Resid_GxE,
+    objNull$Resid_E,
+    objNull$Resid.unrelated.outliers,
+    objNull$Resid.unrelated.outliers_G,
+    objNull$Resid.unrelated.outliers_GxE,
+    objNull$sum_R_nonOutlier,
+    objNull$sum_R_nonOutlier_G,
+    objNull$sum_R_nonOutlier_GxE,
+    objNull$R_GRM_R,
+    objNull$R_GRM_R_G,
+    objNull$R_GRM_R_GxE,
+    objNull$R_GRM_R_G_GxE,
+    objNull$R_GRM_R_E,
+    objNull$R_GRM_R_nonOutlier,
+    objNull$R_GRM_R_nonOutlier_G,
+    objNull$R_GRM_R_nonOutlier_GxE,
+    objNull$R_GRM_R_nonOutlier_G_GxE,
+    objNull$R_GRM_R_TwoSubjOutlier,
+    objNull$R_GRM_R_TwoSubjOutlier_G,
+    objNull$R_GRM_R_TwoSubjOutlier_GxE,
+    objNull$R_GRM_R_TwoSubjOutlier_G_GxE,
+    objNull$TwoSubj_list,
+    objNull$ThreeSubj_list,
+    objNull$MAF_interval,
+    objNull$zScoreE_cutoff,
+    control$SPA_Cutoff,
+    control$zeta,
+    control$tol
+  )
+}
+
+
+#' @title Perform marker-level analysis for SAGELD method
+#' @param genoType Character string specifying genotype file format.
+#' @param genoIndex Integer vector of genotype indices to analyze.
+#' @param outputColumns Character vector specifying output columns to include.
+#' @param objNull Null model object containing analysis parameters.
+#' @return Data frame containing analysis results.
+#' @keywords internal
+mainMarker.SAGELD <- function(
+  genoType,
+  genoIndex,
+  outputColumns,
+  objNull
+) {
+  OutList <- mainMarkerInCPP("SAGELD", genoType, genoIndex)
+
+  Method <- objNull$Method
+
+  n_marker <- length(OutList$markerVec)
+
+  if (Method == "SAGELD") {
+    obj.mainMarker <- data.frame(
+      Marker = OutList$markerVec, # marker IDs
+      Info = OutList$infoVec, # marker information: CHR:POS:REF:ALT
+      AltFreq = OutList$altFreqVec, # alternative allele frequencies
+      AltCounts = OutList$altCountsVec, # alternative allele counts
+      MissingRate = OutList$missingRateVec, # alternative allele counts
+      Method = Method, # method
+      zScore_G = OutList$zScore[2 * 1:n_marker - 1], # standardized score statistics for G
+      zScore_GxE = OutList$zScore[2 * 1:n_marker], # standardized score statistics for GxE
+      Pvalue_G = OutList$pvalVec[2 * 1:n_marker - 1], # marker-level p-value for G
+      Pvalue_GxE = OutList$pvalVec[2 * 1:n_marker], # marker-level p-value for GxE
+      hwepval = OutList$hwepvalVec
+    ) # marker-level HWE pvalue
+  } else if (Method == "GALLOP") {
+    obj.mainMarker <- data.frame(
+      Marker = OutList$markerVec, # marker IDs
+      Info = OutList$infoVec, # marker information: CHR:POS:REF:ALT
+      AltFreq = OutList$altFreqVec, # alternative allele frequencies
+      AltCounts = OutList$altCountsVec, # alternative allele counts
+      MissingRate = OutList$missingRateVec, # alternative allele counts
+      Method = Method, # method
+      Beta_G = OutList$beta[2 * 1:n_marker - 1], # beta estimate for G
+      Beta_GxE = OutList$beta[2 * 1:n_marker], # beta estimate for GxE
+      SE_G = OutList$seBeta[2 * 1:n_marker - 1], # SE estimate for G
+      SE_GxE = OutList$seBeta[2 * 1:n_marker], # SE estimate for GxE
+      Pvalue_G = OutList$pvalVec[2 * 1:n_marker - 1], # marker-level p-value for G
+      Pvalue_GxE = OutList$pvalVec[2 * 1:n_marker], # marker-level p-value for GxE
+      hwepval = OutList$hwepvalVec
+    ) # marker-level HWE pvalue
+  }
+
+  return(obj.mainMarker)
 }

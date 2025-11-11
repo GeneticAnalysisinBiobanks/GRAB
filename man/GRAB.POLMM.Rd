@@ -13,7 +13,8 @@ No return value, called for side effects (prints information about the POLMM met
 POLMM method is to analyze ordinal categorical data for related samples in a large-scale biobank.
 }
 \details{
-Please check \code{?GRAB.control} for the generic list of \code{control} in \code{GRAB.NullModel()} and \code{GRAB.Marker()}.
+Please check \code{?GRAB.control} for the generic list of \code{control} in
+\code{GRAB.NullModel()} and \code{GRAB.Marker()}.
 
 Additional list of \code{control} in \code{GRAB.NullModel()} function
 Additional list of \code{control} in \code{GRAB.Marker()} function

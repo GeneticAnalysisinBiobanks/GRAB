@@ -2,7 +2,7 @@
 % Please edit documentation in R/GRAB_Simu.R
 \name{GRAB.makePlink}
 \alias{GRAB.makePlink}
-\title{Make PLINK files using a numeric R matrix}
+\title{Convert genotype matrix to PLINK format files}
 \usage{
 GRAB.makePlink(
   GenoMat,
@@ -16,50 +16,58 @@ GRAB.makePlink(
 )
 }
 \arguments{
-\item{GenoMat}{a numeric \code{n*m} genotype matrix (0,1,2,-9). Each row is for one subject and each column is for one marker. Row names of subject IDs and column names of marker IDs are required.}
+\item{GenoMat}{Numeric genotype matrix (n×m) with values 0, 1, 2, or -9.
+Rows = subjects, columns = markers. Row and column names are required.}
 
-\item{OutputPrefix}{a character, prefix of the PLINK files to output (including path).}
+\item{OutputPrefix}{Output file prefix including path (without extension).}
 
-\item{A1}{a character to specify allele 1 (\emph{default="G"}), usually minor (ALT).}
+\item{A1}{Allele 1 character, usually minor/ALT allele (default: "G").}
 
-\item{A2}{a character to specify allele 2 (\emph{default="A"}), usually major (REF).}
+\item{A2}{Allele 2 character, usually major/REF allele (default: "A").}
 
-\item{CHR}{a character vector of the chromosome numbers for all markers. \emph{Default=NULL}, that is, \code{CHR=rep(1, m)}.}
+\item{CHR}{Chromosome numbers for markers (default: all chromosome 1).}
 
-\item{BP}{a numeric vector of the base positions for all markers. \emph{Default=NULL}, that is, \code{BP=1:m)}.}
+\item{BP}{Base positions for markers (default: 1:m).}
 
-\item{Pheno}{a character vector of the phenotypes for all subjects. \emph{Default=NULL}, that is, \code{Pheno=rep(-9, n)}.}
+\item{Pheno}{Phenotype values for subjects (default: all missing as -9).}
 
-\item{Sex}{a numeric vector of the sex for all subjects. \emph{Default=NULL}, that is, \code{Sex=rep(1, n))}.}
+\item{Sex}{Sex codes for subjects (default: all coded as 1).}
 }
 \value{
-\code{PLINK} text files (PED and MAP) are stored in 'OutputPrefix'. Suppose A1 is "G" and A2 is "A", then genotype of 0,1,2,-9 will be coded as "GG", "AG", "AA", "00". If PLINK binary files (BED, BIM, and FAM) are required, please download PLINK software and use option of "--make-bed".
-Please check \code{Details} section for the downstream process.
+Character message confirming file creation location.
 }
 \description{
-Make PLINK files using a numeric matrix \code{GenoMat} (0,1,2,-9), \code{rownames(GenoMat)} are subject IDs and \code{colnames(GenoMat)} are marker IDs
+Converts a numeric genotype matrix to PLINK text files (PED and MAP format)
+for use with PLINK software and other genetic analysis tools.
 }
 \details{
-Check \href{https://www.cog-genomics.org/plink/2.0/}{link} for detailed information of \code{PLINK} 2.00 alpha. Check \href{https://enkre.net/cgi-bin/code/bgen/doc/trunk/doc/wiki/bgenix.md}{link} for detailed information of \code{bgenix} tool.
-\subsection{Convert PLINK text files to binary files}{
-
-Run \code{plink --file simuPLINK --make-bed --out simuPLINK} to convert PLINK text files (MAP and PED) to binary files (BED, BIM, and FAM).
+\strong{Genotype Encoding:}
+\itemize{
+\item 0, 1, 2 → copies of minor allele
+\item -9 → missing genotype (coded as "00" in PED)
+\item A1="G", A2="A": 0→"GG", 1→"AG", 2→"AA", -9→"00"
 }
 
-\subsection{Convert PLINK binary files to raw files}{
-
-Run \code{plink --bfile simuPLINK --recode A --out simuRAW} to convert PLINK binary files (BED, BIM, and FAM) to raw files (raw).
+\strong{Output Files:}
+\itemize{
+\item \code{.ped}: Pedigree file with genotype data
+\item \code{.map}: Marker map file with positions
 }
 
-\subsection{Convert PLINK binary files to bgen files}{
+\strong{Downstream Processing:}
 
-RUN \code{plink2 --bfile simuPLINK --export bgen-1.2 bits=8 ref-first --out simuBGEN} to convert PLINK binary files (BED, BIM, and FAM) to BGEN binary files (BGEN).
-}
+\if{html}{\out{<div class="sourceCode bash">}}\preformatted{# Convert to binary format
+plink --file prefix --make-bed --out prefix
 
-\subsection{Make bgi file using \code{bgenix} tool}{
+# Convert to raw format
+plink --bfile prefix --recode A --out prefix_raw
 
-RUN \code{bgenix -g simuBGEN.bgen --index}
-}
+# Convert to BGEN format
+plink2 --bfile prefix --export bgen-1.2 bits=8 ref-first --out prefix_bgen
+
+# Create BGEN index
+bgenix -g prefix_bgen.bgen --index
+}\if{html}{\out{</div>}}
 }
 \examples{
 ### Step 1: simulate a numeric genotype matrix

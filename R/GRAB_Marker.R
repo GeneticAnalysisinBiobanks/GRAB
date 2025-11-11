@@ -1,99 +1,78 @@
-#' Conduct marker-level genetic association testing
+#' Perform genome-wide association testing at the marker level
 #'
-#' Performs GWAS between a trait and individual genetic markers.
+#' Conducts single-marker association tests between genetic variants and phenotypes using
+#' various statistical methods supported by GRAB.
 #'
-#' @param objNull The output object from function \code{\link{GRAB.NullModel}}.
-#' @param GenoFile A character string specifying the genotype file path. Currently, two
-#'   genotype formats are supported: PLINK and BGEN. See \code{\link{GRAB.ReadGeno}} for details.
-#' @param GenoFileIndex Additional index files corresponding to \code{GenoFile}. If \code{NULL}
-#'   (default), the same prefix as GenoFile is used. See \code{\link{GRAB.ReadGeno}} for details.
-#' @param OutputFile A character string specifying the output file path to save analysis results.
-#' @param OutputFileIndex A character string specifying the output index file to record the
-#'   progress. If the program terminates unexpectedly, this helps \code{GRAB} understand where
-#'   to restart the analysis. If \code{NULL} (default), 
-#'   \code{OutputFileIndex = paste0(OutputFile, ".index")}.
-#' @param control A list of parameters for controlling \code{GRAB.Marker} function behavior.
-#'   See the \code{Details} section for more information.
+#' @param objNull Null model object from \code{\link{GRAB.NullModel}}.
+#' @param GenoFile Path to genotype file. Supports PLINK (.bed/.bim/.fam) and BGEN formats.
+#'   See \code{\link{GRAB.ReadGeno}} for format details.
+#' @param GenoFileIndex Index files for the genotype file. If \code{NULL} (default), uses
+#'   the same prefix as \code{GenoFile}. See \code{\link{GRAB.ReadGeno}} for details.
+#' @param OutputFile Path for saving association test results.
+#' @param OutputFileIndex Path for progress tracking file. Enables analysis restart if
+#'   interrupted. If \code{NULL} (default), uses \code{paste0(OutputFile, ".index")}.
+#' @param control List of control parameters. See \code{Details} for available options.
 #' @details
-#' The \code{GRAB} package supports multiple statistical methods: \code{POLMM}, \code{SPACox},
-#' \code{SPAGRM}, \code{SPAmix}, and \code{WtCoxG}.
-#' Detailed information about these analysis methods is provided in the \code{Details} section
-#' of \code{\link{GRAB.NullModel}}.
-#' Users do not need to specify the method explicitly since \code{GRAB.Marker} and
-#' \code{\link{GRAB.Region}} automatically detect it from \code{class(objNull)}.
+#' GRAB supports multiple association testing methods: \code{POLMM}, \code{SPACox},
+#' \code{SPAGRM}, \code{SPAmix}, and \code{WtCoxG}. The appropriate method is automatically
+#' detected from \code{class(objNull)}. See \code{\link{GRAB.NullModel}} for method details.
 #'
 #' ## Control Parameters
-#' The following parameters allow users to customize which markers to include in the analysis.
-#' If these parameters are not specified, \code{GRAB} will analyze all markers in the file.
-#' For PLINK files, the default is \code{control$AlleleOrder = "alt-first"};
-#' for BGEN files, the default is \code{control$AlleleOrder = "ref-first"}.
-#'   \itemize{
-#'   \item \code{IDsToIncludeFile}: See the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
-#'   \item \code{IDsToExcludeFile}: See the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
-#'   \item \code{RangesToIncludeFile}: See the \code{Details} section of 
-#'     \code{\link{GRAB.ReadGeno}}.
-#'   \item \code{RangesToExcludeFile}: See the \code{Details} section of 
-#'     \code{\link{GRAB.ReadGeno}}.
-#'   \item \code{AlleleOrder}: See the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
-#'   }
-#' 
-#' The following parameters customize the quality control (QC) process:
-#'   \itemize{
-#'   \item \code{ImputeMethod}: A character string specifying imputation method: "mean"
-#'     (default), "bestguess", or "drop". See the \code{Details} section of 
-#'     \code{\link{GRAB.ReadGeno}}.
-#'   \item \code{MissingRateCutoff}: A numeric value *(default=0.15)*. Markers with missing
-#'     rate exceeding this value will be excluded from analysis.
-#'   \item \code{MinMAFCutoff}: A numeric value *(default=0.001)*. Markers with minor allele
-#'     frequency (MAF) below this value will be excluded from analysis.
-#'   \item \code{MinMACCutoff}: A numeric value *(default=20)*. Markers with minor allele
-#'     count (MAC) below this value will be excluded from analysis.
-#'   \item \code{nMarkersEachChunk}: Number of markers *(default=10000)* processed in each
-#'     output chunk.
-#'   }
-#'  
-#' The following parameters customize the columns in the \code{OutputFile}.
-#' The columns \code{Marker}, \code{Info}, \code{AltFreq}, \code{AltCounts}, 
-#' \code{MissingRate}, and \code{Pvalue} are included for all methods.
-#'  \itemize{
-#'  \item \code{outputColumns}: Specifies additional columns to include in the output.
-#'     For example, for the POLMM method, users can set 
-#'     \code{control$outputColumns = c("beta", "seBeta", "AltFreqInGroup")}:
+#'
+#' **Marker Selection**: Control which markers to analyze (default: all markers in file).
+#' \itemize{
+#'   \item \code{IDsToIncludeFile}, \code{IDsToExcludeFile}: Include/exclude specific markers.
+#'   \item \code{RangesToIncludeFile}, \code{RangesToExcludeFile}: Include/exclude genomic ranges.
+#'   \item \code{AlleleOrder}: "alt-first" (PLINK default) or "ref-first" (BGEN default).
+#' }
+#' See \code{\link{GRAB.ReadGeno}} for details on these parameters.
+#'
+#' **Quality Control**: Filter markers based on data quality.
+#' \itemize{
+#'   \item \code{ImputeMethod}: "mean" (default), "bestguess", or "drop".
+#'   \item \code{MissingRateCutoff}: Exclude markers with missing rate > 0.15 (default).
+#'   \item \code{MinMAFCutoff}: Exclude markers with MAF < 0.001 (default).
+#'   \item \code{MinMACCutoff}: Exclude markers with MAC < 20 (default).
+#'   \item \code{nMarkersEachChunk}: Process 10,000 markers per chunk (default).
+#' }
+#'
+#' **Output Customization**: Control which columns appear in results.
+#' \itemize{
+#'   \item \code{outputColumns}: Additional columns beyond the standard set. Available options
+#'     depend on the analysis method:
 #'     \itemize{
-#'     \item \code{POLMM}: Default: \code{beta}, \code{seBeta}; 
-#'       Optional: \code{zScore}, \code{AltFreqInGroup}, \code{nSamplesInGroup}, 
-#'       \code{AltCountsInGroup}
-#'     \item \code{SPACox}: Optional: \code{zScore}
+#'       \item \code{POLMM}: Default: \code{beta}, \code{seBeta}; Optional: \code{zScore},
+#'         \code{AltFreqInGroup}, \code{nSamplesInGroup}, \code{AltCountsInGroup}
+#'       \item \code{SPACox}: Optional: \code{zScore}
 #'     }
-#'  }
-#' @return The analysis results are written to \code{OutputFile}, which includes the following
-#'   columns:
-#' \describe{
-#' \item{Marker}{Marker IDs extracted from \code{GenoFile} and \code{GenoFileIndex}.}
-#' \item{Info}{Marker information in format "CHR:POS:REF:ALT". The order of REF/ALT depends
-#'   on \code{control$AlleleOrder}: "ref-first" or "alt-first".}
-#' \item{AltFreq}{Alternative allele frequency (before genotype imputation, might be > 0.5).
-#'   If most markers have \code{AltFreq} > 0.5, consider resetting \code{control$AlleleOrder}.}
-#' \item{AltCounts}{Alternative allele counts (before genotype imputation).}
-#' \item{MissingRate}{Missing rate for each marker.}
-#' \item{Pvalue}{Association test p-value.}
 #' }
-#' 
-#' The following columns can be customized using \code{control$outputColumns}. 
-#' See \code{\link{makeGroup}} for details about phenotype grouping, which is used for
-#' \code{nSamplesInGroup}, \code{AltCountsInGroup}, and \code{AltFreqInGroup}.
+#' @return
+#' Results are saved to \code{OutputFile} with the following columns:
+#'
+#' **Standard Columns** (included for all methods):
 #' \describe{
-#' \item{beta}{Estimated effect size of the ALT allele.}
-#' \item{seBeta}{Estimated standard error of the effect size.}
-#' \item{zScore}{Standardized score statistic, usually follows a standard normal distribution.}
-#' \item{nSamplesInGroup}{Number of subjects in different phenotype groups. This may differ
-#'   slightly from the original distribution due to missing genotypes.}
-#' \item{AltCountsInGroup}{Alternative allele counts (before genotype imputation) in different
-#'   phenotype groups.}
-#' \item{AltFreqInGroup}{Alternative allele frequency (before genotype imputation) in different
-#'   phenotype groups.}
+#'   \item{Marker}{Marker identifiers from genotype files.}
+#'   \item{Info}{Marker information as "CHR:POS:REF:ALT". REF/ALT order depends on
+#'     \code{control$AlleleOrder}.}
+#'   \item{AltFreq}{Alternative allele frequency before imputation. Values > 0.5 suggest
+#'     reconsidering \code{control$AlleleOrder}.}
+#'   \item{AltCounts}{Alternative allele counts before imputation.}
+#'   \item{MissingRate}{Proportion of missing genotypes per marker.}
+#'   \item{Pvalue}{Association test p-value.}
 #' }
-#' 
+#'
+#' **Optional Columns** (controlled by \code{control$outputColumns}):
+#' \describe{
+#'   \item{beta}{Effect size estimate for the alternative allele.}
+#'   \item{seBeta}{Standard error of the effect size estimate.}
+#'   \item{zScore}{Standardized test statistic (approximately standard normal).}
+#'   \item{nSamplesInGroup}{Sample counts by phenotype group (may vary due to missing genotypes).}
+#'   \item{AltCountsInGroup}{Alternative allele counts by phenotype group before imputation.}
+#'   \item{AltFreqInGroup}{Alternative allele frequencies by phenotype group before imputation.}
+#' }
+#'
+#' See \code{\link{makeGroup}} for phenotype grouping details used in group-specific statistics.
+#'
 #' @examples
 #' # Load a precomputed POLMM_NULL_Model object to perform step 2 without repeating step 1
 #' objNullFile <- system.file("extdata", "objPOLMMnull.RData", package = "GRAB")
@@ -103,17 +82,17 @@
 #' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' OutputFile <- file.path(tempdir(), "simuOUTPUT.txt")
 #' outputColumns <- c(
-#'   "beta", "seBeta", "zScore", 
+#'   "beta", "seBeta", "zScore",
 #'   "nSamplesInGroup", "AltCountsInGroup", "AltFreqInGroup"
 #' )
 #'
 #' GRAB.Marker(
-#'   obj.POLMM,
+#'   objNull = obj.POLMM,
 #'   GenoFile = GenoFile,
 #'   OutputFile = OutputFile,
 #'   control = list(outputColumns = outputColumns)
 #' )
-#' 
+#'
 #' data.table::fread(OutputFile)
 #'
 GRAB.Marker <- function(
@@ -125,7 +104,30 @@ GRAB.Marker <- function(
   control = NULL
 ) {
   # Check the validity of the null model object and extract its class (Util.R)
-  NullModelClass <- checkObjNull(objNull)
+  # ---- BEGIN inlined: checkObjNull ----
+  NullModelClass <- class(objNull)
+  nm <- names(objNull)
+
+  supported_classes <- c(
+    "SPACox_NULL_Model",
+    "POLMM_NULL_Model",
+    "SPAmix_NULL_Model",
+    "SPAGRM_NULL_Model",
+    "SAGELD_NULL_Model",
+    "WtCoxG_NULL_Model"
+  )
+
+  if (!NullModelClass %in% supported_classes) {
+    stop(
+      "class(objNull) should be one of: ",
+      paste(paste0('"', supported_classes, '"'), collapse = ", ")
+    )
+  }
+
+  if (any(!c("subjData", "N") %in% nm)) {
+    stop("c('subjData', 'N') should be in names(objNull).")
+  }
+  # ---- END inlined: checkObjNull ----
 
   # Set default output index file if not provided
   if (is.null(OutputFileIndex)) {
@@ -134,7 +136,77 @@ GRAB.Marker <- function(
 
   # Validate and set control parameters with default values if not specified (control.R)
   checkControl.ReadGeno(control)
-  control <- checkControl.Marker(control, NullModelClass)
+  # ---- start checkControl.Marker(control, NullModelClass) ----
+  # check if control is an R list
+  if (!is.null(control)) {
+    if (!is.list(control)) {
+      stop("If specified, the argument of 'control' should be an R 'list'.")
+    }
+  }
+
+  # uniform default control setting for marker-level analysis
+  default.marker.control <- list(
+    impute_method = "mean",
+    missing_cutoff = 0.15,
+    min_maf_marker = 0.001,
+    min_mac_marker = 20,
+    nMarkersEachChunk = 10000,
+    omp_num_threads = data.table::getDTthreads()
+  ) # if 0, value is from omp_get_num_threads(). Not supported on 2022-02-07
+
+  control <- updateControl(control, default.marker.control)
+
+  # check if argument of 'control' is reasonable
+  if (!control$impute_method %in% c("mean", "minor", "drop")) {
+    stop("control$impute_method should be 'mean', 'minor', or 'drop'.")
+  }
+
+  if (!is.numeric(control$missing_cutoff) || control$missing_cutoff < 0 || control$missing_cutoff > 0.5) {
+    stop("control$missing_cutoff should be a numeric value ranging from 0 to 0.5.")
+  }
+
+  if (!is.numeric(control$min_maf_marker) || control$min_maf_marker < 0 || control$min_maf_marker > 0.1) {
+    stop("control$min_maf_marker should be a numeric value ranging from 0 to 0.1.")
+  }
+
+  if (!is.numeric(control$min_mac_marker) || control$min_mac_marker < 0 || control$min_mac_marker > 100) {
+    stop("control$min_mac_marker should be a numeric value ranging from 0 to 100.")
+  }
+
+  if (!is.numeric(control$nMarkersEachChunk) || control$nMarkersEachChunk < 1e3 || 
+      control$nMarkersEachChunk > 1e5) {
+    stop("control$nMarkersEachChunk should be a numeric value ranging from 1e3 to 1e5.")
+  }
+
+  if (control$omp_num_threads < 0) {
+    stop("control$omp_num_threads should be a positive integral value.")
+  }
+
+  if (NullModelClass == "POLMM_NULL_Model") {
+    control <- checkControl.Marker.POLMM(control)
+  } else if (NullModelClass == "SPACox_NULL_Model") {
+    control <- checkControl.Marker.SPACox(control)
+  } else if (NullModelClass == "SPAmix_NULL_Model") {
+    control <- checkControl.Marker.SPAmix(control)
+  } else if (NullModelClass == "SPAGRM_NULL_Model") {
+    control <- checkControl.Marker.SPAGRM(control)
+  } else if (NullModelClass == "SAGELD_NULL_Model") {
+    control <- checkControl.Marker.SAGELD(control)
+  } else if (NullModelClass == "WtCoxG_NULL_Model") {
+    control <- checkControl.Marker.WtCoxG(control)
+  } else {
+    stop("Unknown NullModelClass: ", NullModelClass)
+  }
+
+  .message("Control parameters for marker-level association tests:")
+  tmp <- capture.output(str(control))
+  for (line in tmp) {
+    if (startsWith(line, " $")) {
+      message(sub("^ \\$", strrep(" ", 8), line))
+    }
+  }
+  # ---- end checkControl.Marker(control, NullModelClass) ----
+
   nMarkersEachChunk <- control$nMarkersEachChunk
 
   # Check output file status and determine restart point if needed (Util.R)
@@ -144,11 +216,14 @@ GRAB.Marker <- function(
   )
 
   # Special validation for SPAGRM and SAGELD methods: check MAF interval constraints
-  # Added by XH-2023-05-09
+  # These methods require marker MAF to be within the interval used in null model fitting
   if (NullModelClass %in% c("SPAGRM_NULL_Model", "SAGELD_NULL_Model")) {
     if (length(objNull$MAF_interval) > 1) {
       if (control$min_maf_marker <= min(objNull$MAF_interval)) {
-        stop("min_maf_marker is out of MAF_interval. Please reset min_maf_marker or check MAF_interval.")
+        stop(
+          "min_maf_marker is out of MAF_interval. ",
+          "Please reset min_maf_marker or check MAF_interval."
+        )
       }
     }
   }
@@ -161,45 +236,52 @@ GRAB.Marker <- function(
   # Check if analysis has already been completed
   if (End) {
     stop(
-      "The analysis has been completed in an earlier run. Results have been saved in '", 
-      OutputFile, 
-      "'. If you want to restart the analysis, please use a different 'OutputFile'."
+      "Analysis completed in an earlier run. Results saved in '",
+      OutputFile,
+      "'. Use a different 'OutputFile' to restart analysis."
     )
   }
 
   # Check if analysis was partially completed and needs to restart
   if (!Start) {
     .message(
-      "Part of the analysis has been completed and saved in %s. Restarting the analysis from chunk %d",
+      "Part of analysis completed and saved in %s. Restarting from chunk %d",
       OutputFileIndex, indexChunk + 1
     )
   }
 
-  # Extract subject IDs from null model object
+  # Extract subject IDs from null model object for genotype filtering
   subjData <- as.character(objNull$subjData)
 
-  # Categorizes subjects into groups and enables checking of AltFreq/AltCounts within each group
-  Group <- makeGroup(objNull$yVec) # Function defined in Util.R
+  # Create phenotype groups for calculating group-specific allele statistics
+  # ---- BEGIN inlined: makeGroup ----
+  yVec <- objNull$yVec
+  m1 <- length(unique(yVec))
+  if (m1 <= 10) {
+    Group <- as.numeric(as.factor(yVec)) - 1  # Groups 0 to (m1-1)
+  } else {
+    Group <- floor((rank(yVec, ties.method = "max") - 1) / length(yVec) * 10)  # Groups 0 to 9
+  }
+  # ---- END inlined: makeGroup ----
   ifOutGroup <- any(c("AltFreqInGroup", "AltCountsInGroup") %in% control$outputColumns)
 
-  # Set up genotype reading object with file information and subject filtering
+  # Initialize genotype reader with file paths and subject filtering options
   objGeno <- setGenoInput(GenoFile, GenoFileIndex, subjData, control) # Function in 'Geno.R'
   genoType <- objGeno$genoType
   markerInfo <- objGeno$markerInfo
   CHROM <- markerInfo$CHROM
   genoIndex <- markerInfo$genoIndex
 
-  # Split all markers into chunks for processing. Strategy: 
-  # 1. SNPs in the same chromosome are grouped into chunks
-  # 2. Chunks are ordered by chromosome
-  # [INLINED FUNCTION: splitMarker()]
+  # Split all markers into processing chunks by chromosome
+  # Strategy: Group markers by chromosome, then divide each chromosome into fixed-size chunks
+  # This maintains data locality and enables efficient chromosome-specific optimizations
   genoIndexList <- list()
   iTot <- 1
 
-  # Process each chromosome separately to maintain data locality
+  # Process each chromosome separately to maintain genomic locality
   uCHROM <- unique(CHROM)
   for (chrom in uCHROM) {
-    # Extract markers belonging to current chromosome
+    # Extract all markers belonging to current chromosome
     pos <- which(CHROM == chrom)
     gIdx <- genoIndex[pos]
     M <- length(gIdx)
@@ -221,7 +303,6 @@ GRAB.Marker <- function(
       iTot <- iTot + 1
     }
   }
-  # [END INLINED FUNCTION: splitMarker()]
 
   nChunks <- length(genoIndexList)
 
@@ -232,7 +313,7 @@ GRAB.Marker <- function(
 
   # Initialize chromosome tracking for efficient method-specific setup
   chrom <- "InitialChunk"
-  
+
   # Process each chunk of markers
   for (i in (indexChunk + 1):nChunks) {
     tempList <- genoIndexList[[i]]
@@ -240,10 +321,9 @@ GRAB.Marker <- function(
     tempChrom <- tempList$chrom
 
     # Set up method-specific objects when chromosome changes
-    # This optimization avoids redundant setup for markers in the same chromosome
+    # This optimization avoids redundant setup for markers within the same chromosome
     if (tempChrom != chrom) {
-      # [INLINED FUNCTION: setMarker()]
-      # Set global variables in C++ for efficient processing
+      # Configure global variables in C++ for efficient marker processing
       # See Main.cpp for implementation details
       nGroup <- length(unique(Group))
       setMarker_GlobalVarsInCPP(
@@ -256,40 +336,37 @@ GRAB.Marker <- function(
       )
 
       # Initialize method-specific objects based on the null model class
-      # Each method has its own setup requirements and optimizations
+      # Each method has its own setup requirements and computational optimizations
       if (NullModelClass == "POLMM_NULL_Model") {
-        obj.setMarker <- setMarker.POLMM(objNull, control, chrom)
+        setMarker.POLMM(objNull, control, chrom)
       } else if (NullModelClass == "SPACox_NULL_Model") {
-        obj.setMarker <- setMarker.SPACox(objNull, control)
+        setMarker.SPACox(objNull, control)
       } else if (NullModelClass == "SPAmix_NULL_Model") {
-        obj.setMarker <- setMarker.SPAmix(objNull, control)
+        setMarker.SPAmix(objNull, control)
       } else if (NullModelClass == "SPAGRM_NULL_Model") {
-        obj.setMarker <- setMarker.SPAGRM(objNull, control)
+        setMarker.SPAGRM(objNull, control)
       } else if (NullModelClass == "SAGELD_NULL_Model") {
-        obj.setMarker <- setMarker.SAGELD(objNull, control)
+        setMarker.SAGELD(objNull, control)
       } else if (NullModelClass == "WtCoxG_NULL_Model") {
-        obj.setMarker <- setMarker.WtCoxG(objNull, control)
+        setMarker.WtCoxG(objNull, control)
       }
-      # [END INLINED FUNCTION: setMarker()]
 
       chrom <- tempChrom
     }
 
-    .message("---- Analyzing Chunk %d/%d: chrom %s ----", 
-             i, nChunks, chrom)
+    .message("---- Analyzing Chunk %d/%d: chrom %s ----", i, nChunks, chrom)
 
-    # Calculate summary statistics for all markers in current chunk
-    # [INLINED FUNCTION: mainMarker()]
-    # POLMM: Process ordinal traits using proportional odds logistic mixed model
+    # Perform association testing for all markers in current chunk
+    # Method selection based on null model class determines the appropriate algorithm
     if (NullModelClass == "POLMM_NULL_Model") {
-      # Call C++ implementation for efficient computation
-      # See 'Main.cpp' for the underlying algorithm
+      # POLMM: Proportional odds logistic mixed model for ordinal traits
+      # Call optimized C++ implementation for computational efficiency
       OutList <- mainMarkerInCPP("POLMM", genoType, genoIndex)
 
       # Construct base output data frame with required columns
       resMarker <- data.frame(
         Marker = OutList$markerVec,        # Marker IDs
-        Info = OutList$infoVec,            # Marker information: CHR:POS:REF:ALT
+        Info = OutList$infoVec,            # Marker info: CHR:POS:REF:ALT
         AltFreq = OutList$altFreqVec,      # Alternative allele frequencies
         AltCounts = OutList$altCountsVec,  # Alternative allele counts
         MissingRate = OutList$missingRateVec, # Missing rates per marker
@@ -297,7 +374,7 @@ GRAB.Marker <- function(
       )
 
       # Add optional columns if requested by user
-      optionalColumns <- c("beta", "seBeta", "zScore", "PvalueNorm", 
+      optionalColumns <- c("beta", "seBeta", "zScore", "PvalueNorm",
                            "AltFreqInGroup", "AltCountsInGroup", "nSamplesInGroup")
       additionalColumns <- intersect(optionalColumns, control$outputColumns)
 
@@ -318,9 +395,8 @@ GRAB.Marker <- function(
     } else if (NullModelClass == "WtCoxG_NULL_Model") {
       resMarker <- mainMarker.WtCoxG(genoType, genoIndex, control, objNull)
     }
-    # [END INLINED FUNCTION: mainMarker()]
 
-    # Write results to output file and update progress
+    # Write chunk results to output file and update progress tracking
     writeOutputFile(
       Output = list(resMarker),
       OutputFile = list(OutputFile),

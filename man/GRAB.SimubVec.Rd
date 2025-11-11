@@ -2,31 +2,33 @@
 % Please edit documentation in R/GRAB_Simu.R
 \name{GRAB.SimubVec}
 \alias{GRAB.SimubVec}
-\title{GRAB: simulate random effect (i.e. bVec) based on family structure}
+\title{Simulate random effects based on family structure}
 \usage{
 GRAB.SimubVec(nSub, nFam, FamMode, tau)
 }
 \arguments{
-\item{nSub}{the number of unrelated subjects in simulations, if \code{nSub = 0}, then all subjects are related to at least one of the others.}
+\item{nSub}{Number of unrelated subjects. If 0, all subjects are related.}
 
-\item{nFam}{the number of families in simulation, if \code{nFam = 0}, then all subjects are unrelated to each other.}
+\item{nFam}{Number of families. If 0, all subjects are unrelated.}
 
-\item{FamMode}{\code{"4-members"}, \code{"10-members"}, or \code{"20-members"}. Check \code{Details} section of function \code{help(GRAB.SimuGMat)} for more details.}
+\item{FamMode}{Family structure: "4-members", "10-members", or "20-members".
+See \code{\link{GRAB.SimuGMat}} for pedigree details.}
 
-\item{tau}{variance component}
+\item{tau}{Variance component for random effects.}
 }
 \value{
-a data frame including two columns: ID and random effect following a multivariate normal distribution
+Data frame with columns:
+\describe{
+\item{IID}{Subject identifiers.}
+\item{bVec}{Random effect values following appropriate correlation structure.}
+}
 }
 \description{
-Simulate random effect (i.e. bVec) based on family structure
+Generates random effect vectors (bVec) that account for family relationships
+through kinship-based correlation structures.
 }
-\examples{
-nSub <- 10
-nFam <- 1
-FamMode <- "10-members"
-tau <- 2
-bVec <- GRAB.SimubVec(nSub, nFam, FamMode, tau)
-
-
+\details{
+For related subjects, random effects follow a multivariate normal distribution
+with covariance proportional to kinship coefficients. For unrelated subjects,
+effects are independent normal random variables.
 }

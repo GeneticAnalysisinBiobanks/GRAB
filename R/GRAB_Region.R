@@ -1,80 +1,85 @@
-#' Conduct region-level genetic association testing
+#' Perform region-based genetic association testing
 #'
-#' Test for association between phenotype of interest and regions including
-#' multiple genetic marker (mostly low-frequency or rare variants).
+#' Tests for association between phenotypes and genomic regions containing multiple
+#' genetic variants, primarily low-frequency and rare variants.
 #'
-#' @param objNull the output object of function \code{\link{GRAB.NullModel}}.
-#' @param GenoFile a character of genotype file. Currently, two types of
-#'   genotype formats are supported: PLINK and BGEN. Check
-#'   \code{\link{GRAB.ReadGeno}} for more details.
-#' @param GenoFileIndex additional index files corresponding to the
-#'   \code{GenoFile}. If \code{NULL} (default), the prefix is the same as
-#'   GenoFile. Check \code{\link{GRAB.ReadGeno}} for more details.
-#' @param OutputFile a character of output file to save the analysis results.
-#' @param OutputFileIndex a character of output index file to record the end
-#'   point. If the program ends unexpectedly, the end point can help
-#'   \code{GRAB} package understand where to restart the analysis. If
-#'   \code{NULL} (default), \code{OutputFileIndex = paste0(OutputFile, ".index")}.
-#' @param GroupFile a character of region file to specify region-marker
-#'   mapping with annotation information. Each region includes two or three
-#'   rows. Only alphabet, numbers, and \code{:,_+-} symbols are supported.
-#'   Columns are separated by 'tab'.
-#' @param SparseGRMFile a character of sparseGRM file. An example is \code{system.file("SparseGRM","SparseGRM.txt",package="GRAB")}.
-#' @param SampleFile a character of file to include sample information with header.
-#' @param MaxMAFVec a character of multiple max MAF cutoffs (comma separated) to include markers for region-level analysis. Default value is \code{"0.05,0.01,0.005"}.
-#' @param annoVec a character of multiple annotation groups (comma separated) to include markers for region-level analysis. Default value is \code{"lof,lof:missense,lof:missense:synonymous"}.
-#' @param chrom to be continued
-#' @param control a list of parameters for controlling function \code{GRAB.Region}, more details can be seen in \code{Details} section.
+#' @param objNull Null model object from \code{\link{GRAB.NullModel}}.
+#' @param GenoFile Path to genotype file (PLINK or BGEN format). See
+#'   \code{\link{GRAB.ReadGeno}} for details.
+#' @param GenoFileIndex Index files for genotype file. If \code{NULL} (default), uses
+#'   same prefix as \code{GenoFile}. See \code{\link{GRAB.ReadGeno}} for details.
+#' @param OutputFile Path for saving region-based association results.
+#' @param OutputFileIndex Path for progress tracking file. If \code{NULL} (default),
+#'   uses \code{paste0(OutputFile, ".index")}.
+#' @param GroupFile Path to region definition file specifying region-marker mappings
+#'   and annotation information. Tab-separated format with 2-3 columns per region.
+#' @param SparseGRMFile Path to sparse GRM file (optional).
+#' @param SampleFile Path to sample information file with header (optional).
+#' @param MaxMAFVec Comma-separated MAF cutoffs for including variants in analysis
+#'   (default: "0.01,0.001,0.0005").
+#' @param annoVec Comma-separated annotation groups for analysis
+#'   (default: "lof,lof:missense,lof:missense:synonymous").
+#' @param chrom Chromosome-specific options (default: "LOCO=F").
+#' @param control List of control parameters. See \code{Details} for options.
 #' @details
-#' \code{GRAB} package supports \code{POLMM}, \code{SPACox}, \code{SPAGRM}, \code{SPAmix}, and \code{WtCoxG} methods.
-#' Detailed information about the analysis methods is given in the \code{Details} section of \code{\link{GRAB.NullModel}}.
-#' Users do not need to specify them since functions \code{\link{GRAB.Marker}} and \code{GRAB.Region} will check the \code{class(objNull)}.
+#' GRAB supports region-based testing using multiple methods: \code{POLMM}, \code{SPACox},
+#' \code{SPAGRM}, \code{SPAmix}, and \code{WtCoxG}. The method is automatically detected
+#' from \code{class(objNull)}. See \code{\link{GRAB.NullModel}} for method details.
 #'
+#' ## Control Parameters
 #'
-#' ## The following details are about argument \code{control}
-#' For PLINK files, the default \code{control$AlleleOrder = "alt-first"}; for BGEN files, the default \code{control$AlleleOrder = "ref-first"}.
-#'   \itemize{
-#'   \item \code{AlleleOrder}: please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
-#'   }
-#'  The below is to customize the quality-control (QC) process.
-#'   \itemize{
-#'   \item \code{omp_num_threads}: (To be added later) a numeric value (default: value from data.table::getDTthreads()) to specify the number of threads in OpenMP for parallel computation.
-#'   \item \code{ImputeMethod}: a character, "mean", "bestguess" (default), or "drop" (to be added later). Please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
-#'   \item \code{MissingRateCutoff}: a numeric value *(default=0.15)*. Markers with missing rate > this value will be excluded from analysis.
-#'   \item \code{MinMACCutoff}: a numeric value *(default=5)*. Markers with MAC < this value will be treated as Ultra-Rare Variants (URV) and collapsed as one value.
-#'   \item \code{nRegionsEachChunk}: number of regions *(default=1)* in one chunk to output.
-#'   }
-#'   The below is for kernel-based approaches including SKAT and SKAT-O. For more details, please refer to the \href{https://cran.r-project.org/package=SKAT}{SKAT package}.
-#'   \itemize{
-#'   \item \code{kernel}: a type of kernel *(default="linear.weighted")*.
-#'   \item \code{weights_beta}: a numeric vector of parameters for the beta weights for the weighted kernels *(default=c(1, 25))*.
-#'   If you want to use your own weights, please use the \code{control$weights} parameter. It will be ignored if \code{control$weights} parameter is not \code{NULL}.
-#'   \item \code{weights}: a numeric vector of weights for the weighted kernels. If it is \code{NULL} (default), the beta weight with the \code{control$weights.beta} parameter is used.
-#'   \item \code{r.corr}: the rho parameter for the compound symmetric correlation structure kernels. If you give a vector value, SKAT will conduct the optimal test.
-#'   It will be ignored if method="optimal" or method="optimal.adj" *(default=c(0, 0.1^2, 0.2^2, 0.3^2, 0.4^2, 0.5^2, 0.5, 1))*.
-#'   }
-#'  The below is to customize the columns in the \code{OutputMarkerFile}.
-#'  Columns of \code{Marker}, \code{Info}, \code{AltFreq}, \code{AltCounts}, \code{MissingRate}, \code{Pvalue} are included for all methods.
-#'  \itemize{
-#'  \item \code{outputColumns}: For example, for POLMM method, users can set \code{control$outputColumns = c("beta", "seBeta", "AltFreqInGroup")}:
+#' **Genotype Processing:**
+#' \itemize{
+#'   \item \code{AlleleOrder}: "alt-first" (PLINK default) or "ref-first" (BGEN default).
+#'   \item \code{ImputeMethod}: "mean", "bestguess" (default), or "drop".
+#'   \item \code{omp_num_threads}: Number of OpenMP threads for parallel computation.
+#' }
+#'
+#' **Quality Control:**
+#' \itemize{
+#'   \item \code{MissingRateCutoff}: Exclude markers with missing rate > 0.15 (default).
+#'   \item \code{MinMACCutoff}: Treat markers with MAC < 5 (default) as ultra-rare variants.
+#'   \item \code{nRegionsEachChunk}: Number of regions per output chunk (default: 1).
+#' }
+#'
+#' **Kernel-Based Testing (SKAT/SKAT-O):**
+#' \itemize{
+#'   \item \code{kernel}: Kernel type (default: "linear.weighted").
+#'   \item \code{weights_beta}: Beta weight parameters (default: c(1, 25)).
+#'   \item \code{weights}: Custom weight vector (overrides \code{weights_beta} if specified).
+#'   \item \code{r.corr}: Rho parameters for SKAT-O (default: c(0, 0.1^2, 0.2^2, 0.3^2,
+#'     0.4^2, 0.5^2, 0.5, 1)).
+#' }
+#'
+#' **Output Customization:**
+#' \itemize{
+#'   \item \code{outputColumns}: Additional columns for marker-level output.
 #'     \itemize{
-#'     \item \code{POLMM}: Default: \code{beta}, \code{seBeta}; Optional: \code{zScore}, \code{AltFreqInGroup}, \code{nSamplesInGroup}, \code{AltCountsInGroup}
-#'     \item \code{SPACox}: Optional: \code{zScore}
+#'       \item \code{POLMM}: Default: \code{beta}, \code{seBeta}; Optional: \code{zScore},
+#'         \code{AltFreqInGroup}, \code{nSamplesInGroup}, \code{AltCountsInGroup}
+#'       \item \code{SPACox}: Optional: \code{zScore}
 #'     }
-#'  }
-#' @return Region-based analysis results are saved into two files: \code{OutputFile} and \code{OutputMarkerFile = paste0(OutputFile, ".markerInfo")}.
+#' }
+#' See \code{\link{GRAB.ReadGeno}} for genotype processing details.
+#' @return
+#' Results are saved to two files:
+#' \enumerate{
+#'   \item \code{OutputFile}: Region-based test results
+#'   \item \code{paste0(OutputFile, ".markerInfo")}: Marker-level results (same format as
+#'     \code{\link{GRAB.Marker}})
+#' }
 #'
-#' The file of \code{OutputMarkerFile} is the same as the results of \code{\link{GRAB.Marker}}. The file of \code{OutputFile} includes columns as below.
+#' **Region-level results** (\code{OutputFile}) contain:
 #' \describe{
-#' \item{Region}{Region IDs from \code{RegionFile}}
-#' \item{Anno.Type}{Annotation type from \code{RegionFile}}
-#' \item{maxMAF}{the maximal cutoff of the MAF to select low-frequency/rare variants into analysis.}
-#' \item{nSamples}{Number of samples in analysis.}
-#' \item{nMarkers}{Number of markers whose MAF < \code{control$MaxMAFCutoff} and MAC > \code{control$MinMACCutoff}. Markers with annotation value <= 0 will be excluded from analysis.}
-#' \item{nMarkersURV}{Number of Ultra-Rare Variants (URV) whose MAC < \code{control$MinMACCutoff}. Markers with annotation value <= 0 will be excluded from analysis.}
-#' \item{pval.SKATO}{p-values based on SKAT-O method}
-#' \item{pval.SKAT}{p-values based on SKAT method}
-#' \item{pval.Burden}{p-values based on Burden test}
+#'   \item{Region}{Region identifiers from \code{GroupFile}.}
+#'   \item{Anno.Type}{Annotation type from \code{GroupFile}.}
+#'   \item{maxMAF}{Maximum MAF cutoff used for variant selection.}
+#'   \item{nSamples}{Number of samples in analysis.}
+#'   \item{nMarkers}{Number of markers with MAF < cutoff and MAC > \code{MinMACCutoff}.}
+#'   \item{nMarkersURV}{Number of ultra-rare variants with MAC < \code{MinMACCutoff}.}
+#'   \item{pval.SKATO}{SKAT-O test p-values.}
+#'   \item{pval.SKAT}{SKAT test p-values.}
+#'   \item{pval.Burden}{Burden test p-values.}
 #' }
 #' @examples
 #' # Load a precomputed example object to perform step 2 without repeating step 1
@@ -116,46 +121,117 @@ GRAB.Region <- function(
   chrom = "LOCO=F",
   control = NULL
 ) {
-  NullModelClass <- checkObjNull(objNull) # Check "Util.R"
+  # Validate null model object and extract method information
+  # ---- BEGIN inlined: checkObjNull ----
+  NullModelClass <- class(objNull)
+  nm <- names(objNull)
+
+  supported_classes <- c(
+    "POLMM_NULL_Model"
+  )
+
+  if (!NullModelClass %in% supported_classes) {
+    stop(
+      "class(objNull) should be one of: ",
+      paste(paste0('"', supported_classes, '"'), collapse = ", ")
+    )
+  }
+
+  if (any(!c("subjData", "N") %in% nm)) {
+    stop("c('subjData', 'N') should be in names(objNull).")
+  }
+  # ---- END inlined: checkObjNull ----
   method <- gsub("_NULL_Model", "", NullModelClass)
 
+  # Set default output index file if not provided
   if (is.null(OutputFileIndex)) {
     OutputFileIndex <- paste0(OutputFile, ".index")
   }
 
-  outList <- checkOutputFile(OutputFile, OutputFileIndex, "Region",
-    nEachChunk = 1
-  ) # Check 'Util.R'
-
+  # Check output file status and determine restart point if needed
+  outList <- checkOutputFile(OutputFile, OutputFileIndex, "Region", nEachChunk = 1)
   indexChunk <- outList$indexChunk
   Start <- outList$Start
   End <- outList$End
 
+  # Check if analysis has already been completed
   if (End) {
     msg_text <- paste0(
-      "The analysis has been completed in earlier analysis. Results have been saved in '", OutputFile, "'. ",
-      "If you want to change parameters and restart the analysis, please use another 'OutputFile'."
+      "Analysis completed in earlier run. Results saved in '", OutputFile, "'. ",
+      "Use a different 'OutputFile' to restart analysis."
     )
     .message("%s", msg_text)
     return(msg_text)
   }
 
+  # Check if analysis was partially completed and needs restart
   if (!Start) {
     msg_text <- paste0(
-      "Parts of analysis have been conducted based on the index file:\n",
-      OutputFileIndex, "\n",
-      "The analysis will be restarted from chunk ", indexChunk + 1, "\n"
+      "Partial analysis completed based on index file: ", OutputFileIndex, "\n",
+      "Restarting from chunk ", indexChunk + 1
     )
     .message("%s", msg_text)
   }
 
-  ## Check "control.R": if the setting of control is not specified, the default setting will be used
-  control <- checkControl.Region(control)
+  # Validate and set control parameters with method-specific defaults
+  # ---- Begin inline of checkControl.Region(control) ----
+  if (!is.null(control)) {
+    if (!is.list(control)) {
+      stop("If specified, the argument of 'control' should be an R 'list'.")
+    }
+  }
 
-  textToParse <- paste0("control = checkControl.Region.", method, "(control)")
-  eval(parse(text = textToParse))
+  # uniform default control setting for region-level analysis
+  default.region.control <- list(
+    impute_method = "minor",
+    missing_cutoff = 0.15,
+    min_mac_region = 5,
+    max_markers_region = 100,
+    r.corr = c(0, 0.1^2, 0.2^2, 0.3^2, 0.4^2, 0.5^2, 0.5, 1),
+    weights.beta = c(1, 25),
+    omp_num_threads = data.table::getDTthreads(),
+    min_nMarker = 3
+  )
 
-  # print control list
+  control <- updateControl(control, default.region.control)
+
+  # check if 'control' is reasonable
+  if (!control$impute_method %in% c("mean", "minor", "drop")) {
+    stop("control$impute_method should be 'mean', 'minor', or 'drop'.")
+  }
+
+  if (!is.numeric(control$missing_cutoff) || control$missing_cutoff < 0 || control$missing_cutoff > 0.5) {
+    stop("control$missing_cutoff should be a numeric value ranging from 0 to 0.5.")
+  }
+
+  if (!is.numeric(control$min_mac_region) || control$min_mac_region < 0) {
+    stop("control$min_mac_region should be a numeric value >= 0.")
+  }
+
+  if (!is.numeric(control$max_markers_region) || control$max_markers_region < 50) {
+    stop("control$max_markers_region should be a integer >= 50.")
+  }
+
+  if (!is.numeric(control$r.corr) || min(control$r.corr) < 0 || max(control$r.corr) > 1) {
+    stop("control$r.corr should be a numeric vector whose elements are between 0 and 1.")
+  }
+
+  if (!is.numeric(control$weights.beta) || length(control$weights.beta) != 2 || min(control$weights.beta) < 0) {
+    stop("control$weights.beta should be a numeric vector with two non-negative elements.")
+  }
+
+  if (!is.numeric(control$min_nMarker) || control$min_nMarker <= 0) {
+    stop("control$min_nMarker should be a positive integer.")
+  }
+  # ---- End inline of checkControl.Region(control) ----
+
+  if (NullModelClass == "POLMM_NULL_Model") {
+    control <- checkControl.Region.POLMM(control)
+  } else {
+    stop("Unknown NullModelClass: ", NullModelClass)
+  }
+
+  # Display control parameters for user verification
   .message("Control parameters for region-level genetic association analysis:")
   tmp <- capture.output(str(control))
   for (line in tmp) {
@@ -164,21 +240,23 @@ GRAB.Region <- function(
     }
   }
 
-
+  # Parse and validate MAF cutoffs for variant selection
   MaxMAFVec <- MaxMAFVec %>%
     strsplit(split = ",") %>%
     unlist() %>%
     as.numeric()
+
   if (any(is.na(MaxMAFVec))) {
     stop("MaxMAFVec contains invalid (NA) values. Please check your input.")
   }
 
   MaxMAF <- max(MaxMAFVec)
   if (MaxMAF > 0.05) {
-    stop("Maximal value of 'MaxMAFVec' should be <= 0.05.")
+    stop("Maximum value of 'MaxMAFVec' should be <= 0.05.")
   }
   control$max_maf_region <- MaxMAF
 
+  # Parse annotation groups for variant filtering
   annoVec <- annoVec %>%
     strsplit(split = ",") %>%
     unlist()
@@ -187,32 +265,39 @@ GRAB.Region <- function(
     unlist() %>%
     unique()
 
+  # Extract subject information from null model
   subjData <- as.character(objNull$subjData)
   n <- length(subjData)
 
-  # updated on 2022-05-09: record MAC and MAF in each sample group (not marker group), to be continued
+  # Process sample grouping information for stratified analysis
+  # Default: single group for all samples
   SampleLabelNumber <- rep(1, n)
   SampleLabelLevels <- NULL
+
   if (!is.null(SampleFile)) {
+    # Read sample information file with required 'IID' column
     SampleInfo <- data.table::fread(SampleFile)
     if (colnames(SampleInfo)[1] != "IID") {
       stop("The header of the first column in 'SampleFile' should be 'IID'.")
     }
 
+    # Validate that all subjects in null model are present in sample file
     pos <- which(!subjData %in% SampleInfo$IID)
     if (length(pos) > 0) {
       stop(
-        "At least one subject in null model fitting does not in 'SampleFile'.\n",
+        "At least one subject in null model fitting not found in 'SampleFile':\n",
         paste0(subjData[pos], collapse = "\t")
       )
     }
 
+    # Extract sample group labels if specified
     if (!is.null(control$SampleLabelCol)) {
       SampleLabelColName <- control$SampleLabelCol
       if (!SampleLabelColName %in% colnames(SampleInfo)) {
-        stop("'SampleFile' should include one column with the header: ", SampleLabelColName)
+        stop("'SampleFile' should include column: ", SampleLabelColName)
       }
 
+      # Map sample labels to numeric codes for stratified analysis
       posInSampleInfo <- match(subjData, SampleInfo$IID)
       SampleLabel <- SampleInfo[[SampleLabelColName]][posInSampleInfo]
       SampleLabelFactor <- as.factor(SampleLabel)
@@ -222,14 +307,138 @@ GRAB.Region <- function(
   }
   nLabel <- max(SampleLabelNumber)
 
-  ## set up an object for genotype data
-  objGeno <- setGenoInput(GenoFile, GenoFileIndex, subjData, control) # Check 'Geno.R'
+  # Initialize genotype reader with file paths and subject filtering options
+  objGeno <- setGenoInput(GenoFile, GenoFileIndex, subjData, control) # Function in 'Geno.R'
   genoType <- objGeno$genoType
   markerInfo <- objGeno$markerInfo
 
-  RegionList <- getInfoGroupFile(GroupFile)
+  # Parse region definitions from group file
+  # ---- BEGIN inlined: getInfoGroupFile ----
+  .message("Extracting marker information from GroupFile: %s", GroupFile)
+
+  if (!file.exists(GroupFile)) {
+    stop("cannot find the below file:\n", GroupFile)
+  }
+
+  gf <- file(GroupFile, "r")
+  regionList <- list()
+  nLine <- 1
+
+  previousType <- "first"
+  previousGene <- "first"
+  Weights <- NA
+  nRegion <- 1
+
+  while (TRUE) {
+    markerGroupLine <- readLines(gf, n = 1)
+
+    if (length(markerGroupLine) == 0) {
+      if (nRegion == 1) {
+        stop("Cannot find any region information in 'GroupFile'.")
+      }
+      regionList[[nRegion]] <- list(
+        regionID = previousGene,
+        regionInfo = data.frame(
+          ID = Markers,
+          Annos = Annos,
+          Weights = Weights
+        )
+      )
+      close(gf)
+      break
+    }
+
+    # ---- inline getInfoGroupLine() ----
+    if (length(markerGroupLine) == 0) {
+      stop("The line ", nLine, " in `groupFile` is empty.")
+    }
+
+    info <- strsplit(markerGroupLine, "\t")[[1]]
+    if (length(info) < 3) {
+      stop("The line ", nLine, " in 'groupFile' includes < 3 elements, ",
+        "please note that each line should be seperated by 'tab'.")
+    }
+
+    geneID <- info[1]
+    type <- info[2]
+    values <- info[-c(1, 2)]
+
+    grepTemp <- grep(" ", values, value = TRUE)
+    if (length(grepTemp) > 0) {
+      stop("'GroupFile' cannot contain 'space':\n",
+        paste0(unique(grepTemp), collapse = "\t"))
+    }
+
+    grepTemp <- grep(";", values, value = TRUE)
+    if (length(grepTemp) > 0) {
+      stop("'GroupFile' cannot contain ';':\n",
+        paste0(unique(grepTemp), collapse = "\t"))
+    }
+
+    if (type == "weight") {
+      values <- as.numeric(values)
+    }
+
+    n <- length(values)
+    # ---- end inline getInfoGroupLine() ----
+    nLine <- nLine + 1
+
+    if (!type %in% c("var", "anno", "weight")) {
+      stop("The second column of the groupFile (tab-seperated) should be one of 'var', 'anno', and 'weight'.\n",
+        "         Please double check line ", nLine, ".")
+    }
+
+    if (type == "var") {
+      if (previousType == "var") {
+        stop("Cannot find 'anno' line for region ", previousGene, ".")
+      }
+      if (previousType != "first") {
+        regionList[[nRegion]] <- list(
+          regionID = previousGene,
+            regionInfo = data.frame(
+              ID = Markers,
+              Annos = Annos,
+              Weights = Weights
+            )
+        )
+        nRegion <- nRegion + 1
+      }
+
+      Markers <- values
+      n1 <- n
+      Weights <- NA
+    }
+
+    if (type == "anno") {
+      if (n != n1) {
+        stop("The length of annotations for markers is not equal to the length of marker IDs")
+      }
+      if (previousType != "var") {
+        stop("In the 'GroupFile', the 'anno' line should follow the 'var' line.")
+      }
+      Annos <- values
+    }
+
+    if (type == "weight") {
+      if (n != n1) {
+        stop("The length of weights for markers is not equal to the length of marker IDs")
+      }
+      if (previousType != "anno") {
+        stop("In the 'GroupFile', the 'weight' line should follow the 'anno' line.")
+      }
+      Weights <- values
+    }
+
+    previousType <- type
+    previousGene <- geneID
+  }
+
+  .message("Found %d groups in GroupFile", nRegion)
+  RegionList <- regionList
+  # ---- END inlined: getInfoGroupFile ----
   nRegions <- length(RegionList)
 
+  # Configure global variables in C++ for efficient region-based analysis
   with(
     control,
     setRegion_GlobalVarsInCPP(
@@ -244,8 +453,11 @@ GRAB.Region <- function(
     )
   )
 
-  textToParse <- paste0("obj.setRegion = setRegion.", method, "(objNull, control, chrom, SparseGRMFile)")
-  eval(parse(text = textToParse))
+  if (NullModelClass == "POLMM_NULL_Model") {
+    obj.setRegion <- setRegion.POLMM(objNull, control, chrom, SparseGRMFile)
+  } else {
+    stop("Unknown NullModelClass: ", NullModelClass)
+  }
 
   diffTime1 <- 0
   diffTime2 <- 0
@@ -268,8 +480,6 @@ GRAB.Region <- function(
 
     nMarkers <- nrow(regionInfo)
 
-    # if(nMarkers == 0)
-    #   stop("nrow(regionInfo) == 0: no markers are found for region '", regionID, "'.")
     if (nMarkers == 0) {
       next
     }
@@ -285,20 +495,18 @@ GRAB.Region <- function(
     genoIndex <- regionInfo$genoIndex
     weightVec <- regionInfo$Weights
 
-    weightExists <- T # update weight parts later: 2022-05-01
     if (all(is.na(weightVec))) {
-      weightExists <- F
       weightVec <- rep(1, nMarkers)
     } else {
-      if (any(is.na(weightVec) | weightVec <= 0)) {
+      if (any(is.na(weightVec) || weightVec <= 0)) {
         stop("Marker weights cannot be non-positive (<= 0) or NA.")
       }
     }
 
     .message("Analyzing region %s (%d/%d)", regionID, i, nRegions)
     .message(
-      "Region contains %d markers: %s", 
-      length(regionInfo$ID), 
+      "Region contains %d markers: %s",
+      length(regionInfo$ID),
       paste0(head(regionInfo$ID, 6), collapse = ", ")
     )
 
@@ -313,7 +521,6 @@ GRAB.Region <- function(
 
     # updated on 2022-06-24 (save sum of genotype to conduct burden test and adjust p-values using SPA)
     pvalBurden <- obj.mainRegionInCPP$pvalBurden
-    # print(class(pvalBurden))
 
     # updated on 2023-02-06 (record summary statistics for sum of genotype for a region)
     infoBurdenNoWeight <- obj.mainRegionInCPP$infoBurdenNoWeight
@@ -331,8 +538,12 @@ GRAB.Region <- function(
       colnames(obj.mainRegionInCPP$MAFLabelMat) <- paste0("MAF_", SampleLabelLevels)
     }
 
-    textToParse <- paste0("obj.mainRegion = mainRegion.", method, "(genoType, genoIndex, OutputFile, control, n, obj.setRegion, obj.mainRegionInCPP, nLabel)")
-    eval(parse(text = textToParse))
+    if (NullModelClass == "POLMM_NULL_Model") {
+      obj.mainRegion <- mainRegion.POLMM(genoType, genoIndex, OutputFile, control, n, 
+                                         obj.setRegion, obj.mainRegionInCPP, nLabel)
+    } else {
+      stop("Unknown NullModelClass: ", NullModelClass)
+    }
 
     Other.Markers <- obj.mainRegion$Other.Markers %>% mutate(Region = regionID, .before = ID)
     VarMat <- obj.mainRegion$VarMat
@@ -361,8 +572,6 @@ GRAB.Region <- function(
     wr0 <- RV.Markers$wr0
 
     wadjVarSMat <- t(VarMat * wr0) * wr0
-
-    # RV.Markers %>% head()
 
     RV.MarkersWithAnno <- regionInfo %>%
       select(-genoIndex) %>%
@@ -412,7 +621,6 @@ GRAB.Region <- function(
         out_SKAT_List <- with(RV.Markers, try(
           SKAT.Met_SKAT_Get_Pvalue(
             Score = wStatVec[pos],
-            # Phi = wadjVarSMat[pos, pos],
             Phi = ratioBurdenSPA * wadjVarSMat[pos, pos],
             r.corr = control$r.corr,
             method = "optimal.adj",
@@ -426,10 +634,8 @@ GRAB.Region <- function(
 
         if (inherits(out_SKAT_List, "try-error")) {
           Pvalue <- c(NA, NA, NA)
-          error.code <- 2
         } else if (!any(c(0, 1) %in% out_SKAT_List$param$rho)) {
           Pvalue <- c(NA, NA, NA)
-          error.code <- 3
         } else {
           pos00 <- which(out_SKAT_List$param$rho == 0)
           pos01 <- which(out_SKAT_List$param$rho == 1)
@@ -438,7 +644,6 @@ GRAB.Region <- function(
             out_SKAT_List$param$p.val.each[pos00], # SKAT
             out_SKAT_List$param$p.val.each[pos01]
           ) # Burden Test
-          error.code <- 0
         }
 
         pval.Region <- rbind.data.frame(
@@ -479,10 +684,6 @@ GRAB.Region <- function(
     t22 <- Sys.time()
     diffTime2 <- diffTime2 + (t22 - t21)
 
-    # cat("diffTime1:\t", diffTime1,"\n")
-    # cat("diffTime2:\t", diffTime2,"\n")
-    # cat("diffTime3:\t", diffTime3,"\n")
-
     writeOutputFile(
       Output = list(
         pval.Region,
@@ -506,159 +707,13 @@ GRAB.Region <- function(
   }
 
   .message("Region analysis timing: mainRegionInCPP %.2f seconds, SKATO %.2f seconds", diffTime1, diffTime3)
-  # printTimeDiffInCPP()
 
   .message(
-    "Analysis complete! Results saved to:\n    %s\n    %s\n    %s", 
-    OutputFile, 
-    paste0(OutputFile, ".markerInfo"), 
+    "Analysis complete! Results saved to:\n    %s\n    %s\n    %s",
+    OutputFile,
+    paste0(OutputFile, ".markerInfo"),
     paste0(OutputFile, ".otherMarkerInfo")
   )
 
   return(invisible(NULL))
-}
-
-
-getInfoGroupLine <- function(markerGroupLine, nLine) {
-  if (length(markerGroupLine) == 0) {
-    stop("The line ", nLine, " in `groupFile` is empty.")
-  }
-
-  info <- markerGroupLine %>%
-    strsplit(split = "\t") %>%
-    unlist()
-  if (length(info) < 3) {
-    stop("The line ", nLine, " in 'groupFile' includes < 3 elements, please note that each line should be seperated by 'tab'.")
-  }
-
-  geneID <- info[1]
-  type <- info[2]
-  values <- info[c(-1, -2)]
-
-  grepTemp <- grep(" ", values, value = TRUE)
-  if (length(grepTemp) > 0) {
-    stop(
-      "'GroupFile' cannot contain 'space':\n",
-      grepTemp %>% unique() %>% paste0(collapse = "\t")
-    )
-  }
-
-  grepTemp <- grep(";", values, value = TRUE)
-  if (length(grepTemp) > 0) {
-    stop(
-      "'GroupFile' cannot contain ';':\n",
-      grepTemp %>% unique() %>% paste0(collapse = "\t")
-    )
-  }
-
-  if (type == "weight") {
-    values <- as.numeric(values)
-  }
-
-  n <- length(values)
-  infoList <- list(
-    geneID = geneID,
-    type = type,
-    values = values,
-    n = n
-  )
-  return(infoList)
-}
-
-getInfoGroupFile <- function(GroupFile) {
-  .message("Extracting marker information from GroupFile: %s", GroupFile)
-  
-  if (!file.exists(GroupFile)) {
-    stop("cannot find the below file:\n", GroupFile)
-  }
-
-  gf <- file(GroupFile, "r")
-  regionList <- list()
-  nLine <- 1
-
-  previousType <- "first"
-  previousGene <- "first"
-  Weights <- NA
-  nRegion <- 1
-
-  while (TRUE) {
-    markerGroupLine <- readLines(gf, n = 1)
-
-    if (length(markerGroupLine) == 0) {
-      if (nRegion == 1) {
-        stop("Cannot find any region information in 'GroupFile'.")
-      }
-      regionList[[nRegion]] <- list(
-        regionID = previousGene,
-        regionInfo = data.frame(
-          ID = Markers,
-          Annos = Annos,
-          Weights = Weights
-        )
-      )
-      close(gf)
-      break
-    }
-
-    infoList <- getInfoGroupLine(markerGroupLine, nLine)
-    nLine <- nLine + 1
-
-    geneID <- infoList$geneID
-    type <- infoList$type
-    values <- infoList$values
-    n <- infoList$n
-
-    if (!type %in% c("var", "anno", "weight")) {
-      stop("The second column of the groupFile (tab-seperated) should be one of 'var', 'anno', and 'weight'.\n
-         Please double check line ", nLine, ".")
-    }
-
-    if (type == "var") {
-      if (previousType == "var") {
-        stop("Cannot find 'anno' line for region ", previousGene, ".")
-      }
-      if (previousType != "first") {
-        regionList[[nRegion]] <- list(
-          regionID = previousGene,
-          regionInfo = data.frame(
-            ID = Markers,
-            Annos = Annos,
-            Weights = Weights
-          )
-        )
-        nRegion <- nRegion + 1
-      }
-
-      # cat("Region ", geneID, " includes ", n, "variants.\n")
-      Markers <- values
-      n1 <- n
-      Weights <- NA
-    }
-
-    if (type == "anno") {
-      if (n != n1) {
-        stop("The length of annotations for markers is not equal to the length of marker IDs")
-      }
-      if (previousType != "var") {
-        stop("In the 'GroupFile', the 'anno' line should follow the 'var' line.")
-      }
-      Annos <- values
-    }
-
-    if (type == "weight") {
-      if (n != n1) {
-        stop("The length of weights for markers is not equal to the length of marker IDs")
-      }
-      if (previousType != "anno") {
-        stop("In the 'GroupFile', the 'weight' line should follow the 'anno' line.")
-      }
-      Weights <- values
-    }
-
-    previousType <- type
-    previousGene <- geneID
-  }
-
-  .message("Found %d groups in GroupFile", nRegion)
-  return(regionList)
 }

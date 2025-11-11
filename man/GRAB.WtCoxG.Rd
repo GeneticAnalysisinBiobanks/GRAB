@@ -2,35 +2,44 @@
 % Please edit documentation in R/WtCoxG.R
 \name{GRAB.WtCoxG}
 \alias{GRAB.WtCoxG}
-\title{WtCoxG method in GRAB package}
+\title{Weighted Cox regression for genetic association analysis with case ascertainment}
 \usage{
 GRAB.WtCoxG()
 }
 \value{
-No return value, called for side effects (prints information about the WtCoxG method to the console).
+No return value. Called for informational side effects.
 }
 \description{
-WtCoxG is an accurate, powerful, and computationally efficient Cox-based approach to perform genome-wide time-to-event data analyses in study cohorts with case ascertainment.
+WtCoxG provides an accurate, powerful, and computationally efficient Cox-based
+approach for genome-wide time-to-event analyses in study cohorts with case
+ascertainment.
 }
 \details{
-Additional arguments in \code{GRAB.NullModel()}:
-\itemize{
-\item \code{RefAfFile}: A character string specifying a reference allele frequency file, which is a csv file (with a header) and includes columns of \code{CHROM}, \code{POS}, \code{ID}, \code{REF}, \code{ALT}, \code{AF_ref}, and \code{AN_ref}.
-\item \code{OutputFile}: A character string specifying the output file name.
-\item \code{SampleIDColumn}: A character string specifying the column name in the input data that contains sample IDs.
-\item \code{SurvTimeColumn}: A character string specifying the column name in the input data that contains survival time information.
-\item \code{IndicatorColumn}: A character string specifying the column name in the input data that indicates case-control status (should be 0 for controls and 1 for cases).
+\strong{Two-Step Analysis Process:}
+\enumerate{
+\item \strong{Step 1}: Fit null model and test for batch effects using sample SNPs
+\item \strong{Step 2}: Conduct genome-wide association testing with bias correction
 }
 
-Additional arguments in list \code{control} in \code{GRAB.NullModel()}:
+\strong{Required Additional Arguments for \code{GRAB.NullModel()}:}
 \itemize{
-\item \code{RefPrevalence}: A numeric value specifying the population-level disease prevalence used for weighting in the analysis.
-\item \code{SNPnum}: Minimum number of SNPs. Default is 1e4.
+\item \code{RefAfFile}: Reference allele frequency file (CSV format) with
+columns: CHROM, POS, ID, REF, ALT, AF_ref, AN_ref
+\item \code{OutputFile}: Output file path for Step 1 results
+\item \code{SampleIDColumn}: Column name containing sample IDs
+\item \code{SurvTimeColumn}: Column name containing survival times
+\item \code{IndicatorColumn}: Column name for case-control status (0/1)
 }
 
-Additional arguments in list \code{control} in \code{GRAB.Marker()}:
+\strong{Required Control Parameters for \code{GRAB.NullModel()}:}
 \itemize{
-\item \code{cutoff}: A numeric value specifying the batch effect p-value cutoff for method selection of an association test. Default is 0.1.
+\item \code{RefPrevalence}: Population-level disease prevalence for weighting
+\item \code{SNPnum}: Minimum number of SNPs for batch effect testing (default: 1e4)
+}
+
+\strong{Control Parameters for \code{GRAB.Marker()}:}
+\itemize{
+\item \code{cutoff}: P-value threshold for batch effect test method selection (default: 0.1)
 }
 }
 \examples{
@@ -56,11 +65,11 @@ obj.WtCoxG <- GRAB.NullModel(
   GenoFile = GenoFile,
   SparseGRMFile = SparseGRMFile,
   control = list(
-    AlleleOrder = "ref-first", 
-    AllMarkers = TRUE, 
+    AlleleOrder = "ref-first",
+    AllMarkers = TRUE,
     RefPrevalence = RefPrevalence,
-    SNPnum = 1000  # the minimum number of SNPs that TestforBatchEffect() needs
-  ), 
+    SNPnum = 1000
+  ),
   RefAfFile = RefAfFile,
   OutputFile = OutputStep1,
   SampleIDColumn = "IID",
@@ -77,9 +86,9 @@ GRAB.Marker(
   GenoFile = GenoFile,
   OutputFile = OutputStep2,
   control = list(
-    AlleleOrder = "ref-first", 
+    AlleleOrder = "ref-first",
     AllMarkers = TRUE,
-    cutoff = 0.1, 
+    cutoff = 0.1,
     nMarkersEachChunk = 5000
   )
 )

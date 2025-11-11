@@ -1,59 +1,53 @@
-#' Read in genotype data
+#' Read genotype data from multiple file formats
 #'
-#' \code{GRAB} package provides functions to read in genotype data. Currently, we support genotype formats of PLINK and BGEN. Other formats such as VCF will be added later.
+#' Reads genotype data from PLINK or BGEN format files with flexible filtering
+#' and processing options. Supports efficient memory usage and various
+#' imputation methods for missing genotypes.
 #'
-#' @param GenoFile a character of genotype file. See \code{Details} section for more details.
-#' @param GenoFileIndex additional index file(s) corresponding to \code{GenoFile}. See \code{Details} section for more details.
-#' @param SampleIDs a character vector of sample IDs to extract. The default is \code{NULL}, that is, all samples in \code{GenoFile} will be extracted.
-#' @param control a list of parameters to decide which markers to extract. See \code{Details} section for more details.
-#' @param sparse a logical value *(default: FALSE)* to indicate if the output of genotype matrix is sparse.
-#' @return An R list including a genotype matrix and an information matrix.
-#' \itemize{
-#'  \item \code{GenoMat}: Genotype matrix, each row is for one sample and each column is for one marker.
-#'  \item \code{markerInfo}: Information matrix including 5 columns of CHROM, POS, ID, REF, and ALT.
+#' @param GenoFile Path to genotype file. Supported formats determined by extension:
+#'   \itemize{
+#'     \item PLINK: "prefix.bed" (binary format)
+#'     \item BGEN: "prefix.bgen" (version 1.2 with 8-bit compression)
+#'   }
+#' @param GenoFileIndex Associated index files for the genotype file:
+#'   \itemize{
+#'     \item PLINK: c("prefix.bim", "prefix.fam") (auto-detected if NULL)
+#'     \item BGEN: "prefix.bgen.bgi" or c("prefix.bgen.bgi", "prefix.sample")
+#'   }
+#' @param SampleIDs Character vector of sample IDs to extract. If NULL,
+#'   extracts all samples.
+#' @param control List of processing parameters. See Details for options.
+#' @param sparse Logical indicating whether to return sparse genotype matrix
+#'   (default: FALSE).
+#' @return List containing:
+#' \describe{
+#'   \item{GenoMat}{Genotype matrix (samples × markers) with values 0, 1, 2, or NA.}
+#'   \item{markerInfo}{Data frame with columns CHROM, POS, ID, REF, ALT.}
 #' }
 #' @details
-#' ## Details about \code{GenoFile} and \code{GenoFileIndex}
-#' Currently, we support two formats of genotype input including PLINK and BGEN. Other formats such as VCF will be added later.
-#' Users do not need to specify the genotype format, \code{GRAB} package will check the extension of the file name for that purpose.
-#' If \code{GenoFileIndex} is not specified, \code{GRAB} package assumes the prefix is the same as \code{GenoFile}.
-#' \subsection{PLINK format}{
-#' Check [link](https://www.cog-genomics.org/plink/2.0/) for more details about this format
+#' **File Format Support:**
+#'
+#' *PLINK Format:* Binary BED/BIM/FAM files. See
+#' \url{https://www.cog-genomics.org/plink/2.0/} for specifications.
+#'
+#' *BGEN Format:* Version 1.2 with 8-bit compression. See
+#' \url{https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html} for details.
+#' Requires BGI index file created with bgenix tool.
+#'
+#' **Control Parameters:**
 #' \itemize{
-#' \item \code{GenoFile}: "prefix.bed". The full file name (including the extension ".bed") of the PLINK binary \code{bed} file.
-#' \item \code{GenoFileIndex}: c("prefix.bim", "prefix.fam"). If not specified, \code{GRAB} package assumes that \code{bim} and \code{fam} files have the same prefix as the \code{bed} file.
-#' }
-#' }
-#' \subsection{BGEN format}{
-#' Check [link](https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html) for more details about this format. Currently, only version 1.2 with 8 bits suppression is supported
-#' \itemize{
-#' \item \code{GenoFile}: "prefix.bgen". The full file name (including the extension ".bgen") of the BGEN binary \code{bgen} file.
-#' \item \code{GenoFileIndex}: "prefix.bgen.bgi" or c("prefix.bgen.bgi", "prefix.sample"). If not specified, \code{GRAB} package assumes that \code{bgi} and \code{sample} files have the same prefix as the \code{bgen} file.
-#' If only one element is given for \code{GenoFileIndex}, then it should be a \code{bgi} file.  Check [link](https://enkre.net/cgi-bin/code/bgen/doc/trunk/doc/wiki/bgenix.md) for more details about \code{bgi} file.
-#' \item If the \code{bgen} file does not include sample identifiers, then \code{sample} file is required, whose detailed description can ben seen in [link](https://www.cog-genomics.org/plink/2.0/formats#sample).
-#' If you are not sure if sample identifiers are in BGEN file, please refer to \code{\link{checkIfSampleIDsExist}}.
-#' }
-#' }
-#' \subsection{VCF format}{
-#' will be supported later. \code{GenoFile}: "prefix.vcf"; \code{GenoFileIndex}: "prefix.vcf.tbi"
+#'   \item \code{IDsToIncludeFile}: File with marker IDs to include (one per line)
+#'   \item \code{IDsToExcludeFile}: File with marker IDs to exclude
+#'   \item \code{RangesToIncludeFile}: File with genomic ranges (CHR, START, END)
+#'   \item \code{RangesToExcludeFile}: File with genomic ranges to exclude
+#'   \item \code{AlleleOrder}: "ref-first" or "alt-first" for allele encoding
+#'   \item \code{AllMarkers}: Set TRUE to extract all markers (memory warning)
+#'   \item \code{ImputeMethod}: "none", "mean", or "bestguess" for missing data
 #' }
 #'
-#' ## Details about argument \code{control}
-#' Argument \code{control} is used to include and exclude markers for function \code{GRAB.ReadGeno}.
-#' The function supports two include files of (\code{IDsToIncludeFile}, \code{RangesToIncludeFile}) and two exclude files of (\code{IDsToExcludeFile}, \code{RangesToExcludeFile}),
-#' but does not support both include and exclude files at the same time.
-#' \itemize{
-#'   \item \code{IDsToIncludeFile}: a file of marker IDs to include, one column (no header). Check \code{system.file("extdata", "IDsToInclude.txt", package = "GRAB")} for an example.
-#'   \item \code{IDsToExcludeFile}: a file of marker IDs to exclude, one column (no header).
-#'   \item \code{RangesToIncludeFile}: a file of ranges to include, three columns (no headers): chromosome, start position, end position. Check \code{system.file("extdata", "RangesToInclude.txt", package = "GRAB")} for an example.
-#'   \item \code{RangesToExcludeFile}: a file of ranges to exclude, three columns (no headers): chromosome, start position, end position.
-#'   \item \code{AlleleOrder}: a character, "ref-first" or "alt-first", to determine whether the REF/major allele should appear first or second. Default is "alt-first" for PLINK and "ref-first" for BGEN. If the ALT allele frequencies of most markers are > 0.5, you should consider resetting this option. NOTE, if you use plink2 to convert PLINK file to BGEN file, then 'ref-first' modifier is to reset the order.
-#'   \item \code{AllMarkers}: a logical value (default: FALSE) to indicate if all markers are extracted. It might take too much memory to put genotype of all markers in R. This parameter is to remind users.
-#'   \item \code{ImputeMethod}: a character, "none" (default), "bestguess", or "mean". By default, missing genotype is \code{NA}. Suppose alternative allele frequency is \code{p}, then missing genotype is imputed as \code{2p} (ImputeMethod = "mean") or \code{round(2p)} (ImputeMethod = "bestguess").
-#' }
+#' **Note:** Cannot use both include and exclude files simultaneously.
 #'
 #' @examples
-#'
 #' ## Raw genotype data
 #' RawFile <- system.file("extdata", "simuRAW.raw.gz", package = "GRAB")
 #' GenoMat <- data.table::fread(RawFile)
@@ -104,14 +98,17 @@
 #' GenoList <- GRAB.ReadGeno(BGENFile, control = list(AllMarkers = TRUE))
 #' head(GenoList$GenoMat)
 #'
-#'
-GRAB.ReadGeno <- function(GenoFile,
-                          GenoFileIndex = NULL,
-                          SampleIDs = NULL,
-                          control = NULL,
-                          sparse = FALSE) {
+GRAB.ReadGeno <- function(
+  GenoFile,
+  GenoFileIndex = NULL,
+  SampleIDs = NULL,
+  control = NULL,
+  sparse = FALSE
+) {
+  # Validate and set default control parameters
   control <- checkControl.ReadGeno(control) # check 'control.R'
 
+  # Initialize genotype input object with file paths and parameters
   objGeno <- setGenoInput(GenoFile, GenoFileIndex, SampleIDs, control)
 
   genoType <- objGeno$genoType # "PLINK" or "BGEN"
@@ -119,28 +116,34 @@ GRAB.ReadGeno <- function(GenoFile,
   SampleIDs <- objGeno$SampleIDs
   anyQueue <- objGeno$anyQueue # if FALSE, no include/exclude is specified
 
+  # Validate that AllMarkers is TRUE when no filtering is specified
   if (!anyQueue) {
     if (!control$AllMarkers) {
       stop("If include/exclude files are not specified, control$AllMarkers should be TRUE.")
     }
   }
 
+  # Extract marker and sample information
   MarkerIDs <- markerInfo$ID
-
   n <- length(SampleIDs)
   m <- length(MarkerIDs)
 
-  .message("Reading genotypes: %d samples, %d markers", n, m)
+  .message("Reading genotypes: %d subjects, %d markers", n, m)
 
+  # Read genotype data using appropriate C++ backend
   if (sparse == TRUE) {
+    # Use sparse matrix representation for memory efficiency
     GenoMat <- getSpGenoInCPP(genoType, markerInfo, n, control$ImputeMethod) # check Main.cpp
   } else {
+    # Use standard dense matrix representation
     GenoMat <- getGenoInCPP(genoType, markerInfo, n, control$ImputeMethod) # check Main.cpp
   }
 
+  # Set matrix row and column names for identification
   colnames(GenoMat) <- MarkerIDs
   rownames(GenoMat) <- SampleIDs
 
+  # Keep only essential marker information columns
   markerInfo <- markerInfo[, 1:5]
 
   .message("Genotype reading completed")
@@ -153,26 +156,30 @@ GRAB.ReadGeno <- function(GenoFile,
   ))
 }
 
-# (2023-05-03) Get allele frequency and missing rate information from genotype data
 
 #' Get allele frequency and missing rate information from genotype data
 #'
 #' This function shares input as in function \code{GRAB.ReadGeno}, please check \code{?GRAB.ReadGeno} for more details.
 #'
 #' @param GenoFile a character of genotype file. See \code{Details} section for more details.
-#' @param GenoFileIndex additional index file(s) corresponding to \code{GenoFile}. See \code{Details} section for more details.
-#' @param SampleIDs a character vector of sample IDs to extract. The default is \code{NULL}, that is, all samples in \code{GenoFile} will be extracted.
+#' @param GenoFileIndex additional index file(s) corresponding to \code{GenoFile}. See \code{Details}
+#'   section for more details.
+#' @param SampleIDs a character vector of sample IDs to extract. The default is \code{NULL}, that is,
+#'   all samples in \code{GenoFile} will be extracted.
 #' @param control a list of parameters to decide which markers to extract. See \code{Details} section for more details.
-#' @return A data frame containing marker information with allele frequencies and missing rates. The data frame includes columns from marker information (CHROM, POS, ID, REF, ALT, etc.) plus additional columns:
+#' @return A data frame containing marker information with allele frequencies and missing rates. The
+#'   data frame includes columns from marker information (CHROM, POS, ID, REF, ALT, etc.) plus additional columns:
 #' \describe{
 #'   \item{altFreq}{Alternative allele frequency (before genotype imputation)}
 #'   \item{missingRate}{Missing rate for each marker}
 #' }
 #'
-GRAB.getGenoInfo <- function(GenoFile,
-                             GenoFileIndex = NULL,
-                             SampleIDs = NULL,
-                             control = NULL) {
+GRAB.getGenoInfo <- function(
+  GenoFile,
+  GenoFileIndex = NULL,
+  SampleIDs = NULL,
+  control = NULL
+) {
   control <- checkControl.ReadGeno(control) # check 'control.R'
 
   objGeno <- setGenoInput(GenoFile, GenoFileIndex, SampleIDs, control)
@@ -204,13 +211,58 @@ GRAB.getGenoInfo <- function(GenoFile,
 }
 
 
+# Validate and set default control parameters for SPACox marker analysis
+checkControl.ReadGeno <- function(control) {
+  # check if control is an R list
+  if (!is.null(control)) {
+    if (!is.list(control)) {
+      stop("If specified, the argument of 'control' should be an R 'list'.")
+    }
+  }
+
+  if (!is.null(control$AlleleOrder)) {
+    if (control$AlleleOrder != "ref-first" && control$AlleleOrder != "alt-first") {
+      stop("control$AlleleOrder should be 'ref-first' or 'alt-first'.")
+    }
+  }
+
+  if (is.null(control$ImputeMethod)) {
+    control$ImputeMethod <- "none"
+  }
+
+  if (!control$ImputeMethod %in% c("none", "bestguess", "mean")) {
+    stop("control$ImputeMethod should be 'none', 'bestguess', or 'mean'.")
+  }
+
+  if (is.null(control$AllMarkers)) {
+    control$AllMarkers <- FALSE
+  }
+
+  FileType <- c("IDsToIncludeFile", "IDsToExcludeFile", "RangesToIncludeFile", "RangesToExcludeFile")
+
+  # check if the files specified exist
+  for (ft in FileType) {
+    if (ft %in% names(control)) {
+      file <- control[[ft]]
+      if (!file.exists(file)) {
+        stop(paste0("Cannot find the file of ", file, "..."))
+      }
+    }
+  }
+
+  return(control)
+}
+
+
 # setGenoInput() is to setup the following object in C++ (Main.cpp)
 # PLINK format: ptr_gPLINKobj;
 # BGEN format: ptr_gBGENobj;
-setGenoInput <- function(GenoFile,
-                         GenoFileIndex = NULL,
-                         SampleIDs = NULL,
-                         control = NULL) {
+setGenoInput <- function(
+  GenoFile,
+  GenoFileIndex = NULL,
+  SampleIDs = NULL,
+  control = NULL
+) {
   if (missing(GenoFile)) {
     stop("Argument 'GenoFile' is required.")
   }
@@ -224,7 +276,8 @@ setGenoInput <- function(GenoFile,
   # Currently, only support PLINK and BGEN
 
   if (GenoFileExt != "bed" && GenoFileExt != "bgen") {
-    stop("The current version only supports genotype input of PLINK (filename extension is '.bed') and BGEN (filename extension is '.bgen').")
+    stop("The current version only supports genotype input of PLINK (filename extension is ",
+         "'.bed') and BGEN (filename extension is '.bgen').")
   }
 
   AlleleOrder <- control$AlleleOrder
@@ -245,7 +298,8 @@ setGenoInput <- function(GenoFile,
     }
 
     if (length(GenoFileIndex) != 2) {
-      stop("If PLINK format is used, argument 'GenoFileIndex' should be 'NULL' or a character vector of c(bimFile, famFile).")
+      stop("If PLINK format is used, argument 'GenoFileIndex' should be 'NULL' or a character ",
+           "vector of c(bimFile, famFile).")
     }
 
     bimFile <- GenoFileIndex[1]
@@ -317,7 +371,8 @@ setGenoInput <- function(GenoFile,
     }
 
     if (length(GenoFileIndex) != 1 && length(GenoFileIndex) != 2) {
-      stop("For genotype input of BGEN format, 'GenoFileIndex' should be of length 1 or 2. Check 'Details' section in '?GRAB.ReadGeno' for more details.")
+      stop("For genotype input of BGEN format, 'GenoFileIndex' should be of length 1 or 2. ",
+           "Check 'Details' section in '?GRAB.ReadGeno' for more details.")
     }
 
     if (length(GenoFileIndex) == 1) {
@@ -339,8 +394,12 @@ setGenoInput <- function(GenoFile,
           stop("Column number of sample file should be >= 4.")
         }
 
-        if (any(colnames(sampleData)[1:4] != c("ID_1", "ID_2", "missing", "sex")) || any(sampleData[1, 1:4] != c(0, 0, 0, "D"))) {
-          stop("Column names of sample file should be c('ID_1', 'ID_2', 'missing', 'sex') and the first row of sample file should be c(0,0,0,'D')")
+        expected_colnames <- c("ID_1", "ID_2", "missing", "sex")
+        expected_first_row <- c(0, 0, 0, "D")
+        if (any(colnames(sampleData)[1:4] != expected_colnames) ||
+            any(sampleData[1, 1:4] != expected_first_row)) {
+          stop("Column names of sample file should be c('ID_1', 'ID_2', 'missing', 'sex') and ",
+               "the first row of sample file should be c(0,0,0,'D')")
         }
 
         samplesInGeno <- as.character(sampleData$ID_2[-1])
@@ -374,8 +433,6 @@ setGenoInput <- function(GenoFile,
 
   ########## ----------  More format such as VCF will be supported later ---------- ##########
 
-  # Files <- c("IDsToIncludeFile", "IDsToExcludeFile", "RangesToIncludeFile", "RangesToExcludeFile")
-
   anyInclude <- FALSE
   anyExclude <- FALSE
 
@@ -397,7 +454,9 @@ setGenoInput <- function(GenoFile,
   }
 
   if (!is.null(control$RangesToIncludeFile)) {
-    RangesToInclude <- data.table::fread(control$RangesToIncludeFile, header = FALSE, colClasses = c("character", "numeric", "numeric"))
+    col_classes <- c("character", "numeric", "numeric")
+    RangesToInclude <- data.table::fread(control$RangesToIncludeFile, header = FALSE,
+                                         colClasses = col_classes)
     if (ncol(RangesToInclude) != 3) {
       stop("RangesToIncludeFile should only include three columns.")
     }
@@ -438,7 +497,9 @@ setGenoInput <- function(GenoFile,
     if (anyInclude) {
       stop("We currently do not support both 'IncludeFile' and 'ExcludeFile' at the same time.")
     }
-    RangesToExclude <- data.table::fread(control$RangesToExcludeFile, header = FALSE, colClasses = c("character", "numeric", "numeric"))
+    col_classes <- c("character", "numeric", "numeric")
+    RangesToExclude <- data.table::fread(control$RangesToExcludeFile, header = FALSE,
+                                         colClasses = col_classes)
     if (ncol(RangesToExclude) != 3) {
       stop("RangesToExcludeFile should only include three columns.")
     }
@@ -462,8 +523,6 @@ setGenoInput <- function(GenoFile,
   markersExclude <- unique(markersExclude)
 
   # return genotype
-  # .message("Using %s format for genotype data", genoType)
-
   if (anyInclude) {
     markerInfo <- subset(markerInfo, ID %in% markersInclude)
   }
@@ -474,7 +533,9 @@ setGenoInput <- function(GenoFile,
 
   anyQueue <- anyInclude | anyExclude
 
-  markerInfo$genoIndex <- as.numeric(markerInfo$genoIndex) # added on 2022-04-07: avoid potential error due to "integer64", which is not well supported between C++ and R
+  # added on 2022-04-07: avoid potential error due to "integer64", which is not well
+  # supported between C++ and R
+  markerInfo$genoIndex <- as.numeric(markerInfo$genoIndex)
 
   genoList <- list(
     genoType = genoType,
@@ -489,6 +550,8 @@ setGenoInput <- function(GenoFile,
   return(genoList)
 }
 
+
+# Update SampleIDs based on samples in genotype file
 updateSampleIDs <- function(SampleIDs, samplesInGeno) {
   if (is.null(SampleIDs)) {
     .message("Using all samples from genotype file (%d samples)", length(samplesInGeno))
@@ -506,21 +569,20 @@ updateSampleIDs <- function(SampleIDs, samplesInGeno) {
   return(SampleIDs)
 }
 
+
 # https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
 #' Get sample identifiers from BGEN file
 #'
-#' Extract sample identifiers from BGEN file (only support BGEN v1.2, check [link](https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html))
+#' Extract sample identifiers from BGEN file (only support BGEN v1.2, check
+#' [link](https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html))
 #'
 #' @param bgenFile a character of BGEN file.
 #' @return A character vector of sample identifiers extracted from the BGEN file.
-#' @examples
-#'
-#' BGENFile <- system.file("extdata", "simuBGEN.bgen", package = "GRAB")
-#' getSampleIDsFromBGEN(BGENFile)
 #'
 getSampleIDsFromBGEN <- function(bgenFile) {
   if (!checkIfSampleIDsExist(bgenFile)) {
-    stop("The BGEN file does not include sample identifiers. Please refer to help(checkIfSampleIDsExist) for more details")
+    stop("The BGEN file does not include subject IDs. Check ",
+         "https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html for details.")
   }
 
   .message("Extracting sample information from BGEN file")
@@ -544,6 +606,7 @@ getSampleIDsFromBGEN <- function(bgenFile) {
   return(samplesInGeno)
 }
 
+
 # https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
 #' Get version information from BGEN file
 #'
@@ -557,10 +620,6 @@ getSampleIDsFromBGEN <- function(bgenFile) {
 #'   \item{Version Layout = 0, which is not supported...}{Error message for unsupported version 0}
 #'   \item{Version Layout > 2, which is reserved for future use...}{Warning message for future versions}
 #' }
-#' @examples
-#'
-#' BGENFile <- system.file("extdata", "simuBGEN.bgen", package = "GRAB")
-#' getVersionFromBGEN(BGENFile)
 #'
 getVersionFromBGEN <- function(bgenFile) {
   con <- file(bgenFile, "rb")
@@ -571,7 +630,8 @@ getVersionFromBGEN <- function(bgenFile) {
 
   VersionNum <- convert4BitsToNumber(header[3:6])
   if (VersionNum == 0) {
-    version <- "Version Layout = 0, which is not supported. Please check https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html for more details."
+    version <- paste0("Version Layout = 0, which is not supported. Please check ",
+                      "https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html for more details.")
   }
 
   if (VersionNum == 1) {
@@ -583,12 +643,14 @@ getVersionFromBGEN <- function(bgenFile) {
   }
 
   if (VersionNum > 2) {
-    version <- "Version Layout > 2, which is reserved for future use. Please check https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html for more details."
+    version <- paste0("Version Layout > 2, which is reserved for future use. Please check ",
+                      "https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html for more details.")
   }
 
   close(con)
   return(version)
 }
+
 
 # https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
 convert4BitsToNumber <- function(leastSignificantBit) {
@@ -604,16 +666,17 @@ convert4BitsToNumber <- function(leastSignificantBit) {
   return(Number)
 }
 
+
 #' Check if sample identifiers are stored in a BGEN file
 #'
-#' Check if sample identifiers are stored in a BGEN file, only support BGEN v1.2. Check [link](https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html) for more details.
+#' Check if sample identifiers are stored in a BGEN file, only support BGEN v1.2. Check
+#' [link](https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html) for more details.
 #'
-#' @param bgenFile a character of BGEN file. Sometimes, BGEN file does not include sample IDs. This information can be extracted from BGEN file. Please refer to [link](https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html) for more details.
-#' @return A logical value indicating whether sample identifiers are stored in the BGEN file. Returns \code{TRUE} if sample IDs are present, \code{FALSE} otherwise.
-#' @examples
-#'
-#' BGENFile <- system.file("extdata", "simuBGEN.bgen", package = "GRAB")
-#' checkIfSampleIDsExist(BGENFile)
+#' @param bgenFile a character of BGEN file. Sometimes, BGEN file does not include sample IDs.
+#'   This information can be extracted from BGEN file. Please refer to
+#'   [link](https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html) for more details.
+#' @return A logical value indicating whether sample identifiers are stored in the BGEN file.
+#'   Returns \code{TRUE} if sample IDs are present, \code{FALSE} otherwise.
 #'
 checkIfSampleIDsExist <- function(bgenFile) {
   con <- file(bgenFile, "rb")

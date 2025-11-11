@@ -1,29 +1,37 @@
-#' WtCoxG method in GRAB package
+#' Weighted Cox regression for genetic association analysis with case ascertainment
 #'
-#' WtCoxG is an accurate, powerful, and computationally efficient Cox-based approach to perform genome-wide time-to-event data analyses in study cohorts with case ascertainment.
+#' WtCoxG provides an accurate, powerful, and computationally efficient Cox-based
+#' approach for genome-wide time-to-event analyses in study cohorts with case
+#' ascertainment.
 #'
 #' @details
-#' Additional arguments in \code{GRAB.NullModel()}:
+#' **Two-Step Analysis Process:**
+#' 1. **Step 1**: Fit null model and test for batch effects using sample SNPs
+#' 2. **Step 2**: Conduct genome-wide association testing with bias correction
+#'
+#' **Required Additional Arguments for \code{GRAB.NullModel()}:**
 #' \itemize{
-#'   \item \code{RefAfFile}: A character string specifying a reference allele frequency file, which is a csv file (with a header) and includes columns of \code{CHROM}, \code{POS}, \code{ID}, \code{REF}, \code{ALT}, \code{AF_ref}, and \code{AN_ref}.
-#'   \item \code{OutputFile}: A character string specifying the output file name.
-#'   \item \code{SampleIDColumn}: A character string specifying the column name in the input data that contains sample IDs.
-#'   \item \code{SurvTimeColumn}: A character string specifying the column name in the input data that contains survival time information.
-#'   \item \code{IndicatorColumn}: A character string specifying the column name in the input data that indicates case-control status (should be 0 for controls and 1 for cases).
+#'   \item \code{RefAfFile}: Reference allele frequency file (CSV format) with
+#'     columns: CHROM, POS, ID, REF, ALT, AF_ref, AN_ref
+#'   \item \code{OutputFile}: Output file path for Step 1 results
+#'   \item \code{SampleIDColumn}: Column name containing sample IDs
+#'   \item \code{SurvTimeColumn}: Column name containing survival times
+#'   \item \code{IndicatorColumn}: Column name for case-control status (0/1)
 #' }
 #'
-#' Additional arguments in list \code{control} in \code{GRAB.NullModel()}:
+#' **Required Control Parameters for \code{GRAB.NullModel()}:**
 #' \itemize{
-#'   \item \code{RefPrevalence}: A numeric value specifying the population-level disease prevalence used for weighting in the analysis.
-#'   \item \code{SNPnum}: Minimum number of SNPs. Default is 1e4.
+#'   \item \code{RefPrevalence}: Population-level disease prevalence for weighting
+#'   \item \code{SNPnum}: Minimum number of SNPs for batch effect testing (default: 1e4)
 #' }
 #'
-#' Additional arguments in list \code{control} in \code{GRAB.Marker()}:
+#' **Control Parameters for \code{GRAB.Marker()}:**
 #' \itemize{
-#'   \item \code{cutoff}: A numeric value specifying the batch effect p-value cutoff for method selection of an association test. Default is 0.1.
+#'   \item \code{cutoff}: P-value threshold for batch effect test method selection (default: 0.1)
 #' }
 #'
-#' @return No return value, called for side effects (prints information about the WtCoxG method to the console).
+#' @return No return value. Called for informational side effects.
+#'
 #'
 #' @examples
 #' # Step0&1: fit a null model and estimate parameters according to batch effect p-values
@@ -48,11 +56,11 @@
 #'   GenoFile = GenoFile,
 #'   SparseGRMFile = SparseGRMFile,
 #'   control = list(
-#'     AlleleOrder = "ref-first", 
-#'     AllMarkers = TRUE, 
+#'     AlleleOrder = "ref-first",
+#'     AllMarkers = TRUE,
 #'     RefPrevalence = RefPrevalence,
-#'     SNPnum = 1000  # the minimum number of SNPs that TestforBatchEffect() needs
-#'   ), 
+#'     SNPnum = 1000
+#'   ),
 #'   RefAfFile = RefAfFile,
 #'   OutputFile = OutputStep1,
 #'   SampleIDColumn = "IID",
@@ -69,9 +77,9 @@
 #'   GenoFile = GenoFile,
 #'   OutputFile = OutputStep2,
 #'   control = list(
-#'     AlleleOrder = "ref-first", 
+#'     AlleleOrder = "ref-first",
 #'     AllMarkers = TRUE,
-#'     cutoff = 0.1, 
+#'     cutoff = 0.1,
 #'     nMarkersEachChunk = 5000
 #'   )
 #' )
@@ -84,45 +92,25 @@ GRAB.WtCoxG <- function() {
 }
 
 
-# check the control list in null model fitting for SPACox method
 checkControl.NullModel.WtCoxG <- function(control, traitType) {
+  # Ensure only time-to-event traits are supported
   if (!traitType %in% c("time-to-event")) {
     stop("For 'WtCoxG' method, only traitType of 'time-to-event' is supported.")
   }
 
+  # Set default control parameters
   default.control <- list(RefPrevalence = 0, OutlierRatio = 1.5, SNPnum = 1e4)
-
   control <- updateControl(control, default.control)
 
-  if (control$RefPrevalence <= 0 | control$RefPrevalence >= 0.5) {
-    stop("control$Refprevalence is required and should be between (0, 0.5).")
+  # Validate reference prevalence parameter
+  if (control$RefPrevalence <= 0 || control$RefPrevalence >= 0.5) {
+    stop("control$RefPrevalence is required and should be between (0, 0.5).")
   }
 
   return(control)
 }
 
 
-getWeight.WtCoxG <- function(Indicator, RefPrevalence) {
-  # BWJ (2023-08-08): Check NA later.
-  # if(any(!unique(Indicator) %in% c(0, 1, NA)))
-  #   stop("The value of Indicator should be 0, 1, or NA")
-
-  if (any(!unique(Indicator) %in% c(0, 1))) {
-    stop("The value of Indicator should be 0 or 1.")
-  }
-
-  sumOnes <- sum(Indicator)
-  sumZeros <- sum(1 - Indicator)
-  ratio <- sumOnes / sumZeros
-
-  weight <- ifelse(Indicator == 1, 1,
-    (1 - RefPrevalence) / RefPrevalence * ratio
-  )
-  return(weight)
-}
-
-
-# fit null model using WtCoxG method
 fitNullModel.WtCoxG <- function(
   response, designMat, subjData, control, data,
   GenoFile, GenoFileIndex, SparseGRMFile, ...
@@ -138,7 +126,21 @@ fitNullModel.WtCoxG <- function(
     Indicator <- as.matrix(response)[, "status"]
     RefPrevalence <- control$RefPrevalence
 
-    weight <- getWeight.WtCoxG(Indicator, RefPrevalence)
+    # ---- BEGIN inlined: getWeight.WtCoxG ----
+    if (any(!unique(Indicator) %in% c(0, 1))) {
+      stop("The value of Indicator should be 0 or 1.")
+    }
+
+    sumOnes <- sum(Indicator)
+    sumZeros <- sum(1 - Indicator)
+    ratio <- sumOnes / sumZeros
+
+    weight <- ifelse(
+      Indicator == 1,
+      1,
+      (1 - RefPrevalence) / RefPrevalence * ratio
+    )
+    # ---- END inlined: getWeight.WtCoxG ----
 
     obj.coxph <- survival::coxph(formula, x = TRUE, weight = weight, robust = TRUE)
 
@@ -146,26 +148,17 @@ fitNullModel.WtCoxG <- function(
     yVec <- y[, ncol(y)] # status
 
     mresid <- obj.coxph$residuals
-    # Cova = obj.coxph$x
     Cova <- designMat
   } else {
     stop("We only support 'time-to-event' trait for WtCoxG by 2023-08-08.")
   }
 
-  # if(class(response) == "Residual")
-  # {
-  #   yVec = mresid = response
-  #   Cova = designMat
-  # }
-
-  # var.resid = var(mresid, na.rm = TRUE)
   ## outliers or not depending on the residuals (0.25%-1.5IQR, 0.75%+1.5IQR)
   q25 <- quantile(mresid, 0.25, na.rm = TRUE)
   q75 <- quantile(mresid, 0.75, na.rm = TRUE)
   IQR <- q75 - q25
 
-  # r.outlier = 1.5    # put this to the control argument later
-  r.outlier <- ifelse(is.null(control$OutlierRatio), 1.5, control$OutlierRatio) # put this to the control argument later
+  r.outlier <- ifelse(is.null(control$OutlierRatio), 1.5, control$OutlierRatio)
   cutoff <- c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
   posOutlier <- which(mresid < cutoff[1] | mresid > cutoff[2])
 
@@ -177,14 +170,10 @@ fitNullModel.WtCoxG <- function(
   }
 
   # The original code is from SPAmix in which multiple residuals were analysis simultaneously
-  # posValue = which(!is.na(mresid))
-  # posNonOutlier = setdiff(posValue, posOutlier)
-  posValue <- 1:length(mresid)
+  posValue <- seq_along(mresid)
   posNonOutlier <- setdiff(posValue, posOutlier)
 
-  # .message("Passing outliers to SPA analysis")
-  # .message("Cutoff values: [%.2f, %.2f]", cutoff[1], cutoff[2])
-  .message("Outliers detected: %d/%d (%.1f%%)", length(posOutlier), length(posValue), 
+  .message("Outliers detected: %d/%d (%.1f%%)", length(posOutlier), length(posValue),
            100 * length(posOutlier) / length(posValue))
 
   if (length(posOutlier) == 0) {
@@ -211,7 +200,7 @@ fitNullModel.WtCoxG <- function(
   )
 
   class(re) <- "WtCoxG_NULL_Model"
-  
+
   # Test for batch effect if required parameters are provided
   dots <- list(...)
   re$mergeGenoInfo <- TestforBatchEffect(
@@ -231,19 +220,80 @@ fitNullModel.WtCoxG <- function(
 }
 
 
+checkControl.Marker.WtCoxG <- function(control) {
+  return(control)
+}
+
+
+setMarker.WtCoxG <- function(objNull, control) {
+  ImputeMethod <- if (is.null(control$ImputeMethod)) "none" else control$ImputeMethod
+  cutoff <- if (is.null(control$cutoff)) 0.1 else control$cutoff
+  setWtCoxGobjInCPP(
+    objNull$mresid,
+    objNull$weight,
+    ImputeMethod,
+    cutoff
+  )
+}
+
+
+mainMarker.WtCoxG <- function(genoType, genoIndex, control, objNull) {
+  mergeGenoInfo <- objNull$mergeGenoInfo
+  mergeGenoInfo_subset <- mergeGenoInfo[mergeGenoInfo$genoIndex %in% genoIndex, ]
+
+  # Use match to reorder, but check for missing values
+  match_indices <- match(genoIndex, mergeGenoInfo_subset$genoIndex)
+  if (any(is.na(match_indices))) {
+    missing_indices <- genoIndex[is.na(match_indices)]
+    stop(paste0(
+      "Missing marker info for genoIndex values: ",
+      paste(missing_indices[seq_len(min(10, length(missing_indices)))], collapse = ", "),
+      if (length(missing_indices) > 10) " ..." else ""
+    ))
+  }
+
+  mergeGenoInfo_subset <- mergeGenoInfo_subset[match_indices, ]
+
+  # Safety check: ensure sizes match
+  if (nrow(mergeGenoInfo_subset) != length(genoIndex)) {
+    stop(paste0(
+      "Size mismatch: genoIndex has ", length(genoIndex),
+      " elements, but mergeGenoInfo_subset has ", nrow(mergeGenoInfo_subset),
+      " rows. Some markers in genoIndex may not be found in mergeGenoInfo."
+    ))
+  }
+
+  # Update WtCoxG object with marker information for current chunk
+  updateWtCoxGChunkInCPP(mergeGenoInfo_subset)
+
+  OutList <- mainMarkerInCPP("WtCoxG", genoType, genoIndex)
+  pvals <- data.frame(matrix(OutList$pvalVec, ncol = 2, byrow = TRUE))
+  colnames(pvals) <- c("WtCoxG.ext", "WtCoxG.noext")
+
+  obj.mainMarker <- cbind(pvals, mergeGenoInfo_subset)
+  return(obj.mainMarker)
+}
+
+
 #' Quality control to check batch effect between study cohort and reference population.
 #'
-#' This function performs quality control to test for the batch effect between a study cohort and a reference population. And fit a weighted null model.
+#' This function performs quality control to test for the batch effect between a study
+#' cohort and a reference population. And fit a weighted null model.
 #'
 #' @param objNull a \code{WtCoxG_NULL_Model} object, which is the output of \code{\link{GRAB.NullModel}}.
-#' @param data a data.frame, list or environment (or object coercible by \code{\link{as.data.frame}} to a data.frame), containing the variables in formula. Neither a matrix nor an array will be accepted.
+#' @param data a data.frame, list or environment (or object coercible by \code{\link{as.data.frame}}
+#'   to a data.frame), containing the variables in formula. Neither a matrix nor an array will be accepted.
 #' @param GenoFile A character string of the genotype file. See Details section for more details.
 #' @param GenoFileIndex Additional index file(s) corresponding to GenoFile. See Details section for more details.
-#' @param Geno.mtx A matrix of genotype data. If provided, it will be used instead of GenoFile. The matrix should have samples in rows and markers in columns.
+#' @param Geno.mtx A matrix of genotype data. If provided, it will be used instead of GenoFile.
+#'   The matrix should have samples in rows and markers in columns.
 #' @param SparseGRMFile a path to file of output to be passed to \code{\link{GRAB.NullModel}}.
-#' @param RefAfFile A character string of the reference file. The reference file must be a \code{txt} file (header required) including at least 7 columns: \code{CHROM}, \code{POS}, \code{ID}, \code{REF}, \code{ALT}, \code{AF_ref}, \code{AN_ref}.
+#' @param RefAfFile A character string of the reference file. The reference file must be a \code{txt}
+#'   file (header required) including at least 7 columns: \code{CHROM}, \code{POS}, \code{ID},
+#'   \code{REF}, \code{ALT}, \code{AF_ref}, \code{AN_ref}.
 #' @param OutputFile A character string of the output file name. The output file will be a \code{txt} file.
-#' @param IndicatorColumn A character string of the column name in \code{data} that indicates the case-control status. The value should be 0 for controls and 1 for cases.
+#' @param IndicatorColumn A character string of the column name in \code{data} that indicates
+#'   the case-control status. The value should be 0 for controls and 1 for cases.
 #' @param SurvTimeColumn A character string of the column name in \code{data} that indicates the survival time.
 #' @param SampleIDColumn A character string of the column name in \code{data} that indicates the sample ID.
 #' @return A dataframe of marker info and reference MAF.
@@ -321,7 +371,7 @@ TestforBatchEffect <- function(
       cbind(., GenoInfo.ctrl) %>%
       as_tibble() %>%
       mutate(RA = paste0(pmin(REF, ALT), pmax(REF, ALT))) %>%
-      mutate(index = 1:n())
+      mutate(index = seq_len(n()))
 
     mergeGenoInfo <- refGenoInfo %>%
       mutate(RA = paste0(pmin(REF, ALT), pmax(REF, ALT))) %>%
@@ -355,7 +405,7 @@ TestforBatchEffect <- function(
       mutate(
         mu.int = 0.5 * mu1 + 0.5 * mu0,
         mu.int = ifelse(mu.int > 0.5, 1 - mu.int, mu.int),
-        index = 1:n()
+        index = seq_len(n())
       )
     mergeGenoInfo <- merge(GenoInfo, refGenoInfo, by = "ID", all.x = TRUE, sort = FALSE) %>%
       filter(!duplicated(index))
@@ -373,7 +423,8 @@ TestforBatchEffect <- function(
       cov = Value * w1[as.character(ID1)] * w1[as.character(ID2)],
       cov_R = Value * R_tilde[as.character(ID1)] * R_tilde[as.character(ID2)]
     )
-    var.ratio.w0 <- (sum(sparseGRM$cov) + 1 / (2 * mergeGenoInfo$AN_ref)) / (sum(w1^2) + 1 / (2 * mergeGenoInfo$AN_ref))
+    var.ratio.w0 <- (sum(sparseGRM$cov) + 1 / (2 * mergeGenoInfo$AN_ref)) / 
+      (sum(w1^2) + 1 / (2 * mergeGenoInfo$AN_ref))
     var.ratio.int <- sum(sparseGRM$cov_R) / sum(R_tilde^2)
   } else {
     var.ratio.w0 <- var.ratio.int <- 1
@@ -386,7 +437,7 @@ TestforBatchEffect <- function(
     )
 
   pvalue_bat <- lapply(seq_len(nrow(mergeGenoInfo)), function(ind) {
-    p.test <- Batcheffect.Test(
+    Batcheffect.Test(
       n0 = mergeGenoInfo$n0[ind],
       n1 = mergeGenoInfo$n1[ind],
       n.ext = mergeGenoInfo$AN_ref[ind] / 2,
@@ -423,12 +474,100 @@ TestforBatchEffect <- function(
       na.omit(mergeGenoInfo$var.ratio.w0)[1] * (sum(w1^2) * 2 * mu * (1 - mu) + var_mu_ext)
     )
 
-    obj <- fun.est.param(
-      vec_p_bat = mergeGenoInfo_2$pvalue_bat,
-      vec_var_Sbat = var_Sbat
+    # ---- BEGIN inlined: fun.est.param ----
+    vec_p_bat <- mergeGenoInfo_2$pvalue_bat
+    vec_var_Sbat <- var_Sbat
+    vec_cutoff <- seq(0.01, 0.4, 0.1)
+
+    vec_p_deno <- sapply(vec_cutoff, function(p_cut) {
+      mean(na.omit(vec_p_bat > p_cut))
+    })
+
+    opti_fun <- function(var_Sbat, vec_p_deno, par) {
+      diff <- sum(sapply(seq_along(vec_cutoff), function(j) {
+        p_cut <- vec_cutoff[j]
+        lb <- -qnorm(1 - p_cut / 2) * sqrt(var_Sbat)
+        ub <- qnorm(1 - p_cut / 2) * sqrt(var_Sbat)
+        p_deno <- vec_p_deno[j]
+
+        c <- pnorm(ub, 0, sqrt(var_Sbat + par[2]), log.p = TRUE)
+        d <- pnorm(lb, 0, sqrt(var_Sbat + par[2]), log.p = TRUE)
+
+        pro.cut <- par[1] * (exp(d) * (exp(c - d) - 1)) + (1 - par[1]) * (1 - p_cut)
+        ((p_deno - pro.cut) / p_deno)^2
+      }))
+      diff
+    }
+
+    obj_par <- optim(
+      par = c(0.01, 0.01),
+      fn = opti_fun,
+      vec_p_deno = vec_p_deno,
+      var_Sbat = vec_var_Sbat
+    )$par
+
+    obj <- list(
+      TPR = min(1, max(0, obj_par[1])),
+      sigma2 = min(1, max(0, obj_par[2]))
     )
-    TPR <- obj[1]
-    sigma2 <- obj[2]
+
+    TPR <- obj$TPR
+    sigma2 <- obj$sigma2
+    # ---- END inlined: fun.est.param ----
+
+    fun.optimalWeight <- function(par, pop.prev, R, y, mu1, w, mu, N, n.ext, sigma2, TPR) {
+      b <- par[1]
+
+      p.fun <- function(b, pop.prev, R, y, mu1, mu, w, N, n.ext, sigma2, TPR) {
+        meanR <- mean(R)
+        sumR <- sum(R)
+
+        mu0 <- mu
+        mu.pop <- mu1 * pop.prev + mu0 * (1 - pop.prev)
+
+        mu.i <- ifelse(y == 1, 2 * mu1, 2 * mu0)
+
+        S <- sum((R - (1 - b) * meanR) * mu.i) - sumR * 2 * b * mu.pop
+
+        w1 <- w / (2 * sum(w))
+        mu <- mean(mu.i) / 2
+
+        var_mu_ext <- mu * (1 - mu) / (2 * n.ext)
+        var_Sbat <- sum(w1^2) * 2 * mu * (1 - mu) + var_mu_ext
+
+        p_cut <- 0.1
+        lb <- -qnorm(1 - p_cut / 2) * sqrt(var_Sbat)
+        ub <- qnorm(1 - p_cut / 2) * sqrt(var_Sbat)
+        c <- pnorm(ub, 0, sqrt(var_Sbat + sigma2), log.p = TRUE)
+        d <- pnorm(lb, 0, sqrt(var_Sbat + sigma2), log.p = TRUE)
+        p_deno <- TPR * (exp(d) * (exp(c - d) - 1)) + (1 - TPR) * (1 - p_cut)
+
+        var.int <- sum((R - (1 - b) * meanR)^2) * 2 * mu * (1 - mu)
+        var_S <- var.int + 4 * b^2 * sumR^2 * var_mu_ext
+        cov_Sbat_S <- sum(w1 * (R - (1 - b) * meanR)) * 2 * mu * (1 - mu) + 2 * b * sumR * var_mu_ext
+        VAR <- matrix(c(var_S, cov_Sbat_S, cov_Sbat_S, var_Sbat), nrow = 2)
+        p0 <- max(0, mvtnorm::pmvnorm(lower = c(-Inf, lb), upper = c(-abs(S), ub), mean = c(0, 0), sigma = VAR))
+
+        var_S1 <- var.int + 4 * b^2 * sumR^2 * (var_mu_ext + sigma2)
+        cov_Sbat_S1 <- sum(w1 * (R - (1 - b) * meanR)) * 2 * mu * (1 - mu) + 2 * b * sumR * (var_mu_ext + sigma2)
+        var_Sbat1 <- var_Sbat + sigma2
+        VAR1 <- matrix(c(var_S1, cov_Sbat_S1, cov_Sbat_S1, var_Sbat1), nrow = 2)
+        p1 <- max(0, mvtnorm::pmvnorm(lower = c(-Inf, lb), upper = c(-abs(S), ub), mean = c(0, 0), sigma = VAR1))
+
+        p.con <- 2 * (TPR * p1 + (1 - TPR) * p0) / p_deno
+        diff <- -log10(p.con / 5e-8)
+
+        return(diff)
+      }
+
+      mu1 <- uniroot(p.fun,
+        lower = mu, upper = 1,
+        b = b, pop.prev = pop.prev, mu = mu,
+        R = R, y = y, w = w, N = N, n.ext = n.ext, sigma2 = sigma2, TPR = TPR
+      )$root
+
+      return(mu1)
+    }
 
     w.ext <- optim(
       par = 0.5, method = "L-BFGS-B", lower = 0, upper = 1,
@@ -449,8 +588,11 @@ TestforBatchEffect <- function(
     } else {
       R_tilde_w <- objNull$mresid - mean(objNull$mresid) * w.ext
       names(R_tilde_w) <- data$SampleID
-      sparseGRM <- sparseGRM %>% mutate(cov_Rext = Value * R_tilde_w[as.character(ID1)] * R_tilde_w[as.character(ID2)])
-      var.ratio.ext <- (sum(sparseGRM$cov_Rext) + w.ext^2 * sum(objNull$mresid)^2 / n.ext) / (sum(R_tilde_w^2) + w.ext^2 * sum(objNull$mresid)^2 / n.ext)
+      sparseGRM <- sparseGRM %>%
+        mutate(cov_Rext = Value * R_tilde_w[as.character(ID1)] * R_tilde_w[as.character(ID2)])
+      numerator <- sum(sparseGRM$cov_Rext) + w.ext^2 * sum(objNull$mresid)^2 / n.ext
+      denominator <- sum(R_tilde_w^2) + w.ext^2 * sum(objNull$mresid)^2 / n.ext
+      var.ratio.ext <- numerator / denominator
     }
 
     mergeGenoInfo_1 <- mergeGenoInfo_1 %>% cbind(., TPR, sigma2, w.ext, var.ratio.ext)
@@ -484,6 +626,7 @@ TestforBatchEffect <- function(
 #' @param pop.prev A numeric. The population prevalence of the disease.
 #' @param var.ratio A numeric. The variance ratio calculated by sparseGRM.
 #' @return A numeric of batch effect p-value
+#' 
 Batcheffect.Test <- function(
   n0, # number of controls
   n1, # number of cases
@@ -498,171 +641,18 @@ Batcheffect.Test <- function(
   w0 <- (1 - pop.prev) / pop.prev / ((1 - er) / er)
   w1 <- 1
 
-  weight.maf <- sum(maf0 * w0 * n0 + maf1 * w1 * n1) / sum(w0 * n0 + w1 * n1) ## weighted mean of genotypes
-  est.maf <- sum(maf0 * w0 * n0 + maf1 * w1 * n1 + maf.ext * n.ext * w0) / sum(n1 * w1 + n0 * w0 + n.ext * w0) ## MAF estimates
+  ## weighted mean of genotypes
+  weight.maf <- sum(maf0 * w0 * n0 + maf1 * w1 * n1) / sum(w0 * n0 + w1 * n1)
+  ## MAF estimates
+  est.maf <- sum(maf0 * w0 * n0 + maf1 * w1 * n1 + maf.ext * n.ext * w0) /
+    sum(n1 * w1 + n0 * w0 + n.ext * w0)
 
-  v <- ((n1 * w1^2 + n0 * w0^2) / (2 * (n1 * w1 + n0 * w0)^2) + 1 / (2 * n.ext)) * est.maf * (1 - est.maf) ## variance of test statistics
+  ## variance of test statistics
+  v <- ((n1 * w1^2 + n0 * w0^2) / (2 * (n1 * w1 + n0 * w0)^2) + 1 / (2 * n.ext)) *
+    est.maf * (1 - est.maf)
   z <- (weight.maf - maf.ext) / sqrt(v) ## standardized statistics
   z.adj <- z / sqrt(var.ratio) ## adjusted statistics by variance ratio
   p <- 2 * pnorm(-abs(z.adj), lower.tail = TRUE)
 
   return(p)
-}
-
-# estimate TPR and sigma2----------------------------------------------------
-fun.est.param <- function(vec_p_bat, vec_var_Sbat, vec_cutoff = seq(0.01, 0.4, 0.1)) {
-  ########  step1: the proportion of p_bat>cutoff
-  vec_p_deno <- lapply(vec_cutoff, function(p_cut) {
-    p_deno <- mean(na.omit(vec_p_bat > p_cut))
-  }) %>% unlist()
-
-  ######## optimization function
-  opti_fun <- function(var_Sbat, vec_p_deno, par) {
-    diff <- lapply(1:length(vec_cutoff), function(j) {
-      p_cut <- vec_cutoff[j]
-      lb <- -qnorm(1 - p_cut / 2) * sqrt(var_Sbat)
-      ub <- qnorm(1 - p_cut / 2) * sqrt(var_Sbat)
-      p_deno <- vec_p_deno[j]
-
-      c <- pnorm(ub, 0, sqrt(var_Sbat + par[2]), log.p = TRUE)
-      d <- pnorm(lb, 0, sqrt(var_Sbat + par[2]), log.p = TRUE)
-
-      pro.cut <- par[1] * (exp(d) * (exp(c - d) - 1)) + (1 - par[1]) * (1 - p_cut)
-      t <- ((p_deno - pro.cut) / p_deno)^2
-    }) %>% do.call("sum", .)
-
-    return(diff)
-  }
-
-  ####### estimate TPR and sigma2 for each SNP
-  var.diff <- lapply(1:length(vec_var_Sbat), function(i) {
-    if (i %% 100 == 0) .message("Processing SNP %d/%d", i, length(vec_var_Sbat))
-
-    obj <- optim(
-      par = c(0.01, 0.01),
-      # ,method = "SANN"
-      # , lower = 0, upper = 1
-      fn = opti_fun,
-      vec_p_deno = vec_p_deno,
-      var_Sbat = vec_var_Sbat[i]
-    )
-    TPR <- min(1, max(0, obj$par[1]))
-    sigma2 <- min(1, max(0, obj$par[2]))
-    return(cbind(TPR, sigma2))
-  }) %>%
-    do.call("rbind", .) %>%
-    as_tibble()
-
-  return(var.diff)
-}
-
-# optimal weight for mu_ext -----------------------------------------------
-fun.optimalWeight <- function(par, pop.prev, R, y, mu1, w, mu, N, n.ext, sigma2, TPR) {
-  b <- par[1]
-
-  p.fun <- function(b, pop.prev, R, y, mu1, mu, w, N, n.ext, sigma2, TPR) {
-    meanR <- mean(R)
-    sumR <- sum(R)
-
-    mu0 <- mu
-    mu.pop <- mu1 * pop.prev + mu0 * (1 - pop.prev)
-
-    mu.i <- ifelse(y == 1, 2 * mu1, 2 * mu0)
-
-    S <- sum((R - (1 - b) * meanR) * mu.i) - sumR * 2 * b * mu.pop
-
-    w1 <- w / (2 * sum(w))
-    mu <- mean(mu.i) / 2
-
-    var_mu_ext <- mu * (1 - mu) / (2 * n.ext)
-    var_Sbat <- sum(w1^2) * 2 * mu * (1 - mu) + var_mu_ext
-
-    p_cut <- 0.1
-    lb <- -qnorm(1 - p_cut / 2) * sqrt(var_Sbat)
-    ub <- qnorm(1 - p_cut / 2) * sqrt(var_Sbat)
-    c <- pnorm(ub, 0, sqrt(var_Sbat + sigma2), log.p = TRUE)
-    d <- pnorm(lb, 0, sqrt(var_Sbat + sigma2), log.p = TRUE)
-    p_deno <- TPR * (exp(d) * (exp(c - d) - 1)) + (1 - TPR) * (1 - p_cut)
-
-    ## sigma2=0
-    var.int <- sum((R - (1 - b) * meanR)^2) * 2 * mu * (1 - mu)
-    var_S <- var.int + 4 * b^2 * sumR^2 * var_mu_ext
-    cov_Sbat_S <- sum(w1 * (R - (1 - b) * meanR)) * 2 * mu * (1 - mu) + 2 * b * sumR * var_mu_ext
-    VAR <- matrix(c(var_S, cov_Sbat_S, cov_Sbat_S, var_Sbat), nrow = 2)
-    p0 <- max(0, mvtnorm::pmvnorm(lower = c(-Inf, lb), upper = c(-abs(S), ub), mean = c(0, 0), sigma = VAR))
-
-    ## sigma2!=0
-    var_S1 <- var.int + 4 * b^2 * sumR^2 * (var_mu_ext + sigma2)
-    cov_Sbat_S1 <- sum(w1 * (R - (1 - b) * meanR)) * 2 * mu * (1 - mu) + 2 * b * sumR * (var_mu_ext + sigma2)
-    var_Sbat1 <- var_Sbat + sigma2
-    VAR1 <- matrix(c(var_S1, cov_Sbat_S1, cov_Sbat_S1, var_Sbat1), nrow = 2)
-    p1 <- max(0, mvtnorm::pmvnorm(lower = c(-Inf, lb), upper = c(-abs(S), ub), mean = c(0, 0), sigma = VAR1))
-
-    p.con <- 2 * (TPR * p1 + (1 - TPR) * p0) / p_deno
-    # diff = -log10(p.con)+log10(5e-8)
-    diff <- -log10(p.con / 5e-8)
-
-    return(diff)
-  }
-
-  mu1 <- uniroot(p.fun,
-    lower = mu, upper = 1,
-    b = b, pop.prev = pop.prev, mu = mu,
-    R = R, y = y, w = w, N = N, n.ext = n.ext, sigma2 = sigma2, TPR = TPR
-  )$root
-
-  return(mu1)
-}
-
-
-checkControl.Marker.WtCoxG <- function(control) {
-  return(control)
-}
-
-setMarker.WtCoxG <- function(objNull, control) {
-  ImputeMethod <- if (is.null(control$ImputeMethod)) "none" else control$ImputeMethod
-  cutoff <- if (is.null(control$cutoff)) 0.1 else control$cutoff
-  setWtCoxGobjInCPP(
-    objNull$mresid,
-    objNull$weight,
-    ImputeMethod,
-    cutoff
-  )
-}
-
-mainMarker.WtCoxG <- function(genoType, genoIndex, control, objNull) {
-  mergeGenoInfo <- objNull$mergeGenoInfo
-  mergeGenoInfo_subset <- mergeGenoInfo[mergeGenoInfo$genoIndex %in% genoIndex, ]
-
-  # Use match to reorder, but check for missing values
-  match_indices <- match(genoIndex, mergeGenoInfo_subset$genoIndex)
-  if (any(is.na(match_indices))) {
-    missing_indices <- genoIndex[is.na(match_indices)]
-    stop(paste0(
-      "Missing marker info for genoIndex values: ",
-      paste(missing_indices[1:min(10, length(missing_indices))], collapse = ", "),
-      if (length(missing_indices) > 10) " ..." else ""
-    ))
-  }
-
-  mergeGenoInfo_subset <- mergeGenoInfo_subset[match_indices, ]
-
-  # Safety check: ensure sizes match
-  if (nrow(mergeGenoInfo_subset) != length(genoIndex)) {
-    stop(paste0(
-      "Size mismatch: genoIndex has ", length(genoIndex),
-      " elements, but mergeGenoInfo_subset has ", nrow(mergeGenoInfo_subset),
-      " rows. Some markers in genoIndex may not be found in mergeGenoInfo."
-    ))
-  }
-
-  # Update WtCoxG object with marker information for current chunk
-  updateWtCoxGChunkInCPP(mergeGenoInfo_subset)
-
-  OutList <- mainMarkerInCPP("WtCoxG", genoType, genoIndex)
-  pvals <- data.frame(matrix(OutList$pvalVec, ncol = 2, byrow = TRUE))
-  colnames(pvals) <- c("WtCoxG.ext", "WtCoxG.noext")
-
-  obj.mainMarker <- cbind(pvals, mergeGenoInfo_subset)
-  return(obj.mainMarker)
 }

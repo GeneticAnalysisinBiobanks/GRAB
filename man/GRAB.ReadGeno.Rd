@@ -2,7 +2,7 @@
 % Please edit documentation in R/Geno.R
 \name{GRAB.ReadGeno}
 \alias{GRAB.ReadGeno}
-\title{Read in genotype data}
+\title{Read genotype data from multiple file formats}
 \usage{
 GRAB.ReadGeno(
   GenoFile,
@@ -13,72 +13,62 @@ GRAB.ReadGeno(
 )
 }
 \arguments{
-\item{GenoFile}{a character of genotype file. See \code{Details} section for more details.}
+\item{GenoFile}{Path to genotype file. Supported formats determined by extension:
+\itemize{
+\item PLINK: "prefix.bed" (binary format)
+\item BGEN: "prefix.bgen" (version 1.2 with 8-bit compression)
+}}
 
-\item{GenoFileIndex}{additional index file(s) corresponding to \code{GenoFile}. See \code{Details} section for more details.}
+\item{GenoFileIndex}{Associated index files for the genotype file:
+\itemize{
+\item PLINK: c("prefix.bim", "prefix.fam") (auto-detected if NULL)
+\item BGEN: "prefix.bgen.bgi" or c("prefix.bgen.bgi", "prefix.sample")
+}}
 
-\item{SampleIDs}{a character vector of sample IDs to extract. The default is \code{NULL}, that is, all samples in \code{GenoFile} will be extracted.}
+\item{SampleIDs}{Character vector of sample IDs to extract. If NULL,
+extracts all samples.}
 
-\item{control}{a list of parameters to decide which markers to extract. See \code{Details} section for more details.}
+\item{control}{List of processing parameters. See Details for options.}
 
-\item{sparse}{a logical value \emph{(default: FALSE)} to indicate if the output of genotype matrix is sparse.}
+\item{sparse}{Logical indicating whether to return sparse genotype matrix
+(default: FALSE).}
 }
 \value{
-An R list including a genotype matrix and an information matrix.
-\itemize{
-\item \code{GenoMat}: Genotype matrix, each row is for one sample and each column is for one marker.
-\item \code{markerInfo}: Information matrix including 5 columns of CHROM, POS, ID, REF, and ALT.
+List containing:
+\describe{
+\item{GenoMat}{Genotype matrix (samples × markers) with values 0, 1, 2, or NA.}
+\item{markerInfo}{Data frame with columns CHROM, POS, ID, REF, ALT.}
 }
 }
 \description{
-\code{GRAB} package provides functions to read in genotype data. Currently, we support genotype formats of PLINK and BGEN. Other formats such as VCF will be added later.
+Reads genotype data from PLINK or BGEN format files with flexible filtering
+and processing options. Supports efficient memory usage and various
+imputation methods for missing genotypes.
 }
 \details{
-\subsection{Details about \code{GenoFile} and \code{GenoFileIndex}}{
+\strong{File Format Support:}
 
-Currently, we support two formats of genotype input including PLINK and BGEN. Other formats such as VCF will be added later.
-Users do not need to specify the genotype format, \code{GRAB} package will check the extension of the file name for that purpose.
-If \code{GenoFileIndex} is not specified, \code{GRAB} package assumes the prefix is the same as \code{GenoFile}.
-\subsection{PLINK format}{
-Check \href{https://www.cog-genomics.org/plink/2.0/}{link} for more details about this format
+\emph{PLINK Format:} Binary BED/BIM/FAM files. See
+\url{https://www.cog-genomics.org/plink/2.0/} for specifications.
+
+\emph{BGEN Format:} Version 1.2 with 8-bit compression. See
+\url{https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html} for details.
+Requires BGI index file created with bgenix tool.
+
+\strong{Control Parameters:}
 \itemize{
-\item \code{GenoFile}: "prefix.bed". The full file name (including the extension ".bed") of the PLINK binary \code{bed} file.
-\item \code{GenoFileIndex}: c("prefix.bim", "prefix.fam"). If not specified, \code{GRAB} package assumes that \code{bim} and \code{fam} files have the same prefix as the \code{bed} file.
-}
-}
-\subsection{BGEN format}{
-Check \href{https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html}{link} for more details about this format. Currently, only version 1.2 with 8 bits suppression is supported
-\itemize{
-\item \code{GenoFile}: "prefix.bgen". The full file name (including the extension ".bgen") of the BGEN binary \code{bgen} file.
-\item \code{GenoFileIndex}: "prefix.bgen.bgi" or c("prefix.bgen.bgi", "prefix.sample"). If not specified, \code{GRAB} package assumes that \code{bgi} and \code{sample} files have the same prefix as the \code{bgen} file.
-If only one element is given for \code{GenoFileIndex}, then it should be a \code{bgi} file.  Check \href{https://enkre.net/cgi-bin/code/bgen/doc/trunk/doc/wiki/bgenix.md}{link} for more details about \code{bgi} file.
-\item If the \code{bgen} file does not include sample identifiers, then \code{sample} file is required, whose detailed description can ben seen in \href{https://www.cog-genomics.org/plink/2.0/formats#sample}{link}.
-If you are not sure if sample identifiers are in BGEN file, please refer to \code{\link{checkIfSampleIDsExist}}.
-}
-}
-\subsection{VCF format}{
-will be supported later. \code{GenoFile}: "prefix.vcf"; \code{GenoFileIndex}: "prefix.vcf.tbi"
-}
+\item \code{IDsToIncludeFile}: File with marker IDs to include (one per line)
+\item \code{IDsToExcludeFile}: File with marker IDs to exclude
+\item \code{RangesToIncludeFile}: File with genomic ranges (CHR, START, END)
+\item \code{RangesToExcludeFile}: File with genomic ranges to exclude
+\item \code{AlleleOrder}: "ref-first" or "alt-first" for allele encoding
+\item \code{AllMarkers}: Set TRUE to extract all markers (memory warning)
+\item \code{ImputeMethod}: "none", "mean", or "bestguess" for missing data
 }
 
-\subsection{Details about argument \code{control}}{
-
-Argument \code{control} is used to include and exclude markers for function \code{GRAB.ReadGeno}.
-The function supports two include files of (\code{IDsToIncludeFile}, \code{RangesToIncludeFile}) and two exclude files of (\code{IDsToExcludeFile}, \code{RangesToExcludeFile}),
-but does not support both include and exclude files at the same time.
-\itemize{
-\item \code{IDsToIncludeFile}: a file of marker IDs to include, one column (no header). Check \code{system.file("extdata", "IDsToInclude.txt", package = "GRAB")} for an example.
-\item \code{IDsToExcludeFile}: a file of marker IDs to exclude, one column (no header).
-\item \code{RangesToIncludeFile}: a file of ranges to include, three columns (no headers): chromosome, start position, end position. Check \code{system.file("extdata", "RangesToInclude.txt", package = "GRAB")} for an example.
-\item \code{RangesToExcludeFile}: a file of ranges to exclude, three columns (no headers): chromosome, start position, end position.
-\item \code{AlleleOrder}: a character, "ref-first" or "alt-first", to determine whether the REF/major allele should appear first or second. Default is "alt-first" for PLINK and "ref-first" for BGEN. If the ALT allele frequencies of most markers are > 0.5, you should consider resetting this option. NOTE, if you use plink2 to convert PLINK file to BGEN file, then 'ref-first' modifier is to reset the order.
-\item \code{AllMarkers}: a logical value (default: FALSE) to indicate if all markers are extracted. It might take too much memory to put genotype of all markers in R. This parameter is to remind users.
-\item \code{ImputeMethod}: a character, "none" (default), "bestguess", or "mean". By default, missing genotype is \code{NA}. Suppose alternative allele frequency is \code{p}, then missing genotype is imputed as \code{2p} (ImputeMethod = "mean") or \code{round(2p)} (ImputeMethod = "bestguess").
-}
-}
+\strong{Note:} Cannot use both include and exclude files simultaneously.
 }
 \examples{
-
 ## Raw genotype data
 RawFile <- system.file("extdata", "simuRAW.raw.gz", package = "GRAB")
 GenoMat <- data.table::fread(RawFile)
@@ -128,6 +118,5 @@ head(GenoList$GenoMat)
 BGENFile <- system.file("extdata", "simuBGEN.bgen", package = "GRAB")
 GenoList <- GRAB.ReadGeno(BGENFile, control = list(AllMarkers = TRUE))
 head(GenoList$GenoMat)
-
 
 }

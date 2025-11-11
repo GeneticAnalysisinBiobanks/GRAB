@@ -2,7 +2,7 @@
 % Please edit documentation in R/GRAB_Simu.R
 \name{GRAB.SimuGMat}
 \alias{GRAB.SimuGMat}
-\title{Simulate an R matrix of genotype data}
+\title{Simulate genotype data matrix for related and unrelated subjects}
 \usage{
 GRAB.SimuGMat(
   nSub,
@@ -15,47 +15,44 @@ GRAB.SimuGMat(
 )
 }
 \arguments{
-\item{nSub}{the number of unrelated subjects in simulations, if \code{nSub = 0}, then all subjects are related to at least one of the others.}
+\item{nSub}{Number of unrelated subjects. If 0, all subjects are related.}
 
-\item{nFam}{the number of families in simulation, if \code{nFam = 0}, then all subjects are unrelated to each other.}
+\item{nFam}{Number of families. If 0, all subjects are unrelated.}
 
-\item{FamMode}{\code{"4-members"}, \code{"10-members"}, or \code{"20-members"}. Check \code{Details} section for more details.}
+\item{FamMode}{Family structure: "4-members", "10-members", or "20-members".
+See \code{Details} for pedigree structures.}
 
-\item{nSNP}{number of markers to simulate}
+\item{nSNP}{Number of genetic markers to simulate.}
 
-\item{MaxMAF}{a numeric value \emph{(default=0.5)}, haplotype is simulated with allele frequency <= this value.}
+\item{MaxMAF}{Maximum minor allele frequency for simulation (default: 0.5).}
 
-\item{MinMAF}{a numeric value \emph{(default=0.05)}, haplotype is simulated with allele frequency >= this value.}
+\item{MinMAF}{Minimum minor allele frequency for simulation (default: 0.05).}
 
-\item{MAF}{a numeric vector with a length of \emph{nSNP}. If this argument is given, then arguments of \emph{MaxMAF} and \emph{MinMAF} would be ignored.}
+\item{MAF}{Optional vector of specific MAF values for each marker. If provided,
+\code{MaxMAF} and \code{MinMAF} are ignored.}
 }
 \value{
-an R list including genotype matrix and marker information
-\itemize{
-\item \code{GenoMat} a numeric matrix of genotype: each row is for one subject and each column is for one SNP
-\item \code{markerInfo} a data frame with the following 2 columns: SNP ID and minor allele frequency
+List containing:
+\describe{
+\item{GenoMat}{Numeric genotype matrix (subjects × markers) with values 0, 1, 2.}
+\item{markerInfo}{Data frame with marker IDs and MAF values.}
 }
 }
 \description{
-\code{GRAB} package provides functions to simulate genotype data. We support simulations based on unrelated subjects and related subjects.
+Generates genotype data for association studies, supporting both unrelated subjects
+and family-based designs with various pedigree structures.
 }
 \details{
-Currently, function \code{GRAB.SimuGMat} supports both unrelated and related subjects.
-Genotype data is simulated following Hardy-Weinberg Equilibrium with allele frequency ~ \code{runif(MinMAF, MaxMAF)}.
-\subsection{If \code{FamMode = "4-members"}}{
+Genotypes are simulated under Hardy-Weinberg equilibrium with MAF ~ Uniform(MinMAF, MaxMAF).
 
-Total number of subjects is \code{nSub + 4 * nFam}. Each family includes 4 members with the family structure as below: 1+2->3+4.
+\strong{Family Structures:}
+\itemize{
+\item \strong{4-members}: 1+2→3+4 (parents 1,2 → offspring 3,4)
+\item \strong{10-members}: 1+2→5+6, 3+5→7+8, 4+6→9+10
+\item \strong{20-members}: Complex multi-generational pedigree with 20 members
 }
 
-\subsection{If \code{FamMode = "10-members"}}{
-
-Total number of subjects is \code{nSub + 10 * nFam}. Each family includes 10 members with the family structure as below: 1+2->5+6, 3+5->7+8, 4+6->9+10.
-}
-
-\subsection{If \code{FamMode = "20-members"}}{
-
-Total number of subjects is \code{nSub + 20 * nFam}. Each family includes 20 members with the family structure as below: 1+2->9+10, 3+9->11+12, 4+10->13+14, 5+11->15+16, 6+12->17, 7+13->18, 8+14->19+20.
-}
+Total subjects: \code{nSub + nFam × family_size}
 }
 \examples{
 nSub <- 100
@@ -79,5 +76,5 @@ GRM2
 
 }
 \seealso{
-\code{\link{GRAB.makePlink}} can make \code{PLINK} files using the genotype matrix.
+\code{\link{GRAB.makePlink}} for converting to PLINK format.
 }

@@ -14,14 +14,17 @@ GRAB.getGenoInfo(
 \arguments{
 \item{GenoFile}{a character of genotype file. See \code{Details} section for more details.}
 
-\item{GenoFileIndex}{additional index file(s) corresponding to \code{GenoFile}. See \code{Details} section for more details.}
+\item{GenoFileIndex}{additional index file(s) corresponding to \code{GenoFile}. See \code{Details}
+section for more details.}
 
-\item{SampleIDs}{a character vector of sample IDs to extract. The default is \code{NULL}, that is, all samples in \code{GenoFile} will be extracted.}
+\item{SampleIDs}{a character vector of sample IDs to extract. The default is \code{NULL}, that is,
+all samples in \code{GenoFile} will be extracted.}
 
 \item{control}{a list of parameters to decide which markers to extract. See \code{Details} section for more details.}
 }
 \value{
-A data frame containing marker information with allele frequencies and missing rates. The data frame includes columns from marker information (CHROM, POS, ID, REF, ALT, etc.) plus additional columns:
+A data frame containing marker information with allele frequencies and missing rates. The
+data frame includes columns from marker information (CHROM, POS, ID, REF, ALT, etc.) plus additional columns:
 \describe{
 \item{altFreq}{Alternative allele frequency (before genotype imputation)}
 \item{missingRate}{Missing rate for each marker}

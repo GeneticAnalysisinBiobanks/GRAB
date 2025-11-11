@@ -2,7 +2,7 @@
 % Please edit documentation in R/GRAB_Region.R
 \name{GRAB.Region}
 \alias{GRAB.Region}
-\title{Conduct region-level genetic association testing}
+\title{Perform region-based genetic association testing}
 \usage{
 GRAB.Region(
   objNull,
@@ -20,96 +20,100 @@ GRAB.Region(
 )
 }
 \arguments{
-\item{objNull}{the output object of function \code{\link{GRAB.NullModel}}.}
+\item{objNull}{Null model object from \code{\link{GRAB.NullModel}}.}
 
-\item{GenoFile}{a character of genotype file. Currently, two types of
-genotype formats are supported: PLINK and BGEN. Check
-\code{\link{GRAB.ReadGeno}} for more details.}
+\item{GenoFile}{Path to genotype file (PLINK or BGEN format). See
+\code{\link{GRAB.ReadGeno}} for details.}
 
-\item{GenoFileIndex}{additional index files corresponding to the
-\code{GenoFile}. If \code{NULL} (default), the prefix is the same as
-GenoFile. Check \code{\link{GRAB.ReadGeno}} for more details.}
+\item{GenoFileIndex}{Index files for genotype file. If \code{NULL} (default), uses
+same prefix as \code{GenoFile}. See \code{\link{GRAB.ReadGeno}} for details.}
 
-\item{OutputFile}{a character of output file to save the analysis results.}
+\item{OutputFile}{Path for saving region-based association results.}
 
-\item{OutputFileIndex}{a character of output index file to record the end
-point. If the program ends unexpectedly, the end point can help
-\code{GRAB} package understand where to restart the analysis. If
-\code{NULL} (default), \code{OutputFileIndex = paste0(OutputFile, ".index")}.}
+\item{OutputFileIndex}{Path for progress tracking file. If \code{NULL} (default),
+uses \code{paste0(OutputFile, ".index")}.}
 
-\item{GroupFile}{a character of region file to specify region-marker
-mapping with annotation information. Each region includes two or three
-rows. Only alphabet, numbers, and \code{:,_+-} symbols are supported.
-Columns are separated by 'tab'.}
+\item{GroupFile}{Path to region definition file specifying region-marker mappings
+and annotation information. Tab-separated format with 2-3 columns per region.}
 
-\item{SparseGRMFile}{a character of sparseGRM file. An example is \code{system.file("SparseGRM","SparseGRM.txt",package="GRAB")}.}
+\item{SparseGRMFile}{Path to sparse GRM file (optional).}
 
-\item{SampleFile}{a character of file to include sample information with header.}
+\item{SampleFile}{Path to sample information file with header (optional).}
 
-\item{MaxMAFVec}{a character of multiple max MAF cutoffs (comma separated) to include markers for region-level analysis. Default value is \code{"0.05,0.01,0.005"}.}
+\item{MaxMAFVec}{Comma-separated MAF cutoffs for including variants in analysis
+(default: "0.01,0.001,0.0005").}
 
-\item{annoVec}{a character of multiple annotation groups (comma separated) to include markers for region-level analysis. Default value is \code{"lof,lof:missense,lof:missense:synonymous"}.}
+\item{annoVec}{Comma-separated annotation groups for analysis
+(default: "lof,lof:missense,lof:missense:synonymous").}
 
-\item{chrom}{to be continued}
+\item{chrom}{Chromosome-specific options (default: "LOCO=F").}
 
-\item{control}{a list of parameters for controlling function \code{GRAB.Region}, more details can be seen in \code{Details} section.}
+\item{control}{List of control parameters. See \code{Details} for options.}
 }
 \value{
-Region-based analysis results are saved into two files: \code{OutputFile} and \code{OutputMarkerFile = paste0(OutputFile, ".markerInfo")}.
+Results are saved to two files:
+\enumerate{
+\item \code{OutputFile}: Region-based test results
+\item \code{paste0(OutputFile, ".markerInfo")}: Marker-level results (same format as
+\code{\link{GRAB.Marker}})
+}
 
-The file of \code{OutputMarkerFile} is the same as the results of \code{\link{GRAB.Marker}}. The file of \code{OutputFile} includes columns as below.
+\strong{Region-level results} (\code{OutputFile}) contain:
 \describe{
-\item{Region}{Region IDs from \code{RegionFile}}
-\item{Anno.Type}{Annotation type from \code{RegionFile}}
-\item{maxMAF}{the maximal cutoff of the MAF to select low-frequency/rare variants into analysis.}
+\item{Region}{Region identifiers from \code{GroupFile}.}
+\item{Anno.Type}{Annotation type from \code{GroupFile}.}
+\item{maxMAF}{Maximum MAF cutoff used for variant selection.}
 \item{nSamples}{Number of samples in analysis.}
-\item{nMarkers}{Number of markers whose MAF < \code{control$MaxMAFCutoff} and MAC > \code{control$MinMACCutoff}. Markers with annotation value <= 0 will be excluded from analysis.}
-\item{nMarkersURV}{Number of Ultra-Rare Variants (URV) whose MAC < \code{control$MinMACCutoff}. Markers with annotation value <= 0 will be excluded from analysis.}
-\item{pval.SKATO}{p-values based on SKAT-O method}
-\item{pval.SKAT}{p-values based on SKAT method}
-\item{pval.Burden}{p-values based on Burden test}
+\item{nMarkers}{Number of markers with MAF < cutoff and MAC > \code{MinMACCutoff}.}
+\item{nMarkersURV}{Number of ultra-rare variants with MAC < \code{MinMACCutoff}.}
+\item{pval.SKATO}{SKAT-O test p-values.}
+\item{pval.SKAT}{SKAT test p-values.}
+\item{pval.Burden}{Burden test p-values.}
 }
 }
 \description{
-Test for association between phenotype of interest and regions including
-multiple genetic marker (mostly low-frequency or rare variants).
+Tests for association between phenotypes and genomic regions containing multiple
+genetic variants, primarily low-frequency and rare variants.
 }
 \details{
-\code{GRAB} package supports \code{POLMM}, \code{SPACox}, \code{SPAGRM}, \code{SPAmix}, and \code{WtCoxG} methods.
-Detailed information about the analysis methods is given in the \code{Details} section of \code{\link{GRAB.NullModel}}.
-Users do not need to specify them since functions \code{\link{GRAB.Marker}} and \code{GRAB.Region} will check the \code{class(objNull)}.
-\subsection{The following details are about argument \code{control}}{
+GRAB supports region-based testing using multiple methods: \code{POLMM}, \code{SPACox},
+\code{SPAGRM}, \code{SPAmix}, and \code{WtCoxG}. The method is automatically detected
+from \code{class(objNull)}. See \code{\link{GRAB.NullModel}} for method details.
+\subsection{Control Parameters}{
 
-For PLINK files, the default \code{control$AlleleOrder = "alt-first"}; for BGEN files, the default \code{control$AlleleOrder = "ref-first"}.
+\strong{Genotype Processing:}
 \itemize{
-\item \code{AlleleOrder}: please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
+\item \code{AlleleOrder}: "alt-first" (PLINK default) or "ref-first" (BGEN default).
+\item \code{ImputeMethod}: "mean", "bestguess" (default), or "drop".
+\item \code{omp_num_threads}: Number of OpenMP threads for parallel computation.
 }
-The below is to customize the quality-control (QC) process.
+
+\strong{Quality Control:}
 \itemize{
-\item \code{omp_num_threads}: (To be added later) a numeric value (default: value from data.table::getDTthreads()) to specify the number of threads in OpenMP for parallel computation.
-\item \code{ImputeMethod}: a character, "mean", "bestguess" (default), or "drop" (to be added later). Please refer to the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
-\item \code{MissingRateCutoff}: a numeric value \emph{(default=0.15)}. Markers with missing rate > this value will be excluded from analysis.
-\item \code{MinMACCutoff}: a numeric value \emph{(default=5)}. Markers with MAC < this value will be treated as Ultra-Rare Variants (URV) and collapsed as one value.
-\item \code{nRegionsEachChunk}: number of regions \emph{(default=1)} in one chunk to output.
+\item \code{MissingRateCutoff}: Exclude markers with missing rate > 0.15 (default).
+\item \code{MinMACCutoff}: Treat markers with MAC < 5 (default) as ultra-rare variants.
+\item \code{nRegionsEachChunk}: Number of regions per output chunk (default: 1).
 }
-The below is for kernel-based approaches including SKAT and SKAT-O. For more details, please refer to the \href{https://cran.r-project.org/package=SKAT}{SKAT package}.
+
+\strong{Kernel-Based Testing (SKAT/SKAT-O):}
 \itemize{
-\item \code{kernel}: a type of kernel \emph{(default="linear.weighted")}.
-\item \code{weights_beta}: a numeric vector of parameters for the beta weights for the weighted kernels \emph{(default=c(1, 25))}.
-If you want to use your own weights, please use the \code{control$weights} parameter. It will be ignored if \code{control$weights} parameter is not \code{NULL}.
-\item \code{weights}: a numeric vector of weights for the weighted kernels. If it is \code{NULL} (default), the beta weight with the \code{control$weights.beta} parameter is used.
-\item \code{r.corr}: the rho parameter for the compound symmetric correlation structure kernels. If you give a vector value, SKAT will conduct the optimal test.
-It will be ignored if method="optimal" or method="optimal.adj" \emph{(default=c(0, 0.1^2, 0.2^2, 0.3^2, 0.4^2, 0.5^2, 0.5, 1))}.
+\item \code{kernel}: Kernel type (default: "linear.weighted").
+\item \code{weights_beta}: Beta weight parameters (default: c(1, 25)).
+\item \code{weights}: Custom weight vector (overrides \code{weights_beta} if specified).
+\item \code{r.corr}: Rho parameters for SKAT-O (default: c(0, 0.1^2, 0.2^2, 0.3^2,
+0.4^2, 0.5^2, 0.5, 1)).
 }
-The below is to customize the columns in the \code{OutputMarkerFile}.
-Columns of \code{Marker}, \code{Info}, \code{AltFreq}, \code{AltCounts}, \code{MissingRate}, \code{Pvalue} are included for all methods.
+
+\strong{Output Customization:}
 \itemize{
-\item \code{outputColumns}: For example, for POLMM method, users can set \code{control$outputColumns = c("beta", "seBeta", "AltFreqInGroup")}:
+\item \code{outputColumns}: Additional columns for marker-level output.
 \itemize{
-\item \code{POLMM}: Default: \code{beta}, \code{seBeta}; Optional: \code{zScore}, \code{AltFreqInGroup}, \code{nSamplesInGroup}, \code{AltCountsInGroup}
+\item \code{POLMM}: Default: \code{beta}, \code{seBeta}; Optional: \code{zScore},
+\code{AltFreqInGroup}, \code{nSamplesInGroup}, \code{AltCountsInGroup}
 \item \code{SPACox}: Optional: \code{zScore}
 }
 }
+See \code{\link{GRAB.ReadGeno}} for genotype processing details.
 }
 }
 \examples{

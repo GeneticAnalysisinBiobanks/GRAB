@@ -10,7 +10,10 @@ GRAB.SPAmix()
 No return value, called for side effects (prints information about the SPAmix method to the console).
 }
 \description{
-SPAmix method is an empirical approach to analyzing complex traits (including but not limited to time-to-event trait) for unrelated samples in a large-scale biobank. SPAmix extend SPACox to support an admixture population or multiple populations.
+SPAmix method is an empirical approach to analyzing complex traits
+(including but not limited to time-to-event trait) for unrelated samples
+in a large-scale biobank. SPAmix extends SPACox to support an admixture
+population or multiple populations.
 }
 \details{
 For \code{SPAmix}, the confounding factors of SNP-derived PCs are required and should be specified in \code{control}.
@@ -48,7 +51,7 @@ obj.SPAmix <- GRAB.NullModel(
 
 # SPAmix also supports multiple residuals as below
 obj.coxph <- survival::coxph(
-  survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2, 
+  survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
   data = PhenoData
 )
 obj.lm <- lm(QuantPheno ~ AGE + GENDER + PC1 + PC2, data = PhenoData)

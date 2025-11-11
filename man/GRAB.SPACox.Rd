@@ -7,10 +7,12 @@
 GRAB.SPACox()
 }
 \value{
-No return value, called for side effects (prints information about the SPACox method to the console).
+No return value, called for side effects.
 }
 \description{
-SPACox method is an empirical approach to analyzing complex traits (including but not limited to time-to-event trait) for unrelated samples in a large-scale biobank.
+SPACox method is an empirical approach to analyzing complex traits
+(including but not limited to time-to-event trait) for unrelated samples
+in a large-scale biobank.
 }
 \details{
 Additional list of \code{control} in \code{GRAB.NullModel()} function.

@@ -1,13 +1,15 @@
 #' SPACox method in GRAB package
 #'
-#' SPACox method is an empirical approach to analyzing complex traits (including but not limited to time-to-event trait) for unrelated samples in a large-scale biobank.
+#' SPACox method is an empirical approach to analyzing complex traits
+#' (including but not limited to time-to-event trait) for unrelated samples
+#' in a large-scale biobank.
 #'
 #' @details
 #' Additional list of \code{control} in \code{GRAB.NullModel()} function.
 #'
 #' Additional list of \code{control} in \code{GRAB.Marker()} function.
 #'
-#' @return No return value, called for side effects (prints information about the SPACox method to the console).
+#' @return No return value, called for side effects.
 #'
 #' @examples
 #' # Step 1: fit a null model
@@ -28,7 +30,7 @@
 #'   data = PhenoData,
 #'   x = TRUE
 #' )
-#' 
+#'
 #' obj.SPACox <- GRAB.NullModel(
 #'   obj.coxph$residuals ~ AGE + GENDER,
 #'   data = PhenoData,
@@ -53,8 +55,16 @@ GRAB.SPACox <- function() {
   .message("Using SPACox method - see ?GRAB.SPACox for details")
 }
 
-# check the control list in null model fitting for SPACox method
-checkControl.NullModel.SPACox <- function(control, traitType) {
+
+#' @title Validate control parameters for SPACox null model
+#' @param control List of control parameters for null model fitting.
+#' @param traitType Character string specifying the trait type.
+#' @return Updated control list with validated parameters and defaults.
+#' @keywords internal
+checkControl.NullModel.SPACox <- function(
+  control,
+  traitType
+) {
   if (!traitType %in% c("time-to-event", "Residual")) {
     stop("For 'SPACox' method, only traitType of 'time-to-event' or 'Residual' is supported.")
   }
@@ -81,9 +91,22 @@ checkControl.NullModel.SPACox <- function(control, traitType) {
   return(control)
 }
 
-# fit null model using SPACox method
-# fitNullModel.SPACox = function(formula, data, subset, subjData, subjGeno, control, ...)
-fitNullModel.SPACox <- function(response, designMat, subjData, control, ...) {
+
+#' @title Fit null model for SPACox method
+#' @param response Response variable (Surv or Residual object).
+#' @param designMat Design matrix containing covariates.
+#' @param subjData Vector of subject identifiers.
+#' @param control List of control parameters.
+#' @param ... Additional arguments passed to internal functions.
+#' @return List containing fitted null model components.
+#' @keywords internal
+fitNullModel.SPACox <- function(
+  response,
+  designMat,
+  subjData,
+  control,
+  ...
+) {
   if (!(inherits(response, "Surv") || inherits(response, "Residual"))) {
     stop("For SPAcox, the response variable should be of class 'Surv' or 'Residual'.")
   }
@@ -96,7 +119,6 @@ fitNullModel.SPACox <- function(response, designMat, subjData, control, ...) {
     yVec <- y[, ncol(y)]
 
     mresid <- obj.coxph$residuals
-    # Cova = obj.coxph$x
     Cova <- designMat
   }
 
@@ -105,35 +127,14 @@ fitNullModel.SPACox <- function(response, designMat, subjData, control, ...) {
     Cova <- designMat
   }
 
-  ### extract information from control
   range <- control$range
   length.out <- control$length.out
-
-  ### Fit a Cox model using survival package
-  # obj.coxph = survival::coxph(formula, data=data, subset=subset, x=TRUE, na.action="na.omit", ...)
-
-
-  ### The below is commented since it has been checked in fitNullModel()
-  ### By Wenjian Bi on 01-31-2021
-
-  # if(!is.null(obj.coxph$na.action)){
-  #   posNA = c(obj.coxph$na.action)
-  #   if(any(posNA > length(subjData)))
-  #     stop("Please check the consistency between 'formula' and 'subjData'.")
-  #
-  #   print(paste0("Due to missing data in response/indicators, ",length(posNA)," entries are removed from analysis."))
-  #   print("If concerned about the power loss, users can impute data first and then use SPACox package.")
-  #
-  #   subjData = subjData[-1*posNA]  # remove IDs with missing data
-  # }
 
   if (length(mresid) != length(subjData)) {
     stop("Please check the consistency between 'formula' and 'subjData'.")
   }
 
   ### Get the covariate matrix to adjust for genotype
-
-
   X <- cbind(1, Cova)
   X.invXX <- X %*% solve(t(X) %*% X)
   tX <- t(X)
@@ -168,13 +169,16 @@ fitNullModel.SPACox <- function(response, designMat, subjData, control, ...) {
     X.invXX = X.invXX,
     subjData = subjData
   )
-  # subjGeno = subjGeno)
 
   class(re) <- "SPACox_NULL_Model"
   return(re)
 }
 
 
+#' @title Validate control parameters for SPACox marker testing
+#' @param control List of control parameters for marker-level analysis.
+#' @return Updated control list with validated parameters and defaults.
+#' @keywords internal
 checkControl.Marker.SPACox <- function(control) {
   default.control <- list(
     pVal_covaAdj_Cutoff = 5e-05,
@@ -186,7 +190,16 @@ checkControl.Marker.SPACox <- function(control) {
   return(control)
 }
 
-setMarker.SPACox <- function(objNull, control) {
+
+#' @title Set up marker-level testing for SPACox method
+#' @param objNull Null model object from GRAB.NullModel().
+#' @param control List of control parameters.
+#' @return List containing setup parameters for marker testing.
+#' @keywords internal
+setMarker.SPACox <- function(
+  objNull,
+  control
+) {
   cumul <- objNull$cumul
   mresid <- objNull$mresid
   XinvXX <- objNull$X.invXX
@@ -195,7 +208,6 @@ setMarker.SPACox <- function(objNull, control) {
   pVal_covaAdj_Cutoff <- control$pVal_covaAdj_Cutoff
   SPA_Cutoff <- control$SPA_Cutoff
 
-  # The following function is in Main.cpp
   setSPACoxobjInCPP(
     cumul,
     mresid,
@@ -207,14 +219,18 @@ setMarker.SPACox <- function(objNull, control) {
   )
 }
 
-setRegion.SPACox <- function(objNull, control) {
-  setMarker.SPACox(objNull, control)
-}
 
-
-# mainMarker.SPACox = function(objNull, control, markers, genoType)
-mainMarker.SPACox <- function(genoType, genoIndex, outputColumns) {
-  # The following function is in Main.cpp
+#' @title Perform marker-level analysis for SPACox method
+#' @param genoType Character string specifying genotype file format.
+#' @param genoIndex Integer vector of genotype indices to analyze.
+#' @param outputColumns Character vector specifying output columns to include.
+#' @return Data frame containing analysis results.
+#' @keywords internal
+mainMarker.SPACox <- function(
+  genoType,
+  genoIndex,
+  outputColumns
+) {
   OutList <- mainMarkerInCPP("SPACox", genoType, genoIndex)
   obj.mainMarker <- data.frame(
     Marker = OutList$markerVec, # marker IDs
@@ -222,10 +238,9 @@ mainMarker.SPACox <- function(genoType, genoIndex, outputColumns) {
     AltFreq = OutList$altFreqVec, # alternative allele frequencies
     AltCounts = OutList$altCountsVec, # alternative allele counts
     MissingRate = OutList$missingRateVec, # alternative allele counts
-    Pvalue = OutList$pvalVec
-  ) # marker-level p-values
+    Pvalue = OutList$pvalVec # marker-level p-values
+  ) 
 
-  # optionalColumns = c("beta", "seBeta", "zScore", "PvalueNorm", "AltFreqInGroup", "AltCountsInGroup", "nSamplesInGroup")
   optionalColumns <- c("zScore", "PvalueNorm", "AltFreqInGroup", "AltCountsInGroup", "nSamplesInGroup")
   additionalColumns <- intersect(optionalColumns, outputColumns)
 
@@ -237,23 +252,4 @@ mainMarker.SPACox <- function(genoType, genoIndex, outputColumns) {
   }
 
   return(obj.mainMarker)
-}
-
-
-check_input1 <- function(obj.null, Geno.mtx, par.list) {
-  if (!inherits(obj.null, "SPACox_NULL_Model")) {
-    stop("obj.null should be a returned outcome from SPACox_Null_Model()")
-  }
-
-  if (any(obj.null$gIDs != rownames(Geno.mtx))) stop("gIDs should be the same as rownames(Geno.mtx).")
-  if (is.null(rownames(Geno.mtx))) stop("Row names of 'Geno.mtx' should be given.")
-  if (is.null(colnames(Geno.mtx))) stop("Column names of 'Geno.mtx' should be given.")
-  if (!is.numeric(Geno.mtx) || !is.matrix(Geno.mtx)) stop("Input 'Geno.mtx' should be a numeric matrix.")
-
-  if (!is.numeric(par.list$min.maf) || par.list$min.maf < 0 || par.list$min.maf > 0.5) stop("Argument 'min.maf' should be a numeric value >= 0 and <= 0.5.")
-  if (!is.numeric(par.list$Cutoff) || par.list$Cutoff < 0) stop("Argument 'Cutoff' should be a numeric value >= 0.")
-  # if(!is.element(par.list$impute.method,c("none","bestguess","random","fixed"))) stop("Argument 'impute.method' should be 'none', 'bestguess', 'random' or 'fixed'.")
-  if (!is.element(par.list$impute.method, c("fixed"))) stop("Argument 'impute.method' should be 'fixed'.")
-  if (!is.numeric(par.list$missing.cutoff) || par.list$missing.cutoff < 0 || par.list$missing.cutoff > 1) stop("Argument 'missing.cutoff' should be a numeric value between 0 and 1.")
-  if (!is.element(par.list$G.model, c("Add", "Dom", "Rec"))) stop("Argument 'G.model' should be 'Add', 'Dom' or 'Rec'.")
 }
