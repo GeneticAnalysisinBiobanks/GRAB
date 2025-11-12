@@ -1,91 +1,119 @@
-#' Perform region-based genetic association testing
+## ------------------------------------------------------------------------------
+## GRAB_Region.R
+## Region / gene / set-based rare variant analysis workflow. Handles:
+##   * Control processing for region-level parameters & kernels
+##   * Parsing of user-supplied group (region) definition files
+##   * Chunked region iteration with restart (index) support
+##   * Integration with SKAT / SKAT-O and Cauchy combination p-values
+##   * Method-specific region setup (currently POLMM-GENE)
+##
+## Functions:
+##   GRAB.Region         : High-level API to execute region-based tests and persist
+##                         both region- and marker-level outputs.
+##   processOneRegion    : Process a single region: genotype reading, variant filtering,
+##                         SKAT/SKAT-O tests, Cauchy combination, and file output.
+## ------------------------------------------------------------------------------
+
+#' Perform region-based association tests
 #'
 #' Tests for association between phenotypes and genomic regions containing multiple
 #' genetic variants, primarily low-frequency and rare variants.
 #'
-#' @param objNull Null model object from \code{\link{GRAB.NullModel}}.
-#' @param GenoFile Path to genotype file (PLINK or BGEN format). See
+#' @param objNull (S3 object) Null model object from \code{\link{GRAB.NullModel}}. 
+#'   Currently supports POLMM_NULL_Model.
+#' @param GenoFile (character) Path to genotype file (PLINK or BGEN format). See
 #'   \code{\link{GRAB.ReadGeno}} for details.
-#' @param GenoFileIndex Index files for genotype file. If \code{NULL} (default), uses
-#'   same prefix as \code{GenoFile}. See \code{\link{GRAB.ReadGeno}} for details.
-#' @param OutputFile Path for saving region-based association results.
-#' @param OutputFileIndex Path for progress tracking file. If \code{NULL} (default),
-#'   uses \code{paste0(OutputFile, ".index")}.
-#' @param GroupFile Path to region definition file specifying region-marker mappings
-#'   and annotation information. Tab-separated format with 2-3 columns per region.
-#' @param SparseGRMFile Path to sparse GRM file (optional).
-#' @param SampleFile Path to sample information file with header (optional).
-#' @param MaxMAFVec Comma-separated MAF cutoffs for including variants in analysis
-#'   (default: "0.01,0.001,0.0005").
-#' @param annoVec Comma-separated annotation groups for analysis
+#' @param GenoFileIndex (character or NULL) Index files for genotype file. If 
+#'   \code{NULL} (default), uses same prefix as \code{GenoFile}. See 
+#'   \code{\link{GRAB.ReadGeno}} for details.
+#' @param OutputFile (character) Path for saving region-based association results.
+#' @param OutputFileIndex (character or NULL) Path for progress tracking file. If 
+#'   \code{NULL} (default), uses \code{paste0(OutputFile, ".index")}.
+#' @param GroupFile (character) Path to region definition file specifying region-marker 
+#'   mappings and annotation information. Tab-separated format with 2-3 columns per region.
+#' @param SparseGRMFile (character or NULL) Path to sparse GRM file (optional).
+#' @param SampleFile (character or NULL) Path to sample information file with header 
+#'   (optional).
+#' @param MaxMAFVec (character) Comma-separated MAF cutoffs for including variants in 
+#'   analysis (default: "0.01,0.001,0.0005").
+#' @param annoVec (character) Comma-separated annotation groups for analysis
 #'   (default: "lof,lof:missense,lof:missense:synonymous").
-#' @param chrom Chromosome-specific options (default: "LOCO=F").
-#' @param control List of control parameters. See \code{Details} for options.
-#' @details
-#' GRAB supports region-based testing using multiple methods: \code{POLMM}, \code{SPACox},
-#' \code{SPAGRM}, \code{SPAmix}, and \code{WtCoxG}. The method is automatically detected
-#' from \code{class(objNull)}. See \code{\link{GRAB.NullModel}} for method details.
-#'
-#' ## Control Parameters
-#'
-#' **Genotype Processing:**
-#' \itemize{
-#'   \item \code{AlleleOrder}: "alt-first" (PLINK default) or "ref-first" (BGEN default).
-#'   \item \code{ImputeMethod}: "mean", "bestguess" (default), or "drop".
-#'   \item \code{omp_num_threads}: Number of OpenMP threads for parallel computation.
-#' }
-#'
-#' **Quality Control:**
-#' \itemize{
-#'   \item \code{MissingRateCutoff}: Exclude markers with missing rate > 0.15 (default).
-#'   \item \code{MinMACCutoff}: Treat markers with MAC < 5 (default) as ultra-rare variants.
-#'   \item \code{nRegionsEachChunk}: Number of regions per output chunk (default: 1).
-#' }
-#'
-#' **Kernel-Based Testing (SKAT/SKAT-O):**
-#' \itemize{
-#'   \item \code{kernel}: Kernel type (default: "linear.weighted").
-#'   \item \code{weights_beta}: Beta weight parameters (default: c(1, 25)).
-#'   \item \code{weights}: Custom weight vector (overrides \code{weights_beta} if specified).
-#'   \item \code{r.corr}: Rho parameters for SKAT-O (default: c(0, 0.1^2, 0.2^2, 0.3^2,
-#'     0.4^2, 0.5^2, 0.5, 1)).
-#' }
-#'
-#' **Output Customization:**
-#' \itemize{
-#'   \item \code{outputColumns}: Additional columns for marker-level output.
-#'     \itemize{
-#'       \item \code{POLMM}: Default: \code{beta}, \code{seBeta}; Optional: \code{zScore},
-#'         \code{AltFreqInGroup}, \code{nSamplesInGroup}, \code{AltCountsInGroup}
-#'       \item \code{SPACox}: Optional: \code{zScore}
-#'     }
-#' }
-#' See \code{\link{GRAB.ReadGeno}} for genotype processing details.
+#' @param chrom (character) Chromosome-specific options (default: "LOCO=F").
+#' @param control (list or NULL) List of the following parameters:
+#'   \itemize{
+#'     \item \code{impute_method} (character): Method for imputing missing genotypes: "mean", "minor", or "drop". Default: "minor".
+#'     \item \code{missing_cutoff} (numeric): Exclude markers with missing rate > this value. Range: 0 to 0.5. Default: 0.15.
+#'     \item \code{min_mac_region} (numeric): Minimum MAC threshold; markers with MAC < this value are treated as ultra-rare variants. Default: 5.
+#'     \item \code{max_markers_region} (integer): Maximum number of markers allowed per region. Default: 100.
+#'     \item \code{r.corr} (numeric vector): Rho parameters for SKAT-O test. Range: 0 to 1. Default: c(0, 0.1^2, 0.2^2, 0.3^2, 0.4^2, 0.5^2, 0.5, 1).
+#'     \item \code{weights.beta} (numeric vector): Beta distribution parameters for variant weights (length 2). Default: c(1, 25).
+#'     \item \code{omp_num_threads} (integer): Number of OpenMP threads for parallel computation. Default: data.table::getDTthreads().
+#'     \item \code{min_nMarker} (integer): Minimum number of markers required for region analysis. Default: 3.
+#'     \item \code{SPA_Cutoff} (numeric): Cutoff for SPA adjustment (POLMM only). Default: 2.
+#'     \item \code{outputColumns} (character vector): Additional columns for marker-level output (POLMM only). Default: c("beta", "seBeta").
+#'     \item \code{SampleLabelCol} (character): Column name in SampleFile for sample group labels (optional). Default: NULL.
+#'   }
+#' 
 #' @return
-#' Results are saved to two files:
+#' The function returns \code{NULL} invisibly. Results are saved to four files:
 #' \enumerate{
-#'   \item \code{OutputFile}: Region-based test results
-#'   \item \code{paste0(OutputFile, ".markerInfo")}: Marker-level results (same format as
-#'     \code{\link{GRAB.Marker}})
+#'   \item \code{OutputFile}: Region-based test results (SKAT-O, SKAT, Burden p-values).
+#'   \item \code{paste0(OutputFile, ".markerInfo")}: Marker-level results for rare variants 
+#'     (MAC >= \code{min_mac_region}) included in region tests.
+#'   \item \code{paste0(OutputFile, ".otherMarkerInfo")}: Information for excluded markers 
+#'     (ultra-rare variants or failed QC).
+#'   \item \code{paste0(OutputFile, ".infoBurdenNoWeight")}: Summary statistics for burden 
+#'     tests without weights.
 #' }
 #'
-#' **Region-level results** (\code{OutputFile}) contain:
+#' **Region-level results** (\code{OutputFile}) columns:
 #' \describe{
-#'   \item{Region}{Region identifiers from \code{GroupFile}.}
+#'   \item{Region}{Region identifier from \code{GroupFile}.}
+#'   \item{nMarkers}{Number of rare variants with MAF < cutoff and MAC >= \code{min_mac_region}.}
+#'   \item{nMarkersURV}{Number of ultra-rare variants with MAC < \code{min_mac_region}.}
 #'   \item{Anno.Type}{Annotation type from \code{GroupFile}.}
-#'   \item{maxMAF}{Maximum MAF cutoff used for variant selection.}
-#'   \item{nSamples}{Number of samples in analysis.}
-#'   \item{nMarkers}{Number of markers with MAF < cutoff and MAC > \code{MinMACCutoff}.}
-#'   \item{nMarkersURV}{Number of ultra-rare variants with MAC < \code{MinMACCutoff}.}
-#'   \item{pval.SKATO}{SKAT-O test p-values.}
-#'   \item{pval.SKAT}{SKAT test p-values.}
-#'   \item{pval.Burden}{Burden test p-values.}
+#'   \item{MaxMAF.Cutoff}{Maximum MAF cutoff used for variant selection.}
+#'   \item{pval.SKATO}{SKAT-O test p-value.}
+#'   \item{pval.SKAT}{SKAT test p-value.}
+#'   \item{pval.Burden}{Burden test p-value.}
 #' }
+#'
+#' **Marker-level results** (\code{paste0(OutputFile, ".markerInfo")}) columns:
+#' \describe{
+#'   \item{Region}{Region identifier.}
+#'   \item{ID}{Marker identifier.}
+#'   \item{Info}{Marker status ("Rare Variants" or "Ultra-Rare Variants").}
+#'   \item{Anno}{Annotation from \code{GroupFile}.}
+#'   \item{AltFreq, MAC, MAF}{Allele frequency, minor allele count, and minor allele frequency.}
+#'   \item{MissingRate}{Proportion of missing genotypes.}
+#'   \item{StatVec}{Score test statistic.}
+#'   \item{altBetaVec, seBetaVec}{Effect size estimate and standard error (if requested in \code{control$outputColumns}).}
+#'   \item{pval0Vec, pval1Vec}{Unadjusted and SPA-adjusted p-values.}
+#' }
+#'
+#' **Other marker info** (\code{paste0(OutputFile, ".otherMarkerInfo")}) columns:
+#' \describe{
+#'   \item{Region}{Region identifier.}
+#'   \item{ID}{Marker identifier.}
+#'   \item{Annos}{Annotation from \code{GroupFile}.}
+#'   \item{Info}{Reason for exclusion (e.g., "Ultra-Rare Variants", "Missing rate > cutoff").}
+#'   \item{AltFreq, MAC, MAF, MissingRate}{Allele frequency and QC metrics.}
+#' }
+#'
+#' **Burden test summary** (\code{paste0(OutputFile, ".infoBurdenNoWeight")}) columns:
+#' \describe{
+#'   \item{region}{Region identifier.}
+#'   \item{anno}{Annotation type.}
+#'   \item{max_maf}{Maximum MAF cutoff.}
+#'   \item{sum}{Sum of genotypes.}
+#'   \item{Stat}{Score test statistic.}
+#'   \item{beta, se.beta}{Effect size estimate and standard error.}
+#'   \item{pvalue}{P-value for burden test.}
+#' }
+#' 
 #' @examples
-#' # Load a precomputed example object to perform step 2 without repeating step 1
 #' objNullFile <- system.file("extdata", "objPOLMMnull.RData", package = "GRAB")
-#' load(objNullFile)
-#' class(obj.POLMM) # "POLMM_NULL_Model" is an object from POLMM method.
+#' load(objNullFile) # load a an example object, obj.POLMM, from step 1
 #'
 #' OutputDir <- tempdir()
 #' OutputFile <- file.path(OutputDir, "simuRegionOutput.txt")
@@ -121,14 +149,14 @@ GRAB.Region <- function(
   chrom = "LOCO=F",
   control = NULL
 ) {
-  # Validate null model object and extract method information
-  # ---- BEGIN inlined: checkObjNull ----
-  NullModelClass <- class(objNull)
-  nm <- names(objNull)
 
-  supported_classes <- c(
+# ========== Validate and configure parameters ==========
+
+  supported_classes <- c(                                      # character vector
     "POLMM_NULL_Model"
   )
+
+  NullModelClass <- class(objNull)                            # character
 
   if (!NullModelClass %in% supported_classes) {
     stop(
@@ -137,52 +165,53 @@ GRAB.Region <- function(
     )
   }
 
-  if (any(!c("subjData", "N") %in% nm)) {
+  if (any(!c("subjData", "N") %in% names(objNull))) {
     stop("c('subjData', 'N') should be in names(objNull).")
   }
-  # ---- END inlined: checkObjNull ----
-  method <- gsub("_NULL_Model", "", NullModelClass)
+
+  method <- gsub("_NULL_Model", "", NullModelClass)          # character
 
   # Set default output index file if not provided
   if (is.null(OutputFileIndex)) {
     OutputFileIndex <- paste0(OutputFile, ".index")
   }
 
-  # Check output file status and determine restart point if needed
-  outList <- checkOutputFile(OutputFile, OutputFileIndex, "Region", nEachChunk = 1)
-  indexChunk <- outList$indexChunk
-  Start <- outList$Start
-  End <- outList$End
-
-  # Check if analysis has already been completed
-  if (End) {
-    msg_text <- paste0(
-      "Analysis completed in earlier run. Results saved in '", OutputFile, "'. ",
-      "Use a different 'OutputFile' to restart analysis."
-    )
-    .message("%s", msg_text)
-    return(msg_text)
+  # Check existence of group file
+  if (!file.exists(GroupFile)) {
+    stop("cannot find the below file:\n", GroupFile)
   }
 
-  # Check if analysis was partially completed and needs restart
-  if (!Start) {
-    msg_text <- paste0(
-      "Partial analysis completed based on index file: ", OutputFileIndex, "\n",
-      "Restarting from chunk ", indexChunk + 1
-    )
-    .message("%s", msg_text)
+  # Parse and validate MAF cutoffs for variant selection
+  MaxMAFVec <- MaxMAFVec %>%                                  # numeric vector
+    strsplit(split = ",") %>%
+    unlist() %>%
+    as.numeric()
+
+  if (any(is.na(MaxMAFVec))) {
+    stop("MaxMAFVec contains invalid (NA) values. Please check your input.")
   }
 
-  # Validate and set control parameters with method-specific defaults
-  # ---- Begin inline of checkControl.Region(control) ----
-  if (!is.null(control)) {
-    if (!is.list(control)) {
-      stop("If specified, the argument of 'control' should be an R 'list'.")
-    }
+  MaxMAF <- max(MaxMAFVec)                                    # numeric
+  if (MaxMAF > 0.05) {
+    stop("Maximum value of 'MaxMAFVec' should be <= 0.05.")
   }
 
-  # uniform default control setting for region-level analysis
-  default.region.control <- list(
+  # Parse annotation groups for variant filtering
+  annoVec <- annoVec %>%                                      # character vector
+    strsplit(split = ",") %>%
+    unlist()
+  annoList <- annoVec %>% strsplit(split = ":")               # list
+  allAnno <- annoList %>%                                     # character vector
+    unlist() %>%
+    unique()
+
+  # ========== Validate and configure the control list ==========
+
+  if (!is.null(control) && !is.list(control)) {
+    stop("Argument 'control' should be an R list.")
+  }
+
+  default.region.control <- list(                             # list
     impute_method = "minor",
     missing_cutoff = 0.15,
     min_mac_region = 5,
@@ -193,96 +222,78 @@ GRAB.Region <- function(
     min_nMarker = 3
   )
 
-  control <- updateControl(control, default.region.control)
+  control <- updateControl(control, default.region.control)  # list
 
-  # check if 'control' is reasonable
   if (!control$impute_method %in% c("mean", "minor", "drop")) {
     stop("control$impute_method should be 'mean', 'minor', or 'drop'.")
   }
 
-  if (!is.numeric(control$missing_cutoff) || control$missing_cutoff < 0 || control$missing_cutoff > 0.5) {
-    stop("control$missing_cutoff should be a numeric value ranging from 0 to 0.5.")
+  if (!is.numeric(control$missing_cutoff) ||
+      control$missing_cutoff < 0 || control$missing_cutoff > 0.5) {
+    stop("control$missing_cutoff should be numeric in [0, 0.5].")
   }
 
   if (!is.numeric(control$min_mac_region) || control$min_mac_region < 0) {
-    stop("control$min_mac_region should be a numeric value >= 0.")
+    stop("control$min_mac_region should be numeric >= 0.")
   }
 
   if (!is.numeric(control$max_markers_region) || control$max_markers_region < 50) {
-    stop("control$max_markers_region should be a integer >= 50.")
+    stop("control$max_markers_region should be integer >= 50.")
   }
 
-  if (!is.numeric(control$r.corr) || min(control$r.corr) < 0 || max(control$r.corr) > 1) {
-    stop("control$r.corr should be a numeric vector whose elements are between 0 and 1.")
+  if (!is.numeric(control$r.corr) ||
+      min(control$r.corr) < 0 || max(control$r.corr) > 1) {
+    stop("control$r.corr should be numeric vector with elements in [0, 1].")
   }
 
-  if (!is.numeric(control$weights.beta) || length(control$weights.beta) != 2 || min(control$weights.beta) < 0) {
-    stop("control$weights.beta should be a numeric vector with two non-negative elements.")
+  if (!is.numeric(control$weights.beta) ||
+      length(control$weights.beta) != 2 || min(control$weights.beta) < 0) {
+    stop("control$weights.beta should be numeric vector with two non-negative elements.")
   }
 
   if (!is.numeric(control$min_nMarker) || control$min_nMarker <= 0) {
     stop("control$min_nMarker should be a positive integer.")
   }
-  # ---- End inline of checkControl.Region(control) ----
 
-  if (NullModelClass == "POLMM_NULL_Model") {
-    control <- checkControl.Region.POLMM(control)
-  } else {
-    stop("Unknown NullModelClass: ", NullModelClass)
-  }
+  # Validate method-specific parameters
+  control <- switch(                                          # list
+    NullModelClass,
+    POLMM_NULL_Model = checkControl.Region.POLMM(control)
+  )
 
-  # Display control parameters for user verification
-  .message("Control parameters for region-level genetic association analysis:")
+  # Pretty-print final control list
+  .message("Control parameters for region-level association tests:")
   tmp <- capture.output(str(control))
-  for (line in tmp) {
-    if (startsWith(line, " $")) {
-      message(sub("^ \\$", strrep(" ", 8), line))
-    }
+  for (line in tmp[startsWith(tmp, " $")]) {
+    message(sub("^ \\$", strrep(" ", 8), line))
   }
 
-  # Parse and validate MAF cutoffs for variant selection
-  MaxMAFVec <- MaxMAFVec %>%
-    strsplit(split = ",") %>%
-    unlist() %>%
-    as.numeric()
+  # ========== Check output file status and determine restart point ==========
 
-  if (any(is.na(MaxMAFVec))) {
-    stop("MaxMAFVec contains invalid (NA) values. Please check your input.")
-  }
-
-  MaxMAF <- max(MaxMAFVec)
-  if (MaxMAF > 0.05) {
-    stop("Maximum value of 'MaxMAFVec' should be <= 0.05.")
-  }
-  control$max_maf_region <- MaxMAF
-
-  # Parse annotation groups for variant filtering
-  annoVec <- annoVec %>%
-    strsplit(split = ",") %>%
-    unlist()
-  annoList <- annoVec %>% strsplit(split = ":")
-  allAnno <- annoList %>%
-    unlist() %>%
-    unique()
+  indexChunk <- checkOutputFile(                              # integer
+    OutputFile, OutputFileIndex, "Region", nEachChunk = 1
+  )
+  
+  # ========== Extract subject information and process sample grouping ==========
 
   # Extract subject information from null model
-  subjData <- as.character(objNull$subjData)
-  n <- length(subjData)
+  subjData <- as.character(objNull$subjData)                  # character vector
+  n <- length(subjData)                                       # integer
 
   # Process sample grouping information for stratified analysis
   # Default: single group for all samples
-  SampleLabelNumber <- rep(1, n)
-  SampleLabelLevels <- NULL
+  SampleLabelNumber <- rep(1, n)                              # numeric vector
+  SampleLabelLevels <- NULL                                   # NULL or character vector
 
   if (!is.null(SampleFile)) {
     # Read sample information file with required 'IID' column
-    SampleInfo <- data.table::fread(SampleFile)
+    SampleInfo <- data.table::fread(SampleFile)              # data.frame
     if (colnames(SampleInfo)[1] != "IID") {
       stop("The header of the first column in 'SampleFile' should be 'IID'.")
     }
 
     # Validate that all subjects in null model are present in sample file
-    pos <- which(!subjData %in% SampleInfo$IID)
+    pos <- which(!subjData %in% SampleInfo$IID)              # integer vector
     if (length(pos) > 0) {
       stop(
         "At least one subject in null model fitting not found in 'SampleFile':\n",
@@ -292,51 +303,42 @@ GRAB.Region <- function(
 
     # Extract sample group labels if specified
     if (!is.null(control$SampleLabelCol)) {
-      SampleLabelColName <- control$SampleLabelCol
+      SampleLabelColName <- control$SampleLabelCol            # character
       if (!SampleLabelColName %in% colnames(SampleInfo)) {
         stop("'SampleFile' should include column: ", SampleLabelColName)
       }
 
       # Map sample labels to numeric codes for stratified analysis
-      posInSampleInfo <- match(subjData, SampleInfo$IID)
-      SampleLabel <- SampleInfo[[SampleLabelColName]][posInSampleInfo]
-      SampleLabelFactor <- as.factor(SampleLabel)
-      SampleLabelNumber <- as.numeric(SampleLabelFactor)
-      SampleLabelLevels <- levels(SampleLabelFactor)
+      posInSampleInfo <- match(subjData, SampleInfo$IID)      # integer vector
+      SampleLabel <- SampleInfo[[SampleLabelColName]][posInSampleInfo] # vector
+      SampleLabelFactor <- as.factor(SampleLabel)            # factor
+      SampleLabelNumber <- as.numeric(SampleLabelFactor)     # numeric vector
+      SampleLabelLevels <- levels(SampleLabelFactor)         # character vector
     }
   }
-  nLabel <- max(SampleLabelNumber)
+  nLabel <- max(SampleLabelNumber)                            # integer
 
-  # Initialize genotype reader with file paths and subject filtering options
-  objGeno <- setGenoInput(GenoFile, GenoFileIndex, subjData, control) # Function in 'Geno.R'
-  genoType <- objGeno$genoType
-  markerInfo <- objGeno$markerInfo
+  # ========== Extract region information and process variant grouping ==========
 
-  # Parse region definitions from group file
-  # ---- BEGIN inlined: getInfoGroupFile ----
   .message("Extracting marker information from GroupFile: %s", GroupFile)
 
-  if (!file.exists(GroupFile)) {
-    stop("cannot find the below file:\n", GroupFile)
-  }
+  gf <- file(GroupFile, "r")                                  # connection
+  regionList <- list()                                        # list
+  nLine <- 1                                                  # integer
 
-  gf <- file(GroupFile, "r")
-  regionList <- list()
-  nLine <- 1
-
-  previousType <- "first"
-  previousGene <- "first"
-  Weights <- NA
-  nRegion <- 1
+  previousType <- "first"                                     # character
+  previousGene <- "first"                                     # character
+  Weights <- NA                                               # numeric or NA
+  nRegion <- 1                                                # integer
 
   while (TRUE) {
-    markerGroupLine <- readLines(gf, n = 1)
+    markerGroupLine <- readLines(gf, n = 1)                   # character
 
     if (length(markerGroupLine) == 0) {
       if (nRegion == 1) {
         stop("Cannot find any region information in 'GroupFile'.")
       }
-      regionList[[nRegion]] <- list(
+      regionList[[nRegion]] <- list(                          # list
         regionID = previousGene,
         regionInfo = data.frame(
           ID = Markers,
@@ -348,39 +350,38 @@ GRAB.Region <- function(
       break
     }
 
-    # ---- inline getInfoGroupLine() ----
+    # Parse group file line
     if (length(markerGroupLine) == 0) {
       stop("The line ", nLine, " in `groupFile` is empty.")
     }
 
-    info <- strsplit(markerGroupLine, "\t")[[1]]
+    info <- strsplit(markerGroupLine, "\t")[[1]]              # character vector
     if (length(info) < 3) {
       stop("The line ", nLine, " in 'groupFile' includes < 3 elements, ",
         "please note that each line should be seperated by 'tab'.")
     }
 
-    geneID <- info[1]
-    type <- info[2]
-    values <- info[-c(1, 2)]
+    geneID <- info[1]                                         # character
+    type <- info[2]                                           # character
+    values <- info[-c(1, 2)]                                  # character vector
 
-    grepTemp <- grep(" ", values, value = TRUE)
+    grepTemp <- grep(" ", values, value = TRUE)               # character vector
     if (length(grepTemp) > 0) {
       stop("'GroupFile' cannot contain 'space':\n",
         paste0(unique(grepTemp), collapse = "\t"))
     }
 
-    grepTemp <- grep(";", values, value = TRUE)
+    grepTemp <- grep(";", values, value = TRUE)               # character vector
     if (length(grepTemp) > 0) {
       stop("'GroupFile' cannot contain ';':\n",
         paste0(unique(grepTemp), collapse = "\t"))
     }
 
     if (type == "weight") {
-      values <- as.numeric(values)
+      values <- as.numeric(values)                            # numeric vector
     }
 
-    n <- length(values)
-    # ---- end inline getInfoGroupLine() ----
+    n <- length(values)                                       # integer
     nLine <- nLine + 1
 
     if (!type %in% c("var", "anno", "weight")) {
@@ -393,7 +394,7 @@ GRAB.Region <- function(
         stop("Cannot find 'anno' line for region ", previousGene, ".")
       }
       if (previousType != "first") {
-        regionList[[nRegion]] <- list(
+        regionList[[nRegion]] <- list(                        # list
           regionID = previousGene,
             regionInfo = data.frame(
               ID = Markers,
@@ -404,9 +405,9 @@ GRAB.Region <- function(
         nRegion <- nRegion + 1
       }
 
-      Markers <- values
-      n1 <- n
-      Weights <- NA
+      Markers <- values                                       # character vector
+      n1 <- n                                                 # integer
+      Weights <- NA                                           # NA
     }
 
     if (type == "anno") {
@@ -416,7 +417,7 @@ GRAB.Region <- function(
       if (previousType != "var") {
         stop("In the 'GroupFile', the 'anno' line should follow the 'var' line.")
       }
-      Annos <- values
+      Annos <- values                                         # character vector
     }
 
     if (type == "weight") {
@@ -426,7 +427,7 @@ GRAB.Region <- function(
       if (previousType != "anno") {
         stop("In the 'GroupFile', the 'weight' line should follow the 'anno' line.")
       }
-      Weights <- values
+      Weights <- values                                       # numeric vector
     }
 
     previousType <- type
@@ -434,11 +435,18 @@ GRAB.Region <- function(
   }
 
   .message("Found %d groups in GroupFile", nRegion)
-  RegionList <- regionList
-  # ---- END inlined: getInfoGroupFile ----
-  nRegions <- length(RegionList)
+  RegionList <- regionList                                    # list
+  nRegions <- length(RegionList)                              # integer
 
-  # Configure global variables in C++ for efficient region-based analysis
+  # ========== Configure C++ backend ==========
+ 
+  # Initialize genotype reader in C++ backend
+  control$max_maf_region <- MaxMAF                            # numeric
+  objGeno <- setGenoInput(GenoFile, GenoFileIndex, subjData, control) # list
+  genoType <- objGeno$genoType                                # character
+  markerInfo <- objGeno$markerInfo                            # data.frame
+
+  # Configure global variables in C++ backend
   with(
     control,
     setRegion_GlobalVarsInCPP(
@@ -453,266 +461,312 @@ GRAB.Region <- function(
     )
   )
 
-  if (NullModelClass == "POLMM_NULL_Model") {
-    obj.setRegion <- setRegion.POLMM(objNull, control, chrom, SparseGRMFile)
-  } else {
-    stop("Unknown NullModelClass: ", NullModelClass)
-  }
+  # Set method-specific objects in C++ backend
+  obj.setRegion <- switch(                                    # list
+    NullModelClass,
+    POLMM_NULL_Model = setRegion.POLMM(objNull, control, chrom, SparseGRMFile)
+  )
 
-  diffTime1 <- 0
-  diffTime2 <- 0
-  diffTime3 <- 0
+  # diffTime1 <- 0                                              # numeric: timing for mainRegionInCPP
+  # diffTime2 <- 0                                              # numeric: timing for region p-value calculation
+  # diffTime3 <- 0                                              # numeric: timing for SKAT calculation
 
   # Use SKAT.Met_SKAT_Get_Pvalue instead of SKAT:::Met_SKAT_Get_Pvalue to be CRAN-compliant
-  SKAT.Met_SKAT_Get_Pvalue <- getFromNamespace("Met_SKAT_Get_Pvalue", "SKAT")
+  SKAT.Met_SKAT_Get_Pvalue <- getFromNamespace("Met_SKAT_Get_Pvalue", "SKAT") # function
+
+  # ========== Iterate over regions to perform tests ==========
 
   for (i in (indexChunk + 1):nRegions) {
-    region <- RegionList[[i]]
-
-    regionID <- region$regionID
-    regionInfo <- region$regionInfo
-
-    regionInfo <- markerInfo %>%
-      select(ID, genoIndex) %>%
-      merge(regionInfo, by = "ID") %>%
-      arrange(genoIndex) %>%
-      filter(Annos %in% allAnno)
-
-    nMarkers <- nrow(regionInfo)
-
-    if (nMarkers == 0) {
-      next
-    }
-
-    nAnno <- length(annoList)
-    annoMat <- matrix(0, nrow = nMarkers, ncol = nAnno)
-    colnames(annoMat) <- annoVec
-
-    for (iAnno in 1:nAnno) {
-      annoMat[, iAnno] <- ifelse(regionInfo$Annos %in% annoList[[iAnno]], 1, 0)
-    }
-
-    genoIndex <- regionInfo$genoIndex
-    weightVec <- regionInfo$Weights
-
-    if (all(is.na(weightVec))) {
-      weightVec <- rep(1, nMarkers)
-    } else {
-      if (any(is.na(weightVec) || weightVec <= 0)) {
-        stop("Marker weights cannot be non-positive (<= 0) or NA.")
-      }
-    }
-
-    .message("Analyzing region %s (%d/%d)", regionID, i, nRegions)
-    .message(
-      "Region contains %d markers: %s",
-      length(regionInfo$ID),
-      paste0(head(regionInfo$ID, 6), collapse = ", ")
-    )
-
-    t11 <- Sys.time()
-    obj.mainRegionInCPP <- mainRegionInCPP(
-      method, genoType, genoIndex, weightVec, OutputFile,
-      SampleLabelNumber, nLabel,
-      annoMat, annoVec
-    )
-    t12 <- Sys.time()
-    diffTime1 <- diffTime1 + (t12 - t11)
-
-    # updated on 2022-06-24 (save sum of genotype to conduct burden test and adjust p-values using SPA)
-    pvalBurden <- obj.mainRegionInCPP$pvalBurden
-
-    # updated on 2023-02-06 (record summary statistics for sum of genotype for a region)
-    infoBurdenNoWeight <- obj.mainRegionInCPP$infoBurdenNoWeight
-    infoBurdenNoWeight <- as.data.frame(infoBurdenNoWeight)
-    infoBurdenNoWeight <- cbind(regionID, infoBurdenNoWeight)
-    colnames(infoBurdenNoWeight) <- c("region", "anno", "max_maf", "sum", "Stat", "beta", "se.beta", "pvalue")
-
-    infoBurdenNoWeight$anno <- annoVec[infoBurdenNoWeight$anno + 1]
-    infoBurdenNoWeight$max_maf <- MaxMAFVec[infoBurdenNoWeight$max_maf + 1]
-
-    ## add annotation information
-    obj.mainRegionInCPP$AnnoVec <- c(regionInfo$Annos, annoVec)
-    if (!is.null(SampleLabelLevels)) {
-      colnames(obj.mainRegionInCPP$MACLabelMat) <- paste0("MAC_", SampleLabelLevels)
-      colnames(obj.mainRegionInCPP$MAFLabelMat) <- paste0("MAF_", SampleLabelLevels)
-    }
-
-    if (NullModelClass == "POLMM_NULL_Model") {
-      obj.mainRegion <- mainRegion.POLMM(genoType, genoIndex, OutputFile, control, n, 
-                                         obj.setRegion, obj.mainRegionInCPP, nLabel)
-    } else {
-      stop("Unknown NullModelClass: ", NullModelClass)
-    }
-
-    Other.Markers <- obj.mainRegion$Other.Markers %>% mutate(Region = regionID, .before = ID)
-    VarMat <- obj.mainRegion$VarMat
-    RV.Markers0 <- obj.mainRegion$RV.Markers %>% mutate(Region = regionID, .before = ID)
-
-    Other.Markers <- regionInfo %>%
-      select(ID, Annos) %>%
-      merge(Other.Markers, by = "ID")
-
-    if (nrow(VarMat) != nrow(RV.Markers0)) {
-      stop("nrow(VarMat) != nrow(RV.Markers0)!")
-    }
-
-    RV.Markers <- RV.Markers0 %>%
-      mutate(
-        betaWeights = dbeta(MAF, control$weights.beta[1], control$weights.beta[2]),
-        adjVarSVec = StatVec^2 / qchisq(pval1Vec, df = 1, lower.tail = FALSE),
-        # r0 = adjVarSVec / diag(VarMat),  # edited on 06/22/2022
-        r0 = pmax(adjVarSVec / diag(VarMat), 1),
-        wr0 = sqrt(r0) * betaWeights,
-        wStatVec = StatVec * betaWeights
-      )
-
-    # check given weights version later: 2022-05-01
-
-    wr0 <- RV.Markers$wr0
-
-    wadjVarSMat <- t(VarMat * wr0) * wr0
-
-    RV.MarkersWithAnno <- regionInfo %>%
-      select(-genoIndex) %>%
-      merge(RV.Markers %>% select(ID, MAF, posRow), by = "ID")
-
-    Other.MarkersWithAnno <- regionInfo %>%
-      select(ID, Annos) %>%
-      merge(Other.Markers %>% filter(IndicatorVec == 2) %>% select(ID), by = "ID")
-
-    RV.MarkersURV <- RV.Markers %>%
-      filter(Info == "Ultra-Rare Variants") %>%
-      select(ID, posRow)
-
-    t21 <- Sys.time()
-    pval.Region <- data.frame()
-    iSPA <- 1
-    for (anno in annoVec) {
-      annoTemp <- unlist(strsplit(anno, split = ":"))
-
-      posURV <- RV.MarkersURV %>%
-        filter(ID == anno) %>%
-        select(posRow) %>%
-        unlist()
-      nMarkersURV <- Other.MarkersWithAnno %>%
-        filter(Annos %in% annoTemp) %>%
-        nrow()
-      if (length(posURV) != 1) {
-        stop("length(posURV) != 1")
-      }
-
-      for (MaxMAF in MaxMAFVec) {
-        posRV <- RV.MarkersWithAnno %>%
-          filter(MAF < MaxMAF & Annos %in% annoTemp) %>%
-          select(posRow) %>%
-          unlist()
-        pos <- c(posRV, posURV)
-        n1 <- length(pos)
-
-        ScoreBurden <- sum(RV.Markers$wStatVec[pos])
-        VarBurden <- sum(wadjVarSMat[pos, pos])
-        pvalBurdenSPA <- pvalBurden[iSPA, 2]
-        VarBurdenSPA <- ScoreBurden^2 / qchisq(pvalBurdenSPA, df = 1, lower.tail = FALSE)
-        ratioBurdenSPA <- max(VarBurdenSPA / VarBurden, 1)
-        iSPA <- iSPA + 1
-
-        t31 <- Sys.time()
-        out_SKAT_List <- with(RV.Markers, try(
-          SKAT.Met_SKAT_Get_Pvalue(
-            Score = wStatVec[pos],
-            Phi = ratioBurdenSPA * wadjVarSMat[pos, pos],
-            r.corr = control$r.corr,
-            method = "optimal.adj",
-            Score.Resampling = NULL
-          ),
-          silent = TRUE
-        ))
-
-        t32 <- Sys.time()
-        diffTime3 <- diffTime3 + (t32 - t31)
-
-        if (inherits(out_SKAT_List, "try-error")) {
-          Pvalue <- c(NA, NA, NA)
-        } else if (!any(c(0, 1) %in% out_SKAT_List$param$rho)) {
-          Pvalue <- c(NA, NA, NA)
-        } else {
-          pos00 <- which(out_SKAT_List$param$rho == 0)
-          pos01 <- which(out_SKAT_List$param$rho == 1)
-          Pvalue <- c(
-            out_SKAT_List$p.value, # SKAT-O
-            out_SKAT_List$param$p.val.each[pos00], # SKAT
-            out_SKAT_List$param$p.val.each[pos01]
-          ) # Burden Test
-        }
-
-        pval.Region <- rbind.data.frame(
-          pval.Region,
-          data.frame(
-            Region = regionID,
-            nMarkers = length(posRV),
-            nMarkersURV = nMarkersURV,
-            Anno.Type = anno,
-            MaxMAF.Cutoff = MaxMAF,
-            pval.SKATO = Pvalue[1],
-            pval.SKAT = Pvalue[2],
-            pval.Burden = Pvalue[3]
-          )
-        )
-      }
-    }
-
-    ## Cauchy Combination
-    pval.Cauchy.SKATO <- CCT(pval.Region$pval.SKATO)
-    pval.Cauchy.SKAT <- CCT(pval.Region$pval.SKAT)
-    pval.Cauchy.Burden <- CCT(pval.Region$pval.Burden)
-
-    pval.Region <- rbind.data.frame(
-      pval.Region,
-      data.frame(
-        Region = regionID,
-        nMarkers = NA,
-        nMarkersURV = NA,
-        Anno.Type = "Cauchy",
-        MaxMAF.Cutoff = NA,
-        pval.SKATO = pval.Cauchy.SKATO,
-        pval.SKAT = pval.Cauchy.SKAT,
-        pval.Burden = pval.Cauchy.Burden
-      )
-    )
-
-    t22 <- Sys.time()
-    diffTime2 <- diffTime2 + (t22 - t21)
-
-    writeOutputFile(
-      Output = list(
-        pval.Region,
-        RV.Markers0,
-        Other.Markers,
-        infoBurdenNoWeight
-      ),
-      OutputFile = list(
-        OutputFile,
-        paste0(OutputFile, ".markerInfo"),
-        paste0(OutputFile, ".otherMarkerInfo"),
-        paste0(OutputFile, ".infoBurdenNoWeight")
-      ),
+    processOneRegion(
+      i = i,
+      RegionList = RegionList,
+      markerInfo = markerInfo,
+      allAnno = allAnno,
+      annoList = annoList,
+      annoVec = annoVec,
+      MaxMAFVec = MaxMAFVec,
+      method = method,
+      genoType = genoType,
+      SampleLabelNumber = SampleLabelNumber,
+      nLabel = nLabel,
+      SampleLabelLevels = SampleLabelLevels,
+      NullModelClass = NullModelClass,
+      control = control,
+      n = n,
+      obj.setRegion = obj.setRegion,
+      SKAT.Met_SKAT_Get_Pvalue = SKAT.Met_SKAT_Get_Pvalue,
+      OutputFile = OutputFile,
       OutputFileIndex = OutputFileIndex,
-      AnalysisType = "Region",
-      nEachChunk = 1,
-      indexChunk = i,
-      Start = (i == 1),
-      End = (i == nRegions)
+      nRegions = nRegions
     )
   }
 
-  .message("Region analysis timing: mainRegionInCPP %.2f seconds, SKATO %.2f seconds", diffTime1, diffTime3)
+  # .message("Region analysis timing: mainRegionInCPP %.2f seconds, SKATO %.2f seconds", diffTime1, diffTime3)
+  .message("Analysis complete! Results saved to '%s'", OutputFile)
+  return(invisible(NULL))
+}
 
+# Internal function to analyze one region: read genotypes, filter variants,
+# compute SKAT/SKAT-O/Burden tests, apply Cauchy combination, and write results.
+processOneRegion <- function(
+  i,                          # Integer index of the current region
+  RegionList,                 # List of regions with region IDs and marker information
+  markerInfo,                 # Data frame with marker information from genotype file
+  allAnno,                    # Character vector of all annotation types
+  annoList,                   # List of annotation groups for filtering
+  annoVec,                    # Character vector of annotation names
+  MaxMAFVec,                  # Numeric vector of MAF cutoffs
+  method,                     # Character string specifying the method (e.g., "POLMM")
+  genoType,                   # Character string specifying genotype file type
+  SampleLabelNumber,          # Numeric vector of sample group labels
+  nLabel,                     # Integer number of sample groups
+  SampleLabelLevels,          # Character vector of sample group names (or NULL)
+  NullModelClass,             # Character string specifying null model class
+  control,                    # List of control parameters
+  n,                          # Integer number of samples
+  obj.setRegion,              # List with method-specific region setup
+  SKAT.Met_SKAT_Get_Pvalue,   # Function to compute SKAT p-values
+  OutputFile,                 # Character path to main output file
+  OutputFileIndex,            # Character path to index file for restart
+  nRegions                    # Integer total number of regions
+) {
+  region <- RegionList[[i]]                                 # list
+
+  regionID <- region$regionID                               # character
+  regionInfo <- region$regionInfo                           # data.frame
+
+  regionInfo <- markerInfo %>%                              # data.frame
+    select(ID, genoIndex) %>%
+    merge(regionInfo, by = "ID") %>%
+    arrange(genoIndex) %>%
+    filter(Annos %in% allAnno)
+
+  nMarkers <- nrow(regionInfo)                              # integer
+
+  if (nMarkers == 0) {
+    return(invisible(NULL))
+  }
+
+  nAnno <- length(annoList)                                 # integer
+  annoMat <- matrix(0, nrow = nMarkers, ncol = nAnno)       # matrix
+  colnames(annoMat) <- annoVec
+
+  for (iAnno in 1:nAnno) {
+    annoMat[, iAnno] <- ifelse(regionInfo$Annos %in% annoList[[iAnno]], 1, 0) # numeric vector
+  }
+
+  genoIndex <- regionInfo$genoIndex                         # integer vector
+  weightVec <- regionInfo$Weights                           # numeric vector or NA
+
+  if (all(is.na(weightVec))) {
+    weightVec <- rep(1, nMarkers)                           # numeric vector
+  } else {
+    if (any(is.na(weightVec) || weightVec <= 0)) {
+      stop("Marker weights cannot be non-positive (<= 0) or NA.")
+    }
+  }
+
+  .message("Analyzing region %s (%d/%d)", regionID, i, nRegions)
   .message(
-    "Analysis complete! Results saved to:\n    %s\n    %s\n    %s",
-    OutputFile,
-    paste0(OutputFile, ".markerInfo"),
-    paste0(OutputFile, ".otherMarkerInfo")
+    "Region contains %d markers: %s",
+    length(regionInfo$ID),
+    paste0(head(regionInfo$ID, 6), collapse = ", ")
+  )
+
+  # t11 <- Sys.time()
+  obj.mainRegionInCPP <- mainRegionInCPP(                   # list
+    method, genoType, genoIndex, weightVec, OutputFile,
+    SampleLabelNumber, nLabel,
+    annoMat, annoVec
+  )
+  # t12 <- Sys.time()
+  # diffTime1 <- diffTime1 + (t12 - t11)
+
+  # Updated on 2022-06-24: save sum of genotype to conduct burden test and adjust p-values using SPA
+  pvalBurden <- obj.mainRegionInCPP$pvalBurden              # matrix
+
+  # Updated on 2023-02-06: record summary statistics for sum of genotype for a region
+  infoBurdenNoWeight <- obj.mainRegionInCPP$infoBurdenNoWeight # matrix
+  infoBurdenNoWeight <- as.data.frame(infoBurdenNoWeight)   # data.frame
+  infoBurdenNoWeight <- cbind(regionID, infoBurdenNoWeight) # data.frame
+  colnames(infoBurdenNoWeight) <- c("region", "anno", "max_maf", "sum", "Stat", "beta", "se.beta", "pvalue")
+
+  infoBurdenNoWeight$anno <- annoVec[infoBurdenNoWeight$anno + 1]
+  infoBurdenNoWeight$max_maf <- MaxMAFVec[infoBurdenNoWeight$max_maf + 1]
+
+  # Add annotation information
+  obj.mainRegionInCPP$AnnoVec <- c(regionInfo$Annos, annoVec) # character vector
+  if (!is.null(SampleLabelLevels)) {
+    colnames(obj.mainRegionInCPP$MACLabelMat) <- paste0("MAC_", SampleLabelLevels)
+    colnames(obj.mainRegionInCPP$MAFLabelMat) <- paste0("MAF_", SampleLabelLevels)
+  }
+
+  # Perform method-specific region analysis
+  obj.mainRegion <- switch(                                 # list
+    NullModelClass,
+    POLMM_NULL_Model = mainRegion.POLMM(genoType, genoIndex, OutputFile, control, n,
+                                         obj.setRegion, obj.mainRegionInCPP, nLabel),
+    stop("Unknown NullModelClass: ", NullModelClass)
+  )
+
+  Other.Markers <- obj.mainRegion$Other.Markers %>%         # data.frame
+    mutate(Region = regionID, .before = ID)
+  VarMat <- obj.mainRegion$VarMat                           # matrix
+  RV.Markers0 <- obj.mainRegion$RV.Markers %>%              # data.frame
+    mutate(Region = regionID, .before = ID)
+
+  Other.Markers <- regionInfo %>%                           # data.frame
+    select(ID, Annos) %>%
+    merge(Other.Markers, by = "ID")
+
+  if (nrow(VarMat) != nrow(RV.Markers0)) {
+    stop("nrow(VarMat) != nrow(RV.Markers0)!")
+  }
+
+  RV.Markers <- RV.Markers0 %>%                             # data.frame
+    mutate(
+      betaWeights = dbeta(MAF, control$weights.beta[1], control$weights.beta[2]),
+      adjVarSVec = StatVec^2 / qchisq(pval1Vec, df = 1, lower.tail = FALSE),
+      r0 = pmax(adjVarSVec / diag(VarMat), 1),
+      wr0 = sqrt(r0) * betaWeights,
+      wStatVec = StatVec * betaWeights
+    )
+
+  wr0 <- RV.Markers$wr0                                     # numeric vector
+
+  wadjVarSMat <- t(VarMat * wr0) * wr0                      # matrix
+
+  RV.MarkersWithAnno <- regionInfo %>%                      # data.frame
+    select(-genoIndex) %>%
+    merge(RV.Markers %>% select(ID, MAF, posRow), by = "ID")
+
+  Other.MarkersWithAnno <- regionInfo %>%                   # data.frame
+    select(ID, Annos) %>%
+    merge(Other.Markers %>% filter(IndicatorVec == 2) %>% select(ID), by = "ID")
+
+  RV.MarkersURV <- RV.Markers %>%                           # data.frame
+    filter(Info == "Ultra-Rare Variants") %>%
+    select(ID, posRow)
+
+  # t21 <- Sys.time()
+  pval.Region <- data.frame()                               # data.frame
+  iSPA <- 1                                                 # integer
+  for (anno in annoVec) {
+    annoTemp <- unlist(strsplit(anno, split = ":"))        # character vector
+
+    posURV <- RV.MarkersURV %>%                             # integer vector
+      filter(ID == anno) %>%
+      select(posRow) %>%
+      unlist()
+    nMarkersURV <- Other.MarkersWithAnno %>%                # integer
+      filter(Annos %in% annoTemp) %>%
+      nrow()
+    if (length(posURV) != 1) {
+      stop("length(posURV) != 1")
+    }
+
+    for (MaxMAF in MaxMAFVec) {
+      posRV <- RV.MarkersWithAnno %>%                       # integer vector
+        filter(MAF < MaxMAF & Annos %in% annoTemp) %>%
+        select(posRow) %>%
+        unlist()
+      pos <- c(posRV, posURV)                               # integer vector
+      n1 <- length(pos)                                     # integer
+
+      ScoreBurden <- sum(RV.Markers$wStatVec[pos])          # numeric
+      VarBurden <- sum(wadjVarSMat[pos, pos])               # numeric
+      pvalBurdenSPA <- pvalBurden[iSPA, 2]                  # numeric
+      VarBurdenSPA <- ScoreBurden^2 / qchisq(pvalBurdenSPA, df = 1, lower.tail = FALSE) # numeric
+      ratioBurdenSPA <- max(VarBurdenSPA / VarBurden, 1)    # numeric
+      iSPA <- iSPA + 1
+
+      # t31 <- Sys.time()
+      out_SKAT_List <- with(RV.Markers, try(              # list or try-error
+        SKAT.Met_SKAT_Get_Pvalue(
+          Score = wStatVec[pos],
+          Phi = ratioBurdenSPA * wadjVarSMat[pos, pos],
+          r.corr = control$r.corr,
+          method = "optimal.adj",
+          Score.Resampling = NULL
+        ),
+        silent = TRUE
+      ))
+
+      # t32 <- Sys.time()
+      # diffTime3 <- diffTime3 + (t32 - t31)
+
+      if (inherits(out_SKAT_List, "try-error")) {
+        Pvalue <- c(NA, NA, NA)                             # numeric vector
+      } else if (!any(c(0, 1) %in% out_SKAT_List$param$rho)) {
+        Pvalue <- c(NA, NA, NA)                             # numeric vector
+      } else {
+        pos00 <- which(out_SKAT_List$param$rho == 0)        # integer
+        pos01 <- which(out_SKAT_List$param$rho == 1)        # integer
+        Pvalue <- c(                                        # numeric vector
+          out_SKAT_List$p.value, # SKAT-O
+          out_SKAT_List$param$p.val.each[pos00], # SKAT
+          out_SKAT_List$param$p.val.each[pos01] # Burden Test
+        )
+      }
+
+      pval.Region <- rbind.data.frame(                        # data.frame
+        pval.Region,
+        data.frame(
+          Region = regionID,
+          nMarkers = length(posRV),
+          nMarkersURV = nMarkersURV,
+          Anno.Type = anno,
+          MaxMAF.Cutoff = MaxMAF,
+          pval.SKATO = Pvalue[1],
+          pval.SKAT = Pvalue[2],
+          pval.Burden = Pvalue[3]
+        )
+      )
+    }
+  }
+
+  # Cauchy combination test
+  pval.Cauchy.SKATO <- CCT(pval.Region$pval.SKATO)          # numeric
+  pval.Cauchy.SKAT <- CCT(pval.Region$pval.SKAT)            # numeric
+  pval.Cauchy.Burden <- CCT(pval.Region$pval.Burden)        # numeric
+
+  pval.Region <- rbind.data.frame(                          # data.frame
+    pval.Region,
+    data.frame(
+      Region = regionID,
+      nMarkers = NA,
+      nMarkersURV = NA,
+      Anno.Type = "Cauchy",
+      MaxMAF.Cutoff = NA,
+      pval.SKATO = pval.Cauchy.SKATO,
+      pval.SKAT = pval.Cauchy.SKAT,
+      pval.Burden = pval.Cauchy.Burden
+    )
+  )
+
+  # t22 <- Sys.time()
+  # diffTime2 <- diffTime2 + (t22 - t21)
+
+  # Write chunk results to output files and update progress tracking
+  writeOutputFile(
+    Output = list(
+      pval.Region,
+      RV.Markers0,
+      Other.Markers,
+      infoBurdenNoWeight
+    ),
+    OutputFile = list(
+      OutputFile,
+      paste0(OutputFile, ".markerInfo"),
+      paste0(OutputFile, ".otherMarkerInfo"),
+      paste0(OutputFile, ".infoBurdenNoWeight")
+    ),
+    OutputFileIndex = OutputFileIndex,
+    AnalysisType = "Region",
+    nEachChunk = 1,
+    indexChunk = i,
+    Start = (i == 1),
+    End = (i == nRegions)
   )
 
   return(invisible(NULL))

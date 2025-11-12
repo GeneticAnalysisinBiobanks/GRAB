@@ -1,3 +1,17 @@
+## ------------------------------------------------------------------------------
+## Util.R
+## Common utilities shared across GRAB analyses: logging, control merging,
+## GRM helpers, output checkpointing, and p-value aggregation.
+##
+## Functions:
+##   .message         : Structured log messages with timestamps
+##   updateControl    : Merge user control options into defaults
+##   updateSparseGRM  : Filter/reshape sparse GRM for a subject subset
+##   checkOutputFile  : Validate/resume output with an index file
+##   writeOutputFile  : Append outputs and progress safely
+##   CCT              : Cauchy Combination Test (combine p-values)
+## ------------------------------------------------------------------------------
+
 # Helper function for structured logging
 .message <- function(msg, ...) {
   timestamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
@@ -73,7 +87,7 @@ updateSparseGRM <- function(SparseGRM, subjData) {
 }
 
 
-#' Check and validate output file settings for analysis restart capability
+# Check and validate output file settings for analysis restart capability
 checkOutputFile <- function(
   OutputFile, # Character string specifying the output file path.
   OutputFileIndex, # Character string specifying the index file path for tracking progress.
@@ -87,11 +101,6 @@ checkOutputFile <- function(
   message2 <- paste("This is a", AnalysisType, "level analysis.")
   message3 <- paste("nEachChunk =", nEachChunk)
   message5 <- "Have completed the analyses of all chunks."
-
-  ## an R list of output
-  if (missing(OutputFile)) {
-    stop("Argument of 'OutputFile' is required.")
-  }
 
   if (file.exists(OutputFile)) {
     if (!file.exists(OutputFileIndex)) {
@@ -115,49 +124,45 @@ checkOutputFile <- function(
 
       lastMessage <- outIndexData[nrow(outIndexData), 1]
       if (lastMessage == message5) {
-        End <- TRUE
+        # Analysis already completed
         indexChunk <- outIndexData[nrow(outIndexData) - 1, 1]
         indexChunk <- as.numeric(gsub("Have completed the analysis of chunk ", "", indexChunk))
-        .message("Analysis completed: %d chunks processed", indexChunk)
+        
+        stop(
+          "Analysis completed in an earlier run. Results saved in '",
+          OutputFile,
+          "'. Use a different 'OutputFile' to restart analysis."
+        )
       } else {
-        End <- FALSE
+        # Partial analysis - restart from next chunk
         indexChunk <- lastMessage
         indexChunk <- as.numeric(gsub("Have completed the analysis of chunk ", "", indexChunk))
-        .message("Restarting analysis from chunk %d", indexChunk + 1)
+        
+        .message(
+          "Part of analysis completed and saved in %s. Restarting from chunk %d",
+          OutputFileIndex, indexChunk + 1
+        )
       }
     }
-    Start <- FALSE
   } else {
-    Start <- TRUE
-    End <- FALSE
+    # New analysis - start from beginning
     indexChunk <- 0
   }
 
-  returnList <- list(Start = Start, End = End, indexChunk = indexChunk)
-  return(returnList)
+  return(indexChunk)
 }
 
 
-#' Write analysis output to files with progress tracking
-#'
-#' @param Output List of output data to write to files.
-#' @param OutputFile Character vector of output file paths.
-#' @param OutputFileIndex Character string specifying the index file path.
-#' @param AnalysisType Character string indicating analysis type.
-#' @param nEachChunk Integer specifying the number of items per chunk.
-#' @param indexChunk Integer indicating the current chunk index.
-#' @param Start Logical indicating if this is the first output to save.
-#' @param End Logical indicating if this is the last output to save.
-#'
+# Write analysis output to files with progress tracking
 writeOutputFile <- function(
-  Output,
-  OutputFile,
-  OutputFileIndex,
-  AnalysisType,
-  nEachChunk,
-  indexChunk,
-  Start, # TRUE or FALSE, first output to save
-  End # TRUE or FALSE, last output to save
+  Output, # List of output data to write to files.
+  OutputFile, # Character vector of output file paths.
+  OutputFileIndex, # Character string specifying the index file path.
+  AnalysisType, # Character string indicating analysis type.
+  nEachChunk, # Integer specifying the number of items per chunk.
+  indexChunk, # Integer indicating the current chunk index.
+  Start, # Logical indicating if this is the first output to save.
+  End # Logical indicating if this is the last output to save.
 ) {
   ## The following messages are for 'OutputFileIndex'
   message1 <- paste("This is the output index file for GRAB package to record",

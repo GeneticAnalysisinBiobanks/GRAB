@@ -53,3 +53,4 @@ A dataframe of marker info and reference MAF.
 This function performs quality control to test for the batch effect between a study
 cohort and a reference population. And fit a weighted null model.
 }
+\keyword{internal}

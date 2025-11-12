@@ -62,7 +62,7 @@ data.table::fread(OutputFile)
 
 ### Step 2(b): Set-based tests using POLMM-GENE
 GenoFile <- system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
-OutputFile <- file.path(tempdir(), "simuRegionOutput.txt")
+OutputFile <- file.path(tempdir(), "simuRegionOutputPOLMM.txt")
 GroupFile <- system.file("extdata", "simuPLINK_RV.group", package = "GRAB")
 SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
 

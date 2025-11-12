@@ -1,3 +1,19 @@
+## ------------------------------------------------------------------------------
+## WtCoxG.R
+## Weighted Cox regression with case-ascertainment bias correction (two-step):
+##   1) Null model fitting + batch effect assessment using reference AFs
+##   2) Genome-wide association testing with external reference integration
+##
+## Functions:
+##   GRAB.WtCoxG                  : Print brief method information.
+##   checkControl.NullModel.WtCoxG: Validate/populate null-model controls.
+##   fitNullModel.WtCoxG          : Fit weighted Cox null model & test batch effects.
+##   setMarker.WtCoxG             : Initialize marker-level analysis objects.
+##   mainMarker.WtCoxG            : Marker-level association testing.
+##   TestforBatchEffect           : QC + parameter estimation (TPR, sigma2, weights).
+##   Batcheffect.Test             : Per-variant batch effect p-value calculation.
+## ------------------------------------------------------------------------------
+
 #' Weighted Cox regression for genetic association analysis with case ascertainment
 #'
 #' WtCoxG provides an accurate, powerful, and computationally efficient Cox-based
@@ -111,12 +127,47 @@ checkControl.NullModel.WtCoxG <- function(control, traitType) {
 }
 
 
+#' Fit weighted Cox null model with outlier handling and batch-effect QC
+#'
+#' Fits a weighted Cox model using case/control weighting based on reference
+#' prevalence and identifies residual outliers for SPA testing. Optionally
+#' performs batch-effect QC by cross-referencing external allele frequencies.
+#'
+#' @param response \code{survival::Surv} response (time-to-event). Residuals are
+#'   not supported here.
+#' @param designMat Numeric matrix (n x p) of covariates.
+#' @param subjData Character vector of subject IDs aligned with rows.
+#' @param control List with fields such as \code{RefPrevalence} (0, 0.5),
+#'   \code{OutlierRatio}, \code{SNPnum}.
+#' @param data Data frame used for optional batch-effect QC.
+#' @param GenoFile Character. PLINK prefix (without extension) used when
+#'   sampling markers for QC.
+#' @param GenoFileIndex Character. Path to an index file used in QC workflow.
+#' @param SparseGRMFile Character. Path to sparse GRM used in QC workflow.
+#' @param ... Optional named parameters forwarded to QC (e.g.,
+#'   \code{RefAfFile}, \code{OutputFile}, \code{IndicatorColumn},
+#'   \code{SurvTimeColumn}, \code{SampleIDColumn}).
+#'
+#' @return A list of class \code{"WtCoxG_NULL_Model"} with elements:
+#'   \describe{
+#'     \item{mresid}{Martingale residuals from weighted Cox model.}
+#'     \item{Cova}{Design matrix used in the null model (n x p).}
+#'     \item{yVec}{Event indicator extracted from \code{Surv}.}
+#'     \item{weight}{Observation weights derived from reference prevalence.}
+#'     \item{RefPrevalence}{Reference prevalence used to define weights.}
+#'     \item{N}{Number of subjects.}
+#'     \item{outLierList}{Lists indices (0-based) and residual subsets for SPA.}
+#'     \item{control}{Copy of control options used.}
+#'     \item{mergeGenoInfo}{QC-derived marker metadata for batch-effect testing (if run).}
+#'   }
+#'
+#' @keywords internal
 fitNullModel.WtCoxG <- function(
   response, designMat, subjData, control, data,
   GenoFile, GenoFileIndex, SparseGRMFile, ...
 ) {
 
-  if (!(inherits(response, "Surv") || inherits(response, "Residual"))) { # later support binary trait and Residual
+  if (!(inherits(response, "Surv") || inherits(response, "Residual"))) {
     stop("For WtCoxG, the response variable should be of class 'Surv' or 'Residual'.")
   }
 
@@ -298,6 +349,7 @@ mainMarker.WtCoxG <- function(genoType, genoIndex, control, objNull) {
 #' @param SampleIDColumn A character string of the column name in \code{data} that indicates the sample ID.
 #' @return A dataframe of marker info and reference MAF.
 #'
+#' @keywords internal
 TestforBatchEffect <- function(
   objNull,
   data,
@@ -515,6 +567,7 @@ TestforBatchEffect <- function(
     sigma2 <- obj$sigma2
     # ---- END inlined: fun.est.param ----
 
+    # Function of optimal external weight contribution. Needed by the call of optim().
     fun.optimalWeight <- function(par, pop.prev, R, y, mu1, w, mu, N, n.ext, sigma2, TPR) {
       b <- par[1]
 
@@ -612,30 +665,16 @@ TestforBatchEffect <- function(
 }
 
 
-## function to test for batch effect--------------------------------------------
-#' Test for batch effect
-#'
-#' This function test for the allele frequency difference between the study cohort and the external datasets.
-#'
-#' @param n0 A numeric. The sample size of cases in the study cohort
-#' @param n1 A numeric. The sample size of controls in the study cohort
-#' @param n.ext A numeric. The sample size of external datasets
-#' @param maf0 A numeric. The MAF of the cases.
-#' @param maf1 A numeric. The MAF of the controls
-#' @param maf.ext A numeric. The MAF of the external datasets.
-#' @param pop.prev A numeric. The population prevalence of the disease.
-#' @param var.ratio A numeric. The variance ratio calculated by sparseGRM.
-#' @return A numeric of batch effect p-value
-#' 
+# Called by TestforBatchEffect(), returns a numeric of batch effect p-value
 Batcheffect.Test <- function(
-  n0, # number of controls
-  n1, # number of cases
-  n.ext, # number of external dataset
-  maf0, # estimated MAF in controls
-  maf1, # estimated MAF in cases
-  maf.ext, # estimated MAF in external dataset
-  pop.prev,
-  var.ratio = 1
+  n0, # A numeric. The sample size of cases in the study cohort
+  n1, # A numeric. The sample size of controls in the study cohort
+  n.ext, # A numeric. The sample size of external datasets
+  maf0, # A numeric. The MAF of the cases.
+  maf1, # A numeric. The MAF of the controls.
+  maf.ext, # A numeric. The MAF of the external datasets.
+  pop.prev, # A numeric. The population prevalence of the disease.
+  var.ratio = 1 # A numeric. The variance ratio calculated by sparseGRM.
 ) {
   er <- n1 / (n1 + n0)
   w0 <- (1 - pop.prev) / pop.prev / ((1 - er) / er)

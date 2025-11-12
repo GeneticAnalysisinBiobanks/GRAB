@@ -1,3 +1,18 @@
+## ------------------------------------------------------------------------------
+## SAGELD.R
+## Scalable and Accurate Gene-Environment interaction method for Longitudinal Data
+## (SAGELD) with related samples. Implements null model fitting, marker testing,
+## outlier handling, family decomposition, and Chow–Liu tree construction.
+##
+## Functions:
+##   GRAB.SAGELD                  : Print brief method information.
+##   checkControl.SAGELD.NullModel: Validate and populate null-model controls.
+##   SAGELD.NullModel             : Fit SAGELD/GALLOP null model and prepare objects.
+##   checkControl.Marker.SAGELD   : Validate marker-level controls.
+##   setMarker.SAGELD             : Initialize marker-level analysis objects.
+##   mainMarker.SAGELD            : Run marker-level tests for SAGELD/GALLOP.
+## ------------------------------------------------------------------------------
+
 #' SAGELD method in GRAB package
 #'
 #' SAGELD method is Scalable and Accurate algorithm for Gene-Environment
@@ -17,18 +32,11 @@ GRAB.SAGELD <- function() {
 }
 
 
-#' @title Validate control parameters for SAGELD null model
-#' @param control List of control parameters for null model fitting.
-#' @param ResidMat Matrix of residuals from the fitted model.
-#' @param SparseGRM Sparse genetic relationship matrix data.
-#' @param PairwiseIBD Pairwise identity-by-descent data.
-#' @return Updated control list with validated parameters and defaults.
-#' @keywords internal
 checkControl.SAGELD.NullModel <- function(
-  control,
-  ResidMat,
-  SparseGRM,
-  PairwiseIBD
+  control, # List of control parameters for null model fitting
+  ResidMat, # Matrix of residuals from the fitted model
+  SparseGRM, # Sparse genetic relationship matrix data
+  PairwiseIBD # Pairwise identity-by-descent data
 ) {
   default.control <- list(
     MaxQuantile = 0.75,
@@ -74,31 +82,72 @@ checkControl.SAGELD.NullModel <- function(
 }
 
 
-#' Fit a SAGELD Null Model
+#' Construct SAGELD/GALLOP null model from a mixed-effects fit
 #'
-#' @param NullModel A fitted null model object from either \code{lme4::lmer()} or
-#'   \code{glmmTMB::glmmTMB()}. This model should include the phenotype,
-#'   environmental variable, covariates, and random effects structure.
-#' @param UsedMethod A character string specifying the method to use. Options are
-#'   "SAGELD" (default) for gene-environment interaction analysis, or "GALLOP"
-#'   for analysis using only unrelated samples.
-#' @param PlinkFile A character string specifying the path to PLINK files
-#'   (without file extensions like ".bed", ".bim", or ".fam"). Used to read
-#'   genotype data for calculating lambda values in gene-environment interaction models.
-#' @param SparseGRMFile A character string specifying the path to a sparse genetic
-#'   relationship matrix (GRM) file. This file should be generated using the
-#'   \code{getSparseGRM()} function and contain three columns: 'ID1', 'ID2', and 'Value'.
-#' @param PairwiseIBDFile A character string specifying the path to a pairwise
-#'   identity-by-descent (IBD) file. This file should be generated using the
-#'   \code{getPairwiseIBD()} function and contain five columns: 'ID1', 'ID2', 'pa', 'pb', and 'pc'.
-#' @param PvalueCutoff A numeric value (default: 0.001) specifying the p-value
-#'   cutoff for marginal genetic effect on the environmental variable. Used to
-#'   filter SNPs when calculating lambda values for gene-environment interaction models.
-#' @param control A list of control parameters for the null model fitting process.
-#'   Available options include:
+#' Builds the SAGELD (or GALLOP) null model from a fitted mixed-effects model
+#' and relatedness inputs. Extracts variance components, forms the penalization
+#' matrix, derives residual summaries, and (for SAGELD) integrates sparse GRM
+#' and pairwise IBD to prepare graph-based components for marker testing.
 #'
-#' @return A SAGELD null model object
+#' @param NullModel A fitted model from \pkg{lme4} (class \code{merMod}) or
+#'   \pkg{glmmTMB} with a subject-specific random intercept (e.g., \code{(1|ID)}).
+#' @param UsedMethod Character; either \code{"SAGELD"} (default) or \code{"GALLOP"}.
+#' @param PlinkFile Character. PLINK prefix (without extension) used to sample
+#'   common markers for estimating the lambda parameter.
+#' @param SparseGRMFile Character. Path to sparse GRM file produced by
+#'   \code{getSparseGRM()}.
+#' @param PairwiseIBDFile Character. Path to pairwise IBD file produced by
+#'   \code{getPairwiseIBD()}.
+#' @param PvalueCutoff Numeric p-value threshold for screening gene–environment
+#'   association when estimating \eqn{\lambda}.
+#' @param control List of options (forwarded to internal checks; see
+#'   \code{checkControl.SAGELD.NullModel}).
 #'
+#' @return A list of class \code{"SAGELD_NULL_Model"} with elements:
+#'   \describe{
+#'     \item{subjData}{Character vector of subject IDs.}
+#'     \item{N}{Number of subjects.}
+#'     \item{Method}{Method label: \code{"SAGELD"} or \code{"GALLOP"}.}
+#'     \item{XTs}{Per-subject sums for crossprod(X, G) terms.}
+#'     \item{SS}{Per-subject Rot %*% Si matrices for random effects.}
+#'     \item{AtS}{Per-subject cross-products used in variance assembly.}
+#'     \item{Q}{Fixed-effect precision matrix (p x p).}
+#'     \item{A21}{Block matrix linking random and fixed effects.}
+#'     \item{TTs}{Per-subject sums for crossprod(G).}
+#'     \item{Tys}{Per-subject sums for crossprod(G, y).}
+#'     \item{sol}{Fixed-effects solution vector.}
+#'     \item{blups}{Random-effects BLUPs per subject.}
+#'     \item{sig}{Scale parameter extracted from VarCorr.}
+#'     \item{Resid}{Residuals used in SAGELD testing.}
+#'     \item{Resid_G}{Genetic component residuals.}
+#'     \item{Resid_GxE}{GxE component residuals.}
+#'     \item{Resid_E}{Environmental component residuals.}
+#'     \item{Resid.unrelated.outliers}{Residuals for unrelated outlier subjects.}
+#'     \item{Resid.unrelated.outliers_G}{G residuals for unrelated outliers.}
+#'     \item{Resid.unrelated.outliers_GxE}{GxE residuals for unrelated outliers.}
+#'     \item{R_GRM_R}{Quadratic form Resid' * GRM * Resid (all subjects).}
+#'     \item{R_GRM_R_G}{Quadratic form for G residuals.}
+#'     \item{R_GRM_R_GxE}{Quadratic form for GxE residuals.}
+#'     \item{R_GRM_R_G_GxE}{Cross-term quadratic form between G and GxE.}
+#'     \item{R_GRM_R_E}{Quadratic form for E residuals.}
+#'     \item{R_GRM_R_TwoSubjOutlier}{Contribution from two-subject outlier families.}
+#'     \item{R_GRM_R_TwoSubjOutlier_G}{Two-subject outlier contribution (G).}
+#'     \item{R_GRM_R_TwoSubjOutlier_GxE}{Two-subject outlier contribution (GxE).}
+#'     \item{R_GRM_R_TwoSubjOutlier_G_GxE}{Two-subject outlier cross-term (G,GxE).}
+#'     \item{sum_R_nonOutlier}{Sum of residuals for non-outlier unrelated subjects.}
+#'     \item{sum_R_nonOutlier_G}{Sum of G residuals for non-outlier unrelated subjects.}
+#'     \item{sum_R_nonOutlier_GxE}{Sum of GxE residuals for non-outlier unrelated subjects.}
+#'     \item{R_GRM_R_nonOutlier}{Quadratic form for non-outlier unrelated subjects.}
+#'     \item{R_GRM_R_nonOutlier_G}{Quadratic form for G (non-outlier unrelated).}
+#'     \item{R_GRM_R_nonOutlier_GxE}{Quadratic form for GxE (non-outlier unrelated).}
+#'     \item{R_GRM_R_nonOutlier_G_GxE}{Cross-term for G/GxE (non-outlier unrelated).}
+#'     \item{TwoSubj_list}{Per-family lists for N=2 outlier families.}
+#'     \item{ThreeSubj_list}{CLT and standardized scores for larger families.}
+#'     \item{MAF_interval}{MAF breakpoints used in CLT construction.}
+#'     \item{zScoreE_cutoff}{Z-score threshold for E used in screening.}
+#'   }
+#'
+#' @keywords internal
 SAGELD.NullModel <- function(
   NullModel, # a fitted null model from lme4 or glmmTMB.
   UsedMethod = "SAGELD", # default running "SAGELD", user can also run "GALLOP" using unrelated samples.
@@ -724,29 +773,29 @@ SAGELD.NullModel <- function(
 }
 
 
-# check the control list in marker-level testing
-#' @title Validate control parameters for SAGELD marker testing
-#' @param control List of control parameters for marker-level analysis.
-#' @return Updated control list with validated parameters and defaults.
-#' @keywords internal
-checkControl.Marker.SAGELD <- function(control) {
+checkControl.Marker.SAGELD <- function(control, MAF_interval) {
+
+  # Validate MAF interval constraints specific to SAGELD
+  if (length(MAF_interval) > 1) {
+    if (control$min_maf_marker <= min(MAF_interval)) {
+      stop(
+        "min_maf_marker is out of MAF_interval. ",
+        "Please reset min_maf_marker or check MAF_interval."
+      )
+    }
+  }
+
   default.control <- list(
     SPA_Cutoff = 2,
     zeta = 0,
     tol = 1e-4
   )
 
-  control <- updateControl(control, default.control) # This file is in 'control.R'
-
+  control <- updateControl(control, default.control)
   return(control)
 }
 
 
-#' @title Set up marker-level testing for SAGELD method
-#' @param objNull Null model object from SAGELD.NullModel().
-#' @param control List of control parameters.
-#' @return List containing setup parameters for marker testing.
-#' @keywords internal
 setMarker.SAGELD <- function(
   objNull,
   control
@@ -797,17 +846,9 @@ setMarker.SAGELD <- function(
 }
 
 
-#' @title Perform marker-level analysis for SAGELD method
-#' @param genoType Character string specifying genotype file format.
-#' @param genoIndex Integer vector of genotype indices to analyze.
-#' @param outputColumns Character vector specifying output columns to include.
-#' @param objNull Null model object containing analysis parameters.
-#' @return Data frame containing analysis results.
-#' @keywords internal
 mainMarker.SAGELD <- function(
   genoType,
   genoIndex,
-  outputColumns,
   objNull
 ) {
   OutList <- mainMarkerInCPP("SAGELD", genoType, genoIndex)

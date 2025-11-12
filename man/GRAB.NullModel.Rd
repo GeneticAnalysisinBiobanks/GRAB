@@ -33,8 +33,7 @@ before subsetting.}
 \item{method}{Statistical method: "POLMM", "SPACox", "SPAmix", "SPAGRM", "SAGELD",
 or "WtCoxG".}
 
-\item{traitType}{Trait type: "binary", "ordinal", "quantitative", "time-to-event",
-or "Residual".}
+\item{traitType}{Trait type: "ordinal", "time-to-event", or "Residual".}
 
 \item{GenoFile}{Path to genotype file (PLINK or BGEN format). Required for dense GRM
 construction. See \code{\link{GRAB.ReadGeno}} for details.}

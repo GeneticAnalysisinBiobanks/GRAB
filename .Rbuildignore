@@ -29,9 +29,11 @@
 # Exclude tar.gz package archives
 ^.*\.tar\.gz$
 
-# Ignore docker and all its contents
-^docker$
+# Docker
 ^docker/
 
 # Release notes
 ^NEW\.md$
+
+# GitHub files
+^\.github/

@@ -12,24 +12,45 @@ GRAB.getGenoInfo(
 )
 }
 \arguments{
-\item{GenoFile}{a character of genotype file. See \code{Details} section for more details.}
+\item{GenoFile}{a character of genotype file. See \code{Details} section
+for more details.}
 
-\item{GenoFileIndex}{additional index file(s) corresponding to \code{GenoFile}. See \code{Details}
-section for more details.}
+\item{GenoFileIndex}{additional index file(s) corresponding to
+\code{GenoFile}. See \code{Details} section for more details.}
 
-\item{SampleIDs}{a character vector of sample IDs to extract. The default is \code{NULL}, that is,
-all samples in \code{GenoFile} will be extracted.}
+\item{SampleIDs}{a character vector of sample IDs to extract. The default
+is \code{NULL}, that is, all samples in \code{GenoFile} will be extracted.}
 
-\item{control}{a list of parameters to decide which markers to extract. See \code{Details} section for more details.}
+\item{control}{List of control parameters with the following options:
+\itemize{
+\item \code{ImputeMethod}: Imputation method for genotype data.
+Options: "none" (default), "bestguess", "mean".
+\item \code{AlleleOrder}: Allele order in genotype file. Options: "ref-first",
+"alt-first", or NULL (default, uses file-type default).
+\item \strong{Marker Selection:}
+\itemize{
+\item \code{AllMarkers}: Set to TRUE (default) to analyze all markers.
+Automatically set to FALSE if any include/exclude files are provided.
+\item \code{IDsToIncludeFile}: Path to file with marker IDs to include.
+\item \code{RangesToIncludeFile}: Path to file with genomic ranges to include.
+Can be used with IDsToIncludeFile (union will be used).
+\item \code{IDsToExcludeFile}: Path to file with marker IDs to exclude.
+\item \code{RangesToExcludeFile}: Path to file with genomic ranges to exclude.
+Can be used with IDsToExcludeFile (union will be excluded).
+\item Note: Cannot use both include and exclude files simultaneously.
+}
+}}
 }
 \value{
-A data frame containing marker information with allele frequencies and missing rates. The
-data frame includes columns from marker information (CHROM, POS, ID, REF, ALT, etc.) plus additional columns:
+A data frame containing marker information with allele frequencies
+and missing rates. The data frame includes columns from marker information
+(CHROM, POS, ID, REF, ALT, etc.) plus additional columns:
 \describe{
 \item{altFreq}{Alternative allele frequency (before genotype imputation)}
 \item{missingRate}{Missing rate for each marker}
 }
 }
 \description{
-This function shares input as in function \code{GRAB.ReadGeno}, please check \code{?GRAB.ReadGeno} for more details.
+This function shares input as in function \code{GRAB.ReadGeno}, please
+check \code{?GRAB.ReadGeno} for more details.
 }

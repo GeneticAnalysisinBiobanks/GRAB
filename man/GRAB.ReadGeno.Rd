@@ -28,7 +28,25 @@ GRAB.ReadGeno(
 \item{SampleIDs}{Character vector of sample IDs to extract. If NULL,
 extracts all samples.}
 
-\item{control}{List of processing parameters. See Details for options.}
+\item{control}{List of control parameters with the following options:
+\itemize{
+\item \code{ImputeMethod}: Imputation method for genotype data.
+Options: "none" (default), "bestguess", "mean".
+\item \code{AlleleOrder}: Allele order in genotype file. Options: "ref-first",
+"alt-first", or NULL (default, uses file-type default).
+\item \strong{Marker Selection:}
+\itemize{
+\item \code{AllMarkers}: Set to TRUE (default) to analyze all markers.
+Automatically set to FALSE if any include/exclude files are provided.
+\item \code{IDsToIncludeFile}: Path to file with marker IDs to include.
+\item \code{RangesToIncludeFile}: Path to file with genomic ranges to include.
+Can be used with IDsToIncludeFile (union will be used).
+\item \code{IDsToExcludeFile}: Path to file with marker IDs to exclude.
+\item \code{RangesToExcludeFile}: Path to file with genomic ranges to exclude.
+Can be used with IDsToExcludeFile (union will be excluded).
+\item Note: Cannot use both include and exclude files simultaneously.
+}
+}}
 
 \item{sparse}{Logical indicating whether to return sparse genotype matrix
 (default: FALSE).}
@@ -54,19 +72,6 @@ imputation methods for missing genotypes.
 \emph{BGEN Format:} Version 1.2 with 8-bit compression. See
 \url{https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html} for details.
 Requires BGI index file created with bgenix tool.
-
-\strong{Control Parameters:}
-\itemize{
-\item \code{IDsToIncludeFile}: File with marker IDs to include (one per line)
-\item \code{IDsToExcludeFile}: File with marker IDs to exclude
-\item \code{RangesToIncludeFile}: File with genomic ranges (CHR, START, END)
-\item \code{RangesToExcludeFile}: File with genomic ranges to exclude
-\item \code{AlleleOrder}: "ref-first" or "alt-first" for allele encoding
-\item \code{AllMarkers}: Set TRUE to extract all markers (memory warning)
-\item \code{ImputeMethod}: "none", "mean", or "bestguess" for missing data
-}
-
-\strong{Note:} Cannot use both include and exclude files simultaneously.
 }
 \examples{
 ## Raw genotype data

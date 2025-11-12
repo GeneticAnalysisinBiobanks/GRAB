@@ -1,3 +1,14 @@
+## ------------------------------------------------------------------------------
+## PairwiseIBD.R
+## Utilities for constructing sparse GRMs and pairwise IBD estimates via GCTA,
+## and combining intermediate outputs into analysis-ready matrices.
+##
+## Functions:
+##   getTempFilesFullGRM : Generate per-part GRM files using GCTA (parallelizable).
+##   getSparseGRM        : Merge per-part outputs into a sparse GRM file.
+##   getPairwiseIBD      : Compute/assemble pairwise IBD metrics (pa, pb, pc).
+## ------------------------------------------------------------------------------
+
 #' Make temporary files to be passed to function \code{\link{getSparseGRM}}.
 #'
 #' Make temporary files to be passed to function \code{\link{getSparseGRM}}.

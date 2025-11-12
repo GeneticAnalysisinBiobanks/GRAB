@@ -198,7 +198,7 @@ namespace WtCoxG
             return arma::datum::nan;
         }
 
-        // Calculate k1 and k2 exactly like R
+        // Calculate k1 and k2
         double k1 = H_org_cpp(zeta, R, MAF, n_ext, N_all, sumR, var_mu_ext, 
                              g_var_est, meanR, b);
         double k2 = H2_cpp(zeta, R, MAF, n_ext, N_all, sumR, var_mu_ext, 
@@ -206,20 +206,20 @@ namespace WtCoxG
 
         double temp1 = zeta * s - k1;
 
-        // Calculate w and v exactly like R
+        // Calculate pval
         // R: w <- sign(zeta) * (2 * temp1)^{1/2}
         double w = (zeta >= 0 ? 1.0 : -1.0) * std::sqrt(2.0 * temp1);
         // R: v <- zeta * (k2)^{1/2}
         double v = zeta * std::sqrt(k2);
-
         // R: pval <- pnorm(w + 1 / w * log(v / w), lower.tail = lower.tail)
         double pval = WtCoxG::pnorm_boost(w + (1.0 / w) * std::log(v / w), 0.0, 1.0, lower_tail, false);
+
         return pval;
     }
 
     // -------------------- Standalone Function Implementations --------------------
     
-    arma::vec SPA_G_one_SNP_homo_cpp(const arma::vec &g_input, const arma::vec &R,
+    arma::vec SPA_G_one_SNP_homo_cpp(const arma::vec& g_input, const arma::vec& R,
                                      double mu_ext, double n_ext, double b,
                                      double sigma2, double var_ratio, double Cutoff,
                                      double missing_cutoff, double min_mac)
@@ -347,13 +347,13 @@ namespace WtCoxG
 }
 
 // Function calculates p-value
-double WtCoxG_test_cpp(const arma::vec &g_input, const arma::vec &R, const arma::vec &w,
+double WtCoxG_test_cpp(const arma::vec& g_input, const arma::vec& R, const arma::vec& w,
                        double p_bat, double TPR, double sigma2, double b,
                        double var_ratio_int, double var_ratio_w0, double var_ratio_w1,
                        double var_ratio0, double var_ratio1, double mu_ext,
                        double n_ext, double p_cut)
 {
-    // Step 1: Imputation of missing SNP - exactly like R
+    // Step 1: Imputation of missing SNP
     arma::vec g = g_input;
     arma::uvec na_indices = arma::find_nonfinite(g);
     double missing_rate = static_cast<double>(na_indices.n_elem) / g.n_elem;
@@ -366,7 +366,7 @@ double WtCoxG_test_cpp(const arma::vec &g_input, const arma::vec &R, const arma:
         }
     }
     
-    // Step 2: If external MAF is unavailable, return early - exactly like R
+    // Step 2: If external MAF is unavailable, return early
     if (std::isnan(mu_ext)) {
         // In R: p.con <- SPA_G.one.SNP_homo(g = g, R = R, mu.ext = NA, n.ext = 0, sigma2 = 0, var.ratio = var.ratio.int)[1]
         // The R SPA function sets mu.ext = 0, n.ext = 0 when mu.ext is NA
@@ -385,7 +385,7 @@ double WtCoxG_test_cpp(const arma::vec &g_input, const arma::vec &R, const arma:
         return spa_result(0);
     }
     
-    // Step 3: Early return conditions - exactly like R
+    // Step 3: Early return conditions
     double sum_g = arma::sum(g);
     double sum_2_minus_g = arma::sum(2.0 - g);
     
@@ -393,13 +393,13 @@ double WtCoxG_test_cpp(const arma::vec &g_input, const arma::vec &R, const arma:
         return arma::datum::nan;
     }
     
-    // Step 4: Main computation starts here - exactly like R
+    // Step 4: Main computation starts here
     double meanR = arma::mean(R);
     double sumR = arma::sum(R);
     double mu_int = arma::mean(g) / 2.0;
     // int N = g.n_elem;
     
-    // Step 5: Calculate core variables - exactly like R
+    // Step 5: Calculate core variables
     double mu = (1.0 - b) * mu_int + b * mu_ext;
     double S = arma::sum(R % (g - 2.0 * mu));
     
@@ -408,36 +408,36 @@ double WtCoxG_test_cpp(const arma::vec &g_input, const arma::vec &R, const arma:
     double var_mu_ext = mu * (1.0 - mu) / (2.0 * n_ext);
     double var_Sbat = arma::sum(w1 % w1) * 2.0 * mu * (1.0 - mu) + var_mu_ext;
     
-    // Step 6: Calculate bounds - exactly like R
+    // Step 6: Calculate bounds
     double qnorm_val = WtCoxG::qnorm_boost(1.0 - p_cut / 2.0, 0.0, 1.0, true, false);
     double lb = -qnorm_val * std::sqrt(var_Sbat) * std::sqrt(var_ratio_w0);
     double ub = qnorm_val * std::sqrt(var_Sbat) * std::sqrt(var_ratio_w0);
     
-    // Step 7: Calculate denominator - exactly like R
+    // Step 7: Calculate denominator
     double c = WtCoxG::pnorm_boost(ub / std::sqrt(var_ratio_w1), 0.0, std::sqrt(var_Sbat + sigma2), true, true);
     double d = WtCoxG::pnorm_boost(lb / std::sqrt(var_ratio_w1), 0.0, std::sqrt(var_Sbat + sigma2), true, true);
     double p_deno = TPR * (std::exp(d) * (std::exp(c - d) - 1.0)) + (1.0 - TPR) * (1.0 - p_cut);
     
-    // Step 8: sigma2 = 0 case - exactly like R
+    // Step 8: sigma2 = 0 case
     arma::vec spa_result_s0 = WtCoxG::SPA_G_one_SNP_homo_cpp(
         g, R, mu_ext, n_ext, b, 0.0, var_ratio0, 2.0, 0.15, 10.0);
     double p_spa_s0 = spa_result_s0(0);
     
     // Debug: Check if p_spa_s0 is causing issues
-    if (std::isnan(p_spa_s0) || p_spa_s0 <= 0.0) {
-        Rcpp::Rcout << "    Invalid p_spa_s0: " << p_spa_s0 << std::endl;
-        return arma::datum::nan;
-    }
+    // if (std::isnan(p_spa_s0) || p_spa_s0 <= 0.0) {
+    //     Rcpp::Rcout << "    Invalid p_spa_s0: " << p_spa_s0 << std::endl;
+    //     return arma::datum::nan;
+    // }
     
     double qchisq_val = WtCoxG::qchisq_boost(p_spa_s0, 1.0, false, false);
-    if (std::isnan(qchisq_val) || qchisq_val <= 0.0) {
-        Rcpp::Rcout << "    Invalid qchisq_val: " << qchisq_val << " (p_spa_s0=" << p_spa_s0 << ")" << std::endl;
-        return arma::datum::nan;
-    }
+    // if (std::isnan(qchisq_val) || qchisq_val <= 0.0) {
+    //     Rcpp::Rcout << "    Invalid qchisq_val: " << qchisq_val << " (p_spa_s0=" << p_spa_s0 << ")" << std::endl;
+    //     return arma::datum::nan;
+    // }
     
     double var_S = S * S / var_ratio0 / qchisq_val;
     
-    // Step 9: Calculate covariance matrix components - exactly like R
+    // Step 9: Calculate covariance matrix components
     arma::vec R_minus_factor = R - (1.0 - b) * meanR;
     double var_int = arma::sum(R_minus_factor % R_minus_factor) * 2.0 * mu * (1.0 - mu);
     
@@ -451,20 +451,20 @@ double WtCoxG_test_cpp(const arma::vec &g_input, const arma::vec &R, const arma:
     cov_Sbat_S = cov_Sbat_S * std::sqrt(var_S / denominator);
     
     // Debug: Check if covariance values are valid
-    if (std::isnan(var_S) || std::isnan(cov_Sbat_S) || var_S <= 0.0) {
-        Rcpp::Rcout << "    Invalid variance/covariance: var_S=" << var_S 
-                    << ", cov_Sbat_S=" << cov_Sbat_S << std::endl;
-        return arma::datum::nan;
-    }
+    // if (std::isnan(var_S) || std::isnan(cov_Sbat_S) || var_S <= 0.0) {
+    //     Rcpp::Rcout << "    Invalid variance/covariance: var_S=" << var_S 
+    //                 << ", cov_Sbat_S=" << cov_Sbat_S << std::endl;
+    //     return arma::datum::nan;
+    // }
     
-    // Step 10: Create VAR matrix and calculate p0 - exactly like R
+    // Step 10: Create VAR matrix and calculate p0
     arma::mat VAR(2, 2);
     VAR(0, 0) = var_S;
     VAR(0, 1) = cov_Sbat_S;
     VAR(1, 0) = cov_Sbat_S;
     VAR(1, 1) = var_Sbat;
     
-    // Call mvtnorm::pmvnorm exactly like R
+    // Call mvtnorm::pmvnorm
     Rcpp::Function pmvnorm("pmvnorm", Rcpp::Environment::namespace_env("mvtnorm"));
     
     Rcpp::NumericVector lower0 = Rcpp::NumericVector::create(R_NegInf, lb / std::sqrt(var_ratio_w0));
@@ -481,12 +481,12 @@ double WtCoxG_test_cpp(const arma::vec &g_input, const arma::vec &R, const arma:
     double p0 = std::max(0.0, std::min(1.0, p0_result[0]));
     
     // Debug: Check p0 result
-    if (std::isnan(p0)) {
-        Rcpp::Rcout << "    Invalid p0: " << p0 << std::endl;
-        return arma::datum::nan;
-    }
+    // if (std::isnan(p0)) {
+    //     Rcpp::Rcout << "    Invalid p0: " << p0 << std::endl;
+    //     return arma::datum::nan;
+    // }
     
-    // Step 11: sigma2 != 0 case - exactly like R
+    // Step 11: sigma2 != 0 case
     arma::vec spa_result_s1 = WtCoxG::SPA_G_one_SNP_homo_cpp(
         g, R, mu_ext, n_ext, b, sigma2, var_ratio1, 2.0, 0.15, 10.0);
     double p_spa_s1 = spa_result_s1(0);
@@ -499,7 +499,7 @@ double WtCoxG_test_cpp(const arma::vec &g_input, const arma::vec &R, const arma:
     
     double var_Sbat1 = var_Sbat + sigma2;
     
-    // Step 12: Create VAR1 matrix and calculate p1 - exactly like R
+    // Step 12: Create VAR1 matrix and calculate p1
     arma::mat VAR1(2, 2);
     VAR1(0, 0) = var_S1;
     VAR1(0, 1) = cov_Sbat_S1;
@@ -519,7 +519,7 @@ double WtCoxG_test_cpp(const arma::vec &g_input, const arma::vec &R, const arma:
     
     double p1 = std::max(0.0, std::min(1.0, p1_result[0]));
     
-    // Step 13: Final result - exactly like R
+    // Step 13: Final result
     double p_con = 2.0 * (TPR * p1 + (1.0 - TPR) * p0) / p_deno;
     
     return p_con;

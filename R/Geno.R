@@ -1,3 +1,21 @@
+## ------------------------------------------------------------------------------
+## Geno.R
+## Genotype I/O utilities: reading PLINK/BGEN data, extracting marker summaries,
+## validating control settings, and preparing subject-specific genotype subsets
+## for downstream null model / marker / region analyses.
+##
+## Functions:
+##   GRAB.ReadGeno        : Read genotype file(s) with optional filtering & imputation.
+##   GRAB.getGenoInfo     : Retrieve marker-level allele frequency & missingness info.
+##   checkControl.ReadGeno: Validate and populate control list for reading genotypes.
+##   setGenoInput         : Orchestrate genotype reading; returns marker metadata + type.
+##   updateSampleIDs      : Harmonize requested SampleIDs with those present in data.
+##   getSampleIDsFromBGEN : Extract sample IDs from a BGEN file header.
+##   getVersionFromBGEN   : Parse BGEN file version.
+##   convert4BitsToNumber : Helper for bit-level genotype encoding.
+##   checkIfSampleIDsExist: Sanity check for sample presence in BGEN header.
+## ------------------------------------------------------------------------------
+
 #' Read genotype data from multiple file formats
 #'
 #' Reads genotype data from PLINK or BGEN format files with flexible filtering
@@ -16,7 +34,25 @@
 #'   }
 #' @param SampleIDs Character vector of sample IDs to extract. If NULL,
 #'   extracts all samples.
-#' @param control List of processing parameters. See Details for options.
+#' @param control List of control parameters with the following options:
+#' \itemize{
+#'   \item \code{ImputeMethod}: Imputation method for genotype data.
+#'     Options: "none" (default), "bestguess", "mean".
+#'   \item \code{AlleleOrder}: Allele order in genotype file. Options: "ref-first",
+#'     "alt-first", or NULL (default, uses file-type default).
+#'   \item \strong{Marker Selection:}
+#'   \itemize{
+#'     \item \code{AllMarkers}: Set to TRUE (default) to analyze all markers.
+#'       Automatically set to FALSE if any include/exclude files are provided.
+#'     \item \code{IDsToIncludeFile}: Path to file with marker IDs to include.
+#'     \item \code{RangesToIncludeFile}: Path to file with genomic ranges to include.
+#'       Can be used with IDsToIncludeFile (union will be used).
+#'     \item \code{IDsToExcludeFile}: Path to file with marker IDs to exclude.
+#'     \item \code{RangesToExcludeFile}: Path to file with genomic ranges to exclude.
+#'       Can be used with IDsToExcludeFile (union will be excluded).
+#'     \item Note: Cannot use both include and exclude files simultaneously.
+#'   }
+#' }
 #' @param sparse Logical indicating whether to return sparse genotype matrix
 #'   (default: FALSE).
 #' @return List containing:
@@ -33,19 +69,6 @@
 #' *BGEN Format:* Version 1.2 with 8-bit compression. See
 #' \url{https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html} for details.
 #' Requires BGI index file created with bgenix tool.
-#'
-#' **Control Parameters:**
-#' \itemize{
-#'   \item \code{IDsToIncludeFile}: File with marker IDs to include (one per line)
-#'   \item \code{IDsToExcludeFile}: File with marker IDs to exclude
-#'   \item \code{RangesToIncludeFile}: File with genomic ranges (CHR, START, END)
-#'   \item \code{RangesToExcludeFile}: File with genomic ranges to exclude
-#'   \item \code{AlleleOrder}: "ref-first" or "alt-first" for allele encoding
-#'   \item \code{AllMarkers}: Set TRUE to extract all markers (memory warning)
-#'   \item \code{ImputeMethod}: "none", "mean", or "bestguess" for missing data
-#' }
-#'
-#' **Note:** Cannot use both include and exclude files simultaneously.
 #'
 #' @examples
 #' ## Raw genotype data
@@ -105,8 +128,13 @@ GRAB.ReadGeno <- function(
   control = NULL,
   sparse = FALSE
 ) {
+  # Validate control is a list if not NULL
+  if (!is.null(control) && !is.list(control)) {
+    stop("Argument 'control' should be an R list.")
+  }
+
   # Validate and set default control parameters
-  control <- checkControl.ReadGeno(control) # check 'control.R'
+  control <- checkControl.ReadGeno(control)
 
   # Initialize genotype input object with file paths and parameters
   objGeno <- setGenoInput(GenoFile, GenoFileIndex, SampleIDs, control)
@@ -159,16 +187,37 @@ GRAB.ReadGeno <- function(
 
 #' Get allele frequency and missing rate information from genotype data
 #'
-#' This function shares input as in function \code{GRAB.ReadGeno}, please check \code{?GRAB.ReadGeno} for more details.
+#' This function shares input as in function \code{GRAB.ReadGeno}, please
+#' check \code{?GRAB.ReadGeno} for more details.
 #'
-#' @param GenoFile a character of genotype file. See \code{Details} section for more details.
-#' @param GenoFileIndex additional index file(s) corresponding to \code{GenoFile}. See \code{Details}
-#'   section for more details.
-#' @param SampleIDs a character vector of sample IDs to extract. The default is \code{NULL}, that is,
-#'   all samples in \code{GenoFile} will be extracted.
-#' @param control a list of parameters to decide which markers to extract. See \code{Details} section for more details.
-#' @return A data frame containing marker information with allele frequencies and missing rates. The
-#'   data frame includes columns from marker information (CHROM, POS, ID, REF, ALT, etc.) plus additional columns:
+#' @param GenoFile a character of genotype file. See \code{Details} section
+#'   for more details.
+#' @param GenoFileIndex additional index file(s) corresponding to
+#'   \code{GenoFile}. See \code{Details} section for more details.
+#' @param SampleIDs a character vector of sample IDs to extract. The default
+#'   is \code{NULL}, that is, all samples in \code{GenoFile} will be extracted.
+#' @param control List of control parameters with the following options:
+#' \itemize{
+#'   \item \code{ImputeMethod}: Imputation method for genotype data.
+#'     Options: "none" (default), "bestguess", "mean".
+#'   \item \code{AlleleOrder}: Allele order in genotype file. Options: "ref-first",
+#'     "alt-first", or NULL (default, uses file-type default).
+#'   \item \strong{Marker Selection:}
+#'   \itemize{
+#'     \item \code{AllMarkers}: Set to TRUE (default) to analyze all markers.
+#'       Automatically set to FALSE if any include/exclude files are provided.
+#'     \item \code{IDsToIncludeFile}: Path to file with marker IDs to include.
+#'     \item \code{RangesToIncludeFile}: Path to file with genomic ranges to include.
+#'       Can be used with IDsToIncludeFile (union will be used).
+#'     \item \code{IDsToExcludeFile}: Path to file with marker IDs to exclude.
+#'     \item \code{RangesToExcludeFile}: Path to file with genomic ranges to exclude.
+#'       Can be used with IDsToExcludeFile (union will be excluded).
+#'     \item Note: Cannot use both include and exclude files simultaneously.
+#'   }
+#' }
+#' @return A data frame containing marker information with allele frequencies
+#'   and missing rates. The data frame includes columns from marker information
+#'   (CHROM, POS, ID, REF, ALT, etc.) plus additional columns:
 #' \describe{
 #'   \item{altFreq}{Alternative allele frequency (before genotype imputation)}
 #'   \item{missingRate}{Missing rate for each marker}
@@ -180,7 +229,13 @@ GRAB.getGenoInfo <- function(
   SampleIDs = NULL,
   control = NULL
 ) {
-  control <- checkControl.ReadGeno(control) # check 'control.R'
+  # Validate control is a list if not NULL
+  if (!is.null(control) && !is.list(control)) {
+    stop("Argument 'control' should be an R list.")
+  }
+
+  # Validate and set default control parameters
+  control <- checkControl.ReadGeno(control)
 
   objGeno <- setGenoInput(GenoFile, GenoFileIndex, SampleIDs, control)
 
@@ -213,40 +268,90 @@ GRAB.getGenoInfo <- function(
 
 # Validate and set default control parameters for SPACox marker analysis
 checkControl.ReadGeno <- function(control) {
-  # check if control is an R list
-  if (!is.null(control)) {
-    if (!is.list(control)) {
-      stop("If specified, the argument of 'control' should be an R 'list'.")
-    }
+
+  # Merge user-provided control with defaults
+  default.control <- list(
+    ImputeMethod = "none",
+    AlleleOrder = NULL,
+    AllMarkers = TRUE,
+    IDsToIncludeFile = NULL,
+    IDsToExcludeFile = NULL,
+    RangesToIncludeFile = NULL,
+    RangesToExcludeFile = NULL
+  )
+  
+  if (is.null(control)) {
+    control <- default.control
+  } else {
+    control <- utils::modifyList(default.control, control)
   }
 
+  # Validate parameters
   if (!is.null(control$AlleleOrder)) {
     if (control$AlleleOrder != "ref-first" && control$AlleleOrder != "alt-first") {
       stop("control$AlleleOrder should be 'ref-first' or 'alt-first'.")
     }
   }
 
-  if (is.null(control$ImputeMethod)) {
-    control$ImputeMethod <- "none"
-  }
-
   if (!control$ImputeMethod %in% c("none", "bestguess", "mean")) {
     stop("control$ImputeMethod should be 'none', 'bestguess', or 'mean'.")
   }
 
-  if (is.null(control$AllMarkers)) {
-    control$AllMarkers <- FALSE
+  # Check marker selection parameters
+  include_files <- c("IDsToIncludeFile", "RangesToIncludeFile")
+  exclude_files <- c("IDsToExcludeFile", "RangesToExcludeFile")
+  
+  # Check which files are provided
+  include_provided <- sapply(include_files, function(x) !is.null(control[[x]]))
+  exclude_provided <- sapply(exclude_files, function(x) !is.null(control[[x]]))
+  
+  has_include <- any(include_provided)
+  has_exclude <- any(exclude_provided)
+  
+  # Validate: cannot provide both include and exclude files
+  if (has_include && has_exclude) {
+    stop(
+      "Cannot provide both include and exclude files. ",
+      "Either use include files (IDsToIncludeFile, RangesToIncludeFile) ",
+      "or exclude files (IDsToExcludeFile, RangesToExcludeFile), but not both."
+    )
   }
-
+  
+  # Check if the files specified exist
   FileType <- c("IDsToIncludeFile", "IDsToExcludeFile", "RangesToIncludeFile", "RangesToExcludeFile")
-
-  # check if the files specified exist
   for (ft in FileType) {
     if (ft %in% names(control)) {
       file <- control[[ft]]
-      if (!file.exists(file)) {
+      if (!is.null(file) && !file.exists(file)) {
         stop(paste0("Cannot find the file of ", file, "..."))
       }
+    }
+  }
+
+  # Log which files are being used
+  if (has_include || has_exclude) {
+    control$AllMarkers <- FALSE
+    
+    if (has_include) {
+      used_files <- include_files[include_provided]
+      .message("Marker selection: Including markers from union of:")
+      for (file_param in used_files) {
+        .message("  - %s: %s", file_param, control[[file_param]])
+      }
+    } else {
+      used_files <- exclude_files[exclude_provided]
+      .message("Marker selection: Excluding markers from union of:")
+      for (file_param in used_files) {
+        .message("  - %s: %s", file_param, control[[file_param]])
+      }
+    }
+  } else {
+    # Default: analyze all markers
+    if (is.null(control$AllMarkers)) {
+      control$AllMarkers <- TRUE
+    }
+    if (isTRUE(control$AllMarkers)) {
+      .message("Marker selection: Analyzing all markers in the genotype file.")
     }
   }
 
@@ -254,7 +359,7 @@ checkControl.ReadGeno <- function(control) {
 }
 
 
-# setGenoInput() is to setup the following object in C++ (Main.cpp)
+# Setup an object in C++ (Main.cpp)
 # PLINK format: ptr_gPLINKobj;
 # BGEN format: ptr_gBGENobj;
 setGenoInput <- function(
@@ -570,15 +675,8 @@ updateSampleIDs <- function(SampleIDs, samplesInGeno) {
 }
 
 
-# https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
-#' Get sample identifiers from BGEN file
-#'
-#' Extract sample identifiers from BGEN file (only support BGEN v1.2, check
-#' [link](https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html))
-#'
-#' @param bgenFile a character of BGEN file.
-#' @return A character vector of sample identifiers extracted from the BGEN file.
-#'
+# Extract sample identifiers from BGEN file (only support BGEN v1.2)
+# Check https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
 getSampleIDsFromBGEN <- function(bgenFile) {
   if (!checkIfSampleIDsExist(bgenFile)) {
     stop("The BGEN file does not include subject IDs. Check ",
@@ -607,20 +705,7 @@ getSampleIDsFromBGEN <- function(bgenFile) {
 }
 
 
-# https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
-#' Get version information from BGEN file
-#'
-#' Get version information from BGEN file (check [link](https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html))
-#'
-#' @param bgenFile a character of BGEN file.
-#' @return A character string indicating the BGEN file version. Possible values include:
-#' \describe{
-#'   \item{v1.1}{BGEN format version 1.1}
-#'   \item{v1.2}{BGEN format version 1.2}
-#'   \item{Version Layout = 0, which is not supported...}{Error message for unsupported version 0}
-#'   \item{Version Layout > 2, which is reserved for future use...}{Warning message for future versions}
-#' }
-#'
+# Get version information from BGEN file
 getVersionFromBGEN <- function(bgenFile) {
   con <- file(bgenFile, "rb")
   seek(con, 4)
@@ -652,7 +737,7 @@ getVersionFromBGEN <- function(bgenFile) {
 }
 
 
-# https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
+# Helper function to convert 4 bits (least-significant first) to a number
 convert4BitsToNumber <- function(leastSignificantBit) {
   leastSignificantBit <- as.numeric(leastSignificantBit)
   if (length(leastSignificantBit) != 4) {
@@ -667,17 +752,7 @@ convert4BitsToNumber <- function(leastSignificantBit) {
 }
 
 
-#' Check if sample identifiers are stored in a BGEN file
-#'
-#' Check if sample identifiers are stored in a BGEN file, only support BGEN v1.2. Check
-#' [link](https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html) for more details.
-#'
-#' @param bgenFile a character of BGEN file. Sometimes, BGEN file does not include sample IDs.
-#'   This information can be extracted from BGEN file. Please refer to
-#'   [link](https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html) for more details.
-#' @return A logical value indicating whether sample identifiers are stored in the BGEN file.
-#'   Returns \code{TRUE} if sample IDs are present, \code{FALSE} otherwise.
-#'
+# Check if sample identifiers are stored in a BGEN file
 checkIfSampleIDsExist <- function(bgenFile) {
   con <- file(bgenFile, "rb")
   seek(con, 4)

@@ -1,3 +1,20 @@
+## ------------------------------------------------------------------------------
+## SPAGRM.R
+## Saddlepoint approximation with Genetic Relationship Matrix (SPAGRM) for related
+## samples. Implements null model fitting, marker-level testing, GRM block helpers,
+## and Chow–Liu tree routines.
+##
+## Functions:
+##   GRAB.SPAGRM                  : Print brief method information.
+##   checkControl.SPAGRM.NullModel: Validate/populate null-model controls.
+##   SPAGRM.NullModel             : Fit SPAGRM null model and residual handling.
+##   checkControl.Marker.SPAGRM   : Validate marker-level controls.
+##   setMarker.SPAGRM             : Initialize marker-level analysis objects.
+##   mainMarker.SPAGRM            : Run marker-level SPAGRM tests.
+##   make.block.GRM               : Construct GRM blocks for subgraphs/families.
+##   chow.liu.tree                : Build Chow–Liu trees for family structures.
+## ------------------------------------------------------------------------------
+
 #' SPA<sub>GRM</sub> method in GRAB package
 #'
 #' SPA<sub>GRM</sub> method is an empirical approach to analyzing complex traits
@@ -93,26 +110,34 @@ checkControl.SPAGRM.NullModel <- function(
 }
 
 
-#' Fit a SPAGRM Null Model
+#' Fit SPAGRM null model from residuals and relatedness inputs
 #'
-#' @param ResidMatFile A file path (character) or data.frame containing residuals.
-#'   If a file path, it should point to a tab-delimited file with two columns:
-#'   'SubjID' (subject IDs) and 'Resid' (residual values). If a data.frame,
-#'   it should have the same structure with columns named 'SubjID' and 'Resid'.
-#' @param SparseGRMFile A file path (character) to a sparse genetic relationship
-#'   matrix (GRM) file. This file should be generated using the \code{getSparseGRM()}
-#'   function and contain three columns: 'ID1', 'ID2', and 'Value' representing
-#'   the genetic relationships between pairs of individuals.
-#' @param PairwiseIBDFile A file path (character) to a pairwise identity-by-descent
-#'   (IBD) file. This file should be generated using the \code{getPairwiseIBD()}
-#'   function and contain five columns: 'ID1', 'ID2', 'pa', 'pb', and 'pc' representing
-#'   IBD probabilities between pairs of individuals.
-#' @param control A list of control parameters for the null model fitting process.
-#'   Available options include:
+#' Builds the SPAGRM null model object using subject residuals, sparse GRM,
+#' and pairwise IBD estimates, detecting residual outliers and constructing
+#' family-level graph structures for downstream saddlepoint marker tests.
 #'
-#' @return A SPAGRM null model object
+#' @param ResidMatFile Data frame or file path with columns \code{SubjID, Resid}.
+#' @param SparseGRMFile File path to sparse GRM (tab-delimited: ID1, ID2, Value).
+#' @param PairwiseIBDFile File path to pairwise IBD table (ID1, ID2, pa, pb, pc).
+#' @param control List of options controlling outlier handling and family
+#'   decomposition (see \code{checkControl.SPAGRM.NullModel}).
 #'
+#' @return A list of class \code{"SPAGRM_NULL_Model"} with elements:
+#'   \describe{
+#'     \item{Resid}{Numeric vector of residuals used in analysis.}
+#'     \item{subjData}{Character vector of subject IDs (length = N).}
+#'     \item{N}{Number of subjects.}
+#'     \item{Resid.unrelated.outliers}{Residuals of unrelated outlier subjects.}
+#'     \item{R_GRM_R}{Sum of quadratic form Resid' * GRM * Resid for all subjects.}
+#'     \item{R_GRM_R_TwoSubjOutlier}{Aggregate contribution from two-subject outlier families.}
+#'     \item{sum_R_nonOutlier}{Sum of residuals for non-outlier unrelated subjects.}
+#'     \item{R_GRM_R_nonOutlier}{Quadratic form contribution for non-outlier unrelated subjects.}
+#'     \item{TwoSubj_list}{List with per two-member family residual/Rho info.}
+#'     \item{ThreeSubj_list}{List with Chow–Liu tree structures and standardized scores for larger families.}
+#'     \item{MAF_interval}{Vector of MAF breakpoints used in tree construction.}
+#'   }
 #'
+#' @keywords internal
 SPAGRM.NullModel <- function(
   ResidMatFile, # two columns: column 1 is subjID, column 2 is Resid
   SparseGRMFile, # a path of SparseGRMFile get from getSparseGRM() function.
@@ -437,15 +462,25 @@ SPAGRM.NullModel <- function(
 }
 
 
-checkControl.Marker.SPAGRM <- function(control) {
+checkControl.Marker.SPAGRM <- function(control, MAF_interval) {
+
+  # Validate MAF interval constraints specific to SPAGRM
+  if (length(MAF_interval) > 1) {
+    if (control$min_maf_marker <= min(MAF_interval)) {
+      stop(
+        "min_maf_marker is out of MAF_interval. ",
+        "Please reset min_maf_marker or check MAF_interval."
+      )
+    }
+  }
+
   default.control <- list(
     SPA_Cutoff = 2,
     zeta = 0,
     tol = 1e-5
   )
 
-  control <- updateControl(control, default.control) # This file is in 'control.R'
-
+  control <- updateControl(control, default.control)
   return(control)
 }
 
@@ -469,7 +504,7 @@ setMarker.SPAGRM <- function(objNull, control) {
 }
 
 
-mainMarker.SPAGRM <- function(genoType, genoIndex, outputColumns) {
+mainMarker.SPAGRM <- function(genoType, genoIndex) {
   # Perform main marker analysis for SPAGRM method
   OutList <- mainMarkerInCPP("SPAGRM", genoType, genoIndex)
 

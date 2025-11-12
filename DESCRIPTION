@@ -1,8 +1,8 @@
 Package: GRAB
 Type: Package
 Title: Genome-Wide Robust Analysis for Biobank Data (GRAB)
-Version: 0.2.3
-Date: 2025-08-25
+Version: 0.2.4
+Date: 2025-11-11
 Authors@R: c(person(given = "Wenjian",
                     family = "Bi",
                     role = "aut"),

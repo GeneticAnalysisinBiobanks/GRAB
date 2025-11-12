@@ -1,3 +1,19 @@
+## ------------------------------------------------------------------------------
+## POLMM.R
+## Core implementation and helpers for the POLMM method (ordinal mixed model)
+## covering null model fitting, marker-level and region-level (POLMM-GENE) tests.
+##
+## Functions:
+##   GRAB.POLMM                  : Print brief method information.
+##   checkControl.NullModel.POLMM: Validate and populate null model control list.
+##   fitNullModel.POLMM          : Fit the POLMM null model (C++ backend setup).
+##   checkControl.Marker.POLMM   : Validate marker-level control parameters.
+##   setMarker.POLMM             : Initialize marker-level analysis objects.
+##   checkControl.Region.POLMM   : Validate region-level control parameters.
+##   setRegion.POLMM             : Prepare region (gene/set) analysis context.
+##   mainRegion.POLMM            : Run region-based association tests.
+## ------------------------------------------------------------------------------
+
 #' POLMM method in GRAB package
 #'
 #' POLMM method is to analyze ordinal categorical data for related samples in a large-scale biobank.
@@ -54,7 +70,7 @@
 #'
 #' ### Step 2(b): Set-based tests using POLMM-GENE
 #' GenoFile <- system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
-#' OutputFile <- file.path(tempdir(), "simuRegionOutput.txt")
+#' OutputFile <- file.path(tempdir(), "simuRegionOutputPOLMM.txt")
 #' GroupFile <- system.file("extdata", "simuPLINK_RV.group", package = "GRAB")
 #' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
 #'
@@ -76,13 +92,6 @@ GRAB.POLMM <- function() {
 }
 
 
-# check the control list in null model fitting for POLMM method
-#' @title Validate control parameters for POLMM null model
-#' @param control List of control parameters for null model fitting.
-#' @param traitType Character string specifying the trait type.
-#' @param optionGRM Character string specifying GRM option.
-#' @return Updated control list with validated parameters and defaults.
-#' @keywords internal
 checkControl.NullModel.POLMM <- function(
   control,
   traitType,
@@ -130,7 +139,27 @@ checkControl.NullModel.POLMM <- function(
 }
 
 
-# fit null model using POLMM method
+#' Fit POLMM null model for ordinal outcomes
+#'
+#' Initializes the POLMM null model from an ordered categorical response and
+#' covariate matrix, preparing C++ state for subsequent marker/region tests.
+#'
+#' @param response Ordered factor response (lowest level coded as 0 internally).
+#' @param designMat Numeric covariate matrix or data.frame (n x p).
+#' @param subjData Character vector of subject IDs aligned with rows of
+#'   \code{designMat} and \code{response}.
+#' @param control List of POLMM options (e.g., \code{tau}, \code{LOCO},
+#'   \code{maxMissingVarRatio}, \code{minMafVarRatio}).
+#' @param optionGRM Character, either \code{"DenseGRM"} or \code{"SparseGRM"}.
+#' @param genoType Character, genotype backend: \code{"PLINK"} or \code{"BGEN"}.
+#' @param markerInfo Data frame of marker metadata with columns
+#'   \code{CHROM, POS, ID, REF, ALT, genoIndex} used to fetch genotypes.
+#'
+#' @return An object of class \code{"POLMM_NULL_Model"} representing the
+#'   initialized null model; state is stored in C++ and not intended for direct
+#'   element-wise access from R.
+#'
+#' @keywords internal
 fitNullModel.POLMM <- function(
   response, designMat, subjData, control, optionGRM,
   genoType, # "PLINK" or "BGEN"
@@ -199,10 +228,6 @@ fitNullModel.POLMM <- function(
 }
 
 
-#' @title Validate control parameters for POLMM marker testing
-#' @param control List of control parameters for marker-level analysis.
-#' @return Updated control list with validated parameters and defaults.
-#' @keywords internal
 checkControl.Marker.POLMM <- function(control) {
   default.control <- list(
     SPA_Cutoff = 2,
@@ -214,12 +239,6 @@ checkControl.Marker.POLMM <- function(control) {
 }
 
 
-#' @title Set up marker-level testing for POLMM method
-#' @param objNull Null model object from GRAB.NullModel().
-#' @param control List of control parameters.
-#' @param chrom Character string specifying chromosome for LOCO analysis.
-#' @return List containing setup parameters for marker testing.
-#' @keywords internal
 setMarker.POLMM <- function(
   objNull,
   control,
@@ -257,12 +276,40 @@ setMarker.POLMM <- function(
   )
 }
 
+mainMarker.POLMM <- function(
+  genoType,
+  genoIndex,
+  outputColumns
+) {
+  # Call optimized C++ implementation for computational efficiency
+  OutList <- mainMarkerInCPP("POLMM", genoType, genoIndex)
 
-# check the control list in region-level testing
-#' @title Validate control parameters for POLMM region testing
-#' @param control List of control parameters for region-based analysis.
-#' @return Updated control list with validated parameters and defaults.
-#' @keywords internal
+  # Construct base output data frame with required columns
+  obj.mainMarker <- data.frame(
+    Marker = OutList$markerVec,        # Marker IDs
+    Info = OutList$infoVec,            # Marker info: CHR:POS:REF:ALT
+    AltFreq = OutList$altFreqVec,      # Alternative allele frequencies
+    AltCounts = OutList$altCountsVec,  # Alternative allele counts
+    MissingRate = OutList$missingRateVec, # Missing rates per marker
+    Pvalue = OutList$pvalVec           # Association test p-values
+  )
+
+  # Add optional columns if requested by user
+  optionalColumns <- c("beta", "seBeta", "zScore", "PvalueNorm",
+                       "AltFreqInGroup", "AltCountsInGroup", "nSamplesInGroup")
+  additionalColumns <- intersect(optionalColumns, outputColumns)
+
+  if (length(additionalColumns) > 0) {
+    obj.mainMarker <- cbind.data.frame(
+      obj.mainMarker,
+      as.data.frame(OutList[additionalColumns])
+    )
+  }
+
+  return(obj.mainMarker)
+}
+
+
 checkControl.Region.POLMM <- function(control) {
   default.control <- list(
     SPA_Cutoff = 2,
@@ -280,14 +327,6 @@ checkControl.Region.POLMM <- function(control) {
 }
 
 
-# Used in setRegion() function in GRAB_Region.R
-#' @title Set up region-based testing for POLMM method
-#' @param objNull Null model object from GRAB.NullModel().
-#' @param control List of control parameters.
-#' @param chrom Character string specifying chromosome for LOCO analysis.
-#' @param SparseGRMFile Character string specifying sparse GRM file path.
-#' @return List containing setup parameters for region testing.
-#' @keywords internal
 setRegion.POLMM <- function(
   objNull,
   control,
@@ -338,17 +377,6 @@ setRegion.POLMM <- function(
 }
 
 
-#' @title Perform region-based analysis for POLMM method
-#' @param genoType Character string specifying genotype file format.
-#' @param genoIndex Integer vector of genotype indices to analyze.
-#' @param OutputFile Character string specifying output file path.
-#' @param control List of control parameters.
-#' @param n Integer specifying number of subjects.
-#' @param obj.setRegion List containing region setup parameters.
-#' @param obj.mainRegionInCPP List containing C++ analysis results.
-#' @param nLabel Integer specifying number of labels/categories.
-#' @return Data frame containing analysis results.
-#' @keywords internal
 mainRegion.POLMM <- function(
   genoType,
   genoIndex,

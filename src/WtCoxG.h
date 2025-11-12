@@ -202,7 +202,7 @@ namespace WtCoxG
 
 }  // namespace WtCoxG
 
-// Function to be exported to R (outside namespace)
+
 double WtCoxG_test_cpp(const arma::vec& g_input, const arma::vec& R, const arma::vec& w,
                        double p_bat, double TPR, double sigma2, double b,
                        double var_ratio_int, double var_ratio_w0, double var_ratio_w1,

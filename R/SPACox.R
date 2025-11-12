@@ -1,3 +1,17 @@
+## ------------------------------------------------------------------------------
+## SPACox.R
+## Saddlepoint approximation–based Cox model for time-to-event data (unrelated).
+## Provides null model fitting and single-variant testing utilities.
+##
+## Functions:
+##   GRAB.SPACox                  : Print brief method information.
+##   checkControl.NullModel.SPACox: Validate and populate null-model controls.
+##   fitNullModel.SPACox          : Fit SPACox null model.
+##   checkControl.Marker.SPACox   : Validate marker-level controls.
+##   setMarker.SPACox             : Initialize marker-level analysis objects.
+##   mainMarker.SPACox            : Run marker-level SPACox tests.
+## ------------------------------------------------------------------------------
+
 #' SPACox method in GRAB package
 #'
 #' SPACox method is an empirical approach to analyzing complex traits
@@ -56,11 +70,6 @@ GRAB.SPACox <- function() {
 }
 
 
-#' @title Validate control parameters for SPACox null model
-#' @param control List of control parameters for null model fitting.
-#' @param traitType Character string specifying the trait type.
-#' @return Updated control list with validated parameters and defaults.
-#' @keywords internal
 checkControl.NullModel.SPACox <- function(
   control,
   traitType
@@ -92,13 +101,31 @@ checkControl.NullModel.SPACox <- function(
 }
 
 
-#' @title Fit null model for SPACox method
-#' @param response Response variable (Surv or Residual object).
-#' @param designMat Design matrix containing covariates.
-#' @param subjData Vector of subject identifiers.
-#' @param control List of control parameters.
-#' @param ... Additional arguments passed to internal functions.
-#' @return List containing fitted null model components.
+#' Fit SPACox null model from survival outcomes or residuals
+#'
+#' Computes martingale residuals (or uses provided residuals) and an empirical
+#' cumulant generating function (CGF) for SPA-based single-variant tests.
+#'
+#' @param response Either a \code{survival::Surv} object (time-to-event) or a
+#'   numeric residual vector with class \code{"Residual"}.
+#' @param designMat Numeric design matrix (n x p) of covariates.
+#' @param subjData Vector of subject IDs aligned with rows of \code{designMat}.
+#' @param control List with fields such as \code{range} and \code{length.out}
+#'   for the CGF grid.
+#' @param ... Extra arguments passed to \code{survival::coxph} when
+#'   \code{response} is \code{Surv}.
+#'
+#' @return A list of class \code{"SPACox_NULL_Model"} with elements:
+#'   \describe{
+#'     \item{N}{Number of subjects.}
+#'     \item{mresid}{Martingale residuals (numeric vector).}
+#'     \item{cumul}{CGF grid as a matrix with columns t, K0, K1, K2.}
+#'     \item{tX}{Transpose of design matrix with intercept (p+1 x n).}
+#'     \item{yVec}{Status/event indicator or residual-based response.}
+#'     \item{X.invXX}{Projection helper: X %*% solve(t(X) %*% X).}
+#'     \item{subjData}{Character vector of subject IDs.}
+#'   }
+#'
 #' @keywords internal
 fitNullModel.SPACox <- function(
   response,
@@ -175,10 +202,6 @@ fitNullModel.SPACox <- function(
 }
 
 
-#' @title Validate control parameters for SPACox marker testing
-#' @param control List of control parameters for marker-level analysis.
-#' @return Updated control list with validated parameters and defaults.
-#' @keywords internal
 checkControl.Marker.SPACox <- function(control) {
   default.control <- list(
     pVal_covaAdj_Cutoff = 5e-05,
@@ -191,11 +214,6 @@ checkControl.Marker.SPACox <- function(control) {
 }
 
 
-#' @title Set up marker-level testing for SPACox method
-#' @param objNull Null model object from GRAB.NullModel().
-#' @param control List of control parameters.
-#' @return List containing setup parameters for marker testing.
-#' @keywords internal
 setMarker.SPACox <- function(
   objNull,
   control
@@ -220,12 +238,6 @@ setMarker.SPACox <- function(
 }
 
 
-#' @title Perform marker-level analysis for SPACox method
-#' @param genoType Character string specifying genotype file format.
-#' @param genoIndex Integer vector of genotype indices to analyze.
-#' @param outputColumns Character vector specifying output columns to include.
-#' @return Data frame containing analysis results.
-#' @keywords internal
 mainMarker.SPACox <- function(
   genoType,
   genoIndex,

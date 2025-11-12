@@ -4,7 +4,40 @@
  *
  * This file contains the core C++ functions that are exposed to R via Rcpp.
  * It serves as the main entry point for genetic association analysis methods
- * including POLMM, SPACox, SPAmix, SPAGRM, SAGELD and WtCoxG.
+ * including POLMM, POLMM-GENE, SPACox, SPAmix, SPAGRM, SAGELD and WtCoxG.
+ *
+ * Functions (one‑line summaries):
+ *   setSparseGRMInCPP            : Load sparse GRM from R list (triplet form) into Armadillo.
+ *   setDenseGRMInCPP             : Construct / reset dense GRM object with QC thresholds.
+ *   getDenseGRMInCPP             : Multiply dense GRM (optionally LOCO) by a vector.
+ *   setMarker_GlobalVarsInCPP    : Set global QC + threading + grouping parameters for marker tests.
+ *   setRegion_GlobalVarsInCPP    : Set global parameters for region / rare variant analyses.
+ *   updateGroupInfo              : Compute per‑group sample counts, alt counts and frequencies.
+ *   getLabelInfo                 : Compute per‑label MAC and MAF matrices (case/control or multi‑group).
+ *   Unified_getOneMarker         : Fetch one marker's genotypes + metadata from PLINK/BGEN.
+ *   Unified_getMarkerPval (v1)   : Compute single‑marker p‑value (no HWE) for a chosen method.
+ *   Unified_getMarkerPval (v2)   : Compute single‑marker p‑value plus HWE p‑value.
+ *   Unified_getRegionPVec        : Region / aggregate test statistics (normal + SPA forms).
+ *   mainMarkerInCPP              : High‑level GWAS loop over selected markers (multi‑phenotype aware).
+ *   mainRegionURVInCPP           : Collapse ultra‑rare variants and return burden statistics.
+ *   mainRegionInCPP              : Comprehensive gene/region analysis (single, burden, URV, VC tests).
+ *   printTimeDiffInCPP           : Report timing for major POLMM computational phases.
+ *   printTimeDiffSPAmixInCPP     : Report timing metrics for SPAmix phases.
+ *   getGenoInfoInCPP             : Quick genotype summary (freq/missing) without full matrix load.
+ *   getGenoInCPP                 : Load genotype matrix (adaptive marker count) with imputation.
+ *   getGenoInCPP_fixedNumber     : Load fixed number of markers with missing/MAF filtering.
+ *   getSpGenoInCPP               : Load sparse genotype matrix representation.
+ *   setPLINKobjInCPP             : Initialize PLINK reader object for downstream access.
+ *   setBGENobjInCPP              : Initialize BGEN reader object with sample filtering.
+ *   closeGenoInputInCPP          : Release genotype reader resources (PLINK/BGEN).
+ *   setPOLMMobjInCPP             : Initialize POLMM object with pre‑computed matrices.
+ *   setPOLMMobjInCPP_NULL        : Fit POLMM null model and prepare C++ state.
+ *   setSPAGRMobjInCPP            : Initialize SPAGRM object with residual / GRM decomposition.
+ *   setSAGELDobjInCPP            : Initialize SAGELD/GALLOP object with residual partitions.
+ *   setSPAmixobjInCPP            : Initialize SPAmix object (multi‑phenotype residual + PCs).
+ *   setSPACoxobjInCPP            : Initialize SPACox object (CGF grid + residual info).
+ *   setWtCoxGobjInCPP            : Initialize weighted Cox (WtCoxG) object with residuals + weights.
+ *   updateWtCoxGChunkInCPP       : Update WtCoxG object with marker batch metadata.
  */
 
 // Rcpp dependencies for statistical computing and linear algebra

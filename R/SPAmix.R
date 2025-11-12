@@ -1,3 +1,17 @@
+## ------------------------------------------------------------------------------
+## SPAmix.R
+## SPAmix: saddlepoint approximation for mixture populations. Provides null
+## model fitting and single-variant testing with ancestry-mixing adjustments.
+##
+## Functions:
+##   GRAB.SPAmix                  : Print brief method information.
+##   checkControl.NullModel.SPAmix: Validate and populate null-model controls.
+##   fitNullModel.SPAmix          : Fit SPAmix null model.
+##   checkControl.Marker.SPAmix   : Validate marker-level controls.
+##   setMarker.SPAmix             : Initialize marker-level analysis objects.
+##   mainMarker.SPAmix            : Run marker-level SPAmix tests.
+## ------------------------------------------------------------------------------
+
 #' SPAmix method in GRAB package
 #'
 #' SPAmix method is an empirical approach to analyzing complex traits
@@ -74,11 +88,6 @@ GRAB.SPAmix <- function() {
 }
 
 
-#' @title Validate control parameters for SPAmix null model
-#' @param control List of control parameters for null model fitting.
-#' @param traitType Character string specifying the trait type.
-#' @return Updated control list with validated parameters and defaults.
-#' @keywords internal
 checkControl.NullModel.SPAmix <- function(
   control,
   traitType
@@ -258,10 +267,6 @@ fitNullModel.SPAmix <- function(
 }
 
 
-#' @title Validate control parameters for SPAmix marker testing
-#' @param control List of control parameters for marker-level analysis.
-#' @return Updated control list with validated parameters and defaults.
-#' @keywords internal
 checkControl.Marker.SPAmix <- function(control) {
   default.control <- list(
     SPA_Cutoff = 2,
@@ -281,11 +286,6 @@ checkControl.Marker.SPAmix <- function(control) {
 }
 
 
-#' @title Set up marker-level testing for SPAmix method
-#' @param objNull Null model object from GRAB.NullModel().
-#' @param control List of control parameters.
-#' @return List containing setup parameters for marker testing.
-#' @keywords internal
 setMarker.SPAmix <- function(
   objNull,
   control
@@ -303,13 +303,6 @@ setMarker.SPAmix <- function(
 }
 
 
-#' @title Perform marker-level analysis for SPAmix method
-#' @param genoType Character string specifying genotype file format.
-#' @param genoIndex Integer vector of genotype indices to analyze.
-#' @param outputColumns Character vector specifying output columns to include.
-#' @param objNull Null model object containing analysis parameters.
-#' @return Data frame containing analysis results.
-#' @keywords internal
 mainMarker.SPAmix <- function(
   genoType,
   genoIndex,
@@ -326,11 +319,9 @@ mainMarker.SPAmix <- function(
     AltFreq = rep(OutList$altFreqVec, each = nPheno), # alternative allele frequencies
     AltCounts = rep(OutList$altCountsVec, each = nPheno), # alternative allele counts
     MissingRate = rep(OutList$missingRateVec, each = nPheno), # alternative allele counts
-    Pvalue = OutList$pvalVec
-  ) # marker-level p-values
+    Pvalue = OutList$pvalVec # marker-level p-values
+  )
 
-  # optionalColumns = c("beta", "seBeta", "zScore", "PvalueNorm",
-  #                     "AltFreqInGroup", "AltCountsInGroup", "nSamplesInGroup")
   optionalColumns <- c("zScore", "PvalueNorm", "AltFreqInGroup", "AltCountsInGroup", "nSamplesInGroup")
   additionalColumns <- intersect(optionalColumns, outputColumns)
 

@@ -1,3 +1,17 @@
+## ------------------------------------------------------------------------------
+## GRAB_Null_Model.R
+## Build method-specific null models used by downstream association tests. Handles:
+##   * Parse formula/data and construct design matrices
+##   * Handle intercepts, missingness, and multi-response residual inputs
+##   * Configure GRM options (dense vs sparse) and genotype metadata
+##   * Validate/merge method-specific control parameters
+##   * Dispatch to method-specific null-model fitters
+##
+## Functions:
+##   GRAB.NullModel: Top-level API to fit a null model object used by
+##                   GRAB.Marker and GRAB.Region.
+## ------------------------------------------------------------------------------
+
 #' Fit a null model for genetic association testing
 #'
 #' Estimates model parameters and residuals from a null model containing phenotypes,
@@ -13,8 +27,7 @@
 #'   before subsetting.
 #' @param method Statistical method: "POLMM", "SPACox", "SPAmix", "SPAGRM", "SAGELD",
 #'   or "WtCoxG".
-#' @param traitType Trait type: "binary", "ordinal", "quantitative", "time-to-event",
-#'   or "Residual".
+#' @param traitType Trait type: "ordinal", "time-to-event", or "Residual".
 #' @param GenoFile Path to genotype file (PLINK or BGEN format). Required for dense GRM
 #'   construction. See \code{\link{GRAB.ReadGeno}} for details.
 #' @param GenoFileIndex Index files for genotype file. If \code{NULL} (default), uses
@@ -22,7 +35,6 @@
 #' @param SparseGRMFile Path to sparse GRM file. Alternative to dense GRM construction.
 #' @param control List of control parameters. See \code{Details} for options.
 #' @param ... Additional arguments for method-specific functions.
-
 #' @return
 #' List object with class "\{method\}_NULL_Model" containing:
 #' \describe{
@@ -148,7 +160,7 @@ GRAB.NullModel <- function(
   subset = NULL,
   subjData,
   method,
-  traitType, # "binary", "ordinal", "quantitative", "time-to-event", "Residual"
+  traitType,
   GenoFile = NULL,
   GenoFileIndex = NULL,
   SparseGRMFile = NULL,
