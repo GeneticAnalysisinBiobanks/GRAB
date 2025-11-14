@@ -7,15 +7,13 @@
 GRAB.Region(
   objNull,
   GenoFile,
-  GenoFileIndex = NULL,
   OutputFile,
+  GenoFileIndex = NULL,
   OutputFileIndex = NULL,
   GroupFile,
   SparseGRMFile = NULL,
-  SampleFile = NULL,
   MaxMAFVec = "0.01,0.001,0.0005",
   annoVec = "lof,lof:missense,lof:missense:synonymous",
-  chrom = "LOCO=F",
   control = NULL
 )
 }
@@ -26,11 +24,11 @@ Currently supports POLMM_NULL_Model.}
 \item{GenoFile}{(character) Path to genotype file (PLINK or BGEN format). See
 \code{\link{GRAB.ReadGeno}} for details.}
 
-\item{GenoFileIndex}{(character or NULL) Index files for genotype file. If
+\item{OutputFile}{(character) Path for saving region-based association results.}
+
+\item{GenoFileIndex}{(character or NULL) Index files for the genotype file. If
 \code{NULL} (default), uses same prefix as \code{GenoFile}. See
 \code{\link{GRAB.ReadGeno}} for details.}
-
-\item{OutputFile}{(character) Path for saving region-based association results.}
 
 \item{OutputFileIndex}{(character or NULL) Path for progress tracking file. If
 \code{NULL} (default), uses \code{paste0(OutputFile, ".index")}.}
@@ -40,16 +38,11 @@ mappings and annotation information. Tab-separated format with 2-3 columns per r
 
 \item{SparseGRMFile}{(character or NULL) Path to sparse GRM file (optional).}
 
-\item{SampleFile}{(character or NULL) Path to sample information file with header
-(optional).}
-
 \item{MaxMAFVec}{(character) Comma-separated MAF cutoffs for including variants in
 analysis (default: "0.01,0.001,0.0005").}
 
 \item{annoVec}{(character) Comma-separated annotation groups for analysis
 (default: "lof,lof:missense,lof:missense:synonymous").}
-
-\item{chrom}{(character) Chromosome-specific options (default: "LOCO=F").}
 
 \item{control}{(list or NULL) List of the following parameters:
 \itemize{
@@ -61,9 +54,7 @@ analysis (default: "0.01,0.001,0.0005").}
 \item \code{weights.beta} (numeric vector): Beta distribution parameters for variant weights (length 2). Default: c(1, 25).
 \item \code{omp_num_threads} (integer): Number of OpenMP threads for parallel computation. Default: data.table::getDTthreads().
 \item \code{min_nMarker} (integer): Minimum number of markers required for region analysis. Default: 3.
-\item \code{SPA_Cutoff} (numeric): Cutoff for SPA adjustment (POLMM only). Default: 2.
-\item \code{outputColumns} (character vector): Additional columns for marker-level output (POLMM only). Default: c("beta", "seBeta").
-\item \code{SampleLabelCol} (character): Column name in SampleFile for sample group labels (optional). Default: NULL.
+\item \code{SPA_Cutoff} (numeric): Z-score cutoff for calculating p-value by SPA. Default: 2.
 }}
 }
 \value{
@@ -99,7 +90,7 @@ tests without weights.
 \item{AltFreq, MAC, MAF}{Allele frequency, minor allele count, and minor allele frequency.}
 \item{MissingRate}{Proportion of missing genotypes.}
 \item{StatVec}{Score test statistic.}
-\item{altBetaVec, seBetaVec}{Effect size estimate and standard error (if requested in \code{control$outputColumns}).}
+\item{altBetaVec, seBetaVec}{Effect size estimate and standard error.}
 \item{pval0Vec, pval1Vec}{Unadjusted and SPA-adjusted p-values.}
 }
 
@@ -132,15 +123,12 @@ objNullFile <- system.file("extdata", "objPOLMMnull.RData", package = "GRAB")
 load(objNullFile) # load a an example object, obj.POLMM, from step 1
 
 OutputDir <- tempdir()
-OutputFile <- file.path(OutputDir, "simuRegionOutput.txt")
+OutputFile <- file.path(OutputDir, "resultPOLMMregion1.txt")
 GenoFile <- system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
 GroupFile <- system.file("extdata", "simuPLINK_RV.group", package = "GRAB")
 SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
 
-GRAB.Region(
-  objNull = obj.POLMM,
-  GenoFile = GenoFile,
-  OutputFile = OutputFile,
+GRAB.Region(obj.POLMM, GenoFile, OutputFile,
   GroupFile = GroupFile,
   SparseGRMFile = SparseGRMFile,
   MaxMAFVec = "0.01,0.005"

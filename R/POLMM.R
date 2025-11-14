@@ -19,12 +19,43 @@
 #' POLMM method is to analyze ordinal categorical data for related samples in a large-scale biobank.
 #'
 #' @details
-#' Please check \code{?GRAB.control} for the generic list of \code{control} in
-#' \code{GRAB.NullModel()} and \code{GRAB.Marker()}.
+#' \strong{Additional Control Parameters for GRAB.NullModel()}:
+#' \itemize{
+#'   \item \code{memoryChunk} (numeric, default: 2): Memory chunk size for computation.
+#'   \item \code{seed} (integer, default: -1): Random seed (-1 means no seed is set).
+#'   \item \code{tracenrun} (integer, default: 30): Number of runs for trace calculation.
+#'   \item \code{maxiter} (integer, default: 100): Maximum number of iterations for model fitting.
+#'   \item \code{tolBeta} (numeric, default: 0.001): Convergence tolerance for beta estimates.
+#'   \item \code{tolTau} (numeric, default: 0.002): Convergence tolerance for tau estimates.
+#'   \item \code{tau} (numeric, default: 0.2): Initial variance component value.
+#'   \item \code{maxiterPCG} (integer, default: 100): Maximum iterations for preconditioned conjugate gradient.
+#'   \item \code{tolPCG} (numeric, default: 1e-6): Tolerance for preconditioned conjugate gradient.
+#'   \item \code{maxiterEps} (integer, default: 100): Maximum iterations for epsilon estimation.
+#'   \item \code{tolEps} (numeric, default: 1e-10): Tolerance for epsilon estimation.
+#'   \item \code{minMafVarRatio} (numeric, default: 0.1): Minimum MAF for variance ratio estimation.
+#'   \item \code{maxMissingVarRatio} (numeric, default: 0.1): Maximum missing rate for variance ratio estimation.
+#'   \item \code{nSNPsVarRatio} (integer, default: 20): Number of SNPs used for variance ratio estimation.
+#'   \item \code{CVcutoff} (numeric, default: 0.0025): Coefficient of variation cutoff.
+#'   \item \code{stackSize} (character, default: "auto"): Stack size for parallel processing.
+#'   \item \code{grainSize} (integer, default: 1): Grain size for parallel processing.
+#'   \item \code{minMafGRM} (numeric, default: 0.01): Minimum MAF for GRM construction.
+#'   \item \code{maxMissingGRM} (numeric, default: 0.1): Maximum missing rate for GRM construction.
+#'   \item \code{showInfo} (logical, default: TRUE): Whether to show progress information.
+#'   \item \code{onlyCheckTime} (logical, default: FALSE): Whether to only check computation time.
+#'   \item \code{LOCO} (logical, default: TRUE for DenseGRM, FALSE for SparseGRM): Leave-one-chromosome-out analysis.
+#' }
 #'
-#' Additional list of \code{control} in \code{GRAB.NullModel()} function
-#' Additional list of \code{control} in \code{GRAB.Marker()} function
-#' Additional list of \code{control} in \code{GRAB.Region()} function
+#' \strong{Additional Control Parameters for GRAB.Marker()}:
+#' \itemize{
+#'   \item \code{SPA_Cutoff} (numeric, default: 2): Cutoff for saddlepoint approximation.
+#'   \item \code{outputColumns} (character vector, default: c("beta", "seBeta")): Columns to include in output. 
+#'     Optional columns: "beta", "seBeta", "zScore", "PvalueNorm", "AltFreqInGroup", "AltCountsInGroup", "nSamplesInGroup".
+#' }
+#'
+#' \strong{Additional Control Parameters for GRAB.Region()}:
+#' \itemize{
+#'   \item \code{SPA_Cutoff} (numeric, default: 2): Cutoff for saddlepoint approximation.
+#' }
 #'
 #' @return No return value, called for side effects (prints information about the POLMM method to the console).
 #'
@@ -43,7 +74,7 @@
 #' obj.POLMM <- GRAB.NullModel(
 #'   formula = OrdinalPheno ~ AGE + GENDER,
 #'   data = PhenoData,
-#'   subjData = PhenoData$IID,
+#'   subjIDcol = "IID",
 #'   method = "POLMM",
 #'   traitType = "ordinal",
 #'   GenoFile = GenoFile,
@@ -58,28 +89,25 @@
 #'
 #' ### Step 2(a): Single-variant tests using POLMM
 #' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-#' OutputFile <- file.path(tempdir(), "simuMarkerOutput.txt")
+#' OutputFile <- file.path(tempdir(), "resultPOLMMmarker.txt")
+#' outputColumns <- c(
+#'   "beta", "seBeta", "zScore",
+#'   "nSamplesInGroup", "AltCountsInGroup", "AltFreqInGroup"
+#' )
 #'
-#' GRAB.Marker(
-#'   objNull = obj.POLMM,
-#'   GenoFile = GenoFile,
-#'   OutputFile = OutputFile
+#' GRAB.Marker(obj.POLMM, GenoFile, OutputFile,
+#'   control = list(outputColumns = outputColumns)
 #' )
 #'
 #' data.table::fread(OutputFile)
 #'
 #' ### Step 2(b): Set-based tests using POLMM-GENE
 #' GenoFile <- system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
-#' OutputFile <- file.path(tempdir(), "simuRegionOutputPOLMM.txt")
+#' OutputFile <- file.path(tempdir(), "resultPOLMMregion.txt")
 #' GroupFile <- system.file("extdata", "simuPLINK_RV.group", package = "GRAB")
 #' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
 #'
-#' GRAB.Region(
-#'   objNull = obj.POLMM,
-#'   GenoFile = GenoFile,
-#'   GenoFileIndex = NULL,
-#'   OutputFile = OutputFile,
-#'   OutputFileIndex = NULL,
+#' GRAB.Region(obj.POLMM, GenoFile, OutputFile,
 #'   GroupFile = GroupFile,
 #'   SparseGRMFile = SparseGRMFile,
 #'   MaxMAFVec = "0.01,0.005"
@@ -146,7 +174,7 @@ checkControl.NullModel.POLMM <- function(
 #'
 #' @param response Ordered factor response (lowest level coded as 0 internally).
 #' @param designMat Numeric covariate matrix or data.frame (n x p).
-#' @param subjData Character vector of subject IDs aligned with rows of
+#' @param subjIDcol Character vector of subject IDs aligned with rows of
 #'   \code{designMat} and \code{response}.
 #' @param control List of POLMM options (e.g., \code{tau}, \code{LOCO},
 #'   \code{maxMissingVarRatio}, \code{minMafVarRatio}).
@@ -161,10 +189,12 @@ checkControl.NullModel.POLMM <- function(
 #'
 #' @keywords internal
 fitNullModel.POLMM <- function(
-  response, designMat, subjData, control, optionGRM,
+  response, designMat, subjIDcol, control, optionGRM,
   genoType, # "PLINK" or "BGEN"
   markerInfo # colnames: CHROM, POS, ID, REF, ALT, genoIndex
 ) {
+
+  subjData <- subjIDcol  # Use subjData internally for compatibility
 
   ######## -------------- first set up the object in C++ -------- ########
 
@@ -234,7 +264,13 @@ checkControl.Marker.POLMM <- function(control) {
     outputColumns = c("beta", "seBeta")
   )
 
-  control <- updateControl(control, default.control) # This file is in 'Util.R'
+  control <- updateControl(control, default.control)
+
+  # Validate parameters
+  if (!is.numeric(control$SPA_Cutoff) || control$SPA_Cutoff <= 0) {
+    stop("control$SPA_Cutoff should be a numeric value > 0.")
+  }
+
   return(control)
 }
 
@@ -312,15 +348,14 @@ mainMarker.POLMM <- function(
 
 checkControl.Region.POLMM <- function(control) {
   default.control <- list(
-    SPA_Cutoff = 2,
-    outputColumns = c("beta", "seBeta")
+    SPA_Cutoff = 2
   )
 
-  control <- updateControl(control, default.control) # This file is in 'Util.R'
+  control <- updateControl(control, default.control)
 
-  # check the parameter
+  # Validate parameters
   if (!is.numeric(control$SPA_Cutoff) || control$SPA_Cutoff <= 0) {
-    stop("control$SPA_Cutoff should be a numeric value > 0")
+    stop("control$SPA_Cutoff should be a numeric value > 0.")
   }
 
   return(control)
@@ -330,17 +365,10 @@ checkControl.Region.POLMM <- function(control) {
 setRegion.POLMM <- function(
   objNull,
   control,
-  chrom,
   SparseGRMFile
 ) {
-  if (chrom != "LOCO=F") {
-    .message("Chromosome: %s", chrom)
-    if (!"LOCOList" %in% names(objNull)) {
-      stop("If argument 'chrom' is not 'LOCO=FALSE', then objNull should includes element of 'LOCOList'.")
-    }
-  }
 
-  objCHR <- objNull$LOCOList[[chrom]]
+  objCHR <- objNull$LOCOList[["LOCO=F"]]
 
   # Since region-level analysis mainly focuses on rare variants, we use sparse GRM for all markers
 
@@ -381,7 +409,6 @@ mainRegion.POLMM <- function(
   genoType,
   genoIndex,
   OutputFile,
-  control,
   n,
   obj.setRegion,
   obj.mainRegionInCPP,

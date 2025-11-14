@@ -19,9 +19,17 @@
 #' in a large-scale biobank.
 #'
 #' @details
-#' Additional list of \code{control} in \code{GRAB.NullModel()} function.
+#' \strong{Additional Control Parameters for GRAB.NullModel()}:
+#' \itemize{
+#'   \item \code{range} (numeric vector, default: c(-100, 100)): Range for saddlepoint approximation grid. Must be symmetric (range\[2\] = -range\[1\]).
+#'   \item \code{length.out} (integer, default: 10000): Number of grid points for saddlepoint approximation.
+#' }
 #'
-#' Additional list of \code{control} in \code{GRAB.Marker()} function.
+#' \strong{Additional Control Parameters for GRAB.Marker()}:
+#' \itemize{
+#'   \item \code{pVal_covaAdj_Cutoff} (numeric, default: 5e-05): P-value cutoff for covariate adjustment.
+#'   \item \code{SPA_Cutoff} (numeric, default: 2): Cutoff for saddlepoint approximation.
+#' }
 #'
 #' @return No return value, called for side effects.
 #'
@@ -32,7 +40,7 @@
 #' obj.SPACox <- GRAB.NullModel(
 #'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
 #'   data = PhenoData,
-#'   subjData = IID,
+#'   subjIDcol = "IID",
 #'   method = "SPACox",
 #'   traitType = "time-to-event"
 #' )
@@ -48,7 +56,7 @@
 #' obj.SPACox <- GRAB.NullModel(
 #'   obj.coxph$residuals ~ AGE + GENDER,
 #'   data = PhenoData,
-#'   subjData = IID,
+#'   subjIDcol = "IID",
 #'   method = "SPACox",
 #'   traitType = "Residual"
 #' )
@@ -56,13 +64,8 @@
 #' # Step 2: conduct score test
 #' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' OutputDir <- tempdir()
-#' OutputFile <- file.path(OutputDir, "Results_SPACox.txt")
-#' GRAB.Marker(
-#'   objNull = obj.SPACox,
-#'   GenoFile = GenoFile,
-#'   OutputFile = OutputFile,
-#'   control = list(outputColumns = "zScore")
-#' )
+#' OutputFile <- file.path(OutputDir, "resultSPACox.txt")
+#' GRAB.Marker(obj.SPACox, GenoFile, OutputFile)
 #' data.table::fread(OutputFile)
 #'
 GRAB.SPACox <- function() {
@@ -109,7 +112,7 @@ checkControl.NullModel.SPACox <- function(
 #' @param response Either a \code{survival::Surv} object (time-to-event) or a
 #'   numeric residual vector with class \code{"Residual"}.
 #' @param designMat Numeric design matrix (n x p) of covariates.
-#' @param subjData Vector of subject IDs aligned with rows of \code{designMat}.
+#' @param subjIDcol Vector of subject IDs aligned with rows of \code{designMat}.
 #' @param control List with fields such as \code{range} and \code{length.out}
 #'   for the CGF grid.
 #' @param ... Extra arguments passed to \code{survival::coxph} when
@@ -130,10 +133,12 @@ checkControl.NullModel.SPACox <- function(
 fitNullModel.SPACox <- function(
   response,
   designMat,
-  subjData,
+  subjIDcol,
   control,
   ...
 ) {
+  subjData <- subjIDcol  # Use subjData internally for compatibility
+  
   if (!(inherits(response, "Surv") || inherits(response, "Residual"))) {
     stop("For SPAcox, the response variable should be of class 'Surv' or 'Residual'.")
   }
@@ -210,6 +215,15 @@ checkControl.Marker.SPACox <- function(control) {
 
   control <- updateControl(control, default.control)
 
+  # Validate parameters
+  if (!is.numeric(control$pVal_covaAdj_Cutoff) || control$pVal_covaAdj_Cutoff <= 0) {
+    stop("control$pVal_covaAdj_Cutoff should be a numeric value > 0.")
+  }
+
+  if (!is.numeric(control$SPA_Cutoff) || control$SPA_Cutoff <= 0) {
+    stop("control$SPA_Cutoff should be a numeric value > 0.")
+  }
+
   return(control)
 }
 
@@ -240,28 +254,19 @@ setMarker.SPACox <- function(
 
 mainMarker.SPACox <- function(
   genoType,
-  genoIndex,
-  outputColumns
+  genoIndex
 ) {
   OutList <- mainMarkerInCPP("SPACox", genoType, genoIndex)
+  
   obj.mainMarker <- data.frame(
     Marker = OutList$markerVec, # marker IDs
     Info = OutList$infoVec, # marker information: CHR:POS:REF:ALT
     AltFreq = OutList$altFreqVec, # alternative allele frequencies
     AltCounts = OutList$altCountsVec, # alternative allele counts
     MissingRate = OutList$missingRateVec, # alternative allele counts
-    Pvalue = OutList$pvalVec # marker-level p-values
+    Pvalue = OutList$pvalVec, # marker-level p-values
+    zScore = OutList$zScore
   ) 
-
-  optionalColumns <- c("zScore", "PvalueNorm", "AltFreqInGroup", "AltCountsInGroup", "nSamplesInGroup")
-  additionalColumns <- intersect(optionalColumns, outputColumns)
-
-  if (length(additionalColumns) > 0) {
-    obj.mainMarker <- cbind.data.frame(
-      obj.mainMarker,
-      as.data.frame(OutList[additionalColumns])
-    )
-  }
 
   return(obj.mainMarker)
 }

@@ -22,10 +22,10 @@
 #'   SPAGRM_NULL_Model, SAGELD_NULL_Model, or WtCoxG_NULL_Model.
 #' @param GenoFile (character) Path to genotype file. Supports PLINK (.bed/.bim/.fam) 
 #'   and BGEN formats. See \code{\link{GRAB.ReadGeno}} for format details.
+#' @param OutputFile (character) Path for saving association test results.
 #' @param GenoFileIndex (character or NULL) Index files for the genotype file. If 
 #'   \code{NULL} (default), uses the same prefix as \code{GenoFile}. See 
 #'   \code{\link{GRAB.ReadGeno}} for details.
-#' @param OutputFile (character) Path for saving association test results.
 #' @param OutputFileIndex (character or NULL) Path for progress tracking file. Enables 
 #'   analysis restart if interrupted. If \code{NULL} (default), uses 
 #'   \code{paste0(OutputFile, ".index")}.
@@ -59,48 +59,24 @@
 #'     Range: 1000 to 100000. Default: 10000.
 #'   \item \code{omp_num_threads} (integer): Number of OpenMP threads for parallel processing.
 #'     Default: \code{data.table::getDTthreads()}.
-#'   \item \code{outputColumns} (character vector or NULL): Additional columns to include in output.
-#'     Available options depend on the method. Default: NULL.
 #' }
 #'
 #' @return
 #' Results are written to \code{OutputFile}. The function returns \code{NULL} invisibly.
-#' For details on output columns and format, see the documentation for the specific method:
+#' For examples and output columns and format, see the documentation for the specific method:
 #' \code{\link{GRAB.POLMM}}, \code{\link{GRAB.SPACox}}, \code{\link{GRAB.SPAmix}},
 #' \code{\link{GRAB.SPAGRM}}, \code{\link{GRAB.SAGELD}}, or \code{\link{GRAB.WtCoxG}}.
-#'
-#' @examples
-#' objNullFile <- system.file("extdata", "objPOLMMnull.RData", package = "GRAB")
-#' load(objNullFile) # load a an example object, obj.POLMM, from step 1
-#'
-#' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-#' OutputFile <- file.path(tempdir(), "simuOUTPUT.txt")
-#' outputColumns <- c(
-#'   "beta", "seBeta", "zScore",
-#'   "nSamplesInGroup", "AltCountsInGroup", "AltFreqInGroup"
-#' )
-#'
-#' GRAB.Marker(
-#'   objNull = obj.POLMM,
-#'   GenoFile = GenoFile,
-#'   OutputFile = OutputFile,
-#'   control = list(outputColumns = outputColumns)
-#' )
-#'
-#' data.table::fread(OutputFile)
 #'
 GRAB.Marker <- function(
   objNull,
   GenoFile,
-  GenoFileIndex = NULL,
   OutputFile,
+  GenoFileIndex = NULL,
   OutputFileIndex = NULL,
   control = NULL
 ) {
 
-# ========== Validate and configure parameters ==========
-
-  supported_classes <- c(                                      # character vector
+  supported_classes <- c(
     "POLMM_NULL_Model",
     "SPACox_NULL_Model",
     "SPAmix_NULL_Model",
@@ -109,6 +85,9 @@ GRAB.Marker <- function(
     "WtCoxG_NULL_Model"
   )
 
+  # ========== Validate and configure parameters ==========
+
+  # Validate objNull
   NullModelClass <- class(objNull)                            # character
 
   if (!NullModelClass %in% supported_classes) {
@@ -122,6 +101,9 @@ GRAB.Marker <- function(
     stop("c('subjData', 'N') should be in names(objNull).")
   }
 
+  # GenoFile and GenoFileIndex will be validated in GRAB.ReadGeno()
+
+  # OutputFile and OutputFileIndex will be further validated in checkOutputFile()
   if (is.null(OutputFileIndex)) {
     OutputFileIndex <- paste0(OutputFile, ".index")
   }
@@ -142,8 +124,7 @@ GRAB.Marker <- function(
     min_maf_marker = 0.001,
     min_mac_marker = 20,
     nMarkersEachChunk = 10000,
-    omp_num_threads = data.table::getDTthreads(),
-    outputColumns = NULL
+    omp_num_threads = data.table::getDTthreads()
   )
   
   control <- updateControl(control, default.marker.control)  # list
@@ -176,7 +157,7 @@ GRAB.Marker <- function(
     stop("control$omp_num_threads should be a positive integer.")
   }
 
-  # Validate method-specific parameters
+  # Validate method-specific control parameters
   control <- switch(                                          # list
     NullModelClass,
     POLMM_NULL_Model  = checkControl.Marker.POLMM(control),
@@ -187,12 +168,16 @@ GRAB.Marker <- function(
     WtCoxG_NULL_Model = checkControl.Marker.WtCoxG(control)
   )
 
-  # Pretty-print final control list
-  .message("Control parameters for marker-level association tests:")
-  tmp <- capture.output(str(control))
-  for (line in tmp[startsWith(tmp, " $")]) {
-    message(sub("^ \\$", strrep(" ", 8), line))
-  }
+  # ========== Print all parameters ==========
+  
+  params <- list(
+    Method = NullModelClass,
+    `Genotype file` = GenoFile,
+    `Genotype index file` = ifelse(is.null(GenoFileIndex), "Default", GenoFileIndex),
+    `Output file` = OutputFile,
+    `Output index file` = ifelse(is.null(OutputFileIndex), "Default", OutputFileIndex)
+  )
+  .printParameters("Parameters for Marker-Level Tests", params, control)
 
   # ========== Check output file status and determine restart point ==========
 
@@ -301,8 +286,8 @@ GRAB.Marker <- function(
     resMarker <- switch(                                      # data.frame
       NullModelClass,
       POLMM_NULL_Model  = mainMarker.POLMM(genoType, genoIndex, control$outputColumns),
-      SPACox_NULL_Model = mainMarker.SPACox(genoType, genoIndex, control$outputColumns),
-      SPAmix_NULL_Model = mainMarker.SPAmix(genoType, genoIndex, control$outputColumns, objNull),
+      SPACox_NULL_Model = mainMarker.SPACox(genoType, genoIndex),
+      SPAmix_NULL_Model = mainMarker.SPAmix(genoType, genoIndex, objNull),
       SPAGRM_NULL_Model = mainMarker.SPAGRM(genoType, genoIndex),
       SAGELD_NULL_Model = mainMarker.SAGELD(genoType, genoIndex, objNull),
       WtCoxG_NULL_Model = mainMarker.WtCoxG(genoType, genoIndex, control, objNull)

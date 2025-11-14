@@ -368,12 +368,9 @@ setGenoInput <- function(
   SampleIDs = NULL,
   control = NULL
 ) {
-  if (missing(GenoFile)) {
-    stop("Argument 'GenoFile' is required.")
-  }
 
   if (!file.exists(GenoFile)) {
-    stop("Cannot find genotype file of ", GenoFile, ".")
+    stop("Cannot find GenoFile: ", GenoFile, ".")
   }
 
   GenoFileExt <- tools::file_ext(GenoFile)

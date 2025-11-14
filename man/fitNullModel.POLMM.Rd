@@ -7,7 +7,7 @@
 fitNullModel.POLMM(
   response,
   designMat,
-  subjData,
+  subjIDcol,
   control,
   optionGRM,
   genoType,
@@ -19,7 +19,7 @@ fitNullModel.POLMM(
 
 \item{designMat}{Numeric covariate matrix or data.frame (n x p).}
 
-\item{subjData}{Character vector of subject IDs aligned with rows of
+\item{subjIDcol}{Character vector of subject IDs aligned with rows of
 \code{designMat} and \code{response}.}
 
 \item{control}{List of POLMM options (e.g., \code{tau}, \code{LOCO},

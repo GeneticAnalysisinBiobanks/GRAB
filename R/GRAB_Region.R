@@ -23,22 +23,19 @@
 #'   Currently supports POLMM_NULL_Model.
 #' @param GenoFile (character) Path to genotype file (PLINK or BGEN format). See
 #'   \code{\link{GRAB.ReadGeno}} for details.
-#' @param GenoFileIndex (character or NULL) Index files for genotype file. If 
+#' @param OutputFile (character) Path for saving region-based association results.
+#' @param GenoFileIndex (character or NULL) Index files for the genotype file. If 
 #'   \code{NULL} (default), uses same prefix as \code{GenoFile}. See 
 #'   \code{\link{GRAB.ReadGeno}} for details.
-#' @param OutputFile (character) Path for saving region-based association results.
 #' @param OutputFileIndex (character or NULL) Path for progress tracking file. If 
 #'   \code{NULL} (default), uses \code{paste0(OutputFile, ".index")}.
 #' @param GroupFile (character) Path to region definition file specifying region-marker 
 #'   mappings and annotation information. Tab-separated format with 2-3 columns per region.
 #' @param SparseGRMFile (character or NULL) Path to sparse GRM file (optional).
-#' @param SampleFile (character or NULL) Path to sample information file with header 
-#'   (optional).
 #' @param MaxMAFVec (character) Comma-separated MAF cutoffs for including variants in 
 #'   analysis (default: "0.01,0.001,0.0005").
 #' @param annoVec (character) Comma-separated annotation groups for analysis
 #'   (default: "lof,lof:missense,lof:missense:synonymous").
-#' @param chrom (character) Chromosome-specific options (default: "LOCO=F").
 #' @param control (list or NULL) List of the following parameters:
 #'   \itemize{
 #'     \item \code{impute_method} (character): Method for imputing missing genotypes: "mean", "minor", or "drop". Default: "minor".
@@ -49,9 +46,7 @@
 #'     \item \code{weights.beta} (numeric vector): Beta distribution parameters for variant weights (length 2). Default: c(1, 25).
 #'     \item \code{omp_num_threads} (integer): Number of OpenMP threads for parallel computation. Default: data.table::getDTthreads().
 #'     \item \code{min_nMarker} (integer): Minimum number of markers required for region analysis. Default: 3.
-#'     \item \code{SPA_Cutoff} (numeric): Cutoff for SPA adjustment (POLMM only). Default: 2.
-#'     \item \code{outputColumns} (character vector): Additional columns for marker-level output (POLMM only). Default: c("beta", "seBeta").
-#'     \item \code{SampleLabelCol} (character): Column name in SampleFile for sample group labels (optional). Default: NULL.
+#'     \item \code{SPA_Cutoff} (numeric): Z-score cutoff for calculating p-value by SPA. Default: 2.
 #'   }
 #' 
 #' @return
@@ -87,7 +82,7 @@
 #'   \item{AltFreq, MAC, MAF}{Allele frequency, minor allele count, and minor allele frequency.}
 #'   \item{MissingRate}{Proportion of missing genotypes.}
 #'   \item{StatVec}{Score test statistic.}
-#'   \item{altBetaVec, seBetaVec}{Effect size estimate and standard error (if requested in \code{control$outputColumns}).}
+#'   \item{altBetaVec, seBetaVec}{Effect size estimate and standard error.}
 #'   \item{pval0Vec, pval1Vec}{Unadjusted and SPA-adjusted p-values.}
 #' }
 #'
@@ -116,15 +111,12 @@
 #' load(objNullFile) # load a an example object, obj.POLMM, from step 1
 #'
 #' OutputDir <- tempdir()
-#' OutputFile <- file.path(OutputDir, "simuRegionOutput.txt")
+#' OutputFile <- file.path(OutputDir, "resultPOLMMregion1.txt")
 #' GenoFile <- system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
 #' GroupFile <- system.file("extdata", "simuPLINK_RV.group", package = "GRAB")
 #' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
 #'
-#' GRAB.Region(
-#'   objNull = obj.POLMM,
-#'   GenoFile = GenoFile,
-#'   OutputFile = OutputFile,
+#' GRAB.Region(obj.POLMM, GenoFile, OutputFile,
 #'   GroupFile = GroupFile,
 #'   SparseGRMFile = SparseGRMFile,
 #'   MaxMAFVec = "0.01,0.005"
@@ -138,24 +130,21 @@
 GRAB.Region <- function(
   objNull,
   GenoFile,
-  GenoFileIndex = NULL,
   OutputFile,
+  GenoFileIndex = NULL,
   OutputFileIndex = NULL,
   GroupFile,
   SparseGRMFile = NULL,
-  SampleFile = NULL,
   MaxMAFVec = "0.01,0.001,0.0005",
   annoVec = "lof,lof:missense,lof:missense:synonymous",
-  chrom = "LOCO=F",
   control = NULL
 ) {
 
-# ========== Validate and configure parameters ==========
+  supported_classes <- c("POLMM_NULL_Model")
 
-  supported_classes <- c(                                      # character vector
-    "POLMM_NULL_Model"
-  )
+  # ========== Validate and configure parameters ==========
 
+  # Validate objNull
   NullModelClass <- class(objNull)                            # character
 
   if (!NullModelClass %in% supported_classes) {
@@ -171,16 +160,23 @@ GRAB.Region <- function(
 
   method <- gsub("_NULL_Model", "", NullModelClass)          # character
 
-  # Set default output index file if not provided
+  # GenoFile and GenoFileIndex will be validated in GRAB.ReadGeno()
+
+  # OutputFile and OutputFileIndex will be further validated in checkOutputFile()
   if (is.null(OutputFileIndex)) {
     OutputFileIndex <- paste0(OutputFile, ".index")
   }
 
-  # Check existence of group file
+  # Validate GroupFile
   if (!file.exists(GroupFile)) {
-    stop("cannot find the below file:\n", GroupFile)
+    stop("Cannot find GroupFile: ", GroupFile)
   }
 
+  # Validate SparseGRMFile
+  if (!is.null(SparseGRMFile) && !file.exists(SparseGRMFile)) {
+      stop("Cannot find SparseGRMFile: ", SparseGRMFile)
+  }
+  
   # Parse and validate MAF cutoffs for variant selection
   MaxMAFVec <- MaxMAFVec %>%                                  # numeric vector
     strsplit(split = ",") %>%
@@ -255,18 +251,26 @@ GRAB.Region <- function(
     stop("control$min_nMarker should be a positive integer.")
   }
 
-  # Validate method-specific parameters
+  # Validate method-specific control parameters
   control <- switch(                                          # list
     NullModelClass,
     POLMM_NULL_Model = checkControl.Region.POLMM(control)
   )
 
-  # Pretty-print final control list
-  .message("Control parameters for region-level association tests:")
-  tmp <- capture.output(str(control))
-  for (line in tmp[startsWith(tmp, " $")]) {
-    message(sub("^ \\$", strrep(" ", 8), line))
-  }
+  # ========== Print all parameters ==========
+
+  params <- list(
+    Method = NullModelClass,
+    `Genotype file` = GenoFile,
+    `Genotype index file` = ifelse(is.null(GenoFileIndex), "Default", GenoFileIndex),
+    `Output file` = OutputFile,
+    `Output index file` = ifelse(is.null(OutputFileIndex), "Default", OutputFileIndex),
+    `Group file` = GroupFile,
+    `Sparse GRM file` = ifelse(is.null(SparseGRMFile), "NULL", SparseGRMFile),
+    `Max MAF cutoffs` = paste(MaxMAFVec, collapse = ", "),
+    `Annotation groups` = paste(annoVec, collapse = ", ")
+  )
+  .printParameters("Parameters for Region-Level Tests", params, control)
 
   # ========== Check output file status and determine restart point ==========
 
@@ -284,38 +288,6 @@ GRAB.Region <- function(
   # Default: single group for all samples
   SampleLabelNumber <- rep(1, n)                              # numeric vector
   SampleLabelLevels <- NULL                                   # NULL or character vector
-
-  if (!is.null(SampleFile)) {
-    # Read sample information file with required 'IID' column
-    SampleInfo <- data.table::fread(SampleFile)              # data.frame
-    if (colnames(SampleInfo)[1] != "IID") {
-      stop("The header of the first column in 'SampleFile' should be 'IID'.")
-    }
-
-    # Validate that all subjects in null model are present in sample file
-    pos <- which(!subjData %in% SampleInfo$IID)              # integer vector
-    if (length(pos) > 0) {
-      stop(
-        "At least one subject in null model fitting not found in 'SampleFile':\n",
-        paste0(subjData[pos], collapse = "\t")
-      )
-    }
-
-    # Extract sample group labels if specified
-    if (!is.null(control$SampleLabelCol)) {
-      SampleLabelColName <- control$SampleLabelCol            # character
-      if (!SampleLabelColName %in% colnames(SampleInfo)) {
-        stop("'SampleFile' should include column: ", SampleLabelColName)
-      }
-
-      # Map sample labels to numeric codes for stratified analysis
-      posInSampleInfo <- match(subjData, SampleInfo$IID)      # integer vector
-      SampleLabel <- SampleInfo[[SampleLabelColName]][posInSampleInfo] # vector
-      SampleLabelFactor <- as.factor(SampleLabel)            # factor
-      SampleLabelNumber <- as.numeric(SampleLabelFactor)     # numeric vector
-      SampleLabelLevels <- levels(SampleLabelFactor)         # character vector
-    }
-  }
   nLabel <- max(SampleLabelNumber)                            # integer
 
   # ========== Extract region information and process variant grouping ==========
@@ -464,12 +436,8 @@ GRAB.Region <- function(
   # Set method-specific objects in C++ backend
   obj.setRegion <- switch(                                    # list
     NullModelClass,
-    POLMM_NULL_Model = setRegion.POLMM(objNull, control, chrom, SparseGRMFile)
+    POLMM_NULL_Model = setRegion.POLMM(objNull, control, SparseGRMFile)
   )
-
-  # diffTime1 <- 0                                              # numeric: timing for mainRegionInCPP
-  # diffTime2 <- 0                                              # numeric: timing for region p-value calculation
-  # diffTime3 <- 0                                              # numeric: timing for SKAT calculation
 
   # Use SKAT.Met_SKAT_Get_Pvalue instead of SKAT:::Met_SKAT_Get_Pvalue to be CRAN-compliant
   SKAT.Met_SKAT_Get_Pvalue <- getFromNamespace("Met_SKAT_Get_Pvalue", "SKAT") # function
@@ -501,10 +469,10 @@ GRAB.Region <- function(
     )
   }
 
-  # .message("Region analysis timing: mainRegionInCPP %.2f seconds, SKATO %.2f seconds", diffTime1, diffTime3)
   .message("Analysis complete! Results saved to '%s'", OutputFile)
   return(invisible(NULL))
 }
+
 
 # Internal function to analyze one region: read genotypes, filter variants,
 # compute SKAT/SKAT-O/Burden tests, apply Cauchy combination, and write results.
@@ -573,14 +541,11 @@ processOneRegion <- function(
     paste0(head(regionInfo$ID, 6), collapse = ", ")
   )
 
-  # t11 <- Sys.time()
   obj.mainRegionInCPP <- mainRegionInCPP(                   # list
     method, genoType, genoIndex, weightVec, OutputFile,
     SampleLabelNumber, nLabel,
     annoMat, annoVec
   )
-  # t12 <- Sys.time()
-  # diffTime1 <- diffTime1 + (t12 - t11)
 
   # Updated on 2022-06-24: save sum of genotype to conduct burden test and adjust p-values using SPA
   pvalBurden <- obj.mainRegionInCPP$pvalBurden              # matrix
@@ -604,7 +569,7 @@ processOneRegion <- function(
   # Perform method-specific region analysis
   obj.mainRegion <- switch(                                 # list
     NullModelClass,
-    POLMM_NULL_Model = mainRegion.POLMM(genoType, genoIndex, OutputFile, control, n,
+    POLMM_NULL_Model = mainRegion.POLMM(genoType, genoIndex, OutputFile, n,
                                          obj.setRegion, obj.mainRegionInCPP, nLabel),
     stop("Unknown NullModelClass: ", NullModelClass)
   )
@@ -648,7 +613,6 @@ processOneRegion <- function(
     filter(Info == "Ultra-Rare Variants") %>%
     select(ID, posRow)
 
-  # t21 <- Sys.time()
   pval.Region <- data.frame()                               # data.frame
   iSPA <- 1                                                 # integer
   for (anno in annoVec) {
@@ -680,7 +644,6 @@ processOneRegion <- function(
       ratioBurdenSPA <- max(VarBurdenSPA / VarBurden, 1)    # numeric
       iSPA <- iSPA + 1
 
-      # t31 <- Sys.time()
       out_SKAT_List <- with(RV.Markers, try(              # list or try-error
         SKAT.Met_SKAT_Get_Pvalue(
           Score = wStatVec[pos],
@@ -691,9 +654,6 @@ processOneRegion <- function(
         ),
         silent = TRUE
       ))
-
-      # t32 <- Sys.time()
-      # diffTime3 <- diffTime3 + (t32 - t31)
 
       if (inherits(out_SKAT_List, "try-error")) {
         Pvalue <- c(NA, NA, NA)                             # numeric vector
@@ -743,9 +703,6 @@ processOneRegion <- function(
       pval.Burden = pval.Cauchy.Burden
     )
   )
-
-  # t22 <- Sys.time()
-  # diffTime2 <- diffTime2 + (t22 - t21)
 
   # Write chunk results to output files and update progress tracking
   writeOutputFile(

@@ -8,7 +8,7 @@ GRAB.NullModel(
   formula,
   data,
   subset = NULL,
-  subjData,
+  subjIDcol,
   method,
   traitType,
   GenoFile = NULL,
@@ -19,156 +19,72 @@ GRAB.NullModel(
 )
 }
 \arguments{
-\item{formula}{Formula with response variable(s) on the left and covariates on the right.
-Do not include an intercept (added automatically). Missing values should be coded as
-\code{NA}. Other values (e.g., -9, -999) are treated as numeric.}
+\item{formula}{(formula) Formula with response variable(s) on the left and covariates
+on the right. Do not include an intercept (added automatically). Missing values
+should be coded as \code{NA}. Other values (e.g., -9, -999) are treated as numeric.
+For SPAmix with traitType "Residual", multiple response variables are supported.}
 
-\item{data}{Data frame containing variables in the formula.}
+\item{data}{(data.frame) Data frame containing response variables and covariates in the formula.}
 
-\item{subset}{Row specification for subsetting data (default: all rows).}
+\item{subset}{(vector or NULL) Row specification for subsetting subjects. Default: NULL for all.}
 
-\item{subjData}{Character vector of subject IDs matching the order in formula/data
-before subsetting.}
+\item{subjIDcol}{(character) Column name in \code{data} containing subject IDs.}
 
-\item{method}{Statistical method: "POLMM", "SPACox", "SPAmix", "SPAGRM", "SAGELD",
-or "WtCoxG".}
+\item{method}{(character) Statistical method. Supported methods:
+\itemize{
+\item "POLMM": Ordinal traits. See \code{\link{GRAB.POLMM}}.
+\item "SPACox": Time-to-event or residual traits. See \code{\link{GRAB.SPACox}}.
+\item "SPAmix": Time-to-event or residual traits. See \code{\link{GRAB.SPAmix}}.
+\item "WtCoxG": Time-to-event traits. See \code{\link{GRAB.WtCoxG}}.
+}}
 
-\item{traitType}{Trait type: "ordinal", "time-to-event", or "Residual".}
+\item{traitType}{(character) Trait type: "ordinal", "time-to-event", or "Residual".}
 
-\item{GenoFile}{Path to genotype file (PLINK or BGEN format). Required for dense GRM
-construction. See \code{\link{GRAB.ReadGeno}} for details.}
+\item{GenoFile}{(character or NULL) Path to genotype file (PLINK or BGEN format).
+Required for dense GRM construction. GRAB supports both dense and sparse GRM for
+relatedness adjustment. Dense GRM is constructed from GenoFile (PLINK/BGEN format).
+See \code{\link{GRAB.ReadGeno}} and \code{\link{getTempFilesFullGRM}} for details.}
 
-\item{GenoFileIndex}{Index files for genotype file. If \code{NULL} (default), uses
-same prefix as \code{GenoFile}. See \code{\link{GRAB.ReadGeno}} for details.}
+\item{GenoFileIndex}{(character or NULL) Index files for the genotype file. If \code{NULL}
+(default), uses same prefix as \code{GenoFile}. See \code{\link{GRAB.ReadGeno}}
+for details.}
 
-\item{SparseGRMFile}{Path to sparse GRM file. Alternative to dense GRM construction.}
+\item{SparseGRMFile}{(character or NULL) Path to sparse GRM file. Alternative to
+dense GRM construction. Pre-computed sparse GRM matrix.
+See \code{\link{getSparseGRM}} for details.}
 
-\item{control}{List of control parameters. See \code{Details} for options.}
+\item{control}{(list or NULL) List of method-specific control parameters.
+See the corresponding method documentation for available options and defaults.}
 
 \item{...}{Additional arguments for method-specific functions.}
 }
 \value{
-List object with class "\{method\}_NULL_Model" containing:
+S3 object with class "\{method\}_NULL_Model" containing:
 \describe{
-\item{\code{N}}{Sample size in analysis.}
-\item{\code{yVec}}{Phenotype vector used in analysis.}
-\item{\code{beta}}{Estimated covariate effect coefficients.}
-\item{\code{subjData}}{Subject IDs included in analysis.}
-\item{\code{sessionInfo}}{R session and package information.}
-\item{\code{Call}}{Function call with all arguments.}
-\item{\code{time}}{Analysis completion timestamp.}
-\item{\code{control}}{Control parameters used in fitting.}
-\item{\code{tau}}{Variance component estimates (for mixed models).}
-\item{\code{SparseGRM}}{Sparse GRM (if used).}
+\item{N}{Sample size in analysis.}
+\item{yVec}{Phenotype vector used in analysis.}
+\item{beta}{Estimated covariate effect coefficients.}
+\item{subjData}{Subject IDs included in analysis.}
+\item{sessionInfo}{R session and package information.}
+\item{Call}{Function call with all arguments.}
+\item{time}{Analysis completion timestamp.}
+\item{control}{Control parameters used in fitting.}
+\item{tau}{Variance component estimates (for mixed models).}
+\item{SparseGRM}{Sparse GRM (if used).}
 }
 
 This object serves as input for \code{\link{GRAB.Marker}} and \code{\link{GRAB.Region}}.
-\code{\link{GRAB.Marker}} and \code{\link{GRAB.Region}}.
+
+For method-specific examples, see:
+\itemize{
+\item POLMM method: \code{\link{GRAB.POLMM}}
+\item SPACox method: \code{\link{GRAB.SPACox}}
+\item SPAmix method: \code{\link{GRAB.SPAmix}}
+\item WtCoxG method: \code{\link{GRAB.WtCoxG}}
+}
 }
 \description{
 Estimates model parameters and residuals from a null model containing phenotypes,
 covariates, and optionally a genetic relationship matrix (GRM) for subsequent
 association testing.
-}
-\details{
-GRAB uses score testing in two steps:
-\enumerate{
-\item \code{GRAB.NullModel} fits a null model with phenotypes, covariates, and GRM.
-\item \code{\link{GRAB.Marker}} and \code{\link{GRAB.Region}} perform association testing.
-}
-
-The null model object can be saved using \code{\link{save}} and loaded with \code{\link{load}}.
-
-\strong{Supported Methods and Trait Types:}
-\itemize{
-\item \code{POLMM}: Ordinal traits. See \code{\link{GRAB.POLMM}}.
-\item \code{SPACox}: Time-to-event or residual traits. See \code{\link{GRAB.SPACox}}.
-\item \code{SPAmix}: Time-to-event or residual traits. See \code{\link{GRAB.SPAmix}}.
-\item \code{SPAGRM}: Various trait types with sparse GRM. See \code{\link{GRAB.SPAGRM}}.
-\item \code{SAGELD}: Various trait types with SAGELD algorithm. See \code{\link{GRAB.SAGELD}}.
-\item \code{WtCoxG}: Time-to-event traits. See \code{\link{GRAB.WtCoxG}}.
-}
-
-\strong{Genetic Relationship Matrix (GRM):}
-GRAB supports both dense and sparse GRM for relatedness adjustment:
-\itemize{
-\item Dense GRM: Constructed from \code{GenoFile} (PLINK/BGEN format).
-\item Sparse GRM: Pre-computed matrix from \code{SparseGRMFile}.
-}
-See \code{\link{getTempFilesFullGRM}} and \code{\link{getSparseGRM}} for details.
-\subsection{Control Parameters}{
-
-\strong{Convergence and Iteration:}
-\describe{
-\item{\code{maxiter}}{Maximum iterations for null model fitting (default: 100).}
-\item{\code{seed}}{Random seed for reproducibility (default: 12345678).}
-\item{\code{tolBeta}}{Convergence tolerance for fixed effects (default: 0.001).}
-\item{\code{showInfo}}{Show detailed fitting information (default: \code{FALSE}).}
-}
-
-\strong{Variance Components:}
-\describe{
-\item{\code{tau}}{Initial variance component value (default: 0.2).}
-\item{\code{tolTau}}{Convergence tolerance for variance components (default: 0.002).}
-}
-
-\strong{Dense GRM Parameters:}
-\describe{
-\item{\code{maxiterPCG}}{Maximum PCG iterations (default: 100).}
-\item{\code{tolEps}}{PCG convergence tolerance (default: 1e-6).}
-\item{\code{minMafVarRatio}}{Minimum MAF for variance ratio estimation (default: 0.1).}
-\item{\code{maxMissingVarRatio}}{Maximum missing rate for variance ratio (default: 0.1).}
-\item{\code{nSNPsVarRatio}}{Initial markers for variance ratio (default: 20).}
-\item{\code{CVcutoff}}{CV cutoff for variance ratio estimation (default: 0.0025).}
-\item{\code{LOCO}}{Use leave-one-chromosome-out (default: \code{TRUE}).}
-\item{\code{minMafGRM}}{Minimum MAF for GRM construction (default: 0.01).}
-\item{\code{memoryChunk}}{Memory chunk size in GB for PLINK reading (default: 2).}
-\item{\code{tracenrun}}{Trace estimator runs (default: 30).}
-\item{\code{maxMissingGRM}}{Maximum missing rate for GRM (default: 0.1).}
-}
-}
-}
-\examples{
-PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
-PhenoData <- read.table(PhenoFile, header = TRUE)
-GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-
-# Fit a null model using POLMM with a dense GRM constructed from PLINK files.
-Sys.setenv(RCPP_PARALLEL_NUM_THREADS = 2) # Limit threads for CRAN checks (optional for users).
-
-obj.POLMM <- GRAB.NullModel(
-  formula = factor(OrdinalPheno) ~ AGE + GENDER,
-  data = PhenoData,
-  subjData = IID,
-  method = "POLMM",
-  traitType = "ordinal",
-  GenoFile = GenoFile,
-  control = list(showInfo = FALSE, LOCO = FALSE, tolTau = 0.2, tolBeta = 0.1)
-)
-
-names(obj.POLMM)
-
-# Fit a null model using POLMM with a sparse GRM pre-calculated by getSparseGRM()
-SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
-
-obj.POLMM <- GRAB.NullModel(
-  formula = factor(OrdinalPheno) ~ AGE + GENDER,
-  data = PhenoData,
-  subjData = IID,
-  method = "POLMM",
-  traitType = "ordinal",
-  GenoFile = GenoFile,
-  SparseGRMFile = SparseGRMFile,
-  control = list(showInfo = FALSE, LOCO = FALSE, tolTau = 0.2, tolBeta = 0.1)
-)
-
-# Save the null model object for downstream analysis
-OutputFile <- file.path(tempdir(), "objPOLMMnull.RData")
-save(obj.POLMM, file = OutputFile)
-
-# For SPACox method, check ?GRAB.SPACox
-# For SPAmix method, check ?GRAB.SPAmix
-# For SPAGRM method, check ?GRAB.SPAGRM
-# For WtCoxG method, check ?GRAB.WtCoxG
-
 }

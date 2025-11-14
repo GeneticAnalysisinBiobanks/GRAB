@@ -7,8 +7,8 @@
 GRAB.Marker(
   objNull,
   GenoFile,
-  GenoFileIndex = NULL,
   OutputFile,
+  GenoFileIndex = NULL,
   OutputFileIndex = NULL,
   control = NULL
 )
@@ -21,11 +21,11 @@ SPAGRM_NULL_Model, SAGELD_NULL_Model, or WtCoxG_NULL_Model.}
 \item{GenoFile}{(character) Path to genotype file. Supports PLINK (.bed/.bim/.fam)
 and BGEN formats. See \code{\link{GRAB.ReadGeno}} for format details.}
 
+\item{OutputFile}{(character) Path for saving association test results.}
+
 \item{GenoFileIndex}{(character or NULL) Index files for the genotype file. If
 \code{NULL} (default), uses the same prefix as \code{GenoFile}. See
 \code{\link{GRAB.ReadGeno}} for details.}
-
-\item{OutputFile}{(character) Path for saving association test results.}
 
 \item{OutputFileIndex}{(character or NULL) Path for progress tracking file. Enables
 analysis restart if interrupted. If \code{NULL} (default), uses
@@ -61,38 +61,15 @@ Range: 0 to 100. Default: 20.
 Range: 1000 to 100000. Default: 10000.
 \item \code{omp_num_threads} (integer): Number of OpenMP threads for parallel processing.
 Default: \code{data.table::getDTthreads()}.
-\item \code{outputColumns} (character vector or NULL): Additional columns to include in output.
-Available options depend on the method. Default: NULL.
 }}
 }
 \value{
 Results are written to \code{OutputFile}. The function returns \code{NULL} invisibly.
-For details on output columns and format, see the documentation for the specific method:
+For examples and output columns and format, see the documentation for the specific method:
 \code{\link{GRAB.POLMM}}, \code{\link{GRAB.SPACox}}, \code{\link{GRAB.SPAmix}},
 \code{\link{GRAB.SPAGRM}}, \code{\link{GRAB.SAGELD}}, or \code{\link{GRAB.WtCoxG}}.
 }
 \description{
 Conducts single-marker association tests between genetic variants and phenotypes using
 various statistical methods supported by GRAB.
-}
-\examples{
-objNullFile <- system.file("extdata", "objPOLMMnull.RData", package = "GRAB")
-load(objNullFile) # load a an example object, obj.POLMM, from step 1
-
-GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-OutputFile <- file.path(tempdir(), "simuOUTPUT.txt")
-outputColumns <- c(
-  "beta", "seBeta", "zScore",
-  "nSamplesInGroup", "AltCountsInGroup", "AltFreqInGroup"
-)
-
-GRAB.Marker(
-  objNull = obj.POLMM,
-  GenoFile = GenoFile,
-  OutputFile = OutputFile,
-  control = list(outputColumns = outputColumns)
-)
-
-data.table::fread(OutputFile)
-
 }

@@ -44,12 +44,8 @@
 #' # Step 2b: perform score test
 #' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' OutputDir <- tempdir()
-#' OutputFile <- file.path(OutputDir, "SPAGRMMarkers.txt")
-#' GRAB.Marker(
-#'   objNull = obj.SPAGRM,
-#'   GenoFile = GenoFile,
-#'   OutputFile = OutputFile
-#' )
+#' OutputFile <- file.path(OutputDir, "resultSPAGRM.txt")
+#' GRAB.Marker(obj.SPAGRM, GenoFile, OutputFile)
 #' head(read.table(OutputFile, header = TRUE))
 #'
 GRAB.SPAGRM <- function() {

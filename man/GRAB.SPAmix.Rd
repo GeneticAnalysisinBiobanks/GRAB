@@ -16,7 +16,19 @@ in a large-scale biobank. SPAmix extends SPACox to support an admixture
 population or multiple populations.
 }
 \details{
-For \code{SPAmix}, the confounding factors of SNP-derived PCs are required and should be specified in \code{control}.
+For SPAmix, the confounding factors of SNP-derived PCs are required and should be specified in \code{control}.
+
+\strong{Additional Control Parameters for GRAB.NullModel()}:
+\itemize{
+\item \code{PC_columns} (character, required): Comma-separated column names of principal components (e.g., "PC1,PC2").
+\item \code{OutlierRatio} (numeric, default: 1.5): IQR multiplier for outlier detection. Outliers are defined as values outside [Q1 - r\emph{IQR, Q3 + r}IQR].
+}
+
+\strong{Additional Control Parameters for GRAB.Marker()}:
+\itemize{
+\item \code{SPA_Cutoff} (numeric, default: 2): Cutoff for saddlepoint approximation.
+\item \code{dosage_option} (character, default: "rounding_first"): Dosage handling option. Must be either "rounding_first" or "rounding_last".
+}
 }
 \examples{
 # Step 1: fit a null model
@@ -27,7 +39,7 @@ PhenoData <- data.table::fread(PhenoFile, header = TRUE)
 obj.SPAmix <- GRAB.NullModel(
   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
   data = PhenoData,
-  subjData = IID,
+  subjIDcol = "IID",
   method = "SPAmix",
   traitType = "time-to-event",
   control = list(PC_columns = "PC1,PC2")
@@ -43,7 +55,7 @@ obj.coxph <- survival::coxph(
 obj.SPAmix <- GRAB.NullModel(
   obj.coxph$residuals ~ AGE + GENDER + PC1 + PC2,
   data = PhenoData,
-  subjData = IID,
+  subjIDcol = "IID",
   method = "SPAmix",
   traitType = "Residual",
   control = list(PC_columns = "PC1,PC2")
@@ -59,7 +71,7 @@ obj.lm <- lm(QuantPheno ~ AGE + GENDER + PC1 + PC2, data = PhenoData)
 obj.SPAmix <- GRAB.NullModel(
   obj.coxph$residuals + obj.lm$residuals ~ AGE + GENDER + PC1 + PC2,
   data = PhenoData,
-  subjData = IID,
+  subjIDcol = "IID",
   method = "SPAmix",
   traitType = "Residual",
   control = list(PC_columns = "PC1,PC2")
@@ -68,13 +80,8 @@ obj.SPAmix <- GRAB.NullModel(
 # Step 2: conduct score test
 GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 OutputDir <- tempdir()
-OutputFile <- file.path(OutputDir, "Results_SPAmix.txt")
-GRAB.Marker(
-  objNull = obj.SPAmix,
-  GenoFile = GenoFile,
-  OutputFile = OutputFile,
-  control = list(outputColumns = "zScore")
-)
+OutputFile <- file.path(OutputDir, "resultSPAmix.txt")
+GRAB.Marker(obj.SPAmix, GenoFile, OutputFile)
 data.table::fread(OutputFile)
 
 }

@@ -20,7 +20,19 @@
 #' population or multiple populations.
 #'
 #' @details
-#' For ```SPAmix```, the confounding factors of SNP-derived PCs are required and should be specified in ```control```.
+#' For SPAmix, the confounding factors of SNP-derived PCs are required and should be specified in \code{control}.
+#'
+#' \strong{Additional Control Parameters for GRAB.NullModel()}:
+#' \itemize{
+#'   \item \code{PC_columns} (character, required): Comma-separated column names of principal components (e.g., "PC1,PC2").
+#'   \item \code{OutlierRatio} (numeric, default: 1.5): IQR multiplier for outlier detection. Outliers are defined as values outside \[Q1 - r*IQR, Q3 + r*IQR\].
+#' }
+#'
+#' \strong{Additional Control Parameters for GRAB.Marker()}:
+#' \itemize{
+#'   \item \code{SPA_Cutoff} (numeric, default: 2): Cutoff for saddlepoint approximation.
+#'   \item \code{dosage_option} (character, default: "rounding_first"): Dosage handling option. Must be either "rounding_first" or "rounding_last".
+#' }
 #'
 #' @return No return value, called for side effects (prints information about the SPAmix method to the console).
 #'
@@ -33,7 +45,7 @@
 #' obj.SPAmix <- GRAB.NullModel(
 #'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
 #'   data = PhenoData,
-#'   subjData = IID,
+#'   subjIDcol = "IID",
 #'   method = "SPAmix",
 #'   traitType = "time-to-event",
 #'   control = list(PC_columns = "PC1,PC2")
@@ -49,7 +61,7 @@
 #' obj.SPAmix <- GRAB.NullModel(
 #'   obj.coxph$residuals ~ AGE + GENDER + PC1 + PC2,
 #'   data = PhenoData,
-#'   subjData = IID,
+#'   subjIDcol = "IID",
 #'   method = "SPAmix",
 #'   traitType = "Residual",
 #'   control = list(PC_columns = "PC1,PC2")
@@ -65,7 +77,7 @@
 #' obj.SPAmix <- GRAB.NullModel(
 #'   obj.coxph$residuals + obj.lm$residuals ~ AGE + GENDER + PC1 + PC2,
 #'   data = PhenoData,
-#'   subjData = IID,
+#'   subjIDcol = "IID",
 #'   method = "SPAmix",
 #'   traitType = "Residual",
 #'   control = list(PC_columns = "PC1,PC2")
@@ -74,13 +86,8 @@
 #' # Step 2: conduct score test
 #' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' OutputDir <- tempdir()
-#' OutputFile <- file.path(OutputDir, "Results_SPAmix.txt")
-#' GRAB.Marker(
-#'   objNull = obj.SPAmix,
-#'   GenoFile = GenoFile,
-#'   OutputFile = OutputFile,
-#'   control = list(outputColumns = "zScore")
-#' )
+#' OutputFile <- file.path(OutputDir, "resultSPAmix.txt")
+#' GRAB.Marker(obj.SPAmix, GenoFile, OutputFile)
 #' data.table::fread(OutputFile)
 #'
 GRAB.SPAmix <- function() {
@@ -124,7 +131,7 @@ checkControl.NullModel.SPAmix <- function(
 #'   or a numeric residual vector/matrix with class \code{"Residual"}.
 #' @param designMat Numeric matrix (n x p) of covariates; must include the PC
 #'   columns specified in \code{control$PC_columns}.
-#' @param subjData Vector of subject IDs aligned with rows of \code{designMat}
+#' @param subjIDcol Vector of subject IDs aligned with rows of \code{designMat}
 #'   and \code{response}.
 #' @param control List of options. Required element: \code{PC_columns}, a
 #'   single comma-separated string of PC column names (e.g.
@@ -153,10 +160,12 @@ checkControl.NullModel.SPAmix <- function(
 fitNullModel.SPAmix <- function(
   response,
   designMat,
-  subjData,
+  subjIDcol,
   control = list(OutlierRatio = 1.5),
   ...
 ) {
+  subjData <- subjIDcol  # Use subjData internally for compatibility
+  
   if (!(inherits(response, "Surv") || inherits(response, "Residual"))) {
     stop("For SPAmix, the response variable should be of class 'Surv' or 'Residual'.")
   }
@@ -271,13 +280,15 @@ checkControl.Marker.SPAmix <- function(control) {
   default.control <- list(
     SPA_Cutoff = 2,
     dosage_option = "rounding_first"
-  ) # "rounding_first" or "rounding_last"
-  # list(SPA_Cutoff = 2,
-  #      outputColumns = c("beta", "seBeta"));
+  )
 
-  control <- updateControl(control, default.control) # This file is in 'Util.R'
+  control <- updateControl(control, default.control)
 
-  # check the parameter
+  # Validate parameters
+  if (!is.numeric(control$SPA_Cutoff) || control$SPA_Cutoff <= 0) {
+    stop("control$SPA_Cutoff should be a numeric value > 0.")
+  }
+
   if (!control$dosage_option %in% c("rounding_first", "rounding_last")) {
     stop("control$dosage_option should be 'rounding_first' or 'rounding_last'.")
   }
@@ -306,7 +317,6 @@ setMarker.SPAmix <- function(
 mainMarker.SPAmix <- function(
   genoType,
   genoIndex,
-  outputColumns,
   objNull
 ) {
   OutList <- mainMarkerInCPP("SPAmix", genoType, genoIndex)
@@ -319,18 +329,9 @@ mainMarker.SPAmix <- function(
     AltFreq = rep(OutList$altFreqVec, each = nPheno), # alternative allele frequencies
     AltCounts = rep(OutList$altCountsVec, each = nPheno), # alternative allele counts
     MissingRate = rep(OutList$missingRateVec, each = nPheno), # alternative allele counts
-    Pvalue = OutList$pvalVec # marker-level p-values
+    Pvalue = OutList$pvalVec, # marker-level p-values
+    zScore = OutList$zScore
   )
-
-  optionalColumns <- c("zScore", "PvalueNorm", "AltFreqInGroup", "AltCountsInGroup", "nSamplesInGroup")
-  additionalColumns <- intersect(optionalColumns, outputColumns)
-
-  if (length(additionalColumns) > 0) {
-    obj.mainMarker <- cbind.data.frame(
-      obj.mainMarker,
-      as.data.frame(OutList[additionalColumns])
-    )
-  }
 
   return(obj.mainMarker)
 }

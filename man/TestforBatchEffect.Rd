@@ -12,10 +12,8 @@ TestforBatchEffect(
   Geno.mtx = NULL,
   SparseGRMFile = NULL,
   RefAfFile,
-  OutputFile,
   IndicatorColumn,
-  SurvTimeColumn,
-  SampleIDColumn
+  SurvTimeColumn
 )
 }
 \arguments{
@@ -37,14 +35,10 @@ The matrix should have samples in rows and markers in columns.}
 file (header required) including at least 7 columns: \code{CHROM}, \code{POS}, \code{ID},
 \code{REF}, \code{ALT}, \code{AF_ref}, \code{AN_ref}.}
 
-\item{OutputFile}{A character string of the output file name. The output file will be a \code{txt} file.}
-
 \item{IndicatorColumn}{A character string of the column name in \code{data} that indicates
 the case-control status. The value should be 0 for controls and 1 for cases.}
 
 \item{SurvTimeColumn}{A character string of the column name in \code{data} that indicates the survival time.}
-
-\item{SampleIDColumn}{A character string of the column name in \code{data} that indicates the sample ID.}
 }
 \value{
 A dataframe of marker info and reference MAF.

@@ -10,7 +10,7 @@ using an IQR rule with adjustable multiplier and stored for SPA testing.}
 fitNullModel.SPAmix(
   response,
   designMat,
-  subjData,
+  subjIDcol,
   control = list(OutlierRatio = 1.5),
   ...
 )
@@ -22,7 +22,7 @@ or a numeric residual vector/matrix with class \code{"Residual"}.}
 \item{designMat}{Numeric matrix (n x p) of covariates; must include the PC
 columns specified in \code{control$PC_columns}.}
 
-\item{subjData}{Vector of subject IDs aligned with rows of \code{designMat}
+\item{subjIDcol}{Vector of subject IDs aligned with rows of \code{designMat}
 and \code{response}.}
 
 \item{control}{List of options. Required element: \code{PC_columns}, a

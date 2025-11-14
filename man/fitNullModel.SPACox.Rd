@@ -4,7 +4,7 @@
 \alias{fitNullModel.SPACox}
 \title{Fit SPACox null model from survival outcomes or residuals}
 \usage{
-fitNullModel.SPACox(response, designMat, subjData, control, ...)
+fitNullModel.SPACox(response, designMat, subjIDcol, control, ...)
 }
 \arguments{
 \item{response}{Either a \code{survival::Surv} object (time-to-event) or a
@@ -12,7 +12,7 @@ numeric residual vector with class \code{"Residual"}.}
 
 \item{designMat}{Numeric design matrix (n x p) of covariates.}
 
-\item{subjData}{Vector of subject IDs aligned with rows of \code{designMat}.}
+\item{subjIDcol}{Vector of subject IDs aligned with rows of \code{designMat}.}
 
 \item{control}{List with fields such as \code{range} and \code{length.out}
 for the CGF grid.}

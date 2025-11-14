@@ -5,6 +5,7 @@
 ##
 ## Functions:
 ##   .message         : Structured log messages with timestamps
+##   .printParameters : Print formatted analysis parameters with timestamp
 ##   updateControl    : Merge user control options into defaults
 ##   updateSparseGRM  : Filter/reshape sparse GRM for a subject subset
 ##   checkOutputFile  : Validate/resume output with an index file
@@ -17,6 +18,41 @@
   timestamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
   formatted_msg <- paste0("[INFO] ", timestamp, " ", sprintf(msg, ...))
   message(formatted_msg)
+}
+
+
+# Helper function to print formatted analysis parameters
+.printParameters <- function(title, params, control) {
+  timestamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+  
+  # Print title with timestamp
+  message(sprintf("[INFO] %s %s ...", timestamp, title))
+  
+  # Print each parameter with indentation
+  for (name in names(params)) {
+    value <- params[[name]]
+    if (!is.null(value)) {
+      message(sprintf("    %s: %s", name, paste(value, collapse = ", ")))
+    }
+  }
+  
+  # Print control parameters with indentation
+  if (!is.null(control) && length(control) > 0) {
+    message("    Control parameters:")
+    for (name in names(control)) {
+      value <- control[[name]]
+      # Format value based on type
+      if (is.numeric(value)) {
+        message(sprintf("      %s: %g", name, value))
+      } else if (is.logical(value)) {
+        message(sprintf("      %s: %s", name, as.character(value)))
+      } else if (is.character(value)) {
+        message(sprintf("      %s: %s", name, value))
+      } else {
+        message(sprintf("      %s: %s", name, paste(value, collapse = ", ")))
+      }
+    }
+  }
 }
 
 

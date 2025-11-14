@@ -11,7 +11,6 @@
 ##   setMarker.WtCoxG             : Initialize marker-level analysis objects.
 ##   mainMarker.WtCoxG            : Marker-level association testing.
 ##   TestforBatchEffect           : QC + parameter estimation (TPR, sigma2, weights).
-##   Batcheffect.Test             : Per-variant batch effect p-value calculation.
 ## ------------------------------------------------------------------------------
 
 #' Weighted Cox regression for genetic association analysis with case ascertainment
@@ -21,29 +20,33 @@
 #' ascertainment.
 #'
 #' @details
-#' **Two-Step Analysis Process:**
+#' \strong{Two-Step Analysis Process:}
 #' 1. **Step 1**: Fit null model and test for batch effects using sample SNPs
-#' 2. **Step 2**: Conduct genome-wide association testing with bias correction
+#' 2. **Step 2**: Conduct GWAS with allele frequencies of a reference sample
 #'
-#' **Required Additional Arguments for \code{GRAB.NullModel()}:**
+#' \strong{Additional Parameters for \code{GRAB.NullModel()}:}
 #' \itemize{
-#'   \item \code{RefAfFile}: Reference allele frequency file (CSV format) with
-#'     columns: CHROM, POS, ID, REF, ALT, AF_ref, AN_ref
-#'   \item \code{OutputFile}: Output file path for Step 1 results
-#'   \item \code{SampleIDColumn}: Column name containing sample IDs
-#'   \item \code{SurvTimeColumn}: Column name containing survival times
-#'   \item \code{IndicatorColumn}: Column name for case-control status (0/1)
+#'   \item \code{RefAfFile} (character, required): Reference allele frequency file path. 
+#'     File must contain columns: CHROM, POS, ID, REF, ALT, AF_ref, AN_ref
+#'   \item \code{SurvTimeColumn} (character, default: "SurvTime"): Column name in 
+#'     \code{data} containing survival times
+#'   \item \code{IndicatorColumn} (character, default: "Indicator"): Column name in 
+#'     \code{data} for case-control status (0 = control, 1 = case)
 #' }
 #'
-#' **Required Control Parameters for \code{GRAB.NullModel()}:**
+#' \strong{Additional Control Parameters for GRAB.NullModel()}:
 #' \itemize{
-#'   \item \code{RefPrevalence}: Population-level disease prevalence for weighting
-#'   \item \code{SNPnum}: Minimum number of SNPs for batch effect testing (default: 1e4)
+#'   \item \code{RefPrevalence} (numeric, required): Population-level disease prevalence 
+#'     for weighting. Must be in range (0, 0.5)
+#'   \item \code{OutlierRatio} (numeric, default: 1.5): IQR multiplier for outlier detection
+#'   \item \code{SNPnum} (numeric, default: 1e4): Minimum number of SNPs for batch effect testing
 #' }
 #'
-#' **Control Parameters for \code{GRAB.Marker()}:**
+#' \strong{Additional Control Parameters for GRAB.Marker()}:
 #' \itemize{
-#'   \item \code{cutoff}: P-value threshold for batch effect test method selection (default: 0.1)
+#'   \item \code{cutoff} (numeric, default: 0.1): Cutoff of batch effect test p-value for 
+#'     association testing. Variants with batch effect p-value below this cutoff
+#'     will be excluded from association testing.
 #' }
 #'
 #' @return No return value. Called for informational side effects.
@@ -60,13 +63,12 @@
 #' RefPrevalence <- 0.1 # population-level disease prevalence
 #'
 #' OutputDir <- tempdir()
-#' OutputStep1 <- file.path(OutputDir, "WtCoxG_step1_out.txt")
-#' OutputStep2 <- file.path(OutputDir, "WtCoxG_step2_out.txt")
+#' OutputFile <- file.path(OutputDir, "WtCoxG_step2_out.txt")
 #'
 #' obj.WtCoxG <- GRAB.NullModel(
 #'   formula = survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
 #'   data = PhenoData,
-#'   subjData = PhenoData$IID,
+#'   subjIDcol = "IID",
 #'   method = "WtCoxG",
 #'   traitType = "time-to-event",
 #'   GenoFile = GenoFile,
@@ -78,20 +80,15 @@
 #'     SNPnum = 1000
 #'   ),
 #'   RefAfFile = RefAfFile,
-#'   OutputFile = OutputStep1,
-#'   SampleIDColumn = "IID",
 #'   SurvTimeColumn = "SurvTime",
 #'   IndicatorColumn = "SurvEvent"
 #' )
 #'
-#' resultStep1 <- data.table::fread(OutputStep1)
-#' resultStep1[, c("CHROM", "POS", "pvalue_bat")]
+#' obj.WtCoxG$mergeGenoInfo[, c("CHROM", "POS", "pvalue_bat")]
 #'
 #' # Step2: conduct association testing
-#' GRAB.Marker(
-#'   objNull = obj.WtCoxG,
-#'   GenoFile = GenoFile,
-#'   OutputFile = OutputStep2,
+#' OutputFile <- file.path(tempdir(), "resultWtCoxG.txt")
+#' GRAB.Marker(obj.WtCoxG, GenoFile, OutputFile,
 #'   control = list(
 #'     AlleleOrder = "ref-first",
 #'     AllMarkers = TRUE,
@@ -100,8 +97,7 @@
 #'   )
 #' )
 #'
-#' resultStep2 <- data.table::fread(OutputStep2)
-#' resultStep2[, c("CHROM", "POS", "WtCoxG.noext", "WtCoxG.ext")]
+#' data.table::fread(OutputFile)[, c("CHROM", "POS", "WtCoxG.noext", "WtCoxG.ext")]
 #'
 GRAB.WtCoxG <- function() {
   .message("Using WtCoxG method - see ?GRAB.WtCoxG for details")
@@ -136,7 +132,7 @@ checkControl.NullModel.WtCoxG <- function(control, traitType) {
 #' @param response \code{survival::Surv} response (time-to-event). Residuals are
 #'   not supported here.
 #' @param designMat Numeric matrix (n x p) of covariates.
-#' @param subjData Character vector of subject IDs aligned with rows.
+#' @param subjData Character vector of subject IDs aligned with rows of \code{designMat}.
 #' @param control List with fields such as \code{RefPrevalence} (0, 0.5),
 #'   \code{OutlierRatio}, \code{SNPnum}.
 #' @param data Data frame used for optional batch-effect QC.
@@ -145,8 +141,8 @@ checkControl.NullModel.WtCoxG <- function(control, traitType) {
 #' @param GenoFileIndex Character. Path to an index file used in QC workflow.
 #' @param SparseGRMFile Character. Path to sparse GRM used in QC workflow.
 #' @param ... Optional named parameters forwarded to QC (e.g.,
-#'   \code{RefAfFile}, \code{OutputFile}, \code{IndicatorColumn},
-#'   \code{SurvTimeColumn}, \code{SampleIDColumn}).
+#'   \code{RefAfFile}, \code{IndicatorColumn},
+#'   \code{SurvTimeColumn}).
 #'
 #' @return A list of class \code{"WtCoxG_NULL_Model"} with elements:
 #'   \describe{
@@ -159,6 +155,7 @@ checkControl.NullModel.WtCoxG <- function(control, traitType) {
 #'     \item{outLierList}{Lists indices (0-based) and residual subsets for SPA.}
 #'     \item{control}{Copy of control options used.}
 #'     \item{mergeGenoInfo}{QC-derived marker metadata for batch-effect testing (if run).}
+#'     \item{subjData}{Character vector of subject IDs.}
 #'   }
 #'
 #' @keywords internal
@@ -166,6 +163,42 @@ fitNullModel.WtCoxG <- function(
   response, designMat, subjData, control, data,
   GenoFile, GenoFileIndex, SparseGRMFile, ...
 ) {
+
+  # ========== Validate additional parameters from dots ==========
+  
+  dots <- list(...)
+  
+  # Validate RefAfFile (required)
+  if (is.null(dots$RefAfFile)) {
+    stop("Argument 'RefAfFile' is required for WtCoxG method.")
+  }
+  if (!is.character(dots$RefAfFile) || length(dots$RefAfFile) != 1) {
+    stop("Argument 'RefAfFile' should be a character string (file path).")
+  }
+  if (!file.exists(dots$RefAfFile)) {
+    stop("Cannot find RefAfFile: ", dots$RefAfFile)
+  }
+  
+  # Set defaults and validate optional column name parameters
+  SurvTimeColumn <- if (is.null(dots$SurvTimeColumn)) "SurvTime" else dots$SurvTimeColumn
+  if (!is.character(SurvTimeColumn) || length(SurvTimeColumn) != 1) {
+    stop("Argument 'SurvTimeColumn' should be a character string (column name).")
+  }
+  
+  IndicatorColumn <- if (is.null(dots$IndicatorColumn)) "Indicator" else dots$IndicatorColumn
+  if (!is.character(IndicatorColumn) || length(IndicatorColumn) != 1) {
+    stop("Argument 'IndicatorColumn' should be a character string (column name).")
+  }
+  
+  # Validate that columns exist in data
+  if (!SurvTimeColumn %in% colnames(data)) {
+    stop("Column '", SurvTimeColumn, "' not found in data.")
+  }
+  if (!IndicatorColumn %in% colnames(data)) {
+    stop("Column '", IndicatorColumn, "' not found in data.")
+  }
+
+  # ========== Validate response type ==========
 
   if (!(inherits(response, "Surv") || inherits(response, "Residual"))) {
     stop("For WtCoxG, the response variable should be of class 'Surv' or 'Residual'.")
@@ -247,13 +280,13 @@ fitNullModel.WtCoxG <- function(
     RefPrevalence = RefPrevalence,
     N = length(mresid),
     outLierList = outLierList,
-    control = control
+    control = control,
+    subjData = subjData
   )
 
   class(re) <- "WtCoxG_NULL_Model"
 
-  # Test for batch effect if required parameters are provided
-  dots <- list(...)
+  # Test for batch effect using validated parameters
   re$mergeGenoInfo <- TestforBatchEffect(
     objNull = re,
     data = data,
@@ -261,10 +294,8 @@ fitNullModel.WtCoxG <- function(
     GenoFileIndex = GenoFileIndex,
     SparseGRMFile = SparseGRMFile,
     RefAfFile = dots$RefAfFile,
-    OutputFile = dots$OutputFile,
-    IndicatorColumn = dots$IndicatorColumn,
-    SurvTimeColumn = dots$SurvTimeColumn,
-    SampleIDColumn = dots$SampleIDColumn
+    IndicatorColumn = IndicatorColumn,
+    SurvTimeColumn = SurvTimeColumn
   )
 
   return(re)
@@ -272,6 +303,17 @@ fitNullModel.WtCoxG <- function(
 
 
 checkControl.Marker.WtCoxG <- function(control) {
+  default.control <- list(
+    cutoff = 0.1
+  )
+
+  control <- updateControl(control, default.control)
+
+  # Validate parameters
+  if (!is.numeric(control$cutoff) || control$cutoff < 0 || control$cutoff > 1) {
+    stop("control$cutoff should be a numeric value in [0, 1].")
+  }
+
   return(control)
 }
 
@@ -342,11 +384,9 @@ mainMarker.WtCoxG <- function(genoType, genoIndex, control, objNull) {
 #' @param RefAfFile A character string of the reference file. The reference file must be a \code{txt}
 #'   file (header required) including at least 7 columns: \code{CHROM}, \code{POS}, \code{ID},
 #'   \code{REF}, \code{ALT}, \code{AF_ref}, \code{AN_ref}.
-#' @param OutputFile A character string of the output file name. The output file will be a \code{txt} file.
 #' @param IndicatorColumn A character string of the column name in \code{data} that indicates
 #'   the case-control status. The value should be 0 for controls and 1 for cases.
 #' @param SurvTimeColumn A character string of the column name in \code{data} that indicates the survival time.
-#' @param SampleIDColumn A character string of the column name in \code{data} that indicates the sample ID.
 #' @return A dataframe of marker info and reference MAF.
 #'
 #' @keywords internal
@@ -358,10 +398,8 @@ TestforBatchEffect <- function(
   Geno.mtx = NULL, # genotype matrix, if provided, will be used instead of GenoFile
   SparseGRMFile = NULL, # sparse genotype relatedness matrix
   RefAfFile, # header should include c("CHROM", "POS", "ID", "REF", "ALT", "AF_ref","AN_ref")
-  OutputFile,
   IndicatorColumn,
-  SurvTimeColumn,
-  SampleIDColumn
+  SurvTimeColumn
 ) {
   .message("Testing for batch effect ...")
 
@@ -381,8 +419,8 @@ TestforBatchEffect <- function(
   posCol <- which(colnames(data) == SurvTimeColumn)
   colnames(data)[posCol] <- "SurvTime"
 
-  posCol <- which(colnames(data) == SampleIDColumn)
-  colnames(data)[posCol] <- "SampleID"
+  # Add SampleID column from objNull$subjData
+  data$SampleID <- objNull$subjData
 
 
   # step1: quality control--------------------------------------------------------
@@ -489,16 +527,35 @@ TestforBatchEffect <- function(
     )
 
   pvalue_bat <- lapply(seq_len(nrow(mergeGenoInfo)), function(ind) {
-    Batcheffect.Test(
-      n0 = mergeGenoInfo$n0[ind],
-      n1 = mergeGenoInfo$n1[ind],
-      n.ext = mergeGenoInfo$AN_ref[ind] / 2,
-      maf0 = mergeGenoInfo$mu0[ind],
-      maf1 = mergeGenoInfo$mu1[ind],
-      maf.ext = mergeGenoInfo$AF_ref[ind],
-      pop.prev = RefPrevalence,
-      var.ratio = mergeGenoInfo$var.ratio.w0[ind]
-    )
+    # ---- BEGIN inlined: Batcheffect.TestOneMarker ----
+    n0 <- mergeGenoInfo$n0[ind]
+    n1 <- mergeGenoInfo$n1[ind]
+    n.ext <- mergeGenoInfo$AN_ref[ind] / 2
+    maf0 <- mergeGenoInfo$mu0[ind]
+    maf1 <- mergeGenoInfo$mu1[ind]
+    maf.ext <- mergeGenoInfo$AF_ref[ind]
+    pop.prev <- RefPrevalence
+    var.ratio <- mergeGenoInfo$var.ratio.w0[ind]
+    
+    er <- n1 / (n1 + n0)
+    w0 <- (1 - pop.prev) / pop.prev / ((1 - er) / er)
+    w1 <- 1
+
+    ## weighted mean of genotypes
+    weight.maf <- sum(maf0 * w0 * n0 + maf1 * w1 * n1) / sum(w0 * n0 + w1 * n1)
+    ## MAF estimates
+    est.maf <- sum(maf0 * w0 * n0 + maf1 * w1 * n1 + maf.ext * n.ext * w0) /
+      sum(n1 * w1 + n0 * w0 + n.ext * w0)
+
+    ## variance of test statistics
+    v <- ((n1 * w1^2 + n0 * w0^2) / (2 * (n1 * w1 + n0 * w0)^2) + 1 / (2 * n.ext)) *
+      est.maf * (1 - est.maf)
+    z <- (weight.maf - maf.ext) / sqrt(v) ## standardized statistics
+    z.adj <- z / sqrt(var.ratio) ## adjusted statistics by variance ratio
+    p <- 2 * pnorm(-abs(z.adj), lower.tail = TRUE)
+    # ---- END inlined: Batcheffect.TestOneMarker ----
+    
+    return(p)
   }) %>% unlist()
 
   mergeGenoInfo <- mergeGenoInfo %>% mutate(pvalue_bat)
@@ -655,43 +712,5 @@ TestforBatchEffect <- function(
     arrange(index) %>%
     select(-index)
 
-  #### output-----------------------------------------------------------
-  data.table::fwrite(
-    mergeGenoInfo,
-    OutputFile,
-    row.names = FALSE, col.names = TRUE, quote = FALSE, sep = "\t"
-  )
   return(mergeGenoInfo)
-}
-
-
-# Called by TestforBatchEffect(), returns a numeric of batch effect p-value
-Batcheffect.Test <- function(
-  n0, # A numeric. The sample size of cases in the study cohort
-  n1, # A numeric. The sample size of controls in the study cohort
-  n.ext, # A numeric. The sample size of external datasets
-  maf0, # A numeric. The MAF of the cases.
-  maf1, # A numeric. The MAF of the controls.
-  maf.ext, # A numeric. The MAF of the external datasets.
-  pop.prev, # A numeric. The population prevalence of the disease.
-  var.ratio = 1 # A numeric. The variance ratio calculated by sparseGRM.
-) {
-  er <- n1 / (n1 + n0)
-  w0 <- (1 - pop.prev) / pop.prev / ((1 - er) / er)
-  w1 <- 1
-
-  ## weighted mean of genotypes
-  weight.maf <- sum(maf0 * w0 * n0 + maf1 * w1 * n1) / sum(w0 * n0 + w1 * n1)
-  ## MAF estimates
-  est.maf <- sum(maf0 * w0 * n0 + maf1 * w1 * n1 + maf.ext * n.ext * w0) /
-    sum(n1 * w1 + n0 * w0 + n.ext * w0)
-
-  ## variance of test statistics
-  v <- ((n1 * w1^2 + n0 * w0^2) / (2 * (n1 * w1 + n0 * w0)^2) + 1 / (2 * n.ext)) *
-    est.maf * (1 - est.maf)
-  z <- (weight.maf - maf.ext) / sqrt(v) ## standardized statistics
-  z.adj <- z / sqrt(var.ratio) ## adjusted statistics by variance ratio
-  p <- 2 * pnorm(-abs(z.adj), lower.tail = TRUE)
-
-  return(p)
 }

@@ -18,28 +18,32 @@ ascertainment.
 \strong{Two-Step Analysis Process:}
 \enumerate{
 \item \strong{Step 1}: Fit null model and test for batch effects using sample SNPs
-\item \strong{Step 2}: Conduct genome-wide association testing with bias correction
+\item \strong{Step 2}: Conduct GWAS with allele frequencies of a reference sample
 }
 
-\strong{Required Additional Arguments for \code{GRAB.NullModel()}:}
+\strong{Additional Parameters for \code{GRAB.NullModel()}:}
 \itemize{
-\item \code{RefAfFile}: Reference allele frequency file (CSV format) with
-columns: CHROM, POS, ID, REF, ALT, AF_ref, AN_ref
-\item \code{OutputFile}: Output file path for Step 1 results
-\item \code{SampleIDColumn}: Column name containing sample IDs
-\item \code{SurvTimeColumn}: Column name containing survival times
-\item \code{IndicatorColumn}: Column name for case-control status (0/1)
+\item \code{RefAfFile} (character, required): Reference allele frequency file path.
+File must contain columns: CHROM, POS, ID, REF, ALT, AF_ref, AN_ref
+\item \code{SurvTimeColumn} (character, default: "SurvTime"): Column name in
+\code{data} containing survival times
+\item \code{IndicatorColumn} (character, default: "Indicator"): Column name in
+\code{data} for case-control status (0 = control, 1 = case)
 }
 
-\strong{Required Control Parameters for \code{GRAB.NullModel()}:}
+\strong{Additional Control Parameters for GRAB.NullModel()}:
 \itemize{
-\item \code{RefPrevalence}: Population-level disease prevalence for weighting
-\item \code{SNPnum}: Minimum number of SNPs for batch effect testing (default: 1e4)
+\item \code{RefPrevalence} (numeric, required): Population-level disease prevalence
+for weighting. Must be in range (0, 0.5)
+\item \code{OutlierRatio} (numeric, default: 1.5): IQR multiplier for outlier detection
+\item \code{SNPnum} (numeric, default: 1e4): Minimum number of SNPs for batch effect testing
 }
 
-\strong{Control Parameters for \code{GRAB.Marker()}:}
+\strong{Additional Control Parameters for GRAB.Marker()}:
 \itemize{
-\item \code{cutoff}: P-value threshold for batch effect test method selection (default: 0.1)
+\item \code{cutoff} (numeric, default: 0.1): Cutoff of batch effect test p-value for
+association testing. Variants with batch effect p-value below this cutoff
+will be excluded from association testing.
 }
 }
 \examples{
@@ -53,13 +57,12 @@ RefAfFile <- system.file("extdata", "simuRefAf.txt", package = "GRAB")
 RefPrevalence <- 0.1 # population-level disease prevalence
 
 OutputDir <- tempdir()
-OutputStep1 <- file.path(OutputDir, "WtCoxG_step1_out.txt")
-OutputStep2 <- file.path(OutputDir, "WtCoxG_step2_out.txt")
+OutputFile <- file.path(OutputDir, "WtCoxG_step2_out.txt")
 
 obj.WtCoxG <- GRAB.NullModel(
   formula = survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
   data = PhenoData,
-  subjData = PhenoData$IID,
+  subjIDcol = "IID",
   method = "WtCoxG",
   traitType = "time-to-event",
   GenoFile = GenoFile,
@@ -71,20 +74,15 @@ obj.WtCoxG <- GRAB.NullModel(
     SNPnum = 1000
   ),
   RefAfFile = RefAfFile,
-  OutputFile = OutputStep1,
-  SampleIDColumn = "IID",
   SurvTimeColumn = "SurvTime",
   IndicatorColumn = "SurvEvent"
 )
 
-resultStep1 <- data.table::fread(OutputStep1)
-resultStep1[, c("CHROM", "POS", "pvalue_bat")]
+obj.WtCoxG$mergeGenoInfo[, c("CHROM", "POS", "pvalue_bat")]
 
 # Step2: conduct association testing
-GRAB.Marker(
-  objNull = obj.WtCoxG,
-  GenoFile = GenoFile,
-  OutputFile = OutputStep2,
+OutputFile <- file.path(tempdir(), "resultWtCoxG.txt")
+GRAB.Marker(obj.WtCoxG, GenoFile, OutputFile,
   control = list(
     AlleleOrder = "ref-first",
     AllMarkers = TRUE,
@@ -93,7 +91,6 @@ GRAB.Marker(
   )
 )
 
-resultStep2 <- data.table::fread(OutputStep2)
-resultStep2[, c("CHROM", "POS", "WtCoxG.noext", "WtCoxG.ext")]
+data.table::fread(OutputFile)[, c("CHROM", "POS", "WtCoxG.noext", "WtCoxG.ext")]
 
 }

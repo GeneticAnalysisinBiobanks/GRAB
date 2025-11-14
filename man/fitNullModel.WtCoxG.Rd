@@ -22,7 +22,7 @@ not supported here.}
 
 \item{designMat}{Numeric matrix (n x p) of covariates.}
 
-\item{subjData}{Character vector of subject IDs aligned with rows.}
+\item{subjData}{Character vector of subject IDs aligned with rows of \code{designMat}.}
 
 \item{control}{List with fields such as \code{RefPrevalence} (0, 0.5),
 \code{OutlierRatio}, \code{SNPnum}.}
@@ -37,8 +37,8 @@ sampling markers for QC.}
 \item{SparseGRMFile}{Character. Path to sparse GRM used in QC workflow.}
 
 \item{...}{Optional named parameters forwarded to QC (e.g.,
-\code{RefAfFile}, \code{OutputFile}, \code{IndicatorColumn},
-\code{SurvTimeColumn}, \code{SampleIDColumn}).}
+\code{RefAfFile}, \code{IndicatorColumn},
+\code{SurvTimeColumn}).}
 }
 \value{
 A list of class \code{"WtCoxG_NULL_Model"} with elements:
@@ -52,6 +52,7 @@ A list of class \code{"WtCoxG_NULL_Model"} with elements:
 \item{outLierList}{Lists indices (0-based) and residual subsets for SPA.}
 \item{control}{Copy of control options used.}
 \item{mergeGenoInfo}{QC-derived marker metadata for batch-effect testing (if run).}
+\item{subjData}{Character vector of subject IDs.}
 }
 }
 \description{

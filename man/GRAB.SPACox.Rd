@@ -15,9 +15,17 @@ SPACox method is an empirical approach to analyzing complex traits
 in a large-scale biobank.
 }
 \details{
-Additional list of \code{control} in \code{GRAB.NullModel()} function.
+\strong{Additional Control Parameters for GRAB.NullModel()}:
+\itemize{
+\item \code{range} (numeric vector, default: c(-100, 100)): Range for saddlepoint approximation grid. Must be symmetric (range[2] = -range[1]).
+\item \code{length.out} (integer, default: 10000): Number of grid points for saddlepoint approximation.
+}
 
-Additional list of \code{control} in \code{GRAB.Marker()} function.
+\strong{Additional Control Parameters for GRAB.Marker()}:
+\itemize{
+\item \code{pVal_covaAdj_Cutoff} (numeric, default: 5e-05): P-value cutoff for covariate adjustment.
+\item \code{SPA_Cutoff} (numeric, default: 2): Cutoff for saddlepoint approximation.
+}
 }
 \examples{
 # Step 1: fit a null model
@@ -26,7 +34,7 @@ PhenoData <- data.table::fread(PhenoFile, header = TRUE)
 obj.SPACox <- GRAB.NullModel(
   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
   data = PhenoData,
-  subjData = IID,
+  subjIDcol = "IID",
   method = "SPACox",
   traitType = "time-to-event"
 )
@@ -42,7 +50,7 @@ obj.coxph <- survival::coxph(
 obj.SPACox <- GRAB.NullModel(
   obj.coxph$residuals ~ AGE + GENDER,
   data = PhenoData,
-  subjData = IID,
+  subjIDcol = "IID",
   method = "SPACox",
   traitType = "Residual"
 )
@@ -50,13 +58,8 @@ obj.SPACox <- GRAB.NullModel(
 # Step 2: conduct score test
 GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 OutputDir <- tempdir()
-OutputFile <- file.path(OutputDir, "Results_SPACox.txt")
-GRAB.Marker(
-  objNull = obj.SPACox,
-  GenoFile = GenoFile,
-  OutputFile = OutputFile,
-  control = list(outputColumns = "zScore")
-)
+OutputFile <- file.path(OutputDir, "resultSPACox.txt")
+GRAB.Marker(obj.SPACox, GenoFile, OutputFile)
 data.table::fread(OutputFile)
 
 }
