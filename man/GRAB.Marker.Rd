@@ -36,7 +36,7 @@ analysis restart if interrupted. If \code{NULL} (default), uses
 \item \code{ImputeMethod} (character): Imputation method for genotype data.
 Options: "none" (default), "bestguess", "mean".
 \item \code{AlleleOrder} (character or NULL): Allele order in genotype file. Options: "ref-first",
-"alt-first", or NULL (default, uses file-type default).
+"alt-first", or NULL (default: "alt-first" for BGEN, "ref-first" for PLINK).
 \item \strong{Marker Selection:}
 \itemize{
 \item \code{AllMarkers} (logical): Set to TRUE (default) to analyze all markers. Automatically
@@ -61,13 +61,21 @@ Range: 0 to 100. Default: 20.
 Range: 1000 to 100000. Default: 10000.
 \item \code{omp_num_threads} (integer): Number of OpenMP threads for parallel processing.
 Default: \code{data.table::getDTthreads()}.
+\item \code{SPA_Cutoff} (numeric): Z-score cutoff for saddlepoint approximation. When the absolute
+value of the test statistic exceeds this cutoff, SPA is used to calculate more accurate p-values. Default: 2.
 }}
 }
 \value{
-Results are written to \code{OutputFile}. The function returns \code{NULL} invisibly.
-For examples and output columns and format, see the documentation for the specific method:
-\code{\link{GRAB.POLMM}}, \code{\link{GRAB.SPACox}}, \code{\link{GRAB.SPAmix}},
-\code{\link{GRAB.SPAGRM}}, \code{\link{GRAB.SAGELD}}, or \code{\link{GRAB.WtCoxG}}.
+The function returns \code{NULL} invisibly. Results are written to \code{OutputFile}.
+For method-specific examples and output columns and format, see:
+\itemize{
+\item POLMM method: \code{\link{GRAB.POLMM}}
+\item SPACox method: \code{\link{GRAB.SPACox}}
+\item SPAmix method: \code{\link{GRAB.SPAmix}}
+\item WtCoxG method: \code{\link{GRAB.WtCoxG}}
+\item SPAGRM method: \code{\link{GRAB.SPAGRM}}
+\item SAGELD method: \code{\link{GRAB.SAGELD}}
+}
 }
 \description{
 Conducts single-marker association tests between genetic variants and phenotypes using

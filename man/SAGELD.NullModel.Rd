@@ -86,4 +86,3 @@ and relatedness inputs. Extracts variance components, forms the penalization
 matrix, derives residual summaries, and (for SAGELD) integrates sparse GRM
 and pairwise IBD to prepare graph-based components for marker testing.
 }
-\keyword{internal}

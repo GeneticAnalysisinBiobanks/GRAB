@@ -44,4 +44,3 @@ Builds the SPAGRM null model object using subject residuals, sparse GRM,
 and pairwise IBD estimates, detecting residual outliers and constructing
 family-level graph structures for downstream saddlepoint marker tests.
 }
-\keyword{internal}

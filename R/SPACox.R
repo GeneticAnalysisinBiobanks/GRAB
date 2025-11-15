@@ -18,7 +18,45 @@
 #' (including but not limited to time-to-event trait) for unrelated samples
 #' in a large-scale biobank.
 #'
+#' @return NULL
+#'
+#' @examples
+#' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
+#' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+#' OutputFile <- file.path(tempdir(), "resultSPACox.txt")
+#' PhenoData <- data.table::fread(PhenoFile, header = TRUE)
+#' 
+#' # Step 1 option 1
+#' obj.SPACox <- GRAB.NullModel(
+#'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
+#'   data = PhenoData,
+#'   subjIDcol = "IID",
+#'   method = "SPACox",
+#'   traitType = "time-to-event"
+#' )
+#'
+#' # Step 1 option 2
+#' residuals <- survival::coxph(
+#'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
+#'   data = PhenoData,
+#'   x = TRUE
+#' )$residuals
+#'
+#' obj.SPACox <- GRAB.NullModel(
+#'   residuals ~ AGE + GENDER,
+#'   data = PhenoData,
+#'   subjIDcol = "IID",
+#'   method = "SPACox",
+#'   traitType = "Residual"
+#' )
+#' 
+#' # Step 2
+#' GRAB.Marker(obj.SPACox, GenoFile, OutputFile)
+#' 
+#' head(data.table::fread(OutputFile))
+#'
 #' @details
+#' 
 #' \strong{Additional Control Parameters for GRAB.NullModel()}:
 #' \itemize{
 #'   \item \code{range} (numeric vector, default: c(-100, 100)): Range for saddlepoint approximation grid. Must be symmetric (range\[2\] = -range\[1\]).
@@ -28,48 +66,21 @@
 #' \strong{Additional Control Parameters for GRAB.Marker()}:
 #' \itemize{
 #'   \item \code{pVal_covaAdj_Cutoff} (numeric, default: 5e-05): P-value cutoff for covariate adjustment.
-#'   \item \code{SPA_Cutoff} (numeric, default: 2): Cutoff for saddlepoint approximation.
 #' }
 #'
-#' @return No return value, called for side effects.
-#'
-#' @examples
-#' # Step 1: fit a null model
-#' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
-#' PhenoData <- data.table::fread(PhenoFile, header = TRUE)
-#' obj.SPACox <- GRAB.NullModel(
-#'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
-#'   data = PhenoData,
-#'   subjIDcol = "IID",
-#'   method = "SPACox",
-#'   traitType = "time-to-event"
-#' )
-#'
-#' # Using model residuals performs exactly the same as the above. Note that
-#' # confounding factors are still required in the right of the formula.
-#' obj.coxph <- survival::coxph(
-#'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
-#'   data = PhenoData,
-#'   x = TRUE
-#' )
-#'
-#' obj.SPACox <- GRAB.NullModel(
-#'   obj.coxph$residuals ~ AGE + GENDER,
-#'   data = PhenoData,
-#'   subjIDcol = "IID",
-#'   method = "SPACox",
-#'   traitType = "Residual"
-#' )
-#'
-#' # Step 2: conduct score test
-#' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-#' OutputDir <- tempdir()
-#' OutputFile <- file.path(OutputDir, "resultSPACox.txt")
-#' GRAB.Marker(obj.SPACox, GenoFile, OutputFile)
-#' data.table::fread(OutputFile)
+#' \strong{Output file columns}:
+#' \describe{
+#'   \item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}
+#'   \item{Info}{Marker information in format CHR:POS:REF:ALT.}
+#'   \item{AltFreq}{Alternative allele frequency in the sample.}
+#'   \item{AltCounts}{Total count of alternative alleles.}
+#'   \item{MissingRate}{Proportion of missing genotypes.}
+#'   \item{Pvalue}{P-value from the score test.}
+#'   \item{zScore}{Z-score from the score test.}
+#' }
 #'
 GRAB.SPACox <- function() {
-  .message("Using SPACox method - see ?GRAB.SPACox for details")
+  .message("?GRAB.SPACox for instructions")
 }
 
 
@@ -209,8 +220,7 @@ fitNullModel.SPACox <- function(
 
 checkControl.Marker.SPACox <- function(control) {
   default.control <- list(
-    pVal_covaAdj_Cutoff = 5e-05,
-    SPA_Cutoff = 2
+    pVal_covaAdj_Cutoff = 5e-05
   )
 
   control <- updateControl(control, default.control)
@@ -220,9 +230,7 @@ checkControl.Marker.SPACox <- function(control) {
     stop("control$pVal_covaAdj_Cutoff should be a numeric value > 0.")
   }
 
-  if (!is.numeric(control$SPA_Cutoff) || control$SPA_Cutoff <= 0) {
-    stop("control$SPA_Cutoff should be a numeric value > 0.")
-  }
+  # SPA_Cutoff validation is now in GRAB.Marker
 
   return(control)
 }
@@ -241,13 +249,13 @@ setMarker.SPACox <- function(
   SPA_Cutoff <- control$SPA_Cutoff
 
   setSPACoxobjInCPP(
-    cumul,
-    mresid,
-    XinvXX,
-    tX,
-    N,
-    pVal_covaAdj_Cutoff,
-    SPA_Cutoff
+    t_cumul = cumul,                        # matrix: Cumulative hazard matrix
+    t_mresid = mresid,                      # numeric vector: Martingale residuals
+    t_XinvXX = XinvXX,                      # matrix: (X'X)^(-1) for variance calculation
+    t_tX = tX,                              # matrix: Transpose of design matrix X
+    t_N = N,                                # integer: Sample size
+    t_pVal_covaAdj_Cutoff = pVal_covaAdj_Cutoff,  # numeric: P-value cutoff for covariate adjustment
+    t_SPA_Cutoff = SPA_Cutoff               # numeric: P-value cutoff for SPA correction
   )
 }
 
@@ -256,7 +264,11 @@ mainMarker.SPACox <- function(
   genoType,
   genoIndex
 ) {
-  OutList <- mainMarkerInCPP("SPACox", genoType, genoIndex)
+  OutList <- mainMarkerInCPP(
+    t_method = "SPACox",      # character: Statistical method name
+    t_genoType = genoType,    # character: "PLINK" or "BGEN"
+    t_genoIndex = genoIndex   # integer vector: Genotype indices to analyze
+  )
   
   obj.mainMarker <- data.frame(
     Marker = OutList$markerVec, # marker IDs

@@ -46,7 +46,8 @@
 #'     \item \code{weights.beta} (numeric vector): Beta distribution parameters for variant weights (length 2). Default: c(1, 25).
 #'     \item \code{omp_num_threads} (integer): Number of OpenMP threads for parallel computation. Default: data.table::getDTthreads().
 #'     \item \code{min_nMarker} (integer): Minimum number of markers required for region analysis. Default: 3.
-#'     \item \code{SPA_Cutoff} (numeric): Z-score cutoff for calculating p-value by SPA. Default: 2.
+#'     \item \code{SPA_Cutoff} (numeric): Z-score cutoff for saddlepoint approximation. When the absolute
+#'       value of the test statistic exceeds this cutoff, SPA is used to calculate more accurate p-values. Default: 2.
 #'   }
 #' 
 #' @return
@@ -60,72 +61,12 @@
 #'   \item \code{paste0(OutputFile, ".infoBurdenNoWeight")}: Summary statistics for burden 
 #'     tests without weights.
 #' }
-#'
-#' **Region-level results** (\code{OutputFile}) columns:
-#' \describe{
-#'   \item{Region}{Region identifier from \code{GroupFile}.}
-#'   \item{nMarkers}{Number of rare variants with MAF < cutoff and MAC >= \code{min_mac_region}.}
-#'   \item{nMarkersURV}{Number of ultra-rare variants with MAC < \code{min_mac_region}.}
-#'   \item{Anno.Type}{Annotation type from \code{GroupFile}.}
-#'   \item{MaxMAF.Cutoff}{Maximum MAF cutoff used for variant selection.}
-#'   \item{pval.SKATO}{SKAT-O test p-value.}
-#'   \item{pval.SKAT}{SKAT test p-value.}
-#'   \item{pval.Burden}{Burden test p-value.}
-#' }
-#'
-#' **Marker-level results** (\code{paste0(OutputFile, ".markerInfo")}) columns:
-#' \describe{
-#'   \item{Region}{Region identifier.}
-#'   \item{ID}{Marker identifier.}
-#'   \item{Info}{Marker status ("Rare Variants" or "Ultra-Rare Variants").}
-#'   \item{Anno}{Annotation from \code{GroupFile}.}
-#'   \item{AltFreq, MAC, MAF}{Allele frequency, minor allele count, and minor allele frequency.}
-#'   \item{MissingRate}{Proportion of missing genotypes.}
-#'   \item{StatVec}{Score test statistic.}
-#'   \item{altBetaVec, seBetaVec}{Effect size estimate and standard error.}
-#'   \item{pval0Vec, pval1Vec}{Unadjusted and SPA-adjusted p-values.}
-#' }
-#'
-#' **Other marker info** (\code{paste0(OutputFile, ".otherMarkerInfo")}) columns:
-#' \describe{
-#'   \item{Region}{Region identifier.}
-#'   \item{ID}{Marker identifier.}
-#'   \item{Annos}{Annotation from \code{GroupFile}.}
-#'   \item{Info}{Reason for exclusion (e.g., "Ultra-Rare Variants", "Missing rate > cutoff").}
-#'   \item{AltFreq, MAC, MAF, MissingRate}{Allele frequency and QC metrics.}
-#' }
-#'
-#' **Burden test summary** (\code{paste0(OutputFile, ".infoBurdenNoWeight")}) columns:
-#' \describe{
-#'   \item{region}{Region identifier.}
-#'   \item{anno}{Annotation type.}
-#'   \item{max_maf}{Maximum MAF cutoff.}
-#'   \item{sum}{Sum of genotypes.}
-#'   \item{Stat}{Score test statistic.}
-#'   \item{beta, se.beta}{Effect size estimate and standard error.}
-#'   \item{pvalue}{P-value for burden test.}
+#' 
+#' For method-specific examples and output columns and format, see:
+#' \itemize{
+#'   \item POLMM method: \code{\link{GRAB.POLMM.Region}}
 #' }
 #' 
-#' @examples
-#' objNullFile <- system.file("extdata", "objPOLMMnull.RData", package = "GRAB")
-#' load(objNullFile) # load a an example object, obj.POLMM, from step 1
-#'
-#' OutputDir <- tempdir()
-#' OutputFile <- file.path(OutputDir, "resultPOLMMregion1.txt")
-#' GenoFile <- system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
-#' GroupFile <- system.file("extdata", "simuPLINK_RV.group", package = "GRAB")
-#' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
-#'
-#' GRAB.Region(obj.POLMM, GenoFile, OutputFile,
-#'   GroupFile = GroupFile,
-#'   SparseGRMFile = SparseGRMFile,
-#'   MaxMAFVec = "0.01,0.005"
-#' )
-#'
-#' data.table::fread(OutputFile)
-#' data.table::fread(paste0(OutputFile, ".markerInfo"))
-#' data.table::fread(paste0(OutputFile, ".otherMarkerInfo"))
-#' data.table::fread(paste0(OutputFile, ".index"), sep = "\t", header = FALSE)
 #'
 GRAB.Region <- function(
   objNull,
@@ -215,7 +156,8 @@ GRAB.Region <- function(
     r.corr = c(0, 0.1^2, 0.2^2, 0.3^2, 0.4^2, 0.5^2, 0.5, 1),
     weights.beta = c(1, 25),
     omp_num_threads = data.table::getDTthreads(),
-    min_nMarker = 3
+    min_nMarker = 3,
+    SPA_Cutoff = 2
   )
 
   control <- updateControl(control, default.region.control)  # list
@@ -251,12 +193,22 @@ GRAB.Region <- function(
     stop("control$min_nMarker should be a positive integer.")
   }
 
+  if (!is.numeric(control$SPA_Cutoff) || control$SPA_Cutoff <= 0) {
+    stop("control$SPA_Cutoff should be a numeric value > 0.")
+  }
+
   # Validate method-specific control parameters
   control <- switch(                                          # list
     NullModelClass,
     POLMM_NULL_Model = checkControl.Region.POLMM(control)
   )
 
+  # ========== Check output file status and determine restart point ==========
+
+  indexChunk <- checkOutputFile(                              # integer
+    OutputFile, OutputFileIndex, "Region", nEachChunk = 1
+  )
+  
   # ========== Print all parameters ==========
 
   params <- list(
@@ -272,12 +224,6 @@ GRAB.Region <- function(
   )
   .printParameters("Parameters for Region-Level Tests", params, control)
 
-  # ========== Check output file status and determine restart point ==========
-
-  indexChunk <- checkOutputFile(                              # integer
-    OutputFile, OutputFileIndex, "Region", nEachChunk = 1
-  )
-  
   # ========== Extract subject information and process sample grouping ==========
 
   # Extract subject information from null model
@@ -422,14 +368,14 @@ GRAB.Region <- function(
   with(
     control,
     setRegion_GlobalVarsInCPP(
-      impute_method,
-      missing_cutoff,
-      max_maf_region,
-      min_mac_region,
-      max_markers_region,
-      omp_num_threads,
-      weights.beta,
-      MaxMAFVec
+      t_impute_method = impute_method,            # character: "mean", "minor", or "drop"
+      t_missing_cutoff = missing_cutoff,          # numeric: Max missing rate for variants
+      t_max_maf_region = max_maf_region,          # numeric: Max MAF for rare variants
+      t_min_mac_region = min_mac_region,          # numeric: Min MAC for variant aggregation
+      t_max_markers_region = max_markers_region,  # integer: Max markers per analysis chunk
+      t_omp_num_threads = omp_num_threads,        # integer: Number of OpenMP threads
+      t_region_weight_beta = weights.beta,        # numeric vector: Beta weighting parameters
+      t_region_max_maf_vec = MaxMAFVec            # numeric vector: MAF category thresholds
     )
   )
 
@@ -541,10 +487,16 @@ processOneRegion <- function(
     paste0(head(regionInfo$ID, 6), collapse = ", ")
   )
 
-  obj.mainRegionInCPP <- mainRegionInCPP(                   # list
-    method, genoType, genoIndex, weightVec, OutputFile,
-    SampleLabelNumber, nLabel,
-    annoMat, annoVec
+  obj.mainRegionInCPP <- mainRegionInCPP(
+    t_method = method,                     # character: Statistical method name
+    t_genoType = genoType,                 # character: "PLINK" or "BGEN"
+    t_genoIndex = genoIndex,               # integer vector: Marker indices in region
+    t_weightVec = weightVec,               # numeric vector: Variant weights for burden test
+    t_outputFile = OutputFile,             # character: Base filename for temp output
+    t_labelVec = SampleLabelNumber,        # integer vector: Individual labels for stratification
+    t_nLabel = nLabel,                     # integer: Number of distinct labels
+    t_annoMat = annoMat,                   # matrix: Annotation matrix (markers × annotations)
+    t_annoVec = annoVec                    # character vector: Annotation names
   )
 
   # Updated on 2022-06-24: save sum of genotype to conduct burden test and adjust p-values using SPA

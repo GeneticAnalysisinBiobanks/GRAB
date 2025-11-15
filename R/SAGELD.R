@@ -6,8 +6,8 @@
 ##
 ## Functions:
 ##   GRAB.SAGELD                  : Print brief method information.
-##   checkControl.SAGELD.NullModel: Validate and populate null-model controls.
 ##   SAGELD.NullModel             : Fit SAGELD/GALLOP null model and prepare objects.
+##   checkControl.SAGELD.NullModel: Validate and populate null-model controls.
 ##   checkControl.Marker.SAGELD   : Validate marker-level controls.
 ##   setMarker.SAGELD             : Initialize marker-level analysis objects.
 ##   mainMarker.SAGELD            : Run marker-level tests for SAGELD/GALLOP.
@@ -29,56 +29,6 @@
 #'
 GRAB.SAGELD <- function() {
   .message("Using SAGELD method - see ?GRAB.SAGELD for details")
-}
-
-
-checkControl.SAGELD.NullModel <- function(
-  control, # List of control parameters for null model fitting
-  ResidMat, # Matrix of residuals from the fitted model
-  SparseGRM, # Sparse genetic relationship matrix data
-  PairwiseIBD # Pairwise identity-by-descent data
-) {
-  default.control <- list(
-    MaxQuantile = 0.75,
-    MinQuantile = 0.25,
-    OutlierRatio = 1.5,
-    ControlOutlier = TRUE,
-    MaxNuminFam = 5,
-    MAF_interval = c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05,
-                     0.1, 0.2, 0.3, 0.4, 0.5)
-  )
-
-  control <- updateControl(control, default.control) # This file is in 'control.R'
-
-  if (control$MaxQuantile < control$MinQuantile) {
-    stop("MaxQuantile(default is 0.75) should be larger than MinQuantile(default is 0.25).")
-  }
-
-  if (control$OutlierRatio < 0) {
-    stop("OutlierRatio should be larger than or equal 0 (default is 1.5).")
-  }
-
-  if (any(colnames(SparseGRM) != c("ID1", "ID2", "Value"))) {
-    stop("The column names of SparseGRM should be ['ID1', 'ID2', 'Value'].")
-  }
-
-  if (any(colnames(PairwiseIBD) != c("ID1", "ID2", "pa", "pb", "pc"))) {
-    stop("The column names of PairwiseIBD should be ['ID1', 'ID2', 'pa', 'pb', 'pc'].")
-  }
-
-  SubjID.In.Resid <- ResidMat$SubjID
-  SubjID.In.GRM <- unique(c(SparseGRM$ID1, SparseGRM$ID2))
-  SubjID.In.IBD <- unique(c(PairwiseIBD$ID1, PairwiseIBD$ID2))
-
-  if (any(!SubjID.In.Resid %in% SubjID.In.GRM)) {
-    stop("At least one subject in residual matrix does not have GRM information.")
-  }
-
-  if (any(!SubjID.In.IBD %in% SubjID.In.GRM)) {
-    stop("At least one subject has IBD information but does not have GRM information.")
-  }
-
-  return(control)
 }
 
 
@@ -147,7 +97,6 @@ checkControl.SAGELD.NullModel <- function(
 #'     \item{zScoreE_cutoff}{Z-score threshold for E used in screening.}
 #'   }
 #'
-#' @keywords internal
 SAGELD.NullModel <- function(
   NullModel, # a fitted null model from lme4 or glmmTMB.
   UsedMethod = "SAGELD", # default running "SAGELD", user can also run "GALLOP" using unrelated samples.
@@ -773,6 +722,56 @@ SAGELD.NullModel <- function(
 }
 
 
+checkControl.SAGELD.NullModel <- function(
+  control, # List of control parameters for null model fitting
+  ResidMat, # Matrix of residuals from the fitted model
+  SparseGRM, # Sparse genetic relationship matrix data
+  PairwiseIBD # Pairwise identity-by-descent data
+) {
+  default.control <- list(
+    MaxQuantile = 0.75,
+    MinQuantile = 0.25,
+    OutlierRatio = 1.5,
+    ControlOutlier = TRUE,
+    MaxNuminFam = 5,
+    MAF_interval = c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05,
+                     0.1, 0.2, 0.3, 0.4, 0.5)
+  )
+
+  control <- updateControl(control, default.control) # This file is in 'control.R'
+
+  if (control$MaxQuantile < control$MinQuantile) {
+    stop("MaxQuantile(default is 0.75) should be larger than MinQuantile(default is 0.25).")
+  }
+
+  if (control$OutlierRatio < 0) {
+    stop("OutlierRatio should be larger than or equal 0 (default is 1.5).")
+  }
+
+  if (any(colnames(SparseGRM) != c("ID1", "ID2", "Value"))) {
+    stop("The column names of SparseGRM should be ['ID1', 'ID2', 'Value'].")
+  }
+
+  if (any(colnames(PairwiseIBD) != c("ID1", "ID2", "pa", "pb", "pc"))) {
+    stop("The column names of PairwiseIBD should be ['ID1', 'ID2', 'pa', 'pb', 'pc'].")
+  }
+
+  SubjID.In.Resid <- ResidMat$SubjID
+  SubjID.In.GRM <- unique(c(SparseGRM$ID1, SparseGRM$ID2))
+  SubjID.In.IBD <- unique(c(PairwiseIBD$ID1, PairwiseIBD$ID2))
+
+  if (any(!SubjID.In.Resid %in% SubjID.In.GRM)) {
+    stop("At least one subject in residual matrix does not have GRM information.")
+  }
+
+  if (any(!SubjID.In.IBD %in% SubjID.In.GRM)) {
+    stop("At least one subject has IBD information but does not have GRM information.")
+  }
+
+  return(control)
+}
+
+
 checkControl.Marker.SAGELD <- function(control, MAF_interval) {
 
   # Validate MAF interval constraints specific to SAGELD
@@ -801,47 +800,47 @@ setMarker.SAGELD <- function(
   control
 ) {
   setSAGELDobjInCPP(
-    objNull$Method,
-    objNull$XTs,
-    objNull$SS,
-    objNull$AtS,
-    objNull$Q,
-    objNull$A21,
-    objNull$TTs,
-    objNull$Tys,
-    objNull$sol,
-    objNull$blups,
-    objNull$sig,
-    objNull$Resid,
-    objNull$Resid_G,
-    objNull$Resid_GxE,
-    objNull$Resid_E,
-    objNull$Resid.unrelated.outliers,
-    objNull$Resid.unrelated.outliers_G,
-    objNull$Resid.unrelated.outliers_GxE,
-    objNull$sum_R_nonOutlier,
-    objNull$sum_R_nonOutlier_G,
-    objNull$sum_R_nonOutlier_GxE,
-    objNull$R_GRM_R,
-    objNull$R_GRM_R_G,
-    objNull$R_GRM_R_GxE,
-    objNull$R_GRM_R_G_GxE,
-    objNull$R_GRM_R_E,
-    objNull$R_GRM_R_nonOutlier,
-    objNull$R_GRM_R_nonOutlier_G,
-    objNull$R_GRM_R_nonOutlier_GxE,
-    objNull$R_GRM_R_nonOutlier_G_GxE,
-    objNull$R_GRM_R_TwoSubjOutlier,
-    objNull$R_GRM_R_TwoSubjOutlier_G,
-    objNull$R_GRM_R_TwoSubjOutlier_GxE,
-    objNull$R_GRM_R_TwoSubjOutlier_G_GxE,
-    objNull$TwoSubj_list,
-    objNull$ThreeSubj_list,
-    objNull$MAF_interval,
-    objNull$zScoreE_cutoff,
-    control$SPA_Cutoff,
-    control$zeta,
-    control$tol
+    t_Method = objNull$Method,                            # character: Analysis method name
+    t_XTs = objNull$XTs,                                  # matrix: Transpose of design matrix X
+    t_SS = objNull$SS,                                    # matrix: S'*S for efficient computation
+    t_AtS = objNull$AtS,                                  # matrix: A'*S matrix
+    t_Q = objNull$Q,                                      # matrix: Q from QR decomposition
+    t_A21 = objNull$A21,                                  # matrix: A21 component
+    t_TTs = objNull$TTs,                                  # matrix: T'*T matrix
+    t_Tys = objNull$Tys,                                  # matrix: T'*y matrix
+    t_sol = objNull$sol,                                  # numeric vector: Solution from null model
+    t_blups = objNull$blups,                              # numeric vector: Best linear unbiased predictors
+    t_sig = objNull$sig,                                  # numeric: Residual variance estimate
+    t_resid = objNull$Resid,                              # numeric vector: Main effect residuals
+    t_resid_G = objNull$Resid_G,                          # numeric vector: Genetic effect residuals
+    t_resid_GxE = objNull$Resid_GxE,                      # numeric vector: GxE interaction residuals
+    t_resid_E = objNull$Resid_E,                          # numeric vector: Environmental effect residuals
+    t_resid_unrelated_outliers = objNull$Resid.unrelated.outliers,  # numeric vector: Outlier residuals (main)
+    t_resid_unrelated_outliers_G = objNull$Resid.unrelated.outliers_G,  # numeric vector: Outlier residuals (G)
+    t_resid_unrelated_outliers_GxE = objNull$Resid.unrelated.outliers_GxE,  # numeric vector: Outlier residuals (GxE)
+    t_sum_R_nonOutlier = objNull$sum_R_nonOutlier,        # numeric: Sum of non-outlier residuals (main)
+    t_sum_R_nonOutlier_G = objNull$sum_R_nonOutlier_G,    # numeric: Sum of non-outlier residuals (G)
+    t_sum_R_nonOutlier_GxE = objNull$sum_R_nonOutlier_GxE,  # numeric: Sum of non-outlier residuals (GxE)
+    t_R_GRM_R = objNull$R_GRM_R,                          # numeric: Full R'*GRM*R (main)
+    t_R_GRM_R_G = objNull$R_GRM_R_G,                      # numeric: Full R'*GRM*R (genetic)
+    t_R_GRM_R_GxE = objNull$R_GRM_R_GxE,                  # numeric: Full R'*GRM*R (GxE)
+    t_R_GRM_R_G_GxE = objNull$R_GRM_R_G_GxE,              # numeric: Cross quadratic form (G-GxE)
+    t_R_GRM_R_E = objNull$R_GRM_R_E,                      # numeric: Full R'*GRM*R (environmental)
+    t_R_GRM_R_nonOutlier = objNull$R_GRM_R_nonOutlier,    # numeric: Non-outlier R'*GRM*R (main)
+    t_R_GRM_R_nonOutlier_G = objNull$R_GRM_R_nonOutlier_G,  # numeric: Non-outlier R'*GRM*R (G)
+    t_R_GRM_R_nonOutlier_GxE = objNull$R_GRM_R_nonOutlier_GxE,  # numeric: Non-outlier R'*GRM*R (GxE)
+    t_R_GRM_R_nonOutlier_G_GxE = objNull$R_GRM_R_nonOutlier_G_GxE,  # numeric: Non-outlier cross quad form
+    t_R_GRM_R_TwoSubjOutlier = objNull$R_GRM_R_TwoSubjOutlier,  # numeric: Two-subj outlier quad form (main)
+    t_R_GRM_R_TwoSubjOutlier_G = objNull$R_GRM_R_TwoSubjOutlier_G,  # numeric: Two-subj outlier quad form (G)
+    t_R_GRM_R_TwoSubjOutlier_GxE = objNull$R_GRM_R_TwoSubjOutlier_GxE,  # numeric: Two-subj outlier quad form (GxE)
+    t_R_GRM_R_TwoSubjOutlier_G_GxE = objNull$R_GRM_R_TwoSubjOutlier_G_GxE,  # numeric: Two-subj outlier cross quad
+    t_TwoSubj_list = objNull$TwoSubj_list,                # list: Two-subject outlier pair information
+    t_ThreeSubj_list = objNull$ThreeSubj_list,            # list: Three-subject outlier combinations
+    t_MAF_interval = objNull$MAF_interval,                # numeric vector: MAF intervals
+    t_zScoreE_cutoff = objNull$zScoreE_cutoff,            # numeric: Z-score cutoff for environmental effects
+    t_SPA_Cutoff = control$SPA_Cutoff,                    # numeric: P-value cutoff for SPA
+    t_zeta = control$zeta,                                # numeric: SPA moment approximation parameter
+    t_tol = control$tol                                   # numeric: Numerical tolerance for convergence
   )
 }
 
@@ -851,7 +850,11 @@ mainMarker.SAGELD <- function(
   genoIndex,
   objNull
 ) {
-  OutList <- mainMarkerInCPP("SAGELD", genoType, genoIndex)
+  OutList <- mainMarkerInCPP(
+    t_method = "SAGELD",      # character: Statistical method name
+    t_genoType = genoType,    # character: "PLINK" or "BGEN"
+    t_genoIndex = genoIndex   # integer vector: Genotype indices to analyze
+  )
 
   Method <- objNull$Method
 

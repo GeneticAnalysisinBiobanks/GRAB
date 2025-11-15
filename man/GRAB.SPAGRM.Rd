@@ -6,25 +6,41 @@
 \usage{
 GRAB.SPAGRM()
 }
-\value{
-No return value, called for side effects (prints information about
-the SPAGRM method to the console).
-}
 \description{
 SPA\if{html}{\out{<sub>}}GRM\if{html}{\out{</sub>}} method is an empirical approach to analyzing complex traits
 (including but not limited to longitudinal trait) for related samples in a
 large-scale biobank. SPA\if{html}{\out{<sub>}}GRM\if{html}{\out{</sub>}} extends SPACox to support related populations.
 }
 \details{
-Additional list of \code{control} in \code{SPAGRM.NullModel()} function.
+See \code{\link{SPAGRM.NullModel}} for detailed instructions
+on pre-calculate genotype distributions.
 
-Additional list of \code{control} in \code{GRAB.Marker()} function.
+\strong{Additional Control Parameters for GRAB.Marker()}:
+\itemize{
+\item \code{zeta} (numeric, default: 0): SPA moment approximation parameter.
+\item \code{tol} (numeric, default: 1e-5): Numerical tolerance for SPA convergence.
+}
+
+\strong{Marker-level results} (\code{OutputFile}) columns:
+\describe{
+\item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}
+\item{Info}{Marker information in format CHR:POS:REF:ALT.}
+\item{AltFreq}{Alternative allele frequency in the sample.}
+\item{AltCounts}{Total count of alternative alleles.}
+\item{MissingRate}{Proportion of missing genotypes.}
+\item{zScore}{Z-score from the score test.}
+\item{Pvalue}{P-value from the score test.}
+\item{hwepval}{Hardy-Weinberg equilibrium p-value.}
+}
 }
 \examples{
-# Step 2a: process model residuals
 ResidMatFile <- system.file("extdata", "ResidMat.txt", package = "GRAB")
 SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
 PairwiseIBDFile <- system.file("extdata", "PairwiseIBD.txt", package = "GRAB")
+GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+OutputFile <- file.path(tempdir(), "resultSPAGRM.txt")
+
+# Step 2a: pre-calculate genotype distributions
 obj.SPAGRM <- SPAGRM.NullModel(
   ResidMatFile = ResidMatFile,
   SparseGRMFile = SparseGRMFile,
@@ -32,11 +48,9 @@ obj.SPAGRM <- SPAGRM.NullModel(
   control = list(ControlOutlier = FALSE)
 )
 
-# Step 2b: perform score test
-GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-OutputDir <- tempdir()
-OutputFile <- file.path(OutputDir, "resultSPAGRM.txt")
+# Step 2b: perform association tests
 GRAB.Marker(obj.SPAGRM, GenoFile, OutputFile)
-head(read.table(OutputFile, header = TRUE))
+
+head(data.table::fread(OutputFile))
 
 }

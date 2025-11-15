@@ -34,21 +34,20 @@ BEGIN_RCPP
 END_RCPP
 }
 // getDenseGRMInCPP
-arma::vec getDenseGRMInCPP(arma::vec t_bVec, std::string t_excludeChr, int t_grainSize);
-RcppExport SEXP _GRAB_getDenseGRMInCPP(SEXP t_bVecSEXP, SEXP t_excludeChrSEXP, SEXP t_grainSizeSEXP) {
+arma::vec getDenseGRMInCPP(arma::vec t_bVec, int t_grainSize);
+RcppExport SEXP _GRAB_getDenseGRMInCPP(SEXP t_bVecSEXP, SEXP t_grainSizeSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::vec >::type t_bVec(t_bVecSEXP);
-    Rcpp::traits::input_parameter< std::string >::type t_excludeChr(t_excludeChrSEXP);
     Rcpp::traits::input_parameter< int >::type t_grainSize(t_grainSizeSEXP);
-    rcpp_result_gen = Rcpp::wrap(getDenseGRMInCPP(t_bVec, t_excludeChr, t_grainSize));
+    rcpp_result_gen = Rcpp::wrap(getDenseGRMInCPP(t_bVec, t_grainSize));
     return rcpp_result_gen;
 END_RCPP
 }
 // setMarker_GlobalVarsInCPP
-void setMarker_GlobalVarsInCPP(std::string t_impute_method, double t_missing_cutoff, double t_min_maf_marker, double t_min_mac_marker, unsigned int t_omp_num_threads, arma::uvec t_group, bool t_ifOutGroup, unsigned int t_nGroup);
-RcppExport SEXP _GRAB_setMarker_GlobalVarsInCPP(SEXP t_impute_methodSEXP, SEXP t_missing_cutoffSEXP, SEXP t_min_maf_markerSEXP, SEXP t_min_mac_markerSEXP, SEXP t_omp_num_threadsSEXP, SEXP t_groupSEXP, SEXP t_ifOutGroupSEXP, SEXP t_nGroupSEXP) {
+void setMarker_GlobalVarsInCPP(std::string t_impute_method, double t_missing_cutoff, double t_min_maf_marker, double t_min_mac_marker, unsigned int t_omp_num_threads);
+RcppExport SEXP _GRAB_setMarker_GlobalVarsInCPP(SEXP t_impute_methodSEXP, SEXP t_missing_cutoffSEXP, SEXP t_min_maf_markerSEXP, SEXP t_min_mac_markerSEXP, SEXP t_omp_num_threadsSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< std::string >::type t_impute_method(t_impute_methodSEXP);
@@ -56,10 +55,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type t_min_maf_marker(t_min_maf_markerSEXP);
     Rcpp::traits::input_parameter< double >::type t_min_mac_marker(t_min_mac_markerSEXP);
     Rcpp::traits::input_parameter< unsigned int >::type t_omp_num_threads(t_omp_num_threadsSEXP);
-    Rcpp::traits::input_parameter< arma::uvec >::type t_group(t_groupSEXP);
-    Rcpp::traits::input_parameter< bool >::type t_ifOutGroup(t_ifOutGroupSEXP);
-    Rcpp::traits::input_parameter< unsigned int >::type t_nGroup(t_nGroupSEXP);
-    setMarker_GlobalVarsInCPP(t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_omp_num_threads, t_group, t_ifOutGroup, t_nGroup);
+    setMarker_GlobalVarsInCPP(t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_omp_num_threads);
     return R_NilValue;
 END_RCPP
 }
@@ -243,8 +239,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // setPOLMMobjInCPP
-void setPOLMMobjInCPP(arma::mat t_muMat, arma::mat t_iRMat, arma::mat t_Cova, arma::uvec t_yVec, double t_tau, bool t_printPCGInfo, double t_tolPCG, int t_maxiterPCG, double t_varRatio, double t_SPA_cutoff, bool t_flagSparseGRM);
-RcppExport SEXP _GRAB_setPOLMMobjInCPP(SEXP t_muMatSEXP, SEXP t_iRMatSEXP, SEXP t_CovaSEXP, SEXP t_yVecSEXP, SEXP t_tauSEXP, SEXP t_printPCGInfoSEXP, SEXP t_tolPCGSEXP, SEXP t_maxiterPCGSEXP, SEXP t_varRatioSEXP, SEXP t_SPA_cutoffSEXP, SEXP t_flagSparseGRMSEXP) {
+void setPOLMMobjInCPP(arma::mat t_muMat, arma::mat t_iRMat, arma::mat t_Cova, arma::uvec t_yVec, double t_tau, bool t_printPCGInfo, double t_tolPCG, int t_maxiterPCG, double t_varRatio, double t_SPA_cutoff, bool t_flagSparseGRM, arma::uvec t_group, bool t_ifOutGroup, unsigned int t_nGroup);
+RcppExport SEXP _GRAB_setPOLMMobjInCPP(SEXP t_muMatSEXP, SEXP t_iRMatSEXP, SEXP t_CovaSEXP, SEXP t_yVecSEXP, SEXP t_tauSEXP, SEXP t_printPCGInfoSEXP, SEXP t_tolPCGSEXP, SEXP t_maxiterPCGSEXP, SEXP t_varRatioSEXP, SEXP t_SPA_cutoffSEXP, SEXP t_flagSparseGRMSEXP, SEXP t_groupSEXP, SEXP t_ifOutGroupSEXP, SEXP t_nGroupSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::mat >::type t_muMat(t_muMatSEXP);
@@ -258,7 +254,10 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type t_varRatio(t_varRatioSEXP);
     Rcpp::traits::input_parameter< double >::type t_SPA_cutoff(t_SPA_cutoffSEXP);
     Rcpp::traits::input_parameter< bool >::type t_flagSparseGRM(t_flagSparseGRMSEXP);
-    setPOLMMobjInCPP(t_muMat, t_iRMat, t_Cova, t_yVec, t_tau, t_printPCGInfo, t_tolPCG, t_maxiterPCG, t_varRatio, t_SPA_cutoff, t_flagSparseGRM);
+    Rcpp::traits::input_parameter< arma::uvec >::type t_group(t_groupSEXP);
+    Rcpp::traits::input_parameter< bool >::type t_ifOutGroup(t_ifOutGroupSEXP);
+    Rcpp::traits::input_parameter< unsigned int >::type t_nGroup(t_nGroupSEXP);
+    setPOLMMobjInCPP(t_muMat, t_iRMat, t_Cova, t_yVec, t_tau, t_printPCGInfo, t_tolPCG, t_maxiterPCG, t_varRatio, t_SPA_cutoff, t_flagSparseGRM, t_group, t_ifOutGroup, t_nGroup);
     return R_NilValue;
 END_RCPP
 }
@@ -410,8 +409,8 @@ END_RCPP
 static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setSparseGRMInCPP", (DL_FUNC) &_GRAB_setSparseGRMInCPP, 1},
     {"_GRAB_setDenseGRMInCPP", (DL_FUNC) &_GRAB_setDenseGRMInCPP, 3},
-    {"_GRAB_getDenseGRMInCPP", (DL_FUNC) &_GRAB_getDenseGRMInCPP, 3},
-    {"_GRAB_setMarker_GlobalVarsInCPP", (DL_FUNC) &_GRAB_setMarker_GlobalVarsInCPP, 8},
+    {"_GRAB_getDenseGRMInCPP", (DL_FUNC) &_GRAB_getDenseGRMInCPP, 2},
+    {"_GRAB_setMarker_GlobalVarsInCPP", (DL_FUNC) &_GRAB_setMarker_GlobalVarsInCPP, 5},
     {"_GRAB_setRegion_GlobalVarsInCPP", (DL_FUNC) &_GRAB_setRegion_GlobalVarsInCPP, 8},
     {"_GRAB_mainMarkerInCPP", (DL_FUNC) &_GRAB_mainMarkerInCPP, 3},
     {"_GRAB_mainRegionURVInCPP", (DL_FUNC) &_GRAB_mainRegionURVInCPP, 4},
@@ -425,7 +424,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setPLINKobjInCPP", (DL_FUNC) &_GRAB_setPLINKobjInCPP, 5},
     {"_GRAB_setBGENobjInCPP", (DL_FUNC) &_GRAB_setBGENobjInCPP, 7},
     {"_GRAB_closeGenoInputInCPP", (DL_FUNC) &_GRAB_closeGenoInputInCPP, 1},
-    {"_GRAB_setPOLMMobjInCPP", (DL_FUNC) &_GRAB_setPOLMMobjInCPP, 11},
+    {"_GRAB_setPOLMMobjInCPP", (DL_FUNC) &_GRAB_setPOLMMobjInCPP, 14},
     {"_GRAB_setPOLMMobjInCPP_NULL", (DL_FUNC) &_GRAB_setPOLMMobjInCPP_NULL, 10},
     {"_GRAB_setSPAGRMobjInCPP", (DL_FUNC) &_GRAB_setSPAGRMobjInCPP, 12},
     {"_GRAB_setSAGELDobjInCPP", (DL_FUNC) &_GRAB_setSAGELDobjInCPP, 41},

@@ -19,29 +19,15 @@
 #' in a large-scale biobank. SPAmix extends SPACox to support an admixture
 #' population or multiple populations.
 #'
-#' @details
-#' For SPAmix, the confounding factors of SNP-derived PCs are required and should be specified in \code{control}.
-#'
-#' \strong{Additional Control Parameters for GRAB.NullModel()}:
-#' \itemize{
-#'   \item \code{PC_columns} (character, required): Comma-separated column names of principal components (e.g., "PC1,PC2").
-#'   \item \code{OutlierRatio} (numeric, default: 1.5): IQR multiplier for outlier detection. Outliers are defined as values outside \[Q1 - r*IQR, Q3 + r*IQR\].
-#' }
-#'
-#' \strong{Additional Control Parameters for GRAB.Marker()}:
-#' \itemize{
-#'   \item \code{SPA_Cutoff} (numeric, default: 2): Cutoff for saddlepoint approximation.
-#'   \item \code{dosage_option} (character, default: "rounding_first"): Dosage handling option. Must be either "rounding_first" or "rounding_last".
-#' }
-#'
-#' @return No return value, called for side effects (prints information about the SPAmix method to the console).
+#' @return NULL
 #'
 #' @examples
-#' # Step 1: fit a null model
 #' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
+#' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+#' OutputFile <- file.path(tempdir(), "resultSPAmix.txt")
 #' PhenoData <- data.table::fread(PhenoFile, header = TRUE)
-#'
-#' # Users can directly specify a time-to-event trait to analyze
+#' 
+#' # Step 1 option 1
 #' obj.SPAmix <- GRAB.NullModel(
 #'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
 #'   data = PhenoData,
@@ -51,15 +37,14 @@
 #'   control = list(PC_columns = "PC1,PC2")
 #' )
 #'
-#' # Using model residuals performs exactly the same as the above. Note that
-#' # confounding factors are still required in the right of the formula.
-#' obj.coxph <- survival::coxph(
+#' # Step 1 option 2
+#' residuals <- survival::coxph(
 #'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
 #'   data = PhenoData
-#' )
+#' )$residuals
 #'
 #' obj.SPAmix <- GRAB.NullModel(
-#'   obj.coxph$residuals ~ AGE + GENDER + PC1 + PC2,
+#'   residuals ~ AGE + GENDER + PC1 + PC2,
 #'   data = PhenoData,
 #'   subjIDcol = "IID",
 #'   method = "SPAmix",
@@ -67,15 +52,16 @@
 #'   control = list(PC_columns = "PC1,PC2")
 #' )
 #'
-#' # SPAmix also supports multiple residuals as below
-#' obj.coxph <- survival::coxph(
+#' # Step 1 option 2: analyze multiple traits at once
+#' res_cox <- survival::coxph(
 #'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
 #'   data = PhenoData
-#' )
-#' obj.lm <- lm(QuantPheno ~ AGE + GENDER + PC1 + PC2, data = PhenoData)
+#' )$residuals
+#' 
+#' res_lm <- lm(QuantPheno ~ AGE + GENDER + PC1 + PC2, data = PhenoData)$residuals
 #'
 #' obj.SPAmix <- GRAB.NullModel(
-#'   obj.coxph$residuals + obj.lm$residuals ~ AGE + GENDER + PC1 + PC2,
+#'   res_cox + res_lm ~ AGE + GENDER + PC1 + PC2,
 #'   data = PhenoData,
 #'   subjIDcol = "IID",
 #'   method = "SPAmix",
@@ -83,15 +69,38 @@
 #'   control = list(PC_columns = "PC1,PC2")
 #' )
 #'
-#' # Step 2: conduct score test
-#' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-#' OutputDir <- tempdir()
-#' OutputFile <- file.path(OutputDir, "resultSPAmix.txt")
+#' # Step 2
 #' GRAB.Marker(obj.SPAmix, GenoFile, OutputFile)
-#' data.table::fread(OutputFile)
+#' 
+#' head(data.table::fread(OutputFile))
+#'
+#' @details
+#' 
+#' \strong{Additional Control Parameters for GRAB.NullModel()}:
+#' \itemize{
+#'   \item \code{PC_columns} (character, required): Comma-separated column names of principal components (e.g., "PC1,PC2").
+#'   \item \code{OutlierRatio} (numeric, default: 1.5): IQR multiplier for outlier detection. Outliers are defined as values outside \[Q1 - r*IQR, Q3 + r*IQR\].
+#' }
+#'
+#' \strong{Additional Control Parameters for GRAB.Marker()}:
+#' \itemize{
+#'   \item \code{dosage_option} (character, default: "rounding_first"): Dosage handling option. Must be either "rounding_first" or "rounding_last".
+#' }
+#'
+#' \strong{Output file columns}:
+#' \describe{
+#'   \item{Pheno}{Phenotype identifier (for multi-trait analysis).}
+#'   \item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}
+#'   \item{Info}{Marker information in format CHR:POS:REF:ALT.}
+#'   \item{AltFreq}{Alternative allele frequency in the sample.}
+#'   \item{AltCounts}{Total count of alternative alleles.}
+#'   \item{MissingRate}{Proportion of missing genotypes.}
+#'   \item{Pvalue}{P-value from the score test.}
+#'   \item{zScore}{Z-score from the score test.}
+#' }
 #'
 GRAB.SPAmix <- function() {
-  .message("Using SPAmix method - see ?GRAB.SPAmix for details")
+  .message("?GRAB.SPAmix for instructions")
 }
 
 
@@ -278,16 +287,12 @@ fitNullModel.SPAmix <- function(
 
 checkControl.Marker.SPAmix <- function(control) {
   default.control <- list(
-    SPA_Cutoff = 2,
     dosage_option = "rounding_first"
   )
 
   control <- updateControl(control, default.control)
 
-  # Validate parameters
-  if (!is.numeric(control$SPA_Cutoff) || control$SPA_Cutoff <= 0) {
-    stop("control$SPA_Cutoff should be a numeric value > 0.")
-  }
+  # SPA_Cutoff validation is now in GRAB.Marker
 
   if (!control$dosage_option %in% c("rounding_first", "rounding_last")) {
     stop("control$dosage_option should be 'rounding_first' or 'rounding_last'.")
@@ -302,13 +307,11 @@ setMarker.SPAmix <- function(
   control
 ) {
   setSPAmixobjInCPP(
-    objNull$resid,
-    # objNull$X.invXX,
-    # objNull$tX,
-    objNull$PCs,
-    objNull$N,
-    control$SPA_Cutoff,
-    objNull$outLierList
+    t_resid = objNull$resid,              # matrix: Residuals from null model
+    t_PCs = objNull$PCs,                  # matrix: Principal components for population structure
+    t_N = objNull$N,                      # integer: Sample size
+    t_SPA_Cutoff = control$SPA_Cutoff,    # numeric: P-value cutoff for SPA correction
+    t_outlierList = objNull$outLierList   # list: Outlier subject information
   )
 
 }
@@ -319,7 +322,11 @@ mainMarker.SPAmix <- function(
   genoIndex,
   objNull
 ) {
-  OutList <- mainMarkerInCPP("SPAmix", genoType, genoIndex)
+  OutList <- mainMarkerInCPP(
+    t_method = "SPAmix",      # character: Statistical method name
+    t_genoType = genoType,    # character: "PLINK" or "BGEN"
+    t_genoIndex = genoIndex   # integer vector: Genotype indices to analyze
+  )
 
   nPheno <- objNull$nPheno
   obj.mainMarker <- data.frame(

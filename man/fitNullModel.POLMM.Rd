@@ -22,7 +22,7 @@ fitNullModel.POLMM(
 \item{subjIDcol}{Character vector of subject IDs aligned with rows of
 \code{designMat} and \code{response}.}
 
-\item{control}{List of POLMM options (e.g., \code{tau}, \code{LOCO},
+\item{control}{List of POLMM options (e.g., \code{tau},
 \code{maxMissingVarRatio}, \code{minMafVarRatio}).}
 
 \item{optionGRM}{Character, either \code{"DenseGRM"} or \code{"SparseGRM"}.}

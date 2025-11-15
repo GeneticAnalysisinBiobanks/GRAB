@@ -19,11 +19,40 @@
 #' approach for genome-wide time-to-event analyses in study cohorts with case
 #' ascertainment.
 #'
-#' @details
-#' \strong{Two-Step Analysis Process:}
-#' 1. **Step 1**: Fit null model and test for batch effects using sample SNPs
-#' 2. **Step 2**: Conduct GWAS with allele frequencies of a reference sample
+#' @return NULL
 #'
+#' @examples
+#' # Step 1: fit null model and test batch effect
+#' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
+#' PhenoData <- data.table::fread(PhenoFile, header = TRUE)
+#' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
+#' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+#' RefAfFile <- system.file("extdata", "simuRefAf.txt", package = "GRAB")
+#' OutputFile <- file.path(tempdir(), "resultWtCoxG.txt")
+#'
+#' obj.WtCoxG <- GRAB.NullModel(
+#'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
+#'   data = PhenoData,
+#'   subjIDcol = "IID",
+#'   method = "WtCoxG",
+#'   traitType = "time-to-event",
+#'   GenoFile = GenoFile,
+#'   SparseGRMFile = SparseGRMFile,
+#'   control = list(RefPrevalence = 0.01, SNPnum = 1e3),
+#'   RefAfFile = RefAfFile,
+#'   SurvTimeColumn = "SurvTime",
+#'   IndicatorColumn = "SurvEvent"
+#' )
+#'
+#' # Step2
+#' GRAB.Marker(obj.WtCoxG, GenoFile, OutputFile,
+#'   control = list(nMarkersEachChunk = 5000)
+#' )
+#'
+#' head(data.table::fread(OutputFile))
+#'
+#' @details
+#' 
 #' \strong{Additional Parameters for \code{GRAB.NullModel()}:}
 #' \itemize{
 #'   \item \code{RefAfFile} (character, required): Reference allele frequency file path. 
@@ -49,58 +78,20 @@
 #'     will be excluded from association testing.
 #' }
 #'
-#' @return No return value. Called for informational side effects.
-#'
-#'
-#' @examples
-#' # Step0&1: fit a null model and estimate parameters according to batch effect p-values
-#' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
-#' PhenoData <- data.table::fread(PhenoFile, header = TRUE)
-#' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
-#'
-#' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-#' RefAfFile <- system.file("extdata", "simuRefAf.txt", package = "GRAB")
-#' RefPrevalence <- 0.1 # population-level disease prevalence
-#'
-#' OutputDir <- tempdir()
-#' OutputFile <- file.path(OutputDir, "WtCoxG_step2_out.txt")
-#'
-#' obj.WtCoxG <- GRAB.NullModel(
-#'   formula = survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
-#'   data = PhenoData,
-#'   subjIDcol = "IID",
-#'   method = "WtCoxG",
-#'   traitType = "time-to-event",
-#'   GenoFile = GenoFile,
-#'   SparseGRMFile = SparseGRMFile,
-#'   control = list(
-#'     AlleleOrder = "ref-first",
-#'     AllMarkers = TRUE,
-#'     RefPrevalence = RefPrevalence,
-#'     SNPnum = 1000
-#'   ),
-#'   RefAfFile = RefAfFile,
-#'   SurvTimeColumn = "SurvTime",
-#'   IndicatorColumn = "SurvEvent"
-#' )
-#'
-#' obj.WtCoxG$mergeGenoInfo[, c("CHROM", "POS", "pvalue_bat")]
-#'
-#' # Step2: conduct association testing
-#' OutputFile <- file.path(tempdir(), "resultWtCoxG.txt")
-#' GRAB.Marker(obj.WtCoxG, GenoFile, OutputFile,
-#'   control = list(
-#'     AlleleOrder = "ref-first",
-#'     AllMarkers = TRUE,
-#'     cutoff = 0.1,
-#'     nMarkersEachChunk = 5000
-#'   )
-#' )
-#'
-#' data.table::fread(OutputFile)[, c("CHROM", "POS", "WtCoxG.noext", "WtCoxG.ext")]
+#' \strong{Output file columns}:
+#' \describe{
+#'   \item{Pheno}{Phenotype identifier (for multi-trait analysis).}
+#'   \item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}
+#'   \item{Info}{Marker information in format CHR:POS:REF:ALT.}
+#'   \item{AltFreq}{Alternative allele frequency in the sample.}
+#'   \item{AltCounts}{Total count of alternative alleles.}
+#'   \item{MissingRate}{Proportion of missing genotypes.}
+#'   \item{Pvalue}{P-value from the score test.}
+#'   \item{zScore}{Z-score from the score test.}
+#' }
 #'
 GRAB.WtCoxG <- function() {
-  .message("Using WtCoxG method - see ?GRAB.WtCoxG for details")
+  .message("?GRAB.WtCoxG for instructions")
 }
 
 
@@ -322,10 +313,10 @@ setMarker.WtCoxG <- function(objNull, control) {
   ImputeMethod <- if (is.null(control$ImputeMethod)) "none" else control$ImputeMethod
   cutoff <- if (is.null(control$cutoff)) 0.1 else control$cutoff
   setWtCoxGobjInCPP(
-    objNull$mresid,
-    objNull$weight,
-    ImputeMethod,
-    cutoff
+    t_mresid = objNull$mresid,              # numeric vector: Martingale residuals from Cox model
+    t_weight = objNull$weight,              # numeric vector: Weight vector for analysis
+    t_imputeMethod = ImputeMethod,          # character: Imputation method ("none", "mean", "minor")
+    t_cutoff = cutoff                       # numeric: P-value cutoff for SPA correction
   )
 }
 
@@ -357,9 +348,15 @@ mainMarker.WtCoxG <- function(genoType, genoIndex, control, objNull) {
   }
 
   # Update WtCoxG object with marker information for current chunk
-  updateWtCoxGChunkInCPP(mergeGenoInfo_subset)
+  updateWtCoxGChunkInCPP(
+    t_mergeGenoInfo_subset = mergeGenoInfo_subset  # data.frame: Subset of merged genotype info
+  )
 
-  OutList <- mainMarkerInCPP("WtCoxG", genoType, genoIndex)
+  OutList <- mainMarkerInCPP(
+    t_method = "WtCoxG",      # character: Statistical method name
+    t_genoType = genoType,    # character: "PLINK" or "BGEN"
+    t_genoIndex = genoIndex   # integer vector: Genotype indices to analyze
+  )
   pvals <- data.frame(matrix(OutList$pvalVec, ncol = 2, byrow = TRUE))
   colnames(pvals) <- c("WtCoxG.ext", "WtCoxG.noext")
 

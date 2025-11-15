@@ -333,7 +333,9 @@ GRAB.NullModel <- function(
       KinMatListR <- updateSparseGRM(SparseGRM, subjData)    # list
 
       # Configure sparse GRM in C++ backend (see Main.cpp)
-      setSparseGRMInCPP(KinMatListR)
+      setSparseGRMInCPP(
+        t_KinMatListR = KinMatListR  # list: Sparse kinship matrix (locations, values, nSubj)
+      )
     } else {
       .message("Using dense GRM for null model")
       if (genoList$genoType != "PLINK") {
@@ -348,14 +350,18 @@ GRAB.NullModel <- function(
       maxMissingGRM <- 0.1                                    # numeric
 
       # Configure dense GRM in C++ backend (see Main.cpp)
-      setDenseGRMInCPP(memoryChunk, minMafGRM, maxMissingGRM)
+      setDenseGRMInCPP(
+        t_memoryChunk = memoryChunk,      # numeric: Memory allocation in GB for GRM
+        t_minMafGRM = minMafGRM,          # numeric: Min MAF for variants in GRM
+        t_maxMissingGRM = maxMissingGRM   # numeric: Max missing rate for GRM variants
+      )
     }
 
     genoType <- genoList$genoType                             # character: "PLINK" or "BGEN"
     markerInfo <- genoList$markerInfo                         # data.frame
   }
 
-  # ========== Fit the null model ==========
+  # ========== Fit null model ==========
 
   objNull <- switch(method,
     POLMM = fitNullModel.POLMM(response, designMat, subjData, control,
@@ -366,7 +372,7 @@ GRAB.NullModel <- function(
                                  GenoFile, GenoFileIndex, SparseGRMFile, ...)
   )
 
-  # Add metadata to the fitted null model object for downstream analysis
+  # Add metadata to the null model object
   objNull$subjData <- subjData
   objNull$Call <- match.call()
   objNull$sessionInfo <- sessionInfo()

@@ -9,12 +9,12 @@ setDenseGRMInCPP <- function(t_memoryChunk, t_minMafGRM, t_maxMissingGRM) {
     invisible(.Call(`_GRAB_setDenseGRMInCPP`, t_memoryChunk, t_minMafGRM, t_maxMissingGRM))
 }
 
-getDenseGRMInCPP <- function(t_bVec, t_excludeChr, t_grainSize) {
-    .Call(`_GRAB_getDenseGRMInCPP`, t_bVec, t_excludeChr, t_grainSize)
+getDenseGRMInCPP <- function(t_bVec, t_grainSize) {
+    .Call(`_GRAB_getDenseGRMInCPP`, t_bVec, t_grainSize)
 }
 
-setMarker_GlobalVarsInCPP <- function(t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_omp_num_threads, t_group, t_ifOutGroup, t_nGroup) {
-    invisible(.Call(`_GRAB_setMarker_GlobalVarsInCPP`, t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_omp_num_threads, t_group, t_ifOutGroup, t_nGroup))
+setMarker_GlobalVarsInCPP <- function(t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_omp_num_threads) {
+    invisible(.Call(`_GRAB_setMarker_GlobalVarsInCPP`, t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_omp_num_threads))
 }
 
 setRegion_GlobalVarsInCPP <- function(t_impute_method, t_missing_cutoff, t_max_maf_region, t_min_mac_region, t_max_markers_region, t_omp_num_threads, t_region_weight_beta, t_region_max_maf_vec) {
@@ -69,8 +69,8 @@ closeGenoInputInCPP <- function(t_genoType) {
     invisible(.Call(`_GRAB_closeGenoInputInCPP`, t_genoType))
 }
 
-setPOLMMobjInCPP <- function(t_muMat, t_iRMat, t_Cova, t_yVec, t_tau, t_printPCGInfo, t_tolPCG, t_maxiterPCG, t_varRatio, t_SPA_cutoff, t_flagSparseGRM) {
-    invisible(.Call(`_GRAB_setPOLMMobjInCPP`, t_muMat, t_iRMat, t_Cova, t_yVec, t_tau, t_printPCGInfo, t_tolPCG, t_maxiterPCG, t_varRatio, t_SPA_cutoff, t_flagSparseGRM))
+setPOLMMobjInCPP <- function(t_muMat, t_iRMat, t_Cova, t_yVec, t_tau, t_printPCGInfo, t_tolPCG, t_maxiterPCG, t_varRatio, t_SPA_cutoff, t_flagSparseGRM, t_group, t_ifOutGroup, t_nGroup) {
+    invisible(.Call(`_GRAB_setPOLMMobjInCPP`, t_muMat, t_iRMat, t_Cova, t_yVec, t_tau, t_printPCGInfo, t_tolPCG, t_maxiterPCG, t_varRatio, t_SPA_cutoff, t_flagSparseGRM, t_group, t_ifOutGroup, t_nGroup))
 }
 
 setPOLMMobjInCPP_NULL <- function(t_flagSparseGRM, t_Cova, t_yVec, t_beta, t_bVec, t_eps, t_tau, t_SPmatR, t_controlList, GenoMat) {

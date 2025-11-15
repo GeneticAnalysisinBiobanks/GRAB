@@ -39,7 +39,7 @@
 #'   \item \code{ImputeMethod}: Imputation method for genotype data.
 #'     Options: "none" (default), "bestguess", "mean".
 #'   \item \code{AlleleOrder}: Allele order in genotype file. Options: "ref-first",
-#'     "alt-first", or NULL (default, uses file-type default).
+#'     "alt-first", or NULL (default: "alt-first" for BGEN, "ref-first" for PLINK).
 #'   \item \strong{Marker Selection:}
 #'   \itemize{
 #'     \item \code{AllMarkers}: Set to TRUE (default) to analyze all markers.
@@ -161,10 +161,20 @@ GRAB.ReadGeno <- function(
   # Read genotype data using appropriate C++ backend
   if (sparse == TRUE) {
     # Use sparse matrix representation for memory efficiency
-    GenoMat <- getSpGenoInCPP(genoType, markerInfo, n, control$ImputeMethod) # check Main.cpp
+    GenoMat <- getSpGenoInCPP(
+      t_genoType = genoType,              # character: "PLINK" or "BGEN"
+      t_markerInfo = markerInfo,          # data.frame: Marker info with genoIndex column
+      n = n,                              # integer: Number of samples
+      t_imputeMethod = control$ImputeMethod # character: Imputation method ("mean", "minor", "drop")
+    )
   } else {
     # Use standard dense matrix representation
-    GenoMat <- getGenoInCPP(genoType, markerInfo, n, control$ImputeMethod) # check Main.cpp
+    GenoMat <- getGenoInCPP(
+      t_genoType = genoType,              # character: "PLINK" or "BGEN"
+      t_markerInfo = markerInfo,          # data.frame: Marker info with genoIndex column
+      n = n,                              # integer: Number of samples
+      t_imputeMethod = control$ImputeMethod # character: Imputation method ("mean", "minor", "drop")
+    )
   }
 
   # Set matrix row and column names for identification
@@ -176,7 +186,9 @@ GRAB.ReadGeno <- function(
 
   .message("Genotype reading completed")
 
-  closeGenoInputInCPP(genoType) # "PLINK" or "BGEN"
+  closeGenoInputInCPP(
+    t_genoType = genoType  # character: "PLINK" or "BGEN" - file type to close
+  )
 
   return(list(
     GenoMat = GenoMat,
@@ -201,7 +213,7 @@ GRAB.ReadGeno <- function(
 #'   \item \code{ImputeMethod}: Imputation method for genotype data.
 #'     Options: "none" (default), "bestguess", "mean".
 #'   \item \code{AlleleOrder}: Allele order in genotype file. Options: "ref-first",
-#'     "alt-first", or NULL (default, uses file-type default).
+#'     "alt-first", or NULL (default: "alt-first" for BGEN, "ref-first" for PLINK).
 #'   \item \strong{Marker Selection:}
 #'   \itemize{
 #'     \item \code{AllMarkers}: Set to TRUE (default) to analyze all markers.
@@ -257,7 +269,11 @@ GRAB.getGenoInfo <- function(
 
   .message("Getting genotype info: %d subjects, %d markers", n, m)
 
-  GenoInfoMat <- getGenoInfoInCPP(genoType, markerInfo, control$ImputeMethod) # check Main.cpp
+  GenoInfoMat <- getGenoInfoInCPP(
+    t_genoType = genoType,              # character: "PLINK" or "BGEN"
+    t_markerInfo = markerInfo,          # data.frame: Marker info with genoIndex column
+    t_imputeMethod = control$ImputeMethod # character: Imputation method (not used for info)
+  )
   GenoInfoMat <- as.data.frame(GenoInfoMat)
   colnames(GenoInfoMat) <- c("altFreq", "missingRate")
 
@@ -449,7 +465,13 @@ setGenoInput <- function(
     SampleIDs <- updateSampleIDs(SampleIDs, samplesInGeno)
 
     .message("Setting up PLINK object in C++ ...")
-    setPLINKobjInCPP(bimFile, famFile, bedFile, SampleIDs, AlleleOrder)
+    setPLINKobjInCPP(
+      t_bimFile = bimFile,        # character: Path to .bim file (marker info)
+      t_famFile = famFile,        # character: Path to .fam file (sample info)
+      t_bedFile = bedFile,        # character: Path to .bed file (genotype data)
+      t_SampleInModel = SampleIDs, # character vector: Sample IDs to include
+      t_AlleleOrder = AlleleOrder  # character: "alt-first" or "ref-first"
+    )
   }
 
   ########## ----------  BGEN format ---------- ##########
@@ -530,7 +552,15 @@ setGenoInput <- function(
     SampleIDs <- updateSampleIDs(SampleIDs, samplesInGeno)
 
     .message("Setting up BGEN object in C++ ...")
-    setBGENobjInCPP(bgenFile, bgiFile, samplesInGeno, SampleIDs, FALSE, FALSE, AlleleOrder)
+    setBGENobjInCPP(
+      t_bgenFileName = bgenFile,              # character: Path to .bgen file
+      t_bgenFileIndex = bgiFile,              # character: Path to .bgi index file
+      t_SampleInBgen = samplesInGeno,         # character vector: Sample IDs in BGEN
+      t_SampleInModel = SampleIDs,            # character vector: Sample IDs to include
+      t_isSparseDosageInBgen = FALSE,         # logical: Use sparse dosage encoding
+      t_isDropmissingdosagesInBgen = FALSE,   # logical: Drop missing dosages
+      t_AlleleOrder = AlleleOrder             # character: "alt-first" or "ref-first"
+    )
   }
 
   ########## ----------  More format such as VCF will be supported later ---------- ##########

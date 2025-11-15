@@ -34,7 +34,7 @@
 #'   \item \code{ImputeMethod} (character): Imputation method for genotype data.
 #'     Options: "none" (default), "bestguess", "mean".
 #'   \item \code{AlleleOrder} (character or NULL): Allele order in genotype file. Options: "ref-first",
-#'     "alt-first", or NULL (default, uses file-type default).
+#'     "alt-first", or NULL (default: "alt-first" for BGEN, "ref-first" for PLINK).
 #'   \item \strong{Marker Selection:}
 #'   \itemize{
 #'     \item \code{AllMarkers} (logical): Set to TRUE (default) to analyze all markers. Automatically
@@ -59,13 +59,21 @@
 #'     Range: 1000 to 100000. Default: 10000.
 #'   \item \code{omp_num_threads} (integer): Number of OpenMP threads for parallel processing.
 #'     Default: \code{data.table::getDTthreads()}.
+#'   \item \code{SPA_Cutoff} (numeric): Z-score cutoff for saddlepoint approximation. When the absolute
+#'     value of the test statistic exceeds this cutoff, SPA is used to calculate more accurate p-values. Default: 2.
 #' }
 #'
 #' @return
-#' Results are written to \code{OutputFile}. The function returns \code{NULL} invisibly.
-#' For examples and output columns and format, see the documentation for the specific method:
-#' \code{\link{GRAB.POLMM}}, \code{\link{GRAB.SPACox}}, \code{\link{GRAB.SPAmix}},
-#' \code{\link{GRAB.SPAGRM}}, \code{\link{GRAB.SAGELD}}, or \code{\link{GRAB.WtCoxG}}.
+#' The function returns \code{NULL} invisibly. Results are written to \code{OutputFile}.
+#' For method-specific examples and output columns and format, see:
+#' \itemize{
+#'   \item POLMM method: \code{\link{GRAB.POLMM}}
+#'   \item SPACox method: \code{\link{GRAB.SPACox}}
+#'   \item SPAmix method: \code{\link{GRAB.SPAmix}}
+#'   \item WtCoxG method: \code{\link{GRAB.WtCoxG}}
+#'   \item SPAGRM method: \code{\link{GRAB.SPAGRM}}
+#'   \item SAGELD method: \code{\link{GRAB.SAGELD}}
+#' }
 #'
 GRAB.Marker <- function(
   objNull,
@@ -124,7 +132,8 @@ GRAB.Marker <- function(
     min_maf_marker = 0.001,
     min_mac_marker = 20,
     nMarkersEachChunk = 10000,
-    omp_num_threads = data.table::getDTthreads()
+    omp_num_threads = data.table::getDTthreads(),
+    SPA_Cutoff = 2
   )
   
   control <- updateControl(control, default.marker.control)  # list
@@ -157,6 +166,10 @@ GRAB.Marker <- function(
     stop("control$omp_num_threads should be a positive integer.")
   }
 
+  if (!is.numeric(control$SPA_Cutoff) || control$SPA_Cutoff <= 0) {
+    stop("control$SPA_Cutoff should be a numeric value > 0.")
+  }
+
   # Validate method-specific control parameters
   control <- switch(                                          # list
     NullModelClass,
@@ -166,6 +179,15 @@ GRAB.Marker <- function(
     SPAGRM_NULL_Model = checkControl.Marker.SPAGRM(control, objNull$MAF_interval),
     SAGELD_NULL_Model = checkControl.Marker.SAGELD(control, objNull$MAF_interval),
     WtCoxG_NULL_Model = checkControl.Marker.WtCoxG(control)
+  )
+
+  # ========== Check output file status and determine restart point ==========
+
+  nMarkersEachChunk <- control$nMarkersEachChunk              # numeric
+
+  indexChunk <- checkOutputFile(                              # integer
+    OutputFile, OutputFileIndex, "Marker",
+    format(nMarkersEachChunk, scientific = FALSE)
   )
 
   # ========== Print all parameters ==========
@@ -178,28 +200,6 @@ GRAB.Marker <- function(
     `Output index file` = ifelse(is.null(OutputFileIndex), "Default", OutputFileIndex)
   )
   .printParameters("Parameters for Marker-Level Tests", params, control)
-
-  # ========== Check output file status and determine restart point ==========
-
-  nMarkersEachChunk <- control$nMarkersEachChunk              # numeric
-
-  indexChunk <- checkOutputFile(                              # integer
-    OutputFile, OutputFileIndex, "Marker",
-    format(nMarkersEachChunk, scientific = FALSE)
-  )
-
-  # ========== Grouping phenotypic values ==========
-
-  yVec <- objNull$yVec                                        # numeric vector
-  m1 <- length(unique(yVec))                                  # integer
-  if (m1 <= 10) {
-    Group <- as.numeric(as.factor(yVec)) - 1                  # numeric vector: Groups 0 to (m1-1)
-  } else {
-    Group <- floor((rank(yVec, ties.method = "max") - 1) / length(yVec) * 10) # numeric vector: Groups 0 to 9
-  }
-
-  nGroup <- length(unique(Group))                             # integer
-  ifOutGroup <- any(c("AltFreqInGroup", "AltCountsInGroup") %in% control$outputColumns) # logical
 
   # ========== Initialize genotype reader and create chunks ==========
 
@@ -241,7 +241,6 @@ GRAB.Marker <- function(
 
   nChunks <- length(genoIndexList)                            # integer
 
-  # Display analysis information to user
   .message("Number of markers to test: %d", nrow(markerInfo))
   .message("Number of markers in each chunk: %d", nMarkersEachChunk)
   .message("Number of chunks for all markers: %d", nChunks)
@@ -258,18 +257,17 @@ GRAB.Marker <- function(
 
       # Set global objects in C++ backend when tempChrom changes
       setMarker_GlobalVarsInCPP(
-        control$impute_method,
-        control$missing_cutoff,
-        control$min_maf_marker,
-        control$min_mac_marker,
-        control$omp_num_threads,
-        Group, ifOutGroup, nGroup
+        t_impute_method = control$impute_method,      # character: "mean", "minor", or "drop"
+        t_missing_cutoff = control$missing_cutoff,    # numeric: Max missing rate for markers
+        t_min_maf_marker = control$min_maf_marker,    # numeric: Min MAF threshold
+        t_min_mac_marker = control$min_mac_marker,    # numeric: Min MAC threshold
+        t_omp_num_threads = control$omp_num_threads   # integer: Number of OpenMP threads
       )
 
       # Set method-specific objects in C++ backend when tempChrom changes
       switch(
         NullModelClass,
-        POLMM_NULL_Model  = setMarker.POLMM(objNull, control, chrom),
+        POLMM_NULL_Model  = setMarker.POLMM(objNull, control),
         SPACox_NULL_Model = setMarker.SPACox(objNull, control),
         SPAmix_NULL_Model = setMarker.SPAmix(objNull, control),
         SPAGRM_NULL_Model = setMarker.SPAGRM(objNull, control),
@@ -282,10 +280,10 @@ GRAB.Marker <- function(
 
     .message("---- Analyzing Chunk %d/%d: chrom %s ----", i, nChunks, chrom)
 
-    # Test one SNP in C++ backend
+    # Test one chunk in C++ backend
     resMarker <- switch(                                      # data.frame
       NullModelClass,
-      POLMM_NULL_Model  = mainMarker.POLMM(genoType, genoIndex, control$outputColumns),
+      POLMM_NULL_Model  = mainMarker.POLMM(genoType, genoIndex, control),
       SPACox_NULL_Model = mainMarker.SPACox(genoType, genoIndex),
       SPAmix_NULL_Model = mainMarker.SPAmix(genoType, genoIndex, objNull),
       SPAGRM_NULL_Model = mainMarker.SPAGRM(genoType, genoIndex),

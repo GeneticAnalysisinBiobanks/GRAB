@@ -9,7 +9,7 @@
  * Functions (one‑line summaries):
  *   setSparseGRMInCPP            : Load sparse GRM from R list (triplet form) into Armadillo.
  *   setDenseGRMInCPP             : Construct / reset dense GRM object with QC thresholds.
- *   getDenseGRMInCPP             : Multiply dense GRM (optionally LOCO) by a vector.
+ *   getDenseGRMInCPP             : Multiply dense GRM by a vector.
  *   setMarker_GlobalVarsInCPP    : Set global QC + threading + grouping parameters for marker tests.
  *   setRegion_GlobalVarsInCPP    : Set global parameters for region / rare variant analyses.
  *   updateGroupInfo              : Compute per‑group sample counts, alt counts and frequencies.
@@ -162,17 +162,15 @@ void setDenseGRMInCPP(
 }
 
 // Performs efficient matrix-vector multiplication K*b where K is the dense GRM
-// and b is the input vector. Used for Leave-One-Chromosome-Out (LOCO) analysis.
+// and b is the input vector.
 // [[Rcpp::export]]
 arma::vec getDenseGRMInCPP(
   arma::vec t_bVec,         // Input vector to be corrected (typically residuals or phenotypes)
-  std::string t_excludeChr, // Chromosome to exclude from kinship computation (for LOCO analysis)
   int t_grainSize           // Parallel processing granularity parameter
 ) {
   arma::vec yVec = DenseGRM::getKinbVec(
     t_bVec,           // Input vector to be corrected
     ptr_gDenseGRMobj, // Dense GRM object pointer
-    t_excludeChr,     // Chromosome to exclude for LOCO analysis
     t_grainSize       // Parallel processing granularity
   );
   return yVec;
@@ -182,14 +180,11 @@ arma::vec getDenseGRMInCPP(
 // genome-wide association studies.
 // [[Rcpp::export]]
 void setMarker_GlobalVarsInCPP(
-  std::string t_impute_method,  // Method for handling missing genotypes ("mean", "minor", "drop")
-  double t_missing_cutoff,      // Maximum allowed missing rate for markers
-  double t_min_maf_marker,      // Minimum Minor Allele Frequency threshold
-  double t_min_mac_marker,      // Minimum Minor Allele Count threshold
-  unsigned int t_omp_num_threads, // Number of OpenMP threads for parallel computation
-  arma::uvec t_group,           // Group assignment vector for stratified analysis
-  bool t_ifOutGroup,            // Whether to output group-specific statistics
-  unsigned int t_nGroup         // Total number of population groups
+  std::string t_impute_method,    // Method for handling missing genotypes ("mean", "minor", "drop")
+  double t_missing_cutoff,        // Maximum allowed missing rate for markers
+  double t_min_maf_marker,        // Minimum Minor Allele Frequency threshold
+  double t_min_mac_marker,        // Minimum Minor Allele Count threshold
+  unsigned int t_omp_num_threads  // Number of OpenMP threads for parallel computation
 ) {
   // Set global configuration variables
   g_impute_method = t_impute_method;
@@ -197,11 +192,6 @@ void setMarker_GlobalVarsInCPP(
   g_marker_minMAF_cutoff = t_min_maf_marker;
   g_marker_minMAC_cutoff = t_min_mac_marker;
   g_omp_num_threads = t_omp_num_threads;
-
-  // Set group-specific variables for stratified analysis
-  g_group = t_group;
-  g_ifOutGroup = t_ifOutGroup;
-  g_nGroup = t_nGroup;
 }
 
 // Configures parameters for gene-based rare variant association analysis,
@@ -1791,8 +1781,16 @@ void setPOLMMobjInCPP(
   int t_maxiterPCG,                          // Maximum iterations for PCG solver
   double t_varRatio,                         // Variance ratio estimate
   double t_SPA_cutoff,                       // P-value cutoff for SPA correction
-  bool t_flagSparseGRM                       // Whether to use sparse or dense GRM
+  bool t_flagSparseGRM,                      // Whether to use sparse or dense GRM
+  arma::uvec t_group,                        // Group assignment for each individual
+  bool t_ifOutGroup,                         // Whether to output group-specific statistics
+  unsigned int t_nGroup                      // Total number of groups
 ) {
+  // Set POLMM-specific group variables
+  g_group = t_group;
+  g_ifOutGroup = t_ifOutGroup;
+  g_nGroup = t_nGroup;
+
   if (ptr_gPOLMMobj)
     delete ptr_gPOLMMobj;
 
@@ -1812,7 +1810,7 @@ void setPOLMMobjInCPP(
   );
 }
 
-// Initialize and fit POLMM null model for polytomous traits with optional LOCO analysis.
+// Initialize and fit POLMM null model for polytomous traits.
 // This version handles null model fitting and variance ratio estimation.
 // [[Rcpp::export]]
 Rcpp::List setPOLMMobjInCPP_NULL(

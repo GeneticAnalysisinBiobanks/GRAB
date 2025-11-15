@@ -6,21 +6,12 @@
 \usage{
 GRAB.WtCoxG()
 }
-\value{
-No return value. Called for informational side effects.
-}
 \description{
 WtCoxG provides an accurate, powerful, and computationally efficient Cox-based
 approach for genome-wide time-to-event analyses in study cohorts with case
 ascertainment.
 }
 \details{
-\strong{Two-Step Analysis Process:}
-\enumerate{
-\item \strong{Step 1}: Fit null model and test for batch effects using sample SNPs
-\item \strong{Step 2}: Conduct GWAS with allele frequencies of a reference sample
-}
-
 \strong{Additional Parameters for \code{GRAB.NullModel()}:}
 \itemize{
 \item \code{RefAfFile} (character, required): Reference allele frequency file path.
@@ -45,52 +36,47 @@ for weighting. Must be in range (0, 0.5)
 association testing. Variants with batch effect p-value below this cutoff
 will be excluded from association testing.
 }
+
+\strong{Output file columns}:
+\describe{
+\item{Pheno}{Phenotype identifier (for multi-trait analysis).}
+\item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}
+\item{Info}{Marker information in format CHR:POS:REF:ALT.}
+\item{AltFreq}{Alternative allele frequency in the sample.}
+\item{AltCounts}{Total count of alternative alleles.}
+\item{MissingRate}{Proportion of missing genotypes.}
+\item{Pvalue}{P-value from the score test.}
+\item{zScore}{Z-score from the score test.}
+}
 }
 \examples{
-# Step0&1: fit a null model and estimate parameters according to batch effect p-values
+# Step 1: fit null model and test batch effect
 PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
 PhenoData <- data.table::fread(PhenoFile, header = TRUE)
 SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
-
 GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 RefAfFile <- system.file("extdata", "simuRefAf.txt", package = "GRAB")
-RefPrevalence <- 0.1 # population-level disease prevalence
-
-OutputDir <- tempdir()
-OutputFile <- file.path(OutputDir, "WtCoxG_step2_out.txt")
+OutputFile <- file.path(tempdir(), "resultWtCoxG.txt")
 
 obj.WtCoxG <- GRAB.NullModel(
-  formula = survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
+  survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
   data = PhenoData,
   subjIDcol = "IID",
   method = "WtCoxG",
   traitType = "time-to-event",
   GenoFile = GenoFile,
   SparseGRMFile = SparseGRMFile,
-  control = list(
-    AlleleOrder = "ref-first",
-    AllMarkers = TRUE,
-    RefPrevalence = RefPrevalence,
-    SNPnum = 1000
-  ),
+  control = list(RefPrevalence = 0.01, SNPnum = 1e3),
   RefAfFile = RefAfFile,
   SurvTimeColumn = "SurvTime",
   IndicatorColumn = "SurvEvent"
 )
 
-obj.WtCoxG$mergeGenoInfo[, c("CHROM", "POS", "pvalue_bat")]
-
-# Step2: conduct association testing
-OutputFile <- file.path(tempdir(), "resultWtCoxG.txt")
+# Step2
 GRAB.Marker(obj.WtCoxG, GenoFile, OutputFile,
-  control = list(
-    AlleleOrder = "ref-first",
-    AllMarkers = TRUE,
-    cutoff = 0.1,
-    nMarkersEachChunk = 5000
-  )
+  control = list(nMarkersEachChunk = 5000)
 )
 
-data.table::fread(OutputFile)[, c("CHROM", "POS", "WtCoxG.noext", "WtCoxG.ext")]
+head(data.table::fread(OutputFile))
 
 }

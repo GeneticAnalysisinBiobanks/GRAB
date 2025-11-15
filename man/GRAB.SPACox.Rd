@@ -6,9 +6,6 @@
 \usage{
 GRAB.SPACox()
 }
-\value{
-No return value, called for side effects.
-}
 \description{
 SPACox method is an empirical approach to analyzing complex traits
 (including but not limited to time-to-event trait) for unrelated samples
@@ -24,13 +21,26 @@ in a large-scale biobank.
 \strong{Additional Control Parameters for GRAB.Marker()}:
 \itemize{
 \item \code{pVal_covaAdj_Cutoff} (numeric, default: 5e-05): P-value cutoff for covariate adjustment.
-\item \code{SPA_Cutoff} (numeric, default: 2): Cutoff for saddlepoint approximation.
+}
+
+\strong{Output file columns}:
+\describe{
+\item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}
+\item{Info}{Marker information in format CHR:POS:REF:ALT.}
+\item{AltFreq}{Alternative allele frequency in the sample.}
+\item{AltCounts}{Total count of alternative alleles.}
+\item{MissingRate}{Proportion of missing genotypes.}
+\item{Pvalue}{P-value from the score test.}
+\item{zScore}{Z-score from the score test.}
 }
 }
 \examples{
-# Step 1: fit a null model
 PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
+GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+OutputFile <- file.path(tempdir(), "resultSPACox.txt")
 PhenoData <- data.table::fread(PhenoFile, header = TRUE)
+
+# Step 1 option 1
 obj.SPACox <- GRAB.NullModel(
   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
   data = PhenoData,
@@ -39,27 +49,24 @@ obj.SPACox <- GRAB.NullModel(
   traitType = "time-to-event"
 )
 
-# Using model residuals performs exactly the same as the above. Note that
-# confounding factors are still required in the right of the formula.
-obj.coxph <- survival::coxph(
+# Step 1 option 2
+residuals <- survival::coxph(
   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
   data = PhenoData,
   x = TRUE
-)
+)$residuals
 
 obj.SPACox <- GRAB.NullModel(
-  obj.coxph$residuals ~ AGE + GENDER,
+  residuals ~ AGE + GENDER,
   data = PhenoData,
   subjIDcol = "IID",
   method = "SPACox",
   traitType = "Residual"
 )
 
-# Step 2: conduct score test
-GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-OutputDir <- tempdir()
-OutputFile <- file.path(OutputDir, "resultSPACox.txt")
+# Step 2
 GRAB.Marker(obj.SPACox, GenoFile, OutputFile)
-data.table::fread(OutputFile)
+
+head(data.table::fread(OutputFile))
 
 }

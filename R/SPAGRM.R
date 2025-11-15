@@ -6,8 +6,8 @@
 ##
 ## Functions:
 ##   GRAB.SPAGRM                  : Print brief method information.
-##   checkControl.SPAGRM.NullModel: Validate/populate null-model controls.
 ##   SPAGRM.NullModel             : Fit SPAGRM null model and residual handling.
+##   checkControl.SPAGRM.NullModel: Validate/populate null-model controls.
 ##   checkControl.Marker.SPAGRM   : Validate marker-level controls.
 ##   setMarker.SPAGRM             : Initialize marker-level analysis objects.
 ##   mainMarker.SPAGRM            : Run marker-level SPAGRM tests.
@@ -21,19 +21,16 @@
 #' (including but not limited to longitudinal trait) for related samples in a
 #' large-scale biobank. SPA<sub>GRM</sub> extends SPACox to support related populations.
 #'
-#' @details
-#' Additional list of \code{control} in \code{SPAGRM.NullModel()} function.
-#'
-#' Additional list of \code{control} in \code{GRAB.Marker()} function.
-#'
-#' @return No return value, called for side effects (prints information about
-#'   the SPAGRM method to the console).
+#' @return NULL
 #'
 #' @examples
-#' # Step 2a: process model residuals
 #' ResidMatFile <- system.file("extdata", "ResidMat.txt", package = "GRAB")
 #' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
 #' PairwiseIBDFile <- system.file("extdata", "PairwiseIBD.txt", package = "GRAB")
+#' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+#' OutputFile <- file.path(tempdir(), "resultSPAGRM.txt")
+#' 
+#' # Step 2a: pre-calculate genotype distributions
 #' obj.SPAGRM <- SPAGRM.NullModel(
 #'   ResidMatFile = ResidMatFile,
 #'   SparseGRMFile = SparseGRMFile,
@@ -41,68 +38,36 @@
 #'   control = list(ControlOutlier = FALSE)
 #' )
 #'
-#' # Step 2b: perform score test
-#' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-#' OutputDir <- tempdir()
-#' OutputFile <- file.path(OutputDir, "resultSPAGRM.txt")
+#' # Step 2b: perform association tests
 #' GRAB.Marker(obj.SPAGRM, GenoFile, OutputFile)
-#' head(read.table(OutputFile, header = TRUE))
+#' 
+#' head(data.table::fread(OutputFile))
+#'
+#' @details
+#' 
+#' See \code{\link{SPAGRM.NullModel}} for detailed instructions
+#' on pre-calculate genotype distributions.
+#' 
+#' \strong{Additional Control Parameters for GRAB.Marker()}:
+#' \itemize{
+#'   \item \code{zeta} (numeric, default: 0): SPA moment approximation parameter.
+#'   \item \code{tol} (numeric, default: 1e-5): Numerical tolerance for SPA convergence.
+#' }
+#' 
+#' **Marker-level results** (\code{OutputFile}) columns:
+#' \describe{
+#'   \item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}
+#'   \item{Info}{Marker information in format CHR:POS:REF:ALT.}
+#'   \item{AltFreq}{Alternative allele frequency in the sample.}
+#'   \item{AltCounts}{Total count of alternative alleles.}
+#'   \item{MissingRate}{Proportion of missing genotypes.}
+#'   \item{zScore}{Z-score from the score test.}
+#'   \item{Pvalue}{P-value from the score test.}
+#'   \item{hwepval}{Hardy-Weinberg equilibrium p-value.}
+#' }
 #'
 GRAB.SPAGRM <- function() {
-  .message("Using SPAGRM method - see ?GRAB.SPAGRM for details")
-}
-
-
-checkControl.SPAGRM.NullModel <- function(
-  control,
-  ResidMat,
-  SparseGRM,
-  PairwiseIBD
-) {
-  default.control <- list(
-    MaxQuantile = 0.75,
-    MinQuantile = 0.25,
-    OutlierRatio = 1.5,
-    ControlOutlier = TRUE,
-    MaxNuminFam = 5,
-    MAF_interval = c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5)
-  )
-
-  control <- updateControl(control, default.control) # This file is in 'control.R'
-
-  if (control$MaxQuantile < control$MinQuantile) {
-    stop("MaxQuantile(default is 0.75) should be larger than MinQuantile(default is 0.25).")
-  }
-
-  if (control$OutlierRatio < 0) {
-    stop("OutlierRatio should be larger than or equal 0 (default is 1.5).")
-  }
-
-  if (any(colnames(ResidMat) != c("SubjID", "Resid"))) {
-    stop("The column names of ResidMat should be ['SubjID', 'Resid'].")
-  }
-
-  if (any(colnames(SparseGRM) != c("ID1", "ID2", "Value"))) {
-    stop("The column names of SparseGRM should be ['ID1', 'ID2', 'Value'].")
-  }
-
-  if (any(colnames(PairwiseIBD) != c("ID1", "ID2", "pa", "pb", "pc"))) {
-    stop("The column names of PairwiseIBD should be ['ID1', 'ID2', 'pa', 'pb', 'pc'].")
-  }
-
-  SubjID.In.Resid <- ResidMat$SubjID
-  SubjID.In.GRM <- unique(c(SparseGRM$ID1, SparseGRM$ID2))
-  SubjID.In.IBD <- unique(c(PairwiseIBD$ID1, PairwiseIBD$ID2))
-
-  if (any(!SubjID.In.Resid %in% SubjID.In.GRM)) {
-    stop("At least one subject in residual matrix does not have GRM information.")
-  }
-
-  if (any(!SubjID.In.IBD %in% SubjID.In.GRM)) {
-    stop("At least one subject has IBD information but does not have GRM information.")
-  }
-
-  return(control)
+  .message("?SPAGRM for instructions")
 }
 
 
@@ -133,7 +98,6 @@ checkControl.SPAGRM.NullModel <- function(
 #'     \item{MAF_interval}{Vector of MAF breakpoints used in tree construction.}
 #'   }
 #'
-#' @keywords internal
 SPAGRM.NullModel <- function(
   ResidMatFile, # two columns: column 1 is subjID, column 2 is Resid
   SparseGRMFile, # a path of SparseGRMFile get from getSparseGRM() function.
@@ -458,6 +422,59 @@ SPAGRM.NullModel <- function(
 }
 
 
+checkControl.SPAGRM.NullModel <- function(
+  control,
+  ResidMat,
+  SparseGRM,
+  PairwiseIBD
+) {
+  default.control <- list(
+    MaxQuantile = 0.75,
+    MinQuantile = 0.25,
+    OutlierRatio = 1.5,
+    ControlOutlier = TRUE,
+    MaxNuminFam = 5,
+    MAF_interval = c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5)
+  )
+
+  control <- updateControl(control, default.control) # This file is in 'control.R'
+
+  if (control$MaxQuantile < control$MinQuantile) {
+    stop("MaxQuantile(default is 0.75) should be larger than MinQuantile(default is 0.25).")
+  }
+
+  if (control$OutlierRatio < 0) {
+    stop("OutlierRatio should be larger than or equal 0 (default is 1.5).")
+  }
+
+  if (any(colnames(ResidMat) != c("SubjID", "Resid"))) {
+    stop("The column names of ResidMat should be ['SubjID', 'Resid'].")
+  }
+
+  if (any(colnames(SparseGRM) != c("ID1", "ID2", "Value"))) {
+    stop("The column names of SparseGRM should be ['ID1', 'ID2', 'Value'].")
+  }
+
+  if (any(colnames(PairwiseIBD) != c("ID1", "ID2", "pa", "pb", "pc"))) {
+    stop("The column names of PairwiseIBD should be ['ID1', 'ID2', 'pa', 'pb', 'pc'].")
+  }
+
+  SubjID.In.Resid <- ResidMat$SubjID
+  SubjID.In.GRM <- unique(c(SparseGRM$ID1, SparseGRM$ID2))
+  SubjID.In.IBD <- unique(c(PairwiseIBD$ID1, PairwiseIBD$ID2))
+
+  if (any(!SubjID.In.Resid %in% SubjID.In.GRM)) {
+    stop("At least one subject in residual matrix does not have GRM information.")
+  }
+
+  if (any(!SubjID.In.IBD %in% SubjID.In.GRM)) {
+    stop("At least one subject has IBD information but does not have GRM information.")
+  }
+
+  return(control)
+}
+
+
 checkControl.Marker.SPAGRM <- function(control, MAF_interval) {
 
   # Validate MAF interval constraints specific to SPAGRM
@@ -471,12 +488,12 @@ checkControl.Marker.SPAGRM <- function(control, MAF_interval) {
   }
 
   default.control <- list(
-    SPA_Cutoff = 2,
     zeta = 0,
     tol = 1e-5
   )
 
   control <- updateControl(control, default.control)
+
   return(control)
 }
 
@@ -484,25 +501,29 @@ checkControl.Marker.SPAGRM <- function(control, MAF_interval) {
 setMarker.SPAGRM <- function(objNull, control) {
   # Initialize marker-level analysis in C++ for SPAGRM method
   setSPAGRMobjInCPP(
-    objNull$Resid,
-    objNull$Resid.unrelated.outliers,
-    objNull$sum_R_nonOutlier,
-    objNull$R_GRM_R_nonOutlier,
-    objNull$R_GRM_R_TwoSubjOutlier,
-    objNull$R_GRM_R,
-    objNull$MAF_interval,
-    objNull$TwoSubj_list,
-    objNull$ThreeSubj_list,
-    control$SPA_Cutoff,
-    control$zeta,
-    control$tol
+    t_resid = objNull$Resid,                              # numeric vector: Residuals from null model
+    t_resid_unrelated_outliers = objNull$Resid.unrelated.outliers,  # numeric vector: Outlier residuals
+    t_sum_R_nonOutlier = objNull$sum_R_nonOutlier,        # numeric: Sum of non-outlier residuals
+    t_R_GRM_R_nonOutlier = objNull$R_GRM_R_nonOutlier,    # numeric: R'*GRM*R for non-outliers
+    t_R_GRM_R_TwoSubjOutlier = objNull$R_GRM_R_TwoSubjOutlier,  # numeric: Two-subject outlier quad form
+    t_R_GRM_R = objNull$R_GRM_R,                          # numeric: Full R'*GRM*R quadratic form
+    t_MAF_interval = objNull$MAF_interval,                # numeric vector: MAF intervals for binning
+    t_TwoSubj_list = objNull$TwoSubj_list,                # list: Two-subject outlier pair info
+    t_ThreeSubj_list = objNull$ThreeSubj_list,            # list: Three-subject outlier combinations
+    t_SPA_Cutoff = control$SPA_Cutoff,                    # numeric: P-value cutoff for SPA
+    t_zeta = control$zeta,                                # numeric: SPA moment approximation parameter
+    t_tol = control$tol                                   # numeric: Numerical tolerance for SPA
   )
 }
 
 
 mainMarker.SPAGRM <- function(genoType, genoIndex) {
   # Perform main marker analysis for SPAGRM method
-  OutList <- mainMarkerInCPP("SPAGRM", genoType, genoIndex)
+  OutList <- mainMarkerInCPP(
+    t_method = "SPAGRM",      # character: Statistical method name
+    t_genoType = genoType,    # character: "PLINK" or "BGEN"
+    t_genoIndex = genoIndex   # integer vector: Genotype indices to analyze
+  )
 
   # Format results into output data frame
   obj.mainMarker <- data.frame(

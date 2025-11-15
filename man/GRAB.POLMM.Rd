@@ -6,13 +6,22 @@
 \usage{
 GRAB.POLMM()
 }
-\value{
-No return value, called for side effects (prints information about the POLMM method to the console).
-}
 \description{
 POLMM method is to analyze ordinal categorical data for related samples in a large-scale biobank.
+For region-based analysis using POLMM-GENE, see \code{\link{GRAB.POLMM.Region}}.
 }
 \details{
+\strong{Genotype file}: \code{GenoFile} is mandatory for \code{GRAB.NullModel()} when using POLMM.
+It is required for estimating the variance ratio parameter, which is essential for calibrating
+the test statistics in subsequent association tests.
+
+\strong{Genetic Relationship Matrix (GRM) Options}:
+POLMM supports both sparse and dense GRM for modeling genetic relatedness:
+\itemize{
+\item If \code{SparseGRMFile} is provided to \code{GRAB.NullModel()}, the sparse GRM will be used in model fitting.
+\item If \code{SparseGRMFile} is not provided, \code{GRAB.NullModel()} will calculate a dense GRM from \code{GenoFile}.
+}
+
 \strong{Additional Control Parameters for GRAB.NullModel()}:
 \itemize{
 \item \code{memoryChunk} (numeric, default: 2): Memory chunk size for computation.
@@ -24,6 +33,7 @@ POLMM method is to analyze ordinal categorical data for related samples in a lar
 \item \code{tau} (numeric, default: 0.2): Initial variance component value.
 \item \code{maxiterPCG} (integer, default: 100): Maximum iterations for preconditioned conjugate gradient.
 \item \code{tolPCG} (numeric, default: 1e-6): Tolerance for preconditioned conjugate gradient.
+\item \code{printPCGInfo} (logical, default: FALSE): Whether to print PCG iteration information for debugging.
 \item \code{maxiterEps} (integer, default: 100): Maximum iterations for epsilon estimation.
 \item \code{tolEps} (numeric, default: 1e-10): Tolerance for epsilon estimation.
 \item \code{minMafVarRatio} (numeric, default: 0.1): Minimum MAF for variance ratio estimation.
@@ -34,77 +44,52 @@ POLMM method is to analyze ordinal categorical data for related samples in a lar
 \item \code{grainSize} (integer, default: 1): Grain size for parallel processing.
 \item \code{minMafGRM} (numeric, default: 0.01): Minimum MAF for GRM construction.
 \item \code{maxMissingGRM} (numeric, default: 0.1): Maximum missing rate for GRM construction.
-\item \code{showInfo} (logical, default: TRUE): Whether to show progress information.
 \item \code{onlyCheckTime} (logical, default: FALSE): Whether to only check computation time.
-\item \code{LOCO} (logical, default: TRUE for DenseGRM, FALSE for SparseGRM): Leave-one-chromosome-out analysis.
 }
 
 \strong{Additional Control Parameters for GRAB.Marker()}:
 \itemize{
-\item \code{SPA_Cutoff} (numeric, default: 2): Cutoff for saddlepoint approximation.
-\item \code{outputColumns} (character vector, default: c("beta", "seBeta")): Columns to include in output.
-Optional columns: "beta", "seBeta", "zScore", "PvalueNorm", "AltFreqInGroup", "AltCountsInGroup", "nSamplesInGroup".
+\item \code{ifOutGroup} (logical, default: FALSE): Whether to output group-specific statistics (alternative allele frequency, counts, and sample size for each ordinal category). When TRUE, adds columns AltFreqInGroup.\emph{, AltCountsInGroup.}, and nSamplesInGroup.* to the output file.
 }
 
-\strong{Additional Control Parameters for GRAB.Region()}:
-\itemize{
-\item \code{SPA_Cutoff} (numeric, default: 2): Cutoff for saddlepoint approximation.
+\strong{Output file columns}:
+\describe{
+\item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}
+\item{Info}{Marker information in format CHR:POS:REF:ALT.}
+\item{AltFreq}{Alternative allele frequency in the overall sample.}
+\item{AltCounts}{Total count of alternative alleles.}
+\item{MissingRate}{Proportion of missing genotypes.}
+\item{Pvalue}{P-value from the score test.}
+\item{beta}{Effect size estimate (log-odds scale).}
+\item{seBeta}{Standard error of beta.}
+\item{zScore}{Z-score from the score test.}
+\item{AltFreqInGroup.1, AltFreqInGroup.2, ...}{(Only if \code{ifOutGroup = TRUE}) Alternative allele frequency in each ordinal category.}
+\item{AltCountsInGroup.1, AltCountsInGroup.2, ...}{(Only if \code{ifOutGroup = TRUE}) Alternative allele counts in each ordinal category.}
+\item{nSamplesInGroup.1, nSamplesInGroup.2, ...}{(Only if \code{ifOutGroup = TRUE}) Sample size in each ordinal category.}
 }
 }
 \examples{
-### First, read phenotype data and convert to a factor
 PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
-PhenoData <- data.table::fread(PhenoFile, header = TRUE)
-PhenoData$OrdinalPheno <- factor(PhenoData$OrdinalPheno, levels = c(0, 1, 2))
-
-### Step 1: Fit a null model
-# If SparseGRMFile is provided, the sparse GRM will be used in model fitting.
-# If SparseGRMFile isn't provided, GRAB.NullModel() will calculate dense GRM from GenoFile.
-SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
 GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
+OutputFile <- file.path(tempdir(), "resultPOLMMmarker.txt")
 
+# Step 1
 obj.POLMM <- GRAB.NullModel(
-  formula = OrdinalPheno ~ AGE + GENDER,
-  data = PhenoData,
+  factor(OrdinalPheno) ~ AGE + GENDER,
+  data = data.table::fread(PhenoFile, header = TRUE),
   subjIDcol = "IID",
   method = "POLMM",
   traitType = "ordinal",
   GenoFile = GenoFile,
   SparseGRMFile = SparseGRMFile,
-  control = list(
-    showInfo = FALSE,
-    LOCO = FALSE,
-    tolTau = 0.2,
-    tolBeta = 0.1
-  )
+  control = list(tolTau = 0.2, tolBeta = 0.1)
 )
 
-### Step 2(a): Single-variant tests using POLMM
-GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-OutputFile <- file.path(tempdir(), "resultPOLMMmarker.txt")
-outputColumns <- c(
-  "beta", "seBeta", "zScore",
-  "nSamplesInGroup", "AltCountsInGroup", "AltFreqInGroup"
-)
-
+# Step 2
 GRAB.Marker(obj.POLMM, GenoFile, OutputFile,
-  control = list(outputColumns = outputColumns)
-)
+  control = list(ifOutGroup = TRUE))
 
-data.table::fread(OutputFile)
-
-### Step 2(b): Set-based tests using POLMM-GENE
-GenoFile <- system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
-OutputFile <- file.path(tempdir(), "resultPOLMMregion.txt")
-GroupFile <- system.file("extdata", "simuPLINK_RV.group", package = "GRAB")
-SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
-
-GRAB.Region(obj.POLMM, GenoFile, OutputFile,
-  GroupFile = GroupFile,
-  SparseGRMFile = SparseGRMFile,
-  MaxMAFVec = "0.01,0.005"
-)
-
-data.table::fread(OutputFile)
+head(data.table::fread(OutputFile))
 
 }
