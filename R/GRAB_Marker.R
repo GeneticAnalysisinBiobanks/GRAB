@@ -17,17 +17,17 @@
 #' Conducts single-marker association tests between genetic variants and phenotypes using
 #' various statistical methods supported by GRAB.
 #'
-#' @param objNull (S3 object) Null model object from \code{\link{GRAB.NullModel}}. 
-#'   Must be one of: POLMM_NULL_Model, SPACox_NULL_Model, SPAmix_NULL_Model, 
+#' @param objNull (S3 object) Null model object from \code{\link{GRAB.NullModel}}.
+#'   Must be one of: POLMM_NULL_Model, SPACox_NULL_Model, SPAmix_NULL_Model,
 #'   SPAGRM_NULL_Model, SAGELD_NULL_Model, or WtCoxG_NULL_Model.
-#' @param GenoFile (character) Path to genotype file. Supports PLINK (.bed/.bim/.fam) 
+#' @param GenoFile (character) Path to genotype file. Supports PLINK (.bed/.bim/.fam)
 #'   and BGEN formats. See \code{\link{GRAB.ReadGeno}} for format details.
 #' @param OutputFile (character) Path for saving association test results.
-#' @param GenoFileIndex (character or NULL) Index files for the genotype file. If 
-#'   \code{NULL} (default), uses the same prefix as \code{GenoFile}. See 
+#' @param GenoFileIndex (character or NULL) Index files for the genotype file. If
+#'   \code{NULL} (default), uses the same prefix as \code{GenoFile}. See
 #'   \code{\link{GRAB.ReadGeno}} for details.
-#' @param OutputFileIndex (character or NULL) Path for progress tracking file. Enables 
-#'   analysis restart if interrupted. If \code{NULL} (default), uses 
+#' @param OutputFileIndex (character or NULL) Path for progress tracking file. Enables
+#'   analysis restart if interrupted. If \code{NULL} (default), uses
 #'   \code{paste0(OutputFile, ".index")}.
 #' @param control (list or NULL) List of control parameters with the following elements:
 #' \itemize{
@@ -135,7 +135,7 @@ GRAB.Marker <- function(
     omp_num_threads = data.table::getDTthreads(),
     SPA_Cutoff = 2
   )
-  
+
   control <- updateControl(control, default.marker.control)  # list
 
   if (!control$impute_method %in% c("mean", "minor", "drop")) {
@@ -143,22 +143,22 @@ GRAB.Marker <- function(
   }
 
   if (!is.numeric(control$missing_cutoff) ||
-      control$missing_cutoff < 0 || control$missing_cutoff > 0.5) {
+        control$missing_cutoff < 0 || control$missing_cutoff > 0.5) {
     stop("control$missing_cutoff should be numeric in [0, 0.5].")
   }
 
   if (!is.numeric(control$min_maf_marker) ||
-      control$min_maf_marker < 0 || control$min_maf_marker > 0.1) {
+        control$min_maf_marker < 0 || control$min_maf_marker > 0.1) {
     stop("control$min_maf_marker should be numeric in [0, 0.1].")
   }
 
   if (!is.numeric(control$min_mac_marker) ||
-      control$min_mac_marker < 0 || control$min_mac_marker > 100) {
+        control$min_mac_marker < 0 || control$min_mac_marker > 100) {
     stop("control$min_mac_marker should be numeric in [0, 100].")
   }
 
   if (!is.numeric(control$nMarkersEachChunk) ||
-      control$nMarkersEachChunk < 1e3 || control$nMarkersEachChunk > 1e5) {
+        control$nMarkersEachChunk < 1e3 || control$nMarkersEachChunk > 1e5) {
     stop("control$nMarkersEachChunk should be numeric in [1000, 100000].")
   }
 
@@ -191,7 +191,7 @@ GRAB.Marker <- function(
   )
 
   # ========== Print all parameters ==========
-  
+
   params <- list(
     Method = NullModelClass,
     `Genotype file` = GenoFile,
@@ -244,7 +244,7 @@ GRAB.Marker <- function(
   .message("Number of markers to test: %d", nrow(markerInfo))
   .message("Number of markers in each chunk: %d", nMarkersEachChunk)
   .message("Number of chunks for all markers: %d", nChunks)
-  
+
   # ========== Iterate over chunks to perform tests ==========
 
   chrom <- "InitialChunk"                                     # character
@@ -252,7 +252,7 @@ GRAB.Marker <- function(
     tempList <- genoIndexList[[i]]                            # list
     genoIndex <- tempList$genoIndex                           # integer vector
     tempChrom <- tempList$chrom                               # character
-    
+
     if (tempChrom != chrom) {
 
       # Set global objects in C++ backend when tempChrom changes

@@ -26,7 +26,7 @@
 #' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' OutputFile <- file.path(tempdir(), "resultSPAmix.txt")
 #' PhenoData <- data.table::fread(PhenoFile, header = TRUE)
-#' 
+#'
 #' # Step 1 option 1
 #' obj.SPAmix <- GRAB.NullModel(
 #'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
@@ -57,7 +57,7 @@
 #'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
 #'   data = PhenoData
 #' )$residuals
-#' 
+#'
 #' res_lm <- lm(QuantPheno ~ AGE + GENDER + PC1 + PC2, data = PhenoData)$residuals
 #'
 #' obj.SPAmix <- GRAB.NullModel(
@@ -71,20 +71,23 @@
 #'
 #' # Step 2
 #' GRAB.Marker(obj.SPAmix, GenoFile, OutputFile)
-#' 
+#'
 #' head(data.table::fread(OutputFile))
 #'
 #' @details
-#' 
+#'
 #' \strong{Additional Control Parameters for GRAB.NullModel()}:
 #' \itemize{
-#'   \item \code{PC_columns} (character, required): Comma-separated column names of principal components (e.g., "PC1,PC2").
-#'   \item \code{OutlierRatio} (numeric, default: 1.5): IQR multiplier for outlier detection. Outliers are defined as values outside \[Q1 - r*IQR, Q3 + r*IQR\].
+#'   \item \code{PC_columns} (character, required): Comma-separated column names
+#'      of principal components (e.g., "PC1,PC2").
+#'   \item \code{OutlierRatio} (numeric, default: 1.5): IQR multiplier for outlier detection.
+#'      Outliers are defined as values outside \[Q1 - r*IQR, Q3 + r*IQR\].
 #' }
 #'
 #' \strong{Additional Control Parameters for GRAB.Marker()}:
 #' \itemize{
-#'   \item \code{dosage_option} (character, default: "rounding_first"): Dosage handling option. Must be either "rounding_first" or "rounding_last".
+#'   \item \code{dosage_option} (character, default: "rounding_first"):
+#'    Dosage handling option. Must be either "rounding_first" or "rounding_last".
 #' }
 #'
 #' \strong{Output file columns}:
@@ -104,13 +107,13 @@ GRAB.SPAmix <- function() {
 }
 
 
-checkControl.NullModel.SPAmix <- function(
-  control,
-  traitType
-) {
+checkControl.NullModel.SPAmix <- function(control, traitType) {
   if (!traitType %in% c("time-to-event", "Residual")) {
     stop("For 'SPAmix' method, only traitType of 'time-to-event' or 'Residual' is supported.")
   }
+
+  default.control <- list(OutlierRatio = 1.5)
+  control <- updateControl(control, default.control)
 
   if (is.null(control$PC_columns)) {
     stop("control$PC_columns (e.g. 'PC1,PC2,PC3,PC4') is required for 'SPAmix' method.")
@@ -140,11 +143,11 @@ checkControl.NullModel.SPAmix <- function(
 #'   or a numeric residual vector/matrix with class \code{"Residual"}.
 #' @param designMat Numeric matrix (n x p) of covariates; must include the PC
 #'   columns specified in \code{control$PC_columns}.
-#' @param subjIDcol Vector of subject IDs aligned with rows of \code{designMat}
+#' @param subjData Vector of subject IDs aligned with rows of \code{designMat}
 #'   and \code{response}.
 #' @param control List of options. Required element: \code{PC_columns}, a
 #'   single comma-separated string of PC column names (e.g.
-#'   \code{"PC1,PC2,PC3,PC4"}). Optional: \code{OutlierRatio} (default 1.5).
+#'   \code{"PC1,PC2,PC3,PC4"}). \code{OutlierRatio}.
 #' @param ... Extra arguments passed to \code{survival::coxph} when
 #'   \code{response} is \code{Surv}.
 #'
@@ -169,12 +172,11 @@ checkControl.NullModel.SPAmix <- function(
 fitNullModel.SPAmix <- function(
   response,
   designMat,
-  subjIDcol,
-  control = list(OutlierRatio = 1.5),
+  subjData,
+  control,
   ...
 ) {
-  subjData <- subjIDcol  # Use subjData internally for compatibility
-  
+
   if (!(inherits(response, "Surv") || inherits(response, "Residual"))) {
     stop("For SPAmix, the response variable should be of class 'Surv' or 'Residual'.")
   }
@@ -233,7 +235,7 @@ fitNullModel.SPAmix <- function(
     q75 <- quantile(mresid.temp, 0.75, na.rm = TRUE)
     IQR <- q75 - q25
     # outlier ratio with fallback if not specified in control
-    r.outlier <- ifelse(is.null(control$OutlierRatio), 1.5, control$OutlierRatio)
+    r.outlier <- control$OutlierRatio
     # put this to the control argument later
     cutoff <- c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
     posOutlier <- which(mresid.temp < cutoff[1] | mresid.temp > cutoff[2])
@@ -302,10 +304,7 @@ checkControl.Marker.SPAmix <- function(control) {
 }
 
 
-setMarker.SPAmix <- function(
-  objNull,
-  control
-) {
+setMarker.SPAmix <- function(objNull, control) {
   setSPAmixobjInCPP(
     t_resid = objNull$resid,              # matrix: Residuals from null model
     t_PCs = objNull$PCs,                  # matrix: Principal components for population structure

@@ -29,7 +29,7 @@
 #' PairwiseIBDFile <- system.file("extdata", "PairwiseIBD.txt", package = "GRAB")
 #' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' OutputFile <- file.path(tempdir(), "resultSPAGRM.txt")
-#' 
+#'
 #' # Step 2a: pre-calculate genotype distributions
 #' obj.SPAGRM <- SPAGRM.NullModel(
 #'   ResidMatFile = ResidMatFile,
@@ -40,20 +40,20 @@
 #'
 #' # Step 2b: perform association tests
 #' GRAB.Marker(obj.SPAGRM, GenoFile, OutputFile)
-#' 
+#'
 #' head(data.table::fread(OutputFile))
 #'
 #' @details
-#' 
+#'
 #' See \code{\link{SPAGRM.NullModel}} for detailed instructions
 #' on pre-calculate genotype distributions.
-#' 
+#'
 #' \strong{Additional Control Parameters for GRAB.Marker()}:
 #' \itemize{
 #'   \item \code{zeta} (numeric, default: 0): SPA moment approximation parameter.
 #'   \item \code{tol} (numeric, default: 1e-5): Numerical tolerance for SPA convergence.
 #' }
-#' 
+#'
 #' **Marker-level results** (\code{OutputFile}) columns:
 #' \describe{
 #'   \item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}

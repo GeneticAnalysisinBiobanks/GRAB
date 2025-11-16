@@ -18,8 +18,10 @@ the test statistics in subsequent association tests.
 \strong{Genetic Relationship Matrix (GRM) Options}:
 POLMM supports both sparse and dense GRM for modeling genetic relatedness:
 \itemize{
-\item If \code{SparseGRMFile} is provided to \code{GRAB.NullModel()}, the sparse GRM will be used in model fitting.
-\item If \code{SparseGRMFile} is not provided, \code{GRAB.NullModel()} will calculate a dense GRM from \code{GenoFile}.
+\item If \code{SparseGRMFile} is provided to \code{GRAB.NullModel()},
+the sparse GRM will be used in model fitting.
+\item If \code{SparseGRMFile} is not provided, \code{GRAB.NullModel()}
+will calculate a dense GRM from \code{GenoFile}.
 }
 
 \strong{Additional Control Parameters for GRAB.NullModel()}:
@@ -49,7 +51,9 @@ POLMM supports both sparse and dense GRM for modeling genetic relatedness:
 
 \strong{Additional Control Parameters for GRAB.Marker()}:
 \itemize{
-\item \code{ifOutGroup} (logical, default: FALSE): Whether to output group-specific statistics (alternative allele frequency, counts, and sample size for each ordinal category). When TRUE, adds columns AltFreqInGroup.\emph{, AltCountsInGroup.}, and nSamplesInGroup.* to the output file.
+\item \code{ifOutGroup} (logical, default: FALSE): Whether to output group-specific statistics
+(alternative allele frequency, counts, and sample size for each ordinal category).
+When TRUE, adds columns AltFreqInGroup.\emph{, AltCountsInGroup.}, and nSamplesInGroup.* to the output file.
 }
 
 \strong{Output file columns}:
@@ -63,9 +67,12 @@ POLMM supports both sparse and dense GRM for modeling genetic relatedness:
 \item{beta}{Effect size estimate (log-odds scale).}
 \item{seBeta}{Standard error of beta.}
 \item{zScore}{Z-score from the score test.}
-\item{AltFreqInGroup.1, AltFreqInGroup.2, ...}{(Only if \code{ifOutGroup = TRUE}) Alternative allele frequency in each ordinal category.}
-\item{AltCountsInGroup.1, AltCountsInGroup.2, ...}{(Only if \code{ifOutGroup = TRUE}) Alternative allele counts in each ordinal category.}
-\item{nSamplesInGroup.1, nSamplesInGroup.2, ...}{(Only if \code{ifOutGroup = TRUE}) Sample size in each ordinal category.}
+\item{AltFreqInGroup.1, AltFreqInGroup.2, ...}
+{(Only if \code{ifOutGroup = TRUE}) Alternative allele frequency in each ordinal category.}
+\item{AltCountsInGroup.1, AltCountsInGroup.2, ...}
+{(Only if \code{ifOutGroup = TRUE}) Alternative allele counts in each ordinal category.}
+\item{nSamplesInGroup.1, nSamplesInGroup.2, ...}
+{(Only if \code{ifOutGroup = TRUE}) Sample size in each ordinal category.}
 }
 }
 \examples{

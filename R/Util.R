@@ -24,10 +24,10 @@
 # Helper function to print formatted analysis parameters
 .printParameters <- function(title, params, control) {
   timestamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
-  
+
   # Print title with timestamp
   message(sprintf("[INFO] %s %s ...", timestamp, title))
-  
+
   # Print each parameter with indentation
   for (name in names(params)) {
     value <- params[[name]]
@@ -35,7 +35,7 @@
       message(sprintf("    %s: %s", name, paste(value, collapse = ", ")))
     }
   }
-  
+
   # Print control parameters with indentation
   if (!is.null(control) && length(control) > 0) {
     message("    Control parameters:")
@@ -163,7 +163,7 @@ checkOutputFile <- function(
         # Analysis already completed
         indexChunk <- outIndexData[nrow(outIndexData) - 1, 1]
         indexChunk <- as.numeric(gsub("Have completed the analysis of chunk ", "", indexChunk))
-        
+
         stop(
           "Analysis completed in an earlier run. Results saved in '",
           OutputFile,
@@ -173,7 +173,7 @@ checkOutputFile <- function(
         # Partial analysis - restart from next chunk
         indexChunk <- lastMessage
         indexChunk <- as.numeric(gsub("Have completed the analysis of chunk ", "", indexChunk))
-        
+
         .message(
           "Part of analysis completed and saved in %s. Restarting from chunk %d",
           OutputFileIndex, indexChunk + 1

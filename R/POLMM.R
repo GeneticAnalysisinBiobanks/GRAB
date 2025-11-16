@@ -43,7 +43,7 @@
 #' # Step 2
 #' GRAB.Marker(obj.POLMM, GenoFile, OutputFile,
 #'   control = list(ifOutGroup = TRUE))
-#' 
+#'
 #' head(data.table::fread(OutputFile))
 #'
 #' @details
@@ -54,10 +54,12 @@
 #' \strong{Genetic Relationship Matrix (GRM) Options}:
 #' POLMM supports both sparse and dense GRM for modeling genetic relatedness:
 #' \itemize{
-#'   \item If \code{SparseGRMFile} is provided to \code{GRAB.NullModel()}, the sparse GRM will be used in model fitting.
-#'   \item If \code{SparseGRMFile} is not provided, \code{GRAB.NullModel()} will calculate a dense GRM from \code{GenoFile}.
+#'   \item If \code{SparseGRMFile} is provided to \code{GRAB.NullModel()},
+#'      the sparse GRM will be used in model fitting.
+#'   \item If \code{SparseGRMFile} is not provided, \code{GRAB.NullModel()}
+#'      will calculate a dense GRM from \code{GenoFile}.
 #' }
-#' 
+#'
 #' \strong{Additional Control Parameters for GRAB.NullModel()}:
 #' \itemize{
 #'   \item \code{memoryChunk} (numeric, default: 2): Memory chunk size for computation.
@@ -85,7 +87,9 @@
 #'
 #' \strong{Additional Control Parameters for GRAB.Marker()}:
 #' \itemize{
-#'   \item \code{ifOutGroup} (logical, default: FALSE): Whether to output group-specific statistics (alternative allele frequency, counts, and sample size for each ordinal category). When TRUE, adds columns AltFreqInGroup.*, AltCountsInGroup.*, and nSamplesInGroup.* to the output file.
+#'   \item \code{ifOutGroup} (logical, default: FALSE): Whether to output group-specific statistics
+#'      (alternative allele frequency, counts, and sample size for each ordinal category).
+#'      When TRUE, adds columns AltFreqInGroup.*, AltCountsInGroup.*, and nSamplesInGroup.* to the output file.
 #' }
 #'
 #' \strong{Output file columns}:
@@ -99,9 +103,12 @@
 #'   \item{beta}{Effect size estimate (log-odds scale).}
 #'   \item{seBeta}{Standard error of beta.}
 #'   \item{zScore}{Z-score from the score test.}
-#'   \item{AltFreqInGroup.1, AltFreqInGroup.2, ...}{(Only if \code{ifOutGroup = TRUE}) Alternative allele frequency in each ordinal category.}
-#'   \item{AltCountsInGroup.1, AltCountsInGroup.2, ...}{(Only if \code{ifOutGroup = TRUE}) Alternative allele counts in each ordinal category.}
-#'   \item{nSamplesInGroup.1, nSamplesInGroup.2, ...}{(Only if \code{ifOutGroup = TRUE}) Sample size in each ordinal category.}
+#'   \item{AltFreqInGroup.1, AltFreqInGroup.2, ...}
+#'      {(Only if \code{ifOutGroup = TRUE}) Alternative allele frequency in each ordinal category.}
+#'   \item{AltCountsInGroup.1, AltCountsInGroup.2, ...}
+#'      {(Only if \code{ifOutGroup = TRUE}) Alternative allele counts in each ordinal category.}
+#'   \item{nSamplesInGroup.1, nSamplesInGroup.2, ...}
+#'      {(Only if \code{ifOutGroup = TRUE}) Sample size in each ordinal category.}
 #' }
 #'
 GRAB.POLMM <- function() {
@@ -138,7 +145,7 @@ GRAB.POLMM <- function() {
 #'   SparseGRMFile = SparseGRMFile,
 #'   control = list(tolTau = 0.2, tolBeta = 0.1)
 #' )
-#' 
+#'
 #' # Step 2
 #' GRAB.Region(obj.POLMM, GenoFileStep2, OutputFile,
 #'   GroupFile = GroupFile,
@@ -152,9 +159,9 @@ GRAB.POLMM <- function() {
 #' head(data.table::fread(paste0(OutputFile, ".infoBurdenNoWeight")))
 #'
 #' @details
-#' 
+#'
 #' See \code{\link{GRAB.POLMM}} for details on step 1.
-#' 
+#'
 #' \strong{Additional Control Parameters for GRAB.Region() with POLMM}:
 #' \itemize{
 #'   \item \code{printPCGInfo} (logical, default: FALSE): Whether to print PCG iteration information for debugging.
@@ -165,11 +172,11 @@ GRAB.POLMM <- function() {
 #' \strong{Results are saved to four files}:
 #' \enumerate{
 #'   \item \code{OutputFile}: Region-based test results (SKAT-O, SKAT, Burden p-values).
-#'   \item \code{paste0(OutputFile, ".markerInfo")}: Marker-level results for rare variants 
+#'   \item \code{paste0(OutputFile, ".markerInfo")}: Marker-level results for rare variants
 #'     (MAC >= \code{min_mac_region}) included in region tests.
-#'   \item \code{paste0(OutputFile, ".otherMarkerInfo")}: Information for excluded markers 
+#'   \item \code{paste0(OutputFile, ".otherMarkerInfo")}: Information for excluded markers
 #'     (ultra-rare variants or failed QC).
-#'   \item \code{paste0(OutputFile, ".infoBurdenNoWeight")}: Summary statistics for burden 
+#'   \item \code{paste0(OutputFile, ".infoBurdenNoWeight")}: Summary statistics for burden
 #'     tests without weights.
 #' }
 #'
@@ -229,18 +236,14 @@ GRAB.POLMM <- function() {
 #'   \item{se.beta}{Standard error of effect size estimate.}
 #'   \item{pvalue}{P-value for burden test.}
 #' }
-#' 
+#'
 GRAB.POLMM.Region <- function() {
   .message("?GRAB.POLMM for instructions on step 1")
   .message("?GRAB.POLMM.Region for instructions on step 2")
 }
 
 
-checkControl.NullModel.POLMM <- function(
-  control,
-  traitType,
-  optionGRM
-) {
+checkControl.NullModel.POLMM <- function(control, traitType, optionGRM) {
   if (traitType != "ordinal") {
     stop("For method of 'POLMM', only traitType of 'ordinal' is supported.")
   }
@@ -282,7 +285,7 @@ checkControl.NullModel.POLMM <- function(
 #'
 #' @param response Ordered factor response (lowest level coded as 0 internally).
 #' @param designMat Numeric covariate matrix or data.frame (n x p).
-#' @param subjIDcol Character vector of subject IDs aligned with rows of
+#' @param subjData Character vector of subject IDs aligned with rows of
 #'   \code{designMat} and \code{response}.
 #' @param control List of POLMM options (e.g., \code{tau},
 #'   \code{maxMissingVarRatio}, \code{minMafVarRatio}).
@@ -297,12 +300,10 @@ checkControl.NullModel.POLMM <- function(
 #'
 #' @keywords internal
 fitNullModel.POLMM <- function(
-  response, designMat, subjIDcol, control, optionGRM,
+  response, designMat, subjData, control, optionGRM,
   genoType, # "PLINK" or "BGEN"
   markerInfo # colnames: CHROM, POS, ID, REF, ALT, genoIndex
 ) {
-
-  subjData <- subjIDcol  # Use subjData internally for compatibility
 
   ######## -------------- first set up the object in C++ -------- ########
 
@@ -368,28 +369,16 @@ checkControl.Marker.POLMM <- function(control) {
   default.control <- list(
     ifOutGroup = FALSE
   )
-  
+
   control <- updateControl(control, default.control)
   return(control)
 }
 
 
-setMarker.POLMM <- function(
-  objNull,
-  control
-) {
+setMarker.POLMM <- function(objNull, control) {
   # Calculate grouping for phenotypic values
   Group <- objNull$yVec                                       # numeric vector
   nGroup <- length(unique(Group))                             # integer
-
-  # marker-level analysis does not use sparse GRM
-  flagSparseGRM <- FALSE
-
-  # Marker analysis doesn't use PCG solver, so use default values
-  # These parameters won't affect computation since getMarkerPval() doesn't call PCG
-  printPCGInfo <- FALSE
-  tolPCG <- 0.001
-  maxiterPCG <- 100
 
   # Check 'Main.cpp'
   setPOLMMobjInCPP(
@@ -398,12 +387,12 @@ setMarker.POLMM <- function(
     t_Cova = objNull$Cova,                # matrix: Covariate matrix (n x p) with intercept
     t_yVec = objNull$yVec,                # integer vector: Response (0 to J-1)
     t_tau = objNull$tau,                  # numeric: Variance component parameter
-    t_printPCGInfo = printPCGInfo,        # logical: Print PCG iteration info (not used in marker)
-    t_tolPCG = tolPCG,                    # numeric: PCG convergence tolerance (not used in marker)
-    t_maxiterPCG = maxiterPCG,            # integer: Max PCG iterations (not used in marker)
+    t_printPCGInfo = FALSE,               # logical: Print PCG iteration info (not used in marker)
+    t_tolPCG = 0.001,                     # numeric: PCG convergence tolerance (not used in marker)
+    t_maxiterPCG = 100,                   # integer: Max PCG iterations (not used in marker)
     t_varRatio = objNull$VarRatio,        # numeric: Variance ratio from null model
     t_SPA_cutoff = control$SPA_Cutoff,    # numeric: Cutoff for saddlepoint approximation
-    t_flagSparseGRM = flagSparseGRM,      # logical: Use sparse GRM (FALSE for marker)
+    t_flagSparseGRM = FALSE,              # logical: Use sparse GRM (FALSE for marker)
     t_group = Group,                      # integer vector: Group assignments for each individual
     t_ifOutGroup = control$ifOutGroup,    # logical: Output group-specific statistics
     t_nGroup = nGroup                     # integer: Total number of groups
@@ -434,7 +423,7 @@ mainMarker.POLMM <- function(
     seBeta = OutList$seBeta,                  # Standard errors of beta
     zScore = OutList$zScore                   # Z-scores
   )
-  
+
   # Add group-specific columns if requested
   if (control$ifOutGroup) {
     obj.mainMarker <- cbind(

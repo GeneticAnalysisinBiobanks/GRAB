@@ -25,7 +25,7 @@
 #' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' OutputFile <- file.path(tempdir(), "resultSPACox.txt")
 #' PhenoData <- data.table::fread(PhenoFile, header = TRUE)
-#' 
+#'
 #' # Step 1 option 1
 #' obj.SPACox <- GRAB.NullModel(
 #'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
@@ -49,17 +49,18 @@
 #'   method = "SPACox",
 #'   traitType = "Residual"
 #' )
-#' 
+#'
 #' # Step 2
 #' GRAB.Marker(obj.SPACox, GenoFile, OutputFile)
-#' 
+#'
 #' head(data.table::fread(OutputFile))
 #'
 #' @details
-#' 
+#'
 #' \strong{Additional Control Parameters for GRAB.NullModel()}:
 #' \itemize{
-#'   \item \code{range} (numeric vector, default: c(-100, 100)): Range for saddlepoint approximation grid. Must be symmetric (range\[2\] = -range\[1\]).
+#'   \item \code{range} (numeric vector, default: c(-100, 100)):
+#'      Range for saddlepoint approximation grid. Must be symmetric (range\[2\] = -range\[1\]).
 #'   \item \code{length.out} (integer, default: 10000): Number of grid points for saddlepoint approximation.
 #' }
 #'
@@ -84,10 +85,7 @@ GRAB.SPACox <- function() {
 }
 
 
-checkControl.NullModel.SPACox <- function(
-  control,
-  traitType
-) {
+checkControl.NullModel.SPACox <- function(control, traitType) {
   if (!traitType %in% c("time-to-event", "Residual")) {
     stop("For 'SPACox' method, only traitType of 'time-to-event' or 'Residual' is supported.")
   }
@@ -123,7 +121,7 @@ checkControl.NullModel.SPACox <- function(
 #' @param response Either a \code{survival::Surv} object (time-to-event) or a
 #'   numeric residual vector with class \code{"Residual"}.
 #' @param designMat Numeric design matrix (n x p) of covariates.
-#' @param subjIDcol Vector of subject IDs aligned with rows of \code{designMat}.
+#' @param subjData Vector of subject IDs aligned with rows of \code{designMat}.
 #' @param control List with fields such as \code{range} and \code{length.out}
 #'   for the CGF grid.
 #' @param ... Extra arguments passed to \code{survival::coxph} when
@@ -144,12 +142,11 @@ checkControl.NullModel.SPACox <- function(
 fitNullModel.SPACox <- function(
   response,
   designMat,
-  subjIDcol,
+  subjData,
   control,
   ...
 ) {
-  subjData <- subjIDcol  # Use subjData internally for compatibility
-  
+
   if (!(inherits(response, "Surv") || inherits(response, "Residual"))) {
     stop("For SPAcox, the response variable should be of class 'Surv' or 'Residual'.")
   }
@@ -236,26 +233,15 @@ checkControl.Marker.SPACox <- function(control) {
 }
 
 
-setMarker.SPACox <- function(
-  objNull,
-  control
-) {
-  cumul <- objNull$cumul
-  mresid <- objNull$mresid
-  XinvXX <- objNull$X.invXX
-  tX <- objNull$tX
-  N <- length(mresid)
-  pVal_covaAdj_Cutoff <- control$pVal_covaAdj_Cutoff
-  SPA_Cutoff <- control$SPA_Cutoff
-
+setMarker.SPACox <- function(objNull, control) {
   setSPACoxobjInCPP(
-    t_cumul = cumul,                        # matrix: Cumulative hazard matrix
-    t_mresid = mresid,                      # numeric vector: Martingale residuals
-    t_XinvXX = XinvXX,                      # matrix: (X'X)^(-1) for variance calculation
-    t_tX = tX,                              # matrix: Transpose of design matrix X
-    t_N = N,                                # integer: Sample size
-    t_pVal_covaAdj_Cutoff = pVal_covaAdj_Cutoff,  # numeric: P-value cutoff for covariate adjustment
-    t_SPA_Cutoff = SPA_Cutoff               # numeric: P-value cutoff for SPA correction
+    t_cumul = objNull$cumul,                # matrix: Cumulative hazard matrix
+    t_mresid = objNull$mresid,              # numeric vector: Martingale residuals
+    t_XinvXX = objNull$X.invXX,             # matrix: (X'X)^(-1) for variance calculation
+    t_tX = objNull$tX,                      # matrix: Transpose of design matrix X
+    t_N = length(objNull$mresid),           # integer: Sample size
+    t_pVal_covaAdj_Cutoff = control$pVal_covaAdj_Cutoff,  # numeric: P-value cutoff for covariate adjustment
+    t_SPA_Cutoff = control$SPA_Cutoff       # numeric: P-value cutoff for SPA correction
   )
 }
 
@@ -269,7 +255,7 @@ mainMarker.SPACox <- function(
     t_genoType = genoType,    # character: "PLINK" or "BGEN"
     t_genoIndex = genoIndex   # integer vector: Genotype indices to analyze
   )
-  
+
   obj.mainMarker <- data.frame(
     Marker = OutList$markerVec, # marker IDs
     Info = OutList$infoVec, # marker information: CHR:POS:REF:ALT
@@ -278,7 +264,7 @@ mainMarker.SPACox <- function(
     MissingRate = OutList$missingRateVec, # alternative allele counts
     Pvalue = OutList$pvalVec, # marker-level p-values
     zScore = OutList$zScore
-  ) 
+  )
 
   return(obj.mainMarker)
 }

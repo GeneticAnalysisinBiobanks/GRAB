@@ -19,54 +19,60 @@
 #' Tests for association between phenotypes and genomic regions containing multiple
 #' genetic variants, primarily low-frequency and rare variants.
 #'
-#' @param objNull (S3 object) Null model object from \code{\link{GRAB.NullModel}}. 
+#' @param objNull (S3 object) Null model object from \code{\link{GRAB.NullModel}}.
 #'   Currently supports POLMM_NULL_Model.
 #' @param GenoFile (character) Path to genotype file (PLINK or BGEN format). See
 #'   \code{\link{GRAB.ReadGeno}} for details.
 #' @param OutputFile (character) Path for saving region-based association results.
-#' @param GenoFileIndex (character or NULL) Index files for the genotype file. If 
-#'   \code{NULL} (default), uses same prefix as \code{GenoFile}. See 
+#' @param GenoFileIndex (character or NULL) Index files for the genotype file. If
+#'   \code{NULL} (default), uses same prefix as \code{GenoFile}. See
 #'   \code{\link{GRAB.ReadGeno}} for details.
-#' @param OutputFileIndex (character or NULL) Path for progress tracking file. If 
+#' @param OutputFileIndex (character or NULL) Path for progress tracking file. If
 #'   \code{NULL} (default), uses \code{paste0(OutputFile, ".index")}.
-#' @param GroupFile (character) Path to region definition file specifying region-marker 
+#' @param GroupFile (character) Path to region definition file specifying region-marker
 #'   mappings and annotation information. Tab-separated format with 2-3 columns per region.
 #' @param SparseGRMFile (character or NULL) Path to sparse GRM file (optional).
-#' @param MaxMAFVec (character) Comma-separated MAF cutoffs for including variants in 
+#' @param MaxMAFVec (character) Comma-separated MAF cutoffs for including variants in
 #'   analysis (default: "0.01,0.001,0.0005").
 #' @param annoVec (character) Comma-separated annotation groups for analysis
 #'   (default: "lof,lof:missense,lof:missense:synonymous").
 #' @param control (list or NULL) List of the following parameters:
 #'   \itemize{
-#'     \item \code{impute_method} (character): Method for imputing missing genotypes: "mean", "minor", or "drop". Default: "minor".
-#'     \item \code{missing_cutoff} (numeric): Exclude markers with missing rate > this value. Range: 0 to 0.5. Default: 0.15.
-#'     \item \code{min_mac_region} (numeric): Minimum MAC threshold; markers with MAC < this value are treated as ultra-rare variants. Default: 5.
+#'     \item \code{impute_method} (character): Method for imputing missing genotypes:
+#'        "mean", "minor", or "drop". Default: "minor".
+#'     \item \code{missing_cutoff} (numeric): Exclude markers with missing rate > this value.
+#'        Range: 0 to 0.5. Default: 0.15.
+#'     \item \code{min_mac_region} (numeric): Minimum MAC threshold; markers with
+#'        MAC < this value are treated as ultra-rare variants. Default: 5.
 #'     \item \code{max_markers_region} (integer): Maximum number of markers allowed per region. Default: 100.
-#'     \item \code{r.corr} (numeric vector): Rho parameters for SKAT-O test. Range: 0 to 1. Default: c(0, 0.1^2, 0.2^2, 0.3^2, 0.4^2, 0.5^2, 0.5, 1).
-#'     \item \code{weights.beta} (numeric vector): Beta distribution parameters for variant weights (length 2). Default: c(1, 25).
-#'     \item \code{omp_num_threads} (integer): Number of OpenMP threads for parallel computation. Default: data.table::getDTthreads().
+#'     \item \code{r.corr} (numeric vector): Rho parameters for SKAT-O test. Range: 0 to 1.
+#'        Default: c(0, 0.1^2, 0.2^2, 0.3^2, 0.4^2, 0.5^2, 0.5, 1).
+#'     \item \code{weights.beta} (numeric vector): Beta distribution parameters for variant weights (length 2).
+#'        Default: c(1, 25).
+#'     \item \code{omp_num_threads} (integer): Number of OpenMP threads for parallel computation.
+#'        Default: data.table::getDTthreads().
 #'     \item \code{min_nMarker} (integer): Minimum number of markers required for region analysis. Default: 3.
 #'     \item \code{SPA_Cutoff} (numeric): Z-score cutoff for saddlepoint approximation. When the absolute
 #'       value of the test statistic exceeds this cutoff, SPA is used to calculate more accurate p-values. Default: 2.
 #'   }
-#' 
+#'
 #' @return
 #' The function returns \code{NULL} invisibly. Results are saved to four files:
 #' \enumerate{
 #'   \item \code{OutputFile}: Region-based test results (SKAT-O, SKAT, Burden p-values).
-#'   \item \code{paste0(OutputFile, ".markerInfo")}: Marker-level results for rare variants 
+#'   \item \code{paste0(OutputFile, ".markerInfo")}: Marker-level results for rare variants
 #'     (MAC >= \code{min_mac_region}) included in region tests.
-#'   \item \code{paste0(OutputFile, ".otherMarkerInfo")}: Information for excluded markers 
+#'   \item \code{paste0(OutputFile, ".otherMarkerInfo")}: Information for excluded markers
 #'     (ultra-rare variants or failed QC).
-#'   \item \code{paste0(OutputFile, ".infoBurdenNoWeight")}: Summary statistics for burden 
+#'   \item \code{paste0(OutputFile, ".infoBurdenNoWeight")}: Summary statistics for burden
 #'     tests without weights.
 #' }
-#' 
+#'
 #' For method-specific examples and output columns and format, see:
 #' \itemize{
 #'   \item POLMM method: \code{\link{GRAB.POLMM.Region}}
 #' }
-#' 
+#'
 #'
 GRAB.Region <- function(
   objNull,
@@ -115,9 +121,9 @@ GRAB.Region <- function(
 
   # Validate SparseGRMFile
   if (!is.null(SparseGRMFile) && !file.exists(SparseGRMFile)) {
-      stop("Cannot find SparseGRMFile: ", SparseGRMFile)
+    stop("Cannot find SparseGRMFile: ", SparseGRMFile)
   }
-  
+
   # Parse and validate MAF cutoffs for variant selection
   MaxMAFVec <- MaxMAFVec %>%                                  # numeric vector
     strsplit(split = ",") %>%
@@ -167,7 +173,7 @@ GRAB.Region <- function(
   }
 
   if (!is.numeric(control$missing_cutoff) ||
-      control$missing_cutoff < 0 || control$missing_cutoff > 0.5) {
+        control$missing_cutoff < 0 || control$missing_cutoff > 0.5) {
     stop("control$missing_cutoff should be numeric in [0, 0.5].")
   }
 
@@ -180,12 +186,12 @@ GRAB.Region <- function(
   }
 
   if (!is.numeric(control$r.corr) ||
-      min(control$r.corr) < 0 || max(control$r.corr) > 1) {
+        min(control$r.corr) < 0 || max(control$r.corr) > 1) {
     stop("control$r.corr should be numeric vector with elements in [0, 1].")
   }
 
   if (!is.numeric(control$weights.beta) ||
-      length(control$weights.beta) != 2 || min(control$weights.beta) < 0) {
+        length(control$weights.beta) != 2 || min(control$weights.beta) < 0) {
     stop("control$weights.beta should be numeric vector with two non-negative elements.")
   }
 
@@ -208,7 +214,7 @@ GRAB.Region <- function(
   indexChunk <- checkOutputFile(                              # integer
     OutputFile, OutputFileIndex, "Region", nEachChunk = 1
   )
-  
+
   # ========== Print all parameters ==========
 
   params <- list(
@@ -276,7 +282,7 @@ GRAB.Region <- function(
     info <- strsplit(markerGroupLine, "\t")[[1]]              # character vector
     if (length(info) < 3) {
       stop("The line ", nLine, " in 'groupFile' includes < 3 elements, ",
-        "please note that each line should be seperated by 'tab'.")
+           "please note that each line should be seperated by 'tab'.")
     }
 
     geneID <- info[1]                                         # character
@@ -286,13 +292,13 @@ GRAB.Region <- function(
     grepTemp <- grep(" ", values, value = TRUE)               # character vector
     if (length(grepTemp) > 0) {
       stop("'GroupFile' cannot contain 'space':\n",
-        paste0(unique(grepTemp), collapse = "\t"))
+           paste0(unique(grepTemp), collapse = "\t"))
     }
 
     grepTemp <- grep(";", values, value = TRUE)               # character vector
     if (length(grepTemp) > 0) {
       stop("'GroupFile' cannot contain ';':\n",
-        paste0(unique(grepTemp), collapse = "\t"))
+           paste0(unique(grepTemp), collapse = "\t"))
     }
 
     if (type == "weight") {
@@ -304,7 +310,7 @@ GRAB.Region <- function(
 
     if (!type %in% c("var", "anno", "weight")) {
       stop("The second column of the groupFile (tab-seperated) should be one of 'var', 'anno', and 'weight'.\n",
-        "         Please double check line ", nLine, ".")
+           "         Please double check line ", nLine, ".")
     }
 
     if (type == "var") {
@@ -314,11 +320,11 @@ GRAB.Region <- function(
       if (previousType != "first") {
         regionList[[nRegion]] <- list(                        # list
           regionID = previousGene,
-            regionInfo = data.frame(
-              ID = Markers,
-              Annos = Annos,
-              Weights = Weights
-            )
+          regionInfo = data.frame(
+            ID = Markers,
+            Annos = Annos,
+            Weights = Weights
+          )
         )
         nRegion <- nRegion + 1
       }
@@ -357,7 +363,7 @@ GRAB.Region <- function(
   nRegions <- length(RegionList)                              # integer
 
   # ========== Configure C++ backend ==========
- 
+
   # Initialize genotype reader in C++ backend
   control$max_maf_region <- MaxMAF                            # numeric
   objGeno <- setGenoInput(GenoFile, GenoFileIndex, subjData, control) # list
@@ -522,7 +528,7 @@ processOneRegion <- function(
   obj.mainRegion <- switch(                                 # list
     NullModelClass,
     POLMM_NULL_Model = mainRegion.POLMM(genoType, genoIndex, OutputFile, n,
-                                         obj.setRegion, obj.mainRegionInCPP, nLabel),
+                                        obj.setRegion, obj.mainRegionInCPP, nLabel),
     stop("Unknown NullModelClass: ", NullModelClass)
   )
 

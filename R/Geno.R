@@ -295,7 +295,7 @@ checkControl.ReadGeno <- function(control) {
     RangesToIncludeFile = NULL,
     RangesToExcludeFile = NULL
   )
-  
+
   if (is.null(control)) {
     control <- default.control
   } else {
@@ -316,14 +316,14 @@ checkControl.ReadGeno <- function(control) {
   # Check marker selection parameters
   include_files <- c("IDsToIncludeFile", "RangesToIncludeFile")
   exclude_files <- c("IDsToExcludeFile", "RangesToExcludeFile")
-  
+
   # Check which files are provided
   include_provided <- sapply(include_files, function(x) !is.null(control[[x]]))
   exclude_provided <- sapply(exclude_files, function(x) !is.null(control[[x]]))
-  
+
   has_include <- any(include_provided)
   has_exclude <- any(exclude_provided)
-  
+
   # Validate: cannot provide both include and exclude files
   if (has_include && has_exclude) {
     stop(
@@ -332,7 +332,7 @@ checkControl.ReadGeno <- function(control) {
       "or exclude files (IDsToExcludeFile, RangesToExcludeFile), but not both."
     )
   }
-  
+
   # Check if the files specified exist
   FileType <- c("IDsToIncludeFile", "IDsToExcludeFile", "RangesToIncludeFile", "RangesToExcludeFile")
   for (ft in FileType) {
@@ -347,7 +347,7 @@ checkControl.ReadGeno <- function(control) {
   # Log which files are being used
   if (has_include || has_exclude) {
     control$AllMarkers <- FALSE
-    
+
     if (has_include) {
       used_files <- include_files[include_provided]
       .message("Marker selection: Including markers from union of:")
@@ -521,7 +521,7 @@ setGenoInput <- function(
         expected_colnames <- c("ID_1", "ID_2", "missing", "sex")
         expected_first_row <- c(0, 0, 0, "D")
         if (any(colnames(sampleData)[1:4] != expected_colnames) ||
-            any(sampleData[1, 1:4] != expected_first_row)) {
+              any(sampleData[1, 1:4] != expected_first_row)) {
           stop("Column names of sample file should be c('ID_1', 'ID_2', 'missing', 'sex') and ",
                "the first row of sample file should be c(0,0,0,'D')")
         }

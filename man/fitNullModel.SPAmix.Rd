@@ -7,13 +7,7 @@ covariates or from precomputed residuals. Principal components (PCs) named
 in \code{control$PC_columns} are extracted; residual outliers are detected
 using an IQR rule with adjustable multiplier and stored for SPA testing.}
 \usage{
-fitNullModel.SPAmix(
-  response,
-  designMat,
-  subjIDcol,
-  control = list(OutlierRatio = 1.5),
-  ...
-)
+fitNullModel.SPAmix(response, designMat, subjData, control, ...)
 }
 \arguments{
 \item{response}{Either a \code{survival::Surv} object (time-to-event data)
@@ -22,12 +16,12 @@ or a numeric residual vector/matrix with class \code{"Residual"}.}
 \item{designMat}{Numeric matrix (n x p) of covariates; must include the PC
 columns specified in \code{control$PC_columns}.}
 
-\item{subjIDcol}{Vector of subject IDs aligned with rows of \code{designMat}
+\item{subjData}{Vector of subject IDs aligned with rows of \code{designMat}
 and \code{response}.}
 
 \item{control}{List of options. Required element: \code{PC_columns}, a
 single comma-separated string of PC column names (e.g.
-\code{"PC1,PC2,PC3,PC4"}). Optional: \code{OutlierRatio} (default 1.5).}
+\code{"PC1,PC2,PC3,PC4"}). \code{OutlierRatio}.}
 
 \item{...}{Extra arguments passed to \code{survival::coxph} when
 \code{response} is \code{Surv}.}

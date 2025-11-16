@@ -18,8 +18,8 @@
 #' covariates, and optionally a genetic relationship matrix (GRM) for subsequent
 #' association testing.
 #'
-#' @param formula (formula) Formula with response variable(s) on the left and covariates 
-#'   on the right. Do not include an intercept (added automatically). Missing values 
+#' @param formula (formula) Formula with response variable(s) on the left and covariates
+#'   on the right. Do not include an intercept (added automatically). Missing values
 #'   should be coded as \code{NA}. Other values (e.g., -9, -999) are treated as numeric.
 #'   For SPAmix with traitType "Residual", multiple response variables are supported.
 #' @param data (data.frame) Data frame containing response variables and covariates in the formula.
@@ -33,20 +33,20 @@
 #'     \item "WtCoxG": Time-to-event traits. See \code{\link{GRAB.WtCoxG}}.
 #'   }
 #' @param traitType (character) Trait type: "ordinal", "time-to-event", or "Residual".
-#' @param GenoFile (character or NULL) Path to genotype file (PLINK or BGEN format). 
-#'   Required for dense GRM construction. GRAB supports both dense and sparse GRM for 
+#' @param GenoFile (character or NULL) Path to genotype file (PLINK or BGEN format).
+#'   Required for dense GRM construction. GRAB supports both dense and sparse GRM for
 #'   relatedness adjustment. Dense GRM is constructed from GenoFile (PLINK/BGEN format).
 #'   See \code{\link{GRAB.ReadGeno}} and \code{\link{getTempFilesFullGRM}} for details.
-#' @param GenoFileIndex (character or NULL) Index files for the genotype file. If \code{NULL} 
-#'   (default), uses same prefix as \code{GenoFile}. See \code{\link{GRAB.ReadGeno}} 
+#' @param GenoFileIndex (character or NULL) Index files for the genotype file. If \code{NULL}
+#'   (default), uses same prefix as \code{GenoFile}. See \code{\link{GRAB.ReadGeno}}
 #'   for details.
-#' @param SparseGRMFile (character or NULL) Path to sparse GRM file. Alternative to 
-#'   dense GRM construction. Pre-computed sparse GRM matrix. 
+#' @param SparseGRMFile (character or NULL) Path to sparse GRM file. Alternative to
+#'   dense GRM construction. Pre-computed sparse GRM matrix.
 #'   See \code{\link{getSparseGRM}} for details.
-#' @param control (list or NULL) List of method-specific control parameters. 
+#' @param control (list or NULL) List of method-specific control parameters.
 #'   See the corresponding method documentation for available options and defaults.
 #' @param ... Additional arguments for method-specific functions.
-#' 
+#'
 #' @return
 #' S3 object with class "\{method\}_NULL_Model" containing:
 #' \describe{
@@ -136,7 +136,7 @@ GRAB.NullModel <- function(
       stop("Argument 'GenoFile' should be a character string (file path).")
     }
     if (!file.exists(GenoFile)) {
-        stop("Cannot find GenoFile: ", GenoFile)
+      stop("Cannot find GenoFile: ", GenoFile)
     }
 
     # SparseGRMFile validation (optional)
@@ -163,7 +163,7 @@ GRAB.NullModel <- function(
       stop("Argument 'GenoFile' should be a character string (file path).")
     }
     if (!file.exists(GenoFile)) {
-        stop("Cannot find GenoFile: ", GenoFile)
+      stop("Cannot find GenoFile: ", GenoFile)
     }
 
     # SparseGRMFile validation (optional)
@@ -195,7 +195,7 @@ GRAB.NullModel <- function(
   )
 
   # ========== Print all parameters ==========
-  
+
   params <- list(
     Method = method,
     `Trait type` = traitType,
@@ -215,8 +215,8 @@ GRAB.NullModel <- function(
   # Handle multiple response variables for SPAmix/SPACox with residual input
   mf <- match.call(expand.dots = FALSE)                       # call object
 
-  # Check if formula left side contains multiple variables (only for SPAmix/SPACox residual analysis)
-  if (method %in% c("SPAmix", "SPACox") && traitType == "Residual") {
+  # Check if formula left side contains multiple variables (only for SPAmix residual analysis)
+  if (method %in% c("SPAmix") && traitType == "Residual") {
     LeftInFormula <- deparse(formula[[2]])                    # character
     LeftIncludesAdd <- grepl("\\+", LeftInFormula)            # logical
 
@@ -246,9 +246,9 @@ GRAB.NullModel <- function(
   mt <- attr(x = mf, which = "terms")                        # terms object
 
   # Extract response variable(s) and design matrix from model frame
-  response <- model.response(mf)                              # vector or matrix
+  response <- model.response(mf)                             # vector or matrix
   designMat <- model.matrix(object = mt, data = mf)          # matrix
-  
+
   # Extract subject IDs from the original data using subjIDcol
   if (is.null(subset)) {
     subjData <- data[[subjIDcol]]                            # character vector
@@ -265,14 +265,14 @@ GRAB.NullModel <- function(
     stop("Column '", subjIDcol, "' contains duplicated subject IDs, which are not supported.")
   }
 
-  # Handle multiple response variables for SPAmix/SPACox residual analysis
-  if (method %in% c("SPAmix", "SPACox") && traitType == "Residual") {
+  # Handle multiple response variables for SPAmix residual analysis
+  if (method %in% c("SPAmix") && traitType == "Residual") {
     LeftInFormula <- deparse(formula[[2]])                    # character
     LeftIncludesAdd <- grepl("\\+", LeftInFormula)            # logical
-    
+
     if (LeftIncludesAdd) {
-      nInLeft <- length(strsplit(LeftInFormula, "\\+")[[1]]) # integer
-      
+      nInLeft <- length(strsplit(LeftInFormula, "\\+")[[1]])  # integer
+
       # Create pattern for missing values across all phenotypes
       noValueInAnyPheno <- paste(rep(NA, nInLeft), collapse = " ") # character
       posNoValue <- which(response == noValueInAnyPheno)      # integer vector
@@ -292,7 +292,7 @@ GRAB.NullModel <- function(
       for (i in 1:nRes) {
         response[i, ] <- as.numeric(unlist(strsplit(response.temp[i], split = " "))) # numeric vector
       }
-      
+
       # Set response class for residual analysis
       class(response) <- "Residual"
     } else {
@@ -380,6 +380,6 @@ GRAB.NullModel <- function(
   objNull$control <- control
 
   .message("Successfully finished fitting the null model")
-  
+
   return(objNull)
 }

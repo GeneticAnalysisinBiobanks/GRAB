@@ -14,7 +14,8 @@ in a large-scale biobank.
 \details{
 \strong{Additional Control Parameters for GRAB.NullModel()}:
 \itemize{
-\item \code{range} (numeric vector, default: c(-100, 100)): Range for saddlepoint approximation grid. Must be symmetric (range[2] = -range[1]).
+\item \code{range} (numeric vector, default: c(-100, 100)):
+Range for saddlepoint approximation grid. Must be symmetric (range[2] = -range[1]).
 \item \code{length.out} (integer, default: 10000): Number of grid points for saddlepoint approximation.
 }
 

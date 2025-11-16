@@ -46,13 +46,19 @@ analysis (default: "0.01,0.001,0.0005").}
 
 \item{control}{(list or NULL) List of the following parameters:
 \itemize{
-\item \code{impute_method} (character): Method for imputing missing genotypes: "mean", "minor", or "drop". Default: "minor".
-\item \code{missing_cutoff} (numeric): Exclude markers with missing rate > this value. Range: 0 to 0.5. Default: 0.15.
-\item \code{min_mac_region} (numeric): Minimum MAC threshold; markers with MAC < this value are treated as ultra-rare variants. Default: 5.
+\item \code{impute_method} (character): Method for imputing missing genotypes:
+"mean", "minor", or "drop". Default: "minor".
+\item \code{missing_cutoff} (numeric): Exclude markers with missing rate > this value.
+Range: 0 to 0.5. Default: 0.15.
+\item \code{min_mac_region} (numeric): Minimum MAC threshold; markers with
+MAC < this value are treated as ultra-rare variants. Default: 5.
 \item \code{max_markers_region} (integer): Maximum number of markers allowed per region. Default: 100.
-\item \code{r.corr} (numeric vector): Rho parameters for SKAT-O test. Range: 0 to 1. Default: c(0, 0.1^2, 0.2^2, 0.3^2, 0.4^2, 0.5^2, 0.5, 1).
-\item \code{weights.beta} (numeric vector): Beta distribution parameters for variant weights (length 2). Default: c(1, 25).
-\item \code{omp_num_threads} (integer): Number of OpenMP threads for parallel computation. Default: data.table::getDTthreads().
+\item \code{r.corr} (numeric vector): Rho parameters for SKAT-O test. Range: 0 to 1.
+Default: c(0, 0.1^2, 0.2^2, 0.3^2, 0.4^2, 0.5^2, 0.5, 1).
+\item \code{weights.beta} (numeric vector): Beta distribution parameters for variant weights (length 2).
+Default: c(1, 25).
+\item \code{omp_num_threads} (integer): Number of OpenMP threads for parallel computation.
+Default: data.table::getDTthreads().
 \item \code{min_nMarker} (integer): Minimum number of markers required for region analysis. Default: 3.
 \item \code{SPA_Cutoff} (numeric): Z-score cutoff for saddlepoint approximation. When the absolute
 value of the test statistic exceeds this cutoff, SPA is used to calculate more accurate p-values. Default: 2.

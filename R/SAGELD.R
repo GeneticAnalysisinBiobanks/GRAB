@@ -234,7 +234,7 @@ SAGELD.NullModel <- function(
     obj <- list(
       subjData = SubjID, N = length(SubjID), Method = "GALLOP",
       XTs = XTs, SS = SS, AtS = AtS, Q = Q, A21 = A21, TTs = TTs, Tys = Tys, sol = sol, blups = blups, sig = sig,
-      Resid = numeric(0), Resid_G = numeric(0), Resid_GxE = numeric(0), Resid_E = numeric(0), 
+      Resid = numeric(0), Resid_G = numeric(0), Resid_GxE = numeric(0), Resid_E = numeric(0),
       Resid.unrelated.outliers = numeric(0),
       Resid.unrelated.outliers_G = numeric(0), Resid.unrelated.outliers_GxE = numeric(0),
       R_GRM_R = 0, R_GRM_R_G = 0, R_GRM_R_GxE = 0, R_GRM_R_G_GxE = 0, R_GRM_R_E = 0,
@@ -422,9 +422,9 @@ SAGELD.NullModel <- function(
     outlier_count <- sum(Resid_data$Outlier)
     .message("Identified %d outliers", outlier_count)
     if (outlier_count > 0) {
-      outlier_info <- Resid_data %>% 
-        filter(Outlier == TRUE) %>% 
-        dplyr::select(SubjID, Resid, Outlier) %>% 
+      outlier_info <- Resid_data %>%
+        filter(Outlier == TRUE) %>%
+        dplyr::select(SubjID, Resid, Outlier) %>%
         arrange(Resid)
       print(outlier_info)
     }
@@ -648,7 +648,7 @@ SAGELD.NullModel <- function(
             R_GRM_R_TwoSubjOutlier_G.temp <- as.numeric(t(Resid_G.temp) %*% block_GRM %*% Resid_G.temp)
             R_GRM_R_TwoSubjOutlier_GxE.temp <- as.numeric(t(Resid_GxE.temp) %*% block_GRM %*% Resid_GxE.temp)
             R_GRM_R_TwoSubjOutlier_G_GxE.temp <- as.numeric(t(Resid_G.temp) %*% block_GRM %*% Resid_GxE.temp) * 2
-            R_GRM_R_TwoSubjOutlier.temp <- R_GRM_R_TwoSubjOutlier_GxE.temp + 
+            R_GRM_R_TwoSubjOutlier.temp <- R_GRM_R_TwoSubjOutlier_GxE.temp +
               lambda^2 * R_GRM_R_TwoSubjOutlier_G.temp - lambda * R_GRM_R_TwoSubjOutlier_G_GxE.temp
 
             R_GRM_R_TwoSubjOutlier <- R_GRM_R_TwoSubjOutlier + R_GRM_R_TwoSubjOutlier.temp
@@ -692,24 +692,24 @@ SAGELD.NullModel <- function(
 
     obj <- list(
       subjData = SubjID, N = length(SubjID), Method = "SAGELD",
-      XTs = XTs, SS = SS, AtS = AtS, Q = Q, A21 = A21, TTs = TTs, Tys = Tys, 
+      XTs = XTs, SS = SS, AtS = AtS, Q = Q, A21 = A21, TTs = TTs, Tys = Tys,
       sol = sol, blups = blups, sig = sig,
-      Resid = Resid, Resid_G = Resid_G, Resid_GxE = Resid_GxE, Resid_E = Resid_E, 
+      Resid = Resid, Resid_G = Resid_G, Resid_GxE = Resid_GxE, Resid_E = Resid_E,
       Resid.unrelated.outliers = Resid.unrelated.outliers,
-      Resid.unrelated.outliers_G = Resid.unrelated.outliers_G, 
+      Resid.unrelated.outliers_G = Resid.unrelated.outliers_G,
       Resid.unrelated.outliers_GxE = Resid.unrelated.outliers_GxE,
-      R_GRM_R = R_GRM_R, R_GRM_R_G = R_GRM_R_G, R_GRM_R_GxE = R_GRM_R_GxE, 
+      R_GRM_R = R_GRM_R, R_GRM_R_G = R_GRM_R_G, R_GRM_R_GxE = R_GRM_R_GxE,
       R_GRM_R_G_GxE = R_GRM_R_G_GxE, R_GRM_R_E = R_GRM_R_E,
-      R_GRM_R_TwoSubjOutlier = R_GRM_R_TwoSubjOutlier, 
+      R_GRM_R_TwoSubjOutlier = R_GRM_R_TwoSubjOutlier,
       R_GRM_R_TwoSubjOutlier_G = R_GRM_R_TwoSubjOutlier_G,
-      R_GRM_R_TwoSubjOutlier_GxE = R_GRM_R_TwoSubjOutlier_GxE, 
+      R_GRM_R_TwoSubjOutlier_GxE = R_GRM_R_TwoSubjOutlier_GxE,
       R_GRM_R_TwoSubjOutlier_G_GxE = R_GRM_R_TwoSubjOutlier_G_GxE,
-      sum_R_nonOutlier = sum_R_nonOutlier, sum_R_nonOutlier_G = sum_R_nonOutlier_G, 
+      sum_R_nonOutlier = sum_R_nonOutlier, sum_R_nonOutlier_G = sum_R_nonOutlier_G,
       sum_R_nonOutlier_GxE = sum_R_nonOutlier_GxE,
       R_GRM_R_nonOutlier = R_GRM_R_nonOutlier, R_GRM_R_nonOutlier_G = R_GRM_R_nonOutlier_G,
-      R_GRM_R_nonOutlier_GxE = R_GRM_R_nonOutlier_GxE, 
+      R_GRM_R_nonOutlier_GxE = R_GRM_R_nonOutlier_GxE,
       R_GRM_R_nonOutlier_G_GxE = R_GRM_R_nonOutlier_G_GxE,
-      TwoSubj_list = TwoSubj_list, ThreeSubj_list = ThreeSubj_list, 
+      TwoSubj_list = TwoSubj_list, ThreeSubj_list = ThreeSubj_list,
       MAF_interval = MAF_interval, zScoreE_cutoff = zScoreE_cutoff
     )
 

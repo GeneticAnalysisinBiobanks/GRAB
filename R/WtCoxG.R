@@ -52,20 +52,20 @@
 #' head(data.table::fread(OutputFile))
 #'
 #' @details
-#' 
+#'
 #' \strong{Additional Parameters for \code{GRAB.NullModel()}:}
 #' \itemize{
-#'   \item \code{RefAfFile} (character, required): Reference allele frequency file path. 
+#'   \item \code{RefAfFile} (character, required): Reference allele frequency file path.
 #'     File must contain columns: CHROM, POS, ID, REF, ALT, AF_ref, AN_ref
-#'   \item \code{SurvTimeColumn} (character, default: "SurvTime"): Column name in 
+#'   \item \code{SurvTimeColumn} (character, default: "SurvTime"): Column name in
 #'     \code{data} containing survival times
-#'   \item \code{IndicatorColumn} (character, default: "Indicator"): Column name in 
+#'   \item \code{IndicatorColumn} (character, default: "Indicator"): Column name in
 #'     \code{data} for case-control status (0 = control, 1 = case)
 #' }
 #'
 #' \strong{Additional Control Parameters for GRAB.NullModel()}:
 #' \itemize{
-#'   \item \code{RefPrevalence} (numeric, required): Population-level disease prevalence 
+#'   \item \code{RefPrevalence} (numeric, required): Population-level disease prevalence
 #'     for weighting. Must be in range (0, 0.5)
 #'   \item \code{OutlierRatio} (numeric, default: 1.5): IQR multiplier for outlier detection
 #'   \item \code{SNPnum} (numeric, default: 1e4): Minimum number of SNPs for batch effect testing
@@ -73,7 +73,7 @@
 #'
 #' \strong{Additional Control Parameters for GRAB.Marker()}:
 #' \itemize{
-#'   \item \code{cutoff} (numeric, default: 0.1): Cutoff of batch effect test p-value for 
+#'   \item \code{cutoff} (numeric, default: 0.1): Cutoff of batch effect test p-value for
 #'     association testing. Variants with batch effect p-value below this cutoff
 #'     will be excluded from association testing.
 #' }
@@ -156,9 +156,9 @@ fitNullModel.WtCoxG <- function(
 ) {
 
   # ========== Validate additional parameters from dots ==========
-  
+
   dots <- list(...)
-  
+
   # Validate RefAfFile (required)
   if (is.null(dots$RefAfFile)) {
     stop("Argument 'RefAfFile' is required for WtCoxG method.")
@@ -169,18 +169,18 @@ fitNullModel.WtCoxG <- function(
   if (!file.exists(dots$RefAfFile)) {
     stop("Cannot find RefAfFile: ", dots$RefAfFile)
   }
-  
+
   # Set defaults and validate optional column name parameters
   SurvTimeColumn <- if (is.null(dots$SurvTimeColumn)) "SurvTime" else dots$SurvTimeColumn
   if (!is.character(SurvTimeColumn) || length(SurvTimeColumn) != 1) {
     stop("Argument 'SurvTimeColumn' should be a character string (column name).")
   }
-  
+
   IndicatorColumn <- if (is.null(dots$IndicatorColumn)) "Indicator" else dots$IndicatorColumn
   if (!is.character(IndicatorColumn) || length(IndicatorColumn) != 1) {
     stop("Argument 'IndicatorColumn' should be a character string (column name).")
   }
-  
+
   # Validate that columns exist in data
   if (!SurvTimeColumn %in% colnames(data)) {
     stop("Column '", SurvTimeColumn, "' not found in data.")
@@ -310,13 +310,11 @@ checkControl.Marker.WtCoxG <- function(control) {
 
 
 setMarker.WtCoxG <- function(objNull, control) {
-  ImputeMethod <- if (is.null(control$ImputeMethod)) "none" else control$ImputeMethod
-  cutoff <- if (is.null(control$cutoff)) 0.1 else control$cutoff
   setWtCoxGobjInCPP(
     t_mresid = objNull$mresid,              # numeric vector: Martingale residuals from Cox model
     t_weight = objNull$weight,              # numeric vector: Weight vector for analysis
     t_imputeMethod = ImputeMethod,          # character: Imputation method ("none", "mean", "minor")
-    t_cutoff = cutoff                       # numeric: P-value cutoff for SPA correction
+    t_cutoff = cutoff                       # numeric: batch effect p-value cutoff for association testing
   )
 }
 
@@ -510,7 +508,7 @@ TestforBatchEffect <- function(
       cov = Value * w1[as.character(ID1)] * w1[as.character(ID2)],
       cov_R = Value * R_tilde[as.character(ID1)] * R_tilde[as.character(ID2)]
     )
-    var.ratio.w0 <- (sum(sparseGRM$cov) + 1 / (2 * mergeGenoInfo$AN_ref)) / 
+    var.ratio.w0 <- (sum(sparseGRM$cov) + 1 / (2 * mergeGenoInfo$AN_ref)) /
       (sum(w1^2) + 1 / (2 * mergeGenoInfo$AN_ref))
     var.ratio.int <- sum(sparseGRM$cov_R) / sum(R_tilde^2)
   } else {
@@ -533,7 +531,7 @@ TestforBatchEffect <- function(
     maf.ext <- mergeGenoInfo$AF_ref[ind]
     pop.prev <- RefPrevalence
     var.ratio <- mergeGenoInfo$var.ratio.w0[ind]
-    
+
     er <- n1 / (n1 + n0)
     w0 <- (1 - pop.prev) / pop.prev / ((1 - er) / er)
     w1 <- 1
@@ -551,7 +549,7 @@ TestforBatchEffect <- function(
     z.adj <- z / sqrt(var.ratio) ## adjusted statistics by variance ratio
     p <- 2 * pnorm(-abs(z.adj), lower.tail = TRUE)
     # ---- END inlined: Batcheffect.TestOneMarker ----
-    
+
     return(p)
   }) %>% unlist()
 

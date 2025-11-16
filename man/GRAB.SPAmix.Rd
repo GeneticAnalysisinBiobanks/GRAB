@@ -15,13 +15,16 @@ population or multiple populations.
 \details{
 \strong{Additional Control Parameters for GRAB.NullModel()}:
 \itemize{
-\item \code{PC_columns} (character, required): Comma-separated column names of principal components (e.g., "PC1,PC2").
-\item \code{OutlierRatio} (numeric, default: 1.5): IQR multiplier for outlier detection. Outliers are defined as values outside [Q1 - r\emph{IQR, Q3 + r}IQR].
+\item \code{PC_columns} (character, required): Comma-separated column names
+of principal components (e.g., "PC1,PC2").
+\item \code{OutlierRatio} (numeric, default: 1.5): IQR multiplier for outlier detection.
+Outliers are defined as values outside [Q1 - r\emph{IQR, Q3 + r}IQR].
 }
 
 \strong{Additional Control Parameters for GRAB.Marker()}:
 \itemize{
-\item \code{dosage_option} (character, default: "rounding_first"): Dosage handling option. Must be either "rounding_first" or "rounding_last".
+\item \code{dosage_option} (character, default: "rounding_first"):
+Dosage handling option. Must be either "rounding_first" or "rounding_last".
 }
 
 \strong{Output file columns}:
