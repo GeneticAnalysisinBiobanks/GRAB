@@ -39,9 +39,7 @@
 #'   GenoFile = GenoFile,
 #'   SparseGRMFile = SparseGRMFile,
 #'   control = list(RefPrevalence = 0.01, SNPnum = 1e3),
-#'   RefAfFile = RefAfFile,
-#'   SurvTimeColumn = "SurvTime",
-#'   IndicatorColumn = "SurvEvent"
+#'   RefAfFile = RefAfFile
 #' )
 #'
 #' # Step2
@@ -57,10 +55,6 @@
 #' \itemize{
 #'   \item \code{RefAfFile} (character, required): Reference allele frequency file path.
 #'     File must contain columns: CHROM, POS, ID, REF, ALT, AF_ref, AN_ref
-#'   \item \code{SurvTimeColumn} (character, default: "SurvTime"): Column name in
-#'     \code{data} containing survival times
-#'   \item \code{IndicatorColumn} (character, default: "Indicator"): Column name in
-#'     \code{data} for case-control status (0 = control, 1 = case)
 #' }
 #'
 #' \strong{Additional Control Parameters for GRAB.NullModel()}:
@@ -95,22 +89,69 @@ GRAB.WtCoxG <- function() {
 }
 
 
-checkControl.NullModel.WtCoxG <- function(control, traitType) {
-  # Ensure only time-to-event traits are supported
+checkControl.NullModel.WtCoxG <- function(traitType, GenoFile, SparseGRMFile, control, ...) {
+
   if (!traitType %in% c("time-to-event")) {
     stop("For 'WtCoxG' method, only traitType of 'time-to-event' is supported.")
   }
 
-  # Set default control parameters
-  default.control <- list(RefPrevalence = 0, OutlierRatio = 1.5, SNPnum = 1e4)
+  # GenoFile validation (required)
+  if (is.null(GenoFile)) {
+    stop("Argument 'GenoFile' is required for method 'WtCoxG'.")
+  }
+  if (!is.character(GenoFile) || length(GenoFile) != 1) {
+    stop("Argument 'GenoFile' should be a character string (file path).")
+  }
+  if (!file.exists(GenoFile)) {
+    stop("Cannot find GenoFile: ", GenoFile)
+  }
+
+  # SparseGRMFile validation (optional)
+  if (!is.null(SparseGRMFile)) {
+    if (!is.character(SparseGRMFile) || length(SparseGRMFile) != 1) {
+      stop("Argument 'SparseGRMFile' should be a character string (file path).")
+    }
+    if (!file.exists(SparseGRMFile)) {
+      stop("Cannot find SparseGRMFile: ", SparseGRMFile)
+    }
+    optionGRM <- "SparseGRM"
+  } else {
+    optionGRM <- NULL
+  }
+
+  default.control <- list(
+    RefPrevalence = 0,
+    OutlierRatio = 1.5,
+    SNPnum = 1e4
+  )
   control <- updateControl(control, default.control)
 
-  # Validate reference prevalence parameter
   if (control$RefPrevalence <= 0 || control$RefPrevalence >= 0.5) {
     stop("control$RefPrevalence is required and should be between (0, 0.5).")
   }
 
-  return(control)
+  # Validate RefAfFile (required)
+  RefAfFile = list(...)$RefAfFile
+  if (is.null(RefAfFile)) {
+    stop("Argument 'RefAfFile' is required for WtCoxG method.")
+  }
+  if (!is.character(RefAfFile) || length(RefAfFile) != 1) {
+    stop("Argument 'RefAfFile' should be a character string (file path).")
+  }
+  if (!file.exists(RefAfFile)) {
+    stop("Cannot find RefAfFile: ", RefAfFile)
+  }
+
+  # Validate RefAfFile columns (read header only)
+  refGenoHeader <- colnames(data.table::fread(RefAfFile, nrows = 0))
+  requiredCols <- c("CHROM", "POS", "ID", "REF", "ALT", "AF_ref", "AN_ref")
+  missingCols <- setdiff(requiredCols, refGenoHeader)
+  if (length(missingCols) > 0) {
+    stop("RefAfFile must contain columns: ", paste(requiredCols, collapse = ", "),
+         ". Missing columns: ", paste(missingCols, collapse = ", "))
+  }
+
+  return(list(control = control, optionGRM = optionGRM))
 }
 
 
@@ -152,42 +193,9 @@ checkControl.NullModel.WtCoxG <- function(control, traitType) {
 #' @keywords internal
 fitNullModel.WtCoxG <- function(
   response, designMat, subjData, control, data,
-  GenoFile, GenoFileIndex, SparseGRMFile, ...
+  GenoFile, GenoFileIndex, SparseGRMFile,
+  SurvTimeColumn, IndicatorColumn, ...
 ) {
-
-  # ========== Validate additional parameters from dots ==========
-
-  dots <- list(...)
-
-  # Validate RefAfFile (required)
-  if (is.null(dots$RefAfFile)) {
-    stop("Argument 'RefAfFile' is required for WtCoxG method.")
-  }
-  if (!is.character(dots$RefAfFile) || length(dots$RefAfFile) != 1) {
-    stop("Argument 'RefAfFile' should be a character string (file path).")
-  }
-  if (!file.exists(dots$RefAfFile)) {
-    stop("Cannot find RefAfFile: ", dots$RefAfFile)
-  }
-
-  # Set defaults and validate optional column name parameters
-  SurvTimeColumn <- if (is.null(dots$SurvTimeColumn)) "SurvTime" else dots$SurvTimeColumn
-  if (!is.character(SurvTimeColumn) || length(SurvTimeColumn) != 1) {
-    stop("Argument 'SurvTimeColumn' should be a character string (column name).")
-  }
-
-  IndicatorColumn <- if (is.null(dots$IndicatorColumn)) "Indicator" else dots$IndicatorColumn
-  if (!is.character(IndicatorColumn) || length(IndicatorColumn) != 1) {
-    stop("Argument 'IndicatorColumn' should be a character string (column name).")
-  }
-
-  # Validate that columns exist in data
-  if (!SurvTimeColumn %in% colnames(data)) {
-    stop("Column '", SurvTimeColumn, "' not found in data.")
-  }
-  if (!IndicatorColumn %in% colnames(data)) {
-    stop("Column '", IndicatorColumn, "' not found in data.")
-  }
 
   # ========== Validate response type ==========
 
@@ -284,7 +292,7 @@ fitNullModel.WtCoxG <- function(
     GenoFile = GenoFile,
     GenoFileIndex = GenoFileIndex,
     SparseGRMFile = SparseGRMFile,
-    RefAfFile = dots$RefAfFile,
+    RefAfFile = list(...)$RefAfFile,
     IndicatorColumn = IndicatorColumn,
     SurvTimeColumn = SurvTimeColumn
   )
@@ -294,13 +302,12 @@ fitNullModel.WtCoxG <- function(
 
 
 checkControl.Marker.WtCoxG <- function(control) {
+
   default.control <- list(
     cutoff = 0.1
   )
-
   control <- updateControl(control, default.control)
 
-  # Validate parameters
   if (!is.numeric(control$cutoff) || control$cutoff < 0 || control$cutoff > 1) {
     stop("control$cutoff should be a numeric value in [0, 1].")
   }
@@ -310,11 +317,12 @@ checkControl.Marker.WtCoxG <- function(control) {
 
 
 setMarker.WtCoxG <- function(objNull, control) {
+
   setWtCoxGobjInCPP(
     t_mresid = objNull$mresid,              # numeric vector: Martingale residuals from Cox model
     t_weight = objNull$weight,              # numeric vector: Weight vector for analysis
-    t_imputeMethod = ImputeMethod,          # character: Imputation method ("none", "mean", "minor")
-    t_cutoff = cutoff                       # numeric: batch effect p-value cutoff for association testing
+    t_imputeMethod = control$impute_method, # character: Imputation method ("none", "mean", "minor")
+    t_cutoff = control$cutoff               # numeric: batch effect p-value cutoff for association testing
   )
 }
 

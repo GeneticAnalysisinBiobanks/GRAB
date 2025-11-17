@@ -7,7 +7,6 @@
 GRAB.NullModel(
   formula,
   data,
-  subset = NULL,
   subjIDcol,
   method,
   traitType,
@@ -25,8 +24,6 @@ should be coded as \code{NA}. Other values (e.g., -9, -999) are treated as numer
 For SPAmix with traitType "Residual", multiple response variables are supported.}
 
 \item{data}{(data.frame) Data frame containing response variables and covariates in the formula.}
-
-\item{subset}{(vector or NULL) Row specification for subsetting subjects. Default: NULL for all.}
 
 \item{subjIDcol}{(character) Column name in \code{data} containing subject IDs.}
 

@@ -13,6 +13,8 @@ fitNullModel.WtCoxG(
   GenoFile,
   GenoFileIndex,
   SparseGRMFile,
+  SurvTimeColumn,
+  IndicatorColumn,
   ...
 )
 }

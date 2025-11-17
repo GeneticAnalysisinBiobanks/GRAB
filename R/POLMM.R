@@ -23,21 +23,24 @@
 #' @return NULL
 #'
 #' @examples
-#' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
 #' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
 #' OutputFile <- file.path(tempdir(), "resultPOLMMmarker.txt")
 #'
+#' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
+#' PhenoData <- data.table::fread(PhenoFile, header = TRUE)
+#' PhenoData$OrdinalPheno <- factor(PhenoData$OrdinalPheno, levels = c(0, 1, 2))
+#
 #' # Step 1
 #' obj.POLMM <- GRAB.NullModel(
-#'   factor(OrdinalPheno) ~ AGE + GENDER,
-#'   data = data.table::fread(PhenoFile, header = TRUE),
-#'   subjIDcol = "IID",
-#'   method = "POLMM",
-#'   traitType = "ordinal",
-#'   GenoFile = GenoFile,
-#'   SparseGRMFile = SparseGRMFile,
-#'   control = list(tolTau = 0.2, tolBeta = 0.1)
+#'  OrdinalPheno ~ AGE + GENDER,
+#'  data = PhenoData,
+#'  subjIDcol = "IID",
+#'  method = "POLMM",
+#'  traitType = "ordinal",
+#'  GenoFile = GenoFile,
+#'  SparseGRMFile = SparseGRMFile,
+#'  control = list(tolTau = 0.2, tolBeta = 0.1)
 #' )
 #'
 #' # Step 2
@@ -127,25 +130,28 @@ GRAB.POLMM <- function() {
 #' @return NULL
 #'
 #' @examples
-#' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
 #' GenoFileStep1 <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' GenoFileStep2 <- system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
 #' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
 #' GroupFile <- system.file("extdata", "simuPLINK_RV.group", package = "GRAB")
 #' OutputFile <- file.path(tempdir(), "resultPOLMMregion.txt")
-#'
+#' 
+#' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
+#' PhenoData <- data.table::fread(PhenoFile, header = TRUE)
+#' PhenoData$OrdinalPheno <- factor(PhenoData$OrdinalPheno, levels = c(0, 1, 2))
+#
 #' # Step 1
 #' obj.POLMM <- GRAB.NullModel(
-#'   factor(OrdinalPheno) ~ AGE + GENDER,
-#'   data = data.table::fread(PhenoFile, header = TRUE),
-#'   subjIDcol = "IID",
-#'   method = "POLMM",
-#'   traitType = "ordinal",
-#'   GenoFile = GenoFileStep1,
-#'   SparseGRMFile = SparseGRMFile,
-#'   control = list(tolTau = 0.2, tolBeta = 0.1)
+#'  OrdinalPheno ~ AGE + GENDER,
+#'  data = PhenoData,
+#'  subjIDcol = "IID",
+#'  method = "POLMM",
+#'  traitType = "ordinal",
+#'  GenoFile = GenoFile,
+#'  SparseGRMFile = SparseGRMFile,
+#'  control = list(tolTau = 0.2, tolBeta = 0.1)
 #' )
-#'
+#' 
 #' # Step 2
 #' GRAB.Region(obj.POLMM, GenoFileStep2, OutputFile,
 #'   GroupFile = GroupFile,
@@ -243,12 +249,36 @@ GRAB.POLMM.Region <- function() {
 }
 
 
-checkControl.NullModel.POLMM <- function(control, traitType, optionGRM) {
+checkControl.NullModel.POLMM <- function(traitType, GenoFile, SparseGRMFile, control) {
+
   if (traitType != "ordinal") {
     stop("For method of 'POLMM', only traitType of 'ordinal' is supported.")
   }
 
-  # default setting of control for POLMM method
+  # GenoFile validation (required)
+  if (is.null(GenoFile)) {
+    stop("Argument 'GenoFile' is required for method 'POLMM'.")
+  }
+  if (!is.character(GenoFile) || length(GenoFile) != 1) {
+    stop("Argument 'GenoFile' should be a character string (file path).")
+  }
+  if (!file.exists(GenoFile)) {
+    stop("Cannot find GenoFile: ", GenoFile)
+  }
+
+  # SparseGRMFile validation (optional)
+  if (!is.null(SparseGRMFile)) {
+    if (!is.character(SparseGRMFile) || length(SparseGRMFile) != 1) {
+      stop("Argument 'SparseGRMFile' should be a character string (file path).")
+    }
+    if (!file.exists(SparseGRMFile)) {
+      stop("Cannot find SparseGRMFile: ", SparseGRMFile)
+    }
+    optionGRM <- "SparseGRM"
+  } else {
+    optionGRM <- "DenseGRM"
+  }
+
   default.control <- list(
     memoryChunk = 2,
     seed = -1, # use -1 to indicate no seed should be set
@@ -272,9 +302,9 @@ checkControl.NullModel.POLMM <- function(control, traitType, optionGRM) {
     printPCGInfo = FALSE,
     onlyCheckTime = FALSE
   )
-
   control <- updateControl(control, default.control)
-  return(control)
+
+  return(list(control = control, optionGRM = optionGRM))
 }
 
 
@@ -290,9 +320,11 @@ checkControl.NullModel.POLMM <- function(control, traitType, optionGRM) {
 #' @param control List of POLMM options (e.g., \code{tau},
 #'   \code{maxMissingVarRatio}, \code{minMafVarRatio}).
 #' @param optionGRM Character, either \code{"DenseGRM"} or \code{"SparseGRM"}.
-#' @param genoType Character, genotype backend: \code{"PLINK"} or \code{"BGEN"}.
-#' @param markerInfo Data frame of marker metadata with columns
-#'   \code{CHROM, POS, ID, REF, ALT, genoIndex} used to fetch genotypes.
+#' @param GenoFile Character, path to genotype file (PLINK or BGEN format).
+#' @param GenoFileIndex Character or NULL, path to genotype index files.
+#'   If NULL, uses same prefix as \code{GenoFile}.
+#' @param SparseGRMFile Character or NULL, path to sparse GRM file.
+#'   If provided, sparse GRM is used; otherwise dense GRM is constructed.
 #'
 #' @return An object of class \code{"POLMM_NULL_Model"} representing the
 #'   initialized null model; state is stored in C++ and not intended for direct
@@ -301,18 +333,32 @@ checkControl.NullModel.POLMM <- function(control, traitType, optionGRM) {
 #' @keywords internal
 fitNullModel.POLMM <- function(
   response, designMat, subjData, control, optionGRM,
-  genoType, # "PLINK" or "BGEN"
-  markerInfo # colnames: CHROM, POS, ID, REF, ALT, genoIndex
+  GenoFile, GenoFileIndex, SparseGRMFile
 ) {
 
-  ######## -------------- first set up the object in C++ -------- ########
+  ######## -------------- Setup GRM in C++ -------- ########
 
-  if (!is.factor(response)) {
-    stop(
-      "The response variable in POLMM method should be a factor. The class of the current response variable is '",
-      class(response), "'."
+  genoList <- setGenoInput(GenoFile, GenoFileIndex, subjData) # list
+  flagSparseGRM <- optionGRM == "SparseGRM"
+
+  if (flagSparseGRM) {
+    SparseGRM <- data.table::fread(SparseGRMFile)
+    KinMatListR <- updateSparseGRM(as.data.frame(SparseGRM), subjData)
+    setSparseGRMInCPP(t_KinMatListR = KinMatListR)         # C++ backend setup
+  } else {
+    if (genoList$genoType != "PLINK") {
+      stop("If DenseGRM is used when fitting a null model, ",
+        "then only PLINK format is supported.")
+    }
+
+    setDenseGRMInCPP(
+      t_memoryChunk = control$memoryChunk,      # numeric: Memory allocation in GB for GRM
+      t_minMafGRM = control$minMafGRM,          # numeric: Min MAF for variants in GRM
+      t_maxMissingGRM = control$maxMissingGRM   # numeric: Max missing rate for GRM variants
     )
   }
+
+  ######## -------------- Fit null model -------- ########
 
   obj.clm <- summary(ordinal::clm(response ~ designMat))
   beta <- c(-1 * obj.clm$alpha[1], obj.clm$beta)
@@ -329,22 +375,18 @@ fitNullModel.POLMM <- function(
     values = rep(0, 1)
   )
 
-  m <- nrow(markerInfo)
-  markerInfo <- markerInfo[sample(m), ]
+  markerInfo <- genoList$markerInfo[sample(nrow(genoList$markerInfo)), ]
 
   # Main.cpp
   GenoMat <- getGenoInCPP_fixedNumber(
-    t_genoType = genoType,                        # character: "PLINK" or "BGEN"
-    t_markerInfo = markerInfo,                    # data.frame: Marker info with genoIndex
+    t_genoType = genoList$genoType,               # character: "PLINK" or "BGEN"
+    t_markerInfo = markerInfo,           # data.frame: Marker info with genoIndex
     n = length(yVec),                             # integer: Sample size
     t_imputeMethod = "mean",                      # character: Imputation method
     m = 100,                                      # integer: Number of markers to select
     missingRateCutoff = control$maxMissingVarRatio, # numeric: Max missing rate cutoff
     minMAFCutoff = control$minMafVarRatio         # numeric: Min MAF cutoff
   )
-
-  controlList <- control
-  flagSparseGRM <- ifelse(optionGRM == "SparseGRM", TRUE, FALSE)
 
   # The following function is in 'Main.cpp'
   objNull <- setPOLMMobjInCPP_NULL(
@@ -356,7 +398,7 @@ fitNullModel.POLMM <- function(
     t_eps = eps,                       # numeric vector: Threshold parameters
     t_tau = tau,                       # numeric: Variance component parameter
     t_SPmatR = SPmatR,                 # list: Sparse matrix representation (deprecated)
-    t_controlList = controlList,       # list: Control parameters for optimization
+    t_controlList = control,           # list: Control parameters for optimization
     GenoMat = GenoMat                  # matrix: Genotype matrix for variance ratio estimation
   )
 
@@ -366,11 +408,12 @@ fitNullModel.POLMM <- function(
 
 
 checkControl.Marker.POLMM <- function(control) {
+
   default.control <- list(
     ifOutGroup = FALSE
   )
-
   control <- updateControl(control, default.control)
+
   return(control)
 }
 
@@ -404,14 +447,13 @@ mainMarker.POLMM <- function(
   genoIndex,
   control
 ) {
-  # Call optimized C++ implementation for computational efficiency
+
   OutList <- mainMarkerInCPP(
     t_method = "POLMM",       # character: Statistical method name
     t_genoType = genoType,    # character: "PLINK" or "BGEN"
     t_genoIndex = genoIndex   # integer vector: Genotype indices to analyze
   )
 
-  # Construct base output data frame
   obj.mainMarker <- data.frame(
     Marker = OutList$markerVec,               # Marker IDs
     Info = OutList$infoVec,                   # Marker info: CHR:POS:REF:ALT
@@ -424,7 +466,6 @@ mainMarker.POLMM <- function(
     zScore = OutList$zScore                   # Z-scores
   )
 
-  # Add group-specific columns if requested
   if (control$ifOutGroup) {
     obj.mainMarker <- cbind(
       obj.mainMarker,
@@ -439,15 +480,13 @@ mainMarker.POLMM <- function(
 
 
 checkControl.Region.POLMM <- function(control) {
+
   default.control <- list(
     printPCGInfo = FALSE,
     tolPCG = 0.001,
     maxiterPCG = 100
   )
-
   control <- updateControl(control, default.control)
-
-  # SPA_Cutoff validation is now in GRAB.Region
 
   return(control)
 }

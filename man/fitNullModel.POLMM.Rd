@@ -10,8 +10,9 @@ fitNullModel.POLMM(
   subjData,
   control,
   optionGRM,
-  genoType,
-  markerInfo
+  GenoFile,
+  GenoFileIndex,
+  SparseGRMFile
 )
 }
 \arguments{
@@ -27,10 +28,13 @@ fitNullModel.POLMM(
 
 \item{optionGRM}{Character, either \code{"DenseGRM"} or \code{"SparseGRM"}.}
 
-\item{genoType}{Character, genotype backend: \code{"PLINK"} or \code{"BGEN"}.}
+\item{GenoFile}{Character, path to genotype file (PLINK or BGEN format).}
 
-\item{markerInfo}{Data frame of marker metadata with columns
-\code{CHROM, POS, ID, REF, ALT, genoIndex} used to fetch genotypes.}
+\item{GenoFileIndex}{Character or NULL, path to genotype index files.
+If NULL, uses same prefix as \code{GenoFile}.}
+
+\item{SparseGRMFile}{Character or NULL, path to sparse GRM file.
+If provided, sparse GRM is used; otherwise dense GRM is constructed.}
 }
 \value{
 An object of class \code{"POLMM_NULL_Model"} representing the

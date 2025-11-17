@@ -101,7 +101,7 @@ namespace WtCoxG
         const arma::vec& getResiduals() const { return m_R; }
         const arma::vec& getWeights() const { return m_w; }
         const DataFrame& getCurrentMarkerInfo() const { return m_mergeGenoInfo; }
-        const std::string& getImputeMethod() const { return m_imputeMethod; }
+        const std::string& getBgenImputeMethod() const { return m_imputeMethod; }
         double getCutoff() const { return m_cutoff; }
         size_t getNumMarkers() const { return m_markerInfoVec.size(); }
     };

@@ -16,10 +16,6 @@ ascertainment.
 \itemize{
 \item \code{RefAfFile} (character, required): Reference allele frequency file path.
 File must contain columns: CHROM, POS, ID, REF, ALT, AF_ref, AN_ref
-\item \code{SurvTimeColumn} (character, default: "SurvTime"): Column name in
-\code{data} containing survival times
-\item \code{IndicatorColumn} (character, default: "Indicator"): Column name in
-\code{data} for case-control status (0 = control, 1 = case)
 }
 
 \strong{Additional Control Parameters for GRAB.NullModel()}:
@@ -67,9 +63,7 @@ obj.WtCoxG <- GRAB.NullModel(
   GenoFile = GenoFile,
   SparseGRMFile = SparseGRMFile,
   control = list(RefPrevalence = 0.01, SNPnum = 1e3),
-  RefAfFile = RefAfFile,
-  SurvTimeColumn = "SurvTime",
-  IndicatorColumn = "SurvEvent"
+  RefAfFile = RefAfFile
 )
 
 # Step2

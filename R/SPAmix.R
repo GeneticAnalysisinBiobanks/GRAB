@@ -107,12 +107,23 @@ GRAB.SPAmix <- function() {
 }
 
 
-checkControl.NullModel.SPAmix <- function(control, traitType) {
+checkControl.NullModel.SPAmix <- function(traitType, GenoFile, SparseGRMFile, control) {
+
   if (!traitType %in% c("time-to-event", "Residual")) {
     stop("For 'SPAmix' method, only traitType of 'time-to-event' or 'Residual' is supported.")
   }
 
-  default.control <- list(OutlierRatio = 1.5)
+  if (!is.null(GenoFile)) {
+    warning("Argument 'GenoFile' is ignored for method 'SPAmix'.")
+  }
+  
+  if (!is.null(SparseGRMFile)) {
+    warning("Argument 'SparseGRMFile' is ignored for method 'SPAmix'.")
+  }
+
+  default.control <- list(
+    OutlierRatio = 1.5
+  )
   control <- updateControl(control, default.control)
 
   if (is.null(control$PC_columns)) {
@@ -130,7 +141,7 @@ checkControl.NullModel.SPAmix <- function(control, traitType) {
             "a character string split using ','.")
   }
 
-  return(control)
+  return(list(control = control, optionGRM = NULL))
 }
 
 
@@ -288,13 +299,11 @@ fitNullModel.SPAmix <- function(
 
 
 checkControl.Marker.SPAmix <- function(control) {
+
   default.control <- list(
     dosage_option = "rounding_first"
   )
-
   control <- updateControl(control, default.control)
-
-  # SPA_Cutoff validation is now in GRAB.Marker
 
   if (!control$dosage_option %in% c("rounding_first", "rounding_last")) {
     stop("control$dosage_option should be 'rounding_first' or 'rounding_last'.")
@@ -305,6 +314,7 @@ checkControl.Marker.SPAmix <- function(control) {
 
 
 setMarker.SPAmix <- function(objNull, control) {
+
   setSPAmixobjInCPP(
     t_resid = objNull$resid,              # matrix: Residuals from null model
     t_PCs = objNull$PCs,                  # matrix: Principal components for population structure
@@ -312,7 +322,6 @@ setMarker.SPAmix <- function(objNull, control) {
     t_SPA_Cutoff = control$SPA_Cutoff,    # numeric: P-value cutoff for SPA correction
     t_outlierList = objNull$outLierList   # list: Outlier subject information
   )
-
 }
 
 
@@ -321,6 +330,7 @@ mainMarker.SPAmix <- function(
   genoIndex,
   objNull
 ) {
+  
   OutList <- mainMarkerInCPP(
     t_method = "SPAmix",      # character: Statistical method name
     t_genoType = genoType,    # character: "PLINK" or "BGEN"

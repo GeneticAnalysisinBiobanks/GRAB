@@ -23,7 +23,6 @@
 #'   should be coded as \code{NA}. Other values (e.g., -9, -999) are treated as numeric.
 #'   For SPAmix with traitType "Residual", multiple response variables are supported.
 #' @param data (data.frame) Data frame containing response variables and covariates in the formula.
-#' @param subset (vector or NULL) Row specification for subsetting subjects. Default: NULL for all.
 #' @param subjIDcol (character) Column name in \code{data} containing subject IDs.
 #' @param method (character) Statistical method. Supported methods:
 #'   \itemize{
@@ -75,7 +74,6 @@
 GRAB.NullModel <- function(
   formula,
   data,
-  subset = NULL,
   subjIDcol,
   method,
   traitType,
@@ -91,16 +89,51 @@ GRAB.NullModel <- function(
 
   # ========== Validate and configure parameters ==========
 
-  # formula and data will be validated during model frame extraction
+  # Validate formula (required, no default) and extract variable names
+  if (!inherits(formula, "formula")) {
+    stop("Argument 'formula' should be a formula object.")
+  }
 
-  # Validate subset (optional, default NULL)
-  if (!is.null(subset) && !is.vector(subset) && !is.logical(subset)) {
-    stop("Argument 'subset' should be a vector or logical expression for subsetting subjects")
+  responseVars <- all.vars(formula[[2]])                     # character vector: left side
+  covariateVars <- all.vars(formula[[3]])                    # character vector: right side
+
+  if (length(responseVars) == 0) {
+    stop("formula must include at least one response variable on the left side.")
+  }
+  if (length(covariateVars) == 0) {
+    stop("Formula must include at least one covariate on the right side.")
+  }
+  
+  # Validate data (required, no default)
+  if (!is.data.frame(data)) {
+    stop("Argument 'data' should be a data.frame.")
+  }
+  if (nrow(data) < 1) {
+    stop("Argument 'data' should have at least one row.")
+  }
+  
+  missingVars <- setdiff(covariateVars, colnames(data))      # character vector
+  if (length(missingVars) > 0) {
+    stop("Variables not found in data: ", paste(missingVars, collapse = ", "))
   }
 
   # Validate subjIDcol (required, no default)
   if (!is.character(subjIDcol) || length(subjIDcol) != 1) {
     stop("Argument 'subjIDcol' should be a character string (column name).")
+  }
+  if (!subjIDcol %in% colnames(data)) {
+    stop("Column '", subjIDcol, "' not found in data.")
+  }
+
+  # Extract subjData and validate subject IDs
+  subjData <- data[[subjIDcol]]                              # character vector
+  if (!is.character(subjData) && !is.numeric(subjData)) {
+    stop("Column '", subjIDcol, "' should contain character or numeric subject IDs.")
+  }
+  subjData <- as.character(subjData)                         # character vector
+
+  if (any(duplicated(subjData))) {
+    stop("Column '", subjIDcol, "' contains duplicated subject IDs, which are not supported.")
   }
 
   # Validate method (required, no default)
@@ -119,6 +152,7 @@ GRAB.NullModel <- function(
   if (!is.character(traitType) || length(traitType) != 1) {
     stop("Argument 'traitType' is required and should be a character string.")
   }
+
   if (!traitType %in% supported_traitTypes) {
     stop(
       "Argument 'traitType' should be one of: ",
@@ -126,73 +160,21 @@ GRAB.NullModel <- function(
     )
   }
 
-  # Validate GenoFile and SparseGRMFile and assign optionGRM for POLMM method
-  if (method == "POLMM") {
-    # GenoFile validation (required)
-    if (is.null(GenoFile)) {
-      stop("Argument 'GenoFile' is required for method 'POLMM'.")
-    }
-    if (!is.character(GenoFile) || length(GenoFile) != 1) {
-      stop("Argument 'GenoFile' should be a character string (file path).")
-    }
-    if (!file.exists(GenoFile)) {
-      stop("Cannot find GenoFile: ", GenoFile)
-    }
-
-    # SparseGRMFile validation (optional)
-    if (!is.null(SparseGRMFile)) {
-      if (!is.character(SparseGRMFile) || length(SparseGRMFile) != 1) {
-        stop("Argument 'SparseGRMFile' should be a character string (file path).")
-      }
-      if (!file.exists(SparseGRMFile)) {
-        stop("Cannot find SparseGRMFile: ", SparseGRMFile)
-      }
-      optionGRM <- "SparseGRM"
-    } else {
-      optionGRM <- "DenseGRM"
-    }
-  }
-
-  # Validate GenoFile and SparseGRMFile for WtCoxG method
-  if (method == "WtCoxG") {
-    # GenoFile validation (required)
-    if (is.null(GenoFile)) {
-      stop("Argument 'GenoFile' is required for method 'WtCoxG'.")
-    }
-    if (!is.character(GenoFile) || length(GenoFile) != 1) {
-      stop("Argument 'GenoFile' should be a character string (file path).")
-    }
-    if (!file.exists(GenoFile)) {
-      stop("Cannot find GenoFile: ", GenoFile)
-    }
-
-    # SparseGRMFile validation (optional)
-    if (!is.null(SparseGRMFile)) {
-      if (!is.character(SparseGRMFile) || length(SparseGRMFile) != 1) {
-        stop("Argument 'SparseGRMFile' should be a character string (file path).")
-      }
-      if (!file.exists(SparseGRMFile)) {
-        stop("Cannot find SparseGRMFile: ", SparseGRMFile)
-      }
-      optionGRM <- "SparseGRM"
-    }
-  }
-
-  # ========== Validate and configure the control list ==========
-
   # Validate control parameter (optional, default NULL)
   if (!is.null(control) && !is.list(control)) {
     stop("Argument 'control' should be a list of control parameters.")
   }
 
-  # Method-specific control parameter validation and default setting
-  control <- switch(method,
-    POLMM = checkControl.NullModel.POLMM(control, traitType, optionGRM),
-    SPACox = checkControl.NullModel.SPACox(control, traitType),
-    SPAmix = checkControl.NullModel.SPAmix(control, traitType),
-    WtCoxG = checkControl.NullModel.WtCoxG(control, traitType),
-    stop("Unsupported method: ", method)
+  # Method-specific validation
+  checkResult <- switch(method,
+    POLMM = checkControl.NullModel.POLMM(traitType, GenoFile, SparseGRMFile, control),
+    SPACox = checkControl.NullModel.SPACox(traitType, GenoFile, SparseGRMFile, control),
+    SPAmix = checkControl.NullModel.SPAmix(traitType, GenoFile, SparseGRMFile, control),
+    WtCoxG = checkControl.NullModel.WtCoxG(traitType, GenoFile, SparseGRMFile, control, ...)
   )
+  
+  control <- checkResult$control
+  optionGRM <- checkResult$optionGRM
 
   # ========== Print all parameters ==========
 
@@ -202,174 +184,131 @@ GRAB.NullModel <- function(
     `Formula` = deparse(formula),
     `Subject ID column` = subjIDcol,
     `Sample size of input` = nrow(data),
-    `Sample size in subset` = ifelse(is.null(subset), "All subjects", length(subset)),
     `Genotype file` = ifelse(is.null(GenoFile), "Not provided", GenoFile),
     `Genotype index file` = ifelse(is.null(GenoFileIndex), "Default", GenoFileIndex),
     `Sparse GRM file` = ifelse(is.null(SparseGRMFile), "Not provided", SparseGRMFile),
-    `GRM option` = ifelse(exists("optionGRM"), optionGRM, "Not applicable")
+    `GRM option` = ifelse(!is.null(optionGRM), optionGRM, "Not applicable")
   )
   .printParameters("Parameters for Null Model Fitting", params, control)
 
-  # ========== Process formula and data to extract response and design matrix ==========
+  # ========== Extract and validate designMat, response, subjData ==========
 
-  # Handle multiple response variables for SPAmix/SPACox with residual input
-  mf <- match.call(expand.dots = FALSE)                       # call object
+  # Extract designMat
+  designMat <- as.matrix(data[, covariateVars, drop = FALSE])
 
-  # Check if formula left side contains multiple variables (only for SPAmix residual analysis)
-  if (method %in% c("SPAmix") && traitType == "Residual") {
-    LeftInFormula <- deparse(formula[[2]])                    # character
-    LeftIncludesAdd <- grepl("\\+", LeftInFormula)            # logical
+  # Extract response based on traitType
+  if (traitType == "ordinal") {
 
-    if (LeftIncludesAdd) {
-      nInLeft <- length(strsplit(LeftInFormula, "\\+")[[1]]) # integer
-      .message("%s method supports multiple response variables of model residuals", method)
-
-      # Parse and reconstruct formula for multiple responses
-      RightInFormula <- deparse(formula[[3]])                 # character
-      NewLeftInFormula <- paste0("paste(", gsub("\\+", ",", LeftInFormula), ")") # character
-      NewRightInFormula <- paste0(RightInFormula, collapse = " ") # character
-      mf$formula <- as.formula(paste(NewLeftInFormula, "~", NewRightInFormula)) # formula
+    if (length(responseVars) != 1) {
+      stop("For traitType 'ordinal', the left side of the formula must be a single column name.")
     }
-  }
 
-  # Extract model frame components (formula, data, subset)
-  m <- match(                                                 # integer vector
-    x = c("formula", "data", "subset"),
-    table = names(mf), nomatch = 0L
-  )
-
-  mf <- mf[c(1L, m)]
-  mf$drop.unused.levels <- TRUE
-  mf[[1L]] <- quote(stats::model.frame)
-  mf <- eval(expr = mf, envir = parent.frame())             # data.frame
-
-  mt <- attr(x = mf, which = "terms")                        # terms object
-
-  # Extract response variable(s) and design matrix from model frame
-  response <- model.response(mf)                             # vector or matrix
-  designMat <- model.matrix(object = mt, data = mf)          # matrix
-
-  # Extract subject IDs from the original data using subjIDcol
-  if (is.null(subset)) {
-    subjData <- data[[subjIDcol]]                            # character vector
-  } else {
-    subjData <- data[[subjIDcol]][subset]                    # character vector
-  }
-
-  # Validate subject IDs
-  if (!is.character(subjData) || length(subjData) == 0) {
-    stop("Column '", subjIDcol, "' should contain character subject IDs.")
-  }
-
-  if (any(duplicated(subjData))) {
-    stop("Column '", subjIDcol, "' contains duplicated subject IDs, which are not supported.")
-  }
-
-  # Handle multiple response variables for SPAmix residual analysis
-  if (method %in% c("SPAmix") && traitType == "Residual") {
-    LeftInFormula <- deparse(formula[[2]])                    # character
-    LeftIncludesAdd <- grepl("\\+", LeftInFormula)            # logical
-
-    if (LeftIncludesAdd) {
-      nInLeft <- length(strsplit(LeftInFormula, "\\+")[[1]])  # integer
-
-      # Create pattern for missing values across all phenotypes
-      noValueInAnyPheno <- paste(rep(NA, nInLeft), collapse = " ") # character
-      posNoValue <- which(response == noValueInAnyPheno)      # integer vector
-      response.temp <- response                               # character vector
-
-      # Remove subjects without any phenotype data
-      if (length(posNoValue) > 0) {
-        .message("Removing %d subjects with no phenotype", length(posNoValue))
-        response.temp <- response[-posNoValue]                # character vector
-        designMat <- designMat[-posNoValue, , drop = FALSE]  # matrix
-        subjData <- subjData[-posNoValue]                    # character vector
-      }
-
-      # Convert response to matrix format for multiple residuals
-      nRes <- length(response.temp)                           # integer
-      response <- matrix(NA, nRes, nInLeft)                  # matrix
-      for (i in 1:nRes) {
-        response[i, ] <- as.numeric(unlist(strsplit(response.temp[i], split = " "))) # numeric vector
-      }
-
-      # Set response class for residual analysis
-      class(response) <- "Residual"
-    } else {
-      # Single response variable converted to matrix format
-      response <- matrix(response, ncol = 1)                  # matrix
-      class(response) <- "Residual"
+    if (!responseVars[1] %in% colnames(data)) {
+      stop("Response variable '", responseVars[1], "' not found in data.")
     }
+
+    responseData <- data[[responseVars[1]]]                  # vector
+    if (!is.factor(responseData)) {
+      stop("For traitType 'ordinal', response variable must be factor. ",
+           "The class of the current response variable is'", class(responseData), "'.")
+    }
+    response <- ordered(responseData)                        # ordered factor
+    anyNA <- is.na(response)                                 # logical vector
+
+  } else if (traitType == "time-to-event") {
+
+    if (length(responseVars) != 2) {
+      stop("For traitType 'time-to-event', the left side of the formula must have exactly two items. ",
+           "The first is time, the second is event. They are extracted by all.vars(formula[[2]])".)
+    }
+
+    missingResponseVars <- setdiff(responseVars, colnames(data))
+    if (length(missingResponseVars) > 0) {
+      stop("Response variables not found in data: ", paste(missingResponseVars, collapse = ", "))
+    }
+    
+    timeVar <- data[[responseVars[1]]]                               # numeric vector
+    eventVar <- data[[responseVars[2]]]                              # numeric/logical vector
+    response <- survival::Surv(time = timeVar, event = eventVar)     # Surv object
+    anyNA <- is.na(response[, "time"]) | is.na(response[, "status"]) # logical vector
+
   } else if (traitType == "Residual") {
-    # Single response variable for other methods with Residual trait type
-    response <- matrix(response, ncol = 1)                    # matrix
-    class(response) <- "Residual"
+
+    if (length(responseVars) == 1) {
+
+      responseData <- eval(as.name(responseVars), envir = parent.frame()) # numeric vector
+
+      if (!is.numeric(responseData)) {
+        stop("For traitType 'Residual', response variable should be numeric.")
+      }
+
+      response <- matrix(responseData, ncol = 1)             # single column matrix 
+      class(response) <- "Residual"
+      anyNA <- is.na(response[, 1])                          # logical vector
+      
+    } else {
+      # Multiple residual variables (for SPAmix multi-trait analysis)
+      if (!method %in% c("SPAmix")) {
+        stop("Multiple response variables for traitType 'Residual' are only supported for method 'SPAmix'.")
+      }
+      .message("SPAmix analysis will use residuals from %d models.", length(responseVars))
+
+      # Extract all residual variables as matrix from environment
+      response <- sapply(responseVars, function(varName) {   # matrix
+        eval(as.name(varName), envir = parent.frame(2))      # numeric vector
+      })
+      
+      if (!is.numeric(response)) {
+        stop("For traitType 'Residual', all response variables should be numeric.")
+      }
+                        
+      class(response) <- "Residual"
+      allNA <- apply(response, 1, function(x) all(is.na(x))) # logical vector
+    }
   }
 
-  # Remove intercept column if present (automatically added during model fitting)
-  if (colnames(designMat)[1] == "(Intercept)") {
-    designMat <- designMat[, -1, drop = FALSE]               # matrix
+  # ========== Remove subjects with missing phenotype data ==========
+  
+  # Determine which subjects have missing phenotype data
+  if (exists("allNA")) {
+    # For SPAmix multi-trait: use allNA (subjects where all residuals are NA)
+    naSubjects <- allNA
+  } else if (exists("anyNA")) {
+    # For other methods: use anyNA (subjects with any NA in response)
+    naSubjects <- anyNA
+  } else {
+    stop("Internal error: could not determine missingness in phenotype data.")
+  }
+  
+  # Remove subjects with missing data
+  if (any(naSubjects)) {
+    .message("Removing %d subjects with missing phenotype data", sum(naSubjects))
+    
+    if (is.matrix(response)) {
+      response <- response[!naSubjects, , drop = FALSE]      # matrix
+    } else if (inherits(response, "Surv")) {
+      response <- response[!naSubjects, ]                    # Surv object
+    } else {
+      response <- response[!naSubjects]                      # ordered factor or vector
+    }
+    
+    designMat <- designMat[!naSubjects, , drop = FALSE]      # matrix
+    subjData <- subjData[!naSubjects]                        # character vector
   }
 
   nData <- length(subjData)                                   # integer
   .message("Number of subjects with phenotype: %d", nData)
 
-  # ========== Configure GRM ==========
-
-  # Only certain methods require genotype information for GRM construction
-  if (method %in% c("POLMM")) {
-    # Setup GRM options and extract genotype file information
-    if (is.null(GenoFile)) {
-      stop("Argument of 'GenoFile' is required to estimate variance ratio.")
-    }
-
-    genoList <- setGenoInput(GenoFile, GenoFileIndex, subjData) # list
-
-    if (!is.null(SparseGRMFile)) {
-      .message("Using sparse GRM for null model")
-      SparseGRM <- data.table::fread(SparseGRMFile)          # data.frame
-      SparseGRM <- as.data.frame(SparseGRM)                  # data.frame
-
-      KinMatListR <- updateSparseGRM(SparseGRM, subjData)    # list
-
-      # Configure sparse GRM in C++ backend (see Main.cpp)
-      setSparseGRMInCPP(
-        t_KinMatListR = KinMatListR  # list: Sparse kinship matrix (locations, values, nSubj)
-      )
-    } else {
-      .message("Using dense GRM for null model")
-      if (genoList$genoType != "PLINK") {
-        stop(
-          "If DenseGRM is used when fitting a null model, ",
-          "then only PLINK format is supported."
-        )
-      }
-
-      memoryChunk <- 2                                        # numeric: memory in GB
-      minMafGRM <- 0.01                                       # numeric
-      maxMissingGRM <- 0.1                                    # numeric
-
-      # Configure dense GRM in C++ backend (see Main.cpp)
-      setDenseGRMInCPP(
-        t_memoryChunk = memoryChunk,      # numeric: Memory allocation in GB for GRM
-        t_minMafGRM = minMafGRM,          # numeric: Min MAF for variants in GRM
-        t_maxMissingGRM = maxMissingGRM   # numeric: Max missing rate for GRM variants
-      )
-    }
-
-    genoType <- genoList$genoType                             # character: "PLINK" or "BGEN"
-    markerInfo <- genoList$markerInfo                         # data.frame
-  }
-
   # ========== Fit null model ==========
 
   objNull <- switch(method,
-    POLMM = fitNullModel.POLMM(response, designMat, subjData, control,
-                               optionGRM, genoType, markerInfo),
+    POLMM = fitNullModel.POLMM(response, designMat, subjData, control, optionGRM,
+                               GenoFile, GenoFileIndex, SparseGRMFile),
     SPACox = fitNullModel.SPACox(response, designMat, subjData, control),
     SPAmix = fitNullModel.SPAmix(response, designMat, subjData, control),
     WtCoxG = fitNullModel.WtCoxG(response, designMat, subjData, control, data,
-                                 GenoFile, GenoFileIndex, SparseGRMFile, ...)
+                                 GenoFile, GenoFileIndex, SparseGRMFile,
+                                 responseVars[1], responseVars[2], ...)
   )
 
   # Add metadata to the null model object

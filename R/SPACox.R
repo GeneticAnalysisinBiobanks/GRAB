@@ -85,23 +85,28 @@ GRAB.SPACox <- function() {
 }
 
 
-checkControl.NullModel.SPACox <- function(control, traitType) {
+checkControl.NullModel.SPACox <- function(traitType, GenoFile, SparseGRMFile, control) {
+
   if (!traitType %in% c("time-to-event", "Residual")) {
     stop("For 'SPACox' method, only traitType of 'time-to-event' or 'Residual' is supported.")
+  }
+
+  if (!is.null(GenoFile)) {
+    warning("Argument 'GenoFile' is ignored for method 'SPACox'.")
+  }
+
+  if (!is.null(SparseGRMFile)) {
+    warning("Argument 'SparseGRMFile' is ignored for method 'SPACox'.")
   }
 
   default.control <- list(
     range = c(-100, 100),
     length.out = 10000
   )
-
   control <- updateControl(control, default.control)
 
-  # check the parameters
   range <- control$range
-  length.out <- control$length.out
-
-  if (range[1] >= -50 || range[2] <= 50 || length.out <= 1000) {
+  if (range[1] >= -50 || range[2] <= 50 || control$length.out <= 1000) {
     stop("We suggest setting argument 'control$range=c(-100,100)' and 'control$length.out=10000'.")
   }
 
@@ -109,7 +114,7 @@ checkControl.NullModel.SPACox <- function(control, traitType) {
     stop("range[2] should be -1*range[1]")
   }
 
-  return(control)
+  return(list(control = control, optionGRM = NULL))
 }
 
 
@@ -216,24 +221,22 @@ fitNullModel.SPACox <- function(
 
 
 checkControl.Marker.SPACox <- function(control) {
+
   default.control <- list(
     pVal_covaAdj_Cutoff = 5e-05
   )
-
   control <- updateControl(control, default.control)
 
-  # Validate parameters
   if (!is.numeric(control$pVal_covaAdj_Cutoff) || control$pVal_covaAdj_Cutoff <= 0) {
     stop("control$pVal_covaAdj_Cutoff should be a numeric value > 0.")
   }
-
-  # SPA_Cutoff validation is now in GRAB.Marker
 
   return(control)
 }
 
 
 setMarker.SPACox <- function(objNull, control) {
+
   setSPACoxobjInCPP(
     t_cumul = objNull$cumul,                # matrix: Cumulative hazard matrix
     t_mresid = objNull$mresid,              # numeric vector: Martingale residuals
@@ -250,6 +253,7 @@ mainMarker.SPACox <- function(
   genoType,
   genoIndex
 ) {
+  
   OutList <- mainMarkerInCPP(
     t_method = "SPACox",      # character: Statistical method name
     t_genoType = genoType,    # character: "PLINK" or "BGEN"

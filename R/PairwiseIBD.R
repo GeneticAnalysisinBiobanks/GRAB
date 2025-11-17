@@ -411,7 +411,7 @@ getPairwiseIBD <- function(
           SampleIDs = tSampleIDs,
           control = list(
             IDsToIncludeFile = IDsToIncludeFile,
-            ImputeMethod = "mean"
+            BgenImputeMethod = "mean"
           )
         )
 

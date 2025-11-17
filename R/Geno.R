@@ -36,7 +36,7 @@
 #'   extracts all samples.
 #' @param control List of control parameters with the following options:
 #' \itemize{
-#'   \item \code{ImputeMethod}: Imputation method for genotype data.
+#'   \item \code{BgenImputeMethod}: Imputation method for genotype data.
 #'     Options: "none" (default), "bestguess", "mean".
 #'   \item \code{AlleleOrder}: Allele order in genotype file. Options: "ref-first",
 #'     "alt-first", or NULL (default: "alt-first" for BGEN, "ref-first" for PLINK).
@@ -114,7 +114,7 @@
 #' GenoList <- GRAB.ReadGeno(PLINKFile, control = list(AllMarkers = TRUE))
 #' head(GenoList$GenoMat)
 #'
-#' GenoList <- GRAB.ReadGeno(PLINKFile, control = list(AllMarkers = TRUE, ImputeMethod = "mean"))
+#' GenoList <- GRAB.ReadGeno(PLINKFile, control = list(AllMarkers = TRUE, BgenImputeMethod = "mean"))
 #' head(GenoList$GenoMat)
 #'
 #' BGENFile <- system.file("extdata", "simuBGEN.bgen", package = "GRAB")
@@ -165,7 +165,7 @@ GRAB.ReadGeno <- function(
       t_genoType = genoType,              # character: "PLINK" or "BGEN"
       t_markerInfo = markerInfo,          # data.frame: Marker info with genoIndex column
       n = n,                              # integer: Number of samples
-      t_imputeMethod = control$ImputeMethod # character: Imputation method ("mean", "minor", "drop")
+      t_imputeMethod = control$BgenImputeMethod # character: Imputation method ("mean", "minor", "drop")
     )
   } else {
     # Use standard dense matrix representation
@@ -173,7 +173,7 @@ GRAB.ReadGeno <- function(
       t_genoType = genoType,              # character: "PLINK" or "BGEN"
       t_markerInfo = markerInfo,          # data.frame: Marker info with genoIndex column
       n = n,                              # integer: Number of samples
-      t_imputeMethod = control$ImputeMethod # character: Imputation method ("mean", "minor", "drop")
+      t_imputeMethod = control$BgenImputeMethod # character: Imputation method ("mean", "minor", "drop")
     )
   }
 
@@ -210,7 +210,7 @@ GRAB.ReadGeno <- function(
 #'   is \code{NULL}, that is, all samples in \code{GenoFile} will be extracted.
 #' @param control List of control parameters with the following options:
 #' \itemize{
-#'   \item \code{ImputeMethod}: Imputation method for genotype data.
+#'   \item \code{BgenImputeMethod}: Imputation method for genotype data.
 #'     Options: "none" (default), "bestguess", "mean".
 #'   \item \code{AlleleOrder}: Allele order in genotype file. Options: "ref-first",
 #'     "alt-first", or NULL (default: "alt-first" for BGEN, "ref-first" for PLINK).
@@ -272,7 +272,7 @@ GRAB.getGenoInfo <- function(
   GenoInfoMat <- getGenoInfoInCPP(
     t_genoType = genoType,              # character: "PLINK" or "BGEN"
     t_markerInfo = markerInfo,          # data.frame: Marker info with genoIndex column
-    t_imputeMethod = control$ImputeMethod # character: Imputation method (not used for info)
+    t_imputeMethod = control$BgenImputeMethod # character: Imputation method (not used for info)
   )
   GenoInfoMat <- as.data.frame(GenoInfoMat)
   colnames(GenoInfoMat) <- c("altFreq", "missingRate")
@@ -287,7 +287,7 @@ checkControl.ReadGeno <- function(control) {
 
   # Merge user-provided control with defaults
   default.control <- list(
-    ImputeMethod = "none",
+    BgenImputeMethod = "none",
     AlleleOrder = NULL,
     AllMarkers = TRUE,
     IDsToIncludeFile = NULL,
@@ -309,8 +309,8 @@ checkControl.ReadGeno <- function(control) {
     }
   }
 
-  if (!control$ImputeMethod %in% c("none", "bestguess", "mean")) {
-    stop("control$ImputeMethod should be 'none', 'bestguess', or 'mean'.")
+  if (!control$BgenImputeMethod %in% c("none", "bestguess", "mean")) {
+    stop("control$BgenImputeMethod should be 'none', 'bestguess', or 'mean'.")
   }
 
   # Check marker selection parameters

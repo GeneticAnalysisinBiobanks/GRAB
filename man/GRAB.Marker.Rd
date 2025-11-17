@@ -33,8 +33,8 @@ analysis restart if interrupted. If \code{NULL} (default), uses
 
 \item{control}{(list or NULL) List of control parameters with the following elements:
 \itemize{
-\item \code{ImputeMethod} (character): Imputation method for genotype data.
-Options: "none" (default), "bestguess", "mean".
+\item \code{BgenImputeMethod} (character): Imputation method for BGEN-specific probabilistic
+genotype data during file reading. Options: "none" (default), "bestguess", "mean".
 \item \code{AlleleOrder} (character or NULL): Allele order in genotype file. Options: "ref-first",
 "alt-first", or NULL (default: "alt-first" for BGEN, "ref-first" for PLINK).
 \item \strong{Marker Selection:}
@@ -49,8 +49,8 @@ Can be used with IDsToIncludeFile (union will be used).
 Can be used with IDsToExcludeFile (union will be excluded).
 \item Note: Cannot use both include and exclude files simultaneously.
 }
-\item \code{impute_method} (character): Imputation method in C++ backend.
-Options: "mean" (default), "minor", "drop".
+\item \code{impute_method} (character): Imputation method for handling missing genotypes
+during analysis in C++ backend. Applies to all genotype formats. Options: "mean" (default), "minor", "drop".
 \item \code{missing_cutoff} (numeric): Exclude markers with missing rate above this threshold.
 Range: 0 to 0.5. Default: 0.15.
 \item \code{min_maf_marker} (numeric): Exclude markers with MAF below this threshold.

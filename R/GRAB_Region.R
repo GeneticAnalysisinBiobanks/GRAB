@@ -107,8 +107,6 @@ GRAB.Region <- function(
 
   method <- gsub("_NULL_Model", "", NullModelClass)          # character
 
-  # GenoFile and GenoFileIndex will be validated in GRAB.ReadGeno()
-
   # OutputFile and OutputFileIndex will be further validated in checkOutputFile()
   if (is.null(OutputFileIndex)) {
     OutputFileIndex <- paste0(OutputFile, ".index")
