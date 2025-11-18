@@ -253,7 +253,7 @@ mainMarker.SPACox <- function(
   genoType,
   genoIndex
 ) {
-  
+
   OutList <- mainMarkerInCPP(
     t_method = "SPACox",      # character: Statistical method name
     t_genoType = genoType,    # character: "PLINK" or "BGEN"

@@ -91,23 +91,25 @@ tests without weights.
 }
 }
 \examples{
-PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
 GenoFileStep1 <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 GenoFileStep2 <- system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
 SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
 GroupFile <- system.file("extdata", "simuPLINK_RV.group", package = "GRAB")
 OutputFile <- file.path(tempdir(), "resultPOLMMregion.txt")
 
+PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
+PhenoData <- data.table::fread(PhenoFile, header = TRUE)
+PhenoData$OrdinalPheno <- factor(PhenoData$OrdinalPheno, levels = c(0, 1, 2))
 # Step 1
 obj.POLMM <- GRAB.NullModel(
-  factor(OrdinalPheno) ~ AGE + GENDER,
-  data = data.table::fread(PhenoFile, header = TRUE),
-  subjIDcol = "IID",
-  method = "POLMM",
-  traitType = "ordinal",
-  GenoFile = GenoFileStep1,
-  SparseGRMFile = SparseGRMFile,
-  control = list(tolTau = 0.2, tolBeta = 0.1)
+ OrdinalPheno ~ AGE + GENDER,
+ data = PhenoData,
+ subjIDcol = "IID",
+ method = "POLMM",
+ traitType = "ordinal",
+ GenoFile = GenoFileStep1,
+ SparseGRMFile = SparseGRMFile,
+ control = list(tolTau = 0.2, tolBeta = 0.1)
 )
 
 # Step 2

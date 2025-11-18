@@ -29,7 +29,7 @@ head(data.table::fread(OutputFile))
 
 # Step 1
 obj.POLMM <- GRAB.NullModel(
-  factor(OrdinalPheno) ~ AGE + GENDER,
+  PhenoData$OrdinalPheno ~ AGE + GENDER,
   data = data.table::fread(PhenoFile, header = TRUE),
   subjIDcol = "IID",
   method = "POLMM",
@@ -39,7 +39,7 @@ obj.POLMM <- GRAB.NullModel(
 )
 
 # Step 2
-OutputFile <- file.path(tempdir(), "resultPOLMMregion.txt")
+OutputFile <- file.path(tempdir(), "resultPOLMMregion2.txt")
 GRAB.Region(obj.POLMM, GenoFileStep2, OutputFile,
   GroupFile = GroupFile,
   SparseGRMFile = SparseGRMFile,

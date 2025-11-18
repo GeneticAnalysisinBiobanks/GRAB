@@ -106,12 +106,11 @@
 #'   \item{beta}{Effect size estimate (log-odds scale).}
 #'   \item{seBeta}{Standard error of beta.}
 #'   \item{zScore}{Z-score from the score test.}
-#'   \item{AltFreqInGroup.1, AltFreqInGroup.2, ...}
-#'      {(Only if \code{ifOutGroup = TRUE}) Alternative allele frequency in each ordinal category.}
-#'   \item{AltCountsInGroup.1, AltCountsInGroup.2, ...}
-#'      {(Only if \code{ifOutGroup = TRUE}) Alternative allele counts in each ordinal category.}
-#'   \item{nSamplesInGroup.1, nSamplesInGroup.2, ...}
-#'      {(Only if \code{ifOutGroup = TRUE}) Sample size in each ordinal category.}
+#'   \item{AltFreqInGroup.1, AltFreqInGroup.2, ...}{(Only if \code{ifOutGroup = TRUE})
+#'      Alternative allele frequency in each ordinal category.}
+#'   \item{AltCountsInGroup.1, AltCountsInGroup.2, ...}{(Only if \code{ifOutGroup = TRUE})
+#'      Alternative allele counts in each ordinal category.}
+#'   \item{nSamplesInGroup.1, nSamplesInGroup.2, ...}{(Only if \code{ifOutGroup = TRUE}) Sample size in each ordinal category.}
 #' }
 #'
 GRAB.POLMM <- function() {
@@ -135,7 +134,7 @@ GRAB.POLMM <- function() {
 #' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
 #' GroupFile <- system.file("extdata", "simuPLINK_RV.group", package = "GRAB")
 #' OutputFile <- file.path(tempdir(), "resultPOLMMregion.txt")
-#' 
+#'
 #' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
 #' PhenoData <- data.table::fread(PhenoFile, header = TRUE)
 #' PhenoData$OrdinalPheno <- factor(PhenoData$OrdinalPheno, levels = c(0, 1, 2))
@@ -147,11 +146,11 @@ GRAB.POLMM <- function() {
 #'  subjIDcol = "IID",
 #'  method = "POLMM",
 #'  traitType = "ordinal",
-#'  GenoFile = GenoFile,
+#'  GenoFile = GenoFileStep1,
 #'  SparseGRMFile = SparseGRMFile,
 #'  control = list(tolTau = 0.2, tolBeta = 0.1)
 #' )
-#' 
+#'
 #' # Step 2
 #' GRAB.Region(obj.POLMM, GenoFileStep2, OutputFile,
 #'   GroupFile = GroupFile,
@@ -335,10 +334,10 @@ fitNullModel.POLMM <- function(
   response, designMat, subjData, control, optionGRM,
   GenoFile, GenoFileIndex, SparseGRMFile
 ) {
-
+  
   ######## -------------- Setup GRM in C++ -------- ########
 
-  genoList <- setGenoInput(GenoFile, GenoFileIndex, subjData) # list
+  genoList <- setGenoInput(GenoFile, GenoFileIndex, subjData, control) # list
   flagSparseGRM <- optionGRM == "SparseGRM"
 
   if (flagSparseGRM) {

@@ -116,7 +116,7 @@ checkControl.NullModel.SPAmix <- function(traitType, GenoFile, SparseGRMFile, co
   if (!is.null(GenoFile)) {
     warning("Argument 'GenoFile' is ignored for method 'SPAmix'.")
   }
-  
+
   if (!is.null(SparseGRMFile)) {
     warning("Argument 'SparseGRMFile' is ignored for method 'SPAmix'.")
   }
@@ -213,7 +213,8 @@ fitNullModel.SPAmix <- function(
   }
 
   if (inherits(response, "Residual")) {
-    yVec <- mresid <- response
+    yVec <- response
+    mresid <- as.matrix(response)
     Cova <- designMat
 
     .message("Design matrix: %d samples x %d covariates", nrow(designMat), ncol(designMat))
@@ -330,7 +331,7 @@ mainMarker.SPAmix <- function(
   genoIndex,
   objNull
 ) {
-  
+
   OutList <- mainMarkerInCPP(
     t_method = "SPAmix",      # character: Statistical method name
     t_genoType = genoType,    # character: "PLINK" or "BGEN"

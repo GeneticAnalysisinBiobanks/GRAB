@@ -67,30 +67,31 @@ When TRUE, adds columns AltFreqInGroup.\emph{, AltCountsInGroup.}, and nSamplesI
 \item{beta}{Effect size estimate (log-odds scale).}
 \item{seBeta}{Standard error of beta.}
 \item{zScore}{Z-score from the score test.}
-\item{AltFreqInGroup.1, AltFreqInGroup.2, ...}
-{(Only if \code{ifOutGroup = TRUE}) Alternative allele frequency in each ordinal category.}
-\item{AltCountsInGroup.1, AltCountsInGroup.2, ...}
-{(Only if \code{ifOutGroup = TRUE}) Alternative allele counts in each ordinal category.}
-\item{nSamplesInGroup.1, nSamplesInGroup.2, ...}
-{(Only if \code{ifOutGroup = TRUE}) Sample size in each ordinal category.}
+\item{AltFreqInGroup.1, AltFreqInGroup.2, ...}{(Only if \code{ifOutGroup = TRUE})
+Alternative allele frequency in each ordinal category.}
+\item{AltCountsInGroup.1, AltCountsInGroup.2, ...}{(Only if \code{ifOutGroup = TRUE})
+Alternative allele counts in each ordinal category.}
+\item{nSamplesInGroup.1, nSamplesInGroup.2, ...}{(Only if \code{ifOutGroup = TRUE}) Sample size in each ordinal category.}
 }
 }
 \examples{
-PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
 GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
 OutputFile <- file.path(tempdir(), "resultPOLMMmarker.txt")
 
+PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
+PhenoData <- data.table::fread(PhenoFile, header = TRUE)
+PhenoData$OrdinalPheno <- factor(PhenoData$OrdinalPheno, levels = c(0, 1, 2))
 # Step 1
 obj.POLMM <- GRAB.NullModel(
-  factor(OrdinalPheno) ~ AGE + GENDER,
-  data = data.table::fread(PhenoFile, header = TRUE),
-  subjIDcol = "IID",
-  method = "POLMM",
-  traitType = "ordinal",
-  GenoFile = GenoFile,
-  SparseGRMFile = SparseGRMFile,
-  control = list(tolTau = 0.2, tolBeta = 0.1)
+ OrdinalPheno ~ AGE + GENDER,
+ data = PhenoData,
+ subjIDcol = "IID",
+ method = "POLMM",
+ traitType = "ordinal",
+ GenoFile = GenoFile,
+ SparseGRMFile = SparseGRMFile,
+ control = list(tolTau = 0.2, tolBeta = 0.1)
 )
 
 # Step 2

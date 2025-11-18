@@ -47,7 +47,7 @@
 #'       Can be used with IDsToExcludeFile (union will be excluded).
 #'     \item Note: Cannot use both include and exclude files simultaneously.
 #'   }
-#'   \item \code{impute_method} (character): Imputation method for handling missing genotypes 
+#'   \item \code{impute_method} (character): Imputation method for handling missing genotypes
 #'     during analysis in C++ backend. Applies to all genotype formats. Options: "mean" (default), "minor", "drop".
 #'   \item \code{missing_cutoff} (numeric): Exclude markers with missing rate above this threshold.
 #'     Range: 0 to 0.5. Default: 0.15.
@@ -203,7 +203,8 @@ GRAB.Marker <- function(
 
   # Initialize genotype reader with file paths and subject filtering options
   subjData <- as.character(objNull$subjData)                  # character vector
-  objGeno <- setGenoInput(GenoFile, GenoFileIndex, subjData, control) # list
+  objGeno <- setGenoInput(GenoFile, GenoFileIndex, subjData, control) # list:
+    # genoType, markerInfo, SampleIDs, AlleleOrder, GenoFile, GenoFileIndex, anyQueue
   genoType <- objGeno$genoType                                # character
   markerInfo <- objGeno$markerInfo                            # data.frame
   CHROM <- markerInfo$CHROM                                   # character vector
@@ -243,40 +244,34 @@ GRAB.Marker <- function(
   .message("Number of markers in each chunk: %d", nMarkersEachChunk)
   .message("Number of chunks for all markers: %d", nChunks)
 
-  # ========== Iterate over chunks to perform tests ==========
+  # ========== Iterate over chunks to perform tests and write to OutputFile ==========
 
-  chrom <- "InitialChunk"                                     # character
+  # Set global objects in C++
+  setMarker_GlobalVarsInCPP(
+    t_impute_method = control$impute_method,      # character: "mean", "minor", or "drop"
+    t_missing_cutoff = control$missing_cutoff,    # numeric: Max missing rate for markers
+    t_min_maf_marker = control$min_maf_marker,    # numeric: Min MAF threshold
+    t_min_mac_marker = control$min_mac_marker,    # numeric: Min MAC threshold
+    t_omp_num_threads = control$omp_num_threads   # integer: Number of OpenMP threads
+  )
+
+  # Set method-specific objects in C++
+  switch(
+    NullModelClass,
+    POLMM_NULL_Model  = setMarker.POLMM(objNull, control),
+    SPACox_NULL_Model = setMarker.SPACox(objNull, control),
+    SPAmix_NULL_Model = setMarker.SPAmix(objNull, control),
+    SPAGRM_NULL_Model = setMarker.SPAGRM(objNull, control),
+    SAGELD_NULL_Model = setMarker.SAGELD(objNull, control),
+    WtCoxG_NULL_Model = setMarker.WtCoxG(objNull, control)
+  )
+
   for (i in (indexChunk + 1):nChunks) {
-    tempList <- genoIndexList[[i]]                            # list
+    tempList <- genoIndexList[[i]]                            # list: chrom, genoIndex
     genoIndex <- tempList$genoIndex                           # integer vector
     tempChrom <- tempList$chrom                               # character
 
-    if (tempChrom != chrom) {
-
-      # Set global objects in C++ backend when tempChrom changes
-      setMarker_GlobalVarsInCPP(
-        t_impute_method = control$impute_method,      # character: "mean", "minor", or "drop"
-        t_missing_cutoff = control$missing_cutoff,    # numeric: Max missing rate for markers
-        t_min_maf_marker = control$min_maf_marker,    # numeric: Min MAF threshold
-        t_min_mac_marker = control$min_mac_marker,    # numeric: Min MAC threshold
-        t_omp_num_threads = control$omp_num_threads   # integer: Number of OpenMP threads
-      )
-
-      # Set method-specific objects in C++ backend when tempChrom changes
-      switch(
-        NullModelClass,
-        POLMM_NULL_Model  = setMarker.POLMM(objNull, control),
-        SPACox_NULL_Model = setMarker.SPACox(objNull, control),
-        SPAmix_NULL_Model = setMarker.SPAmix(objNull, control),
-        SPAGRM_NULL_Model = setMarker.SPAGRM(objNull, control),
-        SAGELD_NULL_Model = setMarker.SAGELD(objNull, control),
-        WtCoxG_NULL_Model = setMarker.WtCoxG(objNull, control)
-      )
-
-      chrom <- tempChrom
-    }
-
-    .message("---- Analyzing Chunk %d/%d: chrom %s ----", i, nChunks, chrom)
+    .message("---- Analyzing Chunk %d/%d: chrom %s ----", i, nChunks, tempChrom)
 
     # Test one chunk in C++ backend
     resMarker <- switch(                                      # data.frame

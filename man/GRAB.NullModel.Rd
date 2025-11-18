@@ -23,7 +23,8 @@ on the right. Do not include an intercept (added automatically). Missing values
 should be coded as \code{NA}. Other values (e.g., -9, -999) are treated as numeric.
 For SPAmix with traitType "Residual", multiple response variables are supported.}
 
-\item{data}{(data.frame) Data frame containing response variables and covariates in the formula.}
+\item{data}{(data.frame) Data frame containing response variables and covariates in the formula.
+Parameter "subset" is deprecated. All subjects with phenotype data will be used.}
 
 \item{subjIDcol}{(character) Column name in \code{data} containing subject IDs.}
 

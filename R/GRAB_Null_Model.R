@@ -23,6 +23,7 @@
 #'   should be coded as \code{NA}. Other values (e.g., -9, -999) are treated as numeric.
 #'   For SPAmix with traitType "Residual", multiple response variables are supported.
 #' @param data (data.frame) Data frame containing response variables and covariates in the formula.
+#'   Parameter "subset" is deprecated. All subjects with phenotype data will be used.
 #' @param subjIDcol (character) Column name in \code{data} containing subject IDs.
 #' @param method (character) Statistical method. Supported methods:
 #'   \itemize{
@@ -94,16 +95,6 @@ GRAB.NullModel <- function(
     stop("Argument 'formula' should be a formula object.")
   }
 
-  responseVars <- all.vars(formula[[2]])                     # character vector: left side
-  covariateVars <- all.vars(formula[[3]])                    # character vector: right side
-
-  if (length(responseVars) == 0) {
-    stop("formula must include at least one response variable on the left side.")
-  }
-  if (length(covariateVars) == 0) {
-    stop("Formula must include at least one covariate on the right side.")
-  }
-  
   # Validate data (required, no default)
   if (!is.data.frame(data)) {
     stop("Argument 'data' should be a data.frame.")
@@ -111,17 +102,33 @@ GRAB.NullModel <- function(
   if (nrow(data) < 1) {
     stop("Argument 'data' should have at least one row.")
   }
-  
-  missingVars <- setdiff(covariateVars, colnames(data))      # character vector
-  if (length(missingVars) > 0) {
-    stop("Variables not found in data: ", paste(missingVars, collapse = ", "))
-  }
 
   # Validate subjIDcol (required, no default)
   if (!is.character(subjIDcol) || length(subjIDcol) != 1) {
     stop("Argument 'subjIDcol' should be a character string (column name).")
   }
-  if (!subjIDcol %in% colnames(data)) {
+
+  # Validate that columns in formula exist in data
+  responseVars <- all.vars(formula[[2]])                     # character vector: left side
+  covariateVars <- all.vars(formula[[3]])                    # character vector: right side
+
+  # For Residual trait type, response variables come from environment, not data
+  if (traitType == "Residual") {
+    neededVars <- c(covariateVars, subjIDcol)
+  } else if (is.symbol(formula[[2]])) {
+    neededVars <- c(responseVars, covariateVars, subjIDcol)
+  } else {
+    neededVars <- c(covariateVars, subjIDcol)
+  }
+
+  dataCols <- colnames(data)                                 # character vector
+  missingVars <- setdiff(neededVars, dataCols)               # character vector
+
+  if (length(missingVars) > 0) {
+    stop("Variables not found in data: ", paste(missingVars, collapse = ", "))
+  }
+
+  if (!subjIDcol %in% dataCols) {
     stop("Column '", subjIDcol, "' not found in data.")
   }
 
@@ -172,7 +179,7 @@ GRAB.NullModel <- function(
     SPAmix = checkControl.NullModel.SPAmix(traitType, GenoFile, SparseGRMFile, control),
     WtCoxG = checkControl.NullModel.WtCoxG(traitType, GenoFile, SparseGRMFile, control, ...)
   )
-  
+
   control <- checkResult$control
   optionGRM <- checkResult$optionGRM
 
@@ -194,110 +201,72 @@ GRAB.NullModel <- function(
   # ========== Extract and validate designMat, response, subjData ==========
 
   # Extract designMat
-  designMat <- as.matrix(data[, covariateVars, drop = FALSE])
+  designMat <- as.matrix(as.data.frame(data)[, covariateVars, drop = FALSE])
 
-  # Extract response based on traitType
-  if (traitType == "ordinal") {
-
-    if (length(responseVars) != 1) {
-      stop("For traitType 'ordinal', the left side of the formula must be a single column name.")
-    }
-
-    if (!responseVars[1] %in% colnames(data)) {
-      stop("Response variable '", responseVars[1], "' not found in data.")
-    }
-
-    responseData <- data[[responseVars[1]]]                  # vector
-    if (!is.factor(responseData)) {
-      stop("For traitType 'ordinal', response variable must be factor. ",
-           "The class of the current response variable is'", class(responseData), "'.")
-    }
-    response <- ordered(responseData)                        # ordered factor
-    anyNA <- is.na(response)                                 # logical vector
-
-  } else if (traitType == "time-to-event") {
-
-    if (length(responseVars) != 2) {
-      stop("For traitType 'time-to-event', the left side of the formula must have exactly two items. ",
-           "The first is time, the second is event. They are extracted by all.vars(formula[[2]])".)
-    }
-
-    missingResponseVars <- setdiff(responseVars, colnames(data))
-    if (length(missingResponseVars) > 0) {
-      stop("Response variables not found in data: ", paste(missingResponseVars, collapse = ", "))
-    }
+  # Extract response
+  LeftInFormula <- deparse(formula[[2]])                       # character string
+  LeftIncludesAdd <- grepl("\\+", LeftInFormula)               # logical
+  if (LeftIncludesAdd) {
     
-    timeVar <- data[[responseVars[1]]]                               # numeric vector
-    eventVar <- data[[responseVars[2]]]                              # numeric/logical vector
-    response <- survival::Surv(time = timeVar, event = eventVar)     # Surv object
-    anyNA <- is.na(response[, "time"]) | is.na(response[, "status"]) # logical vector
-
-  } else if (traitType == "Residual") {
-
-    if (length(responseVars) == 1) {
-
-      responseData <- eval(as.name(responseVars), envir = parent.frame()) # numeric vector
-
-      if (!is.numeric(responseData)) {
-        stop("For traitType 'Residual', response variable should be numeric.")
-      }
-
-      response <- matrix(responseData, ncol = 1)             # single column matrix 
-      class(response) <- "Residual"
-      anyNA <- is.na(response[, 1])                          # logical vector
-      
-    } else {
-      # Multiple residual variables (for SPAmix multi-trait analysis)
-      if (!method %in% c("SPAmix")) {
-        stop("Multiple response variables for traitType 'Residual' are only supported for method 'SPAmix'.")
-      }
+    if (method %in% c("SPAmix") && traitType == "Residual") {
       .message("SPAmix analysis will use residuals from %d models.", length(responseVars))
 
-      # Extract all residual variables as matrix from environment
-      response <- sapply(responseVars, function(varName) {   # matrix
-        eval(as.name(varName), envir = parent.frame(2))      # numeric vector
+      # Evaluate all variable names on the left side of the formula
+      response <- sapply(responseVars, function(varName) {      # matrix
+        eval(as.name(varName), envir = parent.frame(2)) 
       })
-      
-      if (!is.numeric(response)) {
-        stop("For traitType 'Residual', all response variables should be numeric.")
+    } else {
+      stop("Only a single response variable is supported for method '", method,
+           "' and trait type '", traitType, "'.")
+    }
+    
+    class(response) <- "Residual"
+    naSubjects <- apply(response, 1, function(x) all(is.na(x)))   # logical vector
+  } else {
+
+    mf <- stats::model.frame(formula, data, na.action = na.pass)
+    response <- model.response(mf)                                # vector or matrix
+
+    if (traitType == "time-to-event") {
+      if (inherits(response, "Surv")) {
+        naSubjects <- is.na(response[, 1]) | is.na(response[, 2])
+      } else {
+        stop("For time-to-event traits, the response variable must be a Surv object.")
+      } 
+    } else if (traitType == "ordinal") {
+      if (is.factor(response)) {
+        response <- droplevels(response)
+        naSubjects <- is.na(response)
+      } else {
+        stop("For POLMM method, the response variable must be a factor (ordinal trait).")
       }
-                        
+    } else if (traitType == "Residual") {
       class(response) <- "Residual"
-      allNA <- apply(response, 1, function(x) all(is.na(x))) # logical vector
+      naSubjects <- is.na(response)
+    } else {
+      stop("Internal error: '", traitType, "' for method '", method, "'.")
     }
   }
 
   # ========== Remove subjects with missing phenotype data ==========
-  
-  # Determine which subjects have missing phenotype data
-  if (exists("allNA")) {
-    # For SPAmix multi-trait: use allNA (subjects where all residuals are NA)
-    naSubjects <- allNA
-  } else if (exists("anyNA")) {
-    # For other methods: use anyNA (subjects with any NA in response)
-    naSubjects <- anyNA
-  } else {
-    stop("Internal error: could not determine missingness in phenotype data.")
-  }
-  
-  # Remove subjects with missing data
-  if (any(naSubjects)) {
-    .message("Removing %d subjects with missing phenotype data", sum(naSubjects))
-    
-    if (is.matrix(response)) {
-      response <- response[!naSubjects, , drop = FALSE]      # matrix
-    } else if (inherits(response, "Surv")) {
-      response <- response[!naSubjects, ]                    # Surv object
-    } else {
-      response <- response[!naSubjects]                      # ordered factor or vector
-    }
-    
-    designMat <- designMat[!naSubjects, , drop = FALSE]      # matrix
-    subjData <- subjData[!naSubjects]                        # character vector
-  }
 
-  nData <- length(subjData)                                   # integer
-  .message("Number of subjects with phenotype: %d", nData)
+  nRemoved <- sum(naSubjects)
+  if (nRemoved > 0) {
+    .message("Removing %d subjects with missing phenotype data", nRemoved)
+
+    if (LeftIncludesAdd) {
+      response <- response[!naSubjects, , drop = FALSE]
+    } else {
+      response <- response[!naSubjects]
+    }
+
+    designMat <- designMat[!naSubjects, , drop = FALSE]
+    subjData <- subjData[!naSubjects]
+  } else {
+    .message("All subjects have phenotype data.")
+  }
+      
+  .message("Number of subjects included for subsequent analysis: %d", length(subjData))
 
   # ========== Fit null model ==========
 

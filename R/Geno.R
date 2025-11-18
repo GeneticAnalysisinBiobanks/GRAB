@@ -381,8 +381,8 @@ checkControl.ReadGeno <- function(control) {
 setGenoInput <- function(
   GenoFile,
   GenoFileIndex = NULL,
-  SampleIDs = NULL,
-  control = NULL
+  SampleIDs,
+  control
 ) {
 
   if (!file.exists(GenoFile)) {
@@ -390,19 +390,11 @@ setGenoInput <- function(
   }
 
   GenoFileExt <- tools::file_ext(GenoFile)
-
-  # Currently, only support PLINK and BGEN
-
-  if (GenoFileExt != "bed" && GenoFileExt != "bgen") {
-    stop("The current version only supports genotype input of PLINK (filename extension is ",
-         "'.bed') and BGEN (filename extension is '.bgen').")
-  }
-
   AlleleOrder <- control$AlleleOrder
 
-  ########## ----------  PLINK format ---------- ##########
-
   if (GenoFileExt == "bed") {
+
+    ########## ----------  PLINK format ---------- ##########
     genoType <- "PLINK"
 
     if (is.null(AlleleOrder)) AlleleOrder <- "alt-first"
@@ -415,47 +407,38 @@ setGenoInput <- function(
       )
     }
 
-    if (length(GenoFileIndex) != 2) {
-      stop("If PLINK format is used, argument 'GenoFileIndex' should be 'NULL' or a character ",
-           "vector of c(bimFile, famFile).")
-    }
-
     bimFile <- GenoFileIndex[1]
     famFile <- GenoFileIndex[2]
     bedFile <- GenoFile
 
-    # Read in BIM file
+    if (!file.exists(bimFile) || !file.exists(famFile) || !file.exists(bedFile)) {
+      stop("One or more genotype files are missing: ",
+           paste(c(bimFile, famFile, bedFile)[!file.exists(c(bimFile, famFile, bedFile))], collapse = ", "))
+    }
 
-    if (!file.exists(bimFile)) stop(paste("Cannot find bim file of", bimFile))
-
+    # Read BIM file
     .message("Reading bim file: %s", basename(bimFile))
-    markerInfo <- data.table::fread(bimFile, header = FALSE, sep = "\t")
+    markerInfo <- data.table::fread(bimFile, header = FALSE)
     markerInfo <- as.data.frame(markerInfo)
 
     if (ncol(markerInfo) != 6) {
       stop("bim file should include 6 columns seperated by '\t'.")
     }
 
+    # https://www.cog-genomics.org/plink/2.0/formats#bim
     if (AlleleOrder == "alt-first") {
       markerInfo <- markerInfo[, c(1, 4, 2, 6, 5)]
-    } # https://www.cog-genomics.org/plink/2.0/formats#bim
+    } 
     if (AlleleOrder == "ref-first") {
       markerInfo <- markerInfo[, c(1, 4, 2, 5, 6)]
-    } # https://www.cog-genomics.org/plink/2.0/formats#bim
+    }
 
     colnames(markerInfo) <- c("CHROM", "POS", "ID", "REF", "ALT")
     markerInfo$genoIndex <- seq_len(nrow(markerInfo)) - 1 # -1 is to convert 'R' to 'C++'
 
-    # Read in FAM file
-
-    if (!file.exists(famFile)) stop(paste("Cannot find fam file of", famFile))
-
+    # Read FAM file
     .message("Reading fam file: %s", basename(famFile))
-    sampleInfo <- data.table::fread(famFile, header = FALSE, sep = " ")
-
-    if (ncol(sampleInfo) == 1) {
-      sampleInfo <- data.table::fread(famFile, header = FALSE, sep = "\t")
-    }
+    sampleInfo <- data.table::fread(famFile, header = FALSE)
 
     if (ncol(sampleInfo) != 6) {
       stop("fam file should include 6 columns seperated by space or '\t'.")
@@ -472,11 +455,9 @@ setGenoInput <- function(
       t_SampleInModel = SampleIDs, # character vector: Sample IDs to include
       t_AlleleOrder = AlleleOrder  # character: "alt-first" or "ref-first"
     )
-  }
+  } else if (GenoFileExt == "bgen") {
 
-  ########## ----------  BGEN format ---------- ##########
-
-  if (GenoFileExt == "bgen") {
+    ########## ----------  BGEN format ---------- ##########
     genoType <- "BGEN"
     bgenFile <- GenoFile
 
@@ -494,45 +475,31 @@ setGenoInput <- function(
       )
     }
 
-    if (length(GenoFileIndex) != 1 && length(GenoFileIndex) != 2) {
-      stop("For genotype input of BGEN format, 'GenoFileIndex' should be of length 1 or 2. ",
-           "Check 'Details' section in '?GRAB.ReadGeno' for more details.")
-    }
-
-    if (length(GenoFileIndex) == 1) {
-      samplesInGeno <- getSampleIDsFromBGEN(bgenFile)
-    }
-
-    if (length(GenoFileIndex) == 2) {
-      sampleFile <- GenoFileIndex[2]
-      if (!file.exists(sampleFile)) {
-        if (!checkIfSampleIDsExist(bgenFile)) {
-          stop("Cannot find bgen.samples file of", sampleFile)
-        } else {
-          samplesInGeno <- getSampleIDsFromBGEN(bgenFile)
-        }
-      } else {
-        .message("Reading sample file: %s", basename(sampleFile))
-        sampleData <- data.table::fread(sampleFile, header = TRUE, sep = " ")
-        if (ncol(sampleData) < 4) {
-          stop("Column number of sample file should be >= 4.")
-        }
-
-        expected_colnames <- c("ID_1", "ID_2", "missing", "sex")
-        expected_first_row <- c(0, 0, 0, "D")
-        if (any(colnames(sampleData)[1:4] != expected_colnames) ||
-              any(sampleData[1, 1:4] != expected_first_row)) {
-          stop("Column names of sample file should be c('ID_1', 'ID_2', 'missing', 'sex') and ",
-               "the first row of sample file should be c(0,0,0,'D')")
-        }
-
-        samplesInGeno <- as.character(sampleData$ID_2[-1])
-      }
-    }
-
     bgiFile <- GenoFileIndex[1]
+    if (!file.exists(bgiFile)) {
+      stop("Cannot find bgen.bgi file of ", GenoFileIndex[1])
+    }
 
-    if (!file.exists(bgiFile)) stop(paste("Cannot find bgi file of", bgiFile))
+    if (!file.exists(GenoFileIndex[2])) {
+      # No sample file provided, read sample IDs from BGEN header
+      samplesInGeno <- getSampleIDsFromBGEN(bgenFile)
+    } else {
+      # Sample file provided, read sample IDs from sample file
+      sampleFile <- GenoFileIndex[2]
+      .message("Reading sample file: %s", basename(sampleFile))
+      sampleData <- data.table::fread(sampleFile, header = TRUE)
+      if (ncol(sampleData) < 4) stop("Column number of sample file should be >= 4.")
+
+      expected_colnames <- c("ID_1", "ID_2", "missing", "sex")
+      expected_first_row <- c(0, 0, 0, "D")
+      if (any(colnames(sampleData)[1:4] != expected_colnames) ||
+            any(sampleData[1, 1:4] != expected_first_row)) {
+        stop("Column names of sample file should be c('ID_1', 'ID_2', 'missing', 'sex') and ",
+              "the first row of sample file should be c(0, 0, 0, 'D')")
+      }
+      
+      samplesInGeno <- as.character(sampleData$ID_2[-1])
+    }
 
     .message("Reading bgi file: %s", basename(bgiFile))
     db_con <- RSQLite::dbConnect(RSQLite::SQLite(), bgiFile)
@@ -540,13 +507,13 @@ setGenoInput <- function(
     bgiData <- dplyr::tbl(db_con, "Variant")
     bgiData <- as.data.frame(bgiData)
 
+    # https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
     if (AlleleOrder == "alt-first") {
       markerInfo <- bgiData[, c(1, 2, 3, 6, 5, 7)]
-    } # https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
+    } 
     if (AlleleOrder == "ref-first") {
       markerInfo <- bgiData[, c(1, 2, 3, 5, 6, 7)]
-    } # https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
-
+    }
     colnames(markerInfo) <- c("CHROM", "POS", "ID", "REF", "ALT", "genoIndex")
 
     SampleIDs <- updateSampleIDs(SampleIDs, samplesInGeno)
@@ -561,9 +528,10 @@ setGenoInput <- function(
       t_isDropmissingdosagesInBgen = FALSE,   # logical: Drop missing dosages
       t_AlleleOrder = AlleleOrder             # character: "alt-first" or "ref-first"
     )
+  } else {
+    stop("The current version only supports genotype input of PLINK (filename extension is ",
+         "'.bed') and BGEN (filename extension is '.bgen').")
   }
-
-  ########## ----------  More format such as VCF will be supported later ---------- ##########
 
   anyInclude <- FALSE
   anyExclude <- FALSE
@@ -574,7 +542,7 @@ setGenoInput <- function(
   if (!is.null(control$IDsToIncludeFile)) {
     IDsToInclude <- data.table::fread(control$IDsToIncludeFile, header = FALSE, colClasses = c("character"))
     if (ncol(IDsToInclude) != 1) {
-      stop("'IDsToIncludeFile' of ", control$IDsToIncludeFile, " should only include one column.")
+      stop("'IDsToIncludeFile' of ", control$IDsToIncludeFile, " must include exactly one column.")
     }
     IDsToInclude <- IDsToInclude[, 1]
 
@@ -590,7 +558,7 @@ setGenoInput <- function(
     RangesToInclude <- data.table::fread(control$RangesToIncludeFile, header = FALSE,
                                          colClasses = col_classes)
     if (ncol(RangesToInclude) != 3) {
-      stop("RangesToIncludeFile should only include three columns.")
+      stop("RangesToIncludeFile must include exactly three columns.")
     }
 
     colnames(RangesToInclude) <- c("CHROM", "START", "END")
@@ -665,18 +633,17 @@ setGenoInput <- function(
 
   anyQueue <- anyInclude | anyExclude
 
-  # added on 2022-04-07: avoid potential error due to "integer64", which is not well
-  # supported between C++ and R
+  # convert integer64 to numeric, which is supported in c++
   markerInfo$genoIndex <- as.numeric(markerInfo$genoIndex)
 
   genoList <- list(
-    genoType = genoType,
-    markerInfo = markerInfo,
-    SampleIDs = SampleIDs,
-    AlleleOrder = AlleleOrder,
-    GenoFile = GenoFile,
-    GenoFileIndex = GenoFileIndex,
-    anyQueue = anyQueue
+    genoType = genoType,            # character: "PLINK" or "BGEN"
+    markerInfo = markerInfo,        # data.frame: CHROM, POS, ID, REF, ALT, genoIndex
+    SampleIDs = SampleIDs,          # character vector: IDs also in genotype file
+    AlleleOrder = AlleleOrder,      # character: "ref-first" or "alt-first"
+    GenoFile = GenoFile,            # character: Genotype file path
+    GenoFileIndex = GenoFileIndex,  # character vector: Index file path(s)
+    anyQueue = anyQueue             # logical: if any include/exclude is specified
   )
 
   return(genoList)
