@@ -13,7 +13,8 @@ TestforBatchEffect(
   SparseGRMFile = NULL,
   RefAfFile,
   IndicatorColumn,
-  SurvTimeColumn
+  SurvTimeColumn,
+  RefPrevalence
 )
 }
 \arguments{

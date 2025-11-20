@@ -38,14 +38,12 @@
 #'   traitType = "time-to-event",
 #'   GenoFile = GenoFile,
 #'   SparseGRMFile = SparseGRMFile,
-#'   control = list(RefPrevalence = 0.01, SNPnum = 1e3),
-#'   RefAfFile = RefAfFile
+#'   RefAfFile = RefAfFile,
+#'   RefPrevalence = 0.1
 #' )
 #'
 #' # Step2
-#' GRAB.Marker(obj.WtCoxG, GenoFile, OutputFile,
-#'   control = list(nMarkersEachChunk = 5000)
-#' )
+#' GRAB.Marker(obj.WtCoxG, GenoFile, OutputFile)
 #'
 #' head(data.table::fread(OutputFile))
 #'
@@ -55,14 +53,13 @@
 #' \itemize{
 #'   \item \code{RefAfFile} (character, required): Reference allele frequency file path.
 #'     File must contain columns: CHROM, POS, ID, REF, ALT, AF_ref, AN_ref
+#'   \item \code{RefPrevalence} (numeric, required): Population-level disease prevalence
+#'     for weighting. Must be in range (0, 0.5)
 #' }
 #'
 #' \strong{Additional Control Parameters for GRAB.NullModel()}:
 #' \itemize{
-#'   \item \code{RefPrevalence} (numeric, required): Population-level disease prevalence
-#'     for weighting. Must be in range (0, 0.5)
 #'   \item \code{OutlierRatio} (numeric, default: 1.5): IQR multiplier for outlier detection
-#'   \item \code{SNPnum} (numeric, default: 1e4): Minimum number of SNPs for batch effect testing
 #' }
 #'
 #' \strong{Additional Control Parameters for GRAB.Marker()}:
@@ -119,15 +116,16 @@ checkControl.NullModel.WtCoxG <- function(traitType, GenoFile, SparseGRMFile, co
     optionGRM <- NULL
   }
 
-  default.control <- list(
-    RefPrevalence = 0,
-    OutlierRatio = 1.5,
-    SNPnum = 1e4
-  )
-  control <- updateControl(control, default.control)
-
-  if (control$RefPrevalence <= 0 || control$RefPrevalence >= 0.5) {
-    stop("control$RefPrevalence is required and should be between (0, 0.5).")
+  # Validate RefPrevalence (required)
+  RefPrevalence <- list(...)$RefPrevalence
+  if (is.null(RefPrevalence)) {
+    stop("Argument 'RefPrevalence' is required for WtCoxG method.")
+  }
+  if (!is.numeric(RefPrevalence) || length(RefPrevalence) != 1) {
+    stop("Argument 'RefPrevalence' should be a single numeric value.")
+  }
+  if (RefPrevalence <= 0 || RefPrevalence >= 0.5) {
+    stop("Argument 'RefPrevalence' should be between (0, 0.5).")
   }
 
   # Validate RefAfFile (required)
@@ -151,6 +149,11 @@ checkControl.NullModel.WtCoxG <- function(traitType, GenoFile, SparseGRMFile, co
          ". Missing columns: ", paste(missingCols, collapse = ", "))
   }
 
+  default.control <- list(
+    OutlierRatio = 1.5
+  )
+  control <- updateControl(control, default.control)
+
   return(list(control = control, optionGRM = optionGRM))
 }
 
@@ -165,16 +168,15 @@ checkControl.NullModel.WtCoxG <- function(traitType, GenoFile, SparseGRMFile, co
 #'   not supported here.
 #' @param designMat Numeric matrix (n x p) of covariates.
 #' @param subjData Character vector of subject IDs aligned with rows of \code{designMat}.
-#' @param control List with fields such as \code{RefPrevalence} (0, 0.5),
-#'   \code{OutlierRatio}, \code{SNPnum}.
+#' @param control List with fields such as \code{OutlierRatio}.
 #' @param data Data frame used for optional batch-effect QC.
 #' @param GenoFile Character. PLINK prefix (without extension) used when
 #'   sampling markers for QC.
 #' @param GenoFileIndex Character. Path to an index file used in QC workflow.
 #' @param SparseGRMFile Character. Path to sparse GRM used in QC workflow.
-#' @param ... Optional named parameters forwarded to QC (e.g.,
-#'   \code{RefAfFile}, \code{IndicatorColumn},
-#'   \code{SurvTimeColumn}).
+#' @param SurvTimeColumn Character. Column name in \code{data} containing survival time.
+#' @param IndicatorColumn Character. Column name in \code{data} containing event indicator (0/1).
+#' @param ... Optional named parameters forwarded to QC (e.g., \code{RefAfFile}).
 #'
 #' @return A list of class \code{"WtCoxG_NULL_Model"} with elements:
 #'   \describe{
@@ -193,48 +195,40 @@ checkControl.NullModel.WtCoxG <- function(traitType, GenoFile, SparseGRMFile, co
 #' @keywords internal
 fitNullModel.WtCoxG <- function(
   response, designMat, subjData, control, data,
-  GenoFile, GenoFileIndex, SparseGRMFile,
+  GenoFile, GenoFileIndex, SparseGRMFile, 
   SurvTimeColumn, IndicatorColumn, ...
 ) {
 
-  # ========== Validate response type ==========
+  dots <- list(...)
+  RefAfFile <- dots$RefAfFile
+  RefPrevalence <- dots$RefPrevalence
+  
+  Indicator <- as.matrix(response)[, "status"]
+  formula <- response ~ designMat
 
-  if (!(inherits(response, "Surv") || inherits(response, "Residual"))) {
-    stop("For WtCoxG, the response variable should be of class 'Surv' or 'Residual'.")
+  # ---- BEGIN inlined: getWeight.WtCoxG ----
+  if (any(!unique(Indicator) %in% c(0, 1))) {
+    stop("The value of Indicator should be 0 or 1.")
   }
 
-  if (inherits(response, "Surv")) {
-    formula <- response ~ designMat
+  sumOnes <- sum(Indicator)
+  sumZeros <- sum(1 - Indicator)
+  ratio <- sumOnes / sumZeros
 
-    Indicator <- as.matrix(response)[, "status"]
-    RefPrevalence <- control$RefPrevalence
+  weight <- ifelse(
+    Indicator == 1,
+    1,
+    (1 - RefPrevalence) / RefPrevalence * ratio
+  )
+  # ---- END inlined: getWeight.WtCoxG ----
 
-    # ---- BEGIN inlined: getWeight.WtCoxG ----
-    if (any(!unique(Indicator) %in% c(0, 1))) {
-      stop("The value of Indicator should be 0 or 1.")
-    }
+  obj.coxph <- survival::coxph(formula, x = TRUE, weight = weight, robust = TRUE)
 
-    sumOnes <- sum(Indicator)
-    sumZeros <- sum(1 - Indicator)
-    ratio <- sumOnes / sumZeros
+  y <- obj.coxph$y
+  yVec <- y[, ncol(y)] # status
 
-    weight <- ifelse(
-      Indicator == 1,
-      1,
-      (1 - RefPrevalence) / RefPrevalence * ratio
-    )
-    # ---- END inlined: getWeight.WtCoxG ----
-
-    obj.coxph <- survival::coxph(formula, x = TRUE, weight = weight, robust = TRUE)
-
-    y <- obj.coxph$y
-    yVec <- y[, ncol(y)] # status
-
-    mresid <- obj.coxph$residuals
-    Cova <- designMat
-  } else {
-    stop("We only support 'time-to-event' trait for WtCoxG by 2023-08-08.")
-  }
+  mresid <- obj.coxph$residuals
+  Cova <- designMat
 
   ## outliers or not depending on the residuals (0.25%-1.5IQR, 0.75%+1.5IQR)
   q25 <- quantile(mresid, 0.25, na.rm = TRUE)
@@ -292,9 +286,10 @@ fitNullModel.WtCoxG <- function(
     GenoFile = GenoFile,
     GenoFileIndex = GenoFileIndex,
     SparseGRMFile = SparseGRMFile,
-    RefAfFile = list(...)$RefAfFile,
+    RefAfFile = RefAfFile,
     IndicatorColumn = IndicatorColumn,
-    SurvTimeColumn = SurvTimeColumn
+    SurvTimeColumn = SurvTimeColumn,
+    RefPrevalence = RefPrevalence
   )
 
   return(re)
@@ -402,7 +397,9 @@ TestforBatchEffect <- function(
   SparseGRMFile = NULL, # sparse genotype relatedness matrix
   RefAfFile, # header should include c("CHROM", "POS", "ID", "REF", "ALT", "AF_ref","AN_ref")
   IndicatorColumn,
-  SurvTimeColumn
+  SurvTimeColumn,
+  RefPrevalence # refernce population prevalence
+
 ) {
   .message("Testing for batch effect ...")
 
@@ -413,8 +410,6 @@ TestforBatchEffect <- function(
   }
 
   control <- objNull$control
-  RefPrevalence <- control$RefPrevalence # refernce population prevalence, the proportion of indicator == 1.
-  SNPnum <- control$SNPnum
 
   posCol <- which(colnames(data) == IndicatorColumn)
   colnames(data)[posCol] <- "Indicator"
@@ -448,10 +443,6 @@ TestforBatchEffect <- function(
     ) %>%
       rename(mu0 = altFreq, mr0 = missingRate) %>%
       select(mu0, mr0)
-
-    if (nrow(GenoInfo.ctrl) < SNPnum) {
-      stop("The number of genetic variants < ", SNPnum)
-    }
 
     .message("Getting genotype info for cases (Indicator=1) ...")
     GenoInfo <- GRAB.getGenoInfo(
@@ -703,9 +694,8 @@ TestforBatchEffect <- function(
       names(R_tilde_w) <- data$SampleID
       sparseGRM <- sparseGRM %>%
         mutate(cov_Rext = Value * R_tilde_w[as.character(ID1)] * R_tilde_w[as.character(ID2)])
-      numerator <- sum(sparseGRM$cov_Rext) + w.ext^2 * sum(objNull$mresid)^2 / n.ext
-      denominator <- sum(R_tilde_w^2) + w.ext^2 * sum(objNull$mresid)^2 / n.ext
-      var.ratio.ext <- numerator / denominator
+      var.ratio.ext <- (sum(sparseGRM$cov_Rext) + w.ext^2 * sum(objNull$mresid)^2 / n.ext) /
+        (sum(R_tilde_w^2) + w.ext^2 * sum(objNull$mresid)^2 / n.ext)
     }
 
     mergeGenoInfo_1 <- mergeGenoInfo_1 %>% cbind(., TPR, sigma2, w.ext, var.ratio.ext)

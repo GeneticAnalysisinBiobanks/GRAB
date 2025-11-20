@@ -68,6 +68,7 @@ void DenseGRMClass::setDenseGRMObj(PlinkClass* t_ptrPlinkObj,
   
   Rcpp::IntegerVector chrVecCounts = table(m_chrVec);
   Rcpp::StringVector chrVecNames = chrVecCounts.names();
+  setchrIndexLOCO(chrVecNames);
   
   for(int i = 0; i < chrVecCounts.size(); i++){
     Rcpp::Rcout << "    Chr " << chrVecNames(i) << ": " << chrVecCounts(i) << " markers" << std::endl;
@@ -182,6 +183,49 @@ void DenseGRMClass::closeDenseGRMObj()
 }
 
 
+arma::Mat<unsigned int> makeChrIndex(Rcpp::String t_excludeChr, 
+                            Rcpp::StringVector t_chrVec)
+{
+  unsigned int m = t_chrVec.length();
+  arma::Mat<unsigned int> chrIndex;
+  arma::Row<unsigned int> newChrIndex(2);
+  unsigned int indexStart = 0;
+  for(unsigned int i = 0; i < m; i ++){
+    if(t_chrVec[i] == t_excludeChr){
+      if(indexStart != i){
+        newChrIndex(0) = indexStart;
+        newChrIndex(1) = i;
+        chrIndex.insert_rows(0, newChrIndex);
+      }
+      indexStart = i + 1;
+    }
+  }
+
+  if(indexStart != m){
+    newChrIndex(0) = indexStart;
+    newChrIndex(1) = m;
+    chrIndex.insert_rows(0, newChrIndex);
+  }
+
+  return(chrIndex);
+}
+
+void DenseGRMClass::setchrIndexLOCO(Rcpp::StringVector t_chrVecNames)
+{
+  arma::Mat<unsigned int> chrIndex = {0, (unsigned int)m_M};
+  Rcpp::List chrIndexLOCO = List::create(Named("none") = chrIndex);
+  
+  unsigned int uniqChrNum = t_chrVecNames.length();
+
+  for(unsigned int i = 0; i < uniqChrNum; i ++){
+    Rcpp::String excludeChr = t_chrVecNames[i];
+    arma::Mat<unsigned int> chrIndex = makeChrIndex(excludeChr, m_chrVec);
+    chrIndexLOCO.push_back(chrIndex, excludeChr);
+  }
+  
+  m_chrIndexLOCO = chrIndexLOCO;
+}
+
 //http://gallery.rcpp.org/articles/parallel-inner-product/
 struct getKinbVecParallel : public Worker
 {
@@ -229,15 +273,24 @@ struct getKinbVecParallel : public Worker
   }
 };
 
-arma::vec getKinbVec(arma::vec t_bVec, DenseGRMClass* t_ptrDenseGRM, int t_grainSize)
+arma::vec getKinbVec(arma::vec t_bVec, DenseGRMClass* t_ptrDenseGRM, string t_excludeChr, int t_grainSize)
 {
-  unsigned int M = t_ptrDenseGRM->getM();
+  // int M = t_ptrDenseGRM->getM();
+  Rcpp::List chrIndexLOCO = t_ptrDenseGRM->getChrIndexLOCO();
+
+  arma::Mat<unsigned int> ChrIdx = chrIndexLOCO[t_excludeChr];
 
   // declare the InnerProduct instance that takes a pointer to the vector data
   getKinbVecParallel getKinbVecParallel(t_bVec, t_ptrDenseGRM);
 
-  // call parallelReduce to start the work using all markers
-  parallelReduce(0, M, getKinbVecParallel, t_grainSize);
+  unsigned int nIdx = ChrIdx.n_rows;
+  for(unsigned int i = 0; i < nIdx; i++){
+    unsigned int idxStart = ChrIdx(i,0);
+    unsigned int idxEnd = ChrIdx(i,1);
+    // cout << idxStart << "\t" << idxEnd << endl;
+    // call paralleReduce to start the work
+    parallelReduce(idxStart, idxEnd, getKinbVecParallel, t_grainSize);
+  }
 
   Rcpp::checkUserInterrupt();
   return getKinbVecParallel.KinbVec / getKinbVecParallel.counts;

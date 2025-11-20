@@ -26,8 +26,7 @@ not supported here.}
 
 \item{subjData}{Character vector of subject IDs aligned with rows of \code{designMat}.}
 
-\item{control}{List with fields such as \code{RefPrevalence} (0, 0.5),
-\code{OutlierRatio}, \code{SNPnum}.}
+\item{control}{List with fields such as \code{OutlierRatio}.}
 
 \item{data}{Data frame used for optional batch-effect QC.}
 
@@ -38,9 +37,11 @@ sampling markers for QC.}
 
 \item{SparseGRMFile}{Character. Path to sparse GRM used in QC workflow.}
 
-\item{...}{Optional named parameters forwarded to QC (e.g.,
-\code{RefAfFile}, \code{IndicatorColumn},
-\code{SurvTimeColumn}).}
+\item{SurvTimeColumn}{Character. Column name in \code{data} containing survival time.}
+
+\item{IndicatorColumn}{Character. Column name in \code{data} containing event indicator (0/1).}
+
+\item{...}{Optional named parameters forwarded to QC (e.g., \code{RefAfFile}).}
 }
 \value{
 A list of class \code{"WtCoxG_NULL_Model"} with elements:

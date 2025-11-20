@@ -34,14 +34,15 @@ BEGIN_RCPP
 END_RCPP
 }
 // getDenseGRMInCPP
-arma::vec getDenseGRMInCPP(arma::vec t_bVec, int t_grainSize);
-RcppExport SEXP _GRAB_getDenseGRMInCPP(SEXP t_bVecSEXP, SEXP t_grainSizeSEXP) {
+arma::vec getDenseGRMInCPP(arma::vec t_bVec, std::string t_excludeChr, int t_grainSize);
+RcppExport SEXP _GRAB_getDenseGRMInCPP(SEXP t_bVecSEXP, SEXP t_excludeChrSEXP, SEXP t_grainSizeSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::vec >::type t_bVec(t_bVecSEXP);
+    Rcpp::traits::input_parameter< std::string >::type t_excludeChr(t_excludeChrSEXP);
     Rcpp::traits::input_parameter< int >::type t_grainSize(t_grainSizeSEXP);
-    rcpp_result_gen = Rcpp::wrap(getDenseGRMInCPP(t_bVec, t_grainSize));
+    rcpp_result_gen = Rcpp::wrap(getDenseGRMInCPP(t_bVec, t_excludeChr, t_grainSize));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -409,7 +410,7 @@ END_RCPP
 static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setSparseGRMInCPP", (DL_FUNC) &_GRAB_setSparseGRMInCPP, 1},
     {"_GRAB_setDenseGRMInCPP", (DL_FUNC) &_GRAB_setDenseGRMInCPP, 3},
-    {"_GRAB_getDenseGRMInCPP", (DL_FUNC) &_GRAB_getDenseGRMInCPP, 2},
+    {"_GRAB_getDenseGRMInCPP", (DL_FUNC) &_GRAB_getDenseGRMInCPP, 3},
     {"_GRAB_setMarker_GlobalVarsInCPP", (DL_FUNC) &_GRAB_setMarker_GlobalVarsInCPP, 5},
     {"_GRAB_setRegion_GlobalVarsInCPP", (DL_FUNC) &_GRAB_setRegion_GlobalVarsInCPP, 8},
     {"_GRAB_mainMarkerInCPP", (DL_FUNC) &_GRAB_mainMarkerInCPP, 3},

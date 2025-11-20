@@ -16,14 +16,13 @@ ascertainment.
 \itemize{
 \item \code{RefAfFile} (character, required): Reference allele frequency file path.
 File must contain columns: CHROM, POS, ID, REF, ALT, AF_ref, AN_ref
+\item \code{RefPrevalence} (numeric, required): Population-level disease prevalence
+for weighting. Must be in range (0, 0.5)
 }
 
 \strong{Additional Control Parameters for GRAB.NullModel()}:
 \itemize{
-\item \code{RefPrevalence} (numeric, required): Population-level disease prevalence
-for weighting. Must be in range (0, 0.5)
 \item \code{OutlierRatio} (numeric, default: 1.5): IQR multiplier for outlier detection
-\item \code{SNPnum} (numeric, default: 1e4): Minimum number of SNPs for batch effect testing
 }
 
 \strong{Additional Control Parameters for GRAB.Marker()}:
@@ -62,14 +61,12 @@ obj.WtCoxG <- GRAB.NullModel(
   traitType = "time-to-event",
   GenoFile = GenoFile,
   SparseGRMFile = SparseGRMFile,
-  control = list(RefPrevalence = 0.01, SNPnum = 1e3),
-  RefAfFile = RefAfFile
+  RefAfFile = RefAfFile,
+  RefPrevalence = 0.1
 )
 
 # Step2
-GRAB.Marker(obj.WtCoxG, GenoFile, OutputFile,
-  control = list(nMarkersEachChunk = 5000)
-)
+GRAB.Marker(obj.WtCoxG, GenoFile, OutputFile)
 
 head(data.table::fread(OutputFile))
 

@@ -45,12 +45,9 @@ private:
   // Control parameters
   unsigned int m_iter, m_maxiter, m_maxiterPCG, m_maxiterEps, m_tracenrun, m_nSNPsVarRatio, m_grainSize; 
   double m_tolBeta, m_tolTau, m_tolPCG, m_tolEps, m_CVcutoff, m_minMafVarRatio, m_maxMissingVarRatio, m_memoryChunk, m_minMafGRM, m_maxMissingGRM; 
-  bool m_printPCGInfo, m_flagSparseGRM;
+  bool m_LOCO, m_showInfo, m_printPCGInfo, m_flagSparseGRM;
+  Rcpp::List m_LOCOList;
   int m_seed;
-  
-  // Variance ratio estimation results
-  arma::mat m_varRatioMat;
-  double m_varRatio;
   
   // working vectors/matrix
   arma::mat m_WMat, m_muMat, m_mMat, m_nuMat, m_iRMat, m_YMat, m_iSigma_CovaMat, m_iSigmaX_XSigmaX;
@@ -101,8 +98,9 @@ private:
     m_maxMissingVarRatio = t_controlList["maxMissingVarRatio"];
     m_nSNPsVarRatio = t_controlList["nSNPsVarRatio"];
     m_CVcutoff = t_controlList["CVcutoff"];
+    m_LOCO = t_controlList["LOCO"];
     m_grainSize = t_controlList["grainSize"];
-    m_printPCGInfo = t_controlList["printPCGInfo"];
+    m_showInfo = t_controlList["showInfo"];
   }
   
   void setArray()
@@ -188,7 +186,7 @@ private:
   // set up m_TraceRandMat (TRM) and m_V_TRM, only used once at ()
   void getTraceRandMat();
   
-  arma::vec getKinbVecPOLMM(arma::vec t_bVec);
+  arma::vec getKinbVecPOLMM(arma::vec t_bVec, std::string t_excludeChr);
   
   ////////////////////// -------------------- functions ---------------------------------- //////////////////////
   
@@ -206,26 +204,31 @@ public:
   void fitPOLMM();
   void estVarRatio(arma::mat GenoMat);
   void updateMats();
-  void updateParaConv();
+  void updateParaConv(std::string t_excludechr);
   void updateTau();
-  void updatePara();
+  void updatePara(std::string t_excludechr);
   void updateEps();
   void updateEpsOneStep();
   
   Rcpp::List getPOLMM();
   
-  arma::mat getVarRatio(arma::mat t_GMatRatio);
+  arma::mat getVarRatio(arma::mat t_GMatRatio, std::string t_excludechr);
   arma::rowvec getVarOneSNP(arma::vec GVec,
-                            Rcpp::List objP);
+                                        std::string excludechr,
+                                        Rcpp::List objP);
   void getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with length of n(J-1)
-                              arma::vec& t_xVec);    // vector with length of n(J-1)
-  arma::mat getSigmaxMat(arma::mat t_xMat);   // matrix: n x (J-1)
+                              arma::vec& t_xVec,    // vector with length of n(J-1)
+                              std::string t_excludechr);
+  arma::mat getSigmaxMat(arma::mat t_xMat,   // matrix: n x (J-1) 
+                         std::string t_excludechr);
   arma::mat solverBlockDiagSigma(arma::cube& InvBlockDiagSigma,   // (J-1) x (J-1) x n
                                  arma::mat& xMat);                 // n x (J-1)
   
   void getPCGofSigmaAndCovaMat(arma::mat t_xMat,              // matrix with dim of n(J-1) x p
-                               arma::mat& t_iSigma_xMat);      // matrix with dim of n(J-1) x p
-  double getVarP(arma::vec t_adjGVec);
+                               arma::mat& t_iSigma_xMat,      // matrix with dim of n(J-1) x p
+                               std::string t_excludechr);
+  double getVarP(arma::vec t_adjGVec,
+                             std::string t_excludechr);
   
   POLMMClass(bool t_flagSparseGRM,       // if 1, then use SparseGRM, otherwise, use DenseGRM
              DenseGRM::DenseGRMClass* t_ptrDenseGRMObj,
@@ -297,11 +300,16 @@ public:
                      arma::vec& t_P1Vec, 
                      arma::vec& t_P2Vec);
   
-  double m_SPA_Cutoff;
+  double m_varRatio, m_SPA_Cutoff;
   
   arma::vec getadjGFast(arma::vec t_GVec);
   double getStatFast(arma::vec t_adjGVec);
   arma::vec get_ZPZ_adjGVec(arma::vec t_adjGVec);
+  void getPCGofSigmaAndCovaMat(arma::mat t_xMat,             // matrix with dim of n(J-1) x p
+                               arma::mat& t_iSigma_xMat);    // matrix with dim of n(J-1) x p
+  void getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with length of n(J-1)
+                              arma::vec& t_xVec);    // vector with length of n(J-1)
+  arma::mat getSigmaxMat(arma::mat& t_xMat);
   
   arma::mat getiPsixMat(arma::mat t_xMat);
   arma::mat getPsixMat(arma::mat t_xMat);

@@ -38,11 +38,13 @@ private:
   Rcpp::NumericVector m_invStdVec;
   Rcpp::StringVector m_chrVec0;
   Rcpp::StringVector m_chrVec;
+  Rcpp::List m_chrIndexLOCO;
   
   // functions used in DenseGRMClass
   void setArrays(PlinkClass* t_ptrPlinkObj, double t_memoryChunk);
   void setOneMarkerArray(int t_indexMarker);
   void setDiagStdGeno();
+  void setchrIndexLOCO(Rcpp::StringVector t_chrVecNames);
 
   // insert geno (0,1,2,3) to specific pos (0,1,2,3) of address c (1 byte)
   void setGenotype(unsigned char* c, const int pos, const int geno) {
@@ -81,9 +83,10 @@ public:
   arma::vec getFreqVec(){return m_freqVec;}
   arma::vec* getDiagStdGeno(){return &m_DiagStdGeno;}
   Rcpp::StringVector getChrVec(){return m_chrVec;}
+  Rcpp::List getChrIndexLOCO(){return m_chrIndexLOCO;}
 };
 
-arma::vec getKinbVec(arma::vec t_bVec, DenseGRMClass* t_ptrDenseGRM, int t_grainSize);
+arma::vec getKinbVec(arma::vec t_bVec, DenseGRMClass* t_ptrDenseGRM, string t_excludeChr, int t_grainSize);
 
 }
 

@@ -162,15 +162,17 @@ void setDenseGRMInCPP(
 }
 
 // Performs efficient matrix-vector multiplication K*b where K is the dense GRM
-// and b is the input vector.
+// and b is the input vector. Used for Leave-One-Chromosome-Out (LOCO) analysis.
 // [[Rcpp::export]]
 arma::vec getDenseGRMInCPP(
   arma::vec t_bVec,         // Input vector to be corrected (typically residuals or phenotypes)
+  std::string t_excludeChr, // Chromosome to exclude from kinship computation (for LOCO analysis)
   int t_grainSize           // Parallel processing granularity parameter
 ) {
   arma::vec yVec = DenseGRM::getKinbVec(
     t_bVec,           // Input vector to be corrected
     ptr_gDenseGRMobj, // Dense GRM object pointer
+    t_excludeChr,     // Chromosome to exclude for LOCO analysis
     t_grainSize       // Parallel processing granularity
   );
   return yVec;
@@ -1810,7 +1812,7 @@ void setPOLMMobjInCPP(
   );
 }
 
-// Initialize and fit POLMM null model for polytomous traits.
+// Initialize and fit POLMM null model for polytomous traits with optional LOCO analysis.
 // This version handles null model fitting and variance ratio estimation.
 // [[Rcpp::export]]
 Rcpp::List setPOLMMobjInCPP_NULL(

@@ -9,8 +9,8 @@ setDenseGRMInCPP <- function(t_memoryChunk, t_minMafGRM, t_maxMissingGRM) {
     invisible(.Call(`_GRAB_setDenseGRMInCPP`, t_memoryChunk, t_minMafGRM, t_maxMissingGRM))
 }
 
-getDenseGRMInCPP <- function(t_bVec, t_grainSize) {
-    .Call(`_GRAB_getDenseGRMInCPP`, t_bVec, t_grainSize)
+getDenseGRMInCPP <- function(t_bVec, t_excludeChr, t_grainSize) {
+    .Call(`_GRAB_getDenseGRMInCPP`, t_bVec, t_excludeChr, t_grainSize)
 }
 
 setMarker_GlobalVarsInCPP <- function(t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_omp_num_threads) {

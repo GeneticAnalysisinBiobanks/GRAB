@@ -37,3 +37,8 @@
 
 # GitHub files
 ^\.github/
+
+# File history
+^\.lh/
+
+^example/

@@ -36,8 +36,7 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
   m_muMat = t_muMat;
   m_iRMat = t_iRMat;
   m_Cova = t_Cova;
-  m_varRatio = t_varRatio;    // Initialize variance ratio with the input value
-  m_varRatioMat.clear();      // Initialize as empty matrix (not estimated in marker testing)
+  m_varRatio = t_varRatio;
   m_SPA_Cutoff = t_SPA_Cutoff;
   m_flagSparseGRM = t_flagSparseGRM;
   
@@ -59,7 +58,6 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
   }
   
   // output for Step 2
-  
   arma::mat XR_Psi_R(m_p, m_n * (m_J-1));                // p x n(J-1)
   for(int k = 0; k < m_p; k++){
     arma::mat xMat = Vec2Mat(m_CovaMat.col(k), m_n, m_J);
@@ -80,7 +78,7 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
   arma::mat ymuMat = yMat - m_muMat;                      // n x J
   arma::mat RymuMat = ymuMat.cols(0, m_J-2) / t_iRMat;    // n x (J-1): R %*% (y - mu)
   m_RymuVec = sumCols(RymuMat, m_J);                      // n x 1
-  
+
   if(m_flagSparseGRM == true){
     arma::mat iSigma_CovaMat(m_n * (m_J-1), m_p);
     getPCGofSigmaAndCovaMat(m_CovaMat, iSigma_CovaMat);
@@ -142,7 +140,7 @@ void POLMMClass::getTraceRandMat()
     arma::vec ZuVec = ZMat(uVec);
     // m_V_TRM.col(itrace) = tZMat(getKinbVecPOLMM(ZuVec, "none"));
     
-    arma::vec tempVec = getKinbVecPOLMM(ZuVec);
+    arma::vec tempVec = getKinbVecPOLMM(ZuVec, "none");
     m_V_TRM.col(itrace) = tZMat(tempVec);
   }
   
@@ -355,13 +353,14 @@ void POLMMClass::getPCGofSigmaAndCovaMat(arma::mat t_xMat,              // matri
 
 // use PCG to calculate xVec = Sigma^-1 %*% yVec
 void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with length of n(J-1)
-                                        arma::vec& t_xVec)    // vector with length of n(J-1)
+                                        arma::vec& t_xVec,    // vector with length of n(J-1)
+                                        std::string t_excludechr)
 {
   arma::mat xMat = convert2(t_xVec, m_n, m_J);
   arma::mat y1Mat = convert2(t_y1Vec, m_n, m_J);
   // r2Vec and z2Vec are for the current step; r1Vec and z1Vec are for the previous step
   unsigned int iter = 0;
-  arma::mat r2Mat = y1Mat - getSigmaxMat(xMat);  // n x (J-1): r0 = y1Mat- Sigma %*% xMat
+  arma::mat r2Mat = y1Mat - getSigmaxMat(xMat, t_excludechr);  // n x (J-1): r0 = y1Mat- Sigma %*% xMat
   double meanL2 = sqrt(getInnerProd(r2Mat, r2Mat)) / sqrt(m_n * (m_J-1));
 
   if(meanL2 <= m_tolPCG){
@@ -374,7 +373,7 @@ void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with len
     arma::mat z1Mat, r1Mat;
     double beta1 = 0;
     arma::mat pMat = z2Mat;
-    arma::mat ApMat = getSigmaxMat(pMat);
+    arma::mat ApMat = getSigmaxMat(pMat, t_excludechr);
     double alpha = getInnerProd(z2Mat, r2Mat) / getInnerProd(pMat, ApMat);
     xMat = xMat + alpha * pMat;
     r1Mat = r2Mat;
@@ -391,7 +390,7 @@ void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with len
       //
       beta1 = getInnerProd(z2Mat, r2Mat) / getInnerProd(z1Mat, r1Mat);
       pMat = z2Mat + beta1 * pMat;
-      ApMat = getSigmaxMat(pMat);
+      ApMat = getSigmaxMat(pMat, t_excludechr);
       alpha = getInnerProd(z2Mat, r2Mat) / getInnerProd(pMat, ApMat);
       
       xMat = xMat + alpha * pMat;
@@ -406,9 +405,96 @@ void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with len
   if (iter >= m_maxiterPCG){
     Rcpp::Rcout << "    PCG did not converge (increase maxiter)" << std::endl;
   }
+  if(m_showInfo)
+    Rcpp::Rcout << "    PCG iterations: " << iter << std::endl; 
+  // }
+}
+
+// use PCG to calculate xVec = Sigma^-1 %*% yVec
+void POLMMClass::getPCGofSigmaAndVector(arma::vec t_y1Vec,    // vector with length of n(J-1)
+                                        arma::vec& t_xVec)    // vector with length of n(J-1)
+{
+  arma::vec test11 = getTime();
+  arma::mat xMat = Vec2Mat(t_xVec, m_n, m_J);
+  arma::mat y1Mat = Vec2Mat(t_y1Vec, m_n, m_J);
+  arma::vec test12 = getTime();
+  m_diffTimePOLMM4 += (test12 - test11);
+  // r2Vec and z2Vec are for the current step; r1Vec and z1Vec are for the previous step
+  unsigned int iter = 0;
+  arma::mat r2Mat = y1Mat - getSigmaxMat(xMat);  // n x (J-1): r0 = y1Mat- Sigma %*% xMat
+  double meanL2 = sqrt(getInnerProd(r2Mat, r2Mat)) / sqrt(m_n * (m_J-1));
+  
+  if(meanL2 <= m_tolPCG){
+    // do nothing, xMat is already close to (Sigma)^-1 %*% y1Mat
+  }else{
+    
+    iter++;
+    arma::mat z2Mat = solverBlockDiagSigma(r2Mat);
+    //
+    arma::mat z1Mat, r1Mat;
+    double beta1 = 0;
+    arma::mat pMat = z2Mat;
+    arma::mat ApMat = getSigmaxMat(pMat);
+    double alpha = getInnerProd(z2Mat, r2Mat) / getInnerProd(pMat, ApMat);
+    xMat = xMat + alpha * pMat;
+    r1Mat = r2Mat;
+    z1Mat = z2Mat;
+    r2Mat = r1Mat - alpha * ApMat;
+    
+    meanL2 = sqrt(getInnerProd(r2Mat, r2Mat)) / sqrt(m_n * (m_J-1));
+    
+    while (meanL2 > m_tolPCG && iter < m_maxiterPCG){
+      
+      iter++;
+      //  z2Mat = minvMat % r2Mat;
+      z2Mat = solverBlockDiagSigma(r2Mat);
+      //
+      beta1 = getInnerProd(z2Mat, r2Mat) / getInnerProd(z1Mat, r1Mat);
+      pMat = z2Mat + beta1 * pMat;
+      ApMat = getSigmaxMat(pMat);
+      alpha = getInnerProd(z2Mat, r2Mat) / getInnerProd(pMat, ApMat);
+      xMat = xMat + alpha * pMat;
+      r1Mat = r2Mat;
+      z1Mat = z2Mat;
+      r2Mat = r1Mat - alpha * ApMat;
+      meanL2 = sqrt(getInnerProd(r2Mat, r2Mat)) / sqrt(m_n * (m_J-1));
+      
+      // Rcpp::Rcout << "    iter:\t" << iter << std::endl;
+      // Rcpp::Rcout << "    meanL2:\t" << meanL2 << std::endl;
+      // Rcpp::Rcout << "    m_tolPCG:\t" << m_tolPCG << std::endl;
+    }
+  }
+  
+  t_xVec = Mat2Vec(xMat, m_n, m_J);
+  if (iter >= m_maxiterPCG){
+    Rcpp::Rcout << "    PCG did not converge (increase maxiter)" << std::endl;
+  }
   if(m_printPCGInfo)
     Rcpp::Rcout << "    PCG iterations: " << iter << std::endl; 
   // }
+}
+
+// yMat = Sigma %*% xMat
+arma::mat POLMMClass::getSigmaxMat(arma::mat& t_xMat)   // matrix: n x (J-1) 
+{
+  arma::mat iR_xMat = m_iRMat % t_xMat;
+  
+  arma::vec test11 = getTime();
+  
+  arma::mat iPsi_iR_xMat = getiPsixMat(iR_xMat);
+  
+  arma::vec test12 = getTime();
+  m_diffTimePOLMM2 += (test12 - test11);
+  
+  arma::mat yMat = m_iRMat % iPsi_iR_xMat;
+  
+  if(m_tau == 0){}
+  else{
+    arma::vec tZ_xMat = arma::sum(t_xMat, 1);  // rowSums(xMat): n x 1
+    arma::vec V_tZ_xMat = m_SparseGRM * tZ_xMat;
+    yMat.each_col() += m_tau * V_tZ_xMat;
+  }
+  return yMat;
 }
 
 // outMat = iPsiMat %*% xMat, iPsiMat is determined by muMat
@@ -442,6 +528,29 @@ arma::mat POLMMClass::getPsixMat(arma::mat t_xMat)   // matrix: n x (J-1)
   }
   return Psi_xMat;
 }
+
+// // used in getPCGofSigmaAndVector()
+// arma::cube POLMMClass::getInvBlockDiagSigma()
+// {
+//   // get diagonal elements of GRM
+//   arma::vec DiagGRM;
+//   DiagGRM = m_tau * m_SparseGRM.diag();
+//   
+//   arma::cube InvBlockDiagSigma(m_J-1, m_J-1, m_n, arma::fill::zeros);
+//   for(int i = 0; i < m_n; i++){
+//     for(int j2 = 0; j2 < m_J-1; j2++){
+//       for(int j1 = 0; j1 < m_J-1; j1++){
+//         double temp = m_iRMat(i,j2) * (1 / m_muMat(i, m_J-1)) * m_iRMat(i,j1) + DiagGRM(i);
+//         if(j2 == j1){
+//           temp += m_iRMat(i,j2) * (1 / m_muMat(i,j2)) * m_iRMat(i,j1); 
+//         }
+//         InvBlockDiagSigma(j2, j1, i) = temp;
+//       }
+//     }
+//     InvBlockDiagSigma.slice(i) = inv(InvBlockDiagSigma.slice(i));
+//   }
+//   return InvBlockDiagSigma;
+// }
 
 // used in getPCGofSigmaAndVector()
 arma::cube POLMMClass::getInvBlockDiagSigma()
@@ -493,7 +602,10 @@ Rcpp::List POLMMClass::MAIN_SPA(double t_Stat,
                                 double t_VarW,
                                 double t_Ratio0,
                                 arma::uvec t_posG1)
-{ 
+{
+  // Rcpp::Rcout << "    t_VarP:\t" << t_VarP << std::endl;
+  // Rcpp::Rcout << "    t_VarW:\t" << t_VarW << std::endl;
+  
   Rcpp::List resSPA = fastSaddle_Prob(t_Stat, t_VarP, t_VarW, t_Ratio0, t_K1roots,
                                       t_adjGVec.elem(t_posG1), m_muMat.rows(t_posG1), m_iRMat.rows(t_posG1));
   return resSPA;
@@ -588,6 +700,14 @@ Rcpp::List fastgetroot_K1(double t_Stat,
     K2 = K12Vec(1) + t_Ratio0;
     
     diffX = -1 * K1 / K2;
+    
+    // Rcpp::Rcout << "    iter:\t" << iter << std::endl;
+    // Rcpp::Rcout << "    x:\t" << x << std::endl;
+    // Rcpp::Rcout << "    K12Vec(1):\t" << K12Vec(1) << std::endl;
+    // Rcpp::Rcout << "    t_Ratio0:\t" << t_Ratio0 << std::endl;
+    // Rcpp::Rcout << "    K1:\t" << K1 << std::endl;
+    // Rcpp::Rcout << "    K2:\t" << K2 << std::endl;
+    // Rcpp::Rcout << "    diffX:\t" << diffX << std::endl;
     
     if(!std::isfinite(K1)){
       // checked it on 07/05:
@@ -970,11 +1090,11 @@ void POLMMClass::updateEps()
   }
 }
 
-void POLMMClass::updatePara()
+void POLMMClass::updatePara(std::string t_excludechr)
 {
-  getPCGofSigmaAndCovaMat(m_CovaMat, m_iSigma_CovaMat);
+  getPCGofSigmaAndCovaMat(m_CovaMat, m_iSigma_CovaMat, t_excludechr);
   arma::vec YVec = convert1(m_YMat, m_n, m_J);
-  getPCGofSigmaAndVector(YVec, m_iSigma_YVec); 
+  getPCGofSigmaAndVector(YVec, m_iSigma_YVec, t_excludechr); 
   
   // update beta
   arma::mat XSigmaX = inv(m_CovaMat.t() * m_iSigma_CovaMat);
@@ -986,10 +1106,10 @@ void POLMMClass::updatePara()
   arma::vec Z_iSigma_YVec = ZMat(m_iSigma_YVec);
   arma::vec Z_iSigma_Xbeta = ZMat(m_iSigma_CovaMat * m_beta);
   arma::vec tempVec = Z_iSigma_YVec - Z_iSigma_Xbeta;
-  m_bVec = m_tau * getKinbVecPOLMM(tempVec);
+  m_bVec = m_tau * getKinbVecPOLMM(tempVec, t_excludechr);
 }
 
-arma::mat POLMMClass::getVarRatio(arma::mat t_GMatRatio)
+arma::mat POLMMClass::getVarRatio(arma::mat t_GMatRatio, std::string t_excludechr)
 {
   Rcpp::Rcout << "    Estimating variance ratio ..." << std::endl;
   Rcpp::List objP = getobjP(m_Cova, m_yMat, m_muMat, m_iRMat);
@@ -1004,7 +1124,7 @@ arma::mat POLMMClass::getVarRatio(arma::mat t_GMatRatio)
   int indexTot = 0;
   while(index < m_nSNPsVarRatio){
     GVec = t_GMatRatio.col(index);
-    VarOneSNP = getVarOneSNP(GVec, objP);
+    VarOneSNP = getVarOneSNP(GVec, t_excludechr, objP);
     VarRatioMat.row(index) = VarOneSNP;
     index++;
     indexTot++;
@@ -1019,7 +1139,7 @@ arma::mat POLMMClass::getVarRatio(arma::mat t_GMatRatio)
     while(indexTemp < 10){
       indexTot++;
       GVec = t_GMatRatio.col(indexTot);
-      VarOneSNP = getVarOneSNP(GVec, objP);
+      VarOneSNP = getVarOneSNP(GVec, t_excludechr, objP);
       newVarRatio.row(indexTemp) = VarOneSNP;
       index++;
       indexTemp++;
@@ -1033,6 +1153,7 @@ arma::mat POLMMClass::getVarRatio(arma::mat t_GMatRatio)
 }
 
 arma::rowvec POLMMClass::getVarOneSNP(arma::vec GVec,
+                                      std::string excludechr,
                                       Rcpp::List objP)
 {
   arma::rowvec VarOut(5);
@@ -1046,7 +1167,7 @@ arma::rowvec POLMMClass::getVarOneSNP(arma::vec GVec,
   arma::vec adjGVec = adjGList["adjGVec"];
   double Stat = adjGList["Stat"];
   double VarW = adjGList["VarW"];
-  double VarP = getVarP(adjGVec);
+  double VarP = getVarP(adjGVec, excludechr);
   
   VarOut(0) = AF;
   VarOut(1) = Stat;
@@ -1057,14 +1178,14 @@ arma::rowvec POLMMClass::getVarOneSNP(arma::vec GVec,
 }
 
 // update parameters (except tau) until converge
-void POLMMClass::updateParaConv()
+void POLMMClass::updateParaConv(std::string t_excludechr)
 {
   for(unsigned int iter = 0; iter < m_maxiter; iter ++){
     
     arma::vec beta0 = m_beta;
     
     // update beta and bVec
-    updatePara();
+    updatePara(t_excludechr);
     updateMats();
     
     // update eps (cutpoints)
@@ -1080,21 +1201,21 @@ void POLMMClass::updateParaConv()
 void POLMMClass::updateTau()
 {
   arma::vec YVec = convert1(m_YMat, m_n, m_J);
-  getPCGofSigmaAndCovaMat(m_CovaMat, m_iSigma_CovaMat);
-  getPCGofSigmaAndVector(YVec, m_iSigma_YVec); 
+  getPCGofSigmaAndCovaMat(m_CovaMat, m_iSigma_CovaMat, "none");
+  getPCGofSigmaAndVector(YVec, m_iSigma_YVec, "none"); 
   m_iSigmaX_XSigmaX = m_iSigma_CovaMat * inv(m_CovaMat.t() * m_iSigma_CovaMat);
   arma::vec PYVec = m_iSigma_YVec - m_iSigmaX_XSigmaX * (m_CovaMat.t() * m_iSigma_YVec);
   arma::vec ZPYVec = ZMat(PYVec);
-  arma::vec VPYVec = tZMat(getKinbVecPOLMM(ZPYVec));
+  arma::vec VPYVec = tZMat(getKinbVecPOLMM(ZPYVec, "none"));
   
-  getPCGofSigmaAndVector(VPYVec, m_iSigma_VPYVec);
+  getPCGofSigmaAndVector(VPYVec, m_iSigma_VPYVec, "none");
   
   arma::vec PVPYVec = m_iSigma_VPYVec - m_iSigmaX_XSigmaX * (m_CovaMat.t() * m_iSigma_VPYVec);
   double YPVPY = as_scalar(YVec.t() * PVPYVec);
   double YPVPVPY = as_scalar(VPYVec.t() * PVPYVec);
   // The below is to calculate trace
   
-  getPCGofSigmaAndCovaMat(m_V_TRM, m_iSigma_V_TRM);
+  getPCGofSigmaAndCovaMat(m_V_TRM, m_iSigma_V_TRM, "none");
   
   double tracePV = 0;
   int m = m_TraceRandMat.n_cols;
@@ -1132,7 +1253,7 @@ void POLMMClass::fitPOLMM()
   for(m_iter = 0; m_iter < m_maxiter; m_iter ++){
     
     // update fixed effect coefficients
-    updateParaConv();
+    updateParaConv("none");
     
     // update tau
     double tau0 = m_tau;
@@ -1154,10 +1275,48 @@ void POLMMClass::fitPOLMM()
 
 void POLMMClass::estVarRatio(arma::mat GenoMat)
 {
-  m_varRatioMat = getVarRatio(GenoMat);
-  m_varRatio = arma::mean(m_varRatioMat.col(4));
+  // if(m_LOCO){
+  //   
+  //   // turn on LOCO option
+  //   Rcpp::StringVector chrVec = m_ptrPlinkObj->getChrVec();
+  //   Rcpp::StringVector uniqchr = unique(chrVec);
+  //   
+  //   Rcpp::Rcout << "    uniqchr is " << uniqchr << std::endl;
+  //   
+  //   for(int i = 0; i < uniqchr.size(); i ++){
+  //     
+  //     std::string excludechr = std::string(uniqchr(i));
+  //     Rcpp::Rcout << std::endl << "Leave One Chromosome Out: Chr " << excludechr << std::endl;
+  //     
+  //     updateParaConv(excludechr);
+  //     
+  //     arma::mat GMatRatio = m_ptrPlinkObj->getGMat(100, excludechr, m_minMafVarRatio, m_maxMissingVarRatio);
+  //     arma::mat VarRatioMat = getVarRatio(GMatRatio, excludechr);
+  //     double VarRatio = arma::mean(VarRatioMat.col(4));
+  //     
+  //     Rcpp::List temp = Rcpp::List::create(Rcpp::Named("muMat") = m_muMat,
+  //                                          Rcpp::Named("iRMat") = m_iRMat,
+  //                                          Rcpp::Named("VarRatioMat") = VarRatioMat,
+  //                                          Rcpp::Named("VarRatio") = VarRatio);
+  //     
+  //     m_LOCOList[excludechr] = temp;
+  //   }
+  //   
+  // }else{
+  //   
+  //   // turn off LOCO option
+  //   arma::mat GMatRatio = m_ptrPlinkObj->getGMat(100, "none", m_minMafVarRatio, m_maxMissingVarRatio);
+  //   arma::mat VarRatioMat = getVarRatio(GMatRatio, "none");
+  arma::mat VarRatioMat = getVarRatio(GenoMat, "none");
+  double VarRatio = arma::mean(VarRatioMat.col(4));
+  
+  Rcpp::List temp = Rcpp::List::create(Rcpp::Named("muMat") = m_muMat,
+                                       Rcpp::Named("iRMat") = m_iRMat,
+                                       Rcpp::Named("VarRatioMat") = VarRatioMat,
+                                       Rcpp::Named("VarRatio") = VarRatio);
+  m_LOCOList["LOCO=F"] = temp;
+  // }
 }
-
 
 
 
@@ -1172,7 +1331,8 @@ arma::mat POLMMClass::solverBlockDiagSigma(arma::cube& InvBlockDiagSigma,   // (
 }
 
 // yMat = Sigma %*% xMat
-arma::mat POLMMClass::getSigmaxMat(arma::mat t_xMat)   // matrix: n x (J-1) 
+arma::mat POLMMClass::getSigmaxMat(arma::mat t_xMat,   // matrix: n x (J-1) 
+                                   std::string t_excludechr)
 {
   arma::mat iR_xMat = m_iRMat % t_xMat;
   arma::mat iPsi_iR_xMat = getiPsixMat(iR_xMat);
@@ -1180,30 +1340,50 @@ arma::mat POLMMClass::getSigmaxMat(arma::mat t_xMat)   // matrix: n x (J-1)
   if(m_tau == 0){}
   else{
     arma::vec tZ_xMat = getRowSums(t_xMat);  // rowSums(xMat): n x 1
-    arma::vec V_tZ_xMat = getKinbVecPOLMM(tZ_xMat);
+    arma::vec V_tZ_xMat = getKinbVecPOLMM(tZ_xMat, t_excludechr);
     yMat.each_col() += m_tau * V_tZ_xMat;
   }
   return(yMat);
 }
 
-arma::vec POLMMClass::getKinbVecPOLMM(arma::vec t_bVec)
+arma::vec POLMMClass::getKinbVecPOLMM(arma::vec t_bVec, 
+                                      std::string t_excludeChr)
 {
   arma::vec KinbVec;
   
   if(m_flagSparseGRM){
+    // arma::sp_mat temp = m_SparseGRM[t_excludeChr];
+    // arma::sp_mat temp = m_SparseGRM;
     KinbVec = m_SparseGRM * t_bVec;
   }else{
-    KinbVec = getKinbVec(t_bVec, m_ptrDenseGRMObj, m_grainSize);
+    KinbVec = getKinbVec(t_bVec, m_ptrDenseGRMObj, t_excludeChr, m_grainSize);
   }
   Rcpp::checkUserInterrupt();
   return KinbVec;
 }
 
-double POLMMClass::getVarP(arma::vec t_adjGVec)
+// use PCG to calculate iSigma_xMat = Sigma^-1 %*% xMat
+void POLMMClass::getPCGofSigmaAndCovaMat(arma::mat t_xMat,              // matrix with dim of n(J-1) x p
+                                         arma::mat& t_iSigma_xMat,      // matrix with dim of n(J-1) x p
+                                         std::string t_excludechr)
+{
+  int p1 = t_xMat.n_cols;
+  for(int i = 0; i < p1; i++){
+    
+    arma::vec y1Vec = t_xMat.col(i);
+    arma::vec iSigma_y1Vec = t_iSigma_xMat.col(i);
+    getPCGofSigmaAndVector(y1Vec, iSigma_y1Vec, t_excludechr);
+    
+    t_iSigma_xMat.col(i) = iSigma_y1Vec;
+  }
+}
+
+double POLMMClass::getVarP(arma::vec t_adjGVec,
+                           std::string t_excludechr)
 {
   arma::vec adjGVecLong = tZMat(t_adjGVec);
   arma::vec iSigmaGVec(m_n * (m_J-1), arma::fill::zeros);
-  getPCGofSigmaAndVector(adjGVecLong, iSigmaGVec);
+  getPCGofSigmaAndVector(adjGVecLong, iSigmaGVec, t_excludechr);
   double VarP = as_scalar(adjGVecLong.t() * (iSigmaGVec - m_iSigmaX_XSigmaX * (m_CovaMat.t() * iSigmaGVec)));
   return(VarP);
 }
@@ -1443,14 +1623,12 @@ Rcpp::List POLMMClass::getPOLMM()
                                           Rcpp::Named("yVec") = m_yVec,        // matrix with dim of n x 1: observation
                                           Rcpp::Named("Cova") = m_Cova,        // matrix with dim of n(J-1) x p: covariates
                                           Rcpp::Named("muMat") = m_muMat,      // matrix with dim of n x J: probability
-                                          Rcpp::Named("iRMat") = m_iRMat,      // inverse of R matrix
                                           Rcpp::Named("YMat") = m_YMat,        // matrix with dim of n x (J-1): working variables
                                           Rcpp::Named("beta") = m_beta,        // parameter for covariates
                                           Rcpp::Named("bVec") = m_bVec,        // terms of random effect 
                                           Rcpp::Named("tau") = m_tau,          // variance component
                                           Rcpp::Named("eps") = m_eps,          // cutpoints
-                                          Rcpp::Named("VarRatioMat") = m_varRatioMat,  // variance ratio matrix
-                                          Rcpp::Named("VarRatio") = m_varRatio);       // mean variance ratio
+                                          Rcpp::Named("LOCOList") = m_LOCOList);         
   
   return(outList);
 }

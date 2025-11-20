@@ -74,18 +74,16 @@
 #'   \item \code{tau} (numeric, default: 0.2): Initial variance component value.
 #'   \item \code{maxiterPCG} (integer, default: 100): Maximum iterations for preconditioned conjugate gradient.
 #'   \item \code{tolPCG} (numeric, default: 1e-6): Tolerance for preconditioned conjugate gradient.
-#'   \item \code{printPCGInfo} (logical, default: FALSE): Whether to print PCG iteration information for debugging.
+#'   \item \code{showInfo} (logical, default: FALSE): Whether to print PCG iteration information for debugging.
 #'   \item \code{maxiterEps} (integer, default: 100): Maximum iterations for epsilon estimation.
 #'   \item \code{tolEps} (numeric, default: 1e-10): Tolerance for epsilon estimation.
 #'   \item \code{minMafVarRatio} (numeric, default: 0.1): Minimum MAF for variance ratio estimation.
 #'   \item \code{maxMissingVarRatio} (numeric, default: 0.1): Maximum missing rate for variance ratio estimation.
 #'   \item \code{nSNPsVarRatio} (integer, default: 20): Number of SNPs used for variance ratio estimation.
 #'   \item \code{CVcutoff} (numeric, default: 0.0025): Coefficient of variation cutoff.
-#'   \item \code{stackSize} (character, default: "auto"): Stack size for parallel processing.
 #'   \item \code{grainSize} (integer, default: 1): Grain size for parallel processing.
 #'   \item \code{minMafGRM} (numeric, default: 0.01): Minimum MAF for GRM construction.
 #'   \item \code{maxMissingGRM} (numeric, default: 0.1): Maximum missing rate for GRM construction.
-#'   \item \code{onlyCheckTime} (logical, default: FALSE): Whether to only check computation time.
 #' }
 #'
 #' \strong{Additional Control Parameters for GRAB.Marker()}:
@@ -169,7 +167,7 @@ GRAB.POLMM <- function() {
 #'
 #' \strong{Additional Control Parameters for GRAB.Region() with POLMM}:
 #' \itemize{
-#'   \item \code{printPCGInfo} (logical, default: FALSE): Whether to print PCG iteration information for debugging.
+#'   \item \code{showInfo} (logical, default: FALSE): Whether to print PCG iteration information for debugging.
 #'   \item \code{tolPCG} (numeric, default: 0.001): Tolerance for PCG in region testing.
 #'   \item \code{maxiterPCG} (integer, default: 100): Maximum PCG iterations in region testing.
 #' }
@@ -294,12 +292,11 @@ checkControl.NullModel.POLMM <- function(traitType, GenoFile, SparseGRMFile, con
     maxMissingVarRatio = 0.1,
     nSNPsVarRatio = 20,
     CVcutoff = 0.0025,
-    stackSize = "auto",
+    LOCO = FALSE,
     grainSize = 1,
     minMafGRM = 0.01,
     maxMissingGRM = 0.1,
-    printPCGInfo = FALSE,
-    onlyCheckTime = FALSE
+    showInfo = FALSE
   )
   control <- updateControl(control, default.control)
 
@@ -374,12 +371,17 @@ fitNullModel.POLMM <- function(
     values = rep(0, 1)
   )
 
+  # Set seed for reproducible marker sampling (if seed != -1)
+  if (control$seed != -1) {
+    set.seed(control$seed)
+  }
+  
   markerInfo <- genoList$markerInfo[sample(nrow(genoList$markerInfo)), ]
 
   # Main.cpp
   GenoMat <- getGenoInCPP_fixedNumber(
     t_genoType = genoList$genoType,               # character: "PLINK" or "BGEN"
-    t_markerInfo = markerInfo,           # data.frame: Marker info with genoIndex
+    t_markerInfo = markerInfo,                    # data.frame: Marker info with genoIndex
     n = length(yVec),                             # integer: Sample size
     t_imputeMethod = "mean",                      # character: Imputation method
     m = 100,                                      # integer: Number of markers to select
@@ -418,21 +420,24 @@ checkControl.Marker.POLMM <- function(control) {
 
 
 setMarker.POLMM <- function(objNull, control) {
+  
+  objCHR <- objNull$LOCOList[["LOCO=F"]]
+
   # Calculate grouping for phenotypic values
   Group <- objNull$yVec                                       # numeric vector
   nGroup <- length(unique(Group))                             # integer
 
   # Check 'Main.cpp'
   setPOLMMobjInCPP(
-    t_muMat = objNull$muMat,              # matrix: Mean probability matrix (n x J)
-    t_iRMat = objNull$iRMat,              # matrix: Inverse correlation matrix (n x (J-1))
+    t_muMat = objCHR$muMat,               # matrix: Mean probability matrix (n x J)
+    t_iRMat = objCHR$iRMat,               # matrix: Inverse correlation matrix (n x (J-1))
     t_Cova = objNull$Cova,                # matrix: Covariate matrix (n x p) with intercept
     t_yVec = objNull$yVec,                # integer vector: Response (0 to J-1)
     t_tau = objNull$tau,                  # numeric: Variance component parameter
-    t_printPCGInfo = FALSE,               # logical: Print PCG iteration info (not used in marker)
-    t_tolPCG = 0.001,                     # numeric: PCG convergence tolerance (not used in marker)
-    t_maxiterPCG = 100,                   # integer: Max PCG iterations (not used in marker)
-    t_varRatio = objNull$VarRatio,        # numeric: Variance ratio from null model
+    t_printPCGInfo = FALSE,               # logical: (not used in marker)
+    t_tolPCG = 0.001,                     # numeric: (not used in marker)
+    t_maxiterPCG = 100,                   # integer: (not used in marker)
+    t_varRatio = objCHR$VarRatio,         # numeric: Variance ratio from null model
     t_SPA_cutoff = control$SPA_Cutoff,    # numeric: Cutoff for saddlepoint approximation
     t_flagSparseGRM = FALSE,              # logical: Use sparse GRM (FALSE for marker)
     t_group = Group,                      # integer vector: Group assignments for each individual
@@ -481,7 +486,7 @@ mainMarker.POLMM <- function(
 checkControl.Region.POLMM <- function(control) {
 
   default.control <- list(
-    printPCGInfo = FALSE,
+    showInfo = FALSE,
     tolPCG = 0.001,
     maxiterPCG = 100
   )
@@ -516,19 +521,20 @@ setRegion.POLMM <- function(
   ifOutGroup <- TRUE                                          # logical
 
   # region-level analysis uses sparse GRM
+  objCHR <- objNull$LOCOList[["LOCO=F"]]
   flagSparseGRM <- TRUE
 
   # Check 'Main.cpp'
   setPOLMMobjInCPP(
-    t_muMat = objNull$muMat,                # matrix: Mean probability matrix (n x J)
-    t_iRMat = objNull$iRMat,                # matrix: Inverse correlation matrix (n x (J-1))
+    t_muMat = objCHR$muMat,                 # matrix: Mean probability matrix (n x J)
+    t_iRMat = objCHR$iRMat,                 # matrix: Inverse correlation matrix (n x (J-1))
     t_Cova = objNull$Cova,                  # matrix: Covariate matrix (n x p) with intercept
     t_yVec = objNull$yVec,                  # integer vector: Response (0 to J-1)
     t_tau = objNull$tau,                    # numeric: Variance component parameter
-    t_printPCGInfo = control$printPCGInfo,  # logical: Print PCG iteration info for debugging
+    t_printPCGInfo = control$showInfo,      # logical: Print PCG iteration info for debugging
     t_tolPCG = control$tolPCG,              # numeric: PCG convergence tolerance
     t_maxiterPCG = control$maxiterPCG,      # integer: Max PCG iterations
-    t_varRatio = objNull$VarRatio,          # numeric: Variance ratio from null model
+    t_varRatio = objCHR$VarRatio,           # numeric: Variance ratio from null model
     t_SPA_cutoff = control$SPA_Cutoff,      # numeric: Cutoff for saddlepoint approximation
     t_flagSparseGRM = flagSparseGRM,        # logical: Use sparse GRM (TRUE for region)
     t_group = Group,                        # integer vector: Group assignments for each individual

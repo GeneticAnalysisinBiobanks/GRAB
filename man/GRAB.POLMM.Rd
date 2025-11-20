@@ -42,11 +42,10 @@ will calculate a dense GRM from \code{GenoFile}.
 \item \code{maxMissingVarRatio} (numeric, default: 0.1): Maximum missing rate for variance ratio estimation.
 \item \code{nSNPsVarRatio} (integer, default: 20): Number of SNPs used for variance ratio estimation.
 \item \code{CVcutoff} (numeric, default: 0.0025): Coefficient of variation cutoff.
-\item \code{stackSize} (character, default: "auto"): Stack size for parallel processing.
 \item \code{grainSize} (integer, default: 1): Grain size for parallel processing.
 \item \code{minMafGRM} (numeric, default: 0.01): Minimum MAF for GRM construction.
 \item \code{maxMissingGRM} (numeric, default: 0.1): Maximum missing rate for GRM construction.
-\item \code{onlyCheckTime} (logical, default: FALSE): Whether to only check computation time.
+\item \code{printPCGInfo} (logical, default: FALSE): Whether to print PCG iteration information.
 }
 
 \strong{Additional Control Parameters for GRAB.Marker()}:
