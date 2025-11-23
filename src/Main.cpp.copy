@@ -367,6 +367,58 @@ arma::vec Unified_getOneMarker(
 }
 
 // Performs single-marker association testing using the specified statistical method.
+// This version does not compute Hardy-Weinberg equilibrium p-values.
+void Unified_getMarkerPval(
+  std::string t_method,                // Statistical method ("POLMM", "SPACox", "SPAmix", "SPAGRM")
+  arma::vec t_GVec,                         // Genotype vector
+  bool t_isOnlyOutputNonZero,               // Whether genotype vector contains only non-zero values
+  std::vector<uint32_t> t_indexForNonZero,  // Indices of non-zero genotypes
+  double &t_Beta,                           // Effect size estimate (output)
+  double &t_seBeta,                         // Standard error of effect size (output)
+  double &t_pval,                           // Association test p-value (output)
+  double &t_zScore,                         // Test statistic z-score (output)
+  double t_altFreq                          // Alternate allele frequency
+) {
+  // Error checking: these methods don't support t_isOnlyOutputNonZero == true
+  if (t_method == "POLMM") {
+    if (t_isOnlyOutputNonZero == true)
+      Rcpp::stop("When using POLMM method to calculate marker-level p-values, "
+                 "'t_isOnlyOutputNonZero' shold be false.");
+
+    ptr_gPOLMMobj->getMarkerPval(
+      t_GVec,    // Genotype vector
+      t_Beta,    // Effect size estimate (output)
+      t_seBeta,  // Standard error of effect size (output)
+      t_pval,    // Association test p-value (output)
+      t_altFreq, // Alternate allele frequency
+      t_zScore   // Test statistic z-score (output)
+    );
+  }
+  
+  if (t_method == "SPACox") {
+    if (t_isOnlyOutputNonZero == true)
+      Rcpp::stop("When using SPACox method to calculate marker-level p-values, "
+                 "'t_isOnlyOutputNonZero' shold be false.");
+
+    t_pval = ptr_gSPACoxobj->getMarkerPval(
+      t_GVec,     // Genotype vector
+      t_altFreq,  // Alternate allele frequency
+      t_zScore    // Test statistic z-score (output)
+    );
+  }
+  
+  if (t_method == "SPAmix") {
+    if (t_isOnlyOutputNonZero == true)
+      Rcpp::stop("When using SPAmix method to calculate marker-level p-values, "
+                 "'t_isOnlyOutputNonZero' shold be false.");
+
+    t_pval = ptr_gSPAmixobj->getMarkerPval(
+      t_GVec,    // Genotype vector
+      t_altFreq  // Alternate allele frequency
+    );
+  }
+}
+
 // Extended version that also computes Hardy-Weinberg equilibrium test p-values.
 // Useful for quality control and filtering markers that deviate from HWE.
 void Unified_getMarkerPval(
@@ -382,34 +434,11 @@ void Unified_getMarkerPval(
   double &t_hwepval,                        // Hardy-Weinberg equilibrium p-value (output)
   double t_hwepvalCutoff                    // HWE p-value cutoff threshold
 ) {
-  // Error checking: these methods don't support t_isOnlyOutputNonZero == true
-  if (t_method == "POLMM") {
-    ptr_gPOLMMobj->getMarkerPval(
-      t_GVec,    // Genotype vector
-      t_Beta,    // Effect size estimate (output)
-      t_seBeta,  // Standard error of effect size (output)
-      t_pval,    // Association test p-value (output)
-      t_altFreq, // Alternate allele frequency
-      t_zScore   // Test statistic z-score (output)
-    );
-  }
-  
-  if (t_method == "SPACox") {
-    t_pval = ptr_gSPACoxobj->getMarkerPval(
-      t_GVec,     // Genotype vector
-      t_altFreq,  // Alternate allele frequency
-      t_zScore    // Test statistic z-score (output)
-    );
-  }
-  
-  if (t_method == "SPAmix") {
-    t_pval = ptr_gSPAmixobj->getMarkerPval(
-      t_GVec,    // Genotype vector
-      t_altFreq  // Alternate allele frequency
-    );
-  }
-
   if (t_method == "SPAGRM") {
+    if (t_isOnlyOutputNonZero == true)
+      Rcpp::stop("When using SPAGRM method to calculate marker-level p-values, "
+                 "'t_isOnlyOutputNonZero' shold be false.");
+
     t_pval = ptr_gSPAGRMobj->getMarkerPval(
       t_GVec,           // Genotype vector
       t_altFreq,        // Alternative allele frequency
@@ -420,6 +449,10 @@ void Unified_getMarkerPval(
   }
   
   if (t_method == "SAGELD") {
+    if (t_isOnlyOutputNonZero == true)
+      Rcpp::stop("When using SAGELD method to calculate marker-level p-values, "
+                 "'t_isOnlyOutputNonZero' shold be false.");
+
     t_pval = ptr_gSAGELDobj->getMarkerPval(
       t_GVec,           // Genotype vector
       t_altFreq,        // Alternative allele frequency
@@ -607,57 +640,80 @@ Rcpp::List mainMarkerInCPP(
     );
 
     // analysis results for single-marker
-    double Beta, seBeta, pval, zScore, hwepval;
+    double Beta, seBeta, pval, zScore;
+
+    // Rcpp::Rcout << "    test1.4" << std::endl;
+
     double hwepvalCutoff = 0.1; // to be changed to a option, instead of a default value, later
+    double hwepval = 0;
 
-    // Compute association statistics for the marker
-    Unified_getMarkerPval(
-      t_method,                              // Statistical method
-      GVec,                                  // Genotype vector
-      false,                                 // Bool t_isOnlyOutputNonZero
-      indexForNonZero,                       // Indices of non-zero genotypes
-      Beta,                                  // Effect size estimate (output)
-      seBeta,                                // Standard error of effect size (output)
-      pval,                                  // Association test p-value (output)
-      zScore,                                // Test statistic z-score (output)
-      altFreq,                               // Alternate allele frequency
-      hwepval,                               // Hardy-Weinberg equilibrium p-value (output)
-      hwepvalCutoff                          // HWE p-value cutoff threshold
-    );
+    if (t_method == "POLMM" || t_method == "SPACox" || t_method == "SPAmix") {
 
-    if (t_method == "SPAmix") {
-      arma::vec pvalVecTemp = ptr_gSPAmixobj->getpvalVec();
-      arma::vec zScoreVecTemp = ptr_gSPAmixobj->getzScoreVec();
+      Unified_getMarkerPval(
+        t_method,                              // Statistical method
+        GVec,                                  // Genotype vector
+        false,                                 // Bool t_isOnlyOutputNonZero
+        indexForNonZero,                       // Indices of non-zero genotypes
+        Beta,                                  // Effect size estimate (output)
+        seBeta,                                // Standard error of effect size (output)
+        pval,                                  // Association test p-value (output)
+        zScore,                                // Test statistic z-score (output)
+        altFreq                                // Alternate allele frequency
+      );
+      
+      if (t_method == "SPAmix") {
+        arma::vec pvalVecTemp = ptr_gSPAmixobj->getpvalVec();
+        arma::vec zScoreVecTemp = ptr_gSPAmixobj->getzScoreVec();
 
-      for (int j = 0; j < Npheno; j++) {
-        pvalVec.at(i * Npheno + j) = pvalVecTemp.at(j);
-        zScoreVec.at(i * Npheno + j) = zScoreVecTemp.at(j);
+        for (int j = 0; j < Npheno; j++) {
+          pvalVec.at(i * Npheno + j) = pvalVecTemp.at(j);
+          zScoreVec.at(i * Npheno + j) = zScoreVecTemp.at(j);
+        }
       }
-    }
 
-    if (t_method == "SAGELD") {
-      arma::vec pvalVecTemp = ptr_gSAGELDobj->getpvalVec();
-      arma::vec zScoreVecTemp = ptr_gSAGELDobj->getzScoreVec();
-      arma::vec BetaVecTemp = ptr_gSAGELDobj->getBetaVec();
-      arma::vec seBetaVecTemp = ptr_gSAGELDobj->getseBetaVec();
+    } else if (t_method == "SPAGRM" || t_method == "SAGELD") {
 
-      for (int j = 0; j < 2; j++) {
-        pvalVec.at(2 * i + j) = pvalVecTemp.at(j);
-        zScoreVec.at(2 * i + j) = zScoreVecTemp.at(j);
-        BetaVec.at(2 * i + j) = BetaVecTemp.at(j) * (1 - 2 * flip);
-        seBetaVec.at(2 * i + j) = seBetaVecTemp.at(j);
+      Unified_getMarkerPval(
+        t_method,                              // Statistical method
+        GVec,                                  // Genotype vector
+        false,                                 // Bool t_isOnlyOutputNonZero
+        indexForNonZero,                       // Indices of non-zero genotypes
+        Beta,                                  // Effect size estimate (output)
+        seBeta,                                // Standard error of effect size (output)
+        pval,                                  // Association test p-value (output)
+        zScore,                                // Test statistic z-score (output)
+        altFreq,                               // Alternate allele frequency
+        hwepval,                               // Hardy-Weinberg equilibrium p-value (output)
+        hwepvalCutoff                          // HWE p-value cutoff threshold
+      );
+
+      if (t_method == "SAGELD") {
+        arma::vec pvalVecTemp = ptr_gSAGELDobj->getpvalVec();
+        arma::vec zScoreVecTemp = ptr_gSAGELDobj->getzScoreVec();
+        arma::vec BetaVecTemp = ptr_gSAGELDobj->getBetaVec();
+        arma::vec seBetaVecTemp = ptr_gSAGELDobj->getseBetaVec();
+
+        for (int j = 0; j < 2; j++) {
+          pvalVec.at(2 * i + j) = pvalVecTemp.at(j);
+          zScoreVec.at(2 * i + j) = zScoreVecTemp.at(j);
+          BetaVec.at(2 * i + j) = BetaVecTemp.at(j) * (1 - 2 * flip);
+          seBetaVec.at(2 * i + j) = seBetaVecTemp.at(j);
+        }
       }
-    }
-
-    hwepvalVec.at(i) = hwepval;
-    
-    if (t_method == "WtCoxG") {
+    } else if (t_method == "WtCoxG") {
       // Use genoIndex-based lookup to avoid indexing mismatch between genotype and marker info
       arma::vec pvalVecTemp = ptr_gWtCoxGobj->getpvalVec(GVec, i);
       for (int j = 0; j < 2; j++) {
         pvalVec.at(2 * i + j) = pvalVecTemp.at(j);
       }
+    } else {
+      pvalVec.at(i) = pval;
+      zScoreVec.at(i) = zScore;
+      BetaVec.at(i) = Beta * (1 - 2 * flip); // Beta if flip = false, -1*Beta is flip = true
+      seBetaVec.at(i) = seBeta;
     }
+
+    hwepvalVec.at(i) = hwepval;
   }
 
   Rcpp::List OutList = Rcpp::List::create(

@@ -17,7 +17,7 @@ See \code{\link{GRAB.POLMM}} for details on step 1.
 
 \strong{Additional Control Parameters for GRAB.Region() with POLMM}:
 \itemize{
-\item \code{printPCGInfo} (logical, default: FALSE): Whether to print PCG iteration information for debugging.
+\item \code{showInfo} (logical, default: FALSE): Whether to print PCG iteration information for debugging.
 \item \code{tolPCG} (numeric, default: 0.001): Tolerance for PCG in region testing.
 \item \code{maxiterPCG} (integer, default: 100): Maximum PCG iterations in region testing.
 }

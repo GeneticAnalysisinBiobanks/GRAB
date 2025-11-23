@@ -35,7 +35,7 @@ will calculate a dense GRM from \code{GenoFile}.
 \item \code{tau} (numeric, default: 0.2): Initial variance component value.
 \item \code{maxiterPCG} (integer, default: 100): Maximum iterations for preconditioned conjugate gradient.
 \item \code{tolPCG} (numeric, default: 1e-6): Tolerance for preconditioned conjugate gradient.
-\item \code{printPCGInfo} (logical, default: FALSE): Whether to print PCG iteration information for debugging.
+\item \code{showInfo} (logical, default: FALSE): Whether to print PCG iteration information for debugging.
 \item \code{maxiterEps} (integer, default: 100): Maximum iterations for epsilon estimation.
 \item \code{tolEps} (numeric, default: 1e-10): Tolerance for epsilon estimation.
 \item \code{minMafVarRatio} (numeric, default: 0.1): Minimum MAF for variance ratio estimation.
@@ -45,7 +45,6 @@ will calculate a dense GRM from \code{GenoFile}.
 \item \code{grainSize} (integer, default: 1): Grain size for parallel processing.
 \item \code{minMafGRM} (numeric, default: 0.01): Minimum MAF for GRM construction.
 \item \code{maxMissingGRM} (numeric, default: 0.1): Maximum missing rate for GRM construction.
-\item \code{printPCGInfo} (logical, default: FALSE): Whether to print PCG iteration information.
 }
 
 \strong{Additional Control Parameters for GRAB.Marker()}:
