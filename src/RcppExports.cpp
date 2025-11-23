@@ -384,25 +384,17 @@ BEGIN_RCPP
 END_RCPP
 }
 // setWtCoxGobjInCPP
-void setWtCoxGobjInCPP(arma::vec t_mresid, arma::vec t_weight, std::string t_imputeMethod, double t_cutoff);
-RcppExport SEXP _GRAB_setWtCoxGobjInCPP(SEXP t_mresidSEXP, SEXP t_weightSEXP, SEXP t_imputeMethodSEXP, SEXP t_cutoffSEXP) {
+void setWtCoxGobjInCPP(DataFrame t_mergeGenoInfo, arma::vec t_mresid, arma::vec t_weight, std::string t_imputeMethod, double t_cutoff, double t_SPA_Cutoff);
+RcppExport SEXP _GRAB_setWtCoxGobjInCPP(SEXP t_mergeGenoInfoSEXP, SEXP t_mresidSEXP, SEXP t_weightSEXP, SEXP t_imputeMethodSEXP, SEXP t_cutoffSEXP, SEXP t_SPA_CutoffSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< DataFrame >::type t_mergeGenoInfo(t_mergeGenoInfoSEXP);
     Rcpp::traits::input_parameter< arma::vec >::type t_mresid(t_mresidSEXP);
     Rcpp::traits::input_parameter< arma::vec >::type t_weight(t_weightSEXP);
     Rcpp::traits::input_parameter< std::string >::type t_imputeMethod(t_imputeMethodSEXP);
     Rcpp::traits::input_parameter< double >::type t_cutoff(t_cutoffSEXP);
-    setWtCoxGobjInCPP(t_mresid, t_weight, t_imputeMethod, t_cutoff);
-    return R_NilValue;
-END_RCPP
-}
-// updateWtCoxGChunkInCPP
-void updateWtCoxGChunkInCPP(DataFrame t_mergeGenoInfo_subset);
-RcppExport SEXP _GRAB_updateWtCoxGChunkInCPP(SEXP t_mergeGenoInfo_subsetSEXP) {
-BEGIN_RCPP
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< DataFrame >::type t_mergeGenoInfo_subset(t_mergeGenoInfo_subsetSEXP);
-    updateWtCoxGChunkInCPP(t_mergeGenoInfo_subset);
+    Rcpp::traits::input_parameter< double >::type t_SPA_Cutoff(t_SPA_CutoffSEXP);
+    setWtCoxGobjInCPP(t_mergeGenoInfo, t_mresid, t_weight, t_imputeMethod, t_cutoff, t_SPA_Cutoff);
     return R_NilValue;
 END_RCPP
 }
@@ -431,8 +423,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setSAGELDobjInCPP", (DL_FUNC) &_GRAB_setSAGELDobjInCPP, 41},
     {"_GRAB_setSPAmixobjInCPP", (DL_FUNC) &_GRAB_setSPAmixobjInCPP, 5},
     {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},
-    {"_GRAB_setWtCoxGobjInCPP", (DL_FUNC) &_GRAB_setWtCoxGobjInCPP, 4},
-    {"_GRAB_updateWtCoxGChunkInCPP", (DL_FUNC) &_GRAB_updateWtCoxGChunkInCPP, 1},
+    {"_GRAB_setWtCoxGobjInCPP", (DL_FUNC) &_GRAB_setWtCoxGobjInCPP, 6},
     {NULL, NULL, 0}
 };
 

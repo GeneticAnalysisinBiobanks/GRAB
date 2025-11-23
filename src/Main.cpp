@@ -611,52 +611,52 @@ Rcpp::List mainMarkerInCPP(
     double hwepvalCutoff = 0.1; // to be changed to a option, instead of a default value, later
 
     // Compute association statistics for the marker
-    Unified_getMarkerPval(
-      t_method,                              // Statistical method
-      GVec,                                  // Genotype vector
-      false,                                 // Bool t_isOnlyOutputNonZero
-      indexForNonZero,                       // Indices of non-zero genotypes
-      Beta,                                  // Effect size estimate (output)
-      seBeta,                                // Standard error of effect size (output)
-      pval,                                  // Association test p-value (output)
-      zScore,                                // Test statistic z-score (output)
-      altFreq,                               // Alternate allele frequency
-      hwepval,                               // Hardy-Weinberg equilibrium p-value (output)
-      hwepvalCutoff                          // HWE p-value cutoff threshold
-    );
-
-    if (t_method == "SPAmix") {
-      arma::vec pvalVecTemp = ptr_gSPAmixobj->getpvalVec();
-      arma::vec zScoreVecTemp = ptr_gSPAmixobj->getzScoreVec();
-
-      for (int j = 0; j < Npheno; j++) {
-        pvalVec.at(i * Npheno + j) = pvalVecTemp.at(j);
-        zScoreVec.at(i * Npheno + j) = zScoreVecTemp.at(j);
-      }
-    }
-
-    if (t_method == "SAGELD") {
-      arma::vec pvalVecTemp = ptr_gSAGELDobj->getpvalVec();
-      arma::vec zScoreVecTemp = ptr_gSAGELDobj->getzScoreVec();
-      arma::vec BetaVecTemp = ptr_gSAGELDobj->getBetaVec();
-      arma::vec seBetaVecTemp = ptr_gSAGELDobj->getseBetaVec();
-
-      for (int j = 0; j < 2; j++) {
-        pvalVec.at(2 * i + j) = pvalVecTemp.at(j);
-        zScoreVec.at(2 * i + j) = zScoreVecTemp.at(j);
-        BetaVec.at(2 * i + j) = BetaVecTemp.at(j) * (1 - 2 * flip);
-        seBetaVec.at(2 * i + j) = seBetaVecTemp.at(j);
-      }
-    }
-
-    hwepvalVec.at(i) = hwepval;
-    
     if (t_method == "WtCoxG") {
-      // Use genoIndex-based lookup to avoid indexing mismatch between genotype and marker info
-      arma::vec pvalVecTemp = ptr_gWtCoxGobj->getpvalVec(GVec, i);
+      arma::vec pvalVecTemp = ptr_gWtCoxGobj->getpvalVec(GVec, t_genoIndex[i]);
       for (int j = 0; j < 2; j++) {
         pvalVec.at(2 * i + j) = pvalVecTemp.at(j);
       }
+
+    } else {
+
+      Unified_getMarkerPval(
+        t_method,                              // Statistical method
+        GVec,                                  // Genotype vector
+        false,                                 // Bool t_isOnlyOutputNonZero
+        indexForNonZero,                       // Indices of non-zero genotypes
+        Beta,                                  // Effect size estimate (output)
+        seBeta,                                // Standard error of effect size (output)
+        pval,                                  // Association test p-value (output)
+        zScore,                                // Test statistic z-score (output)
+        altFreq,                               // Alternate allele frequency
+        hwepval,                               // Hardy-Weinberg equilibrium p-value (output)
+        hwepvalCutoff                          // HWE p-value cutoff threshold
+      );
+
+      if (t_method == "SPAmix") {
+        arma::vec pvalVecTemp = ptr_gSPAmixobj->getpvalVec();
+        arma::vec zScoreVecTemp = ptr_gSPAmixobj->getzScoreVec();
+
+        for (int j = 0; j < Npheno; j++) {
+          pvalVec.at(i * Npheno + j) = pvalVecTemp.at(j);
+          zScoreVec.at(i * Npheno + j) = zScoreVecTemp.at(j);
+        }
+      }
+
+      if (t_method == "SAGELD") {
+        arma::vec pvalVecTemp = ptr_gSAGELDobj->getpvalVec();
+        arma::vec zScoreVecTemp = ptr_gSAGELDobj->getzScoreVec();
+        arma::vec BetaVecTemp = ptr_gSAGELDobj->getBetaVec();
+        arma::vec seBetaVecTemp = ptr_gSAGELDobj->getseBetaVec();
+
+        for (int j = 0; j < 2; j++) {
+          pvalVec.at(2 * i + j) = pvalVecTemp.at(j);
+          zScoreVec.at(2 * i + j) = zScoreVecTemp.at(j);
+          BetaVec.at(2 * i + j) = BetaVecTemp.at(j) * (1 - 2 * flip);
+          seBetaVec.at(2 * i + j) = seBetaVecTemp.at(j);
+        }
+      }
+    hwepvalVec.at(i) = hwepval;
     }
   }
 
@@ -1942,31 +1942,22 @@ void setSPACoxobjInCPP(
 // Handles survival analysis with saddle point approximation and external reference corrections.
 // [[Rcpp::export]]
 void setWtCoxGobjInCPP(
+  DataFrame t_mergeGenoInfo,                 // Merged genotype information for batch effect testing
   arma::vec t_mresid,                        // Martingale residuals from Cox model
   arma::vec t_weight,                        // Weight vector for analysis
   std::string t_imputeMethod,                // Imputation method ("none", "mean", "minor")
-  double t_cutoff                            // P-value cutoff for SPA correction
+  double t_cutoff,                           // batch effect p-value cutoff for association testing
+  double t_SPA_Cutoff                        // P-value cutoff for applying SPA correction
 ) {
   if (ptr_gWtCoxGobj)
     delete ptr_gWtCoxGobj;
 
   ptr_gWtCoxGobj = new WtCoxG::WtCoxGClass(
+    t_mergeGenoInfo,                        // Merged genotype information for batch effect testing
     t_mresid,                                // Martingale residuals from Cox model (R vector)
     t_weight,                                // Weight vector for analysis (w vector)
     t_imputeMethod,                          // Imputation method ("none", "mean", "minor")
-    t_cutoff                                 // P-value cutoff for SPA correction
+    t_cutoff,                                // batch effect p-value cutoff for association testing
+    t_SPA_Cutoff                            // P-value cutoff for applying SPA correction
   );
-}
-
-// Update WtCoxG object with marker information for the current chunk
-// [[Rcpp::export]]
-void updateWtCoxGChunkInCPP(
-  DataFrame t_mergeGenoInfo_subset             // Subset of merged genotype information for current chunk
-) {
-  if (ptr_gWtCoxGobj == nullptr) {
-    Rcpp::stop("WtCoxG object not initialized. Call setWtCoxGobjInCPP first.");
-  }
-
-  // Update the WtCoxG object with the subset of marker information for this chunk
-  ptr_gWtCoxGobj->updateMarkerInfo(t_mergeGenoInfo_subset);
 }

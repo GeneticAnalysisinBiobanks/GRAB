@@ -11,19 +11,40 @@ using namespace WtCoxG;
 namespace WtCoxG
 {
     // -------------------- Constructor Implementation --------------------
-    WtCoxGClass::WtCoxGClass(const arma::vec& R,
-                            const arma::vec& w,
-                            const std::string& imputeMethod,
-                            double cutoff)
-        : m_R(R),
+    WtCoxGClass::WtCoxGClass(
+        const DataFrame& mergeGenoInfo,
+        const arma::vec& R,
+        const arma::vec& w,
+        const std::string& imputeMethod,
+        const double cutoff,
+        const double SPA_Cutoff
+    )
+        : m_mergeGenoInfo(mergeGenoInfo),
+          m_R(R),
           m_w(w),
           m_imputeMethod(imputeMethod),
           m_cutoff(cutoff),
-          m_pvalVec(2)  // Initialize with size 2
+          m_SPA_Cutoff(SPA_Cutoff)
     {
-        // Constructor no longer extracts marker information
-        // Marker information will be set later via updateMarkerInfo()
-        m_markerInfoVec.clear();
+        Rcpp::NumericVector AF_ref = m_mergeGenoInfo["AF_ref"];
+        Rcpp::NumericVector AN_ref = m_mergeGenoInfo["AN_ref"];
+        Rcpp::NumericVector TPR = m_mergeGenoInfo["TPR"];
+        Rcpp::NumericVector sigma2 = m_mergeGenoInfo["sigma2"];
+        Rcpp::NumericVector pvalue_bat = m_mergeGenoInfo["pvalue_bat"];
+        Rcpp::NumericVector w_ext = m_mergeGenoInfo["w.ext"];
+        Rcpp::NumericVector var_ratio_w0 = m_mergeGenoInfo["var.ratio.w0"];
+        Rcpp::NumericVector var_ratio_int = m_mergeGenoInfo["var.ratio.int"];
+        Rcpp::NumericVector var_ratio_ext = m_mergeGenoInfo["var.ratio.ext"];
+
+        int n = AF_ref.size();
+        m_markerInfoVec.reserve(n);
+
+        for (int i = 0; i < n; ++i) {
+            m_markerInfoVec.emplace_back(
+                AF_ref[i], AN_ref[i], TPR[i], sigma2[i], pvalue_bat[i],
+                w_ext[i], var_ratio_w0[i], var_ratio_int[i], var_ratio_ext[i]
+            );
+        }
     }
 
     // -------------------- Utility Function Implementations --------------------
@@ -109,9 +130,12 @@ namespace WtCoxG
     }
 
     // CGF functions for score test statistic
-    double H_org_cpp(double t, const arma::vec& R, double MAF, double n_ext,
-                     double N_all, double sumR, double var_mu_ext,
-                     double g_var_est, double meanR, double b) {
+    double H_org_cpp(
+        double t, const arma::vec& R, double MAF, double n_ext,
+        double N_all, double sumR, double var_mu_ext,
+        double g_var_est, double meanR, double b
+    ) {
+
         double mu_adj = -2.0 * b * sumR * MAF;
         double var_adj = 4.0 * b * b * sumR * sumR * var_mu_ext;
         
@@ -123,9 +147,12 @@ namespace WtCoxG
         return result + mu_adj * t + var_adj * t * t / 2.0;
     }
 
-    double H1_adj_cpp(double t, const arma::vec& R, double s, double MAF,
-                      double n_ext, double N_all, double sumR, double var_mu_ext,
-                      double g_var_est, double meanR, double b) {
+    double H1_adj_cpp(
+        double t, const arma::vec& R, double s, double MAF,
+        double n_ext, double N_all, double sumR, double var_mu_ext,
+        double g_var_est, double meanR, double b
+    ) {
+
         double mu_adj = -2.0 * b * sumR * MAF;
         double var_adj = 4.0 * b * b * sumR * sumR * var_mu_ext;
         
@@ -138,9 +165,12 @@ namespace WtCoxG
         return result + mu_adj + var_adj * t - s;
     }
 
-    double H2_cpp(double t, const arma::vec& R, double MAF, double n_ext,
-                  double N_all, double sumR, double var_mu_ext,
-                  double g_var_est, double meanR, double b) {
+    double H2_cpp(
+        double t, const arma::vec& R, double MAF, double n_ext,
+        double N_all, double sumR, double var_mu_ext,
+        double g_var_est, double meanR, double b
+    ) {
+
         double var_adj = n_ext * std::pow(sumR / N_all, 2.0) * 2.0 * MAF * (1.0 - MAF);
         
         double result = 0.0;
@@ -153,10 +183,11 @@ namespace WtCoxG
     }
 
     // SPA probability function
-    double GetProb_SPA_G_cpp(double MAF, const arma::vec& R, double s, double n_ext,
-                             double N_all, double sumR, double var_mu_ext,
-                             double g_var_est, double meanR, double b, bool lower_tail) {
-
+    double GetProb_SPA_G_cpp(
+        double MAF, const arma::vec& R, double s, double n_ext,
+        double N_all, double sumR, double var_mu_ext,
+        double g_var_est, double meanR, double b, bool lower_tail
+    ) {
         // Match R logic exactly: use uniroot with extendInt = "yes"
         auto h1_func = [&](double t) {
             return H1_adj_cpp(t, R, s, MAF, n_ext, N_all, sumR, var_mu_ext, 
@@ -219,11 +250,12 @@ namespace WtCoxG
 
     // -------------------- Standalone Function Implementations --------------------
     
-    arma::vec SPA_G_one_SNP_homo_cpp(const arma::vec& g_input, const arma::vec& R,
-                                     double mu_ext, double n_ext, double b,
-                                     double sigma2, double var_ratio, double Cutoff,
-                                     double missing_cutoff, double min_mac)
-    {
+    arma::vec SPA_G_one_SNP_homo_cpp(
+        const arma::vec& g_input, const arma::vec& R,
+        double mu_ext, double n_ext, double b,
+        double sigma2, double var_ratio, double Cutoff,
+        double missing_cutoff, double min_mac
+    ) {
         // Impute missing values
         arma::vec g = impute_missing(g_input);
 
@@ -290,8 +322,7 @@ namespace WtCoxG
     // -------------------- Class Method Implementations --------------------
     
     // Method to calculate p-values using marker-specific info directly
-    arma::vec WtCoxGClass::getpvalVec(const arma::vec& GVec, const int i)
-    {
+    arma::vec WtCoxGClass::getpvalVec(const arma::vec& GVec, const int i) {
         arma::vec result(2);
         const MarkerInfo& info = m_markerInfoVec[i];
 
@@ -328,31 +359,19 @@ namespace WtCoxG
             arma::datum::nan,          // n.ext = NA
             m_cutoff);                 // p_cut
 
-        // Store results in member variable
-        m_pvalVec = result;
         return result;
-    }
-    
-    // Method to update marker information for current chunk
-    void WtCoxGClass::updateMarkerInfo(const DataFrame& mergeGenoInfo_subset)
-    {
-        // Update the DataFrame with the current chunk's marker information
-        m_mergeGenoInfo = mergeGenoInfo_subset;
-        
-        // Clear previous marker info and extract new marker information
-        m_markerInfoVec.clear();
-        extractMarkerInfo();
     }
 
 }
 
 // Function calculates p-value
-double WtCoxG_test_cpp(const arma::vec& g_input, const arma::vec& R, const arma::vec& w,
-                       double p_bat, double TPR, double sigma2, double b,
-                       double var_ratio_int, double var_ratio_w0, double var_ratio_w1,
-                       double var_ratio0, double var_ratio1, double mu_ext,
-                       double n_ext, double p_cut)
-{
+double WtCoxG_test_cpp(
+    const arma::vec& g_input, const arma::vec& R, const arma::vec& w,
+    double p_bat, double TPR, double sigma2, double b,
+    double var_ratio_int, double var_ratio_w0, double var_ratio_w1,
+    double var_ratio0, double var_ratio1, double mu_ext,
+    double n_ext, double p_cut
+) {
     // Step 1: Imputation of missing SNP
     arma::vec g = g_input;
     arma::uvec na_indices = arma::find_nonfinite(g);
@@ -371,7 +390,7 @@ double WtCoxG_test_cpp(const arma::vec& g_input, const arma::vec& R, const arma:
         // In R: p.con <- SPA_G.one.SNP_homo(g = g, R = R, mu.ext = NA, n.ext = 0, sigma2 = 0, var.ratio = var.ratio.int)[1]
         // The R SPA function sets mu.ext = 0, n.ext = 0 when mu.ext is NA
         // IMPORTANT: The "ext" case defaults to var.ratio.int = 1, while "noext" case passes the actual var.ratio.int value
-        // We can distinguish the cases by checking if TPR/sigma2 are NaN (noext) or have values (ext)
+        // Distinguish the cases by checking if TPR/sigma2 are NaN (noext) or have values (ext)
         double var_ratio_to_use;
         if (std::isnan(TPR) && std::isnan(sigma2)) {
             // This is the "noext" case - use the passed var_ratio_int
@@ -422,19 +441,7 @@ double WtCoxG_test_cpp(const arma::vec& g_input, const arma::vec& R, const arma:
     arma::vec spa_result_s0 = WtCoxG::SPA_G_one_SNP_homo_cpp(
         g, R, mu_ext, n_ext, b, 0.0, var_ratio0, 2.0, 0.15, 10.0);
     double p_spa_s0 = spa_result_s0(0);
-    
-    // Debug: Check if p_spa_s0 is causing issues
-    // if (std::isnan(p_spa_s0) || p_spa_s0 <= 0.0) {
-    //     Rcpp::Rcout << "    Invalid p_spa_s0: " << p_spa_s0 << std::endl;
-    //     return arma::datum::nan;
-    // }
-    
     double qchisq_val = WtCoxG::qchisq_boost(p_spa_s0, 1.0, false, false);
-    // if (std::isnan(qchisq_val) || qchisq_val <= 0.0) {
-    //     Rcpp::Rcout << "    Invalid qchisq_val: " << qchisq_val << " (p_spa_s0=" << p_spa_s0 << ")" << std::endl;
-    //     return arma::datum::nan;
-    // }
-    
     double var_S = S * S / var_ratio0 / qchisq_val;
     
     // Step 9: Calculate covariance matrix components
@@ -449,13 +456,6 @@ double WtCoxG_test_cpp(const arma::vec& g_input, const arma::vec& R, const arma:
         return arma::datum::nan;
     }
     cov_Sbat_S = cov_Sbat_S * std::sqrt(var_S / denominator);
-    
-    // Debug: Check if covariance values are valid
-    // if (std::isnan(var_S) || std::isnan(cov_Sbat_S) || var_S <= 0.0) {
-    //     Rcpp::Rcout << "    Invalid variance/covariance: var_S=" << var_S 
-    //                 << ", cov_Sbat_S=" << cov_Sbat_S << std::endl;
-    //     return arma::datum::nan;
-    // }
     
     // Step 10: Create VAR matrix and calculate p0
     arma::mat VAR(2, 2);
@@ -477,14 +477,7 @@ double WtCoxG_test_cpp(const arma::vec& g_input, const arma::vec& R, const arma:
         Rcpp::Named("mean", mean0),
         Rcpp::Named("sigma", VAR)
     );
-    
     double p0 = std::max(0.0, std::min(1.0, p0_result[0]));
-    
-    // Debug: Check p0 result
-    // if (std::isnan(p0)) {
-    //     Rcpp::Rcout << "    Invalid p0: " << p0 << std::endl;
-    //     return arma::datum::nan;
-    // }
     
     // Step 11: sigma2 != 0 case
     arma::vec spa_result_s1 = WtCoxG::SPA_G_one_SNP_homo_cpp(
@@ -521,6 +514,5 @@ double WtCoxG_test_cpp(const arma::vec& g_input, const arma::vec& R, const arma:
     
     // Step 13: Final result
     double p_con = 2.0 * (TPR * p1 + (1.0 - TPR) * p0) / p_deno;
-    
     return p_con;
 }

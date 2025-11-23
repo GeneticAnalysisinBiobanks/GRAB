@@ -281,7 +281,7 @@ GRAB.Marker <- function(
       SPAmix_NULL_Model = mainMarker.SPAmix(genoType, genoIndex, objNull),
       SPAGRM_NULL_Model = mainMarker.SPAGRM(genoType, genoIndex),
       SAGELD_NULL_Model = mainMarker.SAGELD(genoType, genoIndex, objNull),
-      WtCoxG_NULL_Model = mainMarker.WtCoxG(genoType, genoIndex, control, objNull)
+      WtCoxG_NULL_Model = mainMarker.WtCoxG(genoType, genoIndex, objNull)
     )
 
     # Write chunk results to output file and update progress tracking

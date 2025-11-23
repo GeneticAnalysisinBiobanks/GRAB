@@ -314,44 +314,17 @@ checkControl.Marker.WtCoxG <- function(control) {
 setMarker.WtCoxG <- function(objNull, control) {
 
   setWtCoxGobjInCPP(
-    t_mresid = objNull$mresid,              # numeric vector: Martingale residuals from Cox model
-    t_weight = objNull$weight,              # numeric vector: Weight vector for analysis
-    t_imputeMethod = control$impute_method, # character: Imputation method ("none", "mean", "minor")
-    t_cutoff = control$cutoff               # numeric: batch effect p-value cutoff for association testing
+    t_mergeGenoInfo = objNull$mergeGenoInfo, # data.frame: Merged genotype info for batch effect testing
+    t_mresid = objNull$mresid,               # numeric vector: Martingale residuals from Cox model
+    t_weight = objNull$weight,               # numeric vector: Weight vector for analysis
+    t_imputeMethod = control$impute_method,  # character: Imputation method ("none", "mean", "minor")
+    t_cutoff = control$cutoff,               # numeric: batch effect p-value cutoff for association testing
+    t_SPA_Cutoff = control$SPA_Cutoff        # numeric: P-value cutoff for SPA
   )
 }
 
 
-mainMarker.WtCoxG <- function(genoType, genoIndex, control, objNull) {
-  mergeGenoInfo <- objNull$mergeGenoInfo
-  mergeGenoInfo_subset <- mergeGenoInfo[mergeGenoInfo$genoIndex %in% genoIndex, ]
-
-  # Use match to reorder, but check for missing values
-  match_indices <- match(genoIndex, mergeGenoInfo_subset$genoIndex)
-  if (any(is.na(match_indices))) {
-    missing_indices <- genoIndex[is.na(match_indices)]
-    stop(paste0(
-      "Missing marker info for genoIndex values: ",
-      paste(missing_indices[seq_len(min(10, length(missing_indices)))], collapse = ", "),
-      if (length(missing_indices) > 10) " ..." else ""
-    ))
-  }
-
-  mergeGenoInfo_subset <- mergeGenoInfo_subset[match_indices, ]
-
-  # Safety check: ensure sizes match
-  if (nrow(mergeGenoInfo_subset) != length(genoIndex)) {
-    stop(paste0(
-      "Size mismatch: genoIndex has ", length(genoIndex),
-      " elements, but mergeGenoInfo_subset has ", nrow(mergeGenoInfo_subset),
-      " rows. Some markers in genoIndex may not be found in mergeGenoInfo."
-    ))
-  }
-
-  # Update WtCoxG object with marker information for current chunk
-  updateWtCoxGChunkInCPP(
-    t_mergeGenoInfo_subset = mergeGenoInfo_subset  # data.frame: Subset of merged genotype info
-  )
+mainMarker.WtCoxG <- function(genoType, genoIndex, objNull) {
 
   OutList <- mainMarkerInCPP(
     t_method = "WtCoxG",      # character: Statistical method name
@@ -361,7 +334,10 @@ mainMarker.WtCoxG <- function(genoType, genoIndex, control, objNull) {
   pvals <- data.frame(matrix(OutList$pvalVec, ncol = 2, byrow = TRUE))
   colnames(pvals) <- c("WtCoxG.ext", "WtCoxG.noext")
 
+  mergeGenoInfo <- objNull$mergeGenoInfo
+  mergeGenoInfo_subset <- mergeGenoInfo[mergeGenoInfo$genoIndex %in% genoIndex, ]
   obj.mainMarker <- cbind(pvals, mergeGenoInfo_subset)
+
   return(obj.mainMarker)
 }
 

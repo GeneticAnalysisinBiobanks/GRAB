@@ -44,44 +44,24 @@ namespace WtCoxG
     {
     private:
         // -------------------- Member Variables --------------------
+        DataFrame m_mergeGenoInfo;           // Merged genotype information (updated per chunk)
         arma::vec m_R;                       // Residuals vector
         arma::vec m_w;                       // Weights vector
-        DataFrame m_mergeGenoInfo;           // Merged genotype information (updated per chunk)
         std::string m_imputeMethod;          // Imputation method
-        double m_cutoff;                     // Cutoff threshold
+        double m_cutoff;                     // batch effect p-value cutoff
+        double m_SPA_Cutoff;                 // SPA cutoff
         std::vector<MarkerInfo> m_markerInfoVec;  // Vector of marker information
-        arma::vec m_pvalVec;                 // Vector to store p-values
-
-        // -------------------- Private Helper Methods --------------------
-        // Helper method to extract marker info from DataFrame
-        void extractMarkerInfo() {
-            NumericVector AF_ref = m_mergeGenoInfo["AF_ref"];
-            NumericVector AN_ref = m_mergeGenoInfo["AN_ref"];
-            NumericVector TPR = m_mergeGenoInfo["TPR"];
-            NumericVector sigma2 = m_mergeGenoInfo["sigma2"];
-            NumericVector pvalue_bat = m_mergeGenoInfo["pvalue_bat"];
-            NumericVector w_ext = m_mergeGenoInfo["w.ext"];
-            NumericVector var_ratio_w0 = m_mergeGenoInfo["var.ratio.w0"];
-            NumericVector var_ratio_int = m_mergeGenoInfo["var.ratio.int"];
-            NumericVector var_ratio_ext = m_mergeGenoInfo["var.ratio.ext"];
-
-            m_markerInfoVec.clear();
-            m_markerInfoVec.reserve(AF_ref.size());
-
-            for (int i = 0; i < AF_ref.size(); ++i) {
-                m_markerInfoVec.emplace_back(
-                    AF_ref[i], AN_ref[i], TPR[i], sigma2[i], pvalue_bat[i],
-                    w_ext[i], var_ratio_w0[i], var_ratio_int[i], var_ratio_ext[i]
-                );
-            }
-        }
 
     public:
         // -------------------- Constructor --------------------
-        WtCoxGClass(const arma::vec& R,
-                    const arma::vec& w,
-                    const std::string& imputeMethod = "none",
-                    double cutoff = 0.1);
+        WtCoxGClass(
+            const DataFrame& m_mergeGenoInfo,
+            const arma::vec& R,
+            const arma::vec& w,
+            const std::string& imputeMethod = "none",
+            const double cutoff = 0.1,
+            const double m_SPA_Cutoff = 2.0
+        );
 
         // -------------------- Main Public Interface --------------------
         // Method to calculate p-values for a single marker using marker-specific info

@@ -244,7 +244,7 @@ setMarker.SPACox <- function(objNull, control) {
     t_tX = objNull$tX,                      # matrix: Transpose of design matrix X
     t_N = length(objNull$mresid),           # integer: Sample size
     t_pVal_covaAdj_Cutoff = control$pVal_covaAdj_Cutoff,  # numeric: P-value cutoff for covariate adjustment
-    t_SPA_Cutoff = control$SPA_Cutoff       # numeric: P-value cutoff for SPA correction
+    t_SPA_Cutoff = control$SPA_Cutoff       # numeric: P-value cutoff for SPA
   )
 }
 
