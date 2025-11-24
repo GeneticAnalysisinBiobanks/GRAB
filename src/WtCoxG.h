@@ -10,12 +10,10 @@
 #include <boost/math/distributions/normal.hpp>
 #include <boost/math/distributions/chi_squared.hpp>
 
-using namespace Rcpp;
-using namespace arma;
-
-namespace WtCoxG
+namespace WtCoxG {
+class WtCoxGClass
 {
-    // Structure to hold marker information
+private:
     struct MarkerInfo
     {
         double AF_ref;
@@ -33,60 +31,96 @@ namespace WtCoxG
         
         // Constructor with all parameters
         MarkerInfo(double af_ref, double an_ref, double tpr, double sig2,
-                  double pval_bat, double w_ext_val, double var_ratio_w0_val,
-                  double var_ratio_int_val, double var_ratio_ext_val)
+                double pval_bat, double w_ext_val, double var_ratio_w0_val,
+                double var_ratio_int_val, double var_ratio_ext_val)
             : AF_ref(af_ref), AN_ref(an_ref), TPR(tpr), sigma2(sig2),
-              pvalue_bat(pval_bat), w_ext(w_ext_val), var_ratio_w0(var_ratio_w0_val),
-              var_ratio_int(var_ratio_int_val), var_ratio_ext(var_ratio_ext_val) {}
+            pvalue_bat(pval_bat), w_ext(w_ext_val), var_ratio_w0(var_ratio_w0_val),
+            var_ratio_int(var_ratio_int_val), var_ratio_ext(var_ratio_ext_val) {}
     };
 
-    class WtCoxGClass
+    std::vector<MarkerInfo> m_markerInfoVec;  // Vector of marker information
+    arma::vec m_R;                       // Residuals vector
+    arma::vec m_w;                       // Weights vector
+    double m_cutoff;                     // batch effect p-value cutoff
+    double m_SPA_Cutoff;                 // SPA cutoff
+
+public:
+
+    WtCoxGClass(
+        const Rcpp::DataFrame& t_mergeGenoInfo,
+        const arma::vec& t_R,
+        const arma::vec& t_w,
+        const double t_cutoff,
+        const double t_SPA_Cutoff
+    )
+        : m_R(t_R),
+        m_w(t_w),
+        m_cutoff(t_cutoff),
+        m_SPA_Cutoff(t_SPA_Cutoff)
     {
-    private:
-        // -------------------- Member Variables --------------------
-        DataFrame m_mergeGenoInfo;           // Merged genotype information (updated per chunk)
-        arma::vec m_R;                       // Residuals vector
-        arma::vec m_w;                       // Weights vector
-        std::string m_imputeMethod;          // Imputation method
-        double m_cutoff;                     // batch effect p-value cutoff
-        double m_SPA_Cutoff;                 // SPA cutoff
-        std::vector<MarkerInfo> m_markerInfoVec;  // Vector of marker information
+        Rcpp::NumericVector AF_ref = t_mergeGenoInfo["AF_ref"];
+        Rcpp::NumericVector AN_ref = t_mergeGenoInfo["AN_ref"];
+        Rcpp::NumericVector TPR = t_mergeGenoInfo["TPR"];
+        Rcpp::NumericVector sigma2 = t_mergeGenoInfo["sigma2"];
+        Rcpp::NumericVector pvalue_bat = t_mergeGenoInfo["pvalue_bat"];
+        Rcpp::NumericVector w_ext = t_mergeGenoInfo["w.ext"];
+        Rcpp::NumericVector var_ratio_w0 = t_mergeGenoInfo["var.ratio.w0"];
+        Rcpp::NumericVector var_ratio_int = t_mergeGenoInfo["var.ratio.int"];
+        Rcpp::NumericVector var_ratio_ext = t_mergeGenoInfo["var.ratio.ext"];
 
-    public:
-        // -------------------- Constructor --------------------
-        WtCoxGClass(
-            const DataFrame& m_mergeGenoInfo,
-            const arma::vec& R,
-            const arma::vec& w,
-            const std::string& imputeMethod = "none",
-            const double cutoff = 0.1,
-            const double m_SPA_Cutoff = 2.0
-        );
+        int n = AF_ref.size();
+        m_markerInfoVec.reserve(n);
 
-        // -------------------- Main Public Interface --------------------
-        // Method to calculate p-values for a single marker using marker-specific info
-        arma::vec getpvalVec(const arma::vec& GVec, const MarkerInfo& markerInfo);
+        for (int i = 0; i < n; ++i) {
+            m_markerInfoVec.emplace_back(
+                AF_ref[i], AN_ref[i], TPR[i], sigma2[i], pvalue_bat[i],
+                w_ext[i], var_ratio_w0[i], var_ratio_int[i], var_ratio_ext[i]
+            );
+        }
+    }
+    
+    // Method called in Main.cpp to get p-values for a given marker
+    arma::vec getpvalVec(const arma::vec& GVec, const int i) {
+        arma::vec result(2);
+        const MarkerInfo& info = m_markerInfoVec[i];
+
+        // Test with external reference - match R parameter mapping exactly
+        result(0) = WtCoxG_test_cpp(
+            GVec, m_R, m_w,
+            info.pvalue_bat,           // p_bat
+            info.TPR,                  // TPR
+            info.sigma2,               // sigma2
+            info.w_ext,                // b = w.ext
+            info.var_ratio_int,        // var_ratio_int (not used in ext test)
+            info.var_ratio_w0,         // var_ratio_w0
+            info.var_ratio_w0,         // var_ratio_w1 = var_ratio_w0
+            info.var_ratio_ext,        // var_ratio0 = var_ratio_ext
+            info.var_ratio_ext,        // var_ratio1 = var_ratio_ext
+            info.AF_ref,               // mu.ext
+            info.AN_ref / 2.0,         // n.ext
+            m_cutoff);                 // p_cut
         
-        // Method to calculate p-values for a single marker by index (for chunk-based processing)
-        // This method looks up marker info from the stored DataFrame subset
-        arma::vec getpvalVec(const arma::vec& GVec, int i);
-        
-        // Method to calculate p-values for a single marker by genoIndex to avoid indexing mismatch
-        arma::vec getpvalVecByGenoIndex(const arma::vec& GVec, uint64_t genoIndex);
-        
-        // Method to update marker information for current chunk
-        void updateMarkerInfo(const DataFrame& mergeGenoInfo_subset);
 
-        // -------------------- Public Getters --------------------
-        const arma::vec& getResiduals() const { return m_R; }
-        const arma::vec& getWeights() const { return m_w; }
-        const DataFrame& getCurrentMarkerInfo() const { return m_mergeGenoInfo; }
-        const std::string& getBgenImputeMethod() const { return m_imputeMethod; }
-        double getCutoff() const { return m_cutoff; }
-        size_t getNumMarkers() const { return m_markerInfoVec.size(); }
-    };
+        // Test without external reference - match R parameter mapping exactly
+        result(1) = WtCoxG_test_cpp(
+            GVec, m_R, m_w,
+            info.pvalue_bat,           // p_bat
+            arma::datum::nan,          // TPR = NA
+            arma::datum::nan,          // sigma2 = NA
+            0.0,                       // b = 0 (default)
+            info.var_ratio_int,        // var_ratio_int
+            1.0,                       // var_ratio_w0 = 1 (default)
+            1.0,                       // var_ratio_w1 = 1 (default)
+            1.0,                       // var_ratio0 = 1 (default)
+            1.0,                       // var_ratio1 = 1 (default)
+            arma::datum::nan,          // mu.ext = NA
+            arma::datum::nan,          // n.ext = NA
+            m_cutoff);                 // p_cut
 
-    // -------------------- Standalone Functions --------------------
+        return result;
+    }
+
+private:
     // Core utility functions - inline implementations for performance
     inline arma::vec impute_missing(const arma::vec& g) {
         arma::vec g_imputed = g;
@@ -159,34 +193,33 @@ namespace WtCoxG
     double find_root_brent(std::function<double(double)> f, double a, double b, double tol = 1e-6);
     
     double H_org_cpp(double t, const arma::vec& R, double MAF, double n_ext,
-                     double N_all, double sumR, double var_mu_ext,
-                     double g_var_est, double meanR, double b);
+                    double N_all, double sumR, double var_mu_ext,
+                    double g_var_est, double meanR, double b);
     
     double H1_adj_cpp(double t, const arma::vec& R, double s, double MAF,
-                      double n_ext, double N_all, double sumR, double var_mu_ext,
-                      double g_var_est, double meanR, double b);
+                    double n_ext, double N_all, double sumR, double var_mu_ext,
+                    double g_var_est, double meanR, double b);
     
     double H2_cpp(double t, const arma::vec& R, double MAF, double n_ext,
-                  double N_all, double sumR, double var_mu_ext,
-                  double g_var_est, double meanR, double b);
+                double N_all, double sumR, double var_mu_ext,
+                double g_var_est, double meanR, double b);
     
     double GetProb_SPA_G_cpp(double MAF, const arma::vec& R, double s, double n_ext,
-                             double N_all, double sumR, double var_mu_ext,
-                             double g_var_est, double meanR, double b, bool lower_tail);
+                            double N_all, double sumR, double var_mu_ext,
+                            double g_var_est, double meanR, double b, bool lower_tail);
     
-    // Standalone WtCoxG functions (implementations in WtCoxG.cpp)
     arma::vec SPA_G_one_SNP_homo_cpp(const arma::vec& g_input, const arma::vec& R,
-                                     double mu_ext, double n_ext, double b,
-                                     double sigma2, double var_ratio, double Cutoff,
-                                     double missing_cutoff, double min_mac);
+                                    double mu_ext, double n_ext, double b,
+                                    double sigma2, double var_ratio, double Cutoff,
+                                    double missing_cutoff, double min_mac);
 
-}  // namespace WtCoxG
+    double WtCoxG_test_cpp(const arma::vec& g_input, const arma::vec& R, const arma::vec& w,
+                        double p_bat, double TPR, double sigma2, double b,
+                        double var_ratio_int, double var_ratio_w0, double var_ratio_w1,
+                        double var_ratio0, double var_ratio1, double mu_ext,
+                        double n_ext, double p_cut);
+};
 
+} // namespace WtCoxG
 
-double WtCoxG_test_cpp(const arma::vec& g_input, const arma::vec& R, const arma::vec& w,
-                       double p_bat, double TPR, double sigma2, double b,
-                       double var_ratio_int, double var_ratio_w0, double var_ratio_w1,
-                       double var_ratio0, double var_ratio1, double mu_ext,
-                       double n_ext, double p_cut);
-
-#endif  // WTCOXG_HPP
+#endif

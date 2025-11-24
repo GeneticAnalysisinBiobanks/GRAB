@@ -33,16 +33,8 @@ mainRegionInCPP <- function(t_method, t_genoType, t_genoIndex, t_weightVec, t_ou
     .Call(`_GRAB_mainRegionInCPP`, t_method, t_genoType, t_genoIndex, t_weightVec, t_outputFile, t_labelVec, t_nLabel, t_annoMat, t_annoVec)
 }
 
-printTimeDiffInCPP <- function() {
-    invisible(.Call(`_GRAB_printTimeDiffInCPP`))
-}
-
-printTimeDiffSPAmixInCPP <- function() {
-    invisible(.Call(`_GRAB_printTimeDiffSPAmixInCPP`))
-}
-
-getGenoInfoInCPP <- function(t_genoType, t_markerInfo, t_imputeMethod) {
-    .Call(`_GRAB_getGenoInfoInCPP`, t_genoType, t_markerInfo, t_imputeMethod)
+getGenoInfoInCPP <- function(t_genoType, t_markerInfo) {
+    .Call(`_GRAB_getGenoInfoInCPP`, t_genoType, t_markerInfo)
 }
 
 getGenoInCPP <- function(t_genoType, t_markerInfo, n, t_imputeMethod) {
@@ -93,7 +85,7 @@ setSPACoxobjInCPP <- function(t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_cov
     invisible(.Call(`_GRAB_setSPACoxobjInCPP`, t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_covaAdj_Cutoff, t_SPA_Cutoff))
 }
 
-setWtCoxGobjInCPP <- function(t_mergeGenoInfo, t_mresid, t_weight, t_imputeMethod, t_cutoff, t_SPA_Cutoff) {
-    invisible(.Call(`_GRAB_setWtCoxGobjInCPP`, t_mergeGenoInfo, t_mresid, t_weight, t_imputeMethod, t_cutoff, t_SPA_Cutoff))
+setWtCoxGobjInCPP <- function(t_mergeGenoInfo, t_mresid, t_weight, t_cutoff, t_SPA_Cutoff) {
+    invisible(.Call(`_GRAB_setWtCoxGobjInCPP`, t_mergeGenoInfo, t_mresid, t_weight, t_cutoff, t_SPA_Cutoff))
 }
 

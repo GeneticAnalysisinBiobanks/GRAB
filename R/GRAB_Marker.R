@@ -31,8 +31,7 @@
 #'   \code{paste0(OutputFile, ".index")}.
 #' @param control (list or NULL) List of control parameters with the following elements:
 #' \itemize{
-#'   \item \code{BgenImputeMethod} (character): Imputation method for BGEN-specific probabilistic
-#'     genotype data during file reading. Options: "none" (default), "bestguess", "mean".
+#'   \item \code{impute_method} (character): Options: "mean" (default), "minor", "drop".
 #'   \item \code{AlleleOrder} (character or NULL): Allele order in genotype file. Options: "ref-first",
 #'     "alt-first", or NULL (default: "alt-first" for BGEN, "ref-first" for PLINK).
 #'   \item \strong{Marker Selection:}
@@ -120,7 +119,7 @@ GRAB.Marker <- function(
     stop("Argument 'control' should be an R list.")
   }
 
-  # Validate genotype-reading parameters: BgenImputeMethod, AlleleOrder, AllMarkers,
+  # Validate genotype-reading parameters: impute_method, AlleleOrder, AllMarkers,
   # IDsToIncludeFile, IDsToExcludeFile, RangesToIncludeFile, RangesToExcludeFile
   control <- checkControl.ReadGeno(control)                   # list
 

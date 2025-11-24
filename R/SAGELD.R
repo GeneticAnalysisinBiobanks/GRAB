@@ -332,7 +332,7 @@ SAGELD.NullModel <- function(
         SampleIDs = SubjID,
         control = list(
           IDsToIncludeFile = SNPIDfile,
-          BgenImputeMethod = "mean"
+          imputeMethod = "mean"
         )
       )
       file.remove(SNPIDfile)
@@ -342,7 +342,7 @@ SAGELD.NullModel <- function(
         SampleIDs = SubjID,
         control = list(
           AllMarkers = TRUE,
-          BgenImputeMethod = "mean"
+          imputeMethod = "mean"
         )
       )
     }

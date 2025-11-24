@@ -236,13 +236,13 @@ fitNullModel.WtCoxG <- function(
   IQR <- q75 - q25
 
   r.outlier <- ifelse(is.null(control$OutlierRatio), 1.5, control$OutlierRatio)
-  cutoff <- c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
-  posOutlier <- which(mresid < cutoff[1] | mresid > cutoff[2])
+  outlier_bounds <- c(q25 - r.outlier * IQR, q75 + r.outlier * IQR) # 
+  posOutlier <- which(mresid < outlier_bounds[1] | mresid > outlier_bounds[2])
 
   while (length(posOutlier) == 0) {
     r.outlier <- r.outlier * 0.8
-    cutoff <- c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
-    posOutlier <- which(mresid < cutoff[1] | mresid > cutoff[2])
+    outlier_bounds <- c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
+    posOutlier <- which(mresid < outlier_bounds[1] | mresid > outlier_bounds[2])
     .message("Adjusted outlier ratio: %.2f (%d outliers)", r.outlier, length(posOutlier))
   }
 
@@ -277,8 +277,6 @@ fitNullModel.WtCoxG <- function(
     subjData = subjData
   )
 
-  class(re) <- "WtCoxG_NULL_Model"
-
   # Test for batch effect using validated parameters
   re$mergeGenoInfo <- TestforBatchEffect(
     objNull = re,
@@ -292,6 +290,7 @@ fitNullModel.WtCoxG <- function(
     RefPrevalence = RefPrevalence
   )
 
+  class(re) <- "WtCoxG_NULL_Model"
   return(re)
 }
 
@@ -317,7 +316,6 @@ setMarker.WtCoxG <- function(objNull, control) {
     t_mergeGenoInfo = objNull$mergeGenoInfo, # data.frame: Merged genotype info for batch effect testing
     t_mresid = objNull$mresid,               # numeric vector: Martingale residuals from Cox model
     t_weight = objNull$weight,               # numeric vector: Weight vector for analysis
-    t_imputeMethod = control$impute_method,  # character: Imputation method ("none", "mean", "minor")
     t_cutoff = control$cutoff,               # numeric: batch effect p-value cutoff for association testing
     t_SPA_Cutoff = control$SPA_Cutoff        # numeric: P-value cutoff for SPA
   )
@@ -433,6 +431,8 @@ TestforBatchEffect <- function(
       mutate(RA = paste0(pmin(REF, ALT), pmax(REF, ALT))) %>%
       mutate(index = seq_len(n()))
 
+    # All rows from GenoInfo will be kept. The result will have as many rows as GenoInfo.
+    # Only matching rows from refGenoInfo (based on CHROM, POS, RA) will be included.
     mergeGenoInfo <- refGenoInfo %>%
       mutate(RA = paste0(pmin(REF, ALT), pmax(REF, ALT))) %>%
       merge(., GenoInfo, by = c("CHROM", "POS", "RA"), all.y = TRUE, sort = FALSE) %>%
@@ -681,5 +681,8 @@ TestforBatchEffect <- function(
     arrange(index) %>%
     select(-index)
 
-  return(mergeGenoInfo)
+  mergeGenoInfo <- as.data.frame(mergeGenoInfo)
+  mergeGenoInfo$genoIndex <- seq_len(nrow(mergeGenoInfo)) - 1
+
+  return(as.data.frame(mergeGenoInfo))
 }
