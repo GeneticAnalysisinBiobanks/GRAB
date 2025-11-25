@@ -30,8 +30,9 @@ extracts all samples.}
 
 \item{control}{List of control parameters with the following options:
 \itemize{
-\item \code{BgenImputeMethod}: Imputation method for genotype data.
-Options: "none" (default), "bestguess", "mean".
+\item \code{imputeMethod}: Imputation method for genotype data.
+Options: "none" (default), "mean" (2 times allele frequency).
+"bestguess" (round mean to the nearest integer, 0, 1, or 2).
 \item \code{AlleleOrder}: Allele order in genotype file. Options: "ref-first",
 "alt-first", or NULL (default: "alt-first" for BGEN, "ref-first" for PLINK).
 \item \strong{Marker Selection:}
@@ -117,7 +118,7 @@ PLINKFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 GenoList <- GRAB.ReadGeno(PLINKFile, control = list(AllMarkers = TRUE))
 head(GenoList$GenoMat)
 
-GenoList <- GRAB.ReadGeno(PLINKFile, control = list(AllMarkers = TRUE, BgenImputeMethod = "mean"))
+GenoList <- GRAB.ReadGeno(PLINKFile, control = list(AllMarkers = TRUE, imputeMethod = "mean"))
 head(GenoList$GenoMat)
 
 BGENFile <- system.file("extdata", "simuBGEN.bgen", package = "GRAB")

@@ -23,8 +23,6 @@ is \code{NULL}, that is, all samples in \code{GenoFile} will be extracted.}
 
 \item{control}{List of control parameters with the following options:
 \itemize{
-\item \code{BgenImputeMethod}: Imputation method for genotype data.
-Options: "none" (default), "bestguess", "mean".
 \item \code{AlleleOrder}: Allele order in genotype file. Options: "ref-first",
 "alt-first", or NULL (default: "alt-first" for BGEN, "ref-first" for PLINK).
 \item \strong{Marker Selection:}

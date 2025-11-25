@@ -324,14 +324,14 @@ setMarker.WtCoxG <- function(objNull, control) {
 mainMarker.WtCoxG <- function(genoType, genoIndex, objNull) {
 
   mergeGenoInfo <- objNull$mergeGenoInfo
+  mergeGenoInfo_chunk <- mergeGenoInfo[mergeGenoInfo$genoIndex %in% genoIndex, ]
   cols <- c("AF_ref", "AN_ref", "TPR", "sigma2", "pvalue_bat", "w.ext", "var.ratio.w0", "var.ratio.int", "var.ratio.ext")
-  mergeGenoInfo_chunk <- mergeGenoInfo[mergeGenoInfo$genoIndex %in% genoIndex, cols]
 
   OutList <- mainMarkerInCPP(
     t_method = "WtCoxG",      # character: Statistical method name
     t_genoType = genoType,    # character: "PLINK" or "BGEN"
     t_genoIndex = genoIndex,   # numeric vector: Genotype indices to analyze
-    t_extraParams = list("mergeGenoInfo_chunk" = mergeGenoInfo_chunk) # list: additional parameters for the method
+    t_extraParams = list("mergeGenoInfo_chunk" = mergeGenoInfo_chunk[, cols]) # list: additional parameters for the method
   )
 
   pvals <- data.frame(matrix(OutList$pvalVec, ncol = 2, byrow = TRUE))
@@ -571,8 +571,14 @@ TestforBatchEffect <- function(
         ub <- qnorm(1 - p_cut / 2) * sqrt(var_Sbat)
         p_deno <- vec_p_deno[j]
 
-        c <- pnorm(ub, 0, sqrt(var_Sbat + par[2]), log.p = TRUE)
-        d <- pnorm(lb, 0, sqrt(var_Sbat + par[2]), log.p = TRUE)
+        var_Sbat_par2 <- var_Sbat + par[2]
+        if (var_Sbat_par2 >=0) {
+          c <- pnorm(ub, 0, sqrt(var_Sbat_par2), log.p = TRUE)
+          d <- pnorm(lb, 0, sqrt(var_Sbat_par2), log.p = TRUE)
+        } else {
+          c <- NaN
+          d <- NaN
+        }
 
         pro.cut <- par[1] * (exp(d) * (exp(c - d) - 1)) + (1 - par[1]) * (1 - p_cut)
         ((p_deno - pro.cut) / p_deno)^2
