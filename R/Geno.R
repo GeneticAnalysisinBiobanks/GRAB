@@ -493,7 +493,7 @@ setGenoInput <- function(
 
     .message("Reading bgi file: %s", basename(bgiFile))
     db_con <- RSQLite::dbConnect(RSQLite::SQLite(), bgiFile)
-    on.exit(RSQLite::dbDisconnect(db_con), add = TRUE)
+    on.exit(RSQLite::dbDisconnect(db_con))
     bgiData <- dplyr::tbl(db_con, "Variant")
     bgiData <- as.data.frame(bgiData)
 
@@ -623,7 +623,8 @@ setGenoInput <- function(
 
   anyQueue <- anyInclude | anyExclude
 
-  # convert integer64 to numeric, which is supported in c++
+  # The genoIndex for BGEN are offsets in bytes, which can be larger than 2^31 (~2e9).
+  # Numeric (double) can exactly represent all integers up to 2^53 (~9e15).
   markerInfo$genoIndex <- as.numeric(markerInfo$genoIndex)
 
   genoList <- list(

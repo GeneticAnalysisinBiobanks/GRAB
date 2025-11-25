@@ -398,11 +398,12 @@ void Unified_getRegionPVec(
 
 // [[Rcpp::export]]
 Rcpp::List mainMarkerInCPP(
-  std::string t_method,                 // Statistical analysis method
-  std::string t_genoType,               // Genotype file format
-  std::vector<uint64_t> t_genoIndex     // Marker indices to analyze
+  const std::string t_method,                   // Statistical analysis method
+  const std::string t_genoType,                 // Genotype file format
+  const std::vector<int64_t> t_genoIndex,       // Marker indices to analyze
+  const Rcpp::Nullable<Rcpp::List> t_extraParams = R_NilValue // Additional method-specific parameters
 ) {
-  int q = t_genoIndex.size(); // Number of markers to analyze
+  const int q = t_genoIndex.size(); // Number of markers to analyze
 
   // Initialize output vectors for marker information and statistics
   std::vector<std::string> markerVec(q);    // Marker IDs (e.g., rs12345)
@@ -414,12 +415,17 @@ Rcpp::List mainMarkerInCPP(
 
   // Determine number of phenotypes based on analysis method
   int Npheno = 1;  // Default: single phenotype
-  if (t_method == "SPAmix")
-    Npheno = ptr_gSPAmixobj->getNpheno();  // Mixed effects: multiple phenotypes
-  if (t_method == "SAGELD")
-    Npheno = 2;  // SAGELD: typically binary trait analysis
-  if (t_method == "WtCoxG")
+  if (t_method == "SPAmix") Npheno = ptr_gSPAmixobj->getNpheno(); // SPAmix analysis with multiple phenotypes
+  if (t_method == "SAGELD") Npheno = 2;
+  if (t_method == "WtCoxG") {
+    if (t_extraParams.isNull()) {
+      Rcpp::stop("Error: In mainMarkerInCPP, for WtCoxG, mergeGenoInfo_chunk should be passed via extraParams.");
+    }
+    Rcpp::List extraParams(t_extraParams);
+    Rcpp::DataFrame mergeGenoInfo_chunk = Rcpp::as<Rcpp::DataFrame>(extraParams["mergeGenoInfo_chunk"]);
+    ptr_gWtCoxGobj->updateMarkerInfo(mergeGenoInfo_chunk);  // update marker info for this chunk
     Npheno = 2;  // WtCoxG: returns two p-values (with and without external reference)
+  }
 
   // Initialize test result vectors (sized for multiple phenotypes)
   std::vector<double> pvalVec(q * Npheno, arma::datum::nan);     // P-values
@@ -562,7 +568,7 @@ Rcpp::List mainMarkerInCPP(
       }    
 
     } else if (t_method == "WtCoxG") {
-      arma::vec pvalVecTemp = ptr_gWtCoxGobj->getpvalVec(GVec, t_genoIndex[i]);
+      arma::vec pvalVecTemp = ptr_gWtCoxGobj->getpvalVec(GVec, i);
       pvalVec[2 * i]     = pvalVecTemp[0];
       pvalVec[2 * i + 1] = pvalVecTemp[1];
 
@@ -1811,7 +1817,6 @@ void setSPACoxobjInCPP(
 // Handles survival analysis with saddle point approximation and external reference corrections.
 // [[Rcpp::export]]
 void setWtCoxGobjInCPP(
-  Rcpp::DataFrame t_mergeGenoInfo,           // Merged genotype information for batch effect testing
   arma::vec t_mresid,                        // Martingale residuals from Cox model
   arma::vec t_weight,                        // Weight vector for analysis
   double t_cutoff,                           // batch effect p-value cutoff for association testing
@@ -1821,7 +1826,6 @@ void setWtCoxGobjInCPP(
     delete ptr_gWtCoxGobj;
 
   ptr_gWtCoxGobj = new WtCoxG::WtCoxGClass(
-    t_mergeGenoInfo,                         // Merged genotype information for batch effect testing
     t_mresid,                                // Martingale residuals from Cox model (R vector)
     t_weight,                                // Weight vector for analysis (w vector)
     t_cutoff,                                // batch effect p-value cutoff for association testing

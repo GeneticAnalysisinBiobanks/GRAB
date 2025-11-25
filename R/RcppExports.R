@@ -21,8 +21,8 @@ setRegion_GlobalVarsInCPP <- function(t_impute_method, t_missing_cutoff, t_max_m
     invisible(.Call(`_GRAB_setRegion_GlobalVarsInCPP`, t_impute_method, t_missing_cutoff, t_max_maf_region, t_min_mac_region, t_max_markers_region, t_omp_num_threads, t_region_weight_beta, t_region_max_maf_vec))
 }
 
-mainMarkerInCPP <- function(t_method, t_genoType, t_genoIndex) {
-    .Call(`_GRAB_mainMarkerInCPP`, t_method, t_genoType, t_genoIndex)
+mainMarkerInCPP <- function(t_method, t_genoType, t_genoIndex, t_extraParams = NULL) {
+    .Call(`_GRAB_mainMarkerInCPP`, t_method, t_genoType, t_genoIndex, t_extraParams)
 }
 
 mainRegionURVInCPP <- function(t_method, t_genoType, t_genoIndex, t_n) {
@@ -85,7 +85,7 @@ setSPACoxobjInCPP <- function(t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_cov
     invisible(.Call(`_GRAB_setSPACoxobjInCPP`, t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_covaAdj_Cutoff, t_SPA_Cutoff))
 }
 
-setWtCoxGobjInCPP <- function(t_mergeGenoInfo, t_mresid, t_weight, t_cutoff, t_SPA_Cutoff) {
-    invisible(.Call(`_GRAB_setWtCoxGobjInCPP`, t_mergeGenoInfo, t_mresid, t_weight, t_cutoff, t_SPA_Cutoff))
+setWtCoxGobjInCPP <- function(t_mresid, t_weight, t_cutoff, t_SPA_Cutoff) {
+    invisible(.Call(`_GRAB_setWtCoxGobjInCPP`, t_mresid, t_weight, t_cutoff, t_SPA_Cutoff))
 }
 

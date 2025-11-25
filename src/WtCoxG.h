@@ -47,7 +47,6 @@ private:
 public:
 
     WtCoxGClass(
-        const Rcpp::DataFrame& t_mergeGenoInfo,
         const arma::vec& t_R,
         const arma::vec& t_w,
         const double t_cutoff,
@@ -58,6 +57,13 @@ public:
         m_cutoff(t_cutoff),
         m_SPA_Cutoff(t_SPA_Cutoff)
     {
+        // Constructor body (if needed)
+    }
+
+    // reset m_markerInfoVec with new data from R data.frame
+    void updateMarkerInfo(const Rcpp::DataFrame& t_mergeGenoInfo) {
+        m_markerInfoVec.clear();
+
         Rcpp::NumericVector AF_ref = t_mergeGenoInfo["AF_ref"];
         Rcpp::NumericVector AN_ref = t_mergeGenoInfo["AN_ref"];
         Rcpp::NumericVector TPR = t_mergeGenoInfo["TPR"];
@@ -221,5 +227,6 @@ private:
 };
 
 } // namespace WtCoxG
+
 
 #endif

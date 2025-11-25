@@ -211,7 +211,7 @@ double WtCoxGClass::GetProb_SPA_G_cpp(
 arma::vec WtCoxGClass::SPA_G_one_SNP_homo_cpp(
     const arma::vec& g_input, const arma::vec& R,
     double mu_ext, double n_ext, double b,
-    double sigma2, double var_ratio, double Cutoff,
+    double sigma2, double var_ratio, double SPA_Cutoff,
     double missing_cutoff, double min_mac
 ) {
     // Impute missing values
@@ -254,7 +254,7 @@ arma::vec WtCoxGClass::SPA_G_one_SNP_homo_cpp(
 
     double z = S / std::sqrt(S_var);
 
-    if (std::abs(z) < Cutoff)
+    if (std::abs(z) < SPA_Cutoff)
     {
         // Use Boost pnorm for accuracy and performance
         double pval_norm = 2.0 * pnorm_boost(-std::abs(z), 0.0, 1.0, true, false);
@@ -314,7 +314,7 @@ double WtCoxGClass::WtCoxG_test_cpp(
             var_ratio_to_use = 1.0;
         }
         arma::vec spa_result = SPA_G_one_SNP_homo_cpp(
-            g, R, 0.0, 0.0, 0.0, 0.0, var_ratio_to_use, 2.0, 0.15, 10.0);
+            g, R, 0.0, 0.0, 0.0, 0.0, var_ratio_to_use, m_SPA_Cutoff, 0.15, 10.0);
         return spa_result(0);
     }
     
@@ -353,7 +353,7 @@ double WtCoxGClass::WtCoxG_test_cpp(
     
     // Step 8: sigma2 = 0 case
     arma::vec spa_result_s0 = SPA_G_one_SNP_homo_cpp(
-        g, R, mu_ext, n_ext, b, 0.0, var_ratio0, 2.0, 0.15, 10.0);
+        g, R, mu_ext, n_ext, b, 0.0, var_ratio0, m_SPA_Cutoff, 0.15, 10.0);
     double p_spa_s0 = spa_result_s0(0);
     double qchisq_val = qchisq_boost(p_spa_s0, 1.0, false, false);
     double var_S = S * S / var_ratio0 / qchisq_val;
@@ -395,7 +395,7 @@ double WtCoxGClass::WtCoxG_test_cpp(
     
     // Step 11: sigma2 != 0 case
     arma::vec spa_result_s1 = SPA_G_one_SNP_homo_cpp(
-        g, R, mu_ext, n_ext, b, sigma2, var_ratio1, 2.0, 0.15, 10.0);
+        g, R, mu_ext, n_ext, b, sigma2, var_ratio1, m_SPA_Cutoff, 0.15, 10.0);
     double p_spa_s1 = spa_result_s1(0);
     
     double var_S1 = S * S / var_ratio1 / qchisq_boost(p_spa_s1, 1.0, false, false);

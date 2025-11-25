@@ -313,7 +313,6 @@ checkControl.Marker.WtCoxG <- function(control) {
 setMarker.WtCoxG <- function(objNull, control) {
 
   setWtCoxGobjInCPP(
-    t_mergeGenoInfo = objNull$mergeGenoInfo, # data.frame: Merged genotype info for batch effect testing
     t_mresid = objNull$mresid,               # numeric vector: Martingale residuals from Cox model
     t_weight = objNull$weight,               # numeric vector: Weight vector for analysis
     t_cutoff = control$cutoff,               # numeric: batch effect p-value cutoff for association testing
@@ -324,18 +323,21 @@ setMarker.WtCoxG <- function(objNull, control) {
 
 mainMarker.WtCoxG <- function(genoType, genoIndex, objNull) {
 
+  mergeGenoInfo <- objNull$mergeGenoInfo
+  cols <- c("AF_ref", "AN_ref", "TPR", "sigma2", "pvalue_bat", "w.ext", "var.ratio.w0", "var.ratio.int", "var.ratio.ext")
+  mergeGenoInfo_chunk <- mergeGenoInfo[mergeGenoInfo$genoIndex %in% genoIndex, cols]
+
   OutList <- mainMarkerInCPP(
     t_method = "WtCoxG",      # character: Statistical method name
     t_genoType = genoType,    # character: "PLINK" or "BGEN"
-    t_genoIndex = genoIndex   # integer vector: Genotype indices to analyze
+    t_genoIndex = genoIndex,   # numeric vector: Genotype indices to analyze
+    t_extraParams = list("mergeGenoInfo_chunk" = mergeGenoInfo_chunk) # list: additional parameters for the method
   )
+
   pvals <- data.frame(matrix(OutList$pvalVec, ncol = 2, byrow = TRUE))
   colnames(pvals) <- c("WtCoxG.ext", "WtCoxG.noext")
 
-  mergeGenoInfo <- objNull$mergeGenoInfo
-  mergeGenoInfo_subset <- mergeGenoInfo[mergeGenoInfo$genoIndex %in% genoIndex, ]
-  obj.mainMarker <- cbind(pvals, mergeGenoInfo_subset)
-
+  obj.mainMarker <- cbind(pvals, mergeGenoInfo_chunk)
   return(obj.mainMarker)
 }
 
@@ -680,9 +682,6 @@ TestforBatchEffect <- function(
     as_tibble() %>%
     arrange(index) %>%
     select(-index)
-
-  mergeGenoInfo <- as.data.frame(mergeGenoInfo)
-  mergeGenoInfo$genoIndex <- seq_len(nrow(mergeGenoInfo)) - 1
 
   return(as.data.frame(mergeGenoInfo))
 }
