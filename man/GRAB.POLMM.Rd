@@ -2,13 +2,16 @@
 % Please edit documentation in R/POLMM.R
 \name{GRAB.POLMM}
 \alias{GRAB.POLMM}
-\title{POLMM method in GRAB package}
+\title{Instruction of POLMM method}
 \usage{
 GRAB.POLMM()
 }
 \description{
-POLMM method is to analyze ordinal categorical data for related samples in a large-scale biobank.
-For region-based analysis using POLMM-GENE, see \code{\link{GRAB.POLMM.Region}}.
+POLMM inplements single-variant association tests for ordinal categorical phenotypes, which
+accounts for sample relatedness. It can control type I error rates at a stringent significance
+level regardless of the phenotypic distribution, and is more powerful than alternative methods.
+This instruction covers null model fitting and marker-level analysis using POLMM.
+For region-based analysis with POLMM-GENE, see \code{\link{GRAB.POLMM.Region}}.
 }
 \details{
 \strong{Genotype file}: \code{GenoFile} is mandatory for \code{GRAB.NullModel()} when using POLMM.
@@ -47,6 +50,21 @@ will calculate a dense GRM from \code{GenoFile}.
 \item \code{maxMissingGRM} (numeric, default: 0.1): Maximum missing rate for GRM construction.
 }
 
+\strong{Method-specific elements in the \code{POLMM_NULL_Model} object returned by \code{GRAB.NullModel()}:}:
+\itemize{
+\item \code{M}: Number of ordinal categories (integer).
+\item \code{iter}: Number of iterations to convergence (numeric).
+\item \code{eta}: Linear predictor (matrix).
+\item \code{yVec}: Phenotype matrix (matrix).
+\item \code{Cova}: Design matrix of covariates (matrix).
+\item \code{muMat}: Fitted probabilities for each category (matrix).
+\item \code{YMat}: Indicator matrix for ordinal categories (matrix).
+\item \code{beta}: Estimated covariate coefficients (matrix).
+\item \code{bVec}: Random effect estimates (matrix).
+\item \code{tau}: Variance component estimate (numeric).
+\item \code{eps}: Cutpoints for ordinal categories (matrix).
+}
+
 \strong{Additional Control Parameters for GRAB.Marker()}:
 \itemize{
 \item \code{ifOutGroup} (logical, default: FALSE): Whether to output group-specific statistics
@@ -54,7 +72,7 @@ will calculate a dense GRM from \code{GenoFile}.
 When TRUE, adds columns AltFreqInGroup.\emph{, AltCountsInGroup.}, and nSamplesInGroup.* to the output file.
 }
 
-\strong{Output file columns}:
+\strong{Marker-level results} (\code{OutputFile}) columns:
 \describe{
 \item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}
 \item{Info}{Marker information in format CHR:POS:REF:ALT.}
@@ -88,8 +106,7 @@ obj.POLMM <- GRAB.NullModel(
  method = "POLMM",
  traitType = "ordinal",
  GenoFile = GenoFile,
- SparseGRMFile = SparseGRMFile,
- control = list(tolTau = 0.2, tolBeta = 0.1)
+ SparseGRMFile = SparseGRMFile
 )
 
 # Step 2
@@ -98,4 +115,8 @@ GRAB.Marker(obj.POLMM, GenoFile, OutputFile,
 
 head(data.table::fread(OutputFile))
 
+}
+\references{
+Bi et al. (2021). Efficient mixed model approach for large-scale genome-wide association studies
+of ordinal categorical phenotypes. \doi{10.1016/j.ajhg.2021.03.019}
 }

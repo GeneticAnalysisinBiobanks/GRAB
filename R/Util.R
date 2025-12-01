@@ -279,7 +279,7 @@ writeOutputFile <- function(
 #'   \item Maintains good power properties across different scenarios
 #' }
 #'
-#' **Special Cases:**
+#' \strong{Special Cases:}
 #' - If any p-value equals 0, returns 0 immediately
 #' - P-values equal to 1 are adjusted to 0.999 with a warning
 #' - Very small p-values (< 1e-16) receive special numerical treatment

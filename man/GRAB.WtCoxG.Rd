@@ -2,14 +2,14 @@
 % Please edit documentation in R/WtCoxG.R
 \name{GRAB.WtCoxG}
 \alias{GRAB.WtCoxG}
-\title{Weighted Cox regression for genetic association analysis with case ascertainment}
+\title{Instruction of WtCoxG method}
 \usage{
 GRAB.WtCoxG()
 }
 \description{
-WtCoxG provides an accurate, powerful, and computationally efficient Cox-based
-approach for genome-wide time-to-event analyses in study cohorts with case
-ascertainment.
+WtCoxG is a Cox-based association test method for time-to-event traits. It effectively
+addresses case ascertainment and rare variant analysis. By leveraging external minor
+allele frequencies from public resources, WtCoxG can further boost statistical power.
 }
 \details{
 \strong{Additional Parameters for \code{GRAB.NullModel()}:}
@@ -23,6 +23,17 @@ for weighting. Must be in range (0, 0.5)
 \strong{Additional Control Parameters for GRAB.NullModel()}:
 \itemize{
 \item \code{OutlierRatio} (numeric, default: 1.5): IQR multiplier for outlier detection
+}
+
+\strong{Method-specific elements in the \code{WtCoxG_NULL_Model} object returned by \code{GRAB.NullModel()}:}:
+\itemize{
+\item \code{mresid}: Martingale residuals from weighted Cox model (numeric).
+\item \code{Cova}: Design matrix of covariates (matrix).
+\item \code{yVec}: Event indicator (numeric).
+\item \code{weight}: Observation weights based on reference prevalence (numeric).
+\item \code{RefPrevalence}: Reference population prevalence used for weighting (numeric).
+\item \code{outLierList}: List identifying outlier subjects for SPA adjustment.
+\item \code{mergeGenoInfo}: Data frame with batch effect QC results and external reference data.
 }
 
 \strong{Additional Control Parameters for GRAB.Marker()}:
@@ -70,4 +81,8 @@ GRAB.Marker(obj.WtCoxG, GenoFile, OutputFile)
 
 head(data.table::fread(OutputFile))
 
+}
+\references{
+Li et al. (2025). Applying weighted Cox regression to genome-wide association studies of
+time-to-event phenotypes. \doi{10.1038/s43588-025-00864-z}
 }

@@ -1,8 +1,5 @@
 ## ------------------------------------------------------------------------------
 ## SPAGRM.R
-## Saddlepoint approximation with Genetic Relationship Matrix (SPAGRM) for related
-## samples. Implements null model fitting, marker-level testing, GRM block helpers,
-## and Chow–Liu tree routines.
 ##
 ## Functions:
 ##   GRAB.SPAGRM                  : Print brief method information.
@@ -15,11 +12,13 @@
 ##   chow.liu.tree                : Build Chow–Liu trees for family structures.
 ## ------------------------------------------------------------------------------
 
-#' SPA<sub>GRM</sub> method in GRAB package
+#' Instruction of SPAGRM method
 #'
-#' SPA<sub>GRM</sub> method is an empirical approach to analyzing complex traits
-#' (including but not limited to longitudinal trait) for related samples in a
-#' large-scale biobank. SPA<sub>GRM</sub> extends SPACox to support related populations.
+#' SPAGRM is a scalable and accurate framework for retrospective association tests. 
+#' It treats genetic loci as random vectors and uses a precise approximation of their 
+#' joint distribution. This approach enables SPAGRM to handle any type of complex trait, 
+#' including longitudinal and unbalanced phenotypes. SPAGRM extends SPACox to support 
+#' sample relatedness.
 #'
 #' @return NULL
 #'
@@ -44,17 +43,16 @@
 #' head(data.table::fread(OutputFile))
 #'
 #' @details
-#'
 #' See \code{\link{SPAGRM.NullModel}} for detailed instructions
-#' on pre-calculate genotype distributions.
+#' on preparing a SPAGRM_NULL_Model object required for GRAB.Marker().
 #'
 #' \strong{Additional Control Parameters for GRAB.Marker()}:
 #' \itemize{
 #'   \item \code{zeta} (numeric, default: 0): SPA moment approximation parameter.
 #'   \item \code{tol} (numeric, default: 1e-5): Numerical tolerance for SPA convergence.
 #' }
-#'
-#' **Marker-level results** (\code{OutputFile}) columns:
+#' 
+#' \strong{Marker-level results} (\code{OutputFile}) columns:
 #' \describe{
 #'   \item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}
 #'   \item{Info}{Marker information in format CHR:POS:REF:ALT.}
@@ -65,6 +63,10 @@
 #'   \item{Pvalue}{P-value from the score test.}
 #'   \item{hwepval}{Hardy-Weinberg equilibrium p-value.}
 #' }
+#'
+#' @references
+#' Xu et al. (2025). SPAGRM: effectively controlling for sample relatedness in large-scale 
+#' genome-wide association studies of longitudinal traits. \doi{10.1038/s41467-025-56669-1}
 #'
 GRAB.SPAGRM <- function() {
   .message("?SPAGRM for instructions")

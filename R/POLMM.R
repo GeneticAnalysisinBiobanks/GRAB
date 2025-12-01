@@ -1,7 +1,5 @@
 ## ------------------------------------------------------------------------------
 ## POLMM.R
-## Core implementation and helpers for the POLMM method (ordinal mixed model)
-## covering null model fitting, marker-level and region-level (POLMM-GENE) tests.
 ##
 ## Functions:
 ##   GRAB.POLMM                  : Print brief method information for marker-level analysis.
@@ -15,10 +13,13 @@
 ##   mainRegion.POLMM            : Run region-based association tests.
 ## ------------------------------------------------------------------------------
 
-#' POLMM method in GRAB package
+#' Instruction of POLMM method
 #'
-#' POLMM method is to analyze ordinal categorical data for related samples in a large-scale biobank.
-#' For region-based analysis using POLMM-GENE, see \code{\link{GRAB.POLMM.Region}}.
+#' POLMM inplements single-variant association tests for ordinal categorical phenotypes, which 
+#' accounts for sample relatedness. It can control type I error rates at a stringent significance 
+#' level regardless of the phenotypic distribution, and is more powerful than alternative methods.
+#' This instruction covers null model fitting and marker-level analysis using POLMM.
+#' For region-based analysis with POLMM-GENE, see \code{\link{GRAB.POLMM.Region}}.
 #'
 #' @return NULL
 #'
@@ -39,8 +40,7 @@
 #'  method = "POLMM",
 #'  traitType = "ordinal",
 #'  GenoFile = GenoFile,
-#'  SparseGRMFile = SparseGRMFile,
-#'  control = list(tolTau = 0.2, tolBeta = 0.1)
+#'  SparseGRMFile = SparseGRMFile
 #' )
 #'
 #' # Step 2
@@ -86,6 +86,21 @@
 #'   \item \code{maxMissingGRM} (numeric, default: 0.1): Maximum missing rate for GRM construction.
 #' }
 #'
+#' \strong{Method-specific elements in the \code{POLMM_NULL_Model} object returned by \code{GRAB.NullModel()}:}:
+#' \itemize{
+#'   \item \code{M}: Number of ordinal categories (integer).
+#'   \item \code{iter}: Number of iterations to convergence (numeric).
+#'   \item \code{eta}: Linear predictor (matrix).
+#'   \item \code{yVec}: Phenotype matrix (matrix).
+#'   \item \code{Cova}: Design matrix of covariates (matrix).
+#'   \item \code{muMat}: Fitted probabilities for each category (matrix).
+#'   \item \code{YMat}: Indicator matrix for ordinal categories (matrix).
+#'   \item \code{beta}: Estimated covariate coefficients (matrix).
+#'   \item \code{bVec}: Random effect estimates (matrix).
+#'   \item \code{tau}: Variance component estimate (numeric).
+#'   \item \code{eps}: Cutpoints for ordinal categories (matrix).
+#' }
+#'
 #' \strong{Additional Control Parameters for GRAB.Marker()}:
 #' \itemize{
 #'   \item \code{ifOutGroup} (logical, default: FALSE): Whether to output group-specific statistics
@@ -93,7 +108,7 @@
 #'      When TRUE, adds columns AltFreqInGroup.*, AltCountsInGroup.*, and nSamplesInGroup.* to the output file.
 #' }
 #'
-#' \strong{Output file columns}:
+#' \strong{Marker-level results} (\code{OutputFile}) columns:
 #' \describe{
 #'   \item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}
 #'   \item{Info}{Marker information in format CHR:POS:REF:ALT.}
@@ -110,18 +125,23 @@
 #'      Alternative allele counts in each ordinal category.}
 #'   \item{nSamplesInGroup.1, nSamplesInGroup.2, ...}{(Only if \code{ifOutGroup = TRUE}) Sample size in each ordinal category.}
 #' }
+#' @references
+#' Bi et al. (2021). Efficient mixed model approach for large-scale genome-wide association studies 
+#' of ordinal categorical phenotypes. \doi{10.1016/j.ajhg.2021.03.019}
 #'
 GRAB.POLMM <- function() {
-  .message("?GRAB.POLMM for instructions on step 1, and step 2 of marker-level analysis")
-  .message("?GRAB.POLMM.Region for instructions on step 2 of region-based analysis")
+  .message("For instructions on step 1 and step 2 of marker-level analysis, see ?GRAB.POLMM")
+  .message("For instructions on step 2 of region-based analysis, see ?GRAB.POLMM.Region.")
+  .message("Step 1 of region-based analysis is the same as step 1 of marker-level analysis, see ?GRAB.POLMM")
 }
 
 
-#' Region-based analysis using POLMM-GENE method
+#' Instruction of POLMM-GENE method
+#' 
+#' POLMM-GENE implements region-based association tests for ordinal categorical phenotypes,
+#' adjusting for sample relatedness. It is well-suited for analyzing rare variants in large-scale biobank data,
+#' and effectively controls type I error rates while maintaining statistical power.
 #'
-#' POLMM-GENE is an extension of POLMM for region-based (gene-based or set-based) analysis
-#' of ordinal categorical traits in related samples. It uses a variant-set mixed model framework
-#' with SKAT-O, SKAT, and Burden tests.
 #' For single-variant tests, see \code{\link{GRAB.POLMM}}.
 #'
 #' @return NULL
@@ -183,7 +203,7 @@ GRAB.POLMM <- function() {
 #'     tests without weights.
 #' }
 #'
-#' **Region-level results** (\code{OutputFile}) columns:
+#' \strong{Region-level results} (\code{OutputFile}) columns:
 #' \describe{
 #'   \item{Region}{Region identifier from \code{GroupFile}.}
 #'   \item{nMarkers}{Number of rare variants with MAF < cutoff and MAC >= \code{min_mac_region}.}
@@ -195,7 +215,7 @@ GRAB.POLMM <- function() {
 #'   \item{pval.Burden}{Burden test p-value.}
 #' }
 #'
-#' **Marker-level results** (\code{paste0(OutputFile, ".markerInfo")}) columns:
+#' \strong{Marker-level results} (\code{paste0(OutputFile, ".markerInfo")}) columns:
 #' \describe{
 #'   \item{Region}{Region identifier.}
 #'   \item{ID}{Marker identifier.}
@@ -214,7 +234,7 @@ GRAB.POLMM <- function() {
 #'   \item{posRow}{Position row index.}
 #' }
 #'
-#' **Other marker info** (\code{paste0(OutputFile, ".otherMarkerInfo")}) columns:
+#' \strong{Other marker info} (\code{paste0(OutputFile, ".otherMarkerInfo")}) columns:
 #' \describe{
 #'   \item{ID}{Marker identifier.}
 #'   \item{Annos}{Annotation from \code{GroupFile}.}
@@ -228,7 +248,7 @@ GRAB.POLMM <- function() {
 #'   \item{IndicatorVec}{Status indicator (0 or 2 for excluded markers).}
 #' }
 #'
-#' **Burden test summary** (\code{paste0(OutputFile, ".infoBurdenNoWeight")}) columns:
+#' \strong{Burden test summary} (\code{paste0(OutputFile, ".infoBurdenNoWeight")}) columns:
 #' \describe{
 #'   \item{region}{Region identifier.}
 #'   \item{anno}{Annotation type.}
@@ -239,6 +259,10 @@ GRAB.POLMM <- function() {
 #'   \item{se.beta}{Standard error of effect size estimate.}
 #'   \item{pvalue}{P-value for burden test.}
 #' }
+#'
+#' @references
+#' Bi et al. (2023). Scalable mixed model methods for set-based association studies on large-scale 
+#' categorical data analysis and its application to exome-sequencing data in UK Biobank. \doi{10.1016/j.ajhg.2023.03.010}
 #'
 GRAB.POLMM.Region <- function() {
   .message("?GRAB.POLMM for instructions on step 1")

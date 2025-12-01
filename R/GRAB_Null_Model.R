@@ -1,81 +1,77 @@
 ## ------------------------------------------------------------------------------
 ## GRAB_Null_Model.R
-## Build method-specific null models used by downstream association tests. Handles:
-##   * Parse formula/data and construct design matrices
-##   * Handle intercepts, missingness, and multi-response residual inputs
-##   * Configure GRM options (dense vs sparse) and genotype metadata
-##   * Validate/merge method-specific control parameters
-##   * Dispatch to method-specific null-model fitters
 ##
 ## Functions:
 ##   GRAB.NullModel: Top-level API to fit a null model object used by
 ##                   GRAB.Marker and GRAB.Region.
 ## ------------------------------------------------------------------------------
 
-#' Fit a null model for genetic association testing
+#' @title Top-level API for generating a null model object used by GRAB.Marker and GRAB.Region
 #'
-#' Estimates model parameters and residuals from a null model containing phenotypes,
-#' covariates, and optionally a genetic relationship matrix (GRM) for subsequent
-#' association testing.
+#' @description GRAB performs two-step genetic association testing. This function 
+#' implements the first step: fitting a null model and preparing the dataset required for 
+#' downstream marker-level (\code{GRAB.Marker}) and region-level (\code{GRAB.Region}) analyses.
 #'
 #' @param formula (formula) Formula with response variable(s) on the left and covariates
-#'   on the right. Do not include an intercept (added automatically). Missing values
-#'   should be coded as \code{NA}. Other values (e.g., -9, -999) are treated as numeric.
-#'   For SPAmix with traitType "Residual", multiple response variables are supported.
+#'   on the right. Do not include an intercept (added automatically). 
+#'   For SPAmix with traitType "Residual", multiple response variables (separated by "+") are supported.
 #' @param data (data.frame) Data frame containing response variables and covariates in the formula.
-#'   Parameter "subset" is deprecated. All subjects with phenotype data will be used.
-#' @param subjIDcol (character) Column name in \code{data} containing subject IDs.
-#' @param method (character) Statistical method. Supported methods:
+#'   Parameter "subset" is deprecated. All subjects with phenotype data will be used. Missing values
+#'   should be coded as \code{NA}. Other values (e.g., -9, -999) are treated as numeric.
+#' @param subjIDcol (character or NULL) Column name in \code{data} containing subject IDs.
+#' @param subjData (character vector or NULL) Subject IDs aligned with rows of \code{data}.
+#'   Exactly one of \code{subjIDcol} or \code{subjData} must be provided.
+#' @param method (character) Supported methods:
 #'   \itemize{
-#'     \item "POLMM": Ordinal traits. See \code{\link{GRAB.POLMM}}.
-#'     \item "SPACox": Time-to-event or residual traits. See \code{\link{GRAB.SPACox}}.
-#'     \item "SPAmix": Time-to-event or residual traits. See \code{\link{GRAB.SPAmix}}.
-#'     \item "WtCoxG": Time-to-event traits. See \code{\link{GRAB.WtCoxG}}.
+#'     \item "POLMM": Ordinal traits. See \code{?\link{GRAB.POLMM}}.
+#'     \item "SPACox": Time-to-event or Residual. See \code{?\link{GRAB.SPACox}}.
+#'     \item "SPAmix": Time-to-event or Residual. See \code{?\link{GRAB.SPAmix}}.
+#'     \item "WtCoxG": Time-to-event traits. See \code{?\link{GRAB.WtCoxG}}.
 #'   }
-#' @param traitType (character) Trait type: "ordinal", "time-to-event", or "Residual".
-#' @param GenoFile (character or NULL) Path to genotype file (PLINK or BGEN format).
-#'   Required for dense GRM construction. GRAB supports both dense and sparse GRM for
-#'   relatedness adjustment. Dense GRM is constructed from GenoFile (PLINK/BGEN format).
-#'   See \code{\link{GRAB.ReadGeno}} and \code{\link{getTempFilesFullGRM}} for details.
-#' @param GenoFileIndex (character or NULL) Index files for the genotype file. If \code{NULL}
-#'   (default), uses same prefix as \code{GenoFile}. See \code{\link{GRAB.ReadGeno}}
-#'   for details.
-#' @param SparseGRMFile (character or NULL) Path to sparse GRM file. Alternative to
-#'   dense GRM construction. Pre-computed sparse GRM matrix.
-#'   See \code{\link{getSparseGRM}} for details.
-#' @param control (list or NULL) List of method-specific control parameters.
+#' @param traitType (character) Supported: "ordinal", "time-to-event", and "Residual".
+#' @param GenoFile (character or NULL) Path to genotype file. Supported formats determined by extension:
+#'   \itemize{
+#'     \item PLINK: "prefix.bed"
+#'     \item BGEN: "prefix.bgen" (version 1.2 with 8-bit compression)
+#'   }
+#' @param GenoFileIndex (character vector or NULL) Associated files for the genotype file (auto-detected if NULL):
+#'   \itemize{
+#'     \item PLINK: c("prefix.bim", "prefix.fam")
+#'     \item BGEN: c("prefix.bgen.bgi", "prefix.sample") or c("prefix.bgen.bgi")
+#'   }
+#' @param SparseGRMFile (character or NULL) Path to a sparse GRM file. 
+#'   The file must be whitespace-delimited with three columns in the order:
+#'   \itemize{
+#'     \item Column 1: Subject ID 1
+#'     \item Column 2: Subject ID 2
+#'     \item Column 3: Genetic correlation between the two subjects
+#'   }
+#'   See \code{system.file("extdata", "SparseGRM.txt", package = "GRAB")} for an example.
+#'   See \code{?\link{getSparseGRM}} for details on generating a sparse GRM.
+#' @param control (list or NULL) List of additional, less commonly used parameters.
 #'   See the corresponding method documentation for available options and defaults.
-#' @param ... Additional arguments for method-specific functions.
+#' @param ... Additional method-specific parameters.
 #'
 #' @return
-#' S3 object with class "\{method\}_NULL_Model" containing:
+#' An S3 object with class "\{method\}_NULL_Model". All returned objects contain the following elements:
 #' \describe{
-#'   \item{N}{Sample size in analysis.}
-#'   \item{yVec}{Phenotype vector used in analysis.}
-#'   \item{beta}{Estimated covariate effect coefficients.}
-#'   \item{subjData}{Subject IDs included in analysis.}
+#'   \item{N}{Sample size (integer).}
+#'   \item{subjData}{Character vector of subject IDs included in analysis.}
+#'   \item{Call}{Original function call.}
 #'   \item{sessionInfo}{R session and package information.}
-#'   \item{Call}{Function call with all arguments.}
-#'   \item{time}{Analysis completion timestamp.}
-#'   \item{control}{Control parameters used in fitting.}
-#'   \item{tau}{Variance component estimates (for mixed models).}
-#'   \item{SparseGRM}{Sparse GRM (if used).}
+#'   \item{time}{Analysis completion timestamp (character).}
+#'   \item{control}{List of control parameters used in fitting.}
 #' }
 #'
-#' This object serves as input for \code{\link{GRAB.Marker}} and \code{\link{GRAB.Region}}.
-#'
-#' For method-specific examples, see:
-#' \itemize{
-#'   \item POLMM method: \code{\link{GRAB.POLMM}}
-#'   \item SPACox method: \code{\link{GRAB.SPACox}}
-#'   \item SPAmix method: \code{\link{GRAB.SPAmix}}
-#'   \item WtCoxG method: \code{\link{GRAB.WtCoxG}}
-#' }
+#' This object serves as input for \code{\link{GRAB.Marker}} or \code{\link{GRAB.Region}}.
+#' 
+#' See method-specific documentation for additional elements included in the returned object.
 #'
 GRAB.NullModel <- function(
   formula,
   data,
-  subjIDcol,
+  subjIDcol = NULL,
+  subjData = NULL,
   method,
   traitType,
   GenoFile = NULL,
@@ -90,10 +86,12 @@ GRAB.NullModel <- function(
 
   # ========== Validate and configure parameters ==========
 
-  # Validate formula (required, no default) and extract variable names
+  # Validate formula (required, no default)
   if (!inherits(formula, "formula")) {
     stop("Argument 'formula' should be a formula object.")
   }
+  responseVars <- all.vars(formula[[2]])                     # character vector: left side
+  covariateVars <- all.vars(formula[[3]])                    # character vector: right side
 
   # Validate data (required, no default)
   if (!is.data.frame(data)) {
@@ -102,45 +100,29 @@ GRAB.NullModel <- function(
   if (nrow(data) < 1) {
     stop("Argument 'data' should have at least one row.")
   }
+  header <- colnames(data)                                   # character vector
 
-  # Validate subjIDcol (required, no default)
-  if (!is.character(subjIDcol) || length(subjIDcol) != 1) {
-    stop("Argument 'subjIDcol' should be a character string (column name).")
+  # Validate subjIDcol and subjData: exactly one must be provided
+  if (is.null(subjIDcol) && is.null(subjData)) {
+    stop("Exactly one of 'subjIDcol' or 'subjData' must be provided.")
   }
-
-  # Validate that columns in formula exist in data
-  responseVars <- all.vars(formula[[2]])                     # character vector: left side
-  covariateVars <- all.vars(formula[[3]])                    # character vector: right side
-
-  # For Residual trait type, response variables come from environment, not data
-  if (traitType == "Residual") {
-    neededVars <- c(covariateVars, subjIDcol)
-  } else if (is.symbol(formula[[2]])) {
-    neededVars <- c(responseVars, covariateVars, subjIDcol)
-  } else {
-    neededVars <- c(covariateVars, subjIDcol)
+  if (!is.null(subjIDcol) && !is.null(subjData)) {
+    stop("Exactly one of 'subjIDcol' or 'subjData' must be provided, not both.")
   }
-
-  dataCols <- colnames(data)                                 # character vector
-  missingVars <- setdiff(neededVars, dataCols)               # character vector
-
-  if (length(missingVars) > 0) {
-    stop("Variables not found in data: ", paste(missingVars, collapse = ", "))
+  
+  if (!is.null(subjIDcol)) {
+    if (!is.character(subjIDcol) || length(subjIDcol) != 1) {
+      stop("Argument 'subjIDcol' should be a character string (column name).")
+    }
   }
-
-  if (!subjIDcol %in% dataCols) {
-    stop("Column '", subjIDcol, "' not found in data.")
-  }
-
-  # Extract subjData and validate subject IDs
-  subjData <- data[[subjIDcol]]                              # character vector
-  if (!is.character(subjData) && !is.numeric(subjData)) {
-    stop("Column '", subjIDcol, "' should contain character or numeric subject IDs.")
-  }
-  subjData <- as.character(subjData)                         # character vector
-
-  if (any(duplicated(subjData))) {
-    stop("Column '", subjIDcol, "' contains duplicated subject IDs, which are not supported.")
+  
+  if (!is.null(subjData)) {
+    if (length(subjData) != nrow(data)) {
+      stop("Length of 'subjData' (", length(subjData), ") must match number of rows in 'data' (", nrow(data), ").")
+    }
+    if (!is.character(subjData) && !is.numeric(subjData)) {
+      stop("Argument 'subjData' should be a character or numeric vector of subject IDs.")
+    }
   }
 
   # Validate method (required, no default)
@@ -167,19 +149,47 @@ GRAB.NullModel <- function(
     )
   }
 
+  # Validate that columns exist in data
+  missingVars <- setdiff(covariateVars, header)              # character vector
+  
+  if ((traitType %in% c("ordinal")) && is.symbol(formula[[2]]) && !(responseVars %in% header)) {
+    # The left side of the formula is a single column name, but is absent in header.
+    missingVars <- c(responseVars, missingVars)
+  }
+
+  if (!is.null(subjIDcol) && !(subjIDcol %in% header)) {
+    missingVars <- c(subjIDcol, missingVars)
+  }
+
+  if (length(missingVars) > 0) {
+    stop("Columns not found in data: ", paste(missingVars, collapse = ", "))
+  }
+
+  # Extract and further validate subjData
+  if (!is.null(subjIDcol)) {
+    subjData <- data[[subjIDcol]]
+    if (!is.character(subjData) && !is.numeric(subjData)) {
+      stop("Column '", subjIDcol, "' should contain character or numeric subject IDs.")
+    }
+  }
+
+  subjData <- as.character(subjData)
+  if (any(duplicated(subjData))) {
+    stop("Subject IDs contain duplicates, which are not supported.")
+  }
+
   # Validate control parameter (optional, default NULL)
   if (!is.null(control) && !is.list(control)) {
     stop("Argument 'control' should be a list of control parameters.")
   }
 
-  # Method-specific validation
   checkResult <- switch(method,
     POLMM = checkControl.NullModel.POLMM(traitType, GenoFile, SparseGRMFile, control),
     SPACox = checkControl.NullModel.SPACox(traitType, GenoFile, SparseGRMFile, control),
     SPAmix = checkControl.NullModel.SPAmix(traitType, GenoFile, SparseGRMFile, control),
     WtCoxG = checkControl.NullModel.WtCoxG(traitType, GenoFile, SparseGRMFile, control, ...)
   )
-
+  
   control <- checkResult$control
   optionGRM <- checkResult$optionGRM
 
@@ -189,7 +199,7 @@ GRAB.NullModel <- function(
     Method = method,
     `Trait type` = traitType,
     `Formula` = deparse(formula),
-    `Subject ID column` = subjIDcol,
+    `Subject ID source` = ifelse(!is.null(subjIDcol), paste0("Column '", subjIDcol, "'"), "Provided vector"),
     `Sample size of input` = nrow(data),
     `Genotype file` = ifelse(is.null(GenoFile), "Not provided", GenoFile),
     `Genotype index file` = ifelse(is.null(GenoFileIndex), "Default", GenoFileIndex),

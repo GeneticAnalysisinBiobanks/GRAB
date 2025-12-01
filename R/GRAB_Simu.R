@@ -41,7 +41,7 @@
 #' @details
 #' Genotypes are simulated under Hardy-Weinberg equilibrium with MAF ~ Uniform(MinMAF, MaxMAF).
 #'
-#' **Family Structures:**
+#' \strong{Family Structures:}
 #' \itemize{
 #'   \item \strong{4-members}: 1+2→3+4 (parents 1,2 → offspring 3,4)
 #'   \item \strong{10-members}: 1+2→5+6, 3+5→7+8, 4+6→9+10
@@ -158,16 +158,16 @@ GRAB.SimuGMat <- function(
 #' @param Sex Sex codes for subjects (default: all coded as 1).
 #' @return Character message confirming file creation location.
 #' @details
-#' **Genotype Encoding:**
+#' \strong{Genotype Encoding:}
 #' - 0, 1, 2 → copies of minor allele
 #' - -9 → missing genotype (coded as "00" in PED)
 #' - A1="G", A2="A": 0→"GG", 1→"AG", 2→"AA", -9→"00"
 #'
-#' **Output Files:**
+#' \strong{Output Files:}
 #' - `.ped`: Pedigree file with genotype data
 #' - `.map`: Marker map file with positions
 #'
-#' **Downstream Processing:**
+#' \strong{Downstream Processing:}
 #' ```bash
 #' # Convert to binary format
 #' plink --file prefix --make-bed --out prefix
@@ -362,14 +362,14 @@ GRAB.makePlink <- function(
 #' are sampled from the input genotype file, and offspring genotypes are generated
 #' through Mendelian inheritance.
 #'
-#' **Note**: When simulating related subjects, alleles are randomly assigned to
+#' \strong{Note}: When simulating related subjects, alleles are randomly assigned to
 #' haplotypes during the phasing process.
 #'
 #' ## Family Structures:
-#' - **4-members**: Total subjects = nSub + 4×nFam. Structure: 1+2→3+4
-#' - **10-members**: Total subjects = nSub + 10×nFam.
+#' - \strong{4-members}: Total subjects = nSub + 4×nFam. Structure: 1+2→3+4
+#' - \strong{10-members}: Total subjects = nSub + 10×nFam.
 #'   Structure: 1+2→5+6, 3+5→7+8, 4+6→9+10
-#' - **20-members**: Total subjects = nSub + 20×nFam.
+#' - \strong{20-members}: Total subjects = nSub + 20×nFam.
 #'   Structure: 1+2→9+10, 3+9→11+12, 4+10→13+14, 5+11→15+16,
 #'   6+12→17, 7+13→18, 8+14→19+20
 #'
@@ -589,11 +589,11 @@ GRAB.SimubVec <- function(
 #'   \item{time-to-event}{Data frame with SurvTime and SurvEvent columns.}
 #' }
 #' @details
-#' **Trait Type Details:**
-#' - **Quantitative**: Y = eta + error, where error ~ N(0, sdError²)
-#' - **Binary**: Logistic model with specified case proportion
-#' - **Ordinal**: Proportional odds model with specified group proportions
-#' - **Time-to-event**: Weibull survival model with specified event rate
+#' \strong{Trait Type Details:}
+#' - \strong{Quantitative}: Y = eta + error, where error ~ N(0, sdError²)
+#' - \strong{Binary}: Logistic model with specified case proportion
+#' - \strong{Ordinal}: Proportional odds model with specified group proportions
+#' - \strong{Time-to-event}: Weibull survival model with specified event rate
 #'
 #' For more details, see: https://wenjianbi.github.io/grab.github.io/docs/simulation_phenotype.html
 #'

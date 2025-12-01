@@ -2,12 +2,13 @@
 % Please edit documentation in R/GRAB_Null_Model.R
 \name{GRAB.NullModel}
 \alias{GRAB.NullModel}
-\title{Fit a null model for genetic association testing}
+\title{Top-level API for generating a null model object used by GRAB.Marker and GRAB.Region}
 \usage{
 GRAB.NullModel(
   formula,
   data,
-  subjIDcol,
+  subjIDcol = NULL,
+  subjData = NULL,
   method,
   traitType,
   GenoFile = NULL,
@@ -19,70 +20,72 @@ GRAB.NullModel(
 }
 \arguments{
 \item{formula}{(formula) Formula with response variable(s) on the left and covariates
-on the right. Do not include an intercept (added automatically). Missing values
-should be coded as \code{NA}. Other values (e.g., -9, -999) are treated as numeric.
-For SPAmix with traitType "Residual", multiple response variables are supported.}
+on the right. Do not include an intercept (added automatically).
+For SPAmix with traitType "Residual", multiple response variables (separated by "+") are supported.}
 
 \item{data}{(data.frame) Data frame containing response variables and covariates in the formula.
-Parameter "subset" is deprecated. All subjects with phenotype data will be used.}
+Parameter "subset" is deprecated. All subjects with phenotype data will be used. Missing values
+should be coded as \code{NA}. Other values (e.g., -9, -999) are treated as numeric.}
 
-\item{subjIDcol}{(character) Column name in \code{data} containing subject IDs.}
+\item{subjIDcol}{(character or NULL) Column name in \code{data} containing subject IDs.}
 
-\item{method}{(character) Statistical method. Supported methods:
+\item{subjData}{(character vector or NULL) Subject IDs aligned with rows of \code{data}.
+Exactly one of \code{subjIDcol} or \code{subjData} must be provided.}
+
+\item{method}{(character) Supported methods:
 \itemize{
-\item "POLMM": Ordinal traits. See \code{\link{GRAB.POLMM}}.
-\item "SPACox": Time-to-event or residual traits. See \code{\link{GRAB.SPACox}}.
-\item "SPAmix": Time-to-event or residual traits. See \code{\link{GRAB.SPAmix}}.
-\item "WtCoxG": Time-to-event traits. See \code{\link{GRAB.WtCoxG}}.
+\item "POLMM": Ordinal traits. See \code{?\link{GRAB.POLMM}}.
+\item "SPACox": Time-to-event or Residual. See \code{?\link{GRAB.SPACox}}.
+\item "SPAmix": Time-to-event or Residual. See \code{?\link{GRAB.SPAmix}}.
+\item "WtCoxG": Time-to-event traits. See \code{?\link{GRAB.WtCoxG}}.
 }}
 
-\item{traitType}{(character) Trait type: "ordinal", "time-to-event", or "Residual".}
+\item{traitType}{(character) Supported: "ordinal", "time-to-event", and "Residual".}
 
-\item{GenoFile}{(character or NULL) Path to genotype file (PLINK or BGEN format).
-Required for dense GRM construction. GRAB supports both dense and sparse GRM for
-relatedness adjustment. Dense GRM is constructed from GenoFile (PLINK/BGEN format).
-See \code{\link{GRAB.ReadGeno}} and \code{\link{getTempFilesFullGRM}} for details.}
+\item{GenoFile}{(character or NULL) Path to genotype file. Supported formats determined by extension:
+\itemize{
+\item PLINK: "prefix.bed"
+\item BGEN: "prefix.bgen" (version 1.2 with 8-bit compression)
+}}
 
-\item{GenoFileIndex}{(character or NULL) Index files for the genotype file. If \code{NULL}
-(default), uses same prefix as \code{GenoFile}. See \code{\link{GRAB.ReadGeno}}
-for details.}
+\item{GenoFileIndex}{(character vector or NULL) Associated files for the genotype file (auto-detected if NULL):
+\itemize{
+\item PLINK: c("prefix.bim", "prefix.fam")
+\item BGEN: c("prefix.bgen.bgi", "prefix.sample") or c("prefix.bgen.bgi")
+}}
 
-\item{SparseGRMFile}{(character or NULL) Path to sparse GRM file. Alternative to
-dense GRM construction. Pre-computed sparse GRM matrix.
-See \code{\link{getSparseGRM}} for details.}
+\item{SparseGRMFile}{(character or NULL) Path to a sparse GRM file.
+The file must be whitespace-delimited with three columns in the order:
+\itemize{
+\item Column 1: Subject ID 1
+\item Column 2: Subject ID 2
+\item Column 3: Genetic correlation between the two subjects
+}
+See \code{system.file("extdata", "SparseGRM.txt", package = "GRAB")} for an example.
+See \code{?\link{getSparseGRM}} for details on generating a sparse GRM.}
 
-\item{control}{(list or NULL) List of method-specific control parameters.
+\item{control}{(list or NULL) List of additional, less commonly used parameters.
 See the corresponding method documentation for available options and defaults.}
 
-\item{...}{Additional arguments for method-specific functions.}
+\item{...}{Additional method-specific parameters.}
 }
 \value{
-S3 object with class "\{method\}_NULL_Model" containing:
+An S3 object with class "\{method\}_NULL_Model". All returned objects contain the following elements:
 \describe{
-\item{N}{Sample size in analysis.}
-\item{yVec}{Phenotype vector used in analysis.}
-\item{beta}{Estimated covariate effect coefficients.}
-\item{subjData}{Subject IDs included in analysis.}
+\item{N}{Sample size (integer).}
+\item{subjData}{Character vector of subject IDs included in analysis.}
+\item{Call}{Original function call.}
 \item{sessionInfo}{R session and package information.}
-\item{Call}{Function call with all arguments.}
-\item{time}{Analysis completion timestamp.}
-\item{control}{Control parameters used in fitting.}
-\item{tau}{Variance component estimates (for mixed models).}
-\item{SparseGRM}{Sparse GRM (if used).}
+\item{time}{Analysis completion timestamp (character).}
+\item{control}{List of control parameters used in fitting.}
 }
 
-This object serves as input for \code{\link{GRAB.Marker}} and \code{\link{GRAB.Region}}.
+This object serves as input for \code{\link{GRAB.Marker}} or \code{\link{GRAB.Region}}.
 
-For method-specific examples, see:
-\itemize{
-\item POLMM method: \code{\link{GRAB.POLMM}}
-\item SPACox method: \code{\link{GRAB.SPACox}}
-\item SPAmix method: \code{\link{GRAB.SPAmix}}
-\item WtCoxG method: \code{\link{GRAB.WtCoxG}}
-}
+See method-specific documentation for additional elements included in the returned object.
 }
 \description{
-Estimates model parameters and residuals from a null model containing phenotypes,
-covariates, and optionally a genetic relationship matrix (GRM) for subsequent
-association testing.
+GRAB performs two-step genetic association testing. This function
+implements the first step: fitting a null model and preparing the dataset required for
+downstream marker-level (\code{GRAB.Marker}) and region-level (\code{GRAB.Region}) analyses.
 }

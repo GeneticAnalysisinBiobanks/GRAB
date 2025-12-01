@@ -2,14 +2,14 @@
 % Please edit documentation in R/SPACox.R
 \name{GRAB.SPACox}
 \alias{GRAB.SPACox}
-\title{SPACox method in GRAB package}
+\title{Instruction of SPACox method}
 \usage{
 GRAB.SPACox()
 }
 \description{
-SPACox method is an empirical approach to analyzing complex traits
-(including but not limited to time-to-event trait) for unrelated samples
-in a large-scale biobank.
+SPACox is primarily intended for time-to-event traits in unrelated samples from large-scale
+biobanks. It uses the empirical cumulant generating function (CGF) to perform SPA-based
+single-variant association tests, enabling analysis with residuals from any null model.
 }
 \details{
 \strong{Additional Control Parameters for GRAB.NullModel()}:
@@ -17,6 +17,15 @@ in a large-scale biobank.
 \item \code{range} (numeric vector, default: c(-100, 100)):
 Range for saddlepoint approximation grid. Must be symmetric (range[2] = -range[1]).
 \item \code{length.out} (integer, default: 10000): Number of grid points for saddlepoint approximation.
+}
+
+\strong{Method-specific elements in the \code{SPACox_NULL_Model} object returned by \code{GRAB.NullModel()}:}:
+\itemize{
+\item \code{mresid}: Martingale residuals (numeric or "Residual" class).
+\item \code{cumul}: Cumulative sums for variance estimation (matrix).
+\item \code{tX}: Transpose of design matrix (matrix).
+\item \code{yVec}: Event indicator (numeric or "Residual" class).
+\item \code{X.invXX}: Matrix for variance calculations (matrix).
 }
 
 \strong{Additional Control Parameters for GRAB.Marker()}:
@@ -70,4 +79,8 @@ GRAB.Marker(obj.SPACox, GenoFile, OutputFile)
 
 head(data.table::fread(OutputFile))
 
+}
+\references{
+Bi et al. (2020). Fast and accurate method for genome-wide time-to-event data analysis and its
+application to UK Biobank. \doi{10.1016/j.ajhg.2020.06.003}
 }

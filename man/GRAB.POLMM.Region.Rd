@@ -2,17 +2,18 @@
 % Please edit documentation in R/POLMM.R
 \name{GRAB.POLMM.Region}
 \alias{GRAB.POLMM.Region}
-\title{Region-based analysis using POLMM-GENE method}
+\title{Instruction of POLMM-GENE method}
 \usage{
 GRAB.POLMM.Region()
 }
 \description{
-POLMM-GENE is an extension of POLMM for region-based (gene-based or set-based) analysis
-of ordinal categorical traits in related samples. It uses a variant-set mixed model framework
-with SKAT-O, SKAT, and Burden tests.
-For single-variant tests, see \code{\link{GRAB.POLMM}}.
+POLMM-GENE implements region-based association tests for ordinal categorical phenotypes,
+adjusting for sample relatedness. It is well-suited for analyzing rare variants in large-scale biobank data,
+and effectively controls type I error rates while maintaining statistical power.
 }
 \details{
+For single-variant tests, see \code{\link{GRAB.POLMM}}.
+
 See \code{\link{GRAB.POLMM}} for details on step 1.
 
 \strong{Additional Control Parameters for GRAB.Region() with POLMM}:
@@ -124,4 +125,8 @@ head(data.table::fread(paste0(OutputFile, ".markerInfo")))
 head(data.table::fread(paste0(OutputFile, ".otherMarkerInfo")))
 head(data.table::fread(paste0(OutputFile, ".infoBurdenNoWeight")))
 
+}
+\references{
+Bi et al. (2023). Scalable mixed model methods for set-based association studies on large-scale
+categorical data analysis and its application to exome-sequencing data in UK Biobank. \doi{10.1016/j.ajhg.2023.03.010}
 }

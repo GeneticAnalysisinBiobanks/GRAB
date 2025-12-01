@@ -2,18 +2,20 @@
 % Please edit documentation in R/SPAGRM.R
 \name{GRAB.SPAGRM}
 \alias{GRAB.SPAGRM}
-\title{SPA\if{html}{\out{<sub>}}GRM\if{html}{\out{</sub>}} method in GRAB package}
+\title{Instruction of SPAGRM method}
 \usage{
 GRAB.SPAGRM()
 }
 \description{
-SPA\if{html}{\out{<sub>}}GRM\if{html}{\out{</sub>}} method is an empirical approach to analyzing complex traits
-(including but not limited to longitudinal trait) for related samples in a
-large-scale biobank. SPA\if{html}{\out{<sub>}}GRM\if{html}{\out{</sub>}} extends SPACox to support related populations.
+SPAGRM is a scalable and accurate framework for retrospective association tests.
+It treats genetic loci as random vectors and uses a precise approximation of their
+joint distribution. This approach enables SPAGRM to handle any type of complex trait,
+including longitudinal and unbalanced phenotypes. SPAGRM extends SPACox to support
+sample relatedness.
 }
 \details{
 See \code{\link{SPAGRM.NullModel}} for detailed instructions
-on pre-calculate genotype distributions.
+on preparing a SPAGRM_NULL_Model object required for GRAB.Marker().
 
 \strong{Additional Control Parameters for GRAB.Marker()}:
 \itemize{
@@ -53,4 +55,8 @@ GRAB.Marker(obj.SPAGRM, GenoFile, OutputFile)
 
 head(data.table::fread(OutputFile))
 
+}
+\references{
+Xu et al. (2025). SPAGRM: effectively controlling for sample relatedness in large-scale
+genome-wide association studies of longitudinal traits. \doi{10.1038/s41467-025-56669-1}
 }

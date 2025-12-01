@@ -1,11 +1,5 @@
 ## ------------------------------------------------------------------------------
 ## GRAB_Region.R
-## Region / gene / set-based rare variant analysis workflow. Handles:
-##   * Control processing for region-level parameters & kernels
-##   * Parsing of user-supplied group (region) definition files
-##   * Chunked region iteration with restart (index) support
-##   * Integration with SKAT / SKAT-O and Cauchy combination p-values
-##   * Method-specific region setup (currently POLMM-GENE)
 ##
 ## Functions:
 ##   GRAB.Region         : High-level API to execute region-based tests and persist

@@ -62,7 +62,7 @@
 #'   \item{markerInfo}{Data frame with columns CHROM, POS, ID, REF, ALT.}
 #' }
 #' @details
-#' **File Format Support:**
+#' \strong{File Format Support:}
 #'
 #' *PLINK Format:* Binary BED/BIM/FAM files. See
 #' \url{https://www.cog-genomics.org/plink/2.0/} for specifications.

@@ -1,7 +1,5 @@
 ## ------------------------------------------------------------------------------
 ## SPAmix.R
-## SPAmix: saddlepoint approximation for mixture populations. Provides null
-## model fitting and single-variant testing with ancestry-mixing adjustments.
 ##
 ## Functions:
 ##   GRAB.SPAmix                  : Print brief method information.
@@ -12,13 +10,13 @@
 ##   mainMarker.SPAmix            : Run marker-level SPAmix tests.
 ## ------------------------------------------------------------------------------
 
-#' SPAmix method in GRAB package
+#' Instruction of SPAmix method
 #'
-#' SPAmix method is an empirical approach to analyzing complex traits
-#' (including but not limited to time-to-event trait) for unrelated samples
-#' in a large-scale biobank. SPAmix extends SPACox to support an admixture
-#' population or multiple populations.
-#'
+#' SPAmix performs retrospective single-variant association tests using genotypes and 
+#' residuals from null models of any complex trait in large-scale biobanks. It extends 
+#' SPACox to support complex population structures, such as admixed ancestry and 
+#' multiple populations, but does not account for sample relatedness.
+#' 
 #' @return NULL
 #'
 #' @examples
@@ -84,6 +82,15 @@
 #'      Outliers are defined as values outside \[Q1 - r*IQR, Q3 + r*IQR\].
 #' }
 #'
+#' \strong{Method-specific elements in the \code{SPAmix_NULL_Model} object returned by \code{GRAB.NullModel()}:}:
+#' \itemize{
+#'   \item \code{resid}: Residuals from mixed model (matrix or "Residual" class).
+#'   \item \code{yVec}: Phenotype vector (numeric or "Residual" class).
+#'   \item \code{PCs}: Principal components for dimension reduction (matrix).
+#'   \item \code{nPheno}: Number of phenotypes analyzed (integer).
+#'   \item \code{outLierList}: List identifying outlier subjects for SPA adjustment.
+#' }
+#' 
 #' \strong{Additional Control Parameters for GRAB.Marker()}:
 #' \itemize{
 #'   \item \code{dosage_option} (character, default: "rounding_first"):
@@ -101,6 +108,10 @@
 #'   \item{Pvalue}{P-value from the score test.}
 #'   \item{zScore}{Z-score from the score test.}
 #' }
+#'
+#' @references
+#' Ma et al. (2025). SPAmix: a scalable, accurate, and universal analysis framework for large‑scale 
+#' genetic association studies in admixed populations. \doi{10.1186/s13059-025-03827-9}
 #'
 GRAB.SPAmix <- function() {
   .message("?GRAB.SPAmix for instructions")

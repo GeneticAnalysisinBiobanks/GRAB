@@ -1,37 +1,41 @@
 ## ------------------------------------------------------------------------------
 ## GRAB_Marker.R
-## Single-variant (marker-level) association testing orchestrator. Handles:
-##   * Control validation & defaults
-##   * Output/restart file management
-##   * Chunked genotype processing for scalability
-##   * Optional group-wise allele frequency/count summaries
-##   * Dispatch to method-specific C++ backends (POLMM, SPACox, SPAmix, etc.)
 ##
 ## Functions:
 ##   GRAB.Marker: High-level wrapper to perform marker-level tests given a
 ##                fitted null model and genotype source.
 ## ------------------------------------------------------------------------------
 
-#' Perform single-marker association tests
+#' Perform single-marker association tests using a fitted null model
 #'
 #' Conducts single-marker association tests between genetic variants and phenotypes using
 #' various statistical methods supported by GRAB.
 #'
-#' @param objNull (S3 object) Null model object from \code{\link{GRAB.NullModel}}.
-#'   Must be one of: POLMM_NULL_Model, SPACox_NULL_Model, SPAmix_NULL_Model,
-#'   SPAGRM_NULL_Model, SAGELD_NULL_Model, or WtCoxG_NULL_Model.
-#' @param GenoFile (character) Path to genotype file. Supports PLINK (.bed/.bim/.fam)
-#'   and BGEN formats. See \code{\link{GRAB.ReadGeno}} for format details.
+#' @param objNull (S3 object) Null model object from \code{\link{GRAB.NullModel}},
+#'   \code{\link{SPAGRM.NullModel}} or \code{\link{SAGELD.NullModel}}. Supported classes:
+#'   \itemize{
+#'     \item \code{POLMM_NULL_Model}: See \code{?\link{GRAB.POLMM}}.
+#'     \item \code{SPACox_NULL_Model}: See \code{?\link{GRAB.SPACox}}.
+#'     \item \code{SPAmix_NULL_Model}: See \code{?\link{GRAB.SPAmix}}.
+#'     \item \code{WtCoxG_NULL_Model}: See \code{?\link{GRAB.WtCoxG}}.
+#'     \item \code{SPAGRM_NULL_Model}: See \code{?\link{GRAB.SPAGRM}}.
+#'     \item \code{SAGELD_NULL_Model}: See \code{?\link{GRAB.SAGELD}}.
+#'   }
+#' @param GenoFile Path to genotype file. Supported formats determined by extension:
+#'   \itemize{
+#'     \item PLINK: "prefix.bed"
+#'     \item BGEN: "prefix.bgen" (version 1.2 with 8-bit compression)
+#'   }
 #' @param OutputFile (character) Path for saving association test results.
-#' @param GenoFileIndex (character or NULL) Index files for the genotype file. If
-#'   \code{NULL} (default), uses the same prefix as \code{GenoFile}. See
-#'   \code{\link{GRAB.ReadGeno}} for details.
-#' @param OutputFileIndex (character or NULL) Path for progress tracking file. Enables
-#'   analysis restart if interrupted. If \code{NULL} (default), uses
-#'   \code{paste0(OutputFile, ".index")}.
+#' @param GenoFileIndex (character vector or NULL) Associated files for the genotype file (auto-detected if NULL):
+#'   \itemize{
+#'     \item PLINK: c("prefix.bim", "prefix.fam")
+#'     \item BGEN: c("prefix.bgen.bgi", "prefix.sample") or c("prefix.bgen.bgi")
+#'   }
+#' @param OutputFileIndex (character or NULL) #' Path to the progress tracking file from a previous unfinished run.
+#'   Enables analysis to restart if interrupted. If \code{NULL} (default), uses \code{paste0(OutputFile, ".index")}.
 #' @param control (list or NULL) List of control parameters with the following elements:
 #' \itemize{
-#'   \item \code{impute_method} (character): Options: "mean" (default), "minor", "drop".
 #'   \item \code{AlleleOrder} (character or NULL): Allele order in genotype file. Options: "ref-first",
 #'     "alt-first", or NULL (default: "alt-first" for BGEN, "ref-first" for PLINK).
 #'   \item \strong{Marker Selection:}
@@ -56,8 +60,6 @@
 #'     Range: 0 to 100. Default: 20.
 #'   \item \code{nMarkersEachChunk} (integer): Number of markers processed per chunk.
 #'     Range: 1000 to 100000. Default: 10000.
-#'   \item \code{omp_num_threads} (integer): Number of OpenMP threads for parallel processing.
-#'     Default: \code{data.table::getDTthreads()}.
 #'   \item \code{SPA_Cutoff} (numeric): Z-score cutoff for saddlepoint approximation. When the absolute
 #'     value of the test statistic exceeds this cutoff, SPA is used to calculate more accurate p-values. Default: 2.
 #' }

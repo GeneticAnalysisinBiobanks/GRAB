@@ -1,5 +1,12 @@
 # Release Notes
 
+## v0.2.4 (2025-12-01)
+
+- Reorganized R code; helper functions executed only once are now inlined.
+- Revised roxygen2 documentation to comprehensively list all available parameters.
+- Refactored `GRAB.NullModel()`, `GRAB.Marker()`, and `Main.cpp`.
+- Reintegrated WtCoxG with improved structure.
+
 ## v0.2.3 (2025-08-25)
 
 - Reformatted and significantly improved logging output.

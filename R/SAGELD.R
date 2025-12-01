@@ -1,8 +1,5 @@
 ## ------------------------------------------------------------------------------
 ## SAGELD.R
-## Scalable and Accurate Gene-Environment interaction method for Longitudinal Data
-## (SAGELD) with related samples. Implements null model fitting, marker testing,
-## outlier handling, family decomposition, and Chow–Liu tree construction.
 ##
 ## Functions:
 ##   GRAB.SAGELD                  : Print brief method information.
