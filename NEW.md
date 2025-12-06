@@ -1,11 +1,18 @@
 # Release Notes
 
+## v0.2.4 (2025-12-01)
+
+- Reorganized R code; helper functions executed only once are now inlined.
+- Revised roxygen2 documentation to comprehensively list all available parameters.
+- Refactored `GRAB.NullModel()`, `GRAB.Marker()`, and `Main.cpp`.
+- Reintegrated WtCoxG with improved structure.
+
 ## v0.2.3 (2025-08-25)
 
 - Reformatted and significantly improved logging output.
 - Refined function help documentation and examples.
-- Move the TestforBatchEffect call from GRAB.NullModel() to fitNullModel.WtCoxG().
-- Fixed bugs.
+- Move the `TestforBatchEffect()` call from `GRAB.NullModel()` to `fitNullModel.WtCoxG()`.
+- Update all examples so that they never write to the installation path.
 
 ## v0.2.2 (2025-08-01)
 
@@ -13,10 +20,10 @@ The following notes summarize the main changes from v0.2.0 to v0.2.2.
 
 Resolved all issues raised by the CRAN manual review to meet publication requirements, including:
 
-- Updated the `Description` field in `DESCRIPTION` to a single-paragraph summary with relevant references
-- Added a `@return` section to the documentation of all exported functions where absent
+- Updated the `Description` field in `DESCRIPTION` to a single-paragraph summary with relevant references.
+- Added a `@return` section to the documentation of all exported functions where absent.
 - Replaced all `print()` and `cat()` statements with `message()` to allow users to suppress output if desired.
-- Removed code that set specific random seeds inside functions
+- Removed code that set specific random seeds inside functions.
 - Redirect example output files to the R session's `tempdir()` to avoid side effects on the user's file system.
 
 Increased the number of markers (which was decreased from 10k to 1k to minimize package size and running time) in the example dataset from 1k to 1.1k to ensure the number of markers exceeds the number of subjects.

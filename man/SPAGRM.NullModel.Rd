@@ -2,7 +2,7 @@
 % Please edit documentation in R/SPAGRM.R
 \name{SPAGRM.NullModel}
 \alias{SPAGRM.NullModel}
-\title{Fit a SPAGRM Null Model}
+\title{Fit SPAGRM null model from residuals and relatedness inputs}
 \usage{
 SPAGRM.NullModel(
   ResidMatFile,
@@ -14,17 +14,33 @@ SPAGRM.NullModel(
 )
 }
 \arguments{
-\item{ResidMatFile}{A file path (character) or data.frame containing residuals. If a file path, it should point to a tab-delimited file with two columns: 'SubjID' (subject IDs) and 'Resid' (residual values). If a data.frame, it should have the same structure with columns named 'SubjID' and 'Resid'.}
+\item{ResidMatFile}{Data frame or file path with columns \code{SubjID, Resid}.}
 
-\item{SparseGRMFile}{A file path (character) to a sparse genetic relationship matrix (GRM) file. This file should be generated using the \code{getSparseGRM()} function and contain three columns: 'ID1', 'ID2', and 'Value' representing the genetic relationships between pairs of individuals.}
+\item{SparseGRMFile}{File path to sparse GRM (tab-delimited: ID1, ID2, Value).}
 
-\item{PairwiseIBDFile}{A file path (character) to a pairwise identity-by-descent (IBD) file. This file should be generated using the \code{getPairwiseIBD()} function and contain five columns: 'ID1', 'ID2', 'pa', 'pb', and 'pc' representing IBD probabilities between pairs of individuals.}
+\item{PairwiseIBDFile}{File path to pairwise IBD table (ID1, ID2, pa, pb, pc).}
 
-\item{control}{A list of control parameters for the null model fitting process. Available options include:}
+\item{control}{List of options controlling outlier handling and family
+decomposition (see \code{checkControl.SPAGRM.NullModel}).}
 }
 \value{
-A SPAGRM null model object
+A list of class \code{"SPAGRM_NULL_Model"} with elements:
+\describe{
+\item{Resid}{Numeric vector of residuals used in analysis.}
+\item{subjData}{Character vector of subject IDs (length = N).}
+\item{N}{Number of subjects.}
+\item{Resid.unrelated.outliers}{Residuals of unrelated outlier subjects.}
+\item{R_GRM_R}{Sum of quadratic form Resid' * GRM * Resid for all subjects.}
+\item{R_GRM_R_TwoSubjOutlier}{Aggregate contribution from two-subject outlier families.}
+\item{sum_R_nonOutlier}{Sum of residuals for non-outlier unrelated subjects.}
+\item{R_GRM_R_nonOutlier}{Quadratic form contribution for non-outlier unrelated subjects.}
+\item{TwoSubj_list}{List with per two-member family residual/Rho info.}
+\item{ThreeSubj_list}{List with Chow–Liu tree structures and standardized scores for larger families.}
+\item{MAF_interval}{Vector of MAF breakpoints used in tree construction.}
+}
 }
 \description{
-Fit a SPAGRM Null Model
+Builds the SPAGRM null model object using subject residuals, sparse GRM,
+and pairwise IBD estimates, detecting residual outliers and constructing
+family-level graph structures for downstream saddlepoint marker tests.
 }

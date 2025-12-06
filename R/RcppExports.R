@@ -13,16 +13,16 @@ getDenseGRMInCPP <- function(t_bVec, t_excludeChr, t_grainSize) {
     .Call(`_GRAB_getDenseGRMInCPP`, t_bVec, t_excludeChr, t_grainSize)
 }
 
-setMarker_GlobalVarsInCPP <- function(t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_omp_num_threads, t_group, t_ifOutGroup, t_nGroup) {
-    invisible(.Call(`_GRAB_setMarker_GlobalVarsInCPP`, t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_omp_num_threads, t_group, t_ifOutGroup, t_nGroup))
+setMarker_GlobalVarsInCPP <- function(t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_omp_num_threads) {
+    invisible(.Call(`_GRAB_setMarker_GlobalVarsInCPP`, t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_omp_num_threads))
 }
 
 setRegion_GlobalVarsInCPP <- function(t_impute_method, t_missing_cutoff, t_max_maf_region, t_min_mac_region, t_max_markers_region, t_omp_num_threads, t_region_weight_beta, t_region_max_maf_vec) {
     invisible(.Call(`_GRAB_setRegion_GlobalVarsInCPP`, t_impute_method, t_missing_cutoff, t_max_maf_region, t_min_mac_region, t_max_markers_region, t_omp_num_threads, t_region_weight_beta, t_region_max_maf_vec))
 }
 
-mainMarkerInCPP <- function(t_method, t_genoType, t_genoIndex) {
-    .Call(`_GRAB_mainMarkerInCPP`, t_method, t_genoType, t_genoIndex)
+mainMarkerInCPP <- function(t_method, t_genoType, t_genoIndex, t_extraParams = NULL) {
+    .Call(`_GRAB_mainMarkerInCPP`, t_method, t_genoType, t_genoIndex, t_extraParams)
 }
 
 mainRegionURVInCPP <- function(t_method, t_genoType, t_genoIndex, t_n) {
@@ -33,16 +33,8 @@ mainRegionInCPP <- function(t_method, t_genoType, t_genoIndex, t_weightVec, t_ou
     .Call(`_GRAB_mainRegionInCPP`, t_method, t_genoType, t_genoIndex, t_weightVec, t_outputFile, t_labelVec, t_nLabel, t_annoMat, t_annoVec)
 }
 
-printTimeDiffInCPP <- function() {
-    invisible(.Call(`_GRAB_printTimeDiffInCPP`))
-}
-
-printTimeDiffSPAmixInCPP <- function() {
-    invisible(.Call(`_GRAB_printTimeDiffSPAmixInCPP`))
-}
-
-getGenoInfoInCPP <- function(t_genoType, t_markerInfo, t_imputeMethod) {
-    .Call(`_GRAB_getGenoInfoInCPP`, t_genoType, t_markerInfo, t_imputeMethod)
+getGenoInfoInCPP <- function(t_genoType, t_markerInfo) {
+    .Call(`_GRAB_getGenoInfoInCPP`, t_genoType, t_markerInfo)
 }
 
 getGenoInCPP <- function(t_genoType, t_markerInfo, n, t_imputeMethod) {
@@ -69,8 +61,8 @@ closeGenoInputInCPP <- function(t_genoType) {
     invisible(.Call(`_GRAB_closeGenoInputInCPP`, t_genoType))
 }
 
-setPOLMMobjInCPP <- function(t_muMat, t_iRMat, t_Cova, t_yVec, t_tau, t_printPCGInfo, t_tolPCG, t_maxiterPCG, t_varRatio, t_SPA_cutoff, t_flagSparseGRM) {
-    invisible(.Call(`_GRAB_setPOLMMobjInCPP`, t_muMat, t_iRMat, t_Cova, t_yVec, t_tau, t_printPCGInfo, t_tolPCG, t_maxiterPCG, t_varRatio, t_SPA_cutoff, t_flagSparseGRM))
+setPOLMMobjInCPP <- function(t_muMat, t_iRMat, t_Cova, t_yVec, t_tau, t_printPCGInfo, t_tolPCG, t_maxiterPCG, t_varRatio, t_SPA_cutoff, t_flagSparseGRM, t_group, t_ifOutGroup, t_nGroup) {
+    invisible(.Call(`_GRAB_setPOLMMobjInCPP`, t_muMat, t_iRMat, t_Cova, t_yVec, t_tau, t_printPCGInfo, t_tolPCG, t_maxiterPCG, t_varRatio, t_SPA_cutoff, t_flagSparseGRM, t_group, t_ifOutGroup, t_nGroup))
 }
 
 setPOLMMobjInCPP_NULL <- function(t_flagSparseGRM, t_Cova, t_yVec, t_beta, t_bVec, t_eps, t_tau, t_SPmatR, t_controlList, GenoMat) {
@@ -93,11 +85,7 @@ setSPACoxobjInCPP <- function(t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_cov
     invisible(.Call(`_GRAB_setSPACoxobjInCPP`, t_cumul, t_mresid, t_XinvXX, t_tX, t_N, t_pVal_covaAdj_Cutoff, t_SPA_Cutoff))
 }
 
-setWtCoxGobjInCPP <- function(t_mresid, t_weight, t_imputeMethod, t_cutoff) {
-    invisible(.Call(`_GRAB_setWtCoxGobjInCPP`, t_mresid, t_weight, t_imputeMethod, t_cutoff))
-}
-
-updateWtCoxGChunkInCPP <- function(t_mergeGenoInfo_subset) {
-    invisible(.Call(`_GRAB_updateWtCoxGChunkInCPP`, t_mergeGenoInfo_subset))
+setWtCoxGobjInCPP <- function(t_mresid, t_weight, t_cutoff, t_SPA_Cutoff) {
+    invisible(.Call(`_GRAB_setWtCoxGobjInCPP`, t_mresid, t_weight, t_cutoff, t_SPA_Cutoff))
 }
 

@@ -2,80 +2,121 @@
 % Please edit documentation in R/POLMM.R
 \name{GRAB.POLMM}
 \alias{GRAB.POLMM}
-\title{POLMM method in GRAB package}
+\title{Instruction of POLMM method}
 \usage{
 GRAB.POLMM()
 }
-\value{
-No return value, called for side effects (prints information about the POLMM method to the console).
-}
 \description{
-POLMM method is to analyze ordinal categorical data for related samples in a large-scale biobank.
+POLMM inplements single-variant association tests for ordinal categorical phenotypes, which
+accounts for sample relatedness. It can control type I error rates at a stringent significance
+level regardless of the phenotypic distribution, and is more powerful than alternative methods.
+This instruction covers null model fitting and marker-level analysis using POLMM.
+For region-based analysis with POLMM-GENE, see \code{\link{GRAB.POLMM.Region}}.
 }
 \details{
-Please check \code{?GRAB.control} for the generic list of \code{control} in \code{GRAB.NullModel()} and \code{GRAB.Marker()}.
+\strong{Genotype file}: \code{GenoFile} is mandatory for \code{GRAB.NullModel()} when using POLMM.
+It is required for estimating the variance ratio parameter, which is essential for calibrating
+the test statistics in subsequent association tests.
 
-Additional list of \code{control} in \code{GRAB.NullModel()} function
-Additional list of \code{control} in \code{GRAB.Marker()} function
-Additional list of \code{control} in \code{GRAB.Region()} function
+\strong{Genetic Relationship Matrix (GRM) Options}:
+POLMM supports both sparse and dense GRM for modeling genetic relatedness:
+\itemize{
+\item If \code{SparseGRMFile} is provided to \code{GRAB.NullModel()},
+the sparse GRM will be used in model fitting.
+\item If \code{SparseGRMFile} is not provided, \code{GRAB.NullModel()}
+will calculate a dense GRM from \code{GenoFile}.
+}
+
+\strong{Additional Control Parameters for GRAB.NullModel()}:
+\itemize{
+\item \code{memoryChunk} (numeric, default: 2): Memory chunk size for computation.
+\item \code{seed} (integer, default: -1): Random seed (-1 means no seed is set).
+\item \code{tracenrun} (integer, default: 30): Number of runs for trace calculation.
+\item \code{maxiter} (integer, default: 100): Maximum number of iterations for model fitting.
+\item \code{tolBeta} (numeric, default: 0.001): Convergence tolerance for beta estimates.
+\item \code{tolTau} (numeric, default: 0.002): Convergence tolerance for tau estimates.
+\item \code{tau} (numeric, default: 0.2): Initial variance component value.
+\item \code{maxiterPCG} (integer, default: 100): Maximum iterations for preconditioned conjugate gradient.
+\item \code{tolPCG} (numeric, default: 1e-6): Tolerance for preconditioned conjugate gradient.
+\item \code{showInfo} (logical, default: FALSE): Whether to print PCG iteration information for debugging.
+\item \code{maxiterEps} (integer, default: 100): Maximum iterations for epsilon estimation.
+\item \code{tolEps} (numeric, default: 1e-10): Tolerance for epsilon estimation.
+\item \code{minMafVarRatio} (numeric, default: 0.1): Minimum MAF for variance ratio estimation.
+\item \code{maxMissingVarRatio} (numeric, default: 0.1): Maximum missing rate for variance ratio estimation.
+\item \code{nSNPsVarRatio} (integer, default: 20): Number of SNPs used for variance ratio estimation.
+\item \code{CVcutoff} (numeric, default: 0.0025): Coefficient of variation cutoff.
+\item \code{grainSize} (integer, default: 1): Grain size for parallel processing.
+\item \code{minMafGRM} (numeric, default: 0.01): Minimum MAF for GRM construction.
+\item \code{maxMissingGRM} (numeric, default: 0.1): Maximum missing rate for GRM construction.
+}
+
+\strong{Method-specific elements in the \code{POLMM_NULL_Model} object returned by \code{GRAB.NullModel()}:}:
+\itemize{
+\item \code{M}: Number of ordinal categories (integer).
+\item \code{iter}: Number of iterations to convergence (numeric).
+\item \code{eta}: Linear predictor (matrix).
+\item \code{yVec}: Phenotype matrix (matrix).
+\item \code{Cova}: Design matrix of covariates (matrix).
+\item \code{muMat}: Fitted probabilities for each category (matrix).
+\item \code{YMat}: Indicator matrix for ordinal categories (matrix).
+\item \code{beta}: Estimated covariate coefficients (matrix).
+\item \code{bVec}: Random effect estimates (matrix).
+\item \code{tau}: Variance component estimate (numeric).
+\item \code{eps}: Cutpoints for ordinal categories (matrix).
+}
+
+\strong{Additional Control Parameters for GRAB.Marker()}:
+\itemize{
+\item \code{ifOutGroup} (logical, default: FALSE): Whether to output group-specific statistics
+(alternative allele frequency, counts, and sample size for each ordinal category).
+When TRUE, adds columns AltFreqInGroup.\emph{, AltCountsInGroup.}, and nSamplesInGroup.* to the output file.
+}
+
+\strong{Marker-level results} (\code{OutputFile}) columns:
+\describe{
+\item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}
+\item{Info}{Marker information in format CHR:POS:REF:ALT.}
+\item{AltFreq}{Alternative allele frequency in the overall sample.}
+\item{AltCounts}{Total count of alternative alleles.}
+\item{MissingRate}{Proportion of missing genotypes.}
+\item{Pvalue}{P-value from the score test.}
+\item{beta}{Effect size estimate (log-odds scale).}
+\item{seBeta}{Standard error of beta.}
+\item{zScore}{Z-score from the score test.}
+\item{AltFreqInGroup.1, AltFreqInGroup.2, ...}{(Only if \code{ifOutGroup = TRUE})
+Alternative allele frequency in each ordinal category.}
+\item{AltCountsInGroup.1, AltCountsInGroup.2, ...}{(Only if \code{ifOutGroup = TRUE})
+Alternative allele counts in each ordinal category.}
+\item{nSamplesInGroup.1, nSamplesInGroup.2, ...}{(Only if \code{ifOutGroup = TRUE}) Sample size in each ordinal category.}
+}
 }
 \examples{
-### First, read phenotype data and convert to a factor
+GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
+OutputFile <- file.path(tempdir(), "resultPOLMMmarker.txt")
+
 PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
 PhenoData <- data.table::fread(PhenoFile, header = TRUE)
 PhenoData$OrdinalPheno <- factor(PhenoData$OrdinalPheno, levels = c(0, 1, 2))
-
-### Step 1: Fit a null model
-# If SparseGRMFile is provided, the sparse GRM will be used in model fitting.
-# If SparseGRMFile isn't provided, GRAB.NullModel() will calculate dense GRM from GenoFile.
-SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
-GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-
+# Step 1
 obj.POLMM <- GRAB.NullModel(
-  formula = OrdinalPheno ~ AGE + GENDER,
-  data = PhenoData,
-  subjData = PhenoData$IID,
-  method = "POLMM",
-  traitType = "ordinal",
-  GenoFile = GenoFile,
-  SparseGRMFile = SparseGRMFile,
-  control = list(
-    showInfo = FALSE,
-    LOCO = FALSE,
-    tolTau = 0.2,
-    tolBeta = 0.1
-  )
+ OrdinalPheno ~ AGE + GENDER,
+ data = PhenoData,
+ subjIDcol = "IID",
+ method = "POLMM",
+ traitType = "ordinal",
+ GenoFile = GenoFile,
+ SparseGRMFile = SparseGRMFile
 )
 
-### Step 2(a): Single-variant tests using POLMM
-GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-OutputFile <- file.path(tempdir(), "simuMarkerOutput.txt")
+# Step 2
+GRAB.Marker(obj.POLMM, GenoFile, OutputFile,
+  control = list(ifOutGroup = TRUE))
 
-GRAB.Marker(
-  objNull = obj.POLMM,
-  GenoFile = GenoFile,
-  OutputFile = OutputFile
-)
+head(data.table::fread(OutputFile))
 
-data.table::fread(OutputFile)
-
-### Step 2(b): Set-based tests using POLMM-GENE
-GenoFile <- system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
-OutputFile <- file.path(tempdir(), "simuRegionOutput.txt")
-GroupFile <- system.file("extdata", "simuPLINK_RV.group", package = "GRAB")
-SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
-
-GRAB.Region(
-  objNull = obj.POLMM,
-  GenoFile = GenoFile,
-  GenoFileIndex = NULL,
-  OutputFile = OutputFile,
-  OutputFileIndex = NULL,
-  GroupFile = GroupFile,
-  SparseGRMFile = SparseGRMFile,
-  MaxMAFVec = "0.01,0.005"
-)
-
-data.table::fread(OutputFile)
-
+}
+\references{
+Bi et al. (2021). Efficient mixed model approach for large-scale genome-wide association studies
+of ordinal categorical phenotypes. \doi{10.1016/j.ajhg.2021.03.019}
 }

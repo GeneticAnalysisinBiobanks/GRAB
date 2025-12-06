@@ -12,38 +12,40 @@ TestforBatchEffect(
   Geno.mtx = NULL,
   SparseGRMFile = NULL,
   RefAfFile,
-  OutputFile,
   IndicatorColumn,
   SurvTimeColumn,
-  SampleIDColumn
+  RefPrevalence
 )
 }
 \arguments{
 \item{objNull}{a \code{WtCoxG_NULL_Model} object, which is the output of \code{\link{GRAB.NullModel}}.}
 
-\item{data}{a data.frame, list or environment (or object coercible by \code{\link{as.data.frame}} to a data.frame), containing the variables in formula. Neither a matrix nor an array will be accepted.}
+\item{data}{a data.frame, list or environment (or object coercible by \code{\link{as.data.frame}}
+to a data.frame), containing the variables in formula. Neither a matrix nor an array will be accepted.}
 
 \item{GenoFile}{A character string of the genotype file. See Details section for more details.}
 
 \item{GenoFileIndex}{Additional index file(s) corresponding to GenoFile. See Details section for more details.}
 
-\item{Geno.mtx}{A matrix of genotype data. If provided, it will be used instead of GenoFile. The matrix should have samples in rows and markers in columns.}
+\item{Geno.mtx}{A matrix of genotype data. If provided, it will be used instead of GenoFile.
+The matrix should have samples in rows and markers in columns.}
 
 \item{SparseGRMFile}{a path to file of output to be passed to \code{\link{GRAB.NullModel}}.}
 
-\item{RefAfFile}{A character string of the reference file. The reference file must be a \code{txt} file (header required) including at least 7 columns: \code{CHROM}, \code{POS}, \code{ID}, \code{REF}, \code{ALT}, \code{AF_ref}, \code{AN_ref}.}
+\item{RefAfFile}{A character string of the reference file. The reference file must be a \code{txt}
+file (header required) including at least 7 columns: \code{CHROM}, \code{POS}, \code{ID},
+\code{REF}, \code{ALT}, \code{AF_ref}, \code{AN_ref}.}
 
-\item{OutputFile}{A character string of the output file name. The output file will be a \code{txt} file.}
-
-\item{IndicatorColumn}{A character string of the column name in \code{data} that indicates the case-control status. The value should be 0 for controls and 1 for cases.}
+\item{IndicatorColumn}{A character string of the column name in \code{data} that indicates
+the case-control status. The value should be 0 for controls and 1 for cases.}
 
 \item{SurvTimeColumn}{A character string of the column name in \code{data} that indicates the survival time.}
-
-\item{SampleIDColumn}{A character string of the column name in \code{data} that indicates the sample ID.}
 }
 \value{
 A dataframe of marker info and reference MAF.
 }
 \description{
-This function performs quality control to test for the batch effect between a study cohort and a reference population. And fit a weighted null model.
+This function performs quality control to test for the batch effect between a study
+cohort and a reference population. And fit a weighted null model.
 }
+\keyword{internal}

@@ -1,19 +1,35 @@
-#' SPA<sub>GRM</sub> method in GRAB package
+## ------------------------------------------------------------------------------
+## SPAGRM.R
+##
+## Functions:
+##   GRAB.SPAGRM                  : Print brief method information.
+##   SPAGRM.NullModel             : Fit SPAGRM null model and residual handling.
+##   checkControl.SPAGRM.NullModel: Validate/populate null-model controls.
+##   checkControl.Marker.SPAGRM   : Validate marker-level controls.
+##   setMarker.SPAGRM             : Initialize marker-level analysis objects.
+##   mainMarker.SPAGRM            : Run marker-level SPAGRM tests.
+##   make.block.GRM               : Construct GRM blocks for subgraphs/families.
+##   chow.liu.tree                : Build Chow–Liu trees for family structures.
+## ------------------------------------------------------------------------------
+
+#' Instruction of SPAGRM method
 #'
-#' SPA<sub>GRM</sub> method is an empirical approach to analyzing complex traits (including but not limited to longitudinal trait) for related samples in a large-scale biobank. SPA<sub>GRM</sub> extend SPACox to support an related populations.
+#' SPAGRM is a scalable and accurate framework for retrospective association tests. 
+#' It treats genetic loci as random vectors and uses a precise approximation of their 
+#' joint distribution. This approach enables SPAGRM to handle any type of complex trait, 
+#' including longitudinal and unbalanced phenotypes. SPAGRM extends SPACox to support 
+#' sample relatedness.
 #'
-#' @details
-#' Additional list of \code{control} in \code{SPAGRM.NullModel()} function.
-#'
-#' Additional list of \code{control} in \code{GRAB.Marker()} function.
-#'
-#' @return No return value, called for side effects (prints information about the SPAGRM method to the console).
+#' @return NULL
 #'
 #' @examples
-#' # Step 2a: process model residuals
 #' ResidMatFile <- system.file("extdata", "ResidMat.txt", package = "GRAB")
 #' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
 #' PairwiseIBDFile <- system.file("extdata", "PairwiseIBD.txt", package = "GRAB")
+#' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+#' OutputFile <- file.path(tempdir(), "resultSPAGRM.txt")
+#'
+#' # Step 2a: pre-calculate genotype distributions
 #' obj.SPAGRM <- SPAGRM.NullModel(
 #'   ResidMatFile = ResidMatFile,
 #'   SparseGRMFile = SparseGRMFile,
@@ -21,46 +37,74 @@
 #'   control = list(ControlOutlier = FALSE)
 #' )
 #'
-#' # Step 2b: perform score test
-#' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-#' OutputDir <- tempdir()
-#' OutputFile <- file.path(OutputDir, "SPAGRMMarkers.txt")
-#' GRAB.Marker(
-#'   objNull = obj.SPAGRM,
-#'   GenoFile = GenoFile,
-#'   OutputFile = OutputFile
-#' )
-#' head(read.table(OutputFile, header = TRUE))
+#' # Step 2b: perform association tests
+#' GRAB.Marker(obj.SPAGRM, GenoFile, OutputFile)
+#'
+#' head(data.table::fread(OutputFile))
+#'
+#' @details
+#' See \code{\link{SPAGRM.NullModel}} for detailed instructions
+#' on preparing a SPAGRM_NULL_Model object required for GRAB.Marker().
+#'
+#' \strong{Additional Control Parameters for GRAB.Marker()}:
+#' \itemize{
+#'   \item \code{zeta} (numeric, default: 0): SPA moment approximation parameter.
+#'   \item \code{tol} (numeric, default: 1e-5): Numerical tolerance for SPA convergence.
+#' }
+#' 
+#' \strong{Marker-level results} (\code{OutputFile}) columns:
+#' \describe{
+#'   \item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}
+#'   \item{Info}{Marker information in format CHR:POS:REF:ALT.}
+#'   \item{AltFreq}{Alternative allele frequency in the sample.}
+#'   \item{AltCounts}{Total count of alternative alleles.}
+#'   \item{MissingRate}{Proportion of missing genotypes.}
+#'   \item{zScore}{Z-score from the score test.}
+#'   \item{Pvalue}{P-value from the score test.}
+#'   \item{hwepval}{Hardy-Weinberg equilibrium p-value.}
+#' }
+#'
+#' @references
+#' Xu et al. (2025). SPAGRM: effectively controlling for sample relatedness in large-scale 
+#' genome-wide association studies of longitudinal traits. \doi{10.1038/s41467-025-56669-1}
 #'
 GRAB.SPAGRM <- function() {
-  .message("Using SPAGRM method - see ?GRAB.SPAGRM for details")
+  .message("?SPAGRM for instructions")
 }
 
-################### This file includes the following functions
 
-# ------------ used in 'GRAB_Marker.R' -----------
-# 1. checkControl.Marker.SPAGRM(control)
-# 2. setMarker.SPAGRM(objNull, control)
-# 3. mainMarker.SPAGRM()
-
-# check the control list in marker-level testing
-checkControl.Marker.SPAGRM <- function(control) {
-  default.control <- list(
-    SPA_Cutoff = 2,
-    zeta = 0,
-    tol = 1e-5
-  )
-
-  control <- updateControl(control, default.control) # This file is in 'control.R'
-
-  return(control)
-}
-
-checkControl.SPAGRM.NullModel <- function(control,
-                                          ResidMat,
-                                          SparseGRM,
-                                          PairwiseIBD) {
-  default.control <- list(
+#' Fit SPAGRM null model from residuals and relatedness inputs
+#'
+#' Builds the SPAGRM null model object using subject residuals, sparse GRM,
+#' and pairwise IBD estimates, detecting residual outliers and constructing
+#' family-level graph structures for downstream saddlepoint marker tests.
+#'
+#' @param ResidMatFile Data frame or file path with columns \code{SubjID, Resid}.
+#' @param SparseGRMFile File path to sparse GRM (tab-delimited: ID1, ID2, Value).
+#' @param PairwiseIBDFile File path to pairwise IBD table (ID1, ID2, pa, pb, pc).
+#' @param control List of options controlling outlier handling and family
+#'   decomposition (see \code{checkControl.SPAGRM.NullModel}).
+#'
+#' @return A list of class \code{"SPAGRM_NULL_Model"} with elements:
+#'   \describe{
+#'     \item{Resid}{Numeric vector of residuals used in analysis.}
+#'     \item{subjData}{Character vector of subject IDs (length = N).}
+#'     \item{N}{Number of subjects.}
+#'     \item{Resid.unrelated.outliers}{Residuals of unrelated outlier subjects.}
+#'     \item{R_GRM_R}{Sum of quadratic form Resid' * GRM * Resid for all subjects.}
+#'     \item{R_GRM_R_TwoSubjOutlier}{Aggregate contribution from two-subject outlier families.}
+#'     \item{sum_R_nonOutlier}{Sum of residuals for non-outlier unrelated subjects.}
+#'     \item{R_GRM_R_nonOutlier}{Quadratic form contribution for non-outlier unrelated subjects.}
+#'     \item{TwoSubj_list}{List with per two-member family residual/Rho info.}
+#'     \item{ThreeSubj_list}{List with Chow–Liu tree structures and standardized scores for larger families.}
+#'     \item{MAF_interval}{Vector of MAF breakpoints used in tree construction.}
+#'   }
+#'
+SPAGRM.NullModel <- function(
+  ResidMatFile, # two columns: column 1 is subjID, column 2 is Resid
+  SparseGRMFile, # a path of SparseGRMFile get from getSparseGRM() function.
+  PairwiseIBDFile, # a path of PairwiseIBDFile get from getPairwiseIBD() function.
+  control = list(
     MaxQuantile = 0.75,
     MinQuantile = 0.25,
     OutlierRatio = 1.5,
@@ -68,99 +112,8 @@ checkControl.SPAGRM.NullModel <- function(control,
     MaxNuminFam = 5,
     MAF_interval = c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5)
   )
-
-  control <- updateControl(control, default.control) # This file is in 'control.R'
-
-  if (control$MaxQuantile < control$MinQuantile) {
-    stop("MaxQuantile(default is 0.75) should be larger than MinQuantile(default is 0.25).")
-  }
-
-  if (control$OutlierRatio < 0) {
-    stop("OutlierRatio should be larger than or equal 0 (default is 1.5).")
-  }
-
-  if (any(colnames(ResidMat) != c("SubjID", "Resid"))) {
-    stop("The column names of ResidMat should be ['SubjID', 'Resid'].")
-  }
-
-  if (any(colnames(SparseGRM) != c("ID1", "ID2", "Value"))) {
-    stop("The column names of SparseGRM should be ['ID1', 'ID2', 'Value'].")
-  }
-
-  if (any(colnames(PairwiseIBD) != c("ID1", "ID2", "pa", "pb", "pc"))) {
-    stop("The column names of PairwiseIBD should be ['ID1', 'ID2', 'pa', 'pb', 'pc'].")
-  }
-
-  SubjID.In.Resid <- ResidMat$SubjID
-  SubjID.In.GRM <- unique(c(SparseGRM$ID1, SparseGRM$ID2))
-  SubjID.In.IBD <- unique(c(PairwiseIBD$ID1, PairwiseIBD$ID2))
-
-  if (any(!SubjID.In.Resid %in% SubjID.In.GRM)) {
-    stop("At least one subject in residual matrix does not have GRM information.")
-  }
-
-  if (any(!SubjID.In.IBD %in% SubjID.In.GRM)) {
-    stop("At least one subject has IBD information but does not have GRM information.")
-  }
-
-  return(control)
-}
-
-setMarker.SPAGRM <- function(objNull, control) {
-  setSPAGRMobjInCPP(
-    objNull$Resid,
-    objNull$Resid.unrelated.outliers,
-    objNull$sum_R_nonOutlier,
-    objNull$R_GRM_R_nonOutlier,
-    objNull$R_GRM_R_TwoSubjOutlier,
-    objNull$R_GRM_R,
-    objNull$MAF_interval,
-    objNull$TwoSubj_list,
-    objNull$ThreeSubj_list,
-    control$SPA_Cutoff,
-    control$zeta,
-    control$tol
-  )
-}
-
-mainMarker.SPAGRM <- function(genoType, genoIndex, outputColumns) {
-  OutList <- mainMarkerInCPP("SPAGRM", genoType, genoIndex)
-
-  obj.mainMarker <- data.frame(
-    Marker = OutList$markerVec, # marker IDs
-    Info = OutList$infoVec, # marker information: CHR:POS:REF:ALT
-    AltFreq = OutList$altFreqVec, # alternative allele frequencies
-    AltCounts = OutList$altCountsVec, # alternative allele counts
-    MissingRate = OutList$missingRateVec, # alternative allele counts
-    zScore = OutList$zScore, # standardized score statistics
-    Pvalue = OutList$pvalVec, # marker-level p-value
-    hwepval = OutList$hwepvalVec
-  )
-
-  return(obj.mainMarker)
-}
-
-#' Fit a SPAGRM Null Model
-#'
-#' @param ResidMatFile A file path (character) or data.frame containing residuals. If a file path, it should point to a tab-delimited file with two columns: 'SubjID' (subject IDs) and 'Resid' (residual values). If a data.frame, it should have the same structure with columns named 'SubjID' and 'Resid'.
-#' @param SparseGRMFile A file path (character) to a sparse genetic relationship matrix (GRM) file. This file should be generated using the \code{getSparseGRM()} function and contain three columns: 'ID1', 'ID2', and 'Value' representing the genetic relationships between pairs of individuals.
-#' @param PairwiseIBDFile A file path (character) to a pairwise identity-by-descent (IBD) file. This file should be generated using the \code{getPairwiseIBD()} function and contain five columns: 'ID1', 'ID2', 'pa', 'pb', and 'pc' representing IBD probabilities between pairs of individuals.
-#' @param control A list of control parameters for the null model fitting process. Available options include:
-#'
-#' @return A SPAGRM null model object
-#'
-#'
-SPAGRM.NullModel <- function(ResidMatFile, # two columns: column 1 is subjID, column 2 is Resid
-                             SparseGRMFile, # a path of SparseGRMFile get from getSparseGRM() function.
-                             PairwiseIBDFile, # a path of PairwiseIBDFile get from getPairwiseIBD() function.
-                             control = list(
-                               MaxQuantile = 0.75,
-                               MinQuantile = 0.25,
-                               OutlierRatio = 1.5,
-                               ControlOutlier = TRUE,
-                               MaxNuminFam = 5,
-                               MAF_interval = c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5)
-                             )) {
+) {
+  # Read input files if they are file paths rather than data frames
   if (is.data.frame(ResidMatFile)) {
     ResidMat <- ResidMatFile
   } else {
@@ -169,6 +122,7 @@ SPAGRM.NullModel <- function(ResidMatFile, # two columns: column 1 is subjID, co
   SparseGRM <- data.table::fread(SparseGRMFile)
   PairwiseIBD <- data.table::fread(PairwiseIBDFile)
 
+  # Ensure all ID columns are character type for consistent matching
   ResidMat$SubjID <- as.character(ResidMat$SubjID)
   SparseGRM$ID1 <- as.character(SparseGRM$ID1)
   SparseGRM$ID2 <- as.character(SparseGRM$ID2)
@@ -219,7 +173,7 @@ SPAGRM.NullModel <- function(ResidMatFile, # two columns: column 1 is subjID, co
       ResidMat$Outlier <- ifelse(Resid < cutoffVec[1] | Resid > cutoffVec[2],
         TRUE, FALSE
       )
-      .message("Outliers: %d (%.1f%%)", sum(ResidMat$Outlier), 
+      .message("Outliers: %d (%.1f%%)", sum(ResidMat$Outlier),
                100 * sum(ResidMat$Outlier) / nrow(ResidMat))
     }
   }
@@ -227,9 +181,11 @@ SPAGRM.NullModel <- function(ResidMatFile, # two columns: column 1 is subjID, co
   .message("Outlier summary:")
   # Only show outlier info in debug mode to avoid cluttering console
   if (nrow(ResidMat %>% filter(Outlier == TRUE)) > 0) {
-    outlier_summary <- ResidMat %>% filter(Outlier == TRUE) %>% 
-                      dplyr::select(SubjID, Resid, Outlier) %>% arrange(Resid)
-    .message("Found %d outliers (range: %.3f to %.3f)", 
+    outlier_summary <- ResidMat %>%
+      filter(Outlier == TRUE) %>%
+      dplyr::select(SubjID, Resid, Outlier) %>%
+      arrange(Resid)
+    .message("Found %d outliers (range: %.3f to %.3f)",
              nrow(outlier_summary), min(outlier_summary$Resid), max(outlier_summary$Resid))
   }
 
@@ -240,7 +196,7 @@ SPAGRM.NullModel <- function(ResidMatFile, # two columns: column 1 is subjID, co
   SparseGRM1 <- SparseGRM1 %>% mutate(Cov = abs(Value * pos1 * pos2))
 
   edges <- t(SparseGRM1[, c("ID1", "ID2")])
-  graph_GRM <- igraph::make_graph(edges, directed = F)
+  graph_GRM <- igraph::make_graph(edges, directed = FALSE)
   graph_list_all <- graph_GRM %>% igraph::decompose()
   graph_length <- lapply(graph_list_all, length)
 
@@ -250,7 +206,7 @@ SPAGRM.NullModel <- function(ResidMatFile, # two columns: column 1 is subjID, co
   SubjID.unrelated.nonOutlier <- ResidMat.unrelated %>%
     filter(Outlier == FALSE) %>%
     select(SubjID) %>%
-    unlist(use.names = F)
+    unlist(use.names = FALSE)
 
   # Values used in association analysys
   R_GRM_R <- SparseGRM1 %>%
@@ -268,7 +224,7 @@ SPAGRM.NullModel <- function(ResidMatFile, # two columns: column 1 is subjID, co
   Resid.unrelated.outliers <- ResidMat.unrelated %>%
     filter(Outlier == TRUE) %>%
     select(Resid) %>%
-    unlist(use.names = F)
+    unlist(use.names = FALSE)
   R_GRM_R_TwoSubjOutlier <- 0
   TwoSubj_list <- ThreeSubj_list <- list()
 
@@ -281,8 +237,7 @@ SPAGRM.NullModel <- function(ResidMatFile, # two columns: column 1 is subjID, co
   if (nGraph != 0) {
     .message("Processing %d family groups with related residuals", nGraph)
 
-    for (i in 1:nGraph)
-    {
+    for (i in seq_len(nGraph)) {
       if (i %% 1000 == 0) {
         .message("Processing family group %d/%d", i, nGraph)
       }
@@ -305,8 +260,6 @@ SPAGRM.NullModel <- function(ResidMatFile, # two columns: column 1 is subjID, co
         next
       }
 
-      # cat("Family ", i, " (with outliers) includes ", length(comp3), " subjects:", comp3, "\n")
-
       vcount <- igraph::vcount(comp1) # number of vertices
 
       if (vcount <= MaxNuminFam) {
@@ -321,32 +274,28 @@ SPAGRM.NullModel <- function(ResidMatFile, # two columns: column 1 is subjID, co
       tempGRM1 <- SparseGRM1 %>%
         filter(ID1 %in% comp3 | ID2 %in% comp3) %>%
         arrange(Cov)
-      for (j in 1:nrow(tempGRM1))
-      {
-        # cat("j:\t",j,"\n")
+      for (j in seq_len(nrow(tempGRM1))) {
+        # Remove edge and calculate vertex counts for new graph components
         edgesToRemove <- paste0(tempGRM1$ID1[j], "|", tempGRM1$ID2[j])
         comp1.temp <- igraph::delete.edges(comp1.temp, edgesToRemove)
-        vcount <- igraph::decompose(comp1.temp) %>% sapply(igraph::vcount) # vertices count for the new graph after edge removal
-        # cat("vcount:\t",vcount,"\n")
+        # Get vertex count for each component after edge removal
+        vcount <- igraph::decompose(comp1.temp) %>% sapply(igraph::vcount)
         if (max(vcount) <= MaxNuminFam) {
           break
         }
       }
 
-      # cat("Edge removal complete. Counts of vertices:\t", vcount,"\n")
-
       # Step 2: add the (removed) edges while keeping the largest family size <= MaxNuminFam, default is 5.
 
-      tempGRM1 <- tempGRM1[1:j, ] %>% arrange(desc(Cov))
+      tempGRM1 <- tempGRM1[seq_len(j), ] %>% arrange(desc(Cov))
       comp1 <- comp1.temp
-      for (k in 1:nrow(tempGRM1))
-      {
-        # cat("k:\t",k,"\n")
+      for (k in seq_len(nrow(tempGRM1))) {
+        # Add edge and calculate vertex counts for new graph components
         edgesToAdd <- c(tempGRM1$ID1[k], tempGRM1$ID2[k])
         comp1.temp <- igraph::add.edges(comp1, edgesToAdd)
 
-        vcount <- igraph::decompose(comp1.temp) %>% sapply(igraph::vcount) # vertices count for the new graph after edge removal
-        # cat("vcount:\t",vcount,"\n")
+        # Get vertex count for each component after edge addition
+        vcount <- igraph::decompose(comp1.temp) %>% sapply(igraph::vcount)
 
         if (max(vcount) <= MaxNuminFam) {
           comp1 <- comp1.temp
@@ -355,10 +304,7 @@ SPAGRM.NullModel <- function(ResidMatFile, # two columns: column 1 is subjID, co
 
       comp1 <- igraph::decompose(comp1)
 
-      # cat("Edge add complete. Counts of vertices:\t", comp1 %>% sapply(vcount),"\n")
-
-      for (k in 1:length(comp1))
-      {
+      for (k in seq_len(length(comp1))) {
         comp11 <- comp1[[k]]
         comp13 <- igraph::V(comp11)$name
 
@@ -383,11 +329,9 @@ SPAGRM.NullModel <- function(ResidMatFile, # two columns: column 1 is subjID, co
 
     # Make a list of array index.
     arr.index <- list()
-    for (n in 1:MaxNuminFam)
-    {
+    for (n in seq_len(MaxNuminFam)) {
       temp <- c()
-      for (i in 1:n)
-      {
+      for (i in seq_len(n)) {
         indexString <- rep("c(1, 1, 1)", n)
         indexString[i] <- "0:2"
         indexString <- paste0(indexString, collapse = "%o%")
@@ -402,8 +346,7 @@ SPAGRM.NullModel <- function(ResidMatFile, # two columns: column 1 is subjID, co
     if (n.outliers != 0) {
       ## The below values are only used in chou.liu.tree
       TwofamID.index <- ThreefamID.index <- 0
-      for (index.outlier in 1:n.outliers)
-      {
+      for (index.outlier in seq_len(n.outliers)) {
         if (index.outlier %% 1000 == 0) {
           .message("Processing CLT for outlier families: %d, %d/%d", TwofamID.index, ThreefamID.index, nGraph)
         }
@@ -449,14 +392,21 @@ SPAGRM.NullModel <- function(ResidMatFile, # two columns: column 1 is subjID, co
           MAF_interval = MAF_interval
         )
 
-        stand.S.temp <- array(rowSums(mapply(function(x, y) x * y, arr.index[[n1]], Resid.temp)), rep(3, n1))
+        # Calculate standardized score using array operations and mapply
+        stand.S.temp <- array(
+          rowSums(mapply(function(x, y) x * y, arr.index[[n1]], Resid.temp)),
+          rep(3, n1)
+        )
 
         ThreeSubj_list[[ThreefamID.index]] <- list(
           CLT = CLT,
           stand.S = c(stand.S.temp)
         )
       }
-      .message("Completed CLT processing for %d families (%d, %d/%d)", n.outliers, TwofamID.index, ThreefamID.index, nGraph)
+      .message(
+        "Completed CLT processing for %d families (%d, %d/%d)",
+        n.outliers, TwofamID.index, ThreefamID.index, nGraph
+      )
     }
   }
 
@@ -473,254 +423,130 @@ SPAGRM.NullModel <- function(ResidMatFile, # two columns: column 1 is subjID, co
   return(obj)
 }
 
-SPAGRMGE.NullModel <- function(NullModel = NULL, # a fitted null model from lme4.
-                               PhenoFile, # a file path to read in the phenotype.
-                               SubjIDColname, # a character to specifie the column name of the subject ID.
-                               PhenoColname, # a character to specifie the column name of the phenotype.
-                               CovaColname, # a character (vector) to specifie the column name of the covariates (except for Envcolname).
-                               Envcolname, # a character to specifie the column name of the environment variable.
-                               PlinkFile, # a PLINK file path to read in some genotypes (without file suffix like ".bim", "bed" or "fam").
-                               SparseGRMFile, # a path of SparseGRMFile get from getSparseGRM() function.
-                               PairwiseIBDFile, # a path of PairwiseIBDFile get from getPairwiseIBD() function.
-                               control = list()) # control command used in 'SPAGRM.NullModel', see also 'SPAGRM.NullModel'.
-{
-  if (is.data.frame(PhenoFile)) {
-    Pheno_data <- PhenoFile
-  } else {
-    Pheno_data <- data.table::fread(PhenoFile)
-  }
 
-  cmd <- paste0("Pheno_data = Pheno_data %>% arrange(", SubjIDColname, ")")
-  eval(parse(text = cmd))
-
-  if (is.null(NullModel)) {
-    .message("Building null model with formula:")
-    model_formula <- as.formula(paste(PhenoColname, "~", paste(CovaColname, collapse = "+"), "+", Envcolname, "+ (", Envcolname, "|", SubjIDColname, ")"))
-    .message("%s", deparse(model_formula))
-
-    .message("Fitting null model ...")
-    null_model <- lme4::lmer(model_formula, data = Pheno_data)
-  } else {
-    null_model <- NullModel
-  }
-
-  .message("Processing null model results ...")
-
-  # Extract variance components and compute penalty matrix (P)
-  if (inherits(null_model, "merMod")) {
-    varcor <- VarCorr(null_model)
-    cmd <- paste0("varcor$", SubjIDColname)
-    G <- eval(parse(text = cmd))
-    sig <- attr(varcor, "sc")
-    P <- solve(G / sig^2)
-  } else if (inherits(null_model, "glmmTMB")) {
-    varcor <- VarCorr(null_model)$cond
-    cmd <- paste0("varcor$", SubjIDColname)
-    G <- eval(parse(text = cmd))
-    sig <- attr(varcor, "sc")
-    P <- solve(G / sig^2)
-  } else {
-    stop("Currently we only support fitted models fitted by 'LME4' and 'glmmTMB'.")
-  }
-
-  # Put data in convenient arrays and vector
-  cmd <- paste0("unique(Pheno_data$", SubjIDColname, ")")
-  SubjID <- eval(parse(text = cmd))
-  SubjID <- as.character(SubjID)
-  cmd <- paste0("table(Pheno_data$", SubjIDColname, ")")
-  k <- eval(parse(text = cmd))
-  n <- length(SubjID)
-  k <- k[SubjID]
-  XY <- bind_cols(
-    intercept = 1, Pheno_data %>% select(all_of(Envcolname)),
-    Pheno_data %>% select(all_of(CovaColname)), Pheno_data %>% select(all_of(PhenoColname))
+checkControl.SPAGRM.NullModel <- function(
+  control,
+  ResidMat,
+  SparseGRM,
+  PairwiseIBD
+) {
+  default.control <- list(
+    MaxQuantile = 0.75,
+    MinQuantile = 0.25,
+    OutlierRatio = 1.5,
+    ControlOutlier = TRUE,
+    MaxNuminFam = 5,
+    MAF_interval = c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5)
   )
-  XY <- as.matrix(XY)
-  TT <- XY[, 1:2]
-  nxy <- ncol(XY)
-  X <- XY[, -nxy]
-  nx <- ncol(X)
-  y <- XY[, nxy]
-  ncov <- nx - ncol(TT)
 
-  # Compute components of block-diagonal system with covariates  (without SNP)
-  # Additionally compute and store object SS = Rot %*% Si, which is used later on
-  A21 <- matrix(NA, 2 * n, 2 + ncov)
-  q2 <- rep(NA, 2 * n)
-  SS <- matrix(NA, 2 * n, 2)
+  control <- updateControl(control, default.control) # This file is in 'control.R'
 
-  uk <- 0
-  for (i in 1:n)
-  {
-    ki <- k[i]
-    uk <- max(uk) + 1:ki
-    u2 <- (i - 1) * 2 + 1:2
-    Ti <- TT[uk, ]
-    if (ki == 1) Ti <- t(as.matrix(Ti))
-    Si <- crossprod(Ti, Ti)
-    sv <- svd(Si + P)
-    Rot <- sqrt(1 / sv$d) * sv$u
-    Q <- Rot %*% t(Ti)
-    SS[u2, ] <- Rot %*% Si
-    A21[u2, ] <- Q %*% X[uk, ]
-    q2[u2] <- Q %*% y[uk]
+  if (control$MaxQuantile < control$MinQuantile) {
+    stop("MaxQuantile(default is 0.75) should be larger than MinQuantile(default is 0.25).")
   }
 
-  q1 <- crossprod(X, y)
-  A11 <- crossprod(X)
-  Q <- A11 - crossprod(A21)
-  q <- q1 - crossprod(A21, q2)
-  sol <- solve(Q, q)
-  blups <- q2 - A21 %*% sol
-
-  # Compute sums of products per subject involved in the crossprod(X, G), crossprod(G) and crossprod(G, y).
-  ex <- matrix(1, 1, ncov + 2)
-  et <- matrix(1, 1, 2)
-  XTk <- kronecker(et, X) * kronecker(TT, ex)
-  TTk <- kronecker(et, TT) * kronecker(TT, et)
-  Tyk <- y * TT
-  XTs <- matrix(0, n, ncol(XTk))
-  TTs <- matrix(0, n, ncol(TTk))
-  Tys <- matrix(0, n, 2)
-  AtS <- matrix(0, n, 2 * nx)
-
-  uk <- 0
-  for (i in 1:n)
-  {
-    ki <- k[i]
-    uk <- max(uk) + 1:ki
-    if (ki == 1) {
-      XTs[i, ] <- XTk[uk, ]
-      TTs[i, ] <- TTk[uk, ]
-      Tys[i, ] <- Tyk[uk, ]
-    } else {
-      XTs[i, ] <- apply(XTk[uk, ], 2, sum)
-      TTs[i, ] <- apply(TTk[uk, ], 2, sum)
-      Tys[i, ] <- apply(Tyk[uk, ], 2, sum)
-    }
-    u2 <- (i - 1) * 2 + (1:2)
-    AtS[i, ] <- c(crossprod(A21[u2, ], SS[u2, ]))
+  if (control$OutlierRatio < 0) {
+    stop("OutlierRatio should be larger than or equal 0 (default is 1.5).")
   }
 
-  bedfile <- paste0(PlinkFile, ".bed")
-  bimfile <- paste0(PlinkFile, ".bim")
-
-  totalSNPs <- data.table::fread(bimfile, header = FALSE)
-  totalSNPs <- totalSNPs$V2
-
-  if (length(totalSNPs) > 2e3) {
-    .message("Too many SNPs (%d), randomly selecting 2000", length(totalSNPs))
-
-    random_SNPs <- sample(totalSNPs, 2000)
-
-    SNPIDfile <- tempdir()
-    SNPIDfile <- paste0(SNPIDfile, "/tempSNPID", sample(1:1e9, 1), ".txt")
-
-    data.table::fwrite(data.frame(random_SNPs),
-      file = SNPIDfile,
-      row.names = FALSE, col.names = FALSE, sep = "\t", quote = FALSE
-    )
-
-    GenoMatInfo <- GRAB.ReadGeno(
-      GenoFile = bedfile,
-      SampleIDs = SubjID,
-      control = list(
-        IDsToIncludeFile = SNPIDfile,
-        ImputeMethod = "mean"
-      )
-    )
-    file.remove(SNPIDfile)
-  } else {
-    GenoMatInfo <- GRAB.ReadGeno(
-      GenoFile = bedfile,
-      SampleIDs = SubjID,
-      control = list(
-        AllMarkers = TRUE,
-        ImputeMethod = "mean"
-      )
-    )
+  if (any(colnames(ResidMat) != c("SubjID", "Resid"))) {
+    stop("The column names of ResidMat should be ['SubjID', 'Resid'].")
   }
 
-  lambdaObs <- c()
-  for (i in 1:nrow(GenoMatInfo$markerInfo))
-  {
-    si <- GenoMatInfo$GenoMat[, i]
-    mu <- mean(si) / 2
-
-    if (mu > 0.05) {
-      snp2 <- rep(si, each = 2)
-      H1 <- matrix(crossprod(si, XTs), nx, 2)
-      H2 <- snp2 * SS
-      AtH <- matrix(crossprod(si, AtS), nx, 2)
-      R <- H1 - AtH
-      Cfix <- solve(Q, R)
-      Cran <- H2 - A21 %*% Cfix
-      GtG <- matrix(crossprod(si^2, TTs), 2, 2)
-      Gty <- matrix(crossprod(si, Tys), 2, 1)
-      V <- GtG - crossprod(H1, Cfix) - crossprod(H2, Cran)
-      v <- Gty - crossprod(H1, sol) - crossprod(H2, blups)
-
-      lambda <- V[1, 2] / V[1, 1]
-
-      lambdaObs <- c(lambdaObs, lambda)
-    }
+  if (any(colnames(SparseGRM) != c("ID1", "ID2", "Value"))) {
+    stop("The column names of SparseGRM should be ['ID1', 'ID2', 'Value'].")
   }
 
-  if (length(lambdaObs) > 1e2) {
-    lambda <- mean(lambdaObs, na.rm = TRUE)
-    .message("Lambda estimate: %.4f", lambda)
-  } else {
-    stop("Less than 100 common SNPs (MAF > 0.05) in the PLINK file!\n")
+  if (any(colnames(PairwiseIBD) != c("ID1", "ID2", "pa", "pb", "pc"))) {
+    stop("The column names of PairwiseIBD should be ['ID1', 'ID2', 'pa', 'pb', 'pc'].")
   }
 
-  .message("Calculating model residuals ...")
+  SubjID.In.Resid <- ResidMat$SubjID
+  SubjID.In.GRM <- unique(c(SparseGRM$ID1, SparseGRM$ID2))
+  SubjID.In.IBD <- unique(c(PairwiseIBD$ID1, PairwiseIBD$ID2))
 
-  if (inherits(null_model, "merMod")) {
-    coeffs <- summary(null_model)$coefficients[, 1]
-  } else if (inherits(null_model, "glmmTMB")) {
-    coeffs <- summary(null_model)$coefficients$cond[, 1]
-  } else {
-    stop("Currently we only support fitted models fitted by 'LME4' and 'glmmTMB'.")
-  }
-  coeffs <- c(coeffs[1], coeffs[Envcolname], coeffs[CovaColname], -1)
-  update_residuals <- -as.numeric(XY %*% coeffs)
-
-  uk <- 0
-  for (i in 1:n)
-  {
-    if (i %% 10000 == 0) .message("Processing residuals: %d/%d", i, n)
-
-    ki <- k[i]
-    uk <- max(uk) + 1:ki
-
-    if (ki > 1) {
-      tempmatrix <- Matrix::Diagonal(k[i]) * sig^2 + TT[uk, ] %*% G %*% t(TT[uk, ])
-
-      update_residuals[uk] <- as.numeric(solve(tempmatrix, update_residuals[uk]))
-    } else {
-      tempmatrix <- sig^2 + t(TT[uk, ]) %*% G %*% TT[uk, ]
-
-      update_residuals[uk] <- as.numeric(solve(tempmatrix, update_residuals[uk]))
-    }
+  if (any(!SubjID.In.Resid %in% SubjID.In.GRM)) {
+    stop("At least one subject in residual matrix does not have GRM information.")
   }
 
-  Resid_data <- Pheno_data %>%
-    select(all_of(SubjIDColname)) %>%
-    mutate(Resid = update_residuals * (TT[, 2] - lambda))
-  colnames(Resid_data) <- c("SubjID", "Resid")
-  Resid_data <- Resid_data %>%
-    group_by(SubjID) %>%
-    summarize(Resid = sum(Resid)) %>%
-    ungroup()
+  if (any(!SubjID.In.IBD %in% SubjID.In.GRM)) {
+    stop("At least one subject has IBD information but does not have GRM information.")
+  }
 
-  output <- SPAGRM.NullModel(ResidMatFile = Resid_data, SparseGRMFile = SparseGRMFile, PairwiseIBDFile = PairwiseIBDFile, control = control)
-
-  return(output)
+  return(control)
 }
 
-make.block.GRM <- function(graph,
-                           GRM) # three columns: "ID1", "ID2", and "Value"
-{
+
+checkControl.Marker.SPAGRM <- function(control, MAF_interval) {
+
+  # Validate MAF interval constraints specific to SPAGRM
+  if (length(MAF_interval) > 1) {
+    if (control$min_maf_marker <= min(MAF_interval)) {
+      stop(
+        "min_maf_marker is out of MAF_interval. ",
+        "Please reset min_maf_marker or check MAF_interval."
+      )
+    }
+  }
+
+  default.control <- list(
+    zeta = 0,
+    tol = 1e-5
+  )
+
+  control <- updateControl(control, default.control)
+
+  return(control)
+}
+
+
+setMarker.SPAGRM <- function(objNull, control) {
+  # Initialize marker-level analysis in C++ for SPAGRM method
+  setSPAGRMobjInCPP(
+    t_resid = objNull$Resid,                              # numeric vector: Residuals from null model
+    t_resid_unrelated_outliers = objNull$Resid.unrelated.outliers,  # numeric vector: Outlier residuals
+    t_sum_R_nonOutlier = objNull$sum_R_nonOutlier,        # numeric: Sum of non-outlier residuals
+    t_R_GRM_R_nonOutlier = objNull$R_GRM_R_nonOutlier,    # numeric: R'*GRM*R for non-outliers
+    t_R_GRM_R_TwoSubjOutlier = objNull$R_GRM_R_TwoSubjOutlier,  # numeric: Two-subject outlier quad form
+    t_R_GRM_R = objNull$R_GRM_R,                          # numeric: Full R'*GRM*R quadratic form
+    t_MAF_interval = objNull$MAF_interval,                # numeric vector: MAF intervals for binning
+    t_TwoSubj_list = objNull$TwoSubj_list,                # list: Two-subject outlier pair info
+    t_ThreeSubj_list = objNull$ThreeSubj_list,            # list: Three-subject outlier combinations
+    t_SPA_Cutoff = control$SPA_Cutoff,                    # numeric: P-value cutoff for SPA
+    t_zeta = control$zeta,                                # numeric: SPA moment approximation parameter
+    t_tol = control$tol                                   # numeric: Numerical tolerance for SPA
+  )
+}
+
+
+mainMarker.SPAGRM <- function(genoType, genoIndex) {
+  # Perform main marker analysis for SPAGRM method
+  OutList <- mainMarkerInCPP(
+    t_method = "SPAGRM",      # character: Statistical method name
+    t_genoType = genoType,    # character: "PLINK" or "BGEN"
+    t_genoIndex = genoIndex   # integer vector: Genotype indices to analyze
+  )
+
+  # Format results into output data frame
+  obj.mainMarker <- data.frame(
+    Marker = OutList$markerVec, # marker IDs
+    Info = OutList$infoVec, # marker information: CHR:POS:REF:ALT
+    AltFreq = OutList$altFreqVec, # alternative allele frequencies
+    AltCounts = OutList$altCountsVec, # alternative allele counts
+    MissingRate = OutList$missingRateVec, # missing data rate
+    zScore = OutList$zScore, # standardized score statistics
+    Pvalue = OutList$pvalVec, # marker-level p-value
+    hwepval = OutList$hwepvalVec # Hardy-Weinberg equilibrium p-value
+  )
+
+  return(obj.mainMarker)
+}
+
+
+make.block.GRM <- function(
+  graph,
+  GRM # three columns: "ID1", "ID2", and "Value"
+) {
   comp2 <- igraph::get.data.frame(graph)
 
   # igraph gives an unexpected additional loop, which may change the block GRM
@@ -743,29 +569,37 @@ make.block.GRM <- function(graph,
     i = match(comp2$from, comp3),
     j = match(comp2$to, comp3),
     x = comp2$Value,
-    symmetric = T
+    symmetric = TRUE
   )
   return(block_GRM)
 }
 
-chow.liu.tree <- function(N,
-                          IBD,
-                          IDs,
-                          MAF_interval) {
+
+chow.liu.tree <- function(
+  N,
+  IBD,
+  IDs,
+  MAF_interval
+) {
+  # Build Chow-Liu tree for modeling genetic dependencies in family structures
   CLT <- c()
 
-  # MAF_interval = c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5)
-  for (index in 1:length(MAF_interval))
-  {
+  # Iterate through different minor allele frequency intervals
+  for (index in seq_len(length(MAF_interval))) {
     mu <- MAF_interval[index]
 
-    # p = c(G0, G1, G2)
+    # Calculate baseline genotype probabilities p = c(G0, G1, G2)
     p0 <- c((1 - mu)^2, 2 * mu * (1 - mu), mu^2)
 
-    # p = c(G00, G10, G20, G01, G11, G21, G02, G12, G22)
+    # Calculate allele frequency probabilities for different IBD states
     pa.allele2 <- c((1 - mu)^2, 0, 0, 0, 2 * mu * (1 - mu), 0, 0, 0, mu^2)
 
-    pb.allele1 <- c((1 - mu)^3, mu * (1 - mu)^2, 0, mu * (1 - mu)^2, mu * (1 - mu), mu^2 * (1 - mu), 0, mu^2 * (1 - mu), mu^3)
+    # IBD probability for allele 1 sharing
+    pb.allele1 <- c(
+      (1 - mu)^3, mu * (1 - mu)^2, 0,
+      mu * (1 - mu)^2, mu * (1 - mu), mu^2 * (1 - mu),
+      0, mu^2 * (1 - mu), mu^3
+    )
 
     pc.allele0 <- c(
       (1 - mu)^4, 2 * mu * (1 - mu)^3, mu^2 * (1 - mu)^2, 2 * mu * (1 - mu)^3, 4 * mu^2 * (1 - mu)^2,
@@ -773,63 +607,58 @@ chow.liu.tree <- function(N,
     )
 
     # calculate entropy I(Gi, Gj). Noting that entropy of unrelated pairs is zero.
-    for (j in 1:nrow(IBD))
-    {
+    for (j in seq_len(nrow(IBD))) {
       pro <- IBD$pa[j] * pa.allele2 + IBD$pb[j] * pb.allele1 + IBD$pc[j] * pc.allele0
 
-      entropy <- sum(pro * log(pro / pc.allele0), na.rm = T)
+      entropy <- sum(pro * log(pro / pc.allele0), na.rm = TRUE)
       IBD$entropy[j] <- entropy
     }
 
     # use the "prim" lgorithm to bulid a maximum spanning tree.
     Max_span_tree <- IBD %>%
-      igraph::graph_from_data_frame(directed = T) %>%
+      igraph::graph_from_data_frame(directed = TRUE) %>%
       igraph::mst(weights = -IBD$entropy, algorithm = "prim") %>%
       igraph::get.edgelist() %>%
       data.table::as.data.table() %>%
       rename(ID1 = V1, ID2 = V2)
 
-    mst.IBD <- merge(Max_span_tree, IBD, all.x = T) %>%
+    mst.IBD <- merge(Max_span_tree, IBD, all.x = TRUE) %>%
       mutate(idxID1 = match(ID1, IDs), idxID2 = match(ID2, IDs))
 
     arr.prob <- array(1, dim = rep(3, N))
-    for (i in 1:N) {
+    for (i in seq_len(N)) {
       dimnames(arr.prob)[[i]] <- paste0("ID", i, ":", 0:2)
     }
 
     vec <- c(mst.IBD$idxID1, mst.IBD$idxID2)
     vec <- vec[duplicated(vec)]
 
-    for (k in 1:(N - 1))
-    {
+    for (k in seq_len(N - 1)) {
       pro <- mst.IBD$pa[k] * pa.allele2 + mst.IBD$pb[k] * pb.allele1 + mst.IBD$pc[k] * pc.allele0
 
-      matrix.prob <- matrix(pro, 3, 3)
+      matrix.prob <- matrix(pro, 3, 3)  # Used in eval() below
       matrix.index1 <- mst.IBD$idxID1[k]
       matrix.index2 <- mst.IBD$idxID2[k]
-      for (i in 1:3) {
-        for (j in 1:3) {
+      for (i in seq_len(3)) {
+        for (j in seq_len(3)) {
           indexString <- rep("", N)
           indexString[matrix.index1] <- i
           indexString[matrix.index2] <- j
           indexString <- paste0(indexString, collapse = ",")
           cmd <- paste0("arr.prob[", indexString, "] = arr.prob[", indexString, "] * matrix.prob[", i, ",", j, "]")
-          # "arr.prob[1,1,] = arr.prob[1,1,] * matrix.prob[1,1]"
           eval(parse(text = cmd))
         }
       }
     }
 
-    for (k in 1:(N - 2))
-    {
-      vector.prob <- p0
+    for (k in seq_len(N - 2)) {
+      vector.prob <- p0  # Used in eval() below
       vector.index <- vec[k]
-      for (i in 1:3) {
+      for (i in seq_len(3)) {
         indexString <- rep("", N)
         indexString[vector.index] <- i
         indexString <- paste0(indexString, collapse = ",")
         cmd <- paste0("arr.prob[", indexString, "] = arr.prob[", indexString, "] / vector.prob[", i, "]")
-        # arr.prob[,,1] = arr.prob[,,1] / vector.prob[1]"
         eval(parse(text = cmd))
       }
     }

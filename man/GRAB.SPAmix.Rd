@@ -2,76 +2,107 @@
 % Please edit documentation in R/SPAmix.R
 \name{GRAB.SPAmix}
 \alias{GRAB.SPAmix}
-\title{SPAmix method in GRAB package}
+\title{Instruction of SPAmix method}
 \usage{
 GRAB.SPAmix()
 }
-\value{
-No return value, called for side effects (prints information about the SPAmix method to the console).
-}
 \description{
-SPAmix method is an empirical approach to analyzing complex traits (including but not limited to time-to-event trait) for unrelated samples in a large-scale biobank. SPAmix extend SPACox to support an admixture population or multiple populations.
+SPAmix performs retrospective single-variant association tests using genotypes and
+residuals from null models of any complex trait in large-scale biobanks. It extends
+SPACox to support complex population structures, such as admixed ancestry and
+multiple populations, but does not account for sample relatedness.
 }
 \details{
-For \code{SPAmix}, the confounding factors of SNP-derived PCs are required and should be specified in \code{control}.
+\strong{Additional Control Parameters for GRAB.NullModel()}:
+\itemize{
+\item \code{PC_columns} (character, required): Comma-separated column names
+of principal components (e.g., "PC1,PC2").
+\item \code{OutlierRatio} (numeric, default: 1.5): IQR multiplier for outlier detection.
+Outliers are defined as values outside [Q1 - r\emph{IQR, Q3 + r}IQR].
+}
+
+\strong{Method-specific elements in the \code{SPAmix_NULL_Model} object returned by \code{GRAB.NullModel()}:}:
+\itemize{
+\item \code{resid}: Residuals from mixed model (matrix or "Residual" class).
+\item \code{yVec}: Phenotype vector (numeric or "Residual" class).
+\item \code{PCs}: Principal components for dimension reduction (matrix).
+\item \code{nPheno}: Number of phenotypes analyzed (integer).
+\item \code{outLierList}: List identifying outlier subjects for SPA adjustment.
+}
+
+\strong{Additional Control Parameters for GRAB.Marker()}:
+\itemize{
+\item \code{dosage_option} (character, default: "rounding_first"):
+Dosage handling option. Must be either "rounding_first" or "rounding_last".
+}
+
+\strong{Output file columns}:
+\describe{
+\item{Pheno}{Phenotype identifier (for multi-trait analysis).}
+\item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}
+\item{Info}{Marker information in format CHR:POS:REF:ALT.}
+\item{AltFreq}{Alternative allele frequency in the sample.}
+\item{AltCounts}{Total count of alternative alleles.}
+\item{MissingRate}{Proportion of missing genotypes.}
+\item{Pvalue}{P-value from the score test.}
+\item{zScore}{Z-score from the score test.}
+}
 }
 \examples{
-# Step 1: fit a null model
 PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
+GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+OutputFile <- file.path(tempdir(), "resultSPAmix.txt")
 PhenoData <- data.table::fread(PhenoFile, header = TRUE)
 
-# Users can directly specify a time-to-event trait to analyze
+# Step 1 option 1
 obj.SPAmix <- GRAB.NullModel(
   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
   data = PhenoData,
-  subjData = IID,
+  subjIDcol = "IID",
   method = "SPAmix",
   traitType = "time-to-event",
   control = list(PC_columns = "PC1,PC2")
 )
 
-# Using model residuals performs exactly the same as the above. Note that
-# confounding factors are still required in the right of the formula.
-obj.coxph <- survival::coxph(
+# Step 1 option 2
+residuals <- survival::coxph(
   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
   data = PhenoData
-)
+)$residuals
 
 obj.SPAmix <- GRAB.NullModel(
-  obj.coxph$residuals ~ AGE + GENDER + PC1 + PC2,
+  residuals ~ AGE + GENDER + PC1 + PC2,
   data = PhenoData,
-  subjData = IID,
+  subjIDcol = "IID",
   method = "SPAmix",
   traitType = "Residual",
   control = list(PC_columns = "PC1,PC2")
 )
 
-# SPAmix also supports multiple residuals as below
-obj.coxph <- survival::coxph(
-  survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2, 
+# Step 1 option 2: analyze multiple traits at once
+res_cox <- survival::coxph(
+  survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
   data = PhenoData
-)
-obj.lm <- lm(QuantPheno ~ AGE + GENDER + PC1 + PC2, data = PhenoData)
+)$residuals
+
+res_lm <- lm(QuantPheno ~ AGE + GENDER + PC1 + PC2, data = PhenoData)$residuals
 
 obj.SPAmix <- GRAB.NullModel(
-  obj.coxph$residuals + obj.lm$residuals ~ AGE + GENDER + PC1 + PC2,
+  res_cox + res_lm ~ AGE + GENDER + PC1 + PC2,
   data = PhenoData,
-  subjData = IID,
+  subjIDcol = "IID",
   method = "SPAmix",
   traitType = "Residual",
   control = list(PC_columns = "PC1,PC2")
 )
 
-# Step 2: conduct score test
-GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-OutputDir <- tempdir()
-OutputFile <- file.path(OutputDir, "Results_SPAmix.txt")
-GRAB.Marker(
-  objNull = obj.SPAmix,
-  GenoFile = GenoFile,
-  OutputFile = OutputFile,
-  control = list(outputColumns = "zScore")
-)
-data.table::fread(OutputFile)
+# Step 2
+GRAB.Marker(obj.SPAmix, GenoFile, OutputFile)
 
+head(data.table::fread(OutputFile))
+
+}
+\references{
+Ma et al. (2025). SPAmix: a scalable, accurate, and universal analysis framework for large‑scale
+genetic association studies in admixed populations. \doi{10.1186/s13059-025-03827-9}
 }

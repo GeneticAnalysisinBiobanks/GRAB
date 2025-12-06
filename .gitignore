@@ -30,3 +30,8 @@ src/*.dll
 .DS_Store
 Thumbs.db
 GRAB.Rcheck/
+
+# File history
+.lh/
+
+example/

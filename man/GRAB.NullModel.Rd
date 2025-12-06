@@ -2,13 +2,13 @@
 % Please edit documentation in R/GRAB_Null_Model.R
 \name{GRAB.NullModel}
 \alias{GRAB.NullModel}
-\title{Fit a null model to estimate parameters and residuals}
+\title{Top-level API for generating a null model object used by GRAB.Marker and GRAB.Region}
 \usage{
 GRAB.NullModel(
   formula,
   data,
-  subset = NULL,
-  subjData,
+  subjIDcol = NULL,
+  subjData = NULL,
   method,
   traitType,
   GenoFile = NULL,
@@ -19,180 +19,73 @@ GRAB.NullModel(
 )
 }
 \arguments{
-\item{formula}{A formula object with the response on the left of a ~ operator and
-covariates on the right. Do not include an intercept term (i.e., a vector of ones)
-on the right side. Missing values should be coded as NA and corresponding samples
-will be excluded from analysis. Other values (e.g., -9, -999) will be treated as
-ordinary numeric values.}
+\item{formula}{(formula) Formula with response variable(s) on the left and covariates
+on the right. Do not include an intercept (added automatically).
+For SPAmix with traitType "Residual", multiple response variables (separated by "+") are supported.}
 
-\item{data}{A data.frame, list, or environment (or object coercible by
-\code{\link{as.data.frame}} to a data.frame) containing the variables in the formula.
-Neither a matrix nor an array will be accepted.}
+\item{data}{(data.frame) Data frame containing response variables and covariates in the formula.
+Parameter "subset" is deprecated. All subjects with phenotype data will be used. Missing values
+should be coded as \code{NA}. Other values (e.g., -9, -999) are treated as numeric.}
 
-\item{subset}{A specification of the rows to be used; defaults to all rows. This can be
-any valid indexing vector for the rows of data, or if data is not supplied, a data frame
-made up of the variables used in the formula.}
+\item{subjIDcol}{(character or NULL) Column name in \code{data} containing subject IDs.}
 
-\item{subjData}{A character vector of subject IDs. The order should match the subject
-order in the formula and data (before any subset processing).}
+\item{subjData}{(character vector or NULL) Subject IDs aligned with rows of \code{data}.
+Exactly one of \code{subjIDcol} or \code{subjData} must be provided.}
 
-\item{method}{A character string specifying the statistical method: "POLMM"
-(see \code{\link{GRAB.POLMM}}), "SPACox" (see \code{\link{GRAB.SPACox}}),
-"SPAmix" (see \code{\link{GRAB.SPAmix}}), or "WtCoxG" (see \code{\link{GRAB.WtCoxG}}).}
+\item{method}{(character) Supported methods:
+\itemize{
+\item "POLMM": Ordinal traits. See \code{?\link{GRAB.POLMM}}.
+\item "SPACox": Time-to-event or Residual. See \code{?\link{GRAB.SPACox}}.
+\item "SPAmix": Time-to-event or Residual. See \code{?\link{GRAB.SPAmix}}.
+\item "WtCoxG": Time-to-event traits. See \code{?\link{GRAB.WtCoxG}}.
+}}
 
-\item{traitType}{A character string specifying the trait type: "binary", "ordinal",
-"quantitative", or "time-to-event".}
+\item{traitType}{(character) Supported: "ordinal", "time-to-event", and "Residual".}
 
-\item{GenoFile}{A character string specifying the genotype file path. Currently, two
-genotype formats are supported: PLINK and BGEN. See \code{\link{GRAB.ReadGeno}} for details.}
+\item{GenoFile}{(character or NULL) Path to genotype file. Supported formats determined by extension:
+\itemize{
+\item PLINK: "prefix.bed"
+\item BGEN: "prefix.bgen" (version 1.2 with 8-bit compression)
+}}
 
-\item{GenoFileIndex}{Additional index files corresponding to \code{GenoFile}.
-If \code{NULL} (default), the same prefix as GenoFile is used.
-See \code{\link{GRAB.ReadGeno}} for details.}
+\item{GenoFileIndex}{(character vector or NULL) Associated files for the genotype file (auto-detected if NULL):
+\itemize{
+\item PLINK: c("prefix.bim", "prefix.fam")
+\item BGEN: c("prefix.bgen.bgi", "prefix.sample") or c("prefix.bgen.bgi")
+}}
 
-\item{SparseGRMFile}{A character string specifying the sparse GRM file path. An example is
-\code{system.file("SparseGRM","SparseGRM.txt",package="GRAB")}.}
+\item{SparseGRMFile}{(character or NULL) Path to a sparse GRM file.
+The file must be whitespace-delimited with three columns in the order:
+\itemize{
+\item Column 1: Subject ID 1
+\item Column 2: Subject ID 2
+\item Column 3: Genetic correlation between the two subjects
+}
+See \code{system.file("extdata", "SparseGRM.txt", package = "GRAB")} for an example.
+See \code{?\link{getSparseGRM}} for details on generating a sparse GRM.}
 
-\item{control}{A list of parameters for controlling the model fitting process.
-See the \code{Details} section for comprehensive information.}
+\item{control}{(list or NULL) List of additional, less commonly used parameters.
+See the corresponding method documentation for available options and defaults.}
 
-\item{...}{Additional arguments passed to or from other methods.}
+\item{...}{Additional method-specific parameters.}
 }
 \value{
-A list object with class "XXXXX_NULL_Model" where XXXXX is the specified \code{method}.
-The returned object contains the following components:
+An S3 object with class "\{method\}_NULL_Model". All returned objects contain the following elements:
 \describe{
-\item{\code{N}}{Sample size in analysis}
-\item{\code{yVec}}{Phenotype data vector}
-\item{\code{beta}}{Coefficient parameters corresponding to covariates}
-\item{\code{subjData}}{Subject IDs included in analysis}
-\item{\code{sessionInfo}}{Version information about R, OS, and attached packages}
-\item{\code{Call}}{Function call with all specified arguments by their full names}
-\item{\code{time}}{Timestamp when analysis was completed}
-\item{\code{control}}{Control parameters used for null model fitting}
-\item{\code{tau}}{Estimated variance components (if using mixed models)}
-\item{\code{SparseGRM}}{Sparse genetic relationship matrix (if specified)}
+\item{N}{Sample size (integer).}
+\item{subjData}{Character vector of subject IDs included in analysis.}
+\item{Call}{Original function call.}
+\item{sessionInfo}{R session and package information.}
+\item{time}{Analysis completion timestamp (character).}
+\item{control}{List of control parameters used in fitting.}
 }
-This object serves as input for downstream association testing with
-\code{\link{GRAB.Marker}} and \code{\link{GRAB.Region}}.
+
+This object serves as input for \code{\link{GRAB.Marker}} or \code{\link{GRAB.Region}}.
+
+See method-specific documentation for additional elements included in the returned object.
 }
 \description{
-Fits a null model that includes response variables, covariates, and optionally a Genetic
-Relationship Matrix (GRM) to estimate model parameters and residuals for subsequent
-association testing.
-}
-\details{
-The \code{GRAB} package uses score testing which consists of two steps:
-\enumerate{
-\item \code{GRAB.NullModel} fits a null model including response variable, covariates, and
-Genetic Relationship Matrix (GRM) if needed
-\item \code{\link{GRAB.Marker}} and \code{\link{GRAB.Region}} perform genome-wide marker-level
-analysis and region-level analysis, respectively
-}
-
-Step 1 fits a null model to get an R object, which is passed to Step 2 for association testing.
-Functions \code{\link{save}} and \code{\link{load}} can save and load this object.
-
-\code{GRAB} package includes multiple methods which support a wide variety of phenotypes as follows.
-\itemize{
-\item \code{POLMM}: Support \code{traitType} = \code{"ordinal"}.
-Check \code{\link{GRAB.POLMM}} for more details.
-\item \code{SPACox}: Support \code{traitType} = \code{"time-to-event"} or
-\code{"Residual"}. Check \code{\link{GRAB.SPACox}} for more details.
-\item \code{SPAmix}: Support \code{traitType} = \code{"time-to-event"} or
-\code{"Residual"}. Check \code{\link{GRAB.SPAmix}} for more details.
-\item \code{WtCoxG}: Support \code{traitType} = \code{"time-to-event"}.
-Check \code{\link{GRAB.WtCoxG}} for more details.
-}
-
-The \code{GRAB} package supports both Dense and Sparse GRM to adjust for sample relatedness.
-If Dense GRM is used, then \code{GenoFile} is required to construct GRM.
-If Sparse GRM is used, then \code{SparseGRMFile} is required. See
-\code{\link{getTempFilesFullGRM}} and \code{\link{getSparseGRM}} for details.
-\subsection{Control Parameters}{
-
-The \code{control} argument includes a list of parameters for controlling the null model
-fitting process:
-
-\strong{Basic Parameters:}
-\describe{
-\item{\code{maxiter}}{Maximum number of iterations used to fit the null model (default: 100)}
-\item{\code{seed}}{Random seed for reproducible results (default: 12345678)}
-\item{\code{tolBeta}}{Tolerance for fixed effects convergence:
-|beta - beta_old| / (|beta| + |beta_old| + tolBeta) < tolBeta (default: 0.001)}
-\item{\code{showInfo}}{Whether to show detailed information for troubleshooting (default: FALSE)}
-}
-
-\strong{Variance Component Parameters:}
-\describe{
-\item{\code{tau}}{Initial value of the variance component (default: 0.2)}
-\item{\code{tolTau}}{Tolerance for variance component convergence:
-|tau - tau_old| / (|tau| + |tau_old| + tolTau) < tolTau (default: 0.002)}
-}
-
-\strong{Dense GRM Parameters (when using PLINK files):}
-\describe{
-\item{\code{maxiterPCG}}{Maximum iterations for Preconditioned Conjugate Gradient
-(default: 100)}
-\item{\code{tolEps}}{Tolerance for PCG convergence (default: 1e-6)}
-\item{\code{minMafVarRatio}}{Minimum MAF for markers used in variance ratio estimation
-(default: 0.1)}
-\item{\code{maxMissingVarRatio}}{Maximum missing rate for markers used in variance ratio
-estimation (default: 0.1)}
-\item{\code{nSNPsVarRatio}}{Initial number of markers for variance ratio estimation (default: 20)}
-\item{\code{CVcutoff}}{Maximum coefficient of variation for variance ratio estimation (default: 0.0025)}
-\item{\code{LOCO}}{Whether to apply leave-one-chromosome-out approach (default: TRUE)}
-\item{\code{stackSize}}{Stack size (bytes) for worker threads (default: "auto")}
-\item{\code{grainSize}}{Minimum chunk size for parallelization (default: 1)}
-\item{\code{minMafGRM}}{Minimum MAF for markers used in dense GRM construction (default: 0.01)}
-\item{\code{memoryChunk}}{Memory chunk size (GB) when reading PLINK files (default: 2)}
-\item{\code{tracenrun}}{Number of runs for trace estimator (default: 30)}
-\item{\code{maxMissingGRM}}{Maximum missing rate for markers used in dense GRM construction (default: 0.1)}
-\item{\code{onlyCheckTime}}{Only check computation time without fitting model (default: FALSE)}
-}
-}
-}
-\examples{
-PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
-PhenoData <- read.table(PhenoFile, header = TRUE)
-GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-
-# Fit a null model using POLMM with a dense GRM constructed from PLINK files.
-Sys.setenv(RCPP_PARALLEL_NUM_THREADS = 2) # Limit threads for CRAN checks (optional for users).
-
-obj.POLMM <- GRAB.NullModel(
-  formula = factor(OrdinalPheno) ~ AGE + GENDER,
-  data = PhenoData,
-  subjData = IID,
-  method = "POLMM",
-  traitType = "ordinal",
-  GenoFile = GenoFile,
-  control = list(showInfo = FALSE, LOCO = FALSE, tolTau = 0.2, tolBeta = 0.1)
-)
-
-names(obj.POLMM)
-
-# Fit a null model using POLMM with a sparse GRM pre-calculated by getSparseGRM()
-SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
-
-obj.POLMM <- GRAB.NullModel(
-  formula = factor(OrdinalPheno) ~ AGE + GENDER,
-  data = PhenoData,
-  subjData = IID,
-  method = "POLMM",
-  traitType = "ordinal",
-  GenoFile = GenoFile,
-  SparseGRMFile = SparseGRMFile,
-  control = list(showInfo = FALSE, LOCO = FALSE, tolTau = 0.2, tolBeta = 0.1)
-)
-
-# Save the null model object for downstream analysis
-OutputFile <- file.path(tempdir(), "objPOLMMnull.RData")
-save(obj.POLMM, file = OutputFile)
-
-# For SPACox method, check ?GRAB.SPACox
-# For SPAmix method, check ?GRAB.SPAmix
-# For SPAGRM method, check ?GRAB.SPAGRM
-# For WtCoxG method, check ?GRAB.WtCoxG
-
+GRAB performs two-step genetic association testing. This function
+implements the first step: fitting a null model and preparing the dataset required for
+downstream marker-level (\code{GRAB.Marker}) and region-level (\code{GRAB.Region}) analyses.
 }

@@ -58,7 +58,6 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
   }
   
   // output for Step 2
-  
   arma::mat XR_Psi_R(m_p, m_n * (m_J-1));                // p x n(J-1)
   for(int k = 0; k < m_p; k++){
     arma::mat xMat = Vec2Mat(m_CovaMat.col(k), m_n, m_J);
@@ -79,7 +78,7 @@ POLMMClass::POLMMClass(arma::mat t_muMat,
   arma::mat ymuMat = yMat - m_muMat;                      // n x J
   arma::mat RymuMat = ymuMat.cols(0, m_J-2) / t_iRMat;    // n x (J-1): R %*% (y - mu)
   m_RymuVec = sumCols(RymuMat, m_J);                      // n x 1
-  
+
   if(m_flagSparseGRM == true){
     arma::mat iSigma_CovaMat(m_n * (m_J-1), m_p);
     getPCGofSigmaAndCovaMat(m_CovaMat, iSigma_CovaMat);

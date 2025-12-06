@@ -17,7 +17,7 @@ GRAB is an R package, with part of its code written in C++ for improved performa
 Install GRAB from CRAN in your R console:
 
 ```r
-install.packages("GRAB")
+install.packages("GRAB", dependencies = TRUE)
 ```
 
 ### Install via Conda
@@ -27,7 +27,7 @@ install.packages("GRAB")
 Install GRAB in a new Conda environment named `grab_env` from the `conda-forge` channel:
 
 ```sh
-conda create -n grab_env -c conda-forge r-grab
+conda create -n grab_env -c conda-forge r-grab r-skat r-dbplyr r-tidyr r-r.utils
 ```
 
 ## Quick tutorial
@@ -44,7 +44,7 @@ PhenoData <- data.table::fread(PhenoFile, header = TRUE)
 obj.SPAmix <- GRAB.NullModel(
   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
   data = PhenoData,
-  subjData = IID,
+  subjIDcol = "IID",
   method = "SPAmix",
   traitType = "time-to-event",
   control = list(PC_columns = "PC1,PC2")

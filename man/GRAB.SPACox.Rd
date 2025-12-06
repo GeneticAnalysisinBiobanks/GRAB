@@ -2,59 +2,85 @@
 % Please edit documentation in R/SPACox.R
 \name{GRAB.SPACox}
 \alias{GRAB.SPACox}
-\title{SPACox method in GRAB package}
+\title{Instruction of SPACox method}
 \usage{
 GRAB.SPACox()
 }
-\value{
-No return value, called for side effects (prints information about the SPACox method to the console).
-}
 \description{
-SPACox method is an empirical approach to analyzing complex traits (including but not limited to time-to-event trait) for unrelated samples in a large-scale biobank.
+SPACox is primarily intended for time-to-event traits in unrelated samples from large-scale
+biobanks. It uses the empirical cumulant generating function (CGF) to perform SPA-based
+single-variant association tests, enabling analysis with residuals from any null model.
 }
 \details{
-Additional list of \code{control} in \code{GRAB.NullModel()} function.
+\strong{Additional Control Parameters for GRAB.NullModel()}:
+\itemize{
+\item \code{range} (numeric vector, default: c(-100, 100)):
+Range for saddlepoint approximation grid. Must be symmetric (range[2] = -range[1]).
+\item \code{length.out} (integer, default: 10000): Number of grid points for saddlepoint approximation.
+}
 
-Additional list of \code{control} in \code{GRAB.Marker()} function.
+\strong{Method-specific elements in the \code{SPACox_NULL_Model} object returned by \code{GRAB.NullModel()}:}:
+\itemize{
+\item \code{mresid}: Martingale residuals (numeric or "Residual" class).
+\item \code{cumul}: Cumulative sums for variance estimation (matrix).
+\item \code{tX}: Transpose of design matrix (matrix).
+\item \code{yVec}: Event indicator (numeric or "Residual" class).
+\item \code{X.invXX}: Matrix for variance calculations (matrix).
+}
+
+\strong{Additional Control Parameters for GRAB.Marker()}:
+\itemize{
+\item \code{pVal_covaAdj_Cutoff} (numeric, default: 5e-05): P-value cutoff for covariate adjustment.
+}
+
+\strong{Output file columns}:
+\describe{
+\item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}
+\item{Info}{Marker information in format CHR:POS:REF:ALT.}
+\item{AltFreq}{Alternative allele frequency in the sample.}
+\item{AltCounts}{Total count of alternative alleles.}
+\item{MissingRate}{Proportion of missing genotypes.}
+\item{Pvalue}{P-value from the score test.}
+\item{zScore}{Z-score from the score test.}
+}
 }
 \examples{
-# Step 1: fit a null model
 PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
+GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+OutputFile <- file.path(tempdir(), "resultSPACox.txt")
 PhenoData <- data.table::fread(PhenoFile, header = TRUE)
+
+# Step 1 option 1
 obj.SPACox <- GRAB.NullModel(
   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
   data = PhenoData,
-  subjData = IID,
+  subjIDcol = "IID",
   method = "SPACox",
   traitType = "time-to-event"
 )
 
-# Using model residuals performs exactly the same as the above. Note that
-# confounding factors are still required in the right of the formula.
-obj.coxph <- survival::coxph(
+# Step 1 option 2
+residuals <- survival::coxph(
   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
   data = PhenoData,
   x = TRUE
-)
+)$residuals
 
 obj.SPACox <- GRAB.NullModel(
-  obj.coxph$residuals ~ AGE + GENDER,
+  residuals ~ AGE + GENDER,
   data = PhenoData,
-  subjData = IID,
+  subjIDcol = "IID",
   method = "SPACox",
   traitType = "Residual"
 )
 
-# Step 2: conduct score test
-GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-OutputDir <- tempdir()
-OutputFile <- file.path(OutputDir, "Results_SPACox.txt")
-GRAB.Marker(
-  objNull = obj.SPACox,
-  GenoFile = GenoFile,
-  OutputFile = OutputFile,
-  control = list(outputColumns = "zScore")
-)
-data.table::fread(OutputFile)
+# Step 2
+GRAB.Marker(obj.SPACox, GenoFile, OutputFile)
 
+head(data.table::fread(OutputFile))
+
+}
+\references{
+Bi et al. (2020). Fast and accurate method for genome-wide time-to-event data analysis and its
+application to UK Biobank. \doi{10.1016/j.ajhg.2020.06.003}
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/GRAB_Simu.R
 \name{GRAB.SimuPheno}
 \alias{GRAB.SimuPheno}
-\title{Simulate phenotype using linear predictor \code{eta}}
+\title{Simulate phenotypes from linear predictors}
 \usage{
 GRAB.SimuPheno(
   eta,
@@ -12,20 +12,41 @@ GRAB.SimuPheno(
 )
 }
 \arguments{
-\item{eta}{linear predictors, usually covar x beta.covar + genotype x beta.genotype}
+\item{eta}{Vector of linear predictors (typically covariates×beta + genotypes×beta).}
 
-\item{traitType}{"quantitative", "binary", "ordinal", or "time-to-event"}
+\item{traitType}{Type of phenotype: "quantitative", "binary", "ordinal", or "time-to-event".}
 
-\item{control}{a list of parameters for controlling the simulation process}
+\item{control}{List of simulation parameters specific to each trait type:
+\describe{
+\item{pCase}{Proportion of cases (binary traits).}
+\item{sdError}{Error term standard deviation (quantitative traits).}
+\item{pEachGroup}{Group proportions (ordinal traits).}
+\item{eventRate}{Event rate (time-to-event traits).}
+}}
 
-\item{seed}{a random number seed for reproducibility}
+\item{seed}{Random seed for reproducibility (optional).}
 }
 \value{
-a numeric vector of phenotype
+Simulated phenotype vector or data frame:
+\describe{
+\item{quantitative}{Numeric vector of continuous values.}
+\item{binary}{Numeric vector of 0/1 values.}
+\item{ordinal}{Numeric vector of categorical levels.}
+\item{time-to-event}{Data frame with SurvTime and SurvEvent columns.}
+}
 }
 \description{
-\code{GRAB} package can help simulate a wide variaty of phenotypes
+Generates various types of phenotypes (quantitative, binary, ordinal,
+time-to-event) from linear predictors using appropriate link functions.
 }
 \details{
-Check https://wenjianbi.github.io//grab.github.io/docs/simulation_phenotype.html for more details.
+\strong{Trait Type Details:}
+\itemize{
+\item \strong{Quantitative}: Y = eta + error, where error ~ N(0, sdError²)
+\item \strong{Binary}: Logistic model with specified case proportion
+\item \strong{Ordinal}: Proportional odds model with specified group proportions
+\item \strong{Time-to-event}: Weibull survival model with specified event rate
+}
+
+For more details, see: https://wenjianbi.github.io/grab.github.io/docs/simulation_phenotype.html
 }

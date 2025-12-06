@@ -236,7 +236,7 @@ public:
                        double t_altFreq,
                        double& t_zScore,
                        double& t_hwepval,
-                       double t_hwepvalCutoff)
+                       double t_hwepvalCutoff = 0.1)
   {
     // updated on 2023-05-23 to get hwe pvalue
     gethwepval(t_GVec, t_hwepval, t_hwepvalCutoff);

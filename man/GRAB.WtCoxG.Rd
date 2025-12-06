@@ -2,89 +2,87 @@
 % Please edit documentation in R/WtCoxG.R
 \name{GRAB.WtCoxG}
 \alias{GRAB.WtCoxG}
-\title{WtCoxG method in GRAB package}
+\title{Instruction of WtCoxG method}
 \usage{
 GRAB.WtCoxG()
 }
-\value{
-No return value, called for side effects (prints information about the WtCoxG method to the console).
-}
 \description{
-WtCoxG is an accurate, powerful, and computationally efficient Cox-based approach to perform genome-wide time-to-event data analyses in study cohorts with case ascertainment.
+WtCoxG is a Cox-based association test method for time-to-event traits. It effectively
+addresses case ascertainment and rare variant analysis. By leveraging external minor
+allele frequencies from public resources, WtCoxG can further boost statistical power.
 }
 \details{
-Additional arguments in \code{GRAB.NullModel()}:
+\strong{Additional Parameters for \code{GRAB.NullModel()}:}
 \itemize{
-\item \code{RefAfFile}: A character string specifying a reference allele frequency file, which is a csv file (with a header) and includes columns of \code{CHROM}, \code{POS}, \code{ID}, \code{REF}, \code{ALT}, \code{AF_ref}, and \code{AN_ref}.
-\item \code{OutputFile}: A character string specifying the output file name.
-\item \code{SampleIDColumn}: A character string specifying the column name in the input data that contains sample IDs.
-\item \code{SurvTimeColumn}: A character string specifying the column name in the input data that contains survival time information.
-\item \code{IndicatorColumn}: A character string specifying the column name in the input data that indicates case-control status (should be 0 for controls and 1 for cases).
+\item \code{RefAfFile} (character, required): Reference allele frequency file path.
+File must contain columns: CHROM, POS, ID, REF, ALT, AF_ref, AN_ref
+\item \code{RefPrevalence} (numeric, required): Population-level disease prevalence
+for weighting. Must be in range (0, 0.5)
 }
 
-Additional arguments in list \code{control} in \code{GRAB.NullModel()}:
+\strong{Additional Control Parameters for GRAB.NullModel()}:
 \itemize{
-\item \code{RefPrevalence}: A numeric value specifying the population-level disease prevalence used for weighting in the analysis.
-\item \code{SNPnum}: Minimum number of SNPs. Default is 1e4.
+\item \code{OutlierRatio} (numeric, default: 1.5): IQR multiplier for outlier detection
 }
 
-Additional arguments in list \code{control} in \code{GRAB.Marker()}:
+\strong{Method-specific elements in the \code{WtCoxG_NULL_Model} object returned by \code{GRAB.NullModel()}:}:
 \itemize{
-\item \code{cutoff}: A numeric value specifying the batch effect p-value cutoff for method selection of an association test. Default is 0.1.
+\item \code{mresid}: Martingale residuals from weighted Cox model (numeric).
+\item \code{Cova}: Design matrix of covariates (matrix).
+\item \code{yVec}: Event indicator (numeric).
+\item \code{weight}: Observation weights based on reference prevalence (numeric).
+\item \code{RefPrevalence}: Reference population prevalence used for weighting (numeric).
+\item \code{outLierList}: List identifying outlier subjects for SPA adjustment.
+\item \code{mergeGenoInfo}: Data frame with batch effect QC results and external reference data.
+}
+
+\strong{Additional Control Parameters for GRAB.Marker()}:
+\itemize{
+\item \code{cutoff} (numeric, default: 0.1): Cutoff of batch effect test p-value for
+association testing. Variants with batch effect p-value below this cutoff
+will be excluded from association testing.
+}
+
+\strong{Output file columns}:
+\describe{
+\item{Pheno}{Phenotype identifier (for multi-trait analysis).}
+\item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}
+\item{Info}{Marker information in format CHR:POS:REF:ALT.}
+\item{AltFreq}{Alternative allele frequency in the sample.}
+\item{AltCounts}{Total count of alternative alleles.}
+\item{MissingRate}{Proportion of missing genotypes.}
+\item{Pvalue}{P-value from the score test.}
+\item{zScore}{Z-score from the score test.}
 }
 }
 \examples{
-# Step0&1: fit a null model and estimate parameters according to batch effect p-values
+# Step 1: fit null model and test batch effect
 PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
 PhenoData <- data.table::fread(PhenoFile, header = TRUE)
 SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
-
 GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 RefAfFile <- system.file("extdata", "simuRefAf.txt", package = "GRAB")
-RefPrevalence <- 0.1 # population-level disease prevalence
-
-OutputDir <- tempdir()
-OutputStep1 <- file.path(OutputDir, "WtCoxG_step1_out.txt")
-OutputStep2 <- file.path(OutputDir, "WtCoxG_step2_out.txt")
+OutputFile <- file.path(tempdir(), "resultWtCoxG.txt")
 
 obj.WtCoxG <- GRAB.NullModel(
-  formula = survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
+  survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER,
   data = PhenoData,
-  subjData = PhenoData$IID,
+  subjIDcol = "IID",
   method = "WtCoxG",
   traitType = "time-to-event",
   GenoFile = GenoFile,
   SparseGRMFile = SparseGRMFile,
-  control = list(
-    AlleleOrder = "ref-first", 
-    AllMarkers = TRUE, 
-    RefPrevalence = RefPrevalence,
-    SNPnum = 1000  # the minimum number of SNPs that TestforBatchEffect() needs
-  ), 
   RefAfFile = RefAfFile,
-  OutputFile = OutputStep1,
-  SampleIDColumn = "IID",
-  SurvTimeColumn = "SurvTime",
-  IndicatorColumn = "SurvEvent"
+  RefPrevalence = 0.1
 )
 
-resultStep1 <- data.table::fread(OutputStep1)
-resultStep1[, c("CHROM", "POS", "pvalue_bat")]
+# Step2
+GRAB.Marker(obj.WtCoxG, GenoFile, OutputFile)
 
-# Step2: conduct association testing
-GRAB.Marker(
-  objNull = obj.WtCoxG,
-  GenoFile = GenoFile,
-  OutputFile = OutputStep2,
-  control = list(
-    AlleleOrder = "ref-first", 
-    AllMarkers = TRUE,
-    cutoff = 0.1, 
-    nMarkersEachChunk = 5000
-  )
-)
+head(data.table::fread(OutputFile))
 
-resultStep2 <- data.table::fread(OutputStep2)
-resultStep2[, c("CHROM", "POS", "WtCoxG.noext", "WtCoxG.ext")]
-
+}
+\references{
+Li et al. (2025). Applying weighted Cox regression to genome-wide association studies of
+time-to-event phenotypes. \doi{10.1038/s43588-025-00864-z}
 }

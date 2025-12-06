@@ -4,7 +4,36 @@
  *
  * This file contains the core C++ functions that are exposed to R via Rcpp.
  * It serves as the main entry point for genetic association analysis methods
- * including POLMM, SPACox, SPAmix, SPAGRM, SAGELD and WtCoxG.
+ * including POLMM, POLMM-GENE, SPACox, SPAmix, SPAGRM, SAGELD and WtCoxG.
+ *
+ * Functions (one‑line summaries):
+ *   setSparseGRMInCPP            : Load sparse GRM from R list (triplet form) into Armadillo.
+ *   setDenseGRMInCPP             : Construct / reset dense GRM object with QC thresholds.
+ *   getDenseGRMInCPP             : Multiply dense GRM by a vector.
+ *   setMarker_GlobalVarsInCPP    : Set global QC + threading + grouping parameters for marker tests.
+ *   setRegion_GlobalVarsInCPP    : Set global parameters for region / rare variant analyses.
+ *   updateGroupInfo              : Compute per‑group sample counts, alt counts and frequencies.
+ *   getLabelInfo                 : Compute per‑label MAC and MAF matrices (case/control or multi‑group).
+ *   Unified_getOneMarker         : Fetch one marker's genotypes + metadata from PLINK/BGEN.
+ *   Unified_getMarkerPval        : Compute single‑marker p‑value plus HWE p‑value.
+ *   Unified_getRegionPVec        : Region / aggregate test statistics (normal + SPA forms).
+ *   mainMarkerInCPP              : High‑level GWAS loop over selected markers (multi‑phenotype aware).
+ *   mainRegionURVInCPP           : Collapse ultra‑rare variants and return burden statistics.
+ *   mainRegionInCPP              : Comprehensive gene/region analysis (single, burden, URV, VC tests).
+ *   getGenoInfoInCPP             : Quick genotype summary (freq/missing) without full matrix load.
+ *   getGenoInCPP                 : Load genotype matrix (adaptive marker count) with imputation.
+ *   getGenoInCPP_fixedNumber     : Load fixed number of markers with missing/MAF filtering.
+ *   getSpGenoInCPP               : Load sparse genotype matrix representation.
+ *   setPLINKobjInCPP             : Initialize PLINK reader object for downstream access.
+ *   setBGENobjInCPP              : Initialize BGEN reader object with sample filtering.
+ *   closeGenoInputInCPP          : Release genotype reader resources (PLINK/BGEN).
+ *   setPOLMMobjInCPP             : Initialize POLMM object with pre‑computed matrices.
+ *   setPOLMMobjInCPP_NULL        : Fit POLMM null model and prepare C++ state.
+ *   setSPAGRMobjInCPP            : Initialize SPAGRM object with residual / GRM decomposition.
+ *   setSAGELDobjInCPP            : Initialize SAGELD/GALLOP object with residual partitions.
+ *   setSPAmixobjInCPP            : Initialize SPAmix object (multi‑phenotype residual + PCs).
+ *   setSPACoxobjInCPP            : Initialize SPACox object (CGF grid + residual info).
+ *   setWtCoxGobjInCPP            : Initialize weighted Cox (WtCoxG) object with objNull$mergeGenoInfo.
  */
 
 // Rcpp dependencies for statistical computing and linear algebra
@@ -44,11 +73,11 @@ static BGEN::BgenClass* ptr_gBGENobj = nullptr;      // BGEN format
 static DenseGRM::DenseGRMClass* ptr_gDenseGRMobj = nullptr;
 
 // Global object pointers for different statistical analysis methods
-static POLMM::POLMMClass* ptr_gPOLMMobj = nullptr;     // Polytomous logistic mixed models
-static SPACox::SPACoxClass* ptr_gSPACoxobj = nullptr;  // Cox regression with SPA correction
-static SPAmix::SPAmixClass* ptr_gSPAmixobj = nullptr;  // Mixed effects with SPA
-static SPAGRM::SPAGRMClass* ptr_gSPAGRMobj = nullptr;  // SPA with genetic relationship matrix
-static SAGELD::SAGELDClass* ptr_gSAGELDobj = nullptr;  // Large-scale genomic analysis
+static POLMM::POLMMClass* ptr_gPOLMMobj = nullptr;
+static SPACox::SPACoxClass* ptr_gSPACoxobj = nullptr;
+static SPAmix::SPAmixClass* ptr_gSPAmixobj = nullptr;
+static SPAGRM::SPAGRMClass* ptr_gSPAGRMobj = nullptr;
+static SAGELD::SAGELDClass* ptr_gSAGELDobj = nullptr;
 static WtCoxG::WtCoxGClass* ptr_gWtCoxGobj = nullptr;
 
 // Global configuration variables for genetic analysis
@@ -149,14 +178,11 @@ arma::vec getDenseGRMInCPP(
 // genome-wide association studies.
 // [[Rcpp::export]]
 void setMarker_GlobalVarsInCPP(
-  std::string t_impute_method,  // Method for handling missing genotypes ("mean", "minor", "drop")
-  double t_missing_cutoff,      // Maximum allowed missing rate for markers
-  double t_min_maf_marker,      // Minimum Minor Allele Frequency threshold
-  double t_min_mac_marker,      // Minimum Minor Allele Count threshold
-  unsigned int t_omp_num_threads, // Number of OpenMP threads for parallel computation
-  arma::uvec t_group,           // Group assignment vector for stratified analysis
-  bool t_ifOutGroup,            // Whether to output group-specific statistics
-  unsigned int t_nGroup         // Total number of population groups
+  std::string t_impute_method,    // Method for handling missing genotypes ("mean", "minor", "drop")
+  double t_missing_cutoff,        // Maximum allowed missing rate for markers
+  double t_min_maf_marker,        // Minimum Minor Allele Frequency threshold
+  double t_min_mac_marker,        // Minimum Minor Allele Count threshold
+  unsigned int t_omp_num_threads  // Number of OpenMP threads for parallel computation
 ) {
   // Set global configuration variables
   g_impute_method = t_impute_method;
@@ -164,11 +190,6 @@ void setMarker_GlobalVarsInCPP(
   g_marker_minMAF_cutoff = t_min_maf_marker;
   g_marker_minMAC_cutoff = t_min_mac_marker;
   g_omp_num_threads = t_omp_num_threads;
-
-  // Set group-specific variables for stratified analysis
-  g_group = t_group;
-  g_ifOutGroup = t_ifOutGroup;
-  g_nGroup = t_nGroup;
 }
 
 // Configures parameters for gene-based rare variant association analysis,
@@ -341,133 +362,6 @@ arma::vec Unified_getOneMarker(
   return GVec;
 }
 
-// Performs single-marker association testing using the specified statistical method.
-// This version does not compute Hardy-Weinberg equilibrium p-values.
-void Unified_getMarkerPval(
-  std::string t_method,                // Statistical method ("POLMM", "SPACox", "SPAmix", "SPAGRM")
-  arma::vec t_GVec,                         // Genotype vector
-  bool t_isOnlyOutputNonZero,               // Whether genotype vector contains only non-zero values
-  std::vector<uint32_t> t_indexForNonZero,  // Indices of non-zero genotypes
-  double &t_Beta,                           // Effect size estimate (output)
-  double &t_seBeta,                         // Standard error of effect size (output)
-  double &t_pval,                           // Association test p-value (output)
-  double &t_zScore,                         // Test statistic z-score (output)
-  double t_altFreq                          // Alternate allele frequency
-) {
-  // Error checking: these methods don't support t_isOnlyOutputNonZero == true
-  if (t_method == "POLMM") {
-    if (t_isOnlyOutputNonZero == true)
-      Rcpp::stop("When using POLMM method to calculate marker-level p-values, "
-                 "'t_isOnlyOutputNonZero' shold be false.");
-
-    ptr_gPOLMMobj->getMarkerPval(
-      t_GVec,    // Genotype vector
-      t_Beta,    // Effect size estimate (output)
-      t_seBeta,  // Standard error of effect size (output)
-      t_pval,    // Association test p-value (output)
-      t_altFreq, // Alternate allele frequency
-      t_zScore   // Test statistic z-score (output)
-    );
-  }
-
-  if (t_method == "SPACox") {
-    if (t_isOnlyOutputNonZero == true)
-      Rcpp::stop("When using SPACox method to calculate marker-level p-values, "
-                 "'t_isOnlyOutputNonZero' shold be false.");
-
-    t_pval = ptr_gSPACoxobj->getMarkerPval(
-      t_GVec,     // Genotype vector
-      t_altFreq,  // Alternate allele frequency
-      t_zScore    // Test statistic z-score (output)
-    );
-  }
-
-  if (t_method == "SPAmix") {
-    if (t_isOnlyOutputNonZero == true)
-      Rcpp::stop("When using SPAmix method to calculate marker-level p-values, "
-                 "'t_isOnlyOutputNonZero' shold be false.");
-
-    t_pval = ptr_gSPAmixobj->getMarkerPval(
-      t_GVec,    // Genotype vector
-      t_altFreq  // Alternate allele frequency
-    );
-  }
-
-  if (t_method == "SPAGRM") {
-    double hwepval;  // Temporary variable for HWE p-value
-    t_pval = ptr_gSPAGRMobj->getMarkerPval(
-      t_GVec,    // Genotype vector
-      t_altFreq, // Alternate allele frequency
-      t_zScore,  // Test statistic z-score (output)
-      hwepval,   // Hardy-Weinberg equilibrium p-value (output)
-      0.1        // HWE p-value cutoff threshold
-    );
-  }
-
-  if (t_method == "SAGELD") {
-    double hwepval;  // Temporary variable for HWE p-value
-    t_pval = ptr_gSAGELDobj->getMarkerPval(
-      t_GVec,    // Genotype vector
-      t_altFreq, // Alternate allele frequency
-      hwepval,   // Hardy-Weinberg equilibrium p-value (output)
-      0.1        // HWE p-value cutoff threshold
-    );
-  }
-}
-
-// Extended version that also computes Hardy-Weinberg equilibrium test p-values.
-// Useful for quality control and filtering markers that deviate from HWE.
-void Unified_getMarkerPval(
-  std::string t_method,                     // Statistical method
-  arma::vec t_GVec,                         // Genotype vector
-  bool t_isOnlyOutputNonZero,               // Whether genotype vector contains only non-zero values
-  std::vector<uint32_t> t_indexForNonZero,  // Indices of non-zero genotypes
-  double &t_Beta,                           // Effect size estimate (output)
-  double &t_seBeta,                         // Standard error of effect size (output)
-  double &t_pval,                           // Association test p-value (output)
-  double &t_zScore,                         // Test statistic z-score (output)
-  double t_altFreq,                         // Alternate allele frequency
-  double &t_hwepval,                        // Hardy-Weinberg equilibrium p-value (output)
-  double t_hwepvalCutoff                    // HWE p-value cutoff threshold
-) {
-  if (t_method == "SPAGRM") {
-    if (t_isOnlyOutputNonZero == true)
-      Rcpp::stop("When using SPAGRM method to calculate marker-level p-values, "
-                 "'t_isOnlyOutputNonZero' shold be false.");
-
-    t_pval = ptr_gSPAGRMobj->getMarkerPval(
-      t_GVec,           // Genotype vector
-      t_altFreq,        // Alternative allele frequency
-      t_zScore,         // Z-score
-      t_hwepval,        // Hardy-Weinberg equilibrium p-value
-      t_hwepvalCutoff   // HWE p-value cutoff
-    );
-  } else if (t_method == "SAGELD") {
-    if (t_isOnlyOutputNonZero == true)
-      Rcpp::stop("When using SAGELD method to calculate marker-level p-values, "
-                 "'t_isOnlyOutputNonZero' shold be false.");
-
-    t_pval = ptr_gSAGELDobj->getMarkerPval(
-      t_GVec,           // Genotype vector
-      t_altFreq,        // Alternative allele frequency
-      t_hwepval,        // Hardy-Weinberg equilibrium p-value
-      t_hwepvalCutoff   // HWE p-value cutoff
-    );
-  } else {
-    Unified_getMarkerPval(
-      t_method,                              // Statistical method
-      t_GVec,                                // Genotype vector
-      false,                                 // Bool t_isOnlyOutputNonZero
-      t_indexForNonZero,                     // Indices of non-zero genotypes
-      t_Beta,                                // Effect size estimate (output)
-      t_seBeta,                              // Standard error of effect size (output)
-      t_pval,                                // Association test p-value (output)
-      t_zScore,                              // Test statistic z-score (output)
-      t_altFreq                              // Alternate allele frequency
-    );
-  }
-}
-
 // Performs region-based association testing for rare variant analysis.
 // Computes both normal approximation and SPA-corrected p-values.
 void Unified_getRegionPVec(
@@ -492,34 +386,8 @@ void Unified_getRegionPVec(
       t_P1Vec,  // First component vector for variance calculation (output)
       t_P2Vec   // Second component vector for variance calculation (output)
     );
-  } else if (t_method == "SPACox") {
-    double zScore;  // SPACox uses zScore instead of Stat/Beta/seBeta
-    ptr_gSPACoxobj->getRegionPVec(
-      t_GVec,  // Aggregated genotype vector for region
-      zScore,  // Test statistic z-score (output)
-      t_pval0, // Normal approximation p-value (output)
-      t_pval1, // SPA-corrected p-value (output)
-      t_P1Vec, // First component vector for variance calculation (output)
-      t_P2Vec  // Second component vector for variance calculation (output)
-    );
-
-    // Set default values for missing outputs
-    t_Stat = zScore;
-    t_Beta = 0.0;
-    t_seBeta = 0.0;
   } else {
-    // For methods without getRegionPVec (SPAmix, SPAGRM, SAGELD),
-    // set default values - these methods may not support region-based analysis
-    t_Stat = 0.0;
-    t_Beta = 0.0;
-    t_seBeta = 0.0;
-    t_pval0 = 1.0;
-    t_pval1 = 1.0;
-    t_P1Vec.zeros();
-    t_P2Vec.zeros();
-
-    Rcpp::warning("Method " + t_method +
-                   " does not support region-based analysis via getRegionPVec");
+    Rcpp::stop("Internal errer in Unified_getRegionPVec: Method " + t_method);
   }
 }
 
@@ -528,16 +396,14 @@ void Unified_getRegionPVec(
 // High-level entry points for marker and region-based association analysis
 //==============================================================================
 
-// Performs genome-wide association analysis on specified markers using the chosen
-// statistical method. Handles quality control, missing data imputation, and
-// group-stratified analysis when requested.
 // [[Rcpp::export]]
 Rcpp::List mainMarkerInCPP(
-  std::string t_method,                 // Statistical analysis method
-  std::string t_genoType,               // Genotype file format
-  std::vector<uint64_t> t_genoIndex     // Marker indices to analyze
+  const std::string t_method,                   // Statistical analysis method
+  const std::string t_genoType,                 // Genotype file format
+  const std::vector<int64_t> t_genoIndex,       // Marker indices to analyze
+  const Rcpp::Nullable<Rcpp::List> t_extraParams = R_NilValue // Additional method-specific parameters
 ) {
-  int q = t_genoIndex.size(); // Number of markers to analyze
+  const int q = t_genoIndex.size(); // Number of markers to analyze
 
   // Initialize output vectors for marker information and statistics
   std::vector<std::string> markerVec(q);    // Marker IDs (e.g., rs12345)
@@ -549,14 +415,19 @@ Rcpp::List mainMarkerInCPP(
 
   // Determine number of phenotypes based on analysis method
   int Npheno = 1;  // Default: single phenotype
-  if (t_method == "SPAmix")
-    Npheno = ptr_gSPAmixobj->getNpheno();  // Mixed effects: multiple phenotypes
-  if (t_method == "SAGELD")
-    Npheno = 2;  // SAGELD: typically binary trait analysis
-  if (t_method == "WtCoxG")
+  if (t_method == "SPAmix") Npheno = ptr_gSPAmixobj->getNpheno(); // SPAmix analysis with multiple phenotypes
+  if (t_method == "SAGELD") Npheno = 2;
+  if (t_method == "WtCoxG") {
+    if (t_extraParams.isNull()) {
+      Rcpp::stop("Error: In mainMarkerInCPP, for WtCoxG, mergeGenoInfo_chunk should be passed via extraParams.");
+    }
+    Rcpp::List extraParams(t_extraParams);
+    Rcpp::DataFrame mergeGenoInfo_chunk = Rcpp::as<Rcpp::DataFrame>(extraParams["mergeGenoInfo_chunk"]);
+    ptr_gWtCoxGobj->updateMarkerInfo(mergeGenoInfo_chunk);  // update marker info for this chunk
     Npheno = 2;  // WtCoxG: returns two p-values (with and without external reference)
+  }
 
-  // Initialize statistical result vectors (sized for multiple phenotypes)
+  // Initialize test result vectors (sized for multiple phenotypes)
   std::vector<double> pvalVec(q * Npheno, arma::datum::nan);     // P-values
   std::vector<double> zScoreVec(q * Npheno, arma::datum::nan);   // Z-scores
   std::vector<double> BetaVec(q * Npheno, arma::datum::nan);     // Effect sizes (beta)
@@ -594,7 +465,7 @@ Rcpp::List mainMarkerInCPP(
     std::vector<uint32_t> indexForMissing, indexForNonZero;
     std::string chr, ref, alt, marker;
     uint32_t pd;  // Physical position
-    bool flip = false;  // Whether alleles need to be flipped
+    bool flip = false;  // Whether a locus is flipped
 
     uint64_t gIndex = t_genoIndex.at(i);  // Current marker index
 
@@ -648,7 +519,7 @@ Rcpp::List mainMarkerInCPP(
     altCountsVec.at(i) = altCounts;     // Alternate allele count
     missingRateVec.at(i) = missingRate; // Proportion of missing genotypes
 
-    // Calculate Minor Allele Frequency (MAF) and Minor Allele Count (MAC) for QC
+    // Calculate MAF and MAC for QC
     double MAF = std::min(
       altFreq,      // Alternate allele frequency
       1 - altFreq   // Reference allele frequency
@@ -671,37 +542,19 @@ Rcpp::List mainMarkerInCPP(
       t_method             // Statistical method
     );
 
-    // analysis results for single-marker
-    double Beta, seBeta, pval, zScore;
-
-    // Rcpp::Rcout << "    test1.4" << std::endl;
-
-    double hwepvalCutoff = 0.1; // to be changed to a option, instead of a default value, later
-    double hwepval = 0;
-
-    Unified_getMarkerPval(
-      t_method,                              // Statistical method
-      GVec,                                  // Genotype vector
-      false,                                 // Bool t_isOnlyOutputNonZero
-      indexForNonZero,                       // Indices of non-zero genotypes
-      Beta,                                  // Effect size estimate (output)
-      seBeta,                                // Standard error of effect size (output)
-      pval,                                  // Association test p-value (output)
-      zScore,                                // Test statistic z-score (output)
-      altFreq,                               // Alternate allele frequency
-      hwepval,                               // Hardy-Weinberg equilibrium p-value (output)
-      hwepvalCutoff                          // HWE p-value cutoff threshold
-    );
-
+    double Beta, seBeta, pval, zScore, hwepval;
     if (t_method == "SPAmix") {
+      pval = ptr_gSPAmixobj->getMarkerPval(GVec, altFreq);
       arma::vec pvalVecTemp = ptr_gSPAmixobj->getpvalVec();
       arma::vec zScoreVecTemp = ptr_gSPAmixobj->getzScoreVec();
-
+      
       for (int j = 0; j < Npheno; j++) {
         pvalVec.at(i * Npheno + j) = pvalVecTemp.at(j);
         zScoreVec.at(i * Npheno + j) = zScoreVecTemp.at(j);
       }
+      
     } else if (t_method == "SAGELD") {
+      pval = ptr_gSAGELDobj->getMarkerPval(GVec, altFreq, hwepval);
       arma::vec pvalVecTemp = ptr_gSAGELDobj->getpvalVec();
       arma::vec zScoreVecTemp = ptr_gSAGELDobj->getzScoreVec();
       arma::vec BetaVecTemp = ptr_gSAGELDobj->getBetaVec();
@@ -712,22 +565,34 @@ Rcpp::List mainMarkerInCPP(
         zScoreVec.at(2 * i + j) = zScoreVecTemp.at(j);
         BetaVec.at(2 * i + j) = BetaVecTemp.at(j) * (1 - 2 * flip);
         seBetaVec.at(2 * i + j) = seBetaVecTemp.at(j);
-      }
+      }    
+
     } else if (t_method == "WtCoxG") {
-      // Use genoIndex-based lookup to avoid indexing mismatch between genotype and marker info
       arma::vec pvalVecTemp = ptr_gWtCoxGobj->getpvalVec(GVec, i);
-      for (int j = 0; j < 2; j++) {
-        pvalVec.at(2 * i + j) = pvalVecTemp.at(j);
-      }
+      pvalVec[2 * i]     = pvalVecTemp[0];
+      pvalVec[2 * i + 1] = pvalVecTemp[1];
+
     } else {
+      if (t_method == "POLMM") {
+        ptr_gPOLMMobj->getMarkerPval(GVec, Beta, seBeta, pval, altFreq, zScore);
+
+      } else if (t_method == "SPACox") {
+        pval = ptr_gSPACoxobj->getMarkerPval(GVec, altFreq, zScore);
+
+      } else if (t_method == "SPAGRM") {
+        pval = ptr_gSPAGRMobj->getMarkerPval(GVec, altFreq, zScore, hwepval);
+
+      }  else {
+        Rcpp::stop("Internal errer in mainMarkerInCPP: Method " + t_method);
+      }
+      
       pvalVec.at(i) = pval;
       zScoreVec.at(i) = zScore;
       BetaVec.at(i) = Beta * (1 - 2 * flip); // Beta if flip = false, -1*Beta is flip = true
       seBetaVec.at(i) = seBeta;
+      hwepvalVec.at(i) = hwepval;
     }
-
-    hwepvalVec.at(i) = hwepval;
-  }
+  } // End of one marker loop
 
   Rcpp::List OutList = Rcpp::List::create(
     Rcpp::Named("markerVec") = markerVec,
@@ -1392,62 +1257,6 @@ Rcpp::List mainRegionInCPP(
   return OutList;
 }
 
-//==============================================================================
-// SECTION 7: UTILITY AND DIAGNOSTIC FUNCTIONS
-// Performance monitoring and debugging utilities
-//==============================================================================
-
-// Outputs detailed performance metrics for different computational stages
-// of the POLMM (Polytomous Logistic Mixed Model) analysis pipeline.
-// [[Rcpp::export]]
-void printTimeDiffInCPP() {
-  printTimeDiff(
-    ptr_gPOLMMobj->getTestTime1(),  // Timing vector for function
-    "getRegionPVec"                 // Function name description
-  );
-  printTimeDiff(
-    ptr_gPOLMMobj->getTestTime2(),  // Timing vector for function
-    "getSigmaxMat"                  // Function name description
-  );
-  printTimeDiff(
-    ptr_gPOLMMobj->getTestTime3(),  // Timing vector for function
-    "solverBlockDiagSigma"          // Function name description
-  );
-  printTimeDiff(
-    ptr_gPOLMMobj->getTestTime4(),  // Timing vector for function
-    "get_ZPZ_adjGVec"               // Function name description
-  );
-  printTimeDiff(
-    ptr_gPOLMMobj->getTestTime5(),  // Timing vector for function
-    "getadjGFast Step 1"            // Function name description
-  );
-  printTimeDiff(
-    ptr_gPOLMMobj->getTestTime6(),  // Timing vector for function
-    "getadjGFast Step 2"            // Function name description
-  );
-  printTimeDiff(
-    ptr_gPOLMMobj->getTestTime7(),  // Timing vector for function
-    "get_ZPZ_adjGVec Step 1"        // Function name description
-  );
-  printTimeDiff(
-    ptr_gPOLMMobj->getTestTime8(),  // Timing vector for function
-    "get_ZPZ_adjGVec Step 2"        // Function name description
-  );
-}
-
-// Outputs performance metrics for mixed-effects SPA analysis including
-// SPA correction computation time and MAF-related processing time.
-// [[Rcpp::export]]
-void printTimeDiffSPAmixInCPP() {
-  printTimeDiff(
-    ptr_gSPAmixobj->getTestTime1(), // Timing vector for function
-    "SPAmix_SPA"                    // Function name description
-  );
-  printTimeDiff(
-    ptr_gSPAmixobj->getTestTime2(), // Timing vector for function
-    "SPAmix_MAF"                    // Function name description
-  );
-}
 
 //==============================================================================
 // SECTION 8: GENOTYPE EXTRACTION AND MATRIX FUNCTIONS
@@ -1459,10 +1268,9 @@ void printTimeDiffSPAmixInCPP() {
 // [[Rcpp::export]]
 arma::mat getGenoInfoInCPP(
   std::string t_genoType,       // Genotype file format
-  Rcpp::DataFrame t_markerInfo, // DataFrame containing marker information and indices
-  std::string t_imputeMethod    // Imputation method (not used for info extraction)
+  Rcpp::DataFrame t_markerInfo  // DataFrame containing marker information and indices
 ) {
-  int q = t_markerInfo.nrow(); // number of markers requested
+  int q = t_markerInfo.nrow();  // number of markers requested
   arma::mat genoInfoMat(q, 2);
 
   std::vector<uint64_t> gIndexVec = t_markerInfo["genoIndex"];
@@ -1496,8 +1304,6 @@ arma::mat getGenoInfoInCPP(
     if ((i + 1) % 1000 == 0)
       Rcpp::Rcout << "    Completed " << (i + 1) << "/" << q << " genetic variants." << std::endl;
 
-    // The below is not needed for information extraction
-    // imputeGeno(GVec, altFreq, indexForMissing, t_imputeMethod);  // check UTIL.cpp
     genoInfoMat.at(i, 0) = altFreq;
     genoInfoMat.at(i, 1) = missingRate;
   }
@@ -1510,7 +1316,7 @@ arma::mat getGenoInCPP(
   std::string t_genoType,
   Rcpp::DataFrame t_markerInfo,
   int n,
-  std::string t_imputeMethod  // 0: "mean"; 1: "minor"; 2: "drop" (to be continued)
+  std::string t_imputeMethod  // "none", "mean", "bestguess"
 ) {
   int q = t_markerInfo.nrow();         // number of markers requested
   std::vector<uint64_t> gIndexVec = t_markerInfo["genoIndex"];
@@ -1553,7 +1359,7 @@ arma::mat getGenoInCPP_fixedNumber(
   std::string t_genoType,        // Genotype file format
   Rcpp::DataFrame t_markerInfo,  // DataFrame containing marker information
   int n,                         // Sample size
-  std::string t_imputeMethod,    // Imputation method ("mean", "minor", "drop")
+  std::string t_imputeMethod,    // "none", "mean", "bestguess"
   int m,                         // Number of selected markers
   double missingRateCutoff,      // Maximum allowed missing rate
   double minMAFCutoff            // Minimum MAF threshold
@@ -1758,8 +1564,16 @@ void setPOLMMobjInCPP(
   int t_maxiterPCG,                          // Maximum iterations for PCG solver
   double t_varRatio,                         // Variance ratio estimate
   double t_SPA_cutoff,                       // P-value cutoff for SPA correction
-  bool t_flagSparseGRM                       // Whether to use sparse or dense GRM
+  bool t_flagSparseGRM,                      // Whether to use sparse or dense GRM
+  arma::uvec t_group,                        // Group assignment for each individual
+  bool t_ifOutGroup,                         // Whether to output group-specific statistics
+  unsigned int t_nGroup                      // Total number of groups
 ) {
+  // Set POLMM-specific group variables
+  g_group = t_group;
+  g_ifOutGroup = t_ifOutGroup;
+  g_nGroup = t_nGroup;
+
   if (ptr_gPOLMMobj)
     delete ptr_gPOLMMobj;
 
@@ -2005,8 +1819,8 @@ void setSPACoxobjInCPP(
 void setWtCoxGobjInCPP(
   arma::vec t_mresid,                        // Martingale residuals from Cox model
   arma::vec t_weight,                        // Weight vector for analysis
-  std::string t_imputeMethod,                // Imputation method ("none", "mean", "minor")
-  double t_cutoff                            // P-value cutoff for SPA correction
+  double t_cutoff,                           // batch effect p-value cutoff for association testing
+  double t_SPA_Cutoff                        // P-value cutoff for applying SPA correction
 ) {
   if (ptr_gWtCoxGobj)
     delete ptr_gWtCoxGobj;
@@ -2014,20 +1828,7 @@ void setWtCoxGobjInCPP(
   ptr_gWtCoxGobj = new WtCoxG::WtCoxGClass(
     t_mresid,                                // Martingale residuals from Cox model (R vector)
     t_weight,                                // Weight vector for analysis (w vector)
-    t_imputeMethod,                          // Imputation method ("none", "mean", "minor")
-    t_cutoff                                 // P-value cutoff for SPA correction
+    t_cutoff,                                // batch effect p-value cutoff for association testing
+    t_SPA_Cutoff                             // P-value cutoff for applying SPA correction
   );
-}
-
-// Update WtCoxG object with marker information for the current chunk
-// [[Rcpp::export]]
-void updateWtCoxGChunkInCPP(
-  DataFrame t_mergeGenoInfo_subset             // Subset of merged genotype information for current chunk
-) {
-  if (ptr_gWtCoxGobj == nullptr) {
-    Rcpp::stop("WtCoxG object not initialized. Call setWtCoxGobjInCPP first.");
-  }
-
-  // Update the WtCoxG object with the subset of marker information for this chunk
-  ptr_gWtCoxGobj->updateMarkerInfo(t_mergeGenoInfo_subset);
 }

@@ -2,142 +2,89 @@
 % Please edit documentation in R/GRAB_Marker.R
 \name{GRAB.Marker}
 \alias{GRAB.Marker}
-\title{Conduct marker-level genetic association testing}
+\title{Perform single-marker association tests using a fitted null model}
 \usage{
 GRAB.Marker(
   objNull,
   GenoFile,
-  GenoFileIndex = NULL,
   OutputFile,
+  GenoFileIndex = NULL,
   OutputFileIndex = NULL,
   control = NULL
 )
 }
 \arguments{
-\item{objNull}{The output object from function \code{\link{GRAB.NullModel}}.}
+\item{objNull}{(S3 object) Null model object from \code{\link{GRAB.NullModel}},
+\code{\link{SPAGRM.NullModel}} or \code{\link{SAGELD.NullModel}}. Supported classes:
+\itemize{
+\item \code{POLMM_NULL_Model}: See \code{?\link{GRAB.POLMM}}.
+\item \code{SPACox_NULL_Model}: See \code{?\link{GRAB.SPACox}}.
+\item \code{SPAmix_NULL_Model}: See \code{?\link{GRAB.SPAmix}}.
+\item \code{WtCoxG_NULL_Model}: See \code{?\link{GRAB.WtCoxG}}.
+\item \code{SPAGRM_NULL_Model}: See \code{?\link{GRAB.SPAGRM}}.
+\item \code{SAGELD_NULL_Model}: See \code{?\link{GRAB.SAGELD}}.
+}}
 
-\item{GenoFile}{A character string specifying the genotype file path. Currently, two
-genotype formats are supported: PLINK and BGEN. See \code{\link{GRAB.ReadGeno}} for details.}
+\item{GenoFile}{Path to genotype file. Supported formats determined by extension:
+\itemize{
+\item PLINK: "prefix.bed"
+\item BGEN: "prefix.bgen" (version 1.2 with 8-bit compression)
+}}
 
-\item{GenoFileIndex}{Additional index files corresponding to \code{GenoFile}. If \code{NULL}
-(default), the same prefix as GenoFile is used. See \code{\link{GRAB.ReadGeno}} for details.}
+\item{OutputFile}{(character) Path for saving association test results.}
 
-\item{OutputFile}{A character string specifying the output file path to save analysis results.}
+\item{GenoFileIndex}{(character vector or NULL) Associated files for the genotype file (auto-detected if NULL):
+\itemize{
+\item PLINK: c("prefix.bim", "prefix.fam")
+\item BGEN: c("prefix.bgen.bgi", "prefix.sample") or c("prefix.bgen.bgi")
+}}
 
-\item{OutputFileIndex}{A character string specifying the output index file to record the
-progress. If the program terminates unexpectedly, this helps \code{GRAB} understand where
-to restart the analysis. If \code{NULL} (default),
-\code{OutputFileIndex = paste0(OutputFile, ".index")}.}
+\item{OutputFileIndex}{(character or NULL) #' Path to the progress tracking file from a previous unfinished run.
+Enables analysis to restart if interrupted. If \code{NULL} (default), uses \code{paste0(OutputFile, ".index")}.}
 
-\item{control}{A list of parameters for controlling \code{GRAB.Marker} function behavior.
-See the \code{Details} section for more information.}
+\item{control}{(list or NULL) List of control parameters with the following elements:
+\itemize{
+\item \code{AlleleOrder} (character or NULL): Allele order in genotype file. Options: "ref-first",
+"alt-first", or NULL (default: "alt-first" for BGEN, "ref-first" for PLINK).
+\item \strong{Marker Selection:}
+\itemize{
+\item \code{AllMarkers} (logical): Set to TRUE (default) to analyze all markers. Automatically
+set to FALSE if any include/exclude files are provided.
+\item \code{IDsToIncludeFile} (character or NULL): Path to file with marker IDs to include.
+\item \code{RangesToIncludeFile} (character or NULL): Path to file with genomic ranges to include.
+Can be used with IDsToIncludeFile (union will be used).
+\item \code{IDsToExcludeFile} (character or NULL): Path to file with marker IDs to exclude.
+\item \code{RangesToExcludeFile} (character or NULL): Path to file with genomic ranges to exclude.
+Can be used with IDsToExcludeFile (union will be excluded).
+\item Note: Cannot use both include and exclude files simultaneously.
+}
+\item \code{impute_method} (character): Imputation method for handling missing genotypes
+during analysis in C++ backend. Applies to all genotype formats. Options: "mean" (default), "minor", "drop".
+\item \code{missing_cutoff} (numeric): Exclude markers with missing rate above this threshold.
+Range: 0 to 0.5. Default: 0.15.
+\item \code{min_maf_marker} (numeric): Exclude markers with MAF below this threshold.
+Range: 0 to 0.1. Default: 0.001.
+\item \code{min_mac_marker} (numeric): Exclude markers with MAC below this threshold.
+Range: 0 to 100. Default: 20.
+\item \code{nMarkersEachChunk} (integer): Number of markers processed per chunk.
+Range: 1000 to 100000. Default: 10000.
+\item \code{SPA_Cutoff} (numeric): Z-score cutoff for saddlepoint approximation. When the absolute
+value of the test statistic exceeds this cutoff, SPA is used to calculate more accurate p-values. Default: 2.
+}}
 }
 \value{
-The analysis results are written to \code{OutputFile}, which includes the following
-columns:
-\describe{
-\item{Marker}{Marker IDs extracted from \code{GenoFile} and \code{GenoFileIndex}.}
-\item{Info}{Marker information in format "CHR:POS:REF:ALT". The order of REF/ALT depends
-on \code{control$AlleleOrder}: "ref-first" or "alt-first".}
-\item{AltFreq}{Alternative allele frequency (before genotype imputation, might be > 0.5).
-If most markers have \code{AltFreq} > 0.5, consider resetting \code{control$AlleleOrder}.}
-\item{AltCounts}{Alternative allele counts (before genotype imputation).}
-\item{MissingRate}{Missing rate for each marker.}
-\item{Pvalue}{Association test p-value.}
-}
-
-The following columns can be customized using \code{control$outputColumns}.
-See \code{\link{makeGroup}} for details about phenotype grouping, which is used for
-\code{nSamplesInGroup}, \code{AltCountsInGroup}, and \code{AltFreqInGroup}.
-\describe{
-\item{beta}{Estimated effect size of the ALT allele.}
-\item{seBeta}{Estimated standard error of the effect size.}
-\item{zScore}{Standardized score statistic, usually follows a standard normal distribution.}
-\item{nSamplesInGroup}{Number of subjects in different phenotype groups. This may differ
-slightly from the original distribution due to missing genotypes.}
-\item{AltCountsInGroup}{Alternative allele counts (before genotype imputation) in different
-phenotype groups.}
-\item{AltFreqInGroup}{Alternative allele frequency (before genotype imputation) in different
-phenotype groups.}
+The function returns \code{NULL} invisibly. Results are written to \code{OutputFile}.
+For method-specific examples and output columns and format, see:
+\itemize{
+\item POLMM method: \code{\link{GRAB.POLMM}}
+\item SPACox method: \code{\link{GRAB.SPACox}}
+\item SPAmix method: \code{\link{GRAB.SPAmix}}
+\item WtCoxG method: \code{\link{GRAB.WtCoxG}}
+\item SPAGRM method: \code{\link{GRAB.SPAGRM}}
+\item SAGELD method: \code{\link{GRAB.SAGELD}}
 }
 }
 \description{
-Performs GWAS between a trait and individual genetic markers.
-}
-\details{
-The \code{GRAB} package supports multiple statistical methods: \code{POLMM}, \code{SPACox},
-\code{SPAGRM}, \code{SPAmix}, and \code{WtCoxG}.
-Detailed information about these analysis methods is provided in the \code{Details} section
-of \code{\link{GRAB.NullModel}}.
-Users do not need to specify the method explicitly since \code{GRAB.Marker} and
-\code{\link{GRAB.Region}} automatically detect it from \code{class(objNull)}.
-\subsection{Control Parameters}{
-
-The following parameters allow users to customize which markers to include in the analysis.
-If these parameters are not specified, \code{GRAB} will analyze all markers in the file.
-For PLINK files, the default is \code{control$AlleleOrder = "alt-first"};
-for BGEN files, the default is \code{control$AlleleOrder = "ref-first"}.
-\itemize{
-\item \code{IDsToIncludeFile}: See the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
-\item \code{IDsToExcludeFile}: See the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
-\item \code{RangesToIncludeFile}: See the \code{Details} section of
-\code{\link{GRAB.ReadGeno}}.
-\item \code{RangesToExcludeFile}: See the \code{Details} section of
-\code{\link{GRAB.ReadGeno}}.
-\item \code{AlleleOrder}: See the \code{Details} section of \code{\link{GRAB.ReadGeno}}.
-}
-
-The following parameters customize the quality control (QC) process:
-\itemize{
-\item \code{ImputeMethod}: A character string specifying imputation method: "mean"
-(default), "bestguess", or "drop". See the \code{Details} section of
-\code{\link{GRAB.ReadGeno}}.
-\item \code{MissingRateCutoff}: A numeric value \emph{(default=0.15)}. Markers with missing
-rate exceeding this value will be excluded from analysis.
-\item \code{MinMAFCutoff}: A numeric value \emph{(default=0.001)}. Markers with minor allele
-frequency (MAF) below this value will be excluded from analysis.
-\item \code{MinMACCutoff}: A numeric value \emph{(default=20)}. Markers with minor allele
-count (MAC) below this value will be excluded from analysis.
-\item \code{nMarkersEachChunk}: Number of markers \emph{(default=10000)} processed in each
-output chunk.
-}
-
-The following parameters customize the columns in the \code{OutputFile}.
-The columns \code{Marker}, \code{Info}, \code{AltFreq}, \code{AltCounts},
-\code{MissingRate}, and \code{Pvalue} are included for all methods.
-\itemize{
-\item \code{outputColumns}: Specifies additional columns to include in the output.
-For example, for the POLMM method, users can set
-\code{control$outputColumns = c("beta", "seBeta", "AltFreqInGroup")}:
-\itemize{
-\item \code{POLMM}: Default: \code{beta}, \code{seBeta};
-Optional: \code{zScore}, \code{AltFreqInGroup}, \code{nSamplesInGroup},
-\code{AltCountsInGroup}
-\item \code{SPACox}: Optional: \code{zScore}
-}
-}
-}
-}
-\examples{
-# Load a precomputed POLMM_NULL_Model object to perform step 2 without repeating step 1
-objNullFile <- system.file("extdata", "objPOLMMnull.RData", package = "GRAB")
-load(objNullFile)
-class(obj.POLMM)
-
-GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-OutputFile <- file.path(tempdir(), "simuOUTPUT.txt")
-outputColumns <- c(
-  "beta", "seBeta", "zScore", 
-  "nSamplesInGroup", "AltCountsInGroup", "AltFreqInGroup"
-)
-
-GRAB.Marker(
-  obj.POLMM,
-  GenoFile = GenoFile,
-  OutputFile = OutputFile,
-  control = list(outputColumns = outputColumns)
-)
-
-data.table::fread(OutputFile)
-
+Conducts single-marker association tests between genetic variants and phenotypes using
+various statistical methods supported by GRAB.
 }

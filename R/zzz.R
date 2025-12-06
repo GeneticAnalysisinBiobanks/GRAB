@@ -1,6 +1,10 @@
-## This file declares global variables to avoid R CMD check warnings
-## for variables used in non-standard evaluation (NSE) in data.table, dplyr, etc.
-## See ?globalVariables for details. This is required for CRAN compliance.
+## ------------------------------------------------------------------------------
+## zzz.R
+## Package-level globals and initialization helpers.
+## Declares symbols used in non-standard evaluation (NSE) to silence R CMD check
+## notes and ensure CRAN compliance.
+## ------------------------------------------------------------------------------
+
 utils::globalVariables(c(
   "ID", "AF_ref", "ALT", "ALT.x", "ALT.y", "Annos", "Cov", "E_pos1", "E_pos2", "G_Cov", "G_GxE_Cov1",
   "G_GxE_Cov2", "G_pos1", "G_pos2", "GxE_Cov", "GxE_pos1", "GxE_pos2", "ID.x", "ID.y", "ID1", "ID2",

@@ -1,8 +1,8 @@
 Package: GRAB
 Type: Package
 Title: Genome-Wide Robust Analysis for Biobank Data (GRAB)
-Version: 0.2.3
-Date: 2025-08-25
+Version: 0.2.4
+Date: 2025-12-04
 Authors@R: c(person(given = "Wenjian",
                     family = "Bi",
                     role = "aut"),
@@ -22,18 +22,22 @@ Authors@R: c(person(given = "Wenjian",
                     family = "Miao",
                     role = "cre",
                     email = "miaolin@pku.edu.cn"))
-Description: Provides a comprehensive suite of genome-wide association study (GWAS) methods
-    specifically designed for biobank-scale data. The package offers computationally efficient
-    and robust association tests for time-to-event traits (e.g., Bi et al., 2020 
-    <doi:10.1016/j.ajhg.2020.06.003>), ordinal categorical traits (e.g., Bi et al., 2021 
-    <doi:10.1016/j.ajhg.2021.03.019>), and longitudinal traits (Xu et al., 2025 
-    <doi:10.1038/s41467-025-56669-1>). Additionally, it includes functions for 
-    simulating genotype and phenotype data to support research and method development.
+Description: Provides a comprehensive suite of genome-wide association study (GWAS) methods 
+    specifically designed for biobank-scale data, including but not limited to, robust approaches 
+    for time-to-event traits (Li et al., 2025 <doi:10.1038/s43588-025-00864-z>) and ordinal 
+    categorical traits (Bi et al., 2021 <doi:10.1016/j.ajhg.2021.03.019>). The package also offers 
+    general frameworks for GWAS of any trait type (Bi et al., 2020 <doi:10.1016/j.ajhg.2020.06.003>), 
+    while accounting for sample relatedness (Xu et al., 2025 <doi:10.1038/s41467-025-56669-1>) or 
+    population structure (Ma et al., 2025 <doi:10.1186/s13059-025-03827-9>). By accurately 
+    approximating score statistic distributions using saddlepoint approximation (SPA), these 
+    methods can effectively control type I error rates for rare variants and in the presence of 
+    unbalanced phenotype distributions. Additionally, the package includes functions for simulating 
+    genotype and phenotype data to support research and method development.
 License: GPL (>= 2)
 Encoding: UTF-8
 Depends: R (>= 3.5.0)
 Imports: dplyr, data.table, mvtnorm, Matrix, RSQLite, lme4, ordinal, survival, Rcpp, RcppParallel, igraph
-Suggests: dbplyr, optparse, tidyr, R.utils, SKAT
+Suggests: SKAT, dbplyr, tidyr, R.utils
 LinkingTo: Rcpp, RcppArmadillo, RcppParallel, BH
 RoxygenNote: 7.3.2
 Roxygen: list(markdown = TRUE)

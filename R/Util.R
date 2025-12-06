@@ -1,3 +1,18 @@
+## ------------------------------------------------------------------------------
+## Util.R
+## Common utilities shared across GRAB analyses: logging, control merging,
+## GRM helpers, output checkpointing, and p-value aggregation.
+##
+## Functions:
+##   .message         : Structured log messages with timestamps
+##   .printParameters : Print formatted analysis parameters with timestamp
+##   updateControl    : Merge user control options into defaults
+##   updateSparseGRM  : Filter/reshape sparse GRM for a subject subset
+##   checkOutputFile  : Validate/resume output with an index file
+##   writeOutputFile  : Append outputs and progress safely
+##   CCT              : Cauchy Combination Test (combine p-values)
+## ------------------------------------------------------------------------------
+
 # Helper function for structured logging
 .message <- function(msg, ...) {
   timestamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
@@ -5,120 +20,190 @@
   message(formatted_msg)
 }
 
-#' A lower function to make groups based on phenotype
-#'
-#' In functions \code{\link{GRAB.Marker}} and \code{\link{GRAB.Region}}, users can get detailed information for each markers in different groups.
-#'
-#' @param yVec the phenotype recorded in \code{objNull$yVec}, the output object of function \code{\link{GRAB.NullModel}}.
-#' @return a numeric vector (\code{Group}, starting from 0) for group information.
-#' @details
-#' If \code{yVec} is categorical with groups <= 10, then \code{Group} is the same as \code{yVec}. Otherwise, \code{Group} is calcualted based on the rank of \code{yVec}.
-#'
-makeGroup <- function(yVec) {
-  # yVec is categorical data
-  m1 <- length(unique(yVec))
-  if (m1 <= 10) {
-    Group <- as.numeric(as.factor(yVec)) - 1
-  } # from 0 to (m1-1)
 
-  # yVec is quantitative data
-  if (length(unique(yVec)) > 10) {
-    Group <- floor((rank(yVec, ties.method = "max") - 1) / length(yVec) * 10)
-  } # from 0 to 9
+# Helper function to print formatted analysis parameters
+.printParameters <- function(title, params, control) {
+  timestamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
 
-  # yVec is a time-to-event data (tbc)
+  # Print title with timestamp
+  message(sprintf("[INFO] %s %s ...", timestamp, title))
 
-  return(Group)
-}
-
-checkObjNull <- function(objNull) {
-  NullModelClass <- class(objNull)
-  nm <- names(objNull)
-
-  ## check objNull
-  if (!NullModelClass %in% c(
-    "SPACox_NULL_Model", # SPACox: Survival analysis for unrelated subjects
-    "POLMM_NULL_Model", # POLMM: categorical data analysis
-    "SPAmix_NULL_Model", # SPAmix: mixture population analysis
-    "SPAGRM_NULL_Model", # SPAGRM: related subjects
-    "SAGELD_NULL_Model", # SAGELD: GxE for longitudinal data
-    "WtCoxG_NULL_Model"
-  )) {
-    stop('class(objNull) should be one of
-         c("SPACox_NULL_Model", "POLMM_NULL_Model", "SPAmix_NULL_Model", "SPAGRM_NULL_Model", "SAGELD_NULL_Model", "WtCoxG_NULL_Model")')
+  # Print each parameter with indentation
+  for (name in names(params)) {
+    value <- params[[name]]
+    if (!is.null(value)) {
+      message(sprintf("    %s: %s", name, paste(value, collapse = ", ")))
+    }
   }
 
-  if (any(!c("subjData", "N") %in% nm)) {
-    stop("c('subjData', 'N') should be in names(objNull).")
+  # Print control parameters with indentation
+  if (!is.null(control) && length(control) > 0) {
+    message("    Control parameters:")
+    for (name in names(control)) {
+      value <- control[[name]]
+      # Format value based on type
+      if (is.numeric(value)) {
+        message(sprintf("      %s: %g", name, value))
+      } else if (is.logical(value)) {
+        message(sprintf("      %s: %s", name, as.character(value)))
+      } else if (is.character(value)) {
+        message(sprintf("      %s: %s", name, value))
+      } else {
+        message(sprintf("      %s: %s", name, paste(value, collapse = ", ")))
+      }
+    }
   }
-
-  return(NullModelClass)
 }
 
-checkOutputFile <- function(OutputFile,
-                            OutputFileIndex,
-                            AnalysisType, ## "Marker" or "Region"
-                            nEachChunk) {
+
+# Function to update control parameters from defaults
+updateControl <- function(control, default.control) {
+  if (is.null(default.control)) {
+    return(control)
+  }
+
+  # use the default setting or update it
+  if (!is.null(control)) {
+    ctrl.nm <- names(control)
+    for (nm in ctrl.nm) {
+      default.control[[nm]] <- control[[nm]]
+    }
+  }
+
+  control <- default.control
+  return(control)
+}
+
+
+# Suppose that subjData is only a subset of the subjects in SparseGRM.
+# This function is to extract subjects from SparseGRM.
+updateSparseGRM <- function(SparseGRM, subjData) {
+  # later add another column to specify the relationship degree
+  if (any(toupper(colnames(SparseGRM)) != c("ID1", "ID2", "VALUE"))) {
+    stop("The header in 'SparseGRMFile' should be c('ID1','ID2','Value')")
+  }
+
+  colnames(SparseGRM) <- toupper(colnames(SparseGRM))
+
+  tempGRM1 <- SparseGRM
+  tempGRM2 <- data.frame(
+    ID1 = tempGRM1$ID2,
+    ID2 = tempGRM1$ID1,
+    VALUE = tempGRM1$VALUE
+  )
+
+  tempGRM <- rbind(tempGRM1, tempGRM2)
+  tempGRM <- tempGRM[-1 * which(duplicated(tempGRM)), ]
+
+  ID1 <- tempGRM$ID1
+  ID2 <- tempGRM$ID2
+  value <- tempGRM$VALUE
+
+  if (any(!is.element(subjData, ID1))) {
+    stop("At least one of subjects is not in SparseGRM.")
+  }
+
+  location1 <- match(ID1, subjData)
+  location2 <- match(ID2, subjData)
+  pos <- which(!is.na(location1) & !is.na(location2))
+  locations <- rbind(
+    location1[pos] - 1, # -1 is to convert R to C++
+    location2[pos] - 1
+  )
+
+  value <- value[pos]
+  nSubj <- length(subjData)
+  KinMatListR <- list(
+    locations = locations,
+    values = value,
+    nSubj = nSubj
+  )
+
+  return(KinMatListR)
+}
+
+
+# Check and validate output file settings for analysis restart capability
+checkOutputFile <- function(
+  OutputFile, # Character string specifying the output file path.
+  OutputFileIndex, # Character string specifying the index file path for tracking progress.
+  AnalysisType, # Character string indicating analysis type ("Marker" or "Region").
+  nEachChunk # Integer specifying the number of items per chunk.
+) {
   ## The following messages are for 'OutputFileIndex'
-  message1 <- "This is the output index file for GRAB package to record the end point in case users want to restart the analysis. Please do not modify this file."
+  message1 <- paste("This is the output index file for GRAB package to record",
+                    "the end point in case users want to restart the analysis.",
+                    "Please do not modify this file.")
   message2 <- paste("This is a", AnalysisType, "level analysis.")
   message3 <- paste("nEachChunk =", nEachChunk)
-  # message4 = paste("Have completed the analysis of chunk", indexChunk)
   message5 <- "Have completed the analyses of all chunks."
-
-  ## an R list of output
-  if (missing(OutputFile)) {
-    stop("Argument of 'OutputFile' is required.")
-  }
 
   if (file.exists(OutputFile)) {
     if (!file.exists(OutputFileIndex)) {
-      stop(paste0("'OutputFile' of '", OutputFile, "' has existed.
-                  Please use another 'OutputFile' or remove the existing one."))
+      stop(paste0("'OutputFile' of '", OutputFile, "' has existed. ",
+                  "Please use another 'OutputFile' or remove the existing one."))
     } else {
-      outIndexData <- read.table(OutputFileIndex, header = FALSE, sep = "\t")
+      outIndexData <- read.table(
+        OutputFileIndex,
+        header = FALSE,
+        sep = "\t"
+      )
 
-      if (outIndexData[1, 1] != message1 | outIndexData[2, 1] != message2 | outIndexData[3, 1] != message3) {
-        stop(paste0("'OutputFileIndex' of '", OutputFileIndex, "' is not as expected.
-                    Probably, it has been modified by user, which is not permitted.
-                    Please remove the existing files of 'OutputFile' and 'OutputFileIndex'."))
+      # Validate index file structure
+      if (outIndexData[1, 1] != message1 ||
+            outIndexData[2, 1] != message2 ||
+            outIndexData[3, 1] != message3) {
+        stop(paste0("'OutputFileIndex' of '", OutputFileIndex, "' is not as expected. ",
+                    "Probably, it has been modified by user, which is not permitted. ",
+                    "Please remove the existing files of 'OutputFile' and 'OutputFileIndex'."))
       }
 
       lastMessage <- outIndexData[nrow(outIndexData), 1]
       if (lastMessage == message5) {
-        End <- TRUE
+        # Analysis already completed
         indexChunk <- outIndexData[nrow(outIndexData) - 1, 1]
         indexChunk <- as.numeric(gsub("Have completed the analysis of chunk ", "", indexChunk))
-        .message("Analysis completed: %d chunks processed", indexChunk)
+
+        stop(
+          "Analysis completed in an earlier run. Results saved in '",
+          OutputFile,
+          "'. Use a different 'OutputFile' to restart analysis."
+        )
       } else {
-        End <- FALSE
+        # Partial analysis - restart from next chunk
         indexChunk <- lastMessage
         indexChunk <- as.numeric(gsub("Have completed the analysis of chunk ", "", indexChunk))
-        .message("Restarting analysis from chunk %d", indexChunk + 1)
+
+        .message(
+          "Part of analysis completed and saved in %s. Restarting from chunk %d",
+          OutputFileIndex, indexChunk + 1
+        )
       }
     }
-    Start <- FALSE
   } else {
-    Start <- TRUE
-    End <- FALSE
+    # New analysis - start from beginning
     indexChunk <- 0
   }
 
-  returnList <- list(Start = Start, End = End, indexChunk = indexChunk)
-  return(returnList)
+  return(indexChunk)
 }
 
-writeOutputFile <- function(Output,
-                            OutputFile,
-                            OutputFileIndex,
-                            AnalysisType,
-                            nEachChunk,
-                            indexChunk,
-                            Start, # TRUE or FALSE, to indicate is the 'Output' is the first one to save into 'OutputFile'
-                            End) # TRUE or FALSE, to indicate is the 'Output' is the last one to save into 'OutputFile'
-{
+
+# Write analysis output to files with progress tracking
+writeOutputFile <- function(
+  Output, # List of output data to write to files.
+  OutputFile, # Character vector of output file paths.
+  OutputFileIndex, # Character string specifying the index file path.
+  AnalysisType, # Character string indicating analysis type.
+  nEachChunk, # Integer specifying the number of items per chunk.
+  indexChunk, # Integer indicating the current chunk index.
+  Start, # Logical indicating if this is the first output to save.
+  End # Logical indicating if this is the last output to save.
+) {
   ## The following messages are for 'OutputFileIndex'
-  message1 <- "This is the output index file for GRAB package to record the end point in case users want to restart the analysis. Please do not modify this file."
+  message1 <- paste("This is the output index file for GRAB package to record",
+                    "the end point in case users want to restart the analysis.",
+                    "Please do not modify this file.")
   message2 <- paste("This is a", AnalysisType, "level analysis.")
   message3 <- paste("nEachChunk =", nEachChunk)
   message4 <- paste("Have completed the analysis of chunk", indexChunk)
@@ -134,239 +219,146 @@ writeOutputFile <- function(Output,
   if (n1 != 0) {
     for (i in 1:n1) {
       if (Start) {
-        write.table(Output[[i]], OutputFile[[i]], quote = FALSE, sep = "\t", append = FALSE, col.names = TRUE, row.names = FALSE)
+        write.table(
+          Output[[i]], OutputFile[[i]],
+          quote = FALSE, sep = "\t", append = FALSE,
+          col.names = TRUE, row.names = FALSE
+        )
       } else {
-        write.table(Output[[i]], OutputFile[[i]], quote = FALSE, sep = "\t", append = TRUE, col.names = FALSE, row.names = FALSE)
+        write.table(
+          Output[[i]], OutputFile[[i]],
+          quote = FALSE, sep = "\t", append = TRUE,
+          col.names = FALSE, row.names = FALSE
+        )
       }
     }
   }
 
   if (Start) {
-    write.table(c(message1, message2, message3), OutputFileIndex,
-      quote = FALSE, sep = "\t", append = FALSE, col.names = FALSE, row.names = FALSE
+    write.table(
+      c(message1, message2, message3), OutputFileIndex,
+      quote = FALSE, sep = "\t", append = FALSE,
+      col.names = FALSE, row.names = FALSE
     )
   }
 
-  write.table(message4, OutputFileIndex, quote = FALSE, sep = "\t", append = TRUE, col.names = FALSE, row.names = FALSE)
+  write.table(
+    message4, OutputFileIndex,
+    quote = FALSE, sep = "\t", append = TRUE,
+    col.names = FALSE, row.names = FALSE
+  )
 
   if (End) {
-    write.table(message5, OutputFileIndex, quote = FALSE, sep = "\t", append = TRUE, col.names = FALSE, row.names = FALSE)
-  }
-}
-
-# This is the output index file for GRAB package. This file is to record the end point in case users want to restart the analysis. Please do not modify this file.
-# This is a region/marker level analysis.
-# The analysis has been completed.
-
-checkControl <- function(control = NULL) {
-  default.control <- list(
-    impute_method = "fixed", # the below are shared parameters for both single marker testing and region-based testing
-    missing_cutoff = 0.15,
-    min_maf_marker = 0.001,
-    min_mac_marker = 20,
-    max_maf_region = 0.01,
-    nMarkersEachChunk = 10000,
-    memory_chunk = 4,
-    kernel = "linear.weighted", # the below are parameters for region-based testing
-    method_region = "SKAT-O",
-    weights_beta = c(1, 25),
-    r_corr = NULL,
-    printPCGInfo = FALSE,
-    tolPCG = 1e-5,
-    maxiterPCG = 100,
-    SPA_cutoff = 2
-  )
-
-  # use the default setting or update it
-  if (!is.null(control)) {
-    if (!is.list(control)) {
-      stop("Argument of 'control' should be 'list'.")
-    }
-    ctrl.nm <- names(control)
-    for (nm in ctrl.nm) {
-      default.control[[nm]] <- control[[nm]]
-    }
-  }
-
-  control <- default.control
-
-  if (!control$impute_method %in% c("fixed", "bestguess", "random")) {
-    stop("'impute.method' should be 'fixed','bestguess', or 'random'. Check 'Details' for more details.")
-  }
-
-  if (control$missing_cutoff > 1 | control$missing_cutoff < 0) {
-    stop("'missing_cutoff' should be between 0 and 1. The default setting is 0.15.")
-  }
-
-  if (control$SPA_cutoff < 0) {
-    stop("'SPA_cutoff' should be greater than or equal to 0. The default setting is 2. Check 'Details' for more details.")
-  }
-
-  # only used in single-marker analysis
-  if (control$min_maf_marker > 1 | control$min_maf_marker <= 0) {
-    stop("'min_maf_marker' should be between 0 and 1. The default setting is 0.001.")
-  }
-
-  if (control$min_mac_marker <= 5) {
-    stop("'min_mac_marker' should be greater than 5. The default setting is 20.")
-  }
-
-  if (control$nMarkers_output <= 999) {
-    stop("nMarkers_output should be greater than or equal to 1000. The default setting is 10000.")
-  }
-
-  # only used in region-based analysis
-  if (control$max_maf_region > 1 | control$max_maf_region <= 0) {
-    stop("'max_maf_region' should be between 0 and 1. The default setting is 0.01.")
-  }
-
-  if (!control$kernel %in% c("linear", "linear.weighted")) {
-    stop("'kernel' should be 'linear' or 'linear.weighted'. Check 'Details' for more details.")
-  }
-
-  if (length(control$weights_beta) != 2 | any(control$weights_beta < 0)) {
-    stop("length of 'weights_beta' should be 2. The two elements in 'weights_beta' should be non-negative. Check 'Details' for more details.")
-  }
-
-  method_region <- control$method_region
-
-  if (!method_region %in% c("SKAT", "Burden", "SKAT-O")) {
-    stop("'method' should be 'SKAT', 'Burden', or 'SKAT-O'. Check 'Details' for more details.")
-  }
-
-  if (is.null(control$r_corr)) {
-    if (method_region == "SKAT") control$r_corr <- 0
-    if (method_region == "Burden") control$r_corr <- 1
-    if (method_region == "SKAT-O") control$r_corr <- c(0, 0.1^2, 0.2^2, 0.3^2, 0.5^2, 0.5, 1) # r_corr = 0 is SKAT, r_corr = 1 is Burden Test
-  } else {
-    .message("Custom r_corr specified, ignoring method_region")
-  }
-
-  if (any(control$r_corr < 0 | control$r_corr > 1)) {
-    stop("'r_corr' should be a numeric vector in which each element is between 0 and 1. Check 'Details' for more details.")
-  }
-
-  return(control)
-}
-
-
-getAnnoList <- function(AnnoFile, AnnoHeader) {
-  if (!file.exists(AnnoFile)) {
-    stop(paste("Cannot find AnnoFile in", AnnoFile))
-  }
-
-  AnnoData <- data.table::fread(AnnoFile, header = TRUE, stringsAsFactors = FALSE)
-  AnnoData <- as.data.frame(AnnoData)
-  HeaderInAnnoFile <- colnames(AnnoData)
-
-  if (any(HeaderInAnnoFile[1:2] != c("GENE", "SNP"))) {
-    stop("The first two elements in the header of AnnoFile should be c('GENE', 'SNP').")
-  }
-
-  if (!is.null(AnnoHeader)) {
-    if (any(!AnnoHeader %in% HeaderInAnnoFile)) {
-      stop("At least one element in AnnoHeader is not in the header of AnnoFile.")
-    }
-    posAnno <- which(HeaderInAnnoFile %in% AnnoHeader)
-  } else {
-    posAnno <- NULL
-  }
-
-  AnnoList <- list()
-  uGENE <- unique(AnnoData$GENE)
-  for (g in uGENE) {
-    pos <- which(AnnoData$GENE == g)
-    SNP <- AnnoData$SNP[pos]
-    AnnoMat <- cbind(All = 1, AnnoData[pos, posAnno, drop = FALSE])
-    rownames(AnnoMat) <- SNP
-    if (any(duplicated(SNP))) {
-      stop(paste0("Please check AnnoFile: in gene ", g, ", duplicated SNPs exist."))
-    }
-    AnnoList[[g]] <- list(
-      SNP = SNP,
-      AnnoMat = AnnoMat
+    write.table(
+      message5, OutputFileIndex,
+      quote = FALSE, sep = "\t", append = TRUE,
+      col.names = FALSE, row.names = FALSE
     )
   }
-
-  return(AnnoList)
 }
 
-# make a matrix that can be passed to arma::sp_mat
-makeSPmatR <- function(SparseGRM, # three columns of ID1, ID2, and value
-                       subjData) {
-  SparseGRM <- subset(SparseGRM, ID1 %in% subjData & ID2 %in% subjData)
 
-  row.diag <- which(SparseGRM$ID1 == SparseGRM$ID2)
-  SparseGRM.diag <- SparseGRM[row.diag, ]
-  SparseGRM.off.d1 <- SparseGRM[-1 * row.diag, ]
-  SparseGRM.off.d2 <- data.frame(
-    ID1 = SparseGRM.off.d1$ID2,
-    ID2 = SparseGRM.off.d1$ID1,
-    value = SparseGRM.off.d1$value
-  )
-
-  SparseGRM <- rbind(SparseGRM.diag, SparseGRM.off.d1, SparseGRM.off.d2)
-
-  ID1 <- SparseGRM$ID1
-  ID2 <- SparseGRM$ID2
-  value <- SparseGRM$value
-
-  if (any(!is.element(subjData, ID1))) {
-    stop("At least one of subjects in `subjData` is not in `SparseGRM`.")
+#' Cauchy Combination Test for p-value aggregation
+#'
+#' Combines multiple p-values using the Cauchy distribution method, which provides
+#' analytical p-value calculation under arbitrary dependency structures.
+#'
+#' @param pvals Numeric vector of p-values to combine (each between 0 and 1).
+#'   P-values equal to 1 are automatically adjusted to 0.999. P-values equal
+#'   to 0 will cause an error.
+#' @param weights Numeric vector of non-negative weights for each p-value.
+#'   If NULL, equal weights are used. Must have same length as pvals.
+#' @return Single aggregated p-value combining all input p-values.
+#' @details
+#' The Cauchy Combination Test (CCT) transforms p-values using the inverse Cauchy
+#' distribution and combines them with specified weights. This method is particularly
+#' powerful because it:
+#' \itemize{
+#'   \item Works under arbitrary dependency structures
+#'   \item Provides exact analytical p-values (no simulation needed)
+#'   \item Maintains good power properties across different scenarios
+#' }
+#'
+#' \strong{Special Cases:}
+#' - If any p-value equals 0, returns 0 immediately
+#' - P-values equal to 1 are adjusted to 0.999 with a warning
+#' - Very small p-values (< 1e-16) receive special numerical treatment
+#'
+#' @examples
+#' # Basic usage with equal weights
+#' pvalues <- c(0.02, 0.0004, 0.2, 0.1, 0.8)
+#' CCT(pvals = pvalues)
+#'
+#' # Usage with custom weights
+#' weights <- c(2, 3, 1, 1, 1)
+#' CCT(pvals = pvalues, weights = weights)
+#'
+#' @references
+#' Liu, Y., & Xie, J. (2020). Cauchy combination test: a powerful test
+#' with analytic p-value calculation under arbitrary dependency structures.
+#' \emph{Journal of the American Statistical Association}, 115(529), 393-402.
+#' \doi{10.1080/01621459.2018.1554485}
+#'
+CCT <- function(
+  pvals,
+  weights = NULL
+) {
+  # Validate p-values for missing values
+  if (sum(is.na(pvals)) > 0) {
+    stop("Cannot have NAs in the p-values!")
   }
 
-  location1 <- match(ID1, subjData)
-  location2 <- match(ID2, subjData)
-
-  locations <- rbind(
-    location1 - 1, # -1 is to convert R to C++
-    location2 - 1
-  )
-
-  SPmatR <- list(
-    locations = locations,
-    values = value
-  )
-
-  return(SPmatR)
-}
-
-getMaxMarkers <- function(memory_chunk,
-                          n, J, p) {
-  # THE BELOW include some large matrix that takes most of the memory usage
-
-  # VarSMat = mat(indexPassingQC, indexPassingQC)
-  # adjGMat = fmat(n, maxMarkers): 4*n*maxMarkers
-  # ZPZ_adjGMat = fmat(n, maxMarkers): 4*n*maxMarkers
-  # CovaMat = mat(n(J-1) x p): 8*n*(J-1)*p
-  # arma::mat m_XXR_Psi_RX;  // XXR_Psi_RX ( n x p )
-  # arma::mat m_XR_Psi_R;    // XR_Psi_R ( p x n ), sum up XR_Psi_R ( p x n(J-1) ) for each subject
-  # arma::vec m_RymuVec;     // n x 1: row sum of the n x (J-1) matrix R %*% (yMat - muMat)
-  # arma::mat m_iSigmaX_XSigmaX; // n(J-1) x p
-  # arma::mat m_CovaMat;     // n(J-1) x p
-
-  fixed.memory <- 8 * (3 * (n * (J - 1) * p) + 2 * (n * p)) / 1e9
-  if (memory_chunk < fixed.memory) {
-    stop(paste0("Please give control$memory_chunk greater than ", fixed.memory, "."))
+  # Ensure all p-values are in valid range [0, 1]
+  if ((sum(pvals < 0) + sum(pvals > 1)) > 0) {
+    stop("All p-values must be between 0 and 1!")
   }
 
-  maxMarkers <- (memory_chunk - fixed.memory) * 1e9 / (8 * n)
-  maxMarkers <- maxMarkers / 2
-  maxMarkers <- floor(maxMarkers)
+  # Handle edge cases: p-values exactly 0 or 1
+  is.zero <- (sum(pvals == 0) >= 1)
+  which.one <- which(pvals == 1)
+  is.one <- (length(which.one) >= 1)
 
-  return(maxMarkers)
-}
-
-####### ---------- Get Weights from MAF ---------- #######
-
-Get_Weights <- function(kernel, freqVec, weights_beta) {
-  if (kernel == "linear") {
-    weights <- rep(1, length(freqVec))
+  if (is.zero && is.one) {
+    stop("Cannot have both 0 and 1 p-values!")
+  }
+  if (is.zero) {
+    return(0)  # If any p-value is 0, combined p-value is 0
+  }
+  if (is.one) {
+    warning("There are p-values that are exactly 1!")
+    pvals[which.one] <- 0.999  # Adjust p-values of 1 to avoid numerical issues
   }
 
-  if (kernel == "linear.weighted") {
-    weights <- dbeta(freqVec, weights_beta[1], weights_beta[2])
+  # Validate and standardize weights
+  if (is.null(weights)) {
+    weights <- rep(1 / length(pvals), length(pvals))  # Equal weights
+  } else if (length(weights) != length(pvals)) {
+    stop("The length of weights should be the same as that of the p-values!")
+  } else if (sum(weights < 0) > 0) {
+    stop("All the weights must be positive!")
+  } else {
+    weights <- weights / sum(weights)  # Normalize weights to sum to 1
   }
 
-  return(weights)
+  # Calculate CCT test statistic with special handling for very small p-values
+  is.small <- (pvals < 1e-16)
+  if (sum(is.small) == 0) {
+    # Standard calculation when no extremely small p-values
+    cct.stat <- sum(weights * tan((0.5 - pvals) * pi))
+  } else {
+    # Special handling for very small p-values to avoid numerical issues
+    cct.stat <- sum((weights[is.small] / pvals[is.small]) / pi)
+    cct.stat <- cct.stat + sum(weights[!is.small] * tan((0.5 - pvals[!is.small]) * pi))
+  }
+
+  # Calculate final p-value from CCT statistic
+  if (cct.stat > 1e+15) {
+    # Asymptotic approximation for very large test statistics
+    pval <- (1 / cct.stat) / pi
+  } else {
+    # Standard Cauchy distribution calculation
+    pval <- 1 - pcauchy(cct.stat)
+  }
+
+  return(pval)
 }

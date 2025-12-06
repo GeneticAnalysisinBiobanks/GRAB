@@ -10,7 +10,10 @@ GRAB.SAGELD()
 No return value, called for side effects (prints information about the SAGELD method to the console).
 }
 \description{
-SAGELD method is Scalable and Accurate algorithm for Gene-Environment interaction analysis using Longitudinal Data for related samples in a large-scale biobank. SAGELD extended SPA\if{html}{\out{<sub>}}GRM\if{html}{\out{</sub>}} to support gene-environment interaction analysis.
+SAGELD method is Scalable and Accurate algorithm for Gene-Environment
+interaction analysis using Longitudinal Data for related samples in a
+large-scale biobank. SAGELD extended SPA\if{html}{\out{<sub>}}GRM\if{html}{\out{</sub>}} to support
+gene-environment interaction analysis.
 }
 \details{
 Additional list of \code{control} in \code{SAGELD.NullModel()} function.

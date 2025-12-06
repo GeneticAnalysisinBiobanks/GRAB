@@ -1,125 +1,305 @@
-#' POLMM method in GRAB package
+## ------------------------------------------------------------------------------
+## POLMM.R
+##
+## Functions:
+##   GRAB.POLMM                  : Print brief method information for marker-level analysis.
+##   GRAB.POLMM.Region           : Print brief method information for region-level analysis.
+##   checkControl.NullModel.POLMM: Validate and populate null model control list.
+##   fitNullModel.POLMM          : Fit the POLMM null model (C++ backend setup).
+##   checkControl.Marker.POLMM   : Validate marker-level control parameters.
+##   setMarker.POLMM             : Initialize marker-level analysis objects.
+##   checkControl.Region.POLMM   : Validate region-level control parameters.
+##   setRegion.POLMM             : Prepare region (gene/set) analysis context.
+##   mainRegion.POLMM            : Run region-based association tests.
+## ------------------------------------------------------------------------------
+
+#' Instruction of POLMM method
 #'
-#' POLMM method is to analyze ordinal categorical data for related samples in a large-scale biobank.
+#' POLMM inplements single-variant association tests for ordinal categorical phenotypes, which 
+#' accounts for sample relatedness. It can control type I error rates at a stringent significance 
+#' level regardless of the phenotypic distribution, and is more powerful than alternative methods.
+#' This instruction covers null model fitting and marker-level analysis using POLMM.
+#' For region-based analysis with POLMM-GENE, see \code{\link{GRAB.POLMM.Region}}.
 #'
-#' @details
-#' Please check \code{?GRAB.control} for the generic list of \code{control} in \code{GRAB.NullModel()} and \code{GRAB.Marker()}.
-#'
-#' Additional list of \code{control} in \code{GRAB.NullModel()} function
-#' Additional list of \code{control} in \code{GRAB.Marker()} function
-#' Additional list of \code{control} in \code{GRAB.Region()} function
-#'
-#' @return No return value, called for side effects (prints information about the POLMM method to the console).
+#' @return NULL
 #'
 #' @examples
-#' ### First, read phenotype data and convert to a factor
+#' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+#' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
+#' OutputFile <- file.path(tempdir(), "resultPOLMMmarker.txt")
+#'
 #' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
 #' PhenoData <- data.table::fread(PhenoFile, header = TRUE)
 #' PhenoData$OrdinalPheno <- factor(PhenoData$OrdinalPheno, levels = c(0, 1, 2))
-#' 
-#' ### Step 1: Fit a null model
-#' # If SparseGRMFile is provided, the sparse GRM will be used in model fitting.
-#' # If SparseGRMFile isn't provided, GRAB.NullModel() will calculate dense GRM from GenoFile.
-#' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
-#' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-#' 
+#
+#' # Step 1
 #' obj.POLMM <- GRAB.NullModel(
-#'   formula = OrdinalPheno ~ AGE + GENDER,
-#'   data = PhenoData,
-#'   subjData = PhenoData$IID,
-#'   method = "POLMM",
-#'   traitType = "ordinal",
-#'   GenoFile = GenoFile,
-#'   SparseGRMFile = SparseGRMFile,
-#'   control = list(
-#'     showInfo = FALSE,
-#'     LOCO = FALSE,
-#'     tolTau = 0.2,
-#'     tolBeta = 0.1
-#'   )
+#'  OrdinalPheno ~ AGE + GENDER,
+#'  data = PhenoData,
+#'  subjIDcol = "IID",
+#'  method = "POLMM",
+#'  traitType = "ordinal",
+#'  GenoFile = GenoFile,
+#'  SparseGRMFile = SparseGRMFile
 #' )
 #'
-#' ### Step 2(a): Single-variant tests using POLMM
-#' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-#' OutputFile <- file.path(tempdir(), "simuMarkerOutput.txt")
-#' 
-#' GRAB.Marker(
-#'   objNull = obj.POLMM,
-#'   GenoFile = GenoFile,
-#'   OutputFile = OutputFile
-#' )
+#' # Step 2
+#' GRAB.Marker(obj.POLMM, GenoFile, OutputFile,
+#'   control = list(ifOutGroup = TRUE))
 #'
-#' data.table::fread(OutputFile)
+#' head(data.table::fread(OutputFile))
+#'
+#' @details
+#' \strong{Genotype file}: \code{GenoFile} is mandatory for \code{GRAB.NullModel()} when using POLMM.
+#' It is required for estimating the variance ratio parameter, which is essential for calibrating
+#' the test statistics in subsequent association tests.
+#'
+#' \strong{Genetic Relationship Matrix (GRM) Options}:
+#' POLMM supports both sparse and dense GRM for modeling genetic relatedness:
+#' \itemize{
+#'   \item If \code{SparseGRMFile} is provided to \code{GRAB.NullModel()},
+#'      the sparse GRM will be used in model fitting.
+#'   \item If \code{SparseGRMFile} is not provided, \code{GRAB.NullModel()}
+#'      will calculate a dense GRM from \code{GenoFile}.
+#' }
+#'
+#' \strong{Additional Control Parameters for GRAB.NullModel()}:
+#' \itemize{
+#'   \item \code{memoryChunk} (numeric, default: 2): Memory chunk size for computation.
+#'   \item \code{seed} (integer, default: -1): Random seed (-1 means no seed is set).
+#'   \item \code{tracenrun} (integer, default: 30): Number of runs for trace calculation.
+#'   \item \code{maxiter} (integer, default: 100): Maximum number of iterations for model fitting.
+#'   \item \code{tolBeta} (numeric, default: 0.001): Convergence tolerance for beta estimates.
+#'   \item \code{tolTau} (numeric, default: 0.002): Convergence tolerance for tau estimates.
+#'   \item \code{tau} (numeric, default: 0.2): Initial variance component value.
+#'   \item \code{maxiterPCG} (integer, default: 100): Maximum iterations for preconditioned conjugate gradient.
+#'   \item \code{tolPCG} (numeric, default: 1e-6): Tolerance for preconditioned conjugate gradient.
+#'   \item \code{showInfo} (logical, default: FALSE): Whether to print PCG iteration information for debugging.
+#'   \item \code{maxiterEps} (integer, default: 100): Maximum iterations for epsilon estimation.
+#'   \item \code{tolEps} (numeric, default: 1e-10): Tolerance for epsilon estimation.
+#'   \item \code{minMafVarRatio} (numeric, default: 0.1): Minimum MAF for variance ratio estimation.
+#'   \item \code{maxMissingVarRatio} (numeric, default: 0.1): Maximum missing rate for variance ratio estimation.
+#'   \item \code{nSNPsVarRatio} (integer, default: 20): Number of SNPs used for variance ratio estimation.
+#'   \item \code{CVcutoff} (numeric, default: 0.0025): Coefficient of variation cutoff.
+#'   \item \code{grainSize} (integer, default: 1): Grain size for parallel processing.
+#'   \item \code{minMafGRM} (numeric, default: 0.01): Minimum MAF for GRM construction.
+#'   \item \code{maxMissingGRM} (numeric, default: 0.1): Maximum missing rate for GRM construction.
+#' }
+#'
+#' \strong{Method-specific elements in the \code{POLMM_NULL_Model} object returned by \code{GRAB.NullModel()}:}:
+#' \itemize{
+#'   \item \code{M}: Number of ordinal categories (integer).
+#'   \item \code{iter}: Number of iterations to convergence (numeric).
+#'   \item \code{eta}: Linear predictor (matrix).
+#'   \item \code{yVec}: Phenotype matrix (matrix).
+#'   \item \code{Cova}: Design matrix of covariates (matrix).
+#'   \item \code{muMat}: Fitted probabilities for each category (matrix).
+#'   \item \code{YMat}: Indicator matrix for ordinal categories (matrix).
+#'   \item \code{beta}: Estimated covariate coefficients (matrix).
+#'   \item \code{bVec}: Random effect estimates (matrix).
+#'   \item \code{tau}: Variance component estimate (numeric).
+#'   \item \code{eps}: Cutpoints for ordinal categories (matrix).
+#' }
+#'
+#' \strong{Additional Control Parameters for GRAB.Marker()}:
+#' \itemize{
+#'   \item \code{ifOutGroup} (logical, default: FALSE): Whether to output group-specific statistics
+#'      (alternative allele frequency, counts, and sample size for each ordinal category).
+#'      When TRUE, adds columns AltFreqInGroup.*, AltCountsInGroup.*, and nSamplesInGroup.* to the output file.
+#' }
+#'
+#' \strong{Marker-level results} (\code{OutputFile}) columns:
+#' \describe{
+#'   \item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}
+#'   \item{Info}{Marker information in format CHR:POS:REF:ALT.}
+#'   \item{AltFreq}{Alternative allele frequency in the overall sample.}
+#'   \item{AltCounts}{Total count of alternative alleles.}
+#'   \item{MissingRate}{Proportion of missing genotypes.}
+#'   \item{Pvalue}{P-value from the score test.}
+#'   \item{beta}{Effect size estimate (log-odds scale).}
+#'   \item{seBeta}{Standard error of beta.}
+#'   \item{zScore}{Z-score from the score test.}
+#'   \item{AltFreqInGroup.1, AltFreqInGroup.2, ...}{(Only if \code{ifOutGroup = TRUE})
+#'      Alternative allele frequency in each ordinal category.}
+#'   \item{AltCountsInGroup.1, AltCountsInGroup.2, ...}{(Only if \code{ifOutGroup = TRUE})
+#'      Alternative allele counts in each ordinal category.}
+#'   \item{nSamplesInGroup.1, nSamplesInGroup.2, ...}{(Only if \code{ifOutGroup = TRUE}) Sample size in each ordinal category.}
+#' }
+#' @references
+#' Bi et al. (2021). Efficient mixed model approach for large-scale genome-wide association studies 
+#' of ordinal categorical phenotypes. \doi{10.1016/j.ajhg.2021.03.019}
+#'
+GRAB.POLMM <- function() {
+  .message("For instructions on step 1 and step 2 of marker-level analysis, see ?GRAB.POLMM")
+  .message("For instructions on step 2 of region-based analysis, see ?GRAB.POLMM.Region.")
+  .message("Step 1 of region-based analysis is the same as step 1 of marker-level analysis, see ?GRAB.POLMM")
+}
+
+
+#' Instruction of POLMM-GENE method
 #' 
-#' ### Step 2(b): Set-based tests using POLMM-GENE
-#' GenoFile <- system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
-#' OutputFile <- file.path(tempdir(), "simuRegionOutput.txt")
-#' GroupFile <- system.file("extdata", "simuPLINK_RV.group", package = "GRAB")
+#' POLMM-GENE implements region-based association tests for ordinal categorical phenotypes,
+#' adjusting for sample relatedness. It is well-suited for analyzing rare variants in large-scale biobank data,
+#' and effectively controls type I error rates while maintaining statistical power.
+#'
+#' For single-variant tests, see \code{\link{GRAB.POLMM}}.
+#'
+#' @return NULL
+#'
+#' @examples
+#' GenoFileStep1 <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+#' GenoFileStep2 <- system.file("extdata", "simuPLINK_RV.bed", package = "GRAB")
 #' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
+#' GroupFile <- system.file("extdata", "simuPLINK_RV.group", package = "GRAB")
+#' OutputFile <- file.path(tempdir(), "resultPOLMMregion.txt")
 #'
-#' GRAB.Region(
-#'   objNull = obj.POLMM,
-#'   GenoFile = GenoFile,
-#'   GenoFileIndex = NULL,
-#'   OutputFile = OutputFile,
-#'   OutputFileIndex = NULL,
+#' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
+#' PhenoData <- data.table::fread(PhenoFile, header = TRUE)
+#' PhenoData$OrdinalPheno <- factor(PhenoData$OrdinalPheno, levels = c(0, 1, 2))
+#
+#' # Step 1
+#' obj.POLMM <- GRAB.NullModel(
+#'  OrdinalPheno ~ AGE + GENDER,
+#'  data = PhenoData,
+#'  subjIDcol = "IID",
+#'  method = "POLMM",
+#'  traitType = "ordinal",
+#'  GenoFile = GenoFileStep1,
+#'  SparseGRMFile = SparseGRMFile,
+#'  control = list(tolTau = 0.2, tolBeta = 0.1)
+#' )
+#'
+#' # Step 2
+#' GRAB.Region(obj.POLMM, GenoFileStep2, OutputFile,
 #'   GroupFile = GroupFile,
 #'   SparseGRMFile = SparseGRMFile,
 #'   MaxMAFVec = "0.01,0.005"
 #' )
 #'
-#' data.table::fread(OutputFile)
+#' head(data.table::fread(OutputFile))
+#' head(data.table::fread(paste0(OutputFile, ".markerInfo")))
+#' head(data.table::fread(paste0(OutputFile, ".otherMarkerInfo")))
+#' head(data.table::fread(paste0(OutputFile, ".infoBurdenNoWeight")))
 #'
-GRAB.POLMM <- function() {
-  .message("Using POLMM method - see ?GRAB.POLMM for details")
+#' @details
+#'
+#' See \code{\link{GRAB.POLMM}} for details on step 1.
+#'
+#' \strong{Additional Control Parameters for GRAB.Region() with POLMM}:
+#' \itemize{
+#'   \item \code{showInfo} (logical, default: FALSE): Whether to print PCG iteration information for debugging.
+#'   \item \code{tolPCG} (numeric, default: 0.001): Tolerance for PCG in region testing.
+#'   \item \code{maxiterPCG} (integer, default: 100): Maximum PCG iterations in region testing.
+#' }
+#'
+#' \strong{Results are saved to four files}:
+#' \enumerate{
+#'   \item \code{OutputFile}: Region-based test results (SKAT-O, SKAT, Burden p-values).
+#'   \item \code{paste0(OutputFile, ".markerInfo")}: Marker-level results for rare variants
+#'     (MAC >= \code{min_mac_region}) included in region tests.
+#'   \item \code{paste0(OutputFile, ".otherMarkerInfo")}: Information for excluded markers
+#'     (ultra-rare variants or failed QC).
+#'   \item \code{paste0(OutputFile, ".infoBurdenNoWeight")}: Summary statistics for burden
+#'     tests without weights.
+#' }
+#'
+#' \strong{Region-level results} (\code{OutputFile}) columns:
+#' \describe{
+#'   \item{Region}{Region identifier from \code{GroupFile}.}
+#'   \item{nMarkers}{Number of rare variants with MAF < cutoff and MAC >= \code{min_mac_region}.}
+#'   \item{nMarkersURV}{Number of ultra-rare variants with MAC < \code{min_mac_region}.}
+#'   \item{Anno.Type}{Annotation type from \code{GroupFile}.}
+#'   \item{MaxMAF.Cutoff}{Maximum MAF cutoff used for variant selection.}
+#'   \item{pval.SKATO}{SKAT-O test p-value.}
+#'   \item{pval.SKAT}{SKAT test p-value.}
+#'   \item{pval.Burden}{Burden test p-value.}
+#' }
+#'
+#' \strong{Marker-level results} (\code{paste0(OutputFile, ".markerInfo")}) columns:
+#' \describe{
+#'   \item{Region}{Region identifier.}
+#'   \item{ID}{Marker identifier.}
+#'   \item{Info}{Marker information in format CHR:POS:REF:ALT.}
+#'   \item{Anno}{Annotation from \code{GroupFile}.}
+#'   \item{AltFreq}{Alternative allele frequency.}
+#'   \item{MAC}{Minor allele count.}
+#'   \item{MAF}{Minor allele frequency.}
+#'   \item{MissingRate}{Proportion of missing genotypes.}
+#'   \item{IndicatorVec}{Marker status indicator (1 = rare variant included, 3 = ultra-rare variant included).}
+#'   \item{StatVec}{Score test statistic.}
+#'   \item{altBetaVec}{Effect size estimate.}
+#'   \item{seBetaVec}{Standard error of effect size estimate.}
+#'   \item{pval0Vec}{Unadjusted p-value.}
+#'   \item{pval1Vec}{SPA-adjusted p-value.}
+#'   \item{posRow}{Position row index.}
+#' }
+#'
+#' \strong{Other marker info} (\code{paste0(OutputFile, ".otherMarkerInfo")}) columns:
+#' \describe{
+#'   \item{ID}{Marker identifier.}
+#'   \item{Annos}{Annotation from \code{GroupFile}.}
+#'   \item{Region}{Region identifier.}
+#'   \item{Info}{Marker information in format CHR:POS:REF:ALT.}
+#'   \item{Anno}{Annotation category.}
+#'   \item{AltFreq}{Alternative allele frequency.}
+#'   \item{MAC}{Minor allele count.}
+#'   \item{MAF}{Minor allele frequency.}
+#'   \item{MissingRate}{Proportion of missing genotypes.}
+#'   \item{IndicatorVec}{Status indicator (0 or 2 for excluded markers).}
+#' }
+#'
+#' \strong{Burden test summary} (\code{paste0(OutputFile, ".infoBurdenNoWeight")}) columns:
+#' \describe{
+#'   \item{region}{Region identifier.}
+#'   \item{anno}{Annotation type.}
+#'   \item{max_maf}{Maximum MAF cutoff.}
+#'   \item{sum}{Sum of genotypes.}
+#'   \item{Stat}{Score test statistic.}
+#'   \item{beta}{Effect size estimate.}
+#'   \item{se.beta}{Standard error of effect size estimate.}
+#'   \item{pvalue}{P-value for burden test.}
+#' }
+#'
+#' @references
+#' Bi et al. (2023). Scalable mixed model methods for set-based association studies on large-scale 
+#' categorical data analysis and its application to exome-sequencing data in UK Biobank. \doi{10.1016/j.ajhg.2023.03.010}
+#'
+GRAB.POLMM.Region <- function() {
+  .message("?GRAB.POLMM for instructions on step 1")
+  .message("?GRAB.POLMM.Region for instructions on step 2")
 }
 
-################### This file includes the following functions
 
-# ------------ used in 'GRAB_Marker.R' -----------
-# 1. checkControl.Marker.POLMM(control)
-# 2. setMarker.POLMM(objNull, control)
-# 3. mainMarker.POLMM()
+checkControl.NullModel.POLMM <- function(traitType, GenoFile, SparseGRMFile, control) {
 
-# check the control list in marker-level testing
-checkControl.Marker.POLMM <- function(control) {
-  default.control <- list(
-    SPA_Cutoff = 2,
-    outputColumns = c("beta", "seBeta")
-  )
-
-  control <- updateControl(control, default.control) # This file is in 'Util.R'
-
-  # check the parameter
-
-  return(control)
-}
-
-# check the control list in region-level testing
-checkControl.Region.POLMM <- function(control) {
-  default.control <- list(
-    SPA_Cutoff = 2,
-    outputColumns = c("beta", "seBeta")
-  )
-
-  control <- updateControl(control, default.control) # This file is in 'Util.R'
-
-  # check the parameter
-  if (!is.numeric(control$SPA_Cutoff) || control$SPA_Cutoff <= 0) {
-    stop("control$SPA_Cutoff should be a numeric value > 0")
-  }
-
-  return(control)
-}
-
-
-# check the control list in null model fitting for POLMM method
-checkControl.NullModel.POLMM <- function(control, traitType, optionGRM) {
   if (traitType != "ordinal") {
     stop("For method of 'POLMM', only traitType of 'ordinal' is supported.")
   }
 
-  # default setting of control for POLMM method
+  # GenoFile validation (required)
+  if (is.null(GenoFile)) {
+    stop("Argument 'GenoFile' is required for method 'POLMM'.")
+  }
+  if (!is.character(GenoFile) || length(GenoFile) != 1) {
+    stop("Argument 'GenoFile' should be a character string (file path).")
+  }
+  if (!file.exists(GenoFile)) {
+    stop("Cannot find GenoFile: ", GenoFile)
+  }
+
+  # SparseGRMFile validation (optional)
+  if (!is.null(SparseGRMFile)) {
+    if (!is.character(SparseGRMFile) || length(SparseGRMFile) != 1) {
+      stop("Argument 'SparseGRMFile' should be a character string (file path).")
+    }
+    if (!file.exists(SparseGRMFile)) {
+      stop("Cannot find SparseGRMFile: ", SparseGRMFile)
+    }
+    optionGRM <- "SparseGRM"
+  } else {
+    optionGRM <- "DenseGRM"
+  }
+
   default.control <- list(
     memoryChunk = 2,
     seed = -1, # use -1 to indicate no seed should be set
@@ -136,53 +316,69 @@ checkControl.NullModel.POLMM <- function(control, traitType, optionGRM) {
     maxMissingVarRatio = 0.1,
     nSNPsVarRatio = 20,
     CVcutoff = 0.0025,
-    # LOCO = TRUE,
-    # numThreads = "auto",
-    stackSize = "auto",
+    LOCO = FALSE,
     grainSize = 1,
     minMafGRM = 0.01,
     maxMissingGRM = 0.1,
-    showInfo = TRUE,
-    onlyCheckTime = FALSE
+    showInfo = FALSE
   )
-
-  if (optionGRM == "DenseGRM") {
-    default.control$LOCO <- TRUE
-  }
-
-  if (optionGRM == "SparseGRM") {
-    default.control$LOCO <- FALSE
-  }
-
   control <- updateControl(control, default.control)
 
-  # check the parameters
-  # range = control$range
-  # length.out = control$length.out
-  #
-  # if(range[1] >= -50 | range[2] <= 50 | length.out <= 1000)
-  #   stop("We suggest setting argument 'control$range=c(-100,100)' and 'control$length.out=10000'.")
-  #
-  # if(range[2]!=-1*range[1])
-  #   stop("range[2] should be -1*range[1]")
-
-  return(control)
+  return(list(control = control, optionGRM = optionGRM))
 }
 
 
-# fit null model using POLMM method
-fitNullModel.POLMM <- function(response, designMat, subjData, control, optionGRM,
-                               genoType, # "PLINK" or "BGEN"
-                               markerInfo) { # colnames: CHROM, POS, ID, REF, ALT, genoIndex
+#' Fit POLMM null model for ordinal outcomes
+#'
+#' Initializes the POLMM null model from an ordered categorical response and
+#' covariate matrix, preparing C++ state for subsequent marker/region tests.
+#'
+#' @param response Ordered factor response (lowest level coded as 0 internally).
+#' @param designMat Numeric covariate matrix or data.frame (n x p).
+#' @param subjData Character vector of subject IDs aligned with rows of
+#'   \code{designMat} and \code{response}.
+#' @param control List of POLMM options (e.g., \code{tau},
+#'   \code{maxMissingVarRatio}, \code{minMafVarRatio}).
+#' @param optionGRM Character, either \code{"DenseGRM"} or \code{"SparseGRM"}.
+#' @param GenoFile Character, path to genotype file (PLINK or BGEN format).
+#' @param GenoFileIndex Character or NULL, path to genotype index files.
+#'   If NULL, uses same prefix as \code{GenoFile}.
+#' @param SparseGRMFile Character or NULL, path to sparse GRM file.
+#'   If provided, sparse GRM is used; otherwise dense GRM is constructed.
+#'
+#' @return An object of class \code{"POLMM_NULL_Model"} representing the
+#'   initialized null model; state is stored in C++ and not intended for direct
+#'   element-wise access from R.
+#'
+#' @keywords internal
+fitNullModel.POLMM <- function(
+  response, designMat, subjData, control, optionGRM,
+  GenoFile, GenoFileIndex, SparseGRMFile
+) {
+  
+  ######## -------------- Setup GRM in C++ -------- ########
 
-  ######## -------------- first set up the object in C++ -------- ########
+  genoList <- setGenoInput(GenoFile, GenoFileIndex, subjData, control) # list
+  flagSparseGRM <- optionGRM == "SparseGRM"
 
-  if (!is.factor(response)) {
-    stop(
-      "The response variable in POLMM method should be a factor. The class of the current response variable is '",
-      class(response), "'."
+  if (flagSparseGRM) {
+    SparseGRM <- data.table::fread(SparseGRMFile)
+    KinMatListR <- updateSparseGRM(as.data.frame(SparseGRM), subjData)
+    setSparseGRMInCPP(t_KinMatListR = KinMatListR)         # C++ backend setup
+  } else {
+    if (genoList$genoType != "PLINK") {
+      stop("If DenseGRM is used when fitting a null model, ",
+        "then only PLINK format is supported.")
+    }
+
+    setDenseGRMInCPP(
+      t_memoryChunk = control$memoryChunk,      # numeric: Memory allocation in GB for GRM
+      t_minMafGRM = control$minMafGRM,          # numeric: Min MAF for variants in GRM
+      t_maxMissingGRM = control$maxMissingGRM   # numeric: Max missing rate for GRM variants
     )
   }
+
+  ######## -------------- Fit null model -------- ########
 
   obj.clm <- summary(ordinal::clm(response ~ designMat))
   beta <- c(-1 * obj.clm$alpha[1], obj.clm$beta)
@@ -199,197 +395,188 @@ fitNullModel.POLMM <- function(response, designMat, subjData, control, optionGRM
     values = rep(0, 1)
   )
 
-  LOCO <- control$LOCO
-
-  if (LOCO) {
-    stop("Option of LOCO will be supported later. (2022-01-28)")
+  # Set seed for reproducible marker sampling (if seed != -1)
+  if (control$seed != -1) {
+    set.seed(control$seed)
   }
-
-  #
-  # if(m < 200)
-  #   stop("number of variants in ", genoType, " files should be >= 200.")
-
-  m <- nrow(markerInfo)
-  markerInfo <- markerInfo[sample(m), ]
+  
+  markerInfo <- genoList$markerInfo[sample(nrow(genoList$markerInfo)), ]
 
   # Main.cpp
   GenoMat <- getGenoInCPP_fixedNumber(
-    genoType, markerInfo, length(yVec), "mean", 100,
-    control$maxMissingVarRatio,
-    control$minMafVarRatio
+    t_genoType = genoList$genoType,               # character: "PLINK" or "BGEN"
+    t_markerInfo = markerInfo,                    # data.frame: Marker info with genoIndex
+    n = length(yVec),                             # integer: Sample size
+    t_imputeMethod = "mean",                      # character: Imputation method
+    m = 100,                                      # integer: Number of markers to select
+    missingRateCutoff = control$maxMissingVarRatio, # numeric: Max missing rate cutoff
+    minMAFCutoff = control$minMafVarRatio         # numeric: Min MAF cutoff
   )
-
-  # if(LOCO){
-  #   markerInfo = data.table::as.data.table(markerInfo)
-  #   uCHR = unique(markerInfo$CHROM)
-  #   for(iCHR in uCHR){
-  #     temp = markerInfo %>% filter(CHROM == iCHR)
-  #   }
-  # }else{
-  #   markerInfo = markerInfo[sample(m, 100),]
-  #   GenoMat = getGenoInCPP(genoType, markerInfo, n, control$ImputeMethod)  # check Main.cpp
-  # }
-
-  # default.control = list(memoryChunk = 2,
-  #                        seed = 12345678,
-  #                        tracenrun = 30,
-  #                        maxiter = 100,
-  #                        tolBeta = 0.001,
-  #                        tolTau = 0.002,
-  #                        tau = 0.2,
-  #                        maxiterPCG = 100,
-  #                        tolPCG = 1e-6,
-  #                        maxiterEps = 100,
-  #                        tolEps = 1e-10,
-  #                        minMafVarRatio = 0.1,
-  #                        maxMissingVarRatio = 0.1,
-  #                        nSNPsVarRatio = 20,
-  #                        CVcutoff = 0.0025,
-  #                        LOCO = TRUE,
-  #                        numThreads = "auto",
-  #                        stackSize = "auto",
-  #                        grainSize = 1,
-  #                        minMafGRM = 0.01,
-  #                        maxMissingGRM = 0.1,
-  #                        showInfo = TRUE,
-  #                        onlyCheckTime = FALSE)
-
-  controlList <- control
-  flagSparseGRM <- ifelse(optionGRM == "SparseGRM", TRUE, FALSE)
 
   # The following function is in 'Main.cpp'
   objNull <- setPOLMMobjInCPP_NULL(
-    flagSparseGRM,
-    Cova,
-    yVec,
-    beta,
-    bVec,
-    eps,
-    tau,
-    SPmatR,
-    controlList,
-    GenoMat
+    t_flagSparseGRM = flagSparseGRM,   # logical: Use sparse (TRUE) or dense (FALSE) GRM
+    t_Cova = Cova,                     # matrix: Covariate matrix (n x p) with intercept
+    t_yVec = yVec,                     # integer vector: Response (0 to J-1 for J categories)
+    t_beta = beta,                     # numeric vector: Fixed effect coefficients
+    t_bVec = bVec,                     # numeric vector: Random effect coefficients
+    t_eps = eps,                       # numeric vector: Threshold parameters
+    t_tau = tau,                       # numeric: Variance component parameter
+    t_SPmatR = SPmatR,                 # list: Sparse matrix representation (deprecated)
+    t_controlList = control,           # list: Control parameters for optimization
+    GenoMat = GenoMat                  # matrix: Genotype matrix for variance ratio estimation
   )
 
   class(objNull) <- "POLMM_NULL_Model"
   return(objNull)
-
-  # void setPOLMMobjInCPP_NULL(bool t_flagSparseGRM,       // if 1, then use SparseGRM, otherwise, use DenseGRM
-  #                            arma::mat t_Cova,
-  #                            arma::uvec t_yVec,     // should be from 0 to J-1
-  #                            arma::vec t_beta,
-  #                            arma::vec t_bVec,
-  #                            arma::vec t_eps,           //
-  #                              double t_tau,
-  #                            arma::mat t_GMatRatio,     // only used if m_LOCO = FALSE
-  #                            Rcpp::List t_SPmatR,    // output of makeSPmatR()
-  #                            Rcpp::List t_controlList)
-
-  ######## -------------- fit the null POLMM --------------  ###########
-
-  # bVec = rep(0, n)  # initiate random effect of 0
-
-  # objNull = fitPOLMMcpp(t_flagSparseGRM = flagSparseGRM,       # if 1, then use SparseGRM, otherwise, use DenseGRM
-  #                       t_flagGMatRatio = flagGMatRatio,       # if 1, then use GMatRatio, otherwise, extract from Plink files
-  #                       t_bimfile = bimFile,
-  #                       t_famfile = famFile,
-  #                       t_bedfile = bedFile,
-  #                       t_posSampleInPlink = posSampleInPlink,
-  #                       t_Cova = Cova,
-  #                       t_yVec = yVec,                         # should be from 1 to J
-  #                       t_beta = beta,
-  #                       t_bVec = bVec,
-  #                       t_eps = eps,
-  #                       t_tau = control$tau,
-  #                       t_GMatRatio = GMat,                    # only used if m_LOCO = FALSE
-  #                       t_SparseGRM = SparseGRM,
-  #                       t_controlList = control)
-  # return(objNull)
 }
 
-setMarker.POLMM <- function(objNull, control, chrom) {
-  if (objNull$control$LOCO) {
-    if (!chrom %in% names(objNull$LOCOList)) {
-      stop("If control$LOCO == TRUE, then 'chrom' should be in names(objNull$LOCOList).")
-    }
-    objCHR <- objNull$LOCOList[[chrom]]
-  } else {
-    objCHR <- objNull$LOCOList[["LOCO=F"]]
-  }
 
-  # marker-level analysis does not require the following parameters
-  # Note: it might be not so accurate if min_mac_marker is very low
-  flagSparseGRM <- FALSE
-  # SPmatR.CHR = list(locations = matrix(c(0,0), 2, 1), values = 1)
-  printPCGInfo <- FALSE
-  tolPCG <- 0.001
-  maxiterPCG <- 100
+checkControl.Marker.POLMM <- function(control) {
+
+  default.control <- list(
+    ifOutGroup = FALSE
+  )
+  control <- updateControl(control, default.control)
+
+  return(control)
+}
+
+
+setMarker.POLMM <- function(objNull, control) {
+  
+  objCHR <- objNull$LOCOList[["LOCO=F"]]
+
+  # Calculate grouping for phenotypic values
+  Group <- objNull$yVec                                       # numeric vector
+  nGroup <- length(unique(Group))                             # integer
 
   # Check 'Main.cpp'
   setPOLMMobjInCPP(
-    objCHR$muMat,
-    objCHR$iRMat,
-    objNull$Cova,
-    objNull$yVec, # 0 to J-1
-    # SPmatR.CHR,
-    objNull$tau,
-    printPCGInfo,
-    tolPCG,
-    maxiterPCG,
-    objCHR$VarRatio,
-    control$SPA_Cutoff,
-    flagSparseGRM
+    t_muMat = objCHR$muMat,               # matrix: Mean probability matrix (n x J)
+    t_iRMat = objCHR$iRMat,               # matrix: Inverse correlation matrix (n x (J-1))
+    t_Cova = objNull$Cova,                # matrix: Covariate matrix (n x p) with intercept
+    t_yVec = objNull$yVec,                # integer vector: Response (0 to J-1)
+    t_tau = objNull$tau,                  # numeric: Variance component parameter
+    t_printPCGInfo = FALSE,               # logical: (not used in marker)
+    t_tolPCG = 0.001,                     # numeric: (not used in marker)
+    t_maxiterPCG = 100,                   # integer: (not used in marker)
+    t_varRatio = objCHR$VarRatio,         # numeric: Variance ratio from null model
+    t_SPA_cutoff = control$SPA_Cutoff,    # numeric: Cutoff for saddlepoint approximation
+    t_flagSparseGRM = FALSE,              # logical: Use sparse GRM (FALSE for marker)
+    t_group = Group,                      # integer vector: Group assignments for each individual
+    t_ifOutGroup = control$ifOutGroup,    # logical: Output group-specific statistics
+    t_nGroup = nGroup                     # integer: Total number of groups
   )
 }
 
-# Used in setRegion() function in GRAB_Region.R
-setRegion.POLMM <- function(objNull, control, chrom, SparseGRMFile) {
-  if (chrom != "LOCO=F") {
-    .message("Chromosome: %s", chrom)
-    if (!"LOCOList" %in% names(objNull)) {
-      stop("If argument 'chrom' is not 'LOCO=FALSE', then objNull should includes element of 'LOCOList'.")
-    }
+mainMarker.POLMM <- function(
+  genoType,
+  genoIndex,
+  control
+) {
+
+  OutList <- mainMarkerInCPP(
+    t_method = "POLMM",       # character: Statistical method name
+    t_genoType = genoType,    # character: "PLINK" or "BGEN"
+    t_genoIndex = genoIndex   # integer vector: Genotype indices to analyze
+  )
+
+  obj.mainMarker <- data.frame(
+    Marker = OutList$markerVec,               # Marker IDs
+    Info = OutList$infoVec,                   # Marker info: CHR:POS:REF:ALT
+    AltFreq = OutList$altFreqVec,             # Alternative allele frequencies
+    AltCounts = OutList$altCountsVec,         # Alternative allele counts
+    MissingRate = OutList$missingRateVec,     # Missing rates per marker
+    Pvalue = OutList$pvalVec,                 # Association test p-values
+    beta = OutList$beta,                      # Effect size estimates
+    seBeta = OutList$seBeta,                  # Standard errors of beta
+    zScore = OutList$zScore                   # Z-scores
+  )
+
+  if (control$ifOutGroup) {
+    obj.mainMarker <- cbind(
+      obj.mainMarker,
+      AltFreqInGroup = OutList$AltFreqInGroup,      # Alt freq in analysis group
+      AltCountsInGroup = OutList$AltCountsInGroup,  # Alt counts in analysis group
+      nSamplesInGroup = OutList$nSamplesInGroup     # Sample size in analysis group
+    )
   }
 
-  objCHR <- objNull$LOCOList[[chrom]]
+  return(obj.mainMarker)
+}
+
+
+checkControl.Region.POLMM <- function(control) {
+
+  default.control <- list(
+    showInfo = FALSE,
+    tolPCG = 0.001,
+    maxiterPCG = 100
+  )
+  control <- updateControl(control, default.control)
+
+  return(control)
+}
+
+
+setRegion.POLMM <- function(
+  objNull,
+  control,
+  SparseGRMFile
+) {
 
   # Since region-level analysis mainly focuses on rare variants, we use sparse GRM for all markers
 
   .message("Using sparse GRM for POLMM-GENE analysis")
 
-  setSparseGRMInStep2(SparseGRMFile, objNull) # check SparseGRM.R
+  # ---- BEGIN inlined: setSparseGRMInStep2 ----
+  SparseGRM <- data.table::fread(SparseGRMFile)
+  SparseGRM <- as.data.frame(SparseGRM)
+  KinMatListR <- updateSparseGRM(SparseGRM, objNull$subjData)
+  setSparseGRMInCPP(
+    t_KinMatListR = KinMatListR  # list: Sparse kinship matrix (locations, values, nSubj)
+  )
+  # ---- END inlined: setSparseGRMInStep2 ----
 
-  # The following parameters are not used any more
+  # Calculate grouping for phenotypic values (POLMM-specific)
+  Group <- objNull$yVec                                       # numeric vector
+  nGroup <- length(unique(Group))                             # integer
+  ifOutGroup <- TRUE                                          # logical
+
+  # region-level analysis uses sparse GRM
+  objCHR <- objNull$LOCOList[["LOCO=F"]]
   flagSparseGRM <- TRUE
-  printPCGInfo <- FALSE
-  tolPCG <- 0.001
-  maxiterPCG <- 100
-  VarRatio <- 1
 
   # Check 'Main.cpp'
   setPOLMMobjInCPP(
-    objCHR$muMat,
-    objCHR$iRMat,
-    objNull$Cova,
-    objNull$yVec, # 0 to J-1
-    objNull$tau,
-    printPCGInfo,
-    tolPCG,
-    maxiterPCG,
-    VarRatio,
-    control$SPA_Cutoff,
-    flagSparseGRM
+    t_muMat = objCHR$muMat,                 # matrix: Mean probability matrix (n x J)
+    t_iRMat = objCHR$iRMat,                 # matrix: Inverse correlation matrix (n x (J-1))
+    t_Cova = objNull$Cova,                  # matrix: Covariate matrix (n x p) with intercept
+    t_yVec = objNull$yVec,                  # integer vector: Response (0 to J-1)
+    t_tau = objNull$tau,                    # numeric: Variance component parameter
+    t_printPCGInfo = control$showInfo,      # logical: Print PCG iteration info for debugging
+    t_tolPCG = control$tolPCG,              # numeric: PCG convergence tolerance
+    t_maxiterPCG = control$maxiterPCG,      # integer: Max PCG iterations
+    t_varRatio = objCHR$VarRatio,           # numeric: Variance ratio from null model
+    t_SPA_cutoff = control$SPA_Cutoff,      # numeric: Cutoff for saddlepoint approximation
+    t_flagSparseGRM = flagSparseGRM,        # logical: Use sparse GRM (TRUE for region)
+    t_group = Group,                        # integer vector: Group assignments for each individual
+    t_ifOutGroup = ifOutGroup,              # logical: Output group-specific statistics
+    t_nGroup = nGroup                       # integer: Total number of groups
   )
-
-  # print(paste0("The current control$nMarkersEachChunk is ", control$nMarkersEachChunk,"."))
 }
 
-mainRegion.POLMM <- function(genoType, genoIndex, OutputFile, control, n, obj.setRegion, obj.mainRegionInCPP, nLabel) {
-  # outputColumns <- control$outputColumns
 
-  # cat("summary(obj.mainRegionInCPP)\n")
-  # print(summary(obj.mainRegionInCPP))
-
+mainRegion.POLMM <- function(
+  genoType,
+  genoIndex,
+  OutputFile,
+  n,
+  obj.setRegion,
+  obj.mainRegionInCPP,
+  nLabel
+) {
   ## required columns for all methods
   info.Region <- with(obj.mainRegionInCPP, data.frame(
     ID = markerVec,
@@ -415,13 +602,6 @@ mainRegion.POLMM <- function(genoType, genoIndex, OutputFile, control, n, obj.se
     )
   }
 
-  # optionalColumns = c("beta", "seBeta", "PvalueNorm", "AltFreqInLabel", "AltCountsInLabel", "nSamplesInLabel")
-  # additionalColumns = intersect(optionalColumns, outputColumns)
-  #
-  # if(length(additionalColumns) > 0)
-  #   info.Region = cbind.data.frame(info.Region,
-  #                                  as.data.frame(obj.mainRegion[additionalColumns]))
-
   RV.Markers <- info.Region %>%
     filter(IndicatorVec == 1 | IndicatorVec == 3)
 
@@ -431,12 +611,6 @@ mainRegion.POLMM <- function(genoType, genoIndex, OutputFile, control, n, obj.se
   Other.Markers <- info.Region %>%
     filter(IndicatorVec == 2 | IndicatorVec == 0) %>%
     select(-(StatVec:pval1Vec))
-
-  # info.Region = subset(info.Region, IsUltraRareVariants != -1)
-  # pos = which(info.Region$IsUltraRareVariants == 0)
-  #
-  # info.Region$Pvalue = NA
-  # info.Region$Pvalue[pos] = obj.mainRegionInCPP$pval1Vec
 
   return(list(
     RV.Markers = RV.Markers,
