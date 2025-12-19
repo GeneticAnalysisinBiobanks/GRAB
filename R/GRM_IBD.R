@@ -278,6 +278,7 @@ getSparseGRM <- function(
 #' @param PlinkPrefix Character. Path to PLINK file (without file extensions .bed/.bim/.fam).
 #' @param SparseGRMFile Character. Path to sparse GRM file from getSparseGRM() function.
 #' @param PairwiseIBDOutput Character. Output path to save pairwise IBD results.
+#'   If NULL (default), return a data.frame instead of saving to file.
 #' @param frqFile Character. Path to frequency file corresponding to PLINK file.
 #'   If NULL (default), uses PlinkPrefix.frq.
 #' @param tempDir Character. Directory to save temporary files. If NULL (default), uses tempdir().
@@ -285,7 +286,8 @@ getSparseGRM <- function(
 #' @param minMafIBD Numeric. Minimum MAF cutoff to select markers (default: 0.01).
 #' @param rm.tempFile Logical. Whether to delete temporary files (default: FALSE).
 #'
-#' @return Character. Message indicating where the pairwise IBD results have been stored.
+#' @return If PairwiseIBDOutput is NULL, returns a data.frame with columns ID1, ID2, pa, pb, pc.
+#'   Otherwise, returns a character message indicating where the pairwise IBD results have been stored.
 #'
 #' @examples
 #' PlinkPrefix <- file.path(system.file(package = "GRAB"), "extdata", "simuPLINK")
@@ -297,7 +299,7 @@ getSparseGRM <- function(
 getPairwiseIBD <- function(
   PlinkPrefix,
   SparseGRMFile,
-  PairwiseIBDOutput,
+  PairwiseIBDOutput = NULL,
   frqFile = NULL,
   tempDir = NULL,
   maxSampleNums = 2500,
@@ -326,7 +328,12 @@ getPairwiseIBD <- function(
   GenoInfoMat <- data.table::fread(frqFile)
 
   # read in the Sparse GRM.
-  SparseGRMData <- data.table::fread(SparseGRMFile)
+  if (is.data.frame(SparseGRMFile)) {
+    SparseGRMData <- SparseGRMFile
+  } else {
+    SparseGRMData <- data.table::fread(SparseGRMFile)
+  }
+
   SparseGRMData$ID1 <- as.character(SparseGRMData$ID1)
   SparseGRMData$ID2 <- as.character(SparseGRMData$ID2)
 
@@ -345,9 +352,11 @@ getPairwiseIBD <- function(
 
     colnames(PairwiseIBD) <- c("ID1", "ID2", "pa", "pb", "pc")
 
-    data.table::fwrite(PairwiseIBD, PairwiseIBDOutput,
-      row.names = FALSE, col.names = TRUE, quote = FALSE, sep = "\t"
-    )
+    if (!is.null(PairwiseIBDOutput)) {
+      data.table::fwrite(PairwiseIBD, PairwiseIBDOutput,
+        row.names = FALSE, col.names = TRUE, quote = FALSE, sep = "\t"
+      )
+    }
   } else {
     # read in the bim and fam data.
     bim <- data.table::fread(bimFile)
@@ -452,17 +461,25 @@ getPairwiseIBD <- function(
         nParts <- nParts + 1
       }
     }
-
-    data.table::fwrite(data.table::data.table(PairwiseIBD), PairwiseIBDOutput,
-      row.names = FALSE, col.names = TRUE, quote = FALSE, sep = "\t"
-    )
-
-    if (rm.tempFile) {
-      file.remove(IDsToIncludeFile)
-    }
   }
 
-  message <- paste("The PairwiseIBD has been stored in", PairwiseIBDOutput)
+  PairwiseIBD <- data.table::as.data.table(PairwiseIBD)
+  if (rm.tempFile) file.remove(IDsToIncludeFile)
 
-  return(message)
+  if (is.null(PairwiseIBDOutput)) {
+    data.table::set(PairwiseIBD, j = "ID1", value = as.character(PairwiseIBD$ID1))
+    data.table::set(PairwiseIBD, j = "ID2", value = as.character(PairwiseIBD$ID2))
+
+    data.table::set(PairwiseIBD, j = "pa", value = as.numeric(PairwiseIBD$pa))
+    data.table::set(PairwiseIBD, j = "pb", value = as.numeric(PairwiseIBD$pb))
+    data.table::set(PairwiseIBD, j = "pc", value = as.numeric(PairwiseIBD$pc))
+    
+    return(PairwiseIBD)
+  } else {
+    data.table::fwrite(PairwiseIBD, PairwiseIBDOutput,
+      row.names = FALSE, col.names = TRUE, quote = FALSE, sep = "\t"
+    )
+    .message("The PairwiseIBD has been stored in %s", PairwiseIBDOutput)
+    return(invisible(NULL))
+  }
 }

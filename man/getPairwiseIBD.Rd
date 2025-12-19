@@ -7,7 +7,7 @@
 getPairwiseIBD(
   PlinkPrefix,
   SparseGRMFile,
-  PairwiseIBDOutput,
+  PairwiseIBDOutput = NULL,
   frqFile = NULL,
   tempDir = NULL,
   maxSampleNums = 2500,
@@ -20,7 +20,8 @@ getPairwiseIBD(
 
 \item{SparseGRMFile}{Character. Path to sparse GRM file from getSparseGRM() function.}
 
-\item{PairwiseIBDOutput}{Character. Output path to save pairwise IBD results.}
+\item{PairwiseIBDOutput}{Character. Output path to save pairwise IBD results.
+If NULL (default), return a data.frame instead of saving to file.}
 
 \item{frqFile}{Character. Path to frequency file corresponding to PLINK file.
 If NULL (default), uses PlinkPrefix.frq.}
@@ -34,7 +35,8 @@ If NULL (default), uses PlinkPrefix.frq.}
 \item{rm.tempFile}{Logical. Whether to delete temporary files (default: FALSE).}
 }
 \value{
-Character. Message indicating where the pairwise IBD results have been stored.
+If PairwiseIBDOutput is NULL, returns a data.frame with columns ID1, ID2, pa, pb, pc.
+Otherwise, returns a character message indicating where the pairwise IBD results have been stored.
 }
 \description{
 This function calculates pairwise IBD probabilities for related samples using

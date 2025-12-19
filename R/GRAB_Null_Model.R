@@ -81,8 +81,8 @@ GRAB.NullModel <- function(
   ...
 ) {
 
-  supported_traitTypes <- c("ordinal", "time-to-event", "Residual")
-  supported_methods <- c("POLMM", "SPACox", "SPAmix", "WtCoxG")
+  supported_traitTypes <- c("ordinal", "time-to-event", "Residual", "quantitative")
+  supported_methods <- c("POLMM", "SPACox", "SPAmix", "WtCoxG", "SPAsqr")
 
   # ========== Validate and configure parameters ==========
 
@@ -178,6 +178,29 @@ GRAB.NullModel <- function(
     stop("Subject IDs contain duplicates, which are not supported.")
   }
 
+  # Validate SparseGRMFile format (if provided)
+  if (!is.null(SparseGRMFile)) {
+    if (!file.exists(SparseGRMFile)) {
+      stop("SparseGRMFile does not exist: ", SparseGRMFile)
+    }
+    
+    firstLines <- readLines(SparseGRMFile, n = 2)
+    if (length(firstLines) < 2) {
+      stop("SparseGRMFile has fewer than 2 lines.")
+    }
+
+    firstRow <- strsplit(firstLines[1], "\\s+")[[1]]
+    secondRow <- strsplit(firstLines[2], "\\s+")[[1]]
+
+    if (length(firstRow) != 3 || length(secondRow) != 3) {
+      stop("SparseGRMFile should have exactly 3 columns.")
+    }
+    
+    if (is.na(suppressWarnings(as.numeric(secondRow[3])))) {
+      stop("SparseGRMFile third column (genetic correlation) must be numeric.")
+    }
+  }
+
   # Validate control parameter (optional, default NULL)
   if (!is.null(control) && !is.list(control)) {
     stop("Argument 'control' should be a list of control parameters.")
@@ -187,7 +210,8 @@ GRAB.NullModel <- function(
     POLMM = checkControl.NullModel.POLMM(traitType, GenoFile, SparseGRMFile, control),
     SPACox = checkControl.NullModel.SPACox(traitType, GenoFile, SparseGRMFile, control),
     SPAmix = checkControl.NullModel.SPAmix(traitType, GenoFile, SparseGRMFile, control),
-    WtCoxG = checkControl.NullModel.WtCoxG(traitType, GenoFile, SparseGRMFile, control, ...)
+    WtCoxG = checkControl.NullModel.WtCoxG(traitType, GenoFile, SparseGRMFile, control, ...),
+    SPAsqr = checkControl.NullModel.SPAsqr(traitType, GenoFile, SparseGRMFile, control, ...)
   )
   
   control <- checkResult$control
@@ -253,6 +277,8 @@ GRAB.NullModel <- function(
     } else if (traitType == "Residual") {
       class(response) <- "Residual"
       naSubjects <- is.na(response)
+    } else if (traitType == "quantitative") {
+      naSubjects <- is.na(response)
     } else {
       stop("Internal error: '", traitType, "' for method '", method, "'.")
     }
@@ -287,7 +313,9 @@ GRAB.NullModel <- function(
     SPAmix = fitNullModel.SPAmix(response, designMat, subjData, control),
     WtCoxG = fitNullModel.WtCoxG(response, designMat, subjData, control, data,
                                  GenoFile, GenoFileIndex, SparseGRMFile,
-                                 responseVars[1], responseVars[2], ...)
+                                 responseVars[1], responseVars[2], ...),
+    SPAsqr = fitNullModel.SPAsqr(response, designMat, subjData, control, 
+                                 GenoFile, SparseGRMFile, ...)
   )
 
   # Add metadata to the null model object
