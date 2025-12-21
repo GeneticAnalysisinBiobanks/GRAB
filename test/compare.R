@@ -17,7 +17,7 @@ obj2 <- GRAB.NullModel(
     taus = c(0.05, 0.2, 0.5, 0.8, 0.95),
     h = 0,
     sqr_tol = 1e-9,
-    ControlOutlier = FALSE
+    ControlOutlier = FALSE #, OutlierRatio = 50 # 1.5 for compare with obj1_lst
   )
 )
 

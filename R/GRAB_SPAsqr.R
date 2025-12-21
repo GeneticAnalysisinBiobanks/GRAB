@@ -415,6 +415,26 @@ SPAGRM.NullModel.Multi <- function(
   TwoSubj_list_lst <- lapply(1:ntaus, function(x) list())
   ThreeSubj_list_lst <- lapply(1:ntaus, function(x) list())
 
+  # Pre-compute tau-independent graph structure
+  edges <- t(SparseGRM[, c("ID1", "ID2")])
+  graph_GRM <- igraph::make_graph(edges, directed = FALSE)
+  graph_list_all <- igraph::decompose(graph_GRM)
+  graph_length <- sapply(graph_list_all, length)
+
+  # Pre-build array index structures (tau-independent)
+  arr.index <- list()
+  for (n in seq_len(MaxNuminFam)) {
+    temp <- c()
+    for (i_idx in seq_len(n)) {
+      indexString <- rep("c(1, 1, 1)", n)
+      indexString[i_idx] <- "0:2"
+      indexString <- paste0(indexString, collapse = "%o%")
+      cmd <- paste0("temp = c(temp, list(arr.index", i_idx, "=", indexString, "))")
+      eval(parse(text = cmd))
+    }
+    arr.index[[n]] <- temp
+  }
+
   for (i in seq_along(taus)) {
 
     ResidMat_df <- data.frame(
@@ -423,16 +443,11 @@ SPAGRM.NullModel.Multi <- function(
       Outlier = Outlier[, i]
     )
 
-    # Decompose the subjects based on family structure and use a greedy algorithm to reduce family size if needed
+    # Calculate tau-specific covariances for edge weighting
     SparseGRM1 <- SparseGRM
     SparseGRM1$pos1 <- ResidMat_df$Resid[match(SparseGRM$ID1, ResidMat_df$SubjID)]
     SparseGRM1$pos2 <- ResidMat_df$Resid[match(SparseGRM$ID2, ResidMat_df$SubjID)]
     SparseGRM1 <- SparseGRM1 %>% mutate(Cov = abs(Value * pos1 * pos2))
-
-    edges <- t(SparseGRM1[, c("ID1", "ID2")])
-    graph_GRM <- igraph::make_graph(edges, directed = FALSE)
-    graph_list_all <- graph_GRM %>% igraph::decompose()
-    graph_length <- lapply(graph_list_all, length)
 
     graph_list_1 <- graph_list_all[graph_length == 1]
     SubjID.unrelated <- lapply(graph_list_1, igraph::get.vertex.attribute) %>% unlist(use.names = FALSE)
@@ -560,20 +575,6 @@ SPAGRM.NullModel.Multi <- function(
       }
 
       .message("Building Chow-Liu tree for family outliers")
-
-      # Make a list of array index.
-      arr.index <- list()
-      for (n in seq_len(MaxNuminFam)) {
-        temp <- c()
-        for (i_idx in seq_len(n)) {
-          indexString <- rep("c(1, 1, 1)", n)
-          indexString[i_idx] <- "0:2"
-          indexString <- paste0(indexString, collapse = "%o%")
-          cmd <- paste0("temp = c(temp, list(arr.index", i_idx, "=", indexString, "))")
-          eval(parse(text = cmd))
-        }
-        arr.index[[n]] <- temp
-      }
 
       # build chou-liu-tree.
       n.outliers <- length(graph_list_updated)
