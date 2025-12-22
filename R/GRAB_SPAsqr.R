@@ -405,6 +405,55 @@ SPAGRM.NullModel.Multi <- function(
   tooLarge <- sweep(ResidMat, 2, cutoffUpper, ">")
   Outlier <- tooSmall | tooLarge
 
+  #### Apply outlier control for each tau if ControlOutlier=TRUE (vectorized)
+  if (ControlOutlier) {
+    .message("ControlOutlier=TRUE: adjusting outlier ratios to keep outliers <5%% for each tau")
+    
+    OutlierRatio_vec <- rep(OutlierRatio, ntaus)
+    n_total <- nrow(ResidMat)
+    
+    # Stage 1: Ensure at least 1 outlier for each tau (vectorized)
+    taus_no_outliers <- which(colSums(Outlier) == 0)
+    
+    while (length(taus_no_outliers) > 0) {
+      # Decrease ratio for taus with no outliers
+      OutlierRatio_vec[taus_no_outliers] <- OutlierRatio_vec[taus_no_outliers] * 0.8
+      cutoffLower[taus_no_outliers] <- Quants[1, taus_no_outliers] - OutlierRatio_vec[taus_no_outliers] * Ranges[taus_no_outliers]
+      cutoffUpper[taus_no_outliers] <- Quants[2, taus_no_outliers] + OutlierRatio_vec[taus_no_outliers] * Ranges[taus_no_outliers]
+      
+      # Update outliers for affected taus (vectorized)
+      Outlier[, taus_no_outliers] <- sweep(ResidMat[, taus_no_outliers, drop = FALSE], 2, cutoffLower[taus_no_outliers], "<") |
+                                      sweep(ResidMat[, taus_no_outliers, drop = FALSE], 2, cutoffUpper[taus_no_outliers], ">")
+      
+      taus_no_outliers <- which(colSums(Outlier) == 0)
+    }
+    
+    # Stage 2: Ensure outliers <5% for each tau (vectorized)
+    outlier_pcts <- colSums(Outlier) / n_total
+    taus_too_many <- which(outlier_pcts > 0.05)
+    
+    while (length(taus_too_many) > 0) {
+      # Increase ratio for taus with too many outliers
+      OutlierRatio_vec[taus_too_many] <- OutlierRatio_vec[taus_too_many] + 0.5
+      cutoffLower[taus_too_many] <- Quants[1, taus_too_many] - OutlierRatio_vec[taus_too_many] * Ranges[taus_too_many]
+      cutoffUpper[taus_too_many] <- Quants[2, taus_too_many] + OutlierRatio_vec[taus_too_many] * Ranges[taus_too_many]
+      
+      # Update outliers for affected taus (vectorized)
+      Outlier[, taus_too_many] <- sweep(ResidMat[, taus_too_many, drop = FALSE], 2, cutoffLower[taus_too_many], "<") |
+                                   sweep(ResidMat[, taus_too_many, drop = FALSE], 2, cutoffUpper[taus_too_many], ">")
+      
+      outlier_pcts <- colSums(Outlier) / n_total
+      taus_too_many <- which(outlier_pcts > 0.05)
+    }
+    
+    # Summary logging
+    .message("Outlier control summary:")
+    for (i in seq_along(taus)) {
+      .message("  Tau %g: %d outliers (%.1f%%), ratio=%.2f", 
+               taus[i], sum(Outlier[, i]), 100 * sum(Outlier[, i]) / n_total, OutlierRatio_vec[i])
+    }
+  }
+
   #### Pre-compute tau-independent graph structure
   edges <- t(SparseGRM[, c("ID1", "ID2")])
   graph_GRM <- igraph::make_graph(edges, directed = FALSE)
