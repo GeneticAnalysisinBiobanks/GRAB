@@ -1857,8 +1857,10 @@ void setSPAsqrobjInCPP(
   arma::vec t_R_GRM_R_TwoSubjOutlier_vec,    // Vector: Quadratic form for two-subject outlier pairs (length ntaus)
   arma::vec t_R_GRM_R_vec,                   // Vector: Full quadratic form R'*GRM*R (length ntaus)
   arma::vec t_MAF_interval,                  // Minor allele frequency intervals for binning
-  Rcpp::List t_TwoSubj_list_lst,                 // List of two-subject outlier pairs (Resid is matrix 2 × ntaus)
-  Rcpp::List t_ThreeSubj_list_lst,              // List of three+ subject families (stand.S is matrix 3^n × ntaus)
+  Rcpp::List t_TwoSubj_list_lst,             // List of two-subject outlier pairs per tau
+  Rcpp::List t_CLT_union_lst,                // Shared CLT cache (union across all taus)
+  Rcpp::List t_ThreeSubj_family_idx_lst,     // Family indices per tau (indices into CLT_union_lst)
+  Rcpp::List t_ThreeSubj_stand_S_lst,        // stand.S values per tau
   double t_SPA_Cutoff,                       // P-value cutoff for applying SPA correction
   double t_zeta,                             // SPA parameter for moment approximation
   double t_tol                               // Numerical tolerance for SPA convergence
@@ -1876,7 +1878,9 @@ void setSPAsqrobjInCPP(
     t_R_GRM_R_vec,                           // Vector of full quadratic forms
     t_MAF_interval,                          // MAF intervals
     t_TwoSubj_list_lst,                      // Two-subject family list
-    t_ThreeSubj_list_lst,                    // Three+ subject family list
+    t_CLT_union_lst,                         // Shared CLT cache
+    t_ThreeSubj_family_idx_lst,              // Family indices per tau
+    t_ThreeSubj_stand_S_lst,                 // stand.S values per tau
     t_SPA_Cutoff,                            // SPA cutoff
     t_zeta,                                  // SPA zeta parameter
     t_tol                                    // SPA tolerance

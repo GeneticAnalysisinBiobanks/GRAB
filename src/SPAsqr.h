@@ -22,7 +22,9 @@ private:
   arma::vec m_R_GRM_R_vec;               // residuals x GRM x residuals (length ntaus)
   arma::vec m_MAF_interval;              // MAF interval divides the MAFs into several intervals
   Rcpp::List m_TwoSubj_list_lst;         // List of residuals (matrix 2 × ntaus) and IBD in outlier families (n = 2)
-  Rcpp::List m_ThreeSubj_list_lst;       // List of stand.S (matrix 3^n × ntaus) and CLT in outlier families (n > 2)
+  Rcpp::List m_CLT_union_lst;            // Shared CLT cache (union across all taus)
+  Rcpp::List m_ThreeSubj_family_idx_lst; // Family indices per tau (indices into CLT_union_lst)
+  Rcpp::List m_ThreeSubj_stand_S_lst;    // stand.S values per tau
   
   double m_SPA_Cutoff;                   // cutoff of standardized score to use normal approximation or SPA
   double m_zeta;                         // initial saddle point for negative side, default is zero
@@ -40,7 +42,9 @@ public:
     arma::vec t_R_GRM_R_vec,
     arma::vec t_MAF_interval,
     Rcpp::List t_TwoSubj_list_lst,
-    Rcpp::List t_ThreeSubj_list_lst,
+    Rcpp::List t_CLT_union_lst,
+    Rcpp::List t_ThreeSubj_family_idx_lst,
+    Rcpp::List t_ThreeSubj_stand_S_lst,
     double t_SPA_Cutoff,
     double t_zeta,
     double t_tol
@@ -54,7 +58,9 @@ public:
     m_R_GRM_R_vec = t_R_GRM_R_vec;
     m_MAF_interval = t_MAF_interval;
     m_TwoSubj_list_lst = t_TwoSubj_list_lst;
-    m_ThreeSubj_list_lst = t_ThreeSubj_list_lst;
+    m_CLT_union_lst = t_CLT_union_lst;
+    m_ThreeSubj_family_idx_lst = t_ThreeSubj_family_idx_lst;
+    m_ThreeSubj_stand_S_lst = t_ThreeSubj_stand_S_lst;
     m_SPA_Cutoff = t_SPA_Cutoff;
     m_zeta = t_zeta;
     m_tol = t_tol;
@@ -91,8 +97,22 @@ public:
       // Extract i-th element from TwoSubj_list_lst (which is a list of lists)
       Rcpp::List TwoSubj_list_i = Rcpp::as<Rcpp::List>(m_TwoSubj_list_lst[i]);
       
-      // Extract i-th element from ThreeSubj_list_lst (which is a list of lists)
-      Rcpp::List ThreeSubj_list_i = Rcpp::as<Rcpp::List>(m_ThreeSubj_list_lst[i]);
+      // Reconstruct ThreeSubj_list_i from separated components
+      Rcpp::List ThreeSubj_list_i;
+      Rcpp::IntegerVector family_idx_i = Rcpp::as<Rcpp::IntegerVector>(m_ThreeSubj_family_idx_lst[i]);
+      Rcpp::List stand_S_lst_i = Rcpp::as<Rcpp::List>(m_ThreeSubj_stand_S_lst[i]);
+      
+      int n_families_i = family_idx_i.size();
+      ThreeSubj_list_i = Rcpp::List(n_families_i);
+      
+      for (int j = 0; j < n_families_i; j++) {
+        int clt_idx = family_idx_i[j] - 1;  // R indices are 1-based, C++ is 0-based
+        Rcpp::List family_j = Rcpp::List::create(
+          Rcpp::Named("CLT") = m_CLT_union_lst[clt_idx],
+          Rcpp::Named("stand.S") = stand_S_lst_i[j]
+        );
+        ThreeSubj_list_i[j] = family_j;
+      }
       
       // Create temporary SPAGRM object for this tau
       SPAGRM::SPAGRMClass tempClass(

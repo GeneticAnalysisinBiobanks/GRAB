@@ -333,7 +333,9 @@ setMarker.SPAsqr <- function(objNull, control) {
     t_R_GRM_R_vec = objNull$R_GRM_R_vec,                  # numeric vector: Full R'*GRM*R (length ntaus)
     t_MAF_interval = objNull$MAF_interval,                # numeric vector: MAF intervals for binning
     t_TwoSubj_list_lst = objNull$TwoSubj_list_lst,                # list: Two-subject outlier pairs
-    t_ThreeSubj_list_lst = objNull$ThreeSubj_list_lst,            # list: Three+ subject outlier families
+    t_CLT_union_lst = objNull$CLT_union_lst,                      # list: Shared CLT cache (union across all taus)
+    t_ThreeSubj_family_idx_lst = objNull$ThreeSubj_family_idx_lst, # list: Family indices per tau
+    t_ThreeSubj_stand_S_lst = objNull$ThreeSubj_stand_S_lst,       # list: stand.S values per tau
     t_SPA_Cutoff = control$SPA_Cutoff,                    # numeric: P-value cutoff for SPA
     t_zeta = control$zeta,                                # numeric: SPA moment approximation parameter
     t_tol = control$tol                                   # numeric: Numerical tolerance for SPA
@@ -683,7 +685,11 @@ SPAGRM.NullModel.Multi <- function(
     }
   }
 
-  #### Step 4: Fill ThreeSubj_list_lst using cached CLTs
+  #### Step 4: Calculate stand.S for each tau, stored separately from CLT
+  # Initialize storage for 3+ member families
+  ThreeSubj_family_idx_lst <- vector("list", ntaus)  # Family indices into CLT_cache
+  ThreeSubj_stand_S_lst <- vector("list", ntaus)     # stand.S values per tau
+  
   for (i in seq_along(taus)) {
 
     ResidMat_df <- data.frame(
@@ -694,15 +700,18 @@ SPAGRM.NullModel.Multi <- function(
 
     graph_list_updated <- graph_list_updated_lst[[i]]
     R_GRM_R_TwoSubjOutlier <- 0
-    TwoSubj_list <- ThreeSubj_list <- list()
+    TwoSubj_list <- list()
+    
+    # Storage for 3+ member families (this tau)
+    ThreeSubj_family_idx <- integer(0)
+    ThreeSubj_stand_S <- list()
 
     if (length(graph_list_updated) != 0) {
       .message("Building standardized scores for %d outlier families for tau %g", length(graph_list_updated), taus[i])
 
-      # build chou-liu-tree.
       n.outliers <- length(graph_list_updated)
-      ## The below values are only used in chou.liu.tree
       TwofamID.index <- ThreefamID.index <- 0
+      
       for (index.outlier in seq_len(n.outliers)) {
 
         comp1 <- graph_list_updated[[index.outlier]]
@@ -737,32 +746,32 @@ SPAGRM.NullModel.Multi <- function(
           next
         }
 
+        # For families with 3+ members: store family index and stand.S separately
         ThreefamID.index <- ThreefamID.index + 1
 
-        # Use pre-computed CLT from cache
+        # Get family index in CLT_cache
         family_key <- paste(sort(comp3), collapse = "_")
         fam_cache_idx <- get(family_key, envir = family_id_map)
-        CLT <- CLT_cache[[fam_cache_idx]]
-
+        
         # Calculate standardized score using array operations and mapply
         stand.S.temp <- array(
           rowSums(mapply(function(x, y) x * y, arr.index[[n1]], Resid.temp)),
           rep(3, n1)
         )
 
-        ThreeSubj_list[[ThreefamID.index]] <- list(
-          CLT = CLT,
-          stand.S = c(stand.S.temp)
-        )
+        # Store family index and stand.S separately
+        ThreeSubj_family_idx[ThreefamID.index] <- fam_cache_idx
+        ThreeSubj_stand_S[[ThreefamID.index]] <- c(stand.S.temp)
       }
     }
 
     R_GRM_R_TwoSubjOutlier_vec[i] <- R_GRM_R_TwoSubjOutlier
     TwoSubj_list_lst[[i]] <- TwoSubj_list
-    ThreeSubj_list_lst[[i]] <- ThreeSubj_list
+    ThreeSubj_family_idx_lst[[i]] <- ThreeSubj_family_idx
+    ThreeSubj_stand_S_lst[[i]] <- ThreeSubj_stand_S
   }
 
-  # Return single list with vectors/matrices for all taus
+  # Return single list with CLT and stand.S stored separately
   obj <- list(
     taus = taus,
     Resid_mat = ResidMat,
@@ -774,7 +783,10 @@ SPAGRM.NullModel.Multi <- function(
     R_GRM_R_nonOutlier_vec = R_GRM_R_nonOutlier_vec,
     Resid.unrelated.outliers_lst = Resid.unrelated.outliers_lst,
     TwoSubj_list_lst = TwoSubj_list_lst,
-    ThreeSubj_list_lst = ThreeSubj_list_lst,
+    # New separated structure for 3+ member families:
+    CLT_union_lst = CLT_cache,                           # Shared CLT cache (union across all taus)
+    ThreeSubj_family_idx_lst = ThreeSubj_family_idx_lst,  # Family indices per tau
+    ThreeSubj_stand_S_lst = ThreeSubj_stand_S_lst,        # stand.S values per tau
     MAF_interval = MAF_interval
   )
 
