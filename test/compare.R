@@ -35,7 +35,7 @@ sapply(1:5, function(i) identical(obj1_lst[[i]]$ThreeSubj_list, obj2$ThreeSubj_l
 
 # Step 2: compare P-values
 OutputFile <- file.path("test/refactorSPAsqr.output.txt")
-GRAB.Marker(obj.SPAGRM_list, GenoFile, OutputFile = OutputFile, control = list(tol = 1e-9))
+GRAB.Marker(obj2, GenoFile, OutputFile = OutputFile, control = list(tol = 1e-9))
 
 res1df <- data.table::fread("test/repeatSPAGRM.output.txt")
 res2df <- data.table::fread(OutputFile)

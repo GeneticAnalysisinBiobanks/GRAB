@@ -395,33 +395,69 @@ SPAGRM.NullModel.Multi <- function(
   MaxNuminFam <- control$MaxNuminFam
   MAF_interval <- control$MAF_interval
 
-  # Identify outliers based on quantiles
+  #### Identify outliers based on quantiles
   Quants <- apply(ResidMat, 2, function(x) quantile(x, probs = c(MinQuantile, MaxQuantile)))
   Ranges <- Quants[2, ] - Quants[1, ]
   cutoffLower <- Quants[1, ] - OutlierRatio * Ranges
   cutoffUpper <- Quants[2, ] + OutlierRatio * Ranges
 
-  # Mark outliers: row < lower OR row > upper (for any column)
   tooSmall <- sweep(ResidMat, 2, cutoffLower, "<")
   tooLarge <- sweep(ResidMat, 2, cutoffUpper, ">")
   Outlier <- tooSmall | tooLarge
 
-  # Initialize output vector/lists for each tau
-  Resid.unrelated.outliers_lst <- vector("list", ntaus)
-  R_GRM_R_vec <- numeric(ntaus)
-  R_GRM_R_TwoSubjOutlier_vec <- numeric(ntaus)
-  sum_R_nonOutlier_vec <- numeric(ntaus)
-  R_GRM_R_nonOutlier_vec <- numeric(ntaus)
-  TwoSubj_list_lst <- lapply(1:ntaus, function(x) list())
-  ThreeSubj_list_lst <- lapply(1:ntaus, function(x) list())
-
-  # Pre-compute tau-independent graph structure
+  #### Pre-compute tau-independent graph structure
   edges <- t(SparseGRM[, c("ID1", "ID2")])
   graph_GRM <- igraph::make_graph(edges, directed = FALSE)
   graph_list_all <- igraph::decompose(graph_GRM)
+  graph_vertex_names <- lapply(graph_list_all, function(g) igraph::V(g)$name)
   graph_length <- sapply(graph_list_all, length)
 
-  # Pre-build array index structures (tau-independent)
+  graph_list_1 <- graph_list_all[graph_length == 1]
+  SubjID.unrelated <- lapply(graph_list_1, igraph::get.vertex.attribute) %>% unlist(use.names = FALSE)
+  graph_list <- graph_list_all[graph_length > 1]
+  nGraph <- length(graph_list)
+
+  if (nGraph == 0) {
+    stop("No family found in SparseGRM. Please check SparseGRMFile.")
+  }
+
+  #### Step 1: Calculate contributions from UNRELATED subjects (vectorized across all taus)
+  
+  # Extract unrelated subject data
+  unrelated_idx <- which(subjData %in% SubjID.unrelated)
+  ResidMat_unrelated <- ResidMat[unrelated_idx, , drop = FALSE]
+  Outlier_unrelated <- Outlier[unrelated_idx, , drop = FALSE]
+  
+  # Filter GRM for unrelated subjects only
+  SparseGRM_unrelated <- SparseGRM %>% filter(ID1 %in% SubjID.unrelated)
+  pos1_idx <- match(SparseGRM_unrelated$ID1, subjData)
+  pos2_idx <- match(SparseGRM_unrelated$ID2, subjData)
+  ResidMat_pos1 <- ResidMat[pos1_idx, , drop = FALSE]
+  ResidMat_pos2 <- ResidMat[pos2_idx, , drop = FALSE]
+  
+  # Calculate R'*GRM*R for unrelated subjects (all taus simultaneously)
+  cov_matrix <- abs(SparseGRM_unrelated$Value) * ResidMat_pos1 * ResidMat_pos2
+  R_GRM_R_vec <- colSums(cov_matrix)
+  
+  # Calculate R'*GRM*R for non-outlier unrelated subjects (all taus simultaneously)
+  id1_in_unrelated_idx <- match(SparseGRM_unrelated$ID1, subjData[unrelated_idx])
+  mask_matrix <- !Outlier_unrelated[id1_in_unrelated_idx, , drop = FALSE]
+  cov_masked <- cov_matrix * mask_matrix
+  R_GRM_R_nonOutlier_vec <- colSums(cov_masked)
+  
+  # Calculate sum of non-outlier residuals for unrelated subjects (all taus simultaneously)
+  sum_R_nonOutlier_vec <- colSums(ResidMat_unrelated * (!Outlier_unrelated))
+  
+  # Extract outlier residuals for unrelated subjects (per tau)
+  Resid.unrelated.outliers_lst <- lapply(seq_along(taus), function(i) {
+    ResidMat_unrelated[Outlier_unrelated[, i], i]
+  })
+  
+  # Initialize output structures for RELATED subjects
+  R_GRM_R_TwoSubjOutlier_vec <- numeric(ntaus)
+  TwoSubj_list_lst <- lapply(1:ntaus, function(x) list())
+  ThreeSubj_list_lst <- lapply(1:ntaus, function(x) list())
+
   arr.index <- list()
   for (n in seq_len(MaxNuminFam)) {
     temp <- c()
@@ -435,10 +471,12 @@ SPAGRM.NullModel.Multi <- function(
     arr.index[[n]] <- temp
   }
 
-  # Storage for graph_list_updated for each tau
-  graph_list_updated_lst <- vector("list", ntaus)
+  #### Step 2: First tau loop - Build graph_list_updated_lst and add RELATED family contributions
 
-  # First loop: build graph_list_updated for each tau
+  # graph_list_updated_lst is a list of length ntaus, where each element i contains:
+  # A list of igraph objects representing families with outliers for that specific tau value
+  # These families have been decomposed/adjusted so that no family exceeds MaxNuminFam members
+  graph_list_updated_lst <- vector("list", ntaus)
   for (i in seq_along(taus)) {
 
     ResidMat_df <- data.frame(
@@ -453,141 +491,103 @@ SPAGRM.NullModel.Multi <- function(
     SparseGRM1$pos2 <- ResidMat_df$Resid[match(SparseGRM$ID2, ResidMat_df$SubjID)]
     SparseGRM1 <- SparseGRM1 %>% mutate(Cov = abs(Value * pos1 * pos2))
 
-    graph_list_1 <- graph_list_all[graph_length == 1]
-    SubjID.unrelated <- lapply(graph_list_1, igraph::get.vertex.attribute) %>% unlist(use.names = FALSE)
-    ResidMat.unrelated <- ResidMat_df %>% filter(SubjID %in% SubjID.unrelated)
-    SubjID.unrelated.nonOutlier <- ResidMat.unrelated %>%
-      filter(Outlier == FALSE) %>%
-      select(SubjID) %>%
-      unlist(use.names = FALSE)
-
-    # Values used in association analysys
-    R_GRM_R <- SparseGRM1 %>%
-      filter(ID1 %in% SubjID.unrelated) %>%
-      select(Cov) %>%
-      sum()
-    sum_R_nonOutlier <- ResidMat.unrelated %>%
-      filter(Outlier == FALSE) %>%
-      select(Resid) %>%
-      sum()
-    R_GRM_R_nonOutlier <- SparseGRM1 %>%
-      filter(ID1 %in% SubjID.unrelated.nonOutlier) %>%
-      select(Cov) %>%
-      sum()
-    Resid.unrelated.outliers <- ResidMat.unrelated %>%
-      filter(Outlier == TRUE) %>%
-      select(Resid) %>%
-      unlist(use.names = FALSE)
-    R_GRM_R_TwoSubjOutlier <- 0
-    TwoSubj_list <- ThreeSubj_list <- list()
-
-    # initialize parameters
+    # Initialize for this tau
     graph_list_updated <- list()
-    graph_list <- graph_list_all[graph_length > 1]
-    nGraph <- length(graph_list)
     index.outlier <- 1
 
-    if (nGraph != 0) {
-      .message("Processing %d family groups for tau %g", nGraph, taus[i])
+    .message("Processing %d family groups for tau %g", nGraph, taus[i])
 
-      for (i_fam in seq_len(nGraph)) {
-        if (i_fam %% 1000 == 0) {
-          .message("Processing family group %d/%d", i_fam, nGraph)
+    for (i_fam in seq_len(nGraph)) {
+      if (i_fam %% 1000 == 0) {
+        .message("Processing family group %d/%d", i_fam, nGraph)
+      }
+
+      comp1 <- graph_list[[i_fam]]
+      comp3 <- graph_vertex_names[[which(graph_length > 1)[i_fam]]]
+      pos1 <- match(comp3, subjData)
+      outlierInFam <- any(ResidMat_df$Outlier[pos1])
+
+      # Add related family variance to unrelated contribution
+      block_GRM <- make.block.GRM(comp1, SparseGRM)
+      R_GRM_R.temp <- as.numeric(t(ResidMat_df$Resid[pos1]) %*% block_GRM %*% ResidMat_df$Resid[pos1])
+      R_GRM_R_vec[i] <- R_GRM_R_vec[i] + R_GRM_R.temp
+
+      if (!outlierInFam) {
+        # Add non-outlier family contributions to unrelated contributions
+        sum_R_nonOutlier_vec[i] <- sum_R_nonOutlier_vec[i] + sum(ResidMat_df$Resid[pos1])
+        R_GRM_R_nonOutlier_vec[i] <- R_GRM_R_nonOutlier_vec[i] + R_GRM_R.temp
+        next
+      }
+
+      # Use pre-computed graph length instead of igraph::vcount
+      vcount <- graph_length[which(graph_length > 1)[i_fam]]
+
+      if (vcount <= MaxNuminFam) {
+        graph_list_updated[[index.outlier]] <- comp1
+        index.outlier <- index.outlier + 1
+        next
+      }
+
+      # Step 1: remove the edges until the largest family size is <= MaxNuminFam, default is 5.
+      comp1.temp <- comp1
+      tempGRM1 <- SparseGRM1 %>%
+        filter(ID1 %in% comp3 | ID2 %in% comp3) %>%
+        arrange(Cov)
+      for (j in seq_len(nrow(tempGRM1))) {
+        # Remove edge and calculate vertex counts for new graph components
+        edgesToRemove <- paste0(tempGRM1$ID1[j], "|", tempGRM1$ID2[j])
+        comp1.temp <- igraph::delete.edges(comp1.temp, edgesToRemove)
+        # Get vertex count for each component after edge removal
+        vcount <- igraph::decompose(comp1.temp) %>% sapply(igraph::vcount)
+        if (max(vcount) <= MaxNuminFam) {
+          break
         }
+      }
 
-        comp1 <- graph_list[[i_fam]]
-        comp3 <- igraph::V(comp1)$name
+      # Step 2: add the (removed) edges while keeping the largest family size <= MaxNuminFam, default is 5.
+      tempGRM1 <- tempGRM1[seq_len(j), ] %>% arrange(desc(Cov))
+      comp1 <- comp1.temp
+      for (k in seq_len(nrow(tempGRM1))) {
+        # Add edge and calculate vertex counts for new graph components
+        edgesToAdd <- c(tempGRM1$ID1[k], tempGRM1$ID2[k])
+        comp1.temp <- igraph::add.edges(comp1, edgesToAdd)
 
-        # Step 0: calculate variance for the family
-        pos1 <- match(comp3, subjData)
-        outlierInFam <- any(ResidMat_df$Outlier[pos1])
+        # Get vertex count for each component after edge addition
+        vcount <- igraph::decompose(comp1.temp) %>% sapply(igraph::vcount)
 
-        block_GRM <- make.block.GRM(comp1, SparseGRM)
+        if (max(vcount) <= MaxNuminFam) {
+          comp1 <- comp1.temp
+        }
+      }
 
-        R_GRM_R.temp <- as.numeric(t(ResidMat_df$Resid[pos1]) %*% block_GRM %*% ResidMat_df$Resid[pos1])
-        R_GRM_R <- R_GRM_R + R_GRM_R.temp
+      comp1 <- igraph::decompose(comp1)
+
+      for (k in seq_len(length(comp1))) {
+        comp11 <- comp1[[k]]
+        comp13 <- igraph::V(comp11)$name
+
+        pos2 <- match(comp13, subjData)
+        outlierInFam <- any(ResidMat_df$Outlier[pos2])
+
+        block_GRM <- make.block.GRM(comp11, SparseGRM)
+        R_GRM_R.temp <- as.numeric(t(ResidMat_df$Resid[pos2]) %*% block_GRM %*% ResidMat_df$Resid[pos2])
 
         if (!outlierInFam) {
-          sum_R_nonOutlier <- sum_R_nonOutlier + sum(ResidMat_df$Resid[pos1])
-          R_GRM_R_nonOutlier <- R_GRM_R_nonOutlier + R_GRM_R.temp
-          next
-        }
-
-        vcount <- igraph::vcount(comp1) # number of vertices
-
-        if (vcount <= MaxNuminFam) {
-          graph_list_updated[[index.outlier]] <- comp1
+          sum_R_nonOutlier_vec[i] <- sum_R_nonOutlier_vec[i] + sum(ResidMat_df$Resid[pos2])
+          R_GRM_R_nonOutlier_vec[i] <- R_GRM_R_nonOutlier_vec[i] + R_GRM_R.temp
+        } else {
+          graph_list_updated[[index.outlier]] <- comp11
           index.outlier <- index.outlier + 1
-          next
-        }
-
-        # Step 1: remove the edges until the largest family size is <= MaxNuminFam, default is 5.
-
-        comp1.temp <- comp1
-        tempGRM1 <- SparseGRM1 %>%
-          filter(ID1 %in% comp3 | ID2 %in% comp3) %>%
-          arrange(Cov)
-        for (j in seq_len(nrow(tempGRM1))) {
-          # Remove edge and calculate vertex counts for new graph components
-          edgesToRemove <- paste0(tempGRM1$ID1[j], "|", tempGRM1$ID2[j])
-          comp1.temp <- igraph::delete.edges(comp1.temp, edgesToRemove)
-          # Get vertex count for each component after edge removal
-          vcount <- igraph::decompose(comp1.temp) %>% sapply(igraph::vcount)
-          if (max(vcount) <= MaxNuminFam) {
-            break
-          }
-        }
-
-        # Step 2: add the (removed) edges while keeping the largest family size <= MaxNuminFam, default is 5.
-
-        tempGRM1 <- tempGRM1[seq_len(j), ] %>% arrange(desc(Cov))
-        comp1 <- comp1.temp
-        for (k in seq_len(nrow(tempGRM1))) {
-          # Add edge and calculate vertex counts for new graph components
-          edgesToAdd <- c(tempGRM1$ID1[k], tempGRM1$ID2[k])
-          comp1.temp <- igraph::add.edges(comp1, edgesToAdd)
-
-          # Get vertex count for each component after edge addition
-          vcount <- igraph::decompose(comp1.temp) %>% sapply(igraph::vcount)
-
-          if (max(vcount) <= MaxNuminFam) {
-            comp1 <- comp1.temp
-          }
-        }
-
-        comp1 <- igraph::decompose(comp1)
-
-        for (k in seq_len(length(comp1))) {
-          comp11 <- comp1[[k]]
-          comp13 <- igraph::V(comp11)$name
-
-          pos2 <- match(comp13, subjData)
-          outlierInFam <- any(ResidMat_df$Outlier[pos2])
-
-          block_GRM <- make.block.GRM(comp11, SparseGRM)
-
-          R_GRM_R.temp <- as.numeric(t(ResidMat_df$Resid[pos2]) %*% block_GRM %*% ResidMat_df$Resid[pos2])
-
-          if (!outlierInFam) {
-            sum_R_nonOutlier <- sum_R_nonOutlier + sum(ResidMat_df$Resid[pos2])
-            R_GRM_R_nonOutlier <- R_GRM_R_nonOutlier + R_GRM_R.temp
-          } else {
-            graph_list_updated[[index.outlier]] <- comp11
-            index.outlier <- index.outlier + 1
-          }
         }
       }
     }
 
-    # Store graph_list_updated and other tau-specific values for this tau
     graph_list_updated_lst[[i]] <- graph_list_updated
-    Resid.unrelated.outliers_lst[[i]] <- Resid.unrelated.outliers
-    R_GRM_R_vec[i] <- R_GRM_R
-    sum_R_nonOutlier_vec[i] <- sum_R_nonOutlier
-    R_GRM_R_nonOutlier_vec[i] <- R_GRM_R_nonOutlier
   }
 
-  # Build CLT cache for union of all unique outlier families
+  #### Step 3: Build CLT cache for union of all outlier families (across all taus)
+
+  # Collect all unique outlier families across all taus
   all_unique_families <- list()
   family_id_map <- new.env(hash = TRUE)
   
@@ -610,7 +610,7 @@ SPAGRM.NullModel.Multi <- function(
   CLT_cache <- vector("list", length(all_unique_families))
   
   if (length(all_unique_families) > 0) {
-    .message("Computing Chow-Liu trees for %d outlier families", length(all_unique_families))
+    .message("Computing Chow-Liu trees for cache %d outlier unique families", length(all_unique_families))
     
     for (fam_idx in seq_along(all_unique_families)) {
 
@@ -634,7 +634,7 @@ SPAGRM.NullModel.Multi <- function(
     }
   }
 
-  # Second loop: calculate tau-specific scores and populate return objects
+  #### Step 4: Fill ThreeSubj_list_lst using cached CLTs
   for (i in seq_along(taus)) {
 
     ResidMat_df <- data.frame(
@@ -719,11 +719,11 @@ SPAGRM.NullModel.Multi <- function(
     Resid_mat = ResidMat,
     subjData = subjData,
     N = length(subjData),
-    Resid.unrelated.outliers_lst = Resid.unrelated.outliers_lst,
     R_GRM_R_vec = R_GRM_R_vec,
     R_GRM_R_TwoSubjOutlier_vec = R_GRM_R_TwoSubjOutlier_vec,
     sum_R_nonOutlier_vec = sum_R_nonOutlier_vec,
     R_GRM_R_nonOutlier_vec = R_GRM_R_nonOutlier_vec,
+    Resid.unrelated.outliers_lst = Resid.unrelated.outliers_lst,
     TwoSubj_list_lst = TwoSubj_list_lst,
     ThreeSubj_list_lst = ThreeSubj_list_lst,
     MAF_interval = MAF_interval
