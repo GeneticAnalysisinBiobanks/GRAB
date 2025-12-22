@@ -435,6 +435,10 @@ SPAGRM.NullModel.Multi <- function(
     arr.index[[n]] <- temp
   }
 
+  # Storage for graph_list_updated for each tau
+  graph_list_updated_lst <- vector("list", ntaus)
+
+  # First loop: build graph_list_updated for each tau
   for (i in seq_along(taus)) {
 
     ResidMat_df <- data.frame(
@@ -484,7 +488,7 @@ SPAGRM.NullModel.Multi <- function(
     index.outlier <- 1
 
     if (nGraph != 0) {
-      .message("Processing %d family groups with related residuals", nGraph)
+      .message("Processing %d family groups for tau %g", nGraph, taus[i])
 
       for (i_fam in seq_len(nGraph)) {
         if (i_fam %% 1000 == 0) {
@@ -573,83 +577,138 @@ SPAGRM.NullModel.Multi <- function(
           }
         }
       }
+    }
 
-      .message("Building Chow-Liu tree for family outliers")
+    # Store graph_list_updated and other tau-specific values for this tau
+    graph_list_updated_lst[[i]] <- graph_list_updated
+    Resid.unrelated.outliers_lst[[i]] <- Resid.unrelated.outliers
+    R_GRM_R_vec[i] <- R_GRM_R
+    sum_R_nonOutlier_vec[i] <- sum_R_nonOutlier
+    R_GRM_R_nonOutlier_vec[i] <- R_GRM_R_nonOutlier
+  }
+
+  # Build CLT cache for union of all unique outlier families
+  all_unique_families <- list()
+  family_id_map <- new.env(hash = TRUE)
+  
+  for (i in seq_along(taus)) {
+    graph_list_updated <- graph_list_updated_lst[[i]]
+    if (length(graph_list_updated) == 0) next
+    
+    for (comp1 in graph_list_updated) {
+      comp3 <- igraph::V(comp1)$name
+      family_key <- paste(sort(comp3), collapse = "_")
+      
+      if (!exists(family_key, envir = family_id_map)) {
+        assign(family_key, length(all_unique_families) + 1, envir = family_id_map)
+        all_unique_families[[length(all_unique_families) + 1]] <- comp1
+      }
+    }
+  }
+
+  # Pre-compute CLT for all unique families
+  CLT_cache <- vector("list", length(all_unique_families))
+  
+  if (length(all_unique_families) > 0) {
+    .message("Computing Chow-Liu trees for %d outlier families", length(all_unique_families))
+    
+    for (fam_idx in seq_along(all_unique_families)) {
+
+      if (fam_idx %% 100 == 0) {
+        .message("Processing family group %d/%d", fam_idx, length(all_unique_families))
+      }
+      comp1 <- all_unique_families[[fam_idx]]
+      comp3 <- igraph::V(comp1)$name
+      n1 <- length(comp3)
+      
+      if (n1 <= 2) next  # CLT only needed for n >= 3
+      
+      tempIBD <- PairwiseIBD %>% filter(ID1 %in% comp3 & ID2 %in% comp3)
+      
+      CLT_cache[[fam_idx]] <- chow.liu.tree(
+        N = n1,
+        IBD = tempIBD,
+        IDs = comp3,
+        MAF_interval = MAF_interval
+      )
+    }
+  }
+
+  # Second loop: calculate tau-specific scores and populate return objects
+  for (i in seq_along(taus)) {
+
+    ResidMat_df <- data.frame(
+      SubjID = subjData,
+      Resid = ResidMat[, i],
+      Outlier = Outlier[, i]
+    )
+
+    graph_list_updated <- graph_list_updated_lst[[i]]
+    R_GRM_R_TwoSubjOutlier <- 0
+    TwoSubj_list <- ThreeSubj_list <- list()
+
+    if (length(graph_list_updated) != 0) {
+      .message("Building standardized scores for %d outlier families for tau %g", length(graph_list_updated), taus[i])
 
       # build chou-liu-tree.
       n.outliers <- length(graph_list_updated)
-      if (n.outliers != 0) {
-        ## The below values are only used in chou.liu.tree
-        TwofamID.index <- ThreefamID.index <- 0
-        for (index.outlier in seq_len(n.outliers)) {
-          if (index.outlier %% 1000 == 0) {
-            .message("Processing CLT for outlier families: %d, %d/%d", TwofamID.index, ThreefamID.index, nGraph)
-          }
+      ## The below values are only used in chou.liu.tree
+      TwofamID.index <- ThreefamID.index <- 0
+      for (index.outlier in seq_len(n.outliers)) {
 
-          comp1 <- graph_list_updated[[index.outlier]]
-          comp3 <- igraph::V(comp1)$name
-          n1 <- length(comp3)
-          pos3 <- match(comp3, subjData)
+        comp1 <- graph_list_updated[[index.outlier]]
+        comp3 <- igraph::V(comp1)$name
+        n1 <- length(comp3)
+        pos3 <- match(comp3, subjData)
 
-          Resid.temp <- ResidMat_df$Resid[pos3]
+        Resid.temp <- ResidMat_df$Resid[pos3]
 
-          if (n1 == 1) {
-            Resid.unrelated.outliers <- c(Resid.unrelated.outliers, Resid.temp)
-            next
-          }
-
-          block_GRM <- make.block.GRM(comp1, SparseGRM)
-
-          tempIBD <- PairwiseIBD %>% filter(ID1 %in% comp3 & ID2 %in% comp3)
-
-          if (n1 == 2) {
-            TwofamID.index <- TwofamID.index + 1
-
-            R_GRM_R_TwoSubjOutlier.temp <- as.numeric(t(Resid.temp) %*% block_GRM %*% Resid.temp)
-            R_GRM_R_TwoSubjOutlier <- R_GRM_R_TwoSubjOutlier + R_GRM_R_TwoSubjOutlier.temp
-
-            Rho.temp <- tempIBD$pa + 0.5 * tempIBD$pb
-            midterm <- sqrt(Rho.temp^2 - tempIBD$pa)
-
-            TwoSubj_list[[TwofamID.index]] <- list(
-              Resid = Resid.temp,
-              Rho = c(Rho.temp + midterm, Rho.temp - midterm)
-            )
-            next
-          }
-
-          ThreefamID.index <- ThreefamID.index + 1
-
-          CLT <- chow.liu.tree(
-            N = n1,
-            IBD = tempIBD,
-            IDs = comp3,
-            MAF_interval = MAF_interval
-          )
-
-          # Calculate standardized score using array operations and mapply
-          stand.S.temp <- array(
-            rowSums(mapply(function(x, y) x * y, arr.index[[n1]], Resid.temp)),
-            rep(3, n1)
-          )
-
-          ThreeSubj_list[[ThreefamID.index]] <- list(
-            CLT = CLT,
-            stand.S = c(stand.S.temp)
-          )
+        if (n1 == 1) {
+          Resid.unrelated.outliers_lst[[i]] <- c(Resid.unrelated.outliers_lst[[i]], Resid.temp)
+          next
         }
-        .message(
-          "Completed CLT processing for %d families (%d, %d/%d)",
-          n.outliers, TwofamID.index, ThreefamID.index, nGraph
+
+        block_GRM <- make.block.GRM(comp1, SparseGRM)
+
+        tempIBD <- PairwiseIBD %>% filter(ID1 %in% comp3 & ID2 %in% comp3)
+
+        if (n1 == 2) {
+          TwofamID.index <- TwofamID.index + 1
+
+          R_GRM_R_TwoSubjOutlier.temp <- as.numeric(t(Resid.temp) %*% block_GRM %*% Resid.temp)
+          R_GRM_R_TwoSubjOutlier <- R_GRM_R_TwoSubjOutlier + R_GRM_R_TwoSubjOutlier.temp
+
+          Rho.temp <- tempIBD$pa + 0.5 * tempIBD$pb
+          midterm <- sqrt(Rho.temp^2 - tempIBD$pa)
+
+          TwoSubj_list[[TwofamID.index]] <- list(
+            Resid = Resid.temp,
+            Rho = c(Rho.temp + midterm, Rho.temp - midterm)
+          )
+          next
+        }
+
+        ThreefamID.index <- ThreefamID.index + 1
+
+        # Use pre-computed CLT from cache
+        family_key <- paste(sort(comp3), collapse = "_")
+        fam_cache_idx <- get(family_key, envir = family_id_map)
+        CLT <- CLT_cache[[fam_cache_idx]]
+
+        # Calculate standardized score using array operations and mapply
+        stand.S.temp <- array(
+          rowSums(mapply(function(x, y) x * y, arr.index[[n1]], Resid.temp)),
+          rep(3, n1)
+        )
+
+        ThreeSubj_list[[ThreefamID.index]] <- list(
+          CLT = CLT,
+          stand.S = c(stand.S.temp)
         )
       }
     }
 
-    Resid.unrelated.outliers_lst[[i]] <- Resid.unrelated.outliers
-    R_GRM_R_vec[i] <- R_GRM_R
     R_GRM_R_TwoSubjOutlier_vec[i] <- R_GRM_R_TwoSubjOutlier
-    sum_R_nonOutlier_vec[i] <- sum_R_nonOutlier
-    R_GRM_R_nonOutlier_vec[i] <- R_GRM_R_nonOutlier
     TwoSubj_list_lst[[i]] <- TwoSubj_list
     ThreeSubj_list_lst[[i]] <- ThreeSubj_list
   }
