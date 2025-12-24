@@ -547,159 +547,152 @@ TestforBatchEffect <- function(
 
   #### estimate unknown parameters according to batch effect p-values---------------------------------
   .message("Estimating TPR and sigma2 ...")
-  maf.group <- c(seq(-1e-4, 0.4, 0.05), max(mergeGenoInfo$mu.int))
-  mergeGenoInfo <- lapply(1:(length(maf.group) - 1), function(i) {
-    # Progress indicator for MAF group processing
-
-    ## assume that genotypes with MAF in [ maf.group[i] , maf.group[i+1]] have the same mixture distribution
-    mergeGenoInfo_1 <- mergeGenoInfo %>% filter(mu.int > maf.group[i] & mu.int <= maf.group[i + 1])
-
-    ## using batcheffect p-values with MAF in [maf.group[i]-0.1 , maf.group[i+1]+0.1] to estimate parameters
+  
+  maf.group <- sort(unique(
+    c(seq(0, 0.4, 0.05), max(mergeGenoInfo$mu.int, na.rm = TRUE))
+  ))
+  
+  mergeGenoInfo.est <- lapply(seq_len(length(maf.group) - 1), function(i) {
+    
+    mergeGenoInfo_1 <- mergeGenoInfo %>%
+      filter(mu.int > maf.group[i], mu.int <= maf.group[i + 1])
+    
+    ## No SNP in this group
+    if (nrow(mergeGenoInfo_1) = 0) {
+      .message(" No in this MAF group, skipping")
+      return(NULL)
+    }
+    
     mergeGenoInfo_2 <- mergeGenoInfo %>%
-      filter(mu.int >= max(maf.group[i] - 0.1, 0) & mu.int < min(1, maf.group[i + 1] + 0.1))
-
-    mu <- (maf.group[i] + maf.group[i + 1]) / 2
-
-    n.ext <- mean(na.omit(mergeGenoInfo_1$AN_ref)[1]) / 2
+      filter(
+        mu.int >= max(maf.group[i] - 0.1, 0.01),
+        mu.int <  min(1, maf.group[i + 1] + 0.1)
+      )
+    
+    mu    <- (maf.group[i] + maf.group[i + 1]) / 2
+    n.ext <- mean(na.omit(mergeGenoInfo_1$AN_ref)) / 2
+    
+    if (!is.finite(n.ext) || n.ext < 5) {
+      return(
+        mergeGenoInfo_1 %>%
+          dplyr::mutate(TPR = NA, sigma2 = NA, w.ext = 0, var.ratio.ext = NA)
+      )
+    }
+    
+    ## ---- variance parts ----
     var_mu_ext <- mu * (1 - mu) / (2 * n.ext)
-
-    var_Sbat <- ifelse(is.null(sparseGRM), sum(w1^2) * 2 * mu * (1 - mu) + var_mu_ext,
-      na.omit(mergeGenoInfo$var.ratio.w0)[1] * (sum(w1^2) * 2 * mu * (1 - mu) + var_mu_ext)
-    )
-
-    # ---- BEGIN inlined: fun.est.param ----
-    vec_p_bat <- mergeGenoInfo_2$pvalue_bat
-    vec_var_Sbat <- var_Sbat
-    vec_cutoff <- seq(0.01, 0.4, 0.1)
-
-    vec_p_deno <- sapply(vec_cutoff, function(p_cut) {
-      mean(na.omit(vec_p_bat > p_cut))
-    })
-
-    opti_fun <- function(var_Sbat, vec_p_deno, par) {
-      diff <- sum(sapply(seq_along(vec_cutoff), function(j) {
+    
+    if (is.null(sparseGRM)) {
+      var_Sbat <- sum(w1^2) * 2 * mu * (1 - mu) + var_mu_ext
+    } else {
+      vr <- na.omit(mergeGenoInfo_2$var.ratio.w0)
+      if (length(vr) == 0) return(NULL)
+      var_Sbat <- mean(vr) * (sum(w1^2) * 2 * mu * (1 - mu) + var_mu_ext)
+    }
+    
+    ## ---- estimate TPR & sigma2 ----
+    vec_p_bat <- na.omit(mergeGenoInfo_2$pvalue_bat)
+    if (length(vec_p_bat) < 50) return(NULL)
+    
+    vec_cutoff <- c(0.01,  0.1, 0.2)
+    vec_p_deno <- sapply(vec_cutoff, function(p) mean(vec_p_bat > p))
+    
+    ## —— guard 2: remove degenerate cutoffs
+    keep <- which(is.finite(vec_p_deno) & vec_p_deno > 0)
+    if (length(keep) < 2) return(NULL)
+    
+    vec_cutoff  <- vec_cutoff[keep]
+    vec_p_deno  <- vec_p_deno[keep]
+    
+    opti_fun <- function(par) {
+      TPR    <- par[1]
+      sigma2 <- par[2]
+      if (TPR < 0 || TPR > 1 || sigma2 < 0) return(1e6)
+      
+      sum(sapply(seq_along(vec_cutoff), function(j) {
         p_cut <- vec_cutoff[j]
         lb <- -qnorm(1 - p_cut / 2) * sqrt(var_Sbat)
-        ub <- qnorm(1 - p_cut / 2) * sqrt(var_Sbat)
+        ub <-  qnorm(1 - p_cut / 2) * sqrt(var_Sbat)
+        
         p_deno <- vec_p_deno[j]
-
-        var_Sbat_par2 <- var_Sbat + par[2]
-        if (var_Sbat_par2 >=0) {
-          c <- pnorm(ub, 0, sqrt(var_Sbat_par2), log.p = TRUE)
-          d <- pnorm(lb, 0, sqrt(var_Sbat_par2), log.p = TRUE)
-        } else {
-          c <- NaN
-          d <- NaN
-        }
-
-        pro.cut <- par[1] * (exp(d) * (exp(c - d) - 1)) + (1 - par[1]) * (1 - p_cut)
+        
+        v2 <- var_Sbat + sigma2
+        c <- pnorm(ub, 0, sqrt(v2), log.p = TRUE)
+        d <- pnorm(lb, 0, sqrt(v2), log.p = TRUE)
+        
+        pro.cut <- TPR * (exp(d) * (exp(c - d) - 1)) +
+          (1 - TPR) * (1 - p_cut)
+        
         ((p_deno - pro.cut) / p_deno)^2
       }))
-      diff
     }
-
-    obj_par <- optim(
-      par = c(0.01, 0.01),
-      fn = opti_fun,
-      vec_p_deno = vec_p_deno,
-      var_Sbat = vec_var_Sbat
-    )$par
-
-    obj <- list(
-      TPR = min(1, max(0, obj_par[1])),
-      sigma2 = min(1, max(0, obj_par[2]))
+    
+    opt <- tryCatch(
+      optim(
+        par = c(0.05, 0.01),
+        fn = opti_fun,
+        method = "L-BFGS-B",
+        lower = c(0, 0),
+        upper = c(1, Inf)
+      ),
+      error = function(e) NULL
     )
-
-    TPR <- obj$TPR
-    sigma2 <- obj$sigma2
-    # ---- END inlined: fun.est.param ----
-
-    # Function of optimal external weight contribution. Needed by the call of optim().
-    fun.optimalWeight <- function(par, pop.prev, R, y, mu1, w, mu, N, n.ext, sigma2, TPR) {
-      b <- par[1]
-
-      p.fun <- function(b, pop.prev, R, y, mu1, mu, w, N, n.ext, sigma2, TPR) {
-        meanR <- mean(R)
-        sumR <- sum(R)
-
-        mu0 <- mu
-        mu.pop <- mu1 * pop.prev + mu0 * (1 - pop.prev)
-
-        mu.i <- ifelse(y == 1, 2 * mu1, 2 * mu0)
-
-        S <- sum((R - (1 - b) * meanR) * mu.i) - sumR * 2 * b * mu.pop
-
-        w1 <- w / (2 * sum(w))
-        mu <- mean(mu.i) / 2
-
-        var_mu_ext <- mu * (1 - mu) / (2 * n.ext)
-        var_Sbat <- sum(w1^2) * 2 * mu * (1 - mu) + var_mu_ext
-
-        p_cut <- 0.1
-        lb <- -qnorm(1 - p_cut / 2) * sqrt(var_Sbat)
-        ub <- qnorm(1 - p_cut / 2) * sqrt(var_Sbat)
-        c <- pnorm(ub, 0, sqrt(var_Sbat + sigma2), log.p = TRUE)
-        d <- pnorm(lb, 0, sqrt(var_Sbat + sigma2), log.p = TRUE)
-        p_deno <- TPR * (exp(d) * (exp(c - d) - 1)) + (1 - TPR) * (1 - p_cut)
-
-        var.int <- sum((R - (1 - b) * meanR)^2) * 2 * mu * (1 - mu)
-        var_S <- var.int + 4 * b^2 * sumR^2 * var_mu_ext
-        cov_Sbat_S <- sum(w1 * (R - (1 - b) * meanR)) * 2 * mu * (1 - mu) + 2 * b * sumR * var_mu_ext
-        VAR <- matrix(c(var_S, cov_Sbat_S, cov_Sbat_S, var_Sbat), nrow = 2)
-        p0 <- max(0, mvtnorm::pmvnorm(lower = c(-Inf, lb), upper = c(-abs(S), ub), mean = c(0, 0), sigma = VAR))
-
-        var_S1 <- var.int + 4 * b^2 * sumR^2 * (var_mu_ext + sigma2)
-        cov_Sbat_S1 <- sum(w1 * (R - (1 - b) * meanR)) * 2 * mu * (1 - mu) + 2 * b * sumR * (var_mu_ext + sigma2)
-        var_Sbat1 <- var_Sbat + sigma2
-        VAR1 <- matrix(c(var_S1, cov_Sbat_S1, cov_Sbat_S1, var_Sbat1), nrow = 2)
-        p1 <- max(0, mvtnorm::pmvnorm(lower = c(-Inf, lb), upper = c(-abs(S), ub), mean = c(0, 0), sigma = VAR1))
-
-        p.con <- 2 * (TPR * p1 + (1 - TPR) * p0) / p_deno
-        diff <- -log10(p.con / 5e-8)
-
-        return(diff)
-      }
-
-      mu1 <- uniroot(p.fun,
-        lower = mu, upper = 1,
-        b = b, pop.prev = pop.prev, mu = mu,
-        R = R, y = y, w = w, N = N, n.ext = n.ext, sigma2 = sigma2, TPR = TPR
-      )$root
-
-      return(mu1)
+    
+    if (is.null(opt) || opt$convergence != 0) {
+      TPR <- NA
+      sigma2 <- NA
+    } else {
+      TPR    <- opt$par[1]
+      sigma2 <- opt$par[2]
     }
-
-    w.ext <- optim(
-      par = 0.5, method = "L-BFGS-B", lower = 0, upper = 1,
-      fn = fun.optimalWeight,
-      pop.prev = RefPrevalence,
-      y = data$Indicator,
-      R = objNull$mresid,
-      w = objNull$weight,
-      mu = mu,
-      N = nrow(data),
-      n.ext = n.ext,
-      sigma2 = obj$sigma2,
-      TPR = obj$TPR
-    )$par[1]
-
+    
+    ## ---- estimate w.ext (never crash) ----
+    w.ext <- tryCatch(
+      optim(
+        par = 0.5,
+        method = "L-BFGS-B",
+        lower = 0, upper = 1,
+        fn = fun.optimalWeight,
+        pop.prev = RefPrevalence,
+        y = data$Indicator,
+        R = objNull$mresid,
+        w = objNull$weight,
+        mu = mu,
+        N = nrow(data),
+        n.ext = n.ext,
+        sigma2 = sigma2,
+        TPR = TPR
+      )$par[1],
+      error = function(e) 0
+    )
+    
     if (is.null(sparseGRM)) {
       var.ratio.ext <- 1
     } else {
       R_tilde_w <- objNull$mresid - mean(objNull$mresid) * w.ext
       names(R_tilde_w) <- data$SampleID
-      sparseGRM <- sparseGRM %>%
-        mutate(cov_Rext = Value * R_tilde_w[as.character(ID1)] * R_tilde_w[as.character(ID2)])
-      var.ratio.ext <- (sum(sparseGRM$cov_Rext) + w.ext^2 * sum(objNull$mresid)^2 / n.ext) /
-        (sum(R_tilde_w^2) + w.ext^2 * sum(objNull$mresid)^2 / n.ext)
+      
+      sparseGRM$tmp <- sparseGRM$Value *
+        R_tilde_w[as.character(sparseGRM$ID1)] *
+        R_tilde_w[as.character(sparseGRM$ID2)]
+      
+      var.ratio.ext <- sum(sparseGRM$tmp, na.rm = TRUE) /
+        sum(R_tilde_w^2, na.rm = TRUE)
     }
-
-    mergeGenoInfo_1 <- mergeGenoInfo_1 %>% cbind(., TPR, sigma2, w.ext, var.ratio.ext)
+    
+    cbind(
+      mergeGenoInfo_1,
+      TPR = TPR,
+      sigma2 = sigma2,
+      w.ext = w.ext,
+      var.ratio.ext = var.ratio.ext
+    )
   }) %>%
-    do.call("rbind", .) %>%
-    as_tibble() %>%
-    arrange(index) %>%
-    select(-index)
-
+    Filter(Negate(is.null), .) %>%
+    dplyr::bind_rows() %>%
+    dplyr::arrange(index) %>%
+    dplyr::select(-index)
+  
+  mergeGenoInfo <- mergeGenoInfo.est
   return(as.data.frame(mergeGenoInfo))
 }
