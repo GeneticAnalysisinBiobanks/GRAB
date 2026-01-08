@@ -78,6 +78,7 @@ GRAB.NullModel <- function(
   GenoFileIndex = NULL,
   SparseGRMFile = NULL,
   control = NULL,
+  PairwiseIBDFile = NULL,
   ...
 ) {
 
@@ -211,7 +212,7 @@ GRAB.NullModel <- function(
     SPACox = checkControl.NullModel.SPACox(traitType, GenoFile, SparseGRMFile, control),
     SPAmix = checkControl.NullModel.SPAmix(traitType, GenoFile, SparseGRMFile, control),
     WtCoxG = checkControl.NullModel.WtCoxG(traitType, GenoFile, SparseGRMFile, control, ...),
-    SPAsqr = checkControl.NullModel.SPAsqr(traitType, GenoFile, SparseGRMFile, control, ...)
+    SPAsqr = checkControl.NullModel.SPAsqr(traitType, GenoFile, SparseGRMFile, control, PairwiseIBDFile)
   )
   
   control <- checkResult$control
@@ -315,7 +316,7 @@ GRAB.NullModel <- function(
                                  GenoFile, GenoFileIndex, SparseGRMFile,
                                  responseVars[1], responseVars[2], ...),
     SPAsqr = fitNullModel.SPAsqr(response, designMat, subjData, control, 
-                                 GenoFile, SparseGRMFile, ...)
+                                 GenoFile, SparseGRMFile, PairwiseIBDFile)
   )
 
   # Add metadata to the null model object

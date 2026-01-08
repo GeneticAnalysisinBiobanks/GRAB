@@ -584,7 +584,7 @@ Rcpp::List mainMarkerInCPP(
         pvalVec.at(Npheno * i + j) = pvalVecTemp.at(j);
         zScoreVec.at(Npheno * i + j) = zScoreVecTemp.at(j);
       }    
-
+      hwepvalVec.at(i) = hwepval;
     } else {
       if (t_method == "POLMM") {
         ptr_gPOLMMobj->getMarkerPval(GVec, Beta, seBeta, pval, altFreq, zScore);

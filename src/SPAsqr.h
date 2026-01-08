@@ -129,7 +129,6 @@ public:
       // Use pre-built SPAGRM object for this tau
       double zScore_i, hwepval_i;
       double pval_i = m_SPAGRMobj_vec[i]->getMarkerPval(GVec, altFreq, zScore_i, hwepval_i);
-      
       pvalVec(i) = pval_i;
       zScoreVec(i) = zScore_i;
       if (i == 0) hwepval = hwepval_i; // hwepval is same for all taus

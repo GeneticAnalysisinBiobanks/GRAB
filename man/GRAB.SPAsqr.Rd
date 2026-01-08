@@ -68,11 +68,22 @@ quantile regression model.
 }
 }
 \examples{
+# Step 0: compute sparse genetic relatedness (GRM) file and Identical by Descent (IBD)
+Probabilities. For how to obtain a sparse GRM file, please see the main documentation
+page of GRAB. The following code computes IBD probabilities using an existing
+GRM file
+GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+frqFile = system.file("extdata", "simuPLINK.frq", package = "GRAB")
+SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
+PairwiseIBDFile <- "PairwiseIBD.txt"
+getPairwiseIBD(sub("\.bed$", "", GenoFile, ignore.case = TRUE),
+               SparseGRMFile, 
+               PairwiseIBDOutput = PairwiseIBDFile,
+               frqFile = frqFile)
+
 # Step 1: fit null model and calculate joint distribution of genotypes
 PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
 PhenoData <- data.table::fread(PhenoFile, header = TRUE)
-SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
-GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 OutputFile <- file.path(tempdir(), "resultSPAsqr.txt")
 
 obj.SPAsqr <- GRAB.NullModel(
@@ -83,6 +94,7 @@ obj.SPAsqr <- GRAB.NullModel(
   traitType = "quantitative",
   GenoFile = GenoFile,
   SparseGRMFile = SparseGRMFile,
+  PairwiseIBDFile = PairwiseIBDFile,
   control = list(
     taus = c(0.05, 0.2, 0.5, 0.8, 0.95),
     h = 0

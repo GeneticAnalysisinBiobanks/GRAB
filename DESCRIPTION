@@ -39,6 +39,6 @@ Depends: R (>= 3.5.0)
 Imports: dplyr, data.table, mvtnorm, Matrix, RSQLite, lme4, ordinal, survival, Rcpp, RcppParallel, igraph
 Suggests: SKAT, dbplyr, tidyr, R.utils
 LinkingTo: Rcpp, RcppArmadillo, RcppParallel, BH
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 Roxygen: list(markdown = TRUE)
 NeedsCompilation: yes
