@@ -91,7 +91,8 @@ GRAB.Marker <- function(
     "SPAmix_NULL_Model",
     "SPAGRM_NULL_Model",
     "SAGELD_NULL_Model",
-    "WtCoxG_NULL_Model"
+    "WtCoxG_NULL_Model",
+    "SPAsqr_NULL_Model"
   )
 
   # ========== Validate and configure parameters ==========
@@ -177,7 +178,8 @@ GRAB.Marker <- function(
     SPAmix_NULL_Model = checkControl.Marker.SPAmix(control),
     SPAGRM_NULL_Model = checkControl.Marker.SPAGRM(control, objNull$MAF_interval),
     SAGELD_NULL_Model = checkControl.Marker.SAGELD(control, objNull$MAF_interval),
-    WtCoxG_NULL_Model = checkControl.Marker.WtCoxG(control)
+    WtCoxG_NULL_Model = checkControl.Marker.WtCoxG(control),
+    SPAsqr_NULL_Model = checkControl.Marker.SPAsqr(control)
   )
 
   # ========== Check output file status and determine restart point ==========
@@ -264,7 +266,8 @@ GRAB.Marker <- function(
     SPAmix_NULL_Model = setMarker.SPAmix(objNull, control),
     SPAGRM_NULL_Model = setMarker.SPAGRM(objNull, control),
     SAGELD_NULL_Model = setMarker.SAGELD(objNull, control),
-    WtCoxG_NULL_Model = setMarker.WtCoxG(objNull, control)
+    WtCoxG_NULL_Model = setMarker.WtCoxG(objNull, control),
+    SPAsqr_NULL_Model = setMarker.SPAsqr(objNull, control)
   )
 
   for (i in (indexChunk + 1):nChunks) {
@@ -282,7 +285,8 @@ GRAB.Marker <- function(
       SPAmix_NULL_Model = mainMarker.SPAmix(genoType, genoIndex, objNull),
       SPAGRM_NULL_Model = mainMarker.SPAGRM(genoType, genoIndex),
       SAGELD_NULL_Model = mainMarker.SAGELD(genoType, genoIndex, objNull),
-      WtCoxG_NULL_Model = mainMarker.WtCoxG(genoType, genoIndex, objNull)
+      WtCoxG_NULL_Model = mainMarker.WtCoxG(genoType, genoIndex, objNull),
+      SPAsqr_NULL_Model = mainMarker.SPAsqr(genoType, genoIndex, objNull)
     )
 
     # Write chunk results to output file and update progress tracking

@@ -378,6 +378,30 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// setSPAsqrobjInCPP
+void setSPAsqrobjInCPP(arma::vec t_taus, arma::mat t_Resid_mat, Rcpp::List t_Resid_unrelated_outliers_lst, arma::vec t_sum_R_nonOutlier_vec, arma::vec t_R_GRM_R_nonOutlier_vec, arma::vec t_R_GRM_R_TwoSubjOutlier_vec, arma::vec t_R_GRM_R_vec, arma::vec t_MAF_interval, Rcpp::List t_TwoSubj_list_lst, Rcpp::List t_CLT_union_lst, Rcpp::List t_ThreeSubj_family_idx_lst, Rcpp::List t_ThreeSubj_stand_S_lst, double t_SPA_Cutoff, double t_zeta, double t_tol);
+RcppExport SEXP _GRAB_setSPAsqrobjInCPP(SEXP t_tausSEXP, SEXP t_Resid_matSEXP, SEXP t_Resid_unrelated_outliers_lstSEXP, SEXP t_sum_R_nonOutlier_vecSEXP, SEXP t_R_GRM_R_nonOutlier_vecSEXP, SEXP t_R_GRM_R_TwoSubjOutlier_vecSEXP, SEXP t_R_GRM_R_vecSEXP, SEXP t_MAF_intervalSEXP, SEXP t_TwoSubj_list_lstSEXP, SEXP t_CLT_union_lstSEXP, SEXP t_ThreeSubj_family_idx_lstSEXP, SEXP t_ThreeSubj_stand_S_lstSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_zetaSEXP, SEXP t_tolSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec >::type t_taus(t_tausSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type t_Resid_mat(t_Resid_matSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_Resid_unrelated_outliers_lst(t_Resid_unrelated_outliers_lstSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_sum_R_nonOutlier_vec(t_sum_R_nonOutlier_vecSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_R_GRM_R_nonOutlier_vec(t_R_GRM_R_nonOutlier_vecSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_R_GRM_R_TwoSubjOutlier_vec(t_R_GRM_R_TwoSubjOutlier_vecSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_R_GRM_R_vec(t_R_GRM_R_vecSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_MAF_interval(t_MAF_intervalSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_TwoSubj_list_lst(t_TwoSubj_list_lstSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_CLT_union_lst(t_CLT_union_lstSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_ThreeSubj_family_idx_lst(t_ThreeSubj_family_idx_lstSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_ThreeSubj_stand_S_lst(t_ThreeSubj_stand_S_lstSEXP);
+    Rcpp::traits::input_parameter< double >::type t_SPA_Cutoff(t_SPA_CutoffSEXP);
+    Rcpp::traits::input_parameter< double >::type t_zeta(t_zetaSEXP);
+    Rcpp::traits::input_parameter< double >::type t_tol(t_tolSEXP);
+    setSPAsqrobjInCPP(t_taus, t_Resid_mat, t_Resid_unrelated_outliers_lst, t_sum_R_nonOutlier_vec, t_R_GRM_R_nonOutlier_vec, t_R_GRM_R_TwoSubjOutlier_vec, t_R_GRM_R_vec, t_MAF_interval, t_TwoSubj_list_lst, t_CLT_union_lst, t_ThreeSubj_family_idx_lst, t_ThreeSubj_stand_S_lst, t_SPA_Cutoff, t_zeta, t_tol);
+    return R_NilValue;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setSparseGRMInCPP", (DL_FUNC) &_GRAB_setSparseGRMInCPP, 1},
@@ -402,6 +426,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setSPAmixobjInCPP", (DL_FUNC) &_GRAB_setSPAmixobjInCPP, 5},
     {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},
     {"_GRAB_setWtCoxGobjInCPP", (DL_FUNC) &_GRAB_setWtCoxGobjInCPP, 4},
+    {"_GRAB_setSPAsqrobjInCPP", (DL_FUNC) &_GRAB_setSPAsqrobjInCPP, 15},
     {NULL, NULL, 0}
 };
 

@@ -4,7 +4,7 @@
  *
  * This file contains the core C++ functions that are exposed to R via Rcpp.
  * It serves as the main entry point for genetic association analysis methods
- * including POLMM, POLMM-GENE, SPACox, SPAmix, SPAGRM, SAGELD and WtCoxG.
+ * including POLMM, POLMM-GENE, SPACox, SPAmix, SPAGRM, SAGELD, WtCoxG, and SPAsqr.
  *
  * Functions (one‑line summaries):
  *   setSparseGRMInCPP            : Load sparse GRM from R list (triplet form) into Armadillo.
@@ -34,6 +34,7 @@
  *   setSPAmixobjInCPP            : Initialize SPAmix object (multi‑phenotype residual + PCs).
  *   setSPACoxobjInCPP            : Initialize SPACox object (CGF grid + residual info).
  *   setWtCoxGobjInCPP            : Initialize weighted Cox (WtCoxG) object with objNull$mergeGenoInfo.
+ *   setSPAsqrobjInCPP            : Initialize SPAsqr object with residuals and outlier info.
  */
 
 // Rcpp dependencies for statistical computing and linear algebra
@@ -58,6 +59,7 @@
 #include "SPAGRM.h"    // SPA test with GRM (Genetic Relationship Matrix)
 #include "SAGELD.h"    // Scalable and Accurate Genomic analysis for Extreme Large Data
 #include "WtCoxG.h"    // Weighted Cox regression for genetic data
+#include "SPAsqr.h"    // SPAsqr
 
 
 //==============================================================================
@@ -79,6 +81,7 @@ static SPAmix::SPAmixClass* ptr_gSPAmixobj = nullptr;
 static SPAGRM::SPAGRMClass* ptr_gSPAGRMobj = nullptr;
 static SAGELD::SAGELDClass* ptr_gSAGELDobj = nullptr;
 static WtCoxG::WtCoxGClass* ptr_gWtCoxGobj = nullptr;
+static SPAsqr::SPAsqrClass* ptr_gSPAsqrobj = nullptr;
 
 // Global configuration variables for genetic analysis
 static std::string g_impute_method;          // Imputation method: "mean", "minor", or "drop"
@@ -426,6 +429,7 @@ Rcpp::List mainMarkerInCPP(
     ptr_gWtCoxGobj->updateMarkerInfo(mergeGenoInfo_chunk);  // update marker info for this chunk
     Npheno = 2;  // WtCoxG: returns two p-values (with and without external reference)
   }
+  if (t_method == "SPAsqr") Npheno = ptr_gSPAsqrobj->get_ntaus();
 
   // Initialize test result vectors (sized for multiple phenotypes)
   std::vector<double> pvalVec(q * Npheno, arma::datum::nan);     // P-values
@@ -571,7 +575,16 @@ Rcpp::List mainMarkerInCPP(
       arma::vec pvalVecTemp = ptr_gWtCoxGobj->getpvalVec(GVec, i);
       pvalVec[2 * i]     = pvalVecTemp[0];
       pvalVec[2 * i + 1] = pvalVecTemp[1];
+    
+    } else if (t_method == "SPAsqr") {
+      arma::vec zScoreVecTemp;
+      arma::vec pvalVecTemp = ptr_gSPAsqrobj->getMarkerPval(GVec, altFreq, zScoreVecTemp, hwepval);
 
+      for (int j = 0; j < Npheno; j++) {
+        pvalVec.at(Npheno * i + j) = pvalVecTemp.at(j);
+        zScoreVec.at(Npheno * i + j) = zScoreVecTemp.at(j);
+      }    
+      hwepvalVec.at(i) = hwepval;
     } else {
       if (t_method == "POLMM") {
         ptr_gPOLMMobj->getMarkerPval(GVec, Beta, seBeta, pval, altFreq, zScore);
@@ -1830,5 +1843,46 @@ void setWtCoxGobjInCPP(
     t_weight,                                // Weight vector for analysis (w vector)
     t_cutoff,                                // batch effect p-value cutoff for association testing
     t_SPA_Cutoff                             // P-value cutoff for applying SPA correction
+  );
+}
+
+// Initialize SPAsqr object. All tau data is passed at once.
+// [[Rcpp::export]]
+void setSPAsqrobjInCPP(
+  arma::vec t_taus,
+  arma::mat t_Resid_mat,                     // Residual matrix from null model (N × ntaus)
+  Rcpp::List t_Resid_unrelated_outliers_lst, // List of residual vectors for unrelated outliers (one per tau)
+  arma::vec t_sum_R_nonOutlier_vec,          // Vector: Sum of residuals for non-outlier subjects (length ntaus)
+  arma::vec t_R_GRM_R_nonOutlier_vec,        // Vector: Quadratic form R'*GRM*R for non-outliers (length ntaus)
+  arma::vec t_R_GRM_R_TwoSubjOutlier_vec,    // Vector: Quadratic form for two-subject outlier pairs (length ntaus)
+  arma::vec t_R_GRM_R_vec,                   // Vector: Full quadratic form R'*GRM*R (length ntaus)
+  arma::vec t_MAF_interval,                  // Minor allele frequency intervals for binning
+  Rcpp::List t_TwoSubj_list_lst,             // List of two-subject outlier pairs per tau
+  Rcpp::List t_CLT_union_lst,                // Shared CLT cache (union across all taus)
+  Rcpp::List t_ThreeSubj_family_idx_lst,     // Family indices per tau (indices into CLT_union_lst)
+  Rcpp::List t_ThreeSubj_stand_S_lst,        // stand.S values per tau
+  double t_SPA_Cutoff,                       // P-value cutoff for applying SPA correction
+  double t_zeta,                             // SPA parameter for moment approximation
+  double t_tol                               // Numerical tolerance for SPA convergence
+) {
+  if (ptr_gSPAsqrobj)
+    delete ptr_gSPAsqrobj;
+
+  ptr_gSPAsqrobj = new SPAsqr::SPAsqrClass(
+    t_taus,
+    t_Resid_mat,                             // Residual matrix (N × ntaus)
+    t_Resid_unrelated_outliers_lst,          // List of outlier residual vectors
+    t_sum_R_nonOutlier_vec,                  // Vector of sums for non-outliers
+    t_R_GRM_R_nonOutlier_vec,                // Vector of quadratic forms for non-outliers
+    t_R_GRM_R_TwoSubjOutlier_vec,            // Vector of two-subject outlier contributions
+    t_R_GRM_R_vec,                           // Vector of full quadratic forms
+    t_MAF_interval,                          // MAF intervals
+    t_TwoSubj_list_lst,                      // Two-subject family list
+    t_CLT_union_lst,                         // Shared CLT cache
+    t_ThreeSubj_family_idx_lst,              // Family indices per tau
+    t_ThreeSubj_stand_S_lst,                 // stand.S values per tau
+    t_SPA_Cutoff,                            // SPA cutoff
+    t_zeta,                                  // SPA zeta parameter
+    t_tol                                    // SPA tolerance
   );
 }

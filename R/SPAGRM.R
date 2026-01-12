@@ -562,7 +562,7 @@ make.block.GRM <- function(
   n2 <- nrow(comp2)
 
   if (n1 != n2) {
-    stop("Ask Wenjian Bi (wenjianb@pku.edu.cn) to check why 'n1 != n2'.")
+    stop("Internal error, 'n1 != n2'.")
   }
 
   block_GRM <- Matrix::sparseMatrix(
