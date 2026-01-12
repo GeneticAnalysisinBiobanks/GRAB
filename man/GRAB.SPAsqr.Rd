@@ -2,7 +2,7 @@
 % Please edit documentation in R/GRAB_SPAsqr.R
 \name{GRAB.SPAsqr}
 \alias{GRAB.SPAsqr}
-\title{Instruction of SPAsqr method}
+\title{Instructions for SPAsqr method (Smoothed Quantile Regression with Saddlepoint Approximation)}
 \usage{
 GRAB.SPAsqr()
 }
@@ -10,78 +10,88 @@ GRAB.SPAsqr()
 SPAsqr is a smoothed quantile regression-based association test method for
 quantitative traits. It accounts for sample relatedness using the SPAGRM framework,
 performs association testing across multiple quantiles, and combines p-values
-using the Cauchy combination test.
+using the Cauchy combination test (CCT).
 }
 \details{
-\strong{Additional Control Parameters for \code{GRAB.NullModel()}:}
+\strong{Usage with \code{GRAB.NullModel()}:}
+
+Set \code{method = "SPAsqr"} and \code{traitType = "quantitative"}. Three additional required arguments:
+\itemize{
+\item \code{GenoFile}: Path to genotype file (PLINK .bed or BGEN format).
+\item \code{SparseGRMFile}: Path to sparse GRM file (whitespace-delimited: ID1 ID2 Value).
+\item \code{PairwiseIBDFile}: Path to pairwise IBD file (see \code{?\link{getPairwiseIBD}}).
+}
+
+\strong{Control parameters for \code{GRAB.NullModel(control = list(...))}:}
 \itemize{
 \item \code{taus} (numeric vector, default: c(0.05, 0.2, 0.5, 0.8, 0.95)): Quantiles
-to examine for association testing. All values must be between 0 and 1. P-values
-across quantiles are combined using Cauchy combination test.
+to examine for association testing. All values must be between 0 and 1 (exclusive).
+P-values across quantiles are combined using Cauchy combination test.
 \item \code{h} (numeric, default: 0): Bandwidth parameter for smooth quantile regression.
 If h = 0, bandwidth is automatically selected as IQR(y)/3.
-\item \code{frqFile} (character, default: NULL): Path to allele frequency file. If NULL,
-uses PlinkPrefix.frq for pairwise IBD calculation.
-\item \code{tempDir} (character, default: NULL): Directory for temporary files during
-pairwise IBD calculation. If NULL, uses tempdir().
-\item \code{maxSampleNums} (integer, default: 2500): Maximum number of subjects' genotypes
-to read for pairwise IBD analysis.
-\item \code{minMafIBD} (numeric, default: 0.01): Minimum MAF cutoff to select markers
-for pairwise IBD calculation.
-\item \code{rm.tempFile} (logical, default: FALSE): Whether to delete temporary files
-after pairwise IBD calculation.
-\item \code{MaxQuantile} (numeric, default: 0.75): Upper quantile for outlier detection.
-Must be greater than MinQuantile.
-\item \code{MinQuantile} (numeric, default: 0.25): Lower quantile for outlier detection.
-Must be less than MaxQuantile.
-\item \code{OutlierRatio} (numeric, default: 1.5): IQR multiplier for outlier cutoff
-calculation. Must be greater than 0.
-\item \code{ControlOutlier} (logical, default: TRUE): Whether to automatically adjust
-outlier ratio to keep outliers below 5\\% of sample size.
 \item \code{MaxNuminFam} (integer, default: 5): Maximum family size for Chow-Liu tree
-construction in related samples.
+construction in related samples. Larger families are decomposed into smaller components.
 \item \code{MAF_interval} (numeric vector, default: c(0.0001, 0.0005, 0.001, 0.005,
 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5)): MAF breakpoints for genotype distribution
 approximation in families.
-\item \code{sqr_tol} (numeric, default: 1e-7): Tolerance level for convergence in SQR fitting.
+\item \code{sqr_tol} (numeric, default: 1e-7): Tolerance level for convergence in smoothed quantile regression fitting.
 }
 
-\strong{Method-specific elements in the \code{SPAsqr_NULL_Model} object returned by \code{GRAB.NullModel()}:}
+\strong{Control parameters for \code{GRAB.Marker(control = list(...))}:}
 \itemize{
-\item All elements from \code{SPAGRM_NULL_Model} (see \code{\link{SPAGRM.NullModel}}).
-\item \code{Resid}: Numeric vector (or matrix for multiple quantiles) of residuals from
-quantile regression model.
-\item \code{subjData}: Character vector of subject IDs.
-\item \code{N}: Number of subjects in analysis.
+\item \code{SPA_Cutoff} (numeric, default: 2): Z-score cutoff for applying saddlepoint approximation.
+\item \code{zeta} (numeric, default: 0): SPA moment approximation parameter.
+\item \code{tol} (numeric, default: 1e-5): Numerical tolerance for SPA calculations.
+\item See \code{?\link{GRAB.Marker}} for additional quality control parameters (MAF, MAC, missing rate).
 }
 
-\strong{Output file columns}:
+\strong{Elements in the \code{SPAsqr_NULL_Model} object returned by \code{GRAB.NullModel()}:}
+\itemize{
+\item \code{taus}: Numeric vector of quantiles analyzed.
+\item \code{Resid_mat}: Numeric matrix of residuals from smoothed quantile regression (N × ntaus).
+\item \code{subjData}: Character vector of subject IDs included in analysis.
+\item \code{N}: Number of subjects in analysis (integer).
+\item \code{R_GRM_R_vec}: Numeric vector of R'\emph{GRM}R values for each quantile (length ntaus).
+\item \code{R_GRM_R_TwoSubjOutlier_vec}: Numeric vector of R'\emph{GRM}R contributions from two-subject outlier pairs (length ntaus).
+\item \code{sum_R_nonOutlier_vec}: Numeric vector of summed residuals for non-outlier subjects (length ntaus).
+\item \code{R_GRM_R_nonOutlier_vec}: Numeric vector of R'\emph{GRM}R contributions from non-outlier subjects (length ntaus).
+\item \code{Resid.unrelated.outliers_lst}: List of residual vectors for unrelated outliers (ntaus elements).
+\item \code{TwoSubj_list_lst}: List of two-subject outlier family information (ntaus elements).
+\item \code{CLT_union_lst}: List of Chow-Liu tree structures for related families (shared across all quantiles).
+\item \code{ThreeSubj_family_idx_lst}: List of family indices into CLT cache for 3+ member families (ntaus elements).
+\item \code{ThreeSubj_stand_S_lst}: List of standardized score arrays for 3+ member families (ntaus elements).
+\item \code{MAF_interval}: Numeric vector of MAF breakpoints used for genotype approximation.
+\item \code{Call}: Original function call.
+\item \code{sessionInfo}: R session and package information.
+\item \code{time}: Analysis completion timestamp (character).
+\item \code{control}: List of control parameters used in fitting.
+}
+
+\strong{Output file columns from \code{GRAB.Marker()}:}
 \describe{
 \item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}
 \item{Info}{Marker information in format CHR:POS:REF:ALT.}
 \item{AltFreq}{Alternative allele frequency in the sample.}
-\item{AltCounts}{Total count of alternative alleles.}
+\item{AltCounts}{Total count of alternative alleles (integer).}
 \item{MissingRate}{Proportion of missing genotypes.}
-\item{zScore}{Z-score from the score test.}
-\item{Pvalue}{P-value from the score test (Cauchy combined across quantiles).}
 \item{hwepval}{Hardy-Weinberg equilibrium p-value.}
+\item{Z_tau\link{tau}}{Z-score from score test at quantile \link{tau} (one column per tau).}
+\item{P_tau\link{tau}}{P-value from score test at quantile \link{tau} (one column per tau).}
+\item{P_CCT}{Cauchy combination test p-value aggregating across all quantiles.}
 }
 }
 \examples{
-# Step 0: compute sparse genetic relatedness (GRM) file and Identical by Descent (IBD)
-Probabilities. For how to obtain a sparse GRM file, please see the main documentation
-page of GRAB. The following code computes IBD probabilities using an existing
-GRM file
+# Step 0: Compute pairwise IBD probabilities using a sparse GRM.
+# See ?getSparseGRM for details on generating a sparse GRM.
+# See ?getPairwiseIBD for details on computing pairwise IBD estimates.
 GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-frqFile = system.file("extdata", "simuPLINK.frq", package = "GRAB")
+frqFile <- system.file("extdata", "simuPLINK.frq", package = "GRAB")
 SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
-PairwiseIBDFile <- "PairwiseIBD.txt"
-getPairwiseIBD(sub("\.bed$", "", GenoFile, ignore.case = TRUE),
-               SparseGRMFile, 
-               PairwiseIBDOutput = PairwiseIBDFile,
-               frqFile = frqFile)
+PairwiseIBDFile <- file.path(tempdir(), "PairwiseIBD.txt")
+getPairwiseIBD(sub("\\\\.bed$", "", GenoFile, ignore.case = TRUE), SparseGRMFile, 
+               PairwiseIBDOutput = PairwiseIBDFile, frqFile = frqFile)
 
-# Step 1: fit null model and calculate joint distribution of genotypes
+# Step 1: Fit null model and prepare genotype distribution cache
 PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
 PhenoData <- data.table::fread(PhenoFile, header = TRUE)
 OutputFile <- file.path(tempdir(), "resultSPAsqr.txt")
@@ -101,13 +111,16 @@ obj.SPAsqr <- GRAB.NullModel(
   )
 )
 
-# Step 2: perform association tests
+# Step 2: Perform single-marker association tests
 GRAB.Marker(obj.SPAsqr, GenoFile, OutputFile)
 
+# View results
 head(data.table::fread(OutputFile))
 
 }
 \references{
+Heng et al. (in prep). Discovering Heterogeneous Associations with Smoothed Quantile Regression and Saddle Point Approximation.
+
 Xu et al. (2025). SPAGRM: effectively controlling for sample relatedness in large-scale
 genome-wide association studies of longitudinal traits. Nature Communications, 16:1018.
 

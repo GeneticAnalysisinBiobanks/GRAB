@@ -1,29 +1,24 @@
-
-
-#' Instruction of SPAsqr method
+#' Instructions for SPAsqr method (Smoothed Quantile Regression with Saddlepoint Approximation)
 #'
 #' SPAsqr is a smoothed quantile regression-based association test method for 
 #' quantitative traits. It accounts for sample relatedness using the SPAGRM framework, 
 #' performs association testing across multiple quantiles, and combines p-values 
-#' using the Cauchy combination test.
-#'
+#' using the Cauchy combination test (CCT).
+#' 
 #' @return NULL
 #'
 #' @examples
-#' # Step 0: compute sparse genetic relatedness (GRM) file and Identical by Descent (IBD)
-#' Probabilities. For how to obtain a sparse GRM file, please see the main documentation
-#' page of GRAB. The following code computes IBD probabilities using an existing
-#' GRM file
+#' # Step 0: Compute pairwise IBD probabilities using a sparse GRM.
+#' # See ?getSparseGRM for details on generating a sparse GRM.
+#' # See ?getPairwiseIBD for details on computing pairwise IBD estimates.
 #' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-#' frqFile = system.file("extdata", "simuPLINK.frq", package = "GRAB")
+#' frqFile <- system.file("extdata", "simuPLINK.frq", package = "GRAB")
 #' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
-#' PairwiseIBDFile <- "PairwiseIBD.txt"
-#' getPairwiseIBD(sub("\\.bed$", "", GenoFile, ignore.case = TRUE),
-#'                SparseGRMFile, 
-#'                PairwiseIBDOutput = PairwiseIBDFile,
-#'                frqFile = frqFile)
+#' PairwiseIBDFile <- file.path(tempdir(), "PairwiseIBD.txt")
+#' getPairwiseIBD(sub("\\.bed$", "", GenoFile, ignore.case = TRUE), SparseGRMFile, 
+#'                PairwiseIBDOutput = PairwiseIBDFile, frqFile = frqFile)
 #' 
-#' # Step 1: fit null model and calculate joint distribution of genotypes
+#' # Step 1: Fit null model and prepare genotype distribution cache
 #' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
 #' PhenoData <- data.table::fread(PhenoFile, header = TRUE)
 #' OutputFile <- file.path(tempdir(), "resultSPAsqr.txt")
@@ -43,81 +38,99 @@
 #'   )
 #' )
 #'
-#' # Step 2: perform association tests
+#' # Step 2: Perform single-marker association tests
 #' GRAB.Marker(obj.SPAsqr, GenoFile, OutputFile)
 #'
+#' # View results
 #' head(data.table::fread(OutputFile))
 #'
 #' @details
 #'
-#' \strong{Additional Control Parameters for \code{GRAB.NullModel()}:}
+#' \strong{Usage with \code{GRAB.NullModel()}:}
+#' 
+#' Set \code{method = "SPAsqr"} and \code{traitType = "quantitative"}. Three additional required arguments:
+#' \itemize{
+#'   \item \code{GenoFile}: Path to genotype file (PLINK .bed or BGEN format).
+#'   \item \code{SparseGRMFile}: Path to sparse GRM file (whitespace-delimited: ID1 ID2 Value).
+#'   \item \code{PairwiseIBDFile}: Path to pairwise IBD file (see \code{?\link{getPairwiseIBD}}).
+#' }
+#'
+#' \strong{Control parameters for \code{GRAB.NullModel(control = list(...))}:}
 #' \itemize{
 #'   \item \code{taus} (numeric vector, default: c(0.05, 0.2, 0.5, 0.8, 0.95)): Quantiles 
-#'     to examine for association testing. All values must be between 0 and 1. P-values 
-#'     across quantiles are combined using Cauchy combination test.
+#'     to examine for association testing. All values must be between 0 and 1 (exclusive). 
+#'     P-values across quantiles are combined using Cauchy combination test.
 #'   \item \code{h} (numeric, default: 0): Bandwidth parameter for smooth quantile regression. 
 #'     If h = 0, bandwidth is automatically selected as IQR(y)/3.
-#'   \item \code{frqFile} (character, default: NULL): Path to allele frequency file. If NULL,
-#'     uses PlinkPrefix.frq for pairwise IBD calculation.
-#'   \item \code{tempDir} (character, default: NULL): Directory for temporary files during
-#'     pairwise IBD calculation. If NULL, uses tempdir().
-#'   \item \code{maxSampleNums} (integer, default: 2500): Maximum number of subjects' genotypes
-#'     to read for pairwise IBD analysis.
-#'   \item \code{minMafIBD} (numeric, default: 0.01): Minimum MAF cutoff to select markers
-#'     for pairwise IBD calculation.
-#'   \item \code{rm.tempFile} (logical, default: FALSE): Whether to delete temporary files
-#'     after pairwise IBD calculation.
-#'   \item \code{MaxQuantile} (numeric, default: 0.75): Upper quantile for outlier detection.
-#'     Must be greater than MinQuantile.
-#'   \item \code{MinQuantile} (numeric, default: 0.25): Lower quantile for outlier detection.
-#'     Must be less than MaxQuantile.
-#'   \item \code{OutlierRatio} (numeric, default: 1.5): IQR multiplier for outlier cutoff 
-#'     calculation. Must be greater than 0.
-#'   \item \code{ControlOutlier} (logical, default: TRUE): Whether to automatically adjust 
-#'     outlier ratio to keep outliers below 5\% of sample size.
 #'   \item \code{MaxNuminFam} (integer, default: 5): Maximum family size for Chow-Liu tree 
-#'     construction in related samples.
+#'     construction in related samples. Larger families are decomposed into smaller components.
 #'   \item \code{MAF_interval} (numeric vector, default: c(0.0001, 0.0005, 0.001, 0.005, 
 #'     0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5)): MAF breakpoints for genotype distribution 
 #'     approximation in families.
-#'   \item \code{sqr_tol} (numeric, default: 1e-7): Tolerance level for convergence in SQR fitting.
+#'   \item \code{sqr_tol} (numeric, default: 1e-7): Tolerance level for convergence in smoothed quantile regression fitting.
 #' }
 #'
-#' \strong{Method-specific elements in the \code{SPAsqr_NULL_Model} object returned by \code{GRAB.NullModel()}:}
+#' \strong{Control parameters for \code{GRAB.Marker(control = list(...))}:}
 #' \itemize{
-#'   \item All elements from \code{SPAGRM_NULL_Model} (see \code{\link{SPAGRM.NullModel}}).
-#'   \item \code{Resid}: Numeric vector (or matrix for multiple quantiles) of residuals from 
-#'     quantile regression model.
-#'   \item \code{subjData}: Character vector of subject IDs.
-#'   \item \code{N}: Number of subjects in analysis.
+#'   \item \code{SPA_Cutoff} (numeric, default: 2): Z-score cutoff for applying saddlepoint approximation.
+#'   \item \code{zeta} (numeric, default: 0): SPA moment approximation parameter.
+#'   \item \code{tol} (numeric, default: 1e-5): Numerical tolerance for SPA calculations.
+#'   \item See \code{?\link{GRAB.Marker}} for additional quality control parameters (MAF, MAC, missing rate).
 #' }
 #'
-#' \strong{Output file columns}:
+#' \strong{Elements in the \code{SPAsqr_NULL_Model} object returned by \code{GRAB.NullModel()}:}
+#' \itemize{
+#'   \item \code{taus}: Numeric vector of quantiles analyzed.
+#'   \item \code{Resid_mat}: Numeric matrix of residuals from smoothed quantile regression (N × ntaus).
+#'   \item \code{subjData}: Character vector of subject IDs included in analysis.
+#'   \item \code{N}: Number of subjects in analysis (integer).
+#'   \item \code{R_GRM_R_vec}: Numeric vector of R'*GRM*R values for each quantile (length ntaus).
+#'   \item \code{R_GRM_R_TwoSubjOutlier_vec}: Numeric vector of R'*GRM*R contributions from two-subject outlier pairs (length ntaus).
+#'   \item \code{sum_R_nonOutlier_vec}: Numeric vector of summed residuals for non-outlier subjects (length ntaus).
+#'   \item \code{R_GRM_R_nonOutlier_vec}: Numeric vector of R'*GRM*R contributions from non-outlier subjects (length ntaus).
+#'   \item \code{Resid.unrelated.outliers_lst}: List of residual vectors for unrelated outliers (ntaus elements).
+#'   \item \code{TwoSubj_list_lst}: List of two-subject outlier family information (ntaus elements).
+#'   \item \code{CLT_union_lst}: List of Chow-Liu tree structures for related families (shared across all quantiles).
+#'   \item \code{ThreeSubj_family_idx_lst}: List of family indices into CLT cache for 3+ member families (ntaus elements).
+#'   \item \code{ThreeSubj_stand_S_lst}: List of standardized score arrays for 3+ member families (ntaus elements).
+#'   \item \code{MAF_interval}: Numeric vector of MAF breakpoints used for genotype approximation.
+#'   \item \code{Call}: Original function call.
+#'   \item \code{sessionInfo}: R session and package information.
+#'   \item \code{time}: Analysis completion timestamp (character).
+#'   \item \code{control}: List of control parameters used in fitting.
+#' }
+#'
+#' \strong{Output file columns from \code{GRAB.Marker()}:}
 #' \describe{
 #'   \item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}
 #'   \item{Info}{Marker information in format CHR:POS:REF:ALT.}
 #'   \item{AltFreq}{Alternative allele frequency in the sample.}
-#'   \item{AltCounts}{Total count of alternative alleles.}
+#'   \item{AltCounts}{Total count of alternative alleles (integer).}
 #'   \item{MissingRate}{Proportion of missing genotypes.}
-#'   \item{zScore}{Z-score from the score test.}
-#'   \item{Pvalue}{P-value from the score test (Cauchy combined across quantiles).}
 #'   \item{hwepval}{Hardy-Weinberg equilibrium p-value.}
+#'   \item{Z_tau[tau]}{Z-score from score test at quantile [tau] (one column per tau).}
+#'   \item{P_tau[tau]}{P-value from score test at quantile [tau] (one column per tau).}
+#'   \item{P_CCT}{Cauchy combination test p-value aggregating across all quantiles.}
 #' }
 #'
 #' @references
+#' Heng et al. (in prep). Discovering Heterogeneous Associations with Smoothed Quantile Regression and Saddle Point Approximation.
+#'
 #' Xu et al. (2025). SPAGRM: effectively controlling for sample relatedness in large-scale 
 #' genome-wide association studies of longitudinal traits. Nature Communications, 16:1018.
 #' 
 #' Liu, Yaowu and Jun Xie (2020). Cauchy combination test: a powerful test with analytic p-value 
 #' calculation under arbitrary dependency structures. Journal of the American Statistical 
 #' Association, 115.529:393-402.
-#'
+#' 
 GRAB.SPAsqr <- function() {
   .message("?GRAB.SPAsqr for instructions")
 }
 
 
-checkControl.NullModel.SPAsqr <- function(traitType, GenoFile, SparseGRMFile, control, PairwiseIBDFile) {
+checkControl.NullModel.SPAsqr <- function(traitType, GenoFile, SparseGRMFile, control, ...) {
+
+  PairwiseIBDFile <- list(...)$PairwiseIBDFile
 
   if (!traitType %in% c("quantitative")) {
     stop("For 'SPAsqr' method, only traitType of 'quantitative' is supported.")
@@ -157,19 +170,6 @@ checkControl.NullModel.SPAsqr <- function(traitType, GenoFile, SparseGRMFile, co
     # Parameters for null model fitting
     taus = c(0.05,0.2,0.5,0.8,0.95),
     h = 0,
-
-    # Parameters for getPairwiseIBD
-    # frqFile = NULL,
-    # tempDir = NULL,
-    # maxSampleNums = 2500,
-    # minMafIBD = 0.01,
-    # rm.tempFile = FALSE,
-
-    # Parameters for SPAGRM.NullModel
-    # MaxQuantile = 0.75,
-    # MinQuantile = 0.25,
-    # OutlierRatio = 1.5,
-    # ControlOutlier = TRUE,
     MaxNuminFam = 5,
     MAF_interval = c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5),
     sqr_tol=1e-7
@@ -186,60 +186,6 @@ checkControl.NullModel.SPAsqr <- function(traitType, GenoFile, SparseGRMFile, co
   if (!is.numeric(control$h) || length(control$h) != 1 || control$h < 0) {
     stop("'control$h' should be a single non-negative numeric value (default is 0 for automatic selection).")
   }
-
-  # Validate frqFile if provided
-  # if (!is.null(control$frqFile)) {
-  #   if (!is.character(control$frqFile) || length(control$frqFile) != 1) {
-  #     stop("'control$frqFile' should be a character string (file path).")
-  #   }
-  #   if (!file.exists(control$frqFile)) {
-  #     stop("Cannot find frqFile: ", control$frqFile)
-  #   }
-  # }
-
-  # Validate tempDir if provided
-  # if (!is.null(control$tempDir)) {
-  #   if (!is.character(control$tempDir) || length(control$tempDir) != 1) {
-  #     stop("'control$tempDir' should be a character string (directory path).")
-  #   }
-  # }
-
-  # Validate maxSampleNums
-  # if (!is.numeric(control$maxSampleNums) || length(control$maxSampleNums) != 1 || control$maxSampleNums <= 0) {
-  #   stop("'control$maxSampleNums' should be a single numeric value greater than 0 (default is 2500).")
-  # }
-
-  # Validate minMafIBD
-  # if (!is.numeric(control$minMafIBD) || length(control$minMafIBD) != 1 ||
-  #     control$minMafIBD < 0 || control$minMafIBD > 0.5) {
-  #   stop("'control$minMafIBD' should be a single numeric value between 0 and 0.5 (default is 0.01).")
-  # }
-
-  # Validate rm.tempFile
-  # if (!is.logical(control$rm.tempFile) || length(control$rm.tempFile) != 1) {
-  #   stop("'control$rm.tempFile' should be a single logical value (TRUE or FALSE).")
-  # }
-
-  # Validate MaxQuantile and MinQuantile
-  # if (!is.numeric(control$MaxQuantile) || length(control$MaxQuantile) != 1 || 
-  #     !is.numeric(control$MinQuantile) || length(control$MinQuantile) != 1 ||
-  #     control$MaxQuantile <= 0 || control$MaxQuantile >= 1 || 
-  #     control$MinQuantile <= 0 || control$MinQuantile >= 1) {
-  #   stop("'control$MaxQuantile' and 'control$MinQuantile' should each be a single numeric value between 0 and 1.")
-  # }
-  # if (control$MaxQuantile <= control$MinQuantile) {
-  #   stop("'control$MaxQuantile' (default is 0.75) should be larger than 'control$MinQuantile' (default is 0.25).")
-  # }
- 
-  # Validate OutlierRatio
-  # if (!is.numeric(control$OutlierRatio) || length(control$OutlierRatio) != 1 || control$OutlierRatio <= 0) {
-  #   stop("'control$OutlierRatio' should be a single numeric value greater than 0 (default is 1.5).")
-  # }
-
-  # Validate ControlOutlier
-  # if (!is.logical(control$ControlOutlier) || length(control$ControlOutlier) != 1) {
-  #   stop("'control$ControlOutlier' should be a single logical value (TRUE or FALSE).")
-  # }
 
   # Validate MaxNuminFam
   if (!is.numeric(control$MaxNuminFam) || length(control$MaxNuminFam) != 1 || 
@@ -264,8 +210,10 @@ fitNullModel.SPAsqr <- function(
   control,
   GenoFile, 
   SparseGRMFile,
-  PairwiseIBDFile
+  ...
 ) {
+  PairwiseIBDFile <- list(...)$PairwiseIBDFile
+
   # ========== Fit SQR null model ==========
   X <- designMat
   y <- response
@@ -403,71 +351,13 @@ SPAGRM.NullModel.Multi <- function(
 ) {
   taus <- control$taus
   ntaus <- length(taus)
-  # MaxQuantile <- control$MaxQuantile
-  # MinQuantile <- control$MinQuantile
-  # OutlierRatio <- control$OutlierRatio
-  # ControlOutlier <- control$ControlOutlier
   MaxNuminFam <- control$MaxNuminFam
   MAF_interval <- control$MAF_interval
   
   #### Identify outliers based on quantiles
-  # Quants <- apply(ResidMat, 2, function(x) quantile(x, probs = c(MinQuantile, MaxQuantile)))
-  # Ranges <- Quants[2, ] - Quants[1, ]
-  # cutoffLower <- Quants[1, ] - OutlierRatio * Ranges
-  # cutoffUpper <- Quants[2, ] + OutlierRatio * Ranges
-  
-  tooSmall <- sweep(ResidMat, 2, -0.75, "<")
-  tooLarge <- sweep(ResidMat, 2, 0.75, ">")
+  tooSmall <- sweep(ResidMat, 2, -0.7, "<")
+  tooLarge <- sweep(ResidMat, 2, 0.7, ">")
   Outlier <- tooSmall | tooLarge
-  
-  # #### Apply outlier control for each tau if ControlOutlier=TRUE (vectorized)
-  # if (ControlOutlier) {
-  #   .message("ControlOutlier=TRUE: adjusting outlier ratios to keep outliers <5%% for each tau")
-  #   
-  #   OutlierRatio_vec <- rep(OutlierRatio, ntaus)
-  #   n_total <- nrow(ResidMat)
-  #   
-  #   # Stage 1: Ensure at least 1 outlier for each tau (vectorized)
-  #   taus_no_outliers <- which(colSums(Outlier) == 0)
-  #   
-  #   while (length(taus_no_outliers) > 0) {
-  #     # Decrease ratio for taus with no outliers
-  #     OutlierRatio_vec[taus_no_outliers] <- OutlierRatio_vec[taus_no_outliers] * 0.8
-  #     cutoffLower[taus_no_outliers] <- Quants[1, taus_no_outliers] - OutlierRatio_vec[taus_no_outliers] * Ranges[taus_no_outliers]
-  #     cutoffUpper[taus_no_outliers] <- Quants[2, taus_no_outliers] + OutlierRatio_vec[taus_no_outliers] * Ranges[taus_no_outliers]
-  #     
-  #     # Update outliers for affected taus (vectorized)
-  #     Outlier[, taus_no_outliers] <- sweep(ResidMat[, taus_no_outliers, drop = FALSE], 2, cutoffLower[taus_no_outliers], "<") |
-  #                                     sweep(ResidMat[, taus_no_outliers, drop = FALSE], 2, cutoffUpper[taus_no_outliers], ">")
-  #     
-  #     taus_no_outliers <- which(colSums(Outlier) == 0)
-  #   }
-  #   
-  #   # Stage 2: Ensure outliers <5% for each tau (vectorized)
-  #   outlier_pcts <- colSums(Outlier) / n_total
-  #   taus_too_many <- which(outlier_pcts > 0.05)
-  #   
-  #   while (length(taus_too_many) > 0) {
-  #     # Increase ratio for taus with too many outliers
-  #     OutlierRatio_vec[taus_too_many] <- OutlierRatio_vec[taus_too_many] + 0.5
-  #     cutoffLower[taus_too_many] <- Quants[1, taus_too_many] - OutlierRatio_vec[taus_too_many] * Ranges[taus_too_many]
-  #     cutoffUpper[taus_too_many] <- Quants[2, taus_too_many] + OutlierRatio_vec[taus_too_many] * Ranges[taus_too_many]
-  #     
-  #     # Update outliers for affected taus (vectorized)
-  #     Outlier[, taus_too_many] <- sweep(ResidMat[, taus_too_many, drop = FALSE], 2, cutoffLower[taus_too_many], "<") |
-  #                                  sweep(ResidMat[, taus_too_many, drop = FALSE], 2, cutoffUpper[taus_too_many], ">")
-  #     
-  #     outlier_pcts <- colSums(Outlier) / n_total
-  #     taus_too_many <- which(outlier_pcts > 0.05)
-  #   }
-  #   
-  #   # Summary logging
-  #   .message("Outlier control summary:")
-  #   for (i in seq_along(taus)) {
-  #     .message("  Tau %g: %d outliers (%.1f%%), ratio=%.2f", 
-  #              taus[i], sum(Outlier[, i]), 100 * sum(Outlier[, i]) / n_total, OutlierRatio_vec[i])
-  #   }
-  # }
   
   #### Pre-compute tau-independent graph structure
   edges <- t(SparseGRM[, c("ID1", "ID2")])
@@ -537,7 +427,7 @@ SPAGRM.NullModel.Multi <- function(
   
   #### Step 2: First tau loop - Build graph_list_updated_lst and add RELATED family contributions
   
-  .message("Step 2a: Pre-computing block GRMs and decomposing outlier families")
+  .message("Pre-computing block GRMs and decomposing outlier families")
   
   # Pre-compute block GRMs for ALL ORIGINAL families (before any decomposition)
   # These are needed for correct variance calculation
@@ -630,7 +520,7 @@ SPAGRM.NullModel.Multi <- function(
     .message("Family decomposition complete")
   }
   
-  .message("Step 2b: Computing tau-specific variance components")
+  .message("Computing tau-specific variance components")
   
   graph_list_updated_lst <- vector("list", ntaus)
   
@@ -714,7 +604,7 @@ SPAGRM.NullModel.Multi <- function(
     graph_list_updated_lst[[i]] <- graph_list_updated
   }
   
-  .message("Step 2 complete: Family structures updated and variance components computed")
+  .message("Family structures updated and variance components computed")
   
   # Build lookup for block GRMs of outlier families (for Step 4)
   block_GRM_lookup <- new.env(hash = TRUE)
@@ -746,7 +636,7 @@ SPAGRM.NullModel.Multi <- function(
     }
   }
   
-  .message("Built block GRM lookup with %d entries for Step 4", length(ls(envir = block_GRM_lookup)))
+  .message("Built block GRM lookup with %d entries", length(ls(envir = block_GRM_lookup)))
   
   #### Step 3: Build CLT cache for union of all outlier families (across all taus)
   
@@ -904,5 +794,3 @@ SPAGRM.NullModel.Multi <- function(
   
   return(obj)
 }
-
-

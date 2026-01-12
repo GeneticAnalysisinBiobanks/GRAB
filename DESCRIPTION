@@ -1,8 +1,8 @@
 Package: GRAB
 Type: Package
 Title: Genome-Wide Robust Analysis for Biobank Data (GRAB)
-Version: 0.2.4
-Date: 2025-12-04
+Version: 0.3.0
+Date: 2026-01-12
 Authors@R: c(person(given = "Wenjian",
                     family = "Bi",
                     role = "aut"),
@@ -36,9 +36,9 @@ Description: Provides a comprehensive suite of genome-wide association study (GW
 License: GPL (>= 2)
 Encoding: UTF-8
 Depends: R (>= 3.5.0)
-Imports: dplyr, data.table, mvtnorm, Matrix, RSQLite, lme4, ordinal, survival, Rcpp, RcppParallel, igraph
+Imports: dplyr, data.table, mvtnorm, Matrix, RSQLite, lme4, ordinal, survival, Rcpp, RcppParallel, igraph, conquer
 Suggests: SKAT, dbplyr, tidyr, R.utils
 LinkingTo: Rcpp, RcppArmadillo, RcppParallel, BH
-RoxygenNote: 7.3.3
+RoxygenNote: 7.3.2
 Roxygen: list(markdown = TRUE)
 NeedsCompilation: yes

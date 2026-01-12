@@ -13,5 +13,5 @@ utils::globalVariables(c(
   "adjVarSVec", "all_of", "altFreq", "as_tibble", "betaWeights", "delete.edges", "get.data.frame",
   "get.edgelist", "get.vertex.attribute", "graph_from_data_frame", "index",
   "make_graph", "missingRate", "mr0", "mr1", "mst", "mu.int", "mu0", "mu1", "n", "obj.mainRegion",
-  "posRow", "pval1Vec", "r0", "summarize", "sym", "."
+  "posRow", "pval1Vec", "r0", "summarize", "sym", "Weight", "Value", "ID1", "ID2", "."
 ))

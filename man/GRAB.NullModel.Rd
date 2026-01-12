@@ -15,7 +15,6 @@ GRAB.NullModel(
   GenoFileIndex = NULL,
   SparseGRMFile = NULL,
   control = NULL,
-  PairwiseIBDFile = NULL,
   ...
 )
 }

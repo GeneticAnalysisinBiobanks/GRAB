@@ -1,5 +1,9 @@
 # Release Notes
 
+## v0.3.0 (2026-01-12)
+
+- Added SPAsqr
+
 ## v0.2.4 (2025-12-01)
 
 - Reorganized R code; helper functions executed only once are now inlined.
