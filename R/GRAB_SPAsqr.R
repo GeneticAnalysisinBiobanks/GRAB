@@ -60,6 +60,8 @@
 #'   \item \code{taus} (numeric vector, default: c(0.05, 0.2, 0.5, 0.8, 0.95)): Quantiles 
 #'     to examine for association testing. All values must be between 0 and 1 (exclusive). 
 #'     P-values across quantiles are combined using Cauchy combination test.
+#'   \item \code{smooth} (logical, default: TRUE): Whether to use smoothed quantile regression.
+#'     If FALSE, nonsmooth quantile regression is used; \code{h} and \code{sqr_tol} are ignored.
 #'   \item \code{h} (numeric, default: 0): Bandwidth parameter for smooth quantile regression. 
 #'     If h = 0, bandwidth is automatically selected as IQR(y)/3.
 #'   \item \code{MaxNuminFam} (integer, default: 5): Maximum family size for Chow-Liu tree 
@@ -169,6 +171,7 @@ checkControl.NullModel.SPAsqr <- function(traitType, GenoFile, SparseGRMFile, co
   default.control <- list(
     # Parameters for null model fitting
     taus = c(0.05,0.2,0.5,0.8,0.95),
+    smooth=TRUE,
     h = 0,
     MaxNuminFam = 5,
     MAF_interval = c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5),
@@ -182,9 +185,23 @@ checkControl.NullModel.SPAsqr <- function(traitType, GenoFile, SparseGRMFile, co
     stop("'control$taus' should be a numeric vector with each element between 0 and 1.")
   }
 
+  # Validate smooth
+  if (!is.logical(control$smooth) || length(control$smooth) != 1) {
+    stop("'control$smooth' should be a single logical value (TRUE or FALSE).")
+  }
+
   # Validate h
-  if (!is.numeric(control$h) || length(control$h) != 1 || control$h < 0) {
-    stop("'control$h' should be a single non-negative numeric value (default is 0 for automatic selection).")
+  if (control$smooth) {
+    if (!is.numeric(control$h) || length(control$h) != 1 || control$h < 0) {
+      stop("'control$h' should be a single non-negative numeric value (default is 0 for automatic selection).")
+    }
+    # Validate sqr_tol
+    if (!is.numeric(control$sqr_tol) || length(control$sqr_tol) != 1 || control$sqr_tol <= 0) {
+      stop("'control$sqr_tol' should be a single positive numeric value.")
+    }
+  } else {
+    control$h <- NULL  # Not used if smooth = FALSE
+    control$sqr_tol <- NULL  # Not used if smooth = FALSE
   }
 
   # Validate MaxNuminFam
@@ -214,20 +231,33 @@ fitNullModel.SPAsqr <- function(
 ) {
   PairwiseIBDFile <- list(...)$PairwiseIBDFile
 
-  # ========== Fit SQR null model ==========
-  X <- designMat
+  # ========== Fit null model ==========
   y <- response
   taus <- control$taus
   ntaus <- length(taus)
-  h <- control$h
-  if (h == 0) h <- IQR(y)/3
-
   ResidMat <- matrix(0, nrow = length(y), ncol = ntaus)
-  for (i in seq_along(taus)) {
-    current_tau <- taus[i]
-    current_fit <- conquer::conquer(X, y, tau = current_tau, kernel = "Gaussian", h = h, tol = control$sqr_tol)
-    current_resid <- as.numeric(y - current_fit$coeff[1] - X %*% current_fit$coeff[2:(ncol(X)+1)])
-    ResidMat[, i] <- current_tau - pnorm((-current_resid)/h)
+
+  if (control$smooth) {
+    # Smoothed quantile regression
+    X <- designMat
+    h <- control$h
+    if (h == 0) h <- IQR(y)/3
+
+    for (i in seq_along(taus)) {
+      current_tau <- taus[i]
+      current_fit <- conquer::conquer(X, y, tau = current_tau, kernel = "Gaussian", h = h, tol = control$sqr_tol)
+      current_resid <- as.numeric(y - current_fit$coeff[1] - X %*% current_fit$coeff[2:(ncol(X)+1)])
+      ResidMat[, i] <- current_tau - pnorm((-current_resid)/h)
+    }
+  } else {
+    # Nonsmooth quantile regression
+    X <- cbind(1, designMat)
+
+    for (i in seq_along(taus)) {
+      current_tau <- taus[i]
+      current_fit <- quantreg::rq.fit(X, y, tau = current_tau)
+      ResidMat[, i] <- current_tau - ifelse(current_fit$residuals < 0, 1, 0)
+    }
   }
 
   # ========= # Read SparseGRM and make ID set to be same as subjData ==========
@@ -355,8 +385,8 @@ SPAGRM.NullModel.Multi <- function(
   MAF_interval <- control$MAF_interval
   
   #### Identify outliers based on quantiles
-  tooSmall <- sweep(ResidMat, 2, -0.7, "<")
-  tooLarge <- sweep(ResidMat, 2, 0.7, ">")
+  tooSmall <- sweep(ResidMat, 2, -0.8, "<")
+  tooLarge <- sweep(ResidMat, 2, 0.8, ">")
   Outlier <- tooSmall | tooLarge
   
   #### Pre-compute tau-independent graph structure

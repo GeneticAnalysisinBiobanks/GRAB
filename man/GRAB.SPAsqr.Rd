@@ -27,6 +27,8 @@ Set \code{method = "SPAsqr"} and \code{traitType = "quantitative"}. Three additi
 \item \code{taus} (numeric vector, default: c(0.05, 0.2, 0.5, 0.8, 0.95)): Quantiles
 to examine for association testing. All values must be between 0 and 1 (exclusive).
 P-values across quantiles are combined using Cauchy combination test.
+\item \code{smooth} (logical, default: TRUE): Whether to use smoothed quantile regression.
+If FALSE, nonsmooth quantile regression is used; \code{h} and \code{sqr_tol} are ignored.
 \item \code{h} (numeric, default: 0): Bandwidth parameter for smooth quantile regression.
 If h = 0, bandwidth is automatically selected as IQR(y)/3.
 \item \code{MaxNuminFam} (integer, default: 5): Maximum family size for Chow-Liu tree
