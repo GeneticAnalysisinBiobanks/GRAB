@@ -315,7 +315,7 @@ GRAB.NullModel <- function(
                                  GenoFile, GenoFileIndex, SparseGRMFile,
                                  responseVars[1], responseVars[2], ...),
     SPAsqr = fitNullModel.SPAsqr(response, designMat, subjData, control, 
-                                 GenoFile, SparseGRMFile, ...)
+                                 SparseGRMFile, ...)
   )
 
   # Add metadata to the null model object
