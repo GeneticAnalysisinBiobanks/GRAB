@@ -538,7 +538,7 @@ SAGELD.NullModel <- function(
           arrange(Cov)
         for (j in seq_len(nrow(tempGRM1))) {
           edgesToRemove <- paste0(tempGRM1$ID1[j], "|", tempGRM1$ID2[j])
-          comp1.temp <- igraph::delete.edges(comp1.temp, edgesToRemove)
+          comp1.temp <- igraph::delete_edges(comp1.temp, edgesToRemove)
           # vertices count for the new graph after edge removal
           vcount <- igraph::decompose(comp1.temp) %>% sapply(igraph::vcount)
           if (max(vcount) <= MaxNuminFam) {
@@ -552,7 +552,7 @@ SAGELD.NullModel <- function(
         comp1 <- comp1.temp
         for (k in seq_len(nrow(tempGRM1))) {
           edgesToAdd <- c(tempGRM1$ID1[k], tempGRM1$ID2[k])
-          comp1.temp <- igraph::add.edges(comp1, edgesToAdd)
+          comp1.temp <- igraph::add_edges(comp1, edgesToAdd)
 
           vcount <- igraph::decompose(comp1.temp) %>% sapply(igraph::vcount)
 

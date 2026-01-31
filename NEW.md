@@ -1,8 +1,20 @@
 # Release Notes
 
+## v0.3.1 (2026-02-02)
+
+- SPAsar
+  - Added SPAsqr.Step1a, which calculates genotype distributions for all families in parallel
+  - Added SPAsqr.Step1b, which performs SQR and returns null objects for multiple traits in parallel
+  - Added quantile regression
+  - Outlier cutoff 0.7 -> 0.8
+- WtCoxG now returns Z-scores and Score statistics in addition to p-values
+- Added LEAF
+- Added verbose options (default FALSE) to functions in Geno.R
+
 ## v0.3.0 (2026-01-12)
 
 - Added SPAsqr
+- This version is available only on GitHub (not uploaded to other repositories).
 
 ## v0.2.4 (2025-12-01)
 

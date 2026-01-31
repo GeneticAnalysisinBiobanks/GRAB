@@ -56,6 +56,8 @@
 #' }
 #' @param sparse Logical indicating whether to return sparse genotype matrix
 #'   (default: FALSE).
+#' @param verbose Logical indicating whether to print progress messages
+#'   (default: FALSE).
 #' @return List containing:
 #' \describe{
 #'   \item{GenoMat}{Genotype matrix (samples × markers) with values 0, 1, 2, or NA.}
@@ -127,7 +129,8 @@ GRAB.ReadGeno <- function(
   GenoFileIndex = NULL,
   SampleIDs = NULL,
   control = NULL,
-  sparse = FALSE
+  sparse = FALSE,
+  verbose = FALSE
 ) {
   # Validate control is a list if not NULL
   if (!is.null(control) && !is.list(control)) {
@@ -135,10 +138,10 @@ GRAB.ReadGeno <- function(
   }
 
   # Validate and set default control parameters
-  control <- checkControl.ReadGeno(control)
+  control <- checkControl.ReadGeno(control, verbose = verbose)
 
   # Initialize genotype input object with file paths and parameters
-  objGeno <- setGenoInput(GenoFile, GenoFileIndex, SampleIDs, control)
+  objGeno <- setGenoInput(GenoFile, GenoFileIndex, SampleIDs, control, verbose = verbose)
   genoType <- objGeno$genoType # "PLINK" or "BGEN"
   markerInfo <- objGeno$markerInfo
   SampleIDs <- objGeno$SampleIDs
@@ -149,7 +152,7 @@ GRAB.ReadGeno <- function(
   n <- length(SampleIDs)
   m <- length(MarkerIDs)
 
-  .message("Reading genotypes: %d subjects, %d markers", n, m)
+  if (verbose) .message("Reading genotypes: %d subjects, %d markers", n, m)
 
   # Read genotype data using appropriate C++ backend
   if (sparse == TRUE) {
@@ -177,7 +180,7 @@ GRAB.ReadGeno <- function(
   # Keep only essential marker information columns
   markerInfo <- markerInfo[, 1:5]
 
-  .message("Genotype reading completed")
+  if (verbose) .message("Genotype reading completed")
 
   closeGenoInputInCPP(
     t_genoType = genoType  # character: "PLINK" or "BGEN" - file type to close
@@ -218,6 +221,8 @@ GRAB.ReadGeno <- function(
 #'     \item Note: Cannot use both include and exclude files simultaneously.
 #'   }
 #' }
+#' @param verbose Logical indicating whether to print progress messages
+#'   (default: FALSE).
 #' @return A data frame containing marker information with allele frequencies
 #'   and missing rates. The data frame includes columns from marker information
 #'   (CHROM, POS, ID, REF, ALT, etc.) plus additional columns:
@@ -230,7 +235,8 @@ GRAB.getGenoInfo <- function(
   GenoFile,
   GenoFileIndex = NULL,
   SampleIDs = NULL,
-  control = NULL
+  control = NULL,
+  verbose = FALSE
 ) {
   # Validate control is a list if not NULL
   if (!is.null(control) && !is.list(control)) {
@@ -238,9 +244,9 @@ GRAB.getGenoInfo <- function(
   }
 
   # Validate and set default control parameters
-  control <- checkControl.ReadGeno(control)
+  control <- checkControl.ReadGeno(control, verbose = verbose)
 
-  objGeno <- setGenoInput(GenoFile, GenoFileIndex, SampleIDs, control)
+  objGeno <- setGenoInput(GenoFile, GenoFileIndex, SampleIDs, control, verbose = verbose)
 
   genoType <- objGeno$genoType # "PLINK" or "BGEN"
   markerInfo <- objGeno$markerInfo
@@ -258,7 +264,7 @@ GRAB.getGenoInfo <- function(
   n <- length(SampleIDs)
   m <- length(MarkerIDs)
 
-  .message("Getting genotype info: %d subjects, %d markers", n, m)
+  if (verbose) .message("Getting genotype info: %d subjects, %d markers", n, m)
 
   GenoInfoMat <- getGenoInfoInCPP(
     t_genoType = genoType,              # character: "PLINK" or "BGEN"
@@ -273,7 +279,7 @@ GRAB.getGenoInfo <- function(
 
 
 # Validate and set default control parameters for SPACox marker analysis
-checkControl.ReadGeno <- function(control) {
+checkControl.ReadGeno <- function(control, verbose = FALSE) {
 
   # Merge user-provided control with defaults
   default.control <- list(
@@ -340,15 +346,15 @@ checkControl.ReadGeno <- function(control) {
 
     if (has_include) {
       used_files <- include_files[include_provided]
-      .message("Marker selection: Including markers from union of:")
+      if (verbose) .message("Marker selection: Including markers from union of:")
       for (file_param in used_files) {
-        .message("  - %s: %s", file_param, control[[file_param]])
+        if (verbose) .message("  - %s: %s", file_param, control[[file_param]])
       }
     } else {
       used_files <- exclude_files[exclude_provided]
-      .message("Marker selection: Excluding markers from union of:")
+      if (verbose) .message("Marker selection: Excluding markers from union of:")
       for (file_param in used_files) {
-        .message("  - %s: %s", file_param, control[[file_param]])
+        if (verbose) .message("  - %s: %s", file_param, control[[file_param]])
       }
     }
   } else {
@@ -357,7 +363,7 @@ checkControl.ReadGeno <- function(control) {
       control$AllMarkers <- TRUE
     }
     if (isTRUE(control$AllMarkers)) {
-      .message("Marker selection: Analyzing all markers in the genotype file.")
+      if (verbose) .message("Marker selection: Analyzing all markers in the genotype file.")
     }
   }
 
@@ -372,7 +378,8 @@ setGenoInput <- function(
   GenoFile,
   GenoFileIndex = NULL,
   SampleIDs,
-  control
+  control,
+  verbose = FALSE
 ) {
 
   if (!file.exists(GenoFile)) {
@@ -407,7 +414,7 @@ setGenoInput <- function(
     }
 
     # Read BIM file
-    .message("Reading bim file: %s", basename(bimFile))
+    if (verbose) .message("Reading bim file: %s", basename(bimFile))
     markerInfo <- data.table::fread(bimFile, header = FALSE)
     markerInfo <- as.data.frame(markerInfo)
 
@@ -427,7 +434,7 @@ setGenoInput <- function(
     markerInfo$genoIndex <- seq_len(nrow(markerInfo)) - 1 # -1 is to convert 'R' to 'C++'
 
     # Read FAM file
-    .message("Reading fam file: %s", basename(famFile))
+    if (verbose) .message("Reading fam file: %s", basename(famFile))
     sampleInfo <- data.table::fread(famFile, header = FALSE)
 
     if (ncol(sampleInfo) != 6) {
@@ -435,9 +442,9 @@ setGenoInput <- function(
     }
 
     samplesInGeno <- sampleInfo$V2
-    SampleIDs <- updateSampleIDs(SampleIDs, samplesInGeno)
+    SampleIDs <- updateSampleIDs(SampleIDs, samplesInGeno, verbose = verbose)
 
-    .message("Setting up PLINK object in C++ ...")
+    if (verbose) .message("Setting up PLINK object in C++ ...")
     setPLINKobjInCPP(
       t_bimFile = bimFile,        # character: Path to .bim file (marker info)
       t_famFile = famFile,        # character: Path to .fam file (sample info)
@@ -472,11 +479,11 @@ setGenoInput <- function(
 
     if (!file.exists(GenoFileIndex[2])) {
       # No sample file provided, read sample IDs from BGEN header
-      samplesInGeno <- getSampleIDsFromBGEN(bgenFile)
+      samplesInGeno <- getSampleIDsFromBGEN(bgenFile, verbose = verbose)
     } else {
       # Sample file provided, read sample IDs from sample file
       sampleFile <- GenoFileIndex[2]
-      .message("Reading sample file: %s", basename(sampleFile))
+      if (verbose) .message("Reading sample file: %s", basename(sampleFile))
       sampleData <- data.table::fread(sampleFile, header = TRUE)
       if (ncol(sampleData) < 4) stop("Column number of sample file should be >= 4.")
 
@@ -491,7 +498,7 @@ setGenoInput <- function(
       samplesInGeno <- as.character(sampleData$ID_2[-1])
     }
 
-    .message("Reading bgi file: %s", basename(bgiFile))
+    if (verbose) .message("Reading bgi file: %s", basename(bgiFile))
     db_con <- RSQLite::dbConnect(RSQLite::SQLite(), bgiFile)
     on.exit(RSQLite::dbDisconnect(db_con))
     bgiData <- dplyr::tbl(db_con, "Variant")
@@ -506,9 +513,9 @@ setGenoInput <- function(
     }
     colnames(markerInfo) <- c("CHROM", "POS", "ID", "REF", "ALT", "genoIndex")
 
-    SampleIDs <- updateSampleIDs(SampleIDs, samplesInGeno)
+    SampleIDs <- updateSampleIDs(SampleIDs, samplesInGeno, verbose = verbose)
 
-    .message("Setting up BGEN object in C++ ...")
+    if (verbose) .message("Setting up BGEN object in C++ ...")
     setBGENobjInCPP(
       t_bgenFileName = bgenFile,              # character: Path to .bgen file
       t_bgenFileIndex = bgiFile,              # character: Path to .bgi index file
@@ -642,15 +649,15 @@ setGenoInput <- function(
 
 
 # Update SampleIDs based on samples in genotype file
-updateSampleIDs <- function(SampleIDs, samplesInGeno) {
+updateSampleIDs <- function(SampleIDs, samplesInGeno, verbose = FALSE) {
   if (is.null(SampleIDs)) {
-    .message("Using all samples from genotype file (%d samples)", length(samplesInGeno))
+    if (verbose) .message("Using all samples from genotype file (%d samples)", length(samplesInGeno))
     SampleIDs <- samplesInGeno
   }
 
   if (any(!SampleIDs %in% samplesInGeno)) {
     missing_samples <- SampleIDs[!SampleIDs %in% samplesInGeno]
-    .message("Warning: %d samples not found in genotype file", length(missing_samples))
+    if (verbose) .message("Warning: %d samples not found in genotype file", length(missing_samples))
     stop("The above samples from 'SampleIDs' are not in 'GenoFile' and 'GenoFileIndex'.")
   }
 
@@ -662,13 +669,13 @@ updateSampleIDs <- function(SampleIDs, samplesInGeno) {
 
 # Extract sample identifiers from BGEN file (only support BGEN v1.2)
 # Check https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
-getSampleIDsFromBGEN <- function(bgenFile) {
+getSampleIDsFromBGEN <- function(bgenFile, verbose = FALSE) {
   if (!checkIfSampleIDsExist(bgenFile)) {
     stop("The BGEN file does not include subject IDs. Check ",
          "https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html for details.")
   }
 
-  .message("Extracting sample information from BGEN file")
+  if (verbose) .message("Extracting sample information from BGEN file")
   con <- file(bgenFile, "rb")
   seek(con, 4)
   LH <- readBin(con, n = 1, what = "integer", size = 4)

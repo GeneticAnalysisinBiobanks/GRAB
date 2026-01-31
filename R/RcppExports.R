@@ -93,3 +93,7 @@ setSPAsqrobjInCPP <- function(t_taus, t_Resid_mat, t_Resid_unrelated_outliers_ls
     invisible(.Call(`_GRAB_setSPAsqrobjInCPP`, t_taus, t_Resid_mat, t_Resid_unrelated_outliers_lst, t_sum_R_nonOutlier_vec, t_R_GRM_R_nonOutlier_vec, t_R_GRM_R_TwoSubjOutlier_vec, t_R_GRM_R_vec, t_MAF_interval, t_TwoSubj_list_lst, t_CLT_union_lst, t_ThreeSubj_family_idx_lst, t_ThreeSubj_stand_S_lst, t_SPA_Cutoff, t_zeta, t_tol))
 }
 
+setLEAFobjInCPP <- function(t_residuals, t_weight, t_clusterIdx, t_cutoff, t_SPA_Cutoff) {
+    invisible(.Call(`_GRAB_setLEAFobjInCPP`, t_residuals, t_weight, t_clusterIdx, t_cutoff, t_SPA_Cutoff))
+}
+

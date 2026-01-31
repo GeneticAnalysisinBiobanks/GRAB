@@ -402,6 +402,20 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// setLEAFobjInCPP
+void setLEAFobjInCPP(Rcpp::List t_residuals, Rcpp::List t_weight, Rcpp::List t_clusterIdx, double t_cutoff, double t_SPA_Cutoff);
+RcppExport SEXP _GRAB_setLEAFobjInCPP(SEXP t_residualsSEXP, SEXP t_weightSEXP, SEXP t_clusterIdxSEXP, SEXP t_cutoffSEXP, SEXP t_SPA_CutoffSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_residuals(t_residualsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_weight(t_weightSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_clusterIdx(t_clusterIdxSEXP);
+    Rcpp::traits::input_parameter< double >::type t_cutoff(t_cutoffSEXP);
+    Rcpp::traits::input_parameter< double >::type t_SPA_Cutoff(t_SPA_CutoffSEXP);
+    setLEAFobjInCPP(t_residuals, t_weight, t_clusterIdx, t_cutoff, t_SPA_Cutoff);
+    return R_NilValue;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setSparseGRMInCPP", (DL_FUNC) &_GRAB_setSparseGRMInCPP, 1},
@@ -427,6 +441,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setSPACoxobjInCPP", (DL_FUNC) &_GRAB_setSPACoxobjInCPP, 7},
     {"_GRAB_setWtCoxGobjInCPP", (DL_FUNC) &_GRAB_setWtCoxGobjInCPP, 4},
     {"_GRAB_setSPAsqrobjInCPP", (DL_FUNC) &_GRAB_setSPAsqrobjInCPP, 15},
+    {"_GRAB_setLEAFobjInCPP", (DL_FUNC) &_GRAB_setLEAFobjInCPP, 5},
     {NULL, NULL, 0}
 };
 

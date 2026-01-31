@@ -39,7 +39,7 @@
 #'   RefPrevalence = 0.1
 #' )
 #'
-#' # Step2
+#' # Step 2: Perform marker-level association testing
 #' GRAB.Marker(obj.WtCoxG, GenoFile, OutputFile)
 #'
 #' head(data.table::fread(OutputFile))
@@ -72,21 +72,20 @@
 #' 
 #' \strong{Additional Control Parameters for GRAB.Marker()}:
 #' \itemize{
-#'   \item \code{cutoff} (numeric, default: 0.1): Cutoff of batch effect test p-value for
-#'     association testing. Variants with batch effect p-value below this cutoff
-#'     will be excluded from association testing.
+#'   \item \code{cutoff} (numeric, default: 0.05): P-value cutoff for batch effect testing.
+#'     Markers with batch effect p-value < cutoff will be excluded from analysis.
 #' }
 #'
-#' \strong{Output file columns}:
-#' \describe{
-#'   \item{Pheno}{Phenotype identifier (for multi-trait analysis).}
-#'   \item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}
-#'   \item{Info}{Marker information in format CHR:POS:REF:ALT.}
-#'   \item{AltFreq}{Alternative allele frequency in the sample.}
-#'   \item{AltCounts}{Total count of alternative alleles.}
-#'   \item{MissingRate}{Proportion of missing genotypes.}
-#'   \item{Pvalue}{P-value from the score test.}
-#'   \item{zScore}{Z-score from the score test.}
+#' \strong{Output Columns from GRAB.Marker()}:
+#' \itemize{
+#'   \item \code{WtCoxG.ext} (numeric): P-value with external reference allele frequencies
+#'   \item \code{WtCoxG.noext} (numeric): P-value without external reference (internal-only)
+#'   \item \code{score.ext} (numeric): Score statistic with external reference, calculated as
+#'     S = sum(R * (g - 2*mu.ext)) where R are weighted Cox residuals
+#'   \item \code{score.noext} (numeric): Score statistic without external reference
+#'   \item \code{zscore.ext} (numeric): Z-score statistic with external reference,
+#'     z = S / sqrt(Var(S)) where Var(S) accounts for external AF uncertainty
+#'   \item \code{zscore.noext} (numeric): Z-score statistic without external reference
 #' }
 #'
 #' @references
@@ -242,43 +241,7 @@ fitNullModel.WtCoxG <- function(
   mresid <- obj.coxph$residuals
   Cova <- designMat
 
-  ## outliers or not depending on the residuals (0.25%-1.5IQR, 0.75%+1.5IQR)
-  q25 <- quantile(mresid, 0.25, na.rm = TRUE)
-  q75 <- quantile(mresid, 0.75, na.rm = TRUE)
-  IQR <- q75 - q25
-
-  r.outlier <- ifelse(is.null(control$OutlierRatio), 1.5, control$OutlierRatio)
-  outlier_bounds <- c(q25 - r.outlier * IQR, q75 + r.outlier * IQR) # 
-  posOutlier <- which(mresid < outlier_bounds[1] | mresid > outlier_bounds[2])
-
-  while (length(posOutlier) == 0) {
-    r.outlier <- r.outlier * 0.8
-    outlier_bounds <- c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
-    posOutlier <- which(mresid < outlier_bounds[1] | mresid > outlier_bounds[2])
-    .message("Adjusted outlier ratio: %.2f (%d outliers)", r.outlier, length(posOutlier))
-  }
-
-  # The original code is from SPAmix in which multiple residuals were analysis simultaneously
-  posValue <- seq_along(mresid)
-  posNonOutlier <- setdiff(posValue, posOutlier)
-
-  .message("Outliers detected: %d/%d (%.1f%%)", length(posOutlier), length(posValue),
-           100 * length(posOutlier) / length(posValue))
-
-  if (length(posOutlier) == 0) {
-    stop("No outlier is observed. SPA is not required in this case.")
-  }
-
-  # "-1" is to convert R style (index starting from 1) to C++ style (index starting from 0)
-  outLierList <- list(
-    posOutlier = posOutlier - 1,
-    posNonOutlier = posNonOutlier - 1,
-    resid = mresid,
-    resid2 = mresid^2,
-    residOutlier = mresid[posOutlier],
-    residNonOutlier = mresid[posNonOutlier],
-    resid2NonOutlier = mresid[posNonOutlier]^2
-  )
+  outLierList <- getOutlierList(mresid, control$OutlierRatio)
 
   re <- list(
     mresid = mresid, Cova = Cova, yVec = yVec, weight = weight,
@@ -310,12 +273,12 @@ fitNullModel.WtCoxG <- function(
 checkControl.Marker.WtCoxG <- function(control) {
 
   default.control <- list(
-    cutoff = 0.1
+    cutoff = 0.05
   )
   control <- updateControl(control, default.control)
 
-  if (!is.numeric(control$cutoff) || control$cutoff < 0 || control$cutoff > 1) {
-    stop("control$cutoff should be a numeric value in [0, 1].")
+  if (!is.numeric(control$cutoff) || control$cutoff <= 0 || control$cutoff > 1) {
+    stop("control$cutoff should be a numeric value in (0, 1].")
   }
 
   return(control)
@@ -348,8 +311,14 @@ mainMarker.WtCoxG <- function(genoType, genoIndex, objNull) {
 
   pvals <- data.frame(matrix(OutList$pvalVec, ncol = 2, byrow = TRUE))
   colnames(pvals) <- c("WtCoxG.ext", "WtCoxG.noext")
+  
+  scores <- data.frame(matrix(OutList$score, ncol = 2, byrow = TRUE))
+  colnames(scores) <- c("score.ext", "score.noext")
+  
+  zscores <- data.frame(matrix(OutList$zScore, ncol = 2, byrow = TRUE))
+  colnames(zscores) <- c("zscore.ext", "zscore.noext")
 
-  obj.mainMarker <- cbind(pvals, mergeGenoInfo_chunk)
+  obj.mainMarker <- cbind(pvals, scores, zscores, mergeGenoInfo_chunk)
   return(obj.mainMarker)
 }
 
@@ -702,4 +671,42 @@ TestforBatchEffect <- function(
     select(-index)
 
   return(as.data.frame(mergeGenoInfo))
+}
+
+
+getOutlierList <- function(residuals, OutlierRatio) {
+  q25 <- quantile(residuals, 0.25, na.rm = TRUE)
+  q75 <- quantile(residuals, 0.75, na.rm = TRUE)
+  IQR <- q75 - q25
+
+  r.outlier <- ifelse(is.null(OutlierRatio), 1.5, OutlierRatio)
+  outlier_bounds <- c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
+  posOutlier <- which(residuals < outlier_bounds[1] | residuals > outlier_bounds[2])
+
+  while (length(posOutlier) == 0) {
+    r.outlier <- r.outlier * 0.8
+    outlier_bounds <- c(q25 - r.outlier * IQR, q75 + r.outlier * IQR)
+    posOutlier <- which(residuals < outlier_bounds[1] | residuals > outlier_bounds[2])
+    .message("Adjusted outlier ratio: %.2f (%d outliers)", r.outlier, length(posOutlier))
+  }
+
+  posValue <- seq_along(residuals)
+  posNonOutlier <- setdiff(posValue, posOutlier)
+
+  .message("Outliers detected: %d/%d (%.1f%%)", length(posOutlier), length(posValue),
+           100 * length(posOutlier) / length(posValue))
+
+  if (length(posOutlier) == 0) {
+    stop("No outlier is observed. SPA is not required in this case.")
+  }
+
+  list(
+    posOutlier = posOutlier - 1,
+    posNonOutlier = posNonOutlier - 1,
+    resid = residuals,
+    resid2 = residuals^2,
+    residOutlier = residuals[posOutlier],
+    residNonOutlier = residuals[posNonOutlier],
+    resid2NonOutlier = residuals[posNonOutlier]^2
+  )
 }
