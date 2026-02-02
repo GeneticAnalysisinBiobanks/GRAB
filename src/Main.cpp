@@ -62,6 +62,7 @@
 #include "WtCoxG.h"    // Weighted Cox regression for genetic data
 #include "SPAsqr.h"    // SPAsqr
 #include "LEAF.h"      // LEAF: Logistic Regression with External Ancestry Estimation and Adjustment Framework
+#include "Main.h"      // Functions shared across Main files
 
 
 //==============================================================================
@@ -591,7 +592,8 @@ Rcpp::List mainMarkerInCPP(
         zScoreVec.at(2 * i + j) = zScoreVecTemp.at(j);
         BetaVec.at(2 * i + j) = BetaVecTemp.at(j) * (1 - 2 * flip);
         seBetaVec.at(2 * i + j) = seBetaVecTemp.at(j);
-      }    
+      }
+      hwepvalVec.at(i) = hwepval;
 
     } else if (t_method == "WtCoxG") {
       arma::vec pvalVecTemp = ptr_gWtCoxGobj->getpvalVec(GVec, i);
