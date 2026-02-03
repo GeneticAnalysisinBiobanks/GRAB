@@ -19,51 +19,71 @@ GRAB.Marker2 <- function(
   objNull,
   GenoFile,
   OutputFile,
-  GenoFileIndex = NULL,
   control = list()
 ) {
 
-  method <- class(objNull)[1]
-  method <- gsub("_NULL_Model", "", method)
-  bfile <- tools::file_path_sans_ext(GenoFile)
-  bedfile <- paste0(bfile, ".bed")
-  bimfile <- paste0(bfile, ".bim")
-  famfile <- paste0(bfile, ".fam")
+  method <- gsub("_NULL_Model", "", class(objNull)[1])
+  control$method <- method
+  control$outputFile <- OutputFile
 
-  # Set default control parameters
+  # Set multithreading defaults
   nCores <- parallel::detectCores()
-  alleleOrderDefault <- if (genoType == "BGEN") "alt-first" else "ref-first"
-  default.control <- list(
+  multithread.default <- list(
     nWorkers = min(10, max(1, nCores - 2)),
     inputBufferSize = 50,
     outputBufferSize = 200
   )
-  control <- updateControl(control, default.control)
+  control <- updateControl(control, multithread.default)
 
-
-  mainMarkerInCPP2(
-    outputFile = OutputFile,
-    inputBufferSize = control$inputBufferSize,
-    outputBufferSize = control$outputBufferSize,
-    nWorkers = control$nWorkers,
-
-    t_bimFile = bimfile,
-    t_famFile = famfile,
-    t_bedFile = GenoFile,
-    t_SampleInModel = objNull$subjData,
-    t_AlleleOrder = alleleOrderDefault,
-
-    t_impute_method = "drop",
-    t_missing_cutoff = 0.05,
-    t_min_maf_marker = 1e-4,
-    t_min_mac_marker = 20,
-
-    t_resid = objNull$resid,
-    t_PCs = objNull$PCs,
-    t_N = objNull$N,
-    t_SPA_Cutoff = 2,
-    t_outlierList = objNull$outLierList
+  # Set analysis method defaults
+  control <- switch(
+    method,
+    POLMM = checkControl.Marker.POLMM(control),
+    SPACox = checkControl.Marker.SPACox(control),
+    SPAmix = checkControl.Marker.SPAmix(control),
+    SPAGRM = checkControl.Marker.SPAGRM(control, objNull$MAF_interval),
+    SAGELD = checkControl.Marker.SAGELD(control, objNull$MAF_interval),
+    WtCoxG = checkControl.Marker.WtCoxG(control),
+    SPAsqr = checkControl.Marker.SPAsqr(control),
+    LEAF = checkControl.Marker.LEAF(control)
   )
 
-  invisible(NULL)
+  # Set genotype file parameters
+  geno_prefix <- tools::file_path_sans_ext(GenoFile)
+  geno_suffix <- tools::file_ext(GenoFile)
+
+  genotype.default <- list(
+      AlleleOrder = "",
+      bedfile = "",
+      bimfile = "",
+      famfile = "",
+      bgenFileName = "",
+      bgenFileIndex = "",
+      t_SampleInBgen = c(),
+      t_isSparseDosageInBgen = FALSE,
+      t_isDropmissingdosagesInBgen = FALSE,
+      impute_method = "mean",
+      missing_cutoff = 0.15,
+      min_maf_marker = 0.001,
+      min_mac_marker = 20,
+      SPA_Cutoff = 2
+  )
+  control <- updateControl(control, genotype.default)  
+
+  if (geno_suffix == "bed") {  
+    control$genoType <- "PLINK"
+    control$AlleleOrder = "alt-first"
+    control$bedfile = paste0(geno_prefix, ".bed")
+    control$bimfile = paste0(geno_prefix, ".bim")
+    control$famfile = paste0(geno_prefix, ".fam")
+  } else if (geno_suffix == "bgen") {
+    control$genoType <- "BGEN"
+    control$AlleleOrder = "ref-first"
+    control$bgenFileName = paste0(geno_prefix, ".bgen")
+    control$bgenFileIndex = paste0(geno_prefix, ".bgen.bgi")
+  }
+
+  mainMarkerInCPP2(control = control, objNull = objNull)
+
+  return(invisible(NULL))
 }

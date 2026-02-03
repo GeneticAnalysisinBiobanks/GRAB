@@ -9,6 +9,7 @@
 #include <atomic>
 #include <string>
 #include <fstream>
+#include <memory>
 
 #include "BGEN.h"
 #include "PLINK.h"
@@ -17,19 +18,39 @@
 #include "SPACox.h"
 #include "Main.h"
 
+// It works for one thread, but crushes when multiple threads are used.
+// The reason is that only one SPAmixClass object is created.
+
 //==============================================================================
 // SECTION 1: OBJECT DECLARATIONS
 //==============================================================================
 
 // commont variables for marker level analysis
+static std::string g_method;
+static int g_nPheno = 0;
+static std::string g_genoType;
 static std::string g_impute_method;          // Imputation method: "mean", "minor", or "drop"
+
 static double g_missingRate_cutoff;          // Maximum allowed missing rate for markers
 static double g_marker_minMAF_cutoff;         // Minimum Minor Allele Frequency for single markers
 static double g_marker_minMAC_cutoff;         // Minimum Minor Allele Count for single markers
 static unsigned int g_omp_num_threads;       // Number of OpenMP threads for parallel processing
 
 PLINK::PlinkClass* ptr_gPLINKobj = nullptr;
+static BGEN::BgenClass* ptr_gBGENobj = nullptr;
 static SPAmix::SPAmixClass* ptr_gSPAmixobj = nullptr;
+static SPACox::SPACoxClass* ptr_gSPACoxobj = nullptr;
+
+// Container for one marker's genotypes and metadata
+struct MarkerData {
+    int markerIdx;
+    std::string ref, alt, marker, chr;
+    uint32_t pd = 0;
+    double altFreq = 0.0, altCounts = 0.0, missingRate = 0.0, imputeInfo = 0.0;
+    std::vector<uint32_t> indexForMissing;
+    std::vector<uint32_t> indexForNonZero;
+    arma::vec GVec;
+};
 
 
 //==============================================================================
@@ -39,7 +60,7 @@ static SPAmix::SPAmixClass* ptr_gSPAmixobj = nullptr;
 // Thread-safe input buffer for genotype data
 class GenoInputBuffer {
 private:
-    std::queue<int> markerQueue;
+    std::queue<std::shared_ptr<MarkerData>> markerQueue;
     std::mutex mtx;
     std::condition_variable cv;
     bool finished;
@@ -48,22 +69,22 @@ private:
 public:
     GenoInputBuffer(int size) : finished(false), maxSize(size) {}
 
-    void push(int markerIdx) {
+    void push(std::shared_ptr<MarkerData> marker) {
         std::unique_lock<std::mutex> lock(mtx);
         cv.wait(lock, [this] { return markerQueue.size() < maxSize || finished; });
         if (!finished) {
-            markerQueue.push(markerIdx);
+            markerQueue.push(std::move(marker));
         }
         cv.notify_all();
     }
 
-    bool pop(int& markerIdx) {
+    bool pop(std::shared_ptr<MarkerData>& marker) {
         std::unique_lock<std::mutex> lock(mtx);
         cv.wait(lock, [this] { return !markerQueue.empty() || finished; });
         if (markerQueue.empty()) {
             return false;
         }
-        markerIdx = markerQueue.front();
+        marker = std::move(markerQueue.front());
         markerQueue.pop();
         cv.notify_all();
         return true;
@@ -159,7 +180,35 @@ static void readerThread(
     int nMarkers
 ) {
     for (int i = 0; i < nMarkers; i++) {
-        inputBuffer->push(i);
+        auto marker = std::make_shared<MarkerData>();
+        marker->markerIdx = i;
+
+        // DIRECT CALL TO AVOID Main.cpp static variable issues
+        if (g_genoType == "PLINK") {
+            if (!ptr_gPLINKobj) throw std::runtime_error("ptr_gPLINKobj is null");
+            marker->GVec = ptr_gPLINKobj->getOneMarker(
+                marker->markerIdx,
+                marker->ref,
+                marker->alt,
+                marker->marker,
+                marker->pd,
+                marker->chr,
+                marker->altFreq,
+                marker->altCounts,
+                marker->missingRate,
+                marker->imputeInfo,
+                true,                // output missing indices
+                marker->indexForMissing,
+                false,               // don't need non-zero indices
+                marker->indexForNonZero,
+                true                 // isTrueGenotype for PLINK
+            );
+        } else {
+            // Fallback for BGEN or others if supported in future
+                throw std::runtime_error("Only PLINK supported in Main2 async mode currently.");
+        }
+
+        inputBuffer->push(std::move(marker));
     }
     inputBuffer->setFinished();
 }
@@ -189,288 +238,195 @@ static void writerThread(
 }
 
 
-// Worker thread: pop from input buffer, test marker, push to output buffer
 static void workerThread(
     GenoInputBuffer* inputBuffer,
     ResultOutputBuffer* outputBuffer
 ) {
-    int markerIdx;
-    
-    while (inputBuffer->pop(markerIdx)) {
-        
-        // Get genotype data for one marker
-        std::string ref, alt, marker, chr;
-        uint32_t pd;
-        double altFreq, altCounts, missingRate, imputeInfo;
-        std::vector<uint32_t> indexForMissing, indexForNonZero;
-        
-        arma::vec GVec = Unified_getOneMarker(
-            g_genoType,
-            markerIdx,
-            ref,
-            alt,
-            marker,
-            pd,
-            chr,
-            altFreq,
-            altCounts,
-            missingRate,
-            imputeInfo,
-            true,               // output missing indices
-            indexForMissing,
-            false,              // don't need non-zero indices
-            indexForNonZero
-        );
-        
-        // Impute missing genotypes
+    std::shared_ptr<MarkerData> marker;
+    while (inputBuffer->pop(marker)) {
+
+        // QC
+        double MAF = std::min(marker->altFreq, 1 - marker->altFreq);
+        double MAC = 2 * MAF * marker->GVec.size() * (1 - marker->missingRate);
+        if ((marker->missingRate > g_missingRate_cutoff) ||
+            (MAF < g_marker_minMAF_cutoff) ||
+            (MAC < g_marker_minMAC_cutoff)) {
+            outputBuffer->push(marker->markerIdx, ""); // skip but keep order
+            continue;
+        }
+
+        // Impute and possibly flip
         bool flip = imputeGenoAndFlip(
-            GVec,
-            altFreq,
-            indexForMissing,
-            missingRate,
+            marker->GVec,
+            marker->altFreq,
+            marker->indexForMissing,
+            marker->missingRate,
             g_impute_method,
             g_method
         );
-        
+
+        std::string info = marker->chr + ":" + std::to_string(marker->pd) + ":" + marker->ref + ":" + marker->alt;
         std::string resultLine;
-        std::string info = chr + ":" + std::to_string(pd) + ":" + ref + ":" + alt;
-        
+
         if (g_method == "SPAmix") {
-            
-            double pval = g_SPAmixObj->getMarkerPval(GVec, altFreq);
-            arma::vec pvalVec = g_SPAmixObj->getpvalVec();
-            arma::vec zScoreVec = g_SPAmixObj->getzScoreVec();
-            
+            double pval = ptr_gSPAmixobj->getMarkerPval(marker->GVec, marker->altFreq);
+            arma::vec pvalVec = ptr_gSPAmixobj->getpvalVec();
+            arma::vec zScoreVec = ptr_gSPAmixobj->getzScoreVec();
+
             for (int p = 0; p < g_nPheno; p++) {
                 if (p > 0) resultLine += "\n";
                 resultLine += "pheno_" + std::to_string(p + 1) + "\t";
-                resultLine += marker + "\t";
+                resultLine += marker->marker + "\t";
                 resultLine += info + "\t";
-                resultLine += std::to_string(altFreq) + "\t";
-                resultLine += std::to_string(altCounts) + "\t";
-                resultLine += std::to_string(missingRate) + "\t";
+                resultLine += std::to_string(marker->altFreq) + "\t";
+                resultLine += std::to_string(marker->altCounts) + "\t";
+                resultLine += std::to_string(marker->missingRate) + "\t";
                 resultLine += std::to_string(pvalVec[p]) + "\t";
                 resultLine += std::to_string(zScoreVec[p]);
             }
-            
         } else if (g_method == "SPACox") {
-            
-            double pval, zScore, Beta, seBeta;
-            bool isSPAConverge;
-            pval = g_SPACoxObj->getMarkerPval(GVec, altFreq, zScore);
-            
-            resultLine = marker + "\t";
+            double pval = 0.0;
+            double zScore = 0.0;
+            double Beta = 0.0;
+            double seBeta = 0.0;
+
+            if (!ptr_gSPACoxobj) {
+                Rcpp::stop("SPACox object is not initialized.");
+            }
+
+            // getMarkerPval returns p-value and z-score; Beta/seBeta placeholders retained for symmetry
+            pval = ptr_gSPACoxobj->getMarkerPval(marker->GVec, marker->altFreq, zScore);
+
+            resultLine = marker->marker + "\t";
             resultLine += info + "\t";
-            resultLine += std::to_string(altFreq) + "\t";
-            resultLine += std::to_string(altCounts) + "\t";
-            resultLine += std::to_string(missingRate) + "\t";
+            resultLine += std::to_string(marker->altFreq) + "\t";
+            resultLine += std::to_string(marker->altCounts) + "\t";
+            resultLine += std::to_string(marker->missingRate) + "\t";
             resultLine += std::to_string(pval) + "\t";
             resultLine += std::to_string(Beta * (1 - 2 * flip)) + "\t";
             resultLine += std::to_string(seBeta) + "\t";
-            resultLine += (isSPAConverge ? "TRUE" : "FALSE");
+            resultLine += "TRUE"; // SPA convergence assumed; adjust if API exposes this flag
         }
-        
-        outputBuffer->push(markerIdx, resultLine);
+
+        outputBuffer->push(marker->markerIdx, resultLine);
     }
 }
 
-
-
-
-// ==============================================================================
-// SECTION 4: MAIN FUNCTION
-// ==============================================================================
-
-void setPLINKobjInCPP(
-  std::string t_bimFile,                    // Path to PLINK .bim file (marker information)
-  std::string t_famFile,                    // Path to PLINK .fam file (sample information)
-  std::string t_bedFile,                    // Path to PLINK .bed file (binary genotype data)
-  std::vector<std::string> t_SampleInModel, // Vector of sample IDs to include in analysis
-  std::string t_AlleleOrder                 // Allele ordering convention ("alt-first" or "ref-first")
-) {
-
-}
 
 // [[Rcpp::export]]
 void mainMarkerInCPP2(
-  // IO and threading parameters
-  const std::string outputFile,
-  const int inputBufferSize,
-  const int outputBufferSize,
-  const int nWorkers,
-
-  // PLINK inputs
-  const std::string t_bimFile,
-  const std::string t_famFile,
-  const std::string t_bedFile,
-  const std::vector<std::string> t_SampleInModel,
-  const std::string t_AlleleOrder,
-
-  // setMarker_GlobalVarsInCPP
-  const std::string t_impute_method,
-  const double t_missing_cutoff,
-  const double t_min_maf_marker,
-  const double t_min_mac_marker,
-
-  // setMarker.SPAmix
-  arma::mat t_resid,
-  arma::mat t_PCs,
-  int t_N,
-  double t_SPA_Cutoff,
-  Rcpp::List t_outlierList
+        Rcpp::List control,
+        Rcpp::List objNull
 ) {
+    auto requireString = [](const Rcpp::List& lst, const char* name) {
+        if (!lst.containsElementNamed(name)) {
+            Rcpp::stop(std::string("Missing required string field: ") + name);
+        }
+        return Rcpp::as<std::string>(lst[name]);
+    };
 
+    auto requireInt = [](const Rcpp::List& lst, const char* name) {
+        if (!lst.containsElementNamed(name)) {
+            Rcpp::stop(std::string("Missing required integer field: ") + name);
+        }
+        return Rcpp::as<int>(lst[name]);
+    };
 
-  g_impute_method = t_impute_method;
-  g_missingRate_cutoff = t_missing_cutoff;
-  g_marker_minMAF_cutoff = t_min_maf_marker;
-  g_marker_minMAC_cutoff = t_min_mac_marker;
+    auto requireDouble = [](const Rcpp::List& lst, const char* name) {
+        if (!lst.containsElementNamed(name)) {
+            Rcpp::stop(std::string("Missing required numeric field: ") + name);
+        }
+        return Rcpp::as<double>(lst[name]);
+    };
 
-  const std::string t_genoType = "PLINK"; // For now, only PLINK is supported
-  const std::string t_method = "SPAmix"; // For now, only SPAmix is supported
+    // Pull control parameters
+    const std::string outputFile      = requireString(control, "outputFile");
+    const int inputBufferSize         = requireInt(control, "inputBufferSize");
+    const int outputBufferSize        = requireInt(control, "outputBufferSize");
+    const int nWorkers                = requireInt(control, "nWorkers");
+    g_impute_method                   = requireString(control, "impute_method");
+    g_missingRate_cutoff              = requireDouble(control, "missing_cutoff");
+    g_marker_minMAF_cutoff            = requireDouble(control, "min_maf_marker");
+    g_marker_minMAC_cutoff            = requireDouble(control, "min_mac_marker");
+    g_genoType                        = requireString(control, "genoType");
+    g_method                          = requireString(control, "method");
 
-  if (ptr_gPLINKobj)
-    delete ptr_gPLINKobj;
+    // Genotype file paths
+    const std::string t_bimFile   = requireString(control, "bimfile");
+    const std::string t_famFile   = requireString(control, "famfile");
+    const std::string t_bedFile   = requireString(control, "bedfile");
+    const std::string t_AlleleOrder = requireString(control, "AlleleOrder");
 
-  ptr_gPLINKobj = new PLINK::PlinkClass(
-    t_bimFile,                              // Path to PLINK .bim file (marker information)
-    t_famFile,                              // Path to PLINK .fam file (sample information)
-    t_bedFile,                              // Path to PLINK .bed file (binary genotype data)
-    t_SampleInModel,                        // Vector of sample IDs to include in analysis
-    t_AlleleOrder                           // Allele ordering convention ("alt-first" or "ref-first")
-  );
-
-  int n = ptr_gPLINKobj->getN();
-  Rcpp::Rcout << "    Number of subjects with genotype: " << n << std::endl;
-
-  const int q = wc -l t_bimFile; // Number of markers in the .bim file
-  Rcpp::Rcout << "    Number of markers to analyze: " << q << std::endl;
-
-
-  if (ptr_gSPAmixobj)
-    delete ptr_gSPAmixobj;
-
-  ptr_gSPAmixobj = new SPAmix::SPAmixClass(
-    t_resid,
-    t_PCs, 
-    t_N,
-    t_SPA_Cutoff,
-    t_outlierList
-  );
-  const int const Npheno = ptr_gSPAmixobj->getNpheno();
-
-  // Create buffers
-  GenoInputBuffer inputBuffer(inputBufferSize);
-  ResultOutputBuffer outputBuffer(outputBufferSize);
-  
-  // Launch reader thread
-  std::thread reader(readerThread, &inputBuffer, nMarkers);
-  // Launch writer thread
-  std::thread writer(writerThread, &outputBuffer, outputFile, header);
-  // Launch worker threads
-  std::vector<std::thread> workers;
-  for (int i = 0; i < nWorkers; i++) {
-      workers.emplace_back(workerThread, &inputBuffer, &outputBuffer);
-  }
-
-  // Print header
-  print("Pheno\tMarker\tInfo\tAltFreq\tAltCounts\tMissingRate\tPvalue1\tzScore1\t...\tPvalue$Npheno\tzScore$Npheno\n");
-
-  for (int i = 0; i < q; i++) {
-
-    if (i % 1000 == 0)
-      Rcpp::Rcout << "    Completed " << i << "/" << q << " markers in the chunk." << std::endl;
-
-    // Variables to store marker-specific information
-    double altFreq, altCounts, missingRate, imputeInfo;
-    std::vector<uint32_t> indexForMissing, indexForNonZero;
-    std::string chr, ref, alt, marker;
-    uint32_t pd;  // Physical position
-    bool flip = false;  // Whether a locus is flipped
-
-    uint64_t gIndex;
-
-    // Extract genotype vector and marker information
-    arma::vec GVec = Unified_getOneMarker(
-      t_genoType,                      // Genotype file format ("PLINK", "BGEN")
-      gIndex,                          // Marker index in genotype file
-      ref,                             // Reference allele (output)
-      alt,                             // Alternate allele (output)
-      marker,                          // Marker ID (output)
-      pd,                              // Physical position (output)
-      chr,                             // Chromosome (output)
-      altFreq,                         // Alternate allele frequency (output)
-      altCounts,                       // Alternate allele count (output)
-      missingRate,                     // Missing genotype rate (output)
-      imputeInfo,                      // Imputation quality score (output)
-      true,                            // Whether to output missing data indices
-      indexForMissing,                 // Indices of missing genotypes (output)
-      false,                           // Whether to output only non-zero genotypes
-      indexForNonZero                  // Indices of non-zero genotypes (output)
-    );
-    int n = GVec.size();  // Sample size
-
-
-    // Format marker information string (CHR:POS:REF:ALT)
-    std::string info = chr + ":" + std::to_string(pd) + ":" + ref + ":" + alt;
-
-    // Store basic marker information in output vectors
-    print(marker, info, altFreq, altCounts, missingRate);
-
-    // Calculate MAF and MAC for QC
-    double MAF = std::min(
-      altFreq,      // Alternate allele frequency
-      1 - altFreq   // Reference allele frequency
-    );  // MAF is always ≤ 0.5
-    double MAC = 2 * MAF * n * (1 - missingRate); // Account for diploid genotypes and missing data
-
-    // Quality Control: check if marker passes MAF, MAC, and missing rate thresholds
-    if ((missingRate > g_missingRate_cutoff) ||
-        (MAF < g_marker_minMAF_cutoff) ||
-        (MAC < g_marker_minMAC_cutoff))
-      continue;
-
-    // Check UTIL.cpp
-    flip = imputeGenoAndFlip(
-      GVec,                // Genotype vector
-      altFreq,             // Alternate allele frequency
-      indexForMissing,     // Indices of missing genotypes
-      missingRate,         // Missing genotype rate
-      g_impute_method,     // Imputation method ("mean", "minor", "drop")
-      t_method             // Statistical method
-    );
-
-    double Beta, seBeta, pval, zScore, hwepval;
-    pval = ptr_gSPAmixobj->getMarkerPval(GVec, altFreq);
-    arma::vec pvalVecTemp = ptr_gSPAmixobj->getpvalVec();
-    arma::vec zScoreVecTemp = ptr_gSPAmixobj->getzScoreVec();
-    
-    for (int j = 0; j < Npheno; j++) {
-      print(pvalVecTemp.at(j), zScoreVecTemp.at(j));
+    // Null-model pieces
+    if (!objNull.containsElementNamed("subjData") ||
+            !objNull.containsElementNamed("resid") ||
+            !objNull.containsElementNamed("PCs") ||
+            !objNull.containsElementNamed("N")) {
+        Rcpp::stop("objNull is missing required fields (subjData, resid, PCs, N).");
     }
-    
-    print("\n");
-    
-  } // End of one marker loop
 
-  // Wait for reader to finish
-  reader.join();
-  
-  // Wait for all workers to finish
-  for (auto& w : workers) {
-      w.join();
-  }
-  
-  // Signal output buffer finished
-  outputBuffer.setFinished();
-    
-  // Wait for writer to finish
-  writer.join();
-    
-  // Cleanup
-  delete ptr_gPLINKobj;
-  delete ptr_gSPAmixobj;
+    const std::vector<std::string> t_SampleInModel = Rcpp::as< std::vector<std::string> >(objNull["subjData"]);
+    arma::mat t_resid   = Rcpp::as<arma::mat>(objNull["resid"]);
+    arma::mat t_PCs     = Rcpp::as<arma::mat>(objNull["PCs"]);
+    int t_N             = Rcpp::as<int>(objNull["N"]);
+    Rcpp::List t_outlierList;
+    if (objNull.containsElementNamed("outLierList")) {
+        t_outlierList = objNull["outLierList"];
+    }
 
-  Rcpp::Rcout << "Analysis complete. Results written to: " << outputFile << std::endl;
+    if (g_genoType == "PLINK") {
+        if (ptr_gPLINKobj) delete ptr_gPLINKobj;
+        ptr_gPLINKobj = new PLINK::PlinkClass(
+                t_bimFile, t_famFile, t_bedFile, t_SampleInModel, t_AlleleOrder
+        );
+    } else {
+        Rcpp::stop("Unsupported genoType for mainMarkerInCPP2: " + g_genoType);
+    }
+
+    const int m = ptr_gPLINKobj->getM();
+    const int n = ptr_gPLINKobj->getN();
+    Rcpp::Rcout << "    Number of subjects: " << n << std::endl;
+    Rcpp::Rcout << "    Number of markers: "  << m << std::endl;
+
+    // Initialize method-specific state
+    if (g_method == "SPAmix") {
+        if (ptr_gSPAmixobj) delete ptr_gSPAmixobj;
+        ptr_gSPAmixobj = new SPAmix::SPAmixClass(t_resid, t_PCs, t_N, control.containsElementNamed("SPA_Cutoff") ? Rcpp::as<double>(control["SPA_Cutoff"]) : 2.0, t_outlierList);
+        g_nPheno = ptr_gSPAmixobj->getNpheno();
+    } else if (g_method == "SPACox") {
+        g_nPheno = 1; // placeholder; SPACox object should be initialized elsewhere
+    } else {
+        Rcpp::stop("Unsupported method for mainMarkerInCPP2: " + g_method);
+    }
+
+    // Build header
+    std::string header = "Pheno\tMarker\tInfo\tAltFreq\tAltCounts\tMissingRate";
+    for (int p = 0; p < g_nPheno; ++p) {
+        header += "\tPvalue" + std::to_string(p + 1) + "\tZscore" + std::to_string(p + 1);
+    }
+
+    // Buffers
+    GenoInputBuffer   inputBuffer(inputBufferSize);
+    ResultOutputBuffer outputBuffer(outputBufferSize);
+
+    // Threads
+    std::thread reader(readerThread, &inputBuffer, m);
+    std::thread writer(writerThread, &outputBuffer, outputFile, header);
+    std::vector<std::thread> workers;
+    workers.reserve(nWorkers);
+    for (int i = 0; i < nWorkers; ++i) {
+        workers.emplace_back(workerThread, &inputBuffer, &outputBuffer);
+    }
+
+    // Wait for worker completion
+    reader.join();
+    for (auto& w : workers) w.join();
+    outputBuffer.setFinished();
+    writer.join();
+
+    delete ptr_gPLINKobj;
+    ptr_gPLINKobj = nullptr;
+    if (ptr_gSPAmixobj) { delete ptr_gSPAmixobj; ptr_gSPAmixobj = nullptr; }
+    Rcpp::Rcout << "Analysis complete. Results written to: " << outputFile << std::endl;
 }
 

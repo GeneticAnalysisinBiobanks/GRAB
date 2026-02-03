@@ -97,7 +97,7 @@ setLEAFobjInCPP <- function(t_residuals, t_weight, t_clusterIdx, t_cutoff, t_SPA
     invisible(.Call(`_GRAB_setLEAFobjInCPP`, t_residuals, t_weight, t_clusterIdx, t_cutoff, t_SPA_Cutoff))
 }
 
-mainMarkerInCPP2 <- function(method, genoType, genoFile, genoFileIndex, outputFile, nWorkers, inputBufferSize, outputBufferSize, resid = NULL, PCs = NULL, N = NULL, SPA_Cutoff = NULL, outlierList = NULL, nPheno = NULL, mresid = NULL, cresid = NULL, cumul = NULL, XinvXX = NULL, tX = NULL, pVal_covaAdj_Cutoff = NULL, SampleInModel = NULL, AlleleOrder = NULL) {
-    invisible(.Call(`_GRAB_mainMarkerInCPP2`, method, genoType, genoFile, genoFileIndex, outputFile, nWorkers, inputBufferSize, outputBufferSize, resid, PCs, N, SPA_Cutoff, outlierList, nPheno, mresid, cresid, cumul, XinvXX, tX, pVal_covaAdj_Cutoff, SampleInModel, AlleleOrder))
+mainMarkerInCPP2 <- function(control, objNull) {
+    invisible(.Call(`_GRAB_mainMarkerInCPP2`, control, objNull))
 }
 

@@ -417,33 +417,13 @@ BEGIN_RCPP
 END_RCPP
 }
 // mainMarkerInCPP2
-void mainMarkerInCPP2(std::string method, std::string genoType, std::string genoFile, std::string genoFileIndex, std::string outputFile, int nWorkers, int inputBufferSize, int outputBufferSize, Rcpp::Nullable<arma::mat> resid, Rcpp::Nullable<arma::mat> PCs, Rcpp::Nullable<int> N, Rcpp::Nullable<double> SPA_Cutoff, Rcpp::Nullable<Rcpp::List> outlierList, Rcpp::Nullable<int> nPheno, Rcpp::Nullable<arma::vec> mresid, Rcpp::Nullable<arma::vec> cresid, Rcpp::Nullable<arma::mat> cumul, Rcpp::Nullable<arma::mat> XinvXX, Rcpp::Nullable<arma::mat> tX, Rcpp::Nullable<double> pVal_covaAdj_Cutoff, Rcpp::Nullable<Rcpp::CharacterVector> SampleInModel, Rcpp::Nullable<std::string> AlleleOrder);
-RcppExport SEXP _GRAB_mainMarkerInCPP2(SEXP methodSEXP, SEXP genoTypeSEXP, SEXP genoFileSEXP, SEXP genoFileIndexSEXP, SEXP outputFileSEXP, SEXP nWorkersSEXP, SEXP inputBufferSizeSEXP, SEXP outputBufferSizeSEXP, SEXP residSEXP, SEXP PCsSEXP, SEXP NSEXP, SEXP SPA_CutoffSEXP, SEXP outlierListSEXP, SEXP nPhenoSEXP, SEXP mresidSEXP, SEXP cresidSEXP, SEXP cumulSEXP, SEXP XinvXXSEXP, SEXP tXSEXP, SEXP pVal_covaAdj_CutoffSEXP, SEXP SampleInModelSEXP, SEXP AlleleOrderSEXP) {
+void mainMarkerInCPP2(Rcpp::List control, Rcpp::List objNull);
+RcppExport SEXP _GRAB_mainMarkerInCPP2(SEXP controlSEXP, SEXP objNullSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< std::string >::type method(methodSEXP);
-    Rcpp::traits::input_parameter< std::string >::type genoType(genoTypeSEXP);
-    Rcpp::traits::input_parameter< std::string >::type genoFile(genoFileSEXP);
-    Rcpp::traits::input_parameter< std::string >::type genoFileIndex(genoFileIndexSEXP);
-    Rcpp::traits::input_parameter< std::string >::type outputFile(outputFileSEXP);
-    Rcpp::traits::input_parameter< int >::type nWorkers(nWorkersSEXP);
-    Rcpp::traits::input_parameter< int >::type inputBufferSize(inputBufferSizeSEXP);
-    Rcpp::traits::input_parameter< int >::type outputBufferSize(outputBufferSizeSEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<arma::mat> >::type resid(residSEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<arma::mat> >::type PCs(PCsSEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<int> >::type N(NSEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<double> >::type SPA_Cutoff(SPA_CutoffSEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::List> >::type outlierList(outlierListSEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<int> >::type nPheno(nPhenoSEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<arma::vec> >::type mresid(mresidSEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<arma::vec> >::type cresid(cresidSEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<arma::mat> >::type cumul(cumulSEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<arma::mat> >::type XinvXX(XinvXXSEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<arma::mat> >::type tX(tXSEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<double> >::type pVal_covaAdj_Cutoff(pVal_covaAdj_CutoffSEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::CharacterVector> >::type SampleInModel(SampleInModelSEXP);
-    Rcpp::traits::input_parameter< Rcpp::Nullable<std::string> >::type AlleleOrder(AlleleOrderSEXP);
-    mainMarkerInCPP2(method, genoType, genoFile, genoFileIndex, outputFile, nWorkers, inputBufferSize, outputBufferSize, resid, PCs, N, SPA_Cutoff, outlierList, nPheno, mresid, cresid, cumul, XinvXX, tX, pVal_covaAdj_Cutoff, SampleInModel, AlleleOrder);
+    Rcpp::traits::input_parameter< Rcpp::List >::type control(controlSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type objNull(objNullSEXP);
+    mainMarkerInCPP2(control, objNull);
     return R_NilValue;
 END_RCPP
 }
@@ -473,7 +453,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setWtCoxGobjInCPP", (DL_FUNC) &_GRAB_setWtCoxGobjInCPP, 4},
     {"_GRAB_setSPAsqrobjInCPP", (DL_FUNC) &_GRAB_setSPAsqrobjInCPP, 15},
     {"_GRAB_setLEAFobjInCPP", (DL_FUNC) &_GRAB_setLEAFobjInCPP, 5},
-    {"_GRAB_mainMarkerInCPP2", (DL_FUNC) &_GRAB_mainMarkerInCPP2, 22},
+    {"_GRAB_mainMarkerInCPP2", (DL_FUNC) &_GRAB_mainMarkerInCPP2, 2},
     {NULL, NULL, 0}
 };
 
