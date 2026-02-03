@@ -34,5 +34,5 @@ GRAB.Rcheck/
 # File history
 .lh/
 
-SPAmixPlus/
-example*/
+#SPAmixPlus/
+example_meta/

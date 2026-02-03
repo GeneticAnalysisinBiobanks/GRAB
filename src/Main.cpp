@@ -62,6 +62,7 @@
 #include "WtCoxG.h"    // Weighted Cox regression for genetic data
 #include "SPAsqr.h"    // SPAsqr
 #include "LEAF.h"      // LEAF: Logistic Regression with External Ancestry Estimation and Adjustment Framework
+#include "SPAmixPlus.h" // SPAmixPlus: Extended mixed models with SPA correction
 #include "Main.h"      // Functions shared across Main files
 
 
@@ -86,6 +87,7 @@ static SAGELD::SAGELDClass* ptr_gSAGELDobj = nullptr;
 static WtCoxG::WtCoxGClass* ptr_gWtCoxGobj = nullptr;
 static SPAsqr::SPAsqrClass* ptr_gSPAsqrobj = nullptr;
 static LEAF::LEAFClass* ptr_gLEAFobj = nullptr;
+static SPAmixPlus::SPAmixPlusClass* ptr_gSPAmixPlusobj = nullptr;
 
 // Global configuration variables for genetic analysis
 static std::string g_impute_method;          // Imputation method: "mean", "minor", or "drop"
@@ -1949,5 +1951,30 @@ void setLEAFobjInCPP(
     t_clusterIdx,             // List of cluster index vectors
     t_cutoff,                 // Batch effect p-value cutoff
     t_SPA_Cutoff              // SPA cutoff
+  );
+}
+
+
+// [[Rcpp::export]]
+void setSPAmixPlusobjInCPP(
+  arma::mat t_resid,
+  arma::mat t_PCs,
+  int t_N,
+  double t_SPA_Cutoff,
+  Rcpp::List t_outlierList,
+  Rcpp::DataFrame t_sparseGRM,
+  Rcpp::DataFrame t_ResidMat
+) {
+  if(ptr_gSPAmixPlusobj)
+    delete ptr_gSPAmixPlusobj;
+
+  ptr_gSPAmixPlusobj = new SPAmixPlus::SPAmixPlusClass(
+    t_resid,
+    t_PCs,
+    t_N,
+    t_SPA_Cutoff,
+    t_outlierList,
+    t_sparseGRM,
+    t_ResidMat
   );
 }

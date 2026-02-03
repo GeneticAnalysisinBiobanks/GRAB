@@ -1,0 +1,606 @@
+// [[Rcpp::depends(RcppArmadillo)]]
+#include <RcppArmadillo.h>
+#include "SPAmixPlus.hpp"
+#include <unordered_map> 
+#include <vector>        
+#include <unordered_set>
+
+namespace SPAmixPlus {
+
+// ==========================================
+// Helper functions (copied from GRAB SPAmixPlusV4.hpp/cpp)
+// ==========================================
+
+  // The MGF of G (genotype)
+  arma::vec M_G0(arma::vec t, arma::vec MAF){
+    arma::vec re = pow((1 - MAF + MAF % arma::exp(t)), 2);
+    return re;
+  }
+  
+  // The first derivative of the MGF of G (genotype)
+  arma::vec M_G1(arma::vec t, arma::vec MAF){
+    arma::vec re = 2 * (MAF % arma::exp(t)) % (1 - MAF + MAF % arma::exp(t));
+    return re;                           
+  }
+  
+  // The second derivative of the MGF of G (genotype)
+  arma::vec M_G2(arma::vec t, arma::vec MAF){
+    arma::vec re = 2 * pow(MAF % arma::exp(t), 2) + 2 * (MAF % arma::exp(t)) % (1 - MAF + MAF % arma::exp(t));
+    return re;
+  }
+  
+  // The CGF of G (genotype)
+  arma::vec K_G0(arma::vec t, arma::vec MAF){
+    arma::vec re = arma::log(M_G0(t, MAF));
+    return re;
+  }
+  
+  // The first derivative of the CGF of G (genotype)
+  arma::vec K_G1(arma::vec t, arma::vec MAF){
+    arma::vec re = M_G1(t, MAF) / M_G0(t, MAF);
+    return re;
+  }
+  
+  // The second derivative of the CGF of G (genotype)
+  arma::vec K_G2(arma::vec t, arma::vec MAF){
+    arma::vec re = (M_G0(t, MAF) % M_G2(t, MAF) - pow(M_G1(t, MAF), 2)) / pow(M_G0(t, MAF), 2);
+    return re;
+  }
+
+  // partial normal distribution approximation
+  
+  arma::vec Horg_H2(double t, arma::vec R, const arma::vec MAFVec)
+  {
+    arma::vec Horg_H2_vec(2);
+    arma::vec t_R = t * R;
+    arma::vec exp_tR = arma::exp(t_R);
+    arma::vec MAF_exp_tR = MAFVec % exp_tR;
+    arma::vec M_G0_vec = pow((1 - MAFVec + MAF_exp_tR), 2);;
+    arma::vec M_G1_vec = 2 * (MAF_exp_tR) % (1 - MAFVec + MAF_exp_tR);
+    arma::vec M_G2_vec = 2 * pow(MAF_exp_tR, 2) + 2 * (MAF_exp_tR) % (1 - MAFVec + MAF_exp_tR);
+    arma::vec K_G0_vec = arma::log(M_G0_vec);
+    arma::vec K_G2_vec = (M_G0_vec % M_G2_vec - pow(M_G1_vec, 2)) / pow(M_G0_vec, 2);
+    double Horg = sum(K_G0_vec);
+    double H2 = sum(pow(R, 2) % K_G2_vec);
+    Horg_H2_vec.at(0) = Horg;
+    Horg_H2_vec.at(1) = H2;
+    return Horg_H2_vec;
+  }
+  
+  arma::vec H1_adj_H2(double t, arma::vec R, double s, const arma::vec MAFVec)
+  {
+    arma::vec H1_adj_H2_vec(2);
+    arma::vec t_R = t * R;
+    arma::vec exp_tR = arma::exp(t_R);
+    arma::vec MAF_exp_tR = MAFVec % exp_tR;
+    arma::vec M_G0_vec = pow((1 - MAFVec + MAF_exp_tR), 2);;
+    arma::vec M_G1_vec = 2 * (MAF_exp_tR) % (1 - MAFVec + MAF_exp_tR);
+    arma::vec M_G2_vec = 2 * pow(MAF_exp_tR, 2) + 2 * (MAF_exp_tR) % (1 - MAFVec + MAF_exp_tR);
+    arma::vec K_G1_vec = M_G1_vec / M_G0_vec;
+    arma::vec K_G2_vec = (M_G0_vec % M_G2_vec - pow(M_G1_vec, 2)) / pow(M_G0_vec, 2);
+    double H1_adj = sum(R % K_G1_vec) - s;
+    double H2 = sum(pow(R, 2) % K_G2_vec);
+    H1_adj_H2_vec.at(0) = H1_adj;
+    H1_adj_H2_vec.at(1) = H2;
+    return H1_adj_H2_vec;
+  }
+  
+  Rcpp::List fastgetroot_K1(double t_initX,
+                            const double& s,
+                            const arma::vec MAF_outlier,
+                            double mean_nonOutlier,
+                            double var_nonOutlier,
+                            const arma::vec residOutlier)
+  {
+    double x = t_initX, oldX;
+    double K1 = 0, K2 = 0, oldK1;
+    double diffX = arma::datum::inf, oldDiffX;
+    bool converge = true;
+    double tol = 0.001;
+    int maxiter = 100;
+    int iter = 0;
+    
+    for(iter = 0; iter < maxiter; iter ++){
+      
+      oldX = x;
+      oldDiffX = diffX;
+      oldK1 = K1;
+      
+      arma::vec H1_adj_H2_vec = H1_adj_H2(x, residOutlier, s, MAF_outlier);
+      
+      K1 = H1_adj_H2_vec.at(0) + mean_nonOutlier + var_nonOutlier * x;
+      K2 = H1_adj_H2_vec.at(1) + var_nonOutlier;
+      
+      diffX = -1 * K1 / K2;
+      
+      if(!std::isfinite(K1)){
+        x = arma::datum::inf;
+        K2 = 0;
+        break;
+      }
+      
+      if(arma::sign(K1) != arma::sign(oldK1)){
+        while(std::abs(diffX) > std::abs(oldDiffX) - tol){
+          diffX = diffX / 2;
+        }
+      }
+      
+      if(std::abs(diffX) < tol) break;
+      
+      x = oldX + diffX;
+    }
+    
+    if(iter == maxiter) 
+      converge = false;
+    
+    Rcpp::List yList = Rcpp::List::create(Rcpp::Named("root") = x,
+                                          Rcpp::Named("iter") = iter,
+                                          Rcpp::Named("converge") = converge,
+                                          Rcpp::Named("K2") = K2);
+    return yList;
+  }
+  
+  double GetProb_SPA_G(const arma::vec MAF_outlier, 
+                       const arma::vec residOutlier, 
+                       double s, 
+                       bool lower_tail,
+                       double mean_nonOutlier,
+                       double var_nonOutlier)
+  {
+    double initX = 0;
+    
+    Rcpp::List rootList = fastgetroot_K1(initX, s, MAF_outlier, mean_nonOutlier, var_nonOutlier, residOutlier);
+    double zeta = rootList["root"];
+    
+    arma::vec k12 = Horg_H2(zeta, residOutlier, MAF_outlier);
+    double k1 = k12.at(0) + mean_nonOutlier * zeta + 0.5 * var_nonOutlier * pow(zeta, 2);
+    double k2 = k12.at(1) + var_nonOutlier;
+    
+    double temp1 = zeta * s - k1;
+    
+    double w = arma::sign(zeta) * sqrt(2 * temp1);
+    double v = zeta * sqrt(k2);
+    
+    double pval = arma::normcdf(arma::sign(lower_tail - 0.5) * (w + log(v/w) / w));
+    return pval;
+  }
+
+  // Modified helper: returns beta instead of MAFest
+  arma::vec logistic_regression_beta(const arma::mat& X, const arma::vec& y) {
+    int n = X.n_rows;
+    int p = X.n_cols;
+    
+    arma::mat WX_new(n, p + 1);
+    arma::mat X_new = arma::join_horiz(arma::ones(n), X);
+    
+    arma::vec beta(p+1, arma::fill::zeros);
+    double tol = 1e-6;
+    int max_iter = 100;
+    arma::vec mu(n);
+    
+    for (int i = 0; i < max_iter; i++) {
+        mu = 1.0 / (1.0 + arma::exp(-X_new * beta));
+        
+        arma::vec W = mu % (1.0 - mu);
+        arma::vec z = X_new * beta + (y - mu) / W;
+        
+        for(int j = 0; j < p+1; j++){
+            WX_new.col(j) = X_new.col(j) % W;
+        }
+        
+        arma::vec beta_new = arma::solve(X_new.t() * WX_new, X_new.t() * (W % z));
+        
+        if (arma::norm(beta_new - beta) < tol) {
+          beta = beta_new;
+          break;
+        }
+        beta = beta_new;
+    }
+    return beta;
+  }
+
+// ==========================================
+// SPAmixPlusClass Implementation
+// ==========================================
+
+SPAmixPlusClass::SPAmixPlusClass(arma::mat t_resid,
+                                     arma::mat t_PCs,
+                                     int t_N,
+                                     double t_SPA_Cutoff,
+                                     Rcpp::List t_outlierList,
+                                     Rcpp::DataFrame t_sparseGRM,    
+                                     Rcpp::DataFrame t_ResidMat)     
+{
+  
+  // ==== Process ResidMat ====
+  Rcpp::IntegerVector subjID_Index = t_ResidMat["SubjID_Index"];
+  arma::ivec subjIndices = Rcpp::as<arma::ivec>(subjID_Index);
+  
+  // Extract Resid_* columns 
+  Rcpp::CharacterVector colNames = t_ResidMat.names();
+  std::vector<std::string> residCols;
+  for(int i=0; i<colNames.size(); ++i){
+    std::string colName = Rcpp::as<std::string>(colNames[i]);
+    if(colName.find("Resid_") != std::string::npos) {
+      residCols.push_back(colName);
+    }
+  }
+  
+  int numSamples = t_ResidMat.nrows();
+  int numPheno = residCols.size();
+  arma::mat residMat(numSamples, numPheno);
+  for(int i=0; i<numPheno; ++i){
+    Rcpp::NumericVector residVec = Rcpp::as<Rcpp::NumericVector>(t_ResidMat[residCols[i]]);
+    residMat.col(i) = arma::vec(residVec.begin(), residVec.size(), false);
+  }
+  m_ResidMat = residMat;
+  
+  // ==== Process sparseGRM ====
+  Rcpp::IntegerVector id1_indices = t_sparseGRM["ID1_Index"];
+  Rcpp::IntegerVector id2_indices = t_sparseGRM["ID2_Index"];
+  Rcpp::NumericVector values = Rcpp::as<Rcpp::NumericVector>(t_sparseGRM["Value"]);
+  
+  std::vector<std::tuple<int, int, double>> sparseTriplets;
+  int n = values.size();
+  sparseTriplets.reserve(n);
+  
+  for(int i=0; i<n; ++i){
+    sparseTriplets.emplace_back(id1_indices[i], id2_indices[i], values[i]);
+  }
+  m_sparseTriplets = sparseTriplets;
+  m_subjIndices = subjIndices;
+  
+  // Standard initialization
+  m_resid = t_resid;
+  m_PCs = t_PCs;
+  m_N = t_N;
+  m_SPA_Cutoff = t_SPA_Cutoff;
+  
+  m_Npheno = m_resid.n_cols;
+  
+  m_pvalVec.zeros(m_Npheno);
+  m_zScoreVec.zeros(m_Npheno);
+  m_BetaVec.zeros(m_Npheno);
+  m_SVec.zeros(m_Npheno);
+  m_SmeanVec.zeros(m_Npheno);
+  m_VarSVec.zeros(m_Npheno);
+  
+  m_outlierList = t_outlierList;
+
+  // Precompute matrices for fit_lm (from GRAB constructor)
+  m_onePlusPCs = arma::join_horiz(arma::ones(t_N), t_PCs);
+  arma::mat X_t = m_onePlusPCs.t();
+  arma::mat XTX = X_t * m_onePlusPCs;
+  arma::mat XTX_inv = arma::inv(XTX); // GRAB uses inv
+  m_sqrt_XTX_inv_diag = arma::sqrt(XTX_inv.diag());
+
+  m_diffTime1 = arma::vec(1, arma::fill::zeros);
+  m_diffTime2 = arma::vec(1, arma::fill::zeros);
+}
+
+// Helper method: fit_lm (Modified to return beta if needed, but keeping signature for now)
+// We add a helper to just get beta
+arma::vec SPAmixPlusClass::fit_lm_get_beta(const arma::vec& g, arma::vec& pvalues)
+{
+    int n = m_N;
+    int k = m_PCs.n_cols;
+    
+    // m_onePlusPCs has K+1 columns.
+    // coef will be K+1.
+    arma::vec coef = arma::solve(m_onePlusPCs, g); 
+    
+    // We need pvalues for the selection logic, so we must calculate stats
+    arma::vec fittedValues = m_onePlusPCs * coef;
+    double s2 = arma::sum(arma::square(g - fittedValues)) / (n - k - 1);
+    
+    // Se calculation relies on diag(inv(XTX)) which is m_sqrt_XTX_inv_diag
+    arma::vec se = m_sqrt_XTX_inv_diag * std::sqrt(s2);
+    arma::vec t = coef / se;
+    
+    for(int i = 0; i < k; i++){
+      // p-values for PCs (skipping intercept at index 0)
+      pvalues[i] = 2 * R::pt(std::abs(t[i+1]), n-k-1, 0, 0); 
+    }
+    return coef;
+}
+
+arma::vec SPAmixPlusClass::fit_lm(const arma::vec& g, arma::vec& pvalues) 
+{
+    arma::vec coef = fit_lm_get_beta(g, pvalues);
+    return m_onePlusPCs * coef;
+}
+
+SPAmixPlusClass::AFModelInfo SPAmixPlusClass::computeAFModel(arma::vec t_GVec, double t_altFreq) {
+    AFModelInfo model;
+    // Defaults
+    model.status = 0; // Mean
+    // Beta size K+1
+    int k = m_PCs.n_cols;
+    model.betas = arma::vec(k + 1, arma::fill::zeros);
+    
+    double MAC_cutoff = 20;
+    double PCs_pvalue_cutoff = 0.05;
+    double MAF_est_negative_ratio_cutoff = 0.1;
+    
+    int N = m_N;
+    arma::vec g = t_GVec; 
+    
+    double MAC = t_altFreq * 2.0 * N; 
+    arma::vec pvalues(k);
+    
+    if(MAC <= MAC_cutoff){
+       model.status = 0;
+       // For status 0, we might just rely on t_altFreq provided at runtime in Step 2, 
+       // or we store it in betas[0]. 
+       // The original code uses t_altFreq from input arg, not computed from G.
+       // However, to be self-contained, let's store it. But t_altFreq varies per marker.
+       // The 'model' is specific to a marker. So we can store t_altFreq.
+       // But wait, t_altFreq is passed to getAFFromModel(model, t_altFreq).
+       // So we don't strictly need to store it if we pass it back.
+       // Just set status=0.
+    }else{
+      arma::vec coef_lm = fit_lm_get_beta(g, pvalues);
+      arma::vec fit = m_onePlusPCs * coef_lm; // Compute fit to check bounds
+      fit = fit / 2.0; // Scale to 0-1
+      
+      arma::uvec posZero = arma::find(fit < 0);
+      arma::uvec posOne = arma::find(fit > 1);
+      
+      int nError = posZero.n_elem + posOne.n_elem; 
+      double propError = (double)nError / N;
+      
+      if(propError < MAF_est_negative_ratio_cutoff){
+        // Use Linear Model
+        model.status = 1;
+        model.betas = coef_lm;
+      }else{
+        arma::uvec posSigPCs = arma::find(pvalues < PCs_pvalue_cutoff);
+
+        if(posSigPCs.n_elem == 0){
+           model.status = 0; // Fallback to mean
+        }else{
+           // Logistic Regression on significant PCs
+           arma::mat sigPCs = m_PCs.cols(posSigPCs);
+           
+           // Impute g for logistic
+           arma::vec g0(N, arma::fill::zeros);  
+           arma::uvec posg12 = arma::find(g > 0.5);
+           g0.elem(posg12).fill(1);
+           
+           double MAC_after = sum(g0);
+           if(MAC_after <= MAC_cutoff){
+             model.status = 0; // Fallback
+           }else{
+             model.status = 2; 
+             // Run logistic regression to get coefficients for SUBSET
+             arma::vec sub_beta = logistic_regression_beta(sigPCs, g0);
+             
+             // Map sub_beta back to full beta vector
+             // sub_beta has length posSigPCs.n_elem + 1 (intercept)
+             model.betas(0) = sub_beta(0); // Intercept
+             for(unsigned int i=0; i < posSigPCs.n_elem; ++i){
+                // posSigPCs contains indices into m_PCs (0 to K-1).
+                // m_onePlusPCs cols are 1 to K.
+                // model.betas index matches m_onePlusPCs index.
+                int pc_index = posSigPCs(i);
+                model.betas(pc_index + 1) = sub_beta(i + 1);
+             }
+           }
+        }
+      }
+    }
+    return model;
+}
+
+arma::vec SPAmixPlusClass::getAFFromModel(AFModelInfo t_model, double t_altFreq) {
+    if(t_model.status == 0){
+        return arma::vec(m_N, arma::fill::value(t_altFreq));
+    }
+    
+    if(t_model.status == 1){ 
+       // Linear
+       arma::vec fit = m_onePlusPCs * t_model.betas;
+       fit = fit / 2.0;
+       
+       // Apply clamping logic (same as original)
+       arma::uvec posZero = arma::find(fit < 0);
+       arma::uvec posOne = arma::find(fit > 1);
+       fit.elem(posZero).fill(0.0);
+       fit.elem(posOne).fill(1.0);
+       
+       return fit;
+    }
+    
+    if(t_model.status == 2){
+       // Logistic
+       // We have full betas (with zeros for insignificant PCs)
+       // Calculate X * Beta
+       arma::vec linear_pred = m_onePlusPCs * t_model.betas;
+       
+       // Sigmoid
+       arma::vec mu = 1.0 / (1.0 + arma::exp(-linear_pred));
+       
+       // Convert to MAF
+       return 1.0 - arma::sqrt(1.0 - mu);
+    }
+    
+    // Default
+    return arma::vec(m_N, arma::fill::value(t_altFreq));
+}
+
+arma::vec SPAmixPlusClass::getMAFest(arma::vec t_GVec, double t_altFreq) {
+    // Legacy wrapper
+    AFModelInfo model = computeAFModel(t_GVec, t_altFreq);
+    return getAFFromModel(model, t_altFreq);
+}
+
+double SPAmixPlusClass::getMarkerPvalFromModel(arma::vec t_GVec, AFModelInfo t_model) {
+   // Assuming t_altFreq is needed for fallback status 0?
+   // Wait, t_model status 0 needs t_altFreq.
+   // But we don't pass t_altFreq here? 
+   // We should calculate t_altFreq from t_GVec if needed, OR pass it.
+   // The original getMarkerPval takes t_altFreq.
+   // Let's pass it.
+   return 0.0; // Placeholder, signature needs update
+}
+
+// Overload/Update getMarkerPval
+double SPAmixPlusClass::getMarkerPval(arma::vec t_GVec, double t_altFreq) {
+    
+    arma::vec AFVec = getMAFest(t_GVec, t_altFreq);
+    m_MAFVec = AFVec;
+    
+    // Variance component based on estimated MAF
+    arma::vec GVarVec = 2.0 * AFVec % (1.0 - AFVec);
+
+    for(int i = 0; i < m_Npheno; i++){
+        Rcpp::List tempOutlierList = m_outlierList[i];
+        
+        arma::uvec posValue = tempOutlierList["posValue"];
+        arma::uvec posOutlier = tempOutlierList["posOutlier"];
+        arma::uvec posNonOutlier = tempOutlierList["posNonOutlier"];
+        
+        arma::vec resid = tempOutlierList["resid"]; // Note: this name might mask method arg if not careful, but ok here
+        arma::vec residOutlier = tempOutlierList["residOutlier"];
+        arma::vec residNonOutlier = tempOutlierList["residNonOutlier"];
+        arma::vec resid2NonOutlier = tempOutlierList["resid2NonOutlier"];
+
+        // resid is subsetted R vector (length = posValue.n_elem)
+        arma::vec R_subset = resid; 
+        arma::vec GVar_subset = GVarVec.elem(posValue);
+        
+        // R_new for sparse variance calculation
+        arma::vec R_new = R_subset % arma::sqrt(GVar_subset);
+        
+        double VarS = calculateSparseVariance(R_new, posValue);
+        
+        double S = arma::sum(t_GVec.elem(posValue) % R_subset);
+        double S_mean = 2.0 * arma::sum(R_subset % AFVec.elem(posValue));
+        double zScore = (S - S_mean) / std::sqrt(VarS);
+        
+        m_zScoreVec.at(i) = zScore;
+        m_BetaVec.at(i) = (S - S_mean) / VarS;
+        m_SVec.at(i) = S;
+        m_SmeanVec.at(i) = S_mean;
+        m_VarSVec.at(i) = VarS;
+        
+        if(std::abs(zScore) < m_SPA_Cutoff){
+            m_pvalVec.at(i) = arma::normcdf(-1.0*std::abs(zScore))*2.0;
+            continue;
+        }
+
+        // SPA adjustment
+        double S_var_SPAmix = arma::sum(arma::square(R_subset) % GVar_subset);
+        double Var_ratio = S_var_SPAmix / VarS;
+        
+        double S_new = S * std::sqrt(Var_ratio);
+        double S_mean_new = S_mean * std::sqrt(Var_ratio);
+        
+        double S_upper = std::max(S_new, 2.0*S_mean_new - S_new); 
+        double S_lower = std::min(S_new, 2.0*S_mean_new - S_new);
+        
+        arma::vec MAF_outlier = AFVec.elem(posOutlier);
+        
+        double mean_nonOutlier = arma::sum(residNonOutlier % AFVec.elem(posNonOutlier)) * 2.0; 
+        double var_nonOutlier = arma::sum(resid2NonOutlier % AFVec.elem(posNonOutlier) % (1.0 - AFVec.elem(posNonOutlier))) * 2.0;
+
+        double pval1 = GetProb_SPA_G(MAF_outlier, residOutlier, S_upper, false, mean_nonOutlier, var_nonOutlier);
+        double pval2 = GetProb_SPA_G(MAF_outlier, residOutlier, S_lower, true, mean_nonOutlier, var_nonOutlier);
+        
+        m_pvalVec.at(i) = pval1 + pval2;
+    }
+    return 0.0;
+}
+
+double SPAmixPlusClass::getMarkerPvalFromModel(arma::vec t_GVec, AFModelInfo t_model, double t_altFreq) {
+    arma::vec AFVec = getAFFromModel(t_model, t_altFreq);
+    m_MAFVec = AFVec;
+    
+    // Variance component based on estimated MAF
+    arma::vec GVarVec = 2.0 * AFVec % (1.0 - AFVec);
+
+    for(int i = 0; i < m_Npheno; i++){
+        Rcpp::List tempOutlierList = m_outlierList[i];
+        
+        arma::uvec posValue = tempOutlierList["posValue"];
+        arma::uvec posOutlier = tempOutlierList["posOutlier"];
+        arma::uvec posNonOutlier = tempOutlierList["posNonOutlier"];
+        
+        arma::vec resid = tempOutlierList["resid"]; 
+        arma::vec residOutlier = tempOutlierList["residOutlier"];
+        arma::vec residNonOutlier = tempOutlierList["residNonOutlier"];
+        arma::vec resid2NonOutlier = tempOutlierList["resid2NonOutlier"];
+
+        // resid is subsetted R vector (length = posValue.n_elem)
+        arma::vec R_subset = resid; 
+        arma::vec GVar_subset = GVarVec.elem(posValue);
+        
+        // R_new for sparse variance calculation
+        arma::vec R_new = R_subset % arma::sqrt(GVar_subset);
+        
+        double VarS = calculateSparseVariance(R_new, posValue);
+        
+        double S = arma::sum(t_GVec.elem(posValue) % R_subset);
+        double S_mean = 2.0 * arma::sum(R_subset % AFVec.elem(posValue));
+        double zScore = (S - S_mean) / std::sqrt(VarS);
+        
+        // Store statistics
+        m_zScoreVec.at(i) = zScore;
+        m_BetaVec.at(i) = (S - S_mean) / VarS;
+        m_SVec.at(i) = S;
+        m_SmeanVec.at(i) = S_mean;
+        m_VarSVec.at(i) = VarS;
+        
+        if(std::abs(zScore) < m_SPA_Cutoff){
+            // Normal approximation
+            m_pvalVec.at(i) = 2.0 * R::pnorm(std::abs(zScore), 0.0, 1.0, 0, 0); 
+            continue;
+        }
+        
+        // SPA adjustment
+        double S_var_SPAmix = arma::sum(arma::square(R_subset) % GVar_subset);
+        double Var_ratio = S_var_SPAmix / VarS;
+        
+        double S_new = S * std::sqrt(Var_ratio);
+        double S_mean_new = S_mean * std::sqrt(Var_ratio);
+        
+        double S_upper = std::max(S_new, 2.0*S_mean_new - S_new); 
+        double S_lower = std::min(S_new, 2.0*S_mean_new - S_new);
+        
+        arma::vec MAF_outlier = AFVec.elem(posOutlier);
+        
+        double mean_nonOutlier = arma::sum(residNonOutlier % AFVec.elem(posNonOutlier)) * 2.0; 
+        double var_nonOutlier = arma::sum(resid2NonOutlier % AFVec.elem(posNonOutlier) % (1.0 - AFVec.elem(posNonOutlier))) * 2.0;
+
+        double pval1 = GetProb_SPA_G(MAF_outlier, residOutlier, S_upper, false, mean_nonOutlier, var_nonOutlier);
+        double pval2 = GetProb_SPA_G(MAF_outlier, residOutlier, S_lower, true, mean_nonOutlier, var_nonOutlier);
+        
+        m_pvalVec.at(i) = pval1 + pval2;
+    }
+    return 0.0;
+}
+
+double SPAmixPlusClass::calculateSparseVariance(const arma::vec& R_new, const arma::uvec& posValue) {
+    double covSum = 0.0;
+    
+    // Use unordered_set for O(1) lookups
+    std::unordered_set<int> validIndices;
+    for (auto idx : posValue) {
+        validIndices.insert(static_cast<int>(idx));
+    }
+    
+    for (const auto& triplet : m_sparseTriplets) {
+      int i = std::get<0>(triplet);
+      int j = std::get<1>(triplet);
+      
+      // Only include if BOTH individuals i and j are in the current subset (posValue)
+      if (validIndices.count(i) && validIndices.count(j)) {
+        double grmValue = std::get<2>(triplet);
+        covSum += grmValue * R_new(i) * R_new(j);
+      }
+    }
+    
+    return 2.0 * covSum - arma::sum(arma::square(R_new));
+}
+
+}
