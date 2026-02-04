@@ -425,6 +425,7 @@ Rcpp::List mainMarkerInCPP(
   // Determine number of phenotypes based on analysis method
   int Npheno = 1;  // Default: single phenotype
   if (t_method == "SPAmix") Npheno = ptr_gSPAmixobj->getNpheno(); // SPAmix analysis with multiple phenotypes
+  if (t_method == "SPAmixPlus") Npheno = ptr_gSPAmixPlusobj->getNpheno(); // SPAmixPlus analysis with multiple phenotypes
   if (t_method == "SAGELD") Npheno = 2;
   if (t_method == "WtCoxG") {
     if (t_extraParams.isNull()) {
@@ -576,6 +577,17 @@ Rcpp::List mainMarkerInCPP(
       pval = ptr_gSPAmixobj->getMarkerPval(GVec, altFreq);
       arma::vec pvalVecTemp = ptr_gSPAmixobj->getpvalVec();
       arma::vec zScoreVecTemp = ptr_gSPAmixobj->getzScoreVec();
+      
+      for (int j = 0; j < Npheno; j++) {
+        pvalVec.at(i * Npheno + j) = pvalVecTemp.at(j);
+        zScoreVec.at(i * Npheno + j) = zScoreVecTemp.at(j);
+      }
+      
+    } else if (t_method == "SPAmixPlus") {
+      // SPAmixPlus: Enhanced version with PC-based AF estimation
+      pval = ptr_gSPAmixPlusobj->getMarkerPval(GVec, altFreq);
+      arma::vec pvalVecTemp = ptr_gSPAmixPlusobj->getpvalVec();
+      arma::vec zScoreVecTemp = ptr_gSPAmixPlusobj->getzScoreVec();
       
       for (int j = 0; j < Npheno; j++) {
         pvalVec.at(i * Npheno + j) = pvalVecTemp.at(j);
@@ -1963,7 +1975,8 @@ void setSPAmixPlusobjInCPP(
   double t_SPA_Cutoff,
   Rcpp::List t_outlierList,
   Rcpp::DataFrame t_sparseGRM,
-  Rcpp::DataFrame t_ResidMat
+  std::string t_afFilePath,
+  std::string t_afFilePrecision
 ) {
   if(ptr_gSPAmixPlusobj)
     delete ptr_gSPAmixPlusobj;
@@ -1975,6 +1988,7 @@ void setSPAmixPlusobjInCPP(
     t_SPA_Cutoff,
     t_outlierList,
     t_sparseGRM,
-    t_ResidMat
+    t_afFilePath,
+    t_afFilePrecision
   );
 }

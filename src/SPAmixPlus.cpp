@@ -1,9 +1,10 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
-#include "SPAmixPlus.hpp"
 #include <unordered_map> 
 #include <vector>        
 #include <unordered_set>
+
+#include "SPAmixPlus.h"
 
 namespace SPAmixPlus {
 
@@ -203,37 +204,19 @@ namespace SPAmixPlus {
 // SPAmixPlusClass Implementation
 // ==========================================
 
-SPAmixPlusClass::SPAmixPlusClass(arma::mat t_resid,
-                                     arma::mat t_PCs,
+SPAmixPlusClass::SPAmixPlusClass(const arma::mat& t_resid,
+                                     const arma::mat& t_PCs,
                                      int t_N,
                                      double t_SPA_Cutoff,
-                                     Rcpp::List t_outlierList,
-                                     Rcpp::DataFrame t_sparseGRM,    
-                                     Rcpp::DataFrame t_ResidMat)     
+                                     const Rcpp::List& t_outlierList,
+                                     const Rcpp::DataFrame& t_sparseGRM,
+                                     const std::string& t_afFilePath,
+                                     const std::string& t_afFilePrecision)
 {
   
-  // ==== Process ResidMat ====
-  Rcpp::IntegerVector subjID_Index = t_ResidMat["SubjID_Index"];
-  arma::ivec subjIndices = Rcpp::as<arma::ivec>(subjID_Index);
-  
-  // Extract Resid_* columns 
-  Rcpp::CharacterVector colNames = t_ResidMat.names();
-  std::vector<std::string> residCols;
-  for(int i=0; i<colNames.size(); ++i){
-    std::string colName = Rcpp::as<std::string>(colNames[i]);
-    if(colName.find("Resid_") != std::string::npos) {
-      residCols.push_back(colName);
-    }
-  }
-  
-  int numSamples = t_ResidMat.nrows();
-  int numPheno = residCols.size();
-  arma::mat residMat(numSamples, numPheno);
-  for(int i=0; i<numPheno; ++i){
-    Rcpp::NumericVector residVec = Rcpp::as<Rcpp::NumericVector>(t_ResidMat[residCols[i]]);
-    residMat.col(i) = arma::vec(residVec.begin(), residVec.size(), false);
-  }
-  m_ResidMat = residMat;
+  // ==== Store AF file info ====
+  m_afFilePath = t_afFilePath;
+  m_afFilePrecision = t_afFilePrecision;
   
   // ==== Process sparseGRM ====
   Rcpp::IntegerVector id1_indices = t_sparseGRM["ID1_Index"];
@@ -248,7 +231,6 @@ SPAmixPlusClass::SPAmixPlusClass(arma::mat t_resid,
     sparseTriplets.emplace_back(id1_indices[i], id2_indices[i], values[i]);
   }
   m_sparseTriplets = sparseTriplets;
-  m_subjIndices = subjIndices;
   
   // Standard initialization
   m_resid = t_resid;
@@ -432,16 +414,6 @@ arma::vec SPAmixPlusClass::getMAFest(arma::vec t_GVec, double t_altFreq) {
     // Legacy wrapper
     AFModelInfo model = computeAFModel(t_GVec, t_altFreq);
     return getAFFromModel(model, t_altFreq);
-}
-
-double SPAmixPlusClass::getMarkerPvalFromModel(arma::vec t_GVec, AFModelInfo t_model) {
-   // Assuming t_altFreq is needed for fallback status 0?
-   // Wait, t_model status 0 needs t_altFreq.
-   // But we don't pass t_altFreq here? 
-   // We should calculate t_altFreq from t_GVec if needed, OR pass it.
-   // The original getMarkerPval takes t_altFreq.
-   // Let's pass it.
-   return 0.0; // Placeholder, signature needs update
 }
 
 // Overload/Update getMarkerPval

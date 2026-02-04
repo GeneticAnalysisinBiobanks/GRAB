@@ -416,6 +416,23 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// setSPAmixPlusobjInCPP
+void setSPAmixPlusobjInCPP(arma::mat t_resid, arma::mat t_PCs, int t_N, double t_SPA_Cutoff, Rcpp::List t_outlierList, Rcpp::DataFrame t_sparseGRM, std::string t_afFilePath, std::string t_afFilePrecision);
+RcppExport SEXP _GRAB_setSPAmixPlusobjInCPP(SEXP t_residSEXP, SEXP t_PCsSEXP, SEXP t_NSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_outlierListSEXP, SEXP t_sparseGRMSEXP, SEXP t_afFilePathSEXP, SEXP t_afFilePrecisionSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::mat >::type t_resid(t_residSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type t_PCs(t_PCsSEXP);
+    Rcpp::traits::input_parameter< int >::type t_N(t_NSEXP);
+    Rcpp::traits::input_parameter< double >::type t_SPA_Cutoff(t_SPA_CutoffSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type t_outlierList(t_outlierListSEXP);
+    Rcpp::traits::input_parameter< Rcpp::DataFrame >::type t_sparseGRM(t_sparseGRMSEXP);
+    Rcpp::traits::input_parameter< std::string >::type t_afFilePath(t_afFilePathSEXP);
+    Rcpp::traits::input_parameter< std::string >::type t_afFilePrecision(t_afFilePrecisionSEXP);
+    setSPAmixPlusobjInCPP(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList, t_sparseGRM, t_afFilePath, t_afFilePrecision);
+    return R_NilValue;
+END_RCPP
+}
 // mainMarkerInCPP2
 void mainMarkerInCPP2(Rcpp::List control, Rcpp::List objNull);
 RcppExport SEXP _GRAB_mainMarkerInCPP2(SEXP controlSEXP, SEXP objNullSEXP) {
@@ -424,6 +441,20 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< Rcpp::List >::type control(controlSEXP);
     Rcpp::traits::input_parameter< Rcpp::List >::type objNull(objNullSEXP);
     mainMarkerInCPP2(control, objNull);
+    return R_NilValue;
+END_RCPP
+}
+// exportAFModelInCPP
+void exportAFModelInCPP(std::string genoType, const std::vector<uint64_t>& genoIndex, std::string afFileOutput, const arma::mat& t_pcs, std::string afFilePrecision);
+RcppExport SEXP _GRAB_exportAFModelInCPP(SEXP genoTypeSEXP, SEXP genoIndexSEXP, SEXP afFileOutputSEXP, SEXP t_pcsSEXP, SEXP afFilePrecisionSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type genoType(genoTypeSEXP);
+    Rcpp::traits::input_parameter< const std::vector<uint64_t>& >::type genoIndex(genoIndexSEXP);
+    Rcpp::traits::input_parameter< std::string >::type afFileOutput(afFileOutputSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type t_pcs(t_pcsSEXP);
+    Rcpp::traits::input_parameter< std::string >::type afFilePrecision(afFilePrecisionSEXP);
+    exportAFModelInCPP(genoType, genoIndex, afFileOutput, t_pcs, afFilePrecision);
     return R_NilValue;
 END_RCPP
 }
@@ -453,7 +484,9 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setWtCoxGobjInCPP", (DL_FUNC) &_GRAB_setWtCoxGobjInCPP, 4},
     {"_GRAB_setSPAsqrobjInCPP", (DL_FUNC) &_GRAB_setSPAsqrobjInCPP, 15},
     {"_GRAB_setLEAFobjInCPP", (DL_FUNC) &_GRAB_setLEAFobjInCPP, 5},
+    {"_GRAB_setSPAmixPlusobjInCPP", (DL_FUNC) &_GRAB_setSPAmixPlusobjInCPP, 8},
     {"_GRAB_mainMarkerInCPP2", (DL_FUNC) &_GRAB_mainMarkerInCPP2, 2},
+    {"_GRAB_exportAFModelInCPP", (DL_FUNC) &_GRAB_exportAFModelInCPP, 5},
     {NULL, NULL, 0}
 };
 
