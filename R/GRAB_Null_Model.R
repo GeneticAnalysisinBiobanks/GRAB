@@ -82,7 +82,7 @@ GRAB.NullModel <- function(
 ) {
 
   supported_traitTypes <- c("ordinal", "time-to-event", "Residual", "quantitative", "binary")
-  supported_methods <- c("POLMM", "SPACox", "SPAmix", "WtCoxG", "SPAsqr", "LEAF")
+  supported_methods <- c("POLMM", "SPACox", "SPAmix", "WtCoxG", "SPAsqr", "LEAF", "SPAmixPlus")
 
   # ========== Validate and configure parameters ==========
 
@@ -212,7 +212,8 @@ GRAB.NullModel <- function(
     SPAmix = checkControl.NullModel.SPAmix(traitType, GenoFile, SparseGRMFile, control),
     WtCoxG = checkControl.NullModel.WtCoxG(traitType, GenoFile, SparseGRMFile, control, ...),
     SPAsqr = checkControl.NullModel.SPAsqr(traitType, GenoFile, SparseGRMFile, control, ...),
-    LEAF = checkControl.NullModel.LEAF(traitType, GenoFile, SparseGRMFile, control, ...)
+    LEAF = checkControl.NullModel.LEAF(traitType, GenoFile, SparseGRMFile, control, ...),
+    SPAmixPlus = checkControl.NullModel.SPAmixPlus(traitType, GenoFile, SparseGRMFile, control)
   )
   
   control <- checkResult$control
@@ -243,8 +244,8 @@ GRAB.NullModel <- function(
   LeftIncludesAdd <- grepl("\\+", LeftInFormula)               # logical
   if (LeftIncludesAdd) {
     
-    if (method %in% c("SPAmix") && traitType == "Residual") {
-      .message("SPAmix analysis will use residuals from %d models.", length(responseVars))
+    if (method %in% c("SPAmix", "SPAmixPlus") && traitType == "Residual") {
+      .message("%s analysis will use residuals from %d models.", method, length(responseVars))
 
       # Evaluate all variable names on the left side of the formula
       response <- sapply(responseVars, function(varName) {      # matrix
@@ -322,7 +323,10 @@ GRAB.NullModel <- function(
     SPAsqr = fitNullModel.SPAsqr(response, designMat, subjData, control, 
                                  SparseGRMFile, ...),
     LEAF = fitNullModel.LEAF(response, designMat, subjData, control, 
-                             GenoFile, GenoFileIndex, SparseGRMFile, ...)
+                             GenoFile, GenoFileIndex, SparseGRMFile, ...),
+    SPAmixPlus = fitNullModel.SPAmixPlus(response, designMat, subjData, 
+                                         control, SparseGRMFile),
+    elser = stop("Internal error: unsupported method '", method, "'.")
   )
 
   # Add metadata to the null model object

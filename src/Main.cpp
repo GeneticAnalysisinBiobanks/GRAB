@@ -1976,7 +1976,9 @@ void setSPAmixPlusobjInCPP(
   Rcpp::List t_outlierList,
   Rcpp::DataFrame t_sparseGRM,
   std::string t_afFilePath,
-  std::string t_afFilePrecision
+  std::string t_afFilePrecision,
+  double t_sigma_g,
+  double t_sigma_e
 ) {
   if(ptr_gSPAmixPlusobj)
     delete ptr_gSPAmixPlusobj;
@@ -1989,6 +1991,8 @@ void setSPAmixPlusobjInCPP(
     t_outlierList,
     t_sparseGRM,
     t_afFilePath,
-    t_afFilePrecision
+    t_afFilePrecision,
+    t_sigma_g,
+    t_sigma_e
   );
 }

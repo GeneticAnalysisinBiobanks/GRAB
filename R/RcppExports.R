@@ -97,8 +97,8 @@ setLEAFobjInCPP <- function(t_residuals, t_weight, t_clusterIdx, t_cutoff, t_SPA
     invisible(.Call(`_GRAB_setLEAFobjInCPP`, t_residuals, t_weight, t_clusterIdx, t_cutoff, t_SPA_Cutoff))
 }
 
-setSPAmixPlusobjInCPP <- function(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList, t_sparseGRM, t_afFilePath, t_afFilePrecision) {
-    invisible(.Call(`_GRAB_setSPAmixPlusobjInCPP`, t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList, t_sparseGRM, t_afFilePath, t_afFilePrecision))
+setSPAmixPlusobjInCPP <- function(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList, t_sparseGRM, t_afFilePath, t_afFilePrecision, t_sigma_g, t_sigma_e) {
+    invisible(.Call(`_GRAB_setSPAmixPlusobjInCPP`, t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList, t_sparseGRM, t_afFilePath, t_afFilePrecision, t_sigma_g, t_sigma_e))
 }
 
 mainMarkerInCPP2 <- function(control, objNull) {

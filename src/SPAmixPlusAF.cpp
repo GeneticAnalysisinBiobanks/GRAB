@@ -211,7 +211,7 @@ void exportAFModelInCPP(std::string genoType,
       Rcpp::stop("Failed to open output file: " + afFileOutput);
     }
     // Write header
-    outFileText << "MarkerIndex\tStatus";
+    outFileText << "Marker\tStatus";
     for (int j = 0; j <= g_npcs; ++j) {
       outFileText << "\tBeta" << j;
     }
@@ -226,8 +226,9 @@ void exportAFModelInCPP(std::string genoType,
   for (int i = 0; i < numMarkers; ++i) {
     if (i % progressStep == 0) {
       Rcpp::checkUserInterrupt();
-      Rprintf("Processed %d / %d markers (%.1f%%)\\r", i, numMarkers, 
-              100.0 * i / numMarkers);
+      Rcpp::Rcout << "Processed " << i << " / " << numMarkers << " markers (" 
+          << std::fixed << std::setprecision(1) << 100.0 * i / numMarkers << "%)" << "\r";
+
     }
     
     uint64_t markerIndex = genoIndex[i];
@@ -272,8 +273,7 @@ void exportAFModelInCPP(std::string genoType,
     } else {  // text
       // TSV format: markerIndex, status, beta0, beta1, ...
       char buffer[32];
-      snprintf(buffer, sizeof(buffer), "%llu\t%d", 
-               static_cast<unsigned long long>(markerIndex), status);
+      snprintf(buffer, sizeof(buffer), "%s\t%d", marker.c_str(), status);
       outFileText << buffer;
       for (int j = 0; j <= g_npcs; ++j) {
         snprintf(buffer, sizeof(buffer), "\t%.6g", betas(j));
@@ -290,5 +290,6 @@ void exportAFModelInCPP(std::string genoType,
     outFileText.close();
   }
   
-  Rprintf("\\nCompleted processing %d markers\\n", numMarkers);
+  // For final message:
+  Rcpp::Rcout << "\nCompleted processing " << numMarkers << " markers" << std::endl;
 }

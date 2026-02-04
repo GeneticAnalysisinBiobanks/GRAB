@@ -5,16 +5,7 @@
 ## All processing happens in C++ - no chunking, no checkpointing.
 ## ------------------------------------------------------------------------------
 
-#' Marker-level association analysis with async I/O and multithreading
-#'
-#' @param objNull Null model object from GRAB.NullModel()
-#' @param GenoFile Path to genotype file (PLINK .bed or BGEN)
-#' @param OutputFile Path to output file
-#' @param GenoFileIndex Path to .bim (PLINK) or .bgi (BGEN) file
-#' @param control List of control parameters (nWorkers, inputBufferSize, outputBufferSize, method-specific params)
-#'
-#' @return NULL (results written to OutputFile)
-#' @export
+# Marker-level association analysis with async I/O and multithreading
 GRAB.Marker2 <- function(
   objNull,
   GenoFile,

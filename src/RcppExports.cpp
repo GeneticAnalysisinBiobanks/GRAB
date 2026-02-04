@@ -417,8 +417,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // setSPAmixPlusobjInCPP
-void setSPAmixPlusobjInCPP(arma::mat t_resid, arma::mat t_PCs, int t_N, double t_SPA_Cutoff, Rcpp::List t_outlierList, Rcpp::DataFrame t_sparseGRM, std::string t_afFilePath, std::string t_afFilePrecision);
-RcppExport SEXP _GRAB_setSPAmixPlusobjInCPP(SEXP t_residSEXP, SEXP t_PCsSEXP, SEXP t_NSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_outlierListSEXP, SEXP t_sparseGRMSEXP, SEXP t_afFilePathSEXP, SEXP t_afFilePrecisionSEXP) {
+void setSPAmixPlusobjInCPP(arma::mat t_resid, arma::mat t_PCs, int t_N, double t_SPA_Cutoff, Rcpp::List t_outlierList, Rcpp::DataFrame t_sparseGRM, std::string t_afFilePath, std::string t_afFilePrecision, double t_sigma_g, double t_sigma_e);
+RcppExport SEXP _GRAB_setSPAmixPlusobjInCPP(SEXP t_residSEXP, SEXP t_PCsSEXP, SEXP t_NSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_outlierListSEXP, SEXP t_sparseGRMSEXP, SEXP t_afFilePathSEXP, SEXP t_afFilePrecisionSEXP, SEXP t_sigma_gSEXP, SEXP t_sigma_eSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::mat >::type t_resid(t_residSEXP);
@@ -429,7 +429,9 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< Rcpp::DataFrame >::type t_sparseGRM(t_sparseGRMSEXP);
     Rcpp::traits::input_parameter< std::string >::type t_afFilePath(t_afFilePathSEXP);
     Rcpp::traits::input_parameter< std::string >::type t_afFilePrecision(t_afFilePrecisionSEXP);
-    setSPAmixPlusobjInCPP(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList, t_sparseGRM, t_afFilePath, t_afFilePrecision);
+    Rcpp::traits::input_parameter< double >::type t_sigma_g(t_sigma_gSEXP);
+    Rcpp::traits::input_parameter< double >::type t_sigma_e(t_sigma_eSEXP);
+    setSPAmixPlusobjInCPP(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList, t_sparseGRM, t_afFilePath, t_afFilePrecision, t_sigma_g, t_sigma_e);
     return R_NilValue;
 END_RCPP
 }
@@ -484,7 +486,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setWtCoxGobjInCPP", (DL_FUNC) &_GRAB_setWtCoxGobjInCPP, 4},
     {"_GRAB_setSPAsqrobjInCPP", (DL_FUNC) &_GRAB_setSPAsqrobjInCPP, 15},
     {"_GRAB_setLEAFobjInCPP", (DL_FUNC) &_GRAB_setLEAFobjInCPP, 5},
-    {"_GRAB_setSPAmixPlusobjInCPP", (DL_FUNC) &_GRAB_setSPAmixPlusobjInCPP, 8},
+    {"_GRAB_setSPAmixPlusobjInCPP", (DL_FUNC) &_GRAB_setSPAmixPlusobjInCPP, 10},
     {"_GRAB_mainMarkerInCPP2", (DL_FUNC) &_GRAB_mainMarkerInCPP2, 2},
     {"_GRAB_exportAFModelInCPP", (DL_FUNC) &_GRAB_exportAFModelInCPP, 5},
     {NULL, NULL, 0}

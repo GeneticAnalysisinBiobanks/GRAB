@@ -1,37 +1,185 @@
-#' SPAmixPlus: Scalable and accurate genetic association testing with mixed models
+#' Instruction of SPAmixPlus method
 #'
-#' @description
-#' SPAmixPlus extends SPAmix with improved allele frequency estimation using 
-#' principal components. It follows a 3-step workflow:
+#' SPAmixPlus extends SPAmix with improved allele frequency estimation using principal 
+#' components, accounting for sample relatedness through a sparse genetic relationship 
+#' matrix (GRM). It performs retrospective single-variant association tests using 
+#' genotypes and residuals from null models of any complex trait in large-scale biobanks. 
+#' SPAmixPlus supports complex population structures and sample relatedness.
 #' 
-#' Step 0: Pre-compute AF models (optional, for efficiency)
-#' Step 1: Fit null model using SPAmix
-#' Step 2: Perform marker tests using SPAmixPlus with optional pre-computed AF models
+#' @return NULL
 #'
 #' @examples
-#' # Step 0 (Optional): Pre-compute AF models for efficiency
-#' SPAmixPlus.AF(GenoFile = GenoFile,
-#'               PCs = PCmatrix,
-#'               subjData = IID,
-#'               outputFile = "af_model.db")
+#' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
+#' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+#' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
+#' OutputFile <- file.path(tempdir(), "resultSPAmixPlus.txt")
+#' afFileOutput <- file.path(tempdir(), "afModels.bin")
+#' PhenoData <- data.table::fread(PhenoFile, header = TRUE)
+#' # Step 0
+#' SPAmixPlus.AF(
+#'   GenoFile = GenoFile,
+#'   PCs = as.matrix(PhenoData[, c("PC1", "PC2", "PC3")]),
+#'   subjData = PhenoData$IID,
+#'   afFileOutput = afFileOutput,
+#'   control = list(afFilePrecision = "double")
+#' )
 #'
-#' # Step 1: Fit null model using SPAmix
-#' objNull <- GRAB.NullModel(resid ~ AGE + GENDER + PC1 + PC2,
-#'                           data = PhenoData,
-#'                           subjData = IID,
-#'                           method = "SPAmix",
-#'                           traitType = "Residual",
-#'                           control = list(PC_columns = "PC1,PC2"))
+#' # Step 1
+#' residuals <- survival::coxph(
+#'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
+#'   data = PhenoData
+#' )$residuals
 #'
-#' # Step 2: Perform marker tests with SPAmixPlus
-#' GRAB.Marker(objNull,
-#'             GenoFile = GenoFile,
-#'             OutputFile = OutputFile,
-#'             control = list(afFile = "af_model.db"))  # Use pre-computed AF models
+#' obj.SPAmixPlus <- GRAB.NullModel(
+#'   residuals ~ AGE + GENDER + PC1 + PC2,
+#'   data = PhenoData,
+#'   subjIDcol = "IID",
+#'   SparseGRMFile = SparseGRMFile,
+#'   method = "SPAmixPlus",
+#'   traitType = "Residual",
+#'   control = list(PC_columns = "PC1,PC2")
+#' )
+#'
+#' # Step 2
+#' OutputFile <- file.path(tempdir(), "resultSPAmixPlus1.txt")
+#' GRAB.Marker(
+#'   obj.SPAmixPlus,
+#'   GenoFile = GenoFile,
+#'   OutputFile = OutputFile,
+#'   control = list(
+#'     afFilePath = afFileOutput,
+#'     afFilePrecision = "double"
+#'   )
+#' )
+#'
+#' head(data.table::fread(OutputFile))
+#'
+#' @details
+#'
+#' \strong{Additional Control Parameters for GRAB.NullModel()}:
+#' \itemize{
+#'   \item \code{PC_columns} (character, required): Comma-separated column names
+#'      of principal components (e.g., "PC1,PC2").
+#'   \item \code{OutlierRatio} (numeric, default: 1.5): IQR multiplier for outlier detection.
+#'      Outliers are defined as values outside \[Q1 - r*IQR, Q3 + r*IQR\].
+#'   \item \code{sigma_g} (numeric, default: 1.0): Genetic variance component for GRM scaling.
+#'   \item \code{sigma_e} (numeric, default: 1.0): Residual variance component for GRM scaling.
+#' }
+#'
+#' \strong{Method-specific elements in the \code{SPAmixPlus_NULL_Model} object returned by \code{GRAB.NullModel()}:}:
+#' \itemize{
+#'   \item \code{resid}: Residuals from mixed model (matrix or "Residual" class).
+#'   \item \code{yVec}: Phenotype vector (numeric or "Residual" class).
+#'   \item \code{PCs}: Principal components for dimension reduction (matrix).
+#'   \item \code{nPheno}: Number of phenotypes analyzed (integer).
+#'   \item \code{outLierList}: List identifying outlier subjects for SPA adjustment.
+#'   \item \code{sparseGRM}: Sparse genetic relationship matrix for relatedness adjustment.
+#' }
+#' 
+#' \strong{Additional Control Parameters for GRAB.Marker()}:
+#' \itemize{
+#'   \item \code{afFilePath} (character, required): Path to pre-computed AF model file from 
+#'      \code{SPAmixPlus.AF()} (Step 0).
+#'   \item \code{afFilePrecision} (character, default: "double"): Precision level for AF model file.
+#'      Must be either "double" (float64), "single" (float32), or "text" (TSV format).
+#'   \item \code{dosage_option} (character, default: "rounding_first"):
+#'      Dosage handling option. Must be either "rounding_first" or "rounding_last".
+#' }
+#'
+#' \strong{Output file columns}:
+#' \describe{
+#'   \item{Pheno}{Phenotype identifier (for multi-trait analysis).}
+#'   \item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}
+#'   \item{Info}{Marker information in format CHR:POS:REF:ALT.}
+#'   \item{AltFreq}{Alternative allele frequency in the sample.}
+#'   \item{AltCounts}{Total count of alternative alleles.}
+#'   \item{MissingRate}{Proportion of missing genotypes.}
+#'   \item{Pvalue}{P-value from the score test.}
+#'   \item{zScore}{Z-score from the score test.}
+#' }
+#'
+#' @references
+#' Ma et al. (2025). SPAmix: a scalable, accurate, and universal analysis framework for large‑scale 
+#' genetic association studies in admixed populations. \doi{10.1186/s13059-025-03827-9}
 #'
 #' @export
 GRAB.SPAmixPlus <- function() {
   .message("?GRAB.SPAmixPlus for instructions")
+}
+
+
+
+#' Check control parameters for SPAmixPlus null model
+#'
+#' @keywords internal
+checkControl.NullModel.SPAmixPlus <- function(traitType, GenoFile, SparseGRMFile, control) {
+  
+  # Use SPAmix control checking as base
+  control <- checkControl.NullModel.SPAmix(traitType, GenoFile, SparseGRMFile, control)
+
+  if (is.null(SparseGRMFile) || !file.exists(SparseGRMFile)) {
+    stop("SparseGRMFile must be provided and exist for SPAmixPlus method.")
+  }
+  
+  # Validate variance components
+  if (!is.null(control$sigma_g) && ((!is.numeric(control$sigma_g) || control$sigma_g <= 0))) {
+    stop("control$sigma_g must be a positive numeric value.")
+  }
+  
+  if (!is.null(control$sigma_e) && ((!is.numeric(control$sigma_e) || control$sigma_e <= 0))) {
+    stop("control$sigma_e must be a positive numeric value.")
+  }
+  
+  return(control)
+}
+
+
+#' Fit null model for SPAmixPlus
+#'
+#' @keywords internal
+fitNullModel.SPAmixPlus <- function(
+  response,
+  designMat,
+  subjData,
+  control,
+  SparseGRMFile
+) {
+  
+  if (!inherits(response, "Residual")) {
+    stop("For SPAmixPlus, the response variable should be 'Residual'.")
+  }
+
+  # Call SPAmix null model fitting first
+  objNull <- fitNullModel.SPAmix(response, designMat, subjData, control)
+  
+  # Load sparse GRM and create DataFrame with proper column names
+  sparseGRM_df <- data.table::fread(SparseGRMFile, header = TRUE)
+  
+  # Create index mapping from subjData to 0-based indices
+  id_map <- setNames(seq_along(subjData) - 1, subjData)
+  
+  # Map ID columns to indices
+  id1_index <- id_map[as.character(sparseGRM_df[[1]])]
+  id2_index <- id_map[as.character(sparseGRM_df[[2]])]
+  value <- as.numeric(sparseGRM_df[[3]])
+  
+  # Remove NA indices
+  valid_idx <- !is.na(id1_index) & !is.na(id2_index)
+  
+  # Create DataFrame with correct column names for C++
+  objNull$sparseGRM <- data.frame(
+    id1_index = as.integer(id1_index[valid_idx]),
+    id2_index = as.integer(id2_index[valid_idx]),
+    value = value[valid_idx]
+  )
+  
+  objNull$sigma_g <- if (!is.null(control$sigma_g)) control$sigma_g else 1.0
+  objNull$sigma_e <- if (!is.null(control$sigma_e)) control$sigma_e else 1.0
+  
+  # Update class to SPAmixPlus_NULL_Model
+  class(objNull) <- "SPAmixPlus_NULL_Model"
+  
+  return(objNull)
 }
 
 
@@ -74,7 +222,9 @@ setMarker.SPAmixPlus <- function(objNull, control) {
     t_outlierList = objNull$outLierList,
     t_sparseGRM = objNull$sparseGRM,
     t_afFilePath = control$afFilePath,
-    t_afFilePrecision = control$afFilePrecision
+    t_afFilePrecision = control$afFilePrecision,
+    t_sigma_g = objNull$sigma_g,
+    t_sigma_e = objNull$sigma_e
   )  
 }
 
@@ -96,8 +246,7 @@ mainMarker.SPAmixPlus <- function(genoType, genoIndex, objNull, control = NULL) 
   OutList <- mainMarkerInCPP(
     t_method = "SPAmixPlus",
     t_genoType = genoType,
-    t_genoIndex = genoIndex,
-    t_extraParams = list(afFile = afFile)
+    t_genoIndex = genoIndex
   )
   
   nPheno <- objNull$nPheno
@@ -148,7 +297,6 @@ mainMarker.SPAmixPlus <- function(genoType, genoIndex, objNull, control = NULL) 
 #' }
 #'
 #' @return Invisible NULL. AF models saved to outputFile.
-#' @keywords internal
 #' @export
 SPAmixPlus.AF <- function(
   GenoFile,
@@ -160,9 +308,10 @@ SPAmixPlus.AF <- function(
 ) {
   
   # Validate inputs
-  if (!is.matrix(PCs)) {
-    stop("PCs must be a matrix.")
+  if (!is.matrix(PCs) && !is.data.frame(PCs)) {
+    stop("PCs must be a matrix or data.frame.")
   }
+
   if (nrow(PCs) != length(subjData)) {
     stop("Number of rows in PCs must match length of subjData.")
   }
@@ -210,11 +359,11 @@ SPAmixPlus.AF <- function(
 
   # Export AF models to file (PCs passed directly)
   exportAFModelInCPP(
-    t_genoType = objGeno$genoType,
-    t_genoIndex = objGeno$markerInfo$genoIndex,
-    t_afFileOutput = afFileOutput,
-    t_pcs = PCs,
-    t_afFilePrecision = control$afFilePrecision
+    genoType = objGeno$genoType,
+    genoIndex = objGeno$markerInfo$genoIndex,
+    afFileOutput = afFileOutput,
+    t_pcs = as.matrix(PCs),
+    afFilePrecision = control$afFilePrecision
   )
   
   cat("AF models saved to: ", afFileOutput, " (precision: ", control$afFilePrecision, ")\n", sep = "")
