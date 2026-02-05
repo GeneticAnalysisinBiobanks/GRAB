@@ -33,7 +33,7 @@
 #' 
 #' # Set file paths
 #' dosagePrefix <- system.file("extdata", "simuAncestry", package = "GRAB")
-#' phiOutputDir <- tempdir()
+#' phiOutputPrefix <- file.path(tempdir(), "phiResult_")
 #'
 #' # Estimate phi for ancestries 1 and 2
 #' SPAmixLocalPlus.EstimatePhi(
@@ -42,7 +42,7 @@
 #'   haploPrefix = dosagePrefix,
 #'   ancIdx = c(1, 2),
 #'   SampleIDs = subjData,
-#'   OutputDir = phiOutputDir,
+#'   phiOutputPrefix = phiOutputPrefix,
 #'   MAF_cutoff = 0.01
 #' )
 #'
@@ -60,7 +60,7 @@
 #'   subjData = subjData,
 #'   dosagePrefix = dosagePrefix,
 #'   haploPrefix = NULL,  # Uses dosagePrefix if NULL
-#'   phiPrefix = phiOutputDir,  # Use phi files from estimation step
+#'   phiPrefix = phiOutputPrefix,  # Use phi files from estimation step
 #'   ancIdx = c(1, 2),
 #'   outPrefix = outPrefix
 #' )
@@ -97,7 +97,9 @@ GRAB.SPAmixLocalPlus <- function() {
 #' @param ancIdx Integer vector (required). Ancestry indices to process (e.g., \code{c(1, 2)}).
 #' @param SampleIDs Character vector (required). Sample IDs matching those in dosage/hapcount files.
 #'   Must match order in \code{GRM}.
-#' @param OutputDir Character (required). Directory path where phi result files will be saved.
+#' @param phiOutputPrefix Character (required). Prefix path for phi output files. Function will create
+#'   files named \code{paste0(phiOutputPrefix, "Ancestry", ancIdx, "_scenario", c("A","B","C","D"), ".txt")}.
+#'   Example: if \code{phiOutputPrefix = "./phi/result_"}, creates \code{./phi/result_Ancestry1_scenarioA.txt}, etc.
 #' @param Scenarios Character vector (optional, default = \code{c("A", "B", "C", "D")}).
 #'   Phi scenarios to compute. Each scenario corresponds to haplotype count configurations:
 #'   \itemize{
@@ -108,8 +110,6 @@ GRAB.SPAmixLocalPlus <- function() {
 #'   }
 #' @param Threshold Numeric (optional, default = 0.0). Phi threshold for filtering output.
 #'   Only pairs with phi >= Threshold are saved.
-#' @param TaskID Integer (optional, default = 1). Task ID for parallel processing.
-#'   Used in output filename: phi_result_ancestry{ancIdx}_scenario{A-D}_task{TaskID}.txt
 #' @param MAF_cutoff Numeric (optional, default = 0.01). Minor Allele Frequency cutoff.
 #'   SNPs with MAF < MAF_cutoff or MAF > (1 - MAF_cutoff) are excluded from phi estimation.
 #'
@@ -130,8 +130,8 @@ GRAB.SPAmixLocalPlus <- function() {
 #'   \item M = number of SNPs passing filters
 #' }
 #'
-#' @return No explicit return value. Results are saved to \code{OutputDir} with filenames:
-#'   \code{phi_result_ancestry{ancIdx}_scenario{A/B/C/D}_task{TaskID}.txt}
+#' @return No explicit return value. Results are saved with filenames:
+#'   \code{{phiOutputPrefix}Ancestry{ancIdx}_scenario{A/B/C/D}.txt}
 #'   
 #'   Each file is tab-delimited with columns:
 #'   \itemize{
@@ -155,7 +155,7 @@ GRAB.SPAmixLocalPlus <- function() {
 #'
 #' # Set file paths
 #' dosagePrefix <- system.file("extdata", "simuAncestry", package = "GRAB")
-#' phiOutputDir <- tempdir()
+#' phiOutputPrefix <- file.path(tempdir(), "phi_result_")
 #'
 #' # Estimate phi for ancestries 1 and 2
 #' SPAmixLocalPlus.EstimatePhi(
@@ -164,15 +164,14 @@ GRAB.SPAmixLocalPlus <- function() {
 #'   haploPrefix = NULL,  # Uses dosagePrefix
 #'   ancIdx = c(1, 2),
 #'   SampleIDs = subjData,
-#'   OutputDir = phiOutputDir,
-#'   MAF_cutoff = 0.01,
-#'   TaskID = 1
+#'   phiOutputPrefix = phiOutputPrefix,
+#'   MAF_cutoff = 0.01
 #' )
 #'
 #' # Check output files
-#' list.files(phiOutputDir, pattern = "phi_result")
-#' # [1] "phi_result_ancestry1_scenarioA_task001.txt"
-#' # [2] "phi_result_ancestry1_scenarioB_task001.txt"
+#' list.files(dirname(phiOutputPrefix), pattern = "phi_result")
+#' # [1] "phi_result_Ancestry1_scenarioA.txt"
+#' # [2] "phi_result_Ancestry1_scenarioB.txt"
 #' # ... (8 files total for 2 ancestries x 4 scenarios)
 #' }
 #'
@@ -187,15 +186,15 @@ SPAmixLocalPlus.EstimatePhi <- function(
   haploPrefix = NULL,
   ancIdx,
   SampleIDs,
-  OutputDir,
+  phiOutputPrefix,
   Scenarios = c("A", "B", "C", "D"),
   Threshold = 0.0,
-  TaskID = 1,
   MAF_cutoff = 0.01
 ) {
   
-  # Setup output directory
-  if (!dir.exists(OutputDir)) dir.create(OutputDir, recursive = TRUE)
+  # Setup output directory from prefix
+  OutputDir <- dirname(phiOutputPrefix)
+  if (OutputDir != "." && !dir.exists(OutputDir)) dir.create(OutputDir, recursive = TRUE)
   
   # Process GRM
   if (is.character(GRM)) {
@@ -215,7 +214,7 @@ SPAmixLocalPlus.EstimatePhi <- function(
   grm_dt$idx1 <- match(grm_dt$ID1, SampleIDs) - 1
   grm_dt$idx2 <- match(grm_dt$ID2, SampleIDs) - 1
   
-  valid_grm <- grm_dt[!is.na(idx1) & !is.na(idx2)]
+  valid_grm <- grm_dt[!is.na(grm_dt$idx1) & !is.na(grm_dt$idx2), ]
   if (nrow(valid_grm) < nrow(grm_dt)) {
     warning("Some GRM pairs contain IDs not in SampleIDs list.")
   }
@@ -270,17 +269,13 @@ SPAmixLocalPlus.EstimatePhi <- function(
       Phi_Values <- res$ratio_sums / pmax(res$valid_counts, 1)
       Phi_Values[res$valid_counts == 0] <- NA
       
-      # Create bidirectional pairs (i,j) and (j,i)
-      is_diff <- valid_grm$idx1 != valid_grm$idx2
-      idx1_vec <- valid_grm$idx1[is_diff]
-      idx2_vec <- valid_grm$idx2[is_diff]
+      # C++ function already returns bidirectional pairs, use them directly
+      final_pair_idx1 <- res$directed_pair_idx1
+      final_pair_idx2 <- res$directed_pair_idx2
       
-      # Expand to bidirectional
-      final_i_idx <- as.vector(rbind(idx1_vec, idx2_vec))
-      final_j_idx <- as.vector(rbind(idx2_vec, idx1_vec))
-      
-      final_ids_i <- SampleIDs[final_i_idx + 1]
-      final_ids_j <- SampleIDs[final_j_idx + 1]
+      # Convert indices to sample IDs (C++ uses 0-based indexing)
+      final_ids_i <- SampleIDs[final_pair_idx1 + 1]
+      final_ids_j <- SampleIDs[final_pair_idx2 + 1]
       
       res_df <- data.table::data.table(
         i = final_ids_i,
@@ -289,13 +284,11 @@ SPAmixLocalPlus.EstimatePhi <- function(
       )
       
       # Filter out NA and apply threshold
-      res_df <- res_df[!is.na(phi_value)]
-      if (Threshold > 0) res_df <- res_df[phi_value >= Threshold]
+      res_df <- res_df[!is.na(res_df$phi_value), ]
+      if (Threshold > 0) res_df <- res_df[res_df$phi_value >= Threshold, ]
       
-      # Save output
-      out_filename <- sprintf("phi_result_ancestry%s_scenario%s_task%03d.txt",
-                              anc_id, scenario, as.integer(TaskID))
-      out_path <- file.path(OutputDir, out_filename)
+      # Save output with compatible naming: {phiOutputPrefix}Ancestry{ancIdx}_scenario{A/B/C/D}.txt
+      out_path <- paste0(phiOutputPrefix, "Ancestry", anc_id, "_scenario", scenario, ".txt")
       
       data.table::fwrite(res_df, out_path, sep = "\t", quote = FALSE)
       cat("saved (", nrow(res_df), " pairs)\n", sep = "")
@@ -323,10 +316,9 @@ SPAmixLocalPlus.EstimatePhi <- function(
 #' @param haploPrefix Character (optional, default = \code{NULL}). Prefix path for haplotype
 #'   count files. If \code{NULL}, uses \code{dosagePrefix}. Function expects files named
 #'   \code{paste0(haploPrefix, ancIdx, "_HapCount.txt.gz")} for each ancestry.
-#' @param phiPrefix Character (optional, default = \code{NULL}). Prefix path for phi matrix
-#'   files. If \code{NULL}, uses \code{dosagePrefix}. Function expects files named
-#'   \code{paste0(phiPrefix, "Ancestry", ancIdx, "_scenario", c("A","B","C","D"), ".txt")}
-#'   for each ancestry.
+#' @param phiOutputPrefix Character (required). Prefix path for phi matrix files.
+#'   Function expects files named \code{paste0(phiOutputPrefix, "Ancestry", ancIdx, "_scenario", c("A","B","C","D"), ".txt")}
+#'   for each ancestry. Should match the \code{phiOutputPrefix} used in \code{SPAmixLocalPlus.EstimatePhi()}.
 #' @param ancIdx Integer vector (required). Ancestry indices to analyze (e.g., \code{c(1, 2, 3)}).
 #'   Each index corresponds to one local ancestry population.
 #' @param outPrefix Character (required). Prefix path for output files. Results saved as
