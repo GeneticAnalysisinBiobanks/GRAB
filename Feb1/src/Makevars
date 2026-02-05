@@ -1,0 +1,14 @@
+
+## With R 3.1.0 or later, you can uncomment the following line to tell R to 
+## enable compilation with C++11 (where available)
+
+PKG_CPPFLAGS = -D SQLITE_ENABLE_COLUMN_METADATA -O3 -fpic -Wall -pedantic -DARMA_64BIT_WORD=1 -I. -DNDEBUG
+PKG_LIBS = -lz
+
+CXX_STD = CXX14
+
+PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS)
+PKG_LIBS += $(ZLIB_LIB) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) $(SHLIB_OPENMP_CXXFLAGS) -lzstd
+
+PKG_LIBS += $(shell ${R_HOME}/bin/Rscript -e "RcppParallel::RcppParallelLibs()")
+

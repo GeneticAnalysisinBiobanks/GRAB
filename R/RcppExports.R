@@ -105,6 +105,89 @@ mainMarkerInCPP2 <- function(control, objNull) {
     invisible(.Call(`_GRAB_mainMarkerInCPP2`, control, objNull))
 }
 
+K_G0_vec_cpp <- function(t_vec, MAF, h) {
+    .Call(`_GRAB_K_G0_vec_cpp`, t_vec, MAF, h)
+}
+
+K_G1_vec_cpp <- function(t_vec, MAF, h) {
+    .Call(`_GRAB_K_G1_vec_cpp`, t_vec, MAF, h)
+}
+
+K_G2_vec_cpp <- function(t_vec, MAF, h) {
+    .Call(`_GRAB_K_G2_vec_cpp`, t_vec, MAF, h)
+}
+
+read_ukb_haplo_data_cpp <- function(haplo_file, target_sample_ids) {
+    .Call(`_GRAB_read_ukb_haplo_data_cpp`, haplo_file, target_sample_ids)
+}
+
+read_ukb_sample_ids_cpp <- function(geno_file) {
+    .Call(`_GRAB_read_ukb_sample_ids_cpp`, geno_file)
+}
+
+read_ukb_batch_data_cpp <- function(geno_file, haplo_file, target_sample_ids, start_snp, batch_size) {
+    .Call(`_GRAB_read_ukb_batch_data_cpp`, geno_file, haplo_file, target_sample_ids, start_snp, batch_size)
+}
+
+load_phi_data_ukb_cpp <- function(phi_dir, ancestry_name, scenario) {
+    .Call(`_GRAB_load_phi_data_ukb_cpp`, phi_dir, ancestry_name, scenario)
+}
+
+SPAmixPlus_local_ukb_high_performance_batch_cpp <- function(Geno_file, haplo_file, output_file, target_sample_ids, R_matched, phi_A_mat, phi_B_mat, phi_C_mat, phi_D_mat, posOutlier, total_snps, batch_size, cutoff, MAF_cutoff, MAC_cutoff, verbose) {
+    .Call(`_GRAB_SPAmixPlus_local_ukb_high_performance_batch_cpp`, Geno_file, haplo_file, output_file, target_sample_ids, R_matched, phi_A_mat, phi_B_mat, phi_C_mat, phi_D_mat, posOutlier, total_snps, batch_size, cutoff, MAF_cutoff, MAC_cutoff, verbose)
+}
+
+SPAmixPlus_local_related_batch_rcpp <- function(Geno_file, haplo_file, phi_dir, ancestry_name, pheno_idx, batch_size = 1000L, cutoff = 2.0, MAF_cutoff = 0.00001, MAC_cutoff = 1, output_file = "") {
+    .Call(`_GRAB_SPAmixPlus_local_related_batch_rcpp`, Geno_file, haplo_file, phi_dir, ancestry_name, pheno_idx, batch_size, cutoff, MAF_cutoff, MAC_cutoff, output_file)
+}
+
+SPAmixPlus_local_ukb_high_performance_streaming_cpp <- function(geno_file, haplo_file, output_file, file_match_idx, R_matched, phi_A_mat, phi_B_mat, phi_C_mat, phi_D_mat, posOutlier, total_snps, save_interval, cutoff, MAF_cutoff, MAC_cutoff, verbose) {
+    .Call(`_GRAB_SPAmixPlus_local_ukb_high_performance_streaming_cpp`, geno_file, haplo_file, output_file, file_match_idx, R_matched, phi_A_mat, phi_B_mat, phi_C_mat, phi_D_mat, posOutlier, total_snps, save_interval, cutoff, MAF_cutoff, MAC_cutoff, verbose)
+}
+
+#' Read PLINK BIM file and extract target SNPs by chromosome
+#' @param bim_file PLINK BIM file path
+#' @return List containing chromosome-wise SNP information
+read_bim_snps_by_chromosome <- function(bim_file) {
+    .Call(`_GRAB_read_bim_snps_by_chromosome`, bim_file)
+}
+
+#' Read UKB sample IDs from file header with large buffer
+#' @param file_path UKB .txt.gz file path  
+#' @return List with sample information
+read_ukb_sample_info_large <- function(file_path) {
+    .Call(`_GRAB_read_ukb_sample_info_large`, file_path)
+}
+
+#' Stream-based SNP batch reading
+#' @param hapcount_file Hapcount file path
+#' @param dosage_file Dosage file path  
+#' @param target_snps Vector of target SNP IDs
+#' @param max_snps_per_batch Maximum SNPs to read per batch
+#' @return List with hapcount and dosage matrices for found SNPs
+read_ukb_snp_batch_stream <- function(hapcount_file, dosage_file, target_snps, max_snps_per_batch = 200L) {
+    .Call(`_GRAB_read_ukb_snp_batch_stream`, hapcount_file, dosage_file, target_snps, max_snps_per_batch)
+}
+
+#' Compute phi ratios with ancestry-specific MAF filtering
+#' @param hapcount_matrix Hapcount matrix (SNPs x Samples)
+#' @param dosage_matrix Dosage matrix (SNPs x Samples)
+#' @param pair_idx1 First individual indices (0-based)
+#' @param pair_idx2 Second individual indices (0-based)
+#' @param scenario Scenario ("A", "B", "C", "D")
+#' @param phi_threshold Minimum phi threshold (default 0.0)
+#' @param maf_cutoff MAF cutoff threshold (default 0.2)
+#' @return List with ratio sums and valid counts for each pair
+computePhiRatiosCPP <- function(hapcount_matrix, dosage_matrix, pair_idx1, pair_idx2, scenario, phi_threshold = 0.0, maf_cutoff = 0.2) {
+    .Call(`_GRAB_computePhiRatiosCPP`, hapcount_matrix, dosage_matrix, pair_idx1, pair_idx2, scenario, phi_threshold, maf_cutoff)
+}
+
+#' Main function: Stream-optimized genome-wide phi estimation
+#' @return List with final phi values and statistics
+estimatePhiStreamCPP <- function(hap_files, dos_files, bim_file, ancestry_id, scenario, pair_idx1, pair_idx2, chromosomes, snp_batch_size = 200L, phi_threshold = 0.0, maf_cutoff = 0.2) {
+    .Call(`_GRAB_estimatePhiStreamCPP`, hap_files, dos_files, bim_file, ancestry_id, scenario, pair_idx1, pair_idx2, chromosomes, snp_batch_size, phi_threshold, maf_cutoff)
+}
+
 exportAFModelInCPP <- function(genoType, genoIndex, afFileOutput, t_pcs, afFilePrecision) {
     invisible(.Call(`_GRAB_exportAFModelInCPP`, genoType, genoIndex, afFileOutput, t_pcs, afFilePrecision))
 }

@@ -446,6 +446,242 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// K_G0_vec_cpp
+arma::vec K_G0_vec_cpp(const arma::vec& t_vec, double MAF, const arma::vec& h);
+RcppExport SEXP _GRAB_K_G0_vec_cpp(SEXP t_vecSEXP, SEXP MAFSEXP, SEXP hSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::vec& >::type t_vec(t_vecSEXP);
+    Rcpp::traits::input_parameter< double >::type MAF(MAFSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type h(hSEXP);
+    rcpp_result_gen = Rcpp::wrap(K_G0_vec_cpp(t_vec, MAF, h));
+    return rcpp_result_gen;
+END_RCPP
+}
+// K_G1_vec_cpp
+arma::vec K_G1_vec_cpp(const arma::vec& t_vec, double MAF, const arma::vec& h);
+RcppExport SEXP _GRAB_K_G1_vec_cpp(SEXP t_vecSEXP, SEXP MAFSEXP, SEXP hSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::vec& >::type t_vec(t_vecSEXP);
+    Rcpp::traits::input_parameter< double >::type MAF(MAFSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type h(hSEXP);
+    rcpp_result_gen = Rcpp::wrap(K_G1_vec_cpp(t_vec, MAF, h));
+    return rcpp_result_gen;
+END_RCPP
+}
+// K_G2_vec_cpp
+arma::vec K_G2_vec_cpp(const arma::vec& t_vec, double MAF, const arma::vec& h);
+RcppExport SEXP _GRAB_K_G2_vec_cpp(SEXP t_vecSEXP, SEXP MAFSEXP, SEXP hSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::vec& >::type t_vec(t_vecSEXP);
+    Rcpp::traits::input_parameter< double >::type MAF(MAFSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type h(hSEXP);
+    rcpp_result_gen = Rcpp::wrap(K_G2_vec_cpp(t_vec, MAF, h));
+    return rcpp_result_gen;
+END_RCPP
+}
+// read_ukb_haplo_data_cpp
+arma::mat read_ukb_haplo_data_cpp(const std::string& haplo_file, const std::vector<std::string>& target_sample_ids);
+RcppExport SEXP _GRAB_read_ukb_haplo_data_cpp(SEXP haplo_fileSEXP, SEXP target_sample_idsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const std::string& >::type haplo_file(haplo_fileSEXP);
+    Rcpp::traits::input_parameter< const std::vector<std::string>& >::type target_sample_ids(target_sample_idsSEXP);
+    rcpp_result_gen = Rcpp::wrap(read_ukb_haplo_data_cpp(haplo_file, target_sample_ids));
+    return rcpp_result_gen;
+END_RCPP
+}
+// read_ukb_sample_ids_cpp
+std::vector<std::string> read_ukb_sample_ids_cpp(const std::string& geno_file);
+RcppExport SEXP _GRAB_read_ukb_sample_ids_cpp(SEXP geno_fileSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const std::string& >::type geno_file(geno_fileSEXP);
+    rcpp_result_gen = Rcpp::wrap(read_ukb_sample_ids_cpp(geno_file));
+    return rcpp_result_gen;
+END_RCPP
+}
+// read_ukb_batch_data_cpp
+List read_ukb_batch_data_cpp(const std::string& geno_file, const std::string& haplo_file, const std::vector<std::string>& target_sample_ids, int start_snp, int batch_size);
+RcppExport SEXP _GRAB_read_ukb_batch_data_cpp(SEXP geno_fileSEXP, SEXP haplo_fileSEXP, SEXP target_sample_idsSEXP, SEXP start_snpSEXP, SEXP batch_sizeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const std::string& >::type geno_file(geno_fileSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type haplo_file(haplo_fileSEXP);
+    Rcpp::traits::input_parameter< const std::vector<std::string>& >::type target_sample_ids(target_sample_idsSEXP);
+    Rcpp::traits::input_parameter< int >::type start_snp(start_snpSEXP);
+    Rcpp::traits::input_parameter< int >::type batch_size(batch_sizeSEXP);
+    rcpp_result_gen = Rcpp::wrap(read_ukb_batch_data_cpp(geno_file, haplo_file, target_sample_ids, start_snp, batch_size));
+    return rcpp_result_gen;
+END_RCPP
+}
+// load_phi_data_ukb_cpp
+SEXP load_phi_data_ukb_cpp(const std::string& phi_dir, const std::string& ancestry_name, const std::string& scenario);
+RcppExport SEXP _GRAB_load_phi_data_ukb_cpp(SEXP phi_dirSEXP, SEXP ancestry_nameSEXP, SEXP scenarioSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const std::string& >::type phi_dir(phi_dirSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type ancestry_name(ancestry_nameSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type scenario(scenarioSEXP);
+    rcpp_result_gen = Rcpp::wrap(load_phi_data_ukb_cpp(phi_dir, ancestry_name, scenario));
+    return rcpp_result_gen;
+END_RCPP
+}
+// SPAmixPlus_local_ukb_high_performance_batch_cpp
+int SPAmixPlus_local_ukb_high_performance_batch_cpp(const std::string& Geno_file, const std::string& haplo_file, const std::string& output_file, const std::vector<std::string>& target_sample_ids, const arma::vec& R_matched, const arma::mat& phi_A_mat, const arma::mat& phi_B_mat, const arma::mat& phi_C_mat, const arma::mat& phi_D_mat, const arma::uvec& posOutlier, int total_snps, int batch_size, double cutoff, double MAF_cutoff, double MAC_cutoff, bool verbose);
+RcppExport SEXP _GRAB_SPAmixPlus_local_ukb_high_performance_batch_cpp(SEXP Geno_fileSEXP, SEXP haplo_fileSEXP, SEXP output_fileSEXP, SEXP target_sample_idsSEXP, SEXP R_matchedSEXP, SEXP phi_A_matSEXP, SEXP phi_B_matSEXP, SEXP phi_C_matSEXP, SEXP phi_D_matSEXP, SEXP posOutlierSEXP, SEXP total_snpsSEXP, SEXP batch_sizeSEXP, SEXP cutoffSEXP, SEXP MAF_cutoffSEXP, SEXP MAC_cutoffSEXP, SEXP verboseSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const std::string& >::type Geno_file(Geno_fileSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type haplo_file(haplo_fileSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type output_file(output_fileSEXP);
+    Rcpp::traits::input_parameter< const std::vector<std::string>& >::type target_sample_ids(target_sample_idsSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type R_matched(R_matchedSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type phi_A_mat(phi_A_matSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type phi_B_mat(phi_B_matSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type phi_C_mat(phi_C_matSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type phi_D_mat(phi_D_matSEXP);
+    Rcpp::traits::input_parameter< const arma::uvec& >::type posOutlier(posOutlierSEXP);
+    Rcpp::traits::input_parameter< int >::type total_snps(total_snpsSEXP);
+    Rcpp::traits::input_parameter< int >::type batch_size(batch_sizeSEXP);
+    Rcpp::traits::input_parameter< double >::type cutoff(cutoffSEXP);
+    Rcpp::traits::input_parameter< double >::type MAF_cutoff(MAF_cutoffSEXP);
+    Rcpp::traits::input_parameter< double >::type MAC_cutoff(MAC_cutoffSEXP);
+    Rcpp::traits::input_parameter< bool >::type verbose(verboseSEXP);
+    rcpp_result_gen = Rcpp::wrap(SPAmixPlus_local_ukb_high_performance_batch_cpp(Geno_file, haplo_file, output_file, target_sample_ids, R_matched, phi_A_mat, phi_B_mat, phi_C_mat, phi_D_mat, posOutlier, total_snps, batch_size, cutoff, MAF_cutoff, MAC_cutoff, verbose));
+    return rcpp_result_gen;
+END_RCPP
+}
+// SPAmixPlus_local_related_batch_rcpp
+int SPAmixPlus_local_related_batch_rcpp(const std::string& Geno_file, const std::string& haplo_file, const std::string& phi_dir, const std::string& ancestry_name, int pheno_idx, int batch_size, double cutoff, double MAF_cutoff, double MAC_cutoff, const std::string& output_file);
+RcppExport SEXP _GRAB_SPAmixPlus_local_related_batch_rcpp(SEXP Geno_fileSEXP, SEXP haplo_fileSEXP, SEXP phi_dirSEXP, SEXP ancestry_nameSEXP, SEXP pheno_idxSEXP, SEXP batch_sizeSEXP, SEXP cutoffSEXP, SEXP MAF_cutoffSEXP, SEXP MAC_cutoffSEXP, SEXP output_fileSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const std::string& >::type Geno_file(Geno_fileSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type haplo_file(haplo_fileSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type phi_dir(phi_dirSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type ancestry_name(ancestry_nameSEXP);
+    Rcpp::traits::input_parameter< int >::type pheno_idx(pheno_idxSEXP);
+    Rcpp::traits::input_parameter< int >::type batch_size(batch_sizeSEXP);
+    Rcpp::traits::input_parameter< double >::type cutoff(cutoffSEXP);
+    Rcpp::traits::input_parameter< double >::type MAF_cutoff(MAF_cutoffSEXP);
+    Rcpp::traits::input_parameter< double >::type MAC_cutoff(MAC_cutoffSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type output_file(output_fileSEXP);
+    rcpp_result_gen = Rcpp::wrap(SPAmixPlus_local_related_batch_rcpp(Geno_file, haplo_file, phi_dir, ancestry_name, pheno_idx, batch_size, cutoff, MAF_cutoff, MAC_cutoff, output_file));
+    return rcpp_result_gen;
+END_RCPP
+}
+// SPAmixPlus_local_ukb_high_performance_streaming_cpp
+int SPAmixPlus_local_ukb_high_performance_streaming_cpp(const std::string& geno_file, const std::string& haplo_file, const std::string& output_file, const arma::uvec& file_match_idx, const arma::vec& R_matched, const arma::mat& phi_A_mat, const arma::mat& phi_B_mat, const arma::mat& phi_C_mat, const arma::mat& phi_D_mat, const arma::uvec& posOutlier, int total_snps, int save_interval, double cutoff, double MAF_cutoff, double MAC_cutoff, bool verbose);
+RcppExport SEXP _GRAB_SPAmixPlus_local_ukb_high_performance_streaming_cpp(SEXP geno_fileSEXP, SEXP haplo_fileSEXP, SEXP output_fileSEXP, SEXP file_match_idxSEXP, SEXP R_matchedSEXP, SEXP phi_A_matSEXP, SEXP phi_B_matSEXP, SEXP phi_C_matSEXP, SEXP phi_D_matSEXP, SEXP posOutlierSEXP, SEXP total_snpsSEXP, SEXP save_intervalSEXP, SEXP cutoffSEXP, SEXP MAF_cutoffSEXP, SEXP MAC_cutoffSEXP, SEXP verboseSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const std::string& >::type geno_file(geno_fileSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type haplo_file(haplo_fileSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type output_file(output_fileSEXP);
+    Rcpp::traits::input_parameter< const arma::uvec& >::type file_match_idx(file_match_idxSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type R_matched(R_matchedSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type phi_A_mat(phi_A_matSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type phi_B_mat(phi_B_matSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type phi_C_mat(phi_C_matSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type phi_D_mat(phi_D_matSEXP);
+    Rcpp::traits::input_parameter< const arma::uvec& >::type posOutlier(posOutlierSEXP);
+    Rcpp::traits::input_parameter< int >::type total_snps(total_snpsSEXP);
+    Rcpp::traits::input_parameter< int >::type save_interval(save_intervalSEXP);
+    Rcpp::traits::input_parameter< double >::type cutoff(cutoffSEXP);
+    Rcpp::traits::input_parameter< double >::type MAF_cutoff(MAF_cutoffSEXP);
+    Rcpp::traits::input_parameter< double >::type MAC_cutoff(MAC_cutoffSEXP);
+    Rcpp::traits::input_parameter< bool >::type verbose(verboseSEXP);
+    rcpp_result_gen = Rcpp::wrap(SPAmixPlus_local_ukb_high_performance_streaming_cpp(geno_file, haplo_file, output_file, file_match_idx, R_matched, phi_A_mat, phi_B_mat, phi_C_mat, phi_D_mat, posOutlier, total_snps, save_interval, cutoff, MAF_cutoff, MAC_cutoff, verbose));
+    return rcpp_result_gen;
+END_RCPP
+}
+// read_bim_snps_by_chromosome
+List read_bim_snps_by_chromosome(const std::string& bim_file);
+RcppExport SEXP _GRAB_read_bim_snps_by_chromosome(SEXP bim_fileSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const std::string& >::type bim_file(bim_fileSEXP);
+    rcpp_result_gen = Rcpp::wrap(read_bim_snps_by_chromosome(bim_file));
+    return rcpp_result_gen;
+END_RCPP
+}
+// read_ukb_sample_info_large
+List read_ukb_sample_info_large(const std::string& file_path);
+RcppExport SEXP _GRAB_read_ukb_sample_info_large(SEXP file_pathSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const std::string& >::type file_path(file_pathSEXP);
+    rcpp_result_gen = Rcpp::wrap(read_ukb_sample_info_large(file_path));
+    return rcpp_result_gen;
+END_RCPP
+}
+// read_ukb_snp_batch_stream
+List read_ukb_snp_batch_stream(const std::string& hapcount_file, const std::string& dosage_file, const std::vector<std::string>& target_snps, int max_snps_per_batch);
+RcppExport SEXP _GRAB_read_ukb_snp_batch_stream(SEXP hapcount_fileSEXP, SEXP dosage_fileSEXP, SEXP target_snpsSEXP, SEXP max_snps_per_batchSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const std::string& >::type hapcount_file(hapcount_fileSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type dosage_file(dosage_fileSEXP);
+    Rcpp::traits::input_parameter< const std::vector<std::string>& >::type target_snps(target_snpsSEXP);
+    Rcpp::traits::input_parameter< int >::type max_snps_per_batch(max_snps_per_batchSEXP);
+    rcpp_result_gen = Rcpp::wrap(read_ukb_snp_batch_stream(hapcount_file, dosage_file, target_snps, max_snps_per_batch));
+    return rcpp_result_gen;
+END_RCPP
+}
+// computePhiRatiosCPP
+List computePhiRatiosCPP(const arma::mat& hapcount_matrix, const arma::mat& dosage_matrix, const arma::uvec& pair_idx1, const arma::uvec& pair_idx2, const std::string& scenario, double phi_threshold, double maf_cutoff);
+RcppExport SEXP _GRAB_computePhiRatiosCPP(SEXP hapcount_matrixSEXP, SEXP dosage_matrixSEXP, SEXP pair_idx1SEXP, SEXP pair_idx2SEXP, SEXP scenarioSEXP, SEXP phi_thresholdSEXP, SEXP maf_cutoffSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type hapcount_matrix(hapcount_matrixSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type dosage_matrix(dosage_matrixSEXP);
+    Rcpp::traits::input_parameter< const arma::uvec& >::type pair_idx1(pair_idx1SEXP);
+    Rcpp::traits::input_parameter< const arma::uvec& >::type pair_idx2(pair_idx2SEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type scenario(scenarioSEXP);
+    Rcpp::traits::input_parameter< double >::type phi_threshold(phi_thresholdSEXP);
+    Rcpp::traits::input_parameter< double >::type maf_cutoff(maf_cutoffSEXP);
+    rcpp_result_gen = Rcpp::wrap(computePhiRatiosCPP(hapcount_matrix, dosage_matrix, pair_idx1, pair_idx2, scenario, phi_threshold, maf_cutoff));
+    return rcpp_result_gen;
+END_RCPP
+}
+// estimatePhiStreamCPP
+List estimatePhiStreamCPP(const std::vector<std::string>& hap_files, const std::vector<std::string>& dos_files, const std::string& bim_file, const std::string& ancestry_id, const std::string& scenario, const arma::uvec& pair_idx1, const arma::uvec& pair_idx2, const std::vector<int>& chromosomes, int snp_batch_size, double phi_threshold, double maf_cutoff);
+RcppExport SEXP _GRAB_estimatePhiStreamCPP(SEXP hap_filesSEXP, SEXP dos_filesSEXP, SEXP bim_fileSEXP, SEXP ancestry_idSEXP, SEXP scenarioSEXP, SEXP pair_idx1SEXP, SEXP pair_idx2SEXP, SEXP chromosomesSEXP, SEXP snp_batch_sizeSEXP, SEXP phi_thresholdSEXP, SEXP maf_cutoffSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const std::vector<std::string>& >::type hap_files(hap_filesSEXP);
+    Rcpp::traits::input_parameter< const std::vector<std::string>& >::type dos_files(dos_filesSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type bim_file(bim_fileSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type ancestry_id(ancestry_idSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type scenario(scenarioSEXP);
+    Rcpp::traits::input_parameter< const arma::uvec& >::type pair_idx1(pair_idx1SEXP);
+    Rcpp::traits::input_parameter< const arma::uvec& >::type pair_idx2(pair_idx2SEXP);
+    Rcpp::traits::input_parameter< const std::vector<int>& >::type chromosomes(chromosomesSEXP);
+    Rcpp::traits::input_parameter< int >::type snp_batch_size(snp_batch_sizeSEXP);
+    Rcpp::traits::input_parameter< double >::type phi_threshold(phi_thresholdSEXP);
+    Rcpp::traits::input_parameter< double >::type maf_cutoff(maf_cutoffSEXP);
+    rcpp_result_gen = Rcpp::wrap(estimatePhiStreamCPP(hap_files, dos_files, bim_file, ancestry_id, scenario, pair_idx1, pair_idx2, chromosomes, snp_batch_size, phi_threshold, maf_cutoff));
+    return rcpp_result_gen;
+END_RCPP
+}
 // exportAFModelInCPP
 void exportAFModelInCPP(std::string genoType, const std::vector<uint64_t>& genoIndex, std::string afFileOutput, const arma::mat& t_pcs, std::string afFilePrecision);
 RcppExport SEXP _GRAB_exportAFModelInCPP(SEXP genoTypeSEXP, SEXP genoIndexSEXP, SEXP afFileOutputSEXP, SEXP t_pcsSEXP, SEXP afFilePrecisionSEXP) {
@@ -488,6 +724,21 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setLEAFobjInCPP", (DL_FUNC) &_GRAB_setLEAFobjInCPP, 5},
     {"_GRAB_setSPAmixPlusobjInCPP", (DL_FUNC) &_GRAB_setSPAmixPlusobjInCPP, 10},
     {"_GRAB_mainMarkerInCPP2", (DL_FUNC) &_GRAB_mainMarkerInCPP2, 2},
+    {"_GRAB_K_G0_vec_cpp", (DL_FUNC) &_GRAB_K_G0_vec_cpp, 3},
+    {"_GRAB_K_G1_vec_cpp", (DL_FUNC) &_GRAB_K_G1_vec_cpp, 3},
+    {"_GRAB_K_G2_vec_cpp", (DL_FUNC) &_GRAB_K_G2_vec_cpp, 3},
+    {"_GRAB_read_ukb_haplo_data_cpp", (DL_FUNC) &_GRAB_read_ukb_haplo_data_cpp, 2},
+    {"_GRAB_read_ukb_sample_ids_cpp", (DL_FUNC) &_GRAB_read_ukb_sample_ids_cpp, 1},
+    {"_GRAB_read_ukb_batch_data_cpp", (DL_FUNC) &_GRAB_read_ukb_batch_data_cpp, 5},
+    {"_GRAB_load_phi_data_ukb_cpp", (DL_FUNC) &_GRAB_load_phi_data_ukb_cpp, 3},
+    {"_GRAB_SPAmixPlus_local_ukb_high_performance_batch_cpp", (DL_FUNC) &_GRAB_SPAmixPlus_local_ukb_high_performance_batch_cpp, 16},
+    {"_GRAB_SPAmixPlus_local_related_batch_rcpp", (DL_FUNC) &_GRAB_SPAmixPlus_local_related_batch_rcpp, 10},
+    {"_GRAB_SPAmixPlus_local_ukb_high_performance_streaming_cpp", (DL_FUNC) &_GRAB_SPAmixPlus_local_ukb_high_performance_streaming_cpp, 16},
+    {"_GRAB_read_bim_snps_by_chromosome", (DL_FUNC) &_GRAB_read_bim_snps_by_chromosome, 1},
+    {"_GRAB_read_ukb_sample_info_large", (DL_FUNC) &_GRAB_read_ukb_sample_info_large, 1},
+    {"_GRAB_read_ukb_snp_batch_stream", (DL_FUNC) &_GRAB_read_ukb_snp_batch_stream, 4},
+    {"_GRAB_computePhiRatiosCPP", (DL_FUNC) &_GRAB_computePhiRatiosCPP, 7},
+    {"_GRAB_estimatePhiStreamCPP", (DL_FUNC) &_GRAB_estimatePhiStreamCPP, 11},
     {"_GRAB_exportAFModelInCPP", (DL_FUNC) &_GRAB_exportAFModelInCPP, 5},
     {NULL, NULL, 0}
 };
