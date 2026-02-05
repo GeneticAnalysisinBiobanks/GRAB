@@ -754,6 +754,102 @@ arma::vec SPAmixPlus_local_related_one_SNP_cpp(
     return result;
 }
 
+bool is_gzipped(const std::string& filename) {
+    return filename.length() > 3 && filename.substr(filename.length() - 3) == ".gz";
+}
+
+bool file_exists_cpp(const std::string& filename) {
+    std::ifstream f(filename.c_str());
+    return f.good();
+}
+
+// ==================== Cross-Platform File Reader ====================
+// Supports both .txt and .gz files using zlib
+// Replaces system calls to zcat/cat for Windows compatibility
+
+class FileReader {
+private:
+    gzFile gz_file;
+    std::ifstream txt_file;
+    bool is_gz;
+    bool is_open_flag;
+    
+public:
+    FileReader(const std::string& filename) : gz_file(nullptr), is_open_flag(false) {
+        is_gz = is_gzipped(filename);
+        
+        if (is_gz) {
+            gz_file = gzopen(filename.c_str(), "rb");
+            if (gz_file != nullptr) {
+                is_open_flag = true;
+            }
+        } else {
+            txt_file.open(filename);
+            if (txt_file.is_open()) {
+                is_open_flag = true;
+            }
+        }
+    }
+    
+    ~FileReader() {
+        close();
+    }
+    
+    bool is_open() const {
+        return is_open_flag;
+    }
+    
+    bool getline(std::string& line) {
+        if (!is_open_flag) return false;
+        
+        if (is_gz) {
+            const int BUFFER_SIZE = 1024 * 1024;  // 1MB buffer
+            char* buffer = new char[BUFFER_SIZE];
+            
+            if (gzgets(gz_file, buffer, BUFFER_SIZE) != nullptr) {
+                line = buffer;
+                if (!line.empty() && line.back() == '\n') line.pop_back();
+                if (!line.empty() && line.back() == '\r') line.pop_back();
+                delete[] buffer;
+                return true;
+            }
+            delete[] buffer;
+            return false;
+        } else {
+            if (std::getline(txt_file, line)) {
+                if (!line.empty() && line.back() == '\r') line.pop_back();
+                return true;
+            }
+            return false;
+        }
+    }
+    
+    void close() {
+        if (is_gz && gz_file != nullptr) {
+            gzclose(gz_file);
+            gz_file = nullptr;
+        } else if (!is_gz && txt_file.is_open()) {
+            txt_file.close();
+        }
+        is_open_flag = false;
+    }
+};
+
+// Helper function to count lines in a file (cross-platform)
+int count_file_lines(const std::string& filename) {
+    FileReader reader(filename);
+    if (!reader.is_open()) {
+        return 0;
+    }
+    
+    int count = 0;
+    std::string line;
+    while (reader.getline(line)) {
+        count++;
+    }
+    return count;
+}
+
 // ==================== UKB Format Processing Functions ====================
 // Modification Date: 2025-09-03
 // Description: Added UKB format processing functionality, handling .txt.gz and transposed matrices
@@ -764,26 +860,15 @@ arma::mat read_ukb_haplo_data_cpp(const std::string& haplo_file,
                                   const std::vector<std::string>& target_sample_ids) {
     std::vector<std::vector<double>> haplo_data;
     
-    std::string command;
-    if (is_gzipped(haplo_file)) {
-        command = "zcat \"" + haplo_file + "\"";
-    } else {
-        command = "cat \"" + haplo_file + "\"";
+    FileReader reader(haplo_file);
+    if (!reader.is_open()) {
+        throw std::runtime_error("Cannot open haplo file: " + haplo_file);
     }
     
-    FILE* pipe = popen(command.c_str(), "r");
-    if (!pipe) {
-        throw std::runtime_error("Cannot open haplo file");
-    }
-    
-    char buffer[1024 * 1024];
+    std::string line;
     bool first_line = true;
     
-    while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
-        std::string line(buffer);
-        if (line.back() == '\n') line.pop_back();
-        if (line.back() == '\r') line.pop_back();
-        
+    while (reader.getline(line)) {
         std::istringstream iss(line);
         std::string token;
         std::vector<std::string> fields;
@@ -811,8 +896,6 @@ arma::mat read_ukb_haplo_data_cpp(const std::string& haplo_file,
         }
     }
     
-    pclose(pipe);
-    
     if (haplo_data.empty()) {
         throw std::runtime_error("No haplo data found");
     }
@@ -828,74 +911,31 @@ arma::mat read_ukb_haplo_data_cpp(const std::string& haplo_file,
     return result;
 }
 
-bool is_gzipped(const std::string& filename) {
-    return filename.length() > 3 && filename.substr(filename.length() - 3) == ".gz";
-}
-
-bool file_exists_cpp(const std::string& filename) {
-    std::ifstream f(filename.c_str());
-    return f.good();
-}
-
-
-
 // [[Rcpp::export]]
 std::vector<std::string> read_ukb_sample_ids_cpp(const std::string& geno_file) {
     std::vector<std::string> sample_ids;
     
-    // Use zcat command to read header line
-    std::string command;
-    if (is_gzipped(geno_file)) {
-        command = "zcat \"" + geno_file + "\" | head -n 1";
-    } else {
-        command = "head -n 1 \"" + geno_file + "\"";
-    }
-    
-    FILE* pipe = popen(command.c_str(), "r");
-    if (!pipe) {
+    FileReader reader(geno_file);
+    if (!reader.is_open()) {
         Rcpp::stop("Unable to read file: " + geno_file);
     }
     
-    // Allocate 8MB buffer, reference phi code processing 488K samples
-    const size_t BUFFER_SIZE = 8 * 1024 * 1024;  // 8MB buffer
-    char* buffer = new char[BUFFER_SIZE];
     std::string header_line;
+    if (!reader.getline(header_line)) {
+        Rcpp::stop("Unable to read file header: " + geno_file);
+    }
     
-    try {
-        if (fgets(buffer, BUFFER_SIZE, pipe) != nullptr) {
-            header_line = buffer;
-            if (!header_line.empty() && header_line.back() == '\n') {
-                header_line.pop_back();
-            }
-            if (!header_line.empty() && header_line.back() == '\r') {
-                header_line.pop_back();
-            }
+    // Parse header line
+    std::istringstream iss(header_line);
+    std::string token;
+    int col_idx = 0;
+    
+    // UKB format: first 5 columns are CHROM,POS,ID,REF,ALT, samples start from 6th column
+    while (std::getline(iss, token, '\t')) {
+        if (col_idx >= 5) {  // Skip first 5 columns
+            sample_ids.push_back(token);
         }
-        
-        delete[] buffer;
-        pclose(pipe);
-        
-        if (header_line.empty()) {
-            Rcpp::stop("Unable to read file header: " + geno_file);
-        }
-        
-        // Parse header line
-        std::istringstream iss(header_line);
-        std::string token;
-        int col_idx = 0;
-        
-        // UKB format: first 5 columns are CHROM,POS,ID,REF,ALT, samples start from 6th column
-        while (std::getline(iss, token, '\t')) {
-            if (col_idx >= 5) {  // Skip first 5 columns
-                sample_ids.push_back(token);
-            }
-            col_idx++;
-        }
-        
-    } catch (...) {
-        delete[] buffer;
-        pclose(pipe);
-        throw;
+        col_idx++;
     }
     
     Rcpp::Rcout << "📊 Extracted " << sample_ids.size() << " sample IDs from UKB file header" << std::endl;
@@ -2111,117 +2151,95 @@ bool UKBZlibReader::initialize(const std::string& geno_file,
         return false;
     }
     
-    // [v20 Critical Fix] Use same method as v16 to read full header line - Modification Date: 2025-09-12
-    // Issue: gzgets might truncate long header lines, need external command to ensure full header read
+    // [v20 Critical Fix] Read full header line using FileReader
+    // Issue: gzgets might truncate long header lines, use FileReader for full read
     
-    // Close gzFile first, use external command to read full header
+    // Close gzFile first, use FileReader to read full header
     gzclose(geno_gz);
     geno_gz = nullptr;
     
-    // Use same method as v16 to read full header
-    std::string command = "zcat \"" + geno_file + "\" | head -n 1";
-    FILE* pipe = popen(command.c_str(), "r");
-    if (!pipe) {
-        Rcpp::Rcout << "❌ Unable to execute command to read file header: " << geno_file << std::endl;
+    // Use FileReader to read full header (cross-platform)
+    FileReader reader(geno_file);
+    if (!reader.is_open()) {
+        Rcpp::Rcout << "❌ Unable to open file to read header: " << geno_file << std::endl;
         return false;
     }
     
-    // Allocate 8MB buffer for full header (consistent with v16)
-    const size_t BUFFER_SIZE = 8 * 1024 * 1024;  // 8MB buffer
-    char* buffer = new char[BUFFER_SIZE];
     std::string header_line;
-    
-    try {
-        if (fgets(buffer, BUFFER_SIZE, pipe) != nullptr) {
-            header_line = buffer;
-            if (!header_line.empty() && header_line.back() == '\n') {
-                header_line.pop_back();
-            }
-            if (!header_line.empty() && header_line.back() == '\r') {
-                header_line.pop_back();
-            }
-        }
-        
-        delete[] buffer;
-        pclose(pipe);
-        
-        if (header_line.empty()) {
-            Rcpp::Rcout << "❌ Unable to read file header: " << geno_file << std::endl;
-            return false;
-        }
-        
-        // Re-open geno file (skip header)
-        geno_gz = gzopen(geno_file.c_str(), "rb");
-        if (geno_gz == nullptr) {
-            Rcpp::Rcout << "❌ Unable to re-open geno file: " << geno_file << std::endl;
-            return false;
-        }
-        
-        // Skip first line (header)
-        char skip_buffer[1024];
-        if (gzgets(geno_gz, skip_buffer, sizeof(skip_buffer)) == nullptr) {
-            Rcpp::Rcout << "❌ Unable to skip geno file header line" << std::endl;
-            return false;
-        }
-        // Modification Date: 2025-09-25 - Thoroughly consume header line to avoid residual fragment being treated as data in first SNP loop
-        size_t skipped_len = std::strlen(skip_buffer);
-        if (skipped_len == 0 || skip_buffer[skipped_len - 1] != '\n') {
-            int ch;
-            while ((ch = gzgetc(geno_gz)) != -1 && ch != '\n') {
-                // Discard remaining characters until header line fully skipped
-            }
-        }
-        
-        
-        // Parse header line to get sample IDs (consistent with v16)
-        std::istringstream iss(header_line);
-        std::string field;
-        std::vector<std::string> header_fields;
-        while (std::getline(iss, field, '\t')) {
-            header_fields.push_back(field);
-        }
-        
-        // [v20 Consistent with v16] Build global sample mapping - Modification Date: 2025-09-12
-        // Use same mapping construction logic as v16: samples start from 6th column (index 5)
-        global_sample_to_col.clear();
-        for (size_t i = 5; i < header_fields.size(); ++i) {  // From 6th column, index 5
-            global_sample_to_col[header_fields[i]] = static_cast<int>(i);  // header_fields[i] is sample ID, column index is i
-        }
-        
-        // Debug info: Show mapping construction result (consistent with v16)
-        Rcpp::Rcout << "✅ Sample mapping construction complete: " << global_sample_to_col.size() 
-                   << " UKB samples, processing " << target_sample_ids.size() << " target samples" << std::endl;
-        
-        if (global_sample_to_col.size() > 0) {
-            Rcpp::Rcout << "🔍 Mapping validation: Total header fields=" << header_fields.size() 
-                       << ", Expected samples=" << (header_fields.size() - 5) 
-                       << ", Actual mapped=" << global_sample_to_col.size() << std::endl;
-        }
-        
-        // Skip haplo file header line (same format as geno file)
-        char skip_haplo_buffer[1024];
-        if (gzgets(haplo_gz, skip_haplo_buffer, sizeof(skip_haplo_buffer)) == nullptr) {
-            Rcpp::Rcout << "❌ Unable to skip haplo file header line" << std::endl;
-            return false;
-        }
-        size_t skipped_haplo_len = std::strlen(skip_haplo_buffer);
-        if (skipped_haplo_len == 0 || skip_haplo_buffer[skipped_haplo_len - 1] != '\n') {
-            int ch;
-            while ((ch = gzgetc(haplo_gz)) != -1 && ch != '\n') {
-            }
-        }
-        
-        current_line_num = 1;  // Header line read
-        initialized = true;
-        
-        // [v20 Consistent with v17] Trust R interface validation, initialize success
-        Rcpp::Rcout << "✅ zlib reader initialized successfully (v20 Consistent with v17: Trust R interface sample validation)" << std::endl;
-        return true;
-        
-    } catch (...) {
-        Rcpp::Rcout << "❌ Exception occurred during initialization" << std::endl;
+    if (!reader.getline(header_line)) {
+        Rcpp::Rcout << "❌ Unable to read file header: " << geno_file << std::endl;
         return false;
     }
+    
+    reader.close();
+    
+    // Re-open geno file (skip header)
+    geno_gz = gzopen(geno_file.c_str(), "rb");
+    if (geno_gz == nullptr) {
+        Rcpp::Rcout << "❌ Unable to re-open geno file: " << geno_file << std::endl;
+        return false;
+    }
+    
+    // Skip first line (header)
+    char skip_buffer[1024];
+    if (gzgets(geno_gz, skip_buffer, sizeof(skip_buffer)) == nullptr) {
+        Rcpp::Rcout << "❌ Unable to skip geno file header line" << std::endl;
+        return false;
+    }
+    // Modification Date: 2025-09-25 - Thoroughly consume header line to avoid residual fragment being treated as data in first SNP loop
+    size_t skipped_len = std::strlen(skip_buffer);
+    if (skipped_len == 0 || skip_buffer[skipped_len - 1] != '\n') {
+        int ch;
+        while ((ch = gzgetc(geno_gz)) != -1 && ch != '\n') {
+            // Discard remaining characters until header line fully skipped
+        }
+    }
+    
+    
+    // Parse header line to get sample IDs (consistent with v16)
+    std::istringstream iss(header_line);
+    std::string field;
+    std::vector<std::string> header_fields;
+    while (std::getline(iss, field, '\t')) {
+        header_fields.push_back(field);
+    }
+    
+    // [v20 Consistent with v16] Build global sample mapping - Modification Date: 2025-09-12
+    // Use same mapping construction logic as v16: samples start from 6th column (index 5)
+    global_sample_to_col.clear();
+    for (size_t i = 5; i < header_fields.size(); ++i) {  // From 6th column, index 5
+        global_sample_to_col[header_fields[i]] = static_cast<int>(i);  // header_fields[i] is sample ID, column index is i
+    }
+    
+    // Debug info: Show mapping construction result (consistent with v16)
+    Rcpp::Rcout << "✅ Sample mapping construction complete: " << global_sample_to_col.size() 
+               << " UKB samples, processing " << target_sample_ids.size() << " target samples" << std::endl;
+    
+    if (global_sample_to_col.size() > 0) {
+        Rcpp::Rcout << "🔍 Mapping validation: Total header fields=" << header_fields.size() 
+                   << ", Expected samples=" << (header_fields.size() - 5) 
+                   << ", Actual mapped=" << global_sample_to_col.size() << std::endl;
+    }
+    
+    // Skip haplo file header line (same format as geno file)
+    char skip_haplo_buffer[1024];
+    if (gzgets(haplo_gz, skip_haplo_buffer, sizeof(skip_haplo_buffer)) == nullptr) {
+        Rcpp::Rcout << "❌ Unable to skip haplo file header line" << std::endl;
+        return false;
+    }
+    size_t skipped_haplo_len = std::strlen(skip_haplo_buffer);
+    if (skipped_haplo_len == 0 || skip_haplo_buffer[skipped_haplo_len - 1] != '\n') {
+        int ch;
+        while ((ch = gzgetc(haplo_gz)) != -1 && ch != '\n') {
+        }
+    }
+    
+    current_line_num = 1;  // Header line read
+    initialized = true;
+    
+    // [v20 Consistent with v17] Trust R interface validation, initialize success
+    Rcpp::Rcout << "✅ zlib reader initialized successfully (v20 Consistent with v17: Trust R interface sample validation)" << std::endl;
+    return true;
 }
 
 bool UKBZlibReader::read_next_snp(std::vector<double>& geno_data, 
@@ -2419,19 +2437,11 @@ int SPAmixPlusLocal_streamInCPP(
         Rcpp::Rcout << "Filter Params: MAF >= " << g_MAF_cutoff << ", MAC >= " << g_MAC_cutoff << std::endl;
     }
     
-    // Estimate total SNPs
-    int total_snps = 0;
-    #ifndef _WIN32
-    std::string count_cmd = "zcat \"" + geno_file + "\" | wc -l";
-    FILE* count_pipe = popen(count_cmd.c_str(), "r");
-    if (count_pipe) {
-        char buffer[128];
-        if (fgets(buffer, sizeof(buffer), count_pipe) != NULL) {
-            total_snps = std::atoi(buffer) - 1;  // Subtract header
-        }
-        pclose(count_pipe);
+    // Estimate total SNPs (cross-platform)
+    int total_snps = count_file_lines(geno_file);
+    if (total_snps > 0) {
+        total_snps = total_snps - 1;  // Subtract header
     }
-    #endif
     if (total_snps <= 0) total_snps = 10000000;  // Default estimate
     
     // Create objNull sample ID list (for zlib reader)
@@ -2733,62 +2743,44 @@ List read_bim_snps_by_chromosome(const std::string& bim_file) {
 //' @return List with sample information
 // [[Rcpp::export]]
 List read_ukb_sample_info_large(const std::string& file_path) {
-    std::string cmd = "zcat \"" + file_path + "\" | head -n 1";
-    
-    FILE* pipe = popen(cmd.c_str(), "r");
-    if (!pipe) {
-        stop("Failed to execute zcat command for file: " + file_path);
+    FileReader reader(file_path);
+    if (!reader.is_open()) {
+        stop("Failed to open file: " + file_path);
     }
     
-    // Allocate 8MB buffer
-    const size_t BUFFER_SIZE = 8 * 1024 * 1024;
-    char* buffer = new char[BUFFER_SIZE];
     std::vector<std::string> sample_ids;
-    
-    try {
-        if (fgets(buffer, BUFFER_SIZE, pipe) != nullptr) {
-            std::string header_line(buffer);
-            
-            if (!header_line.empty() && header_line.back() == '\n') {
-                header_line.pop_back();
-            }
-            
-            std::istringstream iss(header_line);
-            std::string field;
-            int field_count = 0;
-            
-            while (std::getline(iss, field, '\t')) {
-                field_count++;
-                if (field_count > 5) {  // Skip first 5 columns: CHROM,POS,ID,REF,ALT
-                    if (!field.empty()) {
-                         // Basic cleaning
-                         std::string clean_field = field;
-                         clean_field.erase(std::remove_if(clean_field.begin(), clean_field.end(), 
-                                                         [](unsigned char c) { return c < 32 || c > 126; }), 
-                                          clean_field.end());
-                         if(!clean_field.empty()) sample_ids.push_back(clean_field);
-                    }
-                }
-            }
-        }
-        
-        delete[] buffer;
-        pclose(pipe);
-        
-        if (sample_ids.empty()) {
-            stop("No sample IDs found in file: " + file_path);
-        }
-        
-        return List::create(
-            Named("sample_ids") = sample_ids,
-            Named("n_samples") = sample_ids.size()
-        );
-        
-    } catch (...) {
-        delete[] buffer;
-        pclose(pipe);
-        throw;
+    std::string header_line;
+
+    if (!reader.getline(header_line)) {
+        stop("Failed to read header from file: " + file_path);
     }
+
+    std::istringstream iss(header_line);
+    std::string field;
+    int field_count = 0;
+    
+    while (std::getline(iss, field, '\t')) {
+        field_count++;
+        if (field_count > 5) {  // Skip first 5 columns: CHROM,POS,ID,REF,ALT
+            if (!field.empty()) {
+                 // Basic cleaning
+                 std::string clean_field = field;
+                 clean_field.erase(std::remove_if(clean_field.begin(), clean_field.end(), 
+                                                 [](unsigned char c) { return c < 32 || c > 126; }), 
+                                  clean_field.end());
+                 if(!clean_field.empty()) sample_ids.push_back(clean_field);
+            }
+        }
+    }
+    
+    if (sample_ids.empty()) {
+        stop("No sample IDs found in file: " + file_path);
+    }
+    
+    return List::create(
+        Named("sample_ids") = sample_ids,
+        Named("n_samples") = sample_ids.size()
+    );
 }
 
 //' Stream-based SNP batch reading
@@ -2813,88 +2805,98 @@ List read_ukb_snp_batch_stream(const std::string& hapcount_file,
         );
     }
     
-    // Create SNP pattern for grep
-    std::string snp_pattern = target_snps[0];
+    // Create SNP set for fast lookup
+    std::unordered_set<std::string> target_snp_set;
     int batch_size = std::min((int)target_snps.size(), max_snps_per_batch);
-    for (int i = 1; i < batch_size; i++) {
-        snp_pattern += "|" + target_snps[i];
+    for (int i = 0; i < batch_size; i++) {
+        target_snp_set.insert(target_snps[i]);
     }
     
-    // zcat + grep
-    std::string hap_cmd = "zcat \"" + hapcount_file + "\" | grep -E \"(" + snp_pattern + ")\" | head -n " + std::to_string(batch_size);
-    std::string dos_cmd = "zcat \"" + dosage_file + "\" | grep -E \"(" + snp_pattern + ")\" | head -n " + std::to_string(batch_size);
-    
+    // Use FileReader instead of zcat
     std::vector<std::vector<double>> hap_data, dos_data;
     std::vector<std::string> found_snps;
     int n_samples = 0;
     
-    const size_t LINE_BUFFER_SIZE = 8 * 1024 * 1024;
-    char* line_buffer = new char[LINE_BUFFER_SIZE];
-    
     try {
         // Read Hapcount
-        FILE* hap_pipe = popen(hap_cmd.c_str(), "r");
-        if (hap_pipe) {
-            while (fgets(line_buffer, LINE_BUFFER_SIZE, hap_pipe) != nullptr) {
-                std::string line(line_buffer);
-                if (!line.empty() && line.back() == '\n') line.pop_back();
-                
-                std::istringstream iss(line);
-                std::string field;
-                std::vector<double> row_data;
-                int field_count = 0;
-                std::string snp_id;
-                
-                while (std::getline(iss, field, '\t')) {
-                    field_count++;
-                    if (field_count == 3) {
-                        snp_id = field;
-                    } else if (field_count > 5) {
-                        try {
-                            row_data.push_back(std::stod(field));
-                        } catch (...) {
-                            row_data.push_back(0.0);
-                        }
+        FileReader hap_reader(hapcount_file);
+        if (!hap_reader.is_open()) {
+            stop("Cannot open hapcount file: " + hapcount_file);
+        }
+        
+        std::string line;
+        bool first_line = true;
+        
+        while (hap_reader.getline(line) && found_snps.size() < (size_t)batch_size) {
+            if (first_line) {
+                first_line = false;
+                continue;  // Skip header
+            }
+            
+            std::istringstream iss(line);
+            std::string field;
+            std::vector<double> row_data;
+            int field_count = 0;
+            std::string snp_id;
+            
+            while (std::getline(iss, field, '\t')) {
+                field_count++;
+                if (field_count == 3) {
+                    snp_id = field;
+                } else if (field_count > 5) {
+                    try {
+                        row_data.push_back(std::stod(field));
+                    } catch (...) {
+                        row_data.push_back(0.0);
                     }
                 }
-                
-                if (!row_data.empty() && !snp_id.empty()) {
-                    hap_data.push_back(row_data);
-                    found_snps.push_back(snp_id);
-                    if (n_samples == 0) n_samples = row_data.size();
-                }
             }
-            pclose(hap_pipe);
+            
+            // Check if this SNP is in our target set
+            if (!row_data.empty() && !snp_id.empty() && target_snp_set.count(snp_id) > 0) {
+                hap_data.push_back(row_data);
+                found_snps.push_back(snp_id);
+                if (n_samples == 0) n_samples = row_data.size();
+            }
         }
         
         // Read Dosage
-        FILE* dos_pipe = popen(dos_cmd.c_str(), "r");
-        if (dos_pipe) {
-            while (fgets(line_buffer, LINE_BUFFER_SIZE, dos_pipe) != nullptr) {
-                std::string line(line_buffer);
-                if (!line.empty() && line.back() == '\n') line.pop_back();
-                
-                std::istringstream iss(line);
-                std::string field;
-                std::vector<double> row_data;
-                int field_count = 0;
-                
-                while (std::getline(iss, field, '\t')) {
-                    field_count++;
-                    if (field_count > 5) {
-                        try {
-                            row_data.push_back(std::stod(field));
-                        } catch (...) {
-                            row_data.push_back(0.0);
-                        }
-                    }
-                }
-                if (!row_data.empty()) dos_data.push_back(row_data);
-            }
-            pclose(dos_pipe);
+        FileReader dos_reader(dosage_file);
+        if (!dos_reader.is_open()) {
+            stop("Cannot open dosage file: " + dosage_file);
         }
         
-        delete[] line_buffer;
+        first_line = true;
+        while (dos_reader.getline(line) && dos_data.size() < found_snps.size()) {
+            if (first_line) {
+                first_line = false;
+                continue;  // Skip header
+            }
+            
+            std::istringstream iss(line);
+            std::string field;
+            std::vector<double> row_data;
+            int field_count = 0;
+            std::string snp_id;
+            
+            while (std::getline(iss, field, '\t')) {
+                field_count++;
+                if (field_count == 3) {
+                    snp_id = field;
+                } else if (field_count > 5) {
+                    try {
+                        row_data.push_back(std::stod(field));
+                    } catch (...) {
+                        row_data.push_back(0.0);
+                    }
+                }
+            }
+            
+            // Check if this SNP is in our target set
+            if (!row_data.empty() && !snp_id.empty() && target_snp_set.count(snp_id) > 0) {
+                dos_data.push_back(row_data);
+            }
+        }
         
         int n_snps_found = std::min(hap_data.size(), dos_data.size());
         
@@ -2921,7 +2923,6 @@ List read_ukb_snp_batch_stream(const std::string& hapcount_file,
         );
         
     } catch (...) {
-        delete[] line_buffer;
         throw;
     }
 }

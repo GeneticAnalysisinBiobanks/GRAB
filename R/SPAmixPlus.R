@@ -37,7 +37,11 @@
 #'   SparseGRMFile = SparseGRMFile,
 #'   method = "SPAmixPlus",
 #'   traitType = "Residual",
-#'   control = list(PC_columns = "PC1,PC2")
+#'   control = list(
+#'     PC_columns = "PC1,PC2", 
+#'     sigma_g = 1.0, 
+#'     sigma_e = 1.0
+#'   )
 #' )
 #'
 #' # Step 2

@@ -10,6 +10,7 @@ subjData <- PhenoData$IID
 extdata_dir <- system.file("extdata", package = "GRAB")
 dosagePrefix <- paste0(extdata_dir, "/simuAncestry")
 phiOutputPrefix <- "./compare_spamix/phi_"
+outPrefix <- phiOutputPrefix
 
 # Estimate phi for ancestries 1 and 2
 SPAmixLocalPlus.EstimatePhi(
@@ -22,11 +23,13 @@ SPAmixLocalPlus.EstimatePhi(
   MAF_cutoff = 0.01
 )
 
+# Fit null model to get residuals
 residuals <- survival::coxph(
   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
   data = PhenoData
 )$residuals
 
+# Run SPAmixPlus tests for ancestries 1 and 2
 result_lst <- SPAmixLocalPlus.Marker(
   resid = residuals,
   subjData = subjData,
@@ -34,9 +37,9 @@ result_lst <- SPAmixLocalPlus.Marker(
   haploPrefix = NULL,  # Uses dosagePrefix if NULL
   phiPrefix = phiOutputPrefix,
   ancIdx = c(1, 2),
-  outPrefix = phiOutputPrefix
+  outPrefix = outPrefix
 )
-#'
-# Step 5: View results
+
+# View results
 OutputFile1 <- paste0(phiOutputPrefix, "Ancestry1.txt")
 head(data.table::fread(OutputFile1))
