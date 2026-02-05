@@ -28,6 +28,18 @@
 // Modification Date: 2025-09-25 - Fixed GCC warning: Use minimal positive double value to avoid 1e-600 being truncated to 0 under IEEE754
 static constexpr double MIN_P_VALUE = std::numeric_limits<double>::min();
 
+// ==================== Global State Variables (defined) ====================
+namespace SPAmixLocalPlus {
+    arma::vec g_resid;
+    std::vector<std::string> g_subjData;
+    arma::uvec g_outliers;
+    int g_save_interval = 100;
+    double g_MAF_cutoff = 0.00001;
+    double g_MAC_cutoff = 1.0;
+    double g_cutoff = 2.0;
+    bool g_verbose = true;
+}
+
 // ==================== Data Structure Implementation ====================
 // Modification Date: 2025-09-03
 // Description: Data structure implementation exactly consistent with v11
@@ -889,6 +901,110 @@ std::vector<std::string> read_ukb_sample_ids_cpp(const std::string& geno_file) {
     Rcpp::Rcout << "📊 Extracted " << sample_ids.size() << " sample IDs from UKB file header" << std::endl;
     
     return sample_ids;
+}
+
+// ==================================================================
+// Global Setup and Helper Functions
+// ==================================================================
+
+// [[Rcpp::export]]
+void SPAmixPlusLocal_setupInCPP(
+    const arma::vec& resid,
+    const std::vector<std::string>& subjData,
+    Rcpp::Nullable<Rcpp::List> outLierList,
+    int save_interval,
+    double MAF_cutoff,
+    double MAC_cutoff,
+    double cutoff,
+    bool verbose
+) {
+    using namespace SPAmixLocalPlus;
+    
+    // Store global state
+    g_resid = resid;
+    g_subjData = subjData;
+    g_save_interval = save_interval;
+    g_MAF_cutoff = MAF_cutoff;
+    g_MAC_cutoff = MAC_cutoff;
+    g_cutoff = cutoff;
+    g_verbose = verbose;
+    
+    // Handle outliers
+    if (outLierList.isNotNull()) {
+        Rcpp::List outList(outLierList);
+        if (outList.containsElementNamed("posOutlier")) {
+            Rcpp::IntegerVector outlier_vec = outList["posOutlier"];
+            g_outliers = arma::conv_to<arma::uvec>::from(Rcpp::as<arma::vec>(outlier_vec));
+        } else {
+            g_outliers = arma::uvec();  // Empty
+        }
+    } else {
+        g_outliers = arma::uvec();  // Empty
+    }
+    
+    if (g_verbose) {
+        Rcpp::Rcout << "=== SPAmixPlusLocal Global Setup ===" << std::endl;
+        Rcpp::Rcout << "Residuals: " << g_resid.n_elem << " samples" << std::endl;
+        Rcpp::Rcout << "Outliers: " << g_outliers.n_elem << std::endl;
+        Rcpp::Rcout << "MAF cutoff: " << g_MAF_cutoff << std::endl;
+        Rcpp::Rcout << "MAC cutoff: " << g_MAC_cutoff << std::endl;
+        Rcpp::Rcout << "SPA cutoff: " << g_cutoff << std::endl;
+    }
+}
+
+// [[Rcpp::export]]
+List getSampleMatchIndices_cpp(const std::vector<std::string>& file_sample_ids) {
+    using namespace SPAmixLocalPlus;
+    
+    // Create map of global samples to indices
+    std::unordered_map<std::string, int> global_map;
+    for (size_t i = 0; i < g_subjData.size(); i++) {
+        global_map[g_subjData[i]] = i;
+    }
+    
+    // Match file samples to global samples
+    std::vector<int> file_indices;  // Indices in file (0-based)
+    std::vector<std::string> matched_sample_ids;  // IDs of matched samples
+    std::vector<int> global_to_matched;  // Map from global index to matched index
+    global_to_matched.resize(g_subjData.size(), -1);
+    
+    int matched_idx = 0;
+    for (size_t file_idx = 0; file_idx < file_sample_ids.size(); file_idx++) {
+        auto it = global_map.find(file_sample_ids[file_idx]);
+        if (it != global_map.end()) {
+            int global_idx = it->second;
+            file_indices.push_back(file_idx);
+            matched_sample_ids.push_back(file_sample_ids[file_idx]);
+            global_to_matched[global_idx] = matched_idx;
+            matched_idx++;
+        }
+    }
+    
+    // Remap outliers to matched indices
+    std::vector<int> valid_outliers;
+    for (size_t i = 0; i < g_outliers.n_elem; i++) {
+        int global_outlier_idx = g_outliers(i);
+        if (global_outlier_idx >= 0 && global_outlier_idx < (int)global_to_matched.size()) {
+            int matched_outlier_idx = global_to_matched[global_outlier_idx];
+            if (matched_outlier_idx >= 0) {
+                valid_outliers.push_back(matched_outlier_idx);
+            }
+        }
+    }
+    
+    if (g_verbose) {
+        Rcpp::Rcout << "Sample matching: " << matched_sample_ids.size() 
+                    << "/" << g_subjData.size() << " global samples found in file" << std::endl;
+        Rcpp::Rcout << "Remapped outliers: " << valid_outliers.size() 
+                    << "/" << g_outliers.n_elem << std::endl;
+    }
+    
+    return List::create(
+        Named("file_indices") = file_indices,
+        Named("matched_sample_ids") = matched_sample_ids,
+        Named("outliers_remapped") = valid_outliers,
+        Named("n_matched") = (int)matched_sample_ids.size()
+    );
 }
 
 // [[Rcpp::export]]
@@ -2124,38 +2240,74 @@ UKBZlibReader* create_ukb_zlib_reader(const std::string& geno_file,
 }
 
 // ==================== NEW: zlib Streaming Main Function ====================
-// Modification Date: 2025-09-11
-// Update Description: Line-by-line processing, no temp files, performance first, saving every save_interval SNPs
+// ==================================================================
+// Main Streaming Function (Refactored to use global state)
+// ==================================================================
+// Modification Date: 2026-02-05
+// Update Description: Renamed to SPAmixPlusLocal_streaming, uses global state
 
 // [[Rcpp::export]]
-int SPAmixPlus_local_ukb_high_performance_streaming_cpp(
+int SPAmixPlusLocal_streamInCPP(
     const std::string& geno_file,
     const std::string& haplo_file,
     const std::string& output_file,
     const arma::uvec& file_match_idx,
-    const arma::vec& R_matched,
     const arma::mat& phi_A_mat,
     const arma::mat& phi_B_mat,
     const arma::mat& phi_C_mat,
-    const arma::mat& phi_D_mat,
-    const arma::uvec& posOutlier,
-    int total_snps,
-    int save_interval,
-    double cutoff,
-    double MAF_cutoff,
-    double MAC_cutoff,
-    bool verbose
+    const arma::mat& phi_D_mat
 ) {
+    using namespace SPAmixLocalPlus;
+    
     auto overall_start = std::chrono::high_resolution_clock::now();
     
-    if (verbose) {
-        Rcpp::Rcout << "\nRocket [v20 zlib Streaming] Starting analysis of " << total_snps << " SNPs" << std::endl;
-        Rcpp::Rcout << "File Genotype File: " << geno_file << std::endl;
-        Rcpp::Rcout << "File Haplotype File: " << haplo_file << std::endl;
-        Rcpp::Rcout << "File Output File: " << output_file << std::endl;
-        Rcpp::Rcout << "Disk Save Interval: Every " << save_interval << " SNPs" << std::endl;
-        Rcpp::Rcout << "Tool Filter Params: MAF >= " << MAF_cutoff << ", MAC >= " << MAC_cutoff << std::endl;
+    // Extract matched residuals using file_match_idx
+    arma::vec R_matched(file_match_idx.n_elem);
+    for (arma::uword i = 0; i < file_match_idx.n_elem; i++) {
+        R_matched(i) = g_resid(file_match_idx(i));
     }
+    
+    // Get remapped outliers (already done by getSampleMatchIndices_cpp, but recalculate here for safety)
+    // Actually, we should get this from the R side via getSampleMatchIndices_cpp
+    // For now, remap outliers based on file_match_idx
+    std::vector<arma::uword> outlier_indices;
+    for (arma::uword i = 0; i < g_outliers.n_elem; i++) {
+        arma::uword global_idx = g_outliers(i);
+        // Find this global index in file_match_idx
+        for (arma::uword j = 0; j < file_match_idx.n_elem; j++) {
+            if (file_match_idx(j) == global_idx) {
+                outlier_indices.push_back(j);
+                break;
+            }
+        }
+    }
+    arma::uvec posOutlier = arma::conv_to<arma::uvec>::from(outlier_indices);
+    
+    if (g_verbose) {
+        Rcpp::Rcout << "\n=== SPAmixPlusLocal Streaming Analysis ===" << std::endl;
+        Rcpp::Rcout << "Genotype File: " << geno_file << std::endl;
+        Rcpp::Rcout << "Haplotype File: " << haplo_file << std::endl;
+        Rcpp::Rcout << "Output File: " << output_file << std::endl;
+        Rcpp::Rcout << "Matched Samples: " << R_matched.n_elem << std::endl;
+        Rcpp::Rcout << "Outliers (remapped): " << posOutlier.n_elem << std::endl;
+        Rcpp::Rcout << "Save Interval: Every " << g_save_interval << " SNPs" << std::endl;
+        Rcpp::Rcout << "Filter Params: MAF >= " << g_MAF_cutoff << ", MAC >= " << g_MAC_cutoff << std::endl;
+    }
+    
+    // Estimate total SNPs
+    int total_snps = 0;
+    #ifndef _WIN32
+    std::string count_cmd = "zcat \"" + geno_file + "\" | wc -l";
+    FILE* count_pipe = popen(count_cmd.c_str(), "r");
+    if (count_pipe) {
+        char buffer[128];
+        if (fgets(buffer, sizeof(buffer), count_pipe) != NULL) {
+            total_snps = std::atoi(buffer) - 1;  // Subtract header
+        }
+        pclose(count_pipe);
+    }
+    #endif
+    if (total_snps <= 0) total_snps = 10000000;  // Default estimate
     
     // Create objNull sample ID list (for zlib reader)
     std::vector<std::string> target_sample_ids;
@@ -2164,7 +2316,7 @@ int SPAmixPlus_local_ukb_high_performance_streaming_cpp(
     // [v20 Critical Fix] Read UKB file sample IDs first to build mapping
     std::vector<std::string> ukb_sample_ids = read_ukb_sample_ids_cpp(geno_file);
     
-    if (verbose) {
+    if (g_verbose) {
         Rcpp::Rcout << "Stats UKB File Total Samples: " << ukb_sample_ids.size() << std::endl;
         Rcpp::Rcout << "Target file_match_idx Range: [" << file_match_idx.min() << ", " << file_match_idx.max() << "]" << std::endl;
     }
@@ -2175,7 +2327,7 @@ int SPAmixPlus_local_ukb_high_performance_streaming_cpp(
     for (arma::uword i = 0; i < file_match_idx.n_elem; ++i) {
         arma::uword ukb_idx = file_match_idx(i);  // 0-based index
         target_sample_ids.push_back(ukb_sample_ids[ukb_idx]);
-        if (verbose && i < 5) {
+        if (g_verbose && i < 5) {
             Rcpp::Rcout << "  Mapping[" << i << "]: file_match_idx=" << ukb_idx 
                        << " -> sample_id=" << ukb_sample_ids[ukb_idx] << std::endl;
         }
@@ -2200,7 +2352,7 @@ int SPAmixPlus_local_ukb_high_performance_streaming_cpp(
             test_haplo.size() == expected_sample_count &&
             test_geno.size() == R_matched.n_elem) {
             format_validated = true;
-            if (verbose) {
+            if (g_verbose) {
                 Rcpp::Rcout << "Success Data format validated: " << expected_sample_count 
                            << " samples, Test SNP: " << test_snp_id << std::endl;
             }
@@ -2225,7 +2377,7 @@ int SPAmixPlus_local_ukb_high_performance_streaming_cpp(
     auto init_end = std::chrono::high_resolution_clock::now();
     auto init_duration = std::chrono::duration_cast<std::chrono::milliseconds>(init_end - init_start);
     
-    if (verbose) {
+    if (g_verbose) {
         Rcpp::Rcout << "Success zlib reader initialized, data format validated (" << init_duration.count() << "ms)" << std::endl;
     }
     
@@ -2242,7 +2394,7 @@ int SPAmixPlus_local_ukb_high_performance_streaming_cpp(
     
     // Prepare result buffer
     std::vector<std::string> result_buffer;
-    result_buffer.reserve(save_interval);
+    result_buffer.reserve(g_save_interval);
     
     // Main processing loop: Line-by-line reading and processing
     int processed_snps = 0;
@@ -2260,12 +2412,12 @@ int SPAmixPlus_local_ukb_high_performance_streaming_cpp(
         arma::vec haplo_num(haplo_data.data(), haplo_data.size(), false, true);
         
         try {
-            // Call core algorithm (Exactly consistent with v11)
+            // Call core algorithm (uses global cutoff/MAF/MAC cutoffs)
             arma::vec result = SPAmixPlus_local_related_one_SNP_cpp(
                 g, R_matched, haplo_num,
                 PhiData(phi_A_mat), PhiData(phi_B_mat), 
                 PhiData(phi_C_mat), PhiData(phi_D_mat),
-                posOutlier, cutoff, MAF_cutoff, MAC_cutoff
+                posOutlier, g_cutoff, g_MAF_cutoff, g_MAC_cutoff
             );
             
             // Parse result (Consistent with v11 order)
@@ -2348,7 +2500,7 @@ int SPAmixPlus_local_ukb_high_performance_streaming_cpp(
         processed_snps++;
         
         // Save results when save_interval reached or finished
-        if (result_buffer.size() >= static_cast<size_t>(save_interval) || processed_snps >= total_snps) {
+        if (result_buffer.size() >= static_cast<size_t>(g_save_interval) || processed_snps >= total_snps) {
             for (const std::string& line : result_buffer) {
                 output << line << "\n";
             }
@@ -2357,7 +2509,7 @@ int SPAmixPlus_local_ukb_high_performance_streaming_cpp(
             saved_snps += result_buffer.size();
             result_buffer.clear();
             
-            if (verbose) {
+            if (g_verbose) {
                 auto current_time = std::chrono::high_resolution_clock::now();
                 auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(current_time - process_start);
                 Rcpp::Rcout << "📊 Processed " << processed_snps << "/" << total_snps 
@@ -2374,8 +2526,8 @@ int SPAmixPlus_local_ukb_high_performance_streaming_cpp(
     auto overall_end = std::chrono::high_resolution_clock::now();
     auto total_duration = std::chrono::duration_cast<std::chrono::seconds>(overall_end - overall_start);
     
-    if (verbose) {
-        Rcpp::Rcout << "\n✅ [v20 zlib Streaming] Analysis complete" << std::endl;
+    if (g_verbose) {
+        Rcpp::Rcout << "\n✅ SPAmixPlusLocal Analysis complete" << std::endl;
         Rcpp::Rcout << "📊 Total Processed: " << processed_snps << " SNPs" << std::endl;
         Rcpp::Rcout << "📁 Results saved to: " << output_file << std::endl;
         Rcpp::Rcout << "⏱️ Total time: " << total_duration.count() << " seconds" << std::endl;

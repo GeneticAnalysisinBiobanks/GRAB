@@ -23,7 +23,21 @@
 using namespace Rcpp;
 using namespace arma;
 
-// ==================== Data Structure Definitions ====================
+// ==================== Global State Variables ====================
+// These are set once via SPAmixPlusLocal_setup and used across all ancestries
+
+namespace SPAmixLocalPlus {
+    extern arma::vec g_resid;
+    extern std::vector<std::string> g_subjData;
+    extern arma::uvec g_outliers;
+    extern int g_save_interval;
+    extern double g_MAF_cutoff;
+    extern double g_MAC_cutoff;
+    extern double g_cutoff;
+    extern bool g_verbose;
+}
+
+// ====================Data Structure Definitions ====================
 // Modification Date: 2025-09-03
 // Description: Matches data structures from v11 exactly, adapted only for UKB format
 
@@ -246,7 +260,7 @@ int SPAmixPlus_local_ukb_high_performance_batch_cpp(
     const std::string& output_file,
     const std::vector<std::string>& target_sample_ids,
     const arma::vec& R_matched,
-    const arma::mat& phi_A_mat,  // Changed to mat type
+    const arma::mat& phi_A_mat,
     const arma::mat& phi_B_mat,
     const arma::mat& phi_C_mat,
     const arma::mat& phi_D_mat,
@@ -259,24 +273,40 @@ int SPAmixPlus_local_ukb_high_performance_batch_cpp(
     bool verbose
 );
 
-// Modification Date: 2025-09-11 - New: zlib streaming processing function, line-by-line, no temp files
-int SPAmixPlus_local_ukb_high_performance_streaming_cpp(
+// ==================================================================
+// Global Setup and Helper Functions
+// ==================================================================
+
+// Setup global state for SPAmixLocalPlus analysis
+void SPAmixPlusLocal_setupInCPP(
+    const arma::vec& resid,
+    const std::vector<std::string>& subjData,
+    Rcpp::Nullable<Rcpp::List> outLierList,
+    int save_interval,
+    double MAF_cutoff,
+    double MAC_cutoff,
+    double cutoff,
+    bool verbose
+);
+
+// Match file samples to global samples and remap outliers
+List getSampleMatchIndices_cpp(const std::vector<std::string>& file_sample_ids);
+
+// ==================================================================
+// Main Streaming Function
+// ==================================================================
+
+// Renamed from SPAmixPlus_local_ukb_high_performance_streaming_cpp
+// Now uses global state instead of passing all parameters
+int SPAmixPlusLocal_streamInCPP(
     const std::string& geno_file,
     const std::string& haplo_file,
     const std::string& output_file,
     const arma::uvec& file_match_idx,
-    const arma::vec& R_matched,
     const arma::mat& phi_A_mat,
     const arma::mat& phi_B_mat,
     const arma::mat& phi_C_mat,
-    const arma::mat& phi_D_mat,
-    const arma::uvec& posOutlier,
-    int total_snps,
-    int save_interval,  // Save results every N SNPs, replacing batch_size
-    double cutoff,
-    double MAF_cutoff,
-    double MAC_cutoff,
-    bool verbose
+    const arma::mat& phi_D_mat
 );
 
 // ==================== Helper Function Declarations ====================

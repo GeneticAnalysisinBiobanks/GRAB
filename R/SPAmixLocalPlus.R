@@ -1,31 +1,192 @@
+#' Local Ancestry-Specific Association Testing Using SPAmixLocalPlus
+#'
+#' @description
+#' Main entry point for SPAmixLocalPlus method. This function provides instructions
+#' for performing local ancestry-specific association testing in admixed populations.
+#' Unlike global ancestry methods, SPAmixLocalPlus accounts for local ancestry patterns
+#' using ancestry-specific haplotype counts and pre-computed phi matrices (pairwise
+#' genetic correlation coefficients).
+#'
+#' @details
+#' SPAmixLocalPlus extends SPAmixPlus to handle local ancestry-specific genetic associations.
+#' The workflow involves:
+#' \enumerate{
+#'   \item Prepare ancestry-specific dosage files (*.txt.gz) with ALT allele dosages
+#'   \item Prepare ancestry-specific haplotype count files (*.txt.gz)
+#'   \item Pre-compute phi matrices for scenarios A, B, C, D per ancestry
+#'   \item Fit null model using residuals from survival or regression model
+#'   \item Run \code{SPAmixLocalPlus.Marker()} to analyze all ancestries
+#' }
+#'
+#' @return No return value. Prints usage instructions to console.
+#'
+#' @examples
+#' \dontrun{
+#' # Load phenotype data
+#' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
+#' PhenoData <- data.table::fread(PhenoFile)
+#' subjData <- PhenoData$IID
+#'
+#' # Fit null model and extract residuals
+#' residuals <- survival::coxph(
+#'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
+#'   data = PhenoData
+#' )$residuals
+#'
+#' # Set file paths
+#' dosagePrefix <- system.file("extdata", "simuAncestry", package = "GRAB")
+#' # Expects: simuAncestry1_Dosage.txt.gz, simuAncestry1_HapCount.txt.gz, etc.
+#' # and: simuAncestryAncestry1_scenarioA.txt, etc.
+#'
+#' outPrefix <- file.path(tempdir(), "resultSPAmixLocalPlus_Ancestry")
+#'
+#' # Run analysis for ancestries 1 and 2
+#' result_lst <- SPAmixLocalPlus.Marker(
+#'   resid = residuals,
+#'   subjData = subjData,
+#'   dosagePrefix = dosagePrefix,
+#'   haploPrefix = NULL,  # Uses dosagePrefix if NULL
+#'   phiPrefix = NULL,    # Uses dosagePrefix if NULL
+#'   ancIdx = c(1, 2),
+#'   outPrefix = outPrefix
+#' )
+#'
+#' # View results for Ancestry 1
+#' OutputFile1 <- paste0(outPrefix, "Ancestry1.txt")
+#' head(data.table::fread(OutputFile1))
+#' }
+#'
+#' @seealso
+#' \code{\link{SPAmixLocalPlus.Marker}} for the main analysis function
+#'
+#' @export
+GRAB.SPAmixLocalPlus <- function() {
+  .message("?GRAB.SPAmixLocalPlus for instructions")
+}
+
+#' Run SPAmixLocalPlus Analysis for Multiple Ancestries
+#'
+#' @description
+#' Main worker function to perform local ancestry-specific association testing across
+#' multiple ancestries. Sets global state once, then processes each ancestry sequentially.
+#'
+#' @param resid Numeric vector (required). Residuals from null model fit (e.g., from
+#'   \code{survival::coxph()$residuals} or \code{lm()$residuals}). Must match order of \code{subjData}.
+#' @param subjData Character vector (required). Sample IDs corresponding to \code{resid}.
+#'   Used to match samples between phenotype data and genotype files.
+#' @param dosagePrefix Character (required). Prefix path for dosage files. Function expects
+#'   files named \code{paste0(dosagePrefix, ancIdx, "_Dosage.txt.gz")} for each ancestry.
+#'   Example: if \code{dosagePrefix = "data/Anc"} and \code{ancIdx = c(1,2)}, expects
+#'   \code{data/Anc1_Dosage.txt.gz} and \code{data/Anc2_Dosage.txt.gz}.
+#' @param haploPrefix Character (optional, default = \code{NULL}). Prefix path for haplotype
+#'   count files. If \code{NULL}, uses \code{dosagePrefix}. Function expects files named
+#'   \code{paste0(haploPrefix, ancIdx, "_HapCount.txt.gz")} for each ancestry.
+#' @param phiPrefix Character (optional, default = \code{NULL}). Prefix path for phi matrix
+#'   files. If \code{NULL}, uses \code{dosagePrefix}. Function expects files named
+#'   \code{paste0(phiPrefix, "Ancestry", ancIdx, "_scenario", c("A","B","C","D"), ".txt")}
+#'   for each ancestry.
+#' @param ancIdx Integer vector (required). Ancestry indices to analyze (e.g., \code{c(1, 2, 3)}).
+#'   Each index corresponds to one local ancestry population.
+#' @param outPrefix Character (required). Prefix path for output files. Results saved as
+#'   \code{paste0(outPrefix, "Ancestry", ancIdx, ".txt")} for each ancestry.
+#' @param outLierList Character vector (optional, default = \code{NULL}). Sample IDs to
+#'   exclude from analysis as outliers.
+#' @param save_interval Integer (optional, default = 100). Number of SNPs processed before
+#'   intermediate results are saved to disk. Helps prevent data loss in long-running analyses.
+#' @param MAF_cutoff Numeric (optional, default = 0.00001). Minor Allele Frequency cutoff.
+#'   SNPs with MAF below this threshold are excluded from analysis.
+#' @param MAC_cutoff Numeric (optional, default = 1). Minor Allele Count cutoff. SNPs with
+#'   MAC below this threshold are excluded from analysis.
+#' @param cutoff Numeric (optional, default = 2.0). Saddlepoint approximation cutoff for
+#'   p-value calculation. Uses normal approximation when |test statistic| < cutoff.
+#' @param verbose Logical (optional, default = \code{TRUE}). If \code{TRUE}, prints detailed
+#'   progress information during analysis.
+#'
+#' @return List with one element per ancestry (indexed by \code{ancIdx}). Each element
+#'   contains analysis results from \code{SPAmixLocalPlus.OneAnc()}. Results are also
+#'   written to output files.
+#'
+#' @seealso
+#' \code{\link{GRAB.SPAmixLocalPlus}} for usage examples,
+#' \code{\link{SPAmixLocalPlus.OneAnc}} for single-ancestry processing
+#'
+#' @export
+SPAmixLocalPlus.Marker <- function(
+  resid,
+  subjData,
+  dosagePrefix,
+  haploPrefix = NULL,
+  phiPrefix = NULL,
+  ancIdx,
+  outPrefix,
+  outLierList = NULL,
+  save_interval = 100,
+  MAF_cutoff = 0.00001,
+  MAC_cutoff = 1,
+  cutoff = 2.0,
+  verbose = TRUE
+) {
+
+  resid <- as.numeric(resid)
+
+  # Set global state ONCE for all ancestries
+  SPAmixPlusLocal_setupInCPP(
+    resid = resid,
+    subjData = subjData,
+    outLierList = outLierList,
+    save_interval = save_interval,
+    MAF_cutoff = MAF_cutoff,
+    MAC_cutoff = MAC_cutoff,
+    cutoff = cutoff,
+    verbose = verbose
+  )
+
+  if (is.null(haploPrefix)) {
+    haploPrefix <- dosagePrefix
+  }
+
+  if (is.null(phiPrefix)) {
+    phiPrefix <- dosagePrefix
+  }
+
+  result_lst <- vector("list", length(ancIdx))
+  for (i in ancIdx) {
+    result_lst[[i]] <- SPAmixLocalPlus.OneAnc(
+      dosage_file = paste0(dosagePrefix, i, "_Dosage.txt.gz"),
+      haplo_file  = paste0(haploPrefix, i, "_HapCount.txt.gz"),
+      phi_anc_pre = paste0(phiPrefix, "Ancestry", i, "_scenario"),
+      output_file = paste0(outPrefix, "Ancestry", i, ".txt")
+    )
+  }
+
+  return(result_lst)
+}
 
 
 # ============================== SPAmixLocalPlus: Step2 =================================
 
-#' SPAmixLocalPlus Marker Analysis for Local Ancestry-Specific Association Testing
+#' Process One Ancestry for SPAmixLocalPlus Analysis
 #' 
 #' @description
-#' Performs local ancestry-specific association testing using pre-computed phi matrices 
-#' (pairwise genetic correlation coefficients). This method accounts for local ancestry 
-#' patterns in admixed populations by using ancestry-specific haplotype counts and 
-#' phi coefficients for different haplotype configuration scenarios.
+#' Worker function to perform local ancestry-specific association testing for a single
+#' ancestry. Uses global state set by \code{SPAmixLocalPlus.Marker()} for residuals,
+#' sample IDs, and analysis parameters. Loads ancestry-specific dosage, haplotype counts,
+#' and phi matrices to compute association statistics.
 #' 
-#' @param objNull Object of class `SPAmixPlus_NULL_Model` returned by `fitNullModel.SPAmixPlus()`.
-#'   Must contain residuals, sample IDs, outlier information, and other null model parameters.
-#' @param dosage_file Character. Path to ancestry-specific genotype dosage file (.txt.gz).
-#'   This file contains dosage values (0-2) for the ALT allele from a specific ancestry population.
-#' @param haplo_file Character. Path to ancestry-specific haplotype count file (.txt.gz).
-#'   This file contains the number of haplotypes (0, 1, or 2) from the specific ancestry at each locus.
-#' @param phi_file Character. Prefix path to phi files for this ancestry (without scenario suffix).
-#'   The function will look for files: phi_file_scenarioA.txt, phi_file_scenarioB.txt, etc.
-#'   If phi_file = "phi/ancestry1", it will load "phi/ancestry1_scenarioA.txt", etc.
-#' @param output_file Character. Path to output result file where association test results will be saved.
-#' @param pheno_idx Integer. Phenotype index to analyze (default 1). Used when objNull contains multiple phenotypes.
-#' @param save_interval Integer. Number of SNPs processed before intermediate results are saved (default 100).
-#'   Helps prevent data loss for long-running analyses.
-#' @param MAF_cutoff Numeric. Minor Allele Frequency cutoff (default 0.00001). SNPs with MAF below this are excluded.
-#' @param MAC_cutoff Numeric. Minor Allele Count cutoff (default 1). SNPs with MAC below this are excluded.
-#' @param verbose Logical. If TRUE, output detailed progress information (default TRUE).
+#' @param dosage_file Character (required). Full path to ancestry-specific genotype dosage
+#'   file (.txt.gz). Contains dosage values (0-2) for ALT allele from specific ancestry.
+#'   Format: tab-delimited, SNPs in rows, samples in columns, with SNP ID in first column
+#'   and sample IDs in header row.
+#' @param haplo_file Character (required). Full path to ancestry-specific haplotype count
+#'   file (.txt.gz). Contains number of haplotypes (0, 1, or 2) from specific ancestry at
+#'   each locus. Same format as dosage file.
+#' @param phi_anc_pre Character (required). Prefix path to phi files for this ancestry
+#'   (without scenario suffix). Function expects files: \code{paste0(phi_anc_pre, c("A","B","C","D"), ".txt")}.
+#'   Example: if \code{phi_anc_pre = "phi/ancestry1_scenario"}, expects
+#'   \code{phi/ancestry1_scenarioA.txt}, \code{phi/ancestry1_scenarioB.txt}, etc.
+#'   Phi files should be tab-delimited with columns: IID1, IID2, Phi_value.
+#' @param output_file Character (required). Full path to output result file where
+#'   association test results will be saved (.txt format).
 #' 
 #' @details 
 #' The \code{SPAmixLocalPlus.Marker} function performs association testing that accounts for 
@@ -56,7 +217,8 @@
 #' - Header row: Sample IDs
 #' - Data: Numeric values (dosages or haplotype counts)
 #' 
-#' @return No explicit return value. Results are written to \code{output_file} containing:
+#' @return List containing analysis results. Results are also written to \code{output_file}
+#'   as tab-delimited text with columns:
 #'   \itemize{
 #'     \item Marker ID
 #'     \item Chromosome
@@ -68,164 +230,48 @@
 #'     \item Other test statistics
 #'   }
 #' 
-#' @examples
-#' \dontrun{
-#' # First, fit null model (same as SPAmixPlus)
-#' objNull <- fitNullModel.SPAmixPlus(
-#'   formula = pheno ~ age + sex,
-#'   data = phenoData,
-#'   SparseGRMFile = "grm/sparse_grm.txt",
-#'   subjData = subj_ids
-#' )
+#' @note
+#' This function is typically called by \code{SPAmixLocalPlus.Marker()} rather than directly.
+#' It relies on global state variables set by \code{SPAmixPlusLocal_setupInCPP()}, including
+#' residuals, sample IDs, outlier list, and analysis parameters.
 #' 
-#' # Run local ancestry analysis for Ancestry 1
-#' SPAmixLocalPlus.Marker(
-#'   objNull = objNull,
-#'   dosage_file = "data/Ancestry1_Dosage.txt.gz",
-#'   haplo_file = "data/Ancestry1_HapCount.txt.gz",
-#'   phi_file = "phi/ancestry1",  # Will look for ancestry1_scenarioA.txt, etc.
-#'   output_file = "results/Ancestry1_results.txt"
-#' )
-#' 
-#' # Run for Ancestry 2
-#' SPAmixLocalPlus.Marker(
-#'   objNull = objNull,
-#'   dosage_file = "data/Ancestry2_Dosage.txt.gz",
-#'   haplo_file = "data/Ancestry2_HapCount.txt.gz",
-#'   phi_file = "phi/ancestry2",
-#'   output_file = "results/Ancestry2_results.txt"
-#' )
-#' }
-#' 
-#' @seealso 
-#' \code{\link{fitNullModel.SPAmixPlus}} for fitting the null model
+#' @seealso
+#' \code{\link{SPAmixLocalPlus.Marker}} for multi-ancestry analysis,
+#' \code{\link{GRAB.SPAmixLocalPlus}} for usage examples
 #' 
 #' @export
-SPAmixLocalPlus.Marker = function(objNull,
-                                   dosage_file,
-                                   haplo_file, 
-                                   phi_file,
-                                   output_file,
-                                   pheno_idx = 1,
-                                   save_interval = 100,
-                                   MAF_cutoff = 0.00001,
-                                   MAC_cutoff = 1,
-                                   verbose = TRUE) {
+
+SPAmixLocalPlus.OneAnc = function(
+  dosage_file,
+  haplo_file, 
+  phi_anc_pre,
+  output_file
+) {
   
-  # 1. Validation
-  if (verbose) cat("=== SPAmixLocalPlus.Marker ===\n")
+  # 1. Validation - Check file existence
   if (!file.exists(dosage_file)) stop("Dosage file not found: ", dosage_file)
   if (!file.exists(haplo_file)) stop("Haplotype file not found: ", haplo_file)
   
   # Check for phi files (scenarios A, B, C, D)
   phi_scenarios <- c("A", "B", "C", "D")
-  phi_file_pattern <- paste0(phi_file, "_scenario")
   for (scenario in phi_scenarios) {
-    phi_path <- paste0(phi_file_pattern, scenario, ".txt")
+    phi_path <- paste0(phi_anc_pre, scenario, ".txt")
     if (!file.exists(phi_path)) {
       stop("Phi file not found: ", phi_path, 
-           "\nExpected files: ", phi_file, "_scenarioA/B/C/D.txt")
+           "\nExpected files: ", phi_anc_pre, "A/B/C/D.txt")
     }
   }
   
-  # Check class of objNull
-  # Note: The user might call it standard list or class. 
-  # We check for basic required components if class check fails or behaves weirdly.
-  if (!inherits(objNull, "SPAmixPlus_NULL_Model") && !inherits(objNull, "list")) {
-      warning("objNull is not of class 'SPAmixPlus_NULL_Model' or 'list'. Proceeding with caution.")
-  }
-
-  if (verbose) {
-    cat("Dosage File:", dosage_file, "\n")
-    cat("Haplotype File:", haplo_file, "\n")
-    cat("Phi File Prefix:", phi_file, "\n")
-    cat("Output File:", output_file, "\n")
-    cat("MAF threshold:", MAF_cutoff, "| MAC threshold:", MAC_cutoff, "\n")
-  }
-
-  # 2. Extract Null Model Info
-  # Handle cases where nPheno might not be present (legacy objects?)
-  nPheno = if(!is.null(objNull$nPheno)) objNull$nPheno else 1
-  if (pheno_idx > nPheno || pheno_idx < 1) stop("pheno_idx out of range.")
-  
-  # Extract Residuals
-  # objNull$resid is usually a matrix (N x nPheno)
-  if(is.null(objNull$resid)) stop("objNull$resid is missing.")
-  R = if(is.matrix(objNull$resid)) as.numeric(objNull$resid[, pheno_idx]) else as.numeric(objNull$resid)
-  
-  # Extract Sample IDs
-  if (is.list(objNull$subjData) && "SubjID" %in% names(objNull$subjData)) {
-      objNull_sample_ids <- as.character(objNull$subjData$SubjID)
-  } else if(!is.null(objNull$subjData)) {
-      objNull_sample_ids <- as.character(objNull$subjData)
-  } else {
-      # Fallback: try to find sample IDs from resid names?
-      if(!is.null(rownames(objNull$resid))) {
-          objNull_sample_ids = rownames(objNull$resid)
-      } else {
-          stop("Could not find Sample IDs in objNull$subjData or rownames(objNull$resid).")
-      }
-  }
-  
-  # Extract Outliers (0-based indices from C++)
-  # objNull$outLierList is a list of lists if nPheno > 1, or just a list?
-  # Standard SPAmixPlus usually lists of lists.
-  outlier_list <- if(is.null(objNull$outLierList[[pheno_idx]])) objNull$outLierList else objNull$outLierList[[pheno_idx]]
-  
-  if(is.null(outlier_list$posOutlier)) {
-      # Maybe structure is different
-      posOutlier = integer(0) 
-      if(verbose) cat("Warning: No outliers found in objNull.\n")
-  } else {
-      # FIX 2025-01-31: C++ kernel expects 1-based indices (it performs -1 internally).
-      # objNull stores 0-based indices. We must convert to 1-based here.
-      posOutlier <- as.integer(outlier_list$posOutlier + 1)
-  }
-
-  if (verbose) {
-     cat("Samples in Null Model:", length(objNull_sample_ids), "\n")
-     cat("Outliers:", length(posOutlier), "\n")
-  }
-
-  # 3. Match with File Samples
-  # Call C++ helper to read IDs from gz file
+  # 2. Match samples and get indices from C++ global state
   file_sample_ids <- read_ukb_sample_ids_cpp(dosage_file)
+  match_info <- getSampleMatchIndices_cpp(file_sample_ids)
   
-  match_result <- match(objNull_sample_ids, file_sample_ids)
-  if (any(is.na(match_result))) {
-      missing_count <- sum(is.na(match_result))
-      if(missing_count == length(objNull_sample_ids)) {
-          stop("NO samples matched between Null Model and Genotype file. Check ID formats.")
-      }
-      warning(paste(missing_count, "samples from Null Model not found in Genotype file. They will be ignored."))
-  }
+  # 3. Load Phi Matrices
+  # Helper to load and format phi matrix using matched sample indices
+  # Get matched sample IDs for phi mapping
+  matched_sample_ids <- match_info$matched_sample_ids
   
-  # Logic: Filter `R` (residuals) to only include samples that exist in the file.
-  valid_indices_in_objNull <- which(!is.na(match_result))
-  R_subset <- R[valid_indices_in_objNull]
-  
-  # Indices in FILE (0-based) corresponding to the valid samples
-  file_indices_0based <- as.integer(match_result[valid_indices_in_objNull] - 1)
-  
-  # Re-map outliers
-  outlier_indices_1based = posOutlier + 1
-  new_outlier_indices = match(outlier_indices_1based, valid_indices_in_objNull)
-  # Filter out outliers that were dropped (not in file)
-  new_outlier_indices = new_outlier_indices[!is.na(new_outlier_indices)]
-  posOutlier_subset = as.integer(new_outlier_indices - 1)
-  
-  if (verbose) {
-      cat("Matched Samples:", length(R_subset), "\n")
-      cat("Mapped Outliers:", length(posOutlier_subset), "\n")
-  }
-
-  # 4. Load Phi Matrices
-  # Helper to load and format phi matrix
-  # Map IDs to indices in valid samples ONLY
-  kept_ids = objNull_sample_ids[valid_indices_in_objNull]
-  sample_map_idx <- setNames(seq_along(kept_ids), kept_ids)
-
-  convert_phi <- function(phi_path) {
+  convert_phi <- function(phi_path, sample_ids) {
       # Read phi file
       p_data <- data.table::fread(phi_path, header = TRUE)
       
@@ -238,7 +284,10 @@ SPAmixLocalPlus.Marker = function(objNull,
       j_ids = as.character(p_data$j_id)
       vals = as.numeric(p_data$phi_value)
       
-      # Map to internal indices (1-based for R data.table)
+      # Create mapping from sample IDs to indices
+      sample_map_idx <- setNames(seq_along(sample_ids), sample_ids)
+      
+      # Map to internal indices (1-based for R)
       idx_i = sample_map_idx[i_ids]
       idx_j = sample_map_idx[j_ids]
       
@@ -250,46 +299,22 @@ SPAmixLocalPlus.Marker = function(objNull,
       # Return matrix (i, j, value)
       as.matrix(dt[, .(i, j, val)])
   }
-
-  phi_A_mat <- convert_phi(paste0(phi_file_pattern, "A.txt"))
-  phi_B_mat <- convert_phi(paste0(phi_file_pattern, "B.txt"))
-  phi_C_mat <- convert_phi(paste0(phi_file_pattern, "C.txt"))
-  phi_D_mat <- convert_phi(paste0(phi_file_pattern, "D.txt"))
   
-  if (verbose) cat("Phi matrices loaded and mapped.\n")
+  phi_A_mat <- convert_phi(paste0(phi_anc_pre, "A.txt"), matched_sample_ids)
+  phi_B_mat <- convert_phi(paste0(phi_anc_pre, "B.txt"), matched_sample_ids)
+  phi_C_mat <- convert_phi(paste0(phi_anc_pre, "C.txt"), matched_sample_ids)
+  phi_D_mat <- convert_phi(paste0(phi_anc_pre, "D.txt"), matched_sample_ids)
   
-  # 5. Get Total SNPs (Estimate)
-  # Uses system call to support progress tracking
-  total_snps = 0
-  if (.Platform$OS.type == "unix") {
-      count_cmd <- paste0("zcat \"", dosage_file, "\" | wc -l")
-      total_snps = tryCatch({
-          out = system(count_cmd, intern=TRUE, ignore.stderr=TRUE)
-          as.integer(out) - 1 # header
-      }, warning = function(w) 0, error = function(e) 0)
-  }
-  
-  if(total_snps <= 0) total_snps = 10000000 # Dummy large number if unknown
-
-  # 6. Run Analysis
-  # Use default cutoff of 2.0 for SPA
-  result <- SPAmixPlus_local_ukb_high_performance_streaming_cpp(
+  # 4. Run Analysis (using global state set in SPAmixPlusLocal_setupInCPP)
+  result <- SPAmixPlusLocal_streamInCPP(
     geno_file = dosage_file,
     haplo_file = haplo_file, 
     output_file = output_file,
-    file_match_idx = file_indices_0based,
-    R_matched = R_subset,
+    file_match_idx = match_info$file_indices,
     phi_A_mat = phi_A_mat,
     phi_B_mat = phi_B_mat,
     phi_C_mat = phi_C_mat,
-    phi_D_mat = phi_D_mat,
-    posOutlier = posOutlier_subset,
-    total_snps = as.integer(total_snps),
-    save_interval = as.integer(save_interval),
-    cutoff = 2.0,  # Standard SPA cutoff
-    MAF_cutoff = as.numeric(MAF_cutoff),
-    MAC_cutoff = as.numeric(MAC_cutoff),
-    verbose = as.logical(verbose)
+    phi_D_mat = phi_D_mat
   )
   
   return(result)

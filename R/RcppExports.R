@@ -125,6 +125,14 @@ read_ukb_sample_ids_cpp <- function(geno_file) {
     .Call(`_GRAB_read_ukb_sample_ids_cpp`, geno_file)
 }
 
+SPAmixPlusLocal_setupInCPP <- function(resid, subjData, outLierList, save_interval, MAF_cutoff, MAC_cutoff, cutoff, verbose) {
+    invisible(.Call(`_GRAB_SPAmixPlusLocal_setupInCPP`, resid, subjData, outLierList, save_interval, MAF_cutoff, MAC_cutoff, cutoff, verbose))
+}
+
+getSampleMatchIndices_cpp <- function(file_sample_ids) {
+    .Call(`_GRAB_getSampleMatchIndices_cpp`, file_sample_ids)
+}
+
 read_ukb_batch_data_cpp <- function(geno_file, haplo_file, target_sample_ids, start_snp, batch_size) {
     .Call(`_GRAB_read_ukb_batch_data_cpp`, geno_file, haplo_file, target_sample_ids, start_snp, batch_size)
 }
@@ -141,8 +149,8 @@ SPAmixPlus_local_related_batch_rcpp <- function(Geno_file, haplo_file, phi_dir, 
     .Call(`_GRAB_SPAmixPlus_local_related_batch_rcpp`, Geno_file, haplo_file, phi_dir, ancestry_name, pheno_idx, batch_size, cutoff, MAF_cutoff, MAC_cutoff, output_file)
 }
 
-SPAmixPlus_local_ukb_high_performance_streaming_cpp <- function(geno_file, haplo_file, output_file, file_match_idx, R_matched, phi_A_mat, phi_B_mat, phi_C_mat, phi_D_mat, posOutlier, total_snps, save_interval, cutoff, MAF_cutoff, MAC_cutoff, verbose) {
-    .Call(`_GRAB_SPAmixPlus_local_ukb_high_performance_streaming_cpp`, geno_file, haplo_file, output_file, file_match_idx, R_matched, phi_A_mat, phi_B_mat, phi_C_mat, phi_D_mat, posOutlier, total_snps, save_interval, cutoff, MAF_cutoff, MAC_cutoff, verbose)
+SPAmixPlusLocal_streamInCPP <- function(geno_file, haplo_file, output_file, file_match_idx, phi_A_mat, phi_B_mat, phi_C_mat, phi_D_mat) {
+    .Call(`_GRAB_SPAmixPlusLocal_streamInCPP`, geno_file, haplo_file, output_file, file_match_idx, phi_A_mat, phi_B_mat, phi_C_mat, phi_D_mat)
 }
 
 #' Read PLINK BIM file and extract target SNPs by chromosome
