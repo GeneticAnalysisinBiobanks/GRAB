@@ -274,6 +274,21 @@ int SPAmixPlus_local_ukb_high_performance_batch_cpp(
 );
 
 // ==================================================================
+// Phi Estimation
+// ==================================================================
+
+// Compute phi ratios for ancestry-specific kinship estimation
+Rcpp::List SPAmixLocalPlus_computePhiCPP(
+    const arma::mat& hapcount_matrix,
+    const arma::mat& dosage_matrix,
+    const arma::uvec& pair_idx1,
+    const arma::uvec& pair_idx2,
+    const std::string& scenario,
+    double phi_threshold,
+    double maf_cutoff
+);
+
+// ==================================================================
 // Global Setup and Helper Functions
 // ==================================================================
 

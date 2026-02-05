@@ -904,6 +904,131 @@ std::vector<std::string> read_ukb_sample_ids_cpp(const std::string& geno_file) {
 }
 
 // ==================================================================
+// Phi Estimation Function
+// ==================================================================
+
+//' Compute Phi Ratios for Ancestry-Specific Kinship
+//' 
+//' @param hapcount_matrix Matrix (SNPs x Samples) of haplotype counts
+//' @param dosage_matrix Matrix (SNPs x Samples) of dosage values
+//' @param pair_idx1 Vector of indices for individual i in pairs (0-based)
+//' @param pair_idx2 Vector of indices for individual j in pairs (0-based)
+//' @param scenario Scenario string: "A", "B", "C", or "D"
+//' @param phi_threshold Threshold for filtering phi values
+//' @param maf_cutoff MAF cutoff for SNP filtering
+//' @return List with ratio_sums and valid_counts
+// [[Rcpp::export]]
+Rcpp::List SPAmixLocalPlus_computePhiCPP(
+    const arma::mat& hapcount_matrix,
+    const arma::mat& dosage_matrix,
+    const arma::uvec& pair_idx1,
+    const arma::uvec& pair_idx2,
+    const std::string& scenario,
+    double phi_threshold = 0.0,
+    double maf_cutoff = 0.01
+) {
+    int n_snps = hapcount_matrix.n_rows;
+    int n_samples = hapcount_matrix.n_cols;
+    int n_pairs = pair_idx1.n_elem;
+    
+    if ((int)pair_idx2.n_elem != n_pairs) {
+        Rcpp::stop("Pair index vectors must have same length");
+    }
+    
+    // Create directed pairs (i->j and j->i for different pairs)
+    std::vector<arma::uword> directed_pair_idx1, directed_pair_idx2;
+    for (int k = 0; k < n_pairs; k++) {
+        if (pair_idx1(k) != pair_idx2(k)) {
+            // Add both directions
+            directed_pair_idx1.push_back(pair_idx1(k));
+            directed_pair_idx2.push_back(pair_idx2(k));
+            directed_pair_idx1.push_back(pair_idx2(k));
+            directed_pair_idx2.push_back(pair_idx1(k));
+        }
+    }
+    
+    arma::uvec final_pair_idx1 = arma::conv_to<arma::uvec>::from(directed_pair_idx1);
+    arma::uvec final_pair_idx2 = arma::conv_to<arma::uvec>::from(directed_pair_idx2);
+    int n_directed_pairs = final_pair_idx1.n_elem;
+    
+    if ((int)dosage_matrix.n_rows != n_snps || (int)dosage_matrix.n_cols != n_samples) {
+        Rcpp::stop("Hapcount and dosage matrix dimensions mismatch");
+    }
+    
+    arma::vec ratio_sums(n_directed_pairs, arma::fill::zeros);
+    arma::uvec valid_counts(n_directed_pairs, arma::fill::zeros);
+    
+    int snps_passed_maf = 0;
+    double maf_high_threshold = 1.0 - maf_cutoff;
+    
+    // Process each SNP
+    for (int s = 0; s < n_snps; s++) {
+        // Compute global MAF from haplotype counts and dosages
+        double total_dosage = 0.0;
+        double total_hapcount = 0.0;
+        
+        for (int i = 0; i < n_samples; i++) {
+            total_dosage += dosage_matrix(s, i);
+            total_hapcount += hapcount_matrix(s, i);
+        }
+        
+        double global_maf = (total_hapcount > 1e-10) ? (total_dosage / total_hapcount) : 0.0;
+        
+        // Filter by MAF
+        if (global_maf <= maf_cutoff || global_maf >= maf_high_threshold) {
+            continue;
+        }
+        
+        snps_passed_maf++;
+        
+        // Process each pair
+        for (int p = 0; p < n_directed_pairs; p++) {
+            int idx1 = final_pair_idx1(p);
+            int idx2 = final_pair_idx2(p);
+            
+            if (idx1 >= (arma::uword)n_samples || idx2 >= (arma::uword)n_samples) continue;
+            
+            double h_i = hapcount_matrix(s, idx1);
+            double h_j = hapcount_matrix(s, idx2);
+            double g_i = dosage_matrix(s, idx1);
+            double g_j = dosage_matrix(s, idx2);
+            
+            double q = global_maf;
+            
+            // Check scenario match based on haplotype counts
+            bool scenario_match = false;
+            int hi_int = (int)std::round(h_i);
+            int hj_int = (int)std::round(h_j);
+            
+            if (scenario == "A" && hi_int == 2 && hj_int == 2) scenario_match = true;
+            else if (scenario == "B" && hi_int == 2 && hj_int == 1) scenario_match = true;
+            else if (scenario == "C" && hi_int == 1 && hj_int == 2) scenario_match = true;
+            else if (scenario == "D" && hi_int == 1 && hj_int == 1) scenario_match = true;
+            
+            if (scenario_match) {
+                // Compute phi ratio: (g_i - h_i*q)(g_j - h_j*q) / (h_i * h_j * q * (1-q))
+                double numerator = (g_i - h_i * q) * (g_j - h_j * q);
+                double denominator = h_i * h_j * q * (1.0 - q);
+                
+                if (std::abs(denominator) > 1e-15) {
+                    ratio_sums(p) += numerator / denominator;
+                    valid_counts(p) += 1;
+                }
+            }
+        }
+    }
+    
+    return Rcpp::List::create(
+        Rcpp::Named("ratio_sums") = ratio_sums,
+        Rcpp::Named("valid_counts") = valid_counts,
+        Rcpp::Named("directed_pair_idx1") = final_pair_idx1,
+        Rcpp::Named("directed_pair_idx2") = final_pair_idx2,
+        Rcpp::Named("n_snps_processed") = snps_passed_maf,
+        Rcpp::Named("n_pairs") = n_directed_pairs
+    );
+}
+
+// ==================================================================
 // Global Setup and Helper Functions
 // ==================================================================
 

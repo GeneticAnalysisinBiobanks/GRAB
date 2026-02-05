@@ -125,6 +125,20 @@ read_ukb_sample_ids_cpp <- function(geno_file) {
     .Call(`_GRAB_read_ukb_sample_ids_cpp`, geno_file)
 }
 
+#' Compute Phi Ratios for Ancestry-Specific Kinship
+#' 
+#' @param hapcount_matrix Matrix (SNPs x Samples) of haplotype counts
+#' @param dosage_matrix Matrix (SNPs x Samples) of dosage values
+#' @param pair_idx1 Vector of indices for individual i in pairs (0-based)
+#' @param pair_idx2 Vector of indices for individual j in pairs (0-based)
+#' @param scenario Scenario string: "A", "B", "C", or "D"
+#' @param phi_threshold Threshold for filtering phi values
+#' @param maf_cutoff MAF cutoff for SNP filtering
+#' @return List with ratio_sums and valid_counts
+SPAmixLocalPlus_computePhiCPP <- function(hapcount_matrix, dosage_matrix, pair_idx1, pair_idx2, scenario, phi_threshold = 0.0, maf_cutoff = 0.01) {
+    .Call(`_GRAB_SPAmixLocalPlus_computePhiCPP`, hapcount_matrix, dosage_matrix, pair_idx1, pair_idx2, scenario, phi_threshold, maf_cutoff)
+}
+
 SPAmixPlusLocal_setupInCPP <- function(resid, subjData, outLierList, save_interval, MAF_cutoff, MAC_cutoff, cutoff, verbose) {
     invisible(.Call(`_GRAB_SPAmixPlusLocal_setupInCPP`, resid, subjData, outLierList, save_interval, MAF_cutoff, MAC_cutoff, cutoff, verbose))
 }

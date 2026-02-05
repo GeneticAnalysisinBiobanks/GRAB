@@ -508,6 +508,23 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// SPAmixLocalPlus_computePhiCPP
+Rcpp::List SPAmixLocalPlus_computePhiCPP(const arma::mat& hapcount_matrix, const arma::mat& dosage_matrix, const arma::uvec& pair_idx1, const arma::uvec& pair_idx2, const std::string& scenario, double phi_threshold, double maf_cutoff);
+RcppExport SEXP _GRAB_SPAmixLocalPlus_computePhiCPP(SEXP hapcount_matrixSEXP, SEXP dosage_matrixSEXP, SEXP pair_idx1SEXP, SEXP pair_idx2SEXP, SEXP scenarioSEXP, SEXP phi_thresholdSEXP, SEXP maf_cutoffSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type hapcount_matrix(hapcount_matrixSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type dosage_matrix(dosage_matrixSEXP);
+    Rcpp::traits::input_parameter< const arma::uvec& >::type pair_idx1(pair_idx1SEXP);
+    Rcpp::traits::input_parameter< const arma::uvec& >::type pair_idx2(pair_idx2SEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type scenario(scenarioSEXP);
+    Rcpp::traits::input_parameter< double >::type phi_threshold(phi_thresholdSEXP);
+    Rcpp::traits::input_parameter< double >::type maf_cutoff(maf_cutoffSEXP);
+    rcpp_result_gen = Rcpp::wrap(SPAmixLocalPlus_computePhiCPP(hapcount_matrix, dosage_matrix, pair_idx1, pair_idx2, scenario, phi_threshold, maf_cutoff));
+    return rcpp_result_gen;
+END_RCPP
+}
 // SPAmixPlusLocal_setupInCPP
 void SPAmixPlusLocal_setupInCPP(const arma::vec& resid, const std::vector<std::string>& subjData, Rcpp::Nullable<Rcpp::List> outLierList, int save_interval, double MAF_cutoff, double MAC_cutoff, double cutoff, bool verbose);
 RcppExport SEXP _GRAB_SPAmixPlusLocal_setupInCPP(SEXP residSEXP, SEXP subjDataSEXP, SEXP outLierListSEXP, SEXP save_intervalSEXP, SEXP MAF_cutoffSEXP, SEXP MAC_cutoffSEXP, SEXP cutoffSEXP, SEXP verboseSEXP) {
@@ -749,6 +766,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_K_G2_vec_cpp", (DL_FUNC) &_GRAB_K_G2_vec_cpp, 3},
     {"_GRAB_read_ukb_haplo_data_cpp", (DL_FUNC) &_GRAB_read_ukb_haplo_data_cpp, 2},
     {"_GRAB_read_ukb_sample_ids_cpp", (DL_FUNC) &_GRAB_read_ukb_sample_ids_cpp, 1},
+    {"_GRAB_SPAmixLocalPlus_computePhiCPP", (DL_FUNC) &_GRAB_SPAmixLocalPlus_computePhiCPP, 7},
     {"_GRAB_SPAmixPlusLocal_setupInCPP", (DL_FUNC) &_GRAB_SPAmixPlusLocal_setupInCPP, 8},
     {"_GRAB_getSampleMatchIndices_cpp", (DL_FUNC) &_GRAB_getSampleMatchIndices_cpp, 1},
     {"_GRAB_read_ukb_batch_data_cpp", (DL_FUNC) &_GRAB_read_ukb_batch_data_cpp, 5},

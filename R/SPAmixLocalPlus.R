@@ -13,7 +13,7 @@
 #' \enumerate{
 #'   \item Prepare ancestry-specific dosage files (*.txt.gz) with ALT allele dosages
 #'   \item Prepare ancestry-specific haplotype count files (*.txt.gz)
-#'   \item Pre-compute phi matrices for scenarios A, B, C, D per ancestry
+#'   \item Estimate phi matrices using \code{SPAmixLocalPlus.EstimatePhi()} for scenarios A, B, C, D
 #'   \item Fit null model using residuals from survival or regression model
 #'   \item Run \code{SPAmixLocalPlus.Marker()} to analyze all ancestries
 #' }
@@ -22,46 +22,288 @@
 #'
 #' @examples
 #' \dontrun{
-#' # Load phenotype data
+#' # Step 1: Load phenotype data
 #' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
 #' PhenoData <- data.table::fread(PhenoFile)
 #' subjData <- PhenoData$IID
 #'
-#' # Fit null model and extract residuals
+#' # Step 2: Load sparse GRM and estimate phi matrices
+#' GRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
+#' GRM <- data.table::fread(GRMFile)
+#' 
+#' # Set file paths
+#' dosagePrefix <- system.file("extdata", "simuAncestry", package = "GRAB")
+#' phiOutputDir <- tempdir()
+#'
+#' # Estimate phi for ancestries 1 and 2
+#' SPAmixLocalPlus.EstimatePhi(
+#'   GRM = GRM,
+#'   dosagePrefix = dosagePrefix,
+#'   haploPrefix = dosagePrefix,
+#'   ancIdx = c(1, 2),
+#'   SampleIDs = subjData,
+#'   OutputDir = phiOutputDir,
+#'   MAF_cutoff = 0.01
+#' )
+#'
+#' # Step 3: Fit null model and extract residuals
 #' residuals <- survival::coxph(
 #'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
 #'   data = PhenoData
 #' )$residuals
 #'
-#' # Set file paths
-#' dosagePrefix <- system.file("extdata", "simuAncestry", package = "GRAB")
-#' # Expects: simuAncestry1_Dosage.txt.gz, simuAncestry1_HapCount.txt.gz, etc.
-#' # and: simuAncestryAncestry1_scenarioA.txt, etc.
-#'
+#' # Step 4: Run association analysis
 #' outPrefix <- file.path(tempdir(), "resultSPAmixLocalPlus_Ancestry")
 #'
-#' # Run analysis for ancestries 1 and 2
 #' result_lst <- SPAmixLocalPlus.Marker(
 #'   resid = residuals,
 #'   subjData = subjData,
 #'   dosagePrefix = dosagePrefix,
 #'   haploPrefix = NULL,  # Uses dosagePrefix if NULL
-#'   phiPrefix = NULL,    # Uses dosagePrefix if NULL
+#'   phiPrefix = phiOutputDir,  # Use phi files from estimation step
 #'   ancIdx = c(1, 2),
 #'   outPrefix = outPrefix
 #' )
 #'
-#' # View results for Ancestry 1
+#' # Step 5: View results
 #' OutputFile1 <- paste0(outPrefix, "Ancestry1.txt")
 #' head(data.table::fread(OutputFile1))
 #' }
 #'
 #' @seealso
+#' \code{\link{SPAmixLocalPlus.EstimatePhi}} for phi matrix estimation,
 #' \code{\link{SPAmixLocalPlus.Marker}} for the main analysis function
 #'
 #' @export
 GRAB.SPAmixLocalPlus <- function() {
   .message("?GRAB.SPAmixLocalPlus for instructions")
+}
+
+#' Estimate Ancestry-Specific Phi Matrices for SPAmixLocalPlus
+#'
+#' @description
+#' Estimates ancestry-specific kinship coefficients (phi matrices) for local ancestry
+#' association testing. Computes pairwise genetic correlations stratified by haplotype
+#' count configurations (scenarios A, B, C, D) using dosage and haplotype count data.
+#'
+#' @param GRM Data.frame, matrix, or file path. Three-column GRM with columns: ID1, ID2, Value.
+#'   Contains pairwise kinship coefficients for related individuals. Typically from
+#'   \code{getSparseGRM()} or similar GRM estimation.
+#' @param dosagePrefix Character (required). Prefix path for dosage files. Function expects
+#'   files named \code{paste0(dosagePrefix, ancIdx, "_Dosage.txt.gz")} for each ancestry.
+#' @param haploPrefix Character (optional, default = \code{NULL}). Prefix path for haplotype
+#'   count files. If \code{NULL}, uses \code{dosagePrefix}. Function expects files named
+#'   \code{paste0(haploPrefix, ancIdx, "_HapCount.txt.gz")} for each ancestry.
+#' @param ancIdx Integer vector (required). Ancestry indices to process (e.g., \code{c(1, 2)}).
+#' @param SampleIDs Character vector (required). Sample IDs matching those in dosage/hapcount files.
+#'   Must match order in \code{GRM}.
+#' @param OutputDir Character (required). Directory path where phi result files will be saved.
+#' @param Scenarios Character vector (optional, default = \code{c("A", "B", "C", "D")}).
+#'   Phi scenarios to compute. Each scenario corresponds to haplotype count configurations:
+#'   \itemize{
+#'     \item A: Both individuals have 2 haplotypes from this ancestry
+#'     \item B: Individual i has 2, individual j has 1 haplotype
+#'     \item C: Individual i has 1, individual j has 2 haplotypes
+#'     \item D: Both individuals have 1 haplotype from this ancestry
+#'   }
+#' @param Threshold Numeric (optional, default = 0.0). Phi threshold for filtering output.
+#'   Only pairs with phi >= Threshold are saved.
+#' @param TaskID Integer (optional, default = 1). Task ID for parallel processing.
+#'   Used in output filename: phi_result_ancestry{ancIdx}_scenario{A-D}_task{TaskID}.txt
+#' @param MAF_cutoff Numeric (optional, default = 0.01). Minor Allele Frequency cutoff.
+#'   SNPs with MAF < MAF_cutoff or MAF > (1 - MAF_cutoff) are excluded from phi estimation.
+#'
+#' @details
+#' Phi matrices represent pairwise genetic correlation coefficients specific to local ancestry.
+#' Unlike global kinship matrices, phi values vary by local ancestry and haplotype configuration.
+#' 
+#' The function reads dosage and haplotype count files, filters SNPs by MAF, and computes
+#' phi for each pair in the GRM using the formula:
+#' 
+#' \deqn{phi_{ij} = \frac{1}{M} \sum_{s=1}^{M} \frac{(g_{is} - h_{is}q_s)(g_{js} - h_{js}q_s)}{h_{is} h_{js} q_s(1-q_s)}}
+#' 
+#' where:
+#' \itemize{
+#'   \item \eqn{g_{is}} = dosage for individual i at SNP s
+#'   \item \eqn{h_{is}} = haplotype count for individual i at SNP s
+#'   \item \eqn{q_s} = global allele frequency at SNP s
+#'   \item M = number of SNPs passing filters
+#' }
+#'
+#' @return No explicit return value. Results are saved to \code{OutputDir} with filenames:
+#'   \code{phi_result_ancestry{ancIdx}_scenario{A/B/C/D}_task{TaskID}.txt}
+#'   
+#'   Each file is tab-delimited with columns:
+#'   \itemize{
+#'     \item i: Sample ID for individual i
+#'     \item j: Sample ID for individual j
+#'     \item phi_value: Estimated phi coefficient
+#'   }
+#'   
+#'   Files contain bidirectional pairs (i,j) and (j,i) for all pairs in GRM.
+#'
+#' @examples
+#' \dontrun{
+#' # Load phenotype and sample IDs
+#' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
+#' PhenoData <- data.table::fread(PhenoFile)
+#' subjData <- PhenoData$IID
+#'
+#' # Load sparse GRM
+#' GRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
+#' GRM <- data.table::fread(GRMFile)
+#'
+#' # Set file paths
+#' dosagePrefix <- system.file("extdata", "simuAncestry", package = "GRAB")
+#' phiOutputDir <- tempdir()
+#'
+#' # Estimate phi for ancestries 1 and 2
+#' SPAmixLocalPlus.EstimatePhi(
+#'   GRM = GRM,
+#'   dosagePrefix = dosagePrefix,
+#'   haploPrefix = NULL,  # Uses dosagePrefix
+#'   ancIdx = c(1, 2),
+#'   SampleIDs = subjData,
+#'   OutputDir = phiOutputDir,
+#'   MAF_cutoff = 0.01,
+#'   TaskID = 1
+#' )
+#'
+#' # Check output files
+#' list.files(phiOutputDir, pattern = "phi_result")
+#' # [1] "phi_result_ancestry1_scenarioA_task001.txt"
+#' # [2] "phi_result_ancestry1_scenarioB_task001.txt"
+#' # ... (8 files total for 2 ancestries x 4 scenarios)
+#' }
+#'
+#' @seealso
+#' \code{\link{GRAB.SPAmixLocalPlus}} for complete workflow example,
+#' \code{\link{SPAmixLocalPlus.Marker}} for association testing using phi matrices
+#'
+#' @export
+SPAmixLocalPlus.EstimatePhi <- function(
+  GRM,
+  dosagePrefix,
+  haploPrefix = NULL,
+  ancIdx,
+  SampleIDs,
+  OutputDir,
+  Scenarios = c("A", "B", "C", "D"),
+  Threshold = 0.0,
+  TaskID = 1,
+  MAF_cutoff = 0.01
+) {
+  
+  # Setup output directory
+  if (!dir.exists(OutputDir)) dir.create(OutputDir, recursive = TRUE)
+  
+  # Process GRM
+  if (is.character(GRM)) {
+    if (!file.exists(GRM)) stop("GRM file not found: ", GRM)
+    grm_dt <- data.table::fread(GRM)
+  } else {
+    grm_dt <- data.table::as.data.table(GRM)
+  }
+  
+  # Standardize GRM column names
+  if (ncol(grm_dt) < 3) stop("GRM must have at least 3 columns (ID1, ID2, Value).")
+  if (!all(c("ID1", "ID2") %in% names(grm_dt))) {
+    colnames(grm_dt)[1:3] <- c("ID1", "ID2", "Value")
+  }
+  
+  # Map sample IDs to 0-based indices for C++
+  grm_dt$idx1 <- match(grm_dt$ID1, SampleIDs) - 1
+  grm_dt$idx2 <- match(grm_dt$ID2, SampleIDs) - 1
+  
+  valid_grm <- grm_dt[!is.na(idx1) & !is.na(idx2)]
+  if (nrow(valid_grm) < nrow(grm_dt)) {
+    warning("Some GRM pairs contain IDs not in SampleIDs list.")
+  }
+  
+  if (is.null(haploPrefix)) {
+    haploPrefix <- dosagePrefix
+  }
+  
+  # Process each ancestry
+  for (anc_id in ancIdx) {
+    dosage_file <- paste0(dosagePrefix, anc_id, "_Dosage.txt.gz")
+    haplo_file <- paste0(haploPrefix, anc_id, "_HapCount.txt.gz")
+    
+    if (!file.exists(dosage_file)) {
+      warning("Dosage file not found, skipping ancestry ", anc_id, ": ", dosage_file)
+      next
+    }
+    if (!file.exists(haplo_file)) {
+      warning("Haplotype file not found, skipping ancestry ", anc_id, ": ", haplo_file)
+      next
+    }
+    
+    cat("Processing Ancestry ", anc_id, "...\n", sep = "")
+    
+    # Read dosage and haplotype count files
+    cat("  Reading dosage file... ")
+    dos_dt <- data.table::fread(dosage_file, header = TRUE)
+    dos_mat <- as.matrix(dos_dt[, -c(1:5)])  # Remove first 5 columns (CHROM, POS, ID, REF, ALT)
+    cat("done (", nrow(dos_mat), " SNPs x ", ncol(dos_mat), " samples)\n", sep = "")
+    
+    cat("  Reading haplotype count file... ")
+    hap_dt <- data.table::fread(haplo_file, header = TRUE)
+    hap_mat <- as.matrix(hap_dt[, -c(1:5)])  # Remove first 5 columns
+    cat("done\n")
+    
+    # Process each scenario
+    for (scenario in Scenarios) {
+      cat("    Scenario ", scenario, "... ", sep = "")
+      
+      # Call C++ function
+      res <- SPAmixLocalPlus_computePhiCPP(
+        hapcount_matrix = hap_mat,
+        dosage_matrix = dos_mat,
+        pair_idx1 = valid_grm$idx1,
+        pair_idx2 = valid_grm$idx2,
+        scenario = scenario,
+        phi_threshold = Threshold,
+        maf_cutoff = MAF_cutoff
+      )
+      
+      # Compute final phi values
+      Phi_Values <- res$ratio_sums / pmax(res$valid_counts, 1)
+      Phi_Values[res$valid_counts == 0] <- NA
+      
+      # Create bidirectional pairs (i,j) and (j,i)
+      is_diff <- valid_grm$idx1 != valid_grm$idx2
+      idx1_vec <- valid_grm$idx1[is_diff]
+      idx2_vec <- valid_grm$idx2[is_diff]
+      
+      # Expand to bidirectional
+      final_i_idx <- as.vector(rbind(idx1_vec, idx2_vec))
+      final_j_idx <- as.vector(rbind(idx2_vec, idx1_vec))
+      
+      final_ids_i <- SampleIDs[final_i_idx + 1]
+      final_ids_j <- SampleIDs[final_j_idx + 1]
+      
+      res_df <- data.table::data.table(
+        i = final_ids_i,
+        j = final_ids_j,
+        phi_value = Phi_Values
+      )
+      
+      # Filter out NA and apply threshold
+      res_df <- res_df[!is.na(phi_value)]
+      if (Threshold > 0) res_df <- res_df[phi_value >= Threshold]
+      
+      # Save output
+      out_filename <- sprintf("phi_result_ancestry%s_scenario%s_task%03d.txt",
+                              anc_id, scenario, as.integer(TaskID))
+      out_path <- file.path(OutputDir, out_filename)
+      
+      data.table::fwrite(res_df, out_path, sep = "\t", quote = FALSE)
+      cat("saved (", nrow(res_df), " pairs)\n", sep = "")
+    }
+  }
+  
+  cat("Phi estimation completed.\n")
+  invisible(NULL)
 }
 
 #' Run SPAmixLocalPlus Analysis for Multiple Ancestries
