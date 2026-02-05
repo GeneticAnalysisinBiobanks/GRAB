@@ -251,34 +251,12 @@ UKBZlibReader* create_ukb_zlib_reader(const std::string& geno_file,
                                      const std::string& haplo_file,
                                      const std::vector<std::string>& target_sample_ids);
 
-// UKB Main Processing Function (Replaces v11 high-performance batch function)
-// Modification Date: 2025-09-03 - Modified parameter types to avoid RCPP conversion issues
-// Modification Date: 2025-12-27 - Added MAF_cutoff and MAC_cutoff parameters
-int SPAmixPlus_local_ukb_high_performance_batch_cpp(
-    const std::string& geno_file,
-    const std::string& haplo_file,
-    const std::string& output_file,
-    const std::vector<std::string>& target_sample_ids,
-    const arma::vec& R_matched,
-    const arma::mat& phi_A_mat,
-    const arma::mat& phi_B_mat,
-    const arma::mat& phi_C_mat,
-    const arma::mat& phi_D_mat,
-    const arma::uvec& posOutlier,
-    int total_snps,
-    int batch_size,
-    double cutoff,
-    double MAF_cutoff,
-    double MAC_cutoff,
-    bool verbose
-);
-
 // ==================================================================
 // Phi Estimation
 // ==================================================================
 
 // Compute phi ratios for ancestry-specific kinship estimation
-Rcpp::List SPAmixLocalPlus_computePhiCPP(
+Rcpp::List SPAmixLocalPlus_computePhiInCPP(
     const arma::mat& hapcount_matrix,
     const arma::mat& dosage_matrix,
     const arma::uvec& pair_idx1,
@@ -313,7 +291,7 @@ List getSampleMatchIndices_cpp(const std::vector<std::string>& file_sample_ids);
 
 // Renamed from SPAmixPlus_local_ukb_high_performance_streaming_cpp
 // Now uses global state instead of passing all parameters
-int SPAmixPlusLocal_streamInCPP(
+void SPAmixPlusLocal_streamInCPP(
     const std::string& geno_file,
     const std::string& haplo_file,
     const std::string& output_file,
@@ -332,9 +310,5 @@ int SPAmixPlusLocal_streamInCPP(
 bool file_exists_cpp(const std::string& filename);
 bool is_gzipped(const std::string& filename);
 
-// phi Data Loading (Compatible with v11 format, but supports UKB naming)
-// Modification Date: 2025-09-03 - Modified return type to SEXP
-SEXP load_phi_data_ukb_cpp(const std::string& phi_dir, const std::string& ancestry_name, 
-                           const std::string& scenario);
 
 #endif // SPAMIXLOCALPLUSHEADER_HPP

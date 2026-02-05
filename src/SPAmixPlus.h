@@ -62,19 +62,17 @@ public:
    * @param sparseGRM Sparse GRM data frame (ID1_Index, ID2_Index, Value)
    * @param afFilePath Path to pre-computed AF model file (empty string if none)
    * @param afFilePrecision Precision of AF file ("double", "single", or "text")
-   * @param sigma_g Genetic variance component for GRM scaling
-   * @param sigma_e Residual variance component for GRM scaling
    */
-  SPAmixPlusClass(const arma::mat& residuals,
-                  const arma::mat& pcs,
-                  int sampleSize,
-                  double spaCutoff,
-                  const Rcpp::List& outlierList,
-                  const Rcpp::DataFrame& sparseGRM,
-                  const std::string& afFilePath = "",
-                  const std::string& afFilePrecision = "double",
-                  double sigma_g = 1.0,
-                  double sigma_e = 1.0);
+  SPAmixPlusClass(
+    const arma::mat& residuals,
+    const arma::mat& pcs,
+    int sampleSize,
+    double spaCutoff,
+    const Rcpp::List& outlierList,
+    const Rcpp::DataFrame& sparseGRM,
+    const std::string& afFilePath = "",
+    const std::string& afFilePrecision = "double"
+  );
 
   /**
    * @brief Destructor
@@ -222,10 +220,6 @@ private:
   arma::vec m_MAFVec;        ///< Individual-specific AF estimates (temp)
   arma::vec m_diffTime1;     ///< Timing diagnostic
   arma::vec m_diffTime2;     ///< Timing diagnostic
-
-  // Variance components
-  double m_sigma_g;          ///< Genetic variance component
-  double m_sigma_e;          ///< Residual variance component
 
 
 // ============================================================================

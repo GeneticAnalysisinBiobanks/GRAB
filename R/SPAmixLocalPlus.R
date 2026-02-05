@@ -1,20 +1,10 @@
-#' Local Ancestry-Specific Association Testing Using SPAmixLocalPlus
+#' Instruction of SPAmixLocalPlus method
 #'
-#' @description
 #' SPAmixLocalPlus performs local ancestry-specific association testing by accounting 
 #' for local ancestry patterns using ancestry-specific haplotype counts and pre-computed 
-#' phi matrices.
-#'
-#' @details
-#' SPAmixLocalPlus extends SPAmixPlus to handle local ancestry-specific genetic associations.
-#' The workflow involves:
-#' \enumerate{
-#'   \item Prepare ancestry-specific haplotype count and dosage files (*.txt.gz)
-#'   \item Estimate phi matrices using \code{SPAmixLocalPlus.EstimatePhi()} for scenarios A, B, C, D
-#'   \item Run \code{SPAmixLocalPlus.Marker()} to analyze all ancestries with null model residuals
-#' }
-#'
-#' @return No return value. Prints usage instructions to console.
+#' phi (intuitively kinship coefficients stratified by local ancestry) matrices.
+#' 
+#' @return NULL
 #'
 #' @examples
 #' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
@@ -26,10 +16,12 @@
 #'
 #' extdata_dir <- system.file("extdata", package = "GRAB")
 #' dosagePrefix <- paste0(extdata_dir, "/simuAncestry")
-#' phiOutputPrefix <- paste0(extdata_dir, "/phi_")
-#' outPrefix <- phiOutputPrefix
+#' 
+#' temp_dir <- tempdir()
+#' phiOutputPrefix <- paste0(temp_dir, "/phi_")
+#' outPrefix <- paste0(temp_dir, "/out_")
 #'
-#' # Estimate phi for ancestries 1 and 2
+#' # Step0: Estimate phi for ancestries 1 and 2
 #' SPAmixLocalPlus.EstimatePhi(
 #' GRM = GRM,
 #'   dosagePrefix = dosagePrefix,
@@ -40,13 +32,13 @@
 #'   MAF_cutoff = 0.01
 #' )
 #'
-#' # Fit null model to get residuals
+#' # Step1: Fit null model to get residuals
 #' residuals <- survival::coxph(
 #'   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
 #'   data = PhenoData
 #' )$residuals
 #'
-#' # Run SPAmixPlus tests for ancestries 1 and 2
+#' # Step2: Run SPAmixPlus tests for ancestries 1 and 2
 #' result_lst <- SPAmixLocalPlus.Marker(
 #'   resid = residuals,
 #'   subjData = subjData,
@@ -58,24 +50,27 @@
 #' )
 #' 
 #' # View results
-#' OutputFile1 <- paste0(phiOutputPrefix, "Ancestry1.txt")
+#' OutputFile1 <- paste0(outPrefix, "Ancestry1.txt")
 #' head(data.table::fread(OutputFile1))
 #'
 #' @seealso
 #' \code{\link{SPAmixLocalPlus.EstimatePhi}} for phi matrix estimation,
 #' \code{\link{SPAmixLocalPlus.Marker}} for the main analysis function
+#' 
+#' @references
+#' Yuzhuo Ma (2026). \url{https://github.com/YuzhuoMa97/SPAmixPlus}
 #'
-#' @export
 GRAB.SPAmixLocalPlus <- function() {
   .message("?GRAB.SPAmixLocalPlus for instructions")
 }
 
-#' Estimate Ancestry-Specific Phi Matrices for SPAmixLocalPlus
+#' Introduction of SPAmixLocalPlus.EstimatePhi
 #'
-#' @description
 #' Estimates ancestry-specific kinship coefficients (phi matrices) for local ancestry
 #' association testing. Computes pairwise genetic correlations stratified by haplotype
 #' count configurations (scenarios A, B, C, D) using dosage and haplotype count data.
+#' 
+#' @return NULL
 #'
 #' @param GRM Three columns: ID1, ID2, Value.
 #'   Contains pairwise kinship coefficients for related individuals. Typically from
@@ -103,13 +98,6 @@ GRAB.SPAmixLocalPlus <- function() {
 #'   Only pairs with phi >= Threshold are saved.
 #' @param MAF_cutoff Numeric (optional, default = 0.01). Minor Allele Frequency cutoff.
 #'   SNPs with MAF < MAF_cutoff or MAF > (1 - MAF_cutoff) are excluded from phi estimation.
-#'
-#' @details
-#' Phi matrices represent pairwise genetic correlation coefficients specific to local ancestry.
-#' Unlike global kinship matrices, phi values vary by local ancestry and haplotype configuration.
-#' 
-#' The function reads dosage and haplotype count files, filters SNPs by MAF, and computes
-#' phi for each pair in the GRM using the formula:
 #' 
 #' \deqn{phi_{ij} = \frac{1}{M} \sum_{s=1}^{M} \frac{(g_{is} - h_{is}q_s)(g_{js} - h_{js}q_s)}{h_{is} h_{js} q_s(1-q_s)}}
 #' 
@@ -121,7 +109,7 @@ GRAB.SPAmixLocalPlus <- function() {
 #'   \item M = number of SNPs passing filters
 #' }
 #'
-#' @return No explicit return value. Results are saved with filenames:
+#' @return NULL Results are saved with filenames:
 #'   \code{{phiOutputPrefix}Ancestry{ancIdx}_scenario{A/B/C/D}.txt}
 #'   
 #'   Each file is tab-delimited with columns:
@@ -208,7 +196,7 @@ SPAmixLocalPlus.EstimatePhi <- function(
       cat("    Scenario ", scenario, "... ", sep = "")
       
       # Call C++ function
-      res <- SPAmixLocalPlus_computePhiCPP(
+      res <- SPAmixLocalPlus_computePhiInCPP(
         hapcount_matrix = hap_mat,
         dosage_matrix = dos_mat,
         pair_idx1 = valid_grm$idx1,
@@ -252,9 +240,8 @@ SPAmixLocalPlus.EstimatePhi <- function(
   invisible(NULL)
 }
 
-#' Run SPAmixLocalPlus Analysis for Multiple Ancestries
+#' Introduction of SPAmixLocalPlus.Marker
 #'
-#' @description
 #' Main worker function to perform local ancestry-specific association testing across
 #' multiple ancestries. Sets global state once, then processes each ancestry sequentially.
 #'
@@ -290,9 +277,8 @@ SPAmixLocalPlus.EstimatePhi <- function(
 #' @param verbose Logical (optional, default = \code{TRUE}). If \code{TRUE}, prints detailed
 #'   progress information during analysis.
 #'
-#' @return List with one element per ancestry (indexed by \code{ancIdx}). Each element
-#'   contains analysis results from \code{SPAmixLocalPlus.OneAnc()}. Results are also
-#'   written to output files.
+#' @return NULL Results are saved with filenames:
+#'   \code{paste0(outPrefix, "Ancestry", ancIdx, ".txt")} for each ancestry.
 #'
 #' @seealso
 #' \code{\link{GRAB.SPAmixLocalPlus}} for usage examples,
@@ -336,9 +322,8 @@ SPAmixLocalPlus.Marker <- function(
     phiPrefix <- dosagePrefix
   }
 
-  result_lst <- vector("list", length(ancIdx))
   for (i in ancIdx) {
-    result_lst[[i]] <- SPAmixLocalPlus.OneAnc(
+    SPAmixLocalPlus.OneAnc(
       dosage_file = paste0(dosagePrefix, i, "_Dosage.txt.gz"),
       haplo_file  = paste0(haploPrefix, i, "_HapCount.txt.gz"),
       phi_anc_pre = paste0(phiPrefix, "Ancestry", i, "_scenario"),
@@ -346,15 +331,12 @@ SPAmixLocalPlus.Marker <- function(
     )
   }
 
-  return(result_lst)
+  return(NULL)
 }
 
 
-# ============================== SPAmixLocalPlus: Step2 =================================
-
-#' Process One Ancestry for SPAmixLocalPlus Analysis
+#' Introdution of SPAmixLocalPlus.OneAnc
 #' 
-#' @description
 #' Worker function to perform local ancestry-specific association testing for a single
 #' ancestry. Uses global state set by \code{SPAmixLocalPlus.Marker()} for residuals,
 #' sample IDs, and analysis parameters. Loads ancestry-specific dosage, haplotype counts,
@@ -385,26 +367,8 @@ SPAmixLocalPlus.Marker <- function(
 #'   \item \strong{Phi matrices}: Pairwise genetic correlations for different haplotype scenarios
 #' }
 #' 
-#' ## Phi Files and Scenarios
 #' 
-#' Phi files contain pairwise genetic correlation coefficients specific to local ancestry,
-#' stratified by haplotype count configurations:
-#' 
-#' \itemize{
-#'   \item \strong{Scenario A}: Both individuals have 2 haplotypes from this ancestry
-#'   \item \strong{Scenario B}: Individual i has 2, individual j has 1 haplotype
-#'   \item \strong{Scenario C}: Individual i has 1, individual j has 2 haplotypes
-#'   \item \strong{Scenario D}: Both individuals have 1 haplotype from this ancestry
-#' }
-#' 
-#' ## File Format
-#' 
-#' Input files should be tab-separated with samples in columns and SNPs in rows:
-#' - First column: SNP ID
-#' - Header row: Sample IDs
-#' - Data: Numeric values (dosages or haplotype counts)
-#' 
-#' @return List containing analysis results. Results are also written to \code{output_file}
+#' @return NULL Results are also written to \code{output_file}
 #'   as tab-delimited text with columns:
 #'   \itemize{
 #'     \item Marker ID
@@ -493,7 +457,7 @@ SPAmixLocalPlus.OneAnc = function(
   phi_D_mat <- convert_phi(paste0(phi_anc_pre, "D.txt"), matched_sample_ids)
   
   # 4. Run Analysis (using global state set in SPAmixPlusLocal_setupInCPP)
-  result <- SPAmixPlusLocal_streamInCPP(
+  SPAmixPlusLocal_streamInCPP(
     geno_file = dosage_file,
     haplo_file = haplo_file, 
     output_file = output_file,
@@ -504,5 +468,5 @@ SPAmixLocalPlus.OneAnc = function(
     phi_D_mat = phi_D_mat
   )
   
-  return(result)
+  return(NULL)
 }

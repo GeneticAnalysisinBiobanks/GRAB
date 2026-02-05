@@ -56,7 +56,6 @@ PhiData::PhiData(const arma::mat& phi_matrix) {
 // Modification Date: 2025-09-03
 // Description: All core algorithm functions maintained 100% consistent with v11, no calculation logic changes
 
-// [[Rcpp::export]]
 arma::vec K_G0_vec_cpp(const arma::vec& t_vec, double MAF, const arma::vec& h) {
   arma::vec exp_t = arma::exp(t_vec);
   arma::vec base = (1.0 - MAF) + MAF * exp_t;
@@ -72,7 +71,7 @@ arma::vec K_G0_vec_cpp(const arma::vec& t_vec, double MAF, const arma::vec& h) {
   return result;
 }
 
-// [[Rcpp::export]]
+
 arma::vec K_G1_vec_cpp(const arma::vec& t_vec, double MAF, const arma::vec& h) {
   arma::vec exp_t = arma::exp(t_vec);
   arma::vec denom = (1.0 - MAF) + MAF * exp_t;
@@ -88,7 +87,7 @@ arma::vec K_G1_vec_cpp(const arma::vec& t_vec, double MAF, const arma::vec& h) {
   return result;
 }
 
-// [[Rcpp::export]]
+
 arma::vec K_G2_vec_cpp(const arma::vec& t_vec, double MAF, const arma::vec& h) {
   arma::vec exp_t = arma::exp(t_vec);
   arma::vec denom = (1.0 - MAF) + MAF * exp_t;
@@ -855,7 +854,7 @@ int count_file_lines(const std::string& filename) {
 // Description: Added UKB format processing functionality, handling .txt.gz and transposed matrices
 
 // Read UKB format haplotype data
-// [[Rcpp::export]]
+
 arma::mat read_ukb_haplo_data_cpp(const std::string& haplo_file, 
                                   const std::vector<std::string>& target_sample_ids) {
     std::vector<std::vector<double>> haplo_data;
@@ -947,18 +946,18 @@ std::vector<std::string> read_ukb_sample_ids_cpp(const std::string& geno_file) {
 // Phi Estimation Function
 // ==================================================================
 
-//' Compute Phi Ratios for Ancestry-Specific Kinship
-//' 
-//' @param hapcount_matrix Matrix (SNPs x Samples) of haplotype counts
-//' @param dosage_matrix Matrix (SNPs x Samples) of dosage values
-//' @param pair_idx1 Vector of indices for individual i in pairs (0-based)
-//' @param pair_idx2 Vector of indices for individual j in pairs (0-based)
-//' @param scenario Scenario string: "A", "B", "C", or "D"
-//' @param phi_threshold Threshold for filtering phi values
-//' @param maf_cutoff MAF cutoff for SNP filtering
-//' @return List with ratio_sums and valid_counts
+// Compute Phi Ratios for Ancestry-Specific Kinship
+// 
+// @param hapcount_matrix Matrix (SNPs x Samples) of haplotype counts
+// @param dosage_matrix Matrix (SNPs x Samples) of dosage values
+// @param pair_idx1 Vector of indices for individual i in pairs (0-based)
+// @param pair_idx2 Vector of indices for individual j in pairs (0-based)
+// @param scenario Scenario string: "A", "B", "C", or "D"
+// @param phi_threshold Threshold for filtering phi values
+// @param maf_cutoff MAF cutoff for SNP filtering
+// @return List with ratio_sums and valid_counts
 // [[Rcpp::export]]
-Rcpp::List SPAmixLocalPlus_computePhiCPP(
+Rcpp::List SPAmixLocalPlus_computePhiInCPP(
     const arma::mat& hapcount_matrix,
     const arma::mat& dosage_matrix,
     const arma::uvec& pair_idx1,
@@ -1172,7 +1171,7 @@ List getSampleMatchIndices_cpp(const std::vector<std::string>& file_sample_ids) 
     );
 }
 
-// [[Rcpp::export]]
+
 List read_ukb_batch_data_cpp(const std::string& geno_file,
                             const std::string& haplo_file,
                             const std::vector<std::string>& target_sample_ids,
@@ -1662,442 +1661,10 @@ List read_ukb_batch_data_cpp(const std::string& geno_file,
     );
 }
 
-// Modification Date: 2025-09-05  
-// Modification Description: UKB format phi data reading (fix task filename matching)
-// Helper Function: Find matching phi file
-std::string find_phi_file_cpp(const std::string& phi_dir, const std::string& ancestry_name, 
-                              const std::string& scenario) {
-    // Use system command to find matching file
-    std::string pattern = "phi_result_ancestry" + ancestry_name + "_scenario" + scenario + "_task*.txt";
-    std::string cmd = "find " + phi_dir + " -name \"" + pattern + "\" | head -1";
-    
-    // Use dir command on Windows
-    #ifdef _WIN32
-    cmd = "dir /b " + phi_dir + "\\phi_result_ancestry" + ancestry_name + "_scenario" + scenario + "_task*.txt 2>nul | findstr /r \".*\"";
-    #endif
-    
-    FILE* pipe = popen(cmd.c_str(), "r");
-    if (!pipe) return "";
-    
-    char buffer[1024];
-    std::string result = "";
-    if (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
-        result = buffer;
-        // Remove newline
-        if (!result.empty() && result.back() == '\n') {
-            result.pop_back();
-        }
-        // If not full path, add directory prefix
-        if (result.find(phi_dir) != 0) {
-            result = phi_dir + "/" + result;
-        }
-    }
-    pclose(pipe);
-    
-    return result;
-}
-
-// [[Rcpp::export]]
-SEXP load_phi_data_ukb_cpp(const std::string& phi_dir, const std::string& ancestry_name, 
-                           const std::string& scenario) {
-    // Find matching phi file (supports any task number)
-    std::string phi_file = find_phi_file_cpp(phi_dir, ancestry_name, scenario);
-    
-    // Add debug info
-    Rcpp::Rcout << "🔍 Finding phi file pattern: phi_result_ancestry" << ancestry_name 
-                << "_scenario" << scenario << "_task*.txt" << std::endl;
-    if (!phi_file.empty()) {
-        Rcpp::Rcout << "✅ Found phi file: " << phi_file << std::endl;
-    } else {
-        Rcpp::Rcout << "❌ No matching phi file found" << std::endl;
-    }
-    
-    if (phi_file.empty() || !file_exists_cpp(phi_file)) {
-        Rcpp::Rcout << "❌ phi file does not exist or not found" << std::endl;
-        return Rcpp::List::create(
-            Rcpp::Named("phi_matrix") = arma::mat()
-        );
-    }
-    
-    std::ifstream file(phi_file);
-    if (!file.is_open()) {
-        Rcpp::Rcout << "❌ Unable to open phi file: " << phi_file << std::endl;
-        return Rcpp::List::create(
-            Rcpp::Named("phi_matrix") = arma::mat()
-        );
-    }
-    
-    std::vector<std::string> i_vec, j_vec;
-    std::vector<double> phi_vec;
-    
-    std::string line;
-    std::getline(file, line);  // Skip header
-    
-    while (std::getline(file, line)) {
-        std::istringstream iss(line);
-        std::string i_str, j_str, phi_str;
-        
-        if (std::getline(iss, i_str, '\t') &&
-            std::getline(iss, j_str, '\t') &&
-            std::getline(iss, phi_str, '\t')) {
-            
-            try {
-                i_vec.push_back(i_str);
-                j_vec.push_back(j_str);
-                phi_vec.push_back(std::stod(phi_str));
-            } catch (...) {
-                continue;
-            }
-        }
-    }
-    
-    file.close();
-    
-    // Add debug info
-    Rcpp::Rcout << "✅ Successfully read phi file: " << phi_file << std::endl;
-    Rcpp::Rcout << "📊 Phi relation pairs count: " << phi_vec.size() << std::endl;
-    
-    // To match v11, return structure containing phi matrix
-    // Note: Should create sparse matrix based on sample IDs here, but simplified to return empty matrix
-    // Actual sample ID mapping will be handled in R layer
-    arma::mat empty_matrix;  // Empty matrix, handled in R layer
-    
-    return Rcpp::List::create(
-        Rcpp::Named("phi_matrix") = empty_matrix,
-        Rcpp::Named("i_id") = Rcpp::CharacterVector(i_vec.begin(), i_vec.end()),
-        Rcpp::Named("j_id") = Rcpp::CharacterVector(j_vec.begin(), j_vec.end()),
-        Rcpp::Named("phi_value") = arma::vec(phi_vec)
-    );
-}
-
-// UKB Main Processing Function (Replacing v11 high performance batch function)
-// Modification Date: 2025-09-03 - Modify parameter types to avoid RCPP conversion issues
-// [[Rcpp::export]]
-int SPAmixPlus_local_ukb_high_performance_batch_cpp(
-    const std::string& Geno_file,
-    const std::string& haplo_file,
-    const std::string& output_file,
-    const std::vector<std::string>& target_sample_ids,  // [v20 Fix] Use sample IDs instead of indices
-    const arma::vec& R_matched,
-    const arma::mat& phi_A_mat,  // Changed to mat type
-    const arma::mat& phi_B_mat,
-    const arma::mat& phi_C_mat,
-    const arma::mat& phi_D_mat,
-    const arma::uvec& posOutlier,
-    int total_snps,
-    int batch_size,
-    double cutoff,
-    double MAF_cutoff,
-    double MAC_cutoff,
-    bool verbose
-) {
-    // Internally convert to PhiData structure
-    PhiData phi_A(phi_A_mat);
-    PhiData phi_B(phi_B_mat);
-    PhiData phi_C(phi_C_mat);
-    PhiData phi_D(phi_D_mat);
-    
-    // ===== Critical Fix: Directly use passed target_sample_ids =====
-    // target_sample_ids is the sample ID order of objNull
-    // R_matched is arranged according to original order of objNull
-    // Data reading will extract according to target_sample_ids order, ensuring correct correspondence
-    
-    
-    if (verbose) {
-        Rcpp::Rcout << "📊 UKB Total Samples: " << target_sample_ids.size() << " (Passed target samples)" << std::endl;
-        Rcpp::Rcout << "🎯 Target Samples (objNull): " << target_sample_ids.size() << std::endl;
-        Rcpp::Rcout << "🔍 R_matched Length: " << R_matched.n_elem << std::endl;
-        
-        // Verify length consistency
-        if (target_sample_ids.size() != R_matched.n_elem) {
-            Rcpp::Rcout << "⚠️ Warning: Sample count mismatch! target_sample_ids=" << target_sample_ids.size() 
-                       << ", R_matched=" << R_matched.n_elem << std::endl;
-        }
-    }
-    
-    // Open output file
-    std::ofstream outfile(output_file);
-    if (!outfile.is_open()) {
-        if (verbose) {
-            Rcpp::Rcout << "❌ Unable to create output file: " << output_file << std::endl;
-        }
-        return -1;
-    }
-    // ===== Fix: Output format exactly consistent with v11 =====
-    outfile << "rsID\tCHROM\tPOS\tREF\tALT\tMAF\tmissing.rate\tpval.spa\tpval.norm\tStat\tMean\tVar\tz\tMAC\tBetaG\n";
-    
-    // Modification Date: 2025-09-10 14:39 - v20 Efficiency Optimization
-    // Modification Content: Add global variable to control debug output frequency
-    static bool first_batch_processed = false;  // Moved to start of function, accessible to all batches
-    
-    int processed_snps = 0;
-    int current_snp = 0;
-    
-    while (current_snp < total_snps) {
-        // Fix: Use target sample ID list (contains only objNull samples)
-        List batch_data = read_ukb_batch_data_cpp(Geno_file, haplo_file, target_sample_ids, current_snp, batch_size);
-        
-        arma::mat geno_matrix = batch_data["genotype_matrix"];
-        arma::mat haplo_matrix = batch_data["haplotype_matrix"];
-        std::vector<std::string> snp_names = batch_data["snp_ids"];
-        Rcpp::List marker_meta = batch_data["marker_meta"];
-        int n_snps_found = batch_data["n_snps_found"];
-        
-        if (n_snps_found == 0) break;
-        
-        // Fix: Add matrix size validation to prevent out of bounds
-        int actual_geno_rows = static_cast<int>(geno_matrix.n_rows);
-        int actual_haplo_rows = static_cast<int>(haplo_matrix.n_rows);
-        int marker_meta_size = marker_meta.size();
-        int safe_snp_count = std::min({n_snps_found, actual_geno_rows, actual_haplo_rows, marker_meta_size});
-        
-        if (verbose && (n_snps_found != actual_geno_rows || n_snps_found != actual_haplo_rows)) {
-            Rcpp::Rcout << "⚠️ Matrix size inconsistent: n_snps_found=" << n_snps_found 
-                       << ", geno_rows=" << actual_geno_rows 
-                       << ", haplo_rows=" << actual_haplo_rows << std::endl;
-            Rcpp::Rcout << "🔧 Using safe SNP count: " << safe_snp_count << std::endl;
-        }
-        
-        // Modification Date: 2025-09-10 14:35 - v20 Efficiency Optimization
-        // Modification Content: Reduce repeated SNP loop debug output, show only in first batch
-        // [v20 Simplified Debug] SNP Loop Start (Show details only in first batch)
-        static bool snp_loop_debug_shown = false;
-        if (!snp_loop_debug_shown) {
-            Rcpp::Rcout << "\n🧬 [v20 Detailed Debug] Starting SNP analysis loop" << std::endl;
-            Rcpp::Rcout << "   ✓ Safe SNP count: " << safe_snp_count << std::endl;
-            Rcpp::Rcout << "   ✓ Current batch start SNP: " << current_snp << std::endl;
-            Rcpp::Rcout << "   ✓ Residual vector R_matched size: " << R_matched.n_elem << std::endl;
-            snp_loop_debug_shown = true;
-        }
-        
-        for (int s = 0; s < safe_snp_count; ++s) {
-            int global_snp_idx = current_snp + s;
-            
-            // Modification Date: 2025-09-10 14:36 - v20 Efficiency Optimization
-            // Modification Content: Reduce detailed debug output for single SNP, show only for first few SNPs in first batch
-            // [v20 Simplified Debug] Show detailed processing for first few SNPs (First batch only)
-            bool show_debug = (!first_batch_processed && (s < 3 || s == safe_snp_count - 1));
-            
-            if (show_debug) {
-                Rcpp::Rcout << "\n📍 [v20 Detailed Debug] Processing SNP #" << s << " (Global Index: " << global_snp_idx << ")" << std::endl;
-            }
-            
-            // Add extra boundary check
-            if (s >= actual_geno_rows || s >= actual_haplo_rows) {
-                if (verbose || show_debug) {
-                    Rcpp::Rcout << "⚠️ SNP index " << s << " out of matrix range, skipping" << std::endl;
-                    Rcpp::Rcout << "   Actual genotype matrix rows: " << actual_geno_rows << std::endl;
-                    Rcpp::Rcout << "   Actual haplotype matrix rows: " << actual_haplo_rows << std::endl;
-                }
-                continue;
-            }
-            
-            arma::vec g = geno_matrix.row(s).t();
-            // Modification Date: 2025-09-25 - Fix variable name: Use haplo_matrix from batch read instead of undefined haplotype_matrix
-            arma::vec haplo_num = haplo_matrix.row(s).t();
-            Rcpp::CharacterVector marker_fields = marker_meta[s];
-            auto extract_marker_value = [&](int idx) -> std::string {
-                if (idx >= marker_fields.size()) {
-                    return "NA";
-                }
-                SEXP field = marker_fields[idx];
-                if (field == NA_STRING) {
-                    return "NA";
-                }
-                std::string value = Rcpp::as<std::string>(field);
-                if (value.empty()) {
-                    return "NA";
-                }
-                return value;
-            };
-
-            // Verify data integrity
-            if (g.n_elem != R_matched.n_elem || haplo_num.n_elem != R_matched.n_elem) {
-                if (verbose) {
-                    Rcpp::Rcout << "⚠️ SNP " << global_snp_idx << " sample count mismatch, skipping" << std::endl;
-                    Rcpp::Rcout << "   Genotype vector: " << g.n_elem << ", Haplotype vector: " << haplo_num.n_elem 
-                               << ", Residual vector: " << R_matched.n_elem << std::endl;
-                }
-                continue;
-            }
-            
-            // ===== Critical Fix: Ensure vector length and order are completely consistent =====
-            // In v11, all vectors (g, haplo_num, R) come from objNull, order is completely consistent
-            // In v20, we need to ensure same consistency
-            
-            // Directly use read data, but verify length consistency
-            arma::vec g_matched = g;
-            arma::vec haplo_matched = haplo_num;
-            
-            try {
-                // Modification Date: 2025-09-10 14:37 - v20 Efficiency Optimization
-                // Modification Content: Vector length consistency verification only shown for first SNP of first batch
-                // Verify all vectors length completely consistent (Only show for first SNP of first batch)
-                static bool length_check_shown = false;
-                if (verbose && !length_check_shown && current_snp == 0 && s == 0) {
-                    Rcpp::Rcout << "🔍 Debug Info - SNP " << global_snp_idx << ":" << std::endl;
-                    Rcpp::Rcout << "  Genotype vector size: " << g.n_elem << std::endl;
-                    Rcpp::Rcout << "  Haplotype vector size: " << haplo_num.n_elem << std::endl;
-                    Rcpp::Rcout << "  Residual vector size: " << R_matched.n_elem << std::endl;
-                    
-                    // ===== Critical Debug: Check vector length and sample order consistency =====
-                    Rcpp::Rcout << "  Check length consistency: g=" << g.n_elem 
-                              << ", haplo=" << haplo_num.n_elem 
-                              << ", R=" << R_matched.n_elem << std::endl;
-                              
-                    if (g.n_elem != haplo_num.n_elem || g.n_elem != R_matched.n_elem) {
-                        Rcpp::Rcout << "⚠️ Warning: Vector length inconsistent! This may lead to variance calculation error" << std::endl;
-                        Rcpp::Rcout << "  This usually indicates sample order or sample matching issues" << std::endl;
-                    } else {
-                        Rcpp::Rcout << "✅ Vector length consistent, sample matching correct" << std::endl;
-                    }
-                    length_check_shown = true;
-                }
-                
-                // Mandatory check: If length inconsistent, error and skip
-                if (g.n_elem != haplo_num.n_elem || g.n_elem != R_matched.n_elem) {
-                    if (verbose) {
-                        Rcpp::Rcout << "❌ SNP " << global_snp_idx << " vector length inconsistent, skipping processing" << std::endl;
-                    }
-                    continue;
-                }
-                
-                // Simplified check: Data is already subset of objNull, direct size consistency verification is sufficient
-                if (g.n_elem == 0 || haplo_num.n_elem == 0) {
-                    if (verbose) {
-                        Rcpp::Rcout << "⚠️ SNP " << global_snp_idx << " has no sample data, skipping" << std::endl;
-                    }
-                    continue;
-                }
-                
-            } catch (const std::exception& e) {
-                if (verbose) {
-                    Rcpp::Rcout << "⚠️ SNP " << global_snp_idx << " processing exception: " << e.what() << ", skipping" << std::endl;
-                }
-                continue;
-            } catch (...) {
-                if (verbose) {
-                    Rcpp::Rcout << "⚠️ SNP " << global_snp_idx << " unknown error, skipping" << std::endl;
-                }
-                continue;
-            }
-            
-            // v20 Ultimate Optimization: Fast missing value check, if missing value encountered directly output NA result
-            // Modification Date: 2025-09-10 16:05 
-            // Optimization Principle: No need for detailed stats, break immediately on missing value, greatly improving performance
-            arma::vec result;
-            bool has_missing = false;
-            
-            // Fast missing value check (stop check on first missing value)
-            for (arma::uword k = 0; k < g_matched.n_elem && !has_missing; ++k) {
-                if (!arma::is_finite(g_matched(k)) || !arma::is_finite(haplo_matched(k))) {
-                    has_missing = true;
-                }
-            }
-            
-            if (has_missing) {
-                // v20 Ultimate Optimization: Encountering missing value outputs NA result immediately, no complex calculation required
-                result = arma::vec(9);
-                result.fill(R_NaReal);
-                if (show_debug) {
-                    Rcpp::Rcout << "❌ SNP " << global_snp_idx << " contains missing values, outputting NA result directly" << std::endl;
-                }
-            } else {
-                // [v20 Detailed Debug] Prepare normal calculation
-                if (show_debug) {
-                    Rcpp::Rcout << "   ✅ No missing values, starting statistical calculation" << std::endl;
-                    Rcpp::Rcout << "   📊 Input vector length check:" << std::endl;
-                    Rcpp::Rcout << "      g_matched: " << g_matched.n_elem << std::endl;
-                    Rcpp::Rcout << "      R_matched: " << R_matched.n_elem << std::endl; 
-                    Rcpp::Rcout << "      haplo_matched: " << haplo_matched.n_elem << std::endl;
-                }
-                
-                // Normal Calculation
-                result = SPAmixPlus_local_related_one_SNP_cpp(
-                    g_matched, R_matched, haplo_matched,
-                    phi_A, phi_B, phi_C, phi_D,
-                    posOutlier, cutoff, MAF_cutoff, MAC_cutoff
-                );
-            }
-            
-            // Output Result - Check snp_names index
-            std::string snp_name;
-            if (static_cast<size_t>(s) < snp_names.size()) {
-                snp_name = snp_names[s];
-            } else {
-                snp_name = "SNP_" + std::to_string(global_snp_idx + 1);
-            }
-            
-            // ===== Fix: Output field order adjustment =====
-            double beta_g = arma::datum::nan;
-            if (std::isfinite(result(4)) && std::isfinite(result(6)) && result(6) != 0.0) {
-                beta_g = result(4) / result(6);
-            }
-
-            std::string chrom = extract_marker_value(0);
-            std::string pos = extract_marker_value(1);
-            std::string ref = extract_marker_value(3);
-            std::string alt = extract_marker_value(4);
-
-            outfile << snp_name << "\t"       // rsID
-                   << chrom << "\t"          // CHROM
-                   << pos << "\t"            // POS
-                   << ref << "\t"            // REF
-                   << alt << "\t"            // ALT
-                   << result(0) << "\t"       // MAF
-                   << result(1) << "\t"       // missing.rate
-                   << result(2) << "\t"       // pval.spa
-                   << result(3) << "\t"       // pval.norm
-                   << result(4) << "\t"       // Stat
-                   << result(5) << "\t"       // Mean
-                   << result(6) << "\t"       // Var
-                   << result(7) << "\t"       // z
-                   << result(8) << "\t";      // MAC
-
-            if (std::isfinite(beta_g)) {
-                outfile << beta_g;
-            } else {
-                outfile << "NA";
-            }
-
-            outfile << std::endl; // Use std::endl ensure newline flush
-        }
-        
-        // Modification Date: 2025-09-10 14:38 - v20 Efficiency Optimization
-        // Modification Content: Mark first batch as processed, simplify output for subsequent batches
-        if (!first_batch_processed) {
-            first_batch_processed = true;
-            Rcpp::Rcout << "🎯 [v20 Efficiency Optimization] First batch processing complete, subsequent batches will simplify output" << std::endl;
-        }
-        
-        current_snp += batch_size;
-        
-        if (verbose && processed_snps % 1000 == 0) {
-            Rcpp::Rcout << "Processed " << processed_snps << " SNPs..." << std::endl;
-        }
-    }
-    
-    // Modification Date: 2025-09-07 - Ensure all data correctly written to file
-    outfile.flush();  // Force flush buffer
-    outfile.close();
-    
-    // 💾 Disk Space Optimization: Clean all temporary files before function end
-    {
-    std::string cleanup_cmd = "rm -f ./ukb_chunk_" + std::to_string(getpid()) + "_*.txt ./ukb_haplo_chunk_" + std::to_string(getpid()) + "_*.txt 2>/dev/null";
-    (void)std::system(cleanup_cmd.c_str());  // Modification Date: 2025-09-25 - Explicitly ignore return value to eliminate compiler warning
-    }
-    
-    if (verbose) {
-        Rcpp::Rcout << "✅ Batch processing complete, processed " << processed_snps << " SNPs" << std::endl;
-        Rcpp::Rcout << "📁 Results saved to: " << output_file << std::endl;
-    }
-    
-    return processed_snps;
-}
 
 // ==================== Advanced R Interface Function ====================
 // Advanced function exactly consistent with v11 interface, automatically handles phi data sample matching
-// [[Rcpp::export]]
+
 int SPAmixPlus_local_related_batch_rcpp(
     const std::string& Geno_file,
     const std::string& haplo_file,
@@ -2390,7 +1957,7 @@ UKBZlibReader* create_ukb_zlib_reader(const std::string& geno_file,
 // Update Description: Renamed to SPAmixPlusLocal_streaming, uses global state
 
 // [[Rcpp::export]]
-int SPAmixPlusLocal_streamInCPP(
+void SPAmixPlusLocal_streamInCPP(
     const std::string& geno_file,
     const std::string& haplo_file,
     const std::string& output_file,
@@ -2668,7 +2235,6 @@ int SPAmixPlusLocal_streamInCPP(
         Rcpp::Rcout << "⏱️ Total time: " << total_duration.count() << " seconds" << std::endl;
     }
     
-    return processed_snps;
 }
 
 
@@ -2689,10 +2255,10 @@ int SPAmixPlusLocal_streamInCPP(
 using namespace Rcpp;
 using namespace arma;
 
-//' Read PLINK BIM file and extract target SNPs by chromosome
-//' @param bim_file PLINK BIM file path
-//' @return List containing chromosome-wise SNP information
-// [[Rcpp::export]]
+// Read PLINK BIM file and extract target SNPs by chromosome
+// @param bim_file PLINK BIM file path
+// @return List containing chromosome-wise SNP information
+
 List read_bim_snps_by_chromosome(const std::string& bim_file) {
     // Rcout << "Reading PLINK BIM file: " << bim_file << std::endl;
     
@@ -2738,10 +2304,10 @@ List read_bim_snps_by_chromosome(const std::string& bim_file) {
     return result;
 }
 
-//' Read UKB sample IDs from file header with large buffer
-//' @param file_path UKB .txt.gz file path  
-//' @return List with sample information
-// [[Rcpp::export]]
+// Read UKB sample IDs from file header with large buffer
+// @param file_path UKB .txt.gz file path  
+// @return List with sample information
+
 List read_ukb_sample_info_large(const std::string& file_path) {
     FileReader reader(file_path);
     if (!reader.is_open()) {
@@ -2783,13 +2349,13 @@ List read_ukb_sample_info_large(const std::string& file_path) {
     );
 }
 
-//' Stream-based SNP batch reading
-//' @param hapcount_file Hapcount file path
-//' @param dosage_file Dosage file path  
-//' @param target_snps Vector of target SNP IDs
-//' @param max_snps_per_batch Maximum SNPs to read per batch
-//' @return List with hapcount and dosage matrices for found SNPs
-// [[Rcpp::export]]
+// Stream-based SNP batch reading
+// @param hapcount_file Hapcount file path
+// @param dosage_file Dosage file path  
+// @param target_snps Vector of target SNP IDs
+// @param max_snps_per_batch Maximum SNPs to read per batch
+// @return List with hapcount and dosage matrices for found SNPs
+
 List read_ukb_snp_batch_stream(const std::string& hapcount_file,
                                const std::string& dosage_file,
                                const std::vector<std::string>& target_snps,
@@ -2927,16 +2493,16 @@ List read_ukb_snp_batch_stream(const std::string& hapcount_file,
     }
 }
 
-//' Compute phi ratios with ancestry-specific MAF filtering
-//' @param hapcount_matrix Hapcount matrix (SNPs x Samples)
-//' @param dosage_matrix Dosage matrix (SNPs x Samples)
-//' @param pair_idx1 First individual indices (0-based)
-//' @param pair_idx2 Second individual indices (0-based)
-//' @param scenario Scenario ("A", "B", "C", "D")
-//' @param phi_threshold Minimum phi threshold (default 0.0)
-//' @param maf_cutoff MAF cutoff threshold (default 0.2)
-//' @return List with ratio sums and valid counts for each pair
-// [[Rcpp::export]]
+// Compute phi ratios with ancestry-specific MAF filtering
+// @param hapcount_matrix Hapcount matrix (SNPs x Samples)
+// @param dosage_matrix Dosage matrix (SNPs x Samples)
+// @param pair_idx1 First individual indices (0-based)
+// @param pair_idx2 Second individual indices (0-based)
+// @param scenario Scenario ("A", "B", "C", "D")
+// @param phi_threshold Minimum phi threshold (default 0.0)
+// @param maf_cutoff MAF cutoff threshold (default 0.2)
+// @return List with ratio sums and valid counts for each pair
+
 List computePhiRatiosCPP(const arma::mat& hapcount_matrix,
                                         const arma::mat& dosage_matrix,
                                         const arma::uvec& pair_idx1,
@@ -3050,9 +2616,9 @@ List computePhiRatiosCPP(const arma::mat& hapcount_matrix,
     );
 }
 
-//' Main function: Stream-optimized genome-wide phi estimation
-//' @return List with final phi values and statistics
-// [[Rcpp::export]]
+// Main function: Stream-optimized genome-wide phi estimation
+// @return List with final phi values and statistics
+
 List estimatePhiStreamCPP(const std::vector<std::string>& hap_files,
                           const std::vector<std::string>& dos_files,
                           const std::string& bim_file,

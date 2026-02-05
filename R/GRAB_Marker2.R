@@ -6,7 +6,7 @@
 ## ------------------------------------------------------------------------------
 
 # Marker-level association analysis with async I/O and multithreading
-GRAB.Marker2 <- function(
+GRAB_Marker2 <- function(
   objNull,
   GenoFile,
   OutputFile,

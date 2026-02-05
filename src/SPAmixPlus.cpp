@@ -204,25 +204,20 @@ namespace SPAmixPlus {
 // SPAmixPlusClass Implementation
 // ==========================================
 
-SPAmixPlusClass::SPAmixPlusClass(const arma::mat& t_resid,
-                                     const arma::mat& t_PCs,
-                                     int t_N,
-                                     double t_SPA_Cutoff,
-                                     const Rcpp::List& t_outlierList,
-                                     const Rcpp::DataFrame& t_sparseGRM,
-                                     const std::string& t_afFilePath,
-                                     const std::string& t_afFilePrecision,
-                                     double t_sigma_g,
-                                     double t_sigma_e)
-{
+SPAmixPlusClass::SPAmixPlusClass(
+  const arma::mat& t_resid,
+  const arma::mat& t_PCs,
+  int t_N,
+  double t_SPA_Cutoff,
+  const Rcpp::List& t_outlierList,
+  const Rcpp::DataFrame& t_sparseGRM,
+  const std::string& t_afFilePath,
+  const std::string& t_afFilePrecision
+) {
   
   // ==== Store AF file info ====
   m_afFilePath = t_afFilePath;
   m_afFilePrecision = t_afFilePrecision;
-  
-  // ==== Store variance components ====
-  m_sigma_g = t_sigma_g;
-  m_sigma_e = t_sigma_e;
   
   // ==== Process sparseGRM ====
   // DataFrame with columns: id1_index, id2_index, value
@@ -559,7 +554,7 @@ double SPAmixPlusClass::getMarkerPvalFromModel(arma::vec t_GVec, AFModelInfo t_m
 }
 
 double SPAmixPlusClass::calculateSparseVariance(const arma::vec& R_new, const arma::uvec& posValue) {
-    double variance = 0.0;
+    double covSum = 0.0;
     
     // Use unordered_set for O(1) lookups
     std::unordered_set<int> validIndices;
@@ -567,31 +562,17 @@ double SPAmixPlusClass::calculateSparseVariance(const arma::vec& R_new, const ar
         validIndices.insert(static_cast<int>(idx));
     }
     
-    // Add diagonal contribution (residual variance component)
-    for (size_t k = 0; k < posValue.n_elem; ++k) {
-        int i = static_cast<int>(posValue(k));
-        variance += m_sigma_e * R_new(i) * R_new(i);
-    }
-    
-    // Add genetic variance contribution from sparse GRM
     for (const auto& triplet : m_sparseTriplets) {
       int i = std::get<0>(triplet);
       int j = std::get<1>(triplet);
-      double grmValue = std::get<2>(triplet);
       
       // Only include if BOTH individuals i and j are in the current subset (posValue)
       if (validIndices.count(i) && validIndices.count(j)) {
-        if (i == j) {
-          // Diagonal element (add genetic variance component)
-          variance += m_sigma_g * grmValue * R_new(i) * R_new(i);
-        } else {
-          // Off-diagonal element (counted twice due to symmetry)
-          variance += 2.0 * m_sigma_g * grmValue * R_new(i) * R_new(j);
-        }
+        double grmValue = std::get<2>(triplet);
+        covSum += grmValue * R_new(i) * R_new(j);
       }
     }
-    
-    return variance;
-}
+    return 2.0 * covSum - arma::sum(arma::square(R_new));
+  }
 
 }

@@ -7,8 +7,8 @@
 GRAB.SPAmixPlus()
 }
 \description{
-SPAmixPlus extends SPAmix with improved allele frequency estimation using principal
-components, accounting for sample relatedness through a sparse genetic relationship
+SPAmixPlus extends SPAmix with improved individual-specific allele frequency estimation using
+principal components, accounting for sample relatedness through a sparse genetic relationship
 matrix (GRM). It performs retrospective single-variant association tests using
 genotypes and residuals from null models of any complex trait in large-scale biobanks.
 SPAmixPlus supports complex population structures and sample relatedness.
@@ -17,11 +17,9 @@ SPAmixPlus supports complex population structures and sample relatedness.
 \strong{Additional Control Parameters for GRAB.NullModel()}:
 \itemize{
 \item \code{PC_columns} (character, required): Comma-separated column names
-of principal components (e.g., "PC1,PC2").
+of principal components (e.g., \code{"PC1,PC2"}).
 \item \code{OutlierRatio} (numeric, default: 1.5): IQR multiplier for outlier detection.
-Outliers are defined as values outside [Q1 - r\emph{IQR, Q3 + r}IQR].
-\item \code{sigma_g} (numeric, default: 1.0): Genetic variance component for GRM scaling.
-\item \code{sigma_e} (numeric, default: 1.0): Residual variance component for GRM scaling.
+Outliers are defined as values outside \eqn{[Q1 - r \times IQR, Q3 + r \times IQR]}, where \eqn{r} is the multiplier.
 }
 
 \strong{Method-specific elements in the \code{SPAmixPlus_NULL_Model} object returned by \code{GRAB.NullModel()}:}:
@@ -63,7 +61,8 @@ SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
 OutputFile <- file.path(tempdir(), "resultSPAmixPlus.txt")
 afFileOutput <- file.path(tempdir(), "afModels.bin")
 PhenoData <- data.table::fread(PhenoFile, header = TRUE)
-# Step 0
+
+# Step 0: Pre-calculate individual-specific allele frequencies
 SPAmixPlus.AF(
   GenoFile = GenoFile,
   PCs = as.matrix(PhenoData[, c("PC1", "PC2", "PC3")]),
@@ -72,7 +71,7 @@ SPAmixPlus.AF(
   control = list(afFilePrecision = "double")
 )
 
-# Step 1
+# Step 1: Fit a null model and obtain residuals
 residuals <- survival::coxph(
   survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
   data = PhenoData
@@ -88,7 +87,7 @@ obj.SPAmixPlus <- GRAB.NullModel(
   control = list(PC_columns = "PC1,PC2")
 )
 
-# Step 2
+# Step 2: Run marker-level association tests using SPAmixPlus
 OutputFile <- file.path(tempdir(), "resultSPAmixPlus1.txt")
 GRAB.Marker(
   obj.SPAmixPlus,
