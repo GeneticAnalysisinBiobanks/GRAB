@@ -18,8 +18,6 @@
 #include "SPACox.h"
 #include "Main.h"
 
-// It works for one thread, but crushes when multiple threads are used.
-// The reason is that only one SPAmixClass object is created.
 
 //==============================================================================
 // SECTION 1: OBJECT DECLARATIONS
@@ -36,7 +34,7 @@ static double g_marker_minMAC_cutoff;         // Minimum Minor Allele Count for 
 static int g_nPheno;
 
 static PLINK::PlinkClass* ptr_gPLINKobj = nullptr;
-static BGEN::BgenClass* ptr_gBGENobj = nullptr;
+// static BGEN::BgenClass* ptr_gBGENobj = nullptr;
 // static std::list<SPAmix::SPAmixClass*> ptr_gSPAmixobjList;
 
 // static SPAmix::SPAmixClass* ptr_gSPAmixobj = nullptr;
@@ -72,7 +70,7 @@ public:
 
     void push(std::shared_ptr<MarkerData> marker) {
         std::unique_lock<std::mutex> lock(mtx);
-        cv.wait(lock, [this] { return markerQueue.size() < maxSize || finished; });
+        cv.wait(lock, [this] { return markerQueue.size() < (std::size_t)maxSize || finished; });
         if (!finished) {
             markerQueue.push(std::move(marker));
         }
@@ -130,7 +128,7 @@ public:
 
     void push(int markerIdx, const std::string& line) {
         std::unique_lock<std::mutex> lock(mtx);
-        cv.wait(lock, [this] { return resultHeap.size() < maxSize || finished; });
+        cv.wait(lock, [this] { return resultHeap.size() < (std::size_t)maxSize || finished; });
         if (!finished) {
             resultHeap.push(Result(markerIdx, line));
         }
@@ -258,7 +256,7 @@ static void workerSPAmix(
         }
 
         // Impute and possibly flip
-        bool flip = imputeGenoAndFlip(
+        imputeGenoAndFlip(
             marker->GVec,
             marker->altFreq,
             marker->indexForMissing,
@@ -270,7 +268,7 @@ static void workerSPAmix(
         std::string info = marker->chr + ":" + std::to_string(marker->pd) + ":" + marker->ref + ":" + marker->alt;
         std::string resultLine;
 
-        double pval = ptr_gSPAmixobj->getMarkerPval(marker->GVec, marker->altFreq);
+        ptr_gSPAmixobj->getMarkerPval(marker->GVec, marker->altFreq);
         arma::vec pvalVec = ptr_gSPAmixobj->getpvalVec();
         arma::vec zScoreVec = ptr_gSPAmixobj->getzScoreVec();
 

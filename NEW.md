@@ -1,20 +1,25 @@
 # Release Notes
 
-## v0.3.1 (2026-02-02)
+## v0.3.0-alpha.2 (2026-02-06)
 
-- SPAsar
-  - Added SPAsqr.Step1a, which calculates genotype distributions for all families in parallel
-  - Added SPAsqr.Step1b, which performs SQR and returns null objects for multiple traits in parallel
+- Added new methods:
+  - SAGELD, developed by He Xu
+  - LEAF, developed by Ying Li
+  - SPAmixPlus and SPAmixLocalPlus, developed by Yuzhuo Ma
+
+- Changes to SPAsqr:
   - Added quantile regression
-  - Outlier cutoff 0.7 -> 0.8
-- WtCoxG now returns Z-scores and Score statistics in addition to p-values
-- Added LEAF
-- Added verbose options (default FALSE) to functions in Geno.R
+  - Changed outlier cutoff from 0.7 to 0.8
+  - Added SPAsqr.Step1a, which builds GRM cache for all families
+  - Added SPAsqr.Step1b, which fits null model using pre-computed GRM cache
 
-## v0.3.0 (2026-01-12)
+- Changes to existing methods:
+  - Added verbose options (default FALSE) to functions in Geno.R
+  - WtCoxG now returns Z-scores and score statistics in addition to p-values
 
-- Added SPAsqr
-- This version is available only on GitHub (not uploaded to other repositories).
+## v0.3.0-alpha.1 (2026-01-12)
+
+- Added SPAsqr, developed by Dr. Heng
 
 ## v0.2.4 (2025-12-01)
 

@@ -178,22 +178,24 @@ SPAmixLocalPlus.EstimatePhi <- function(
       next
     }
     
-    cat("Processing Ancestry ", anc_id, "...\n", sep = "")
+    .message("Processing Ancestry %s...", anc_id)
     
     # Read dosage and haplotype count files
-    cat("  Reading dosage file... ")
+    .message("Reading dosage file: %s", dosage_file)
     dos_dt <- data.table::fread(dosage_file, header = TRUE)
     dos_mat <- as.matrix(dos_dt[, -c(1:5)])  # Remove first 5 columns (CHROM, POS, ID, REF, ALT)
-    cat("done (", nrow(dos_mat), " SNPs x ", ncol(dos_mat), " samples)\n", sep = "")
+    rm(dos_dt)
+    .message("Reading dosage file completed: %d SNPs x %d samples", nrow(dos_mat), ncol(dos_mat))
     
-    cat("  Reading haplotype count file... ")
+    .message("Reading haplotype count file: %s", haplo_file)
     hap_dt <- data.table::fread(haplo_file, header = TRUE)
     hap_mat <- as.matrix(hap_dt[, -c(1:5)])  # Remove first 5 columns
-    cat("done\n")
+    rm(hap_dt)
+    .message("Reading haplotype count file completed")
     
     # Process each scenario
     for (scenario in Scenarios) {
-      cat("    Scenario ", scenario, "... ", sep = "")
+      .message("Analyzing Scenario %s...", scenario)
       
       # Call C++ function
       res <- SPAmixLocalPlus_computePhiInCPP(
@@ -232,11 +234,11 @@ SPAmixLocalPlus.EstimatePhi <- function(
       out_path <- paste0(phiOutputPrefix, "Ancestry", anc_id, "_scenario", scenario, ".txt")
       
       data.table::fwrite(res_df, out_path, sep = "\t", quote = FALSE)
-      cat("saved (", nrow(res_df), " pairs)\n", sep = "")
+      .message("Scenario %s saved: %d pairs", scenario, nrow(res_df))
     }
   }
   
-  cat("Phi estimation completed.\n")
+  .message("Phi estimation completed.")
   invisible(NULL)
 }
 
@@ -420,7 +422,7 @@ SPAmixLocalPlus.OneAnc = function(
   # 3. Load Phi Matrices
   # Helper to load and format phi matrix using matched sample indices
   # Get matched sample IDs for phi mapping
-  matched_sample_ids <- match_info$matched_sample_ids
+  matched_sample_ids <- file_sample_ids[match_info$file_indices + 1]
   
   convert_phi <- function(phi_path, sample_ids) {
       # Read phi file

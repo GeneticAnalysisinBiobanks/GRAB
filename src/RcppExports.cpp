@@ -444,6 +444,23 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// SPAmixPlusLocal_streamInCPP
+void SPAmixPlusLocal_streamInCPP(const std::string& geno_file, const std::string& haplo_file, const std::string& output_file, const arma::uvec& file_match_idx, const arma::mat& phi_A_mat, const arma::mat& phi_B_mat, const arma::mat& phi_C_mat, const arma::mat& phi_D_mat);
+RcppExport SEXP _GRAB_SPAmixPlusLocal_streamInCPP(SEXP geno_fileSEXP, SEXP haplo_fileSEXP, SEXP output_fileSEXP, SEXP file_match_idxSEXP, SEXP phi_A_matSEXP, SEXP phi_B_matSEXP, SEXP phi_C_matSEXP, SEXP phi_D_matSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const std::string& >::type geno_file(geno_fileSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type haplo_file(haplo_fileSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type output_file(output_fileSEXP);
+    Rcpp::traits::input_parameter< const arma::uvec& >::type file_match_idx(file_match_idxSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type phi_A_mat(phi_A_matSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type phi_B_mat(phi_B_matSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type phi_C_mat(phi_C_matSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type phi_D_mat(phi_D_matSEXP);
+    SPAmixPlusLocal_streamInCPP(geno_file, haplo_file, output_file, file_match_idx, phi_A_mat, phi_B_mat, phi_C_mat, phi_D_mat);
+    return R_NilValue;
+END_RCPP
+}
 // read_ukb_sample_ids_cpp
 std::vector<std::string> read_ukb_sample_ids_cpp(const std::string& geno_file);
 RcppExport SEXP _GRAB_read_ukb_sample_ids_cpp(SEXP geno_fileSEXP) {
@@ -500,23 +517,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// SPAmixPlusLocal_streamInCPP
-void SPAmixPlusLocal_streamInCPP(const std::string& geno_file, const std::string& haplo_file, const std::string& output_file, const arma::uvec& file_match_idx, const arma::mat& phi_A_mat, const arma::mat& phi_B_mat, const arma::mat& phi_C_mat, const arma::mat& phi_D_mat);
-RcppExport SEXP _GRAB_SPAmixPlusLocal_streamInCPP(SEXP geno_fileSEXP, SEXP haplo_fileSEXP, SEXP output_fileSEXP, SEXP file_match_idxSEXP, SEXP phi_A_matSEXP, SEXP phi_B_matSEXP, SEXP phi_C_matSEXP, SEXP phi_D_matSEXP) {
-BEGIN_RCPP
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const std::string& >::type geno_file(geno_fileSEXP);
-    Rcpp::traits::input_parameter< const std::string& >::type haplo_file(haplo_fileSEXP);
-    Rcpp::traits::input_parameter< const std::string& >::type output_file(output_fileSEXP);
-    Rcpp::traits::input_parameter< const arma::uvec& >::type file_match_idx(file_match_idxSEXP);
-    Rcpp::traits::input_parameter< const arma::mat& >::type phi_A_mat(phi_A_matSEXP);
-    Rcpp::traits::input_parameter< const arma::mat& >::type phi_B_mat(phi_B_matSEXP);
-    Rcpp::traits::input_parameter< const arma::mat& >::type phi_C_mat(phi_C_matSEXP);
-    Rcpp::traits::input_parameter< const arma::mat& >::type phi_D_mat(phi_D_matSEXP);
-    SPAmixPlusLocal_streamInCPP(geno_file, haplo_file, output_file, file_match_idx, phi_A_mat, phi_B_mat, phi_C_mat, phi_D_mat);
-    return R_NilValue;
-END_RCPP
-}
 // exportAFModelInCPP
 void exportAFModelInCPP(std::string genoType, const std::vector<uint64_t>& genoIndex, std::string afFileOutput, const arma::mat& t_pcs, std::string afFilePrecision);
 RcppExport SEXP _GRAB_exportAFModelInCPP(SEXP genoTypeSEXP, SEXP genoIndexSEXP, SEXP afFileOutputSEXP, SEXP t_pcsSEXP, SEXP afFilePrecisionSEXP) {
@@ -559,11 +559,11 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setLEAFobjInCPP", (DL_FUNC) &_GRAB_setLEAFobjInCPP, 5},
     {"_GRAB_setSPAmixPlusobjInCPP", (DL_FUNC) &_GRAB_setSPAmixPlusobjInCPP, 8},
     {"_GRAB_mainMarkerInCPP2", (DL_FUNC) &_GRAB_mainMarkerInCPP2, 2},
+    {"_GRAB_SPAmixPlusLocal_streamInCPP", (DL_FUNC) &_GRAB_SPAmixPlusLocal_streamInCPP, 8},
     {"_GRAB_read_ukb_sample_ids_cpp", (DL_FUNC) &_GRAB_read_ukb_sample_ids_cpp, 1},
     {"_GRAB_SPAmixLocalPlus_computePhiInCPP", (DL_FUNC) &_GRAB_SPAmixLocalPlus_computePhiInCPP, 7},
     {"_GRAB_SPAmixPlusLocal_setupInCPP", (DL_FUNC) &_GRAB_SPAmixPlusLocal_setupInCPP, 8},
     {"_GRAB_getSampleMatchIndices_cpp", (DL_FUNC) &_GRAB_getSampleMatchIndices_cpp, 1},
-    {"_GRAB_SPAmixPlusLocal_streamInCPP", (DL_FUNC) &_GRAB_SPAmixPlusLocal_streamInCPP, 8},
     {"_GRAB_exportAFModelInCPP", (DL_FUNC) &_GRAB_exportAFModelInCPP, 5},
     {NULL, NULL, 0}
 };

@@ -105,6 +105,10 @@ mainMarkerInCPP2 <- function(control, objNull) {
     invisible(.Call(`_GRAB_mainMarkerInCPP2`, control, objNull))
 }
 
+SPAmixPlusLocal_streamInCPP <- function(geno_file, haplo_file, output_file, file_match_idx, phi_A_mat, phi_B_mat, phi_C_mat, phi_D_mat) {
+    invisible(.Call(`_GRAB_SPAmixPlusLocal_streamInCPP`, geno_file, haplo_file, output_file, file_match_idx, phi_A_mat, phi_B_mat, phi_C_mat, phi_D_mat))
+}
+
 read_ukb_sample_ids_cpp <- function(geno_file) {
     .Call(`_GRAB_read_ukb_sample_ids_cpp`, geno_file)
 }
@@ -119,10 +123,6 @@ SPAmixPlusLocal_setupInCPP <- function(resid, subjData, outLierList, save_interv
 
 getSampleMatchIndices_cpp <- function(file_sample_ids) {
     .Call(`_GRAB_getSampleMatchIndices_cpp`, file_sample_ids)
-}
-
-SPAmixPlusLocal_streamInCPP <- function(geno_file, haplo_file, output_file, file_match_idx, phi_A_mat, phi_B_mat, phi_C_mat, phi_D_mat) {
-    invisible(.Call(`_GRAB_SPAmixPlusLocal_streamInCPP`, geno_file, haplo_file, output_file, file_match_idx, phi_A_mat, phi_B_mat, phi_C_mat, phi_D_mat))
 }
 
 exportAFModelInCPP <- function(genoType, genoIndex, afFileOutput, t_pcs, afFilePrecision) {

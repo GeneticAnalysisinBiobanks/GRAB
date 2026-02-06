@@ -1104,7 +1104,7 @@ SPAsqr.Step1a <- function(
 }
 
 
-# Step 1: Fit Null Model with Residuals
+# Step 1b: Fit Null Model using pre-computed GRM Cache
 SPAsqr.Step1b <- function(
   y,
   X,
