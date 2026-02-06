@@ -128,9 +128,9 @@ checkControl.NullModel.SPAmix <- function(traitType, GenoFile, SparseGRMFile, co
     warning("Argument 'GenoFile' is ignored for method 'SPAmix'.")
   }
 
-  if (!is.null(SparseGRMFile)) {
-    warning("Argument 'SparseGRMFile' is ignored for method 'SPAmix'.")
-  }
+  # if (!is.null(SparseGRMFile)) {
+  #   warning("Argument 'SparseGRMFile' is ignored for method 'SPAmix'.")
+  # }
 
   default.control <- list(
     OutlierRatio = 1.5

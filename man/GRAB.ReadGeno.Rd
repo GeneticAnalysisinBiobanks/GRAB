@@ -9,7 +9,8 @@ GRAB.ReadGeno(
   GenoFileIndex = NULL,
   SampleIDs = NULL,
   control = NULL,
-  sparse = FALSE
+  sparse = FALSE,
+  verbose = FALSE
 )
 }
 \arguments{
@@ -50,6 +51,9 @@ Can be used with IDsToExcludeFile (union will be excluded).
 }}
 
 \item{sparse}{Logical indicating whether to return sparse genotype matrix
+(default: FALSE).}
+
+\item{verbose}{Logical indicating whether to print progress messages
 (default: FALSE).}
 }
 \value{

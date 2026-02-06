@@ -43,6 +43,8 @@ private:
     arma::vec m_w;                       // Weights vector
     double m_cutoff;                     // batch effect p-value cutoff
     double m_SPA_Cutoff;                 // SPA cutoff
+    arma::vec m_scoreVec;                // Score statistics for current marker
+    arma::vec m_zScoreVec;               // Z-score statistics for current marker
 
 public:
 
@@ -90,8 +92,8 @@ public:
         arma::vec result(2);
         const MarkerInfo& info = m_markerInfoVec[i];
 
-        // Test with external reference - match R parameter mapping exactly
-        result(0) = WtCoxG_test_cpp(
+        // Test with external reference - returns [p-value, score, z-score]
+        arma::vec res_ext = WtCoxG_test_cpp(
             GVec, m_R, m_w,
             info.pvalue_bat,           // p_bat
             info.TPR,                  // TPR
@@ -105,10 +107,11 @@ public:
             info.AF_ref,               // mu.ext
             info.AN_ref / 2.0,         // n.ext
             m_cutoff);                 // p_cut
+        result(0) = res_ext(0);  // p-value
         
 
-        // Test without external reference - match R parameter mapping exactly
-        result(1) = WtCoxG_test_cpp(
+        // Test without external reference - returns [p-value, score, z-score]
+        arma::vec res_noext = WtCoxG_test_cpp(
             GVec, m_R, m_w,
             info.pvalue_bat,           // p_bat
             arma::datum::nan,          // TPR = NA
@@ -122,8 +125,29 @@ public:
             arma::datum::nan,          // mu.ext = NA
             arma::datum::nan,          // n.ext = NA
             m_cutoff);                 // p_cut
+        result(1) = res_noext(0);  // p-value
+
+        // Store scores and z-scores (resize if needed)
+        if (m_scoreVec.n_elem < 2) {
+            m_scoreVec.resize(2);
+            m_zScoreVec.resize(2);
+        }
+        m_scoreVec(0) = res_ext(1);      // score with external
+        m_scoreVec(1) = res_noext(1);    // score without external
+        m_zScoreVec(0) = res_ext(2);     // z-score with external
+        m_zScoreVec(1) = res_noext(2);   // z-score without external
 
         return result;
+    }
+    
+    // Get score statistics for last analyzed marker
+    arma::vec getScoreVec() const {
+        return m_scoreVec;
+    }
+    
+    // Get z-score statistics for last analyzed marker
+    arma::vec getZScoreVec() const {
+        return m_zScoreVec;
     }
 
 private:
@@ -219,7 +243,7 @@ private:
                                     double sigma2, double var_ratio, double Cutoff,
                                     double missing_cutoff, double min_mac);
 
-    double WtCoxG_test_cpp(const arma::vec& g_input, const arma::vec& R, const arma::vec& w,
+    arma::vec WtCoxG_test_cpp(const arma::vec& g_input, const arma::vec& R, const arma::vec& w,
                         double p_bat, double TPR, double sigma2, double b,
                         double var_ratio_int, double var_ratio_w0, double var_ratio_w1,
                         double var_ratio0, double var_ratio1, double mu_ext,

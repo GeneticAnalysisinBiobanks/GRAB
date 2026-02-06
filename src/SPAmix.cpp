@@ -24,7 +24,20 @@ SPAmixClass::SPAmixClass(arma::mat t_resid,
   m_N = t_N;
   m_SPA_Cutoff = t_SPA_Cutoff;
   m_PCs = t_PCs;
-  m_outlierList = t_outlierList;
+  
+  // Convert Rcpp::List to std::vector<OutlierData> (Thread-safe storage)
+  m_outlierVec.resize(m_Npheno);
+  for(int i = 0; i < m_Npheno; ++i) {
+      Rcpp::List l = t_outlierList[i];
+      m_outlierVec[i].posValue = Rcpp::as<arma::uvec>(l["posValue"]);
+      m_outlierVec[i].posOutlier = Rcpp::as<arma::uvec>(l["posOutlier"]);
+      m_outlierVec[i].posNonOutlier = Rcpp::as<arma::uvec>(l["posNonOutlier"]);
+      m_outlierVec[i].resid = Rcpp::as<arma::vec>(l["resid"]);
+      m_outlierVec[i].resid2 = Rcpp::as<arma::vec>(l["resid2"]);
+      m_outlierVec[i].residOutlier = Rcpp::as<arma::vec>(l["residOutlier"]);
+      m_outlierVec[i].residNonOutlier = Rcpp::as<arma::vec>(l["residNonOutlier"]);
+      m_outlierVec[i].resid2NonOutlier = Rcpp::as<arma::vec>(l["resid2NonOutlier"]);
+  }
   
   // m_posOutlier = t_posOutlier;
   // m_posNonOutlier = t_posNonOutlier;

@@ -16,6 +16,32 @@
 #' interaction analysis using Longitudinal Data for related samples in a
 #' large-scale biobank. SAGELD extended SPA<sub>GRM</sub> to support
 #' gene-environment interaction analysis.
+#' 
+#' @examples
+#' LongDataFile <- system.file("extdata", "simuLongPHENO.txt", package = "GRAB")
+#' ResidMatFile <- system.file("extdata", "ResidMat.txt", package = "GRAB")
+#' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
+#' PairwiseIBDFile <- system.file("extdata", "PairwiseIBD.txt", package = "GRAB")
+#' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+#' OutputFile <- file.path(tempdir(), "resultSAGELD.txt")
+#' LongPheno <- data.table::fread(LongDataFile)
+#' 
+#' # Step 1: fit null model using lme4
+#' nullmodel <- lme4::lmer(LongPheno ~ AGE + GENDER + (AGE|IID), data = LongPheno)
+#'
+#' # Step 2a: pre-calculate genotype distributions
+#' obj.SAGELD <- SAGELD.NullModel(
+#'   NullModel = nullmodel,
+#'   UsedMethod = "SAGELD",
+#'   PlinkFile = GenoFile,
+#'   SparseGRMFile = SparseGRMFile,
+#'   PairwiseIBDFile = PairwiseIBDFile,
+#' )
+#'
+#' # Step 2b: perform association tests
+#' GRAB.Marker(obj.SAGELD, GenoFile, OutputFile)
+#'
+#' head(data.table::fread(OutputFile))
 #'
 #' @details
 #' Additional list of \code{control} in \code{SAGELD.NullModel()} function.
@@ -39,8 +65,7 @@ GRAB.SAGELD <- function() {
 #' @param NullModel A fitted model from \pkg{lme4} (class \code{merMod}) or
 #'   \pkg{glmmTMB} with a subject-specific random intercept (e.g., \code{(1|ID)}).
 #' @param UsedMethod Character; either \code{"SAGELD"} (default) or \code{"GALLOP"}.
-#' @param PlinkFile Character. PLINK prefix (without extension) used to sample
-#'   common markers for estimating the lambda parameter.
+#' @param PlinkFile Character. Path to PLINK .bed file.
 #' @param SparseGRMFile Character. Path to sparse GRM file produced by
 #'   \code{getSparseGRM()}.
 #' @param PairwiseIBDFile Character. Path to pairwise IBD file produced by
@@ -97,7 +122,7 @@ GRAB.SAGELD <- function() {
 SAGELD.NullModel <- function(
   NullModel, # a fitted null model from lme4 or glmmTMB.
   UsedMethod = "SAGELD", # default running "SAGELD", user can also run "GALLOP" using unrelated samples.
-  PlinkFile, # a PLINK file path to read in some genotypes (without file suffix like ".bim", "bed" or "fam").
+  PlinkFile, # Path to PLINK .bed file.
   SparseGRMFile, # a path of SparseGRMFile get from getSparseGRM() function.
   PairwiseIBDFile, # a path of PairwiseIBDFile get from getPairwiseIBD() function.
   PvalueCutoff = 0.001, # a p value cutoff for marginal genetic effect on environmental variable.
@@ -144,11 +169,11 @@ SAGELD.NullModel <- function(
 
   Resid_data <- Pheno_data %>%
     mutate(Resid_G = residuals(NullModel)) %>%
-    mutate(Resid_GxE = Resid_G * !!sym(Envcolname)) %>%
+    mutate(Resid_GxE = Resid_G * !!rlang::sym(Envcolname)) %>%
     mutate(Resid_E = residuals(null_model)) %>%
-    group_by(!!sym(SubjIDColname)) %>%
-    summarize(Resid_G = sum(Resid_G), Resid_GxE = sum(Resid_GxE), Resid_E = sum(Resid_E)) %>%
-    rename(SubjID = !!sym(SubjIDColname)) %>%
+    group_by(!!rlang::sym(SubjIDColname)) %>%
+    dplyr::summarize(Resid_G = sum(Resid_G), Resid_GxE = sum(Resid_GxE), Resid_E = sum(Resid_E)) %>%
+    rename(SubjID = !!rlang::sym(SubjIDColname)) %>%
     ungroup()
 
   # Put data in convenient arrays and vector
@@ -305,6 +330,7 @@ SAGELD.NullModel <- function(
     }
 
     # read in the Plink file to random select SNPs to calculate mean lambda.
+    PlinkFile <- tools::file_path_sans_ext(PlinkFile)
     bedfile <- paste0(PlinkFile, ".bed")
     bimfile <- paste0(PlinkFile, ".bim")
 
@@ -393,7 +419,7 @@ SAGELD.NullModel <- function(
     )
 
     if (ControlOutlier) {
-      .message("Outlier control enabled (keeps outliers < 5%)")
+      .message("Outlier control enabled (keeps outliers < 5%%)")
 
       while (sum(Resid_data$Outlier) == 0) {
         OutlierRatio <- OutlierRatio * 0.8
@@ -538,7 +564,7 @@ SAGELD.NullModel <- function(
           arrange(Cov)
         for (j in seq_len(nrow(tempGRM1))) {
           edgesToRemove <- paste0(tempGRM1$ID1[j], "|", tempGRM1$ID2[j])
-          comp1.temp <- igraph::delete.edges(comp1.temp, edgesToRemove)
+          comp1.temp <- igraph::delete_edges(comp1.temp, edgesToRemove)
           # vertices count for the new graph after edge removal
           vcount <- igraph::decompose(comp1.temp) %>% sapply(igraph::vcount)
           if (max(vcount) <= MaxNuminFam) {
@@ -552,7 +578,7 @@ SAGELD.NullModel <- function(
         comp1 <- comp1.temp
         for (k in seq_len(nrow(tempGRM1))) {
           edgesToAdd <- c(tempGRM1$ID1[k], tempGRM1$ID2[k])
-          comp1.temp <- igraph::add.edges(comp1, edgesToAdd)
+          comp1.temp <- igraph::add_edges(comp1, edgesToAdd)
 
           vcount <- igraph::decompose(comp1.temp) %>% sapply(igraph::vcount)
 

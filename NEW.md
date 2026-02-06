@@ -1,8 +1,25 @@
 # Release Notes
 
-## v0.3.0 (2026-01-12)
+## v0.3.0-alpha.2 (2026-02-06)
 
-- Added SPAsqr
+- Added new methods:
+  - SAGELD, developed by He Xu
+  - LEAF, developed by Ying Li
+  - SPAmixPlus and SPAmixLocalPlus, developed by Yuzhuo Ma
+
+- Changes to SPAsqr:
+  - Added quantile regression
+  - Changed outlier cutoff from 0.7 to 0.8
+  - Added SPAsqr.Step1a, which builds GRM cache for all families
+  - Added SPAsqr.Step1b, which fits null model using pre-computed GRM cache
+
+- Changes to existing methods:
+  - Added verbose options (default FALSE) to functions in Geno.R
+  - WtCoxG now returns Z-scores and score statistics in addition to p-values
+
+## v0.3.0-alpha.1 (2026-01-12)
+
+- Added SPAsqr, developed by Dr. Heng
 
 ## v0.2.4 (2025-12-01)
 

@@ -10,6 +10,25 @@ namespace SPAmix{
 
 class SPAmixClass
 {
+public: 
+  struct OutlierData {
+    arma::uvec posValue;
+    arma::uvec posOutlier;
+    arma::uvec posNonOutlier;
+    arma::vec resid;
+    arma::vec resid2;
+    arma::vec residOutlier;
+    arma::vec residNonOutlier;
+    arma::vec resid2NonOutlier;
+  }; 
+  
+  struct RootResult {
+      double root;
+      int iter;
+      bool converge;
+      double K2;
+  };
+  
 private:
   
   ////////////////////// -------------------- members ---------------------------------- //////////////////////
@@ -27,7 +46,7 @@ private:
   arma::vec m_sqrt_XTX_inv_diag; // derived from PCs, check SPAmix.cpp for more details
   arma::vec m_diffTime1, m_diffTime2;
   
-  Rcpp::List m_outlierList;
+  std::vector<OutlierData> m_outlierVec;
   
   arma::vec m_pvalVec;
   arma::vec m_zScoreVec;
@@ -415,15 +434,15 @@ public:
     //                         residOutleir = mresid.temp[posOutlier],
     //                         residNonOutlier = mresid.temp[posNonOutlier])
     for(int i = 0; i < m_Npheno; i++){
-      Rcpp::List tempOutlierList = m_outlierList[i];
-      arma::uvec posValue = tempOutlierList["posValue"];
-      arma::uvec posOutlier = tempOutlierList["posOutlier"];
-      arma::uvec posNonOutlier = tempOutlierList["posNonOutlier"];
-      arma::vec resid = tempOutlierList["resid"];
-      arma::vec resid2 = tempOutlierList["resid2"];
-      arma::vec residOutlier = tempOutlierList["residOutlier"];
-      arma::vec residNonOutlier = tempOutlierList["residNonOutlier"];
-      arma::vec resid2NonOutlier = tempOutlierList["resid2NonOutlier"];
+      const OutlierData& tempOutlierList = m_outlierVec[i];
+      const arma::uvec& posValue = tempOutlierList.posValue;
+      const arma::uvec& posOutlier = tempOutlierList.posOutlier;
+      const arma::uvec& posNonOutlier = tempOutlierList.posNonOutlier;
+      const arma::vec& resid = tempOutlierList.resid;
+      const arma::vec& resid2 = tempOutlierList.resid2;
+      const arma::vec& residOutlier = tempOutlierList.residOutlier;
+      const arma::vec& residNonOutlier = tempOutlierList.residNonOutlier;
+      const arma::vec& resid2NonOutlier = tempOutlierList.resid2NonOutlier;
       
       double S = sum(t_GVec.elem(posValue) % resid);
       double VarS = sum(resid2 % GVarVec.elem(posValue));

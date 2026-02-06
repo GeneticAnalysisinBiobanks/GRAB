@@ -93,3 +93,39 @@ setSPAsqrobjInCPP <- function(t_taus, t_Resid_mat, t_Resid_unrelated_outliers_ls
     invisible(.Call(`_GRAB_setSPAsqrobjInCPP`, t_taus, t_Resid_mat, t_Resid_unrelated_outliers_lst, t_sum_R_nonOutlier_vec, t_R_GRM_R_nonOutlier_vec, t_R_GRM_R_TwoSubjOutlier_vec, t_R_GRM_R_vec, t_MAF_interval, t_TwoSubj_list_lst, t_CLT_union_lst, t_ThreeSubj_family_idx_lst, t_ThreeSubj_stand_S_lst, t_SPA_Cutoff, t_zeta, t_tol))
 }
 
+setLEAFobjInCPP <- function(t_residuals, t_weight, t_clusterIdx, t_cutoff, t_SPA_Cutoff) {
+    invisible(.Call(`_GRAB_setLEAFobjInCPP`, t_residuals, t_weight, t_clusterIdx, t_cutoff, t_SPA_Cutoff))
+}
+
+setSPAmixPlusobjInCPP <- function(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList, t_sparseGRM, t_afFilePath, t_afFilePrecision) {
+    invisible(.Call(`_GRAB_setSPAmixPlusobjInCPP`, t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList, t_sparseGRM, t_afFilePath, t_afFilePrecision))
+}
+
+mainMarkerInCPP2 <- function(control, objNull) {
+    invisible(.Call(`_GRAB_mainMarkerInCPP2`, control, objNull))
+}
+
+SPAmixPlusLocal_streamInCPP <- function(geno_file, haplo_file, output_file, file_match_idx, phi_A_mat, phi_B_mat, phi_C_mat, phi_D_mat) {
+    invisible(.Call(`_GRAB_SPAmixPlusLocal_streamInCPP`, geno_file, haplo_file, output_file, file_match_idx, phi_A_mat, phi_B_mat, phi_C_mat, phi_D_mat))
+}
+
+read_ukb_sample_ids_cpp <- function(geno_file) {
+    .Call(`_GRAB_read_ukb_sample_ids_cpp`, geno_file)
+}
+
+SPAmixLocalPlus_computePhiInCPP <- function(hapcount_matrix, dosage_matrix, pair_idx1, pair_idx2, scenario, phi_threshold = 0.0, maf_cutoff = 0.01) {
+    .Call(`_GRAB_SPAmixLocalPlus_computePhiInCPP`, hapcount_matrix, dosage_matrix, pair_idx1, pair_idx2, scenario, phi_threshold, maf_cutoff)
+}
+
+SPAmixPlusLocal_setupInCPP <- function(resid, subjData, outLierList, save_interval, MAF_cutoff, MAC_cutoff, cutoff, verbose) {
+    invisible(.Call(`_GRAB_SPAmixPlusLocal_setupInCPP`, resid, subjData, outLierList, save_interval, MAF_cutoff, MAC_cutoff, cutoff, verbose))
+}
+
+getSampleMatchIndices_cpp <- function(file_sample_ids) {
+    .Call(`_GRAB_getSampleMatchIndices_cpp`, file_sample_ids)
+}
+
+exportAFModelInCPP <- function(genoType, genoIndex, afFileOutput, t_pcs, afFilePrecision) {
+    invisible(.Call(`_GRAB_exportAFModelInCPP`, genoType, genoIndex, afFileOutput, t_pcs, afFilePrecision))
+}
+

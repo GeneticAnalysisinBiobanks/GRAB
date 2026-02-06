@@ -20,3 +20,30 @@ Additional list of \code{control} in \code{SAGELD.NullModel()} function.
 
 Additional list of \code{control} in \code{GRAB.Marker()} function.
 }
+\examples{
+LongDataFile <- system.file("extdata", "simuLongPHENO.txt", package = "GRAB")
+ResidMatFile <- system.file("extdata", "ResidMat.txt", package = "GRAB")
+SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
+PairwiseIBDFile <- system.file("extdata", "PairwiseIBD.txt", package = "GRAB")
+GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
+OutputFile <- file.path(tempdir(), "resultSAGELD.txt")
+LongPheno <- data.table::fread(LongDataFile)
+
+# Step 1: fit null model using lme4
+nullmodel <- lme4::lmer(LongPheno ~ AGE + GENDER + (AGE|IID), data = LongPheno)
+
+# Step 2a: pre-calculate genotype distributions
+obj.SAGELD <- SAGELD.NullModel(
+  NullModel = nullmodel,
+  UsedMethod = "SAGELD",
+  PlinkFile = GenoFile,
+  SparseGRMFile = SparseGRMFile,
+  PairwiseIBDFile = PairwiseIBDFile,
+)
+
+# Step 2b: perform association tests
+GRAB.Marker(obj.SAGELD, GenoFile, OutputFile)
+
+head(data.table::fread(OutputFile))
+
+}

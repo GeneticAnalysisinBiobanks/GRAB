@@ -8,19 +8,17 @@
 #' @return NULL
 #'
 #' @examples
-#' # Step 0: Compute pairwise IBD probabilities using a sparse GRM.
+#' # Step 1: Fit null model and prepare genotype distribution cache
 #' # See ?getSparseGRM for details on generating a sparse GRM.
 #' # See ?getPairwiseIBD for details on computing pairwise IBD estimates.
-#' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-#' frqFile <- system.file("extdata", "simuPLINK.frq", package = "GRAB")
+#'
 #' SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
-#' PairwiseIBDFile <- file.path(tempdir(), "PairwiseIBD.txt")
-#' getPairwiseIBD(sub("\\.bed$", "", GenoFile, ignore.case = TRUE), SparseGRMFile, 
-#'                PairwiseIBDOutput = PairwiseIBDFile, frqFile = frqFile)
+#' PairwiseIBDFile <- system.file("extdata", "PairwiseIBD.txt", package = "GRAB")
 #' 
-#' # Step 1: Fit null model and prepare genotype distribution cache
 #' PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
 #' PhenoData <- data.table::fread(PhenoFile, header = TRUE)
+#' 
+#' GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 #' OutputFile <- file.path(tempdir(), "resultSPAsqr.txt")
 #'
 #' obj.SPAsqr <- GRAB.NullModel(
@@ -29,13 +27,9 @@
 #'   subjIDcol = "IID",
 #'   method = "SPAsqr",
 #'   traitType = "quantitative",
-#'   GenoFile = GenoFile,
 #'   SparseGRMFile = SparseGRMFile,
-#'   PairwiseIBDFile = PairwiseIBDFile,
-#'   control = list(
-#'     taus = c(0.05, 0.2, 0.5, 0.8, 0.95),
-#'     h = 0
-#'   )
+#'   control = list(taus = c(0.2, 0.5, 0.8)),
+#'   PairwiseIBDFile = PairwiseIBDFile
 #' )
 #'
 #' # Step 2: Perform single-marker association tests
@@ -48,9 +42,8 @@
 #'
 #' \strong{Usage with \code{GRAB.NullModel()}:}
 #' 
-#' Set \code{method = "SPAsqr"} and \code{traitType = "quantitative"}. Three additional required arguments:
+#' Set \code{method = "SPAsqr"} and \code{traitType = "quantitative"}. Two additional required arguments:
 #' \itemize{
-#'   \item \code{GenoFile}: Path to genotype file (PLINK .bed or BGEN format).
 #'   \item \code{SparseGRMFile}: Path to sparse GRM file (whitespace-delimited: ID1 ID2 Value).
 #'   \item \code{PairwiseIBDFile}: Path to pairwise IBD file (see \code{?\link{getPairwiseIBD}}).
 #' }
@@ -60,6 +53,8 @@
 #'   \item \code{taus} (numeric vector, default: c(0.05, 0.2, 0.5, 0.8, 0.95)): Quantiles 
 #'     to examine for association testing. All values must be between 0 and 1 (exclusive). 
 #'     P-values across quantiles are combined using Cauchy combination test.
+#'   \item \code{smooth} (logical, default: TRUE): Whether to use smoothed quantile regression.
+#'     If FALSE, nonsmooth quantile regression is used; \code{h} and \code{sqr_tol} are ignored.
 #'   \item \code{h} (numeric, default: 0): Bandwidth parameter for smooth quantile regression. 
 #'     If h = 0, bandwidth is automatically selected as IQR(y)/3.
 #'   \item \code{MaxNuminFam} (integer, default: 5): Maximum family size for Chow-Liu tree 
@@ -136,16 +131,10 @@ checkControl.NullModel.SPAsqr <- function(traitType, GenoFile, SparseGRMFile, co
     stop("For 'SPAsqr' method, only traitType of 'quantitative' is supported.")
   }
 
-  if (is.null(GenoFile)) {
-    stop("Argument 'GenoFile' is required for method 'SPAsqr'.")
+  if (!is.null(GenoFile)) {
+    warning("Argument 'GenoFile' is ignored for method 'SPACox'.")
   }
-  if (!is.character(GenoFile) || length(GenoFile) != 1) {
-    stop("Argument 'GenoFile' should be a character string (file path).")
-  }
-  if (!file.exists(GenoFile)) {
-    stop("Cannot find GenoFile: ", GenoFile)
-  }
-
+  
   if (is.null(SparseGRMFile)) {
     stop("Argument 'SparseGRMFile' is required for method 'SPAsqr'.")
   }
@@ -169,6 +158,7 @@ checkControl.NullModel.SPAsqr <- function(traitType, GenoFile, SparseGRMFile, co
   default.control <- list(
     # Parameters for null model fitting
     taus = c(0.05,0.2,0.5,0.8,0.95),
+    smooth=TRUE,
     h = 0,
     MaxNuminFam = 5,
     MAF_interval = c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5),
@@ -182,9 +172,23 @@ checkControl.NullModel.SPAsqr <- function(traitType, GenoFile, SparseGRMFile, co
     stop("'control$taus' should be a numeric vector with each element between 0 and 1.")
   }
 
+  # Validate smooth
+  if (!is.logical(control$smooth) || length(control$smooth) != 1) {
+    stop("'control$smooth' should be a single logical value (TRUE or FALSE).")
+  }
+
   # Validate h
-  if (!is.numeric(control$h) || length(control$h) != 1 || control$h < 0) {
-    stop("'control$h' should be a single non-negative numeric value (default is 0 for automatic selection).")
+  if (control$smooth) {
+    if (!is.numeric(control$h) || length(control$h) != 1 || control$h < 0) {
+      stop("'control$h' should be a single non-negative numeric value (default is 0 for automatic selection).")
+    }
+    # Validate sqr_tol
+    if (!is.numeric(control$sqr_tol) || length(control$sqr_tol) != 1 || control$sqr_tol <= 0) {
+      stop("'control$sqr_tol' should be a single positive numeric value.")
+    }
+  } else {
+    control$h <- NULL  # Not used if smooth = FALSE
+    control$sqr_tol <- NULL  # Not used if smooth = FALSE
   }
 
   # Validate MaxNuminFam
@@ -208,26 +212,38 @@ fitNullModel.SPAsqr <- function(
   designMat,
   subjData,
   control,
-  GenoFile, 
   SparseGRMFile,
   ...
 ) {
   PairwiseIBDFile <- list(...)$PairwiseIBDFile
 
-  # ========== Fit SQR null model ==========
-  X <- designMat
+  # ========== Fit null model ==========
   y <- response
   taus <- control$taus
   ntaus <- length(taus)
-  h <- control$h
-  if (h == 0) h <- IQR(y)/3
-
   ResidMat <- matrix(0, nrow = length(y), ncol = ntaus)
-  for (i in seq_along(taus)) {
-    current_tau <- taus[i]
-    current_fit <- conquer::conquer(X, y, tau = current_tau, kernel = "Gaussian", h = h, tol = control$sqr_tol)
-    current_resid <- as.numeric(y - current_fit$coeff[1] - X %*% current_fit$coeff[2:(ncol(X)+1)])
-    ResidMat[, i] <- current_tau - pnorm((-current_resid)/h)
+
+  if (control$smooth) {
+    # Smoothed quantile regression
+    X <- designMat
+    h <- control$h
+    if (h == 0) h <- IQR(y)/3
+
+    for (i in seq_along(taus)) {
+      current_tau <- taus[i]
+      current_fit <- conquer::conquer(X, y, tau = current_tau, kernel = "Gaussian", h = h, tol = control$sqr_tol)
+      current_resid <- as.numeric(y - current_fit$coeff[1] - X %*% current_fit$coeff[2:(ncol(X)+1)])
+      ResidMat[, i] <- current_tau - pnorm((-current_resid)/h)
+    }
+  } else {
+    # Nonsmooth quantile regression
+    X <- cbind(1, designMat)
+
+    for (i in seq_along(taus)) {
+      current_tau <- taus[i]
+      current_fit <- quantreg::rq.fit(X, y, tau = current_tau)
+      ResidMat[, i] <- current_tau - ifelse(current_fit$residuals < 0, 1, 0)
+    }
   }
 
   # ========= # Read SparseGRM and make ID set to be same as subjData ==========
@@ -237,30 +253,11 @@ fitNullModel.SPAsqr <- function(
   data.table::set(SparseGRM, j = "ID2", value = as.character(SparseGRM$ID2))
   SparseGRM <- SparseGRM[SparseGRM$ID1 %in% subjData & SparseGRM$ID2 %in% subjData, ]
 
-  missSubjInGRM <- subjData[!subjData %in% unique(c(SparseGRM$ID1, SparseGRM$ID2))]
-  num_missing <- length(missSubjInGRM)
-
-  if (num_missing > 0) {
-    # Append one line for each missing subject: ID ID 1
-    new_rows <- data.table::data.table(
-      ID1 = missSubjInGRM,
-      ID2 = missSubjInGRM,
-      Value = 1
-    )
-    SparseGRM <- rbind(SparseGRM, new_rows)
-
-    # Prepare message (show up to 5 missing IDs)
-    show_n <- min(5, num_missing)
-    msg <- paste0(
-      num_missing, " subjects do not have GRM info, impute as:\n",
-      paste0(missSubjInGRM[1:show_n], " ", missSubjInGRM[1:show_n], " 1", collapse = "\n"),
-      if (num_missing > show_n) "\n..." else ""
-    )
-    .message(msg)
-  }
-
   # ========== SPAGRM Workflow ==========
   PairwiseIBD <- data.table::fread(PairwiseIBDFile)
+  data.table::set(PairwiseIBD, j = "ID1", value = as.character(PairwiseIBD$ID1))
+  data.table::set(PairwiseIBD, j = "ID2", value = as.character(PairwiseIBD$ID2))
+  PairwiseIBD <- PairwiseIBD[PairwiseIBD$ID1 %in% subjData & PairwiseIBD$ID2 %in% subjData, ]
 
   obj <- SPAGRM.NullModel.Multi(subjData, ResidMat, SparseGRM, PairwiseIBD, control)
   class(obj) <- "SPAsqr_NULL_Model"
@@ -355,8 +352,8 @@ SPAGRM.NullModel.Multi <- function(
   MAF_interval <- control$MAF_interval
   
   #### Identify outliers based on quantiles
-  tooSmall <- sweep(ResidMat, 2, -0.7, "<")
-  tooLarge <- sweep(ResidMat, 2, 0.7, ">")
+  tooSmall <- sweep(ResidMat, 2, -0.8, "<")
+  tooLarge <- sweep(ResidMat, 2, 0.8, ">")
   Outlier <- tooSmall | tooLarge
   
   #### Pre-compute tau-independent graph structure
@@ -486,7 +483,7 @@ SPAGRM.NullModel.Multi <- function(
       # Remove edges until largest component <= MaxNuminFam
       for (j in seq_len(nrow(tempGRM1))) {
         edgesToRemove <- paste0(tempGRM1$ID1[j], "|", tempGRM1$ID2[j])
-        comp1.temp <- igraph::delete.edges(comp1.temp, edgesToRemove)
+        comp1.temp <- igraph::delete_edges(comp1.temp, edgesToRemove)
         vcount_decomp <- igraph::decompose(comp1.temp) %>% sapply(igraph::vcount)
         if (max(vcount_decomp) <= MaxNuminFam) {
           break
@@ -498,7 +495,7 @@ SPAGRM.NullModel.Multi <- function(
       comp1 <- comp1.temp
       for (k in seq_len(nrow(tempGRM1))) {
         edgesToAdd <- c(tempGRM1$ID1[k], tempGRM1$ID2[k])
-        comp1.temp <- igraph::add.edges(comp1, edgesToAdd)
+        comp1.temp <- igraph::add_edges(comp1, edgesToAdd)
         vcount_decomp <- igraph::decompose(comp1.temp) %>% sapply(igraph::vcount)
         if (max(vcount_decomp) <= MaxNuminFam) {
           comp1 <- comp1.temp
@@ -792,5 +789,658 @@ SPAGRM.NullModel.Multi <- function(
     MAF_interval = MAF_interval
   )
   
+  return(obj)
+}
+
+# =======================================================================
+
+# When sample size is large and many traits are analyzed or loco is used,
+# it is more efficient to separate the GRM cache building (Step 1a) from
+# the null model fitting (Step 1). In this file, SPAsqr.Step1a builds 
+# the GRM cache, and SPAsqr.Step1b computes the null model object using 
+# the pre-computed GRM cache. The returned object is for GRAB.Marker input.
+
+
+# Step 1a: Build GRM Cache (ResidMat-independent)
+SPAsqr.Step1a <- function(
+  subjData,
+  SparseGRMFile,
+  PairwiseIBDFile,
+  MaxNuminFam = 5,
+  MAF_interval = c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5),
+  nsubprocess = 1
+) {
+
+  .message("Loading Sparse GRM and Pairwise IBD data")
+
+  SparseGRM <- data.table::fread(SparseGRMFile)
+  data.table::setnames(SparseGRM, c("ID1", "ID2", "Value"))
+  data.table::set(SparseGRM, j = "ID1", value = as.character(SparseGRM$ID1))
+  data.table::set(SparseGRM, j = "ID2", value = as.character(SparseGRM$ID2))
+  SparseGRM <- SparseGRM[SparseGRM$ID1 %in% subjData & SparseGRM$ID2 %in% subjData, ]
+
+  PairwiseIBD <- data.table::fread(PairwiseIBDFile)
+  data.table::set(PairwiseIBD, j = "ID1", value = as.character(PairwiseIBD$ID1))
+  data.table::set(PairwiseIBD, j = "ID2", value = as.character(PairwiseIBD$ID2))
+  PairwiseIBD <- PairwiseIBD[PairwiseIBD$ID1 %in% subjData & PairwiseIBD$ID2 %in% subjData, ]
+  
+
+  .message("Building GRM cache (ResidMat-independent)")
+  
+  edges <- t(SparseGRM[, c("ID1", "ID2")])
+  graph_GRM <- igraph::make_graph(edges, directed = FALSE)
+  graph_list_all <- igraph::decompose(graph_GRM)
+  graph_vertex_names <- parallel::mclapply(graph_list_all, function(g) igraph::V(g)$name, mc.cores = nsubprocess)
+  graph_length <- sapply(graph_list_all, length)
+  
+  graph_list_1 <- graph_list_all[graph_length == 1]
+  SubjID.unrelated <- unlist(lapply(graph_list_1, igraph::get.vertex.attribute), use.names = FALSE)
+  graph_list <- graph_list_all[graph_length > 1]
+  nGraph <- length(graph_list)
+  
+  if (nGraph == 0) {
+    stop("No related subjects found in the SparseGRM. Please check the input GRM file.")
+  }
+  
+  #### Build arr.index structure
+  arr.index <- list()
+  for (n in seq_len(MaxNuminFam)) {
+    temp <- c()
+    for (i_idx in seq_len(n)) {
+      indexString <- rep("c(1, 1, 1)", n)
+      indexString[i_idx] <- "0:2"
+      indexString <- paste0(indexString, collapse = "%o%")
+      cmd <- paste0("temp = c(temp, list(arr.index", i_idx, "=", indexString, "))")
+      eval(parse(text = cmd))
+    }
+    arr.index[[n]] <- temp
+  }
+  
+  #### Pre-compute block GRMs for ALL ORIGINAL families (before any decomposition)
+  .message("Pre-computing block GRMs for %d original families", nGraph)
+  
+  # Parallelize block GRM computation
+  block_GRM_cache_original <- parallel::mclapply(seq_len(nGraph), function(i_fam) {
+    if (i_fam %% 10000 == 0) {
+      .message("Computing block GRM %d/%d", i_fam, nGraph)
+    }
+    comp1 <- graph_list[[i_fam]]
+    make.block.GRM(comp1, SparseGRM)
+  }, mc.cores = nsubprocess)
+  
+  #### Identify families that need decomposition (all families > MaxNuminFam)
+  families_needing_decomposition <- which(graph_length[graph_length > 1] > MaxNuminFam)
+  
+  #### Decompose large families and compute block GRMs for components
+  decomposed_families_lst <- vector("list", nGraph)
+  decomposed_block_GRM_lst <- vector("list", nGraph)
+  
+  if (length(families_needing_decomposition) > 0) {
+    .message("Pre-decomposing %d large families (size > MaxNuminFam=%d)", 
+             length(families_needing_decomposition), MaxNuminFam)
+    
+    # Parallelize decomposition
+    decomposition_results <- parallel::mclapply(seq_along(families_needing_decomposition), function(idx) {
+      i_fam <- families_needing_decomposition[idx]
+      
+      if (idx %% 1000 == 0) {
+        .message("Decomposing family %d/%d", idx, length(families_needing_decomposition))
+      }
+      
+      comp1 <- graph_list[[i_fam]]
+      comp3 <- graph_vertex_names[[which(graph_length > 1)[i_fam]]]
+      
+      # Decompose using kinship values (tau-independent)
+      comp1.temp <- comp1
+      # Use data.table operations with proper allocation
+      temp_filter <- SparseGRM$ID1 %in% comp3 | SparseGRM$ID2 %in% comp3
+      tempGRM1 <- data.table::copy(SparseGRM[temp_filter, ])
+      data.table::setalloccol(tempGRM1)
+      data.table::set(tempGRM1, j = "Weight", value = abs(tempGRM1$Value))
+      data.table::setorder(tempGRM1, Weight)
+      
+      # Remove edges until largest component <= MaxNuminFam
+      for (j in seq_len(nrow(tempGRM1))) {
+        edgesToRemove <- paste0(tempGRM1$ID1[j], "|", tempGRM1$ID2[j])
+        comp1.temp <- igraph::delete_edges(comp1.temp, edgesToRemove)
+        vcount_decomp <- sapply(igraph::decompose(comp1.temp), igraph::vcount)
+        if (max(vcount_decomp) <= MaxNuminFam) {
+          break
+        }
+      }
+      
+      # Add back edges (strongest first) while maintaining size constraint
+      tempGRM1 <- tempGRM1[seq_len(j), ]
+      data.table::setorder(tempGRM1, -Weight)
+      comp1 <- comp1.temp
+      for (k in seq_len(nrow(tempGRM1))) {
+        edgesToAdd <- c(tempGRM1$ID1[k], tempGRM1$ID2[k])
+        comp1.temp <- igraph::add_edges(comp1, edgesToAdd)
+        vcount_decomp <- sapply(igraph::decompose(comp1.temp), igraph::vcount)
+        if (max(vcount_decomp) <= MaxNuminFam) {
+          comp1 <- comp1.temp
+        }
+      }
+      
+      # Decompose into separate components
+      comp1_decomposed <- igraph::decompose(comp1)
+      
+      # Pre-compute block GRM for each decomposed component (parallel)
+      block_GRMs_decomposed <- parallel::mclapply(comp1_decomposed, function(comp11) {
+        make.block.GRM(comp11, SparseGRM)
+      }, mc.cores = nsubprocess)
+      
+      list(families = comp1_decomposed, block_GRMs = block_GRMs_decomposed, i_fam = i_fam)
+    }, mc.cores = nsubprocess)
+    
+    # Unpack results into original structure
+    for (result in decomposition_results) {
+      i_fam <- result$i_fam
+      decomposed_families_lst[[i_fam]] <- result$families
+      decomposed_block_GRM_lst[[i_fam]] <- result$block_GRMs
+    }
+    
+    # Memory cleanup: remove temporary decomposition results
+    rm(decomposition_results)
+    gc()
+    
+    .message("Family decomposition complete")
+  }
+  
+  #### Combine operations: Build block GRM lookup and collect unique families
+  # This includes both small families and decomposed large families
+  .message("Building block GRM lookup and collecting unique families")
+  
+  # Pre-compute which families are related (avoid repeated indexing)
+  related_idx <- which(graph_length > 1)
+  vcounts <- graph_length[related_idx]
+  
+  # Parallelize family processing to collect data
+  family_data <- parallel::mclapply(seq_len(nGraph), function(i_fam) {
+    vcount <- vcounts[i_fam]
+    result <- list()
+    
+    if (vcount <= MaxNuminFam) {
+      # Small family - process original
+      comp3 <- graph_vertex_names[[related_idx[i_fam]]]
+      family_key <- paste(sort(comp3), collapse = "_")
+      
+      result[[1]] <- list(
+        family_key = family_key,
+        block_GRM = block_GRM_cache_original[[i_fam]],
+        comp_graph = graph_list[[i_fam]]
+      )
+    } else if (!is.null(decomposed_families_lst[[i_fam]])) {
+      # Large family - process decomposed components
+      decomposed_families <- decomposed_families_lst[[i_fam]]
+      decomposed_block_GRMs <- decomposed_block_GRM_lst[[i_fam]]
+      
+      for (k in seq_along(decomposed_families)) {
+        comp11 <- decomposed_families[[k]]
+        comp13 <- igraph::V(comp11)$name
+        family_key <- paste(sort(comp13), collapse = "_")
+        
+        result[[length(result) + 1]] <- list(
+          family_key = family_key,
+          block_GRM = decomposed_block_GRMs[[k]],
+          comp_graph = comp11
+        )
+      }
+    }
+    return(result)
+  }, mc.cores = nsubprocess)
+  
+  # Flatten results and build lookup tables sequentially (must be sequential for uniqueness)
+  # Store references to original data instead of duplicating block GRMs
+  # Use named lists instead of environments for proper serialization with save/saveRDS
+  family_key_to_source <- list()  # family_key -> list(source, index)
+  all_unique_families <- list()
+  family_id_map <- list()
+  
+  current_ifam <- 1
+  for (i in seq_len(nGraph)) {
+    vcount <- vcounts[i]
+    
+    if (vcount <= MaxNuminFam) {
+      # Small family - reference original cache
+      comp3 <- graph_vertex_names[[related_idx[i]]]
+      family_key <- paste(sort(comp3), collapse = "_")
+      
+      # Store reference to original cache
+      family_key_to_source[[family_key]] <- list(source = "original", index = i)
+      
+      # Add to unique families if not seen before
+      if (is.null(family_id_map[[family_key]])) {
+        all_unique_families[[length(all_unique_families) + 1]] <- graph_list[[i]]
+        family_id_map[[family_key]] <- length(all_unique_families)
+      }
+    } else if (!is.null(decomposed_families_lst[[i]])) {
+      # Large family - reference decomposed cache
+      decomposed_families <- decomposed_families_lst[[i]]
+      
+      for (k in seq_along(decomposed_families)) {
+        comp11 <- decomposed_families[[k]]
+        comp13 <- igraph::V(comp11)$name
+        family_key <- paste(sort(comp13), collapse = "_")
+        
+        # Store reference to decomposed cache
+        family_key_to_source[[family_key]] <- list(source = "decomposed", i_fam = i, k = k)
+        
+        # Add to unique families if not seen before
+        if (is.null(family_id_map[[family_key]])) {
+          all_unique_families[[length(all_unique_families) + 1]] <- comp11
+          family_id_map[[family_key]] <- length(all_unique_families)
+        }
+      }
+    }
+  }
+
+  .message("Built block GRM reference map with %d entries and %d unique families", 
+           length(family_key_to_source), length(all_unique_families))
+  
+  #### Pre-compute CLT for all unique families (only for families with 3+ members)
+  n_unique <- length(all_unique_families)
+  CLT_cache <- vector("list", n_unique)
+  
+  if (n_unique > 0) {
+    .message("Computing Chow-Liu trees for %d unique families", n_unique)
+    
+    # Progress reporting thresholds
+    progress_step <- max(1, floor(n_unique / 20))  # Report every 5%
+    
+    # Parallelize CLT computation
+    CLT_cache <- parallel::mclapply(seq_len(n_unique), function(fam_idx) {
+      if (fam_idx %% 1000 == 0) {
+        .message("Processing family %d/%d", fam_idx, n_unique)
+      }
+
+      comp1 <- all_unique_families[[fam_idx]]
+      comp3 <- igraph::V(comp1)$name
+      n1 <- length(comp3)
+      
+      if (n1 <= 2) return(NULL)  # CLT only needed for n >= 3
+      
+      # Use base R subsetting for reliability
+      tempIBD <- PairwiseIBD[PairwiseIBD$ID1 %in% comp3 & PairwiseIBD$ID2 %in% comp3, ]
+      
+      chow.liu.tree(
+        N = n1,
+        IBD = tempIBD,
+        IDs = comp3,
+        MAF_interval = MAF_interval
+      )
+    }, mc.cores = nsubprocess)
+  }
+  
+  .message("GRM cache built successfully")
+  
+  # Estimated memory usage for 400k subjects, 62k families:
+  # - SparseGRM: 2GB (depending on sparsity)
+  # - block_GRM_cache_original: 5GB (62k matrices, avg 3-5 subjects each)
+  # - CLT_cache: 3GB (depends on family sizes)
+  # - Total peak: 15GB
+  
+  # Return pre-computed structures
+  GRMCache <- list(
+    graph_list = graph_list,
+    graph_vertex_names = graph_vertex_names,
+    graph_length = graph_length,
+    SubjID.unrelated = SubjID.unrelated,
+    nGraph = nGraph,
+    block_GRM_cache_original = block_GRM_cache_original,
+    decomposed_families_lst = decomposed_families_lst,
+    decomposed_block_GRM_lst = decomposed_block_GRM_lst,
+    family_key_to_source = family_key_to_source,
+    family_id_map = family_id_map,
+    CLT_cache = CLT_cache,
+    arr.index = arr.index,
+    SparseGRM = SparseGRM,
+    PairwiseIBD = PairwiseIBD,
+    MaxNuminFam = MaxNuminFam,
+    MAF_interval = MAF_interval
+  )
+  
+  return(GRMCache)
+}
+
+
+# Step 1b: Fit Null Model using pre-computed GRM Cache
+SPAsqr.Step1b <- function(
+  y,
+  X,
+  subjData,
+  GRMCache,
+  taus = c(0.05, 0.2, 0.5, 0.8, 0.95),
+  smooth = TRUE,
+  h = 0,
+  sqr_tol = 1e-7
+) {
+  
+  # ========== Fit null model ==========
+  .message("Fitting null model and computing residuals for taus: %s", paste(taus, collapse = ", "))
+
+  y[is.na(y)] <- median(y, na.rm = TRUE)
+  ntaus <- length(taus)
+  ResidMat <- matrix(0, nrow = length(y), ncol = ntaus)
+
+  if (smooth) {
+    # Smoothed quantile regression
+    if (h == 0) h <- IQR(y)/3
+
+    for (i in seq_along(taus)) {
+      current_tau <- taus[i]
+      current_fit <- conquer::conquer(X, y, tau = current_tau, kernel = "Gaussian", h = h, tol = sqr_tol)
+      current_resid <- as.numeric(y - current_fit$coeff[1] - X %*% current_fit$coeff[2:(ncol(X)+1)])
+      ResidMat[, i] <- current_tau - pnorm((-current_resid)/h)
+    }
+  } else {
+    # Nonsmooth quantile regression
+    X <- cbind(1, X)
+
+    for (i in seq_along(taus)) {
+      current_tau <- taus[i]
+      current_fit <- quantreg::rq.fit(X, y, tau = current_tau)
+      ResidMat[, i] <- current_tau - ifelse(current_fit$residuals < 0, 1, 0)
+    }
+  }
+
+  # ========== Compute variance components using GRM cache ==========
+  .message("Computing variance components using pre-built cache")
+  
+  # Extract from cache
+  graph_list <- GRMCache$graph_list
+  graph_vertex_names <- GRMCache$graph_vertex_names
+  graph_length <- GRMCache$graph_length
+  SubjID.unrelated <- GRMCache$SubjID.unrelated
+  nGraph <- GRMCache$nGraph
+  block_GRM_cache_original <- GRMCache$block_GRM_cache_original
+  decomposed_families_lst <- GRMCache$decomposed_families_lst
+  decomposed_block_GRM_lst <- GRMCache$decomposed_block_GRM_lst
+  family_key_to_source <- GRMCache$family_key_to_source
+  family_id_map <- GRMCache$family_id_map
+  CLT_cache <- GRMCache$CLT_cache
+  arr.index <- GRMCache$arr.index
+  SparseGRM <- GRMCache$SparseGRM
+  PairwiseIBD <- GRMCache$PairwiseIBD
+  MaxNuminFam <- GRMCache$MaxNuminFam
+  MAF_interval <- GRMCache$MAF_interval
+  
+  # Helper function to retrieve block GRM from original sources (no duplication)
+  get_block_GRM <- function(family_key) {
+    ref <- family_key_to_source[[family_key]]
+    if (ref$source == "original") {
+      block_GRM_cache_original[[ref$index]]
+    } else {
+      decomposed_block_GRM_lst[[ref$i_fam]][[ref$k]]
+    }
+  }
+  
+  #### Identify outliers based on quantiles
+  tooSmall <- sweep(ResidMat, 2, -0.8, "<")
+  tooLarge <- sweep(ResidMat, 2, 0.8, ">")
+  Outlier <- tooSmall | tooLarge
+  
+  #### Step 1: Calculate contributions from UNRELATED subjects (vectorized across all taus)
+  
+  # Extract unrelated subject data
+  unrelated_idx <- which(subjData %in% SubjID.unrelated)
+  ResidMat_unrelated <- ResidMat[unrelated_idx, , drop = FALSE]
+  Outlier_unrelated <- Outlier[unrelated_idx, , drop = FALSE]
+  
+  # Filter GRM for unrelated subjects only
+  SparseGRM_unrelated <- SparseGRM[SparseGRM$ID1 %in% SubjID.unrelated, ]
+  pos1_idx <- match(SparseGRM_unrelated$ID1, subjData)
+  pos2_idx <- match(SparseGRM_unrelated$ID2, subjData)
+  ResidMat_pos1 <- ResidMat[pos1_idx, , drop = FALSE]
+  ResidMat_pos2 <- ResidMat[pos2_idx, , drop = FALSE]
+  
+  # Calculate R'*GRM*R for unrelated subjects (all taus simultaneously)
+  cov_matrix <- abs(SparseGRM_unrelated$Value) * ResidMat_pos1 * ResidMat_pos2
+  R_GRM_R_vec <- colSums(cov_matrix)
+  
+  # Calculate R'*GRM*R for non-outlier unrelated subjects (all taus simultaneously)
+  id1_in_unrelated_idx <- match(SparseGRM_unrelated$ID1, subjData[unrelated_idx])
+  mask_matrix <- !Outlier_unrelated[id1_in_unrelated_idx, , drop = FALSE]
+  cov_masked <- cov_matrix * mask_matrix
+  R_GRM_R_nonOutlier_vec <- colSums(cov_masked)
+  
+  # Calculate sum of non-outlier residuals for unrelated subjects (all taus simultaneously)
+  sum_R_nonOutlier_vec <- colSums(ResidMat_unrelated * (!Outlier_unrelated))
+  
+  # Extract outlier residuals for unrelated subjects (per tau) - parallel
+  Resid.unrelated.outliers_lst <- lapply(seq_along(taus), function(i) {
+    ResidMat_unrelated[Outlier_unrelated[, i], i]
+  })
+  
+  # Initialize output structures for RELATED subjects
+  R_GRM_R_TwoSubjOutlier_vec <- numeric(ntaus)
+  TwoSubj_list_lst <- lapply(1:ntaus, function(x) list())
+  
+  #### Step 2: First tau loop - Build graph_list_updated_lst and add RELATED family contributions
+  
+  .message("Identifying outlier families and computing variance components")
+  
+  graph_list_updated_lst <- vector("list", ntaus)
+  
+  # Pre-compute related family indices to avoid repeated calculations
+  related_idx <- which(graph_length > 1)
+  vcounts <- graph_length[related_idx]
+  
+  for (i in seq_along(taus)) {
+    .message("Processing %d families for tau %g (%d/%d)", nGraph, taus[i], i, ntaus)
+    
+    # Pre-allocate data structures
+    ResidMat_col <- ResidMat[, i]
+    Outlier_col <- Outlier[, i]
+    
+    # Initialize for this tau
+    graph_list_updated <- vector("list", nGraph)  # Pre-allocate max size
+    index.outlier <- 1
+    
+    for (i_fam in seq_len(nGraph)) {
+      # Get ORIGINAL family info for variance calculation
+      comp3_original <- graph_vertex_names[[related_idx[i_fam]]]
+      pos_original <- match(comp3_original, subjData)
+      
+      # ALWAYS use ORIGINAL block GRM for variance calculation (correct total variance)
+      block_GRM_original <- block_GRM_cache_original[[i_fam]]
+      R_GRM_R_original <- as.numeric(crossprod(ResidMat_col[pos_original], block_GRM_original %*% ResidMat_col[pos_original]))
+      R_GRM_R_vec[i] <- R_GRM_R_vec[i] + R_GRM_R_original
+      
+      # Check for outliers in this tau
+      outlierInFam_thisTau <- any(Outlier_col[pos_original])
+      
+      if (!outlierInFam_thisTau) {
+        # No outliers in this tau - add to non-outlier contributions
+        sum_R_nonOutlier_vec[i] <- sum_R_nonOutlier_vec[i] + sum(ResidMat_col[pos_original])
+        R_GRM_R_nonOutlier_vec[i] <- R_GRM_R_nonOutlier_vec[i] + R_GRM_R_original
+        next
+      }
+      
+      # Family has outliers in this tau
+      vcount <- vcounts[i_fam]
+      
+      if (vcount <= MaxNuminFam) {
+        # Family is small enough - use original family for outlier processing
+        comp1 <- graph_list[[i_fam]]
+        graph_list_updated[[index.outlier]] <- comp1
+        index.outlier <- index.outlier + 1
+        next
+      }
+      
+      # Family is large - use decomposed components for outlier processing
+      decomposed_families <- decomposed_families_lst[[i_fam]]
+      decomposed_block_GRMs <- decomposed_block_GRM_lst[[i_fam]]
+      
+      for (k in seq_along(decomposed_families)) {
+        comp11 <- decomposed_families[[k]]
+        comp13 <- igraph::V(comp11)$name
+        pos2 <- match(comp13, subjData)
+        
+        # Check for outliers in this component for this tau
+        outlierInComponent <- any(Outlier_col[pos2])
+        
+        if (!outlierInComponent) {
+          # Component has no outliers in this tau
+          # Add to non-outlier contributions using DECOMPOSED block GRM
+          block_GRM_component <- decomposed_block_GRMs[[k]]
+          R_GRM_R_component <- as.numeric(crossprod(ResidMat_col[pos2], block_GRM_component %*% ResidMat_col[pos2]))
+          
+          sum_R_nonOutlier_vec[i] <- sum_R_nonOutlier_vec[i] + sum(ResidMat_col[pos2])
+          R_GRM_R_nonOutlier_vec[i] <- R_GRM_R_nonOutlier_vec[i] + R_GRM_R_component
+        } else {
+          # Component has outliers - save for later processing
+          graph_list_updated[[index.outlier]] <- comp11
+          index.outlier <- index.outlier + 1
+        }
+      }
+    }
+    
+    # Trim to actual size
+    graph_list_updated <- graph_list_updated[seq_len(index.outlier - 1)]
+    graph_list_updated_lst[[i]] <- graph_list_updated
+  }
+  
+  .message("Family structures updated and variance components computed")
+  
+  #### Build filtered CLT cache for outlier families only (to match fitNullModel.SPAsqr)
+  
+  # Collect all unique outlier families across all taus
+  all_outlier_families <- list()
+  outlier_family_id_map <- list()
+  
+  for (i in seq_along(taus)) {
+    graph_list_updated <- graph_list_updated_lst[[i]]
+    if (length(graph_list_updated) == 0) next
+    
+    for (comp1 in graph_list_updated) {
+      comp3 <- igraph::V(comp1)$name
+      family_key <- paste(sort(comp3), collapse = "_")
+      
+      if (is.null(outlier_family_id_map[[family_key]])) {
+        # Map to the new filtered index
+        new_idx <- length(all_outlier_families) + 1
+        outlier_family_id_map[[family_key]] <- new_idx
+        
+        # Get the original index from full cache
+        original_idx <- family_id_map[[family_key]]
+        
+        # Copy CLT from full cache to filtered cache
+        all_outlier_families[[new_idx]] <- CLT_cache[[original_idx]]
+      }
+    }
+  }
+  
+  .message("Extracted %d outlier families from %d total families", length(all_outlier_families), length(CLT_cache))
+  
+  #### Step 3: Calculate stand.S for each tau, stored separately from CLT
+  # Initialize storage for 3+ member families
+  ThreeSubj_family_idx_lst <- vector("list", ntaus)  # Family indices into filtered CLT_cache
+  ThreeSubj_stand_S_lst <- vector("list", ntaus)     # stand.S values per tau
+  
+  for (i in seq_along(taus)) {
+    
+    # Pre-allocate column vectors
+    ResidMat_col <- ResidMat[, i]
+    Outlier_col <- Outlier[, i]
+    
+    graph_list_updated <- graph_list_updated_lst[[i]]
+    R_GRM_R_TwoSubjOutlier <- 0
+    TwoSubj_list <- list()
+    
+    # Storage for 3+ member families (this tau)
+    ThreeSubj_family_idx <- integer(0)
+    ThreeSubj_stand_S <- list()
+    
+    if (length(graph_list_updated) != 0) {
+      if (i %% 5 == 1 || i == length(taus)) {
+        .message("Building standardized scores for %d outlier families for tau %g (%d/%d)", 
+                 length(graph_list_updated), taus[i], i, ntaus)
+      }
+      
+      n.outliers <- length(graph_list_updated)
+      TwofamID.index <- ThreefamID.index <- 0
+      
+      for (index.outlier in seq_len(n.outliers)) {
+        
+        comp1 <- graph_list_updated[[index.outlier]]
+        comp3 <- igraph::V(comp1)$name
+        n1 <- length(comp3)
+        pos3 <- match(comp3, subjData)
+        
+        Resid.temp <- ResidMat_col[pos3]
+        
+        if (n1 == 1) {
+          Resid.unrelated.outliers_lst[[i]] <- c(Resid.unrelated.outliers_lst[[i]], Resid.temp)
+          next
+        }
+        
+        family_key <- paste(sort(comp3), collapse = "_")
+        block_GRM <- get_block_GRM(family_key)
+        
+        tempIBD <- PairwiseIBD[PairwiseIBD$ID1 %in% comp3 & PairwiseIBD$ID2 %in% comp3, ]
+        
+        if (n1 == 2) {
+          TwofamID.index <- TwofamID.index + 1
+          
+          R_GRM_R_TwoSubjOutlier.temp <- as.numeric(t(Resid.temp) %*% block_GRM %*% Resid.temp)
+          R_GRM_R_TwoSubjOutlier <- R_GRM_R_TwoSubjOutlier + R_GRM_R_TwoSubjOutlier.temp
+          
+          Rho.temp <- tempIBD$pa + 0.5 * tempIBD$pb
+          midterm <- sqrt(Rho.temp^2 - tempIBD$pa)
+          
+          TwoSubj_list[[TwofamID.index]] <- list(
+            Resid = Resid.temp,
+            Rho = c(Rho.temp + midterm, Rho.temp - midterm)
+          )
+          next
+        }
+        
+        # For families with 3+ members: store family index and stand.S separately
+        ThreefamID.index <- ThreefamID.index + 1
+        
+        # Get family index in filtered outlier CLT_cache
+        fam_cache_idx <- outlier_family_id_map[[family_key]]
+        
+        # Calculate standardized score using array operations and mapply
+        stand.S.temp <- array(
+          rowSums(mapply(function(x, y) x * y, arr.index[[n1]], Resid.temp)),
+          rep(3, n1)
+        )
+        
+        # Store family index and stand.S separately
+        ThreeSubj_family_idx[ThreefamID.index] <- fam_cache_idx
+        ThreeSubj_stand_S[[ThreefamID.index]] <- c(stand.S.temp)
+      }
+    }
+    
+    R_GRM_R_TwoSubjOutlier_vec[i] <- R_GRM_R_TwoSubjOutlier
+    TwoSubj_list_lst[[i]] <- TwoSubj_list
+    ThreeSubj_family_idx_lst[[i]] <- ThreeSubj_family_idx
+    ThreeSubj_stand_S_lst[[i]] <- ThreeSubj_stand_S
+  }
+  
+  .message("Variance computation complete")
+  
+  # Return single list with filtered CLT (outliers only) and stand.S stored separately
+  obj <- list(
+    taus = taus,
+    Resid_mat = ResidMat,
+    subjData = subjData,
+    N = length(subjData),
+    R_GRM_R_vec = R_GRM_R_vec,
+    R_GRM_R_TwoSubjOutlier_vec = R_GRM_R_TwoSubjOutlier_vec,
+    sum_R_nonOutlier_vec = sum_R_nonOutlier_vec,
+    R_GRM_R_nonOutlier_vec = R_GRM_R_nonOutlier_vec,
+    Resid.unrelated.outliers_lst = Resid.unrelated.outliers_lst,
+    TwoSubj_list_lst = TwoSubj_list_lst,
+    CLT_union_lst = all_outlier_families,
+    ThreeSubj_family_idx_lst = ThreeSubj_family_idx_lst,
+    ThreeSubj_stand_S_lst = ThreeSubj_stand_S_lst,
+    MAF_interval = MAF_interval
+  )
+
+  class(obj) <- "SPAsqr_NULL_Model"
+
   return(obj)
 }

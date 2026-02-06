@@ -15,9 +15,8 @@ using the Cauchy combination test (CCT).
 \details{
 \strong{Usage with \code{GRAB.NullModel()}:}
 
-Set \code{method = "SPAsqr"} and \code{traitType = "quantitative"}. Three additional required arguments:
+Set \code{method = "SPAsqr"} and \code{traitType = "quantitative"}. Two additional required arguments:
 \itemize{
-\item \code{GenoFile}: Path to genotype file (PLINK .bed or BGEN format).
 \item \code{SparseGRMFile}: Path to sparse GRM file (whitespace-delimited: ID1 ID2 Value).
 \item \code{PairwiseIBDFile}: Path to pairwise IBD file (see \code{?\link{getPairwiseIBD}}).
 }
@@ -27,6 +26,8 @@ Set \code{method = "SPAsqr"} and \code{traitType = "quantitative"}. Three additi
 \item \code{taus} (numeric vector, default: c(0.05, 0.2, 0.5, 0.8, 0.95)): Quantiles
 to examine for association testing. All values must be between 0 and 1 (exclusive).
 P-values across quantiles are combined using Cauchy combination test.
+\item \code{smooth} (logical, default: TRUE): Whether to use smoothed quantile regression.
+If FALSE, nonsmooth quantile regression is used; \code{h} and \code{sqr_tol} are ignored.
 \item \code{h} (numeric, default: 0): Bandwidth parameter for smooth quantile regression.
 If h = 0, bandwidth is automatically selected as IQR(y)/3.
 \item \code{MaxNuminFam} (integer, default: 5): Maximum family size for Chow-Liu tree
@@ -81,19 +82,17 @@ approximation in families.
 }
 }
 \examples{
-# Step 0: Compute pairwise IBD probabilities using a sparse GRM.
+# Step 1: Fit null model and prepare genotype distribution cache
 # See ?getSparseGRM for details on generating a sparse GRM.
 # See ?getPairwiseIBD for details on computing pairwise IBD estimates.
-GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
-frqFile <- system.file("extdata", "simuPLINK.frq", package = "GRAB")
-SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
-PairwiseIBDFile <- file.path(tempdir(), "PairwiseIBD.txt")
-getPairwiseIBD(sub("\\\\.bed$", "", GenoFile, ignore.case = TRUE), SparseGRMFile, 
-               PairwiseIBDOutput = PairwiseIBDFile, frqFile = frqFile)
 
-# Step 1: Fit null model and prepare genotype distribution cache
+SparseGRMFile <- system.file("extdata", "SparseGRM.txt", package = "GRAB")
+PairwiseIBDFile <- system.file("extdata", "PairwiseIBD.txt", package = "GRAB")
+
 PhenoFile <- system.file("extdata", "simuPHENO.txt", package = "GRAB")
 PhenoData <- data.table::fread(PhenoFile, header = TRUE)
+
+GenoFile <- system.file("extdata", "simuPLINK.bed", package = "GRAB")
 OutputFile <- file.path(tempdir(), "resultSPAsqr.txt")
 
 obj.SPAsqr <- GRAB.NullModel(
@@ -102,13 +101,9 @@ obj.SPAsqr <- GRAB.NullModel(
   subjIDcol = "IID",
   method = "SPAsqr",
   traitType = "quantitative",
-  GenoFile = GenoFile,
   SparseGRMFile = SparseGRMFile,
-  PairwiseIBDFile = PairwiseIBDFile,
-  control = list(
-    taus = c(0.05, 0.2, 0.5, 0.8, 0.95),
-    h = 0
-  )
+  control = list(taus = c(0.2, 0.5, 0.8)),
+  PairwiseIBDFile = PairwiseIBDFile
 )
 
 # Step 2: Perform single-marker association tests

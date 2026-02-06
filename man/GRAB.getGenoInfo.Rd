@@ -8,7 +8,8 @@ GRAB.getGenoInfo(
   GenoFile,
   GenoFileIndex = NULL,
   SampleIDs = NULL,
-  control = NULL
+  control = NULL,
+  verbose = FALSE
 )
 }
 \arguments{
@@ -38,6 +39,9 @@ Can be used with IDsToExcludeFile (union will be excluded).
 \item Note: Cannot use both include and exclude files simultaneously.
 }
 }}
+
+\item{verbose}{Logical indicating whether to print progress messages
+(default: FALSE).}
 }
 \value{
 A data frame containing marker information with allele frequencies

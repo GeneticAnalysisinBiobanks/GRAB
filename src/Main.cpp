@@ -35,6 +35,7 @@
  *   setSPACoxobjInCPP            : Initialize SPACox object (CGF grid + residual info).
  *   setWtCoxGobjInCPP            : Initialize weighted Cox (WtCoxG) object with objNull$mergeGenoInfo.
  *   setSPAsqrobjInCPP            : Initialize SPAsqr object with residuals and outlier info.
+ *   setLEAFobjInCPP              : Initialize LEAF object with multiple cluster residuals and weights.
  */
 
 // Rcpp dependencies for statistical computing and linear algebra
@@ -60,6 +61,9 @@
 #include "SAGELD.h"    // Scalable and Accurate Genomic analysis for Extreme Large Data
 #include "WtCoxG.h"    // Weighted Cox regression for genetic data
 #include "SPAsqr.h"    // SPAsqr
+#include "LEAF.h"      // LEAF: Logistic Regression with External Ancestry Estimation and Adjustment Framework
+#include "SPAmixPlus.h" // SPAmixPlus: Extended mixed models with SPA correction
+#include "Main.h"      // Functions shared across Main files
 
 
 //==============================================================================
@@ -82,6 +86,8 @@ static SPAGRM::SPAGRMClass* ptr_gSPAGRMobj = nullptr;
 static SAGELD::SAGELDClass* ptr_gSAGELDobj = nullptr;
 static WtCoxG::WtCoxGClass* ptr_gWtCoxGobj = nullptr;
 static SPAsqr::SPAsqrClass* ptr_gSPAsqrobj = nullptr;
+static LEAF::LEAFClass* ptr_gLEAFobj = nullptr;
+static SPAmixPlus::SPAmixPlusClass* ptr_gSPAmixPlusobj = nullptr;
 
 // Global configuration variables for genetic analysis
 static std::string g_impute_method;          // Imputation method: "mean", "minor", or "drop"
@@ -419,6 +425,7 @@ Rcpp::List mainMarkerInCPP(
   // Determine number of phenotypes based on analysis method
   int Npheno = 1;  // Default: single phenotype
   if (t_method == "SPAmix") Npheno = ptr_gSPAmixobj->getNpheno(); // SPAmix analysis with multiple phenotypes
+  if (t_method == "SPAmixPlus") Npheno = ptr_gSPAmixPlusobj->getNpheno(); // SPAmixPlus analysis with multiple phenotypes
   if (t_method == "SAGELD") Npheno = 2;
   if (t_method == "WtCoxG") {
     if (t_extraParams.isNull()) {
@@ -429,6 +436,24 @@ Rcpp::List mainMarkerInCPP(
     ptr_gWtCoxGobj->updateMarkerInfo(mergeGenoInfo_chunk);  // update marker info for this chunk
     Npheno = 2;  // WtCoxG: returns two p-values (with and without external reference)
   }
+  if (t_method == "LEAF") {
+    if (t_extraParams.isNull()) {
+      Rcpp::stop("Error: In mainMarkerInCPP, for LEAF, subGenoInfo for each cluster should be passed via extraParams.");
+    }
+    Rcpp::List extraParams(t_extraParams);
+    int Ncluster = ptr_gLEAFobj->get_Ncluster();
+    
+    // Update marker info for each cluster (extraParams is an index-based list from R)
+    for (int i = 0; i < Ncluster; i++) {
+      if (i >= extraParams.size()) {
+        Rcpp::stop("Error: extraParams has fewer elements than Ncluster");
+      }
+      Rcpp::DataFrame subGenoInfo_i = Rcpp::as<Rcpp::DataFrame>(extraParams[i]);
+      ptr_gLEAFobj->updateMarkerInfo(i, subGenoInfo_i);
+    }
+    
+    Npheno = 2 * Ncluster;  // LEAF: returns two p-values per cluster (ext and noext)
+  }
   if (t_method == "SPAsqr") Npheno = ptr_gSPAsqrobj->get_ntaus();
 
   // Initialize test result vectors (sized for multiple phenotypes)
@@ -436,6 +461,7 @@ Rcpp::List mainMarkerInCPP(
   std::vector<double> zScoreVec(q * Npheno, arma::datum::nan);   // Z-scores
   std::vector<double> BetaVec(q * Npheno, arma::datum::nan);     // Effect sizes (beta)
   std::vector<double> seBetaVec(q * Npheno, arma::datum::nan);   // Standard errors
+  std::vector<double> ScoreVec(q * Npheno, arma::datum::nan);    // Score statistics
 
   // Initialize group-stratified analysis matrices (if requested)
   arma::mat nSamplesInGroup;   // Sample counts per group
@@ -557,6 +583,17 @@ Rcpp::List mainMarkerInCPP(
         zScoreVec.at(i * Npheno + j) = zScoreVecTemp.at(j);
       }
       
+    } else if (t_method == "SPAmixPlus") {
+      // SPAmixPlus: Enhanced version with PC-based AF estimation
+      pval = ptr_gSPAmixPlusobj->getMarkerPval(GVec, altFreq);
+      arma::vec pvalVecTemp = ptr_gSPAmixPlusobj->getpvalVec();
+      arma::vec zScoreVecTemp = ptr_gSPAmixPlusobj->getzScoreVec();
+      
+      for (int j = 0; j < Npheno; j++) {
+        pvalVec.at(i * Npheno + j) = pvalVecTemp.at(j);
+        zScoreVec.at(i * Npheno + j) = zScoreVecTemp.at(j);
+      }
+      
     } else if (t_method == "SAGELD") {
       pval = ptr_gSAGELDobj->getMarkerPval(GVec, altFreq, hwepval);
       arma::vec pvalVecTemp = ptr_gSAGELDobj->getpvalVec();
@@ -569,12 +606,32 @@ Rcpp::List mainMarkerInCPP(
         zScoreVec.at(2 * i + j) = zScoreVecTemp.at(j);
         BetaVec.at(2 * i + j) = BetaVecTemp.at(j) * (1 - 2 * flip);
         seBetaVec.at(2 * i + j) = seBetaVecTemp.at(j);
-      }    
+      }
+      hwepvalVec.at(i) = hwepval;
 
     } else if (t_method == "WtCoxG") {
       arma::vec pvalVecTemp = ptr_gWtCoxGobj->getpvalVec(GVec, i);
       pvalVec[2 * i]     = pvalVecTemp[0];
       pvalVec[2 * i + 1] = pvalVecTemp[1];
+      
+      // Get score and z-score statistics
+      arma::vec scoreVecTemp = ptr_gWtCoxGobj->getScoreVec();
+      arma::vec zScoreVecTemp = ptr_gWtCoxGobj->getZScoreVec();
+      ScoreVec[2 * i]     = scoreVecTemp[0];
+      ScoreVec[2 * i + 1] = scoreVecTemp[1];
+      zScoreVec[2 * i]   = zScoreVecTemp[0];
+      zScoreVec[2 * i + 1] = zScoreVecTemp[1];
+    
+    } else if (t_method == "LEAF") {
+      // Get all statistics (z-scores, scores, p-values) in one call
+      arma::vec allStats = ptr_gLEAFobj->getMarkerZSP(GVec, i);
+      // allStats layout: [zScores (Npheno), Scores (Npheno), Pvals (Npheno)]
+      
+      for (int j = 0; j < Npheno; j++) {
+        zScoreVec[Npheno * i + j] = allStats[j];                 // z-scores
+        ScoreVec[Npheno * i + j] = allStats[Npheno + j];         // scores
+        pvalVec[Npheno * i + j] = allStats[2 * Npheno + j];      // p-values
+      }
     
     } else if (t_method == "SPAsqr") {
       arma::vec zScoreVecTemp;
@@ -617,6 +674,7 @@ Rcpp::List mainMarkerInCPP(
     Rcpp::Named("beta") = BetaVec,
     Rcpp::Named("seBeta") = seBetaVec,
     Rcpp::Named("zScore") = zScoreVec,
+    Rcpp::Named("score") = ScoreVec,
     Rcpp::Named("nSamplesInGroup") = nSamplesInGroup,
     Rcpp::Named("AltCountsInGroup") = AltCountsInGroup,
     Rcpp::Named("AltFreqInGroup") = AltFreqInGroup,
@@ -1884,5 +1942,53 @@ void setSPAsqrobjInCPP(
     t_SPA_Cutoff,                            // SPA cutoff
     t_zeta,                                  // SPA zeta parameter
     t_tol                                    // SPA tolerance
+  );
+}
+
+// Initialize LEAF object with multiple cluster residuals and weights
+// [[Rcpp::export]]
+void setLEAFobjInCPP(
+  Rcpp::List t_residuals,     // List of residual vectors (one per cluster)
+  Rcpp::List t_weight,        // List of weight vectors (one per cluster)
+  Rcpp::List t_clusterIdx,    // List of cluster index vectors (one per cluster)
+  double t_cutoff,            // Batch effect p-value cutoff for association testing
+  double t_SPA_Cutoff         // P-value cutoff for applying SPA correction
+) {
+  if (ptr_gLEAFobj)
+    delete ptr_gLEAFobj;
+
+  ptr_gLEAFobj = new LEAF::LEAFClass(
+    t_residuals,              // List of residual vectors (one per cluster)
+    t_weight,                 // List of weight vectors (one per cluster)
+    t_clusterIdx,             // List of cluster index vectors
+    t_cutoff,                 // Batch effect p-value cutoff
+    t_SPA_Cutoff              // SPA cutoff
+  );
+}
+
+
+// [[Rcpp::export]]
+void setSPAmixPlusobjInCPP(
+  arma::mat t_resid,
+  arma::mat t_PCs,
+  int t_N,
+  double t_SPA_Cutoff,
+  Rcpp::List t_outlierList,
+  Rcpp::DataFrame t_sparseGRM,
+  std::string t_afFilePath,
+  std::string t_afFilePrecision
+) {
+  if(ptr_gSPAmixPlusobj)
+    delete ptr_gSPAmixPlusobj;
+
+  ptr_gSPAmixPlusobj = new SPAmixPlus::SPAmixPlusClass(
+    t_resid,
+    t_PCs,
+    t_N,
+    t_SPA_Cutoff,
+    t_outlierList,
+    t_sparseGRM,
+    t_afFilePath,
+    t_afFilePrecision
   );
 }

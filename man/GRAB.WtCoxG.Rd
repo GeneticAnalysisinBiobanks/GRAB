@@ -38,21 +38,20 @@ for weighting. Must be in range (0, 0.5)
 
 \strong{Additional Control Parameters for GRAB.Marker()}:
 \itemize{
-\item \code{cutoff} (numeric, default: 0.1): Cutoff of batch effect test p-value for
-association testing. Variants with batch effect p-value below this cutoff
-will be excluded from association testing.
+\item \code{cutoff} (numeric, default: 0.05): P-value cutoff for batch effect testing.
+Markers with batch effect p-value < cutoff will be excluded from analysis.
 }
 
-\strong{Output file columns}:
-\describe{
-\item{Pheno}{Phenotype identifier (for multi-trait analysis).}
-\item{Marker}{Marker identifier (rsID or CHR:POS:REF:ALT).}
-\item{Info}{Marker information in format CHR:POS:REF:ALT.}
-\item{AltFreq}{Alternative allele frequency in the sample.}
-\item{AltCounts}{Total count of alternative alleles.}
-\item{MissingRate}{Proportion of missing genotypes.}
-\item{Pvalue}{P-value from the score test.}
-\item{zScore}{Z-score from the score test.}
+\strong{Output Columns from GRAB.Marker()}:
+\itemize{
+\item \code{WtCoxG.ext} (numeric): P-value with external reference allele frequencies
+\item \code{WtCoxG.noext} (numeric): P-value without external reference (internal-only)
+\item \code{score.ext} (numeric): Score statistic with external reference, calculated as
+S = sum(R * (g - 2*mu.ext)) where R are weighted Cox residuals
+\item \code{score.noext} (numeric): Score statistic without external reference
+\item \code{zscore.ext} (numeric): Z-score statistic with external reference,
+z = S / sqrt(Var(S)) where Var(S) accounts for external AF uncertainty
+\item \code{zscore.noext} (numeric): Z-score statistic without external reference
 }
 }
 \examples{
@@ -76,7 +75,7 @@ obj.WtCoxG <- GRAB.NullModel(
   RefPrevalence = 0.1
 )
 
-# Step2
+# Step 2: Perform marker-level association testing
 GRAB.Marker(obj.WtCoxG, GenoFile, OutputFile)
 
 head(data.table::fread(OutputFile))

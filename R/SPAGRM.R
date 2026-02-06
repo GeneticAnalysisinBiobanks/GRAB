@@ -277,7 +277,7 @@ SPAGRM.NullModel <- function(
       for (j in seq_len(nrow(tempGRM1))) {
         # Remove edge and calculate vertex counts for new graph components
         edgesToRemove <- paste0(tempGRM1$ID1[j], "|", tempGRM1$ID2[j])
-        comp1.temp <- igraph::delete.edges(comp1.temp, edgesToRemove)
+        comp1.temp <- igraph::delete_edges(comp1.temp, edgesToRemove)
         # Get vertex count for each component after edge removal
         vcount <- igraph::decompose(comp1.temp) %>% sapply(igraph::vcount)
         if (max(vcount) <= MaxNuminFam) {
@@ -292,7 +292,7 @@ SPAGRM.NullModel <- function(
       for (k in seq_len(nrow(tempGRM1))) {
         # Add edge and calculate vertex counts for new graph components
         edgesToAdd <- c(tempGRM1$ID1[k], tempGRM1$ID2[k])
-        comp1.temp <- igraph::add.edges(comp1, edgesToAdd)
+        comp1.temp <- igraph::add_edges(comp1, edgesToAdd)
 
         # Get vertex count for each component after edge addition
         vcount <- igraph::decompose(comp1.temp) %>% sapply(igraph::vcount)

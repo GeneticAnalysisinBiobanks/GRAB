@@ -20,8 +20,7 @@ SAGELD.NullModel(
 
 \item{UsedMethod}{Character; either \code{"SAGELD"} (default) or \code{"GALLOP"}.}
 
-\item{PlinkFile}{Character. PLINK prefix (without extension) used to sample
-common markers for estimating the lambda parameter.}
+\item{PlinkFile}{Character. Path to PLINK .bed file.}
 
 \item{SparseGRMFile}{Character. Path to sparse GRM file produced by
 \code{getSparseGRM()}.}

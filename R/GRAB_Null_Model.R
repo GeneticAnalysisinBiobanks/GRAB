@@ -81,8 +81,8 @@ GRAB.NullModel <- function(
   ...
 ) {
 
-  supported_traitTypes <- c("ordinal", "time-to-event", "Residual", "quantitative")
-  supported_methods <- c("POLMM", "SPACox", "SPAmix", "WtCoxG", "SPAsqr")
+  supported_traitTypes <- c("ordinal", "time-to-event", "Residual", "quantitative", "binary")
+  supported_methods <- c("POLMM", "SPACox", "SPAmix", "WtCoxG", "SPAsqr", "LEAF", "SPAmixPlus")
 
   # ========== Validate and configure parameters ==========
 
@@ -211,7 +211,9 @@ GRAB.NullModel <- function(
     SPACox = checkControl.NullModel.SPACox(traitType, GenoFile, SparseGRMFile, control),
     SPAmix = checkControl.NullModel.SPAmix(traitType, GenoFile, SparseGRMFile, control),
     WtCoxG = checkControl.NullModel.WtCoxG(traitType, GenoFile, SparseGRMFile, control, ...),
-    SPAsqr = checkControl.NullModel.SPAsqr(traitType, GenoFile, SparseGRMFile, control, ...)
+    SPAsqr = checkControl.NullModel.SPAsqr(traitType, GenoFile, SparseGRMFile, control, ...),
+    LEAF = checkControl.NullModel.LEAF(traitType, GenoFile, SparseGRMFile, control, ...),
+    SPAmixPlus = checkControl.NullModel.SPAmixPlus(traitType, GenoFile, SparseGRMFile, control)
   )
   
   control <- checkResult$control
@@ -242,8 +244,8 @@ GRAB.NullModel <- function(
   LeftIncludesAdd <- grepl("\\+", LeftInFormula)               # logical
   if (LeftIncludesAdd) {
     
-    if (method %in% c("SPAmix") && traitType == "Residual") {
-      .message("SPAmix analysis will use residuals from %d models.", length(responseVars))
+    if (method %in% c("SPAmix", "SPAmixPlus") && traitType == "Residual") {
+      .message("%s analysis will use residuals from %d models.", method, length(responseVars))
 
       # Evaluate all variable names on the left side of the formula
       response <- sapply(responseVars, function(varName) {      # matrix
@@ -261,12 +263,16 @@ GRAB.NullModel <- function(
     mf <- stats::model.frame(formula, data, na.action = na.pass)
     response <- model.response(mf)                                # vector or matrix
 
-    if (traitType == "time-to-event") {
+    if (traitType %in% c("binary", "quantitative")) {
+      naSubjects <- is.na(response)
+
+    } else if (traitType == "time-to-event") {
       if (inherits(response, "Surv")) {
         naSubjects <- is.na(response[, 1]) | is.na(response[, 2])
       } else {
         stop("For time-to-event traits, the response variable must be a Surv object.")
       } 
+
     } else if (traitType == "ordinal") {
       if (is.factor(response)) {
         response <- droplevels(response)
@@ -274,11 +280,11 @@ GRAB.NullModel <- function(
       } else {
         stop("For POLMM method, the response variable must be a factor (ordinal trait).")
       }
+
     } else if (traitType == "Residual") {
       class(response) <- "Residual"
       naSubjects <- is.na(response)
-    } else if (traitType == "quantitative") {
-      naSubjects <- is.na(response)
+      
     } else {
       stop("Internal error: '", traitType, "' for method '", method, "'.")
     }
@@ -315,7 +321,12 @@ GRAB.NullModel <- function(
                                  GenoFile, GenoFileIndex, SparseGRMFile,
                                  responseVars[1], responseVars[2], ...),
     SPAsqr = fitNullModel.SPAsqr(response, designMat, subjData, control, 
-                                 GenoFile, SparseGRMFile, ...)
+                                 SparseGRMFile, ...),
+    LEAF = fitNullModel.LEAF(response, designMat, subjData, control, 
+                             GenoFile, GenoFileIndex, SparseGRMFile, ...),
+    SPAmixPlus = fitNullModel.SPAmixPlus(response, designMat, subjData, 
+                                         control, SparseGRMFile),
+    elser = stop("Internal error: unsupported method '", method, "'.")
   )
 
   # Add metadata to the null model object

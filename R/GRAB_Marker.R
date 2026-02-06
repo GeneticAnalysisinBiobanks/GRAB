@@ -89,10 +89,12 @@ GRAB.Marker <- function(
     "POLMM_NULL_Model",
     "SPACox_NULL_Model",
     "SPAmix_NULL_Model",
+    "SPAmixPlus_NULL_Model",
     "SPAGRM_NULL_Model",
     "SAGELD_NULL_Model",
     "WtCoxG_NULL_Model",
-    "SPAsqr_NULL_Model"
+    "SPAsqr_NULL_Model",
+    "LEAF_NULL_Model"
   )
 
   # ========== Validate and configure parameters ==========
@@ -107,8 +109,8 @@ GRAB.Marker <- function(
     )
   }
 
-  if (any(!c("subjData", "N") %in% names(objNull))) {
-    stop("c('subjData', 'N') should be in names(objNull).")
+  if (any(!c("subjData") %in% names(objNull))) {
+    stop("c('subjData') should be in names(objNull).")
   }
 
   # OutputFile and OutputFileIndex will be further validated in checkOutputFile()
@@ -176,10 +178,12 @@ GRAB.Marker <- function(
     POLMM_NULL_Model  = checkControl.Marker.POLMM(control),
     SPACox_NULL_Model = checkControl.Marker.SPACox(control),
     SPAmix_NULL_Model = checkControl.Marker.SPAmix(control),
+    SPAmixPlus_NULL_Model = checkControl.Marker.SPAmixPlus(control),
     SPAGRM_NULL_Model = checkControl.Marker.SPAGRM(control, objNull$MAF_interval),
     SAGELD_NULL_Model = checkControl.Marker.SAGELD(control, objNull$MAF_interval),
     WtCoxG_NULL_Model = checkControl.Marker.WtCoxG(control),
-    SPAsqr_NULL_Model = checkControl.Marker.SPAsqr(control)
+    SPAsqr_NULL_Model = checkControl.Marker.SPAsqr(control),
+    LEAF_NULL_Model = checkControl.Marker.LEAF(control)
   )
 
   # ========== Check output file status and determine restart point ==========
@@ -264,10 +268,12 @@ GRAB.Marker <- function(
     POLMM_NULL_Model  = setMarker.POLMM(objNull, control),
     SPACox_NULL_Model = setMarker.SPACox(objNull, control),
     SPAmix_NULL_Model = setMarker.SPAmix(objNull, control),
+    SPAmixPlus_NULL_Model = setMarker.SPAmixPlus(objNull, control),
     SPAGRM_NULL_Model = setMarker.SPAGRM(objNull, control),
     SAGELD_NULL_Model = setMarker.SAGELD(objNull, control),
     WtCoxG_NULL_Model = setMarker.WtCoxG(objNull, control),
-    SPAsqr_NULL_Model = setMarker.SPAsqr(objNull, control)
+    SPAsqr_NULL_Model = setMarker.SPAsqr(objNull, control),
+    LEAF_NULL_Model = setMarker.LEAF(objNull, control)
   )
 
   for (i in (indexChunk + 1):nChunks) {
@@ -283,10 +289,12 @@ GRAB.Marker <- function(
       POLMM_NULL_Model  = mainMarker.POLMM(genoType, genoIndex, control),
       SPACox_NULL_Model = mainMarker.SPACox(genoType, genoIndex),
       SPAmix_NULL_Model = mainMarker.SPAmix(genoType, genoIndex, objNull),
+      SPAmixPlus_NULL_Model = mainMarker.SPAmixPlus(genoType, genoIndex, objNull, control),
       SPAGRM_NULL_Model = mainMarker.SPAGRM(genoType, genoIndex),
       SAGELD_NULL_Model = mainMarker.SAGELD(genoType, genoIndex, objNull),
       WtCoxG_NULL_Model = mainMarker.WtCoxG(genoType, genoIndex, objNull),
-      SPAsqr_NULL_Model = mainMarker.SPAsqr(genoType, genoIndex, objNull)
+      SPAsqr_NULL_Model = mainMarker.SPAsqr(genoType, genoIndex, objNull),
+      LEAF_NULL_Model = mainMarker.LEAF(genoType, genoIndex, objNull)
     )
 
     # Write chunk results to output file and update progress tracking
