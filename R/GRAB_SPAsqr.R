@@ -352,9 +352,18 @@ SPAGRM.NullModel.Multi <- function(
   MAF_interval <- control$MAF_interval
   
   #### Identify outliers based on quantiles
-  tooSmall <- sweep(ResidMat, 2, -0.8, "<")
-  tooLarge <- sweep(ResidMat, 2, 0.8, ">")
+  Quant <- apply(ResidMat, 2, quantile, probs = c(0.25, 0.75), na.rm = TRUE)
+  Range <- Quant[2,] - Quant[1,]
+  cutoffLower <- Quant[1,] - 1.5 * Range
+  cutoffUpper <- Quant[2,] + 1.5 * Range
+  
+  # Compare each column with its cutoffs
+  tooSmall <- sweep(ResidMat, 2, cutoffLower, "<")
+  tooLarge <- sweep(ResidMat, 2, cutoffUpper, ">")
   Outlier <- tooSmall | tooLarge
+  outlier_prop <- colMeans(Outlier, na.rm = TRUE) 
+  cat("Outlier ratio for each column in the residual matrix:\n")
+  print(round(outlier_prop, 2))
   
   #### Pre-compute tau-independent graph structure
   edges <- t(SparseGRM[, c("ID1", "ID2")])
@@ -1176,9 +1185,18 @@ SPAsqr.Step1b <- function(
   }
   
   #### Identify outliers based on quantiles
-  tooSmall <- sweep(ResidMat, 2, -0.8, "<")
-  tooLarge <- sweep(ResidMat, 2, 0.8, ">")
+  Quant <- apply(ResidMat, 2, quantile, probs = c(0.25, 0.75), na.rm = TRUE)
+  Range <- Quant[2,] - Quant[1,]
+  cutoffLower <- Quant[1,] - 1.5 * Range
+  cutoffUpper <- Quant[2,] + 1.5 * Range
+  
+  # Compare each column with its cutoffs
+  tooSmall <- sweep(ResidMat, 2, cutoffLower, "<")
+  tooLarge <- sweep(ResidMat, 2, cutoffUpper, ">")
   Outlier <- tooSmall | tooLarge
+  outlier_prop <- colMeans(Outlier, na.rm = TRUE) 
+  cat("Outlier ratio for each column in the residual matrix:\n")
+  print(round(outlier_prop, 2))
   
   #### Step 1: Calculate contributions from UNRELATED subjects (vectorized across all taus)
   
@@ -1353,10 +1371,8 @@ SPAsqr.Step1b <- function(
     ThreeSubj_stand_S <- list()
     
     if (length(graph_list_updated) != 0) {
-      if (i %% 5 == 1 || i == length(taus)) {
-        .message("Building standardized scores for %d outlier families for tau %g (%d/%d)", 
+      .message("Building standardized scores for %d outlier families for tau %g (%d/%d)", 
                  length(graph_list_updated), taus[i], i, ntaus)
-      }
       
       n.outliers <- length(graph_list_updated)
       TwofamID.index <- ThreefamID.index <- 0
