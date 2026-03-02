@@ -179,6 +179,8 @@ private:
     inline double qnorm_boost(double p, double mean = 0.0, double sd = 1.0, bool lower_tail = true, bool log_p = false) {
         if (log_p) p = std::exp(p);
         if (!lower_tail) p = 1.0 - p;
+        // Clamp to valid open interval to avoid overflow/underflow
+        p = std::max(1e-300, std::min(1.0 - 1e-15, p));
         boost::math::normal dist(mean, sd);
         return boost::math::quantile(dist, p);
     }
@@ -186,6 +188,9 @@ private:
     inline double qchisq_boost(double p, double df, bool lower_tail = true, bool log_p = false) {
         if (log_p) p = std::exp(p);
         if (!lower_tail) p = 1.0 - p;
+        // Clamp to valid open interval to prevent overflow in gamma_p_inv
+        // when p is extremely close to 1 (e.g. when input p-value is near 0)
+        p = std::max(1e-300, std::min(1.0 - 1e-15, p));
         boost::math::chi_squared dist(df);
         return boost::math::quantile(dist, p);
     }
