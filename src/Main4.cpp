@@ -362,6 +362,7 @@ void mainMarkerChunksInCPP4(
         break;
       }
       out << chunkOutput[i];
+      Rcpp::Rcout << "[INFO] Completed chunks: " << (i + 1) << "/" << chunkOutput.size() << std::endl;
     }
     out.close();
   });

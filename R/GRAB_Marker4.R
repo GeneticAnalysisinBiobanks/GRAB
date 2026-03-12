@@ -68,6 +68,18 @@ GRAB.Marker4 <- function(
 
   control <- updateControl(control, default.marker.control)
 
+  # Backward-compatible thread control: accept control$nthreads when the
+  # dedicated function argument is not provided.
+  if (!is.null(control$nthreads)) {
+    if (is.null(nthreads)) {
+      nthreads <- control$nthreads
+    } else if (!identical(as.integer(nthreads), as.integer(control$nthreads))) {
+      .message("Both argument 'nthreads' and control$nthreads are set; using argument 'nthreads'.")
+    }
+    # Remove to avoid confusion in printed control parameters.
+    control$nthreads <- NULL
+  }
+
   if (!is.null(control$omp_num_threads)) {
     stop("control$omp_num_threads is not used in GRAB.Marker4. Use argument 'nthreads' instead.")
   }
