@@ -71,32 +71,32 @@
 //==============================================================================
 
 // Global object pointers for different genotype file formats
-static PLINK::PlinkClass* ptr_gPLINKobj = nullptr;   // PLINK format
-static BGEN::BgenClass* ptr_gBGENobj = nullptr;      // BGEN format
+PLINK::PlinkClass* ptr_gPLINKobj = nullptr;   // PLINK format
+BGEN::BgenClass* ptr_gBGENobj = nullptr;      // BGEN format
 // static VCF::VcfClass* ptr_gVCFobj = nullptr;       // VCF format (disabled for now)
 
 // Global object for dense genetic relationship matrix operations
-static DenseGRM::DenseGRMClass* ptr_gDenseGRMobj = nullptr;
+DenseGRM::DenseGRMClass* ptr_gDenseGRMobj = nullptr;
 
 // Global object pointers for different statistical analysis methods
-static POLMM::POLMMClass* ptr_gPOLMMobj = nullptr;
-static SPACox::SPACoxClass* ptr_gSPACoxobj = nullptr;
-static SPAmix::SPAmixClass* ptr_gSPAmixobj = nullptr;
-static SPAGRM::SPAGRMClass* ptr_gSPAGRMobj = nullptr;
-static SAGELD::SAGELDClass* ptr_gSAGELDobj = nullptr;
-static WtCoxG::WtCoxGClass* ptr_gWtCoxGobj = nullptr;
-static SPAsqr::SPAsqrClass* ptr_gSPAsqrobj = nullptr;
-static LEAF::LEAFClass* ptr_gLEAFobj = nullptr;
-static SPAmixPlus::SPAmixPlusClass* ptr_gSPAmixPlusobj = nullptr;
+POLMM::POLMMClass* ptr_gPOLMMobj = nullptr;
+SPACox::SPACoxClass* ptr_gSPACoxobj = nullptr;
+SPAmix::SPAmixClass* ptr_gSPAmixobj = nullptr;
+SPAGRM::SPAGRMClass* ptr_gSPAGRMobj = nullptr;
+SAGELD::SAGELDClass* ptr_gSAGELDobj = nullptr;
+WtCoxG::WtCoxGClass* ptr_gWtCoxGobj = nullptr;
+SPAsqr::SPAsqrClass* ptr_gSPAsqrobj = nullptr;
+LEAF::LEAFClass* ptr_gLEAFobj = nullptr;
+SPAmixPlus::SPAmixPlusClass* ptr_gSPAmixPlusobj = nullptr;
 
 // Global configuration variables for genetic analysis
-static std::string g_impute_method;          // Imputation method: "mean", "minor", or "drop"
-static double g_missingRate_cutoff;          // Maximum allowed missing rate for markers
-static unsigned int g_omp_num_threads;       // Number of OpenMP threads for parallel processing
+std::string g_impute_method;          // Imputation method: "mean", "minor", or "drop"
+double g_missingRate_cutoff;          // Maximum allowed missing rate for markers
+unsigned int g_omp_num_threads;       // Number of OpenMP threads for parallel processing
 
 // Quality control thresholds for marker-level analysis
-static double g_marker_minMAF_cutoff;         // Minimum Minor Allele Frequency for single markers
-static double g_marker_minMAC_cutoff;         // Minimum Minor Allele Count for single markers
+double g_marker_minMAF_cutoff;         // Minimum Minor Allele Frequency for single markers
+double g_marker_minMAC_cutoff;         // Minimum Minor Allele Count for single markers
 
 // Quality control thresholds for region-based analysis
 static double g_region_minMAC_cutoff;  // Min MAC for rare variants aggregation (like SAIGE-GENE+)

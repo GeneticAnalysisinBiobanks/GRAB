@@ -1,5 +1,9 @@
 # Release Notes
 
+## GRAB.Marker4 for multithreads (2026-03-12)
+
+- BGEN.cpp, PLINK.cpp, SPAGRM.cpp SPAGRM.h modified to adapt SPAsqr multithreads.
+
 ## v0.3.0-alpha.2 (2026-02-06)
 
 - Added new methods:

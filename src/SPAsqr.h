@@ -14,7 +14,7 @@ private:
   ////////////////////// -------------------- members ---------------------------------- //////////////////////
   
   arma::vec m_taus;                      // quantiles
-  std::vector<SPAGRM::SPAGRMClass*> m_SPAGRMobj_vec;  // vector of pre-built SPAGRM objects (one per tau)
+  std::vector<SPAGRM::SPAGRMClass> m_SPAGRMobj_vec;  // vector of pre-built SPAGRM objects (one per tau)
   arma::vec m_MAF_interval;              // MAF interval divides the MAFs into several intervals
   
   double m_SPA_Cutoff;                   // cutoff of standardized score to use normal approximation or SPA
@@ -48,7 +48,7 @@ public:
     
     // Create ntaus SPAGRM objects once
     int ntaus = m_taus.n_elem;
-    m_SPAGRMobj_vec.resize(ntaus);
+    m_SPAGRMobj_vec.reserve(ntaus);
     
     for (int i = 0; i < ntaus; i++) {
       // Extract tau-specific data from vectors (i-th element)
@@ -86,7 +86,7 @@ public:
       }
       
       // Create SPAGRM object for this tau and store it
-      m_SPAGRMobj_vec[i] = new SPAGRM::SPAGRMClass(
+      m_SPAGRMobj_vec.emplace_back(
         resid_i,
         resid_unrelated_outliers_i,
         sum_R_nonOutlier_i,
@@ -100,16 +100,6 @@ public:
         m_zeta,
         m_tol
       );
-    }
-  }
-  
-  // Destructor to clean up SPAGRM objects
-  ~SPAsqrClass() {
-    for (size_t i = 0; i < m_SPAGRMobj_vec.size(); i++) {
-      if (m_SPAGRMobj_vec[i] != nullptr) {
-        delete m_SPAGRMobj_vec[i];
-        m_SPAGRMobj_vec[i] = nullptr;
-      }
     }
   }
   
@@ -128,7 +118,7 @@ public:
     for (int i = 0; i < ntaus; i++) {
       // Use pre-built SPAGRM object for this tau
       double zScore_i, hwepval_i;
-      double pval_i = m_SPAGRMobj_vec[i]->getMarkerPval(GVec, altFreq, zScore_i, hwepval_i);
+      double pval_i = m_SPAGRMobj_vec[i].getMarkerPval(GVec, altFreq, zScore_i, hwepval_i);
       pvalVec(i) = pval_i;
       zScoreVec(i) = zScore_i;
       if (i == 0) hwepval = hwepval_i; // hwepval is same for all taus

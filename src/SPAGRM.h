@@ -23,8 +23,10 @@ private:
   double m_R_GRM_R_TwoSubjOutlier;       // residuals x GRM x residuals for outlier families (n = 2)
   double m_R_GRM_R;                      // residuals x GRM x residuals
   arma::vec m_MAF_interval;              // MAF interval divides the MAFs into several intervals
-  Rcpp::List m_TwoSubj_list;             // List of residuals and IBD probabilities in outlier families (n = 2)
-  Rcpp::List m_ThreeSubj_list;           // List of residuals and Chow-Liu tree in outlier families (n > 2)
+  std::vector<arma::vec> m_TwoSubj_resid_list; // Resid vectors for 2-subject outlier families
+  std::vector<arma::vec> m_TwoSubj_rho_list;   // IBD vectors for 2-subject outlier families
+  std::vector<arma::vec> m_ThreeSubj_standS_list; // Standardized score vectors for >=3-subject outlier families
+  std::vector<arma::mat> m_ThreeSubj_CLT_list;    // Chow-Liu probability tables for >=3-subject outlier families
   
   double m_SPA_Cutoff;                   // cutoff of standardized score to use normal approximation or SPA
   double m_zeta;                         // initial saddle point for negative side, default is zero
@@ -46,8 +48,8 @@ public:
               double t_tol);
   
   // The MGF and its first and second derivative MGF of G (genotype)
-  arma::mat MGF_cpp(double t, 
-                    const Rcpp::List update_ThreeSubj_list,
+  arma::mat MGF_cpp(double t,
+                    const std::vector<arma::vec>& t_arr_prob_list,
                     double MAF)
   {
     // Unrelated subjects.
@@ -62,16 +64,13 @@ public:
     arma::vec M_G2_all = 2 * (alpha_1 % alpha_1 + alpha % alpha_2);
     
     // Two related subjects in a family.
-    int n1 = m_TwoSubj_list.length();
+    int n1 = static_cast<int>(m_TwoSubj_resid_list.size());
     if (n1 != 0)
     {
       for (int i = 0; i < n1; i++)
       {
-        Rcpp::List TwoSubj_list_temp = m_TwoSubj_list[i];
-        // arma::vec Resid = Rcpp::as<arma::vec>(TwoSubj_list_temp["Resid"]);
-        // arma::vec Rho = Rcpp::as<arma::vec>(TwoSubj_list_temp["Rho"]);
-        arma::vec Resid = TwoSubj_list_temp["Resid"];
-        arma::vec Rho = TwoSubj_list_temp["Rho"];
+        const arma::vec& Resid = m_TwoSubj_resid_list[i];
+        const arma::vec& Rho = m_TwoSubj_rho_list[i];
         
         arma::vec temp = (1 - Rho) * MAF * (1 - MAF);
         
@@ -94,16 +93,13 @@ public:
     }
     
     // Three above Related Subjects.
-    int n2 = update_ThreeSubj_list.length();
+    int n2 = static_cast<int>(t_arr_prob_list.size());
     if (n2 != 0)
     {
       for (int i = 0; i < n2; i++)
       {
-        Rcpp::List ThreeSubj_list_temp = update_ThreeSubj_list[i];
-        // arma::vec stand_S = Rcpp::as<arma::vec>(ThreeSubj_list_temp["stand.S"]);
-        // arma::vec arr_prob = Rcpp::as<arma::vec>(ThreeSubj_list_temp["arr.prob"]);
-        arma::vec stand_S = ThreeSubj_list_temp["stand.S"];
-        arma::vec arr_prob = ThreeSubj_list_temp["arr.prob"];
+        const arma::vec& stand_S = m_ThreeSubj_standS_list[i];
+        const arma::vec& arr_prob = t_arr_prob_list[i];
         
         arma::vec midterm0 = exp(t * stand_S) % arr_prob;
         arma::vec midterm1 = stand_S % midterm0;
@@ -119,7 +115,7 @@ public:
   }
   
   // Newton's method to get the saddle point
-  double fastgetroot_cpp(const Rcpp::List update_ThreeSubj_list,
+  double fastgetroot_cpp(const std::vector<arma::vec>& t_arr_prob_list,
                          double Score,
                          double MAF,
                          double init_t,
@@ -141,7 +137,7 @@ public:
       double old_diff_t = diff_t;
       double old_CGF1 = CGF1;
       
-      arma::mat MGF_all = MGF_cpp(t, update_ThreeSubj_list, MAF);
+      arma::mat MGF_all = MGF_cpp(t, t_arr_prob_list, MAF);
       
       MGF0 = MGF_all.col(0);
       MGF1 = MGF_all.col(1);
@@ -199,16 +195,16 @@ public:
   }
   
   // function to get one side p value
-  double GetProb_SPA(const Rcpp::List update_ThreeSubj_list,
+  double GetProb_SPA(const std::vector<arma::vec>& t_arr_prob_list,
                      double Score,
                      double MAF,
                      bool lower_tail,
                      double zeta,
                      double tol)
   {
-    zeta = fastgetroot_cpp(update_ThreeSubj_list, Score, MAF, zeta, tol);
+    zeta = fastgetroot_cpp(t_arr_prob_list, Score, MAF, zeta, tol);
     
-    arma::mat MGF_all = MGF_cpp(zeta, update_ThreeSubj_list, MAF);
+    arma::mat MGF_all = MGF_cpp(zeta, t_arr_prob_list, MAF);
     
     arma::vec MGF0 = MGF_all.col(0);
     arma::vec MGF1 = MGF_all.col(1);
@@ -269,28 +265,21 @@ public:
     
     double Var_ThreeOutlier = 0;
     
-    int n1 = m_ThreeSubj_list.length();
-    Rcpp::List update_ThreeSubj_list(n1);
+    int n1 = static_cast<int>(m_ThreeSubj_standS_list.size());
+    std::vector<arma::vec> arr_prob_list;
+    arr_prob_list.reserve(n1);
     
     if (n1 != 0)
     {
       for (int i = 0; i < n1; i++)
       {
-        Rcpp::List ThreeSubj_list_temp = m_ThreeSubj_list[i];
-        
-        // arma::vec CLT_temp1(243, arma::fill::zeros);
-        // arma::vec CLT_temp2(243, arma::fill::zeros);
-        // arma::vec stand_S(243, arma::fill::zeros);
-        
-        arma::mat CLT_temp =  ThreeSubj_list_temp["CLT"];
-        arma::vec stand_S = ThreeSubj_list_temp["stand.S"];
+        const arma::mat& CLT_temp = m_ThreeSubj_CLT_list[i];
+        const arma::vec& stand_S = m_ThreeSubj_standS_list[i];
         arma::vec CLT_temp1 = CLT_temp.col(order1);
         arma::vec CLT_temp2 = CLT_temp.col(order2);
           
         arma::vec arr_prob = MAF_ratio * CLT_temp1 + (1 - MAF_ratio) * CLT_temp2;
-        
-        update_ThreeSubj_list[i] = Rcpp::List::create(Rcpp::Named("stand.S") = stand_S,
-                                                      Rcpp::Named("arr.prob") = arr_prob);
+        arr_prob_list.push_back(arr_prob);
         
         arma::vec temp1 = stand_S % arr_prob;
         
@@ -311,8 +300,8 @@ public:
     double zeta1 = std::abs(Score_adj) / Score_var; zeta1 = std::min(zeta1, 1.2);
     double zeta2 = - std::abs(m_zeta);
     
-    double pval1 = GetProb_SPA(update_ThreeSubj_list, std::abs(Score_adj), MAF, false, zeta1, 1e-4);
-    double pval2 = GetProb_SPA(update_ThreeSubj_list, -std::abs(Score_adj), MAF, true, zeta2, m_tol);
+    double pval1 = GetProb_SPA(arr_prob_list, std::abs(Score_adj), MAF, false, zeta1, 1e-4);
+    double pval2 = GetProb_SPA(arr_prob_list, -std::abs(Score_adj), MAF, true, zeta2, m_tol);
     double pval = pval1 + pval2;
     
     return pval;

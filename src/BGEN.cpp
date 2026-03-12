@@ -18,6 +18,7 @@
 #include <stdexcept>
 #include <time.h>
 #include <stdint.h>
+#include <unordered_map>
 #include <zlib.h>
 #include "BGEN.h"
 
@@ -84,34 +85,38 @@ void BgenClass::setPosSampleInBgen(std::vector<std::string> & t_SampleInModel)
 {
   // Rcpp::Rcout << "    Setting positions in BGEN files ..." << std::endl;	  
   m_N = t_SampleInModel.size();
-  
-  // updated by BWJ on 03/14/2021
-  
-  Rcpp::CharacterVector SampleInBgen(m_N0);
-  for(uint32_t i = 0; i < m_N0; i++)
-    SampleInBgen(i) = m_SampleInBgen.at(i);
-  
-  Rcpp::CharacterVector SampleInModel(m_N);
-  for(uint32_t i = 0; i < m_N; i++)
-    SampleInModel(i) = t_SampleInModel.at(i);
-  
-  Rcpp::IntegerVector posSampleInBgen = Rcpp::match(SampleInModel, SampleInBgen);
-  for(uint32_t i = 0; i < m_N; i++){
-    if(Rcpp::IntegerVector::is_na(posSampleInBgen.at(i)))
-      Rcpp::stop("At least one subject requested is not in BGEN file.");
-  }
-  
-  Rcpp::IntegerVector posSampleInModel = Rcpp::match(SampleInBgen, SampleInModel);
-  m_posSampleInModel.resize(m_N0);
-  for(uint32_t i = 0; i < m_N0; i++){
-    if(Rcpp::IntegerVector::is_na(posSampleInModel.at(i))){
-      m_posSampleInModel.at(i) = -1;
-    }else{
-      m_posSampleInModel.at(i) = posSampleInModel.at(i) - 1;   // convert "starting from 1" to "starting from 0"
+
+  // Use C++ maps instead of Rcpp::match so worker-thread reader construction is R-API free.
+  std::unordered_map<std::string, uint32_t> bgenPos;
+  bgenPos.reserve(m_SampleInBgen.size());
+  for (uint32_t i = 0; i < m_SampleInBgen.size(); ++i) {
+    const std::string &id = m_SampleInBgen.at(i);
+    if (bgenPos.find(id) == bgenPos.end()) {
+      bgenPos.emplace(id, i);
     }
   }
-  
-  // end of the update on 03/14/2021
+
+  std::unordered_map<std::string, int> modelPos;
+  modelPos.reserve(t_SampleInModel.size());
+  for (uint32_t i = 0; i < t_SampleInModel.size(); ++i) {
+    const std::string &id = t_SampleInModel.at(i);
+    if (modelPos.find(id) == modelPos.end()) {
+      modelPos.emplace(id, static_cast<int>(i));
+    }
+    if (bgenPos.find(id) == bgenPos.end()) {
+      Rcpp::stop("At least one subject requested is not in BGEN file.");
+    }
+  }
+
+  m_posSampleInModel.resize(m_N0);
+  for (uint32_t i = 0; i < m_N0; ++i) {
+    auto it = modelPos.find(m_SampleInBgen.at(i));
+    if (it == modelPos.end()) {
+      m_posSampleInModel.at(i) = -1;
+    } else {
+      m_posSampleInModel.at(i) = it->second;
+    }
+  }
 }
 
 

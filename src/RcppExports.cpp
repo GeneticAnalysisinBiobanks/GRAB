@@ -433,14 +433,21 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
-// mainMarkerInCPP2
-void mainMarkerInCPP2(Rcpp::List control, Rcpp::List objNull);
-RcppExport SEXP _GRAB_mainMarkerInCPP2(SEXP controlSEXP, SEXP objNullSEXP) {
+// mainMarkerChunksInCPP4
+void mainMarkerChunksInCPP4(const std::string t_method, const Rcpp::List t_chunkIndexList, const std::string t_outputFile, const unsigned int t_nThreads, const std::string t_impute_method, const double t_missing_cutoff, const double t_min_maf_marker, const double t_min_mac_marker, const Rcpp::Nullable<Rcpp::List> t_extraParams);
+RcppExport SEXP _GRAB_mainMarkerChunksInCPP4(SEXP t_methodSEXP, SEXP t_chunkIndexListSEXP, SEXP t_outputFileSEXP, SEXP t_nThreadsSEXP, SEXP t_impute_methodSEXP, SEXP t_missing_cutoffSEXP, SEXP t_min_maf_markerSEXP, SEXP t_min_mac_markerSEXP, SEXP t_extraParamsSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Rcpp::List >::type control(controlSEXP);
-    Rcpp::traits::input_parameter< Rcpp::List >::type objNull(objNullSEXP);
-    mainMarkerInCPP2(control, objNull);
+    Rcpp::traits::input_parameter< const std::string >::type t_method(t_methodSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List >::type t_chunkIndexList(t_chunkIndexListSEXP);
+    Rcpp::traits::input_parameter< const std::string >::type t_outputFile(t_outputFileSEXP);
+    Rcpp::traits::input_parameter< const unsigned int >::type t_nThreads(t_nThreadsSEXP);
+    Rcpp::traits::input_parameter< const std::string >::type t_impute_method(t_impute_methodSEXP);
+    Rcpp::traits::input_parameter< const double >::type t_missing_cutoff(t_missing_cutoffSEXP);
+    Rcpp::traits::input_parameter< const double >::type t_min_maf_marker(t_min_maf_markerSEXP);
+    Rcpp::traits::input_parameter< const double >::type t_min_mac_marker(t_min_mac_markerSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::Nullable<Rcpp::List> >::type t_extraParams(t_extraParamsSEXP);
+    mainMarkerChunksInCPP4(t_method, t_chunkIndexList, t_outputFile, t_nThreads, t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_extraParams);
     return R_NilValue;
 END_RCPP
 }
@@ -558,7 +565,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setSPAsqrobjInCPP", (DL_FUNC) &_GRAB_setSPAsqrobjInCPP, 15},
     {"_GRAB_setLEAFobjInCPP", (DL_FUNC) &_GRAB_setLEAFobjInCPP, 5},
     {"_GRAB_setSPAmixPlusobjInCPP", (DL_FUNC) &_GRAB_setSPAmixPlusobjInCPP, 8},
-    {"_GRAB_mainMarkerInCPP2", (DL_FUNC) &_GRAB_mainMarkerInCPP2, 2},
+    {"_GRAB_mainMarkerChunksInCPP4", (DL_FUNC) &_GRAB_mainMarkerChunksInCPP4, 9},
     {"_GRAB_SPAmixPlusLocal_streamInCPP", (DL_FUNC) &_GRAB_SPAmixPlusLocal_streamInCPP, 8},
     {"_GRAB_read_ukb_sample_ids_cpp", (DL_FUNC) &_GRAB_read_ukb_sample_ids_cpp, 1},
     {"_GRAB_SPAmixLocalPlus_computePhiInCPP", (DL_FUNC) &_GRAB_SPAmixLocalPlus_computePhiInCPP, 7},

@@ -10,6 +10,7 @@
 
 #include <RcppArmadilloExtensions/sample.h> // sample
 #include <string>
+#include <unordered_map>
 
 // make a global variable for future usage
 // static PLINK::PlinkClass* ptr_gPLINKobj = NULL;
@@ -108,29 +109,23 @@ void PlinkClass::setPosSampleInPlink(std::vector<std::string> t_SampleInModel)
   m_N = t_SampleInModel.size();
   m_numBytesofEachMarker = (m_N + 3) / 4;
   
-  // convert from std::vector<std::string> to Rcpp::CharacterVector
-  Rcpp::CharacterVector SampleInModel(m_N);
-  for(uint32_t i = 0; i < m_N; i++)
-    SampleInModel(i) = t_SampleInModel.at(i);
-  
-  // convert from std::vector<std::string> to Rcpp::CharacterVector
-  uint32_t N_plink = m_SampleInPlink.size();
-  Rcpp::CharacterVector SampleInPlink(N_plink);
-  for(uint32_t i = 0; i < N_plink; i++)
-    SampleInPlink(i) = m_SampleInPlink.at(i);
-    
-  // Rcpp::match is much faster than loop
-  Rcpp::IntegerVector posSampleInPlink = Rcpp::match(SampleInModel, SampleInPlink);
-  
-  // Rcpp::Rcout << "    posSampleInPlink:\t" << posSampleInPlink[0] << " " << posSampleInPlink[1] << " " << posSampleInPlink[2] << std::endl;
-  // Rcpp::Rcout << "    SampleInModel:\t" << SampleInModel[0] << " " << SampleInModel[1] << " " << SampleInModel[2] << std::endl;
-  // Rcpp::Rcout << "    SampleInPlink:\t" << SampleInPlink[0] << " " << SampleInPlink[1] << " " << SampleInPlink[2] << std::endl;
-  
+  // Build IID -> PLINK row mapping once without touching R API (thread-safe in worker setup).
+  std::unordered_map<std::string, uint32_t> plinkPos;
+  plinkPos.reserve(m_SampleInPlink.size());
+  for (uint32_t i = 0; i < m_SampleInPlink.size(); ++i) {
+    const std::string &id = m_SampleInPlink.at(i);
+    if (plinkPos.find(id) == plinkPos.end()) {
+      plinkPos.emplace(id, i);
+    }
+  }
+
   m_posSampleInPlink.resize(m_N);
-  for(uint32_t i = 0; i < m_N; i++){
-    if(Rcpp::IntegerVector::is_na(posSampleInPlink.at(i)))
+  for (uint32_t i = 0; i < m_N; ++i) {
+    auto it = plinkPos.find(t_SampleInModel.at(i));
+    if (it == plinkPos.end()) {
       Rcpp::stop("At least one subject requested is not in Plink file.");
-    m_posSampleInPlink.at(i) = posSampleInPlink.at(i) - 1;   // convert "starting from 1" to "starting from 0"
+    }
+    m_posSampleInPlink.at(i) = it->second;
   }
 }
 

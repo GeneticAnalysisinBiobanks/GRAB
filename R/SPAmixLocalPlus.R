@@ -23,7 +23,7 @@
 #'
 #' # Step0: Estimate phi for ancestries 1 and 2
 #' SPAmixLocalPlus.EstimatePhi(
-#' GRM = GRM,
+#'   GRM = GRM,
 #'   dosagePrefix = dosagePrefix,
 #'   haploPrefix = NULL,  # Uses dosagePrefix if NULL
 #'   ancIdx = c(1, 2),
