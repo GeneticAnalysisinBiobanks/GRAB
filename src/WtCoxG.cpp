@@ -3,6 +3,7 @@
 #include <cmath>
 #include <algorithm>
 #include <functional>
+#include <cstdio>
 
 namespace WtCoxG {
 
@@ -183,7 +184,8 @@ double WtCoxGClass::GetProb_SPA_G_cpp(
         zeta = find_root_brent(h1_func, a, b_bound, 1e-8);
     } catch (...) {
         // If root finding fails, return NaN (don't use fallback like before)
-        Rcpp::Rcout << "    Root finding failed, returning NaN" << std::endl;
+        std::fprintf(stderr, "[WARN] WtCoxG root finding failed, returning NaN\n");
+        std::fflush(stderr);
         return arma::datum::nan;
     }
 

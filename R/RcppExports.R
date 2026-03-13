@@ -101,6 +101,10 @@ setSPAmixPlusobjInCPP <- function(t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierLi
     invisible(.Call(`_GRAB_setSPAmixPlusobjInCPP`, t_resid, t_PCs, t_N, t_SPA_Cutoff, t_outlierList, t_sparseGRM, t_afFilePath, t_afFilePrecision))
 }
 
+prepareAndRunMarkerInCPP4 <- function(t_objNull, t_GenoFile, t_OutputFile, t_GenoFileIndex, t_control, t_nThreads) {
+    invisible(.Call(`_GRAB_prepareAndRunMarkerInCPP4`, t_objNull, t_GenoFile, t_OutputFile, t_GenoFileIndex, t_control, t_nThreads))
+}
+
 mainMarkerChunksInCPP4 <- function(t_method, t_chunkIndexList, t_outputFile, t_nThreads, t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_extraParams = NULL) {
     invisible(.Call(`_GRAB_mainMarkerChunksInCPP4`, t_method, t_chunkIndexList, t_outputFile, t_nThreads, t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_extraParams))
 }

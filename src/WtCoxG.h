@@ -7,6 +7,7 @@
 #include <cmath>
 #include <functional>
 #include <algorithm>
+#include <stdexcept>
 #include <boost/math/distributions/normal.hpp>
 #include <boost/math/distributions/chi_squared.hpp>
 
@@ -62,29 +63,48 @@ public:
         // Constructor body (if needed)
     }
 
-    // reset m_markerInfoVec with new data from R data.frame
-    void updateMarkerInfo(const Rcpp::DataFrame& t_mergeGenoInfo) {
+    // reset m_markerInfoVec with native vectors (thread-safe in worker threads)
+    void updateMarkerInfo(const std::vector<double>& AF_ref,
+                          const std::vector<double>& AN_ref,
+                          const std::vector<double>& TPR,
+                          const std::vector<double>& sigma2,
+                          const std::vector<double>& pvalue_bat,
+                          const std::vector<double>& w_ext,
+                          const std::vector<double>& var_ratio_w0,
+                          const std::vector<double>& var_ratio_int,
+                          const std::vector<double>& var_ratio_ext) {
         m_markerInfoVec.clear();
 
-        Rcpp::NumericVector AF_ref = t_mergeGenoInfo["AF_ref"];
-        Rcpp::NumericVector AN_ref = t_mergeGenoInfo["AN_ref"];
-        Rcpp::NumericVector TPR = t_mergeGenoInfo["TPR"];
-        Rcpp::NumericVector sigma2 = t_mergeGenoInfo["sigma2"];
-        Rcpp::NumericVector pvalue_bat = t_mergeGenoInfo["pvalue_bat"];
-        Rcpp::NumericVector w_ext = t_mergeGenoInfo["w.ext"];
-        Rcpp::NumericVector var_ratio_w0 = t_mergeGenoInfo["var.ratio.w0"];
-        Rcpp::NumericVector var_ratio_int = t_mergeGenoInfo["var.ratio.int"];
-        Rcpp::NumericVector var_ratio_ext = t_mergeGenoInfo["var.ratio.ext"];
+        size_t n = AF_ref.size();
+        if (AN_ref.size() != n || TPR.size() != n || sigma2.size() != n ||
+            pvalue_bat.size() != n || w_ext.size() != n || var_ratio_w0.size() != n ||
+            var_ratio_int.size() != n || var_ratio_ext.size() != n) {
+            throw std::runtime_error("WtCoxG::updateMarkerInfo received vectors with inconsistent lengths.");
+        }
 
-        int n = AF_ref.size();
         m_markerInfoVec.reserve(n);
-
-        for (int i = 0; i < n; ++i) {
+        for (size_t i = 0; i < n; ++i) {
             m_markerInfoVec.emplace_back(
                 AF_ref[i], AN_ref[i], TPR[i], sigma2[i], pvalue_bat[i],
                 w_ext[i], var_ratio_w0[i], var_ratio_int[i], var_ratio_ext[i]
             );
         }
+    }
+
+    // reset m_markerInfoVec with data from R data.frame
+    void updateMarkerInfo(const Rcpp::DataFrame& t_mergeGenoInfo) {
+        std::vector<double> AF_ref = Rcpp::as<std::vector<double>>(t_mergeGenoInfo["AF_ref"]);
+        std::vector<double> AN_ref = Rcpp::as<std::vector<double>>(t_mergeGenoInfo["AN_ref"]);
+        std::vector<double> TPR = Rcpp::as<std::vector<double>>(t_mergeGenoInfo["TPR"]);
+        std::vector<double> sigma2 = Rcpp::as<std::vector<double>>(t_mergeGenoInfo["sigma2"]);
+        std::vector<double> pvalue_bat = Rcpp::as<std::vector<double>>(t_mergeGenoInfo["pvalue_bat"]);
+        std::vector<double> w_ext = Rcpp::as<std::vector<double>>(t_mergeGenoInfo["w.ext"]);
+        std::vector<double> var_ratio_w0 = Rcpp::as<std::vector<double>>(t_mergeGenoInfo["var.ratio.w0"]);
+        std::vector<double> var_ratio_int = Rcpp::as<std::vector<double>>(t_mergeGenoInfo["var.ratio.int"]);
+        std::vector<double> var_ratio_ext = Rcpp::as<std::vector<double>>(t_mergeGenoInfo["var.ratio.ext"]);
+
+        updateMarkerInfo(AF_ref, AN_ref, TPR, sigma2, pvalue_bat,
+                         w_ext, var_ratio_w0, var_ratio_int, var_ratio_ext);
     }
     
     // Method called in Main.cpp to get p-values for a given marker

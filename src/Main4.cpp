@@ -11,10 +11,12 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <memory>
 #include <limits>
 #include <cmath>
 #include <exception>
+#include <cstdio>
 
 #include <boost/math/distributions/chi_squared.hpp>
 
@@ -32,7 +34,353 @@
 #include "UTIL.h"
 #include "Main.h"
 
+void mainMarkerChunksInCPP4(
+  const std::string t_method,
+  const Rcpp::List t_chunkIndexList,
+  const std::string t_outputFile,
+  const unsigned int t_nThreads,
+  const std::string t_impute_method,
+  const double t_missing_cutoff,
+  const double t_min_maf_marker,
+  const double t_min_mac_marker,
+  const Rcpp::Nullable<Rcpp::List> t_extraParams
+);
+
 namespace {
+
+Rcpp::Environment grabNamespace() {
+  return Rcpp::Environment::namespace_env("GRAB");
+}
+
+Rcpp::Function grabFunction(const char* name) {
+  return grabNamespace()[name];
+}
+
+std::string getNullModelClass(const Rcpp::List &objNull) {
+  if (!objNull.hasAttribute("class")) {
+    Rcpp::stop("objNull must have an R class attribute.");
+  }
+  Rcpp::CharacterVector classes = objNull.attr("class");
+  if (classes.size() < 1) {
+    Rcpp::stop("objNull must have a non-empty R class attribute.");
+  }
+  return Rcpp::as<std::string>(classes[0]);
+}
+
+std::string getMethodFromNullModelClass(const std::string &nullModelClass) {
+  if (nullModelClass == "POLMM_NULL_Model") return "POLMM";
+  if (nullModelClass == "SPACox_NULL_Model") return "SPACox";
+  if (nullModelClass == "SPAmix_NULL_Model") return "SPAmix";
+  if (nullModelClass == "SPAmixPlus_NULL_Model") return "SPAmixPlus";
+  if (nullModelClass == "SPAGRM_NULL_Model") return "SPAGRM";
+  if (nullModelClass == "SAGELD_NULL_Model") return "SAGELD";
+  if (nullModelClass == "WtCoxG_NULL_Model") return "WtCoxG";
+  if (nullModelClass == "SPAsqr_NULL_Model") return "SPAsqr";
+  if (nullModelClass == "LEAF_NULL_Model") return "LEAF";
+  Rcpp::stop("Unsupported null model class in Marker4: " + nullModelClass);
+}
+
+bool fileExists(const std::string &path) {
+  if (path.empty()) return false;
+  std::ifstream in(path.c_str(), std::ios::binary);
+  return in.good();
+}
+
+void setMarkerObjectForMethod(const std::string &nullModelClass,
+                              const Rcpp::List &objNull,
+                              const Rcpp::List &control) {
+  if (nullModelClass == "POLMM_NULL_Model") {
+    Rcpp::List objCHR = Rcpp::as<Rcpp::List>(Rcpp::as<Rcpp::List>(objNull["LOCOList"])["LOCO=F"]);
+    Rcpp::IntegerVector group = objNull["yVec"];
+    std::unordered_set<int> uniqueGroups;
+    for (int value : group) {
+      uniqueGroups.insert(value);
+    }
+
+    grabFunction("setPOLMMobjInCPP")(
+      objCHR["muMat"],
+      objCHR["iRMat"],
+      objNull["Cova"],
+      objNull["yVec"],
+      objNull["tau"],
+      false,
+      0.001,
+      100,
+      objCHR["VarRatio"],
+      control["SPA_Cutoff"],
+      false,
+      group,
+      control["ifOutGroup"],
+      static_cast<int>(uniqueGroups.size())
+    );
+    return;
+  }
+
+  if (nullModelClass == "SPACox_NULL_Model") {
+    grabFunction("setSPACoxobjInCPP")(
+      objNull["cumul"],
+      objNull["mresid"],
+      objNull["X.invXX"],
+      objNull["tX"],
+      Rf_length(objNull["mresid"]),
+      control["pVal_covaAdj_Cutoff"],
+      control["SPA_Cutoff"]
+    );
+    return;
+  }
+
+  if (nullModelClass == "SPAmix_NULL_Model") {
+    grabFunction("setSPAmixobjInCPP")(
+      objNull["resid"],
+      objNull["PCs"],
+      objNull["N"],
+      control["SPA_Cutoff"],
+      objNull["outLierList"]
+    );
+    return;
+  }
+
+  if (nullModelClass == "SPAmixPlus_NULL_Model") {
+    grabFunction("setSPAmixPlusobjInCPP")(
+      objNull["resid"],
+      objNull["PCs"],
+      objNull["N"],
+      control["SPA_Cutoff"],
+      objNull["outLierList"],
+      objNull["sparseGRM"],
+      control["afFilePath"],
+      control["afFilePrecision"]
+    );
+    return;
+  }
+
+  if (nullModelClass == "SPAGRM_NULL_Model") {
+    grabFunction("setSPAGRMobjInCPP")(
+      objNull["Resid"],
+      objNull["Resid.unrelated.outliers"],
+      objNull["sum_R_nonOutlier"],
+      objNull["R_GRM_R_nonOutlier"],
+      objNull["R_GRM_R_TwoSubjOutlier"],
+      objNull["R_GRM_R"],
+      objNull["MAF_interval"],
+      objNull["TwoSubj_list"],
+      objNull["ThreeSubj_list"],
+      control["SPA_Cutoff"],
+      control["zeta"],
+      control["tol"]
+    );
+    return;
+  }
+
+  if (nullModelClass == "SAGELD_NULL_Model") {
+    grabFunction("setSAGELDobjInCPP")(
+      objNull["Method"],
+      objNull["XTs"],
+      objNull["SS"],
+      objNull["AtS"],
+      objNull["Q"],
+      objNull["A21"],
+      objNull["TTs"],
+      objNull["Tys"],
+      objNull["sol"],
+      objNull["blups"],
+      objNull["sig"],
+      objNull["Resid"],
+      objNull["Resid_G"],
+      objNull["Resid_GxE"],
+      objNull["Resid_E"],
+      objNull["Resid.unrelated.outliers"],
+      objNull["Resid.unrelated.outliers_G"],
+      objNull["Resid.unrelated.outliers_GxE"],
+      objNull["sum_R_nonOutlier"],
+      objNull["sum_R_nonOutlier_G"],
+      objNull["sum_R_nonOutlier_GxE"],
+      objNull["R_GRM_R"],
+      objNull["R_GRM_R_G"],
+      objNull["R_GRM_R_GxE"],
+      objNull["R_GRM_R_G_GxE"],
+      objNull["R_GRM_R_E"],
+      objNull["R_GRM_R_nonOutlier"],
+      objNull["R_GRM_R_nonOutlier_G"],
+      objNull["R_GRM_R_nonOutlier_GxE"],
+      objNull["R_GRM_R_nonOutlier_G_GxE"],
+      objNull["R_GRM_R_TwoSubjOutlier"],
+      objNull["R_GRM_R_TwoSubjOutlier_G"],
+      objNull["R_GRM_R_TwoSubjOutlier_GxE"],
+      objNull["R_GRM_R_TwoSubjOutlier_G_GxE"],
+      objNull["TwoSubj_list"],
+      objNull["ThreeSubj_list"],
+      objNull["MAF_interval"],
+      objNull["zScoreE_cutoff"],
+      control["SPA_Cutoff"],
+      control["zeta"],
+      control["tol"]
+    );
+    return;
+  }
+
+  if (nullModelClass == "WtCoxG_NULL_Model") {
+    grabFunction("setWtCoxGobjInCPP")(
+      objNull["mresid"],
+      objNull["weight"],
+      control["cutoff"],
+      control["SPA_Cutoff"]
+    );
+    return;
+  }
+
+  if (nullModelClass == "SPAsqr_NULL_Model") {
+    grabFunction("setSPAsqrobjInCPP")(
+      objNull["taus"],
+      objNull["Resid_mat"],
+      objNull["Resid.unrelated.outliers_lst"],
+      objNull["sum_R_nonOutlier_vec"],
+      objNull["R_GRM_R_nonOutlier_vec"],
+      objNull["R_GRM_R_TwoSubjOutlier_vec"],
+      objNull["R_GRM_R_vec"],
+      objNull["MAF_interval"],
+      objNull["TwoSubj_list_lst"],
+      objNull["CLT_union_lst"],
+      objNull["ThreeSubj_family_idx_lst"],
+      objNull["ThreeSubj_stand_S_lst"],
+      control["SPA_Cutoff"],
+      control["zeta"],
+      control["tol"]
+    );
+    return;
+  }
+
+  if (nullModelClass == "LEAF_NULL_Model") {
+    const int nCluster = Rcpp::as<int>(objNull["Ncluster"]);
+    Rcpp::IntegerVector clusterIdx = objNull["clusterIdx"];
+    std::vector<std::vector<int>> clusterPositions(nCluster);
+    for (int i = 0; i < clusterIdx.size(); ++i) {
+      const int cluster = clusterIdx[i];
+      if (cluster >= 1 && cluster <= nCluster) {
+        clusterPositions[cluster - 1].push_back(i + 1);
+      }
+    }
+
+    Rcpp::List clusterIdxList(nCluster);
+    for (int i = 0; i < nCluster; ++i) {
+      clusterIdxList[i] = Rcpp::wrap(clusterPositions[i]);
+    }
+
+    grabFunction("setLEAFobjInCPP")(
+      objNull["residuals_list"],
+      objNull["weights_list"],
+      clusterIdxList,
+      control["cutoff"],
+      control["SPA_Cutoff"]
+    );
+    return;
+  }
+
+  Rcpp::stop("Unsupported null model class in Marker4 setter dispatch: " + nullModelClass);
+}
+
+Rcpp::CharacterVector getBgenSamplesFromSampleFile(const std::string &sampleFile) {
+  Rcpp::Environment dataTableNamespace = Rcpp::Environment::namespace_env("data.table");
+  Rcpp::Function fread = dataTableNamespace["fread"];
+  Rcpp::DataFrame sampleData = fread(sampleFile, Rcpp::Named("header") = true);
+  Rcpp::CharacterVector ids = sampleData["ID_2"];
+  if (ids.size() <= 1) {
+    return Rcpp::CharacterVector(0);
+  }
+  Rcpp::CharacterVector out(ids.size() - 1);
+  for (int i = 1; i < ids.size(); ++i) {
+    out[i - 1] = ids[i];
+  }
+  return out;
+}
+
+Rcpp::List buildReaderConfig(const Rcpp::List &objGeno) {
+  const std::string genoType = Rcpp::as<std::string>(objGeno["genoType"]);
+  const Rcpp::CharacterVector sampleInModel = objGeno["SampleIDs"];
+  const std::string alleleOrder = Rcpp::as<std::string>(objGeno["AlleleOrder"]);
+  const std::string genoFile = Rcpp::as<std::string>(objGeno["GenoFile"]);
+  const Rcpp::CharacterVector genoFileIndex = objGeno["GenoFileIndex"];
+
+  if (genoType == "PLINK") {
+    return Rcpp::List::create(
+      Rcpp::Named("genoType") = genoType,
+      Rcpp::Named("bimFile") = genoFileIndex[0],
+      Rcpp::Named("famFile") = genoFileIndex[1],
+      Rcpp::Named("bedFile") = genoFile,
+      Rcpp::Named("sampleInModel") = sampleInModel,
+      Rcpp::Named("alleleOrder") = alleleOrder
+    );
+  }
+
+  std::string sampleFile;
+  if (genoFileIndex.size() > 1 && !Rcpp::CharacterVector::is_na(genoFileIndex[1])) {
+    sampleFile = Rcpp::as<std::string>(genoFileIndex[1]);
+  }
+
+  Rcpp::CharacterVector sampleInBgen;
+  if (!sampleFile.empty() && fileExists(sampleFile)) {
+    sampleInBgen = getBgenSamplesFromSampleFile(sampleFile);
+  } else {
+    sampleInBgen = grabFunction("getSampleIDsFromBGEN")(genoFile, false);
+  }
+
+  return Rcpp::List::create(
+    Rcpp::Named("genoType") = genoType,
+    Rcpp::Named("bgenFile") = genoFile,
+    Rcpp::Named("bgiFile") = genoFileIndex[0],
+    Rcpp::Named("sampleInBgen") = sampleInBgen,
+    Rcpp::Named("sampleInModel") = sampleInModel,
+    Rcpp::Named("isSparseDosageInBgen") = false,
+    Rcpp::Named("isDropmissingdosagesInBgen") = false,
+    Rcpp::Named("alleleOrder") = alleleOrder
+  );
+}
+
+Rcpp::List buildChunkIndexList(const Rcpp::DataFrame &markerInfo, const int nMarkersEachChunk) {
+  Rcpp::Function asCharacter = Rcpp::Environment::base_env()["as.character"];
+  Rcpp::CharacterVector chrom = asCharacter(markerInfo["CHROM"]);
+  Rcpp::NumericVector genoIndex = markerInfo["genoIndex"];
+
+  std::vector<std::string> chromOrder;
+  std::unordered_map<std::string, std::vector<int>> positionsByChrom;
+  chromOrder.reserve(chrom.size());
+
+  for (int i = 0; i < chrom.size(); ++i) {
+    const std::string chr = Rcpp::as<std::string>(chrom[i]);
+    if (positionsByChrom.find(chr) == positionsByChrom.end()) {
+      chromOrder.push_back(chr);
+    }
+    positionsByChrom[chr].push_back(i);
+  }
+
+  std::vector<Rcpp::NumericVector> chunks;
+  for (const std::string &chr : chromOrder) {
+    const std::vector<int> &positions = positionsByChrom[chr];
+    for (size_t start = 0; start < positions.size(); start += static_cast<size_t>(nMarkersEachChunk)) {
+      const size_t end = std::min(start + static_cast<size_t>(nMarkersEachChunk), positions.size());
+      Rcpp::NumericVector chunk(end - start);
+      for (size_t idx = start; idx < end; ++idx) {
+        chunk[idx - start] = genoIndex[positions[idx]];
+      }
+      chunks.push_back(chunk);
+    }
+  }
+
+  return Rcpp::wrap(chunks);
+}
+
+Rcpp::List buildMarkerExtraParams(const std::string &nullModelClass,
+                                  const Rcpp::List &objNull,
+                                  const Rcpp::List &objGeno) {
+  return Rcpp::List::create(
+    Rcpp::Named("reader_config") = buildReaderConfig(objGeno),
+    Rcpp::Named("sageld_method") = (nullModelClass == "SAGELD_NULL_Model") ? objNull["Method"] : R_NilValue,
+    Rcpp::Named("spasqr_taus") = (nullModelClass == "SPAsqr_NULL_Model") ? objNull["taus"] : R_NilValue,
+    Rcpp::Named("wtcoxg_merge") = (nullModelClass == "WtCoxG_NULL_Model") ? objNull["mergeGenoInfo"] : R_NilValue,
+    Rcpp::Named("leaf_subgeno") = (nullModelClass == "LEAF_NULL_Model") ? objNull["subGenoInfo"] : R_NilValue,
+    Rcpp::Named("leaf_ncluster") = (nullModelClass == "LEAF_NULL_Model") ? objNull["Ncluster"] : R_NilValue
+  );
+}
 
 std::string numToStr(double x) {
   if (std::isnan(x)) return "NA";
@@ -191,6 +539,56 @@ ThreadContext makeThreadContext(const std::string &method) {
 } // namespace
 
 // [[Rcpp::export]]
+void prepareAndRunMarkerInCPP4(
+  const Rcpp::List t_objNull,
+  const std::string t_GenoFile,
+  const std::string t_OutputFile,
+  const Rcpp::Nullable<Rcpp::CharacterVector> t_GenoFileIndex,
+  const Rcpp::List t_control,
+  const unsigned int t_nThreads
+) {
+  const std::string nullModelClass = getNullModelClass(t_objNull);
+  const std::string method = getMethodFromNullModelClass(nullModelClass);
+  const int nMarkersEachChunk = Rcpp::as<int>(t_control["nMarkersEachChunk"]);
+
+  setMarkerObjectForMethod(nullModelClass, t_objNull, t_control);
+
+  Rcpp::RObject genoFileIndexArg = t_GenoFileIndex.isNotNull()
+    ? Rcpp::RObject(Rcpp::CharacterVector(t_GenoFileIndex))
+    : Rcpp::RObject(R_NilValue);
+
+  Rcpp::List objGeno = grabFunction("setGenoInput")(
+    Rcpp::Named("GenoFile") = t_GenoFile,
+    Rcpp::Named("GenoFileIndex") = genoFileIndexArg,
+    Rcpp::Named("SampleIDs") = t_objNull["subjData"],
+    Rcpp::Named("control") = t_control,
+    Rcpp::Named("verbose") = false
+  );
+
+  Rcpp::DataFrame markerInfo = Rcpp::as<Rcpp::DataFrame>(objGeno["markerInfo"]);
+  const std::string genoType = Rcpp::as<std::string>(objGeno["genoType"]);
+  Rcpp::List chunkIndexList = buildChunkIndexList(markerInfo, nMarkersEachChunk);
+
+  Rcpp::Rcout << "Number of markers to test: " << markerInfo.nrows() << std::endl;
+  Rcpp::Rcout << "Genotype type: " << genoType << std::endl;
+  Rcpp::Rcout << "Number of markers in each chunk: " << nMarkersEachChunk << std::endl;
+  Rcpp::Rcout << "Number of chunks for all markers: " << chunkIndexList.size() << std::endl;
+  Rcpp::Rcout << "Number of threads: " << t_nThreads << std::endl;
+
+  mainMarkerChunksInCPP4(
+    method,
+    chunkIndexList,
+    t_OutputFile,
+    t_nThreads,
+    Rcpp::as<std::string>(t_control["impute_method"]),
+    Rcpp::as<double>(t_control["missing_cutoff"]),
+    Rcpp::as<double>(t_control["min_maf_marker"]),
+    Rcpp::as<double>(t_control["min_mac_marker"]),
+    buildMarkerExtraParams(nullModelClass, t_objNull, objGeno)
+  );
+}
+
+// [[Rcpp::export]]
 void mainMarkerChunksInCPP4(
   const std::string t_method,
   const Rcpp::List t_chunkIndexList,
@@ -339,6 +737,7 @@ void mainMarkerChunksInCPP4(
   std::exception_ptr workerError = nullptr;
   std::mutex errorMutex;
   std::mutex writeMutex;
+  std::mutex logMutex;
   std::condition_variable writeCv;
   bool stopWriter = false;
 
@@ -362,7 +761,11 @@ void mainMarkerChunksInCPP4(
         break;
       }
       out << chunkOutput[i];
-      Rcpp::Rcout << "[INFO] Completed chunks: " << (i + 1) << "/" << chunkOutput.size() << std::endl;
+      {
+        std::lock_guard<std::mutex> lk(logMutex);
+        std::fprintf(stderr, "[INFO] Writing finished: chunk %zu/%zu\n", i + 1, chunkOutput.size());
+        std::fflush(stderr);
+      }
     }
     out.close();
   });
@@ -441,18 +844,17 @@ void mainMarkerChunksInCPP4(
             var_ext.push_back(r.var_ratio_ext);
           }
 
-          Rcpp::DataFrame chunkDf = Rcpp::DataFrame::create(
-            Rcpp::Named("AF_ref") = AF_ref,
-            Rcpp::Named("AN_ref") = AN_ref,
-            Rcpp::Named("TPR") = TPR,
-            Rcpp::Named("sigma2") = sigma2,
-            Rcpp::Named("pvalue_bat") = pvalue_bat,
-            Rcpp::Named("w.ext") = w_ext,
-            Rcpp::Named("var.ratio.w0") = var_w0,
-            Rcpp::Named("var.ratio.int") = var_int,
-            Rcpp::Named("var.ratio.ext") = var_ext
+          ctx.wtcoxg->updateMarkerInfo(
+            AF_ref,
+            AN_ref,
+            TPR,
+            sigma2,
+            pvalue_bat,
+            w_ext,
+            var_w0,
+            var_int,
+            var_ext
           );
-          ctx.wtcoxg->updateMarkerInfo(chunkDf);
         }
 
         if (t_method == "LEAF") {
@@ -493,18 +895,18 @@ void mainMarkerChunksInCPP4(
               var_ext.push_back(r.var_ratio_ext);
             }
 
-            Rcpp::DataFrame chunkDf = Rcpp::DataFrame::create(
-              Rcpp::Named("AF_ref") = AF_ref,
-              Rcpp::Named("AN_ref") = AN_ref,
-              Rcpp::Named("TPR") = TPR,
-              Rcpp::Named("sigma2") = sigma2,
-              Rcpp::Named("pvalue_bat") = pvalue_bat,
-              Rcpp::Named("w.ext") = w_ext,
-              Rcpp::Named("var.ratio.w0") = var_w0,
-              Rcpp::Named("var.ratio.int") = var_int,
-              Rcpp::Named("var.ratio.ext") = var_ext
+            ctx.leaf->updateMarkerInfo(
+              c,
+              AF_ref,
+              AN_ref,
+              TPR,
+              sigma2,
+              pvalue_bat,
+              w_ext,
+              var_w0,
+              var_int,
+              var_ext
             );
-            ctx.leaf->updateMarkerInfo(c, chunkDf);
           }
         }
 
@@ -836,6 +1238,11 @@ void mainMarkerChunksInCPP4(
           std::lock_guard<std::mutex> lk(writeMutex);
           chunkOutput[cidx] = out.str();
           chunkReady[cidx] = 1;
+        }
+        {
+          std::lock_guard<std::mutex> lk(logMutex);
+          std::fprintf(stderr, "[INFO] Calculation finished: chunk %zu/%zu\n", cidx + 1, chunkMarkers.size());
+          std::fflush(stderr);
         }
         writeCv.notify_all();
       }

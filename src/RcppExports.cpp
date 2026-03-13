@@ -433,6 +433,21 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// prepareAndRunMarkerInCPP4
+void prepareAndRunMarkerInCPP4(const Rcpp::List t_objNull, const std::string t_GenoFile, const std::string t_OutputFile, const Rcpp::Nullable<Rcpp::CharacterVector> t_GenoFileIndex, const Rcpp::List t_control, const unsigned int t_nThreads);
+RcppExport SEXP _GRAB_prepareAndRunMarkerInCPP4(SEXP t_objNullSEXP, SEXP t_GenoFileSEXP, SEXP t_OutputFileSEXP, SEXP t_GenoFileIndexSEXP, SEXP t_controlSEXP, SEXP t_nThreadsSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::List >::type t_objNull(t_objNullSEXP);
+    Rcpp::traits::input_parameter< const std::string >::type t_GenoFile(t_GenoFileSEXP);
+    Rcpp::traits::input_parameter< const std::string >::type t_OutputFile(t_OutputFileSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::Nullable<Rcpp::CharacterVector> >::type t_GenoFileIndex(t_GenoFileIndexSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List >::type t_control(t_controlSEXP);
+    Rcpp::traits::input_parameter< const unsigned int >::type t_nThreads(t_nThreadsSEXP);
+    prepareAndRunMarkerInCPP4(t_objNull, t_GenoFile, t_OutputFile, t_GenoFileIndex, t_control, t_nThreads);
+    return R_NilValue;
+END_RCPP
+}
 // mainMarkerChunksInCPP4
 void mainMarkerChunksInCPP4(const std::string t_method, const Rcpp::List t_chunkIndexList, const std::string t_outputFile, const unsigned int t_nThreads, const std::string t_impute_method, const double t_missing_cutoff, const double t_min_maf_marker, const double t_min_mac_marker, const Rcpp::Nullable<Rcpp::List> t_extraParams);
 RcppExport SEXP _GRAB_mainMarkerChunksInCPP4(SEXP t_methodSEXP, SEXP t_chunkIndexListSEXP, SEXP t_outputFileSEXP, SEXP t_nThreadsSEXP, SEXP t_impute_methodSEXP, SEXP t_missing_cutoffSEXP, SEXP t_min_maf_markerSEXP, SEXP t_min_mac_markerSEXP, SEXP t_extraParamsSEXP) {
@@ -565,6 +580,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setSPAsqrobjInCPP", (DL_FUNC) &_GRAB_setSPAsqrobjInCPP, 15},
     {"_GRAB_setLEAFobjInCPP", (DL_FUNC) &_GRAB_setLEAFobjInCPP, 5},
     {"_GRAB_setSPAmixPlusobjInCPP", (DL_FUNC) &_GRAB_setSPAmixPlusobjInCPP, 8},
+    {"_GRAB_prepareAndRunMarkerInCPP4", (DL_FUNC) &_GRAB_prepareAndRunMarkerInCPP4, 6},
     {"_GRAB_mainMarkerChunksInCPP4", (DL_FUNC) &_GRAB_mainMarkerChunksInCPP4, 9},
     {"_GRAB_SPAmixPlusLocal_streamInCPP", (DL_FUNC) &_GRAB_SPAmixPlusLocal_streamInCPP, 8},
     {"_GRAB_read_ukb_sample_ids_cpp", (DL_FUNC) &_GRAB_read_ukb_sample_ids_cpp, 1},

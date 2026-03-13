@@ -62,7 +62,7 @@ GRAB.Marker4 <- function(
     missing_cutoff = 0.15,
     min_maf_marker = 0.001,
     min_mac_marker = 20,
-    nMarkersEachChunk = 10000,
+    nMarkersEachChunk = 1000,
     SPA_Cutoff = 2
   )
 
@@ -138,8 +138,7 @@ GRAB.Marker4 <- function(
     LEAF_NULL_Model = checkControl.Marker.LEAF(control)
   )
 
-  # Some methods currently rely on components that are not thread-safe in the
-  # Marker4 chunk-parallel backend. Fall back to one thread to avoid crashes.
+  # Methods listed here are forced to run with one thread.
   unsafe_parallel_classes <- c(
     "WtCoxG_NULL_Model",
     "LEAF_NULL_Model"
@@ -176,117 +175,13 @@ GRAB.Marker4 <- function(
   )
   .printParameters("Parameters for Marker-Level Tests (GRAB.Marker4)", params, control)
 
-  subjData <- as.character(objNull$subjData)
-  objGeno <- setGenoInput(GenoFile, GenoFileIndex, subjData, control)
-  genoType <- objGeno$genoType
-  markerInfo <- objGeno$markerInfo
-
-  CHROM <- markerInfo$CHROM
-  uCHROM <- unique(CHROM)
-  genoIndex <- markerInfo$genoIndex
-  nMarkersEachChunk <- control$nMarkersEachChunk
-
-  iTot <- 1
-  genoIndexList <- list()
-  for (chrom in uCHROM) {
-    pos <- which(CHROM == chrom)
-    gIdx <- genoIndex[pos]
-    M <- length(gIdx)
-
-    idxStart <- seq(1, M, nMarkersEachChunk)
-    idxEnd <- idxStart + nMarkersEachChunk - 1
-    nChunks <- length(idxStart)
-    idxEnd[nChunks] <- M
-
-    for (i in 1:nChunks) {
-      idxMarker <- idxStart[i]:idxEnd[i]
-      genoIndexList[[iTot]] <- as.integer(gIdx[idxMarker])
-      iTot <- iTot + 1
-    }
-  }
-
-  nChunks <- length(genoIndexList)
-  .message("Number of markers to test: %d", nrow(markerInfo))
-  .message("Genotype type: %s", genoType)
-  .message("Number of markers in each chunk: %d", nMarkersEachChunk)
-  .message("Number of chunks for all markers: %d", nChunks)
-  .message("Number of threads: %d", nThreads)
-
-  switch(
-    NullModelClass,
-    POLMM_NULL_Model = setMarker.POLMM(objNull, control),
-    SPACox_NULL_Model = setMarker.SPACox(objNull, control),
-    SPAmix_NULL_Model = setMarker.SPAmix(objNull, control),
-    SPAmixPlus_NULL_Model = setMarker.SPAmixPlus(objNull, control),
-    SPAGRM_NULL_Model = setMarker.SPAGRM(objNull, control),
-    SAGELD_NULL_Model = setMarker.SAGELD(objNull, control),
-    WtCoxG_NULL_Model = setMarker.WtCoxG(objNull, control),
-    SPAsqr_NULL_Model = setMarker.SPAsqr(objNull, control),
-    LEAF_NULL_Model = setMarker.LEAF(objNull, control)
-  )
-
-  readerConfig <- if (genoType == "PLINK") {
-    list(
-      genoType = "PLINK",
-      bimFile = objGeno$GenoFileIndex[1],
-      famFile = objGeno$GenoFileIndex[2],
-      bedFile = objGeno$GenoFile,
-      sampleInModel = as.character(objGeno$SampleIDs),
-      alleleOrder = objGeno$AlleleOrder
-    )
-  } else {
-    sampleFile <- objGeno$GenoFileIndex[2]
-    if (!is.na(sampleFile) && file.exists(sampleFile)) {
-      sampleData <- data.table::fread(sampleFile, header = TRUE)
-      samplesInBgen <- as.character(sampleData$ID_2[-1])
-    } else {
-      samplesInBgen <- getSampleIDsFromBGEN(objGeno$GenoFile)
-    }
-
-    list(
-      genoType = "BGEN",
-      bgenFile = objGeno$GenoFile,
-      bgiFile = objGeno$GenoFileIndex[1],
-      sampleInBgen = as.character(samplesInBgen),
-      sampleInModel = as.character(objGeno$SampleIDs),
-      isSparseDosageInBgen = FALSE,
-      isDropmissingdosagesInBgen = FALSE,
-      alleleOrder = objGeno$AlleleOrder
-    )
-  }
-
-  method <- switch(
-    NullModelClass,
-    POLMM_NULL_Model = "POLMM",
-    SPACox_NULL_Model = "SPACox",
-    SPAmix_NULL_Model = "SPAmix",
-    SPAmixPlus_NULL_Model = "SPAmixPlus",
-    SPAGRM_NULL_Model = "SPAGRM",
-    SAGELD_NULL_Model = "SAGELD",
-    WtCoxG_NULL_Model = "WtCoxG",
-    SPAsqr_NULL_Model = "SPAsqr",
-    LEAF_NULL_Model = "LEAF"
-  )
-
-  extraParams <- list(
-    reader_config = readerConfig,
-    sageld_method = if (NullModelClass == "SAGELD_NULL_Model") objNull$Method else NA_character_,
-    spasqr_taus = if (NullModelClass == "SPAsqr_NULL_Model") objNull$taus else numeric(0),
-    wtcoxg_merge = if (NullModelClass == "WtCoxG_NULL_Model") objNull$mergeGenoInfo else NULL,
-    leaf_subgeno = if (NullModelClass == "LEAF_NULL_Model") objNull$subGenoInfo else NULL,
-    leaf_ncluster = if (NullModelClass == "LEAF_NULL_Model") objNull$Ncluster else 0
-  )
-
-  mainMarkerChunksInCPP4(
-    t_method = method,
-    t_chunkIndexList = genoIndexList,
-    t_outputFile = OutputFile,
-    t_nThreads = nThreads,
-    t_impute_method = control$impute_method,
-    t_missing_cutoff = control$missing_cutoff,
-    t_min_maf_marker = control$min_maf_marker,
-    t_min_mac_marker = control$min_mac_marker,
-    t_extraParams = extraParams
+  prepareAndRunMarkerInCPP4(
+    t_objNull = objNull,
+    t_GenoFile = GenoFile,
+    t_OutputFile = OutputFile,
+    t_GenoFileIndex = GenoFileIndex,
+    t_control = control,
+    t_nThreads = nThreads
   )
 
   .message("Analysis complete! Results saved to '%s'", OutputFile)

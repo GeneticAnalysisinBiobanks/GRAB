@@ -14,7 +14,7 @@ private:
   ////////////////////// -------------------- members ---------------------------------- //////////////////////
   
   int m_Ncluster;                                    // Number of clusters
-  std::vector<WtCoxG::WtCoxGClass*> m_WtCoxGobj_vec; // Vector of pre-built WtCoxG objects (one per cluster)
+  std::vector<WtCoxG::WtCoxGClass> m_WtCoxGobj_vec; // Vector of pre-built WtCoxG objects (one per cluster)
   std::vector<arma::uvec> m_clusterIdx_vec;          // Vector of cluster indices (0-based)
   double m_cutoff;                                   // Batch effect p-value cutoff
   double m_SPA_Cutoff;                               // SPA cutoff
@@ -33,7 +33,7 @@ public:
     m_SPA_Cutoff = t_SPA_Cutoff;
     
     // Create Ncluster WtCoxG objects once
-    m_WtCoxGobj_vec.resize(m_Ncluster);
+    m_WtCoxGobj_vec.reserve(m_Ncluster);
     m_clusterIdx_vec.resize(m_Ncluster);
     
     for (int i = 0; i < m_Ncluster; i++) {
@@ -46,22 +46,12 @@ public:
       m_clusterIdx_vec[i] = clusterIdx_i - 1;
       
       // Create WtCoxG object for this cluster and store it
-      m_WtCoxGobj_vec[i] = new WtCoxG::WtCoxGClass(
+      m_WtCoxGobj_vec.emplace_back(
         residuals_i,
         weights_i,
         m_cutoff,
         m_SPA_Cutoff
       );
-    }
-  }
-  
-  // Destructor to clean up WtCoxG objects
-  ~LEAFClass() {
-    for (size_t i = 0; i < m_WtCoxGobj_vec.size(); i++) {
-      if (m_WtCoxGobj_vec[i] != nullptr) {
-        delete m_WtCoxGobj_vec[i];
-        m_WtCoxGobj_vec[i] = nullptr;
-      }
     }
   }
   
@@ -78,7 +68,26 @@ public:
   // Update marker info for a specific cluster
   void updateMarkerInfo(int cluster_idx, const Rcpp::DataFrame& t_mergeGenoInfo) {
     if (cluster_idx >= 0 && cluster_idx < m_Ncluster) {
-      m_WtCoxGobj_vec[cluster_idx]->updateMarkerInfo(t_mergeGenoInfo);
+      m_WtCoxGobj_vec[cluster_idx].updateMarkerInfo(t_mergeGenoInfo);
+    }
+  }
+
+  // Thread-safe overload: update marker info for a specific cluster using native vectors.
+  void updateMarkerInfo(int cluster_idx,
+                        const std::vector<double>& AF_ref,
+                        const std::vector<double>& AN_ref,
+                        const std::vector<double>& TPR,
+                        const std::vector<double>& sigma2,
+                        const std::vector<double>& pvalue_bat,
+                        const std::vector<double>& w_ext,
+                        const std::vector<double>& var_ratio_w0,
+                        const std::vector<double>& var_ratio_int,
+                        const std::vector<double>& var_ratio_ext) {
+    if (cluster_idx >= 0 && cluster_idx < m_Ncluster) {
+      m_WtCoxGobj_vec[cluster_idx].updateMarkerInfo(
+        AF_ref, AN_ref, TPR, sigma2, pvalue_bat,
+        w_ext, var_ratio_w0, var_ratio_int, var_ratio_ext
+      );
     }
   }
 
@@ -95,17 +104,17 @@ public:
       arma::vec GVec_cluster = GVec.elem(m_clusterIdx_vec[i]);
       
       // Get p-values (this computes and stores scores and z-scores internally)
-      arma::vec pval_cluster = m_WtCoxGobj_vec[i]->getpvalVec(GVec_cluster, marker_idx);
+      arma::vec pval_cluster = m_WtCoxGobj_vec[i].getpvalVec(GVec_cluster, marker_idx);
       pvalVec(2*i) = pval_cluster(0);     // p.ext for cluster i
       pvalVec(2*i + 1) = pval_cluster(1); // p.noext for cluster i
       
       // Retrieve pre-computed scores
-      arma::vec score_cluster = m_WtCoxGobj_vec[i]->getScoreVec();
+      arma::vec score_cluster = m_WtCoxGobj_vec[i].getScoreVec();
       scoreVec(2*i) = score_cluster(0);     // score.ext for cluster i
       scoreVec(2*i + 1) = score_cluster(1); // score.noext for cluster i
       
       // Retrieve pre-computed z-scores
-      arma::vec zscore_cluster = m_WtCoxGobj_vec[i]->getZScoreVec();
+      arma::vec zscore_cluster = m_WtCoxGobj_vec[i].getZScoreVec();
       zScoreVec(2*i) = zscore_cluster(0);     // zscore.ext for cluster i
       zScoreVec(2*i + 1) = zscore_cluster(1); // zscore.noext for cluster i
     }
