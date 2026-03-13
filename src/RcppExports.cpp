@@ -448,24 +448,6 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
-// mainMarkerChunksInCPP4
-void mainMarkerChunksInCPP4(const std::string t_method, const Rcpp::List t_chunkIndexList, const std::string t_outputFile, const unsigned int t_nThreads, const std::string t_impute_method, const double t_missing_cutoff, const double t_min_maf_marker, const double t_min_mac_marker, const Rcpp::Nullable<Rcpp::List> t_extraParams);
-RcppExport SEXP _GRAB_mainMarkerChunksInCPP4(SEXP t_methodSEXP, SEXP t_chunkIndexListSEXP, SEXP t_outputFileSEXP, SEXP t_nThreadsSEXP, SEXP t_impute_methodSEXP, SEXP t_missing_cutoffSEXP, SEXP t_min_maf_markerSEXP, SEXP t_min_mac_markerSEXP, SEXP t_extraParamsSEXP) {
-BEGIN_RCPP
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const std::string >::type t_method(t_methodSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::List >::type t_chunkIndexList(t_chunkIndexListSEXP);
-    Rcpp::traits::input_parameter< const std::string >::type t_outputFile(t_outputFileSEXP);
-    Rcpp::traits::input_parameter< const unsigned int >::type t_nThreads(t_nThreadsSEXP);
-    Rcpp::traits::input_parameter< const std::string >::type t_impute_method(t_impute_methodSEXP);
-    Rcpp::traits::input_parameter< const double >::type t_missing_cutoff(t_missing_cutoffSEXP);
-    Rcpp::traits::input_parameter< const double >::type t_min_maf_marker(t_min_maf_markerSEXP);
-    Rcpp::traits::input_parameter< const double >::type t_min_mac_marker(t_min_mac_markerSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::Nullable<Rcpp::List> >::type t_extraParams(t_extraParamsSEXP);
-    mainMarkerChunksInCPP4(t_method, t_chunkIndexList, t_outputFile, t_nThreads, t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_extraParams);
-    return R_NilValue;
-END_RCPP
-}
 // SPAmixPlusLocal_streamInCPP
 void SPAmixPlusLocal_streamInCPP(const std::string& geno_file, const std::string& haplo_file, const std::string& output_file, const arma::uvec& file_match_idx, const arma::mat& phi_A_mat, const arma::mat& phi_B_mat, const arma::mat& phi_C_mat, const arma::mat& phi_D_mat);
 RcppExport SEXP _GRAB_SPAmixPlusLocal_streamInCPP(SEXP geno_fileSEXP, SEXP haplo_fileSEXP, SEXP output_fileSEXP, SEXP file_match_idxSEXP, SEXP phi_A_matSEXP, SEXP phi_B_matSEXP, SEXP phi_C_matSEXP, SEXP phi_D_matSEXP) {
@@ -581,7 +563,6 @@ static const R_CallMethodDef CallEntries[] = {
     {"_GRAB_setLEAFobjInCPP", (DL_FUNC) &_GRAB_setLEAFobjInCPP, 5},
     {"_GRAB_setSPAmixPlusobjInCPP", (DL_FUNC) &_GRAB_setSPAmixPlusobjInCPP, 8},
     {"_GRAB_prepareAndRunMarkerInCPP4", (DL_FUNC) &_GRAB_prepareAndRunMarkerInCPP4, 6},
-    {"_GRAB_mainMarkerChunksInCPP4", (DL_FUNC) &_GRAB_mainMarkerChunksInCPP4, 9},
     {"_GRAB_SPAmixPlusLocal_streamInCPP", (DL_FUNC) &_GRAB_SPAmixPlusLocal_streamInCPP, 8},
     {"_GRAB_read_ukb_sample_ids_cpp", (DL_FUNC) &_GRAB_read_ukb_sample_ids_cpp, 1},
     {"_GRAB_SPAmixLocalPlus_computePhiInCPP", (DL_FUNC) &_GRAB_SPAmixLocalPlus_computePhiInCPP, 7},

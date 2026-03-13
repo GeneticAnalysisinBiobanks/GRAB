@@ -32,6 +32,148 @@ extern double g_missingRate_cutoff;
 extern unsigned int g_omp_num_threads;
 extern double g_marker_minMAF_cutoff;
 extern double g_marker_minMAC_cutoff;
+extern arma::uvec g_group;
+extern bool g_ifOutGroup;
+extern unsigned int g_nGroup;
+extern arma::sp_mat g_SparseGRM;
+
+void setPOLMMobjInCPP(
+  arma::mat t_muMat,
+  arma::mat t_iRMat,
+  arma::mat t_Cova,
+  arma::uvec t_yVec,
+  double t_tau,
+  bool t_printPCGInfo,
+  double t_tolPCG,
+  int t_maxiterPCG,
+  double t_varRatio,
+  double t_SPA_cutoff,
+  bool t_flagSparseGRM,
+  arma::uvec t_group,
+  bool t_ifOutGroup,
+  unsigned int t_nGroup
+);
+
+void setSPAGRMobjInCPP(
+  arma::vec t_resid,
+  arma::vec t_resid_unrelated_outliers,
+  double t_sum_R_nonOutlier,
+  double t_R_GRM_R_nonOutlier,
+  double t_R_GRM_R_TwoSubjOutlier,
+  double t_R_GRM_R,
+  arma::vec t_MAF_interval,
+  Rcpp::List t_TwoSubj_list,
+  Rcpp::List t_ThreeSubj_list,
+  double t_SPA_Cutoff,
+  double t_zeta,
+  double t_tol
+);
+
+void setSAGELDobjInCPP(
+  std::string t_Method,
+  arma::mat t_XTs,
+  arma::mat t_SS,
+  arma::mat t_AtS,
+  arma::mat t_Q,
+  arma::mat t_A21,
+  arma::mat t_TTs,
+  arma::mat t_Tys,
+  arma::vec t_sol,
+  arma::vec t_blups,
+  double t_sig,
+  arma::vec t_resid,
+  arma::vec t_resid_G,
+  arma::vec t_resid_GxE,
+  arma::vec t_resid_E,
+  arma::vec t_resid_unrelated_outliers,
+  arma::vec t_resid_unrelated_outliers_G,
+  arma::vec t_resid_unrelated_outliers_GxE,
+  double t_sum_R_nonOutlier,
+  double t_sum_R_nonOutlier_G,
+  double t_sum_R_nonOutlier_GxE,
+  double t_R_GRM_R,
+  double t_R_GRM_R_G,
+  double t_R_GRM_R_GxE,
+  double t_R_GRM_R_G_GxE,
+  double t_R_GRM_R_E,
+  double t_R_GRM_R_nonOutlier,
+  double t_R_GRM_R_nonOutlier_G,
+  double t_R_GRM_R_nonOutlier_GxE,
+  double t_R_GRM_R_nonOutlier_G_GxE,
+  double t_R_GRM_R_TwoSubjOutlier,
+  double t_R_GRM_R_TwoSubjOutlier_G,
+  double t_R_GRM_R_TwoSubjOutlier_GxE,
+  double t_R_GRM_R_TwoSubjOutlier_G_GxE,
+  Rcpp::List t_TwoSubj_list,
+  Rcpp::List t_ThreeSubj_list,
+  arma::vec t_MAF_interval,
+  double t_zScoreE_cutoff,
+  double t_SPA_Cutoff,
+  double t_zeta,
+  double t_tol
+);
+
+void setSPAmixobjInCPP(
+  arma::mat t_resid,
+  arma::mat t_PCs,
+  int t_N,
+  double t_SPA_Cutoff,
+  Rcpp::List t_outlierList
+);
+
+void setSPACoxobjInCPP(
+  arma::mat t_cumul,
+  arma::vec t_mresid,
+  arma::mat t_XinvXX,
+  arma::mat t_tX,
+  int t_N,
+  double t_pVal_covaAdj_Cutoff,
+  double t_SPA_Cutoff
+);
+
+void setWtCoxGobjInCPP(
+  arma::vec t_mresid,
+  arma::vec t_weight,
+  double t_cutoff,
+  double t_SPA_Cutoff
+);
+
+void setSPAsqrobjInCPP(
+  arma::vec t_taus,
+  arma::mat t_Resid_mat,
+  Rcpp::List t_Resid_unrelated_outliers_lst,
+  arma::vec t_sum_R_nonOutlier_vec,
+  arma::vec t_R_GRM_R_nonOutlier_vec,
+  arma::vec t_R_GRM_R_TwoSubjOutlier_vec,
+  arma::vec t_R_GRM_R_vec,
+  arma::vec t_MAF_interval,
+  Rcpp::List t_TwoSubj_list_lst,
+  Rcpp::List t_CLT_union_lst,
+  Rcpp::List t_ThreeSubj_family_idx_lst,
+  Rcpp::List t_ThreeSubj_stand_S_lst,
+  double t_SPA_Cutoff,
+  double t_zeta,
+  double t_tol
+);
+
+void setLEAFobjInCPP(
+  Rcpp::List t_residuals,
+  Rcpp::List t_weight,
+  Rcpp::List t_clusterIdx,
+  double t_cutoff,
+  double t_SPA_Cutoff
+);
+
+void setSPAmixPlusobjInCPP(
+  arma::mat t_resid,
+  arma::mat t_PCs,
+  int t_N,
+  double t_SPA_Cutoff,
+  Rcpp::List t_outlierList,
+  Rcpp::DataFrame t_sparseGRM,
+  std::string t_afFilePath,
+  std::string t_afFilePrecision
+);
 
 
 // Unified interface for extracting genotype data from different file formats.

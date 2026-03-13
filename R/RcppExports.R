@@ -105,10 +105,6 @@ prepareAndRunMarkerInCPP4 <- function(t_objNull, t_GenoFile, t_OutputFile, t_Gen
     invisible(.Call(`_GRAB_prepareAndRunMarkerInCPP4`, t_objNull, t_GenoFile, t_OutputFile, t_GenoFileIndex, t_control, t_nThreads))
 }
 
-mainMarkerChunksInCPP4 <- function(t_method, t_chunkIndexList, t_outputFile, t_nThreads, t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_extraParams = NULL) {
-    invisible(.Call(`_GRAB_mainMarkerChunksInCPP4`, t_method, t_chunkIndexList, t_outputFile, t_nThreads, t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_extraParams))
-}
-
 SPAmixPlusLocal_streamInCPP <- function(geno_file, haplo_file, output_file, file_match_idx, phi_A_mat, phi_B_mat, phi_C_mat, phi_D_mat) {
     invisible(.Call(`_GRAB_SPAmixPlusLocal_streamInCPP`, geno_file, haplo_file, output_file, file_match_idx, phi_A_mat, phi_B_mat, phi_C_mat, phi_D_mat))
 }

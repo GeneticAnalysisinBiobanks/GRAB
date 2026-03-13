@@ -41,8 +41,10 @@ public:
               double t_R_GRM_R_TwoSubjOutlier,
               double t_R_GRM_R,
               arma::vec t_MAF_interval,
-              Rcpp::List t_TwoSubj_list,
-              Rcpp::List t_ThreeSubj_list,
+              std::vector<arma::vec> t_TwoSubj_resid,
+              std::vector<arma::vec> t_TwoSubj_rho,
+              std::vector<arma::vec> t_ThreeSubj_standS,
+              std::vector<arma::mat> t_ThreeSubj_CLT,
               double t_SPA_Cutoff,
               double t_zeta,
               double t_tol);
@@ -187,10 +189,7 @@ public:
       t = old_t + diff_t;
       if (std::abs(diff_t) < tol) break;
     }
-    
-    // return Rcpp::List::create(Named("root") = t,
-    //                           Named("iter") = iter);
-    
+
     return t;
   }
   
@@ -255,14 +254,7 @@ public:
     int order2 = arma::index_max(m_MAF_interval >= MAF);
     int order1 = order2 - 1;
     
-    
-    // if (MAF <= m_MAF_interval[0] || MAF > 0.5)
-    // {
-    //   Rcpp::stop("Minor allele frequency is out of MAF_interval, MAF is\t", MAF);
-    // }
-    
     double MAF_ratio = (m_MAF_interval[order2] - MAF)/(m_MAF_interval[order2] - m_MAF_interval[order1]);
-    
     double Var_ThreeOutlier = 0;
     
     int n1 = static_cast<int>(m_ThreeSubj_standS_list.size());

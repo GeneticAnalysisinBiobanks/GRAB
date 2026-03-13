@@ -106,12 +106,12 @@ static arma::vec g_region_weight_beta;        // Beta parameters for variant wei
 static arma::vec g_region_max_maf_vec;        // MAF thresholds for different variant categories
 
 // Group-specific variables (used only for POLMM analysis)
-static arma::uvec g_group;                    // Group assignment for each individual
-static bool g_ifOutGroup;                     // Whether to output group-specific statistics
-static unsigned int g_nGroup;                 // Total number of groups
+arma::uvec g_group;                    // Group assignment for each individual
+bool g_ifOutGroup;                     // Whether to output group-specific statistics
+unsigned int g_nGroup;                 // Total number of groups
 
 // Sparse Genetic Relationship Matrix (GRM) for kinship correction
-static arma::sp_mat g_SparseGRM;
+arma::sp_mat g_SparseGRM;
 
 // Performance monitoring variables
 static arma::vec g_compTime1(2, arma::fill::zeros);  // Timing for Unified_getOneMarker function
@@ -1724,19 +1724,40 @@ void setSPAGRMobjInCPP(
   if (ptr_gSPAGRMobj)
     delete ptr_gSPAGRMobj;
 
+  // Parse R lists at the boundary → native C++ vectors for the native constructor
+  std::vector<arma::vec> twoSubjResid, twoSubjRho;
+  twoSubjResid.reserve(t_TwoSubj_list.size());
+  twoSubjRho.reserve(t_TwoSubj_list.size());
+  for (int i = 0; i < t_TwoSubj_list.size(); ++i) {
+    Rcpp::List pair = Rcpp::as<Rcpp::List>(t_TwoSubj_list[i]);
+    twoSubjResid.push_back(Rcpp::as<arma::vec>(pair["Resid"]));
+    twoSubjRho.push_back(Rcpp::as<arma::vec>(pair["Rho"]));
+  }
+  std::vector<arma::vec> threeSubjStandS;
+  std::vector<arma::mat> threeSubjCLT;
+  threeSubjStandS.reserve(t_ThreeSubj_list.size());
+  threeSubjCLT.reserve(t_ThreeSubj_list.size());
+  for (int i = 0; i < t_ThreeSubj_list.size(); ++i) {
+    Rcpp::List item = Rcpp::as<Rcpp::List>(t_ThreeSubj_list[i]);
+    threeSubjStandS.push_back(Rcpp::as<arma::vec>(item["stand.S"]));
+    threeSubjCLT.push_back(Rcpp::as<arma::mat>(item["CLT"]));
+  }
+
   ptr_gSPAGRMobj = new SPAGRM::SPAGRMClass(
-    t_resid,                                 // Residual vector from null model
-    t_resid_unrelated_outliers,              // Residuals for unrelated outlier subjects
-    t_sum_R_nonOutlier,                      // Sum of residuals for non-outlier subjects
-    t_R_GRM_R_nonOutlier,                    // Quadratic form R'*GRM*R for non-outliers
-    t_R_GRM_R_TwoSubjOutlier,                // Quadratic form for two-subject outlier pairs
-    t_R_GRM_R,                               // Full quadratic form R'*GRM*R
-    t_MAF_interval,                          // Minor allele frequency intervals for binning
-    t_TwoSubj_list,                          // List of two-subject outlier pairs information
-    t_ThreeSubj_list,                        // List of three-subject outlier combinations
-    t_SPA_Cutoff,                            // P-value cutoff for applying SPA correction
-    t_zeta,                                  // SPA parameter for moment approximation
-    t_tol                                    // Numerical tolerance for SPA convergence
+    t_resid,
+    t_resid_unrelated_outliers,
+    t_sum_R_nonOutlier,
+    t_R_GRM_R_nonOutlier,
+    t_R_GRM_R_TwoSubjOutlier,
+    t_R_GRM_R,
+    t_MAF_interval,
+    std::move(twoSubjResid),
+    std::move(twoSubjRho),
+    std::move(threeSubjStandS),
+    std::move(threeSubjCLT),
+    t_SPA_Cutoff,
+    t_zeta,
+    t_tol
   );
 }
 
@@ -1847,14 +1868,27 @@ void setSPAmixobjInCPP(
   if (ptr_gSPAmixobj)
     delete ptr_gSPAmixobj;
 
+  // Parse R outlier list at the boundary → native OutlierData vector
+  const int nPheno = t_resid.n_cols;
+  std::vector<SPAmix::SPAmixClass::OutlierData> outlierVec(nPheno);
+  for (int i = 0; i < nPheno; ++i) {
+    Rcpp::List l = t_outlierList[i];
+    outlierVec[i].posValue        = Rcpp::as<arma::uvec>(l["posValue"]);
+    outlierVec[i].posOutlier      = Rcpp::as<arma::uvec>(l["posOutlier"]);
+    outlierVec[i].posNonOutlier   = Rcpp::as<arma::uvec>(l["posNonOutlier"]);
+    outlierVec[i].resid           = Rcpp::as<arma::vec>(l["resid"]);
+    outlierVec[i].resid2          = Rcpp::as<arma::vec>(l["resid2"]);
+    outlierVec[i].residOutlier    = Rcpp::as<arma::vec>(l["residOutlier"]);
+    outlierVec[i].residNonOutlier = Rcpp::as<arma::vec>(l["residNonOutlier"]);
+    outlierVec[i].resid2NonOutlier = Rcpp::as<arma::vec>(l["resid2NonOutlier"]);
+  }
+
   ptr_gSPAmixobj = new SPAmix::SPAmixClass(
-    t_resid,                                 // Matrix of residuals from null model
-    // t_XinvXX,                             // (Commented out) Inverse design matrix
-    // t_tX,                                 // (Commented out) Transpose design matrix
-    t_PCs,                                   // Principal components matrix for population structure
-    t_N,                                     // Sample size
-    t_SPA_Cutoff,                            // P-value cutoff for applying SPA correction
-    t_outlierList                            // List containing outlier subject information
+    t_resid,
+    t_PCs,
+    t_N,
+    t_SPA_Cutoff,
+    std::move(outlierVec)
   );
 }
 
@@ -1957,12 +1991,18 @@ void setLEAFobjInCPP(
   if (ptr_gLEAFobj)
     delete ptr_gLEAFobj;
 
+  // Parse R lists at the boundary → native vectors for the native constructor
+  const int nCluster = t_residuals.size();
+  std::vector<arma::vec> residuals(nCluster), weights(nCluster);
+  std::vector<arma::uvec> clusterIdx(nCluster);
+  for (int i = 0; i < nCluster; ++i) {
+    residuals[i]   = Rcpp::as<arma::vec>(t_residuals[i]);
+    weights[i]     = Rcpp::as<arma::vec>(t_weight[i]);
+    clusterIdx[i]  = Rcpp::as<arma::uvec>(t_clusterIdx[i]) - 1; // 1-based R → 0-based C++
+  }
+
   ptr_gLEAFobj = new LEAF::LEAFClass(
-    t_residuals,              // List of residual vectors (one per cluster)
-    t_weight,                 // List of weight vectors (one per cluster)
-    t_clusterIdx,             // List of cluster index vectors
-    t_cutoff,                 // Batch effect p-value cutoff
-    t_SPA_Cutoff              // SPA cutoff
+    residuals, weights, clusterIdx, t_cutoff, t_SPA_Cutoff
   );
 }
 

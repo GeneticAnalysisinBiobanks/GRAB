@@ -22,33 +22,27 @@ private:
 public:
   
   LEAFClass(
-    Rcpp::List t_residuals_list,   // List of residual vectors (one per cluster)
-    Rcpp::List t_weights_list,     // List of weight vectors (one per cluster)
-    Rcpp::List t_clusterIdx_list,  // List of cluster index vectors (1-based from R)
+    const std::vector<arma::vec>& t_residuals,  // Residual vectors (one per cluster)
+    const std::vector<arma::vec>& t_weights,    // Weight vectors (one per cluster)
+    const std::vector<arma::uvec>& t_clusterIdx, // Cluster index vectors (0-based)
     double t_cutoff,               // Batch effect p-value cutoff
     double t_SPA_Cutoff            // SPA cutoff
   ) {
-    m_Ncluster = t_residuals_list.size();
+    m_Ncluster = static_cast<int>(t_residuals.size());
     m_cutoff = t_cutoff;
     m_SPA_Cutoff = t_SPA_Cutoff;
-    
+
     // Create Ncluster WtCoxG objects once
     m_WtCoxGobj_vec.reserve(m_Ncluster);
     m_clusterIdx_vec.resize(m_Ncluster);
-    
+
     for (int i = 0; i < m_Ncluster; i++) {
-      // Extract cluster-specific data
-      arma::vec residuals_i = Rcpp::as<arma::vec>(t_residuals_list[i]);
-      arma::vec weights_i = Rcpp::as<arma::vec>(t_weights_list[i]);
-      arma::uvec clusterIdx_i = Rcpp::as<arma::uvec>(t_clusterIdx_list[i]);
-      
-      // Convert from 1-based (R) to 0-based (C++) indexing
-      m_clusterIdx_vec[i] = clusterIdx_i - 1;
-      
+      m_clusterIdx_vec[i] = t_clusterIdx[i];
+
       // Create WtCoxG object for this cluster and store it
       m_WtCoxGobj_vec.emplace_back(
-        residuals_i,
-        weights_i,
+        t_residuals[i],
+        t_weights[i],
         m_cutoff,
         m_SPA_Cutoff
       );

@@ -62,7 +62,7 @@ public:
               arma::mat t_PCs,
               int t_N,
               double t_SPA_Cutoff,
-              Rcpp::List t_outlierList);
+              std::vector<SPAmixClass::OutlierData> t_outlierVec);
   
   arma::vec getTestTime1(){return m_diffTime1;}
   arma::vec getTestTime2(){return m_diffTime2;}

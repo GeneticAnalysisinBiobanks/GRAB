@@ -9,6 +9,16 @@
 #' Similar to \code{GRAB.Marker}, but chunk dispatch, buffering, and file writing are
 #' executed fully in C++ with multi-threading.
 #'
+#' Current threading support in \code{GRAB.Marker4}:
+#' \itemize{
+#'   \item \code{POLMM}, \code{SPAmix}, \code{SPAGRM}, and \code{SPAsqr} support
+#'   \code{nthreads >= 2} in the current C++ path.
+#'   \item \code{SPACox}, \code{SPAmixPlus}, \code{SAGELD}, \code{WtCoxG}, and
+#'   \code{LEAF} currently run only
+#'   with \code{nthreads = 1} in \code{GRAB.Marker4}; larger values are downgraded
+#'   with a warning/message.
+#' }
+#'
 #' @inheritParams GRAB.Marker
 #' @param nthreads Integer or NULL. Number of worker threads for chunk-level C++
 #'   multithreading. If \code{NULL}, uses \code{data.table::getDTthreads()}.
@@ -26,6 +36,14 @@ GRAB.Marker4 <- function(
   nthreads = NULL,
   overwrite = FALSE
 ) {
+
+  # Thread-support policy is intentionally explicit here so the R front-end
+  # communicates the current architecture limits before entering C++.
+  #
+  # Supported for nthreads >= 2:
+  #   POLMM, SPAmix, SPAGRM, SPAsqr
+  # Supported only for nthreads = 1:
+  #   SPACox, SPAmixPlus, SAGELD, WtCoxG, LEAF
 
   supported_classes <- c(
     "POLMM_NULL_Model",
@@ -62,7 +80,7 @@ GRAB.Marker4 <- function(
     missing_cutoff = 0.15,
     min_maf_marker = 0.001,
     min_mac_marker = 20,
-    nMarkersEachChunk = 1000,
+    nMarkersEachChunk = 100,
     SPA_Cutoff = 2
   )
 
@@ -138,14 +156,22 @@ GRAB.Marker4 <- function(
     LEAF_NULL_Model = checkControl.Marker.LEAF(control)
   )
 
-  # Methods listed here are forced to run with one thread.
-  unsafe_parallel_classes <- c(
+  # Methods listed here are numerically usable in Marker4, but currently only in
+  # single-thread mode because their downstream internals still rely on thread-
+  # unsafe state or mixed R/Rcpp-owned objects.
+  single_thread_only_classes <- c(
+    "SPACox_NULL_Model",
+    "SPAmixPlus_NULL_Model",
+    "SAGELD_NULL_Model",
     "WtCoxG_NULL_Model",
     "LEAF_NULL_Model"
   )
-  if (NullModelClass %in% unsafe_parallel_classes && nThreads > 1) {
+  if (NullModelClass %in% single_thread_only_classes && nThreads > 1) {
     .message(
-      "Method %s currently uses thread-unsafe internals in GRAB.Marker4; forcing nthreads=1.",
+      paste0(
+        "Method %s currently supports only nthreads=1 in GRAB.Marker4; ",
+        "forcing nthreads=1."
+      ),
       NullModelClass
     )
     nThreads <- 1L
