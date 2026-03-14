@@ -31,7 +31,7 @@
 
 #include <boost/math/distributions/chi_squared.hpp>
 
-#include "PLINK.h"
+#include "PLINK4.h"
 #include "POLMM.h"
 #include "SPACox.h"
 #include "SPAmix.h"
@@ -894,12 +894,12 @@ void mainMarkerChunksCore(
     try {
       ThreadContext ctx = makeThreadContext(method);
 
-      std::unique_ptr<PLINK::PlinkClass> plinkReader;
+      std::unique_ptr<PLINK4::PlinkReader> plinkReader;
 
       if (reader.genoType != "PLINK") {
         throw std::runtime_error("Unsupported reader genoType in Main4 core: " + reader.genoType);
       }
-      plinkReader.reset(new PLINK::PlinkClass(
+      plinkReader.reset(new PLINK4::PlinkReader(
         reader.bimFile,
         reader.famFile,
         reader.bedFile,
@@ -913,6 +913,10 @@ void mainMarkerChunksCore(
 
         const auto &gIdx = chunkMarkers[cidx];
         std::ostringstream out;
+
+        if (!gIdx.empty()) {
+          plinkReader->beginSequentialBlock(gIdx.front());
+        }
 
         std::vector<WtRow> wtChunkRows;
         std::vector<std::vector<LeafRow>> leafChunkRows;
