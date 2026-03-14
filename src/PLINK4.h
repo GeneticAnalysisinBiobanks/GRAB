@@ -45,6 +45,13 @@ private:
   std::map<int8_t, int8_t> m_genoMapsRefFirst = {{3, 2}, {2, 1}, {0, 0}, {1, -1}};
   std::vector<unsigned char> m_oneMarkerG4;
 
+  // Worker-local input buffer for multiple consecutive markers.
+  uint64_t m_blockMarkerCapacity = 64;
+  std::vector<unsigned char> m_markerBlockBytes;
+  uint64_t m_blockStartMarker = 0;
+  uint64_t m_blockEndMarker = 0;
+  bool m_hasBufferedBlock = false;
+
   bool m_hasSequentialCursor = false;
   uint64_t m_nextMarkerIndex = 0;
 
@@ -54,6 +61,8 @@ private:
                       const std::string &famFile,
                       const std::string &bedFile);
   void setPosSampleInPlink(const std::vector<std::string> &sampleInModel);
+  void loadSequentialMarkerBlock(uint64_t startMarkerIndex);
+  void copyBufferedMarkerToCurrent(uint64_t markerIndex);
   void readCurrentMarkerBytes(uint64_t gIndex);
 
   static void getGenotype(unsigned char *c, int pos, int &geno) {

@@ -140,15 +140,78 @@ void PlinkReader::beginSequentialBlock(uint64_t firstMarkerIndex) {
   }
   m_hasSequentialCursor = true;
   m_nextMarkerIndex = firstMarkerIndex;
+  m_hasBufferedBlock = false;
 }
 
 void PlinkReader::resetSequentialCursor() {
   m_hasSequentialCursor = false;
+  m_hasBufferedBlock = false;
+}
+
+void PlinkReader::loadSequentialMarkerBlock(uint64_t startMarkerIndex) {
+  if (startMarkerIndex >= m_m0) {
+    throw std::runtime_error("PLINK marker index out of range when loading marker block.");
+  }
+
+  const uint64_t nRemain = static_cast<uint64_t>(m_m0) - startMarkerIndex;
+  const uint64_t nMarkersToRead = std::min(m_blockMarkerCapacity, nRemain);
+  const uint64_t nBytesToRead = nMarkersToRead * m_numBytesOfEachMarker0;
+
+  if (m_markerBlockBytes.size() != nBytesToRead) {
+    m_markerBlockBytes.resize(static_cast<size_t>(nBytesToRead));
+  }
+
+  if (!m_hasSequentialCursor || m_nextMarkerIndex != startMarkerIndex) {
+    const uint64_t posSeek = 3 + m_numBytesOfEachMarker0 * startMarkerIndex;
+    m_bedStream.clear();
+    m_bedStream.seekg(posSeek);
+    if (!m_bedStream.good()) {
+      throw std::runtime_error("Failed to seek PLINK bed file for block read.");
+    }
+  }
+
+  m_bedStream.read(reinterpret_cast<char *>(&m_markerBlockBytes[0]), static_cast<std::streamsize>(nBytesToRead));
+  if (!m_bedStream.good()) {
+    throw std::runtime_error("Failed to read PLINK marker block.");
+  }
+
+  m_blockStartMarker = startMarkerIndex;
+  m_blockEndMarker = startMarkerIndex + nMarkersToRead;
+  m_hasBufferedBlock = true;
+
+  m_hasSequentialCursor = true;
+  m_nextMarkerIndex = m_blockEndMarker;
+}
+
+void PlinkReader::copyBufferedMarkerToCurrent(uint64_t markerIndex) {
+  if (!m_hasBufferedBlock || markerIndex < m_blockStartMarker || markerIndex >= m_blockEndMarker) {
+    throw std::runtime_error("Marker index is outside of buffered PLINK marker block.");
+  }
+
+  const uint64_t markerOffset = markerIndex - m_blockStartMarker;
+  const uint64_t byteOffset = markerOffset * m_numBytesOfEachMarker0;
+
+  std::copy(
+    m_markerBlockBytes.begin() + static_cast<std::ptrdiff_t>(byteOffset),
+    m_markerBlockBytes.begin() + static_cast<std::ptrdiff_t>(byteOffset + m_numBytesOfEachMarker0),
+    m_oneMarkerG4.begin()
+  );
 }
 
 void PlinkReader::readCurrentMarkerBytes(uint64_t gIndex) {
   if (gIndex >= m_m0) {
     throw std::runtime_error("PLINK marker index out of range.");
+  }
+
+  if (m_hasBufferedBlock && gIndex >= m_blockStartMarker && gIndex < m_blockEndMarker) {
+    copyBufferedMarkerToCurrent(gIndex);
+    return;
+  }
+
+  if (m_hasSequentialCursor && gIndex == m_nextMarkerIndex) {
+    loadSequentialMarkerBlock(gIndex);
+    copyBufferedMarkerToCurrent(gIndex);
+    return;
   }
 
   if (!m_hasSequentialCursor || gIndex != m_nextMarkerIndex) {
@@ -165,6 +228,7 @@ void PlinkReader::readCurrentMarkerBytes(uint64_t gIndex) {
     throw std::runtime_error("Failed to read PLINK marker bytes.");
   }
 
+  m_hasBufferedBlock = false;
   m_hasSequentialCursor = true;
   m_nextMarkerIndex = gIndex + 1;
 }
