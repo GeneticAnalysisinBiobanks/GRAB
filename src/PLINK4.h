@@ -1,6 +1,8 @@
 #ifndef PLINK4_H
 #define PLINK4_H
 
+// PLINK4.h -- PLINK binary genotype reader with sequential-block buffering
+
 #include <RcppArmadillo.h>
 
 #include <cstdint>
@@ -45,7 +47,7 @@ private:
   std::map<int8_t, int8_t> m_genoMapsRefFirst = {{3, 2}, {2, 1}, {0, 0}, {1, -1}};
   std::vector<unsigned char> m_oneMarkerG4;
 
-  // Worker-local input buffer for multiple consecutive markers.
+
   uint64_t m_blockMarkerCapacity = 64;
   std::vector<unsigned char> m_markerBlockBytes;
   uint64_t m_blockStartMarker = 0;

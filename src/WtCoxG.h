@@ -1,7 +1,8 @@
 #ifndef WTCOXG_H
 #define WTCOXG_H
 
-// [[Rcpp::depends(RcppArmadillo)]]
+// WtCoxG.h -- Weighted Cox-type G-test for batch-effect-aware association
+
 #include <RcppArmadillo.h>
 #include <vector>
 #include <cmath>
@@ -12,59 +13,57 @@
 #include <boost/math/distributions/chi_squared.hpp>
 
 namespace WtCoxG {
-class WtCoxGClass
-{
+class WtCoxGClass {
 private:
-    struct MarkerInfo
-    {
-        double AF_ref;
-        double AN_ref;
-        double TPR;
-        double sigma2;
-        double pvalue_bat;
-        double w_ext;
-        double var_ratio_w0;
-        double var_ratio_int;
-        double var_ratio_ext;
-        
-        // Default constructor
-        MarkerInfo() = default;
-        
-        // Constructor with all parameters
-        MarkerInfo(double af_ref, double an_ref, double tpr, double sig2,
-                double pval_bat, double w_ext_val, double var_ratio_w0_val,
-                double var_ratio_int_val, double var_ratio_ext_val)
-            : AF_ref(af_ref), AN_ref(an_ref), TPR(tpr), sigma2(sig2),
-            pvalue_bat(pval_bat), w_ext(w_ext_val), var_ratio_w0(var_ratio_w0_val),
-            var_ratio_int(var_ratio_int_val), var_ratio_ext(var_ratio_ext_val) {}
-    };
+  // Per-marker external-reference metadata.
+  struct MarkerInfo {
+    double AF_ref;
+    double AN_ref;
+    double TPR;
+    double sigma2;
+    double pvalue_bat;
+    double w_ext;
+    double var_ratio_w0;
+    double var_ratio_int;
+    double var_ratio_ext;
 
-    std::vector<MarkerInfo> m_markerInfoVec;  // Vector of marker information
-    arma::vec m_R;                       // Residuals vector
-    arma::vec m_w;                       // Weights vector
-    double m_cutoff;                     // batch effect p-value cutoff
-    double m_SPA_Cutoff;                 // SPA cutoff
-    arma::vec m_scoreVec;                // Score statistics for current marker
-    arma::vec m_zScoreVec;               // Z-score statistics for current marker
+
+    MarkerInfo() = default;
+
+
+    MarkerInfo(double af_ref, double an_ref, double tpr, double sig2,
+        double pval_bat, double w_ext_val, double var_ratio_w0_val,
+        double var_ratio_int_val, double var_ratio_ext_val)
+      : AF_ref(af_ref), AN_ref(an_ref), TPR(tpr), sigma2(sig2),
+      pvalue_bat(pval_bat), w_ext(w_ext_val), var_ratio_w0(var_ratio_w0_val),
+      var_ratio_int(var_ratio_int_val), var_ratio_ext(var_ratio_ext_val) {}
+  };
+
+  std::vector<MarkerInfo> m_markerInfoVec;
+  arma::vec m_R;
+  arma::vec m_w;
+  double m_cutoff;
+  double m_SPA_Cutoff;
+  arma::vec m_scoreVec;
+  arma::vec m_zScoreVec;
 
 public:
 
-    WtCoxGClass(
-        const arma::vec& t_R,
-        const arma::vec& t_w,
-        const double t_cutoff,
-        const double t_SPA_Cutoff
-    )
-        : m_R(t_R),
-        m_w(t_w),
-        m_cutoff(t_cutoff),
-        m_SPA_Cutoff(t_SPA_Cutoff)
-    {
-        // Constructor body (if needed)
-    }
+  WtCoxGClass(
+    const arma::vec& R,
+    const arma::vec& w,
+    const double cutoff,
+    const double SPA_Cutoff
+  )
+    : m_R(R),
+    m_w(w),
+    m_cutoff(cutoff),
+    m_SPA_Cutoff(SPA_Cutoff) {
 
-    // reset m_markerInfoVec with native vectors (thread-safe in worker threads)
-    void updateMarkerInfo(const std::vector<double>& AF_ref,
+  }
+
+
+  void updateMarkerInfo(const std::vector<double>& AF_ref,
                           const std::vector<double>& AN_ref,
                           const std::vector<double>& TPR,
                           const std::vector<double>& sigma2,
@@ -73,209 +72,196 @@ public:
                           const std::vector<double>& var_ratio_w0,
                           const std::vector<double>& var_ratio_int,
                           const std::vector<double>& var_ratio_ext) {
-        m_markerInfoVec.clear();
+    m_markerInfoVec.clear();
 
-        size_t n = AF_ref.size();
-        if (AN_ref.size() != n || TPR.size() != n || sigma2.size() != n ||
-            pvalue_bat.size() != n || w_ext.size() != n || var_ratio_w0.size() != n ||
-            var_ratio_int.size() != n || var_ratio_ext.size() != n) {
-            throw std::runtime_error("WtCoxG::updateMarkerInfo received vectors with inconsistent lengths.");
-        }
-
-        m_markerInfoVec.reserve(n);
-        for (size_t i = 0; i < n; ++i) {
-            m_markerInfoVec.emplace_back(
-                AF_ref[i], AN_ref[i], TPR[i], sigma2[i], pvalue_bat[i],
-                w_ext[i], var_ratio_w0[i], var_ratio_int[i], var_ratio_ext[i]
-            );
-        }
+    size_t n = AF_ref.size();
+    if (AN_ref.size() != n || TPR.size() != n || sigma2.size() != n ||
+      pvalue_bat.size() != n || w_ext.size() != n || var_ratio_w0.size() != n ||
+      var_ratio_int.size() != n || var_ratio_ext.size() != n) {
+      throw std::runtime_error("WtCoxG::updateMarkerInfo received vectors with inconsistent lengths.");
     }
 
-    // reset m_markerInfoVec with data from R data.frame
-    void updateMarkerInfo(const Rcpp::DataFrame& t_mergeGenoInfo) {
-        std::vector<double> AF_ref = Rcpp::as<std::vector<double>>(t_mergeGenoInfo["AF_ref"]);
-        std::vector<double> AN_ref = Rcpp::as<std::vector<double>>(t_mergeGenoInfo["AN_ref"]);
-        std::vector<double> TPR = Rcpp::as<std::vector<double>>(t_mergeGenoInfo["TPR"]);
-        std::vector<double> sigma2 = Rcpp::as<std::vector<double>>(t_mergeGenoInfo["sigma2"]);
-        std::vector<double> pvalue_bat = Rcpp::as<std::vector<double>>(t_mergeGenoInfo["pvalue_bat"]);
-        std::vector<double> w_ext = Rcpp::as<std::vector<double>>(t_mergeGenoInfo["w.ext"]);
-        std::vector<double> var_ratio_w0 = Rcpp::as<std::vector<double>>(t_mergeGenoInfo["var.ratio.w0"]);
-        std::vector<double> var_ratio_int = Rcpp::as<std::vector<double>>(t_mergeGenoInfo["var.ratio.int"]);
-        std::vector<double> var_ratio_ext = Rcpp::as<std::vector<double>>(t_mergeGenoInfo["var.ratio.ext"]);
-
-        updateMarkerInfo(AF_ref, AN_ref, TPR, sigma2, pvalue_bat,
-                         w_ext, var_ratio_w0, var_ratio_int, var_ratio_ext);
+    m_markerInfoVec.reserve(n);
+    for (size_t i = 0; i < n; ++i) {
+      m_markerInfoVec.emplace_back(
+        AF_ref[i], AN_ref[i], TPR[i], sigma2[i], pvalue_bat[i],
+        w_ext[i], var_ratio_w0[i], var_ratio_int[i], var_ratio_ext[i]
+      );
     }
-    
-    // Method called in Main.cpp to get p-values for a given marker
-    arma::vec getpvalVec(const arma::vec& GVec, const int i) {
-        arma::vec result(2);
-        const MarkerInfo& info = m_markerInfoVec[i];
+  }
 
-        // Test with external reference - returns [p-value, score, z-score]
-        arma::vec res_ext = WtCoxG_test_cpp(
-            GVec, m_R, m_w,
-            info.pvalue_bat,           // p_bat
-            info.TPR,                  // TPR
-            info.sigma2,               // sigma2
-            info.w_ext,                // b = w.ext
-            info.var_ratio_int,        // var_ratio_int (not used in ext test)
-            info.var_ratio_w0,         // var_ratio_w0
-            info.var_ratio_w0,         // var_ratio_w1 = var_ratio_w0
-            info.var_ratio_ext,        // var_ratio0 = var_ratio_ext
-            info.var_ratio_ext,        // var_ratio1 = var_ratio_ext
-            info.AF_ref,               // mu.ext
-            info.AN_ref / 2.0,         // n.ext
-            m_cutoff);                 // p_cut
-        result(0) = res_ext(0);  // p-value
-        
 
-        // Test without external reference - returns [p-value, score, z-score]
-        arma::vec res_noext = WtCoxG_test_cpp(
-            GVec, m_R, m_w,
-            info.pvalue_bat,           // p_bat
-            arma::datum::nan,          // TPR = NA
-            arma::datum::nan,          // sigma2 = NA
-            0.0,                       // b = 0 (default)
-            info.var_ratio_int,        // var_ratio_int
-            1.0,                       // var_ratio_w0 = 1 (default)
-            1.0,                       // var_ratio_w1 = 1 (default)
-            1.0,                       // var_ratio0 = 1 (default)
-            1.0,                       // var_ratio1 = 1 (default)
-            arma::datum::nan,          // mu.ext = NA
-            arma::datum::nan,          // n.ext = NA
-            m_cutoff);                 // p_cut
-        result(1) = res_noext(0);  // p-value
+  arma::vec getpvalVec(const arma::vec& GVec, const int i) {
+    arma::vec result(2);
+    const MarkerInfo& info = m_markerInfoVec[i];
 
-        // Store scores and z-scores (resize if needed)
-        if (m_scoreVec.n_elem < 2) {
-            m_scoreVec.resize(2);
-            m_zScoreVec.resize(2);
-        }
-        m_scoreVec(0) = res_ext(1);      // score with external
-        m_scoreVec(1) = res_noext(1);    // score without external
-        m_zScoreVec(0) = res_ext(2);     // z-score with external
-        m_zScoreVec(1) = res_noext(2);   // z-score without external
 
-        return result;
+    arma::vec res_ext = wtCoxGTest(
+      GVec, m_R, m_w,
+      info.pvalue_bat,
+      info.TPR,
+      info.sigma2,
+      info.w_ext,
+      info.var_ratio_int,
+      info.var_ratio_w0,
+      info.var_ratio_w0,
+      info.var_ratio_ext,
+      info.var_ratio_ext,
+      info.AF_ref,
+      info.AN_ref / 2.0,
+      m_cutoff);
+    result(0) = res_ext(0);
+
+
+    arma::vec res_noext = wtCoxGTest(
+      GVec, m_R, m_w,
+      info.pvalue_bat,
+      arma::datum::nan,
+      arma::datum::nan,
+      0.0,
+      info.var_ratio_int,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      arma::datum::nan,
+      arma::datum::nan,
+      m_cutoff);
+    result(1) = res_noext(0);
+
+
+    if (m_scoreVec.n_elem < 2) {
+      m_scoreVec.resize(2);
+      m_zScoreVec.resize(2);
     }
-    
-    // Get score statistics for last analyzed marker
-    arma::vec getScoreVec() const {
-        return m_scoreVec;
-    }
-    
-    // Get z-score statistics for last analyzed marker
-    arma::vec getZScoreVec() const {
-        return m_zScoreVec;
-    }
+    m_scoreVec(0) = res_ext(1);
+    m_scoreVec(1) = res_noext(1);
+    m_zScoreVec(0) = res_ext(2);
+    m_zScoreVec(1) = res_noext(2);
+
+    return result;
+  }
+
+
+  arma::vec getScoreVec() const {
+    return m_scoreVec;
+  }
+
+
+  arma::vec getZScoreVec() const {
+    return m_zScoreVec;
+  }
 
 private:
-    // Core utility functions - inline implementations for performance
-    inline arma::vec impute_missing(const arma::vec& g) {
-        arma::vec g_imputed = g;
-        arma::uvec missing_idx = arma::find_nonfinite(g);
-        
-        if (missing_idx.n_elem > 0) {
-            arma::uvec non_missing_idx = arma::find_finite(g);
-            if (non_missing_idx.n_elem > 0) {
-                double mean_val = arma::mean(g.elem(non_missing_idx));
-                g_imputed.elem(missing_idx).fill(mean_val);
-            }
-        }
-        
-        return g_imputed;
+
+
+  // ---- Inline helpers ----
+  inline arma::vec imputeMissing(const arma::vec& g) {
+    arma::vec g_imputed = g;
+    arma::uvec missing_idx = arma::find_nonfinite(g);
+
+    if (missing_idx.n_elem > 0) {
+      arma::uvec non_missing_idx = arma::find_finite(g);
+      if (non_missing_idx.n_elem > 0) {
+        double mean_val = arma::mean(g.elem(non_missing_idx));
+        g_imputed.elem(missing_idx).fill(mean_val);
+      }
     }
 
-    // Boost-based statistical functions (more accurate than simple approximations)
-    inline double pnorm_boost(double x, double mean = 0.0, double sd = 1.0, bool lower_tail = true, bool log_p = false) {
-        boost::math::normal dist(mean, sd);
-        double result = boost::math::cdf(dist, x);
-        if (!lower_tail) result = 1.0 - result;
-        if (log_p) result = std::log(result);
-        return result;
-    }
+    return g_imputed;
+  }
 
-    inline double qnorm_boost(double p, double mean = 0.0, double sd = 1.0, bool lower_tail = true, bool log_p = false) {
-        if (log_p) p = std::exp(p);
-        if (!lower_tail) p = 1.0 - p;
-        // Clamp to valid open interval to avoid overflow/underflow
-        p = std::max(1e-300, std::min(1.0 - 1e-15, p));
-        boost::math::normal dist(mean, sd);
-        return boost::math::quantile(dist, p);
-    }
 
-    inline double qchisq_boost(double p, double df, bool lower_tail = true, bool log_p = false) {
-        if (log_p) p = std::exp(p);
-        if (!lower_tail) p = 1.0 - p;
-        // Clamp to valid open interval to prevent overflow in gamma_p_inv
-        // when p is extremely close to 1 (e.g. when input p-value is near 0)
-        p = std::max(1e-300, std::min(1.0 - 1e-15, p));
-        boost::math::chi_squared dist(df);
-        return boost::math::quantile(dist, p);
-    }
+  inline double pnormBoost(double x, double mean = 0.0, double sd = 1.0, bool lower_tail = true, bool log_p = false) {
+    boost::math::normal dist(mean, sd);
+    double result = boost::math::cdf(dist, x);
+    if (!lower_tail) result = 1.0 - result;
+    if (log_p) result = std::log(result);
+    return result;
+  }
 
-    // MGF and CGF functions - inline for performance in tight loops
-    inline double M_G0_cpp(double t, double MAF) {
-        return std::pow(1.0 - MAF + MAF * std::exp(t), 2.0);
-    }
+  inline double qnormBoost(double p, double mean = 0.0, double sd = 1.0, bool lower_tail = true, bool log_p = false) {
+    if (log_p) p = std::exp(p);
+    if (!lower_tail) p = 1.0 - p;
 
-    inline double M_G1_cpp(double t, double MAF) {
-        return 2.0 * (MAF * std::exp(t)) * (1.0 - MAF + MAF * std::exp(t));
-    }
+    p = std::max(1e-300, std::min(1.0 - 1e-15, p));
+    boost::math::normal dist(mean, sd);
+    return boost::math::quantile(dist, p);
+  }
 
-    inline double M_G2_cpp(double t, double MAF) {
-        double maf_exp_t = MAF * std::exp(t);
-        return 2.0 * maf_exp_t * maf_exp_t + 2.0 * maf_exp_t * (1.0 - MAF + maf_exp_t);
-    }
+  inline double qchisqBoost(double p, double df, bool lower_tail = true, bool log_p = false) {
+    if (log_p) p = std::exp(p);
+    if (!lower_tail) p = 1.0 - p;
 
-    inline double K_G0_cpp(double t, double MAF) {
-        return std::log(M_G0_cpp(t, MAF));
-    }
 
-    inline double K_G1_cpp(double t, double MAF) {
-        return M_G1_cpp(t, MAF) / M_G0_cpp(t, MAF);
-    }
+    p = std::max(1e-300, std::min(1.0 - 1e-15, p));
+    boost::math::chi_squared dist(df);
+    return boost::math::quantile(dist, p);
+  }
 
-    inline double K_G2_cpp(double t, double MAF) {
-        double m0 = M_G0_cpp(t, MAF);
-        double m1 = M_G1_cpp(t, MAF);
-        double m2 = M_G2_cpp(t, MAF);
-        return (m0 * m2) / (m0 * m0) - std::pow(m1 / m0, 2.0);
-    }
 
-    // Function declarations for implementations in WtCoxG.cpp
-    double find_root_brent(std::function<double(double)> f, double a, double b, double tol = 1e-6);
-    
-    double H_org_cpp(double t, const arma::vec& R, double MAF, double n_ext,
-                    double N_all, double sumR, double var_mu_ext,
-                    double g_var_est, double meanR, double b);
-    
-    double H1_adj_cpp(double t, const arma::vec& R, double s, double MAF,
-                    double n_ext, double N_all, double sumR, double var_mu_ext,
-                    double g_var_est, double meanR, double b);
-    
-    double H2_cpp(double t, const arma::vec& R, double MAF, double n_ext,
-                double N_all, double sumR, double var_mu_ext,
-                double g_var_est, double meanR, double b);
-    
-    double GetProb_SPA_G_cpp(double MAF, const arma::vec& R, double s, double n_ext,
-                            double N_all, double sumR, double var_mu_ext,
-                            double g_var_est, double meanR, double b, bool lower_tail);
-    
-    arma::vec SPA_G_one_SNP_homo_cpp(const arma::vec& g_input, const arma::vec& R,
-                                    double mu_ext, double n_ext, double b,
-                                    double sigma2, double var_ratio, double Cutoff,
-                                    double missing_cutoff, double min_mac);
+  // Moment-generating function components M(t) and cumulant K(t) for genotype.
+  inline double mG0(double t, double MAF) {
+    return std::pow(1.0 - MAF + MAF * std::exp(t), 2.0);
+  }
 
-    arma::vec WtCoxG_test_cpp(const arma::vec& g_input, const arma::vec& R, const arma::vec& w,
-                        double p_bat, double TPR, double sigma2, double b,
-                        double var_ratio_int, double var_ratio_w0, double var_ratio_w1,
-                        double var_ratio0, double var_ratio1, double mu_ext,
-                        double n_ext, double p_cut);
+  inline double mG1(double t, double MAF) {
+    return 2.0 * (MAF * std::exp(t)) * (1.0 - MAF + MAF * std::exp(t));
+  }
+
+  inline double mG2(double t, double MAF) {
+    double maf_exp_t = MAF * std::exp(t);
+    return 2.0 * maf_exp_t * maf_exp_t + 2.0 * maf_exp_t * (1.0 - MAF + maf_exp_t);
+  }
+
+  inline double kG0(double t, double MAF) {
+    return std::log(mG0(t, MAF));
+  }
+
+  inline double kG1(double t, double MAF) {
+    return mG1(t, MAF) / mG0(t, MAF);
+  }
+
+  inline double kG2(double t, double MAF) {
+    double m0 = mG0(t, MAF);
+    double m1 = mG1(t, MAF);
+    double m2 = mG2(t, MAF);
+    return (m0 * m2) / (m0 * m0) - std::pow(m1 / m0, 2.0);
+  }
+
+
+  // ---- Core SPA routines ----
+  double findRootBrent(std::function<double(double)> f, double a, double b, double tol = 1e-6);
+
+  double hOrg(double t, const arma::vec& R, double MAF, double n_ext,
+          double N_all, double sumR, double var_mu_ext,
+          double g_var_est, double meanR, double b);
+
+  double h1Adj(double t, const arma::vec& R, double s, double MAF,
+          double n_ext, double N_all, double sumR, double var_mu_ext,
+          double g_var_est, double meanR, double b);
+
+  double h2(double t, const arma::vec& R, double MAF, double n_ext,
+        double N_all, double sumR, double var_mu_ext,
+        double g_var_est, double meanR, double b);
+
+  double getProbSpaG(double MAF, const arma::vec& R, double s, double n_ext,
+              double N_all, double sumR, double var_mu_ext,
+              double g_var_est, double meanR, double b, bool lower_tail);
+
+  arma::vec spaGOneSnpHomo(const arma::vec& g_input, const arma::vec& R,
+                  double mu_ext, double n_ext, double b,
+                  double sigma2, double var_ratio, double Cutoff,
+                  double missing_cutoff, double min_mac);
+
+  arma::vec wtCoxGTest(const arma::vec& g_input, const arma::vec& R, const arma::vec& w,
+            double p_bat, double TPR, double sigma2, double b,
+            double var_ratio_int, double var_ratio_w0, double var_ratio_w1,
+            double var_ratio0, double var_ratio1, double mu_ext,
+            double n_ext, double p_cut);
 };
 
-} // namespace WtCoxG
+}
 
 
 #endif

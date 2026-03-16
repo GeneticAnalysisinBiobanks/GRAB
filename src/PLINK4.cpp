@@ -1,4 +1,4 @@
-// Marker4-specific PLINK reader with per-thread persistent file handle and sequential chunk reads.
+// PLINK4.cpp -- PlinkReader method implementations
 
 #include "PLINK4.h"
 

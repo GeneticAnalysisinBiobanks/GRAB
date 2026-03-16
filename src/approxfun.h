@@ -1,77 +1,77 @@
-
 #ifndef APPROXFUN_H
 #define APPROXFUN_H
 
-// [[Rcpp::depends(RcppArmadillo)]]
-#include <RcppArmadillo.h>
+// approxfun.h -- Piecewise-linear interpolation (port of R stats::approxfun)
 
-// 2021-01-27 (by Wenjian Bi): Most of the below codes are from R::stats::approxfun
+#include <RcppArmadillo.h>
+#include <stdexcept>
+
+
 namespace approxfun{
 
-class approxfunClass
-{
+class approxfunClass {
 private:
-  
+
   arma::vec m_xVec, m_yVec;
   double m_ylow, m_yhigh;
   int m_n;
   arma::vec m_slopeVec;
-  
+
 public:
-  
-  void setApproxFun(arma::vec t_xVec,
-                    arma::vec t_yVec)
-  {
-    m_xVec = t_xVec;
-    m_yVec = t_yVec;
-    m_n = t_xVec.size();
-    m_ylow = t_yVec(0);
-    m_yhigh = t_yVec(m_n - 1);
+
+  void setApproxFun(arma::vec xVec,
+                    arma::vec yVec) {
+    m_xVec = xVec;
+    m_yVec = yVec;
+    m_n = xVec.size();
+    m_ylow = yVec(0);
+    m_yhigh = yVec(m_n - 1);
     m_slopeVec.zeros(m_n - 1);
-    
-    for(int i = 0; i < m_n - 1; i ++)
-      if(t_xVec(i+1) <= t_xVec(i)) Rcpp::stop("xVec(i+1) should be greater than xVec(i).");
-    
-    for(int i = 0; i < m_n - 1; i ++)
-      m_slopeVec(i) = (t_yVec(i+1) - t_yVec(i)) / (t_xVec(i+1) - t_xVec(i));
+
+    for (int i = 0; i < m_n - 1; i ++)
+      if (xVec(i+1) <= xVec(i)) throw std::runtime_error("xVec(i+1) should be greater than xVec(i).");
+
+    for (int i = 0; i < m_n - 1; i ++)
+      m_slopeVec(i) = (yVec(i+1) - yVec(i)) / (xVec(i+1) - xVec(i));
   }
-  
-  double getValue(double t_v)
-  {
+
+
+  // Evaluate the interpolant at a single point via bisection lookup.
+  double getValue(double v) {
     int i, j, ij;
     i = 0;
     j = m_n - 1;
-    
-    // handle out-of-domain points
-    if(t_v < m_xVec(i)) return m_ylow;
-    if(t_v > m_xVec(j)) return m_yhigh;
-    
-    // find the correct interval by bisection
-    while(i < j - 1) { /* x[i] <= v <= x[j] */
-      ij = (i + j)/2; /* i+1 <= ij <= j-1 */
-      if(t_v < m_xVec(ij)) j = ij; else i = ij;
-      /* still i < j */
+
+
+    if (v < m_xVec(i)) return m_ylow;
+    if (v > m_xVec(j)) return m_yhigh;
+
+
+    while (i < j - 1) {
+      ij = (i + j)/2;
+      if (v < m_xVec(ij)) j = ij; else i = ij;
+
     }
-    
-    // interpolation
-    if(t_v == m_xVec(j)) return m_yVec(j);
-    if(t_v == m_xVec(i)) return m_yVec(i);
-    
-    // linear interpolation
-    return m_yVec(i) + (t_v - m_xVec(i)) * m_slopeVec(i);
+
+
+    if (v == m_xVec(j)) return m_yVec(j);
+    if (v == m_xVec(i)) return m_yVec(i);
+
+
+    return m_yVec(i) + (v - m_xVec(i)) * m_slopeVec(i);
   }
-  
-  arma::vec getVector(arma::vec t_vVec)
-  {
-    int p = t_vVec.size();
+
+
+  // Evaluate the interpolant at each element of a vector.
+  arma::vec getVector(arma::vec vVec) {
+    int p = vVec.size();
     arma::vec outVec(p);
-    for(int i = 0; i < p; i++)
-    {
-      outVec(i) = getValue(t_vVec(i));
+    for (int i = 0; i < p; i++) {
+      outVec(i) = getValue(vVec(i));
     }
     return outVec;
   }
-  
+
 };
 
 }

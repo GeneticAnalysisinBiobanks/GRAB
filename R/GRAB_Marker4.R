@@ -1,215 +1,282 @@
-## ------------------------------------------------------------------------------
-## GRAB_Marker4.R
-##
-## Chunk-parallel marker analysis in C++ threads.
-## ------------------------------------------------------------------------------
+# GRAB_Marker4.R
+# Single-entry-point for chunk-parallel marker association testing.
 
-#' Perform chunk-parallel single-marker association tests
-#'
-#' Similar to \code{GRAB.Marker}, but chunk dispatch, buffering, and file writing are
-#' executed fully in C++ with multi-threading.
-#'
-#' Current threading support in \code{GRAB.Marker4}:
-#' \itemize{
-#'   \item \code{POLMM}, \code{SPAmix}, \code{SPAGRM}, and \code{SPAsqr} support
-#'   \code{nthreads >= 2} in the current C++ path.
-#'   \item \code{SPACox}, \code{SPAmixPlus}, \code{SAGELD}, \code{WtCoxG}, and
-#'   \code{LEAF} currently run only
-#'   with \code{nthreads = 1} in \code{GRAB.Marker4}; larger values are downgraded
-#'   with a warning/message.
-#' }
-#'
-#' @inheritParams GRAB.Marker
-#' @param nthreads Integer or NULL. Number of worker threads for chunk-level C++
-#'   multithreading. If \code{NULL}, uses \code{data.table::getDTthreads()}.
-#' @param overwrite Logical. If TRUE, overwrite existing \code{OutputFile}.
-#'
-#' @return Invisible \code{NULL}. Results are written to \code{OutputFile}.
+.log <- function (msg, ...) {
+  message(
+    sprintf("[INFO] %s %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), sprintf(msg, ...))
+  )
+}
+
+.print_params <- function (title, params, control) {
+  ts <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+  message(sprintf("[INFO] %s %s ...", ts, title))
+  for (nm in names(params)) {
+    if (!is.null(params[[nm]])) {
+      message(sprintf("    %s: %s", nm, paste(params[[nm]], collapse = ", ")))
+    }
+  }
+  if (length(control) > 0) {
+    message("    Control parameters:")
+    for (nm in names(control)) {
+      v <- control[[nm]]
+      if (is.numeric(v)) {
+        message(sprintf("      %s: %g", nm, v))
+      } else if (is.logical(v)) {
+        message(sprintf("      %s: %s", nm, as.character(v)))
+      } else if (is.character(v)) {
+        message(sprintf("      %s: %s", nm, v))
+      } else {
+        message(sprintf("      %s: %s", nm, paste(v, collapse = ", ")))
+      }
+    }
+  }
+}
+
+.merge_defaults <- function (control, defaults) {
+  if (is.null(defaults)) return(control)
+  if (!is.null(control)) {
+    for (nm in names(control)) defaults[[nm]] <- control[[nm]]
+  }
+  defaults
+}
+
+.check_geno_control <- function (control) {
+  defaults <- list(
+    AlleleOrder     = NULL,
+    AllMarkers      = TRUE,
+    IDsToIncludeFile    = NULL,
+    IDsToExcludeFile    = NULL,
+    RangesToIncludeFile = NULL,
+    RangesToExcludeFile = NULL
+  )
+  control <- if (is.null(control)) defaults else .merge_defaults(control, defaults)
+
+  if (!is.null(control$AlleleOrder) &&
+      !control$AlleleOrder %in% c("ref-first", "alt-first")) {
+    stop("control$AlleleOrder must be 'ref-first' or 'alt-first'.")
+  }
+
+  inc <- c("IDsToIncludeFile", "RangesToIncludeFile")
+  exc <- c("IDsToExcludeFile", "RangesToExcludeFile")
+  has_inc <- any(vapply(inc, function(x) !is.null(control[[x]]), FALSE))
+  has_exc <- any(vapply(exc, function(x) !is.null(control[[x]]), FALSE))
+  if (has_inc && has_exc) {
+    stop("Cannot provide both include and exclude marker-selection files.")
+  }
+
+  for (ft in c(inc, exc)) {
+    f <- control[[ft]]
+    if (!is.null(f) && !file.exists(f)) stop("File not found: ", f)
+  }
+
+  if (has_inc || has_exc) control$AllMarkers <- FALSE
+  control
+}
+
+.check_marker_control <- function (null_class, control, obj_null) {
+  method_defaults <- switch(
+    null_class,
+    POLMM_NULL_Model    = list(ifOutGroup = FALSE),
+    SPACox_NULL_Model   = list(pVal_covaAdj_Cutoff = 5e-05),
+    SPAmix_NULL_Model   = list(dosage_option = "rounding_first"),
+    SPAmixPlus_NULL_Model = list(
+      dosage_option   = "rounding_first",
+      afFilePrecision = "double"
+    ),
+    SPAGRM_NULL_Model   = list(zeta = 0, tol = 1e-5),
+    SAGELD_NULL_Model   = list(SPA_Cutoff = 2, zeta = 0, tol = 1e-4),
+    WtCoxG_NULL_Model   = list(cutoff = 0.05),
+    SPAsqr_NULL_Model   = list(zeta = 0, tol = 1e-5),
+    LEAF_NULL_Model     = list(cutoff = 0.05),
+    list()
+  )
+  control <- .merge_defaults(control, method_defaults)
+
+  if (null_class == "SPACox_NULL_Model") {
+    if (!is.numeric(control$pVal_covaAdj_Cutoff) || control$pVal_covaAdj_Cutoff <= 0) {
+      stop("control$pVal_covaAdj_Cutoff must be numeric > 0.")
+    }
+  }
+
+  if (null_class %in% c("SPAmix_NULL_Model", "SPAmixPlus_NULL_Model")) {
+    if (!control$dosage_option %in% c("rounding_first", "rounding_last")) {
+      stop("control$dosage_option must be 'rounding_first' or 'rounding_last'.")
+    }
+  }
+
+  if (null_class == "SPAmixPlus_NULL_Model") {
+    if (!control$afFilePrecision %in% c("double", "single", "text")) {
+      stop("control$afFilePrecision must be 'double', 'single', or 'text'.")
+    }
+    if (is.null(control$afFilePath)) {
+      stop("control$afFilePath must be provided for SPAmixPlus.")
+    }
+  }
+
+  if (null_class %in% c("SPAGRM_NULL_Model", "SAGELD_NULL_Model")) {
+    maf_iv <- obj_null$MAF_interval
+    if (length(maf_iv) > 1 && control$min_maf_marker <= min(maf_iv)) {
+      stop("min_maf_marker is out of MAF_interval. Please reset.")
+    }
+  }
+
+  if (null_class %in% c("WtCoxG_NULL_Model", "LEAF_NULL_Model")) {
+    lo <- if (null_class == "LEAF_NULL_Model") 0 else 0
+    hi <- if (null_class == "LEAF_NULL_Model") 1 else 1
+    strict_hi <- null_class == "LEAF_NULL_Model"
+    if (!is.numeric(control$cutoff) || control$cutoff <= lo ||
+        (strict_hi && control$cutoff >= hi) ||
+        (!strict_hi && control$cutoff > hi)) {
+      rng <- if (strict_hi) "(0, 1)" else "(0, 1]"
+      stop(sprintf("control$cutoff must be numeric in %s.", rng))
+    }
+  }
+
+  control
+}
+
 #' @export
-GRAB.Marker4 <- function(
-  objNull,
-  GenoFile,
-  OutputFile,
-  GenoFileIndex = NULL,
-  OutputFileIndex = NULL,
-  control = NULL,
-  nthreads = NULL,
-  overwrite = FALSE
+GRAB.Marker4 <- function (
+    objNull,
+    GenoFile,
+    OutputFile,
+    GenoFileIndex = NULL,
+    OutputFileIndex = NULL,
+    control = NULL,
+    nthreads = NULL,
+    overwrite = FALSE
 ) {
-
-  # Thread-support policy is intentionally explicit here so the R front-end
-  # communicates the current architecture limits before entering C++.
-  #
-  # Supported for nthreads >= 2:
-  #   POLMM, SPAmix, SPAGRM, SPAsqr
-  # Supported only for nthreads = 1:
-  #   SPACox, SPAmixPlus, SAGELD, WtCoxG, LEAF
-
-  supported_classes <- c(
-    "POLMM_NULL_Model",
-    "SPACox_NULL_Model",
-    "SPAmix_NULL_Model",
-    "SPAmixPlus_NULL_Model",
-    "SPAGRM_NULL_Model",
-    "SAGELD_NULL_Model",
-    "WtCoxG_NULL_Model",
-    "SPAsqr_NULL_Model",
-    "LEAF_NULL_Model"
+  supported <- c(
+    "POLMM_NULL_Model", "SPACox_NULL_Model", "SPAmix_NULL_Model",
+    "SPAmixPlus_NULL_Model", "SPAGRM_NULL_Model", "SAGELD_NULL_Model",
+    "WtCoxG_NULL_Model", "SPAsqr_NULL_Model", "LEAF_NULL_Model"
   )
 
-  NullModelClass <- class(objNull)
-  if (!NullModelClass %in% supported_classes) {
-    stop(
-      "class(objNull) should be one of: ",
-      paste(paste0('"', supported_classes, '"'), collapse = ", ")
-    )
+  null_class <- class(objNull)
+  if (!null_class %in% supported) {
+    stop("class(objNull) must be one of: ", paste0('"', supported, '"', collapse = ", "))
   }
+  if (!"subjData" %in% names(objNull)) stop("objNull must contain 'subjData'.")
+  if (!is.null(control) && !is.list(control)) stop("'control' must be a list.")
 
-  if (any(!c("subjData") %in% names(objNull))) {
-    stop("c('subjData') should be in names(objNull).")
-  }
+  control <- .check_geno_control(control)
 
-  if (!is.null(control) && !is.list(control)) {
-    stop("Argument 'control' should be an R list.")
-  }
-
-  control <- checkControl.ReadGeno(control)
-
-  default.marker.control <- list(
-    impute_method = "mean",
-    missing_cutoff = 0.15,
-    min_maf_marker = 0.001,
-    min_mac_marker = 20,
-    nMarkersEachChunk = 100,
-    SPA_Cutoff = 2
+  marker_defaults <- list(
+    impute_method      = "mean",
+    missing_cutoff     = 0.15,
+    min_maf_marker     = 0.001,
+    min_mac_marker     = 20,
+    nMarkersEachChunk  = 100,
+    SPA_Cutoff         = 2
   )
+  control <- .merge_defaults(control, marker_defaults)
 
-  control <- updateControl(control, default.marker.control)
-
-  # Backward-compatible thread control: accept control$nthreads when the
-  # dedicated function argument is not provided.
   if (!is.null(control$nthreads)) {
     if (is.null(nthreads)) {
       nthreads <- control$nthreads
     } else if (!identical(as.integer(nthreads), as.integer(control$nthreads))) {
-      .message("Both argument 'nthreads' and control$nthreads are set; using argument 'nthreads'.")
+      .log("Both argument 'nthreads' and control$nthreads set; using argument.")
     }
-    # Remove to avoid confusion in printed control parameters.
     control$nthreads <- NULL
   }
-
   if (!is.null(control$omp_num_threads)) {
-    stop("control$omp_num_threads is not used in GRAB.Marker4. Use argument 'nthreads' instead.")
+    stop("control$omp_num_threads is not used. Use argument 'nthreads'.")
   }
 
-  nThreads <- if (is.null(nthreads)) {
+  n_threads <- if (is.null(nthreads)) {
     as.integer(data.table::getDTthreads())
   } else {
     if (!is.numeric(nthreads) || nthreads < 1 || (nthreads %% 1) != 0) {
-      stop("Argument 'nthreads' should be a positive integer.")
+      stop("'nthreads' must be a positive integer.")
     }
     as.integer(nthreads)
   }
 
   if (!is.logical(overwrite) || length(overwrite) != 1 || is.na(overwrite)) {
-    stop("Argument 'overwrite' should be TRUE or FALSE.")
+    stop("'overwrite' must be TRUE or FALSE.")
   }
-
   if (!control$impute_method %in% c("mean", "minor", "drop")) {
-    stop("control$impute_method should be 'mean', 'minor', or 'drop'.")
+    stop("control$impute_method must be 'mean', 'minor', or 'drop'.")
   }
-
   if (!is.numeric(control$missing_cutoff) ||
       control$missing_cutoff < 0 || control$missing_cutoff > 0.5) {
-    stop("control$missing_cutoff should be numeric in [0, 0.5].")
+    stop("control$missing_cutoff must be numeric in [0, 0.5].")
   }
-
   if (!is.numeric(control$min_maf_marker) ||
       control$min_maf_marker < 0 || control$min_maf_marker > 0.1) {
-    stop("control$min_maf_marker should be numeric in [0, 0.1].")
+    stop("control$min_maf_marker must be numeric in [0, 0.1].")
   }
-
   if (!is.numeric(control$min_mac_marker) ||
       control$min_mac_marker < 0 || control$min_mac_marker > 100) {
-    stop("control$min_mac_marker should be numeric in [0, 100].")
+    stop("control$min_mac_marker must be numeric in [0, 100].")
   }
-
   if (!is.numeric(control$nMarkersEachChunk) ||
       control$nMarkersEachChunk < 1e2 || control$nMarkersEachChunk > 1e5) {
-    stop("control$nMarkersEachChunk should be numeric in [100, 100000].")
+    stop("control$nMarkersEachChunk must be numeric in [100, 100000].")
   }
-
   if (!is.numeric(control$SPA_Cutoff) || control$SPA_Cutoff <= 0) {
-    stop("control$SPA_Cutoff should be a numeric value > 0.")
+    stop("control$SPA_Cutoff must be numeric > 0.")
   }
 
-  control <- switch(
-    NullModelClass,
-    POLMM_NULL_Model = checkControl.Marker.POLMM(control),
-    SPACox_NULL_Model = checkControl.Marker.SPACox(control),
-    SPAmix_NULL_Model = checkControl.Marker.SPAmix(control),
-    SPAmixPlus_NULL_Model = checkControl.Marker.SPAmixPlus(control),
-    SPAGRM_NULL_Model = checkControl.Marker.SPAGRM(control, objNull$MAF_interval),
-    SAGELD_NULL_Model = checkControl.Marker.SAGELD(control, objNull$MAF_interval),
-    WtCoxG_NULL_Model = checkControl.Marker.WtCoxG(control),
-    SPAsqr_NULL_Model = checkControl.Marker.SPAsqr(control),
-    LEAF_NULL_Model = checkControl.Marker.LEAF(control)
-  )
+  control <- .check_marker_control(null_class, control, objNull)
 
-  # Methods listed here are numerically usable in Marker4, but currently only in
-  # single-thread mode because their downstream internals still rely on thread-
-  # unsafe state or mixed R/Rcpp-owned objects.
-  single_thread_only_classes <- c(
-    "SPACox_NULL_Model",
-    "SPAmixPlus_NULL_Model",
-    "SAGELD_NULL_Model",
-    "WtCoxG_NULL_Model",
-    "LEAF_NULL_Model"
+  single_only <- c(
+    "SPACox_NULL_Model", "SPAmixPlus_NULL_Model",
+    "SAGELD_NULL_Model", "WtCoxG_NULL_Model", "LEAF_NULL_Model"
   )
-  if (NullModelClass %in% single_thread_only_classes && nThreads > 1) {
-    .message(
-      paste0(
-        "Method %s currently supports only nthreads=1 in GRAB.Marker4; ",
-        "forcing nthreads=1."
-      ),
-      NullModelClass
-    )
-    nThreads <- 1L
+  if (null_class %in% single_only && n_threads > 1) {
+    .log("%s currently supports only nthreads=1; forcing nthreads=1.", null_class)
+    n_threads <- 1L
   }
 
   if (file.exists(OutputFile)) {
     if (overwrite) {
-      ok <- file.remove(OutputFile)
-      if (!ok) {
-        stop("Failed to remove existing OutputFile: ", OutputFile)
-      }
-      .message("Existing output file removed because overwrite = TRUE.")
+      if (!file.remove(OutputFile)) stop("Cannot remove existing OutputFile: ", OutputFile)
+      .log("Existing output file removed (overwrite = TRUE).")
     } else {
-      stop("'OutputFile' exists. Set overwrite = TRUE to replace it, or use another output file.")
+      stop("OutputFile exists. Set overwrite=TRUE or use another path.")
     }
   }
 
-  if (!is.null(OutputFileIndex)) {
-    .message("OutputFileIndex is ignored in GRAB.Marker4.")
+  .print_params(
+    "Parameters for Marker-Level Tests (GRAB.Marker4)",
+    list(
+      Method               = null_class,
+      `Genotype file`      = GenoFile,
+      `Genotype index file` = if (is.null(GenoFileIndex)) "Default" else GenoFileIndex,
+      `Output file`        = OutputFile
+    ),
+    control
+  )
+
+  # Resolve PLINK file paths from GenoFile + optional GenoFileIndex
+  bedFile <- GenoFile
+  if (!is.null(GenoFileIndex) && length(GenoFileIndex) >= 2) {
+    bimFile <- GenoFileIndex[1]
+    famFile <- GenoFileIndex[2]
+  } else {
+    bimFile <- sub("\\.[^.]+$", ".bim", GenoFile)
+    famFile <- sub("\\.[^.]+$", ".fam", GenoFile)
+  }
+  for (f in c(bedFile, bimFile, famFile)) {
+    if (!file.exists(f)) stop("PLINK file not found: ", f)
   }
 
-  params <- list(
-    Method = NullModelClass,
-    `Genotype file` = GenoFile,
-    `Genotype index file` = ifelse(is.null(GenoFileIndex), "Default", GenoFileIndex),
-    `Output file` = OutputFile
+  # Unwrap null model and run marker analysis in C++
+  runFn <- switch(null_class,
+    POLMM_NULL_Model      = runMarker.POLMM,
+    SPACox_NULL_Model     = runMarker.SPACox,
+    SPAmix_NULL_Model     = runMarker.SPAmix,
+    SPAmixPlus_NULL_Model = runMarker.SPAmixPlus,
+    SPAGRM_NULL_Model     = runMarker.SPAGRM,
+    SAGELD_NULL_Model     = runMarker.SAGELD,
+    WtCoxG_NULL_Model     = runMarker.WtCoxG,
+    SPAsqr_NULL_Model     = runMarker.SPAsqr,
+    LEAF_NULL_Model       = runMarker.LEAF,
+    stop("Unsupported null model class: ", null_class)
   )
-  .printParameters("Parameters for Marker-Level Tests (GRAB.Marker4)", params, control)
+  runFn(objNull, control, bedFile, bimFile, famFile, OutputFile, n_threads)
 
-  prepareAndRunMarkerInCPP4(
-    t_objNull = objNull,
-    t_GenoFile = GenoFile,
-    t_OutputFile = OutputFile,
-    t_GenoFileIndex = GenoFileIndex,
-    t_control = control,
-    t_nThreads = nThreads
-  )
-
-  .message("Analysis complete! Results saved to '%s'", OutputFile)
+  .log("Analysis complete. Results saved to '%s'.", OutputFile)
   invisible(NULL)
 }

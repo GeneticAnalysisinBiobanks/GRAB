@@ -1,0 +1,53 @@
+# SPAGRM_Marker.R -- Unwrap SPAGRM null model and run marker engine
+
+runMarker.SPAGRM <- function(objNull, control, bedFile, bimFile, famFile,
+                             OutputFile, nThreads) {
+  twoSubjList <- objNull$TwoSubj_list
+  # Pack 2-element vectors into matrices (nTwo x 2)
+  twoSubj_resid <- if (length(twoSubjList) > 0) do.call(rbind, lapply(twoSubjList, function(x) x$Resid)) else matrix(numeric(0), nrow = 0, ncol = 2)
+  twoSubj_rho   <- if (length(twoSubjList) > 0) do.call(rbind, lapply(twoSubjList, function(x) x$Rho))   else matrix(numeric(0), nrow = 0, ncol = 2)
+
+  threeSubjList <- objNull$ThreeSubj_list
+  standS_list <- lapply(threeSubjList, function(x) x[["stand.S"]])
+  CLT_list    <- lapply(threeSubjList, function(x) x$CLT)
+  # Concatenate variable-length vectors + stacked matrices
+  threeSubj_standS_all  <- if (length(standS_list) > 0) unlist(standS_list) else numeric(0)
+  threeSubj_standS_lens <- as.integer(sapply(standS_list, length))
+  threeSubj_CLT_all     <- if (length(CLT_list) > 0) do.call(rbind, CLT_list) else matrix(numeric(0), nrow = 0, ncol = 1)
+  threeSubj_CLT_nrows   <- as.integer(sapply(CLT_list, nrow))
+
+  runMarkerInCPP.SPAGRM(
+    resid                    = objNull$Resid,
+    resid_unrelated_outliers = objNull[["Resid.unrelated.outliers"]],
+    sum_R_nonOutlier         = objNull$sum_R_nonOutlier,
+    R_GRM_R_nonOutlier       = objNull$R_GRM_R_nonOutlier,
+    R_GRM_R_TwoSubjOutlier   = objNull$R_GRM_R_TwoSubjOutlier,
+    R_GRM_R                  = objNull$R_GRM_R,
+    MAF_interval             = objNull$MAF_interval,
+    twoSubj_resid            = twoSubj_resid,
+    twoSubj_rho              = twoSubj_rho,
+    threeSubj_standS_all     = threeSubj_standS_all,
+    threeSubj_standS_lens    = threeSubj_standS_lens,
+    threeSubj_CLT_all        = threeSubj_CLT_all,
+    threeSubj_CLT_nrows      = threeSubj_CLT_nrows,
+    SPA_Cutoff               = control$SPA_Cutoff,
+    zeta                     = control$zeta,
+    tol                      = control$tol,
+    bedFile             = bedFile,
+    bimFile             = bimFile,
+    famFile             = famFile,
+    outputFile          = OutputFile,
+    sampleInModel       = objNull$subjData,
+    alleleOrder         = if (is.null(control$AlleleOrder)) "alt-first" else control$AlleleOrder,
+    nMarkersEachChunk   = as.integer(control$nMarkersEachChunk),
+    nThreads            = nThreads,
+    imputeMethod        = control$impute_method,
+    missingCutoff       = control$missing_cutoff,
+    minMafMarker        = control$min_maf_marker,
+    minMacMarker        = control$min_mac_marker,
+    idsToIncludeFile    = if (is.null(control$IDsToIncludeFile)) "" else control$IDsToIncludeFile,
+    rangesToIncludeFile = if (is.null(control$RangesToIncludeFile)) "" else control$RangesToIncludeFile,
+    idsToExcludeFile    = if (is.null(control$IDsToExcludeFile)) "" else control$IDsToExcludeFile,
+    rangesToExcludeFile = if (is.null(control$RangesToExcludeFile)) "" else control$RangesToExcludeFile
+  )
+}

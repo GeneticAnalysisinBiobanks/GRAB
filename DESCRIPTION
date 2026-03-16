@@ -36,9 +36,9 @@ Description: Provides a comprehensive suite of genome-wide association study (GW
 License: GPL (>= 2)
 Encoding: UTF-8
 Depends: R (>= 3.5.0)
-Imports: dplyr, data.table, mvtnorm, Matrix, RSQLite, lme4, ordinal, survival, Rcpp, RcppParallel, igraph, conquer, quantreg, nloptr, rlang
-Suggests: SKAT, dbplyr, tidyr, R.utils
-LinkingTo: Rcpp, RcppArmadillo, RcppParallel, BH
+Imports: Rcpp
+Suggests:
+LinkingTo: Rcpp, RcppArmadillo, BH
 RoxygenNote: 7.3.3
 Roxygen: list(markdown = TRUE)
 NeedsCompilation: yes
