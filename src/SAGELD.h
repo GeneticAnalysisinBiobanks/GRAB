@@ -6,9 +6,8 @@
 #include <RcppArmadillo.h>
 #include <limits>
 #include <boost/math/distributions/normal.hpp>
-
-#include "UTIL.h"
 #include <vector>
+
 
 namespace SAGELD{
 

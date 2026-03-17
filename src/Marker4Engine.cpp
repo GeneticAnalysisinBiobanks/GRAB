@@ -11,7 +11,6 @@
 #include "SPAsqr.h"
 #include "LEAF.h"
 #include "SPAmixPlus.h"
-#include "UTIL.h"
 
 #include <thread>
 #include <mutex>
@@ -256,39 +255,6 @@ std::vector<std::vector<uint64_t>> buildPlinkChunkIndexList(
   return chunks;
 }
 
-ReaderConfig buildPlinkReaderConfig(
-    const std::string& genoFile,
-    const std::vector<std::string>& genoFileIndex,
-    const std::vector<std::string>& sampleInModel,
-    const std::string& alleleOrder) {
-
-  const size_t dotPos = genoFile.find_last_of('.');
-  const std::string ext = dotPos == std::string::npos ? std::string() : toLowerCopy(genoFile.substr(dotPos + 1));
-  if (ext != "bed")
-    throw std::runtime_error("GRAB.Marker4 currently supports PLINK .bed input only.");
-
-  ReaderConfig cfg;
-  cfg.genoType = "PLINK";
-  cfg.bedFile = genoFile;
-  cfg.sampleInModel = sampleInModel;
-  cfg.alleleOrder = alleleOrder;
-
-  if (!genoFileIndex.empty()) {
-    if (genoFileIndex.size() < 2)
-      throw std::runtime_error("For PLINK input, GenoFileIndex should contain .bim and .fam paths.");
-    cfg.bimFile = genoFileIndex[0];
-    cfg.famFile = genoFileIndex[1];
-  } else {
-    cfg.bimFile = replaceExtension(genoFile, ".bim");
-    cfg.famFile = replaceExtension(genoFile, ".fam");
-  }
-
-  if (!fileExists(cfg.bedFile) || !fileExists(cfg.bimFile) || !fileExists(cfg.famFile))
-    throw std::runtime_error("One or more PLINK files are missing.");
-
-  return cfg;
-}
-
 
 std::string numToStr(double x) {
   if (std::isnan(x)) return "NA";
@@ -398,7 +364,7 @@ void mainMarkerChunksCore(
   const std::vector<std::vector<uint64_t>>& chunkMarkers,
   const std::string& outputFile,
   unsigned int nThreads,
-  const std::string& imputeMethod,
+  const std::string& impute_method,
   double missingCutoff,
   double minMafMarker,
   double minMacMarker,
@@ -578,8 +544,33 @@ void mainMarkerChunksCore(
           bool passQC = !((missingRate > missingCutoff) || (maf < minMafMarker) || (mac < minMacMarker));
 
           bool flip = false;
-          if (passQC) flip = imputeGenoAndFlip(GVec, altFreq, indexForMissing, missingRate, imputeMethod, method);
+          if (passQC) {
+            int nMissing = indexForMissing.size();
+            double imputeG = 0;
+            if (impute_method == "mean"){
+              imputeG = 2 * altFreq;
+            }
 
+            if (impute_method == "minor"){
+              if (altFreq > 0.5){
+                imputeG = 2;
+              }else{
+                imputeG = 0;
+              }
+            }
+
+            for (int i = 0; i < nMissing; i++){
+              uint32_t index = indexForMissing.at(i);
+              GVec.at(index) = imputeG;
+            }
+
+            if (method != "WtCoxG") {
+              if (altFreq > 0.5){
+                GVec = 2 - GVec;
+                flip = true;
+              }
+            }
+          }
 
           if (method == "SPAmix" || method == "SPAmixPlus") {
             std::vector<double> p(nPheno, NAN), z(nPheno, NAN);

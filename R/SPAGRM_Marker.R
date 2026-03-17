@@ -1,16 +1,16 @@
 # SPAGRM_Marker.R -- Unwrap SPAGRM null model and run marker engine
 
-runMarker.SPAGRM <- function(objNull, control, bedFile, bimFile, famFile,
-                             OutputFile, nThreads) {
-  twoSubjList <- objNull$TwoSubj_list
+runMarker.SPAGRM <- function(objNull, control, bedFile, bimFile, famFile, OutputFile, nThreads) {
+
   # Pack 2-element vectors into matrices (nTwo x 2)
+  twoSubjList   <- objNull$TwoSubj_list
   twoSubj_resid <- if (length(twoSubjList) > 0) do.call(rbind, lapply(twoSubjList, function(x) x$Resid)) else matrix(numeric(0), nrow = 0, ncol = 2)
   twoSubj_rho   <- if (length(twoSubjList) > 0) do.call(rbind, lapply(twoSubjList, function(x) x$Rho))   else matrix(numeric(0), nrow = 0, ncol = 2)
 
-  threeSubjList <- objNull$ThreeSubj_list
-  standS_list <- lapply(threeSubjList, function(x) x[["stand.S"]])
-  CLT_list    <- lapply(threeSubjList, function(x) x$CLT)
   # Concatenate variable-length vectors + stacked matrices
+  threeSubjList         <- objNull$ThreeSubj_list
+  standS_list           <- lapply(threeSubjList, function(x) x[["stand.S"]])
+  CLT_list              <- lapply(threeSubjList, function(x) x$CLT)
   threeSubj_standS_all  <- if (length(standS_list) > 0) unlist(standS_list) else numeric(0)
   threeSubj_standS_lens <- as.integer(sapply(standS_list, length))
   threeSubj_CLT_all     <- if (length(CLT_list) > 0) do.call(rbind, CLT_list) else matrix(numeric(0), nrow = 0, ncol = 1)

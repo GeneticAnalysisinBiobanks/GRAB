@@ -1,65 +1,73 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-// UTIL.h -- Shared utility functions (imputation, genotype helpers, timing)
+// UTIL.h -- Shared utility functions
 
+#include <stdexcept>
+#include <limits>
+#include <boost/math/distributions/chi_squared.hpp>
+#include <boost/math/distributions/beta.hpp>
 #include <RcppArmadillo.h>
-#include <sys/time.h>
 
-double getWeights(std::string kernel,
-                  double freq,
-                  arma::vec wBeta);
+double hwe_exact(int obs_hets, int obs_hom1, int obs_hom2);
 
-void imputeGeno(arma::vec& GVec,
-                double freq,
-                std::vector<uint32_t> posMissingGeno);
+void gethwepval(arma::vec GVec, double& hwepval, double hwepvalCutoff);
 
-double getInnerProd(arma::mat& x1Mat, arma::mat& x2Mat);
+// Piecewise-linear interpolation (port of R stats::approxfun)
+class approxfunClass {
+private:
 
+  arma::vec m_xVec, m_yVec;
+  double m_ylow, m_yhigh;
+  int m_n;
+  arma::vec m_slopeVec;
 
-arma::vec Vec2LongVec(arma::vec xVec, int n, int J);
+public:
 
+  void setApproxFun(arma::vec xVec, arma::vec yVec) {
+    m_xVec = xVec;
+    m_yVec = yVec;
+    m_n = xVec.size();
+    m_ylow = yVec(0);
+    m_yhigh = yVec(m_n - 1);
+    m_slopeVec.zeros(m_n - 1);
 
-arma::vec LongVec2Vec(arma::vec xVec, int n, int J);
+    for (int i = 0; i < m_n - 1; i ++)
+      if (xVec(i+1) <= xVec(i)) throw std::runtime_error("xVec(i+1) should be greater than xVec(i).");
 
+    for (int i = 0; i < m_n - 1; i ++)
+      m_slopeVec(i) = (yVec(i+1) - yVec(i)) / (xVec(i+1) - xVec(i));
+  }
 
-arma::mat Vec2Mat(arma::vec xVec, int n, int J);
+  // Evaluate the interpolant at a single point via bisection lookup.
+  double getValue(double v) {
+    int i, j, ij;
+    i = 0;
+    j = m_n - 1;
 
+    if (v < m_xVec(i)) return m_ylow;
+    if (v > m_xVec(j)) return m_yhigh;
 
-arma::vec Mat2Vec(arma::mat xMat, int n, int J);
+    while (i < j - 1) {
+      ij = (i + j)/2;
+      if (v < m_xVec(ij)) j = ij; else i = ij;
+    }
 
-arma::mat sumCols(arma::mat xMat, int J);
+    if (v == m_xVec(j)) return m_yVec(j);
+    if (v == m_xVec(i)) return m_yVec(i);
 
-arma::vec getRPsiR(arma::mat muMat, arma::mat iRMat, int n, int J, int p);
+    return m_yVec(i) + (v - m_xVec(i)) * m_slopeVec(i);
+  }
 
-bool imputeGenoAndFlip(arma::vec& GVec,
-                       double altFreq,
-                       std::vector<uint32_t> indexForMissing,
-                       std::string impute_method);
-
-bool imputeGenoAndFlip(arma::vec& GVec,
-                       double altFreq,
-                       std::vector<uint32_t> indexForMissing,
-                       double missingRate,
-                       std::string impute_method,
-                       const std::string& method = "foo");
-
-arma::vec getTime();
-
-void printTime(arma::vec t1, arma::vec t2, std::string message);
-void printTimeDiff(arma::vec timeDiff, std::string message);
-
-double getinvStd(double freq);
-
-arma::vec nb(unsigned int n);
-
-void imputeGeno(arma::vec& GVec,
-                double altFreq,
-                std::vector<uint32_t> indexForMissing,
-                std::string imputeMethod);
-
-void gethwepval(arma::vec GVec,
-                double& hwepval,
-                double hwepvalCutoff);
+  // Evaluate the interpolant at each element of a vector.
+  arma::vec getVector(arma::vec vVec) {
+    int p = vVec.size();
+    arma::vec outVec(p);
+    for (int i = 0; i < p; i++) {
+      outVec(i) = getValue(vVec(i));
+    }
+    return outVec;
+  }
+};
 
 #endif

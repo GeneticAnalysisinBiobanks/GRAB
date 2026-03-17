@@ -1,14 +1,12 @@
 // POLMM.cpp -- POLMMClass and free-function implementations
 
 #include <RcppArmadillo.h>
-
-#include "POLMM.h"
-#include "UTIL.h"
-
 #include <iostream>
 #include <stdexcept>
 #include <thread>
 #include <chrono>
+
+#include "POLMM.h"
 
 namespace POLMM {
 
@@ -1212,6 +1210,91 @@ arma::mat getCovaMat(arma::mat Cova, unsigned int J) {
     }
   }
   return CovaMat;
+}
+
+arma::vec getTime(){
+  arma::vec Time(2, arma::fill::zeros);
+  struct timeval time;
+  Time(0) = 0;
+  if (!gettimeofday(&time,NULL))
+    Time(0) = (double)time.tv_sec + (double)time.tv_usec * .000001;
+  Time(1) = (double)clock() / CLOCKS_PER_SEC;
+  return Time;
+}
+
+void printTime(arma::vec t1, arma::vec t2, std::string message){
+  double wallTime = t2(0) - t1(0);
+  double cpuTime = t2(1) - t1(1);
+  if (wallTime < 60){
+    Rprintf ("    It took %.2f seconds (%.2f CPU seconds) to %s.\n",
+             wallTime, cpuTime, message.c_str());
+  }else if (wallTime < 3600){
+    Rprintf ("    It took %.2f minutes (%.2f CPU minutes) to %s.\n",
+             wallTime/60, cpuTime/60, message.c_str());
+  }else{
+    Rprintf ("    It took %.2f hours (%.2f CPU hours) to %s.\n",
+             wallTime/3600, cpuTime/3600, message.c_str());
+  }
+}
+
+arma::vec nb (unsigned int n) {
+  arma::vec v(n);
+  for (unsigned int i = 0; i < n; ++i)
+    v(i) = (arma::randu() < 0.5) ? 0.0 : 1.0;
+  return v;
+}
+
+double getInnerProd(arma::mat& x1Mat, arma::mat& x2Mat) {
+  double innerProd = arma::accu(x1Mat % x2Mat);
+  return innerProd;
+}
+
+arma::vec Vec2LongVec(arma::vec xVec, int n, int J) {
+  arma::vec yVec(n * (J-1));
+  int index = 0;
+  for (int i = 0; i < n; i ++){
+    for (int j = 0; j < J-1; j ++){
+      yVec(index) = xVec(i);
+      index++;
+    }
+  }
+  return yVec;
+}
+
+arma::vec LongVec2Vec(arma::vec xVec, int n, int J) {
+  arma::vec yVec(n, arma::fill::zeros);
+  int index = 0;
+  for (int i = 0; i < n; i ++){
+    for (int j = 0; j < J-1; j ++){
+      yVec(i) += xVec(index);
+      index++;
+    }
+  }
+  return yVec;
+}
+
+arma::mat Vec2Mat(arma::vec xVec, int n, int J) {
+  arma::mat xMat(n, (J-1));
+  int index = 0;
+  for (int i = 0; i < n; i++){
+    for (int j = 0; j < J-1; j++){
+      xMat(i, j) = xVec(index);
+      index++;
+    }
+  }
+  return xMat;
+}
+
+arma::vec Mat2Vec(arma::mat xMat, int n, int J) {
+  arma::vec xVec(n * (J-1));
+  int index = 0;
+  for (int i = 0; i < n; i++){
+    for (int j = 0; j < J-1; j++){
+      xVec(index) = xMat(i,j);
+      index++;
+    }
+  }
+  return xVec;
 }
 
 }

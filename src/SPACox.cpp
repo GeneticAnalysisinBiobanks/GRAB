@@ -3,7 +3,7 @@
 #include <RcppArmadillo.h>
 
 #include "SPACox.h"
-#include "approxfun.h"
+#include "UTIL.h"
 
 namespace SPACox {
 

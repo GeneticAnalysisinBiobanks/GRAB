@@ -5,6 +5,7 @@
 #include <boost/math/distributions/normal.hpp>
 
 #include "SPAGRM.h"
+#include "UTIL.h"
 
 namespace SPAGRM {
 

@@ -1,7 +1,7 @@
 # SPAmix_Marker.R -- Unwrap SPAmix null model and run marker engine
 
-runMarker.SPAmix <- function(objNull, control, bedFile, bimFile, famFile,
-                             OutputFile, nThreads) {
+runMarker.SPAmix <- function(objNull, control, bedFile, bimFile, famFile, OutputFile, nThreads) {
+  
   resid  <- objNull$resid
   nPheno <- ncol(resid)
   ol     <- objNull$outLierList
@@ -15,17 +15,17 @@ runMarker.SPAmix <- function(objNull, control, bedFile, bimFile, famFile,
   posNonOutlier_lens <- as.integer(sapply(seq_len(nPheno), function(i) length(ol[[i]]$posNonOutlier)))
 
   runMarkerInCPP.SPAmix(
-    resid              = resid,
-    PCs                = objNull$PCs,
-    N                  = objNull$N,
-    SPA_Cutoff         = control$SPA_Cutoff,
-    nPheno             = nPheno,
-    posValue_all       = posValue_all,
-    posValue_lens      = posValue_lens,
-    posOutlier_all     = posOutlier_all,
-    posOutlier_lens    = posOutlier_lens,
-    posNonOutlier_all  = posNonOutlier_all,
-    posNonOutlier_lens = posNonOutlier_lens,
+    resid               = resid,
+    PCs                 = objNull$PCs,
+    N                   = objNull$N,
+    SPA_Cutoff          = control$SPA_Cutoff,
+    nPheno              = nPheno,
+    posValue_all        = posValue_all,
+    posValue_lens       = posValue_lens,
+    posOutlier_all      = posOutlier_all,
+    posOutlier_lens     = posOutlier_lens,
+    posNonOutlier_all   = posNonOutlier_all,
+    posNonOutlier_lens  = posNonOutlier_lens,
     bedFile             = bedFile,
     bimFile             = bimFile,
     famFile             = famFile,

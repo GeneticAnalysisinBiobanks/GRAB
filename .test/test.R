@@ -191,16 +191,16 @@ obj.SPAmixPlus <- readRDS(nullobj_spamixplus)
 obj.POLMM <- readRDS(nullobj_polmm)
 obj.SAGELD <- readRDS(nullobj_sageld)
 
-GRAB.Marker4(obj.SPAGRM, GenoFile, mt_spagrm, overwrite = TRUE)
-GRAB.Marker4(obj.SPAsqr, GenoFile, mt_spasqr, overwrite = TRUE)
-GRAB.Marker4(obj.WtCoxG, GenoFile, mt_wtcoxg, overwrite = TRUE)
-GRAB.Marker4(obj.LEAF, GenoFile, mt_leaf, overwrite = TRUE)
-GRAB.Marker4(obj.SPACox, GenoFile, mt_spacox, overwrite = TRUE)
-GRAB.Marker4(obj.SPAmix, GenoFile, mt_spamix, overwrite = TRUE)
-GRAB.Marker4(obj.SPAmixPlus, GenoFile, mt_spamixplus, control = list(afFilePath = afFileOutput), overwrite = TRUE)
-GRAB.Marker4(obj.POLMM, GenoFile, mt_polmm, overwrite = TRUE)
-GRAB.Marker4(obj.SAGELD, GenoFile, mt_sageld, overwrite = TRUE)
-
+control <- list(nMarkersEachChunk = 100)
+GRAB.Marker4(obj.SPAGRM, GenoFile, mt_spagrm, control, nthreads = 4, overwrite = TRUE)
+GRAB.Marker4(obj.SPAsqr, GenoFile, mt_spasqr, control, nthreads = 4, overwrite = TRUE)
+GRAB.Marker4(obj.WtCoxG, GenoFile, mt_wtcoxg, control, nthreads = 4, overwrite = TRUE)
+GRAB.Marker4(obj.LEAF, GenoFile, mt_leaf, control, nthreads = 4, overwrite = TRUE)
+GRAB.Marker4(obj.SPACox, GenoFile, mt_spacox, control, nthreads = 4, overwrite = TRUE)
+GRAB.Marker4(obj.SPAmix, GenoFile, mt_spamix, control, nthreads = 4, overwrite = TRUE)
+GRAB.Marker4(obj.SPAmixPlus, GenoFile, mt_spamixplus, list(afFilePath = afFileOutput), nthreads = 4, overwrite = TRUE)
+GRAB.Marker4(obj.POLMM, GenoFile, mt_polmm, control, nthreads = 4, overwrite = TRUE)
+GRAB.Marker4(obj.SAGELD, GenoFile, mt_sageld, control, nthreads = 4, overwrite = TRUE)
 
 
 ########## compare results
@@ -227,7 +227,6 @@ mt_res_sageld <- fread(mt_sageld)
 
 
 compare_df <- function(df1, df2, name = "") {
-
   common_cols <- intersect(names(df1), names(df2))
   cat("====", name, "====\n")
 
@@ -235,10 +234,8 @@ compare_df <- function(df1, df2, name = "") {
     res <- all.equal(df1[[col]], df2[[col]], tolerance = 1e-5)
     cat("Column:", col, res, "\n")
   }
-
   cat("\n")
 }
-
 
 compare_df(dev_res_spagrm, mt_res_spagrm, "spagrm")
 compare_df(dev_res_spasqr, mt_res_spasqr, "spasqr")
@@ -249,4 +246,3 @@ compare_df(dev_res_sageld, mt_res_sageld, "sageld")
 compare_df(dev_res_spacox, mt_res_spacox, "spacox")
 compare_df(dev_res_spamix, mt_res_spamix, "spamix")
 compare_df(dev_res_spamixplus, mt_res_spamixplus, "spamixplus")
-

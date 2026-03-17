@@ -1,21 +1,20 @@
 # LEAF_Marker.R -- Unwrap LEAF null model and run marker engine
 
-runMarker.LEAF <- function(objNull, control, bedFile, bimFile, famFile,
-                           OutputFile, nThreads) {
+runMarker.LEAF <- function(objNull, control, bedFile, bimFile, famFile, OutputFile, nThreads) {
+
   nCluster   <- objNull$Ncluster
   clusterIdx <- objNull$clusterIdx
-
   clusterIdx_list <- lapply(seq_len(nCluster), function(k) {
     which(clusterIdx == k)
   })
 
   # Concat per-cluster vectors
-  residuals_all    <- unlist(objNull$residuals_list)
-  residuals_lens   <- as.integer(sapply(objNull$residuals_list, length))
-  weights_all      <- unlist(objNull$weights_list)
-  weights_lens     <- as.integer(sapply(objNull$weights_list, length))
-  clusterIdx_all   <- as.integer(unlist(clusterIdx_list))
-  clusterIdx_lens  <- as.integer(sapply(clusterIdx_list, length))
+  residuals_all   <- unlist(objNull$residuals_list)
+  residuals_lens  <- as.integer(sapply(objNull$residuals_list, length))
+  weights_all     <- unlist(objNull$weights_list)
+  weights_lens    <- as.integer(sapply(objNull$weights_list, length))
+  clusterIdx_all  <- as.integer(unlist(clusterIdx_list))
+  clusterIdx_lens <- as.integer(sapply(clusterIdx_list, length))
 
   # Flatten leafGenoInfo columns across clusters
   sgi <- objNull$subGenoInfo

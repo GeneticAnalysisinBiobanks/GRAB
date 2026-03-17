@@ -5,6 +5,8 @@
 #include <boost/math/distributions/normal.hpp>
 
 #include "SAGELD.h"
+#include "UTIL.h"
+
 
 namespace SAGELD {
 

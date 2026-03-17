@@ -5,8 +5,6 @@
 
 #include <RcppArmadillo.h>
 #include <boost/math/distributions/normal.hpp>
-#include "UTIL.h"
-
 #include <vector>
 #include <tuple>
 #include <unordered_set>

@@ -7,7 +7,6 @@
 #include <limits>
 #include <boost/math/distributions/normal.hpp>
 
-#include "UTIL.h"
 
 namespace SPAGRM{
 

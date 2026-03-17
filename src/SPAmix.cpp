@@ -304,15 +304,8 @@ arma::vec SPAmixClass::getMafEst(arma::vec g,
 }
 
 double SPAmixClass::getMarkerPval(arma::vec GVec, double altFreq) {
-  arma::vec time1 = getTime();
 
   arma::vec AFVec = getMafEst(GVec, altFreq);
-
-  arma::vec time2 = getTime();
-  arma::vec diffTime = time2 - time1;
-
-  m_diffTime2 += diffTime;
-
   arma::vec GVarVec = 2 * AFVec % (1 - AFVec);
 
   for (int i = 0; i < m_Npheno; i++){
@@ -339,8 +332,6 @@ double SPAmixClass::getMarkerPval(arma::vec GVec, double altFreq) {
       continue;
     }
 
-    time1 = getTime();
-
     arma::vec MAF_outlier = AFVec.elem(posOutlier);
     arma::vec MAF_nonOutlier = AFVec.elem(posNonOutlier);
 
@@ -359,11 +350,6 @@ double SPAmixClass::getMarkerPval(arma::vec GVec, double altFreq) {
                                  true,
                                  mean_nonOutlier,
                                  var_nonOutlier);
-
-    time2 = getTime();
-    diffTime = time2 - time1;
-
-    m_diffTime1 += diffTime;
 
     m_pvalVec.at(i) = pval1 + pval2;
   }

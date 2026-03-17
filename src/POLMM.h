@@ -4,6 +4,7 @@
 // POLMM.h -- Proportional-odds logistic mixed model for ordinal categorical traits
 
 #include <RcppArmadillo.h>
+#include <sys/time.h>
 
 namespace POLMM{
 
@@ -272,16 +273,13 @@ public:
 // ---- Free functions used by POLMMClass ----
 arma::mat getCovaMat(arma::mat Cova, unsigned int J);
 
-
 arma::mat getPsixMat(arma::mat xMat,
                      arma::mat muMat);
-
 
 arma::mat sumCols(arma::mat xMat,
                   int J);
 
 double calCV(arma::vec xVec);
-
 
 arma::vec getRPsiR(arma::mat muMat,
                    arma::mat iRMat,
@@ -313,7 +311,6 @@ double fastGet_Saddle_Prob(double Stat,
                            double m1,
                            bool lowerTail);
 
-
 SaddleResult fastSaddle_Prob(double Stat,
                            double VarP,
                            double VarW,
@@ -340,14 +337,11 @@ double getProbOne(arma::Col<uint8_t> SeqVec,
 double getProb(arma::Mat<uint8_t> SeqMat,
                arma::mat muMat);
 
-
 arma::vec convert1(arma::mat xMat,
                    int n, int J);
 
-
 arma::mat convert2(arma::vec xVec,
                    int n, int J);
-
 
 ObjP getobjP(arma::mat Cova,
              arma::mat yMat,
@@ -365,12 +359,26 @@ double getStatFast(arma::vec GVec,
 double getVarWFast(arma::vec adjGVec,
                    arma::vec RPsiRVec);
 
-
 AdjGResult outputadjGFast(arma::vec GVec,
                           const ObjP& objP);
 
-
 arma::vec getRowSums(arma::mat xMat);
+
+arma::vec getTime();
+
+void printTime(arma::vec t1, arma::vec t2, std::string message);
+
+arma::vec nb (unsigned int n);
+
+double getInnerProd(arma::mat& x1Mat, arma::mat& x2Mat);
+
+arma::vec Vec2LongVec(arma::vec xVec, int n, int J);
+
+arma::vec LongVec2Vec(arma::vec xVec, int n, int J);
+
+arma::mat Vec2Mat(arma::vec xVec, int n, int J);
+
+arma::vec Mat2Vec(arma::mat xMat, int n, int J);
 
 }
 

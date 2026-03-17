@@ -1,7 +1,7 @@
 # SPAmixPlus_Marker.R -- Unwrap SPAmixPlus null model and run marker engine
 
-runMarker.SPAmixPlus <- function(objNull, control, bedFile, bimFile, famFile,
-                                 OutputFile, nThreads) {
+runMarker.SPAmixPlus <- function(objNull, control, bedFile, bimFile, famFile, OutputFile, nThreads) {
+
   resid  <- objNull$resid
   nPheno <- ncol(resid)
   ol     <- objNull$outLierList
@@ -20,22 +20,22 @@ runMarker.SPAmixPlus <- function(objNull, control, bedFile, bimFile, famFile,
   sparseVal <- as.numeric(sparseGRM$value)
 
   runMarkerInCPP.SPAmixPlus(
-    resid              = resid,
-    PCs                = objNull$PCs,
-    N                  = objNull$N,
-    SPA_Cutoff         = control$SPA_Cutoff,
-    nPheno             = nPheno,
-    posValue_all       = posValue_all,
-    posValue_lens      = posValue_lens,
-    posOutlier_all     = posOutlier_all,
-    posOutlier_lens    = posOutlier_lens,
-    posNonOutlier_all  = posNonOutlier_all,
-    posNonOutlier_lens = posNonOutlier_lens,
-    sparseId1          = sparseId1,
-    sparseId2          = sparseId2,
-    sparseVal          = sparseVal,
-    afFilePath         = control$afFilePath,
-    afFilePrecision    = control$afFilePrecision,
+    resid               = resid,
+    PCs                 = objNull$PCs,
+    N                   = objNull$N,
+    SPA_Cutoff          = control$SPA_Cutoff,
+    nPheno              = nPheno,
+    posValue_all        = posValue_all,
+    posValue_lens       = posValue_lens,
+    posOutlier_all      = posOutlier_all,
+    posOutlier_lens     = posOutlier_lens,
+    posNonOutlier_all   = posNonOutlier_all,
+    posNonOutlier_lens  = posNonOutlier_lens,
+    sparseId1           = sparseId1,
+    sparseId2           = sparseId2,
+    sparseVal           = sparseVal,
+    afFilePath          = control$afFilePath,
+    afFilePrecision     = control$afFilePrecision,
     bedFile             = bedFile,
     bimFile             = bimFile,
     famFile             = famFile,

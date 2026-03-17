@@ -5,7 +5,6 @@
 
 #include <RcppArmadillo.h>
 #include <boost/math/distributions/students_t.hpp>
-#include "UTIL.h"
 
 namespace SPAmix{
 

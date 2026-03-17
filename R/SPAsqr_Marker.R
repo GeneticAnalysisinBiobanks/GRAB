@@ -1,9 +1,9 @@
 # SPAsqr_Marker.R -- Unwrap SPAsqr null model and run marker engine
 
-runMarker.SPAsqr <- function(objNull, control, bedFile, bimFile, famFile,
-                             OutputFile, nThreads) {
-  taus   <- objNull$taus
-  ntaus  <- length(taus)
+runMarker.SPAsqr <- function(objNull, control, bedFile, bimFile, famFile, OutputFile, nThreads) {
+  
+  taus  <- objNull$taus
+  ntaus <- length(taus)
 
   residOutlierLst    <- objNull[["Resid.unrelated.outliers_lst"]]
   twoSubjLstLst      <- objNull$TwoSubj_list_lst

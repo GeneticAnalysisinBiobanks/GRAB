@@ -122,13 +122,6 @@ std::vector<std::vector<uint64_t>> buildPlinkChunkIndexList(
     const std::vector<PlinkMarkerInfo>& markers,
     int nMarkersEachChunk);
 
-ReaderConfig buildPlinkReaderConfig(
-    const std::string& genoFile,
-    const std::vector<std::string>& genoFileIndex,
-    const std::vector<std::string>& sampleInModel,
-    const std::string& alleleOrder);
-
-
 // ---- Output helpers ----
 std::string numToStr(double x);
 

@@ -4,17 +4,18 @@
 // SPACox.h -- Saddlepoint approximation for Cox proportional hazards model
 
 #include <RcppArmadillo.h>
-#include "approxfun.h"
+#include <stdexcept>
+#include "UTIL.h"
+
 
 namespace SPACox{
 
 class SPACoxClass {
 private:
 
-
-  approxfun::approxfunClass m_K_0_emp;
-  approxfun::approxfunClass m_K_1_emp;
-  approxfun::approxfunClass m_K_2_emp;
+  approxfunClass m_K_0_emp;
+  approxfunClass m_K_1_emp;
+  approxfunClass m_K_2_emp;
 
   arma::vec m_mresid;
   double m_varResid;
@@ -47,12 +48,7 @@ public:
   RootResult fastGetRootK1(double initX, int N0, double adjG0, arma::vec adjG1, double q2);
   double getProbSpa(double adjG0, arma::vec adjG1, int N0, double q2, bool lowerTail);
   double getMarkerPval(arma::vec GVec, double MAF, double& zScore);
-  void getRegionPVec(arma::vec GVec,
-                     double& zScore,
-                     double& pval0,
-                     double& pval1,
-                     arma::vec& P1Vec,
-                     arma::vec& P2Vec);
+  void getRegionPVec(arma::vec GVec, double& zScore, double& pval0, double& pval1, arma::vec& P1Vec, arma::vec& P2Vec);
 
 };
 
