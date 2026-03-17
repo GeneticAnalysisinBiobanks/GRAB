@@ -167,7 +167,8 @@ GRAB.Marker4 <- function (
     min_maf_marker     = 0.001,
     min_mac_marker     = 20,
     nMarkersEachChunk  = 100,
-    SPA_Cutoff         = 2
+    SPA_Cutoff         = 2,
+    gzip_output        = FALSE
   )
   control <- .merge_defaults(control, marker_defaults)
 
@@ -227,6 +228,10 @@ GRAB.Marker4 <- function (
   if (null_class %in% single_only && n_threads > 1) {
     .log("%s currently supports only nthreads=1; forcing nthreads=1.", null_class)
     n_threads <- 1L
+  }
+
+  if (isTRUE(control$gzip_output) && !grepl("\\.gz$", OutputFile)) {
+    OutputFile <- paste0(OutputFile, ".gz")
   }
 
   if (file.exists(OutputFile)) {

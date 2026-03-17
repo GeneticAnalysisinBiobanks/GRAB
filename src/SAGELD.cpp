@@ -29,19 +29,9 @@ SAGELDClass::SAGELDClass(std::string Method,
                          double sum_R_nonOutlier,
                          double sum_R_nonOutlier_G,
                          double sum_R_nonOutlier_GxE,
-                         double R_GRM_R,
-                         double R_GRM_R_G,
-                         double R_GRM_R_GxE,
-                         double R_GRM_R_G_GxE,
-                         double R_GRM_R_E,
-                         double R_GRM_R_nonOutlier,
-                         double R_GRM_R_nonOutlier_G,
-                         double R_GRM_R_nonOutlier_GxE,
-                         double R_GRM_R_nonOutlier_G_GxE,
-                         double R_GRM_R_TwoSubjOutlier,
-                         double R_GRM_R_TwoSubjOutlier_G,
-                         double R_GRM_R_TwoSubjOutlier_GxE,
-                         double R_GRM_R_TwoSubjOutlier_G_GxE,
+                         arma::vec R_GRM_R,
+                         arma::vec R_GRM_R_nonOutlier,
+                         arma::vec R_GRM_R_TwoSubjOutlier,
                          std::vector<TwoSubjFamily> TwoSubj_list,
                          std::vector<ThreeSubjFamily> ThreeSubj_list,
                          arma::vec MAF_interval,
@@ -82,20 +72,8 @@ SAGELDClass::SAGELDClass(std::string Method,
   m_sum_R_nonOutlier_GxE = sum_R_nonOutlier_GxE;
 
   m_R_GRM_R = R_GRM_R;
-  m_R_GRM_R_G = R_GRM_R_G;
-  m_R_GRM_R_GxE = R_GRM_R_GxE;
-  m_R_GRM_R_G_GxE = R_GRM_R_G_GxE;
-  m_R_GRM_R_E = R_GRM_R_E;
-
   m_R_GRM_R_nonOutlier = R_GRM_R_nonOutlier;
-  m_R_GRM_R_nonOutlier_G = R_GRM_R_nonOutlier_G;
-  m_R_GRM_R_nonOutlier_GxE = R_GRM_R_nonOutlier_GxE;
-  m_R_GRM_R_nonOutlier_G_GxE = R_GRM_R_nonOutlier_G_GxE;
-
   m_R_GRM_R_TwoSubjOutlier = R_GRM_R_TwoSubjOutlier;
-  m_R_GRM_R_TwoSubjOutlier_G = R_GRM_R_TwoSubjOutlier_G;
-  m_R_GRM_R_TwoSubjOutlier_GxE = R_GRM_R_TwoSubjOutlier_GxE;
-  m_R_GRM_R_TwoSubjOutlier_G_GxE = R_GRM_R_TwoSubjOutlier_G_GxE;
 
   m_TwoSubj_list = std::move(TwoSubj_list);
   m_ThreeSubj_list = std::move(ThreeSubj_list);
@@ -231,7 +209,7 @@ double SAGELDClass::fastGetRoot(const std::vector<UpdatedThreeSubj>& update_Thre
   double diff_t = std::numeric_limits<double>::infinity();
 
   double mean = 2 * MAF * m_sum_R_nonOutlier;
-  double var = 2 * MAF * (1 - MAF) * m_R_GRM_R_nonOutlier;
+  double var = 2 * MAF * (1 - MAF) * m_R_GRM_R_nonOutlier(0);
 
   for (int iter = 1; iter < maxiter; iter++) {
     double old_t = t;
@@ -354,7 +332,7 @@ double SAGELDClass::getProbSpa(const std::vector<UpdatedThreeSubj>& update_Three
   arma::vec MGF2 = MGF_all.col(2);
 
   double mean = 2 * MAF * m_sum_R_nonOutlier;
-  double var = 2 * MAF * (1 - MAF) * m_R_GRM_R_nonOutlier;
+  double var = 2 * MAF * (1 - MAF) * m_R_GRM_R_nonOutlier(0);
 
   arma::vec temp = MGF1 / MGF0;
   double CGF0 = arma::accu(log(MGF0)) + mean * zeta + 0.5 * var * zeta * zeta;
@@ -435,13 +413,13 @@ double SAGELDClass::getMarkerPval(arma::vec GVec,
     double zScore_G, zScore_GxE, pval_G, pval_GxE;
     double G_var = 2 * MAF * (1 - MAF);
     double Score_E = sum(GVec % m_resid_E);
-    double zScore_E = Score_E / sqrt(G_var * m_R_GRM_R_E);
-    zScore_G = sum(GVec % m_resid_G) / sqrt(G_var * m_R_GRM_R_G);
+    double zScore_E = Score_E / sqrt(G_var * m_R_GRM_R(4));
+    zScore_G = sum(GVec % m_resid_G) / sqrt(G_var * m_R_GRM_R(1));
     pval_G = 2 * arma::normcdf(-1.0 * std::abs(zScore_G));
 
     if (std::abs(zScore_E) < m_zScoreE_cutoff) {
       double Score = sum(GVec % m_resid);
-      double Score_var = G_var * m_R_GRM_R;
+      double Score_var = G_var * m_R_GRM_R(0);
       zScore_GxE = Score / sqrt(Score_var);
 
       if (std::abs(zScore_GxE) <= m_SPA_Cutoff) {
@@ -468,9 +446,9 @@ double SAGELDClass::getMarkerPval(arma::vec GVec,
             Var_ThreeOutlier = Var_ThreeOutlier + Var_ThreeOutlier_temp;
           }
         }
-        double Var_nonOutlier = G_var * m_R_GRM_R_nonOutlier;
+        double Var_nonOutlier = G_var * m_R_GRM_R_nonOutlier(0);
         double Var_unrelated_outliers = G_var * m_sum_unrelated_outliers2;
-        double Var_TwoOutlier = G_var * m_R_GRM_R_TwoSubjOutlier;
+        double Var_TwoOutlier = G_var * m_R_GRM_R_TwoSubjOutlier(0);
         double EmpVar = Var_nonOutlier + Var_unrelated_outliers + Var_TwoOutlier + Var_ThreeOutlier;
         double Var_Ratio = Score_var / EmpVar;
         double Score_adj = Score / sqrt(Var_Ratio);
@@ -493,7 +471,7 @@ double SAGELDClass::getMarkerPval(arma::vec GVec,
       m_V = m_GtG - m_H1.t() * m_Cfix - m_H2.t() * m_Cran;
       double lambda_i = m_V(0, 1) / m_V(0, 0);
       arma::vec m_resid_i = m_resid_GxE - lambda_i * m_resid_G;
-      double m_R_GRM_R_i = m_R_GRM_R_GxE + lambda_i * lambda_i * m_R_GRM_R_G - lambda_i * m_R_GRM_R_G_GxE;
+      double m_R_GRM_R_i = m_R_GRM_R(2) + lambda_i * lambda_i * m_R_GRM_R(1) - lambda_i * m_R_GRM_R(3);
       double Score = sum(GVec % m_resid_i);
       double Score_var = G_var * m_R_GRM_R_i;
       zScore_GxE = Score / sqrt(Score_var);
@@ -524,11 +502,11 @@ double SAGELDClass::getMarkerPval(arma::vec GVec,
             Var_ThreeOutlier = Var_ThreeOutlier + Var_ThreeOutlier_temp;
           }
         }
-        double m_R_GRM_R_nonOutlier_i = m_R_GRM_R_nonOutlier_GxE + lambda_i * lambda_i * m_R_GRM_R_nonOutlier_G - lambda_i * m_R_GRM_R_nonOutlier_G_GxE;
+        double m_R_GRM_R_nonOutlier_i = m_R_GRM_R_nonOutlier(2) + lambda_i * lambda_i * m_R_GRM_R_nonOutlier(1) - lambda_i * m_R_GRM_R_nonOutlier(3);
         double Var_nonOutlier = G_var * m_R_GRM_R_nonOutlier_i;
         double m_sum_unrelated_outliers2_i = m_sum_unrelated_outliers_GxE2 + lambda_i * lambda_i * m_sum_unrelated_outliers_G2 - lambda_i * m_sum_unrelated_outliers_G_GxE2;
         double Var_unrelated_outliers = G_var * m_sum_unrelated_outliers2_i;
-        double m_R_GRM_R_TwoSubjOutlier_i = m_R_GRM_R_TwoSubjOutlier_GxE + lambda_i * lambda_i * m_R_GRM_R_TwoSubjOutlier_G - lambda_i * m_R_GRM_R_TwoSubjOutlier_G_GxE;
+        double m_R_GRM_R_TwoSubjOutlier_i = m_R_GRM_R_TwoSubjOutlier(2) + lambda_i * lambda_i * m_R_GRM_R_TwoSubjOutlier(1) - lambda_i * m_R_GRM_R_TwoSubjOutlier(3);
         double Var_TwoOutlier = G_var * m_R_GRM_R_TwoSubjOutlier_i;
         double EmpVar = Var_nonOutlier + Var_unrelated_outliers + Var_TwoOutlier + Var_ThreeOutlier;
         double Var_Ratio = Score_var / EmpVar;

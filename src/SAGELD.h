@@ -75,21 +75,9 @@ private:
   double m_sum_R_nonOutlier_G;
   double m_sum_R_nonOutlier_GxE;
 
-  double m_R_GRM_R;
-  double m_R_GRM_R_G;
-  double m_R_GRM_R_GxE;
-  double m_R_GRM_R_G_GxE;
-  double m_R_GRM_R_E;
-
-  double m_R_GRM_R_nonOutlier;
-  double m_R_GRM_R_nonOutlier_G;
-  double m_R_GRM_R_nonOutlier_GxE;
-  double m_R_GRM_R_nonOutlier_G_GxE;
-
-  double m_R_GRM_R_TwoSubjOutlier;
-  double m_R_GRM_R_TwoSubjOutlier_G;
-  double m_R_GRM_R_TwoSubjOutlier_GxE;
-  double m_R_GRM_R_TwoSubjOutlier_G_GxE;
+  arma::vec m_R_GRM_R;               // [0]=main, [1]=G, [2]=GxE, [3]=G_GxE, [4]=E
+  arma::vec m_R_GRM_R_nonOutlier;    // [0]=main, [1]=G, [2]=GxE, [3]=G_GxE
+  arma::vec m_R_GRM_R_TwoSubjOutlier; // [0]=main, [1]=G, [2]=GxE, [3]=G_GxE
 
   std::vector<TwoSubjFamily> m_TwoSubj_list;
   std::vector<ThreeSubjFamily> m_ThreeSubj_list;
@@ -130,19 +118,9 @@ public:
               double sum_R_nonOutlier,
               double sum_R_nonOutlier_G,
               double sum_R_nonOutlier_GxE,
-              double R_GRM_R,
-              double R_GRM_R_G,
-              double R_GRM_R_GxE,
-              double R_GRM_R_G_GxE,
-              double R_GRM_R_E,
-              double R_GRM_R_nonOutlier,
-              double R_GRM_R_nonOutlier_G,
-              double R_GRM_R_nonOutlier_GxE,
-              double R_GRM_R_nonOutlier_G_GxE,
-              double R_GRM_R_TwoSubjOutlier,
-              double R_GRM_R_TwoSubjOutlier_G,
-              double R_GRM_R_TwoSubjOutlier_GxE,
-              double R_GRM_R_TwoSubjOutlier_G_GxE,
+              arma::vec R_GRM_R,
+              arma::vec R_GRM_R_nonOutlier,
+              arma::vec R_GRM_R_TwoSubjOutlier,
               std::vector<TwoSubjFamily> TwoSubj_list,
               std::vector<ThreeSubjFamily> ThreeSubj_list,
               arma::vec MAF_interval,

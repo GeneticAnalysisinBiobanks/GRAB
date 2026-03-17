@@ -27,6 +27,7 @@
 #include <cstdio>
 
 #include <boost/math/distributions/chi_squared.hpp>
+#include <zlib.h>
 
 
 POLMM::POLMMClass*       ptr_gPOLMMobj      = nullptr;
@@ -116,6 +117,25 @@ static void appendCell(std::ostringstream& oss, const std::string& v, bool first
 }
 static void appendCell(std::ostringstream& oss, double v, bool first = false) {
   appendCell(oss, numToStr(v), first);
+}
+
+static void appendMeta(std::ostringstream& oss,
+                       const std::string& marker,
+                       const std::string& chr,
+                       uint32_t pos,
+                       const std::string& ref,
+                       const std::string& alt,
+                       double altCounts,
+                       double altFreq,
+                       double missingRate) {
+  appendCell(oss, marker, true);
+  appendCell(oss, chr);
+  appendCell(oss, std::to_string(pos));
+  appendCell(oss, ref);
+  appendCell(oss, alt);
+  appendCell(oss, altCounts);
+  appendCell(oss, altFreq);
+  appendCell(oss, missingRate);
 }
 
 
@@ -273,9 +293,9 @@ ReaderConfig buildPlinkReaderConfig(
 std::string numToStr(double x) {
   if (std::isnan(x)) return "NA";
   if (std::isinf(x)) return (x > 0 ? "Inf" : "-Inf");
-  std::ostringstream oss;
-  oss << std::setprecision(15) << x;
-  return oss.str();
+  char buf[32];
+  std::snprintf(buf, sizeof(buf), "%.6g", x);
+  return buf;
 }
 
 double cctPvalue(const std::vector<double>& pvals) {
@@ -297,36 +317,39 @@ double cctPvalue(const std::vector<double>& pvals) {
   return 0.5 - std::atan(tStat) / M_PI;
 }
 
+static const char* META_HEADER = "Marker\tChr\tPos\tRef\tAlt\tAltCount\tAltFreq\tMissRate";
+
 std::string getHeader(const std::string& method,
                       const std::string& sageldMethod,
                       const std::vector<double>& taus,
                       int nPheno,
                       int nCluster) {
   std::ostringstream oss;
+  oss << META_HEADER;
 
   if (method == "POLMM") {
-    oss << "Marker\tInfo\tAltFreq\tAltCounts\tMissingRate\tPvalue\tbeta\tseBeta\tzScore";
+    oss << "\tPvalue\tbeta\tseBeta\tzScore";
   } else if (method == "SPACox") {
-    oss << "Marker\tInfo\tAltFreq\tAltCounts\tMissingRate\tPvalue\tzScore";
+    oss << "\tPvalue\tzScore";
   } else if (method == "SPAmix" || method == "SPAmixPlus") {
-    oss << "Pheno\tMarker\tInfo\tAltFreq\tAltCounts\tMissingRate\tPvalue\tzScore";
+    oss << "\tPheno\tPvalue\tzScore";
   } else if (method == "SPAGRM") {
-    oss << "Marker\tInfo\tAltFreq\tAltCounts\tMissingRate\tzScore\tPvalue\thwepval";
+    oss << "\tzScore\tPvalue\thwepval";
   } else if (method == "SAGELD") {
     if (sageldMethod == "GALLOP")
-      oss << "Marker\tInfo\tAltFreq\tAltCounts\tMissingRate\tMethod\tBeta_G\tBeta_GxE\tSE_G\tSE_GxE\tPvalue_G\tPvalue_GxE\thwepval";
+      oss << "\tMethod\tBeta_G\tBeta_GxE\tSE_G\tSE_GxE\tPvalue_G\tPvalue_GxE\thwepval";
     else
-      oss << "Marker\tInfo\tAltFreq\tAltCounts\tMissingRate\tMethod\tzScore_G\tzScore_GxE\tPvalue_G\tPvalue_GxE\thwepval";
+      oss << "\tMethod\tzScore_G\tzScore_GxE\tPvalue_G\tPvalue_GxE\thwepval";
   } else if (method == "WtCoxG") {
-    oss << "WtCoxG.ext\tWtCoxG.noext\tscore.ext\tscore.noext\tzscore.ext\tzscore.noext"
-        << "\tAF_ref\tAN_ref\tTPR\tsigma2\tpvalue_bat\tw.ext\tvar.ratio.w0\tvar.ratio.int\tvar.ratio.ext";
+    oss << "\tWtCoxG.ext\tWtCoxG.noext\tzscore.ext\tzscore.noext"
+        << "\tAF_ref\tAN_ref\tpvalue_bat";
   } else if (method == "SPAsqr") {
-    oss << "Marker\tInfo\tAltFreq\tAltCounts\tMissingRate\thwepval";
+    oss << "\thwepval";
     for (double tau : taus) oss << "\tZ_tau" << numToStr(tau);
     for (double tau : taus) oss << "\tP_tau" << numToStr(tau);
     oss << "\tP_CCT";
   } else if (method == "LEAF") {
-    oss << "Marker\tInfo\tAltFreq\tMissingRate\tmeta.p_ext\tmeta.p_noext";
+    oss << "\tmeta.p_ext\tmeta.p_noext";
     for (int i = 1; i <= nCluster; ++i)
       oss << "\tcl" << i << ".p_ext\tcl" << i << ".p_noext\tcl" << i << ".p_batch";
   } else {
@@ -415,28 +438,53 @@ void mainMarkerChunksCore(
 
 
   std::thread writerThread([&]() {
-    std::ofstream out(outputFile.c_str());
-    if (!out.is_open()) {
-      std::lock_guard<std::mutex> lock(errorMutex);
-      workerError = std::make_exception_ptr(std::runtime_error("Cannot open output file: " + outputFile));
-      stopWriter = true;
-      writeCv.notify_all();
-      return;
+    const bool useGzip = outputFile.size() >= 3 &&
+      outputFile.compare(outputFile.size() - 3, 3, ".gz") == 0;
+
+    gzFile gz = nullptr;
+    std::ofstream plainOut;
+
+    if (useGzip) {
+      gz = gzopen(outputFile.c_str(), "wb");
+      if (!gz) {
+        std::lock_guard<std::mutex> lock(errorMutex);
+        workerError = std::make_exception_ptr(std::runtime_error("Cannot open gzip output file: " + outputFile));
+        stopWriter = true;
+        writeCv.notify_all();
+        return;
+      }
+    } else {
+      plainOut.open(outputFile.c_str());
+      if (!plainOut.is_open()) {
+        std::lock_guard<std::mutex> lock(errorMutex);
+        workerError = std::make_exception_ptr(std::runtime_error("Cannot open output file: " + outputFile));
+        stopWriter = true;
+        writeCv.notify_all();
+        return;
+      }
     }
-    out << header << '\n';
+
+    auto writeStr = [&](const std::string& s) {
+      if (useGzip) gzwrite(gz, s.data(), static_cast<unsigned>(s.size()));
+      else plainOut << s;
+    };
+
+    writeStr(header + "\n");
 
     for (size_t i = 0; i < chunkOutput.size(); ++i) {
       std::unique_lock<std::mutex> lk(writeMutex);
       writeCv.wait(lk, [&]() { return chunkReady[i] || stopWriter; });
       if (!chunkReady[i]) break;
-      out << chunkOutput[i];
+      writeStr(chunkOutput[i]);
       {
         std::lock_guard<std::mutex> lg(logMutex);
         std::fprintf(stderr, "[INFO] Writing finished: chunk %zu/%zu\n", i + 1, chunkOutput.size());
         std::fflush(stderr);
       }
     }
-    out.close();
+
+    if (useGzip) gzclose(gz);
+    else plainOut.close();
   });
 
 
@@ -524,7 +572,6 @@ void mainMarkerChunksCore(
           arma::vec GVec = plinkReader->getOneMarker(gIdx[i], ref, alt, marker, pd, chr,
             altFreq, altCounts, missingRate, imputeInfo, true, indexForMissing, false, indexForNonZero, true);
 
-          const std::string info = chr + ":" + std::to_string(pd) + ":" + ref + ":" + alt;
           const double n = static_cast<double>(GVec.size());
           const double maf = std::min(altFreq, 1.0 - altFreq);
           const double mac = 2.0 * maf * n * (1.0 - missingRate);
@@ -549,10 +596,9 @@ void mainMarkerChunksCore(
             }
             for (int j = 0; j < nPheno; ++j) {
               std::ostringstream row;
-              appendCell(row, "pheno_" + std::to_string(j + 1), true);
-              appendCell(row, marker); appendCell(row, info);
-              appendCell(row, altFreq); appendCell(row, altCounts);
-              appendCell(row, missingRate); appendCell(row, p[j]); appendCell(row, z[j]);
+              appendMeta(row, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate);
+              appendCell(row, "pheno_" + std::to_string(j + 1));
+              appendCell(row, p[j]); appendCell(row, z[j]);
               out << row.str() << '\n';
             }
             continue;
@@ -566,9 +612,8 @@ void mainMarkerChunksCore(
               Beta *= (1.0 - 2.0 * static_cast<double>(flip));
             }
             std::ostringstream row;
-            appendCell(row, marker, true); appendCell(row, info);
-            appendCell(row, altFreq); appendCell(row, altCounts);
-            appendCell(row, missingRate); appendCell(row, pval);
+            appendMeta(row, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate);
+            appendCell(row, pval);
             appendCell(row, Beta); appendCell(row, seBeta); appendCell(row, zScore);
             out << row.str() << '\n';
             continue;
@@ -579,9 +624,8 @@ void mainMarkerChunksCore(
             double pval = NAN, zScore = NAN;
             if (passQC) pval = ctx.spacox->getMarkerPval(GVec, altFreq, zScore);
             std::ostringstream row;
-            appendCell(row, marker, true); appendCell(row, info);
-            appendCell(row, altFreq); appendCell(row, altCounts);
-            appendCell(row, missingRate); appendCell(row, pval); appendCell(row, zScore);
+            appendMeta(row, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate);
+            appendCell(row, pval); appendCell(row, zScore);
             out << row.str() << '\n';
             continue;
           }
@@ -591,9 +635,8 @@ void mainMarkerChunksCore(
             double pval = NAN, zScore = NAN, hwepval = NAN;
             if (passQC) pval = ctx.spagrm->getMarkerPval(GVec, altFreq, zScore, hwepval);
             std::ostringstream row;
-            appendCell(row, marker, true); appendCell(row, info);
-            appendCell(row, altFreq); appendCell(row, altCounts);
-            appendCell(row, missingRate); appendCell(row, zScore);
+            appendMeta(row, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate);
+            appendCell(row, zScore);
             appendCell(row, pval); appendCell(row, hwepval);
             out << row.str() << '\n';
             continue;
@@ -614,9 +657,8 @@ void mainMarkerChunksCore(
               seG = seT[0]; seGxE = seT[1];
             }
             std::ostringstream row;
-            appendCell(row, marker, true); appendCell(row, info);
-            appendCell(row, altFreq); appendCell(row, altCounts);
-            appendCell(row, missingRate); appendCell(row, sageldMethod);
+            appendMeta(row, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate);
+            appendCell(row, sageldMethod);
             if (sageldMethod == "GALLOP") {
               appendCell(row, bG); appendCell(row, bGxE);
               appendCell(row, seG); appendCell(row, seGxE);
@@ -632,22 +674,19 @@ void mainMarkerChunksCore(
 
 
           if (method == "WtCoxG") {
-            double pExt = NAN, pNoext = NAN, sExt = NAN, sNoext = NAN, zExt = NAN, zNoext = NAN;
+            double pExt = NAN, pNoext = NAN, zExt = NAN, zNoext = NAN;
             if (passQC) {
               arma::vec pT = ctx.wtcoxg->getpvalVec(GVec, static_cast<int>(i));
-              arma::vec sT = ctx.wtcoxg->getScoreVec(), zT = ctx.wtcoxg->getZScoreVec();
-              pExt = pT[0]; pNoext = pT[1]; sExt = sT[0]; sNoext = sT[1]; zExt = zT[0]; zNoext = zT[1];
+              arma::vec zT = ctx.wtcoxg->getZScoreVec();
+              pExt = pT[0]; pNoext = pT[1]; zExt = zT[0]; zNoext = zT[1];
             }
             const WtRow& wr = wtChunkRows[i];
             std::ostringstream row;
-            appendCell(row, pExt, true); appendCell(row, pNoext);
-            appendCell(row, sExt); appendCell(row, sNoext);
+            appendMeta(row, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate);
+            appendCell(row, pExt); appendCell(row, pNoext);
             appendCell(row, zExt); appendCell(row, zNoext);
             appendCell(row, wr.AF_ref); appendCell(row, wr.AN_ref);
-            appendCell(row, wr.TPR); appendCell(row, wr.sigma2);
-            appendCell(row, wr.pvalue_bat); appendCell(row, wr.w_ext);
-            appendCell(row, wr.var_ratio_w0); appendCell(row, wr.var_ratio_int);
-            appendCell(row, wr.var_ratio_ext);
+            appendCell(row, wr.pvalue_bat);
             out << row.str() << '\n';
             continue;
           }
@@ -663,9 +702,8 @@ void mainMarkerChunksCore(
             }
             double pCCT = cctPvalue(p);
             std::ostringstream row;
-            appendCell(row, marker, true); appendCell(row, info);
-            appendCell(row, altFreq); appendCell(row, altCounts);
-            appendCell(row, missingRate); appendCell(row, hwepval);
+            appendMeta(row, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate);
+            appendCell(row, hwepval);
             for (double v : z) appendCell(row, v);
             for (double v : p) appendCell(row, v);
             appendCell(row, pCCT);
@@ -704,8 +742,7 @@ void mainMarkerChunksCore(
             };
 
             std::ostringstream row;
-            appendCell(row, marker, true); appendCell(row, info);
-            appendCell(row, altFreq); appendCell(row, missingRate);
+            appendMeta(row, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate);
             appendCell(row, metaP(sExt, pExt)); appendCell(row, metaP(sNoext, pNoext));
             for (int c = 0; c < leafNcluster; ++c) {
               appendCell(row, pExt[c]); appendCell(row, pNoext[c]);

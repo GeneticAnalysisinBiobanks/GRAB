@@ -37,14 +37,14 @@ double SPACoxClass::K_0(double t, int N0, double adjG0, arma::vec adjG1) {
 double SPACoxClass::K_1(double t, int N0, double adjG0, arma::vec adjG1, double q2) {
   double sG0 = t * adjG0;
   arma::vec sG1 = t * adjG1;
-  double out = N0 * sG0 * m_K_1_emp.getValue(sG0) + arma::sum(sG1 % m_K_1_emp.getVector(sG1)) - q2;
+  double out = N0 * adjG0 * m_K_1_emp.getValue(sG0) + arma::sum(adjG1 % m_K_1_emp.getVector(sG1)) - q2;
   return out;
 }
 
 double SPACoxClass::K_2(double t, int N0, double adjG0, arma::vec adjG1) {
   double sG0 = t * adjG0;
   arma::vec sG1 = t * adjG1;
-  double out = N0 * pow(sG0, 2) * m_K_2_emp.getValue(sG0) + arma::sum(pow(sG1, 2) % m_K_2_emp.getVector(sG1));
+  double out = N0 * pow(adjG0, 2) * m_K_2_emp.getValue(sG0) + arma::sum(pow(adjG1, 2) % m_K_2_emp.getVector(sG1));
   return out;
 }
 

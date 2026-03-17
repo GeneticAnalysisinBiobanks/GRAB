@@ -24,7 +24,7 @@ namespace SPAmixPlus {
     arma::vec K_G0_vec = arma::log(M_G0_vec);
     arma::vec K_G2_vec = (M_G0_vec % M_G2_vec - pow(M_G1_vec, 2)) / pow(M_G0_vec, 2);
     double Horg = sum(K_G0_vec);
-    double H2 = sum(pow(tR, 2) % K_G2_vec);
+    double H2 = sum(pow(R, 2) % K_G2_vec);
     Horg_H2_vec.at(0) = Horg;
     Horg_H2_vec.at(1) = H2;
     return Horg_H2_vec;
@@ -40,8 +40,8 @@ namespace SPAmixPlus {
     arma::vec M_G2_vec = 2 * pow(MAF_exp_tR, 2) + 2 * (MAF_exp_tR) % (1 - MAFVec + MAF_exp_tR);
     arma::vec K_G1_vec = M_G1_vec / M_G0_vec;
     arma::vec K_G2_vec = (M_G0_vec % M_G2_vec - pow(M_G1_vec, 2)) / pow(M_G0_vec, 2);
-    double H1_adj = sum(tR % K_G1_vec) - s;
-    double H2 = sum(pow(tR, 2) % K_G2_vec);
+    double H1_adj = sum(R % K_G1_vec) - s;
+    double H2 = sum(pow(R, 2) % K_G2_vec);
     H1_adj_H2_vec.at(0) = H1_adj;
     H1_adj_H2_vec.at(1) = H2;
     return H1_adj_H2_vec;
