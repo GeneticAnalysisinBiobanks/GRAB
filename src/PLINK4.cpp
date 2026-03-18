@@ -10,19 +10,22 @@
 
 namespace PLINK4 {
 
-PlinkReader::PlinkReader(const std::string &bimFile,
-                         const std::string &famFile,
-                         const std::string &bedFile,
-                         const std::vector<std::string> &sampleInModel,
-                         const std::string &alleleOrder)
-  : m_alleleOrder(alleleOrder) {
+PlinkReader::PlinkReader(
+  const std::string &bimFile,
+  const std::string &famFile,
+  const std::string &bedFile,
+  const std::vector<std::string> &sampleInModel,
+  const std::string &alleleOrder
+) : m_alleleOrder(alleleOrder) {
   setPlinkObject(bimFile, famFile, bedFile);
   setPosSampleInPlink(sampleInModel);
 }
 
-void PlinkReader::setPlinkObject(const std::string &bimFile,
-                                 const std::string &famFile,
-                                 const std::string &bedFile) {
+void PlinkReader::setPlinkObject(
+  const std::string &bimFile,
+  const std::string &famFile,
+  const std::string &bedFile
+) {
   m_bimFile = bimFile;
   m_famFile = famFile;
   m_bedFile = bedFile;
@@ -233,21 +236,23 @@ void PlinkReader::readCurrentMarkerBytes(uint64_t gIndex) {
   m_nextMarkerIndex = gIndex + 1;
 }
 
-arma::vec PlinkReader::getOneMarker(uint64_t gIndex,
-                                    std::string &ref,
-                                    std::string &alt,
-                                    std::string &marker,
-                                    uint32_t &pd,
-                                    std::string &chr,
-                                    double &altFreq,
-                                    double &altCounts,
-                                    double &missingRate,
-                                    double &imputeInfo,
-                                    bool isOutputIndexForMissing,
-                                    std::vector<uint32_t> &indexForMissing,
-                                    bool isOnlyOutputNonZero,
-                                    std::vector<uint32_t> &indexForNonZero,
-                                    bool isTrueGenotype) {
+arma::vec PlinkReader::getOneMarker(
+  uint64_t gIndex,
+  std::string &ref,
+  std::string &alt,
+  std::string &marker,
+  uint32_t &pd,
+  std::string &chr,
+  double &altFreq,
+  double &altCounts,
+  double &missingRate,
+  double &imputeInfo,
+  bool isOutputIndexForMissing,
+  std::vector<uint32_t> &indexForMissing,
+  bool isOnlyOutputNonZero,
+  std::vector<uint32_t> &indexForNonZero,
+  bool isTrueGenotype
+) {
   int sum = 0;
   int numMissing = 0;
   std::vector<double> oneMarkerG1;

@@ -30,7 +30,7 @@ GRAB.Marker4 <- function (
 
   method_defaults <- switch(
     null_class,
-    POLMM_NULL_Model      = list(ifOutGroup = FALSE),
+    POLMM_NULL_Model      = list(),
     WtCoxG_NULL_Model     = list(cutoff = 0.05),
     LEAF_NULL_Model       = list(cutoff = 0.05),
     SPAGRM_NULL_Model     = list(zeta = 0, tol = 1e-5),
@@ -186,9 +186,7 @@ GRAB.Marker4 <- function (
   null_class <- class(obj_null)
 
   if (null_class == "POLMM_NULL_Model") {
-    if (!is.logical(control$ifOutGroup) || length(control$ifOutGroup) != 1) {
-      stop("control$ifOutGroup must be TRUE or FALSE.")
-    }
+    return(control)
   } else if (null_class %in% c("WtCoxG_NULL_Model", "LEAF_NULL_Model")) {
     if (!is.numeric(control$cutoff) || control$cutoff <= 0 || control$cutoff >= 1) {
       stop("control$cutoff must be numeric in (0, 1).")
@@ -212,8 +210,7 @@ GRAB.Marker4 <- function (
       stop("control$afFilePath must be provided for SPAmixPlus.")
     }
   } else if (null_class %in% c("SPAGRM_NULL_Model", "SAGELD_NULL_Model", "SPAsqr_NULL_Model")) {
-    maf_iv <- obj_null$MAF_interval
-    if (length(maf_iv) > 1 && control$min_maf_marker <= min(maf_iv)) {
+    if (length(obj_null$MAF_interval) > 1 && control$min_maf_marker <= min(obj_null$MAF_interval)) {
       stop("min_maf_marker is out of MAF_interval. Please reset.")
     }
   } else {

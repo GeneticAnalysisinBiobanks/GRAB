@@ -1,4 +1,46 @@
-// Marker4Engine.cpp -- Thread pool, chunk dispatch, sequential writer, and IO helpers
+// Marker4Engine.cpp -- Thread pool, PLINK reader, per-chunk worker, sequential writer,
+//                      and per-method Rcpp entry points (via Marker4Bridge.h)
+//
+// Functions by role:
+//
+//   [File-local structs]
+//     RangeFilter        — a genomic interval used for marker include/exclude filtering
+//     ThreadContext      — per-worker copies of the active statistical method object
+//
+//   [IO helpers]          (static, file-local)
+//     splitWhitespace          — split a line into whitespace-delimited tokens
+//     readSingleColumnFile     — read a single-column text file (e.g. marker ID list)
+//     readRangeFile            — parse a three-column chrom/start/end range file
+//     markerInRanges           — test whether a marker falls inside any RangeFilter
+//
+//   [Reader]              (Marker4 namespace, external linkage)
+//     readPlinkMarkerInfo       — parse .bim into a PlinkMarkerInfo vector
+//     readPlinkSampleIds        — parse .fam into a sample ID vector
+//     validateRequestedSamples  — verify all model samples exist in .fam
+//     applyPlinkMarkerFilters   — apply ID/range include-exclude filters
+//     buildPlinkChunkIndexList  — partition markers into per-chromosome chunks
+//
+//   [Output header]       (static)
+//     getHeader           — produce the TSV column header for a given method
+//
+//   [Worker context]      (static)
+//     makeThreadContext   — clone the global method object into a per-thread ThreadContext
+//
+//   [Engine]              (Marker4 namespace, external linkage)
+//     mainMarkerChunksCore — coordinate the PLINK reader, worker pool, and writer thread
+//
+//   [Bridge functions]    (via #include "Marker4Bridge.h", compiled in this TU)
+//     runEngineCore             — build filter/reader configs and invoke mainMarkerChunksCore
+//     splitVec / splitUvec / splitMat / matRowsToVecs — reconstruct arma containers from R
+//     runMarkerInCPP_POLMM      — create POLMMClass and dispatch to runEngineCore
+//     runMarkerInCPP_SPACox     — create SPACoxClass and dispatch to runEngineCore
+//     runMarkerInCPP_SPAmix     — create SPAmixClass and dispatch to runEngineCore
+//     runMarkerInCPP_SPAmixPlus — create SPAmixPlusClass and dispatch to runEngineCore
+//     runMarkerInCPP_SPAGRM     — create SPAGRMClass and dispatch to runEngineCore
+//     runMarkerInCPP_SAGELD     — create SAGELDClass and dispatch to runEngineCore
+//     runMarkerInCPP_WtCoxG     — create WtCoxGClass, populate wtMap, dispatch
+//     runMarkerInCPP_SPAsqr     — create SPAsqrClass and dispatch to runEngineCore
+//     runMarkerInCPP_LEAF       — create LEAFClass, populate leafMaps, dispatch
 
 #include "Marker4Engine.h"
 #include "PLINK4.h"
@@ -29,24 +71,42 @@
 #include <zlib.h>
 
 
-POLMM::POLMMClass*       ptr_gPOLMMobj      = nullptr;
-SPACox::SPACoxClass*      ptr_gSPACoxobj     = nullptr;
-SPAmix::SPAmixClass*      ptr_gSPAmixobj     = nullptr;
-SPAGRM::SPAGRMClass*     ptr_gSPAGRMobj     = nullptr;
-SAGELD::SAGELDClass*      ptr_gSAGELDobj     = nullptr;
-WtCoxG::WtCoxGClass*     ptr_gWtCoxGobj     = nullptr;
-SPAsqr::SPAsqrClass*      ptr_gSPAsqrobj     = nullptr;
-LEAF::LEAFClass*          ptr_gLEAFobj       = nullptr;
+// ---- Global method pointers (one per active statistical method) ----
+POLMM::POLMMClass*           ptr_gPOLMMobj      = nullptr;
+SPACox::SPACoxClass*         ptr_gSPACoxobj     = nullptr;
+SPAmix::SPAmixClass*         ptr_gSPAmixobj     = nullptr;
+SPAGRM::SPAGRMClass*         ptr_gSPAGRMobj     = nullptr;
+SAGELD::SAGELDClass*         ptr_gSAGELDobj     = nullptr;
+WtCoxG::WtCoxGClass*         ptr_gWtCoxGobj     = nullptr;
+SPAsqr::SPAsqrClass*         ptr_gSPAsqrobj     = nullptr;
+LEAF::LEAFClass*             ptr_gLEAFobj       = nullptr;
 SPAmixPlus::SPAmixPlusClass* ptr_gSPAmixPlusobj = nullptr;
 
 namespace Marker4 {
 
+// ---- File-local structs ----
 
-static std::string toLowerCopy(std::string value) {
-  std::transform(value.begin(), value.end(), value.begin(),
-                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-  return value;
-}
+// A genomic interval used for marker include/exclude range filtering.
+struct RangeFilter {
+  std::string chrom;
+  uint32_t    start;
+  uint32_t    end;
+};
+
+// Per-worker independent copies of the active method object.
+struct ThreadContext {
+  std::unique_ptr<POLMM::POLMMClass>           polmm;
+  std::unique_ptr<SPACox::SPACoxClass>         spacox;
+  std::unique_ptr<SPAmix::SPAmixClass>         spamix;
+  std::unique_ptr<SPAmixPlus::SPAmixPlusClass> spamixPlus;
+  std::unique_ptr<SPAGRM::SPAGRMClass>         spagrm;
+  std::unique_ptr<SAGELD::SAGELDClass>         sageld;
+  std::unique_ptr<WtCoxG::WtCoxGClass>         wtcoxg;
+  std::unique_ptr<SPAsqr::SPAsqrClass>         spasqr;
+  std::unique_ptr<LEAF::LEAFClass>             leaf;
+};
+
+// ---- IO helpers ----
 
 static std::vector<std::string> splitWhitespace(const std::string& line) {
   std::istringstream iss(line);
@@ -54,18 +114,6 @@ static std::vector<std::string> splitWhitespace(const std::string& line) {
   std::string token;
   while (iss >> token) tokens.push_back(token);
   return tokens;
-}
-
-static bool fileExists(const std::string& path) {
-  if (path.empty()) return false;
-  std::ifstream in(path.c_str(), std::ios::binary);
-  return in.good();
-}
-
-static std::string replaceExtension(const std::string& path, const std::string& newExt) {
-  const size_t pos = path.find_last_of('.');
-  if (pos == std::string::npos) return path + newExt;
-  return path.substr(0, pos) + newExt;
 }
 
 static std::vector<std::string> readSingleColumnFile(const std::string& path) {
@@ -110,33 +158,7 @@ static bool markerInRanges(const PlinkMarkerInfo& marker,
   return false;
 }
 
-static void appendCell(std::ostringstream& oss, const std::string& v, bool first = false) {
-  if (!first) oss << '\t';
-  oss << v;
-}
-static void appendCell(std::ostringstream& oss, double v, bool first = false) {
-  appendCell(oss, numToStr(v), first);
-}
-
-static void appendMeta(std::ostringstream& oss,
-                       const std::string& marker,
-                       const std::string& chr,
-                       uint32_t pos,
-                       const std::string& ref,
-                       const std::string& alt,
-                       double altCounts,
-                       double altFreq,
-                       double missingRate) {
-  appendCell(oss, marker, true);
-  appendCell(oss, chr);
-  appendCell(oss, std::to_string(pos));
-  appendCell(oss, ref);
-  appendCell(oss, alt);
-  appendCell(oss, altCounts);
-  appendCell(oss, altFreq);
-  appendCell(oss, missingRate);
-}
-
+// ---- Reader implementations ----
 
 std::vector<PlinkMarkerInfo> readPlinkMarkerInfo(const std::string& bimFile,
                                                  const std::string& alleleOrder) {
@@ -256,36 +278,12 @@ std::vector<std::vector<uint64_t>> buildPlinkChunkIndexList(
 }
 
 
-std::string numToStr(double x) {
-  if (std::isnan(x)) return "NA";
-  if (std::isinf(x)) return (x > 0 ? "Inf" : "-Inf");
-  char buf[32];
-  std::snprintf(buf, sizeof(buf), "%.6g", x);
-  return buf;
-}
-
-double cctPvalue(const std::vector<double>& pvals) {
-  std::vector<double> p;
-  p.reserve(pvals.size());
-  for (double x : pvals)
-    if (!std::isnan(x)) p.push_back(x);
-  if (p.empty()) return std::numeric_limits<double>::quiet_NaN();
-
-  double tStat = 0.0;
-  for (double x : p) {
-    if (x <= 0.0) return 0.0;
-    if (x >= 1.0) x = 0.999;
-    tStat += std::tan((0.5 - x) * M_PI);
-  }
-  tStat /= static_cast<double>(p.size());
-
-  if (tStat > 1e15) return (1.0 / tStat) / M_PI;
-  return 0.5 - std::atan(tStat) / M_PI;
-}
+// ---- Output header ----
 
 static const char* META_HEADER = "Marker\tChr\tPos\tRef\tAlt\tAltCount\tAltFreq\tMissRate";
 
-std::string getHeader(const std::string& method,
+// Build the TSV column header line for the given method.
+static std::string getHeader(const std::string& method,
                       const std::string& sageldMethod,
                       const std::vector<double>& taus,
                       int nPheno,
@@ -325,7 +323,10 @@ std::string getHeader(const std::string& method,
 }
 
 
-ThreadContext makeThreadContext(const std::string& method) {
+// ---- Worker context ----
+
+// Clone the global method object into a per-thread ThreadContext.
+static ThreadContext makeThreadContext(const std::string& method) {
   ThreadContext ctx;
   if (method == "POLMM") {
     if (!ptr_gPOLMMobj) throw std::runtime_error("POLMM object is not initialized.");
@@ -358,6 +359,8 @@ ThreadContext makeThreadContext(const std::string& method) {
   return ctx;
 }
 
+
+// ---- Engine: mainMarkerChunksCore ----
 
 void mainMarkerChunksCore(
   const std::string& method,
@@ -780,4 +783,9 @@ void mainMarkerChunksCore(
   if (workerError) std::rethrow_exception(workerError);
 }
 
-}
+} // namespace Marker4
+
+// ---- Bridge functions (Rcpp entry points + support utilities) ----
+// Included here so they are compiled as part of this translation unit.
+// Marker4Bridge.h must be included from exactly one .cpp file.
+#include "Marker4Bridge.h"

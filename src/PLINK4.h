@@ -59,9 +59,11 @@ private:
 
   void readBimFile();
   void readFamFile();
-  void setPlinkObject(const std::string &bimFile,
-                      const std::string &famFile,
-                      const std::string &bedFile);
+  void setPlinkObject(
+    const std::string &bimFile,
+    const std::string &famFile,
+    const std::string &bedFile
+  );
   void setPosSampleInPlink(const std::vector<std::string> &sampleInModel);
   void loadSequentialMarkerBlock(uint64_t startMarkerIndex);
   void copyBufferedMarkerToCurrent(uint64_t markerIndex);
@@ -72,30 +74,34 @@ private:
   }
 
 public:
-  PlinkReader(const std::string &bimFile,
-              const std::string &famFile,
-              const std::string &bedFile,
-              const std::vector<std::string> &sampleInModel,
-              const std::string &alleleOrder);
+  PlinkReader(
+    const std::string &bimFile,
+    const std::string &famFile,
+    const std::string &bedFile,
+    const std::vector<std::string> &sampleInModel,
+    const std::string &alleleOrder
+  );
 
   void beginSequentialBlock(uint64_t firstMarkerIndex);
   void resetSequentialCursor();
 
-  arma::vec getOneMarker(uint64_t gIndex,
-                         std::string &ref,
-                         std::string &alt,
-                         std::string &marker,
-                         uint32_t &pd,
-                         std::string &chr,
-                         double &altFreq,
-                         double &altCounts,
-                         double &missingRate,
-                         double &imputeInfo,
-                         bool isOutputIndexForMissing,
-                         std::vector<uint32_t> &indexForMissing,
-                         bool isOnlyOutputNonZero,
-                         std::vector<uint32_t> &indexForNonZero,
-                         bool isTrueGenotype);
+  arma::vec getOneMarker(
+    uint64_t gIndex,
+    std::string &ref,
+    std::string &alt,
+    std::string &marker,
+    uint32_t &pd,
+    std::string &chr,
+    double &altFreq,
+    double &altCounts,
+    double &missingRate,
+    double &imputeInfo,
+    bool isOutputIndexForMissing,
+    std::vector<uint32_t> &indexForMissing,
+    bool isOnlyOutputNonZero,
+    std::vector<uint32_t> &indexForNonZero,
+    bool isTrueGenotype
+  );
 };
 
 }
