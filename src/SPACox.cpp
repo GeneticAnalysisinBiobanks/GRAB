@@ -3,17 +3,18 @@
 #include <RcppArmadillo.h>
 
 #include "SPACox.h"
-#include "UTIL.h"
 
 namespace SPACox {
 
-SPACoxClass::SPACoxClass(arma::mat cumul,
-                         arma::vec mresid,
-                         arma::mat XinvXX,
-                         arma::mat tX,
-                         int N,
-                         double pVal_covaAdj_Cutoff,
-                         double SPA_Cutoff) {
+SPACoxClass::SPACoxClass(
+  arma::mat cumul,
+  arma::vec mresid,
+  arma::mat XinvXX,
+  arma::mat tX,
+  int N,
+  double pVal_covaAdj_Cutoff,
+  double SPA_Cutoff
+) {
   m_mresid = mresid;
   m_varResid = var(m_mresid);
   m_XinvXX = XinvXX;
@@ -126,7 +127,6 @@ double SPACoxClass::getMarkerPval(arma::vec GVec, double MAF, double& zScore) {
   int N0 = m_N - N1set.size();
 
   arma::vec adjGVecNorm = adjGVec / sqrt(VarS);
-
   arma::vec adjG1 = adjGVecNorm.elem(N1set);
   double adjG0 = -2 * MAF / sqrt(VarS);
 
@@ -156,12 +156,14 @@ double SPACoxClass::getMarkerPval(arma::vec GVec, double MAF, double& zScore) {
   return pval;
 }
 
-void SPACoxClass::getRegionPVec(arma::vec GVec,
-                                double& zScore,
-                                double& pval0,
-                                double& pval1,
-                                arma::vec& P1Vec,
-                                arma::vec& P2Vec) {
+void SPACoxClass::getRegionPVec(
+  arma::vec GVec,
+  double& zScore,
+  double& pval0,
+  double& pval1,
+  arma::vec& P1Vec,
+  arma::vec& P2Vec
+) {
   double S = sum(GVec % m_mresid);
 
   arma::uvec N1set = arma::find(GVec != 0);

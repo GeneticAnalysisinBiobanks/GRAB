@@ -1,24 +1,15 @@
-// Marker4Engine.cpp -- Thread pool, PLINK reader, per-chunk worker, sequential writer,
-//                      and per-method Rcpp entry points (via Marker4Bridge.h)
+// Marker4Engine.cpp -- Thread pool, per-chunk worker, sequential writer
 //
 // Functions by role:
 //
+//   [Inline helpers]
+//     numToStr           — format a double as a short string ("NA", "Inf", or %.6g)
+//     cctPvalue          — Cauchy combination test aggregate p-value
+//     appendCell         — append a tab-separated cell to an ostringstream
+//     appendMeta         — append the 8 standard marker meta-columns
+//
 //   [File-local structs]
-//     RangeFilter        — a genomic interval used for marker include/exclude filtering
 //     ThreadContext      — per-worker copies of the active statistical method object
-//
-//   [IO helpers]          (static, file-local)
-//     splitWhitespace          — split a line into whitespace-delimited tokens
-//     readSingleColumnFile     — read a single-column text file (e.g. marker ID list)
-//     readRangeFile            — parse a three-column chrom/start/end range file
-//     markerInRanges           — test whether a marker falls inside any RangeFilter
-//
-//   [Reader]              (Marker4 namespace, external linkage)
-//     readPlinkMarkerInfo       — parse .bim into a PlinkMarkerInfo vector
-//     readPlinkSampleIds        — parse .fam into a sample ID vector
-//     validateRequestedSamples  — verify all model samples exist in .fam
-//     applyPlinkMarkerFilters   — apply ID/range include-exclude filters
-//     buildPlinkChunkIndexList  — partition markers into per-chromosome chunks
 //
 //   [Output header]       (static)
 //     getHeader           — produce the TSV column header for a given method
@@ -27,22 +18,9 @@
 //     makeThreadContext   — clone the global method object into a per-thread ThreadContext
 //
 //   [Engine]              (Marker4 namespace, external linkage)
-//     mainMarkerChunksCore — coordinate the PLINK reader, worker pool, and writer thread
-//
-//   [Bridge functions]    (via #include "Marker4Bridge.h", compiled in this TU)
-//     runEngineCore             — build filter/reader configs and invoke mainMarkerChunksCore
-//     splitVec / splitUvec / splitMat / matRowsToVecs — reconstruct arma containers from R
-//     runMarkerInCPP_POLMM      — create POLMMClass and dispatch to runEngineCore
-//     runMarkerInCPP_SPACox     — create SPACoxClass and dispatch to runEngineCore
-//     runMarkerInCPP_SPAmix     — create SPAmixClass and dispatch to runEngineCore
-//     runMarkerInCPP_SPAmixPlus — create SPAmixPlusClass and dispatch to runEngineCore
-//     runMarkerInCPP_SPAGRM     — create SPAGRMClass and dispatch to runEngineCore
-//     runMarkerInCPP_SAGELD     — create SAGELDClass and dispatch to runEngineCore
-//     runMarkerInCPP_WtCoxG     — create WtCoxGClass, populate wtMap, dispatch
-//     runMarkerInCPP_SPAsqr     — create SPAsqrClass and dispatch to runEngineCore
-//     runMarkerInCPP_LEAF       — create LEAFClass, populate leafMaps, dispatch
+//     mainMarkerChunksCore — coordinate the PLINK cursor, worker pool, and writer thread
 
-#include "Marker4Engine.h"
+#include "Marker4.h"
 #include "PLINK4.h"
 #include "POLMM.h"
 #include "SPACox.h"
@@ -62,7 +40,6 @@
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
-#include <unordered_set>
 #include <cmath>
 #include <exception>
 #include <cstdio>
@@ -84,14 +61,68 @@ SPAmixPlus::SPAmixPlusClass* ptr_gSPAmixPlusobj = nullptr;
 
 namespace Marker4 {
 
-// ---- File-local structs ----
+// ---- Inline helpers ----
 
-// A genomic interval used for marker include/exclude range filtering.
-struct RangeFilter {
-  std::string chrom;
-  uint32_t    start;
-  uint32_t    end;
-};
+// Format a double as a short string: "NA", "Inf", "-Inf", or %.6g.
+static std::string numToStr(double x) {
+  if (std::isnan(x)) return "NA";
+  if (std::isinf(x)) return (x > 0 ? "Inf" : "-Inf");
+  char buf[32];
+  std::snprintf(buf, sizeof(buf), "%.6g", x);
+  return buf;
+}
+
+// Cauchy combination test: aggregate a vector of p-values into one p-value.
+static double cctPvalue(const std::vector<double>& pvals) {
+  std::vector<double> p;
+  p.reserve(pvals.size());
+  for (double x : pvals)
+    if (!std::isnan(x)) p.push_back(x);
+  if (p.empty()) return std::numeric_limits<double>::quiet_NaN();
+  double tStat = 0.0;
+  for (double x : p) {
+    if (x <= 0.0) return 0.0;
+    if (x >= 1.0) x = 0.999;
+    tStat += std::tan((0.5 - x) * M_PI);
+  }
+  tStat /= static_cast<double>(p.size());
+  if (tStat > 1e15) return (1.0 / tStat) / M_PI;
+  return 0.5 - std::atan(tStat) / M_PI;
+}
+
+// Append one tab-separated value to an output row buffer.
+static void appendCell(std::ostringstream& oss, const std::string& v, bool first = false) {
+  if (!first) oss << '\t';
+  oss << v;
+}
+static void appendCell(std::ostringstream& oss, double v, bool first = false) {
+  appendCell(oss, numToStr(v), first);
+}
+
+// Append the 8 standard marker meta-columns (Marker, Chr, Pos, Ref, Alt,
+// AltCount, AltFreq, MissRate) as the first cells of an output row.
+static void appendMeta(
+  std::ostringstream& oss,
+  const std::string& marker,
+  const std::string& chr,
+  uint32_t pos,
+  const std::string& ref,
+  const std::string& alt,
+  double altCounts,
+  double altFreq,
+  double missingRate
+) {
+  appendCell(oss, marker, true);
+  appendCell(oss, chr);
+  appendCell(oss, std::to_string(pos));
+  appendCell(oss, ref);
+  appendCell(oss, alt);
+  appendCell(oss, altCounts);
+  appendCell(oss, altFreq);
+  appendCell(oss, missingRate);
+}
+
+// ---- File-local structs ----
 
 // Per-worker independent copies of the active method object.
 struct ThreadContext {
@@ -105,177 +136,6 @@ struct ThreadContext {
   std::unique_ptr<SPAsqr::SPAsqrClass>         spasqr;
   std::unique_ptr<LEAF::LEAFClass>             leaf;
 };
-
-// ---- IO helpers ----
-
-static std::vector<std::string> splitWhitespace(const std::string& line) {
-  std::istringstream iss(line);
-  std::vector<std::string> tokens;
-  std::string token;
-  while (iss >> token) tokens.push_back(token);
-  return tokens;
-}
-
-static std::vector<std::string> readSingleColumnFile(const std::string& path) {
-  std::ifstream in(path.c_str());
-  if (!in.is_open())
-    throw std::runtime_error("Cannot open marker ID filter file: " + path);
-  std::vector<std::string> values;
-  std::string line;
-  while (std::getline(in, line)) {
-    auto tokens = splitWhitespace(line);
-    if (!tokens.empty()) values.push_back(tokens[0]);
-  }
-  return values;
-}
-
-static std::vector<RangeFilter> readRangeFile(const std::string& path) {
-  std::ifstream in(path.c_str());
-  if (!in.is_open())
-    throw std::runtime_error("Cannot open range filter file: " + path);
-  std::vector<RangeFilter> ranges;
-  std::string line;
-  while (std::getline(in, line)) {
-    auto tokens = splitWhitespace(line);
-    if (tokens.empty()) continue;
-    if (tokens.size() != 3)
-      throw std::runtime_error("Range filter file should include exactly three whitespace-separated columns: " + path);
-    ranges.push_back(RangeFilter{
-      tokens[0],
-      static_cast<uint32_t>(std::stoul(tokens[1])),
-      static_cast<uint32_t>(std::stoul(tokens[2]))
-    });
-  }
-  return ranges;
-}
-
-static bool markerInRanges(const PlinkMarkerInfo& marker,
-                           const std::vector<RangeFilter>& ranges) {
-  for (const auto& r : ranges) {
-    if (marker.chrom == r.chrom && marker.pos >= r.start && marker.pos <= r.end)
-      return true;
-  }
-  return false;
-}
-
-// ---- Reader implementations ----
-
-std::vector<PlinkMarkerInfo> readPlinkMarkerInfo(const std::string& bimFile,
-                                                 const std::string& alleleOrder) {
-  std::ifstream in(bimFile.c_str());
-  if (!in.is_open())
-    throw std::runtime_error("Cannot open .bim file: " + bimFile);
-
-  std::vector<PlinkMarkerInfo> markers;
-  std::string line;
-  uint64_t markerIndex = 0;
-  while (std::getline(in, line)) {
-    auto tokens = splitWhitespace(line);
-    if (tokens.empty()) continue;
-    if (tokens.size() != 6)
-      throw std::runtime_error("PLINK .bim file should include 6 whitespace-separated columns: " + bimFile);
-
-    std::string ref = tokens[5], alt = tokens[4];
-    if (alleleOrder == "ref-first") { ref = tokens[4]; alt = tokens[5]; }
-    std::transform(ref.begin(), ref.end(), ref.begin(), ::toupper);
-    std::transform(alt.begin(), alt.end(), alt.begin(), ::toupper);
-
-    markers.push_back(PlinkMarkerInfo{
-      tokens[0],
-      static_cast<uint32_t>(std::stoul(tokens[3])),
-      tokens[1], ref, alt, markerIndex
-    });
-    ++markerIndex;
-  }
-  return markers;
-}
-
-std::vector<std::string> readPlinkSampleIds(const std::string& famFile) {
-  std::ifstream in(famFile.c_str());
-  if (!in.is_open())
-    throw std::runtime_error("Cannot open .fam file: " + famFile);
-  std::vector<std::string> ids;
-  std::string line;
-  while (std::getline(in, line)) {
-    auto tokens = splitWhitespace(line);
-    if (tokens.empty()) continue;
-    if (tokens.size() != 6)
-      throw std::runtime_error("PLINK .fam file should include 6 whitespace-separated columns: " + famFile);
-    ids.push_back(tokens[1]);
-  }
-  return ids;
-}
-
-void validateRequestedSamples(const std::vector<std::string>& requested,
-                              const std::vector<std::string>& available) {
-  std::unordered_set<std::string> avail(available.begin(), available.end());
-  for (const auto& s : requested) {
-    if (avail.find(s) == avail.end())
-      throw std::runtime_error("At least one subject requested is not in PLINK file.");
-  }
-}
-
-std::vector<PlinkMarkerInfo> applyPlinkMarkerFilters(
-    const std::vector<PlinkMarkerInfo>& markers,
-    const MarkerFilterConfig& filterConfig) {
-
-  std::unordered_set<std::string> includeIds, excludeIds;
-  std::vector<RangeFilter> includeRanges, excludeRanges;
-
-  if (!filterConfig.idsToIncludeFile.empty()) {
-    auto ids = readSingleColumnFile(filterConfig.idsToIncludeFile);
-    includeIds.insert(ids.begin(), ids.end());
-  }
-  if (!filterConfig.rangesToIncludeFile.empty())
-    includeRanges = readRangeFile(filterConfig.rangesToIncludeFile);
-  if (!filterConfig.idsToExcludeFile.empty()) {
-    auto ids = readSingleColumnFile(filterConfig.idsToExcludeFile);
-    excludeIds.insert(ids.begin(), ids.end());
-  }
-  if (!filterConfig.rangesToExcludeFile.empty())
-    excludeRanges = readRangeFile(filterConfig.rangesToExcludeFile);
-
-  const bool anyInclude = !includeIds.empty() || !includeRanges.empty();
-  const bool anyExclude = !excludeIds.empty() || !excludeRanges.empty();
-
-  std::vector<PlinkMarkerInfo> filtered;
-  filtered.reserve(markers.size());
-  for (const auto& m : markers) {
-    bool inc = !anyInclude;
-    if (anyInclude)
-      inc = (includeIds.count(m.id) > 0) || markerInRanges(m, includeRanges);
-    if (!inc) continue;
-
-    bool exc = false;
-    if (anyExclude)
-      exc = (excludeIds.count(m.id) > 0) || markerInRanges(m, excludeRanges);
-    if (!exc) filtered.push_back(m);
-  }
-  return filtered;
-}
-
-std::vector<std::vector<uint64_t>> buildPlinkChunkIndexList(
-    const std::vector<PlinkMarkerInfo>& markers,
-    int nMarkersEachChunk) {
-
-  std::vector<std::vector<uint64_t>> chunks;
-  size_t start = 0;
-  while (start < markers.size()) {
-    const std::string chrom = markers[start].chrom;
-    size_t chromEnd = start;
-    while (chromEnd < markers.size() && markers[chromEnd].chrom == chrom) ++chromEnd;
-
-    for (size_t cs = start; cs < chromEnd; cs += static_cast<size_t>(nMarkersEachChunk)) {
-      size_t ce = std::min(cs + static_cast<size_t>(nMarkersEachChunk), chromEnd);
-      std::vector<uint64_t> chunk;
-      chunk.reserve(ce - cs);
-      for (size_t i = cs; i < ce; ++i) chunk.push_back(markers[i].genoIndex);
-      chunks.push_back(std::move(chunk));
-    }
-    start = chromEnd;
-  }
-  return chunks;
-}
 
 
 // ---- Output header ----
@@ -326,6 +186,9 @@ static std::string getHeader(const std::string& method,
 // ---- Worker context ----
 
 // Clone the global method object into a per-thread ThreadContext.
+// Each method class stores per-marker mutable state (result vectors, scratch),
+// so per-thread copies are required for thread safety.  The copy happens once
+// per thread, not per chunk, so the cost is amortized.
 static ThreadContext makeThreadContext(const std::string& method) {
   ThreadContext ctx;
   if (method == "POLMM") {
@@ -366,28 +229,23 @@ void mainMarkerChunksCore(
   const std::string& method,
   const std::vector<std::vector<uint64_t>>& chunkMarkers,
   const std::string& outputFile,
-  unsigned int nThreads,
+  unsigned int nthreads,
   const std::string& impute_method,
-  double missingCutoff,
-  double minMafMarker,
-  double minMacMarker,
-  const ExtraParams& extra
+  double missing_cutoff,
+  double min_maf_marker,
+  double min_mac_marker,
+  const PLINK4::PlinkData& plinkData
 ) {
   if (chunkMarkers.empty())
     throw std::runtime_error("chunkMarkers is empty.");
-  if (nThreads < 1)
-    throw std::runtime_error("nThreads should be >= 1.");
-
-  const ReaderConfig& reader = extra.reader;
-  if (reader.genoType.empty())
-    throw std::runtime_error("Reader configuration is required in Marker4 core.");
+  if (nthreads < 1)
+    throw std::runtime_error("nthreads should be >= 1.");
 
   int nPheno = 1;
   if (method == "SPAmix") nPheno = ptr_gSPAmixobj->getNpheno();
   if (method == "SPAmixPlus") nPheno = ptr_gSPAmixPlusobj->getNpheno();
   if (method == "SPAsqr") nPheno = ptr_gSPAsqrobj->get_ntaus();
 
-  // Extract method-specific constants from class objects (not chunk-specific)
   const std::string sageldMethod = (method == "SAGELD" && ptr_gSAGELDobj) ? ptr_gSAGELDobj->getMethod() : "SAGELD";
   const std::vector<double> spasqrTaus = (method == "SPAsqr" && ptr_gSPAsqrobj) ? ptr_gSPAsqrobj->getTaus() : std::vector<double>{};
   const int leafNcluster = (method == "LEAF" && ptr_gLEAFobj) ? ptr_gLEAFobj->get_Ncluster() : 0;
@@ -459,14 +317,9 @@ void mainMarkerChunksCore(
 
   auto workerFn = [&]() {
     try {
+      // Per-thread: copy method object (once) + open .bed file handle
       ThreadContext ctx = makeThreadContext(method);
-
-      if (reader.genoType != "PLINK")
-        throw std::runtime_error("Unsupported reader genoType in Marker4 core: " + reader.genoType);
-      std::unique_ptr<PLINK4::PlinkReader> plinkReader(new PLINK4::PlinkReader(
-        reader.bimFile, reader.famFile, reader.bedFile,
-        reader.sampleInModel, reader.alleleOrder
-      ));
+      PLINK4::PlinkCursor cursor(plinkData);
 
       while (true) {
         size_t cidx = nextChunk.fetch_add(1);
@@ -475,76 +328,36 @@ void mainMarkerChunksCore(
         const auto& gIdx = chunkMarkers[cidx];
         std::ostringstream out;
 
-        if (!gIdx.empty()) plinkReader->beginSequentialBlock(gIdx.front());
+        if (!gIdx.empty()) cursor.beginSequentialBlock(gIdx.front());
 
-
-        std::vector<WtRow> wtChunkRows;
+        // WtCoxG per-chunk prep: look up refMap and call updateMarkerInfo
         if (method == "WtCoxG") {
-          wtChunkRows.reserve(gIdx.size());
-          std::vector<double> AF_ref, AN_ref, TPR, sigma2, pvalue_bat, w_ext, var_w0, var_int, var_ext;
-          AF_ref.reserve(gIdx.size()); AN_ref.reserve(gIdx.size());
-          TPR.reserve(gIdx.size()); sigma2.reserve(gIdx.size());
-          pvalue_bat.reserve(gIdx.size()); w_ext.reserve(gIdx.size());
-          var_w0.reserve(gIdx.size()); var_int.reserve(gIdx.size()); var_ext.reserve(gIdx.size());
-
-          for (auto gi : gIdx) {
-            auto it = extra.wtMap.find(gi);
-            wtChunkRows.push_back(it == extra.wtMap.end()
-              ? WtRow{NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN} : it->second);
-          }
-          for (const auto& r : wtChunkRows) {
-            AF_ref.push_back(r.AF_ref); AN_ref.push_back(r.AN_ref);
-            TPR.push_back(r.TPR); sigma2.push_back(r.sigma2);
-            pvalue_bat.push_back(r.pvalue_bat); w_ext.push_back(r.w_ext);
-            var_w0.push_back(r.var_ratio_w0); var_int.push_back(r.var_ratio_int);
-            var_ext.push_back(r.var_ratio_ext);
-          }
-          ctx.wtcoxg->updateMarkerInfo(AF_ref, AN_ref, TPR, sigma2, pvalue_bat, w_ext, var_w0, var_int, var_ext);
+          ctx.wtcoxg->prepareChunk(gIdx);
         }
 
-
-        std::vector<std::vector<LeafRow>> leafChunkRows;
+        // LEAF per-chunk prep: look up per-cluster refMaps
         if (method == "LEAF") {
-          leafChunkRows.resize(leafNcluster);
-          for (int c = 0; c < leafNcluster; ++c) {
-            auto& rows = leafChunkRows[c];
-            rows.reserve(gIdx.size());
-            std::vector<double> AF_ref, AN_ref, TPR, sigma2, pvalue_bat, w_ext, var_w0, var_int, var_ext;
-            AF_ref.reserve(gIdx.size()); AN_ref.reserve(gIdx.size());
-            TPR.reserve(gIdx.size()); sigma2.reserve(gIdx.size());
-            pvalue_bat.reserve(gIdx.size()); w_ext.reserve(gIdx.size());
-            var_w0.reserve(gIdx.size()); var_int.reserve(gIdx.size()); var_ext.reserve(gIdx.size());
-
-            for (auto gi : gIdx) {
-              auto it = extra.leafMaps[c].find(gi);
-              rows.push_back(it == extra.leafMaps[c].end()
-                ? LeafRow{NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN} : it->second);
-            }
-            for (const auto& r : rows) {
-              AF_ref.push_back(r.AF_ref); AN_ref.push_back(r.AN_ref);
-              TPR.push_back(r.TPR); sigma2.push_back(r.sigma2);
-              pvalue_bat.push_back(r.pvalue_bat); w_ext.push_back(r.w_ext);
-              var_w0.push_back(r.var_ratio_w0); var_int.push_back(r.var_ratio_int);
-              var_ext.push_back(r.var_ratio_ext);
-            }
-            ctx.leaf->updateMarkerInfo(c, AF_ref, AN_ref, TPR, sigma2, pvalue_bat, w_ext, var_w0, var_int, var_ext);
-          }
+          ctx.leaf->prepareChunk(gIdx);
         }
-
 
         for (size_t i = 0; i < gIdx.size(); ++i) {
-          double altFreq = NAN, altCounts = NAN, missingRate = NAN, imputeInfo = NAN;
-          std::vector<uint32_t> indexForMissing, indexForNonZero;
-          std::string chr, ref, alt, marker;
-          uint32_t pd = 0;
+          double altFreq = NAN, altCounts = NAN, missingRate = NAN;
+          std::vector<uint32_t> indexForMissing;
 
-          arma::vec GVec = plinkReader->getOneMarker(gIdx[i], ref, alt, marker, pd, chr,
-            altFreq, altCounts, missingRate, imputeInfo, true, indexForMissing, false, indexForNonZero, true);
+          // Read genotype from per-thread cursor; metadata from shared plinkData
+          arma::vec GVec = cursor.getGenotypes(gIdx[i],
+            altFreq, altCounts, missingRate, indexForMissing);
+
+          const std::string& chr    = plinkData.chr(gIdx[i]);
+          const std::string& ref    = plinkData.ref(gIdx[i]);
+          const std::string& alt    = plinkData.alt(gIdx[i]);
+          const std::string& marker = plinkData.markerId(gIdx[i]);
+          uint32_t pd               = plinkData.pos(gIdx[i]);
 
           const double n = static_cast<double>(GVec.size());
           const double maf = std::min(altFreq, 1.0 - altFreq);
           const double mac = 2.0 * maf * n * (1.0 - missingRate);
-          bool passQC = !((missingRate > missingCutoff) || (maf < minMafMarker) || (mac < minMacMarker));
+          bool passQC = !((missingRate > missing_cutoff) || (maf < min_maf_marker) || (mac < min_mac_marker));
 
           bool flip = false;
           if (passQC) {
@@ -562,8 +375,8 @@ void mainMarkerChunksCore(
               }
             }
 
-            for (int i = 0; i < nMissing; i++){
-              uint32_t index = indexForMissing.at(i);
+            for (int j = 0; j < nMissing; j++){
+              uint32_t index = indexForMissing.at(j);
               GVec.at(index) = imputeG;
             }
 
@@ -674,7 +487,7 @@ void mainMarkerChunksCore(
               arma::vec zT = ctx.wtcoxg->getZScoreVec();
               pExt = pT[0]; pNoext = pT[1]; zExt = zT[0]; zNoext = zT[1];
             }
-            const WtRow& wr = wtChunkRows[i];
+            const auto& wr = ctx.wtcoxg->getChunkRefInfo(i);
             std::ostringstream row;
             appendMeta(row, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate);
             appendCell(row, pExt); appendCell(row, pNoext);
@@ -740,7 +553,7 @@ void mainMarkerChunksCore(
             appendCell(row, metaP(sExt, pExt)); appendCell(row, metaP(sNoext, pNoext));
             for (int c = 0; c < leafNcluster; ++c) {
               appendCell(row, pExt[c]); appendCell(row, pNoext[c]);
-              appendCell(row, leafChunkRows[c][i].pvalue_bat);
+              appendCell(row, ctx.leaf->getChunkRefInfo(c, i).pvalue_bat);
             }
             out << row.str() << '\n';
             continue;
@@ -765,14 +578,14 @@ void mainMarkerChunksCore(
     }
   };
 
-  nThreads = std::min<unsigned int>(nThreads, static_cast<unsigned int>(chunkMarkers.size()));
-  const bool runInline = (nThreads == 1 && (method == "WtCoxG" || method == "LEAF"));
+  nthreads = std::min<unsigned int>(nthreads, static_cast<unsigned int>(chunkMarkers.size()));
+  const bool runInline = (nthreads == 1);
   if (runInline) {
     workerFn();
   } else {
     std::vector<std::thread> workers;
-    workers.reserve(nThreads);
-    for (unsigned int t = 0; t < nThreads; ++t) workers.emplace_back(workerFn);
+    workers.reserve(nthreads);
+    for (unsigned int t = 0; t < nthreads; ++t) workers.emplace_back(workerFn);
     for (auto& th : workers) th.join();
   }
 
@@ -784,8 +597,3 @@ void mainMarkerChunksCore(
 }
 
 } // namespace Marker4
-
-// ---- Bridge functions (Rcpp entry points + support utilities) ----
-// Included here so they are compiled as part of this translation unit.
-// Marker4Bridge.h must be included from exactly one .cpp file.
-#include "Marker4Bridge.h"

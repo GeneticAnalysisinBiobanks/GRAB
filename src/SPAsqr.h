@@ -20,7 +20,6 @@ struct TauFamilyNativeInput {
 class SPAsqrClass {
 private:
 
-
   arma::vec m_taus;
   std::vector<SPAGRM::SPAGRMClass> m_SPAGRMobj_vec;
   arma::vec m_MAF_interval;
@@ -100,8 +99,8 @@ public:
 
     return pvalVec;
   }
-
 };
+
 }
 
 #endif

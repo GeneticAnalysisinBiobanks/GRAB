@@ -14,7 +14,6 @@ namespace SAGELD{
 class SAGELDClass {
 public:
 
-
   // ---- Public types ----
   struct TwoSubjFamily {
     arma::vec Resid;
@@ -30,7 +29,6 @@ public:
     arma::vec stand_S_GxE;
   };
 
-
   // Per-marker updated data for three-or-more-subject families.
   struct UpdatedThreeSubj {
     arma::vec stand_S;
@@ -40,7 +38,6 @@ public:
   const std::string& getMethod() const { return m_Method; }
 
 private:
-
 
   // ---- Members ----
   std::string m_Method;
@@ -94,90 +91,105 @@ private:
 
 public:
 
-
   // ---- Public interface ----
-  SAGELDClass(std::string Method,
-              arma::mat XTs,
-              arma::mat SS,
-              arma::mat AtS,
-              arma::mat Q,
-              arma::mat A21,
-              arma::mat TTs,
-              arma::mat Tys,
-              arma::vec sol,
-              arma::vec blups,
-              double sig,
-              arma::vec resid,
-              arma::vec resid_G,
-              arma::vec resid_GxE,
-              arma::vec resid_E,
-              arma::vec resid_unrelated_outliers,
-              arma::vec resid_unrelated_outliers_G,
-              arma::vec resid_unrelated_outliers_GxE,
-              double sum_R_nonOutlier,
-              double sum_R_nonOutlier_G,
-              double sum_R_nonOutlier_GxE,
-              arma::vec R_GRM_R,
-              arma::vec R_GRM_R_nonOutlier,
-              arma::vec R_GRM_R_TwoSubjOutlier,
-              std::vector<TwoSubjFamily> TwoSubj_list,
-              std::vector<ThreeSubjFamily> ThreeSubj_list,
-              arma::vec MAF_interval,
-              double zScoreE_cutoff,
-              double SPA_Cutoff,
-              double zeta,
-              double tol);
+  SAGELDClass(
+    std::string Method,
+    arma::mat XTs,
+    arma::mat SS,
+    arma::mat AtS,
+    arma::mat Q,
+    arma::mat A21,
+    arma::mat TTs,
+    arma::mat Tys,
+    arma::vec sol,
+    arma::vec blups,
+    double sig,
+    arma::vec resid,
+    arma::vec resid_G,
+    arma::vec resid_GxE,
+    arma::vec resid_E,
+    arma::vec resid_unrelated_outliers,
+    arma::vec resid_unrelated_outliers_G,
+    arma::vec resid_unrelated_outliers_GxE,
+    double sum_R_nonOutlier,
+    double sum_R_nonOutlier_G,
+    double sum_R_nonOutlier_GxE,
+    arma::vec R_GRM_R,
+    arma::vec R_GRM_R_nonOutlier,
+    arma::vec R_GRM_R_TwoSubjOutlier,
+    std::vector<TwoSubjFamily> TwoSubj_list,
+    std::vector<ThreeSubjFamily> ThreeSubj_list,
+    arma::vec MAF_interval,
+    double zScoreE_cutoff,
+    double SPA_Cutoff,
+    double zeta,
+    double tol
+  );
 
   arma::vec getpvalVec(){return m_pvalVec;}
   arma::vec getzScoreVec(){return m_zScoreVec;}
   arma::vec getBetaVec(){return m_BetaVec;}
   arma::vec getseBetaVec(){return m_seBetaVec;}
 
-  arma::mat mgf(double t,
-                    const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-                    double MAF);
+  arma::mat mgf(
+    double t,
+    const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
+    double MAF
+  );
 
-  arma::mat mgf(double t,
-                    const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-                    double MAF,
-                    double lambda_i);
+  arma::mat mgf(
+    double t,
+    const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
+    double MAF,
+    double lambda_i
+  );
 
-  double fastGetRoot(const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-                         double Score,
-                         double MAF,
-                         double init_t,
-                         double tol,
-                         int maxiter = 50);
+  double fastGetRoot(
+    const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
+    double Score,
+    double MAF,
+    double init_t,
+    double tol,
+    int maxiter = 50
+  );
 
-  double fastGetRoot(const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-                         double m_R_GRM_R_nonOutlier_i,
-                         double lambda_i,
-                         double Score,
-                         double MAF,
-                         double init_t,
-                         double tol,
-                         int maxiter = 50);
+  double fastGetRoot(
+    const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
+    double m_R_GRM_R_nonOutlier_i,
+    double lambda_i,
+    double Score,
+    double MAF,
+    double init_t,
+    double tol,
+    int maxiter = 50
+  );
 
-  double getProbSpa(const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-                     double Score,
-                     double MAF,
-                     bool lower_tail,
-                     double zeta,
-                     double tol);
+  double getProbSpa(
+    const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
+    double Score,
+    double MAF,
+    bool lower_tail,
+    double zeta,
+    double tol
+  );
 
-  double getProbSpa(const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-                     double m_R_GRM_R_nonOutlier_i,
-                     double lambda_i,
-                     double Score,
-                     double MAF,
-                     bool lower_tail,
-                     double zeta,
-                     double tol);
+  double getProbSpa(
+    const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
+    double m_R_GRM_R_nonOutlier_i,
+    double lambda_i,
+    double Score,
+    double MAF,
+    bool lower_tail,
+    double zeta,
+    double tol
+  );
 
-  double getMarkerPval(arma::vec GVec,
-                       double altFreq,
-                       double& hwepval,
-                       double hwepvalCutoff = 0.1);
+  double getMarkerPval(
+    arma::vec GVec,
+    double altFreq,
+    double& hwepval,
+    double hwepvalCutoff = 0.1
+  );
 
 };
 

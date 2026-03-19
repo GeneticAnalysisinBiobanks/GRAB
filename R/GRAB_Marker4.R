@@ -5,13 +5,20 @@ GRAB.Marker4 <- function (
     objNull,
     GenoFile,
     OutputFile,
-    control = NULL,
     GenoFileIndex = NULL,
-    nthreads = NULL,
-    overwrite = FALSE
+    overwrite = FALSE,
+    control = NULL
 ) {
 
   null_class <- class(objNull)
+  supported_classes <- c(
+    "POLMM_NULL_Model", "WtCoxG_NULL_Model", "LEAF_NULL_Model",
+    "SPAGRM_NULL_Model", "SAGELD_NULL_Model", "SPAsqr_NULL_Model",
+    "SPACox_NULL_Model", "SPAmix_NULL_Model", "SPAmixPlus_NULL_Model"
+  )
+  if (!null_class %in% supported_classes) {
+    stop("Unsupported null model class: ", null_class)
+  }
 
   common_defaults <- list(
     SPA_Cutoff          = 2,
@@ -20,12 +27,13 @@ GRAB.Marker4 <- function (
     min_maf_marker      = 0.001,
     min_mac_marker      = 20,
     nMarkersEachChunk   = 1000,
-    AlleleOrder         = NULL,
+    AlleleOrder         = "alt-first",
     AllMarkers          = TRUE,
     IDsToIncludeFile    = NULL,
     IDsToExcludeFile    = NULL,
     RangesToIncludeFile = NULL,
-    RangesToExcludeFile = NULL
+    RangesToExcludeFile = NULL,
+    nthreads = min(as.numeric(system("nproc", intern = TRUE)), 8)
   )
 
   method_defaults <- switch(
@@ -44,20 +52,24 @@ GRAB.Marker4 <- function (
 
   # validate genotype file
   if (!is.character(GenoFile) || length(GenoFile) != 1) {
-    stop("'GenoFile' must be a single string.")
+    stop("'GenoFile' must be a single string (PLINK bed file).")
   }
   ext <- tools::file_ext(GenoFile)
   if (ext != "bed") {
-    stop("GenoFile must have a .bed extension.")
+    stop("GenoFile must have a .bed extension (PLINK bed file).")
   }
 
   bedFile <- GenoFile
-  if (!is.null(GenoFileIndex) && length(GenoFileIndex) >= 2) {
-    bimFile <- GenoFileIndex[1]
-    famFile <- GenoFileIndex[2]
+  if (!is.null(GenoFileIndex)) {
+    if (length(GenoFileIndex) == 2) {
+      bimFile <- GenoFileIndex[1]
+      famFile <- GenoFileIndex[2]
+    } else {
+      stop("GenoFileIndex must be a character vector of length 2 (PLINK bim and fam files).")
+    }
   } else {
-    bimFile <- sub("\\.[^.]+$", ".bim", GenoFile)
-    famFile <- sub("\\.[^.]+$", ".fam", GenoFile)
+    bimFile <- sub("\\.bed$", ".bim", GenoFile)
+    famFile <- sub("\\.bed$", ".fam", GenoFile)
   }
   for (f in c(bedFile, bimFile, famFile)) {
     if (!file.exists(f)) stop("PLINK file not found: ", f)
@@ -67,7 +79,7 @@ GRAB.Marker4 <- function (
   if (!is.character(OutputFile) || length(OutputFile) != 1) {
     stop("'OutputFile' must be a single string.")
   }
-  if (!is.logical(overwrite) || length(overwrite) != 1 || is.na(overwrite)) {
+  if (!is.logical(overwrite) || length(overwrite) != 1) {
     stop("'overwrite' must be TRUE or FALSE.")
   }
 
@@ -78,16 +90,6 @@ GRAB.Marker4 <- function (
     } else {
       stop("OutputFile exists. Set overwrite=TRUE or use another path.")
     }
-  }
-
-  # validate nthreads
-  n_threads <- if (is.null(nthreads)) {
-    as.integer(data.table::getDTthreads())
-  } else {
-    if (!is.numeric(nthreads) || nthreads < 1 || (nthreads %% 1) != 0) {
-      stop("'nthreads' must be a positive integer.")
-    }
-    as.integer(nthreads)
   }
 
   # validate control parameters
@@ -101,8 +103,8 @@ GRAB.Marker4 <- function (
   .message("Parameters for Marker-Level Tests")
 
   params <- list(
-    Method = null_class, GenoFile = GenoFile, OutputFile = OutputFile,
-    nthreads = n_threads, overwrite = overwrite
+    Method = null_class, OutputFile = OutputFile, overwrite = overwrite,
+    bedFile = bedFile, bimFile = bimFile, famFile = famFile
   )
   for (nm in names(params)) {
     val <- params[[nm]]
@@ -115,6 +117,10 @@ GRAB.Marker4 <- function (
     val <- control[[nm]]
     msg_val <- if (is.null(val)) "NULL" else as.character(val)
     message(sprintf("        %s: %s", nm, msg_val))
+  }
+
+  if (!control$AllMarkers) {
+    .message("Marker filters specified. The final set is: (union of includes) minus (union of excludes).")
   }
 
   # dispatch to method-specific function
@@ -130,7 +136,7 @@ GRAB.Marker4 <- function (
     SPAsqr_NULL_Model     = runMarker.SPAsqr,
     stop("Unsupported null model class: ", null_class)
   )
-  runFn(objNull, control, bedFile, bimFile, famFile, OutputFile, n_threads)
+  runFn(objNull, OutputFile, control, bedFile, bimFile, famFile)
 
   .message("Analysis complete. Results saved to '%s'.", OutputFile)
   invisible(NULL)
@@ -166,18 +172,21 @@ GRAB.Marker4 <- function (
     stop("control$AlleleOrder must be 'ref-first' or 'alt-first'.")
   }
 
-  inc <- c("IDsToIncludeFile", "RangesToIncludeFile")
-  exc <- c("IDsToExcludeFile", "RangesToExcludeFile")
-  has_inc <- any(vapply(inc, function(x) !is.null(control[[x]]), FALSE))
-  has_exc <- any(vapply(exc, function(x) !is.null(control[[x]]), FALSE))
-  if (has_inc && has_exc) {
-    stop("Cannot provide both include and exclude marker-selection files.")
+  marker_files <- c(
+    control$IDsToIncludeFile, control$RangesToIncludeFile,
+    control$IDsToExcludeFile, control$RangesToExcludeFile
+  )
+  marker_files <- marker_files[!is.null(marker_files)]
+  if (length(marker_files) > 0) {
+    for (f in marker_files) {
+      if (!file.exists(f)) stop("File not found: ", f)
+    }
+    control$AllMarkers <- FALSE
   }
-  for (ft in c(inc, exc)) {
-    f <- control[[ft]]
-    if (!is.null(f) && !file.exists(f)) stop("File not found: ", f)
+
+  if (!is.numeric(control$nthreads) || control$nthreads < 1 || (control$nthreads %% 1) != 0) {
+      stop("'nthreads' must be a positive integer.")
   }
-  if (has_inc || has_exc) control$AllMarkers <- FALSE
 
   control
 }

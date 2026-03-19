@@ -1,6 +1,6 @@
 # SPACox_Marker.R -- Unwrap SPACox null model and run marker engine
 
-runMarker.SPACox <- function(objNull, control, bedFile, bimFile, famFile, OutputFile, nThreads) {
+runMarker.SPACox <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
   
   runMarkerInCPP.SPACox(
     cumul               = objNull$cumul,
@@ -14,17 +14,17 @@ runMarker.SPACox <- function(objNull, control, bedFile, bimFile, famFile, Output
     bimFile             = bimFile,
     famFile             = famFile,
     outputFile          = OutputFile,
-    sampleInModel       = objNull$subjData,
-    alleleOrder         = if (is.null(control$AlleleOrder)) "alt-first" else control$AlleleOrder,
+    subjData            = objNull$subjData,
+    AlleleOrder         = control$AlleleOrder,
     nMarkersEachChunk   = as.integer(control$nMarkersEachChunk),
-    nThreads            = nThreads,
-    imputeMethod        = control$impute_method,
-    missingCutoff       = control$missing_cutoff,
-    minMafMarker        = control$min_maf_marker,
-    minMacMarker        = control$min_mac_marker,
-    idsToIncludeFile    = if (is.null(control$IDsToIncludeFile)) "" else control$IDsToIncludeFile,
-    rangesToIncludeFile = if (is.null(control$RangesToIncludeFile)) "" else control$RangesToIncludeFile,
-    idsToExcludeFile    = if (is.null(control$IDsToExcludeFile)) "" else control$IDsToExcludeFile,
-    rangesToExcludeFile = if (is.null(control$RangesToExcludeFile)) "" else control$RangesToExcludeFile
+    nthreads            = as.integer(control$nthreads),
+    impute_method       = control$impute_method,
+    missing_cutoff      = as.numeric(control$missing_cutoff),
+    min_maf_marker      = as.numeric(control$min_maf_marker),
+    min_mac_marker      = as.numeric(control$min_mac_marker),
+    IDsToIncludeFile    = if (is.null(control$IDsToIncludeFile)) "" else control$IDsToIncludeFile,
+    RangesToIncludeFile = if (is.null(control$RangesToIncludeFile)) "" else control$RangesToIncludeFile,
+    IDsToExcludeFile    = if (is.null(control$IDsToExcludeFile)) "" else control$IDsToExcludeFile,
+    RangesToExcludeFile = if (is.null(control$RangesToExcludeFile)) "" else control$RangesToExcludeFile
   )
 }

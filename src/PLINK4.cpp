@@ -1,341 +1,371 @@
-// PLINK4.cpp -- PlinkReader method implementations
+// PLINK4.cpp -- PlinkData and PlinkCursor implementations
 
 #include "PLINK4.h"
-
-#include <boost/algorithm/string.hpp>
 
 #include <algorithm>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
+#include <sstream>
+
+namespace {
+
+// ---- File-local helpers ----
+
+std::vector<std::string> splitWhitespace(const std::string& line) {
+  std::istringstream iss(line);
+  std::vector<std::string> tokens;
+  std::string tok;
+  while (iss >> tok) tokens.push_back(tok);
+  return tokens;
+}
+
+std::vector<std::string> readSingleColumnFile(const std::string& path) {
+  std::ifstream in(path);
+  if (!in.is_open())
+    throw std::runtime_error("Cannot open filter file: " + path);
+  std::vector<std::string> values;
+  std::string line;
+  while (std::getline(in, line)) {
+    auto tokens = splitWhitespace(line);
+    if (!tokens.empty()) values.push_back(tokens[0]);
+  }
+  return values;
+}
+
+struct RangeFilter {
+  std::string chrom;
+  uint32_t start;
+  uint32_t end;
+};
+
+std::vector<RangeFilter> readRangeFile(const std::string& path) {
+  std::ifstream in(path);
+  if (!in.is_open())
+    throw std::runtime_error("Cannot open range filter file: " + path);
+  std::vector<RangeFilter> ranges;
+  std::string line;
+  while (std::getline(in, line)) {
+    auto tokens = splitWhitespace(line);
+    if (tokens.empty()) continue;
+    if (tokens.size() != 3)
+      throw std::runtime_error("Range filter file needs exactly 3 columns: " + path);
+    ranges.push_back({
+      tokens[0],
+      static_cast<uint32_t>(std::stoul(tokens[1])),
+      static_cast<uint32_t>(std::stoul(tokens[2]))
+    });
+  }
+  return ranges;
+}
+
+bool markerInRanges(const PLINK4::MarkerInfo& m, const std::vector<RangeFilter>& ranges) {
+  for (const auto& r : ranges)
+    if (m.chrom == r.chrom && m.pos >= r.start && m.pos <= r.end) return true;
+  return false;
+}
+
+// BED 2-bit genotype → alt allele count (indexed by 2-bit BED code 0..3)
+// BED codes: 0 = hom A1, 1 = missing, 2 = het, 3 = hom A2
+static const int GENO_ALT_FIRST[4] = { 2, -1,  1,  0};  // alt=A1
+static const int GENO_REF_FIRST[4] = { 0, -1,  1,  2};  // alt=A2
+
+} // anonymous namespace
+
 
 namespace PLINK4 {
 
-PlinkReader::PlinkReader(
-  const std::string &bimFile,
-  const std::string &famFile,
-  const std::string &bedFile,
-  const std::vector<std::string> &sampleInModel,
-  const std::string &alleleOrder
-) : m_alleleOrder(alleleOrder) {
-  setPlinkObject(bimFile, famFile, bedFile);
-  setPosSampleInPlink(sampleInModel);
-}
+// ==================== PlinkData ====================
 
-void PlinkReader::setPlinkObject(
-  const std::string &bimFile,
-  const std::string &famFile,
-  const std::string &bedFile
-) {
-  m_bimFile = bimFile;
-  m_famFile = famFile;
-  m_bedFile = bedFile;
-
-  readBimFile();
-  readFamFile();
-
-  m_bedStream.open(m_bedFile.c_str(), std::ios::binary);
-  if (!m_bedStream.is_open()) {
-    throw std::runtime_error("Cannot open PLINK bed file: " + m_bedFile);
-  }
-
-  m_bedStream.seekg(2);
-  char magicNumber3 = 0;
-  m_bedStream.read(&magicNumber3, 1);
-  if (!m_bedStream.good()) {
-    throw std::runtime_error("Failed to read PLINK bed header: " + m_bedFile);
-  }
-  if (magicNumber3 != 1) {
-    throw std::runtime_error("The third magic number of the plink bed file is not 00000001. Please use SNP-major plink (plink version >= 1.9) files.");
-  }
-
-  m_hasSequentialCursor = false;
-}
-
-void PlinkReader::readBimFile() {
-  std::ifstream bim(m_bimFile);
-  if (!bim.is_open()) {
-    throw std::runtime_error("Cannot open PLINK bim file: " + m_bimFile);
-  }
-
-  m_m0 = 0;
-  m_chr.clear();
-  m_markerInPlink.clear();
-  m_gd.clear();
-  m_pd.clear();
-  m_alt.clear();
-  m_ref.clear();
-
-  std::string line;
-  while (getline(bim, line)) {
-    ++m_m0;
-    std::vector<std::string> lineElements;
-    boost::split(lineElements, line, boost::is_any_of("\t "));
-    boost::replace_all(lineElements.back(), "\r", "");
-
-    m_chr.push_back(lineElements[0]);
-    m_markerInPlink.push_back(lineElements[1]);
-    m_gd.push_back(std::stof(lineElements[2]));
-    m_pd.push_back(std::stoi(lineElements[3]));
-    std::transform(lineElements[4].begin(), lineElements[4].end(), lineElements[4].begin(), toupper);
-    std::transform(lineElements[5].begin(), lineElements[5].end(), lineElements[5].begin(), toupper);
-    m_alt.push_back(lineElements[4]);
-    m_ref.push_back(lineElements[5]);
-  }
-
-  m_m = m_m0;
-}
-
-void PlinkReader::readFamFile() {
-  std::ifstream fam(m_famFile);
-  if (!fam.is_open()) {
-    throw std::runtime_error("Cannot open PLINK fam file: " + m_famFile);
-  }
-
-  m_n0 = 0;
-  m_sampleInPlink.clear();
-
-  std::string line;
-  while (getline(fam, line)) {
-    ++m_n0;
-    std::vector<std::string> lineElements;
-    boost::split(lineElements, line, boost::is_any_of("\t "));
-    m_sampleInPlink.push_back(lineElements[1]);
-  }
-
-  m_n = m_n0;
-  m_numBytesOfEachMarker0 = (m_n0 + 3) / 4;
-  m_oneMarkerG4.resize(m_numBytesOfEachMarker0);
-}
-
-void PlinkReader::setPosSampleInPlink(const std::vector<std::string> &sampleInModel) {
-  m_n = static_cast<uint32_t>(sampleInModel.size());
-  m_numBytesOfEachMarker = (m_n + 3) / 4;
-
-  std::unordered_map<std::string, uint32_t> plinkPos;
-  plinkPos.reserve(m_sampleInPlink.size());
-  for (uint32_t i = 0; i < m_sampleInPlink.size(); ++i) {
-    const std::string &id = m_sampleInPlink[i];
-    if (plinkPos.find(id) == plinkPos.end()) {
-      plinkPos.emplace(id, i);
-    }
-  }
-
-  m_posSampleInPlink.resize(m_n);
-  for (uint32_t i = 0; i < m_n; ++i) {
-    auto it = plinkPos.find(sampleInModel[i]);
-    if (it == plinkPos.end()) {
-      throw std::runtime_error("At least one subject requested is not in Plink file.");
-    }
-    m_posSampleInPlink[i] = it->second;
-  }
-}
-
-void PlinkReader::beginSequentialBlock(uint64_t firstMarkerIndex) {
-  if (firstMarkerIndex >= m_m0) {
-    throw std::runtime_error("PLINK marker index out of range in beginSequentialBlock.");
-  }
-
-  const uint64_t posSeek = 3 + m_numBytesOfEachMarker0 * firstMarkerIndex;
-  m_bedStream.clear();
-  m_bedStream.seekg(posSeek);
-  if (!m_bedStream.good()) {
-    throw std::runtime_error("Failed to seek PLINK bed file for sequential block.");
-  }
-  m_hasSequentialCursor = true;
-  m_nextMarkerIndex = firstMarkerIndex;
-  m_hasBufferedBlock = false;
-}
-
-void PlinkReader::resetSequentialCursor() {
-  m_hasSequentialCursor = false;
-  m_hasBufferedBlock = false;
-}
-
-void PlinkReader::loadSequentialMarkerBlock(uint64_t startMarkerIndex) {
-  if (startMarkerIndex >= m_m0) {
-    throw std::runtime_error("PLINK marker index out of range when loading marker block.");
-  }
-
-  const uint64_t nRemain = static_cast<uint64_t>(m_m0) - startMarkerIndex;
-  const uint64_t nMarkersToRead = std::min(m_blockMarkerCapacity, nRemain);
-  const uint64_t nBytesToRead = nMarkersToRead * m_numBytesOfEachMarker0;
-
-  if (m_markerBlockBytes.size() != nBytesToRead) {
-    m_markerBlockBytes.resize(static_cast<size_t>(nBytesToRead));
-  }
-
-  if (!m_hasSequentialCursor || m_nextMarkerIndex != startMarkerIndex) {
-    const uint64_t posSeek = 3 + m_numBytesOfEachMarker0 * startMarkerIndex;
-    m_bedStream.clear();
-    m_bedStream.seekg(posSeek);
-    if (!m_bedStream.good()) {
-      throw std::runtime_error("Failed to seek PLINK bed file for block read.");
-    }
-  }
-
-  m_bedStream.read(reinterpret_cast<char *>(&m_markerBlockBytes[0]), static_cast<std::streamsize>(nBytesToRead));
-  if (!m_bedStream.good()) {
-    throw std::runtime_error("Failed to read PLINK marker block.");
-  }
-
-  m_blockStartMarker = startMarkerIndex;
-  m_blockEndMarker = startMarkerIndex + nMarkersToRead;
-  m_hasBufferedBlock = true;
-
-  m_hasSequentialCursor = true;
-  m_nextMarkerIndex = m_blockEndMarker;
-}
-
-void PlinkReader::copyBufferedMarkerToCurrent(uint64_t markerIndex) {
-  if (!m_hasBufferedBlock || markerIndex < m_blockStartMarker || markerIndex >= m_blockEndMarker) {
-    throw std::runtime_error("Marker index is outside of buffered PLINK marker block.");
-  }
-
-  const uint64_t markerOffset = markerIndex - m_blockStartMarker;
-  const uint64_t byteOffset = markerOffset * m_numBytesOfEachMarker0;
-
-  std::copy(
-    m_markerBlockBytes.begin() + static_cast<std::ptrdiff_t>(byteOffset),
-    m_markerBlockBytes.begin() + static_cast<std::ptrdiff_t>(byteOffset + m_numBytesOfEachMarker0),
-    m_oneMarkerG4.begin()
-  );
-}
-
-void PlinkReader::readCurrentMarkerBytes(uint64_t gIndex) {
-  if (gIndex >= m_m0) {
-    throw std::runtime_error("PLINK marker index out of range.");
-  }
-
-  if (m_hasBufferedBlock && gIndex >= m_blockStartMarker && gIndex < m_blockEndMarker) {
-    copyBufferedMarkerToCurrent(gIndex);
-    return;
-  }
-
-  if (m_hasSequentialCursor && gIndex == m_nextMarkerIndex) {
-    loadSequentialMarkerBlock(gIndex);
-    copyBufferedMarkerToCurrent(gIndex);
-    return;
-  }
-
-  if (!m_hasSequentialCursor || gIndex != m_nextMarkerIndex) {
-    const uint64_t posSeek = 3 + m_numBytesOfEachMarker0 * gIndex;
-    m_bedStream.clear();
-    m_bedStream.seekg(posSeek);
-    if (!m_bedStream.good()) {
-      throw std::runtime_error("Failed to seek PLINK bed file.");
-    }
-  }
-
-  m_bedStream.read(reinterpret_cast<char *>(&m_oneMarkerG4[0]), m_numBytesOfEachMarker0);
-  if (!m_bedStream.good()) {
-    throw std::runtime_error("Failed to read PLINK marker bytes.");
-  }
-
-  m_hasBufferedBlock = false;
-  m_hasSequentialCursor = true;
-  m_nextMarkerIndex = gIndex + 1;
-}
-
-arma::vec PlinkReader::getOneMarker(
-  uint64_t gIndex,
-  std::string &ref,
-  std::string &alt,
-  std::string &marker,
-  uint32_t &pd,
-  std::string &chr,
-  double &altFreq,
-  double &altCounts,
-  double &missingRate,
-  double &imputeInfo,
-  bool isOutputIndexForMissing,
-  std::vector<uint32_t> &indexForMissing,
-  bool isOnlyOutputNonZero,
-  std::vector<uint32_t> &indexForNonZero,
-  bool isTrueGenotype
-) {
-  int sum = 0;
-  int numMissing = 0;
-  std::vector<double> oneMarkerG1;
-
-  if (!isTrueGenotype) {
-    if (isOutputIndexForMissing) {
-      throw std::runtime_error("Check PlinkReader::getOneMarker, if isTrueGenotype = FALSE, then isOutputIndexForMissing should be FALSE.");
-    }
-    if (isOnlyOutputNonZero) {
-      throw std::runtime_error("Check PlinkReader::getOneMarker, if isTrueGenotype = FALSE, then isOnlyOutputNonZero should be FALSE.");
-    }
-  }
-
-  if (!isOnlyOutputNonZero) {
-    oneMarkerG1.resize(m_n);
-  }
-
-  readCurrentMarkerBytes(gIndex);
-
-  indexForMissing.clear();
-  indexForNonZero.clear();
-
-  marker = m_markerInPlink[gIndex];
-  pd = m_pd[gIndex];
-  chr = m_chr[gIndex];
-
-  const std::map<int8_t, int8_t> *genoMaps = nullptr;
-  if (m_alleleOrder == "alt-first") {
-    ref = m_ref[gIndex];
-    alt = m_alt[gIndex];
-    genoMaps = &m_genoMapsAltFirst;
-  } else if (m_alleleOrder == "ref-first") {
-    ref = m_alt[gIndex];
-    alt = m_ref[gIndex];
-    genoMaps = &m_genoMapsRefFirst;
-  } else {
-    throw std::runtime_error("Unsupported PLINK allele order: " + m_alleleOrder);
-  }
-
-  for (uint32_t i = 0; i < m_n; ++i) {
-    const uint32_t ind = m_posSampleInPlink[i];
-    unsigned char bufferG4 = m_oneMarkerG4[ind / 4];
-    int bufferG1 = 0;
-    getGenotype(&bufferG4, ind % 4, bufferG1);
-
-    switch (bufferG1) {
-      case HOM_REF: break;
-      case HET: sum += 1; break;
-      case HOM_ALT: sum += 2; break;
-      case MISSING:
-        ++numMissing;
-        if (isOutputIndexForMissing) {
-          indexForMissing.push_back(i);
-        }
-        break;
-    }
-
-    if (isTrueGenotype) {
-      bufferG1 = genoMaps->at(bufferG1);
-    }
-
-    if (isOnlyOutputNonZero) {
-      if (bufferG1 > 0) {
-        indexForNonZero.push_back(i);
-        oneMarkerG1.push_back(bufferG1);
+PlinkData::PlinkData(
+    const std::string& bedFile,
+    const std::string& bimFile,
+    const std::string& famFile,
+    const std::vector<std::string>& requestedSamples,
+    const std::string& AlleleOrder)
+  : m_bedFile(bedFile),
+    m_altFirst(AlleleOrder == "alt-first")
+{
+  // ---- Parse .bim ----
+  {
+    std::ifstream in(bimFile);
+    if (!in.is_open())
+      throw std::runtime_error("Cannot open PLINK bim file: " + bimFile);
+    std::string line;
+    while (std::getline(in, line)) {
+      auto tokens = splitWhitespace(line);
+      if (tokens.empty()) continue;
+      if (tokens.size() != 6)
+        throw std::runtime_error("PLINK .bim file needs 6 columns: " + bimFile);
+      m_chr.push_back(tokens[0]);
+      m_markerId.push_back(tokens[1]);
+      m_pos.push_back(static_cast<uint32_t>(std::stoul(tokens[3])));
+      // A1 = tokens[4], A2 = tokens[5]
+      std::string a1 = tokens[4], a2 = tokens[5];
+      std::transform(a1.begin(), a1.end(), a1.begin(), ::toupper);
+      std::transform(a2.begin(), a2.end(), a2.begin(), ::toupper);
+      if (m_altFirst) {          // alt-first: alt=A1, ref=A2
+        m_alt.push_back(a1);
+        m_ref.push_back(a2);
+      } else {                   // ref-first: ref=A1, alt=A2
+        m_ref.push_back(a1);
+        m_alt.push_back(a2);
       }
+    }
+    m_nMarkers = static_cast<uint32_t>(m_chr.size());
+  }
+
+  // ---- Parse .fam ----
+  std::vector<std::string> famSamples;
+  {
+    std::ifstream in(famFile);
+    if (!in.is_open())
+      throw std::runtime_error("Cannot open PLINK fam file: " + famFile);
+    std::string line;
+    while (std::getline(in, line)) {
+      auto tokens = splitWhitespace(line);
+      if (tokens.empty()) continue;
+      if (tokens.size() != 6)
+        throw std::runtime_error("PLINK .fam file needs 6 columns: " + famFile);
+      famSamples.push_back(tokens[1]);
+    }
+  }
+  m_nSamplesInFile = static_cast<uint32_t>(famSamples.size());
+  m_bytesPerMarker = (m_nSamplesInFile + 3) / 4;
+
+  // ---- Build sample position map + validate ----
+  m_nSamplesUsed = static_cast<uint32_t>(requestedSamples.size());
+  std::unordered_map<std::string, uint32_t> famPosLookup;
+  famPosLookup.reserve(famSamples.size());
+  for (uint32_t i = 0; i < famSamples.size(); ++i)
+    famPosLookup.emplace(famSamples[i], i);
+
+  m_samplePosMap.resize(m_nSamplesUsed);
+  for (uint32_t i = 0; i < m_nSamplesUsed; ++i) {
+    auto it = famPosLookup.find(requestedSamples[i]);
+    if (it == famPosLookup.end())
+      throw std::runtime_error("Subject not found in PLINK file: " + requestedSamples[i]);
+    m_samplePosMap[i] = it->second;
+  }
+
+  // ---- Validate .bed header ----
+  {
+    std::ifstream bed(m_bedFile, std::ios::binary);
+    if (!bed.is_open())
+      throw std::runtime_error("Cannot open PLINK bed file: " + m_bedFile);
+      
+    char magic[3] = {0};
+    bed.read(magic, 3);
+    if (!bed.good() || magic[0] != 0x6C || magic[1] != 0x1B || magic[2] != 0x01)
+        throw std::runtime_error("Invalid or unsupported PLINK bed file format");
+  }
+}
+
+std::vector<MarkerInfo> PlinkData::getFilteredMarkers(
+  const MarkerFilterConfig& filter
+) const {
+
+  // Build full marker list
+  std::vector<MarkerInfo> all;
+  all.reserve(m_nMarkers);
+  for (uint32_t i = 0; i < m_nMarkers; ++i) {
+    all.push_back({m_chr[i], m_pos[i], m_markerId[i],
+                   m_ref[i], m_alt[i], static_cast<uint64_t>(i)});
+  }
+
+  // Load filter sets
+  std::unordered_set<std::string> includeIds, excludeIds;
+  std::vector<RangeFilter> includeRanges, excludeRanges;
+
+  if (!filter.IDsToIncludeFile.empty()) {
+    auto ids = readSingleColumnFile(filter.IDsToIncludeFile);
+    includeIds.insert(ids.begin(), ids.end());
+  }
+  if (!filter.RangesToIncludeFile.empty())
+    includeRanges = readRangeFile(filter.RangesToIncludeFile);
+  if (!filter.IDsToExcludeFile.empty()) {
+    auto ids = readSingleColumnFile(filter.IDsToExcludeFile);
+    excludeIds.insert(ids.begin(), ids.end());
+  }
+  if (!filter.RangesToExcludeFile.empty())
+    excludeRanges = readRangeFile(filter.RangesToExcludeFile);
+
+  const bool anyInclude = !includeIds.empty() || !includeRanges.empty();
+  const bool anyExclude = !excludeIds.empty() || !excludeRanges.empty();
+  if (!anyInclude && !anyExclude) return all;
+
+  std::vector<MarkerInfo> filtered;
+  filtered.reserve(all.size());
+  for (const auto& m : all) {
+    bool inc = !anyInclude;
+    if (anyInclude)
+      inc = (includeIds.count(m.id) > 0) || markerInRanges(m, includeRanges);
+    if (!inc) continue;
+    bool exc = false;
+    if (anyExclude)
+      exc = (excludeIds.count(m.id) > 0) || markerInRanges(m, excludeRanges);
+    if (!exc) filtered.push_back(m);
+  }
+  return filtered;
+}
+
+std::vector<std::vector<uint64_t>> PlinkData::buildChunks(
+    const std::vector<MarkerInfo>& markers, int chunkSize) {
+  std::vector<std::vector<uint64_t>> chunks;
+  size_t start = 0;
+  while (start < markers.size()) {
+    const std::string& chrom = markers[start].chrom;
+    size_t chromEnd = start;
+    while (chromEnd < markers.size() && markers[chromEnd].chrom == chrom) ++chromEnd;
+
+    for (size_t cs = start; cs < chromEnd;
+         cs += static_cast<size_t>(chunkSize)) {
+      size_t ce = std::min(cs + static_cast<size_t>(chunkSize), chromEnd);
+      std::vector<uint64_t> chunk;
+      chunk.reserve(ce - cs);
+      for (size_t i = cs; i < ce; ++i) chunk.push_back(markers[i].genoIndex);
+      chunks.push_back(std::move(chunk));
+    }
+    start = chromEnd;
+  }
+  return chunks;
+}
+
+
+// ==================== PlinkCursor ====================
+
+PlinkCursor::PlinkCursor(const PlinkData& data)
+  : m_data(data),
+    m_rawBytes(data.bytesPerMarker())
+{
+  m_bedStream.open(data.bedFile(), std::ios::binary);
+  if (!m_bedStream.is_open())
+    throw std::runtime_error("Cannot open PLINK bed file: " + data.bedFile());
+  // Skip 3-byte header
+  m_bedStream.seekg(3);
+  if (!m_bedStream.good())
+    throw std::runtime_error("Failed to read PLINK bed header: " + data.bedFile());
+}
+
+void PlinkCursor::beginSequentialBlock(uint64_t firstMarker) {
+  if (firstMarker >= m_data.nMarkers())
+    throw std::runtime_error("PLINK marker index out of range in beginSequentialBlock.");
+  const uint64_t pos = 3 + m_data.bytesPerMarker() * firstMarker;
+  m_bedStream.clear();
+  m_bedStream.seekg(pos);
+  if (!m_bedStream.good())
+    throw std::runtime_error("Failed to seek PLINK bed file.");
+  m_hasSeqCursor = true;
+  m_nextMarker = firstMarker;
+  m_hasBlock = false;
+}
+
+void PlinkCursor::loadBlock(uint64_t startMarker) {
+  if (startMarker >= m_data.nMarkers())
+    throw std::runtime_error("PLINK marker index out of range when loading block.");
+
+  const uint64_t nRemain = static_cast<uint64_t>(m_data.nMarkers()) - startMarker;
+  const uint64_t nRead = std::min(BLOCK_CAPACITY, nRemain);
+  const uint64_t nBytes = nRead * m_data.bytesPerMarker();
+
+  if (m_blockBytes.size() != nBytes)
+    m_blockBytes.resize(static_cast<size_t>(nBytes));
+
+  if (!m_hasSeqCursor || m_nextMarker != startMarker) {
+    const uint64_t pos = 3 + m_data.bytesPerMarker() * startMarker;
+    m_bedStream.clear();
+    m_bedStream.seekg(pos);
+    if (!m_bedStream.good())
+      throw std::runtime_error("Failed to seek PLINK bed file for block read.");
+  }
+
+  m_bedStream.read(reinterpret_cast<char*>(m_blockBytes.data()),
+                   static_cast<std::streamsize>(nBytes));
+  if (!m_bedStream.good())
+    throw std::runtime_error("Failed to read PLINK marker block.");
+
+  m_blockStart = startMarker;
+  m_blockEnd = startMarker + nRead;
+  m_hasBlock = true;
+  m_hasSeqCursor = true;
+  m_nextMarker = m_blockEnd;
+}
+
+void PlinkCursor::readMarkerBytes(uint64_t gIndex) {
+  const uint64_t bpm = m_data.bytesPerMarker();
+
+  // Try buffered block first
+  if (m_hasBlock && gIndex >= m_blockStart && gIndex < m_blockEnd) {
+    const uint64_t off = (gIndex - m_blockStart) * bpm;
+    std::copy(m_blockBytes.begin() + static_cast<std::ptrdiff_t>(off),
+              m_blockBytes.begin() + static_cast<std::ptrdiff_t>(off + bpm),
+              m_rawBytes.begin());
+    return;
+  }
+
+  // Try sequential block load
+  if (m_hasSeqCursor && gIndex == m_nextMarker) {
+    loadBlock(gIndex);
+    const uint64_t off = (gIndex - m_blockStart) * bpm;
+    std::copy(m_blockBytes.begin() + static_cast<std::ptrdiff_t>(off),
+              m_blockBytes.begin() + static_cast<std::ptrdiff_t>(off + bpm),
+              m_rawBytes.begin());
+    return;
+  }
+
+  // Fallback: single-marker read
+  const uint64_t filePos = 3 + bpm * gIndex;
+  m_bedStream.clear();
+  m_bedStream.seekg(filePos);
+  if (!m_bedStream.good())
+    throw std::runtime_error("Failed to seek PLINK bed file.");
+  m_bedStream.read(reinterpret_cast<char*>(m_rawBytes.data()), bpm);
+  if (!m_bedStream.good())
+    throw std::runtime_error("Failed to read PLINK marker bytes.");
+  m_hasBlock = false;
+  m_hasSeqCursor = true;
+  m_nextMarker = gIndex + 1;
+}
+
+arma::vec PlinkCursor::getGenotypes(
+    uint64_t gIndex,
+    double& altFreq,
+    double& altCounts,
+    double& missingRate,
+    std::vector<uint32_t>& indexForMissing
+) {
+  readMarkerBytes(gIndex);
+
+  const uint32_t n = m_data.nSamplesUsed();
+  const auto& posMap = m_data.samplePosMap();
+  const int* genoMap = m_data.isAltFirst() ? GENO_ALT_FIRST : GENO_REF_FIRST;
+
+  arma::vec geno(n);
+  indexForMissing.clear();
+  int sumAlt = 0;
+  int numMissing = 0;
+
+  for (uint32_t i = 0; i < n; ++i) {
+    const uint32_t fam_pos = posMap[i];
+    const int raw = decodeGenotype(m_rawBytes[fam_pos / 4], fam_pos % 4);
+    const int g = genoMap[raw];
+
+    if (g < 0) {   // missing
+      geno[i] = -1;
+      ++numMissing;
+      indexForMissing.push_back(i);
     } else {
-      oneMarkerG1[i] = bufferG1;
+      geno[i] = g;
+      sumAlt += g;
     }
   }
 
-  const int count = static_cast<int>(m_n) - numMissing;
-  missingRate = static_cast<double>(numMissing) / static_cast<double>(m_n);
-  imputeInfo = 1.0;
-  altCounts = static_cast<double>(sum);
-  altFreq = altCounts / static_cast<double>(count) / 2.0;
+  const int count = static_cast<int>(n) - numMissing;
+  missingRate = static_cast<double>(numMissing) / static_cast<double>(n);
+  altCounts = static_cast<double>(sumAlt);
+  altFreq = (count > 0) ? altCounts / (2.0 * count) : 0.0;
 
-  if (m_alleleOrder == "ref-first") {
-    altFreq = 1.0 - altFreq;
-    altCounts = 2.0 * static_cast<double>(count) * altFreq;
-  }
-
-  return oneMarkerG1;
+  return geno;
 }
 
-}
+} // namespace PLINK4

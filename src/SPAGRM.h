@@ -11,8 +11,8 @@
 namespace SPAGRM{
 
 class SPAGRMClass {
+  
 private:
-
 
   // ---- Members ----
   arma::vec m_resid;
@@ -34,46 +34,55 @@ private:
 
 public:
 
-
   // ---- Public interface ----
-  SPAGRMClass(arma::vec resid,
-              arma::vec resid_unrelated_outliers,
-              double sum_R_nonOutlier,
-              double R_GRM_R_nonOutlier,
-              double R_GRM_R_TwoSubjOutlier,
-              double R_GRM_R,
-              arma::vec MAF_interval,
-              std::vector<arma::vec> TwoSubj_resid,
-              std::vector<arma::vec> TwoSubj_rho,
-              std::vector<arma::vec> ThreeSubj_standS,
-              std::vector<arma::mat> ThreeSubj_CLT,
-              double SPA_Cutoff,
-              double zeta,
-              double tol);
+  SPAGRMClass(
+    arma::vec resid,
+    arma::vec resid_unrelated_outliers,
+    double sum_R_nonOutlier,
+    double R_GRM_R_nonOutlier,
+    double R_GRM_R_TwoSubjOutlier,
+    double R_GRM_R,
+    arma::vec MAF_interval,
+    std::vector<arma::vec> TwoSubj_resid,
+    std::vector<arma::vec> TwoSubj_rho,
+    std::vector<arma::vec> ThreeSubj_standS,
+    std::vector<arma::mat> ThreeSubj_CLT,
+    double SPA_Cutoff,
+    double zeta,
+    double tol
+  );
 
-  arma::mat mgf(double t,
-                    const std::vector<arma::vec>& arr_prob_list,
-                    double MAF);
+  arma::mat mgf(
+    double t,
+    const std::vector<arma::vec>& arr_prob_list,
+    double MAF
+  );
 
-  double fastGetRoot(const std::vector<arma::vec>& arr_prob_list,
-                         double Score,
-                         double MAF,
-                         double init_t,
-                         double tol,
-                         int maxiter = 50);
+  double fastGetRoot(
+    const std::vector<arma::vec>& arr_prob_list,
+    double Score,
+    double MAF,
+    double init_t,
+    double tol,
+    int maxiter = 50
+  );
 
-  double getProbSpa(const std::vector<arma::vec>& arr_prob_list,
-                     double Score,
-                     double MAF,
-                     bool lower_tail,
-                     double zeta,
-                     double tol);
+  double getProbSpa(
+    const std::vector<arma::vec>& arr_prob_list,
+    double Score,
+    double MAF,
+    bool lower_tail,
+    double zeta,
+    double tol
+  );
 
-  double getMarkerPval(arma::vec GVec,
-                       double altFreq,
-                       double& zScore,
-                       double& hwepval,
-                       double hwepvalCutoff = 0.1);
+  double getMarkerPval(
+    arma::vec GVec,
+    double altFreq,
+    double& zScore,
+    double& hwepval,
+    double hwepvalCutoff = 0.1
+  );
 
 };
 

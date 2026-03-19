@@ -44,7 +44,6 @@ struct AdjGResult {
 class POLMMClass {
 private:
 
-
   arma::vec m_diffTimePOLMM1;
   arma::vec m_diffTimePOLMM2;
   arma::vec m_diffTimePOLMM3;
@@ -75,22 +74,16 @@ private:
 
   arma::mat m_WMat, m_muMat, m_mMat, m_nuMat, m_iRMat, m_YMat, m_iSigma_CovaMat, m_iSigmaX_XSigmaX;
   arma::vec m_eta, m_iSigma_YVec, m_iSigma_VPYVec;
-
   arma::mat m_TraceRandMat, m_V_TRM, m_iSigma_V_TRM;
 
   arma::mat m_XXR_Psi_RX;
   arma::mat m_XR_Psi_R;
   arma::vec m_RymuVec;
   arma::vec m_RPsiR;
-
   arma::cube m_InvBlockDiagSigma;
-
-
   arma::sp_mat m_SparseGRM;
   arma::sp_mat m_ZMat_sp;
   arma::sp_mat m_SigmaMat_sp;
-
-
   arma::Mat<uint8_t> m_SeqMat;
 
   void setArray() {
@@ -123,12 +116,14 @@ private:
     return yMat;
   };
 
-  void setPOLMMInner(arma::mat Cova,
-                     arma::uvec yVec,
-                     arma::vec beta,
-                     arma::vec bVec,
-                     arma::vec eps,
-                     double tau);
+  void setPOLMMInner(
+    arma::mat Cova,
+    arma::uvec yVec,
+    arma::vec beta,
+    arma::vec bVec,
+    arma::vec eps,
+    double tau
+  );
 
   arma::sp_mat setZMat_sp() {
     arma::umat locations(2, m_n * (m_J-1));
@@ -142,7 +137,6 @@ private:
     return ZMat_sp;
   }
 
-
   arma::vec ZMat(arma::vec xVec) {
     arma::vec y1Vec(m_n, arma::fill::zeros);
     int index = 0;
@@ -155,7 +149,6 @@ private:
     return y1Vec;
   }
 
-
   arma::vec tZMat(arma::vec xVec) {
     arma::vec y1Vec(m_n * (m_J-1));
     int index = 0;
@@ -167,7 +160,6 @@ private:
     }
     return y1Vec;
   }
-
 
   void getTraceRandMat();
 
@@ -191,79 +183,88 @@ public:
   void updateEps();
   void updateEpsOneStep();
 
-  void getPCGofSigmaAndVector(arma::vec y1Vec,
-                              arma::vec& xVec,
-                              std::string excludechr);
-  arma::mat getSigmaxMat(arma::mat xMat,
-                         std::string excludechr);
-  arma::mat solverBlockDiagSigma(arma::cube& InvBlockDiagSigma,
-                                 arma::mat& xMat);
+  void getPCGofSigmaAndVector(arma::vec y1Vec, arma::vec& xVec, std::string excludechr);
 
-  void getPCGofSigmaAndCovaMat(arma::mat xMat,
-                               arma::mat& iSigma_xMat,
-                               std::string excludechr);
-  double getVarP(arma::vec adjGVec,
-                 std::string excludechr);
+  arma::mat getSigmaxMat(arma::mat xMat, std::string excludechr);
+  
+  arma::mat solverBlockDiagSigma(arma::cube& InvBlockDiagSigma, arma::mat& xMat);
 
-  POLMMClass(arma::mat muMat,
-             arma::mat iRMat,
-             arma::mat Cova,
-             arma::uvec yVec,
-             arma::sp_mat SparseGRM,
-             double tau,
-             bool printPCGInfo,
-             double tolPCG,
-             int maxiterPCG,
-             double varRatio,
-             double SPA_cutoff,
-             bool flagSparseGRM);
+  void getPCGofSigmaAndCovaMat(arma::mat xMat, arma::mat& iSigma_xMat, std::string excludechr);
 
-  void getMarkerPval(arma::vec GVec,
-                     double& Beta,
-                     double& seBeta,
-                     double& pval,
-                     double altFreq,
-                     double& zScore);
+  double getVarP(arma::vec adjGVec, std::string excludechr);
 
-  void getRegionPVec(arma::vec GVec,
-                     double& Stat,
-                     double& Beta,
-                     double& seBeta,
-                     double& pval0,
-                     double& pval1,
-                     arma::vec& P1Vec,
-                     arma::vec& P2Vec);
+  POLMMClass(
+    arma::mat muMat,
+    arma::mat iRMat,
+    arma::mat Cova,
+    arma::uvec yVec,
+    arma::sp_mat SparseGRM,
+    double tau,
+    bool printPCGInfo,
+    double tolPCG,
+    int maxiterPCG,
+    double varRatio,
+    double SPA_cutoff,
+    bool flagSparseGRM
+  );
+
+  void getMarkerPval(
+    arma::vec GVec,
+    double& Beta,
+    double& seBeta,
+    double& pval,
+    double altFreq,
+    double& zScore
+  );
+
+  void getRegionPVec(
+    arma::vec GVec,
+    double& Stat,
+    double& Beta,
+    double& seBeta,
+    double& pval0,
+    double& pval1,
+    arma::vec& P1Vec,
+    arma::vec& P2Vec
+  );
 
   double m_varRatio, m_SPA_Cutoff;
 
   arma::vec getadjGFast(arma::vec GVec);
+
   double getStatFast(arma::vec adjGVec);
+
   arma::vec get_ZPZ_adjGVec(arma::vec adjGVec);
-  void getPCGofSigmaAndCovaMat(arma::mat xMat,
-                               arma::mat& iSigma_xMat);
-  void getPCGofSigmaAndVector(arma::vec y1Vec,
-                              arma::vec& xVec);
+
+  void getPCGofSigmaAndCovaMat(arma::mat xMat, arma::mat& iSigma_xMat);
+
+  void getPCGofSigmaAndVector(arma::vec y1Vec, arma::vec& xVec);
+
   arma::mat getSigmaxMat(arma::mat& xMat);
 
   arma::mat getiPsixMat(arma::mat xMat);
+
   arma::mat getPsixMat(arma::mat xMat);
 
   arma::cube getInvBlockDiagSigma();
+
   arma::mat solverBlockDiagSigma(arma::mat& xMat);
 
   void setRPsiR();
+
   arma::vec getVarWVec(arma::vec adjGVec);
 
-  SaddleResult MAIN_SPA(double Stat,
-                        arma::vec adjGVec,
-                        arma::vec K1roots,
-                        double VarP,
-                        double VarW,
-                        double Ratio0,
-                        arma::uvec posG1);
+  SaddleResult MAIN_SPA(
+    double Stat,
+    arma::vec adjGVec,
+    arma::vec K1roots,
+    double VarP,
+    double VarW,
+    double Ratio0,
+    arma::uvec posG1
+  );
 
-  double MAIN_ER(arma::vec GVec,
-                 arma::uvec posG1);
+  double MAIN_ER(arma::vec GVec, arma::uvec posG1);
 
   void setSeqMat(int NonZero_cutoff);
 
@@ -273,94 +274,91 @@ public:
 // ---- Free functions used by POLMMClass ----
 arma::mat getCovaMat(arma::mat Cova, unsigned int J);
 
-arma::mat getPsixMat(arma::mat xMat,
-                     arma::mat muMat);
+arma::mat getPsixMat(arma::mat xMat, arma::mat muMat);
 
-arma::mat sumCols(arma::mat xMat,
-                  int J);
+arma::mat sumCols(arma::mat xMat, int J);
 
 double calCV(arma::vec xVec);
 
-arma::vec getRPsiR(arma::mat muMat,
-                   arma::mat iRMat,
-                   int n, int J, int p);
+arma::vec getRPsiR(arma::mat muMat, arma::mat iRMat, int n, int J, int p);
 
-double K0(double x,
-          arma::mat muMat,
-          arma::mat cMat,
-          double m1);
+double K0(double x, arma::mat muMat, arma::mat cMat, double m1);
 
-arma::vec K12(double x,
-              arma::mat muMat,
-              arma::mat cMat,
-              double m1);
+arma::vec K12(double x, arma::mat muMat, arma::mat cMat, double m1);
 
-RootResult fastgetroot_K1(double Stat,
-                          double initX,
-                          double Ratio0,
-                          arma::mat muMat,
-                          arma::mat cMat,
-                          double m1);
+RootResult fastgetroot_K1(
+  double Stat, 
+  double initX,
+  double Ratio0,
+  arma::mat muMat,
+  arma::mat cMat,
+  double m1
+);
 
-double fastGet_Saddle_Prob(double Stat,
-                           double zeta,
-                           double K2,
-                           double Ratio0,
-                           arma::mat muMat,
-                           arma::mat cMat,
-                           double m1,
-                           bool lowerTail);
+double fastGet_Saddle_Prob(
+  double Stat,
+  double zeta,
+  double K2,
+  double Ratio0,
+  arma::mat muMat,
+  arma::mat cMat,
+  double m1,
+  bool lowerTail
+);
 
-SaddleResult fastSaddle_Prob(double Stat,
-                           double VarP,
-                           double VarW,
-                           double Ratio0,
-                           arma::vec K1roots,
-                           arma::vec adjGVec1,
-                           arma::mat muMat1,
-                           arma::mat iRMat1);
+SaddleResult fastSaddle_Prob(
+  double Stat,
+  double VarP,
+  double VarW,
+  double Ratio0,
+  arma::vec K1roots,
+  arma::vec adjGVec1,
+  arma::mat muMat1,
+  arma::mat iRMat1
+);
 
-double getPvalER(arma::uvec yVec,
-                 arma::vec GVec,
-                 arma::mat muMat,
-                 arma::mat iRMat,
-                 arma::Mat<uint8_t> SeqMat);
+double getPvalER(
+  arma::uvec yVec,
+  arma::vec GVec,
+  arma::mat muMat,
+  arma::mat iRMat,
+  arma::Mat<uint8_t> SeqMat
+);
 
-arma::vec getStatVec(arma::Mat<uint8_t> SeqMat,
-                     arma::vec GVec,
-                     arma::mat muMat,
-                     arma::mat iRMat);
+arma::vec getStatVec(
+  arma::Mat<uint8_t> SeqMat,
+  arma::vec GVec,
+  arma::mat muMat,
+  arma::mat iRMat
+);
 
-double getProbOne(arma::Col<uint8_t> SeqVec,
-                  arma::mat muMat);
+double getProbOne(arma::Col<uint8_t> SeqVec, arma::mat muMat);
 
-double getProb(arma::Mat<uint8_t> SeqMat,
-               arma::mat muMat);
+double getProb(arma::Mat<uint8_t> SeqMat,arma::mat muMat);
 
-arma::vec convert1(arma::mat xMat,
-                   int n, int J);
+arma::vec convert1(arma::mat xMat, int n, int J);
 
-arma::mat convert2(arma::vec xVec,
-                   int n, int J);
+arma::mat convert2(arma::vec xVec, int n, int J);
 
-ObjP getobjP(arma::mat Cova,
-             arma::mat yMat,
-             arma::mat muMat,
-             arma::mat iRMat);
+ObjP getobjP(
+  arma::mat Cova,
+  arma::mat yMat,
+  arma::mat muMat,
+  arma::mat iRMat
+);
 
-arma::vec getadjGFast(arma::vec GVec,
-                      arma::mat XXR_Psi_RX_new,
-                      arma::mat XR_Psi_R_new,
-                      int n, int p);
+arma::vec getadjGFast(
+  arma::vec GVec,
+  arma::mat XXR_Psi_RX_new,
+  arma::mat XR_Psi_R_new,
+  int n, int p
+);
 
-double getStatFast(arma::vec GVec,
-                   arma::vec RymuVec);
+double getStatFast(arma::vec GVec, arma::vec RymuVec);
 
-double getVarWFast(arma::vec adjGVec,
-                   arma::vec RPsiRVec);
+double getVarWFast(arma::vec adjGVec, arma::vec RPsiRVec);
 
-AdjGResult outputadjGFast(arma::vec GVec,
-                          const ObjP& objP);
+AdjGResult outputadjGFast(arma::vec GVec, const ObjP& objP);
 
 arma::vec getRowSums(arma::mat xMat);
 

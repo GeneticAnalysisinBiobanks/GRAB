@@ -9,20 +9,22 @@
 
 namespace SPAGRM {
 
-SPAGRMClass::SPAGRMClass(arma::vec resid,
-                         arma::vec resid_unrelated_outliers,
-                         double sum_R_nonOutlier,
-                         double R_GRM_R_nonOutlier,
-                         double R_GRM_R_TwoSubjOutlier,
-                         double R_GRM_R,
-                         arma::vec MAF_interval,
-                         std::vector<arma::vec> TwoSubj_resid,
-                         std::vector<arma::vec> TwoSubj_rho,
-                         std::vector<arma::vec> ThreeSubj_standS,
-                         std::vector<arma::mat> ThreeSubj_CLT,
-                         double SPA_Cutoff,
-                         double zeta,
-                         double tol) {
+SPAGRMClass::SPAGRMClass(
+  arma::vec resid,
+  arma::vec resid_unrelated_outliers,
+  double sum_R_nonOutlier,
+  double R_GRM_R_nonOutlier,
+  double R_GRM_R_TwoSubjOutlier,
+  double R_GRM_R,
+  arma::vec MAF_interval,
+  std::vector<arma::vec> TwoSubj_resid,
+  std::vector<arma::vec> TwoSubj_rho,
+  std::vector<arma::vec> ThreeSubj_standS,
+  std::vector<arma::mat> ThreeSubj_CLT,
+  double SPA_Cutoff,
+  double zeta,
+  double tol
+) {
   m_resid = resid;
   m_resid_unrelated_outliers = resid_unrelated_outliers;
   m_sum_unrelated_outliers2 = sum(resid_unrelated_outliers % resid_unrelated_outliers);
@@ -42,9 +44,11 @@ SPAGRMClass::SPAGRMClass(arma::vec resid,
   m_tol = tol;
 }
 
-arma::mat SPAGRMClass::mgf(double t,
-                               const std::vector<arma::vec>& arr_prob_list,
-                               double MAF) {
+arma::mat SPAGRMClass::mgf(
+  double t,
+  const std::vector<arma::vec>& arr_prob_list,
+  double MAF
+) {
   arma::vec lambda = arma::exp(t * m_resid_unrelated_outliers);
 
   arma::vec alpha = 1 - MAF + MAF * lambda;
@@ -100,12 +104,14 @@ arma::mat SPAGRMClass::mgf(double t,
   return arma::join_rows(M_G0_all, M_G1_all, M_G2_all);
 }
 
-double SPAGRMClass::fastGetRoot(const std::vector<arma::vec>& arr_prob_list,
-                                    double Score,
-                                    double MAF,
-                                    double init_t,
-                                    double tol,
-                                    int maxiter) {
+double SPAGRMClass::fastGetRoot(
+  const std::vector<arma::vec>& arr_prob_list,
+  double Score,
+  double MAF,
+  double init_t,
+  double tol,
+  int maxiter
+) {
   double t = init_t;
   arma::vec MGF0; arma::vec MGF1; arma::vec MGF2;
   double CGF1 = 0; double CGF2 = 0;
@@ -166,14 +172,15 @@ double SPAGRMClass::fastGetRoot(const std::vector<arma::vec>& arr_prob_list,
   return t;
 }
 
-double SPAGRMClass::getProbSpa(const std::vector<arma::vec>& arr_prob_list,
-                                double Score,
-                                double MAF,
-                                bool lower_tail,
-                                double zeta,
-                                double tol) {
+double SPAGRMClass::getProbSpa(
+  const std::vector<arma::vec>& arr_prob_list,
+  double Score,
+  double MAF,
+  bool lower_tail,
+  double zeta,
+  double tol
+) {
   zeta = fastGetRoot(arr_prob_list, Score, MAF, zeta, tol);
-
   arma::mat MGF_all = mgf(zeta, arr_prob_list, MAF);
 
   arma::vec MGF0 = MGF_all.col(0);
@@ -198,11 +205,13 @@ double SPAGRMClass::getProbSpa(const std::vector<arma::vec>& arr_prob_list,
   return pval;
 }
 
-double SPAGRMClass::getMarkerPval(arma::vec GVec,
-                                  double altFreq,
-                                  double& zScore,
-                                  double& hwepval,
-                                  double hwepvalCutoff) {
+double SPAGRMClass::getMarkerPval(
+  arma::vec GVec,
+  double altFreq,
+  double& zScore,
+  double& hwepval,
+  double hwepvalCutoff
+) {
   gethwepval(GVec, hwepval, hwepvalCutoff);
 
   double MAF = std::min(altFreq, 1 - altFreq);

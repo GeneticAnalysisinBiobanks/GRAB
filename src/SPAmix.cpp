@@ -6,11 +6,13 @@
 
 namespace SPAmix {
 
-SPAmixClass::SPAmixClass(arma::mat resid,
-                         arma::mat PCs,
-                         int N,
-                         double SPA_Cutoff,
-                         std::vector<SPAmixClass::OutlierData> outlierVec) {
+SPAmixClass::SPAmixClass(
+  arma::mat resid,
+  arma::mat PCs,
+  int N,
+  double SPA_Cutoff,
+  std::vector<SPAmixClass::OutlierData> outlierVec
+) {
   m_resid = resid;
   m_Npheno = resid.n_cols;
 
@@ -114,12 +116,14 @@ arma::vec SPAmixClass::H1_adj_H2(double t, arma::vec R, double s, const arma::ve
   return H1_adj_H2_vec;
 }
 
-SPAmixClass::RootResult SPAmixClass::fastGetRootK1(double initX,
-                                                    const double& s,
-                                                    const arma::vec MAF_outlier,
-                                                    double mean_nonOutlier,
-                                                    double var_nonOutlier,
-                                                    const arma::vec residOutlier) {
+SPAmixClass::RootResult SPAmixClass::fastGetRootK1(
+  double initX,
+  const double& s,
+  const arma::vec MAF_outlier,
+  double mean_nonOutlier,
+  double var_nonOutlier,
+  const arma::vec residOutlier
+) {
   double x = initX, oldX;
   double K1 = 0, K2 = 0, oldK1;
   double diffX = arma::datum::inf, oldDiffX;
@@ -165,11 +169,12 @@ SPAmixClass::RootResult SPAmixClass::fastGetRootK1(double initX,
 }
 
 double SPAmixClass::getProbSpaG(const arma::vec MAF_outlier,
-                                  const arma::vec residOutlier,
-                                  double s,
-                                  bool lower_tail,
-                                  double mean_nonOutlier,
-                                  double var_nonOutlier) {
+  const arma::vec residOutlier,
+  double s,
+  bool lower_tail,
+  double mean_nonOutlier,
+  double var_nonOutlier
+) {
   double initX = 0;
 
   RootResult rootRes = fastGetRootK1(initX, s, MAF_outlier, mean_nonOutlier, var_nonOutlier, residOutlier);
@@ -248,11 +253,13 @@ arma::vec SPAmixClass::logistic_regression(const arma::mat& X, const arma::vec& 
   return MAFest;
 }
 
-arma::vec SPAmixClass::getMafEst(arma::vec g,
-                                 double altFreq,
-                                 double MAC_cutoff,
-                                 double PCs_pvalue_cutoff,
-                                 double MAF_est_negative_ratio_cutoff) {
+arma::vec SPAmixClass::getMafEst(
+  arma::vec g,
+  double altFreq,
+  double MAC_cutoff,
+  double PCs_pvalue_cutoff,
+  double MAF_est_negative_ratio_cutoff
+) {
   int N = g.n_elem;
   arma::vec g0(N, arma::fill::zeros);
   arma::vec MAF_all = arma::vec(N, arma::fill::value(altFreq));
@@ -338,18 +345,23 @@ double SPAmixClass::getMarkerPval(arma::vec GVec, double altFreq) {
     double mean_nonOutlier = sum(residNonOutlier % MAF_nonOutlier) * 2;
     double var_nonOutlier = sum(resid2NonOutlier % MAF_nonOutlier % (1-MAF_nonOutlier)) * 2;
 
-    double pval1 = getProbSpaG(MAF_outlier,
-                                 residOutlier,
-                                 std::abs(S-S_mean)+S_mean,
-                                 false,
-                                 mean_nonOutlier,
-                                 var_nonOutlier);
-    double pval2 = getProbSpaG(MAF_outlier,
-                                 residOutlier,
-                                 -1*std::abs(S-S_mean)+S_mean,
-                                 true,
-                                 mean_nonOutlier,
-                                 var_nonOutlier);
+    double pval1 = getProbSpaG(
+      MAF_outlier,
+      residOutlier,
+      std::abs(S-S_mean)+S_mean,
+      false,
+      mean_nonOutlier,
+      var_nonOutlier
+    );
+
+    double pval2 = getProbSpaG(
+      MAF_outlier,
+      residOutlier,
+      -1*std::abs(S-S_mean)+S_mean,
+      true,
+      mean_nonOutlier,
+      var_nonOutlier
+    );
 
     m_pvalVec.at(i) = pval1 + pval2;
   }

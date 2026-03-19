@@ -10,37 +10,39 @@
 
 namespace SAGELD {
 
-SAGELDClass::SAGELDClass(std::string Method,
-                         arma::mat XTs,
-                         arma::mat SS,
-                         arma::mat AtS,
-                         arma::mat Q,
-                         arma::mat A21,
-                         arma::mat TTs,
-                         arma::mat Tys,
-                         arma::vec sol,
-                         arma::vec blups,
-                         double sig,
-                         arma::vec resid,
-                         arma::vec resid_G,
-                         arma::vec resid_GxE,
-                         arma::vec resid_E,
-                         arma::vec resid_unrelated_outliers,
-                         arma::vec resid_unrelated_outliers_G,
-                         arma::vec resid_unrelated_outliers_GxE,
-                         double sum_R_nonOutlier,
-                         double sum_R_nonOutlier_G,
-                         double sum_R_nonOutlier_GxE,
-                         arma::vec R_GRM_R,
-                         arma::vec R_GRM_R_nonOutlier,
-                         arma::vec R_GRM_R_TwoSubjOutlier,
-                         std::vector<TwoSubjFamily> TwoSubj_list,
-                         std::vector<ThreeSubjFamily> ThreeSubj_list,
-                         arma::vec MAF_interval,
-                         double zScoreE_cutoff,
-                         double SPA_Cutoff,
-                         double zeta,
-                         double tol) {
+SAGELDClass::SAGELDClass(
+  std::string Method,
+  arma::mat XTs,
+  arma::mat SS,
+  arma::mat AtS,
+  arma::mat Q,
+  arma::mat A21,
+  arma::mat TTs,
+  arma::mat Tys,
+  arma::vec sol,
+  arma::vec blups,
+  double sig,
+  arma::vec resid,
+  arma::vec resid_G,
+  arma::vec resid_GxE,
+  arma::vec resid_E,
+  arma::vec resid_unrelated_outliers,
+  arma::vec resid_unrelated_outliers_G,
+  arma::vec resid_unrelated_outliers_GxE,
+  double sum_R_nonOutlier,
+  double sum_R_nonOutlier_G,
+  double sum_R_nonOutlier_GxE,
+  arma::vec R_GRM_R,
+  arma::vec R_GRM_R_nonOutlier,
+  arma::vec R_GRM_R_TwoSubjOutlier,
+  std::vector<TwoSubjFamily> TwoSubj_list,
+  std::vector<ThreeSubjFamily> ThreeSubj_list,
+  arma::vec MAF_interval,
+  double zScoreE_cutoff,
+  double SPA_Cutoff,
+  double zeta,
+  double tol
+) {
   m_Method = Method;
 
   m_XTs = XTs;
@@ -93,9 +95,11 @@ SAGELDClass::SAGELDClass(std::string Method,
 
 }
 
-arma::mat SAGELDClass::mgf(double t,
-                               const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-                               double MAF) {
+arma::mat SAGELDClass::mgf(
+  double t,
+  const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
+  double MAF
+) {
   arma::vec lambda = arma::exp(t * m_resid_unrelated_outliers);
   arma::vec alpha = 1 - MAF + MAF * lambda;
   arma::vec alpha_1 = MAF * m_resid_unrelated_outliers % lambda;
@@ -144,10 +148,12 @@ arma::mat SAGELDClass::mgf(double t,
   return arma::join_rows(M_G0_all, M_G1_all, M_G2_all);
 }
 
-arma::mat SAGELDClass::mgf(double t,
-                               const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-                               double MAF,
-                               double lambda_i) {
+arma::mat SAGELDClass::mgf(
+  double t,
+  const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
+  double MAF,
+  double lambda_i
+) {
   arma::vec m_resid_unrelated_outliers_i = m_resid_unrelated_outliers_GxE - lambda_i * m_resid_unrelated_outliers_G;
   arma::vec lambda = arma::exp(t * m_resid_unrelated_outliers_i);
   arma::vec alpha = 1 - MAF + MAF * lambda;
@@ -199,12 +205,14 @@ arma::mat SAGELDClass::mgf(double t,
   return arma::join_rows(M_G0_all, M_G1_all, M_G2_all);
 }
 
-double SAGELDClass::fastGetRoot(const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-                                    double Score,
-                                    double MAF,
-                                    double init_t,
-                                    double tol,
-                                    int maxiter) {
+double SAGELDClass::fastGetRoot(
+  const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
+  double Score,
+  double MAF,
+  double init_t,
+  double tol,
+  int maxiter
+) {
   double t = init_t;
   arma::vec MGF0; arma::vec MGF1; arma::vec MGF2;
   double CGF1 = 0; double CGF2 = 0;
@@ -259,14 +267,16 @@ double SAGELDClass::fastGetRoot(const std::vector<UpdatedThreeSubj>& update_Thre
   return t;
 }
 
-double SAGELDClass::fastGetRoot(const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-                                    double m_R_GRM_R_nonOutlier_i,
-                                    double lambda_i,
-                                    double Score,
-                                    double MAF,
-                                    double init_t,
-                                    double tol,
-                                    int maxiter) {
+double SAGELDClass::fastGetRoot(
+  const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
+  double m_R_GRM_R_nonOutlier_i,
+  double lambda_i,
+  double Score,
+  double MAF,
+  double init_t,
+  double tol,
+  int maxiter
+) {
   double t = init_t;
   arma::vec MGF0; arma::vec MGF1; arma::vec MGF2;
   double CGF1 = 0; double CGF2 = 0;
@@ -321,12 +331,14 @@ double SAGELDClass::fastGetRoot(const std::vector<UpdatedThreeSubj>& update_Thre
   return t;
 }
 
-double SAGELDClass::getProbSpa(const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-                                double Score,
-                                double MAF,
-                                bool lower_tail,
-                                double zeta,
-                                double tol) {
+double SAGELDClass::getProbSpa(
+  const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
+  double Score,
+  double MAF,
+  bool lower_tail,
+  double zeta,
+  double tol
+) {
   zeta = fastGetRoot(update_ThreeSubj_list, Score, MAF, zeta, tol);
   arma::mat MGF_all = mgf(zeta, update_ThreeSubj_list, MAF);
   arma::vec MGF0 = MGF_all.col(0);
@@ -350,14 +362,16 @@ double SAGELDClass::getProbSpa(const std::vector<UpdatedThreeSubj>& update_Three
   return pval;
 }
 
-double SAGELDClass::getProbSpa(const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-                                double m_R_GRM_R_nonOutlier_i,
-                                double lambda_i,
-                                double Score,
-                                double MAF,
-                                bool lower_tail,
-                                double zeta,
-                                double tol) {
+double SAGELDClass::getProbSpa(
+  const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
+  double m_R_GRM_R_nonOutlier_i,
+  double lambda_i,
+  double Score,
+  double MAF,
+  bool lower_tail,
+  double zeta,
+  double tol
+) {
   zeta = fastGetRoot(update_ThreeSubj_list, m_R_GRM_R_nonOutlier_i, lambda_i, Score, MAF, zeta, tol);
   arma::mat MGF_all = mgf(zeta, update_ThreeSubj_list, MAF, lambda_i);
   arma::vec MGF0 = MGF_all.col(0);
@@ -381,10 +395,12 @@ double SAGELDClass::getProbSpa(const std::vector<UpdatedThreeSubj>& update_Three
   return pval;
 }
 
-double SAGELDClass::getMarkerPval(arma::vec GVec,
-                                  double altFreq,
-                                  double& hwepval,
-                                  double hwepvalCutoff) {
+double SAGELDClass::getMarkerPval(
+  arma::vec GVec,
+  double altFreq,
+  double& hwepval,
+  double hwepvalCutoff
+) {
   gethwepval(GVec, hwepval, hwepvalCutoff);
   double MAF = std::min(altFreq, 1 - altFreq);
 

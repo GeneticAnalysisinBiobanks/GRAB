@@ -11,11 +11,20 @@
 #include <stdexcept>
 #include <boost/math/distributions/normal.hpp>
 #include <boost/math/distributions/chi_squared.hpp>
+#include <unordered_map>
+#include <memory>
 
 namespace WtCoxG {
 class WtCoxGClass {
+public:
+  // Per-marker external-reference info (shared via refMap).
+  struct RefInfo {
+    double AF_ref, AN_ref, TPR, sigma2, pvalue_bat;
+    double w_ext, var_ratio_w0, var_ratio_int, var_ratio_ext;
+  };
+
 private:
-  // Per-marker external-reference metadata.
+  // Per-marker metadata used during chunk computation.
   struct MarkerInfo {
     double AF_ref;
     double AN_ref;
@@ -46,6 +55,11 @@ private:
   double m_SPA_Cutoff;
   arma::vec m_scoreVec;
   arma::vec m_zScoreVec;
+
+  // Shared marker reference map (populated once, shared across thread copies)
+  std::shared_ptr<const std::unordered_map<uint64_t, RefInfo>> m_refMap;
+  // Per-chunk reference info (rebuilt each chunk)
+  std::vector<RefInfo> m_chunkRefInfo;
 
 public:
 
@@ -151,6 +165,36 @@ public:
   arma::vec getZScoreVec() const {
     return m_zScoreVec;
   }
+
+  // Set the marker reference map (called once before threading)
+  void setRefMap(std::unordered_map<uint64_t, RefInfo> map) {
+    m_refMap = std::make_shared<const std::unordered_map<uint64_t, RefInfo>>(std::move(map));
+  }
+
+  // Prepare per-chunk marker info by looking up the refMap
+  void prepareChunk(const std::vector<uint64_t>& genoIndices) {
+    size_t n = genoIndices.size();
+    m_chunkRefInfo.resize(n);
+    std::vector<double> AF_ref(n), AN_ref(n), TPR(n), sigma2(n);
+    std::vector<double> pvalue_bat(n), w_ext(n), var_w0(n), var_int(n), var_ext(n);
+    for (size_t i = 0; i < n; ++i) {
+      RefInfo ri{NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN};
+      if (m_refMap) {
+        auto it = m_refMap->find(genoIndices[i]);
+        if (it != m_refMap->end()) ri = it->second;
+      }
+      m_chunkRefInfo[i] = ri;
+      AF_ref[i] = ri.AF_ref;   AN_ref[i] = ri.AN_ref;
+      TPR[i] = ri.TPR;         sigma2[i] = ri.sigma2;
+      pvalue_bat[i] = ri.pvalue_bat; w_ext[i] = ri.w_ext;
+      var_w0[i] = ri.var_ratio_w0;   var_int[i] = ri.var_ratio_int;
+      var_ext[i] = ri.var_ratio_ext;
+    }
+    updateMarkerInfo(AF_ref, AN_ref, TPR, sigma2, pvalue_bat,
+                     w_ext, var_w0, var_int, var_ext);
+  }
+
+  const RefInfo& getChunkRefInfo(size_t i) const { return m_chunkRefInfo[i]; }
 
 private:
 
