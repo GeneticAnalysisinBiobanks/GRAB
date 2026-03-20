@@ -157,7 +157,7 @@ obj.SAGELD <- SAGELD.NullModel(
   PairwiseIBDFile = PairwiseIBDFile,
 )
 
-## save null model for Marker4
+## save null models
 saveRDS(obj.SPAGRM, file = nullobj_spagrm)
 saveRDS(obj.SPAsqr, file = nullobj_spasqr)
 saveRDS(obj.WtCoxG, file = nullobj_wtcoxg)
@@ -180,7 +180,7 @@ GRAB.Marker(obj.POLMM, GenoFile, devel_polmm)
 GRAB.Marker(obj.SAGELD, GenoFile, devel_sageld)
 
 
-########## run Marker4
+########## run MarkerMT
 obj.SPAGRM <- readRDS(nullobj_spagrm)
 obj.SPAsqr <- readRDS(nullobj_spasqr)
 obj.WtCoxG <- readRDS(nullobj_wtcoxg)

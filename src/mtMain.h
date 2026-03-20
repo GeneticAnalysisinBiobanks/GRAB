@@ -1,4 +1,4 @@
-// Marker4.h -- Pure-C++ chunk-parallel marker execution engine interface
+// mtMain.h -- Pure-C++ chunk-parallel marker execution engine interface
 //
 // Functions in this file:
 //
@@ -6,37 +6,35 @@
 //     mainMarkerChunksCore — thread-pool dispatcher: reads genotypes, runs statistics,
 //                            and writes results for all marker chunks
 
-#ifndef MARKER4_H
-#define MARKER4_H
+#ifndef MAIN_H
+#define MAIN_H
 
-#include <RcppArmadillo.h>
-#include <string>
-#include <vector>
-#include <cstdint>
-#include <sstream>
-#include <cmath>
-#include <limits>
-#include <cstdio>
+#include "mtPLINK.h"
+#include "mtPOLMM.h"
+#include "mtWtCoxG.h"
+#include "mtLEAF.h"
+#include "mtSPAGRM.h"
+#include "mtSAGELD.h"
+#include "mtSPAsqr.h"
+#include "mtSPACox.h"
+#include "mtSPAmix.h"
+#include "mtSPAmixPlus.h"
 
-// Forward declarations — only the method class pointers used by the engine
-namespace POLMM    { class POLMMClass; }
-namespace SPACox   { class SPACoxClass; }
-namespace SPAmix   { class SPAmixClass; }
-namespace SPAGRM   { class SPAGRMClass; }
-namespace SAGELD   { class SAGELDClass; }
-namespace WtCoxG   { class WtCoxGClass; }
-namespace SPAsqr   { class SPAsqrClass; }
-namespace LEAF     { class LEAFClass; }
-namespace SPAmixPlus { class SPAmixPlusClass; }
-namespace PLINK4   { class PlinkData; }
 
-namespace Marker4 {
+namespace mtMain {
+
+// Global method pointers — defined in mtMain.cpp.
+extern POLMM::POLMMClass*            ptr_gPOLMMobj;
+extern WtCoxG::WtCoxGClass*          ptr_gWtCoxGobj;
+extern LEAF::LEAFClass*              ptr_gLEAFobj;
+extern SPACox::SPACoxClass*          ptr_gSPACoxobj;
+extern SPAmix::SPAmixClass*          ptr_gSPAmixobj;
+extern SPAGRM::SPAGRMClass*          ptr_gSPAGRMobj;
+extern SAGELD::SAGELDClass*          ptr_gSAGELDobj;
+extern SPAsqr::SPAsqrClass*          ptr_gSPAsqrobj;
+extern SPAmixPlus::SPAmixPlusClass*  ptr_gSPAmixPlusobj;
 
 // ---- Engine ----
-
-// Thread-pool dispatcher: for each chunk, reads genotypes from PLINK,
-// computes per-marker statistics via the active method object, and writes
-// results to outputFile (plain text or .gz).
 void mainMarkerChunksCore(
   const std::string&                        method,
   const std::vector<std::vector<uint64_t>>& chunkMarkers,
@@ -46,9 +44,9 @@ void mainMarkerChunksCore(
   double                                    missing_cutoff,
   double                                    min_maf_marker,
   double                                    min_mac_marker,
-  const PLINK4::PlinkData&                  plinkData
+  const mtPLINK::PlinkData&                 plinkData
 );
 
-} // namespace Marker4
+} // namespace mtMain
 
-#endif // MARKER4_H
+#endif // MAIN_H

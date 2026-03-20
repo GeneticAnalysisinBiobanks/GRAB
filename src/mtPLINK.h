@@ -1,7 +1,7 @@
-#ifndef PLINK4_H
-#define PLINK4_H
+#ifndef PLINK_H
+#define PLINK_H
 
-// PLINK4.h -- PLINK binary genotype reader
+// mtPLINK.h -- PLINK binary genotype reader
 //
 //   PlinkData   — shared across all threads (read-only after construction).
 //                 Parses .bim/.fam once, builds sample-position map,
@@ -19,7 +19,7 @@
 #include <vector>
 #include <memory>
 
-namespace PLINK4 {
+namespace mtPLINK {
 
 // Marker metadata from a .bim file (alleles normalized by AlleleOrder).
 struct MarkerInfo {
@@ -46,10 +46,10 @@ private:
   std::string m_bedFile;
   bool        m_altFirst;            // true when AlleleOrder == "alt-first"
 
-  uint32_t m_nSamplesInFile = 0;     // total samples in .fam
-  uint32_t m_nSamplesUsed   = 0;     // selected samples for analysis
+  uint32_t m_nSubjInFile = 0;     // total samples in .fam
+  uint32_t m_nSubjUsed   = 0;     // selected samples for analysis
   uint32_t m_nMarkers       = 0;     // total markers in .bim
-  uint64_t m_bytesPerMarker = 0;     // ceil(nSamplesInFile / 4)
+  uint64_t m_bytesPerMarker = 0;     // ceil(nSubjInFile / 4)
 
   std::vector<uint32_t> m_samplePosMap;  // model-sample i → .fam row
 
@@ -65,14 +65,14 @@ public:
     const std::string& bedFile,
     const std::string& bimFile,
     const std::string& famFile,
-    const std::vector<std::string>& requestedSamples,
+    const std::vector<std::string>& subjData,
     const std::string& AlleleOrder
   );
 
   // ---- Accessors ----
   uint32_t nMarkers()       const { return m_nMarkers; }
-  uint32_t nSamplesUsed()   const { return m_nSamplesUsed; }
-  uint32_t nSamplesInFile() const { return m_nSamplesInFile; }
+  uint32_t nSubjUsed()   const { return m_nSubjUsed; }
+  uint32_t nSubjInFile() const { return m_nSubjInFile; }
   uint64_t bytesPerMarker() const { return m_bytesPerMarker; }
   const std::string& bedFile() const { return m_bedFile; }
   bool isAltFirst()         const { return m_altFirst; }
@@ -130,7 +130,7 @@ public:
   void beginSequentialBlock(uint64_t firstMarker);
 
   // Read genotypes for one marker.  Returns alt-allele-count vector
-  // (length = nSamplesUsed).  Missing positions are coded -1 and
+  // (length = nSubjUsed).  Missing positions are coded -1 and
   // listed in indexForMissing.
   arma::vec getGenotypes(
     uint64_t gIndex,
@@ -141,6 +141,6 @@ public:
   );
 };
 
-} // namespace PLINK4
+} // namespace mtPLINK
 
 #endif

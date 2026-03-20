@@ -1,4 +1,4 @@
-// Marker4Engine.cpp -- Thread pool, per-chunk worker, sequential writer
+// mtMain.cpp -- Thread pool, per-chunk worker, sequential writer
 //
 // Functions by role:
 //
@@ -17,20 +17,8 @@
 //   [Worker context]      (static)
 //     makeThreadContext   — clone the global method object into a per-thread ThreadContext
 //
-//   [Engine]              (Marker4 namespace, external linkage)
+//   [Engine]              (mtMarker namespace, external linkage)
 //     mainMarkerChunksCore — coordinate the PLINK cursor, worker pool, and writer thread
-
-#include "mtMain.h"
-#include "mtPLINK4.h"
-#include "mtPOLMM.h"
-#include "mtSPACox.h"
-#include "mtSPAmix.h"
-#include "mtSPAGRM.h"
-#include "mtSAGELD.h"
-#include "mtWtCoxG.h"
-#include "mtSPAsqr.h"
-#include "mtLEAF.h"
-#include "mtSPAmixPlus.h"
 
 #include <thread>
 #include <mutex>
@@ -43,23 +31,26 @@
 #include <cmath>
 #include <exception>
 #include <cstdio>
-
+#include <RcppArmadillo.h>
 #include <boost/math/distributions/chi_squared.hpp>
 #include <zlib.h>
 
+#include "mtMain.h"
+
+
+namespace mtMain {
 
 // ---- Global method pointers (one per active statistical method) ----
+
 POLMM::POLMMClass*           ptr_gPOLMMobj      = nullptr;
-SPACox::SPACoxClass*         ptr_gSPACoxobj     = nullptr;
-SPAmix::SPAmixClass*         ptr_gSPAmixobj     = nullptr;
+WtCoxG::WtCoxGClass*         ptr_gWtCoxGobj     = nullptr;
+LEAF::LEAFClass*             ptr_gLEAFobj       = nullptr;
 SPAGRM::SPAGRMClass*         ptr_gSPAGRMobj     = nullptr;
 SAGELD::SAGELDClass*         ptr_gSAGELDobj     = nullptr;
-WtCoxG::WtCoxGClass*         ptr_gWtCoxGobj     = nullptr;
 SPAsqr::SPAsqrClass*         ptr_gSPAsqrobj     = nullptr;
-LEAF::LEAFClass*             ptr_gLEAFobj       = nullptr;
+SPACox::SPACoxClass*         ptr_gSPACoxobj     = nullptr;
+SPAmix::SPAmixClass*         ptr_gSPAmixobj     = nullptr;
 SPAmixPlus::SPAmixPlusClass* ptr_gSPAmixPlusobj = nullptr;
-
-namespace Marker4 {
 
 // ---- Inline helpers ----
 
@@ -177,7 +168,7 @@ static std::string getHeader(const std::string& method,
     for (int i = 1; i <= nCluster; ++i)
       oss << "\tcl" << i << ".p_ext\tcl" << i << ".p_noext\tcl" << i << ".p_batch";
   } else {
-    throw std::runtime_error("Unsupported method in Marker4: " + method);
+    throw std::runtime_error("Unsupported method in mtMarker: " + method);
   }
   return oss.str();
 }
@@ -234,7 +225,7 @@ void mainMarkerChunksCore(
   double missing_cutoff,
   double min_maf_marker,
   double min_mac_marker,
-  const PLINK4::PlinkData& plinkData
+  const mtPLINK::PlinkData& plinkData
 ) {
   if (chunkMarkers.empty())
     throw std::runtime_error("chunkMarkers is empty.");
@@ -319,7 +310,7 @@ void mainMarkerChunksCore(
     try {
       // Per-thread: copy method object (once) + open .bed file handle
       ThreadContext ctx = makeThreadContext(method);
-      PLINK4::PlinkCursor cursor(plinkData);
+      mtPLINK::PlinkCursor cursor(plinkData);
 
       while (true) {
         size_t cidx = nextChunk.fetch_add(1);
@@ -596,4 +587,4 @@ void mainMarkerChunksCore(
   if (workerError) std::rethrow_exception(workerError);
 }
 
-} // namespace Marker4
+} // namespace mtMain

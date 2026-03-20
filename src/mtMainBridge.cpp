@@ -1,5 +1,5 @@
 
-// Marker4Bridge.cpp -- R/Rcpp boundary: per-method Rcpp entry points
+// mtMainBridge.cpp -- R/Rcpp boundary: per-method Rcpp entry points
 //
 // This header contains the full definitions of all runMarkerInCPP_FOO functions.
 //
@@ -26,32 +26,9 @@
 //     runMarkerInCPP_SPAmix     — construct SPAmixClass
 //     runMarkerInCPP_SPAmixPlus — construct SPAmixPlusClass
 
-#define MARKER4BRIDGE_H
-
 #include <RcppArmadillo.h>
-
 #include "mtMain.h"
-#include "mtPLINK4.h"
-#include "mtPOLMM.h"
-#include "mtWtCoxG.h"
-#include "mtLEAF.h"
-#include "mtSPAGRM.h"
-#include "mtSAGELD.h"
-#include "mtSPAsqr.h"
-#include "mtSPACox.h"
-#include "mtSPAmix.h"
-#include "mtSPAmixPlus.h"
 
-// Global method pointers — defined in Marker4Engine.cpp.
-extern POLMM::POLMMClass*            ptr_gPOLMMobj;
-extern WtCoxG::WtCoxGClass*          ptr_gWtCoxGobj;
-extern LEAF::LEAFClass*              ptr_gLEAFobj;
-extern SPACox::SPACoxClass*          ptr_gSPACoxobj;
-extern SPAmix::SPAmixClass*          ptr_gSPAmixobj;
-extern SPAGRM::SPAGRMClass*          ptr_gSPAGRMobj;
-extern SAGELD::SAGELDClass*          ptr_gSAGELDobj;
-extern SPAsqr::SPAsqrClass*          ptr_gSPAsqrobj;
-extern SPAmixPlus::SPAmixPlusClass*  ptr_gSPAmixPlusobj;
 
 namespace {
 
@@ -133,30 +110,30 @@ static void runEngineCore(
   const std::string& RangesToExcludeFile
 ) {
 
-  PLINK4::PlinkData plinkData(bedFile, bimFile, famFile, subjData, AlleleOrder);
+  mtPLINK::PlinkData plinkData(bedFile, bimFile, famFile, subjData, AlleleOrder);
 
-  PLINK4::MarkerFilterConfig filterConfig;
+  mtPLINK::MarkerFilterConfig filterConfig;
   filterConfig.IDsToIncludeFile    = IDsToIncludeFile;
   filterConfig.RangesToIncludeFile = RangesToIncludeFile;
   filterConfig.IDsToExcludeFile    = IDsToExcludeFile;
   filterConfig.RangesToExcludeFile = RangesToExcludeFile;
 
-  auto markerInfo = plinkData.getFilteredMarkers(filterConfig); // bim lines for included markers
-
-  if (markerInfo.empty())
+  std::vector<mtPLINK::MarkerInfo> markerInfo = plinkData.getFilteredMarkers(filterConfig);
+  if (markerInfo.empty()) {
     throw std::runtime_error("No markers remain after PLINK marker filtering.");
+  }
 
-  std::vector<std::vector<uint64_t>> chunkIndices = PLINK4::PlinkData::buildChunks(markerInfo, nMarkersEachChunk);
+  std::vector<std::vector<uint64_t>> chunkIndices = mtPLINK::PlinkData::buildChunks(markerInfo, nMarkersEachChunk);
 
-  Rprintf("Number of subjects in the input file: %u\n", plinkData.nSamplesInFile());
-  Rprintf("Number of subjects to test: %u\n", plinkData.nSamplesUsed());
+  Rprintf("Number of subjects in the input file: %u\n", plinkData.nSubjInFile());
+  Rprintf("Number of subjects to test: %u\n", plinkData.nSubjUsed());
   Rprintf("Number of markers in the input file: %u\n", plinkData.nMarkers());
   Rprintf("Number of markers to test: %zu\n", markerInfo.size());
   Rprintf("Number of markers in each chunk: %d\n", nMarkersEachChunk);
   Rprintf("Number of chunks for all markers: %zu\n", chunkIndices.size());
   Rprintf("Number of threads: %u\n", nthreads);
 
-  Marker4::mainMarkerChunksCore(
+  mtMain::mainMarkerChunksCore(
     method, chunkIndices, outputFile, nthreads,
     impute_method, missing_cutoff, min_maf_marker, min_mac_marker, plinkData
   );
@@ -181,10 +158,10 @@ void runMarkerInCPP_POLMM(
     std::string IDsToIncludeFile, std::string RangesToIncludeFile,
     std::string IDsToExcludeFile, std::string RangesToExcludeFile
   ) {
-  if (ptr_gPOLMMobj) {
-    delete ptr_gPOLMMobj;
+  if (mtMain::ptr_gPOLMMobj) {
+    delete mtMain::ptr_gPOLMMobj;
   }
-  ptr_gPOLMMobj = new POLMM::POLMMClass(
+  mtMain::ptr_gPOLMMobj = new POLMM::POLMMClass(
     muMat, iRMat, Cova, yVec,
     arma::sp_mat(), tau, false, 0.001, 100,
     varRatio, SPA_Cutoff, false
@@ -224,11 +201,11 @@ void runMarkerInCPP_WtCoxG(
       };
     }
 
-  if (ptr_gWtCoxGobj) {
-    delete ptr_gWtCoxGobj;
+  if (mtMain::ptr_gWtCoxGobj) {
+    delete mtMain::ptr_gWtCoxGobj;
   }
-  ptr_gWtCoxGobj = new WtCoxG::WtCoxGClass(R, w, cutoff, SPA_Cutoff);
-  ptr_gWtCoxGobj->setRefMap(std::move(refMap));
+  mtMain::ptr_gWtCoxGobj = new WtCoxG::WtCoxGClass(R, w, cutoff, SPA_Cutoff);
+  mtMain::ptr_gWtCoxGobj->setRefMap(std::move(refMap));
 
   runEngineCore(
     "WtCoxG", bedFile, bimFile, famFile, outputFile,
@@ -282,11 +259,11 @@ void runMarkerInCPP_LEAF(
     refMaps[c] = map;
   }
 
-  if (ptr_gLEAFobj) {
-    delete ptr_gLEAFobj;
+  if (mtMain::ptr_gLEAFobj) {
+    delete mtMain::ptr_gLEAFobj;
   }
-  ptr_gLEAFobj = new LEAF::LEAFClass(residuals, weights, clusterIdxVecs, cutoff, SPA_Cutoff);
-  ptr_gLEAFobj->setRefMaps(std::move(refMaps));
+  mtMain::ptr_gLEAFobj = new LEAF::LEAFClass(residuals, weights, clusterIdxVecs, cutoff, SPA_Cutoff);
+  mtMain::ptr_gLEAFobj->setRefMaps(std::move(refMaps));
 
   runEngineCore(
     "LEAF", bedFile, bimFile, famFile, outputFile,
@@ -321,10 +298,10 @@ void runMarkerInCPP_SPAGRM(
   auto threeStandS = splitVec(threeSubj_standS_all, threeSubj_standS_lens);
   auto threeCLT    = splitMat(threeSubj_CLT_all, threeSubj_CLT_nrows);
 
-  if (ptr_gSPAGRMobj) {
-    delete ptr_gSPAGRMobj;
+  if (mtMain::ptr_gSPAGRMobj) {
+    delete mtMain::ptr_gSPAGRMobj;
   }
-  ptr_gSPAGRMobj = new SPAGRM::SPAGRMClass(
+  mtMain::ptr_gSPAGRMobj = new SPAGRM::SPAGRMClass(
     resid, resid_unrelated_outliers,
     sum_R_nonOutlier, R_GRM_R_nonOutlier, R_GRM_R_TwoSubjOutlier, R_GRM_R,
     MAF_interval,
@@ -390,10 +367,10 @@ void runMarkerInCPP_SAGELD(
     threeSubj[i].stand_S_GxE = std::move(standS_GxE[i]);
   }
 
-  if (ptr_gSAGELDobj) {
-    delete ptr_gSAGELDobj;
+  if (mtMain::ptr_gSAGELDobj) {
+    delete mtMain::ptr_gSAGELDobj;
   }
-  ptr_gSAGELDobj = new SAGELD::SAGELDClass(
+  mtMain::ptr_gSAGELDobj = new SAGELD::SAGELDClass(
     Method, XTs, SS, AtS, Q, A21, TTs, Tys,
     sol, blups, sig,
     resid, resid_G, resid_GxE, resid_E,
@@ -463,10 +440,10 @@ void runMarkerInCPP_SPAsqr(
     threeOff += nThree;
   }
 
-  if (ptr_gSPAsqrobj) {
-    delete ptr_gSPAsqrobj;
+  if (mtMain::ptr_gSPAsqrobj) {
+    delete mtMain::ptr_gSPAsqrobj;
   }
-  ptr_gSPAsqrobj = new SPAsqr::SPAsqrClass(
+  mtMain::ptr_gSPAsqrobj = new SPAsqr::SPAsqrClass(
     taus, Resid_mat, tauData,
     sum_R_nonOutlier_vec, R_GRM_R_nonOutlier_vec,
     R_GRM_R_TwoSubjOutlier_vec, R_GRM_R_vec,
@@ -495,10 +472,10 @@ void runMarkerInCPP_SPACox(
     std::string IDsToIncludeFile, std::string RangesToIncludeFile,
     std::string IDsToExcludeFile, std::string RangesToExcludeFile
 ) {
-  if (ptr_gSPACoxobj) {
-    delete ptr_gSPACoxobj;
+  if (mtMain::ptr_gSPACoxobj) {
+    delete mtMain::ptr_gSPACoxobj;
   }
-  ptr_gSPACoxobj = new SPACox::SPACoxClass(
+  mtMain::ptr_gSPACoxobj = new SPACox::SPACoxClass(
     cumul, mresid, XinvXX, tX, N,
     pVal_covaAdj_Cutoff, SPA_Cutoff
   );
@@ -544,10 +521,10 @@ void runMarkerInCPP_SPAmix(
     outlierVec[i].resid2NonOutlier = arma::square(col_i.elem(posNons[i]));
   }
 
-  if (ptr_gSPAmixobj) {
-    delete ptr_gSPAmixobj;
+  if (mtMain::ptr_gSPAmixobj) {
+    delete mtMain::ptr_gSPAmixobj;
   }
-  ptr_gSPAmixobj = new SPAmix::SPAmixClass(
+  mtMain::ptr_gSPAmixobj = new SPAmix::SPAmixClass(
     resid, PCs, N, SPA_Cutoff, std::move(outlierVec)
   );
 
@@ -597,10 +574,10 @@ void runMarkerInCPP_SPAmixPlus(
   for (arma::uword i = 0; i < sparseId1.n_elem; ++i)
     triplets.emplace_back(sparseId1[i], sparseId2[i], sparseVal[i]);
 
-  if (ptr_gSPAmixPlusobj) {
-    delete ptr_gSPAmixPlusobj;
+  if (mtMain::ptr_gSPAmixPlusobj) {
+    delete mtMain::ptr_gSPAmixPlusobj;
   }
-  ptr_gSPAmixPlusobj = new SPAmixPlus::SPAmixPlusClass(
+  mtMain::ptr_gSPAmixPlusobj = new SPAmixPlus::SPAmixPlusClass(
     resid, PCs, N, SPA_Cutoff,
     std::move(outlierVec), std::move(triplets),
     afFilePath, afFilePrecision

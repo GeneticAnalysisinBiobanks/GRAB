@@ -1,6 +1,6 @@
-// PLINK4.cpp -- PlinkData and PlinkCursor implementations
+// mtPLINK.cpp -- PlinkData and PlinkCursor implementations
 
-#include "mtPLINK4.h"
+#include "mtPLINK.h"
 
 #include <algorithm>
 #include <stdexcept>
@@ -59,7 +59,7 @@ std::vector<RangeFilter> readRangeFile(const std::string& path) {
   return ranges;
 }
 
-bool markerInRanges(const PLINK4::MarkerInfo& m, const std::vector<RangeFilter>& ranges) {
+bool markerInRanges(const mtPLINK::MarkerInfo& m, const std::vector<RangeFilter>& ranges) {
   for (const auto& r : ranges)
     if (m.chrom == r.chrom && m.pos >= r.start && m.pos <= r.end) return true;
   return false;
@@ -73,7 +73,7 @@ static const int GENO_REF_FIRST[4] = { 0, -1,  1,  2};  // alt=A2
 } // anonymous namespace
 
 
-namespace PLINK4 {
+namespace mtPLINK {
 
 // ==================== PlinkData ====================
 
@@ -81,7 +81,7 @@ PlinkData::PlinkData(
     const std::string& bedFile,
     const std::string& bimFile,
     const std::string& famFile,
-    const std::vector<std::string>& requestedSamples,
+    const std::vector<std::string>& subjData,
     const std::string& AlleleOrder)
   : m_bedFile(bedFile),
     m_altFirst(AlleleOrder == "alt-first")
@@ -116,7 +116,7 @@ PlinkData::PlinkData(
   }
 
   // ---- Parse .fam ----
-  std::vector<std::string> famSamples;
+  std::vector<std::string> famIIDs;
   {
     std::ifstream in(famFile);
     if (!in.is_open())
@@ -127,24 +127,24 @@ PlinkData::PlinkData(
       if (tokens.empty()) continue;
       if (tokens.size() != 6)
         throw std::runtime_error("PLINK .fam file needs 6 columns: " + famFile);
-      famSamples.push_back(tokens[1]);
+      famIIDs.push_back(tokens[1]);
     }
   }
-  m_nSamplesInFile = static_cast<uint32_t>(famSamples.size());
-  m_bytesPerMarker = (m_nSamplesInFile + 3) / 4;
+  m_nSubjInFile = static_cast<uint32_t>(famIIDs.size());
+  m_bytesPerMarker = (m_nSubjInFile + 3) / 4;
 
   // ---- Build sample position map + validate ----
-  m_nSamplesUsed = static_cast<uint32_t>(requestedSamples.size());
+  m_nSubjUsed = static_cast<uint32_t>(subjData.size());
   std::unordered_map<std::string, uint32_t> famPosLookup;
-  famPosLookup.reserve(famSamples.size());
-  for (uint32_t i = 0; i < famSamples.size(); ++i)
-    famPosLookup.emplace(famSamples[i], i);
+  famPosLookup.reserve(famIIDs.size());
+  for (uint32_t i = 0; i < famIIDs.size(); ++i)
+    famPosLookup.emplace(famIIDs[i], i);
 
-  m_samplePosMap.resize(m_nSamplesUsed);
-  for (uint32_t i = 0; i < m_nSamplesUsed; ++i) {
-    auto it = famPosLookup.find(requestedSamples[i]);
+  m_samplePosMap.resize(m_nSubjUsed);
+  for (uint32_t i = 0; i < m_nSubjUsed; ++i) {
+    auto it = famPosLookup.find(subjData[i]);
     if (it == famPosLookup.end())
-      throw std::runtime_error("Subject not found in PLINK file: " + requestedSamples[i]);
+      throw std::runtime_error("Subject not found in PLINK file: " + subjData[i]);
     m_samplePosMap[i] = it->second;
   }
 
@@ -336,7 +336,7 @@ arma::vec PlinkCursor::getGenotypes(
 ) {
   readMarkerBytes(gIndex);
 
-  const uint32_t n = m_data.nSamplesUsed();
+  const uint32_t n = m_data.nSubjUsed();
   const auto& posMap = m_data.samplePosMap();
   const int* genoMap = m_data.isAltFirst() ? GENO_ALT_FIRST : GENO_REF_FIRST;
 
@@ -368,4 +368,4 @@ arma::vec PlinkCursor::getGenotypes(
   return geno;
 }
 
-} // namespace PLINK4
+} // namespace mtPLINK

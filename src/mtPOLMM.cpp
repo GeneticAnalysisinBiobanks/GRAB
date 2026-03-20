@@ -479,7 +479,7 @@ arma::cube POLMMClass::getInvBlockDiagSigma() {
     DiagGRM = m_tau * m_SparseGRM.diag();
 
   }else{
-    throw std::runtime_error("DenseGRM not available in Marker4 build");
+    throw std::runtime_error("DenseGRM not available in mtMarker build");
   }
 
   double temp;
