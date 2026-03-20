@@ -1,6 +1,6 @@
 # LEAF_Marker.R -- Unwrap LEAF null model and run marker engine
 
-runMarker.LEAF <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
+runMarkerMT.LEAF <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
 
   nCluster   <- objNull$Ncluster
   clusterIdx <- objNull$clusterIdx

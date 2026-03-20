@@ -1,6 +1,6 @@
 # SPACox_Marker.R -- Unwrap SPACox null model and run marker engine
 
-runMarker.SPACox <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
+runMarkerMT.SPACox <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
   
   runMarkerInCPP.SPACox(
     cumul               = objNull$cumul,

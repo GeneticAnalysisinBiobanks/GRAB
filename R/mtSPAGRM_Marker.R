@@ -1,6 +1,6 @@
 # SPAGRM_Marker.R -- Unwrap SPAGRM null model and run marker engine
 
-runMarker.SPAGRM <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
+runMarkerMT.SPAGRM <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
 
   # Pack 2-element vectors into matrices (nTwo x 2)
   twoSubjList   <- objNull$TwoSubj_list

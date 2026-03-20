@@ -1,6 +1,6 @@
 # POLMM_Marker.R -- Unwrap POLMM null model and run marker engine
 
-runMarker.POLMM <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
+runMarkerMT.POLMM <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
   
   objCHR <- objNull$LOCOList[["LOCO=F"]]
 

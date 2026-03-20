@@ -1,6 +1,6 @@
 # SPAsqr_Marker.R -- Unwrap SPAsqr null model and run marker engine
 
-runMarker.SPAsqr <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
+runMarkerMT.SPAsqr <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
   
   taus  <- objNull$taus
   ntaus <- length(taus)

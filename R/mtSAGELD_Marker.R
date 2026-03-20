@@ -1,6 +1,6 @@
 # SAGELD_Marker.R -- Unwrap SAGELD null model and run marker engine
 
-runMarker.SAGELD <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
+runMarkerMT.SAGELD <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
 
   twoSubjList <- objNull$TwoSubj_list
   # Pack 2-element vectors into matrices (nTwo x 2)

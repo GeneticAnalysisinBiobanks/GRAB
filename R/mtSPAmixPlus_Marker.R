@@ -1,6 +1,6 @@
 # SPAmixPlus_Marker.R -- Unwrap SPAmixPlus null model and run marker engine
 
-runMarker.SPAmixPlus <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
+runMarkerMT.SPAmixPlus <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
 
   resid  <- objNull$resid
   nPheno <- ncol(resid)
