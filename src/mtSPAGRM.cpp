@@ -4,8 +4,8 @@
 #include <limits>
 #include <boost/math/distributions/normal.hpp>
 
-#include "SPAGRM.h"
-#include "UTIL.h"
+#include "mtSPAGRM.h"
+#include "mtUTIL.h"
 
 namespace SPAGRM {
 

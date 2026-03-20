@@ -6,7 +6,7 @@
 #include <thread>
 #include <chrono>
 
-#include "POLMM.h"
+#include "mtPOLMM.h"
 
 namespace POLMM {
 

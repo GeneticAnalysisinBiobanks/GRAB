@@ -20,17 +20,17 @@
 //   [Engine]              (Marker4 namespace, external linkage)
 //     mainMarkerChunksCore — coordinate the PLINK cursor, worker pool, and writer thread
 
-#include "Marker4.h"
-#include "PLINK4.h"
-#include "POLMM.h"
-#include "SPACox.h"
-#include "SPAmix.h"
-#include "SPAGRM.h"
-#include "SAGELD.h"
-#include "WtCoxG.h"
-#include "SPAsqr.h"
-#include "LEAF.h"
-#include "SPAmixPlus.h"
+#include "mtMain.h"
+#include "mtPLINK4.h"
+#include "mtPOLMM.h"
+#include "mtSPACox.h"
+#include "mtSPAmix.h"
+#include "mtSPAGRM.h"
+#include "mtSAGELD.h"
+#include "mtWtCoxG.h"
+#include "mtSPAsqr.h"
+#include "mtLEAF.h"
+#include "mtSPAmixPlus.h"
 
 #include <thread>
 #include <mutex>

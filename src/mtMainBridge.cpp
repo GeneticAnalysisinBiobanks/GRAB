@@ -30,17 +30,17 @@
 
 #include <RcppArmadillo.h>
 
-#include "Marker4.h"
-#include "PLINK4.h"
-#include "POLMM.h"
-#include "WtCoxG.h"
-#include "LEAF.h"
-#include "SPAGRM.h"
-#include "SAGELD.h"
-#include "SPAsqr.h"
-#include "SPACox.h"
-#include "SPAmix.h"
-#include "SPAmixPlus.h"
+#include "mtMain.h"
+#include "mtPLINK4.h"
+#include "mtPOLMM.h"
+#include "mtWtCoxG.h"
+#include "mtLEAF.h"
+#include "mtSPAGRM.h"
+#include "mtSAGELD.h"
+#include "mtSPAsqr.h"
+#include "mtSPACox.h"
+#include "mtSPAmix.h"
+#include "mtSPAmixPlus.h"
 
 // Global method pointers — defined in Marker4Engine.cpp.
 extern POLMM::POLMMClass*            ptr_gPOLMMobj;

@@ -4,7 +4,7 @@
 // LEAF.h -- Cluster-stratified LEAF meta-analysis delegating to WtCoxGClass per cluster
 
 #include <RcppArmadillo.h>
-#include "WtCoxG.h"
+#include "mtWtCoxG.h"
 #include <memory>
 #include <unordered_map>
 

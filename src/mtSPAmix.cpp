@@ -2,7 +2,7 @@
 
 #include <RcppArmadillo.h>
 
-#include "SPAmix.h"
+#include "mtSPAmix.h"
 
 namespace SPAmix {
 

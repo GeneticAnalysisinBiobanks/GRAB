@@ -4,7 +4,7 @@
 // SPAsqr.h -- SPA-squared: multi-tau wrapper delegating to SPAGRMClass per tau
 
 #include <RcppArmadillo.h>
-#include "SPAGRM.h"
+#include "mtSPAGRM.h"
 
 namespace SPAsqr{
 

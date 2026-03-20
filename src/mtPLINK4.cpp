@@ -1,6 +1,6 @@
 // PLINK4.cpp -- PlinkData and PlinkCursor implementations
 
-#include "PLINK4.h"
+#include "mtPLINK4.h"
 
 #include <algorithm>
 #include <stdexcept>

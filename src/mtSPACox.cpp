@@ -2,7 +2,7 @@
 
 #include <RcppArmadillo.h>
 
-#include "SPACox.h"
+#include "mtSPACox.h"
 
 namespace SPACox {
 

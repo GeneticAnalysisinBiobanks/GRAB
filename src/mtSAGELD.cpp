@@ -4,8 +4,8 @@
 #include <limits>
 #include <boost/math/distributions/normal.hpp>
 
-#include "SAGELD.h"
-#include "UTIL.h"
+#include "mtSAGELD.h"
+#include "mtUTIL.h"
 
 
 namespace SAGELD {

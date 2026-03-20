@@ -1,6 +1,6 @@
 // WtCoxG.cpp -- WtCoxGClass method implementations
 
-#include "WtCoxG.h"
+#include "mtWtCoxG.h"
 #include <cmath>
 #include <algorithm>
 #include <functional>

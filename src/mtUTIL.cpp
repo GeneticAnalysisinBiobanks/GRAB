@@ -4,7 +4,7 @@
 #include <boost/math/distributions/beta.hpp>
 #include <RcppArmadillo.h>
 
-#include "UTIL.h"
+#include "mtUTIL.h"
 
 double hwe_exact(int obs_hets, int obs_hom1, int obs_hom2) {
 

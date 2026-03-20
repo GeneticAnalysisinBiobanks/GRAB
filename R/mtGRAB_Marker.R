@@ -33,7 +33,7 @@ GRAB.MarkerMT <- function (
     IDsToExcludeFile    = NULL,
     RangesToIncludeFile = NULL,
     RangesToExcludeFile = NULL,
-    nthreads = min(as.numeric(system("nproc", intern = TRUE)), 8)
+    nthreads = min(as.numeric(system("nproc", intern = TRUE)) - 1, 8)
   )
 
   method_defaults <- switch(
