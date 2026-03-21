@@ -48,33 +48,34 @@ private:
       var_ratio_int(var_ratio_int_val), var_ratio_ext(var_ratio_ext_val) {}
   };
 
+  const arma::vec m_R;
+  const arma::vec m_w;
+  const double m_cutoff;
+  const double m_SPA_Cutoff;
+  // Shared marker reference map (populated once, shared across thread copies)
+  const std::shared_ptr<const std::unordered_map<uint64_t, RefInfo>> m_refMap;
+
   std::vector<MarkerInfo> m_markerInfoVec;
-  arma::vec m_R;
-  arma::vec m_w;
-  double m_cutoff;
-  double m_SPA_Cutoff;
   arma::vec m_scoreVec;
   arma::vec m_zScoreVec;
-
-  // Shared marker reference map (populated once, shared across thread copies)
-  std::shared_ptr<const std::unordered_map<uint64_t, RefInfo>> m_refMap;
   // Per-chunk reference info (rebuilt each chunk)
   std::vector<RefInfo> m_chunkRefInfo;
 
 public:
 
   WtCoxGClass(
-    const arma::vec& R,
-    const arma::vec& w,
-    const double cutoff,
-    const double SPA_Cutoff
+    arma::vec R,
+    arma::vec w,
+    double cutoff,
+    double SPA_Cutoff,
+    std::unordered_map<uint64_t, RefInfo> refMap = {}
   )
-    : m_R(R),
-    m_w(w),
-    m_cutoff(cutoff),
-    m_SPA_Cutoff(SPA_Cutoff) {
-
-  }
+    : m_R(std::move(R)),
+      m_w(std::move(w)),
+      m_cutoff(cutoff),
+      m_SPA_Cutoff(SPA_Cutoff),
+      m_refMap(std::make_shared<const std::unordered_map<uint64_t, RefInfo>>(std::move(refMap)))
+  {}
 
 
   void updateMarkerInfo(const std::vector<double>& AF_ref,
@@ -164,11 +165,6 @@ public:
 
   arma::vec getZScoreVec() const {
     return m_zScoreVec;
-  }
-
-  // Set the marker reference map (called once before threading)
-  void setRefMap(std::unordered_map<uint64_t, RefInfo> map) {
-    m_refMap = std::make_shared<const std::unordered_map<uint64_t, RefInfo>>(std::move(map));
   }
 
   // Prepare per-chunk marker info by looking up the refMap

@@ -1,6 +1,6 @@
 # SPAmixPlus_Marker.R -- Unwrap SPAmixPlus null model and run marker engine
 
-runMarkerMT.SPAmixPlus <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
+mtMarker.SPAmixPlus <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
 
   resid  <- objNull$resid
   nPheno <- ncol(resid)
@@ -19,7 +19,7 @@ runMarkerMT.SPAmixPlus <- function(objNull, OutputFile, control, bedFile, bimFil
   sparseId2 <- as.integer(sparseGRM$id2_index)
   sparseVal <- as.numeric(sparseGRM$value)
 
-  runMarkerInCPP.SPAmixPlus(
+  mtMarkerInCPP.SPAmixPlus(
     resid               = resid,
     PCs                 = objNull$PCs,
     N                   = objNull$N,

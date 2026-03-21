@@ -14,19 +14,18 @@ SPACoxClass::SPACoxClass(
   int N,
   double pVal_covaAdj_Cutoff,
   double SPA_Cutoff
-) {
-  m_mresid = mresid;
-  m_varResid = var(m_mresid);
-  m_XinvXX = XinvXX;
-  m_tX = tX;
-  m_N = N;
-  m_pVal_covaAdj_Cutoff = pVal_covaAdj_Cutoff;
-  m_SPA_Cutoff = SPA_Cutoff;
-
-  m_K_0_emp.setApproxFun(cumul.col(0), cumul.col(1));
-  m_K_1_emp.setApproxFun(cumul.col(0), cumul.col(2));
-  m_K_2_emp.setApproxFun(cumul.col(0), cumul.col(3));
-}
+)
+  : m_K_0_emp(cumul.col(0), cumul.col(1)),
+    m_K_1_emp(cumul.col(0), cumul.col(2)),
+    m_K_2_emp(cumul.col(0), cumul.col(3)),
+    m_mresid(std::move(mresid)),
+    m_varResid(arma::var(m_mresid)),
+    m_XinvXX(std::move(XinvXX)),
+    m_tX(std::move(tX)),
+    m_N(N),
+    m_pVal_covaAdj_Cutoff(pVal_covaAdj_Cutoff),
+    m_SPA_Cutoff(SPA_Cutoff)
+{}
 
 double SPACoxClass::K_0(double t, int N0, double adjG0, arma::vec adjG1) {
   double sG0 = t * adjG0;

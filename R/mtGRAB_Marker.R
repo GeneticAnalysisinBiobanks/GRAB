@@ -1,7 +1,7 @@
-# GRAB_MarkerMT.R
+# mtGRAB_Marker.R
 # Single-entry-point for chunk-parallel marker association testing.
 
-GRAB.MarkerMT <- function (
+GRAB.mtMarker <- function (
     objNull,
     GenoFile,
     OutputFile,
@@ -125,15 +125,15 @@ GRAB.MarkerMT <- function (
 
   # dispatch to method-specific function
   runFn <- switch(null_class,
-    POLMM_NULL_Model      = runMarkerMT.POLMM,
-    WtCoxG_NULL_Model     = runMarkerMT.WtCoxG,
-    LEAF_NULL_Model       = runMarkerMT.LEAF,
-    SPACox_NULL_Model     = runMarkerMT.SPACox,
-    SPAmix_NULL_Model     = runMarkerMT.SPAmix,
-    SPAmixPlus_NULL_Model = runMarkerMT.SPAmixPlus,
-    SPAGRM_NULL_Model     = runMarkerMT.SPAGRM,
-    SAGELD_NULL_Model     = runMarkerMT.SAGELD,
-    SPAsqr_NULL_Model     = runMarkerMT.SPAsqr,
+    POLMM_NULL_Model      = mtMarker.POLMM,
+    WtCoxG_NULL_Model     = mtMarker.WtCoxG,
+    LEAF_NULL_Model       = mtMarker.LEAF,
+    SPACox_NULL_Model     = mtMarker.SPACox,
+    SPAmix_NULL_Model     = mtMarker.SPAmix,
+    SPAmixPlus_NULL_Model = mtMarker.SPAmixPlus,
+    SPAGRM_NULL_Model     = mtMarker.SPAGRM,
+    SAGELD_NULL_Model     = mtMarker.SAGELD,
+    SPAsqr_NULL_Model     = mtMarker.SPAsqr,
     stop("Unsupported null model class: ", null_class)
   )
   runFn(objNull, OutputFile, control, bedFile, bimFile, famFile)

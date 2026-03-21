@@ -42,57 +42,48 @@ SAGELDClass::SAGELDClass(
   double SPA_Cutoff,
   double zeta,
   double tol
-) {
-  m_Method = Method;
-
-  m_XTs = XTs;
-  m_SS = SS;
-  m_AtS = AtS;
-  m_Q = Q;
-  m_A21 = A21;
-  m_TTs = TTs;
-  m_Tys = Tys;
-  m_sol = sol;
-  m_blups = blups;
-  m_sig = sig;
-  m_ncov = sol.n_elem;
-
-  m_resid = resid;
-  m_resid_G = resid_G;
-  m_resid_GxE = resid_GxE;
-  m_resid_E = resid_E;
-
-  m_resid_unrelated_outliers = resid_unrelated_outliers;
-  m_resid_unrelated_outliers_G = resid_unrelated_outliers_G;
-  m_resid_unrelated_outliers_GxE = resid_unrelated_outliers_GxE;
-
-  m_sum_unrelated_outliers2 = sum(resid_unrelated_outliers % resid_unrelated_outliers);
-  m_sum_unrelated_outliers_G2 = sum(resid_unrelated_outliers_G % resid_unrelated_outliers_G);
-  m_sum_unrelated_outliers_GxE2 = sum(resid_unrelated_outliers_GxE % resid_unrelated_outliers_GxE);
-  m_sum_unrelated_outliers_G_GxE2 = 2 * sum(resid_unrelated_outliers_G % resid_unrelated_outliers_GxE);
-
-  m_sum_R_nonOutlier = sum_R_nonOutlier;
-  m_sum_R_nonOutlier_G = sum_R_nonOutlier_G;
-  m_sum_R_nonOutlier_GxE = sum_R_nonOutlier_GxE;
-
-  m_R_GRM_R = R_GRM_R;
-  m_R_GRM_R_nonOutlier = R_GRM_R_nonOutlier;
-  m_R_GRM_R_TwoSubjOutlier = R_GRM_R_TwoSubjOutlier;
-
-  m_TwoSubj_list = std::move(TwoSubj_list);
-  m_ThreeSubj_list = std::move(ThreeSubj_list);
-  m_MAF_interval = MAF_interval;
-  m_zScoreE_cutoff = zScoreE_cutoff;
-
-  m_SPA_Cutoff = SPA_Cutoff;
-  m_zeta = zeta;
-  m_tol = tol;
-
+)
+  : m_Method(std::move(Method)),
+    m_XTs(std::move(XTs)),
+    m_SS(std::move(SS)),
+    m_AtS(std::move(AtS)),
+    m_Q(std::move(Q)),
+    m_A21(std::move(A21)),
+    m_TTs(std::move(TTs)),
+    m_Tys(std::move(Tys)),
+    m_sol(std::move(sol)),
+    m_blups(std::move(blups)),
+    m_sig(sig),
+    m_ncov(static_cast<double>(m_sol.n_elem)),
+    m_resid(std::move(resid)),
+    m_resid_G(std::move(resid_G)),
+    m_resid_GxE(std::move(resid_GxE)),
+    m_resid_E(std::move(resid_E)),
+    m_resid_unrelated_outliers(std::move(resid_unrelated_outliers)),
+    m_resid_unrelated_outliers_G(std::move(resid_unrelated_outliers_G)),
+    m_resid_unrelated_outliers_GxE(std::move(resid_unrelated_outliers_GxE)),
+    m_sum_unrelated_outliers2(arma::dot(m_resid_unrelated_outliers, m_resid_unrelated_outliers)),
+    m_sum_unrelated_outliers_G2(arma::dot(m_resid_unrelated_outliers_G, m_resid_unrelated_outliers_G)),
+    m_sum_unrelated_outliers_GxE2(arma::dot(m_resid_unrelated_outliers_GxE, m_resid_unrelated_outliers_GxE)),
+    m_sum_unrelated_outliers_G_GxE2(2.0 * arma::dot(m_resid_unrelated_outliers_G, m_resid_unrelated_outliers_GxE)),
+    m_sum_R_nonOutlier(sum_R_nonOutlier),
+    m_sum_R_nonOutlier_G(sum_R_nonOutlier_G),
+    m_sum_R_nonOutlier_GxE(sum_R_nonOutlier_GxE),
+    m_R_GRM_R(std::move(R_GRM_R)),
+    m_R_GRM_R_nonOutlier(std::move(R_GRM_R_nonOutlier)),
+    m_R_GRM_R_TwoSubjOutlier(std::move(R_GRM_R_TwoSubjOutlier)),
+    m_TwoSubj_list(std::move(TwoSubj_list)),
+    m_ThreeSubj_list(std::move(ThreeSubj_list)),
+    m_MAF_interval(std::move(MAF_interval)),
+    m_zScoreE_cutoff(zScoreE_cutoff),
+    m_SPA_Cutoff(SPA_Cutoff),
+    m_zeta(zeta),
+    m_tol(tol)
+{
   m_pvalVec.resize(2);
   m_zScoreVec.resize(2);
   m_BetaVec.resize(2);
   m_seBetaVec.resize(2);
-
 }
 
 arma::mat SAGELDClass::mgf(

@@ -43,8 +43,8 @@ public:
 
   // ---- Construction ----
   SPAmixPlusClass(
-    const arma::mat& residuals,
-    const arma::mat& pcs,
+    arma::mat residuals,
+    arma::mat pcs,
     int sampleSize,
     double spaCutoff,
     std::vector<PhenoOutlierData> outlierList,

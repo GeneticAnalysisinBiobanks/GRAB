@@ -180,7 +180,7 @@ GRAB.Marker(obj.POLMM, GenoFile, devel_polmm)
 GRAB.Marker(obj.SAGELD, GenoFile, devel_sageld)
 
 
-########## run MarkerMT
+########## run mtMarker
 obj.SPAGRM <- readRDS(nullobj_spagrm)
 obj.SPAsqr <- readRDS(nullobj_spasqr)
 obj.WtCoxG <- readRDS(nullobj_wtcoxg)
@@ -192,15 +192,15 @@ obj.POLMM <- readRDS(nullobj_polmm)
 obj.SAGELD <- readRDS(nullobj_sageld)
 
 control <- list(nthreads = 4, nMarkersEachChunk = 100, afFilePath = afFileOutput)
-GRAB.MarkerMT(obj.SPAGRM, GenoFile, mt_spagrm, control = control, overwrite = TRUE)
-GRAB.MarkerMT(obj.SPAsqr, GenoFile, mt_spasqr, control = control, overwrite = TRUE)
-GRAB.MarkerMT(obj.WtCoxG, GenoFile, mt_wtcoxg, control = control, overwrite = TRUE)
-GRAB.MarkerMT(obj.LEAF, GenoFile, mt_leaf, control = control, overwrite = TRUE)
-GRAB.MarkerMT(obj.SPACox, GenoFile, mt_spacox, control = control, overwrite = TRUE)
-GRAB.MarkerMT(obj.SPAmix, GenoFile, mt_spamix, control = control, overwrite = TRUE)
-GRAB.MarkerMT(obj.SPAmixPlus, GenoFile, mt_spamixplus, control = control, overwrite = TRUE)
-GRAB.MarkerMT(obj.POLMM, GenoFile, mt_polmm, control = control, overwrite = TRUE)
-GRAB.MarkerMT(obj.SAGELD, GenoFile, mt_sageld, control = control, overwrite = TRUE)
+GRAB.mtMarker(obj.SPAGRM, GenoFile, mt_spagrm, control = control, overwrite = TRUE)
+GRAB.mtMarker(obj.SPAsqr, GenoFile, mt_spasqr, control = control, overwrite = TRUE)
+GRAB.mtMarker(obj.WtCoxG, GenoFile, mt_wtcoxg, control = control, overwrite = TRUE)
+GRAB.mtMarker(obj.LEAF, GenoFile, mt_leaf, control = control, overwrite = TRUE)
+GRAB.mtMarker(obj.SPACox, GenoFile, mt_spacox, control = control, overwrite = TRUE)
+GRAB.mtMarker(obj.SPAmix, GenoFile, mt_spamix, control = control, overwrite = TRUE)
+GRAB.mtMarker(obj.SPAmixPlus, GenoFile, mt_spamixplus, control = control, overwrite = TRUE)
+GRAB.mtMarker(obj.POLMM, GenoFile, mt_polmm, control = control, overwrite = TRUE)
+GRAB.mtMarker(obj.SAGELD, GenoFile, mt_sageld, control = control, overwrite = TRUE)
 
 
 ########## compare results

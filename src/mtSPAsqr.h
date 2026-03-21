@@ -20,20 +20,20 @@ struct TauFamilyNativeInput {
 class SPAsqrClass {
 private:
 
-  arma::vec m_taus;
+  const arma::vec m_taus;
   std::vector<SPAGRM::SPAGRMClass> m_SPAGRMobj_vec;
-  arma::vec m_MAF_interval;
+  const arma::vec m_MAF_interval;
 
-  double m_SPA_Cutoff;
-  double m_zeta;
-  double m_tol;
+  const double m_SPA_Cutoff;
+  const double m_zeta;
+  const double m_tol;
 
 public:
 
   SPAsqrClass(
     arma::vec taus,
     arma::mat Resid_mat,
-    const std::vector<TauFamilyNativeInput>& tauFamilyData,
+    std::vector<TauFamilyNativeInput> tauFamilyData,
     arma::vec sum_R_nonOutlier_vec,
     arma::vec R_GRM_R_nonOutlier_vec,
     arma::vec R_GRM_R_TwoSubjOutlier_vec,
@@ -42,32 +42,32 @@ public:
     double SPA_Cutoff,
     double zeta,
     double tol
-  ) {
-    m_taus = taus;
-    m_MAF_interval = MAF_interval;
-    m_SPA_Cutoff = SPA_Cutoff;
-    m_zeta = zeta;
-    m_tol = tol;
-
+  )
+    : m_taus(std::move(taus)),
+      m_MAF_interval(std::move(MAF_interval)),
+      m_SPA_Cutoff(SPA_Cutoff),
+      m_zeta(zeta),
+      m_tol(tol)
+  {
     int ntaus = m_taus.n_elem;
     m_SPAGRMobj_vec.reserve(ntaus);
 
     for (int i = 0; i < ntaus; ++i) {
       arma::vec resid_i = Resid_mat.col(i);
-      const TauFamilyNativeInput& fam = tauFamilyData[i];
+      TauFamilyNativeInput& fam = tauFamilyData[i];
 
       m_SPAGRMobj_vec.emplace_back(
-        resid_i,
-        fam.resid_unrelated_outliers,
+        std::move(resid_i),
+        std::move(fam.resid_unrelated_outliers),
         sum_R_nonOutlier_vec(i),
         R_GRM_R_nonOutlier_vec(i),
         R_GRM_R_TwoSubjOutlier_vec(i),
         R_GRM_R_vec(i),
         m_MAF_interval,
-        fam.twoSubj_resid,
-        fam.twoSubj_rho,
-        fam.threeSubj_standS,
-        fam.threeSubj_CLT,
+        std::move(fam.twoSubj_resid),
+        std::move(fam.twoSubj_rho),
+        std::move(fam.threeSubj_standS),
+        std::move(fam.threeSubj_CLT),
         m_SPA_Cutoff,
         m_zeta,
         m_tol

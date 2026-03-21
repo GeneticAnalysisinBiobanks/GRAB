@@ -1,6 +1,6 @@
 # LEAF_Marker.R -- Unwrap LEAF null model and run marker engine
 
-runMarkerMT.LEAF <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
+mtMarker.LEAF <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
 
   nCluster   <- objNull$Ncluster
   clusterIdx <- objNull$clusterIdx
@@ -30,7 +30,7 @@ runMarkerMT.LEAF <- function(objNull, OutputFile, control, bedFile, bimFile, fam
   leaf_var_ext    <- as.numeric(do.call(c, lapply(sgi, function(df) df[["var.ratio.ext"]])))
   leaf_nrows      <- as.integer(sapply(sgi, nrow))
 
-  runMarkerInCPP.LEAF(
+  mtMarkerInCPP.LEAF(
     residuals_all   = residuals_all,
     residuals_lens  = residuals_lens,
     weights_all     = weights_all,

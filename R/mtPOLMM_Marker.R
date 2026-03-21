@@ -1,15 +1,14 @@
 # POLMM_Marker.R -- Unwrap POLMM null model and run marker engine
 
-runMarkerMT.POLMM <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
+mtMarker.POLMM <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
   
   objCHR <- objNull$LOCOList[["LOCO=F"]]
 
-  runMarkerInCPP.POLMM(
+  mtMarkerInCPP.POLMM(
     muMat      = objCHR$muMat,
     iRMat      = objCHR$iRMat,
     Cova       = objNull$Cova,
     yVec       = objNull$yVec,
-    tau        = objNull$tau,
     varRatio   = objCHR$VarRatio,
     SPA_Cutoff = control$SPA_Cutoff,
     bedFile             = bedFile,

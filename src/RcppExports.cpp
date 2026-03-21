@@ -11,16 +11,15 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
-// runMarkerInCPP_POLMM
-void runMarkerInCPP_POLMM(arma::mat muMat, arma::mat iRMat, arma::mat Cova, arma::uvec yVec, double tau, double varRatio, double SPA_Cutoff, std::string bedFile, std::string bimFile, std::string famFile, std::string outputFile, std::vector<std::string> subjData, std::string AlleleOrder, int nMarkersEachChunk, unsigned int nthreads, std::string impute_method, double missing_cutoff, double min_maf_marker, double min_mac_marker, std::string IDsToIncludeFile, std::string RangesToIncludeFile, std::string IDsToExcludeFile, std::string RangesToExcludeFile);
-RcppExport SEXP _GRAB_runMarkerInCPP_POLMM(SEXP muMatSEXP, SEXP iRMatSEXP, SEXP CovaSEXP, SEXP yVecSEXP, SEXP tauSEXP, SEXP varRatioSEXP, SEXP SPA_CutoffSEXP, SEXP bedFileSEXP, SEXP bimFileSEXP, SEXP famFileSEXP, SEXP outputFileSEXP, SEXP subjDataSEXP, SEXP AlleleOrderSEXP, SEXP nMarkersEachChunkSEXP, SEXP nthreadsSEXP, SEXP impute_methodSEXP, SEXP missing_cutoffSEXP, SEXP min_maf_markerSEXP, SEXP min_mac_markerSEXP, SEXP IDsToIncludeFileSEXP, SEXP RangesToIncludeFileSEXP, SEXP IDsToExcludeFileSEXP, SEXP RangesToExcludeFileSEXP) {
+// mtMarkerInCPP_POLMM
+void mtMarkerInCPP_POLMM(arma::mat muMat, arma::mat iRMat, arma::mat Cova, arma::uvec yVec, double varRatio, double SPA_Cutoff, std::string bedFile, std::string bimFile, std::string famFile, std::string outputFile, std::vector<std::string> subjData, std::string AlleleOrder, int nMarkersEachChunk, int nthreads, std::string impute_method, double missing_cutoff, double min_maf_marker, double min_mac_marker, std::string IDsToIncludeFile, std::string RangesToIncludeFile, std::string IDsToExcludeFile, std::string RangesToExcludeFile);
+RcppExport SEXP _GRAB_mtMarkerInCPP_POLMM(SEXP muMatSEXP, SEXP iRMatSEXP, SEXP CovaSEXP, SEXP yVecSEXP, SEXP varRatioSEXP, SEXP SPA_CutoffSEXP, SEXP bedFileSEXP, SEXP bimFileSEXP, SEXP famFileSEXP, SEXP outputFileSEXP, SEXP subjDataSEXP, SEXP AlleleOrderSEXP, SEXP nMarkersEachChunkSEXP, SEXP nthreadsSEXP, SEXP impute_methodSEXP, SEXP missing_cutoffSEXP, SEXP min_maf_markerSEXP, SEXP min_mac_markerSEXP, SEXP IDsToIncludeFileSEXP, SEXP RangesToIncludeFileSEXP, SEXP IDsToExcludeFileSEXP, SEXP RangesToExcludeFileSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::mat >::type muMat(muMatSEXP);
     Rcpp::traits::input_parameter< arma::mat >::type iRMat(iRMatSEXP);
     Rcpp::traits::input_parameter< arma::mat >::type Cova(CovaSEXP);
     Rcpp::traits::input_parameter< arma::uvec >::type yVec(yVecSEXP);
-    Rcpp::traits::input_parameter< double >::type tau(tauSEXP);
     Rcpp::traits::input_parameter< double >::type varRatio(varRatioSEXP);
     Rcpp::traits::input_parameter< double >::type SPA_Cutoff(SPA_CutoffSEXP);
     Rcpp::traits::input_parameter< std::string >::type bedFile(bedFileSEXP);
@@ -30,7 +29,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::vector<std::string> >::type subjData(subjDataSEXP);
     Rcpp::traits::input_parameter< std::string >::type AlleleOrder(AlleleOrderSEXP);
     Rcpp::traits::input_parameter< int >::type nMarkersEachChunk(nMarkersEachChunkSEXP);
-    Rcpp::traits::input_parameter< unsigned int >::type nthreads(nthreadsSEXP);
+    Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP);
     Rcpp::traits::input_parameter< std::string >::type impute_method(impute_methodSEXP);
     Rcpp::traits::input_parameter< double >::type missing_cutoff(missing_cutoffSEXP);
     Rcpp::traits::input_parameter< double >::type min_maf_marker(min_maf_markerSEXP);
@@ -39,13 +38,13 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::string >::type RangesToIncludeFile(RangesToIncludeFileSEXP);
     Rcpp::traits::input_parameter< std::string >::type IDsToExcludeFile(IDsToExcludeFileSEXP);
     Rcpp::traits::input_parameter< std::string >::type RangesToExcludeFile(RangesToExcludeFileSEXP);
-    runMarkerInCPP_POLMM(muMat, iRMat, Cova, yVec, tau, varRatio, SPA_Cutoff, bedFile, bimFile, famFile, outputFile, subjData, AlleleOrder, nMarkersEachChunk, nthreads, impute_method, missing_cutoff, min_maf_marker, min_mac_marker, IDsToIncludeFile, RangesToIncludeFile, IDsToExcludeFile, RangesToExcludeFile);
+    mtMarkerInCPP_POLMM(muMat, iRMat, Cova, yVec, varRatio, SPA_Cutoff, bedFile, bimFile, famFile, outputFile, subjData, AlleleOrder, nMarkersEachChunk, nthreads, impute_method, missing_cutoff, min_maf_marker, min_mac_marker, IDsToIncludeFile, RangesToIncludeFile, IDsToExcludeFile, RangesToExcludeFile);
     return R_NilValue;
 END_RCPP
 }
-// runMarkerInCPP_WtCoxG
-void runMarkerInCPP_WtCoxG(arma::vec R, arma::vec w, double cutoff, double SPA_Cutoff, arma::vec wt_genoIndex, arma::vec wt_AF_ref, arma::vec wt_AN_ref, arma::vec wt_TPR, arma::vec wt_sigma2, arma::vec wt_pvalue_bat, arma::vec wt_w_ext, arma::vec wt_var_w0, arma::vec wt_var_int, arma::vec wt_var_ext, std::string bedFile, std::string bimFile, std::string famFile, std::string outputFile, std::vector<std::string> subjData, std::string AlleleOrder, int nMarkersEachChunk, unsigned int nthreads, std::string impute_method, double missing_cutoff, double min_maf_marker, double min_mac_marker, std::string IDsToIncludeFile, std::string RangesToIncludeFile, std::string IDsToExcludeFile, std::string RangesToExcludeFile);
-RcppExport SEXP _GRAB_runMarkerInCPP_WtCoxG(SEXP RSEXP, SEXP wSEXP, SEXP cutoffSEXP, SEXP SPA_CutoffSEXP, SEXP wt_genoIndexSEXP, SEXP wt_AF_refSEXP, SEXP wt_AN_refSEXP, SEXP wt_TPRSEXP, SEXP wt_sigma2SEXP, SEXP wt_pvalue_batSEXP, SEXP wt_w_extSEXP, SEXP wt_var_w0SEXP, SEXP wt_var_intSEXP, SEXP wt_var_extSEXP, SEXP bedFileSEXP, SEXP bimFileSEXP, SEXP famFileSEXP, SEXP outputFileSEXP, SEXP subjDataSEXP, SEXP AlleleOrderSEXP, SEXP nMarkersEachChunkSEXP, SEXP nthreadsSEXP, SEXP impute_methodSEXP, SEXP missing_cutoffSEXP, SEXP min_maf_markerSEXP, SEXP min_mac_markerSEXP, SEXP IDsToIncludeFileSEXP, SEXP RangesToIncludeFileSEXP, SEXP IDsToExcludeFileSEXP, SEXP RangesToExcludeFileSEXP) {
+// mtMarkerInCPP_WtCoxG
+void mtMarkerInCPP_WtCoxG(arma::vec R, arma::vec w, double cutoff, double SPA_Cutoff, arma::vec wt_genoIndex, arma::vec wt_AF_ref, arma::vec wt_AN_ref, arma::vec wt_TPR, arma::vec wt_sigma2, arma::vec wt_pvalue_bat, arma::vec wt_w_ext, arma::vec wt_var_w0, arma::vec wt_var_int, arma::vec wt_var_ext, std::string bedFile, std::string bimFile, std::string famFile, std::string outputFile, std::vector<std::string> subjData, std::string AlleleOrder, int nMarkersEachChunk, int nthreads, std::string impute_method, double missing_cutoff, double min_maf_marker, double min_mac_marker, std::string IDsToIncludeFile, std::string RangesToIncludeFile, std::string IDsToExcludeFile, std::string RangesToExcludeFile);
+RcppExport SEXP _GRAB_mtMarkerInCPP_WtCoxG(SEXP RSEXP, SEXP wSEXP, SEXP cutoffSEXP, SEXP SPA_CutoffSEXP, SEXP wt_genoIndexSEXP, SEXP wt_AF_refSEXP, SEXP wt_AN_refSEXP, SEXP wt_TPRSEXP, SEXP wt_sigma2SEXP, SEXP wt_pvalue_batSEXP, SEXP wt_w_extSEXP, SEXP wt_var_w0SEXP, SEXP wt_var_intSEXP, SEXP wt_var_extSEXP, SEXP bedFileSEXP, SEXP bimFileSEXP, SEXP famFileSEXP, SEXP outputFileSEXP, SEXP subjDataSEXP, SEXP AlleleOrderSEXP, SEXP nMarkersEachChunkSEXP, SEXP nthreadsSEXP, SEXP impute_methodSEXP, SEXP missing_cutoffSEXP, SEXP min_maf_markerSEXP, SEXP min_mac_markerSEXP, SEXP IDsToIncludeFileSEXP, SEXP RangesToIncludeFileSEXP, SEXP IDsToExcludeFileSEXP, SEXP RangesToExcludeFileSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::vec >::type R(RSEXP);
@@ -69,7 +68,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::vector<std::string> >::type subjData(subjDataSEXP);
     Rcpp::traits::input_parameter< std::string >::type AlleleOrder(AlleleOrderSEXP);
     Rcpp::traits::input_parameter< int >::type nMarkersEachChunk(nMarkersEachChunkSEXP);
-    Rcpp::traits::input_parameter< unsigned int >::type nthreads(nthreadsSEXP);
+    Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP);
     Rcpp::traits::input_parameter< std::string >::type impute_method(impute_methodSEXP);
     Rcpp::traits::input_parameter< double >::type missing_cutoff(missing_cutoffSEXP);
     Rcpp::traits::input_parameter< double >::type min_maf_marker(min_maf_markerSEXP);
@@ -78,13 +77,13 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::string >::type RangesToIncludeFile(RangesToIncludeFileSEXP);
     Rcpp::traits::input_parameter< std::string >::type IDsToExcludeFile(IDsToExcludeFileSEXP);
     Rcpp::traits::input_parameter< std::string >::type RangesToExcludeFile(RangesToExcludeFileSEXP);
-    runMarkerInCPP_WtCoxG(R, w, cutoff, SPA_Cutoff, wt_genoIndex, wt_AF_ref, wt_AN_ref, wt_TPR, wt_sigma2, wt_pvalue_bat, wt_w_ext, wt_var_w0, wt_var_int, wt_var_ext, bedFile, bimFile, famFile, outputFile, subjData, AlleleOrder, nMarkersEachChunk, nthreads, impute_method, missing_cutoff, min_maf_marker, min_mac_marker, IDsToIncludeFile, RangesToIncludeFile, IDsToExcludeFile, RangesToExcludeFile);
+    mtMarkerInCPP_WtCoxG(R, w, cutoff, SPA_Cutoff, wt_genoIndex, wt_AF_ref, wt_AN_ref, wt_TPR, wt_sigma2, wt_pvalue_bat, wt_w_ext, wt_var_w0, wt_var_int, wt_var_ext, bedFile, bimFile, famFile, outputFile, subjData, AlleleOrder, nMarkersEachChunk, nthreads, impute_method, missing_cutoff, min_maf_marker, min_mac_marker, IDsToIncludeFile, RangesToIncludeFile, IDsToExcludeFile, RangesToExcludeFile);
     return R_NilValue;
 END_RCPP
 }
-// runMarkerInCPP_LEAF
-void runMarkerInCPP_LEAF(arma::vec residuals_all, arma::uvec residuals_lens, arma::vec weights_all, arma::uvec weights_lens, arma::uvec clusterIdx_all, arma::uvec clusterIdx_lens, double cutoff, double SPA_Cutoff, int nCluster, arma::vec leaf_genoIndex, arma::vec leaf_AF_ref, arma::vec leaf_AN_ref, arma::vec leaf_TPR, arma::vec leaf_sigma2, arma::vec leaf_pvalue_bat, arma::vec leaf_w_ext, arma::vec leaf_var_w0, arma::vec leaf_var_int, arma::vec leaf_var_ext, arma::uvec leaf_nrows, std::string bedFile, std::string bimFile, std::string famFile, std::string outputFile, std::vector<std::string> subjData, std::string AlleleOrder, int nMarkersEachChunk, unsigned int nthreads, std::string impute_method, double missing_cutoff, double min_maf_marker, double min_mac_marker, std::string IDsToIncludeFile, std::string RangesToIncludeFile, std::string IDsToExcludeFile, std::string RangesToExcludeFile);
-RcppExport SEXP _GRAB_runMarkerInCPP_LEAF(SEXP residuals_allSEXP, SEXP residuals_lensSEXP, SEXP weights_allSEXP, SEXP weights_lensSEXP, SEXP clusterIdx_allSEXP, SEXP clusterIdx_lensSEXP, SEXP cutoffSEXP, SEXP SPA_CutoffSEXP, SEXP nClusterSEXP, SEXP leaf_genoIndexSEXP, SEXP leaf_AF_refSEXP, SEXP leaf_AN_refSEXP, SEXP leaf_TPRSEXP, SEXP leaf_sigma2SEXP, SEXP leaf_pvalue_batSEXP, SEXP leaf_w_extSEXP, SEXP leaf_var_w0SEXP, SEXP leaf_var_intSEXP, SEXP leaf_var_extSEXP, SEXP leaf_nrowsSEXP, SEXP bedFileSEXP, SEXP bimFileSEXP, SEXP famFileSEXP, SEXP outputFileSEXP, SEXP subjDataSEXP, SEXP AlleleOrderSEXP, SEXP nMarkersEachChunkSEXP, SEXP nthreadsSEXP, SEXP impute_methodSEXP, SEXP missing_cutoffSEXP, SEXP min_maf_markerSEXP, SEXP min_mac_markerSEXP, SEXP IDsToIncludeFileSEXP, SEXP RangesToIncludeFileSEXP, SEXP IDsToExcludeFileSEXP, SEXP RangesToExcludeFileSEXP) {
+// mtMarkerInCPP_LEAF
+void mtMarkerInCPP_LEAF(arma::vec residuals_all, arma::uvec residuals_lens, arma::vec weights_all, arma::uvec weights_lens, arma::uvec clusterIdx_all, arma::uvec clusterIdx_lens, double cutoff, double SPA_Cutoff, int nCluster, arma::vec leaf_genoIndex, arma::vec leaf_AF_ref, arma::vec leaf_AN_ref, arma::vec leaf_TPR, arma::vec leaf_sigma2, arma::vec leaf_pvalue_bat, arma::vec leaf_w_ext, arma::vec leaf_var_w0, arma::vec leaf_var_int, arma::vec leaf_var_ext, arma::uvec leaf_nrows, std::string bedFile, std::string bimFile, std::string famFile, std::string outputFile, std::vector<std::string> subjData, std::string AlleleOrder, int nMarkersEachChunk, int nthreads, std::string impute_method, double missing_cutoff, double min_maf_marker, double min_mac_marker, std::string IDsToIncludeFile, std::string RangesToIncludeFile, std::string IDsToExcludeFile, std::string RangesToExcludeFile);
+RcppExport SEXP _GRAB_mtMarkerInCPP_LEAF(SEXP residuals_allSEXP, SEXP residuals_lensSEXP, SEXP weights_allSEXP, SEXP weights_lensSEXP, SEXP clusterIdx_allSEXP, SEXP clusterIdx_lensSEXP, SEXP cutoffSEXP, SEXP SPA_CutoffSEXP, SEXP nClusterSEXP, SEXP leaf_genoIndexSEXP, SEXP leaf_AF_refSEXP, SEXP leaf_AN_refSEXP, SEXP leaf_TPRSEXP, SEXP leaf_sigma2SEXP, SEXP leaf_pvalue_batSEXP, SEXP leaf_w_extSEXP, SEXP leaf_var_w0SEXP, SEXP leaf_var_intSEXP, SEXP leaf_var_extSEXP, SEXP leaf_nrowsSEXP, SEXP bedFileSEXP, SEXP bimFileSEXP, SEXP famFileSEXP, SEXP outputFileSEXP, SEXP subjDataSEXP, SEXP AlleleOrderSEXP, SEXP nMarkersEachChunkSEXP, SEXP nthreadsSEXP, SEXP impute_methodSEXP, SEXP missing_cutoffSEXP, SEXP min_maf_markerSEXP, SEXP min_mac_markerSEXP, SEXP IDsToIncludeFileSEXP, SEXP RangesToIncludeFileSEXP, SEXP IDsToExcludeFileSEXP, SEXP RangesToExcludeFileSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::vec >::type residuals_all(residuals_allSEXP);
@@ -114,7 +113,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::vector<std::string> >::type subjData(subjDataSEXP);
     Rcpp::traits::input_parameter< std::string >::type AlleleOrder(AlleleOrderSEXP);
     Rcpp::traits::input_parameter< int >::type nMarkersEachChunk(nMarkersEachChunkSEXP);
-    Rcpp::traits::input_parameter< unsigned int >::type nthreads(nthreadsSEXP);
+    Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP);
     Rcpp::traits::input_parameter< std::string >::type impute_method(impute_methodSEXP);
     Rcpp::traits::input_parameter< double >::type missing_cutoff(missing_cutoffSEXP);
     Rcpp::traits::input_parameter< double >::type min_maf_marker(min_maf_markerSEXP);
@@ -123,13 +122,13 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::string >::type RangesToIncludeFile(RangesToIncludeFileSEXP);
     Rcpp::traits::input_parameter< std::string >::type IDsToExcludeFile(IDsToExcludeFileSEXP);
     Rcpp::traits::input_parameter< std::string >::type RangesToExcludeFile(RangesToExcludeFileSEXP);
-    runMarkerInCPP_LEAF(residuals_all, residuals_lens, weights_all, weights_lens, clusterIdx_all, clusterIdx_lens, cutoff, SPA_Cutoff, nCluster, leaf_genoIndex, leaf_AF_ref, leaf_AN_ref, leaf_TPR, leaf_sigma2, leaf_pvalue_bat, leaf_w_ext, leaf_var_w0, leaf_var_int, leaf_var_ext, leaf_nrows, bedFile, bimFile, famFile, outputFile, subjData, AlleleOrder, nMarkersEachChunk, nthreads, impute_method, missing_cutoff, min_maf_marker, min_mac_marker, IDsToIncludeFile, RangesToIncludeFile, IDsToExcludeFile, RangesToExcludeFile);
+    mtMarkerInCPP_LEAF(residuals_all, residuals_lens, weights_all, weights_lens, clusterIdx_all, clusterIdx_lens, cutoff, SPA_Cutoff, nCluster, leaf_genoIndex, leaf_AF_ref, leaf_AN_ref, leaf_TPR, leaf_sigma2, leaf_pvalue_bat, leaf_w_ext, leaf_var_w0, leaf_var_int, leaf_var_ext, leaf_nrows, bedFile, bimFile, famFile, outputFile, subjData, AlleleOrder, nMarkersEachChunk, nthreads, impute_method, missing_cutoff, min_maf_marker, min_mac_marker, IDsToIncludeFile, RangesToIncludeFile, IDsToExcludeFile, RangesToExcludeFile);
     return R_NilValue;
 END_RCPP
 }
-// runMarkerInCPP_SPAGRM
-void runMarkerInCPP_SPAGRM(arma::vec resid, arma::vec resid_unrelated_outliers, double sum_R_nonOutlier, double R_GRM_R_nonOutlier, double R_GRM_R_TwoSubjOutlier, double R_GRM_R, arma::vec MAF_interval, arma::mat twoSubj_resid, arma::mat twoSubj_rho, arma::vec threeSubj_standS_all, arma::uvec threeSubj_standS_lens, arma::mat threeSubj_CLT_all, arma::uvec threeSubj_CLT_nrows, double SPA_Cutoff, double zeta, double tol, std::string bedFile, std::string bimFile, std::string famFile, std::string outputFile, std::vector<std::string> subjData, std::string AlleleOrder, int nMarkersEachChunk, unsigned int nthreads, std::string impute_method, double missing_cutoff, double min_maf_marker, double min_mac_marker, std::string IDsToIncludeFile, std::string RangesToIncludeFile, std::string IDsToExcludeFile, std::string RangesToExcludeFile);
-RcppExport SEXP _GRAB_runMarkerInCPP_SPAGRM(SEXP residSEXP, SEXP resid_unrelated_outliersSEXP, SEXP sum_R_nonOutlierSEXP, SEXP R_GRM_R_nonOutlierSEXP, SEXP R_GRM_R_TwoSubjOutlierSEXP, SEXP R_GRM_RSEXP, SEXP MAF_intervalSEXP, SEXP twoSubj_residSEXP, SEXP twoSubj_rhoSEXP, SEXP threeSubj_standS_allSEXP, SEXP threeSubj_standS_lensSEXP, SEXP threeSubj_CLT_allSEXP, SEXP threeSubj_CLT_nrowsSEXP, SEXP SPA_CutoffSEXP, SEXP zetaSEXP, SEXP tolSEXP, SEXP bedFileSEXP, SEXP bimFileSEXP, SEXP famFileSEXP, SEXP outputFileSEXP, SEXP subjDataSEXP, SEXP AlleleOrderSEXP, SEXP nMarkersEachChunkSEXP, SEXP nthreadsSEXP, SEXP impute_methodSEXP, SEXP missing_cutoffSEXP, SEXP min_maf_markerSEXP, SEXP min_mac_markerSEXP, SEXP IDsToIncludeFileSEXP, SEXP RangesToIncludeFileSEXP, SEXP IDsToExcludeFileSEXP, SEXP RangesToExcludeFileSEXP) {
+// mtMarkerInCPP_SPAGRM
+void mtMarkerInCPP_SPAGRM(arma::vec resid, arma::vec resid_unrelated_outliers, double sum_R_nonOutlier, double R_GRM_R_nonOutlier, double R_GRM_R_TwoSubjOutlier, double R_GRM_R, arma::vec MAF_interval, arma::mat twoSubj_resid, arma::mat twoSubj_rho, arma::vec threeSubj_standS_all, arma::uvec threeSubj_standS_lens, arma::mat threeSubj_CLT_all, arma::uvec threeSubj_CLT_nrows, double SPA_Cutoff, double zeta, double tol, std::string bedFile, std::string bimFile, std::string famFile, std::string outputFile, std::vector<std::string> subjData, std::string AlleleOrder, int nMarkersEachChunk, int nthreads, std::string impute_method, double missing_cutoff, double min_maf_marker, double min_mac_marker, std::string IDsToIncludeFile, std::string RangesToIncludeFile, std::string IDsToExcludeFile, std::string RangesToExcludeFile);
+RcppExport SEXP _GRAB_mtMarkerInCPP_SPAGRM(SEXP residSEXP, SEXP resid_unrelated_outliersSEXP, SEXP sum_R_nonOutlierSEXP, SEXP R_GRM_R_nonOutlierSEXP, SEXP R_GRM_R_TwoSubjOutlierSEXP, SEXP R_GRM_RSEXP, SEXP MAF_intervalSEXP, SEXP twoSubj_residSEXP, SEXP twoSubj_rhoSEXP, SEXP threeSubj_standS_allSEXP, SEXP threeSubj_standS_lensSEXP, SEXP threeSubj_CLT_allSEXP, SEXP threeSubj_CLT_nrowsSEXP, SEXP SPA_CutoffSEXP, SEXP zetaSEXP, SEXP tolSEXP, SEXP bedFileSEXP, SEXP bimFileSEXP, SEXP famFileSEXP, SEXP outputFileSEXP, SEXP subjDataSEXP, SEXP AlleleOrderSEXP, SEXP nMarkersEachChunkSEXP, SEXP nthreadsSEXP, SEXP impute_methodSEXP, SEXP missing_cutoffSEXP, SEXP min_maf_markerSEXP, SEXP min_mac_markerSEXP, SEXP IDsToIncludeFileSEXP, SEXP RangesToIncludeFileSEXP, SEXP IDsToExcludeFileSEXP, SEXP RangesToExcludeFileSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::vec >::type resid(residSEXP);
@@ -155,7 +154,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::vector<std::string> >::type subjData(subjDataSEXP);
     Rcpp::traits::input_parameter< std::string >::type AlleleOrder(AlleleOrderSEXP);
     Rcpp::traits::input_parameter< int >::type nMarkersEachChunk(nMarkersEachChunkSEXP);
-    Rcpp::traits::input_parameter< unsigned int >::type nthreads(nthreadsSEXP);
+    Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP);
     Rcpp::traits::input_parameter< std::string >::type impute_method(impute_methodSEXP);
     Rcpp::traits::input_parameter< double >::type missing_cutoff(missing_cutoffSEXP);
     Rcpp::traits::input_parameter< double >::type min_maf_marker(min_maf_markerSEXP);
@@ -164,13 +163,13 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::string >::type RangesToIncludeFile(RangesToIncludeFileSEXP);
     Rcpp::traits::input_parameter< std::string >::type IDsToExcludeFile(IDsToExcludeFileSEXP);
     Rcpp::traits::input_parameter< std::string >::type RangesToExcludeFile(RangesToExcludeFileSEXP);
-    runMarkerInCPP_SPAGRM(resid, resid_unrelated_outliers, sum_R_nonOutlier, R_GRM_R_nonOutlier, R_GRM_R_TwoSubjOutlier, R_GRM_R, MAF_interval, twoSubj_resid, twoSubj_rho, threeSubj_standS_all, threeSubj_standS_lens, threeSubj_CLT_all, threeSubj_CLT_nrows, SPA_Cutoff, zeta, tol, bedFile, bimFile, famFile, outputFile, subjData, AlleleOrder, nMarkersEachChunk, nthreads, impute_method, missing_cutoff, min_maf_marker, min_mac_marker, IDsToIncludeFile, RangesToIncludeFile, IDsToExcludeFile, RangesToExcludeFile);
+    mtMarkerInCPP_SPAGRM(resid, resid_unrelated_outliers, sum_R_nonOutlier, R_GRM_R_nonOutlier, R_GRM_R_TwoSubjOutlier, R_GRM_R, MAF_interval, twoSubj_resid, twoSubj_rho, threeSubj_standS_all, threeSubj_standS_lens, threeSubj_CLT_all, threeSubj_CLT_nrows, SPA_Cutoff, zeta, tol, bedFile, bimFile, famFile, outputFile, subjData, AlleleOrder, nMarkersEachChunk, nthreads, impute_method, missing_cutoff, min_maf_marker, min_mac_marker, IDsToIncludeFile, RangesToIncludeFile, IDsToExcludeFile, RangesToExcludeFile);
     return R_NilValue;
 END_RCPP
 }
-// runMarkerInCPP_SAGELD
-void runMarkerInCPP_SAGELD(std::string Method, arma::mat XTs, arma::mat SS, arma::mat AtS, arma::mat Q, arma::mat A21, arma::mat TTs, arma::mat Tys, arma::vec sol, arma::vec blups, double sig, arma::vec resid, arma::vec resid_G, arma::vec resid_GxE, arma::vec resid_E, arma::vec resid_unrelated_outliers, arma::vec resid_unrelated_outliers_G, arma::vec resid_unrelated_outliers_GxE, double sum_R_nonOutlier, double sum_R_nonOutlier_G, double sum_R_nonOutlier_GxE, arma::vec R_GRM_R, arma::vec R_GRM_R_nonOutlier, arma::vec R_GRM_R_TwoSubjOutlier, arma::mat twoSubj_Resid, arma::mat twoSubj_Rho, arma::mat twoSubj_Resid_G, arma::mat twoSubj_Resid_GxE, arma::vec threeSubj_standS_all, arma::uvec threeSubj_standS_lens, arma::vec threeSubj_standS_G_all, arma::uvec threeSubj_standS_G_lens, arma::vec threeSubj_standS_GxE_all, arma::uvec threeSubj_standS_GxE_lens, arma::mat threeSubj_CLT_all, arma::uvec threeSubj_CLT_nrows, arma::vec MAF_interval, double zScoreE_cutoff, double SPA_Cutoff, double zeta, double tol, std::string bedFile, std::string bimFile, std::string famFile, std::string outputFile, std::vector<std::string> subjData, std::string AlleleOrder, int nMarkersEachChunk, unsigned int nthreads, std::string impute_method, double missing_cutoff, double min_maf_marker, double min_mac_marker, std::string IDsToIncludeFile, std::string RangesToIncludeFile, std::string IDsToExcludeFile, std::string RangesToExcludeFile);
-RcppExport SEXP _GRAB_runMarkerInCPP_SAGELD(SEXP MethodSEXP, SEXP XTsSEXP, SEXP SSSEXP, SEXP AtSSEXP, SEXP QSEXP, SEXP A21SEXP, SEXP TTsSEXP, SEXP TysSEXP, SEXP solSEXP, SEXP blupsSEXP, SEXP sigSEXP, SEXP residSEXP, SEXP resid_GSEXP, SEXP resid_GxESEXP, SEXP resid_ESEXP, SEXP resid_unrelated_outliersSEXP, SEXP resid_unrelated_outliers_GSEXP, SEXP resid_unrelated_outliers_GxESEXP, SEXP sum_R_nonOutlierSEXP, SEXP sum_R_nonOutlier_GSEXP, SEXP sum_R_nonOutlier_GxESEXP, SEXP R_GRM_RSEXP, SEXP R_GRM_R_nonOutlierSEXP, SEXP R_GRM_R_TwoSubjOutlierSEXP, SEXP twoSubj_ResidSEXP, SEXP twoSubj_RhoSEXP, SEXP twoSubj_Resid_GSEXP, SEXP twoSubj_Resid_GxESEXP, SEXP threeSubj_standS_allSEXP, SEXP threeSubj_standS_lensSEXP, SEXP threeSubj_standS_G_allSEXP, SEXP threeSubj_standS_G_lensSEXP, SEXP threeSubj_standS_GxE_allSEXP, SEXP threeSubj_standS_GxE_lensSEXP, SEXP threeSubj_CLT_allSEXP, SEXP threeSubj_CLT_nrowsSEXP, SEXP MAF_intervalSEXP, SEXP zScoreE_cutoffSEXP, SEXP SPA_CutoffSEXP, SEXP zetaSEXP, SEXP tolSEXP, SEXP bedFileSEXP, SEXP bimFileSEXP, SEXP famFileSEXP, SEXP outputFileSEXP, SEXP subjDataSEXP, SEXP AlleleOrderSEXP, SEXP nMarkersEachChunkSEXP, SEXP nthreadsSEXP, SEXP impute_methodSEXP, SEXP missing_cutoffSEXP, SEXP min_maf_markerSEXP, SEXP min_mac_markerSEXP, SEXP IDsToIncludeFileSEXP, SEXP RangesToIncludeFileSEXP, SEXP IDsToExcludeFileSEXP, SEXP RangesToExcludeFileSEXP) {
+// mtMarkerInCPP_SAGELD
+void mtMarkerInCPP_SAGELD(std::string Method, arma::mat XTs, arma::mat SS, arma::mat AtS, arma::mat Q, arma::mat A21, arma::mat TTs, arma::mat Tys, arma::vec sol, arma::vec blups, double sig, arma::vec resid, arma::vec resid_G, arma::vec resid_GxE, arma::vec resid_E, arma::vec resid_unrelated_outliers, arma::vec resid_unrelated_outliers_G, arma::vec resid_unrelated_outliers_GxE, double sum_R_nonOutlier, double sum_R_nonOutlier_G, double sum_R_nonOutlier_GxE, arma::vec R_GRM_R, arma::vec R_GRM_R_nonOutlier, arma::vec R_GRM_R_TwoSubjOutlier, arma::mat twoSubj_Resid, arma::mat twoSubj_Rho, arma::mat twoSubj_Resid_G, arma::mat twoSubj_Resid_GxE, arma::vec threeSubj_standS_all, arma::uvec threeSubj_standS_lens, arma::vec threeSubj_standS_G_all, arma::uvec threeSubj_standS_G_lens, arma::vec threeSubj_standS_GxE_all, arma::uvec threeSubj_standS_GxE_lens, arma::mat threeSubj_CLT_all, arma::uvec threeSubj_CLT_nrows, arma::vec MAF_interval, double zScoreE_cutoff, double SPA_Cutoff, double zeta, double tol, std::string bedFile, std::string bimFile, std::string famFile, std::string outputFile, std::vector<std::string> subjData, std::string AlleleOrder, int nMarkersEachChunk, int nthreads, std::string impute_method, double missing_cutoff, double min_maf_marker, double min_mac_marker, std::string IDsToIncludeFile, std::string RangesToIncludeFile, std::string IDsToExcludeFile, std::string RangesToExcludeFile);
+RcppExport SEXP _GRAB_mtMarkerInCPP_SAGELD(SEXP MethodSEXP, SEXP XTsSEXP, SEXP SSSEXP, SEXP AtSSEXP, SEXP QSEXP, SEXP A21SEXP, SEXP TTsSEXP, SEXP TysSEXP, SEXP solSEXP, SEXP blupsSEXP, SEXP sigSEXP, SEXP residSEXP, SEXP resid_GSEXP, SEXP resid_GxESEXP, SEXP resid_ESEXP, SEXP resid_unrelated_outliersSEXP, SEXP resid_unrelated_outliers_GSEXP, SEXP resid_unrelated_outliers_GxESEXP, SEXP sum_R_nonOutlierSEXP, SEXP sum_R_nonOutlier_GSEXP, SEXP sum_R_nonOutlier_GxESEXP, SEXP R_GRM_RSEXP, SEXP R_GRM_R_nonOutlierSEXP, SEXP R_GRM_R_TwoSubjOutlierSEXP, SEXP twoSubj_ResidSEXP, SEXP twoSubj_RhoSEXP, SEXP twoSubj_Resid_GSEXP, SEXP twoSubj_Resid_GxESEXP, SEXP threeSubj_standS_allSEXP, SEXP threeSubj_standS_lensSEXP, SEXP threeSubj_standS_G_allSEXP, SEXP threeSubj_standS_G_lensSEXP, SEXP threeSubj_standS_GxE_allSEXP, SEXP threeSubj_standS_GxE_lensSEXP, SEXP threeSubj_CLT_allSEXP, SEXP threeSubj_CLT_nrowsSEXP, SEXP MAF_intervalSEXP, SEXP zScoreE_cutoffSEXP, SEXP SPA_CutoffSEXP, SEXP zetaSEXP, SEXP tolSEXP, SEXP bedFileSEXP, SEXP bimFileSEXP, SEXP famFileSEXP, SEXP outputFileSEXP, SEXP subjDataSEXP, SEXP AlleleOrderSEXP, SEXP nMarkersEachChunkSEXP, SEXP nthreadsSEXP, SEXP impute_methodSEXP, SEXP missing_cutoffSEXP, SEXP min_maf_markerSEXP, SEXP min_mac_markerSEXP, SEXP IDsToIncludeFileSEXP, SEXP RangesToIncludeFileSEXP, SEXP IDsToExcludeFileSEXP, SEXP RangesToExcludeFileSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< std::string >::type Method(MethodSEXP);
@@ -221,7 +220,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::vector<std::string> >::type subjData(subjDataSEXP);
     Rcpp::traits::input_parameter< std::string >::type AlleleOrder(AlleleOrderSEXP);
     Rcpp::traits::input_parameter< int >::type nMarkersEachChunk(nMarkersEachChunkSEXP);
-    Rcpp::traits::input_parameter< unsigned int >::type nthreads(nthreadsSEXP);
+    Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP);
     Rcpp::traits::input_parameter< std::string >::type impute_method(impute_methodSEXP);
     Rcpp::traits::input_parameter< double >::type missing_cutoff(missing_cutoffSEXP);
     Rcpp::traits::input_parameter< double >::type min_maf_marker(min_maf_markerSEXP);
@@ -230,13 +229,13 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::string >::type RangesToIncludeFile(RangesToIncludeFileSEXP);
     Rcpp::traits::input_parameter< std::string >::type IDsToExcludeFile(IDsToExcludeFileSEXP);
     Rcpp::traits::input_parameter< std::string >::type RangesToExcludeFile(RangesToExcludeFileSEXP);
-    runMarkerInCPP_SAGELD(Method, XTs, SS, AtS, Q, A21, TTs, Tys, sol, blups, sig, resid, resid_G, resid_GxE, resid_E, resid_unrelated_outliers, resid_unrelated_outliers_G, resid_unrelated_outliers_GxE, sum_R_nonOutlier, sum_R_nonOutlier_G, sum_R_nonOutlier_GxE, R_GRM_R, R_GRM_R_nonOutlier, R_GRM_R_TwoSubjOutlier, twoSubj_Resid, twoSubj_Rho, twoSubj_Resid_G, twoSubj_Resid_GxE, threeSubj_standS_all, threeSubj_standS_lens, threeSubj_standS_G_all, threeSubj_standS_G_lens, threeSubj_standS_GxE_all, threeSubj_standS_GxE_lens, threeSubj_CLT_all, threeSubj_CLT_nrows, MAF_interval, zScoreE_cutoff, SPA_Cutoff, zeta, tol, bedFile, bimFile, famFile, outputFile, subjData, AlleleOrder, nMarkersEachChunk, nthreads, impute_method, missing_cutoff, min_maf_marker, min_mac_marker, IDsToIncludeFile, RangesToIncludeFile, IDsToExcludeFile, RangesToExcludeFile);
+    mtMarkerInCPP_SAGELD(Method, XTs, SS, AtS, Q, A21, TTs, Tys, sol, blups, sig, resid, resid_G, resid_GxE, resid_E, resid_unrelated_outliers, resid_unrelated_outliers_G, resid_unrelated_outliers_GxE, sum_R_nonOutlier, sum_R_nonOutlier_G, sum_R_nonOutlier_GxE, R_GRM_R, R_GRM_R_nonOutlier, R_GRM_R_TwoSubjOutlier, twoSubj_Resid, twoSubj_Rho, twoSubj_Resid_G, twoSubj_Resid_GxE, threeSubj_standS_all, threeSubj_standS_lens, threeSubj_standS_G_all, threeSubj_standS_G_lens, threeSubj_standS_GxE_all, threeSubj_standS_GxE_lens, threeSubj_CLT_all, threeSubj_CLT_nrows, MAF_interval, zScoreE_cutoff, SPA_Cutoff, zeta, tol, bedFile, bimFile, famFile, outputFile, subjData, AlleleOrder, nMarkersEachChunk, nthreads, impute_method, missing_cutoff, min_maf_marker, min_mac_marker, IDsToIncludeFile, RangesToIncludeFile, IDsToExcludeFile, RangesToExcludeFile);
     return R_NilValue;
 END_RCPP
 }
-// runMarkerInCPP_SPAsqr
-void runMarkerInCPP_SPAsqr(arma::vec taus, arma::mat Resid_mat, arma::vec resid_outlier_all, arma::uvec resid_outlier_lens, arma::vec sum_R_nonOutlier_vec, arma::vec R_GRM_R_nonOutlier_vec, arma::vec R_GRM_R_TwoSubjOutlier_vec, arma::vec R_GRM_R_vec, arma::vec MAF_interval, arma::mat twoSubj_resid_all, arma::mat twoSubj_rho_all, arma::uvec twoSubj_perTau, arma::vec threeSubj_standS_all, arma::uvec threeSubj_standS_lens, arma::mat threeSubj_CLT_all, arma::uvec threeSubj_CLT_nrows, arma::uvec threeSubj_perTau, double SPA_Cutoff, double zeta, double tol, std::string bedFile, std::string bimFile, std::string famFile, std::string outputFile, std::vector<std::string> subjData, std::string AlleleOrder, int nMarkersEachChunk, unsigned int nthreads, std::string impute_method, double missing_cutoff, double min_maf_marker, double min_mac_marker, std::string IDsToIncludeFile, std::string RangesToIncludeFile, std::string IDsToExcludeFile, std::string RangesToExcludeFile);
-RcppExport SEXP _GRAB_runMarkerInCPP_SPAsqr(SEXP tausSEXP, SEXP Resid_matSEXP, SEXP resid_outlier_allSEXP, SEXP resid_outlier_lensSEXP, SEXP sum_R_nonOutlier_vecSEXP, SEXP R_GRM_R_nonOutlier_vecSEXP, SEXP R_GRM_R_TwoSubjOutlier_vecSEXP, SEXP R_GRM_R_vecSEXP, SEXP MAF_intervalSEXP, SEXP twoSubj_resid_allSEXP, SEXP twoSubj_rho_allSEXP, SEXP twoSubj_perTauSEXP, SEXP threeSubj_standS_allSEXP, SEXP threeSubj_standS_lensSEXP, SEXP threeSubj_CLT_allSEXP, SEXP threeSubj_CLT_nrowsSEXP, SEXP threeSubj_perTauSEXP, SEXP SPA_CutoffSEXP, SEXP zetaSEXP, SEXP tolSEXP, SEXP bedFileSEXP, SEXP bimFileSEXP, SEXP famFileSEXP, SEXP outputFileSEXP, SEXP subjDataSEXP, SEXP AlleleOrderSEXP, SEXP nMarkersEachChunkSEXP, SEXP nthreadsSEXP, SEXP impute_methodSEXP, SEXP missing_cutoffSEXP, SEXP min_maf_markerSEXP, SEXP min_mac_markerSEXP, SEXP IDsToIncludeFileSEXP, SEXP RangesToIncludeFileSEXP, SEXP IDsToExcludeFileSEXP, SEXP RangesToExcludeFileSEXP) {
+// mtMarkerInCPP_SPAsqr
+void mtMarkerInCPP_SPAsqr(arma::vec taus, arma::mat Resid_mat, arma::vec resid_outlier_all, arma::uvec resid_outlier_lens, arma::vec sum_R_nonOutlier_vec, arma::vec R_GRM_R_nonOutlier_vec, arma::vec R_GRM_R_TwoSubjOutlier_vec, arma::vec R_GRM_R_vec, arma::vec MAF_interval, arma::mat twoSubj_resid_all, arma::mat twoSubj_rho_all, arma::uvec twoSubj_perTau, arma::vec threeSubj_standS_all, arma::uvec threeSubj_standS_lens, arma::mat threeSubj_CLT_all, arma::uvec threeSubj_CLT_nrows, arma::uvec threeSubj_perTau, double SPA_Cutoff, double zeta, double tol, std::string bedFile, std::string bimFile, std::string famFile, std::string outputFile, std::vector<std::string> subjData, std::string AlleleOrder, int nMarkersEachChunk, int nthreads, std::string impute_method, double missing_cutoff, double min_maf_marker, double min_mac_marker, std::string IDsToIncludeFile, std::string RangesToIncludeFile, std::string IDsToExcludeFile, std::string RangesToExcludeFile);
+RcppExport SEXP _GRAB_mtMarkerInCPP_SPAsqr(SEXP tausSEXP, SEXP Resid_matSEXP, SEXP resid_outlier_allSEXP, SEXP resid_outlier_lensSEXP, SEXP sum_R_nonOutlier_vecSEXP, SEXP R_GRM_R_nonOutlier_vecSEXP, SEXP R_GRM_R_TwoSubjOutlier_vecSEXP, SEXP R_GRM_R_vecSEXP, SEXP MAF_intervalSEXP, SEXP twoSubj_resid_allSEXP, SEXP twoSubj_rho_allSEXP, SEXP twoSubj_perTauSEXP, SEXP threeSubj_standS_allSEXP, SEXP threeSubj_standS_lensSEXP, SEXP threeSubj_CLT_allSEXP, SEXP threeSubj_CLT_nrowsSEXP, SEXP threeSubj_perTauSEXP, SEXP SPA_CutoffSEXP, SEXP zetaSEXP, SEXP tolSEXP, SEXP bedFileSEXP, SEXP bimFileSEXP, SEXP famFileSEXP, SEXP outputFileSEXP, SEXP subjDataSEXP, SEXP AlleleOrderSEXP, SEXP nMarkersEachChunkSEXP, SEXP nthreadsSEXP, SEXP impute_methodSEXP, SEXP missing_cutoffSEXP, SEXP min_maf_markerSEXP, SEXP min_mac_markerSEXP, SEXP IDsToIncludeFileSEXP, SEXP RangesToIncludeFileSEXP, SEXP IDsToExcludeFileSEXP, SEXP RangesToExcludeFileSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::vec >::type taus(tausSEXP);
@@ -266,7 +265,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::vector<std::string> >::type subjData(subjDataSEXP);
     Rcpp::traits::input_parameter< std::string >::type AlleleOrder(AlleleOrderSEXP);
     Rcpp::traits::input_parameter< int >::type nMarkersEachChunk(nMarkersEachChunkSEXP);
-    Rcpp::traits::input_parameter< unsigned int >::type nthreads(nthreadsSEXP);
+    Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP);
     Rcpp::traits::input_parameter< std::string >::type impute_method(impute_methodSEXP);
     Rcpp::traits::input_parameter< double >::type missing_cutoff(missing_cutoffSEXP);
     Rcpp::traits::input_parameter< double >::type min_maf_marker(min_maf_markerSEXP);
@@ -275,13 +274,13 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::string >::type RangesToIncludeFile(RangesToIncludeFileSEXP);
     Rcpp::traits::input_parameter< std::string >::type IDsToExcludeFile(IDsToExcludeFileSEXP);
     Rcpp::traits::input_parameter< std::string >::type RangesToExcludeFile(RangesToExcludeFileSEXP);
-    runMarkerInCPP_SPAsqr(taus, Resid_mat, resid_outlier_all, resid_outlier_lens, sum_R_nonOutlier_vec, R_GRM_R_nonOutlier_vec, R_GRM_R_TwoSubjOutlier_vec, R_GRM_R_vec, MAF_interval, twoSubj_resid_all, twoSubj_rho_all, twoSubj_perTau, threeSubj_standS_all, threeSubj_standS_lens, threeSubj_CLT_all, threeSubj_CLT_nrows, threeSubj_perTau, SPA_Cutoff, zeta, tol, bedFile, bimFile, famFile, outputFile, subjData, AlleleOrder, nMarkersEachChunk, nthreads, impute_method, missing_cutoff, min_maf_marker, min_mac_marker, IDsToIncludeFile, RangesToIncludeFile, IDsToExcludeFile, RangesToExcludeFile);
+    mtMarkerInCPP_SPAsqr(taus, Resid_mat, resid_outlier_all, resid_outlier_lens, sum_R_nonOutlier_vec, R_GRM_R_nonOutlier_vec, R_GRM_R_TwoSubjOutlier_vec, R_GRM_R_vec, MAF_interval, twoSubj_resid_all, twoSubj_rho_all, twoSubj_perTau, threeSubj_standS_all, threeSubj_standS_lens, threeSubj_CLT_all, threeSubj_CLT_nrows, threeSubj_perTau, SPA_Cutoff, zeta, tol, bedFile, bimFile, famFile, outputFile, subjData, AlleleOrder, nMarkersEachChunk, nthreads, impute_method, missing_cutoff, min_maf_marker, min_mac_marker, IDsToIncludeFile, RangesToIncludeFile, IDsToExcludeFile, RangesToExcludeFile);
     return R_NilValue;
 END_RCPP
 }
-// runMarkerInCPP_SPACox
-void runMarkerInCPP_SPACox(arma::mat cumul, arma::vec mresid, arma::mat XinvXX, arma::mat tX, int N, double pVal_covaAdj_Cutoff, double SPA_Cutoff, std::string bedFile, std::string bimFile, std::string famFile, std::string outputFile, std::vector<std::string> subjData, std::string AlleleOrder, int nMarkersEachChunk, unsigned int nthreads, std::string impute_method, double missing_cutoff, double min_maf_marker, double min_mac_marker, std::string IDsToIncludeFile, std::string RangesToIncludeFile, std::string IDsToExcludeFile, std::string RangesToExcludeFile);
-RcppExport SEXP _GRAB_runMarkerInCPP_SPACox(SEXP cumulSEXP, SEXP mresidSEXP, SEXP XinvXXSEXP, SEXP tXSEXP, SEXP NSEXP, SEXP pVal_covaAdj_CutoffSEXP, SEXP SPA_CutoffSEXP, SEXP bedFileSEXP, SEXP bimFileSEXP, SEXP famFileSEXP, SEXP outputFileSEXP, SEXP subjDataSEXP, SEXP AlleleOrderSEXP, SEXP nMarkersEachChunkSEXP, SEXP nthreadsSEXP, SEXP impute_methodSEXP, SEXP missing_cutoffSEXP, SEXP min_maf_markerSEXP, SEXP min_mac_markerSEXP, SEXP IDsToIncludeFileSEXP, SEXP RangesToIncludeFileSEXP, SEXP IDsToExcludeFileSEXP, SEXP RangesToExcludeFileSEXP) {
+// mtMarkerInCPP_SPACox
+void mtMarkerInCPP_SPACox(arma::mat cumul, arma::vec mresid, arma::mat XinvXX, arma::mat tX, int N, double pVal_covaAdj_Cutoff, double SPA_Cutoff, std::string bedFile, std::string bimFile, std::string famFile, std::string outputFile, std::vector<std::string> subjData, std::string AlleleOrder, int nMarkersEachChunk, int nthreads, std::string impute_method, double missing_cutoff, double min_maf_marker, double min_mac_marker, std::string IDsToIncludeFile, std::string RangesToIncludeFile, std::string IDsToExcludeFile, std::string RangesToExcludeFile);
+RcppExport SEXP _GRAB_mtMarkerInCPP_SPACox(SEXP cumulSEXP, SEXP mresidSEXP, SEXP XinvXXSEXP, SEXP tXSEXP, SEXP NSEXP, SEXP pVal_covaAdj_CutoffSEXP, SEXP SPA_CutoffSEXP, SEXP bedFileSEXP, SEXP bimFileSEXP, SEXP famFileSEXP, SEXP outputFileSEXP, SEXP subjDataSEXP, SEXP AlleleOrderSEXP, SEXP nMarkersEachChunkSEXP, SEXP nthreadsSEXP, SEXP impute_methodSEXP, SEXP missing_cutoffSEXP, SEXP min_maf_markerSEXP, SEXP min_mac_markerSEXP, SEXP IDsToIncludeFileSEXP, SEXP RangesToIncludeFileSEXP, SEXP IDsToExcludeFileSEXP, SEXP RangesToExcludeFileSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::mat >::type cumul(cumulSEXP);
@@ -298,7 +297,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::vector<std::string> >::type subjData(subjDataSEXP);
     Rcpp::traits::input_parameter< std::string >::type AlleleOrder(AlleleOrderSEXP);
     Rcpp::traits::input_parameter< int >::type nMarkersEachChunk(nMarkersEachChunkSEXP);
-    Rcpp::traits::input_parameter< unsigned int >::type nthreads(nthreadsSEXP);
+    Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP);
     Rcpp::traits::input_parameter< std::string >::type impute_method(impute_methodSEXP);
     Rcpp::traits::input_parameter< double >::type missing_cutoff(missing_cutoffSEXP);
     Rcpp::traits::input_parameter< double >::type min_maf_marker(min_maf_markerSEXP);
@@ -307,13 +306,13 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::string >::type RangesToIncludeFile(RangesToIncludeFileSEXP);
     Rcpp::traits::input_parameter< std::string >::type IDsToExcludeFile(IDsToExcludeFileSEXP);
     Rcpp::traits::input_parameter< std::string >::type RangesToExcludeFile(RangesToExcludeFileSEXP);
-    runMarkerInCPP_SPACox(cumul, mresid, XinvXX, tX, N, pVal_covaAdj_Cutoff, SPA_Cutoff, bedFile, bimFile, famFile, outputFile, subjData, AlleleOrder, nMarkersEachChunk, nthreads, impute_method, missing_cutoff, min_maf_marker, min_mac_marker, IDsToIncludeFile, RangesToIncludeFile, IDsToExcludeFile, RangesToExcludeFile);
+    mtMarkerInCPP_SPACox(cumul, mresid, XinvXX, tX, N, pVal_covaAdj_Cutoff, SPA_Cutoff, bedFile, bimFile, famFile, outputFile, subjData, AlleleOrder, nMarkersEachChunk, nthreads, impute_method, missing_cutoff, min_maf_marker, min_mac_marker, IDsToIncludeFile, RangesToIncludeFile, IDsToExcludeFile, RangesToExcludeFile);
     return R_NilValue;
 END_RCPP
 }
-// runMarkerInCPP_SPAmix
-void runMarkerInCPP_SPAmix(arma::mat resid, arma::mat PCs, int N, double SPA_Cutoff, int nPheno, arma::uvec posValue_all, arma::uvec posValue_lens, arma::uvec posOutlier_all, arma::uvec posOutlier_lens, arma::uvec posNonOutlier_all, arma::uvec posNonOutlier_lens, std::string bedFile, std::string bimFile, std::string famFile, std::string outputFile, std::vector<std::string> subjData, std::string AlleleOrder, int nMarkersEachChunk, unsigned int nthreads, std::string impute_method, double missing_cutoff, double min_maf_marker, double min_mac_marker, std::string IDsToIncludeFile, std::string RangesToIncludeFile, std::string IDsToExcludeFile, std::string RangesToExcludeFile);
-RcppExport SEXP _GRAB_runMarkerInCPP_SPAmix(SEXP residSEXP, SEXP PCsSEXP, SEXP NSEXP, SEXP SPA_CutoffSEXP, SEXP nPhenoSEXP, SEXP posValue_allSEXP, SEXP posValue_lensSEXP, SEXP posOutlier_allSEXP, SEXP posOutlier_lensSEXP, SEXP posNonOutlier_allSEXP, SEXP posNonOutlier_lensSEXP, SEXP bedFileSEXP, SEXP bimFileSEXP, SEXP famFileSEXP, SEXP outputFileSEXP, SEXP subjDataSEXP, SEXP AlleleOrderSEXP, SEXP nMarkersEachChunkSEXP, SEXP nthreadsSEXP, SEXP impute_methodSEXP, SEXP missing_cutoffSEXP, SEXP min_maf_markerSEXP, SEXP min_mac_markerSEXP, SEXP IDsToIncludeFileSEXP, SEXP RangesToIncludeFileSEXP, SEXP IDsToExcludeFileSEXP, SEXP RangesToExcludeFileSEXP) {
+// mtMarkerInCPP_SPAmix
+void mtMarkerInCPP_SPAmix(arma::mat resid, arma::mat PCs, int N, double SPA_Cutoff, int nPheno, arma::uvec posValue_all, arma::uvec posValue_lens, arma::uvec posOutlier_all, arma::uvec posOutlier_lens, arma::uvec posNonOutlier_all, arma::uvec posNonOutlier_lens, std::string bedFile, std::string bimFile, std::string famFile, std::string outputFile, std::vector<std::string> subjData, std::string AlleleOrder, int nMarkersEachChunk, int nthreads, std::string impute_method, double missing_cutoff, double min_maf_marker, double min_mac_marker, std::string IDsToIncludeFile, std::string RangesToIncludeFile, std::string IDsToExcludeFile, std::string RangesToExcludeFile);
+RcppExport SEXP _GRAB_mtMarkerInCPP_SPAmix(SEXP residSEXP, SEXP PCsSEXP, SEXP NSEXP, SEXP SPA_CutoffSEXP, SEXP nPhenoSEXP, SEXP posValue_allSEXP, SEXP posValue_lensSEXP, SEXP posOutlier_allSEXP, SEXP posOutlier_lensSEXP, SEXP posNonOutlier_allSEXP, SEXP posNonOutlier_lensSEXP, SEXP bedFileSEXP, SEXP bimFileSEXP, SEXP famFileSEXP, SEXP outputFileSEXP, SEXP subjDataSEXP, SEXP AlleleOrderSEXP, SEXP nMarkersEachChunkSEXP, SEXP nthreadsSEXP, SEXP impute_methodSEXP, SEXP missing_cutoffSEXP, SEXP min_maf_markerSEXP, SEXP min_mac_markerSEXP, SEXP IDsToIncludeFileSEXP, SEXP RangesToIncludeFileSEXP, SEXP IDsToExcludeFileSEXP, SEXP RangesToExcludeFileSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::mat >::type resid(residSEXP);
@@ -334,7 +333,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::vector<std::string> >::type subjData(subjDataSEXP);
     Rcpp::traits::input_parameter< std::string >::type AlleleOrder(AlleleOrderSEXP);
     Rcpp::traits::input_parameter< int >::type nMarkersEachChunk(nMarkersEachChunkSEXP);
-    Rcpp::traits::input_parameter< unsigned int >::type nthreads(nthreadsSEXP);
+    Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP);
     Rcpp::traits::input_parameter< std::string >::type impute_method(impute_methodSEXP);
     Rcpp::traits::input_parameter< double >::type missing_cutoff(missing_cutoffSEXP);
     Rcpp::traits::input_parameter< double >::type min_maf_marker(min_maf_markerSEXP);
@@ -343,13 +342,13 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::string >::type RangesToIncludeFile(RangesToIncludeFileSEXP);
     Rcpp::traits::input_parameter< std::string >::type IDsToExcludeFile(IDsToExcludeFileSEXP);
     Rcpp::traits::input_parameter< std::string >::type RangesToExcludeFile(RangesToExcludeFileSEXP);
-    runMarkerInCPP_SPAmix(resid, PCs, N, SPA_Cutoff, nPheno, posValue_all, posValue_lens, posOutlier_all, posOutlier_lens, posNonOutlier_all, posNonOutlier_lens, bedFile, bimFile, famFile, outputFile, subjData, AlleleOrder, nMarkersEachChunk, nthreads, impute_method, missing_cutoff, min_maf_marker, min_mac_marker, IDsToIncludeFile, RangesToIncludeFile, IDsToExcludeFile, RangesToExcludeFile);
+    mtMarkerInCPP_SPAmix(resid, PCs, N, SPA_Cutoff, nPheno, posValue_all, posValue_lens, posOutlier_all, posOutlier_lens, posNonOutlier_all, posNonOutlier_lens, bedFile, bimFile, famFile, outputFile, subjData, AlleleOrder, nMarkersEachChunk, nthreads, impute_method, missing_cutoff, min_maf_marker, min_mac_marker, IDsToIncludeFile, RangesToIncludeFile, IDsToExcludeFile, RangesToExcludeFile);
     return R_NilValue;
 END_RCPP
 }
-// runMarkerInCPP_SPAmixPlus
-void runMarkerInCPP_SPAmixPlus(arma::mat resid, arma::mat PCs, int N, double SPA_Cutoff, int nPheno, arma::uvec posValue_all, arma::uvec posValue_lens, arma::uvec posOutlier_all, arma::uvec posOutlier_lens, arma::uvec posNonOutlier_all, arma::uvec posNonOutlier_lens, arma::ivec sparseId1, arma::ivec sparseId2, arma::vec sparseVal, std::string afFilePath, std::string afFilePrecision, std::string bedFile, std::string bimFile, std::string famFile, std::string outputFile, std::vector<std::string> subjData, std::string AlleleOrder, int nMarkersEachChunk, unsigned int nthreads, std::string impute_method, double missing_cutoff, double min_maf_marker, double min_mac_marker, std::string IDsToIncludeFile, std::string RangesToIncludeFile, std::string IDsToExcludeFile, std::string RangesToExcludeFile);
-RcppExport SEXP _GRAB_runMarkerInCPP_SPAmixPlus(SEXP residSEXP, SEXP PCsSEXP, SEXP NSEXP, SEXP SPA_CutoffSEXP, SEXP nPhenoSEXP, SEXP posValue_allSEXP, SEXP posValue_lensSEXP, SEXP posOutlier_allSEXP, SEXP posOutlier_lensSEXP, SEXP posNonOutlier_allSEXP, SEXP posNonOutlier_lensSEXP, SEXP sparseId1SEXP, SEXP sparseId2SEXP, SEXP sparseValSEXP, SEXP afFilePathSEXP, SEXP afFilePrecisionSEXP, SEXP bedFileSEXP, SEXP bimFileSEXP, SEXP famFileSEXP, SEXP outputFileSEXP, SEXP subjDataSEXP, SEXP AlleleOrderSEXP, SEXP nMarkersEachChunkSEXP, SEXP nthreadsSEXP, SEXP impute_methodSEXP, SEXP missing_cutoffSEXP, SEXP min_maf_markerSEXP, SEXP min_mac_markerSEXP, SEXP IDsToIncludeFileSEXP, SEXP RangesToIncludeFileSEXP, SEXP IDsToExcludeFileSEXP, SEXP RangesToExcludeFileSEXP) {
+// mtMarkerInCPP_SPAmixPlus
+void mtMarkerInCPP_SPAmixPlus(arma::mat resid, arma::mat PCs, int N, double SPA_Cutoff, int nPheno, arma::uvec posValue_all, arma::uvec posValue_lens, arma::uvec posOutlier_all, arma::uvec posOutlier_lens, arma::uvec posNonOutlier_all, arma::uvec posNonOutlier_lens, arma::ivec sparseId1, arma::ivec sparseId2, arma::vec sparseVal, std::string afFilePath, std::string afFilePrecision, std::string bedFile, std::string bimFile, std::string famFile, std::string outputFile, std::vector<std::string> subjData, std::string AlleleOrder, int nMarkersEachChunk, int nthreads, std::string impute_method, double missing_cutoff, double min_maf_marker, double min_mac_marker, std::string IDsToIncludeFile, std::string RangesToIncludeFile, std::string IDsToExcludeFile, std::string RangesToExcludeFile);
+RcppExport SEXP _GRAB_mtMarkerInCPP_SPAmixPlus(SEXP residSEXP, SEXP PCsSEXP, SEXP NSEXP, SEXP SPA_CutoffSEXP, SEXP nPhenoSEXP, SEXP posValue_allSEXP, SEXP posValue_lensSEXP, SEXP posOutlier_allSEXP, SEXP posOutlier_lensSEXP, SEXP posNonOutlier_allSEXP, SEXP posNonOutlier_lensSEXP, SEXP sparseId1SEXP, SEXP sparseId2SEXP, SEXP sparseValSEXP, SEXP afFilePathSEXP, SEXP afFilePrecisionSEXP, SEXP bedFileSEXP, SEXP bimFileSEXP, SEXP famFileSEXP, SEXP outputFileSEXP, SEXP subjDataSEXP, SEXP AlleleOrderSEXP, SEXP nMarkersEachChunkSEXP, SEXP nthreadsSEXP, SEXP impute_methodSEXP, SEXP missing_cutoffSEXP, SEXP min_maf_markerSEXP, SEXP min_mac_markerSEXP, SEXP IDsToIncludeFileSEXP, SEXP RangesToIncludeFileSEXP, SEXP IDsToExcludeFileSEXP, SEXP RangesToExcludeFileSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::mat >::type resid(residSEXP);
@@ -375,7 +374,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::vector<std::string> >::type subjData(subjDataSEXP);
     Rcpp::traits::input_parameter< std::string >::type AlleleOrder(AlleleOrderSEXP);
     Rcpp::traits::input_parameter< int >::type nMarkersEachChunk(nMarkersEachChunkSEXP);
-    Rcpp::traits::input_parameter< unsigned int >::type nthreads(nthreadsSEXP);
+    Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP);
     Rcpp::traits::input_parameter< std::string >::type impute_method(impute_methodSEXP);
     Rcpp::traits::input_parameter< double >::type missing_cutoff(missing_cutoffSEXP);
     Rcpp::traits::input_parameter< double >::type min_maf_marker(min_maf_markerSEXP);
@@ -384,21 +383,21 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::string >::type RangesToIncludeFile(RangesToIncludeFileSEXP);
     Rcpp::traits::input_parameter< std::string >::type IDsToExcludeFile(IDsToExcludeFileSEXP);
     Rcpp::traits::input_parameter< std::string >::type RangesToExcludeFile(RangesToExcludeFileSEXP);
-    runMarkerInCPP_SPAmixPlus(resid, PCs, N, SPA_Cutoff, nPheno, posValue_all, posValue_lens, posOutlier_all, posOutlier_lens, posNonOutlier_all, posNonOutlier_lens, sparseId1, sparseId2, sparseVal, afFilePath, afFilePrecision, bedFile, bimFile, famFile, outputFile, subjData, AlleleOrder, nMarkersEachChunk, nthreads, impute_method, missing_cutoff, min_maf_marker, min_mac_marker, IDsToIncludeFile, RangesToIncludeFile, IDsToExcludeFile, RangesToExcludeFile);
+    mtMarkerInCPP_SPAmixPlus(resid, PCs, N, SPA_Cutoff, nPheno, posValue_all, posValue_lens, posOutlier_all, posOutlier_lens, posNonOutlier_all, posNonOutlier_lens, sparseId1, sparseId2, sparseVal, afFilePath, afFilePrecision, bedFile, bimFile, famFile, outputFile, subjData, AlleleOrder, nMarkersEachChunk, nthreads, impute_method, missing_cutoff, min_maf_marker, min_mac_marker, IDsToIncludeFile, RangesToIncludeFile, IDsToExcludeFile, RangesToExcludeFile);
     return R_NilValue;
 END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_GRAB_runMarkerInCPP_POLMM", (DL_FUNC) &_GRAB_runMarkerInCPP_POLMM, 23},
-    {"_GRAB_runMarkerInCPP_WtCoxG", (DL_FUNC) &_GRAB_runMarkerInCPP_WtCoxG, 30},
-    {"_GRAB_runMarkerInCPP_LEAF", (DL_FUNC) &_GRAB_runMarkerInCPP_LEAF, 36},
-    {"_GRAB_runMarkerInCPP_SPAGRM", (DL_FUNC) &_GRAB_runMarkerInCPP_SPAGRM, 32},
-    {"_GRAB_runMarkerInCPP_SAGELD", (DL_FUNC) &_GRAB_runMarkerInCPP_SAGELD, 57},
-    {"_GRAB_runMarkerInCPP_SPAsqr", (DL_FUNC) &_GRAB_runMarkerInCPP_SPAsqr, 36},
-    {"_GRAB_runMarkerInCPP_SPACox", (DL_FUNC) &_GRAB_runMarkerInCPP_SPACox, 23},
-    {"_GRAB_runMarkerInCPP_SPAmix", (DL_FUNC) &_GRAB_runMarkerInCPP_SPAmix, 27},
-    {"_GRAB_runMarkerInCPP_SPAmixPlus", (DL_FUNC) &_GRAB_runMarkerInCPP_SPAmixPlus, 32},
+    {"_GRAB_mtMarkerInCPP_POLMM", (DL_FUNC) &_GRAB_mtMarkerInCPP_POLMM, 22},
+    {"_GRAB_mtMarkerInCPP_WtCoxG", (DL_FUNC) &_GRAB_mtMarkerInCPP_WtCoxG, 30},
+    {"_GRAB_mtMarkerInCPP_LEAF", (DL_FUNC) &_GRAB_mtMarkerInCPP_LEAF, 36},
+    {"_GRAB_mtMarkerInCPP_SPAGRM", (DL_FUNC) &_GRAB_mtMarkerInCPP_SPAGRM, 32},
+    {"_GRAB_mtMarkerInCPP_SAGELD", (DL_FUNC) &_GRAB_mtMarkerInCPP_SAGELD, 57},
+    {"_GRAB_mtMarkerInCPP_SPAsqr", (DL_FUNC) &_GRAB_mtMarkerInCPP_SPAsqr, 36},
+    {"_GRAB_mtMarkerInCPP_SPACox", (DL_FUNC) &_GRAB_mtMarkerInCPP_SPACox, 23},
+    {"_GRAB_mtMarkerInCPP_SPAmix", (DL_FUNC) &_GRAB_mtMarkerInCPP_SPAmix, 27},
+    {"_GRAB_mtMarkerInCPP_SPAmixPlus", (DL_FUNC) &_GRAB_mtMarkerInCPP_SPAmixPlus, 32},
     {NULL, NULL, 0}
 };
 

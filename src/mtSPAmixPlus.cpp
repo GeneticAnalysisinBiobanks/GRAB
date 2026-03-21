@@ -165,8 +165,8 @@ namespace SPAmixPlus {
 
 
 SPAmixPlusClass::SPAmixPlusClass(
-  const arma::mat& resid,
-  const arma::mat& PCs,
+  arma::mat resid,
+  arma::mat PCs,
   int N,
   double SPA_Cutoff,
   std::vector<PhenoOutlierData> outlierList,
@@ -183,8 +183,8 @@ SPAmixPlusClass::SPAmixPlusClass(
   m_sparseTriplets = std::move(sparseTriplets);
 
 
-  m_resid = resid;
-  m_PCs = PCs;
+  m_resid = std::move(resid);
+  m_PCs = std::move(PCs);
   m_N = N;
   m_SPA_Cutoff = SPA_Cutoff;
 
@@ -200,7 +200,7 @@ SPAmixPlusClass::SPAmixPlusClass(
   m_outlierList = std::move(outlierList);
 
 
-  m_onePlusPCs = arma::join_horiz(arma::ones(N), PCs);
+  m_onePlusPCs = arma::join_horiz(arma::ones(N), m_PCs);
   arma::mat X_t = m_onePlusPCs.t();
   arma::mat XTX = X_t * m_onePlusPCs;
   arma::mat XTX_inv = arma::inv(XTX);

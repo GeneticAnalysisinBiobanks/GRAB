@@ -1,10 +1,10 @@
 # WtCoxG_Marker.R -- Unwrap WtCoxG null model and run marker engine
 
-runMarkerMT.WtCoxG <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
+mtMarker.WtCoxG <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
 
   gi <- objNull$mergeGenoInfo
   
-  runMarkerInCPP.WtCoxG(
+  mtMarkerInCPP.WtCoxG(
     R             = objNull$mresid,
     w             = objNull$weight,
     cutoff        = control$cutoff,

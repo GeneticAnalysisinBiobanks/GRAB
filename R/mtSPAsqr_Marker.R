@@ -1,6 +1,6 @@
 # SPAsqr_Marker.R -- Unwrap SPAsqr null model and run marker engine
 
-runMarkerMT.SPAsqr <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
+mtMarker.SPAsqr <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
   
   taus  <- objNull$taus
   ntaus <- length(taus)
@@ -57,7 +57,7 @@ runMarkerMT.SPAsqr <- function(objNull, OutputFile, control, bedFile, bimFile, f
   threeSubj_CLT_nrows <- if (length(all_three_CLT) > 0) as.integer(sapply(all_three_CLT, nrow)) else integer(0)
   threeSubj_perTau <- as.integer(sapply(threeSubj_standS_lists, length))
 
-  runMarkerInCPP.SPAsqr(
+  mtMarkerInCPP.SPAsqr(
     taus                       = taus,
     Resid_mat                  = objNull$Resid_mat,
     resid_outlier_all          = resid_outlier_all,

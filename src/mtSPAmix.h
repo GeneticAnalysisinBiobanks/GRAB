@@ -32,18 +32,18 @@ public:
 
 private:
 
-  arma::mat m_resid;
-  arma::mat m_onePlusPCs;
+  const arma::mat m_resid;
+  const arma::mat m_onePlusPCs;
 
-  int m_N;
-  int m_Npheno;
-  double m_SPA_Cutoff;
+  const int m_N;
+  const int m_Npheno;
+  const double m_SPA_Cutoff;
 
-  arma::mat m_PCs;
-  arma::vec m_sqrt_XTX_inv_diag;
-  arma::vec m_diffTime1, m_diffTime2;
+  const arma::mat m_PCs;
+  const arma::vec m_sqrt_XTX_inv_diag;
+  const arma::vec m_diffTime1, m_diffTime2;
 
-  std::vector<OutlierData> m_outlierVec;
+  const std::vector<OutlierData> m_outlierVec;
   arma::vec m_pvalVec;
   arma::vec m_zScoreVec;
 

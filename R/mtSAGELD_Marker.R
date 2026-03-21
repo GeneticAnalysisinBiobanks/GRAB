@@ -1,6 +1,6 @@
 # SAGELD_Marker.R -- Unwrap SAGELD null model and run marker engine
 
-runMarkerMT.SAGELD <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
+mtMarker.SAGELD <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
 
   twoSubjList <- objNull$TwoSubj_list
   # Pack 2-element vectors into matrices (nTwo x 2)
@@ -24,7 +24,7 @@ runMarkerMT.SAGELD <- function(objNull, OutputFile, control, bedFile, bimFile, f
   threeSubj_CLT_all         <- if (length(CLT_list) > 0) do.call(rbind, CLT_list) else matrix(numeric(0), nrow = 0, ncol = 1)
   threeSubj_CLT_nrows       <- as.integer(sapply(CLT_list, nrow))
 
-  runMarkerInCPP.SAGELD(
+  mtMarkerInCPP.SAGELD(
     Method                       = objNull$Method,
     XTs                          = objNull$XTs,
     SS                           = objNull$SS,

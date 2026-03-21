@@ -15,22 +15,22 @@ class SPAGRMClass {
 private:
 
   // ---- Members ----
-  arma::vec m_resid;
-  arma::vec m_resid_unrelated_outliers;
-  double m_sum_unrelated_outliers2;
-  double m_sum_R_nonOutlier;
-  double m_R_GRM_R_nonOutlier;
-  double m_R_GRM_R_TwoSubjOutlier;
-  double m_R_GRM_R;
-  arma::vec m_MAF_interval;
-  std::vector<arma::vec> m_TwoSubj_resid_list;
-  std::vector<arma::vec> m_TwoSubj_rho_list;
-  std::vector<arma::vec> m_ThreeSubj_standS_list;
-  std::vector<arma::mat> m_ThreeSubj_CLT_list;
+  const arma::vec m_resid;
+  const arma::vec m_resid_unrelated_outliers;
+  const double m_sum_unrelated_outliers2;
+  const double m_sum_R_nonOutlier;
+  const double m_R_GRM_R_nonOutlier;
+  const double m_R_GRM_R_TwoSubjOutlier;
+  const double m_R_GRM_R;
+  const arma::vec m_MAF_interval;
+  const std::vector<arma::vec> m_TwoSubj_resid_list;
+  const std::vector<arma::vec> m_TwoSubj_rho_list;
+  const std::vector<arma::vec> m_ThreeSubj_standS_list;
+  const std::vector<arma::mat> m_ThreeSubj_CLT_list;
 
-  double m_SPA_Cutoff;
-  double m_zeta;
-  double m_tol;
+  const double m_SPA_Cutoff;
+  const double m_zeta;
+  const double m_tol;
 
 public:
 

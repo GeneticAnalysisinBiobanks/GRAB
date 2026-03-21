@@ -1,6 +1,6 @@
 # SPAGRM_Marker.R -- Unwrap SPAGRM null model and run marker engine
 
-runMarkerMT.SPAGRM <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
+mtMarker.SPAGRM <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
 
   # Pack 2-element vectors into matrices (nTwo x 2)
   twoSubjList   <- objNull$TwoSubj_list
@@ -16,7 +16,7 @@ runMarkerMT.SPAGRM <- function(objNull, OutputFile, control, bedFile, bimFile, f
   threeSubj_CLT_all     <- if (length(CLT_list) > 0) do.call(rbind, CLT_list) else matrix(numeric(0), nrow = 0, ncol = 1)
   threeSubj_CLT_nrows   <- as.integer(sapply(CLT_list, nrow))
 
-  runMarkerInCPP.SPAGRM(
+  mtMarkerInCPP.SPAGRM(
     resid                    = objNull$Resid,
     resid_unrelated_outliers = objNull[["Resid.unrelated.outliers"]],
     sum_R_nonOutlier         = objNull$sum_R_nonOutlier,

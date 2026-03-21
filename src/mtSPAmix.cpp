@@ -12,29 +12,23 @@ SPAmixClass::SPAmixClass(
   int N,
   double SPA_Cutoff,
   std::vector<SPAmixClass::OutlierData> outlierVec
-) {
-  m_resid = resid;
-  m_Npheno = resid.n_cols;
-
+)
+  : m_resid(std::move(resid)),
+    m_onePlusPCs(arma::join_horiz(arma::ones(N), PCs)),
+    m_N(N),
+    m_Npheno(static_cast<int>(m_resid.n_cols)),
+    m_SPA_Cutoff(SPA_Cutoff),
+    m_PCs(std::move(PCs)),
+    m_sqrt_XTX_inv_diag([&]() {
+      arma::mat XTX_inv = arma::inv(arma::mat(m_onePlusPCs.t() * m_onePlusPCs));
+      return arma::vec(arma::sqrt(XTX_inv.diag()));
+    }()),
+    m_diffTime1(arma::zeros(2)),
+    m_diffTime2(arma::zeros(2)),
+    m_outlierVec(std::move(outlierVec))
+{
   m_pvalVec.resize(m_Npheno);
   m_zScoreVec.resize(m_Npheno);
-
-  m_N = N;
-  m_SPA_Cutoff = SPA_Cutoff;
-  m_PCs = PCs;
-
-  m_outlierVec = std::move(outlierVec);
-  arma::mat X = arma::join_horiz(arma::ones(N), PCs);
-  arma::mat X_t = X.t();
-  arma::mat XTX = X_t * X;
-  arma::mat XTX_inv = arma::inv(XTX);
-  arma::vec XTX_inv_diag = XTX_inv.diag();
-
-  m_onePlusPCs = X;
-  m_sqrt_XTX_inv_diag = arma::sqrt(XTX_inv_diag);
-
-  m_diffTime1.zeros(2);
-  m_diffTime2.zeros(2);
 }
 
 arma::vec SPAmixClass::M_G0(arma::vec t, arma::vec MAF) {

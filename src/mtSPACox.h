@@ -21,23 +21,29 @@ private:
 
 public:
 
+  approxfunClass() = default;
+
+  approxfunClass(arma::vec xVec, arma::vec yVec) {
+    setApproxFun(std::move(xVec), std::move(yVec));
+  }
+
   void setApproxFun(arma::vec xVec, arma::vec yVec) {
-    m_xVec = xVec;
-    m_yVec = yVec;
-    m_n = xVec.size();
-    m_ylow = yVec(0);
-    m_yhigh = yVec(m_n - 1);
+    m_xVec = std::move(xVec);
+    m_yVec = std::move(yVec);
+    m_n = m_xVec.size();
+    m_ylow = m_yVec(0);
+    m_yhigh = m_yVec(m_n - 1);
     m_slopeVec.zeros(m_n - 1);
 
     for (int i = 0; i < m_n - 1; i ++)
-      if (xVec(i+1) <= xVec(i)) throw std::runtime_error("xVec(i+1) should be greater than xVec(i).");
+      if (m_xVec(i+1) <= m_xVec(i)) throw std::runtime_error("xVec(i+1) should be greater than xVec(i).");
 
     for (int i = 0; i < m_n - 1; i ++)
-      m_slopeVec(i) = (yVec(i+1) - yVec(i)) / (xVec(i+1) - xVec(i));
+      m_slopeVec(i) = (m_yVec(i+1) - m_yVec(i)) / (m_xVec(i+1) - m_xVec(i));
   }
 
   // Evaluate the interpolant at a single point via bisection lookup.
-  double getValue(double v) {
+  double getValue(double v) const {
     int i, j, ij;
     i = 0;
     j = m_n - 1;
@@ -57,7 +63,7 @@ public:
   }
 
   // Evaluate the interpolant at each element of a vector.
-  arma::vec getVector(arma::vec vVec) {
+  arma::vec getVector(arma::vec vVec) const {
     int p = vVec.size();
     arma::vec outVec(p);
     for (int i = 0; i < p; i++) {
@@ -70,15 +76,15 @@ public:
 class SPACoxClass {
 private:
 
-  approxfunClass m_K_0_emp;
-  approxfunClass m_K_1_emp;
-  approxfunClass m_K_2_emp;
-  arma::vec m_mresid;
-  double m_varResid;
-  arma::mat m_XinvXX, m_tX;
-  int m_N;
-  double m_pVal_covaAdj_Cutoff;
-  double m_SPA_Cutoff;
+  const approxfunClass m_K_0_emp;
+  const approxfunClass m_K_1_emp;
+  const approxfunClass m_K_2_emp;
+  const arma::vec m_mresid;
+  const double m_varResid;
+  const arma::mat m_XinvXX, m_tX;
+  const int m_N;
+  const double m_pVal_covaAdj_Cutoff;
+  const double m_SPA_Cutoff;
 
 public:
 

@@ -35,10 +35,17 @@
 #include <boost/math/distributions/chi_squared.hpp>
 #include <zlib.h>
 
-#include "mtMain.h"
+#include "mtPLINK.h"
+#include "mtPOLMM.h"
+#include "mtWtCoxG.h"
+#include "mtLEAF.h"
+#include "mtSPAGRM.h"
+#include "mtSAGELD.h"
+#include "mtSPAsqr.h"
+#include "mtSPACox.h"
+#include "mtSPAmix.h"
+#include "mtSPAmixPlus.h"
 
-
-namespace mtMain {
 
 // ---- Global method pointers (one per active statistical method) ----
 
@@ -52,10 +59,13 @@ SPACox::SPACoxClass*         ptr_gSPACoxobj     = nullptr;
 SPAmix::SPAmixClass*         ptr_gSPAmixobj     = nullptr;
 SPAmixPlus::SPAmixPlusClass* ptr_gSPAmixPlusobj = nullptr;
 
+
+namespace {
+
 // ---- Inline helpers ----
 
 // Format a double as a short string: "NA", "Inf", "-Inf", or %.6g.
-static std::string numToStr(double x) {
+std::string numToStr(double x) {
   if (std::isnan(x)) return "NA";
   if (std::isinf(x)) return (x > 0 ? "Inf" : "-Inf");
   char buf[32];
@@ -64,7 +74,7 @@ static std::string numToStr(double x) {
 }
 
 // Cauchy combination test: aggregate a vector of p-values into one p-value.
-static double cctPvalue(const std::vector<double>& pvals) {
+double cctPvalue(const std::vector<double>& pvals) {
   std::vector<double> p;
   p.reserve(pvals.size());
   for (double x : pvals)
@@ -82,17 +92,17 @@ static double cctPvalue(const std::vector<double>& pvals) {
 }
 
 // Append one tab-separated value to an output row buffer.
-static void appendCell(std::ostringstream& oss, const std::string& v, bool first = false) {
+void appendCell(std::ostringstream& oss, const std::string& v, bool first = false) {
   if (!first) oss << '\t';
   oss << v;
 }
-static void appendCell(std::ostringstream& oss, double v, bool first = false) {
+void appendCell(std::ostringstream& oss, double v, bool first = false) {
   appendCell(oss, numToStr(v), first);
 }
 
 // Append the 8 standard marker meta-columns (Marker, Chr, Pos, Ref, Alt,
 // AltCount, AltFreq, MissRate) as the first cells of an output row.
-static void appendMeta(
+void appendMeta(
   std::ostringstream& oss,
   const std::string& marker,
   const std::string& chr,
@@ -131,10 +141,10 @@ struct ThreadContext {
 
 // ---- Output header ----
 
-static const char* META_HEADER = "Marker\tChr\tPos\tRef\tAlt\tAltCount\tAltFreq\tMissRate";
+const char* META_HEADER = "Marker\tChr\tPos\tRef\tAlt\tAltCount\tAltFreq\tMissRate";
 
 // Build the TSV column header line for the given method.
-static std::string getHeader(const std::string& method,
+std::string getHeader(const std::string& method,
                       const std::string& sageldMethod,
                       const std::vector<double>& taus,
                       int nPheno,
@@ -180,7 +190,7 @@ static std::string getHeader(const std::string& method,
 // Each method class stores per-marker mutable state (result vectors, scratch),
 // so per-thread copies are required for thread safety.  The copy happens once
 // per thread, not per chunk, so the cost is amortized.
-static ThreadContext makeThreadContext(const std::string& method) {
+ThreadContext makeThreadContext(const std::string& method) {
   ThreadContext ctx;
   if (method == "POLMM") {
     if (!ptr_gPOLMMobj) throw std::runtime_error("POLMM object is not initialized.");
@@ -213,24 +223,54 @@ static ThreadContext makeThreadContext(const std::string& method) {
   return ctx;
 }
 
+} // namespace
 
-// ---- Engine: mainMarkerChunksCore ----
 
-void mainMarkerChunksCore(
-  const std::string& method,
-  const std::vector<std::vector<uint64_t>>& chunkMarkers,
-  const std::string& outputFile,
-  unsigned int nthreads,
-  const std::string& impute_method,
-  double missing_cutoff,
-  double min_maf_marker,
-  double min_mac_marker,
-  const mtPLINK::PlinkData& plinkData
+// ---- The Engine ----
+
+void mtMarkerEngine(
+  const std::string method,
+  const std::string bedFile,
+  const std::string bimFile,
+  const std::string famFile,
+  const std::string outputFile,
+  const std::vector<std::string>& subjData,
+  const std::string AlleleOrder,
+  const int nMarkersEachChunk,
+  const int nthreads,
+  const std::string impute_method,
+  const double missing_cutoff,
+  const double min_maf_marker,
+  const double min_mac_marker,
+  const std::string IDsToIncludeFile,
+  const std::string RangesToIncludeFile,
+  const std::string IDsToExcludeFile,
+  const std::string RangesToExcludeFile
 ) {
-  if (chunkMarkers.empty())
-    throw std::runtime_error("chunkMarkers is empty.");
-  if (nthreads < 1)
-    throw std::runtime_error("nthreads should be >= 1.");
+
+  mtPLINK::PlinkData plinkData(bedFile, bimFile, famFile, subjData, AlleleOrder);
+
+  mtPLINK::MarkerFilterConfig filterConfig;
+  filterConfig.IDsToIncludeFile    = IDsToIncludeFile;
+  filterConfig.RangesToIncludeFile = RangesToIncludeFile;
+  filterConfig.IDsToExcludeFile    = IDsToExcludeFile;
+  filterConfig.RangesToExcludeFile = RangesToExcludeFile;
+
+  std::vector<mtPLINK::MarkerInfo> markerInfo = plinkData.getFilteredMarkers(filterConfig);
+  if (markerInfo.empty()) {
+    throw std::runtime_error("No markers remain after PLINK marker filtering.");
+  }
+
+  std::vector<std::vector<uint64_t>> chunkIndices = mtPLINK::PlinkData::buildChunks(markerInfo, nMarkersEachChunk);
+  const int effective_nthreads = std::min(nthreads, static_cast<int>(chunkIndices.size()));
+
+  Rprintf("Number of subjects in the input file: %u\n", plinkData.nSubjInFile());
+  Rprintf("Number of subjects to test: %u\n", plinkData.nSubjUsed());
+  Rprintf("Number of markers in the input file: %u\n", plinkData.nMarkers());
+  Rprintf("Number of markers to test: %zu\n", markerInfo.size());
+  Rprintf("Number of markers in each chunk: %d\n", nMarkersEachChunk);
+  Rprintf("Number of chunks for all markers: %zu\n", chunkIndices.size());
+  Rprintf("Number of threads: %d\n", effective_nthreads);
 
   int nPheno = 1;
   if (method == "SPAmix") nPheno = ptr_gSPAmixobj->getNpheno();
@@ -243,8 +283,8 @@ void mainMarkerChunksCore(
 
   const std::string header = getHeader(method, sageldMethod, spasqrTaus, nPheno, leafNcluster);
 
-  std::vector<std::string> chunkOutput(chunkMarkers.size());
-  std::vector<char> chunkReady(chunkMarkers.size(), 0);
+  std::vector<std::string> chunkOutput(chunkIndices.size());
+  std::vector<char> chunkReady(chunkIndices.size(), 0);
   std::atomic<size_t> nextChunk(0);
 
   std::exception_ptr workerError = nullptr;
@@ -314,9 +354,9 @@ void mainMarkerChunksCore(
 
       while (true) {
         size_t cidx = nextChunk.fetch_add(1);
-        if (cidx >= chunkMarkers.size()) break;
+        if (cidx >= chunkIndices.size()) break;
 
-        const auto& gIdx = chunkMarkers[cidx];
+        const auto& gIdx = chunkIndices[cidx];
         std::ostringstream out;
 
         if (!gIdx.empty()) cursor.beginSequentialBlock(gIdx.front());
@@ -557,7 +597,7 @@ void mainMarkerChunksCore(
           chunkReady[cidx] = 1;
         } {
           std::lock_guard<std::mutex> lg(logMutex);
-          std::fprintf(stderr, "[INFO] Calculation finished: chunk %zu/%zu\n", cidx + 1, chunkMarkers.size());
+          std::fprintf(stderr, "[INFO] Calculation finished: chunk %zu/%zu\n", cidx + 1, chunkIndices.size());
           std::fflush(stderr);
         }
         writeCv.notify_all();
@@ -569,14 +609,14 @@ void mainMarkerChunksCore(
     }
   };
 
-  nthreads = std::min<unsigned int>(nthreads, static_cast<unsigned int>(chunkMarkers.size()));
-  const bool runInline = (nthreads == 1);
+
+  const bool runInline = (effective_nthreads == 1);
   if (runInline) {
     workerFn();
   } else {
     std::vector<std::thread> workers;
-    workers.reserve(nthreads);
-    for (unsigned int t = 0; t < nthreads; ++t) workers.emplace_back(workerFn);
+    workers.reserve(effective_nthreads);
+    for (int t = 0; t < effective_nthreads; ++t) workers.emplace_back(workerFn);
     for (auto& th : workers) th.join();
   }
 
@@ -586,5 +626,3 @@ void mainMarkerChunksCore(
 
   if (workerError) std::rethrow_exception(workerError);
 }
-
-} // namespace mtMain

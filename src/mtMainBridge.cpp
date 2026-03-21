@@ -1,8 +1,6 @@
 
 // mtMainBridge.cpp -- R/Rcpp boundary: per-method Rcpp entry points
 //
-// This header contains the full definitions of all runMarkerInCPP_FOO functions.
-//
 // Functions in this file:
 //
 //   [Array splitters]  (static, file-local)
@@ -11,32 +9,68 @@
 //     splitMat        — split a concatenated arma::mat (row-stacked) into a vector of arma::mat
 //     matRowsToVecs   — convert each row of a matrix into a separate arma::vec
 //
-//   [Internal engine runner]  (static, file-local)
-//     runEngineCore   — build MarkerFilterConfig/ReaderConfig, read+filter .bim/.fam,
-//                       build chunks, print summary, and invoke mainMarkerChunksCore
-//
 //   [Rcpp entry points]
-//     runMarkerInCPP_POLMM      — construct POLMMClass
-//     runMarkerInCPP_WtCoxG     — construct WtCoxGClass
-//     runMarkerInCPP_LEAF       — construct LEAFClass
-//     runMarkerInCPP_SPAGRM     — construct SPAGRMClass
-//     runMarkerInCPP_SAGELD     — construct SAGELDClass
-//     runMarkerInCPP_SPAsqr     — construct SPAsqrClass
-//     runMarkerInCPP_SPACox     — construct SPACoxClass
-//     runMarkerInCPP_SPAmix     — construct SPAmixClass
-//     runMarkerInCPP_SPAmixPlus — construct SPAmixPlusClass
+//     mtMarkerInCPP_POLMM      — construct POLMMClass
+//     mtMarkerInCPP_WtCoxG     — construct WtCoxGClass
+//     mtMarkerInCPP_LEAF       — construct LEAFClass
+//     mtMarkerInCPP_SPAGRM     — construct SPAGRMClass
+//     mtMarkerInCPP_SAGELD     — construct SAGELDClass
+//     mtMarkerInCPP_SPAsqr     — construct SPAsqrClass
+//     mtMarkerInCPP_SPACox     — construct SPACoxClass
+//     mtMarkerInCPP_SPAmix     — construct SPAmixClass
+//     mtMarkerInCPP_SPAmixPlus — construct SPAmixPlusClass
+
 
 #include <RcppArmadillo.h>
-#include "mtMain.h"
+#include "mtPLINK.h"
+#include "mtPOLMM.h"
+#include "mtWtCoxG.h"
+#include "mtLEAF.h"
+#include "mtSPAGRM.h"
+#include "mtSAGELD.h"
+#include "mtSPAsqr.h"
+#include "mtSPACox.h"
+#include "mtSPAmix.h"
+#include "mtSPAmixPlus.h"
+
+
+// Method pointers — defined in mtMain.cpp.
+extern POLMM::POLMMClass*            ptr_gPOLMMobj;
+extern WtCoxG::WtCoxGClass*          ptr_gWtCoxGobj;
+extern LEAF::LEAFClass*              ptr_gLEAFobj;
+extern SPACox::SPACoxClass*          ptr_gSPACoxobj;
+extern SPAmix::SPAmixClass*          ptr_gSPAmixobj;
+extern SPAGRM::SPAGRMClass*          ptr_gSPAGRMobj;
+extern SAGELD::SAGELDClass*          ptr_gSAGELDobj;
+extern SPAsqr::SPAsqrClass*          ptr_gSPAsqrobj;
+extern SPAmixPlus::SPAmixPlusClass*  ptr_gSPAmixPlusobj;
+
+// ---- Engine ----
+
+void mtMarkerEngine(
+  const std::string method,
+  const std::string bedFile,
+  const std::string bimFile,
+  const std::string famFile,
+  const std::string outputFile,
+  const std::vector<std::string>& subjData,
+  const std::string AlleleOrder,
+  const int nMarkersEachChunk,
+  const int nthreads,
+  const std::string impute_method,
+  const double missing_cutoff,
+  const double min_maf_marker,
+  const double min_mac_marker,
+  const std::string IDsToIncludeFile,
+  const std::string RangesToIncludeFile,
+  const std::string IDsToExcludeFile,
+  const std::string RangesToExcludeFile
+);
 
 
 namespace {
 
-// =========================================================================
-// Array splitters: reconstruct R-concatenated arma containers
-// =========================================================================
-
-static std::vector<arma::vec> splitVec(
+std::vector<arma::vec> splitVec(
   const arma::vec& data,
   const arma::uvec& lens
 ) {
@@ -50,7 +84,7 @@ static std::vector<arma::vec> splitVec(
   return out;
 }
 
-static std::vector<arma::uvec> splitUvec(
+std::vector<arma::uvec> splitUvec(
   const arma::uvec& data,
   const arma::uvec& lens
 ) {
@@ -64,7 +98,7 @@ static std::vector<arma::uvec> splitUvec(
   return out;
 }
 
-static std::vector<arma::mat> splitMat(
+std::vector<arma::mat> splitMat(
   const arma::mat& data,
   const arma::uvec& nrows
 ) {
@@ -78,96 +112,38 @@ static std::vector<arma::mat> splitMat(
   return out;
 }
 
-// Each row of the matrix becomes a column vector in the returned vector.
-static std::vector<arma::vec> matRowsToVecs(const arma::mat& m) {
+std::vector<arma::vec> matRowsToVecs(const arma::mat& m) {
   std::vector<arma::vec> out(m.n_rows);
   for (arma::uword i = 0; i < m.n_rows; ++i)
     out[i] = m.row(i).t();
   return out;
 }
 
-// =========================================================================
-// Internal engine runner (not exported to R)
-// =========================================================================
+} // namespace
 
-static void runEngineCore(
-  const std::string& method,
-  const std::string& bedFile,
-  const std::string& bimFile,
-  const std::string& famFile,
-  const std::string& outputFile,
-  const std::vector<std::string>& subjData,
-  const std::string& AlleleOrder,
-  int nMarkersEachChunk,
-  unsigned int nthreads,
-  const std::string& impute_method,
-  double missing_cutoff,
-  double min_maf_marker,
-  double min_mac_marker,
-  const std::string& IDsToIncludeFile,
-  const std::string& RangesToIncludeFile,
-  const std::string& IDsToExcludeFile,
-  const std::string& RangesToExcludeFile
-) {
 
-  mtPLINK::PlinkData plinkData(bedFile, bimFile, famFile, subjData, AlleleOrder);
-
-  mtPLINK::MarkerFilterConfig filterConfig;
-  filterConfig.IDsToIncludeFile    = IDsToIncludeFile;
-  filterConfig.RangesToIncludeFile = RangesToIncludeFile;
-  filterConfig.IDsToExcludeFile    = IDsToExcludeFile;
-  filterConfig.RangesToExcludeFile = RangesToExcludeFile;
-
-  std::vector<mtPLINK::MarkerInfo> markerInfo = plinkData.getFilteredMarkers(filterConfig);
-  if (markerInfo.empty()) {
-    throw std::runtime_error("No markers remain after PLINK marker filtering.");
-  }
-
-  std::vector<std::vector<uint64_t>> chunkIndices = mtPLINK::PlinkData::buildChunks(markerInfo, nMarkersEachChunk);
-
-  Rprintf("Number of subjects in the input file: %u\n", plinkData.nSubjInFile());
-  Rprintf("Number of subjects to test: %u\n", plinkData.nSubjUsed());
-  Rprintf("Number of markers in the input file: %u\n", plinkData.nMarkers());
-  Rprintf("Number of markers to test: %zu\n", markerInfo.size());
-  Rprintf("Number of markers in each chunk: %d\n", nMarkersEachChunk);
-  Rprintf("Number of chunks for all markers: %zu\n", chunkIndices.size());
-  Rprintf("Number of threads: %u\n", nthreads);
-
-  mtMain::mainMarkerChunksCore(
-    method, chunkIndices, outputFile, nthreads,
-    impute_method, missing_cutoff, min_maf_marker, min_mac_marker, plinkData
-  );
-}
-
-} // anonymous namespace
-
-// =========================================================================
-// Per-method Rcpp entry points
-// =========================================================================
-
-// [[Rcpp::export("runMarkerInCPP.POLMM")]]
-void runMarkerInCPP_POLMM(
+// [[Rcpp::export("mtMarkerInCPP.POLMM")]]
+void mtMarkerInCPP_POLMM(
     arma::mat muMat, arma::mat iRMat, arma::mat Cova, arma::uvec yVec,
-    double tau, double varRatio, double SPA_Cutoff,
+    double varRatio, double SPA_Cutoff,
     std::string bedFile, std::string bimFile, std::string famFile,
     std::string outputFile,
     std::vector<std::string> subjData, std::string AlleleOrder,
-    int nMarkersEachChunk, unsigned int nthreads,
+    int nMarkersEachChunk, int nthreads,
     std::string impute_method, double missing_cutoff,
     double min_maf_marker, double min_mac_marker,
     std::string IDsToIncludeFile, std::string RangesToIncludeFile,
     std::string IDsToExcludeFile, std::string RangesToExcludeFile
   ) {
-  if (mtMain::ptr_gPOLMMobj) {
-    delete mtMain::ptr_gPOLMMobj;
+  if (ptr_gPOLMMobj) {
+    delete ptr_gPOLMMobj;
   }
-  mtMain::ptr_gPOLMMobj = new POLMM::POLMMClass(
-    muMat, iRMat, Cova, yVec,
-    arma::sp_mat(), tau, false, 0.001, 100,
-    varRatio, SPA_Cutoff, false
+  ptr_gPOLMMobj = new POLMM::POLMMClass(
+    std::move(muMat), std::move(iRMat), std::move(Cova), std::move(yVec),
+    varRatio, SPA_Cutoff
   );
 
-  runEngineCore(
+  mtMarkerEngine(
     "POLMM", bedFile, bimFile, famFile, outputFile,
     subjData, AlleleOrder, nMarkersEachChunk, nthreads,
     impute_method, missing_cutoff, min_maf_marker, min_mac_marker,
@@ -176,8 +152,8 @@ void runMarkerInCPP_POLMM(
   );
 }
 
-// [[Rcpp::export("runMarkerInCPP.WtCoxG")]]
-void runMarkerInCPP_WtCoxG(
+// [[Rcpp::export("mtMarkerInCPP.WtCoxG")]]
+void mtMarkerInCPP_WtCoxG(
   arma::vec R, arma::vec w, double cutoff, double SPA_Cutoff,
   arma::vec wt_genoIndex, arma::vec wt_AF_ref, arma::vec wt_AN_ref,
   arma::vec wt_TPR, arma::vec wt_sigma2, arma::vec wt_pvalue_bat,
@@ -186,7 +162,7 @@ void runMarkerInCPP_WtCoxG(
   std::string bedFile, std::string bimFile, std::string famFile,
   std::string outputFile,
   std::vector<std::string> subjData, std::string AlleleOrder,
-  int nMarkersEachChunk, unsigned int nthreads,
+  int nMarkersEachChunk, int nthreads,
   std::string impute_method, double missing_cutoff,
   double min_maf_marker, double min_mac_marker,
   std::string IDsToIncludeFile, std::string RangesToIncludeFile,
@@ -201,13 +177,13 @@ void runMarkerInCPP_WtCoxG(
       };
     }
 
-  if (mtMain::ptr_gWtCoxGobj) {
-    delete mtMain::ptr_gWtCoxGobj;
+  if (ptr_gWtCoxGobj) {
+    delete ptr_gWtCoxGobj;
   }
-  mtMain::ptr_gWtCoxGobj = new WtCoxG::WtCoxGClass(R, w, cutoff, SPA_Cutoff);
-  mtMain::ptr_gWtCoxGobj->setRefMap(std::move(refMap));
+  ptr_gWtCoxGobj = new WtCoxG::WtCoxGClass(
+    std::move(R), std::move(w), cutoff, SPA_Cutoff, std::move(refMap));
 
-  runEngineCore(
+  mtMarkerEngine(
     "WtCoxG", bedFile, bimFile, famFile, outputFile,
     subjData, AlleleOrder, nMarkersEachChunk, nthreads,
     impute_method, missing_cutoff, min_maf_marker, min_mac_marker,
@@ -216,8 +192,8 @@ void runMarkerInCPP_WtCoxG(
   );
 }
 
-// [[Rcpp::export("runMarkerInCPP.LEAF")]]
-void runMarkerInCPP_LEAF(
+// [[Rcpp::export("mtMarkerInCPP.LEAF")]]
+void mtMarkerInCPP_LEAF(
   arma::vec residuals_all, arma::uvec residuals_lens,
   arma::vec weights_all, arma::uvec weights_lens,
   arma::uvec clusterIdx_all, arma::uvec clusterIdx_lens,
@@ -230,7 +206,7 @@ void runMarkerInCPP_LEAF(
   std::string bedFile, std::string bimFile, std::string famFile,
   std::string outputFile,
   std::vector<std::string> subjData, std::string AlleleOrder,
-  int nMarkersEachChunk, unsigned int nthreads,
+  int nMarkersEachChunk, int nthreads,
   std::string impute_method, double missing_cutoff,
   double min_maf_marker, double min_mac_marker,
   std::string IDsToIncludeFile, std::string RangesToIncludeFile,
@@ -259,13 +235,14 @@ void runMarkerInCPP_LEAF(
     refMaps[c] = map;
   }
 
-  if (mtMain::ptr_gLEAFobj) {
-    delete mtMain::ptr_gLEAFobj;
+  if (ptr_gLEAFobj) {
+    delete ptr_gLEAFobj;
   }
-  mtMain::ptr_gLEAFobj = new LEAF::LEAFClass(residuals, weights, clusterIdxVecs, cutoff, SPA_Cutoff);
-  mtMain::ptr_gLEAFobj->setRefMaps(std::move(refMaps));
+  ptr_gLEAFobj = new LEAF::LEAFClass(
+    std::move(residuals), std::move(weights), std::move(clusterIdxVecs),
+    cutoff, SPA_Cutoff, std::move(refMaps));
 
-  runEngineCore(
+  mtMarkerEngine(
     "LEAF", bedFile, bimFile, famFile, outputFile,
     subjData, AlleleOrder, nMarkersEachChunk, nthreads,
     impute_method, missing_cutoff, min_maf_marker, min_mac_marker,
@@ -274,8 +251,8 @@ void runMarkerInCPP_LEAF(
   );
 }
 
-// [[Rcpp::export("runMarkerInCPP.SPAGRM")]]
-void runMarkerInCPP_SPAGRM(
+// [[Rcpp::export("mtMarkerInCPP.SPAGRM")]]
+void mtMarkerInCPP_SPAGRM(
   arma::vec resid, arma::vec resid_unrelated_outliers,
   double sum_R_nonOutlier, double R_GRM_R_nonOutlier,
   double R_GRM_R_TwoSubjOutlier, double R_GRM_R,
@@ -287,7 +264,7 @@ void runMarkerInCPP_SPAGRM(
   std::string bedFile, std::string bimFile, std::string famFile,
   std::string outputFile,
   std::vector<std::string> subjData, std::string AlleleOrder,
-  int nMarkersEachChunk, unsigned int nthreads,
+  int nMarkersEachChunk, int nthreads,
   std::string impute_method, double missing_cutoff,
   double min_maf_marker, double min_mac_marker,
   std::string IDsToIncludeFile, std::string RangesToIncludeFile,
@@ -298,19 +275,19 @@ void runMarkerInCPP_SPAGRM(
   auto threeStandS = splitVec(threeSubj_standS_all, threeSubj_standS_lens);
   auto threeCLT    = splitMat(threeSubj_CLT_all, threeSubj_CLT_nrows);
 
-  if (mtMain::ptr_gSPAGRMobj) {
-    delete mtMain::ptr_gSPAGRMobj;
+  if (ptr_gSPAGRMobj) {
+    delete ptr_gSPAGRMobj;
   }
-  mtMain::ptr_gSPAGRMobj = new SPAGRM::SPAGRMClass(
-    resid, resid_unrelated_outliers,
+  ptr_gSPAGRMobj = new SPAGRM::SPAGRMClass(
+    std::move(resid), std::move(resid_unrelated_outliers),
     sum_R_nonOutlier, R_GRM_R_nonOutlier, R_GRM_R_TwoSubjOutlier, R_GRM_R,
-    MAF_interval,
+    std::move(MAF_interval),
     std::move(twoResid), std::move(twoRho),
     std::move(threeStandS), std::move(threeCLT),
     SPA_Cutoff, zeta, tol
   );
 
-  runEngineCore(
+  mtMarkerEngine(
     "SPAGRM", bedFile, bimFile, famFile, outputFile,
     subjData, AlleleOrder, nMarkersEachChunk, nthreads,
     impute_method, missing_cutoff, min_maf_marker, min_mac_marker,
@@ -319,8 +296,8 @@ void runMarkerInCPP_SPAGRM(
   );
 }
 
-// [[Rcpp::export("runMarkerInCPP.SAGELD")]]
-void runMarkerInCPP_SAGELD(
+// [[Rcpp::export("mtMarkerInCPP.SAGELD")]]
+void mtMarkerInCPP_SAGELD(
   std::string Method, arma::mat XTs, arma::mat SS, arma::mat AtS,
   arma::mat Q, arma::mat A21, arma::mat TTs, arma::mat Tys,
   arma::vec sol, arma::vec blups, double sig,
@@ -340,7 +317,7 @@ void runMarkerInCPP_SAGELD(
   double zScoreE_cutoff, double SPA_Cutoff, double zeta, double tol,
   std::string bedFile, std::string bimFile, std::string famFile, std::string outputFile,
   std::vector<std::string> subjData, std::string AlleleOrder,
-  int nMarkersEachChunk, unsigned int nthreads, std::string impute_method,
+  int nMarkersEachChunk, int nthreads, std::string impute_method,
   double missing_cutoff, double min_maf_marker, double min_mac_marker,
   std::string IDsToIncludeFile, std::string RangesToIncludeFile,
   std::string IDsToExcludeFile, std::string RangesToExcludeFile
@@ -367,21 +344,23 @@ void runMarkerInCPP_SAGELD(
     threeSubj[i].stand_S_GxE = std::move(standS_GxE[i]);
   }
 
-  if (mtMain::ptr_gSAGELDobj) {
-    delete mtMain::ptr_gSAGELDobj;
+  if (ptr_gSAGELDobj) {
+    delete ptr_gSAGELDobj;
   }
-  mtMain::ptr_gSAGELDobj = new SAGELD::SAGELDClass(
-    Method, XTs, SS, AtS, Q, A21, TTs, Tys,
-    sol, blups, sig,
-    resid, resid_G, resid_GxE, resid_E,
-    resid_unrelated_outliers, resid_unrelated_outliers_G, resid_unrelated_outliers_GxE,
+  ptr_gSAGELDobj = new SAGELD::SAGELDClass(
+    std::move(Method), std::move(XTs), std::move(SS), std::move(AtS),
+    std::move(Q), std::move(A21), std::move(TTs), std::move(Tys),
+    std::move(sol), std::move(blups), sig,
+    std::move(resid), std::move(resid_G), std::move(resid_GxE), std::move(resid_E),
+    std::move(resid_unrelated_outliers), std::move(resid_unrelated_outliers_G),
+    std::move(resid_unrelated_outliers_GxE),
     sum_R_nonOutlier, sum_R_nonOutlier_G, sum_R_nonOutlier_GxE,
-    R_GRM_R, R_GRM_R_nonOutlier, R_GRM_R_TwoSubjOutlier,
+    std::move(R_GRM_R), std::move(R_GRM_R_nonOutlier), std::move(R_GRM_R_TwoSubjOutlier),
     std::move(twoSubj), std::move(threeSubj),
-    MAF_interval, zScoreE_cutoff, SPA_Cutoff, zeta, tol
+    std::move(MAF_interval), zScoreE_cutoff, SPA_Cutoff, zeta, tol
   );
 
-  runEngineCore(
+  mtMarkerEngine(
     "SAGELD", bedFile, bimFile, famFile, outputFile,
     subjData, AlleleOrder, nMarkersEachChunk, nthreads,
     impute_method, missing_cutoff, min_maf_marker, min_mac_marker,
@@ -390,8 +369,8 @@ void runMarkerInCPP_SAGELD(
   );
 }
 
-// [[Rcpp::export("runMarkerInCPP.SPAsqr")]]
-void runMarkerInCPP_SPAsqr(
+// [[Rcpp::export("mtMarkerInCPP.SPAsqr")]]
+void mtMarkerInCPP_SPAsqr(
   arma::vec taus, arma::mat Resid_mat,
   arma::vec resid_outlier_all, arma::uvec resid_outlier_lens,
   arma::vec sum_R_nonOutlier_vec, arma::vec R_GRM_R_nonOutlier_vec,
@@ -406,7 +385,7 @@ void runMarkerInCPP_SPAsqr(
   std::string bedFile, std::string bimFile, std::string famFile,
   std::string outputFile,
   std::vector<std::string> subjData, std::string AlleleOrder,
-  int nMarkersEachChunk, unsigned int nthreads,
+  int nMarkersEachChunk, int nthreads,
   std::string impute_method, double missing_cutoff,
   double min_maf_marker, double min_mac_marker,
   std::string IDsToIncludeFile, std::string RangesToIncludeFile,
@@ -440,17 +419,17 @@ void runMarkerInCPP_SPAsqr(
     threeOff += nThree;
   }
 
-  if (mtMain::ptr_gSPAsqrobj) {
-    delete mtMain::ptr_gSPAsqrobj;
+  if (ptr_gSPAsqrobj) {
+    delete ptr_gSPAsqrobj;
   }
-  mtMain::ptr_gSPAsqrobj = new SPAsqr::SPAsqrClass(
-    taus, Resid_mat, tauData,
-    sum_R_nonOutlier_vec, R_GRM_R_nonOutlier_vec,
-    R_GRM_R_TwoSubjOutlier_vec, R_GRM_R_vec,
-    MAF_interval, SPA_Cutoff, zeta, tol
+  ptr_gSPAsqrobj = new SPAsqr::SPAsqrClass(
+    std::move(taus), std::move(Resid_mat), std::move(tauData),
+    std::move(sum_R_nonOutlier_vec), std::move(R_GRM_R_nonOutlier_vec),
+    std::move(R_GRM_R_TwoSubjOutlier_vec), std::move(R_GRM_R_vec),
+    std::move(MAF_interval), SPA_Cutoff, zeta, tol
   );
 
-  runEngineCore(
+  mtMarkerEngine(
     "SPAsqr", bedFile, bimFile, famFile, outputFile,
     subjData, AlleleOrder, nMarkersEachChunk, nthreads,
     impute_method, missing_cutoff, min_maf_marker, min_mac_marker,
@@ -459,28 +438,28 @@ void runMarkerInCPP_SPAsqr(
   );
 }
 
-// [[Rcpp::export("runMarkerInCPP.SPACox")]]
-void runMarkerInCPP_SPACox(
+// [[Rcpp::export("mtMarkerInCPP.SPACox")]]
+void mtMarkerInCPP_SPACox(
     arma::mat cumul, arma::vec mresid, arma::mat XinvXX, arma::mat tX,
     int N, double pVal_covaAdj_Cutoff, double SPA_Cutoff,
     std::string bedFile, std::string bimFile, std::string famFile,
     std::string outputFile,
     std::vector<std::string> subjData, std::string AlleleOrder,
-    int nMarkersEachChunk, unsigned int nthreads,
+    int nMarkersEachChunk, int nthreads,
     std::string impute_method, double missing_cutoff,
     double min_maf_marker, double min_mac_marker,
     std::string IDsToIncludeFile, std::string RangesToIncludeFile,
     std::string IDsToExcludeFile, std::string RangesToExcludeFile
 ) {
-  if (mtMain::ptr_gSPACoxobj) {
-    delete mtMain::ptr_gSPACoxobj;
+  if (ptr_gSPACoxobj) {
+    delete ptr_gSPACoxobj;
   }
-  mtMain::ptr_gSPACoxobj = new SPACox::SPACoxClass(
-    cumul, mresid, XinvXX, tX, N,
-    pVal_covaAdj_Cutoff, SPA_Cutoff
+  ptr_gSPACoxobj = new SPACox::SPACoxClass(
+    std::move(cumul), std::move(mresid), std::move(XinvXX), std::move(tX),
+    N, pVal_covaAdj_Cutoff, SPA_Cutoff
   );
 
-  runEngineCore(
+  mtMarkerEngine(
     "SPACox", bedFile, bimFile, famFile, outputFile,
     subjData, AlleleOrder, nMarkersEachChunk, nthreads,
     impute_method, missing_cutoff, min_maf_marker, min_mac_marker,
@@ -489,8 +468,8 @@ void runMarkerInCPP_SPACox(
   );
 }
 
-// [[Rcpp::export("runMarkerInCPP.SPAmix")]]
-void runMarkerInCPP_SPAmix(
+// [[Rcpp::export("mtMarkerInCPP.SPAmix")]]
+void mtMarkerInCPP_SPAmix(
   arma::mat resid, arma::mat PCs, int N, double SPA_Cutoff, int nPheno,
   arma::uvec posValue_all, arma::uvec posValue_lens,
   arma::uvec posOutlier_all, arma::uvec posOutlier_lens,
@@ -498,7 +477,7 @@ void runMarkerInCPP_SPAmix(
   std::string bedFile, std::string bimFile, std::string famFile,
   std::string outputFile,
   std::vector<std::string> subjData, std::string AlleleOrder,
-  int nMarkersEachChunk, unsigned int nthreads,
+  int nMarkersEachChunk, int nthreads,
   std::string impute_method, double missing_cutoff,
   double min_maf_marker, double min_mac_marker,
   std::string IDsToIncludeFile, std::string RangesToIncludeFile,
@@ -521,14 +500,14 @@ void runMarkerInCPP_SPAmix(
     outlierVec[i].resid2NonOutlier = arma::square(col_i.elem(posNons[i]));
   }
 
-  if (mtMain::ptr_gSPAmixobj) {
-    delete mtMain::ptr_gSPAmixobj;
+  if (ptr_gSPAmixobj) {
+    delete ptr_gSPAmixobj;
   }
-  mtMain::ptr_gSPAmixobj = new SPAmix::SPAmixClass(
-    resid, PCs, N, SPA_Cutoff, std::move(outlierVec)
+  ptr_gSPAmixobj = new SPAmix::SPAmixClass(
+    std::move(resid), std::move(PCs), N, SPA_Cutoff, std::move(outlierVec)
   );
 
-  runEngineCore(
+  mtMarkerEngine(
     "SPAmix", bedFile, bimFile, famFile, outputFile,
     subjData, AlleleOrder, nMarkersEachChunk, nthreads,
     impute_method, missing_cutoff, min_maf_marker, min_mac_marker,
@@ -537,8 +516,8 @@ void runMarkerInCPP_SPAmix(
   );
 }
 
-// [[Rcpp::export("runMarkerInCPP.SPAmixPlus")]]
-void runMarkerInCPP_SPAmixPlus(
+// [[Rcpp::export("mtMarkerInCPP.SPAmixPlus")]]
+void mtMarkerInCPP_SPAmixPlus(
   arma::mat resid, arma::mat PCs, int N, double SPA_Cutoff, int nPheno,
   arma::uvec posValue_all, arma::uvec posValue_lens,
   arma::uvec posOutlier_all, arma::uvec posOutlier_lens,
@@ -548,7 +527,7 @@ void runMarkerInCPP_SPAmixPlus(
   std::string bedFile, std::string bimFile, std::string famFile,
   std::string outputFile,
   std::vector<std::string> subjData, std::string AlleleOrder,
-  int nMarkersEachChunk, unsigned int nthreads,
+  int nMarkersEachChunk, int nthreads,
   std::string impute_method, double missing_cutoff,
   double min_maf_marker, double min_mac_marker,
   std::string IDsToIncludeFile, std::string RangesToIncludeFile,
@@ -574,16 +553,16 @@ void runMarkerInCPP_SPAmixPlus(
   for (arma::uword i = 0; i < sparseId1.n_elem; ++i)
     triplets.emplace_back(sparseId1[i], sparseId2[i], sparseVal[i]);
 
-  if (mtMain::ptr_gSPAmixPlusobj) {
-    delete mtMain::ptr_gSPAmixPlusobj;
+  if (ptr_gSPAmixPlusobj) {
+    delete ptr_gSPAmixPlusobj;
   }
-  mtMain::ptr_gSPAmixPlusobj = new SPAmixPlus::SPAmixPlusClass(
-    resid, PCs, N, SPA_Cutoff,
+  ptr_gSPAmixPlusobj = new SPAmixPlus::SPAmixPlusClass(
+    std::move(resid), std::move(PCs), N, SPA_Cutoff,
     std::move(outlierVec), std::move(triplets),
     afFilePath, afFilePrecision
   );
 
-  runEngineCore(
+  mtMarkerEngine(
     "SPAmixPlus", bedFile, bimFile, famFile, outputFile,
     subjData, AlleleOrder, nMarkersEachChunk, nthreads,
     impute_method, missing_cutoff, min_maf_marker, min_mac_marker,

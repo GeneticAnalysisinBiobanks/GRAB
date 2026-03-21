@@ -40,49 +40,49 @@ public:
 private:
 
   // ---- Members ----
-  std::string m_Method;
-  arma::mat m_XTs;
-  arma::mat m_SS;
-  arma::mat m_AtS;
-  arma::mat m_Q;
-  arma::mat m_A21;
-  arma::mat m_TTs;
-  arma::mat m_Tys;
-  arma::vec m_sol;
-  arma::vec m_blups;
-  double m_sig;
-  double m_ncov;
+  const std::string m_Method;
+  const arma::mat m_XTs;
+  const arma::mat m_SS;
+  const arma::mat m_AtS;
+  const arma::mat m_Q;
+  const arma::mat m_A21;
+  const arma::mat m_TTs;
+  const arma::mat m_Tys;
+  const arma::vec m_sol;
+  const arma::vec m_blups;
+  const double m_sig;
+  const double m_ncov;
 
-  arma::vec m_resid;
-  arma::vec m_resid_G;
-  arma::vec m_resid_GxE;
-  arma::vec m_resid_E;
+  const arma::vec m_resid;
+  const arma::vec m_resid_G;
+  const arma::vec m_resid_GxE;
+  const arma::vec m_resid_E;
 
-  arma::vec m_resid_unrelated_outliers;
-  arma::vec m_resid_unrelated_outliers_G;
-  arma::vec m_resid_unrelated_outliers_GxE;
+  const arma::vec m_resid_unrelated_outliers;
+  const arma::vec m_resid_unrelated_outliers_G;
+  const arma::vec m_resid_unrelated_outliers_GxE;
 
-  double m_sum_unrelated_outliers2;
-  double m_sum_unrelated_outliers_G2;
-  double m_sum_unrelated_outliers_GxE2;
-  double m_sum_unrelated_outliers_G_GxE2;
+  const double m_sum_unrelated_outliers2;
+  const double m_sum_unrelated_outliers_G2;
+  const double m_sum_unrelated_outliers_GxE2;
+  const double m_sum_unrelated_outliers_G_GxE2;
 
-  double m_sum_R_nonOutlier;
-  double m_sum_R_nonOutlier_G;
-  double m_sum_R_nonOutlier_GxE;
+  const double m_sum_R_nonOutlier;
+  const double m_sum_R_nonOutlier_G;
+  const double m_sum_R_nonOutlier_GxE;
 
-  arma::vec m_R_GRM_R;               // [0]=main, [1]=G, [2]=GxE, [3]=G_GxE, [4]=E
-  arma::vec m_R_GRM_R_nonOutlier;    // [0]=main, [1]=G, [2]=GxE, [3]=G_GxE
-  arma::vec m_R_GRM_R_TwoSubjOutlier; // [0]=main, [1]=G, [2]=GxE, [3]=G_GxE
+  const arma::vec m_R_GRM_R;               // [0]=main, [1]=G, [2]=GxE, [3]=G_GxE, [4]=E
+  const arma::vec m_R_GRM_R_nonOutlier;    // [0]=main, [1]=G, [2]=GxE, [3]=G_GxE
+  const arma::vec m_R_GRM_R_TwoSubjOutlier; // [0]=main, [1]=G, [2]=GxE, [3]=G_GxE
 
-  std::vector<TwoSubjFamily> m_TwoSubj_list;
-  std::vector<ThreeSubjFamily> m_ThreeSubj_list;
+  const std::vector<TwoSubjFamily> m_TwoSubj_list;
+  const std::vector<ThreeSubjFamily> m_ThreeSubj_list;
 
-  arma::vec m_MAF_interval;
-  double m_zScoreE_cutoff;
-  double m_SPA_Cutoff;
-  double m_zeta;
-  double m_tol;
+  const arma::vec m_MAF_interval;
+  const double m_zScoreE_cutoff;
+  const double m_SPA_Cutoff;
+  const double m_zeta;
+  const double m_tol;
 
   arma::vec m_pvalVec;
   arma::vec m_zScoreVec;

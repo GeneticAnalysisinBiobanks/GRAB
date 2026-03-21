@@ -1,6 +1,6 @@
 # SPAmix_Marker.R -- Unwrap SPAmix null model and run marker engine
 
-runMarkerMT.SPAmix <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
+mtMarker.SPAmix <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
   
   resid  <- objNull$resid
   nPheno <- ncol(resid)
@@ -14,7 +14,7 @@ runMarkerMT.SPAmix <- function(objNull, OutputFile, control, bedFile, bimFile, f
   posNonOutlier_all  <- as.integer(unlist(lapply(seq_len(nPheno), function(i) ol[[i]]$posNonOutlier)))
   posNonOutlier_lens <- as.integer(sapply(seq_len(nPheno), function(i) length(ol[[i]]$posNonOutlier)))
 
-  runMarkerInCPP.SPAmix(
+  mtMarkerInCPP.SPAmix(
     resid               = resid,
     PCs                 = objNull$PCs,
     N                   = objNull$N,

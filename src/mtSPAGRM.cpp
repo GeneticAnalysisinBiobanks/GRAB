@@ -24,25 +24,23 @@ SPAGRMClass::SPAGRMClass(
   double SPA_Cutoff,
   double zeta,
   double tol
-) {
-  m_resid = resid;
-  m_resid_unrelated_outliers = resid_unrelated_outliers;
-  m_sum_unrelated_outliers2 = sum(resid_unrelated_outliers % resid_unrelated_outliers);
-  m_sum_R_nonOutlier = sum_R_nonOutlier;
-  m_R_GRM_R_nonOutlier = R_GRM_R_nonOutlier;
-  m_R_GRM_R_TwoSubjOutlier = R_GRM_R_TwoSubjOutlier;
-  m_R_GRM_R = R_GRM_R;
-  m_MAF_interval = MAF_interval;
-
-  m_TwoSubj_resid_list = std::move(TwoSubj_resid);
-  m_TwoSubj_rho_list   = std::move(TwoSubj_rho);
-  m_ThreeSubj_standS_list = std::move(ThreeSubj_standS);
-  m_ThreeSubj_CLT_list    = std::move(ThreeSubj_CLT);
-
-  m_SPA_Cutoff = SPA_Cutoff;
-  m_zeta = zeta;
-  m_tol = tol;
-}
+)
+  : m_resid(std::move(resid)),
+    m_resid_unrelated_outliers(std::move(resid_unrelated_outliers)),
+    m_sum_unrelated_outliers2(arma::dot(m_resid_unrelated_outliers, m_resid_unrelated_outliers)),
+    m_sum_R_nonOutlier(sum_R_nonOutlier),
+    m_R_GRM_R_nonOutlier(R_GRM_R_nonOutlier),
+    m_R_GRM_R_TwoSubjOutlier(R_GRM_R_TwoSubjOutlier),
+    m_R_GRM_R(R_GRM_R),
+    m_MAF_interval(std::move(MAF_interval)),
+    m_TwoSubj_resid_list(std::move(TwoSubj_resid)),
+    m_TwoSubj_rho_list(std::move(TwoSubj_rho)),
+    m_ThreeSubj_standS_list(std::move(ThreeSubj_standS)),
+    m_ThreeSubj_CLT_list(std::move(ThreeSubj_CLT)),
+    m_SPA_Cutoff(SPA_Cutoff),
+    m_zeta(zeta),
+    m_tol(tol)
+{}
 
 arma::mat SPAGRMClass::mgf(
   double t,

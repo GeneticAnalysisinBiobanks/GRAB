@@ -14,39 +14,40 @@ class LEAFClass {
   
 private:
 
-  int m_Ncluster;
+  const int m_Ncluster;
   std::vector<WtCoxG::WtCoxGClass> m_WtCoxGobj_vec;
   std::vector<arma::uvec> m_clusterIdx_vec;
-  double m_cutoff;
-  double m_SPA_Cutoff;
+  const double m_cutoff;
+  const double m_SPA_Cutoff;
 
   // Per-cluster shared reference maps
-  std::vector<std::shared_ptr<const std::unordered_map<uint64_t, WtCoxG::WtCoxGClass::RefInfo>>> m_refMaps;
+  const std::vector<std::shared_ptr<const std::unordered_map<uint64_t, WtCoxG::WtCoxGClass::RefInfo>>> m_refMaps;
   // Per-chunk reference info per cluster
   std::vector<std::vector<WtCoxG::WtCoxGClass::RefInfo>> m_chunkRefInfo;
 
 public:
 
   LEAFClass(
-    const std::vector<arma::vec>& residuals,
-    const std::vector<arma::vec>& weights,
-    const std::vector<arma::uvec>& clusterIdx,
+    std::vector<arma::vec> residuals,
+    std::vector<arma::vec> weights,
+    std::vector<arma::uvec> clusterIdx,
     double cutoff,
-    double SPA_Cutoff
-  ) {
-    m_Ncluster = static_cast<int>(residuals.size());
-    m_cutoff = cutoff;
-    m_SPA_Cutoff = SPA_Cutoff;
-
-
+    double SPA_Cutoff,
+    std::vector<std::shared_ptr<const std::unordered_map<uint64_t, WtCoxG::WtCoxGClass::RefInfo>>> refMaps
+  )
+    : m_Ncluster(static_cast<int>(residuals.size())),
+      m_cutoff(cutoff),
+      m_SPA_Cutoff(SPA_Cutoff),
+      m_refMaps(std::move(refMaps))
+  {
     m_WtCoxGobj_vec.reserve(m_Ncluster);
     m_clusterIdx_vec.resize(m_Ncluster);
 
     for (int i = 0; i < m_Ncluster; i++) {
-      m_clusterIdx_vec[i] = clusterIdx[i];
+      m_clusterIdx_vec[i] = std::move(clusterIdx[i]);
       m_WtCoxGobj_vec.emplace_back(
-        residuals[i],
-        weights[i],
+        std::move(residuals[i]),
+        std::move(weights[i]),
         m_cutoff,
         m_SPA_Cutoff
       );
@@ -80,12 +81,6 @@ public:
         w_ext, var_ratio_w0, var_ratio_int, var_ratio_ext
       );
     }
-  }
-
-  // Set the per-cluster reference maps (called once before threading)
-  void setRefMaps(
-      std::vector<std::shared_ptr<const std::unordered_map<uint64_t, WtCoxG::WtCoxGClass::RefInfo>>> maps) {
-    m_refMaps = std::move(maps);
   }
 
   // Prepare all clusters for a chunk
