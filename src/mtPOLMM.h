@@ -5,9 +5,7 @@
 
 #include <RcppArmadillo.h>
 
-namespace POLMM {
-
-class POLMMClass {
+class mtPOLMMClass {
 private:
   const arma::mat m_muMat;
   const arma::mat m_iRMat;
@@ -26,13 +24,23 @@ private:
   arma::vec getVarWVec(const arma::vec& adjGVec) const;
 
 public:
-  POLMMClass(arma::mat muMat, arma::mat iRMat, arma::mat Cova, arma::uvec yVec,
-             double varRatio, double SPA_Cutoff);
+  mtPOLMMClass(
+    arma::mat muMat,
+    arma::mat iRMat,
+    arma::mat Cova,
+    arma::uvec yVec,
+    double varRatio,
+    double SPA_Cutoff
+  );
 
-  void getMarkerPval(arma::vec GVec, double& Beta, double& seBeta,
-                     double& pval, double altFreq, double& zScore) const;
+  void getMarkerPval(
+    arma::vec GVec,
+    double& Beta,
+    double& seBeta,
+    double& pval,
+    double altFreq,
+    double& zScore
+  ) const;
 };
-
-} // namespace POLMM
 
 #endif

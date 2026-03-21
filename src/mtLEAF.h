@@ -1,60 +1,27 @@
 #ifndef LEAF_H
 #define LEAF_H
 
-// LEAF.h -- Cluster-stratified LEAF meta-analysis delegating to WtCoxGClass per cluster
+// LEAF.h -- Cluster-stratified LEAF meta-analysis delegating to mtWtCoxGClass per cluster
 
 #include <RcppArmadillo.h>
 #include "mtWtCoxG.h"
 #include <memory>
 #include <unordered_map>
 
-namespace LEAF {
-
-class LEAFClass {
+class mtLEAFClass {
   
 private:
 
   const int m_Ncluster;
-  std::vector<WtCoxG::WtCoxGClass> m_WtCoxGobj_vec;
+  std::vector<mtWtCoxGClass> m_WtCoxGobj_vec;
   std::vector<arma::uvec> m_clusterIdx_vec;
   const double m_cutoff;
   const double m_SPA_Cutoff;
 
   // Per-cluster shared reference maps
-  const std::vector<std::shared_ptr<const std::unordered_map<uint64_t, WtCoxG::WtCoxGClass::RefInfo>>> m_refMaps;
+  const std::vector<std::shared_ptr<const std::unordered_map<uint64_t, mtWtCoxGClass::RefInfo>>> m_refMaps;
   // Per-chunk reference info per cluster
-  std::vector<std::vector<WtCoxG::WtCoxGClass::RefInfo>> m_chunkRefInfo;
-
-public:
-
-  LEAFClass(
-    std::vector<arma::vec> residuals,
-    std::vector<arma::vec> weights,
-    std::vector<arma::uvec> clusterIdx,
-    double cutoff,
-    double SPA_Cutoff,
-    std::vector<std::shared_ptr<const std::unordered_map<uint64_t, WtCoxG::WtCoxGClass::RefInfo>>> refMaps
-  )
-    : m_Ncluster(static_cast<int>(residuals.size())),
-      m_cutoff(cutoff),
-      m_SPA_Cutoff(SPA_Cutoff),
-      m_refMaps(std::move(refMaps))
-  {
-    m_WtCoxGobj_vec.reserve(m_Ncluster);
-    m_clusterIdx_vec.resize(m_Ncluster);
-
-    for (int i = 0; i < m_Ncluster; i++) {
-      m_clusterIdx_vec[i] = std::move(clusterIdx[i]);
-      m_WtCoxGobj_vec.emplace_back(
-        std::move(residuals[i]),
-        std::move(weights[i]),
-        m_cutoff,
-        m_SPA_Cutoff
-      );
-    }
-  }
-
-  int get_Ncluster() const { return m_Ncluster; }
+  std::vector<std::vector<mtWtCoxGClass::RefInfo>> m_chunkRefInfo;
 
   arma::uvec get_clusterIdx(int cluster_idx) const {
     if (cluster_idx >= 0 && cluster_idx < m_Ncluster) {
@@ -83,6 +50,37 @@ public:
     }
   }
 
+public:
+
+  mtLEAFClass(
+    std::vector<arma::vec> residuals,
+    std::vector<arma::vec> weights,
+    std::vector<arma::uvec> clusterIdx,
+    double cutoff,
+    double SPA_Cutoff,
+    std::vector<std::shared_ptr<const std::unordered_map<uint64_t, mtWtCoxGClass::RefInfo>>> refMaps
+  )
+    : m_Ncluster(static_cast<int>(residuals.size())),
+      m_cutoff(cutoff),
+      m_SPA_Cutoff(SPA_Cutoff),
+      m_refMaps(std::move(refMaps))
+  {
+    m_WtCoxGobj_vec.reserve(m_Ncluster);
+    m_clusterIdx_vec.resize(m_Ncluster);
+
+    for (int i = 0; i < m_Ncluster; i++) {
+      m_clusterIdx_vec[i] = std::move(clusterIdx[i]);
+      m_WtCoxGobj_vec.emplace_back(
+        std::move(residuals[i]),
+        std::move(weights[i]),
+        m_cutoff,
+        m_SPA_Cutoff
+      );
+    }
+  }
+
+  int get_Ncluster() const { return m_Ncluster; }
+
   // Prepare all clusters for a chunk
   void prepareChunk(const std::vector<uint64_t>& genoIndices) {
     m_chunkRefInfo.resize(m_Ncluster);
@@ -92,7 +90,7 @@ public:
       std::vector<double> AF_ref(n), AN_ref(n), TPR(n), sigma2(n);
       std::vector<double> pvalue_bat(n), w_ext(n), var_w0(n), var_int(n), var_ext(n);
       for (size_t i = 0; i < n; ++i) {
-        WtCoxG::WtCoxGClass::RefInfo ri{NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN};
+        mtWtCoxGClass::RefInfo ri{NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN,NAN};
         if (c < static_cast<int>(m_refMaps.size()) && m_refMaps[c]) {
           auto it = m_refMaps[c]->find(genoIndices[i]);
           if (it != m_refMaps[c]->end()) ri = it->second;
@@ -108,7 +106,7 @@ public:
     }
   }
 
-  const WtCoxG::WtCoxGClass::RefInfo& getChunkRefInfo(int cluster, size_t markerIdx) const {
+  const mtWtCoxGClass::RefInfo& getChunkRefInfo(int cluster, size_t markerIdx) const {
     return m_chunkRefInfo[cluster][markerIdx];
   }
 
@@ -139,7 +137,5 @@ public:
   }
 
 };
-
-}
 
 #endif

@@ -10,15 +10,15 @@
 //     matRowsToVecs   — convert each row of a matrix into a separate arma::vec
 //
 //   [Rcpp entry points]
-//     mtMarkerInCPP_POLMM      — construct POLMMClass
-//     mtMarkerInCPP_WtCoxG     — construct WtCoxGClass
-//     mtMarkerInCPP_LEAF       — construct LEAFClass
-//     mtMarkerInCPP_SPAGRM     — construct SPAGRMClass
-//     mtMarkerInCPP_SAGELD     — construct SAGELDClass
-//     mtMarkerInCPP_SPAsqr     — construct SPAsqrClass
-//     mtMarkerInCPP_SPACox     — construct SPACoxClass
-//     mtMarkerInCPP_SPAmix     — construct SPAmixClass
-//     mtMarkerInCPP_SPAmixPlus — construct SPAmixPlusClass
+//     mtMarkerInCPP_POLMM      — construct mtPOLMMClass
+//     mtMarkerInCPP_WtCoxG     — construct mtWtCoxGClass
+//     mtMarkerInCPP_LEAF       — construct mtLEAFClass
+//     mtMarkerInCPP_SPAGRM     — construct mtSPAGRMClass
+//     mtMarkerInCPP_SAGELD     — construct mtSAGELDClass
+//     mtMarkerInCPP_SPAsqr     — construct mtSPAsqrClass
+//     mtMarkerInCPP_SPACox     — construct mtSPACoxClass
+//     mtMarkerInCPP_SPAmix     — construct mtSPAmixClass
+//     mtMarkerInCPP_SPAmixPlus — construct mtSPAmixPlusClass
 
 
 #include <RcppArmadillo.h>
@@ -35,15 +35,15 @@
 
 
 // Method pointers — defined in mtMain.cpp.
-extern POLMM::POLMMClass*            ptr_gPOLMMobj;
-extern WtCoxG::WtCoxGClass*          ptr_gWtCoxGobj;
-extern LEAF::LEAFClass*              ptr_gLEAFobj;
-extern SPACox::SPACoxClass*          ptr_gSPACoxobj;
-extern SPAmix::SPAmixClass*          ptr_gSPAmixobj;
-extern SPAGRM::SPAGRMClass*          ptr_gSPAGRMobj;
-extern SAGELD::SAGELDClass*          ptr_gSAGELDobj;
-extern SPAsqr::SPAsqrClass*          ptr_gSPAsqrobj;
-extern SPAmixPlus::SPAmixPlusClass*  ptr_gSPAmixPlusobj;
+extern mtPOLMMClass*            ptr_gPOLMMobj;
+extern mtWtCoxGClass*          ptr_gWtCoxGobj;
+extern mtLEAFClass*              ptr_gLEAFobj;
+extern mtSPACoxClass*          ptr_gSPACoxobj;
+extern mtSPAmixClass*          ptr_gSPAmixobj;
+extern mtSPAGRMClass*          ptr_gSPAGRMobj;
+extern mtSAGELDClass*          ptr_gSAGELDobj;
+extern mtSPAsqrClass*          ptr_gSPAsqrobj;
+extern mtSPAmixPlusClass*  ptr_gSPAmixPlusobj;
 
 // ---- Engine ----
 
@@ -138,7 +138,7 @@ void mtMarkerInCPP_POLMM(
   if (ptr_gPOLMMobj) {
     delete ptr_gPOLMMobj;
   }
-  ptr_gPOLMMobj = new POLMM::POLMMClass(
+  ptr_gPOLMMobj = new mtPOLMMClass(
     std::move(muMat), std::move(iRMat), std::move(Cova), std::move(yVec),
     varRatio, SPA_Cutoff
   );
@@ -168,10 +168,10 @@ void mtMarkerInCPP_WtCoxG(
   std::string IDsToIncludeFile, std::string RangesToIncludeFile,
   std::string IDsToExcludeFile, std::string RangesToExcludeFile
 ) {
-    std::unordered_map<uint64_t, WtCoxG::WtCoxGClass::RefInfo> refMap;
+    std::unordered_map<uint64_t, mtWtCoxGClass::RefInfo> refMap;
     refMap.reserve(wt_genoIndex.n_elem);
     for (arma::uword i = 0; i < wt_genoIndex.n_elem; ++i) {
-      refMap[static_cast<uint64_t>(wt_genoIndex[i])] = WtCoxG::WtCoxGClass::RefInfo{
+      refMap[static_cast<uint64_t>(wt_genoIndex[i])] = mtWtCoxGClass::RefInfo{
         wt_AF_ref[i], wt_AN_ref[i], wt_TPR[i], wt_sigma2[i], wt_pvalue_bat[i],
         wt_w_ext[i], wt_var_w0[i], wt_var_int[i], wt_var_ext[i]
       };
@@ -180,7 +180,7 @@ void mtMarkerInCPP_WtCoxG(
   if (ptr_gWtCoxGobj) {
     delete ptr_gWtCoxGobj;
   }
-  ptr_gWtCoxGobj = new WtCoxG::WtCoxGClass(
+  ptr_gWtCoxGobj = new mtWtCoxGClass(
     std::move(R), std::move(w), cutoff, SPA_Cutoff, std::move(refMap));
 
   mtMarkerEngine(
@@ -217,15 +217,15 @@ void mtMarkerInCPP_LEAF(
   auto clusterIdxVecs = splitUvec(clusterIdx_all, clusterIdx_lens);
   for (auto& v : clusterIdxVecs) v -= 1;  // R 1-based -> C++ 0-based
 
-  std::vector<std::shared_ptr<const std::unordered_map<uint64_t, WtCoxG::WtCoxGClass::RefInfo>>> refMaps(nCluster);
+  std::vector<std::shared_ptr<const std::unordered_map<uint64_t, mtWtCoxGClass::RefInfo>>> refMaps(nCluster);
   arma::uword off = 0;
   for (int c = 0; c < nCluster; ++c) {
-    auto map = std::make_shared<std::unordered_map<uint64_t, WtCoxG::WtCoxGClass::RefInfo>>();
+    auto map = std::make_shared<std::unordered_map<uint64_t, mtWtCoxGClass::RefInfo>>();
     arma::uword nr = leaf_nrows[c];
     map->reserve(nr);
     for (arma::uword i = 0; i < nr; ++i) {
       arma::uword idx = off + i;
-      (*map)[static_cast<uint64_t>(leaf_genoIndex[idx])] = WtCoxG::WtCoxGClass::RefInfo{
+      (*map)[static_cast<uint64_t>(leaf_genoIndex[idx])] = mtWtCoxGClass::RefInfo{
         leaf_AF_ref[idx], leaf_AN_ref[idx], leaf_TPR[idx],
         leaf_sigma2[idx], leaf_pvalue_bat[idx], leaf_w_ext[idx],
         leaf_var_w0[idx], leaf_var_int[idx], leaf_var_ext[idx]
@@ -238,7 +238,7 @@ void mtMarkerInCPP_LEAF(
   if (ptr_gLEAFobj) {
     delete ptr_gLEAFobj;
   }
-  ptr_gLEAFobj = new LEAF::LEAFClass(
+  ptr_gLEAFobj = new mtLEAFClass(
     std::move(residuals), std::move(weights), std::move(clusterIdxVecs),
     cutoff, SPA_Cutoff, std::move(refMaps));
 
@@ -278,12 +278,18 @@ void mtMarkerInCPP_SPAGRM(
   if (ptr_gSPAGRMobj) {
     delete ptr_gSPAGRMobj;
   }
-  ptr_gSPAGRMobj = new SPAGRM::SPAGRMClass(
-    std::move(resid), std::move(resid_unrelated_outliers),
+  SPAGRMSpace::FamilyData fam{
+    std::move(resid_unrelated_outliers),
+    std::move(twoResid),
+    std::move(twoRho),
+    std::move(threeStandS),
+    std::move(threeCLT)
+  };
+  ptr_gSPAGRMobj = new mtSPAGRMClass(
+    std::move(resid),
     sum_R_nonOutlier, R_GRM_R_nonOutlier, R_GRM_R_TwoSubjOutlier, R_GRM_R,
     std::move(MAF_interval),
-    std::move(twoResid), std::move(twoRho),
-    std::move(threeStandS), std::move(threeCLT),
+    std::move(fam),
     SPA_Cutoff, zeta, tol
   );
 
@@ -324,7 +330,7 @@ void mtMarkerInCPP_SAGELD(
 ) {
 
   int nTwo = twoSubj_Resid.n_rows;
-  std::vector<SAGELD::SAGELDClass::TwoSubjFamily> twoSubj(nTwo);
+  std::vector<mtSAGELDClass::TwoSubjFamily> twoSubj(nTwo);
   for (int i = 0; i < nTwo; ++i) {
     twoSubj[i].Resid     = twoSubj_Resid.row(i).t();
     twoSubj[i].Rho       = twoSubj_Rho.row(i).t();
@@ -336,7 +342,7 @@ void mtMarkerInCPP_SAGELD(
   auto standS_GxE = splitVec(threeSubj_standS_GxE_all, threeSubj_standS_GxE_lens);
   auto CLTs       = splitMat(threeSubj_CLT_all, threeSubj_CLT_nrows);
   int nThree = standS.size();
-  std::vector<SAGELD::SAGELDClass::ThreeSubjFamily> threeSubj(nThree);
+  std::vector<mtSAGELDClass::ThreeSubjFamily> threeSubj(nThree);
   for (int i = 0; i < nThree; ++i) {
     threeSubj[i].CLT         = std::move(CLTs[i]);
     threeSubj[i].stand_S     = std::move(standS[i]);
@@ -347,7 +353,7 @@ void mtMarkerInCPP_SAGELD(
   if (ptr_gSAGELDobj) {
     delete ptr_gSAGELDobj;
   }
-  ptr_gSAGELDobj = new SAGELD::SAGELDClass(
+  ptr_gSAGELDobj = new mtSAGELDClass(
     std::move(Method), std::move(XTs), std::move(SS), std::move(AtS),
     std::move(Q), std::move(A21), std::move(TTs), std::move(Tys),
     std::move(sol), std::move(blups), sig,
@@ -398,7 +404,7 @@ void mtMarkerInCPP_SPAsqr(
   auto allThreeStandS = splitVec(threeSubj_standS_all, threeSubj_standS_lens);
   auto allThreeCLT    = splitMat(threeSubj_CLT_all, threeSubj_CLT_nrows);
 
-  std::vector<SPAsqr::TauFamilyNativeInput> tauData(ntaus);
+  std::vector<SPAGRMSpace::FamilyData> tauData(ntaus);
   arma::uword twoOff = 0, threeOff = 0;
   for (int i = 0; i < ntaus; ++i) {
     if (residOutliers[i].n_elem > 0)
@@ -422,7 +428,7 @@ void mtMarkerInCPP_SPAsqr(
   if (ptr_gSPAsqrobj) {
     delete ptr_gSPAsqrobj;
   }
-  ptr_gSPAsqrobj = new SPAsqr::SPAsqrClass(
+  ptr_gSPAsqrobj = new mtSPAsqrClass(
     std::move(taus), std::move(Resid_mat), std::move(tauData),
     std::move(sum_R_nonOutlier_vec), std::move(R_GRM_R_nonOutlier_vec),
     std::move(R_GRM_R_TwoSubjOutlier_vec), std::move(R_GRM_R_vec),
@@ -454,7 +460,7 @@ void mtMarkerInCPP_SPACox(
   if (ptr_gSPACoxobj) {
     delete ptr_gSPACoxobj;
   }
-  ptr_gSPACoxobj = new SPACox::SPACoxClass(
+  ptr_gSPACoxobj = new mtSPACoxClass(
     std::move(cumul), std::move(mresid), std::move(XinvXX), std::move(tX),
     N, pVal_covaAdj_Cutoff, SPA_Cutoff
   );
@@ -486,7 +492,7 @@ void mtMarkerInCPP_SPAmix(
   auto posVals = splitUvec(posValue_all, posValue_lens);
   auto posOuts = splitUvec(posOutlier_all, posOutlier_lens);
   auto posNons = splitUvec(posNonOutlier_all, posNonOutlier_lens);
-  std::vector<SPAmix::SPAmixClass::OutlierData> outlierVec(nPheno);
+  std::vector<mtSPAmixClass::OutlierData> outlierVec(nPheno);
 
   for (int i = 0; i < nPheno; ++i) {
     outlierVec[i].posValue         = posVals[i];
@@ -503,7 +509,7 @@ void mtMarkerInCPP_SPAmix(
   if (ptr_gSPAmixobj) {
     delete ptr_gSPAmixobj;
   }
-  ptr_gSPAmixobj = new SPAmix::SPAmixClass(
+  ptr_gSPAmixobj = new mtSPAmixClass(
     std::move(resid), std::move(PCs), N, SPA_Cutoff, std::move(outlierVec)
   );
 
@@ -536,7 +542,7 @@ void mtMarkerInCPP_SPAmixPlus(
   auto posVals = splitUvec(posValue_all, posValue_lens);
   auto posOuts = splitUvec(posOutlier_all, posOutlier_lens);
   auto posNons = splitUvec(posNonOutlier_all, posNonOutlier_lens);
-  std::vector<SPAmixPlus::SPAmixPlusClass::PhenoOutlierData> outlierVec(nPheno);
+  std::vector<mtSPAmixPlusClass::PhenoOutlierData> outlierVec(nPheno);
 
   for (int i = 0; i < nPheno; ++i) {
     outlierVec[i].posValue         = posVals[i];
@@ -556,7 +562,7 @@ void mtMarkerInCPP_SPAmixPlus(
   if (ptr_gSPAmixPlusobj) {
     delete ptr_gSPAmixPlusobj;
   }
-  ptr_gSPAmixPlusobj = new SPAmixPlus::SPAmixPlusClass(
+  ptr_gSPAmixPlusobj = new mtSPAmixPlusClass(
     std::move(resid), std::move(PCs), N, SPA_Cutoff,
     std::move(outlierVec), std::move(triplets),
     afFilePath, afFilePrecision

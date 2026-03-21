@@ -31,6 +31,9 @@
 #include <cmath>
 #include <exception>
 #include <cstdio>
+#include <chrono>
+#include <ctime>
+#include <cstdarg>
 #include <RcppArmadillo.h>
 #include <boost/math/distributions/chi_squared.hpp>
 #include <zlib.h>
@@ -49,18 +52,33 @@
 
 // ---- Global method pointers (one per active statistical method) ----
 
-POLMM::POLMMClass*           ptr_gPOLMMobj      = nullptr;
-WtCoxG::WtCoxGClass*         ptr_gWtCoxGobj     = nullptr;
-LEAF::LEAFClass*             ptr_gLEAFobj       = nullptr;
-SPAGRM::SPAGRMClass*         ptr_gSPAGRMobj     = nullptr;
-SAGELD::SAGELDClass*         ptr_gSAGELDobj     = nullptr;
-SPAsqr::SPAsqrClass*         ptr_gSPAsqrobj     = nullptr;
-SPACox::SPACoxClass*         ptr_gSPACoxobj     = nullptr;
-SPAmix::SPAmixClass*         ptr_gSPAmixobj     = nullptr;
-SPAmixPlus::SPAmixPlusClass* ptr_gSPAmixPlusobj = nullptr;
+mtPOLMMClass*           ptr_gPOLMMobj      = nullptr;
+mtWtCoxGClass*         ptr_gWtCoxGobj     = nullptr;
+mtLEAFClass*             ptr_gLEAFobj       = nullptr;
+mtSPAGRMClass*         ptr_gSPAGRMobj     = nullptr;
+mtSAGELDClass*         ptr_gSAGELDobj     = nullptr;
+mtSPAsqrClass*         ptr_gSPAsqrobj     = nullptr;
+mtSPACoxClass*         ptr_gSPACoxobj     = nullptr;
+mtSPAmixClass*         ptr_gSPAmixobj     = nullptr;
+mtSPAmixPlusClass* ptr_gSPAmixPlusobj = nullptr;
 
 
 namespace {
+
+// Timestamped info message (mirrors R's .message helper)
+void infoMsg(const char* fmt, ...) {
+  auto now = std::chrono::system_clock::now();
+  auto t = std::chrono::system_clock::to_time_t(now);
+  char ts[20];
+  std::strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", std::localtime(&t));
+  char buf[512];
+  va_list args;
+  va_start(args, fmt);
+  std::vsnprintf(buf, sizeof(buf), fmt, args);
+  va_end(args);
+  Rprintf("[INFO] %s %s\n", ts, buf);
+}
+
 
 // ---- Inline helpers ----
 
@@ -127,15 +145,15 @@ void appendMeta(
 
 // Per-worker independent copies of the active method object.
 struct ThreadContext {
-  std::unique_ptr<POLMM::POLMMClass>           polmm;
-  std::unique_ptr<SPACox::SPACoxClass>         spacox;
-  std::unique_ptr<SPAmix::SPAmixClass>         spamix;
-  std::unique_ptr<SPAmixPlus::SPAmixPlusClass> spamixPlus;
-  std::unique_ptr<SPAGRM::SPAGRMClass>         spagrm;
-  std::unique_ptr<SAGELD::SAGELDClass>         sageld;
-  std::unique_ptr<WtCoxG::WtCoxGClass>         wtcoxg;
-  std::unique_ptr<SPAsqr::SPAsqrClass>         spasqr;
-  std::unique_ptr<LEAF::LEAFClass>             leaf;
+  std::unique_ptr<mtPOLMMClass>           polmm;
+  std::unique_ptr<mtSPACoxClass>         spacox;
+  std::unique_ptr<mtSPAmixClass>         spamix;
+  std::unique_ptr<mtSPAmixPlusClass> spamixPlus;
+  std::unique_ptr<mtSPAGRMClass>         spagrm;
+  std::unique_ptr<mtSAGELDClass>         sageld;
+  std::unique_ptr<mtWtCoxGClass>         wtcoxg;
+  std::unique_ptr<mtSPAsqrClass>         spasqr;
+  std::unique_ptr<mtLEAFClass>             leaf;
 };
 
 
@@ -194,31 +212,31 @@ ThreadContext makeThreadContext(const std::string& method) {
   ThreadContext ctx;
   if (method == "POLMM") {
     if (!ptr_gPOLMMobj) throw std::runtime_error("POLMM object is not initialized.");
-    ctx.polmm.reset(new POLMM::POLMMClass(*ptr_gPOLMMobj));
+    ctx.polmm.reset(new mtPOLMMClass(*ptr_gPOLMMobj));
   } else if (method == "SPACox") {
     if (!ptr_gSPACoxobj) throw std::runtime_error("SPACox object is not initialized.");
-    ctx.spacox.reset(new SPACox::SPACoxClass(*ptr_gSPACoxobj));
+    ctx.spacox.reset(new mtSPACoxClass(*ptr_gSPACoxobj));
   } else if (method == "SPAmix") {
     if (!ptr_gSPAmixobj) throw std::runtime_error("SPAmix object is not initialized.");
-    ctx.spamix.reset(new SPAmix::SPAmixClass(*ptr_gSPAmixobj));
+    ctx.spamix.reset(new mtSPAmixClass(*ptr_gSPAmixobj));
   } else if (method == "SPAmixPlus") {
     if (!ptr_gSPAmixPlusobj) throw std::runtime_error("SPAmixPlus object is not initialized.");
-    ctx.spamixPlus.reset(new SPAmixPlus::SPAmixPlusClass(*ptr_gSPAmixPlusobj));
+    ctx.spamixPlus.reset(new mtSPAmixPlusClass(*ptr_gSPAmixPlusobj));
   } else if (method == "SPAGRM") {
     if (!ptr_gSPAGRMobj) throw std::runtime_error("SPAGRM object is not initialized.");
-    ctx.spagrm.reset(new SPAGRM::SPAGRMClass(*ptr_gSPAGRMobj));
+    ctx.spagrm.reset(new mtSPAGRMClass(*ptr_gSPAGRMobj));
   } else if (method == "SAGELD") {
     if (!ptr_gSAGELDobj) throw std::runtime_error("SAGELD object is not initialized.");
-    ctx.sageld.reset(new SAGELD::SAGELDClass(*ptr_gSAGELDobj));
+    ctx.sageld.reset(new mtSAGELDClass(*ptr_gSAGELDobj));
   } else if (method == "WtCoxG") {
     if (!ptr_gWtCoxGobj) throw std::runtime_error("WtCoxG object is not initialized.");
-    ctx.wtcoxg.reset(new WtCoxG::WtCoxGClass(*ptr_gWtCoxGobj));
+    ctx.wtcoxg.reset(new mtWtCoxGClass(*ptr_gWtCoxGobj));
   } else if (method == "SPAsqr") {
     if (!ptr_gSPAsqrobj) throw std::runtime_error("SPAsqr object is not initialized.");
-    ctx.spasqr.reset(new SPAsqr::SPAsqrClass(*ptr_gSPAsqrobj));
+    ctx.spasqr.reset(new mtSPAsqrClass(*ptr_gSPAsqrobj));
   } else if (method == "LEAF") {
     if (!ptr_gLEAFobj) throw std::runtime_error("LEAF object is not initialized.");
-    ctx.leaf.reset(new LEAF::LEAFClass(*ptr_gLEAFobj));
+    ctx.leaf.reset(new mtLEAFClass(*ptr_gLEAFobj));
   }
   return ctx;
 }
@@ -264,13 +282,13 @@ void mtMarkerEngine(
   std::vector<std::vector<uint64_t>> chunkIndices = mtPLINK::PlinkData::buildChunks(markerInfo, nMarkersEachChunk);
   const int effective_nthreads = std::min(nthreads, static_cast<int>(chunkIndices.size()));
 
-  Rprintf("Number of subjects in the input file: %u\n", plinkData.nSubjInFile());
-  Rprintf("Number of subjects to test: %u\n", plinkData.nSubjUsed());
-  Rprintf("Number of markers in the input file: %u\n", plinkData.nMarkers());
-  Rprintf("Number of markers to test: %zu\n", markerInfo.size());
-  Rprintf("Number of markers in each chunk: %d\n", nMarkersEachChunk);
-  Rprintf("Number of chunks for all markers: %zu\n", chunkIndices.size());
-  Rprintf("Number of threads: %d\n", effective_nthreads);
+  infoMsg("Number of subjects in the input file: %u", plinkData.nSubjInFile());
+  infoMsg("Number of subjects to test: %u", plinkData.nSubjUsed());
+  infoMsg("Number of markers in the input file: %u", plinkData.nMarkers());
+  infoMsg("Number of markers to test: %zu", markerInfo.size());
+  infoMsg("Number of markers in each chunk: %d", nMarkersEachChunk);
+  infoMsg("Number of chunks for all markers: %zu", chunkIndices.size());
+  infoMsg("Number of threads: %d", effective_nthreads);
 
   int nPheno = 1;
   if (method == "SPAmix") nPheno = ptr_gSPAmixobj->getNpheno();
@@ -290,7 +308,6 @@ void mtMarkerEngine(
   std::exception_ptr workerError = nullptr;
   std::mutex errorMutex;
   std::mutex writeMutex;
-  std::mutex logMutex;
   std::condition_variable writeCv;
   bool stopWriter = false;
 
@@ -334,11 +351,7 @@ void mtMarkerEngine(
       writeCv.wait(lk, [&]() { return chunkReady[i] || stopWriter; });
       if (!chunkReady[i]) break;
       writeStr(chunkOutput[i]);
-      {
-        std::lock_guard<std::mutex> lg(logMutex);
-        std::fprintf(stderr, "[INFO] Writing finished: chunk %zu/%zu\n", i + 1, chunkOutput.size());
-        std::fflush(stderr);
-      }
+      infoMsg("Writing finished: chunk %zu/%zu", i + 1, chunkOutput.size());
     }
 
     if (useGzip) gzclose(gz);
@@ -393,18 +406,7 @@ void mtMarkerEngine(
           bool flip = false;
           if (passQC) {
             int nMissing = indexForMissing.size();
-            double imputeG = 0;
-            if (impute_method == "mean"){
-              imputeG = 2 * altFreq;
-            }
-
-            if (impute_method == "minor"){
-              if (altFreq > 0.5){
-                imputeG = 2;
-              }else{
-                imputeG = 0;
-              }
-            }
+            double imputeG = 2 * altFreq;
 
             for (int j = 0; j < nMissing; j++){
               uint32_t index = indexForMissing.at(j);
@@ -595,11 +597,8 @@ void mtMarkerEngine(
           std::lock_guard<std::mutex> lk(writeMutex);
           chunkOutput[cidx] = out.str();
           chunkReady[cidx] = 1;
-        } {
-          std::lock_guard<std::mutex> lg(logMutex);
-          std::fprintf(stderr, "[INFO] Calculation finished: chunk %zu/%zu\n", cidx + 1, chunkIndices.size());
-          std::fflush(stderr);
         }
+        infoMsg("Calculation finished: chunk %zu/%zu", cidx + 1, chunkIndices.size());
         writeCv.notify_all();
       }
     } catch (...) {

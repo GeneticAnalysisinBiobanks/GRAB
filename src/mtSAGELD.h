@@ -8,10 +8,7 @@
 #include <boost/math/distributions/normal.hpp>
 #include <vector>
 
-
-namespace SAGELD{
-
-class SAGELDClass {
+class mtSAGELDClass {
 public:
 
   // ---- Public types ----
@@ -27,12 +24,6 @@ public:
     arma::vec stand_S;
     arma::vec stand_S_G;
     arma::vec stand_S_GxE;
-  };
-
-  // Per-marker updated data for three-or-more-subject families.
-  struct UpdatedThreeSubj {
-    arma::vec stand_S;
-    arma::vec arr_prob;
   };
 
   const std::string& getMethod() const { return m_Method; }
@@ -78,6 +69,10 @@ private:
   const std::vector<TwoSubjFamily> m_TwoSubj_list;
   const std::vector<ThreeSubjFamily> m_ThreeSubj_list;
 
+  // Extracted from m_TwoSubj_list for use with SPAGRMSpace free functions
+  std::vector<arma::vec> m_TwoSubj_resid_list;
+  std::vector<arma::vec> m_TwoSubj_rho_list;
+
   const arma::vec m_MAF_interval;
   const double m_zScoreE_cutoff;
   const double m_SPA_Cutoff;
@@ -92,7 +87,7 @@ private:
 public:
 
   // ---- Public interface ----
-  SAGELDClass(
+  mtSAGELDClass(
     std::string Method,
     arma::mat XTs,
     arma::mat SS,
@@ -131,59 +126,6 @@ public:
   arma::vec getBetaVec(){return m_BetaVec;}
   arma::vec getseBetaVec(){return m_seBetaVec;}
 
-  arma::mat mgf(
-    double t,
-    const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-    double MAF
-  );
-
-  arma::mat mgf(
-    double t,
-    const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-    double MAF,
-    double lambda_i
-  );
-
-  double fastGetRoot(
-    const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-    double Score,
-    double MAF,
-    double init_t,
-    double tol,
-    int maxiter = 50
-  );
-
-  double fastGetRoot(
-    const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-    double m_R_GRM_R_nonOutlier_i,
-    double lambda_i,
-    double Score,
-    double MAF,
-    double init_t,
-    double tol,
-    int maxiter = 50
-  );
-
-  double getProbSpa(
-    const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-    double Score,
-    double MAF,
-    bool lower_tail,
-    double zeta,
-    double tol
-  );
-
-  double getProbSpa(
-    const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-    double m_R_GRM_R_nonOutlier_i,
-    double lambda_i,
-    double Score,
-    double MAF,
-    bool lower_tail,
-    double zeta,
-    double tol
-  );
-
   double getMarkerPval(
     arma::vec GVec,
     double altFreq,
@@ -192,7 +134,5 @@ public:
   );
 
 };
-
-}
 
 #endif

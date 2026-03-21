@@ -6,9 +6,22 @@
 #include <RcppArmadillo.h>
 #include <boost/math/distributions/students_t.hpp>
 
-namespace SPAmix{
+namespace SPAmixSpace {
 
-class SPAmixClass {
+double getProbSpaG(
+  const arma::vec MAF_outlier,
+  const arma::vec residOutlier,
+  double s,
+  bool lower_tail,
+  double mean_nonOutlier,
+  double var_nonOutlier
+);
+
+arma::vec logistic_regression_beta(const arma::mat& X, const arma::vec& y);
+
+} // namespace SPAmixSpace
+
+class mtSPAmixClass {
 public:
   // Per-phenotype outlier partition for SPA.
   struct OutlierData {
@@ -22,14 +35,6 @@ public:
     arma::vec resid2NonOutlier;
   };
 
-  // Newton root-finder convergence result.
-  struct RootResult {
-      double root;
-      int iter;
-      bool converge;
-      double K2;
-  };
-
 private:
 
   const arma::mat m_resid;
@@ -41,62 +46,30 @@ private:
 
   const arma::mat m_PCs;
   const arma::vec m_sqrt_XTX_inv_diag;
-  const arma::vec m_diffTime1, m_diffTime2;
 
   const std::vector<OutlierData> m_outlierVec;
   arma::vec m_pvalVec;
   arma::vec m_zScoreVec;
 
-
 public:
 
-  SPAmixClass(
+  mtSPAmixClass(
     arma::mat resid,
     arma::mat PCs,
     int N,
     double SPA_Cutoff,
-    std::vector<SPAmixClass::OutlierData> outlierVec
+    std::vector<mtSPAmixClass::OutlierData> outlierVec
   );
 
-  arma::vec getTestTime1(){return m_diffTime1;}
-  arma::vec getTestTime2(){return m_diffTime2;}
   int getNpheno(){return m_Npheno;}
   arma::vec getpvalVec(){return m_pvalVec;}
   arma::vec getzScoreVec(){return m_zScoreVec;}
 
-  arma::vec M_G0(arma::vec t, arma::vec MAF);
-  arma::vec M_G1(arma::vec t, arma::vec MAF);
-  arma::vec M_G2(arma::vec t, arma::vec MAF);
-  arma::vec K_G0(arma::vec t, arma::vec MAF);
-  arma::vec K_G1(arma::vec t, arma::vec MAF);
-  arma::vec K_G2(arma::vec t, arma::vec MAF);
+  double getMarkerPval(arma::vec GVec, double altFreq);
 
-  double H_org(double t, arma::vec R, const arma::vec& MAFVec);
-  double H1_adj(double t, arma::vec R, const double& s, const arma::vec& MAFVec);
-  double H2(double t, arma::vec R, const arma::vec& MAFVec);
-  arma::vec Horg_H2(double t, arma::vec R, const arma::vec MAFVec);
-  arma::vec H1_adj_H2(double t, arma::vec R, double s, const arma::vec MAFVec);
+private:
 
-  RootResult fastGetRootK1(
-    double initX,
-    const double& s,
-    const arma::vec MAF_outlier,
-    double mean_nonOutlier,
-    double var_nonOutlier,
-    const arma::vec residOutlier
-  );
-
-  double getProbSpaG(const arma::vec MAF_outlier,
-    const arma::vec residOutlier,
-    double s,
-    bool lower_tail,
-    double mean_nonOutlier,
-    double var_nonOutlier
-  );
-
-  arma::vec simulate_uniform(int n, double lower, double upper);
   arma::vec fit_lm(const arma::vec& g, arma::vec& pvalues);
-  arma::vec logistic_regression(const arma::mat& X, const arma::vec& y);
 
   arma::vec getMafEst(
     arma::vec g,
@@ -106,10 +79,6 @@ public:
     double MAF_est_negative_ratio_cutoff = 0.1
   );
 
-  double getMarkerPval(arma::vec GVec, double altFreq);
-
 };
-
-}
 
 #endif

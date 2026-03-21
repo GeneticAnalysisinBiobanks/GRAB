@@ -1,4 +1,4 @@
-// WtCoxG.cpp -- WtCoxGClass method implementations
+// WtCoxG.cpp -- mtWtCoxGClass method implementations
 
 #include "mtWtCoxG.h"
 #include <cmath>
@@ -7,8 +7,9 @@
 #include <cstdio>
 #include <limits>
 
+namespace {
 
-static double bvnCdf (double dh, double dk, double r) {
+double bvnCdf (double dh, double dk, double r) {
   if (std::abs(r) < 1e-15) {
     return 0.5 * std::erfc(-dh / std::sqrt(2.0)) * 0.5 * std::erfc(-dk / std::sqrt(2.0));
   }
@@ -81,7 +82,7 @@ static double bvnCdf (double dh, double dk, double r) {
   return bvn;
 }
 
-static double pmvnorm2d (double lo1, double hi1,
+double pmvnorm2d (double lo1, double hi1,
                           double lo2, double hi2,
                           double var1, double cov12, double var2) {
   double sd1 = std::sqrt(var1);
@@ -103,9 +104,72 @@ static double pmvnorm2d (double lo1, double hi1,
   return std::max(0.0, std::min(1.0, p));
 }
 
-namespace WtCoxG {
+arma::vec imputeMissing(const arma::vec& g) {
+  arma::vec g_imputed = g;
+  arma::uvec missing_idx = arma::find_nonfinite(g);
+  if (missing_idx.n_elem > 0) {
+    arma::uvec non_missing_idx = arma::find_finite(g);
+    if (non_missing_idx.n_elem > 0) {
+      double mean_val = arma::mean(g.elem(non_missing_idx));
+      g_imputed.elem(missing_idx).fill(mean_val);
+    }
+  }
+  return g_imputed;
+}
 
-double WtCoxGClass::findRootBrent(std::function<double(double)> f, double a, double b, double tol) {
+double pnormBoost(double x, double mean = 0.0, double sd = 1.0, bool lower_tail = true, bool log_p = false) {
+  boost::math::normal dist(mean, sd);
+  double result = boost::math::cdf(dist, x);
+  if (!lower_tail) result = 1.0 - result;
+  if (log_p) result = std::log(result);
+  return result;
+}
+
+double qnormBoost(double p, double mean = 0.0, double sd = 1.0, bool lower_tail = true, bool log_p = false) {
+  if (log_p) p = std::exp(p);
+  if (!lower_tail) p = 1.0 - p;
+  p = std::max(1e-300, std::min(1.0 - 1e-15, p));
+  boost::math::normal dist(mean, sd);
+  return boost::math::quantile(dist, p);
+}
+
+double qchisqBoost(double p, double df, bool lower_tail = true, bool log_p = false) {
+  if (log_p) p = std::exp(p);
+  if (!lower_tail) p = 1.0 - p;
+  p = std::max(1e-300, std::min(1.0 - 1e-15, p));
+  boost::math::chi_squared dist(df);
+  return boost::math::quantile(dist, p);
+}
+
+double mG0(double t, double MAF) {
+  return std::pow(1.0 - MAF + MAF * std::exp(t), 2.0);
+}
+
+double mG1(double t, double MAF) {
+  return 2.0 * (MAF * std::exp(t)) * (1.0 - MAF + MAF * std::exp(t));
+}
+
+double mG2(double t, double MAF) {
+  double maf_exp_t = MAF * std::exp(t);
+  return 2.0 * maf_exp_t * maf_exp_t + 2.0 * maf_exp_t * (1.0 - MAF + maf_exp_t);
+}
+
+double kG0(double t, double MAF) {
+  return std::log(mG0(t, MAF));
+}
+
+double kG1(double t, double MAF) {
+  return mG1(t, MAF) / mG0(t, MAF);
+}
+
+double kG2(double t, double MAF) {
+  double m0 = mG0(t, MAF);
+  double m1 = mG1(t, MAF);
+  double m2 = mG2(t, MAF);
+  return (m0 * m2) / (m0 * m0) - std::pow(m1 / m0, 2.0);
+}
+
+double findRootBrent(std::function<double(double)> f, double a, double b, double tol) {
 
   double fa = f(a);
   double fb = f(b);
@@ -186,8 +250,7 @@ double WtCoxGClass::findRootBrent(std::function<double(double)> f, double a, dou
   return b;
 }
 
-
-double WtCoxGClass::hOrg(
+double hOrg(
   double t, const arma::vec& R, double MAF, double n_ext,
   double N_all, double sumR, double var_mu_ext,
   double g_var_est, double meanR, double b
@@ -204,7 +267,7 @@ double WtCoxGClass::hOrg(
   return result + mu_adj * t + var_adj * t * t / 2.0;
 }
 
-double WtCoxGClass::h1Adj(
+double h1Adj(
   double t, const arma::vec& R, double s, double MAF,
   double n_ext, double N_all, double sumR, double var_mu_ext,
   double g_var_est, double meanR, double b
@@ -222,7 +285,7 @@ double WtCoxGClass::h1Adj(
   return result + mu_adj + var_adj * t - s;
 }
 
-double WtCoxGClass::h2(
+double h2(
   double t, const arma::vec& R, double MAF, double n_ext,
   double N_all, double sumR, double var_mu_ext,
   double g_var_est, double meanR, double b
@@ -239,8 +302,7 @@ double WtCoxGClass::h2(
   return result + var_adj;
 }
 
-
-double WtCoxGClass::getProbSpaG(
+double getProbSpaG(
   double MAF, const arma::vec& R, double s, double n_ext,
   double N_all, double sumR, double var_mu_ext,
   double g_var_est, double meanR, double b, bool lower_tail
@@ -274,11 +336,7 @@ double WtCoxGClass::getProbSpaG(
       }
     }
     zeta = findRootBrent(h1_func, a, b_bound, 1e-8);
-  } catch (...) {
-
-    std::fprintf(stderr, "[WARN] WtCoxG root finding failed, returning NaN\n");
-    std::fflush(stderr);
-    return arma::datum::nan;
+  } catch (...) {    return arma::datum::nan;
   }
 
   double k1 = hOrg(zeta, R, MAF, n_ext, N_all, sumR, var_mu_ext, g_var_est, meanR, b);
@@ -292,8 +350,7 @@ double WtCoxGClass::getProbSpaG(
   return pval;
 }
 
-
-arma::vec WtCoxGClass::spaGOneSnpHomo(
+arma::vec spaGOneSnpHomo(
   const arma::vec& g_input, const arma::vec& R,
   double mu_ext, double n_ext, double b,
   double sigma2, double var_ratio, double SPA_Cutoff,
@@ -357,8 +414,9 @@ arma::vec WtCoxGClass::spaGOneSnpHomo(
   }
 }
 
+} // anonymous namespace
 
-arma::vec WtCoxGClass::wtCoxGTest(
+arma::vec mtWtCoxGClass::wtCoxGTest(
   const arma::vec& g_input, const arma::vec& R, const arma::vec& w,
   double p_bat, double TPR, double sigma2, double b,
   double var_ratio_int, double var_ratio_w0, double var_ratio_w1,
@@ -474,4 +532,3 @@ arma::vec WtCoxGClass::wtCoxGTest(
   return arma::vec({p_con, S, z});
 }
 
-}

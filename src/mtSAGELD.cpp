@@ -1,16 +1,14 @@
-// SAGELD.cpp -- SAGELDClass method implementations
+// SAGELD.cpp -- mtSAGELDClass method implementations
 
 #include <RcppArmadillo.h>
 #include <limits>
 #include <boost/math/distributions/normal.hpp>
 
 #include "mtSAGELD.h"
+#include "mtSPAGRM.h"
 #include "mtUTIL.h"
 
-
-namespace SAGELD {
-
-SAGELDClass::SAGELDClass(
+mtSAGELDClass::mtSAGELDClass(
   std::string Method,
   arma::mat XTs,
   arma::mat SS,
@@ -80,313 +78,21 @@ SAGELDClass::SAGELDClass(
     m_zeta(zeta),
     m_tol(tol)
 {
+  int nTwo = static_cast<int>(m_TwoSubj_list.size());
+  m_TwoSubj_resid_list.resize(nTwo);
+  m_TwoSubj_rho_list.resize(nTwo);
+  for (int i = 0; i < nTwo; ++i) {
+    m_TwoSubj_resid_list[i] = m_TwoSubj_list[i].Resid;
+    m_TwoSubj_rho_list[i] = m_TwoSubj_list[i].Rho;
+  }
+
   m_pvalVec.resize(2);
   m_zScoreVec.resize(2);
   m_BetaVec.resize(2);
   m_seBetaVec.resize(2);
 }
 
-arma::mat SAGELDClass::mgf(
-  double t,
-  const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-  double MAF
-) {
-  arma::vec lambda = arma::exp(t * m_resid_unrelated_outliers);
-  arma::vec alpha = 1 - MAF + MAF * lambda;
-  arma::vec alpha_1 = MAF * m_resid_unrelated_outliers % lambda;
-  arma::vec alpha_2 = m_resid_unrelated_outliers % alpha_1;
-  arma::vec M_G0_all = alpha % alpha;
-  arma::vec M_G1_all = 2 * alpha % alpha_1;
-  arma::vec M_G2_all = 2 * (alpha_1 % alpha_1 + alpha % alpha_2);
-
-  int n1 = static_cast<int>(m_TwoSubj_list.size());
-  if (n1 != 0) {
-    for (int i = 0; i < n1; i++) {
-      const auto& tsf = m_TwoSubj_list[i];
-      const arma::vec& Resid = tsf.Resid;
-      const arma::vec& Rho = tsf.Rho;
-      arma::vec temp = (1 - Rho) * MAF * (1 - MAF);
-      double R1 = Resid[0]; double etR1 = exp(t * R1);
-      double R2 = Resid[1]; double etR2 = exp(t * R2);
-      double Rsum = R1 + R2;
-      arma::vec midterm1 = etR1 * temp;
-      arma::vec midterm2 = etR2 * temp;
-      arma::vec midterm3 = etR1 * etR2 * (MAF - temp);
-      arma::vec M_G0 = midterm1 + midterm2 + midterm3 - temp + 1 - MAF;
-      arma::vec M_G1 = R1 * midterm1 + R2 * midterm2 + Rsum * midterm3;
-      arma::vec M_G2 = R1*R1 * midterm1 + R2*R2 * midterm2 + Rsum*Rsum * midterm3;
-      M_G0_all = arma::join_cols(M_G0_all, M_G0);
-      M_G1_all = arma::join_cols(M_G1_all, M_G1);
-      M_G2_all = arma::join_cols(M_G2_all, M_G2);
-    }
-  }
-
-  int n2 = static_cast<int>(update_ThreeSubj_list.size());
-  if (n2 != 0) {
-    for (int i = 0; i < n2; i++) {
-      const auto& uts = update_ThreeSubj_list[i];
-      const arma::vec& stand_S = uts.stand_S;
-      const arma::vec& arr_prob = uts.arr_prob;
-      arma::vec midterm0 = exp(t * stand_S) % arr_prob;
-      arma::vec midterm1 = stand_S % midterm0;
-      arma::vec midterm2 = stand_S % midterm1;
-      M_G0_all = arma::join_cols(M_G0_all, arma::vec{arma::accu(midterm0)});
-      M_G1_all = arma::join_cols(M_G1_all, arma::vec{arma::accu(midterm1)});
-      M_G2_all = arma::join_cols(M_G2_all, arma::vec{arma::accu(midterm2)});
-    }
-  }
-
-  return arma::join_rows(M_G0_all, M_G1_all, M_G2_all);
-}
-
-arma::mat SAGELDClass::mgf(
-  double t,
-  const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-  double MAF,
-  double lambda_i
-) {
-  arma::vec m_resid_unrelated_outliers_i = m_resid_unrelated_outliers_GxE - lambda_i * m_resid_unrelated_outliers_G;
-  arma::vec lambda = arma::exp(t * m_resid_unrelated_outliers_i);
-  arma::vec alpha = 1 - MAF + MAF * lambda;
-  arma::vec alpha_1 = MAF * m_resid_unrelated_outliers_i % lambda;
-  arma::vec alpha_2 = m_resid_unrelated_outliers_i % alpha_1;
-  arma::vec M_G0_all = alpha % alpha;
-  arma::vec M_G1_all = 2 * alpha % alpha_1;
-  arma::vec M_G2_all = 2 * (alpha_1 % alpha_1 + alpha % alpha_2);
-
-  int n1 = static_cast<int>(m_TwoSubj_list.size());
-  if (n1 != 0) {
-    for (int i = 0; i < n1; i++) {
-      const auto& tsf = m_TwoSubj_list[i];
-      const arma::vec& Resid_G = tsf.Resid_G;
-      const arma::vec& Resid_GxE = tsf.Resid_GxE;
-      arma::vec Resid = Resid_GxE - lambda_i * Resid_G;
-      const arma::vec& Rho = tsf.Rho;
-      arma::vec temp = (1 - Rho) * MAF * (1 - MAF);
-      double R1 = Resid[0]; double etR1 = exp(t * R1);
-      double R2 = Resid[1]; double etR2 = exp(t * R2);
-      double Rsum = R1 + R2;
-      arma::vec midterm1 = etR1 * temp;
-      arma::vec midterm2 = etR2 * temp;
-      arma::vec midterm3 = etR1 * etR2 * (MAF - temp);
-      arma::vec M_G0 = midterm1 + midterm2 + midterm3 - temp + 1 - MAF;
-      arma::vec M_G1 = R1 * midterm1 + R2 * midterm2 + Rsum * midterm3;
-      arma::vec M_G2 = R1*R1 * midterm1 + R2*R2 * midterm2 + Rsum*Rsum * midterm3;
-      M_G0_all = arma::join_cols(M_G0_all, M_G0);
-      M_G1_all = arma::join_cols(M_G1_all, M_G1);
-      M_G2_all = arma::join_cols(M_G2_all, M_G2);
-    }
-  }
-
-  int n2 = static_cast<int>(update_ThreeSubj_list.size());
-  if (n2 != 0) {
-    for (int i = 0; i < n2; i++) {
-      const auto& uts = update_ThreeSubj_list[i];
-      const arma::vec& stand_S = uts.stand_S;
-      const arma::vec& arr_prob = uts.arr_prob;
-      arma::vec midterm0 = exp(t * stand_S) % arr_prob;
-      arma::vec midterm1 = stand_S % midterm0;
-      arma::vec midterm2 = stand_S % midterm1;
-      M_G0_all = arma::join_cols(M_G0_all, arma::vec{arma::accu(midterm0)});
-      M_G1_all = arma::join_cols(M_G1_all, arma::vec{arma::accu(midterm1)});
-      M_G2_all = arma::join_cols(M_G2_all, arma::vec{arma::accu(midterm2)});
-    }
-  }
-
-  return arma::join_rows(M_G0_all, M_G1_all, M_G2_all);
-}
-
-double SAGELDClass::fastGetRoot(
-  const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-  double Score,
-  double MAF,
-  double init_t,
-  double tol,
-  int maxiter
-) {
-  double t = init_t;
-  arma::vec MGF0; arma::vec MGF1; arma::vec MGF2;
-  double CGF1 = 0; double CGF2 = 0;
-  double diff_t = std::numeric_limits<double>::infinity();
-
-  double mean = 2 * MAF * m_sum_R_nonOutlier;
-  double var = 2 * MAF * (1 - MAF) * m_R_GRM_R_nonOutlier(0);
-
-  for (int iter = 1; iter < maxiter; iter++) {
-    double old_t = t;
-    double old_diff_t = diff_t;
-    double old_CGF1 = CGF1;
-
-    arma::mat MGF_all = mgf(t, update_ThreeSubj_list, MAF);
-    MGF0 = MGF_all.col(0);
-    MGF1 = MGF_all.col(1);
-    MGF2 = MGF_all.col(2);
-
-    arma::vec temp = MGF1 / MGF0;
-    CGF1 = arma::accu(temp) + mean + var * t - Score;
-    CGF2 = arma::accu(MGF2 / MGF0) - arma::accu(temp % temp) + var;
-    diff_t = -CGF1 / CGF2;
-
-    if (std::isnan(diff_t) || std::isinf(CGF2)) {
-      t = t / 2;
-      diff_t = std::min(std::abs(t), 1.0) * arma::sign(Score);
-      continue;
-    }
-    if (std::isnan(old_CGF1) || (arma::sign(old_CGF1) != 0 && arma::sign(CGF1) != arma::sign(old_CGF1))) {
-      if (std::abs(diff_t) < tol) {
-        t = old_t + diff_t;
-        break;
-      } else {
-        while (std::abs(old_diff_t) > tol && std::abs(diff_t) > std::abs(old_diff_t) - tol) {
-          diff_t = diff_t / 2;
-        }
-        t = old_t + diff_t;
-        continue;
-      }
-    }
-    if (arma::sign(Score) != arma::sign(old_t + diff_t) &&
-        (arma::sign(old_CGF1) == 0 || arma::sign(CGF1) == arma::sign(old_CGF1))) {
-      while (arma::sign(Score) != arma::sign(old_t + diff_t)) {
-        diff_t = diff_t / 2;
-      }
-      t = old_t + diff_t;
-      continue;
-    }
-    t = old_t + diff_t;
-    if (std::abs(diff_t) < tol) break;
-  }
-  return t;
-}
-
-double SAGELDClass::fastGetRoot(
-  const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-  double m_R_GRM_R_nonOutlier_i,
-  double lambda_i,
-  double Score,
-  double MAF,
-  double init_t,
-  double tol,
-  int maxiter
-) {
-  double t = init_t;
-  arma::vec MGF0; arma::vec MGF1; arma::vec MGF2;
-  double CGF1 = 0; double CGF2 = 0;
-  double diff_t = std::numeric_limits<double>::infinity();
-
-  double mean = 2 * MAF * (m_sum_R_nonOutlier_GxE - lambda_i * m_sum_R_nonOutlier_G);
-  double var = 2 * MAF * (1 - MAF) * m_R_GRM_R_nonOutlier_i;
-
-  for (int iter = 1; iter < maxiter; iter++) {
-    double old_t = t;
-    double old_diff_t = diff_t;
-    double old_CGF1 = CGF1;
-
-    arma::mat MGF_all = mgf(t, update_ThreeSubj_list, MAF, lambda_i);
-    MGF0 = MGF_all.col(0);
-    MGF1 = MGF_all.col(1);
-    MGF2 = MGF_all.col(2);
-
-    arma::vec temp = MGF1 / MGF0;
-    CGF1 = arma::accu(temp) + mean + var * t - Score;
-    CGF2 = arma::accu(MGF2 / MGF0) - arma::accu(temp % temp) + var;
-    diff_t = -CGF1 / CGF2;
-
-    if (std::isnan(diff_t) || std::isinf(CGF2)) {
-      t = t / 2;
-      diff_t = std::min(std::abs(t), 1.0) * arma::sign(Score);
-      continue;
-    }
-    if (std::isnan(old_CGF1) || (arma::sign(old_CGF1) != 0 && arma::sign(CGF1) != arma::sign(old_CGF1))) {
-      if (std::abs(diff_t) < tol) {
-        t = old_t + diff_t;
-        break;
-      } else {
-        while (std::abs(old_diff_t) > tol && std::abs(diff_t) > std::abs(old_diff_t) - tol) {
-          diff_t = diff_t / 2;
-        }
-        t = old_t + diff_t;
-        continue;
-      }
-    }
-    if (arma::sign(Score) != arma::sign(old_t + diff_t) &&
-        (arma::sign(old_CGF1) == 0 || arma::sign(CGF1) == arma::sign(old_CGF1))) {
-      while (arma::sign(Score) != arma::sign(old_t + diff_t)) {
-        diff_t = diff_t / 2;
-      }
-      t = old_t + diff_t;
-      continue;
-    }
-    t = old_t + diff_t;
-    if (std::abs(diff_t) < tol) break;
-  }
-  return t;
-}
-
-double SAGELDClass::getProbSpa(
-  const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-  double Score,
-  double MAF,
-  bool lower_tail,
-  double zeta,
-  double tol
-) {
-  zeta = fastGetRoot(update_ThreeSubj_list, Score, MAF, zeta, tol);
-  arma::mat MGF_all = mgf(zeta, update_ThreeSubj_list, MAF);
-  arma::vec MGF0 = MGF_all.col(0);
-  arma::vec MGF1 = MGF_all.col(1);
-  arma::vec MGF2 = MGF_all.col(2);
-
-  double mean = 2 * MAF * m_sum_R_nonOutlier;
-  double var = 2 * MAF * (1 - MAF) * m_R_GRM_R_nonOutlier(0);
-
-  arma::vec temp = MGF1 / MGF0;
-  double CGF0 = arma::accu(log(MGF0)) + mean * zeta + 0.5 * var * zeta * zeta;
-  double CGF2_val = arma::accu(MGF2 / MGF0) - arma::accu(temp % temp) + var;
-
-  double w = arma::sign(zeta) * sqrt(2 * (zeta * Score - CGF0));
-  double v = zeta * sqrt(CGF2_val);
-  double u = w + 1/w * log(v/w);
-
-  boost::math::normal_distribution<double> ndist(0.0, 1.0);
-  double pval = lower_tail ? boost::math::cdf(ndist, u)
-                           : boost::math::cdf(boost::math::complement(ndist, u));
-  return pval;
-}
-
-double SAGELDClass::getProbSpa(
-  const std::vector<UpdatedThreeSubj>& update_ThreeSubj_list,
-  double m_R_GRM_R_nonOutlier_i,
-  double lambda_i,
-  double Score,
-  double MAF,
-  bool lower_tail,
-  double zeta,
-  double tol
-) {
-  zeta = fastGetRoot(update_ThreeSubj_list, m_R_GRM_R_nonOutlier_i, lambda_i, Score, MAF, zeta, tol);
-  arma::mat MGF_all = mgf(zeta, update_ThreeSubj_list, MAF, lambda_i);
-  arma::vec MGF0 = MGF_all.col(0);
-  arma::vec MGF1 = MGF_all.col(1);
-  arma::vec MGF2 = MGF_all.col(2);
-
-  double mean = 2 * MAF * (m_sum_R_nonOutlier_GxE - lambda_i * m_sum_R_nonOutlier_G);
-  double var = 2 * MAF * (1 - MAF) * m_R_GRM_R_nonOutlier_i;
-
-  arma::vec temp = MGF1 / MGF0;
-  double CGF0 = arma::accu(log(MGF0)) + mean * zeta + 0.5 * var * zeta * zeta;
-  double CGF2_val = arma::accu(MGF2 / MGF0) - arma::accu(temp % temp) + var;
-
-  double w = arma::sign(zeta) * sqrt(2 * (zeta * Score - CGF0));
-  double v = zeta * sqrt(CGF2_val);
-  double u = w + 1/w * log(v/w);
-
-  boost::math::normal_distribution<double> ndist(0.0, 1.0);
-  double pval = lower_tail ? boost::math::cdf(ndist, u)
-                           : boost::math::cdf(boost::math::complement(ndist, u));
-  return pval;
-}
-
-double SAGELDClass::getMarkerPval(
+double mtSAGELDClass::getMarkerPval(
   arma::vec GVec,
   double altFreq,
   double& hwepval,
@@ -439,7 +145,7 @@ double SAGELDClass::getMarkerPval(
         double MAF_ratio = (m_MAF_interval[order2] - MAF) / (m_MAF_interval[order2] - m_MAF_interval[order1]);
         double Var_ThreeOutlier = 0;
         int n1 = static_cast<int>(m_ThreeSubj_list.size());
-        std::vector<UpdatedThreeSubj> update_ThreeSubj_list(n1);
+        std::vector<SPAGRMSpace::UpdatedThreeSubj> update_ThreeSubj_list(n1);
         if (n1 != 0) {
           for (int i = 0; i < n1; i++) {
             const auto& tsf3 = m_ThreeSubj_list[i];
@@ -463,8 +169,14 @@ double SAGELDClass::getMarkerPval(
         double Score_adj = Score / sqrt(Var_Ratio);
         double zeta1 = std::abs(Score_adj) / Score_var; zeta1 = std::min(zeta1, 1.2);
         double zeta2 = -std::abs(m_zeta);
-        double pval1 = getProbSpa(update_ThreeSubj_list, std::abs(Score_adj), MAF, false, zeta1, 1e-4);
-        double pval2 = getProbSpa(update_ThreeSubj_list, -std::abs(Score_adj), MAF, true, zeta2, m_tol);
+        double pval1 = SPAGRMSpace::getProbSpa(
+          m_resid_unrelated_outliers, m_TwoSubj_resid_list, m_TwoSubj_rho_list,
+          update_ThreeSubj_list, m_sum_R_nonOutlier, m_R_GRM_R_nonOutlier(0),
+          std::abs(Score_adj), MAF, false, zeta1, 1e-4);
+        double pval2 = SPAGRMSpace::getProbSpa(
+          m_resid_unrelated_outliers, m_TwoSubj_resid_list, m_TwoSubj_rho_list,
+          update_ThreeSubj_list, m_sum_R_nonOutlier, m_R_GRM_R_nonOutlier(0),
+          -std::abs(Score_adj), MAF, true, zeta2, m_tol);
         pval_GxE = pval1 + pval2;
       }
     } else {
@@ -493,7 +205,7 @@ double SAGELDClass::getMarkerPval(
         double MAF_ratio = (m_MAF_interval[order2] - MAF) / (m_MAF_interval[order2] - m_MAF_interval[order1]);
         double Var_ThreeOutlier = 0;
         int n1 = static_cast<int>(m_ThreeSubj_list.size());
-        std::vector<UpdatedThreeSubj> update_ThreeSubj_list(n1);
+        std::vector<SPAGRMSpace::UpdatedThreeSubj> update_ThreeSubj_list(n1);
         if (n1 != 0) {
           for (int i = 0; i < n1; i++) {
             const auto& tsf3 = m_ThreeSubj_list[i];
@@ -522,8 +234,24 @@ double SAGELDClass::getMarkerPval(
         double Score_adj = Score / sqrt(Var_Ratio);
         double zeta1 = std::abs(Score_adj) / Score_var; zeta1 = std::min(zeta1, 1.2);
         double zeta2 = -std::abs(m_zeta);
-        double pval1 = getProbSpa(update_ThreeSubj_list, m_R_GRM_R_nonOutlier_i, lambda_i, std::abs(Score_adj), MAF, false, zeta1, 1e-4);
-        double pval2 = getProbSpa(update_ThreeSubj_list, m_R_GRM_R_nonOutlier_i, lambda_i, -std::abs(Score_adj), MAF, true, zeta2, m_tol);
+
+        // Construct modified data for lambda_i-adjusted SPA
+        arma::vec resid_outliers_i = m_resid_unrelated_outliers_GxE - lambda_i * m_resid_unrelated_outliers_G;
+        int nTwo = static_cast<int>(m_TwoSubj_list.size());
+        std::vector<arma::vec> twoResid_i(nTwo);
+        for (int j = 0; j < nTwo; ++j) {
+          twoResid_i[j] = m_TwoSubj_list[j].Resid_GxE - lambda_i * m_TwoSubj_list[j].Resid_G;
+        }
+        double sum_R_nonOutlier_i = m_sum_R_nonOutlier_GxE - lambda_i * m_sum_R_nonOutlier_G;
+
+        double pval1 = SPAGRMSpace::getProbSpa(
+          resid_outliers_i, twoResid_i, m_TwoSubj_rho_list,
+          update_ThreeSubj_list, sum_R_nonOutlier_i, m_R_GRM_R_nonOutlier_i,
+          std::abs(Score_adj), MAF, false, zeta1, 1e-4);
+        double pval2 = SPAGRMSpace::getProbSpa(
+          resid_outliers_i, twoResid_i, m_TwoSubj_rho_list,
+          update_ThreeSubj_list, sum_R_nonOutlier_i, m_R_GRM_R_nonOutlier_i,
+          -std::abs(Score_adj), MAF, true, zeta2, m_tol);
         pval_GxE = pval1 + pval2;
       }
     }
@@ -533,4 +261,3 @@ double SAGELDClass::getMarkerPval(
   return 0;
 }
 
-}

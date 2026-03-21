@@ -1,4 +1,4 @@
-// SPAGRM.cpp -- SPAGRMClass method implementations
+// SPAGRM.cpp -- SPAGRMSpace free functions and mtSPAGRMClass method implementations
 
 #include <RcppArmadillo.h>
 #include <limits>
@@ -7,61 +7,31 @@
 #include "mtSPAGRM.h"
 #include "mtUTIL.h"
 
-namespace SPAGRM {
+namespace SPAGRMSpace {
 
-SPAGRMClass::SPAGRMClass(
-  arma::vec resid,
-  arma::vec resid_unrelated_outliers,
-  double sum_R_nonOutlier,
-  double R_GRM_R_nonOutlier,
-  double R_GRM_R_TwoSubjOutlier,
-  double R_GRM_R,
-  arma::vec MAF_interval,
-  std::vector<arma::vec> TwoSubj_resid,
-  std::vector<arma::vec> TwoSubj_rho,
-  std::vector<arma::vec> ThreeSubj_standS,
-  std::vector<arma::mat> ThreeSubj_CLT,
-  double SPA_Cutoff,
-  double zeta,
-  double tol
-)
-  : m_resid(std::move(resid)),
-    m_resid_unrelated_outliers(std::move(resid_unrelated_outliers)),
-    m_sum_unrelated_outliers2(arma::dot(m_resid_unrelated_outliers, m_resid_unrelated_outliers)),
-    m_sum_R_nonOutlier(sum_R_nonOutlier),
-    m_R_GRM_R_nonOutlier(R_GRM_R_nonOutlier),
-    m_R_GRM_R_TwoSubjOutlier(R_GRM_R_TwoSubjOutlier),
-    m_R_GRM_R(R_GRM_R),
-    m_MAF_interval(std::move(MAF_interval)),
-    m_TwoSubj_resid_list(std::move(TwoSubj_resid)),
-    m_TwoSubj_rho_list(std::move(TwoSubj_rho)),
-    m_ThreeSubj_standS_list(std::move(ThreeSubj_standS)),
-    m_ThreeSubj_CLT_list(std::move(ThreeSubj_CLT)),
-    m_SPA_Cutoff(SPA_Cutoff),
-    m_zeta(zeta),
-    m_tol(tol)
-{}
-
-arma::mat SPAGRMClass::mgf(
+arma::mat mgf(
   double t,
-  const std::vector<arma::vec>& arr_prob_list,
+  const arma::vec& resid_unrelated_outliers,
+  const std::vector<arma::vec>& TwoSubj_resid,
+  const std::vector<arma::vec>& TwoSubj_rho,
+  const std::vector<UpdatedThreeSubj>& threeSubj,
   double MAF
 ) {
-  arma::vec lambda = arma::exp(t * m_resid_unrelated_outliers);
+  arma::vec lambda = arma::exp(t * resid_unrelated_outliers);
 
   arma::vec alpha = 1 - MAF + MAF * lambda;
-  arma::vec alpha_1 = MAF * m_resid_unrelated_outliers % lambda;
-  arma::vec alpha_2 = m_resid_unrelated_outliers % alpha_1;
+  arma::vec alpha_1 = MAF * resid_unrelated_outliers % lambda;
+  arma::vec alpha_2 = resid_unrelated_outliers % alpha_1;
 
   arma::vec M_G0_all = alpha % alpha;
   arma::vec M_G1_all = 2 * alpha % alpha_1;
   arma::vec M_G2_all = 2 * (alpha_1 % alpha_1 + alpha % alpha_2);
 
-  int n1 = static_cast<int>(m_TwoSubj_resid_list.size());
+  int n1 = static_cast<int>(TwoSubj_resid.size());
   if (n1 != 0) {
     for (int i = 0; i < n1; i++) {
-      const arma::vec& Resid = m_TwoSubj_resid_list[i];
-      const arma::vec& Rho = m_TwoSubj_rho_list[i];
+      const arma::vec& Resid = TwoSubj_resid[i];
+      const arma::vec& Rho = TwoSubj_rho[i];
 
       arma::vec temp = (1 - Rho) * MAF * (1 - MAF);
 
@@ -83,11 +53,11 @@ arma::mat SPAGRMClass::mgf(
     }
   }
 
-  int n2 = static_cast<int>(arr_prob_list.size());
+  int n2 = static_cast<int>(threeSubj.size());
   if (n2 != 0) {
     for (int i = 0; i < n2; i++) {
-      const arma::vec& stand_S = m_ThreeSubj_standS_list[i];
-      const arma::vec& arr_prob = arr_prob_list[i];
+      const arma::vec& stand_S = threeSubj[i].stand_S;
+      const arma::vec& arr_prob = threeSubj[i].arr_prob;
 
       arma::vec midterm0 = exp(t * stand_S) % arr_prob;
       arma::vec midterm1 = stand_S % midterm0;
@@ -102,12 +72,15 @@ arma::mat SPAGRMClass::mgf(
   return arma::join_rows(M_G0_all, M_G1_all, M_G2_all);
 }
 
-double SPAGRMClass::fastGetRoot(
-  const std::vector<arma::vec>& arr_prob_list,
-  double Score,
-  double MAF,
-  double init_t,
-  double tol,
+double fastGetRoot(
+  const arma::vec& resid_unrelated_outliers,
+  const std::vector<arma::vec>& TwoSubj_resid,
+  const std::vector<arma::vec>& TwoSubj_rho,
+  const std::vector<UpdatedThreeSubj>& threeSubj,
+  double sum_R_nonOutlier,
+  double R_GRM_R_nonOutlier,
+  double Score, double MAF,
+  double init_t, double tol,
   int maxiter
 ) {
   double t = init_t;
@@ -115,15 +88,15 @@ double SPAGRMClass::fastGetRoot(
   double CGF1 = 0; double CGF2 = 0;
   double diff_t = std::numeric_limits<double>::infinity();
 
-  double mean = 2 * MAF * m_sum_R_nonOutlier;
-  double var = 2 * MAF * (1 - MAF) * m_R_GRM_R_nonOutlier;
+  double mean = 2 * MAF * sum_R_nonOutlier;
+  double var = 2 * MAF * (1 - MAF) * R_GRM_R_nonOutlier;
 
   for (int iter = 1; iter < maxiter; iter++) {
     double old_t = t;
     double old_diff_t = diff_t;
     double old_CGF1 = CGF1;
 
-    arma::mat MGF_all = mgf(t, arr_prob_list, MAF);
+    arma::mat MGF_all = mgf(t, resid_unrelated_outliers, TwoSubj_resid, TwoSubj_rho, threeSubj, MAF);
 
     MGF0 = MGF_all.col(0);
     MGF1 = MGF_all.col(1);
@@ -170,23 +143,26 @@ double SPAGRMClass::fastGetRoot(
   return t;
 }
 
-double SPAGRMClass::getProbSpa(
-  const std::vector<arma::vec>& arr_prob_list,
-  double Score,
-  double MAF,
-  bool lower_tail,
-  double zeta,
-  double tol
+double getProbSpa(
+  const arma::vec& resid_unrelated_outliers,
+  const std::vector<arma::vec>& TwoSubj_resid,
+  const std::vector<arma::vec>& TwoSubj_rho,
+  const std::vector<UpdatedThreeSubj>& threeSubj,
+  double sum_R_nonOutlier,
+  double R_GRM_R_nonOutlier,
+  double Score, double MAF,
+  bool lower_tail, double zeta, double tol
 ) {
-  zeta = fastGetRoot(arr_prob_list, Score, MAF, zeta, tol);
-  arma::mat MGF_all = mgf(zeta, arr_prob_list, MAF);
+  zeta = fastGetRoot(resid_unrelated_outliers, TwoSubj_resid, TwoSubj_rho, threeSubj,
+                     sum_R_nonOutlier, R_GRM_R_nonOutlier, Score, MAF, zeta, tol);
+  arma::mat MGF_all = mgf(zeta, resid_unrelated_outliers, TwoSubj_resid, TwoSubj_rho, threeSubj, MAF);
 
   arma::vec MGF0 = MGF_all.col(0);
   arma::vec MGF1 = MGF_all.col(1);
   arma::vec MGF2 = MGF_all.col(2);
 
-  double mean = 2 * MAF * m_sum_R_nonOutlier;
-  double var = 2 * MAF * (1 - MAF) * m_R_GRM_R_nonOutlier;
+  double mean = 2 * MAF * sum_R_nonOutlier;
+  double var = 2 * MAF * (1 - MAF) * R_GRM_R_nonOutlier;
 
   arma::vec temp = MGF1 / MGF0;
   double CGF0 = arma::accu(log(MGF0)) + mean * zeta + 0.5 * var * zeta * zeta;
@@ -203,7 +179,38 @@ double SPAGRMClass::getProbSpa(
   return pval;
 }
 
-double SPAGRMClass::getMarkerPval(
+} // namespace SPAGRMSpace
+
+mtSPAGRMClass::mtSPAGRMClass(
+  arma::vec resid,
+  double sum_R_nonOutlier,
+  double R_GRM_R_nonOutlier,
+  double R_GRM_R_TwoSubjOutlier,
+  double R_GRM_R,
+  arma::vec MAF_interval,
+  SPAGRMSpace::FamilyData fam,
+  double SPA_Cutoff,
+  double zeta,
+  double tol
+)
+  : m_resid(std::move(resid)),
+    m_resid_unrelated_outliers(std::move(fam.resid_unrelated_outliers)),
+    m_sum_unrelated_outliers2(arma::dot(m_resid_unrelated_outliers, m_resid_unrelated_outliers)),
+    m_sum_R_nonOutlier(sum_R_nonOutlier),
+    m_R_GRM_R_nonOutlier(R_GRM_R_nonOutlier),
+    m_R_GRM_R_TwoSubjOutlier(R_GRM_R_TwoSubjOutlier),
+    m_R_GRM_R(R_GRM_R),
+    m_MAF_interval(std::move(MAF_interval)),
+    m_TwoSubj_resid_list(std::move(fam.twoSubj_resid)),
+    m_TwoSubj_rho_list(std::move(fam.twoSubj_rho)),
+    m_ThreeSubj_standS_list(std::move(fam.threeSubj_standS)),
+    m_ThreeSubj_CLT_list(std::move(fam.threeSubj_CLT)),
+    m_SPA_Cutoff(SPA_Cutoff),
+    m_zeta(zeta),
+    m_tol(tol)
+{}
+
+double mtSPAGRMClass::getMarkerPval(
   arma::vec GVec,
   double altFreq,
   double& zScore,
@@ -232,8 +239,8 @@ double SPAGRMClass::getMarkerPval(
   double Var_ThreeOutlier = 0;
 
   int n1 = static_cast<int>(m_ThreeSubj_standS_list.size());
-  std::vector<arma::vec> arr_prob_list;
-  arr_prob_list.reserve(n1);
+  std::vector<SPAGRMSpace::UpdatedThreeSubj> threeSubj_list;
+  threeSubj_list.reserve(n1);
 
   if (n1 != 0) {
     for (int i = 0; i < n1; i++) {
@@ -243,7 +250,7 @@ double SPAGRMClass::getMarkerPval(
       arma::vec CLT_temp2 = CLT_temp.col(order2);
 
       arma::vec arr_prob = MAF_ratio * CLT_temp1 + (1 - MAF_ratio) * CLT_temp2;
-      arr_prob_list.push_back(arr_prob);
+      threeSubj_list.push_back({stand_S, arr_prob});
 
       arma::vec temp1 = stand_S % arr_prob;
 
@@ -264,11 +271,15 @@ double SPAGRMClass::getMarkerPval(
   double zeta1 = std::abs(Score_adj) / Score_var; zeta1 = std::min(zeta1, 1.2);
   double zeta2 = -std::abs(m_zeta);
 
-  double pval1 = getProbSpa(arr_prob_list, std::abs(Score_adj), MAF, false, zeta1, 1e-4);
-  double pval2 = getProbSpa(arr_prob_list, -std::abs(Score_adj), MAF, true, zeta2, m_tol);
+  double pval1 = SPAGRMSpace::getProbSpa(
+    m_resid_unrelated_outliers, m_TwoSubj_resid_list, m_TwoSubj_rho_list,
+    threeSubj_list, m_sum_R_nonOutlier, m_R_GRM_R_nonOutlier,
+    std::abs(Score_adj), MAF, false, zeta1, 1e-4);
+  double pval2 = SPAGRMSpace::getProbSpa(
+    m_resid_unrelated_outliers, m_TwoSubj_resid_list, m_TwoSubj_rho_list,
+    threeSubj_list, m_sum_R_nonOutlier, m_R_GRM_R_nonOutlier,
+    -std::abs(Score_adj), MAF, true, zeta2, m_tol);
   double pval = pval1 + pval2;
 
   return pval;
-}
-
 }

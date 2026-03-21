@@ -7,14 +7,64 @@
 #include <limits>
 #include <boost/math/distributions/normal.hpp>
 
+namespace SPAGRMSpace {
 
-namespace SPAGRM{
+// Per-marker updated data for three-or-more-subject families (shared by SPAGRM and SAGELD)
+struct UpdatedThreeSubj {
+  arma::vec stand_S;
+  arma::vec arr_prob;
+};
 
-class SPAGRMClass {
-  
+// Family data passed from R at null-model construction time
+struct FamilyData {
+  arma::vec resid_unrelated_outliers;
+  std::vector<arma::vec> twoSubj_resid;
+  std::vector<arma::vec> twoSubj_rho;
+  std::vector<arma::vec> threeSubj_standS;
+  std::vector<arma::mat> threeSubj_CLT;
+};
+
+// MGF and its first two derivatives for the SPA approximation
+arma::mat mgf(
+  double t,
+  const arma::vec& resid_unrelated_outliers,
+  const std::vector<arma::vec>& TwoSubj_resid,
+  const std::vector<arma::vec>& TwoSubj_rho,
+  const std::vector<UpdatedThreeSubj>& threeSubj,
+  double MAF
+);
+
+// Newton-Raphson root finder for the CGF equation
+double fastGetRoot(
+  const arma::vec& resid_unrelated_outliers,
+  const std::vector<arma::vec>& TwoSubj_resid,
+  const std::vector<arma::vec>& TwoSubj_rho,
+  const std::vector<UpdatedThreeSubj>& threeSubj,
+  double sum_R_nonOutlier,
+  double R_GRM_R_nonOutlier,
+  double Score, double MAF,
+  double init_t, double tol,
+  int maxiter = 50
+);
+
+// Saddlepoint approximation tail probability
+double getProbSpa(
+  const arma::vec& resid_unrelated_outliers,
+  const std::vector<arma::vec>& TwoSubj_resid,
+  const std::vector<arma::vec>& TwoSubj_rho,
+  const std::vector<UpdatedThreeSubj>& threeSubj,
+  double sum_R_nonOutlier,
+  double R_GRM_R_nonOutlier,
+  double Score, double MAF,
+  bool lower_tail, double zeta, double tol
+);
+
+} // namespace SPAGRMSpace
+
+class mtSPAGRMClass {
+
 private:
 
-  // ---- Members ----
   const arma::vec m_resid;
   const arma::vec m_resid_unrelated_outliers;
   const double m_sum_unrelated_outliers2;
@@ -34,44 +84,15 @@ private:
 
 public:
 
-  // ---- Public interface ----
-  SPAGRMClass(
+  mtSPAGRMClass(
     arma::vec resid,
-    arma::vec resid_unrelated_outliers,
     double sum_R_nonOutlier,
     double R_GRM_R_nonOutlier,
     double R_GRM_R_TwoSubjOutlier,
     double R_GRM_R,
     arma::vec MAF_interval,
-    std::vector<arma::vec> TwoSubj_resid,
-    std::vector<arma::vec> TwoSubj_rho,
-    std::vector<arma::vec> ThreeSubj_standS,
-    std::vector<arma::mat> ThreeSubj_CLT,
+    SPAGRMSpace::FamilyData fam,
     double SPA_Cutoff,
-    double zeta,
-    double tol
-  );
-
-  arma::mat mgf(
-    double t,
-    const std::vector<arma::vec>& arr_prob_list,
-    double MAF
-  );
-
-  double fastGetRoot(
-    const std::vector<arma::vec>& arr_prob_list,
-    double Score,
-    double MAF,
-    double init_t,
-    double tol,
-    int maxiter = 50
-  );
-
-  double getProbSpa(
-    const std::vector<arma::vec>& arr_prob_list,
-    double Score,
-    double MAF,
-    bool lower_tail,
     double zeta,
     double tol
   );
@@ -85,7 +106,5 @@ public:
   );
 
 };
-
-}
 
 #endif

@@ -6,22 +6,13 @@
 #include <RcppArmadillo.h>
 #include "mtSPAGRM.h"
 
-namespace SPAsqr{
-
 // Per-tau family data passed from R at null-model construction time.
-struct TauFamilyNativeInput {
-  arma::vec resid_unrelated_outliers;
-  std::vector<arma::vec> twoSubj_resid;
-  std::vector<arma::vec> twoSubj_rho;
-  std::vector<arma::vec> threeSubj_standS;
-  std::vector<arma::mat> threeSubj_CLT;
-};
 
-class SPAsqrClass {
+class mtSPAsqrClass {
 private:
 
   const arma::vec m_taus;
-  std::vector<SPAGRM::SPAGRMClass> m_SPAGRMobj_vec;
+  std::vector<mtSPAGRMClass> m_SPAGRMobj_vec;
   const arma::vec m_MAF_interval;
 
   const double m_SPA_Cutoff;
@@ -30,10 +21,10 @@ private:
 
 public:
 
-  SPAsqrClass(
+  mtSPAsqrClass(
     arma::vec taus,
     arma::mat Resid_mat,
-    std::vector<TauFamilyNativeInput> tauFamilyData,
+    std::vector<SPAGRMSpace::FamilyData> tauFamilyData,
     arma::vec sum_R_nonOutlier_vec,
     arma::vec R_GRM_R_nonOutlier_vec,
     arma::vec R_GRM_R_TwoSubjOutlier_vec,
@@ -53,21 +44,14 @@ public:
     m_SPAGRMobj_vec.reserve(ntaus);
 
     for (int i = 0; i < ntaus; ++i) {
-      arma::vec resid_i = Resid_mat.col(i);
-      TauFamilyNativeInput& fam = tauFamilyData[i];
-
       m_SPAGRMobj_vec.emplace_back(
-        std::move(resid_i),
-        std::move(fam.resid_unrelated_outliers),
+        Resid_mat.col(i),
         sum_R_nonOutlier_vec(i),
         R_GRM_R_nonOutlier_vec(i),
         R_GRM_R_TwoSubjOutlier_vec(i),
         R_GRM_R_vec(i),
         m_MAF_interval,
-        std::move(fam.twoSubj_resid),
-        std::move(fam.twoSubj_rho),
-        std::move(fam.threeSubj_standS),
-        std::move(fam.threeSubj_CLT),
+        std::move(tauFamilyData[i]),
         m_SPA_Cutoff,
         m_zeta,
         m_tol
@@ -100,7 +84,5 @@ public:
     return pvalVec;
   }
 };
-
-}
 
 #endif

@@ -1,17 +1,15 @@
-// SPAmix.cpp -- SPAmixClass method implementations
+// SPAmix.cpp -- mtSPAmixClass method implementations
 
 #include <RcppArmadillo.h>
 
 #include "mtSPAmix.h"
 
-namespace SPAmix {
-
-SPAmixClass::SPAmixClass(
+mtSPAmixClass::mtSPAmixClass(
   arma::mat resid,
   arma::mat PCs,
   int N,
   double SPA_Cutoff,
-  std::vector<SPAmixClass::OutlierData> outlierVec
+  std::vector<mtSPAmixClass::OutlierData> outlierVec
 )
   : m_resid(std::move(resid)),
     m_onePlusPCs(arma::join_horiz(arma::ones(N), PCs)),
@@ -23,60 +21,22 @@ SPAmixClass::SPAmixClass(
       arma::mat XTX_inv = arma::inv(arma::mat(m_onePlusPCs.t() * m_onePlusPCs));
       return arma::vec(arma::sqrt(XTX_inv.diag()));
     }()),
-    m_diffTime1(arma::zeros(2)),
-    m_diffTime2(arma::zeros(2)),
     m_outlierVec(std::move(outlierVec))
 {
   m_pvalVec.resize(m_Npheno);
   m_zScoreVec.resize(m_Npheno);
 }
 
-arma::vec SPAmixClass::M_G0(arma::vec t, arma::vec MAF) {
-  arma::vec re = pow((1 - MAF + MAF % arma::exp(t)), 2);
-  return re;
-}
+namespace {
 
-arma::vec SPAmixClass::M_G1(arma::vec t, arma::vec MAF) {
-  arma::vec re = 2 * (MAF % arma::exp(t)) % (1 - MAF + MAF % arma::exp(t));
-  return re;
-}
+struct RootResult {
+  double root;
+  int iter;
+  bool converge;
+  double K2;
+};
 
-arma::vec SPAmixClass::M_G2(arma::vec t, arma::vec MAF) {
-  arma::vec re = 2 * pow(MAF % arma::exp(t), 2) + 2 * (MAF % arma::exp(t)) % (1 - MAF + MAF % arma::exp(t));
-  return re;
-}
-
-arma::vec SPAmixClass::K_G0(arma::vec t, arma::vec MAF) {
-  arma::vec re = arma::log(M_G0(t, MAF));
-  return re;
-}
-
-arma::vec SPAmixClass::K_G1(arma::vec t, arma::vec MAF) {
-  arma::vec re = M_G1(t, MAF) / M_G0(t, MAF);
-  return re;
-}
-
-arma::vec SPAmixClass::K_G2(arma::vec t, arma::vec MAF) {
-  arma::vec re = (M_G0(t, MAF) % M_G2(t, MAF) - pow(M_G1(t, MAF), 2)) / pow(M_G0(t, MAF), 2);
-  return re;
-}
-
-double SPAmixClass::H_org(double t, arma::vec R, const arma::vec& MAFVec) {
-  double out = sum(K_G0(t * R, MAFVec));
-  return out;
-}
-
-double SPAmixClass::H1_adj(double t, arma::vec R, const double& s, const arma::vec& MAFVec) {
-  double out = sum(R % K_G1(t * R, MAFVec)) - s;
-  return out;
-}
-
-double SPAmixClass::H2(double t, arma::vec R, const arma::vec& MAFVec) {
-  double out = sum(pow(R, 2) % K_G2(t * R, MAFVec));
-  return out;
-}
-
-arma::vec SPAmixClass::Horg_H2(double t, arma::vec R, const arma::vec MAFVec) {
+arma::vec Horg_H2(double t, arma::vec R, const arma::vec MAFVec) {
   arma::vec Horg_H2_vec(2);
   arma::vec tR = t * R;
   arma::vec exp_tR = arma::exp(tR);
@@ -93,7 +53,7 @@ arma::vec SPAmixClass::Horg_H2(double t, arma::vec R, const arma::vec MAFVec) {
   return Horg_H2_vec;
 }
 
-arma::vec SPAmixClass::H1_adj_H2(double t, arma::vec R, double s, const arma::vec MAFVec) {
+arma::vec H1_adj_H2(double t, arma::vec R, double s, const arma::vec MAFVec) {
   arma::vec H1_adj_H2_vec(2);
   arma::vec tR = t * R;
   arma::vec exp_tR = arma::exp(tR);
@@ -110,7 +70,7 @@ arma::vec SPAmixClass::H1_adj_H2(double t, arma::vec R, double s, const arma::ve
   return H1_adj_H2_vec;
 }
 
-SPAmixClass::RootResult SPAmixClass::fastGetRootK1(
+RootResult fastGetRootK1(
   double initX,
   const double& s,
   const arma::vec MAF_outlier,
@@ -162,7 +122,50 @@ SPAmixClass::RootResult SPAmixClass::fastGetRootK1(
   return {x, iter, converge, K2};
 }
 
-double SPAmixClass::getProbSpaG(const arma::vec MAF_outlier,
+arma::vec logistic_regression(const arma::mat& X, const arma::vec& y) {
+  arma::vec beta = SPAmixSpace::logistic_regression_beta(X, y);
+  arma::mat X_new = arma::join_horiz(arma::ones(X.n_rows), X);
+  arma::vec mu = 1.0 / (1.0 + arma::exp(-X_new * beta));
+  return 1.0 - arma::sqrt(1.0 - mu);
+}
+
+} // anonymous namespace
+
+namespace SPAmixSpace {
+
+arma::vec logistic_regression_beta(const arma::mat& X, const arma::vec& y) {
+  int n = X.n_rows;
+  int p = X.n_cols;
+
+  arma::mat WX_new(n, p + 1);
+  arma::mat X_new = arma::join_horiz(arma::ones(n), X);
+
+  arma::vec beta(p+1, arma::fill::zeros);
+  double tol = 1e-6;
+  int max_iter = 100;
+  arma::vec mu(n);
+
+  for (int i = 0; i < max_iter; i++) {
+    mu = 1.0 / (1.0 + arma::exp(-X_new * beta));
+
+    arma::vec W = mu % (1.0 - mu);
+    arma::vec z = X_new * beta + (y - mu) / W;
+
+    for (int j = 0; j < p+1; j++){
+      WX_new.col(j) = X_new.col(j) % W;
+    }
+    arma::vec beta_new = arma::solve(X_new.t() * WX_new, X_new.t() * (W % z));
+
+    if (arma::norm(beta_new - beta) < tol) {
+      beta = beta_new;
+      break;
+    }
+    beta = beta_new;
+  }
+  return beta;
+}
+
+double getProbSpaG(const arma::vec MAF_outlier,
   const arma::vec residOutlier,
   double s,
   bool lower_tail,
@@ -187,25 +190,16 @@ double SPAmixClass::getProbSpaG(const arma::vec MAF_outlier,
   return pval;
 }
 
-arma::vec SPAmixClass::simulate_uniform(int n, double lower, double upper) {
-  arma::vec vec(n);
-  vec.randu();
-  vec = lower + (upper - lower) * vec;
-  return vec;
-}
+} // namespace SPAmixSpace
 
-arma::vec SPAmixClass::fit_lm(const arma::vec& g, arma::vec& pvalues) {
+arma::vec mtSPAmixClass::fit_lm(const arma::vec& g, arma::vec& pvalues) {
   int n = m_N;
   int k = m_PCs.n_cols;
-
   arma::vec coef = arma::solve(m_onePlusPCs, g);
   arma::vec fittedValues = m_onePlusPCs * coef;
-
   double s2 = sum(square(g - fittedValues)) / (n - k - 1);
-
   arma::vec se = m_sqrt_XTX_inv_diag * sqrt(s2);
   arma::vec t = coef / se;
-
   for (int i = 0; i < k; i++){
     boost::math::students_t_distribution<double> tdist(n - k - 1);
     pvalues[i] = 2.0 * boost::math::cdf(boost::math::complement(tdist, std::abs(t[i+1])));
@@ -213,41 +207,7 @@ arma::vec SPAmixClass::fit_lm(const arma::vec& g, arma::vec& pvalues) {
   return fittedValues;
 }
 
-arma::vec SPAmixClass::logistic_regression(const arma::mat& X, const arma::vec& y) {
-  int n = X.n_rows;
-  int p = X.n_cols;
-
-  arma::mat WX_new(n, p + 1);
-  arma::mat X_new = arma::join_horiz(arma::ones(n), X);
-
-  arma::vec beta(p+1, arma::fill::zeros);
-  double tol = 1e-6;
-  int max_iter = 100;
-  arma::vec mu(n);
-
-  for (int i = 0; i < max_iter; i++) {
-    mu = 1 / (1 + exp(-X_new * beta));
-
-    arma::vec W = mu % (1 - mu);
-    arma::vec z = X_new * beta + (y - mu) / W;
-
-    for (int j = 0; j < p+1; j++){
-      WX_new.col(j) = X_new.col(j) % W;
-    }
-    arma::vec beta_new = inv(X_new.t() * WX_new) * X_new.t() * (W % z);
-
-    if (norm(beta_new - beta) < tol) {
-      break;
-    }
-    beta = beta_new;
-  }
-
-  arma::vec MAFest = 1 - sqrt(1 - mu);
-
-  return MAFest;
-}
-
-arma::vec SPAmixClass::getMafEst(
+arma::vec mtSPAmixClass::getMafEst(
   arma::vec g,
   double altFreq,
   double MAC_cutoff,
@@ -304,7 +264,7 @@ arma::vec SPAmixClass::getMafEst(
   return MAF_est;
 }
 
-double SPAmixClass::getMarkerPval(arma::vec GVec, double altFreq) {
+double mtSPAmixClass::getMarkerPval(arma::vec GVec, double altFreq) {
 
   arma::vec AFVec = getMafEst(GVec, altFreq);
   arma::vec GVarVec = 2 * AFVec % (1 - AFVec);
@@ -339,7 +299,7 @@ double SPAmixClass::getMarkerPval(arma::vec GVec, double altFreq) {
     double mean_nonOutlier = sum(residNonOutlier % MAF_nonOutlier) * 2;
     double var_nonOutlier = sum(resid2NonOutlier % MAF_nonOutlier % (1-MAF_nonOutlier)) * 2;
 
-    double pval1 = getProbSpaG(
+    double pval1 = SPAmixSpace::getProbSpaG(
       MAF_outlier,
       residOutlier,
       std::abs(S-S_mean)+S_mean,
@@ -348,7 +308,7 @@ double SPAmixClass::getMarkerPval(arma::vec GVec, double altFreq) {
       var_nonOutlier
     );
 
-    double pval2 = getProbSpaG(
+    double pval2 = SPAmixSpace::getProbSpaG(
       MAF_outlier,
       residOutlier,
       -1*std::abs(S-S_mean)+S_mean,
@@ -364,4 +324,3 @@ double SPAmixClass::getMarkerPval(arma::vec GVec, double altFreq) {
   return pval;
 }
 
-}

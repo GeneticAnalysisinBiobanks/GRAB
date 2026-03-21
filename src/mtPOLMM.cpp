@@ -1,4 +1,4 @@
-// POLMM.cpp -- POLMMClass marker-test implementation
+// POLMM.cpp -- mtPOLMMClass marker-test implementation
 
 #include <RcppArmadillo.h>
 #include "mtPOLMM.h"
@@ -149,10 +149,15 @@ SaddleResult fastSaddle_Prob(double Stat, double VarP, double VarW, double Ratio
 } // anonymous namespace
 
 // ---- POLMM class implementations ----
-namespace POLMM {
 
-POLMMClass::POLMMClass(arma::mat muMat, arma::mat iRMat, arma::mat Cova,
-                       arma::uvec yVec, double varRatio, double SPA_Cutoff)
+mtPOLMMClass::mtPOLMMClass(
+  arma::mat muMat,
+  arma::mat iRMat,
+  arma::mat Cova,
+  arma::uvec yVec,
+  double varRatio,
+  double SPA_Cutoff
+)
   : m_muMat(std::move(muMat)),
     m_iRMat(std::move(iRMat)),
     m_n(static_cast<int>(m_muMat.n_rows)),
@@ -189,7 +194,7 @@ POLMMClass::POLMMClass(arma::mat muMat, arma::mat iRMat, arma::mat Cova,
   m_RPsiR = std::move(RPsiRVec);
 }
 
-arma::mat POLMMClass::getPsixMat(const arma::mat& xMat) const {
+arma::mat mtPOLMMClass::getPsixMat(const arma::mat& xMat) const {
   arma::mat Psi_xMat(m_n, m_J-1);
   for (int i = 0; i < m_n; ++i) {
     arma::rowvec muVec(m_J-1);
@@ -202,26 +207,32 @@ arma::mat POLMMClass::getPsixMat(const arma::mat& xMat) const {
   return Psi_xMat;
 }
 
-arma::vec POLMMClass::getadjGFast(const arma::vec& GVec) const {
+arma::vec mtPOLMMClass::getadjGFast(const arma::vec& GVec) const {
   arma::vec XR_Psi_RG(m_p, arma::fill::zeros);
   for (int i = 0; i < m_n; ++i)
     if (GVec(i) != 0) XR_Psi_RG += m_XR_Psi_R.col(i) * GVec(i);
   return GVec - m_XXR_Psi_RX * XR_Psi_RG;
 }
 
-double POLMMClass::getStatFast(const arma::vec& adjGVec) const {
+double mtPOLMMClass::getStatFast(const arma::vec& adjGVec) const {
   double Stat = 0;
   for (int i = 0; i < m_n; ++i)
     if (adjGVec(i) != 0) Stat += adjGVec(i) * m_RymuVec(i);
   return Stat;
 }
 
-arma::vec POLMMClass::getVarWVec(const arma::vec& adjGVec) const {
+arma::vec mtPOLMMClass::getVarWVec(const arma::vec& adjGVec) const {
   return m_RPsiR % arma::square(adjGVec);
 }
 
-void POLMMClass::getMarkerPval(arma::vec GVec, double& Beta, double& seBeta,
-                               double& pval, double altFreq, double& zScore) const {
+void mtPOLMMClass::getMarkerPval(
+  arma::vec GVec,
+  double& Beta,
+  double& seBeta,
+  double& pval,
+  double altFreq,
+  double& zScore
+) const {
   arma::vec adjGVec = getadjGFast(GVec);
   double    statVal = getStatFast(adjGVec);
   arma::vec VarWVec = getVarWVec(adjGVec);
@@ -247,5 +258,3 @@ void POLMMClass::getMarkerPval(arma::vec GVec, double& Beta, double& seBeta,
   seBeta = std::abs(Beta) / StdStat;
   zScore = statVal / std::sqrt(VarS);
 }
-
-} // namespace POLMM
