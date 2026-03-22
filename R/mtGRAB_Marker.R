@@ -26,7 +26,7 @@ GRAB.Marker5 <- function (
     missing_cutoff      = 0.15,
     min_maf_marker      = 0.001,
     min_mac_marker      = 20,
-    nMarkersEachChunk   = 1000,
+    nMarkersEachChunk   = 1024,
     AlleleOrder         = "alt-first",
     AllMarkers          = TRUE,
     IDsToIncludeFile    = NULL,
@@ -123,6 +123,11 @@ GRAB.Marker5 <- function (
     .message("Marker filters specified. The final set is: (union of includes) minus (union of excludes).")
   }
 
+  # Prevent BLAS oversubscription: each of the nthreads worker threads may call
+  # Armadillo, which in turn calls BLAS. Without pinning BLAS to 1 thread, a
+  # machine with 8 cores running 4 workers could spin up 32 BLAS threads.
+  if (control$nthreads > 1L) .enforce_single_blas_thread(control$nthreads)
+
   # dispatch to unified C++ bridge
   mtMarkerBridgeInCPP(objNull, OutputFile, control, bedFile, bimFile, famFile)
 
@@ -151,9 +156,8 @@ GRAB.Marker5 <- function (
       control$min_mac_marker < 0 || control$min_mac_marker > 100) {
     stop("control$min_mac_marker must be numeric in [0, 100].")
   }
-  if (!is.numeric(control$nMarkersEachChunk) ||
-      control$nMarkersEachChunk < 1e2 || control$nMarkersEachChunk > 1e5) {
-    stop("control$nMarkersEachChunk must be numeric in [100, 100000].")
+  if (!is.numeric(control$nMarkersEachChunk) || control$nMarkersEachChunk < 256) {
+    stop("control$nMarkersEachChunk must be numeric >= 256.")
   }
   if (!is.null(control$AlleleOrder) &&
       !control$AlleleOrder %in% c("ref-first", "alt-first")) {
@@ -207,7 +211,7 @@ GRAB.Marker5 <- function (
       stop("control$afFilePath must be provided for SPAmixPlus.")
     }
   } else if (null_class %in% c("SPAGRM_NULL_Model", "SAGELD_NULL_Model", "SPAsqr_NULL_Model")) {
-    if (length(obj_null$MAF_interval) > 1 && control$min_maf_marker <= min(obj_null$MAF_interval)) {
+    if (length(obj_null$MAF_interval) > 1 && control$min_maf_marker < min(obj_null$MAF_interval)) {
       stop("min_maf_marker is out of MAF_interval. Please reset.")
     }
   } else {
@@ -215,6 +219,20 @@ GRAB.Marker5 <- function (
   }
 
   control
+}
+
+.enforce_single_blas_thread <- function(nthreads) {
+  # Preferred: RhpcBLASctl calls the library API at runtime (OpenBLAS, MKL, etc.)
+  if (requireNamespace("RhpcBLASctl", quietly = TRUE)) {
+    cur <- RhpcBLASctl::blas_get_num_procs()
+    if (cur != 1L) {
+      RhpcBLASctl::blas_set_num_threads(1L)
+      .message("BLAS threads set to 1 (was %d) to avoid oversubscription with %d workers.", cur, nthreads)
+    }
+    return(invisible(NULL))
+  } else {
+     .message("RhpcBLASctl not available. Install RhpcBLASctl or set BLAS threads via environment variables.")
+  }
 }
 
 .message <- function (msg, ...) {

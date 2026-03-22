@@ -30,9 +30,9 @@ public:
 
   std::string getHeaderColumns() const {
     if (m_Method == "GALLOP")
-      return "\tisGALLOP\tBeta_G\tBeta_GxE\tSE_G\tSE_GxE\tPvalue_G\tPvalue_GxE\thwepval";
+      return "\tisGALLOP\tBeta_G\tBeta_GxE\tSE_G\tSE_GxE\tPvalue_G\tPvalue_GxE";
     else
-      return "\tisGALLOP\tzScore_G\tzScore_GxE\tPvalue_G\tPvalue_GxE\thwepval";
+      return "\tisGALLOP\tzScore_G\tzScore_GxE\tPvalue_G\tPvalue_GxE";
   }
 
 private:
@@ -133,27 +133,24 @@ public:
   arma::vec getBetaVec(){return m_BetaVec;}
   arma::vec getseBetaVec(){return m_seBetaVec;}
 
-  // GALLOP: returns [isGALLOP, bG, bGxE, seG, seGxE, pG, pGxE, hwepval] (8)
-  // else:   returns [isGALLOP, zG, zGxE, pG, pGxE, hwepval]              (6)
+  // GALLOP: returns [isGALLOP, bG, bGxE, seG, seGxE, pG, pGxE] (7)
+  // else:   returns [isGALLOP, zG, zGxE, pG, pGxE]              (5)
   std::vector<double> getResultVec(arma::vec GVec, double altFreq) {
-    double hwepval;
-    getMarkerPval(std::move(GVec), altFreq, hwepval);
+    getMarkerPval(std::move(GVec), altFreq);
     if (m_Method == "GALLOP") {
       double flipSign = (altFreq > 0.5) ? -1.0 : 1.0;
       return {1.0, m_BetaVec[0] * flipSign, m_BetaVec[1] * flipSign,
               m_seBetaVec[0], m_seBetaVec[1],
-              m_pvalVec[0], m_pvalVec[1], hwepval};
+              m_pvalVec[0], m_pvalVec[1]};
     }
-    return {0.0, m_zScoreVec[0], m_zScoreVec[1], m_pvalVec[0], m_pvalVec[1], hwepval};
+    return {0.0, m_zScoreVec[0], m_zScoreVec[1], m_pvalVec[0], m_pvalVec[1]};
   }
 
-  int resultSize() const { return (m_Method == "GALLOP") ? 8 : 6; }
+  int resultSize() const { return (m_Method == "GALLOP") ? 7 : 5; }
 
   double getMarkerPval(
     arma::vec GVec,
-    double altFreq,
-    double& hwepval,
-    double hwepvalCutoff = 0.1
+    double altFreq
   );
 
 };

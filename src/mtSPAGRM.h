@@ -100,22 +100,20 @@ public:
   double getMarkerPval(
     arma::vec GVec,
     double altFreq,
-    double& zScore,
-    double& hwepval,
-    double hwepvalCutoff = 0.1
+    double& zScore
   );
 
-  // Returns [zScore, pval, hwepval]
+  // Returns [zScore, pval]
   std::vector<double> getResultVec(arma::vec GVec, double altFreq) {
-    double zScore, hwepval;
-    double pval = getMarkerPval(std::move(GVec), altFreq, zScore, hwepval);
-    return {zScore, pval, hwepval};
+    double zScore;
+    double pval = getMarkerPval(std::move(GVec), altFreq, zScore);
+    return {zScore, pval};
   }
 
-  static int resultSize() { return 3; }
+  static int resultSize() { return 2; }
 
   std::string getHeaderColumns() const {
-    return "\tzScore\tPvalue\thwepval";
+    return "\tzScore\tPvalue";
   }
 
 };

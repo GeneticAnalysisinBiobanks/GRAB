@@ -6,7 +6,6 @@
 
 #include "mtSAGELD.h"
 #include "mtSPAGRM.h"
-#include "mtUTIL.h"
 
 mtSAGELDClass::mtSAGELDClass(
   std::string Method,
@@ -94,11 +93,8 @@ mtSAGELDClass::mtSAGELDClass(
 
 double mtSAGELDClass::getMarkerPval(
   arma::vec GVec,
-  double altFreq,
-  double& hwepval,
-  double hwepvalCutoff
+  double altFreq
 ) {
-  gethwepval(GVec, hwepval, hwepvalCutoff);
   double MAF = std::min(altFreq, 1 - altFreq);
 
   arma::mat GVec2, GVecq2, m_H1, m_H2, m_AtH, m_R, m_Cfix, m_Cran, m_GtG, m_Gty, m_V, m_v, m_intV;

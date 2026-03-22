@@ -5,7 +5,6 @@
 #include <boost/math/distributions/normal.hpp>
 
 #include "mtSPAGRM.h"
-#include "mtUTIL.h"
 
 namespace nsSPAGRM {
 
@@ -213,12 +212,8 @@ mtSPAGRMClass::mtSPAGRMClass(
 double mtSPAGRMClass::getMarkerPval(
   arma::vec GVec,
   double altFreq,
-  double& zScore,
-  double& hwepval,
-  double hwepvalCutoff
+  double& zScore
 ) {
-  gethwepval(GVec, hwepval, hwepvalCutoff);
-
   double MAF = std::min(altFreq, 1 - altFreq);
 
   double Score = sum(GVec % m_resid) - mean(GVec) * sum(m_resid);

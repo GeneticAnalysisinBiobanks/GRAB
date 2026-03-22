@@ -66,7 +66,6 @@ public:
 
   std::string getHeaderColumns() const {
     std::ostringstream oss;
-    oss << "\thwepval";
     auto taus = getTaus();
     for (double tau : taus) {
       char buf[32]; std::snprintf(buf, sizeof(buf), "%.6g", tau);
@@ -83,8 +82,7 @@ public:
   arma::vec getMarkerPval(
     arma::vec GVec,
     double altFreq,
-    arma::vec& zScoreVec,
-    double& hwepval
+    arma::vec& zScoreVec
   ) {
     int ntaus = m_taus.n_elem;
     arma::vec pvalVec(ntaus);
@@ -92,25 +90,22 @@ public:
 
     for (int i = 0; i < ntaus; i++) {
 
-      double zScore_i, hwepval_i;
-      double pval_i = m_SPAGRMobj_vec[i].getMarkerPval(GVec, altFreq, zScore_i, hwepval_i);
+      double zScore_i;
+      double pval_i = m_SPAGRMobj_vec[i].getMarkerPval(GVec, altFreq, zScore_i);
       pvalVec(i) = pval_i;
       zScoreVec(i) = zScore_i;
-      if (i == 0) hwepval = hwepval_i;
     }
 
     return pvalVec;
   }
 
-  // Returns [hwepval, z_1..z_ntaus, p_1..p_ntaus, pCCT]
+  // Returns [z_1..z_ntaus, p_1..p_ntaus, pCCT]
   std::vector<double> getResultVec(arma::vec GVec, double altFreq) {
     arma::vec zT;
-    double hwepval;
-    arma::vec pT = getMarkerPval(std::move(GVec), altFreq, zT, hwepval);
+    arma::vec pT = getMarkerPval(std::move(GVec), altFreq, zT);
     int nt = m_taus.n_elem;
     std::vector<double> r;
-    r.reserve(1 + 2 * nt + 1);
-    r.push_back(hwepval);
+    r.reserve(2 * nt + 1);
     for (int j = 0; j < nt; ++j) r.push_back(zT[j]);
     for (int j = 0; j < nt; ++j) r.push_back(pT[j]);
     // CCT p-value
@@ -138,7 +133,7 @@ public:
     return r;
   }
 
-  int resultSize() const { return 1 + 2 * static_cast<int>(m_taus.n_elem) + 1; }
+  int resultSize() const { return 2 * static_cast<int>(m_taus.n_elem) + 1; }
 };
 
 #endif

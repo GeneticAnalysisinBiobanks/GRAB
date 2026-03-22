@@ -63,18 +63,23 @@ mtSPAmixPlusClass* ptr_gSPAmixPlusobj = nullptr;
 
 namespace {
 
-// Timestamped info message (mirrors R's .message helper)
+// Thread-safe timestamped info message.
+// Uses fprintf(stderr) — safe to call from any thread.
+// Rprintf/REprintf are NOT thread-safe and must only be called from R's main thread.
+static std::mutex g_logMutex;
 void infoMsg(const char* fmt, ...) {
-  auto now = std::chrono::system_clock::now();
-  auto t = std::chrono::system_clock::to_time_t(now);
-  char ts[20];
-  std::strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", std::localtime(&t));
+  // Format the message first into a thread-local buffer (no lock needed).
   char buf[512];
   va_list args;
   va_start(args, fmt);
   std::vsnprintf(buf, sizeof(buf), fmt, args);
   va_end(args);
-  Rprintf("[INFO] %s %s\n", ts, buf);
+  // Serialize: std::localtime() uses a static buffer, and fprintf to stderr is not atomic.
+  std::lock_guard<std::mutex> lk(g_logMutex);
+  auto t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+  char ts[20];
+  std::strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", std::localtime(&t));
+  fprintf(stderr, "[INFO] %s %s\n", ts, buf);
 }
 
 // Build a string of nCols tab-separated "NA" values (for fail-QC rows).
@@ -114,14 +119,15 @@ int numToChars(char* buf, double x) {
 // Uses pre-reserved std::string for efficiency.
 void formatLine(
   std::string& out,
-  const std::string& marker,
-  const std::string& chr,
+  std::string_view marker,
+  std::string_view chr,
   uint32_t pos,
-  const std::string& ref,
-  const std::string& alt,
+  std::string_view ref,
+  std::string_view alt,
   double altCounts,
   double altFreq,
   double missingRate,
+  double hweP,
   const std::vector<double>& vals
 ) {
   std::string s;
@@ -129,7 +135,7 @@ void formatLine(
   char buf[32];
   int n;
 
-  // Meta columns: Marker, Chr, Pos, Ref, Alt, AltCount, AltFreq, MissRate
+  // Meta columns: Marker, Chr, Pos, Ref, Alt, AltCount, AltFreq, MissRate, HweP
   s += marker; s += '\t';
   s += chr;    s += '\t';
   n = std::snprintf(buf, sizeof(buf), "%u", pos);
@@ -138,7 +144,8 @@ void formatLine(
   s += alt;    s += '\t';
   n = numToChars(buf, altCounts); s.append(buf, n); s += '\t';
   n = numToChars(buf, altFreq);   s.append(buf, n); s += '\t';
-  n = numToChars(buf, missingRate); s.append(buf, n);
+  n = numToChars(buf, missingRate); s.append(buf, n); s += '\t';
+  n = numToChars(buf, hweP); s.append(buf, n);
 
   // Value columns
   for (double v : vals) {
@@ -153,14 +160,15 @@ void formatLine(
 // Format one output line for fail-QC markers using precomputed NA suffix.
 void formatLineNA(
   std::string& out,
-  const std::string& marker,
-  const std::string& chr,
+  std::string_view marker,
+  std::string_view chr,
   uint32_t pos,
-  const std::string& ref,
-  const std::string& alt,
+  std::string_view ref,
+  std::string_view alt,
   double altCounts,
   double altFreq,
   double missingRate,
+  double hweP,
   const std::string& naSuffix
 ) {
   std::string s;
@@ -176,7 +184,8 @@ void formatLineNA(
   s += alt;    s += '\t';
   n = numToChars(buf, altCounts); s.append(buf, n); s += '\t';
   n = numToChars(buf, altFreq);   s.append(buf, n); s += '\t';
-  n = numToChars(buf, missingRate); s.append(buf, n);
+  n = numToChars(buf, missingRate); s.append(buf, n); s += '\t';
+  n = numToChars(buf, hweP); s.append(buf, n);
   s += naSuffix;
   s += '\n';
   out += s;
@@ -200,7 +209,7 @@ struct ThreadContext {
 
 // ---- Output header ----
 
-const char* META_HEADER = "Marker\tChr\tPos\tRef\tAlt\tAltCount\tAltFreq\tMissRate";
+const char* META_HEADER = "Marker\tChr\tPos\tRef\tAlt\tAltCount\tAltFreq\tMissRate\tHWEpval";
 
 // Build the TSV column header line by dispatching to the active method object.
 std::string getHeader(const std::string& method) {
@@ -283,20 +292,14 @@ void mtMarkerEngine(
   const std::string RangesToExcludeFile
 ) {
 
-  mtPLINK::PlinkData plinkData(bedFile, bimFile, famFile, subjData, AlleleOrder);
+  const PlinkData plinkData(
+    bedFile, bimFile, famFile, subjData, AlleleOrder,
+    IDsToIncludeFile, RangesToIncludeFile, IDsToExcludeFile, RangesToExcludeFile,
+    nMarkersEachChunk
+  );
 
-  mtPLINK::MarkerFilterConfig filterConfig;
-  filterConfig.IDsToIncludeFile    = IDsToIncludeFile;
-  filterConfig.RangesToIncludeFile = RangesToIncludeFile;
-  filterConfig.IDsToExcludeFile    = IDsToExcludeFile;
-  filterConfig.RangesToExcludeFile = RangesToExcludeFile;
-
-  std::vector<mtPLINK::MarkerInfo> markerInfo = plinkData.getFilteredMarkers(filterConfig);
-  if (markerInfo.empty()) {
-    throw std::runtime_error("No markers remain after PLINK marker filtering.");
-  }
-
-  std::vector<std::vector<uint64_t>> chunkIndices = mtPLINK::PlinkData::buildChunks(markerInfo, nMarkersEachChunk);
+  const auto& markerInfo   = plinkData.markerInfo();
+  const auto& chunkIndices = plinkData.chunkIndices();
   const int effective_nthreads = std::min(nthreads, static_cast<int>(chunkIndices.size()));
 
   infoMsg("Number of subjects in the input file: %u", plinkData.nSubjInFile());
@@ -356,12 +359,16 @@ void mtMarkerEngine(
     writeStr(header + "\n");
 
     for (size_t i = 0; i < chunkOutput.size(); ++i) {
-      std::unique_lock<std::mutex> lk(writeMutex);
-      writeCv.wait(lk, [&]() { return chunkReady[i] || stopWriter; });
-      if (!chunkReady[i]) {
-        break;
+      // Move the chunk string out under the lock, then do I/O outside the lock.
+      // This unblocks workers from storing subsequent completed chunks while we write.
+      std::string tmp;
+      {
+        std::unique_lock<std::mutex> lk(writeMutex);
+        writeCv.wait(lk, [&]() { return chunkReady[i] || stopWriter.load(); });
+        if (!chunkReady[i]) break;  // writer-stop or error: abandon remaining chunks
+        tmp = std::move(chunkOutput[i]);  // frees chunkOutput[i] memory immediately
       }
-      writeStr(chunkOutput[i]);
+      writeStr(tmp);
       infoMsg("Writing finished: chunk %zu/%zu", i + 1, chunkOutput.size());
     }
 
@@ -377,12 +384,18 @@ void mtMarkerEngine(
     try {
       // Per-thread: copy method object (once) + open .bed file handle
       ThreadContext ctx = makeThreadContext(method);
-      mtPLINK::PlinkCursor cursor(plinkData);
+      PlinkCursor cursor(
+        plinkData.bedFile(),
+        plinkData.nMarkers(),
+        plinkData.nSubjInFile(),
+        plinkData.samplePosMap(),
+        plinkData.isAltFirst()
+      );
 
       // Precompute NA suffix for fail-QC lines (method-dependent column count)
       const std::string naSuffix = makeNaSuffix(method);
 
-      while (true) {
+      while (!stopWriter.load(std::memory_order_relaxed)) {
         size_t cidx = nextChunk.fetch_add(1);
         if (cidx >= chunkIndices.size()) break;
 
@@ -396,21 +409,19 @@ void mtMarkerEngine(
         if (method == "LEAF")   ctx.leaf->prepareChunk(gIdx);
 
         for (size_t i = 0; i < gIdx.size(); ++i) {
-          double altFreq = NAN, altCounts = NAN, missingRate = NAN;
+          double altFreq = NAN, altCounts = NAN, missingRate = NAN, hweP = NAN;
+          double maf = NAN, mac = NAN;
           std::vector<uint32_t> indexForMissing;
 
           arma::vec GVec = cursor.getGenotypes(gIdx[i],
-            altFreq, altCounts, missingRate, indexForMissing);
+            altFreq, altCounts, missingRate, hweP, maf, mac, indexForMissing);
 
-          const std::string& chr    = plinkData.chr(gIdx[i]);
-          const std::string& ref    = plinkData.ref(gIdx[i]);
-          const std::string& alt    = plinkData.alt(gIdx[i]);
-          const std::string& marker = plinkData.markerId(gIdx[i]);
-          uint32_t pd               = plinkData.pos(gIdx[i]);
+          const std::string_view chr    = plinkData.chr(gIdx[i]);
+          const std::string_view ref    = plinkData.ref(gIdx[i]);
+          const std::string_view alt    = plinkData.alt(gIdx[i]);
+          const std::string_view marker = plinkData.markerId(gIdx[i]);
+          uint32_t pos                  = plinkData.pos(gIdx[i]);
 
-          const double n = static_cast<double>(GVec.size());
-          const double maf = std::min(altFreq, 1.0 - altFreq);
-          const double mac = 2.0 * maf * n * (1.0 - missingRate);
           bool passQC = !((missingRate > missing_cutoff) || (maf < min_maf_marker) || (mac < min_mac_marker));
 
           bool flip = false;
@@ -430,74 +441,74 @@ void mtMarkerEngine(
 
           // --- SPAmix ---
           if (method == "SPAmix") {
-            if (!passQC) { formatLineNA(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, naSuffix); continue; }
+            if (!passQC) { formatLineNA(out, marker, chr, pos, ref, alt, altCounts, altFreq, missingRate, hweP, naSuffix); continue; }
             std::vector<double> rv = ctx.spamix->getResultVec(GVec, altFreq);
-            formatLine(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, rv);
+            formatLine(out, marker, chr, pos, ref, alt, altCounts, altFreq, missingRate, hweP, rv);
             continue;
           }
 
           // --- SPAmixPlus ---
           if (method == "SPAmixPlus") {
-            if (!passQC) { formatLineNA(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, naSuffix); continue; }
+            if (!passQC) { formatLineNA(out, marker, chr, pos, ref, alt, altCounts, altFreq, missingRate, hweP, naSuffix); continue; }
             std::vector<double> rv = ctx.spamixPlus->getResultVec(GVec, altFreq);
-            formatLine(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, rv);
+            formatLine(out, marker, chr, pos, ref, alt, altCounts, altFreq, missingRate, hweP, rv);
             continue;
           }
 
           // --- POLMM ---
           if (method == "POLMM") {
-            if (!passQC) { formatLineNA(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, naSuffix); continue; }
+            if (!passQC) { formatLineNA(out, marker, chr, pos, ref, alt, altCounts, altFreq, missingRate, hweP, naSuffix); continue; }
             std::vector<double> rv = ctx.polmm->getResultVec(GVec, altFreq);
             rv[1] *= (1.0 - 2.0 * static_cast<double>(flip)); // flip beta
-            formatLine(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, rv);
+            formatLine(out, marker, chr, pos, ref, alt, altCounts, altFreq, missingRate, hweP, rv);
             continue;
           }
 
           // --- SPACox ---
           if (method == "SPACox") {
-            if (!passQC) { formatLineNA(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, naSuffix); continue; }
+            if (!passQC) { formatLineNA(out, marker, chr, pos, ref, alt, altCounts, altFreq, missingRate, hweP, naSuffix); continue; }
             std::vector<double> rv = ctx.spacox->getResultVec(GVec, altFreq);
-            formatLine(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, rv);
+            formatLine(out, marker, chr, pos, ref, alt, altCounts, altFreq, missingRate, hweP, rv);
             continue;
           }
 
           // --- SPAGRM ---
           if (method == "SPAGRM") {
-            if (!passQC) { formatLineNA(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, naSuffix); continue; }
+            if (!passQC) { formatLineNA(out, marker, chr, pos, ref, alt, altCounts, altFreq, missingRate, hweP, naSuffix); continue; }
             std::vector<double> rv = ctx.spagrm->getResultVec(GVec, altFreq);
-            formatLine(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, rv);
+            formatLine(out, marker, chr, pos, ref, alt, altCounts, altFreq, missingRate, hweP, rv);
             continue;
           }
 
           // --- SAGELD ---
           if (method == "SAGELD") {
-            if (!passQC) { formatLineNA(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, naSuffix); continue; }
+            if (!passQC) { formatLineNA(out, marker, chr, pos, ref, alt, altCounts, altFreq, missingRate, hweP, naSuffix); continue; }
             std::vector<double> rv = ctx.sageld->getResultVec(GVec, altFreq);
-            formatLine(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, rv);
+            formatLine(out, marker, chr, pos, ref, alt, altCounts, altFreq, missingRate, hweP, rv);
             continue;
           }
 
           // --- WtCoxG ---
           if (method == "WtCoxG") {
-            if (!passQC) { formatLineNA(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, naSuffix); continue; }
+            if (!passQC) { formatLineNA(out, marker, chr, pos, ref, alt, altCounts, altFreq, missingRate, hweP, naSuffix); continue; }
             std::vector<double> rv = ctx.wtcoxg->getResultVec(GVec, static_cast<int>(i));
-            formatLine(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, rv);
+            formatLine(out, marker, chr, pos, ref, alt, altCounts, altFreq, missingRate, hweP, rv);
             continue;
           }
 
           // --- SPAsqr ---
           if (method == "SPAsqr") {
-            if (!passQC) { formatLineNA(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, naSuffix); continue; }
+            if (!passQC) { formatLineNA(out, marker, chr, pos, ref, alt, altCounts, altFreq, missingRate, hweP, naSuffix); continue; }
             std::vector<double> rv = ctx.spasqr->getResultVec(GVec, altFreq);
-            formatLine(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, rv);
+            formatLine(out, marker, chr, pos, ref, alt, altCounts, altFreq, missingRate, hweP, rv);
             continue;
           }
 
           // --- LEAF ---
           if (method == "LEAF") {
-            if (!passQC) { formatLineNA(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, naSuffix); continue; }
+            if (!passQC) { formatLineNA(out, marker, chr, pos, ref, alt, altCounts, altFreq, missingRate, hweP, naSuffix); continue; }
             std::vector<double> rv = ctx.leaf->getResultVec(GVec, static_cast<int>(i));
-            formatLine(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, rv);
+            formatLine(out, marker, chr, pos, ref, alt, altCounts, altFreq, missingRate, hweP, rv);
             continue;
           }
         }

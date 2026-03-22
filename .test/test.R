@@ -45,16 +45,16 @@ devel_polmm <- file.path(result_dir, "resultPOLMM.txt")
 devel_sageld <- file.path(result_dir, "resultSAGELD.txt")
 
 mt_dir <- ".test/mt_results"
-mt_spagrm <- file.path(mt_dir, "resultSPAGRM.txt")
-mt_spasqr <- file.path(mt_dir, "resultSPAsqr.txt")
-mt_wtcoxg <- file.path(mt_dir, "resultWtCoxG.txt")
-mt_leaf <- file.path(mt_dir, "resultLEAF.txt")
+mt_spagrm <- file.path(mt_dir, "resultSPAGRM.txt.gz")
+mt_spasqr <- file.path(mt_dir, "resultSPAsqr.txt.gz")
+mt_wtcoxg <- file.path(mt_dir, "resultWtCoxG.txt.gz")
+mt_leaf <- file.path(mt_dir, "resultLEAF.txt.gz")
 
-mt_spacox <- file.path(mt_dir, "resultSPACox.txt")
-mt_spamix <- file.path(mt_dir, "resultSPAmix.txt")
-mt_spamixplus <- file.path(mt_dir, "resultSPAmixPlus1.txt")
-mt_polmm <- file.path(mt_dir, "resultPOLMM.txt")
-mt_sageld <- file.path(mt_dir, "resultSAGELD.txt")
+mt_spacox <- file.path(mt_dir, "resultSPACox.txt.gz")
+mt_spamix <- file.path(mt_dir, "resultSPAmix.txt.gz")
+mt_spamixplus <- file.path(mt_dir, "resultSPAmixPlus1.txt.gz")
+mt_polmm <- file.path(mt_dir, "resultPOLMM.txt.gz")
+mt_sageld <- file.path(mt_dir, "resultSAGELD.txt.gz")
 
 
 ## SPAGRM SPAsqr
@@ -191,7 +191,7 @@ obj.SPAmixPlus <- readRDS(nullobj_spamixplus)
 obj.POLMM <- readRDS(nullobj_polmm)
 obj.SAGELD <- readRDS(nullobj_sageld)
 
-control <- list(nthreads = 4, nMarkersEachChunk = 100, afFilePath = afFileOutput)
+control <- list(nthreads = 4, nMarkersEachChunk = 256, afFilePath = afFileOutput)
 GRAB.Marker5(obj.SPAGRM, GenoFile, mt_spagrm, control = control, overwrite = TRUE)
 GRAB.Marker5(obj.SPAsqr, GenoFile, mt_spasqr, control = control, overwrite = TRUE)
 GRAB.Marker5(obj.WtCoxG, GenoFile, mt_wtcoxg, control = control, overwrite = TRUE)

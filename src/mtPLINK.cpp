@@ -7,6 +7,11 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <sstream>
+#include <mutex>
+#include <immintrin.h>
+#include <cstdint>
+#include <limits>
+
 
 namespace {
 
@@ -59,7 +64,7 @@ std::vector<RangeFilter> readRangeFile(const std::string& path) {
   return ranges;
 }
 
-bool markerInRanges(const mtPLINK::MarkerInfo& m, const std::vector<RangeFilter>& ranges) {
+bool markerInRanges(const PlinkData::MarkerInfo& m, const std::vector<RangeFilter>& ranges) {
   for (const auto& r : ranges)
     if (m.chrom == r.chrom && m.pos >= r.start && m.pos <= r.end) return true;
   return false;
@@ -70,20 +75,283 @@ bool markerInRanges(const mtPLINK::MarkerInfo& m, const std::vector<RangeFilter>
 static const int GENO_ALT_FIRST[4] = { 2, -1,  1,  0};  // alt=A1
 static const int GENO_REF_FIRST[4] = { 0, -1,  1,  2};  // alt=A2
 
+// Repack subset samples from full-cohort BED into compact 2-bit buffer.
+static void repackSubset(const uint8_t* __restrict raw,
+                         const uint32_t* __restrict posMap,
+                         uint8_t* __restrict compact,
+                         uint32_t nSubset) {
+  const uint32_t compactBytes = (nSubset + 3) / 4;
+  std::fill(compact, compact + compactBytes, uint8_t(0));
+  for (uint32_t i = 0; i < nSubset; ++i) {
+    const uint32_t src = posMap[i];
+    const int code = (raw[src >> 2] >> ((src & 3) << 1)) & 3;
+    compact[i >> 2] |= static_cast<uint8_t>(code << ((i & 3) << 1));
+  }
+}
+
+
+// ==================== AVX2 nibble-LUT ====================
+
+alignas(32) static uint8_t LUT_HOMREF[32];
+alignas(32) static uint8_t LUT_HET[32];
+alignas(32) static uint8_t LUT_HOMALT[32];
+alignas(32) static uint8_t LUT_MISS[32];
+
+static void init_lut() {
+  static std::once_flag flag;
+  std::call_once(flag, []() {
+    for (int n = 0; n < 16; ++n) {
+      uint8_t homRef = 0, het = 0, homAlt = 0, miss = 0;
+      for (int s = 0; s < 2; ++s) {
+        int code = (n >> (2*s)) & 3;
+        if (code == 0) homRef++;
+        else if (code == 1) miss++;
+        else if (code == 2) het++;
+        else homAlt++;
+      }
+      LUT_HOMREF[n] = homRef;
+      LUT_HET[n]    = het;
+      LUT_HOMALT[n] = homAlt;
+      LUT_MISS[n]   = miss;
+    }
+    for (int i = 16; i < 32; ++i) {
+      LUT_HOMREF[i] = LUT_HOMREF[i - 16];
+      LUT_HET[i]    = LUT_HET[i - 16];
+      LUT_HOMALT[i] = LUT_HOMALT[i - 16];
+      LUT_MISS[i]   = LUT_MISS[i - 16];
+    }
+  });
+}
+
+// ==================== COUNT ====================
+
+static inline void count_geno_classes(
+  const uint8_t* __restrict geno_bytes,
+  uint32_t n_samples,
+  uint32_t out[4]
+) {
+  init_lut();
+
+  const uint32_t n_bytes = (n_samples + 3) / 4;
+  uint64_t nHomRef = 0, nHet = 0, nHomAlt = 0, nMissing = 0;
+  const __m256i mask_lo = _mm256_set1_epi8(0x0F);
+  const __m256i zero = _mm256_setzero_si256();
+
+  const __m256i lut_homref = _mm256_load_si256(
+      reinterpret_cast<const __m256i*>(LUT_HOMREF));
+  const __m256i lut_het = _mm256_load_si256(
+      reinterpret_cast<const __m256i*>(LUT_HET));
+  const __m256i lut_homalt = _mm256_load_si256(
+      reinterpret_cast<const __m256i*>(LUT_HOMALT));
+  const __m256i lut_miss = _mm256_load_si256(
+      reinterpret_cast<const __m256i*>(LUT_MISS));
+
+  uint32_t i = 0;
+  uint32_t limit = n_bytes & ~63u;
+
+  __m256i acc_h = _mm256_setzero_si256();
+  __m256i acc_e = _mm256_setzero_si256();
+  __m256i acc_a = _mm256_setzero_si256();
+  __m256i acc_m = _mm256_setzero_si256();
+
+  int iter = 0;
+
+  for (; i < limit; i += 64) {
+    __m256i v0 = _mm256_loadu_si256((const __m256i*)(geno_bytes + i));
+    __m256i v1 = _mm256_loadu_si256((const __m256i*)(geno_bytes + i + 32));
+
+#define PROCESS_VEC(v) \
+    do { \
+      __m256i lo = _mm256_and_si256(v, mask_lo); \
+      __m256i hi = _mm256_and_si256(_mm256_srli_epi16(v, 4), mask_lo); \
+      acc_h = _mm256_add_epi8(acc_h, \
+          _mm256_add_epi8( \
+            _mm256_shuffle_epi8(lut_homref, lo), \
+            _mm256_shuffle_epi8(lut_homref, hi))); \
+      acc_e = _mm256_add_epi8(acc_e, \
+          _mm256_add_epi8( \
+            _mm256_shuffle_epi8(lut_het, lo), \
+            _mm256_shuffle_epi8(lut_het, hi))); \
+      acc_a = _mm256_add_epi8(acc_a, \
+          _mm256_add_epi8( \
+            _mm256_shuffle_epi8(lut_homalt, lo), \
+            _mm256_shuffle_epi8(lut_homalt, hi))); \
+      acc_m = _mm256_add_epi8(acc_m, \
+          _mm256_add_epi8( \
+            _mm256_shuffle_epi8(lut_miss, lo), \
+            _mm256_shuffle_epi8(lut_miss, hi))); \
+    } while (0)
+
+    PROCESS_VEC(v0);
+    PROCESS_VEC(v1);
+
+#undef PROCESS_VEC
+
+    ++iter;
+
+    // SAFE flush (avoid overflow)
+    if (iter >= 60) {
+      __m256i s;
+
+      s = _mm256_sad_epu8(acc_h, zero);
+      uint64_t tmp[4];
+      _mm256_storeu_si256((__m256i*)tmp, s);
+      nHomRef += tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+      s = _mm256_sad_epu8(acc_e, zero);
+      _mm256_storeu_si256((__m256i*)tmp, s);
+      nHet += tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+      s = _mm256_sad_epu8(acc_a, zero);
+      _mm256_storeu_si256((__m256i*)tmp, s);
+      nHomAlt += tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+      s = _mm256_sad_epu8(acc_m, zero);
+      _mm256_storeu_si256((__m256i*)tmp, s);
+      nMissing += tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+      acc_h = acc_e = acc_a = acc_m = zero;
+      iter = 0;
+    }
+  }
+
+  // final flush
+  if (iter > 0) {
+    __m256i s;
+    uint64_t tmp[4];
+
+    s = _mm256_sad_epu8(acc_h, zero);
+    _mm256_storeu_si256((__m256i*)tmp, s);
+    nHomRef += tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+    s = _mm256_sad_epu8(acc_e, zero);
+    _mm256_storeu_si256((__m256i*)tmp, s);
+    nHet += tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+    s = _mm256_sad_epu8(acc_a, zero);
+    _mm256_storeu_si256((__m256i*)tmp, s);
+    nHomAlt += tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+    s = _mm256_sad_epu8(acc_m, zero);
+    _mm256_storeu_si256((__m256i*)tmp, s);
+    nMissing += tmp[0] + tmp[1] + tmp[2] + tmp[3];
+  }
+
+  // tail
+  for (; i < n_bytes; ++i) {
+    uint8_t byte = geno_bytes[i];
+    for (int s = 0; s < 4; ++s) {
+      int code = (byte >> (2*s)) & 3;
+      if (code == 0) nHomRef++;
+      else if (code == 1) nMissing++;
+      else if (code == 2) nHet++;
+      else nHomAlt++;
+    }
+  }
+
+  // padding fix
+  uint32_t valid_last = n_samples % 4;
+  if (valid_last != 0) {
+    uint8_t last = geno_bytes[n_bytes - 1];
+    for (uint32_t s = valid_last; s < 4; ++s) {
+      int code = (last >> (2*s)) & 3;
+      if (code == 0) --nHomRef;
+      else if (code == 1) --nMissing;
+      else if (code == 2) --nHet;
+      else --nHomAlt;
+    }
+  }
+
+  out[0] = (uint32_t)nHomRef;
+  out[1] = (uint32_t)nHet;
+  out[2] = (uint32_t)nHomAlt;
+  out[3] = (uint32_t)nMissing;
+}
+
+// ==================== HWE tests ====================
+
+// Chi-squared HWE approximation — O(1), chi²(1 df) upper-tail p = erfc(sqrt(chi2/2)).
+// Returns NaN when any expected genotype count < 5 (chi² not applicable).
+static double HweChiSq(uint32_t nHet, uint32_t nHom1, uint32_t nHom2) {
+  const double n  = static_cast<double>(nHet + nHom1 + nHom2);
+  if (n == 0.0) return std::numeric_limits<double>::quiet_NaN();
+  const double f  = (2.0 * nHom1 + nHet) / (2.0 * n);  // allele A1 freq
+  const double g  = 1.0 - f;
+  const double Eh = 2.0 * f * g * n;
+  const double E1 = f * f * n;
+  const double E2 = g * g * n;
+  // Chi-sq approximation requires all expected counts >= 5
+  if (E1 < 5.0 || Eh < 5.0 || E2 < 5.0)
+    return std::numeric_limits<double>::quiet_NaN();
+  const double d1 = static_cast<double>(nHom1) - E1;
+  const double dh = static_cast<double>(nHet)  - Eh;
+  const double d2 = static_cast<double>(nHom2) - E2;
+  const double chi2 = d1*d1/E1 + dh*dh/Eh + d2*d2/E2;
+  return std::erfc(std::sqrt(chi2 * 0.5));
+}
+
+
+// ==================== compute_marker_stats_avx2 ====================
+
+struct GenoStats {
+  double   altFreq;
+  uint32_t altCounts;
+  double   missingRate;
+  double   hweP;
+  double   maf;
+  uint32_t mac;
+};
+
+// // Compute genotype counts and derived statistics from packed BED bytes.
+// // Uses AVX2 intrinsics for the main loop with scalar tail fallback.
+GenoStats compute_marker_stats_avx2(const uint8_t* geno_bytes, uint32_t n_samples, bool altFirst) {
+  uint32_t counts[4];  // homA1(code0), het(code2), homA2(code3), missing(code1)
+  count_geno_classes(geno_bytes, n_samples, counts);
+
+  const uint32_t nHomA1   = counts[0];
+  const uint32_t nHet     = counts[1];
+  const uint32_t nHomA2   = counts[2];
+  const uint32_t nMissing = counts[3];
+  const uint32_t nonMissing = n_samples - nMissing;
+
+  GenoStats gs;
+  // altCounts is derived from AVX2-computed genotype class counts
+  gs.altCounts = altFirst ? (2 * nHomA1 + nHet) : (nHet + 2 * nHomA2);
+  gs.missingRate = static_cast<double>(nMissing) / n_samples;
+
+  if (nonMissing == 0) {
+    gs.altFreq = std::numeric_limits<double>::quiet_NaN();
+    gs.hweP    = std::numeric_limits<double>::quiet_NaN();
+    gs.maf     = std::numeric_limits<double>::quiet_NaN();
+    gs.mac     = 0;
+    return gs;
+  }
+
+  gs.altFreq = static_cast<double>(gs.altCounts) / (2.0 * nonMissing);
+  gs.maf = std::min(gs.altFreq, 1.0 - gs.altFreq);
+  gs.mac = std::min(gs.altCounts, 2 * nonMissing - gs.altCounts);
+  // nHet/nHomA1/nHomA2 come from AVX2 count_geno_classes (missing excluded)
+  gs.hweP = HweChiSq(nHet, nHomA1, nHomA2);
+  return gs;
+}
+
 } // anonymous namespace
 
-
-namespace mtPLINK {
 
 // ==================== PlinkData ====================
 
 PlinkData::PlinkData(
-    const std::string& bedFile,
-    const std::string& bimFile,
-    const std::string& famFile,
-    const std::vector<std::string>& subjData,
-    const std::string& AlleleOrder)
-  : m_bedFile(bedFile),
+    std::string bedFile,
+    std::string bimFile,
+    std::string famFile,
+    std::vector<std::string> subjData,
+    std::string AlleleOrder,
+    std::string IDsToIncludeFile,
+    std::string RangesToIncludeFile,
+    std::string IDsToExcludeFile,
+    std::string RangesToExcludeFile,
+    int nMarkersEachChunk)
+  : m_bedFile(std::move(bedFile)),
     m_altFirst(AlleleOrder == "alt-first")
 {
   // ---- Parse .bim ----
@@ -130,7 +398,7 @@ PlinkData::PlinkData(
       famIIDs.push_back(tokens[1]);
     }
   }
-  m_nSubjInFile = static_cast<uint32_t>(famIIDs.size());
+  m_nSubjInFile    = static_cast<uint32_t>(famIIDs.size());
   m_bytesPerMarker = (m_nSubjInFile + 3) / 4;
 
   // ---- Build sample position map + validate ----
@@ -159,36 +427,52 @@ PlinkData::PlinkData(
     if (!bed.good() || magic[0] != 0x6C || magic[1] != 0x1B || magic[2] != 0x01)
         throw std::runtime_error("Invalid or unsupported PLINK bed file format");
   }
+
+  // ---- Filter markers and build chunks ----
+  m_markerInfo = getFilteredMarkers(m_chr, m_pos, m_markerId, m_ref, m_alt,
+                                    IDsToIncludeFile, RangesToIncludeFile,
+                                    IDsToExcludeFile, RangesToExcludeFile);
+  if (m_markerInfo.empty())
+    throw std::runtime_error("No markers remain after PLINK marker filtering.");
+  m_chunkIndices = buildChunks(m_markerInfo, nMarkersEachChunk);
 }
 
-std::vector<MarkerInfo> PlinkData::getFilteredMarkers(
-  const MarkerFilterConfig& filter
-) const {
+std::vector<PlinkData::MarkerInfo> PlinkData::getFilteredMarkers(
+    const std::vector<std::string>& chr,
+    const std::vector<uint32_t>& pos,
+    const std::vector<std::string>& markerId,
+    const std::vector<std::string>& ref,
+    const std::vector<std::string>& alt,
+    const std::string& IDsToIncludeFile,
+    const std::string& RangesToIncludeFile,
+    const std::string& IDsToExcludeFile,
+    const std::string& RangesToExcludeFile) {
 
   // Build full marker list
-  std::vector<MarkerInfo> all;
-  all.reserve(m_nMarkers);
-  for (uint32_t i = 0; i < m_nMarkers; ++i) {
-    all.push_back({m_chr[i], m_pos[i], m_markerId[i],
-                   m_ref[i], m_alt[i], static_cast<uint64_t>(i)});
+  const uint32_t nMarkers = static_cast<uint32_t>(chr.size());
+  std::vector<PlinkData::MarkerInfo> all;
+  all.reserve(nMarkers);
+  for (uint32_t i = 0; i < nMarkers; ++i) {
+    all.push_back({chr[i], pos[i], markerId[i],
+                   ref[i], alt[i], static_cast<uint64_t>(i)});
   }
 
   // Load filter sets
   std::unordered_set<std::string> includeIds, excludeIds;
   std::vector<RangeFilter> includeRanges, excludeRanges;
 
-  if (!filter.IDsToIncludeFile.empty()) {
-    auto ids = readSingleColumnFile(filter.IDsToIncludeFile);
+  if (!IDsToIncludeFile.empty()) {
+    auto ids = readSingleColumnFile(IDsToIncludeFile);
     includeIds.insert(ids.begin(), ids.end());
   }
-  if (!filter.RangesToIncludeFile.empty())
-    includeRanges = readRangeFile(filter.RangesToIncludeFile);
-  if (!filter.IDsToExcludeFile.empty()) {
-    auto ids = readSingleColumnFile(filter.IDsToExcludeFile);
+  if (!RangesToIncludeFile.empty())
+    includeRanges = readRangeFile(RangesToIncludeFile);
+  if (!IDsToExcludeFile.empty()) {
+    auto ids = readSingleColumnFile(IDsToExcludeFile);
     excludeIds.insert(ids.begin(), ids.end());
   }
-  if (!filter.RangesToExcludeFile.empty())
-    excludeRanges = readRangeFile(filter.RangesToExcludeFile);
+  if (!RangesToExcludeFile.empty())
+    excludeRanges = readRangeFile(RangesToExcludeFile);
 
   const bool anyInclude = !includeIds.empty() || !includeRanges.empty();
   const bool anyExclude = !excludeIds.empty() || !excludeRanges.empty();
@@ -231,28 +515,35 @@ std::vector<std::vector<uint64_t>> PlinkData::buildChunks(
   return chunks;
 }
 
-
 // ==================== PlinkCursor ====================
 
-PlinkCursor::PlinkCursor(const PlinkData& data)
-  : m_data(data),
-    m_rawBytes(data.bytesPerMarker())
+PlinkCursor::PlinkCursor(const std::string& bedFile,
+                         uint32_t nBimLines, uint32_t nFamLines,
+                         std::vector<uint32_t> posMap, bool altFirst)
+  : m_bedFile(bedFile),
+    m_nSubjInFile(nFamLines),
+    m_bytesPerMarker((nFamLines + 3) / 4),
+    m_nMarkers(nBimLines),
+    m_posMap(std::move(posMap)),
+    m_altFirst(altFirst),
+    m_rawBytes(m_bytesPerMarker),
+    m_compactGeno((m_posMap.size() + 3) / 4)
 {
-  m_bedStream.open(data.bedFile(), std::ios::binary);
+  m_bedStream.open(bedFile, std::ios::binary);
   if (!m_bedStream.is_open())
-    throw std::runtime_error("Cannot open PLINK bed file: " + data.bedFile());
-  // Skip 3-byte header
-  m_bedStream.seekg(3);
-  if (!m_bedStream.good())
-    throw std::runtime_error("Failed to read PLINK bed header: " + data.bedFile());
+    throw std::runtime_error("Cannot open PLINK bed file: " + bedFile);
+  // Validate 3-byte header
+  char magic[3] = {0};
+  m_bedStream.read(magic, 3);
+  if (!m_bedStream.good() || magic[0] != 0x6C || magic[1] != 0x1B || magic[2] != 0x01)
+    throw std::runtime_error("Invalid or unsupported PLINK bed file format: " + bedFile);
 }
 
 void PlinkCursor::beginSequentialBlock(uint64_t firstMarker) {
-  if (firstMarker >= m_data.nMarkers())
+  if (firstMarker >= m_nMarkers)
     throw std::runtime_error("PLINK marker index out of range in beginSequentialBlock.");
-  const uint64_t pos = 3 + m_data.bytesPerMarker() * firstMarker;
   m_bedStream.clear();
-  m_bedStream.seekg(pos);
+  m_bedStream.seekg(3 + static_cast<uint64_t>(m_bytesPerMarker) * firstMarker);
   if (!m_bedStream.good())
     throw std::runtime_error("Failed to seek PLINK bed file.");
   m_hasSeqCursor = true;
@@ -261,20 +552,19 @@ void PlinkCursor::beginSequentialBlock(uint64_t firstMarker) {
 }
 
 void PlinkCursor::loadBlock(uint64_t startMarker) {
-  if (startMarker >= m_data.nMarkers())
+  if (startMarker >= m_nMarkers)
     throw std::runtime_error("PLINK marker index out of range when loading block.");
 
-  const uint64_t nRemain = static_cast<uint64_t>(m_data.nMarkers()) - startMarker;
+  const uint64_t nRemain = m_nMarkers - startMarker;
   const uint64_t nRead = std::min(BLOCK_CAPACITY, nRemain);
-  const uint64_t nBytes = nRead * m_data.bytesPerMarker();
+  const uint64_t nBytes = nRead * m_bytesPerMarker;
 
   if (m_blockBytes.size() != nBytes)
     m_blockBytes.resize(static_cast<size_t>(nBytes));
 
   if (!m_hasSeqCursor || m_nextMarker != startMarker) {
-    const uint64_t pos = 3 + m_data.bytesPerMarker() * startMarker;
     m_bedStream.clear();
-    m_bedStream.seekg(pos);
+    m_bedStream.seekg(3 + static_cast<uint64_t>(m_bytesPerMarker) * startMarker);
     if (!m_bedStream.good())
       throw std::runtime_error("Failed to seek PLINK bed file for block read.");
   }
@@ -291,40 +581,33 @@ void PlinkCursor::loadBlock(uint64_t startMarker) {
   m_nextMarker = m_blockEnd;
 }
 
-void PlinkCursor::readMarkerBytes(uint64_t gIndex) {
-  const uint64_t bpm = m_data.bytesPerMarker();
+const uint8_t* PlinkCursor::readMarkerPtr(uint64_t gIndex) {
+  const uint64_t bpm = m_bytesPerMarker;
 
-  // Try buffered block first
   if (m_hasBlock && gIndex >= m_blockStart && gIndex < m_blockEnd) {
-    const uint64_t off = (gIndex - m_blockStart) * bpm;
-    std::copy(m_blockBytes.begin() + static_cast<std::ptrdiff_t>(off),
-              m_blockBytes.begin() + static_cast<std::ptrdiff_t>(off + bpm),
-              m_rawBytes.begin());
-    return;
+    return m_blockBytes.data() + (gIndex - m_blockStart) * bpm;
   }
 
-  // Try sequential block load
   if (m_hasSeqCursor && gIndex == m_nextMarker) {
     loadBlock(gIndex);
-    const uint64_t off = (gIndex - m_blockStart) * bpm;
-    std::copy(m_blockBytes.begin() + static_cast<std::ptrdiff_t>(off),
-              m_blockBytes.begin() + static_cast<std::ptrdiff_t>(off + bpm),
-              m_rawBytes.begin());
-    return;
+    return m_blockBytes.data();
   }
 
-  // Fallback: single-marker read
   const uint64_t filePos = 3 + bpm * gIndex;
   m_bedStream.clear();
   m_bedStream.seekg(filePos);
   if (!m_bedStream.good())
-    throw std::runtime_error("Failed to seek PLINK bed file.");
+    throw std::runtime_error("seek failed");
+
   m_bedStream.read(reinterpret_cast<char*>(m_rawBytes.data()), bpm);
   if (!m_bedStream.good())
-    throw std::runtime_error("Failed to read PLINK marker bytes.");
+    throw std::runtime_error("read failed");
+
   m_hasBlock = false;
   m_hasSeqCursor = true;
   m_nextMarker = gIndex + 1;
+
+  return m_rawBytes.data();
 }
 
 arma::vec PlinkCursor::getGenotypes(
@@ -332,40 +615,42 @@ arma::vec PlinkCursor::getGenotypes(
     double& altFreq,
     double& altCounts,
     double& missingRate,
+    double& hweP,
+    double& maf,
+    double& mac,
     std::vector<uint32_t>& indexForMissing
 ) {
-  readMarkerBytes(gIndex);
+  const uint8_t* raw = readMarkerPtr(gIndex);
+  const uint32_t n = static_cast<uint32_t>(m_posMap.size());
 
-  const uint32_t n = m_data.nSubjUsed();
-  const auto& posMap = m_data.samplePosMap();
-  const int* genoMap = m_data.isAltFirst() ? GENO_ALT_FIRST : GENO_REF_FIRST;
+  // Step 1: Repack subset into compact 2-bit buffer
+  repackSubset(raw, m_posMap.data(), m_compactGeno.data(), n);
 
-  arma::vec geno(n);
+  // Step 2: AVX2 stats on subset
+  GenoStats gs = compute_marker_stats_avx2(m_compactGeno.data(), n, m_altFirst);
+  altFreq     = gs.altFreq;
+  altCounts   = gs.altCounts;
+  missingRate = gs.missingRate;
+  hweP        = gs.hweP;
+  maf         = gs.maf;
+  mac         = gs.mac;
+
+  // Step 3: Decode compact 2-bit to float
+  const int* genoMap = m_altFirst ? GENO_ALT_FIRST : GENO_REF_FIRST;
+  arma::vec out(n);
   indexForMissing.clear();
-  int sumAlt = 0;
-  int numMissing = 0;
+  indexForMissing.reserve(n / 10);
 
   for (uint32_t i = 0; i < n; ++i) {
-    const uint32_t fam_pos = posMap[i];
-    const int raw = decodeGenotype(m_rawBytes[fam_pos / 4], fam_pos % 4);
-    const int g = genoMap[raw];
-
-    if (g < 0) {   // missing
-      geno[i] = -1;
-      ++numMissing;
+    const int code = (m_compactGeno[i >> 2] >> ((i & 3) << 1)) & 3;
+    const int g = genoMap[code];
+    if (g < 0) {
+      out[i] = -1;
       indexForMissing.push_back(i);
     } else {
-      geno[i] = g;
-      sumAlt += g;
+      out[i] = g;
     }
   }
 
-  const int count = static_cast<int>(n) - numMissing;
-  missingRate = static_cast<double>(numMissing) / static_cast<double>(n);
-  altCounts = static_cast<double>(sumAlt);
-  altFreq = (count > 0) ? altCounts / (2.0 * count) : 0.0;
-
-  return geno;
+  return out;
 }
-
-} // namespace mtPLINK
