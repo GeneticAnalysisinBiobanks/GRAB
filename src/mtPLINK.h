@@ -107,10 +107,14 @@ public:
                 std::vector<uint32_t> posMap,
                 bool altFirst);
 
+    // Copy constructor: copies all state but re-opens an independent file handle.
+    PlinkCursor(const PlinkCursor& other);
+
     const uint8_t* readMarkerPtr(uint64_t gIndex);
 
-    arma::vec getGenotypes(
+    void getGenotypes(
         uint64_t gIndex,
+        arma::vec& out,
         double& altFreq,
         double& altCounts,
         double& missingRate,

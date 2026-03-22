@@ -146,8 +146,8 @@ public:
     return result;
   }
 
-  // Returns [meta_p_ext, meta_p_noext, cl1_p_ext, cl1_p_noext, cl1_p_batch, ...]
-  std::vector<double> getResultVec(const arma::vec& GVec, int markerIdx) {
+  // Fills rv with [meta_p_ext, meta_p_noext, cl1_p_ext, cl1_p_noext, cl1_p_batch, ...]
+  void getResultVec(const arma::vec& GVec, int markerIdx, std::vector<double>& rv) {
     arma::vec all = getMarkerZSP(GVec, markerIdx);
     const int nOut = 2 * m_Ncluster;
     std::vector<double> sExt(m_Ncluster), sNoext(m_Ncluster);
@@ -172,16 +172,15 @@ public:
       double z = sumScore / std::sqrt(sumVar);
       return std::erfc(std::fabs(z) / std::sqrt(2.0));
     };
-    std::vector<double> r;
-    r.reserve(2 + 3 * m_Ncluster);
-    r.push_back(metaP(sExt, pExt));
-    r.push_back(metaP(sNoext, pNoext));
+    rv.clear();
+    rv.reserve(2 + 3 * m_Ncluster);
+    rv.push_back(metaP(sExt, pExt));
+    rv.push_back(metaP(sNoext, pNoext));
     for (int c = 0; c < m_Ncluster; ++c) {
-      r.push_back(pExt[c]);
-      r.push_back(pNoext[c]);
-      r.push_back(getChunkRefInfo(c, markerIdx).pvalue_bat);
+      rv.push_back(pExt[c]);
+      rv.push_back(pNoext[c]);
+      rv.push_back(getChunkRefInfo(c, markerIdx).pvalue_bat);
     }
-    return r;
   }
 
   int resultSize() const { return 2 + 3 * m_Ncluster; }

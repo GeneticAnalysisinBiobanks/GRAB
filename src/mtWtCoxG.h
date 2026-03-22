@@ -185,12 +185,15 @@ public:
 
   const RefInfo& getChunkRefInfo(size_t i) const { return m_chunkRefInfo[i]; }
 
-  // Returns [pExt, pNoext, zExt, zNoext, AF_ref, AN_ref, pvalue_bat]
-  std::vector<double> getResultVec(const arma::vec& GVec, int markerIdx) {
+  // Fills rv with [pExt, pNoext, zExt, zNoext, AF_ref, AN_ref, pvalue_bat]
+  void getResultVec(const arma::vec& GVec, int markerIdx, std::vector<double>& rv) {
     arma::vec pT = getpvalVec(GVec, markerIdx);
     arma::vec zT = getZScoreVec();
     const RefInfo& ri = getChunkRefInfo(markerIdx);
-    return {pT[0], pT[1], zT[0], zT[1], ri.AF_ref, ri.AN_ref, ri.pvalue_bat};
+    rv.clear();
+    rv.push_back(pT[0]); rv.push_back(pT[1]);
+    rv.push_back(zT[0]); rv.push_back(zT[1]);
+    rv.push_back(ri.AF_ref); rv.push_back(ri.AN_ref); rv.push_back(ri.pvalue_bat);
   }
 
   static int resultSize() { return 7; }

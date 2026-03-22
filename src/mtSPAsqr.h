@@ -99,15 +99,15 @@ public:
     return pvalVec;
   }
 
-  // Returns [z_1..z_ntaus, p_1..p_ntaus, pCCT]
-  std::vector<double> getResultVec(arma::vec GVec, double altFreq) {
+  // Fills rv with [z_1..z_ntaus, p_1..p_ntaus, pCCT]
+  void getResultVec(arma::vec& GVec, double altFreq, std::vector<double>& rv) {
     arma::vec zT;
     arma::vec pT = getMarkerPval(std::move(GVec), altFreq, zT);
     int nt = m_taus.n_elem;
-    std::vector<double> r;
-    r.reserve(2 * nt + 1);
-    for (int j = 0; j < nt; ++j) r.push_back(zT[j]);
-    for (int j = 0; j < nt; ++j) r.push_back(pT[j]);
+    rv.clear();
+    rv.reserve(2 * nt + 1);
+    for (int j = 0; j < nt; ++j) rv.push_back(zT[j]);
+    for (int j = 0; j < nt; ++j) rv.push_back(pT[j]);
     // CCT p-value
     std::vector<double> pvals(nt);
     for (int j = 0; j < nt; ++j) pvals[j] = pT[j];
@@ -129,8 +129,7 @@ public:
         pCCT = (tStat > 1e15) ? (1.0 / tStat) / M_PI : 0.5 - std::atan(tStat) / M_PI;
       }
     }
-    r.push_back(pCCT);
-    return r;
+    rv.push_back(pCCT);
   }
 
   int resultSize() const { return 2 * static_cast<int>(m_taus.n_elem) + 1; }

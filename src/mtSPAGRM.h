@@ -103,11 +103,13 @@ public:
     double& zScore
   );
 
-  // Returns [zScore, pval]
-  std::vector<double> getResultVec(arma::vec GVec, double altFreq) {
+  // Fills rv with [zScore, pval]
+  void getResultVec(arma::vec& GVec, double altFreq, std::vector<double>& rv) {
     double zScore;
     double pval = getMarkerPval(std::move(GVec), altFreq, zScore);
-    return {zScore, pval};
+    rv.clear();
+    rv.push_back(zScore);
+    rv.push_back(pval);
   }
 
   static int resultSize() { return 2; }

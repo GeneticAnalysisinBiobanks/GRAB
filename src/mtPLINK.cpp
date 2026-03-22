@@ -539,6 +539,25 @@ PlinkCursor::PlinkCursor(const std::string& bedFile,
     throw std::runtime_error("Invalid or unsupported PLINK bed file format: " + bedFile);
 }
 
+PlinkCursor::PlinkCursor(const PlinkCursor& other)
+  : m_bedFile(other.m_bedFile),
+    m_nSubjInFile(other.m_nSubjInFile),
+    m_bytesPerMarker(other.m_bytesPerMarker),
+    m_nMarkers(other.m_nMarkers),
+    m_posMap(other.m_posMap),
+    m_altFirst(other.m_altFirst),
+    m_rawBytes(other.m_rawBytes.size()),
+    m_compactGeno(other.m_compactGeno.size())
+{
+  m_bedStream.open(m_bedFile, std::ios::binary);
+  if (!m_bedStream.is_open())
+    throw std::runtime_error("Cannot open PLINK bed file: " + m_bedFile);
+  char magic[3] = {0};
+  m_bedStream.read(magic, 3);
+  if (!m_bedStream.good() || magic[0] != 0x6C || magic[1] != 0x1B || magic[2] != 0x01)
+    throw std::runtime_error("Invalid or unsupported PLINK bed file format: " + m_bedFile);
+}
+
 void PlinkCursor::beginSequentialBlock(uint64_t firstMarker) {
   if (firstMarker >= m_nMarkers)
     throw std::runtime_error("PLINK marker index out of range in beginSequentialBlock.");
@@ -610,8 +629,9 @@ const uint8_t* PlinkCursor::readMarkerPtr(uint64_t gIndex) {
   return m_rawBytes.data();
 }
 
-arma::vec PlinkCursor::getGenotypes(
+void PlinkCursor::getGenotypes(
     uint64_t gIndex,
+    arma::vec& out,
     double& altFreq,
     double& altCounts,
     double& missingRate,
@@ -635,11 +655,10 @@ arma::vec PlinkCursor::getGenotypes(
   maf         = gs.maf;
   mac         = gs.mac;
 
-  // Step 3: Decode compact 2-bit to float
+  // Step 3: Decode compact 2-bit to float (reuse caller's buffer)
   const int* genoMap = m_altFirst ? GENO_ALT_FIRST : GENO_REF_FIRST;
-  arma::vec out(n);
+  out.set_size(n);
   indexForMissing.clear();
-  indexForMissing.reserve(n / 10);
 
   for (uint32_t i = 0; i < n; ++i) {
     const int code = (m_compactGeno[i >> 2] >> ((i & 3) << 1)) & 3;
@@ -651,6 +670,4 @@ arma::vec PlinkCursor::getGenotypes(
       out[i] = g;
     }
   }
-
-  return out;
 }

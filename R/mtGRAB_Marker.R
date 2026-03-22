@@ -1,7 +1,7 @@
 # mtGRAB_Marker.R
 # Single-entry-point for chunk-parallel marker association testing.
 
-GRAB.Marker5 <- function (
+GRAB.Marker6 <- function (
     objNull,
     GenoFile,
     OutputFile,

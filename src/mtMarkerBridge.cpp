@@ -27,25 +27,17 @@ extern mtSPAGRMClass*     ptr_gSPAGRMobj;
 extern mtSAGELDClass*     ptr_gSAGELDobj;
 extern mtSPAsqrClass*     ptr_gSPAsqrobj;
 extern mtSPAmixPlusClass* ptr_gSPAmixPlusobj;
+extern PlinkData*         ptr_gPlinkDataObj;
+extern PlinkCursor*       ptr_gPlinkCursorObj;
 
 void mtMarkerEngine(
   const std::string method,
-  const std::string bedFile,
-  const std::string bimFile,
-  const std::string famFile,
   const std::string outputFile,
-  const std::vector<std::string>& subjData,
-  const std::string AlleleOrder,
-  const int nMarkersEachChunk,
   const int nthreads,
   const std::string impute_method,
   const double missing_cutoff,
   const double min_maf_marker,
-  const double min_mac_marker,
-  const std::string IDsToIncludeFile,
-  const std::string RangesToIncludeFile,
-  const std::string IDsToExcludeFile,
-  const std::string RangesToExcludeFile
+  const double min_mac_marker
 );
 
 
@@ -455,18 +447,34 @@ void mtMarkerBridgeInCPP(
   std::vector<std::string> subjData =
     Rcpp::as<std::vector<std::string>>(objNull["subjData"]);
 
-  mtMarkerEngine(
-    method, bedFile, bimFile, famFile, OutputFile, subjData,
+  // Create PlinkData globally so worker threads can copy it
+  if (ptr_gPlinkDataObj) delete ptr_gPlinkDataObj;
+  ptr_gPlinkDataObj = new PlinkData(
+    bedFile, bimFile, famFile, subjData,
     Rcpp::as<std::string>(control["AlleleOrder"]),
-    Rcpp::as<int>(control["nMarkersEachChunk"]),
+    strOrEmpty(control, "IDsToIncludeFile"),
+    strOrEmpty(control, "RangesToIncludeFile"),
+    strOrEmpty(control, "IDsToExcludeFile"),
+    strOrEmpty(control, "RangesToExcludeFile"),
+    Rcpp::as<int>(control["nMarkersEachChunk"])
+  );
+
+  // Create PlinkCursor globally so worker threads can copy it
+  if (ptr_gPlinkCursorObj) delete ptr_gPlinkCursorObj;
+  ptr_gPlinkCursorObj = new PlinkCursor(
+    ptr_gPlinkDataObj->bedFile(),
+    ptr_gPlinkDataObj->nMarkers(),
+    ptr_gPlinkDataObj->nSubjInFile(),
+    ptr_gPlinkDataObj->samplePosMap(),
+    ptr_gPlinkDataObj->isAltFirst()
+  );
+
+  mtMarkerEngine(
+    method, OutputFile,
     Rcpp::as<int>(control["nthreads"]),
     Rcpp::as<std::string>(control["impute_method"]),
     Rcpp::as<double>(control["missing_cutoff"]),
     Rcpp::as<double>(control["min_maf_marker"]),
-    Rcpp::as<double>(control["min_mac_marker"]),
-    strOrEmpty(control, "IDsToIncludeFile"),
-    strOrEmpty(control, "RangesToIncludeFile"),
-    strOrEmpty(control, "IDsToExcludeFile"),
-    strOrEmpty(control, "RangesToExcludeFile")
+    Rcpp::as<double>(control["min_mac_marker"])
   );
 }

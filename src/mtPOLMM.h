@@ -42,11 +42,15 @@ public:
     double& zScore
   ) const;
 
-  // Returns [pval, beta, seBeta, zScore]
-  std::vector<double> getResultVec(arma::vec GVec, double altFreq) {
+  // Fills rv with [pval, beta, seBeta, zScore]
+  void getResultVec(arma::vec& GVec, double altFreq, std::vector<double>& rv) {
     double Beta, seBeta, pval, zScore;
     getMarkerPval(std::move(GVec), Beta, seBeta, pval, altFreq, zScore);
-    return {pval, Beta, seBeta, zScore};
+    rv.clear();
+    rv.push_back(pval);
+    rv.push_back(Beta);
+    rv.push_back(seBeta);
+    rv.push_back(zScore);
   }
 
   static int resultSize() { return 4; }

@@ -59,9 +59,11 @@ public:
     OutlierData outlier
   );
 
-  std::vector<double> getResultVec(arma::vec GVec, double altFreq) {
+  void getResultVec(arma::vec& GVec, double altFreq, std::vector<double>& rv) {
     getMarkerPval(std::move(GVec), altFreq);
-    return {m_pval, m_zScore};
+    rv.clear();
+    rv.push_back(m_pval);
+    rv.push_back(m_zScore);
   }
 
   int resultSize() const { return 2; }
