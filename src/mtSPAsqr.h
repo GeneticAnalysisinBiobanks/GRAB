@@ -4,6 +4,8 @@
 // SPAsqr.h -- SPA-squared: multi-tau wrapper delegating to SPAGRMClass per tau
 
 #include <RcppArmadillo.h>
+#include <sstream>
+#include <cstdio>
 #include "mtSPAGRM.h"
 
 // Per-tau family data passed from R at null-model construction time.
@@ -24,7 +26,7 @@ public:
   mtSPAsqrClass(
     arma::vec taus,
     arma::mat Resid_mat,
-    std::vector<SPAGRMSpace::FamilyData> tauFamilyData,
+    std::vector<nsSPAGRM::FamilyData> tauFamilyData,
     arma::vec sum_R_nonOutlier_vec,
     arma::vec R_GRM_R_nonOutlier_vec,
     arma::vec R_GRM_R_TwoSubjOutlier_vec,
@@ -62,6 +64,22 @@ public:
   int get_ntaus() const { return m_taus.n_elem; }
   std::vector<double> getTaus() const { return arma::conv_to<std::vector<double>>::from(m_taus); }
 
+  std::string getHeaderColumns() const {
+    std::ostringstream oss;
+    oss << "\thwepval";
+    auto taus = getTaus();
+    for (double tau : taus) {
+      char buf[32]; std::snprintf(buf, sizeof(buf), "%.6g", tau);
+      oss << "\tZ_tau" << buf;
+    }
+    for (double tau : taus) {
+      char buf[32]; std::snprintf(buf, sizeof(buf), "%.6g", tau);
+      oss << "\tP_tau" << buf;
+    }
+    oss << "\tP_CCT";
+    return oss.str();
+  }
+
   arma::vec getMarkerPval(
     arma::vec GVec,
     double altFreq,
@@ -83,6 +101,44 @@ public:
 
     return pvalVec;
   }
+
+  // Returns [hwepval, z_1..z_ntaus, p_1..p_ntaus, pCCT]
+  std::vector<double> getResultVec(arma::vec GVec, double altFreq) {
+    arma::vec zT;
+    double hwepval;
+    arma::vec pT = getMarkerPval(std::move(GVec), altFreq, zT, hwepval);
+    int nt = m_taus.n_elem;
+    std::vector<double> r;
+    r.reserve(1 + 2 * nt + 1);
+    r.push_back(hwepval);
+    for (int j = 0; j < nt; ++j) r.push_back(zT[j]);
+    for (int j = 0; j < nt; ++j) r.push_back(pT[j]);
+    // CCT p-value
+    std::vector<double> pvals(nt);
+    for (int j = 0; j < nt; ++j) pvals[j] = pT[j];
+    std::vector<double> pp;
+    pp.reserve(nt);
+    for (double x : pvals) if (!std::isnan(x)) pp.push_back(x);
+    double pCCT = std::numeric_limits<double>::quiet_NaN();
+    if (!pp.empty()) {
+      double tStat = 0.0;
+      bool zero = false;
+      for (double x : pp) {
+        if (x <= 0.0) { zero = true; break; }
+        double xc = (x >= 1.0) ? 0.999 : x;
+        tStat += std::tan((0.5 - xc) * M_PI);
+      }
+      if (zero) pCCT = 0.0;
+      else {
+        tStat /= static_cast<double>(pp.size());
+        pCCT = (tStat > 1e15) ? (1.0 / tStat) / M_PI : 0.5 - std::atan(tStat) / M_PI;
+      }
+    }
+    r.push_back(pCCT);
+    return r;
+  }
+
+  int resultSize() const { return 1 + 2 * static_cast<int>(m_taus.n_elem) + 1; }
 };
 
 #endif

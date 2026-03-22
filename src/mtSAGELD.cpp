@@ -145,7 +145,7 @@ double mtSAGELDClass::getMarkerPval(
         double MAF_ratio = (m_MAF_interval[order2] - MAF) / (m_MAF_interval[order2] - m_MAF_interval[order1]);
         double Var_ThreeOutlier = 0;
         int n1 = static_cast<int>(m_ThreeSubj_list.size());
-        std::vector<SPAGRMSpace::UpdatedThreeSubj> update_ThreeSubj_list(n1);
+        std::vector<nsSPAGRM::UpdatedThreeSubj> update_ThreeSubj_list(n1);
         if (n1 != 0) {
           for (int i = 0; i < n1; i++) {
             const auto& tsf3 = m_ThreeSubj_list[i];
@@ -169,11 +169,11 @@ double mtSAGELDClass::getMarkerPval(
         double Score_adj = Score / sqrt(Var_Ratio);
         double zeta1 = std::abs(Score_adj) / Score_var; zeta1 = std::min(zeta1, 1.2);
         double zeta2 = -std::abs(m_zeta);
-        double pval1 = SPAGRMSpace::getProbSpa(
+        double pval1 = nsSPAGRM::getProbSpa(
           m_resid_unrelated_outliers, m_TwoSubj_resid_list, m_TwoSubj_rho_list,
           update_ThreeSubj_list, m_sum_R_nonOutlier, m_R_GRM_R_nonOutlier(0),
           std::abs(Score_adj), MAF, false, zeta1, 1e-4);
-        double pval2 = SPAGRMSpace::getProbSpa(
+        double pval2 = nsSPAGRM::getProbSpa(
           m_resid_unrelated_outliers, m_TwoSubj_resid_list, m_TwoSubj_rho_list,
           update_ThreeSubj_list, m_sum_R_nonOutlier, m_R_GRM_R_nonOutlier(0),
           -std::abs(Score_adj), MAF, true, zeta2, m_tol);
@@ -205,7 +205,7 @@ double mtSAGELDClass::getMarkerPval(
         double MAF_ratio = (m_MAF_interval[order2] - MAF) / (m_MAF_interval[order2] - m_MAF_interval[order1]);
         double Var_ThreeOutlier = 0;
         int n1 = static_cast<int>(m_ThreeSubj_list.size());
-        std::vector<SPAGRMSpace::UpdatedThreeSubj> update_ThreeSubj_list(n1);
+        std::vector<nsSPAGRM::UpdatedThreeSubj> update_ThreeSubj_list(n1);
         if (n1 != 0) {
           for (int i = 0; i < n1; i++) {
             const auto& tsf3 = m_ThreeSubj_list[i];
@@ -244,11 +244,11 @@ double mtSAGELDClass::getMarkerPval(
         }
         double sum_R_nonOutlier_i = m_sum_R_nonOutlier_GxE - lambda_i * m_sum_R_nonOutlier_G;
 
-        double pval1 = SPAGRMSpace::getProbSpa(
+        double pval1 = nsSPAGRM::getProbSpa(
           resid_outliers_i, twoResid_i, m_TwoSubj_rho_list,
           update_ThreeSubj_list, sum_R_nonOutlier_i, m_R_GRM_R_nonOutlier_i,
           std::abs(Score_adj), MAF, false, zeta1, 1e-4);
-        double pval2 = SPAGRMSpace::getProbSpa(
+        double pval2 = nsSPAGRM::getProbSpa(
           resid_outliers_i, twoResid_i, m_TwoSubj_rho_list,
           update_ThreeSubj_list, sum_R_nonOutlier_i, m_R_GRM_R_nonOutlier_i,
           -std::abs(Score_adj), MAF, true, zeta2, m_tol);

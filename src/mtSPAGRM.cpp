@@ -1,4 +1,4 @@
-// SPAGRM.cpp -- SPAGRMSpace free functions and mtSPAGRMClass method implementations
+// SPAGRM.cpp -- nsSPAGRM free functions and mtSPAGRMClass method implementations
 
 #include <RcppArmadillo.h>
 #include <limits>
@@ -7,7 +7,7 @@
 #include "mtSPAGRM.h"
 #include "mtUTIL.h"
 
-namespace SPAGRMSpace {
+namespace nsSPAGRM {
 
 arma::mat mgf(
   double t,
@@ -179,7 +179,7 @@ double getProbSpa(
   return pval;
 }
 
-} // namespace SPAGRMSpace
+} // namespace nsSPAGRM
 
 mtSPAGRMClass::mtSPAGRMClass(
   arma::vec resid,
@@ -188,7 +188,7 @@ mtSPAGRMClass::mtSPAGRMClass(
   double R_GRM_R_TwoSubjOutlier,
   double R_GRM_R,
   arma::vec MAF_interval,
-  SPAGRMSpace::FamilyData fam,
+  nsSPAGRM::FamilyData fam,
   double SPA_Cutoff,
   double zeta,
   double tol
@@ -239,7 +239,7 @@ double mtSPAGRMClass::getMarkerPval(
   double Var_ThreeOutlier = 0;
 
   int n1 = static_cast<int>(m_ThreeSubj_standS_list.size());
-  std::vector<SPAGRMSpace::UpdatedThreeSubj> threeSubj_list;
+  std::vector<nsSPAGRM::UpdatedThreeSubj> threeSubj_list;
   threeSubj_list.reserve(n1);
 
   if (n1 != 0) {
@@ -271,11 +271,11 @@ double mtSPAGRMClass::getMarkerPval(
   double zeta1 = std::abs(Score_adj) / Score_var; zeta1 = std::min(zeta1, 1.2);
   double zeta2 = -std::abs(m_zeta);
 
-  double pval1 = SPAGRMSpace::getProbSpa(
+  double pval1 = nsSPAGRM::getProbSpa(
     m_resid_unrelated_outliers, m_TwoSubj_resid_list, m_TwoSubj_rho_list,
     threeSubj_list, m_sum_R_nonOutlier, m_R_GRM_R_nonOutlier,
     std::abs(Score_adj), MAF, false, zeta1, 1e-4);
-  double pval2 = SPAGRMSpace::getProbSpa(
+  double pval2 = nsSPAGRM::getProbSpa(
     m_resid_unrelated_outliers, m_TwoSubj_resid_list, m_TwoSubj_rho_list,
     threeSubj_list, m_sum_R_nonOutlier, m_R_GRM_R_nonOutlier,
     -std::abs(Score_adj), MAF, true, zeta2, m_tol);

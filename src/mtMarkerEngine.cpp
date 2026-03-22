@@ -3,10 +3,11 @@
 // Functions by role:
 //
 //   [Inline helpers]
-//     numToStr           — format a double as a short string ("NA", "Inf", or %.6g)
-//     cctPvalue          — Cauchy combination test aggregate p-value
-//     appendCell         — append a tab-separated cell to an ostringstream
-//     appendMeta         — append the 8 standard marker meta-columns
+//     numToChars         — format a double directly into a char buffer
+//     makeNaSuffix       — build precomputed NA suffix for fail-QC rows
+//     formatLine         — format one output row (meta + numeric values)
+//     formatLineNA       — format one fail-QC output row (meta + NA suffix)
+//     formatLineWithPrefix — format one output row with a string prefix column
 //
 //   [File-local structs]
 //     ThreadContext      — per-worker copies of the active statistical method object
@@ -25,8 +26,6 @@
 #include <condition_variable>
 #include <atomic>
 #include <fstream>
-#include <sstream>
-#include <iomanip>
 #include <algorithm>
 #include <cmath>
 #include <exception>
@@ -35,7 +34,6 @@
 #include <ctime>
 #include <cstdarg>
 #include <RcppArmadillo.h>
-#include <boost/math/distributions/chi_squared.hpp>
 #include <zlib.h>
 
 #include "mtPLINK.h"
@@ -79,49 +77,43 @@ void infoMsg(const char* fmt, ...) {
   Rprintf("[INFO] %s %s\n", ts, buf);
 }
 
-
-// ---- Inline helpers ----
+// Build a string of nCols tab-separated "NA" values (for fail-QC rows).
+// Determines nResultCols based on method using global method pointers.
+std::string makeNaSuffix(const std::string& method) {
+  int nResultCols = 0;
+  if      (method == "POLMM")      nResultCols = ptr_gPOLMMobj->resultSize();
+  else if (method == "SPACox")     nResultCols = ptr_gSPACoxobj->resultSize();
+  else if (method == "SPAmix")     nResultCols = ptr_gSPAmixobj->resultSize();
+  else if (method == "SPAmixPlus") nResultCols = ptr_gSPAmixPlusobj->resultSize();
+  else if (method == "SPAGRM")    nResultCols = ptr_gSPAGRMobj->resultSize();
+  else if (method == "SAGELD")    nResultCols = ptr_gSAGELDobj->resultSize();
+  else if (method == "WtCoxG")    nResultCols = ptr_gWtCoxGobj->resultSize();
+  else if (method == "SPAsqr")    nResultCols = ptr_gSPAsqrobj->resultSize();
+  else if (method == "LEAF")      nResultCols = ptr_gLEAFobj->resultSize();
+  
+  if (nResultCols <= 0) return {};
+  // Each column: "\tNA" = 3 chars
+  std::string s;
+  s.reserve(3 * nResultCols);
+  for (int i = 0; i < nResultCols; ++i) { s += '\t'; s += 'N'; s += 'A'; }
+  return s;
+}
 
 // Format a double as a short string: "NA", "Inf", "-Inf", or %.6g.
-std::string numToStr(double x) {
-  if (std::isnan(x)) return "NA";
-  if (std::isinf(x)) return (x > 0 ? "Inf" : "-Inf");
-  char buf[32];
-  std::snprintf(buf, sizeof(buf), "%.6g", x);
-  return buf;
-}
-
-// Cauchy combination test: aggregate a vector of p-values into one p-value.
-double cctPvalue(const std::vector<double>& pvals) {
-  std::vector<double> p;
-  p.reserve(pvals.size());
-  for (double x : pvals)
-    if (!std::isnan(x)) p.push_back(x);
-  if (p.empty()) return std::numeric_limits<double>::quiet_NaN();
-  double tStat = 0.0;
-  for (double x : p) {
-    if (x <= 0.0) return 0.0;
-    if (x >= 1.0) x = 0.999;
-    tStat += std::tan((0.5 - x) * M_PI);
+// Writes directly into a char buffer and returns the length.
+int numToChars(char* buf, double x) {
+  if (std::isnan(x)) { buf[0]='N'; buf[1]='A'; return 2; }
+  if (std::isinf(x)) {
+    if (x > 0) { buf[0]='I'; buf[1]='n'; buf[2]='f'; return 3; }
+    else { buf[0]='-'; buf[1]='I'; buf[2]='n'; buf[3]='f'; return 4; }
   }
-  tStat /= static_cast<double>(p.size());
-  if (tStat > 1e15) return (1.0 / tStat) / M_PI;
-  return 0.5 - std::atan(tStat) / M_PI;
+  return std::snprintf(buf, 32, "%.6g", x);
 }
 
-// Append one tab-separated value to an output row buffer.
-void appendCell(std::ostringstream& oss, const std::string& v, bool first = false) {
-  if (!first) oss << '\t';
-  oss << v;
-}
-void appendCell(std::ostringstream& oss, double v, bool first = false) {
-  appendCell(oss, numToStr(v), first);
-}
-
-// Append the 8 standard marker meta-columns (Marker, Chr, Pos, Ref, Alt,
-// AltCount, AltFreq, MissRate) as the first cells of an output row.
-void appendMeta(
-  std::ostringstream& oss,
+// Format one output line: meta columns + numeric result values.
+// Uses pre-reserved std::string for efficiency.
+void formatLine(
+  std::string& out,
   const std::string& marker,
   const std::string& chr,
   uint32_t pos,
@@ -129,16 +121,65 @@ void appendMeta(
   const std::string& alt,
   double altCounts,
   double altFreq,
-  double missingRate
+  double missingRate,
+  const std::vector<double>& vals
 ) {
-  appendCell(oss, marker, true);
-  appendCell(oss, chr);
-  appendCell(oss, std::to_string(pos));
-  appendCell(oss, ref);
-  appendCell(oss, alt);
-  appendCell(oss, altCounts);
-  appendCell(oss, altFreq);
-  appendCell(oss, missingRate);
+  std::string s;
+  s.reserve(512);
+  char buf[32];
+  int n;
+
+  // Meta columns: Marker, Chr, Pos, Ref, Alt, AltCount, AltFreq, MissRate
+  s += marker; s += '\t';
+  s += chr;    s += '\t';
+  n = std::snprintf(buf, sizeof(buf), "%u", pos);
+  s.append(buf, n); s += '\t';
+  s += ref;    s += '\t';
+  s += alt;    s += '\t';
+  n = numToChars(buf, altCounts); s.append(buf, n); s += '\t';
+  n = numToChars(buf, altFreq);   s.append(buf, n); s += '\t';
+  n = numToChars(buf, missingRate); s.append(buf, n);
+
+  // Value columns
+  for (double v : vals) {
+    s += '\t';
+    n = numToChars(buf, v);
+    s.append(buf, n);
+  }
+  s += '\n';
+  out += s;
+}
+
+// Format one output line for fail-QC markers using precomputed NA suffix.
+void formatLineNA(
+  std::string& out,
+  const std::string& marker,
+  const std::string& chr,
+  uint32_t pos,
+  const std::string& ref,
+  const std::string& alt,
+  double altCounts,
+  double altFreq,
+  double missingRate,
+  const std::string& naSuffix
+) {
+  std::string s;
+  s.reserve(512);
+  char buf[32];
+  int n;
+
+  s += marker; s += '\t';
+  s += chr;    s += '\t';
+  n = std::snprintf(buf, sizeof(buf), "%u", pos);
+  s.append(buf, n); s += '\t';
+  s += ref;    s += '\t';
+  s += alt;    s += '\t';
+  n = numToChars(buf, altCounts); s.append(buf, n); s += '\t';
+  n = numToChars(buf, altFreq);   s.append(buf, n); s += '\t';
+  n = numToChars(buf, missingRate); s.append(buf, n);
+  s += naSuffix;
+  s += '\n';
+  out += s;
 }
 
 // ---- File-local structs ----
@@ -161,44 +202,20 @@ struct ThreadContext {
 
 const char* META_HEADER = "Marker\tChr\tPos\tRef\tAlt\tAltCount\tAltFreq\tMissRate";
 
-// Build the TSV column header line for the given method.
-std::string getHeader(const std::string& method,
-                      const std::string& sageldMethod,
-                      const std::vector<double>& taus,
-                      int nPheno,
-                      int nCluster) {
-  std::ostringstream oss;
-  oss << META_HEADER;
-
-  if (method == "POLMM") {
-    oss << "\tPvalue\tbeta\tseBeta\tzScore";
-  } else if (method == "SPACox") {
-    oss << "\tPvalue\tzScore";
-  } else if (method == "SPAmix" || method == "SPAmixPlus") {
-    oss << "\tPheno\tPvalue\tzScore";
-  } else if (method == "SPAGRM") {
-    oss << "\tzScore\tPvalue\thwepval";
-  } else if (method == "SAGELD") {
-    if (sageldMethod == "GALLOP")
-      oss << "\tMethod\tBeta_G\tBeta_GxE\tSE_G\tSE_GxE\tPvalue_G\tPvalue_GxE\thwepval";
-    else
-      oss << "\tMethod\tzScore_G\tzScore_GxE\tPvalue_G\tPvalue_GxE\thwepval";
-  } else if (method == "WtCoxG") {
-    oss << "\tWtCoxG.ext\tWtCoxG.noext\tzscore.ext\tzscore.noext"
-        << "\tAF_ref\tAN_ref\tpvalue_bat";
-  } else if (method == "SPAsqr") {
-    oss << "\thwepval";
-    for (double tau : taus) oss << "\tZ_tau" << numToStr(tau);
-    for (double tau : taus) oss << "\tP_tau" << numToStr(tau);
-    oss << "\tP_CCT";
-  } else if (method == "LEAF") {
-    oss << "\tmeta.p_ext\tmeta.p_noext";
-    for (int i = 1; i <= nCluster; ++i)
-      oss << "\tcl" << i << ".p_ext\tcl" << i << ".p_noext\tcl" << i << ".p_batch";
-  } else {
-    throw std::runtime_error("Unsupported method in mtMarker: " + method);
-  }
-  return oss.str();
+// Build the TSV column header line by dispatching to the active method object.
+std::string getHeader(const std::string& method) {
+  std::string cols;
+  if (method == "POLMM")          cols = ptr_gPOLMMobj->getHeaderColumns();
+  else if (method == "SPACox")    cols = ptr_gSPACoxobj->getHeaderColumns();
+  else if (method == "SPAmix")    cols = ptr_gSPAmixobj->getHeaderColumns();
+  else if (method == "SPAmixPlus") cols = ptr_gSPAmixPlusobj->getHeaderColumns();
+  else if (method == "SPAGRM")   cols = ptr_gSPAGRMobj->getHeaderColumns();
+  else if (method == "SAGELD")   cols = ptr_gSAGELDobj->getHeaderColumns();
+  else if (method == "WtCoxG")   cols = ptr_gWtCoxGobj->getHeaderColumns();
+  else if (method == "SPAsqr")   cols = ptr_gSPAsqrobj->getHeaderColumns();
+  else if (method == "LEAF")     cols = ptr_gLEAFobj->getHeaderColumns();
+  else throw std::runtime_error("Unsupported method in mtMarker: " + method);
+  return std::string(META_HEADER) + cols;
 }
 
 
@@ -290,17 +307,7 @@ void mtMarkerEngine(
   infoMsg("Number of chunks for all markers: %zu", chunkIndices.size());
   infoMsg("Number of threads: %d", effective_nthreads);
 
-  int nPheno = 1;
-  if (method == "SPAmix") nPheno = ptr_gSPAmixobj->getNpheno();
-  if (method == "SPAmixPlus") nPheno = ptr_gSPAmixPlusobj->getNpheno();
-  if (method == "SPAsqr") nPheno = ptr_gSPAsqrobj->get_ntaus();
-
-  const std::string sageldMethod = (method == "SAGELD" && ptr_gSAGELDobj) ? ptr_gSAGELDobj->getMethod() : "SAGELD";
-  const std::vector<double> spasqrTaus = (method == "SPAsqr" && ptr_gSPAsqrobj) ? ptr_gSPAsqrobj->getTaus() : std::vector<double>{};
-  const int leafNcluster = (method == "LEAF" && ptr_gLEAFobj) ? ptr_gLEAFobj->get_Ncluster() : 0;
-
-  const std::string header = getHeader(method, sageldMethod, spasqrTaus, nPheno, leafNcluster);
-
+  const std::string header = getHeader(method);
   std::vector<std::string> chunkOutput(chunkIndices.size());
   std::vector<char> chunkReady(chunkIndices.size(), 0);
   std::atomic<size_t> nextChunk(0);
@@ -309,39 +316,41 @@ void mtMarkerEngine(
   std::mutex errorMutex;
   std::mutex writeMutex;
   std::condition_variable writeCv;
-  bool stopWriter = false;
-
+  std::atomic<bool> stopWriter{false};
 
   std::thread writerThread([&]() {
-    const bool useGzip = outputFile.size() >= 3 &&
-      outputFile.compare(outputFile.size() - 3, 3, ".gz") == 0;
-
+    const bool useGzip = outputFile.size() > 3 && outputFile.compare(outputFile.size() - 3, 3, ".gz") == 0;
     gzFile gz = nullptr;
     std::ofstream plainOut;
 
     if (useGzip) {
       gz = gzopen(outputFile.c_str(), "wb");
       if (!gz) {
-        std::lock_guard<std::mutex> lock(errorMutex);
-        workerError = std::make_exception_ptr(std::runtime_error("Cannot open gzip output file: " + outputFile));
-        stopWriter = true;
-        writeCv.notify_all();
+        {
+          std::lock_guard<std::mutex> lock(errorMutex);
+          workerError = std::make_exception_ptr(std::runtime_error("Cannot open gzip output file: " + outputFile)); 
+        }
+        stopWriter.store(true);
         return;
       }
     } else {
       plainOut.open(outputFile.c_str());
       if (!plainOut.is_open()) {
-        std::lock_guard<std::mutex> lock(errorMutex);
-        workerError = std::make_exception_ptr(std::runtime_error("Cannot open output file: " + outputFile));
-        stopWriter = true;
-        writeCv.notify_all();
+        {
+          std::lock_guard<std::mutex> lock(errorMutex);
+          workerError = std::make_exception_ptr(std::runtime_error("Cannot open output file: " + outputFile));
+        }
+        stopWriter.store(true);
         return;
       }
     }
 
     auto writeStr = [&](const std::string& s) {
-      if (useGzip) gzwrite(gz, s.data(), static_cast<unsigned>(s.size()));
-      else plainOut << s;
+      if (useGzip) {
+        gzwrite(gz, s.data(), static_cast<unsigned>(s.size()));
+      } else {
+        plainOut << s;
+      }
     };
 
     writeStr(header + "\n");
@@ -349,13 +358,18 @@ void mtMarkerEngine(
     for (size_t i = 0; i < chunkOutput.size(); ++i) {
       std::unique_lock<std::mutex> lk(writeMutex);
       writeCv.wait(lk, [&]() { return chunkReady[i] || stopWriter; });
-      if (!chunkReady[i]) break;
+      if (!chunkReady[i]) {
+        break;
+      }
       writeStr(chunkOutput[i]);
       infoMsg("Writing finished: chunk %zu/%zu", i + 1, chunkOutput.size());
     }
 
-    if (useGzip) gzclose(gz);
-    else plainOut.close();
+    if (useGzip) {
+      gzclose(gz);
+    } else {
+      plainOut.close();
+    }
   });
 
 
@@ -365,30 +379,26 @@ void mtMarkerEngine(
       ThreadContext ctx = makeThreadContext(method);
       mtPLINK::PlinkCursor cursor(plinkData);
 
+      // Precompute NA suffix for fail-QC lines (method-dependent column count)
+      const std::string naSuffix = makeNaSuffix(method);
+
       while (true) {
         size_t cidx = nextChunk.fetch_add(1);
         if (cidx >= chunkIndices.size()) break;
 
         const auto& gIdx = chunkIndices[cidx];
-        std::ostringstream out;
+        std::string out;
+        out.reserve(gIdx.size() * 256);
 
         if (!gIdx.empty()) cursor.beginSequentialBlock(gIdx.front());
 
-        // WtCoxG per-chunk prep: look up refMap and call updateMarkerInfo
-        if (method == "WtCoxG") {
-          ctx.wtcoxg->prepareChunk(gIdx);
-        }
-
-        // LEAF per-chunk prep: look up per-cluster refMaps
-        if (method == "LEAF") {
-          ctx.leaf->prepareChunk(gIdx);
-        }
+        if (method == "WtCoxG") ctx.wtcoxg->prepareChunk(gIdx);
+        if (method == "LEAF")   ctx.leaf->prepareChunk(gIdx);
 
         for (size_t i = 0; i < gIdx.size(); ++i) {
           double altFreq = NAN, altCounts = NAN, missingRate = NAN;
           std::vector<uint32_t> indexForMissing;
 
-          // Read genotype from per-thread cursor; metadata from shared plinkData
           arma::vec GVec = cursor.getGenotypes(gIdx[i],
             altFreq, altCounts, missingRate, indexForMissing);
 
@@ -407,195 +417,94 @@ void mtMarkerEngine(
           if (passQC) {
             int nMissing = indexForMissing.size();
             double imputeG = 2 * altFreq;
-
-            for (int j = 0; j < nMissing; j++){
-              uint32_t index = indexForMissing.at(j);
-              GVec.at(index) = imputeG;
+            for (int j = 0; j < nMissing; j++) {
+              GVec.at(indexForMissing.at(j)) = imputeG;
             }
-
             if (method != "WtCoxG") {
-              if (altFreq > 0.5){
+              if (altFreq > 0.5) {
                 GVec = 2 - GVec;
                 flip = true;
               }
             }
           }
 
-          if (method == "SPAmix" || method == "SPAmixPlus") {
-            std::vector<double> p(nPheno, NAN), z(nPheno, NAN);
-            if (passQC) {
-              if (method == "SPAmix") {
-                ctx.spamix->getMarkerPval(GVec, altFreq);
-                arma::vec pT = ctx.spamix->getpvalVec(), zT = ctx.spamix->getzScoreVec();
-                for (int j = 0; j < nPheno; ++j) { p[j] = pT[j]; z[j] = zT[j]; }
-              } else {
-                ctx.spamixPlus->getMarkerPval(GVec, altFreq);
-                arma::vec pT = ctx.spamixPlus->getpvalVec(), zT = ctx.spamixPlus->getzScoreVec();
-                for (int j = 0; j < nPheno; ++j) { p[j] = pT[j]; z[j] = zT[j]; }
-              }
-            }
-            for (int j = 0; j < nPheno; ++j) {
-              std::ostringstream row;
-              appendMeta(row, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate);
-              appendCell(row, "pheno_" + std::to_string(j + 1));
-              appendCell(row, p[j]); appendCell(row, z[j]);
-              out << row.str() << '\n';
-            }
+          // --- SPAmix ---
+          if (method == "SPAmix") {
+            if (!passQC) { formatLineNA(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, naSuffix); continue; }
+            std::vector<double> rv = ctx.spamix->getResultVec(GVec, altFreq);
+            formatLine(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, rv);
             continue;
           }
 
+          // --- SPAmixPlus ---
+          if (method == "SPAmixPlus") {
+            if (!passQC) { formatLineNA(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, naSuffix); continue; }
+            std::vector<double> rv = ctx.spamixPlus->getResultVec(GVec, altFreq);
+            formatLine(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, rv);
+            continue;
+          }
 
+          // --- POLMM ---
           if (method == "POLMM") {
-            double Beta = NAN, seBeta = NAN, pval = NAN, zScore = NAN;
-            if (passQC) {
-              ctx.polmm->getMarkerPval(GVec, Beta, seBeta, pval, altFreq, zScore);
-              Beta *= (1.0 - 2.0 * static_cast<double>(flip));
-            }
-            std::ostringstream row;
-            appendMeta(row, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate);
-            appendCell(row, pval);
-            appendCell(row, Beta); appendCell(row, seBeta); appendCell(row, zScore);
-            out << row.str() << '\n';
+            if (!passQC) { formatLineNA(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, naSuffix); continue; }
+            std::vector<double> rv = ctx.polmm->getResultVec(GVec, altFreq);
+            rv[1] *= (1.0 - 2.0 * static_cast<double>(flip)); // flip beta
+            formatLine(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, rv);
             continue;
           }
 
-
+          // --- SPACox ---
           if (method == "SPACox") {
-            double pval = NAN, zScore = NAN;
-            if (passQC) pval = ctx.spacox->getMarkerPval(GVec, altFreq, zScore);
-            std::ostringstream row;
-            appendMeta(row, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate);
-            appendCell(row, pval); appendCell(row, zScore);
-            out << row.str() << '\n';
+            if (!passQC) { formatLineNA(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, naSuffix); continue; }
+            std::vector<double> rv = ctx.spacox->getResultVec(GVec, altFreq);
+            formatLine(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, rv);
             continue;
           }
 
-
+          // --- SPAGRM ---
           if (method == "SPAGRM") {
-            double pval = NAN, zScore = NAN, hwepval = NAN;
-            if (passQC) pval = ctx.spagrm->getMarkerPval(GVec, altFreq, zScore, hwepval);
-            std::ostringstream row;
-            appendMeta(row, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate);
-            appendCell(row, zScore);
-            appendCell(row, pval); appendCell(row, hwepval);
-            out << row.str() << '\n';
+            if (!passQC) { formatLineNA(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, naSuffix); continue; }
+            std::vector<double> rv = ctx.spagrm->getResultVec(GVec, altFreq);
+            formatLine(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, rv);
             continue;
           }
 
-
+          // --- SAGELD ---
           if (method == "SAGELD") {
-            double hwepval = NAN;
-            double zG = NAN, zGxE = NAN, pG = NAN, pGxE = NAN;
-            double bG = NAN, bGxE = NAN, seG = NAN, seGxE = NAN;
-            if (passQC) {
-              ctx.sageld->getMarkerPval(GVec, altFreq, hwepval);
-              arma::vec pT = ctx.sageld->getpvalVec(), zT = ctx.sageld->getzScoreVec();
-              arma::vec bT = ctx.sageld->getBetaVec(), seT = ctx.sageld->getseBetaVec();
-              zG = zT[0]; zGxE = zT[1]; pG = pT[0]; pGxE = pT[1];
-              bG = bT[0] * (1.0 - 2.0 * static_cast<double>(flip));
-              bGxE = bT[1] * (1.0 - 2.0 * static_cast<double>(flip));
-              seG = seT[0]; seGxE = seT[1];
-            }
-            std::ostringstream row;
-            appendMeta(row, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate);
-            appendCell(row, sageldMethod);
-            if (sageldMethod == "GALLOP") {
-              appendCell(row, bG); appendCell(row, bGxE);
-              appendCell(row, seG); appendCell(row, seGxE);
-              appendCell(row, pG); appendCell(row, pGxE);
-            } else {
-              appendCell(row, zG); appendCell(row, zGxE);
-              appendCell(row, pG); appendCell(row, pGxE);
-            }
-            appendCell(row, hwepval);
-            out << row.str() << '\n';
+            if (!passQC) { formatLineNA(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, naSuffix); continue; }
+            std::vector<double> rv = ctx.sageld->getResultVec(GVec, altFreq);
+            formatLine(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, rv);
             continue;
           }
 
-
+          // --- WtCoxG ---
           if (method == "WtCoxG") {
-            double pExt = NAN, pNoext = NAN, zExt = NAN, zNoext = NAN;
-            if (passQC) {
-              arma::vec pT = ctx.wtcoxg->getpvalVec(GVec, static_cast<int>(i));
-              arma::vec zT = ctx.wtcoxg->getZScoreVec();
-              pExt = pT[0]; pNoext = pT[1]; zExt = zT[0]; zNoext = zT[1];
-            }
-            const auto& wr = ctx.wtcoxg->getChunkRefInfo(i);
-            std::ostringstream row;
-            appendMeta(row, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate);
-            appendCell(row, pExt); appendCell(row, pNoext);
-            appendCell(row, zExt); appendCell(row, zNoext);
-            appendCell(row, wr.AF_ref); appendCell(row, wr.AN_ref);
-            appendCell(row, wr.pvalue_bat);
-            out << row.str() << '\n';
+            if (!passQC) { formatLineNA(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, naSuffix); continue; }
+            std::vector<double> rv = ctx.wtcoxg->getResultVec(GVec, static_cast<int>(i));
+            formatLine(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, rv);
             continue;
           }
 
-
+          // --- SPAsqr ---
           if (method == "SPAsqr") {
-            double hwepval = NAN;
-            std::vector<double> z(spasqrTaus.size(), NAN), p(spasqrTaus.size(), NAN);
-            if (passQC) {
-              arma::vec zT;
-              arma::vec pT = ctx.spasqr->getMarkerPval(GVec, altFreq, zT, hwepval);
-              for (size_t j = 0; j < p.size(); ++j) { p[j] = pT[j]; z[j] = zT[j]; }
-            }
-            double pCCT = cctPvalue(p);
-            std::ostringstream row;
-            appendMeta(row, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate);
-            appendCell(row, hwepval);
-            for (double v : z) appendCell(row, v);
-            for (double v : p) appendCell(row, v);
-            appendCell(row, pCCT);
-            out << row.str() << '\n';
+            if (!passQC) { formatLineNA(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, naSuffix); continue; }
+            std::vector<double> rv = ctx.spasqr->getResultVec(GVec, altFreq);
+            formatLine(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, rv);
             continue;
           }
 
-
+          // --- LEAF ---
           if (method == "LEAF") {
-            std::vector<double> pExt(leafNcluster, NAN), pNoext(leafNcluster, NAN);
-            std::vector<double> sExt(leafNcluster, NAN), sNoext(leafNcluster, NAN);
-
-            if (passQC) {
-              arma::vec all = ctx.leaf->getMarkerZSP(GVec, static_cast<int>(i));
-              const int nOut = 2 * leafNcluster;
-              for (int c = 0; c < leafNcluster; ++c) {
-                sExt[c] = all[nOut + 2*c]; sNoext[c] = all[nOut + 2*c + 1];
-                pExt[c] = all[2*nOut + 2*c]; pNoext[c] = all[2*nOut + 2*c + 1];
-              }
-            }
-
-            auto metaP = [&](const std::vector<double>& scores, const std::vector<double>& pvals) {
-              double sumScore = 0, sumVar = 0;
-              boost::math::chi_squared dist(1.0);
-              for (size_t c = 0; c < scores.size(); ++c) {
-                if (std::isnan(scores[c]) || std::isnan(pvals[c]) || pvals[c] <= 0 || pvals[c] >= 1) continue;
-                double chisq = boost::math::quantile(dist, 1.0 - pvals[c]);
-                if (chisq < 1e-30) chisq = 1e-30;
-                double var = (scores[c] * scores[c]) / chisq;
-                if (std::isnan(var)) var = 0;
-                sumScore += scores[c]; sumVar += var;
-              }
-              if (sumVar <= 0) return std::numeric_limits<double>::quiet_NaN();
-              double z = sumScore / std::sqrt(sumVar);
-              return std::erfc(std::fabs(z) / std::sqrt(2.0));
-            };
-
-            std::ostringstream row;
-            appendMeta(row, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate);
-            appendCell(row, metaP(sExt, pExt)); appendCell(row, metaP(sNoext, pNoext));
-            for (int c = 0; c < leafNcluster; ++c) {
-              appendCell(row, pExt[c]); appendCell(row, pNoext[c]);
-              appendCell(row, ctx.leaf->getChunkRefInfo(c, i).pvalue_bat);
-            }
-            out << row.str() << '\n';
+            if (!passQC) { formatLineNA(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, naSuffix); continue; }
+            std::vector<double> rv = ctx.leaf->getResultVec(GVec, static_cast<int>(i));
+            formatLine(out, marker, chr, pd, ref, alt, altCounts, altFreq, missingRate, rv);
             continue;
           }
         }
 
         {
           std::lock_guard<std::mutex> lk(writeMutex);
-          chunkOutput[cidx] = out.str();
+          chunkOutput[cidx] = std::move(out);
           chunkReady[cidx] = 1;
         }
         infoMsg("Calculation finished: chunk %zu/%zu", cidx + 1, chunkIndices.size());
@@ -615,8 +524,12 @@ void mtMarkerEngine(
   } else {
     std::vector<std::thread> workers;
     workers.reserve(effective_nthreads);
-    for (int t = 0; t < effective_nthreads; ++t) workers.emplace_back(workerFn);
-    for (auto& th : workers) th.join();
+    for (int t = 0; t < effective_nthreads; ++t) {
+      workers.emplace_back(workerFn);
+    }
+    for (auto& th : workers) {
+      th.join();
+    }
   }
 
   { std::lock_guard<std::mutex> lk(writeMutex); stopWriter = true; }

@@ -28,6 +28,13 @@ public:
 
   const std::string& getMethod() const { return m_Method; }
 
+  std::string getHeaderColumns() const {
+    if (m_Method == "GALLOP")
+      return "\tisGALLOP\tBeta_G\tBeta_GxE\tSE_G\tSE_GxE\tPvalue_G\tPvalue_GxE\thwepval";
+    else
+      return "\tisGALLOP\tzScore_G\tzScore_GxE\tPvalue_G\tPvalue_GxE\thwepval";
+  }
+
 private:
 
   // ---- Members ----
@@ -69,7 +76,7 @@ private:
   const std::vector<TwoSubjFamily> m_TwoSubj_list;
   const std::vector<ThreeSubjFamily> m_ThreeSubj_list;
 
-  // Extracted from m_TwoSubj_list for use with SPAGRMSpace free functions
+  // Extracted from m_TwoSubj_list for use with nsSPAGRM free functions
   std::vector<arma::vec> m_TwoSubj_resid_list;
   std::vector<arma::vec> m_TwoSubj_rho_list;
 
@@ -125,6 +132,22 @@ public:
   arma::vec getzScoreVec(){return m_zScoreVec;}
   arma::vec getBetaVec(){return m_BetaVec;}
   arma::vec getseBetaVec(){return m_seBetaVec;}
+
+  // GALLOP: returns [isGALLOP, bG, bGxE, seG, seGxE, pG, pGxE, hwepval] (8)
+  // else:   returns [isGALLOP, zG, zGxE, pG, pGxE, hwepval]              (6)
+  std::vector<double> getResultVec(arma::vec GVec, double altFreq) {
+    double hwepval;
+    getMarkerPval(std::move(GVec), altFreq, hwepval);
+    if (m_Method == "GALLOP") {
+      double flipSign = (altFreq > 0.5) ? -1.0 : 1.0;
+      return {1.0, m_BetaVec[0] * flipSign, m_BetaVec[1] * flipSign,
+              m_seBetaVec[0], m_seBetaVec[1],
+              m_pvalVec[0], m_pvalVec[1], hwepval};
+    }
+    return {0.0, m_zScoreVec[0], m_zScoreVec[1], m_pvalVec[0], m_pvalVec[1], hwepval};
+  }
+
+  int resultSize() const { return (m_Method == "GALLOP") ? 8 : 6; }
 
   double getMarkerPval(
     arma::vec GVec,

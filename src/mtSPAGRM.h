@@ -7,7 +7,7 @@
 #include <limits>
 #include <boost/math/distributions/normal.hpp>
 
-namespace SPAGRMSpace {
+namespace nsSPAGRM {
 
 // Per-marker updated data for three-or-more-subject families (shared by SPAGRM and SAGELD)
 struct UpdatedThreeSubj {
@@ -59,7 +59,7 @@ double getProbSpa(
   bool lower_tail, double zeta, double tol
 );
 
-} // namespace SPAGRMSpace
+} // namespace nsSPAGRM
 
 class mtSPAGRMClass {
 
@@ -91,7 +91,7 @@ public:
     double R_GRM_R_TwoSubjOutlier,
     double R_GRM_R,
     arma::vec MAF_interval,
-    SPAGRMSpace::FamilyData fam,
+    nsSPAGRM::FamilyData fam,
     double SPA_Cutoff,
     double zeta,
     double tol
@@ -104,6 +104,19 @@ public:
     double& hwepval,
     double hwepvalCutoff = 0.1
   );
+
+  // Returns [zScore, pval, hwepval]
+  std::vector<double> getResultVec(arma::vec GVec, double altFreq) {
+    double zScore, hwepval;
+    double pval = getMarkerPval(std::move(GVec), altFreq, zScore, hwepval);
+    return {zScore, pval, hwepval};
+  }
+
+  static int resultSize() { return 3; }
+
+  std::string getHeaderColumns() const {
+    return "\tzScore\tPvalue\thwepval";
+  }
 
 };
 

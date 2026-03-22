@@ -75,15 +75,17 @@ public:
       m_refMap(std::make_shared<const std::unordered_map<uint64_t, RefInfo>>(std::move(refMap)))
   {}
 
-  void updateMarkerInfo(const std::vector<double>& AF_ref,
-                          const std::vector<double>& AN_ref,
-                          const std::vector<double>& TPR,
-                          const std::vector<double>& sigma2,
-                          const std::vector<double>& pvalue_bat,
-                          const std::vector<double>& w_ext,
-                          const std::vector<double>& var_ratio_w0,
-                          const std::vector<double>& var_ratio_int,
-                          const std::vector<double>& var_ratio_ext) {
+  void updateMarkerInfo(
+    const std::vector<double>& AF_ref,
+    const std::vector<double>& AN_ref,
+    const std::vector<double>& TPR,
+    const std::vector<double>& sigma2,
+    const std::vector<double>& pvalue_bat,
+    const std::vector<double>& w_ext,
+    const std::vector<double>& var_ratio_w0,
+    const std::vector<double>& var_ratio_int,
+    const std::vector<double>& var_ratio_ext
+  ) {
     m_markerInfoVec.clear();
 
     size_t n = AF_ref.size();
@@ -182,6 +184,20 @@ public:
   }
 
   const RefInfo& getChunkRefInfo(size_t i) const { return m_chunkRefInfo[i]; }
+
+  // Returns [pExt, pNoext, zExt, zNoext, AF_ref, AN_ref, pvalue_bat]
+  std::vector<double> getResultVec(const arma::vec& GVec, int markerIdx) {
+    arma::vec pT = getpvalVec(GVec, markerIdx);
+    arma::vec zT = getZScoreVec();
+    const RefInfo& ri = getChunkRefInfo(markerIdx);
+    return {pT[0], pT[1], zT[0], zT[1], ri.AF_ref, ri.AN_ref, ri.pvalue_bat};
+  }
+
+  static int resultSize() { return 7; }
+
+  std::string getHeaderColumns() const {
+    return "\tWtCoxG.ext\tWtCoxG.noext\tzscore.ext\tzscore.noext\tAF_ref\tAN_ref\tpvalue_bat";
+  }
 
 private:
 

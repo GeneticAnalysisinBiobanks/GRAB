@@ -1,7 +1,7 @@
 # mtGRAB_Marker.R
 # Single-entry-point for chunk-parallel marker association testing.
 
-GRAB.mtMarker <- function (
+GRAB.Marker5 <- function (
     objNull,
     GenoFile,
     OutputFile,
@@ -100,7 +100,7 @@ GRAB.mtMarker <- function (
   control <- .check_marker_control(control, objNull)
 
   # print parameters
-  .message("Parameters for Marker-Level Tests")
+  .message("Parameters for Marker-Level Tests:")
 
   params <- list(
     Method = null_class, OutputFile = OutputFile, overwrite = overwrite,
@@ -123,20 +123,8 @@ GRAB.mtMarker <- function (
     .message("Marker filters specified. The final set is: (union of includes) minus (union of excludes).")
   }
 
-  # dispatch to method-specific function
-  runFn <- switch(null_class,
-    POLMM_NULL_Model      = mtMarker.POLMM,
-    WtCoxG_NULL_Model     = mtMarker.WtCoxG,
-    LEAF_NULL_Model       = mtMarker.LEAF,
-    SPACox_NULL_Model     = mtMarker.SPACox,
-    SPAmix_NULL_Model     = mtMarker.SPAmix,
-    SPAmixPlus_NULL_Model = mtMarker.SPAmixPlus,
-    SPAGRM_NULL_Model     = mtMarker.SPAGRM,
-    SAGELD_NULL_Model     = mtMarker.SAGELD,
-    SPAsqr_NULL_Model     = mtMarker.SPAsqr,
-    stop("Unsupported null model class: ", null_class)
-  )
-  runFn(objNull, OutputFile, control, bedFile, bimFile, famFile)
+  # dispatch to unified C++ bridge
+  mtMarkerBridgeInCPP(objNull, OutputFile, control, bedFile, bimFile, famFile)
 
   .message("Analysis complete. Results saved to '%s'.", OutputFile)
   invisible(NULL)

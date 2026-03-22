@@ -41,6 +41,19 @@ public:
     double altFreq,
     double& zScore
   ) const;
+
+  // Returns [pval, beta, seBeta, zScore]
+  std::vector<double> getResultVec(arma::vec GVec, double altFreq) {
+    double Beta, seBeta, pval, zScore;
+    getMarkerPval(std::move(GVec), Beta, seBeta, pval, altFreq, zScore);
+    return {pval, Beta, seBeta, zScore};
+  }
+
+  static int resultSize() { return 4; }
+
+  std::string getHeaderColumns() const {
+    return "\tPvalue\tbeta\tseBeta\tzScore";
+  }
 };
 
 #endif

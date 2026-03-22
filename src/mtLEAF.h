@@ -4,6 +4,8 @@
 // LEAF.h -- Cluster-stratified LEAF meta-analysis delegating to mtWtCoxGClass per cluster
 
 #include <RcppArmadillo.h>
+#include <sstream>
+#include <boost/math/distributions/chi_squared.hpp>
 #include "mtWtCoxG.h"
 #include <memory>
 #include <unordered_map>
@@ -81,6 +83,14 @@ public:
 
   int get_Ncluster() const { return m_Ncluster; }
 
+  std::string getHeaderColumns() const {
+    std::ostringstream oss;
+    oss << "\tmeta.p_ext\tmeta.p_noext";
+    for (int i = 1; i <= m_Ncluster; ++i)
+      oss << "\tcl" << i << ".p_ext\tcl" << i << ".p_noext\tcl" << i << ".p_batch";
+    return oss.str();
+  }
+
   // Prepare all clusters for a chunk
   void prepareChunk(const std::vector<uint64_t>& genoIndices) {
     m_chunkRefInfo.resize(m_Ncluster);
@@ -135,6 +145,46 @@ public:
     arma::vec result = arma::join_cols(arma::join_cols(zScoreVec, scoreVec), pvalVec);
     return result;
   }
+
+  // Returns [meta_p_ext, meta_p_noext, cl1_p_ext, cl1_p_noext, cl1_p_batch, ...]
+  std::vector<double> getResultVec(const arma::vec& GVec, int markerIdx) {
+    arma::vec all = getMarkerZSP(GVec, markerIdx);
+    const int nOut = 2 * m_Ncluster;
+    std::vector<double> sExt(m_Ncluster), sNoext(m_Ncluster);
+    std::vector<double> pExt(m_Ncluster), pNoext(m_Ncluster);
+    for (int c = 0; c < m_Ncluster; ++c) {
+      sExt[c]   = all[nOut + 2*c];
+      sNoext[c] = all[nOut + 2*c + 1];
+      pExt[c]   = all[2*nOut + 2*c];
+      pNoext[c] = all[2*nOut + 2*c + 1];
+    }
+    auto metaP = [](const std::vector<double>& scores, const std::vector<double>& pvals) {
+      double sumScore = 0, sumVar = 0;
+      for (size_t c = 0; c < scores.size(); ++c) {
+        if (std::isnan(scores[c]) || std::isnan(pvals[c]) || pvals[c] <= 0 || pvals[c] >= 1) continue;
+        double chisq = boost::math::quantile(boost::math::chi_squared(1.0), 1.0 - pvals[c]);
+        if (chisq < 1e-30) chisq = 1e-30;
+        double var = (scores[c] * scores[c]) / chisq;
+        if (std::isnan(var)) var = 0;
+        sumScore += scores[c]; sumVar += var;
+      }
+      if (sumVar <= 0) return std::numeric_limits<double>::quiet_NaN();
+      double z = sumScore / std::sqrt(sumVar);
+      return std::erfc(std::fabs(z) / std::sqrt(2.0));
+    };
+    std::vector<double> r;
+    r.reserve(2 + 3 * m_Ncluster);
+    r.push_back(metaP(sExt, pExt));
+    r.push_back(metaP(sNoext, pNoext));
+    for (int c = 0; c < m_Ncluster; ++c) {
+      r.push_back(pExt[c]);
+      r.push_back(pNoext[c]);
+      r.push_back(getChunkRefInfo(c, markerIdx).pvalue_bat);
+    }
+    return r;
+  }
+
+  int resultSize() const { return 2 + 3 * m_Ncluster; }
 
 };
 

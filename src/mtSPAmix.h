@@ -6,7 +6,7 @@
 #include <RcppArmadillo.h>
 #include <boost/math/distributions/students_t.hpp>
 
-namespace SPAmixSpace {
+namespace nsSPAmix {
 
 double getProbSpaG(
   const arma::vec MAF_outlier,
@@ -19,11 +19,10 @@ double getProbSpaG(
 
 arma::vec logistic_regression_beta(const arma::mat& X, const arma::vec& y);
 
-} // namespace SPAmixSpace
+} // namespace nsSPAmix
 
 class mtSPAmixClass {
 public:
-  // Per-phenotype outlier partition for SPA.
   struct OutlierData {
     arma::uvec posValue;
     arma::uvec posOutlier;
@@ -37,33 +36,39 @@ public:
 
 private:
 
-  const arma::mat m_resid;
+  const arma::vec m_resid;
   const arma::mat m_onePlusPCs;
 
   const int m_N;
-  const int m_Npheno;
   const double m_SPA_Cutoff;
 
   const arma::mat m_PCs;
   const arma::vec m_sqrt_XTX_inv_diag;
 
-  const std::vector<OutlierData> m_outlierVec;
-  arma::vec m_pvalVec;
-  arma::vec m_zScoreVec;
+  const OutlierData m_outlier;
+  double m_pval;
+  double m_zScore;
 
 public:
 
   mtSPAmixClass(
-    arma::mat resid,
+    arma::vec resid,
     arma::mat PCs,
     int N,
     double SPA_Cutoff,
-    std::vector<mtSPAmixClass::OutlierData> outlierVec
+    OutlierData outlier
   );
 
-  int getNpheno(){return m_Npheno;}
-  arma::vec getpvalVec(){return m_pvalVec;}
-  arma::vec getzScoreVec(){return m_zScoreVec;}
+  std::vector<double> getResultVec(arma::vec GVec, double altFreq) {
+    getMarkerPval(std::move(GVec), altFreq);
+    return {m_pval, m_zScore};
+  }
+
+  int resultSize() const { return 2; }
+
+  std::string getHeaderColumns() const {
+    return "\tPvalue\tzScore";
+  }
 
   double getMarkerPval(arma::vec GVec, double altFreq);
 

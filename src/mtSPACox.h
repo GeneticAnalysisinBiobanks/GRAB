@@ -44,6 +44,19 @@ public:
 
   double getMarkerPval(arma::vec GVec, double MAF, double& zScore);
   void getRegionPVec(arma::vec GVec, double& zScore, double& pval0, double& pval1, arma::vec& P1Vec, arma::vec& P2Vec);
+
+  // Returns [pval, zScore]
+  std::vector<double> getResultVec(arma::vec GVec, double altFreq) {
+    double zScore;
+    double pval = getMarkerPval(std::move(GVec), altFreq, zScore);
+    return {pval, zScore};
+  }
+
+  static int resultSize() { return 2; }
+
+  std::string getHeaderColumns() const {
+    return "\tPvalue\tzScore";
+  }
 };
 
 #endif

@@ -5,27 +5,25 @@
 #include "mtSPAmix.h"
 
 mtSPAmixClass::mtSPAmixClass(
-  arma::mat resid,
+  arma::vec resid,
   arma::mat PCs,
   int N,
   double SPA_Cutoff,
-  std::vector<mtSPAmixClass::OutlierData> outlierVec
+  OutlierData outlier
 )
   : m_resid(std::move(resid)),
     m_onePlusPCs(arma::join_horiz(arma::ones(N), PCs)),
     m_N(N),
-    m_Npheno(static_cast<int>(m_resid.n_cols)),
     m_SPA_Cutoff(SPA_Cutoff),
     m_PCs(std::move(PCs)),
     m_sqrt_XTX_inv_diag([&]() {
       arma::mat XTX_inv = arma::inv(arma::mat(m_onePlusPCs.t() * m_onePlusPCs));
       return arma::vec(arma::sqrt(XTX_inv.diag()));
     }()),
-    m_outlierVec(std::move(outlierVec))
-{
-  m_pvalVec.resize(m_Npheno);
-  m_zScoreVec.resize(m_Npheno);
-}
+    m_outlier(std::move(outlier)),
+    m_pval(0.0),
+    m_zScore(0.0)
+{}
 
 namespace {
 
@@ -123,7 +121,7 @@ RootResult fastGetRootK1(
 }
 
 arma::vec logistic_regression(const arma::mat& X, const arma::vec& y) {
-  arma::vec beta = SPAmixSpace::logistic_regression_beta(X, y);
+  arma::vec beta = nsSPAmix::logistic_regression_beta(X, y);
   arma::mat X_new = arma::join_horiz(arma::ones(X.n_rows), X);
   arma::vec mu = 1.0 / (1.0 + arma::exp(-X_new * beta));
   return 1.0 - arma::sqrt(1.0 - mu);
@@ -131,7 +129,7 @@ arma::vec logistic_regression(const arma::mat& X, const arma::vec& y) {
 
 } // anonymous namespace
 
-namespace SPAmixSpace {
+namespace nsSPAmix {
 
 arma::vec logistic_regression_beta(const arma::mat& X, const arma::vec& y) {
   int n = X.n_rows;
@@ -190,7 +188,7 @@ double getProbSpaG(const arma::vec MAF_outlier,
   return pval;
 }
 
-} // namespace SPAmixSpace
+} // namespace nsSPAmix
 
 arma::vec mtSPAmixClass::fit_lm(const arma::vec& g, arma::vec& pvalues) {
   int n = m_N;
@@ -269,58 +267,53 @@ double mtSPAmixClass::getMarkerPval(arma::vec GVec, double altFreq) {
   arma::vec AFVec = getMafEst(GVec, altFreq);
   arma::vec GVarVec = 2 * AFVec % (1 - AFVec);
 
-  for (int i = 0; i < m_Npheno; i++){
-    const OutlierData& tempOutlierList = m_outlierVec[i];
-    const arma::uvec& posValue = tempOutlierList.posValue;
-    const arma::uvec& posOutlier = tempOutlierList.posOutlier;
-    const arma::uvec& posNonOutlier = tempOutlierList.posNonOutlier;
-    const arma::vec& resid = tempOutlierList.resid;
-    const arma::vec& resid2 = tempOutlierList.resid2;
-    const arma::vec& residOutlier = tempOutlierList.residOutlier;
-    const arma::vec& residNonOutlier = tempOutlierList.residNonOutlier;
-    const arma::vec& resid2NonOutlier = tempOutlierList.resid2NonOutlier;
+  const arma::uvec& posValue = m_outlier.posValue;
+  const arma::uvec& posOutlier = m_outlier.posOutlier;
+  const arma::uvec& posNonOutlier = m_outlier.posNonOutlier;
+  const arma::vec& resid = m_outlier.resid;
+  const arma::vec& resid2 = m_outlier.resid2;
+  const arma::vec& residOutlier = m_outlier.residOutlier;
+  const arma::vec& residNonOutlier = m_outlier.residNonOutlier;
+  const arma::vec& resid2NonOutlier = m_outlier.resid2NonOutlier;
 
-    double S = sum(GVec.elem(posValue) % resid);
-    double VarS = sum(resid2 % GVarVec.elem(posValue));
+  double S = sum(GVec.elem(posValue) % resid);
+  double VarS = sum(resid2 % GVarVec.elem(posValue));
 
-    double S_mean = 2 * sum(resid % AFVec.elem(posValue));
-    double zScore = (S-S_mean) / sqrt(VarS);
+  double S_mean = 2 * sum(resid % AFVec.elem(posValue));
+  double zScore = (S-S_mean) / sqrt(VarS);
 
-    m_zScoreVec.at(i) = zScore;
+  m_zScore = zScore;
 
-    if (std::abs(zScore) < m_SPA_Cutoff){
-      m_pvalVec.at(i) = arma::normcdf(-1*std::abs(zScore))*2;
-      continue;
-    }
-
-    arma::vec MAF_outlier = AFVec.elem(posOutlier);
-    arma::vec MAF_nonOutlier = AFVec.elem(posNonOutlier);
-
-    double mean_nonOutlier = sum(residNonOutlier % MAF_nonOutlier) * 2;
-    double var_nonOutlier = sum(resid2NonOutlier % MAF_nonOutlier % (1-MAF_nonOutlier)) * 2;
-
-    double pval1 = SPAmixSpace::getProbSpaG(
-      MAF_outlier,
-      residOutlier,
-      std::abs(S-S_mean)+S_mean,
-      false,
-      mean_nonOutlier,
-      var_nonOutlier
-    );
-
-    double pval2 = SPAmixSpace::getProbSpaG(
-      MAF_outlier,
-      residOutlier,
-      -1*std::abs(S-S_mean)+S_mean,
-      true,
-      mean_nonOutlier,
-      var_nonOutlier
-    );
-
-    m_pvalVec.at(i) = pval1 + pval2;
+  if (std::abs(zScore) < m_SPA_Cutoff){
+    m_pval = arma::normcdf(-1*std::abs(zScore))*2;
+    return m_pval;
   }
 
-  double pval = 0;
-  return pval;
+  arma::vec MAF_outlier = AFVec.elem(posOutlier);
+  arma::vec MAF_nonOutlier = AFVec.elem(posNonOutlier);
+
+  double mean_nonOutlier = sum(residNonOutlier % MAF_nonOutlier) * 2;
+  double var_nonOutlier = sum(resid2NonOutlier % MAF_nonOutlier % (1-MAF_nonOutlier)) * 2;
+
+  double pval1 = nsSPAmix::getProbSpaG(
+    MAF_outlier,
+    residOutlier,
+    std::abs(S-S_mean)+S_mean,
+    false,
+    mean_nonOutlier,
+    var_nonOutlier
+  );
+
+  double pval2 = nsSPAmix::getProbSpaG(
+    MAF_outlier,
+    residOutlier,
+    -1*std::abs(S-S_mean)+S_mean,
+    true,
+    mean_nonOutlier,
+    var_nonOutlier
+  );
+
+  m_pval = pval1 + pval2;
+  return m_pval;
 }
 
