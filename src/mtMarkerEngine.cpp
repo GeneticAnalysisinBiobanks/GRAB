@@ -1,25 +1,4 @@
-// mtMain.cpp -- Thread pool, per-chunk worker, sequential writer
-//
-// Functions by role:
-//
-//   [Inline helpers]
-//     numToChars         — format a double directly into a char buffer
-//     makeNaSuffix       — build precomputed NA suffix for fail-QC rows
-//     formatLine         — format one output row (meta + numeric values)
-//     formatLineNA       — format one fail-QC output row (meta + NA suffix)
-//     formatLineWithPrefix — format one output row with a string prefix column
-//
-//   [File-local structs]
-//     ThreadContext      — per-worker copies of the active statistical method object
-//
-//   [Output header]       (static)
-//     getHeader           — produce the TSV column header for a given method
-//
-//   [Worker context]      (static)
-//     makeThreadContext   — clone the global method object into a per-thread ThreadContext
-//
-//   [Engine]              (mtMarker namespace, external linkage)
-//     mainMarkerChunksCore — coordinate the PLINK cursor, worker pool, and writer thread
+// mtMarkerEngine.cpp -- Thread pool, per-chunk worker, sequential writer
 
 #include <thread>
 #include <mutex>
@@ -33,6 +12,7 @@
 #include <chrono>
 #include <ctime>
 #include <cstdarg>
+#include <cassert>
 #include <RcppArmadillo.h>
 #include <zlib.h>
 
@@ -47,27 +27,24 @@
 #include "mtSPAmix.h"
 #include "mtSPAmixPlus.h"
 
-
 // ---- Global method pointers (one per active statistical method) ----
 
-mtPOLMMClass*           ptr_gPOLMMobj     = nullptr;
-mtWtCoxGClass*         ptr_gWtCoxGobj     = nullptr;
-mtLEAFClass*             ptr_gLEAFobj     = nullptr;
-mtSPAGRMClass*         ptr_gSPAGRMobj     = nullptr;
-mtSAGELDClass*         ptr_gSAGELDobj     = nullptr;
-mtSPAsqrClass*         ptr_gSPAsqrobj     = nullptr;
-mtSPACoxClass*         ptr_gSPACoxobj     = nullptr;
-mtSPAmixClass*         ptr_gSPAmixobj     = nullptr;
-mtSPAmixPlusClass*     ptr_gSPAmixPlusobj = nullptr;
-PlinkData*              ptr_gPlinkDataObj = nullptr;
-PlinkCursor*            ptr_gPlinkCursorObj = nullptr;
+mtPOLMMClass*          ptr_gPOLMMobj       = nullptr;
+mtWtCoxGClass*         ptr_gWtCoxGobj      = nullptr;
+mtLEAFClass*           ptr_gLEAFobj        = nullptr;
+mtSPAGRMClass*         ptr_gSPAGRMobj      = nullptr;
+mtSAGELDClass*         ptr_gSAGELDobj      = nullptr;
+mtSPAsqrClass*         ptr_gSPAsqrobj      = nullptr;
+mtSPACoxClass*         ptr_gSPACoxobj      = nullptr;
+mtSPAmixClass*         ptr_gSPAmixobj      = nullptr;
+mtSPAmixPlusClass*     ptr_gSPAmixPlusobj  = nullptr;
+std::unique_ptr<const PlinkData> ptr_gPlinkDataObj;
 
 
 namespace {
 
 // Thread-safe timestamped info message.
 // Uses fprintf(stderr) — safe to call from any thread.
-// Rprintf/REprintf are NOT thread-safe and must only be called from R's main thread.
 static std::mutex g_logMutex;
 void infoMsg(const char* fmt, ...) {
   char buf[512];
@@ -92,11 +69,11 @@ std::string makeNaSuffix(const std::string& method) {
   else if (method == "SPACox")     nResultCols = ptr_gSPACoxobj->resultSize();
   else if (method == "SPAmix")     nResultCols = ptr_gSPAmixobj->resultSize();
   else if (method == "SPAmixPlus") nResultCols = ptr_gSPAmixPlusobj->resultSize();
-  else if (method == "SPAGRM")    nResultCols = ptr_gSPAGRMobj->resultSize();
-  else if (method == "SAGELD")    nResultCols = ptr_gSAGELDobj->resultSize();
-  else if (method == "WtCoxG")    nResultCols = ptr_gWtCoxGobj->resultSize();
-  else if (method == "SPAsqr")    nResultCols = ptr_gSPAsqrobj->resultSize();
-  else if (method == "LEAF")      nResultCols = ptr_gLEAFobj->resultSize();
+  else if (method == "SPAGRM")     nResultCols = ptr_gSPAGRMobj->resultSize();
+  else if (method == "SAGELD")     nResultCols = ptr_gSAGELDobj->resultSize();
+  else if (method == "WtCoxG")     nResultCols = ptr_gWtCoxGobj->resultSize();
+  else if (method == "SPAsqr")     nResultCols = ptr_gSPAsqrobj->resultSize();
+  else if (method == "LEAF")       nResultCols = ptr_gLEAFobj->resultSize();
   
   if (nResultCols <= 0) return {};
   // Each column: "\tNA" = 3 chars
@@ -195,18 +172,18 @@ void formatLineNA(
 
 // Per-worker independent copies of all shared state.
 struct ThreadContext {
-  std::unique_ptr<mtPOLMMClass>           polmm;
-  std::unique_ptr<mtSPACoxClass>         spacox;
-  std::unique_ptr<mtSPAmixClass>         spamix;
+  std::unique_ptr<mtPOLMMClass>      polmm;
+  std::unique_ptr<mtWtCoxGClass>     wtcoxg;
+  std::unique_ptr<mtLEAFClass>       leaf;
+  std::unique_ptr<mtSPAGRMClass>     spagrm;
+  std::unique_ptr<mtSAGELDClass>     sageld;
+  std::unique_ptr<mtSPAsqrClass>     spasqr;
+  std::unique_ptr<mtSPACoxClass>     spacox;
+  std::unique_ptr<mtSPAmixClass>     spamix;
   std::unique_ptr<mtSPAmixPlusClass> spamixPlus;
-  std::unique_ptr<mtSPAGRMClass>         spagrm;
-  std::unique_ptr<mtSAGELDClass>         sageld;
-  std::unique_ptr<mtWtCoxGClass>         wtcoxg;
-  std::unique_ptr<mtSPAsqrClass>         spasqr;
-  std::unique_ptr<mtLEAFClass>             leaf;
-  std::unique_ptr<PlinkData>             plinkData;
-  std::unique_ptr<PlinkCursor>           cursor;
-  std::string                            naSuffix;
+  const PlinkData*                   plinkData = nullptr;  // non-owning
+  std::unique_ptr<PlinkCursor>       cursor;
+  std::string                        naSuffix;
 };
 
 
@@ -217,15 +194,15 @@ const char* META_HEADER = "Marker\tChr\tPos\tRef\tAlt\tAltCount\tAltFreq\tMissRa
 // Build the TSV column header line by dispatching to the active method object.
 std::string getHeader(const std::string& method) {
   std::string cols;
-  if (method == "POLMM")          cols = ptr_gPOLMMobj->getHeaderColumns();
-  else if (method == "SPACox")    cols = ptr_gSPACoxobj->getHeaderColumns();
-  else if (method == "SPAmix")    cols = ptr_gSPAmixobj->getHeaderColumns();
+  if (method == "POLMM")           cols = ptr_gPOLMMobj->getHeaderColumns();
+  else if (method == "SPACox")     cols = ptr_gSPACoxobj->getHeaderColumns();
+  else if (method == "SPAmix")     cols = ptr_gSPAmixobj->getHeaderColumns();
   else if (method == "SPAmixPlus") cols = ptr_gSPAmixPlusobj->getHeaderColumns();
-  else if (method == "SPAGRM")   cols = ptr_gSPAGRMobj->getHeaderColumns();
-  else if (method == "SAGELD")   cols = ptr_gSAGELDobj->getHeaderColumns();
-  else if (method == "WtCoxG")   cols = ptr_gWtCoxGobj->getHeaderColumns();
-  else if (method == "SPAsqr")   cols = ptr_gSPAsqrobj->getHeaderColumns();
-  else if (method == "LEAF")     cols = ptr_gLEAFobj->getHeaderColumns();
+  else if (method == "SPAGRM")     cols = ptr_gSPAGRMobj->getHeaderColumns();
+  else if (method == "SAGELD")     cols = ptr_gSAGELDobj->getHeaderColumns();
+  else if (method == "WtCoxG")     cols = ptr_gWtCoxGobj->getHeaderColumns();
+  else if (method == "SPAsqr")     cols = ptr_gSPAsqrobj->getHeaderColumns();
+  else if (method == "LEAF")       cols = ptr_gLEAFobj->getHeaderColumns();
   else throw std::runtime_error("Unsupported method in mtMarker: " + method);
   return std::string(META_HEADER) + cols;
 }
@@ -268,11 +245,15 @@ ThreadContext makeThreadContext(const std::string& method) {
     ctx.leaf.reset(new mtLEAFClass(*ptr_gLEAFobj));
   }
 
-  // Copy PlinkData and PlinkCursor for this thread
-  if (!ptr_gPlinkDataObj) throw std::runtime_error("PlinkData is not initialized.");
-  if (!ptr_gPlinkCursorObj) throw std::runtime_error("PlinkCursor is not initialized.");
-  ctx.plinkData.reset(new PlinkData(*ptr_gPlinkDataObj));
-  ctx.cursor.reset(new PlinkCursor(*ptr_gPlinkCursorObj));
+  // Share PlinkData (read-only) and create a fresh PlinkCursor per worker
+  assert(ptr_gPlinkDataObj && "PlinkData must be initialized before worker creation");
+  ctx.plinkData = ptr_gPlinkDataObj.get();
+  ctx.cursor = std::make_unique<PlinkCursor>(
+      ptr_gPlinkDataObj->bedFile(),
+      ptr_gPlinkDataObj->nMarkers(),
+      ptr_gPlinkDataObj->nSubjInFile(),
+      ptr_gPlinkDataObj->samplePosMap(),
+      ptr_gPlinkDataObj->isAltFirst());
   ctx.naSuffix = makeNaSuffix(method);
   return ctx;
 }
@@ -289,11 +270,11 @@ void mtMarkerEngine(
   const std::string impute_method,
   const double missing_cutoff,
   const double min_maf_marker,
-  const double min_mac_marker
+  const double min_mac_marker,
+  const bool exactHwe
 ) {
-  if (!ptr_gPlinkDataObj) throw std::runtime_error("PlinkData is not initialized.");
+  assert(ptr_gPlinkDataObj && "PlinkData must be initialized before engine start");
   const PlinkData& plinkRef = *ptr_gPlinkDataObj;
-
   const size_t nTotalChunks = plinkRef.chunkIndices().size();
   const int effective_nthreads = std::min(nthreads, static_cast<int>(nTotalChunks));
 
@@ -376,7 +357,7 @@ void mtMarkerEngine(
 
   auto workerFn = [&]() {
     try {
-      // Per-thread: copy all shared state (PlinkData + method + PlinkCursor)
+      // Per-thread: copy method state; share PlinkData (read-only); fresh PlinkCursor
       ThreadContext ctx = makeThreadContext(method);
       const PlinkData& pd = *ctx.plinkData;
       PlinkCursor& cursor = *ctx.cursor;
@@ -410,7 +391,7 @@ void mtMarkerEngine(
           indexForMissing.clear();
 
           cursor.getGenotypes(gIdx[i], GVec,
-            altFreq, altCounts, missingRate, hweP, maf, mac, indexForMissing);
+            altFreq, altCounts, missingRate, hweP, maf, mac, indexForMissing, exactHwe);
 
           const std::string_view chr    = pd.chr(gIdx[i]);
           const std::string_view ref    = pd.ref(gIdx[i]);

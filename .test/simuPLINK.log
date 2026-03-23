@@ -1,0 +1,25 @@
+PLINK v2.0.0-a.6.20 64-bit (7 Jul 2025)
+Options in effect:
+  --bfile inst/extdata/simuPLINK
+  --freq counts
+  --hardy
+  --out .test/simuPLINK
+
+Hostname: DELL901
+Working directory: C:\Users\woody\Desktop\GeneticAnalysisinBiobanks\GRAB
+Start time: Mon Mar 23 13:06:03 2026
+
+Random number seed: 1774242363
+32210 MiB RAM detected; reserving 16105 MiB for main workspace.
+Using up to 14 threads (change this with --threads).
+1000 samples (0 females, 1000 males; 1000 founders) loaded from
+inst/extdata/simuPLINK.fam.
+1100 variants loaded from inst/extdata/simuPLINK.bim.
+Note: No phenotype data present.
+Calculating allele frequencies... done.
+--freq counts: Allele counts (founders only) written to .test/simuPLINK.acount
+.
+--hardy: Autosomal Hardy-Weinberg report (founders only) written to
+.test/simuPLINK.hardy .
+
+End time: Mon Mar 23 13:06:03 2026

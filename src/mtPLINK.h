@@ -30,7 +30,7 @@ public:
     std::string RangesToIncludeFile,
     std::string IDsToExcludeFile,
     std::string RangesToExcludeFile,
-    int nMarkersEachChunk
+    int nMarkersEachChunk = 1024
   );
 
   // Marker metadata from a .bim file (alleles normalized by AlleleOrder).
@@ -121,7 +121,8 @@ public:
         double& hweP,
         double& maf,
         double& mac,
-        std::vector<uint32_t>& indexForMissing
+        std::vector<uint32_t>& indexForMissing,
+        bool exactHwe = true
     );
 
     void beginSequentialBlock(uint64_t firstMarker);

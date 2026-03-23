@@ -7,7 +7,7 @@ GRAB.Marker6 <- function (
     OutputFile,
     GenoFileIndex = NULL,
     overwrite = FALSE,
-    control = NULL
+    control = list()
 ) {
 
   null_class <- class(objNull)
@@ -28,6 +28,7 @@ GRAB.Marker6 <- function (
     min_mac_marker      = 20,
     nMarkersEachChunk   = 1024,
     AlleleOrder         = "alt-first",
+    hwe                 = "exact",
     AllMarkers          = TRUE,
     IDsToIncludeFile    = NULL,
     IDsToExcludeFile    = NULL,
@@ -162,6 +163,9 @@ GRAB.Marker6 <- function (
   if (!is.null(control$AlleleOrder) &&
       !control$AlleleOrder %in% c("ref-first", "alt-first")) {
     stop("control$AlleleOrder must be 'ref-first' or 'alt-first'.")
+  }
+  if (!control$hwe %in% c("chi2", "exact")) {
+    stop("control$hwe must be 'chi2' or 'exact'.")
   }
 
   marker_files <- c(

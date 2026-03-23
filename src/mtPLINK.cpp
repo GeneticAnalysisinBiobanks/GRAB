@@ -189,8 +189,10 @@ static inline void count_geno_classes(
 
     ++iter;
 
-    // SAFE flush (avoid overflow)
-    if (iter >= 60) {
+    // Flush accumulators before uint8 overflow.
+    // Max increment per lane per iteration = 8 (two PROCESS_VECs × max 4 each).
+    // Safe limit: floor(255 / 8) = 31 iterations.
+    if (iter >= 31) {
       __m256i s;
 
       s = _mm256_sad_epu8(acc_h, zero);
@@ -290,6 +292,118 @@ static double HweChiSq(uint32_t nHet, uint32_t nHom1, uint32_t nHom2) {
   return std::erfc(std::sqrt(chi2 * 0.5));
 }
 
+// Exact HWE test — matches plink2 --hardy default (SNPHWE2).
+// Wigginton JE, Cutler DJ, Abecasis GR (2005). A Note on Exact Tests of
+// Hardy-Weinberg Equilibrium. Am J Hum Genet 76:887-893.
+//
+// Optimized for repeated calls (e.g. 30M markers): no heap allocation, O(1)
+// auxiliary memory. Walks the "obs side" first to derive thresh inline, then
+// walks the opposite side and accumulates p on the fly.
+static double HweExact(uint32_t obs_hets, uint32_t obs_hom1, uint32_t obs_hom2) {
+  const int64_t obs_homc = std::max(obs_hom1, obs_hom2);
+  const int64_t obs_homr = std::min(obs_hom1, obs_hom2);
+  const int64_t rare = 2 * obs_homr + (int64_t)obs_hets;
+  const int64_t n    = (int64_t)obs_hets + obs_homc + obs_homr;
+  const int64_t obs  = (int64_t)obs_hets;
+
+  if (n == 0) return 1.0;
+
+  // Mode of het-count distribution under HWE
+  int64_t mid = (rare * (2 * n - rare)) / (2 * n);
+  if ((rare & 1) ^ (mid & 1)) ++mid;
+
+  // The floor+parity estimate can land one grid step from the true mode.
+  // Adjust mid to sit at the actual peak of the distribution.
+  {
+    int64_t hr = (rare - mid) / 2;
+    int64_t hc = n - mid - hr;
+    if (mid + 2 <= rare && hr > 0 &&
+        4.0 * hr * hc > (mid + 2.0) * (mid + 1.0)) {
+      mid += 2;
+    } else if (mid >= 2) {
+      if (static_cast<double>(mid) * (mid - 1) >
+          4.0 * (hr + 1.0) * (hc + 1.0)) {
+        mid -= 2;
+      }
+    }
+  }
+
+  const int64_t mid_homr = (rare - mid) / 2;
+  const int64_t mid_homc = n - mid - mid_homr;
+
+  // All probabilities are relative to probs[mid] = 1 (unnormalized).
+  // thresh = probs[obs].  p = sum of probs[h] <= thresh.  sum = normalizer.
+  double sum = 1.0, p = 0.0, thresh;
+
+  if (obs <= mid) {
+    // --- Downward walk (obs side): derive thresh, then count obs's outer tail ---
+    {
+      double prob = 1.0;
+      int64_t cr = mid_homr, cc = mid_homc;
+      // Phase 1: mid → obs+2, probs > thresh; contribute to sum only
+      for (int64_t h = mid; h > obs; h -= 2) {
+        prob *= h * (h - 1.0) / (4.0 * (cr + 1.0) * (cc + 1.0));
+        sum += prob;
+        ++cr; ++cc;
+      }
+      thresh = prob;   // prob[obs]
+      p      = thresh; // obs itself is always counted
+      // Phase 2: obs → 2, probs <= thresh; contribute to both sum and p
+      for (int64_t h = obs; h >= 2; h -= 2) {
+        prob *= h * (h - 1.0) / (4.0 * (cr + 1.0) * (cc + 1.0));
+        sum += prob;
+        p   += prob;
+        ++cr; ++cc;
+      }
+    }
+    // --- Upward walk (other side): monotone decrease; count tail <= thresh ---
+    {
+      double prob = 1.0;
+      int64_t cr = mid_homr, cc = mid_homc;
+      for (int64_t h = mid; h <= rare - 2; h += 2) {
+        prob *= 4.0 * cr * cc / ((h + 2.0) * (h + 1.0));
+        sum += prob;
+        if (prob <= thresh) p += prob;
+        --cr; --cc;
+      }
+    }
+  } else {
+    // --- Upward walk (obs side): derive thresh, then count obs's outer tail ---
+    {
+      double prob = 1.0;
+      int64_t cr = mid_homr, cc = mid_homc;
+      // Phase 1: mid → obs-2, probs > thresh; contribute to sum only
+      for (int64_t h = mid; h < obs; h += 2) {
+        prob *= 4.0 * cr * cc / ((h + 2.0) * (h + 1.0));
+        sum += prob;
+        --cr; --cc;
+      }
+      thresh = prob;   // prob[obs]
+      p      = thresh; // obs itself is always counted
+      // Phase 2: obs → rare, probs <= thresh; contribute to both sum and p
+      for (int64_t h = obs; h <= rare - 2; h += 2) {
+        prob *= 4.0 * cr * cc / ((h + 2.0) * (h + 1.0));
+        sum += prob;
+        p   += prob;
+        --cr; --cc;
+      }
+    }
+    // --- Downward walk (other side): monotone decrease; count tail <= thresh ---
+    {
+      double prob = 1.0;
+      int64_t cr = mid_homr, cc = mid_homc;
+      for (int64_t h = mid; h >= 2; h -= 2) {
+        prob *= h * (h - 1.0) / (4.0 * (cr + 1.0) * (cc + 1.0));
+        sum += prob;
+        if (prob <= thresh) p += prob;
+        ++cr; ++cc;
+      }
+    }
+  }
+
+  return std::min(p / sum, 1.0);
+}
+
 
 // ==================== compute_marker_stats_avx2 ====================
 
@@ -304,7 +418,7 @@ struct GenoStats {
 
 // // Compute genotype counts and derived statistics from packed BED bytes.
 // // Uses AVX2 intrinsics for the main loop with scalar tail fallback.
-GenoStats compute_marker_stats_avx2(const uint8_t* geno_bytes, uint32_t n_samples, bool altFirst) {
+GenoStats compute_marker_stats_avx2(const uint8_t* geno_bytes, uint32_t n_samples, bool altFirst, bool exactHwe) {
   uint32_t counts[4];  // homA1(code0), het(code2), homA2(code3), missing(code1)
   count_geno_classes(geno_bytes, n_samples, counts);
 
@@ -330,8 +444,15 @@ GenoStats compute_marker_stats_avx2(const uint8_t* geno_bytes, uint32_t n_sample
   gs.altFreq = static_cast<double>(gs.altCounts) / (2.0 * nonMissing);
   gs.maf = std::min(gs.altFreq, 1.0 - gs.altFreq);
   gs.mac = std::min(gs.altCounts, 2 * nonMissing - gs.altCounts);
-  // nHet/nHomA1/nHomA2 come from AVX2 count_geno_classes (missing excluded)
-  gs.hweP = HweChiSq(nHet, nHomA1, nHomA2);
+  if (exactHwe) {
+    gs.hweP = HweExact(nHet, nHomA1, nHomA2);
+  } else {
+    if (nHet < 5.0 || nHomA1 < 5.0 || nHomA2 < 5.0) {
+      gs.hweP = HweExact(nHet, nHomA1, nHomA2);
+    } else {
+      gs.hweP = HweChiSq(nHet, nHomA1, nHomA2);
+    }
+  }
   return gs;
 }
 
@@ -638,7 +759,8 @@ void PlinkCursor::getGenotypes(
     double& hweP,
     double& maf,
     double& mac,
-    std::vector<uint32_t>& indexForMissing
+    std::vector<uint32_t>& indexForMissing,
+    bool exactHwe
 ) {
   const uint8_t* raw = readMarkerPtr(gIndex);
   const uint32_t n = static_cast<uint32_t>(m_posMap.size());
@@ -647,7 +769,7 @@ void PlinkCursor::getGenotypes(
   repackSubset(raw, m_posMap.data(), m_compactGeno.data(), n);
 
   // Step 2: AVX2 stats on subset
-  GenoStats gs = compute_marker_stats_avx2(m_compactGeno.data(), n, m_altFirst);
+  GenoStats gs = compute_marker_stats_avx2(m_compactGeno.data(), n, m_altFirst, exactHwe);
   altFreq     = gs.altFreq;
   altCounts   = gs.altCounts;
   missingRate = gs.missingRate;

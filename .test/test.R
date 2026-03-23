@@ -179,8 +179,7 @@ GRAB.Marker(obj.SPAmixPlus, GenoFile, devel_spamixplus, control = list(afFilePat
 GRAB.Marker(obj.POLMM, GenoFile, devel_polmm)
 GRAB.Marker(obj.SAGELD, GenoFile, devel_sageld)
 
-
-########## run mtMarker
+########## load results
 obj.SPAGRM <- readRDS(nullobj_spagrm)
 obj.SPAsqr <- readRDS(nullobj_spasqr)
 obj.WtCoxG <- readRDS(nullobj_wtcoxg)
@@ -191,19 +190,6 @@ obj.SPAmixPlus <- readRDS(nullobj_spamixplus)
 obj.POLMM <- readRDS(nullobj_polmm)
 obj.SAGELD <- readRDS(nullobj_sageld)
 
-control <- list(nthreads = 4, nMarkersEachChunk = 256, afFilePath = afFileOutput)
-GRAB.Marker5(obj.SPAGRM, GenoFile, mt_spagrm, control = control, overwrite = TRUE)
-GRAB.Marker5(obj.SPAsqr, GenoFile, mt_spasqr, control = control, overwrite = TRUE)
-GRAB.Marker5(obj.WtCoxG, GenoFile, mt_wtcoxg, control = control, overwrite = TRUE)
-GRAB.Marker5(obj.LEAF, GenoFile, mt_leaf, control = control, overwrite = TRUE)
-GRAB.Marker5(obj.SPACox, GenoFile, mt_spacox, control = control, overwrite = TRUE)
-GRAB.Marker5(obj.SPAmix, GenoFile, mt_spamix, control = control, overwrite = TRUE)
-GRAB.Marker5(obj.SPAmixPlus, GenoFile, mt_spamixplus, control = control, overwrite = TRUE)
-GRAB.Marker5(obj.POLMM, GenoFile, mt_polmm, control = control, overwrite = TRUE)
-GRAB.Marker5(obj.SAGELD, GenoFile, mt_sageld, control = control, overwrite = TRUE)
-
-
-########## compare results
 dev_res_spagrm <- fread(devel_spagrm)
 dev_res_spasqr <- fread(devel_spasqr)
 dev_res_wtcoxg <- fread(devel_wtcoxg)
@@ -215,16 +201,8 @@ dev_res_spamixplus <- fread(devel_spamixplus)
 dev_res_polmm <- fread(devel_polmm)
 dev_res_sageld <- fread(devel_sageld)
 
-mt_res_spagrm <- fread(mt_spagrm)
-mt_res_spasqr <- fread(mt_spasqr)
-mt_res_wtcoxg <- fread(mt_wtcoxg)
-mt_res_leaf <- fread(mt_leaf)
-mt_res_spacox <- fread(mt_spacox)
-mt_res_spamix <- fread(mt_spamix)
-mt_res_spamixplus <- fread(mt_spamixplus)
-mt_res_polmm <- fread(mt_polmm)
-mt_res_sageld <- fread(mt_sageld)
-
+plink_acount <- fread(".test/simuPLINK.acount")
+plink_hardy <- fread(".test/simuPLINK.hardy")
 
 compare_df <- function(df1, df2, name = "") {
   common_cols <- intersect(names(df1), names(df2))
@@ -236,6 +214,29 @@ compare_df <- function(df1, df2, name = "") {
   }
   cat("\n")
 }
+
+########## run Marker6
+control <- list(nthreads = 4, nMarkersEachChunk = 256, afFilePath = afFileOutput)
+
+GRAB.Marker6(obj.SPAGRM, GenoFile, mt_spagrm, control = control, overwrite = TRUE)
+GRAB.Marker6(obj.SPAsqr, GenoFile, mt_spasqr, control = control, overwrite = TRUE)
+GRAB.Marker6(obj.WtCoxG, GenoFile, mt_wtcoxg, control = control, overwrite = TRUE)
+GRAB.Marker6(obj.LEAF, GenoFile, mt_leaf, control = control, overwrite = TRUE)
+GRAB.Marker6(obj.SPACox, GenoFile, mt_spacox, control = control, overwrite = TRUE)
+GRAB.Marker6(obj.SPAmix, GenoFile, mt_spamix, control = control, overwrite = TRUE)
+GRAB.Marker6(obj.SPAmixPlus, GenoFile, mt_spamixplus, control = control, overwrite = TRUE)
+GRAB.Marker6(obj.POLMM, GenoFile, mt_polmm, control = control, overwrite = TRUE)
+GRAB.Marker6(obj.SAGELD, GenoFile, mt_sageld, control = control, overwrite = TRUE)
+
+mt_res_spagrm <- fread(mt_spagrm)
+mt_res_spasqr <- fread(mt_spasqr)
+mt_res_wtcoxg <- fread(mt_wtcoxg)
+mt_res_leaf <- fread(mt_leaf)
+mt_res_spacox <- fread(mt_spacox)
+mt_res_spamix <- fread(mt_spamix)
+mt_res_spamixplus <- fread(mt_spamixplus)
+mt_res_polmm <- fread(mt_polmm)
+mt_res_sageld <- fread(mt_sageld)
 
 compare_df(dev_res_spagrm, mt_res_spagrm, "spagrm")
 compare_df(dev_res_spasqr, mt_res_spasqr, "spasqr")

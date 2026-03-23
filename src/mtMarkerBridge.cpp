@@ -1,9 +1,5 @@
 
 // mtMarkerBridge.cpp -- Unified R/Rcpp boundary for marker-level association
-//
-// Single entry point: mtMarkerBridgeInCPP
-//   Receives the null model object and control list from R,
-//   constructs the appropriate method class, and calls mtMarkerEngine.
 
 #include <RcppArmadillo.h>
 #include "mtPLINK.h"
@@ -17,7 +13,7 @@
 #include "mtSPAmix.h"
 #include "mtSPAmixPlus.h"
 
-// Method pointers — defined in mtMarkerEngine.cpp.
+// Forward declarations — defined in mtMarkerEngine.cpp.
 extern mtPOLMMClass*      ptr_gPOLMMobj;
 extern mtWtCoxGClass*     ptr_gWtCoxGobj;
 extern mtLEAFClass*       ptr_gLEAFobj;
@@ -27,8 +23,7 @@ extern mtSPAGRMClass*     ptr_gSPAGRMobj;
 extern mtSAGELDClass*     ptr_gSAGELDobj;
 extern mtSPAsqrClass*     ptr_gSPAsqrobj;
 extern mtSPAmixPlusClass* ptr_gSPAmixPlusobj;
-extern PlinkData*         ptr_gPlinkDataObj;
-extern PlinkCursor*       ptr_gPlinkCursorObj;
+extern std::unique_ptr<const PlinkData> ptr_gPlinkDataObj;
 
 void mtMarkerEngine(
   const std::string method,
@@ -37,7 +32,8 @@ void mtMarkerEngine(
   const std::string impute_method,
   const double missing_cutoff,
   const double min_maf_marker,
-  const double min_mac_marker
+  const double min_mac_marker,
+  const bool exactHwe
 );
 
 
@@ -81,7 +77,7 @@ buildRefMap(const Rcpp::DataFrame& df) {
 void setupPOLMM(const Rcpp::List& obj, const Rcpp::List& ctl) {
   Rcpp::List LOCOList = obj["LOCOList"];
   Rcpp::List objCHR = LOCOList["LOCO=F"];
-  if (ptr_gPOLMMobj) delete ptr_gPOLMMobj;
+  delete ptr_gPOLMMobj;
   ptr_gPOLMMobj = new mtPOLMMClass(
     Rcpp::as<arma::mat>(objCHR["muMat"]),
     Rcpp::as<arma::mat>(objCHR["iRMat"]),
@@ -94,7 +90,7 @@ void setupPOLMM(const Rcpp::List& obj, const Rcpp::List& ctl) {
 
 void setupWtCoxG(const Rcpp::List& obj, const Rcpp::List& ctl) {
   auto refMap = buildRefMap(Rcpp::as<Rcpp::DataFrame>(obj["mergeGenoInfo"]));
-  if (ptr_gWtCoxGobj) delete ptr_gWtCoxGobj;
+  delete ptr_gWtCoxGobj;
   ptr_gWtCoxGobj = new mtWtCoxGClass(
     Rcpp::as<arma::vec>(obj["mresid"]),
     Rcpp::as<arma::vec>(obj["weight"]),
@@ -130,7 +126,7 @@ void setupLEAF(const Rcpp::List& obj, const Rcpp::List& ctl) {
       const std::unordered_map<uint64_t, mtWtCoxGClass::RefInfo>>(
         buildRefMap(Rcpp::as<Rcpp::DataFrame>(sgi[c])));
 
-  if (ptr_gLEAFobj) delete ptr_gLEAFobj;
+  delete ptr_gLEAFobj;
   ptr_gLEAFobj = new mtLEAFClass(
     std::move(residuals), std::move(weights), std::move(clusterIdxVecs),
     Rcpp::as<double>(ctl["cutoff"]),
@@ -165,7 +161,7 @@ void setupSPAGRM(const Rcpp::List& obj, const Rcpp::List& ctl) {
     std::move(threeStandS), std::move(threeCLT)
   };
 
-  if (ptr_gSPAGRMobj) delete ptr_gSPAGRMobj;
+  delete ptr_gSPAGRMobj;
   ptr_gSPAGRMobj = new mtSPAGRMClass(
     Rcpp::as<arma::vec>(obj["Resid"]),
     Rcpp::as<double>(obj["sum_R_nonOutlier"]),
@@ -224,7 +220,7 @@ void setupSAGELD(const Rcpp::List& obj, const Rcpp::List& ctl) {
     Rcpp::as<double>(obj["R_GRM_R_TwoSubjOutlier_G_GxE"])
   };
 
-  if (ptr_gSAGELDobj) delete ptr_gSAGELDobj;
+  delete ptr_gSAGELDobj;
   ptr_gSAGELDobj = new mtSAGELDClass(
     Rcpp::as<std::string>(obj["Method"]),
     Rcpp::as<arma::mat>(obj["XTs"]),
@@ -299,7 +295,7 @@ void setupSPAsqr(const Rcpp::List& obj, const Rcpp::List& ctl) {
     }
   }
 
-  if (ptr_gSPAsqrobj) delete ptr_gSPAsqrobj;
+  delete ptr_gSPAsqrobj;
   ptr_gSPAsqrobj = new mtSPAsqrClass(
     std::move(taus),
     Rcpp::as<arma::mat>(obj["Resid_mat"]),
@@ -318,7 +314,7 @@ void setupSPAsqr(const Rcpp::List& obj, const Rcpp::List& ctl) {
 void setupSPACox(const Rcpp::List& obj, const Rcpp::List& ctl) {
   arma::vec mresid = Rcpp::as<arma::vec>(obj["mresid"]);
   int N = static_cast<int>(mresid.n_elem);
-  if (ptr_gSPACoxobj) delete ptr_gSPACoxobj;
+  delete ptr_gSPACoxobj;
   ptr_gSPACoxobj = new mtSPACoxClass(
     Rcpp::as<arma::mat>(obj["cumul"]),
     std::move(mresid),
@@ -349,7 +345,7 @@ void setupSPAmix(const Rcpp::List& obj, const Rcpp::List& ctl) {
   outlier.residNonOutlier  = resid.elem(posNon);
   outlier.resid2NonOutlier = arma::square(resid.elem(posNon));
 
-  if (ptr_gSPAmixobj) delete ptr_gSPAmixobj;
+  delete ptr_gSPAmixobj;
   ptr_gSPAmixobj = new mtSPAmixClass(
     std::move(resid),
     Rcpp::as<arma::mat>(obj["PCs"]),
@@ -386,7 +382,7 @@ void setupSPAmixPlus(const Rcpp::List& obj, const Rcpp::List& ctl) {
   for (R_xlen_t i = 0; i < id1.size(); ++i)
     triplets.emplace_back(id1[i], id2[i], val[i]);
 
-  if (ptr_gSPAmixPlusobj) delete ptr_gSPAmixPlusobj;
+  delete ptr_gSPAmixPlusobj;
   ptr_gSPAmixPlusobj = new mtSPAmixPlusClass(
     std::move(resid),
     Rcpp::as<arma::mat>(obj["PCs"]),
@@ -447,9 +443,8 @@ void mtMarkerBridgeInCPP(
   std::vector<std::string> subjData =
     Rcpp::as<std::vector<std::string>>(objNull["subjData"]);
 
-  // Create PlinkData globally so worker threads can copy it
-  if (ptr_gPlinkDataObj) delete ptr_gPlinkDataObj;
-  ptr_gPlinkDataObj = new PlinkData(
+  // Create PlinkData — shared read-only across all worker threads
+  ptr_gPlinkDataObj = std::make_unique<const PlinkData>(
     bedFile, bimFile, famFile, subjData,
     Rcpp::as<std::string>(control["AlleleOrder"]),
     strOrEmpty(control, "IDsToIncludeFile"),
@@ -458,16 +453,7 @@ void mtMarkerBridgeInCPP(
     strOrEmpty(control, "RangesToExcludeFile"),
     Rcpp::as<int>(control["nMarkersEachChunk"])
   );
-
-  // Create PlinkCursor globally so worker threads can copy it
-  if (ptr_gPlinkCursorObj) delete ptr_gPlinkCursorObj;
-  ptr_gPlinkCursorObj = new PlinkCursor(
-    ptr_gPlinkDataObj->bedFile(),
-    ptr_gPlinkDataObj->nMarkers(),
-    ptr_gPlinkDataObj->nSubjInFile(),
-    ptr_gPlinkDataObj->samplePosMap(),
-    ptr_gPlinkDataObj->isAltFirst()
-  );
+  // PlinkCursor is created per-worker in makeThreadContext()
 
   mtMarkerEngine(
     method, OutputFile,
@@ -475,6 +461,7 @@ void mtMarkerBridgeInCPP(
     Rcpp::as<std::string>(control["impute_method"]),
     Rcpp::as<double>(control["missing_cutoff"]),
     Rcpp::as<double>(control["min_maf_marker"]),
-    Rcpp::as<double>(control["min_mac_marker"])
+    Rcpp::as<double>(control["min_mac_marker"]),
+    Rcpp::as<std::string>(control["hwe"]) == "exact"
   );
 }
