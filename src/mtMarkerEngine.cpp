@@ -29,16 +29,16 @@
 
 // ---- Global method pointers (one per active statistical method) ----
 
-mtPOLMMClass*          ptr_gPOLMMobj       = nullptr;
-mtWtCoxGClass*         ptr_gWtCoxGobj      = nullptr;
-mtLEAFClass*           ptr_gLEAFobj        = nullptr;
-mtSPAGRMClass*         ptr_gSPAGRMobj      = nullptr;
-mtSAGELDClass*         ptr_gSAGELDobj      = nullptr;
-mtSPAsqrClass*         ptr_gSPAsqrobj      = nullptr;
-mtSPACoxClass*         ptr_gSPACoxobj      = nullptr;
-mtSPAmixClass*         ptr_gSPAmixobj      = nullptr;
-mtSPAmixPlusClass*     ptr_gSPAmixPlusobj  = nullptr;
-std::unique_ptr<const PlinkData> ptr_gPlinkDataObj;
+std::unique_ptr<mtPOLMMClass>          ptr_gPOLMMobj;
+std::unique_ptr<mtWtCoxGClass>         ptr_gWtCoxGobj;
+std::unique_ptr<mtLEAFClass>           ptr_gLEAFobj;
+std::unique_ptr<mtSPAGRMClass>         ptr_gSPAGRMobj;
+std::unique_ptr<mtSAGELDClass>         ptr_gSAGELDobj;
+std::unique_ptr<mtSPAsqrClass>         ptr_gSPAsqrobj;
+std::unique_ptr<mtSPACoxClass>         ptr_gSPACoxobj;
+std::unique_ptr<mtSPAmixClass>         ptr_gSPAmixobj;
+std::unique_ptr<mtSPAmixPlusClass>     ptr_gSPAmixPlusobj;
+std::unique_ptr<const PlinkData>       ptr_gPlinkDataObj;
 
 
 namespace {
@@ -171,6 +171,10 @@ void formatLineNA(
 // ---- File-local structs ----
 
 // Per-worker independent copies of all shared state.
+// The constructor clones the global method object for thread safety.
+// Each method class stores per-marker mutable state (result vectors, scratch),
+// so per-thread copies are required.  The copy happens once per thread,
+// not per chunk, so the cost is amortized.
 struct ThreadContext {
   std::unique_ptr<mtPOLMMClass>      polmm;
   std::unique_ptr<mtWtCoxGClass>     wtcoxg;
@@ -184,6 +188,47 @@ struct ThreadContext {
   const PlinkData*                   plinkData = nullptr;  // non-owning
   std::unique_ptr<PlinkCursor>       cursor;
   std::string                        naSuffix;
+
+  explicit ThreadContext(const std::string& method) {
+    if (method == "POLMM") {
+      assert(ptr_gPOLMMobj && "POLMM object is not initialized.");
+      polmm.reset(new mtPOLMMClass(*ptr_gPOLMMobj));
+    } else if (method == "SPACox") {
+      assert(ptr_gSPACoxobj && "SPACox object is not initialized.");
+      spacox.reset(new mtSPACoxClass(*ptr_gSPACoxobj));
+    } else if (method == "SPAmix") {
+      assert(ptr_gSPAmixobj && "SPAmix object is not initialized.");
+      spamix.reset(new mtSPAmixClass(*ptr_gSPAmixobj));
+    } else if (method == "SPAmixPlus") {
+      assert(ptr_gSPAmixPlusobj && "SPAmixPlus object is not initialized.");
+      spamixPlus.reset(new mtSPAmixPlusClass(*ptr_gSPAmixPlusobj));
+    } else if (method == "SPAGRM") {
+      assert(ptr_gSPAGRMobj && "SPAGRM object is not initialized.");
+      spagrm.reset(new mtSPAGRMClass(*ptr_gSPAGRMobj));
+    } else if (method == "SAGELD") {
+      assert(ptr_gSAGELDobj && "SAGELD object is not initialized.");
+      sageld.reset(new mtSAGELDClass(*ptr_gSAGELDobj));
+    } else if (method == "WtCoxG") {
+      assert(ptr_gWtCoxGobj && "WtCoxG object is not initialized.");
+      wtcoxg.reset(new mtWtCoxGClass(*ptr_gWtCoxGobj));
+    } else if (method == "SPAsqr") {
+      assert(ptr_gSPAsqrobj && "SPAsqr object is not initialized.");
+      spasqr.reset(new mtSPAsqrClass(*ptr_gSPAsqrobj));
+    } else if (method == "LEAF") {
+      assert(ptr_gLEAFobj && "LEAF object is not initialized.");
+      leaf.reset(new mtLEAFClass(*ptr_gLEAFobj));
+    }
+    // Share PlinkData (read-only) and create a fresh PlinkCursor per worker
+    assert(ptr_gPlinkDataObj && "PlinkData must be initialized before worker creation");
+    plinkData = ptr_gPlinkDataObj.get();
+    cursor = std::make_unique<PlinkCursor>(
+        ptr_gPlinkDataObj->bedFile(),
+        ptr_gPlinkDataObj->nMarkers(),
+        ptr_gPlinkDataObj->nSubjInFile(),
+        ptr_gPlinkDataObj->samplePosMap(),
+        ptr_gPlinkDataObj->isAltFirst());
+    naSuffix = makeNaSuffix(method);
+  }
 };
 
 
@@ -207,57 +252,6 @@ std::string getHeader(const std::string& method) {
   return std::string(META_HEADER) + cols;
 }
 
-
-// ---- Worker context ----
-
-// Clone the global method object into a per-thread ThreadContext.
-// Each method class stores per-marker mutable state (result vectors, scratch),
-// so per-thread copies are required for thread safety.  The copy happens once
-// per thread, not per chunk, so the cost is amortized.
-ThreadContext makeThreadContext(const std::string& method) {
-  ThreadContext ctx;
-  if (method == "POLMM") {
-    if (!ptr_gPOLMMobj) throw std::runtime_error("POLMM object is not initialized.");
-    ctx.polmm.reset(new mtPOLMMClass(*ptr_gPOLMMobj));
-  } else if (method == "SPACox") {
-    if (!ptr_gSPACoxobj) throw std::runtime_error("SPACox object is not initialized.");
-    ctx.spacox.reset(new mtSPACoxClass(*ptr_gSPACoxobj));
-  } else if (method == "SPAmix") {
-    if (!ptr_gSPAmixobj) throw std::runtime_error("SPAmix object is not initialized.");
-    ctx.spamix.reset(new mtSPAmixClass(*ptr_gSPAmixobj));
-  } else if (method == "SPAmixPlus") {
-    if (!ptr_gSPAmixPlusobj) throw std::runtime_error("SPAmixPlus object is not initialized.");
-    ctx.spamixPlus.reset(new mtSPAmixPlusClass(*ptr_gSPAmixPlusobj));
-  } else if (method == "SPAGRM") {
-    if (!ptr_gSPAGRMobj) throw std::runtime_error("SPAGRM object is not initialized.");
-    ctx.spagrm.reset(new mtSPAGRMClass(*ptr_gSPAGRMobj));
-  } else if (method == "SAGELD") {
-    if (!ptr_gSAGELDobj) throw std::runtime_error("SAGELD object is not initialized.");
-    ctx.sageld.reset(new mtSAGELDClass(*ptr_gSAGELDobj));
-  } else if (method == "WtCoxG") {
-    if (!ptr_gWtCoxGobj) throw std::runtime_error("WtCoxG object is not initialized.");
-    ctx.wtcoxg.reset(new mtWtCoxGClass(*ptr_gWtCoxGobj));
-  } else if (method == "SPAsqr") {
-    if (!ptr_gSPAsqrobj) throw std::runtime_error("SPAsqr object is not initialized.");
-    ctx.spasqr.reset(new mtSPAsqrClass(*ptr_gSPAsqrobj));
-  } else if (method == "LEAF") {
-    if (!ptr_gLEAFobj) throw std::runtime_error("LEAF object is not initialized.");
-    ctx.leaf.reset(new mtLEAFClass(*ptr_gLEAFobj));
-  }
-
-  // Share PlinkData (read-only) and create a fresh PlinkCursor per worker
-  assert(ptr_gPlinkDataObj && "PlinkData must be initialized before worker creation");
-  ctx.plinkData = ptr_gPlinkDataObj.get();
-  ctx.cursor = std::make_unique<PlinkCursor>(
-      ptr_gPlinkDataObj->bedFile(),
-      ptr_gPlinkDataObj->nMarkers(),
-      ptr_gPlinkDataObj->nSubjInFile(),
-      ptr_gPlinkDataObj->samplePosMap(),
-      ptr_gPlinkDataObj->isAltFirst());
-  ctx.naSuffix = makeNaSuffix(method);
-  return ctx;
-}
-
 } // namespace
 
 
@@ -273,6 +267,9 @@ void mtMarkerEngine(
   const double min_mac_marker,
   const bool exactHwe
 ) {
+  const auto wallStart = std::chrono::steady_clock::now();
+  const std::clock_t cpuStart = std::clock();
+
   assert(ptr_gPlinkDataObj && "PlinkData must be initialized before engine start");
   const PlinkData& plinkRef = *ptr_gPlinkDataObj;
   const size_t nTotalChunks = plinkRef.chunkIndices().size();
@@ -283,11 +280,15 @@ void mtMarkerEngine(
   infoMsg("Number of markers in the input file: %u", plinkRef.nMarkers());
   infoMsg("Number of markers to test: %zu", plinkRef.markerInfo().size());
   infoMsg("Number of chunks for all markers: %zu", nTotalChunks);
-  infoMsg("Number of threads: %d", effective_nthreads);
+  infoMsg("Start chunk-level parallel processing with %d worker threads.", effective_nthreads);
 
   const std::string header = getHeader(method);
   std::vector<std::string> chunkOutput(nTotalChunks);
-  std::vector<char> chunkReady(nTotalChunks, 0);
+  // Pad each flag to a full cache line so worker threads writing adjacent
+  // indices don't invalidate each other's cache lines (false sharing).
+  struct alignas(64) PaddedFlag { char ready; };
+  static_assert(sizeof(PaddedFlag) == 64, "PaddedFlag must be 64 bytes");
+  std::vector<PaddedFlag> chunkReady(nTotalChunks, {0});
   std::atomic<size_t> nextChunk(0);
 
   std::exception_ptr workerError = nullptr;
@@ -339,8 +340,8 @@ void mtMarkerEngine(
       std::string tmp;
       {
         std::unique_lock<std::mutex> lk(writeMutex);
-        writeCv.wait(lk, [&]() { return chunkReady[i] || stopWriter.load(); });
-        if (!chunkReady[i]) break;  // writer-stop or error: abandon remaining chunks
+        writeCv.wait(lk, [&]() { return chunkReady[i].ready || stopWriter.load(); });
+        if (!chunkReady[i].ready) break;  // writer-stop or error: abandon remaining chunks
         tmp = std::move(chunkOutput[i]);  // frees chunkOutput[i] memory immediately
       }
       writeStr(tmp);
@@ -358,7 +359,7 @@ void mtMarkerEngine(
   auto workerFn = [&]() {
     try {
       // Per-thread: copy method state; share PlinkData (read-only); fresh PlinkCursor
-      ThreadContext ctx = makeThreadContext(method);
+      ThreadContext ctx(method);
       const PlinkData& pd = *ctx.plinkData;
       PlinkCursor& cursor = *ctx.cursor;
       const auto& localChunks = pd.chunkIndices();
@@ -494,7 +495,7 @@ void mtMarkerEngine(
         {
           std::lock_guard<std::mutex> lk(writeMutex);
           chunkOutput[cidx] = std::move(out);
-          chunkReady[cidx] = 1;
+          chunkReady[cidx].ready = 1;
         }
         infoMsg("Calculation finished: chunk %zu/%zu", cidx + 1, nTotalChunks);
         writeCv.notify_all();
@@ -526,4 +527,9 @@ void mtMarkerEngine(
   writerThread.join();
 
   if (workerError) std::rethrow_exception(workerError);
+
+  const double wallSec = std::chrono::duration<double>(std::chrono::steady_clock::now() - wallStart).count();
+  const double cpuSec  = static_cast<double>(std::clock() - cpuStart) / CLOCKS_PER_SEC;
+  infoMsg("Output written to: %s", outputFile.c_str());
+  infoMsg("Wall time: %.1f seconds, CPU time: %.1f seconds", wallSec, cpuSec);
 }

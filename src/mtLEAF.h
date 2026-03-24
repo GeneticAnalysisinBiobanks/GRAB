@@ -120,44 +120,25 @@ public:
     return m_chunkRefInfo[cluster][markerIdx];
   }
 
-  arma::vec getMarkerZSP(const arma::vec& GVec, int marker_idx) {
-    arma::vec zScoreVec(2 * m_Ncluster);
-    arma::vec scoreVec(2 * m_Ncluster);
-    arma::vec pvalVec(2 * m_Ncluster);
-
-    for (int i = 0; i < m_Ncluster; i++) {
-
-      arma::vec GVec_cluster = GVec.elem(m_clusterIdx_vec[i]);
-      arma::vec pval_cluster = m_WtCoxGobj_vec[i].getpvalVec(GVec_cluster, marker_idx);
-
-      pvalVec(2*i) = pval_cluster(0);
-      pvalVec(2*i + 1) = pval_cluster(1);
-
-      arma::vec score_cluster = m_WtCoxGobj_vec[i].getScoreVec();
-      scoreVec(2*i) = score_cluster(0);
-      scoreVec(2*i + 1) = score_cluster(1);
-
-      arma::vec zscore_cluster = m_WtCoxGobj_vec[i].getZScoreVec();
-      zScoreVec(2*i) = zscore_cluster(0);
-      zScoreVec(2*i + 1) = zscore_cluster(1);
-    }
-
-    arma::vec result = arma::join_cols(arma::join_cols(zScoreVec, scoreVec), pvalVec);
-    return result;
-  }
-
   // Fills rv with [meta_p_ext, meta_p_noext, cl1_p_ext, cl1_p_noext, cl1_p_batch, ...]
   void getResultVec(const arma::vec& GVec, int markerIdx, std::vector<double>& rv) {
-    arma::vec all = getMarkerZSP(GVec, markerIdx);
-    const int nOut = 2 * m_Ncluster;
+    // Per-cluster scores and pvals (stack-allocated for small cluster counts)
     std::vector<double> sExt(m_Ncluster), sNoext(m_Ncluster);
     std::vector<double> pExt(m_Ncluster), pNoext(m_Ncluster);
-    for (int c = 0; c < m_Ncluster; ++c) {
-      sExt[c]   = all[nOut + 2*c];
-      sNoext[c] = all[nOut + 2*c + 1];
-      pExt[c]   = all[2*nOut + 2*c];
-      pNoext[c] = all[2*nOut + 2*c + 1];
+
+    for (int i = 0; i < m_Ncluster; i++) {
+      arma::vec GVec_cluster = GVec.elem(m_clusterIdx_vec[i]);
+      double pE, pN;
+      m_WtCoxGobj_vec[i].getpvalVec(GVec_cluster, markerIdx, pE, pN);
+
+      pExt[i] = pE;
+      pNoext[i] = pN;
+
+      const auto& scoreArr = m_WtCoxGobj_vec[i].getScoreArr();
+      sExt[i] = scoreArr[0];
+      sNoext[i] = scoreArr[1];
     }
+
     auto metaP = [](const std::vector<double>& scores, const std::vector<double>& pvals) {
       double sumScore = 0, sumVar = 0;
       for (size_t c = 0; c < scores.size(); ++c) {
@@ -172,6 +153,7 @@ public:
       double z = sumScore / std::sqrt(sumVar);
       return std::erfc(std::fabs(z) / std::sqrt(2.0));
     };
+
     rv.clear();
     rv.reserve(2 + 3 * m_Ncluster);
     rv.push_back(metaP(sExt, pExt));

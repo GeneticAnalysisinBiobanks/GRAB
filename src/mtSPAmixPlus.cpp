@@ -16,34 +16,29 @@ mtSPAmixPlusClass::mtSPAmixPlusClass(
   double SPA_Cutoff,
   OutlierData outlier,
   std::vector<std::tuple<int, int, double>> sparseTriplets,
-  const std::string& afFilePath,
-  const std::string& afFilePrecision
-) {
-
-  m_afFilePath = afFilePath;
-  m_afFilePrecision = afFilePrecision;
-  m_sparseTriplets = std::move(sparseTriplets);
-
-  m_resid = std::move(resid);
-  m_PCs = std::move(PCs);
-  m_N = N;
-  m_SPA_Cutoff = SPA_Cutoff;
-
-  m_pval = 0.0;
-  m_zScore = 0.0;
-  m_Beta = 0.0;
-  m_S = 0.0;
-  m_Smean = 0.0;
-  m_VarS = 0.0;
-
-  m_outlier = std::move(outlier);
-  m_onePlusPCs = arma::join_horiz(arma::ones(N), m_PCs);
-  arma::mat X_t = m_onePlusPCs.t();
-  arma::mat XTX = X_t * m_onePlusPCs;
-  arma::mat XTX_inv = arma::inv(XTX);
-  m_sqrt_XTX_inv_diag = arma::sqrt(XTX_inv.diag());
-
-}
+  std::string afFilePath,
+  std::string afFilePrecision
+)
+  : m_N(N),
+    m_SPA_Cutoff(SPA_Cutoff),
+    m_resid(std::move(resid)),
+    m_PCs(std::move(PCs)),
+    m_onePlusPCs(arma::join_horiz(arma::ones(m_N), m_PCs)),
+    m_sqrt_XTX_inv_diag([this]() {
+      arma::mat XTX_inv = arma::inv(m_onePlusPCs.t() * m_onePlusPCs);
+      return arma::vec(arma::sqrt(XTX_inv.diag()));
+    }()),
+    m_outlier(std::move(outlier)),
+    m_sparseTriplets(std::move(sparseTriplets)),
+    m_afFilePath(std::move(afFilePath)),
+    m_afFilePrecision(std::move(afFilePrecision)),
+    m_pval(0.0),
+    m_zScore(0.0),
+    m_Beta(0.0),
+    m_S(0.0),
+    m_Smean(0.0),
+    m_VarS(0.0)
+{}
 
 arma::vec mtSPAmixPlusClass::fit_lm_get_beta(const arma::vec& g, arma::vec& pvalues) {
   int n = m_N;
@@ -67,7 +62,7 @@ arma::vec mtSPAmixPlusClass::fit_lm(const arma::vec& g, arma::vec& pvalues) {
     return m_onePlusPCs * coef;
 }
 
-mtSPAmixPlusClass::AFModelInfo mtSPAmixPlusClass::computeAFModel(arma::vec GVec, double altFreq) {
+mtSPAmixPlusClass::AFModelInfo mtSPAmixPlusClass::computeAFModel(const arma::vec& GVec, double altFreq) {
   AFModelInfo model;
   model.status = 0;
   int k = m_PCs.n_cols;
@@ -78,7 +73,7 @@ mtSPAmixPlusClass::AFModelInfo mtSPAmixPlusClass::computeAFModel(arma::vec GVec,
   double MAF_est_negative_ratio_cutoff = 0.1;
 
   int N = m_N;
-  arma::vec g = GVec;
+  const arma::vec& g = GVec;
   double MAC = altFreq * 2.0 * N;
   arma::vec pvalues(k);
 
@@ -127,7 +122,7 @@ mtSPAmixPlusClass::AFModelInfo mtSPAmixPlusClass::computeAFModel(arma::vec GVec,
   return model;
 }
 
-arma::vec mtSPAmixPlusClass::getAFFromModel(AFModelInfo model, double altFreq) {
+arma::vec mtSPAmixPlusClass::getAFFromModel(const AFModelInfo& model, double altFreq) {
   if (model.status == 0){
       return arma::vec(m_N, arma::fill::value(altFreq));
   }
@@ -148,12 +143,12 @@ arma::vec mtSPAmixPlusClass::getAFFromModel(AFModelInfo model, double altFreq) {
   return arma::vec(m_N, arma::fill::value(altFreq));
 }
 
-arma::vec mtSPAmixPlusClass::getMafEst(arma::vec GVec, double altFreq) {
+arma::vec mtSPAmixPlusClass::getMafEst(const arma::vec& GVec, double altFreq) {
   AFModelInfo model = computeAFModel(GVec, altFreq);
   return getAFFromModel(model, altFreq);
 }
 
-double mtSPAmixPlusClass::getMarkerPval(arma::vec GVec, double altFreq) {
+double mtSPAmixPlusClass::getMarkerPval(const arma::vec& GVec, double altFreq) {
   arma::vec AFVec = getMafEst(GVec, altFreq);
   m_MAFVec = AFVec;
   arma::vec GVarVec = 2.0 * AFVec % (1.0 - AFVec);
@@ -205,7 +200,7 @@ double mtSPAmixPlusClass::getMarkerPval(arma::vec GVec, double altFreq) {
   return m_pval;
 }
 
-double mtSPAmixPlusClass::getMarkerPvalFromModel(arma::vec GVec, AFModelInfo model, double altFreq) {
+double mtSPAmixPlusClass::getMarkerPvalFromModel(const arma::vec& GVec, const AFModelInfo& model, double altFreq) {
   arma::vec AFVec = getAFFromModel(model, altFreq);
   m_MAFVec = AFVec;
   arma::vec GVarVec = 2.0 * AFVec % (1.0 - AFVec);
@@ -220,7 +215,7 @@ double mtSPAmixPlusClass::getMarkerPvalFromModel(arma::vec GVec, AFModelInfo mod
   const arma::vec& residNonOutlier = od.residNonOutlier;
   const arma::vec& resid2NonOutlier = od.resid2NonOutlier;
 
-  arma::vec R_subset = resid;
+  const arma::vec& R_subset = resid;
   arma::vec GVar_subset = GVarVec.elem(posValue);
   arma::vec R_new = R_subset % arma::sqrt(GVar_subset);
   double VarS = calculateSparseVariance(R_new, posValue);

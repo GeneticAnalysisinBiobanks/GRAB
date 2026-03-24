@@ -9,8 +9,8 @@
 namespace nsSPAmix {
 
 double getProbSpaG(
-  const arma::vec MAF_outlier,
-  const arma::vec residOutlier,
+  const arma::vec& MAF_outlier,
+  const arma::vec& residOutlier,
   double s,
   bool lower_tail,
   double mean_nonOutlier,
@@ -59,8 +59,8 @@ public:
     OutlierData outlier
   );
 
-  void getResultVec(arma::vec& GVec, double altFreq, std::vector<double>& rv) {
-    getMarkerPval(std::move(GVec), altFreq);
+  void getResultVec(const arma::vec& GVec, double altFreq, std::vector<double>& rv) {
+    getMarkerPval(GVec, altFreq);
     rv.clear();
     rv.push_back(m_pval);
     rv.push_back(m_zScore);
@@ -72,14 +72,14 @@ public:
     return "\tPvalue\tzScore";
   }
 
-  double getMarkerPval(arma::vec GVec, double altFreq);
+  double getMarkerPval(const arma::vec& GVec, double altFreq);
 
 private:
 
   arma::vec fit_lm(const arma::vec& g, arma::vec& pvalues);
 
   arma::vec getMafEst(
-    arma::vec g,
+    const arma::vec& g,
     double altFreq,
     double MAC_cutoff = 20,
     double PCs_pvalue_cutoff = 0.05,

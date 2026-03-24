@@ -350,7 +350,9 @@ double getProbSpaG(
   return pval;
 }
 
-arma::vec spaGOneSnpHomo(
+struct SpaResult { double pval; double pval2; double score; double zscore; };
+
+SpaResult spaGOneSnpHomo(
   const arma::vec& g_input, const arma::vec& R,
   double mu_ext, double n_ext, double b,
   double sigma2, double var_ratio, double SPA_Cutoff,
@@ -370,7 +372,7 @@ arma::vec spaGOneSnpHomo(
   double sum_2_minus_g = arma::sum(2.0 - g);
 
   if (sum_g < min_mac || sum_2_minus_g < min_mac || missing_rate > missing_cutoff) {
-    return arma::vec({arma::datum::nan, arma::datum::nan, arma::datum::nan, arma::datum::nan});
+    return {arma::datum::nan, arma::datum::nan, arma::datum::nan, arma::datum::nan};
   }
 
   double N = g.n_elem;
@@ -393,7 +395,7 @@ arma::vec spaGOneSnpHomo(
   if (std::abs(z) < SPA_Cutoff) {
     double pval_norm = 2.0 * pnormBoost(-std::abs(z), 0.0, 1.0, true, false);
     pval_norm = std::min(1.0, pval_norm);
-    return arma::vec({pval_norm, pval_norm, S_raw, z});
+    return {pval_norm, pval_norm, S_raw, z};
   }
   else {
     double pval1 = getProbSpaG(
@@ -410,13 +412,13 @@ arma::vec spaGOneSnpHomo(
     double pval_norm = 2.0 * pnormBoost(-std::abs(z), 0.0, 1.0, true, false);
     pval_norm = std::min(1.0, pval_norm);
 
-    return arma::vec({pval_spa, pval_norm, S_raw, z});
+    return {pval_spa, pval_norm, S_raw, z};
   }
 }
 
 } // anonymous namespace
 
-arma::vec mtWtCoxGClass::wtCoxGTest(
+mtWtCoxGClass::WtResult mtWtCoxGClass::wtCoxGTest(
   const arma::vec& g_input, const arma::vec& R, const arma::vec& w,
   double p_bat, double TPR, double sigma2, double b,
   double var_ratio_int, double var_ratio_w0, double var_ratio_w1,
@@ -424,17 +426,7 @@ arma::vec mtWtCoxGClass::wtCoxGTest(
   double n_ext, double p_cut
 ) {
 
-  arma::vec g = g_input;
-  arma::uvec na_indices = arma::find_nonfinite(g);
-  double missing_rate = static_cast<double>(na_indices.n_elem) / g.n_elem;
-
-  if (missing_rate != 0.0) {
-    arma::uvec valid_indices = arma::find_finite(g);
-    if (valid_indices.n_elem > 0) {
-      double mean_val = arma::mean(g.elem(valid_indices));
-      g.elem(na_indices).fill(mean_val);
-    }
-  }
+  arma::vec g = imputeMissing(g_input);
 
   if (std::isnan(mu_ext)) {
     double var_ratio_to_use;
@@ -443,16 +435,16 @@ arma::vec mtWtCoxGClass::wtCoxGTest(
     } else {
       var_ratio_to_use = 1.0;
     }
-    arma::vec spa_result = spaGOneSnpHomo(
+    SpaResult spa_result = spaGOneSnpHomo(
       g, R, 0.0, 0.0, 0.0, 0.0, var_ratio_to_use, m_SPA_Cutoff, 0.15, 10.0);
-    return arma::vec({spa_result(0), spa_result(2), spa_result(3)});
+    return {spa_result.pval, spa_result.score, spa_result.zscore};
   }
 
   double sum_g = arma::sum(g);
   double sum_2_minus_g = arma::sum(2.0 - g);
 
   if (p_bat < p_cut || std::isnan(p_bat) || sum_g < 10 || sum_2_minus_g < 10) {
-    return arma::vec({arma::datum::nan, arma::datum::nan, arma::datum::nan});
+    return {arma::datum::nan, arma::datum::nan, arma::datum::nan};
   }
 
   double meanR = arma::mean(R);
@@ -474,9 +466,9 @@ arma::vec mtWtCoxGClass::wtCoxGTest(
   double d = pnormBoost(lb / std::sqrt(var_ratio_w1), 0.0, std::sqrt(var_Sbat + sigma2), true, true);
   double p_deno = TPR * (std::exp(d) * (std::exp(c - d) - 1.0)) + (1.0 - TPR) * (1.0 - p_cut);
 
-  arma::vec spa_result_s0 = spaGOneSnpHomo(
+  SpaResult spa_result_s0 = spaGOneSnpHomo(
     g, R, mu_ext, n_ext, b, 0.0, var_ratio0, m_SPA_Cutoff, 0.15, 10.0);
-  double p_spa_s0 = spa_result_s0(0);
+  double p_spa_s0 = spa_result_s0.pval;
   double qchisq_val = qchisqBoost(p_spa_s0, 1.0, false, false);
   double var_S = S * S / var_ratio0 / qchisq_val;
 
@@ -487,48 +479,36 @@ arma::vec mtWtCoxGClass::wtCoxGTest(
             2.0 * b * sumR * var_mu_ext;
   double denominator = var_int + 4.0 * b * b * sumR * sumR * var_mu_ext;
   if (denominator <= 0.0) {
-    return arma::vec({arma::datum::nan, arma::datum::nan, arma::datum::nan});
+    return {arma::datum::nan, arma::datum::nan, arma::datum::nan};
   }
 
   cov_Sbat_S = cov_Sbat_S * std::sqrt(var_S / denominator);
   double z = S / std::sqrt(var_S);
 
-  arma::mat VAR(2, 2);
-  VAR(0, 0) = var_S;
-  VAR(0, 1) = cov_Sbat_S;
-  VAR(1, 0) = cov_Sbat_S;
-  VAR(1, 1) = var_Sbat;
-
   double negInf = -std::numeric_limits<double>::infinity();
   double p0 = pmvnorm2d(
     negInf, -std::abs(S / std::sqrt(var_ratio0)),
     lb / std::sqrt(var_ratio_w0), ub / std::sqrt(var_ratio_w0),
-    VAR(0, 0), VAR(0, 1), VAR(1, 1));
+    var_S, cov_Sbat_S, var_Sbat);
   p0 = std::max(0.0, std::min(1.0, p0));
 
-  arma::vec spa_result_s1 = spaGOneSnpHomo(g, R, mu_ext, n_ext, b, sigma2, var_ratio1, m_SPA_Cutoff, 0.15, 10.0);
-  double p_spa_s1 = spa_result_s1(0);
+  SpaResult spa_result_s1 = spaGOneSnpHomo(g, R, mu_ext, n_ext, b, sigma2, var_ratio1, m_SPA_Cutoff, 0.15, 10.0);
+  double p_spa_s1 = spa_result_s1.pval;
   double var_S1 = S * S / var_ratio1 / qchisqBoost(p_spa_s1, 1.0, false, false);
 
   double cov_Sbat_S1 = arma::sum(w1 % R_minus_factor) * 2.0 * mu * (1.0 - mu) + 2.0 * b * sumR * (var_mu_ext + sigma2);
   cov_Sbat_S1 = cov_Sbat_S1 * std::sqrt(var_S1 / denominator);
   double var_Sbat1 = var_Sbat + sigma2;
 
-  arma::mat VAR1(2, 2);
-  VAR1(0, 0) = var_S1;
-  VAR1(0, 1) = cov_Sbat_S1;
-  VAR1(1, 0) = cov_Sbat_S1;
-  VAR1(1, 1) = var_Sbat1;
-
   double p1 = pmvnorm2d(
     negInf, -std::abs(S / std::sqrt(var_ratio1)),
     lb / std::sqrt(var_ratio_w1), ub / std::sqrt(var_ratio_w1),
-    VAR1(0, 0), VAR1(0, 1), VAR1(1, 1)
+    var_S1, cov_Sbat_S1, var_Sbat1
   );
 
   p1 = std::max(0.0, std::min(1.0, p1));
   double p_con = 2.0 * (TPR * p1 + (1.0 - TPR) * p0) / p_deno;
 
-  return arma::vec({p_con, S, z});
+  return {p_con, S, z};
 }
 

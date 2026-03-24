@@ -15,7 +15,7 @@ private:
 
   const arma::vec m_taus;
   std::vector<mtSPAGRMClass> m_SPAGRMobj_vec;
-  const arma::vec m_MAF_interval;
+  const std::vector<double> m_MAF_interval;
 
   const double m_SPA_Cutoff;
   const double m_zeta;
@@ -25,13 +25,13 @@ public:
 
   mtSPAsqrClass(
     arma::vec taus,
-    arma::mat Resid_mat,
+    std::vector<arma::vec> residCols,
     std::vector<nsSPAGRM::FamilyData> tauFamilyData,
-    arma::vec sum_R_nonOutlier_vec,
-    arma::vec R_GRM_R_nonOutlier_vec,
-    arma::vec R_GRM_R_TwoSubjOutlier_vec,
-    arma::vec R_GRM_R_vec,
-    arma::vec MAF_interval,
+    std::vector<double> sum_R_nonOutlier_vec,
+    std::vector<double> R_GRM_R_nonOutlier_vec,
+    std::vector<double> R_GRM_R_TwoSubjOutlier_vec,
+    std::vector<double> R_GRM_R_vec,
+    std::vector<double> MAF_interval,
     double SPA_Cutoff,
     double zeta,
     double tol
@@ -47,11 +47,11 @@ public:
 
     for (int i = 0; i < ntaus; ++i) {
       m_SPAGRMobj_vec.emplace_back(
-        Resid_mat.col(i),
-        sum_R_nonOutlier_vec(i),
-        R_GRM_R_nonOutlier_vec(i),
-        R_GRM_R_TwoSubjOutlier_vec(i),
-        R_GRM_R_vec(i),
+        std::move(residCols[i]),
+        sum_R_nonOutlier_vec[i],
+        R_GRM_R_nonOutlier_vec[i],
+        R_GRM_R_TwoSubjOutlier_vec[i],
+        R_GRM_R_vec[i],
         m_MAF_interval,
         std::move(tauFamilyData[i]),
         m_SPA_Cutoff,
@@ -80,7 +80,7 @@ public:
   }
 
   arma::vec getMarkerPval(
-    arma::vec GVec,
+    const arma::vec& GVec,
     double altFreq,
     arma::vec& zScoreVec
   ) {
@@ -100,9 +100,9 @@ public:
   }
 
   // Fills rv with [z_1..z_ntaus, p_1..p_ntaus, pCCT]
-  void getResultVec(arma::vec& GVec, double altFreq, std::vector<double>& rv) {
+  void getResultVec(const arma::vec& GVec, double altFreq, std::vector<double>& rv) {
     arma::vec zT;
-    arma::vec pT = getMarkerPval(std::move(GVec), altFreq, zT);
+    arma::vec pT = getMarkerPval(GVec, altFreq, zT);
     int nt = m_taus.n_elem;
     rv.clear();
     rv.reserve(2 * nt + 1);

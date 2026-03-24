@@ -2,6 +2,7 @@
 
 #include <RcppArmadillo.h>
 #include <limits>
+#include <algorithm>
 #include <boost/math/distributions/normal.hpp>
 
 #include "mtSAGELD.h"
@@ -29,12 +30,22 @@ mtSAGELDClass::mtSAGELDClass(
   double sum_R_nonOutlier,
   double sum_R_nonOutlier_G,
   double sum_R_nonOutlier_GxE,
-  arma::vec R_GRM_R,
-  arma::vec R_GRM_R_nonOutlier,
-  arma::vec R_GRM_R_TwoSubjOutlier,
+  double R_GRM_R,
+  double R_GRM_R_G,
+  double R_GRM_R_GxE,
+  double R_GRM_R_G_GxE,
+  double R_GRM_R_E,
+  double R_GRM_R_nonOutlier,
+  double R_GRM_R_nonOutlier_G,
+  double R_GRM_R_nonOutlier_GxE,
+  double R_GRM_R_nonOutlier_G_GxE,
+  double R_GRM_R_TwoSubjOutlier,
+  double R_GRM_R_TwoSubjOutlier_G,
+  double R_GRM_R_TwoSubjOutlier_GxE,
+  double R_GRM_R_TwoSubjOutlier_G_GxE,
   std::vector<TwoSubjFamily> TwoSubj_list,
   std::vector<ThreeSubjFamily> ThreeSubj_list,
-  arma::vec MAF_interval,
+  std::vector<double> MAF_interval,
   double zScoreE_cutoff,
   double SPA_Cutoff,
   double zeta,
@@ -66,9 +77,19 @@ mtSAGELDClass::mtSAGELDClass(
     m_sum_R_nonOutlier(sum_R_nonOutlier),
     m_sum_R_nonOutlier_G(sum_R_nonOutlier_G),
     m_sum_R_nonOutlier_GxE(sum_R_nonOutlier_GxE),
-    m_R_GRM_R(std::move(R_GRM_R)),
-    m_R_GRM_R_nonOutlier(std::move(R_GRM_R_nonOutlier)),
-    m_R_GRM_R_TwoSubjOutlier(std::move(R_GRM_R_TwoSubjOutlier)),
+    m_R_GRM_R(R_GRM_R),
+    m_R_GRM_R_G(R_GRM_R_G),
+    m_R_GRM_R_GxE(R_GRM_R_GxE),
+    m_R_GRM_R_G_GxE(R_GRM_R_G_GxE),
+    m_R_GRM_R_E(R_GRM_R_E),
+    m_R_GRM_R_nonOutlier(R_GRM_R_nonOutlier),
+    m_R_GRM_R_nonOutlier_G(R_GRM_R_nonOutlier_G),
+    m_R_GRM_R_nonOutlier_GxE(R_GRM_R_nonOutlier_GxE),
+    m_R_GRM_R_nonOutlier_G_GxE(R_GRM_R_nonOutlier_G_GxE),
+    m_R_GRM_R_TwoSubjOutlier(R_GRM_R_TwoSubjOutlier),
+    m_R_GRM_R_TwoSubjOutlier_G(R_GRM_R_TwoSubjOutlier_G),
+    m_R_GRM_R_TwoSubjOutlier_GxE(R_GRM_R_TwoSubjOutlier_GxE),
+    m_R_GRM_R_TwoSubjOutlier_G_GxE(R_GRM_R_TwoSubjOutlier_G_GxE),
     m_TwoSubj_list(std::move(TwoSubj_list)),
     m_ThreeSubj_list(std::move(ThreeSubj_list)),
     m_MAF_interval(std::move(MAF_interval)),
@@ -89,15 +110,35 @@ mtSAGELDClass::mtSAGELDClass(
   m_zScoreVec.resize(2);
   m_BetaVec.resize(2);
   m_seBetaVec.resize(2);
+
+  // Pre-allocate SPA workspace (constant size; reused across all marker calls)
+  const arma::uword n_unrel = static_cast<arma::uword>(m_resid_unrelated_outliers.n_elem);
+  const arma::uword mgfSz   = static_cast<arma::uword>(
+      nsSPAGRM::mgfOutputSize(n_unrel, m_TwoSubj_rho_list, m_ThreeSubj_list.size()));
+  m_workspace = nsSPAGRM::MgfWorkspace(mgfSz, n_unrel);
+
+  // Pre-allocate three-subject scratch:
+  // stand_S pre-copied from ThreeSubjFamily.stand_S for path-1 (invariant across markers).
+  // arr_prob sized for in-place update each marker.
+  const int n3 = static_cast<int>(m_ThreeSubj_list.size());
+  m_threeSubj_scratch.resize(n3);
+  for (int i = 0; i < n3; ++i) {
+    m_threeSubj_scratch[i].stand_S = m_ThreeSubj_list[i].stand_S;
+    m_threeSubj_scratch[i].arr_prob.resize(m_ThreeSubj_list[i].stand_S.size());
+  }
+
+  // Pre-allocate path-2 (lambda_i) scratch: avoids heap allocation per marker
+  m_resid_outliers_i.set_size(n_unrel);
+  m_twoResid_i.resize(nTwo);
 }
 
 double mtSAGELDClass::getMarkerPval(
-  arma::vec GVec,
+  const arma::vec& GVec,
   double altFreq
 ) {
-  double MAF = std::min(altFreq, 1 - altFreq);
+  const double MAF = std::min(altFreq, 1.0 - altFreq);
 
-  arma::mat GVec2, GVecq2, m_H1, m_H2, m_AtH, m_R, m_Cfix, m_Cran, m_GtG, m_Gty, m_V, m_v, m_intV;
+  arma::mat GVec2, m_H1, m_H2, m_AtH, m_R, m_Cfix, m_Cran, m_GtG, m_V;
 
   if (m_Method == "GALLOP") {
     GVec2 = arma::repmat(GVec.t(), 2, 1);
@@ -109,151 +150,173 @@ double mtSAGELDClass::getMarkerPval(
     m_Cfix = arma::inv(m_Q) * m_R;
     m_Cran = m_H2 - m_A21 * m_Cfix;
     m_GtG = (GVec % GVec).t() * m_TTs; m_GtG = m_GtG.reshape(2, 2);
-    m_Gty = GVec.t() * m_Tys; m_Gty = m_Gty.reshape(2, 1);
-    m_V = m_GtG - m_H1.t() * m_Cfix - m_H2.t() * m_Cran;
-    m_v = m_Gty - m_H1.t() * m_sol - m_H2.t() * m_blups;
-    m_intV = arma::inv(m_V);
+    arma::mat m_Gty = GVec.t() * m_Tys; m_Gty = m_Gty.reshape(2, 1);
+    arma::mat m_V2  = m_GtG - m_H1.t() * m_Cfix - m_H2.t() * m_Cran;
+    arma::mat m_v   = m_Gty - m_H1.t() * m_sol   - m_H2.t() * m_blups;
+    arma::mat m_intV = arma::inv(m_V2);
     arma::vec Theta = m_intV * m_v;
-    arma::vec SD = m_intV.diag();
-    arma::vec SE = m_sig * sqrt(SD);
-    arma::vec pval = 2 * arma::normcdf(-1.0 * arma::abs(Theta / SE));
-    m_pvalVec.at(0) = pval.at(0); m_pvalVec.at(1) = pval.at(1);
-    m_BetaVec.at(0) = Theta.at(0); m_BetaVec.at(1) = Theta.at(1);
-    m_seBetaVec.at(0) = SE.at(0); m_seBetaVec.at(1) = SE.at(1);
-  } else {
-    double zScore_G, zScore_GxE, pval_G, pval_GxE;
-    double G_var = 2 * MAF * (1 - MAF);
-    double Score_E = sum(GVec % m_resid_E);
-    double zScore_E = Score_E / sqrt(G_var * m_R_GRM_R(4));
-    zScore_G = sum(GVec % m_resid_G) / sqrt(G_var * m_R_GRM_R(1));
-    pval_G = 2 * arma::normcdf(-1.0 * std::abs(zScore_G));
-
-    if (std::abs(zScore_E) < m_zScoreE_cutoff) {
-      double Score = sum(GVec % m_resid);
-      double Score_var = G_var * m_R_GRM_R(0);
-      zScore_GxE = Score / sqrt(Score_var);
-
-      if (std::abs(zScore_GxE) <= m_SPA_Cutoff) {
-        pval_GxE = 2 * arma::normcdf(-1.0 * std::abs(zScore_GxE));
-      } else {
-        int order2 = arma::index_max(m_MAF_interval >= MAF);
-        int order1 = order2 - 1;
-        double MAF_ratio = (m_MAF_interval[order2] - MAF) / (m_MAF_interval[order2] - m_MAF_interval[order1]);
-        double Var_ThreeOutlier = 0;
-        int n1 = static_cast<int>(m_ThreeSubj_list.size());
-        std::vector<nsSPAGRM::UpdatedThreeSubj> update_ThreeSubj_list(n1);
-        if (n1 != 0) {
-          for (int i = 0; i < n1; i++) {
-            const auto& tsf3 = m_ThreeSubj_list[i];
-            const arma::mat& CLT_temp = tsf3.CLT;
-            arma::vec stand_S = tsf3.stand_S;
-            arma::vec CLT_temp1 = CLT_temp.col(order1);
-            arma::vec CLT_temp2 = CLT_temp.col(order2);
-            arma::vec arr_prob = MAF_ratio * CLT_temp1 + (1 - MAF_ratio) * CLT_temp2;
-            update_ThreeSubj_list[i] = {stand_S, arr_prob};
-            arma::vec temp1 = stand_S % arr_prob;
-            double temp2 = arma::accu(temp1);
-            double Var_ThreeOutlier_temp = arma::accu(stand_S % temp1) - temp2 * temp2;
-            Var_ThreeOutlier = Var_ThreeOutlier + Var_ThreeOutlier_temp;
-          }
-        }
-        double Var_nonOutlier = G_var * m_R_GRM_R_nonOutlier(0);
-        double Var_unrelated_outliers = G_var * m_sum_unrelated_outliers2;
-        double Var_TwoOutlier = G_var * m_R_GRM_R_TwoSubjOutlier(0);
-        double EmpVar = Var_nonOutlier + Var_unrelated_outliers + Var_TwoOutlier + Var_ThreeOutlier;
-        double Var_Ratio = Score_var / EmpVar;
-        double Score_adj = Score / sqrt(Var_Ratio);
-        double zeta1 = std::abs(Score_adj) / Score_var; zeta1 = std::min(zeta1, 1.2);
-        double zeta2 = -std::abs(m_zeta);
-        double pval1 = nsSPAGRM::getProbSpa(
-          m_resid_unrelated_outliers, m_TwoSubj_resid_list, m_TwoSubj_rho_list,
-          update_ThreeSubj_list, m_sum_R_nonOutlier, m_R_GRM_R_nonOutlier(0),
-          std::abs(Score_adj), MAF, false, zeta1, 1e-4);
-        double pval2 = nsSPAGRM::getProbSpa(
-          m_resid_unrelated_outliers, m_TwoSubj_resid_list, m_TwoSubj_rho_list,
-          update_ThreeSubj_list, m_sum_R_nonOutlier, m_R_GRM_R_nonOutlier(0),
-          -std::abs(Score_adj), MAF, true, zeta2, m_tol);
-        pval_GxE = pval1 + pval2;
-      }
-    } else {
-      GVec2 = arma::repmat(GVec.t(), 2, 1);
-      GVec2 = GVec2.reshape(GVec.n_elem * 2, 1);
-      m_H1 = GVec.t() * m_XTs; m_H1 = m_H1.reshape(m_ncov, 2);
-      m_H2 = m_SS.each_col() % GVec2;
-      m_AtH = GVec.t() * m_AtS; m_AtH = m_AtH.reshape(m_ncov, 2);
-      m_R = m_H1 - m_AtH;
-      m_Cfix = arma::inv(m_Q) * m_R;
-      m_Cran = m_H2 - m_A21 * m_Cfix;
-      m_GtG = (GVec % GVec).t() * m_TTs; m_GtG = m_GtG.reshape(2, 2);
-      m_V = m_GtG - m_H1.t() * m_Cfix - m_H2.t() * m_Cran;
-      double lambda_i = m_V(0, 1) / m_V(0, 0);
-      arma::vec m_resid_i = m_resid_GxE - lambda_i * m_resid_G;
-      double m_R_GRM_R_i = m_R_GRM_R(2) + lambda_i * lambda_i * m_R_GRM_R(1) - lambda_i * m_R_GRM_R(3);
-      double Score = sum(GVec % m_resid_i);
-      double Score_var = G_var * m_R_GRM_R_i;
-      zScore_GxE = Score / sqrt(Score_var);
-
-      if (std::abs(zScore_GxE) <= m_SPA_Cutoff) {
-        pval_GxE = 2 * arma::normcdf(-1.0 * std::abs(zScore_GxE));
-      } else {
-        int order2 = arma::index_max(m_MAF_interval >= MAF);
-        int order1 = order2 - 1;
-        double MAF_ratio = (m_MAF_interval[order2] - MAF) / (m_MAF_interval[order2] - m_MAF_interval[order1]);
-        double Var_ThreeOutlier = 0;
-        int n1 = static_cast<int>(m_ThreeSubj_list.size());
-        std::vector<nsSPAGRM::UpdatedThreeSubj> update_ThreeSubj_list(n1);
-        if (n1 != 0) {
-          for (int i = 0; i < n1; i++) {
-            const auto& tsf3 = m_ThreeSubj_list[i];
-            const arma::mat& CLT_temp = tsf3.CLT;
-            const arma::vec& stand_S_G = tsf3.stand_S_G;
-            const arma::vec& stand_S_GxE = tsf3.stand_S_GxE;
-            arma::vec stand_S = stand_S_GxE - lambda_i * stand_S_G;
-            arma::vec CLT_temp1 = CLT_temp.col(order1);
-            arma::vec CLT_temp2 = CLT_temp.col(order2);
-            arma::vec arr_prob = MAF_ratio * CLT_temp1 + (1 - MAF_ratio) * CLT_temp2;
-            update_ThreeSubj_list[i] = {stand_S, arr_prob};
-            arma::vec temp1 = stand_S % arr_prob;
-            double temp2 = arma::accu(temp1);
-            double Var_ThreeOutlier_temp = arma::accu(stand_S % temp1) - temp2 * temp2;
-            Var_ThreeOutlier = Var_ThreeOutlier + Var_ThreeOutlier_temp;
-          }
-        }
-        double m_R_GRM_R_nonOutlier_i = m_R_GRM_R_nonOutlier(2) + lambda_i * lambda_i * m_R_GRM_R_nonOutlier(1) - lambda_i * m_R_GRM_R_nonOutlier(3);
-        double Var_nonOutlier = G_var * m_R_GRM_R_nonOutlier_i;
-        double m_sum_unrelated_outliers2_i = m_sum_unrelated_outliers_GxE2 + lambda_i * lambda_i * m_sum_unrelated_outliers_G2 - lambda_i * m_sum_unrelated_outliers_G_GxE2;
-        double Var_unrelated_outliers = G_var * m_sum_unrelated_outliers2_i;
-        double m_R_GRM_R_TwoSubjOutlier_i = m_R_GRM_R_TwoSubjOutlier(2) + lambda_i * lambda_i * m_R_GRM_R_TwoSubjOutlier(1) - lambda_i * m_R_GRM_R_TwoSubjOutlier(3);
-        double Var_TwoOutlier = G_var * m_R_GRM_R_TwoSubjOutlier_i;
-        double EmpVar = Var_nonOutlier + Var_unrelated_outliers + Var_TwoOutlier + Var_ThreeOutlier;
-        double Var_Ratio = Score_var / EmpVar;
-        double Score_adj = Score / sqrt(Var_Ratio);
-        double zeta1 = std::abs(Score_adj) / Score_var; zeta1 = std::min(zeta1, 1.2);
-        double zeta2 = -std::abs(m_zeta);
-
-        // Construct modified data for lambda_i-adjusted SPA
-        arma::vec resid_outliers_i = m_resid_unrelated_outliers_GxE - lambda_i * m_resid_unrelated_outliers_G;
-        int nTwo = static_cast<int>(m_TwoSubj_list.size());
-        std::vector<arma::vec> twoResid_i(nTwo);
-        for (int j = 0; j < nTwo; ++j) {
-          twoResid_i[j] = m_TwoSubj_list[j].Resid_GxE - lambda_i * m_TwoSubj_list[j].Resid_G;
-        }
-        double sum_R_nonOutlier_i = m_sum_R_nonOutlier_GxE - lambda_i * m_sum_R_nonOutlier_G;
-
-        double pval1 = nsSPAGRM::getProbSpa(
-          resid_outliers_i, twoResid_i, m_TwoSubj_rho_list,
-          update_ThreeSubj_list, sum_R_nonOutlier_i, m_R_GRM_R_nonOutlier_i,
-          std::abs(Score_adj), MAF, false, zeta1, 1e-4);
-        double pval2 = nsSPAGRM::getProbSpa(
-          resid_outliers_i, twoResid_i, m_TwoSubj_rho_list,
-          update_ThreeSubj_list, sum_R_nonOutlier_i, m_R_GRM_R_nonOutlier_i,
-          -std::abs(Score_adj), MAF, true, zeta2, m_tol);
-        pval_GxE = pval1 + pval2;
-      }
-    }
-    m_pvalVec.at(0) = pval_G; m_pvalVec.at(1) = pval_GxE;
-    m_zScoreVec.at(0) = zScore_G; m_zScoreVec.at(1) = zScore_GxE;
+    arma::vec SD    = m_intV.diag();
+    arma::vec SE    = m_sig * arma::sqrt(SD);
+    arma::vec pval  = 2.0 * arma::normcdf(-1.0 * arma::abs(Theta / SE));
+    m_pvalVec[0]   = pval[0];   m_pvalVec[1]   = pval[1];
+    m_BetaVec[0]   = Theta[0];  m_BetaVec[1]   = Theta[1];
+    m_seBetaVec[0] = SE[0];     m_seBetaVec[1] = SE[1];
+    return 0.0;
   }
-  return 0;
+
+  // ---- Non-GALLOP SPA branch ----
+  const double G_var    = 2.0 * MAF * (1.0 - MAF);
+  const double zScore_G = arma::dot(GVec, m_resid_G) / std::sqrt(G_var * m_R_GRM_R_G);
+  m_zScoreVec[0] = zScore_G;
+  m_pvalVec[0]   = 2.0 * arma::normcdf(-std::abs(zScore_G));
+
+  const double zScore_E = arma::dot(GVec, m_resid_E) / std::sqrt(G_var * m_R_GRM_R_E);
+
+  // Precompute MAF interpolation indices (same for both paths)
+  const int order2 = static_cast<int>(
+      std::lower_bound(m_MAF_interval.begin(), m_MAF_interval.end(), MAF)
+      - m_MAF_interval.begin());
+  const int order1 = order2 - 1;
+  const double MAF_ratio    = (m_MAF_interval[order2] - MAF)
+                            / (m_MAF_interval[order2] - m_MAF_interval[order1]);
+  const double one_minus_mr = 1.0 - MAF_ratio;
+  const int n3   = static_cast<int>(m_ThreeSubj_list.size());
+  const int nTwo = static_cast<int>(m_TwoSubj_list.size());
+
+  double zScore_GxE, pval_GxE;
+
+  if (std::abs(zScore_E) < m_zScoreE_cutoff) {
+    // ---- Path 1: standard SPA with fixed residuals ----
+    const double Score     = arma::dot(GVec, m_resid);
+    const double Score_var = G_var * m_R_GRM_R;
+    zScore_GxE = Score / std::sqrt(Score_var);
+
+    if (std::abs(zScore_GxE) <= m_SPA_Cutoff) {
+      pval_GxE = 2.0 * arma::normcdf(-std::abs(zScore_GxE));
+    } else {
+      // Update arr_prob in-place; stand_S pre-set at construction — zero allocation.
+      double Var_ThreeOutlier = 0.0;
+      for (int i = 0; i < n3; ++i) {
+        const double* c1     = m_ThreeSubj_list[i].CLT.colptr(order1);
+        const double* c2     = m_ThreeSubj_list[i].CLT.colptr(order2);
+        const double* ss     = m_threeSubj_scratch[i].stand_S.data();
+        double*       ap     = m_threeSubj_scratch[i].arr_prob.data();
+        const size_t sz = m_threeSubj_scratch[i].stand_S.size();
+        double s1 = 0.0, s2 = 0.0;
+        for (size_t k = 0; k < sz; ++k) {
+          ap[k] = MAF_ratio * c1[k] + one_minus_mr * c2[k];
+          const double t = ss[k] * ap[k];
+          s1 += t; s2 += ss[k] * t;
+        }
+        Var_ThreeOutlier += s2 - s1 * s1;
+      }
+      const double EmpVar   = G_var * (m_R_GRM_R_nonOutlier + m_sum_unrelated_outliers2
+                                     + m_R_GRM_R_TwoSubjOutlier)
+                            + Var_ThreeOutlier;
+      const double Score_adj = Score * std::sqrt(EmpVar / Score_var);
+      double zeta1 = std::abs(Score_adj) / Score_var; zeta1 = std::min(zeta1, 1.2);
+      const double zeta2 = -std::abs(m_zeta);
+      pval_GxE =
+        nsSPAGRM::getProbSpa(
+          m_resid_unrelated_outliers, m_TwoSubj_resid_list, m_TwoSubj_rho_list,
+          m_threeSubj_scratch, m_sum_R_nonOutlier, m_R_GRM_R_nonOutlier,
+          std::abs(Score_adj), MAF, false, zeta1, 1e-4, m_workspace)
+      + nsSPAGRM::getProbSpa(
+          m_resid_unrelated_outliers, m_TwoSubj_resid_list, m_TwoSubj_rho_list,
+          m_threeSubj_scratch, m_sum_R_nonOutlier, m_R_GRM_R_nonOutlier,
+          -std::abs(Score_adj), MAF, true, zeta2, m_tol, m_workspace);
+    }
+  } else {
+    // ---- Path 2: lambda_i-adjusted SPA ----
+    GVec2 = arma::repmat(GVec.t(), 2, 1);
+    GVec2 = GVec2.reshape(GVec.n_elem * 2, 1);
+    m_H1  = GVec.t() * m_XTs;  m_H1  = m_H1.reshape(m_ncov, 2);
+    m_H2  = m_SS.each_col() % GVec2;
+    m_AtH = GVec.t() * m_AtS;  m_AtH = m_AtH.reshape(m_ncov, 2);
+    m_R    = m_H1 - m_AtH;
+    m_Cfix = arma::inv(m_Q) * m_R;
+    m_Cran = m_H2 - m_A21 * m_Cfix;
+    m_GtG  = (GVec % GVec).t() * m_TTs; m_GtG = m_GtG.reshape(2, 2);
+    m_V    = m_GtG - m_H1.t() * m_Cfix - m_H2.t() * m_Cran;
+    const double lambda_i        = m_V(0, 1) / m_V(0, 0);
+    const double R_GRM_R_i       = m_R_GRM_R_GxE  + lambda_i * lambda_i * m_R_GRM_R_G
+                                 - lambda_i * m_R_GRM_R_G_GxE;
+    const double Score     = arma::dot(GVec, m_resid_GxE)
+                           - lambda_i * arma::dot(GVec, m_resid_G);
+    const double Score_var = G_var * R_GRM_R_i;
+    zScore_GxE = Score / std::sqrt(Score_var);
+
+    if (std::abs(zScore_GxE) <= m_SPA_Cutoff) {
+      pval_GxE = 2.0 * arma::normcdf(-std::abs(zScore_GxE));
+    } else {
+      // Update stand_S and arr_prob in-place, accumulate Var_ThreeOutlier — one pass, zero alloc.
+      double Var_ThreeOutlier = 0.0;
+      for (int i = 0; i < n3; ++i) {
+        const double* gxe_ss = m_ThreeSubj_list[i].stand_S_GxE.data();
+        const double* g_ss   = m_ThreeSubj_list[i].stand_S_G.data();
+        const double* c1     = m_ThreeSubj_list[i].CLT.colptr(order1);
+        const double* c2     = m_ThreeSubj_list[i].CLT.colptr(order2);
+        double*       ss     = m_threeSubj_scratch[i].stand_S.data();
+        double*       ap     = m_threeSubj_scratch[i].arr_prob.data();
+        const size_t sz = m_threeSubj_scratch[i].stand_S.size();
+        double s1 = 0.0, s2 = 0.0;
+        for (size_t k = 0; k < sz; ++k) {
+          ss[k] = gxe_ss[k] - lambda_i * g_ss[k];
+          ap[k] = MAF_ratio * c1[k] + one_minus_mr * c2[k];
+          const double t = ss[k] * ap[k];
+          s1 += t; s2 += ss[k] * t;
+        }
+        Var_ThreeOutlier += s2 - s1 * s1;
+      }
+
+      // Compute adjusted scalars
+      const double R_GRM_R_nonOutlier_i =   m_R_GRM_R_nonOutlier_GxE
+                                          + lambda_i * lambda_i * m_R_GRM_R_nonOutlier_G
+                                          - lambda_i * m_R_GRM_R_nonOutlier_G_GxE;
+      const double sum_unrel2_i =   m_sum_unrelated_outliers_GxE2
+                                  + lambda_i * lambda_i * m_sum_unrelated_outliers_G2
+                                  - lambda_i * m_sum_unrelated_outliers_G_GxE2;
+      const double R_GRM_R_Two_i =   m_R_GRM_R_TwoSubjOutlier_GxE
+                                   + lambda_i * lambda_i * m_R_GRM_R_TwoSubjOutlier_G
+                                   - lambda_i * m_R_GRM_R_TwoSubjOutlier_G_GxE;
+      const double sum_R_nonOutlier_i = m_sum_R_nonOutlier_GxE
+                                      - lambda_i * m_sum_R_nonOutlier_G;
+      const double EmpVar   = G_var * (R_GRM_R_nonOutlier_i + sum_unrel2_i + R_GRM_R_Two_i)
+                            + Var_ThreeOutlier;
+      const double Score_adj = Score * std::sqrt(EmpVar / Score_var);
+      double zeta1 = std::abs(Score_adj) / Score_var; zeta1 = std::min(zeta1, 1.2);
+      const double zeta2 = -std::abs(m_zeta);
+
+      // Compute adjusted unrelated-outlier residuals in-place scratch — zero alloc.
+      {
+        const double* gxe = m_resid_unrelated_outliers_GxE.memptr();
+        const double* g   = m_resid_unrelated_outliers_G.memptr();
+        double*       ri  = m_resid_outliers_i.memptr();
+        const arma::uword nu = m_resid_outliers_i.n_elem;
+        for (arma::uword k = 0; k < nu; ++k) ri[k] = gxe[k] - lambda_i * g[k];
+      }
+      // Compute adjusted two-subject residuals in-place scratch — zero alloc.
+      for (int j = 0; j < nTwo; ++j) {
+        const double* gxe = m_TwoSubj_list[j].Resid_GxE.data();
+        const double* g   = m_TwoSubj_list[j].Resid_G.data();
+        double*       ri  = m_twoResid_i[j].data();
+        for (int k = 0; k < 2; ++k) ri[k] = gxe[k] - lambda_i * g[k];
+      }
+
+      pval_GxE =
+        nsSPAGRM::getProbSpa(
+          m_resid_outliers_i, m_twoResid_i, m_TwoSubj_rho_list,
+          m_threeSubj_scratch, sum_R_nonOutlier_i, R_GRM_R_nonOutlier_i,
+          std::abs(Score_adj), MAF, false, zeta1, 1e-4, m_workspace)
+      + nsSPAGRM::getProbSpa(
+          m_resid_outliers_i, m_twoResid_i, m_TwoSubj_rho_list,
+          m_threeSubj_scratch, sum_R_nonOutlier_i, R_GRM_R_nonOutlier_i,
+          -std::abs(Score_adj), MAF, true, zeta2, m_tol, m_workspace);
+    }
+  }
+
+  m_pvalVec[1]   = pval_GxE;
+  m_zScoreVec[1] = zScore_GxE;
+  return 0.0;
 }
 

@@ -26,7 +26,7 @@ GRAB.Marker6 <- function (
     missing_cutoff      = 0.15,
     min_maf_marker      = 0.001,
     min_mac_marker      = 20,
-    nMarkersEachChunk   = 1024,
+    nMarkersEachChunk   = 8192,
     AlleleOrder         = "alt-first",
     hwe                 = "exact",
     AllMarkers          = TRUE,
@@ -132,7 +132,7 @@ GRAB.Marker6 <- function (
   # dispatch to unified C++ bridge
   mtMarkerBridgeInCPP(objNull, OutputFile, control, bedFile, bimFile, famFile)
 
-  .message("Analysis complete. Results saved to '%s'.", OutputFile)
+  .message("Analysis complete.")
   invisible(NULL)
 }
 
@@ -231,6 +231,7 @@ GRAB.Marker6 <- function (
     cur <- RhpcBLASctl::blas_get_num_procs()
     if (cur != 1L) {
       RhpcBLASctl::blas_set_num_threads(1L)
+      RhpcBLASctl::omp_set_num_threads(1L)
       .message("BLAS threads set to 1 (was %d) to avoid oversubscription with %d workers.", cur, nthreads)
     }
     return(invisible(NULL))

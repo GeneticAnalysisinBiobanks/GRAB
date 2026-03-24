@@ -12,16 +12,16 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
 // mtMarkerBridgeInCPP
-void mtMarkerBridgeInCPP(Rcpp::List objNull, std::string OutputFile, Rcpp::List control, std::string bedFile, std::string bimFile, std::string famFile);
+void mtMarkerBridgeInCPP(const Rcpp::List& objNull, const std::string& OutputFile, const Rcpp::List& control, const std::string& bedFile, const std::string& bimFile, const std::string& famFile);
 RcppExport SEXP _GRAB_mtMarkerBridgeInCPP(SEXP objNullSEXP, SEXP OutputFileSEXP, SEXP controlSEXP, SEXP bedFileSEXP, SEXP bimFileSEXP, SEXP famFileSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Rcpp::List >::type objNull(objNullSEXP);
-    Rcpp::traits::input_parameter< std::string >::type OutputFile(OutputFileSEXP);
-    Rcpp::traits::input_parameter< Rcpp::List >::type control(controlSEXP);
-    Rcpp::traits::input_parameter< std::string >::type bedFile(bedFileSEXP);
-    Rcpp::traits::input_parameter< std::string >::type bimFile(bimFileSEXP);
-    Rcpp::traits::input_parameter< std::string >::type famFile(famFileSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type objNull(objNullSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type OutputFile(OutputFileSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type control(controlSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type bedFile(bedFileSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type bimFile(bimFileSEXP);
+    Rcpp::traits::input_parameter< const std::string& >::type famFile(famFileSEXP);
     mtMarkerBridgeInCPP(objNull, OutputFile, control, bedFile, bimFile, famFile);
     return R_NilValue;
 END_RCPP

@@ -62,26 +62,26 @@ struct RootResult {
   double K2;
 };
 
-double K_0(double t, int N0, double adjG0, arma::vec adjG1, const approxfunClass& emp) {
+double K_0(double t, int N0, double adjG0, const arma::vec& adjG1, const approxfunClass& emp) {
   double sG0 = t * adjG0;
   arma::vec sG1 = t * adjG1;
   return N0 * emp.getValue(sG0) + arma::sum(emp.getVector(sG1));
 }
 
-double K_1(double t, int N0, double adjG0, arma::vec adjG1, double q2, const approxfunClass& emp) {
+double K_1(double t, int N0, double adjG0, const arma::vec& adjG1, double q2, const approxfunClass& emp) {
   double sG0 = t * adjG0;
   arma::vec sG1 = t * adjG1;
   return N0 * adjG0 * emp.getValue(sG0) + arma::sum(adjG1 % emp.getVector(sG1)) - q2;
 }
 
-double K_2(double t, int N0, double adjG0, arma::vec adjG1, const approxfunClass& emp) {
+double K_2(double t, int N0, double adjG0, const arma::vec& adjG1, const approxfunClass& emp) {
   double sG0 = t * adjG0;
   arma::vec sG1 = t * adjG1;
   return N0 * pow(adjG0, 2) * emp.getValue(sG0) + arma::sum(pow(adjG1, 2) % emp.getVector(sG1));
 }
 
 RootResult fastGetRootK1(
-  double initX, int N0, double adjG0, arma::vec adjG1, double q2,
+  double initX, int N0, double adjG0, const arma::vec& adjG1, double q2,
   const approxfunClass& k1_emp, const approxfunClass& k2_emp
 ) {
   double x = initX, oldX;
@@ -124,7 +124,7 @@ RootResult fastGetRootK1(
 }
 
 double getProbSpa(
-  double adjG0, arma::vec adjG1, int N0, double q2, bool lowerTail,
+  double adjG0, const arma::vec& adjG1, int N0, double q2, bool lowerTail,
   const approxfunClass& k0_emp, const approxfunClass& k1_emp, const approxfunClass& k2_emp
 ) {
   double initX = (q2 > 0) ? 3.0 : -3.0;
@@ -167,7 +167,7 @@ mtSPACoxClass::mtSPACoxClass(
     m_SPA_Cutoff(SPA_Cutoff)
 {}
 
-double mtSPACoxClass::getMarkerPval(arma::vec GVec, double MAF, double& zScore) {
+double mtSPACoxClass::getMarkerPval(const arma::vec& GVec, double MAF, double& zScore) {
   double S = arma::sum(GVec % m_mresid);
   arma::vec adjGVec = GVec - 2 * MAF;
   double VarS = m_varResid * arma::sum(arma::pow(adjGVec, 2));
@@ -200,7 +200,7 @@ double mtSPACoxClass::getMarkerPval(arma::vec GVec, double MAF, double& zScore) 
 }
 
 void mtSPACoxClass::getRegionPVec(
-  arma::vec GVec,
+  const arma::vec& GVec,
   double& zScore,
   double& pval0,
   double& pval1,

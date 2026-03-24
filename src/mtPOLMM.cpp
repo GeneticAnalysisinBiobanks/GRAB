@@ -70,7 +70,7 @@ double K0(double x, const arma::mat& muMat, const arma::mat& cMat, double m1) {
   return arma::accu(arma::log(1 + arma::sum(temp, 1))) - m1 * x;
 }
 
-arma::vec K12(double x, const arma::mat& muMat, const arma::mat& cMat, double m1) {
+std::pair<double,double> K12(double x, const arma::mat& muMat, const arma::mat& cMat, double m1) {
   arma::mat t0 = muMat % arma::exp(cMat * x);
   arma::mat t1 = -muMat + t0;
   arma::mat t2 = t0 % cMat;
@@ -78,10 +78,9 @@ arma::vec K12(double x, const arma::mat& muMat, const arma::mat& cMat, double m1
   arma::vec v1 = 1 + arma::sum(t1, 1);
   arma::vec v2 = arma::sum(t2, 1);
   arma::vec v3 = arma::sum(t3, 1);
-  arma::vec y(2);
-  y(0) = arma::accu(v2 / v1) - m1;
-  y(1) = arma::accu((v3 % v1 - arma::square(v2)) / arma::square(v1));
-  return y;
+  double y0 = arma::accu(v2 / v1) - m1;
+  double y1 = arma::accu((v3 % v1 - arma::square(v2)) / arma::square(v1));
+  return {y0, y1};
 }
 
 RootResult fastgetroot_K1(double Stat, double initX, double Ratio0,
@@ -91,9 +90,9 @@ RootResult fastgetroot_K1(double Stat, double initX, double Ratio0,
   int iter = 0;
   for (; iter < 100; ++iter) {
     double oldX = x, oldDiffX = diffX, oldK1 = K1;
-    arma::vec kv = K12(x, muMat, cMat, m1);
-    K1 = kv(0) - Stat + Ratio0 * x;
-    K2 = kv(1) + Ratio0;
+    auto [kv0, kv1] = K12(x, muMat, cMat, m1);
+    K1 = kv0 - Stat + Ratio0 * x;
+    K2 = kv1 + Ratio0;
     diffX = -K1 / K2;
     if (!std::isfinite(K1)) { x = arma::sign(Stat) * arma::datum::inf; K2 = 0; break; }
     if (arma::sign(K1) != arma::sign(oldK1))
@@ -197,12 +196,15 @@ mtPOLMMClass::mtPOLMMClass(
 arma::mat mtPOLMMClass::getPsixMat(const arma::mat& xMat) const {
   arma::mat Psi_xMat(m_n, m_J-1);
   for (int i = 0; i < m_n; ++i) {
-    arma::rowvec muVec(m_J-1);
+    double acc = 0.0;
     for (int j = 0; j < m_J-1; ++j) {
-      Psi_xMat(i, j) = m_muMat(i, j) * xMat(i, j);
-      muVec(j) = m_muMat(i, j);
+      double val = m_muMat(i, j) * xMat(i, j);
+      Psi_xMat(i, j) = val;
+      acc += val;
     }
-    Psi_xMat.row(i) -= muVec * arma::accu(Psi_xMat.row(i));
+    for (int j = 0; j < m_J-1; ++j) {
+      Psi_xMat(i, j) -= m_muMat(i, j) * acc;
+    }
   }
   return Psi_xMat;
 }
@@ -226,7 +228,7 @@ arma::vec mtPOLMMClass::getVarWVec(const arma::vec& adjGVec) const {
 }
 
 void mtPOLMMClass::getMarkerPval(
-  arma::vec GVec,
+  const arma::vec& GVec,
   double& Beta,
   double& seBeta,
   double& pval,

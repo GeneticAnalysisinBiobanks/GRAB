@@ -42,13 +42,13 @@ public:
     double SPA_Cutoff
   );
 
-  double getMarkerPval(arma::vec GVec, double MAF, double& zScore);
-  void getRegionPVec(arma::vec GVec, double& zScore, double& pval0, double& pval1, arma::vec& P1Vec, arma::vec& P2Vec);
+  double getMarkerPval(const arma::vec& GVec, double MAF, double& zScore);
+  void getRegionPVec(const arma::vec& GVec, double& zScore, double& pval0, double& pval1, arma::vec& P1Vec, arma::vec& P2Vec);
 
   // Fills rv with [pval, zScore]
-  void getResultVec(arma::vec& GVec, double altFreq, std::vector<double>& rv) {
+  void getResultVec(const arma::vec& GVec, double altFreq, std::vector<double>& rv) {
     double zScore;
-    double pval = getMarkerPval(std::move(GVec), altFreq, zScore);
+    double pval = getMarkerPval(GVec, altFreq, zScore);
     rv.clear();
     rv.push_back(pval);
     rv.push_back(zScore);

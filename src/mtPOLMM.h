@@ -34,7 +34,7 @@ public:
   );
 
   void getMarkerPval(
-    arma::vec GVec,
+    const arma::vec& GVec,
     double& Beta,
     double& seBeta,
     double& pval,
@@ -43,9 +43,9 @@ public:
   ) const;
 
   // Fills rv with [pval, beta, seBeta, zScore]
-  void getResultVec(arma::vec& GVec, double altFreq, std::vector<double>& rv) {
+  void getResultVec(const arma::vec& GVec, double altFreq, std::vector<double>& rv) {
     double Beta, seBeta, pval, zScore;
-    getMarkerPval(std::move(GVec), Beta, seBeta, pval, altFreq, zScore);
+    getMarkerPval(GVec, Beta, seBeta, pval, altFreq, zScore);
     rv.clear();
     rv.push_back(pval);
     rv.push_back(Beta);

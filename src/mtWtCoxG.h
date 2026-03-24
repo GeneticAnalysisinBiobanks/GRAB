@@ -5,6 +5,7 @@
 
 #include <RcppArmadillo.h>
 #include <vector>
+#include <array>
 #include <cmath>
 #include <functional>
 #include <algorithm>
@@ -54,8 +55,9 @@ private:
   const std::shared_ptr<const std::unordered_map<uint64_t, RefInfo>> m_refMap;
 
   std::vector<MarkerInfo> m_markerInfoVec;
-  arma::vec m_scoreVec;
-  arma::vec m_zScoreVec;
+  // Per-marker scratch (avoid per-marker heap allocation)
+  std::array<double,2> m_scoreArr;
+  std::array<double,2> m_zScoreArr;
   // Per-chunk reference info (rebuilt each chunk)
   std::vector<RefInfo> m_chunkRefInfo;
 
@@ -104,11 +106,12 @@ public:
     }
   }
 
-  arma::vec getpvalVec(const arma::vec& GVec, const int i) {
-    arma::vec result(2);
+  struct WtResult { double pval; double score; double zscore; };
+
+  void getpvalVec(const arma::vec& GVec, const int i, double& pExt, double& pNoext) {
     const MarkerInfo& info = m_markerInfoVec[i];
 
-    arma::vec res_ext = wtCoxGTest(
+    WtResult res_ext = wtCoxGTest(
       GVec, m_R, m_w,
       info.pvalue_bat,
       info.TPR,
@@ -122,9 +125,9 @@ public:
       info.AF_ref,
       info.AN_ref / 2.0,
       m_cutoff);
-    result(0) = res_ext(0);
+    pExt = res_ext.pval;
 
-    arma::vec res_noext = wtCoxGTest(
+    WtResult res_noext = wtCoxGTest(
       GVec, m_R, m_w,
       info.pvalue_bat,
       arma::datum::nan,
@@ -138,26 +141,20 @@ public:
       arma::datum::nan,
       arma::datum::nan,
       m_cutoff);
-    result(1) = res_noext(0);
+    pNoext = res_noext.pval;
 
-    if (m_scoreVec.n_elem < 2) {
-      m_scoreVec.resize(2);
-      m_zScoreVec.resize(2);
-    }
-    m_scoreVec(0) = res_ext(1);
-    m_scoreVec(1) = res_noext(1);
-    m_zScoreVec(0) = res_ext(2);
-    m_zScoreVec(1) = res_noext(2);
-
-    return result;
+    m_scoreArr[0] = res_ext.score;
+    m_scoreArr[1] = res_noext.score;
+    m_zScoreArr[0] = res_ext.zscore;
+    m_zScoreArr[1] = res_noext.zscore;
   }
 
-  arma::vec getScoreVec() const {
-    return m_scoreVec;
+  const std::array<double,2>& getScoreArr() const {
+    return m_scoreArr;
   }
 
-  arma::vec getZScoreVec() const {
-    return m_zScoreVec;
+  const std::array<double,2>& getZScoreArr() const {
+    return m_zScoreArr;
   }
 
   // Prepare per-chunk marker info by looking up the refMap
@@ -187,12 +184,13 @@ public:
 
   // Fills rv with [pExt, pNoext, zExt, zNoext, AF_ref, AN_ref, pvalue_bat]
   void getResultVec(const arma::vec& GVec, int markerIdx, std::vector<double>& rv) {
-    arma::vec pT = getpvalVec(GVec, markerIdx);
-    arma::vec zT = getZScoreVec();
+    double pExt, pNoext;
+    getpvalVec(GVec, markerIdx, pExt, pNoext);
+    const auto& zArr = getZScoreArr();
     const RefInfo& ri = getChunkRefInfo(markerIdx);
     rv.clear();
-    rv.push_back(pT[0]); rv.push_back(pT[1]);
-    rv.push_back(zT[0]); rv.push_back(zT[1]);
+    rv.push_back(pExt); rv.push_back(pNoext);
+    rv.push_back(zArr[0]); rv.push_back(zArr[1]);
     rv.push_back(ri.AF_ref); rv.push_back(ri.AN_ref); rv.push_back(ri.pvalue_bat);
   }
 
@@ -204,7 +202,7 @@ public:
 
 private:
 
-  arma::vec wtCoxGTest(
+  WtResult wtCoxGTest(
     const arma::vec& g_input, const arma::vec& R, const arma::vec& w,
     double p_bat, double TPR, double sigma2, double b,
     double var_ratio_int, double var_ratio_w0, double var_ratio_w1,

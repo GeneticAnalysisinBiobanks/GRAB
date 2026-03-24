@@ -1,4 +1,3 @@
-
 // mtMarkerBridge.cpp -- Unified R/Rcpp boundary for marker-level association
 
 #include <RcppArmadillo.h>
@@ -14,16 +13,16 @@
 #include "mtSPAmixPlus.h"
 
 // Forward declarations — defined in mtMarkerEngine.cpp.
-extern mtPOLMMClass*      ptr_gPOLMMobj;
-extern mtWtCoxGClass*     ptr_gWtCoxGobj;
-extern mtLEAFClass*       ptr_gLEAFobj;
-extern mtSPACoxClass*     ptr_gSPACoxobj;
-extern mtSPAmixClass*     ptr_gSPAmixobj;
-extern mtSPAGRMClass*     ptr_gSPAGRMobj;
-extern mtSAGELDClass*     ptr_gSAGELDobj;
-extern mtSPAsqrClass*     ptr_gSPAsqrobj;
-extern mtSPAmixPlusClass* ptr_gSPAmixPlusobj;
-extern std::unique_ptr<const PlinkData> ptr_gPlinkDataObj;
+extern std::unique_ptr<mtPOLMMClass>      ptr_gPOLMMobj;
+extern std::unique_ptr<mtWtCoxGClass>     ptr_gWtCoxGobj;
+extern std::unique_ptr<mtLEAFClass>       ptr_gLEAFobj;
+extern std::unique_ptr<mtSPACoxClass>     ptr_gSPACoxobj;
+extern std::unique_ptr<mtSPAmixClass>     ptr_gSPAmixobj;
+extern std::unique_ptr<mtSPAGRMClass>     ptr_gSPAGRMobj;
+extern std::unique_ptr<mtSAGELDClass>     ptr_gSAGELDobj;
+extern std::unique_ptr<mtSPAsqrClass>     ptr_gSPAsqrobj;
+extern std::unique_ptr<mtSPAmixPlusClass> ptr_gSPAmixPlusobj;
+extern std::unique_ptr<const PlinkData>   ptr_gPlinkDataObj;
 
 void mtMarkerEngine(
   const std::string method,
@@ -75,29 +74,27 @@ buildRefMap(const Rcpp::DataFrame& df) {
 // ---- Per-method setup functions ----
 
 void setupPOLMM(const Rcpp::List& obj, const Rcpp::List& ctl) {
-  Rcpp::List LOCOList = obj["LOCOList"];
-  Rcpp::List objCHR = LOCOList["LOCO=F"];
-  delete ptr_gPOLMMobj;
-  ptr_gPOLMMobj = new mtPOLMMClass(
+  Rcpp::List locoList = obj["LOCOList"];
+  Rcpp::List objCHR = locoList["LOCO=F"];
+  ptr_gPOLMMobj.reset(new mtPOLMMClass(
     Rcpp::as<arma::mat>(objCHR["muMat"]),
     Rcpp::as<arma::mat>(objCHR["iRMat"]),
     Rcpp::as<arma::mat>(obj["Cova"]),
     Rcpp::as<arma::uvec>(obj["yVec"]),
     Rcpp::as<double>(objCHR["VarRatio"]),
     Rcpp::as<double>(ctl["SPA_Cutoff"])
-  );
+  ));
 }
 
 void setupWtCoxG(const Rcpp::List& obj, const Rcpp::List& ctl) {
   auto refMap = buildRefMap(Rcpp::as<Rcpp::DataFrame>(obj["mergeGenoInfo"]));
-  delete ptr_gWtCoxGobj;
-  ptr_gWtCoxGobj = new mtWtCoxGClass(
+  ptr_gWtCoxGobj.reset(new mtWtCoxGClass(
     Rcpp::as<arma::vec>(obj["mresid"]),
     Rcpp::as<arma::vec>(obj["weight"]),
     Rcpp::as<double>(ctl["cutoff"]),
     Rcpp::as<double>(ctl["SPA_Cutoff"]),
     std::move(refMap)
-  );
+  ));
 }
 
 void setupLEAF(const Rcpp::List& obj, const Rcpp::List& ctl) {
@@ -126,32 +123,35 @@ void setupLEAF(const Rcpp::List& obj, const Rcpp::List& ctl) {
       const std::unordered_map<uint64_t, mtWtCoxGClass::RefInfo>>(
         buildRefMap(Rcpp::as<Rcpp::DataFrame>(sgi[c])));
 
-  delete ptr_gLEAFobj;
-  ptr_gLEAFobj = new mtLEAFClass(
+  ptr_gLEAFobj.reset(new mtLEAFClass(
     std::move(residuals), std::move(weights), std::move(clusterIdxVecs),
     Rcpp::as<double>(ctl["cutoff"]),
     Rcpp::as<double>(ctl["SPA_Cutoff"]),
     std::move(refMaps)
-  );
+  ));
 }
 
 void setupSPAGRM(const Rcpp::List& obj, const Rcpp::List& ctl) {
   Rcpp::List twoList = obj["TwoSubj_list"];
   int nTwo = twoList.size();
-  std::vector<arma::vec> twoResid(nTwo), twoRho(nTwo);
+  std::vector<std::array<double, 2>> twoResid(nTwo);
+  std::vector<std::vector<double>> twoRho(nTwo);
   for (int i = 0; i < nTwo; ++i) {
     Rcpp::List item = twoList[i];
-    twoResid[i] = Rcpp::as<arma::vec>(item["Resid"]);
-    twoRho[i]   = Rcpp::as<arma::vec>(item["Rho"]);
+    Rcpp::NumericVector tmpR = item["Resid"];
+    twoResid[i] = {tmpR[0], tmpR[1]};
+    Rcpp::NumericVector tmpRho = item["Rho"];
+    twoRho[i].assign(tmpRho.begin(), tmpRho.end());
   }
 
   Rcpp::List threeList = obj["ThreeSubj_list"];
   int nThree = threeList.size();
-  std::vector<arma::vec> threeStandS(nThree);
+  std::vector<std::vector<double>> threeStandS(nThree);
   std::vector<arma::mat> threeCLT(nThree);
   for (int i = 0; i < nThree; ++i) {
     Rcpp::List item = threeList[i];
-    threeStandS[i] = Rcpp::as<arma::vec>(item["stand.S"]);
+    Rcpp::NumericVector tmpSS = item["stand.S"];
+    threeStandS[i].assign(tmpSS.begin(), tmpSS.end());
     threeCLT[i]    = Rcpp::as<arma::mat>(item["CLT"]);
   }
 
@@ -161,19 +161,18 @@ void setupSPAGRM(const Rcpp::List& obj, const Rcpp::List& ctl) {
     std::move(threeStandS), std::move(threeCLT)
   };
 
-  delete ptr_gSPAGRMobj;
-  ptr_gSPAGRMobj = new mtSPAGRMClass(
+  ptr_gSPAGRMobj.reset(new mtSPAGRMClass(
     Rcpp::as<arma::vec>(obj["Resid"]),
     Rcpp::as<double>(obj["sum_R_nonOutlier"]),
     Rcpp::as<double>(obj["R_GRM_R_nonOutlier"]),
     Rcpp::as<double>(obj["R_GRM_R_TwoSubjOutlier"]),
     Rcpp::as<double>(obj["R_GRM_R"]),
-    Rcpp::as<arma::vec>(obj["MAF_interval"]),
+    Rcpp::as<std::vector<double>>(obj["MAF_interval"]),
     std::move(fam),
     Rcpp::as<double>(ctl["SPA_Cutoff"]),
     Rcpp::as<double>(ctl["zeta"]),
     Rcpp::as<double>(ctl["tol"])
-  );
+  ));
 }
 
 void setupSAGELD(const Rcpp::List& obj, const Rcpp::List& ctl) {
@@ -182,10 +181,22 @@ void setupSAGELD(const Rcpp::List& obj, const Rcpp::List& ctl) {
   std::vector<mtSAGELDClass::TwoSubjFamily> twoSubj(nTwo);
   for (int i = 0; i < nTwo; ++i) {
     Rcpp::List item = twoList[i];
-    twoSubj[i].Resid     = Rcpp::as<arma::vec>(item["Resid"]);
-    twoSubj[i].Rho       = Rcpp::as<arma::vec>(item["Rho"]);
-    twoSubj[i].Resid_G   = Rcpp::as<arma::vec>(item["Resid_G"]);
-    twoSubj[i].Resid_GxE = Rcpp::as<arma::vec>(item["Resid_GxE"]);
+    {
+      Rcpp::NumericVector tmp = item["Resid"];
+      twoSubj[i].Resid = {tmp[0], tmp[1]};
+    }
+    {
+      Rcpp::NumericVector tmp = item["Rho"];
+      twoSubj[i].Rho.assign(tmp.begin(), tmp.end());
+    }
+    {
+      Rcpp::NumericVector tmp = item["Resid_G"];
+      twoSubj[i].Resid_G = {tmp[0], tmp[1]};
+    }
+    {
+      Rcpp::NumericVector tmp = item["Resid_GxE"];
+      twoSubj[i].Resid_GxE = {tmp[0], tmp[1]};
+    }
   }
 
   Rcpp::List threeList = obj["ThreeSubj_list"];
@@ -194,34 +205,22 @@ void setupSAGELD(const Rcpp::List& obj, const Rcpp::List& ctl) {
   for (int i = 0; i < nThree; ++i) {
     Rcpp::List item = threeList[i];
     threeSubj[i].CLT         = Rcpp::as<arma::mat>(item["CLT"]);
-    threeSubj[i].stand_S     = Rcpp::as<arma::vec>(item["stand.S"]);
-    threeSubj[i].stand_S_G   = Rcpp::as<arma::vec>(item["stand.S_G"]);
-    threeSubj[i].stand_S_GxE = Rcpp::as<arma::vec>(item["stand.S_GxE"]);
+    {
+      Rcpp::NumericVector tmp = item["stand.S"];
+      threeSubj[i].stand_S.assign(tmp.begin(), tmp.end());
+    }
+    {
+      Rcpp::NumericVector tmp = item["stand.S_G"];
+      threeSubj[i].stand_S_G.assign(tmp.begin(), tmp.end());
+    }
+    {
+      Rcpp::NumericVector tmp = item["stand.S_GxE"];
+      threeSubj[i].stand_S_GxE.assign(tmp.begin(), tmp.end());
+    }
   }
 
-  // Build R_GRM_R vectors by concatenating individual scalars
-  arma::vec R_GRM_R = {
-    Rcpp::as<double>(obj["R_GRM_R"]),
-    Rcpp::as<double>(obj["R_GRM_R_G"]),
-    Rcpp::as<double>(obj["R_GRM_R_GxE"]),
-    Rcpp::as<double>(obj["R_GRM_R_G_GxE"]),
-    Rcpp::as<double>(obj["R_GRM_R_E"])
-  };
-  arma::vec R_GRM_R_nonOutlier = {
-    Rcpp::as<double>(obj["R_GRM_R_nonOutlier"]),
-    Rcpp::as<double>(obj["R_GRM_R_nonOutlier_G"]),
-    Rcpp::as<double>(obj["R_GRM_R_nonOutlier_GxE"]),
-    Rcpp::as<double>(obj["R_GRM_R_nonOutlier_G_GxE"])
-  };
-  arma::vec R_GRM_R_TwoSubjOutlier = {
-    Rcpp::as<double>(obj["R_GRM_R_TwoSubjOutlier"]),
-    Rcpp::as<double>(obj["R_GRM_R_TwoSubjOutlier_G"]),
-    Rcpp::as<double>(obj["R_GRM_R_TwoSubjOutlier_GxE"]),
-    Rcpp::as<double>(obj["R_GRM_R_TwoSubjOutlier_G_GxE"])
-  };
-
-  delete ptr_gSAGELDobj;
-  ptr_gSAGELDobj = new mtSAGELDClass(
+  // Pass all R_GRM_R values directly as scalars — no temporary arma::vec needed.
+  ptr_gSAGELDobj.reset(new mtSAGELDClass(
     Rcpp::as<std::string>(obj["Method"]),
     Rcpp::as<arma::mat>(obj["XTs"]),
     Rcpp::as<arma::mat>(obj["SS"]),
@@ -243,21 +242,38 @@ void setupSAGELD(const Rcpp::List& obj, const Rcpp::List& ctl) {
     Rcpp::as<double>(obj["sum_R_nonOutlier"]),
     Rcpp::as<double>(obj["sum_R_nonOutlier_G"]),
     Rcpp::as<double>(obj["sum_R_nonOutlier_GxE"]),
-    std::move(R_GRM_R),
-    std::move(R_GRM_R_nonOutlier),
-    std::move(R_GRM_R_TwoSubjOutlier),
+    Rcpp::as<double>(obj["R_GRM_R"]),
+    Rcpp::as<double>(obj["R_GRM_R_G"]),
+    Rcpp::as<double>(obj["R_GRM_R_GxE"]),
+    Rcpp::as<double>(obj["R_GRM_R_G_GxE"]),
+    Rcpp::as<double>(obj["R_GRM_R_E"]),
+    Rcpp::as<double>(obj["R_GRM_R_nonOutlier"]),
+    Rcpp::as<double>(obj["R_GRM_R_nonOutlier_G"]),
+    Rcpp::as<double>(obj["R_GRM_R_nonOutlier_GxE"]),
+    Rcpp::as<double>(obj["R_GRM_R_nonOutlier_G_GxE"]),
+    Rcpp::as<double>(obj["R_GRM_R_TwoSubjOutlier"]),
+    Rcpp::as<double>(obj["R_GRM_R_TwoSubjOutlier_G"]),
+    Rcpp::as<double>(obj["R_GRM_R_TwoSubjOutlier_GxE"]),
+    Rcpp::as<double>(obj["R_GRM_R_TwoSubjOutlier_G_GxE"]),
     std::move(twoSubj), std::move(threeSubj),
-    Rcpp::as<arma::vec>(obj["MAF_interval"]),
+    Rcpp::as<std::vector<double>>(obj["MAF_interval"]),
     Rcpp::as<double>(obj["zScoreE_cutoff"]),
     Rcpp::as<double>(ctl["SPA_Cutoff"]),
     Rcpp::as<double>(ctl["zeta"]),
     Rcpp::as<double>(ctl["tol"])
-  );
+  ));
 }
 
 void setupSPAsqr(const Rcpp::List& obj, const Rcpp::List& ctl) {
   arma::vec taus = Rcpp::as<arma::vec>(obj["taus"]);
   int ntaus = static_cast<int>(taus.n_elem);
+
+  // Wrap without copying; extract each column once directly from R memory.
+  Rcpp::NumericMatrix rmat(obj["Resid_mat"]);
+  int N = rmat.nrow();
+  std::vector<arma::vec> residCols(ntaus);
+  for (int i = 0; i < ntaus; ++i)
+    residCols[i] = arma::vec(rmat.column(i).begin(), N);
 
   Rcpp::List residOutlierLst     = obj["Resid.unrelated.outliers_lst"];
   Rcpp::List twoSubjLstLst       = obj["TwoSubj_list_lst"];
@@ -279,8 +295,14 @@ void setupSPAsqr(const Rcpp::List& obj, const Rcpp::List& ctl) {
     tauData[i].twoSubj_rho.resize(nTwo);
     for (int j = 0; j < nTwo; ++j) {
       Rcpp::List p = pairs[j];
-      tauData[i].twoSubj_resid[j] = Rcpp::as<arma::vec>(p["Resid"]);
-      tauData[i].twoSubj_rho[j]   = Rcpp::as<arma::vec>(p["Rho"]);
+      tauData[i].twoSubj_resid[j] = [&]{
+        Rcpp::NumericVector tmp = p["Resid"];
+        return std::array<double, 2>{tmp[0], tmp[1]};
+      }();
+      {
+        Rcpp::NumericVector tmp = p["Rho"];
+        tauData[i].twoSubj_rho[j].assign(tmp.begin(), tmp.end());
+      }
     }
 
     // Three-subject families: standS from per-tau list, CLT from shared union
@@ -290,32 +312,39 @@ void setupSPAsqr(const Rcpp::List& obj, const Rcpp::List& ctl) {
     tauData[i].threeSubj_standS.resize(nThree);
     tauData[i].threeSubj_CLT.resize(nThree);
     for (int j = 0; j < nThree; ++j) {
-      tauData[i].threeSubj_standS[j] = Rcpp::as<arma::vec>(standSList[j]);
+      {
+        Rcpp::NumericVector tmp = standSList[j];
+        tauData[i].threeSubj_standS[j].assign(tmp.begin(), tmp.end());
+      }
       tauData[i].threeSubj_CLT[j]    = Rcpp::as<arma::mat>(cltUnionLst[famIdx[j] - 1]);
     }
   }
 
-  delete ptr_gSPAsqrobj;
-  ptr_gSPAsqrobj = new mtSPAsqrClass(
+  // Zero-copy wrappers for the per-tau scalar vectors.
+  Rcpp::NumericVector rvSum  = obj["sum_R_nonOutlier_vec"];
+  Rcpp::NumericVector rvNonO = obj["R_GRM_R_nonOutlier_vec"];
+  Rcpp::NumericVector rvTwoS = obj["R_GRM_R_TwoSubjOutlier_vec"];
+  Rcpp::NumericVector rvAll  = obj["R_GRM_R_vec"];
+
+  ptr_gSPAsqrobj.reset(new mtSPAsqrClass(
     std::move(taus),
-    Rcpp::as<arma::mat>(obj["Resid_mat"]),
+    std::move(residCols),
     std::move(tauData),
-    Rcpp::as<arma::vec>(obj["sum_R_nonOutlier_vec"]),
-    Rcpp::as<arma::vec>(obj["R_GRM_R_nonOutlier_vec"]),
-    Rcpp::as<arma::vec>(obj["R_GRM_R_TwoSubjOutlier_vec"]),
-    Rcpp::as<arma::vec>(obj["R_GRM_R_vec"]),
-    Rcpp::as<arma::vec>(obj["MAF_interval"]),
+    std::vector<double>(rvSum.begin(),  rvSum.end()),
+    std::vector<double>(rvNonO.begin(), rvNonO.end()),
+    std::vector<double>(rvTwoS.begin(), rvTwoS.end()),
+    std::vector<double>(rvAll.begin(),  rvAll.end()),
+    Rcpp::as<std::vector<double>>(obj["MAF_interval"]),
     Rcpp::as<double>(ctl["SPA_Cutoff"]),
     Rcpp::as<double>(ctl["zeta"]),
     Rcpp::as<double>(ctl["tol"])
-  );
+  ));
 }
 
 void setupSPACox(const Rcpp::List& obj, const Rcpp::List& ctl) {
   arma::vec mresid = Rcpp::as<arma::vec>(obj["mresid"]);
   int N = static_cast<int>(mresid.n_elem);
-  delete ptr_gSPACoxobj;
-  ptr_gSPACoxobj = new mtSPACoxClass(
+  ptr_gSPACoxobj.reset(new mtSPACoxClass(
     Rcpp::as<arma::mat>(obj["cumul"]),
     std::move(mresid),
     Rcpp::as<arma::mat>(obj["X.invXX"]),
@@ -323,7 +352,7 @@ void setupSPACox(const Rcpp::List& obj, const Rcpp::List& ctl) {
     N,
     Rcpp::as<double>(ctl["pVal_covaAdj_Cutoff"]),
     Rcpp::as<double>(ctl["SPA_Cutoff"])
-  );
+  ));
 }
 
 void setupSPAmix(const Rcpp::List& obj, const Rcpp::List& ctl) {
@@ -340,19 +369,18 @@ void setupSPAmix(const Rcpp::List& obj, const Rcpp::List& ctl) {
   outlier.posOutlier       = posOut;
   outlier.posNonOutlier    = posNon;
   outlier.resid            = resid.elem(posVal);
-  outlier.resid2           = arma::square(resid.elem(posVal));
+  outlier.resid2           = arma::square(outlier.resid);
   outlier.residOutlier     = resid.elem(posOut);
   outlier.residNonOutlier  = resid.elem(posNon);
-  outlier.resid2NonOutlier = arma::square(resid.elem(posNon));
+  outlier.resid2NonOutlier = arma::square(outlier.residNonOutlier);
 
-  delete ptr_gSPAmixobj;
-  ptr_gSPAmixobj = new mtSPAmixClass(
+  ptr_gSPAmixobj.reset(new mtSPAmixClass(
     std::move(resid),
     Rcpp::as<arma::mat>(obj["PCs"]),
     Rcpp::as<int>(obj["N"]),
     Rcpp::as<double>(ctl["SPA_Cutoff"]),
     std::move(outlier)
-  );
+  ));
 }
 
 void setupSPAmixPlus(const Rcpp::List& obj, const Rcpp::List& ctl) {
@@ -371,7 +399,7 @@ void setupSPAmixPlus(const Rcpp::List& obj, const Rcpp::List& ctl) {
   outlier.resid            = resid.elem(posVal);
   outlier.residOutlier     = resid.elem(posOut);
   outlier.residNonOutlier  = resid.elem(posNon);
-  outlier.resid2NonOutlier = arma::square(resid.elem(posNon));
+  outlier.resid2NonOutlier = arma::square(outlier.residNonOutlier);
 
   Rcpp::List sparseGRM = obj["sparseGRM"];
   Rcpp::IntegerVector id1 = sparseGRM["id1_index"];
@@ -382,8 +410,7 @@ void setupSPAmixPlus(const Rcpp::List& obj, const Rcpp::List& ctl) {
   for (R_xlen_t i = 0; i < id1.size(); ++i)
     triplets.emplace_back(id1[i], id2[i], val[i]);
 
-  delete ptr_gSPAmixPlusobj;
-  ptr_gSPAmixPlusobj = new mtSPAmixPlusClass(
+  ptr_gSPAmixPlusobj.reset(new mtSPAmixPlusClass(
     std::move(resid),
     Rcpp::as<arma::mat>(obj["PCs"]),
     Rcpp::as<int>(obj["N"]),
@@ -391,7 +418,7 @@ void setupSPAmixPlus(const Rcpp::List& obj, const Rcpp::List& ctl) {
     std::move(outlier), std::move(triplets),
     strOrEmpty(ctl, "afFilePath"),
     Rcpp::as<std::string>(ctl["afFilePrecision"])
-  );
+  ));
 }
 
 } // namespace
@@ -399,12 +426,12 @@ void setupSPAmixPlus(const Rcpp::List& obj, const Rcpp::List& ctl) {
 
 // [[Rcpp::export("mtMarkerBridgeInCPP")]]
 void mtMarkerBridgeInCPP(
-    Rcpp::List objNull,
-    std::string OutputFile,
-    Rcpp::List control,
-    std::string bedFile,
-    std::string bimFile,
-    std::string famFile
+    const Rcpp::List& objNull,
+    const std::string& OutputFile,
+    const Rcpp::List& control,
+    const std::string& bedFile,
+    const std::string& bimFile,
+    const std::string& famFile
 ) {
   std::string nullClass = Rcpp::as<std::string>(objNull.attr("class"));
   std::string method;
@@ -453,7 +480,7 @@ void mtMarkerBridgeInCPP(
     strOrEmpty(control, "RangesToExcludeFile"),
     Rcpp::as<int>(control["nMarkersEachChunk"])
   );
-  // PlinkCursor is created per-worker in makeThreadContext()
+  // PlinkCursor is created per-worker by the ThreadContext constructor
 
   mtMarkerEngine(
     method, OutputFile,

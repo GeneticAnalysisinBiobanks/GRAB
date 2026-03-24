@@ -34,8 +34,7 @@ struct RootResult {
   double K2;
 };
 
-arma::vec Horg_H2(double t, arma::vec R, const arma::vec MAFVec) {
-  arma::vec Horg_H2_vec(2);
+std::pair<double,double> Horg_H2(double t, const arma::vec& R, const arma::vec& MAFVec) {
   arma::vec tR = t * R;
   arma::vec exp_tR = arma::exp(tR);
   arma::vec MAF_exp_tR = MAFVec % exp_tR;
@@ -46,13 +45,10 @@ arma::vec Horg_H2(double t, arma::vec R, const arma::vec MAFVec) {
   arma::vec K_G2_vec = (M_G0_vec % M_G2_vec - pow(M_G1_vec, 2)) / pow(M_G0_vec, 2);
   double Horg = sum(K_G0_vec);
   double H2val = sum(pow(R, 2) % K_G2_vec);
-  Horg_H2_vec.at(0) = Horg;
-  Horg_H2_vec.at(1) = H2val;
-  return Horg_H2_vec;
+  return {Horg, H2val};
 }
 
-arma::vec H1_adj_H2(double t, arma::vec R, double s, const arma::vec MAFVec) {
-  arma::vec H1_adj_H2_vec(2);
+std::pair<double,double> H1_adj_H2(double t, const arma::vec& R, double s, const arma::vec& MAFVec) {
   arma::vec tR = t * R;
   arma::vec exp_tR = arma::exp(tR);
   arma::vec MAF_exp_tR = MAFVec % exp_tR;
@@ -63,18 +59,16 @@ arma::vec H1_adj_H2(double t, arma::vec R, double s, const arma::vec MAFVec) {
   arma::vec K_G2_vec = (M_G0_vec % M_G2_vec - pow(M_G1_vec, 2)) / pow(M_G0_vec, 2);
   double H1_adj_val = sum(R % K_G1_vec) - s;
   double H2val = sum(pow(R, 2) % K_G2_vec);
-  H1_adj_H2_vec.at(0) = H1_adj_val;
-  H1_adj_H2_vec.at(1) = H2val;
-  return H1_adj_H2_vec;
+  return {H1_adj_val, H2val};
 }
 
 RootResult fastGetRootK1(
   double initX,
-  const double& s,
-  const arma::vec MAF_outlier,
+  double s,
+  const arma::vec& MAF_outlier,
   double mean_nonOutlier,
   double var_nonOutlier,
-  const arma::vec residOutlier
+  const arma::vec& residOutlier
 ) {
   double x = initX, oldX;
   double K1 = 0, K2 = 0, oldK1;
@@ -90,10 +84,10 @@ RootResult fastGetRootK1(
     oldDiffX = diffX;
     oldK1 = K1;
 
-    arma::vec H1_adj_H2_vec = H1_adj_H2(x, residOutlier, s, MAF_outlier);
+    auto [h1_adj, h2_val] = H1_adj_H2(x, residOutlier, s, MAF_outlier);
 
-    K1 = H1_adj_H2_vec.at(0) + mean_nonOutlier + var_nonOutlier * x;
-    K2 = H1_adj_H2_vec.at(1) + var_nonOutlier;
+    K1 = h1_adj + mean_nonOutlier + var_nonOutlier * x;
+    K2 = h2_val + var_nonOutlier;
 
     diffX = -1 * K1 / K2;
 
@@ -163,8 +157,8 @@ arma::vec logistic_regression_beta(const arma::mat& X, const arma::vec& y) {
   return beta;
 }
 
-double getProbSpaG(const arma::vec MAF_outlier,
-  const arma::vec residOutlier,
+double getProbSpaG(const arma::vec& MAF_outlier,
+  const arma::vec& residOutlier,
   double s,
   bool lower_tail,
   double mean_nonOutlier,
@@ -175,9 +169,9 @@ double getProbSpaG(const arma::vec MAF_outlier,
   RootResult rootRes = fastGetRootK1(initX, s, MAF_outlier, mean_nonOutlier, var_nonOutlier, residOutlier);
   double zeta = rootRes.root;
 
-  arma::vec k12 = Horg_H2(zeta, residOutlier, MAF_outlier);
-  double k1 = k12.at(0) + mean_nonOutlier * zeta + 0.5 * var_nonOutlier * pow(zeta, 2);
-  double k2 = k12.at(1) + var_nonOutlier;
+  auto [k0_val, k2_val] = Horg_H2(zeta, residOutlier, MAF_outlier);
+  double k1 = k0_val + mean_nonOutlier * zeta + 0.5 * var_nonOutlier * pow(zeta, 2);
+  double k2 = k2_val + var_nonOutlier;
 
   double temp1 = zeta * s - k1;
 
@@ -206,7 +200,7 @@ arma::vec mtSPAmixClass::fit_lm(const arma::vec& g, arma::vec& pvalues) {
 }
 
 arma::vec mtSPAmixClass::getMafEst(
-  arma::vec g,
+  const arma::vec& g,
   double altFreq,
   double MAC_cutoff,
   double PCs_pvalue_cutoff,
@@ -262,7 +256,7 @@ arma::vec mtSPAmixClass::getMafEst(
   return MAF_est;
 }
 
-double mtSPAmixClass::getMarkerPval(arma::vec GVec, double altFreq) {
+double mtSPAmixClass::getMarkerPval(const arma::vec& GVec, double altFreq) {
 
   arma::vec AFVec = getMafEst(GVec, altFreq);
   arma::vec GVarVec = 2 * AFVec % (1 - AFVec);
