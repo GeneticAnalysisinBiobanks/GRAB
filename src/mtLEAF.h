@@ -24,6 +24,8 @@ private:
   const std::vector<std::shared_ptr<const std::unordered_map<uint64_t, mtWtCoxGClass::RefInfo>>> m_refMaps;
   // Per-chunk reference info per cluster
   std::vector<std::vector<mtWtCoxGClass::RefInfo>> m_chunkRefInfo;
+  // Pre-allocated per-cluster genotype buffers (reused across markers)
+  std::vector<arma::vec> m_clusterGVec;
 
   arma::uvec get_clusterIdx(int cluster_idx) const {
     if (cluster_idx >= 0 && cluster_idx < m_Ncluster) {
@@ -69,9 +71,11 @@ public:
   {
     m_WtCoxGobj_vec.reserve(m_Ncluster);
     m_clusterIdx_vec.resize(m_Ncluster);
+    m_clusterGVec.resize(m_Ncluster);
 
     for (int i = 0; i < m_Ncluster; i++) {
       m_clusterIdx_vec[i] = std::move(clusterIdx[i]);
+      m_clusterGVec[i].set_size(m_clusterIdx_vec[i].n_elem);
       m_WtCoxGobj_vec.emplace_back(
         std::move(residuals[i]),
         std::move(weights[i]),
@@ -127,9 +131,16 @@ public:
     std::vector<double> pExt(m_Ncluster), pNoext(m_Ncluster);
 
     for (int i = 0; i < m_Ncluster; i++) {
-      arma::vec GVec_cluster = GVec.elem(m_clusterIdx_vec[i]);
+      // Gather cluster genotypes into pre-allocated buffer (no heap alloc)
+      const arma::uvec& idx = m_clusterIdx_vec[i];
+      arma::vec& gCluster = m_clusterGVec[i];
+      const double* src = GVec.memptr();
+      double* dst = gCluster.memptr();
+      for (arma::uword k = 0; k < idx.n_elem; ++k)
+        dst[k] = src[idx[k]];
+
       double pE, pN;
-      m_WtCoxGobj_vec[i].getpvalVec(GVec_cluster, markerIdx, pE, pN);
+      m_WtCoxGobj_vec[i].getpvalVec(gCluster, markerIdx, pE, pN);
 
       pExt[i] = pE;
       pNoext[i] = pN;

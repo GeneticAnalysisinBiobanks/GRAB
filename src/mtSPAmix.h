@@ -49,6 +49,11 @@ private:
   double m_pval;
   double m_zScore;
 
+  // Pre-allocated scratch buffers (sized at construction, reused across markers)
+  arma::vec m_scratch_posValue;       // size = posValue.n_elem
+  arma::vec m_scratch_posOutlier;     // size = posOutlier.n_elem
+  arma::vec m_scratch_posNonOutlier;  // size = posNonOutlier.n_elem
+
 public:
 
   mtSPAmixClass(

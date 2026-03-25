@@ -7,7 +7,6 @@
 #include <boost/math/distributions/normal.hpp>
 #include <vector>
 #include <tuple>
-#include <unordered_set>
 
 #include "mtSPAmix.h"
 
@@ -71,7 +70,7 @@ private:
   double getMarkerPvalFromModel(const arma::vec& GVec, const AFModelInfo& model, double altFreq);
   arma::vec fit_lm_get_beta(const arma::vec& g, arma::vec& pvalues);
   arma::vec fit_lm(const arma::vec& g, arma::vec& pvalues);
-  double calculateSparseVariance(const arma::vec& R_new, const arma::uvec& posValue);
+  double calculateSparseVariance(const arma::vec& R_new);
   int getNPCs() const { return m_PCs.n_cols; }
 
   // ---- Members ----
@@ -85,6 +84,11 @@ private:
 
   const OutlierData m_outlier;
   const std::vector<std::tuple<int, int, double>> m_sparseTriplets;
+  // Sparse triplets pre-filtered to only (i,j) pairs where both are in posValue.
+  // Stored as (posValue-local-index-of-i, posValue-local-index-of-j, grmValue)
+  // so calculateSparseVariance needs no set lookup.
+  struct FilteredTriplet { arma::uword li; arma::uword lj; double grm; };
+  const std::vector<FilteredTriplet> m_filteredTriplets;
   const std::string m_afFilePath;
   const std::string m_afFilePrecision;
 
@@ -95,6 +99,11 @@ private:
   double m_Smean;
   double m_VarS;
   arma::vec m_MAFVec;
+
+  // Pre-allocated scratch buffers (sized at construction, reused across markers)
+  arma::vec m_scratch_posValue;       // size = posValue.n_elem
+  arma::vec m_scratch_posOutlier;     // size = posOutlier.n_elem
+  arma::vec m_scratch_posNonOutlier;  // size = posNonOutlier.n_elem
 
 };
 

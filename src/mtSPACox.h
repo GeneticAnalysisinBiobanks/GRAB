@@ -4,26 +4,45 @@
 // SPACox.h -- Saddlepoint approximation for Cox proportional hazards model
 
 #include <RcppArmadillo.h>
-
-// Piecewise-linear interpolation (port of R stats::approxfun)
-class approxfunClass {
-private:
-  arma::vec m_xVec, m_yVec;
-  double m_ylow, m_yhigh;
-  int m_n;
-  arma::vec m_slopeVec;
-  void setApproxFun(arma::vec xVec, arma::vec yVec);
-public:
-  approxfunClass(arma::vec xVec, arma::vec yVec);
-  double getValue(double v) const;
-  arma::vec getVector(arma::vec vVec) const;
-};
+#include <vector>
 
 class mtSPACoxClass {
 private:
-  const approxfunClass m_K_0_emp;
-  const approxfunClass m_K_1_emp;
-  const approxfunClass m_K_2_emp;
+
+  // ---- Interpolation tables (merged from approxfunClass) ----
+  // All three cumulant functions share the same x-grid.
+  const arma::vec m_xGrid;
+  const int m_nGrid;
+  const arma::vec m_yK0, m_slopeK0;
+  const arma::vec m_yK1, m_slopeK1;
+  const arma::vec m_yK2, m_slopeK2;
+
+  // Binary-search piecewise-linear interpolation on shared x-grid.
+  double interp(const double* yp, const double* sp, double v) const;
+  double interpK0(double v) const { return interp(m_yK0.memptr(), m_slopeK0.memptr(), v); }
+  double interpK1(double v) const { return interp(m_yK1.memptr(), m_slopeK1.memptr(), v); }
+  double interpK2(double v) const { return interp(m_yK2.memptr(), m_slopeK2.memptr(), v); }
+
+  // ---- Cumulant evaluation (scalar loops, zero heap alloc) ----
+  // adjG:  full-length normalized genotype vector (raw pointer)
+  // idx:   indices of non-zero subjects; nullptr → scan 0..n-1
+  // n:     number of entries to scan
+  double evalK0(double t, int N0, double adjG0,
+                const double* adjG, const arma::uword* idx, int n) const;
+  double evalK1(double t, int N0, double adjG0,
+                const double* adjG, const arma::uword* idx, int n, double q2) const;
+  double evalK2(double t, int N0, double adjG0,
+                const double* adjG, const arma::uword* idx, int n) const;
+
+  // ---- SPA root-finding and probability ----
+  struct RootResult { double root; bool converge; double K2; };
+  RootResult fastGetRootK1(double initX, int N0, double adjG0,
+                           const double* adjG, const arma::uword* idx, int n,
+                           double q2) const;
+  double getProbSpa(double adjG0, const double* adjG, const arma::uword* idx, int n,
+                    int N0, double q2, bool lowerTail) const;
+
+  // ---- Model data ----
   const arma::vec m_mresid;
   const double m_varResid;
   const arma::mat m_XinvXX, m_tX;
@@ -43,7 +62,8 @@ public:
   );
 
   double getMarkerPval(const arma::vec& GVec, double MAF, double& zScore);
-  void getRegionPVec(const arma::vec& GVec, double& zScore, double& pval0, double& pval1, arma::vec& P1Vec, arma::vec& P2Vec);
+  void getRegionPVec(const arma::vec& GVec, double& zScore, double& pval0, double& pval1,
+                     arma::vec& P1Vec, arma::vec& P2Vec);
 
   // Fills rv with [pval, zScore]
   void getResultVec(const arma::vec& GVec, double altFreq, std::vector<double>& rv) {

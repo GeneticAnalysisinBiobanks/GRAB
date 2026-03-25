@@ -2,149 +2,29 @@
 
 #include <RcppArmadillo.h>
 #include <stdexcept>
+#include <vector>
+#include <cmath>
+#include <limits>
 
 #include "mtSPACox.h"
 
-// ---- approxfunClass --------------------------------------------------------
-
-approxfunClass::approxfunClass(arma::vec xVec, arma::vec yVec) {
-  setApproxFun(std::move(xVec), std::move(yVec));
-}
-
-void approxfunClass::setApproxFun(arma::vec xVec, arma::vec yVec) {
-  m_xVec = std::move(xVec);
-  m_yVec = std::move(yVec);
-  m_n = m_xVec.size();
-  m_ylow = m_yVec(0);
-  m_yhigh = m_yVec(m_n - 1);
-  m_slopeVec.zeros(m_n - 1);
-
-  for (int i = 0; i < m_n - 1; i++)
-    if (m_xVec(i+1) <= m_xVec(i)) throw std::runtime_error("xVec(i+1) should be greater than xVec(i).");
-
-  for (int i = 0; i < m_n - 1; i++)
-    m_slopeVec(i) = (m_yVec(i+1) - m_yVec(i)) / (m_xVec(i+1) - m_xVec(i));
-}
-
-double approxfunClass::getValue(double v) const {
-  int i = 0, j = m_n - 1, ij;
-
-  if (v < m_xVec(i)) return m_ylow;
-  if (v > m_xVec(j)) return m_yhigh;
-
-  while (i < j - 1) {
-    ij = (i + j) / 2;
-    if (v < m_xVec(ij)) j = ij; else i = ij;
-  }
-
-  if (v == m_xVec(j)) return m_yVec(j);
-  if (v == m_xVec(i)) return m_yVec(i);
-
-  return m_yVec(i) + (v - m_xVec(i)) * m_slopeVec(i);
-}
-
-arma::vec approxfunClass::getVector(arma::vec vVec) const {
-  int p = vVec.size();
-  arma::vec outVec(p);
-  for (int i = 0; i < p; i++)
-    outVec(i) = getValue(vVec(i));
-  return outVec;
-}
-
-// ---- Internal computation helpers (not part of public API) -----------------
+// ---- File-scope helper for slope computation --------------------------------
 
 namespace {
 
-struct RootResult {
-  double root;
-  int iter;
-  bool converge;
-  double K2;
-};
-
-double K_0(double t, int N0, double adjG0, const arma::vec& adjG1, const approxfunClass& emp) {
-  double sG0 = t * adjG0;
-  arma::vec sG1 = t * adjG1;
-  return N0 * emp.getValue(sG0) + arma::sum(emp.getVector(sG1));
-}
-
-double K_1(double t, int N0, double adjG0, const arma::vec& adjG1, double q2, const approxfunClass& emp) {
-  double sG0 = t * adjG0;
-  arma::vec sG1 = t * adjG1;
-  return N0 * adjG0 * emp.getValue(sG0) + arma::sum(adjG1 % emp.getVector(sG1)) - q2;
-}
-
-double K_2(double t, int N0, double adjG0, const arma::vec& adjG1, const approxfunClass& emp) {
-  double sG0 = t * adjG0;
-  arma::vec sG1 = t * adjG1;
-  return N0 * pow(adjG0, 2) * emp.getValue(sG0) + arma::sum(pow(adjG1, 2) % emp.getVector(sG1));
-}
-
-RootResult fastGetRootK1(
-  double initX, int N0, double adjG0, const arma::vec& adjG1, double q2,
-  const approxfunClass& k1_emp, const approxfunClass& k2_emp
-) {
-  double x = initX, oldX;
-  double K1 = 0, K2 = 0, oldK1;
-  double diffX = arma::datum::inf, oldDiffX;
-  bool converge = true;
-  const double tol = 0.001;
-  const int maxiter = 100;
-  int iter = 0;
-
-  for (iter = 0; iter < maxiter; iter++) {
-    oldX     = x;
-    oldDiffX = diffX;
-    oldK1    = K1;
-
-    K1 = K_1(x, N0, adjG0, adjG1, q2, k1_emp);
-    K2 = K_2(x, N0, adjG0, adjG1, k2_emp);
-
-    diffX = -1 * K1 / K2;
-
-    if (!std::isfinite(K1)) {
-      x  = arma::datum::inf;
-      K2 = 0;
-      break;
-    }
-
-    if (arma::sign(K1) != arma::sign(oldK1)) {
-      while (std::abs(diffX) > std::abs(oldDiffX) - tol)
-        diffX = diffX / 2;
-    }
-
-    if (std::abs(diffX) < tol) break;
-
-    x = oldX + diffX;
-  }
-
-  if (iter == maxiter) converge = false;
-
-  return {x, iter, converge, K2};
-}
-
-double getProbSpa(
-  double adjG0, const arma::vec& adjG1, int N0, double q2, bool lowerTail,
-  const approxfunClass& k0_emp, const approxfunClass& k1_emp, const approxfunClass& k2_emp
-) {
-  double initX = (q2 > 0) ? 3.0 : -3.0;
-
-  RootResult rootRes = fastGetRootK1(initX, N0, adjG0, adjG1, q2, k1_emp, k2_emp);
-  double zeta = rootRes.root;
-
-  double k1    = K_0(zeta, N0, adjG0, adjG1, k0_emp);
-  double k2    = K_2(zeta, N0, adjG0, adjG1, k2_emp);
-  double temp1 = zeta * q2 - k1;
-
-  double w = arma::sign(zeta) * sqrt(2 * temp1);
-  double v = zeta * sqrt(k2);
-
-  return arma::normcdf(arma::sign(lowerTail - 0.5) * (w + 1.0 / w * log(v / w)));
+arma::vec computeSlopes(const arma::vec& x, const arma::vec& y) {
+  arma::uword n = x.n_elem;
+  arma::vec s(n - 1);
+  const double* xp = x.memptr();
+  const double* yp = y.memptr();
+  for (arma::uword i = 0; i < n - 1; ++i)
+    s[i] = (yp[i + 1] - yp[i]) / (xp[i + 1] - xp[i]);
+  return s;
 }
 
 } // namespace
 
-// ---- mtSPACoxClass ---------------------------------------------------------
+// ---- Constructor ------------------------------------------------------------
 
 mtSPACoxClass::mtSPACoxClass(
   arma::mat cumul,
@@ -155,9 +35,21 @@ mtSPACoxClass::mtSPACoxClass(
   double pVal_covaAdj_Cutoff,
   double SPA_Cutoff
 )
-  : m_K_0_emp(cumul.col(0), cumul.col(1)),
-    m_K_1_emp(cumul.col(0), cumul.col(2)),
-    m_K_2_emp(cumul.col(0), cumul.col(3)),
+  : m_xGrid(cumul.col(0)),
+    m_nGrid(static_cast<int>(m_xGrid.n_elem)),
+    m_yK0(cumul.col(1)),
+    m_slopeK0([this]() {
+      // Validate x-grid is strictly increasing (once)
+      const double* xp = m_xGrid.memptr();
+      for (int i = 0; i < m_nGrid - 1; ++i)
+        if (xp[i + 1] <= xp[i])
+          throw std::runtime_error("cumul x-grid must be strictly increasing");
+      return computeSlopes(m_xGrid, m_yK0);
+    }()),
+    m_yK1(cumul.col(2)),
+    m_slopeK1(computeSlopes(m_xGrid, m_yK1)),
+    m_yK2(cumul.col(3)),
+    m_slopeK2(computeSlopes(m_xGrid, m_yK2)),
     m_mresid(std::move(mresid)),
     m_varResid(arma::var(m_mresid)),
     m_XinvXX(std::move(XinvXX)),
@@ -167,37 +59,224 @@ mtSPACoxClass::mtSPACoxClass(
     m_SPA_Cutoff(SPA_Cutoff)
 {}
 
+// ---- Interpolation ----------------------------------------------------------
+
+double mtSPACoxClass::interp(const double* yp, const double* sp, double v) const {
+  const double* xp = m_xGrid.memptr();
+  const int n = m_nGrid;
+
+  if (v < xp[0])     return yp[0];
+  if (v > xp[n - 1]) return yp[n - 1];
+
+  int i = 0, j = n - 1;
+  while (i < j - 1) {
+    int ij = (i + j) / 2;
+    if (v < xp[ij]) j = ij; else i = ij;
+  }
+
+  if (v == xp[j]) return yp[j];
+  if (v == xp[i]) return yp[i];
+  return yp[i] + (v - xp[i]) * sp[i];
+}
+
+// ---- Cumulant evaluation (scalar loops, no heap alloc) ----------------------
+
+double mtSPACoxClass::evalK0(
+  double t, int N0, double adjG0,
+  const double* adjG, const arma::uword* idx, int n
+) const {
+  double sum = N0 * interpK0(t * adjG0);
+  if (idx) {
+    for (int k = 0; k < n; ++k) sum += interpK0(t * adjG[idx[k]]);
+  } else {
+    for (int k = 0; k < n; ++k) sum += interpK0(t * adjG[k]);
+  }
+  return sum;
+}
+
+double mtSPACoxClass::evalK1(
+  double t, int N0, double adjG0,
+  const double* adjG, const arma::uword* idx, int n, double q2
+) const {
+  double sum = N0 * adjG0 * interpK1(t * adjG0);
+  if (idx) {
+    for (int k = 0; k < n; ++k) {
+      double a = adjG[idx[k]];
+      sum += a * interpK1(t * a);
+    }
+  } else {
+    for (int k = 0; k < n; ++k) {
+      double a = adjG[k];
+      sum += a * interpK1(t * a);
+    }
+  }
+  return sum - q2;
+}
+
+double mtSPACoxClass::evalK2(
+  double t, int N0, double adjG0,
+  const double* adjG, const arma::uword* idx, int n
+) const {
+  double sum = N0 * adjG0 * adjG0 * interpK2(t * adjG0);
+  if (idx) {
+    for (int k = 0; k < n; ++k) {
+      double a = adjG[idx[k]];
+      sum += a * a * interpK2(t * a);
+    }
+  } else {
+    for (int k = 0; k < n; ++k) {
+      double a = adjG[k];
+      sum += a * a * interpK2(t * a);
+    }
+  }
+  return sum;
+}
+
+// ---- SPA root-finding -------------------------------------------------------
+
+mtSPACoxClass::RootResult mtSPACoxClass::fastGetRootK1(
+  double initX, int N0, double adjG0,
+  const double* adjG, const arma::uword* idx, int n, double q2
+) const {
+  double x = initX, oldX;
+  double K1val = 0.0, K2val = 0.0, oldK1;
+  double diffX = std::numeric_limits<double>::infinity(), oldDiffX;
+  bool converge = true;
+  const double tol = 0.001;
+  const int maxiter = 100;
+
+  for (int iter = 0; iter < maxiter; ++iter) {
+    oldX     = x;
+    oldDiffX = diffX;
+    oldK1    = K1val;
+
+    K1val = evalK1(x, N0, adjG0, adjG, idx, n, q2);
+    K2val = evalK2(x, N0, adjG0, adjG, idx, n);
+
+    diffX = -K1val / K2val;
+
+    if (!std::isfinite(K1val)) {
+      x    = std::numeric_limits<double>::infinity();
+      K2val = 0.0;
+      break;
+    }
+
+    if ((K1val > 0) != (oldK1 > 0)) {
+      while (std::abs(diffX) > std::abs(oldDiffX) - tol)
+        diffX *= 0.5;
+    }
+
+    if (std::abs(diffX) < tol) break;
+
+    x = oldX + diffX;
+
+    if (iter == maxiter - 1) converge = false;
+  }
+
+  return {x, converge, K2val};
+}
+
+// ---- SPA probability --------------------------------------------------------
+
+double mtSPACoxClass::getProbSpa(
+  double adjG0, const double* adjG, const arma::uword* idx, int n,
+  int N0, double q2, bool lowerTail
+) const {
+  double initX = (q2 > 0) ? 3.0 : -3.0;
+
+  RootResult rootRes = fastGetRootK1(initX, N0, adjG0, adjG, idx, n, q2);
+  double zeta = rootRes.root;
+
+  double k0val = evalK0(zeta, N0, adjG0, adjG, idx, n);
+  double k2val = evalK2(zeta, N0, adjG0, adjG, idx, n);
+  double temp1 = zeta * q2 - k0val;
+
+  if (!std::isfinite(zeta) || temp1 < 0.0 || k2val <= 0.0)
+    return std::numeric_limits<double>::quiet_NaN();
+
+  double w = std::copysign(std::sqrt(2.0 * temp1), zeta);
+  double v = zeta * std::sqrt(k2val);
+
+  if (w == 0.0 || v == 0.0 || (v / w) <= 0.0)
+    return std::numeric_limits<double>::quiet_NaN();
+
+  double sign = lowerTail ? 1.0 : -1.0;
+  return arma::normcdf(sign * (w + 1.0 / w * std::log(v / w)));
+}
+
+// ---- getMarkerPval ----------------------------------------------------------
+
 double mtSPACoxClass::getMarkerPval(const arma::vec& GVec, double MAF, double& zScore) {
-  double S = arma::sum(GVec % m_mresid);
-  arma::vec adjGVec = GVec - 2 * MAF;
-  double VarS = m_varResid * arma::sum(arma::pow(adjGVec, 2));
-  zScore = S / sqrt(VarS);
+  double S = arma::dot(GVec, m_mresid);
+  double twoMAF = 2.0 * MAF;
+  const double* gp = GVec.memptr();
+
+  // Compute VarS = m_varResid * sum((g - 2*MAF)^2), no temp alloc
+  double sumAdjG2 = 0.0;
+  for (int i = 0; i < m_N; ++i) {
+    double adj = gp[i] - twoMAF;
+    sumAdjG2 += adj * adj;
+  }
+  double VarS = m_varResid * sumAdjG2;
+  zScore = S / std::sqrt(VarS);
 
   if (std::abs(zScore) < m_SPA_Cutoff)
-    return arma::normcdf(-1 * std::abs(zScore)) * 2;
+    return arma::normcdf(-std::abs(zScore)) * 2.0;
 
-  arma::uvec N1set    = arma::find(GVec != 0);
-  int        N0       = m_N - (int)N1set.size();
-  arma::vec  adjGNorm = adjGVec / sqrt(VarS);
-  arma::vec  adjG1    = adjGNorm.elem(N1set);
-  double     adjG0    = -2 * MAF / sqrt(VarS);
+  // Build N1set (non-zero indices) and adjGNorm in one pass
+  double sqrtVarS = std::sqrt(VarS);
+  double adjG0 = -twoMAF / sqrtVarS;
 
-  double pval = getProbSpa(adjG0, adjG1, N0,  std::abs(zScore), false, m_K_0_emp, m_K_1_emp, m_K_2_emp)
-              + getProbSpa(adjG0, adjG1, N0, -std::abs(zScore), true,  m_K_0_emp, m_K_1_emp, m_K_2_emp);
+  arma::vec adjGNorm(m_N);
+  double* anp = adjGNorm.memptr();
+  std::vector<arma::uword> N1set;
+  N1set.reserve(m_N);
+  for (int i = 0; i < m_N; ++i) {
+    anp[i] = (gp[i] - twoMAF) / sqrtVarS;
+    if (gp[i] != 0.0) N1set.push_back(static_cast<arma::uword>(i));
+  }
+  int nN1 = static_cast<int>(N1set.size());
+  int N0  = m_N - nN1;
 
-  if (pval > m_pVal_covaAdj_Cutoff)
-    return pval;
+  // First SPA (indexed access — only non-zero subjects)
+  double absZ = std::abs(zScore);
+  double pval = getProbSpa(adjG0, anp, N1set.data(), nN1, N0,  absZ, false)
+              + getProbSpa(adjG0, anp, N1set.data(), nN1, N0, -absZ, true);
 
-  adjGVec = GVec - m_XinvXX * m_tX.cols(N1set) * GVec.elem(N1set);
-  VarS    = m_varResid * arma::sum(arma::pow(adjGVec, 2));
-  zScore  = S / sqrt(VarS);
-  adjGNorm = adjGVec / sqrt(VarS);
+  if (pval > m_pVal_covaAdj_Cutoff) return pval;
 
-  pval = getProbSpa(0.0, adjGNorm, 0,  std::abs(zScore), false, m_K_0_emp, m_K_1_emp, m_K_2_emp)
-       + getProbSpa(0.0, adjGNorm, 0, -std::abs(zScore), true,  m_K_0_emp, m_K_1_emp, m_K_2_emp);
+  // Covariate adjustment: adjGVec = GVec - XinvXX * (tX * g)_nonzero
+  // Column accumulation avoids .cols() and .elem() heap allocs
+  int nCov = static_cast<int>(m_tX.n_rows);
+  arma::vec tX_g(nCov, arma::fill::zeros);
+  double* tp = tX_g.memptr();
+  for (int k = 0; k < nN1; ++k) {
+    arma::uword j = N1set[k];
+    const double* col = m_tX.colptr(j);
+    double gj = gp[j];
+    for (int r = 0; r < nCov; ++r)
+      tp[r] += col[r] * gj;
+  }
+  arma::vec adjGVec = GVec - m_XinvXX * tX_g;
+
+  VarS = m_varResid * arma::dot(adjGVec, adjGVec);
+  zScore = S / std::sqrt(VarS);
+  sqrtVarS = std::sqrt(VarS);
+
+  // Recompute adjGNorm for full vector
+  const double* avp = adjGVec.memptr();
+  for (int i = 0; i < m_N; ++i)
+    anp[i] = avp[i] / sqrtVarS;
+
+  // Second SPA (full vector, N0=0)
+  absZ = std::abs(zScore);
+  pval = getProbSpa(0.0, anp, nullptr, m_N, 0,  absZ, false)
+       + getProbSpa(0.0, anp, nullptr, m_N, 0, -absZ, true);
 
   return pval;
 }
+
+// ---- getRegionPVec ----------------------------------------------------------
 
 void mtSPACoxClass::getRegionPVec(
   const arma::vec& GVec,
@@ -207,25 +286,39 @@ void mtSPACoxClass::getRegionPVec(
   arma::vec& P1Vec,
   arma::vec& P2Vec
 ) {
-  double    S      = arma::sum(GVec % m_mresid);
-  arma::uvec N1set = arma::find(GVec != 0);
-  arma::vec adjGVec      = GVec - m_XinvXX * m_tX.cols(N1set) * GVec.elem(N1set);
-  arma::vec varR_adjGVec = m_varResid * adjGVec;
-  double    VarS         = arma::sum(adjGVec % varR_adjGVec);
-  zScore = S / sqrt(VarS);
+  double S = arma::dot(GVec, m_mresid);
+  const double* gp = GVec.memptr();
 
-  pval0 = arma::normcdf(-1 * std::abs(zScore)) * 2;
+  // Covariate adjustment via column accumulation (no .cols()/.elem())
+  int nCov = static_cast<int>(m_tX.n_rows);
+  arma::vec tX_g(nCov, arma::fill::zeros);
+  double* tp = tX_g.memptr();
+  for (int i = 0; i < m_N; ++i) {
+    if (gp[i] == 0.0) continue;
+    const double* col = m_tX.colptr(i);
+    double gi = gp[i];
+    for (int r = 0; r < nCov; ++r)
+      tp[r] += col[r] * gi;
+  }
+  arma::vec adjGVec = GVec - m_XinvXX * tX_g;
 
-  arma::vec adjGNorm = adjGVec / sqrt(VarS);
+  double VarS = m_varResid * arma::dot(adjGVec, adjGVec);
+  zScore = S / std::sqrt(VarS);
+  pval0 = arma::normcdf(-std::abs(zScore)) * 2.0;
+
+  double sqrtVarS = std::sqrt(VarS);
+  arma::vec adjGNorm = adjGVec / sqrtVarS;
 
   if (std::abs(zScore) < m_SPA_Cutoff) {
     pval1 = pval0;
   } else {
-    pval1 = getProbSpa(0.0, adjGNorm, 0,  std::abs(zScore), false, m_K_0_emp, m_K_1_emp, m_K_2_emp)
-          + getProbSpa(0.0, adjGNorm, 0, -std::abs(zScore), true,  m_K_0_emp, m_K_1_emp, m_K_2_emp);
+    const double* anp = adjGNorm.memptr();
+    double absZ = std::abs(zScore);
+    pval1 = getProbSpa(0.0, anp, nullptr, m_N, 0,  absZ, false)
+          + getProbSpa(0.0, anp, nullptr, m_N, 0, -absZ, true);
   }
 
   P1Vec = adjGNorm;
-  P2Vec = varR_adjGVec / sqrt(VarS);
+  P2Vec = (m_varResid / sqrtVarS) * adjGVec;
 }
 

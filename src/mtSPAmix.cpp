@@ -22,7 +22,10 @@ mtSPAmixClass::mtSPAmixClass(
     }()),
     m_outlier(std::move(outlier)),
     m_pval(0.0),
-    m_zScore(0.0)
+    m_zScore(0.0),
+    m_scratch_posValue(m_outlier.posValue.n_elem),
+    m_scratch_posOutlier(m_outlier.posOutlier.n_elem),
+    m_scratch_posNonOutlier(m_outlier.posNonOutlier.n_elem)
 {}
 
 namespace {
@@ -175,8 +178,14 @@ double getProbSpaG(const arma::vec& MAF_outlier,
 
   double temp1 = zeta * s - k1;
 
+  if (!std::isfinite(zeta) || temp1 < 0.0 || k2 <= 0.0)
+    return std::numeric_limits<double>::quiet_NaN();
+
   double w = arma::sign(zeta) * sqrt(2 * temp1);
   double v = zeta * sqrt(k2);
+
+  if (w == 0.0 || v == 0.0 || (v / w) <= 0.0)
+    return std::numeric_limits<double>::quiet_NaN();
 
   double pval = arma::normcdf(arma::sign(lower_tail - 0.5) * (w + log(v/w) / w));
   return pval;
@@ -259,7 +268,6 @@ arma::vec mtSPAmixClass::getMafEst(
 double mtSPAmixClass::getMarkerPval(const arma::vec& GVec, double altFreq) {
 
   arma::vec AFVec = getMafEst(GVec, altFreq);
-  arma::vec GVarVec = 2 * AFVec % (1 - AFVec);
 
   const arma::uvec& posValue = m_outlier.posValue;
   const arma::uvec& posOutlier = m_outlier.posOutlier;
@@ -270,11 +278,32 @@ double mtSPAmixClass::getMarkerPval(const arma::vec& GVec, double altFreq) {
   const arma::vec& residNonOutlier = m_outlier.residNonOutlier;
   const arma::vec& resid2NonOutlier = m_outlier.resid2NonOutlier;
 
-  double S = sum(GVec.elem(posValue) % resid);
-  double VarS = sum(resid2 % GVarVec.elem(posValue));
+  // Gather AFVec subsets into pre-allocated scratch (no heap alloc)
+  {
+    const double* af = AFVec.memptr();
+    const arma::uword* idx;
+    double* dst;
 
-  double S_mean = 2 * sum(resid % AFVec.elem(posValue));
-  double zScore = (S-S_mean) / sqrt(VarS);
+    idx = posValue.memptr(); dst = m_scratch_posValue.memptr();
+    for (arma::uword k = 0; k < posValue.n_elem; ++k) dst[k] = af[idx[k]];
+  }
+  const arma::vec& AF_posValue = m_scratch_posValue;
+
+  arma::vec GVarVec_posValue = 2.0 * AF_posValue % (1.0 - AF_posValue);
+
+  double S;
+  {
+    double s = 0.0;
+    const double* gp = GVec.memptr();
+    const double* rp = resid.memptr();
+    const arma::uword* idx = posValue.memptr();
+    for (arma::uword k = 0; k < posValue.n_elem; ++k)
+      s += gp[idx[k]] * rp[k];
+    S = s;
+  }
+  double VarS = arma::dot(resid2, GVarVec_posValue);
+  double S_mean = 2.0 * arma::dot(resid, AF_posValue);
+  double zScore = (S - S_mean) / std::sqrt(VarS);
 
   m_zScore = zScore;
 
@@ -283,11 +312,23 @@ double mtSPAmixClass::getMarkerPval(const arma::vec& GVec, double altFreq) {
     return m_pval;
   }
 
-  arma::vec MAF_outlier = AFVec.elem(posOutlier);
-  arma::vec MAF_nonOutlier = AFVec.elem(posNonOutlier);
+  // Gather AFVec for outlier and non-outlier positions
+  {
+    const double* af = AFVec.memptr();
+    const arma::uword* idx;
+    double* dst;
 
-  double mean_nonOutlier = sum(residNonOutlier % MAF_nonOutlier) * 2;
-  double var_nonOutlier = sum(resid2NonOutlier % MAF_nonOutlier % (1-MAF_nonOutlier)) * 2;
+    idx = posOutlier.memptr(); dst = m_scratch_posOutlier.memptr();
+    for (arma::uword k = 0; k < posOutlier.n_elem; ++k) dst[k] = af[idx[k]];
+
+    idx = posNonOutlier.memptr(); dst = m_scratch_posNonOutlier.memptr();
+    for (arma::uword k = 0; k < posNonOutlier.n_elem; ++k) dst[k] = af[idx[k]];
+  }
+  const arma::vec& MAF_outlier = m_scratch_posOutlier;
+  const arma::vec& MAF_nonOutlier = m_scratch_posNonOutlier;
+
+  double mean_nonOutlier = arma::dot(residNonOutlier, MAF_nonOutlier) * 2.0;
+  double var_nonOutlier = arma::sum(resid2NonOutlier % MAF_nonOutlier % (1.0 - MAF_nonOutlier)) * 2.0;
 
   double pval1 = nsSPAmix::getProbSpaG(
     MAF_outlier,

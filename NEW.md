@@ -1,14 +1,17 @@
 # Release Notes
 
-## GRAB.Marker4 for multithreads (2026-03-12)
+## v0.4.0 (2026-03-25)
 
-- BGEN.cpp, PLINK.cpp, SPAGRM.cpp SPAGRM.h modified to adapt SPAsqr multithreads.
+  - Null object data is transferred from R to C++ in a single handoff.
+  - All methods follow consistent low-level optimizations for speed and memory.
+  - Computation is parallelized by chunk for maximum scalability on multicore systems.
 
-## v0.3.0-alpha.2 (2026-02-06)
+## v0.3.0 (2026-02-06)
 
 - Added new methods:
   - SAGELD, developed by He Xu
   - LEAF, developed by Ying Li
+  - Added SPAsqr, developed by Dr. Heng
   - SPAmixPlus and SPAmixLocalPlus, developed by Yuzhuo Ma
 
 - Changes to SPAsqr:
@@ -20,10 +23,6 @@
 - Changes to existing methods:
   - Added verbose options (default FALSE) to functions in Geno.R
   - WtCoxG now returns Z-scores and score statistics in addition to p-values
-
-## v0.3.0-alpha.1 (2026-01-12)
-
-- Added SPAsqr, developed by Dr. Heng
 
 ## v0.2.4 (2025-12-01)
 
