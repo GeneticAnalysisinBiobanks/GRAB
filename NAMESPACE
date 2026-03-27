@@ -1,3 +1,0 @@
-useDynLib(GRABmtMarker, .registration=TRUE)
-importFrom(Rcpp, evalCpp)
-export(GRAB.mtMarker)
