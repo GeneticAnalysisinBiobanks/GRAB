@@ -1,8 +1,8 @@
-Package: GRAB
+Package: GRABmtMarker
 Type: Package
-Title: Genome-Wide Robust Analysis for Biobank Data (GRAB)
-Version: 0.4.0
-Date: 2026-03-25
+Title: Multithreaded GRAB.Marker
+Version: 0.3.0
+Date: 2026-03-27
 Authors@R: c(person(given = "Wenjian",
                     family = "Bi",
                     role = "aut"),

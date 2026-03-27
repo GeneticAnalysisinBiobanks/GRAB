@@ -13,7 +13,7 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 
 // mtMarkerBridgeInCPP
 void mtMarkerBridgeInCPP(const Rcpp::List& objNull, const std::string& OutputFile, const Rcpp::List& control, const std::string& bedFile, const std::string& bimFile, const std::string& famFile);
-RcppExport SEXP _GRAB_mtMarkerBridgeInCPP(SEXP objNullSEXP, SEXP OutputFileSEXP, SEXP controlSEXP, SEXP bedFileSEXP, SEXP bimFileSEXP, SEXP famFileSEXP) {
+RcppExport SEXP _GRABmtMarker_mtMarkerBridgeInCPP(SEXP objNullSEXP, SEXP OutputFileSEXP, SEXP controlSEXP, SEXP bedFileSEXP, SEXP bimFileSEXP, SEXP famFileSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const Rcpp::List& >::type objNull(objNullSEXP);
@@ -28,11 +28,11 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_GRAB_mtMarkerBridgeInCPP", (DL_FUNC) &_GRAB_mtMarkerBridgeInCPP, 6},
+    {"_GRABmtMarker_mtMarkerBridgeInCPP", (DL_FUNC) &_GRABmtMarker_mtMarkerBridgeInCPP, 6},
     {NULL, NULL, 0}
 };
 
-RcppExport void R_init_GRAB(DllInfo *dll) {
+RcppExport void R_init_GRABmtMarker(DllInfo *dll) {
     R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
     R_useDynamicSymbols(dll, FALSE);
 }

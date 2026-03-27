@@ -2,6 +2,6 @@
 # Generator token: 10BE3573-1514-4C36-9D1C-5A225CD40393
 
 mtMarkerBridgeInCPP <- function(objNull, OutputFile, control, bedFile, bimFile, famFile) {
-    invisible(.Call(`_GRAB_mtMarkerBridgeInCPP`, objNull, OutputFile, control, bedFile, bimFile, famFile))
+    invisible(.Call(`_GRABmtMarker_mtMarkerBridgeInCPP`, objNull, OutputFile, control, bedFile, bimFile, famFile))
 }
 

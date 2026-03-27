@@ -1,7 +1,29 @@
-# mtGRAB_Marker.R
-# Single-entry-point for chunk-parallel marker association testing.
-
-GRAB.Marker6 <- function (
+#' @title GRAB.mtMarker
+#' 
+#' @description Multithreaded GRAB.Marker
+#'
+#' @param objNull A fitted null model object from \code{GRAB.NullModel}.
+#' @param GenoFile Path to PLINK bed file. 
+#' @param OutputFile Path to output file for marker-level results. ".gz" extension for gzip compression.
+#' @param GenoFileIndex Optional character vector of length 2 with paths to PLINK bim and fam files.
+#' @param overwrite Whether to overwrite existing OutputFile (default FALSE).
+#' @param control Set `nthreads` to specify the number of threads for parallel processing (default is the number of available cores minus one, up to a maximum of 8).
+#' 
+#' @examples
+#' extdir <- system.file("extdata", package = "GRABmtMarker")
+#' GenoFile <- paste0(extdir, "/simuPLINK.bed")
+#' OutputFile <- tempfile(fileext = ".tsv.gz")
+#' control <- list(nMarkersEachChunk = 256, nthreads = 3)
+#' supported_methods <- c("POLMM", "LEAF", "WtCoxG", "SPAGRM", "SAGELD", "SPAsqr", "SPACox", "SPAmix", "SPAmixPlus")
+#' 
+#' for (method in supported_methods) {
+#'   objNull <- readRDS(paste0(extdir, "/obj.", method, ".rds"))
+#'   if (method == "SPAmixPlus") control$afFilePath = paste0(extdir, "/afModels.bin")
+#'   GRAB.mtMarker(objNull, GenoFile, OutputFile, control = control, overwrite = TRUE)
+#'   head(read.table(OutputFile, header = TRUE))
+#' }
+#' 
+GRAB.mtMarker <- function (
     objNull,
     GenoFile,
     OutputFile,
