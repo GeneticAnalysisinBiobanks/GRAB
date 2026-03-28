@@ -1,0 +1,12 @@
+{
+  "configurations": [
+    {
+      "name": "",
+      "includePath": [
+        "${workspaceFolder}/**"
+      ],
+      "cppStandard": "c++17"
+    }
+  ],
+  "version": 4
+}
