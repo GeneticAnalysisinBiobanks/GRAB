@@ -8,7 +8,8 @@
 #include <algorithm>
 
 SparseGRM::SparseGRM(const std::string& filename,
-                     const std::vector<std::string>& subjectOrder) {
+                     const std::vector<std::string>& subjectOrder,
+                     bool symmetrize) {
   // Build subject → index map
   std::unordered_map<std::string, uint32_t> idMap;
   idMap.reserve(subjectOrder.size());
@@ -52,7 +53,7 @@ SparseGRM::SparseGRM(const std::string& filename,
     uint32_t r = it1->second;
     uint32_t c = it2->second;
     raw.push_back({r, c, val});
-    if (r != c)
+    if (symmetrize && r != c)
       raw.push_back({c, r, val});  // symmetrise
   }
 
@@ -80,4 +81,17 @@ double SparseGRM::bilinearForm(const double* x, const double* y, uint32_t n) con
   for (const auto& e : m_entries)
     sum += e.value * x[e.row] * y[e.col];
   return sum;
+}
+
+double SparseGRM::spaVariance(const double* R, uint32_t n) const {
+  if (n != m_nSubj)
+    throw std::runtime_error("SparseGRM::spaVariance: size mismatch");
+  double covSum = 0.0;
+  for (const auto& e : m_entries)
+    covSum += e.value * R[e.row] * R[e.col];
+  // dot(R, R)
+  double dotRR = 0.0;
+  for (uint32_t i = 0; i < n; ++i)
+    dotRR += R[i] * R[i];
+  return 2.0 * covSum - dotRR;
 }

@@ -62,6 +62,6 @@ void markerEngine(
   const std::string& outputFile,
   int nthreads,
   double missingCutoff,
-  double minMafMarker,
-  double minMacMarker,
+  double minMafCutoff,
+  double minMacCutoff,
   bool exactHwe);

@@ -1,4 +1,4 @@
-build/main.o: src/main.cpp src/util/logging.hpp src/wtcoxg/wtcoxg.hpp \
+build/main.o: src/main.cpp src/util/logging.hpp src/spacox/spacox.hpp \
  third_party/eigen-5.0.0/Eigen/Dense third_party/eigen-5.0.0/Eigen/Core \
  third_party/eigen-5.0.0/Eigen/Version \
  third_party/eigen-5.0.0/Eigen/src/Core/util/DisableStupidWarnings.h \
@@ -222,9 +222,12 @@ build/main.o: src/main.cpp src/util/logging.hpp src/wtcoxg/wtcoxg.hpp \
  third_party/eigen-5.0.0/Eigen/src/Eigenvalues/GeneralizedEigenSolver.h \
  third_party/eigen-5.0.0/Eigen/src/Eigenvalues/./RealQZ.h \
  third_party/eigen-5.0.0/Eigen/src/Eigenvalues/MatrixBaseEigenvalues.h \
- src/engine/marker.hpp src/wtcoxg/leaf.hpp
+ src/engine/marker.hpp src/io/data_matrix.hpp src/spamix/spamix.hpp \
+ src/spamix/common.hpp src/spamix/indiv_af.hpp src/spamix/spamixplus.hpp \
+ src/io/sparse_grm.hpp src/wtcoxg/wtcoxg.hpp src/io/resid_file.hpp \
+ src/wtcoxg/leaf.hpp
 src/util/logging.hpp:
-src/wtcoxg/wtcoxg.hpp:
+src/spacox/spacox.hpp:
 third_party/eigen-5.0.0/Eigen/Dense:
 third_party/eigen-5.0.0/Eigen/Core:
 third_party/eigen-5.0.0/Eigen/Version:
@@ -450,4 +453,12 @@ third_party/eigen-5.0.0/Eigen/src/Eigenvalues/GeneralizedEigenSolver.h:
 third_party/eigen-5.0.0/Eigen/src/Eigenvalues/./RealQZ.h:
 third_party/eigen-5.0.0/Eigen/src/Eigenvalues/MatrixBaseEigenvalues.h:
 src/engine/marker.hpp:
+src/io/data_matrix.hpp:
+src/spamix/spamix.hpp:
+src/spamix/common.hpp:
+src/spamix/indiv_af.hpp:
+src/spamix/spamixplus.hpp:
+src/io/sparse_grm.hpp:
+src/wtcoxg/wtcoxg.hpp:
+src/io/resid_file.hpp:
 src/wtcoxg/leaf.hpp:

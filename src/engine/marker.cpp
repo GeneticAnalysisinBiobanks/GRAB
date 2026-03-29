@@ -157,8 +157,8 @@ void markerEngine(
     const std::string& outputFile,
     int nthreads,
     double missingCutoff,
-    double minMafMarker,
-    double minMacMarker,
+    double minMafCutoff,
+    double minMacCutoff,
     bool exactHwe)
 {
   const auto wallStart = std::chrono::steady_clock::now();
@@ -296,8 +296,8 @@ void markerEngine(
 
           const bool passQC =
               !(missingRate > missingCutoff ||
-                maf < minMafMarker ||
-                mac < minMacMarker);
+                maf < minMafCutoff ||
+                mac < minMacCutoff);
 
           if (!passQC) {
             formatLineNA(out, fmtBuf, marker, chr, pos, ref, alt,

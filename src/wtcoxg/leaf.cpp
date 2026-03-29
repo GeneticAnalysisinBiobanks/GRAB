@@ -362,7 +362,10 @@ void runLEAF(
     double cutoff,
     double spaCutoff,
     int nthread,
-    int nSnpPerChunk) {
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff) {
 
   const int nCluster = static_cast<int>(residFiles.size());
 
@@ -561,8 +564,8 @@ void runLEAF(
   infoMsg("Running LEAF marker engine (%d thread(s))...", nthread);
   markerEngine(plinkData, method, outputFile,
                nthread,
-               /*missingCutoff=*/0.15,
-               /*minMafMarker=*/0.0,
-               /*minMacMarker=*/0.5,
+               missingCutoff,
+               minMafCutoff,
+               minMacCutoff,
                /*exactHwe=*/false);
 }

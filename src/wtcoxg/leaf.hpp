@@ -123,4 +123,7 @@ void runLEAF(
     double cutoff,
     double spaCutoff,
     int nthread,
-    int nSnpPerChunk);
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff);

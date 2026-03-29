@@ -2,6 +2,7 @@
 
 #include "wtcoxg/wtcoxg.hpp"
 #include "io/plink.hpp"
+#include "io/resid_file.hpp"
 #include "io/sparse_grm.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
@@ -152,29 +153,6 @@ SpaResult spaGOneSnpHomo(
 // ======================================================================
 // Phase 1 — File parsing & marker matching
 // ======================================================================
-
-ResidData loadResidFile(const std::string& filename) {
-  std::ifstream ifs(filename);
-  if (!ifs) throw std::runtime_error("Cannot open resid file: " + filename);
-
-  ResidData rd;
-  std::vector<double> v_ind, v_res, v_wt;
-  std::string line;
-  while (std::getline(ifs, line)) {
-    if (line.empty() || line[0] == '#') continue;
-    std::istringstream iss(line);
-    std::string subj;
-    double ind, res, wt;
-    if (!(iss >> subj >> ind >> res >> wt)) continue;
-    rd.subjects.push_back(std::move(subj));
-    v_ind.push_back(ind); v_res.push_back(res); v_wt.push_back(wt);
-  }
-  const Eigen::Index n = static_cast<Eigen::Index>(rd.subjects.size());
-  rd.indicator  = Eigen::Map<Eigen::VectorXd>(v_ind.data(), n);
-  rd.residuals  = Eigen::Map<Eigen::VectorXd>(v_res.data(), n);
-  rd.weights    = Eigen::Map<Eigen::VectorXd>(v_wt.data(),  n);
-  return rd;
-}
 
 std::vector<RefAfRecord> loadRefAfFile(const std::string& filename) {
   std::ifstream ifs(filename);
@@ -767,7 +745,10 @@ void runWtCoxG(
     double cutoff,
     double spaCutoff,
     int nthread,
-    int nSnpPerChunk) {
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff) {
 
   // ---- Load & match ----
   infoMsg("Loading resid file: %s", residFile.c_str());
@@ -817,8 +798,8 @@ void runWtCoxG(
       cutoff, spaCutoff, refInfoMap);
   markerEngine(plinkData, method, outputFile,
                nthread,
-               /*missingCutoff=*/0.15,
-               /*minMafMarker=*/0.0,
-               /*minMacMarker=*/0.5,
+               missingCutoff,
+               minMafCutoff,
+               minMacCutoff,
                /*exactHwe=*/false);
 }

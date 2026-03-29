@@ -222,8 +222,8 @@ build/wtcoxg/wtcoxg.o: src/wtcoxg/wtcoxg.cpp src/wtcoxg/wtcoxg.hpp \
  third_party/eigen-5.0.0/Eigen/src/Eigenvalues/GeneralizedEigenSolver.h \
  third_party/eigen-5.0.0/Eigen/src/Eigenvalues/./RealQZ.h \
  third_party/eigen-5.0.0/Eigen/src/Eigenvalues/MatrixBaseEigenvalues.h \
- src/engine/marker.hpp src/io/plink.hpp src/io/sparse_grm.hpp \
- src/util/logging.hpp src/util/math_helper.hpp \
+ src/engine/marker.hpp src/io/resid_file.hpp src/io/plink.hpp \
+ src/io/sparse_grm.hpp src/util/logging.hpp src/util/math_helper.hpp \
  third_party/boost-1.90.0/boost/math/distributions/normal.hpp \
  third_party/boost-1.90.0/boost/math/tools/config.hpp \
  third_party/boost-1.90.0/boost/math/tools/is_standalone.hpp \
@@ -577,6 +577,7 @@ third_party/eigen-5.0.0/Eigen/src/Eigenvalues/GeneralizedEigenSolver.h:
 third_party/eigen-5.0.0/Eigen/src/Eigenvalues/./RealQZ.h:
 third_party/eigen-5.0.0/Eigen/src/Eigenvalues/MatrixBaseEigenvalues.h:
 src/engine/marker.hpp:
+src/io/resid_file.hpp:
 src/io/plink.hpp:
 src/io/sparse_grm.hpp:
 src/util/logging.hpp:

@@ -17,6 +17,7 @@
 #include <Eigen/Dense>
 
 #include "engine/marker.hpp"
+#include "io/resid_file.hpp"
 
 class PlinkData;
 class SparseGRM;
@@ -107,17 +108,6 @@ private:
 // Phase 1 — Data loading & marker matching
 // ======================================================================
 
-struct ResidData {
-  std::vector<std::string> subjects;
-  Eigen::VectorXd          indicator;   // 0/1 event indicator
-  Eigen::VectorXd          residuals;   // martingale residuals
-  Eigen::VectorXd          weights;     // sampling weights
-};
-
-// Parse a 4-column resid file (subject, indicator, residual, weight).
-// No header; lines starting with '#' are skipped.
-ResidData loadResidFile(const std::string& filename);
-
 struct RefAfRecord {
   std::string chrom;
   std::string id;
@@ -194,4 +184,7 @@ void runWtCoxG(
     double cutoff,
     double spaCutoff,
     int nthread,
-    int nSnpPerChunk);
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff);
