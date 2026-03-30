@@ -1,8 +1,8 @@
 // data_matrix.hpp — Design (covariate) matrix I/O, projection, and generic matrix loader
 //
-// File format: headerless, whitespace-delimited numeric columns.
-// Rows correspond 1-to-1 with the resid file.
-// Lines starting with '#' and blank lines are ignored.
+// File format: whitespace-delimited; first column is subject ID (skipped).
+// Header line starting with '#' (e.g. "#IID COV1 COV2 ...") is skipped.
+// Blank lines and '#'-prefixed lines are ignored.
 #pragma once
 
 #include <string>
@@ -11,7 +11,8 @@
 
 class DesignMatrix {
 public:
-  // Load a headerless design-matrix file.
+  // Load a design-matrix file with a leading subject-ID column.
+  // First token on each data line is treated as the subject ID and skipped.
   // Throws std::runtime_error on I/O or parse errors.
   explicit DesignMatrix(const std::string& filename);
 

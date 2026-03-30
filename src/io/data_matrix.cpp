@@ -1,4 +1,4 @@
-// data_matrix.cpp — Design file parser, covariate projection, and generic matrix loader
+// data_matrix.cpp — Design file parser (with leading IID column), covariate projection, and generic matrix loader
 
 #include "io/data_matrix.hpp"
 
@@ -19,27 +19,40 @@ DesignMatrix::DesignMatrix(const std::string& filename) {
   int nCols = 0;
   int nRows = 0;
 
+  uint32_t lineNo = 0;
   std::string line;
   while (std::getline(ifs, line)) {
+    ++lineNo;
     if (!line.empty() && line.back() == '\r') line.pop_back();
     if (line.empty() || line[0] == '#') continue;
 
     const char*       p   = line.c_str();
     const char* const end = p + line.size();
-    int colsThisRow = 0;
 
+    // Skip leading whitespace then consume the subject-ID token.
+    while (p < end && (*p == ' ' || *p == '\t')) ++p;
+    if (p >= end) continue;  // blank / all-whitespace line
+    while (p < end && *p != ' ' && *p != '\t') ++p;  // skip ID token
+
+    int colsThisRow = 0;
     while (p < end) {
       while (p < end && (*p == ' ' || *p == '\t')) ++p;
       if (p >= end) break;
       char* next;
       double v = std::strtod(p, &next);
-      if (next == p) break;  // non-numeric → stop
+      if (next == p)
+        throw std::runtime_error(
+            "design file: non-numeric token on row " + std::to_string(lineNo) +
+            " (after subject ID): " + filename);
       vals.push_back(v);
       ++colsThisRow;
       p = next;
     }
 
-    if (colsThisRow == 0) continue;
+    if (colsThisRow == 0)
+      throw std::runtime_error(
+          "design file: no covariate columns on row " + std::to_string(lineNo) +
+          ": " + filename);
 
     if (nRows == 0) {
       nCols = colsThisRow;
@@ -117,12 +130,15 @@ Eigen::MatrixXd loadNumericMatrix(const std::string& filename) {
       if (p >= end) break;
       char* next;
       double v = std::strtod(p, &next);
-      if (next == p) break;
+      if (next == p)
+        throw std::runtime_error(
+            "loadNumericMatrix: non-numeric token on row " + std::to_string(nRows + 1) +
+            ": " + filename);
       vals.push_back(v);
       ++colsThisRow;
       p = next;
     }
-    if (colsThisRow == 0) continue;
+    if (colsThisRow == 0) continue;  // blank / all-whitespace line
 
     if (nRows == 0) {
       nCols = colsThisRow;
@@ -185,7 +201,10 @@ EigenVecData loadEigenVecs(const std::string& filename) {
       if (p >= end) break;
       char* next;
       double v = std::strtod(p, &next);
-      if (next == p) break;
+      if (next == p)
+        throw std::runtime_error(
+            "loadEigenVecs: non-numeric token on row " +
+            std::to_string(subjects.size() + 1) + ": " + filename);
       vals.push_back(v);
       ++colsThisRow;
       p = next;
@@ -194,7 +213,7 @@ EigenVecData loadEigenVecs(const std::string& filename) {
     if (colsThisRow == 0)
       throw std::runtime_error(
           "loadEigenVecs: no numeric columns on row " +
-          std::to_string(subjects.size()) + ": " + filename);
+          std::to_string(subjects.size() + 1) + ": " + filename);
 
     if (subjects.size() == 1) {
       nCols = colsThisRow;

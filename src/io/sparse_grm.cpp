@@ -26,32 +26,44 @@ SparseGRM::SparseGRM(const std::string& filename,
   std::vector<Entry> raw;
   raw.reserve(subjectOrder.size() * 4);  // rough guess
 
+  uint32_t lineNo = 0;
   while (std::getline(ifs, line)) {
+    ++lineNo;
+    if (!line.empty() && line.back() == '\r') line.pop_back();
     if (line.empty() || line[0] == '#') continue;
 
-    // Fast tab-delimited parse: ID1 \t ID2 \t value
-    const char* p = line.c_str();
-    const char* t1 = p;
-    while (*t1 && *t1 != '\t') ++t1;
-    if (!*t1) continue;
-    std::string id1(p, t1);
+    // Whitespace-delimited parse: ID1  ID2  VALUE
+    const char*       p   = line.c_str();
+    const char* const end = p + line.size();
+    auto skipWS  = [&]() { while (p < end && (*p == ' ' || *p == '\t')) ++p; };
+    auto nextTok = [&]() -> std::string {
+      skipWS();
+      const char* s = p;
+      while (p < end && *p != ' ' && *p != '\t') ++p;
+      return std::string(s, p);
+    };
 
-    const char* t2 = t1 + 1;
-    while (*t2 && *t2 != '\t') ++t2;
-    if (!*t2) continue;
-    std::string id2(t1 + 1, t2);
+    skipWS();
+    if (p >= end) continue;  // blank / all-whitespace line
+
+    const std::string id1 = nextTok();
+    const std::string id2 = nextTok();
+    skipWS();
+    if (id2.empty() || p >= end)
+      throw std::runtime_error(filename + " line " + std::to_string(lineNo) +
+                               ": expected ID1 ID2 VALUE");
+    char* endPtr;
+    const double val = std::strtod(p, &endPtr);
+    if (endPtr == p)
+      throw std::runtime_error(filename + " line " + std::to_string(lineNo) +
+                               ": invalid VALUE field");
 
     auto it1 = idMap.find(id1);
     auto it2 = idMap.find(id2);
     if (it1 == idMap.end() || it2 == idMap.end()) continue;
 
-    double val;
-    char* end;
-    val = std::strtod(t2 + 1, &end);
-    if (end == t2 + 1) continue;
-
-    uint32_t r = it1->second;
-    uint32_t c = it2->second;
+    const uint32_t r = it1->second;
+    const uint32_t c = it2->second;
     raw.push_back({r, c, val});
     if (symmetrize && r != c)
       raw.push_back({c, r, val});  // symmetrise

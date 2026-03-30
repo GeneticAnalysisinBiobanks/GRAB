@@ -152,18 +152,17 @@ double SPAmixPlusMethod::getMarkerPval(
   const int nOut = static_cast<int>(m_outlier.posOutlier.size());
   const int nNon = static_cast<int>(m_outlier.posNonOutlier.size());
 
-  // Gather per-individual MAF at outlier / non-outlier positions
+  // Gather outlier MAFs
   for (int i = 0; i < nOut; ++i)
     m_mafOutlier[i] = m_AFVec[m_outlier.posOutlier[i]];
-  for (int i = 0; i < nNon; ++i)
-    m_mafNonOutlier[i] = m_AFVec[m_outlier.posNonOutlier[i]];
 
-  // Non-outlier normal approximation terms
+  // Gather non-outlier MAFs and accumulate normal-approx terms in one pass
   double mean_nonOutlier = 0.0, var_nonOutlier = 0.0;
   for (int i = 0; i < nNon; ++i) {
-    double af = m_mafNonOutlier[i];
-    mean_nonOutlier += m_outlier.residNonOutlier[i] * af;
-    var_nonOutlier  += m_outlier.resid2NonOutlier[i] * af * (1.0 - af);
+    const double af = m_AFVec[m_outlier.posNonOutlier[i]];
+    m_mafNonOutlier[i]  = af;
+    mean_nonOutlier    += m_outlier.residNonOutlier[i]  * af;
+    var_nonOutlier     += m_outlier.resid2NonOutlier[i] * af * (1.0 - af);
   }
   mean_nonOutlier *= 2.0;
   var_nonOutlier  *= 2.0;
@@ -220,91 +219,6 @@ void SPAmixPlusMethod::getResultVec(
   result.push_back(pval);
   result.push_back(zScore);
 }
-
-// ======================================================================
-// AF model loading helpers
-// ======================================================================
-
-namespace {
-
-// Load AF models from a binary file by genoIndex.
-std::vector<AFModel> loadAFModelsBinary(
-    const std::string& binFile,
-    int nPC,
-    const std::vector<PlinkData::MarkerInfo>& markerInfo) {
-
-  const uint32_t nMarkers = static_cast<uint32_t>(markerInfo.size());
-  std::vector<AFModel> models(nMarkers);
-  IndivAFReader reader(binFile, nPC);
-  for (uint32_t fi = 0; fi < nMarkers; ++fi)
-    reader.read(markerInfo[fi].genoIndex, models[fi]);
-  return models;
-}
-
-// Load AF models from a text or gzip-text file (rows in flat marker order).
-std::vector<AFModel> loadAFModelsText(
-    const std::string& path,
-    int nPC,
-    uint32_t nExpected) {
-
-  // Detect gzip
-  const bool isGz = path.size() > 3 &&
-      path.compare(path.size() - 3, 3, ".gz") == 0;
-
-  std::vector<AFModel> models;
-  models.reserve(nExpected);
-
-  auto parseLine = [&](const std::string& line) {
-    if (line.empty() || line[0] == 'C') return;  // skip header (CHR...)
-    std::istringstream iss(line);
-    std::string chr;
-    uint32_t bp;
-    int status;
-    iss >> chr >> bp >> status;
-    AFModel m;
-    m.status = static_cast<int8_t>(status);
-    m.betas.resize(1 + nPC);
-    for (int j = 0; j <= nPC; ++j)
-      iss >> m.betas[j];
-    models.push_back(std::move(m));
-  };
-
-  if (isGz) {
-    gzFile gz = gzopen(path.c_str(), "rb");
-    if (!gz)
-      throw std::runtime_error("Cannot open gzip AF file: " + path);
-    char buf[8192];
-    std::string leftover;
-    while (true) {
-      int nRead = gzread(gz, buf, sizeof(buf));
-      if (nRead <= 0) break;
-      leftover.append(buf, nRead);
-      size_t pos = 0;
-      while (true) {
-        size_t nl = leftover.find('\n', pos);
-        if (nl == std::string::npos) {
-          leftover = leftover.substr(pos);
-          break;
-        }
-        parseLine(leftover.substr(pos, nl - pos));
-        pos = nl + 1;
-      }
-    }
-    if (!leftover.empty()) parseLine(leftover);
-    gzclose(gz);
-  } else {
-    std::ifstream ifs(path);
-    if (!ifs)
-      throw std::runtime_error("Cannot open text AF file: " + path);
-    std::string line;
-    while (std::getline(ifs, line))
-      parseLine(line);
-  }
-
-  return models;
-}
-
-} // anonymous namespace
 
 
 // ======================================================================
@@ -405,26 +319,18 @@ void runSPAmixPlus(
 
   // ---- genoIndex → flat marker index mapping ----
   std::vector<uint32_t> genoToFlat(plinkData.nMarkers(), UINT32_MAX);
-  for (uint32_t fi = 0; fi < nMarkers; ++fi)
+  std::vector<uint64_t> genoIndices(nMarkers);
+  for (uint32_t fi = 0; fi < nMarkers; ++fi) {
     genoToFlat[markerInfo[fi].genoIndex] = fi;
+    genoIndices[fi] = markerInfo[fi].genoIndex;
+  }
 
   // ---- Load AF models (pre-computed) or prepare on-the-fly ----
   std::vector<AFModel> afModels;
   if (!afFile.empty()) {
     infoMsg("Loading pre-computed AF models: %s", afFile.c_str());
-    const auto len = afFile.size();
-    if (len > 4 && afFile.compare(len - 4, 4, ".bin") == 0) {
-      afModels = loadAFModelsBinary(afFile, nPC, markerInfo);
-    } else {
-      afModels = loadAFModelsText(afFile, nPC, nMarkers);
-    }
+    afModels = loadAFModels(afFile, nPC, nMarkers, genoIndices);
     infoMsg("  %zu AF models loaded", afModels.size());
-
-    if (afModels.size() != nMarkers)
-      throw std::runtime_error(
-          "AF model count (" + std::to_string(afModels.size()) +
-          ") does not match marker count (" +
-          std::to_string(nMarkers) + ")");
   }
   // On-the-fly: AF computed per-marker inside the engine (single PLINK pass)
 

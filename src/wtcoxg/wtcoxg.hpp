@@ -28,7 +28,7 @@ class SparseGRM;
 
 struct WtCoxGRefInfo {
   double AF_ref       = std::numeric_limits<double>::quiet_NaN();
-  double AN_ref       = std::numeric_limits<double>::quiet_NaN();
+  double N_ref        = std::numeric_limits<double>::quiet_NaN();  // sample size
   double TPR          = std::numeric_limits<double>::quiet_NaN();
   double sigma2       = std::numeric_limits<double>::quiet_NaN();
   double pvalue_bat   = std::numeric_limits<double>::quiet_NaN();
@@ -110,26 +110,24 @@ private:
 
 struct RefAfRecord {
   std::string chrom;
-  std::string id;
-  double      cm;
   uint32_t    pos;
   std::string a1;
   std::string a2;
-  double      AF_ref;
-  double      AN_ref;
+  double      AF_ref;  // A1 allele frequency
+  double      N_ref;   // sample size (file column N)
 };
 
-// Parse an 8-column ref-af file (chr, id, cm, bp, a1, a2, AF, AN).
-// No header; lines starting with '#' are skipped.
+// Parse a 6-column ref-af file: #CHROM  POS  A1  A2  A1F  N
+// Header line (starting with '#') is skipped. N is sample size (AN = 2*N).
 std::vector<RefAfRecord> loadRefAfFile(const std::string& filename);
 
 // Match bim markers to ref-af records by (chr, bp, a1, a2) — exact only.
-// Returns a map: genoIndex → {AF_ref, AN_ref, ...} for matched markers.
+// Returns a map: genoIndex → {AF_ref, N_ref, ...} for matched markers.
 // mu0, mu1, n0, n1 per marker are computed from the genotype data.
 struct MatchedMarkerInfo {
   uint64_t genoIndex;
   double   AF_ref;
-  double   AN_ref;
+  double   N_ref;   // sample size
   double   mu0;        // control allele freq
   double   mu1;        // case allele freq
   double   n0;         // effective control count

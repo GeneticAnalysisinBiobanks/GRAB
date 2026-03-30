@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -293,9 +294,9 @@ IndivAFWriter::IndivAFWriter(
     gzbuffer(static_cast<gzFile>(m_gz), 256u * 1024u);
 
     // Write TSV header
-    std::string hdr = "CHR\tBP\tStatus";
+    std::string hdr = "#CHROM\tID\tSTATUS";
     for (int j = 0; j <= nPC; ++j)
-      hdr += "\tBeta" + std::to_string(j);
+      hdr += "\tBETA" + std::to_string(j);
     hdr += "\n";
     gzwrite(static_cast<gzFile>(m_gz), hdr.data(), static_cast<unsigned>(hdr.size()));
 
@@ -305,9 +306,9 @@ IndivAFWriter::IndivAFWriter(
       throw std::runtime_error("Cannot create text AF file: " + outputFile);
 
     // Write TSV header
-    m_textOut << "CHR\tBP\tStatus";
+    m_textOut << "#CHROM\tID\tSTATUS";
     for (int j = 0; j <= nPC; ++j)
-      m_textOut << "\tBeta" << j;
+      m_textOut << "\tBETA" << j;
     m_textOut << "\n";
   }
 }
@@ -318,7 +319,7 @@ IndivAFWriter::IndivAFWriter(
 
 void IndivAFWriter::write(
     uint64_t genoIndex,
-    const std::string& chr, uint32_t bp,
+    const std::string& chr, const std::string& id,
     int8_t status,
     const Eigen::VectorXd& betas)
 {
@@ -332,18 +333,17 @@ void IndivAFWriter::write(
   } else {
     char buf[64];
     std::string line;
-    line.reserve(64 + 24 * (1 + m_nPC));
+    line.reserve(64 + 26 * (1 + m_nPC));
 
     line += chr;
     line += '\t';
-    std::snprintf(buf, sizeof(buf), "%u", bp);
-    line += buf;
+    line += id;
     line += '\t';
     std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(status));
     line += buf;
     for (int j = 0; j <= m_nPC; ++j) {
       line += '\t';
-      std::snprintf(buf, sizeof(buf), "%.15g", betas[j]);
+      std::snprintf(buf, sizeof(buf), "%.17g", betas[j]);
       line += buf;
     }
     line += '\n';
@@ -407,6 +407,110 @@ bool IndivAFReader::read(uint64_t genoIndex, AFModel& model) {
     throw std::runtime_error("Binary AF read failed at genoIndex=" +
                              std::to_string(genoIndex));
   return st != 0;
+}
+
+// ======================================================================
+// ======================================================================
+// loadAFModels — helpers (binary + text/gz) and dispatcher
+// ======================================================================
+
+static std::vector<AFModel> loadAFModelsBinary(
+    const std::string& path,
+    int nPC,
+    uint32_t nMarkers,
+    const std::vector<uint64_t>& genoIndices)
+{
+  std::vector<AFModel> models(nMarkers);
+  IndivAFReader reader(path, nPC);
+  for (uint32_t fi = 0; fi < nMarkers; ++fi)
+    reader.read(genoIndices[fi], models[fi]);
+  return models;
+}
+
+static std::vector<AFModel> loadAFModelsText(
+    const std::string& path,
+    int nPC,
+    uint32_t nExpected)
+{
+  const bool isGz = path.size() > 3 &&
+      path.compare(path.size() - 3, 3, ".gz") == 0;
+
+  std::vector<AFModel> models;
+  models.reserve(nExpected);
+
+  uint32_t lineNo = 0;
+  auto parseLine = [&](std::string line) {
+    ++lineNo;
+    // Normalise Windows CRLF
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line.empty() || line[0] == '#') return;
+    std::istringstream iss(line);
+    std::string chr, id;
+    int status;
+    if (!(iss >> chr >> id >> status))
+      throw std::runtime_error(path + " line " + std::to_string(lineNo) +
+                               ": expected CHROM ID STATUS BETA0 ...");
+    AFModel m;
+    m.status = static_cast<int8_t>(status);
+    m.betas.resize(1 + nPC);
+    for (int j = 0; j <= nPC; ++j) {
+      if (!(iss >> m.betas[j]))
+        throw std::runtime_error(path + " line " + std::to_string(lineNo) +
+                                 ": expected " + std::to_string(1 + nPC) + " beta values");
+    }
+    models.push_back(std::move(m));
+  };
+
+  if (isGz) {
+    gzFile gz = gzopen(path.c_str(), "rb");
+    if (!gz)
+      throw std::runtime_error("Cannot open gzip AF file: " + path);
+    char buf[8192];
+    std::string leftover;
+    while (true) {
+      int nRead = gzread(gz, buf, sizeof(buf));
+      if (nRead <= 0) break;
+      leftover.append(buf, static_cast<size_t>(nRead));
+      size_t pos = 0;
+      while (true) {
+        size_t nl = leftover.find('\n', pos);
+        if (nl == std::string::npos) { leftover = leftover.substr(pos); break; }
+        parseLine(leftover.substr(pos, nl - pos));
+        pos = nl + 1;
+      }
+    }
+    if (!leftover.empty()) parseLine(leftover);
+    gzclose(gz);
+  } else {
+    std::ifstream ifs(path);
+    if (!ifs)
+      throw std::runtime_error("Cannot open text AF file: " + path);
+    std::string line;
+    while (std::getline(ifs, line))
+      parseLine(line);
+  }
+
+  return models;
+}
+
+std::vector<AFModel> loadAFModels(
+    const std::string& path,
+    int nPC,
+    uint32_t nMarkers,
+    const std::vector<uint64_t>& genoIndices)
+{
+  const auto len = path.size();
+  std::vector<AFModel> models;
+  if (len > 4 && path.compare(len - 4, 4, ".bin") == 0)
+    models = loadAFModelsBinary(path, nPC, nMarkers, genoIndices);
+  else
+    models = loadAFModelsText(path, nPC, nMarkers);
+
+  if (models.size() != nMarkers)
+    throw std::runtime_error(
+        "AF model count (" + std::to_string(models.size()) +
+        ") does not match marker count (" + std::to_string(nMarkers) + ")");
+  return models;
 }
 
 // ======================================================================
@@ -542,10 +646,7 @@ void runSPAmixAF(
     const std::string& bfilePrefix,
     const std::string& outputFile,
     int    nthread,
-    int    nSnpPerChunk,
-    double /*missingCutoff*/,
-    double /*minMafCutoff*/,
-    double /*minMacCutoff*/)
+    int    nSnpPerChunk)
 {
   const auto wallStart = std::chrono::steady_clock::now();
   const std::clock_t cpuStart = std::clock();
@@ -606,7 +707,7 @@ void runSPAmixAF(
     const auto& mi = markerInfo[fi];
     writer.write(
         mi.genoIndex,
-        mi.chrom, static_cast<uint32_t>(mi.pos),
+        mi.chrom, mi.id,
         allModels[fi].status,
         allModels[fi].betas);
   }

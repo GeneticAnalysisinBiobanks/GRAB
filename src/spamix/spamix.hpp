@@ -25,6 +25,7 @@
 
 class SPAmixMethod : public MethodBase {
 public:
+  // On-the-fly AF mode (AF computed per-marker from genotypes + PCs)
   SPAmixMethod(const Eigen::VectorXd& residuals,
                const Eigen::VectorXd& resid2,
                const Eigen::MatrixXd& onePlusPCs,
@@ -33,16 +34,27 @@ public:
                const OutlierData& outlier,
                double spaCutoff);
 
+  // Pre-computed AF mode (AF loaded from --af-coef file)
+  SPAmixMethod(const Eigen::VectorXd& residuals,
+               const Eigen::VectorXd& resid2,
+               const Eigen::MatrixXd& onePlusPCs,
+               const OutlierData& outlier,
+               double spaCutoff,
+               const std::vector<AFModel>& afModels,
+               const std::vector<uint32_t>& genoToFlat);
+
   std::unique_ptr<MethodBase> clone() const override;
   int resultSize() const override { return 2; }
   std::string getHeaderColumns() const override { return "\tPvalue\tzScore"; }
   bool skipFlip() const override { return true; }
+  void prepareChunk(const std::vector<uint64_t>& gIndices) override;
   void getResultVec(Eigen::Ref<Eigen::VectorXd> GVec,
                     double altFreq, int markerInChunkIdx,
                     bool flipped, std::vector<double>& result) override;
 
 private:
   // Score test + SPA.  Returns p-value; writes zScore.
+  // m_AFVec must be filled by the caller before this is invoked.
   double getMarkerPval(const Eigen::Ref<const Eigen::VectorXd>& GVec,
                        double altFreq, double& zScore);
 
@@ -50,17 +62,26 @@ private:
   const Eigen::VectorXd& m_resid;
   const Eigen::VectorXd& m_resid2;
   const Eigen::MatrixXd& m_onePlusPCs;
-  const Eigen::MatrixXd& m_XtX_inv_Xt;
-  const Eigen::VectorXd& m_sqrt_XtX_inv_diag;
   const OutlierData&     m_outlier;
   int    m_N;
   int    m_nPC;
   double m_spaCutoff;
 
+  // On-the-fly AF (non-null in on-the-fly mode)
+  const Eigen::MatrixXd* m_XtX_inv_Xt;
+  const Eigen::VectorXd* m_sqrt_XtX_inv_diag;
+
+  // Pre-computed AF (non-null in pre-computed mode)
+  const std::vector<AFModel>*  m_afModels;
+  const std::vector<uint32_t>* m_genoToFlat;
+
   // Per-thread scratch (mutable, freshly allocated in clone)
   Eigen::VectorXd m_AFVec;
   Eigen::VectorXd m_mafOutlier;
   Eigen::VectorXd m_mafNonOutlier;
+
+  // Chunk state (set by prepareChunk; used in pre-computed mode)
+  std::vector<uint64_t> m_chunkGenoIndices;
 };
 
 // ======================================================================
@@ -71,6 +92,7 @@ void runSPAmix(
     const std::string& residFile,
     const std::string& eigenVecsFile,
     const std::string& bfilePrefix,
+    const std::string& afFile,          // empty → compute on-the-fly
     const std::string& outputFile,
     double spaCutoff,
     double outlierRatio,

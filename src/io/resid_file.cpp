@@ -23,8 +23,10 @@ ResidData loadResidFile(const std::string& filename) {
   v_wt.reserve(65536);
   v_ind.reserve(65536);
 
+  uint32_t lineNo = 0;
   std::string line;
   while (std::getline(ifs, line)) {
+    ++lineNo;
     // Normalise Windows CRLF
     if (!line.empty() && line.back() == '\r') line.pop_back();
     if (line.empty() || line[0] == '#') continue;
@@ -34,20 +36,23 @@ ResidData loadResidFile(const std::string& filename) {
 
     // Skip leading whitespace
     while (p < end && (*p == ' ' || *p == '\t')) ++p;
-    if (p == end) continue;
+    if (p == end) continue;  // blank / all-whitespace line
 
-    // Column 1: subject ID (required, non-numeric token)
+    // Column 1: subject ID (required)
     const char* tokStart = p;
     while (p < end && *p != ' ' && *p != '\t') ++p;
-    if (p == tokStart) continue;
     std::string subj(tokStart, p);
 
     // Column 2: residual (required)
     while (p < end && (*p == ' ' || *p == '\t')) ++p;
-    if (p == end) continue;
+    if (p == end)
+      throw std::runtime_error(filename + " line " + std::to_string(lineNo) +
+                               ": missing RESID column");
     char* next;
     double res = std::strtod(p, &next);
-    if (next == p) continue;   // non-numeric → skip line
+    if (next == p)
+      throw std::runtime_error(filename + " line " + std::to_string(lineNo) +
+                               ": invalid RESID value");
     p = next;
 
     // Column 3: weight (optional, default 1.0)

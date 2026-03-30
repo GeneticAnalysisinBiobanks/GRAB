@@ -37,9 +37,10 @@ std::vector<std::string> splitWS(const std::string& line) {
 
 
 // ======================================================================
-// Multi-population ref-af file parser (6+2N columns, no header)
-// Format: chr  id  cm  bp  a1  a2  AF1  AN1  AF2  AN2  ...
-// Same first 6 columns as .bim. Lines starting with '#' are skipped.
+// Multi-population ref-af file parser (4+2K columns, '#' header line)
+// Format: #CHROM  POS  A1  A2  A1F_POP1  N_POP1  [A1F_POP2  N_POP2  ...]
+// Lines starting with '#' are skipped (covers the header).
+// N_POPk is sample size; allele count AN_k = 2*N_k.
 // ======================================================================
 
 MultiPopRefAf loadMultiPopRefAfFile(const std::string& filename) {
@@ -51,36 +52,50 @@ MultiPopRefAf loadMultiPopRefAfFile(const std::string& filename) {
 
   std::string line;
   bool nPopDetected = false;
+  uint32_t lineNo = 0;
 
   while (std::getline(ifs, line)) {
+    ++lineNo;
+    if (!line.empty() && line.back() == '\r') line.pop_back();
     if (line.empty() || line[0] == '#') continue;
     auto fields = splitWS(line);
-    if (fields.size() < 8) continue;  // at least 6 bim + 1 AF/AN pair
 
     if (!nPopDetected) {
-      int extra = static_cast<int>(fields.size()) - 6;
+      int extra = static_cast<int>(fields.size()) - 4;
       if (extra < 2 || extra % 2 != 0)
-        throw std::runtime_error("ref-af file must have 6+2N columns (got "
-                                 + std::to_string(fields.size()) + "): " + filename);
+        throw std::runtime_error(filename + " line " + std::to_string(lineNo) +
+            ": ref-af file must have 4+2K columns (CHROM POS A1 A2 A1F_POP1 N_POP1 ...); got "
+            + std::to_string(fields.size()));
       result.nPop = extra / 2;
       nPopDetected = true;
     }
 
     const int nPop = result.nPop;
-    if (static_cast<int>(fields.size()) < 6 + 2 * nPop) continue;
+    const int nExpected = 4 + 2 * nPop;
+    if (static_cast<int>(fields.size()) != nExpected)
+      throw std::runtime_error(filename + " line " + std::to_string(lineNo) +
+          ": expected " + std::to_string(nExpected) + " columns, got " +
+          std::to_string(fields.size()));
 
+    char* endPtr;
     MultiPopRefAf::Record rec;
     rec.chrom = fields[0];
-    rec.id    = fields[1];
-    rec.cm    = std::strtod(fields[2].c_str(), nullptr);
-    rec.pos   = static_cast<uint32_t>(std::strtoul(fields[3].c_str(), nullptr, 10));
-    rec.a1    = fields[4];
-    rec.a2    = fields[5];
+    rec.pos   = static_cast<uint32_t>(std::strtoul(fields[1].c_str(), &endPtr, 10));
+    if (endPtr == fields[1].c_str())
+      throw std::runtime_error(filename + " line " + std::to_string(lineNo) + ": invalid POS");
+    rec.a1    = fields[2];
+    rec.a2    = fields[3];
     rec.popAF.resize(nPop);
-    rec.popAN.resize(nPop);
+    rec.popN.resize(nPop);
     for (int p = 0; p < nPop; ++p) {
-      rec.popAF[p] = std::strtod(fields[6 + 2 * p].c_str(), nullptr);
-      rec.popAN[p] = std::strtod(fields[6 + 2 * p + 1].c_str(), nullptr);
+      rec.popAF[p] = std::strtod(fields[4 + 2 * p].c_str(), &endPtr);
+      if (endPtr == fields[4 + 2 * p].c_str())
+        throw std::runtime_error(filename + " line " + std::to_string(lineNo) +
+                                 ": invalid A1F for pop " + std::to_string(p + 1));
+      rec.popN[p] = std::strtod(fields[4 + 2 * p + 1].c_str(), &endPtr);
+      if (endPtr == fields[4 + 2 * p + 1].c_str())
+        throw std::runtime_error(filename + " line " + std::to_string(lineNo) +
+                                 ": invalid N for pop " + std::to_string(p + 1));
     }
     result.records.push_back(std::move(rec));
   }
@@ -127,10 +142,10 @@ std::vector<MultiPopMatchedMarker> matchMultiPopMarkers(
     MultiPopMatchedMarker m;
     m.genoIndex = mi.genoIndex;
     m.popAF.resize(nPop);
-    m.popAN.resize(nPop);
+    m.popN.resize(nPop);
     for (int p = 0; p < nPop; ++p) {
       m.popAF[p] = ref.popAF[p];
-      m.popAN[p] = ref.popAN[p];
+      m.popN[p]  = ref.popN[p];
     }
     matched.push_back(std::move(m));
   }
@@ -506,14 +521,14 @@ void runLEAF(
         af_ref += proportions[p] * matchedMulti[m].popAF[p];
       mi.AF_ref = af_ref;
 
-      // AN_ref = 1 / Σ(pi_k² / AN_k)
+      // N_ref = 1 / Σ(pi_k² / N_k)  (effective sample size for admixed ancestry)
       double denom = 0.0;
       for (int p = 0; p < nPop; ++p) {
-        double an = matchedMulti[m].popAN[p];
-        if (an > 0 && proportions[p] > 0)
-          denom += (proportions[p] * proportions[p]) / an;
+        double N = matchedMulti[m].popN[p];
+        if (N > 0 && proportions[p] > 0)
+          denom += (proportions[p] * proportions[p]) / N;
       }
-      mi.AN_ref = (denom > 0) ? 1.0 / denom : 0.0;
+      mi.N_ref = (denom > 0) ? 1.0 / denom : 0.0;
 
       mi.mu0    = clStats[c][m].mu0;
       mi.mu1    = clStats[c][m].mu1;

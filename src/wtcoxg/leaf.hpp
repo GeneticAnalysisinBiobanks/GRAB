@@ -3,9 +3,9 @@
 // Workflow:
 //   1. Load per-cluster resid files → combined subject list + cluster indices
 //   2. Load PLINK data with combined subjects
-//   3. Load multi-population ref-af file (6+2N columns, no header)
-//   4. Exact-match markers by (chr, id, cm, bp, a1, a2) against .bim
-//   5. Per cluster: compute internal AF → summix → ancestry-matched AF_ref/AN_ref
+//   3. Load multi-population ref-af file (#CHROM POS A1 A2 A1F_POP1 N_POP1 ...)
+//   4. Exact-match markers by (chr, pos, a1, a2) against .bim
+//   5. Per cluster: compute internal AF → summix → ancestry-matched AF_ref/N_ref
 //   6. Per cluster: batch-effect testing → refInfoMap
 //   7. Create LEAFMethod (N WtCoxGMethod objects) → markerEngine → meta-analysis
 #pragma once
@@ -22,26 +22,25 @@ class WtCoxGMethod;
 struct WtCoxGRefInfo;
 
 // ======================================================================
-// Multi-population reference AF record  (6+2N columns, no header)
+// Multi-population reference AF record  (4+2K columns, '#' header line)
+// Format: #CHROM  POS  A1  A2  A1F_POP1  N_POP1  [A1F_POP2  N_POP2  ...]
 // ======================================================================
 
 struct MultiPopRefAf {
   struct Record {
     std::string chrom;
-    std::string id;
-    double      cm;
     uint32_t    pos;
     std::string a1;     // same meaning as .bim A1
     std::string a2;     // same meaning as .bim A2
-    std::vector<double> popAF;  // AF of A1 per reference population
-    std::vector<double> popAN;  // AN per reference population
+    std::vector<double> popAF;  // A1 frequency per reference population
+    std::vector<double> popN;   // sample size N per reference population
   };
   int                 nPop = 0;    // number of reference populations
   std::vector<Record> records;
 };
 
-// Parse 6+2N column ref-af file (no header, .bim-like first 6 columns).
-// Lines starting with '#' are skipped.
+// Parse 4+2K column ref-af file; header line (starting with '#') is skipped.
+// N_POPk is sample size (allele count AN = 2*N).
 MultiPopRefAf loadMultiPopRefAfFile(const std::string& filename);
 
 
@@ -51,11 +50,11 @@ MultiPopRefAf loadMultiPopRefAfFile(const std::string& filename);
 
 struct MultiPopMatchedMarker {
   uint64_t genoIndex;
-  std::vector<double> popAF;    // per-pop AF of A1 (no flip)
-  std::vector<double> popAN;    // per-pop AN
+  std::vector<double> popAF;  // per-pop A1 frequency (no flip)
+  std::vector<double> popN;   // per-pop sample size N
 };
 
-// Exact match by (chr, id, cm, bp, a1, a2) between .bim and ref-af.
+// Exact match by (chr, pos, a1, a2) between .bim and ref-af.
 // No allele flipping. Unmatched markers are dropped.
 std::vector<MultiPopMatchedMarker> matchMultiPopMarkers(
     const class PlinkData& plinkData,

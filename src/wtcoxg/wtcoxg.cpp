@@ -160,31 +160,56 @@ std::vector<RefAfRecord> loadRefAfFile(const std::string& filename) {
 
   std::vector<RefAfRecord> recs;
   recs.reserve(100000);
+  uint32_t lineNo = 0;
   std::string line;
   while (std::getline(ifs, line)) {
+    ++lineNo;
+    if (!line.empty() && line.back() == '\r') line.pop_back();
     if (line.empty() || line[0] == '#') continue;
-    RefAfRecord r;
-    // Fast tab-delimited parse: chr \t id \t cm \t bp \t a1 \t a2 \t AF \t AN
-    const char* p = line.c_str();
-    auto nextField = [&]() -> std::string {
+
+    // Whitespace-delimited parse: CHROM  POS  A1  A2  A1F  N
+    const char*       p    = line.c_str();
+    const char* const lEnd = p + line.size();
+    auto skipWS  = [&]() { while (p < lEnd && (*p == ' ' || *p == '\t')) ++p; };
+    auto nextTok = [&]() -> std::string {
+      skipWS();
       const char* s = p;
-      while (*p && *p != '\t') ++p;
-      std::string f(s, p);
-      if (*p) ++p;
-      return f;
+      while (p < lEnd && *p != ' ' && *p != '\t') ++p;
+      return std::string(s, p);
     };
-    r.chrom = nextField();
-    r.id    = nextField();
-    std::string cm_str = nextField();
-    r.cm    = std::strtod(cm_str.c_str(), nullptr);
-    std::string bp_str = nextField();
-    r.pos   = static_cast<uint32_t>(std::strtoul(bp_str.c_str(), nullptr, 10));
-    r.a1    = nextField();
-    r.a2    = nextField();
-    std::string af_str = nextField();
-    r.AF_ref = std::strtod(af_str.c_str(), nullptr);
-    std::string an_str = nextField();
-    r.AN_ref = std::strtod(an_str.c_str(), nullptr);
+    auto err = [&](const char* msg) -> std::runtime_error {
+      return std::runtime_error(filename + " line " + std::to_string(lineNo) + ": " + msg);
+    };
+
+    skipWS();
+    if (p >= lEnd) continue;  // blank / all-whitespace line
+
+    // Columns: CHROM  POS  A1  A2  A1F  N
+    RefAfRecord r;
+    r.chrom = nextTok();
+    if (r.chrom.empty()) throw err("missing CHROM field");
+
+    char* endPtr;
+    const std::string pos_str = nextTok();
+    if (pos_str.empty()) throw err("missing POS field");
+    r.pos = static_cast<uint32_t>(std::strtoul(pos_str.c_str(), &endPtr, 10));
+    if (endPtr == pos_str.c_str()) throw err("invalid POS field");
+
+    r.a1 = nextTok();
+    r.a2 = nextTok();
+    if (r.a1.empty() || r.a2.empty()) throw err("missing A1 or A2 field");
+
+    const std::string af_str = nextTok();
+    if (af_str.empty()) throw err("missing A1F field");
+    r.AF_ref = std::strtod(af_str.c_str(), &endPtr);
+    if (endPtr == af_str.c_str()) throw err("invalid A1F field");
+
+    const std::string n_str = nextTok();
+    if (n_str.empty()) throw err("missing N field");
+    double N = std::strtod(n_str.c_str(), &endPtr);
+    if (endPtr == n_str.c_str()) throw err("invalid N field");
+    r.N_ref = N;
+
     recs.push_back(std::move(r));
   }
   return recs;
@@ -227,7 +252,7 @@ std::vector<MatchedMarkerInfo> matchMarkers(
     MatchedMarkerInfo m;
     m.genoIndex = mi.genoIndex;
     m.AF_ref    = ref.AF_ref;
-    m.AN_ref    = ref.AN_ref;
+    m.N_ref     = ref.N_ref;
     // mu0, mu1, n0, n1 will be filled later during genotype scanning
     m.mu0 = m.mu1 = m.n0 = m.n1 = m.mu_int = 0.0;
     matched.push_back(m);
@@ -325,7 +350,7 @@ testBatchEffects(
   // Temporary per-marker storage
   struct MarkerBatchData {
     uint64_t genoIndex;
-    double   AF_ref, AN_ref;
+    double   AF_ref, N_ref;
     double   mu0, mu1, n0, n1, mu_int;
     double   var_ratio_w0;
     double   pvalue_bat;
@@ -336,14 +361,14 @@ testBatchEffects(
     const auto& m = matched[i];
     auto& bd = batchData[i];
     bd.genoIndex = m.genoIndex;
-    bd.AF_ref = m.AF_ref;  bd.AN_ref = m.AN_ref;
+    bd.AF_ref = m.AF_ref;  bd.N_ref = m.N_ref;
     bd.mu0 = m.mu0;  bd.mu1 = m.mu1;
     bd.n0 = m.n0;    bd.n1 = m.n1;
     bd.mu_int = m.mu_int;
 
-    double n_ext = m.AN_ref / 2.0;
+    double n_ext = m.N_ref;
 
-    // var_ratio_w0 per marker (depends on AN_ref)
+    // var_ratio_w0 per marker (depends on N_ref)
     bd.var_ratio_w0 = hasGRM
         ? (grm_sum_cov_w + 1.0 / (2.0 * n_ext)) / (sum_w1_sq + 1.0 / (2.0 * n_ext))
         : 1.0;
@@ -398,7 +423,7 @@ testBatchEffects(
 
     if (vec_p_bat.empty()) continue;
 
-    double n_ext = batchData[idx1[0]].AN_ref / 2.0;
+    double n_ext = batchData[idx1[0]].N_ref;
     if (std::isnan(n_ext) || n_ext <= 0.0) continue;
     double var_mu_ext = mu * (1.0 - mu) / (2.0 * n_ext);
 
@@ -549,7 +574,7 @@ testBatchEffects(
     for (size_t i : idx1) {
       WtCoxGRefInfo ri;
       ri.AF_ref       = batchData[i].AF_ref;
-      ri.AN_ref       = batchData[i].AN_ref;
+      ri.N_ref        = batchData[i].N_ref;
       ri.TPR          = TPR;
       ri.sigma2       = sigma2;
       ri.pvalue_bat   = batchData[i].pvalue_bat;
@@ -585,7 +610,7 @@ std::unique_ptr<MethodBase> WtCoxGMethod::clone() const {
 }
 
 std::string WtCoxGMethod::getHeaderColumns() const {
-  return "\tWtCoxG.ext\tWtCoxG.noext\tzscore.ext\tzscore.noext\tAF_ref\tAN_ref\tpvalue_bat";
+  return "\tWtCoxG.ext\tWtCoxG.noext\tzscore.ext\tzscore.noext\tAF_ref\tN_ref\tpvalue_bat";
 }
 
 void WtCoxGMethod::prepareChunk(const std::vector<uint64_t>& gIndices) {
@@ -614,7 +639,7 @@ void WtCoxGMethod::getResultVec(
       info.pvalue_bat, info.TPR, info.sigma2, info.w_ext,
       info.var_ratio_int, info.var_ratio_w0, info.var_ratio_w0,
       info.var_ratio_ext, info.var_ratio_ext,
-      info.AF_ref, info.AN_ref / 2.0, m_cutoff);
+      info.AF_ref, info.N_ref, m_cutoff);
 
   // Without external reference
   WtResult res_noext = wtCoxGTest(
@@ -628,7 +653,7 @@ void WtCoxGMethod::getResultVec(
   result.push_back(res_ext.zscore);
   result.push_back(res_noext.zscore);
   result.push_back(info.AF_ref);
-  result.push_back(info.AN_ref);
+  result.push_back(info.N_ref);
   result.push_back(info.pvalue_bat);
 }
 
@@ -642,7 +667,7 @@ WtCoxGMethod::DualResult WtCoxGMethod::computeDual(
       info.pvalue_bat, info.TPR, info.sigma2, info.w_ext,
       info.var_ratio_int, info.var_ratio_w0, info.var_ratio_w0,
       info.var_ratio_ext, info.var_ratio_ext,
-      info.AF_ref, info.AN_ref / 2.0, m_cutoff);
+      info.AF_ref, info.N_ref, m_cutoff);
 
   WtResult res_noext = wtCoxGTest(
       GVec,

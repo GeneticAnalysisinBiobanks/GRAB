@@ -11,8 +11,8 @@
 //   Unprocessed markers: all zeros (status=0).
 //
 // Text / gz format:
-//   Header: CHR\tBP\tStatus\tBeta0\tBeta1\t...\n
-//   One row per filtered marker, CHR and BP from .bim.
+//   Header: #CHROM\tID\tSTATUS\tBETA0\tBETA1\t...\n
+//   One row per filtered marker, tab-separated, doubles as %.17g.
 //
 // Shared between SPAmixAF (pre-compute step) and SPAmix (on-the-fly).
 #pragma once
@@ -118,7 +118,7 @@ public:
 
   // Write one record.  For Binary, genoIndex determines the file offset.
   void write(uint64_t genoIndex,
-             const std::string& chr, uint32_t bp,
+             const std::string& chr, const std::string& id,
              int8_t status,
              const Eigen::VectorXd& betas);
 
@@ -161,6 +161,23 @@ private:
   int           m_nPC;
   long long     m_recordSize;
 };
+
+// ======================================================================
+// loadAFModels — load pre-computed AF models from file
+//
+// Dispatches by extension:
+//   .bin  → binary random-access (seeks by genoIndices[fi])
+//   .gz / other → tab-separated text, read sequentially
+//
+// genoIndices[fi] = markerInfo[fi].genoIndex (used only for .bin).
+// Always returns exactly nMarkers models in flat marker order.
+// ======================================================================
+
+std::vector<AFModel> loadAFModels(
+    const std::string& path,
+    int nPC,
+    uint32_t nMarkers,
+    const std::vector<uint64_t>& genoIndices);
 
 // ======================================================================
 // runSPAmixAF — pre-compute per-marker AF models and write to disk.

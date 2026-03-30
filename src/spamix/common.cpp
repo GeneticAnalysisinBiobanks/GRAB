@@ -26,9 +26,11 @@ inline std::pair<double, double> evalOutlierK0K2(
     double t, const double* resid, const double* maf, int n) {
   double K0 = 0.0, K2 = 0.0;
   for (int i = 0; i < n; ++i) {
-    double tr = t * resid[i];
-    K0 += math::kG0(tr, maf[i]);
-    K2 += resid[i] * resid[i] * math::kG2(tr, maf[i]);
+    const double tr = t * resid[i];
+    double k0, k1, k2;
+    math::kG012(tr, maf[i], k0, k1, k2);
+    K0 += k0;
+    K2 += resid[i] * resid[i] * k2;
   }
   return {K0, K2};
 }
@@ -38,9 +40,11 @@ inline std::pair<double, double> evalOutlierK1adjK2(
     double t, double s, const double* resid, const double* maf, int n) {
   double K1_adj = -s, K2 = 0.0;
   for (int i = 0; i < n; ++i) {
-    double tr = t * resid[i];
-    K1_adj += resid[i] * math::kG1(tr, maf[i]);
-    K2 += resid[i] * resid[i] * math::kG2(tr, maf[i]);
+    const double tr = t * resid[i];
+    double k0, k1, k2;
+    math::kG012(tr, maf[i], k0, k1, k2);
+    K1_adj += resid[i] * k1;
+    K2     += resid[i] * resid[i] * k2;
   }
   return {K1_adj, K2};
 }

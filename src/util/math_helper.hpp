@@ -194,6 +194,20 @@ inline double kG2(double t, double MAF) {
   return (m0 * m2 - m1 * m1) / (m0 * m0);
 }
 
+// Fused: compute K0, K1, K2 with a single exp() call per subject.
+// ~2x fewer floating-point ops than calling kG0/kG1/kG2 separately.
+inline void kG012(double t, double MAF,
+                  double& K0, double& K1, double& K2) {
+  const double e  = MAF * std::exp(t);
+  const double a  = 1.0 - MAF + e;   // (1-p) + p*e^t
+  const double m0 = a * a;
+  const double m1 = 2.0 * e * a;
+  const double m2 = 2.0 * e * (e + a);
+  K0 = std::log(m0);
+  K1 = m1 / m0;
+  K2 = (m0 * m2 - m1 * m1) / (m0 * m0);
+}
+
 
 // ──────────────────────────────────────────────────────────────────────
 // § 5  Logistic regression (IRLS)  — Eigen implementation
