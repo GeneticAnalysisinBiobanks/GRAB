@@ -646,7 +646,10 @@ void runSPAmixAF(
     const std::string& bfilePrefix,
     const std::string& outputFile,
     int    nthread,
-    int    nSnpPerChunk)
+    int    nSnpPerChunk,
+    double /*missingCutoff*/,
+    double /*minMafCutoff*/,
+    double /*minMacCutoff*/)
 {
   const auto wallStart = std::chrono::steady_clock::now();
   const std::clock_t cpuStart = std::clock();

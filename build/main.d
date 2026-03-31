@@ -225,7 +225,8 @@ build/main.o: src/main.cpp src/util/logging.hpp src/spacox/spacox.hpp \
  src/engine/marker.hpp src/io/data_matrix.hpp src/spamix/spamix.hpp \
  src/spamix/common.hpp src/spamix/indiv_af.hpp src/spamix/spamixplus.hpp \
  src/io/sparse_grm.hpp src/wtcoxg/wtcoxg.hpp src/io/resid_file.hpp \
- src/wtcoxg/leaf.hpp
+ src/wtcoxg/leaf.hpp src/spasqr/spasqr.hpp src/spagrm/ibd.hpp \
+ src/spagrm/gt_prob.hpp
 src/util/logging.hpp:
 src/spacox/spacox.hpp:
 third_party/eigen-5.0.0/Eigen/Dense:
@@ -462,3 +463,6 @@ src/io/sparse_grm.hpp:
 src/wtcoxg/wtcoxg.hpp:
 src/io/resid_file.hpp:
 src/wtcoxg/leaf.hpp:
+src/spasqr/spasqr.hpp:
+src/spagrm/ibd.hpp:
+src/spagrm/gt_prob.hpp:

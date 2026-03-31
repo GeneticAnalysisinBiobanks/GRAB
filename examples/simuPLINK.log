@@ -1,23 +1,21 @@
-PLINK v2.0.0-a.7 AVX2 (11 Mar 2026)
+PLINK v1.9.0-b.7.11 64-bit (19 Aug 2025)
 Options in effect:
   --bfile simuPLINK
-  --make-grm-sparse 0.05
+  --freq
   --out simuPLINK
 
-Hostname: DELL901
-Working directory: C:\Users\woody\Desktop\GeneticAnalysisinBiobanks\GRAB\examples
-Start time: Mon Mar 30 19:58:39 2026
+Hostname: MSI
+Working directory: C:\woody\GitHub\GRAB\examples
+Start time: Tue Mar 31 16:19:19 2026
 
-Random number seed: 1774871919
-32210 MiB RAM detected; reserving 16105 MiB for main workspace.
-Using up to 14 threads (change this with --threads).
-1000 samples (0 females, 1000 males; 1000 founders) loaded from simuPLINK.fam.
-1100 variants loaded from simuPLINK.bim.
-Note: No phenotype data present.
+Random number seed: 1774945159
+65235 MB RAM detected; reserving 32617 MB for main workspace.
+1100 variants loaded from .bim file.
+1000 people (1000 males, 0 females) loaded from .fam.
+Using 1 thread (no multithreaded calculations invoked).
+Before main variant filters, 1000 founders and 0 nonfounders present.
 Calculating allele frequencies... done.
-Constructing GRM: done.
-Correcting for missingness... done.
---make-grm-sparse: GRM written to simuPLINK.grm.sp , and IDs to
-simuPLINK.grm.id .
+Total genotyping rate is 0.950229.
+--freq: Allele frequencies (founders only) written to simuPLINK.frq .
 
-End time: Mon Mar 30 19:58:39 2026
+End time: Tue Mar 31 16:19:19 2026

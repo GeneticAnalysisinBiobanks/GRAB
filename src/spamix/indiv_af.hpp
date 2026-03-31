@@ -186,7 +186,7 @@ std::vector<AFModel> loadAFModels(
 //
 // Command:
 //   build/grab --method SPAmixAF --eigen-vecs <PCs> --bfile <prefix>
-//              --output-file <out[.bin|.gz|.txt]>
+//              --out <out[.bin|.gz|.txt]>
 // ======================================================================
 
 // Compute AF models for all markers in parallel, storing results in memory.

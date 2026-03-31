@@ -1,0 +1,196 @@
+# Refactor SPAsqr from R/Rcpp to pure C++
+
+## Old workflow: R and Rcpp
+
+```R
+SPAsqr.Step1 <- function(
+  y,
+  X,
+  subjData,
+  SparseGRMFile,
+  taus,
+  h = 0,
+  sqr_tol = 1e-7
+) {
+  # ========== Fit null model ==========
+  y[is.na(y)] <- median(y, na.rm = TRUE)
+  ntaus    <- length(taus)
+  ResidMat <- matrix(0, nrow = length(y), ncol = ntaus)
+
+  if (h == 0) h <- IQR(y) / 3
+  for (i in seq_along(taus)) {
+    fit <- conquer::conquer(X, y, tau = taus[i], kernel = "Gaussian", h = h, tol = sqr_tol)
+    resid <- as.numeric(y - fit$coeff[1] - X %*% fit$coeff[2:(ncol(X) + 1)])
+    ResidMat[, i] <- taus[i] - pnorm((-resid) / h)
+  }
+
+  # ========== Identify outliers ==========
+  Quant       <- apply(ResidMat, 2, quantile, probs = c(0.25, 0.75), na.rm = TRUE)
+  Range       <- Quant[2, ] - Quant[1, ]
+  cutoffLower <- Quant[1, ] - 1.5 * Range
+  cutoffUpper <- Quant[2, ] + 1.5 * Range
+  cutoffLower <- ifelse(cutoffLower < -0.55, -0.55, cutoffLower)
+  cutoffUpper <- ifelse(cutoffUpper >  0.55,  0.55, cutoffUpper)
+  tooSmall <- sweep(ResidMat, 2, cutoffLower, "<")
+  tooLarge <- sweep(ResidMat, 2, cutoffUpper, ">")
+  Outlier  <- tooSmall | tooLarge
+
+  outlier_prop <- colMeans(Outlier, na.rm = TRUE)
+  cat("Outlier ratio for each column in the residual matrix:\n")
+  print(round(outlier_prop, 2))
+
+  # ========== Load GRM (3 columns: ID1, ID2, Value; always includes diagonal) ==========
+  SparseGRM <- data.table::fread(SparseGRMFile)
+  # Assuming: always 3 columns (id1, id2, coef), id1/id2 are character, diagonal always present
+  id1 <- as.character(SparseGRM[[1]])
+  id2 <- as.character(SparseGRM[[2]])
+  val <- SparseGRM[[3]]
+
+  pos1   <- match(id1, subjData)
+  pos2   <- match(id2, subjData)
+  # off-diagonal entries stored once; factor=2 accounts for symmetric matrix
+  factor <- ifelse(id1 == id2, 1, 2)
+
+  # ========== Accumulate GRM-based variance terms ==========
+  R_GRM_R_vec              <- numeric(ntaus)
+  R_GRM_R_nonOutlier_vec   <- numeric(ntaus)
+  sum_R_nonOutlier_vec     <- numeric(ntaus)
+  Resid.unrelated.outliers_lst <- lapply(seq_len(ntaus), function(x) numeric(0))
+
+  for (i in seq_along(taus)) {
+    R_col   <- ResidMat[, i]
+    Out_col <- Outlier[, i]
+
+    contrib        <- factor * val * R_col[pos1] * R_col[pos2]
+    R_GRM_R_vec[i] <- sum(contrib)
+
+    both_non_out           <- !Out_col[pos1] & !Out_col[pos2]
+    R_GRM_R_nonOutlier_vec[i] <- sum(contrib * both_non_out)
+
+    sum_R_nonOutlier_vec[i]           <- sum(R_col[!Out_col])
+    Resid.unrelated.outliers_lst[[i]] <- R_col[Out_col]
+  }
+
+  obj <- list(
+    taus                         = taus,
+    Resid_mat                    = ResidMat,
+    subjData                     = subjData,
+    N                            = length(subjData),
+    R_GRM_R_vec                  = R_GRM_R_vec,
+    R_GRM_R_TwoSubjOutlier_vec   = numeric(ntaus),
+    sum_R_nonOutlier_vec         = sum_R_nonOutlier_vec,
+    R_GRM_R_nonOutlier_vec       = R_GRM_R_nonOutlier_vec,
+    Resid.unrelated.outliers_lst = Resid.unrelated.outliers_lst,
+    TwoSubj_list_lst             = lapply(seq_len(ntaus), function(x) list()),
+    CLT_union_lst                = list(),
+    ThreeSubj_family_idx_lst     = lapply(seq_len(ntaus), function(x) integer(0)),
+    ThreeSubj_stand_S_lst        = lapply(seq_len(ntaus), function(x) list()),
+    MAF_interval = c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5)
+  )
+
+  class(obj) <- "SPAsqr_NULL_Model"
+  return(obj)
+}
+
+PhenoData <- data.table::fread("examples/simuPHENO.txt")
+
+obj.SPAsqr <- SPAsqr.Step1(
+  y = PhenoData$QuantPheno,
+  X = as.matrix(PhenoData[, c("AGE", "GENDER", "PC1", "PC2")]),
+  subjData = PhenoData$IID,
+  SparseGRMFile = "examples/SparseGRM.txt",
+  taus  = c(0.1, 0.3, 0.5, 0.7, 0.9),
+  h     = 0,
+  sqr_tol = 1e-7
+)
+
+source("ref/src/mtMarker.R")
+GRAB.mtMarker(
+  obj.SPAsqr, 
+  "examples/simuPLINK", 
+  "tmp/SPAsqr.txt"
+)
+
+```
+
+## New wrokflow: user provide residuals, and the pure cpp program do followings
+
+### This is user prepare a residual matrix, no need to refactor
+
+```R
+PhenoData <- data.table::fread("examples/simuPHENO.txt")
+y = PhenoData$QuantPheno
+X = as.matrix(PhenoData[, c("AGE", "GENDER", "PC1", "PC2")])
+y[is.na(y)] <- median(y, na.rm = TRUE)
+
+taus  = c(0.1, 0.3, 0.5, 0.7, 0.9)
+sqr_tol = 1e-7
+ntaus  <- length(taus)
+ResidMat <- matrix(0, nrow = length(y), ncol = ntaus)
+
+h <- IQR(y) / 3
+for (i in seq_along(taus)) {
+  fit <- conquer::conquer(X, y, tau = taus[i], kernel = "Gaussian", h = h, tol = sqr_tol)
+  resid <- as.numeric(y - fit$coeff[1] - X %*% fit$coeff[2:(ncol(X) + 1)])
+  ResidMat[, i] <- taus[i] - pnorm((-resid) / h)
+}
+
+df <- data.frame(
+  IID = PhenoData$IID,
+  ResidMat,
+  check.names = FALSE
+)
+
+# Set column names
+colnames(df) <- c(
+  "#IID",
+  paste0("Tau", taus)
+)
+
+# Write to TSV (tab-separated, no row names, with header)
+write.table(
+  df,
+  file = "examples/simuResidMat.txt",
+  sep = "\t",
+  quote = FALSE,
+  row.names = FALSE
+)
+
+```
+
+### This is the command of the new workflow
+
+```sh
+build/grab \
+  --method SPAsqr \
+  --null-resid examples/simuResidMat.txt \
+  --sparse-grm examples/SparseGRM.txt \
+  --bfile examples/simuPLINK \
+  --out tmp/SPAsqr_output.txt
+```
+
+--null-resid examples/simuResidMat.txt is \s+ delimited. with optional header with leading #
+--sparse-grm-file examples/SparseGRM.txt is sparse grm, parse already exists in src/io/sparse_grm
+--bfile is plink file set, parse already exist in src/io/plink
+--out tmp/SPAsqr.txt is the output file, since tau values isn't provided, use 1,2,3,... to indicate p-values of corresponding columns in --null-resid
+
+## To refactor the old workflow to the new workflow:
+
+1. Read code under ref_code/src to learn the old workflow.
+2. Refactor ref_code/src/mtSPAGRM.* to pure cpp/eigen/bh code and write to src/spagrm/spagrm.*.
+3. Refactor ref_code/src/mtSPAsqr.h,SPAsqr.R to pure cpp/eigen/bh code and write to src/spasqr.*
+SPAsqr doesn't use families, so the related objects are empty to fit spagrm interface. Just keep the spagrm interface and make SPAsqr match it.
+
+Ask me if you have questions. Tell me the important aspects to be considers.
+
+## Answers
+
+1. write a new loadResidMatrix
+2. the user just provides raw residuals and the C++ code computes outliers
+3. always use ordinal indices
+4. I refactored SPAsqr.Step1 on this page. which doesn't include family concepts.
+5. translate the full mtSPAGRMClass (including two-subject pairs and three+-subject CLT families) as a prerequisite
+6. reuse the existing --null-resid / --out flags
+7. use Z_tau<v>, P_tau<v>, P_CCT. v=1,2,3,...
+8. rename "--resid-iqr-threshold" to "--outlier-iqr-threshold" and apply to `1.5` in `cutoffLower <- Quant[1, ] - 1.5 * Range`. This is a common option.
+9. add "--outlier-abs-bound" frag for `0.55` in `cutoffLower <- ifelse(cutoffLower < -0.55, -0.55, cutoffLower)`. This is specific to SPAsqr.

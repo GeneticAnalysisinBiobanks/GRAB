@@ -47,12 +47,12 @@ for (i in seq_len(Ncluster)) {
 ```sh
 build/grab \
   --method LEAF \
-  --resid-file examples/simuResid1.txt,examples/simuResid2.txt,examples/simuResid3.txt \
+  --null-resid examples/simuResid1.txt,examples/simuResid2.txt,examples/simuResid3.txt \
   --bfile examples/simuPLINK \
-  --ref-af-file examples/simuRefAf_2pop.txt \
-  --sparse-grm-file examples/SparseGRM.txt \
-  --ref-prevalence 0.1 \
-  --output-file tmp/LEAF_output.txt \
-  --nsnp-per-chunk 256 \
-  --nthread 4
+  --ref-af examples/simuRefAf_2pop.txt \
+  --sparse-grm examples/SparseGRM.txt \
+  --prevalence 0.1 \
+  --out tmp/LEAF_output.txt \
+  --chunk-size 256 \
+  --threads 4
 ```

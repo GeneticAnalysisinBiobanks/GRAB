@@ -27,11 +27,12 @@ data.table::fwrite(dt, "examples/simuResid.txt", sep = "\t", col.names = FALSE)
 ```sh
 build/grab \
   --method WtCoxG \
-  --resid-file examples/simuResid.txt \
+  --null-resid examples/simuResid.txt \
   --bfile examples/simuPLINK \
-  --ref-af-file examples/simuRefAf.txt \
-  --sparse-grm-file examples/SparseGRM.txt \
-  --ref-prevalence 0.1 \
-  --output-file tmp/WtCoxG_output.txt \
-  --nthread 3
+  --ref-af examples/simuRefAf_1pop.txt \
+  --sparse-grm examples/SparseGRM.txt \
+  --prevalence 0.1 \
+  --out tmp/WtCoxG_output.txt \
+  --threads 3
 ```
+[ERROR] examples/simuRefAf_1pop.txt line 14: missing N field

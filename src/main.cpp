@@ -13,6 +13,9 @@
 #include "spamix/indiv_af.hpp"
 #include "wtcoxg/wtcoxg.hpp"
 #include "wtcoxg/leaf.hpp"
+#include "spasqr/spasqr.hpp"
+#include "spagrm/ibd.hpp"
+#include "spagrm/gt_prob.hpp"
 
 namespace {
 
@@ -25,8 +28,11 @@ struct Args {
   std::string refAfFile;
   std::string sparseGrmFile;
   std::string spamixAfFile;
+  std::string pairwiseIBDFile;
   std::string outputFile;
   bool   calAfCoef         = false;
+  bool   calPairwiseIBD    = false;
+  double minMafIBD         = 0.01;
   double refPrevalence     = -1.0;  // sentinel: must be set for WtCoxG, LEAF
   double cutoff            = 0.05;
   double spaCutoff         = 2.0;
@@ -35,17 +41,19 @@ struct Args {
   double minMafCutoff      = 1e-4;
   double minMacCutoff      = 10.0;
   double outlierRatio      = 1.5;
+  double outlierAbsBound   = 0.55;
   int    nthread           = 1;
   int    nSnpPerChunk      = 8192;
 };
 
 void printUsage() {
   std::cerr
-    << "Usage: grab --method <SPACox|SPAmix|SPAmixPlus|WtCoxG|LEAF> [options]\n"
+    << "Usage: grab --method <SPACox|SPAmix|SPAmixPlus|SPAsqr|WtCoxG|LEAF> [options]\n"
     << "       grab --cal-af-coef [options]\n"
+    << "       grab --cal-pairwise-ibd [options]\n"
     << "\n"
     << "Required:\n"
-    << "  --method              NAME   Method: SPACox, SPAmix, SPAmixPlus, WtCoxG, or LEAF\n"
+    << "  --method              NAME   Method: SPACox, SPAmix, SPAmixPlus, SPAsqr, WtCoxG, or LEAF\n"
     << "  --bfile               PREFIX PLINK binary prefix (.bed/.bim/.fam)\n"
     << "  --null-resid          FILE   Null model residual file(s); comma-separated for LEAF\n"
     << "                               Whitespace-delimited, '#'-lines skipped, no header\n"
@@ -63,7 +71,7 @@ void printUsage() {
     << "                               Whitespace-delimited; first line starting with '#' is the header\n"
     << "                               Columns: #CHROM  POS  A1  A2  A1F_POP1  N_POP1  [A1F_POP2  N_POP2  ...]\n"
     << "                               N_POPk = sample size; multiple pops supported (LEAF only)\n"
-    << "  --sparse-grm          FILE   Sparse GRM file (SPAmixPlus)\n"
+    << "  --sparse-grm          FILE   Sparse GRM file (SPAmixPlus, SPAsqr)\n"
     << "                               Tab-delimited, '#'-lines skipped, no header\n"
     << "                               Columns: #ID1  ID2  VALUE\n"
     << "  --prevalence          FLOAT  Prevalence in reference (required for WtCoxG, LEAF)\n"
@@ -79,6 +87,8 @@ void printUsage() {
     << "  --maf                 FLOAT  Min minor allele frequency (default: 1e-4)\n"
     << "  --mac                 FLOAT  Min minor allele count (default: 10)\n"
     << "  --spa-z-threshold     FLOAT  SPA z-score cutoff (default: 2.0)\n"
+    << "  --outlier-iqr-threshold FLOAT IQR outlier multiplier (default: 1.5, SPAmix/SPAsqr)\n"
+    << "  --outlier-abs-bound   FLOAT  Absolute outlier cutoff clamp (default: 0.55, SPAsqr)\n"
     << "  --help                       Print this message\n";
 }
 
@@ -101,6 +111,7 @@ Args parseArgs(int argc, char* argv[]) {
     else if (arg == "--ref-af")                    a.refAfFile          = next();
     else if (arg == "--sparse-grm")                a.sparseGrmFile      = next();
     else if (arg == "--af-coef")                   a.spamixAfFile       = next();
+    else if (arg == "--pairwise-ibd")              a.pairwiseIBDFile    = next();
     else if (arg == "--out")                       a.outputFile         = next();
     else if (arg == "--prevalence")                a.refPrevalence      = std::stod(next());
     else if (arg == "--batch-effect-p-threshold")  a.cutoff             = std::stod(next());
@@ -109,10 +120,13 @@ Args parseArgs(int argc, char* argv[]) {
     else if (arg == "--geno")                      a.missingCutoff      = std::stod(next());
     else if (arg == "--maf")                       a.minMafCutoff       = std::stod(next());
     else if (arg == "--mac")                       a.minMacCutoff       = std::stod(next());
-    else if (arg == "--resid-iqr-threshold")       a.outlierRatio       = std::stod(next());
+    else if (arg == "--outlier-iqr-threshold")     a.outlierRatio       = std::stod(next());
+    else if (arg == "--outlier-abs-bound")          a.outlierAbsBound    = std::stod(next());
     else if (arg == "--threads")                   a.nthread            = std::stoi(next());
     else if (arg == "--chunk-size")                a.nSnpPerChunk       = std::stoi(next());
     else if (arg == "--cal-af-coef")               a.calAfCoef          = true;
+    else if (arg == "--cal-pairwise-ibd")          a.calPairwiseIBD     = true;
+    else if (arg == "--min-maf-ibd")               a.minMafIBD          = std::stod(next());
     else if (arg == "--help" || arg == "-h") { printUsage(); std::exit(0); }
     else { std::cerr << "Unknown option: " << arg << "\n"; std::exit(1); }
   }
@@ -129,6 +143,32 @@ int main(int argc, char* argv[]) {
   if (args.calAfCoef && !args.method.empty()) {
     std::cerr << "Error: --cal-af-coef and --method are mutually exclusive.\n";
     return 1;
+  }
+
+  if (args.calPairwiseIBD && !args.method.empty()) {
+    std::cerr << "Error: --cal-pairwise-ibd and --method are mutually exclusive.\n";
+    return 1;
+  }
+
+  if (args.calPairwiseIBD) {
+    if (args.bfilePrefix.empty() || args.outputFile.empty()) {
+      std::cerr << "Error: --bfile and --out are required for --cal-pairwise-ibd.\n";
+      return 1;
+    }
+    if (args.sparseGrmFile.empty()) {
+      std::cerr << "Error: --sparse-grm is required for --cal-pairwise-ibd.\n";
+      return 1;
+    }
+    infoMsg("GRAB starting: --cal-pairwise-ibd, min-maf-ibd=%.4f", args.minMafIBD);
+    try {
+      runPairwiseIBD(
+          args.sparseGrmFile, args.bfilePrefix,
+          args.outputFile, args.minMafIBD);
+    } catch (const std::exception& e) {
+      std::cerr << "[ERROR] " << e.what() << "\n";
+      return 1;
+    }
+    return 0;
   }
 
   if (args.calAfCoef) {
@@ -155,10 +195,11 @@ int main(int argc, char* argv[]) {
   }
 
   if (args.method != "SPACox" && args.method != "SPAmix" &&
-      args.method != "SPAmixPlus" &&
+      args.method != "SPAmixPlus" && args.method != "SPAsqr" &&
+      args.method != "SPAGRM" &&
       args.method != "WtCoxG" && args.method != "LEAF") {
     std::cerr << "Unsupported method: " << args.method
-              << " (supported: SPACox, SPAmix, SPAmixPlus, WtCoxG, LEAF)\n";
+              << " (supported: SPACox, SPAmix, SPAmixPlus, SPAsqr, SPAGRM, WtCoxG, LEAF)\n";
     return 1;
   }
   if (args.bfilePrefix.empty() || args.outputFile.empty()) {
@@ -167,6 +208,18 @@ int main(int argc, char* argv[]) {
   }
   if (args.residFile.empty()) {
     std::cerr << "Error: --null-resid is required for " << args.method << ".\n";
+    return 1;
+  }
+  if (args.method == "SPAsqr" && args.sparseGrmFile.empty()) {
+    std::cerr << "Error: --sparse-grm is required for SPAsqr.\n";
+    return 1;
+  }
+  if (args.method == "SPAGRM" && args.sparseGrmFile.empty()) {
+    std::cerr << "Error: --sparse-grm is required for SPAGRM.\n";
+    return 1;
+  }
+  if (args.method == "SPAGRM" && args.pairwiseIBDFile.empty()) {
+    std::cerr << "Error: --pairwise-ibd is required for SPAGRM.\n";
     return 1;
   }
   if (args.method == "SPACox" && args.designFile.empty()) {
@@ -230,6 +283,19 @@ int main(int argc, char* argv[]) {
           args.sparseGrmFile, args.outputFile,
           args.refPrevalence, args.cutoff, args.spaCutoff, args.nthread,
           args.nSnpPerChunk,
+          args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
+    } else if (args.method == "SPAsqr") {
+      runSPAsqr(
+          args.residFile, args.sparseGrmFile, args.bfilePrefix,
+          args.outputFile,
+          args.spaCutoff, args.outlierRatio, args.outlierAbsBound,
+          args.nthread, args.nSnpPerChunk,
+          args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
+    } else if (args.method == "SPAGRM") {
+      runSPAGRM(
+          args.residFile, args.sparseGrmFile, args.pairwiseIBDFile,
+          args.bfilePrefix, args.outputFile,
+          args.spaCutoff, args.nthread, args.nSnpPerChunk,
           args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
     } else {
       // LEAF: split comma-separated resid files

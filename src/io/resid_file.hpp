@@ -27,3 +27,21 @@ struct ResidData {
 // column is missing / non-numeric on any data line.
 ResidData loadResidFile(const std::string& filename);
 
+// ──────────────────────────────────────────────────────────────────────
+// Multi-column residual matrix loader (for SPAsqr etc.)
+//
+// File format (whitespace-delimited):
+//   [optional header starting with '#':  #IID  col1  col2  ...]
+//   subject_id  val1  val2  ...  valK
+//
+// Returns subject IDs and an (N × K) residual matrix.
+// Throws std::runtime_error on I/O or parse errors.
+// ──────────────────────────────────────────────────────────────────────
+
+struct ResidMatrixData {
+  std::vector<std::string> subjects;
+  Eigen::MatrixXd          residuals;   // N × K
+};
+
+ResidMatrixData loadResidMatrix(const std::string& filename);
+
