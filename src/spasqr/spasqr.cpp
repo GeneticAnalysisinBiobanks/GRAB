@@ -7,8 +7,9 @@
 #include "spasqr/spasqr.hpp"
 #include "spagrm/spagrm.hpp"
 #include "engine/marker.hpp"
-#include "io/resid_file.hpp"
+#include "io/subject_data.hpp"
 #include "io/plink.hpp"
+#include "io/sparse_grm.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
 
@@ -194,7 +195,8 @@ OutlierInfo detectOutliers(
 
 void runSPAsqr(
     const std::string& residFile,
-    const std::string& sparseGrmFile,
+    const std::string& spgrmSaigeFile,
+    const std::string& spgrmGctaPrefix,
     const std::string& bfilePrefix,
     const std::string& outputFile,
     double spaCutoff,
@@ -208,9 +210,12 @@ void runSPAsqr(
 {
   // ── 1. Load residual matrix ────────────────────────────────────────
   infoMsg("Loading residual matrix from %s", residFile.c_str());
-  ResidMatrixData rmd = loadResidMatrix(residFile);
-  const Eigen::Index N = rmd.residuals.rows();
-  const Eigen::Index K = rmd.residuals.cols();
+  auto famIIDs = parseFamIIDs(bfilePrefix + ".fam");
+  SubjectData sd(std::move(famIIDs));
+  sd.loadResidSPAsqr(residFile);
+  sd.finalize();
+  const Eigen::Index N = static_cast<Eigen::Index>(sd.nUsed());
+  const Eigen::Index K = sd.residCols();
   infoMsg("Residual matrix: %lld subjects x %lld columns",
           static_cast<long long>(N), static_cast<long long>(K));
 
@@ -220,18 +225,18 @@ void runSPAsqr(
       bfilePrefix + ".bed",
       bfilePrefix + ".bim",
       bfilePrefix + ".fam",
-      rmd.subjects,
+      sd.usedMask(),
+      sd.nFam(),
+      sd.nUsed(),
       "ref-first",
       {}, {}, {}, {},
       nSnpPerChunk);
 
-  // The PlinkData genotype vectors follow the same order as rmd.subjects.
-  // So the residual matrix rows are already aligned with genotype vectors.
   const uint32_t nUsed = plinkData.nSubjUsed();
-  const auto& subjOrder = rmd.subjects;
+  auto subjOrder = sd.usedIIDs();
 
-  // The residual matrix is already in the correct order (same as rmd.subjects).
-  Eigen::MatrixXd& ResidMat = rmd.residuals;
+  // The residual matrix is already in .fam order (aligned by SubjectData).
+  Eigen::MatrixXd ResidMat = sd.residMatrix();
 
   // ── 3. Outlier detection ───────────────────────────────────────────
   infoMsg("Detecting outliers (IQR ratio=%.2f, abs bound=%.2f)",
@@ -239,10 +244,8 @@ void runSPAsqr(
   OutlierInfo outlierInfo = detectOutliers(ResidMat, outlierIqrRatio, outlierAbsBound);
 
   // ── 4. Load sparse GRM and compute variance terms ──────────────────
-  infoMsg("Loading sparse GRM from %s", sparseGrmFile.c_str());
 
-  // Parse GRM file manually to get (id1, id2, value) with factor logic.
-  // We need raw entries (not symmetrized) so we can apply factor=2 for off-diag.
+  // GRM entries with factor: 1 for diagonal, 2 for off-diagonal.
   struct GRMEntry {
     uint32_t row, col;
     double value;
@@ -255,9 +258,45 @@ void runSPAsqr(
     subjIdMap.emplace(subjOrder[i], i);
 
   std::vector<GRMEntry> grmEntries;
-  {
-    std::ifstream ifs(sparseGrmFile);
-    if (!ifs) throw std::runtime_error("Cannot open sparse GRM: " + sparseGrmFile);
+
+  if (!spgrmGctaPrefix.empty()) {
+    // GCTA format
+    infoMsg("Loading GCTA sparse GRM from %s.grm.sp", spgrmGctaPrefix.c_str());
+    auto fileIIDs = SparseGRM::readGctaIIDs(spgrmGctaPrefix);
+    const uint32_t nFileIDs = static_cast<uint32_t>(fileIIDs.size());
+    std::vector<uint32_t> fileToCanon(nFileIDs, UINT32_MAX);
+    for (uint32_t fi = 0; fi < nFileIDs; ++fi) {
+      auto it = subjIdMap.find(fileIIDs[fi]);
+      if (it != subjIdMap.end()) fileToCanon[fi] = it->second;
+    }
+    const std::string spFile = spgrmGctaPrefix + ".grm.sp";
+    std::ifstream ifs(spFile);
+    if (!ifs) throw std::runtime_error("Cannot open GCTA .grm.sp: " + spFile);
+    std::string line;
+    while (std::getline(ifs, line)) {
+      if (!line.empty() && line.back() == '\r') line.pop_back();
+      if (line.empty()) continue;
+      const char* p = line.c_str();
+      char* endPtr;
+      unsigned long idx1 = std::strtoul(p, &endPtr, 10);
+      if (endPtr == p) continue;
+      p = endPtr;
+      unsigned long idx2 = std::strtoul(p, &endPtr, 10);
+      if (endPtr == p) continue;
+      p = endPtr;
+      double val = std::strtod(p, &endPtr);
+      if (endPtr == p) continue;
+      if (idx1 >= nFileIDs || idx2 >= nFileIDs) continue;
+      uint32_t r = fileToCanon[idx1];
+      uint32_t c = fileToCanon[idx2];
+      if (r == UINT32_MAX || c == UINT32_MAX) continue;
+      grmEntries.push_back({r, c, val, (idx1 == idx2) ? 1.0 : 2.0});
+    }
+  } else {
+    // SAIGE format
+    infoMsg("Loading sparse GRM from %s", spgrmSaigeFile.c_str());
+    std::ifstream ifs(spgrmSaigeFile);
+    if (!ifs) throw std::runtime_error("Cannot open sparse GRM: " + spgrmSaigeFile);
     std::string line;
     while (std::getline(ifs, line)) {
       if (!line.empty() && line.back() == '\r') line.pop_back();
@@ -280,11 +319,9 @@ void runSPAsqr(
       char* endPtr;
       double val = std::strtod(p, &endPtr);
       if (endPtr == p) continue;
-
       auto it1 = subjIdMap.find(id1);
       auto it2 = subjIdMap.find(id2);
       if (it1 == subjIdMap.end() || it2 == subjIdMap.end()) continue;
-
       grmEntries.push_back({it1->second, it2->second, val,
                             (id1 == id2) ? 1.0 : 2.0});
     }

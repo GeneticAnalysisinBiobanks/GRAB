@@ -8,72 +8,10 @@
 #include <string>
 #include <vector>
 
-DesignMatrix::DesignMatrix(const std::string& filename) {
-  std::ifstream ifs(filename, std::ios::in | std::ios::binary);
-  if (!ifs)
-    throw std::runtime_error("Cannot open design-matrix file: " + filename);
-
-  // First pass: collect all values + detect column count from first data line.
-  std::vector<double> vals;
-  vals.reserve(65536);
-  int nCols = 0;
-  int nRows = 0;
-
-  uint32_t lineNo = 0;
-  std::string line;
-  while (std::getline(ifs, line)) {
-    ++lineNo;
-    if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (line.empty() || line[0] == '#') continue;
-
-    const char*       p   = line.c_str();
-    const char* const end = p + line.size();
-
-    // Skip leading whitespace then consume the subject-ID token.
-    while (p < end && (*p == ' ' || *p == '\t')) ++p;
-    if (p >= end) continue;  // blank / all-whitespace line
-    while (p < end && *p != ' ' && *p != '\t') ++p;  // skip ID token
-
-    int colsThisRow = 0;
-    while (p < end) {
-      while (p < end && (*p == ' ' || *p == '\t')) ++p;
-      if (p >= end) break;
-      char* next;
-      double v = std::strtod(p, &next);
-      if (next == p)
-        throw std::runtime_error(
-            "design file: non-numeric token on row " + std::to_string(lineNo) +
-            " (after subject ID): " + filename);
-      vals.push_back(v);
-      ++colsThisRow;
-      p = next;
-    }
-
-    if (colsThisRow == 0)
-      throw std::runtime_error(
-          "design file: no covariate columns on row " + std::to_string(lineNo) +
-          ": " + filename);
-
-    if (nRows == 0) {
-      nCols = colsThisRow;
-    } else if (colsThisRow != nCols) {
-      throw std::runtime_error(
-          "design_file: row " + std::to_string(nRows + 1) +
-          " has " + std::to_string(colsThisRow) +
-          " columns (expected " + std::to_string(nCols) + ")");
-    }
-    ++nRows;
-  }
-
-  if (nRows == 0 || nCols == 0)
-    throw std::runtime_error("design_file: empty file: " + filename);
-
-  // Map the flat vector into Eigen (row-major source → column-major storage).
-  m_X.resize(nRows, nCols);
-  for (int r = 0; r < nRows; ++r)
-    for (int c = 0; c < nCols; ++c)
-      m_X(r, c) = vals[r * nCols + c];
-
+DesignMatrix::DesignMatrix(const Eigen::MatrixXd& X)
+  : m_X(X)
+{
+  const int nCols = static_cast<int>(m_X.cols());
   // Pre-compute tX and XinvXX = X (X'X)^{-1}
   m_tX = m_X.transpose();                              // p × N
   Eigen::MatrixXd XtX = m_tX * m_X;                    // p × p
@@ -162,77 +100,4 @@ Eigen::MatrixXd loadNumericMatrix(const std::string& filename) {
   return M;
 }
 
-// ======================================================================
-// Eigenvector file loader (first column = subject ID)
-// ======================================================================
 
-EigenVecData loadEigenVecs(const std::string& filename) {
-  std::ifstream ifs(filename, std::ios::in | std::ios::binary);
-  if (!ifs)
-    throw std::runtime_error("Cannot open eigenvector file: " + filename);
-
-  std::vector<std::string> subjects;
-  std::vector<double> vals;
-  vals.reserve(65536);
-  int nCols = 0;  // number of *numeric* columns (nPC)
-
-  std::string line;
-  while (std::getline(ifs, line)) {
-    if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (line.empty() || line[0] == '#') continue;
-
-    // First whitespace-delimited token is the subject ID.
-    const char*       p   = line.c_str();
-    const char* const end = p + line.size();
-
-    // Skip leading whitespace
-    while (p < end && (*p == ' ' || *p == '\t')) ++p;
-    if (p >= end) continue;
-
-    // Extract subject ID token
-    const char* idStart = p;
-    while (p < end && *p != ' ' && *p != '\t') ++p;
-    subjects.emplace_back(idStart, p);
-
-    // Parse remaining numeric columns
-    int colsThisRow = 0;
-    while (p < end) {
-      while (p < end && (*p == ' ' || *p == '\t')) ++p;
-      if (p >= end) break;
-      char* next;
-      double v = std::strtod(p, &next);
-      if (next == p)
-        throw std::runtime_error(
-            "loadEigenVecs: non-numeric token on row " +
-            std::to_string(subjects.size() + 1) + ": " + filename);
-      vals.push_back(v);
-      ++colsThisRow;
-      p = next;
-    }
-
-    if (colsThisRow == 0)
-      throw std::runtime_error(
-          "loadEigenVecs: no numeric columns on row " +
-          std::to_string(subjects.size() + 1) + ": " + filename);
-
-    if (subjects.size() == 1) {
-      nCols = colsThisRow;
-    } else if (colsThisRow != nCols) {
-      throw std::runtime_error(
-          "loadEigenVecs: row " + std::to_string(subjects.size()) +
-          " has " + std::to_string(colsThisRow) +
-          " numeric columns (expected " + std::to_string(nCols) + ")");
-    }
-  }
-
-  const int nRows = static_cast<int>(subjects.size());
-  if (nRows == 0 || nCols == 0)
-    throw std::runtime_error("loadEigenVecs: empty file: " + filename);
-
-  Eigen::MatrixXd PCs(nRows, nCols);
-  for (int r = 0; r < nRows; ++r)
-    for (int c = 0; c < nCols; ++c)
-      PCs(r, c) = vals[r * nCols + c];
-
-  return {std::move(subjects), std::move(PCs)};
-}

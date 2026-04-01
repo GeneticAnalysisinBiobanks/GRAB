@@ -14,7 +14,8 @@
 
 void runSPAsqr(
     const std::string& residFile,
-    const std::string& sparseGrmFile,
+    const std::string& spgrmSaigeFile,
+    const std::string& spgrmGctaPrefix,
     const std::string& bfilePrefix,
     const std::string& outputFile,
     double spaCutoff,

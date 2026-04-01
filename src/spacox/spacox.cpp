@@ -2,7 +2,7 @@
 
 #include "spacox/spacox.hpp"
 #include "io/plink.hpp"
-#include "io/resid_file.hpp"
+#include "io/subject_data.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
 
@@ -369,7 +369,7 @@ void SPACoxMethod::getResultVec(
 
 void runSPACox(
     const std::string& residFile,
-    const std::string& designFile,
+    const std::string& covarFile,
     const std::string& bfilePrefix,
     const std::string& outputFile,
     double pvalCovAdjCut,
@@ -380,21 +380,30 @@ void runSPACox(
     double minMafCutoff,
     double minMacCutoff) {
 
-  // ---- Load resid file (first 2 columns: subject, residual) ----
+  // ---- Load resid file and covariate file ----
   infoMsg("Loading resid file: %s", residFile.c_str());
-  ResidData resid = loadResidFile(residFile);
-  infoMsg("  %zu subjects loaded", resid.subjects.size());
+  auto famIIDs = parseFamIIDs(bfilePrefix + ".fam");
+  SubjectData sd(std::move(famIIDs));
+  sd.loadResidOne(residFile);
+  if (!covarFile.empty())
+    sd.loadCovar(covarFile);
+  sd.finalize();
+  infoMsg("  %u subjects loaded", sd.nUsed());
 
-  // ---- Load design matrix ----
-  infoMsg("Loading design matrix: %s", designFile.c_str());
-  DesignMatrix design(designFile);
+  // ---- Build design-matrix projection (intercept + covariates) ----
+  infoMsg("Building design matrix projection...");
+  Eigen::MatrixXd X;
+  if (sd.hasCovar()) {
+    const auto& cov = sd.covar();
+    X.resize(sd.nUsed(), cov.cols() + 1);
+    X.col(0).setOnes();
+    X.rightCols(cov.cols()) = cov;
+  } else {
+    X.resize(sd.nUsed(), 1);
+    X.col(0).setOnes();
+  }
+  DesignMatrix design(X);
   infoMsg("  %d rows x %d cols", design.nRows(), design.nCols());
-
-  if (design.nRows() != static_cast<int>(resid.subjects.size()))
-    throw std::runtime_error(
-        "design_file row count (" + std::to_string(design.nRows()) +
-        ") != resid_file subject count (" +
-        std::to_string(resid.subjects.size()) + ")");
 
   // ---- Load PLINK data ----
   infoMsg("Loading PLINK data: %s", bfilePrefix.c_str());
@@ -402,34 +411,52 @@ void runSPACox(
       bfilePrefix + ".bed",
       bfilePrefix + ".bim",
       bfilePrefix + ".fam",
-      resid.subjects,
+      sd.usedMask(),
+      sd.nFam(),
+      sd.nUsed(),
       "ref-first",
       {}, {}, {}, {},
       nSnpPerChunk);
   infoMsg("  %u subjects matched, %u markers",
           plinkData.nSubjUsed(), plinkData.nMarkers());
 
-  // ---- Build empirical CGF table ----
-  infoMsg("Building empirical CGF table (10000 grid points)...");
-  CumulantTable cumul = buildCumulantTable(resid.residuals);
-  infoMsg("  CGF table built");
+  // ---- Per-residual-column loop ----
+  const int nRC = sd.residOneCols();
+  if (nRC > 1)
+    infoMsg("Multi-column residual file: %d columns", nRC);
 
-  // ---- Variance of residuals ----
-  double meanR = resid.residuals.mean();
-  double varResid = (resid.residuals.array() - meanR).square().mean();
-  // Note: arma::var uses N-1 denominator; replicate that.
-  double N = static_cast<double>(resid.residuals.size());
-  varResid *= N / (N - 1.0);
+  for (int rc = 0; rc < nRC; ++rc) {
+    Eigen::VectorXd colBuf;
+    if (nRC > 1) colBuf = sd.residMatrix().col(rc);
+    const Eigen::VectorXd& resid = (nRC > 1) ? colBuf : sd.residuals();
 
-  // ---- Construct method and run engine ----
-  infoMsg("Running SPACox marker tests (%d thread(s))...", nthread);
-  SPACoxMethod method(resid.residuals, varResid, cumul, design,
-                      pvalCovAdjCut, spaCutoff);
+    std::string outFile = (nRC == 1) ? outputFile
+        : (outputFile + "." + std::to_string(rc + 1) + ".gz");
+    if (nRC > 1)
+      infoMsg("  Column %d/%d%s -> %s", rc + 1, nRC,
+              (rc < static_cast<int>(sd.residColNames().size())
+                   ? (" (" + sd.residColNames()[rc] + ")").c_str() : ""),
+              outFile.c_str());
 
-  markerEngine(plinkData, method, outputFile,
-               nthread,
-               missingCutoff,
-               minMafCutoff,
-               minMacCutoff,
-               /*exactHwe=*/false);
+    // ---- Build empirical CGF table ----
+    CumulantTable cumul = buildCumulantTable(resid);
+
+    // ---- Variance of residuals ----
+    double meanR = resid.mean();
+    double varResid = (resid.array() - meanR).square().mean();
+    double N = static_cast<double>(resid.size());
+    varResid *= N / (N - 1.0);
+
+    // ---- Construct method and run engine ----
+    if (nRC == 1) infoMsg("Running SPACox marker tests (%d thread(s))...", nthread);
+    SPACoxMethod method(resid, varResid, cumul, design,
+                        pvalCovAdjCut, spaCutoff);
+
+    markerEngine(plinkData, method, outFile,
+                 nthread,
+                 missingCutoff,
+                 minMafCutoff,
+                 minMacCutoff,
+                 /*exactHwe=*/false);
+  }
 }

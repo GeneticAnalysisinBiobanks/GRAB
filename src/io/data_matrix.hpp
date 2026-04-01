@@ -11,10 +11,9 @@
 
 class DesignMatrix {
 public:
-  // Load a design-matrix file with a leading subject-ID column.
-  // First token on each data line is treated as the subject ID and skipped.
-  // Throws std::runtime_error on I/O or parse errors.
-  explicit DesignMatrix(const std::string& filename);
+  // Construct from a pre-parsed design matrix (e.g. from SubjectData::design()).
+  // Pre-computes the projection matrices tX and XinvXX.
+  explicit DesignMatrix(const Eigen::MatrixXd& X);
 
   int nRows() const { return static_cast<int>(m_X.rows()); }
   int nCols() const { return static_cast<int>(m_X.cols()); }
@@ -48,17 +47,4 @@ private:
 // Throws std::runtime_error on I/O or parse errors.
 Eigen::MatrixXd loadNumericMatrix(const std::string& filename);
 
-// ======================================================================
-// Eigenvector file loader (first column = subject ID)
-// ======================================================================
 
-// File format: tab/space-delimited, first column is subject ID,
-// remaining columns are numeric PC values.
-// Lines starting with '#' are skipped (header).
-
-struct EigenVecData {
-  std::vector<std::string> subjects;  // subject IDs (first column)
-  Eigen::MatrixXd PCs;                // (N x nPC) numeric columns
-};
-
-EigenVecData loadEigenVecs(const std::string& filename);

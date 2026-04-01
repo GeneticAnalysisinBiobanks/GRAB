@@ -2,7 +2,7 @@
 
 #include "wtcoxg/wtcoxg.hpp"
 #include "io/plink.hpp"
-#include "io/resid_file.hpp"
+#include "io/subject_data.hpp"
 #include "io/sparse_grm.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
@@ -160,57 +160,91 @@ std::vector<RefAfRecord> loadRefAfFile(const std::string& filename) {
 
   std::vector<RefAfRecord> recs;
   recs.reserve(100000);
-  uint32_t lineNo = 0;
   std::string line;
+
+  // ---- Detect column positions from header line ----
+  int colChrom = -1, colId = -1, colRef = -1, colAlt = -1;
+  int colAltFreqs = -1, colObsCt = -1;
+
   while (std::getline(ifs, line)) {
-    ++lineNo;
     if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (line.empty() || line[0] == '#') continue;
+    if (line.empty()) continue;
+    if (line[0] != '#') break;  // first non-header line
+    // Parse header columns
+    std::istringstream hss(line);
+    std::string tok;
+    int col = 0;
+    while (hss >> tok) {
+      // Strip leading '#' from the first token
+      if (col == 0 && !tok.empty() && tok[0] == '#')
+        tok = tok.substr(1);
+      if (tok == "CHROM")              colChrom    = col;
+      else if (tok == "ID")            colId       = col;
+      else if (tok == "REF")           colRef      = col;
+      else if (tok == "ALT" || tok == "ALT1")
+                                       colAlt      = col;
+      else if (tok == "ALT_FREQS" || tok == "ALT1_FREQ")
+                                       colAltFreqs = col;
+      else if (tok == "OBS_CT")        colObsCt    = col;
+      ++col;
+    }
+    // Keep reading — last '#' line wins (plink2 puts one header line)
+  }
 
-    // Whitespace-delimited parse: CHROM  POS  A1  A2  A1F  N
-    const char*       p    = line.c_str();
-    const char* const lEnd = p + line.size();
-    auto skipWS  = [&]() { while (p < lEnd && (*p == ' ' || *p == '\t')) ++p; };
-    auto nextTok = [&]() -> std::string {
-      skipWS();
-      const char* s = p;
-      while (p < lEnd && *p != ' ' && *p != '\t') ++p;
-      return std::string(s, p);
-    };
-    auto err = [&](const char* msg) -> std::runtime_error {
-      return std::runtime_error(filename + " line " + std::to_string(lineNo) + ": " + msg);
-    };
+  if (colChrom < 0 || colId < 0 || colRef < 0 || colAlt < 0 ||
+      colAltFreqs < 0 || colObsCt < 0)
+    throw std::runtime_error(
+        filename + ": missing required header columns "
+        "(need #CHROM, ID, REF, ALT, ALT_FREQS, OBS_CT)");
 
-    skipWS();
-    if (p >= lEnd) continue;  // blank / all-whitespace line
+  const int maxCol = std::max({colChrom, colId, colRef, colAlt,
+                               colAltFreqs, colObsCt});
 
-    // Columns: CHROM  POS  A1  A2  A1F  N
+  // ---- Parse data lines ----
+  // `line` already holds the first non-header line from the header scan
+  uint32_t lineNo = 0;
+  auto parseLine = [&](const std::string& ln) {
+    ++lineNo;
+    if (ln.empty()) return;
+    // Tokenise
+    std::vector<std::string> tokens;
+    tokens.reserve(maxCol + 2);
+    std::istringstream iss(ln);
+    std::string t;
+    while (iss >> t) tokens.push_back(std::move(t));
+    if (static_cast<int>(tokens.size()) <= maxCol)
+      throw std::runtime_error(filename + " line " + std::to_string(lineNo) +
+          ": expected at least " + std::to_string(maxCol + 1) +
+          " columns, got " + std::to_string(tokens.size()));
+
     RefAfRecord r;
-    r.chrom = nextTok();
-    if (r.chrom.empty()) throw err("missing CHROM field");
+    r.chrom      = std::move(tokens[colChrom]);
+    r.id         = std::move(tokens[colId]);
+    r.ref_allele = std::move(tokens[colRef]);
+    r.alt_allele = std::move(tokens[colAlt]);
+    // Uppercase alleles for consistent matching
+    for (auto& ch : r.ref_allele) ch = static_cast<char>(std::toupper(ch));
+    for (auto& ch : r.alt_allele) ch = static_cast<char>(std::toupper(ch));
 
     char* endPtr;
-    const std::string pos_str = nextTok();
-    if (pos_str.empty()) throw err("missing POS field");
-    r.pos = static_cast<uint32_t>(std::strtoul(pos_str.c_str(), &endPtr, 10));
-    if (endPtr == pos_str.c_str()) throw err("invalid POS field");
-
-    r.a1 = nextTok();
-    r.a2 = nextTok();
-    if (r.a1.empty() || r.a2.empty()) throw err("missing A1 or A2 field");
-
-    const std::string af_str = nextTok();
-    if (af_str.empty()) throw err("missing A1F field");
-    r.AF_ref = std::strtod(af_str.c_str(), &endPtr);
-    if (endPtr == af_str.c_str()) throw err("invalid A1F field");
-
-    const std::string n_str = nextTok();
-    if (n_str.empty()) throw err("missing N field");
-    double N = std::strtod(n_str.c_str(), &endPtr);
-    if (endPtr == n_str.c_str()) throw err("invalid N field");
-    r.N_ref = N;
-
+    r.alt_freq = std::strtod(tokens[colAltFreqs].c_str(), &endPtr);
+    if (endPtr == tokens[colAltFreqs].c_str())
+      throw std::runtime_error(filename + " line " + std::to_string(lineNo) +
+          ": invalid ALT_FREQS value");
+    r.obs_ct = std::strtod(tokens[colObsCt].c_str(), &endPtr);
+    if (endPtr == tokens[colObsCt].c_str())
+      throw std::runtime_error(filename + " line " + std::to_string(lineNo) +
+          ": invalid OBS_CT value");
     recs.push_back(std::move(r));
+  };
+
+  // Process the first data line that was read during header scan
+  if (!line.empty() && line[0] != '#')
+    parseLine(line);
+  while (std::getline(ifs, line)) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line.empty() || line[0] == '#') continue;
+    parseLine(line);
   }
   return recs;
 }
@@ -219,40 +253,46 @@ std::vector<MatchedMarkerInfo> matchMarkers(
     const PlinkData& plinkData,
     const std::vector<RefAfRecord>& refAf) {
 
-  // Build ref lookup: key = "chr:pos:a1:a2"
-  struct RefKey {
-    std::string chrom;
-    uint32_t    pos;
-    std::string a1;
-    std::string a2;
-  };
-  auto makeKey = [](const std::string& chr, uint32_t pos,
-                    const std::string& a1, const std::string& a2) -> std::string {
+  // Build ref lookup: key = "chrom:id" → index into refAf
+  auto makeKey = [](const std::string& chr, const std::string& id) -> std::string {
     std::string k;
-    k.reserve(chr.size() + 20 + a1.size() + a2.size());
-    k += chr; k += ':';
-    k += std::to_string(pos); k += ':';
-    k += a1; k += ':'; k += a2;
+    k.reserve(chr.size() + 1 + id.size());
+    k += chr; k += ':'; k += id;
     return k;
   };
 
   std::unordered_map<std::string, size_t> refMap;
   refMap.reserve(refAf.size());
   for (size_t i = 0; i < refAf.size(); ++i)
-    refMap.emplace(makeKey(refAf[i].chrom, refAf[i].pos, refAf[i].a1, refAf[i].a2), i);
+    refMap.emplace(makeKey(refAf[i].chrom, refAf[i].id), i);
 
-  // Match each bim marker against reference
+  // Match each bim marker against reference by (CHROM, ID),
+  // then check allele orientation.
+  // With ref-first allele order: mi.ref = bim col5, mi.alt = bim col6.
   std::vector<MatchedMarkerInfo> matched;
   matched.reserve(plinkData.markerInfo().size());
   for (const auto& mi : plinkData.markerInfo()) {
-    auto key = makeKey(mi.chrom, mi.pos, mi.ref, mi.alt);
+    auto key = makeKey(mi.chrom, mi.id);
     auto it = refMap.find(key);
-    if (it == refMap.end()) continue;  // no match → drop
+    if (it == refMap.end()) continue;  // no match by CHROM+ID
+
     const auto& ref = refAf[it->second];
     MatchedMarkerInfo m;
     m.genoIndex = mi.genoIndex;
-    m.AF_ref    = ref.AF_ref;
-    m.N_ref     = ref.N_ref;
+
+    //  Case 1: afreq ALT == bim col5 AND afreq REF == bim col6
+    //          → same orientation, AF_ref = ALT_FREQS
+    //  Case 2: afreq REF == bim col5 AND afreq ALT == bim col6
+    //          → flipped, AF_ref = 1 - ALT_FREQS
+    if (ref.alt_allele == mi.ref && ref.ref_allele == mi.alt) {
+      m.AF_ref = ref.alt_freq;
+    } else if (ref.ref_allele == mi.ref && ref.alt_allele == mi.alt) {
+      m.AF_ref = 1.0 - ref.alt_freq;
+    } else {
+      continue;  // alleles don't match → drop
+    }
+    m.N_ref = ref.obs_ct / 2.0;
+
     // mu0, mu1, n0, n1 will be filled later during genotype scanning
     m.mu0 = m.mu1 = m.n0 = m.n1 = m.mu_int = 0.0;
     matched.push_back(m);
@@ -268,15 +308,16 @@ std::vector<MatchedMarkerInfo> matchMarkers(
 void computeMarkerStats(
     std::vector<MatchedMarkerInfo>& matched,
     const PlinkData& plinkData,
-    const ResidData& resid) {
+    const Eigen::VectorXd& indicator) {
 
   const uint32_t n = plinkData.nSubjUsed();
   PlinkCursor cursor(plinkData.bedFile(),
                      static_cast<uint32_t>(plinkData.nMarkers()),
                      plinkData.nSubjInFile(),
-                     plinkData.samplePosMap(),
+                     plinkData.usedMask(),
+                     plinkData.nSubjUsed(),
                      plinkData.isAltFirst(),
-                     plinkData.isIdentityMap());
+                     plinkData.allUsed());
 
   if (!matched.empty())
     cursor.beginSequentialBlock(matched.front().genoIndex);
@@ -285,13 +326,11 @@ void computeMarkerStats(
 
   for (auto& m : matched) {
     cursor.getGenotypesSimple(m.genoIndex, gvec);
-    // Accumulate allele freq by case/control (indicator: 1=case, 0=control)
-    // Missing genotypes are NaN (from getGenotypesSimple) and are skipped.
     double sum0 = 0.0, sum1 = 0.0;
     double cnt0 = 0.0, cnt1 = 0.0;
     for (uint32_t i = 0; i < n; ++i) {
       if (std::isnan(gvec[i])) continue;
-      if (resid.indicator[i] == 1.0) {
+      if (indicator[i] == 1.0) {
         sum1 += gvec[i];
         cnt1 += 1.0;
       } else {
@@ -299,8 +338,8 @@ void computeMarkerStats(
         cnt0 += 1.0;
       }
     }
-    m.mu0 = (cnt0 > 0.0) ? (sum0 / cnt0 / 2.0) : 0.0;  // control allele freq
-    m.mu1 = (cnt1 > 0.0) ? (sum1 / cnt1 / 2.0) : 0.0;  // case allele freq
+    m.mu0 = (cnt0 > 0.0) ? (sum0 / cnt0 / 2.0) : 0.0;
+    m.mu1 = (cnt1 > 0.0) ? (sum1 / cnt1 / 2.0) : 0.0;
     m.n0  = cnt0;
     m.n1  = cnt1;
     m.mu_int = (cnt0 + cnt1 > 0.0)
@@ -317,18 +356,20 @@ void computeMarkerStats(
 std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo>>
 testBatchEffects(
     const std::vector<MatchedMarkerInfo>& matched,
-    const ResidData& resid,
+    const Eigen::VectorXd& residuals,
+    const Eigen::VectorXd& weights,
+    const Eigen::VectorXd& indicator,
     const SparseGRM* grm,
     double refPrevalence,
     double cutoff) {
 
-  const Eigen::Index nSubj = resid.residuals.size();
+  const Eigen::Index nSubj = residuals.size();
 
   // Precompute w1 and R_tilde
-  double sumW = resid.weights.sum();
-  Eigen::VectorXd w1 = resid.weights / (2.0 * sumW);
-  double meanR = resid.residuals.mean();
-  Eigen::VectorXd R_tilde = resid.residuals.array() - meanR;
+  double sumW = weights.sum();
+  Eigen::VectorXd w1 = weights / (2.0 * sumW);
+  double meanR = residuals.mean();
+  Eigen::VectorXd R_tilde = residuals.array() - meanR;
 
   // --- Variance ratios from sparse GRM ---
   double grm_sum_cov_w   = 0.0;    // sum(GRM_ij * w1_i * w1_j)
@@ -480,8 +521,8 @@ testBatchEffects(
         double mu0_val = mu;
         double mu_pop = mu1_trial * refPrevalence + mu0_val * (1.0 - refPrevalence);
         // Build per-subject mu_i
-        const auto& R = resid.residuals;
-        const auto& y = resid.indicator;
+        const auto& R = residuals;
+        const auto& y = indicator;
         double nS = static_cast<double>(R.size());
         double meanR_loc = R.mean();
         double sumR_loc  = R.sum();
@@ -562,9 +603,9 @@ testBatchEffects(
     // Compute var_ratio_ext from GRM (if available)
     double var_ratio_ext = 1.0;
     if (hasGRM) {
-      Eigen::VectorXd R_tilde_w = resid.residuals.array() - meanR * w_ext;
+      Eigen::VectorXd R_tilde_w = residuals.array() - meanR * w_ext;
       double grm_cov_Rext = grm->quadForm(R_tilde_w.data(), static_cast<uint32_t>(nSubj));
-      double sumR_sq_over_n = w_ext * w_ext * resid.residuals.sum() * resid.residuals.sum() / n_ext;
+      double sumR_sq_over_n = w_ext * w_ext * residuals.sum() * residuals.sum() / n_ext;
       double num = grm_cov_Rext + sumR_sq_over_n;
       double den = R_tilde_w.array().square().sum() + sumR_sq_over_n;
       var_ratio_ext = (den > 0.0) ? num / den : 1.0;
@@ -764,7 +805,8 @@ void runWtCoxG(
     const std::string& residFile,
     const std::string& bfilePrefix,
     const std::string& refAfFile,
-    const std::string& sparseGrmFile,
+    const std::string& spgrmSaigeFile,
+    const std::string& spgrmGctaPrefix,
     const std::string& outputFile,
     double refPrevalence,
     double cutoff,
@@ -777,8 +819,11 @@ void runWtCoxG(
 
   // ---- Load & match ----
   infoMsg("Loading resid file: %s", residFile.c_str());
-  ResidData resid = loadResidFile(residFile);
-  infoMsg("  %zu subjects loaded", resid.subjects.size());
+  auto famIIDs = parseFamIIDs(bfilePrefix + ".fam");
+  SubjectData sd(std::move(famIIDs));
+  sd.loadResidWtCoxG(residFile);
+  sd.finalize();
+  infoMsg("  %u subjects loaded", sd.nUsed());
 
   infoMsg("Loading ref-af file: %s", refAfFile.c_str());
   auto refAf = loadRefAfFile(refAfFile);
@@ -789,7 +834,9 @@ void runWtCoxG(
       bfilePrefix + ".bed",
       bfilePrefix + ".bim",
       bfilePrefix + ".fam",
-      resid.subjects,
+      sd.usedMask(),
+      sd.nFam(),
+      sd.nUsed(),
       "ref-first",
       {}, {}, {}, {},
       nSnpPerChunk);
@@ -801,25 +848,31 @@ void runWtCoxG(
   infoMsg("  %zu markers matched", matched.size());
 
   infoMsg("Computing per-marker case/control allele frequencies...");
-  computeMarkerStats(matched, plinkData, resid);
+  computeMarkerStats(matched, plinkData, sd.indicator());
 
   // ---- Batch-effect testing ----
   infoMsg("Batch-effect testing and parameter estimation...");
   std::unique_ptr<SparseGRM> grm;
-  if (!sparseGrmFile.empty()) {
-    infoMsg("  Loading sparse GRM: %s", sparseGrmFile.c_str());
-    grm = std::make_unique<SparseGRM>(sparseGrmFile, resid.subjects);
+  if (!spgrmGctaPrefix.empty()) {
+    infoMsg("  Loading GCTA sparse GRM: %s.grm.sp", spgrmGctaPrefix.c_str());
+    grm = std::make_unique<SparseGRM>(
+        SparseGRM::fromGCTA(spgrmGctaPrefix, sd.usedIIDs()));
+    infoMsg("  Sparse GRM: %u subjects, %zu non-zeros",
+            grm->nSubjects(), grm->nnz());
+  } else if (!spgrmSaigeFile.empty()) {
+    infoMsg("  Loading sparse GRM: %s", spgrmSaigeFile.c_str());
+    grm = std::make_unique<SparseGRM>(spgrmSaigeFile, sd.usedIIDs());
     infoMsg("  Sparse GRM: %u subjects, %zu non-zeros",
             grm->nSubjects(), grm->nnz());
   }
   auto refInfoMap = testBatchEffects(
-      matched, resid, grm.get(), refPrevalence, cutoff);
+      matched, sd.residuals(), sd.weights(), sd.indicator(), grm.get(), refPrevalence, cutoff);
   infoMsg("  %zu markers retained after batch-effect QC", refInfoMap->size());
 
   // ---- Marker-level SPA tests ----
   infoMsg("Running marker-level WtCoxG tests (%d thread(s))...", nthread);
   WtCoxGMethod method(
-      resid.residuals, resid.weights,
+      sd.residuals(), sd.weights(),
       cutoff, spaCutoff, refInfoMap);
   markerEngine(plinkData, method, outputFile,
                nthread,

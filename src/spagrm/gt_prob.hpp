@@ -16,20 +16,22 @@
 
 /// Run the full SPAGRM workflow: null model + marker-level SPA.
 ///
-/// @param residFile       2-column residual file (SubjID  Resid), '#' header ok
-/// @param sparseGrmFile   3-column TSV (ID1 ID2 VALUE), '#' lines skipped
-/// @param pairwiseIBDFile Tab-separated (ID1 ID2 pa pb pc) from runPairwiseIBD
-/// @param bfilePrefix     PLINK binary prefix (.bed/.bim/.fam)
-/// @param outputFile      Marker-level output file
-/// @param spaCutoff       SPA z-score threshold (default 2.0)
-/// @param nthreads        Number of worker threads
-/// @param nSnpPerChunk    Markers per chunk for parallel engine
-/// @param missingCutoff   Per-marker missing rate cutoff
-/// @param minMafCutoff    Min minor allele frequency
-/// @param minMacCutoff    Min minor allele count
+/// @param residFile        2-column residual file (SubjID  Resid), '#' header ok
+/// @param spgrmSaigeFile   3-column TSV (ID1 ID2 VALUE), '#' lines skipped
+/// @param spgrmGctaPrefix  plink2 --make-grm-sparse prefix (.grm.sp + .grm.id)
+/// @param pairwiseIBDFile  Tab-separated (ID1 ID2 pa pb pc) from runPairwiseIBD
+/// @param bfilePrefix      PLINK binary prefix (.bed/.bim/.fam)
+/// @param outputFile       Marker-level output file
+/// @param spaCutoff        SPA z-score threshold (default 2.0)
+/// @param nthreads         Number of worker threads
+/// @param nSnpPerChunk     Markers per chunk for parallel engine
+/// @param missingCutoff    Per-marker missing rate cutoff
+/// @param minMafCutoff     Min minor allele frequency
+/// @param minMacCutoff     Min minor allele count
 void runSPAGRM(
     const std::string& residFile,
-    const std::string& sparseGrmFile,
+    const std::string& spgrmSaigeFile,
+    const std::string& spgrmGctaPrefix,
     const std::string& pairwiseIBDFile,
     const std::string& bfilePrefix,
     const std::string& outputFile,

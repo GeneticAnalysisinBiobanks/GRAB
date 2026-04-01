@@ -525,7 +525,7 @@ std::vector<AFModel> loadAFModels(
 #include <sstream>
 #include <thread>
 
-#include "io/data_matrix.hpp"
+#include "io/subject_data.hpp"
 #include "io/plink.hpp"
 #include "util/logging.hpp"
 
@@ -589,9 +589,10 @@ std::vector<AFModel> computeAFModelsInMemory(
         plinkData.bedFile(),
         plinkData.nMarkers(),
         plinkData.nSubjInFile(),
-        plinkData.samplePosMap(),
+        plinkData.usedMask(),
+        plinkData.nSubjUsed(),
         plinkData.isAltFirst(),
-        plinkData.isIdentityMap());
+        plinkData.allUsed());
     Eigen::VectorXd GVec(N);
 
     while (true) {
@@ -656,14 +657,15 @@ void runSPAmixAF(
 
   // Load eigenvector file (first column = subject ID, rest = PCs).
   infoMsg("Loading eigenvector file: %s", eigenVecsFile.c_str());
-  EigenVecData evd = loadEigenVecs(eigenVecsFile);
-  std::vector<std::string> subjects = std::move(evd.subjects);
-  Eigen::MatrixXd PCs = std::move(evd.PCs);
-  infoMsg("  %zu subjects, %d PCs",
-          subjects.size(), static_cast<int>(PCs.cols()));
+  auto famIIDs = parseFamIIDs(bfilePrefix + ".fam");
+  SubjectData sd(std::move(famIIDs));
+  sd.loadEigenVecs(eigenVecsFile);
+  sd.finalize();
+  infoMsg("  %u subjects, %d PCs", sd.nUsed(), sd.nPC());
 
-  const int N   = static_cast<int>(subjects.size());
-  const int nPC = static_cast<int>(PCs.cols());
+  const int N   = static_cast<int>(sd.nUsed());
+  const int nPC = sd.nPC();
+  const Eigen::MatrixXd& PCs = sd.PCs();
 
   Eigen::MatrixXd onePlusPCs(N, 1 + nPC);
   onePlusPCs.col(0).setOnes();
@@ -682,7 +684,9 @@ void runSPAmixAF(
       bfilePrefix + ".bed",
       bfilePrefix + ".bim",
       bfilePrefix + ".fam",
-      subjects,
+      sd.usedMask(),
+      sd.nFam(),
+      sd.nUsed(),
       "ref-first",
       {}, {}, {}, {},
       nSnpPerChunk);

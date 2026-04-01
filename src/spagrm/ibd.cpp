@@ -17,6 +17,8 @@
 #include "spagrm/ibd.hpp"
 
 #include "io/plink.hpp"
+#include "io/subject_data.hpp"
+#include "io/sparse_grm.hpp"
 #include "util/logging.hpp"
 
 #include <algorithm>
@@ -78,30 +80,35 @@ std::vector<RelatedPair> parseGRMOffDiag(const std::string& filename) {
   return pairs;
 }
 
-// ── Read .fam IIDs (column 2) ────────────────────────────────────────────────
-std::vector<std::string> readFamIIDs(const std::string& famFile) {
-  std::ifstream ifs(famFile);
-  if (!ifs) throw std::runtime_error("Cannot open " + famFile);
-  std::vector<std::string> ids;
+// Parse GCTA format (.grm.id + .grm.sp), keeping only off-diagonal entries.
+std::vector<RelatedPair> parseGRMOffDiagGCTA(const std::string& prefix) {
+  auto fileIIDs = SparseGRM::readGctaIIDs(prefix);
+  const uint32_t nIDs = static_cast<uint32_t>(fileIIDs.size());
+
+  const std::string spFile = prefix + ".grm.sp";
+  std::ifstream ifs(spFile);
+  if (!ifs) throw std::runtime_error("Cannot open GCTA .grm.sp: " + spFile);
+
+  std::vector<RelatedPair> pairs;
   std::string line;
   while (std::getline(ifs, line)) {
     if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (line.empty() || line[0] == '#') continue;
-    // .fam: FID IID ...
-    const char*       p   = line.c_str();
-    const char* const end = p + line.size();
-    auto skipWS  = [&]() { while (p < end && (*p == ' ' || *p == '\t')) ++p; };
-    auto nextTok = [&]() -> std::string {
-      skipWS();
-      const char* s = p;
-      while (p < end && *p != ' ' && *p != '\t') ++p;
-      return std::string(s, p);
-    };
-    nextTok();                // skip FID
-    std::string iid = nextTok();
-    if (!iid.empty()) ids.push_back(std::move(iid));
+    if (line.empty()) continue;
+    const char* p = line.c_str();
+    char* endPtr;
+    unsigned long idx1 = std::strtoul(p, &endPtr, 10);
+    if (endPtr == p) continue;
+    p = endPtr;
+    unsigned long idx2 = std::strtoul(p, &endPtr, 10);
+    if (endPtr == p) continue;
+    p = endPtr;
+    double val = std::strtod(p, &endPtr);
+    if (endPtr == p) continue;
+    if (idx1 >= nIDs || idx2 >= nIDs) continue;
+    if (idx1 == idx2) continue;  // skip diagonal
+    pairs.push_back({fileIIDs[idx1], fileIIDs[idx2], val});
   }
-  return ids;
+  return pairs;
 }
 
 } // anonymous namespace
@@ -112,14 +119,21 @@ std::vector<std::string> readFamIIDs(const std::string& famFile) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 void runPairwiseIBD(
-    const std::string& sparseGrmFile,
+    const std::string& spgrmSaigeFile,
+    const std::string& spgrmGctaPrefix,
     const std::string& bfilePrefix,
     const std::string& outputFile,
     double minMafIBD)
 {
   // ── 1. Parse sparse GRM → related pairs ────────────────────────────
-  infoMsg("Parsing sparse GRM: %s", sparseGrmFile.c_str());
-  std::vector<RelatedPair> pairs = parseGRMOffDiag(sparseGrmFile);
+  std::vector<RelatedPair> pairs;
+  if (!spgrmGctaPrefix.empty()) {
+    infoMsg("Parsing GCTA sparse GRM: %s.grm.sp", spgrmGctaPrefix.c_str());
+    pairs = parseGRMOffDiagGCTA(spgrmGctaPrefix);
+  } else {
+    infoMsg("Parsing sparse GRM: %s", spgrmSaigeFile.c_str());
+    pairs = parseGRMOffDiag(spgrmSaigeFile);
+  }
   infoMsg("Found %zu off-diagonal (related) pairs", pairs.size());
 
   if (pairs.empty()) {
@@ -135,8 +149,15 @@ void runPairwiseIBD(
   const std::string famFile = bfilePrefix + ".fam";
   const std::string bimFile = bfilePrefix + ".bim";
   const std::string bedFile = bfilePrefix + ".bed";
-  std::vector<std::string> allIIDs = readFamIIDs(famFile);
-  infoMsg("Read %zu subjects from %s", allIIDs.size(), famFile.c_str());
+  std::vector<std::string> allIIDs = parseFamIIDs(famFile);
+  const uint32_t nFam = static_cast<uint32_t>(allIIDs.size());
+  infoMsg("Read %u subjects from %s", nFam, famFile.c_str());
+
+  // Build full bitmask (all subjects used)
+  const size_t nMaskWords = (nFam + 63) / 64;
+  std::vector<uint64_t> fullMask(nMaskWords, ~uint64_t(0));
+  if (nFam % 64 != 0)
+    fullMask.back() &= (uint64_t(1) << (nFam % 64)) - 1;
 
   // Build IID → index map
   std::unordered_map<std::string, uint32_t> idMap;
@@ -175,7 +196,9 @@ void runPairwiseIBD(
   // ── 4. Create PlinkData for all subjects (full cohort MAF) ─────────
   PlinkData pdata(
       bedFile, bimFile, famFile,
-      allIIDs,
+      fullMask,
+      nFam,
+      nFam,
       "alt-first",     // allele coding doesn't matter — diffs cancel it
       {}, {}, {}, {},   // no marker filters
       1024);            // chunk size for sequential reading
@@ -217,9 +240,10 @@ void runPairwiseIBD(
       pdata.bedFile(),
       nMarkers,
       pdata.nSubjInFile(),
-      pdata.samplePosMap(),
+      pdata.usedMask(),
+      pdata.nSubjUsed(),
       pdata.isAltFirst(),
-      pdata.isIdentityMap());
+      pdata.allUsed());
 
   Eigen::VectorXd geno(nSubj);
   std::vector<uint32_t> missingIdx;

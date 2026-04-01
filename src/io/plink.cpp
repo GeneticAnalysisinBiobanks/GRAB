@@ -78,20 +78,6 @@ bool markerInRanges(const PlinkData::MarkerInfo& m,
 static constexpr int GENO_ALT_FIRST[4] = { 2, -1,  1,  0};  // alt=A1
 static constexpr int GENO_REF_FIRST[4] = { 0, -1,  1,  2};  // alt=A2
 
-// Repack subset samples from full-cohort BED into compact 2-bit buffer.
-static void repackSubset(const uint8_t* __restrict raw,
-                         const uint32_t* __restrict posMap,
-                         uint8_t* __restrict compact,
-                         uint32_t nSubset) {
-  const uint32_t compactBytes = (nSubset + 3) / 4;
-  std::memset(compact, 0, compactBytes);
-  for (uint32_t i = 0; i < nSubset; ++i) {
-    const uint32_t src = posMap[i];
-    const int code = (raw[src >> 2] >> ((src & 3) << 1)) & 3;
-    compact[i >> 2] |= static_cast<uint8_t>(code << ((i & 3) << 1));
-  }
-}
-
 
 // ──────────────────────────────────────────────────────────────────────
 // AVX2 nibble-LUT genotype counting
@@ -400,6 +386,37 @@ static GenoStats computeStats(const uint8_t* geno_bytes, uint32_t n_samples,
   return gs;
 }
 
+// Compute QC stats from pre-computed genotype class counts.
+// Used by the bitmask decode path where counting is fused into the decode loop.
+static GenoStats statsFromCounts(uint32_t nHomA1, uint32_t nHet, uint32_t nHomA2,
+                                  uint32_t nMissing, uint32_t nSamples,
+                                  bool altFirst, bool exactHwe) {
+  const uint32_t nonMissing = nSamples - nMissing;
+  GenoStats gs;
+  gs.altCounts = altFirst ? (2 * nHomA1 + nHet) : (nHet + 2 * nHomA2);
+  gs.missingRate = static_cast<double>(nMissing) / nSamples;
+
+  if (nonMissing == 0) {
+    gs.altFreq = std::numeric_limits<double>::quiet_NaN();
+    gs.hweP    = std::numeric_limits<double>::quiet_NaN();
+    gs.maf     = std::numeric_limits<double>::quiet_NaN();
+    gs.mac     = 0;
+    return gs;
+  }
+
+  gs.altFreq = static_cast<double>(gs.altCounts) / (2.0 * nonMissing);
+  gs.maf = std::min(gs.altFreq, 1.0 - gs.altFreq);
+  gs.mac = std::min(gs.altCounts, 2 * nonMissing - gs.altCounts);
+  if (exactHwe) {
+    gs.hweP = HweExact(nHet, nHomA1, nHomA2);
+  } else {
+    gs.hweP = (nHet < 5 || nHomA1 < 5 || nHomA2 < 5)
+                ? HweExact(nHet, nHomA1, nHomA2)
+                : HweChiSq(nHet, nHomA1, nHomA2);
+  }
+  return gs;
+}
+
 
 // ──────────────────────────────────────────────────────────────────────
 // Identity-map fast decode: 2-bit BED → double[n] using 4-wide LUT
@@ -449,21 +466,37 @@ static void decodeBedsIdentity(const uint8_t* __restrict bed,
   }
 }
 
-// Decode packed 2-bit compact subset buffer → double (scalar, for subset path).
-static void decodeCompact(const uint8_t* __restrict compact,
-                          uint32_t n,
-                          const int* genoMap,
-                          double* __restrict out,
-                          std::vector<uint32_t>& indexForMissing)
+// Bitmask decode: iterate over set bits in usedMask, extract 2-bit genotype
+// codes from raw BED bytes, write to dense output.  Fuses counting and
+// decoding in a single pass over the bitmask.
+static void decodeMasked(const uint8_t* __restrict raw,
+                         const uint64_t* __restrict usedMask,
+                         uint32_t nFam,
+                         const int* genoMap,
+                         double* __restrict out,
+                         uint32_t counts[4],
+                         std::vector<uint32_t>& indexForMissing)
 {
-  for (uint32_t i = 0; i < n; ++i) {
-    const int code = (compact[i >> 2] >> ((i & 3) << 1)) & 3;
-    const int g = genoMap[code];
-    if (g < 0) {
-      out[i] = -1;
-      indexForMissing.push_back(i);
-    } else {
-      out[i] = g;
+  counts[0] = counts[1] = counts[2] = counts[3] = 0;
+  uint32_t denseIdx = 0;
+  const uint32_t nWords = (nFam + 63) / 64;
+
+  for (uint32_t w = 0; w < nWords; ++w) {
+    uint64_t mask = usedMask[w];
+    while (mask) {
+      const uint32_t bit = static_cast<uint32_t>(__builtin_ctzll(mask));
+      const uint32_t famIdx = w * 64 + bit;
+      const int code = (raw[famIdx >> 2] >> ((famIdx & 3) << 1)) & 3;
+      ++counts[code];
+      const int g = genoMap[code];
+      if (g < 0) {
+        out[denseIdx] = -1;
+        indexForMissing.push_back(denseIdx);
+      } else {
+        out[denseIdx] = g;
+      }
+      ++denseIdx;
+      mask &= mask - 1;
     }
   }
 }
@@ -502,15 +535,25 @@ static void decodeBedsIdentitySimple(const uint8_t* __restrict bed,
   }
 }
 
-static void decodeCompactSimple(const uint8_t* __restrict compact,
-                                uint32_t n,
-                                const int* genoMap,
-                                double* __restrict out)
+static void decodeMaskedSimple(const uint8_t* __restrict raw,
+                               const uint64_t* __restrict usedMask,
+                               uint32_t nFam,
+                               const int* genoMap,
+                               double* __restrict out)
 {
-  for (uint32_t i = 0; i < n; ++i) {
-    const int code = (compact[i >> 2] >> ((i & 3) << 1)) & 3;
-    const int g = genoMap[code];
-    out[i] = g < 0 ? kNaN : static_cast<double>(g);
+  uint32_t denseIdx = 0;
+  const uint32_t nWords = (nFam + 63) / 64;
+
+  for (uint32_t w = 0; w < nWords; ++w) {
+    uint64_t mask = usedMask[w];
+    while (mask) {
+      const uint32_t bit = static_cast<uint32_t>(__builtin_ctzll(mask));
+      const uint32_t famIdx = w * 64 + bit;
+      const int code = (raw[famIdx >> 2] >> ((famIdx & 3) << 1)) & 3;
+      const int g = genoMap[code];
+      out[denseIdx++] = g < 0 ? kNaN : static_cast<double>(g);
+      mask &= mask - 1;
+    }
   }
 }
 
@@ -525,7 +568,9 @@ PlinkData::PlinkData(
     std::string bedFile,
     std::string bimFile,
     std::string famFile,
-    std::vector<std::string> subjData,
+    const std::vector<uint64_t>& usedMask,
+    uint32_t nFam,
+    uint32_t nUsed,
     std::string AlleleOrder,
     std::string IDsToIncludeFile,
     std::string RangesToIncludeFile,
@@ -534,7 +579,10 @@ PlinkData::PlinkData(
     int nMarkersEachChunk)
   : m_bedFile(std::move(bedFile)),
     m_altFirst(AlleleOrder == "alt-first"),
-    m_identityMap(false)
+    m_allUsed(nUsed == nFam),
+    m_nSubjInFile(nFam),
+    m_nSubjUsed(nUsed),
+    m_usedMask(usedMask)
 {
   // ---- Parse .bim ----
   {
@@ -564,47 +612,22 @@ PlinkData::PlinkData(
     m_nMarkers = static_cast<uint32_t>(m_chr.size());
   }
 
-  // ---- Parse .fam ----
-  std::vector<std::string> famIIDs;
+  // ---- Count .fam lines for validation ----
   {
     std::ifstream in(famFile);
     if (!in.is_open())
       throw std::runtime_error("Cannot open PLINK fam file: " + famFile);
+    uint32_t famCount = 0;
     std::string line;
     while (std::getline(in, line)) {
-      auto tokens = splitWhitespace(line);
-      if (tokens.empty()) continue;
-      if (tokens.size() != 6)
-        throw std::runtime_error("PLINK .fam file needs 6 columns: " + famFile);
-      famIIDs.push_back(tokens[1]);
+      if (!line.empty() && line.find_first_not_of(" \t\r\n") != std::string::npos)
+        ++famCount;
     }
+    if (famCount != nFam)
+      throw std::runtime_error("PLINK .fam line count (" + std::to_string(famCount) +
+                               ") does not match nFam (" + std::to_string(nFam) + ")");
   }
-  m_nSubjInFile    = static_cast<uint32_t>(famIIDs.size());
   m_bytesPerMarker = (m_nSubjInFile + 3) / 4;
-
-  // ---- Build sample position map ----
-  m_nSubjUsed = static_cast<uint32_t>(subjData.size());
-  std::unordered_map<std::string, uint32_t> famPosLookup;
-  famPosLookup.reserve(famIIDs.size());
-  for (uint32_t i = 0; i < static_cast<uint32_t>(famIIDs.size()); ++i)
-    famPosLookup.emplace(famIIDs[i], i);
-
-  m_samplePosMap.resize(m_nSubjUsed);
-  for (uint32_t i = 0; i < m_nSubjUsed; ++i) {
-    auto it = famPosLookup.find(subjData[i]);
-    if (it == famPosLookup.end())
-      throw std::runtime_error("Subject not found in PLINK file: " + subjData[i]);
-    m_samplePosMap[i] = it->second;
-  }
-
-  // Detect identity mapping: subjects are all subjects in file order.
-  // This enables a SIMD fast-path that skips repackSubset entirely.
-  if (m_nSubjUsed == m_nSubjInFile) {
-    m_identityMap = true;
-    for (uint32_t i = 0; i < m_nSubjUsed; ++i) {
-      if (m_samplePosMap[i] != i) { m_identityMap = false; break; }
-    }
-  }
 
   // ---- Validate .bed header ----
   {
@@ -709,17 +732,18 @@ std::vector<std::vector<uint64_t>> PlinkData::buildChunks(
 
 PlinkCursor::PlinkCursor(const std::string& bedFile,
                          uint32_t nBimLines, uint32_t nFamLines,
-                         const std::vector<uint32_t>& posMap, bool altFirst,
-                         bool identityMap)
+                         const std::vector<uint64_t>& usedMask,
+                         uint32_t nUsed, bool altFirst,
+                         bool allUsed)
   : m_bedFile(bedFile),
     m_nSubjInFile(nFamLines),
     m_bytesPerMarker((nFamLines + 3) / 4),
     m_nMarkers(nBimLines),
-    m_posMap(posMap),
+    m_nUsed(nUsed),
+    m_usedMask(usedMask),
     m_altFirst(altFirst),
-    m_identityMap(identityMap),
-    m_rawBytes(m_bytesPerMarker),
-    m_compactGeno(identityMap ? 0 : (posMap.size() + 3) / 4)
+    m_allUsed(allUsed),
+    m_rawBytes(m_bytesPerMarker)
 {
   m_bedStream.open(bedFile, std::ios::binary);
   if (!m_bedStream.is_open())
@@ -735,11 +759,11 @@ PlinkCursor::PlinkCursor(const PlinkCursor& other)
     m_nSubjInFile(other.m_nSubjInFile),
     m_bytesPerMarker(other.m_bytesPerMarker),
     m_nMarkers(other.m_nMarkers),
-    m_posMap(other.m_posMap),
+    m_nUsed(other.m_nUsed),
+    m_usedMask(other.m_usedMask),
     m_altFirst(other.m_altFirst),
-    m_identityMap(other.m_identityMap),
-    m_rawBytes(other.m_rawBytes.size()),
-    m_compactGeno(other.m_compactGeno.size())
+    m_allUsed(other.m_allUsed),
+    m_rawBytes(other.m_rawBytes.size())
 {
   m_bedStream.open(m_bedFile, std::ios::binary);
   if (!m_bedStream.is_open())
@@ -822,12 +846,11 @@ const uint8_t* PlinkCursor::readMarkerPtr(uint64_t gIndex) {
 }
 
 
-// ── Identity-map fast path ───────────────────────────────────────────
+// ── All-used fast path ───────────────────────────────────────────────
 // All subjects in file order → compute stats and decode from raw BED
-// directly.  Saves one full memcpy (repackSubset) per marker, which at
-// 500K subjects is ~125 KB saved per marker × millions of markers.
+// directly.  Skips the bitmask scatter entirely.
 
-void PlinkCursor::getGenotypesIdentity(
+void PlinkCursor::getGenotypesAllUsed(
     const uint8_t* raw,
     uint32_t n,
     Eigen::Ref<Eigen::VectorXd> out,
@@ -840,7 +863,6 @@ void PlinkCursor::getGenotypesIdentity(
     std::vector<uint32_t>& indexForMissing,
     bool exactHwe)
 {
-  // Stats directly on the raw BED row (no repack needed)
   GenoStats gs = computeStats(raw, n, m_altFirst, exactHwe);
   altFreq     = gs.altFreq;
   altCounts   = gs.altCounts;
@@ -849,19 +871,17 @@ void PlinkCursor::getGenotypesIdentity(
   maf         = gs.maf;
   mac         = gs.mac;
 
-  // Decode 2-bit → double directly from raw BED
   const int* genoMap = m_altFirst ? GENO_ALT_FIRST : GENO_REF_FIRST;
   indexForMissing.clear();
   decodeBedsIdentity(raw, n, genoMap, out.data(), indexForMissing);
 }
 
 
-// ── Subset path ──────────────────────────────────────────────────────
-// Sparse subject selection → repack into compact buffer, then stats + decode.
+// ── Bitmask path ─────────────────────────────────────────────────────
+// Subset selection via bitmask → fused decode + count in one pass.
 
-void PlinkCursor::getGenotypesSubset(
+void PlinkCursor::getGenotypesMasked(
     const uint8_t* raw,
-    uint32_t n,
     Eigen::Ref<Eigen::VectorXd> out,
     double& altFreq,
     double& altCounts,
@@ -872,19 +892,23 @@ void PlinkCursor::getGenotypesSubset(
     std::vector<uint32_t>& indexForMissing,
     bool exactHwe)
 {
-  repackSubset(raw, m_posMap.data(), m_compactGeno.data(), n);
+  const int* genoMap = m_altFirst ? GENO_ALT_FIRST : GENO_REF_FIRST;
+  indexForMissing.clear();
 
-  GenoStats gs = computeStats(m_compactGeno.data(), n, m_altFirst, exactHwe);
+  // Fused decode + count in one pass over the bitmask
+  uint32_t bedCounts[4];
+  decodeMasked(raw, m_usedMask.data(), m_nSubjInFile,
+               genoMap, out.data(), bedCounts, indexForMissing);
+
+  // BED code mapping: [0]=homA1, [1]=miss, [2]=het, [3]=homA2
+  GenoStats gs = statsFromCounts(bedCounts[0], bedCounts[2], bedCounts[3],
+                                  bedCounts[1], m_nUsed, m_altFirst, exactHwe);
   altFreq     = gs.altFreq;
   altCounts   = gs.altCounts;
   missingRate = gs.missingRate;
   hweP        = gs.hweP;
   maf         = gs.maf;
   mac         = gs.mac;
-
-  const int* genoMap = m_altFirst ? GENO_ALT_FIRST : GENO_REF_FIRST;
-  indexForMissing.clear();
-  decodeCompact(m_compactGeno.data(), n, genoMap, out.data(), indexForMissing);
 }
 
 
@@ -903,36 +927,30 @@ void PlinkCursor::getGenotypes(
     bool exactHwe)
 {
   const uint8_t* raw = readMarkerPtr(gIndex);
-  const uint32_t n = static_cast<uint32_t>(m_posMap.size());
 
-  if (m_identityMap) {
-    getGenotypesIdentity(raw, n, out, altFreq, altCounts,
-                         missingRate, hweP, maf, mac,
-                         indexForMissing, exactHwe);
+  if (m_allUsed) {
+    getGenotypesAllUsed(raw, m_nSubjInFile, out, altFreq, altCounts,
+                        missingRate, hweP, maf, mac,
+                        indexForMissing, exactHwe);
   } else {
-    getGenotypesSubset(raw, n, out, altFreq, altCounts,
+    getGenotypesMasked(raw, out, altFreq, altCounts,
                        missingRate, hweP, maf, mac,
                        indexForMissing, exactHwe);
   }
 }
 
 // ── Simple entry point: genotype vector only, missing → NaN ──────────
-// Skips count_geno_classes (AVX2 counting pass) and indexForMissing
-// book-keeping entirely. Use for AF scans where only the genotype values
-// are needed.
 
 void PlinkCursor::getGenotypesSimple(
     uint64_t gIndex,
     Eigen::Ref<Eigen::VectorXd> out)
 {
   const uint8_t* raw = readMarkerPtr(gIndex);
-  const uint32_t n = static_cast<uint32_t>(m_posMap.size());
   const int* genoMap = m_altFirst ? GENO_ALT_FIRST : GENO_REF_FIRST;
 
-  if (m_identityMap) {
-    decodeBedsIdentitySimple(raw, n, genoMap, out.data());
+  if (m_allUsed) {
+    decodeBedsIdentitySimple(raw, m_nSubjInFile, genoMap, out.data());
   } else {
-    repackSubset(raw, m_posMap.data(), m_compactGeno.data(), n);
-    decodeCompactSimple(m_compactGeno.data(), n, genoMap, out.data());
+    decodeMaskedSimple(raw, m_usedMask.data(), m_nSubjInFile, genoMap, out.data());
   }
 }

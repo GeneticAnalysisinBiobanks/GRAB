@@ -8,6 +8,7 @@
 #include "engine/marker.hpp"
 #include "io/plink.hpp"
 #include "io/sparse_grm.hpp"
+#include "io/subject_data.hpp"
 #include "util/logging.hpp"
 
 #include <algorithm>
@@ -44,40 +45,7 @@ constexpr double ZETA_DEFAULT = 0.01;
 constexpr double TOL_DEFAULT  = 1e-6;
 
 
-// ══════════════════════════════════════════════════════════════════════
-// Simple 2-column residual file loader: SubjID  Resid
-// Skips '#' header lines.  Returns parallel vectors.
-// ══════════════════════════════════════════════════════════════════════
-struct ResidEntry { std::string id; double resid; };
 
-std::vector<ResidEntry> loadResid2Col(const std::string& filename) {
-  std::ifstream ifs(filename);
-  if (!ifs) throw std::runtime_error("Cannot open residual file: " + filename);
-  std::vector<ResidEntry> out;
-  std::string line;
-  while (std::getline(ifs, line)) {
-    if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (line.empty() || line[0] == '#') continue;
-    const char*       p   = line.c_str();
-    const char* const end = p + line.size();
-    auto skipWS  = [&]() { while (p < end && (*p == ' ' || *p == '\t')) ++p; };
-    auto nextTok = [&]() -> std::string {
-      skipWS();
-      const char* s = p;
-      while (p < end && *p != ' ' && *p != '\t') ++p;
-      return std::string(s, p);
-    };
-    std::string id = nextTok();
-    skipWS();
-    if (id.empty() || p >= end) continue;
-    char* endPtr;
-    double val = std::strtod(p, &endPtr);
-    if (endPtr == p)
-      throw std::runtime_error("Bad residual value in " + filename + " for ID " + id);
-    out.push_back({std::move(id), val});
-  }
-  return out;
-}
 
 
 // ══════════════════════════════════════════════════════════════════════
@@ -124,6 +92,49 @@ std::vector<GRMEntry> parseGRM(
     auto it2 = idMap.find(id2);
     if (it1 == idMap.end() || it2 == idMap.end()) continue;
     entries.push_back({it1->second, it2->second, val});
+  }
+  return entries;
+}
+
+// Same as parseGRM but for GCTA format (.grm.id + .grm.sp)
+std::vector<GRMEntry> parseGRM_GCTA(
+    const std::string& prefix,
+    const std::unordered_map<std::string, uint32_t>& idMap)
+{
+  auto fileIIDs = SparseGRM::readGctaIIDs(prefix);
+  const uint32_t nFileIDs = static_cast<uint32_t>(fileIIDs.size());
+
+  // Map file-index → canonical index
+  std::vector<uint32_t> fileToCanon(nFileIDs, UINT32_MAX);
+  for (uint32_t fi = 0; fi < nFileIDs; ++fi) {
+    auto it = idMap.find(fileIIDs[fi]);
+    if (it != idMap.end()) fileToCanon[fi] = it->second;
+  }
+
+  const std::string spFile = prefix + ".grm.sp";
+  std::ifstream ifs(spFile);
+  if (!ifs) throw std::runtime_error("Cannot open GCTA .grm.sp: " + spFile);
+
+  std::vector<GRMEntry> entries;
+  std::string line;
+  while (std::getline(ifs, line)) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line.empty()) continue;
+    const char* p = line.c_str();
+    char* endPtr;
+    unsigned long idx1 = std::strtoul(p, &endPtr, 10);
+    if (endPtr == p) continue;
+    p = endPtr;
+    unsigned long idx2 = std::strtoul(p, &endPtr, 10);
+    if (endPtr == p) continue;
+    p = endPtr;
+    double val = std::strtod(p, &endPtr);
+    if (endPtr == p) continue;
+    if (idx1 >= nFileIDs || idx2 >= nFileIDs) continue;
+    uint32_t r = fileToCanon[idx1];
+    uint32_t c = fileToCanon[idx2];
+    if (r == UINT32_MAX || c == UINT32_MAX) continue;
+    entries.push_back({r, c, val});
   }
   return entries;
 }
@@ -542,62 +553,24 @@ private:
 
 
 // ══════════════════════════════════════════════════════════════════════
-// runSPAGRM — entry point
+// buildSPAGRMNullModel — per-column null model construction
+//
+// Builds outlier detection, family R'GRM R terms, Chow-Liu trees, and
+// returns a ready-to-use SPAGRMClass.  Called once per residual column
+// in the multi-column loop.
 // ══════════════════════════════════════════════════════════════════════
 
-void runSPAGRM(
-    const std::string& residFile,
-    const std::string& sparseGrmFile,
-    const std::string& pairwiseIBDFile,
-    const std::string& bfilePrefix,
-    const std::string& outputFile,
-    double spaCutoff,
-    int nthreads,
-    int nSnpPerChunk,
-    double missingCutoff,
-    double minMafCutoff,
-    double minMacCutoff)
+static SPAGRMClass buildSPAGRMNullModel(
+    const Eigen::VectorXd& Resid,
+    uint32_t N,
+    const std::vector<std::string>& subjIDs,
+    const std::vector<GRMEntry>& grmEntries,
+    const std::unordered_set<uint32_t>& singletonSet,
+    const std::vector<std::vector<uint32_t>>& families,
+    const std::vector<IBDEntry>& ibdEntries,
+    double spaCutoff)
 {
-  // ══════════════════════════════════════════════════════════════════
-  // 1. Load residual matrix (2 columns: SubjID, Resid)
-  // ══════════════════════════════════════════════════════════════════
-  infoMsg("Loading residual file: %s", residFile.c_str());
-  auto residEntries = loadResid2Col(residFile);
-  const uint32_t N = static_cast<uint32_t>(residEntries.size());
-  infoMsg("Loaded %u subjects from residual file", N);
-
-  // Build subject list and residual vector
-  std::vector<std::string> subjIDs(N);
-  Eigen::VectorXd Resid(N);
-  std::unordered_map<std::string, uint32_t> subjIdMap;
-  subjIdMap.reserve(N);
-  for (uint32_t i = 0; i < N; ++i) {
-    subjIDs[i] = std::move(residEntries[i].id);
-    Resid[i]   = residEntries[i].resid;
-    subjIdMap.emplace(subjIDs[i], i);
-  }
-  std::unordered_set<std::string> subjSet(subjIDs.begin(), subjIDs.end());
-
-  // ══════════════════════════════════════════════════════════════════
-  // 2. Load sparse GRM
-  // ══════════════════════════════════════════════════════════════════
-  infoMsg("Loading sparse GRM: %s", sparseGrmFile.c_str());
-  auto grmEntries = parseGRM(sparseGrmFile, subjIdMap);
-  infoMsg("Sparse GRM: %zu entries (diagonal + off-diag)", grmEntries.size());
-
-  // ══════════════════════════════════════════════════════════════════
-  // 3. Load pairwise IBD
-  // ══════════════════════════════════════════════════════════════════
-  infoMsg("Loading pairwise IBD: %s", pairwiseIBDFile.c_str());
-  auto ibdEntries = loadIBD(pairwiseIBDFile, subjSet);
-  infoMsg("Loaded %zu IBD records", ibdEntries.size());
-
-  // ══════════════════════════════════════════════════════════════════
-  // 4. Outlier detection (IQR-based, matching R ControlOutlier logic)
-  // ══════════════════════════════════════════════════════════════════
-  infoMsg("Detecting outliers (IQR method)");
-
-  // Sort for quantile computation
+  // ── Outlier detection (IQR) ──────────────────────────────────────
   std::vector<double> sortedResid(N);
   for (uint32_t i = 0; i < N; ++i) sortedResid[i] = Resid[i];
   std::sort(sortedResid.begin(), sortedResid.end());
@@ -623,95 +596,23 @@ void runSPAGRM(
   };
 
   int nOutlier = recomputeOutliers();
-  infoMsg("Outlier cutoffs: [%.3f, %.3f], outliers: %d", cutLo, cutHi, nOutlier);
 
   if (CONTROL_OUTLIER) {
-    // Shrink ratio until we get at least 1 outlier
     while (nOutlier == 0) {
       outlierRatio *= 0.8;
       nOutlier = recomputeOutliers();
-      infoMsg("Adjusted cutoffs: [%.3f, %.3f], outliers: %d", cutLo, cutHi, nOutlier);
     }
-    // Expand ratio if outliers exceed 5%
     while (static_cast<double>(nOutlier) / N > 0.05) {
       outlierRatio += 0.5;
       nOutlier = recomputeOutliers();
-      infoMsg("Reducing outliers: cutoffs [%.3f, %.3f], outliers: %d (%.1f%%)",
-              cutLo, cutHi, nOutlier, 100.0 * nOutlier / N);
-    }
-  }
-  infoMsg("Final outlier count: %d / %u (%.1f%%)",
-          nOutlier, N, 100.0 * nOutlier / N);
-
-  // ══════════════════════════════════════════════════════════════════
-  // 5. Compute |Cov| = |value * R[i] * R[j]| for off-diagonal GRM
-  //    entries, used to weight edges for greedy family splitting.
-  // ══════════════════════════════════════════════════════════════════
-
-  // Separate diagonal and off-diagonal entries
-  struct OffDiagEntry {
-    uint32_t row, col;
-    double value;
-    double cov;  // |value * R[row] * R[col]|
-  };
-  std::vector<OffDiagEntry> offDiag;
-  offDiag.reserve(grmEntries.size());
-  for (const auto& e : grmEntries) {
-    if (e.row != e.col) {
-      offDiag.push_back({e.row, e.col, e.value,
-                         std::abs(e.value * Resid[e.row] * Resid[e.col])});
     }
   }
 
-  // Build edges for connected components (unique undirected)
-  std::vector<std::pair<uint32_t, uint32_t>> edges;
-  {
-    std::unordered_set<uint64_t> seen;
-    for (const auto& e : offDiag) {
-      uint32_t lo = std::min(e.row, e.col);
-      uint32_t hi = std::max(e.row, e.col);
-      uint64_t key = (static_cast<uint64_t>(lo) << 32) | hi;
-      if (seen.insert(key).second)
-        edges.push_back({lo, hi});
-    }
-  }
-
-  // ══════════════════════════════════════════════════════════════════
-  // 6. Connected-component decomposition
-  // ══════════════════════════════════════════════════════════════════
-  auto components = getComponents(N, edges);
-  infoMsg("Found %zu connected components", components.size());
-
-  // Classify into singletons (unrelated) and families
-  std::vector<std::vector<uint32_t>> singletons, families;
-  for (auto& comp : components) {
-    if (comp.size() == 1)
-      singletons.push_back(std::move(comp));
-    else
-      families.push_back(std::move(comp));
-  }
-  infoMsg("Singletons: %zu, Families: %zu", singletons.size(), families.size());
-
-  // ══════════════════════════════════════════════════════════════════
-  // 7. Accumulate global variance terms
-  // ══════════════════════════════════════════════════════════════════
-
-  // For singletons (unrelated): count their GRM diagonal contribution
-  std::unordered_set<uint32_t> singletonSet;
-  for (const auto& s : singletons) singletonSet.insert(s[0]);
-
-  std::unordered_set<uint32_t> singletonNonOutlierSet;
-  for (uint32_t idx : singletonSet) {
-    if (!isOutlier[idx]) singletonNonOutlierSet.insert(idx);
-  }
-
-  // R_GRM_R: sum over all entries where both subjects are singletons
-  // (This is just the diagonal entries for singletons since they have no off-diag within-group.)
+  // ── Accumulate global variance terms for singletons ──────────────
   double R_GRM_R = 0.0;
   double sum_R_nonOutlier = 0.0;
   double R_GRM_R_nonOutlier = 0.0;
 
-  // Unrelated singletons: their GRM contribution is just the diagonal entry
   for (const auto& e : grmEntries) {
     if (e.row == e.col && singletonSet.count(e.row)) {
       double contrib = e.value * Resid[e.row] * Resid[e.col];
@@ -725,7 +626,6 @@ void runSPAGRM(
       sum_R_nonOutlier += Resid[idx];
   }
 
-  // Unrelated outlier residuals
   std::vector<double> unrelatedOutlierResids;
   for (uint32_t idx : singletonSet) {
     if (isOutlier[idx])
@@ -734,282 +634,336 @@ void runSPAGRM(
 
   double R_GRM_R_TwoSubjOutlier = 0.0;
 
-  // Lists for SPAGRMClass
   std::vector<std::array<double, 2>> twoSubj_resid_list;
   std::vector<std::vector<double>> twoSubj_rho_list;
   std::vector<std::vector<double>> threeSubj_standS_list;
   std::vector<Eigen::MatrixXd> threeSubj_CLT_list;
 
-  // ══════════════════════════════════════════════════════════════════
-  // 8. Process families
-  // ══════════════════════════════════════════════════════════════════
-  if (!families.empty()) {
-    infoMsg("Processing %zu family groups", families.size());
+  // ── Process families ─────────────────────────────────────────────
+  std::vector<std::vector<uint32_t>> outlierFamilies;
 
-    // Structures to hold outlier families after greedy splitting
-    std::vector<std::vector<uint32_t>> outlierFamilies;
+  for (size_t fi = 0; fi < families.size(); ++fi) {
+    const auto& fam = families[fi];
 
-    for (size_t fi = 0; fi < families.size(); ++fi) {
-      const auto& fam = families[fi];
+    bool hasOutlier = false;
+    for (uint32_t idx : fam)
+      if (isOutlier[idx]) { hasOutlier = true; break; }
 
-      // Check if any member is an outlier
-      bool hasOutlier = false;
-      for (uint32_t idx : fam) {
-        if (isOutlier[idx]) { hasOutlier = true; break; }
+    double famQuad = familyQuadForm(fam, grmEntries, Resid);
+    R_GRM_R += famQuad;
+
+    if (!hasOutlier) {
+      double famSum = 0.0;
+      for (uint32_t idx : fam) famSum += Resid[idx];
+      sum_R_nonOutlier += famSum;
+      R_GRM_R_nonOutlier += famQuad;
+      continue;
+    }
+
+    if (static_cast<int>(fam.size()) <= MAX_NUM_IN_FAM) {
+      outlierFamilies.push_back(fam);
+      continue;
+    }
+
+    // ── Greedy family splitting ──────────────────────────────────
+    std::unordered_set<uint32_t> famSet(fam.begin(), fam.end());
+
+    struct OffDiagEntry {
+      uint32_t row, col;
+      double value, cov;
+    };
+    std::vector<OffDiagEntry> famEdges;
+    for (const auto& e : grmEntries) {
+      if (e.row == e.col) continue;
+      if (!famSet.count(e.row) || !famSet.count(e.col)) continue;
+      if (e.row < e.col)
+        famEdges.push_back({e.row, e.col, e.value,
+                           std::abs(e.value * Resid[e.row] * Resid[e.col])});
+    }
+    std::sort(famEdges.begin(), famEdges.end(),
+              [](const OffDiagEntry& a, const OffDiagEntry& b) {
+                return a.cov < b.cov;
+              });
+
+    std::vector<bool> edgeRemoved(famEdges.size(), false);
+    int removeUpTo = -1;
+    for (size_t j = 0; j < famEdges.size(); ++j) {
+      edgeRemoved[j] = true;
+      std::vector<std::pair<uint32_t, uint32_t>> remainingEdges;
+      for (size_t k = 0; k < famEdges.size(); ++k) {
+        if (!edgeRemoved[k])
+          remainingEdges.push_back({famEdges[k].row, famEdges[k].col});
       }
-
-      // Compute R' * GRM * R for this family
-      double famQuad = familyQuadForm(fam, grmEntries, Resid);
-      R_GRM_R += famQuad;
-
-      if (!hasOutlier) {
-        // No outliers: add to non-outlier sums
-        double famSum = 0.0;
-        for (uint32_t idx : fam) famSum += Resid[idx];
-        sum_R_nonOutlier += famSum;
-        R_GRM_R_nonOutlier += famQuad;
-        continue;
+      auto subComps = getComponents(N, remainingEdges);
+      int maxComp = 0;
+      for (const auto& sc : subComps) {
+        int cnt = 0;
+        for (uint32_t idx : sc) if (famSet.count(idx)) ++cnt;
+        maxComp = std::max(maxComp, cnt);
       }
-
-      // Family has outliers
-      if (static_cast<int>(fam.size()) <= MAX_NUM_IN_FAM) {
-        outlierFamilies.push_back(fam);
-        continue;
+      if (maxComp <= MAX_NUM_IN_FAM) {
+        removeUpTo = static_cast<int>(j);
+        break;
       }
+    }
 
-      // ── Greedy family splitting ──────────────────────────────────
-      // Need to split this family so max component <= MAX_NUM_IN_FAM
-      //
-      // Step 1: Remove edges in ascending |Cov| order until max component <= K
-      // Step 2: Add back removed edges in descending |Cov| if they don't violate
-
-      // Collect edges within this family, sorted by Cov ascending
-      std::unordered_set<uint32_t> famSet(fam.begin(), fam.end());
-      std::vector<OffDiagEntry> famEdges;
-      for (const auto& e : offDiag) {
-        if (famSet.count(e.row) && famSet.count(e.col)) {
-          // Keep only one direction (lower < upper)
-          if (e.row < e.col)
-            famEdges.push_back(e);
-        }
-      }
-      std::sort(famEdges.begin(), famEdges.end(),
-                [](const OffDiagEntry& a, const OffDiagEntry& b) {
-                  return a.cov < b.cov;
-                });
-
-      // Remove edges one by one until max component <= MAX_NUM_IN_FAM
-      std::vector<bool> edgeRemoved(famEdges.size(), false);
-      int removeUpTo = -1;
-      for (size_t j = 0; j < famEdges.size(); ++j) {
-        edgeRemoved[j] = true;
-
-        // Build remaining edges and check components
+    if (removeUpTo >= 0) {
+      for (int j = removeUpTo; j >= 0; --j) {
+        edgeRemoved[j] = false;
         std::vector<std::pair<uint32_t, uint32_t>> remainingEdges;
         for (size_t k = 0; k < famEdges.size(); ++k) {
           if (!edgeRemoved[k])
             remainingEdges.push_back({famEdges[k].row, famEdges[k].col});
         }
         auto subComps = getComponents(N, remainingEdges);
-        // Check max component size (only among family members)
         int maxComp = 0;
         for (const auto& sc : subComps) {
           int cnt = 0;
-          for (uint32_t idx : sc) {
-            if (famSet.count(idx)) ++cnt;
-          }
+          for (uint32_t idx : sc) if (famSet.count(idx)) ++cnt;
           maxComp = std::max(maxComp, cnt);
         }
-        if (maxComp <= MAX_NUM_IN_FAM) {
-          removeUpTo = static_cast<int>(j);
-          break;
-        }
-      }
-
-      // Step 2: Add back removed edges in descending Cov order
-      if (removeUpTo >= 0) {
-        for (int j = removeUpTo; j >= 0; --j) {
-          edgeRemoved[j] = false;  // try adding back
-
-          std::vector<std::pair<uint32_t, uint32_t>> remainingEdges;
-          for (size_t k = 0; k < famEdges.size(); ++k) {
-            if (!edgeRemoved[k])
-              remainingEdges.push_back({famEdges[k].row, famEdges[k].col});
-          }
-          auto subComps = getComponents(N, remainingEdges);
-          int maxComp = 0;
-          for (const auto& sc : subComps) {
-            int cnt = 0;
-            for (uint32_t idx : sc) {
-              if (famSet.count(idx)) ++cnt;
-            }
-            maxComp = std::max(maxComp, cnt);
-          }
-          if (maxComp > MAX_NUM_IN_FAM) {
-            edgeRemoved[j] = true;  // can't add back
-          }
-        }
-      }
-
-      // Build final sub-components from remaining edges
-      std::vector<std::pair<uint32_t, uint32_t>> finalEdges;
-      for (size_t k = 0; k < famEdges.size(); ++k) {
-        if (!edgeRemoved[k])
-          finalEdges.push_back({famEdges[k].row, famEdges[k].col});
-      }
-      auto subComps = getComponents(N, finalEdges);
-
-      // Process each sub-component
-      for (const auto& sc : subComps) {
-        // Filter to family members only
-        std::vector<uint32_t> subFam;
-        for (uint32_t idx : sc) {
-          if (famSet.count(idx)) subFam.push_back(idx);
-        }
-        if (subFam.empty()) continue;
-
-        bool subHasOutlier = false;
-        for (uint32_t idx : subFam) {
-          if (isOutlier[idx]) { subHasOutlier = true; break; }
-        }
-
-        double subQuad = familyQuadForm(subFam, grmEntries, Resid);
-
-        if (!subHasOutlier) {
-          double subSum = 0.0;
-          for (uint32_t idx : subFam) subSum += Resid[idx];
-          sum_R_nonOutlier += subSum;
-          R_GRM_R_nonOutlier += subQuad;
-        } else {
-          outlierFamilies.push_back(std::move(subFam));
-        }
+        if (maxComp > MAX_NUM_IN_FAM) edgeRemoved[j] = true;
       }
     }
 
-    // ══════════════════════════════════════════════════════════════════
-    // 9. Build Chow-Liu trees for outlier families
-    // ══════════════════════════════════════════════════════════════════
-    infoMsg("Building Chow-Liu trees for %zu outlier families",
-            outlierFamilies.size());
+    std::vector<std::pair<uint32_t, uint32_t>> finalEdges;
+    for (size_t k = 0; k < famEdges.size(); ++k) {
+      if (!edgeRemoved[k])
+        finalEdges.push_back({famEdges[k].row, famEdges[k].col});
+    }
+    auto subComps = getComponents(N, finalEdges);
 
-    for (const auto& fam : outlierFamilies) {
-      const int n1 = static_cast<int>(fam.size());
+    for (const auto& sc : subComps) {
+      std::vector<uint32_t> subFam;
+      for (uint32_t idx : sc) if (famSet.count(idx)) subFam.push_back(idx);
+      if (subFam.empty()) continue;
 
-      if (n1 == 1) {
-        // Singleton outlier from family splitting
-        unrelatedOutlierResids.push_back(Resid[fam[0]]);
-        continue;
+      bool subHasOutlier = false;
+      for (uint32_t idx : subFam) if (isOutlier[idx]) { subHasOutlier = true; break; }
+
+      double subQuad = familyQuadForm(subFam, grmEntries, Resid);
+
+      if (!subHasOutlier) {
+        double subSum = 0.0;
+        for (uint32_t idx : subFam) subSum += Resid[idx];
+        sum_R_nonOutlier += subSum;
+        R_GRM_R_nonOutlier += subQuad;
+      } else {
+        outlierFamilies.push_back(std::move(subFam));
       }
-
-      if (n1 == 2) {
-        // Two-subject outlier family
-        double R1 = Resid[fam[0]];
-        double R2 = Resid[fam[1]];
-
-        // Compute quad form for this pair
-        double pairQuad = familyQuadForm(fam, grmEntries, Resid);
-        R_GRM_R_TwoSubjOutlier += pairQuad;
-
-        // Find the IBD entry for this pair
-        const std::string& sid1 = subjIDs[fam[0]];
-        const std::string& sid2 = subjIDs[fam[1]];
-        double pa = 0, pb = 0;
-        for (const auto& ibd : ibdEntries) {
-          if ((ibd.id1 == sid1 && ibd.id2 == sid2) ||
-              (ibd.id1 == sid2 && ibd.id2 == sid1)) {
-            pa = ibd.pa; pb = ibd.pb;
-            break;
-          }
-        }
-
-        double Rho = pa + 0.5 * pb;
-        double midterm = std::sqrt(std::max(Rho * Rho - pa, 0.0));
-
-        twoSubj_resid_list.push_back({R1, R2});
-        twoSubj_rho_list.push_back({Rho + midterm, Rho - midterm});
-        continue;
-      }
-
-      // Three-or-more subject outlier family
-      // Collect family IDs and residuals
-      std::vector<std::string> famIDs(n1);
-      std::vector<double>     famResid(n1);
-      for (int i = 0; i < n1; ++i) {
-        famIDs[i]   = subjIDs[fam[i]];
-        famResid[i] = Resid[fam[i]];
-      }
-
-      // Collect IBD entries within this family
-      std::unordered_set<std::string> famIDSet(famIDs.begin(), famIDs.end());
-      std::vector<IBDEntry> famIBD;
-      for (const auto& ibd : ibdEntries) {
-        if (famIDSet.count(ibd.id1) && famIDSet.count(ibd.id2))
-          famIBD.push_back(ibd);
-      }
-
-      // Build Chow-Liu tree probability matrix
-      Eigen::MatrixXd CLT = buildChowLiuTree(n1, famIBD, famIDs, MAF_INTERVAL);
-
-      // Build stand.S vector
-      std::vector<double> standS = buildStandS(n1, famResid);
-
-      threeSubj_standS_list.push_back(std::move(standS));
-      threeSubj_CLT_list.push_back(std::move(CLT));
     }
   }
 
-  infoMsg("SPAGRM null model summary:");
-  infoMsg("  R_GRM_R = %.6f", R_GRM_R);
-  infoMsg("  R_GRM_R_nonOutlier = %.6f", R_GRM_R_nonOutlier);
-  infoMsg("  R_GRM_R_TwoSubjOutlier = %.6f", R_GRM_R_TwoSubjOutlier);
-  infoMsg("  sum_R_nonOutlier = %.6f", sum_R_nonOutlier);
-  infoMsg("  Unrelated outliers: %zu", unrelatedOutlierResids.size());
-  infoMsg("  Two-subject families: %zu", twoSubj_resid_list.size());
-  infoMsg("  Three+ subject families: %zu", threeSubj_standS_list.size());
+  // ── Build Chow-Liu trees for outlier families ────────────────────
+  for (const auto& fam : outlierFamilies) {
+    const int n1 = static_cast<int>(fam.size());
 
-  // ══════════════════════════════════════════════════════════════════
-  // 10. Build SPAGRMClass
-  // ══════════════════════════════════════════════════════════════════
+    if (n1 == 1) {
+      unrelatedOutlierResids.push_back(Resid[fam[0]]);
+      continue;
+    }
+
+    if (n1 == 2) {
+      double R1 = Resid[fam[0]], R2 = Resid[fam[1]];
+      double pairQuad = familyQuadForm(fam, grmEntries, Resid);
+      R_GRM_R_TwoSubjOutlier += pairQuad;
+
+      const std::string& sid1 = subjIDs[fam[0]];
+      const std::string& sid2 = subjIDs[fam[1]];
+      double pa = 0, pb = 0;
+      for (const auto& ibd : ibdEntries) {
+        if ((ibd.id1 == sid1 && ibd.id2 == sid2) ||
+            (ibd.id1 == sid2 && ibd.id2 == sid1)) {
+          pa = ibd.pa; pb = ibd.pb; break;
+        }
+      }
+
+      double Rho = pa + 0.5 * pb;
+      double midterm = std::sqrt(std::max(Rho * Rho - pa, 0.0));
+
+      twoSubj_resid_list.push_back({R1, R2});
+      twoSubj_rho_list.push_back({Rho + midterm, Rho - midterm});
+      continue;
+    }
+
+    // Three-or-more subject outlier family
+    std::vector<std::string> famIDs(n1);
+    std::vector<double>     famResid(n1);
+    for (int i = 0; i < n1; ++i) {
+      famIDs[i]   = subjIDs[fam[i]];
+      famResid[i] = Resid[fam[i]];
+    }
+
+    std::unordered_set<std::string> famIDSet(famIDs.begin(), famIDs.end());
+    std::vector<IBDEntry> famIBD;
+    for (const auto& ibd : ibdEntries) {
+      if (famIDSet.count(ibd.id1) && famIDSet.count(ibd.id2))
+        famIBD.push_back(ibd);
+    }
+
+    Eigen::MatrixXd CLT = buildChowLiuTree(n1, famIBD, famIDs, MAF_INTERVAL);
+    std::vector<double> standS = buildStandS(n1, famResid);
+
+    threeSubj_standS_list.push_back(std::move(standS));
+    threeSubj_CLT_list.push_back(std::move(CLT));
+  }
+
+  // ── Assemble SPAGRMClass ─────────────────────────────────────────
   Eigen::VectorXd residOutliers = Eigen::Map<Eigen::VectorXd>(
       unrelatedOutlierResids.data(),
       static_cast<Eigen::Index>(unrelatedOutlierResids.size()));
 
-  nsSPAGRM::FamilyData fam;
-  fam.resid_unrelated_outliers = std::move(residOutliers);
-  fam.twoSubj_resid = std::move(twoSubj_resid_list);
-  fam.twoSubj_rho   = std::move(twoSubj_rho_list);
-  fam.threeSubj_standS = std::move(threeSubj_standS_list);
-  fam.threeSubj_CLT    = std::move(threeSubj_CLT_list);
+  nsSPAGRM::FamilyData fd;
+  fd.resid_unrelated_outliers = std::move(residOutliers);
+  fd.twoSubj_resid = std::move(twoSubj_resid_list);
+  fd.twoSubj_rho   = std::move(twoSubj_rho_list);
+  fd.threeSubj_standS = std::move(threeSubj_standS_list);
+  fd.threeSubj_CLT    = std::move(threeSubj_CLT_list);
 
-  SPAGRMClass spagrm(
+  return SPAGRMClass(
       Resid,
       sum_R_nonOutlier,
       R_GRM_R_nonOutlier,
       R_GRM_R_TwoSubjOutlier,
       R_GRM_R,
       MAF_INTERVAL,
-      std::move(fam),
+      std::move(fd),
       spaCutoff,
       ZETA_DEFAULT,
       TOL_DEFAULT);
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// runSPAGRM — entry point
+// ══════════════════════════════════════════════════════════════════════
+
+void runSPAGRM(
+    const std::string& residFile,
+    const std::string& spgrmSaigeFile,
+    const std::string& spgrmGctaPrefix,
+    const std::string& pairwiseIBDFile,
+    const std::string& bfilePrefix,
+    const std::string& outputFile,
+    double spaCutoff,
+    int nthreads,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff)
+{
+  // ══════════════════════════════════════════════════════════════════
+  // 1. Load residual file (2 columns: SubjID, Resid)
+  // ══════════════════════════════════════════════════════════════════
+  infoMsg("Loading residual file: %s", residFile.c_str());
+  auto famIIDs = parseFamIIDs(bfilePrefix + ".fam");
+  SubjectData sd(std::move(famIIDs));
+  sd.loadResidOne(residFile);
+  sd.finalize();
+  const uint32_t N = sd.nUsed();
+  infoMsg("Loaded %u subjects (intersected with .fam)", N);
+
+  auto subjIDs = sd.usedIIDs();
+  std::unordered_map<std::string, uint32_t> subjIdMap;
+  subjIdMap.reserve(N);
+  for (uint32_t i = 0; i < N; ++i)
+    subjIdMap.emplace(subjIDs[i], i);
+  std::unordered_set<std::string> subjSet(subjIDs.begin(), subjIDs.end());
 
   // ══════════════════════════════════════════════════════════════════
-  // 11. Load PLINK and run marker engine
+  // 2. Load sparse GRM
+  // ══════════════════════════════════════════════════════════════════
+  std::vector<GRMEntry> grmEntries;
+  if (!spgrmGctaPrefix.empty()) {
+    infoMsg("Loading GCTA sparse GRM: %s.grm.sp", spgrmGctaPrefix.c_str());
+    grmEntries = parseGRM_GCTA(spgrmGctaPrefix, subjIdMap);
+  } else {
+    infoMsg("Loading sparse GRM: %s", spgrmSaigeFile.c_str());
+    grmEntries = parseGRM(spgrmSaigeFile, subjIdMap);
+  }
+  infoMsg("Sparse GRM: %zu entries (diagonal + off-diag)", grmEntries.size());
+
+  // ══════════════════════════════════════════════════════════════════
+  // 3. Load pairwise IBD
+  // ══════════════════════════════════════════════════════════════════
+  infoMsg("Loading pairwise IBD: %s", pairwiseIBDFile.c_str());
+  auto ibdEntries = loadIBD(pairwiseIBDFile, subjSet);
+  infoMsg("Loaded %zu IBD records", ibdEntries.size());
+
+  // ══════════════════════════════════════════════════════════════════
+  // 4. Build GRM topology (components, singletons, families)
+  // ══════════════════════════════════════════════════════════════════
+  std::vector<std::pair<uint32_t, uint32_t>> edges;
+  {
+    std::unordered_set<uint64_t> seen;
+    for (const auto& e : grmEntries) {
+      if (e.row == e.col) continue;
+      uint32_t lo = std::min(e.row, e.col);
+      uint32_t hi = std::max(e.row, e.col);
+      uint64_t key = (static_cast<uint64_t>(lo) << 32) | hi;
+      if (seen.insert(key).second)
+        edges.push_back({lo, hi});
+    }
+  }
+  auto components = getComponents(N, edges);
+  infoMsg("Found %zu connected components", components.size());
+
+  std::vector<std::vector<uint32_t>> singletons, families;
+  for (auto& comp : components) {
+    if (comp.size() == 1)
+      singletons.push_back(std::move(comp));
+    else
+      families.push_back(std::move(comp));
+  }
+  infoMsg("Singletons: %zu, Families: %zu", singletons.size(), families.size());
+
+  std::unordered_set<uint32_t> singletonSet;
+  for (const auto& s : singletons) singletonSet.insert(s[0]);
+
+  // ══════════════════════════════════════════════════════════════════
+  // 5. Load PLINK data
   // ══════════════════════════════════════════════════════════════════
   infoMsg("Loading PLINK files: %s", bfilePrefix.c_str());
   PlinkData plinkData(
       bfilePrefix + ".bed",
       bfilePrefix + ".bim",
       bfilePrefix + ".fam",
-      subjIDs,
+      sd.usedMask(),
+      sd.nFam(),
+      sd.nUsed(),
       "ref-first",
       {}, {}, {}, {},
       nSnpPerChunk);
 
-  SPAGRMMethod method(std::move(spagrm));
+  // ══════════════════════════════════════════════════════════════════
+  // 6. Per-residual-column loop
+  // ══════════════════════════════════════════════════════════════════
+  const int nRC = sd.residOneCols();
+  if (nRC > 1)
+    infoMsg("Multi-column residual file: %d columns", nRC);
 
-  infoMsg("Starting SPAGRM marker-level association (%d threads)", nthreads);
-  markerEngine(plinkData, method, outputFile,
-               nthreads, missingCutoff, minMafCutoff, minMacCutoff,
-               /*exactHwe=*/false);
+  for (int rc = 0; rc < nRC; ++rc) {
+    Eigen::VectorXd colBuf;
+    if (nRC > 1) colBuf = sd.residMatrix().col(rc);
+    const Eigen::VectorXd& Resid = (nRC > 1) ? colBuf : sd.residuals();
+
+    std::string outFile = (nRC == 1) ? outputFile
+        : (outputFile + "." + std::to_string(rc + 1) + ".gz");
+    if (nRC > 1)
+      infoMsg("  Column %d/%d%s -> %s", rc + 1, nRC,
+              (rc < static_cast<int>(sd.residColNames().size())
+                   ? (" (" + sd.residColNames()[rc] + ")").c_str() : ""),
+              outFile.c_str());
+
+    SPAGRMClass spagrm = buildSPAGRMNullModel(
+        Resid, N, subjIDs, grmEntries, singletonSet, families,
+        ibdEntries, spaCutoff);
+
+    SPAGRMMethod method(std::move(spagrm));
+
+    if (nRC == 1) infoMsg("Starting SPAGRM marker-level association (%d threads)", nthreads);
+    markerEngine(plinkData, method, outFile,
+                 nthreads, missingCutoff, minMafCutoff, minMacCutoff,
+                 /*exactHwe=*/false);
+  }
 }

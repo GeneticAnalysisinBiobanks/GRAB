@@ -119,7 +119,7 @@ struct ThreadContext {
     : method(proto.clone()),
       cursor(std::make_unique<PlinkCursor>(
           pd.bedFile(), pd.nMarkers(), pd.nSubjInFile(),
-          pd.samplePosMap(), pd.isAltFirst(), pd.isIdentityMap())),
+          pd.usedMask(), pd.nSubjUsed(), pd.isAltFirst(), pd.allUsed())),
       naSuffix(makeNaSuffix(proto.resultSize()))
   {}
 };

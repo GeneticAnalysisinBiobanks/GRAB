@@ -105,7 +105,7 @@ private:
 
 void runSPACox(
     const std::string& residFile,
-    const std::string& designFile,
+    const std::string& covarFile,
     const std::string& bfilePrefix,
     const std::string& outputFile,
     double pvalCovAdjCut,

@@ -17,7 +17,6 @@
 #include <Eigen/Dense>
 
 #include "engine/marker.hpp"
-#include "io/resid_file.hpp"
 
 class PlinkData;
 class SparseGRM;
@@ -108,17 +107,19 @@ private:
 // Phase 1 — Data loading & marker matching
 // ======================================================================
 
+// Parsed plink2 .afreq record (one per variant)
+// Columns: #CHROM  ID  REF  ALT  [PROVISIONAL_REF?]  ALT_FREQS  OBS_CT
 struct RefAfRecord {
   std::string chrom;
-  uint32_t    pos;
-  std::string a1;
-  std::string a2;
-  double      AF_ref;  // A1 allele frequency
-  double      N_ref;   // sample size (file column N)
+  std::string id;
+  std::string ref_allele;  // REF column (plink2 reference allele)
+  std::string alt_allele;  // ALT column (plink2 alternate allele)
+  double      alt_freq;    // ALT_FREQS column
+  double      obs_ct;      // OBS_CT column (allele observations; N = obs_ct/2)
 };
 
-// Parse a 6-column ref-af file: #CHROM  POS  A1  A2  A1F  N
-// Header line (starting with '#') is skipped. N is sample size (AN = 2*N).
+// Parse a plink2 --freq .afreq file.  Header line (starting with '#')
+// is used to detect column positions for CHROM, ID, REF, ALT, ALT_FREQS, OBS_CT.
 std::vector<RefAfRecord> loadRefAfFile(const std::string& filename);
 
 // Match bim markers to ref-af records by (chr, bp, a1, a2) — exact only.
@@ -135,6 +136,11 @@ struct MatchedMarkerInfo {
   double   mu_int;     // internal MAF = 0.5*mu0 + 0.5*mu1 (folded ≤0.5)
 };
 
+// Match bim markers to ref-af records by (CHROM, ID) with allele orientation:
+//   If afreq (ALT,REF) matches bim (col5,col6) -> AF_ref = ALT_FREQS
+//   If afreq (REF,ALT) matches bim (col5,col6) -> AF_ref = 1-ALT_FREQS
+//   Otherwise the marker is dropped.
+// N_ref = OBS_CT / 2.
 std::vector<MatchedMarkerInfo> matchMarkers(
     const PlinkData& plinkData,
     const std::vector<RefAfRecord>& refAf);
@@ -144,7 +150,7 @@ std::vector<MatchedMarkerInfo> matchMarkers(
 void computeMarkerStats(
     std::vector<MatchedMarkerInfo>& matched,
     const PlinkData& plinkData,
-    const ResidData& resid);
+    const Eigen::VectorXd& indicator);
 
 
 // ======================================================================
@@ -162,8 +168,10 @@ void computeMarkerStats(
 std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo>>
 testBatchEffects(
     const std::vector<MatchedMarkerInfo>& matched,
-    const ResidData& resid,
-    const SparseGRM* grm,       // nullptr if no GRM
+    const Eigen::VectorXd& residuals,
+    const Eigen::VectorXd& weights,
+    const Eigen::VectorXd& indicator,
+    const SparseGRM* grm,
     double refPrevalence,
     double cutoff);
 
@@ -176,7 +184,8 @@ void runWtCoxG(
     const std::string& residFile,
     const std::string& bfilePrefix,
     const std::string& refAfFile,
-    const std::string& sparseGrmFile,  // empty = no GRM
+    const std::string& spgrmSaigeFile,   // empty = no GRM
+    const std::string& spgrmGctaPrefix,  // empty = no GRM
     const std::string& outputFile,
     double refPrevalence,
     double cutoff,

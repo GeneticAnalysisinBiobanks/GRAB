@@ -1,13 +1,12 @@
 // leaf.hpp — LEAF: cluster-stratified WtCoxG with ancestry-matched reference AFs
 //
 // Workflow:
-//   1. Load per-cluster resid files → combined subject list + cluster indices
+//   1. Load per-cluster resid files + per-cluster ref-af files (plink2 .afreq)
 //   2. Load PLINK data with combined subjects
-//   3. Load multi-population ref-af file (#CHROM POS A1 A2 A1F_POP1 N_POP1 ...)
-//   4. Exact-match markers by (chr, pos, a1, a2) against .bim
-//   5. Per cluster: compute internal AF → summix → ancestry-matched AF_ref/N_ref
-//   6. Per cluster: batch-effect testing → refInfoMap
-//   7. Create LEAFMethod (N WtCoxGMethod objects) → markerEngine → meta-analysis
+//   3. Match markers by (CHROM, ID) with allele flip detection
+//   4. Per cluster: compute internal AF → summix → ancestry-matched AF_ref/N_ref
+//   5. Per cluster: batch-effect testing → refInfoMap
+//   6. Create LEAFMethod (N WtCoxGMethod objects) → markerEngine → meta-analysis
 #pragma once
 
 #include <cstdint>
@@ -22,43 +21,20 @@ class WtCoxGMethod;
 struct WtCoxGRefInfo;
 
 // ======================================================================
-// Multi-population reference AF record  (4+2K columns, '#' header line)
-// Format: #CHROM  POS  A1  A2  A1F_POP1  N_POP1  [A1F_POP2  N_POP2  ...]
+// Per-population reference AF matched against .bim
 // ======================================================================
 
-struct MultiPopRefAf {
-  struct Record {
-    std::string chrom;
-    uint32_t    pos;
-    std::string a1;     // same meaning as .bim A1
-    std::string a2;     // same meaning as .bim A2
-    std::vector<double> popAF;  // A1 frequency per reference population
-    std::vector<double> popN;   // sample size N per reference population
-  };
-  int                 nPop = 0;    // number of reference populations
-  std::vector<Record> records;
-};
-
-// Parse 4+2K column ref-af file; header line (starting with '#') is skipped.
-// N_POPk is sample size (allele count AN = 2*N).
-MultiPopRefAf loadMultiPopRefAfFile(const std::string& filename);
-
-
-// ======================================================================
-// Matched marker with multi-population allele frequencies
-// ======================================================================
-
-struct MultiPopMatchedMarker {
+struct PopMatchedAF {
   uint64_t genoIndex;
-  std::vector<double> popAF;  // per-pop A1 frequency (no flip)
-  std::vector<double> popN;   // per-pop sample size N
+  double   af;     // allele frequency aligned to .bim col5 orientation
+  double   n_ref;  // sample size = OBS_CT / 2
 };
 
-// Exact match by (chr, pos, a1, a2) between .bim and ref-af.
-// No allele flipping. Unmatched markers are dropped.
-std::vector<MultiPopMatchedMarker> matchMultiPopMarkers(
+// Load one plink2 .afreq file and match against PlinkData .bim markers
+// by (CHROM, ID) with allele flip detection.  Returns matched entries.
+std::vector<PopMatchedAF> loadAndMatchRefAf(
     const class PlinkData& plinkData,
-    const MultiPopRefAf&   refAf);
+    const std::string& afreqFile);
 
 
 // ======================================================================
@@ -115,8 +91,9 @@ private:
 void runLEAF(
     const std::vector<std::string>& residFiles,     // one per cluster
     const std::string& bfilePrefix,
-    const std::string& refAfFile,
-    const std::string& sparseGrmFile,               // empty = no GRM
+    const std::vector<std::string>& refAfFiles,     // one .afreq per pop (same order as residFiles)
+    const std::string& spgrmSaigeFile,              // empty = no GRM
+    const std::string& spgrmGctaPrefix,             // empty = no GRM
     const std::string& outputFile,
     double refPrevalence,
     double cutoff,

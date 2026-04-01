@@ -1,8 +1,9 @@
 // sparse_grm.hpp — Sparse GRM reader and quadratic-form evaluator
 //
-// File format: 3-column TSV  (ID1 \t ID2 \t value)
-// - Symmetric: only lower triangle (or arbitrary half) stored.
-// - Diagonal entries have ID1 == ID2.
+// Supports two formats:
+//   SAIGE: 3-column TSV  (ID1 \t ID2 \t value), '#'-header skipped
+//   GCTA:  plink2 --make-grm-sparse output (PREFIX.grm.sp + PREFIX.grm.id)
+//          .grm.id has FID IID per line; .grm.sp has 0-based-idx1 idx2 value
 //
 // Dedicated method for the quadratic form  x^T G x  where G is the sparse GRM
 // restricted to a given set of subjects.  This is needed by WtCoxG (variance
@@ -24,6 +25,7 @@ public:
     double   value;
   };
 
+  // ── SAIGE format ───────────────────────────────────────────────────
   // Parse the 3-column file.  Subjects not in `subjectOrder` are silently
   // dropped.  `subjectOrder` defines the canonical index mapping so that
   // quadratic-form vectors can use the same ordering.
@@ -35,6 +37,13 @@ public:
   SparseGRM(const std::string& filename,
             const std::vector<std::string>& subjectOrder,
             bool symmetrize = true);
+
+  // ── GCTA format (plink2 --make-grm-sparse) ────────────────────────
+  // Reads PREFIX.grm.id (FID IID) and PREFIX.grm.sp (idx1 idx2 value).
+  // Subjects not in `subjectOrder` are silently dropped.
+  static SparseGRM fromGCTA(const std::string& prefix,
+                            const std::vector<std::string>& subjectOrder,
+                            bool symmetrize = true);
 
   // Number of subjects that appear in both the file and subjectOrder.
   uint32_t nSubjects() const { return m_nSubj; }
@@ -57,7 +66,12 @@ public:
 
   const std::vector<Entry>& entries() const { return m_entries; }
 
+  // ── Shared GCTA .grm.id reader ────────────────────────────────────
+  // Read PREFIX.grm.id, return vector of IIDs (one per file line, IID = col 2).
+  static std::vector<std::string> readGctaIIDs(const std::string& prefix);
+
 private:
+  SparseGRM() = default;  // used by fromGCTA factory
   uint32_t             m_nSubj = 0;
   std::vector<Entry>   m_entries;   // symmetrised COO
 };

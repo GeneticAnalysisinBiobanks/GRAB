@@ -8,9 +8,8 @@
 #include <cmath>
 #include <vector>
 
-#include "io/data_matrix.hpp"
 #include "io/plink.hpp"
-#include "io/resid_file.hpp"
+#include "io/subject_data.hpp"
 #include "spamix/indiv_af.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
@@ -208,41 +207,22 @@ void runSPAmix(
     double minMafCutoff,
     double minMacCutoff) {
 
-  // ---- Load residual file ----
+  // ---- Load residual file and eigenvectors ----
   infoMsg("Loading residual file: %s", residFile.c_str());
-  ResidData resid = loadResidFile(residFile);
-  infoMsg("  %zu subjects loaded", resid.subjects.size());
+  auto famIIDs = parseFamIIDs(bfilePrefix + ".fam");
+  SubjectData sd(std::move(famIIDs));
+  sd.loadResidOne(residFile);
+  sd.loadEigenVecs(eigenVecsFile);
+  sd.finalize();
+  infoMsg("  %u subjects loaded, %d PCs", sd.nUsed(), sd.nPC());
 
-  // ---- Load eigenvectors (PCs) ----
-  infoMsg("Loading eigenvector file: %s", eigenVecsFile.c_str());
-  EigenVecData evd = loadEigenVecs(eigenVecsFile);
-  Eigen::MatrixXd PCs = std::move(evd.PCs);
-  infoMsg("  %zu subjects, %d PCs",
-          evd.subjects.size(), static_cast<int>(PCs.cols()));
-
-  if (static_cast<Eigen::Index>(evd.subjects.size()) !=
-      static_cast<Eigen::Index>(resid.subjects.size()))
-    throw std::runtime_error(
-        "Eigenvector subject count (" + std::to_string(evd.subjects.size()) +
-        ") does not match residual file (" +
-        std::to_string(resid.subjects.size()) + ")");
-
-  for (size_t i = 0; i < resid.subjects.size(); ++i) {
-    if (evd.subjects[i] != resid.subjects[i])
-      throw std::runtime_error(
-          "Subject order mismatch at row " + std::to_string(i + 1) +
-          ": eigen-vecs has '" + evd.subjects[i] +
-          "', resid-file has '" + resid.subjects[i] + "'");
-  }
-
-  const int N   = static_cast<int>(resid.subjects.size());
-  const int nPC = static_cast<int>(PCs.cols());
+  const int N   = static_cast<int>(sd.nUsed());
+  const int nPC = sd.nPC();
 
   // ---- Pre-compute OLS matrices for fit_lm ----
   Eigen::MatrixXd onePlusPCs(N, 1 + nPC);
   onePlusPCs.col(0).setOnes();
-  onePlusPCs.rightCols(nPC) = PCs;
-  PCs.resize(0, 0);  // free — data now lives only in onePlusPCs
+  onePlusPCs.rightCols(nPC) = sd.PCs();
 
   // OLS matrices — only needed for on-the-fly AF computation
   Eigen::MatrixXd XtX_inv_Xt;
@@ -255,22 +235,15 @@ void runSPAmix(
     sqrt_XtX_inv_diag = XtX_inv.diagonal().cwiseSqrt();
   }
 
-  // ---- Squared residuals ----
-  Eigen::VectorXd resid2 = resid.residuals.array().square();
-
-  // ---- Outlier detection ----
-  infoMsg("Detecting outlier residuals (ratio=%.2f)...", outlierRatio);
-  OutlierData outlier = detectOutliers(resid.residuals, outlierRatio);
-  infoMsg("  %zu outliers, %zu non-outliers",
-          outlier.posOutlier.size(), outlier.posNonOutlier.size());
-
   // ---- Load PLINK data ----
   infoMsg("Loading PLINK data: %s", bfilePrefix.c_str());
   PlinkData plinkData(
       bfilePrefix + ".bed",
       bfilePrefix + ".bim",
       bfilePrefix + ".fam",
-      resid.subjects,
+      sd.usedMask(),
+      sd.nFam(),
+      sd.nUsed(),
       "ref-first",
       {}, {}, {}, {},
       nSnpPerChunk);
@@ -296,25 +269,52 @@ void runSPAmix(
     infoMsg("  %zu AF models loaded", afModels.size());
   }
 
-  // ---- Construct method and run engine ----
-  infoMsg("Running SPAmix marker tests (%d thread(s))...", nthread);
-  std::unique_ptr<SPAmixMethod> method;
-  if (!afFile.empty()) {
-    method = std::make_unique<SPAmixMethod>(
-        resid.residuals, resid2, onePlusPCs,
-        outlier, spaCutoff,
-        afModels, genoToFlat);
-  } else {
-    infoMsg("AF models computed on-the-fly during marker testing.");
-    method = std::make_unique<SPAmixMethod>(
-        resid.residuals, resid2, onePlusPCs,
-        XtX_inv_Xt, sqrt_XtX_inv_diag, outlier, spaCutoff);
-  }
+  // ---- Per-residual-column loop ----
+  const int nRC = sd.residOneCols();
+  if (nRC > 1)
+    infoMsg("Multi-column residual file: %d columns", nRC);
 
-  markerEngine(plinkData, *method, outputFile,
-               nthread,
-               missingCutoff,
-               minMafCutoff,
-               minMacCutoff,
-               /*exactHwe=*/false);
+  for (int rc = 0; rc < nRC; ++rc) {
+    Eigen::VectorXd colBuf;
+    if (nRC > 1) colBuf = sd.residMatrix().col(rc);
+    const Eigen::VectorXd& resid = (nRC > 1) ? colBuf : sd.residuals();
+
+    std::string outFile = (nRC == 1) ? outputFile
+        : (outputFile + "." + std::to_string(rc + 1) + ".gz");
+    if (nRC > 1)
+      infoMsg("  Column %d/%d%s -> %s", rc + 1, nRC,
+              (rc < static_cast<int>(sd.residColNames().size())
+                   ? (" (" + sd.residColNames()[rc] + ")").c_str() : ""),
+              outFile.c_str());
+
+    // ---- Squared residuals ----
+    Eigen::VectorXd resid2 = resid.array().square();
+
+    // ---- Outlier detection ----
+    OutlierData outlier = detectOutliers(resid, outlierRatio);
+    if (nRC == 1)
+      infoMsg("  %zu outliers, %zu non-outliers",
+              outlier.posOutlier.size(), outlier.posNonOutlier.size());
+
+    // ---- Construct method and run engine ----
+    if (nRC == 1) infoMsg("Running SPAmix marker tests (%d thread(s))...", nthread);
+    std::unique_ptr<SPAmixMethod> method;
+    if (!afFile.empty()) {
+      method = std::make_unique<SPAmixMethod>(
+          resid, resid2, onePlusPCs,
+          outlier, spaCutoff,
+          afModels, genoToFlat);
+    } else {
+      method = std::make_unique<SPAmixMethod>(
+          resid, resid2, onePlusPCs,
+          XtX_inv_Xt, sqrt_XtX_inv_diag, outlier, spaCutoff);
+    }
+
+    markerEngine(plinkData, *method, outFile,
+                 nthread,
+                 missingCutoff,
+                 minMafCutoff,
+                 minMacCutoff,
+                 /*exactHwe=*/false);
+  }
 }

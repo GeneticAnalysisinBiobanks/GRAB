@@ -3,6 +3,7 @@
 #include "wtcoxg/leaf.hpp"
 #include "wtcoxg/wtcoxg.hpp"
 #include "io/plink.hpp"
+#include "io/subject_data.hpp"
 #include "io/sparse_grm.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
@@ -19,135 +20,48 @@
 #include <cctype>
 
 // ======================================================================
-// Helper utilities
+// loadAndMatchRefAf — load one plink2 .afreq and match vs PlinkData
 // ======================================================================
 
-namespace {
-
-// Split a line on whitespace (tabs and spaces)
-std::vector<std::string> splitWS(const std::string& line) {
-  std::vector<std::string> tokens;
-  std::istringstream iss(line);
-  std::string tok;
-  while (iss >> tok) tokens.push_back(std::move(tok));
-  return tokens;
-}
-
-} // anon namespace
-
-
-// ======================================================================
-// Multi-population ref-af file parser (4+2K columns, '#' header line)
-// Format: #CHROM  POS  A1  A2  A1F_POP1  N_POP1  [A1F_POP2  N_POP2  ...]
-// Lines starting with '#' are skipped (covers the header).
-// N_POPk is sample size; allele count AN_k = 2*N_k.
-// ======================================================================
-
-MultiPopRefAf loadMultiPopRefAfFile(const std::string& filename) {
-  std::ifstream ifs(filename);
-  if (!ifs) throw std::runtime_error("Cannot open ref-af file: " + filename);
-
-  MultiPopRefAf result;
-  result.records.reserve(100000);
-
-  std::string line;
-  bool nPopDetected = false;
-  uint32_t lineNo = 0;
-
-  while (std::getline(ifs, line)) {
-    ++lineNo;
-    if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (line.empty() || line[0] == '#') continue;
-    auto fields = splitWS(line);
-
-    if (!nPopDetected) {
-      int extra = static_cast<int>(fields.size()) - 4;
-      if (extra < 2 || extra % 2 != 0)
-        throw std::runtime_error(filename + " line " + std::to_string(lineNo) +
-            ": ref-af file must have 4+2K columns (CHROM POS A1 A2 A1F_POP1 N_POP1 ...); got "
-            + std::to_string(fields.size()));
-      result.nPop = extra / 2;
-      nPopDetected = true;
-    }
-
-    const int nPop = result.nPop;
-    const int nExpected = 4 + 2 * nPop;
-    if (static_cast<int>(fields.size()) != nExpected)
-      throw std::runtime_error(filename + " line " + std::to_string(lineNo) +
-          ": expected " + std::to_string(nExpected) + " columns, got " +
-          std::to_string(fields.size()));
-
-    char* endPtr;
-    MultiPopRefAf::Record rec;
-    rec.chrom = fields[0];
-    rec.pos   = static_cast<uint32_t>(std::strtoul(fields[1].c_str(), &endPtr, 10));
-    if (endPtr == fields[1].c_str())
-      throw std::runtime_error(filename + " line " + std::to_string(lineNo) + ": invalid POS");
-    rec.a1    = fields[2];
-    rec.a2    = fields[3];
-    rec.popAF.resize(nPop);
-    rec.popN.resize(nPop);
-    for (int p = 0; p < nPop; ++p) {
-      rec.popAF[p] = std::strtod(fields[4 + 2 * p].c_str(), &endPtr);
-      if (endPtr == fields[4 + 2 * p].c_str())
-        throw std::runtime_error(filename + " line " + std::to_string(lineNo) +
-                                 ": invalid A1F for pop " + std::to_string(p + 1));
-      rec.popN[p] = std::strtod(fields[4 + 2 * p + 1].c_str(), &endPtr);
-      if (endPtr == fields[4 + 2 * p + 1].c_str())
-        throw std::runtime_error(filename + " line " + std::to_string(lineNo) +
-                                 ": invalid N for pop " + std::to_string(p + 1));
-    }
-    result.records.push_back(std::move(rec));
-  }
-  return result;
-}
-
-
-// ======================================================================
-// Marker matching — exact match on (chr, id, cm, bp, a1, a2), no flip
-// ======================================================================
-
-std::vector<MultiPopMatchedMarker> matchMultiPopMarkers(
+std::vector<PopMatchedAF> loadAndMatchRefAf(
     const PlinkData& plinkData,
-    const MultiPopRefAf& refAf) {
+    const std::string& afreqFile) {
 
-  // Build ref lookup: key = "chr:bp:a1:a2"
-  auto makeKey = [](const std::string& chr, uint32_t pos,
-                    const std::string& a1, const std::string& a2) -> std::string {
+  auto records = loadRefAfFile(afreqFile);
+
+  // Build lookup: "chrom:id" → index
+  auto makeKey = [](const std::string& chr, const std::string& id) -> std::string {
     std::string k;
-    k.reserve(chr.size() + 20 + a1.size() + a2.size());
-    k += chr; k += ':';
-    k += std::to_string(pos); k += ':';
-    k += a1; k += ':'; k += a2;
+    k.reserve(chr.size() + 1 + id.size());
+    k += chr; k += ':'; k += id;
     return k;
   };
 
   std::unordered_map<std::string, size_t> refMap;
-  refMap.reserve(refAf.records.size());
-  for (size_t i = 0; i < refAf.records.size(); ++i) {
-    const auto& r = refAf.records[i];
-    refMap.emplace(makeKey(r.chrom, r.pos, r.a1, r.a2), i);
-  }
+  refMap.reserve(records.size());
+  for (size_t i = 0; i < records.size(); ++i)
+    refMap.emplace(makeKey(records[i].chrom, records[i].id), i);
 
-  const int nPop = refAf.nPop;
-  std::vector<MultiPopMatchedMarker> matched;
+  std::vector<PopMatchedAF> matched;
   matched.reserve(plinkData.markerInfo().size());
-
   for (const auto& mi : plinkData.markerInfo()) {
-    auto key = makeKey(mi.chrom, mi.pos, mi.ref, mi.alt);
+    auto key = makeKey(mi.chrom, mi.id);
     auto it = refMap.find(key);
-    if (it == refMap.end()) continue;  // no exact match → drop
+    if (it == refMap.end()) continue;
 
-    const auto& ref = refAf.records[it->second];
-    MultiPopMatchedMarker m;
-    m.genoIndex = mi.genoIndex;
-    m.popAF.resize(nPop);
-    m.popN.resize(nPop);
-    for (int p = 0; p < nPop; ++p) {
-      m.popAF[p] = ref.popAF[p];
-      m.popN[p]  = ref.popN[p];
+    const auto& rec = records[it->second];
+    PopMatchedAF pm;
+    pm.genoIndex = mi.genoIndex;
+
+    if (rec.alt_allele == mi.ref && rec.ref_allele == mi.alt) {
+      pm.af = rec.alt_freq;
+    } else if (rec.ref_allele == mi.ref && rec.alt_allele == mi.alt) {
+      pm.af = 1.0 - rec.alt_freq;
+    } else {
+      continue;
     }
-    matched.push_back(std::move(m));
+    pm.n_ref = rec.obs_ct / 2.0;
+    matched.push_back(pm);
   }
   return matched;
 }
@@ -370,8 +284,9 @@ void LEAFMethod::getResultVec(
 void runLEAF(
     const std::vector<std::string>& residFiles,
     const std::string& bfilePrefix,
-    const std::string& refAfFile,
-    const std::string& sparseGrmFile,
+    const std::vector<std::string>& refAfFiles,
+    const std::string& spgrmSaigeFile,
+    const std::string& spgrmGctaPrefix,
     const std::string& outputFile,
     double refPrevalence,
     double cutoff,
@@ -384,52 +299,133 @@ void runLEAF(
 
   const int nCluster = static_cast<int>(residFiles.size());
 
-  // ---- Load per-cluster resid files ----
+  // ---- Load per-cluster resid files via SubjectData ----
   infoMsg("Loading %d cluster resid files...", nCluster);
-  std::vector<ResidData> clusterResid(nCluster);
+  auto famIIDs = parseFamIIDs(bfilePrefix + ".fam");
+  const uint32_t nFamTotal = static_cast<uint32_t>(famIIDs.size());
+
+  std::vector<SubjectData> clusterSD;
+  clusterSD.reserve(nCluster);
   for (int c = 0; c < nCluster; ++c) {
     infoMsg("  Cluster %d: %s", c + 1, residFiles[c].c_str());
-    clusterResid[c] = loadResidFile(residFiles[c]);
-    infoMsg("    %zu subjects loaded", clusterResid[c].subjects.size());
+    auto fc = famIIDs;  // copy for each cluster
+    clusterSD.emplace_back(std::move(fc));
+    clusterSD.back().loadResidWtCoxG(residFiles[c]);
+    clusterSD.back().finalize();
+    infoMsg("    %u subjects loaded", clusterSD.back().nUsed());
   }
 
-  // Build combined subject list + per-cluster index arrays
-  std::vector<std::string> combinedSubjects;
-  std::vector<std::vector<uint32_t>> clusterIndices(nCluster);
+  // Build union bitmask (OR of all cluster masks) and cluster indices
+  const size_t nMaskWords = (nFamTotal + 63) / 64;
+  std::vector<uint64_t> unionMask(nMaskWords, 0);
   for (int c = 0; c < nCluster; ++c) {
-    clusterIndices[c].reserve(clusterResid[c].subjects.size());
-    for (const auto& s : clusterResid[c].subjects) {
-      clusterIndices[c].push_back(static_cast<uint32_t>(combinedSubjects.size()));
-      combinedSubjects.push_back(s);
+    const auto& cmask = clusterSD[c].usedMask();
+    for (size_t w = 0; w < nMaskWords; ++w)
+      unionMask[w] |= cmask[w];
+  }
+  uint32_t nUnion = 0;
+  for (size_t w = 0; w < nMaskWords; ++w)
+    nUnion += static_cast<uint32_t>(__builtin_popcountll(unionMask[w]));
+
+  // Build per-cluster indices into the union-dense genotype vector
+  std::vector<std::vector<uint32_t>> clusterIndices(nCluster);
+  for (int c = 0; c < nCluster; ++c)
+    clusterIndices[c].reserve(clusterSD[c].nUsed());
+
+  uint32_t denseIdx = 0;
+  for (size_t w = 0; w < nMaskWords; ++w) {
+    uint64_t bits = unionMask[w];
+    while (bits) {
+      int bit = __builtin_ctzll(bits);
+      uint64_t bitVal = uint64_t(1) << bit;
+      for (int c = 0; c < nCluster; ++c) {
+        if (clusterSD[c].usedMask()[w] & bitVal) {
+          clusterIndices[c].push_back(denseIdx);
+          break;
+        }
+      }
+      ++denseIdx;
+      bits &= bits - 1;
     }
   }
-  infoMsg("  Total subjects: %zu", combinedSubjects.size());
+  infoMsg("  Total subjects (union): %u", nUnion);
 
-  // ---- Load PLINK data with combined subjects ----
+  // ---- Load PLINK data with union bitmask ----
   infoMsg("Loading PLINK data: %s", bfilePrefix.c_str());
   PlinkData plinkData(
       bfilePrefix + ".bed",
       bfilePrefix + ".bim",
       bfilePrefix + ".fam",
-      combinedSubjects,
+      unionMask,
+      nFamTotal,
+      nUnion,
       "ref-first",
       {}, {}, {}, {},
       nSnpPerChunk);
   infoMsg("  %u subjects matched, %u markers",
           plinkData.nSubjUsed(), plinkData.nMarkers());
 
-  // ---- Load multi-population ref-af file ----
-  infoMsg("Loading multi-population ref-af file: %s", refAfFile.c_str());
-  auto refAf = loadMultiPopRefAfFile(refAfFile);
-  infoMsg("  %zu records, %d populations", refAf.records.size(), refAf.nPop);
+  // ---- Load per-population ref-af files (plink2 .afreq) ----
+  const int nPop = static_cast<int>(refAfFiles.size());
+  infoMsg("Loading %d reference AF files...", nPop);
+  std::vector<std::vector<PopMatchedAF>> popMatched(nPop);
+  for (int p = 0; p < nPop; ++p) {
+    infoMsg("  Pop %d: %s", p + 1, refAfFiles[p].c_str());
+    popMatched[p] = loadAndMatchRefAf(plinkData, refAfFiles[p]);
+    infoMsg("    %zu markers matched", popMatched[p].size());
+  }
 
-  // ---- Match markers ----
-  infoMsg("Matching markers...");
-  auto matchedMulti = matchMultiPopMarkers(plinkData, refAf);
-  infoMsg("  %zu markers matched", matchedMulti.size());
+  // ---- Build intersection of markers present in all populations ----
+  // Collect genoIndex → {popAF[nPop], popN[nPop]} for markers in all pops
+  struct MultiPopEntry {
+    double af[6];
+    double n_ref[6];
+  };
+  std::unordered_map<uint64_t, MultiPopEntry> allPopMap;
+  // Seed from pop 0
+  if (nPop > 0) {
+    for (const auto& pm : popMatched[0]) {
+      MultiPopEntry e{};
+      e.af[0] = pm.af;
+      e.n_ref[0] = pm.n_ref;
+      allPopMap.emplace(pm.genoIndex, e);
+    }
+  }
+  // Intersect with remaining pops
+  for (int p = 1; p < nPop; ++p) {
+    std::unordered_map<uint64_t, MultiPopEntry> next;
+    for (const auto& pm : popMatched[p]) {
+      auto it = allPopMap.find(pm.genoIndex);
+      if (it == allPopMap.end()) continue;
+      auto entry = it->second;
+      entry.af[p] = pm.af;
+      entry.n_ref[p] = pm.n_ref;
+      next.emplace(pm.genoIndex, entry);
+    }
+    allPopMap = std::move(next);
+  }
 
-  const int nPop = refAf.nPop;
+  // Convert to sorted vector for deterministic order
+  struct MatchedMultiPop {
+    uint64_t genoIndex;
+    double popAF[6];
+    double popN[6];
+  };
+  std::vector<MatchedMultiPop> matchedMulti;
+  matchedMulti.reserve(allPopMap.size());
+  for (auto& [gi, e] : allPopMap) {
+    MatchedMultiPop mm{};
+    mm.genoIndex = gi;
+    for (int p = 0; p < nPop; ++p) {
+      mm.popAF[p] = e.af[p];
+      mm.popN[p]  = e.n_ref[p];
+    }
+    matchedMulti.push_back(mm);
+  }
+  std::sort(matchedMulti.begin(), matchedMulti.end(),
+            [](const auto& a, const auto& b) { return a.genoIndex < b.genoIndex; });
   const size_t nMatched = matchedMulti.size();
+  infoMsg("  %zu markers present in all %d populations", nMatched, nPop);
 
   // ---- Per-cluster summix + AF synthesis ----
   infoMsg("Per-cluster ancestry estimation and AF synthesis...");
@@ -439,9 +435,10 @@ void runLEAF(
   PlinkCursor cursor(plinkData.bedFile(),
                      static_cast<uint32_t>(plinkData.nMarkers()),
                      plinkData.nSubjInFile(),
-                     plinkData.samplePosMap(),
+                     plinkData.usedMask(),
+                     plinkData.nSubjUsed(),
                      plinkData.isAltFirst(),
-                     plinkData.isIdentityMap());
+                     plinkData.allUsed());
 
   const uint32_t nFull = plinkData.nSubjUsed();
   Eigen::VectorXd fullGVec(nFull);
@@ -467,7 +464,7 @@ void runLEAF(
 
     for (int c = 0; c < nCluster; ++c) {
       const auto& idx = clusterIndices[c];
-      const auto& ind = clusterResid[c].indicator;
+      const auto& ind = clusterSD[c].indicator();
       double sum0 = 0, sum1 = 0, cnt0 = 0, cnt1 = 0;
       for (size_t k = 0; k < idx.size(); ++k) {
         double g = fullGVec[idx[k]];
@@ -549,14 +546,20 @@ void runLEAF(
             c + 1, clMatchedInfo[c].size());
 
     std::unique_ptr<SparseGRM> grm;
-    if (!sparseGrmFile.empty()) {
-      grm = std::make_unique<SparseGRM>(sparseGrmFile, clusterResid[c].subjects);
+    if (!spgrmGctaPrefix.empty()) {
+      grm = std::make_unique<SparseGRM>(
+          SparseGRM::fromGCTA(spgrmGctaPrefix, clusterSD[c].usedIIDs()));
+      infoMsg("    Sparse GRM: %u subjects, %zu non-zeros",
+              grm->nSubjects(), grm->nnz());
+    } else if (!spgrmSaigeFile.empty()) {
+      grm = std::make_unique<SparseGRM>(spgrmSaigeFile, clusterSD[c].usedIIDs());
       infoMsg("    Sparse GRM: %u subjects, %zu non-zeros",
               grm->nSubjects(), grm->nnz());
     }
 
     clRefMaps[c] = testBatchEffects(
-        clMatchedInfo[c], clusterResid[c], grm.get(), refPrevalence, cutoff);
+        clMatchedInfo[c], clusterSD[c].residuals(), clusterSD[c].weights(),
+        clusterSD[c].indicator(), grm.get(), refPrevalence, cutoff);
     infoMsg("    %zu markers retained", clRefMaps[c]->size());
   }
 
@@ -567,8 +570,8 @@ void runLEAF(
   clMethods.reserve(nCluster);
   for (int c = 0; c < nCluster; ++c) {
     clMethods.push_back(std::make_unique<WtCoxGMethod>(
-        clusterResid[c].residuals,
-        clusterResid[c].weights,
+        clusterSD[c].residuals(),
+        clusterSD[c].weights(),
         cutoff,
         spaCutoff,
         clRefMaps[c]));

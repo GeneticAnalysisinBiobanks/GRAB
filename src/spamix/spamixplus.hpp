@@ -101,7 +101,8 @@ void runSPAmixPlus(
     const std::string& residFile,
     const std::string& eigenVecsFile,
     const std::string& bfilePrefix,
-    const std::string& sparseGrmFile,
+    const std::string& spgrmSaigeFile,
+    const std::string& spgrmGctaPrefix,
     const std::string& afFile,          // empty → compute on-the-fly
     const std::string& outputFile,
     double spaCutoff,
