@@ -10,6 +10,8 @@
 #pragma once
 
 #include <cstdint>
+
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -35,6 +37,21 @@ struct PopMatchedAF {
 std::vector<PopMatchedAF> loadAndMatchRefAf(
     const class PlinkData& plinkData,
     const std::string& afreqFile);
+
+
+// ======================================================================
+// K-means clustering
+// ======================================================================
+
+// K-means clustering (Lloyd's algorithm with K-means++ initialisation).
+// Equivalent to R's kmeans(X, centers=k, nstart=nstart)$cluster.
+//   X:       (n × p) feature matrix (e.g. principal components)
+//   k:       number of clusters
+//   nstart:  number of random restarts (best result kept)
+// Returns integer cluster labels in {1, …, k} (length n).
+Eigen::VectorXi kmeansCluster(
+    const Eigen::Ref<const Eigen::MatrixXd>& X,
+    int k, int nstart = 25, uint64_t seed = 0);
 
 
 // ======================================================================
@@ -94,6 +111,30 @@ void runLEAF(
     const std::vector<std::string>& refAfFiles,     // one .afreq per pop (same order as residFiles)
     const std::string& spgrmGrabFile,               // empty = no GRM
     const std::string& spgrmGctaFile,              // empty = no GRM
+    const std::string& outputFile,
+    double refPrevalence,
+    double cutoff,
+    double spaCutoff,
+    int nthread,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff);
+
+// New --pheno path: K-means clustering + per-cluster regression
+void runLEAFPheno(
+    const std::string& phenoFile,
+    const std::string& covarFile,                    // empty = no separate covar file
+    const std::vector<std::string>& covarNames,       // covariate columns for regression
+    const std::string& binaryPheno,                   // column name, or empty
+    const std::string& survPheno,                     // "TIME:EVENT", or empty
+    const std::vector<std::string>& pcColNames,        // PC columns for K-means
+    int nClusters,                                     // K for K-means
+    uint64_t seed,                                      // RNG seed (0 = random)
+    const std::string& bfilePrefix,
+    const std::vector<std::string>& refAfFiles,        // one .afreq per ref pop
+    const std::string& spgrmGrabFile,
+    const std::string& spgrmGctaFile,
     const std::string& outputFile,
     double refPrevalence,
     double cutoff,

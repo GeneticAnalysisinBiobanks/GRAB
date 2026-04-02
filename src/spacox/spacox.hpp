@@ -128,7 +128,9 @@ private:
 
 void runSPACox(
     const std::string& residFile,
-    const std::string& covarFile,
+    const std::vector<std::string>& covarNames,  // empty = no covariates
+    const std::string& phenoFile,                 // pheno file (for covar columns)
+    const std::string& covarFile,                 // covar file (for covar columns)
     const std::string& bfilePrefix,
     const std::string& outputFile,
     double pvalCovAdjCut,

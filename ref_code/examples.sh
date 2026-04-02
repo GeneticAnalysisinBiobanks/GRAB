@@ -66,7 +66,8 @@ build/grab \
 
 build/grab \
   --cal-ind-af-coef \
-  --eigenvec examples/simuPCs.txt \
+  --covar examples/simuPheno.txt \
+  --pc-cols PC1,PC2,PC3,PC4 \
   --bfile examples/simuPLINK \
   --out tmp/SPAmixAfCoef.txt.gz
 
@@ -76,7 +77,8 @@ build/grab \
 build/grab \
   --method SPAmix \
   --null-resid examples/simuResid_1col.txt \
-  --eigenvec examples/simuPCs.txt \
+  --covar examples/simuPheno.txt \
+  --pc-cols PC1,PC2,PC3,PC4 \
   --bfile examples/simuPLINK \
   --out tmp/SPAmix_output.txt
 
@@ -86,7 +88,8 @@ build/grab \
 build/grab \
   --method SPAmixPlus \
   --null-resid examples/simuResid_2cols.txt \
-  --eigenvec examples/simuPCs.txt \
+  --covar examples/simuPheno.txt \
+  --pc-cols PC1,PC2,PC3,PC4 \
   --bfile examples/simuPLINK \
   --ind-af-coef tmp/SPAmixAfCoef.txt.gz \
   --sp-grm-grab examples/SparseGRM.txt \

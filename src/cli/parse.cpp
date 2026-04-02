@@ -32,8 +32,12 @@ Args parseArgs(int argc, char* argv[]) {
 
         if      (arg == "--method")                   a.method            = next();
         else if (arg == "--null-resid")               a.residFile         = next();
+        else if (arg == "--pheno")                    a.phenoFile         = next();
         else if (arg == "--covar")                    a.covarFile         = next();
-        else if (arg == "--eigenvec")                 a.eigenVecsFile     = next();
+        else if (arg == "--covar-name")               a.covarName         = next();
+        else if (arg == "--pheno-binary")             a.binaryPheno       = next();
+        else if (arg == "--pheno-survival")           a.survPheno         = next();
+        else if (arg == "--pc-cols")                  a.pcCols            = next();
         else if (arg == "--bfile")                    a.bfilePrefix       = next();
         else if (arg == "--ref-af")                   a.refAfFile         = next();
         else if (arg == "--sp-grm-grab")              a.spGrmGrabFile     = next();
@@ -52,6 +56,8 @@ Args parseArgs(int argc, char* argv[]) {
         else if (arg == "--outlier-abs-bound")        a.outlierAbsBound   = std::stod(next());
         else if (arg == "--threads")                  a.nthread           = std::stoi(next());
         else if (arg == "--chunk-size")               a.nSnpPerChunk      = std::stoi(next());
+        else if (arg == "--leaf-nclusters")           a.nClusters         = std::stoi(next());
+        else if (arg == "--seed")                      a.seed              = std::stoull(next());
         else if (arg == "--cal-ind-af-coef")          a.calIndAfCoef      = true;
         else if (arg == "--cal-pairwise-ibd")         a.calPairwiseIBD    = true;
         else if (arg == "--min-maf-ibd")              a.minMafIBD         = std::stod(next());

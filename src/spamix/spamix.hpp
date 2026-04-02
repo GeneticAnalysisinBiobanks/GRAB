@@ -90,7 +90,9 @@ private:
 
 void runSPAmix(
     const std::string& residFile,
-    const std::string& eigenVecsFile,
+    const std::vector<std::string>& pcColNames,  // PC column names
+    const std::string& phenoFile,                 // pheno file (for PC columns)
+    const std::string& covarFile,                 // covar file (for PC columns)
     const std::string& bfilePrefix,
     const std::string& afFile,          // empty → compute on-the-fly
     const std::string& outputFile,

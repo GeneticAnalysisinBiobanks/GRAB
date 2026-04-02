@@ -392,6 +392,8 @@ void SubjectData::loadCovar(const std::string& filename) {
   // ── Parse data rows ────────────────────────────────────────────────
   RawFile rf;
   rf.nCols = static_cast<int>(covarCols.size());
+  for (int ci : covarCols)
+    rf.colNames.push_back(headers[ci]);
   rf.iids.reserve(65536);
   rf.vals.reserve(65536);
 
@@ -431,9 +433,15 @@ void SubjectData::loadCovar(const std::string& filename) {
   m_hasRawCovar = true;
 }
 
+void SubjectData::loadPhenoFile(const std::string& filename) {
+  if (m_hasRawPheno)
+    throw std::runtime_error("loadPhenoFile already called");
+  m_rawPheno    = parseIIDFile(filename, -1);
+  m_hasRawPheno = true;
+}
+
+#if 0  // ── loadEigenVecs removed; replaced by loadPhenoFile ────────────────
 void SubjectData::loadEigenVecs(const std::string& filename) {
-  if (m_hasRawEigen)
-    throw std::runtime_error("loadEigenVecs already called");
 
   std::ifstream ifs(filename, std::ios::in | std::ios::binary);
   if (!ifs)
@@ -566,6 +574,7 @@ void SubjectData::loadEigenVecs(const std::string& filename) {
   m_rawEigen    = std::move(rf);
   m_hasRawEigen = true;
 }
+#endif  // loadEigenVecs removed
 
 
 // ══════════════════════════════════════════════════════════════════════
@@ -575,7 +584,7 @@ void SubjectData::loadEigenVecs(const std::string& filename) {
 void SubjectData::finalize() {
   if (m_finalized)
     throw std::runtime_error("SubjectData::finalize already called");
-  if (!m_hasRawResid && !m_hasRawCovar && !m_hasRawEigen)
+  if (!m_hasRawResid && !m_hasRawCovar && !m_hasRawPheno)
     throw std::runtime_error("SubjectData: no data files loaded before finalize");
 
   // ── Handle noIID files: assign .fam IIDs if row count matches ────
@@ -590,7 +599,7 @@ void SubjectData::finalize() {
   };
   if (m_hasRawResid)  assignFamIIDs(m_rawResid, "--null-resid");
   if (m_hasRawCovar)  assignFamIIDs(m_rawCovar, "--covar");
-  if (m_hasRawEigen)  assignFamIIDs(m_rawEigen, "--eigenvec");
+  if (m_hasRawPheno)  assignFamIIDs(m_rawPheno, "--pheno");
 
   // Log assumed column layout for noIID files
   if (m_hasRawResid && m_rawResid.noIID) {
@@ -610,14 +619,14 @@ void SubjectData::finalize() {
   }
   if (m_hasRawCovar && m_rawCovar.noIID)
     infoMsg("--covar: no IID column; assuming .fam order, %d covariate column(s)", m_rawCovar.nCols);
-  if (m_hasRawEigen && m_rawEigen.noIID)
-    infoMsg("--eigenvec: no IID column; assuming .fam order, columns: PC1 .. PC%d", m_rawEigen.nCols);
+  if (m_hasRawPheno && m_rawPheno.noIID)
+    infoMsg("--pheno: no IID column; assuming .fam order, %d column(s)", m_rawPheno.nCols);
 
   // ── Build IID index maps for each loaded file ──────────────────────
-  std::unordered_map<std::string, uint32_t> residMap, covarMap, eigenMap;
+  std::unordered_map<std::string, uint32_t> residMap, covarMap, phenoMap;
   if (m_hasRawResid)  residMap  = text::buildIIDMap(m_rawResid.iids);
   if (m_hasRawCovar)  covarMap  = text::buildIIDMap(m_rawCovar.iids);
-  if (m_hasRawEigen)  eigenMap  = text::buildIIDMap(m_rawEigen.iids);
+  if (m_hasRawPheno)  phenoMap  = text::buildIIDMap(m_rawPheno.iids);
 
   // ── Intersect with .fam, build bitmask ─────────────────────────────
   const uint32_t nWords = (m_nFam + 63) / 64;
@@ -631,7 +640,7 @@ void SubjectData::finalize() {
     const auto& iid = m_famIIDs[f];
     if (m_hasRawResid  && residMap.find(iid)  == residMap.end())  continue;
     if (m_hasRawCovar  && covarMap.find(iid)  == covarMap.end())  continue;
-    if (m_hasRawEigen  && eigenMap.find(iid)  == eigenMap.end())  continue;
+    if (m_hasRawPheno  && phenoMap.find(iid)  == phenoMap.end())  continue;
     // Subject passes all loaded-file checks
     m_usedMask[f / 64] |= 1ULL << (f % 64);
     usedFamIndices.push_back(f);
@@ -713,23 +722,102 @@ void SubjectData::finalize() {
     }
   }
 
-  // ── Eigenvectors ───────────────────────────────────────────────────
-  if (m_hasRawEigen) {
-    const int nc = m_rawEigen.nCols;
-    const double* src = m_rawEigen.vals.data();
-    m_PCs.resize(N, nc);
+  // ── Phenotype data ─────────────────────────────────────────────────
+  if (m_hasRawPheno) {
+    const int nc = m_rawPheno.nCols;
+    const double* src = m_rawPheno.vals.data();
+    m_phenoData.resize(N, nc);
     for (Eigen::Index i = 0; i < N; ++i) {
-      uint32_t r = rowIn(eigenMap, m_famIIDs[usedFamIndices[i]]);
+      uint32_t r = rowIn(phenoMap, m_famIIDs[usedFamIndices[i]]);
       for (int c = 0; c < nc; ++c)
-        m_PCs(i, c) = src[r * nc + c];
+        m_phenoData(i, c) = src[r * nc + c];
     }
+    m_phenoColNames = m_rawPheno.colNames;
+    for (int c = 0; c < static_cast<int>(m_phenoColNames.size()); ++c)
+      m_phenoColMap[m_phenoColNames[c]] = c;
+  }
+
+  // ── Build column name maps for covar ───────────────────────────────
+  if (m_hasRawCovar) {
+    m_covarColNames = m_rawCovar.colNames;
+    for (int c = 0; c < static_cast<int>(m_covarColNames.size()); ++c)
+      m_covarColMap[m_covarColNames[c]] = c;
   }
 
   // ── Free raw storage ───────────────────────────────────────────────
   m_rawResid  = RawFile{};
-  m_rawCovar   = RawFile{};
-  m_rawEigen  = RawFile{};
+  m_rawCovar  = RawFile{};
+  m_rawPheno  = RawFile{};
 
+  m_finalized = true;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// Named column accessors (valid after finalize)
+// ══════════════════════════════════════════════════════════════════════
+
+bool SubjectData::hasColumn(const std::string& name) const {
+  return m_covarColMap.count(name) || m_phenoColMap.count(name);
+}
+
+Eigen::VectorXd SubjectData::getColumn(const std::string& name) const {
+  auto it = m_covarColMap.find(name);
+  if (it != m_covarColMap.end())
+    return m_covar.col(it->second);
+  auto it2 = m_phenoColMap.find(name);
+  if (it2 != m_phenoColMap.end())
+    return m_phenoData.col(it2->second);
+  throw std::runtime_error(
+      "SubjectData::getColumn: column '" + name + "' not found in covar or pheno data");
+}
+
+Eigen::MatrixXd SubjectData::getColumns(const std::vector<std::string>& names) const {
+  const Eigen::Index N = static_cast<Eigen::Index>(m_nUsed);
+  Eigen::MatrixXd mat(N, static_cast<Eigen::Index>(names.size()));
+  for (size_t i = 0; i < names.size(); ++i)
+    mat.col(static_cast<Eigen::Index>(i)) = getColumn(names[i]);
+  return mat;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// setResidWeightIndicator — post-finalize setter for computed regression
+// ══════════════════════════════════════════════════════════════════════
+
+void SubjectData::setResidWeightIndicator(
+    Eigen::VectorXd resid, Eigen::VectorXd weight, Eigen::VectorXd ind) {
+  if (!m_finalized)
+    throw std::runtime_error("setResidWeightIndicator: finalize must be called first");
+  const auto N = static_cast<Eigen::Index>(m_nUsed);
+  if (resid.size() != N || weight.size() != N || ind.size() != N)
+    throw std::runtime_error(
+        "setResidWeightIndicator: vector length (" +
+        std::to_string(resid.size()) + ") does not match nUsed (" +
+        std::to_string(m_nUsed) + ")");
+  m_residuals  = std::move(resid);
+  m_weights    = std::move(weight);
+  m_indicator  = std::move(ind);
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// initFromMask — direct initialization from pre-computed bitmask
+// ══════════════════════════════════════════════════════════════════════
+
+void SubjectData::initFromMask(
+    std::vector<uint64_t> mask, uint32_t nUsed,
+    Eigen::VectorXd resid, Eigen::VectorXd weight, Eigen::VectorXd ind) {
+  const auto N = static_cast<Eigen::Index>(nUsed);
+  if (resid.size() != N || weight.size() != N || ind.size() != N)
+    throw std::runtime_error(
+        "initFromMask: vector length (" + std::to_string(resid.size()) +
+        ") does not match nUsed (" + std::to_string(nUsed) + ")");
+  m_usedMask  = std::move(mask);
+  m_nUsed     = nUsed;
+  m_residuals = std::move(resid);
+  m_weights   = std::move(weight);
+  m_indicator = std::move(ind);
   m_finalized = true;
 }
 

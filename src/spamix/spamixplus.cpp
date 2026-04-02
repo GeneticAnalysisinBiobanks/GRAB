@@ -226,7 +226,9 @@ void SPAmixPlusMethod::getResultVec(
 
 void runSPAmixPlus(
     const std::string& residFile,
-    const std::string& eigenVecsFile,
+    const std::vector<std::string>& pcColNames,
+    const std::string& phenoFile,
+    const std::string& covarFile,
     const std::string& bfilePrefix,
     const std::string& spgrmGrabFile,
     const std::string& spgrmGctaFile,
@@ -240,22 +242,24 @@ void runSPAmixPlus(
     double minMafCutoff,
     double minMacCutoff)
 {
-  // ---- Load residual file and eigenvectors ----
+  // ---- Load residual file and PC data ----
   infoMsg("Loading residual file: %s", residFile.c_str());
   auto famIIDs = parseFamIIDs(bfilePrefix + ".fam");
   SubjectData sd(std::move(famIIDs));
   sd.loadResidOne(residFile);
-  sd.loadEigenVecs(eigenVecsFile);
+  if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile);
+  if (!covarFile.empty()) sd.loadCovar(covarFile);
   sd.finalize();
-  infoMsg("  %u subjects loaded, %d PCs", sd.nUsed(), sd.nPC());
 
   const int N   = static_cast<int>(sd.nUsed());
-  const int nPC = sd.nPC();
+  const int nPC = static_cast<int>(pcColNames.size());
+  infoMsg("  %u subjects loaded, %d PCs", sd.nUsed(), nPC);
 
   // ---- Design matrix: [1 | PCs] ----
+  Eigen::MatrixXd PCs = sd.getColumns(pcColNames);
   Eigen::MatrixXd onePlusPCs(N, 1 + nPC);
   onePlusPCs.col(0).setOnes();
-  onePlusPCs.rightCols(nPC) = sd.PCs();
+  onePlusPCs.rightCols(nPC) = PCs;
 
   // OLS matrices — only needed for on-the-fly AF computation
   Eigen::MatrixXd XtX_inv_Xt;

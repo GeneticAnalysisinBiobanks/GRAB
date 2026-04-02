@@ -199,7 +199,9 @@ std::vector<AFModel> computeAFModelsInMemory(
     int nthread);
 
 void runSPAmixAF(
-    const std::string& eigenVecsFile,
+    const std::vector<std::string>& pcColNames,
+    const std::string& phenoFile,
+    const std::string& covarFile,
     const std::string& bfilePrefix,
     const std::string& outputFile,
     int    nthread,

@@ -636,7 +636,9 @@ std::vector<AFModel> computeAFModelsInMemory(
 }
 
 void runSPAmixAF(
-    const std::string& eigenVecsFile,
+    const std::vector<std::string>& pcColNames,
+    const std::string& phenoFile,
+    const std::string& covarFile,
     const std::string& bfilePrefix,
     const std::string& outputFile,
     int    nthread,
@@ -648,17 +650,18 @@ void runSPAmixAF(
   const auto wallStart = std::chrono::steady_clock::now();
   const std::clock_t cpuStart = std::clock();
 
-  // Load eigenvector file (first column = subject ID, rest = PCs).
-  infoMsg("Loading eigenvector file: %s", eigenVecsFile.c_str());
+  // Load pheno / covar files and extract PC columns.
+  infoMsg("Loading PC data for AF model (%zu columns)", pcColNames.size());
   auto famIIDs = parseFamIIDs(bfilePrefix + ".fam");
   SubjectData sd(std::move(famIIDs));
-  sd.loadEigenVecs(eigenVecsFile);
+  if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile);
+  if (!covarFile.empty()) sd.loadCovar(covarFile);
   sd.finalize();
-  infoMsg("  %u subjects, %d PCs", sd.nUsed(), sd.nPC());
 
   const int N   = static_cast<int>(sd.nUsed());
-  const int nPC = sd.nPC();
-  const Eigen::MatrixXd& PCs = sd.PCs();
+  const int nPC = static_cast<int>(pcColNames.size());
+  Eigen::MatrixXd PCs = sd.getColumns(pcColNames);
+  infoMsg("  %u subjects, %d PCs", sd.nUsed(), nPC);
 
   Eigen::MatrixXd onePlusPCs(N, 1 + nPC);
   onePlusPCs.col(0).setOnes();

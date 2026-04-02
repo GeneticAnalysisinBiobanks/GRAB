@@ -1,4 +1,6 @@
-## Common
+The current LEAF workflow is that, users calculate residuals and save to file. 
+
+```R
 calRegrWeight <- function(Indicator, RefPrevalence) {
   sample_ratio <- sum(Indicator) / sum(1 - Indicator)
   population_ratio <- RefPrevalence / (1 - RefPrevalence)
@@ -10,20 +12,6 @@ RefPrevalence <- 0.1
 PhenoData <- data.table::fread("examples/simuPHENO.txt")
 indicator <- as.integer(PhenoData$SurvEvent)
 weight <- calRegrWeight(indicator, RefPrevalence)
-
-
-## WtCoxG
-obj.fit <- survival::coxph(
-  survival::Surv(SurvTime, SurvEvent) ~ AGE + GENDER + PC1 + PC2,
-  data = PhenoData, weight = weight, robust = TRUE
-)
-dt <- data.table::data.table(
-  subject = PhenoData$IID,
-  residual = obj.fit$residuals,
-  weight = weight,
-  indicator = indicator
-)
-data.table::fwrite(dt, "examples/simuResid.txt", sep = "\t", col.names = FALSE)
 
 
 ## LEAF
@@ -54,3 +42,51 @@ for (i in seq_len(Ncluster)) {
   )
   data.table::fwrite(dt, resid_file_lst[i], sep = "\t")
 }
+```
+
+Then, run grab --method LEAF
+
+```sh
+build/grab \
+  --method LEAF \
+  --null-resid examples/simuResid1.txt,examples/simuResid2.txt,examples/simuResid3.txt \
+  --bfile examples/simuPLINK \
+  --ref-af examples/simuPLINK.afreq,examples/simuPLINK.afreq \
+  --sp-grm-grab examples/SparseGRM.txt \
+  --prevalence 0.1 \
+  --out tmp/LEAF_output.txt \
+  --chunk-size 256 \
+  --threads 4
+```
+
+Refactor to run grab --method LEAF with phenotype
+
+```sh
+build/grab \
+  --method LEAF \
+  --leaf-nclusters 3 \
+  --pheno examples/simuPHENO.txt \
+  --pheno-binary BinaryPheno \
+  --covar-name AGE,GENDER,PC1,PC2,PC3,PC4 \
+  --pc-cols PC1,PC2,PC3,PC4 \
+  --bfile examples/simuPLINK \
+  --ref-af examples/simuPLINK.afreq,examples/simuPLINK.afreq \
+  --sp-grm-plink2 examples/simuPLINK.grm.sp \
+  --prevalence 0.1 \
+  --out tmp/LEAF_binary.txt \
+  --threads 3
+
+build/grab \
+  --method LEAF \
+  --leaf-nclusters 3 \
+  --pheno examples/simuPHENO.txt \
+  --pheno-survival SurvTime:SurvEvent \
+  --covar-name AGE,GENDER,PC1,PC2,PC3,PC4 \
+  --pc-cols PC1,PC2,PC3,PC4 \
+  --bfile examples/simuPLINK \
+  --ref-af examples/simuPLINK.afreq,examples/simuPLINK.afreq \
+  --sp-grm-plink2 examples/simuPLINK.grm.sp \
+  --prevalence 0.1 \
+  --out tmp/LEAF_survival.txt \
+  --threads 3
+  ```

@@ -63,20 +63,36 @@ inline const FlagDef kOut = {
 // ── Method-specific file flags ─────────────────────────────────────
 
 inline const FlagDef kCovar = {
-    "--covar", "FILE", "Covariate file (plink2 .cov format)",
-    "Formats: (A) header with IID/#IID, or (B) pure numeric matrix.\n"
-    "  Format A: FID/SID/PAT/MAT/SEX/PHENO* columns auto-skipped.\n"
-    "            Remaining column names do not matter; all used as covariates.\n"
-    "  Format B: all columns are covariates; .fam order assumed.\n"
-    "An intercept column is added automatically."};
+    "--covar", "FILE", "Covariate file (plink2 format, columns selected by --covar-name)",
+    "Plink2-compatible IID + named columns.\n"
+    "Use --covar-name to select specific columns as covariates.\n"
+    "If --covar-name is omitted, all non-metadata columns are used."};
 
-inline const FlagDef kEigenvec = {
-    "--eigenvec", "FILE", "Eigenvector file (plink2 .eigenvec)",
-    "Formats: (A) header with IID/#IID, or (B) pure numeric matrix.\n"
-    "  Format A: FID/SID skipped; PC columns identified by name (^[Pp][Cc]).\n"
-    "            Unlike --null-resid/--covar, column names matter here.\n"
-    "  Format B: all columns treated as PCs; .fam order assumed.\n"
-    "Produced by plink2 --pca."};
+inline const FlagDef kPheno = {
+    "--pheno", "FILE", "Phenotype file (plink2 format, IID + named columns)",
+    "Plink2-compatible IID + named columns.\n"
+    "Use --pheno-binary / --pheno-survival to designate the response.\n"
+    "Use --covar-name to select covariate columns.\n"
+    "Use --pc-cols to select PC columns for LEAF / SPAmix."};
+
+inline const FlagDef kCovarName = {
+    "--covar-name", "COL_IDS", "Comma-separated covariate column names",
+    "Selects columns from --covar (preferred) or --pheno as covariates.\n"
+    "An intercept is added automatically."};
+
+inline const FlagDef kBinaryPheno = {
+    "--pheno-binary", "COL", "Column name for binary phenotype (case/control)",
+    "Selects a 0/1 column from --pheno for logistic regression."};
+
+inline const FlagDef kSurvPheno = {
+    "--pheno-survival", "TIME:EVENT", "Colon-separated survival time and event column names",
+    "Selects survival time and event columns from --pheno for Cox regression.\n"
+    "Example: --pheno-survival TIME:EVENT"};
+
+inline const FlagDef kPcCols = {
+    "--pc-cols", "COL_IDS", "Comma-separated PC column names",
+    "Selects columns from --covar or --pheno as principal components.\n"
+    "Used for K-means clustering in LEAF and AF estimation in SPAmix."};
 
 inline const FlagDef kRefAf = {
     "--ref-af", "FILE", "Reference allele frequency (plink2 .afreq or numeric)",
@@ -139,6 +155,10 @@ inline const FlagDef kMac          = {"--mac",  "FLOAT",
     "Min minor allele count (default: 10)", nullptr};
 inline const FlagDef kMinMafIbd    = {"--min-maf-ibd", "FLOAT",
     "Min MAF for IBD calculation (default: 0.01)", nullptr};
+inline const FlagDef kNClusters    = {"--leaf-nclusters", "INT",
+    "Number of K-means clusters for LEAF (default: from --ref-af count)", nullptr};
+inline const FlagDef kSeed          = {"--seed", "INT",
+    "Random seed for reproducibility (default: 0 = use random device)", nullptr};
 
 // ════════════════════════════════════════════════════════════════════
 //  Method definitions
@@ -148,7 +168,7 @@ inline const FlagDef kMinMafIbd    = {"--min-maf-ibd", "FLOAT",
 inline const FlagDef* const kSPACoxReq[] = {
     &kBfile, &kNullResid, &kOut, nullptr};
 inline const FlagDef* const kSPACoxOpt[] = {
-    &kCovar, &kCovarPThresh,
+    &kCovar, &kCovarName, &kCovarPThresh,
     &kSpaZThresh, &kThreads, &kChunkSize, &kGeno, &kMaf, &kMac, nullptr};
 inline const MethodDef kSPACox = {
     "SPACox",
@@ -173,9 +193,9 @@ inline const MethodDef kSPAGRM = {
 
 // ── SPAmix ─────────────────────────────────────────────────────────
 inline const FlagDef* const kSPAmixReq[] = {
-    &kBfile, &kNullResid, &kOut, &kEigenvec, nullptr};
+    &kBfile, &kNullResid, &kOut, &kPcCols, nullptr};
 inline const FlagDef* const kSPAmixOpt[] = {
-    &kIndAfCoef, &kOutlierIqr,
+    &kPheno, &kCovar, &kIndAfCoef, &kOutlierIqr,
     &kSpaZThresh, &kThreads, &kChunkSize, &kGeno, &kMaf, &kMac, nullptr};
 inline const MethodDef kSPAmix = {
     "SPAmix",
@@ -187,9 +207,9 @@ inline const MethodDef kSPAmix = {
 
 // ── SPAmixPlus ─────────────────────────────────────────────────────
 inline const FlagDef* const kSPAmixPlusReq[] = {
-    &kBfile, &kNullResid, &kOut, &kEigenvec, &kSpGrm, nullptr};
+    &kBfile, &kNullResid, &kOut, &kPcCols, &kSpGrm, nullptr};
 inline const FlagDef* const kSPAmixPlusOpt[] = {
-    &kIndAfCoef, &kOutlierIqr,
+    &kPheno, &kCovar, &kIndAfCoef, &kOutlierIqr,
     &kSpaZThresh, &kThreads, &kChunkSize, &kGeno, &kMaf, &kMac, nullptr};
 inline const MethodDef kSPAmixPlus = {
     "SPAmixPlus",
@@ -216,41 +236,43 @@ inline const MethodDef kSPAsqr = {
 
 // ── WtCoxG ─────────────────────────────────────────────────────────
 inline const FlagDef* const kWtCoxGReq[] = {
-    &kBfile, &kNullResid, &kOut, &kRefAf, &kPrevalence, nullptr};
+    &kBfile, &kOut, &kRefAf, &kPrevalence, nullptr};
 inline const FlagDef* const kWtCoxGOpt[] = {
+    &kNullResid, &kPheno, &kCovar, &kCovarName, &kBinaryPheno, &kSurvPheno,
     &kSpGrm, &kBatchPThresh,
     &kSpaZThresh, &kThreads, &kChunkSize, &kGeno, &kMaf, &kMac, nullptr};
 inline const MethodDef kWtCoxG = {
     "WtCoxG",
     "Weighted Cox regression for time-to-event GWAS",
     kWtCoxGReq, kWtCoxGOpt,
-    "IID  RESID  WEIGHT  INDICATOR",
+    "IID  RESID  WEIGHT  INDICATOR  (via --null-resid) or --pheno + regression",
     "CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P\n"
     "  p_ext  p_noext  z_ext  z_noext  p_batch",
     nullptr};
 
 // ── LEAF ───────────────────────────────────────────────────────────
 inline const FlagDef* const kLEAFReq[] = {
-    &kBfile, &kNullResid, &kOut, &kRefAf, &kPrevalence, nullptr};
+    &kBfile, &kOut, &kRefAf, &kPrevalence, nullptr};
 inline const FlagDef* const kLEAFOpt[] = {
-    &kSpGrm, &kBatchPThresh,
+    &kNullResid, &kPheno, &kCovar, &kCovarName, &kBinaryPheno, &kSurvPheno, &kPcCols,
+    &kNClusters, &kSeed, &kSpGrm, &kBatchPThresh,
     &kSpaZThresh, &kThreads, &kChunkSize, &kGeno, &kMaf, &kMac, nullptr};
 inline const MethodDef kLEAF = {
     "LEAF",
     "Local Ethnicity-Aware GWAS, WtCoxG per ancestry cluster",
     kLEAFReq, kLEAFOpt,
-    "IID  RESID  WEIGHT  INDICATOR  (per cluster file)",
+    "IID  RESID  WEIGHT  INDICATOR  (per cluster, via --null-resid) or --pheno + regression",
     "CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P\n"
     "  meta.p_ext  meta.p_noext  cl1.p_ext  cl1.p_noext  cl1.p_batch  [cl2 ...]",
-    "Comma-separated --null-resid per ancestry cluster, --ref-af per ref-pop.\n"
+    "--null-resid path: comma-sep per cluster; --pheno path: auto K-means on --pc-cols.\n"
     "The number of clusters and reference populations are independent.\n"
     "Summix estimates per-cluster ancestry proportions from the reference populations."};
 
 // ── Utility mode: cal-ind-af-coef ──────────────────────────────────
 inline const FlagDef* const kCalAfReq[] = {
-    &kBfile, &kEigenvec, &kOut, nullptr};
+    &kBfile, &kPcCols, &kOut, nullptr};
 inline const FlagDef* const kCalAfOpt[] = {
-    &kThreads, &kChunkSize, &kGeno, &kMaf, &kMac, nullptr};
+    &kPheno, &kCovar, &kThreads, &kChunkSize, &kGeno, &kMaf, &kMac, nullptr};
 inline const MethodDef kCalIndAfCoef = {
     "cal-ind-af-coef",
     "Compute per-marker individual-ancestry AF model",
@@ -286,21 +308,22 @@ inline const MethodDef* const kAllUtilModes[] = {
 
 // File-accepting flags (for --help <flag-topic>)
 inline const FlagDef* const kFileFlags[] = {
-    &kNullResid, &kCovar, &kEigenvec, &kRefAf,
+    &kNullResid, &kPheno, &kCovar, &kRefAf,
     &kSpGrmGrab, &kSpGrmPlink2, &kIndAfCoef, &kPairwiseIbd,
     nullptr};
 
 // All flags grouped for --help options
 inline const FlagDef* const kInputFlags[] = {
     &kBfile, &kNullResid, &kOut,
-    &kCovar, &kEigenvec, &kRefAf,
+    &kPheno, &kCovar, &kCovarName, &kBinaryPheno, &kSurvPheno, &kPcCols,
+    &kRefAf,
     &kSpGrmGrab, &kSpGrmPlink2, &kIndAfCoef, &kPairwiseIbd,
     nullptr};
 
 inline const FlagDef* const kNumericFlags[] = {
     &kPrevalence, &kBatchPThresh, &kCovarPThresh,
     &kSpaZThresh, &kOutlierIqr, &kOutlierAbs,
-    &kThreads, &kChunkSize, &kGeno, &kMaf, &kMac,
+    &kThreads, &kChunkSize, &kNClusters, &kSeed, &kGeno, &kMaf, &kMac,
     &kMinMafIbd,
     nullptr};
 

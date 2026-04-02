@@ -206,3 +206,24 @@ void runWtCoxG(
     double missingCutoff,
     double minMafCutoff,
     double minMacCutoff);
+
+// New --pheno path: compute regression residuals internally
+void runWtCoxGPheno(
+    const std::string& phenoFile,
+    const std::string& covarFile,               // empty = no separate covar file
+    const std::vector<std::string>& covarNames,  // empty = intercept only
+    const std::string& binaryPheno,              // column name, or empty
+    const std::string& survPheno,                // "TIME:EVENT", or empty
+    const std::string& bfilePrefix,
+    const std::string& refAfFile,
+    const std::string& spgrmGrabFile,
+    const std::string& spgrmGctaFile,
+    const std::string& outputFile,
+    double refPrevalence,
+    double cutoff,
+    double spaCutoff,
+    int nthread,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff);

@@ -1,6 +1,7 @@
 // cli.hpp — Public interface for the GRAB command-line layer
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 namespace cli {
@@ -9,8 +10,12 @@ struct Args {
     std::string method;
     std::string helpTopic;          // set when --help <topic> is used
     std::string residFile;
+    std::string phenoFile;
     std::string covarFile;
-    std::string eigenVecsFile;
+    std::string covarName;          // comma-separated covariate column names
+    std::string binaryPheno;        // column name for binary phenotype
+    std::string survPheno;          // "TIME:EVENT" survival phenotype
+    std::string pcCols;             // comma-separated PC column names
     std::string bfilePrefix;
     std::string refAfFile;
     std::string spGrmGrabFile;      // --sp-grm-grab
@@ -32,6 +37,8 @@ struct Args {
     double outlierAbsBound   = 0.55;
     int    nthread           = 1;
     int    nSnpPerChunk      = 8192;
+    int    nClusters         = 0;       // 0 = auto (from --ref-af count)
+    uint64_t seed             = 0;       // 0 = use std::random_device
 };
 
 // Entry point: parse argv, print help or dispatch the selected method.

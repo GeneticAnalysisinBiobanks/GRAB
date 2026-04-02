@@ -401,6 +401,8 @@ void SPACoxMethod::getResultVec(
 
 void runSPACox(
     const std::string& residFile,
+    const std::vector<std::string>& covarNames,
+    const std::string& phenoFile,
     const std::string& covarFile,
     const std::string& bfilePrefix,
     const std::string& outputFile,
@@ -412,11 +414,13 @@ void runSPACox(
     double minMafCutoff,
     double minMacCutoff) {
 
-  // ---- Load resid file and covariate file ----
+  // ---- Load resid file and covariate data ----
   infoMsg("Loading resid file: %s", residFile.c_str());
   auto famIIDs = parseFamIIDs(bfilePrefix + ".fam");
   SubjectData sd(std::move(famIIDs));
   sd.loadResidOne(residFile);
+  if (!phenoFile.empty())
+    sd.loadPhenoFile(phenoFile);
   if (!covarFile.empty())
     sd.loadCovar(covarFile);
   sd.finalize();
@@ -425,7 +429,13 @@ void runSPACox(
   // ---- Build design-matrix projection (intercept + covariates) ----
   infoMsg("Building design matrix projection...");
   Eigen::MatrixXd X;
-  if (sd.hasCovar()) {
+  if (!covarNames.empty()) {
+    auto cov = sd.getColumns(covarNames);
+    X.resize(sd.nUsed(), cov.cols() + 1);
+    X.col(0).setOnes();
+    X.rightCols(cov.cols()) = cov;
+  } else if (sd.hasCovar()) {
+    // Backward compat: no --covar-name but --covar was given → use all columns
     const auto& cov = sd.covar();
     X.resize(sd.nUsed(), cov.cols() + 1);
     X.col(0).setOnes();

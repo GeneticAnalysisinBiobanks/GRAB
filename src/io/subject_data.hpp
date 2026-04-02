@@ -11,13 +11,15 @@
 //   residWtCoxG — IID + 3 columns:  RESID  WEIGHT  INDICATOR
 //   residSPAsqr — IID + K columns:  R1  R2  ...  RK
 //
-// Optional additional files:
-//   covar    — plink2 .cov format (header with IID + covariate columns)
-//   eigenVec — plink2 --pca .eigenvec format
+// Phenotype / covariate files:
+//   pheno  — plink2 --pheno format (IID + named columns)
+//   covar  — plink2 --covar format (IID + named columns)
+//   Columns selected by name via getColumn() / getColumns() after finalize.
 #pragma once
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <Eigen/Dense>
 
@@ -37,8 +39,8 @@ public:
   void loadResidSPAsqr(const std::string& filename);    // IID + R1 R2 ... RK
 
   // ── Optional per-subject files ─────────────────────────────────────
-  void loadCovar(const std::string& filename);           // plink2 .cov format
-  void loadEigenVecs(const std::string& filename);       // IID PC1  PC2  ...
+  void loadPhenoFile(const std::string& filename);       // plink2 --pheno format
+  void loadCovar(const std::string& filename);           // plink2 --covar format
 
   // ── Build bitmask and reorder to .fam order ────────────────────────
   // Intersects all loaded IID sets with .fam, builds bitmask, reorders
@@ -64,7 +66,7 @@ public:
   // Column names from header (empty for legacy headerless files).
   const std::vector<std::string>& residColNames() const { return m_residColNames; }
 
-  // Weights / indicator — only valid after residWtCoxG.
+  // Weights / indicator — only valid after residWtCoxG or setResidWeightIndicator.
   const Eigen::VectorXd& weights()    const { return m_weights; }
   const Eigen::VectorXd& indicator()  const { return m_indicator; }
 
@@ -77,10 +79,29 @@ public:
   int  covarCols() const { return static_cast<int>(m_covar.cols()); }
   const Eigen::MatrixXd& covar() const { return m_covar; }
 
-  // PCs — nUsed × nPC (empty if not loaded).
-  bool hasPCs() const { return m_PCs.size() > 0; }
-  int  nPC()    const { return static_cast<int>(m_PCs.cols()); }
-  const Eigen::MatrixXd& PCs() const { return m_PCs; }
+  // ── Named column access (valid after finalize) ─────────────────────
+  // Searches covar columns first, then pheno columns.
+  // Throws if name not found.
+  bool hasColumn(const std::string& name) const;
+  Eigen::VectorXd getColumn(const std::string& name) const;
+  Eigen::MatrixXd getColumns(const std::vector<std::string>& names) const;
+
+  // ── Post-finalize setters (for computed regression path) ───────────
+  // Sets residuals, weights, and indicator AFTER finalize, replacing
+  // whatever was loaded from file.
+  void setResidWeightIndicator(Eigen::VectorXd resid,
+                               Eigen::VectorXd weight,
+                               Eigen::VectorXd ind);
+
+  // ── Direct initialization from a pre-computed bitmask ──────────────
+  // Bypasses the normal load/finalize pipeline.  Sets the used-mask,
+  // nUsed, and residuals/weights/indicator directly.  Useful when the
+  // caller has already computed per-cluster masks and regression output
+  // (e.g. LEAF pheno path).
+  void initFromMask(std::vector<uint64_t> mask, uint32_t nUsed,
+                    Eigen::VectorXd resid,
+                    Eigen::VectorXd weight,
+                    Eigen::VectorXd ind);
 
   // Used IIDs in .fam order (for SparseGRM construction, logging, etc.).
   std::vector<std::string> usedIIDs() const;
@@ -113,17 +134,23 @@ private:
   Eigen::VectorXd  m_indicator;
   Eigen::MatrixXd  m_residMatrix;   // N × K
   Eigen::MatrixXd  m_covar;         // N × p
-  Eigen::MatrixXd  m_PCs;           // N × nPC
+  Eigen::MatrixXd  m_phenoData;     // N × q
+
+  // Column name → column index maps (populated by finalize)
+  std::vector<std::string> m_covarColNames;
+  std::vector<std::string> m_phenoColNames;
+  std::unordered_map<std::string, int> m_covarColMap;
+  std::unordered_map<std::string, int> m_phenoColMap;
 
   // Pre-finalize raw storage
   enum class ResidType { None, One, WtCoxG, SPAsqr };
   ResidType m_residType = ResidType::None;
   RawFile   m_rawResid;
   RawFile   m_rawCovar;
-  RawFile   m_rawEigen;
+  RawFile   m_rawPheno;
   bool      m_hasRawResid  = false;
   bool      m_hasRawCovar  = false;
-  bool      m_hasRawEigen  = false;
+  bool      m_hasRawPheno  = false;
 
   int m_nResidOneCols = 0;
   std::vector<std::string> m_residColNames;

@@ -12,6 +12,8 @@
 #include <cmath>
 #include <fstream>
 #include <limits>
+#include <numeric>
+#include <random>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -85,6 +87,123 @@ std::vector<PopMatchedAF> loadAndMatchRefAf(
     matched.push_back(pm);
   }
   return matched;
+}
+
+
+// ======================================================================
+// kmeansCluster — K-means with K-means++ init and nstart restarts
+//
+// Distance computation uses the identity
+//   ||x_i − c_j||² = ||x_i||² − 2 x_i·c_j + ||c_j||²
+// so the n×k distance matrix is obtained via a single BLAS dgemm
+// (Eigen maps to BLAS when available), making the assignment step
+// O(n·k·p) with excellent vectorisation and cache behaviour.
+// ======================================================================
+
+Eigen::VectorXi kmeansCluster(
+    const Eigen::Ref<const Eigen::MatrixXd>& X,
+    int k, int nstart, uint64_t seed) {
+
+  const Eigen::Index n = X.rows();
+  const Eigen::Index p = X.cols();
+
+  if (k <= 0 || k > n)
+    throw std::runtime_error("kmeansCluster: k must be in [1, n]");
+
+  // Pre-compute ||x_i||² (used in every restart).
+  Eigen::VectorXd xSqNorm = X.rowwise().squaredNorm();  // (n)
+
+  // Seed the RNG: use user-provided seed or random_device.
+  std::mt19937_64 rng(seed != 0
+      ? seed
+      : static_cast<uint64_t>(std::random_device{}()));
+
+  Eigen::VectorXi bestLabels = Eigen::VectorXi::Zero(n);
+  double bestInertia = std::numeric_limits<double>::infinity();
+
+  // Scratch buffers (allocated once, reused across restarts).
+  Eigen::MatrixXd centers(k, p);
+  Eigen::MatrixXd XC(n, k);         // −2 X Cᵀ  (reused as dist²)
+  Eigen::VectorXd cSqNorm(k);       // ||c_j||²
+  Eigen::VectorXi labels(n);
+  Eigen::VectorXd minDist(n);        // for K-means++ sampling
+  Eigen::VectorXd counts(k);
+
+  const int maxIter = 300;
+
+  for (int restart = 0; restart < nstart; ++restart) {
+
+    // ── K-means++ initialisation ──────────────────────────────────
+    {
+      std::uniform_int_distribution<Eigen::Index> uniIdx(0, n - 1);
+      centers.row(0) = X.row(uniIdx(rng));
+
+      // Distance from each point to its nearest chosen centre.
+      minDist = (X.rowwise() - centers.row(0)).rowwise().squaredNorm();
+
+      for (int c = 1; c < k; ++c) {
+        // Sample proportional to minDist  (D² weighting).
+        std::discrete_distribution<Eigen::Index> dd(
+            minDist.data(), minDist.data() + n);
+        Eigen::Index pick = dd(rng);
+        centers.row(c) = X.row(pick);
+
+        // Update minDist.
+        Eigen::VectorXd newDist =
+            (X.rowwise() - centers.row(c)).rowwise().squaredNorm();
+        minDist = minDist.cwiseMin(newDist);
+      }
+    }
+
+    // ── Lloyd iterations ──────────────────────────────────────────
+    double inertia = 0.0;
+
+    for (int iter = 0; iter < maxIter; ++iter) {
+
+      // ---- Assignment step ----
+      // dist²(i,j) = ||x_i||² − 2 x_i·c_j + ||c_j||²
+      cSqNorm = centers.rowwise().squaredNorm();     // (k)
+      XC.noalias() = X * centers.transpose();        // (n × k)  BLAS dgemm
+
+      inertia = 0.0;
+      bool changed = false;
+      for (Eigen::Index i = 0; i < n; ++i) {
+        double best = std::numeric_limits<double>::infinity();
+        int bestJ = 0;
+        const double xi2 = xSqNorm[i];
+        for (int j = 0; j < k; ++j) {
+          double d2 = xi2 - 2.0 * XC(i, j) + cSqNorm[j];
+          if (d2 < best) { best = d2; bestJ = j; }
+        }
+        if (labels[i] != bestJ) { labels[i] = bestJ; changed = true; }
+        inertia += best;
+      }
+
+      // ---- Update step: new centroids ----
+      centers.setZero();
+      counts.setZero();
+      for (Eigen::Index i = 0; i < n; ++i) {
+        int c = labels[i];
+        centers.row(c) += X.row(i);
+        counts[c] += 1.0;
+      }
+      for (int j = 0; j < k; ++j) {
+        if (counts[j] > 0.0)
+          centers.row(j) /= counts[j];
+      }
+
+      if (!changed) break;
+    }
+
+    if (inertia < bestInertia) {
+      bestInertia = inertia;
+      bestLabels = labels;
+    }
+  }
+
+  // Convert from 0-based to 1-based labels (R convention).
+  bestLabels.array() += 1;
+  return bestLabels;
 }
 
 
@@ -583,6 +702,456 @@ void runLEAF(
   }
 
   // ---- Build LEAFMethod and run marker engine ----
+  infoMsg("Building LEAF method (%d clusters)...", nCluster);
+
+  std::vector<std::unique_ptr<WtCoxGMethod>> clMethods;
+  clMethods.reserve(nCluster);
+  for (int c = 0; c < nCluster; ++c) {
+    clMethods.push_back(std::make_unique<WtCoxGMethod>(
+        clusterSD[c].residuals(),
+        clusterSD[c].weights(),
+        cutoff,
+        spaCutoff,
+        clRefMaps[c]));
+  }
+
+  LEAFMethod method(std::move(clMethods), clusterIndices);
+
+  infoMsg("Running LEAF marker engine (%d thread(s))...", nthread);
+  markerEngine(plinkData, method, outputFile,
+               nthread,
+               missingCutoff,
+               minMafCutoff,
+               minMacCutoff,
+               /*exactHwe=*/false);
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// runLEAFPheno — new --pheno path: K-means + per-cluster regression
+//
+// Follows the R reference code (LEAF.md):
+//   1. Load phenotype + covariates
+//   2. K-means on PCs → nClusters clusters
+//   3. Per-cluster: compute calRegrWeight, fit glm/coxph, get residuals
+//   4. Build per-cluster SubjectData with disjoint subject masks
+//   5. Load PLINK with union mask, load ref-af files
+//   6. Per-cluster: summix + batch-effect testing (same as runLEAF)
+//   7. Build LEAFMethod → markerEngine
+// ══════════════════════════════════════════════════════════════════════
+
+#include "wtcoxg/regression.hpp"
+
+void runLEAFPheno(
+    const std::string& phenoFile,
+    const std::string& covarFile,
+    const std::vector<std::string>& covarNames,
+    const std::string& binaryPheno,
+    const std::string& survPheno,
+    const std::vector<std::string>& pcColNames,
+    int nClusters,
+    uint64_t seed,
+    const std::string& bfilePrefix,
+    const std::vector<std::string>& refAfFiles,
+    const std::string& spgrmGrabFile,
+    const std::string& spgrmGctaFile,
+    const std::string& outputFile,
+    double refPrevalence,
+    double cutoff,
+    double spaCutoff,
+    int nthread,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff) {
+
+  const bool isSurv = !survPheno.empty();
+  const int nCluster = nClusters;
+
+  // ---- 1. Load phenotype / covariate data ----
+  infoMsg("Loading phenotype file: %s", phenoFile.c_str());
+  auto famIIDs = parseFamIIDs(bfilePrefix + ".fam");
+  const uint32_t nFamTotal = static_cast<uint32_t>(famIIDs.size());
+  SubjectData sdFull(famIIDs); // copy — need famIIDs later
+  sdFull.loadPhenoFile(phenoFile);
+  if (!covarFile.empty()) {
+    infoMsg("Loading covariate file: %s", covarFile.c_str());
+    sdFull.loadCovar(covarFile);
+  }
+  sdFull.finalize();
+  infoMsg("  %u subjects loaded", sdFull.nUsed());
+
+  const Eigen::Index N = static_cast<Eigen::Index>(sdFull.nUsed());
+
+  // ---- Extract response ----
+  Eigen::VectorXd indicator;
+  Eigen::VectorXd survTime;
+
+  if (isSurv) {
+    std::string timeCol, eventCol;
+    regression::parseSurvSpec(survPheno, timeCol, eventCol);
+    survTime  = sdFull.getColumn(timeCol);
+    indicator = sdFull.getColumn(eventCol);
+    infoMsg("  Survival phenotype: time=%s, event=%s",
+            timeCol.c_str(), eventCol.c_str());
+  } else {
+    indicator = sdFull.getColumn(binaryPheno);
+    infoMsg("  Binary phenotype: %s", binaryPheno.c_str());
+  }
+
+  // ---- Build design matrices ----
+  // Logistic: [1 | covariates] (intercept needed)
+  // Cox PH:   [covariates]     (no intercept — absorbed into baseline hazard)
+  const int nCov = covarNames.empty() ? 0 : static_cast<int>(covarNames.size());
+  Eigen::MatrixXd covarMat;
+  if (nCov > 0) {
+    covarMat = sdFull.getColumns(covarNames);
+    infoMsg("  %d covariate(s) from --covar-name", nCov);
+  }
+  Eigen::MatrixXd logisticDesign;  // only built if needed
+  if (!isSurv) {
+    logisticDesign.resize(N, 1 + nCov);
+    logisticDesign.col(0).setOnes();
+    if (nCov > 0) logisticDesign.rightCols(nCov) = covarMat;
+  }
+
+  // ---- 2. K-means clustering on PCs ----
+  Eigen::MatrixXd PCs = sdFull.getColumns(pcColNames);
+  infoMsg("  %d PCs for K-means clustering", static_cast<int>(PCs.cols()));
+  infoMsg("K-means clustering into %d clusters...", nCluster);
+  Eigen::VectorXi clusterLabels = kmeansCluster(PCs, nCluster, /*nstart=*/25, seed);
+
+  // ---- 3. Per-cluster regression → resid/weight/indicator ----
+  //
+  // Following R reference (LEAF.md):
+  //   Indicator_i <- indicator[idx_i]
+  //   weight_i    <- calRegrWeight(Indicator_i, RefPrevalence)
+  //   residual_i  <- glm.fit(designMat[idx_i,], Indicator_i,
+  //                          weights=weight_i, family=binomial(),
+  //                          intercept=TRUE)$residuals
+  //
+  // Note: R residuals(glm(...), type="response") returns y − μ̂.
+  // Our regression::logisticResiduals returns the same response residuals.
+
+  // Map cluster labels → member indices (into full used-subject array)
+  std::vector<std::vector<uint32_t>> clusterMemberIdx(nCluster);
+  for (Eigen::Index i = 0; i < N; ++i)
+    clusterMemberIdx[clusterLabels[i] - 1].push_back(static_cast<uint32_t>(i));
+
+  // Per-cluster residuals/weights/indicators (indexed by cluster member order)
+  struct ClusterRWI {
+    Eigen::VectorXd resid, weight, ind;
+  };
+  std::vector<ClusterRWI> clusterRWI(nCluster);
+
+  infoMsg("Per-cluster regression (%d clusters)...", nCluster);
+  for (int c = 0; c < nCluster; ++c) {
+    const auto& members = clusterMemberIdx[c];
+    const Eigen::Index Nc = static_cast<Eigen::Index>(members.size());
+
+    // Subset cluster data
+    Eigen::VectorXd cInd(Nc), cTime(Nc);
+    for (Eigen::Index j = 0; j < Nc; ++j) {
+      auto i = members[j];
+      cInd[j] = indicator[i];
+      if (isSurv) cTime[j] = survTime[i];
+    }
+
+    // calRegrWeight per cluster (R: weight_i <- calRegrWeight(Indicator_i, ...))
+    Eigen::VectorXd cWeight = regression::calRegrWeight(refPrevalence, cInd);
+
+    // Subset design matrix and fit regression per cluster
+    Eigen::VectorXd cResid;
+    if (isSurv) {
+      // Cox PH: no intercept
+      Eigen::MatrixXd cDesign(Nc, covarMat.cols());
+      for (Eigen::Index j = 0; j < Nc; ++j)
+        cDesign.row(j) = covarMat.row(members[j]);
+      cResid = regression::coxResiduals(cTime, cInd, cDesign, cWeight);
+    } else {
+      // Logistic: with intercept
+      Eigen::MatrixXd cDesign(Nc, logisticDesign.cols());
+      for (Eigen::Index j = 0; j < Nc; ++j)
+        cDesign.row(j) = logisticDesign.row(members[j]);
+      cResid = regression::logisticResiduals(cInd, cDesign, cWeight);
+    }
+    infoMsg("  Cluster %d: %d subjects, resid computed", c + 1, static_cast<int>(Nc));
+
+    clusterRWI[c] = {std::move(cResid), std::move(cWeight), std::move(cInd)};
+  }
+
+  // ---- 4. Build per-cluster SubjectData with disjoint masks ----
+  const size_t nMaskWords = (nFamTotal + 63) / 64;
+
+  // Build per-cluster bitmasks from fullMask + clusterLabels
+  std::vector<std::vector<uint64_t>> clusterMasks(nCluster);
+  for (int c = 0; c < nCluster; ++c)
+    clusterMasks[c].assign(nMaskWords, 0);
+
+  {
+    const auto& fullMask = sdFull.usedMask();
+    uint32_t usedIdx = 0;
+    for (uint32_t f = 0; f < nFamTotal; ++f) {
+      if (fullMask[f / 64] & (1ULL << (f % 64))) {
+        int cl = clusterLabels[usedIdx] - 1; // 0-based
+        clusterMasks[cl][f / 64] |= 1ULL << (f % 64);
+        ++usedIdx;
+      }
+    }
+  }
+
+  // Count per-cluster subjects from masks
+  std::vector<uint32_t> clusterN(nCluster, 0);
+  for (int c = 0; c < nCluster; ++c)
+    for (size_t w = 0; w < nMaskWords; ++w)
+      clusterN[c] += static_cast<uint32_t>(__builtin_popcountll(clusterMasks[c][w]));
+
+  // Create per-cluster SubjectData with proper disjoint masks
+  std::vector<SubjectData> clusterSD;
+  clusterSD.reserve(nCluster);
+  for (int c = 0; c < nCluster; ++c) {
+    auto fc = famIIDs; // copy
+    clusterSD.emplace_back(std::move(fc));
+    clusterSD.back().initFromMask(clusterMasks[c], clusterN[c],
+                                  std::move(clusterRWI[c].resid),
+                                  std::move(clusterRWI[c].weight),
+                                  std::move(clusterRWI[c].ind));
+  }
+
+  // ---- Build union bitmask and cluster indices (same as runLEAF) ----
+  std::vector<uint64_t> unionMask(nMaskWords, 0);
+  for (int c = 0; c < nCluster; ++c) {
+    const auto& cmask = clusterSD[c].usedMask();
+    for (size_t w = 0; w < nMaskWords; ++w)
+      unionMask[w] |= cmask[w];
+  }
+  uint32_t nUnion = 0;
+  for (size_t w = 0; w < nMaskWords; ++w)
+    nUnion += static_cast<uint32_t>(__builtin_popcountll(unionMask[w]));
+
+  std::vector<std::vector<uint32_t>> clusterIndices(nCluster);
+  for (int c = 0; c < nCluster; ++c)
+    clusterIndices[c].reserve(clusterSD[c].nUsed());
+
+  uint32_t denseIdx = 0;
+  for (size_t w = 0; w < nMaskWords; ++w) {
+    uint64_t bits = unionMask[w];
+    while (bits) {
+      int bit = __builtin_ctzll(bits);
+      uint64_t bitVal = uint64_t(1) << bit;
+      for (int c = 0; c < nCluster; ++c) {
+        if (clusterSD[c].usedMask()[w] & bitVal) {
+          clusterIndices[c].push_back(denseIdx);
+          break;
+        }
+      }
+      ++denseIdx;
+      bits &= bits - 1;
+    }
+  }
+  infoMsg("  Total subjects (union): %u", nUnion);
+
+  // ---- 5. Load PLINK data with union bitmask ----
+  infoMsg("Loading PLINK data: %s", bfilePrefix.c_str());
+  PlinkData plinkData(
+      bfilePrefix + ".bed",
+      bfilePrefix + ".bim",
+      bfilePrefix + ".fam",
+      unionMask,
+      nFamTotal,
+      nUnion,
+      "ref-first",
+      {}, {}, {}, {},
+      nSnpPerChunk);
+  infoMsg("  %u subjects matched, %u markers",
+          plinkData.nSubjUsed(), plinkData.nMarkers());
+
+  // ---- Load per-population ref-af files (plink2 .afreq) ----
+  const int nPop = static_cast<int>(refAfFiles.size());
+  infoMsg("Loading %d reference AF files...", nPop);
+  std::vector<std::vector<PopMatchedAF>> popMatched(nPop);
+  for (int p = 0; p < nPop; ++p) {
+    infoMsg("  Pop %d: %s", p + 1, refAfFiles[p].c_str());
+    popMatched[p] = loadAndMatchRefAf(plinkData, refAfFiles[p]);
+    infoMsg("    %zu markers matched", popMatched[p].size());
+  }
+
+  // ---- 6. Build intersection + summix + batch-effect (same as runLEAF) ----
+
+  // Build intersection of markers present in all populations
+  struct MultiPopEntry {
+    double af[6];
+    double obs_ct[6];
+  };
+  std::unordered_map<uint64_t, MultiPopEntry> allPopMap;
+  if (nPop > 0) {
+    for (const auto& pm : popMatched[0]) {
+      MultiPopEntry e{};
+      e.af[0] = pm.af;
+      e.obs_ct[0] = pm.obs_ct;
+      allPopMap.emplace(pm.genoIndex, e);
+    }
+  }
+  for (int p = 1; p < nPop; ++p) {
+    std::unordered_map<uint64_t, MultiPopEntry> next;
+    for (const auto& pm : popMatched[p]) {
+      auto it = allPopMap.find(pm.genoIndex);
+      if (it == allPopMap.end()) continue;
+      auto entry = it->second;
+      entry.af[p] = pm.af;
+      entry.obs_ct[p] = pm.obs_ct;
+      next.emplace(pm.genoIndex, entry);
+    }
+    allPopMap = std::move(next);
+  }
+
+  // Convert to sorted vector for deterministic order
+  struct MatchedMultiPop {
+    uint64_t genoIndex;
+    double popAF[6];
+    double popObsCt[6];
+  };
+  std::vector<MatchedMultiPop> matchedMulti;
+  matchedMulti.reserve(allPopMap.size());
+  for (auto& [gi, e] : allPopMap) {
+    MatchedMultiPop mm{};
+    mm.genoIndex = gi;
+    for (int p = 0; p < nPop; ++p) {
+      mm.popAF[p]    = e.af[p];
+      mm.popObsCt[p] = e.obs_ct[p];
+    }
+    matchedMulti.push_back(mm);
+  }
+  std::sort(matchedMulti.begin(), matchedMulti.end(),
+            [](const auto& a, const auto& b) { return a.genoIndex < b.genoIndex; });
+  const size_t nMatched = matchedMulti.size();
+  infoMsg("  %zu markers present in all %d populations", nMatched, nPop);
+
+  // Per-cluster summix + AF synthesis (scan genotypes for per-cluster AF)
+  infoMsg("Per-cluster ancestry estimation and AF synthesis...");
+
+  PlinkCursor cursor(plinkData.bedFile(),
+                     static_cast<uint32_t>(plinkData.nMarkers()),
+                     plinkData.nSubjInFile(),
+                     plinkData.usedMask(),
+                     plinkData.nSubjUsed(),
+                     plinkData.isAltFirst(),
+                     plinkData.allUsed());
+
+  const uint32_t nFull = plinkData.nSubjUsed();
+  Eigen::VectorXd fullGVec(nFull);
+
+  if (!matchedMulti.empty())
+    cursor.beginSequentialBlock(matchedMulti.front().genoIndex);
+
+  struct ClMarkerStat {
+    double intAF;
+    double mu0, mu1, n0, n1, mu_int;
+  };
+  std::vector<std::vector<ClMarkerStat>> clStats(nCluster,
+      std::vector<ClMarkerStat>(nMatched));
+
+  infoMsg("  Scanning %zu matched markers for per-cluster allele frequencies...",
+          nMatched);
+  for (size_t m = 0; m < nMatched; ++m) {
+    cursor.getGenotypesSimple(matchedMulti[m].genoIndex, fullGVec);
+
+    for (int c = 0; c < nCluster; ++c) {
+      const auto& idx = clusterIndices[c];
+      const auto& ind = clusterSD[c].indicator();
+      double sum0 = 0, sum1 = 0, cnt0 = 0, cnt1 = 0;
+      for (size_t k = 0; k < idx.size(); ++k) {
+        double g = fullGVec[idx[k]];
+        if (std::isnan(g)) continue;
+        if (ind[static_cast<Eigen::Index>(k)] == 1.0) {
+          sum1 += g; cnt1 += 1.0;
+        } else {
+          sum0 += g; cnt0 += 1.0;
+        }
+      }
+      double total = cnt0 + cnt1;
+      auto& st = clStats[c][m];
+      st.intAF  = (total > 0) ? (sum0 + sum1) / (2.0 * total)
+                               : std::numeric_limits<double>::quiet_NaN();
+      st.mu0    = (cnt0 > 0) ? sum0 / (2.0 * cnt0) : 0.0;
+      st.mu1    = (cnt1 > 0) ? sum1 / (2.0 * cnt1) : 0.0;
+      st.n0     = cnt0;
+      st.n1     = cnt1;
+      st.mu_int = st.intAF;
+    }
+  }
+
+  // Per cluster: summix → AF_ref, obs_ct → MatchedMarkerInfo
+  std::vector<std::vector<MatchedMarkerInfo>> clMatchedInfo(nCluster);
+
+  for (int c = 0; c < nCluster; ++c) {
+    infoMsg("  Cluster %d: running summix...", c + 1);
+
+    Eigen::VectorXd obsAF(nMatched);
+    Eigen::MatrixXd refMat(nMatched, nPop);
+    for (size_t m = 0; m < nMatched; ++m) {
+      obsAF[m] = clStats[c][m].intAF;
+      for (int p = 0; p < nPop; ++p)
+        refMat(m, p) = matchedMulti[m].popAF[p];
+    }
+
+    Eigen::VectorXd proportions = summixEstimate(obsAF, refMat);
+    for (int p = 0; p < nPop; ++p)
+      infoMsg("    pop%d: %.4f", p + 1, proportions[p]);
+
+    clMatchedInfo[c].resize(nMatched);
+    for (size_t m = 0; m < nMatched; ++m) {
+      auto& mi = clMatchedInfo[c][m];
+      mi.genoIndex = matchedMulti[m].genoIndex;
+
+      double af_ref = 0.0;
+      for (int p = 0; p < nPop; ++p)
+        af_ref += proportions[p] * matchedMulti[m].popAF[p];
+      mi.AF_ref = af_ref;
+
+      double denom = 0.0;
+      for (int p = 0; p < nPop; ++p) {
+        double oc = matchedMulti[m].popObsCt[p];
+        if (oc > 0 && proportions[p] > 0)
+          denom += (proportions[p] * proportions[p]) / oc;
+      }
+      mi.obs_ct = (denom > 0) ? 1.0 / denom : 0.0;
+
+      mi.mu0    = clStats[c][m].mu0;
+      mi.mu1    = clStats[c][m].mu1;
+      mi.n0     = clStats[c][m].n0;
+      mi.n1     = clStats[c][m].n1;
+      mi.mu_int = clStats[c][m].mu_int;
+    }
+  }
+
+  // Per-cluster batch-effect testing
+  infoMsg("Per-cluster batch-effect testing...");
+
+  std::vector<std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo>>>
+      clRefMaps(nCluster);
+
+  for (int c = 0; c < nCluster; ++c) {
+    infoMsg("  Cluster %d: batch-effect testing (%zu markers)...",
+            c + 1, clMatchedInfo[c].size());
+
+    std::unique_ptr<SparseGRM> grm;
+    if (!spgrmGctaFile.empty() || !spgrmGrabFile.empty()) {
+      grm = std::make_unique<SparseGRM>(
+          SparseGRM::load(spgrmGrabFile, spgrmGctaFile,
+                          clusterSD[c].usedIIDs(),
+                          clusterSD[c].famIIDs()));
+      infoMsg("    Sparse GRM: %u subjects, %zu non-zeros",
+              grm->nSubjects(), grm->nnz());
+    }
+
+    clRefMaps[c] = testBatchEffects(
+        clMatchedInfo[c], clusterSD[c].residuals(), clusterSD[c].weights(),
+        clusterSD[c].indicator(), grm.get(), refPrevalence, cutoff);
+    infoMsg("    %zu markers retained", clRefMaps[c]->size());
+  }
+
+  // ---- 7. Build LEAFMethod and run marker engine ----
   infoMsg("Building LEAF method (%d clusters)...", nCluster);
 
   std::vector<std::unique_ptr<WtCoxGMethod>> clMethods;

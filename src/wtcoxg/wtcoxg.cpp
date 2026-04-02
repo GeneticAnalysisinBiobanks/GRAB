@@ -941,3 +941,152 @@ void runWtCoxG(
                minMacCutoff,
                /*exactHwe=*/false);
 }
+
+
+// ══════════════════════════════════════════════════════════════════════
+// runWtCoxGPheno — new --pheno path: internal regression
+// ══════════════════════════════════════════════════════════════════════
+
+#include "wtcoxg/regression.hpp"
+
+void runWtCoxGPheno(
+    const std::string& phenoFile,
+    const std::string& covarFile,
+    const std::vector<std::string>& covarNames,
+    const std::string& binaryPheno,
+    const std::string& survPheno,
+    const std::string& bfilePrefix,
+    const std::string& refAfFile,
+    const std::string& spgrmGrabFile,
+    const std::string& spgrmGctaFile,
+    const std::string& outputFile,
+    double refPrevalence,
+    double cutoff,
+    double spaCutoff,
+    int nthread,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff) {
+
+  const bool isSurv = !survPheno.empty();
+
+  // ---- Load phenotype / covariate data ----
+  infoMsg("Loading phenotype file: %s", phenoFile.c_str());
+  auto famIIDs = parseFamIIDs(bfilePrefix + ".fam");
+  SubjectData sd(std::move(famIIDs));
+  sd.loadPhenoFile(phenoFile);
+  if (!covarFile.empty()) {
+    infoMsg("Loading covariate file: %s", covarFile.c_str());
+    sd.loadCovar(covarFile);
+  }
+  sd.finalize();
+  infoMsg("  %u subjects loaded", sd.nUsed());
+
+  const Eigen::Index N = static_cast<Eigen::Index>(sd.nUsed());
+
+  // ---- Extract response ----
+  Eigen::VectorXd indicator;   // case/control or event
+  Eigen::VectorXd survTime;    // only for Cox
+
+  if (isSurv) {
+    std::string timeCol, eventCol;
+    regression::parseSurvSpec(survPheno, timeCol, eventCol);
+    survTime  = sd.getColumn(timeCol);
+    indicator = sd.getColumn(eventCol);
+    infoMsg("  Survival phenotype: time=%s, event=%s", timeCol.c_str(), eventCol.c_str());
+  } else {
+    indicator = sd.getColumn(binaryPheno);
+    infoMsg("  Binary phenotype: %s", binaryPheno.c_str());
+  }
+
+  // ---- Build design matrices ----
+  // Logistic: [1 | covariates] (intercept needed)
+  // Cox PH:   [covariates]     (no intercept — absorbed into baseline hazard)
+  const int nCov = covarNames.empty() ? 0 : static_cast<int>(covarNames.size());
+  Eigen::MatrixXd covarMat;
+  if (nCov > 0) {
+    covarMat = sd.getColumns(covarNames);
+    infoMsg("  %d covariate(s) from --covar-name", nCov);
+  }
+
+  // ---- Compute regression weights ----
+  Eigen::VectorXd regrWeight = regression::calRegrWeight(refPrevalence, indicator);
+  infoMsg("  Regression weights computed (prevalence=%.6f)", refPrevalence);
+
+  // ---- Fit null model and compute residuals ----
+  Eigen::VectorXd resid;
+  if (isSurv) {
+    infoMsg("Fitting weighted Cox PH model...");
+    resid = regression::coxResiduals(survTime, indicator, covarMat, regrWeight);
+  } else {
+    // Logistic needs intercept
+    Eigen::MatrixXd designMat(N, 1 + nCov);
+    designMat.col(0).setOnes();
+    if (nCov > 0) designMat.rightCols(nCov) = covarMat;
+    infoMsg("Fitting weighted logistic regression...");
+    resid = regression::logisticResiduals(indicator, designMat, regrWeight);
+  }
+  infoMsg("  Residuals computed (N=%d)", static_cast<int>(N));
+
+  // ---- Set on SubjectData ----
+  sd.setResidWeightIndicator(std::move(resid), std::move(regrWeight), indicator);
+
+  // ---- From here, same pipeline as runWtCoxG ----
+  infoMsg("Loading ref-af file: %s", refAfFile.c_str());
+  bool refAfNumeric = false;
+  auto refAf = loadRefAfFile(refAfFile, &refAfNumeric);
+  infoMsg("  %zu reference records loaded%s", refAf.size(),
+          refAfNumeric ? " (numeric fallback)" : "");
+
+  infoMsg("Loading PLINK data: %s", bfilePrefix.c_str());
+  PlinkData plinkData(
+      bfilePrefix + ".bed",
+      bfilePrefix + ".bim",
+      bfilePrefix + ".fam",
+      sd.usedMask(),
+      sd.nFam(),
+      sd.nUsed(),
+      "ref-first",
+      {}, {}, {}, {},
+      nSnpPerChunk);
+  infoMsg("  %u subjects matched in PLINK, %u markers available",
+          plinkData.nSubjUsed(), plinkData.nMarkers());
+
+  infoMsg("Matching markers against reference allele frequencies...");
+  auto matched = refAfNumeric
+      ? matchMarkersNumeric(plinkData, refAf)
+      : matchMarkers(plinkData, refAf);
+  infoMsg("  %zu markers matched", matched.size());
+
+  infoMsg("Computing per-marker case/control allele frequencies...");
+  computeMarkerStats(matched, plinkData, sd.indicator());
+
+  // ---- Batch-effect testing ----
+  infoMsg("Batch-effect testing and parameter estimation...");
+  std::unique_ptr<SparseGRM> grm;
+  if (!spgrmGctaFile.empty() || !spgrmGrabFile.empty()) {
+    infoMsg("  Loading sparse GRM...");
+    grm = std::make_unique<SparseGRM>(
+        SparseGRM::load(spgrmGrabFile, spgrmGctaFile, sd.usedIIDs(),
+                        sd.famIIDs()));
+    infoMsg("  Sparse GRM: %u subjects, %zu non-zeros",
+            grm->nSubjects(), grm->nnz());
+  }
+  auto refInfoMap = testBatchEffects(
+      matched, sd.residuals(), sd.weights(), sd.indicator(), grm.get(),
+      refPrevalence, cutoff);
+  infoMsg("  %zu markers retained after batch-effect QC", refInfoMap->size());
+
+  // ---- Marker-level SPA tests ----
+  infoMsg("Running marker-level WtCoxG tests (%d thread(s))...", nthread);
+  WtCoxGMethod method(
+      sd.residuals(), sd.weights(),
+      cutoff, spaCutoff, refInfoMap);
+  markerEngine(plinkData, method, outputFile,
+               nthread,
+               missingCutoff,
+               minMafCutoff,
+               minMacCutoff,
+               /*exactHwe=*/false);
+}

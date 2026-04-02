@@ -99,7 +99,9 @@ private:
 
 void runSPAmixPlus(
     const std::string& residFile,
-    const std::string& eigenVecsFile,
+    const std::vector<std::string>& pcColNames,
+    const std::string& phenoFile,
+    const std::string& covarFile,
     const std::string& bfilePrefix,
     const std::string& spgrmGrabFile,
     const std::string& spgrmGctaFile,
