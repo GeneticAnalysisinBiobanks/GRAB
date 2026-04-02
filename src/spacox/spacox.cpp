@@ -15,6 +15,38 @@
 #endif
 
 // ======================================================================
+// DesignMatrix
+// ======================================================================
+
+DesignMatrix::DesignMatrix(const Eigen::MatrixXd& X)
+  : m_X(X)
+{
+  const int nCols = static_cast<int>(m_X.cols());
+  m_tX = m_X.transpose();
+  Eigen::MatrixXd XtX = m_tX * m_X;
+  m_XinvXX = m_X * XtX.ldlt().solve(
+      Eigen::MatrixXd::Identity(nCols, nCols));
+}
+
+void DesignMatrix::adjustGenotype(
+    const double* G, const uint32_t* nzIdx, int nNz,
+    Eigen::Ref<Eigen::VectorXd> adjG) const {
+
+  const int p = nCols();
+  const int N = nRows();
+
+  Eigen::VectorXd tX_g = Eigen::VectorXd::Zero(p);
+  for (int k = 0; k < nNz; ++k) {
+    uint32_t j = nzIdx[k];
+    double gj = G[j];
+    tX_g.noalias() += gj * m_tX.col(j);
+  }
+
+  Eigen::Map<const Eigen::VectorXd> gVec(G, N);
+  adjG.noalias() = gVec - m_XinvXX * tX_g;
+}
+
+// ======================================================================
 // Build empirical CGF interpolation table
 // ======================================================================
 

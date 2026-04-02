@@ -16,7 +16,30 @@
 #include <Eigen/Dense>
 
 #include "engine/marker.hpp"
-#include "io/data_matrix.hpp"
+
+// ======================================================================
+// DesignMatrix — covariate projection (spacox-only)
+// ======================================================================
+
+class DesignMatrix {
+public:
+  explicit DesignMatrix(const Eigen::MatrixXd& X);
+
+  int nRows() const { return static_cast<int>(m_X.rows()); }
+  int nCols() const { return static_cast<int>(m_X.cols()); }
+
+  const Eigen::MatrixXd& X()      const { return m_X; }
+  const Eigen::MatrixXd& tX()     const { return m_tX; }
+  const Eigen::MatrixXd& XinvXX() const { return m_XinvXX; }
+
+  void adjustGenotype(const double* G, const uint32_t* nzIdx, int nNz,
+                      Eigen::Ref<Eigen::VectorXd> adjG) const;
+
+private:
+  Eigen::MatrixXd m_X;       // N × p
+  Eigen::MatrixXd m_tX;      // p × N
+  Eigen::MatrixXd m_XinvXX;  // N × p
+};
 
 // ======================================================================
 // Empirical CGF interpolation table
@@ -52,7 +75,7 @@ public:
   // ---- MethodBase interface ----
   std::unique_ptr<MethodBase> clone() const override;
   int resultSize() const override { return 2; }
-  std::string getHeaderColumns() const override { return "\tPvalue\tzScore"; }
+  std::string getHeaderColumns() const override { return "\tSPACox_P\tSPACox_Z"; }
   void getResultVec(Eigen::Ref<Eigen::VectorXd> GVec,
                     double altFreq, int markerInChunkIdx,
                     bool flipped, std::vector<double>& result) override;

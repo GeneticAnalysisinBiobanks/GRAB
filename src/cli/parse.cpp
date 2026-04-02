@@ -1,0 +1,67 @@
+// parse.cpp — Command-line argument parsing
+
+#include "cli/cli.hpp"
+
+#include <cstdlib>
+#include <iostream>
+#include <string>
+
+namespace cli {
+
+Args parseArgs(int argc, char* argv[]) {
+    Args a;
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+
+        // --help [topic]
+        if (arg == "--help" || arg == "-h") {
+            if (i + 1 < argc && argv[i + 1][0] != '-')
+                a.helpTopic = argv[++i];
+            else
+                a.helpTopic = "__short__";
+            return a;   // skip further parsing
+        }
+
+        auto next = [&]() -> std::string {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: missing value for " << arg << "\n";
+                std::exit(1);
+            }
+            return argv[++i];
+        };
+
+        if      (arg == "--method")                   a.method            = next();
+        else if (arg == "--null-resid")               a.residFile         = next();
+        else if (arg == "--covar")                    a.covarFile         = next();
+        else if (arg == "--eigenvec")                 a.eigenVecsFile     = next();
+        else if (arg == "--bfile")                    a.bfilePrefix       = next();
+        else if (arg == "--ref-af")                   a.refAfFile         = next();
+        else if (arg == "--sp-grm-grab")              a.spGrmGrabFile     = next();
+        else if (arg == "--sp-grm-plink2")            a.spGrmPlink2File   = next();
+        else if (arg == "--ind-af-coef")              a.indAfFile         = next();
+        else if (arg == "--pairwise-ibd")             a.pairwiseIBDFile   = next();
+        else if (arg == "--out")                      a.outputFile        = next();
+        else if (arg == "--prevalence")               a.refPrevalence     = std::stod(next());
+        else if (arg == "--batch-effect-p-threshold") a.cutoff            = std::stod(next());
+        else if (arg == "--spa-z-threshold")          a.spaCutoff         = std::stod(next());
+        else if (arg == "--covar-p-threshold")        a.pvalCovAdjCut     = std::stod(next());
+        else if (arg == "--geno")                     a.missingCutoff     = std::stod(next());
+        else if (arg == "--maf")                      a.minMafCutoff      = std::stod(next());
+        else if (arg == "--mac")                      a.minMacCutoff      = std::stod(next());
+        else if (arg == "--outlier-iqr-threshold")    a.outlierRatio      = std::stod(next());
+        else if (arg == "--outlier-abs-bound")        a.outlierAbsBound   = std::stod(next());
+        else if (arg == "--threads")                  a.nthread           = std::stoi(next());
+        else if (arg == "--chunk-size")               a.nSnpPerChunk      = std::stoi(next());
+        else if (arg == "--cal-ind-af-coef")          a.calIndAfCoef      = true;
+        else if (arg == "--cal-pairwise-ibd")         a.calPairwiseIBD    = true;
+        else if (arg == "--min-maf-ibd")              a.minMafIBD         = std::stod(next());
+        else {
+            std::cerr << "Error: unknown option: " << arg
+                      << "  (run 'grab --help' for usage)\n";
+            std::exit(1);
+        }
+    }
+    return a;
+}
+
+} // namespace cli

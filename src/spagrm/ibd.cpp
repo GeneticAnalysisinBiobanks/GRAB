@@ -4,15 +4,14 @@
 // algorithm over the PLINK .bed file.
 //
 // Algorithm outline:
-//   1. Parse sparse GRM to collect off-diagonal (related) pairs.
-//   2. Read .fam to get all subject IDs; build an ID→index map.
-//   3. Create PlinkData for ALL subjects so that per-marker MAF is
+//   1. Load sparse GRM via SparseGRM; extract off-diagonal (related) pairs.
+//   2. Create PlinkData for ALL subjects so that per-marker MAF is
 //      computed from the full cohort (matching the R code's use of .frq).
-//   4. Stream through every marker once.  For markers with MAF ≥ threshold,
+//   3. Stream through every marker once.  For markers with MAF ≥ threshold,
 //      mean-impute missing genotypes and accumulate weighted IBS0 statistics
 //      for each related pair.
-//   5. Derive (pa, pb, pc) from the accumulated statistics + GRM value.
-//   6. Write output.
+//   4. Derive (pa, pb, pc) from the accumulated statistics + GRM value.
+//   5. Write output in the same pair order as the sparse GRM.
 
 #include "spagrm/ibd.hpp"
 
@@ -27,91 +26,12 @@
 #include <fstream>
 #include <numeric>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include <Eigen/Dense>
 
 
-namespace {
 
-// ── Sparse-GRM off-diagonal entry ────────────────────────────────────────────
-struct RelatedPair {
-  std::string id1, id2;
-  double grmValue;
-};
-
-// Parse the 3-column sparse GRM file, keeping only off-diagonal entries.
-std::vector<RelatedPair> parseGRMOffDiag(const std::string& filename) {
-  std::ifstream ifs(filename);
-  if (!ifs) throw std::runtime_error("Cannot open sparse GRM: " + filename);
-
-  std::vector<RelatedPair> pairs;
-  std::string line;
-  while (std::getline(ifs, line)) {
-    if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (line.empty() || line[0] == '#') continue;
-
-    const char*       p   = line.c_str();
-    const char* const end = p + line.size();
-    auto skipWS  = [&]() { while (p < end && (*p == ' ' || *p == '\t')) ++p; };
-    auto nextTok = [&]() -> std::string {
-      skipWS();
-      const char* s = p;
-      while (p < end && *p != ' ' && *p != '\t') ++p;
-      return std::string(s, p);
-    };
-
-    skipWS();
-    if (p >= end) continue;
-    std::string id1 = nextTok();
-    std::string id2 = nextTok();
-    skipWS();
-    if (id2.empty() || p >= end) continue;
-
-    if (id1 == id2) continue;  // skip diagonal
-
-    char* endPtr;
-    double val = std::strtod(p, &endPtr);
-    if (endPtr == p) continue;
-
-    pairs.push_back({std::move(id1), std::move(id2), val});
-  }
-  return pairs;
-}
-
-// Parse GCTA format (.grm.id + .grm.sp), keeping only off-diagonal entries.
-std::vector<RelatedPair> parseGRMOffDiagGCTA(const std::string& prefix) {
-  auto fileIIDs = SparseGRM::readGctaIIDs(prefix);
-  const uint32_t nIDs = static_cast<uint32_t>(fileIIDs.size());
-
-  const std::string spFile = prefix + ".grm.sp";
-  std::ifstream ifs(spFile);
-  if (!ifs) throw std::runtime_error("Cannot open GCTA .grm.sp: " + spFile);
-
-  std::vector<RelatedPair> pairs;
-  std::string line;
-  while (std::getline(ifs, line)) {
-    if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (line.empty()) continue;
-    const char* p = line.c_str();
-    char* endPtr;
-    unsigned long idx1 = std::strtoul(p, &endPtr, 10);
-    if (endPtr == p) continue;
-    p = endPtr;
-    unsigned long idx2 = std::strtoul(p, &endPtr, 10);
-    if (endPtr == p) continue;
-    p = endPtr;
-    double val = std::strtod(p, &endPtr);
-    if (endPtr == p) continue;
-    if (idx1 >= nIDs || idx2 >= nIDs) continue;
-    if (idx1 == idx2) continue;  // skip diagonal
-    pairs.push_back({fileIIDs[idx1], fileIIDs[idx2], val});
-  }
-  return pairs;
-}
-
-} // anonymous namespace
 
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -119,79 +39,51 @@ std::vector<RelatedPair> parseGRMOffDiagGCTA(const std::string& prefix) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 void runPairwiseIBD(
-    const std::string& spgrmSaigeFile,
-    const std::string& spgrmGctaPrefix,
+    const std::string& spgrmGrabFile,
+    const std::string& spgrmGctaFile,
     const std::string& bfilePrefix,
     const std::string& outputFile,
     double minMafIBD)
 {
-  // ── 1. Parse sparse GRM → related pairs ────────────────────────────
-  std::vector<RelatedPair> pairs;
-  if (!spgrmGctaPrefix.empty()) {
-    infoMsg("Parsing GCTA sparse GRM: %s.grm.sp", spgrmGctaPrefix.c_str());
-    pairs = parseGRMOffDiagGCTA(spgrmGctaPrefix);
-  } else {
-    infoMsg("Parsing sparse GRM: %s", spgrmSaigeFile.c_str());
-    pairs = parseGRMOffDiag(spgrmSaigeFile);
-  }
-  infoMsg("Found %zu off-diagonal (related) pairs", pairs.size());
-
-  if (pairs.empty()) {
-    // Write header-only output
-    std::ofstream ofs(outputFile);
-    if (!ofs) throw std::runtime_error("Cannot write " + outputFile);
-    ofs << "ID1\tID2\tpa\tpb\tpc\n";
-    infoMsg("No related pairs found — wrote empty output to %s", outputFile.c_str());
-    return;
-  }
-
-  // ── 2. Read .fam → all subject IIDs ────────────────────────────────
+  // ── 1. Read .fam and load sparse GRM ──────────────────────────────
   const std::string famFile = bfilePrefix + ".fam";
-  const std::string bimFile = bfilePrefix + ".bim";
-  const std::string bedFile = bfilePrefix + ".bed";
   std::vector<std::string> allIIDs = parseFamIIDs(famFile);
   const uint32_t nFam = static_cast<uint32_t>(allIIDs.size());
   infoMsg("Read %u subjects from %s", nFam, famFile.c_str());
 
-  // Build full bitmask (all subjects used)
+  SparseGRM grm = SparseGRM::load(spgrmGrabFile, spgrmGctaFile,
+                                   allIIDs, allIIDs);
+  infoMsg("Loaded sparse GRM: %zu entries", grm.nnz());
+
+  // ── 2. Extract off-diagonal pairs (sorted by row, col — same as GRM) ─
+  struct IndexedPair {
+    uint32_t idx1, idx2;
+    double   grmValue;
+  };
+
+  std::vector<IndexedPair> pairs;
+  for (const auto& e : grm.entries()) {
+    if (e.row != e.col)
+      pairs.push_back({e.row, e.col, e.value});
+  }
+  infoMsg("Found %zu off-diagonal (related) pairs", pairs.size());
+
+  if (pairs.empty()) {
+    std::ofstream ofs(outputFile);
+    if (!ofs) throw std::runtime_error("Cannot write " + outputFile);
+    ofs << "#ID1\tID2\tpa\tpb\tpc\n";
+    infoMsg("No related pairs found — wrote empty output to %s", outputFile.c_str());
+    return;
+  }
+
+  // ── 3. Build full bitmask, prepare PLINK data ─────────────────────
+  const std::string bimFile = bfilePrefix + ".bim";
+  const std::string bedFile = bfilePrefix + ".bed";
+
   const size_t nMaskWords = (nFam + 63) / 64;
   std::vector<uint64_t> fullMask(nMaskWords, ~uint64_t(0));
   if (nFam % 64 != 0)
     fullMask.back() &= (uint64_t(1) << (nFam % 64)) - 1;
-
-  // Build IID → index map
-  std::unordered_map<std::string, uint32_t> idMap;
-  idMap.reserve(allIIDs.size());
-  for (uint32_t i = 0; i < static_cast<uint32_t>(allIIDs.size()); ++i)
-    idMap.emplace(allIIDs[i], i);
-
-  // ── 3. Convert pair IDs to indices, drop pairs with unknown subjects ─
-  struct IndexedPair {
-    uint32_t idx1, idx2;
-    double   grmValue;
-    // string IDs kept for output
-    const std::string* sid1;
-    const std::string* sid2;
-  };
-
-  std::vector<IndexedPair> idxPairs;
-  idxPairs.reserve(pairs.size());
-  for (auto& rp : pairs) {
-    auto it1 = idMap.find(rp.id1);
-    auto it2 = idMap.find(rp.id2);
-    if (it1 == idMap.end() || it2 == idMap.end()) continue;
-    idxPairs.push_back({it1->second, it2->second, rp.grmValue,
-                        &rp.id1, &rp.id2});
-  }
-  if (idxPairs.empty()) {
-    std::ofstream ofs(outputFile);
-    if (!ofs) throw std::runtime_error("Cannot write " + outputFile);
-    ofs << "ID1\tID2\tpa\tpb\tpc\n";
-    infoMsg("No related pairs matched .fam — wrote empty output");
-    return;
-  }
-  infoMsg("IBD analysis: %zu pairs, %zu subjects",
-          idxPairs.size(), allIIDs.size());
 
   // ── 4. Create PlinkData for all subjects (full cohort MAF) ─────────
   PlinkData pdata(
@@ -231,7 +123,7 @@ void runPairwiseIBD(
   //
   // Then  pc_raw = 0.5 * sumXW / sumW.
 
-  const size_t nPairs = idxPairs.size();
+  const size_t nPairs = pairs.size();
   std::vector<double> sumXW(nPairs, 0.0);
   std::vector<double> sumW(nPairs, 0.0);
 
@@ -277,7 +169,7 @@ void runPairwiseIBD(
 
       // Accumulate for each pair
       for (size_t k = 0; k < nPairs; ++k) {
-        const double d = geno[idxPairs[k].idx1] - geno[idxPairs[k].idx2];
+        const double d = geno[pairs[k].idx1] - geno[pairs[k].idx2];
         const double x = (std::abs(d - 1.0) + std::abs(d + 1.0) - 2.0) * inv_pv;
         sumXW[k] += x * w;
         sumW[k]  += w;
@@ -301,15 +193,14 @@ void runPairwiseIBD(
   //   if (pb < 0) { pa += 0.5*pb; pb = 0; pc = 0; }
 
   struct IBDResult {
-    const std::string* id1;
-    const std::string* id2;
+    uint32_t idx1, idx2;
     double pa, pb, pc;
   };
   std::vector<IBDResult> results(nPairs);
 
   for (size_t k = 0; k < nPairs; ++k) {
     double pc = (sumW[k] > 0.0) ? 0.5 * sumXW[k] / sumW[k] : 0.0;
-    const double grm = idxPairs[k].grmValue;
+    const double grm = pairs[k].grmValue;
 
     const double upper = (1.0 - grm) * (1.0 - grm) - 1e-10;
     const double lower = 1.0 - 2.0 * grm;
@@ -324,17 +215,17 @@ void runPairwiseIBD(
       pc = 0.0;
     }
 
-    results[k] = {idxPairs[k].sid1, idxPairs[k].sid2, pa, pb, pc};
+    results[k] = {pairs[k].idx1, pairs[k].idx2, pa, pb, pc};
   }
 
-  // ── 8. Write output ────────────────────────────────────────────────
+  // ── 8. Write output (same pair order as the sparse GRM) ────────────
   std::ofstream ofs(outputFile);
   if (!ofs) throw std::runtime_error("Cannot write " + outputFile);
-  ofs << "ID1\tID2\tpa\tpb\tpc\n";
+  ofs << "#ID1\tID2\tpa\tpb\tpc\n";
   ofs.precision(12);
   for (const auto& r : results)
-    ofs << *r.id1 << '\t' << *r.id2 << '\t'
-        << r.pa   << '\t' << r.pb   << '\t' << r.pc << '\n';
+    ofs << allIIDs[r.idx1] << '\t' << allIIDs[r.idx2] << '\t'
+        << r.pa << '\t' << r.pb << '\t' << r.pc << '\n';
 
   infoMsg("Wrote %zu IBD records to %s", results.size(), outputFile.c_str());
 }

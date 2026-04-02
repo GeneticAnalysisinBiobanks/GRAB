@@ -4,7 +4,7 @@
 //   1. Load per-cluster resid files + per-cluster ref-af files (plink2 .afreq)
 //   2. Load PLINK data with combined subjects
 //   3. Match markers by (CHROM, ID) with allele flip detection
-//   4. Per cluster: compute internal AF → summix → ancestry-matched AF_ref/N_ref
+//   4. Per cluster: compute internal AF → summix → ancestry-matched AF_ref/obs_ct
 //   5. Per cluster: batch-effect testing → refInfoMap
 //   6. Create LEAFMethod (N WtCoxGMethod objects) → markerEngine → meta-analysis
 #pragma once
@@ -27,7 +27,7 @@ struct WtCoxGRefInfo;
 struct PopMatchedAF {
   uint64_t genoIndex;
   double   af;     // allele frequency aligned to .bim col5 orientation
-  double   n_ref;  // sample size = OBS_CT / 2
+  double   obs_ct;  // total allele number
 };
 
 // Load one plink2 .afreq file and match against PlinkData .bim markers
@@ -92,8 +92,8 @@ void runLEAF(
     const std::vector<std::string>& residFiles,     // one per cluster
     const std::string& bfilePrefix,
     const std::vector<std::string>& refAfFiles,     // one .afreq per pop (same order as residFiles)
-    const std::string& spgrmSaigeFile,              // empty = no GRM
-    const std::string& spgrmGctaPrefix,             // empty = no GRM
+    const std::string& spgrmGrabFile,               // empty = no GRM
+    const std::string& spgrmGctaFile,              // empty = no GRM
     const std::string& outputFile,
     double refPrevalence,
     double cutoff,

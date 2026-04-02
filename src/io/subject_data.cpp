@@ -1,6 +1,8 @@
 // subject_data.cpp — Unified per-subject data loader and .fam alignment
 
 #include "io/subject_data.hpp"
+#include "util/logging.hpp"
+#include "util/text_scanner.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -26,19 +28,9 @@ std::vector<std::string> parseFamIIDs(const std::string& famFile) {
     if (!line.empty() && line.back() == '\r') line.pop_back();
     if (line.empty()) continue;
 
-    // .fam has 6 columns: FID IID ...  — extract column 2 (IID).
-    const char*       p   = line.c_str();
-    const char* const end = p + line.size();
-    auto skipWS  = [&]() { while (p < end && (*p == ' ' || *p == '\t')) ++p; };
-    auto nextTok = [&]() -> std::string {
-      skipWS();
-      const char* s = p;
-      while (p < end && *p != ' ' && *p != '\t') ++p;
-      return std::string(s, p);
-    };
-
-    /*FID*/ nextTok();
-    std::string iid = nextTok();
+    text::TokenScanner tok(line);
+    /*FID*/ tok.next();
+    std::string iid = tok.next();
     if (iid.empty())
       throw std::runtime_error(".fam: missing IID on line " +
                                std::to_string(iids.size() + 1));
@@ -192,18 +184,13 @@ SubjectData::RawFile SubjectData::parseIIDFile(
       }
     }
   } else {
-    // Legacy mode: col 0 = IID, remaining cols = numeric values.
+    // No header found.  The file must be a pure numeric matrix
+    // (all columns are values, no IID column).
     // `line` / lineNo hold the first data line from Phase 1.
-    auto parseLegacy = [&](const std::string& ln, uint32_t lno) {
+
+    auto parseNumericRow = [&](const std::string& ln, uint32_t lno) {
       const char*       p   = ln.c_str();
       const char* const end = p + ln.size();
-      while (p < end && (*p == ' ' || *p == '\t')) ++p;
-      if (p >= end) return;
-
-      const char* tokStart = p;
-      while (p < end && *p != ' ' && *p != '\t') ++p;
-      rf.iids.emplace_back(tokStart, p);
-
       int colsThisRow = 0;
       while (p < end) {
         while (p < end && (*p == ' ' || *p == '\t')) ++p;
@@ -213,13 +200,16 @@ SubjectData::RawFile SubjectData::parseIIDFile(
         if (next == p)
           throw std::runtime_error(
               filename + " line " + std::to_string(lno) +
-              ": non-numeric value after IID");
+              ": non-numeric value");
         rf.vals.push_back(v);
         ++colsThisRow;
         p = next;
       }
 
-      if (rf.iids.size() == 1) {
+      uint32_t rowIdx = static_cast<uint32_t>(rf.iids.size());
+      rf.iids.push_back(std::to_string(rowIdx));  // synthetic row index
+
+      if (rowIdx == 0) {
         if (expectCols >= 0 && colsThisRow != expectCols)
           throw std::runtime_error(
               filename + ": expected " + std::to_string(expectCols) +
@@ -234,16 +224,30 @@ SubjectData::RawFile SubjectData::parseIIDFile(
       }
     };
 
-    // Parse the first data line (already in `line` from Phase 1)
-    if (!line.empty())
-      parseLegacy(line, lineNo);
+    // Verify first data line is numeric; error out if not.
+    if (!line.empty()) {
+      const char* p = line.c_str();
+      const char* end = p + line.size();
+      while (p < end && (*p == ' ' || *p == '\t')) ++p;
+      if (p < end) {
+        char* numEnd;
+        std::strtod(p, &numEnd);
+        bool isNumeric = (numEnd != p) &&
+                         (numEnd >= end || *numEnd == ' ' || *numEnd == '\t');
+        if (!isNumeric)
+          throw std::runtime_error(
+              filename + ": no header (IID/#IID) found and first data value "
+              "is not numeric. Please add a header line with an IID column.");
+      }
+      rf.noIID = true;
+      parseNumericRow(line, lineNo);
+    }
 
     // Parse remaining lines
     while (std::getline(ifs, line)) {
       ++lineNo;
-      if (!line.empty() && line.back() == '\r') line.pop_back();
-      if (line.empty() || line[0] == '#') continue;
-      parseLegacy(line, lineNo);
+      if (text::skipLine(line)) continue;
+      parseNumericRow(line, lineNo);
     }
   }
 
@@ -328,8 +332,60 @@ void SubjectData::loadCovar(const std::string& filename) {
     }
   }
 
-  if (iidCol < 0)
-    throw std::runtime_error(filename + ": no IID column found in header");
+  if (iidCol < 0) {
+    // No IID column — check if the first line was actually a data row
+    // (pure numeric matrix with no header).  Re-parse from the beginning.
+    ifs.clear();
+    ifs.seekg(0);
+
+    RawFile rf;
+    rf.noIID = true;
+    rf.iids.reserve(65536);
+    rf.vals.reserve(65536);
+
+    uint32_t lineNo2 = 0;
+    std::string ln;
+    while (std::getline(ifs, ln)) {
+      ++lineNo2;
+      if (!ln.empty() && ln.back() == '\r') ln.pop_back();
+      if (ln.empty()) continue;
+
+      const char*       p   = ln.c_str();
+      const char* const end = p + ln.size();
+      int colsThisRow = 0;
+      while (p < end) {
+        while (p < end && (*p == ' ' || *p == '\t')) ++p;
+        if (p >= end) break;
+        char* next;
+        double v = std::strtod(p, &next);
+        if (next == p)
+          throw std::runtime_error(
+              filename + " line " + std::to_string(lineNo2) +
+              ": non-numeric value in numeric matrix");
+        rf.vals.push_back(v);
+        ++colsThisRow;
+        p = next;
+      }
+
+      uint32_t rowIdx = static_cast<uint32_t>(rf.iids.size());
+      rf.iids.push_back(std::to_string(rowIdx));  // synthetic
+
+      if (rowIdx == 0) {
+        rf.nCols = colsThisRow;
+      } else if (colsThisRow != rf.nCols) {
+        throw std::runtime_error(
+            filename + " line " + std::to_string(lineNo2) +
+            ": expected " + std::to_string(rf.nCols) +
+            " columns, got " + std::to_string(colsThisRow));
+      }
+    }
+    if (rf.iids.empty())
+      throw std::runtime_error(filename + ": no data rows");
+
+    m_rawCovar    = std::move(rf);
+    m_hasRawCovar = true;
+    return;
+  }
   if (covarCols.empty())
     throw std::runtime_error(filename + ": no covariate columns found in header");
 
@@ -412,8 +468,60 @@ void SubjectData::loadEigenVecs(const std::string& filename) {
     }
   }
 
-  if (iidCol < 0)
-    throw std::runtime_error(filename + ": no IID column found in header");
+  if (iidCol < 0) {
+    // No IID column — treat as pure numeric matrix (no header).
+    // Re-parse from beginning.
+    ifs.clear();
+    ifs.seekg(0);
+
+    RawFile rf;
+    rf.noIID = true;
+    rf.iids.reserve(65536);
+    rf.vals.reserve(65536);
+
+    uint32_t lineNo2 = 0;
+    std::string ln;
+    while (std::getline(ifs, ln)) {
+      ++lineNo2;
+      if (!ln.empty() && ln.back() == '\r') ln.pop_back();
+      if (ln.empty()) continue;
+
+      const char*       p   = ln.c_str();
+      const char* const end = p + ln.size();
+      int colsThisRow = 0;
+      while (p < end) {
+        while (p < end && (*p == ' ' || *p == '\t')) ++p;
+        if (p >= end) break;
+        char* next;
+        double v = std::strtod(p, &next);
+        if (next == p)
+          throw std::runtime_error(
+              filename + " line " + std::to_string(lineNo2) +
+              ": non-numeric value in numeric matrix");
+        rf.vals.push_back(v);
+        ++colsThisRow;
+        p = next;
+      }
+
+      uint32_t rowIdx = static_cast<uint32_t>(rf.iids.size());
+      rf.iids.push_back(std::to_string(rowIdx));  // synthetic
+
+      if (rowIdx == 0) {
+        rf.nCols = colsThisRow;
+      } else if (colsThisRow != rf.nCols) {
+        throw std::runtime_error(
+            filename + " line " + std::to_string(lineNo2) +
+            ": expected " + std::to_string(rf.nCols) +
+            " columns, got " + std::to_string(colsThisRow));
+      }
+    }
+    if (rf.iids.empty())
+      throw std::runtime_error(filename + ": no data rows");
+
+    m_rawEigen    = std::move(rf);
+    m_hasRawEigen = true;
+    return;
+  }
   if (pcCols.empty())
     throw std::runtime_error(filename + ": no PC columns found in header");
 
@@ -470,19 +578,46 @@ void SubjectData::finalize() {
   if (!m_hasRawResid && !m_hasRawCovar && !m_hasRawEigen)
     throw std::runtime_error("SubjectData: no data files loaded before finalize");
 
-  // ── Build IID index maps for each loaded file ──────────────────────
-  auto buildMap = [](const std::vector<std::string>& iids) {
-    std::unordered_map<std::string, uint32_t> m;
-    m.reserve(iids.size());
-    for (uint32_t i = 0; i < static_cast<uint32_t>(iids.size()); ++i)
-      m.emplace(iids[i], i);
-    return m;
+  // ── Handle noIID files: assign .fam IIDs if row count matches ────
+  auto assignFamIIDs = [&](RawFile& rf, const char* label) {
+    if (!rf.noIID) return;
+    if (static_cast<uint32_t>(rf.iids.size()) != m_nFam)
+      throw std::runtime_error(
+          std::string(label) + ": pure numeric matrix has " +
+          std::to_string(rf.iids.size()) + " rows but .fam has " +
+          std::to_string(m_nFam) + " — cannot infer subject identity");
+    rf.iids = m_famIIDs;  // assume same order as .fam
   };
+  if (m_hasRawResid)  assignFamIIDs(m_rawResid, "--null-resid");
+  if (m_hasRawCovar)  assignFamIIDs(m_rawCovar, "--covar");
+  if (m_hasRawEigen)  assignFamIIDs(m_rawEigen, "--eigenvec");
 
+  // Log assumed column layout for noIID files
+  if (m_hasRawResid && m_rawResid.noIID) {
+    const int nc = m_rawResid.nCols;
+    switch (m_residType) {
+    case ResidType::One:
+      infoMsg("--null-resid: no IID column; assuming .fam order, %d residual column(s)", nc);
+      break;
+    case ResidType::WtCoxG:
+      infoMsg("--null-resid: no IID column; assuming .fam order, columns: RESID WEIGHT INDICATOR");
+      break;
+    case ResidType::SPAsqr:
+      infoMsg("--null-resid: no IID column; assuming .fam order, columns: R_tau1 .. R_tau%d", nc);
+      break;
+    default: break;
+    }
+  }
+  if (m_hasRawCovar && m_rawCovar.noIID)
+    infoMsg("--covar: no IID column; assuming .fam order, %d covariate column(s)", m_rawCovar.nCols);
+  if (m_hasRawEigen && m_rawEigen.noIID)
+    infoMsg("--eigenvec: no IID column; assuming .fam order, columns: PC1 .. PC%d", m_rawEigen.nCols);
+
+  // ── Build IID index maps for each loaded file ──────────────────────
   std::unordered_map<std::string, uint32_t> residMap, covarMap, eigenMap;
-  if (m_hasRawResid)  residMap  = buildMap(m_rawResid.iids);
-  if (m_hasRawCovar)  covarMap  = buildMap(m_rawCovar.iids);
-  if (m_hasRawEigen)  eigenMap  = buildMap(m_rawEigen.iids);
+  if (m_hasRawResid)  residMap  = text::buildIIDMap(m_rawResid.iids);
+  if (m_hasRawCovar)  covarMap  = text::buildIIDMap(m_rawCovar.iids);
+  if (m_hasRawEigen)  eigenMap  = text::buildIIDMap(m_rawEigen.iids);
 
   // ── Intersect with .fam, build bitmask ─────────────────────────────
   const uint32_t nWords = (m_nFam + 63) / 64;

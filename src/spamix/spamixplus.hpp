@@ -53,7 +53,7 @@ public:
 
   std::unique_ptr<MethodBase> clone() const override;
   int resultSize() const override { return 2; }
-  std::string getHeaderColumns() const override { return "\tPvalue\tzScore"; }
+  std::string getHeaderColumns() const override { return "\tSPAmixPlus_P\tSPAmixPlus_Z"; }
   bool skipFlip() const override { return true; }
 
   void prepareChunk(const std::vector<uint64_t>& gIndices) override;
@@ -101,8 +101,8 @@ void runSPAmixPlus(
     const std::string& residFile,
     const std::string& eigenVecsFile,
     const std::string& bfilePrefix,
-    const std::string& spgrmSaigeFile,
-    const std::string& spgrmGctaPrefix,
+    const std::string& spgrmGrabFile,
+    const std::string& spgrmGctaFile,
     const std::string& afFile,          // empty → compute on-the-fly
     const std::string& outputFile,
     double spaCutoff,

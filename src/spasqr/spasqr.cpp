@@ -15,13 +15,11 @@
 
 #include <algorithm>
 #include <cmath>
-#include <fstream>
 #include <limits>
 #include <memory>
 #include <numeric>
 #include <sstream>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include <Eigen/Dense>
@@ -195,8 +193,8 @@ OutlierInfo detectOutliers(
 
 void runSPAsqr(
     const std::string& residFile,
-    const std::string& spgrmSaigeFile,
-    const std::string& spgrmGctaPrefix,
+    const std::string& spgrmGrabFile,
+    const std::string& spgrmGctaFile,
     const std::string& bfilePrefix,
     const std::string& outputFile,
     double spaCutoff,
@@ -245,88 +243,23 @@ void runSPAsqr(
 
   // ── 4. Load sparse GRM and compute variance terms ──────────────────
 
-  // GRM entries with factor: 1 for diagonal, 2 for off-diagonal.
   struct GRMEntry {
     uint32_t row, col;
     double value;
     double factor;  // 1 for diagonal, 2 for off-diagonal
   };
 
-  std::unordered_map<std::string, uint32_t> subjIdMap;
-  subjIdMap.reserve(nUsed);
-  for (uint32_t i = 0; i < nUsed; ++i)
-    subjIdMap.emplace(subjOrder[i], i);
-
   std::vector<GRMEntry> grmEntries;
 
-  if (!spgrmGctaPrefix.empty()) {
-    // GCTA format
-    infoMsg("Loading GCTA sparse GRM from %s.grm.sp", spgrmGctaPrefix.c_str());
-    auto fileIIDs = SparseGRM::readGctaIIDs(spgrmGctaPrefix);
-    const uint32_t nFileIDs = static_cast<uint32_t>(fileIIDs.size());
-    std::vector<uint32_t> fileToCanon(nFileIDs, UINT32_MAX);
-    for (uint32_t fi = 0; fi < nFileIDs; ++fi) {
-      auto it = subjIdMap.find(fileIIDs[fi]);
-      if (it != subjIdMap.end()) fileToCanon[fi] = it->second;
-    }
-    const std::string spFile = spgrmGctaPrefix + ".grm.sp";
-    std::ifstream ifs(spFile);
-    if (!ifs) throw std::runtime_error("Cannot open GCTA .grm.sp: " + spFile);
-    std::string line;
-    while (std::getline(ifs, line)) {
-      if (!line.empty() && line.back() == '\r') line.pop_back();
-      if (line.empty()) continue;
-      const char* p = line.c_str();
-      char* endPtr;
-      unsigned long idx1 = std::strtoul(p, &endPtr, 10);
-      if (endPtr == p) continue;
-      p = endPtr;
-      unsigned long idx2 = std::strtoul(p, &endPtr, 10);
-      if (endPtr == p) continue;
-      p = endPtr;
-      double val = std::strtod(p, &endPtr);
-      if (endPtr == p) continue;
-      if (idx1 >= nFileIDs || idx2 >= nFileIDs) continue;
-      uint32_t r = fileToCanon[idx1];
-      uint32_t c = fileToCanon[idx2];
-      if (r == UINT32_MAX || c == UINT32_MAX) continue;
-      grmEntries.push_back({r, c, val, (idx1 == idx2) ? 1.0 : 2.0});
-    }
-  } else {
-    // SAIGE format
-    infoMsg("Loading sparse GRM from %s", spgrmSaigeFile.c_str());
-    std::ifstream ifs(spgrmSaigeFile);
-    if (!ifs) throw std::runtime_error("Cannot open sparse GRM: " + spgrmSaigeFile);
-    std::string line;
-    while (std::getline(ifs, line)) {
-      if (!line.empty() && line.back() == '\r') line.pop_back();
-      if (line.empty() || line[0] == '#') continue;
-      const char*       p   = line.c_str();
-      const char* const end = p + line.size();
-      auto skipWS  = [&]() { while (p < end && (*p == ' ' || *p == '\t')) ++p; };
-      auto nextTok = [&]() -> std::string {
-        skipWS();
-        const char* s = p;
-        while (p < end && *p != ' ' && *p != '\t') ++p;
-        return std::string(s, p);
-      };
-      skipWS();
-      if (p >= end) continue;
-      std::string id1 = nextTok();
-      std::string id2 = nextTok();
-      skipWS();
-      if (p >= end) continue;
-      char* endPtr;
-      double val = std::strtod(p, &endPtr);
-      if (endPtr == p) continue;
-      auto it1 = subjIdMap.find(id1);
-      auto it2 = subjIdMap.find(id2);
-      if (it1 == subjIdMap.end() || it2 == subjIdMap.end()) continue;
-      grmEntries.push_back({it1->second, it2->second, val,
-                            (id1 == id2) ? 1.0 : 2.0});
-    }
+  {
+    SparseGRM grm = SparseGRM::load(spgrmGrabFile, spgrmGctaFile,
+                                     subjOrder, sd.famIIDs());
+    infoMsg("Sparse GRM: %zu entries after filtering", grm.nnz());
+    grmEntries.reserve(grm.nnz());
+    for (const auto& e : grm.entries())
+      grmEntries.push_back({e.row, e.col, e.value,
+                            (e.row == e.col) ? 1.0 : 2.0});
   }
-  infoMsg("Sparse GRM: %zu entries after filtering", grmEntries.size());
 
   // ── 5. Compute per-column variance terms ───────────────────────────
   const int ntaus = static_cast<int>(K);

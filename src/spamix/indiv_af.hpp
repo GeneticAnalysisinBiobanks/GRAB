@@ -11,7 +11,7 @@
 //   Unprocessed markers: all zeros (status=0).
 //
 // Text / gz format:
-//   Header: #CHROM\tID\tSTATUS\tBETA0\tBETA1\t...\n
+//   Header: #STATUS\tBETA0\tBETA1\t...\n
 //   One row per filtered marker, tab-separated, doubles as %.17g.
 //
 // Shared between SPAmixAF (pre-compute step) and SPAmix (on-the-fly).
@@ -118,7 +118,6 @@ public:
 
   // Write one record.  For Binary, genoIndex determines the file offset.
   void write(uint64_t genoIndex,
-             const std::string& chr, const std::string& id,
              int8_t status,
              const Eigen::VectorXd& betas);
 

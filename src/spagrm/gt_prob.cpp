@@ -10,17 +10,16 @@
 #include "io/sparse_grm.hpp"
 #include "io/subject_data.hpp"
 #include "util/logging.hpp"
+#include "util/text_scanner.hpp"
 
 #include <algorithm>
 #include <array>
-#include <cassert>
 #include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <limits>
 #include <memory>
 #include <numeric>
-#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -49,138 +48,58 @@ constexpr double TOL_DEFAULT  = 1e-6;
 
 
 // ══════════════════════════════════════════════════════════════════════
-// GRM raw entry (with both directions kept separate)
+// Indexed IBD entry (dense subject indices, no strings)
 // ══════════════════════════════════════════════════════════════════════
-struct GRMEntry {
-  uint32_t row, col;
-  double value;
+struct IndexedIBD {
+  uint32_t idx1, idx2;
+  double pa, pb, pc;
 };
 
-// Parse sparse GRM into indexed entries, keeping BOTH directions for
-// off-diagonal (for connected-component detection and quadratic form).
-// Subjects not in idMap are silently dropped.
-std::vector<GRMEntry> parseGRM(
+std::vector<IndexedIBD> loadIndexedIBD(
     const std::string& filename,
     const std::unordered_map<std::string, uint32_t>& idMap)
 {
   std::ifstream ifs(filename);
-  if (!ifs) throw std::runtime_error("Cannot open sparse GRM: " + filename);
-  std::vector<GRMEntry> entries;
+  if (!ifs) throw std::runtime_error("Cannot open IBD file: " + filename);
+  std::vector<IndexedIBD> out;
   std::string line;
   while (std::getline(ifs, line)) {
-    if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (line.empty() || line[0] == '#') continue;
-    const char*       p   = line.c_str();
-    const char* const end = p + line.size();
-    auto skipWS  = [&]() { while (p < end && (*p == ' ' || *p == '\t')) ++p; };
-    auto nextTok = [&]() -> std::string {
-      skipWS();
-      const char* s = p;
-      while (p < end && *p != ' ' && *p != '\t') ++p;
-      return std::string(s, p);
-    };
-    skipWS();
-    if (p >= end) continue;
-    std::string id1 = nextTok();
-    std::string id2 = nextTok();
-    skipWS();
-    if (p >= end) continue;
-    char* endPtr;
-    double val = std::strtod(p, &endPtr);
-    if (endPtr == p) continue;
+    if (text::skipLine(line)) continue;
+    if (line.size() >= 3 && line[0] == 'I' && line[1] == 'D' && line[2] == '1') continue;
+    if (line.size() >= 4 && line[0] == '#' && line[1] == 'I' && line[2] == 'D' && line[3] == '1') continue;
+    text::TokenScanner tok(line);
+    std::string id1 = tok.next();
+    std::string id2 = tok.next();
     auto it1 = idMap.find(id1);
     auto it2 = idMap.find(id2);
     if (it1 == idMap.end() || it2 == idMap.end()) continue;
-    entries.push_back({it1->second, it2->second, val});
+    char* endPtr;
+    tok.skipWS(); double pa = std::strtod(tok.pos(), &endPtr); tok.p = endPtr;
+    tok.skipWS(); double pb = std::strtod(tok.pos(), &endPtr); tok.p = endPtr;
+    tok.skipWS(); double pc = std::strtod(tok.pos(), &endPtr);
+    out.push_back({it1->second, it2->second, pa, pb, pc});
   }
-  return entries;
+  return out;
 }
 
-// Same as parseGRM but for GCTA format (.grm.id + .grm.sp)
-std::vector<GRMEntry> parseGRM_GCTA(
-    const std::string& prefix,
-    const std::unordered_map<std::string, uint32_t>& idMap)
+// Build hash map for O(1) IBD pair lookup: (min_idx << 32 | max_idx) → index
+std::unordered_map<uint64_t, uint32_t> buildIBDPairMap(
+    const std::vector<IndexedIBD>& ibdEntries)
 {
-  auto fileIIDs = SparseGRM::readGctaIIDs(prefix);
-  const uint32_t nFileIDs = static_cast<uint32_t>(fileIIDs.size());
-
-  // Map file-index → canonical index
-  std::vector<uint32_t> fileToCanon(nFileIDs, UINT32_MAX);
-  for (uint32_t fi = 0; fi < nFileIDs; ++fi) {
-    auto it = idMap.find(fileIIDs[fi]);
-    if (it != idMap.end()) fileToCanon[fi] = it->second;
+  std::unordered_map<uint64_t, uint32_t> m;
+  m.reserve(ibdEntries.size());
+  for (uint32_t i = 0; i < static_cast<uint32_t>(ibdEntries.size()); ++i) {
+    uint32_t lo = std::min(ibdEntries[i].idx1, ibdEntries[i].idx2);
+    uint32_t hi = std::max(ibdEntries[i].idx1, ibdEntries[i].idx2);
+    m[(static_cast<uint64_t>(lo) << 32) | hi] = i;
   }
-
-  const std::string spFile = prefix + ".grm.sp";
-  std::ifstream ifs(spFile);
-  if (!ifs) throw std::runtime_error("Cannot open GCTA .grm.sp: " + spFile);
-
-  std::vector<GRMEntry> entries;
-  std::string line;
-  while (std::getline(ifs, line)) {
-    if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (line.empty()) continue;
-    const char* p = line.c_str();
-    char* endPtr;
-    unsigned long idx1 = std::strtoul(p, &endPtr, 10);
-    if (endPtr == p) continue;
-    p = endPtr;
-    unsigned long idx2 = std::strtoul(p, &endPtr, 10);
-    if (endPtr == p) continue;
-    p = endPtr;
-    double val = std::strtod(p, &endPtr);
-    if (endPtr == p) continue;
-    if (idx1 >= nFileIDs || idx2 >= nFileIDs) continue;
-    uint32_t r = fileToCanon[idx1];
-    uint32_t c = fileToCanon[idx2];
-    if (r == UINT32_MAX || c == UINT32_MAX) continue;
-    entries.push_back({r, c, val});
-  }
-  return entries;
+  return m;
 }
 
 
 // ══════════════════════════════════════════════════════════════════════
 // Pairwise IBD file loader
 // ══════════════════════════════════════════════════════════════════════
-struct IBDEntry {
-  std::string id1, id2;
-  double pa, pb, pc;
-};
-
-std::vector<IBDEntry> loadIBD(
-    const std::string& filename,
-    const std::unordered_set<std::string>& subjSet)
-{
-  std::ifstream ifs(filename);
-  if (!ifs) throw std::runtime_error("Cannot open IBD file: " + filename);
-  std::vector<IBDEntry> out;
-  std::string line;
-  while (std::getline(ifs, line)) {
-    if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (line.empty() || line[0] == '#') continue;
-    // Skip header line "ID1 ID2 pa pb pc"
-    if (line.substr(0, 3) == "ID1") continue;
-    const char*       p   = line.c_str();
-    const char* const end = p + line.size();
-    auto skipWS  = [&]() { while (p < end && (*p == ' ' || *p == '\t')) ++p; };
-    auto nextTok = [&]() -> std::string {
-      skipWS();
-      const char* s = p;
-      while (p < end && *p != ' ' && *p != '\t') ++p;
-      return std::string(s, p);
-    };
-    std::string id1 = nextTok();
-    std::string id2 = nextTok();
-    if (subjSet.count(id1) == 0 || subjSet.count(id2) == 0) continue;
-    char* endPtr;
-    skipWS(); double pa = std::strtod(p, &endPtr); p = endPtr;
-    skipWS(); double pb = std::strtod(p, &endPtr); p = endPtr;
-    skipWS(); double pc = std::strtod(p, &endPtr);
-    out.push_back({std::move(id1), std::move(id2), pa, pb, pc});
-  }
-  return out;
-}
 
 
 // ══════════════════════════════════════════════════════════════════════
@@ -245,37 +164,25 @@ double quantile_r7(std::vector<double>& sorted, double prob) {
 
 
 // ══════════════════════════════════════════════════════════════════════
-// Compute quadratic form R' * blockGRM * R for a small family.
-// blockGRM is implicitly constructed from grmEntries that fall within
-// the family members.  Indices in grmEntries use global subject
-// ordering; famMembers maps global→local within the family.
+// Compute quadratic form R' * blockGRM * R for a (sub-)family.
+// `entries` should be pre-filtered to the family's connected component.
+// Members of the sub-family are given by `famMembers`; entries not
+// touching those members are skipped.
 // ══════════════════════════════════════════════════════════════════════
 double familyQuadForm(
     const std::vector<uint32_t>& famMembers,
-    const std::vector<GRMEntry>& grmEntries,
+    const std::vector<SparseGRM::Entry>& entries,
     const Eigen::VectorXd& resid)
 {
-  // Build fast local lookup
-  std::unordered_map<uint32_t, uint32_t> globalToLocal;
-  globalToLocal.reserve(famMembers.size());
-  for (uint32_t i = 0; i < static_cast<uint32_t>(famMembers.size()); ++i)
-    globalToLocal[famMembers[i]] = i;
-
-  // Collect local residuals
-  const int n = static_cast<int>(famMembers.size());
-  Eigen::VectorXd localR(n);
-  for (int i = 0; i < n; ++i)
-    localR[i] = resid[famMembers[i]];
+  std::unordered_set<uint32_t> famSet(famMembers.begin(), famMembers.end());
 
   // Sum the quadratic form:  sum_{entries in family} factor * value * R[i] * R[j]
   // factor=1 for diagonal, factor=2 for off-diagonal (since GRM stores lower-tri only)
   double result = 0.0;
-  for (const auto& e : grmEntries) {
-    auto it1 = globalToLocal.find(e.row);
-    auto it2 = globalToLocal.find(e.col);
-    if (it1 == globalToLocal.end() || it2 == globalToLocal.end()) continue;
+  for (const auto& e : entries) {
+    if (!famSet.count(e.row) || !famSet.count(e.col)) continue;
     double factor = (e.row == e.col) ? 1.0 : 2.0;
-    result += factor * e.value * localR[it1->second] * localR[it2->second];
+    result += factor * e.value * resid[e.row] * resid[e.col];
   }
   return result;
 }
@@ -331,14 +238,14 @@ std::vector<MSTEdge> primMST(
 // ══════════════════════════════════════════════════════════════════════
 Eigen::MatrixXd buildChowLiuTree(
     int N,
-    const std::vector<IBDEntry>& familyIBD,
-    const std::vector<std::string>& familyIDs,
+    const std::vector<IndexedIBD>& familyIBD,
+    const std::vector<uint32_t>& famMembers,
     const std::vector<double>& maf_interval)
 {
-  // Build ID → local index
-  std::unordered_map<std::string, int> idToIdx;
+  // Build global → local index
+  std::unordered_map<uint32_t, int> globalToLocal;
   for (int i = 0; i < N; ++i)
-    idToIdx[familyIDs[i]] = i;
+    globalToLocal[famMembers[i]] = i;
 
   // Number of IBD entries (directed edges in the family)
   const int nIBD = static_cast<int>(familyIBD.size());
@@ -384,9 +291,9 @@ Eigen::MatrixXd buildChowLiuTree(
 
     // Compute entropy for each IBD pair
     for (int j = 0; j < nIBD; ++j) {
-      auto it1 = idToIdx.find(familyIBD[j].id1);
-      auto it2 = idToIdx.find(familyIBD[j].id2);
-      if (it1 == idToIdx.end() || it2 == idToIdx.end()) continue;
+      auto it1 = globalToLocal.find(familyIBD[j].idx1);
+      auto it2 = globalToLocal.find(familyIBD[j].idx2);
+      if (it1 == globalToLocal.end() || it2 == globalToLocal.end()) continue;
 
       double entropy = 0.0;
       for (int k = 0; k < 9; ++k) {
@@ -411,9 +318,9 @@ Eigen::MatrixXd buildChowLiuTree(
       // Find the IBD entry matching this edge
       double epa = 0, epb = 0, epc = 1;
       for (const auto& ibd : familyIBD) {
-        auto it1 = idToIdx.find(ibd.id1);
-        auto it2 = idToIdx.find(ibd.id2);
-        if (it1 == idToIdx.end() || it2 == idToIdx.end()) continue;
+        auto it1 = globalToLocal.find(ibd.idx1);
+        auto it2 = globalToLocal.find(ibd.idx2);
+        if (it1 == globalToLocal.end() || it2 == globalToLocal.end()) continue;
         if ((it1->second == e.from && it2->second == e.to) ||
             (it1->second == e.to   && it2->second == e.from)) {
           epa = ibd.pa; epb = ibd.pb; epc = ibd.pc;
@@ -524,10 +431,10 @@ public:
     return std::make_unique<SPAGRMMethod>(*this);
   }
 
-  int resultSize() const override { return 2; }  // zScore, Pvalue
+  int resultSize() const override { return 2; }
 
   std::string getHeaderColumns() const override {
-    return "\tzScore\tPvalue";
+    return "\tSPAGRM_P\tSPAGRM_Z";
   }
 
   void getResultVec(
@@ -540,8 +447,8 @@ public:
     result.clear();
     double z;
     double p = m_spagrm.getMarkerPval(GVec, altFreq, z);
-    result.push_back(z);
     result.push_back(p);
+    result.push_back(z);
   }
 
 private:
@@ -563,11 +470,13 @@ private:
 static SPAGRMClass buildSPAGRMNullModel(
     const Eigen::VectorXd& Resid,
     uint32_t N,
-    const std::vector<std::string>& subjIDs,
-    const std::vector<GRMEntry>& grmEntries,
     const std::unordered_set<uint32_t>& singletonSet,
+    const std::unordered_map<uint32_t, double>& singletonDiag,
     const std::vector<std::vector<uint32_t>>& families,
-    const std::vector<IBDEntry>& ibdEntries,
+    const std::vector<std::vector<SparseGRM::Entry>>& familyEntries,
+    const std::vector<SparseGRM::Entry>& allGrmEntries,
+    const std::vector<IndexedIBD>& ibdEntries,
+    const std::unordered_map<uint64_t, uint32_t>& ibdPairMap,
     double spaCutoff)
 {
   // ── Outlier detection (IQR) ──────────────────────────────────────
@@ -613,13 +522,11 @@ static SPAGRMClass buildSPAGRMNullModel(
   double sum_R_nonOutlier = 0.0;
   double R_GRM_R_nonOutlier = 0.0;
 
-  for (const auto& e : grmEntries) {
-    if (e.row == e.col && singletonSet.count(e.row)) {
-      double contrib = e.value * Resid[e.row] * Resid[e.col];
-      R_GRM_R += contrib;
-      if (!isOutlier[e.row])
-        R_GRM_R_nonOutlier += contrib;
-    }
+  for (const auto& [idx, diagVal] : singletonDiag) {
+    double contrib = diagVal * Resid[idx] * Resid[idx];
+    R_GRM_R += contrib;
+    if (!isOutlier[idx])
+      R_GRM_R_nonOutlier += contrib;
   }
   for (uint32_t idx : singletonSet) {
     if (!isOutlier[idx])
@@ -649,7 +556,7 @@ static SPAGRMClass buildSPAGRMNullModel(
     for (uint32_t idx : fam)
       if (isOutlier[idx]) { hasOutlier = true; break; }
 
-    double famQuad = familyQuadForm(fam, grmEntries, Resid);
+    double famQuad = familyQuadForm(fam, familyEntries[fi], Resid);
     R_GRM_R += famQuad;
 
     if (!hasOutlier) {
@@ -673,9 +580,8 @@ static SPAGRMClass buildSPAGRMNullModel(
       double value, cov;
     };
     std::vector<OffDiagEntry> famEdges;
-    for (const auto& e : grmEntries) {
+    for (const auto& e : familyEntries[fi]) {
       if (e.row == e.col) continue;
-      if (!famSet.count(e.row) || !famSet.count(e.col)) continue;
       if (e.row < e.col)
         famEdges.push_back({e.row, e.col, e.value,
                            std::abs(e.value * Resid[e.row] * Resid[e.col])});
@@ -741,7 +647,7 @@ static SPAGRMClass buildSPAGRMNullModel(
       bool subHasOutlier = false;
       for (uint32_t idx : subFam) if (isOutlier[idx]) { subHasOutlier = true; break; }
 
-      double subQuad = familyQuadForm(subFam, grmEntries, Resid);
+      double subQuad = familyQuadForm(subFam, familyEntries[fi], Resid);
 
       if (!subHasOutlier) {
         double subSum = 0.0;
@@ -765,17 +671,17 @@ static SPAGRMClass buildSPAGRMNullModel(
 
     if (n1 == 2) {
       double R1 = Resid[fam[0]], R2 = Resid[fam[1]];
-      double pairQuad = familyQuadForm(fam, grmEntries, Resid);
+      double pairQuad = familyQuadForm(fam, allGrmEntries, Resid);
       R_GRM_R_TwoSubjOutlier += pairQuad;
 
-      const std::string& sid1 = subjIDs[fam[0]];
-      const std::string& sid2 = subjIDs[fam[1]];
+      uint32_t lo = std::min(fam[0], fam[1]);
+      uint32_t hi = std::max(fam[0], fam[1]);
+      uint64_t key = (static_cast<uint64_t>(lo) << 32) | hi;
       double pa = 0, pb = 0;
-      for (const auto& ibd : ibdEntries) {
-        if ((ibd.id1 == sid1 && ibd.id2 == sid2) ||
-            (ibd.id1 == sid2 && ibd.id2 == sid1)) {
-          pa = ibd.pa; pb = ibd.pb; break;
-        }
+      auto ibdIt = ibdPairMap.find(key);
+      if (ibdIt != ibdPairMap.end()) {
+        pa = ibdEntries[ibdIt->second].pa;
+        pb = ibdEntries[ibdIt->second].pb;
       }
 
       double Rho = pa + 0.5 * pb;
@@ -787,21 +693,19 @@ static SPAGRMClass buildSPAGRMNullModel(
     }
 
     // Three-or-more subject outlier family
-    std::vector<std::string> famIDs(n1);
     std::vector<double>     famResid(n1);
     for (int i = 0; i < n1; ++i) {
-      famIDs[i]   = subjIDs[fam[i]];
       famResid[i] = Resid[fam[i]];
     }
 
-    std::unordered_set<std::string> famIDSet(famIDs.begin(), famIDs.end());
-    std::vector<IBDEntry> famIBD;
+    std::unordered_set<uint32_t> famIdxSet(fam.begin(), fam.end());
+    std::vector<IndexedIBD> famIBD;
     for (const auto& ibd : ibdEntries) {
-      if (famIDSet.count(ibd.id1) && famIDSet.count(ibd.id2))
+      if (famIdxSet.count(ibd.idx1) && famIdxSet.count(ibd.idx2))
         famIBD.push_back(ibd);
     }
 
-    Eigen::MatrixXd CLT = buildChowLiuTree(n1, famIBD, famIDs, MAF_INTERVAL);
+    Eigen::MatrixXd CLT = buildChowLiuTree(n1, famIBD, fam, MAF_INTERVAL);
     std::vector<double> standS = buildStandS(n1, famResid);
 
     threeSubj_standS_list.push_back(std::move(standS));
@@ -840,8 +744,8 @@ static SPAGRMClass buildSPAGRMNullModel(
 
 void runSPAGRM(
     const std::string& residFile,
-    const std::string& spgrmSaigeFile,
-    const std::string& spgrmGctaPrefix,
+    const std::string& spgrmGrabFile,
+    const std::string& spgrmGctaFile,
     const std::string& pairwiseIBDFile,
     const std::string& bfilePrefix,
     const std::string& outputFile,
@@ -864,39 +768,34 @@ void runSPAGRM(
   infoMsg("Loaded %u subjects (intersected with .fam)", N);
 
   auto subjIDs = sd.usedIIDs();
-  std::unordered_map<std::string, uint32_t> subjIdMap;
-  subjIdMap.reserve(N);
-  for (uint32_t i = 0; i < N; ++i)
-    subjIdMap.emplace(subjIDs[i], i);
-  std::unordered_set<std::string> subjSet(subjIDs.begin(), subjIDs.end());
+  auto subjIdMap = text::buildIIDMap(subjIDs);
 
   // ══════════════════════════════════════════════════════════════════
-  // 2. Load sparse GRM
+  // 2. Load sparse GRM (unsymmetrised — lower-tri + diagonal)
   // ══════════════════════════════════════════════════════════════════
-  std::vector<GRMEntry> grmEntries;
-  if (!spgrmGctaPrefix.empty()) {
-    infoMsg("Loading GCTA sparse GRM: %s.grm.sp", spgrmGctaPrefix.c_str());
-    grmEntries = parseGRM_GCTA(spgrmGctaPrefix, subjIdMap);
-  } else {
-    infoMsg("Loading sparse GRM: %s", spgrmSaigeFile.c_str());
-    grmEntries = parseGRM(spgrmSaigeFile, subjIdMap);
-  }
-  infoMsg("Sparse GRM: %zu entries (diagonal + off-diag)", grmEntries.size());
+  SparseGRM grm = SparseGRM::load(spgrmGrabFile, spgrmGctaFile,
+                                   subjIDs, sd.famIIDs());
+  infoMsg("Sparse GRM: %zu entries (diagonal + off-diag)", grm.nnz());
 
   // ══════════════════════════════════════════════════════════════════
-  // 3. Load pairwise IBD
+  // 3. Load pairwise IBD (indexed — no strings in hot paths)
   // ══════════════════════════════════════════════════════════════════
   infoMsg("Loading pairwise IBD: %s", pairwiseIBDFile.c_str());
-  auto ibdEntries = loadIBD(pairwiseIBDFile, subjSet);
+  auto ibdEntries = loadIndexedIBD(pairwiseIBDFile, subjIdMap);
+  auto ibdPairMap = buildIBDPairMap(ibdEntries);
   infoMsg("Loaded %zu IBD records", ibdEntries.size());
 
   // ══════════════════════════════════════════════════════════════════
   // 4. Build GRM topology (components, singletons, families)
+  //    and pre-bucket entries by component
   // ══════════════════════════════════════════════════════════════════
+  const auto& allEntries = grm.entries();
+
+  // Extract unique off-diagonal edges for connected-component detection
   std::vector<std::pair<uint32_t, uint32_t>> edges;
   {
     std::unordered_set<uint64_t> seen;
-    for (const auto& e : grmEntries) {
+    for (const auto& e : allEntries) {
       if (e.row == e.col) continue;
       uint32_t lo = std::min(e.row, e.col);
       uint32_t hi = std::max(e.row, e.col);
@@ -919,6 +818,26 @@ void runSPAGRM(
 
   std::unordered_set<uint32_t> singletonSet;
   for (const auto& s : singletons) singletonSet.insert(s[0]);
+
+  // Pre-bucket: singleton diagonal values
+  std::unordered_map<uint32_t, double> singletonDiag;
+  for (const auto& e : allEntries) {
+    if (e.row == e.col && singletonSet.count(e.row))
+      singletonDiag[e.row] = e.value;
+  }
+
+  // Pre-bucket: per-family GRM entries
+  std::unordered_map<uint32_t, size_t> subjToFamily;
+  for (size_t fi = 0; fi < families.size(); ++fi)
+    for (uint32_t idx : families[fi])
+      subjToFamily[idx] = fi;
+
+  std::vector<std::vector<SparseGRM::Entry>> familyEntries(families.size());
+  for (const auto& e : allEntries) {
+    auto it = subjToFamily.find(e.row);
+    if (it != subjToFamily.end())
+      familyEntries[it->second].push_back(e);
+  }
 
   // ══════════════════════════════════════════════════════════════════
   // 5. Load PLINK data
@@ -956,8 +875,8 @@ void runSPAGRM(
               outFile.c_str());
 
     SPAGRMClass spagrm = buildSPAGRMNullModel(
-        Resid, N, subjIDs, grmEntries, singletonSet, families,
-        ibdEntries, spaCutoff);
+        Resid, N, singletonSet, singletonDiag, families, familyEntries,
+        allEntries, ibdEntries, ibdPairMap, spaCutoff);
 
     SPAGRMMethod method(std::move(spagrm));
 

@@ -52,37 +52,36 @@ int numToChars(char* buf, double x) {
   return std::snprintf(buf, 32, "%.6g", x);
 }
 
-// Append 9 meta columns to out (marker, chr, pos, ref, alt, altCounts,
-// altFreq, missingRate, hweP).
+// Append 9 meta columns: CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC HWE_P
 inline void appendMeta(
     std::string& out, char* buf,
-    std::string_view marker, std::string_view chr, uint32_t pos,
+    std::string_view chrom, uint32_t pos, std::string_view id,
     std::string_view ref, std::string_view alt,
-    double altCounts, double altFreq, double missingRate, double hweP)
+    double missRate, double altFreq, double mac, double hweP)
 {
   int n;
-  out += marker; out += '\t';
-  out += chr;    out += '\t';
+  out += chrom;  out += '\t';
   n = std::snprintf(buf, 32, "%u", pos);
   out.append(buf, n); out += '\t';
+  out += id;     out += '\t';
   out += ref;    out += '\t';
   out += alt;    out += '\t';
-  n = numToChars(buf, altCounts); out.append(buf, n); out += '\t';
-  n = numToChars(buf, altFreq);   out.append(buf, n); out += '\t';
-  n = numToChars(buf, missingRate); out.append(buf, n); out += '\t';
+  n = numToChars(buf, missRate); out.append(buf, n); out += '\t';
+  n = numToChars(buf, altFreq);  out.append(buf, n); out += '\t';
+  n = numToChars(buf, mac);      out.append(buf, n); out += '\t';
   n = numToChars(buf, hweP); out.append(buf, n);
 }
 
 // Full result line: meta + tab-separated doubles.
 void formatLine(
     std::string& out, char* buf,
-    std::string_view marker, std::string_view chr, uint32_t pos,
+    std::string_view chrom, uint32_t pos, std::string_view id,
     std::string_view ref, std::string_view alt,
-    double altCounts, double altFreq, double missingRate, double hweP,
+    double missRate, double altFreq, double mac, double hweP,
     const std::vector<double>& vals)
 {
-  appendMeta(out, buf, marker, chr, pos, ref, alt,
-             altCounts, altFreq, missingRate, hweP);
+  appendMeta(out, buf, chrom, pos, id, ref, alt,
+             missRate, altFreq, mac, hweP);
   for (double v : vals) {
     out += '\t';
     int n = numToChars(buf, v);
@@ -94,13 +93,13 @@ void formatLine(
 // Fail-QC line: meta + precomputed NA suffix.
 void formatLineNA(
     std::string& out, char* buf,
-    std::string_view marker, std::string_view chr, uint32_t pos,
+    std::string_view chrom, uint32_t pos, std::string_view id,
     std::string_view ref, std::string_view alt,
-    double altCounts, double altFreq, double missingRate, double hweP,
+    double missRate, double altFreq, double mac, double hweP,
     const std::string& naSuffix)
 {
-  appendMeta(out, buf, marker, chr, pos, ref, alt,
-             altCounts, altFreq, missingRate, hweP);
+  appendMeta(out, buf, chrom, pos, id, ref, alt,
+             missRate, altFreq, mac, hweP);
   out += naSuffix;
   out += '\n';
 }
@@ -130,7 +129,7 @@ struct ThreadContext {
 // ──────────────────────────────────────────────────────────────────────
 
 constexpr const char* META_HEADER =
-    "Marker\tChr\tPos\tRef\tAlt\tAltCount\tAltFreq\tMissRate\tHWEpval";
+    "CHROM\tPOS\tID\tREF\tALT\tMISS_RATE\tALT_FREQ\tMAC\tHWE_P";
 
 std::string buildHeader(const MethodBase& method) {
   return std::string(META_HEADER) + method.getHeaderColumns();
@@ -300,8 +299,9 @@ void markerEngine(
                 mac < minMacCutoff);
 
           if (!passQC) {
-            formatLineNA(out, fmtBuf, marker, chr, pos, ref, alt,
-                         altCounts, altFreq, missingRate, hweP, naSuffix);
+            formatLineNA(out, fmtBuf, chr, pos, marker,
+                         alt/*REF=bim6*/, ref/*ALT=bim5*/,
+                         missingRate, 1.0 - altFreq, mac, hweP, naSuffix);
             continue;
           }
 
@@ -326,8 +326,9 @@ void markerEngine(
           meth.getResultVec(GVec, altFreq, static_cast<int>(i),
                             flipped, rv);
 
-          formatLine(out, fmtBuf, marker, chr, pos, ref, alt,
-                     altCounts, altFreq, missingRate, hweP, rv);
+          formatLine(out, fmtBuf, chr, pos, marker,
+                     alt/*REF=bim6*/, ref/*ALT=bim5*/,
+                     missingRate, 1.0 - altFreq, mac, hweP, rv);
         }
 
         {

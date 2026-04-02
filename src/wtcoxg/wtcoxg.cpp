@@ -6,6 +6,7 @@
 #include "io/sparse_grm.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
+#include "util/text_scanner.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -27,7 +28,7 @@ using NaN = std::numeric_limits<double>;
 namespace {
 
 double hOrg(double t, const Eigen::VectorXd& R, double MAF,
-            double n_ext, double N_all, double sumR,
+            double obs_ct, double N_all, double sumR,
             double var_mu_ext, double /*g_var_est*/,
             double meanR, double b) {
   double mu_adj  = -2.0 * b * sumR * MAF;
@@ -40,7 +41,7 @@ double hOrg(double t, const Eigen::VectorXd& R, double MAF,
 }
 
 double h1Adj(double t, const Eigen::VectorXd& R, double s, double MAF,
-             double n_ext, double N_all, double sumR,
+             double obs_ct, double N_all, double sumR,
              double var_mu_ext, double /*g_var_est*/,
              double meanR, double b) {
   double mu_adj  = -2.0 * b * sumR * MAF;
@@ -55,10 +56,10 @@ double h1Adj(double t, const Eigen::VectorXd& R, double s, double MAF,
 }
 
 double h2(double t, const Eigen::VectorXd& R, double MAF,
-          double n_ext, double N_all, double sumR,
+          double obs_ct, double N_all, double sumR,
           double var_mu_ext, double /*g_var_est*/,
           double meanR, double b) {
-  double var_adj = n_ext * (sumR / N_all) * (sumR / N_all) * 2.0 * MAF * (1.0 - MAF);
+  double var_adj = obs_ct * (sumR / N_all) * (sumR / N_all) * MAF * (1.0 - MAF);
   double result = 0.0;
   const double bm = (1.0 - b) * meanR;
   for (Eigen::Index i = 0; i < R.size(); ++i) {
@@ -69,11 +70,11 @@ double h2(double t, const Eigen::VectorXd& R, double MAF,
 }
 
 double getProbSpaG(double MAF, const Eigen::VectorXd& R, double s,
-                   double n_ext, double N_all, double sumR,
+                   double obs_ct, double N_all, double sumR,
                    double var_mu_ext, double g_var_est,
                    double meanR, double b, bool lower_tail) {
   auto h1_func = [&](double t) {
-    return h1Adj(t, R, s, MAF, n_ext, N_all, sumR, var_mu_ext, g_var_est, meanR, b);
+    return h1Adj(t, R, s, MAF, obs_ct, N_all, sumR, var_mu_ext, g_var_est, meanR, b);
   };
   double zeta;
   try {
@@ -92,8 +93,8 @@ double getProbSpaG(double MAF, const Eigen::VectorXd& R, double s,
     return NaN::quiet_NaN();
   }
 
-  double k1 = hOrg(zeta, R, MAF, n_ext, N_all, sumR, var_mu_ext, g_var_est, meanR, b);
-  double k2 = h2(zeta, R, MAF, n_ext, N_all, sumR, var_mu_ext, g_var_est, meanR, b);
+  double k1 = hOrg(zeta, R, MAF, obs_ct, N_all, sumR, var_mu_ext, g_var_est, meanR, b);
+  double k2 = h2(zeta, R, MAF, obs_ct, N_all, sumR, var_mu_ext, g_var_est, meanR, b);
   double temp1 = zeta * s - k1;
   if (!std::isfinite(zeta) || temp1 < 0.0 || k2 <= 0.0)
     return NaN::quiet_NaN();
@@ -111,22 +112,22 @@ struct SpaResult { double pval, pval2, score, zscore; };
 SpaResult spaGOneSnpHomo(
     const Eigen::Ref<const Eigen::VectorXd>& g,
     const Eigen::VectorXd& R,
-    double mu_ext, double n_ext, double b,
+    double mu_ext, double obs_ct, double b,
     double sigma2, double var_ratio, double SPA_Cutoff) {
 
-  if (std::isnan(mu_ext)) { mu_ext = 0.0; n_ext = 0.0; }
+  if (std::isnan(mu_ext)) { mu_ext = 0.0; obs_ct = 0.0; }
 
   const double N = static_cast<double>(g.size());
   double mu_int = g.mean() / 2.0;
   double MAF = std::clamp((1.0 - b) * mu_int + b * mu_ext, 0.0, 1.0);
   double sumR = R.sum();
-  double N_all = N + n_ext;
+  double N_all = N + obs_ct / 2.0;
   double S = (R.array() * (g.array() - 2.0 * MAF)).sum();
   double S_raw = S;
   S /= var_ratio;
 
   double g_var_est = 2.0 * MAF * (1.0 - MAF);
-  double var_mu_ext = (n_ext == 0.0) ? 0.0 : (MAF * (1.0 - MAF) / (2.0 * n_ext) + sigma2);
+  double var_mu_ext = (obs_ct == 0.0) ? 0.0 : (MAF * (1.0 - MAF) / obs_ct + sigma2);
 
   double meanR = R.mean();
   Eigen::ArrayXd R_adj = R.array() - (1.0 - b) * meanR;
@@ -141,8 +142,8 @@ SpaResult spaGOneSnpHomo(
     return {pval_norm, pval_norm, S_raw, z};
   }
 
-  double pval1 = getProbSpaG(MAF, R,  std::abs(S), n_ext, N_all, sumR, var_mu_ext, g_var_est, meanR, b, false);
-  double pval2 = getProbSpaG(MAF, R, -std::abs(S), n_ext, N_all, sumR, var_mu_ext, g_var_est, meanR, b, true);
+  double pval1 = getProbSpaG(MAF, R,  std::abs(S), obs_ct, N_all, sumR, var_mu_ext, g_var_est, meanR, b, false);
+  double pval2 = getProbSpaG(MAF, R, -std::abs(S), obs_ct, N_all, sumR, var_mu_ext, g_var_est, meanR, b, true);
   double pval_spa = std::min(1.0, pval1 + pval2);
   return {pval_spa, std::min(1.0, 2.0 * math::pnorm(-std::abs(z))), S_raw, z};
 }
@@ -154,7 +155,8 @@ SpaResult spaGOneSnpHomo(
 // Phase 1 — File parsing & marker matching
 // ======================================================================
 
-std::vector<RefAfRecord> loadRefAfFile(const std::string& filename) {
+std::vector<RefAfRecord> loadRefAfFile(const std::string& filename,
+                                       bool* isNumericFallback) {
   std::ifstream ifs(filename);
   if (!ifs) throw std::runtime_error("Cannot open ref-af file: " + filename);
 
@@ -192,10 +194,49 @@ std::vector<RefAfRecord> loadRefAfFile(const std::string& filename) {
   }
 
   if (colChrom < 0 || colId < 0 || colRef < 0 || colAlt < 0 ||
-      colAltFreqs < 0 || colObsCt < 0)
+      colAltFreqs < 0 || colObsCt < 0) {
+    // ---- Two-column numeric fallback ----
+    // No valid header found.  If the first data line has exactly two
+    // numeric tokens, treat the whole file as (ALT_FREQS  OBS_CT) rows
+    // assumed to be in .bim order.
+    if (!line.empty() && line[0] != '#') {
+      char* end1 = nullptr;
+      char* end2 = nullptr;
+      std::istringstream probe(line);
+      std::string t1, t2, t3;
+      if ((probe >> t1 >> t2) && !(probe >> t3)) {
+        std::strtod(t1.c_str(), &end1);
+        std::strtod(t2.c_str(), &end2);
+        if (end1 != t1.c_str() && end2 != t2.c_str()) {
+          // Confirmed two-column numeric format
+          if (isNumericFallback) *isNumericFallback = true;
+          uint32_t lineNo = 0;
+          auto parseNumLine = [&](const std::string& ln) {
+            ++lineNo;
+            if (ln.empty()) return;
+            std::istringstream iss(ln);
+            RefAfRecord r;
+            if (!(iss >> r.alt_freq >> r.obs_ct))
+              throw std::runtime_error(
+                  filename + " line " + std::to_string(lineNo) +
+                  ": expected 2 numeric columns (ALT_FREQS OBS_CT)");
+            recs.push_back(std::move(r));
+          };
+          parseNumLine(line);
+          while (std::getline(ifs, line)) {
+            if (text::skipLine(line)) continue;
+            parseNumLine(line);
+          }
+          return recs;
+        }
+      }
+    }
     throw std::runtime_error(
         filename + ": missing required header columns "
         "(need #CHROM, ID, REF, ALT, ALT_FREQS, OBS_CT)");
+  }
+
+  if (isNumericFallback) *isNumericFallback = false;
 
   const int maxCol = std::max({colChrom, colId, colRef, colAlt,
                                colAltFreqs, colObsCt});
@@ -242,8 +283,7 @@ std::vector<RefAfRecord> loadRefAfFile(const std::string& filename) {
   if (!line.empty() && line[0] != '#')
     parseLine(line);
   while (std::getline(ifs, line)) {
-    if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (line.empty() || line[0] == '#') continue;
+    if (text::skipLine(line)) continue;
     parseLine(line);
   }
   return recs;
@@ -291,9 +331,33 @@ std::vector<MatchedMarkerInfo> matchMarkers(
     } else {
       continue;  // alleles don't match → drop
     }
-    m.N_ref = ref.obs_ct / 2.0;
+    m.obs_ct = ref.obs_ct;
 
     // mu0, mu1, n0, n1 will be filled later during genotype scanning
+    m.mu0 = m.mu1 = m.n0 = m.n1 = m.mu_int = 0.0;
+    matched.push_back(m);
+  }
+  return matched;
+}
+
+std::vector<MatchedMarkerInfo> matchMarkersNumeric(
+    const PlinkData& plinkData,
+    const std::vector<RefAfRecord>& refAf) {
+
+  const auto& markers = plinkData.markerInfo();
+  if (refAf.size() != markers.size())
+    throw std::runtime_error(
+        "ref-af numeric fallback: row count (" +
+        std::to_string(refAf.size()) + ") != bim marker count (" +
+        std::to_string(markers.size()) + ")");
+
+  std::vector<MatchedMarkerInfo> matched;
+  matched.reserve(markers.size());
+  for (size_t i = 0; i < markers.size(); ++i) {
+    MatchedMarkerInfo m;
+    m.genoIndex = markers[i].genoIndex;
+    m.AF_ref    = refAf[i].alt_freq;       // col 5 frequency directly
+    m.obs_ct    = refAf[i].obs_ct;
     m.mu0 = m.mu1 = m.n0 = m.n1 = m.mu_int = 0.0;
     matched.push_back(m);
   }
@@ -391,7 +455,7 @@ testBatchEffects(
   // Temporary per-marker storage
   struct MarkerBatchData {
     uint64_t genoIndex;
-    double   AF_ref, N_ref;
+    double   AF_ref, obs_ct;
     double   mu0, mu1, n0, n1, mu_int;
     double   var_ratio_w0;
     double   pvalue_bat;
@@ -402,16 +466,14 @@ testBatchEffects(
     const auto& m = matched[i];
     auto& bd = batchData[i];
     bd.genoIndex = m.genoIndex;
-    bd.AF_ref = m.AF_ref;  bd.N_ref = m.N_ref;
+    bd.AF_ref = m.AF_ref;  bd.obs_ct = m.obs_ct;
     bd.mu0 = m.mu0;  bd.mu1 = m.mu1;
     bd.n0 = m.n0;    bd.n1 = m.n1;
     bd.mu_int = m.mu_int;
 
-    double n_ext = m.N_ref;
-
-    // var_ratio_w0 per marker (depends on N_ref)
+    // var_ratio_w0 per marker (depends on obs_ct)
     bd.var_ratio_w0 = hasGRM
-        ? (grm_sum_cov_w + 1.0 / (2.0 * n_ext)) / (sum_w1_sq + 1.0 / (2.0 * n_ext))
+        ? (grm_sum_cov_w + 1.0 / m.obs_ct) / (sum_w1_sq + 1.0 / m.obs_ct)
         : 1.0;
 
     // Batch effect p-value (Batcheffect.TestOneMarker)
@@ -420,11 +482,11 @@ testBatchEffects(
     double w1_val = 1.0;
     double weight_maf = (m.mu0 * w0_val * m.n0 + m.mu1 * w1_val * m.n1)
                       / (w0_val * m.n0 + w1_val * m.n1);
-    double est_maf = (m.mu0 * w0_val * m.n0 + m.mu1 * w1_val * m.n1 + m.AF_ref * n_ext * w0_val)
-                   / (m.n1 * w1_val + m.n0 * w0_val + n_ext * w0_val);
+    double est_maf = (m.mu0 * w0_val * m.n0 + m.mu1 * w1_val * m.n1 + m.AF_ref * (m.obs_ct / 2.0) * w0_val)
+                   / (m.n1 * w1_val + m.n0 * w0_val + (m.obs_ct / 2.0) * w0_val);
     double v = ((m.n1 * w1_val * w1_val + m.n0 * w0_val * w0_val)
                / (2.0 * std::pow(m.n1 * w1_val + m.n0 * w0_val, 2.0))
-               + 1.0 / (2.0 * n_ext))
+               + 1.0 / m.obs_ct)
              * est_maf * (1.0 - est_maf);
     double z = (v > 0.0) ? (weight_maf - m.AF_ref) / std::sqrt(v) : 0.0;
     double z_adj = (bd.var_ratio_w0 > 0.0) ? z / std::sqrt(bd.var_ratio_w0) : z;
@@ -464,9 +526,9 @@ testBatchEffects(
 
     if (vec_p_bat.empty()) continue;
 
-    double n_ext = batchData[idx1[0]].N_ref;
-    if (std::isnan(n_ext) || n_ext <= 0.0) continue;
-    double var_mu_ext = mu * (1.0 - mu) / (2.0 * n_ext);
+    double obs_ct_ext = batchData[idx1[0]].obs_ct;
+    if (std::isnan(obs_ct_ext) || obs_ct_ext <= 0.0) continue;
+    double var_mu_ext = mu * (1.0 - mu) / obs_ct_ext;
 
     // var_Sbat for this MAF group
     double vr_w0 = hasGRM ? batchData[idx1[0]].var_ratio_w0 : 1.0;
@@ -541,7 +603,7 @@ testBatchEffects(
           mu_local += ((y[k] == 1.0) ? 2.0 * mu1_trial : 2.0 * mu0_val);
         mu_local /= (2.0 * nS);
 
-        double var_mu_ext_loc = mu_local * (1.0 - mu_local) / (2.0 * n_ext);
+        double var_mu_ext_loc = mu_local * (1.0 - mu_local) / obs_ct_ext;
         double var_Sbat_loc = w1sum2 * 2.0 * mu_local * (1.0 - mu_local) + var_mu_ext_loc;
 
         double p_cut = 0.1;
@@ -605,7 +667,7 @@ testBatchEffects(
     if (hasGRM) {
       Eigen::VectorXd R_tilde_w = residuals.array() - meanR * w_ext;
       double grm_cov_Rext = grm->quadForm(R_tilde_w.data(), static_cast<uint32_t>(nSubj));
-      double sumR_sq_over_n = w_ext * w_ext * residuals.sum() * residuals.sum() / n_ext;
+      double sumR_sq_over_n = w_ext * w_ext * residuals.sum() * residuals.sum() * 2.0 / obs_ct_ext;
       double num = grm_cov_Rext + sumR_sq_over_n;
       double den = R_tilde_w.array().square().sum() + sumR_sq_over_n;
       var_ratio_ext = (den > 0.0) ? num / den : 1.0;
@@ -615,7 +677,7 @@ testBatchEffects(
     for (size_t i : idx1) {
       WtCoxGRefInfo ri;
       ri.AF_ref       = batchData[i].AF_ref;
-      ri.N_ref        = batchData[i].N_ref;
+      ri.obs_ct       = batchData[i].obs_ct;
       ri.TPR          = TPR;
       ri.sigma2       = sigma2;
       ri.pvalue_bat   = batchData[i].pvalue_bat;
@@ -651,7 +713,7 @@ std::unique_ptr<MethodBase> WtCoxGMethod::clone() const {
 }
 
 std::string WtCoxGMethod::getHeaderColumns() const {
-  return "\tWtCoxG.ext\tWtCoxG.noext\tzscore.ext\tzscore.noext\tAF_ref\tN_ref\tpvalue_bat";
+  return "\tp_ext\tp_noext\tz_ext\tz_noext\tp_batch";
 }
 
 void WtCoxGMethod::prepareChunk(const std::vector<uint64_t>& gIndices) {
@@ -680,7 +742,7 @@ void WtCoxGMethod::getResultVec(
       info.pvalue_bat, info.TPR, info.sigma2, info.w_ext,
       info.var_ratio_int, info.var_ratio_w0, info.var_ratio_w0,
       info.var_ratio_ext, info.var_ratio_ext,
-      info.AF_ref, info.N_ref, m_cutoff);
+      info.AF_ref, info.obs_ct, m_cutoff);
 
   // Without external reference
   WtResult res_noext = wtCoxGTest(
@@ -693,8 +755,6 @@ void WtCoxGMethod::getResultVec(
   result.push_back(res_noext.pval);
   result.push_back(res_ext.zscore);
   result.push_back(res_noext.zscore);
-  result.push_back(info.AF_ref);
-  result.push_back(info.N_ref);
   result.push_back(info.pvalue_bat);
 }
 
@@ -708,7 +768,7 @@ WtCoxGMethod::DualResult WtCoxGMethod::computeDual(
       info.pvalue_bat, info.TPR, info.sigma2, info.w_ext,
       info.var_ratio_int, info.var_ratio_w0, info.var_ratio_w0,
       info.var_ratio_ext, info.var_ratio_ext,
-      info.AF_ref, info.N_ref, m_cutoff);
+      info.AF_ref, info.obs_ct, m_cutoff);
 
   WtResult res_noext = wtCoxGTest(
       GVec,
@@ -724,7 +784,7 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTest(
     double p_bat, double TPR, double sigma2, double b,
     double var_ratio_int, double var_ratio_w0, double var_ratio_w1,
     double var_ratio0, double var_ratio1,
-    double mu_ext, double n_ext, double p_cut) const {
+    double mu_ext, double obs_ct, double p_cut) const {
 
   // No external info → delegate to SPA-only
   if (std::isnan(mu_ext)) {
@@ -742,7 +802,7 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTest(
   double mu = (1.0 - b) * mu_int + b * mu_ext;
   double S = (m_R.array() * (g_input.array() - 2.0 * mu)).sum();
 
-  double var_mu_ext = mu * (1.0 - mu) / (2.0 * n_ext);
+  double var_mu_ext = mu * (1.0 - mu) / obs_ct;
   double var_Sbat = (m_w1.array().square()).sum() * 2.0 * mu * (1.0 - mu) + var_mu_ext;
 
   double qnorm_val = math::qnorm(1.0 - p_cut / 2.0);
@@ -755,7 +815,7 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTest(
                 + (1.0 - TPR) * (1.0 - p_cut);
 
   // Internal SPA (no sigma2)
-  SpaResult spa_s0 = spaGOneSnpHomo(g_input, m_R, mu_ext, n_ext, b, 0.0, var_ratio0, m_SPA_Cutoff);
+  SpaResult spa_s0 = spaGOneSnpHomo(g_input, m_R, mu_ext, obs_ct, b, 0.0, var_ratio0, m_SPA_Cutoff);
   double qchi = math::qchisq(spa_s0.pval, 1.0, false, false);
   double var_S = (qchi > 0.0) ? S * S / var_ratio0 / qchi : NaN::quiet_NaN();
 
@@ -779,7 +839,7 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTest(
   p0 = std::clamp(p0, 0.0, 1.0);
 
   // External SPA (with sigma2)
-  SpaResult spa_s1 = spaGOneSnpHomo(g_input, m_R, mu_ext, n_ext, b, sigma2, var_ratio1, m_SPA_Cutoff);
+  SpaResult spa_s1 = spaGOneSnpHomo(g_input, m_R, mu_ext, obs_ct, b, sigma2, var_ratio1, m_SPA_Cutoff);
   double var_S1 = S * S / var_ratio1 / math::qchisq(spa_s1.pval, 1.0, false, false);
   double cov_val1 = (m_w1.array() * R_adj).sum() * 2.0 * mu * (1.0 - mu)
                   + 2.0 * b * m_sumR * (var_mu_ext + sigma2);
@@ -805,8 +865,8 @@ void runWtCoxG(
     const std::string& residFile,
     const std::string& bfilePrefix,
     const std::string& refAfFile,
-    const std::string& spgrmSaigeFile,
-    const std::string& spgrmGctaPrefix,
+    const std::string& spgrmGrabFile,
+    const std::string& spgrmGctaFile,
     const std::string& outputFile,
     double refPrevalence,
     double cutoff,
@@ -826,8 +886,10 @@ void runWtCoxG(
   infoMsg("  %u subjects loaded", sd.nUsed());
 
   infoMsg("Loading ref-af file: %s", refAfFile.c_str());
-  auto refAf = loadRefAfFile(refAfFile);
-  infoMsg("  %zu reference records loaded", refAf.size());
+  bool refAfNumeric = false;
+  auto refAf = loadRefAfFile(refAfFile, &refAfNumeric);
+  infoMsg("  %zu reference records loaded%s", refAf.size(),
+          refAfNumeric ? " (numeric fallback)" : "");
 
   infoMsg("Loading PLINK data: %s", bfilePrefix.c_str());
   PlinkData plinkData(
@@ -844,7 +906,9 @@ void runWtCoxG(
           plinkData.nSubjUsed(), plinkData.nMarkers());
 
   infoMsg("Matching markers against reference allele frequencies...");
-  auto matched = matchMarkers(plinkData, refAf);
+  auto matched = refAfNumeric
+      ? matchMarkersNumeric(plinkData, refAf)
+      : matchMarkers(plinkData, refAf);
   infoMsg("  %zu markers matched", matched.size());
 
   infoMsg("Computing per-marker case/control allele frequencies...");
@@ -853,15 +917,11 @@ void runWtCoxG(
   // ---- Batch-effect testing ----
   infoMsg("Batch-effect testing and parameter estimation...");
   std::unique_ptr<SparseGRM> grm;
-  if (!spgrmGctaPrefix.empty()) {
-    infoMsg("  Loading GCTA sparse GRM: %s.grm.sp", spgrmGctaPrefix.c_str());
+  if (!spgrmGctaFile.empty() || !spgrmGrabFile.empty()) {
+    infoMsg("  Loading sparse GRM...");
     grm = std::make_unique<SparseGRM>(
-        SparseGRM::fromGCTA(spgrmGctaPrefix, sd.usedIIDs()));
-    infoMsg("  Sparse GRM: %u subjects, %zu non-zeros",
-            grm->nSubjects(), grm->nnz());
-  } else if (!spgrmSaigeFile.empty()) {
-    infoMsg("  Loading sparse GRM: %s", spgrmSaigeFile.c_str());
-    grm = std::make_unique<SparseGRM>(spgrmSaigeFile, sd.usedIIDs());
+        SparseGRM::load(spgrmGrabFile, spgrmGctaFile, sd.usedIIDs(),
+                        sd.famIIDs()));
     infoMsg("  Sparse GRM: %u subjects, %zu non-zeros",
             grm->nSubjects(), grm->nnz());
   }

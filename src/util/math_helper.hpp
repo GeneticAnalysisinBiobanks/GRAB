@@ -63,15 +63,6 @@ inline double qchisq(double p, double df,
   return boost::math::quantile(dist, p);
 }
 
-// Chi-squared CDF.
-inline double pchisq(double x, double df, bool lower_tail = true) {
-  if (std::isnan(x) || x < 0.0)
-    return std::numeric_limits<double>::quiet_NaN();
-  boost::math::chi_squared_distribution<double> dist(df);
-  return lower_tail ? boost::math::cdf(dist, x)
-                    : boost::math::cdf(boost::math::complement(dist, x));
-}
-
 // Student-t CDF (two-tailed p-value helper).
 inline double pt(double t, double df, bool lower_tail = true) {
   if (std::isnan(t)) return std::numeric_limits<double>::quiet_NaN();

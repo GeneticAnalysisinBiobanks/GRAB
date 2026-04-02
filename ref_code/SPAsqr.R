@@ -1,8 +1,6 @@
-# Refactor SPAsqr from R/Rcpp to pure C++
+## Ole workflow
 
-## Old workflow: R and Rcpp
-
-```R
+# simplified step 1
 SPAsqr.Step1 <- function(
   y,
   X,
@@ -92,8 +90,8 @@ SPAsqr.Step1 <- function(
   return(obj)
 }
 
+# old workflow
 PhenoData <- data.table::fread("examples/simuPHENO.txt")
-
 obj.SPAsqr <- SPAsqr.Step1(
   y = PhenoData$QuantPheno,
   X = as.matrix(PhenoData[, c("AGE", "GENDER", "PC1", "PC2")]),
@@ -103,21 +101,10 @@ obj.SPAsqr <- SPAsqr.Step1(
   h     = 0,
   sqr_tol = 1e-7
 )
+GRAB.mtMarker(obj.SPAsqr, "examples/simuPLINK", "tmp/SPAsqr.txt")
 
-source("ref/src/mtMarker.R")
-GRAB.mtMarker(
-  obj.SPAsqr, 
-  "examples/simuPLINK", 
-  "tmp/SPAsqr.txt"
-)
 
-```
-
-## New wrokflow: user provide residuals, and the pure cpp program do followings
-
-### This is user prepare a residual matrix, no need to refactor
-
-```R
+## new workflow to make residual matrix
 PhenoData <- data.table::fread("examples/simuPHENO.txt")
 y = PhenoData$QuantPheno
 X = as.matrix(PhenoData[, c("AGE", "GENDER", "PC1", "PC2")])
@@ -155,42 +142,3 @@ write.table(
   quote = FALSE,
   row.names = FALSE
 )
-
-```
-
-### This is the command of the new workflow
-
-```sh
-build/grab \
-  --method SPAsqr \
-  --null-resid examples/simuResidMat.txt \
-  --sparse-grm examples/SparseGRM.txt \
-  --bfile examples/simuPLINK \
-  --out tmp/SPAsqr_output.txt
-```
-
---null-resid examples/simuResidMat.txt is \s+ delimited. with optional header with leading #
---sparse-grm-file examples/SparseGRM.txt is sparse grm, parse already exists in src/io/sparse_grm
---bfile is plink file set, parse already exist in src/io/plink
---out tmp/SPAsqr.txt is the output file, since tau values isn't provided, use 1,2,3,... to indicate p-values of corresponding columns in --null-resid
-
-## To refactor the old workflow to the new workflow:
-
-1. Read code under ref_code/src to learn the old workflow.
-2. Refactor ref_code/src/mtSPAGRM.* to pure cpp/eigen/bh code and write to src/spagrm/spagrm.*.
-3. Refactor ref_code/src/mtSPAsqr.h,SPAsqr.R to pure cpp/eigen/bh code and write to src/spasqr.*
-SPAsqr doesn't use families, so the related objects are empty to fit spagrm interface. Just keep the spagrm interface and make SPAsqr match it.
-
-Ask me if you have questions. Tell me the important aspects to be considers.
-
-## Answers
-
-1. write a new loadResidMatrix
-2. the user just provides raw residuals and the C++ code computes outliers
-3. always use ordinal indices
-4. I refactored SPAsqr.Step1 on this page. which doesn't include family concepts.
-5. translate the full mtSPAGRMClass (including two-subject pairs and three+-subject CLT families) as a prerequisite
-6. reuse the existing --null-resid / --out flags
-7. use Z_tau<v>, P_tau<v>, P_CCT. v=1,2,3,...
-8. rename "--resid-iqr-threshold" to "--outlier-iqr-threshold" and apply to `1.5` in `cutoffLower <- Quant[1, ] - 1.5 * Range`. This is a common option.
-9. add "--outlier-abs-bound" frag for `0.55` in `cutoffLower <- ifelse(cutoffLower < -0.55, -0.55, cutoffLower)`. This is specific to SPAsqr.

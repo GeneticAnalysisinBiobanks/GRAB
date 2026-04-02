@@ -228,8 +228,8 @@ void runSPAmixPlus(
     const std::string& residFile,
     const std::string& eigenVecsFile,
     const std::string& bfilePrefix,
-    const std::string& spgrmSaigeFile,
-    const std::string& spgrmGctaPrefix,
+    const std::string& spgrmGrabFile,
+    const std::string& spgrmGctaFile,
     const std::string& afFile,
     const std::string& outputFile,
     double spaCutoff,
@@ -269,14 +269,10 @@ void runSPAmixPlus(
   }
 
   // ---- Load sparse GRM (raw mode — lower triangle + diagonal) ----
-  SparseGRM grm = [&]() -> SparseGRM {
-    if (!spgrmGctaPrefix.empty()) {
-      infoMsg("Loading GCTA sparse GRM (raw): %s.grm.sp", spgrmGctaPrefix.c_str());
-      return SparseGRM::fromGCTA(spgrmGctaPrefix, sd.usedIIDs(), /*symmetrize=*/false);
-    }
-    infoMsg("Loading sparse GRM (raw): %s", spgrmSaigeFile.c_str());
-    return SparseGRM(spgrmSaigeFile, sd.usedIIDs(), /*symmetrize=*/false);
-  }();
+  infoMsg("Loading sparse GRM (raw)...");
+  SparseGRM grm = SparseGRM::load(spgrmGrabFile, spgrmGctaFile,
+                                   sd.usedIIDs(),
+                                   sd.famIIDs());
   infoMsg("  %u subjects, %zu entries", grm.nSubjects(), grm.nnz());
 
   // ---- Load PLINK data ----

@@ -45,7 +45,7 @@ public:
 
   std::unique_ptr<MethodBase> clone() const override;
   int resultSize() const override { return 2; }
-  std::string getHeaderColumns() const override { return "\tPvalue\tzScore"; }
+  std::string getHeaderColumns() const override { return "\tSPAmix_P\tSPAmix_Z"; }
   bool skipFlip() const override { return true; }
   void prepareChunk(const std::vector<uint64_t>& gIndices) override;
   void getResultVec(Eigen::Ref<Eigen::VectorXd> GVec,

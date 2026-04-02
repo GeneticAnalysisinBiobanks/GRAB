@@ -27,7 +27,7 @@ class SparseGRM;
 
 struct WtCoxGRefInfo {
   double AF_ref       = std::numeric_limits<double>::quiet_NaN();
-  double N_ref        = std::numeric_limits<double>::quiet_NaN();  // sample size
+  double obs_ct       = std::numeric_limits<double>::quiet_NaN();  // allele count
   double TPR          = std::numeric_limits<double>::quiet_NaN();
   double sigma2       = std::numeric_limits<double>::quiet_NaN();
   double pvalue_bat   = std::numeric_limits<double>::quiet_NaN();
@@ -57,7 +57,7 @@ public:
 
   // ---- MethodBase interface ----
   std::unique_ptr<MethodBase> clone() const override;
-  int resultSize() const override { return 7; }
+  int resultSize() const override { return 5; }
   std::string getHeaderColumns() const override;
   bool skipFlip() const override { return true; }  // WtCoxG handles alleles itself
   void prepareChunk(const std::vector<uint64_t>& gIndices) override;
@@ -84,7 +84,7 @@ private:
     double p_bat, double TPR, double sigma2, double b,
     double var_ratio_int, double var_ratio_w0, double var_ratio_w1,
     double var_ratio0, double var_ratio1,
-    double mu_ext, double n_ext, double p_cut) const;
+    double mu_ext, double obs_ct, double p_cut) const;
 
   // Members (const after construction, except per-chunk scratch)
   Eigen::VectorXd m_R;
@@ -115,20 +115,24 @@ struct RefAfRecord {
   std::string ref_allele;  // REF column (plink2 reference allele)
   std::string alt_allele;  // ALT column (plink2 alternate allele)
   double      alt_freq;    // ALT_FREQS column
-  double      obs_ct;      // OBS_CT column (allele observations; N = obs_ct/2)
+  double      obs_ct;      // OBS_CT column — total allele number
 };
 
 // Parse a plink2 --freq .afreq file.  Header line (starting with '#')
 // is used to detect column positions for CHROM, ID, REF, ALT, ALT_FREQS, OBS_CT.
-std::vector<RefAfRecord> loadRefAfFile(const std::string& filename);
+// Two-column numeric fallback: if there is no header and each line has exactly
+// two numeric values, they are treated as (ALT_FREQS, OBS_CT) in .bim order.
+// When isNumericFallback is non-null it is set to true in that case.
+std::vector<RefAfRecord> loadRefAfFile(const std::string& filename,
+                                       bool* isNumericFallback = nullptr);
 
 // Match bim markers to ref-af records by (chr, bp, a1, a2) — exact only.
-// Returns a map: genoIndex → {AF_ref, N_ref, ...} for matched markers.
+// Returns a map: genoIndex → {AF_ref, obs_ct, ...} for matched markers.
 // mu0, mu1, n0, n1 per marker are computed from the genotype data.
 struct MatchedMarkerInfo {
   uint64_t genoIndex;
   double   AF_ref;
-  double   N_ref;   // sample size
+  double   obs_ct;    // total allele number (used directly in formulas)
   double   mu0;        // control allele freq
   double   mu1;        // case allele freq
   double   n0;         // effective control count
@@ -136,11 +140,18 @@ struct MatchedMarkerInfo {
   double   mu_int;     // internal MAF = 0.5*mu0 + 0.5*mu1 (folded ≤0.5)
 };
 
+// Sequential assignment for the two-column numeric fallback: rows are
+// assumed to be in .bim order, AF_ref = ALT_FREQS directly (col 5 freq).
+// Throws if row count != bim marker count.
+std::vector<MatchedMarkerInfo> matchMarkersNumeric(
+    const PlinkData& plinkData,
+    const std::vector<RefAfRecord>& refAf);
+
 // Match bim markers to ref-af records by (CHROM, ID) with allele orientation:
 //   If afreq (ALT,REF) matches bim (col5,col6) -> AF_ref = ALT_FREQS
 //   If afreq (REF,ALT) matches bim (col5,col6) -> AF_ref = 1-ALT_FREQS
 //   Otherwise the marker is dropped.
-// N_ref = OBS_CT / 2.
+// obs_ct is passed through directly (allele count).
 std::vector<MatchedMarkerInfo> matchMarkers(
     const PlinkData& plinkData,
     const std::vector<RefAfRecord>& refAf);
@@ -184,8 +195,8 @@ void runWtCoxG(
     const std::string& residFile,
     const std::string& bfilePrefix,
     const std::string& refAfFile,
-    const std::string& spgrmSaigeFile,   // empty = no GRM
-    const std::string& spgrmGctaPrefix,  // empty = no GRM
+    const std::string& spgrmGrabFile,    // empty = no GRM
+    const std::string& spgrmGctaFile,   // empty = no GRM
     const std::string& outputFile,
     double refPrevalence,
     double cutoff,

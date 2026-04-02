@@ -1,20 +1,29 @@
 // sparse_grm.cpp — SparseGRM parser and quadratic-form implementation
 
 #include "io/sparse_grm.hpp"
+#include "util/text_scanner.hpp"
+#include "util/logging.hpp"
 
 #include <fstream>
-#include <sstream>
 #include <stdexcept>
 #include <algorithm>
 
+namespace {
+// Derive .grm.id path from a .grm.sp file path.
+std::string grmIdPath(const std::string& spFile) {
+  const std::string suffix = ".grm.sp";
+  if (spFile.size() > suffix.size() &&
+      spFile.compare(spFile.size() - suffix.size(), suffix.size(), suffix) == 0)
+    return spFile.substr(0, spFile.size() - suffix.size()) + ".grm.id";
+  // Fallback: strip last extension, add .grm.id
+  auto dot = spFile.rfind('.');
+  return (dot != std::string::npos ? spFile.substr(0, dot) : spFile) + ".grm.id";
+}
+} // anonymous namespace
+
 SparseGRM::SparseGRM(const std::string& filename,
-                     const std::vector<std::string>& subjectOrder,
-                     bool symmetrize) {
-  // Build subject → index map
-  std::unordered_map<std::string, uint32_t> idMap;
-  idMap.reserve(subjectOrder.size());
-  for (uint32_t i = 0; i < subjectOrder.size(); ++i)
-    idMap.emplace(subjectOrder[i], i);
+                     const std::vector<std::string>& subjectOrder) {
+  auto idMap = text::buildIIDMap(subjectOrder);
   m_nSubj = static_cast<uint32_t>(subjectOrder.size());
 
   // Parse file
@@ -29,32 +38,21 @@ SparseGRM::SparseGRM(const std::string& filename,
   uint32_t lineNo = 0;
   while (std::getline(ifs, line)) {
     ++lineNo;
-    if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (line.empty() || line[0] == '#') continue;
+    if (text::skipLine(line)) continue;
 
-    // Whitespace-delimited parse: ID1  ID2  VALUE
-    const char*       p   = line.c_str();
-    const char* const end = p + line.size();
-    auto skipWS  = [&]() { while (p < end && (*p == ' ' || *p == '\t')) ++p; };
-    auto nextTok = [&]() -> std::string {
-      skipWS();
-      const char* s = p;
-      while (p < end && *p != ' ' && *p != '\t') ++p;
-      return std::string(s, p);
-    };
+    text::TokenScanner tok(line);
+    tok.skipWS();
+    if (tok.atEnd()) continue;
 
-    skipWS();
-    if (p >= end) continue;  // blank / all-whitespace line
-
-    const std::string id1 = nextTok();
-    const std::string id2 = nextTok();
-    skipWS();
-    if (id2.empty() || p >= end)
+    const std::string id1 = tok.next();
+    const std::string id2 = tok.next();
+    tok.skipWS();
+    if (id2.empty() || tok.atEnd())
       throw std::runtime_error(filename + " line " + std::to_string(lineNo) +
                                ": expected ID1 ID2 VALUE");
     char* endPtr;
-    const double val = std::strtod(p, &endPtr);
-    if (endPtr == p)
+    const double val = std::strtod(tok.pos(), &endPtr);
+    if (endPtr == tok.pos())
       throw std::runtime_error(filename + " line " + std::to_string(lineNo) +
                                ": invalid VALUE field");
 
@@ -65,8 +63,6 @@ SparseGRM::SparseGRM(const std::string& filename,
     const uint32_t r = it1->second;
     const uint32_t c = it2->second;
     raw.push_back({r, c, val});
-    if (symmetrize && r != c)
-      raw.push_back({c, r, val});  // symmetrise
   }
 
   // Sort by (row, col) for cache-friendly access in quadForm
@@ -81,11 +77,11 @@ SparseGRM::SparseGRM(const std::string& filename,
 // readGctaIIDs — shared .grm.id parser
 // ══════════════════════════════════════════════════════════════════════
 
-std::vector<std::string> SparseGRM::readGctaIIDs(const std::string& prefix) {
-  const std::string idFile = prefix + ".grm.id";
+std::vector<std::string> SparseGRM::readGctaIIDs(const std::string& spFile) {
+  const std::string idFile = grmIdPath(spFile);
   std::ifstream idStream(idFile);
   if (!idStream)
-    throw std::runtime_error("SparseGRM::readGctaIIDs: cannot open " + idFile);
+    return {};  // file not found — caller handles fallback
 
   std::vector<std::string> iids;
   iids.reserve(65536);
@@ -93,18 +89,9 @@ std::vector<std::string> SparseGRM::readGctaIIDs(const std::string& prefix) {
   while (std::getline(idStream, line)) {
     if (!line.empty() && line.back() == '\r') line.pop_back();
     if (line.empty()) continue;
-    // .grm.id format: FID  IID  (whitespace-separated)
-    const char*       p   = line.c_str();
-    const char* const end = p + line.size();
-    auto skipWS  = [&]() { while (p < end && (*p == ' ' || *p == '\t')) ++p; };
-    auto nextTok = [&]() -> std::string {
-      skipWS();
-      const char* s = p;
-      while (p < end && *p != ' ' && *p != '\t') ++p;
-      return std::string(s, p);
-    };
-    /*FID*/ nextTok();
-    std::string iid = nextTok();
+    text::TokenScanner tok(line);
+    /*FID*/ tok.next();
+    std::string iid = tok.next();
     if (iid.empty())
       throw std::runtime_error(idFile + ": missing IID on line " +
                                std::to_string(iids.size() + 1));
@@ -114,23 +101,29 @@ std::vector<std::string> SparseGRM::readGctaIIDs(const std::string& prefix) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// GCTA format: PREFIX.grm.id + PREFIX.grm.sp
+// GCTA format: .grm.sp file + companion .grm.id
 // ══════════════════════════════════════════════════════════════════════
 
-SparseGRM SparseGRM::fromGCTA(const std::string& prefix,
+SparseGRM SparseGRM::fromGCTA(const std::string& spFile,
                               const std::vector<std::string>& subjectOrder,
-                              bool symmetrize) {
+                              const std::vector<std::string>& famIIDs) {
   SparseGRM grm;
 
-  // Build subject → canonical index map
-  std::unordered_map<std::string, uint32_t> idMap;
-  idMap.reserve(subjectOrder.size());
-  for (uint32_t i = 0; i < static_cast<uint32_t>(subjectOrder.size()); ++i)
-    idMap.emplace(subjectOrder[i], i);
+  auto idMap = text::buildIIDMap(subjectOrder);
   grm.m_nSubj = static_cast<uint32_t>(subjectOrder.size());
 
   // ── Read .grm.id → 0-based file-index → IID ──────────────────────
-  auto fileIIDs = readGctaIIDs(prefix);
+  auto fileIIDs = readGctaIIDs(spFile);
+  if (fileIIDs.empty()) {
+    // .grm.id not found — fall back to .fam IID order
+    if (famIIDs.empty())
+      throw std::runtime_error(
+          "SparseGRM::fromGCTA: " + grmIdPath(spFile) +
+          " not found and no .fam fallback provided");
+    infoMsg("--sp-grm-plink2: %s not found; assuming indices match .fam order",
+            grmIdPath(spFile).c_str());
+    fileIIDs = famIIDs;
+  }
 
   // Map file-index → canonical index (UINT32_MAX if not in subjectOrder)
   std::vector<uint32_t> fileToCanon(fileIIDs.size(), UINT32_MAX);
@@ -141,7 +134,6 @@ SparseGRM SparseGRM::fromGCTA(const std::string& prefix,
   }
 
   // ── Read .grm.sp ──────────────────────────────────────────────────
-  const std::string spFile = prefix + ".grm.sp";
   std::ifstream spStream(spFile);
   if (!spStream)
     throw std::runtime_error("SparseGRM::fromGCTA: cannot open " + spFile);
@@ -181,8 +173,6 @@ SparseGRM SparseGRM::fromGCTA(const std::string& prefix,
     if (r == UINT32_MAX || c == UINT32_MAX) continue;
 
     raw.push_back({r, c, val});
-    if (symmetrize && r != c)
-      raw.push_back({c, r, val});
   }
 
   std::sort(raw.begin(), raw.end(), [](const Entry& a, const Entry& b) {
@@ -197,8 +187,11 @@ double SparseGRM::quadForm(const double* x, uint32_t n) const {
   if (n != m_nSubj)
     throw std::runtime_error("SparseGRM::quadForm: size mismatch");
   double sum = 0.0;
-  for (const auto& e : m_entries)
-    sum += e.value * x[e.row] * x[e.col];
+  for (const auto& e : m_entries) {
+    double prod = e.value * x[e.row] * x[e.col];
+    sum += prod;
+    if (e.row != e.col) sum += prod;  // off-diagonal: count both (i,j) and (j,i)
+  }
   return sum;
 }
 
@@ -206,8 +199,12 @@ double SparseGRM::bilinearForm(const double* x, const double* y, uint32_t n) con
   if (n != m_nSubj)
     throw std::runtime_error("SparseGRM::bilinearForm: size mismatch");
   double sum = 0.0;
-  for (const auto& e : m_entries)
-    sum += e.value * x[e.row] * y[e.col];
+  for (const auto& e : m_entries) {
+    if (e.row == e.col)
+      sum += e.value * x[e.row] * y[e.col];
+    else
+      sum += e.value * (x[e.row] * y[e.col] + x[e.col] * y[e.row]);
+  }
   return sum;
 }
 
@@ -222,4 +219,13 @@ double SparseGRM::spaVariance(const double* R, uint32_t n) const {
   for (uint32_t i = 0; i < n; ++i)
     dotRR += R[i] * R[i];
   return 2.0 * covSum - dotRR;
+}
+
+SparseGRM SparseGRM::load(const std::string& grabFile,
+                          const std::string& gctaFile,
+                          const std::vector<std::string>& subjectOrder,
+                          const std::vector<std::string>& famIIDs) {
+  if (!gctaFile.empty())
+    return fromGCTA(gctaFile, subjectOrder, famIIDs);
+  return SparseGRM(grabFile, subjectOrder);
 }

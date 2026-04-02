@@ -27,7 +27,28 @@ std::vector<PopMatchedAF> loadAndMatchRefAf(
     const PlinkData& plinkData,
     const std::string& afreqFile) {
 
-  auto records = loadRefAfFile(afreqFile);
+  bool isNumeric = false;
+  auto records = loadRefAfFile(afreqFile, &isNumeric);
+
+  if (isNumeric) {
+    // Numeric fallback: rows in .bim order, AF is col 5 freq directly
+    const auto& markers = plinkData.markerInfo();
+    if (records.size() != markers.size())
+      throw std::runtime_error(
+          "ref-af numeric fallback: row count (" +
+          std::to_string(records.size()) + ") != bim marker count (" +
+          std::to_string(markers.size()) + ")");
+    std::vector<PopMatchedAF> matched;
+    matched.reserve(markers.size());
+    for (size_t i = 0; i < markers.size(); ++i) {
+      PopMatchedAF pm;
+      pm.genoIndex = markers[i].genoIndex;
+      pm.af        = records[i].alt_freq;
+      pm.obs_ct     = records[i].obs_ct;
+      matched.push_back(pm);
+    }
+    return matched;
+  }
 
   // Build lookup: "chrom:id" → index
   auto makeKey = [](const std::string& chr, const std::string& id) -> std::string {
@@ -60,7 +81,7 @@ std::vector<PopMatchedAF> loadAndMatchRefAf(
     } else {
       continue;
     }
-    pm.n_ref = rec.obs_ct / 2.0;
+    pm.obs_ct = rec.obs_ct;
     matched.push_back(pm);
   }
   return matched;
@@ -285,8 +306,8 @@ void runLEAF(
     const std::vector<std::string>& residFiles,
     const std::string& bfilePrefix,
     const std::vector<std::string>& refAfFiles,
-    const std::string& spgrmSaigeFile,
-    const std::string& spgrmGctaPrefix,
+    const std::string& spgrmGrabFile,
+    const std::string& spgrmGctaFile,
     const std::string& outputFile,
     double refPrevalence,
     double cutoff,
@@ -376,10 +397,10 @@ void runLEAF(
   }
 
   // ---- Build intersection of markers present in all populations ----
-  // Collect genoIndex → {popAF[nPop], popN[nPop]} for markers in all pops
+  // Collect genoIndex → {popAF[nPop], popObsCt[nPop]} for markers in all pops
   struct MultiPopEntry {
     double af[6];
-    double n_ref[6];
+    double obs_ct[6];
   };
   std::unordered_map<uint64_t, MultiPopEntry> allPopMap;
   // Seed from pop 0
@@ -387,7 +408,7 @@ void runLEAF(
     for (const auto& pm : popMatched[0]) {
       MultiPopEntry e{};
       e.af[0] = pm.af;
-      e.n_ref[0] = pm.n_ref;
+      e.obs_ct[0] = pm.obs_ct;
       allPopMap.emplace(pm.genoIndex, e);
     }
   }
@@ -399,7 +420,7 @@ void runLEAF(
       if (it == allPopMap.end()) continue;
       auto entry = it->second;
       entry.af[p] = pm.af;
-      entry.n_ref[p] = pm.n_ref;
+      entry.obs_ct[p] = pm.obs_ct;
       next.emplace(pm.genoIndex, entry);
     }
     allPopMap = std::move(next);
@@ -409,7 +430,7 @@ void runLEAF(
   struct MatchedMultiPop {
     uint64_t genoIndex;
     double popAF[6];
-    double popN[6];
+    double popObsCt[6];
   };
   std::vector<MatchedMultiPop> matchedMulti;
   matchedMulti.reserve(allPopMap.size());
@@ -417,8 +438,8 @@ void runLEAF(
     MatchedMultiPop mm{};
     mm.genoIndex = gi;
     for (int p = 0; p < nPop; ++p) {
-      mm.popAF[p] = e.af[p];
-      mm.popN[p]  = e.n_ref[p];
+      mm.popAF[p]    = e.af[p];
+      mm.popObsCt[p] = e.obs_ct[p];
     }
     matchedMulti.push_back(mm);
   }
@@ -486,7 +507,7 @@ void runLEAF(
     }
   }
 
-  // Per cluster: run summix → compute AF_ref, AN_ref
+  // Per cluster: run summix → compute AF_ref, obs_ct
   // Build per-cluster MatchedMarkerInfo for testBatchEffects
   std::vector<std::vector<MatchedMarkerInfo>> clMatchedInfo(nCluster);
 
@@ -506,7 +527,7 @@ void runLEAF(
     for (int p = 0; p < nPop; ++p)
       infoMsg("    pop%d: %.4f", p + 1, proportions[p]);
 
-    // Synthesise ancestry-matched AF_ref and AN_ref
+    // Synthesise ancestry-matched AF_ref and obs_ct
     clMatchedInfo[c].resize(nMatched);
     for (size_t m = 0; m < nMatched; ++m) {
       auto& mi = clMatchedInfo[c][m];
@@ -518,14 +539,14 @@ void runLEAF(
         af_ref += proportions[p] * matchedMulti[m].popAF[p];
       mi.AF_ref = af_ref;
 
-      // N_ref = 1 / Σ(pi_k² / N_k)  (effective sample size for admixed ancestry)
+      // effective obs_ct = 1 / Σ(pi_k² / obs_ct_k)
       double denom = 0.0;
       for (int p = 0; p < nPop; ++p) {
-        double N = matchedMulti[m].popN[p];
-        if (N > 0 && proportions[p] > 0)
-          denom += (proportions[p] * proportions[p]) / N;
+        double oc = matchedMulti[m].popObsCt[p];
+        if (oc > 0 && proportions[p] > 0)
+          denom += (proportions[p] * proportions[p]) / oc;
       }
-      mi.N_ref = (denom > 0) ? 1.0 / denom : 0.0;
+      mi.obs_ct = (denom > 0) ? 1.0 / denom : 0.0;
 
       mi.mu0    = clStats[c][m].mu0;
       mi.mu1    = clStats[c][m].mu1;
@@ -546,13 +567,11 @@ void runLEAF(
             c + 1, clMatchedInfo[c].size());
 
     std::unique_ptr<SparseGRM> grm;
-    if (!spgrmGctaPrefix.empty()) {
+    if (!spgrmGctaFile.empty() || !spgrmGrabFile.empty()) {
       grm = std::make_unique<SparseGRM>(
-          SparseGRM::fromGCTA(spgrmGctaPrefix, clusterSD[c].usedIIDs()));
-      infoMsg("    Sparse GRM: %u subjects, %zu non-zeros",
-              grm->nSubjects(), grm->nnz());
-    } else if (!spgrmSaigeFile.empty()) {
-      grm = std::make_unique<SparseGRM>(spgrmSaigeFile, clusterSD[c].usedIIDs());
+          SparseGRM::load(spgrmGrabFile, spgrmGctaFile,
+                          clusterSD[c].usedIIDs(),
+                          clusterSD[c].famIIDs()));
       infoMsg("    Sparse GRM: %u subjects, %zu non-zeros",
               grm->nSubjects(), grm->nnz());
     }

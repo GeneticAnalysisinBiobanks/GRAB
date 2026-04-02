@@ -17,8 +17,8 @@
 /// Run the full SPAGRM workflow: null model + marker-level SPA.
 ///
 /// @param residFile        2-column residual file (SubjID  Resid), '#' header ok
-/// @param spgrmSaigeFile   3-column TSV (ID1 ID2 VALUE), '#' lines skipped
-/// @param spgrmGctaPrefix  plink2 --make-grm-sparse prefix (.grm.sp + .grm.id)
+/// @param spgrmGrabFile    3-column TSV (ID1 ID2 VALUE), '#' lines skipped
+/// @param spgrmGctaFile   plink2 --make-grm-sparse .grm.sp file
 /// @param pairwiseIBDFile  Tab-separated (ID1 ID2 pa pb pc) from runPairwiseIBD
 /// @param bfilePrefix      PLINK binary prefix (.bed/.bim/.fam)
 /// @param outputFile       Marker-level output file
@@ -30,8 +30,8 @@
 /// @param minMacCutoff     Min minor allele count
 void runSPAGRM(
     const std::string& residFile,
-    const std::string& spgrmSaigeFile,
-    const std::string& spgrmGctaPrefix,
+    const std::string& spgrmGrabFile,
+    const std::string& spgrmGctaFile,
     const std::string& pairwiseIBDFile,
     const std::string& bfilePrefix,
     const std::string& outputFile,

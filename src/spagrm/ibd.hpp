@@ -12,14 +12,14 @@
 /// Compute pairwise IBD (pa, pb, pc) for every off-diagonal pair in the
 /// sparse GRM and write the result to `outputFile`.
 ///
-/// @param spgrmSaigeFile  3-column TSV (ID1 ID2 VALUE), '#' lines skipped.
-/// @param spgrmGctaPrefix plink2 --make-grm-sparse prefix (.grm.sp + .grm.id).
+/// @param spgrmGrabFile   3-column TSV (ID1 ID2 VALUE), '#' lines skipped.
+/// @param spgrmGctaFile  plink2 --make-grm-sparse .grm.sp file.
 /// @param bfilePrefix     PLINK binary prefix (.bed/.bim/.fam).
 /// @param outputFile      Tab-separated output (ID1 ID2 pa pb pc).
 /// @param minMafIBD       Minimum MAF for a marker to be used (default 0.01).
 void runPairwiseIBD(
-    const std::string& spgrmSaigeFile,
-    const std::string& spgrmGctaPrefix,
+    const std::string& spgrmGrabFile,
+    const std::string& spgrmGctaFile,
     const std::string& bfilePrefix,
     const std::string& outputFile,
     double minMafIBD = 0.01);

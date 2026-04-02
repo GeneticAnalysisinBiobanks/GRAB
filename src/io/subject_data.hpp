@@ -4,7 +4,7 @@
 //   - First columns: FID IID  or just  IID
 //   - Optional header starting with #FID, FID, #IID, or IID
 //   - ##-prefixed extra comment lines allowed before the header
-//   - Legacy headerless format (col 0 = IID) also supported
+//   - Or: pure numeric matrix (no IID, no header) — rows must match .fam
 //
 // Residual formats:
 //   residOne    — IID + 1..N residual columns (multi-col → multi-GWAS)
@@ -92,6 +92,7 @@ private:
     int nCols = 0;
     std::vector<double> vals;   // row-major: vals[row * nCols + col]
     std::vector<std::string> colNames;  // from header (empty for legacy)
+    bool noIID = false;         // true when file is a pure numeric matrix (no IID column)
   };
 
   static RawFile parseIIDFile(const std::string& filename, int expectCols);

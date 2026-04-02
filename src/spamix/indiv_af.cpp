@@ -2,6 +2,7 @@
 // See spamix/indiv_af.hpp for format documentation.
 
 #include "spamix/indiv_af.hpp"
+#include "util/text_scanner.hpp"
 
 #include <cassert>
 #include <cmath>
@@ -294,7 +295,7 @@ IndivAFWriter::IndivAFWriter(
     gzbuffer(static_cast<gzFile>(m_gz), 256u * 1024u);
 
     // Write TSV header
-    std::string hdr = "#CHROM\tID\tSTATUS";
+    std::string hdr = "#STATUS";
     for (int j = 0; j <= nPC; ++j)
       hdr += "\tBETA" + std::to_string(j);
     hdr += "\n";
@@ -306,7 +307,7 @@ IndivAFWriter::IndivAFWriter(
       throw std::runtime_error("Cannot create text AF file: " + outputFile);
 
     // Write TSV header
-    m_textOut << "#CHROM\tID\tSTATUS";
+    m_textOut << "#STATUS";
     for (int j = 0; j <= nPC; ++j)
       m_textOut << "\tBETA" << j;
     m_textOut << "\n";
@@ -319,7 +320,6 @@ IndivAFWriter::IndivAFWriter(
 
 void IndivAFWriter::write(
     uint64_t genoIndex,
-    const std::string& chr, const std::string& id,
     int8_t status,
     const Eigen::VectorXd& betas)
 {
@@ -335,10 +335,6 @@ void IndivAFWriter::write(
     std::string line;
     line.reserve(64 + 26 * (1 + m_nPC));
 
-    line += chr;
-    line += '\t';
-    line += id;
-    line += '\t';
     std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(status));
     line += buf;
     for (int j = 0; j <= m_nPC; ++j) {
@@ -441,15 +437,12 @@ static std::vector<AFModel> loadAFModelsText(
   uint32_t lineNo = 0;
   auto parseLine = [&](std::string line) {
     ++lineNo;
-    // Normalise Windows CRLF
-    if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (line.empty() || line[0] == '#') return;
+    if (text::skipLine(line)) return;
     std::istringstream iss(line);
-    std::string chr, id;
     int status;
-    if (!(iss >> chr >> id >> status))
+    if (!(iss >> status))
       throw std::runtime_error(path + " line " + std::to_string(lineNo) +
-                               ": expected CHROM ID STATUS BETA0 ...");
+                               ": expected STATUS BETA0 ...");
     AFModel m;
     m.status = static_cast<int8_t>(status);
     m.betas.resize(1 + nPC);
@@ -714,7 +707,6 @@ void runSPAmixAF(
     const auto& mi = markerInfo[fi];
     writer.write(
         mi.genoIndex,
-        mi.chrom, mi.id,
         allModels[fi].status,
         allModels[fi].betas);
   }
