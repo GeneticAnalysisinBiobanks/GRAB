@@ -5,10 +5,11 @@
 #endif
 
 #include "spasqr/spasqr.hpp"
+#include "spasqr/conquer.hpp"
 #include "spagrm/spagrm.hpp"
 #include "engine/marker.hpp"
 #include "io/subject_data.hpp"
-#include "io/plink.hpp"
+#include "io/geno_data.hpp"
 #include "io/sparse_grm.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
@@ -33,11 +34,27 @@ namespace {
 
 class SPAsqrMethod : public MethodBase {
 public:
+  // Constructor with tau labels (used by pheno path):
+  //   labels like "Tau0.1", "Tau0.3", ...
+  //   Output order: P_CCT  P_tau0.1 ... P_tau0.9  Z_tau0.1 ... Z_tau0.9
+  SPAsqrMethod(
+      int ntaus,
+      std::vector<SPAGRMClass> spagrm_vec,
+      std::vector<std::string> tauLabels)
+    : m_ntaus(ntaus),
+      m_spagrm_vec(std::move(spagrm_vec)),
+      m_tauLabels(std::move(tauLabels)),
+      m_hasLabels(true)
+  {}
+
+  // Constructor without labels (used by legacy --null-resid path):
+  //   Output order: Z_tau1 ... Z_tauK  P_tau1 ... P_tauK  P_CCT
   SPAsqrMethod(
       int ntaus,
       std::vector<SPAGRMClass> spagrm_vec)
     : m_ntaus(ntaus),
-      m_spagrm_vec(std::move(spagrm_vec))
+      m_spagrm_vec(std::move(spagrm_vec)),
+      m_hasLabels(false)
   {}
 
   std::unique_ptr<MethodBase> clone() const override {
@@ -48,11 +65,21 @@ public:
 
   std::string getHeaderColumns() const override {
     std::ostringstream oss;
-    for (int i = 1; i <= m_ntaus; ++i)
-      oss << "\tZ_tau" << i;
-    for (int i = 1; i <= m_ntaus; ++i)
-      oss << "\tP_tau" << i;
-    oss << "\tP_CCT";
+    if (m_hasLabels) {
+      // Pheno path: P_CCT first, then P_tau{val}..., then Z_tau{val}...
+      oss << "\tP_CCT";
+      for (int i = 0; i < m_ntaus; ++i)
+        oss << "\tP_" << m_tauLabels[i];
+      for (int i = 0; i < m_ntaus; ++i)
+        oss << "\tZ_" << m_tauLabels[i];
+    } else {
+      // Legacy: Z_tau1..Z_tauK  P_tau1..P_tauK  P_CCT
+      for (int i = 1; i <= m_ntaus; ++i)
+        oss << "\tZ_tau" << i;
+      for (int i = 1; i <= m_ntaus; ++i)
+        oss << "\tP_tau" << i;
+      oss << "\tP_CCT";
+    }
     return oss.str();
   }
 
@@ -60,7 +87,6 @@ public:
       Eigen::Ref<Eigen::VectorXd> GVec,
       double altFreq,
       int /*markerInChunkIdx*/,
-      bool /*flipped*/,
       std::vector<double>& result) override
   {
     result.clear();
@@ -75,9 +101,6 @@ public:
       zScores[i] = z;
       pvals[i]   = p;
     }
-
-    for (int i = 0; i < m_ntaus; ++i) result.push_back(zScores[i]);
-    for (int i = 0; i < m_ntaus; ++i) result.push_back(pvals[i]);
 
     // CCT (Cauchy combination test) p-value
     std::vector<double> valid_p;
@@ -102,12 +125,25 @@ public:
                                : 0.5 - std::atan(tStat) / M_PI;
       }
     }
-    result.push_back(pCCT);
+
+    if (m_hasLabels) {
+      // P_CCT first, then P_tau{val}..., then Z_tau{val}...
+      result.push_back(pCCT);
+      for (int i = 0; i < m_ntaus; ++i) result.push_back(pvals[i]);
+      for (int i = 0; i < m_ntaus; ++i) result.push_back(zScores[i]);
+    } else {
+      // Legacy: Z_tau1..Z_tauK  P_tau1..P_tauK  P_CCT
+      for (int i = 0; i < m_ntaus; ++i) result.push_back(zScores[i]);
+      for (int i = 0; i < m_ntaus; ++i) result.push_back(pvals[i]);
+      result.push_back(pCCT);
+    }
   }
 
 private:
   int m_ntaus;
   std::vector<SPAGRMClass> m_spagrm_vec;
+  std::vector<std::string> m_tauLabels;
+  bool m_hasLabels;
 };
 
 
@@ -188,53 +224,28 @@ OutlierInfo detectOutliers(
 
 
 // ══════════════════════════════════════════════════════════════════════
-// runSPAsqr — entry point
+// Shared pipeline: outlier detection → GRM → SPAGRM → marker engine
 // ══════════════════════════════════════════════════════════════════════
 
-void runSPAsqr(
-    const std::string& residFile,
+static void runSPAsqrPipeline(
+    Eigen::MatrixXd& ResidMat,
+    GenoMeta& plinkData,
+    const std::vector<std::string>& subjOrder,
+    const std::vector<std::string>& famIIDs,
+    uint32_t nUsed,
     const std::string& spgrmGrabFile,
     const std::string& spgrmGctaFile,
-    const std::string& bfilePrefix,
     const std::string& outputFile,
     double spaCutoff,
     double outlierIqrRatio,
     double outlierAbsBound,
     int nthreads,
-    int nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff)
+    double minMacCutoff,
+    std::vector<std::string> tauLabels)  // empty → legacy column names
 {
-  // ── 1. Load residual matrix ────────────────────────────────────────
-  infoMsg("Loading residual matrix from %s", residFile.c_str());
-  auto famIIDs = parseFamIIDs(bfilePrefix + ".fam");
-  SubjectData sd(std::move(famIIDs));
-  sd.loadResidSPAsqr(residFile);
-  sd.finalize();
-  const Eigen::Index N = static_cast<Eigen::Index>(sd.nUsed());
-  const Eigen::Index K = sd.residCols();
-  infoMsg("Residual matrix: %lld subjects x %lld columns",
-          static_cast<long long>(N), static_cast<long long>(K));
-
-  // ── 2. Load PLINK data ────────────────────────────────────────────
-  infoMsg("Loading PLINK files: %s", bfilePrefix.c_str());
-  PlinkData plinkData(
-      bfilePrefix + ".bed",
-      bfilePrefix + ".bim",
-      bfilePrefix + ".fam",
-      sd.usedMask(),
-      sd.nFam(),
-      sd.nUsed(),
-      "ref-first",
-      {}, {}, {}, {},
-      nSnpPerChunk);
-
-  const uint32_t nUsed = plinkData.nSubjUsed();
-  auto subjOrder = sd.usedIIDs();
-
-  // The residual matrix is already in .fam order (aligned by SubjectData).
-  Eigen::MatrixXd ResidMat = sd.residMatrix();
+  const Eigen::Index K = ResidMat.cols();
 
   // ── 3. Outlier detection ───────────────────────────────────────────
   infoMsg("Detecting outliers (IQR ratio=%.2f, abs bound=%.2f)",
@@ -253,7 +264,7 @@ void runSPAsqr(
 
   {
     SparseGRM grm = SparseGRM::load(spgrmGrabFile, spgrmGctaFile,
-                                     subjOrder, sd.famIIDs());
+                                     subjOrder, famIIDs);
     infoMsg("Sparse GRM: %zu entries after filtering", grm.nnz());
     grmEntries.reserve(grm.nnz());
     for (const auto& e : grm.entries())
@@ -327,11 +338,165 @@ void runSPAsqr(
   }
 
   // ── 7. Run marker engine ───────────────────────────────────────────
-  SPAsqrMethod method(ntaus, std::move(spagrm_vec));
+  std::unique_ptr<SPAsqrMethod> method;
+  if (tauLabels.empty())
+    method = std::make_unique<SPAsqrMethod>(ntaus, std::move(spagrm_vec));
+  else
+    method = std::make_unique<SPAsqrMethod>(ntaus, std::move(spagrm_vec), std::move(tauLabels));
 
   infoMsg("Starting marker-level association (SPAsqr, %d taus, %d threads)",
           ntaus, nthreads);
-  markerEngine(plinkData, method, outputFile,
+  markerEngine(plinkData, *method, outputFile,
                nthreads, missingCutoff, minMafCutoff, minMacCutoff,
                /*exactHwe=*/false);
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// runSPAsqr — legacy entry point (--null-resid)
+// ══════════════════════════════════════════════════════════════════════
+
+void runSPAsqr(
+    const std::string& residFile,
+    const std::string& spgrmGrabFile,
+    const std::string& spgrmGctaFile,
+    const GenoSpec& geno,
+    const std::string& outputFile,
+    double spaCutoff,
+    double outlierIqrRatio,
+    double outlierAbsBound,
+    int nthreads,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff)
+{
+  // ── 1. Load residual matrix ────────────────────────────────────────
+  infoMsg("Loading residual matrix from %s", residFile.c_str());
+  auto famIIDs = parseGenoIIDs(geno);
+  SubjectData sd(std::move(famIIDs));
+  sd.loadResidSPAsqr(residFile);
+  sd.finalize();
+  const Eigen::Index N = static_cast<Eigen::Index>(sd.nUsed());
+  const Eigen::Index K = sd.residCols();
+  infoMsg("Residual matrix: %lld subjects x %lld columns",
+          static_cast<long long>(N), static_cast<long long>(K));
+
+  // ── 2. Load genotype data ──────────────────────────────────────────
+  auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(),
+                               nSnpPerChunk);
+
+  Eigen::MatrixXd ResidMat = sd.residMatrix();
+
+  runSPAsqrPipeline(
+      ResidMat, *genoData,
+      sd.usedIIDs(), sd.famIIDs(),
+      genoData->nSubjUsed(),
+      spgrmGrabFile, spgrmGctaFile,
+      outputFile, spaCutoff, outlierIqrRatio, outlierAbsBound,
+      nthreads, missingCutoff, minMafCutoff, minMacCutoff,
+      /*tauLabels=*/{});
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// runSPAsqrPheno — new entry point (--pheno + --pheno-quantitative)
+// ══════════════════════════════════════════════════════════════════════
+
+void runSPAsqrPheno(
+    const std::string& phenoFile,
+    const std::string& covarFile,
+    const std::string& quantPhenoCol,
+    const std::vector<std::string>& covarNames,
+    const std::vector<double>& taus,
+    const std::string& spgrmGrabFile,
+    const std::string& spgrmGctaFile,
+    const GenoSpec& geno,
+    const std::string& outputFile,
+    double spaCutoff,
+    double outlierIqrRatio,
+    double outlierAbsBound,
+    int nthreads,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff)
+{
+  const int ntaus = static_cast<int>(taus.size());
+
+  // ── 1. Load phenotype/covariate data ────────────────────────────────────
+  infoMsg("Loading phenotype and covariate data");
+  auto famIIDs = parseGenoIIDs(geno);
+  SubjectData sd(std::move(famIIDs));
+  if (!phenoFile.empty())  sd.loadPhenoFile(phenoFile);
+  if (!covarFile.empty())  sd.loadCovar(covarFile);
+  sd.finalize();
+
+  const Eigen::Index N = static_cast<Eigen::Index>(sd.nUsed());
+  infoMsg("Subjects after intersection: %lld", static_cast<long long>(N));
+
+  // Extract Y and X
+  Eigen::VectorXd Y = sd.getColumn(quantPhenoCol);
+  Eigen::MatrixXd X = covarNames.empty()
+      ? Eigen::MatrixXd(N, 0)
+      : sd.getColumns(covarNames);
+  const int p = static_cast<int>(X.cols());
+  infoMsg("Quantitative phenotype: %s, %d covariates, %d tau levels",
+          quantPhenoCol.c_str(), p, ntaus);
+
+  // ── 2. Compute bandwidth h = IQR(Y) / 3 ──────────────────────────
+  {
+    std::vector<double> ysorted(N);
+    Eigen::VectorXd::Map(ysorted.data(), N) = Y;
+    std::sort(ysorted.begin(), ysorted.end());
+    auto quantile = [&](double prob) -> double {
+      double idx = prob * (N - 1);
+      Eigen::Index lo = static_cast<Eigen::Index>(std::floor(idx));
+      Eigen::Index hi = std::min(lo + 1, N - 1);
+      double frac = idx - lo;
+      return ysorted[lo] * (1.0 - frac) + ysorted[hi] * frac;
+    };
+    double iqr = quantile(0.75) - quantile(0.25);
+    double h = iqr / 3.0;
+    if (h <= 0.0)
+      h = std::max(std::pow((std::log(N) + p) / static_cast<double>(N), 0.4), 0.05);
+    infoMsg("Bandwidth h = %.6f", h);
+
+  // ── 3. Run conquer for each tau → build residual matrix ───────────
+    Eigen::MatrixXd ResidMat(N, ntaus);
+    for (int t = 0; t < ntaus; ++t) {
+      infoMsg("  conquer tau=%.4f ...", taus[t]);
+      Eigen::VectorXd resid;
+      Eigen::VectorXd beta = conquer::smqrGauss(X, Y, taus[t], h, &resid);
+      infoMsg("    intercept=%.6f", beta(0));
+
+      // ResidMat column = tau - Phi(-resid / h)   (smoothed quantile residual)
+      const double h1 = 1.0 / h;
+      for (Eigen::Index i = 0; i < N; ++i)
+        ResidMat(i, t) = taus[t] - math::pnorm(-resid(i) * h1);
+    }
+
+  // ── 4. Build tau labels ────────────────────────────────────────────
+    std::vector<std::string> tauLabels;
+    tauLabels.reserve(ntaus);
+    for (double tau : taus) {
+      std::ostringstream oss;
+      oss << "Tau" << tau;
+      tauLabels.push_back(oss.str());
+    }
+
+  // ── 5. Load genotype data ────────────────────────────────────────────────
+    auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(),
+                                 nSnpPerChunk);
+
+  // ── 6. Run shared pipeline ───────────────────────────────────────────────
+    runSPAsqrPipeline(
+        ResidMat, *genoData,
+        sd.usedIIDs(), sd.famIIDs(),
+        genoData->nSubjUsed(),
+        spgrmGrabFile, spgrmGctaFile,
+        outputFile, spaCutoff, outlierIqrRatio, outlierAbsBound,
+        nthreads, missingCutoff, minMafCutoff, minMacCutoff,
+        std::move(tauLabels));
+  }
 }

@@ -1,7 +1,7 @@
 // spacox.cpp — SPACox full implementation
 
 #include "spacox/spacox.hpp"
-#include "io/plink.hpp"
+#include "io/geno_data.hpp"
 #include "io/subject_data.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
@@ -382,14 +382,11 @@ double SPACoxMethod::getMarkerPval(
 void SPACoxMethod::getResultVec(
     Eigen::Ref<Eigen::VectorXd> GVec,
     double altFreq, int /*markerInChunkIdx*/,
-    bool flipped, std::vector<double>& result) {
+    std::vector<double>& result) {
 
-  // altFreq is the alternate-allele frequency BEFORE any flip.
-  // If the engine flipped GVec (altFreq > 0.5), MAF = 1 - altFreq.
-  double MAF = flipped ? (1.0 - altFreq) : altFreq;
-
+  // altFreq = freq(bim col5 = ALT); GVec counts bim col5 alleles.
   double zScore;
-  double pval = getMarkerPval(GVec, MAF, zScore);
+  double pval = getMarkerPval(GVec, altFreq, zScore);
 
   result.push_back(pval);
   result.push_back(zScore);
@@ -404,7 +401,7 @@ void runSPACox(
     const std::vector<std::string>& covarNames,
     const std::string& phenoFile,
     const std::string& covarFile,
-    const std::string& bfilePrefix,
+    const GenoSpec& geno,
     const std::string& outputFile,
     double pvalCovAdjCut,
     double spaCutoff,
@@ -416,7 +413,7 @@ void runSPACox(
 
   // ---- Load resid file and covariate data ----
   infoMsg("Loading resid file: %s", residFile.c_str());
-  auto famIIDs = parseFamIIDs(bfilePrefix + ".fam");
+  auto famIIDs = parseGenoIIDs(geno);
   SubjectData sd(std::move(famIIDs));
   sd.loadResidOne(residFile);
   if (!phenoFile.empty())
@@ -447,20 +444,11 @@ void runSPACox(
   DesignMatrix design(X);
   infoMsg("  %d rows x %d cols", design.nRows(), design.nCols());
 
-  // ---- Load PLINK data ----
-  infoMsg("Loading PLINK data: %s", bfilePrefix.c_str());
-  PlinkData plinkData(
-      bfilePrefix + ".bed",
-      bfilePrefix + ".bim",
-      bfilePrefix + ".fam",
-      sd.usedMask(),
-      sd.nFam(),
-      sd.nUsed(),
-      "ref-first",
-      {}, {}, {}, {},
-      nSnpPerChunk);
+  // ---- Load genotype data ----
+  auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(),
+                               nSnpPerChunk);
   infoMsg("  %u subjects matched, %u markers",
-          plinkData.nSubjUsed(), plinkData.nMarkers());
+          genoData->nSubjUsed(), genoData->nMarkers());
 
   // ---- Per-residual-column loop ----
   const int nRC = sd.residOneCols();
@@ -494,7 +482,7 @@ void runSPACox(
     SPACoxMethod method(resid, varResid, cumul, design,
                         pvalCovAdjCut, spaCutoff);
 
-    markerEngine(plinkData, method, outFile,
+    markerEngine(*genoData, method, outFile,
                  nthread,
                  missingCutoff,
                  minMafCutoff,

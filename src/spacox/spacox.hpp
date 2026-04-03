@@ -10,7 +10,7 @@
 //   3. Output: [Pvalue, zScore]
 #pragma once
 
-#include <memory>
+#include "io/geno_data.hpp"
 #include <string>
 #include <vector>
 #include <Eigen/Dense>
@@ -78,7 +78,7 @@ public:
   std::string getHeaderColumns() const override { return "\tSPACox_P\tSPACox_Z"; }
   void getResultVec(Eigen::Ref<Eigen::VectorXd> GVec,
                     double altFreq, int markerInChunkIdx,
-                    bool flipped, std::vector<double>& result) override;
+                    std::vector<double>& result) override;
 
 private:
   // ---- CGF interpolation ----
@@ -131,7 +131,7 @@ void runSPACox(
     const std::vector<std::string>& covarNames,  // empty = no covariates
     const std::string& phenoFile,                 // pheno file (for covar columns)
     const std::string& covarFile,                 // covar file (for covar columns)
-    const std::string& bfilePrefix,
+    const GenoSpec& geno,
     const std::string& outputFile,
     double pvalCovAdjCut,
     double spaCutoff,

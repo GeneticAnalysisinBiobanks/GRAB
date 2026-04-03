@@ -6,7 +6,7 @@
 #include <memory>
 #include <Eigen/Dense>
 
-class PlinkData;
+class GenoMeta;
 
 // ======================================================================
 // MethodBase — abstract interface for statistical methods.
@@ -32,22 +32,17 @@ public:
   // Called once per chunk before processing markers.  Default: no-op.
   virtual void prepareChunk(const std::vector<uint64_t>& /*gIndices*/) {}
 
-  // If true, the engine will NOT flip GVec when altFreq > 0.5.
-  virtual bool skipFlip() const { return false; }
-
-  // Per-marker analysis.  The engine handles QC, imputation, and flip
-  // before calling this.  `result` is cleared before each call.
+  // Per-marker analysis.  The engine handles QC and imputation before
+  // calling this.  `result` is cleared before each call.
   //
-  //   GVec             — imputed genotype vector (may be flipped)
-  //   altFreq          — alternate allele frequency (pre-flip)
+  //   GVec             — imputed genotype vector (counts bim col5 = ALT allele)
+  //   altFreq          — ALT allele frequency (= freq of bim col5)
   //   markerInChunkIdx — 0-based index within current chunk
-  //   flipped          — true if we flipped the genotype vector
   //   result           — output: method-specific result values
   virtual void getResultVec(
     Eigen::Ref<Eigen::VectorXd> GVec,
     double altFreq,
     int markerInChunkIdx,
-    bool flipped,
     std::vector<double>& result) = 0;
 };
 
@@ -57,7 +52,7 @@ public:
 // ======================================================================
 
 void markerEngine(
-  const PlinkData& plinkData,
+  const GenoMeta& genoData,
   const MethodBase& method,
   const std::string& outputFile,
   int nthreads,

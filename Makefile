@@ -1,36 +1,89 @@
 # ── Toolchain ─────────────────────────────────────────────────────────────────
-# -pipe: pass data between gcc compilation stages via pipes (no temp files).
-# TMP/TEMP: redirect the linker's temp dir to project-local tmp/ using the
-# Windows path format that MinGW ld expects (cygpath -w converts POSIX→Win32).
-SHELL    := /usr/bin/bash
-WIN_TMP  := $(shell cygpath -w $(CURDIR)/tmp)
-export TMP  := $(WIN_TMP)
-export TEMP := $(WIN_TMP)
 CXX      := g++
 CC       := gcc
-CXXFLAGS := -std=c++17 -O3 -march=native -DNDEBUG -pipe \
+
+# ── Platform detection ────────────────────────────────────────────────────────
+# UNAME_S is empty on plain Windows cmd; MSYS2/MinGW sets it to MINGW* or MSYS*.
+UNAME_S := $(shell uname -s 2>/dev/null)
+
+ifeq ($(filter MINGW% MSYS%,$(UNAME_S)),)
+  ifeq ($(filter Darwin%,$(UNAME_S)),)
+    # ── Linux ─────────────────────────────────────────────────────────────────
+    PLATFORM  := linux
+    EXE       :=
+    PLATFORM_LDLIBS :=
+    # -pipe: pass data between gcc stages via pipes (no temp files).
+    PLATFORM_FLAGS  := -pipe
+    SHELL     := /bin/bash
+  else
+    # ── macOS ─────────────────────────────────────────────────────────────────
+    PLATFORM  := macos
+    EXE       :=
+    PLATFORM_LDLIBS :=
+    PLATFORM_FLAGS  := -pipe
+    SHELL     := /bin/bash
+  endif
+else
+  # ── Windows (MSYS2 / MinGW / Rtools) ─────────────────────────────────────
+  PLATFORM  := windows
+  EXE       := .exe
+  # ws2_32: Winsock2 (htslib hfile.c socket I/O)
+  # regex:  POSIX regex  (htslib hts_expr.c)
+  PLATFORM_LDLIBS := -lws2_32 -lregex
+  PLATFORM_FLAGS  := -pipe
+  SHELL     := /usr/bin/bash
+  # Redirect linker temp dir to project-local tmp/ (Windows path format).
+  WIN_TMP   := $(shell cygpath -w $(CURDIR)/tmp)
+  export TMP  := $(WIN_TMP)
+  export TEMP := $(WIN_TMP)
+endif
+
+# ── AVX2 detection ────────────────────────────────────────────────────────────
+# Try to compile a small AVX2 test; if the compiler supports it, enable -mavx2.
+AVX2_OK := $(shell echo 'int main(){return 0;}' | $(CXX) -x c++ -mavx2 - -o /dev/null 2>/dev/null && echo 1)
+ifeq ($(AVX2_OK),1)
+  SIMD_FLAGS := -mavx2
+else
+  SIMD_FLAGS :=
+endif
+
+# ── Compiler & linker flags ───────────────────────────────────────────────────
+CXXFLAGS := -std=c++17 -O3 -DNDEBUG $(PLATFORM_FLAGS) \
             -ffunction-sections -fdata-sections \
-            -funroll-loops \
-            -Wall -Wextra -Wno-unused-parameter
-CFLAGS   := -O3 -DNDEBUG -pipe -ffunction-sections -fdata-sections
-LDFLAGS  := -Wl,--gc-sections
+            -funroll-loops $(SIMD_FLAGS) \
+            -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare
+CFLAGS   := -O3 -DNDEBUG $(PLATFORM_FLAGS) -ffunction-sections -fdata-sections $(SIMD_FLAGS)
+ifeq ($(PLATFORM),macos)
+  LDFLAGS := -Wl,-dead_strip -lpthread $(PLATFORM_LDLIBS)
+else
+  LDFLAGS := -Wl,--gc-sections -lpthread $(PLATFORM_LDLIBS)
+endif
 
 # ── Directories ───────────────────────────────────────────────────────────────
-SRC_DIR   := src
-BUILD_DIR := build
-ZLIB_DIR  := third_party/zlib-1.3.2
+SRC_DIR      := src
+BUILD_DIR    := build
+ZLIB_DIR     := third_party/zlib-1.3.2
+ZSTD_DIR     := third_party/zstd-1.5.7/lib
+PGENLIB_DIR  := third_party/plink2-a.6.33
+DEFLATE_DIR  := $(PGENLIB_DIR)/libdeflate
+BGEN_DIR     := third_party/bgen-1.2.0
+HTSLIB_DIR   := third_party/htslib-1.23.1
 
 # ── Output binary ─────────────────────────────────────────────────────────────
-BIN := $(BUILD_DIR)/grab.exe
+BIN := $(BUILD_DIR)/grab$(EXE)
 
 # ── Include paths ─────────────────────────────────────────────────────────────
 # Boost.Math and Eigen are header-only — no -l flags required.
-# zlib is compiled from source (C files in third_party/zlib-1.3.2).
 INCLUDES := \
     -I$(SRC_DIR) \
     -Ithird_party/eigen-5.0.0 \
     -Ithird_party/boost-1.90.0 \
-    -I$(ZLIB_DIR)
+    -I$(ZLIB_DIR) \
+    -I$(ZSTD_DIR) \
+    -I$(PGENLIB_DIR)/include \
+    -I$(BGEN_DIR)/genfile/include \
+    -I$(HTSLIB_DIR) \
+    -I$(HTSLIB_DIR)/htscodecs
 
 # ── Source discovery ──────────────────────────────────────────────────────────
 # Pure-Make recursive wildcard: avoids calling the shell 'find' command,
@@ -38,17 +91,54 @@ INCLUDES := \
 rwildcard = $(foreach d,$(wildcard $(addsuffix /*,$(1))),\
                 $(call rwildcard,$(d),$(2)) $(filter $(subst *,%,$(2)),$(d)))
 
+# ── GRAB application sources (C++) ────────────────────────────────────────────
 SRCS := $(call rwildcard,$(SRC_DIR),*.cpp)
+OBJS := $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.o, $(SRCS))
+DEPS := $(OBJS:.o=.d)
 
-# zlib C sources (compiled separately with CC, not CXX).
+# ── zlib (C) ──────────────────────────────────────────────────────────────────
 ZLIB_SRCS := $(wildcard $(ZLIB_DIR)/*.c)
 ZLIB_OBJS := $(patsubst $(ZLIB_DIR)/%.c, $(BUILD_DIR)/zlib/%.o, $(ZLIB_SRCS))
 
-# Preserve the directory structure inside build/ so parallel builds don't clash.
-OBJS := $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.o, $(SRCS))
+# ── zstd (C) — shared by pgenlib and bgen ─────────────────────────────────────
+ZSTD_SRCS := $(wildcard $(ZSTD_DIR)/common/*.c) \
+             $(wildcard $(ZSTD_DIR)/compress/*.c) \
+             $(wildcard $(ZSTD_DIR)/decompress/*.c)
+ZSTD_OBJS := $(patsubst $(ZSTD_DIR)/%.c, $(BUILD_DIR)/zstd/%.o, $(ZSTD_SRCS))
 
-# Auto-generated dependency files (one per .o) for incremental header tracking.
-DEPS := $(OBJS:.o=.d)
+# ── libdeflate (C) — used by pgenlib ──────────────────────────────────────────
+DEFLATE_SRCS := $(wildcard $(DEFLATE_DIR)/lib/*.c)
+# x86 CPU feature detection (only on x86/x86_64)
+ifneq ($(wildcard $(DEFLATE_DIR)/lib/x86/x86_cpu_features.c),)
+  DEFLATE_SRCS += $(DEFLATE_DIR)/lib/x86/x86_cpu_features.c
+endif
+DEFLATE_OBJS := $(patsubst $(DEFLATE_DIR)/lib/%.c, $(BUILD_DIR)/libdeflate/%.o, $(DEFLATE_SRCS))
+
+# ── pgenlib (C++ .cc files + SFMT.c) ─────────────────────────────────────────
+PGEN_CC_SRCS := $(wildcard $(PGENLIB_DIR)/include/*.cc)
+PGEN_CC_OBJS := $(patsubst $(PGENLIB_DIR)/include/%.cc, $(BUILD_DIR)/pgenlib/%.o, $(PGEN_CC_SRCS))
+PGEN_C_SRCS  := $(PGENLIB_DIR)/include/SFMT.c
+PGEN_C_OBJS  := $(BUILD_DIR)/pgenlib/SFMT.o
+PGEN_OBJS    := $(PGEN_CC_OBJS) $(PGEN_C_OBJS)
+
+# ── bgen (C++) — exclude View.cpp (needs boost::filesystem + IndexQuery) ─────
+BGEN_SRCS := $(BGEN_DIR)/src/bgen.cpp \
+             $(BGEN_DIR)/src/zlib.cpp \
+             $(BGEN_DIR)/src/MissingValue.cpp
+BGEN_OBJS := $(patsubst $(BGEN_DIR)/src/%.cpp, $(BUILD_DIR)/bgen/%.o, $(BGEN_SRCS))
+
+# ── htslib (C) ────────────────────────────────────────────────────────────────
+HTSLIB_SRCS    := $(wildcard $(HTSLIB_DIR)/*.c)
+HTSCODEC_SRCS  := $(wildcard $(HTSLIB_DIR)/htscodecs/htscodecs/*.c)
+# os/rand.c is #included by hts_os.c on Windows — not compiled separately.
+HTSLIB_OBJS    := $(patsubst $(HTSLIB_DIR)/%.c, $(BUILD_DIR)/htslib/%.o, $(HTSLIB_SRCS))
+HTSCODEC_OBJS  := $(patsubst $(HTSLIB_DIR)/htscodecs/htscodecs/%.c, \
+                     $(BUILD_DIR)/htslib/htscodecs/%.o, $(HTSCODEC_SRCS))
+
+# ── All objects ───────────────────────────────────────────────────────────────
+ALL_OBJS := $(OBJS) $(ZLIB_OBJS) $(ZSTD_OBJS) $(DEFLATE_OBJS) \
+            $(PGEN_OBJS) $(BGEN_OBJS) \
+            $(HTSLIB_OBJS) $(HTSCODEC_OBJS)
 
 # ── Default target ────────────────────────────────────────────────────────────
 .PHONY: all clean run
@@ -56,29 +146,71 @@ DEPS := $(OBJS:.o=.d)
 all: $(BIN)
 
 # ── Link ──────────────────────────────────────────────────────────────────────
-$(BIN): $(OBJS) $(ZLIB_OBJS) | $(BUILD_DIR) tmp
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) $^ -o $@
+$(BIN): $(ALL_OBJS) | $(BUILD_DIR) tmp
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 # ── Directory creation ────────────────────────────────────────────────────────
-# Order-only prerequisite: created once, never triggers re-linking.
 $(BUILD_DIR) tmp:
 	mkdir -p $@
 
-# ── Compile ───────────────────────────────────────────────────────────────────
-# -MMD -MP writes dependency rules into build/<rel>.d alongside each .o file,
-# so edits to any included header trigger exactly the right recompilations.
+# ── Compile GRAB (C++) ────────────────────────────────────────────────────────
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | tmp
 	@mkdir -p $(@D)
 	$(CXX) $(CXXFLAGS) -MMD -MP $(INCLUDES) -c $< -o $@
 
-# Pull in the generated dependency rules (the leading dash suppresses errors
-# on the first build when no .d files exist yet).
 -include $(DEPS)
 
 # ── Compile zlib (C) ──────────────────────────────────────────────────────────
 $(BUILD_DIR)/zlib/%.o: $(ZLIB_DIR)/%.c | tmp
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -I$(ZLIB_DIR) -c $< -o $@
+
+# ── Compile zstd (C) ──────────────────────────────────────────────────────────
+$(BUILD_DIR)/zstd/%.o: $(ZSTD_DIR)/%.c | tmp
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -DZSTD_DISABLE_ASM -I$(ZSTD_DIR) -I$(ZSTD_DIR)/common -c $< -o $@
+
+# ── Compile libdeflate (C) ────────────────────────────────────────────────────
+$(BUILD_DIR)/libdeflate/%.o: $(DEFLATE_DIR)/lib/%.c | tmp
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -I$(DEFLATE_DIR) -c $< -o $@
+
+# ── Compile pgenlib (.cc → C++) ───────────────────────────────────────────────
+#  IGNORE_BUNDLED_ZSTD: use our vendored zstd via -I instead of ../zstd/ path.
+PGEN_CXXFLAGS := $(CXXFLAGS) -DIGNORE_BUNDLED_ZSTD \
+    -Wno-sign-compare -Wno-unused-function -Wno-missing-field-initializers \
+    -Wno-maybe-uninitialized
+
+$(BUILD_DIR)/pgenlib/%.o: $(PGENLIB_DIR)/include/%.cc | tmp
+	@mkdir -p $(@D)
+	$(CXX) $(PGEN_CXXFLAGS) -I$(PGENLIB_DIR)/include -I$(ZSTD_DIR) \
+	    -I$(DEFLATE_DIR) -c $< -o $@
+
+# SFMT.c is plain C
+$(BUILD_DIR)/pgenlib/SFMT.o: $(PGENLIB_DIR)/include/SFMT.c | tmp
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -I$(PGENLIB_DIR)/include -c $< -o $@
+
+# ── Compile bgen (C++) ────────────────────────────────────────────────────────
+BGEN_CXXFLAGS := $(CXXFLAGS) -Wno-sign-compare -Wno-unused-variable
+
+$(BUILD_DIR)/bgen/%.o: $(BGEN_DIR)/src/%.cpp | tmp
+	@mkdir -p $(@D)
+	$(CXX) $(BGEN_CXXFLAGS) -I$(BGEN_DIR)/genfile/include \
+	    -I$(ZSTD_DIR) -I$(ZLIB_DIR) -c $< -o $@
+
+# ── Compile htslib (C) ────────────────────────────────────────────────────────
+HTSLIB_CFLAGS := $(CFLAGS) -DHAVE_CONFIG_H \
+    -I$(HTSLIB_DIR) -I$(HTSLIB_DIR)/htscodecs -I$(ZLIB_DIR) \
+    -Wno-sign-compare
+
+$(BUILD_DIR)/htslib/%.o: $(HTSLIB_DIR)/%.c | tmp
+	@mkdir -p $(@D)
+	$(CC) $(HTSLIB_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/htslib/htscodecs/%.o: $(HTSLIB_DIR)/htscodecs/htscodecs/%.c | tmp
+	@mkdir -p $(@D)
+	$(CC) $(HTSLIB_CFLAGS) -c $< -o $@
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 .PHONY: run

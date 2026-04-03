@@ -9,7 +9,7 @@
 //     which matters because this pipeline is memory-bound.
 
 #include "engine/marker.hpp"
-#include "io/plink.hpp"
+#include "io/geno_data.hpp"
 #include "util/logging.hpp"
 
 #include <thread>
@@ -111,14 +111,12 @@ void formatLineNA(
 
 struct ThreadContext {
   std::unique_ptr<MethodBase> method;   // cloned per thread
-  std::unique_ptr<PlinkCursor> cursor;  // independent file handle
+  std::unique_ptr<GenoCursor> cursor;   // per-thread genotype decoder
   std::string naSuffix;
 
-  ThreadContext(const MethodBase& proto, const PlinkData& pd)
+  ThreadContext(const MethodBase& proto, const GenoMeta& gd)
     : method(proto.clone()),
-      cursor(std::make_unique<PlinkCursor>(
-          pd.bedFile(), pd.nMarkers(), pd.nSubjInFile(),
-          pd.usedMask(), pd.nSubjUsed(), pd.isAltFirst(), pd.allUsed())),
+      cursor(gd.makeCursor()),
       naSuffix(makeNaSuffix(proto.resultSize()))
   {}
 };
@@ -151,7 +149,7 @@ static_assert(sizeof(PaddedFlag) == 64, "PaddedFlag must be 64 bytes");
 // ══════════════════════════════════════════════════════════════════════
 
 void markerEngine(
-    const PlinkData& plinkData,
+    const GenoMeta& genoData,
     const MethodBase& method,
     const std::string& outputFile,
     int nthreads,
@@ -163,20 +161,19 @@ void markerEngine(
   const auto wallStart = std::chrono::steady_clock::now();
   const std::clock_t cpuStart = std::clock();
 
-  const size_t nTotalChunks = plinkData.chunkIndices().size();
+  const size_t nTotalChunks = genoData.chunkIndices().size();
   const int effective_nthreads =
       std::min(nthreads, static_cast<int>(nTotalChunks));
 
-  infoMsg("Number of subjects in the input file: %u", plinkData.nSubjInFile());
-  infoMsg("Number of subjects to test: %u", plinkData.nSubjUsed());
-  infoMsg("Number of markers in the input file: %u", plinkData.nMarkers());
-  infoMsg("Number of markers to test: %zu", plinkData.markerInfo().size());
+  infoMsg("Number of subjects in the input file: %u", genoData.nSubjInFile());
+  infoMsg("Number of subjects to test: %u", genoData.nSubjUsed());
+  infoMsg("Number of markers in the input file: %u", genoData.nMarkers());
+  infoMsg("Number of markers to test: %zu", genoData.markerInfo().size());
   infoMsg("Number of chunks for all markers: %zu", nTotalChunks);
   infoMsg("Start chunk-level parallel processing with %d worker threads.",
           effective_nthreads);
 
   const std::string header = buildHeader(method);
-  const bool doSkipFlip = method.skipFlip();
 
   // Per-chunk output buffer + cache-line-padded ready flag.
   std::vector<std::string> chunkOutput(nTotalChunks);
@@ -251,17 +248,17 @@ void markerEngine(
   // ── Worker function ────────────────────────────────────────────────
   auto workerFn = [&]() {
     try {
-      ThreadContext ctx(method, plinkData);
-      const PlinkData& pd = plinkData;
-      PlinkCursor& cursor = *ctx.cursor;
+      ThreadContext ctx(method, genoData);
+      const GenoMeta& gd = genoData;
+      GenoCursor& cursor = *ctx.cursor;
       MethodBase& meth = *ctx.method;
-      const auto& localChunks = pd.chunkIndices();
+      const auto& localChunks = gd.chunkIndices();
       const std::string& naSuffix = ctx.naSuffix;
 
       // Per-thread reusable buffers — allocated once, reused for every marker.
-      Eigen::VectorXd GVec(pd.nSubjUsed());
+      Eigen::VectorXd GVec(gd.nSubjUsed());
       std::vector<uint32_t> indexForMissing;
-      indexForMissing.reserve(pd.nSubjUsed() / 10);
+      indexForMissing.reserve(gd.nSubjUsed() / 10);
       std::vector<double> rv;
       rv.reserve(16);
       char fmtBuf[32];
@@ -287,11 +284,11 @@ void markerEngine(
               altFreq, altCounts, missingRate, hweP,
               maf, mac, indexForMissing, exactHwe);
 
-          const std::string_view chr    = pd.chr(gIdx[i]);
-          const std::string_view ref    = pd.ref(gIdx[i]);
-          const std::string_view alt    = pd.alt(gIdx[i]);
-          const std::string_view marker = pd.markerId(gIdx[i]);
-          const uint32_t pos            = pd.pos(gIdx[i]);
+          const std::string_view chr    = gd.chr(gIdx[i]);
+          const std::string_view ref    = gd.ref(gIdx[i]);
+          const std::string_view alt    = gd.alt(gIdx[i]);
+          const std::string_view marker = gd.markerId(gIdx[i]);
+          const uint32_t pos            = gd.pos(gIdx[i]);
 
           const bool passQC =
               !(missingRate > missingCutoff ||
@@ -301,7 +298,7 @@ void markerEngine(
           if (!passQC) {
             formatLineNA(out, fmtBuf, chr, pos, marker,
                          alt/*REF=bim6*/, ref/*ALT=bim5*/,
-                         missingRate, 1.0 - altFreq, mac, hweP, naSuffix);
+                         missingRate, altFreq, mac, hweP, naSuffix);
             continue;
           }
 
@@ -313,22 +310,12 @@ void markerEngine(
           for (uint32_t j = 0; j < nMissing; ++j)
             gPtr[indexForMissing[j]] = imputeG;
 
-          // Flip when MAF < 0.5 for numerical stability.
-          bool flipped = false;
-          if (!doSkipFlip && altFreq > 0.5) {
-            const int64_t n = GVec.size();
-            for (int64_t k = 0; k < n; ++k)
-              gPtr[k] = 2.0 - gPtr[k];
-            flipped = true;
-          }
-
           rv.clear();
-          meth.getResultVec(GVec, altFreq, static_cast<int>(i),
-                            flipped, rv);
+          meth.getResultVec(GVec, altFreq, static_cast<int>(i), rv);
 
           formatLine(out, fmtBuf, chr, pos, marker,
                      alt/*REF=bim6*/, ref/*ALT=bim5*/,
-                     missingRate, 1.0 - altFreq, mac, hweP, rv);
+                     missingRate, altFreq, mac, hweP, rv);
         }
 
         {

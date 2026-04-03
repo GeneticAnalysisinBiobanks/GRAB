@@ -5,6 +5,8 @@
 // subjects into a dense output vector in .fam order.
 #pragma once
 
+#include "io/geno_data.hpp"
+
 #include <cstdint>
 #include <cmath>
 #include <fstream>
@@ -20,7 +22,7 @@
 // filters, builds chunks.  Stores a bitmask of used subjects.
 // All accessors are const — safe to share across worker threads.
 
-class PlinkData {
+class PlinkData : public GenoMeta {
 public:
 
   // `usedMask` has ceil(nFam/64) words; bit i set ↔ .fam subject i is used.
@@ -32,7 +34,6 @@ public:
     const std::vector<uint64_t>& usedMask,
     uint32_t nFam,
     uint32_t nUsed,
-    std::string AlleleOrder,
     std::string IDsToIncludeFile   = {},
     std::string RangesToIncludeFile = {},
     std::string IDsToExcludeFile   = {},
@@ -40,38 +41,30 @@ public:
     int nMarkersEachChunk = 1024
   );
 
-  struct MarkerInfo {
-    std::string chrom;
-    uint32_t    pos;
-    std::string id;
-    std::string ref;
-    std::string alt;
-    uint64_t    genoIndex;  // 0-based .bim line = row in .bed
-  };
+  // MarkerInfo is inherited from GenoMeta.
 
-  // ---- Accessors ----
-  uint32_t nMarkers()       const { return m_nMarkers; }
-  uint32_t nSubjUsed()      const { return m_nSubjUsed; }
-  uint32_t nSubjInFile()    const { return m_nSubjInFile; }
+  // ---- GenoMeta overrides ----
+  uint32_t nMarkers()    const override { return m_nMarkers; }
+  uint32_t nSubjUsed()   const override { return m_nSubjUsed; }
+  uint32_t nSubjInFile() const override { return m_nSubjInFile; }
+
+  std::string_view chr(uint64_t i)      const override { return m_chr[i]; }
+  std::string_view markerId(uint64_t i) const override { return m_markerId[i]; }
+  uint32_t         pos(uint64_t i)      const override { return m_pos[i]; }
+  std::string_view ref(uint64_t i)      const override { return m_ref[i]; }
+  std::string_view alt(uint64_t i)      const override { return m_alt[i]; }
+
+  const std::vector<MarkerInfo>&            markerInfo()   const override { return m_markerInfo; }
+  const std::vector<std::vector<uint64_t>>& chunkIndices() const override { return m_chunkIndices; }
+
+  std::unique_ptr<GenoCursor> makeCursor() const override;
+
+  // ---- PLINK-specific accessors ----
   uint64_t bytesPerMarker() const { return m_bytesPerMarker; }
   const std::string& bedFile()  const { return m_bedFile; }
-  bool isAltFirst()             const { return m_altFirst; }
-
-  // True when every .fam subject is used (full mask).
   bool allUsed() const { return m_allUsed; }
-
   const std::vector<uint64_t>& usedMask() const { return m_usedMask; }
   uint32_t nMaskWords() const { return static_cast<uint32_t>(m_usedMask.size()); }
-
-  // Per-marker metadata by genoIndex (0-based .bim line number)
-  std::string_view chr(uint64_t i)      const { return m_chr[i]; }
-  std::string_view markerId(uint64_t i) const { return m_markerId[i]; }
-  uint32_t         pos(uint64_t i)      const { return m_pos[i]; }
-  std::string_view ref(uint64_t i)      const { return m_ref[i]; }
-  std::string_view alt(uint64_t i)      const { return m_alt[i]; }
-
-  const std::vector<MarkerInfo>&            markerInfo()   const { return m_markerInfo; }
-  const std::vector<std::vector<uint64_t>>& chunkIndices() const { return m_chunkIndices; }
 
 private:
 
@@ -92,7 +85,6 @@ private:
   );
 
   std::string              m_bedFile;
-  bool                     m_altFirst;
   bool                     m_allUsed;
   uint32_t                 m_nSubjInFile;
   uint32_t                 m_nSubjUsed;
@@ -114,20 +106,19 @@ private:
 // file handle and scratch buffers.  Uses bitmask to decode only used
 // subjects into a dense output vector.
 
-class PlinkCursor {
+class PlinkCursor : public GenoCursor {
 public:
   PlinkCursor(const std::string& bedFile,
               uint32_t nBimLines,
               uint32_t nFamLines,
               const std::vector<uint64_t>& usedMask,
               uint32_t nUsed,
-              bool altFirst,
               bool allUsed);
 
   PlinkCursor(const PlinkCursor& other);
 
   // Prepare sequential reading starting from a given marker index.
-  void beginSequentialBlock(uint64_t firstMarker);
+  void beginSequentialBlock(uint64_t firstMarker) override;
 
   // Decode genotype for marker gIndex into caller-owned Eigen vector.
   // Returns QC statistics through the output parameters.
@@ -142,13 +133,13 @@ public:
     double& mac,
     std::vector<uint32_t>& indexForMissing,
     bool exactHwe = true
-  );
+  ) override;
 
   // Lightweight variant: genotype vector only, missing → NaN, no QC stats.
   void getGenotypesSimple(
     uint64_t gIndex,
     Eigen::Ref<Eigen::VectorXd> out
-  );
+  ) override;
 
 private:
   void loadBlock(uint64_t startMarker);
@@ -190,7 +181,6 @@ private:
   uint32_t      m_nMarkers;
   uint32_t      m_nUsed;
   std::vector<uint64_t> m_usedMask;
-  bool          m_altFirst;
   bool          m_allUsed;
 
   // Pre-allocated scratch buffer (one per cursor)

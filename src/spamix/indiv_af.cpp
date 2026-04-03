@@ -519,7 +519,7 @@ std::vector<AFModel> loadAFModels(
 #include <thread>
 
 #include "io/subject_data.hpp"
-#include "io/plink.hpp"
+#include "io/geno_data.hpp"
 #include "util/logging.hpp"
 
 namespace {
@@ -556,7 +556,7 @@ void imputeMissing(Eigen::Ref<Eigen::VectorXd> g, int N, double altFreq) {
 } // anonymous namespace
 
 std::vector<AFModel> computeAFModelsInMemory(
-    const PlinkData& plinkData,
+    const GenoMeta& plinkData,
     const AFContext& afCtx,
     const std::vector<uint32_t>& genoToFlat,
     int nthread)
@@ -578,14 +578,7 @@ std::vector<AFModel> computeAFModelsInMemory(
   std::mutex          errorMutex;
 
   auto workerFn = [&]() {
-    PlinkCursor cursor(
-        plinkData.bedFile(),
-        plinkData.nMarkers(),
-        plinkData.nSubjInFile(),
-        plinkData.usedMask(),
-        plinkData.nSubjUsed(),
-        plinkData.isAltFirst(),
-        plinkData.allUsed());
+    auto cursor = plinkData.makeCursor();
     Eigen::VectorXd GVec(N);
 
     while (true) {
@@ -594,13 +587,13 @@ std::vector<AFModel> computeAFModelsInMemory(
 
       const auto& chunk = chunkIndices[ci];
       if (!chunk.empty())
-        cursor.beginSequentialBlock(chunk.front());
+        cursor->beginSequentialBlock(chunk.front());
 
       for (uint64_t gIdx : chunk) {
         const uint32_t flatIdx = genoToFlat[gIdx];
         if (flatIdx == UINT32_MAX) continue;
 
-        cursor.getGenotypesSimple(gIdx, GVec);
+        cursor->getGenotypesSimple(gIdx, GVec);
         GenoQC qc = computeGenoQC(GVec, N);
         imputeMissing(GVec, N, qc.altFreq);
 
@@ -639,7 +632,7 @@ void runSPAmixAF(
     const std::vector<std::string>& pcColNames,
     const std::string& phenoFile,
     const std::string& covarFile,
-    const std::string& bfilePrefix,
+    const GenoSpec& geno,
     const std::string& outputFile,
     int    nthread,
     int    nSnpPerChunk,
@@ -652,7 +645,7 @@ void runSPAmixAF(
 
   // Load pheno / covar files and extract PC columns.
   infoMsg("Loading PC data for AF model (%zu columns)", pcColNames.size());
-  auto famIIDs = parseFamIIDs(bfilePrefix + ".fam");
+  auto famIIDs = parseGenoIIDs(geno);
   SubjectData sd(std::move(famIIDs));
   if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile);
   if (!covarFile.empty()) sd.loadCovar(covarFile);
@@ -675,34 +668,25 @@ void runSPAmixAF(
 
   const AFContext afCtx{onePlusPCs, XtX_inv_Xt, sqrt_XtX_inv_diag, PCs, N, nPC};
 
-  infoMsg("Loading PLINK data: %s", bfilePrefix.c_str());
-  PlinkData plinkData(
-      bfilePrefix + ".bed",
-      bfilePrefix + ".bim",
-      bfilePrefix + ".fam",
-      sd.usedMask(),
-      sd.nFam(),
-      sd.nUsed(),
-      "ref-first",
-      {}, {}, {}, {},
-      nSnpPerChunk);
+  auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(),
+                               nSnpPerChunk);
   infoMsg("  %u subjects, %u markers",
-          plinkData.nSubjUsed(), plinkData.nMarkers());
+          genoData->nSubjUsed(), genoData->nMarkers());
 
-  const auto&    markerInfo    = plinkData.markerInfo();
-  const auto&    chunkIndices  = plinkData.chunkIndices();
+  const auto&    markerInfo    = genoData->markerInfo();
+  const auto&    chunkIndices  = genoData->chunkIndices();
   const size_t   nTotalChunks  = chunkIndices.size();
   const uint32_t nMarkers      = static_cast<uint32_t>(markerInfo.size());
-  const uint32_t nBimMarkers   = plinkData.nMarkers();
+  const uint32_t nBimMarkers   = genoData->nMarkers();
 
   // Build genoIndex → flat index map.
-  std::vector<uint32_t> genoToFlat(plinkData.nMarkers(), UINT32_MAX);
+  std::vector<uint32_t> genoToFlat(genoData->nMarkers(), UINT32_MAX);
   for (uint32_t fi = 0; fi < nMarkers; ++fi)
     genoToFlat[markerInfo[fi].genoIndex] = fi;
 
   infoMsg("Computing AF models (%d thread(s), %zu chunks)...", nthread, nTotalChunks);
   const std::vector<AFModel> allModels =
-      computeAFModelsInMemory(plinkData, afCtx, genoToFlat, nthread);
+      computeAFModelsInMemory(*genoData, afCtx, genoToFlat, nthread);
 
   infoMsg("Writing output: %s", outputFile.c_str());
   IndivAFWriter writer(outputFile, nBimMarkers, nPC);

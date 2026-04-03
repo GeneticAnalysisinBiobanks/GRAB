@@ -1,7 +1,7 @@
 // wtcoxg.cpp — WtCoxG full implementation (Phases 1–3)
 
 #include "wtcoxg/wtcoxg.hpp"
-#include "io/plink.hpp"
+#include "io/geno_data.hpp"
 #include "io/subject_data.hpp"
 #include "io/sparse_grm.hpp"
 #include "util/logging.hpp"
@@ -290,7 +290,7 @@ std::vector<RefAfRecord> loadRefAfFile(const std::string& filename,
 }
 
 std::vector<MatchedMarkerInfo> matchMarkers(
-    const PlinkData& plinkData,
+    const GenoMeta& plinkData,
     const std::vector<RefAfRecord>& refAf) {
 
   // Build ref lookup: key = "chrom:id" → index into refAf
@@ -341,7 +341,7 @@ std::vector<MatchedMarkerInfo> matchMarkers(
 }
 
 std::vector<MatchedMarkerInfo> matchMarkersNumeric(
-    const PlinkData& plinkData,
+    const GenoMeta& plinkData,
     const std::vector<RefAfRecord>& refAf) {
 
   const auto& markers = plinkData.markerInfo();
@@ -371,25 +371,19 @@ std::vector<MatchedMarkerInfo> matchMarkersNumeric(
 
 void computeMarkerStats(
     std::vector<MatchedMarkerInfo>& matched,
-    const PlinkData& plinkData,
+    const GenoMeta& plinkData,
     const Eigen::VectorXd& indicator) {
 
   const uint32_t n = plinkData.nSubjUsed();
-  PlinkCursor cursor(plinkData.bedFile(),
-                     static_cast<uint32_t>(plinkData.nMarkers()),
-                     plinkData.nSubjInFile(),
-                     plinkData.usedMask(),
-                     plinkData.nSubjUsed(),
-                     plinkData.isAltFirst(),
-                     plinkData.allUsed());
+  auto cursor = plinkData.makeCursor();
 
   if (!matched.empty())
-    cursor.beginSequentialBlock(matched.front().genoIndex);
+    cursor->beginSequentialBlock(matched.front().genoIndex);
 
   Eigen::VectorXd gvec(n);
 
   for (auto& m : matched) {
-    cursor.getGenotypesSimple(m.genoIndex, gvec);
+    cursor->getGenotypesSimple(m.genoIndex, gvec);
     double sum0 = 0.0, sum1 = 0.0;
     double cnt0 = 0.0, cnt1 = 0.0;
     for (uint32_t i = 0; i < n; ++i) {
@@ -732,7 +726,7 @@ void WtCoxGMethod::prepareChunk(const std::vector<uint64_t>& gIndices) {
 void WtCoxGMethod::getResultVec(
     Eigen::Ref<Eigen::VectorXd> GVec,
     double /*altFreq*/, int markerInChunkIdx,
-    bool /*flipped*/, std::vector<double>& result) {
+    std::vector<double>& result) {
 
   const auto& info = m_chunkRefInfo[markerInChunkIdx];
 
@@ -863,7 +857,7 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTest(
 
 void runWtCoxG(
     const std::string& residFile,
-    const std::string& bfilePrefix,
+    const GenoSpec& geno,
     const std::string& refAfFile,
     const std::string& spgrmGrabFile,
     const std::string& spgrmGctaFile,
@@ -879,7 +873,7 @@ void runWtCoxG(
 
   // ---- Load & match ----
   infoMsg("Loading resid file: %s", residFile.c_str());
-  auto famIIDs = parseFamIIDs(bfilePrefix + ".fam");
+  auto famIIDs = parseGenoIIDs(geno);
   SubjectData sd(std::move(famIIDs));
   sd.loadResidWtCoxG(residFile);
   sd.finalize();
@@ -891,28 +885,19 @@ void runWtCoxG(
   infoMsg("  %zu reference records loaded%s", refAf.size(),
           refAfNumeric ? " (numeric fallback)" : "");
 
-  infoMsg("Loading PLINK data: %s", bfilePrefix.c_str());
-  PlinkData plinkData(
-      bfilePrefix + ".bed",
-      bfilePrefix + ".bim",
-      bfilePrefix + ".fam",
-      sd.usedMask(),
-      sd.nFam(),
-      sd.nUsed(),
-      "ref-first",
-      {}, {}, {}, {},
-      nSnpPerChunk);
-  infoMsg("  %u subjects matched in PLINK, %u markers available",
-          plinkData.nSubjUsed(), plinkData.nMarkers());
+  auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(),
+                               nSnpPerChunk);
+  infoMsg("  %u subjects matched, %u markers available",
+          genoData->nSubjUsed(), genoData->nMarkers());
 
   infoMsg("Matching markers against reference allele frequencies...");
   auto matched = refAfNumeric
-      ? matchMarkersNumeric(plinkData, refAf)
-      : matchMarkers(plinkData, refAf);
+      ? matchMarkersNumeric(*genoData, refAf)
+      : matchMarkers(*genoData, refAf);
   infoMsg("  %zu markers matched", matched.size());
 
   infoMsg("Computing per-marker case/control allele frequencies...");
-  computeMarkerStats(matched, plinkData, sd.indicator());
+  computeMarkerStats(matched, *genoData, sd.indicator());
 
   // ---- Batch-effect testing ----
   infoMsg("Batch-effect testing and parameter estimation...");
@@ -934,7 +919,7 @@ void runWtCoxG(
   WtCoxGMethod method(
       sd.residuals(), sd.weights(),
       cutoff, spaCutoff, refInfoMap);
-  markerEngine(plinkData, method, outputFile,
+  markerEngine(*genoData, method, outputFile,
                nthread,
                missingCutoff,
                minMafCutoff,
@@ -955,7 +940,7 @@ void runWtCoxGPheno(
     const std::vector<std::string>& covarNames,
     const std::string& binaryPheno,
     const std::string& survPheno,
-    const std::string& bfilePrefix,
+    const GenoSpec& geno,
     const std::string& refAfFile,
     const std::string& spgrmGrabFile,
     const std::string& spgrmGctaFile,
@@ -973,7 +958,7 @@ void runWtCoxGPheno(
 
   // ---- Load phenotype / covariate data ----
   infoMsg("Loading phenotype file: %s", phenoFile.c_str());
-  auto famIIDs = parseFamIIDs(bfilePrefix + ".fam");
+  auto famIIDs = parseGenoIIDs(geno);
   SubjectData sd(std::move(famIIDs));
   sd.loadPhenoFile(phenoFile);
   if (!covarFile.empty()) {
@@ -1039,28 +1024,19 @@ void runWtCoxGPheno(
   infoMsg("  %zu reference records loaded%s", refAf.size(),
           refAfNumeric ? " (numeric fallback)" : "");
 
-  infoMsg("Loading PLINK data: %s", bfilePrefix.c_str());
-  PlinkData plinkData(
-      bfilePrefix + ".bed",
-      bfilePrefix + ".bim",
-      bfilePrefix + ".fam",
-      sd.usedMask(),
-      sd.nFam(),
-      sd.nUsed(),
-      "ref-first",
-      {}, {}, {}, {},
-      nSnpPerChunk);
-  infoMsg("  %u subjects matched in PLINK, %u markers available",
-          plinkData.nSubjUsed(), plinkData.nMarkers());
+  auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(),
+                               nSnpPerChunk);
+  infoMsg("  %u subjects matched, %u markers available",
+          genoData->nSubjUsed(), genoData->nMarkers());
 
   infoMsg("Matching markers against reference allele frequencies...");
   auto matched = refAfNumeric
-      ? matchMarkersNumeric(plinkData, refAf)
-      : matchMarkers(plinkData, refAf);
+      ? matchMarkersNumeric(*genoData, refAf)
+      : matchMarkers(*genoData, refAf);
   infoMsg("  %zu markers matched", matched.size());
 
   infoMsg("Computing per-marker case/control allele frequencies...");
-  computeMarkerStats(matched, plinkData, sd.indicator());
+  computeMarkerStats(matched, *genoData, sd.indicator());
 
   // ---- Batch-effect testing ----
   infoMsg("Batch-effect testing and parameter estimation...");
@@ -1083,7 +1059,7 @@ void runWtCoxGPheno(
   WtCoxGMethod method(
       sd.residuals(), sd.weights(),
       cutoff, spaCutoff, refInfoMap);
-  markerEngine(plinkData, method, outputFile,
+  markerEngine(*genoData, method, outputFile,
                nthread,
                missingCutoff,
                minMafCutoff,

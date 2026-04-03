@@ -6,9 +6,9 @@
 #include "cli/cli.hpp"
 #include "cli/flags.hpp"
 #include "util/logging.hpp"
+#include "io/geno_data.hpp"
 
 #include "spacox/spacox.hpp"
-#include "spamix/spamix.hpp"
 #include "spamix/spamixplus.hpp"
 #include "spamix/indiv_af.hpp"
 #include "wtcoxg/wtcoxg.hpp"
@@ -17,6 +17,7 @@
 #include "spagrm/ibd.hpp"
 #include "spagrm/gt_prob.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <sstream>
@@ -32,6 +33,27 @@ static void require(const std::string& val, const char* flag, const char* ctx) {
         std::cerr << "Error: " << flag << " is required for " << ctx << ".\n";
         std::exit(1);
     }
+}
+
+// Resolve which genotype format was specified.
+// Exactly one of --bfile / --pfile / --vcf / --bgen must be given.
+static GenoSpec resolveGenoSpec(const Args& a, const char* ctx) {
+    int count = !a.bfilePrefix.empty() + !a.pfilePrefix.empty()
+              + !a.vcfFile.empty()     + !a.bgenFile.empty();
+    if (count == 0) {
+        std::cerr << "Error: a genotype input (--bfile, --pfile, --vcf, or --bgen)"
+                     " is required for " << ctx << ".\n";
+        std::exit(1);
+    }
+    if (count > 1) {
+        std::cerr << "Error: --bfile, --pfile, --vcf, and --bgen are mutually"
+                     " exclusive.\n";
+        std::exit(1);
+    }
+    if (!a.bfilePrefix.empty()) return {GenoFormat::Plink, a.bfilePrefix};
+    if (!a.pfilePrefix.empty()) return {GenoFormat::Pgen,  a.pfilePrefix};
+    if (!a.vcfFile.empty())     return {GenoFormat::Vcf,   a.vcfFile};
+    return {GenoFormat::Bgen, a.bgenFile};
 }
 
 static std::vector<std::string> splitComma(const std::string& s,
@@ -63,6 +85,60 @@ static void checkSpGrm(const Args& a, bool required, const char* ctx) {
     }
 }
 
+// ── Parameter logging (plink2-style "Options in effect:") ──────────
+
+static void logArgsInEffect(const Args& args) {
+    infoMsg("Options in effect:");
+    // modes
+    if (args.calIndAfCoef)               std::fprintf(stderr, "  --cal-ind-af-coef\n");
+    if (args.calPairwiseIBD)             std::fprintf(stderr, "  --cal-pairwise-ibd\n");
+    if (!args.method.empty())            std::fprintf(stderr, "  --method %s\n",       args.method.c_str());
+    // input
+    if (!args.bfilePrefix.empty())       std::fprintf(stderr, "  --bfile %s\n",        args.bfilePrefix.c_str());
+    if (!args.pfilePrefix.empty())       std::fprintf(stderr, "  --pfile %s\n",        args.pfilePrefix.c_str());
+    if (!args.vcfFile.empty())           std::fprintf(stderr, "  --vcf %s\n",          args.vcfFile.c_str());
+    if (!args.bgenFile.empty())          std::fprintf(stderr, "  --bgen %s\n",         args.bgenFile.c_str());
+    if (!args.residFile.empty())         std::fprintf(stderr, "  --null-resid %s\n",   args.residFile.c_str());
+    if (!args.phenoFile.empty())         std::fprintf(stderr, "  --pheno %s\n",        args.phenoFile.c_str());
+    if (!args.covarFile.empty())         std::fprintf(stderr, "  --covar %s\n",        args.covarFile.c_str());
+    if (!args.covarName.empty())         std::fprintf(stderr, "  --covar-name %s\n",   args.covarName.c_str());
+    if (!args.binaryPheno.empty())       std::fprintf(stderr, "  --pheno-binary %s\n", args.binaryPheno.c_str());
+    if (!args.survPheno.empty())         std::fprintf(stderr, "  --pheno-surv %s\n",   args.survPheno.c_str());
+    if (!args.quantPheno.empty())        std::fprintf(stderr, "  --pheno-quant %s\n",  args.quantPheno.c_str());
+    // pc-cols: relevant for SPAmix/SPAmixPlus/LEAF and cal-ind-af-coef
+    {
+        bool usesPcCols = args.calIndAfCoef ||
+            args.method == "SPAmix" || args.method == "SPAmixPlus" || args.method == "LEAF";
+        if (usesPcCols && !args.pcCols.empty())
+            std::fprintf(stderr, "  --pc-cols %s\n", args.pcCols.c_str());
+    }
+    // spasqr-taus: relevant for SPAsqr pheno path
+    if (args.method == "SPAsqr" && !args.quantPheno.empty() && !args.spasqrTaus.empty())
+        std::fprintf(stderr, "  --spasqr-taus %s\n", args.spasqrTaus.c_str());
+    // other files
+    if (!args.refAfFile.empty())         std::fprintf(stderr, "  --ref-af %s\n",        args.refAfFile.c_str());
+    if (!args.spGrmGrabFile.empty())     std::fprintf(stderr, "  --sp-grm-grab %s\n",   args.spGrmGrabFile.c_str());
+    if (!args.spGrmPlink2File.empty())   std::fprintf(stderr, "  --sp-grm-plink2 %s\n", args.spGrmPlink2File.c_str());
+    if (!args.indAfFile.empty())         std::fprintf(stderr, "  --ind-af-coef %s\n",   args.indAfFile.c_str());
+    if (!args.pairwiseIBDFile.empty())   std::fprintf(stderr, "  --pairwise-ibd %s\n",  args.pairwiseIBDFile.c_str());
+    if (!args.outputFile.empty())        std::fprintf(stderr, "  --out %s\n",           args.outputFile.c_str());
+    // numeric: log only when non-default
+    if (args.refPrevalence > 0.0)        std::fprintf(stderr, "  --prevalence %g\n",               args.refPrevalence);
+    if (args.nthread != 1)               std::fprintf(stderr, "  --threads %d\n",                  args.nthread);
+    if (args.nSnpPerChunk != 8192)       std::fprintf(stderr, "  --chunk-size %d\n",               args.nSnpPerChunk);
+    if (args.spaCutoff != 2.0)           std::fprintf(stderr, "  --spa-z-threshold %g\n",          args.spaCutoff);
+    if (args.outlierRatio != 1.5)        std::fprintf(stderr, "  --outlier-iqr-threshold %g\n",    args.outlierRatio);
+    if (args.outlierAbsBound != 0.55)    std::fprintf(stderr, "  --outlier-abs-bound %g\n",        args.outlierAbsBound);
+    if (args.pvalCovAdjCut != 5e-5)      std::fprintf(stderr, "  --covar-p-threshold %g\n",        args.pvalCovAdjCut);
+    if (args.cutoff != 0.05)             std::fprintf(stderr, "  --batch-effect-p-threshold %g\n", args.cutoff);
+    if (args.missingCutoff != 0.1)       std::fprintf(stderr, "  --geno %g\n",                     args.missingCutoff);
+    if (args.minMafCutoff != 1e-4)       std::fprintf(stderr, "  --maf %g\n",                      args.minMafCutoff);
+    if (args.minMacCutoff != 10.0)       std::fprintf(stderr, "  --mac %g\n",                      args.minMacCutoff);
+    if (args.seed != 0)                  std::fprintf(stderr, "  --seed %llu\n",                   (unsigned long long)args.seed);
+    if (args.nClusters != 0)             std::fprintf(stderr, "  --leaf-nclusters %d\n",            args.nClusters);
+    if (args.minMafIBD != 0.01)          std::fprintf(stderr, "  --min-maf-ibd %g\n",              args.minMafIBD);
+}
+
 // ── Entry point ────────────────────────────────────────────────────
 
 int run(int argc, char* argv[]) {
@@ -91,8 +167,8 @@ int run(int argc, char* argv[]) {
                          " --method or --cal-pairwise-ibd.\n";
             return 1;
         }
-        require(args.bfilePrefix, "--bfile",   "--cal-ind-af-coef");
         require(args.outputFile,  "--out",     "--cal-ind-af-coef");
+        auto geno = resolveGenoSpec(args, "--cal-ind-af-coef");
         if (pcColNames.empty()) {
             std::cerr << "Error: --pc-cols is required for --cal-ind-af-coef.\n";
             return 1;
@@ -102,11 +178,11 @@ int run(int argc, char* argv[]) {
                          " (provides PC columns).\n";
             return 1;
         }
-        infoMsg("GRAB starting: --cal-ind-af-coef, nthread=%d", args.nthread);
+        logArgsInEffect(args);
         try {
             runSPAmixAF(
                 pcColNames, args.phenoFile, args.covarFile,
-                args.bfilePrefix, args.outputFile,
+                geno, args.outputFile,
                 args.nthread, args.nSnpPerChunk,
                 args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
         } catch (const std::exception& e) {
@@ -122,14 +198,13 @@ int run(int argc, char* argv[]) {
                          " --method.\n";
             return 1;
         }
-        require(args.bfilePrefix, "--bfile", "--cal-pairwise-ibd");
         require(args.outputFile,  "--out",   "--cal-pairwise-ibd");
+        auto geno = resolveGenoSpec(args, "--cal-pairwise-ibd");
         checkSpGrm(args, /*required=*/true, "--cal-pairwise-ibd");
-        infoMsg("GRAB starting: --cal-pairwise-ibd, min-maf-ibd=%.4f",
-                args.minMafIBD);
+        logArgsInEffect(args);
         try {
             runPairwiseIBD(
-                args.spGrmGrabFile, args.spGrmPlink2File, args.bfilePrefix,
+                args.spGrmGrabFile, args.spGrmPlink2File, geno,
                 args.outputFile, args.minMafIBD);
         } catch (const std::exception& e) {
             std::cerr << "[ERROR] " << e.what() << "\n"; return 1;
@@ -138,9 +213,17 @@ int run(int argc, char* argv[]) {
     }
 
     // ── Mode: --method ─────────────────────────────────────────────
+    // Normalize to canonical case (accept spacox, SPACOX, SPACox, etc.)
     bool methodOk = false;
-    for (const MethodDef* const* p = kAllMethods; *p; ++p)
-        if (args.method == (*p)->name) { methodOk = true; break; }
+    {
+        std::string lower = args.method;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        for (const MethodDef* const* p = kAllMethods; *p; ++p) {
+            std::string canonLower = (*p)->name;
+            std::transform(canonLower.begin(), canonLower.end(), canonLower.begin(), ::tolower);
+            if (lower == canonLower) { args.method = (*p)->name; methodOk = true; break; }
+        }
+    }
 
     if (!methodOk) {
         if (args.method.empty())
@@ -153,12 +236,55 @@ int run(int argc, char* argv[]) {
     }
 
     // Common required flags for all GWAS methods
-    require(args.bfilePrefix, "--bfile", args.method.c_str());
+    auto geno = resolveGenoSpec(args, args.method.c_str());
     require(args.outputFile,  "--out",   args.method.c_str());
 
     // Methods that always need --null-resid (no --pheno alternative)
-    if (args.method != "WtCoxG" && args.method != "LEAF")
+    if (args.method != "WtCoxG" && args.method != "LEAF" && args.method != "SPAsqr")
         require(args.residFile, "--null-resid", args.method.c_str());
+
+    // Method-specific phenotype flag validation
+    {
+        const bool hasQuantPheno  = !args.quantPheno.empty();
+        const bool hasBinaryPheno = !args.binaryPheno.empty();
+        const bool hasSurvPheno   = !args.survPheno.empty();
+        // --pheno-quant/--pheno-binary/--pheno-surv require --pheno (not --covar)
+        if (hasQuantPheno || hasBinaryPheno || hasSurvPheno) {
+            if (args.phenoFile.empty()) {
+                std::cerr << "Error: --pheno-quant, --pheno-binary, and --pheno-surv"
+                             " require --pheno.\n";
+                return 1;
+            }
+            if (!args.covarFile.empty()) {
+                std::cerr << "Error: --pheno-quant, --pheno-binary, and --pheno-surv"
+                             " cannot be combined with --covar.\n"
+                             "  Use --covar-name to select covariate columns from --pheno.\n";
+                return 1;
+            }
+        }
+        if (args.method == "SPACox" || args.method == "SPAGRM" ||
+            args.method == "SPAmix" || args.method == "SPAmixPlus") {
+            if (hasQuantPheno || hasBinaryPheno || hasSurvPheno) {
+                std::cerr << "Error: " << args.method << " only accepts --null-resid."
+                             " --pheno-quant, --pheno-binary, and --pheno-surv are"
+                             " not supported for this method.\n";
+                return 1;
+            }
+        } else if (args.method == "SPAsqr") {
+            if (hasBinaryPheno || hasSurvPheno) {
+                std::cerr << "Error: SPAsqr does not support --pheno-binary or"
+                             " --pheno-surv. Use --pheno-quant for phenotype-based"
+                             " workflow.\n";
+                return 1;
+            }
+        } else { // WtCoxG, LEAF
+            if (hasQuantPheno) {
+                std::cerr << "Error: " << args.method << " does not support"
+                             " --pheno-quant. Use --pheno-binary or --pheno-surv.\n";
+                return 1;
+            }
+        }
+    }
 
     if (args.nSnpPerChunk < 256) {
         std::cerr << "Error: --chunk-size must be >= 256 (got "
@@ -166,8 +292,7 @@ int run(int argc, char* argv[]) {
         return 1;
     }
 
-    infoMsg("GRAB starting: method=%s, nthread=%d",
-            args.method.c_str(), args.nthread);
+    logArgsInEffect(args);
 
     try {
         // ── SPACox ─────────────────────────────────────────────────
@@ -175,7 +300,7 @@ int run(int argc, char* argv[]) {
             runSPACox(
                 args.residFile, covarNames,
                 args.phenoFile, args.covarFile,
-                args.bfilePrefix, args.outputFile,
+                geno, args.outputFile,
                 args.pvalCovAdjCut, args.spaCutoff, args.nthread,
                 args.nSnpPerChunk,
                 args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
@@ -187,47 +312,32 @@ int run(int argc, char* argv[]) {
             require(args.pairwiseIBDFile, "--pairwise-ibd", "SPAGRM");
             runSPAGRM(
                 args.residFile, args.spGrmGrabFile, args.spGrmPlink2File,
-                args.pairwiseIBDFile, args.bfilePrefix, args.outputFile,
+                args.pairwiseIBDFile, geno, args.outputFile,
                 args.spaCutoff, args.nthread, args.nSnpPerChunk,
                 args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
         }
 
-        // ── SPAmix ─────────────────────────────────────────────────
-        else if (args.method == "SPAmix") {
+        // ── SPAmix / SPAmixPlus (unified) ──────────────────────
+        else if (args.method == "SPAmix" || args.method == "SPAmixPlus") {
             if (pcColNames.empty()) {
-                std::cerr << "Error: --pc-cols is required for SPAmix.\n";
+                std::cerr << "Error: --pc-cols is required for "
+                          << args.method << ".\n";
                 return 1;
             }
             if (args.phenoFile.empty() && args.covarFile.empty()) {
-                std::cerr << "Error: --pheno or --covar required for SPAmix"
-                             " (provides PC columns).\n";
+                std::cerr << "Error: --pheno or --covar required for "
+                          << args.method
+                          << " (provides PC columns).\n";
                 return 1;
             }
-            runSPAmix(
-                args.residFile, pcColNames,
-                args.phenoFile, args.covarFile,
-                args.bfilePrefix, args.indAfFile, args.outputFile,
-                args.spaCutoff, args.outlierRatio, args.nthread,
-                args.nSnpPerChunk,
-                args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
-        }
-
-        // ── SPAmixPlus ─────────────────────────────────────────────
-        else if (args.method == "SPAmixPlus") {
-            if (pcColNames.empty()) {
-                std::cerr << "Error: --pc-cols is required for SPAmixPlus.\n";
-                return 1;
-            }
-            if (args.phenoFile.empty() && args.covarFile.empty()) {
-                std::cerr << "Error: --pheno or --covar required for SPAmixPlus"
-                             " (provides PC columns).\n";
-                return 1;
-            }
-            checkSpGrm(args, /*required=*/true, "SPAmixPlus");
+            if (args.method == "SPAmixPlus")
+                checkSpGrm(args, /*required=*/true, "SPAmixPlus");
+            else
+                checkSpGrm(args, /*required=*/false, "SPAmix");
             runSPAmixPlus(
                 args.residFile, pcColNames,
                 args.phenoFile, args.covarFile,
-                args.bfilePrefix,
+                geno,
                 args.spGrmGrabFile, args.spGrmPlink2File, args.indAfFile,
                 args.outputFile,
                 args.spaCutoff, args.outlierRatio, args.nthread,
@@ -238,12 +348,57 @@ int run(int argc, char* argv[]) {
         // ── SPAsqr ─────────────────────────────────────────────────
         else if (args.method == "SPAsqr") {
             checkSpGrm(args, /*required=*/true, "SPAsqr");
-            runSPAsqr(
-                args.residFile, args.spGrmGrabFile, args.spGrmPlink2File,
-                args.bfilePrefix, args.outputFile,
-                args.spaCutoff, args.outlierRatio, args.outlierAbsBound,
-                args.nthread, args.nSnpPerChunk,
-                args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
+            bool hasPhenoPath = !args.quantPheno.empty();
+            bool hasResidPath = !args.residFile.empty();
+            if (!hasPhenoPath && !hasResidPath) {
+                std::cerr << "Error: SPAsqr requires either --null-resid"
+                             " or --pheno + --pheno-quant.\n";
+                return 1;
+            }
+            if (hasPhenoPath && hasResidPath) {
+                std::cerr << "Error: --null-resid and --pheno-quant"
+                             " are mutually exclusive for SPAsqr.\n";
+                return 1;
+            }
+            if (hasPhenoPath) {
+                if (args.phenoFile.empty() && args.covarFile.empty()) {
+                    std::cerr << "Error: --pheno or --covar required when"
+                                 " using --pheno-quant.\n";
+                    return 1;
+                }
+                if (args.spasqrTaus.empty()) {
+                    std::cerr << "Error: --spasqr-taus is required when using"
+                                 " --pheno-quant.\n";
+                    return 1;
+                }
+                auto tauStrs = splitComma(args.spasqrTaus, "--spasqr-taus", 1);
+                std::vector<double> taus;
+                taus.reserve(tauStrs.size());
+                for (const auto& s : tauStrs) {
+                    double t = std::stod(s);
+                    if (t <= 0.0 || t >= 1.0) {
+                        std::cerr << "Error: tau values must be in (0,1), got "
+                                  << s << "\n";
+                        return 1;
+                    }
+                    taus.push_back(t);
+                }
+                runSPAsqrPheno(
+                    args.phenoFile, args.covarFile,
+                    args.quantPheno, covarNames, taus,
+                    args.spGrmGrabFile, args.spGrmPlink2File,
+                    geno, args.outputFile,
+                    args.spaCutoff, args.outlierRatio, args.outlierAbsBound,
+                    args.nthread, args.nSnpPerChunk,
+                    args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
+            } else {
+                runSPAsqr(
+                    args.residFile, args.spGrmGrabFile, args.spGrmPlink2File,
+                    geno, args.outputFile,
+                    args.spaCutoff, args.outlierRatio, args.outlierAbsBound,
+                    args.nthread, args.nSnpPerChunk,
+                    args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
+            }
         }
 
         // ── WtCoxG ─────────────────────────────────────────────────
@@ -269,7 +424,7 @@ int run(int argc, char* argv[]) {
             if (!args.residFile.empty()) {
                 // Existing --null-resid path
                 runWtCoxG(
-                    args.residFile, args.bfilePrefix, args.refAfFile,
+                    args.residFile, geno, args.refAfFile,
                     args.spGrmGrabFile, args.spGrmPlink2File,
                     args.outputFile,
                     args.refPrevalence, args.cutoff, args.spaCutoff,
@@ -278,14 +433,14 @@ int run(int argc, char* argv[]) {
             } else {
                 // New --pheno path: compute regression internally
                 if (args.binaryPheno.empty() && args.survPheno.empty()) {
-                    std::cerr << "Error: --pheno-binary or --pheno-survival is"
+                    std::cerr << "Error: --pheno-binary or --pheno-surv is"
                                  " required when using --pheno for WtCoxG.\n";
                     return 1;
                 }
                 runWtCoxGPheno(
                     args.phenoFile, args.covarFile, covarNames,
                     args.binaryPheno, args.survPheno,
-                    args.bfilePrefix, args.refAfFile,
+                    geno, args.refAfFile,
                     args.spGrmGrabFile, args.spGrmPlink2File,
                     args.outputFile,
                     args.refPrevalence, args.cutoff, args.spaCutoff,
@@ -319,7 +474,7 @@ int run(int argc, char* argv[]) {
                 auto residFiles = splitComma(args.residFile, "--null-resid", 2);
                 auto refAfFiles = splitComma(args.refAfFile,  "--ref-af",    1);
                 runLEAF(
-                    residFiles, args.bfilePrefix, refAfFiles,
+                    residFiles, geno, refAfFiles,
                     args.spGrmGrabFile, args.spGrmPlink2File,
                     args.outputFile,
                     args.refPrevalence, args.cutoff, args.spaCutoff,
@@ -328,7 +483,7 @@ int run(int argc, char* argv[]) {
             } else {
                 // New --pheno path: K-means + per-cluster regression
                 if (args.binaryPheno.empty() && args.survPheno.empty()) {
-                    std::cerr << "Error: --pheno-binary or --pheno-survival is"
+                    std::cerr << "Error: --pheno-binary or --pheno-surv is"
                                  " required when using --pheno for LEAF.\n";
                     return 1;
                 }
@@ -350,7 +505,7 @@ int run(int argc, char* argv[]) {
                     args.phenoFile, args.covarFile, covarNames,
                     args.binaryPheno, args.survPheno, pcColNames,
                     nClusters, args.seed,
-                    args.bfilePrefix, refAfFiles,
+                    geno, refAfFiles,
                     args.spGrmGrabFile, args.spGrmPlink2File,
                     args.outputFile,
                     args.refPrevalence, args.cutoff, args.spaCutoff,

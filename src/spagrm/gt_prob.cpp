@@ -6,7 +6,7 @@
 #include "spagrm/gt_prob.hpp"
 #include "spagrm/spagrm.hpp"
 #include "engine/marker.hpp"
-#include "io/plink.hpp"
+#include "io/geno_data.hpp"
 #include "io/sparse_grm.hpp"
 #include "io/subject_data.hpp"
 #include "util/logging.hpp"
@@ -441,7 +441,6 @@ public:
       Eigen::Ref<Eigen::VectorXd> GVec,
       double altFreq,
       int /*markerInChunkIdx*/,
-      bool /*flipped*/,
       std::vector<double>& result) override
   {
     result.clear();
@@ -747,7 +746,7 @@ void runSPAGRM(
     const std::string& spgrmGrabFile,
     const std::string& spgrmGctaFile,
     const std::string& pairwiseIBDFile,
-    const std::string& bfilePrefix,
+    const GenoSpec& geno,
     const std::string& outputFile,
     double spaCutoff,
     int nthreads,
@@ -760,7 +759,7 @@ void runSPAGRM(
   // 1. Load residual file (2 columns: SubjID, Resid)
   // ══════════════════════════════════════════════════════════════════
   infoMsg("Loading residual file: %s", residFile.c_str());
-  auto famIIDs = parseFamIIDs(bfilePrefix + ".fam");
+  auto famIIDs = parseGenoIIDs(geno);
   SubjectData sd(std::move(famIIDs));
   sd.loadResidOne(residFile);
   sd.finalize();
@@ -842,17 +841,8 @@ void runSPAGRM(
   // ══════════════════════════════════════════════════════════════════
   // 5. Load PLINK data
   // ══════════════════════════════════════════════════════════════════
-  infoMsg("Loading PLINK files: %s", bfilePrefix.c_str());
-  PlinkData plinkData(
-      bfilePrefix + ".bed",
-      bfilePrefix + ".bim",
-      bfilePrefix + ".fam",
-      sd.usedMask(),
-      sd.nFam(),
-      sd.nUsed(),
-      "ref-first",
-      {}, {}, {}, {},
-      nSnpPerChunk);
+  auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(),
+                               nSnpPerChunk);
 
   // ══════════════════════════════════════════════════════════════════
   // 6. Per-residual-column loop
@@ -881,7 +871,7 @@ void runSPAGRM(
     SPAGRMMethod method(std::move(spagrm));
 
     if (nRC == 1) infoMsg("Starting SPAGRM marker-level association (%d threads)", nthreads);
-    markerEngine(plinkData, method, outFile,
+    markerEngine(*genoData, method, outFile,
                  nthreads, missingCutoff, minMafCutoff, minMacCutoff,
                  /*exactHwe=*/false);
   }

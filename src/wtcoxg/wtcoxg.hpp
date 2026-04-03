@@ -6,7 +6,7 @@
 //   3. Marker-level SPA tests via markerEngine (MethodBase interface)
 #pragma once
 
-#include <string>
+#include "io/geno_data.hpp"
 #include <vector>
 #include <cstdint>
 #include <unordered_map>
@@ -18,7 +18,7 @@
 
 #include "engine/marker.hpp"
 
-class PlinkData;
+class GenoMeta;
 class SparseGRM;
 
 // ======================================================================
@@ -59,11 +59,10 @@ public:
   std::unique_ptr<MethodBase> clone() const override;
   int resultSize() const override { return 5; }
   std::string getHeaderColumns() const override;
-  bool skipFlip() const override { return true; }  // WtCoxG handles alleles itself
   void prepareChunk(const std::vector<uint64_t>& gIndices) override;
   void getResultVec(Eigen::Ref<Eigen::VectorXd> GVec,
                     double altFreq, int markerInChunkIdx,
-                    bool flipped, std::vector<double>& result) override;
+                    std::vector<double>& result) override;
 
   // For LEAF: compute ext/noext results with raw scores for meta-analysis.
   struct DualResult {
@@ -144,7 +143,7 @@ struct MatchedMarkerInfo {
 // assumed to be in .bim order, AF_ref = ALT_FREQS directly (col 5 freq).
 // Throws if row count != bim marker count.
 std::vector<MatchedMarkerInfo> matchMarkersNumeric(
-    const PlinkData& plinkData,
+    const GenoMeta& plinkData,
     const std::vector<RefAfRecord>& refAf);
 
 // Match bim markers to ref-af records by (CHROM, ID) with allele orientation:
@@ -153,14 +152,14 @@ std::vector<MatchedMarkerInfo> matchMarkersNumeric(
 //   Otherwise the marker is dropped.
 // obs_ct is passed through directly (allele count).
 std::vector<MatchedMarkerInfo> matchMarkers(
-    const PlinkData& plinkData,
+    const GenoMeta& plinkData,
     const std::vector<RefAfRecord>& refAf);
 
 // Scan genotypes to compute per-marker case/control allele frequencies.
 // Populates mu0, mu1, n0, n1, mu_int in each MatchedMarkerInfo.
 void computeMarkerStats(
     std::vector<MatchedMarkerInfo>& matched,
-    const PlinkData& plinkData,
+    const GenoMeta& plinkData,
     const Eigen::VectorXd& indicator);
 
 
@@ -193,7 +192,7 @@ testBatchEffects(
 
 void runWtCoxG(
     const std::string& residFile,
-    const std::string& bfilePrefix,
+    const GenoSpec& geno,
     const std::string& refAfFile,
     const std::string& spgrmGrabFile,    // empty = no GRM
     const std::string& spgrmGctaFile,   // empty = no GRM
@@ -214,7 +213,7 @@ void runWtCoxGPheno(
     const std::vector<std::string>& covarNames,  // empty = intercept only
     const std::string& binaryPheno,              // column name, or empty
     const std::string& survPheno,                // "TIME:EVENT", or empty
-    const std::string& bfilePrefix,
+    const GenoSpec& geno,
     const std::string& refAfFile,
     const std::string& spgrmGrabFile,
     const std::string& spgrmGctaFile,

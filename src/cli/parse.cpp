@@ -36,9 +36,14 @@ Args parseArgs(int argc, char* argv[]) {
         else if (arg == "--covar")                    a.covarFile         = next();
         else if (arg == "--covar-name")               a.covarName         = next();
         else if (arg == "--pheno-binary")             a.binaryPheno       = next();
-        else if (arg == "--pheno-survival")           a.survPheno         = next();
+        else if (arg == "--pheno-surv")               a.survPheno         = next();
         else if (arg == "--pc-cols")                  a.pcCols            = next();
+        else if (arg == "--pheno-quant")              a.quantPheno        = next();
+        else if (arg == "--spasqr-taus")              a.spasqrTaus        = next();
         else if (arg == "--bfile")                    a.bfilePrefix       = next();
+        else if (arg == "--pfile")                    a.pfilePrefix       = next();
+        else if (arg == "--vcf")                      a.vcfFile           = next();
+        else if (arg == "--bgen")                     a.bgenFile          = next();
         else if (arg == "--ref-af")                   a.refAfFile         = next();
         else if (arg == "--sp-grm-grab")              a.spGrmGrabFile     = next();
         else if (arg == "--sp-grm-plink2")            a.spGrmPlink2File   = next();

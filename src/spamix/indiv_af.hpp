@@ -17,7 +17,7 @@
 // Shared between SPAmixAF (pre-compute step) and SPAmix (on-the-fly).
 #pragma once
 
-#include <cstdint>
+#include "io/geno_data.hpp"
 #include <fstream>
 #include <string>
 #include <vector>
@@ -191,9 +191,9 @@ std::vector<AFModel> loadAFModels(
 // Compute AF models for all markers in parallel, storing results in memory.
 // genoToFlat maps raw genoIndex → flat marker index (UINT32_MAX = skip).
 // Callers must also include "io/plink.hpp".
-class PlinkData;
+class GenoMeta;
 std::vector<AFModel> computeAFModelsInMemory(
-    const PlinkData& plinkData,
+    const GenoMeta& plinkData,
     const AFContext& afCtx,
     const std::vector<uint32_t>& genoToFlat,
     int nthread);
@@ -202,7 +202,7 @@ void runSPAmixAF(
     const std::vector<std::string>& pcColNames,
     const std::string& phenoFile,
     const std::string& covarFile,
-    const std::string& bfilePrefix,
+    const GenoSpec& geno,
     const std::string& outputFile,
     int    nthread,
     int    nSnpPerChunk,

@@ -1,17 +1,14 @@
-// spamixplus.hpp — SPAmixPlus: SPA for admixed populations with sparse GRM
+// spamixplus.hpp — Unified SPAmix / SPAmixPlus implementation
 //
-// Port of ref_code/src/mtSPAmixPlus into the pure C++17 / Eigen framework.
+// When a sparse GRM is provided the variance uses GRM-based covariance
+// (SPAmixPlus mode); otherwise the diagonal  Σ resid²·2·AF·(1−AF) is
+// used (SPAmix mode).  Passing an identity GRM to SPAmixPlus produces
+// results identical to SPAmix.
 //
-// Differences from SPAmix:
-//   - Variance uses sparse GRM:  2·Σ_raw grm·R[i]·R[j] − R·R
-//     instead of the diagonal   Σ resid²·2·AF·(1−AF)
-//   - SPA tail probability is applied to variance-ratio-corrected S
-//   - AF models are always pre-computed (from file or on-the-fly at startup)
-//
-// Output columns: [Pvalue, zScore]  (same as SPAmix)
+// Output columns: [Pvalue, zScore]
 #pragma once
 
-#include <cstdint>
+#include "io/geno_data.hpp"
 #include <memory>
 #include <string>
 #include <vector>
@@ -23,12 +20,14 @@
 #include "spamix/indiv_af.hpp"
 
 // ======================================================================
-// SPAmixPlusMethod — MethodBase implementation
+// SPAmixPlusMethod — MethodBase implementation (unified SPAmix/SPAmixPlus)
 // ======================================================================
 
 class SPAmixPlusMethod : public MethodBase {
 public:
-  // Pre-computed AF mode
+  // ── With GRM (SPAmixPlus) ──────────────────────────────────────
+
+  // Pre-computed AF + GRM
   SPAmixPlusMethod(
       const Eigen::VectorXd& residuals,
       const Eigen::VectorXd& resid2,
@@ -39,7 +38,7 @@ public:
       const std::vector<AFModel>& afModels,
       const std::vector<uint32_t>& genoToFlat);
 
-  // On-the-fly AF mode (single PLINK pass — AF computed during marker testing)
+  // On-the-fly AF + GRM
   SPAmixPlusMethod(
       const Eigen::VectorXd& residuals,
       const Eigen::VectorXd& resid2,
@@ -51,27 +50,52 @@ public:
       const Eigen::VectorXd& sqrt_XtX_inv_diag,
       int nPC);
 
-  std::unique_ptr<MethodBase> clone() const override;
-  int resultSize() const override { return 2; }
-  std::string getHeaderColumns() const override { return "\tSPAmixPlus_P\tSPAmixPlus_Z"; }
-  bool skipFlip() const override { return true; }
+  // ── Without GRM (SPAmix) ──────────────────────────────────────
 
+  // Pre-computed AF, no GRM
+  SPAmixPlusMethod(
+      const Eigen::VectorXd& residuals,
+      const Eigen::VectorXd& resid2,
+      const Eigen::MatrixXd& onePlusPCs,
+      const OutlierData& outlier,
+      double spaCutoff,
+      const std::vector<AFModel>& afModels,
+      const std::vector<uint32_t>& genoToFlat);
+
+  // On-the-fly AF, no GRM
+  SPAmixPlusMethod(
+      const Eigen::VectorXd& residuals,
+      const Eigen::VectorXd& resid2,
+      const Eigen::MatrixXd& onePlusPCs,
+      const OutlierData& outlier,
+      double spaCutoff,
+      const Eigen::MatrixXd& XtX_inv_Xt,
+      const Eigen::VectorXd& sqrt_XtX_inv_diag,
+      int nPC);
+
+  std::unique_ptr<MethodBase> clone() const override;
+  int resultSize() const override { return 4; }
+  std::string getHeaderColumns() const override {
+    return m_hasGRM ? "\tSPAmixPlus_P\tSPAmixPlus_Z\tSPAmixPlus_BETA\tSPAmixPlus_SE"
+                    : "\tSPAmix_P\tSPAmix_Z\tSPAmix_BETA\tSPAmix_SE";
+  }
   void prepareChunk(const std::vector<uint64_t>& gIndices) override;
   void getResultVec(Eigen::Ref<Eigen::VectorXd> GVec,
                     double altFreq, int markerInChunkIdx,
-                    bool flipped, std::vector<double>& result) override;
+                    std::vector<double>& result) override;
 
 private:
   double getMarkerPval(const Eigen::Ref<const Eigen::VectorXd>& GVec,
-                       double altFreq, double& zScore);
+                       double altFreq, double& zScore, double& outVarS);
 
   // Read-only shared data (stable references — owner outlives all clones)
   const Eigen::VectorXd&        m_resid;
-  const Eigen::VectorXd&        m_resid2;        // shared across clones
+  const Eigen::VectorXd&        m_resid2;
   const Eigen::MatrixXd&        m_onePlusPCs;
   const OutlierData&            m_outlier;
   double                        m_spaCutoff;
-  const SparseGRM&              m_grm;
+  bool                          m_hasGRM;
+  const SparseGRM*              m_grm;       // nullptr when !m_hasGRM
   int                           m_N;
   int                           m_nPC;
 
@@ -85,7 +109,7 @@ private:
 
   // Per-thread scratch (mutable, freshly allocated in clone)
   Eigen::VectorXd m_AFVec;
-  Eigen::VectorXd m_R_new;
+  Eigen::VectorXd m_R_new;           // only used when m_hasGRM
   Eigen::VectorXd m_mafOutlier;
   Eigen::VectorXd m_mafNonOutlier;
 
@@ -94,17 +118,18 @@ private:
 };
 
 // ======================================================================
-// Orchestration
+// Orchestration — unified for SPAmix and SPAmixPlus
 // ======================================================================
 
+// spgrmGrabFile + spgrmGctaFile both empty → SPAmix (diagonal variance).
 void runSPAmixPlus(
     const std::string& residFile,
     const std::vector<std::string>& pcColNames,
     const std::string& phenoFile,
     const std::string& covarFile,
-    const std::string& bfilePrefix,
-    const std::string& spgrmGrabFile,
-    const std::string& spgrmGctaFile,
+    const GenoSpec& geno,
+    const std::string& spgrmGrabFile,   // empty → no GRM
+    const std::string& spgrmGctaFile,   // empty → no GRM
     const std::string& afFile,          // empty → compute on-the-fly
     const std::string& outputFile,
     double spaCutoff,

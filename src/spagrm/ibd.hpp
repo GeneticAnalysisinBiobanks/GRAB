@@ -7,7 +7,7 @@
 // Output: tab-separated file with columns  ID1  ID2  pa  pb  pc
 #pragma once
 
-#include <string>
+#include "io/geno_data.hpp"
 
 /// Compute pairwise IBD (pa, pb, pc) for every off-diagonal pair in the
 /// sparse GRM and write the result to `outputFile`.
@@ -20,6 +20,6 @@
 void runPairwiseIBD(
     const std::string& spgrmGrabFile,
     const std::string& spgrmGctaFile,
-    const std::string& bfilePrefix,
+    const GenoSpec& geno,
     const std::string& outputFile,
     double minMafIBD = 0.01);

@@ -12,7 +12,7 @@
 // These feed into SPAGRMClass for per-marker SPA p-values.
 #pragma once
 
-#include <string>
+#include "io/geno_data.hpp"
 
 /// Run the full SPAGRM workflow: null model + marker-level SPA.
 ///
@@ -33,7 +33,7 @@ void runSPAGRM(
     const std::string& spgrmGrabFile,
     const std::string& spgrmGctaFile,
     const std::string& pairwiseIBDFile,
-    const std::string& bfilePrefix,
+    const GenoSpec& geno,
     const std::string& outputFile,
     double spaCutoff,
     int nthreads,

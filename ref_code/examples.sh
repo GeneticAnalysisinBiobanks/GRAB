@@ -95,3 +95,17 @@ build/grab \
   --sp-grm-grab examples/SparseGRM.txt \
   --out tmp/SPAmixPlus_output.txt
 
+## SPAsqr
+
+```sh
+build/grab \
+  --method SPAsqr \
+  --pheno examples/simuPHENO.txt \
+  --pheno-quantitative QuantPheno \
+  --spasqr-taus 0.1,0.3,0.5,0.7,0.9 \
+  --covar-name AGE,GENDER,PC1,PC2,PC3,PC4 \
+  --bfile examples/simuPLINK \
+  --sp-grm-plink2 examples/simuPLINK.grm.sp \
+  --out tmp/SPAsqr_output.txt \
+  --threads 3
+```

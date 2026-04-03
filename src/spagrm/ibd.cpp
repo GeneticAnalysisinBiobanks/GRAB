@@ -15,7 +15,7 @@
 
 #include "spagrm/ibd.hpp"
 
-#include "io/plink.hpp"
+#include "io/geno_data.hpp"
 #include "io/subject_data.hpp"
 #include "io/sparse_grm.hpp"
 #include "util/logging.hpp"
@@ -41,15 +41,14 @@
 void runPairwiseIBD(
     const std::string& spgrmGrabFile,
     const std::string& spgrmGctaFile,
-    const std::string& bfilePrefix,
+    const GenoSpec& geno,
     const std::string& outputFile,
     double minMafIBD)
 {
-  // ── 1. Read .fam and load sparse GRM ──────────────────────────────
-  const std::string famFile = bfilePrefix + ".fam";
-  std::vector<std::string> allIIDs = parseFamIIDs(famFile);
+  // ── 1. Read sample IDs and load sparse GRM ──────────────────────
+  std::vector<std::string> allIIDs = parseGenoIIDs(geno);
   const uint32_t nFam = static_cast<uint32_t>(allIIDs.size());
-  infoMsg("Read %u subjects from %s", nFam, famFile.c_str());
+  infoMsg("Read %u subjects", nFam);
 
   SparseGRM grm = SparseGRM::load(spgrmGrabFile, spgrmGctaFile,
                                    allIIDs, allIIDs);
@@ -76,27 +75,17 @@ void runPairwiseIBD(
     return;
   }
 
-  // ── 3. Build full bitmask, prepare PLINK data ─────────────────────
-  const std::string bimFile = bfilePrefix + ".bim";
-  const std::string bedFile = bfilePrefix + ".bed";
-
+  // ── 3. Build full bitmask and load genotype data ───────────────
   const size_t nMaskWords = (nFam + 63) / 64;
   std::vector<uint64_t> fullMask(nMaskWords, ~uint64_t(0));
   if (nFam % 64 != 0)
     fullMask.back() &= (uint64_t(1) << (nFam % 64)) - 1;
 
-  // ── 4. Create PlinkData for all subjects (full cohort MAF) ─────────
-  PlinkData pdata(
-      bedFile, bimFile, famFile,
-      fullMask,
-      nFam,
-      nFam,
-      "alt-first",     // allele coding doesn't matter — diffs cancel it
-      {}, {}, {}, {},   // no marker filters
-      1024);            // chunk size for sequential reading
+  // ── 4. Create genotype data for all subjects (full cohort MAF) ───
+  auto genoData = makeGenoData(geno, fullMask, nFam, nFam, 1024);
 
-  const uint32_t nSubj    = pdata.nSubjUsed();
-  const uint32_t nMarkers = pdata.nMarkers();
+  const uint32_t nSubj    = genoData->nSubjUsed();
+  const uint32_t nMarkers = genoData->nMarkers();
 
   if (nMarkers > 200000) {
     infoMsg("WARNING: %u markers provided. "
@@ -128,25 +117,18 @@ void runPairwiseIBD(
   std::vector<double> sumW(nPairs, 0.0);
 
   // ── 6. Stream markers ──────────────────────────────────────────────
-  PlinkCursor cursor(
-      pdata.bedFile(),
-      nMarkers,
-      pdata.nSubjInFile(),
-      pdata.usedMask(),
-      pdata.nSubjUsed(),
-      pdata.isAltFirst(),
-      pdata.allUsed());
+  auto cursor = genoData->makeCursor();
 
-  Eigen::VectorXd geno(nSubj);
+  Eigen::VectorXd genoVec(nSubj);
   std::vector<uint32_t> missingIdx;
   double altFreq, altCounts, missingRate, hweP, maf, mac;
 
   uint32_t nUsed = 0;  // markers actually used
 
-  for (const auto& chunk : pdata.chunkIndices()) {
-    cursor.beginSequentialBlock(chunk.front());
+  for (const auto& chunk : genoData->chunkIndices()) {
+    cursor->beginSequentialBlock(chunk.front());
     for (uint64_t gi : chunk) {
-      cursor.getGenotypes(gi, geno, altFreq, altCounts, missingRate,
+      cursor->getGenotypes(gi, genoVec, altFreq, altCounts, missingRate,
                           hweP, maf, mac, missingIdx, /*exactHwe=*/false);
 
       if (maf < minMafIBD) continue;
@@ -154,7 +136,7 @@ void runPairwiseIBD(
       // Mean-impute missing genotypes
       const double meanGeno = 2.0 * altFreq;
       for (uint32_t mi : missingIdx)
-        geno[mi] = meanGeno;
+        genoVec[mi] = meanGeno;
 
       // Pre-compute weights for this marker
       const double pq  = altFreq * (1.0 - altFreq);   // p*(1-p)
@@ -169,7 +151,7 @@ void runPairwiseIBD(
 
       // Accumulate for each pair
       for (size_t k = 0; k < nPairs; ++k) {
-        const double d = geno[pairs[k].idx1] - geno[pairs[k].idx2];
+        const double d = genoVec[pairs[k].idx1] - genoVec[pairs[k].idx2];
         const double x = (std::abs(d - 1.0) + std::abs(d + 1.0) - 2.0) * inv_pv;
         sumXW[k] += x * w;
         sumW[k]  += w;

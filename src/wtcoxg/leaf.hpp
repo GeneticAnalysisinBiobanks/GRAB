@@ -9,7 +9,7 @@
 //   6. Create LEAFMethod (N WtCoxGMethod objects) → markerEngine → meta-analysis
 #pragma once
 
-#include <cstdint>
+#include "io/geno_data.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -35,7 +35,7 @@ struct PopMatchedAF {
 // Load one plink2 .afreq file and match against PlinkData .bim markers
 // by (CHROM, ID) with allele flip detection.  Returns matched entries.
 std::vector<PopMatchedAF> loadAndMatchRefAf(
-    const class PlinkData& plinkData,
+    const class GenoMeta& plinkData,
     const std::string& afreqFile);
 
 
@@ -87,11 +87,10 @@ public:
   std::unique_ptr<MethodBase> clone() const override;
   int  resultSize()       const override;
   std::string getHeaderColumns() const override;
-  bool skipFlip()         const override { return true; }
   void prepareChunk(const std::vector<uint64_t>& gIndices) override;
   void getResultVec(Eigen::Ref<Eigen::VectorXd> GVec,
                     double altFreq, int markerInChunkIdx,
-                    bool flipped, std::vector<double>& result) override;
+                    std::vector<double>& result) override;
 
 private:
   int m_nCluster;
@@ -107,7 +106,7 @@ private:
 
 void runLEAF(
     const std::vector<std::string>& residFiles,     // one per cluster
-    const std::string& bfilePrefix,
+    const GenoSpec& geno,
     const std::vector<std::string>& refAfFiles,     // one .afreq per pop (same order as residFiles)
     const std::string& spgrmGrabFile,               // empty = no GRM
     const std::string& spgrmGctaFile,              // empty = no GRM
@@ -131,7 +130,7 @@ void runLEAFPheno(
     const std::vector<std::string>& pcColNames,        // PC columns for K-means
     int nClusters,                                     // K for K-means
     uint64_t seed,                                      // RNG seed (0 = random)
-    const std::string& bfilePrefix,
+    const GenoSpec& geno,
     const std::vector<std::string>& refAfFiles,        // one .afreq per ref pop
     const std::string& spgrmGrabFile,
     const std::string& spgrmGctaFile,

@@ -2,7 +2,7 @@
 
 #include "wtcoxg/leaf.hpp"
 #include "wtcoxg/wtcoxg.hpp"
-#include "io/plink.hpp"
+#include "io/geno_data.hpp"
 #include "io/subject_data.hpp"
 #include "io/sparse_grm.hpp"
 #include "util/logging.hpp"
@@ -26,7 +26,7 @@
 // ======================================================================
 
 std::vector<PopMatchedAF> loadAndMatchRefAf(
-    const PlinkData& plinkData,
+    const GenoMeta& plinkData,
     const std::string& afreqFile) {
 
   bool isNumeric = false;
@@ -369,7 +369,7 @@ void LEAFMethod::prepareChunk(const std::vector<uint64_t>& gIndices) {
 void LEAFMethod::getResultVec(
     Eigen::Ref<Eigen::VectorXd> GVec,
     double /*altFreq*/, int markerInChunkIdx,
-    bool /*flipped*/, std::vector<double>& result) {
+    std::vector<double>& result) {
 
   std::vector<double> pExt(m_nCluster), pNoext(m_nCluster);
   std::vector<double> sExt(m_nCluster), sNoext(m_nCluster);
@@ -423,7 +423,7 @@ void LEAFMethod::getResultVec(
 
 void runLEAF(
     const std::vector<std::string>& residFiles,
-    const std::string& bfilePrefix,
+    const GenoSpec& geno,
     const std::vector<std::string>& refAfFiles,
     const std::string& spgrmGrabFile,
     const std::string& spgrmGctaFile,
@@ -441,7 +441,7 @@ void runLEAF(
 
   // ---- Load per-cluster resid files via SubjectData ----
   infoMsg("Loading %d cluster resid files...", nCluster);
-  auto famIIDs = parseFamIIDs(bfilePrefix + ".fam");
+  auto famIIDs = parseGenoIIDs(geno);
   const uint32_t nFamTotal = static_cast<uint32_t>(famIIDs.size());
 
   std::vector<SubjectData> clusterSD;
@@ -490,20 +490,11 @@ void runLEAF(
   }
   infoMsg("  Total subjects (union): %u", nUnion);
 
-  // ---- Load PLINK data with union bitmask ----
-  infoMsg("Loading PLINK data: %s", bfilePrefix.c_str());
-  PlinkData plinkData(
-      bfilePrefix + ".bed",
-      bfilePrefix + ".bim",
-      bfilePrefix + ".fam",
-      unionMask,
-      nFamTotal,
-      nUnion,
-      "ref-first",
-      {}, {}, {}, {},
-      nSnpPerChunk);
+  // ---- Load genotype data with union bitmask ----
+  auto genoData = makeGenoData(geno, unionMask, nFamTotal, nUnion,
+                               nSnpPerChunk);
   infoMsg("  %u subjects matched, %u markers",
-          plinkData.nSubjUsed(), plinkData.nMarkers());
+          genoData->nSubjUsed(), genoData->nMarkers());
 
   // ---- Load per-population ref-af files (plink2 .afreq) ----
   const int nPop = static_cast<int>(refAfFiles.size());
@@ -511,7 +502,7 @@ void runLEAF(
   std::vector<std::vector<PopMatchedAF>> popMatched(nPop);
   for (int p = 0; p < nPop; ++p) {
     infoMsg("  Pop %d: %s", p + 1, refAfFiles[p].c_str());
-    popMatched[p] = loadAndMatchRefAf(plinkData, refAfFiles[p]);
+    popMatched[p] = loadAndMatchRefAf(*genoData, refAfFiles[p]);
     infoMsg("    %zu markers matched", popMatched[p].size());
   }
 
@@ -572,21 +563,15 @@ void runLEAF(
 
   // Scan genotypes once for all matched markers → full GVec
   // Then compute per-cluster internal AF
-  PlinkCursor cursor(plinkData.bedFile(),
-                     static_cast<uint32_t>(plinkData.nMarkers()),
-                     plinkData.nSubjInFile(),
-                     plinkData.usedMask(),
-                     plinkData.nSubjUsed(),
-                     plinkData.isAltFirst(),
-                     plinkData.allUsed());
+  auto cursor = genoData->makeCursor();
 
-  const uint32_t nFull = plinkData.nSubjUsed();
+  const uint32_t nFull = genoData->nSubjUsed();
   Eigen::VectorXd fullGVec(nFull);
 
   // Pre-position the cursor at the first matched marker so that
   // the block-buffered sequential reader is used for the scan.
   if (!matchedMulti.empty())
-    cursor.beginSequentialBlock(matchedMulti.front().genoIndex);
+    cursor->beginSequentialBlock(matchedMulti.front().genoIndex);
 
   // Per-cluster internal AF matrix: nMatched × nCluster
   // Per-cluster case/control stats
@@ -600,7 +585,7 @@ void runLEAF(
   infoMsg("  Scanning %zu matched markers for per-cluster allele frequencies...", nMatched);
   for (size_t m = 0; m < nMatched; ++m) {
     // getGenotypesSimple: no QC stats, missing → NaN, no indexForMissing overhead
-    cursor.getGenotypesSimple(matchedMulti[m].genoIndex, fullGVec);
+    cursor->getGenotypesSimple(matchedMulti[m].genoIndex, fullGVec);
 
     for (int c = 0; c < nCluster; ++c) {
       const auto& idx = clusterIndices[c];
@@ -718,7 +703,7 @@ void runLEAF(
   LEAFMethod method(std::move(clMethods), clusterIndices);
 
   infoMsg("Running LEAF marker engine (%d thread(s))...", nthread);
-  markerEngine(plinkData, method, outputFile,
+  markerEngine(*genoData, method, outputFile,
                nthread,
                missingCutoff,
                minMafCutoff,
@@ -751,7 +736,7 @@ void runLEAFPheno(
     const std::vector<std::string>& pcColNames,
     int nClusters,
     uint64_t seed,
-    const std::string& bfilePrefix,
+    const GenoSpec& geno,
     const std::vector<std::string>& refAfFiles,
     const std::string& spgrmGrabFile,
     const std::string& spgrmGctaFile,
@@ -770,7 +755,7 @@ void runLEAFPheno(
 
   // ---- 1. Load phenotype / covariate data ----
   infoMsg("Loading phenotype file: %s", phenoFile.c_str());
-  auto famIIDs = parseFamIIDs(bfilePrefix + ".fam");
+  auto famIIDs = parseGenoIIDs(geno);
   const uint32_t nFamTotal = static_cast<uint32_t>(famIIDs.size());
   SubjectData sdFull(famIIDs); // copy — need famIIDs later
   sdFull.loadPhenoFile(phenoFile);
@@ -951,20 +936,11 @@ void runLEAFPheno(
   }
   infoMsg("  Total subjects (union): %u", nUnion);
 
-  // ---- 5. Load PLINK data with union bitmask ----
-  infoMsg("Loading PLINK data: %s", bfilePrefix.c_str());
-  PlinkData plinkData(
-      bfilePrefix + ".bed",
-      bfilePrefix + ".bim",
-      bfilePrefix + ".fam",
-      unionMask,
-      nFamTotal,
-      nUnion,
-      "ref-first",
-      {}, {}, {}, {},
-      nSnpPerChunk);
+  // ---- 5. Load genotype data with union bitmask ----
+  auto genoData = makeGenoData(geno, unionMask, nFamTotal, nUnion,
+                               nSnpPerChunk);
   infoMsg("  %u subjects matched, %u markers",
-          plinkData.nSubjUsed(), plinkData.nMarkers());
+          genoData->nSubjUsed(), genoData->nMarkers());
 
   // ---- Load per-population ref-af files (plink2 .afreq) ----
   const int nPop = static_cast<int>(refAfFiles.size());
@@ -972,7 +948,7 @@ void runLEAFPheno(
   std::vector<std::vector<PopMatchedAF>> popMatched(nPop);
   for (int p = 0; p < nPop; ++p) {
     infoMsg("  Pop %d: %s", p + 1, refAfFiles[p].c_str());
-    popMatched[p] = loadAndMatchRefAf(plinkData, refAfFiles[p]);
+    popMatched[p] = loadAndMatchRefAf(*genoData, refAfFiles[p]);
     infoMsg("    %zu markers matched", popMatched[p].size());
   }
 
@@ -1030,19 +1006,13 @@ void runLEAFPheno(
   // Per-cluster summix + AF synthesis (scan genotypes for per-cluster AF)
   infoMsg("Per-cluster ancestry estimation and AF synthesis...");
 
-  PlinkCursor cursor(plinkData.bedFile(),
-                     static_cast<uint32_t>(plinkData.nMarkers()),
-                     plinkData.nSubjInFile(),
-                     plinkData.usedMask(),
-                     plinkData.nSubjUsed(),
-                     plinkData.isAltFirst(),
-                     plinkData.allUsed());
+  auto cursor = genoData->makeCursor();
 
-  const uint32_t nFull = plinkData.nSubjUsed();
+  const uint32_t nFull = genoData->nSubjUsed();
   Eigen::VectorXd fullGVec(nFull);
 
   if (!matchedMulti.empty())
-    cursor.beginSequentialBlock(matchedMulti.front().genoIndex);
+    cursor->beginSequentialBlock(matchedMulti.front().genoIndex);
 
   struct ClMarkerStat {
     double intAF;
@@ -1054,7 +1024,7 @@ void runLEAFPheno(
   infoMsg("  Scanning %zu matched markers for per-cluster allele frequencies...",
           nMatched);
   for (size_t m = 0; m < nMatched; ++m) {
-    cursor.getGenotypesSimple(matchedMulti[m].genoIndex, fullGVec);
+    cursor->getGenotypesSimple(matchedMulti[m].genoIndex, fullGVec);
 
     for (int c = 0; c < nCluster; ++c) {
       const auto& idx = clusterIndices[c];
@@ -1168,7 +1138,7 @@ void runLEAFPheno(
   LEAFMethod method(std::move(clMethods), clusterIndices);
 
   infoMsg("Running LEAF marker engine (%d thread(s))...", nthread);
-  markerEngine(plinkData, method, outputFile,
+  markerEngine(*genoData, method, outputFile,
                nthread,
                missingCutoff,
                minMafCutoff,

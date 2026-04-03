@@ -8,9 +8,13 @@
 #include <unordered_set>
 #include <sstream>
 #include <mutex>
-#include <immintrin.h>
 #include <cstdint>
 #include <limits>
+
+// x86 SIMD header — only available on Intel/AMD.
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#include <immintrin.h>
+#endif
 
 
 namespace {
@@ -73,15 +77,16 @@ bool markerInRanges(const PlinkData::MarkerInfo& m,
   return false;
 }
 
-// BED 2-bit genotype → alt allele count (indexed by 2-bit BED code 0..3)
+// BED 2-bit genotype → count of bim col5 (A1 = ALT in output)
 // BED codes: 0 = hom A1, 1 = missing, 2 = het, 3 = hom A2
-static constexpr int GENO_ALT_FIRST[4] = { 2, -1,  1,  0};  // alt=A1
-static constexpr int GENO_REF_FIRST[4] = { 0, -1,  1,  2};  // alt=A2
+static constexpr int GENO_BIM5[4] = { 2, -1,  1,  0};  // count A1 (bim col5 = ALT)
 
 
 // ──────────────────────────────────────────────────────────────────────
-// AVX2 nibble-LUT genotype counting
+// AVX2 nibble-LUT genotype counting (x86 only)
 // ──────────────────────────────────────────────────────────────────────
+
+#if defined(__AVX2__)
 
 alignas(32) static uint8_t LUT_HOMREF[32];
 alignas(32) static uint8_t LUT_HET[32];
@@ -122,6 +127,7 @@ static inline uint64_t hsum_sad(const __m256i& acc) {
   return tmp[0] + tmp[1] + tmp[2] + tmp[3];
 }
 
+__attribute__((unused))
 static void count_geno_classes(
   const uint8_t* __restrict geno_bytes,
   uint32_t n_samples,
@@ -220,6 +226,8 @@ static void count_geno_classes(
   out[2] = static_cast<uint32_t>(nHomAlt);
   out[3] = static_cast<uint32_t>(nMissing);
 }
+
+#endif // __AVX2__
 
 
 // ──────────────────────────────────────────────────────────────────────
@@ -340,7 +348,7 @@ static double HweExact(uint32_t obs_hets, uint32_t obs_hom1, uint32_t obs_hom2) 
   return std::min(p / sum, 1.0);
 }
 
-// Compute genotype class counts + derived QC stats from packed BED bytes.
+// Genotype class counts + derived QC stats.
 struct GenoStats {
   double   altFreq;
   uint32_t altCounts;
@@ -350,50 +358,14 @@ struct GenoStats {
   uint32_t mac;
 };
 
-static GenoStats computeStats(const uint8_t* geno_bytes, uint32_t n_samples,
-                               bool altFirst, bool exactHwe) {
-  uint32_t counts[4];
-  count_geno_classes(geno_bytes, n_samples, counts);
-
-  const uint32_t nHomA1   = counts[0];
-  const uint32_t nHet     = counts[1];
-  const uint32_t nHomA2   = counts[2];
-  const uint32_t nMissing = counts[3];
-  const uint32_t nonMissing = n_samples - nMissing;
-
-  GenoStats gs;
-  gs.altCounts = altFirst ? (2 * nHomA1 + nHet) : (nHet + 2 * nHomA2);
-  gs.missingRate = static_cast<double>(nMissing) / n_samples;
-
-  if (nonMissing == 0) {
-    gs.altFreq = std::numeric_limits<double>::quiet_NaN();
-    gs.hweP    = std::numeric_limits<double>::quiet_NaN();
-    gs.maf     = std::numeric_limits<double>::quiet_NaN();
-    gs.mac     = 0;
-    return gs;
-  }
-
-  gs.altFreq = static_cast<double>(gs.altCounts) / (2.0 * nonMissing);
-  gs.maf = std::min(gs.altFreq, 1.0 - gs.altFreq);
-  gs.mac = std::min(gs.altCounts, 2 * nonMissing - gs.altCounts);
-  if (exactHwe) {
-    gs.hweP = HweExact(nHet, nHomA1, nHomA2);
-  } else {
-    gs.hweP = (nHet < 5 || nHomA1 < 5 || nHomA2 < 5)
-                ? HweExact(nHet, nHomA1, nHomA2)
-                : HweChiSq(nHet, nHomA1, nHomA2);
-  }
-  return gs;
-}
-
 // Compute QC stats from pre-computed genotype class counts.
 // Used by the bitmask decode path where counting is fused into the decode loop.
 static GenoStats statsFromCounts(uint32_t nHomA1, uint32_t nHet, uint32_t nHomA2,
                                   uint32_t nMissing, uint32_t nSamples,
-                                  bool altFirst, bool exactHwe) {
+                                  bool exactHwe) {
   const uint32_t nonMissing = nSamples - nMissing;
   GenoStats gs;
-  gs.altCounts = altFirst ? (2 * nHomA1 + nHet) : (nHet + 2 * nHomA2);
+  gs.altCounts = 2 * nHomA1 + nHet;  // count A1 (bim col5 = ALT)
   gs.missingRate = static_cast<double>(nMissing) / nSamples;
 
   if (nonMissing == 0) {
@@ -419,43 +391,41 @@ static GenoStats statsFromCounts(uint32_t nHomA1, uint32_t nHet, uint32_t nHomA2
 
 
 // ──────────────────────────────────────────────────────────────────────
-// Identity-map fast decode: 2-bit BED → double[n] using 4-wide LUT
-//
-// When all subjects are used in file order, skip repackSubset entirely
-// and decode directly from the raw BED row.  Each byte holds 4 genotypes;
-// we decode 4 doubles at a time via a scalar LUT.
-// ──────────────────────────────────────────────────────────────────────
-
-static void decodeBedsIdentity(const uint8_t* __restrict bed,
-                               uint32_t n,
-                               const int* genoMap,
-                               double* __restrict out,
-                               std::vector<uint32_t>& indexForMissing)
+// Fused identity decode + count: single pass over raw BED bytes.
+// Produces genotype doubles AND genotype class counts simultaneously.
+// Eliminates the separate AVX2 counting pass for the all-used path.
+static void decodeAndCountIdentity(const uint8_t* __restrict bed,
+                                   uint32_t n,
+                                   const int* genoMap,
+                                   double* __restrict out,
+                                   uint32_t counts[4],
+                                   std::vector<uint32_t>& indexForMissing)
 {
+  counts[0] = counts[1] = counts[2] = counts[3] = 0;
   const uint32_t nFullBytes = n / 4;
   uint32_t idx = 0;
 
   for (uint32_t b = 0; b < nFullBytes; ++b) {
     const uint8_t byte = bed[b];
-    // Unrolled 4-sample decode from one byte
-    const int g0 = genoMap[(byte      ) & 3];
-    const int g1 = genoMap[(byte >>  2) & 3];
-    const int g2 = genoMap[(byte >>  4) & 3];
-    const int g3 = genoMap[(byte >>  6) & 3];
-
-    // Branchless: write genotype, conditionally push missing index.
-    // Predictable branch: missingness is typically < 5%.
+    const int c0 = (byte      ) & 3;
+    const int c1 = (byte >>  2) & 3;
+    const int c2 = (byte >>  4) & 3;
+    const int c3 = (byte >>  6) & 3;
+    ++counts[c0]; ++counts[c1]; ++counts[c2]; ++counts[c3];
+    const int g0 = genoMap[c0], g1 = genoMap[c1];
+    const int g2 = genoMap[c2], g3 = genoMap[c3];
     out[idx] = g0; if (g0 < 0) { out[idx] = -1; indexForMissing.push_back(idx); } ++idx;
     out[idx] = g1; if (g1 < 0) { out[idx] = -1; indexForMissing.push_back(idx); } ++idx;
     out[idx] = g2; if (g2 < 0) { out[idx] = -1; indexForMissing.push_back(idx); } ++idx;
     out[idx] = g3; if (g3 < 0) { out[idx] = -1; indexForMissing.push_back(idx); } ++idx;
   }
 
-  // tail samples (last partial byte)
   if (idx < n) {
     const uint8_t byte = bed[nFullBytes];
     for (uint32_t s = 0; idx < n; ++s, ++idx) {
-      const int g = genoMap[(byte >> (2*s)) & 3];
+      const int code = (byte >> (2*s)) & 3;
+      ++counts[code];
+      const int g = genoMap[code];
       if (g < 0) {
         out[idx] = -1;
         indexForMissing.push_back(idx);
@@ -571,14 +541,12 @@ PlinkData::PlinkData(
     const std::vector<uint64_t>& usedMask,
     uint32_t nFam,
     uint32_t nUsed,
-    std::string AlleleOrder,
     std::string IDsToIncludeFile,
     std::string RangesToIncludeFile,
     std::string IDsToExcludeFile,
     std::string RangesToExcludeFile,
     int nMarkersEachChunk)
   : m_bedFile(std::move(bedFile)),
-    m_altFirst(AlleleOrder == "alt-first"),
     m_allUsed(nUsed == nFam),
     m_nSubjInFile(nFam),
     m_nSubjUsed(nUsed),
@@ -601,13 +569,8 @@ PlinkData::PlinkData(
       std::string a1 = tokens[4], a2 = tokens[5];
       std::transform(a1.begin(), a1.end(), a1.begin(), ::toupper);
       std::transform(a2.begin(), a2.end(), a2.begin(), ::toupper);
-      if (m_altFirst) {
-        m_alt.push_back(std::move(a1));
-        m_ref.push_back(std::move(a2));
-      } else {
-        m_ref.push_back(std::move(a1));
-        m_alt.push_back(std::move(a2));
-      }
+      m_ref.push_back(std::move(a1));  // bim col5 = A1 = REF in plink
+      m_alt.push_back(std::move(a2));  // bim col6 = A2
     }
     m_nMarkers = static_cast<uint32_t>(m_chr.size());
   }
@@ -733,7 +696,7 @@ std::vector<std::vector<uint64_t>> PlinkData::buildChunks(
 PlinkCursor::PlinkCursor(const std::string& bedFile,
                          uint32_t nBimLines, uint32_t nFamLines,
                          const std::vector<uint64_t>& usedMask,
-                         uint32_t nUsed, bool altFirst,
+                         uint32_t nUsed,
                          bool allUsed)
   : m_bedFile(bedFile),
     m_nSubjInFile(nFamLines),
@@ -741,9 +704,7 @@ PlinkCursor::PlinkCursor(const std::string& bedFile,
     m_nMarkers(nBimLines),
     m_nUsed(nUsed),
     m_usedMask(usedMask),
-    m_altFirst(altFirst),
-    m_allUsed(allUsed),
-    m_rawBytes(m_bytesPerMarker)
+    m_allUsed(allUsed),    m_rawBytes(m_bytesPerMarker)
 {
   m_bedStream.open(bedFile, std::ios::binary);
   if (!m_bedStream.is_open())
@@ -761,7 +722,6 @@ PlinkCursor::PlinkCursor(const PlinkCursor& other)
     m_nMarkers(other.m_nMarkers),
     m_nUsed(other.m_nUsed),
     m_usedMask(other.m_usedMask),
-    m_altFirst(other.m_altFirst),
     m_allUsed(other.m_allUsed),
     m_rawBytes(other.m_rawBytes.size())
 {
@@ -847,8 +807,8 @@ const uint8_t* PlinkCursor::readMarkerPtr(uint64_t gIndex) {
 
 
 // ── All-used fast path ───────────────────────────────────────────────
-// All subjects in file order → compute stats and decode from raw BED
-// directly.  Skips the bitmask scatter entirely.
+// All subjects in file order → fused single-pass decode + count.
+// Skips the bitmask scatter entirely.
 
 void PlinkCursor::getGenotypesAllUsed(
     const uint8_t* raw,
@@ -863,17 +823,22 @@ void PlinkCursor::getGenotypesAllUsed(
     std::vector<uint32_t>& indexForMissing,
     bool exactHwe)
 {
-  GenoStats gs = computeStats(raw, n, m_altFirst, exactHwe);
+  const int* genoMap = GENO_BIM5;
+  indexForMissing.clear();
+
+  // Fused single-pass: decode genotypes AND count classes simultaneously.
+  uint32_t bedCounts[4];
+  decodeAndCountIdentity(raw, n, genoMap, out.data(), bedCounts, indexForMissing);
+
+  // BED code mapping: [0]=homA1, [1]=miss, [2]=het, [3]=homA2
+  GenoStats gs = statsFromCounts(bedCounts[0], bedCounts[2], bedCounts[3],
+                                  bedCounts[1], n, exactHwe);
   altFreq     = gs.altFreq;
   altCounts   = gs.altCounts;
   missingRate = gs.missingRate;
   hweP        = gs.hweP;
   maf         = gs.maf;
   mac         = gs.mac;
-
-  const int* genoMap = m_altFirst ? GENO_ALT_FIRST : GENO_REF_FIRST;
-  indexForMissing.clear();
-  decodeBedsIdentity(raw, n, genoMap, out.data(), indexForMissing);
 }
 
 
@@ -892,7 +857,7 @@ void PlinkCursor::getGenotypesMasked(
     std::vector<uint32_t>& indexForMissing,
     bool exactHwe)
 {
-  const int* genoMap = m_altFirst ? GENO_ALT_FIRST : GENO_REF_FIRST;
+  const int* genoMap = GENO_BIM5;
   indexForMissing.clear();
 
   // Fused decode + count in one pass over the bitmask
@@ -902,7 +867,7 @@ void PlinkCursor::getGenotypesMasked(
 
   // BED code mapping: [0]=homA1, [1]=miss, [2]=het, [3]=homA2
   GenoStats gs = statsFromCounts(bedCounts[0], bedCounts[2], bedCounts[3],
-                                  bedCounts[1], m_nUsed, m_altFirst, exactHwe);
+                                  bedCounts[1], m_nUsed, exactHwe);
   altFreq     = gs.altFreq;
   altCounts   = gs.altCounts;
   missingRate = gs.missingRate;
@@ -946,11 +911,22 @@ void PlinkCursor::getGenotypesSimple(
     Eigen::Ref<Eigen::VectorXd> out)
 {
   const uint8_t* raw = readMarkerPtr(gIndex);
-  const int* genoMap = m_altFirst ? GENO_ALT_FIRST : GENO_REF_FIRST;
+  const int* genoMap = GENO_BIM5;
 
   if (m_allUsed) {
     decodeBedsIdentitySimple(raw, m_nSubjInFile, genoMap, out.data());
   } else {
     decodeMaskedSimple(raw, m_usedMask.data(), m_nSubjInFile, genoMap, out.data());
   }
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// GenoMeta factory
+// ══════════════════════════════════════════════════════════════════════
+
+std::unique_ptr<GenoCursor> PlinkData::makeCursor() const {
+  return std::make_unique<PlinkCursor>(
+      bedFile(), nMarkers(), nSubjInFile(),
+      usedMask(), nSubjUsed(), allUsed());
 }

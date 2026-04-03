@@ -1,7 +1,8 @@
-// spamixplus.cpp — SPAmixPlus method implementation
+// spamixplus.cpp — Unified SPAmix / SPAmixPlus method implementation
 //
-// Port of ref_code/src/mtSPAmixPlus.cpp to pure C++17 / Eigen / Boost headers.
-// Key difference from SPAmix: sparse-GRM-based variance and ratio correction.
+// When a sparse GRM is provided, variance uses GRM-based covariance and
+// the SPA tail is applied to variance-ratio-corrected S (SPAmixPlus).
+// Without a GRM the diagonal variance Σ resid²·2·AF·(1−AF) is used (SPAmix).
 
 #include "spamix/spamixplus.hpp"
 
@@ -20,7 +21,7 @@
 
 #include <zlib.h>
 
-#include "io/plink.hpp"
+#include "io/geno_data.hpp"
 #include "io/subject_data.hpp"
 #include "spamix/indiv_af.hpp"
 #include "util/logging.hpp"
@@ -30,7 +31,9 @@
 // SPAmixPlusMethod — construction / clone
 // ======================================================================
 
-// Pre-computed AF constructor
+// ── With GRM (SPAmixPlus) ──────────────────────────────────────────
+
+// Pre-computed AF + GRM
 SPAmixPlusMethod::SPAmixPlusMethod(
     const Eigen::VectorXd& residuals,
     const Eigen::VectorXd& resid2,
@@ -45,7 +48,8 @@ SPAmixPlusMethod::SPAmixPlusMethod(
     m_onePlusPCs(onePlusPCs),
     m_outlier(outlier),
     m_spaCutoff(spaCutoff),
-    m_grm(grm),
+    m_hasGRM(true),
+    m_grm(&grm),
     m_N(static_cast<int>(residuals.size())),
     m_nPC(static_cast<int>(onePlusPCs.cols()) - 1),
     m_afModels(&afModels),
@@ -58,7 +62,7 @@ SPAmixPlusMethod::SPAmixPlusMethod(
     m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size()))
 {}
 
-// On-the-fly AF constructor
+// On-the-fly AF + GRM
 SPAmixPlusMethod::SPAmixPlusMethod(
     const Eigen::VectorXd& residuals,
     const Eigen::VectorXd& resid2,
@@ -74,7 +78,8 @@ SPAmixPlusMethod::SPAmixPlusMethod(
     m_onePlusPCs(onePlusPCs),
     m_outlier(outlier),
     m_spaCutoff(spaCutoff),
-    m_grm(grm),
+    m_hasGRM(true),
+    m_grm(&grm),
     m_N(static_cast<int>(residuals.size())),
     m_nPC(nPC),
     m_afModels(nullptr),
@@ -87,15 +92,85 @@ SPAmixPlusMethod::SPAmixPlusMethod(
     m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size()))
 {}
 
+// ── Without GRM (SPAmix) ───────────────────────────────────────────
+
+// Pre-computed AF, no GRM
+SPAmixPlusMethod::SPAmixPlusMethod(
+    const Eigen::VectorXd& residuals,
+    const Eigen::VectorXd& resid2,
+    const Eigen::MatrixXd& onePlusPCs,
+    const OutlierData& outlier,
+    double spaCutoff,
+    const std::vector<AFModel>& afModels,
+    const std::vector<uint32_t>& genoToFlat)
+  : m_resid(residuals),
+    m_resid2(resid2),
+    m_onePlusPCs(onePlusPCs),
+    m_outlier(outlier),
+    m_spaCutoff(spaCutoff),
+    m_hasGRM(false),
+    m_grm(nullptr),
+    m_N(static_cast<int>(residuals.size())),
+    m_nPC(static_cast<int>(onePlusPCs.cols()) - 1),
+    m_afModels(&afModels),
+    m_genoToFlat(&genoToFlat),
+    m_XtX_inv_Xt(nullptr),
+    m_sqrt_XtX_inv_diag(nullptr),
+    m_AFVec(m_N),
+    m_R_new(0),
+    m_mafOutlier(static_cast<int>(outlier.posOutlier.size())),
+    m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size()))
+{}
+
+// On-the-fly AF, no GRM
+SPAmixPlusMethod::SPAmixPlusMethod(
+    const Eigen::VectorXd& residuals,
+    const Eigen::VectorXd& resid2,
+    const Eigen::MatrixXd& onePlusPCs,
+    const OutlierData& outlier,
+    double spaCutoff,
+    const Eigen::MatrixXd& XtX_inv_Xt,
+    const Eigen::VectorXd& sqrt_XtX_inv_diag,
+    int nPC)
+  : m_resid(residuals),
+    m_resid2(resid2),
+    m_onePlusPCs(onePlusPCs),
+    m_outlier(outlier),
+    m_spaCutoff(spaCutoff),
+    m_hasGRM(false),
+    m_grm(nullptr),
+    m_N(static_cast<int>(residuals.size())),
+    m_nPC(nPC),
+    m_afModels(nullptr),
+    m_genoToFlat(nullptr),
+    m_XtX_inv_Xt(&XtX_inv_Xt),
+    m_sqrt_XtX_inv_diag(&sqrt_XtX_inv_diag),
+    m_AFVec(m_N),
+    m_R_new(0),
+    m_mafOutlier(static_cast<int>(outlier.posOutlier.size())),
+    m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size()))
+{}
+
 std::unique_ptr<MethodBase> SPAmixPlusMethod::clone() const {
+  if (m_hasGRM) {
+    if (m_XtX_inv_Xt) {
+      return std::make_unique<SPAmixPlusMethod>(
+          m_resid, m_resid2, m_onePlusPCs, m_outlier, m_spaCutoff,
+          *m_grm, *m_XtX_inv_Xt, *m_sqrt_XtX_inv_diag, m_nPC);
+    }
+    return std::make_unique<SPAmixPlusMethod>(
+        m_resid, m_resid2, m_onePlusPCs, m_outlier, m_spaCutoff,
+        *m_grm, *m_afModels, *m_genoToFlat);
+  }
+  // No GRM
   if (m_XtX_inv_Xt) {
     return std::make_unique<SPAmixPlusMethod>(
         m_resid, m_resid2, m_onePlusPCs, m_outlier, m_spaCutoff,
-        m_grm, *m_XtX_inv_Xt, *m_sqrt_XtX_inv_diag, m_nPC);
+        *m_XtX_inv_Xt, *m_sqrt_XtX_inv_diag, m_nPC);
   }
   return std::make_unique<SPAmixPlusMethod>(
       m_resid, m_resid2, m_onePlusPCs, m_outlier, m_spaCutoff,
-      m_grm, *m_afModels, *m_genoToFlat);
+      *m_afModels, *m_genoToFlat);
 }
 
 void SPAmixPlusMethod::prepareChunk(const std::vector<uint64_t>& gIndices) {
@@ -103,50 +178,64 @@ void SPAmixPlusMethod::prepareChunk(const std::vector<uint64_t>& gIndices) {
 }
 
 // ======================================================================
-// getMarkerPval — score test with GRM variance + SPA
+// getMarkerPval — score test with optional GRM variance + SPA
 // ======================================================================
 
 double SPAmixPlusMethod::getMarkerPval(
     const Eigen::Ref<const Eigen::VectorXd>& GVec,
-    double altFreq, double& zScore) {
+    double altFreq, double& zScore, double& outVarS) {
 
   // m_AFVec is pre-filled by caller (on-the-fly or from stored model)
 
-  // Build R_new, S, S_mean, S_var_SPAmix in a single pass
-  double S = 0.0, S_mean = 0.0, S_var_SPAmix = 0.0;
+  // Build score statistic S, mean, and diagonal variance in a single pass.
+  // When using GRM we also build R_new for the GRM-based variance.
+  double S = 0.0, S_mean = 0.0, S_var_diag = 0.0;
   for (int i = 0; i < m_N; ++i) {
-    double af  = m_AFVec[i];
+    double af   = m_AFVec[i];
     double gvar = 2.0 * af * (1.0 - af);
-    m_R_new[i]   = m_resid[i] * std::sqrt(gvar);
     S           += GVec[i] * m_resid[i];
     S_mean      += m_resid[i] * af;
-    S_var_SPAmix += m_resid2[i] * gvar;
+    S_var_diag  += m_resid2[i] * gvar;
+    if (m_hasGRM)
+      m_R_new[i] = m_resid[i] * std::sqrt(gvar);
   }
   S_mean *= 2.0;
 
-  // GRM-based variance
-  double VarS = m_grm.spaVariance(m_R_new.data(),
-                                  static_cast<uint32_t>(m_N));
+  // Variance: GRM-based (SPAmixPlus) or diagonal (SPAmix)
+  double VarS;
+  if (m_hasGRM) {
+    VarS = m_grm->spaVariance(m_R_new.data(),
+                               static_cast<uint32_t>(m_N));
+  } else {
+    VarS = S_var_diag;
+  }
 
   if (VarS <= 0.0) {
     zScore = 0.0;
+    outVarS = 0.0;
     return 1.0;
   }
 
   zScore = (S - S_mean) / std::sqrt(VarS);
 
   // Normal approximation when |z| < cutoff
+  outVarS = VarS;
   if (std::abs(zScore) < m_spaCutoff)
     return 2.0 * math::pnorm(-std::abs(zScore));
 
-  // ---- SPA with variance-ratio correction ----
+  // ---- SPA with outlier / non-outlier split ----
 
-  double Var_ratio  = S_var_SPAmix / VarS;
-  double sqrt_ratio = std::sqrt(Var_ratio);
-  double S_new      = S * sqrt_ratio;
-  double S_mean_new = S_mean * sqrt_ratio;
-  double S_upper    = std::max(S_new, 2.0 * S_mean_new - S_new);
-  double S_lower    = std::min(S_new, 2.0 * S_mean_new - S_new);
+  // When using GRM, apply variance-ratio correction to S so the SPA
+  // operates on the diagonal-variance scale (needed by getProbSpaG).
+  double S_spa, S_mean_spa;
+  if (m_hasGRM) {
+    double sqrt_ratio = std::sqrt(S_var_diag / VarS);
+    S_spa      = S      * sqrt_ratio;
+    S_mean_spa = S_mean * sqrt_ratio;
+  } else {
+    S_spa      = S;
+    S_mean_spa = S_mean;
+  }
 
   const int nOut = static_cast<int>(m_outlier.posOutlier.size());
   const int nNon = static_cast<int>(m_outlier.posNonOutlier.size());
@@ -166,14 +255,16 @@ double SPAmixPlusMethod::getMarkerPval(
   mean_nonOutlier *= 2.0;
   var_nonOutlier  *= 2.0;
 
+  double absS = std::abs(S_spa - S_mean_spa);
+
   double pval1 = spa::getProbSpaG(
       m_mafOutlier.data(), m_outlier.residOutlier.data(), nOut,
-      S_upper, false,
+      absS + S_mean_spa, false,
       mean_nonOutlier, var_nonOutlier);
 
   double pval2 = spa::getProbSpaG(
       m_mafOutlier.data(), m_outlier.residOutlier.data(), nOut,
-      S_lower, true,
+      -absS + S_mean_spa, true,
       mean_nonOutlier, var_nonOutlier);
 
   return pval1 + pval2;
@@ -186,16 +277,11 @@ double SPAmixPlusMethod::getMarkerPval(
 void SPAmixPlusMethod::getResultVec(
     Eigen::Ref<Eigen::VectorXd> GVec,
     double altFreq, int markerInChunkIdx,
-    bool /*flipped*/, std::vector<double>& result) {
+    std::vector<double>& result) {
 
-  // SPAmixPlus handles flipping internally (skipFlip = true)
+  // GVec counts bim col5 (ALT) alleles; altFreq = freq(ALT).
+  // No flip needed — plink always returns ALT counts.
   double maf = altFreq;
-  bool didFlip = false;
-  if (maf > 0.5) {
-    GVec = 2.0 - GVec.array();
-    maf = 1.0 - maf;
-    didFlip = true;
-  }
 
   // Fill m_AFVec: on-the-fly from genotype, or from pre-computed model
   if (m_XtX_inv_Xt) {
@@ -207,16 +293,17 @@ void SPAmixPlusMethod::getResultVec(
     const uint32_t flatIdx  = (*m_genoToFlat)[genoIdx];
     const AFModel& model    = (*m_afModels)[flatIdx];
     getAFVecFromModel(model, maf, m_onePlusPCs, m_N, m_AFVec);
-    // Model was fitted on original (unflipped) genotype.  For status 1/2
-    // the betas encode AF for the original allele; flip to match test allele.
-    if (didFlip && model.status != 0)
-      m_AFVec = 1.0 - m_AFVec.array();
   }
 
-  double zScore;
-  double pval = getMarkerPval(GVec, maf, zScore);
+  double zScore, VarS;
+  double pval = getMarkerPval(GVec, maf, zScore, VarS);
+  double sqrtVarS = (VarS > 0.0) ? std::sqrt(VarS) : 0.0;
+  double beta     = (sqrtVarS > 0.0) ? zScore / sqrtVarS : 0.0;
+  double betaSE   = (sqrtVarS > 0.0) ? 1.0 / sqrtVarS    : 0.0;
   result.push_back(pval);
   result.push_back(zScore);
+  result.push_back(beta);
+  result.push_back(betaSE);
 }
 
 
@@ -229,7 +316,7 @@ void runSPAmixPlus(
     const std::vector<std::string>& pcColNames,
     const std::string& phenoFile,
     const std::string& covarFile,
-    const std::string& bfilePrefix,
+    const GenoSpec& geno,
     const std::string& spgrmGrabFile,
     const std::string& spgrmGctaFile,
     const std::string& afFile,
@@ -244,7 +331,7 @@ void runSPAmixPlus(
 {
   // ---- Load residual file and PC data ----
   infoMsg("Loading residual file: %s", residFile.c_str());
-  auto famIIDs = parseFamIIDs(bfilePrefix + ".fam");
+  auto famIIDs = parseGenoIIDs(geno);
   SubjectData sd(std::move(famIIDs));
   sd.loadResidOne(residFile);
   if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile);
@@ -273,32 +360,27 @@ void runSPAmixPlus(
   }
 
   // ---- Load sparse GRM (raw mode — lower triangle + diagonal) ----
-  infoMsg("Loading sparse GRM (raw)...");
-  SparseGRM grm = SparseGRM::load(spgrmGrabFile, spgrmGctaFile,
-                                   sd.usedIIDs(),
-                                   sd.famIIDs());
-  infoMsg("  %u subjects, %zu entries", grm.nSubjects(), grm.nnz());
+  const bool hasGRM = !spgrmGrabFile.empty() || !spgrmGctaFile.empty();
+  std::unique_ptr<SparseGRM> grm;
+  if (hasGRM) {
+    infoMsg("Loading sparse GRM (raw)...");
+    grm = std::make_unique<SparseGRM>(
+        SparseGRM::load(spgrmGrabFile, spgrmGctaFile,
+                        sd.usedIIDs(), sd.famIIDs()));
+    infoMsg("  %u subjects, %zu entries", grm->nSubjects(), grm->nnz());
+  }
 
-  // ---- Load PLINK data ----
-  infoMsg("Loading PLINK data: %s", bfilePrefix.c_str());
-  PlinkData plinkData(
-      bfilePrefix + ".bed",
-      bfilePrefix + ".bim",
-      bfilePrefix + ".fam",
-      sd.usedMask(),
-      sd.nFam(),
-      sd.nUsed(),
-      "ref-first",
-      {}, {}, {}, {},
-      nSnpPerChunk);
+  // ---- Load genotype data ----
+  auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(),
+                               nSnpPerChunk);
   infoMsg("  %u subjects matched, %u markers",
-          plinkData.nSubjUsed(), plinkData.nMarkers());
+          genoData->nSubjUsed(), genoData->nMarkers());
 
-  const auto& markerInfo = plinkData.markerInfo();
+  const auto& markerInfo = genoData->markerInfo();
   const uint32_t nMarkers = static_cast<uint32_t>(markerInfo.size());
 
   // ---- genoIndex → flat marker index mapping ----
-  std::vector<uint32_t> genoToFlat(plinkData.nMarkers(), UINT32_MAX);
+  std::vector<uint32_t> genoToFlat(genoData->nMarkers(), UINT32_MAX);
   std::vector<uint64_t> genoIndices(nMarkers);
   for (uint32_t fi = 0; fi < nMarkers; ++fi) {
     genoToFlat[markerInfo[fi].genoIndex] = fi;
@@ -341,19 +423,33 @@ void runSPAmixPlus(
               outlier.posOutlier.size(), outlier.posNonOutlier.size());
 
     // ---- Construct method and run engine ----
-    if (nRC == 1) infoMsg("Running SPAmixPlus marker tests (%d thread(s))...", nthread);
+    const char* methodLabel = hasGRM ? "SPAmixPlus" : "SPAmix";
+    if (nRC == 1) infoMsg("Running %s marker tests (%d thread(s))...",
+                          methodLabel, nthread);
     std::unique_ptr<SPAmixPlusMethod> method;
-    if (!afFile.empty()) {
-      method = std::make_unique<SPAmixPlusMethod>(
-          resid, resid2, onePlusPCs, outlier, spaCutoff,
-          grm, afModels, genoToFlat);
+    if (hasGRM) {
+      if (!afFile.empty()) {
+        method = std::make_unique<SPAmixPlusMethod>(
+            resid, resid2, onePlusPCs, outlier, spaCutoff,
+            *grm, afModels, genoToFlat);
+      } else {
+        method = std::make_unique<SPAmixPlusMethod>(
+            resid, resid2, onePlusPCs, outlier, spaCutoff,
+            *grm, XtX_inv_Xt, sqrt_XtX_inv_diag, nPC);
+      }
     } else {
-      method = std::make_unique<SPAmixPlusMethod>(
-          resid, resid2, onePlusPCs, outlier, spaCutoff,
-          grm, XtX_inv_Xt, sqrt_XtX_inv_diag, nPC);
+      if (!afFile.empty()) {
+        method = std::make_unique<SPAmixPlusMethod>(
+            resid, resid2, onePlusPCs, outlier, spaCutoff,
+            afModels, genoToFlat);
+      } else {
+        method = std::make_unique<SPAmixPlusMethod>(
+            resid, resid2, onePlusPCs, outlier, spaCutoff,
+            XtX_inv_Xt, sqrt_XtX_inv_diag, nPC);
+      }
     }
 
-    markerEngine(plinkData, *method, outFile,
+    markerEngine(*genoData, *method, outFile,
                  nthread,
                  missingCutoff,
                  minMafCutoff,
