@@ -177,6 +177,11 @@ inline const FlagDef kQuantPheno   = {"--pheno-quant", "COL",
 inline const FlagDef kSpasqrTaus   = {"--spasqr-taus", "LIST",
     "Comma-separated tau levels for SPAsqr (default: 0.1,0.3,0.5,0.7,0.9)", nullptr};
 
+inline const FlagDef kOrdinalPheno = {"--pheno-ordinal", "COL",
+    "Column name for ordinal categorical phenotype (POLMM)",
+    "Selects an ordinal column from --pheno for proportional odds mixed model.\n"
+    "Levels are auto-detected from sorted unique integer values and remapped to 0..J-1."};
+
 // ════════════════════════════════════════════════════════════════════
 //  Method definitions
 // ════════════════════════════════════════════════════════════════════
@@ -236,6 +241,21 @@ inline const MethodDef kSPAmixPlus = {
     "IID  RESID [RESID2 ...]",
     "CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  SPAmixPlus_P  SPAmixPlus_Z",
     nullptr};
+
+// ── POLMM ──────────────────────────────────────────────────────────
+inline const FlagDef* const kPOLMMReq[] = {
+    &kGeno_input, &kPheno, &kOrdinalPheno, &kOut, &kSpGrm, nullptr};
+inline const FlagDef* const kPOLMMOpt[] = {
+    &kCovarName,
+    &kSpaZThresh, &kThreads, &kChunkSize, &kGeno, &kMaf, &kMac, nullptr};
+inline const MethodDef kPOLMM = {
+    "POLMM",
+    "Proportional Odds Logistic Mixed Model for ordinal categorical GWAS",
+    kPOLMMReq, kPOLMMOpt,
+    nullptr,
+    "CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  POLMM_P  POLMM_Z  POLMM_BETA  POLMM_SE",
+    "Fits null model internally (all-in-one). Ordinal levels auto-detected.\n"
+    "Uses sparse GRM for random effects via PCG solver."};
 
 // ── SPAsqr ─────────────────────────────────────────────────────────
 inline const FlagDef* const kSPAsqrReq[] = {
@@ -321,7 +341,7 @@ inline const MethodDef kCalPairwiseIbd = {
 // ════════════════════════════════════════════════════════════════════
 
 inline const MethodDef* const kAllMethods[] = {
-    &kSPACox, &kSPAGRM, &kSPAmix, &kSPAmixPlus, &kSPAsqr, &kWtCoxG, &kLEAF,
+    &kSPACox, &kSPAGRM, &kSPAmix, &kSPAmixPlus, &kPOLMM, &kSPAsqr, &kWtCoxG, &kLEAF,
     nullptr};
 
 inline const MethodDef* const kAllUtilModes[] = {
@@ -337,7 +357,7 @@ inline const FlagDef* const kFileFlags[] = {
 inline const FlagDef* const kInputFlags[] = {
     &kBfile, &kPfile, &kVcf, &kBgen,
     &kNullResid, &kOut,
-    &kPheno, &kCovar, &kCovarName, &kBinaryPheno, &kSurvPheno, &kPcCols,
+    &kPheno, &kCovar, &kCovarName, &kBinaryPheno, &kSurvPheno, &kOrdinalPheno, &kPcCols,
     &kRefAf,
     &kSpGrmGrab, &kSpGrmPlink2, &kIndAfCoef, &kPairwiseIbd,
     nullptr};

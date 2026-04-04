@@ -37,7 +37,7 @@ static void printShortHelp() {
         std::fprintf(stderr, "  --%-20s %s\n", (*p)->name, (*p)->desc);
     std::fprintf(stderr,
         "\nRun 'grab --help <topic>' for details.  Topics:\n"
-        "  SPACox  SPAGRM  SPAmix  SPAmixPlus  SPAsqr  WtCoxG  LEAF\n"
+        "  SPACox  SPAGRM  SPAmix  SPAmixPlus  POLMM  SPAsqr  WtCoxG  LEAF\n"
         "  cal-ind-af-coef  cal-pairwise-ibd  options\n"
         "  null-resid  covar  eigenvec  ref-af  sp-grm  pairwise-ibd  ind-af-coef\n");
 }

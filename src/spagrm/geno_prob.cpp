@@ -1,9 +1,9 @@
-// gt_prob.cpp — SPAGRM null model + marker runner (pure C++17 / Eigen / Boost)
+// geno_prob.cpp — SPAGRM null model + marker runner (pure C++17 / Eigen / Boost)
 //
 // Translates SPAGRM.NullModel() + GRAB.mtMarker() from R to C++.
-// See gt_prob.hpp for the public API.
+// See geno_prob.hpp for the public API.
 
-#include "spagrm/gt_prob.hpp"
+#include "spagrm/geno_prob.hpp"
 #include "spagrm/spagrm.hpp"
 #include "engine/marker.hpp"
 #include "io/geno_data.hpp"
@@ -470,7 +470,7 @@ static SPAGRMClass buildSPAGRMNullModel(
     const Eigen::VectorXd& Resid,
     uint32_t N,
     const std::unordered_set<uint32_t>& singletonSet,
-    const std::unordered_map<uint32_t, double>& singletonDiag,
+    const std::vector<double>& grmDiag,
     const std::vector<std::vector<uint32_t>>& families,
     const std::vector<std::vector<SparseGRM::Entry>>& familyEntries,
     const std::vector<SparseGRM::Entry>& allGrmEntries,
@@ -521,7 +521,8 @@ static SPAGRMClass buildSPAGRMNullModel(
   double sum_R_nonOutlier = 0.0;
   double R_GRM_R_nonOutlier = 0.0;
 
-  for (const auto& [idx, diagVal] : singletonDiag) {
+  for (uint32_t idx : singletonSet) {
+    double diagVal = grmDiag[idx];
     double contrib = diagVal * Resid[idx] * Resid[idx];
     R_GRM_R += contrib;
     if (!isOutlier[idx])
@@ -818,12 +819,8 @@ void runSPAGRM(
   std::unordered_set<uint32_t> singletonSet;
   for (const auto& s : singletons) singletonSet.insert(s[0]);
 
-  // Pre-bucket: singleton diagonal values
-  std::unordered_map<uint32_t, double> singletonDiag;
-  for (const auto& e : allEntries) {
-    if (e.row == e.col && singletonSet.count(e.row))
-      singletonDiag[e.row] = e.value;
-  }
+  // Use cached GRM diagonal for singleton variance
+  const auto& grmDiag = grm.diagonal();
 
   // Pre-bucket: per-family GRM entries
   std::unordered_map<uint32_t, size_t> subjToFamily;
@@ -865,7 +862,7 @@ void runSPAGRM(
               outFile.c_str());
 
     SPAGRMClass spagrm = buildSPAGRMNullModel(
-        Resid, N, singletonSet, singletonDiag, families, familyEntries,
+        Resid, N, singletonSet, grmDiag, families, familyEntries,
         allEntries, ibdEntries, ibdPairMap, spaCutoff);
 
     SPAGRMMethod method(std::move(spagrm));

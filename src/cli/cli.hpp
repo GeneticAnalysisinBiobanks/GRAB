@@ -17,6 +17,7 @@ struct Args {
     std::string survPheno;          // "TIME:EVENT" survival phenotype
     std::string pcCols = "PC1,PC2,PC3,PC4"; // comma-separated PC column names (default: PC1,PC2,PC3,PC4)
     std::string quantPheno;         // column name for quantitative phenotype (SPAsqr)
+    std::string ordinalPheno;       // column name for ordinal phenotype (POLMM)
     std::string spasqrTaus = "0.1,0.3,0.5,0.7,0.9";  // default tau levels (SPAsqr)
     std::string bfilePrefix;
     std::string pfilePrefix;        // --pfile (pgen/pvar/psam)

@@ -14,8 +14,9 @@
 #include "wtcoxg/wtcoxg.hpp"
 #include "wtcoxg/leaf.hpp"
 #include "spasqr/spasqr.hpp"
+#include "polmm/polmm.hpp"
 #include "spagrm/ibd.hpp"
-#include "spagrm/gt_prob.hpp"
+#include "spagrm/geno_prob.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -105,6 +106,7 @@ static void logArgsInEffect(const Args& args) {
     if (!args.binaryPheno.empty())       std::fprintf(stderr, "  --pheno-binary %s\n", args.binaryPheno.c_str());
     if (!args.survPheno.empty())         std::fprintf(stderr, "  --pheno-surv %s\n",   args.survPheno.c_str());
     if (!args.quantPheno.empty())        std::fprintf(stderr, "  --pheno-quant %s\n",  args.quantPheno.c_str());
+    if (!args.ordinalPheno.empty())      std::fprintf(stderr, "  --pheno-ordinal %s\n", args.ordinalPheno.c_str());
     // pc-cols: relevant for SPAmix/SPAmixPlus/LEAF and cal-ind-af-coef
     {
         bool usesPcCols = args.calIndAfCoef ||
@@ -240,7 +242,8 @@ int run(int argc, char* argv[]) {
     require(args.outputFile,  "--out",   args.method.c_str());
 
     // Methods that always need --null-resid (no --pheno alternative)
-    if (args.method != "WtCoxG" && args.method != "LEAF" && args.method != "SPAsqr")
+    if (args.method != "WtCoxG" && args.method != "LEAF" &&
+        args.method != "SPAsqr" && args.method != "POLMM")
         require(args.residFile, "--null-resid", args.method.c_str());
 
     // Method-specific phenotype flag validation
@@ -248,26 +251,37 @@ int run(int argc, char* argv[]) {
         const bool hasQuantPheno  = !args.quantPheno.empty();
         const bool hasBinaryPheno = !args.binaryPheno.empty();
         const bool hasSurvPheno   = !args.survPheno.empty();
-        // --pheno-quant/--pheno-binary/--pheno-surv require --pheno (not --covar)
-        if (hasQuantPheno || hasBinaryPheno || hasSurvPheno) {
+        const bool hasOrdinalPheno = !args.ordinalPheno.empty();
+        // --pheno-quant/--pheno-binary/--pheno-surv/--pheno-ordinal require --pheno (not --covar)
+        if (hasQuantPheno || hasBinaryPheno || hasSurvPheno || hasOrdinalPheno) {
             if (args.phenoFile.empty()) {
-                std::cerr << "Error: --pheno-quant, --pheno-binary, and --pheno-surv"
-                             " require --pheno.\n";
+                std::cerr << "Error: --pheno-quant, --pheno-binary, --pheno-surv,"
+                             " and --pheno-ordinal require --pheno.\n";
                 return 1;
             }
             if (!args.covarFile.empty()) {
-                std::cerr << "Error: --pheno-quant, --pheno-binary, and --pheno-surv"
-                             " cannot be combined with --covar.\n"
+                std::cerr << "Error: --pheno-quant, --pheno-binary, --pheno-surv,"
+                             " and --pheno-ordinal cannot be combined with --covar.\n"
                              "  Use --covar-name to select covariate columns from --pheno.\n";
                 return 1;
             }
         }
         if (args.method == "SPACox" || args.method == "SPAGRM" ||
             args.method == "SPAmix" || args.method == "SPAmixPlus") {
-            if (hasQuantPheno || hasBinaryPheno || hasSurvPheno) {
+            if (hasQuantPheno || hasBinaryPheno || hasSurvPheno || hasOrdinalPheno) {
                 std::cerr << "Error: " << args.method << " only accepts --null-resid."
-                             " --pheno-quant, --pheno-binary, and --pheno-surv are"
-                             " not supported for this method.\n";
+                             " --pheno-quant, --pheno-binary, --pheno-surv, and"
+                             " --pheno-ordinal are not supported for this method.\n";
+                return 1;
+            }
+        } else if (args.method == "POLMM") {
+            if (hasBinaryPheno || hasSurvPheno || hasQuantPheno) {
+                std::cerr << "Error: POLMM does not support --pheno-binary,"
+                             " --pheno-surv, or --pheno-quant. Use --pheno-ordinal.\n";
+                return 1;
+            }
+            if (!hasOrdinalPheno) {
+                std::cerr << "Error: POLMM requires --pheno-ordinal.\n";
                 return 1;
             }
         } else if (args.method == "SPAsqr") {
@@ -278,9 +292,10 @@ int run(int argc, char* argv[]) {
                 return 1;
             }
         } else { // WtCoxG, LEAF
-            if (hasQuantPheno) {
+            if (hasQuantPheno || hasOrdinalPheno) {
                 std::cerr << "Error: " << args.method << " does not support"
-                             " --pheno-quant. Use --pheno-binary or --pheno-surv.\n";
+                             " --pheno-quant or --pheno-ordinal."
+                             " Use --pheno-binary or --pheno-surv.\n";
                 return 1;
             }
         }
@@ -342,6 +357,18 @@ int run(int argc, char* argv[]) {
                 args.outputFile,
                 args.spaCutoff, args.outlierRatio, args.nthread,
                 args.nSnpPerChunk,
+                args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
+        }
+
+        // ── POLMM ───────────────────────────────────────────────────
+        else if (args.method == "POLMM") {
+            checkSpGrm(args, /*required=*/true, "POLMM");
+            runPOLMM(
+                args.phenoFile, args.ordinalPheno, covarNames,
+                geno,
+                args.spGrmGrabFile, args.spGrmPlink2File,
+                args.outputFile,
+                args.spaCutoff, args.nthread, args.nSnpPerChunk,
                 args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
         }
 

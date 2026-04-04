@@ -422,7 +422,7 @@ Random-access binary file.  No header.  Records are indexed by raw
 | `--eigenvec` | Header `IID` / `#IID` column | Pure numeric: `.fam` order (row count must match) | `SubjectData::loadEigenVecs()` | `io/subject_data.cpp` |
 | `--sp-grm-grab` | ID1 / ID2 columns | — | `SparseGRM()` constructor | `io/sparse_grm.cpp` |
 | `--sp-grm-plink2` | `.grm.id` file | `.fam` order when `.grm.id` absent | `SparseGRM::fromGCTA()` | `io/sparse_grm.cpp` |
-| `--pairwise-ibd` | ID1 / ID2 columns | — | `loadIBD()` | `spagrm/gt_prob.cpp` |
+| `--pairwise-ibd` | ID1 / ID2 columns | — | `loadIBD()` | `spagrm/geno_prob.cpp` |
 | `--ref-af` | CHROM + ID matching, allele flip | Two-column numeric: `.bim` order (row count must match) | `loadRefAfFile()` + `matchMarkers()` / `matchMarkersNumeric()` | `wtcoxg/wtcoxg.cpp` |
 | `--ind-af-coef` | Same marker order as `.bim` | — | `loadAFModels()` / `IndivAFReader` | `spamix/indiv_af.cpp` |
 

@@ -39,6 +39,7 @@ Args parseArgs(int argc, char* argv[]) {
         else if (arg == "--pheno-surv")               a.survPheno         = next();
         else if (arg == "--pc-cols")                  a.pcCols            = next();
         else if (arg == "--pheno-quant")              a.quantPheno        = next();
+        else if (arg == "--pheno-ordinal")            a.ordinalPheno      = next();
         else if (arg == "--spasqr-taus")              a.spasqrTaus        = next();
         else if (arg == "--bfile")                    a.bfilePrefix       = next();
         else if (arg == "--pfile")                    a.pfilePrefix       = next();

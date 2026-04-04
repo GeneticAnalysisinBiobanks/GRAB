@@ -71,6 +71,7 @@ SparseGRM::SparseGRM(const std::string& filename,
   });
 
   m_entries = std::move(raw);
+  buildDiagonal();
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -180,7 +181,27 @@ SparseGRM SparseGRM::fromGCTA(const std::string& spFile,
   });
 
   grm.m_entries = std::move(raw);
+  grm.buildDiagonal();
   return grm;
+}
+
+void SparseGRM::buildDiagonal() {
+  m_diagonal.assign(m_nSubj, 0.0);
+  for (const auto& e : m_entries) {
+    if (e.row == e.col && e.row < m_nSubj)
+      m_diagonal[e.row] = e.value;
+  }
+}
+
+void SparseGRM::multiply(const double* x, double* result, uint32_t n) const {
+  if (n != m_nSubj)
+    throw std::runtime_error("SparseGRM::multiply: size mismatch");
+  std::fill(result, result + n, 0.0);
+  for (const auto& e : m_entries) {
+    result[e.row] += e.value * x[e.col];
+    if (e.row != e.col)
+      result[e.col] += e.value * x[e.row];
+  }
 }
 
 double SparseGRM::quadForm(const double* x, uint32_t n) const {

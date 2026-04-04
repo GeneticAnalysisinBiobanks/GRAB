@@ -780,6 +780,25 @@ Eigen::MatrixXd SubjectData::getColumns(const std::vector<std::string>& names) c
   return mat;
 }
 
+void SubjectData::fillColumnsInto(
+    const std::vector<std::string>& names,
+    Eigen::Ref<Eigen::MatrixXd> target) const {
+  for (size_t i = 0; i < names.size(); ++i) {
+    auto it = m_covarColMap.find(names[i]);
+    if (it != m_covarColMap.end()) {
+      target.col(static_cast<Eigen::Index>(i)) = m_covar.col(it->second);
+      continue;
+    }
+    auto it2 = m_phenoColMap.find(names[i]);
+    if (it2 != m_phenoColMap.end()) {
+      target.col(static_cast<Eigen::Index>(i)) = m_phenoData.col(it2->second);
+      continue;
+    }
+    throw std::runtime_error(
+        "SubjectData::fillColumnsInto: column '" + names[i] + "' not found");
+  }
+}
+
 
 // ══════════════════════════════════════════════════════════════════════
 // setResidWeightIndicator — post-finalize setter for computed regression

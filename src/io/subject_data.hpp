@@ -85,6 +85,9 @@ public:
   bool hasColumn(const std::string& name) const;
   Eigen::VectorXd getColumn(const std::string& name) const;
   Eigen::MatrixXd getColumns(const std::vector<std::string>& names) const;
+  // Zero-allocation: copy named columns directly into target matrix columns.
+  void fillColumnsInto(const std::vector<std::string>& names,
+                       Eigen::Ref<Eigen::MatrixXd> target) const;
 
   // ── Post-finalize setters (for computed regression path) ───────────
   // Sets residuals, weights, and indicator AFTER finalize, replacing

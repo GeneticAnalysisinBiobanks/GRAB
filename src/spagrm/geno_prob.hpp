@@ -1,4 +1,4 @@
-// gt_prob.hpp — SPAGRM null model and full method runner
+// geno_prob.hpp — SPAGRM null model and full method runner
 //
 // Refactors SPAGRM.NullModel() + GRAB.mtMarker() from R/Rcpp to pure C++17.
 //

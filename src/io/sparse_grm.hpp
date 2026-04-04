@@ -59,11 +59,19 @@ public:
   //   sum_diag(value * x[i]*y[i]) + sum_offdiag(value * (x[i]*y[j] + x[j]*y[i])).
   double bilinearForm(const double* x, const double* y, uint32_t n) const;
 
+  // Matrix-vector multiply:  result = G * x
+  // Handles lower-tri symmetry internally (result is size n).
+  void multiply(const double* x, double* result, uint32_t n) const;
+
   // SPAmixPlus variance:  2 * sum(grm * R[i]*R[j]) - R·R
   //   (summing over lower-tri + diagonal entries).
   double spaVariance(const double* R, uint32_t n) const;
 
   const std::vector<Entry>& entries() const { return m_entries; }
+
+  // Cached diagonal of G (self-relatedness per subject).
+  // diagonal()[i] == G(i,i).  Default 0.0 if subject has no diagonal entry.
+  const std::vector<double>& diagonal() const { return m_diagonal; }
 
   // ── Shared GCTA .grm.id reader ────────────────────────────────────
   // Given a .grm.sp file path, derive the .grm.id path and read IIDs.
@@ -80,6 +88,8 @@ public:
 
 private:
   SparseGRM() = default;  // used by fromGCTA factory
+  void buildDiagonal();              // populate m_diagonal from m_entries
   uint32_t             m_nSubj = 0;
-  std::vector<Entry>   m_entries;   // lower-tri + diagonal COO
+  std::vector<Entry>   m_entries;    // lower-tri + diagonal COO
+  std::vector<double>  m_diagonal;   // cached G(i,i) per subject
 };
