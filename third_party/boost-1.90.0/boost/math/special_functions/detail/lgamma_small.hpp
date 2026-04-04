@@ -41,8 +41,8 @@ BOOST_MATH_GPU_ENABLED T gamma_imp(T z, const Policy& pol, const lanczos::undefi
 // lgamma for small arguments:
 //
 template <class T, class Policy, class Lanczos>
-BOOST_MATH_GPU_ENABLED T lgamma_small_imp(T z, T zm1, T zm2, const boost::math::integral_constant<int, 64>&, const Policy& /* l */, const Lanczos&)
-{
+BOOST_MATH_GPU_ENABLED T lgamma_small_imp(T z, T zm1, T zm2, const boost::math::integral_constant<int, 64>&, const Policy& /* l */, const Lanczos&
+) {
    // This version uses rational approximations for small
    // values of z accurate enough for 64-bit mantissas
    // (80-bit long doubles), works well for 53-bit doubles as well.
@@ -249,8 +249,8 @@ BOOST_MATH_GPU_ENABLED T lgamma_small_imp(T z, T zm1, T zm2, const boost::math::
 // LCOV_EXCL_START
 //
 template <class T, class Policy, class Lanczos>
-T lgamma_small_imp(T z, T zm1, T zm2, const boost::math::integral_constant<int, 113>&, const Policy& /* l */, const Lanczos&)
-{
+T lgamma_small_imp(T z, T zm1, T zm2, const boost::math::integral_constant<int, 113>&, const Policy& /* l */, const Lanczos&
+) {
    //
    // This version uses rational approximations for small
    // values of z accurate enough for 113-bit mantissas
@@ -512,8 +512,8 @@ T lgamma_small_imp(T z, T zm1, T zm2, const boost::math::integral_constant<int, 
 // LCOV_EXCL_STOP
 
 template <class T, class Policy, class Lanczos>
-BOOST_MATH_GPU_ENABLED T lgamma_small_imp(T z, T zm1, T zm2, const boost::math::integral_constant<int, 0>&, const Policy& pol, const Lanczos& l)
-{
+BOOST_MATH_GPU_ENABLED T lgamma_small_imp(T z, T zm1, T zm2, const boost::math::integral_constant<int, 0>&, const Policy& pol, const Lanczos& l
+) {
    //
    // No rational approximations are available because either
    // T has no numeric_limits support (so we can't tell how

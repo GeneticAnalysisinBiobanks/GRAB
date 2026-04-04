@@ -558,8 +558,8 @@ decltype(std::declval<F>()(std::declval<Real>(), std::declval<Real>())) tanh_sin
 }
 
 template<class Real, class Policy>
-void tanh_sinh_detail<Real, Policy>::init(const Real& min_complement, const std::integral_constant<int, 0>&)
-{
+void tanh_sinh_detail<Real, Policy>::init(const Real& min_complement, const std::integral_constant<int, 0>&
+) {
    using std::tanh;
    using std::sinh;
    using std::asinh;
@@ -639,8 +639,8 @@ void tanh_sinh_detail<Real, Policy>::init(const Real& min_complement, const std:
 #endif
 
 template<class Real, class Policy>
-void tanh_sinh_detail<Real, Policy>::init(const Real& min_complement, const std::integral_constant<int, 1>&)
-{
+void tanh_sinh_detail<Real, Policy>::init(const Real& min_complement, const std::integral_constant<int, 1>&
+) {
    m_inital_row_length = 4;
    m_abscissas.reserve(m_max_refinements + 1);
    m_weights.reserve(m_max_refinements + 1);
@@ -692,8 +692,8 @@ void tanh_sinh_detail<Real, Policy>::init(const Real& min_complement, const std:
 }
 
 template<class Real, class Policy>
-void tanh_sinh_detail<Real, Policy>::init(const Real& min_complement, const std::integral_constant<int, 2>&)
-{
+void tanh_sinh_detail<Real, Policy>::init(const Real& min_complement, const std::integral_constant<int, 2>&
+) {
    m_inital_row_length = 6;
    m_abscissas.reserve(m_max_refinements + 1);
    m_weights.reserve(m_max_refinements + 1);
@@ -744,8 +744,8 @@ void tanh_sinh_detail<Real, Policy>::init(const Real& min_complement, const std:
 }
 
 template<class Real, class Policy>
-void tanh_sinh_detail<Real, Policy>::init(const Real& min_complement, const std::integral_constant<int, 3>&)
-{
+void tanh_sinh_detail<Real, Policy>::init(const Real& min_complement, const std::integral_constant<int, 3>&
+) {
    m_inital_row_length = 9;
    m_abscissas.reserve(m_max_refinements + 1);
    m_weights.reserve(m_max_refinements + 1);
@@ -798,8 +798,8 @@ void tanh_sinh_detail<Real, Policy>::init(const Real& min_complement, const std:
 #ifdef BOOST_HAS_FLOAT128
 
 template<class Real, class Policy>
-void tanh_sinh_detail<Real, Policy>::init(const Real& min_complement, const std::integral_constant<int, 4>&)
-{
+void tanh_sinh_detail<Real, Policy>::init(const Real& min_complement, const std::integral_constant<int, 4>&
+) {
    m_inital_row_length = 9;
    m_abscissas.reserve(m_max_refinements + 1);
    m_weights.reserve(m_max_refinements + 1);
@@ -852,8 +852,8 @@ void tanh_sinh_detail<Real, Policy>::init(const Real& min_complement, const std:
 #endif // BOOST_HAS_FLOAT128
 
 template<class Real, class Policy>
-void tanh_sinh_detail<Real, Policy>::prune_to_min_complement(const Real& m)
-{
+void tanh_sinh_detail<Real, Policy>::prune_to_min_complement(const Real& m
+) {
    //
    // If our tables were constructed from pre-computed data, then they will have more values stored than we can ever use,
    // and although the table size at this stage won't be too large, if we calculate down to m_max_levels then they will

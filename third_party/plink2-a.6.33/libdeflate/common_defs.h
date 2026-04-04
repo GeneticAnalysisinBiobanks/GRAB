@@ -327,8 +327,8 @@ typedef size_t machine_word_t;
 #elif defined(_MSC_VER)
 #  define CPU_IS_LITTLE_ENDIAN()  true
 #else
-static forceinline bool CPU_IS_LITTLE_ENDIAN(void)
-{
+static forceinline bool CPU_IS_LITTLE_ENDIAN(void
+) {
 	union {
 		u32 w;
 		u8 b;
@@ -340,8 +340,8 @@ static forceinline bool CPU_IS_LITTLE_ENDIAN(void)
 #endif
 
 /* bswap16(v) - swap the bytes of a 16-bit integer */
-static forceinline u16 bswap16(u16 v)
-{
+static forceinline u16 bswap16(u16 v
+) {
 #if defined(__GNUC__) || __has_builtin(__builtin_bswap16)
 	return __builtin_bswap16(v);
 #elif defined(_MSC_VER)
@@ -352,8 +352,8 @@ static forceinline u16 bswap16(u16 v)
 }
 
 /* bswap32(v) - swap the bytes of a 32-bit integer */
-static forceinline u32 bswap32(u32 v)
-{
+static forceinline u32 bswap32(u32 v
+) {
 #if defined(__GNUC__) || __has_builtin(__builtin_bswap32)
 	return __builtin_bswap32(v);
 #elif defined(_MSC_VER)
@@ -367,8 +367,8 @@ static forceinline u32 bswap32(u32 v)
 }
 
 /* bswap64(v) - swap the bytes of a 64-bit integer */
-static forceinline u64 bswap64(u64 v)
-{
+static forceinline u64 bswap64(u64 v
+) {
 #if defined(__GNUC__) || __has_builtin(__builtin_bswap64)
 	return __builtin_bswap64(v);
 #elif defined(_MSC_VER)
@@ -473,8 +473,8 @@ DEFINE_UNALIGNED_TYPE(machine_word_t)
 /* Unaligned loads with endianness conversion */
 
 static forceinline u16
-get_unaligned_le16(const u8 *p)
-{
+get_unaligned_le16(const u8 *p
+) {
 	if (UNALIGNED_ACCESS_IS_FAST)
 		return le16_bswap(load_u16_unaligned(p));
 	else
@@ -482,8 +482,8 @@ get_unaligned_le16(const u8 *p)
 }
 
 static forceinline u16
-get_unaligned_be16(const u8 *p)
-{
+get_unaligned_be16(const u8 *p
+) {
 	if (UNALIGNED_ACCESS_IS_FAST)
 		return be16_bswap(load_u16_unaligned(p));
 	else
@@ -491,8 +491,8 @@ get_unaligned_be16(const u8 *p)
 }
 
 static forceinline u32
-get_unaligned_le32(const u8 *p)
-{
+get_unaligned_le32(const u8 *p
+) {
 	if (UNALIGNED_ACCESS_IS_FAST)
 		return le32_bswap(load_u32_unaligned(p));
 	else
@@ -501,8 +501,8 @@ get_unaligned_le32(const u8 *p)
 }
 
 static forceinline u32
-get_unaligned_be32(const u8 *p)
-{
+get_unaligned_be32(const u8 *p
+) {
 	if (UNALIGNED_ACCESS_IS_FAST)
 		return be32_bswap(load_u32_unaligned(p));
 	else
@@ -511,8 +511,8 @@ get_unaligned_be32(const u8 *p)
 }
 
 static forceinline u64
-get_unaligned_le64(const u8 *p)
-{
+get_unaligned_le64(const u8 *p
+) {
 	if (UNALIGNED_ACCESS_IS_FAST)
 		return le64_bswap(load_u64_unaligned(p));
 	else
@@ -523,8 +523,8 @@ get_unaligned_le64(const u8 *p)
 }
 
 static forceinline machine_word_t
-get_unaligned_leword(const u8 *p)
-{
+get_unaligned_leword(const u8 *p
+) {
 	STATIC_ASSERT(WORDBITS == 32 || WORDBITS == 64);
 	if (WORDBITS == 32)
 		return get_unaligned_le32(p);
@@ -535,8 +535,8 @@ get_unaligned_leword(const u8 *p)
 /* Unaligned stores with endianness conversion */
 
 static forceinline void
-put_unaligned_le16(u16 v, u8 *p)
-{
+put_unaligned_le16(u16 v, u8 *p
+) {
 	if (UNALIGNED_ACCESS_IS_FAST) {
 		store_u16_unaligned(le16_bswap(v), p);
 	} else {
@@ -546,8 +546,8 @@ put_unaligned_le16(u16 v, u8 *p)
 }
 
 static forceinline void
-put_unaligned_be16(u16 v, u8 *p)
-{
+put_unaligned_be16(u16 v, u8 *p
+) {
 	if (UNALIGNED_ACCESS_IS_FAST) {
 		store_u16_unaligned(be16_bswap(v), p);
 	} else {
@@ -557,8 +557,8 @@ put_unaligned_be16(u16 v, u8 *p)
 }
 
 static forceinline void
-put_unaligned_le32(u32 v, u8 *p)
-{
+put_unaligned_le32(u32 v, u8 *p
+) {
 	if (UNALIGNED_ACCESS_IS_FAST) {
 		store_u32_unaligned(le32_bswap(v), p);
 	} else {
@@ -570,8 +570,8 @@ put_unaligned_le32(u32 v, u8 *p)
 }
 
 static forceinline void
-put_unaligned_be32(u32 v, u8 *p)
-{
+put_unaligned_be32(u32 v, u8 *p
+) {
 	if (UNALIGNED_ACCESS_IS_FAST) {
 		store_u32_unaligned(be32_bswap(v), p);
 	} else {
@@ -583,8 +583,8 @@ put_unaligned_be32(u32 v, u8 *p)
 }
 
 static forceinline void
-put_unaligned_le64(u64 v, u8 *p)
-{
+put_unaligned_le64(u64 v, u8 *p
+) {
 	if (UNALIGNED_ACCESS_IS_FAST) {
 		store_u64_unaligned(le64_bswap(v), p);
 	} else {
@@ -600,8 +600,8 @@ put_unaligned_le64(u64 v, u8 *p)
 }
 
 static forceinline void
-put_unaligned_leword(machine_word_t v, u8 *p)
-{
+put_unaligned_leword(machine_word_t v, u8 *p
+) {
 	STATIC_ASSERT(WORDBITS == 32 || WORDBITS == 64);
 	if (WORDBITS == 32)
 		put_unaligned_le32(v, p);
@@ -620,8 +620,8 @@ put_unaligned_leword(machine_word_t v, u8 *p)
  */
 
 static forceinline unsigned
-bsr32(u32 v)
-{
+bsr32(u32 v
+) {
 #if defined(__GNUC__) || __has_builtin(__builtin_clz)
 	return 31 - __builtin_clz(v);
 #elif defined(_MSC_VER)
@@ -639,8 +639,8 @@ bsr32(u32 v)
 }
 
 static forceinline unsigned
-bsr64(u64 v)
-{
+bsr64(u64 v
+) {
 #if defined(__GNUC__) || __has_builtin(__builtin_clzll)
 	return 63 - __builtin_clzll(v);
 #elif defined(_MSC_VER) && defined(_WIN64)
@@ -658,8 +658,8 @@ bsr64(u64 v)
 }
 
 static forceinline unsigned
-bsrw(machine_word_t v)
-{
+bsrw(machine_word_t v
+) {
 	STATIC_ASSERT(WORDBITS == 32 || WORDBITS == 64);
 	if (WORDBITS == 32)
 		return bsr32(v);
@@ -674,8 +674,8 @@ bsrw(machine_word_t v)
  */
 
 static forceinline unsigned
-bsf32(u32 v)
-{
+bsf32(u32 v
+) {
 #if defined(__GNUC__) || __has_builtin(__builtin_ctz)
 	return __builtin_ctz(v);
 #elif defined(_MSC_VER)
@@ -693,8 +693,8 @@ bsf32(u32 v)
 }
 
 static forceinline unsigned
-bsf64(u64 v)
-{
+bsf64(u64 v
+) {
 #if defined(__GNUC__) || __has_builtin(__builtin_ctzll)
 	return __builtin_ctzll(v);
 #elif defined(_MSC_VER) && defined(_WIN64)
@@ -712,8 +712,8 @@ bsf64(u64 v)
 }
 
 static forceinline unsigned
-bsfw(machine_word_t v)
-{
+bsfw(machine_word_t v
+) {
 	STATIC_ASSERT(WORDBITS == 32 || WORDBITS == 64);
 	if (WORDBITS == 32)
 		return bsf32(v);
@@ -729,16 +729,16 @@ bsfw(machine_word_t v)
 #if (defined(__GNUC__) || defined(__clang__)) && defined(ARCH_ARM32) && \
 	(__ARM_ARCH >= 7 || (__ARM_ARCH == 6 && defined(__ARM_ARCH_6T2__)))
 static forceinline u32
-rbit32(u32 v)
-{
+rbit32(u32 v
+) {
 	__asm__("rbit %0, %1" : "=r" (v) : "r" (v));
 	return v;
 }
 #define rbit32 rbit32
 #elif (defined(__GNUC__) || defined(__clang__)) && defined(ARCH_ARM64)
 static forceinline u32
-rbit32(u32 v)
-{
+rbit32(u32 v
+) {
 	__asm__("rbit %w0, %w1" : "=r" (v) : "r" (v));
 	return v;
 }

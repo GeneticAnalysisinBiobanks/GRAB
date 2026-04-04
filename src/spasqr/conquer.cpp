@@ -142,8 +142,8 @@ Eigen::VectorXd smqrGauss(
     Eigen::VectorXd* residOut,
     double tol,
     int    iteMax,
-    double stepMax)
-{
+    double stepMax
+) {
     const int n = static_cast<int>(X.rows());
     const int p = static_cast<int>(X.cols());
     const double constTau = 1.345;

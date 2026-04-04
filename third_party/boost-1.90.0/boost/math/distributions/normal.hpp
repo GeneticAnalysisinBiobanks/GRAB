@@ -95,8 +95,8 @@ normal_distribution(RealType)->normal_distribution<typename boost::math::tools::
 #endif
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline boost::math::pair<RealType, RealType> range(const normal_distribution<RealType, Policy>& /*dist*/)
-{ // Range of permissible values for random variable x.
+BOOST_MATH_GPU_ENABLED inline boost::math::pair<RealType, RealType> range(const normal_distribution<RealType, Policy>& /*dist*/
+) { // Range of permissible values for random variable x.
   BOOST_MATH_IF_CONSTEXPR (boost::math::numeric_limits<RealType>::has_infinity)
   { 
      return boost::math::pair<RealType, RealType>(-boost::math::numeric_limits<RealType>::infinity(), boost::math::numeric_limits<RealType>::infinity()); // - to + infinity.
@@ -109,8 +109,8 @@ BOOST_MATH_GPU_ENABLED inline boost::math::pair<RealType, RealType> range(const 
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline boost::math::pair<RealType, RealType> support(const normal_distribution<RealType, Policy>& /*dist*/)
-{ // This is range values for random variable x where cdf rises from 0 to 1, and outside it, the pdf is zero.
+BOOST_MATH_GPU_ENABLED inline boost::math::pair<RealType, RealType> support(const normal_distribution<RealType, Policy>& /*dist*/
+) { // This is range values for random variable x where cdf rises from 0 to 1, and outside it, the pdf is zero.
   BOOST_MATH_IF_CONSTEXPR (boost::math::numeric_limits<RealType>::has_infinity)
   { 
      return boost::math::pair<RealType, RealType>(-boost::math::numeric_limits<RealType>::infinity(), boost::math::numeric_limits<RealType>::infinity()); // - to + infinity.
@@ -127,8 +127,8 @@ BOOST_MATH_GPU_ENABLED inline boost::math::pair<RealType, RealType> support(cons
 #endif
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType pdf(const normal_distribution<RealType, Policy>& dist, const RealType& x)
-{
+BOOST_MATH_GPU_ENABLED inline RealType pdf(const normal_distribution<RealType, Policy>& dist, const RealType& x
+) {
    BOOST_MATH_STD_USING  // for ADL of std functions
 
    RealType sd = dist.standard_deviation();
@@ -165,8 +165,8 @@ BOOST_MATH_GPU_ENABLED inline RealType pdf(const normal_distribution<RealType, P
 } // pdf
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType logpdf(const normal_distribution<RealType, Policy>& dist, const RealType& x)
-{
+BOOST_MATH_GPU_ENABLED inline RealType logpdf(const normal_distribution<RealType, Policy>& dist, const RealType& x
+) {
    BOOST_MATH_STD_USING  // for ADL of std functions
 
    const RealType sd = dist.standard_deviation();
@@ -201,8 +201,8 @@ BOOST_MATH_GPU_ENABLED inline RealType logpdf(const normal_distribution<RealType
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType cdf(const normal_distribution<RealType, Policy>& dist, const RealType& x)
-{
+BOOST_MATH_GPU_ENABLED inline RealType cdf(const normal_distribution<RealType, Policy>& dist, const RealType& x
+) {
    BOOST_MATH_STD_USING  // for ADL of std functions
 
    RealType sd = dist.standard_deviation();
@@ -232,8 +232,8 @@ BOOST_MATH_GPU_ENABLED inline RealType cdf(const normal_distribution<RealType, P
 } // cdf
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType quantile(const normal_distribution<RealType, Policy>& dist, const RealType& p)
-{
+BOOST_MATH_GPU_ENABLED inline RealType quantile(const normal_distribution<RealType, Policy>& dist, const RealType& p
+) {
    BOOST_MATH_STD_USING  // for ADL of std functions
 
    RealType sd = dist.standard_deviation();
@@ -256,8 +256,8 @@ BOOST_MATH_GPU_ENABLED inline RealType quantile(const normal_distribution<RealTy
 } // quantile
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType cdf(const complemented2_type<normal_distribution<RealType, Policy>, RealType>& c)
-{
+BOOST_MATH_GPU_ENABLED inline RealType cdf(const complemented2_type<normal_distribution<RealType, Policy>, RealType>& c
+) {
    BOOST_MATH_STD_USING  // for ADL of std functions
 
    RealType sd = c.dist.standard_deviation();
@@ -284,8 +284,8 @@ BOOST_MATH_GPU_ENABLED inline RealType cdf(const complemented2_type<normal_distr
 } // cdf complement
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType quantile(const complemented2_type<normal_distribution<RealType, Policy>, RealType>& c)
-{
+BOOST_MATH_GPU_ENABLED inline RealType quantile(const complemented2_type<normal_distribution<RealType, Policy>, RealType>& c
+) {
    BOOST_MATH_STD_USING  // for ADL of std functions
 
    RealType sd = c.dist.standard_deviation();
@@ -306,50 +306,50 @@ BOOST_MATH_GPU_ENABLED inline RealType quantile(const complemented2_type<normal_
 } // quantile
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType mean(const normal_distribution<RealType, Policy>& dist)
-{
+BOOST_MATH_GPU_ENABLED inline RealType mean(const normal_distribution<RealType, Policy>& dist
+) {
    return dist.mean();
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType standard_deviation(const normal_distribution<RealType, Policy>& dist)
-{
+BOOST_MATH_GPU_ENABLED inline RealType standard_deviation(const normal_distribution<RealType, Policy>& dist
+) {
    return dist.standard_deviation();
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType mode(const normal_distribution<RealType, Policy>& dist)
-{
+BOOST_MATH_GPU_ENABLED inline RealType mode(const normal_distribution<RealType, Policy>& dist
+) {
    return dist.mean();
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType median(const normal_distribution<RealType, Policy>& dist)
-{
+BOOST_MATH_GPU_ENABLED inline RealType median(const normal_distribution<RealType, Policy>& dist
+) {
    return dist.mean();
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType skewness(const normal_distribution<RealType, Policy>& /*dist*/)
-{
+BOOST_MATH_GPU_ENABLED inline RealType skewness(const normal_distribution<RealType, Policy>& /*dist*/
+) {
    return 0;
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType kurtosis(const normal_distribution<RealType, Policy>& /*dist*/)
-{
+BOOST_MATH_GPU_ENABLED inline RealType kurtosis(const normal_distribution<RealType, Policy>& /*dist*/
+) {
    return 3;
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType kurtosis_excess(const normal_distribution<RealType, Policy>& /*dist*/)
-{
+BOOST_MATH_GPU_ENABLED inline RealType kurtosis_excess(const normal_distribution<RealType, Policy>& /*dist*/
+) {
    return 0;
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType entropy(const normal_distribution<RealType, Policy> & dist)
-{
+BOOST_MATH_GPU_ENABLED inline RealType entropy(const normal_distribution<RealType, Policy> & dist
+) {
    BOOST_MATH_STD_USING
    RealType arg = constants::two_pi<RealType>()*constants::e<RealType>()*dist.standard_deviation()*dist.standard_deviation();
    return log(arg)/2;

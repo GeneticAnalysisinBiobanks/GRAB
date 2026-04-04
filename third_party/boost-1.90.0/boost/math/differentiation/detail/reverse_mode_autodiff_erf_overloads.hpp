@@ -35,28 +35,28 @@ template<typename RealType, size_t DerivativeOrder, typename ARG>
 struct erfc_inv_expr;
 
 template<typename RealType, size_t DerivativeOrder, typename ARG>
-erf_expr<RealType, DerivativeOrder, ARG> erf(const expression<RealType, DerivativeOrder, ARG> &arg)
-{
+erf_expr<RealType, DerivativeOrder, ARG> erf(const expression<RealType, DerivativeOrder, ARG> &arg
+) {
     return erf_expr<RealType, DerivativeOrder, ARG>(arg, 0.0);
 }
 
 template<typename RealType, size_t DerivativeOrder, typename ARG>
-erfc_expr<RealType, DerivativeOrder, ARG> erfc(const expression<RealType, DerivativeOrder, ARG> &arg)
-{
+erfc_expr<RealType, DerivativeOrder, ARG> erfc(const expression<RealType, DerivativeOrder, ARG> &arg
+) {
     return erfc_expr<RealType, DerivativeOrder, ARG>(arg, 0.0);
 }
 
 template<typename RealType, size_t DerivativeOrder, typename ARG>
 erf_inv_expr<RealType, DerivativeOrder, ARG> erf_inv(
-    const expression<RealType, DerivativeOrder, ARG> &arg)
-{
+    const expression<RealType, DerivativeOrder, ARG> &arg
+) {
     return erf_inv_expr<RealType, DerivativeOrder, ARG>(arg, 0.0);
 }
 
 template<typename RealType, size_t DerivativeOrder, typename ARG>
 erfc_inv_expr<RealType, DerivativeOrder, ARG> erfc_inv(
-    const expression<RealType, DerivativeOrder, ARG> &arg)
-{
+    const expression<RealType, DerivativeOrder, ARG> &arg
+) {
     return erfc_inv_expr<RealType, DerivativeOrder, ARG>(arg, 0.0);
 }
 

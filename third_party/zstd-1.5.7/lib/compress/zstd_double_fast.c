@@ -16,8 +16,8 @@
 static
 ZSTD_ALLOW_POINTER_OVERFLOW_ATTR
 void ZSTD_fillDoubleHashTableForCDict(ZSTD_MatchState_t* ms,
-                              void const* end, ZSTD_dictTableLoadMethod_e dtlm)
-{
+                              void const* end, ZSTD_dictTableLoadMethod_e dtlm
+) {
     const ZSTD_compressionParameters* const cParams = &ms->cParams;
     U32* const hashLarge = ms->hashTable;
     U32  const hBitsL = cParams->hashLog + ZSTD_SHORT_CACHE_TAG_BITS;
@@ -54,8 +54,8 @@ void ZSTD_fillDoubleHashTableForCDict(ZSTD_MatchState_t* ms,
 static
 ZSTD_ALLOW_POINTER_OVERFLOW_ATTR
 void ZSTD_fillDoubleHashTableForCCtx(ZSTD_MatchState_t* ms,
-                              void const* end, ZSTD_dictTableLoadMethod_e dtlm)
-{
+                              void const* end, ZSTD_dictTableLoadMethod_e dtlm
+) {
     const ZSTD_compressionParameters* const cParams = &ms->cParams;
     U32* const hashLarge = ms->hashTable;
     U32  const hBitsL = cParams->hashLog;
@@ -90,8 +90,8 @@ void ZSTD_fillDoubleHashTableForCCtx(ZSTD_MatchState_t* ms,
 void ZSTD_fillDoubleHashTable(ZSTD_MatchState_t* ms,
                         const void* const end,
                         ZSTD_dictTableLoadMethod_e dtlm,
-                        ZSTD_tableFillPurpose_e tfp)
-{
+                        ZSTD_tableFillPurpose_e tfp
+) {
     if (tfp == ZSTD_tfp_forCDict) {
         ZSTD_fillDoubleHashTableForCDict(ms, end, dtlm);
     } else {
@@ -104,8 +104,8 @@ FORCE_INLINE_TEMPLATE
 ZSTD_ALLOW_POINTER_OVERFLOW_ATTR
 size_t ZSTD_compressBlock_doubleFast_noDict_generic(
         ZSTD_MatchState_t* ms, SeqStore_t* seqStore, U32 rep[ZSTD_REP_NUM],
-        void const* src, size_t srcSize, U32 const mls /* template */)
-{
+        void const* src, size_t srcSize, U32 const mls /* template */
+) {
     ZSTD_compressionParameters const* cParams = &ms->cParams;
     U32* const hashLong = ms->hashTable;
     const U32 hBitsL = cParams->hashLog;
@@ -328,8 +328,8 @@ ZSTD_ALLOW_POINTER_OVERFLOW_ATTR
 size_t ZSTD_compressBlock_doubleFast_dictMatchState_generic(
         ZSTD_MatchState_t* ms, SeqStore_t* seqStore, U32 rep[ZSTD_REP_NUM],
         void const* src, size_t srcSize,
-        U32 const mls /* template */)
-{
+        U32 const mls /* template */
+) {
     ZSTD_compressionParameters const* cParams = &ms->cParams;
     U32* const hashLong = ms->hashTable;
     const U32 hBitsL = cParams->hashLog;
@@ -567,8 +567,8 @@ ZSTD_GEN_DFAST_FN(dictMatchState, 7)
 
 size_t ZSTD_compressBlock_doubleFast(
         ZSTD_MatchState_t* ms, SeqStore_t* seqStore, U32 rep[ZSTD_REP_NUM],
-        void const* src, size_t srcSize)
-{
+        void const* src, size_t srcSize
+) {
     const U32 mls = ms->cParams.minMatch;
     switch(mls)
     {
@@ -587,8 +587,8 @@ size_t ZSTD_compressBlock_doubleFast(
 
 size_t ZSTD_compressBlock_doubleFast_dictMatchState(
         ZSTD_MatchState_t* ms, SeqStore_t* seqStore, U32 rep[ZSTD_REP_NUM],
-        void const* src, size_t srcSize)
-{
+        void const* src, size_t srcSize
+) {
     const U32 mls = ms->cParams.minMatch;
     switch(mls)
     {
@@ -610,8 +610,8 @@ ZSTD_ALLOW_POINTER_OVERFLOW_ATTR
 size_t ZSTD_compressBlock_doubleFast_extDict_generic(
         ZSTD_MatchState_t* ms, SeqStore_t* seqStore, U32 rep[ZSTD_REP_NUM],
         void const* src, size_t srcSize,
-        U32 const mls /* template */)
-{
+        U32 const mls /* template */
+) {
     ZSTD_compressionParameters const* cParams = &ms->cParams;
     U32* const hashLong = ms->hashTable;
     U32  const hBitsL = cParams->hashLog;
@@ -758,8 +758,8 @@ ZSTD_GEN_DFAST_FN(extDict, 7)
 
 size_t ZSTD_compressBlock_doubleFast_extDict(
         ZSTD_MatchState_t* ms, SeqStore_t* seqStore, U32 rep[ZSTD_REP_NUM],
-        void const* src, size_t srcSize)
-{
+        void const* src, size_t srcSize
+) {
     U32 const mls = ms->cParams.minMatch;
     switch(mls)
     {

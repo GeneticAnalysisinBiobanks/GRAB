@@ -12,8 +12,8 @@
 namespace boost { namespace math {
 
 template<typename Real>
-Real jacobi(unsigned n, Real alpha, Real beta, Real x)
-{
+Real jacobi(unsigned n, Real alpha, Real beta, Real x
+) {
     static_assert(!std::is_integral<Real>::value, "Jacobi polynomials do not work with integer arguments.");
 
     if (n == 0) {
@@ -40,8 +40,8 @@ Real jacobi(unsigned n, Real alpha, Real beta, Real x)
 }
 
 template<typename Real>
-Real jacobi_derivative(unsigned n, Real alpha, Real beta, Real x, unsigned k)
-{
+Real jacobi_derivative(unsigned n, Real alpha, Real beta, Real x, unsigned k
+) {
     if (k > n) {
         return Real(0);
     }
@@ -54,14 +54,14 @@ Real jacobi_derivative(unsigned n, Real alpha, Real beta, Real x, unsigned k)
 }
 
 template<typename Real>
-Real jacobi_prime(unsigned n, Real alpha, Real beta, Real x)
-{
+Real jacobi_prime(unsigned n, Real alpha, Real beta, Real x
+) {
     return jacobi_derivative<Real>(n, alpha, beta, x, 1);
 }
 
 template<typename Real>
-Real jacobi_double_prime(unsigned n, Real alpha, Real beta, Real x)
-{
+Real jacobi_double_prime(unsigned n, Real alpha, Real beta, Real x
+) {
     return jacobi_derivative<Real>(n, alpha, beta, x, 2);
 }
 

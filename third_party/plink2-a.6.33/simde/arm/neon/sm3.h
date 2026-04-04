@@ -64,8 +64,8 @@ simde_vsm3ss1q_u32(simde_uint32x4_t n, simde_uint32x4_t m, simde_uint32x4_t a) {
 SIMDE_FUNCTION_ATTRIBUTES
 simde_uint32x4_t
 simde_vsm3tt1aq_u32(simde_uint32x4_t a, simde_uint32x4_t b, simde_uint32x4_t c, const int imm2)
-  SIMDE_REQUIRE_CONSTANT_RANGE(imm2, 0, 3)
-{
+  SIMDE_REQUIRE_CONSTANT_RANGE(imm2, 0, 3
+) {
     simde_uint32x4_private
       r_,
       a_ = simde_uint32x4_to_private(a),
@@ -94,8 +94,8 @@ simde_vsm3tt1aq_u32(simde_uint32x4_t a, simde_uint32x4_t b, simde_uint32x4_t c, 
 SIMDE_FUNCTION_ATTRIBUTES
 simde_uint32x4_t
 simde_vsm3tt1bq_u32(simde_uint32x4_t a, simde_uint32x4_t b, simde_uint32x4_t c, const int imm2)
-  SIMDE_REQUIRE_CONSTANT_RANGE(imm2, 0, 3)
-{
+  SIMDE_REQUIRE_CONSTANT_RANGE(imm2, 0, 3
+) {
     simde_uint32x4_private
       r_,
       a_ = simde_uint32x4_to_private(a),
@@ -124,8 +124,8 @@ simde_vsm3tt1bq_u32(simde_uint32x4_t a, simde_uint32x4_t b, simde_uint32x4_t c, 
 SIMDE_FUNCTION_ATTRIBUTES
 simde_uint32x4_t
 simde_vsm3tt2aq_u32(simde_uint32x4_t a, simde_uint32x4_t b, simde_uint32x4_t c, const int imm2)
-  SIMDE_REQUIRE_CONSTANT_RANGE(imm2, 0, 3)
-{
+  SIMDE_REQUIRE_CONSTANT_RANGE(imm2, 0, 3
+) {
     simde_uint32x4_private
       r_,
       a_ = simde_uint32x4_to_private(a),
@@ -153,8 +153,8 @@ simde_vsm3tt2aq_u32(simde_uint32x4_t a, simde_uint32x4_t b, simde_uint32x4_t c, 
 SIMDE_FUNCTION_ATTRIBUTES
 simde_uint32x4_t
 simde_vsm3tt2bq_u32(simde_uint32x4_t a, simde_uint32x4_t b, simde_uint32x4_t c, const int imm2)
-  SIMDE_REQUIRE_CONSTANT_RANGE(imm2, 0, 3)
-{
+  SIMDE_REQUIRE_CONSTANT_RANGE(imm2, 0, 3
+) {
     simde_uint32x4_private
       r_,
       a_ = simde_uint32x4_to_private(a),

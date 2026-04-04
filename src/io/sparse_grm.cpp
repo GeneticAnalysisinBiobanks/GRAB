@@ -121,9 +121,36 @@ SparseGRM SparseGRM::fromGCTA(const std::string& spFile,
       throw std::runtime_error(
           "SparseGRM::fromGCTA: " + grmIdPath(spFile) +
           " not found and no .fam fallback provided");
-    infoMsg("--sp-grm-plink2: %s not found; assuming indices match .fam order",
+    infoMsg("--sp-grm-plink2: %s not found; .grm.id assumed identical to .fam order",
             grmIdPath(spFile).c_str());
     fileIIDs = famIIDs;
+  } else {
+    // .grm.id found — validate overlap with subjectOrder (.fam)
+    uint32_t nMatched = 0;
+    for (const auto& iid : fileIIDs)
+      if (idMap.count(iid)) ++nMatched;
+
+    if (nMatched == 0 && !fileIIDs.empty())
+      throw std::runtime_error(
+          "SparseGRM::fromGCTA: .grm.id (" + grmIdPath(spFile) +
+          ") has " + std::to_string(fileIIDs.size()) +
+          " subjects but none match .fam (" +
+          std::to_string(subjectOrder.size()) + " subjects)");
+
+    if (nMatched == subjectOrder.size() && fileIIDs.size() == subjectOrder.size()) {
+      // Check if order is identical
+      bool identical = true;
+      for (size_t i = 0; i < fileIIDs.size(); ++i)
+        if (fileIIDs[i] != subjectOrder[i]) { identical = false; break; }
+      if (identical)
+        infoMsg("--sp-grm-plink2: .grm.id identical to .fam (%u subjects)", nMatched);
+      else
+        infoMsg("--sp-grm-plink2: .grm.id has %u/%zu subjects matching .fam (reordered)",
+                nMatched, fileIIDs.size());
+    } else {
+      infoMsg("--sp-grm-plink2: .grm.id has %zu subjects, %u match .fam (%zu subjects)",
+              fileIIDs.size(), nMatched, subjectOrder.size());
+    }
   }
 
   // Map file-index → canonical index (UINT32_MAX if not in subjectOrder)

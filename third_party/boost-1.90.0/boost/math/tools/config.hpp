@@ -539,22 +539,22 @@ namespace tools
 {
 
 template <class T>
-inline T max BOOST_MATH_PREVENT_MACRO_SUBSTITUTION(T a, T b, T c) BOOST_MATH_NOEXCEPT(T)
-{
+inline T max BOOST_MATH_PREVENT_MACRO_SUBSTITUTION(T a, T b, T c) BOOST_MATH_NOEXCEPT(T
+) {
    return (std::max)((std::max)(a, b), c);
 }
 
 template <class T>
-inline T max BOOST_MATH_PREVENT_MACRO_SUBSTITUTION(T a, T b, T c, T d) BOOST_MATH_NOEXCEPT(T)
-{
+inline T max BOOST_MATH_PREVENT_MACRO_SUBSTITUTION(T a, T b, T c, T d) BOOST_MATH_NOEXCEPT(T
+) {
    return (std::max)((std::max)(a, b), (std::max)(c, d));
 }
 
 } // namespace tools
 
 template <class T>
-void suppress_unused_variable_warning(const T&) BOOST_MATH_NOEXCEPT(T)
-{
+void suppress_unused_variable_warning(const T&) BOOST_MATH_NOEXCEPT(T
+) {
 }
 
 namespace detail{

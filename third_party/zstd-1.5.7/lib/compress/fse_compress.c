@@ -67,8 +67,8 @@
  */
 size_t FSE_buildCTable_wksp(FSE_CTable* ct,
                       const short* normalizedCounter, unsigned maxSymbolValue, unsigned tableLog,
-                            void* workSpace, size_t wkspSize)
-{
+                            void* workSpace, size_t wkspSize
+) {
     U32 const tableSize = 1 << tableLog;
     U32 const tableMask = tableSize - 1;
     void* const ptr = ct;
@@ -220,8 +220,8 @@ size_t FSE_buildCTable_wksp(FSE_CTable* ct,
 /*-**************************************************************
 *  FSE NCount encoding
 ****************************************************************/
-size_t FSE_NCountWriteBound(unsigned maxSymbolValue, unsigned tableLog)
-{
+size_t FSE_NCountWriteBound(unsigned maxSymbolValue, unsigned tableLog
+) {
     size_t const maxHeaderSize = (((maxSymbolValue+1) * tableLog
                                    + 4 /* bitCount initialized at 4 */
                                    + 2 /* first two symbols may use one additional bit each */) / 8)
@@ -233,8 +233,8 @@ size_t FSE_NCountWriteBound(unsigned maxSymbolValue, unsigned tableLog)
 static size_t
 FSE_writeNCount_generic (void* header, size_t headerBufferSize,
                    const short* normalizedCounter, unsigned maxSymbolValue, unsigned tableLog,
-                         unsigned writeIsSafe)
-{
+                         unsigned writeIsSafe
+) {
     BYTE* const ostart = (BYTE*) header;
     BYTE* out = ostart;
     BYTE* const oend = ostart + headerBufferSize;
@@ -328,8 +328,8 @@ FSE_writeNCount_generic (void* header, size_t headerBufferSize,
 
 
 size_t FSE_writeNCount (void* buffer, size_t bufferSize,
-                  const short* normalizedCounter, unsigned maxSymbolValue, unsigned tableLog)
-{
+                  const short* normalizedCounter, unsigned maxSymbolValue, unsigned tableLog
+) {
     if (tableLog > FSE_MAX_TABLELOG) return ERROR(tableLog_tooLarge);   /* Unsupported */
     if (tableLog < FSE_MIN_TABLELOG) return ERROR(GENERIC);   /* Unsupported */
 
@@ -345,8 +345,8 @@ size_t FSE_writeNCount (void* buffer, size_t bufferSize,
 ****************************************************************/
 
 /* provides the minimum logSize to safely represent a distribution */
-static unsigned FSE_minTableLog(size_t srcSize, unsigned maxSymbolValue)
-{
+static unsigned FSE_minTableLog(size_t srcSize, unsigned maxSymbolValue
+) {
     U32 minBitsSrc = ZSTD_highbit32((U32)(srcSize)) + 1;
     U32 minBitsSymbols = ZSTD_highbit32(maxSymbolValue) + 2;
     U32 minBits = minBitsSrc < minBitsSymbols ? minBitsSrc : minBitsSymbols;
@@ -354,8 +354,8 @@ static unsigned FSE_minTableLog(size_t srcSize, unsigned maxSymbolValue)
     return minBits;
 }
 
-unsigned FSE_optimalTableLog_internal(unsigned maxTableLog, size_t srcSize, unsigned maxSymbolValue, unsigned minus)
-{
+unsigned FSE_optimalTableLog_internal(unsigned maxTableLog, size_t srcSize, unsigned maxSymbolValue, unsigned minus
+) {
     U32 maxBitsSrc = ZSTD_highbit32((U32)(srcSize - 1)) - minus;
     U32 tableLog = maxTableLog;
     U32 minBits = FSE_minTableLog(srcSize, maxSymbolValue);
@@ -368,16 +368,16 @@ unsigned FSE_optimalTableLog_internal(unsigned maxTableLog, size_t srcSize, unsi
     return tableLog;
 }
 
-unsigned FSE_optimalTableLog(unsigned maxTableLog, size_t srcSize, unsigned maxSymbolValue)
-{
+unsigned FSE_optimalTableLog(unsigned maxTableLog, size_t srcSize, unsigned maxSymbolValue
+) {
     return FSE_optimalTableLog_internal(maxTableLog, srcSize, maxSymbolValue, 2);
 }
 
 /* Secondary normalization method.
    To be used when primary method fails. */
 
-static size_t FSE_normalizeM2(short* norm, U32 tableLog, const unsigned* count, size_t total, U32 maxSymbolValue, short lowProbCount)
-{
+static size_t FSE_normalizeM2(short* norm, U32 tableLog, const unsigned* count, size_t total, U32 maxSymbolValue, short lowProbCount
+) {
     short const NOT_YET_ASSIGNED = -2;
     U32 s;
     U32 distributed = 0;
@@ -464,8 +464,8 @@ static size_t FSE_normalizeM2(short* norm, U32 tableLog, const unsigned* count, 
 
 size_t FSE_normalizeCount (short* normalizedCounter, unsigned tableLog,
                            const unsigned* count, size_t total,
-                           unsigned maxSymbolValue, unsigned useLowProbCount)
-{
+                           unsigned maxSymbolValue, unsigned useLowProbCount
+) {
     /* Sanity checks */
     if (tableLog==0) tableLog = FSE_DEFAULT_TABLELOG;
     if (tableLog < FSE_MIN_TABLELOG) return ERROR(GENERIC);   /* Unsupported size */
@@ -525,8 +525,8 @@ size_t FSE_normalizeCount (short* normalizedCounter, unsigned tableLog,
 }
 
 /* fake FSE_CTable, for rle input (always same symbol) */
-size_t FSE_buildCTable_rle (FSE_CTable* ct, BYTE symbolValue)
-{
+size_t FSE_buildCTable_rle (FSE_CTable* ct, BYTE symbolValue
+) {
     void* ptr = ct;
     U16* tableU16 = ( (U16*) ptr) + 2;
     void* FSCTptr = (U32*)ptr + 2;
@@ -550,8 +550,8 @@ size_t FSE_buildCTable_rle (FSE_CTable* ct, BYTE symbolValue)
 
 static size_t FSE_compress_usingCTable_generic (void* dst, size_t dstSize,
                            const void* src, size_t srcSize,
-                           const FSE_CTable* ct, const unsigned fast)
-{
+                           const FSE_CTable* ct, const unsigned fast
+) {
     const BYTE* const istart = (const BYTE*) src;
     const BYTE* const iend = istart + srcSize;
     const BYTE* ip=iend;
@@ -609,8 +609,8 @@ static size_t FSE_compress_usingCTable_generic (void* dst, size_t dstSize,
 
 size_t FSE_compress_usingCTable (void* dst, size_t dstSize,
                            const void* src, size_t srcSize,
-                           const FSE_CTable* ct)
-{
+                           const FSE_CTable* ct
+) {
     unsigned const fast = (dstSize >= FSE_BLOCKBOUND(srcSize));
 
     if (fast)

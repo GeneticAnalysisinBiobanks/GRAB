@@ -71,8 +71,8 @@ static inline int64_t hts_leaps_to_year_start(int64_t year) {
     return year / 4 - year / 100 + year / 400;
 }
 
-static inline int hts_time_normalise_tm(struct tm *t)
-{
+static inline int hts_time_normalise_tm(struct tm *t
+) {
     const int days_per_mon[2][12] = {
         { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 },
         { 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 }
@@ -134,8 +134,8 @@ static inline int hts_time_normalise_tm(struct tm *t)
  *  it returns -1 and sets errno to EOVERFLOW.
  */
 
-static inline time_t hts_time_gm(struct tm *target)
-{
+static inline time_t hts_time_gm(struct tm *target
+) {
     int month_start[2][12] = {
         { 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334 },
         { 0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335 }

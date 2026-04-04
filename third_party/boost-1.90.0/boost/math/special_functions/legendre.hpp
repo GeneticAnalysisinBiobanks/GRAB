@@ -25,8 +25,8 @@ namespace math{
 // Recurrence relation for legendre P and Q polynomials:
 template <class T1, class T2, class T3>
 inline typename tools::promote_args<T1, T2, T3>::type
-   legendre_next(unsigned l, T1 x, T2 Pl, T3 Plm1)
-{
+   legendre_next(unsigned l, T1 x, T2 Pl, T3 Plm1
+) {
    typedef typename tools::promote_args<T1, T2, T3>::type result_type;
    return ((2 * l + 1) * result_type(x) * result_type(Pl) - l * result_type(Plm1)) / (l + 1);
 }
@@ -35,8 +35,8 @@ namespace detail{
 
 // Implement Legendre P and Q polynomials via recurrence:
 template <class T, class Policy>
-T legendre_imp(unsigned l, T x, const Policy& pol, bool second = false)
-{
+T legendre_imp(unsigned l, T x, const Policy& pol, bool second = false
+) {
    static const char* function = "boost::math::legrendre_p<%1%>(unsigned, %1%)";
    // Error handling:
    if((x < -1) || (x > 1))
@@ -76,8 +76,8 @@ T legendre_p_prime_imp(unsigned l, T x, const Policy& pol, T* Pn
 #else
    = nullptr
 #endif
-)
-{
+
+) {
    static const char* function = "boost::math::legrendre_p_prime<%1%>(unsigned, %1%)";
    // Error handling:
    if ((x < -1) || (x > 1))
@@ -144,8 +144,8 @@ struct legendre_p_zero_func
 };
 
 template <class T, class Policy>
-std::vector<T> legendre_p_zeros_imp(int n, const Policy& pol)
-{
+std::vector<T> legendre_p_zeros_imp(int n, const Policy& pol
+) {
     using std::cos;
     using std::sin;
     using std::ceil;
@@ -215,8 +215,8 @@ std::vector<T> legendre_p_zeros_imp(int n, const Policy& pol)
 
 template <class T, class Policy>
 inline typename std::enable_if<policies::is_policy<Policy>::value, typename tools::promote_args<T>::type>::type
-   legendre_p(int l, T x, const Policy& pol)
-{
+   legendre_p(int l, T x, const Policy& pol
+) {
    typedef typename tools::promote_args<T>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
    static const char* function = "boost::math::legendre_p<%1%>(unsigned, %1%)";
@@ -228,8 +228,8 @@ inline typename std::enable_if<policies::is_policy<Policy>::value, typename tool
 
 template <class T, class Policy>
 inline typename std::enable_if<policies::is_policy<Policy>::value, typename tools::promote_args<T>::type>::type
-   legendre_p_prime(int l, T x, const Policy& pol)
-{
+   legendre_p_prime(int l, T x, const Policy& pol
+) {
    typedef typename tools::promote_args<T>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
    static const char* function = "boost::math::legendre_p_prime<%1%>(unsigned, %1%)";
@@ -240,21 +240,21 @@ inline typename std::enable_if<policies::is_policy<Policy>::value, typename tool
 
 template <class T>
 inline typename tools::promote_args<T>::type
-   legendre_p(int l, T x)
-{
+   legendre_p(int l, T x
+) {
    return boost::math::legendre_p(l, x, policies::policy<>());
 }
 
 template <class T>
 inline typename tools::promote_args<T>::type
-   legendre_p_prime(int l, T x)
-{
+   legendre_p_prime(int l, T x
+) {
    return boost::math::legendre_p_prime(l, x, policies::policy<>());
 }
 
 template <class T, class Policy>
-inline std::vector<T> legendre_p_zeros(int l, const Policy& pol)
-{
+inline std::vector<T> legendre_p_zeros(int l, const Policy& pol
+) {
     if(l < 0)
         return detail::legendre_p_zeros_imp<T>(-l-1, pol);
 
@@ -263,15 +263,15 @@ inline std::vector<T> legendre_p_zeros(int l, const Policy& pol)
 
 
 template <class T>
-inline std::vector<T> legendre_p_zeros(int l)
-{
+inline std::vector<T> legendre_p_zeros(int l
+) {
    return boost::math::legendre_p_zeros<T>(l, policies::policy<>());
 }
 
 template <class T, class Policy>
 inline typename std::enable_if<policies::is_policy<Policy>::value, typename tools::promote_args<T>::type>::type
-   legendre_q(unsigned l, T x, const Policy& pol)
-{
+   legendre_q(unsigned l, T x, const Policy& pol
+) {
    typedef typename tools::promote_args<T>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
    return policies::checked_narrowing_cast<result_type, Policy>(detail::legendre_imp(l, static_cast<value_type>(x), pol, true), "boost::math::legendre_q<%1%>(unsigned, %1%)");
@@ -279,16 +279,16 @@ inline typename std::enable_if<policies::is_policy<Policy>::value, typename tool
 
 template <class T>
 inline typename tools::promote_args<T>::type
-   legendre_q(unsigned l, T x)
-{
+   legendre_q(unsigned l, T x
+) {
    return boost::math::legendre_q(l, x, policies::policy<>());
 }
 
 // Recurrence for associated polynomials:
 template <class T1, class T2, class T3>
 inline typename tools::promote_args<T1, T2, T3>::type
-   legendre_next(unsigned l, unsigned m, T1 x, T2 Pl, T3 Plm1)
-{
+   legendre_next(unsigned l, unsigned m, T1 x, T2 Pl, T3 Plm1
+) {
    typedef typename tools::promote_args<T1, T2, T3>::type result_type;
    return ((2 * l + 1) * result_type(x) * result_type(Pl) - (l + m) * result_type(Plm1)) / (l + 1 - m);
 }
@@ -296,8 +296,8 @@ inline typename tools::promote_args<T1, T2, T3>::type
 namespace detail{
 // Legendre P associated polynomial:
 template <class T, class Policy>
-T legendre_p_imp(int l, int m, T x, T sin_theta_power, const Policy& pol)
-{
+T legendre_p_imp(int l, int m, T x, T sin_theta_power, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    // Error handling:
    if((x < -1) || (x > 1))
@@ -349,8 +349,8 @@ T legendre_p_imp(int l, int m, T x, T sin_theta_power, const Policy& pol)
 }
 
 template <class T, class Policy>
-inline T legendre_p_imp(int l, int m, T x, const Policy& pol)
-{
+inline T legendre_p_imp(int l, int m, T x, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    // TODO: we really could use that mythical "pow1p" function here:
    return legendre_p_imp(l, m, x, static_cast<T>(pow(1 - x*x, T(abs(m))/2)), pol);
@@ -360,8 +360,8 @@ inline T legendre_p_imp(int l, int m, T x, const Policy& pol)
 
 template <class T, class Policy>
 inline typename tools::promote_args<T>::type
-   legendre_p(int l, int m, T x, const Policy& pol)
-{
+   legendre_p(int l, int m, T x, const Policy& pol
+) {
    typedef typename tools::promote_args<T>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
    return policies::checked_narrowing_cast<result_type, Policy>(detail::legendre_p_imp(l, m, static_cast<value_type>(x), pol), "boost::math::legendre_p<%1%>(int, int, %1%)");
@@ -369,8 +369,8 @@ inline typename tools::promote_args<T>::type
 
 template <class T>
 inline typename tools::promote_args<T>::type
-   legendre_p(int l, int m, T x)
-{
+   legendre_p(int l, int m, T x
+) {
    return boost::math::legendre_p(l, m, x, policies::policy<>());
 }
 

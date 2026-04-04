@@ -18,8 +18,8 @@ namespace boost { namespace math { namespace statistics {
 template<class RandomAccessContainer>
 auto anderson_darling_normality_statistic(RandomAccessContainer const & v,
                                           typename RandomAccessContainer::value_type mu = std::numeric_limits<typename RandomAccessContainer::value_type>::quiet_NaN(),
-                                          typename RandomAccessContainer::value_type sd = std::numeric_limits<typename RandomAccessContainer::value_type>::quiet_NaN())
-{
+                                          typename RandomAccessContainer::value_type sd = std::numeric_limits<typename RandomAccessContainer::value_type>::quiet_NaN()
+) {
     using Real = typename RandomAccessContainer::value_type;
     using std::log;
     using std::sqrt;

@@ -23,15 +23,15 @@
 
 /* custom memory allocation functions */
 
-MEM_STATIC void* ZSTD_customMalloc(size_t size, ZSTD_customMem customMem)
-{
+MEM_STATIC void* ZSTD_customMalloc(size_t size, ZSTD_customMem customMem
+) {
     if (customMem.customAlloc)
         return customMem.customAlloc(customMem.opaque, size);
     return ZSTD_malloc(size);
 }
 
-MEM_STATIC void* ZSTD_customCalloc(size_t size, ZSTD_customMem customMem)
-{
+MEM_STATIC void* ZSTD_customCalloc(size_t size, ZSTD_customMem customMem
+) {
     if (customMem.customAlloc) {
         /* calloc implemented as malloc+memset;
          * not as efficient as calloc, but next best guess for custom malloc */
@@ -42,8 +42,8 @@ MEM_STATIC void* ZSTD_customCalloc(size_t size, ZSTD_customMem customMem)
     return ZSTD_calloc(1, size);
 }
 
-MEM_STATIC void ZSTD_customFree(void* ptr, ZSTD_customMem customMem)
-{
+MEM_STATIC void ZSTD_customFree(void* ptr, ZSTD_customMem customMem
+) {
     if (ptr!=NULL) {
         if (customMem.customFree)
             customMem.customFree(customMem.opaque, ptr);

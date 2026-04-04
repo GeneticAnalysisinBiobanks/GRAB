@@ -26,8 +26,8 @@ unsigned HIST_isError(size_t code) { return ERR_isError(code); }
 /*-**************************************************************
  *  Histogram functions
  ****************************************************************/
-void HIST_add(unsigned* count, const void* src, size_t srcSize)
-{
+void HIST_add(unsigned* count, const void* src, size_t srcSize
+) {
     const BYTE* ip = (const BYTE*)src;
     const BYTE* const end = ip + srcSize;
 
@@ -37,8 +37,8 @@ void HIST_add(unsigned* count, const void* src, size_t srcSize)
 }
 
 unsigned HIST_count_simple(unsigned* count, unsigned* maxSymbolValuePtr,
-                           const void* src, size_t srcSize)
-{
+                           const void* src, size_t srcSize
+) {
     const BYTE* ip = (const BYTE*)src;
     const BYTE* const end = ip + srcSize;
     unsigned maxSymbolValue = *maxSymbolValuePtr;
@@ -77,8 +77,8 @@ static size_t HIST_count_parallel_wksp(
                                 unsigned* count, unsigned* maxSymbolValuePtr,
                                 const void* source, size_t sourceSize,
                                 HIST_checkInput_e check,
-                                U32* const workSpace)
-{
+                                U32* const workSpace
+) {
     const BYTE* ip = (const BYTE*)source;
     const BYTE* const iend = ip+sourceSize;
     size_t const countSize = (*maxSymbolValuePtr + 1) * sizeof(*count);
@@ -149,8 +149,8 @@ static size_t HIST_count_parallel_wksp(
  */
 size_t HIST_countFast_wksp(unsigned* count, unsigned* maxSymbolValuePtr,
                           const void* source, size_t sourceSize,
-                          void* workSpace, size_t workSpaceSize)
-{
+                          void* workSpace, size_t workSpaceSize
+) {
     if (sourceSize < 1500) /* heuristic threshold */
         return HIST_count_simple(count, maxSymbolValuePtr, source, sourceSize);
     if ((size_t)workSpace & 3) return ERROR(GENERIC);  /* must be aligned on 4-bytes boundaries */
@@ -163,8 +163,8 @@ size_t HIST_countFast_wksp(unsigned* count, unsigned* maxSymbolValuePtr,
  * `workSpace` size must be table of >= HIST_WKSP_SIZE_U32 unsigned */
 size_t HIST_count_wksp(unsigned* count, unsigned* maxSymbolValuePtr,
                        const void* source, size_t sourceSize,
-                       void* workSpace, size_t workSpaceSize)
-{
+                       void* workSpace, size_t workSpaceSize
+) {
     if ((size_t)workSpace & 3) return ERROR(GENERIC);  /* must be aligned on 4-bytes boundaries */
     if (workSpaceSize < HIST_WKSP_SIZE) return ERROR(workSpace_tooSmall);
     if (*maxSymbolValuePtr < 255)
@@ -176,15 +176,15 @@ size_t HIST_count_wksp(unsigned* count, unsigned* maxSymbolValuePtr,
 #ifndef ZSTD_NO_UNUSED_FUNCTIONS
 /* fast variant (unsafe : won't check if src contains values beyond count[] limit) */
 size_t HIST_countFast(unsigned* count, unsigned* maxSymbolValuePtr,
-                     const void* source, size_t sourceSize)
-{
+                     const void* source, size_t sourceSize
+) {
     unsigned tmpCounters[HIST_WKSP_SIZE_U32];
     return HIST_countFast_wksp(count, maxSymbolValuePtr, source, sourceSize, tmpCounters, sizeof(tmpCounters));
 }
 
 size_t HIST_count(unsigned* count, unsigned* maxSymbolValuePtr,
-                 const void* src, size_t srcSize)
-{
+                 const void* src, size_t srcSize
+) {
     unsigned tmpCounters[HIST_WKSP_SIZE_U32];
     return HIST_count_wksp(count, maxSymbolValuePtr, src, srcSize, tmpCounters, sizeof(tmpCounters));
 }

@@ -35,8 +35,8 @@ private:
 };
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline T check_range_result(const T& x, const Policy& pol, const char* function)
-{
+BOOST_MATH_GPU_ENABLED inline T check_range_result(const T& x, const Policy& pol, const char* function
+) {
    if((x >= 0) && (x < tools::min_value<T>()))
    {
       return policies::raise_underflow_error<T>(function, nullptr, pol);
@@ -53,8 +53,8 @@ BOOST_MATH_GPU_ENABLED inline T check_range_result(const T& x, const Policy& pol
 }
 
 template <class Dist>
-BOOST_MATH_GPU_ENABLED typename Dist::value_type generic_quantile(const Dist& dist, const typename Dist::value_type& p, const typename Dist::value_type& guess, bool comp, const char* function)
-{
+BOOST_MATH_GPU_ENABLED typename Dist::value_type generic_quantile(const Dist& dist, const typename Dist::value_type& p, const typename Dist::value_type& guess, bool comp, const char* function
+) {
    using value_type = typename Dist::value_type;
    using policy_type = typename Dist::policy_type;
    using forwarding_policy = typename policies::normalise<

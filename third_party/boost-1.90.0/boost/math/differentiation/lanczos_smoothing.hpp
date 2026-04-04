@@ -185,8 +185,8 @@ std::vector<Real> interior_velocity_filter(std::size_t n, std::size_t p) {
 }
 
 template <class Real>
-std::vector<Real> boundary_velocity_filter(std::size_t n, std::size_t p, int64_t s)
-{
+std::vector<Real> boundary_velocity_filter(std::size_t n, std::size_t p, int64_t s
+) {
     std::vector<Real> coeffs(p+1, std::numeric_limits<Real>::quiet_NaN());
     Real sn = Real(s) / Real(n);
     auto dlp = discrete_legendre<Real>(n, sn);
@@ -219,8 +219,8 @@ std::vector<Real> boundary_velocity_filter(std::size_t n, std::size_t p, int64_t
 }
 
 template <class Real>
-std::vector<Real> acceleration_filter(std::size_t n, std::size_t p, int64_t s)
-{
+std::vector<Real> acceleration_filter(std::size_t n, std::size_t p, int64_t s
+) {
     BOOST_MATH_ASSERT_MSG(p <= 2*n, "Approximation order must be <= 2*n");
     BOOST_MATH_ASSERT_MSG(p > 2, "Approximation order must be > 2");
 

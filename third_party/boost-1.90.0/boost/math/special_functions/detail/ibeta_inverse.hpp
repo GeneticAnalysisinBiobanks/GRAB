@@ -54,8 +54,8 @@ private:
 // Section 2.
 //
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T temme_method_1_ibeta_inverse(T a, T b, T z, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED T temme_method_1_ibeta_inverse(T a, T b, T z, const Policy& pol
+) {
    BOOST_MATH_STD_USING // ADL of std names
 
    const T r2 = sqrt(T(2));
@@ -140,8 +140,8 @@ BOOST_MATH_GPU_ENABLED T temme_method_1_ibeta_inverse(T a, T b, T z, const Polic
 // Section 3.
 //
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T temme_method_2_ibeta_inverse(T /*a*/, T /*b*/, T z, T r, T theta, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED T temme_method_2_ibeta_inverse(T /*a*/, T /*b*/, T z, T r, T theta, const Policy& pol
+) {
    BOOST_MATH_STD_USING // ADL of std names
 
    //
@@ -331,8 +331,8 @@ BOOST_MATH_GPU_ENABLED T temme_method_2_ibeta_inverse(T /*a*/, T /*b*/, T z, T r
 // Section 4.
 //
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T temme_method_3_ibeta_inverse(T a, T b, T p, T q, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED T temme_method_3_ibeta_inverse(T a, T b, T p, T q, const Policy& pol
+) {
    BOOST_MATH_STD_USING // ADL of std names
 
 
@@ -474,8 +474,8 @@ private:
 };
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T ibeta_inv_imp(T a, T b, T p, T q, const Policy& pol, T* py)
-{
+BOOST_MATH_GPU_ENABLED T ibeta_inv_imp(T a, T b, T p, T q, const Policy& pol, T* py
+) {
    BOOST_MATH_STD_USING  // For ADL of math functions.
 
    //
@@ -998,8 +998,8 @@ BOOST_MATH_GPU_ENABLED T ibeta_inv_imp(T a, T b, T p, T q, const Policy& pol, T*
 
 template <class T1, class T2, class T3, class T4, class Policy>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2, T3, T4>::type
-   ibeta_inv(T1 a, T2 b, T3 p, T4* py, const Policy& pol)
-{
+   ibeta_inv(T1 a, T2 b, T3 p, T4* py, const Policy& pol
+) {
    constexpr auto function = "boost::math::ibeta_inv<%1%>(%1%,%1%,%1%)";
    BOOST_FPU_EXCEPTION_GUARD
    typedef typename tools::promote_args<T1, T2, T3, T4>::type result_type;
@@ -1033,31 +1033,31 @@ BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2, T3, T4>::type
 
 template <class T1, class T2, class T3, class T4>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2, T3, T4>::type
-   ibeta_inv(T1 a, T2 b, T3 p, T4* py)
-{
+   ibeta_inv(T1 a, T2 b, T3 p, T4* py
+) {
    return ibeta_inv(a, b, p, py, policies::policy<>());
 }
 
 template <class T1, class T2, class T3>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2, T3>::type
-   ibeta_inv(T1 a, T2 b, T3 p)
-{
+   ibeta_inv(T1 a, T2 b, T3 p
+) {
    typedef typename tools::promote_args<T1, T2, T3>::type result_type;
    return ibeta_inv(a, b, p, static_cast<result_type*>(nullptr), policies::policy<>());
 }
 
 template <class T1, class T2, class T3, class Policy>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2, T3>::type
-   ibeta_inv(T1 a, T2 b, T3 p, const Policy& pol)
-{
+   ibeta_inv(T1 a, T2 b, T3 p, const Policy& pol
+) {
    typedef typename tools::promote_args<T1, T2, T3>::type result_type;
    return ibeta_inv(a, b, p, static_cast<result_type*>(nullptr), pol);
 }
 
 template <class T1, class T2, class T3, class T4, class Policy>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2, T3, T4>::type
-   ibetac_inv(T1 a, T2 b, T3 q, T4* py, const Policy& pol)
-{
+   ibetac_inv(T1 a, T2 b, T3 q, T4* py, const Policy& pol
+) {
    constexpr auto function = "boost::math::ibetac_inv<%1%>(%1%,%1%,%1%)";
    BOOST_FPU_EXCEPTION_GUARD
    typedef typename tools::promote_args<T1, T2, T3, T4>::type result_type;
@@ -1091,23 +1091,23 @@ BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2, T3, T4>::type
 
 template <class T1, class T2, class T3, class T4>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2, T3, T4>::type
-   ibetac_inv(T1 a, T2 b, T3 q, T4* py)
-{
+   ibetac_inv(T1 a, T2 b, T3 q, T4* py
+) {
    return ibetac_inv(a, b, q, py, policies::policy<>());
 }
 
 template <class RT1, class RT2, class RT3>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<RT1, RT2, RT3>::type
-   ibetac_inv(RT1 a, RT2 b, RT3 q)
-{
+   ibetac_inv(RT1 a, RT2 b, RT3 q
+) {
    typedef typename tools::promote_args<RT1, RT2, RT3>::type result_type;
    return ibetac_inv(a, b, q, static_cast<result_type*>(nullptr), policies::policy<>());
 }
 
 template <class RT1, class RT2, class RT3, class Policy>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<RT1, RT2, RT3>::type
-   ibetac_inv(RT1 a, RT2 b, RT3 q, const Policy& pol)
-{
+   ibetac_inv(RT1 a, RT2 b, RT3 q, const Policy& pol
+) {
    typedef typename tools::promote_args<RT1, RT2, RT3>::type result_type;
    return ibetac_inv(a, b, q, static_cast<result_type*>(nullptr), pol);
 }

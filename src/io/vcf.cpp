@@ -159,8 +159,8 @@ VcfData::VcfData(
   : m_vcfFile(std::move(vcfFile)),
     m_nSubjInFile(nSamplesInFile),
     m_nSubjUsed(nUsed),
-    m_usedMask(usedMask)
-{
+    m_usedMask(usedMask
+) {
   m_allUsed = (nUsed == nSamplesInFile);
 
   // ---- First pass: read all variant metadata ----
@@ -299,8 +299,8 @@ struct VcfCursor::Impl {
 
 
 VcfCursor::VcfCursor(const VcfData& parent)
-  : m_parent(parent), m_impl(std::make_unique<Impl>())
-{
+  : m_parent(parent), m_impl(std::make_unique<Impl>()
+) {
   auto& impl = *m_impl;
   impl.nSamplesInFile = parent.nSubjInFile();
   impl.nUsed          = parent.nSubjUsed();
@@ -350,8 +350,8 @@ void VcfCursor::getGenotypes(
     double& maf,
     double& mac,
     std::vector<uint32_t>& indexForMissing,
-    bool exactHwe)
-{
+    bool exactHwe
+) {
   auto& impl = *m_impl;
   const uint32_t nUsed = impl.nUsed;
   indexForMissing.clear();
@@ -449,8 +449,8 @@ void VcfCursor::getGenotypes(
 
 void VcfCursor::getGenotypesSimple(
     uint64_t gIndex,
-    Eigen::Ref<Eigen::VectorXd> out)
-{
+    Eigen::Ref<Eigen::VectorXd> out
+) {
   auto& impl = *m_impl;
 
   if (!impl.advanceTo(gIndex))

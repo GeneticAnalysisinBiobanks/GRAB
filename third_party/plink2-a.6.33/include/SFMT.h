@@ -223,8 +223,8 @@ inline static uint64_t sfmt_genrand_uint64(sfmt_t * sfmt) {
  * @param v 32-bit unsigned integer
  * @return double on [0,1]-real-interval
  */
-inline static double sfmt_to_real1(uint32_t v)
-{
+inline static double sfmt_to_real1(uint32_t v
+) {
     return v * (1.0/4294967295.0);
     /* divided by 2^32-1 */
 }
@@ -234,8 +234,8 @@ inline static double sfmt_to_real1(uint32_t v)
  * @param sfmt SFMT internal state
  * @return double on [0,1]-real-interval
  */
-inline static double sfmt_genrand_real1(sfmt_t * sfmt)
-{
+inline static double sfmt_genrand_real1(sfmt_t * sfmt
+) {
     return sfmt_to_real1(sfmt_genrand_uint32(sfmt));
 }
 
@@ -244,8 +244,8 @@ inline static double sfmt_genrand_real1(sfmt_t * sfmt)
  * @param v 32-bit unsigned integer
  * @return double on [0,1)-real-interval
  */
-inline static double sfmt_to_real2(uint32_t v)
-{
+inline static double sfmt_to_real2(uint32_t v
+) {
     return v * (1.0/4294967296.0);
     /* divided by 2^32 */
 }
@@ -255,8 +255,8 @@ inline static double sfmt_to_real2(uint32_t v)
  * @param sfmt SFMT internal state
  * @return double on [0,1)-real-interval
  */
-inline static double sfmt_genrand_real2(sfmt_t * sfmt)
-{
+inline static double sfmt_genrand_real2(sfmt_t * sfmt
+) {
     return sfmt_to_real2(sfmt_genrand_uint32(sfmt));
 }
 
@@ -265,8 +265,8 @@ inline static double sfmt_genrand_real2(sfmt_t * sfmt)
  * @param v 32-bit unsigned integer
  * @return double on (0,1)-real-interval
  */
-inline static double sfmt_to_real3(uint32_t v)
-{
+inline static double sfmt_to_real3(uint32_t v
+) {
 #ifdef __cplusplus
   return (static_cast<double>(v) + 0.5)*(1.0/4294967296.0);
 #else
@@ -280,8 +280,8 @@ inline static double sfmt_to_real3(uint32_t v)
  * @param sfmt SFMT internal state
  * @return double on (0,1)-real-interval
  */
-inline static double sfmt_genrand_real3(sfmt_t * sfmt)
-{
+inline static double sfmt_genrand_real3(sfmt_t * sfmt
+) {
     return sfmt_to_real3(sfmt_genrand_uint32(sfmt));
 }
 
@@ -291,8 +291,8 @@ inline static double sfmt_genrand_real3(sfmt_t * sfmt)
  * @param v 64-bit unsigned integer
  * @return double on [0,1)-real-interval with 53-bit resolution.
  */
-inline static double sfmt_to_res53(uint64_t v)
-{
+inline static double sfmt_to_res53(uint64_t v
+) {
     return v * 0.0000000000000000000542101086242752217003726400434970855712890625;
 }
 
@@ -301,8 +301,8 @@ inline static double sfmt_to_res53(uint64_t v)
  * @param sfmt SFMT internal state
  * @return double on [0,1) with 53-bit resolution
  */
-inline static double sfmt_genrand_res53(sfmt_t * sfmt)
-{
+inline static double sfmt_genrand_res53(sfmt_t * sfmt
+) {
     return sfmt_to_res53(sfmt_genrand_uint64(sfmt));
 }
 
@@ -314,8 +314,8 @@ inline static double sfmt_genrand_res53(sfmt_t * sfmt)
  * generates a random number on [0,1) with 53-bit resolution from two
  * 32 bit integers
  */
-inline static double sfmt_to_res53_mix(uint32_t x, uint32_t y)
-{
+inline static double sfmt_to_res53_mix(uint32_t x, uint32_t y
+) {
 #ifdef __cplusplus
     return sfmt_to_res53(x | (static_cast<uint64_t>(y) << 32));
 #else
@@ -329,8 +329,8 @@ inline static double sfmt_to_res53_mix(uint32_t x, uint32_t y)
  * @param sfmt SFMT internal state
  * @return double on [0,1) with 53-bit resolution
  */
-inline static double sfmt_genrand_res53_mix(sfmt_t * sfmt)
-{
+inline static double sfmt_genrand_res53_mix(sfmt_t * sfmt
+) {
     uint32_t x, y;
 
     x = sfmt_genrand_uint32(sfmt);

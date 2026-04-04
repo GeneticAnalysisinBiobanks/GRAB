@@ -10,6 +10,7 @@
 
 #include "spacox/spacox.hpp"
 #include "spamix/spamixplus.hpp"
+#include "spamix/spamixlocalp.hpp"
 #include "spamix/indiv_af.hpp"
 #include "wtcoxg/wtcoxg.hpp"
 #include "wtcoxg/leaf.hpp"
@@ -17,6 +18,8 @@
 #include "polmm/polmm.hpp"
 #include "spagrm/ibd.hpp"
 #include "spagrm/geno_prob.hpp"
+#include "io/admix_convert.hpp"
+#include "io/admix_msp.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -51,10 +54,14 @@ static GenoSpec resolveGenoSpec(const Args& a, const char* ctx) {
                      " exclusive.\n";
         std::exit(1);
     }
-    if (!a.bfilePrefix.empty()) return {GenoFormat::Plink, a.bfilePrefix};
-    if (!a.pfilePrefix.empty()) return {GenoFormat::Pgen,  a.pfilePrefix};
-    if (!a.vcfFile.empty())     return {GenoFormat::Vcf,   a.vcfFile};
-    return {GenoFormat::Bgen, a.bgenFile};
+    GenoSpec spec;
+    spec.extractFile = a.extractFile;
+    spec.excludeFile = a.excludeFile;
+    if (!a.bfilePrefix.empty()) { spec.format = GenoFormat::Plink; spec.path = a.bfilePrefix; }
+    else if (!a.pfilePrefix.empty()) { spec.format = GenoFormat::Pgen;  spec.path = a.pfilePrefix; }
+    else if (!a.vcfFile.empty())     { spec.format = GenoFormat::Vcf;   spec.path = a.vcfFile; }
+    else { spec.format = GenoFormat::Bgen; spec.path = a.bgenFile; }
+    return spec;
 }
 
 static std::vector<std::string> splitComma(const std::string& s,
@@ -93,6 +100,8 @@ static void logArgsInEffect(const Args& args) {
     // modes
     if (args.calIndAfCoef)               std::fprintf(stderr, "  --cal-ind-af-coef\n");
     if (args.calPairwiseIBD)             std::fprintf(stderr, "  --cal-pairwise-ibd\n");
+    if (args.calAdmixPhi)               std::fprintf(stderr, "  --cal-admix-phi\n");
+    if (args.makeAbed)                   std::fprintf(stderr, "  --make-abed\n");
     if (!args.method.empty())            std::fprintf(stderr, "  --method %s\n",       args.method.c_str());
     // input
     if (!args.bfilePrefix.empty())       std::fprintf(stderr, "  --bfile %s\n",        args.bfilePrefix.c_str());
@@ -123,7 +132,14 @@ static void logArgsInEffect(const Args& args) {
     if (!args.spGrmPlink2File.empty())   std::fprintf(stderr, "  --sp-grm-plink2 %s\n", args.spGrmPlink2File.c_str());
     if (!args.indAfFile.empty())         std::fprintf(stderr, "  --ind-af-coef %s\n",   args.indAfFile.c_str());
     if (!args.pairwiseIBDFile.empty())   std::fprintf(stderr, "  --pairwise-ibd %s\n",  args.pairwiseIBDFile.c_str());
+    if (!args.extractFile.empty())       std::fprintf(stderr, "  --extract %s\n",       args.extractFile.c_str());
+    if (!args.excludeFile.empty())       std::fprintf(stderr, "  --exclude %s\n",       args.excludeFile.c_str());
+    if (!args.admixBfilePrefix.empty())  std::fprintf(stderr, "  --admix-bfile %s\n",   args.admixBfilePrefix.c_str());
+    if (!args.admixPhiFile.empty())      std::fprintf(stderr, "  --admix-phi %s\n",     args.admixPhiFile.c_str());
+    if (!args.mspFile.empty())           std::fprintf(stderr, "  --rfmix-msp %s\n",     args.mspFile.c_str());
+    if (!args.admixTextPrefix.empty())   std::fprintf(stderr, "  --admix-text-prefix %s\n", args.admixTextPrefix.c_str());
     if (!args.outputFile.empty())        std::fprintf(stderr, "  --out %s\n",           args.outputFile.c_str());
+    if (!args.outPrefix.empty())         std::fprintf(stderr, "  --out-prefix %s\n",    args.outPrefix.c_str());
     // numeric: log only when non-default
     if (args.refPrevalence > 0.0)        std::fprintf(stderr, "  --prevalence %g\n",               args.refPrevalence);
     if (args.nthread != 1)               std::fprintf(stderr, "  --threads %d\n",                  args.nthread);
@@ -193,6 +209,63 @@ int run(int argc, char* argv[]) {
         return 0;
     }
 
+    // ── Mode: --cal-admix-phi ──────────────────────────────────────
+    if (args.calAdmixPhi) {
+        if (!args.method.empty() || args.calIndAfCoef || args.calPairwiseIBD) {
+            std::cerr << "Error: --cal-admix-phi cannot be combined with"
+                         " --method, --cal-ind-af-coef, or --cal-pairwise-ibd.\n";
+            return 1;
+        }
+        require(args.admixBfilePrefix, "--admix-bfile", "--cal-admix-phi");
+        require(args.outputFile,       "--out",         "--cal-admix-phi");
+        checkSpGrm(args, /*required=*/true, "--cal-admix-phi");
+        logArgsInEffect(args);
+        try {
+            runPhiEstimation(
+                args.admixBfilePrefix,
+                args.spGrmGrabFile, args.spGrmPlink2File,
+                args.outputFile,
+                args.extractFile, args.excludeFile);
+        } catch (const std::exception& e) {
+            std::cerr << "[ERROR] " << e.what() << "\n"; return 1;
+        }
+        return 0;
+    }
+
+    // ── Mode: --make-abed ──────────────────────────────────────────
+    if (args.makeAbed) {
+        if (!args.method.empty() || args.calIndAfCoef ||
+            args.calPairwiseIBD  || args.calAdmixPhi) {
+            std::cerr << "Error: --make-abed cannot be combined with"
+                         " --method, --cal-ind-af-coef, --cal-pairwise-ibd,"
+                         " or --cal-admix-phi.\n";
+            return 1;
+        }
+        bool hasVcfMsp  = !args.vcfFile.empty() && !args.mspFile.empty();
+        bool hasTextPre = !args.admixTextPrefix.empty();
+        if (hasVcfMsp && hasTextPre) {
+            std::cerr << "Error: --make-abed requires either (--vcf + --rfmix-msp) or"
+                         " --admix-text-prefix, not both.\n";
+            return 1;
+        }
+        if (!hasVcfMsp && !hasTextPre) {
+            std::cerr << "Error: --make-abed requires either (--vcf FILE --rfmix-msp FILE)"
+                         " or (--admix-text-prefix PREFIX).\n";
+            return 1;
+        }
+        require(args.outPrefix, "--out-prefix", "--make-abed");
+        logArgsInEffect(args);
+        try {
+            if (hasVcfMsp)
+                convertVcfMspToAbed(args.vcfFile, args.mspFile, args.outPrefix);
+            else
+                convertExtractTractsToAbed(args.admixTextPrefix, args.outPrefix);
+        } catch (const std::exception& e) {
+            std::cerr << "[ERROR] " << e.what() << "\n"; return 1;
+        }
+        return 0;
+    }
+
     // ── Mode: --cal-pairwise-ibd ───────────────────────────────────
     if (args.calPairwiseIBD) {
         if (!args.method.empty()) {
@@ -214,6 +287,14 @@ int run(int argc, char* argv[]) {
         return 0;
     }
 
+    // Guard: admix GWAS flags present but --method omitted
+    if (args.method.empty() &&
+        (!args.admixBfilePrefix.empty() || !args.admixPhiFile.empty())) {
+        std::cerr << "Error: --admix-bfile and --admix-phi require"
+                     " --method SPAmixLocalPlus.\n";
+        return 1;
+    }
+
     // ── Mode: --method ─────────────────────────────────────────────
     // Normalize to canonical case (accept spacox, SPACOX, SPACox, etc.)
     bool methodOk = false;
@@ -229,8 +310,9 @@ int run(int argc, char* argv[]) {
 
     if (!methodOk) {
         if (args.method.empty())
-            std::cerr << "Error: --method is required (or use --cal-ind-af-coef"
-                         " / --cal-pairwise-ibd).\n";
+            std::cerr << "Error: --method is required (or use"
+                         " --cal-ind-af-coef / --cal-pairwise-ibd / --cal-admix-phi"
+                         " / --make-abed).\n";
         else
             std::cerr << "Error: unknown method '" << args.method
                       << "'.  Run 'grab --help' for supported methods.\n";
@@ -238,12 +320,36 @@ int run(int argc, char* argv[]) {
     }
 
     // Common required flags for all GWAS methods
-    auto geno = resolveGenoSpec(args, args.method.c_str());
-    require(args.outputFile,  "--out",   args.method.c_str());
+    // Exactly one of --out / --out-prefix must be provided
+    if (!args.outputFile.empty() && !args.outPrefix.empty()) {
+        std::cerr << "Error: --out and --out-prefix are mutually exclusive.\n";
+        return 1;
+    }
+    if (args.outputFile.empty() && args.outPrefix.empty()) {
+        std::cerr << "Error: --out or --out-prefix is required for "
+                  << args.method << ".\n";
+        return 1;
+    }
+
+    // --out-prefix is only supported for multi-residual methods
+    bool supportsOutPrefix = (args.method == "SPACox" || args.method == "SPAGRM" ||
+                              args.method == "SPAmix" || args.method == "SPAmixPlus" ||
+                              args.method == "SPAmixLocalPlus");
+    if (!args.outPrefix.empty() && !supportsOutPrefix) {
+        std::cerr << "Error: --out-prefix is not supported for " << args.method
+                  << ". Use --out instead.\n";
+        return 1;
+    }
+
+    // SPAmixLocalPlus uses --admix-bfile instead of standard geno input
+    GenoSpec geno{};
+    if (args.method != "SPAmixLocalPlus")
+        geno = resolveGenoSpec(args, args.method.c_str());
 
     // Methods that always need --null-resid (no --pheno alternative)
     if (args.method != "WtCoxG" && args.method != "LEAF" &&
-        args.method != "SPAsqr" && args.method != "POLMM")
+        args.method != "SPAsqr" && args.method != "POLMM" &&
+        args.method != "SPAmixLocalPlus")
         require(args.residFile, "--null-resid", args.method.c_str());
 
     // Method-specific phenotype flag validation
@@ -267,7 +373,8 @@ int run(int argc, char* argv[]) {
             }
         }
         if (args.method == "SPACox" || args.method == "SPAGRM" ||
-            args.method == "SPAmix" || args.method == "SPAmixPlus") {
+            args.method == "SPAmix" || args.method == "SPAmixPlus" ||
+            args.method == "SPAmixLocalPlus") {
             if (hasQuantPheno || hasBinaryPheno || hasSurvPheno || hasOrdinalPheno) {
                 std::cerr << "Error: " << args.method << " only accepts --null-resid."
                              " --pheno-quant, --pheno-binary, --pheno-surv, and"
@@ -315,7 +422,7 @@ int run(int argc, char* argv[]) {
             runSPACox(
                 args.residFile, covarNames,
                 args.phenoFile, args.covarFile,
-                geno, args.outputFile,
+                geno, args.outputFile, args.outPrefix,
                 args.pvalCovAdjCut, args.spaCutoff, args.nthread,
                 args.nSnpPerChunk,
                 args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
@@ -327,7 +434,7 @@ int run(int argc, char* argv[]) {
             require(args.pairwiseIBDFile, "--pairwise-ibd", "SPAGRM");
             runSPAGRM(
                 args.residFile, args.spGrmGrabFile, args.spGrmPlink2File,
-                args.pairwiseIBDFile, geno, args.outputFile,
+                args.pairwiseIBDFile, geno, args.outputFile, args.outPrefix,
                 args.spaCutoff, args.nthread, args.nSnpPerChunk,
                 args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
         }
@@ -354,7 +461,7 @@ int run(int argc, char* argv[]) {
                 args.phenoFile, args.covarFile,
                 geno,
                 args.spGrmGrabFile, args.spGrmPlink2File, args.indAfFile,
-                args.outputFile,
+                args.outputFile, args.outPrefix,
                 args.spaCutoff, args.outlierRatio, args.nthread,
                 args.nSnpPerChunk,
                 args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
@@ -477,7 +584,7 @@ int run(int argc, char* argv[]) {
         }
 
         // ── LEAF ───────────────────────────────────────────────────
-        else {
+        else if (args.method == "LEAF") {
             require(args.refAfFile, "--ref-af", "LEAF");
             if (args.refPrevalence <= 0.0) {
                 std::cerr << "Error: --prevalence is required for LEAF"
@@ -539,6 +646,20 @@ int run(int argc, char* argv[]) {
                     args.nthread, args.nSnpPerChunk,
                     args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
             }
+        }
+
+        // ── SPAmixLocalPlus ────────────────────────────────────────
+        else if (args.method == "SPAmixLocalPlus") {
+            require(args.admixBfilePrefix, "--admix-bfile", "SPAmixLocalPlus");
+            require(args.admixPhiFile,     "--admix-phi",   "SPAmixLocalPlus");
+            require(args.residFile,        "--null-resid",  "SPAmixLocalPlus");
+            runSPAmixLocalPlus(
+                args.residFile, args.admixBfilePrefix,
+                args.admixPhiFile, args.outputFile, args.outPrefix,
+                args.spaCutoff, args.outlierRatio, args.nthread,
+                args.nSnpPerChunk,
+                args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
+                args.extractFile, args.excludeFile);
         }
 
     } catch (const std::exception& e) {

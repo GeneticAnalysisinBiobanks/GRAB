@@ -58,8 +58,8 @@ namespace math {
 namespace quadrature {
 
 template <class F, class Real, class Policy = boost::math::policies::policy<> >
-__device__ auto sinh_sinh_integrate(const F& f, Real tol = boost::math::tools::root_epsilon<Real>(), Real* error = nullptr, Real* L1 = nullptr, boost::math::size_t* levels = nullptr)
-{
+__device__ auto sinh_sinh_integrate(const F& f, Real tol = boost::math::tools::root_epsilon<Real>(), Real* error = nullptr, Real* L1 = nullptr, boost::math::size_t* levels = nullptr
+) {
     return detail::sinh_sinh_integrate_impl(f, tol, error, L1, levels);
 }
 

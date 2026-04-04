@@ -53,8 +53,8 @@ ReturnType one_sample_t_test_impl(ForwardIterator begin, ForwardIterator end, ty
 
 // https://en.wikipedia.org/wiki/Student%27s_t-test#Equal_or_unequal_sample_sizes,_unequal_variances_(sX1_%3E_2sX2_or_sX2_%3E_2sX1)
 template<typename ReturnType, typename T>
-ReturnType welchs_t_test_impl(T mean_1, T variance_1, T size_1, T mean_2, T variance_2, T size_2)
-{
+ReturnType welchs_t_test_impl(T mean_1, T variance_1, T size_1, T mean_2, T variance_2, T size_2
+) {
     using Real = typename std::tuple_element<0, ReturnType>::type;
     using no_promote_policy = boost::math::policies::policy<boost::math::policies::promote_float<false>, boost::math::policies::promote_double<false>>;
     using std::sqrt;
@@ -83,8 +83,8 @@ ReturnType welchs_t_test_impl(T mean_1, T variance_1, T size_1, T mean_2, T vari
 
 // https://en.wikipedia.org/wiki/Student%27s_t-test#Equal_or_unequal_sample_sizes,_similar_variances_(1/2_%3C_sX1/sX2_%3C_2)
 template<typename ReturnType, typename T>
-ReturnType two_sample_t_test_impl(T mean_1, T variance_1, T size_1, T mean_2, T variance_2, T size_2)
-{
+ReturnType two_sample_t_test_impl(T mean_1, T variance_1, T size_1, T mean_2, T variance_2, T size_2
+) {
     using Real = typename std::tuple_element<0, ReturnType>::type;
     using no_promote_policy = boost::math::policies::policy<boost::math::policies::promote_float<false>, boost::math::policies::promote_double<false>>;
     using std::sqrt;
@@ -108,8 +108,8 @@ ReturnType two_sample_t_test_impl(T mean_1, T variance_1, T size_1, T mean_2, T 
 }
 
 template<typename ReturnType, typename ForwardIterator>
-ReturnType two_sample_t_test_impl(ForwardIterator begin_1, ForwardIterator end_1, ForwardIterator begin_2, ForwardIterator end_2)
-{
+ReturnType two_sample_t_test_impl(ForwardIterator begin_1, ForwardIterator end_1, ForwardIterator begin_2, ForwardIterator end_2
+) {
     using Real = typename std::tuple_element<0, ReturnType>::type;
     using std::sqrt;
     auto n1 = std::distance(begin_1, end_1);
@@ -137,8 +137,8 @@ ReturnType two_sample_t_test_impl(ForwardIterator begin_1, ForwardIterator end_1
 
 // https://en.wikipedia.org/wiki/Student%27s_t-test#Dependent_t-test_for_paired_samples
 template<typename ReturnType, typename ForwardIterator>
-ReturnType paired_samples_t_test_impl(ForwardIterator begin_1, ForwardIterator end_1, ForwardIterator begin_2, ForwardIterator end_2)
-{
+ReturnType paired_samples_t_test_impl(ForwardIterator begin_1, ForwardIterator end_1, ForwardIterator begin_2, ForwardIterator end_2
+) {
     using Real = typename std::tuple_element<0, ReturnType>::type;
     using no_promote_policy = boost::math::policies::policy<boost::math::policies::promote_float<false>, boost::math::policies::promote_double<false>>;
     using std::sqrt;

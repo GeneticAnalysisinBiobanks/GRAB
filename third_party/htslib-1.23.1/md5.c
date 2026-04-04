@@ -116,8 +116,8 @@ struct hts_md5_context {
  * This processes one or more 64-byte data blocks, but does NOT update
  * the bit counters.  There are no alignment requirements.
  */
-static const void *body(hts_md5_context *ctx, const void *data, unsigned long size)
-{
+static const void *body(hts_md5_context *ctx, const void *data, unsigned long size
+) {
 	const unsigned char *ptr;
 	hts_md5_u32plus a, b, c, d;
 	hts_md5_u32plus saved_a, saved_b, saved_c, saved_d;
@@ -223,8 +223,8 @@ static const void *body(hts_md5_context *ctx, const void *data, unsigned long si
 	return ptr;
 }
 
-void hts_md5_reset(hts_md5_context *ctx)
-{
+void hts_md5_reset(hts_md5_context *ctx
+) {
 	ctx->a = 0x67452301;
 	ctx->b = 0xefcdab89;
 	ctx->c = 0x98badcfe;
@@ -234,8 +234,8 @@ void hts_md5_reset(hts_md5_context *ctx)
 	ctx->hi = 0;
 }
 
-void hts_md5_update(hts_md5_context *ctx, const void *data, unsigned long size)
-{
+void hts_md5_update(hts_md5_context *ctx, const void *data, unsigned long size
+) {
 	hts_md5_u32plus saved_lo;
 	unsigned long used, available;
 
@@ -268,8 +268,8 @@ void hts_md5_update(hts_md5_context *ctx, const void *data, unsigned long size)
 	memcpy(ctx->buffer, data, size);
 }
 
-void hts_md5_final(unsigned char *result, hts_md5_context *ctx)
-{
+void hts_md5_final(unsigned char *result, hts_md5_context *ctx
+) {
 	unsigned long used, available;
 
 	used = ctx->lo & 0x3f;
@@ -320,8 +320,8 @@ void hts_md5_final(unsigned char *result, hts_md5_context *ctx)
 }
 
 
-hts_md5_context *hts_md5_init(void)
-{
+hts_md5_context *hts_md5_init(void
+) {
     hts_md5_context *ctx = malloc(sizeof(*ctx));
     if (!ctx)
         return NULL;
@@ -341,8 +341,8 @@ hts_md5_context *hts_md5_init(void)
  * These are here to ensure they end up in the symbol table of the
  * library regardless of the static inline in the headers.
  */
-hts_md5_context *hts_md5_init(void)
-{
+hts_md5_context *hts_md5_init(void
+) {
     MD5_CTX *ctx = malloc(sizeof(*ctx));
     if (!ctx)
         return NULL;
@@ -352,33 +352,33 @@ hts_md5_context *hts_md5_init(void)
     return (hts_md5_context *)ctx;
 }
 
-void hts_md5_reset(hts_md5_context *ctx)
-{
+void hts_md5_reset(hts_md5_context *ctx
+) {
     MD5_Init((MD5_CTX *)ctx);
 }
 
-void hts_md5_update(hts_md5_context *ctx, const void *data, unsigned long size)
-{
+void hts_md5_update(hts_md5_context *ctx, const void *data, unsigned long size
+) {
     MD5_Update((MD5_CTX *)ctx, data, size);
 }
 
-void hts_md5_final(unsigned char *result, hts_md5_context *ctx)
-{
+void hts_md5_final(unsigned char *result, hts_md5_context *ctx
+) {
     MD5_Final(result, (MD5_CTX *)ctx);
 }
 
 #endif
 
-void hts_md5_destroy(hts_md5_context *ctx)
-{
+void hts_md5_destroy(hts_md5_context *ctx
+) {
     if (!ctx)
         return;
 
     free(ctx);
 }
 
-void hts_md5_hex(char *hex, const unsigned char *digest)
-{
+void hts_md5_hex(char *hex, const unsigned char *digest
+) {
     int i;
     for (i = 0; i < 16; i++) {
         hex[i*2+0] = "0123456789abcdef"[(digest[i]>>4)&0xf];

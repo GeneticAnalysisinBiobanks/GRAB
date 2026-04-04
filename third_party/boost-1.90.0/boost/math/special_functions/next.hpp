@@ -75,8 +75,8 @@ struct has_hidden_guard_digits
 template <class T>
 inline const T& normalize_value(const T& val, const std::false_type&) { return val; }
 template <class T>
-inline T normalize_value(const T& val, const std::true_type&)
-{
+inline T normalize_value(const T& val, const std::true_type&
+) {
    static_assert(std::numeric_limits<T>::is_specialized, "Type T must be specialized.");
    static_assert(std::numeric_limits<T>::radix != 2, "Type T must be specialized.");
 
@@ -103,14 +103,14 @@ inline T get_smallest_value(std::true_type const&) {
 }
 
 template <class T>
-inline T get_smallest_value(std::false_type const&)
-{
+inline T get_smallest_value(std::false_type const&
+) {
    return tools::min_value<T>();
 }
 
 template <class T>
-inline T get_smallest_value()
-{
+inline T get_smallest_value(
+) {
    return get_smallest_value<T>(std::integral_constant<bool, std::numeric_limits<T>::is_specialized>());
 }
 
@@ -127,14 +127,14 @@ template <class T>
 T get_min_shift_value();
 
 template <class T>
-inline T calc_min_shifted(const std::true_type&)
-{
+inline T calc_min_shifted(const std::true_type&
+) {
    BOOST_MATH_STD_USING
    return ldexp(tools::min_value<T>(), tools::digits<T>() + 1);
 }
 template <class T>
-inline T calc_min_shifted(const std::false_type&)
-{
+inline T calc_min_shifted(const std::false_type&
+) {
    static_assert(std::numeric_limits<T>::is_specialized, "Type T must be specialized.");
    static_assert(std::numeric_limits<T>::radix != 2, "Type T must be specialized.");
 
@@ -143,8 +143,8 @@ inline T calc_min_shifted(const std::false_type&)
 
 
 template <class T>
-inline T get_min_shift_value()
-{
+inline T get_min_shift_value(
+) {
    static const T val = calc_min_shifted<T>(std::integral_constant<bool, !std::numeric_limits<T>::is_specialized || std::numeric_limits<T>::radix == 2>());
    return val;
 }
@@ -162,8 +162,8 @@ struct exponent_type<T, true>
 };
 
 template <class T, class Policy>
-T float_next_imp(const T& val, const std::true_type&, const Policy& pol)
-{
+T float_next_imp(const T& val, const std::true_type&, const Policy& pol
+) {
    typedef typename exponent_type<T>::type exponent_type;
 
    BOOST_MATH_STD_USING
@@ -212,8 +212,8 @@ T float_next_imp(const T& val, const std::true_type&, const Policy& pol)
 // Special version for some base other than 2:
 //
 template <class T, class Policy>
-T float_next_imp(const T& val, const std::false_type&, const Policy& pol)
-{
+T float_next_imp(const T& val, const std::false_type&, const Policy& pol
+) {
    typedef typename exponent_type<T>::type exponent_type;
 
    static_assert(std::numeric_limits<T>::is_specialized, "Type T must be specialized.");
@@ -266,8 +266,8 @@ T float_next_imp(const T& val, const std::false_type&, const Policy& pol)
 } // namespace detail
 
 template <class T, class Policy>
-inline typename tools::promote_args<T>::type float_next(const T& val, const Policy& pol)
-{
+inline typename tools::promote_args<T>::type float_next(const T& val, const Policy& pol
+) {
    typedef typename tools::promote_args<T>::type result_type;
    return detail::float_next_imp(detail::normalize_value(static_cast<result_type>(val), typename detail::has_hidden_guard_digits<result_type>::type()), std::integral_constant<bool, !std::numeric_limits<result_type>::is_specialized || (std::numeric_limits<result_type>::radix == 2)>(), pol);
 }
@@ -279,8 +279,8 @@ inline typename tools::promote_args<T>::type float_next(const T& val, const Poli
 // - albeit slower - code instead as at least that gives the correct answer.
 //
 template <class Policy>
-inline double float_next(const double& val, const Policy& pol)
-{
+inline double float_next(const double& val, const Policy& pol
+) {
    static const char* function = "float_next<%1%>(%1%)";
 
    if(!(boost::math::isfinite)(val) && (val > 0))
@@ -296,16 +296,16 @@ inline double float_next(const double& val, const Policy& pol)
 #endif
 
 template <class T>
-inline typename tools::promote_args<T>::type float_next(const T& val)
-{
+inline typename tools::promote_args<T>::type float_next(const T& val
+) {
    return float_next(val, policies::policy<>());
 }
 
 namespace detail{
 
 template <class T, class Policy>
-T float_prior_imp(const T& val, const std::true_type&, const Policy& pol)
-{
+T float_prior_imp(const T& val, const std::true_type&, const Policy& pol
+) {
    typedef typename exponent_type<T>::type exponent_type;
 
    BOOST_MATH_STD_USING
@@ -355,8 +355,8 @@ T float_prior_imp(const T& val, const std::true_type&, const Policy& pol)
 // Special version for bases other than 2:
 //
 template <class T, class Policy>
-T float_prior_imp(const T& val, const std::false_type&, const Policy& pol)
-{
+T float_prior_imp(const T& val, const std::false_type&, const Policy& pol
+) {
    typedef typename exponent_type<T>::type exponent_type;
 
    static_assert(std::numeric_limits<T>::is_specialized, "Type T must be specialized.");
@@ -410,8 +410,8 @@ T float_prior_imp(const T& val, const std::false_type&, const Policy& pol)
 } // namespace detail
 
 template <class T, class Policy>
-inline typename tools::promote_args<T>::type float_prior(const T& val, const Policy& pol)
-{
+inline typename tools::promote_args<T>::type float_prior(const T& val, const Policy& pol
+) {
    typedef typename tools::promote_args<T>::type result_type;
    return detail::float_prior_imp(detail::normalize_value(static_cast<result_type>(val), typename detail::has_hidden_guard_digits<result_type>::type()), std::integral_constant<bool, !std::numeric_limits<result_type>::is_specialized || (std::numeric_limits<result_type>::radix == 2)>(), pol);
 }
@@ -423,8 +423,8 @@ inline typename tools::promote_args<T>::type float_prior(const T& val, const Pol
 // - albeit slower - code instead as at least that gives the correct answer.
 //
 template <class Policy>
-inline double float_prior(const double& val, const Policy& pol)
-{
+inline double float_prior(const double& val, const Policy& pol
+) {
    static const char* function = "float_prior<%1%>(%1%)";
 
    if(!(boost::math::isfinite)(val) && (val < 0))
@@ -440,29 +440,29 @@ inline double float_prior(const double& val, const Policy& pol)
 #endif
 
 template <class T>
-inline typename tools::promote_args<T>::type float_prior(const T& val)
-{
+inline typename tools::promote_args<T>::type float_prior(const T& val
+) {
    return float_prior(val, policies::policy<>());
 }
 
 template <class T, class U, class Policy>
-inline typename tools::promote_args<T, U>::type nextafter(const T& val, const U& direction, const Policy& pol)
-{
+inline typename tools::promote_args<T, U>::type nextafter(const T& val, const U& direction, const Policy& pol
+) {
    typedef typename tools::promote_args<T, U>::type result_type;
    return val < direction ? boost::math::float_next<result_type>(val, pol) : val == direction ? val : boost::math::float_prior<result_type>(val, pol);
 }
 
 template <class T, class U>
-inline typename tools::promote_args<T, U>::type nextafter(const T& val, const U& direction)
-{
+inline typename tools::promote_args<T, U>::type nextafter(const T& val, const U& direction
+) {
    return nextafter(val, direction, policies::policy<>());
 }
 
 namespace detail{
 
 template <class T, class Policy>
-T float_distance_imp(const T& a, const T& b, const std::true_type&, const Policy& pol)
-{
+T float_distance_imp(const T& a, const T& b, const std::true_type&, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    //
    // Error handling:
@@ -562,8 +562,8 @@ T float_distance_imp(const T& a, const T& b, const std::true_type&, const Policy
 // Special versions for bases other than 2:
 //
 template <class T, class Policy>
-T float_distance_imp(const T& a, const T& b, const std::false_type&, const Policy& pol)
-{
+T float_distance_imp(const T& a, const T& b, const std::false_type&, const Policy& pol
+) {
    static_assert(std::numeric_limits<T>::is_specialized, "Type T must be specialized.");
    static_assert(std::numeric_limits<T>::radix != 2, "Type T must be specialized.");
 
@@ -665,8 +665,8 @@ T float_distance_imp(const T& a, const T& b, const std::false_type&, const Polic
 } // namespace detail
 
 template <class T, class U, class Policy>
-inline typename tools::promote_args<T, U>::type float_distance(const T& a, const U& b, const Policy& pol)
-{
+inline typename tools::promote_args<T, U>::type float_distance(const T& a, const U& b, const Policy& pol
+) {
    //
    // We allow ONE of a and b to be an integer type, otherwise both must be the SAME type.
    //
@@ -699,16 +699,16 @@ inline typename tools::promote_args<T, U>::type float_distance(const T& a, const
 }
 
 template <class T, class U>
-typename tools::promote_args<T, U>::type float_distance(const T& a, const U& b)
-{
+typename tools::promote_args<T, U>::type float_distance(const T& a, const U& b
+) {
    return boost::math::float_distance(a, b, policies::policy<>());
 }
 
 namespace detail{
 
 template <class T, class Policy>
-T float_advance_imp(T val, int distance, const std::true_type&, const Policy& pol)
-{
+T float_advance_imp(T val, int distance, const std::true_type&, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    //
    // Error handling:
@@ -786,8 +786,8 @@ T float_advance_imp(T val, int distance, const std::true_type&, const Policy& po
 // Special version for bases other than 2:
 //
 template <class T, class Policy>
-T float_advance_imp(T val, int distance, const std::false_type&, const Policy& pol)
-{
+T float_advance_imp(T val, int distance, const std::false_type&, const Policy& pol
+) {
    static_assert(std::numeric_limits<T>::is_specialized, "Type T must be specialized.");
    static_assert(std::numeric_limits<T>::radix != 2, "Type T must be specialized.");
 
@@ -867,15 +867,15 @@ T float_advance_imp(T val, int distance, const std::false_type&, const Policy& p
 } // namespace detail
 
 template <class T, class Policy>
-inline typename tools::promote_args<T>::type float_advance(T val, int distance, const Policy& pol)
-{
+inline typename tools::promote_args<T>::type float_advance(T val, int distance, const Policy& pol
+) {
    typedef typename tools::promote_args<T>::type result_type;
    return detail::float_advance_imp(detail::normalize_value(static_cast<result_type>(val), typename detail::has_hidden_guard_digits<result_type>::type()), distance, std::integral_constant<bool, !std::numeric_limits<result_type>::is_specialized || (std::numeric_limits<result_type>::radix == 2)>(), pol);
 }
 
 template <class T>
-inline typename tools::promote_args<T>::type float_advance(const T& val, int distance)
-{
+inline typename tools::promote_args<T>::type float_advance(const T& val, int distance
+) {
    return boost::math::float_advance(val, distance, policies::policy<>());
 }
 

@@ -68,8 +68,8 @@ namespace detail {
 }
 
 template<class F, class Real>
-Real complex_step_derivative(const F f, Real x)
-{
+Real complex_step_derivative(const F f, Real x
+) {
     // Is it really this easy? Yes.
     // Note that some authors recommend taking the stepsize h to be smaller than epsilon(), some recommending use of the min().
     // This idea was tested over a few billion test cases and found the make the error *much* worse.
@@ -257,8 +257,8 @@ namespace detail {
 }
 
 template<class F, class Real, size_t order=6>
-inline Real finite_difference_derivative(const F f, Real x, Real* error = nullptr)
-{
+inline Real finite_difference_derivative(const F f, Real x, Real* error = nullptr
+) {
    return detail::finite_difference_derivative(f, x, error, detail::fd_tag<order>());
 }
 

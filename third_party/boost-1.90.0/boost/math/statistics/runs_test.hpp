@@ -18,8 +18,8 @@ namespace boost::math::statistics {
 
 template<class RandomAccessContainer>
 auto runs_above_and_below_threshold(RandomAccessContainer const & v,
-                          typename RandomAccessContainer::value_type threshold)
-{
+                          typename RandomAccessContainer::value_type threshold
+) {
     using Real = typename RandomAccessContainer::value_type;
     using std::sqrt;
     using std::abs;
@@ -104,8 +104,8 @@ auto runs_above_and_below_threshold(RandomAccessContainer const & v,
 }
 
 template<class RandomAccessContainer>
-auto runs_above_and_below_median(RandomAccessContainer const & v)
-{
+auto runs_above_and_below_median(RandomAccessContainer const & v
+) {
     using Real = typename RandomAccessContainer::value_type;
     using std::log;
     using std::sqrt;

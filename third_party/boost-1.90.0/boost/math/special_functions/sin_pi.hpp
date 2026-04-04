@@ -27,8 +27,8 @@
 namespace boost{ namespace math{ namespace detail{
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline T sin_pi_imp(T x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED inline T sin_pi_imp(T x, const Policy&
+) {
    BOOST_MATH_STD_USING // ADL of std names
    // sin of pi*x:
    if(x < T(0.5))
@@ -58,8 +58,8 @@ BOOST_MATH_GPU_ENABLED inline T sin_pi_imp(T x, const Policy&)
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline T sin_pi_dispatch(T x, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline T sin_pi_dispatch(T x, const Policy& pol
+) {
    if (x < T(0))
    {
       return -sin_pi_imp(T(-x), pol);
@@ -73,8 +73,8 @@ BOOST_MATH_GPU_ENABLED inline T sin_pi_dispatch(T x, const Policy& pol)
 } // namespace detail
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type sin_pi(T x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type sin_pi(T x, const Policy&
+) {
    typedef typename tools::promote_args<T>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
    typedef typename policies::normalise<
@@ -90,8 +90,8 @@ BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type sin_pi(T x, 
 }
 
 template <class T>
-inline typename tools::promote_args<T>::type sin_pi(T x)
-{
+inline typename tools::promote_args<T>::type sin_pi(T x
+) {
    return boost::math::sin_pi(x, policies::policy<>());
 }
 } // namespace math
@@ -103,26 +103,26 @@ namespace boost {
 namespace math {
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED auto sin_pi(T x)
-{
+BOOST_MATH_GPU_ENABLED auto sin_pi(T x
+) {
    return ::sinpi(x);
 }
 
 template <>
-BOOST_MATH_GPU_ENABLED auto sin_pi(float x)
-{
+BOOST_MATH_GPU_ENABLED auto sin_pi(float x
+) {
    return ::sinpif(x);
 }
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED auto sin_pi(T x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED auto sin_pi(T x, const Policy&
+) {
    return ::sinpi(x);
 }
 
 template <typename Policy>
-BOOST_MATH_GPU_ENABLED auto sin_pi(float x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED auto sin_pi(float x, const Policy&
+) {
    return ::sinpif(x);
 }
 

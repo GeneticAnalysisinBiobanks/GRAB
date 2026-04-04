@@ -69,8 +69,8 @@ namespace boost{ namespace math{ namespace detail{
 // when T is unsuitable to be passed to these routines:
 //
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline T igamma_temme_large(T, T, const Policy& /* pol */, const boost::math::integral_constant<int, 0>&)
-{
+BOOST_MATH_GPU_ENABLED inline T igamma_temme_large(T, T, const Policy& /* pol */, const boost::math::integral_constant<int, 0>&
+) {
    // stub function, should never actually be called
    BOOST_MATH_ASSERT(0);
    return 0;
@@ -83,8 +83,8 @@ BOOST_MATH_GPU_ENABLED inline T igamma_temme_large(T, T, const Policy& /* pol */
 #ifndef BOOST_MATH_HAS_GPU_SUPPORT
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T igamma_temme_large(T a, T x, const Policy& pol, const boost::math::integral_constant<int, 64>&)
-{
+BOOST_MATH_GPU_ENABLED T igamma_temme_large(T a, T x, const Policy& pol, const boost::math::integral_constant<int, 64>&
+) {
    BOOST_MATH_STD_USING // ADL of std functions
    T sigma = (x - a) / a;
    T phi = -boost::math::log1pmx(sigma, pol);
@@ -294,8 +294,8 @@ BOOST_MATH_GPU_ENABLED T igamma_temme_large(T a, T x, const Policy& pol, const b
 // (IEEE double precision or 10^-17).
 //
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T igamma_temme_large(T a, T x, const Policy& pol, const boost::math::integral_constant<int, 53>&)
-{
+BOOST_MATH_GPU_ENABLED T igamma_temme_large(T a, T x, const Policy& pol, const boost::math::integral_constant<int, 53>&
+) {
    BOOST_MATH_STD_USING // ADL of std functions
    T sigma = (x - a) / a;
    T phi = -boost::math::log1pmx(sigma, pol);
@@ -449,8 +449,8 @@ BOOST_MATH_GPU_ENABLED T igamma_temme_large(T a, T x, const Policy& pol, const b
 // (IEEE float precision, or 10^-8)
 //
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T igamma_temme_large(T a, T x, const Policy& pol, const boost::math::integral_constant<int, 24>&)
-{
+BOOST_MATH_GPU_ENABLED T igamma_temme_large(T a, T x, const Policy& pol, const boost::math::integral_constant<int, 24>&
+) {
    BOOST_MATH_STD_USING // ADL of std functions
    T sigma = (x - a) / a;
    T phi = -boost::math::log1pmx(sigma, pol);
@@ -521,8 +521,8 @@ BOOST_MATH_GPU_ENABLED T igamma_temme_large(T a, T x, const Policy& pol, const b
 #ifndef BOOST_MATH_HAS_GPU_SUPPORT
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T igamma_temme_large(T a, T x, const Policy& pol, const boost::math::integral_constant<int, 113>&)
-{
+BOOST_MATH_GPU_ENABLED T igamma_temme_large(T a, T x, const Policy& pol, const boost::math::integral_constant<int, 113>&
+) {
    BOOST_MATH_STD_USING // ADL of std functions
    T sigma = (x - a) / a;
    T phi = -boost::math::log1pmx(sigma, pol);

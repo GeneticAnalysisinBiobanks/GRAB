@@ -45,8 +45,8 @@ static ATTRIBUTES MAYBE_UNUSED enum libdeflate_result
 FUNCNAME(struct libdeflate_decompressor * restrict d,
 	 const void * restrict in, size_t in_nbytes,
 	 void * restrict out, size_t out_nbytes_avail,
-	 size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret)
-{
+	 size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret
+) {
 	u8 *out_next = out;
 	u8 * const out_end = out_next + out_nbytes_avail;
 	u8 * const out_fastloop_end =

@@ -16,8 +16,8 @@
 namespace boost { namespace math { namespace statistics { namespace detail {
 
 template<typename ReturnType, typename T>
-ReturnType one_sample_z_test_impl(T sample_mean, T sample_variance, T sample_size, T assumed_mean)
-{
+ReturnType one_sample_z_test_impl(T sample_mean, T sample_variance, T sample_size, T assumed_mean
+) {
     using Real = typename std::tuple_element<0, ReturnType>::type;
     using std::sqrt;
     using no_promote_policy = boost::math::policies::policy<boost::math::policies::promote_float<false>, boost::math::policies::promote_double<false>>;
@@ -48,8 +48,8 @@ ReturnType one_sample_z_test_impl(ForwardIterator begin, ForwardIterator end, ty
 }
 
 template<typename ReturnType, typename T>
-ReturnType two_sample_z_test_impl(T mean_1, T variance_1, T size_1, T mean_2, T variance_2, T size_2)
-{
+ReturnType two_sample_z_test_impl(T mean_1, T variance_1, T size_1, T mean_2, T variance_2, T size_2
+) {
     using Real = typename std::tuple_element<0, ReturnType>::type;
     using std::sqrt;
     using no_promote_policy = boost::math::policies::policy<boost::math::policies::promote_float<false>, boost::math::policies::promote_double<false>>;
@@ -70,8 +70,8 @@ ReturnType two_sample_z_test_impl(T mean_1, T variance_1, T size_1, T mean_2, T 
 }
 
 template<typename ReturnType, typename ForwardIterator>
-ReturnType two_sample_z_test_impl(ForwardIterator begin_1, ForwardIterator end_1, ForwardIterator begin_2, ForwardIterator end_2)
-{
+ReturnType two_sample_z_test_impl(ForwardIterator begin_1, ForwardIterator end_1, ForwardIterator begin_2, ForwardIterator end_2
+) {
     using Real = typename std::tuple_element<0, ReturnType>::type;
     using std::sqrt;
     auto n1 = std::distance(begin_1, end_1);

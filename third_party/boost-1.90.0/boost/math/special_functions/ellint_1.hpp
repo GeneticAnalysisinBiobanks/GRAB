@@ -49,8 +49,8 @@ BOOST_MATH_GPU_ENABLED BOOST_MATH_FORCEINLINE T ellint_k_imp(T k, const Policy& 
 
 // Elliptic integral (Legendre form) of the first kind
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED T ellint_f_imp(T phi, T k, const Policy& pol, T one_minus_k2)
-{
+BOOST_MATH_GPU_ENABLED T ellint_f_imp(T phi, T k, const Policy& pol, T one_minus_k2
+) {
     BOOST_MATH_STD_USING
     using namespace boost::math::tools;
     using namespace boost::math::constants;
@@ -152,15 +152,15 @@ BOOST_MATH_GPU_ENABLED T ellint_f_imp(T phi, T k, const Policy& pol, T one_minus
 }
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED inline T ellint_f_imp(T phi, T k, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline T ellint_f_imp(T phi, T k, const Policy& pol
+) {
    return ellint_f_imp(phi, k, pol, T(1 - k * k));
 }
 
 // Complete elliptic integral (Legendre form) of the first kind
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED T ellint_k_imp(T k, const Policy& pol, T one_minus_k2)
-{
+BOOST_MATH_GPU_ENABLED T ellint_k_imp(T k, const Policy& pol, T one_minus_k2
+) {
     BOOST_MATH_STD_USING
     using namespace boost::math::tools;
 
@@ -182,8 +182,8 @@ BOOST_MATH_GPU_ENABLED T ellint_k_imp(T k, const Policy& pol, T one_minus_k2)
     return value;
 }
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED inline T ellint_k_imp(T k, const Policy& pol, boost::math::integral_constant<int, 2> const&)
-{
+BOOST_MATH_GPU_ENABLED inline T ellint_k_imp(T k, const Policy& pol, boost::math::integral_constant<int, 2> const&
+) {
    return ellint_k_imp(k, pol, T(1 - k * k));
 }
 
@@ -204,8 +204,8 @@ BOOST_MATH_GPU_ENABLED inline T ellint_k_imp(T k, const Policy& pol, boost::math
 // archived in the code below), but was found to have slightly higher error rates.
 //
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED BOOST_MATH_FORCEINLINE T ellint_k_imp(T k, const Policy& pol, boost::math::integral_constant<int, 0> const&)
-{
+BOOST_MATH_GPU_ENABLED BOOST_MATH_FORCEINLINE T ellint_k_imp(T k, const Policy& pol, boost::math::integral_constant<int, 0> const&
+) {
    BOOST_MATH_STD_USING
    using namespace boost::math::tools;
 
@@ -477,8 +477,8 @@ BOOST_MATH_GPU_ENABLED BOOST_MATH_FORCEINLINE T ellint_k_imp(T k, const Policy& 
    }
 }
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED BOOST_MATH_FORCEINLINE T ellint_k_imp(T k, const Policy& pol, boost::math::integral_constant<int, 1> const&)
-{
+BOOST_MATH_GPU_ENABLED BOOST_MATH_FORCEINLINE T ellint_k_imp(T k, const Policy& pol, boost::math::integral_constant<int, 1> const&
+) {
    BOOST_MATH_STD_USING
    using namespace boost::math::tools;
 
@@ -763,8 +763,8 @@ BOOST_MATH_GPU_ENABLED BOOST_MATH_FORCEINLINE T ellint_k_imp(T k, const Policy& 
 }
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED typename tools::promote_args<T>::type ellint_1(T k, const Policy& pol, const boost::math::true_type&)
-{
+BOOST_MATH_GPU_ENABLED typename tools::promote_args<T>::type ellint_1(T k, const Policy& pol, const boost::math::true_type&
+) {
    typedef typename tools::promote_args<T>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
    typedef boost::math::integral_constant<int, 
@@ -779,8 +779,8 @@ BOOST_MATH_GPU_ENABLED typename tools::promote_args<T>::type ellint_1(T k, const
 }
 
 template <class T1, class T2>
-BOOST_MATH_GPU_ENABLED typename tools::promote_args<T1, T2>::type ellint_1(T1 k, T2 phi, const boost::math::false_type&)
-{
+BOOST_MATH_GPU_ENABLED typename tools::promote_args<T1, T2>::type ellint_1(T1 k, T2 phi, const boost::math::false_type&
+) {
    return boost::math::ellint_1(k, phi, policies::policy<>());
 }
 
@@ -796,16 +796,16 @@ BOOST_MATH_GPU_ENABLED typename tools::promote_args<T1, T2>::type ellint_1(T1 k,
 }
 
 template <class T1, class T2>
-BOOST_MATH_GPU_ENABLED typename tools::promote_args<T1, T2>::type ellint_1(T1 k, T2 phi)
-{
+BOOST_MATH_GPU_ENABLED typename tools::promote_args<T1, T2>::type ellint_1(T1 k, T2 phi
+) {
    typedef typename policies::is_policy<T2>::type tag_type;
    return detail::ellint_1(k, phi, tag_type());
 }
 
 // Complete elliptic integral (Legendre form) of the first kind
 template <typename T>
-BOOST_MATH_GPU_ENABLED typename tools::promote_args<T>::type ellint_1(T k)
-{
+BOOST_MATH_GPU_ENABLED typename tools::promote_args<T>::type ellint_1(T k
+) {
    return ellint_1(k, policies::policy<>());
 }
 

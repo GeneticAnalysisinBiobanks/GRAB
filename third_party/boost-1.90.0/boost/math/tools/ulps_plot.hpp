@@ -34,8 +34,8 @@ namespace detail {
 template<class F1, class F2, class CoarseReal, class PreciseReal>
 void write_gridlines(std::ostream& fs, int horizontal_lines, int vertical_lines,
                      F1 x_scale, F2 y_scale, CoarseReal min_x, CoarseReal max_x, PreciseReal min_y, PreciseReal max_y,
-                     int graph_width, int graph_height, int margin_left, std::string const & font_color)
-{
+                     int graph_width, int graph_height, int margin_left, std::string const & font_color
+) {
   // Make a grid:
   for (int i = 1; i <= horizontal_lines; ++i) {
       PreciseReal y_cord_dataspace = min_y +  ((max_y - min_y)*i)/horizontal_lines;
@@ -376,85 +376,85 @@ private:
 };
 
 template<class F, typename PreciseReal, typename CoarseReal>
-ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::envelope_color(std::string const & color)
-{
+ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::envelope_color(std::string const & color
+) {
     envelope_color_ = color;
     return *this;
 }
 
 template<class F, typename PreciseReal, typename CoarseReal>
-ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::clip(PreciseReal clip)
-{
+ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::clip(PreciseReal clip
+) {
     clip_ = clip;
     return *this;
 }
 
 template<class F, typename PreciseReal, typename CoarseReal>
-ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::width(int width)
-{
+ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::width(int width
+) {
     width_ = width;
     return *this;
 }
 
 template<class F, typename PreciseReal, typename CoarseReal>
-ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::horizontal_lines(int horizontal_lines)
-{
+ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::horizontal_lines(int horizontal_lines
+) {
     horizontal_lines_ = horizontal_lines;
     return *this;
 }
 
 template<class F, typename PreciseReal, typename CoarseReal>
-ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::vertical_lines(int vertical_lines)
-{
+ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::vertical_lines(int vertical_lines
+) {
     vertical_lines_ = vertical_lines;
     return *this;
 }
 
 template<class F, typename PreciseReal, typename CoarseReal>
-ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::title(std::string const & title)
-{
+ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::title(std::string const & title
+) {
     title_ = title;
     return *this;
 }
 
 template<class F, typename PreciseReal, typename CoarseReal>
-ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::background_color(std::string const & background_color)
-{
+ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::background_color(std::string const & background_color
+) {
     background_color_ = background_color;
     return *this;
 }
 
 template<class F, typename PreciseReal, typename CoarseReal>
-ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::font_color(std::string const & font_color)
-{
+ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::font_color(std::string const & font_color
+) {
     font_color_ = font_color;
     return *this;
 }
 
 template<class F, typename PreciseReal, typename CoarseReal>
-ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::crop_color(std::string const & color)
-{
+ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::crop_color(std::string const & color
+) {
     crop_color_ = color;
     return *this;
 }
 
 template<class F, typename PreciseReal, typename CoarseReal>
-ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::nan_color(std::string const & color)
-{
+ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::nan_color(std::string const & color
+) {
     nan_color_ = color;
     return *this;
 }
 
 template<class F, typename PreciseReal, typename CoarseReal>
-ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::ulp_envelope(bool write_ulp_envelope)
-{
+ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::ulp_envelope(bool write_ulp_envelope
+) {
     ulp_envelope_ = write_ulp_envelope;
     return *this;
 }
 
 namespace detail{
-bool ends_with(std::string const& filename, std::string const& suffix)
-{
+bool ends_with(std::string const& filename, std::string const& suffix
+) {
     if(filename.size() < suffix.size())
     {
         return false;
@@ -479,8 +479,8 @@ void ulps_plot<F, PreciseReal, CoarseReal>::write(std::string const & filename) 
 
 template<class F, typename PreciseReal, typename CoarseReal>
 ulps_plot<F, PreciseReal, CoarseReal>::ulps_plot(F hi_acc_impl, CoarseReal a, CoarseReal b,
-             size_t samples, bool perturb_abscissas, int random_seed) : crop_color_("red")
-{
+             size_t samples, bool perturb_abscissas, int random_seed) : crop_color_("red"
+) {
     // Use digits10 for this comparison in case the two types have differeing radixes:
     static_assert(std::numeric_limits<PreciseReal>::digits10 >= std::numeric_limits<CoarseReal>::digits10, "PreciseReal must have higher precision that CoarseReal");
     if (samples < 10)
@@ -573,8 +573,8 @@ ulps_plot<F, PreciseReal, CoarseReal>::ulps_plot(F hi_acc_impl, CoarseReal a, Co
 
 template<class F, typename PreciseReal, typename CoarseReal>
 template<class G>
-ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::add_fn(G g, std::string const & color)
-{
+ulps_plot<F, PreciseReal, CoarseReal>& ulps_plot<F, PreciseReal, CoarseReal>::add_fn(G g, std::string const & color
+) {
     using std::abs;
     size_t samples = precise_abscissas_.size();
     std::vector<CoarseReal> ulps(samples);

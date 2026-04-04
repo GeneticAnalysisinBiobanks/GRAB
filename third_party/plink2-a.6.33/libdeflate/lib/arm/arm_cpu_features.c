@@ -60,8 +60,8 @@
 #define AT_HWCAP	16
 #define AT_HWCAP2	26
 
-static void scan_auxv(unsigned long *hwcap, unsigned long *hwcap2)
-{
+static void scan_auxv(unsigned long *hwcap, unsigned long *hwcap2
+) {
 	int fd;
 	unsigned long auxbuf[32];
 	int filled = 0;
@@ -102,8 +102,8 @@ out:
 	close(fd);
 }
 
-static u32 query_arm_cpu_features(void)
-{
+static u32 query_arm_cpu_features(void
+) {
 	u32 features = 0;
 	unsigned long hwcap = 0;
 	unsigned long hwcap2 = 0;
@@ -150,8 +150,8 @@ static const struct {
 	{ "hw.optional.arm.FEAT_DotProd", ARM_CPU_FEATURE_DOTPROD },
 };
 
-static u32 query_arm_cpu_features(void)
-{
+static u32 query_arm_cpu_features(void
+) {
 	u32 features = 0;
 	size_t i;
 
@@ -174,8 +174,8 @@ static u32 query_arm_cpu_features(void)
 #  define PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE 43
 #endif
 
-static u32 query_arm_cpu_features(void)
-{
+static u32 query_arm_cpu_features(void
+) {
 	u32 features = ARM_CPU_FEATURE_NEON;
 
 	if (IsProcessorFeaturePresent(PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE))
@@ -204,8 +204,8 @@ static const struct cpu_feature arm_cpu_feature_table[] = {
 
 volatile u32 libdeflate_arm_cpu_features = 0;
 
-void libdeflate_init_arm_cpu_features(void)
-{
+void libdeflate_init_arm_cpu_features(void
+) {
 	u32 features = query_arm_cpu_features();
 
 	/*

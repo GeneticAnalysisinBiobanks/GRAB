@@ -24,8 +24,8 @@
 namespace boost { namespace math {
 
 template <class T1, class T2, class T3>
-inline tools::promote_args_t<T1, T2, T3> chebyshev_next(T1 const & x, T2 const & Tn, T3 const & Tn_1)
-{
+inline tools::promote_args_t<T1, T2, T3> chebyshev_next(T1 const & x, T2 const & Tn, T3 const & Tn_1
+) {
     return 2*x*Tn - Tn_1;
 }
 
@@ -33,8 +33,8 @@ namespace detail {
 
 // https://stackoverflow.com/questions/5625431/efficient-way-to-compute-pq-exponentiation-where-q-is-an-integer
 template <typename T, typename std::enable_if<std::is_arithmetic<T>::value, bool>::type = true>
-T expt(T p, unsigned q)
-{
+T expt(T p, unsigned q
+) {
     T r = 1;
 
     while (q != 0) {
@@ -50,15 +50,15 @@ T expt(T p, unsigned q)
 }
 
 template <typename T, typename std::enable_if<!std::is_arithmetic<T>::value, bool>::type = true>
-T expt(T p, unsigned q)
-{
+T expt(T p, unsigned q
+) {
     using std::pow;
     return pow(p, static_cast<int>(q));
 }
 
 template<class Real, bool second, class Policy>
-inline Real chebyshev_imp(unsigned n, Real const & x, const Policy&)
-{
+inline Real chebyshev_imp(unsigned n, Real const & x, const Policy&
+) {
 #ifdef BOOST_MATH_CHEB_USE_STD_ACOSH
     using std::acosh;
 #define BOOST_MATH_ACOSH_POLICY
@@ -118,8 +118,8 @@ inline Real chebyshev_imp(unsigned n, Real const & x, const Policy&)
 } // namespace detail
 
 template <class Real, class Policy>
-inline tools::promote_args_t<Real> chebyshev_t(unsigned n, Real const & x, const Policy&)
-{
+inline tools::promote_args_t<Real> chebyshev_t(unsigned n, Real const & x, const Policy&
+) {
    using result_type = tools::promote_args_t<Real>;
    using value_type = typename policies::evaluation<result_type, Policy>::type;
    using forwarding_policy = typename policies::normalise<
@@ -133,14 +133,14 @@ inline tools::promote_args_t<Real> chebyshev_t(unsigned n, Real const & x, const
 }
 
 template <class Real>
-inline tools::promote_args_t<Real> chebyshev_t(unsigned n, Real const & x)
-{
+inline tools::promote_args_t<Real> chebyshev_t(unsigned n, Real const & x
+) {
     return chebyshev_t(n, x, policies::policy<>());
 }
 
 template <class Real, class Policy>
-inline tools::promote_args_t<Real> chebyshev_u(unsigned n, Real const & x, const Policy&)
-{
+inline tools::promote_args_t<Real> chebyshev_u(unsigned n, Real const & x, const Policy&
+) {
    using result_type = tools::promote_args_t<Real>;
    using value_type = typename policies::evaluation<result_type, Policy>::type;
    using forwarding_policy =  typename policies::normalise<
@@ -154,14 +154,14 @@ inline tools::promote_args_t<Real> chebyshev_u(unsigned n, Real const & x, const
 }
 
 template <class Real>
-inline tools::promote_args_t<Real> chebyshev_u(unsigned n, Real const & x)
-{
+inline tools::promote_args_t<Real> chebyshev_u(unsigned n, Real const & x
+) {
     return chebyshev_u(n, x, policies::policy<>());
 }
 
 template <class Real, class Policy>
-inline tools::promote_args_t<Real> chebyshev_t_prime(unsigned n, Real const & x, const Policy&)
-{
+inline tools::promote_args_t<Real> chebyshev_t_prime(unsigned n, Real const & x, const Policy&
+) {
    using result_type = tools::promote_args_t<Real>;
    using value_type = typename policies::evaluation<result_type, Policy>::type;
    using forwarding_policy = typename policies::normalise<
@@ -178,8 +178,8 @@ inline tools::promote_args_t<Real> chebyshev_t_prime(unsigned n, Real const & x,
 }
 
 template <class Real>
-inline tools::promote_args_t<Real> chebyshev_t_prime(unsigned n, Real const & x)
-{
+inline tools::promote_args_t<Real> chebyshev_t_prime(unsigned n, Real const & x
+) {
    return chebyshev_t_prime(n, x, policies::policy<>());
 }
 
@@ -192,8 +192,8 @@ inline tools::promote_args_t<Real> chebyshev_t_prime(unsigned n, Real const & x)
  * However, our definition of c0 differs by a factor of 1/2, as stated in the docs. . .
  */
 template <class Real, class T2>
-inline Real chebyshev_clenshaw_recurrence(const Real* const c, size_t length, const T2& x)
-{
+inline Real chebyshev_clenshaw_recurrence(const Real* const c, size_t length, const T2& x
+) {
     using boost::math::constants::half;
     if (length < 2)
     {
@@ -218,8 +218,8 @@ inline Real chebyshev_clenshaw_recurrence(const Real* const c, size_t length, co
 
 namespace detail {
 template <class Real>
-inline Real unchecked_chebyshev_clenshaw_recurrence(const Real* const c, size_t length, const Real & a, const Real & b, const Real& x)
-{
+inline Real unchecked_chebyshev_clenshaw_recurrence(const Real* const c, size_t length, const Real & a, const Real & b, const Real& x
+) {
     Real t;
     Real u;
     // This cutoff is not super well defined, but it's a good estimate.
@@ -292,8 +292,8 @@ inline Real unchecked_chebyshev_clenshaw_recurrence(const Real* const c, size_t 
 } // namespace detail
 
 template <class Real>
-inline Real chebyshev_clenshaw_recurrence(const Real* const c, size_t length, const Real & a, const Real & b, const Real& x)
-{
+inline Real chebyshev_clenshaw_recurrence(const Real* const c, size_t length, const Real & a, const Real & b, const Real& x
+) {
     if (x < a || x > b)
     {
        BOOST_MATH_THROW_EXCEPTION(std::domain_error("x in [a, b] is required."));

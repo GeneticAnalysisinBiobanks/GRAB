@@ -102,8 +102,8 @@
 #endif
 
 static inline adler32_func_t
-arch_select_adler32_func(void)
-{
+arch_select_adler32_func(void
+) {
 	const u32 features MAYBE_UNUSED = get_x86_cpu_features();
 
 #ifdef adler32_x86_avx512_vl512_vnni

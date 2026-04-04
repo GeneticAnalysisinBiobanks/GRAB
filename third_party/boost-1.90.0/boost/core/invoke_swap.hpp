@@ -55,16 +55,16 @@ using namespace std;
 
 template<class T>
 BOOST_GPU_ENABLED
-inline void invoke_swap_impl(T& left, T& right) BOOST_CORE_SWAP_NOEXCEPT_IF(BOOST_NOEXCEPT_EXPR(swap(left, right)))
-{
+inline void invoke_swap_impl(T& left, T& right) BOOST_CORE_SWAP_NOEXCEPT_IF(BOOST_NOEXCEPT_EXPR(swap(left, right))
+) {
     swap(left, right);
 }
 
 template<class T, std::size_t N>
 BOOST_GPU_ENABLED
 inline void invoke_swap_impl(T (& left)[N], T (& right)[N])
-    BOOST_CORE_SWAP_NOEXCEPT_IF(BOOST_NOEXCEPT_EXPR(::boost_swap_impl::invoke_swap_impl(left[0], right[0])))
-{
+    BOOST_CORE_SWAP_NOEXCEPT_IF(BOOST_NOEXCEPT_EXPR(::boost_swap_impl::invoke_swap_impl(left[0], right[0]))
+) {
     for (std::size_t i = 0; i < N; ++i)
     {
         ::boost_swap_impl::invoke_swap_impl(left[i], right[i]);
@@ -80,8 +80,8 @@ template<class T>
 BOOST_GPU_ENABLED
 inline typename enable_if_c< !::boost_swap_impl::is_const<T>::value >::type
 invoke_swap(T& left, T& right)
-    BOOST_CORE_SWAP_NOEXCEPT_IF(BOOST_NOEXCEPT_EXPR(::boost_swap_impl::invoke_swap_impl(left, right)))
-{
+    BOOST_CORE_SWAP_NOEXCEPT_IF(BOOST_NOEXCEPT_EXPR(::boost_swap_impl::invoke_swap_impl(left, right))
+) {
     ::boost_swap_impl::invoke_swap_impl(left, right);
 }
 

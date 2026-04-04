@@ -43,8 +43,8 @@ struct largest_cbrt_int_type
 };
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED T cbrt_imp(T z, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED T cbrt_imp(T z, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    //
    // cbrt approximation for z in the range [0.5,1]
@@ -159,16 +159,16 @@ BOOST_MATH_GPU_ENABLED T cbrt_imp(T z, const Policy& pol)
 } // namespace detail
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type cbrt(T z, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type cbrt(T z, const Policy& pol
+) {
    using result_type = typename tools::promote_args<T>::type;
    using value_type = typename policies::evaluation<result_type, Policy>::type;
    return static_cast<result_type>(detail::cbrt_imp(value_type(z), pol));
 }
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type cbrt(T z)
-{
+BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type cbrt(T z
+) {
    return cbrt(z, policies::policy<>());
 }
 
@@ -181,25 +181,25 @@ namespace boost {
 namespace math {
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED double cbrt(T x)
-{
+BOOST_MATH_GPU_ENABLED double cbrt(T x
+) {
    return ::cbrt(x);
 }
 
-BOOST_MATH_GPU_ENABLED inline float cbrt(float x)
-{
+BOOST_MATH_GPU_ENABLED inline float cbrt(float x
+) {
    return ::cbrtf(x);
 }
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED double cbrt(T x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED double cbrt(T x, const Policy&
+) {
    return ::cbrt(x);
 }
 
 template <typename Policy>
-BOOST_MATH_GPU_ENABLED float cbrt(float x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED float cbrt(float x, const Policy&
+) {
    return ::cbrtf(x);
 }
 

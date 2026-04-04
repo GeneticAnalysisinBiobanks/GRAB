@@ -33,8 +33,8 @@
 namespace boost { namespace math{  namespace detail{
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED T bessel_j1(T x)
-{
+BOOST_MATH_GPU_ENABLED T bessel_j1(T x
+) {
     BOOST_MATH_STATIC const T P1[] = {
          static_cast<T>(BOOST_MATH_BIG_CONSTANT(T, 64, -1.4258509801366645672e+11)),
          static_cast<T>(BOOST_MATH_BIG_CONSTANT(T, 64, 6.6781041261492395835e+09)),

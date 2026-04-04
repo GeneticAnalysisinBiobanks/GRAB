@@ -27,8 +27,8 @@
 namespace boost { namespace math { namespace statistics { namespace detail {
 
 template<typename ReturnType, typename ForwardIterator>
-ReturnType mean_sequential_impl(ForwardIterator first, ForwardIterator last)
-{
+ReturnType mean_sequential_impl(ForwardIterator first, ForwardIterator last
+) {
     const std::size_t elements {static_cast<std::size_t>(std::distance(first, last))};
     std::valarray<ReturnType> mu {0, 0, 0, 0};
     std::valarray<ReturnType> temp {0, 0, 0, 0};
@@ -61,8 +61,8 @@ ReturnType mean_sequential_impl(ForwardIterator first, ForwardIterator last)
 // Higham, Accuracy and Stability, equation 1.6a and 1.6b:
 // Calculates Mean, M2, and variance
 template<typename ReturnType, typename ForwardIterator>
-ReturnType variance_sequential_impl(ForwardIterator first, ForwardIterator last)
-{
+ReturnType variance_sequential_impl(ForwardIterator first, ForwardIterator last
+) {
     using Real = typename std::tuple_element<0, ReturnType>::type;
 
     Real M = *first;
@@ -88,8 +88,8 @@ ReturnType variance_sequential_impl(ForwardIterator first, ForwardIterator last)
 
 // https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Higher-order_statistics
 template<typename ReturnType, typename ForwardIterator>
-ReturnType first_four_moments_sequential_impl(ForwardIterator first, ForwardIterator last)
-{
+ReturnType first_four_moments_sequential_impl(ForwardIterator first, ForwardIterator last
+) {
     using Real = typename std::tuple_element<0, ReturnType>::type;
     using Size = typename std::tuple_element<4, ReturnType>::type;
 
@@ -117,8 +117,8 @@ ReturnType first_four_moments_sequential_impl(ForwardIterator first, ForwardIter
 // https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Higher-order_statistics
 // EQN 3.1: https://www.osti.gov/servlets/purl/1426900
 template<typename ReturnType, typename ForwardIterator>
-ReturnType first_four_moments_parallel_impl(ForwardIterator first, ForwardIterator last)
-{
+ReturnType first_four_moments_parallel_impl(ForwardIterator first, ForwardIterator last
+) {
     using Real = typename std::tuple_element<0, ReturnType>::type;
 
     const auto elements = std::distance(first, last);
@@ -205,8 +205,8 @@ ReturnType first_four_moments_parallel_impl(ForwardIterator first, ForwardIterat
 // Follows equation 1.5 of:
 // https://prod.sandia.gov/techlib-noauth/access-control.cgi/2008/086212.pdf
 template<typename ReturnType, typename ForwardIterator>
-ReturnType skewness_sequential_impl(ForwardIterator first, ForwardIterator last)
-{
+ReturnType skewness_sequential_impl(ForwardIterator first, ForwardIterator last
+) {
     using std::sqrt;
     BOOST_MATH_ASSERT_MSG(first != last, "At least one sample is required to compute skewness.");
     
@@ -239,8 +239,8 @@ ReturnType skewness_sequential_impl(ForwardIterator first, ForwardIterator last)
 }
 
 template<typename ReturnType, typename ForwardIterator>
-ReturnType gini_coefficient_sequential_impl(ForwardIterator first, ForwardIterator last)
-{
+ReturnType gini_coefficient_sequential_impl(ForwardIterator first, ForwardIterator last
+) {
     ReturnType i = 1;
     ReturnType num = 0;
     ReturnType denom = 0;
@@ -264,8 +264,8 @@ ReturnType gini_coefficient_sequential_impl(ForwardIterator first, ForwardIterat
 }
 
 template<typename ReturnType, typename ForwardIterator>
-ReturnType gini_range_fraction(ForwardIterator first, ForwardIterator last, std::size_t starting_index)
-{
+ReturnType gini_range_fraction(ForwardIterator first, ForwardIterator last, std::size_t starting_index
+) {
     using Real = typename std::tuple_element<0, ReturnType>::type;
 
     std::size_t i = starting_index + 1;
@@ -285,8 +285,8 @@ ReturnType gini_range_fraction(ForwardIterator first, ForwardIterator last, std:
 #ifdef BOOST_MATH_HAS_THREADS
 
 template<typename ReturnType, typename ExecutionPolicy, typename ForwardIterator>
-ReturnType gini_coefficient_parallel_impl(ExecutionPolicy&&, ForwardIterator first, ForwardIterator last)
-{
+ReturnType gini_coefficient_parallel_impl(ExecutionPolicy&&, ForwardIterator first, ForwardIterator last
+) {
     using range_tuple = std::tuple<ReturnType, ReturnType, std::size_t>;
     
     const auto elements = std::distance(first, last);
@@ -360,8 +360,8 @@ ReturnType gini_coefficient_parallel_impl(ExecutionPolicy&&, ForwardIterator fir
 #endif // BOOST_MATH_HAS_THREADS
 
 template<typename ForwardIterator, typename OutputIterator>
-OutputIterator mode_impl(ForwardIterator first, ForwardIterator last, OutputIterator output)
-{
+OutputIterator mode_impl(ForwardIterator first, ForwardIterator last, OutputIterator output
+) {
     using Z = typename std::iterator_traits<ForwardIterator>::value_type;
     using Size = typename std::iterator_traits<ForwardIterator>::difference_type;
 

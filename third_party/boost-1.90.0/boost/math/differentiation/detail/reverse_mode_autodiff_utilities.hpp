@@ -37,8 +37,8 @@ struct if_functional_dispatch_impl<false>
 };
 
 template<bool Condition, typename F1, typename F2, typename... Args>
-decltype(auto) if_functional_dispatch(F1&& f1, F2&& f2, Args&&... args)
-{
+decltype(auto) if_functional_dispatch(F1&& f1, F2&& f2, Args&&... args
+) {
     return if_functional_dispatch_impl<Condition>::call(std::forward<F1>(f1),
                                                         std::forward<F2>(f2),
                                                         std::forward<Args>(args)...);

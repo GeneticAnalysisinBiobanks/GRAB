@@ -23,8 +23,8 @@ namespace boost{ namespace math{ namespace tools{
 // std::fmod(1185.0L, 1.5L);
 //
 template <class T>
-BOOST_MATH_GPU_ENABLED inline T fmod_workaround(T a, T b) BOOST_MATH_NOEXCEPT(T)
-{
+BOOST_MATH_GPU_ENABLED inline T fmod_workaround(T a, T b) BOOST_MATH_NOEXCEPT(T
+) {
    BOOST_MATH_STD_USING
    return fmod(a, b);
 }

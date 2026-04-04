@@ -44,8 +44,8 @@ private:
 };
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T inverse_poisson_cornish_fisher(T lambda, T p, T q, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED T inverse_poisson_cornish_fisher(T lambda, T p, T q, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    // mean:
    T m = lambda;
@@ -75,8 +75,8 @@ BOOST_MATH_GPU_ENABLED T inverse_poisson_cornish_fisher(T lambda, T p, T q, cons
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T gamma_inva_imp(const T& z, const T& p, const T& q, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED T gamma_inva_imp(const T& z, const T& p, const T& q, const Policy& pol
+) {
    BOOST_MATH_STD_USING  // for ADL of std lib math functions
    //
    // Special cases first:
@@ -160,8 +160,8 @@ BOOST_MATH_GPU_ENABLED T gamma_inva_imp(const T& z, const T& p, const T& q, cons
 
 template <class T1, class T2, class Policy>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type
-   gamma_p_inva(T1 x, T2 p, const Policy& pol)
-{
+   gamma_p_inva(T1 x, T2 p, const Policy& pol
+) {
    typedef typename tools::promote_args<T1, T2>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
    typedef typename policies::normalise<
@@ -190,8 +190,8 @@ BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type
 
 template <class T1, class T2, class Policy>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type
-   gamma_q_inva(T1 x, T2 q, const Policy& pol)
-{
+   gamma_q_inva(T1 x, T2 q, const Policy& pol
+) {
    typedef typename tools::promote_args<T1, T2>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
    typedef typename policies::normalise<
@@ -220,15 +220,15 @@ BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type
 
 template <class T1, class T2>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type
-   gamma_p_inva(T1 x, T2 p)
-{
+   gamma_p_inva(T1 x, T2 p
+) {
    return boost::math::gamma_p_inva(x, p, policies::policy<>());
 }
 
 template <class T1, class T2>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type
-   gamma_q_inva(T1 x, T2 q)
-{
+   gamma_q_inva(T1 x, T2 q
+) {
    return boost::math::gamma_q_inva(x, q, policies::policy<>());
 }
 

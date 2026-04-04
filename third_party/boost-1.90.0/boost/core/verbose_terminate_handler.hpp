@@ -24,8 +24,8 @@ namespace boost
 namespace core
 {
 
-BOOST_NORETURN inline void verbose_terminate_handler()
-{
+BOOST_NORETURN inline void verbose_terminate_handler(
+) {
     std::set_terminate( 0 );
 
 #if defined(BOOST_NO_EXCEPTIONS)

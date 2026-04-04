@@ -3,6 +3,7 @@
 
 #include "spamix/indiv_af.hpp"
 #include "util/text_scanner.hpp"
+#include "util/text_stream.hpp"
 
 #include <cassert>
 #include <cmath>
@@ -15,8 +16,6 @@
 #include <string>
 #include <vector>
 
-#include <zlib.h>
-
 #include "util/math_helper.hpp"
 
 // ======================================================================
@@ -26,8 +25,8 @@
 AFModel computeAFModel(
     const Eigen::Ref<const Eigen::VectorXd>& g,
     double altFreq,
-    const AFContext& ctx)
-{
+    const AFContext& ctx
+) {
   constexpr double PCs_pval_cut = 0.05;
   constexpr double negRatioCut  = 0.1;
   constexpr double MAC_cutoff   = 20.0;
@@ -114,8 +113,8 @@ void computeAFVec(
     const Eigen::Ref<const Eigen::VectorXd>& g,
     double altFreq,
     const AFContext& ctx,
-    Eigen::Ref<Eigen::VectorXd> out)
-{
+    Eigen::Ref<Eigen::VectorXd> out
+) {
   constexpr double PCs_pval_cut = 0.05;
   constexpr double negRatioCut  = 0.1;
   constexpr double MAC_cutoff   = 20.0;
@@ -204,8 +203,8 @@ void getAFVecFromModel(
     double altFreq,
     const Eigen::MatrixXd& onePlusPCs,
     int N,
-    Eigen::Ref<Eigen::VectorXd> out)
-{
+    Eigen::Ref<Eigen::VectorXd> out
+) {
   switch (model.status) {
   case 0:
     out.setConstant(altFreq);
@@ -245,9 +244,7 @@ static IndivAFWriter::Mode inferMode(const std::string& path) {
   const auto n = path.size();
   if (n > 4 && path.compare(n - 4, 4, ".bin") == 0)
     return IndivAFWriter::Mode::Binary;
-  if (n > 3 && path.compare(n - 3, 3, ".gz") == 0)
-    return IndivAFWriter::Mode::GzipText;
-  return IndivAFWriter::Mode::PlainText;
+  return IndivAFWriter::Mode::Text;
 }
 
 // ======================================================================
@@ -262,7 +259,6 @@ IndivAFWriter::IndivAFWriter(
   , m_nPC(nPC)
   , m_recordSize(static_cast<long long>(sizeof(int8_t)) +
                  static_cast<long long>(1 + nPC) * static_cast<long long>(sizeof(double)))
-  , m_gz(nullptr)
 {
   if (m_mode == Mode::Binary) {
     // Pre-allocate the file to nBimMarkers * recordSize zeros so that each
@@ -288,29 +284,15 @@ IndivAFWriter::IndivAFWriter(
     if (!m_binOut.is_open())
       throw std::runtime_error("Cannot open binary AF file for random write: " + outputFile);
 
-  } else if (m_mode == Mode::GzipText) {
-    m_gz = static_cast<void*>(gzopen(outputFile.c_str(), "wb"));
-    if (!m_gz)
-      throw std::runtime_error("Cannot create gzip AF file: " + outputFile);
-    gzbuffer(static_cast<gzFile>(m_gz), 256u * 1024u);
+  } else {
+    m_writer = std::make_unique<TextWriter>(outputFile);
 
     // Write TSV header
     std::string hdr = "#STATUS";
     for (int j = 0; j <= nPC; ++j)
       hdr += "\tBETA" + std::to_string(j);
     hdr += "\n";
-    gzwrite(static_cast<gzFile>(m_gz), hdr.data(), static_cast<unsigned>(hdr.size()));
-
-  } else {
-    m_textOut.open(outputFile);
-    if (!m_textOut.is_open())
-      throw std::runtime_error("Cannot create text AF file: " + outputFile);
-
-    // Write TSV header
-    m_textOut << "#STATUS";
-    for (int j = 0; j <= nPC; ++j)
-      m_textOut << "\tBETA" << j;
-    m_textOut << "\n";
+    m_writer->write(hdr);
   }
 }
 
@@ -321,8 +303,8 @@ IndivAFWriter::IndivAFWriter(
 void IndivAFWriter::write(
     uint64_t genoIndex,
     int8_t status,
-    const Eigen::VectorXd& betas)
-{
+    const Eigen::VectorXd& betas
+) {
   if (m_mode == Mode::Binary) {
     const long long filePos = static_cast<long long>(genoIndex) * m_recordSize;
     m_binOut.seekp(filePos);
@@ -344,11 +326,7 @@ void IndivAFWriter::write(
     }
     line += '\n';
 
-    if (m_mode == Mode::GzipText) {
-      gzwrite(static_cast<gzFile>(m_gz), line.data(), static_cast<unsigned>(line.size()));
-    } else {
-      m_textOut << line;
-    }
+    m_writer->write(line);
   }
 }
 
@@ -362,10 +340,8 @@ void IndivAFWriter::close() {
 
   if (m_mode == Mode::Binary && m_binOut.is_open())
     m_binOut.close();
-  else if (m_mode == Mode::GzipText && m_gz)
-    gzclose(static_cast<gzFile>(m_gz));
-  else if (m_mode == Mode::PlainText && m_textOut.is_open())
-    m_textOut.close();
+  else if (m_writer)
+    m_writer->close();
 }
 
 IndivAFWriter::~IndivAFWriter() { close(); }
@@ -377,8 +353,8 @@ IndivAFWriter::~IndivAFWriter() { close(); }
 IndivAFReader::IndivAFReader(const std::string& binFile, int nPC)
   : m_nPC(nPC)
   , m_recordSize(static_cast<long long>(sizeof(int8_t)) +
-                 static_cast<long long>(1 + nPC) * static_cast<long long>(sizeof(double)))
-{
+                 static_cast<long long>(1 + nPC) * static_cast<long long>(sizeof(double))
+) {
   m_in.open(binFile, std::ios::binary);
   if (!m_in.is_open())
     throw std::runtime_error("Cannot open binary AF file: " + binFile);
@@ -414,8 +390,8 @@ static std::vector<AFModel> loadAFModelsBinary(
     const std::string& path,
     int nPC,
     uint32_t nMarkers,
-    const std::vector<uint64_t>& genoIndices)
-{
+    const std::vector<uint64_t>& genoIndices
+) {
   std::vector<AFModel> models(nMarkers);
   IndivAFReader reader(path, nPC);
   for (uint32_t fi = 0; fi < nMarkers; ++fi)
@@ -426,11 +402,8 @@ static std::vector<AFModel> loadAFModelsBinary(
 static std::vector<AFModel> loadAFModelsText(
     const std::string& path,
     int nPC,
-    uint32_t nExpected)
-{
-  const bool isGz = path.size() > 3 &&
-      path.compare(path.size() - 3, 3, ".gz") == 0;
-
+    uint32_t nExpected
+) {
   std::vector<AFModel> models;
   models.reserve(nExpected);
 
@@ -454,34 +427,10 @@ static std::vector<AFModel> loadAFModelsText(
     models.push_back(std::move(m));
   };
 
-  if (isGz) {
-    gzFile gz = gzopen(path.c_str(), "rb");
-    if (!gz)
-      throw std::runtime_error("Cannot open gzip AF file: " + path);
-    char buf[8192];
-    std::string leftover;
-    while (true) {
-      int nRead = gzread(gz, buf, sizeof(buf));
-      if (nRead <= 0) break;
-      leftover.append(buf, static_cast<size_t>(nRead));
-      size_t pos = 0;
-      while (true) {
-        size_t nl = leftover.find('\n', pos);
-        if (nl == std::string::npos) { leftover = leftover.substr(pos); break; }
-        parseLine(leftover.substr(pos, nl - pos));
-        pos = nl + 1;
-      }
-    }
-    if (!leftover.empty()) parseLine(leftover);
-    gzclose(gz);
-  } else {
-    std::ifstream ifs(path);
-    if (!ifs)
-      throw std::runtime_error("Cannot open text AF file: " + path);
-    std::string line;
-    while (std::getline(ifs, line))
-      parseLine(line);
-  }
+  TextReader reader(path);
+  std::string line;
+  while (reader.getline(line))
+    parseLine(line);
 
   return models;
 }
@@ -490,8 +439,8 @@ std::vector<AFModel> loadAFModels(
     const std::string& path,
     int nPC,
     uint32_t nMarkers,
-    const std::vector<uint64_t>& genoIndices)
-{
+    const std::vector<uint64_t>& genoIndices
+) {
   const auto len = path.size();
   std::vector<AFModel> models;
   if (len > 4 && path.compare(len - 4, 4, ".bin") == 0)
@@ -559,8 +508,8 @@ std::vector<AFModel> computeAFModelsInMemory(
     const GenoMeta& plinkData,
     const AFContext& afCtx,
     const std::vector<uint32_t>& genoToFlat,
-    int nthread)
-{
+    int nthread
+) {
   const auto& markerInfo    = plinkData.markerInfo();
   const auto& chunkIndices  = plinkData.chunkIndices();
   const size_t nTotalChunks = chunkIndices.size();
@@ -638,8 +587,8 @@ void runSPAmixAF(
     int    nSnpPerChunk,
     double /*missingCutoff*/,
     double /*minMafCutoff*/,
-    double /*minMacCutoff*/)
-{
+    double /*minMacCutoff*/
+) {
   const auto wallStart = std::chrono::steady_clock::now();
   const std::clock_t cpuStart = std::clock();
 

@@ -51,6 +51,7 @@ Args parseArgs(int argc, char* argv[]) {
         else if (arg == "--ind-af-coef")              a.indAfFile         = next();
         else if (arg == "--pairwise-ibd")             a.pairwiseIBDFile   = next();
         else if (arg == "--out")                      a.outputFile        = next();
+        else if (arg == "--out-prefix")               a.outPrefix         = next();
         else if (arg == "--prevalence")               a.refPrevalence     = std::stod(next());
         else if (arg == "--batch-effect-p-threshold") a.cutoff            = std::stod(next());
         else if (arg == "--spa-z-threshold")          a.spaCutoff         = std::stod(next());
@@ -64,8 +65,17 @@ Args parseArgs(int argc, char* argv[]) {
         else if (arg == "--chunk-size")               a.nSnpPerChunk      = std::stoi(next());
         else if (arg == "--leaf-nclusters")           a.nClusters         = std::stoi(next());
         else if (arg == "--seed")                      a.seed              = std::stoull(next());
+        else if (arg == "--extract")                  a.extractFile       = next();
+        else if (arg == "--exclude")                  a.excludeFile       = next();
+        else if (arg == "--admix-bfile")              a.admixBfilePrefix  = next();
+        else if (arg == "--admix-phi")                a.admixPhiFile      = next();
+        else if (arg == "--rfmix-msp")                 a.mspFile           = next();
+        else if (arg == "--admix-text-prefix")        a.admixTextPrefix   = next();
+        // --phi-maf-cutoff removed: hardcoded to 0.01 inside estimatePhiOneAncestry
         else if (arg == "--cal-ind-af-coef")          a.calIndAfCoef      = true;
         else if (arg == "--cal-pairwise-ibd")         a.calPairwiseIBD    = true;
+        else if (arg == "--cal-admix-phi")            a.calAdmixPhi       = true;
+        else if (arg == "--make-abed")                a.makeAbed          = true;
         else if (arg == "--min-maf-ibd")              a.minMafIBD         = std::stod(next());
         else {
             std::cerr << "Error: unknown option: " << arg

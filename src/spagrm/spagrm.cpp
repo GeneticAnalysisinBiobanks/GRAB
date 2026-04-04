@@ -20,8 +20,8 @@ void mgf(
     const std::vector<std::vector<double>>& TwoSubj_rho,
     const std::vector<UpdatedThreeSubj>& threeSubj,
     double MAF,
-    MgfWorkspace& ws)
-{
+    MgfWorkspace& ws
+) {
   Eigen::Index w = 0;
   const Eigen::Index nu = resid_unrelated_outliers.size();
 
@@ -116,8 +116,8 @@ double fastGetRoot(
     double Score, double MAF,
     double init_t, double tol,
     MgfWorkspace& ws,
-    int maxiter)
-{
+    int maxiter
+) {
   double t = init_t;
   double CGF1 = 0.0, CGF2 = 0.0;
   double diff_t = std::numeric_limits<double>::infinity();
@@ -197,8 +197,8 @@ double getProbSpa(
     double R_GRM_R_nonOutlier,
     double Score, double MAF,
     bool lower_tail, double zeta, double tol,
-    MgfWorkspace& ws)
-{
+    MgfWorkspace& ws
+) {
   zeta = fastGetRoot(resid_unrelated_outliers, TwoSubj_resid, TwoSubj_rho, threeSubj,
                      sum_R_nonOutlier, R_GRM_R_nonOutlier, Score, MAF, zeta, tol, ws);
 
@@ -262,8 +262,8 @@ SPAGRMClass::SPAGRMClass(
     m_ThreeSubj_CLT_list(std::move(fam.threeSubj_CLT)),
     m_SPA_Cutoff(SPA_Cutoff),
     m_zeta(zeta),
-    m_tol(tol)
-{
+    m_tol(tol
+) {
   const auto n_unrel = m_resid_unrelated_outliers.size();
   const auto mgfSz = static_cast<Eigen::Index>(
       nsSPAGRM::mgfOutputSize(
@@ -295,8 +295,8 @@ SPAGRMClass::SPAGRMClass(const SPAGRMClass& o)
     m_ThreeSubj_CLT_list(o.m_ThreeSubj_CLT_list),
     m_SPA_Cutoff(o.m_SPA_Cutoff),
     m_zeta(o.m_zeta),
-    m_tol(o.m_tol)
-{
+    m_tol(o.m_tol
+) {
   // Rebuild scratch for thread safety
   const auto n_unrel = m_resid_unrelated_outliers.size();
   const auto mgfSz = static_cast<Eigen::Index>(
@@ -318,8 +318,8 @@ SPAGRMClass::SPAGRMClass(const SPAGRMClass& o)
 double SPAGRMClass::getMarkerPval(
     const Eigen::VectorXd& GVec,
     double altFreq,
-    double& zScore)
-{
+    double& zScore
+) {
   const double MAF       = std::min(altFreq, 1.0 - altFreq);
   const double Score     = GVec.dot(m_resid) - GVec.mean() * m_resid.sum();
   const double G_var     = 2.0 * MAF * (1.0 - MAF);

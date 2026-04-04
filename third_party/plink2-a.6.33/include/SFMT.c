@@ -66,8 +66,8 @@ inline static void do_recursion(w128_t * r, w128_t * a, w128_t * b,
  * @param in the 128-bit data to be shifted
  * @param shift the shift value
  */
-inline static void rshift128(w128_t *out, w128_t const *in, int shift)
-{
+inline static void rshift128(w128_t *out, w128_t const *in, int shift
+) {
     uint64_t th, tl, oh, ol;
 
     th = ((uint64_t)in->u[3] << 32) | ((uint64_t)in->u[2]);
@@ -90,8 +90,8 @@ inline static void rshift128(w128_t *out, w128_t const *in, int shift)
  * @param in the 128-bit data to be shifted
  * @param shift the shift value
  */
-inline static void lshift128(w128_t *out, w128_t const *in, int shift)
-{
+inline static void lshift128(w128_t *out, w128_t const *in, int shift
+) {
     uint64_t th, tl, oh, ol;
 
     th = ((uint64_t)in->u[3] << 32) | ((uint64_t)in->u[2]);
@@ -115,8 +115,8 @@ inline static void lshift128(w128_t *out, w128_t const *in, int shift)
  * @param d a 128-bit part of the internal state array
  */
 inline static void do_recursion(w128_t *r, w128_t *a, w128_t *b,
-				w128_t *c, w128_t *d)
-{
+				w128_t *c, w128_t *d
+) {
     w128_t x;
     w128_t y;
 
@@ -162,8 +162,8 @@ inline static void mm_recursion(__m128i * r, __m128i a, __m128i b,
  * @param d a 128-bit part of the interal state array
  */
 inline static void mm_recursion(__m128i * r, __m128i a, __m128i b,
-				__m128i c, __m128i d)
-{
+				__m128i c, __m128i d
+) {
     __m128i v, x, y, z;
 
     y = _mm_srli_epi32(b, SFMT_SR1);
@@ -212,8 +212,8 @@ void sfmt_gen_rand_all(sfmt_t * sfmt) {
  * @param array an 128-bit array to be filled by pseudorandom numbers.
  * @param size number of 128-bit pseudorandom numbers to be generated.
  */
-static void gen_rand_array(sfmt_t * sfmt, w128_t * array, int size)
-{
+static void gen_rand_array(sfmt_t * sfmt, w128_t * array, int size
+) {
     int i, j;
     __m128i r1, r2;
     w128_t * pstate = sfmt->state;

@@ -49,22 +49,22 @@ template <class Real, class Tol>
 BOOST_MATH_GPU_ENABLED void adjust_bounds(Real& /* a */, Real& /* b */, Tol const& /* tol */){}
 
 template <class Real>
-BOOST_MATH_GPU_ENABLED void adjust_bounds(Real& /* a */, Real& b, tools::equal_floor const& /* tol */)
-{
+BOOST_MATH_GPU_ENABLED void adjust_bounds(Real& /* a */, Real& b, tools::equal_floor const& /* tol */
+) {
    BOOST_MATH_STD_USING
    b -= tools::epsilon<Real>() * b;
 }
 
 template <class Real>
-BOOST_MATH_GPU_ENABLED void adjust_bounds(Real& a, Real& /* b */, tools::equal_ceil const& /* tol */)
-{
+BOOST_MATH_GPU_ENABLED void adjust_bounds(Real& a, Real& /* b */, tools::equal_ceil const& /* tol */
+) {
    BOOST_MATH_STD_USING
    a += tools::epsilon<Real>() * a;
 }
 
 template <class Real>
-BOOST_MATH_GPU_ENABLED void adjust_bounds(Real& a, Real& b, tools::equal_nearest_integer const& /* tol */)
-{
+BOOST_MATH_GPU_ENABLED void adjust_bounds(Real& a, Real& b, tools::equal_nearest_integer const& /* tol */
+) {
    BOOST_MATH_STD_USING
    a += tools::epsilon<Real>() * a;
    b -= tools::epsilon<Real>() * b;
@@ -82,8 +82,8 @@ BOOST_MATH_GPU_ENABLED typename Dist::value_type
       const typename Dist::value_type& multiplier,
       typename Dist::value_type adder,
       const Tolerance& tol,
-      boost::math::uintmax_t& max_iter)
-{
+      boost::math::uintmax_t& max_iter
+) {
    typedef typename Dist::value_type value_type;
    typedef typename Dist::policy_type policy_type;
 
@@ -296,8 +296,8 @@ BOOST_MATH_GPU_ENABLED typename Dist::value_type
 // is very close 1.
 //
 template <class Dist>
-BOOST_MATH_GPU_ENABLED inline typename Dist::value_type round_to_floor(const Dist& d, typename Dist::value_type result, typename Dist::value_type p, bool c)
-{
+BOOST_MATH_GPU_ENABLED inline typename Dist::value_type round_to_floor(const Dist& d, typename Dist::value_type result, typename Dist::value_type p, bool c
+) {
    BOOST_MATH_STD_USING
    typename Dist::value_type cc = ceil(result);
    typename Dist::value_type pp = cc <= support(d).second ? c ? cdf(complement(d, cc)) : cdf(d, cc) : 1;
@@ -332,8 +332,8 @@ BOOST_MATH_GPU_ENABLED inline typename Dist::value_type round_to_floor(const Dis
 #endif
 
 template <class Dist>
-BOOST_MATH_GPU_ENABLED inline typename Dist::value_type round_to_ceil(const Dist& d, typename Dist::value_type result, typename Dist::value_type p, bool c)
-{
+BOOST_MATH_GPU_ENABLED inline typename Dist::value_type round_to_ceil(const Dist& d, typename Dist::value_type result, typename Dist::value_type p, bool c
+) {
    BOOST_MATH_STD_USING
    typename Dist::value_type cc = floor(result);
    typename Dist::value_type pp = cc >= support(d).first ? c ? cdf(complement(d, cc)) : cdf(d, cc) : 0;
@@ -382,8 +382,8 @@ BOOST_MATH_GPU_ENABLED inline typename Dist::value_type
       const typename Dist::value_type& multiplier,
       const typename Dist::value_type& adder,
       const policies::discrete_quantile<policies::real>&,
-      boost::math::uintmax_t& max_iter)
-{
+      boost::math::uintmax_t& max_iter
+) {
    if(p > 0.5)
    {
       p = 1 - p;
@@ -413,8 +413,8 @@ BOOST_MATH_GPU_ENABLED inline typename Dist::value_type
       const typename Dist::value_type& multiplier,
       const typename Dist::value_type& adder,
       const policies::discrete_quantile<policies::integer_round_outwards>&,
-      boost::math::uintmax_t& max_iter)
-{
+      boost::math::uintmax_t& max_iter
+) {
    typedef typename Dist::value_type value_type;
    BOOST_MATH_STD_USING
    typename Dist::value_type pp = c ? 1 - p : p;
@@ -456,8 +456,8 @@ BOOST_MATH_GPU_ENABLED inline typename Dist::value_type
       const typename Dist::value_type& multiplier,
       const typename Dist::value_type& adder,
       const policies::discrete_quantile<policies::integer_round_inwards>&,
-      boost::math::uintmax_t& max_iter)
-{
+      boost::math::uintmax_t& max_iter
+) {
    typedef typename Dist::value_type value_type;
    BOOST_MATH_STD_USING
    typename Dist::value_type pp = c ? 1 - p : p;
@@ -499,8 +499,8 @@ BOOST_MATH_GPU_ENABLED inline typename Dist::value_type
       const typename Dist::value_type& multiplier,
       const typename Dist::value_type& adder,
       const policies::discrete_quantile<policies::integer_round_down>&,
-      boost::math::uintmax_t& max_iter)
-{
+      boost::math::uintmax_t& max_iter
+) {
    typedef typename Dist::value_type value_type;
    BOOST_MATH_STD_USING
    typename Dist::value_type pp = c ? 1 - p : p;
@@ -527,8 +527,8 @@ BOOST_MATH_GPU_ENABLED inline typename Dist::value_type
       const typename Dist::value_type& multiplier,
       const typename Dist::value_type& adder,
       const policies::discrete_quantile<policies::integer_round_up>&,
-      boost::math::uintmax_t& max_iter)
-{
+      boost::math::uintmax_t& max_iter
+) {
    BOOST_MATH_STD_USING
    typename Dist::value_type pp = c ? 1 - p : p;
    if(pp <= pdf(dist, 0))
@@ -554,8 +554,8 @@ BOOST_MATH_GPU_ENABLED inline typename Dist::value_type
       const typename Dist::value_type& multiplier,
       const typename Dist::value_type& adder,
       const policies::discrete_quantile<policies::integer_round_nearest>&,
-      boost::math::uintmax_t& max_iter)
-{
+      boost::math::uintmax_t& max_iter
+) {
    typedef typename Dist::value_type value_type;
    BOOST_MATH_STD_USING
    typename Dist::value_type pp = c ? 1 - p : p;

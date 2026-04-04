@@ -103,8 +103,8 @@
 
 #undef fold_vec128
 static forceinline ATTRIBUTES __m128i
-ADD_SUFFIX(fold_vec128)(__m128i src, __m128i dst, __m128i /* __v2du */ mults)
-{
+ADD_SUFFIX(fold_vec128)(__m128i src, __m128i dst, __m128i /* __v2du */ mults
+) {
 	dst = _mm_xor_si128(dst, _mm_clmulepi64_si128(src, mults, 0x00));
 	dst = _mm_xor_si128(dst, _mm_clmulepi64_si128(src, mults, 0x11));
 	return dst;
@@ -114,8 +114,8 @@ ADD_SUFFIX(fold_vec128)(__m128i src, __m128i dst, __m128i /* __v2du */ mults)
 #if VL >= 32
 #undef fold_vec256
 static forceinline ATTRIBUTES __m256i
-ADD_SUFFIX(fold_vec256)(__m256i src, __m256i dst, __m256i /* __v4du */ mults)
-{
+ADD_SUFFIX(fold_vec256)(__m256i src, __m256i dst, __m256i /* __v4du */ mults
+) {
 #if USE_AVX512
 	/* vpternlog with immediate 0x96 is a three-argument XOR. */
 	return _mm256_ternarylogic_epi32(
@@ -136,8 +136,8 @@ ADD_SUFFIX(fold_vec256)(__m256i src, __m256i dst, __m256i /* __v4du */ mults)
 #if VL >= 64
 #undef fold_vec512
 static forceinline ATTRIBUTES __m512i
-ADD_SUFFIX(fold_vec512)(__m512i src, __m512i dst, __m512i /* __v8du */ mults)
-{
+ADD_SUFFIX(fold_vec512)(__m512i src, __m512i dst, __m512i /* __v8du */ mults
+) {
 	/* vpternlog with immediate 0x96 is a three-argument XOR. */
 	return _mm512_ternarylogic_epi32(
 			_mm512_clmulepi64_epi128(src, mults, 0x00),
@@ -158,8 +158,8 @@ ADD_SUFFIX(fold_vec512)(__m512i src, __m512i dst, __m512i /* __v8du */ mults)
 #undef fold_lessthan16bytes
 static forceinline ATTRIBUTES __m128i
 ADD_SUFFIX(fold_lessthan16bytes)(__m128i x, const u8 *p, size_t len,
-				 __m128i /* __v2du */ mults_128b)
-{
+				 __m128i /* __v2du */ mults_128b
+) {
 	__m128i lshift = _mm_loadu_si128((const void *)&shift_tab[len]);
 	__m128i rshift = _mm_loadu_si128((const void *)&shift_tab[len + 16]);
 	__m128i x0, x1;
@@ -181,8 +181,8 @@ ADD_SUFFIX(fold_lessthan16bytes)(__m128i x, const u8 *p, size_t len,
 #define fold_lessthan16bytes	ADD_SUFFIX(fold_lessthan16bytes)
 
 static ATTRIBUTES u32
-ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len)
-{
+ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len
+) {
 	/*
 	 * mults_{N}v are the vectors of multipliers for folding across N vec_t
 	 * vectors, i.e. N*VL*8 bits.  mults_128b are the two multipliers for

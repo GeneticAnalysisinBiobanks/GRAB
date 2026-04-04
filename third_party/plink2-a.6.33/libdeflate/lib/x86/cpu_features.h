@@ -57,8 +57,8 @@ extern volatile u32 libdeflate_x86_cpu_features;
 
 void libdeflate_init_x86_cpu_features(void);
 
-static inline u32 get_x86_cpu_features(void)
-{
+static inline u32 get_x86_cpu_features(void
+) {
 	if (libdeflate_x86_cpu_features == 0)
 		libdeflate_init_x86_cpu_features();
 	return libdeflate_x86_cpu_features;

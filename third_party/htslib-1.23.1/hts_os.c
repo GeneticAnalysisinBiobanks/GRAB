@@ -33,8 +33,8 @@ DEALINGS IN THE SOFTWARE.  */
 #else
 #include <stdlib.h>
 HTSLIB_EXPORT
-void hts_srand48(long seed)
-{
+void hts_srand48(long seed
+) {
 #ifdef HAVE_SRAND48_DETERMINISTIC
     srand48_deterministic(seed);
 #else

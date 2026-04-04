@@ -45,8 +45,8 @@ private:
 
 template<class Real, class Policy>
 template<class F>
-auto exp_sinh<Real, Policy>::integrate(const F& f, Real a, Real b, Real tolerance, Real* error, Real* L1, std::size_t* levels) const ->decltype(std::declval<F>()(std::declval<Real>()))
-{
+auto exp_sinh<Real, Policy>::integrate(const F& f, Real a, Real b, Real tolerance, Real* error, Real* L1, std::size_t* levels) const ->decltype(std::declval<F>()(std::declval<Real>())
+) {
     typedef decltype(f(a)) K;
     static_assert(!std::is_integral<K>::value,
                   "The return type cannot be integral, it must be either a real or complex floating point type.");
@@ -90,8 +90,8 @@ auto exp_sinh<Real, Policy>::integrate(const F& f, Real a, Real b, Real toleranc
 
 template<class Real, class Policy>
 template<class F>
-auto exp_sinh<Real, Policy>::integrate(const F& f, Real tolerance, Real* error, Real* L1, std::size_t* levels) const ->decltype(std::declval<F>()(std::declval<Real>()))
-{
+auto exp_sinh<Real, Policy>::integrate(const F& f, Real tolerance, Real* error, Real* L1, std::size_t* levels) const ->decltype(std::declval<F>()(std::declval<Real>())
+) {
     static const char* function = "boost::math::quadrature::exp_sinh<%1%>::integrate";
     using std::abs;
     if (abs(tolerance) > 1) {
@@ -118,8 +118,8 @@ namespace math {
 namespace quadrature {
 
 template <class F, class Real, class Policy = policies::policy<> >
-__device__ auto exp_sinh_integrate(const F& f, Real a, Real b, Real tolerance, Real* error, Real* L1, boost::math::size_t* levels)
-{
+__device__ auto exp_sinh_integrate(const F& f, Real a, Real b, Real tolerance, Real* error, Real* L1, boost::math::size_t* levels
+) {
     BOOST_MATH_STD_USING
 
     using K = decltype(f(a));
@@ -161,8 +161,8 @@ __device__ auto exp_sinh_integrate(const F& f, Real a, Real b, Real tolerance, R
 }
 
 template <class F, class Real, class Policy = policies::policy<> >
-__device__ auto exp_sinh_integrate(const F& f, Real tolerance, Real* error, Real* L1, boost::math::size_t* levels)
-{
+__device__ auto exp_sinh_integrate(const F& f, Real tolerance, Real* error, Real* L1, boost::math::size_t* levels
+) {
     BOOST_MATH_STD_USING
     constexpr auto function = "boost::math::quadrature::exp_sinh<%1%>::integrate";
     if (abs(tolerance) > 1) {

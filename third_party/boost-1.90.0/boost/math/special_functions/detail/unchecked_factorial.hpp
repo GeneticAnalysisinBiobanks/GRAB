@@ -151,16 +151,16 @@ template<bool b>
 
 // Definitions:
 template <>
-BOOST_MATH_GPU_ENABLED inline BOOST_MATH_CONSTEXPR_TABLE_FUNCTION float unchecked_factorial<float>(unsigned i BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE_SPEC(float))
-{
+BOOST_MATH_GPU_ENABLED inline BOOST_MATH_CONSTEXPR_TABLE_FUNCTION float unchecked_factorial<float>(unsigned i BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE_SPEC(float)
+) {
    return unchecked_factorial_data<float>::factorials[i];
 }
 
 #else
 
 template <>
-BOOST_MATH_GPU_ENABLED inline BOOST_MATH_CONSTEXPR_TABLE_FUNCTION float unchecked_factorial<float>(unsigned i BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE_SPEC(float))
-{
+BOOST_MATH_GPU_ENABLED inline BOOST_MATH_CONSTEXPR_TABLE_FUNCTION float unchecked_factorial<float>(unsigned i BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE_SPEC(float)
+) {
    constexpr float factorials[] = {
       1.0F,
       1.0F,
@@ -574,8 +574,8 @@ template <bool b>
 #endif
 
 template <>
-BOOST_MATH_GPU_ENABLED inline BOOST_MATH_CONSTEXPR_TABLE_FUNCTION double unchecked_factorial<double>(unsigned i BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE_SPEC(double))
-{
+BOOST_MATH_GPU_ENABLED inline BOOST_MATH_CONSTEXPR_TABLE_FUNCTION double unchecked_factorial<double>(unsigned i BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE_SPEC(double)
+) {
    return unchecked_factorial_data<double>::factorials[i];
 }
 
@@ -588,8 +588,8 @@ struct max_factorial<double>
 #else
 
 template <>
-BOOST_MATH_GPU_ENABLED inline BOOST_MATH_CONSTEXPR_TABLE_FUNCTION double unchecked_factorial<double>(unsigned i BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE_SPEC(double))
-{
+BOOST_MATH_GPU_ENABLED inline BOOST_MATH_CONSTEXPR_TABLE_FUNCTION double unchecked_factorial<double>(unsigned i BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE_SPEC(double)
+) {
    constexpr double factorials[] = {
       1,
       1,
@@ -1003,8 +1003,8 @@ template <bool b>
 #endif
 
 template <>
-inline BOOST_MATH_CONSTEXPR_TABLE_FUNCTION long double unchecked_factorial<long double>(unsigned i BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE_SPEC(long double))
-{
+inline BOOST_MATH_CONSTEXPR_TABLE_FUNCTION long double unchecked_factorial<long double>(unsigned i BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE_SPEC(long double)
+) {
    return unchecked_factorial_data<long double>::factorials[i];
 }
 
@@ -1378,8 +1378,8 @@ const boost::math::array<BOOST_MATH_FLOAT128_TYPE, 171> unchecked_factorial_data
 #endif
 
 template <>
-inline BOOST_MATH_CONSTEXPR_TABLE_FUNCTION BOOST_MATH_FLOAT128_TYPE unchecked_factorial<BOOST_MATH_FLOAT128_TYPE>(unsigned i)
-{
+inline BOOST_MATH_CONSTEXPR_TABLE_FUNCTION BOOST_MATH_FLOAT128_TYPE unchecked_factorial<BOOST_MATH_FLOAT128_TYPE>(unsigned i
+) {
    return unchecked_factorial_data<BOOST_MATH_FLOAT128_TYPE>::factorials[i];
 }
 
@@ -1392,8 +1392,8 @@ struct max_factorial<BOOST_MATH_FLOAT128_TYPE>
 #endif
 
 template <class T, int N>
-inline T unchecked_factorial_imp(unsigned i, const boost::math::integral_constant<int, N>&)
-{
+inline T unchecked_factorial_imp(unsigned i, const boost::math::integral_constant<int, N>&
+) {
    //
    // If you're foolish enough to instantiate factorial
    // on an integer type then you end up here.  But this code is
@@ -1517,8 +1517,8 @@ inline T unchecked_factorial_imp(unsigned i, const boost::math::integral_constan
 }
 
 template <class T>
-inline T unchecked_factorial_imp(unsigned i, const boost::math::integral_constant<int, 0>&)
-{
+inline T unchecked_factorial_imp(unsigned i, const boost::math::integral_constant<int, 0>&
+) {
    //
    // If you're foolish enough to instantiate factorial
    // on an integer type then you end up here.  But this code is
@@ -1657,14 +1657,14 @@ inline T unchecked_factorial_imp(unsigned i, const boost::math::integral_constan
 #endif // BOOST_MATH_HAS_GPU_SUPPORT
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline T unchecked_factorial_imp(unsigned i, const boost::math::integral_constant<int, boost::math::numeric_limits<float>::digits>&)
-{
+BOOST_MATH_GPU_ENABLED inline T unchecked_factorial_imp(unsigned i, const boost::math::integral_constant<int, boost::math::numeric_limits<float>::digits>&
+) {
    return unchecked_factorial<float>(i);
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline T unchecked_factorial_imp(unsigned i, const boost::math::integral_constant<int, boost::math::numeric_limits<double>::digits>&)
-{
+BOOST_MATH_GPU_ENABLED inline T unchecked_factorial_imp(unsigned i, const boost::math::integral_constant<int, boost::math::numeric_limits<double>::digits>&
+) {
    return unchecked_factorial<double>(i);
 }
 
@@ -1672,15 +1672,15 @@ BOOST_MATH_GPU_ENABLED inline T unchecked_factorial_imp(unsigned i, const boost:
 
 #if DBL_MANT_DIG != LDBL_MANT_DIG
 template <class T>
-inline T unchecked_factorial_imp(unsigned i, const boost::math::integral_constant<int, LDBL_MANT_DIG>&)
-{
+inline T unchecked_factorial_imp(unsigned i, const boost::math::integral_constant<int, LDBL_MANT_DIG>&
+) {
    return unchecked_factorial<long double>(i);
 }
 #endif
 #ifdef BOOST_MATH_USE_FLOAT128
 template <class T>
-inline T unchecked_factorial_imp(unsigned i, const boost::math::integral_constant<int, 113>&)
-{
+inline T unchecked_factorial_imp(unsigned i, const boost::math::integral_constant<int, 113>&
+) {
    return unchecked_factorial<BOOST_MATH_FLOAT128_TYPE>(i);
 }
 #endif
@@ -1688,8 +1688,8 @@ inline T unchecked_factorial_imp(unsigned i, const boost::math::integral_constan
 #endif // BOOST_MATH_HAS_GPU_SUPPORT
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline T unchecked_factorial(unsigned i)
-{
+BOOST_MATH_GPU_ENABLED inline T unchecked_factorial(unsigned i
+) {
    typedef typename boost::math::policies::precision<T, boost::math::policies::policy<> >::type tag_type;
    return unchecked_factorial_imp<T>(i, tag_type());
 }

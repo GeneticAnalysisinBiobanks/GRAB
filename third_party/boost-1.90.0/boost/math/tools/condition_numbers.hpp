@@ -81,8 +81,8 @@ private:
 };
 
 template<class F, class Real>
-Real evaluation_condition_number(F const & f, Real const & x)
-{
+Real evaluation_condition_number(F const & f, Real const & x
+) {
     using std::abs;
     using std::isnan;
     using std::sqrt;

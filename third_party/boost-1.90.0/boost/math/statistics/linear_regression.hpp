@@ -23,8 +23,8 @@ namespace boost { namespace math { namespace statistics { namespace detail {
 
 template<class ReturnType, class RandomAccessContainer>
 ReturnType simple_ordinary_least_squares_impl(RandomAccessContainer const & x,
-                                              RandomAccessContainer const & y)
-{
+                                              RandomAccessContainer const & y
+) {
     using Real = typename std::tuple_element<0, ReturnType>::type;
     if (x.size() <= 1)
     {
@@ -55,8 +55,8 @@ ReturnType simple_ordinary_least_squares_impl(RandomAccessContainer const & x,
 
 template<class ReturnType, class RandomAccessContainer>
 ReturnType simple_ordinary_least_squares_with_R_squared_impl(RandomAccessContainer const & x,
-                                                             RandomAccessContainer const & y)
-{
+                                                             RandomAccessContainer const & y
+) {
     using Real = typename std::tuple_element<0, ReturnType>::type;
     if (x.size() <= 1)
     {

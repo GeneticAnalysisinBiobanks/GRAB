@@ -425,8 +425,8 @@ typedef struct {
     U32 deltaNbBits;
 } FSE_symbolCompressionTransform; /* total 8 bytes */
 
-MEM_STATIC void FSE_initCState(FSE_CState_t* statePtr, const FSE_CTable* ct)
-{
+MEM_STATIC void FSE_initCState(FSE_CState_t* statePtr, const FSE_CTable* ct
+) {
     const void* ptr = ct;
     const U16* u16ptr = (const U16*) ptr;
     const U32 tableLog = MEM_read16(ptr);
@@ -440,8 +440,8 @@ MEM_STATIC void FSE_initCState(FSE_CState_t* statePtr, const FSE_CTable* ct)
 /*! FSE_initCState2() :
 *   Same as FSE_initCState(), but the first symbol to include (which will be the last to be read)
 *   uses the smallest state value possible, saving the cost of this symbol */
-MEM_STATIC void FSE_initCState2(FSE_CState_t* statePtr, const FSE_CTable* ct, U32 symbol)
-{
+MEM_STATIC void FSE_initCState2(FSE_CState_t* statePtr, const FSE_CTable* ct, U32 symbol
+) {
     FSE_initCState(statePtr, ct);
     {   const FSE_symbolCompressionTransform symbolTT = ((const FSE_symbolCompressionTransform*)(statePtr->symbolTT))[symbol];
         const U16* stateTable = (const U16*)(statePtr->stateTable);
@@ -451,8 +451,8 @@ MEM_STATIC void FSE_initCState2(FSE_CState_t* statePtr, const FSE_CTable* ct, U3
     }
 }
 
-MEM_STATIC void FSE_encodeSymbol(BIT_CStream_t* bitC, FSE_CState_t* statePtr, unsigned symbol)
-{
+MEM_STATIC void FSE_encodeSymbol(BIT_CStream_t* bitC, FSE_CState_t* statePtr, unsigned symbol
+) {
     FSE_symbolCompressionTransform const symbolTT = ((const FSE_symbolCompressionTransform*)(statePtr->symbolTT))[symbol];
     const U16* const stateTable = (const U16*)(statePtr->stateTable);
     U32 const nbBitsOut  = (U32)((statePtr->value + symbolTT.deltaNbBits) >> 16);
@@ -460,8 +460,8 @@ MEM_STATIC void FSE_encodeSymbol(BIT_CStream_t* bitC, FSE_CState_t* statePtr, un
     statePtr->value = stateTable[ (statePtr->value >> nbBitsOut) + symbolTT.deltaFindState];
 }
 
-MEM_STATIC void FSE_flushCState(BIT_CStream_t* bitC, const FSE_CState_t* statePtr)
-{
+MEM_STATIC void FSE_flushCState(BIT_CStream_t* bitC, const FSE_CState_t* statePtr
+) {
     BIT_addBits(bitC, (BitContainerType)statePtr->value, statePtr->stateLog);
     BIT_flushBits(bitC);
 }
@@ -472,8 +472,8 @@ MEM_STATIC void FSE_flushCState(BIT_CStream_t* bitC, const FSE_CState_t* statePt
  * Fractional get rounded up (i.e. a symbol with a normalized frequency of 3 gives the same result as a frequency of 2)
  * note 1 : assume symbolValue is valid (<= maxSymbolValue)
  * note 2 : if freq[symbolValue]==0, @return a fake cost of tableLog+1 bits */
-MEM_STATIC U32 FSE_getMaxNbBits(const void* symbolTTPtr, U32 symbolValue)
-{
+MEM_STATIC U32 FSE_getMaxNbBits(const void* symbolTTPtr, U32 symbolValue
+) {
     const FSE_symbolCompressionTransform* symbolTT = (const FSE_symbolCompressionTransform*) symbolTTPtr;
     return (symbolTT[symbolValue].deltaNbBits + ((1<<16)-1)) >> 16;
 }
@@ -482,8 +482,8 @@ MEM_STATIC U32 FSE_getMaxNbBits(const void* symbolTTPtr, U32 symbolValue)
  * Approximate symbol cost, as fractional value, using fixed-point format (accuracyLog fractional bits)
  * note 1 : assume symbolValue is valid (<= maxSymbolValue)
  * note 2 : if freq[symbolValue]==0, @return a fake cost of tableLog+1 bits */
-MEM_STATIC U32 FSE_bitCost(const void* symbolTTPtr, U32 tableLog, U32 symbolValue, U32 accuracyLog)
-{
+MEM_STATIC U32 FSE_bitCost(const void* symbolTTPtr, U32 tableLog, U32 symbolValue, U32 accuracyLog
+) {
     const FSE_symbolCompressionTransform* symbolTT = (const FSE_symbolCompressionTransform*) symbolTTPtr;
     U32 const minNbBits = symbolTT[symbolValue].deltaNbBits >> 16;
     U32 const threshold = (minNbBits+1) << 16;
@@ -514,8 +514,8 @@ typedef struct
     unsigned char  nbBits;
 } FSE_decode_t;   /* size == U32 */
 
-MEM_STATIC void FSE_initDState(FSE_DState_t* DStatePtr, BIT_DStream_t* bitD, const FSE_DTable* dt)
-{
+MEM_STATIC void FSE_initDState(FSE_DState_t* DStatePtr, BIT_DStream_t* bitD, const FSE_DTable* dt
+) {
     const void* ptr = dt;
     const FSE_DTableHeader* const DTableH = (const FSE_DTableHeader*)ptr;
     DStatePtr->state = BIT_readBits(bitD, DTableH->tableLog);
@@ -523,22 +523,22 @@ MEM_STATIC void FSE_initDState(FSE_DState_t* DStatePtr, BIT_DStream_t* bitD, con
     DStatePtr->table = dt + 1;
 }
 
-MEM_STATIC BYTE FSE_peekSymbol(const FSE_DState_t* DStatePtr)
-{
+MEM_STATIC BYTE FSE_peekSymbol(const FSE_DState_t* DStatePtr
+) {
     FSE_decode_t const DInfo = ((const FSE_decode_t*)(DStatePtr->table))[DStatePtr->state];
     return DInfo.symbol;
 }
 
-MEM_STATIC void FSE_updateState(FSE_DState_t* DStatePtr, BIT_DStream_t* bitD)
-{
+MEM_STATIC void FSE_updateState(FSE_DState_t* DStatePtr, BIT_DStream_t* bitD
+) {
     FSE_decode_t const DInfo = ((const FSE_decode_t*)(DStatePtr->table))[DStatePtr->state];
     U32 const nbBits = DInfo.nbBits;
     size_t const lowBits = BIT_readBits(bitD, nbBits);
     DStatePtr->state = DInfo.newState + lowBits;
 }
 
-MEM_STATIC BYTE FSE_decodeSymbol(FSE_DState_t* DStatePtr, BIT_DStream_t* bitD)
-{
+MEM_STATIC BYTE FSE_decodeSymbol(FSE_DState_t* DStatePtr, BIT_DStream_t* bitD
+) {
     FSE_decode_t const DInfo = ((const FSE_decode_t*)(DStatePtr->table))[DStatePtr->state];
     U32 const nbBits = DInfo.nbBits;
     BYTE const symbol = DInfo.symbol;
@@ -550,8 +550,8 @@ MEM_STATIC BYTE FSE_decodeSymbol(FSE_DState_t* DStatePtr, BIT_DStream_t* bitD)
 
 /*! FSE_decodeSymbolFast() :
     unsafe, only works if no symbol has a probability > 50% */
-MEM_STATIC BYTE FSE_decodeSymbolFast(FSE_DState_t* DStatePtr, BIT_DStream_t* bitD)
-{
+MEM_STATIC BYTE FSE_decodeSymbolFast(FSE_DState_t* DStatePtr, BIT_DStream_t* bitD
+) {
     FSE_decode_t const DInfo = ((const FSE_decode_t*)(DStatePtr->table))[DStatePtr->state];
     U32 const nbBits = DInfo.nbBits;
     BYTE const symbol = DInfo.symbol;
@@ -561,8 +561,8 @@ MEM_STATIC BYTE FSE_decodeSymbolFast(FSE_DState_t* DStatePtr, BIT_DStream_t* bit
     return symbol;
 }
 
-MEM_STATIC unsigned FSE_endOfDState(const FSE_DState_t* DStatePtr)
-{
+MEM_STATIC unsigned FSE_endOfDState(const FSE_DState_t* DStatePtr
+) {
     return DStatePtr->state == 0;
 }
 

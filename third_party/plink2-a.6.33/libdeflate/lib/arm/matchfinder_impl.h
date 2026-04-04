@@ -32,8 +32,8 @@
 
 #if HAVE_NEON_NATIVE
 static forceinline void
-matchfinder_init_neon(mf_pos_t *data, size_t size)
-{
+matchfinder_init_neon(mf_pos_t *data, size_t size
+) {
 	int16x8_t *p = (int16x8_t *)data;
 	int16x8_t v = vdupq_n_s16(MATCHFINDER_INITVAL);
 
@@ -53,8 +53,8 @@ matchfinder_init_neon(mf_pos_t *data, size_t size)
 #define matchfinder_init matchfinder_init_neon
 
 static forceinline void
-matchfinder_rebase_neon(mf_pos_t *data, size_t size)
-{
+matchfinder_rebase_neon(mf_pos_t *data, size_t size
+) {
 	int16x8_t *p = (int16x8_t *)data;
 	int16x8_t v = vdupq_n_s16((u16)-MATCHFINDER_WINDOW_SIZE);
 

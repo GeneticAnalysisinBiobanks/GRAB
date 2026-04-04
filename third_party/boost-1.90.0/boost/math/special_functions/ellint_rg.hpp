@@ -106,8 +106,8 @@ namespace boost { namespace math { namespace detail{
 
 template <class T1, class T2, class T3, class Policy>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2, T3>::type 
-   ellint_rg(T1 x, T2 y, T3 z, const Policy& pol)
-{
+   ellint_rg(T1 x, T2 y, T3 z, const Policy& pol
+) {
    typedef typename tools::promote_args<T1, T2, T3>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
    return policies::checked_narrowing_cast<result_type, Policy>(
@@ -119,8 +119,8 @@ BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2, T3>::type
 
 template <class T1, class T2, class T3>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2, T3>::type 
-   ellint_rg(T1 x, T2 y, T3 z)
-{
+   ellint_rg(T1 x, T2 y, T3 z
+) {
    return ellint_rg(x, y, z, policies::policy<>());
 }
 

@@ -124,8 +124,8 @@ static const u8 MAYBE_UNUSED shift_tab[48] = {
 #endif
 
 static inline crc32_func_t
-arch_select_crc32_func(void)
-{
+arch_select_crc32_func(void
+) {
 	const u32 features MAYBE_UNUSED = get_x86_cpu_features();
 
 #ifdef crc32_x86_vpclmulqdq_avx512_vl512

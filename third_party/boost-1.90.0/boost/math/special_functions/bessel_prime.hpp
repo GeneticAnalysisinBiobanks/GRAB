@@ -21,8 +21,8 @@ namespace boost{ namespace math{
 namespace detail{
 
 template <class Tag, class T, class Policy>
-inline T cyl_bessel_j_prime_imp(T v, T x, const Policy& pol)
-{
+inline T cyl_bessel_j_prime_imp(T v, T x, const Policy& pol
+) {
    static const char* const function = "boost::math::cyl_bessel_j_prime<%1%>(%1%,%1%)";
    BOOST_MATH_STD_USING
    //
@@ -76,8 +76,8 @@ inline T cyl_bessel_j_prime_imp(T v, T x, const Policy& pol)
 }
 
 template <class T, class Policy>
-inline T sph_bessel_j_prime_imp(unsigned v, T x, const Policy& pol)
-{
+inline T sph_bessel_j_prime_imp(unsigned v, T x, const Policy& pol
+) {
    static const char* const function = "boost::math::sph_bessel_prime<%1%>(%1%,%1%)";
    //
    // Prevent complex result:
@@ -102,8 +102,8 @@ inline T sph_bessel_j_prime_imp(unsigned v, T x, const Policy& pol)
 }
 
 template <class T, class Policy>
-inline T cyl_bessel_i_prime_imp(T v, T x, const Policy& pol)
-{
+inline T cyl_bessel_i_prime_imp(T v, T x, const Policy& pol
+) {
    static const char* const function = "boost::math::cyl_bessel_i_prime<%1%>(%1%,%1%)";
    BOOST_MATH_STD_USING
    //
@@ -135,8 +135,8 @@ inline T cyl_bessel_i_prime_imp(T v, T x, const Policy& pol)
 }
 
 template <class Tag, class T, class Policy>
-inline T cyl_bessel_k_prime_imp(T v, T x, const Policy& pol)
-{
+inline T cyl_bessel_k_prime_imp(T v, T x, const Policy& pol
+) {
    //
    // Prevent complex and indeterminate results:
    //
@@ -154,8 +154,8 @@ inline T cyl_bessel_k_prime_imp(T v, T x, const Policy& pol)
 }
 
 template <class Tag, class T, class Policy>
-inline T cyl_neumann_prime_imp(T v, T x, const Policy& pol)
-{
+inline T cyl_neumann_prime_imp(T v, T x, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    //
    // Prevent complex and indeterminate results:
@@ -188,8 +188,8 @@ inline T cyl_neumann_prime_imp(T v, T x, const Policy& pol)
 }
 
 template <class T, class Policy>
-inline T sph_neumann_prime_imp(unsigned v, T x, const Policy& pol)
-{
+inline T sph_neumann_prime_imp(unsigned v, T x, const Policy& pol
+) {
    //
    // Prevent complex and indeterminate result:
    //
@@ -209,8 +209,8 @@ inline T sph_neumann_prime_imp(unsigned v, T x, const Policy& pol)
 } // namespace detail
 
 template <class T1, class T2, class Policy>
-inline typename detail::bessel_traits<T1, T2, Policy>::result_type cyl_bessel_j_prime(T1 v, T2 x, const Policy& /* pol */)
-{
+inline typename detail::bessel_traits<T1, T2, Policy>::result_type cyl_bessel_j_prime(T1 v, T2 x, const Policy& /* pol */
+) {
    BOOST_FPU_EXCEPTION_GUARD
    typedef typename detail::bessel_traits<T1, T2, Policy>::result_type result_type;
    typedef typename detail::bessel_traits<T1, T2, Policy>::optimisation_tag tag_type;
@@ -225,14 +225,14 @@ inline typename detail::bessel_traits<T1, T2, Policy>::result_type cyl_bessel_j_
 }
 
 template <class T1, class T2>
-inline typename detail::bessel_traits<T1, T2, policies::policy<> >::result_type cyl_bessel_j_prime(T1 v, T2 x)
-{
+inline typename detail::bessel_traits<T1, T2, policies::policy<> >::result_type cyl_bessel_j_prime(T1 v, T2 x
+) {
    return cyl_bessel_j_prime(v, x, policies::policy<>());
 }
 
 template <class T, class Policy>
-inline typename detail::bessel_traits<T, T, Policy>::result_type sph_bessel_prime(unsigned v, T x, const Policy& /* pol */)
-{
+inline typename detail::bessel_traits<T, T, Policy>::result_type sph_bessel_prime(unsigned v, T x, const Policy& /* pol */
+) {
    BOOST_FPU_EXCEPTION_GUARD
    typedef typename detail::bessel_traits<T, T, Policy>::result_type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
@@ -246,14 +246,14 @@ inline typename detail::bessel_traits<T, T, Policy>::result_type sph_bessel_prim
 }
 
 template <class T>
-inline typename detail::bessel_traits<T, T, policies::policy<> >::result_type sph_bessel_prime(unsigned v, T x)
-{
+inline typename detail::bessel_traits<T, T, policies::policy<> >::result_type sph_bessel_prime(unsigned v, T x
+) {
    return sph_bessel_prime(v, x, policies::policy<>());
 }
 
 template <class T1, class T2, class Policy>
-inline typename detail::bessel_traits<T1, T2, Policy>::result_type cyl_bessel_i_prime(T1 v, T2 x, const Policy& /* pol */)
-{
+inline typename detail::bessel_traits<T1, T2, Policy>::result_type cyl_bessel_i_prime(T1 v, T2 x, const Policy& /* pol */
+) {
    BOOST_FPU_EXCEPTION_GUARD
    typedef typename detail::bessel_traits<T1, T2, Policy>::result_type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
@@ -267,14 +267,14 @@ inline typename detail::bessel_traits<T1, T2, Policy>::result_type cyl_bessel_i_
 }
 
 template <class T1, class T2>
-inline typename detail::bessel_traits<T1, T2, policies::policy<> >::result_type cyl_bessel_i_prime(T1 v, T2 x)
-{
+inline typename detail::bessel_traits<T1, T2, policies::policy<> >::result_type cyl_bessel_i_prime(T1 v, T2 x
+) {
    return cyl_bessel_i_prime(v, x, policies::policy<>());
 }
 
 template <class T1, class T2, class Policy>
-inline typename detail::bessel_traits<T1, T2, Policy>::result_type cyl_bessel_k_prime(T1 v, T2 x, const Policy& /* pol */)
-{
+inline typename detail::bessel_traits<T1, T2, Policy>::result_type cyl_bessel_k_prime(T1 v, T2 x, const Policy& /* pol */
+) {
    BOOST_FPU_EXCEPTION_GUARD
    typedef typename detail::bessel_traits<T1, T2, Policy>::result_type result_type;
    typedef typename detail::bessel_traits<T1, T2, Policy>::optimisation_tag tag_type;
@@ -289,14 +289,14 @@ inline typename detail::bessel_traits<T1, T2, Policy>::result_type cyl_bessel_k_
 }
 
 template <class T1, class T2>
-inline typename detail::bessel_traits<T1, T2, policies::policy<> >::result_type cyl_bessel_k_prime(T1 v, T2 x)
-{
+inline typename detail::bessel_traits<T1, T2, policies::policy<> >::result_type cyl_bessel_k_prime(T1 v, T2 x
+) {
    return cyl_bessel_k_prime(v, x, policies::policy<>());
 }
 
 template <class T1, class T2, class Policy>
-inline typename detail::bessel_traits<T1, T2, Policy>::result_type cyl_neumann_prime(T1 v, T2 x, const Policy& /* pol */)
-{
+inline typename detail::bessel_traits<T1, T2, Policy>::result_type cyl_neumann_prime(T1 v, T2 x, const Policy& /* pol */
+) {
    BOOST_FPU_EXCEPTION_GUARD
    typedef typename detail::bessel_traits<T1, T2, Policy>::result_type result_type;
    typedef typename detail::bessel_traits<T1, T2, Policy>::optimisation_tag tag_type;
@@ -311,14 +311,14 @@ inline typename detail::bessel_traits<T1, T2, Policy>::result_type cyl_neumann_p
 }
 
 template <class T1, class T2>
-inline typename detail::bessel_traits<T1, T2, policies::policy<> >::result_type cyl_neumann_prime(T1 v, T2 x)
-{
+inline typename detail::bessel_traits<T1, T2, policies::policy<> >::result_type cyl_neumann_prime(T1 v, T2 x
+) {
    return cyl_neumann_prime(v, x, policies::policy<>());
 }
 
 template <class T, class Policy>
-inline typename detail::bessel_traits<T, T, Policy>::result_type sph_neumann_prime(unsigned v, T x, const Policy& /* pol */)
-{
+inline typename detail::bessel_traits<T, T, Policy>::result_type sph_neumann_prime(unsigned v, T x, const Policy& /* pol */
+) {
    BOOST_FPU_EXCEPTION_GUARD
    typedef typename detail::bessel_traits<T, T, Policy>::result_type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
@@ -332,8 +332,8 @@ inline typename detail::bessel_traits<T, T, Policy>::result_type sph_neumann_pri
 }
 
 template <class T>
-inline typename detail::bessel_traits<T, T, policies::policy<> >::result_type sph_neumann_prime(unsigned v, T x)
-{
+inline typename detail::bessel_traits<T, T, policies::policy<> >::result_type sph_neumann_prime(unsigned v, T x
+) {
    return sph_neumann_prime(v, x, policies::policy<>());
 }
 

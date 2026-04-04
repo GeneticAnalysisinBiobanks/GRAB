@@ -52,8 +52,8 @@ namespace boost{ namespace math{ namespace lanczos{
 // Default version assumes all g() values are the same.
 //
 template <class L>
-BOOST_MATH_GPU_ENABLED inline double lanczos_g_near_1_and_2(const L&)
-{
+BOOST_MATH_GPU_ENABLED inline double lanczos_g_near_1_and_2(const L&
+) {
    return L::g();
 }
 
@@ -1313,8 +1313,8 @@ struct lanczos27MP : public boost::math::integral_constant<int, 134>
    BOOST_MATH_GPU_ENABLED static double g() { return 2.472513680905104038743047567550092935562134e+01; }
 };
 
-BOOST_MATH_GPU_ENABLED inline double lanczos_g_near_1_and_2(const lanczos27MP&)
-{
+BOOST_MATH_GPU_ENABLED inline double lanczos_g_near_1_and_2(const lanczos27MP&
+) {
    return 17.03623256087303;
 }
 
@@ -1609,8 +1609,8 @@ struct lanczos35MP : public boost::math::integral_constant<int, 168>
    BOOST_MATH_GPU_ENABLED static double g() { return 2.96640371531248092651367187500000000000000000000000000e+01; }
 };
 
-BOOST_MATH_GPU_ENABLED inline double lanczos_g_near_1_and_2(const lanczos35MP&)
-{
+BOOST_MATH_GPU_ENABLED inline double lanczos_g_near_1_and_2(const lanczos35MP&
+) {
    return 22.36563469469547;
 }
 //
@@ -2324,8 +2324,8 @@ struct lanczos49MP : public boost::math::integral_constant<int, 234>
    BOOST_MATH_GPU_ENABLED static double g() { return 3.531905273437499914734871708787977695465087890625000000000000000000000000e+01; }
 };
 
-BOOST_MATH_GPU_ENABLED inline double lanczos_g_near_1_and_2(const lanczos49MP&)
-{
+BOOST_MATH_GPU_ENABLED inline double lanczos_g_near_1_and_2(const lanczos49MP&
+) {
    return 33.54638671875000;
 }
 
@@ -2716,8 +2716,8 @@ struct lanczos52MP : public boost::math::integral_constant<int, 267>
    BOOST_MATH_GPU_ENABLED static double g() { return 4.9921416015624998863131622783839702606201171875000000000000000000000000000000000000e+01; }
 };
 
-BOOST_MATH_GPU_ENABLED inline double lanczos_g_near_1_and_2(const lanczos52MP&)
-{
+BOOST_MATH_GPU_ENABLED inline double lanczos_g_near_1_and_2(const lanczos52MP&
+) {
    return 38.73733398437500;
 }
 

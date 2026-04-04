@@ -381,26 +381,26 @@ namespace boost {
 namespace math {
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED auto expm1(T x)
-{
+BOOST_MATH_GPU_ENABLED auto expm1(T x
+) {
    return ::expm1(x);
 }
 
 template <>
-BOOST_MATH_GPU_ENABLED auto expm1(float x)
-{
+BOOST_MATH_GPU_ENABLED auto expm1(float x
+) {
    return ::expm1f(x);
 }
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED auto expm1(T x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED auto expm1(T x, const Policy&
+) {
    return ::expm1(x);
 }
 
 template <typename Policy>
-BOOST_MATH_GPU_ENABLED auto expm1(float x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED auto expm1(float x, const Policy&
+) {
    return ::expm1f(x);
 }
 

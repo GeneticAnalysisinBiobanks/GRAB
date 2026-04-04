@@ -13,8 +13,8 @@
 namespace boost{ namespace math{
 
 template<class T> 
-inline T fabs(const std::complex<T>& z)
-{
+inline T fabs(const std::complex<T>& z
+) {
    return ::boost::math::hypot(z.real(), z.imag());
 }
 

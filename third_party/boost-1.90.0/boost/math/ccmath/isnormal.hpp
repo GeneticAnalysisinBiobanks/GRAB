@@ -19,8 +19,8 @@
 namespace boost::math::ccmath {
 
 template <typename T>
-inline constexpr bool isnormal(T x)
-{
+inline constexpr bool isnormal(T x
+) {
     if(BOOST_MATH_IS_CONSTANT_EVALUATED(x))
     {   
         return x == T(0) ? false :

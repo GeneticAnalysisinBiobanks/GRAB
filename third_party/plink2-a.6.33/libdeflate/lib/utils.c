@@ -39,8 +39,8 @@ free_func_t libdeflate_default_free_func = free;
 
 void *
 libdeflate_aligned_malloc(malloc_func_t malloc_func,
-			  size_t alignment, size_t size)
-{
+			  size_t alignment, size_t size
+) {
 	void *ptr = (*malloc_func)(sizeof(void *) + alignment - 1 + size);
 
 	if (ptr) {
@@ -53,15 +53,15 @@ libdeflate_aligned_malloc(malloc_func_t malloc_func,
 }
 
 void
-libdeflate_aligned_free(free_func_t free_func, void *ptr)
-{
+libdeflate_aligned_free(free_func_t free_func, void *ptr
+) {
 	(*free_func)(((void **)ptr)[-1]);
 }
 
 LIBDEFLATEAPI void
 libdeflate_set_memory_allocator(malloc_func_t malloc_func,
-				free_func_t free_func)
-{
+				free_func_t free_func
+) {
 	libdeflate_default_malloc_func = malloc_func;
 	libdeflate_default_free_func = free_func;
 }
@@ -74,8 +74,8 @@ libdeflate_set_memory_allocator(malloc_func_t malloc_func,
 #ifdef FREESTANDING
 #undef memset
 void * __attribute__((weak))
-memset(void *s, int c, size_t n)
-{
+memset(void *s, int c, size_t n
+) {
 	u8 *p = s;
 	size_t i;
 
@@ -86,8 +86,8 @@ memset(void *s, int c, size_t n)
 
 #undef memcpy
 void * __attribute__((weak))
-memcpy(void *dest, const void *src, size_t n)
-{
+memcpy(void *dest, const void *src, size_t n
+) {
 	u8 *d = dest;
 	const u8 *s = src;
 	size_t i;
@@ -99,8 +99,8 @@ memcpy(void *dest, const void *src, size_t n)
 
 #undef memmove
 void * __attribute__((weak))
-memmove(void *dest, const void *src, size_t n)
-{
+memmove(void *dest, const void *src, size_t n
+) {
 	u8 *d = dest;
 	const u8 *s = src;
 	size_t i;
@@ -115,8 +115,8 @@ memmove(void *dest, const void *src, size_t n)
 
 #undef memcmp
 int __attribute__((weak))
-memcmp(const void *s1, const void *s2, size_t n)
-{
+memcmp(const void *s1, const void *s2, size_t n
+) {
 	const u8 *p1 = s1;
 	const u8 *p2 = s2;
 	size_t i;

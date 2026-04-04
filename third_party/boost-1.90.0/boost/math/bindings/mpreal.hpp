@@ -87,24 +87,24 @@ template <class T>
 inline bool operator > (const T& t, const mpreal& r){ return mpreal(t) > r; }
 
 /*
-inline mpfr::mpreal fabs(const mpfr::mpreal& v)
-{
+inline mpfr::mpreal fabs(const mpfr::mpreal& v
+) {
    return abs(v);
 }
-inline mpfr::mpreal pow(const mpfr::mpreal& b, const mpfr::mpreal e)
-{
+inline mpfr::mpreal pow(const mpfr::mpreal& b, const mpfr::mpreal e
+) {
    mpfr::mpreal result;
    mpfr_pow(result.__get_mp(), b.__get_mp(), e.__get_mp(), GMP_RNDN);
    return result;
 }
 */
-inline mpfr::mpreal ldexp(const mpfr::mpreal& v, int e)
-{
+inline mpfr::mpreal ldexp(const mpfr::mpreal& v, int e
+) {
    return mpfr::ldexp(v, static_cast<mp_exp_t>(e));
 }
 
-inline mpfr::mpreal frexp(const mpfr::mpreal& v, int* expon)
-{
+inline mpfr::mpreal frexp(const mpfr::mpreal& v, int* expon
+) {
    mp_exp_t e;
    mpfr::mpreal r = mpfr::frexp(v, &e);
    *expon = e;
@@ -112,8 +112,8 @@ inline mpfr::mpreal frexp(const mpfr::mpreal& v, int* expon)
 }
 
 #if (MPFR_VERSION < MPFR_VERSION_NUM(2,4,0))
-mpfr::mpreal fmod(const mpfr::mpreal& v1, const mpfr::mpreal& v2)
-{
+mpfr::mpreal fmod(const mpfr::mpreal& v1, const mpfr::mpreal& v2
+) {
    mpfr::mpreal n;
    if(v1 < 0)
       n = ceil(v1 / v2);
@@ -124,44 +124,44 @@ mpfr::mpreal fmod(const mpfr::mpreal& v1, const mpfr::mpreal& v2)
 #endif
 
 template <class Policy>
-inline mpfr::mpreal modf(const mpfr::mpreal& v, long long* ipart, const Policy& pol)
-{
+inline mpfr::mpreal modf(const mpfr::mpreal& v, long long* ipart, const Policy& pol
+) {
    *ipart = lltrunc(v, pol);
    return v - boost::math::tools::real_cast<mpfr::mpreal>(*ipart);
 }
 template <class Policy>
-inline int iround(mpfr::mpreal const& x, const Policy& pol)
-{
+inline int iround(mpfr::mpreal const& x, const Policy& pol
+) {
    return boost::math::tools::real_cast<int>(boost::math::round(x, pol));
 }
 
 template <class Policy>
-inline long lround(mpfr::mpreal const& x, const Policy& pol)
-{
+inline long lround(mpfr::mpreal const& x, const Policy& pol
+) {
    return boost::math::tools::real_cast<long>(boost::math::round(x, pol));
 }
 
 template <class Policy>
-inline long long llround(mpfr::mpreal const& x, const Policy& pol)
-{
+inline long long llround(mpfr::mpreal const& x, const Policy& pol
+) {
    return boost::math::tools::real_cast<long long>(boost::math::round(x, pol));
 }
 
 template <class Policy>
-inline int itrunc(mpfr::mpreal const& x, const Policy& pol)
-{
+inline int itrunc(mpfr::mpreal const& x, const Policy& pol
+) {
    return boost::math::tools::real_cast<int>(boost::math::trunc(x, pol));
 }
 
 template <class Policy>
-inline long ltrunc(mpfr::mpreal const& x, const Policy& pol)
-{
+inline long ltrunc(mpfr::mpreal const& x, const Policy& pol
+) {
    return boost::math::tools::real_cast<long>(boost::math::trunc(x, pol));
 }
 
 template <class Policy>
-inline long long lltrunc(mpfr::mpreal const& x, const Policy& pol)
-{
+inline long long lltrunc(mpfr::mpreal const& x, const Policy& pol
+) {
    return boost::math::tools::real_cast<long long>(boost::math::trunc(x, pol));
 }
 
@@ -257,16 +257,16 @@ namespace tools
 {
 
 template<>
-inline int digits<mpfr::mpreal>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr::mpreal))
-{
+inline int digits<mpfr::mpreal>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr::mpreal)
+) {
    return mpfr::mpreal::get_default_prec();
 }
 
 namespace detail{
 
 template<class Integer
-void convert_to_long_result(mpfr::mpreal const& r, Integer& result)
-{
+void convert_to_long_result(mpfr::mpreal const& r, Integer& result
+) {
    result = 0;
    I last_result(0);
    mpfr::mpreal t(r);
@@ -283,8 +283,8 @@ void convert_to_long_result(mpfr::mpreal const& r, Integer& result)
 }
 
 template <>
-inline mpfr::mpreal real_cast<mpfr::mpreal, long long>(long long t)
-{
+inline mpfr::mpreal real_cast<mpfr::mpreal, long long>(long long t
+) {
    mpfr::mpreal result;
    int expon = 0;
    int sign = 1;
@@ -303,44 +303,44 @@ inline mpfr::mpreal real_cast<mpfr::mpreal, long long>(long long t)
 }
 /*
 template <>
-inline unsigned real_cast<unsigned, mpfr::mpreal>(mpfr::mpreal t)
-{
+inline unsigned real_cast<unsigned, mpfr::mpreal>(mpfr::mpreal t
+) {
    return t.get_ui();
 }
 template <>
-inline int real_cast<int, mpfr::mpreal>(mpfr::mpreal t)
-{
+inline int real_cast<int, mpfr::mpreal>(mpfr::mpreal t
+) {
    return t.get_si();
 }
 template <>
-inline double real_cast<double, mpfr::mpreal>(mpfr::mpreal t)
-{
+inline double real_cast<double, mpfr::mpreal>(mpfr::mpreal t
+) {
    return t.get_d();
 }
 template <>
-inline float real_cast<float, mpfr::mpreal>(mpfr::mpreal t)
-{
+inline float real_cast<float, mpfr::mpreal>(mpfr::mpreal t
+) {
    return static_cast<float>(t.get_d());
 }
 template <>
-inline long real_cast<long, mpfr::mpreal>(mpfr::mpreal t)
-{
+inline long real_cast<long, mpfr::mpreal>(mpfr::mpreal t
+) {
    long result;
    detail::convert_to_long_result(t, result);
    return result;
 }
 */
 template <>
-inline long long real_cast<long long, mpfr::mpreal>(mpfr::mpreal t)
-{
+inline long long real_cast<long long, mpfr::mpreal>(mpfr::mpreal t
+) {
    long long result;
    detail::convert_to_long_result(t, result);
    return result;
 }
 
 template <>
-inline mpfr::mpreal max_value<mpfr::mpreal>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr::mpreal))
-{
+inline mpfr::mpreal max_value<mpfr::mpreal>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr::mpreal)
+) {
    static bool has_init = false;
    static mpfr::mpreal val(0.5);
    if(!has_init)
@@ -352,8 +352,8 @@ inline mpfr::mpreal max_value<mpfr::mpreal>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SP
 }
 
 template <>
-inline mpfr::mpreal min_value<mpfr::mpreal>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr::mpreal))
-{
+inline mpfr::mpreal min_value<mpfr::mpreal>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr::mpreal)
+) {
    static bool has_init = false;
    static mpfr::mpreal val(0.5);
    if(!has_init)
@@ -365,8 +365,8 @@ inline mpfr::mpreal min_value<mpfr::mpreal>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SP
 }
 
 template <>
-inline mpfr::mpreal log_max_value<mpfr::mpreal>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr::mpreal))
-{
+inline mpfr::mpreal log_max_value<mpfr::mpreal>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr::mpreal)
+) {
    static bool has_init = false;
    static mpfr::mpreal val = max_value<mpfr::mpreal>();
    if(!has_init)
@@ -378,8 +378,8 @@ inline mpfr::mpreal log_max_value<mpfr::mpreal>(BOOST_MATH_EXPLICIT_TEMPLATE_TYP
 }
 
 template <>
-inline mpfr::mpreal log_min_value<mpfr::mpreal>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr::mpreal))
-{
+inline mpfr::mpreal log_min_value<mpfr::mpreal>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr::mpreal)
+) {
    static bool has_init = false;
    static mpfr::mpreal val = max_value<mpfr::mpreal>();
    if(!has_init)
@@ -391,16 +391,16 @@ inline mpfr::mpreal log_min_value<mpfr::mpreal>(BOOST_MATH_EXPLICIT_TEMPLATE_TYP
 }
 
 template <>
-inline mpfr::mpreal epsilon<mpfr::mpreal>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr::mpreal))
-{
+inline mpfr::mpreal epsilon<mpfr::mpreal>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr::mpreal)
+) {
    return ldexp(mpfr::mpreal(1), 1-boost::math::policies::digits<mpfr::mpreal, boost::math::policies::policy<> >());
 }
 
 } // namespace tools
 
 template <class Policy>
-inline mpfr::mpreal skewness(const extreme_value_distribution<mpfr::mpreal, Policy>& /*dist*/)
-{
+inline mpfr::mpreal skewness(const extreme_value_distribution<mpfr::mpreal, Policy>& /*dist*/
+) {
    //
    // This is 12 * sqrt(6) * zeta(3) / pi^3:
    // See http://mathworld.wolfram.com/ExtremeValueDistribution.html
@@ -413,8 +413,8 @@ inline mpfr::mpreal skewness(const extreme_value_distribution<mpfr::mpreal, Poli
 }
 
 template <class Policy>
-inline mpfr::mpreal skewness(const rayleigh_distribution<mpfr::mpreal, Policy>& /*dist*/)
-{
+inline mpfr::mpreal skewness(const rayleigh_distribution<mpfr::mpreal, Policy>& /*dist*/
+) {
   // using namespace boost::math::constants;
   #ifdef BOOST_MATH_STANDALONE
   static_assert(sizeof(Policy) == 0, "mpreal skewness can not be calculated in standalone mode");
@@ -426,8 +426,8 @@ inline mpfr::mpreal skewness(const rayleigh_distribution<mpfr::mpreal, Policy>& 
 }
 
 template <class Policy>
-inline mpfr::mpreal kurtosis(const rayleigh_distribution<mpfr::mpreal, Policy>& /*dist*/)
-{
+inline mpfr::mpreal kurtosis(const rayleigh_distribution<mpfr::mpreal, Policy>& /*dist*/
+) {
   // using namespace boost::math::constants;
   #ifdef BOOST_MATH_STANDALONE
   static_assert(sizeof(Policy) == 0, "mpreal kurtosis can not be calculated in standalone mode");
@@ -440,8 +440,8 @@ inline mpfr::mpreal kurtosis(const rayleigh_distribution<mpfr::mpreal, Policy>& 
 }
 
 template <class Policy>
-inline mpfr::mpreal kurtosis_excess(const rayleigh_distribution<mpfr::mpreal, Policy>& /*dist*/)
-{
+inline mpfr::mpreal kurtosis_excess(const rayleigh_distribution<mpfr::mpreal, Policy>& /*dist*/
+) {
   //using namespace boost::math::constants;
   // Computed using NTL at 150 bit, about 50 decimal digits.
   #ifdef BOOST_MATH_STANDALONE
@@ -459,8 +459,8 @@ namespace detail{
 // Version of Digamma accurate to ~100 decimal digits.
 //
 template <class Policy>
-mpfr::mpreal digamma_imp(mpfr::mpreal x, const std::integral_constant<int, 0>* , const Policy& pol)
-{
+mpfr::mpreal digamma_imp(mpfr::mpreal x, const std::integral_constant<int, 0>* , const Policy& pol
+) {
    //
    // This handles reflection of negative arguments, and all our
    // empfr_classor handling, then forwards to the T-specific approximation.
@@ -499,8 +499,8 @@ mpfr::mpreal digamma_imp(mpfr::mpreal x, const std::integral_constant<int, 0>* ,
 // starting guess for Halley iteration:
 //
 template <class Policy>
-mpfr::mpreal erf_inv_imp(const mpfr::mpreal& p, const mpfr::mpreal& q, const Policy&, const std::integral_constant<int, 64>*)
-{
+mpfr::mpreal erf_inv_imp(const mpfr::mpreal& p, const mpfr::mpreal& q, const Policy&, const std::integral_constant<int, 64>*
+) {
    BOOST_MATH_STD_USING // for ADL of std names.
 
    mpfr::mpreal result = 0;
@@ -755,8 +755,8 @@ mpfr::mpreal erf_inv_imp(const mpfr::mpreal& p, const mpfr::mpreal& q, const Pol
    return result;
 }
 
-inline mpfr::mpreal bessel_i0(mpfr::mpreal x)
-{
+inline mpfr::mpreal bessel_i0(mpfr::mpreal x
+) {
    #ifdef BOOST_MATH_STANDALONE
    static_assert(sizeof(x) == 0, "mpreal bessel_i0 can not be calculated in standalone mode");
    #endif
@@ -834,8 +834,8 @@ inline mpfr::mpreal bessel_i0(mpfr::mpreal x)
     return value;
 }
 
-inline mpfr::mpreal bessel_i1(mpfr::mpreal x)
-{
+inline mpfr::mpreal bessel_i1(mpfr::mpreal x
+) {
     static const mpfr::mpreal P1[] = {
         static_cast<mpfr::mpreal>("-1.4577180278143463643e+15"),
         static_cast<mpfr::mpreal>("-1.7732037840791591320e+14"),

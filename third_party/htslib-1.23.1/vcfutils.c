@@ -29,8 +29,8 @@ DEALINGS IN THE SOFTWARE.  */
 #include "htslib/vcfutils.h"
 #include "htslib/kbitset.h"
 
-int bcf_calc_ac(const bcf_hdr_t *header, bcf1_t *line, int *ac, int which)
-{
+int bcf_calc_ac(const bcf_hdr_t *header, bcf1_t *line, int *ac, int which
+) {
     int i;
     for (i=0; i<line->n_allele; i++) ac[i]=0;
 
@@ -131,8 +131,8 @@ int bcf_calc_ac(const bcf_hdr_t *header, bcf1_t *line, int *ac, int which)
     return 0;
 }
 
-int bcf_gt_type(bcf_fmt_t *fmt_ptr, int isample, int *_ial, int *_jal)
-{
+int bcf_gt_type(bcf_fmt_t *fmt_ptr, int isample, int *_ial, int *_jal
+) {
     int i, nals = 0, has_ref = 0, has_alt = 0, ial = 0, jal = 0;
     #define BRANCH_INT(type_t, convert, vector_end) { \
         uint8_t *p = fmt_ptr->p + isample*fmt_ptr->size; \
@@ -183,8 +183,8 @@ int bcf_gt_type(bcf_fmt_t *fmt_ptr, int isample, int *_ial, int *_jal)
     return GT_HET_RA;
 }
 
-int bcf_trim_alleles(const bcf_hdr_t *header, bcf1_t *line)
-{
+int bcf_trim_alleles(const bcf_hdr_t *header, bcf1_t *line
+) {
     int i, ret = 0, nrm = 0;
     kbitset_t *rm_set = NULL;
     bcf_fmt_t *gt = bcf_get_fmt(header, line, "GT");
@@ -238,8 +238,8 @@ clean:
     return ret ? ret : nrm;
 }
 
-int bcf_remove_alleles(const bcf_hdr_t *header, bcf1_t *line, int rm_mask)
-{
+int bcf_remove_alleles(const bcf_hdr_t *header, bcf1_t *line, int rm_mask
+) {
     int i;
     kbitset_t *rm_set = kbs_init(line->n_allele);
     for (i=1; i<line->n_allele; i++)
@@ -251,8 +251,8 @@ int bcf_remove_alleles(const bcf_hdr_t *header, bcf1_t *line, int rm_mask)
     return 0; // FIXME: check for errs in this function
 }
 
-static inline int is_special_info_type(const char *name)
-{
+static inline int is_special_info_type(const char *name
+) {
     // These types have Number=. but are really either two or four times
     // the number of ALT fields.
     switch (*name)
@@ -278,8 +278,8 @@ static inline int is_special_info_type(const char *name)
 }
 
 static int32_t get_int32_info_value(const bcf_info_t *info,
-                                    size_t index)
-{
+                                    size_t index
+) {
     size_t len = info->len > 0 ? info->len : 0;
     if (index >= len)
         return bcf_int32_missing;
@@ -312,8 +312,8 @@ static int32_t get_int32_info_value(const bcf_info_t *info,
     return bcf_int32_missing;
 }
 
-static int32_t get_rn_value(const bcf_info_t *rn, size_t index)
-{
+static int32_t get_rn_value(const bcf_info_t *rn, size_t index
+) {
     // If RN tag is not present, default to one repeat per allele.
     int32_t val = rn ? get_int32_info_value(rn, index) : 1;
     // Treat MISSING or illegal values as 0.
@@ -322,8 +322,8 @@ static int32_t get_rn_value(const bcf_info_t *rn, size_t index)
 
 // If info->len becomes 1, the single value needs to be put in info->v1
 // in case the value is accessed through that route instead of an array lookup.
-static void set_info_v1(bcf_info_t *info)
-{
+static void set_info_v1(bcf_info_t *info
+) {
     switch (info->type)
     {
     case BCF_BT_INT8:
@@ -346,8 +346,8 @@ static void set_info_v1(bcf_info_t *info)
     }
 }
 
-static int fixup_info_length_code(bcf_info_t *info)
-{
+static int fixup_info_length_code(bcf_info_t *info
+) {
     // Recreate INFO type encoding stored before info->vptr
     uint8_t buf[24], *ptr = buf;
     ptrdiff_t new_len;
@@ -404,8 +404,8 @@ static int fixup_info_length_code(bcf_info_t *info)
     return 0;
 }
 
-static int mark_for_removal(bcf_info_t *info)
-{
+static int mark_for_removal(bcf_info_t *info
+) {
     if (info->vptr_free)
     {
         free(info->vptr - info->vptr_off);
@@ -427,8 +427,8 @@ static int trim_int_cnv_tr_int_tags(bcf_info_t *info,
                                      const bcf_info_t *rn,
                                      const bcf_info_t *ruc,
                                      size_t num_alt_orig,
-                                     size_t orig_total)
-{
+                                     size_t orig_total
+) {
     size_t count = *id == 'C' ? 2 : 1;
     int type = bcf_hdr_id2type(header, BCF_HL_INFO, info->key);
     int vlen = bcf_hdr_id2length(header, BCF_HL_INFO, info->key);
@@ -500,8 +500,8 @@ static int trim_int_cnv_tr_str_tags(bcf_info_t *info,
                                      const struct kbitset_t *rm_set,
                                      const bcf_info_t *rn,
                                      size_t num_alt_orig,
-                                     size_t orig_total)
-{
+                                     size_t orig_total
+) {
     int type = bcf_hdr_id2type(header, BCF_HL_INFO, info->key);
     int vlen = bcf_hdr_id2length(header, BCF_HL_INFO, info->key);
     size_t allele, orig_pos = 0, new_pos = 0;
@@ -560,8 +560,8 @@ static int trim_int_cnv_tr_str_tags(bcf_info_t *info,
 
 static int fixup_cnv_tr_info_tags(const bcf_hdr_t *header, bcf1_t *line,
                                   size_t num_alt_orig,
-                                  const struct kbitset_t *rm_set)
-{
+                                  const struct kbitset_t *rm_set
+) {
     /*
       Tags for <CNV:TR> alleles (tandem repeats):
         RN    : Repeat number.  Number=A, handled as other tags of this type
@@ -656,8 +656,8 @@ static int fixup_cnv_tr_info_tags(const bcf_hdr_t *header, bcf1_t *line,
     return 0;
 }
 
-int bcf_remove_allele_set(const bcf_hdr_t *header, bcf1_t *line, const struct kbitset_t *rm_set)
-{
+int bcf_remove_allele_set(const bcf_hdr_t *header, bcf1_t *line, const struct kbitset_t *rm_set
+) {
     const uint32_t vl_a_g_r = 1U << BCF_VL_A | 1U << BCF_VL_G | 1U << BCF_VL_R;
     const uint32_t vl_la_lg_lr = 1U << BCF_VL_LA | 1U << BCF_VL_LG | 1U << BCF_VL_LR;
     const uint32_t vl_a_g_r_la_lg_lr = vl_a_g_r | vl_la_lg_lr;

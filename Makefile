@@ -40,9 +40,12 @@ endif
 
 # ── AVX2 detection ────────────────────────────────────────────────────────────
 # Try to compile a small AVX2 test; if the compiler supports it, enable -mavx2.
-AVX2_OK := $(shell echo 'int main(){return 0;}' | $(CXX) -x c++ -mavx2 - -o /dev/null 2>/dev/null && echo 1)
+# Use a temp file as output target for portability (MSYS2/Windows lacks /dev/null for ld).
+AVX2_OK := $(shell TMP_AVX=$$(mktemp -u 2>/dev/null || echo __avx2_test__); \
+  echo 'int main(){return 0;}' | $(CXX) -x c++ -mavx2 - -o "$$TMP_AVX" 2>/dev/null \
+  && { rm -f "$$TMP_AVX"; echo 1; } || rm -f "$$TMP_AVX")
 ifeq ($(AVX2_OK),1)
-  SIMD_FLAGS := -mavx2
+  SIMD_FLAGS := -mavx2 -mbmi -mbmi2 -mlzcnt -mfma
 else
   SIMD_FLAGS :=
 endif

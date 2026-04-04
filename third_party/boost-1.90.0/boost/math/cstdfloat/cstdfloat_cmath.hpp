@@ -380,8 +380,8 @@ extern "C" boost::math::cstdfloat::detail::float_internal128_t BOOST_CSTDFLOAT_F
 // Forward declaration of the patched exponent function, exp(x).
 inline boost::math::cstdfloat::detail::float_internal128_t BOOST_CSTDFLOAT_FLOAT128_EXP(boost::math::cstdfloat::detail::float_internal128_t x);
 
-inline boost::math::cstdfloat::detail::float_internal128_t BOOST_CSTDFLOAT_FLOAT128_EXPM1(boost::math::cstdfloat::detail::float_internal128_t x)
-{
+inline boost::math::cstdfloat::detail::float_internal128_t BOOST_CSTDFLOAT_FLOAT128_EXPM1(boost::math::cstdfloat::detail::float_internal128_t x
+) {
    // Compute exp(x) - 1 for x small.
 
    // Use an order-12 Pade approximation of the exponential function.
@@ -427,8 +427,8 @@ inline boost::math::cstdfloat::detail::float_internal128_t BOOST_CSTDFLOAT_FLOAT
 
    return sum;
 }
-inline boost::math::cstdfloat::detail::float_internal128_t BOOST_CSTDFLOAT_FLOAT128_EXP(boost::math::cstdfloat::detail::float_internal128_t x)
-{
+inline boost::math::cstdfloat::detail::float_internal128_t BOOST_CSTDFLOAT_FLOAT128_EXP(boost::math::cstdfloat::detail::float_internal128_t x
+) {
    // Patch the expq() function for a subset of broken GCC compilers
    // like GCC 4.7, 4.8 on MinGW.
 
@@ -480,8 +480,8 @@ inline boost::math::cstdfloat::detail::float_internal128_t BOOST_CSTDFLOAT_FLOAT
    // Rescale the result and return it.
    return scaled_result * boost::math::cstdfloat::detail::pown(float_type(2), n);
 }
-inline boost::math::cstdfloat::detail::float_internal128_t BOOST_CSTDFLOAT_FLOAT128_SINH(boost::math::cstdfloat::detail::float_internal128_t x)
-{
+inline boost::math::cstdfloat::detail::float_internal128_t BOOST_CSTDFLOAT_FLOAT128_SINH(boost::math::cstdfloat::detail::float_internal128_t x
+) {
    // Patch the sinhq() function for a subset of broken GCC compilers
    // like GCC 4.7, 4.8 on MinGW.
    typedef boost::math::cstdfloat::detail::float_internal128_t float_type;
@@ -506,16 +506,16 @@ inline boost::math::cstdfloat::detail::float_internal128_t BOOST_CSTDFLOAT_FLOAT
       return (ex - (float_type(1) / ex)) / 2;
    }
 }
-inline boost::math::cstdfloat::detail::float_internal128_t BOOST_CSTDFLOAT_FLOAT128_COSH(boost::math::cstdfloat::detail::float_internal128_t x)
-{
+inline boost::math::cstdfloat::detail::float_internal128_t BOOST_CSTDFLOAT_FLOAT128_COSH(boost::math::cstdfloat::detail::float_internal128_t x
+) {
    // Patch the coshq() function for a subset of broken GCC compilers
    // like GCC 4.7, 4.8 on MinGW.
    typedef boost::math::cstdfloat::detail::float_internal128_t float_type;
    const float_type ex = ::BOOST_CSTDFLOAT_FLOAT128_EXP(x);
    return (ex + (float_type(1) / ex)) / 2;
 }
-inline boost::math::cstdfloat::detail::float_internal128_t BOOST_CSTDFLOAT_FLOAT128_TANH(boost::math::cstdfloat::detail::float_internal128_t x)
-{
+inline boost::math::cstdfloat::detail::float_internal128_t BOOST_CSTDFLOAT_FLOAT128_TANH(boost::math::cstdfloat::detail::float_internal128_t x
+) {
    // Patch the tanhq() function for a subset of broken GCC compilers
    // like GCC 4.7, 4.8 on MinGW.
    typedef boost::math::cstdfloat::detail::float_internal128_t float_type;

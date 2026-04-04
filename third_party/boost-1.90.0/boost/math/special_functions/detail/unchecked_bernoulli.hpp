@@ -1244,14 +1244,14 @@ namespace detail {
 #endif
 
 template <class T>
-inline BOOST_MATH_CONSTEXPR_TABLE_FUNCTION T unchecked_bernoulli_imp(std::size_t n, const std::integral_constant<int, 3>& )
-{
+inline BOOST_MATH_CONSTEXPR_TABLE_FUNCTION T unchecked_bernoulli_imp(std::size_t n, const std::integral_constant<int, 3>& 
+) {
    return unchecked_bernoulli_data<T, 3>::bernoulli_data[n];
 }
 
 template <class T>
-inline T unchecked_bernoulli_imp(std::size_t n, const std::integral_constant<int, 4>& )
-{
+inline T unchecked_bernoulli_imp(std::size_t n, const std::integral_constant<int, 4>& 
+) {
    //
    // Special case added for multiprecision types that have no conversion from long long,
    // there are very few such types, but mpfr_class is one.
@@ -1293,8 +1293,8 @@ inline T unchecked_bernoulli_imp(std::size_t n, const std::integral_constant<int
 } // namespace detail
 
 template<class T>
-inline BOOST_MATH_CONSTEXPR_TABLE_FUNCTION T unchecked_bernoulli_b2n(const std::size_t n)
-{
+inline BOOST_MATH_CONSTEXPR_TABLE_FUNCTION T unchecked_bernoulli_b2n(const std::size_t n
+) {
    typedef std::integral_constant<int, detail::bernoulli_imp_variant<T>::value> tag_type;
 
    return detail::unchecked_bernoulli_imp<T>(n, tag_type());

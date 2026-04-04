@@ -11,8 +11,8 @@
 namespace boost { namespace math { namespace tools {
 
 template<typename Real>
-Real agm(Real a, Real g)
-{
+Real agm(Real a, Real g
+) {
     using std::sqrt;
     
     if (a < g)

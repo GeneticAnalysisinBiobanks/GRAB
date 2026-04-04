@@ -88,28 +88,28 @@ struct regidx_t
     kstring_t str;
 };
 
-int regidx_seq_nregs(regidx_t *idx, const char *seq)
-{
+int regidx_seq_nregs(regidx_t *idx, const char *seq
+) {
     int iseq;
     if ( khash_str2int_get(idx->seq2regs, seq, &iseq)!=0 ) return 0; // no such sequence
     return idx->seq[iseq].nreg;
 }
 
-int regidx_nregs(regidx_t *idx)
-{
+int regidx_nregs(regidx_t *idx
+) {
     int i, nreg = 0;
     for (i=0; i<idx->nseq; i++) nreg += idx->seq[i].nreg;
     return nreg;
 }
 
-char **regidx_seq_names(regidx_t *idx, int *n)
-{
+char **regidx_seq_names(regidx_t *idx, int *n
+) {
     *n = idx->nseq;
     return idx->seq_names;
 }
 
-int regidx_insert_list(regidx_t *idx, char *line, char delim)
-{
+int regidx_insert_list(regidx_t *idx, char *line, char delim
+) {
     kstring_t tmp = KS_INITIALIZE;
     char *ss = line;
     while ( *ss )
@@ -129,8 +129,8 @@ int regidx_insert_list(regidx_t *idx, char *line, char delim)
     return 0;
 }
 
-static inline int cmp_regs(reg_t *a, reg_t *b)
-{
+static inline int cmp_regs(reg_t *a, reg_t *b
+) {
     if ( a->beg < b->beg ) return -1;
     if ( a->beg > b->beg ) return 1;
     if ( a->end < b->end ) return 1;    // longer intervals come first
@@ -139,17 +139,17 @@ static inline int cmp_regs(reg_t *a, reg_t *b)
     if ( a > b ) return 1;
     return 0;
 }
-static int cmp_reg_ptrs(const void *a, const void *b)
-{
+static int cmp_reg_ptrs(const void *a, const void *b
+) {
     return cmp_regs((reg_t*)a,(reg_t*)b);
 }
-static int cmp_reg_ptrs2(const void *a, const void *b)
-{
+static int cmp_reg_ptrs2(const void *a, const void *b
+) {
     return cmp_regs(*((reg_t**)a),*((reg_t**)b));
 }
 
-int regidx_push(regidx_t *idx, char *chr_beg, char *chr_end, hts_pos_t beg, hts_pos_t end, void *payload)
-{
+int regidx_push(regidx_t *idx, char *chr_beg, char *chr_end, hts_pos_t beg, hts_pos_t end, void *payload
+) {
     if (beg < 0) beg = 0;
     if (end < 0) end = 0;
     if ( beg > MAX_COOR_0 ) beg = MAX_COOR_0;
@@ -195,8 +195,8 @@ int regidx_push(regidx_t *idx, char *chr_beg, char *chr_end, hts_pos_t beg, hts_
     return 0;
 }
 
-int regidx_insert(regidx_t *idx, char *line)
-{
+int regidx_insert(regidx_t *idx, char *line
+) {
     if ( !line ) return 0;
     char *chr_from, *chr_to;
     hts_pos_t beg,end;
@@ -206,8 +206,8 @@ int regidx_insert(regidx_t *idx, char *line)
     return regidx_push(idx, chr_from,chr_to,beg,end,idx->payload);
 }
 
-regidx_t *regidx_init_string(const char *str, regidx_parse_f parser, regidx_free_f free_f, size_t payload_size, void *usr_dat)
-{
+regidx_t *regidx_init_string(const char *str, regidx_parse_f parser, regidx_free_f free_f, size_t payload_size, void *usr_dat
+) {
     kstring_t tmp = KS_INITIALIZE;
     regidx_t *idx = (regidx_t*) calloc(1,sizeof(regidx_t));
     if ( !idx ) return NULL;
@@ -243,8 +243,8 @@ regidx_t *regidx_init_string(const char *str, regidx_parse_f parser, regidx_free
     return NULL;
 }
 
-regidx_t *regidx_init(const char *fname, regidx_parse_f parser, regidx_free_f free_f, size_t payload_size, void *usr_dat)
-{
+regidx_t *regidx_init(const char *fname, regidx_parse_f parser, regidx_free_f free_f, size_t payload_size, void *usr_dat
+) {
     if ( !parser )
     {
         if ( !fname ) parser = regidx_parse_tab;
@@ -308,8 +308,8 @@ error:
     return NULL;
 }
 
-void regidx_destroy(regidx_t *idx)
-{
+void regidx_destroy(regidx_t *idx
+) {
     int i, j;
     if (!idx) return;
     for (i=0; i<idx->nseq; i++)
@@ -332,8 +332,8 @@ void regidx_destroy(regidx_t *idx)
     free(idx);
 }
 
-static int reglist_build_index_(regidx_t *regidx, reglist_t *list)
-{
+static int reglist_build_index_(regidx_t *regidx, reglist_t *list
+) {
     int i;
     if ( list->unsorted ) {
         if ( !regidx->payload_size ) {
@@ -398,8 +398,8 @@ static int reglist_build_index_(regidx_t *regidx, reglist_t *list)
     return 0;
 }
 
-int regidx_overlap(regidx_t *regidx, const char *chr, hts_pos_t beg, hts_pos_t end, regitr_t *regitr)
-{
+int regidx_overlap(regidx_t *regidx, const char *chr, hts_pos_t beg, hts_pos_t end, regitr_t *regitr
+) {
     if ( regitr ) regitr->seq = NULL;
 
     int iseq, ireg;
@@ -463,8 +463,8 @@ int regidx_overlap(regidx_t *regidx, const char *chr, hts_pos_t beg, hts_pos_t e
     return 1;
 }
 
-int regidx_parse_bed(const char *line, char **chr_beg, char **chr_end, hts_pos_t *beg, hts_pos_t *end, void *payload, void *usr)
-{
+int regidx_parse_bed(const char *line, char **chr_beg, char **chr_end, hts_pos_t *beg, hts_pos_t *end, void *payload, void *usr
+) {
     char *ss = (char*) line;
     while ( *ss && isspace_c(*ss) ) ss++;
     if ( !*ss ) return -1;      // skip blank lines
@@ -495,8 +495,8 @@ int regidx_parse_bed(const char *line, char **chr_beg, char **chr_end, hts_pos_t
     return 0;
 }
 
-int regidx_parse_tab(const char *line, char **chr_beg, char **chr_end, hts_pos_t *beg, hts_pos_t *end, void *payload, void *usr)
-{
+int regidx_parse_tab(const char *line, char **chr_beg, char **chr_end, hts_pos_t *beg, hts_pos_t *end, void *payload, void *usr
+) {
     char *ss = (char*) line;
     while ( *ss && isspace_c(*ss) ) ss++;
     if ( !*ss ) return -1;      // skip blank lines
@@ -535,15 +535,15 @@ int regidx_parse_tab(const char *line, char **chr_beg, char **chr_end, hts_pos_t
     return 0;
 }
 
-int regidx_parse_vcf(const char *line, char **chr_beg, char **chr_end, hts_pos_t *beg, hts_pos_t *end, void *payload, void *usr)
-{
+int regidx_parse_vcf(const char *line, char **chr_beg, char **chr_end, hts_pos_t *beg, hts_pos_t *end, void *payload, void *usr
+) {
     int ret = regidx_parse_tab(line, chr_beg, chr_end, beg, end, payload, usr);
     if ( !ret ) *end = *beg;
     return ret;
 }
 
-int regidx_parse_reg(const char *line, char **chr_beg, char **chr_end, hts_pos_t *beg, hts_pos_t *end, void *payload, void *usr)
-{
+int regidx_parse_reg(const char *line, char **chr_beg, char **chr_end, hts_pos_t *beg, hts_pos_t *end, void *payload, void *usr
+) {
     char *ss = (char*) line;
     while ( *ss && isspace_c(*ss) ) ss++;
     if ( !*ss ) return -1;      // skip blank lines
@@ -581,8 +581,8 @@ int regidx_parse_reg(const char *line, char **chr_beg, char **chr_end, hts_pos_t
     return 0;
 }
 
-regitr_t *regitr_init(regidx_t *regidx)
-{
+regitr_t *regitr_init(regidx_t *regidx
+) {
     regitr_t *regitr = (regitr_t*) calloc(1,sizeof(regitr_t));
     if (!regitr) return NULL;
     regitr->itr  = (itr_t_*) calloc(1,sizeof(itr_t_));
@@ -596,21 +596,21 @@ regitr_t *regitr_init(regidx_t *regidx)
     return regitr;
 }
 
-void regitr_reset(regidx_t *regidx, regitr_t *regitr)
-{
+void regitr_reset(regidx_t *regidx, regitr_t *regitr
+) {
     itr_t_ *itr = (itr_t_*) regitr->itr;
     memset(itr,0,sizeof(itr_t_));
     itr->ridx = regidx;
 }
 
-void regitr_destroy(regitr_t *regitr)
-{
+void regitr_destroy(regitr_t *regitr
+) {
     free(regitr->itr);
     free(regitr);
 }
 
-int regitr_overlap(regitr_t *regitr)
-{
+int regitr_overlap(regitr_t *regitr
+) {
     if ( !regitr || !regitr->seq || !regitr->itr ) return 0;
 
     itr_t_ *itr = (itr_t_*) regitr->itr;
@@ -643,8 +643,8 @@ int regitr_overlap(regitr_t *regitr)
     return 1;
 }
 
-int regitr_loop(regitr_t *regitr)
-{
+int regitr_loop(regitr_t *regitr
+) {
     if ( !regitr || !regitr->itr ) return 0;
 
     itr_t_ *itr = (itr_t_*) regitr->itr;
@@ -678,8 +678,8 @@ int regitr_loop(regitr_t *regitr)
 }
 
 
-void regitr_copy(regitr_t *dst, regitr_t *src)
-{
+void regitr_copy(regitr_t *dst, regitr_t *src
+) {
     itr_t_ *dst_itr = (itr_t_*) dst->itr;
     itr_t_ *src_itr = (itr_t_*) src->itr;
     *dst_itr = *src_itr;

@@ -97,8 +97,8 @@ private:
 
 
 template<typename Real, typename Z2>
-std::ostream& operator<<(std::ostream& out, engel_expansion<Real, Z2>& engel)
-{
+std::ostream& operator<<(std::ostream& out, engel_expansion<Real, Z2>& engel
+) {
     constexpr const int p = std::numeric_limits<Real>::max_digits10;
     if constexpr (p == 2147483647)
     {

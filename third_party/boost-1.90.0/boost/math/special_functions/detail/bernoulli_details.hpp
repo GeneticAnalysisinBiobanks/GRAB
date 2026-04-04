@@ -28,8 +28,8 @@ namespace boost{ namespace math{ namespace detail{
 // Luschny LogB3 formula (http://www.luschny.de/math/primes/bernincl.html)
 //
 template <class T, class Policy>
-T b2n_asymptotic(int n)
-{
+T b2n_asymptotic(int n
+) {
    BOOST_MATH_STD_USING
    const auto nx = static_cast<T>(n);
    const T nx2(nx * nx);
@@ -45,8 +45,8 @@ T b2n_asymptotic(int n)
 }
 
 template <class T, class Policy>
-T t2n_asymptotic(int n)
-{
+T t2n_asymptotic(int n
+) {
    BOOST_MATH_STD_USING
    // Just get B2n and convert to a Tangent number:
    T t2n = fabs(b2n_asymptotic<T, Policy>(2 * n)) / (2 * n);
@@ -103,8 +103,8 @@ private:
 };
 
 template <class T, class Policy>
-inline std::size_t find_bernoulli_overflow_limit(const std::false_type&)
-{
+inline std::size_t find_bernoulli_overflow_limit(const std::false_type&
+) {
    // Set a limit on how large the result can ever be:
    static const auto max_result = static_cast<double>((std::numeric_limits<std::size_t>::max)() - 1000u);
 
@@ -122,14 +122,14 @@ inline std::size_t find_bernoulli_overflow_limit(const std::false_type&)
 }
 
 template <class T, class Policy>
-inline std::size_t find_bernoulli_overflow_limit(const std::true_type&)
-{
+inline std::size_t find_bernoulli_overflow_limit(const std::true_type&
+) {
    return max_bernoulli_index<bernoulli_imp_variant<T>::value>::value;
 }
 
 template <class T, class Policy>
-std::size_t b2n_overflow_limit()
-{
+std::size_t b2n_overflow_limit(
+) {
    // This routine is called at program startup if it's called at all:
    // that guarantees safe initialization of the static variable.
    using tag_type = std::integral_constant<bool, (bernoulli_imp_variant<T>::value >= 1) && (bernoulli_imp_variant<T>::value <= 3)>;
@@ -143,15 +143,15 @@ std::size_t b2n_overflow_limit()
 // overflow in the calculation, we can do this by scaling all the tangent number by some scale factor:
 //
 template <class T, typename std::enable_if<std::numeric_limits<T>::is_specialized && (std::numeric_limits<T>::radix == 2), bool>::type = true>
-inline T tangent_scale_factor()
-{
+inline T tangent_scale_factor(
+) {
    BOOST_MATH_STD_USING
    return ldexp(T(1), std::numeric_limits<T>::min_exponent + 5);
 }
 
 template <class T, typename std::enable_if<!std::numeric_limits<T>::is_specialized || !(std::numeric_limits<T>::radix == 2), bool>::type = true>
-inline T tangent_scale_factor()
-{
+inline T tangent_scale_factor(
+) {
    return tools::min_value<T>() * 16;
 }
 
@@ -600,8 +600,8 @@ private:
 };
 
 template <class T, class Policy>
-inline typename std::enable_if<(std::numeric_limits<T>::digits == 0) || (std::numeric_limits<T>::digits >= INT_MAX), bernoulli_numbers_cache<T, Policy>&>::type get_bernoulli_numbers_cache()
-{
+inline typename std::enable_if<(std::numeric_limits<T>::digits == 0) || (std::numeric_limits<T>::digits >= INT_MAX), bernoulli_numbers_cache<T, Policy>&>::type get_bernoulli_numbers_cache(
+) {
    //
    // When numeric_limits<>::digits is zero, the type has either not specialized numeric_limits at all
    // or it's precision can vary at runtime.  So make the cache thread_local so that each thread can
@@ -615,8 +615,8 @@ inline typename std::enable_if<(std::numeric_limits<T>::digits == 0) || (std::nu
    return data;
 }
 template <class T, class Policy>
-inline typename std::enable_if<std::numeric_limits<T>::digits && (std::numeric_limits<T>::digits < INT_MAX), bernoulli_numbers_cache<T, Policy>&>::type get_bernoulli_numbers_cache()
-{
+inline typename std::enable_if<std::numeric_limits<T>::digits && (std::numeric_limits<T>::digits < INT_MAX), bernoulli_numbers_cache<T, Policy>&>::type get_bernoulli_numbers_cache(
+) {
    //
    // Note that we rely on C++11 thread-safe initialization here:
    //

@@ -36,8 +36,8 @@ template <typename T>
 BOOST_MATH_GPU_ENABLED T bessel_j0(T x);
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED T bessel_j0(T x)
-{
+BOOST_MATH_GPU_ENABLED T bessel_j0(T x
+) {
 #ifdef BOOST_MATH_INSTRUMENT
     static bool b = false;
     if (!b)

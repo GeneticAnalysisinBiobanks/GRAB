@@ -56,8 +56,8 @@ private:
 };
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline T bessel_i_small_z_series(T v, T x, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline T bessel_i_small_z_series(T v, T x, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    T prefix;
    if(v < max_factorial<T>::value)
@@ -84,8 +84,8 @@ BOOST_MATH_GPU_ENABLED inline T bessel_i_small_z_series(T v, T x, const Policy& 
 // Calculate K(v, x) and K(v+1, x) by method analogous to
 // Temme, Journal of Computational Physics, vol 21, 343 (1976)
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED int temme_ik(T v, T x, T* result_K, T* K1, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED int temme_ik(T v, T x, T* result_K, T* K1, const Policy& pol
+) {
     T f, h, p, q, coef, sum, sum1, tolerance;
     T a, b, c, d, sigma, gamma1, gamma2;
     unsigned long k;
@@ -161,8 +161,8 @@ BOOST_MATH_GPU_ENABLED int temme_ik(T v, T x, T* result_K, T* K1, const Policy& 
 // Evaluate continued fraction fv = I_(v+1) / I_v, derived from
 // Abramowitz and Stegun, Handbook of Mathematical Functions, 1972, 9.1.73
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED int CF1_ik(T v, T x, T* fv, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED int CF1_ik(T v, T x, T* fv, const Policy& pol
+) {
     T C, D, f, a, b, delta, tiny, tolerance;
     unsigned long k;
 
@@ -208,8 +208,8 @@ BOOST_MATH_GPU_ENABLED int CF1_ik(T v, T x, T* fv, const Policy& pol)
 // z1 / z0 = U(v+1.5, 2v+1, 2x) / U(v+0.5, 2v+1, 2x), see
 // Thompson and Barnett, Computer Physics Communications, vol 47, 245 (1987)
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED int CF2_ik(T v, T x, T* Kv, T* Kv1, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED int CF2_ik(T v, T x, T* Kv, T* Kv1, const Policy& pol
+) {
     BOOST_MATH_STD_USING
     using namespace boost::math::constants;
 
@@ -301,8 +301,8 @@ enum{
 // Compute I(v, x) and K(v, x) simultaneously by Temme's method, see
 // Temme, Journal of Computational Physics, vol 19, 324 (1975)
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED int bessel_ik(T v, T x, T* result_I, T* result_K, int kind, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED int bessel_ik(T v, T x, T* result_I, T* result_K, int kind, const Policy& pol
+) {
     // Kv1 = K_(v+1), fv = I_(v+1) / I_v
     // Ku1 = K_(u+1), fu = I_(u+1) / I_u
     T u, Iv, Kv, Kv1, Ku, Ku1, fv;

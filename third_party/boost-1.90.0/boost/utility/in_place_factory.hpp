@@ -74,14 +74,14 @@ public:
 #if N > 0
 template< BOOST_PP_ENUM_PARAMS(N, class A) >
 inline BOOST_PP_CAT(in_place_factory,N)< BOOST_PP_ENUM_PARAMS(N, A) >
-in_place( BOOST_PP_ENUM_BINARY_PARAMS(N, A, const& a) )
-{
+in_place( BOOST_PP_ENUM_BINARY_PARAMS(N, A, const& a) 
+) {
   return BOOST_PP_CAT(in_place_factory,N)< BOOST_PP_ENUM_PARAMS(N, A) >
       ( BOOST_PP_ENUM_PARAMS(N, a) );
 }
 #else
-inline in_place_factory0 in_place()
-{
+inline in_place_factory0 in_place(
+) {
   return in_place_factory0();
 }
 #endif

@@ -35,6 +35,7 @@ void runSPAGRM(
     const std::string& pairwiseIBDFile,
     const GenoSpec& geno,
     const std::string& outputFile,
+    const std::string& outPrefix,
     double spaCutoff,
     int nthreads,
     int nSnpPerChunk,

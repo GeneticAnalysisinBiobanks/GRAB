@@ -11,12 +11,12 @@
 #include "engine/marker.hpp"
 #include "io/geno_data.hpp"
 #include "util/logging.hpp"
+#include "util/text_stream.hpp"
 
 #include <thread>
 #include <mutex>
 #include <condition_variable>
 #include <atomic>
-#include <fstream>
 #include <algorithm>
 #include <cmath>
 #include <exception>
@@ -24,7 +24,6 @@
 #include <chrono>
 #include <ctime>
 #include <cstdint>
-#include <zlib.h>
 
 
 namespace {
@@ -57,8 +56,8 @@ inline void appendMeta(
     std::string& out, char* buf,
     std::string_view chrom, uint32_t pos, std::string_view id,
     std::string_view ref, std::string_view alt,
-    double missRate, double altFreq, double mac, double hweP)
-{
+    double missRate, double altFreq, double mac, double hweP
+) {
   int n;
   out += chrom;  out += '\t';
   n = std::snprintf(buf, 32, "%u", pos);
@@ -78,8 +77,8 @@ void formatLine(
     std::string_view chrom, uint32_t pos, std::string_view id,
     std::string_view ref, std::string_view alt,
     double missRate, double altFreq, double mac, double hweP,
-    const std::vector<double>& vals)
-{
+    const std::vector<double>& vals
+) {
   appendMeta(out, buf, chrom, pos, id, ref, alt,
              missRate, altFreq, mac, hweP);
   for (double v : vals) {
@@ -96,8 +95,8 @@ void formatLineNA(
     std::string_view chrom, uint32_t pos, std::string_view id,
     std::string_view ref, std::string_view alt,
     double missRate, double altFreq, double mac, double hweP,
-    const std::string& naSuffix)
-{
+    const std::string& naSuffix
+) {
   appendMeta(out, buf, chrom, pos, id, ref, alt,
              missRate, altFreq, mac, hweP);
   out += naSuffix;
@@ -156,8 +155,8 @@ void markerEngine(
     double missingCutoff,
     double minMafCutoff,
     double minMacCutoff,
-    bool exactHwe)
-{
+    bool exactHwe
+) {
   const auto wallStart = std::chrono::steady_clock::now();
   const std::clock_t cpuStart = std::clock();
 
@@ -188,61 +187,31 @@ void markerEngine(
 
   // ── Writer thread ──────────────────────────────────────────────────
   std::thread writerThread([&]() {
-    const bool useGzip =
-        outputFile.size() > 3 &&
-        outputFile.compare(outputFile.size() - 3, 3, ".gz") == 0;
-    gzFile gz = nullptr;
-    std::ofstream plainOut;
+    try {
+      TextWriter writer(outputFile);
 
-    if (useGzip) {
-      gz = gzopen(outputFile.c_str(), "wb");
-      if (!gz) {
-        std::lock_guard<std::mutex> lock(errorMutex);
-        workerError = std::make_exception_ptr(
-            std::runtime_error("Cannot open gzip output: " + outputFile));
-        stopWriter.store(true);
-        return;
+      writer.write(header + "\n");
+
+      for (size_t i = 0; i < chunkOutput.size(); ++i) {
+        std::string tmp;
+        {
+          std::unique_lock<std::mutex> lk(writeMutex);
+          writeCv.wait(lk, [&]() {
+            return chunkReady[i].ready || stopWriter.load();
+          });
+          if (!chunkReady[i].ready) break;
+          tmp = std::move(chunkOutput[i]);
+        }
+        writer.write(tmp);
+        infoMsg("Writing finished: chunk %zu/%zu", i + 1, chunkOutput.size());
       }
-      // 256 KB write buffer — reduces syscall frequency.
-      gzbuffer(gz, 256u * 1024u);
-    } else {
-      plainOut.open(outputFile.c_str());
-      if (!plainOut.is_open()) {
-        std::lock_guard<std::mutex> lock(errorMutex);
-        workerError = std::make_exception_ptr(
-            std::runtime_error("Cannot open output: " + outputFile));
-        stopWriter.store(true);
-        return;
-      }
+
+      writer.close();
+    } catch (...) {
+      std::lock_guard<std::mutex> lock(errorMutex);
+      workerError = std::current_exception();
+      stopWriter.store(true);
     }
-
-    auto writeStr = [&](const std::string& s) {
-      if (useGzip)
-        gzwrite(gz, s.data(), static_cast<unsigned>(s.size()));
-      else
-        plainOut << s;
-    };
-
-    writeStr(header + "\n");
-
-    for (size_t i = 0; i < chunkOutput.size(); ++i) {
-      std::string tmp;
-      {
-        std::unique_lock<std::mutex> lk(writeMutex);
-        writeCv.wait(lk, [&]() {
-          return chunkReady[i].ready || stopWriter.load();
-        });
-        if (!chunkReady[i].ready) break;
-        tmp = std::move(chunkOutput[i]);
-      }
-      writeStr(tmp);
-      infoMsg("Writing finished: chunk %zu/%zu", i + 1, chunkOutput.size());
-    }
-
-    if (useGzip)
-      gzclose(gz);
-    else
-      plainOut.close();
   });
 
   // ── Worker function ────────────────────────────────────────────────

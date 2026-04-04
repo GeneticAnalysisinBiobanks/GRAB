@@ -20,8 +20,8 @@
 namespace boost::math {
 
 template<typename Real>
-inline Real rsqrt(Real const & x)
-{
+inline Real rsqrt(Real const & x
+) {
     using std::sqrt;
     if constexpr (std::is_arithmetic_v<Real> && !std::is_integral_v<Real>)
     {

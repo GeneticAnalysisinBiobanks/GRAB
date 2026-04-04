@@ -113,8 +113,8 @@ POOL_ctx* POOL_create(size_t numThreads, size_t queueSize) {
 }
 
 POOL_ctx* POOL_create_advanced(size_t numThreads, size_t queueSize,
-                               ZSTD_customMem customMem)
-{
+                               ZSTD_customMem customMem
+) {
     POOL_ctx* ctx;
     /* Check parameters */
     if (!numThreads) { return NULL; }
@@ -212,8 +212,8 @@ size_t POOL_sizeof(const POOL_ctx* ctx) {
 
 
 /* @return : 0 on success, 1 on error */
-static int POOL_resize_internal(POOL_ctx* ctx, size_t numThreads)
-{
+static int POOL_resize_internal(POOL_ctx* ctx, size_t numThreads
+) {
     if (numThreads <= ctx->threadCapacity) {
         if (!numThreads) return 1;
         ctx->threadLimit = numThreads;
@@ -241,8 +241,8 @@ static int POOL_resize_internal(POOL_ctx* ctx, size_t numThreads)
 }
 
 /* @return : 0 on success, 1 on error */
-int POOL_resize(POOL_ctx* ctx, size_t numThreads)
-{
+int POOL_resize(POOL_ctx* ctx, size_t numThreads
+) {
     int result;
     if (ctx==NULL) return 1;
     ZSTD_pthread_mutex_lock(&ctx->queueMutex);
@@ -269,8 +269,8 @@ static int isQueueFull(POOL_ctx const* ctx) {
 
 
 static void
-POOL_add_internal(POOL_ctx* ctx, POOL_function function, void *opaque)
-{
+POOL_add_internal(POOL_ctx* ctx, POOL_function function, void *opaque
+) {
     POOL_job job;
     job.function = function;
     job.opaque = opaque;
@@ -283,8 +283,8 @@ POOL_add_internal(POOL_ctx* ctx, POOL_function function, void *opaque)
     ZSTD_pthread_cond_signal(&ctx->queuePopCond);
 }
 
-void POOL_add(POOL_ctx* ctx, POOL_function function, void* opaque)
-{
+void POOL_add(POOL_ctx* ctx, POOL_function function, void* opaque
+) {
     assert(ctx != NULL);
     ZSTD_pthread_mutex_lock(&ctx->queueMutex);
     /* Wait until there is space in the queue for the new job */
@@ -296,8 +296,8 @@ void POOL_add(POOL_ctx* ctx, POOL_function function, void* opaque)
 }
 
 
-int POOL_tryAdd(POOL_ctx* ctx, POOL_function function, void* opaque)
-{
+int POOL_tryAdd(POOL_ctx* ctx, POOL_function function, void* opaque
+) {
     assert(ctx != NULL);
     ZSTD_pthread_mutex_lock(&ctx->queueMutex);
     if (isQueueFull(ctx)) {
@@ -328,8 +328,8 @@ POOL_ctx* POOL_create(size_t numThreads, size_t queueSize) {
 }
 
 POOL_ctx*
-POOL_create_advanced(size_t numThreads, size_t queueSize, ZSTD_customMem customMem)
-{
+POOL_create_advanced(size_t numThreads, size_t queueSize, ZSTD_customMem customMem
+) {
     (void)numThreads;
     (void)queueSize;
     (void)customMem;

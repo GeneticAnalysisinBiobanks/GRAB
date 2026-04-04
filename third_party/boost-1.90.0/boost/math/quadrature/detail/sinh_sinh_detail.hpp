@@ -145,15 +145,15 @@ private:
 
 template<class Real, class Policy>
 sinh_sinh_detail<Real, Policy>::sinh_sinh_detail(size_t max_refinements)
-   : m_abscissas(max_refinements), m_weights(max_refinements), m_max_refinements(max_refinements)
-{
+   : m_abscissas(max_refinements), m_weights(max_refinements), m_max_refinements(max_refinements
+) {
    init(std::integral_constant<int, initializer_selector>());
 }
 
 template<class Real, class Policy>
 template<class F>
-auto sinh_sinh_detail<Real, Policy>::integrate(const F f, Real tolerance, Real* error, Real* L1, std::size_t* levels) const ->decltype(std::declval<F>()(std::declval<Real>()))
-{
+auto sinh_sinh_detail<Real, Policy>::integrate(const F f, Real tolerance, Real* error, Real* L1, std::size_t* levels) const ->decltype(std::declval<F>()(std::declval<Real>())
+) {
     using std::abs;
     using std::sqrt;
     using boost::math::constants::half;
@@ -280,8 +280,8 @@ auto sinh_sinh_detail<Real, Policy>::integrate(const F f, Real tolerance, Real* 
 }
 
 template<class Real, class Policy>
-void sinh_sinh_detail<Real, Policy>::init(const std::integral_constant<int, 0>&)
-{
+void sinh_sinh_detail<Real, Policy>::init(const std::integral_constant<int, 0>&
+) {
    using std::log;
    using std::sqrt;
    using std::cosh;
@@ -326,8 +326,8 @@ void sinh_sinh_detail<Real, Policy>::init(const std::integral_constant<int, 0>&)
 }
 
 template<class Real, class Policy>
-void sinh_sinh_detail<Real, Policy>::init(const std::integral_constant<int, 1>&)
-{
+void sinh_sinh_detail<Real, Policy>::init(const std::integral_constant<int, 1>&
+) {
    m_abscissas = {
       { 3.08828742e+00f, 1.48993185e+02f, 3.41228925e+06f, 2.06932577e+18f, },
       { 9.13048763e-01f, 1.41578929e+01f, 6.70421552e+03f, 9.64172533e+10f, },
@@ -366,8 +366,8 @@ void sinh_sinh_detail<Real, Policy>::init(const std::integral_constant<int, 1>&)
 }
 
 template<class Real, class Policy>
-void sinh_sinh_detail<Real, Policy>::init(const std::integral_constant<int, 2>&)
-{
+void sinh_sinh_detail<Real, Policy>::init(const std::integral_constant<int, 2>&
+) {
    m_abscissas = {
       { 3.088287417976322866e+00, 1.489931846492091580e+02, 3.412289247883437102e+06, 2.069325766042617791e+18, 2.087002407609475560e+50, 2.019766160717908151e+137, },
       { 9.130487626376696748e-01, 1.415789294662811592e+01, 6.704215516223276482e+03, 9.641725327150499415e+10, 2.508950760085778485e+30, 1.447263535710337145e+83, },
@@ -407,8 +407,8 @@ void sinh_sinh_detail<Real, Policy>::init(const std::integral_constant<int, 2>&)
 
 #if LDBL_MAX_EXP == 16384
 template<class Real, class Policy>
-void sinh_sinh_detail<Real, Policy>::init(const std::integral_constant<int, 3>&)
-{
+void sinh_sinh_detail<Real, Policy>::init(const std::integral_constant<int, 3>&
+) {
    m_abscissas = {
       { 3.08828741797632286606397498241221385e+00L, 1.48993184649209158013612709175719825e+02L, 3.41228924788343710247727162226946917e+06L, 2.06932576604261779073902718911207249e+18L, 2.08700240760947556038306635808129743e+50L, 2.01976616071790815078008252209994199e+137L, 5.67213444764437168603513205349222232e+373L, 3.06198394306784061113736467298565948e+1016L, },
       { 9.13048762637669674838078869945948356e-01L, 1.41578929466281159169215570833490092e+01L, 6.70421551622327648231120321610008518e+03L, 9.64172532715049941526010563818587232e+10L, 2.50895076008577848514087028569888161e+30L, 1.44726353571033714499079379626715686e+83L, 3.75263401205045334128277886549019357e+226L, 2.57846123932685341261715758547064293e+616L, 1.25169402230987931584130068460134989e+1676L, },
@@ -448,8 +448,8 @@ void sinh_sinh_detail<Real, Policy>::init(const std::integral_constant<int, 3>&)
 #endif
 #ifdef BOOST_HAS_FLOAT128
 template<class Real, class Policy>
-void sinh_sinh_detail<Real, Policy>::init(const std::integral_constant<int, 4>&)
-{
+void sinh_sinh_detail<Real, Policy>::init(const std::integral_constant<int, 4>&
+) {
    m_abscissas = {
       { 3.08828741797632286606397498241221385e+00Q, 1.48993184649209158013612709175719825e+02Q, 3.41228924788343710247727162226946917e+06Q, 2.06932576604261779073902718911207249e+18Q, 2.08700240760947556038306635808129743e+50Q, 2.01976616071790815078008252209994199e+137Q, 5.67213444764437168603513205349222232e+373Q, 3.06198394306784061113736467298565948e+1016Q, },
       { 9.13048762637669674838078869945948356e-01Q, 1.41578929466281159169215570833490092e+01Q, 6.70421551622327648231120321610008518e+03Q, 9.64172532715049941526010563818587232e+10Q, 2.50895076008577848514087028569888161e+30Q, 1.44726353571033714499079379626715686e+83Q, 3.75263401205045334128277886549019357e+226Q, 2.57846123932685341261715758547064293e+616Q, 1.25169402230987931584130068460134989e+1676Q, },
@@ -1213,8 +1213,8 @@ struct coefficients_selector<double>
 };
 
 template <class F, class Real, class Policy = boost::math::policies::policy<> >
-__device__ auto sinh_sinh_integrate_impl(const F& f, Real tolerance, Real* error, Real* L1, boost::math::size_t* levels)
-{
+__device__ auto sinh_sinh_integrate_impl(const F& f, Real tolerance, Real* error, Real* L1, boost::math::size_t* levels
+) {
     BOOST_MATH_STD_USING
     using boost::math::constants::half;
     using boost::math::constants::half_pi;

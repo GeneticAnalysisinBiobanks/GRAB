@@ -331,8 +331,8 @@ LEAFMethod::LEAFMethod(
     std::vector<std::vector<uint32_t>>         clusterIndices)
   : m_nCluster(static_cast<int>(clusterMethods.size())),
     m_clusterMethods(std::move(clusterMethods)),
-    m_clusterIndices(std::move(clusterIndices))
-{
+    m_clusterIndices(std::move(clusterIndices)
+) {
   m_clusterGVec.resize(m_nCluster);
   for (int c = 0; c < m_nCluster; ++c)
     m_clusterGVec[c].resize(m_clusterIndices[c].size());

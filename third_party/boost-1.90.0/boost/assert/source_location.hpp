@@ -137,8 +137,8 @@ public:
 
 #if !defined(BOOST_NO_IOSTREAM)
 
-template<class E, class T> std::basic_ostream<E, T> & operator<<( std::basic_ostream<E, T> & os, source_location const & loc )
-{
+template<class E, class T> std::basic_ostream<E, T> & operator<<( std::basic_ostream<E, T> & os, source_location const & loc 
+) {
     os << loc.to_string();
     return os;
 }

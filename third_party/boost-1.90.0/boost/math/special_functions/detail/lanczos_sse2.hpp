@@ -21,8 +21,8 @@
 namespace boost{ namespace math{ namespace lanczos{
 
 template <>
-inline double lanczos13m53::lanczos_sum<double>(const double& x)
-{
+inline double lanczos13m53::lanczos_sum<double>(const double& x
+) {
    static const ALIGN16 double coeff[26] = {
       static_cast<double>(2.506628274631000270164908177133837338626L),
       static_cast<double>(1u),
@@ -115,8 +115,8 @@ inline double lanczos13m53::lanczos_sum<double>(const double& x)
 }
 
 template <>
-inline double lanczos13m53::lanczos_sum_expG_scaled<double>(const double& x)
-{
+inline double lanczos13m53::lanczos_sum_expG_scaled<double>(const double& x
+) {
    static const ALIGN16 double coeff[26] = {
          static_cast<double>(0.006061842346248906525783753964555936883222L),
          static_cast<double>(1u),
@@ -213,13 +213,13 @@ inline double lanczos13m53::lanczos_sum_expG_scaled<double>(const double& x)
 static_assert(sizeof(double) == sizeof(long double), "sizeof(long double) != sizeof(double) is not supported");
 
 template <>
-inline long double lanczos13m53::lanczos_sum<long double>(const long double& x)
-{
+inline long double lanczos13m53::lanczos_sum<long double>(const long double& x
+) {
    return lanczos_sum<double>(static_cast<double>(x));
 }
 template <>
-inline long double lanczos13m53::lanczos_sum_expG_scaled<long double>(const long double& x)
-{
+inline long double lanczos13m53::lanczos_sum_expG_scaled<long double>(const long double& x
+) {
    return lanczos_sum_expG_scaled<double>(static_cast<double>(x));
 }
 #endif

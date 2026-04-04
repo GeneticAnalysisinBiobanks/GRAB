@@ -26,8 +26,8 @@ BOOST_MATH_GPU_ENABLED inline typename Functor::result_type sum_series(Functor& 
 #ifndef BOOST_MATH_HAS_GPU_SUPPORT
 && noexcept(std::declval<Functor>()())
 #endif
-)
-{
+
+) {
    BOOST_MATH_STD_USING
 
    typedef typename Functor::result_type result_type;
@@ -53,8 +53,8 @@ BOOST_MATH_GPU_ENABLED inline typename Functor::result_type sum_series(Functor& 
 #ifndef BOOST_MATH_HAS_GPU_SUPPORT
 && noexcept(std::declval<Functor>()())
 #endif
-)
-{
+
+) {
    typename Functor::result_type init_value = 0;
    return sum_series(func, factor, max_terms, init_value);
 }
@@ -64,8 +64,8 @@ BOOST_MATH_GPU_ENABLED inline typename Functor::result_type sum_series(Functor& 
 #ifndef BOOST_MATH_HAS_GPU_SUPPORT
 && noexcept(std::declval<Functor>()())
 #endif
-)
-{
+
+) {
    BOOST_MATH_STD_USING
    typedef typename Functor::result_type result_type;
    result_type factor = ldexp(result_type(1), 1 - bits);
@@ -77,8 +77,8 @@ BOOST_MATH_GPU_ENABLED inline typename Functor::result_type sum_series(Functor& 
 #ifndef BOOST_MATH_HAS_GPU_SUPPORT
 && noexcept(std::declval<Functor>()())
 #endif
-)
-{
+
+) {
    BOOST_MATH_STD_USING
    typedef typename Functor::result_type result_type;
    boost::math::uintmax_t iters = (boost::math::numeric_limits<boost::math::uintmax_t>::max)();
@@ -91,8 +91,8 @@ BOOST_MATH_GPU_ENABLED inline typename Functor::result_type sum_series(Functor& 
 #ifndef BOOST_MATH_HAS_GPU_SUPPORT
 && noexcept(std::declval<Functor>()())
 #endif
-)
-{
+
+) {
    BOOST_MATH_STD_USING
    typedef typename Functor::result_type result_type;
    result_type init_val = 0;
@@ -104,8 +104,8 @@ BOOST_MATH_GPU_ENABLED inline typename Functor::result_type sum_series(Functor& 
 #ifndef BOOST_MATH_HAS_GPU_SUPPORT
 && noexcept(std::declval<Functor>()())
 #endif
-)
-{
+
+) {
    BOOST_MATH_STD_USING
    boost::math::uintmax_t iters = (boost::math::numeric_limits<boost::math::uintmax_t>::max)();
    return sum_series(func, bits, iters, init_value);
@@ -118,8 +118,8 @@ BOOST_MATH_GPU_ENABLED inline typename Functor::result_type checked_sum_series(F
 #ifndef BOOST_MATH_HAS_GPU_SUPPORT
 && noexcept(std::declval<Functor>()())
 #endif
-)
-{
+
+) {
    BOOST_MATH_STD_USING
 
    typedef typename Functor::result_type result_type;
@@ -158,8 +158,8 @@ BOOST_MATH_GPU_ENABLED inline typename Functor::result_type kahan_sum_series(Fun
 #ifndef BOOST_MATH_HAS_GPU_SUPPORT
 && noexcept(std::declval<Functor>()())
 #endif
-)
-{
+
+) {
    BOOST_MATH_STD_USING
 
    typedef typename Functor::result_type result_type;
@@ -185,8 +185,8 @@ BOOST_MATH_GPU_ENABLED inline typename Functor::result_type kahan_sum_series(Fun
 #ifndef BOOST_MATH_HAS_GPU_SUPPORT
 && noexcept(std::declval<Functor>()())
 #endif
-)
-{
+
+) {
    BOOST_MATH_STD_USING
 
    typedef typename Functor::result_type result_type;

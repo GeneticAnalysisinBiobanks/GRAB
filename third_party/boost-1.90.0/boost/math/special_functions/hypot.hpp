@@ -22,8 +22,8 @@
 namespace boost{ namespace math{ namespace detail{
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T hypot_imp(T x, T y, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED T hypot_imp(T x, T y, const Policy& pol
+) {
    //
    // Normalize x and y, so that both are positive and x >= y:
    //
@@ -56,8 +56,8 @@ BOOST_MATH_GPU_ENABLED T hypot_imp(T x, T y, const Policy& pol)
 } // template <class T> T hypot(T x, T y)
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T hypot_imp(T x, T y, T z, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED T hypot_imp(T x, T y, T z, const Policy& pol
+) {
    BOOST_MATH_STD_USING
 
    x = fabs(x);
@@ -101,8 +101,8 @@ BOOST_MATH_GPU_ENABLED T hypot_imp(T x, T y, T z, const Policy& pol)
 
 template <class T1, class T2>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type
-   hypot(T1 x, T2 y)
-{
+   hypot(T1 x, T2 y
+) {
    typedef typename tools::promote_args<T1, T2>::type result_type;
    return detail::hypot_imp(
       static_cast<result_type>(x), static_cast<result_type>(y), policies::policy<>());
@@ -110,8 +110,8 @@ BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type
 
 template <class T1, class T2, class Policy, boost::math::enable_if_t<policies::is_policy_v<Policy>, bool>>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type
-   hypot(T1 x, T2 y, const Policy& pol)
-{
+   hypot(T1 x, T2 y, const Policy& pol
+) {
    typedef typename tools::promote_args<T1, T2>::type result_type;
    return detail::hypot_imp(
       static_cast<result_type>(x), static_cast<result_type>(y), pol);
@@ -119,8 +119,8 @@ BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type
 
 template <class T1, class T2, class T3, boost::math::enable_if_t<!policies::is_policy_v<T3>, bool>>
 BOOST_MATH_GPU_ENABLED inline tools::promote_args_t<T1, T2, T3>
-   hypot(T1 x, T2 y, T3 z)
-{
+   hypot(T1 x, T2 y, T3 z
+) {
    using result_type = tools::promote_args_t<T1, T2, T3>;
    return detail::hypot_imp(static_cast<result_type>(x),
                             static_cast<result_type>(y),
@@ -130,8 +130,8 @@ BOOST_MATH_GPU_ENABLED inline tools::promote_args_t<T1, T2, T3>
 
 template <class T1, class T2, class T3, class Policy>
 BOOST_MATH_GPU_ENABLED inline tools::promote_args_t<T1, T2, T3>
-   hypot(T1 x, T2 y, T3 z, const Policy& pol)
-{
+   hypot(T1 x, T2 y, T3 z, const Policy& pol
+) {
    using result_type = tools::promote_args_t<T1, T2, T3>;
    return detail::hypot_imp(static_cast<result_type>(x),
                             static_cast<result_type>(y),

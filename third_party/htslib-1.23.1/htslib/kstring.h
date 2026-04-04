@@ -150,15 +150,15 @@ extern "C" {
    or ks_clear() instead.
 */
 
-static inline void ks_initialize(kstring_t *s)
-{
+static inline void ks_initialize(kstring_t *s
+) {
     s->l = s->m = 0;
     s->s = NULL;
 }
 
 /// Resize a kstring to a given capacity
-static inline int ks_resize(kstring_t *s, size_t size)
-{
+static inline int ks_resize(kstring_t *s, size_t size
+) {
 	if (s->m < size) {
 	    char *tmp;
 	    size = (size > (SIZE_MAX>>2)) ? size : size + (size >> 1);
@@ -172,8 +172,8 @@ static inline int ks_resize(kstring_t *s, size_t size)
 }
 
 /// Increase kstring capacity by a given number of bytes
-static inline int ks_expand(kstring_t *s, size_t expansion)
-{
+static inline int ks_expand(kstring_t *s, size_t expansion
+) {
     size_t new_size = s->l + expansion;
 
     if (new_size < s->l) { errno = EOVERFLOW; return -1; }
@@ -181,8 +181,8 @@ static inline int ks_expand(kstring_t *s, size_t expansion)
 }
 
 /// Returns the kstring buffer
-static inline char *ks_str(kstring_t *s)
-{
+static inline char *ks_str(kstring_t *s
+) {
 	return s->s;
 }
 
@@ -192,13 +192,13 @@ static inline char *ks_str(kstring_t *s)
  * empty it will return a read-only empty string.  As the returned value
  * may be read-only, the caller should not attempt to modify it.
  */
-static inline const char *ks_c_str(kstring_t *s)
-{
+static inline const char *ks_c_str(kstring_t *s
+) {
     return s->l && s->s ? s->s : "";
 }
 
-static inline size_t ks_len(kstring_t *s)
-{
+static inline size_t ks_len(kstring_t *s
+) {
 	return s->l;
 }
 
@@ -208,8 +208,8 @@ static inline size_t ks_len(kstring_t *s)
 
    Example use: kputsn(string, len, ks_clear(s))
 */
-static inline kstring_t *ks_clear(kstring_t *s)
-{
+static inline kstring_t *ks_clear(kstring_t *s
+) {
     s->l = 0;
     return s;
 }
@@ -218,8 +218,8 @@ static inline kstring_t *ks_clear(kstring_t *s)
 // that something else responsible for freeing it), leaving the kstring_t
 // empty and ready to be used again, or ready to go out of scope without
 // needing  free(str.s)  to prevent a memory leak.
-static inline char *ks_release(kstring_t *s)
-{
+static inline char *ks_release(kstring_t *s
+) {
 	char *ss = s->s;
 	s->l = s->m = 0;
 	s->s = NULL;
@@ -227,16 +227,16 @@ static inline char *ks_release(kstring_t *s)
 }
 
 /// Safely free the underlying buffer in a kstring.
-static inline void ks_free(kstring_t *s)
-{
+static inline void ks_free(kstring_t *s
+) {
     if (s) {
         free(s->s);
         ks_initialize(s);
     }
 }
 
-static inline int kputsn(const char *p, size_t l, kstring_t *s)
-{
+static inline int kputsn(const char *p, size_t l, kstring_t *s
+) {
 	size_t new_sz = s->l + l + 2;
 	if (new_sz <= s->l) { errno = EOVERFLOW; return EOF; }
 	if (ks_resize(s, new_sz) < 0) return EOF;
@@ -246,14 +246,14 @@ static inline int kputsn(const char *p, size_t l, kstring_t *s)
 	return l;
 }
 
-static inline int kputs(const char *p, kstring_t *s)
-{
+static inline int kputs(const char *p, kstring_t *s
+) {
 	if (!p) { errno = EFAULT; return -1; }
 	return kputsn(p, strlen(p), s);
 }
 
-static inline int kputc(int c, kstring_t *s)
-{
+static inline int kputc(int c, kstring_t *s
+) {
 	if (ks_resize(s, s->l + 2) < 0)
 		return EOF;
 	s->s[s->l++] = c;
@@ -261,16 +261,16 @@ static inline int kputc(int c, kstring_t *s)
 	return (unsigned char)c;
 }
 
-static inline int kputc_(int c, kstring_t *s)
-{
+static inline int kputc_(int c, kstring_t *s
+) {
 	if (ks_resize(s, s->l + 1) < 0)
 		return EOF;
 	s->s[s->l++] = c;
 	return 1;
 }
 
-static inline int kputsn_(const void *p, size_t l, kstring_t *s)
-{
+static inline int kputsn_(const void *p, size_t l, kstring_t *s
+) {
 	size_t new_sz = s->l + l;
 	if (new_sz < s->l) { errno = EOVERFLOW; return EOF; }
 	if (ks_resize(s, new_sz ? new_sz : 1) < 0) return EOF;
@@ -279,8 +279,8 @@ static inline int kputsn_(const void *p, size_t l, kstring_t *s)
 	return l;
 }
 
-static inline int kputuw(unsigned x, kstring_t *s)
-{
+static inline int kputuw(unsigned x, kstring_t *s
+) {
 #if HAVE___BUILTIN_CLZ && UINT_MAX == 4294967295U
     static const unsigned int kputuw_num_digits[32] = {
         10, 10, 10,  9,  9,  9,  8,  8,
@@ -364,8 +364,8 @@ static inline int kputuw(unsigned x, kstring_t *s)
     return 0;
 }
 
-static inline int kputw(int c, kstring_t *s)
-{
+static inline int kputw(int c, kstring_t *s
+) {
     unsigned int x = c;
     if (c < 0) {
         x = -x;
@@ -377,8 +377,8 @@ static inline int kputw(int c, kstring_t *s)
     return kputuw(x, s);
 }
 
-static inline int kputll(long long c, kstring_t *s)
-{
+static inline int kputll(long long c, kstring_t *s
+) {
     // Worst case expansion.  One check reduces function size
     // and aids inlining chance.  Memory overhead is minimal.
     if (ks_resize(s, s->l + 23) < 0)
@@ -446,8 +446,8 @@ static inline int kputl(long c, kstring_t *s) {
  * Returns 's' split by delimiter, with *n being the number of components;
  *         NULL on failure.
  */
-static inline int *ksplit(kstring_t *s, int delimiter, int *n)
-{
+static inline int *ksplit(kstring_t *s, int delimiter, int *n
+) {
 	int max = 0, *offsets = 0;
 	*n = ksplit_core(s->s, delimiter, &max, &offsets);
 	return offsets;
@@ -462,8 +462,8 @@ static inline int *ksplit(kstring_t *s, int delimiter, int *n)
  *  0 for pos inserts at start and length of current string as pos appends at
  *  the end.
  */
-static inline int kinsert_char(char c, size_t pos, kstring_t *s)
-{
+static inline int kinsert_char(char c, size_t pos, kstring_t *s
+) {
     if (!s || pos > s->l)  {
         return EOF;
     }
@@ -485,8 +485,8 @@ static inline int kinsert_char(char c, size_t pos, kstring_t *s)
  *  0 for pos inserts at start and length of current string as pos appends at
  *  the end. empty string makes no update.
  */
-static inline int kinsert_str(const char *str, size_t pos, kstring_t *s)
-{
+static inline int kinsert_str(const char *str, size_t pos, kstring_t *s
+) {
     size_t len = 0;
     if (!s || pos > s->l || !str)  {
         return EOF;

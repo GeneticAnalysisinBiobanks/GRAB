@@ -27,6 +27,8 @@ enum class GenoFormat { Plink, Pgen, Vcf, Bgen };
 struct GenoSpec {
     GenoFormat  format;
     std::string path;  // bfilePrefix for Plink/Pgen, full file for Vcf/Bgen
+    std::string extractFile;  // --extract: SNP include list
+    std::string excludeFile;  // --exclude: SNP exclude list
 };
 
 // Extract all sample IIDs from the genotype file metadata

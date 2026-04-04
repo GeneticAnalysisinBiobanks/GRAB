@@ -29,8 +29,8 @@ namespace detail{
 
 // Elliptic integral - Jacobi Zeta
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED T jacobi_zeta_imp(T phi, T k, const Policy& pol, T kp)
-{
+BOOST_MATH_GPU_ENABLED T jacobi_zeta_imp(T phi, T k, const Policy& pol, T kp
+) {
     BOOST_MATH_STD_USING
     using namespace boost::math::tools;
     using namespace boost::math::constants;
@@ -57,23 +57,23 @@ BOOST_MATH_GPU_ENABLED T jacobi_zeta_imp(T phi, T k, const Policy& pol, T kp)
     return invert ? T(-result) : result;
 }
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED inline T jacobi_zeta_imp(T phi, T k, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline T jacobi_zeta_imp(T phi, T k, const Policy& pol
+) {
    return jacobi_zeta_imp(phi, k, pol, T(1 - k * k));
 }
 } // detail
 
 template <class T1, class T2, class Policy>
-BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type jacobi_zeta(T1 k, T2 phi, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type jacobi_zeta(T1 k, T2 phi, const Policy& pol
+) {
    typedef typename tools::promote_args<T1, T2>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
    return policies::checked_narrowing_cast<result_type, Policy>(detail::jacobi_zeta_imp(static_cast<value_type>(phi), static_cast<value_type>(k), pol), "boost::math::jacobi_zeta<%1%>(%1%,%1%)");
 }
 
 template <class T1, class T2>
-BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type jacobi_zeta(T1 k, T2 phi)
-{
+BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type jacobi_zeta(T1 k, T2 phi
+) {
    return boost::math::jacobi_zeta(k, phi, policies::policy<>());
 }
 

@@ -49,31 +49,31 @@ typedef double largest_float;
 #endif
 
 template <class T>
-BOOST_MATH_GPU_ENABLED constexpr T make_big_value(largest_float v, const char*, std::true_type const&, std::false_type const&) BOOST_MATH_NOEXCEPT(T)
-{
+BOOST_MATH_GPU_ENABLED constexpr T make_big_value(largest_float v, const char*, std::true_type const&, std::false_type const&) BOOST_MATH_NOEXCEPT(T
+) {
    return static_cast<T>(v);
 }
 template <class T>
-BOOST_MATH_GPU_ENABLED constexpr T make_big_value(largest_float v, const char*, std::true_type const&, std::true_type const&) BOOST_MATH_NOEXCEPT(T)
-{
+BOOST_MATH_GPU_ENABLED constexpr T make_big_value(largest_float v, const char*, std::true_type const&, std::true_type const&) BOOST_MATH_NOEXCEPT(T
+) {
    return static_cast<T>(v);
 }
 #ifndef BOOST_MATH_NO_LEXICAL_CAST
 template <class T>
-inline T make_big_value(largest_float, const char* s, std::false_type const&, std::false_type const&)
-{
+inline T make_big_value(largest_float, const char* s, std::false_type const&, std::false_type const&
+) {
    return boost::lexical_cast<T>(s);
 }
 #else
 template <typename T>
-inline T make_big_value(largest_float, const char*, std::false_type const&, std::false_type const&)
-{
+inline T make_big_value(largest_float, const char*, std::false_type const&, std::false_type const&
+) {
    static_assert(sizeof(T) == 0, "Type is unsupported in standalone mode. Please disable and try again.");
 }
 #endif
 template <class T>
-inline constexpr T make_big_value(largest_float, const char* s, std::false_type const&, std::true_type const&) BOOST_MATH_NOEXCEPT(T)
-{
+inline constexpr T make_big_value(largest_float, const char* s, std::false_type const&, std::true_type const&) BOOST_MATH_NOEXCEPT(T
+) {
    return T(s);
 }
 

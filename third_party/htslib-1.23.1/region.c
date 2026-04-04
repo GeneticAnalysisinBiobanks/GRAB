@@ -38,8 +38,8 @@ typedef struct reglist
 KHASH_MAP_INIT_INT(reg, reglist_t)
 typedef kh_reg_t reghash_t;
 
-static int compare_hts_pair_pos_t (const void *av, const void *bv)
-{
+static int compare_hts_pair_pos_t (const void *av, const void *bv
+) {
     hts_pair_pos_t *a = (hts_pair_pos_t *) av;
     hts_pair_pos_t *b = (hts_pair_pos_t *) bv;
     if (a->beg < b->beg) return -1;

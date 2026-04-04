@@ -25,8 +25,8 @@
 namespace boost{ namespace math{ namespace detail{
 
 template <class T, class Func>
-void bubble_down_one(T* first, T* last, Func f)
-{
+void bubble_down_one(T* first, T* last, Func f
+) {
    using std::swap;
    T* next = first;
    ++next;
@@ -51,8 +51,8 @@ private:
 };
 
 template <class T, class Lanczos, class Policy>
-T hypergeometric_pdf_lanczos_imp(T /*dummy*/, std::uint64_t x, std::uint64_t r, std::uint64_t n, std::uint64_t N, const Lanczos&, const Policy&)
-{
+T hypergeometric_pdf_lanczos_imp(T /*dummy*/, std::uint64_t x, std::uint64_t r, std::uint64_t n, std::uint64_t N, const Lanczos&, const Policy&
+) {
    BOOST_MATH_STD_USING
 
    BOOST_MATH_INSTRUMENT_FPU
@@ -217,8 +217,8 @@ T hypergeometric_pdf_lanczos_imp(T /*dummy*/, std::uint64_t x, std::uint64_t r, 
 }
 
 template <class T, class Policy>
-T hypergeometric_pdf_lanczos_imp(T /*dummy*/, std::uint64_t x, std::uint64_t r, std::uint64_t n, std::uint64_t N, const boost::math::lanczos::undefined_lanczos&, const Policy& pol)
-{
+T hypergeometric_pdf_lanczos_imp(T /*dummy*/, std::uint64_t x, std::uint64_t r, std::uint64_t n, std::uint64_t N, const boost::math::lanczos::undefined_lanczos&, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    return exp(
       boost::math::lgamma(T(n + 1), pol)
@@ -233,8 +233,8 @@ T hypergeometric_pdf_lanczos_imp(T /*dummy*/, std::uint64_t x, std::uint64_t r, 
 }
 
 template <class T>
-inline T integer_power(const T& x, int ex)
-{
+inline T integer_power(const T& x, int ex
+) {
    if(ex < 0)
       return 1 / integer_power(x, -ex);
    switch(ex)
@@ -292,8 +292,8 @@ struct hypergeometric_pdf_prime_loop_data
 #endif
 
 template <class T>
-T hypergeometric_pdf_prime_loop_imp(hypergeometric_pdf_prime_loop_data& data, hypergeometric_pdf_prime_loop_result_entry<T>& result)
-{
+T hypergeometric_pdf_prime_loop_imp(hypergeometric_pdf_prime_loop_data& data, hypergeometric_pdf_prime_loop_result_entry<T>& result
+) {
    while(data.current_prime <= data.N)
    {
       std::uint64_t base = data.current_prime;
@@ -383,16 +383,16 @@ T hypergeometric_pdf_prime_loop_imp(hypergeometric_pdf_prime_loop_data& data, hy
 }
 
 template <class T, class Policy>
-inline T hypergeometric_pdf_prime_imp(std::uint64_t x, std::uint64_t r, std::uint64_t n, std::uint64_t N, const Policy&)
-{
+inline T hypergeometric_pdf_prime_imp(std::uint64_t x, std::uint64_t r, std::uint64_t n, std::uint64_t N, const Policy&
+) {
    hypergeometric_pdf_prime_loop_result_entry<T> result = { 1, 0 };
    hypergeometric_pdf_prime_loop_data data = { x, r, n, N, 0, prime(0) };
    return hypergeometric_pdf_prime_loop_imp<T>(data, result);
 }
 
 template <class T, class Policy>
-T hypergeometric_pdf_factorial_imp(std::uint64_t x, std::uint64_t r, std::uint64_t n, std::uint64_t N, const Policy&)
-{
+T hypergeometric_pdf_factorial_imp(std::uint64_t x, std::uint64_t r, std::uint64_t n, std::uint64_t N, const Policy&
+) {
    BOOST_MATH_STD_USING
    BOOST_MATH_ASSERT(N <= boost::math::max_factorial<T>::value);
    T result = boost::math::unchecked_factorial<T>(static_cast<unsigned>(n));
@@ -429,8 +429,8 @@ T hypergeometric_pdf_factorial_imp(std::uint64_t x, std::uint64_t r, std::uint64
 
 template <class T, class Policy>
 inline typename tools::promote_args<T>::type 
-   hypergeometric_pdf(std::uint64_t x, std::uint64_t r, std::uint64_t n, std::uint64_t N, const Policy&)
-{
+   hypergeometric_pdf(std::uint64_t x, std::uint64_t r, std::uint64_t n, std::uint64_t N, const Policy&
+) {
    BOOST_FPU_EXCEPTION_GUARD
    typedef typename tools::promote_args<T>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;

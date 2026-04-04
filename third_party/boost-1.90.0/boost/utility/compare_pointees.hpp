@@ -27,8 +27,8 @@ namespace boost {
 // No-throw
 template<class OptionalPointee>
 inline
-bool equal_pointees ( OptionalPointee const& x, OptionalPointee const& y )
-{
+bool equal_pointees ( OptionalPointee const& x, OptionalPointee const& y 
+) {
   return (!x) != (!y) ? false : ( !x ? true : (*x) == (*y) ) ;
 }
 
@@ -54,8 +54,8 @@ struct equal_pointees_t
 // No-throw
 template<class OptionalPointee>
 inline
-bool less_pointees ( OptionalPointee const& x, OptionalPointee const& y )
-{
+bool less_pointees ( OptionalPointee const& x, OptionalPointee const& y 
+) {
   return !y ? false : ( !x ? true : (*x) < (*y) ) ;
 }
 

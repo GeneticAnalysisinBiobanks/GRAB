@@ -23,15 +23,15 @@ namespace detail
 {
 
 template <typename Real>
-inline constexpr Real frexp_zero_impl(Real arg, int* exp)
-{
+inline constexpr Real frexp_zero_impl(Real arg, int* exp
+) {
     *exp = 0;
     return arg;
 }
 
 template <typename Real>
-inline constexpr Real frexp_impl(Real arg, int* exp)
-{
+inline constexpr Real frexp_impl(Real arg, int* exp
+) {
     const bool negative_arg = (arg < Real(0));
     
     Real f = negative_arg ? -arg : arg;
@@ -61,8 +61,8 @@ inline constexpr Real frexp_impl(Real arg, int* exp)
 } // namespace detail
 
 template <typename Real, std::enable_if_t<!std::is_integral_v<Real>, bool> = true>
-inline constexpr Real frexp(Real arg, int* exp)
-{
+inline constexpr Real frexp(Real arg, int* exp
+) {
     if(BOOST_MATH_IS_CONSTANT_EVALUATED(arg))
     {
         return arg == Real(0)  ? detail::frexp_zero_impl(arg, exp) : 
@@ -79,19 +79,19 @@ inline constexpr Real frexp(Real arg, int* exp)
 }
 
 template <typename Z, std::enable_if_t<std::is_integral_v<Z>, bool> = true>
-inline constexpr double frexp(Z arg, int* exp)
-{
+inline constexpr double frexp(Z arg, int* exp
+) {
     return boost::math::ccmath::frexp(static_cast<double>(arg), exp);
 }
 
-inline constexpr float frexpf(float arg, int* exp)
-{
+inline constexpr float frexpf(float arg, int* exp
+) {
     return boost::math::ccmath::frexp(arg, exp);
 }
 
 #ifndef BOOST_MATH_NO_LONG_DOUBLE_MATH_FUNCTIONS
-inline constexpr long double frexpl(long double arg, int* exp)
-{
+inline constexpr long double frexpl(long double arg, int* exp
+) {
     return boost::math::ccmath::frexp(arg, exp);
 }
 #endif

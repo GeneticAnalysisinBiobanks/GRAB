@@ -55,8 +55,8 @@
 #define FSE_FUNCTION_NAME(X,Y) FSE_CAT(X,Y)
 #define FSE_TYPE_NAME(X,Y) FSE_CAT(X,Y)
 
-static size_t FSE_buildDTable_internal(FSE_DTable* dt, const short* normalizedCounter, unsigned maxSymbolValue, unsigned tableLog, void* workSpace, size_t wkspSize)
-{
+static size_t FSE_buildDTable_internal(FSE_DTable* dt, const short* normalizedCounter, unsigned maxSymbolValue, unsigned tableLog, void* workSpace, size_t wkspSize
+) {
     void* const tdPtr = dt+1;   /* because *dt is unsigned, 32-bits aligned on 32-bits */
     FSE_DECODE_TYPE* const tableDecode = (FSE_DECODE_TYPE*) (tdPtr);
     U16* symbolNext = (U16*)workSpace;
@@ -158,8 +158,8 @@ static size_t FSE_buildDTable_internal(FSE_DTable* dt, const short* normalizedCo
     return 0;
 }
 
-size_t FSE_buildDTable_wksp(FSE_DTable* dt, const short* normalizedCounter, unsigned maxSymbolValue, unsigned tableLog, void* workSpace, size_t wkspSize)
-{
+size_t FSE_buildDTable_wksp(FSE_DTable* dt, const short* normalizedCounter, unsigned maxSymbolValue, unsigned tableLog, void* workSpace, size_t wkspSize
+) {
     return FSE_buildDTable_internal(dt, normalizedCounter, maxSymbolValue, tableLog, workSpace, wkspSize);
 }
 
@@ -173,8 +173,8 @@ size_t FSE_buildDTable_wksp(FSE_DTable* dt, const short* normalizedCounter, unsi
 FORCE_INLINE_TEMPLATE size_t FSE_decompress_usingDTable_generic(
           void* dst, size_t maxDstSize,
     const void* cSrc, size_t cSrcSize,
-    const FSE_DTable* dt, const unsigned fast)
-{
+    const FSE_DTable* dt, const unsigned fast
+) {
     BYTE* const ostart = (BYTE*) dst;
     BYTE* op = ostart;
     BYTE* const omax = op + maxDstSize;
@@ -244,8 +244,8 @@ FORCE_INLINE_TEMPLATE size_t FSE_decompress_wksp_body(
         void* dst, size_t dstCapacity,
         const void* cSrc, size_t cSrcSize,
         unsigned maxLog, void* workSpace, size_t wkspSize,
-        int bmi2)
-{
+        int bmi2
+) {
     const BYTE* const istart = (const BYTE*)cSrc;
     const BYTE* ip = istart;
     unsigned tableLog;
@@ -289,20 +289,20 @@ FORCE_INLINE_TEMPLATE size_t FSE_decompress_wksp_body(
 }
 
 /* Avoids the FORCE_INLINE of the _body() function. */
-static size_t FSE_decompress_wksp_body_default(void* dst, size_t dstCapacity, const void* cSrc, size_t cSrcSize, unsigned maxLog, void* workSpace, size_t wkspSize)
-{
+static size_t FSE_decompress_wksp_body_default(void* dst, size_t dstCapacity, const void* cSrc, size_t cSrcSize, unsigned maxLog, void* workSpace, size_t wkspSize
+) {
     return FSE_decompress_wksp_body(dst, dstCapacity, cSrc, cSrcSize, maxLog, workSpace, wkspSize, 0);
 }
 
 #if DYNAMIC_BMI2
-BMI2_TARGET_ATTRIBUTE static size_t FSE_decompress_wksp_body_bmi2(void* dst, size_t dstCapacity, const void* cSrc, size_t cSrcSize, unsigned maxLog, void* workSpace, size_t wkspSize)
-{
+BMI2_TARGET_ATTRIBUTE static size_t FSE_decompress_wksp_body_bmi2(void* dst, size_t dstCapacity, const void* cSrc, size_t cSrcSize, unsigned maxLog, void* workSpace, size_t wkspSize
+) {
     return FSE_decompress_wksp_body(dst, dstCapacity, cSrc, cSrcSize, maxLog, workSpace, wkspSize, 1);
 }
 #endif
 
-size_t FSE_decompress_wksp_bmi2(void* dst, size_t dstCapacity, const void* cSrc, size_t cSrcSize, unsigned maxLog, void* workSpace, size_t wkspSize, int bmi2)
-{
+size_t FSE_decompress_wksp_bmi2(void* dst, size_t dstCapacity, const void* cSrc, size_t cSrcSize, unsigned maxLog, void* workSpace, size_t wkspSize, int bmi2
+) {
 #if DYNAMIC_BMI2
     if (bmi2) {
         return FSE_decompress_wksp_body_bmi2(dst, dstCapacity, cSrc, cSrcSize, maxLog, workSpace, wkspSize);

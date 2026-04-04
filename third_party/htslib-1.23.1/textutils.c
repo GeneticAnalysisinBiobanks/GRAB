@@ -34,16 +34,16 @@ DEALINGS IN THE SOFTWARE.  */
 
 #include "hts_internal.h"
 
-static int dehex(char c)
-{
+static int dehex(char c
+) {
     if (c >= 'a' && c <= 'f') return c - 'a' + 10;
     else if (c >= 'A' && c <= 'F') return c - 'A' + 10;
     else if (c >= '0' && c <= '9') return c - '0';
     else return -1;  // Hence dehex('\0') = -1
 }
 
-int hts_decode_percent(char *dest, size_t *destlen, const char *s)
-{
+int hts_decode_percent(char *dest, size_t *destlen, const char *s
+) {
     char *d = dest;
     int hi, lo;
 
@@ -60,8 +60,8 @@ int hts_decode_percent(char *dest, size_t *destlen, const char *s)
     return 0;
 }
 
-static int debase64(char c)
-{
+static int debase64(char c
+) {
     if (c >= 'a' && c <= 'z') return c - 'a' + 26;
     else if (c >= 'A' && c <= 'Z') return c - 'A';
     else if (c >= '0' && c <= '9') return c - '0' + 52;
@@ -70,14 +70,14 @@ static int debase64(char c)
     else return -1;  // Hence debase64('\0') = -1
 }
 
-size_t hts_base64_decoded_length(size_t len)
-{
+size_t hts_base64_decoded_length(size_t len
+) {
     size_t nquartets = (len + 2) / 4;
     return 3 * nquartets;
 }
 
-int hts_decode_base64(char *dest, size_t *destlen, const char *s)
-{
+int hts_decode_base64(char *dest, size_t *destlen, const char *s
+) {
     char *d = dest;
     int x0, x1, x2, x3;
 
@@ -100,8 +100,8 @@ int hts_decode_base64(char *dest, size_t *destlen, const char *s)
     return 0;
 }
 
-static char *encode_utf8(char *s, unsigned x)
-{
+static char *encode_utf8(char *s, unsigned x
+) {
     if (x >= 0x10000) {
         *s++ = 0xF0 | (x >> 18);
         *s++ = 0x80 | ((x >> 12) & 0x3F);
@@ -122,8 +122,8 @@ static char *encode_utf8(char *s, unsigned x)
     return s;
 }
 
-static char *sscan_string(char *s)
-{
+static char *sscan_string(char *s
+) {
     char *d = s;
     int d1, d2, d3, d4;
 
@@ -161,8 +161,8 @@ static char *sscan_string(char *s)
     }
 }
 
-static int fscan_string(hFILE *fp, kstring_t *d)
-{
+static int fscan_string(hFILE *fp, kstring_t *d
+) {
     int c, d1, d2, d3, d4;
     uint32_t e = 0;
 
@@ -199,8 +199,8 @@ static int fscan_string(hFILE *fp, kstring_t *d)
     return e == 0 ? 0 : -1;
 }
 
-static char token_type(hts_json_token *token)
-{
+static char token_type(hts_json_token *token
+) {
     const char *s = token->str;
 
     switch (*s) {
@@ -240,8 +240,8 @@ char *hts_json_token_str(hts_json_token *token) {
 }
 
 HTSLIB_EXPORT
-char hts_json_snext(char *str, size_t *state, hts_json_token *token)
-{
+char hts_json_snext(char *str, size_t *state, hts_json_token *token
+) {
     char *s = &str[*state >> 2];
     int hidden = *state & 3;
 
@@ -290,8 +290,8 @@ char hts_json_snext(char *str, size_t *state, hts_json_token *token)
 }
 
 HTSLIB_EXPORT
-char hts_json_fnext(struct hFILE *fp, hts_json_token *token, kstring_t *kstr)
-{
+char hts_json_fnext(struct hFILE *fp, hts_json_token *token, kstring_t *kstr
+) {
     char peek;
     int c;
 
@@ -335,8 +335,8 @@ char hts_json_fnext(struct hFILE *fp, hts_json_token *token, kstring_t *kstr)
 
 typedef char hts_json_nextfn(void *arg1, void *arg2, hts_json_token *token);
 
-static char skip_value(char type, hts_json_nextfn *next, void *arg1, void *arg2)
-{
+static char skip_value(char type, hts_json_nextfn *next, void *arg1, void *arg2
+) {
     hts_json_token token;
     int level;
 
@@ -383,25 +383,25 @@ static char skip_value(char type, hts_json_nextfn *next, void *arg1, void *arg2)
     return 'v';
 }
 
-static char snext(void *arg1, void *arg2, hts_json_token *token)
-{
+static char snext(void *arg1, void *arg2, hts_json_token *token
+) {
     return hts_json_snext(arg1, arg2, token);
 }
 
 HTSLIB_EXPORT
-char hts_json_sskip_value(char *str, size_t *state, char type)
-{
+char hts_json_sskip_value(char *str, size_t *state, char type
+) {
     return skip_value(type, snext, str, state);
 }
 
-static char fnext(void *arg1, void *arg2, hts_json_token *token)
-{
+static char fnext(void *arg1, void *arg2, hts_json_token *token
+) {
     return hts_json_fnext(arg1, token, arg2);
 }
 
 HTSLIB_EXPORT
-char hts_json_fskip_value(struct hFILE *fp, char type)
-{
+char hts_json_fskip_value(struct hFILE *fp, char type
+) {
     kstring_t str = { 0, 0, NULL };
     char ret = skip_value(type, fnext, fp, &str);
     free(str.s);
@@ -450,8 +450,8 @@ char *stringify_argv(int argc, char *argv[]) {
 /* Utility function for printing possibly malicious text data
  */
 const char *
-hts_strprint(char *buf, size_t buflen, char quote, const char *s, size_t len)
-{
+hts_strprint(char *buf, size_t buflen, char quote, const char *s, size_t len
+) {
     const char *slim = (len < SIZE_MAX)? &s[len] : NULL;
     char *t = buf, *bufend = buf + buflen;
 

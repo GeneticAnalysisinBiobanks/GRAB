@@ -46,15 +46,15 @@ template <typename T>
 BOOST_MATH_GPU_ENABLED T bessel_i1(const T& x);
 
 template <typename T, int N>
-BOOST_MATH_GPU_ENABLED T bessel_i1_imp(const T&, const boost::math::integral_constant<int, N>&)
-{
+BOOST_MATH_GPU_ENABLED T bessel_i1_imp(const T&, const boost::math::integral_constant<int, N>&
+) {
    BOOST_MATH_ASSERT(0);
    return 0;
 }
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED T bessel_i1_imp(const T& x, const boost::math::integral_constant<int, 24>&)
-{
+BOOST_MATH_GPU_ENABLED T bessel_i1_imp(const T& x, const boost::math::integral_constant<int, 24>&
+) {
    BOOST_MATH_STD_USING
       if(x < 7.75)
       {
@@ -94,8 +94,8 @@ BOOST_MATH_GPU_ENABLED T bessel_i1_imp(const T& x, const boost::math::integral_c
 }
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED T bessel_i1_imp(const T& x, const boost::math::integral_constant<int, 53>&)
-{
+BOOST_MATH_GPU_ENABLED T bessel_i1_imp(const T& x, const boost::math::integral_constant<int, 53>&
+) {
    BOOST_MATH_STD_USING
    if(x < 7.75)
    {
@@ -172,8 +172,8 @@ BOOST_MATH_GPU_ENABLED T bessel_i1_imp(const T& x, const boost::math::integral_c
 }
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED T bessel_i1_imp(const T& x, const boost::math::integral_constant<int, 64>&)
-{
+BOOST_MATH_GPU_ENABLED T bessel_i1_imp(const T& x, const boost::math::integral_constant<int, 64>&
+) {
    BOOST_MATH_STD_USING
       if(x < 7.75)
       {
@@ -281,8 +281,8 @@ BOOST_MATH_GPU_ENABLED T bessel_i1_imp(const T& x, const boost::math::integral_c
 }
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED T bessel_i1_imp(const T& x, const boost::math::integral_constant<int, 113>&)
-{
+BOOST_MATH_GPU_ENABLED T bessel_i1_imp(const T& x, const boost::math::integral_constant<int, 113>&
+) {
    BOOST_MATH_STD_USING
    if(x < 7.75)
    {
@@ -517,8 +517,8 @@ BOOST_MATH_GPU_ENABLED T bessel_i1_imp(const T& x, const boost::math::integral_c
 }
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED T bessel_i1_imp(const T& x, const boost::math::integral_constant<int, 0>&)
-{
+BOOST_MATH_GPU_ENABLED T bessel_i1_imp(const T& x, const boost::math::integral_constant<int, 0>&
+) {
    if(boost::math::tools::digits<T>() <= 24)
       return bessel_i1_imp(x, boost::math::integral_constant<int, 24>());
    else if(boost::math::tools::digits<T>() <= 53)
@@ -532,8 +532,8 @@ BOOST_MATH_GPU_ENABLED T bessel_i1_imp(const T& x, const boost::math::integral_c
 }
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED inline T bessel_i1(const T& x)
-{
+BOOST_MATH_GPU_ENABLED inline T bessel_i1(const T& x
+) {
    typedef boost::math::integral_constant<int,
       ((boost::math::numeric_limits<T>::digits == 0) || (boost::math::numeric_limits<T>::radix != 2)) ?
       0 :

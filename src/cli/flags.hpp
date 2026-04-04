@@ -56,41 +56,46 @@ inline const FlagDef kGeno_input = {
 
 inline const FlagDef kNullResid = {
     "--null-resid", "FILE", "Null model residual file",
-    "Formats: (A) header with IID/#IID column, or (B) pure numeric matrix.\n"
-    "  Format A: FID/IID detected from header; remaining columns are values.\n"
-    "            Header names (beyond IID/FID) do not affect parsing;\n"
-    "            column order determines which values are residuals/weights/etc.\n"
-    "  Format B: row count must equal .fam subject count; .fam order assumed.\n"
-    "\n"
-    "Column layout by method:\n"
-    "  SPACox / SPAGRM / SPAmix / SPAmixPlus : RESID [RESID2 ...]\n"
-    "  WtCoxG / LEAF                          : RESID  WEIGHT  INDICATOR\n"
-    "  SPAsqr                                 : R_tau1  R_tau2  ...  R_tauK\n"
-    "\n"
-    "Multi-column: each value column runs a separate GWAS.\n"
-    "  Single column  -> output to --out directly.\n"
-    "  Multiple cols  -> PREFIX.1.gz, PREFIX.2.gz, ..."};
+    R"(Formats: (A) header with IID/#IID column, or (B) pure numeric matrix.
+  Format A: FID/IID detected from header; remaining columns are values.
+            Header names (beyond IID/FID) do not affect parsing;
+            column order determines which values are residuals/weights/etc.
+  Format B: row count must equal .fam subject count; .fam order assumed.
+
+Column layout by method:
+  SPACox / SPAGRM / SPAmix / SPAmixPlus : RESID [RESID2 ...]
+  WtCoxG / LEAF                          : RESID  WEIGHT  INDICATOR
+  SPAsqr                                 : R_tau1  R_tau2  ...  R_tauK
+
+Multi-column: each value column runs a separate GWAS.
+  Single column  -> output to --out directly.
+  Multiple cols  -> PREFIX.1.gz, PREFIX.2.gz, ...)"};
 
 inline const FlagDef kOut = {
     "--out", "FILE", "Output file path", nullptr};
 
+inline const FlagDef kOutPrefix = {
+    "--out-prefix", "PREFIX",
+    "Output prefix (GWAS multi-residual: PREFIX.1.tsv, PREFIX.2.tsv, ...;\n"
+    "  --make-abed: PREFIX.abed, PREFIX.bim, PREFIX.fam)", nullptr};
+
 inline const FlagDef kCovar = {
     "--covar", "FILE", "Covariate file (plink2 format, columns selected by --covar-name)",
-    "Plink2-compatible IID + named columns.\n"
-    "Use --covar-name to select specific columns as covariates.\n"
-    "If --covar-name is omitted, all non-metadata columns are used."};
+    R"(Plink2-compatible IID + named columns.
+Use --covar-name to select specific columns as covariates.
+If --covar-name is omitted, all non-metadata columns are used.)"};
 
 inline const FlagDef kPheno = {
     "--pheno", "FILE", "Phenotype file (plink2 format, IID + named columns)",
-    "Plink2-compatible IID + named columns.\n"
-    "Use --pheno-binary / --pheno-surv / --pheno-quant to designate the response.\n"
-    "Use --covar-name to select covariate columns.\n"
-    "Use --pc-cols to select PC columns for LEAF / SPAmix."};
+    R"(Plink2-compatible IID + named columns.
+Use --pheno-binary / --pheno-surv / --pheno-quant to designate the response.
+Use --covar-name to select covariate columns.
+Use --pc-cols to select PC columns for LEAF / SPAmix.)"};
 
 inline const FlagDef kCovarName = {
     "--covar-name", "COL_IDS", "Comma-separated covariate column names",
-    "Selects columns from --covar (preferred) or --pheno as covariates.\n"
-    "An intercept is added automatically."};
+    R"(Selects columns from --covar (preferred) or --pheno as covariates.
+An intercept is added automatically.)"};
 
 inline const FlagDef kBinaryPheno = {
     "--pheno-binary", "COL", "Column name for binary phenotype (case/control)",
@@ -98,32 +103,32 @@ inline const FlagDef kBinaryPheno = {
 
 inline const FlagDef kSurvPheno = {
     "--pheno-surv", "TIME:EVENT", "Colon-separated survival time and event column names",
-    "Selects survival time and event columns from --pheno for Cox regression.\n"
-    "Example: --pheno-surv TIME:EVENT"};
+    R"(Selects survival time and event columns from --pheno for Cox regression.
+Example: --pheno-surv TIME:EVENT)"};
 
 inline const FlagDef kPcCols = {
     "--pc-cols", "COL_IDS", "Comma-separated PC column names (default: PC1,PC2,PC3,PC4)",
-    "Selects columns from --covar or --pheno as principal components.\n"
-    "Used for K-means clustering in LEAF and AF estimation in SPAmix."};
+    R"(Selects columns from --covar or --pheno as principal components.
+Used for K-means clustering in LEAF and AF estimation in SPAmix.)"};
 
 inline const FlagDef kRefAf = {
     "--ref-af", "FILE", "Reference allele frequency (plink2 .afreq or numeric)",
-    "Formats: (A) plink2 .afreq: #CHROM  ID  REF  ALT  ALT_FREQS  OBS_CT\n"
-    "           Matched to .bim by (CHROM, ID) with allele flip detection.\n"
-    "         (B) Two-column numeric: ALT_FREQS  OBS_CT (rows in .bim order).\n"
-    "For LEAF: comma-separated, one file per reference population."};
+    R"(Formats: (A) plink2 .afreq: #CHROM  ID  REF  ALT  ALT_FREQS  OBS_CT
+           Matched to .bim by (CHROM, ID) with allele flip detection.
+         (B) Two-column numeric: ALT_FREQS  OBS_CT (rows in .bim order).
+For LEAF: comma-separated, one file per reference population.)"};
 
 inline const FlagDef kSpGrmGrab = {
     "--sp-grm-grab", "FILE", "Sparse GRM, GRAB format (ID1 ID2 VALUE)",
-    "Whitespace-delimited; #-lines skipped.\n"
-    "Subjects not in .fam are silently dropped.\n"
-    "Mutually exclusive with --sp-grm-plink2."};
+    R"(Whitespace-delimited; #-lines skipped.
+Subjects not in .fam are silently dropped.
+Mutually exclusive with --sp-grm-plink2.)"};
 
 inline const FlagDef kSpGrmPlink2 = {
     "--sp-grm-plink2", "FILE", "Sparse GRM, plink2 .grm.sp format",
-    "Companion .grm.id (FID  IID) auto-detected from file path.\n"
-    "If .grm.id is absent, 0-based indices assumed to match .fam order.\n"
-    "Mutually exclusive with --sp-grm-grab."};
+    R"(Companion .grm.id (FID  IID) auto-detected from file path.
+If .grm.id is absent, 0-based indices assumed to match .fam order.
+Mutually exclusive with --sp-grm-grab.)"};
 
 // Combined display entry used in method required/optional arrays
 inline const FlagDef kSpGrm = {
@@ -132,9 +137,9 @@ inline const FlagDef kSpGrm = {
 
 inline const FlagDef kIndAfCoef = {
     "--ind-af-coef", "FILE", "Pre-computed individual AF model",
-    "Produced by --cal-ind-af-coef.\n"
-    "Text/gz: #CHROM  ID  STATUS  BETA0  BETA1 ...\n"
-    "Binary (.bin): native format."};
+    R"(Produced by --cal-ind-af-coef.
+Text/gz: #CHROM  ID  STATUS  BETA0  BETA1 ...
+Binary (.bin): native format.)"};
 
 inline const FlagDef kPairwiseIbd = {
     "--pairwise-ibd", "FILE", "Pairwise IBD file",
@@ -169,6 +174,42 @@ inline const FlagDef kMinMafIbd    = {"--min-maf-ibd", "FLOAT",
     "Min MAF for IBD calculation (default: 0.01)", nullptr};
 inline const FlagDef kNClusters    = {"--leaf-nclusters", "INT",
     "Number of K-means clusters for LEAF (default: from --ref-af count)", nullptr};
+
+inline const FlagDef kExtract = {"--extract", "FILE",
+    "Restrict analysis to SNPs listed in file (one ID per line)",
+    R"(Single-column file of SNP IDs (matching .bim column 2).
+Applied to both --bfile and --admix-bfile inputs.)"};
+inline const FlagDef kExclude = {"--exclude", "FILE",
+    "Exclude SNPs listed in file from analysis (one ID per line)",
+    R"(Single-column file of SNP IDs (matching .bim column 2).
+Applied to both --bfile and --admix-bfile inputs.)"};
+
+inline const FlagDef kAdmixBfile = {"--admix-bfile", "PREFIX",
+    "Admixed ancestry binary genotype prefix (.abed/.bim/.fam)",
+    R"(Binary format storing 2K tracks (dosage + hapcount per ancestry).
+Shares standard PLINK .fam and .bim files.
+The .abed file has a 16-byte header with magic 0xAD4D, version,
+number of ancestries K, number of samples N, and markers M.)"};
+inline const FlagDef kAdmixPhi = {"--admix-phi", "FILE",
+    "Pre-computed phi file from --cal-admix-phi (wide format)",
+    R"(Tab-separated: idx1  idx2  anc0_A  anc0_B  anc0_C  anc0_D  [anc1_A ...]
+Indices are 0-based into .fam row order. One row per related pair.)"};
+inline const FlagDef kMsp = {
+    "--rfmix-msp", "FILE",
+    "MSP local-ancestry file from rfmix2 (for --make-abed)",
+    R"(rfmix2 output format:
+  Line 1: #Subpopulation order/codes: 0=POP0\t1=POP1\t...  (K inferred)
+  Line 2: #chm\tspos\tepos\tsgpos\tegpos\tn snps\tIID0.0\tIID0.1\t...
+  Data:   chrom\tspos(0-based)\tepos(excl)\t...\tancestry_calls...
+Used with --vcf to produce admixed .abed ancestry tracks.)"};
+inline const FlagDef kAdmixTextPrefix = {
+    "--admix-text-prefix", "PREFIX",
+    "extract_tracts text output prefix (for --make-abed)",
+    R"(Two naming conventions are auto-detected:
+  New:  {PREFIX}.anc{k}.dosage.txt[.gz]   and   {PREFIX}.anc{k}.hapcount.txt[.gz]  (k=0,1,...)
+  Old:  {PREFIX}{k}_Dosage.txt[.gz]        and   {PREFIX}{k}_HapCount.txt[.gz]       (k=1,2,...)
+Header: CHROM  POS  ID  REF  ALT  SAMPLE1  SAMPLE2  ...
+Values: integer 0-2 per sample; K auto-detected from file presence.)"};
 inline const FlagDef kSeed          = {"--seed", "INT",
     "Random seed for reproducibility (default: 0 = use random device)", nullptr};
 
@@ -179,8 +220,8 @@ inline const FlagDef kSpasqrTaus   = {"--spasqr-taus", "LIST",
 
 inline const FlagDef kOrdinalPheno = {"--pheno-ordinal", "COL",
     "Column name for ordinal categorical phenotype (POLMM)",
-    "Selects an ordinal column from --pheno for proportional odds mixed model.\n"
-    "Levels are auto-detected from sorted unique integer values and remapped to 0..J-1."};
+    R"(Selects an ordinal column from --pheno for proportional odds mixed model.
+Levels are auto-detected from sorted unique integer values and remapped to 0..J-1.)"};
 
 // ════════════════════════════════════════════════════════════════════
 //  Method definitions
@@ -225,8 +266,8 @@ inline const MethodDef kSPAmix = {
     kSPAmixReq, kSPAmixOpt,
     "IID  RESID [RESID2 ...]",
     "CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  SPAmix_P  SPAmix_Z",
-    "Pre-compute AF model for speed: grab --cal-ind-af-coef\n"
-    "Optional --sp-grm-grab / --sp-grm-plink2 enables GRM-based variance (same as SPAmixPlus)."};
+    R"(Pre-compute AF model for speed: grab --cal-ind-af-coef
+Optional --sp-grm-grab / --sp-grm-plink2 enables GRM-based variance (same as SPAmixPlus).)"};
 
 // ── SPAmixPlus ─────────────────────────────────────────────────────
 inline const FlagDef* const kSPAmixPlusReq[] = {
@@ -254,8 +295,8 @@ inline const MethodDef kPOLMM = {
     kPOLMMReq, kPOLMMOpt,
     nullptr,
     "CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  POLMM_P  POLMM_Z  POLMM_BETA  POLMM_SE",
-    "Fits null model internally (all-in-one). Ordinal levels auto-detected.\n"
-    "Uses sparse GRM for random effects via PCG solver."};
+    R"(Fits null model internally (all-in-one). Ordinal levels auto-detected.
+Uses sparse GRM for random effects via PCG solver.)"};
 
 // ── SPAsqr ─────────────────────────────────────────────────────────
 inline const FlagDef* const kSPAsqrReq[] = {
@@ -268,11 +309,11 @@ inline const MethodDef kSPAsqr = {
     "SPAsqr",
     "SPA for quantile regression residuals (multiple tau levels)",
     kSPAsqrReq, kSPAsqrOpt,
-    "IID  R_tau1  R_tau2  ...  R_tauK  (via --null-resid)\n"
-    "  or --pheno + --pheno-quant + --spasqr-taus for built-in quantile regression",
-    "CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P\n"
-    "  P_CCT  P_tau{val}... Z_tau{val}...  (--pheno path)\n"
-    "  Z_tau1 ... Z_tauK   P_tau1 ... P_tauK   P_CCT  (--null-resid path)",
+    R"(IID  R_tau1  R_tau2  ...  R_tauK  (via --null-resid)
+  or --pheno + --pheno-quant + --spasqr-taus for built-in quantile regression)",
+    R"(CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+  P_CCT  P_tau{val}... Z_tau{val}...  (--pheno path)
+  Z_tau1 ... Z_tauK   P_tau1 ... P_tauK   P_CCT  (--null-resid path))",
     nullptr};
 
 // ── WtCoxG ─────────────────────────────────────────────────────────
@@ -287,8 +328,8 @@ inline const MethodDef kWtCoxG = {
     "Weighted Cox regression for time-to-event GWAS",
     kWtCoxGReq, kWtCoxGOpt,
     "IID  RESID  WEIGHT  INDICATOR  (via --null-resid) or --pheno + regression",
-    "CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P\n"
-    "  p_ext  p_noext  z_ext  z_noext  p_batch",
+    R"(CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+  p_ext  p_noext  z_ext  z_noext  p_batch)",
     nullptr};
 
 // ── LEAF ───────────────────────────────────────────────────────────
@@ -303,11 +344,59 @@ inline const MethodDef kLEAF = {
     "Local Ethnicity-Aware GWAS, WtCoxG per ancestry cluster",
     kLEAFReq, kLEAFOpt,
     "IID  RESID  WEIGHT  INDICATOR  (per cluster, via --null-resid) or --pheno + regression",
-    "CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P\n"
-    "  meta.p_ext  meta.p_noext  cl1.p_ext  cl1.p_noext  cl1.p_batch  [cl2 ...]",
-    "--null-resid path: comma-sep per cluster; --pheno path: auto K-means on --pc-cols.\n"
-    "The number of clusters and reference populations are independent.\n"
-    "Summix estimates per-cluster ancestry proportions from the reference populations."};
+    R"(CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+  meta.p_ext  meta.p_noext  cl1.p_ext  cl1.p_noext  cl1.p_batch  [cl2 ...])",
+    R"(--null-resid path: comma-sep per cluster; --pheno path: auto K-means on --pc-cols.
+The number of clusters and reference populations are independent.
+Summix estimates per-cluster ancestry proportions from the reference populations.)"};
+
+// ── Utility mode: cal-admix-phi ────────────────────────────────────
+inline const FlagDef* const kCalPhiReq[] = {
+    &kAdmixBfile, &kSpGrm, &kOut, nullptr};
+inline const FlagDef* const kCalPhiOpt[] = {
+    &kExtract, &kExclude, nullptr};
+inline const MethodDef kCalAdmixPhi = {
+    "cal-admix-phi",
+    "Compute phi kinship matrices from admixed genotypes + sparse GRM",
+    kCalPhiReq, kCalPhiOpt,
+    nullptr,
+    "Wide tab-separated: idx1  idx2  anc0_A  anc0_B  anc0_C  anc0_D  [anc1_A ...]",
+    "Pass output to --admix-phi for SPAmixLocalPlus GWAS."};
+
+// ── SPAmixLocalPlus (implicit: --null-resid + --admix-bfile + --admix-phi) ──
+// Not in kAllMethods—dispatched automatically when the three flags are present.
+inline const FlagDef* const kSPAmixLocalPlusReq[] = {
+    &kAdmixBfile, &kNullResid, &kAdmixPhi, &kOut, nullptr};
+inline const FlagDef* const kSPAmixLocalPlusOpt[] = {
+    &kExtract, &kExclude, &kOutlierIqr,
+    &kSpaZThresh, &kThreads, &kChunkSize, &kGeno, &kMaf, &kMac, nullptr};
+inline const MethodDef kSPAmixLocalPlus = {
+    "SPAmixLocalPlus",
+    "Local-ancestry-specific GWAS with SPA + phi-based variance correction",
+    kSPAmixLocalPlusReq, kSPAmixLocalPlusOpt,
+    "IID  RESID [RESID2 ...]",
+    R"(CHROM  POS  ID  REF  ALT  P_CCT
+  anc0_AltFreq  anc0_MissingRate  anc0_P  anc0_Pnorm  anc0_Stat  anc0_Var  anc0_zScore  anc0_AltCounts  anc0_BetaG
+  anc1_AltFreq  ...  (repeated for each ancestry k))",
+    R"(Two-phase workflow:
+  1. grab --cal-admix-phi --admix-bfile PREFIX --sp-grm-plink2 FILE --out OUTPUT.phi
+  2. grab --method SPAmixLocalPlus --admix-bfile PREFIX --admix-phi OUTPUT.phi --null-resid FILE --out OUTPUT
+Single residual column: --out FILE; multiple columns: --out-prefix PREFIX)"};
+
+// ── Utility mode: make-abed ────────────────────────────────────────
+inline const FlagDef* const kMakeAbedReq[] = {&kOutPrefix, nullptr};
+inline const FlagDef* const kMakeAbedOpt[] = {&kVcf, &kMsp, &kAdmixTextPrefix, nullptr};
+inline const MethodDef kMakeAbed = {
+    "make-abed",
+    "Build .abed admixed ancestry binary from VCF+MSP or extract_tracts output",
+    kMakeAbedReq, kMakeAbedOpt,
+    nullptr,
+    "{prefix}.abed  {prefix}.bim  {prefix}.fam",
+    R"(Two modes (mutually exclusive):
+  --vcf FILE --rfmix-msp FILE  phased VCF/BCF + rfmix2 MSP  ->  .abed
+  --admix-text-prefix PREFIX   extract_tracts text output   ->  .abed
+--out-prefix PREFIX writes PREFIX.abed, PREFIX.bim, PREFIX.fam.
+Pass PREFIX as --admix-bfile to SPAmixLocalPlus or --cal-admix-phi.)"};
 
 // ── Utility mode: cal-ind-af-coef ──────────────────────────────────
 inline const FlagDef* const kCalAfReq[] = {
@@ -341,25 +430,28 @@ inline const MethodDef kCalPairwiseIbd = {
 // ════════════════════════════════════════════════════════════════════
 
 inline const MethodDef* const kAllMethods[] = {
-    &kSPACox, &kSPAGRM, &kSPAmix, &kSPAmixPlus, &kPOLMM, &kSPAsqr, &kWtCoxG, &kLEAF,
+    &kSPACox, &kSPAGRM, &kSPAmix, &kSPAmixPlus, &kSPAmixLocalPlus,
+    &kPOLMM, &kSPAsqr, &kWtCoxG, &kLEAF,
     nullptr};
 
 inline const MethodDef* const kAllUtilModes[] = {
-    &kCalIndAfCoef, &kCalPairwiseIbd, nullptr};
+    &kCalIndAfCoef, &kCalPairwiseIbd, &kCalAdmixPhi, &kMakeAbed, nullptr};
 
 // File-accepting flags (for --help <flag-topic>)
 inline const FlagDef* const kFileFlags[] = {
     &kNullResid, &kPheno, &kCovar, &kRefAf,
-    &kSpGrmGrab, &kSpGrmPlink2, &kIndAfCoef, &kPairwiseIbd,
+    &kSpGrmGrab, &kSpGrmPlink2, &kIndAfCoef, &kPairwiseIbd, &kAdmixPhi,
     nullptr};
 
 // All flags grouped for --help options
 inline const FlagDef* const kInputFlags[] = {
-    &kBfile, &kPfile, &kVcf, &kBgen,
+    &kBfile, &kPfile, &kVcf, &kBgen, &kAdmixBfile,
     &kNullResid, &kOut,
     &kPheno, &kCovar, &kCovarName, &kBinaryPheno, &kSurvPheno, &kOrdinalPheno, &kPcCols,
     &kRefAf,
-    &kSpGrmGrab, &kSpGrmPlink2, &kIndAfCoef, &kPairwiseIbd,
+    &kSpGrmGrab, &kSpGrmPlink2, &kIndAfCoef, &kPairwiseIbd, &kAdmixPhi,
+    &kMsp, &kAdmixTextPrefix,
+    &kExtract, &kExclude,
     nullptr};
 
 inline const FlagDef* const kNumericFlags[] = {
@@ -368,5 +460,8 @@ inline const FlagDef* const kNumericFlags[] = {
     &kThreads, &kChunkSize, &kNClusters, &kSeed, &kGeno, &kMaf, &kMac,
     &kMinMafIbd,
     nullptr};
+
+inline const FlagDef* const kFilterFlags[] = {
+    &kExtract, &kExclude, nullptr};
 
 } // namespace cli

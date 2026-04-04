@@ -44,8 +44,8 @@ std::pair<Real, Real> ooura_eta(Real x, Real alpha) {
 // Ooura and Mori, A robust double exponential formula for Fourier-type integrals,
 // equation 3.6:
 template<class Real>
-Real calculate_ooura_alpha(Real h)
-{
+Real calculate_ooura_alpha(Real h
+) {
     using boost::math::constants::pi;
     using std::log1p;
     using std::sqrt;
@@ -54,8 +54,8 @@ Real calculate_ooura_alpha(Real h)
 }
 
 template<class Real>
-std::pair<Real, Real> ooura_sin_node_and_weight(long n, Real h, Real alpha)
-{
+std::pair<Real, Real> ooura_sin_node_and_weight(long n, Real h, Real alpha
+) {
     using std::expm1;
     using std::exp;
     using std::abs;
@@ -134,8 +134,8 @@ void print_ooura_estimate(size_t i, Real I0, Real I1, Real omega) {
 
 
 template<class Real>
-std::pair<Real, Real> ooura_cos_node_and_weight(long n, Real h, Real alpha)
-{
+std::pair<Real, Real> ooura_cos_node_and_weight(long n, Real h, Real alpha
+) {
     using std::expm1;
     using std::exp;
     using std::abs;

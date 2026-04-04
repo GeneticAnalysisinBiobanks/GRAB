@@ -370,16 +370,16 @@ struct allocator_is_always_equal {
 
 template<class A>
 inline typename allocator_pointer<A>::type
-allocator_allocate(A& a, typename allocator_size_type<A>::type n)
-{
+allocator_allocate(A& a, typename allocator_size_type<A>::type n
+) {
     return a.allocate(n);
 }
 
 template<class A>
 inline void
 allocator_deallocate(A& a, typename allocator_pointer<A>::type p,
-    typename allocator_size_type<A>::type n)
-{
+    typename allocator_size_type<A>::type n
+) {
     a.deallocate(p, n);
 }
 
@@ -387,8 +387,8 @@ allocator_deallocate(A& a, typename allocator_pointer<A>::type p,
 template<class A>
 inline typename allocator_pointer<A>::type
 allocator_allocate(A& a, typename allocator_size_type<A>::type n,
-    typename allocator_const_void_pointer<A>::type h)
-{
+    typename allocator_const_void_pointer<A>::type h
+) {
     return a.allocate(n, h);
 }
 #else
@@ -420,8 +420,8 @@ template<class A>
 inline typename std::enable_if<detail::alloc_has_allocate<A>::value,
     typename allocator_pointer<A>::type>::type
 allocator_allocate(A& a, typename allocator_size_type<A>::type n,
-    typename allocator_const_void_pointer<A>::type h)
-{
+    typename allocator_const_void_pointer<A>::type h
+) {
     return a.allocate(n, h);
 }
 
@@ -429,8 +429,8 @@ template<class A>
 inline typename std::enable_if<!detail::alloc_has_allocate<A>::value,
     typename allocator_pointer<A>::type>::type
 allocator_allocate(A& a, typename allocator_size_type<A>::type n,
-    typename allocator_const_void_pointer<A>::type)
-{
+    typename allocator_const_void_pointer<A>::type
+) {
     return a.allocate(n);
 }
 #endif
@@ -477,15 +477,15 @@ struct alloc_if<true, T> {
 #if defined(BOOST_NO_CXX11_ALLOCATOR)
 template<class A, class T>
 inline typename detail::alloc_if<detail::alloc_has_construct<A>::value>::type
-allocator_construct(A& a, T* p)
-{
+allocator_construct(A& a, T* p
+) {
     a.construct(p);
 }
 
 template<class A, class T>
 inline typename detail::alloc_if<!detail::alloc_has_construct<A>::value>::type
-allocator_construct(A&, T* p)
-{
+allocator_construct(A&, T* p
+) {
     ::new((void*)p) T();
 }
 
@@ -493,30 +493,30 @@ allocator_construct(A&, T* p)
 #if !defined(BOOST_NO_CXX11_VARIADIC_TEMPLATES)
 template<class A, class T, class V, class... Args>
 inline void
-allocator_construct(A&, T* p, V&& v, Args&&... args)
-{
+allocator_construct(A&, T* p, V&& v, Args&&... args
+) {
     ::new((void*)p) T(std::forward<V>(v), std::forward<Args>(args)...);
 }
 #else
 template<class A, class T, class V>
 inline void
-allocator_construct(A&, T* p, V&& v)
-{
+allocator_construct(A&, T* p, V&& v
+) {
     ::new((void*)p) T(std::forward<V>(v));
 }
 #endif
 #else
 template<class A, class T, class V>
 inline void
-allocator_construct(A&, T* p, const V& v)
-{
+allocator_construct(A&, T* p, const V& v
+) {
     ::new((void*)p) T(v);
 }
 
 template<class A, class T, class V>
 inline void
-allocator_construct(A&, T* p, V& v)
-{
+allocator_construct(A&, T* p, V& v
+) {
     ::new((void*)p) T(v);
 }
 #endif
@@ -524,16 +524,16 @@ allocator_construct(A&, T* p, V& v)
 template<class A, class T, class... Args>
 inline typename std::enable_if<detail::alloc_has_construct<A, T,
     Args...>::value>::type
-allocator_construct(A& a, T* p, Args&&... args)
-{
+allocator_construct(A& a, T* p, Args&&... args
+) {
     a.construct(p, std::forward<Args>(args)...);
 }
 
 template<class A, class T, class... Args>
 inline typename std::enable_if<!detail::alloc_has_construct<A, T,
     Args...>::value>::type
-allocator_construct(A&, T* p, Args&&... args)
-{
+allocator_construct(A&, T* p, Args&&... args
+) {
     ::new((void*)p) T(std::forward<Args>(args)...);
 }
 #endif
@@ -570,15 +570,15 @@ public:
 
 template<class A, class T>
 inline typename detail::alloc_if<detail::alloc_has_destroy<A, T>::value>::type
-allocator_destroy(A& a, T* p)
-{
+allocator_destroy(A& a, T* p
+) {
     a.destroy(p);
 }
 
 template<class A, class T>
 inline typename detail::alloc_if<!detail::alloc_has_destroy<A, T>::value>::type
-allocator_destroy(A&, T* p)
-{
+allocator_destroy(A&, T* p
+) {
     p->~T();
     (void)p;
 }
@@ -688,22 +688,22 @@ public:
 
 template<class A>
 inline typename detail::alloc_if<detail::alloc_has_soccc<A>::value, A>::type
-allocator_select_on_container_copy_construction(const A& a)
-{
+allocator_select_on_container_copy_construction(const A& a
+) {
     return a.select_on_container_copy_construction();
 }
 
 template<class A>
 inline typename detail::alloc_if<!detail::alloc_has_soccc<A>::value, A>::type
-allocator_select_on_container_copy_construction(const A& a)
-{
+allocator_select_on_container_copy_construction(const A& a
+) {
     return a;
 }
 
 template<class A, class T>
 inline void
-allocator_destroy_n(A& a, T* p, std::size_t n)
-{
+allocator_destroy_n(A& a, T* p, std::size_t n
+) {
     while (n > 0) {
         boost::allocator_destroy(a, p + --n);
     }
@@ -738,8 +738,8 @@ private:
 
 template<class A, class T>
 inline void
-allocator_construct_n(A& a, T* p, std::size_t n)
-{
+allocator_construct_n(A& a, T* p, std::size_t n
+) {
     detail::alloc_destroyer<A, T> d(a, p);
     for (std::size_t& i = d.size(); i < n; ++i) {
         boost::allocator_construct(a, p + i);
@@ -749,8 +749,8 @@ allocator_construct_n(A& a, T* p, std::size_t n)
 
 template<class A, class T>
 inline void
-allocator_construct_n(A& a, T* p, std::size_t n, const T* l, std::size_t m)
-{
+allocator_construct_n(A& a, T* p, std::size_t n, const T* l, std::size_t m
+) {
     detail::alloc_destroyer<A, T> d(a, p);
     for (std::size_t& i = d.size(); i < n; ++i) {
         boost::allocator_construct(a, p + i, l[i % m]);
@@ -760,8 +760,8 @@ allocator_construct_n(A& a, T* p, std::size_t n, const T* l, std::size_t m)
 
 template<class A, class T, class I>
 inline void
-allocator_construct_n(A& a, T* p, std::size_t n, I b)
-{
+allocator_construct_n(A& a, T* p, std::size_t n, I b
+) {
     detail::alloc_destroyer<A, T> d(a, p);
     for (std::size_t& i = d.size(); i < n; void(++i), void(++b)) {
         boost::allocator_construct(a, p + i, *b);

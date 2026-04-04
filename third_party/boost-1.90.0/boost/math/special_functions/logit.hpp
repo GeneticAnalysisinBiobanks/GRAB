@@ -17,8 +17,8 @@ namespace boost {
 namespace math {
 
 template <typename RealType, typename Policy>
-RealType logit(RealType p, const Policy&)
-{
+RealType logit(RealType p, const Policy&
+) {
     BOOST_MATH_STD_USING
     using std::atanh;
 
@@ -45,8 +45,8 @@ RealType logit(RealType p, const Policy&)
 }
 
 template <typename RealType>
-RealType logit(RealType p)
-{
+RealType logit(RealType p
+) {
     return logit(p, policies::policy<>());
 }
 

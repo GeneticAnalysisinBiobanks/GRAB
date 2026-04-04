@@ -49,8 +49,8 @@ namespace boost{ namespace math{ namespace constants{
    }
 
 template <class T, class Policy>
-void print_info_on_type(std::ostream& os = std::cout BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE_SPEC(T) BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE_SPEC(Policy))
-{
+void print_info_on_type(std::ostream& os = std::cout BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE_SPEC(T) BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE_SPEC(Policy)
+) {
    using detail::nameof;
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -159,8 +159,8 @@ void print_info_on_type(std::ostream& os = std::cout BOOST_MATH_APPEND_EXPLICIT_
 }
 
 template <class T>
-void print_info_on_type(std::ostream& os = std::cout BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE_SPEC(T))
-{
+void print_info_on_type(std::ostream& os = std::cout BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE_SPEC(T)
+) {
    print_info_on_type<T, boost::math::policies::policy<> >(os);
 }
 

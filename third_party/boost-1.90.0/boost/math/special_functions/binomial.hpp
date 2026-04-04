@@ -20,8 +20,8 @@
 namespace boost{ namespace math{
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T binomial_coefficient(unsigned n, unsigned k, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED T binomial_coefficient(unsigned n, unsigned k, const Policy& pol
+) {
    static_assert(!boost::math::is_integral<T>::value, "Type T must not be an integral type");
    BOOST_MATH_STD_USING
    constexpr auto function = "boost::math::binomial_coefficient<%1%>(unsigned, unsigned)";
@@ -60,8 +60,8 @@ BOOST_MATH_GPU_ENABLED T binomial_coefficient(unsigned n, unsigned k, const Poli
 // we'll promote to double:
 //
 template <>
-BOOST_MATH_GPU_ENABLED inline float binomial_coefficient<float, policies::policy<> >(unsigned n, unsigned k, const policies::policy<>&)
-{
+BOOST_MATH_GPU_ENABLED inline float binomial_coefficient<float, policies::policy<> >(unsigned n, unsigned k, const policies::policy<>&
+) {
    typedef policies::normalise<
        policies::policy<>,
        policies::promote_float<true>,
@@ -72,8 +72,8 @@ BOOST_MATH_GPU_ENABLED inline float binomial_coefficient<float, policies::policy
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline T binomial_coefficient(unsigned n, unsigned k)
-{
+BOOST_MATH_GPU_ENABLED inline T binomial_coefficient(unsigned n, unsigned k
+) {
    return binomial_coefficient<T>(n, k, policies::policy<>());
 }
 

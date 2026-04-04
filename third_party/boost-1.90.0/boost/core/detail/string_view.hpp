@@ -1185,8 +1185,8 @@ public:
 
 // stream inserter
 
-template<class Ch> std::basic_ostream<Ch>& operator<<( std::basic_ostream<Ch>& os, basic_string_view<Ch> str )
-{
+template<class Ch> std::basic_ostream<Ch>& operator<<( std::basic_ostream<Ch>& os, basic_string_view<Ch> str 
+) {
     Ch const* p = str.data();
     std::streamsize n = static_cast<std::streamsize>( str.size() );
 

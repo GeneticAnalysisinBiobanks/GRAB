@@ -45,8 +45,8 @@ private:
 
 
 template <class Real>
-Real b3_spline(Real x)
-{
+Real b3_spline(Real x
+) {
     using std::abs;
     Real absx = abs(x);
     if (absx < 1)
@@ -64,8 +64,8 @@ Real b3_spline(Real x)
 }
 
 template<class Real>
-Real b3_spline_prime(Real x)
-{
+Real b3_spline_prime(Real x
+) {
     if (x < 0)
     {
         return -b3_spline_prime(-x);
@@ -83,8 +83,8 @@ Real b3_spline_prime(Real x)
 }
 
 template<class Real>
-Real b3_spline_double_prime(Real x)
-{
+Real b3_spline_double_prime(Real x
+) {
     if (x < 0)
     {
         return b3_spline_double_prime(-x);
@@ -105,8 +105,8 @@ Real b3_spline_double_prime(Real x)
 template <class Real>
 template <class BidiIterator>
 cardinal_cubic_b_spline_imp<Real>::cardinal_cubic_b_spline_imp(BidiIterator f, BidiIterator end_p, Real left_endpoint, Real step_size,
-                                             Real left_endpoint_derivative, Real right_endpoint_derivative) : m_a(left_endpoint), m_avg(0)
-{
+                                             Real left_endpoint_derivative, Real right_endpoint_derivative) : m_a(left_endpoint), m_avg(0
+) {
     using boost::math::constants::third;
 
     std::size_t length = end_p - f;

@@ -232,8 +232,8 @@ template <typename Real> struct daubechies_scaling_integer_grid_imp <Real, 19, 2
 
 
 template <typename Real, unsigned p, unsigned order>
-constexpr inline std::array<Real, 2*p> daubechies_scaling_integer_grid()
-{
+constexpr inline std::array<Real, 2*p> daubechies_scaling_integer_grid(
+) {
     static_assert(sizeof(Real) <= 16, "Integer grids only computed up to 128 bits of precision.");
     static_assert(p <= 19, "Integer grids only implemented up to 19.");
     static_assert(p > 1, "Integer grids only implemented for p >= 2.");

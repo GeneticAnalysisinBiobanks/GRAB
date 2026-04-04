@@ -896,8 +896,8 @@ struct series_factor_calc<T, Digits, boost::math::false_type, boost::math::true_
 };
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED constexpr T get_epsilon_imp(boost::math::true_type const&) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED constexpr T get_epsilon_imp(boost::math::true_type const&) noexcept(boost::math::is_floating_point<T>::value
+) {
    static_assert(boost::math::numeric_limits<T>::is_specialized, "boost::math::numeric_limits<T>::is_specialized");
    static_assert(boost::math::numeric_limits<T>::radix == 2, "boost::math::numeric_limits<T>::radix == 2");
 
@@ -908,16 +908,16 @@ BOOST_MATH_GPU_ENABLED constexpr T get_epsilon_imp(boost::math::true_type const&
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED constexpr T get_epsilon_imp(boost::math::false_type const&) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED constexpr T get_epsilon_imp(boost::math::false_type const&) noexcept(boost::math::is_floating_point<T>::value
+) {
    return tools::epsilon<T>();
 }
 
 } // namespace detail
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED constexpr T get_epsilon(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE(T)) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED constexpr T get_epsilon(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE(T)) noexcept(boost::math::is_floating_point<T>::value
+) {
    typedef boost::math::integral_constant<bool, (boost::math::numeric_limits<T>::is_specialized && (boost::math::numeric_limits<T>::radix == 2)) > tag_type;
    return detail::get_epsilon_imp<T, Policy>(tag_type());
 }

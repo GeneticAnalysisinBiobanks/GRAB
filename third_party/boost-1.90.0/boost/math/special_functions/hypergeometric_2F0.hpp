@@ -131,8 +131,8 @@ namespace boost { namespace math { namespace detail {
 } // namespace detail
 
 template <class T1, class T2, class T3, class Policy>
-inline typename tools::promote_args<T1, T2, T3>::type hypergeometric_2F0(T1 a1, T2 a2, T3 z, const Policy& /* pol */)
-{
+inline typename tools::promote_args<T1, T2, T3>::type hypergeometric_2F0(T1 a1, T2 a2, T3 z, const Policy& /* pol */
+) {
    BOOST_FPU_EXCEPTION_GUARD
       typedef typename tools::promote_args<T1, T2, T3>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
@@ -152,8 +152,8 @@ inline typename tools::promote_args<T1, T2, T3>::type hypergeometric_2F0(T1 a1, 
 }
 
 template <class T1, class T2, class T3>
-inline typename tools::promote_args<T1, T2, T3>::type hypergeometric_2F0(T1 a1, T2 a2, T3 z)
-{
+inline typename tools::promote_args<T1, T2, T3>::type hypergeometric_2F0(T1 a1, T2 a2, T3 z
+) {
    return hypergeometric_2F0(a1, a2, z, policies::policy<>());
 }
 

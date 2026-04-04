@@ -39,16 +39,16 @@ namespace dummy {
 }
 
 template <class Tuple, class T>
-BOOST_MATH_GPU_ENABLED void unpack_tuple(const Tuple& t, T& a, T& b) BOOST_MATH_NOEXCEPT(T)
-{
+BOOST_MATH_GPU_ENABLED void unpack_tuple(const Tuple& t, T& a, T& b) BOOST_MATH_NOEXCEPT(T
+) {
    using dummy::get;
    // Use ADL to find the right overload for get:
    a = get<0>(t);
    b = get<1>(t);
 }
 template <class Tuple, class T>
-BOOST_MATH_GPU_ENABLED void unpack_tuple(const Tuple& t, T& a, T& b, T& c) BOOST_MATH_NOEXCEPT(T)
-{
+BOOST_MATH_GPU_ENABLED void unpack_tuple(const Tuple& t, T& a, T& b, T& c) BOOST_MATH_NOEXCEPT(T
+) {
    using dummy::get;
    // Use ADL to find the right overload for get:
    a = get<0>(t);
@@ -57,22 +57,22 @@ BOOST_MATH_GPU_ENABLED void unpack_tuple(const Tuple& t, T& a, T& b, T& c) BOOST
 }
 
 template <class Tuple, class T>
-BOOST_MATH_GPU_ENABLED inline void unpack_0(const Tuple& t, T& val) BOOST_MATH_NOEXCEPT(T)
-{
+BOOST_MATH_GPU_ENABLED inline void unpack_0(const Tuple& t, T& val) BOOST_MATH_NOEXCEPT(T
+) {
    using dummy::get;
    // Rely on ADL to find the correct overload of get:
    val = get<0>(t);
 }
 
 template <class T, class U, class V>
-BOOST_MATH_GPU_ENABLED inline void unpack_tuple(const boost::math::pair<T, U>& p, V& a, V& b) BOOST_MATH_NOEXCEPT(T)
-{
+BOOST_MATH_GPU_ENABLED inline void unpack_tuple(const boost::math::pair<T, U>& p, V& a, V& b) BOOST_MATH_NOEXCEPT(T
+) {
    a = p.first;
    b = p.second;
 }
 template <class T, class U, class V>
-BOOST_MATH_GPU_ENABLED inline void unpack_0(const boost::math::pair<T, U>& p, V& a) BOOST_MATH_NOEXCEPT(T)
-{
+BOOST_MATH_GPU_ENABLED inline void unpack_0(const boost::math::pair<T, U>& p, V& a) BOOST_MATH_NOEXCEPT(T
+) {
    a = p.first;
 }
 
@@ -88,8 +88,8 @@ BOOST_MATH_GPU_ENABLED void handle_zero_derivative(F f,
    #ifndef BOOST_MATH_HAS_GPU_SUPPORT
    && noexcept(std::declval<F>()(std::declval<T>()))
    #endif
-   )
-{
+   
+) {
    if (last_f0 == 0)
    {
       // this must be the first iteration, pretend that we had a
@@ -138,8 +138,8 @@ BOOST_MATH_GPU_ENABLED boost::math::pair<T, T> bisect(F f, T min, T max, Tol tol
 #ifndef BOOST_MATH_HAS_GPU_SUPPORT
 && noexcept(std::declval<F>()(std::declval<T>()))
 #endif
-)
-{
+
+) {
    T fmin = f(min);
    T fmax = f(max);
    if (fmin == 0)
@@ -214,8 +214,8 @@ BOOST_MATH_GPU_ENABLED inline boost::math::pair<T, T> bisect(F f, T min, T max, 
 #ifndef BOOST_MATH_HAS_GPU_SUPPORT
 && noexcept(std::declval<F>()(std::declval<T>()))
 #endif
-)
-{
+
+) {
    return bisect(f, min, max, tol, max_iter, policies::policy<>());
 }
 
@@ -224,8 +224,8 @@ BOOST_MATH_GPU_ENABLED inline boost::math::pair<T, T> bisect(F f, T min, T max, 
 #ifndef BOOST_MATH_HAS_GPU_SUPPORT
 && noexcept(std::declval<F>()(std::declval<T>()))
 #endif
-)
-{
+
+) {
    boost::math::uintmax_t m = (boost::math::numeric_limits<boost::math::uintmax_t>::max)();
    return bisect(f, min, max, tol, m, policies::policy<>());
 }
@@ -236,8 +236,8 @@ BOOST_MATH_GPU_ENABLED T newton_raphson_iterate(F f, T guess, T min, T max, int 
 #ifndef BOOST_MATH_HAS_GPU_SUPPORT
 && noexcept(std::declval<F>()(std::declval<T>()))
 #endif
-)
-{
+
+) {
    BOOST_MATH_STD_USING
 
    constexpr auto function = "boost::math::tools::newton_raphson_iterate<%1%>";
@@ -358,8 +358,8 @@ BOOST_MATH_GPU_ENABLED inline T newton_raphson_iterate(F f, T guess, T min, T ma
 #ifndef BOOST_MATH_HAS_GPU_SUPPORT
 && noexcept(std::declval<F>()(std::declval<T>()))
 #endif
-)
-{
+
+) {
    boost::math::uintmax_t m = (boost::math::numeric_limits<boost::math::uintmax_t>::max)();
    return newton_raphson_iterate(f, guess, min, max, digits, m);
 }
@@ -750,14 +750,14 @@ namespace detail {
 } // T second_order_root_finder
 
 template <class F, class T>
-T halley_iterate(F f, T guess, T min, T max, int digits, std::uintmax_t& max_iter) noexcept(policies::is_noexcept_error_policy<policies::policy<> >::value&& BOOST_MATH_IS_FLOAT(T) && noexcept(std::declval<F>()(std::declval<T>())))
-{
+T halley_iterate(F f, T guess, T min, T max, int digits, std::uintmax_t& max_iter) noexcept(policies::is_noexcept_error_policy<policies::policy<> >::value&& BOOST_MATH_IS_FLOAT(T) && noexcept(std::declval<F>()(std::declval<T>()))
+) {
    return detail::second_order_root_finder<detail::halley_step>(f, guess, min, max, digits, max_iter);
 }
 
 template <class F, class T>
-inline T halley_iterate(F f, T guess, T min, T max, int digits) noexcept(policies::is_noexcept_error_policy<policies::policy<> >::value&& BOOST_MATH_IS_FLOAT(T) && noexcept(std::declval<F>()(std::declval<T>())))
-{
+inline T halley_iterate(F f, T guess, T min, T max, int digits) noexcept(policies::is_noexcept_error_policy<policies::policy<> >::value&& BOOST_MATH_IS_FLOAT(T) && noexcept(std::declval<F>()(std::declval<T>()))
+) {
    std::uintmax_t m = (std::numeric_limits<std::uintmax_t>::max)();
    return halley_iterate(f, guess, min, max, digits, m);
 }
@@ -788,14 +788,14 @@ namespace detail {
 }
 
 template <class F, class T>
-T schroder_iterate(F f, T guess, T min, T max, int digits, std::uintmax_t& max_iter) noexcept(policies::is_noexcept_error_policy<policies::policy<> >::value&& BOOST_MATH_IS_FLOAT(T) && noexcept(std::declval<F>()(std::declval<T>())))
-{
+T schroder_iterate(F f, T guess, T min, T max, int digits, std::uintmax_t& max_iter) noexcept(policies::is_noexcept_error_policy<policies::policy<> >::value&& BOOST_MATH_IS_FLOAT(T) && noexcept(std::declval<F>()(std::declval<T>()))
+) {
    return detail::second_order_root_finder<detail::schroder_stepper>(f, guess, min, max, digits, max_iter);
 }
 
 template <class F, class T>
-inline T schroder_iterate(F f, T guess, T min, T max, int digits) noexcept(policies::is_noexcept_error_policy<policies::policy<> >::value&& BOOST_MATH_IS_FLOAT(T) && noexcept(std::declval<F>()(std::declval<T>())))
-{
+inline T schroder_iterate(F f, T guess, T min, T max, int digits) noexcept(policies::is_noexcept_error_policy<policies::policy<> >::value&& BOOST_MATH_IS_FLOAT(T) && noexcept(std::declval<F>()(std::declval<T>()))
+) {
    std::uintmax_t m = (std::numeric_limits<std::uintmax_t>::max)();
    return schroder_iterate(f, guess, min, max, digits, m);
 }
@@ -803,14 +803,14 @@ inline T schroder_iterate(F f, T guess, T min, T max, int digits) noexcept(polic
 // These two are the old spelling of this function, retained for backwards compatibility just in case:
 //
 template <class F, class T>
-T schroeder_iterate(F f, T guess, T min, T max, int digits, std::uintmax_t& max_iter) noexcept(policies::is_noexcept_error_policy<policies::policy<> >::value&& BOOST_MATH_IS_FLOAT(T) && noexcept(std::declval<F>()(std::declval<T>())))
-{
+T schroeder_iterate(F f, T guess, T min, T max, int digits, std::uintmax_t& max_iter) noexcept(policies::is_noexcept_error_policy<policies::policy<> >::value&& BOOST_MATH_IS_FLOAT(T) && noexcept(std::declval<F>()(std::declval<T>()))
+) {
    return detail::second_order_root_finder<detail::schroder_stepper>(f, guess, min, max, digits, max_iter);
 }
 
 template <class F, class T>
-inline T schroeder_iterate(F f, T guess, T min, T max, int digits) noexcept(policies::is_noexcept_error_policy<policies::policy<> >::value&& BOOST_MATH_IS_FLOAT(T) && noexcept(std::declval<F>()(std::declval<T>())))
-{
+inline T schroeder_iterate(F f, T guess, T min, T max, int digits) noexcept(policies::is_noexcept_error_policy<policies::policy<> >::value&& BOOST_MATH_IS_FLOAT(T) && noexcept(std::declval<F>()(std::declval<T>()))
+) {
    std::uintmax_t m = (std::numeric_limits<std::uintmax_t>::max)();
    return schroder_iterate(f, guess, min, max, digits, m);
 }
@@ -823,8 +823,8 @@ inline T schroeder_iterate(F f, T guess, T min, T max, int digits) noexcept(poli
    * For isolated roots, the problem is so rapidly convergent that this doesn't matter at all.
    */
 template<class ComplexType, class F>
-ComplexType complex_newton(F g, ComplexType guess, int max_iterations = std::numeric_limits<typename ComplexType::value_type>::digits)
-{
+ComplexType complex_newton(F g, ComplexType guess, int max_iterations = std::numeric_limits<typename ComplexType::value_type>::digits
+) {
    typedef typename ComplexType::value_type Real;
    using std::norm;
    using std::abs;
@@ -914,8 +914,8 @@ inline long double fma_workaround(long double x, long double y, long double z) {
 #endif
 #endif            
 template<class T>
-inline T discriminant(T const& a, T const& b, T const& c)
-{
+inline T discriminant(T const& a, T const& b, T const& c
+) {
    T w = 4 * a * c;
 #if defined(BOOST_GNU_STDLIB) && !defined(_GLIBCXX_USE_C99_MATH_TR1)
    T e = fma_workaround(-c, 4 * a, w);
@@ -928,8 +928,8 @@ inline T discriminant(T const& a, T const& b, T const& c)
 }
 
 template<class T>
-std::pair<T, T> quadratic_roots_imp(T const& a, T const& b, T const& c)
-{
+std::pair<T, T> quadratic_roots_imp(T const& a, T const& b, T const& c
+) {
 #if defined(BOOST_GNU_STDLIB) && !defined(_GLIBCXX_USE_C99_MATH_TR1)
    using boost::math::copysign;
 #else
@@ -1045,8 +1045,8 @@ std::pair<T, T> quadratic_roots_imp(T const& a, T const& b, T const& c)
 }  // namespace detail
 
 template<class T1, class T2 = T1, class T3 = T1>
-inline std::pair<typename tools::promote_args<T1, T2, T3>::type, typename tools::promote_args<T1, T2, T3>::type> quadratic_roots(T1 const& a, T2 const& b, T3 const& c)
-{
+inline std::pair<typename tools::promote_args<T1, T2, T3>::type, typename tools::promote_args<T1, T2, T3>::type> quadratic_roots(T1 const& a, T2 const& b, T3 const& c
+) {
    typedef typename tools::promote_args<T1, T2, T3>::type value_type;
    return detail::quadratic_roots_imp(static_cast<value_type>(a), static_cast<value_type>(b), static_cast<value_type>(c));
 }

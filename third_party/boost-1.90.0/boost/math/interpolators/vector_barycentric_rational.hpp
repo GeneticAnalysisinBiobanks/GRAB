@@ -66,8 +66,8 @@ private:
 
 template <class TimeContainer, class SpaceContainer>
 vector_barycentric_rational<TimeContainer, SpaceContainer>::vector_barycentric_rational(TimeContainer&& times, SpaceContainer&& points, size_t approximation_order):
- m_imp(std::make_shared<detail::vector_barycentric_rational_imp<TimeContainer, SpaceContainer>>(std::move(times), std::move(points), approximation_order))
-{
+ m_imp(std::make_shared<detail::vector_barycentric_rational_imp<TimeContainer, SpaceContainer>>(std::move(times), std::move(points), approximation_order)
+) {
     return;
 }
 

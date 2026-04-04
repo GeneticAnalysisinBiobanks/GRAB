@@ -22,8 +22,8 @@
 namespace boost{ namespace math{
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type sqrt1pm1(const T& val, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type sqrt1pm1(const T& val, const Policy& pol
+) {
    typedef typename tools::promote_args<T>::type result_type;
    BOOST_MATH_STD_USING
 
@@ -33,8 +33,8 @@ BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type sqrt1pm1(con
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type sqrt1pm1(const T& val)
-{
+BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type sqrt1pm1(const T& val
+) {
    return sqrt1pm1(val, policies::policy<>());
 }
 

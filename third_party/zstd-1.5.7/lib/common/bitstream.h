@@ -148,8 +148,8 @@ static const unsigned BIT_mask[] = {
  *  @return : 0 if success,
  *            otherwise an error code (can be tested using ERR_isError()) */
 MEM_STATIC size_t BIT_initCStream(BIT_CStream_t* bitC,
-                                  void* startPtr, size_t dstCapacity)
-{
+                                  void* startPtr, size_t dstCapacity
+) {
     bitC->bitContainer = 0;
     bitC->bitPos = 0;
     bitC->startPtr = (char*)startPtr;
@@ -159,8 +159,8 @@ MEM_STATIC size_t BIT_initCStream(BIT_CStream_t* bitC,
     return 0;
 }
 
-FORCE_INLINE_TEMPLATE BitContainerType BIT_getLowerBits(BitContainerType bitContainer, U32 const nbBits)
-{
+FORCE_INLINE_TEMPLATE BitContainerType BIT_getLowerBits(BitContainerType bitContainer, U32 const nbBits
+) {
 #if STATIC_BMI2 && !defined(ZSTD_NO_INTRINSICS)
 #  if (defined(__x86_64__) || defined(_M_X64)) && !defined(__ILP32__)
     return _bzhi_u64(bitContainer, nbBits);
@@ -178,8 +178,8 @@ FORCE_INLINE_TEMPLATE BitContainerType BIT_getLowerBits(BitContainerType bitCont
  *  can add up to 31 bits into `bitC`.
  *  Note : does not check for register overflow ! */
 MEM_STATIC void BIT_addBits(BIT_CStream_t* bitC,
-                            BitContainerType value, unsigned nbBits)
-{
+                            BitContainerType value, unsigned nbBits
+) {
     DEBUG_STATIC_ASSERT(BIT_MASK_SIZE == 32);
     assert(nbBits < BIT_MASK_SIZE);
     assert(nbBits + bitC->bitPos < sizeof(bitC->bitContainer) * 8);
@@ -191,8 +191,8 @@ MEM_STATIC void BIT_addBits(BIT_CStream_t* bitC,
  *  works only if `value` is _clean_,
  *  meaning all high bits above nbBits are 0 */
 MEM_STATIC void BIT_addBitsFast(BIT_CStream_t* bitC,
-                                BitContainerType value, unsigned nbBits)
-{
+                                BitContainerType value, unsigned nbBits
+) {
     assert((value>>nbBits) == 0);
     assert(nbBits + bitC->bitPos < sizeof(bitC->bitContainer) * 8);
     bitC->bitContainer |= value << bitC->bitPos;
@@ -202,8 +202,8 @@ MEM_STATIC void BIT_addBitsFast(BIT_CStream_t* bitC,
 /*! BIT_flushBitsFast() :
  *  assumption : bitContainer has not overflowed
  *  unsafe version; does not check buffer overflow */
-MEM_STATIC void BIT_flushBitsFast(BIT_CStream_t* bitC)
-{
+MEM_STATIC void BIT_flushBitsFast(BIT_CStream_t* bitC
+) {
     size_t const nbBytes = bitC->bitPos >> 3;
     assert(bitC->bitPos < sizeof(bitC->bitContainer) * 8);
     assert(bitC->ptr <= bitC->endPtr);
@@ -218,8 +218,8 @@ MEM_STATIC void BIT_flushBitsFast(BIT_CStream_t* bitC)
  *  safe version; check for buffer overflow, and prevents it.
  *  note : does not signal buffer overflow.
  *  overflow will be revealed later on using BIT_closeCStream() */
-MEM_STATIC void BIT_flushBits(BIT_CStream_t* bitC)
-{
+MEM_STATIC void BIT_flushBits(BIT_CStream_t* bitC
+) {
     size_t const nbBytes = bitC->bitPos >> 3;
     assert(bitC->bitPos < sizeof(bitC->bitContainer) * 8);
     assert(bitC->ptr <= bitC->endPtr);
@@ -233,8 +233,8 @@ MEM_STATIC void BIT_flushBits(BIT_CStream_t* bitC)
 /*! BIT_closeCStream() :
  *  @return : size of CStream, in bytes,
  *            or 0 if it could not fit into dstBuffer */
-MEM_STATIC size_t BIT_closeCStream(BIT_CStream_t* bitC)
-{
+MEM_STATIC size_t BIT_closeCStream(BIT_CStream_t* bitC
+) {
     BIT_addBitsFast(bitC, 1, 1);   /* endMark */
     BIT_flushBits(bitC);
     if (bitC->ptr >= bitC->endPtr) return 0; /* overflow detected */
@@ -251,8 +251,8 @@ MEM_STATIC size_t BIT_closeCStream(BIT_CStream_t* bitC)
  * `srcSize` must be the *exact* size of the bitStream, in bytes.
  * @return : size of stream (== srcSize), or an errorCode if a problem is detected
  */
-MEM_STATIC size_t BIT_initDStream(BIT_DStream_t* bitD, const void* srcBuffer, size_t srcSize)
-{
+MEM_STATIC size_t BIT_initDStream(BIT_DStream_t* bitD, const void* srcBuffer, size_t srcSize
+) {
     if (srcSize < 1) { ZSTD_memset(bitD, 0, sizeof(*bitD)); return ERROR(srcSize_wrong); }
 
     bitD->start = (const char*)srcBuffer;
@@ -299,13 +299,13 @@ MEM_STATIC size_t BIT_initDStream(BIT_DStream_t* bitD, const void* srcBuffer, si
     return srcSize;
 }
 
-FORCE_INLINE_TEMPLATE BitContainerType BIT_getUpperBits(BitContainerType bitContainer, U32 const start)
-{
+FORCE_INLINE_TEMPLATE BitContainerType BIT_getUpperBits(BitContainerType bitContainer, U32 const start
+) {
     return bitContainer >> start;
 }
 
-FORCE_INLINE_TEMPLATE BitContainerType BIT_getMiddleBits(BitContainerType bitContainer, U32 const start, U32 const nbBits)
-{
+FORCE_INLINE_TEMPLATE BitContainerType BIT_getMiddleBits(BitContainerType bitContainer, U32 const start, U32 const nbBits
+) {
     U32 const regMask = sizeof(bitContainer)*8 - 1;
     /* if start > regMask, bitstream is corrupted, and result is undefined */
     assert(nbBits < BIT_MASK_SIZE);
@@ -327,8 +327,8 @@ FORCE_INLINE_TEMPLATE BitContainerType BIT_getMiddleBits(BitContainerType bitCon
  *  On 32-bits, maxNbBits==24.
  *  On 64-bits, maxNbBits==56.
  * @return : value extracted */
-FORCE_INLINE_TEMPLATE BitContainerType BIT_lookBits(const BIT_DStream_t*  bitD, U32 nbBits)
-{
+FORCE_INLINE_TEMPLATE BitContainerType BIT_lookBits(const BIT_DStream_t*  bitD, U32 nbBits
+) {
     /* arbitrate between double-shift and shift+mask */
 #if 1
     /* if bitD->bitsConsumed + nbBits > sizeof(bitD->bitContainer)*8,
@@ -343,15 +343,15 @@ FORCE_INLINE_TEMPLATE BitContainerType BIT_lookBits(const BIT_DStream_t*  bitD, 
 
 /*! BIT_lookBitsFast() :
  *  unsafe version; only works if nbBits >= 1 */
-MEM_STATIC BitContainerType BIT_lookBitsFast(const BIT_DStream_t* bitD, U32 nbBits)
-{
+MEM_STATIC BitContainerType BIT_lookBitsFast(const BIT_DStream_t* bitD, U32 nbBits
+) {
     U32 const regMask = sizeof(bitD->bitContainer)*8 - 1;
     assert(nbBits >= 1);
     return (bitD->bitContainer << (bitD->bitsConsumed & regMask)) >> (((regMask+1)-nbBits) & regMask);
 }
 
-FORCE_INLINE_TEMPLATE void BIT_skipBits(BIT_DStream_t* bitD, U32 nbBits)
-{
+FORCE_INLINE_TEMPLATE void BIT_skipBits(BIT_DStream_t* bitD, U32 nbBits
+) {
     bitD->bitsConsumed += nbBits;
 }
 
@@ -359,8 +359,8 @@ FORCE_INLINE_TEMPLATE void BIT_skipBits(BIT_DStream_t* bitD, U32 nbBits)
  *  Read (consume) next n bits from local register and update.
  *  Pay attention to not read more than nbBits contained into local register.
  * @return : extracted value. */
-FORCE_INLINE_TEMPLATE BitContainerType BIT_readBits(BIT_DStream_t* bitD, unsigned nbBits)
-{
+FORCE_INLINE_TEMPLATE BitContainerType BIT_readBits(BIT_DStream_t* bitD, unsigned nbBits
+) {
     BitContainerType const value = BIT_lookBits(bitD, nbBits);
     BIT_skipBits(bitD, nbBits);
     return value;
@@ -368,8 +368,8 @@ FORCE_INLINE_TEMPLATE BitContainerType BIT_readBits(BIT_DStream_t* bitD, unsigne
 
 /*! BIT_readBitsFast() :
  *  unsafe version; only works if nbBits >= 1 */
-MEM_STATIC BitContainerType BIT_readBitsFast(BIT_DStream_t* bitD, unsigned nbBits)
-{
+MEM_STATIC BitContainerType BIT_readBitsFast(BIT_DStream_t* bitD, unsigned nbBits
+) {
     BitContainerType const value = BIT_lookBitsFast(bitD, nbBits);
     assert(nbBits >= 1);
     BIT_skipBits(bitD, nbBits);
@@ -381,8 +381,8 @@ MEM_STATIC BitContainerType BIT_readBitsFast(BIT_DStream_t* bitD, unsigned nbBit
  *  1. bitstream is valid : bitsConsumed <= sizeof(bitD->bitContainer)*8
  *  2. look window is valid after shifted down : bitD->ptr >= bitD->start
  */
-MEM_STATIC BIT_DStream_status BIT_reloadDStream_internal(BIT_DStream_t* bitD)
-{
+MEM_STATIC BIT_DStream_status BIT_reloadDStream_internal(BIT_DStream_t* bitD
+) {
     assert(bitD->bitsConsumed <= sizeof(bitD->bitContainer)*8);
     bitD->ptr -= bitD->bitsConsumed >> 3;
     assert(bitD->ptr >= bitD->start);
@@ -397,8 +397,8 @@ MEM_STATIC BIT_DStream_status BIT_reloadDStream_internal(BIT_DStream_t* bitD)
  *  2. Returns BIT_DStream_overflow when bitD->ptr < bitD->limitPtr, at this
  *     point you must use BIT_reloadDStream() to reload.
  */
-MEM_STATIC BIT_DStream_status BIT_reloadDStreamFast(BIT_DStream_t* bitD)
-{
+MEM_STATIC BIT_DStream_status BIT_reloadDStreamFast(BIT_DStream_t* bitD
+) {
     if (UNLIKELY(bitD->ptr < bitD->limitPtr))
         return BIT_DStream_overflow;
     return BIT_reloadDStream_internal(bitD);
@@ -409,8 +409,8 @@ MEM_STATIC BIT_DStream_status BIT_reloadDStreamFast(BIT_DStream_t* bitD)
  *  This function is safe, it guarantees it will not never beyond src buffer.
  * @return : status of `BIT_DStream_t` internal register.
  *           when status == BIT_DStream_unfinished, internal register is filled with at least 25 or 57 bits */
-FORCE_INLINE_TEMPLATE BIT_DStream_status BIT_reloadDStream(BIT_DStream_t* bitD)
-{
+FORCE_INLINE_TEMPLATE BIT_DStream_status BIT_reloadDStream(BIT_DStream_t* bitD
+) {
     /* note : once in overflow mode, a bitstream remains in this mode until it's reset */
     if (UNLIKELY(bitD->bitsConsumed > (sizeof(bitD->bitContainer)*8))) {
         static const BitContainerType zeroFilled = 0;
@@ -446,8 +446,8 @@ FORCE_INLINE_TEMPLATE BIT_DStream_status BIT_reloadDStream(BIT_DStream_t* bitD)
 /*! BIT_endOfDStream() :
  * @return : 1 if DStream has _exactly_ reached its end (all bits consumed).
  */
-MEM_STATIC unsigned BIT_endOfDStream(const BIT_DStream_t* DStream)
-{
+MEM_STATIC unsigned BIT_endOfDStream(const BIT_DStream_t* DStream
+) {
     return ((DStream->ptr == DStream->start) && (DStream->bitsConsumed == sizeof(DStream->bitContainer)*8));
 }
 

@@ -38,44 +38,44 @@
 #include <boost/math/tools/big_constant.hpp>
 #include <boost/math/tools/config.hpp>
 
-inline mpfr_class fabs(const mpfr_class& v)
-{
+inline mpfr_class fabs(const mpfr_class& v
+) {
    return abs(v);
 }
 template <class T, class U>
-inline mpfr_class fabs(const __gmp_expr<T,U>& v)
-{
+inline mpfr_class fabs(const __gmp_expr<T,U>& v
+) {
    return abs(static_cast<mpfr_class>(v));
 }
 
-inline mpfr_class pow(const mpfr_class& b, const mpfr_class& e)
-{
+inline mpfr_class pow(const mpfr_class& b, const mpfr_class& e
+) {
    mpfr_class result;
    mpfr_pow(result.__get_mp(), b.__get_mp(), e.__get_mp(), GMP_RNDN);
    return result;
 }
 /*
 template <class T, class U, class V, class W>
-inline mpfr_class pow(const __gmp_expr<T,U>& b, const __gmp_expr<V,W>& e)
-{
+inline mpfr_class pow(const __gmp_expr<T,U>& b, const __gmp_expr<V,W>& e
+) {
    return pow(static_cast<mpfr_class>(b), static_cast<mpfr_class>(e));
 }
 */
-inline mpfr_class ldexp(const mpfr_class& v, int e)
-{
+inline mpfr_class ldexp(const mpfr_class& v, int e
+) {
    //int e = mpfr_get_exp(*v.__get_mp());
    mpfr_class result(v);
    mpfr_set_exp(result.__get_mp(), e);
    return result;
 }
 template <class T, class U>
-inline mpfr_class ldexp(const __gmp_expr<T,U>& v, int e)
-{
+inline mpfr_class ldexp(const __gmp_expr<T,U>& v, int e
+) {
    return ldexp(static_cast<mpfr_class>(v), e);
 }
 
-inline mpfr_class frexp(const mpfr_class& v, int* expon)
-{
+inline mpfr_class frexp(const mpfr_class& v, int* expon
+) {
    int e = mpfr_get_exp(v.__get_mp());
    mpfr_class result(v);
    mpfr_set_exp(result.__get_mp(), 0);
@@ -83,13 +83,13 @@ inline mpfr_class frexp(const mpfr_class& v, int* expon)
    return result;
 }
 template <class T, class U>
-inline mpfr_class frexp(const __gmp_expr<T,U>& v, int* expon)
-{
+inline mpfr_class frexp(const __gmp_expr<T,U>& v, int* expon
+) {
    return frexp(static_cast<mpfr_class>(v), expon);
 }
 
-inline mpfr_class fmod(const mpfr_class& v1, const mpfr_class& v2)
-{
+inline mpfr_class fmod(const mpfr_class& v1, const mpfr_class& v2
+) {
    mpfr_class n;
    if(v1 < 0)
       n = ceil(v1 / v2);
@@ -98,86 +98,86 @@ inline mpfr_class fmod(const mpfr_class& v1, const mpfr_class& v2)
    return v1 - n * v2;
 }
 template <class T, class U, class V, class W>
-inline mpfr_class fmod(const __gmp_expr<T,U>& v1, const __gmp_expr<V,W>& v2)
-{
+inline mpfr_class fmod(const __gmp_expr<T,U>& v1, const __gmp_expr<V,W>& v2
+) {
    return fmod(static_cast<mpfr_class>(v1), static_cast<mpfr_class>(v2));
 }
 
 template <class Policy>
-inline mpfr_class modf(const mpfr_class& v, long long* ipart, const Policy& pol)
-{
+inline mpfr_class modf(const mpfr_class& v, long long* ipart, const Policy& pol
+) {
    *ipart = lltrunc(v, pol);
    return v - boost::math::tools::real_cast<mpfr_class>(*ipart);
 }
 template <class T, class U, class Policy>
-inline mpfr_class modf(const __gmp_expr<T,U>& v, long long* ipart, const Policy& pol)
-{
+inline mpfr_class modf(const __gmp_expr<T,U>& v, long long* ipart, const Policy& pol
+) {
    return modf(static_cast<mpfr_class>(v), ipart, pol);
 }
 
 template <class Policy>
-inline int iround(mpfr_class const& x, const Policy&)
-{
+inline int iround(mpfr_class const& x, const Policy&
+) {
    return boost::math::tools::real_cast<int>(boost::math::round(x, typename boost::math::policies::normalise<Policy, boost::math::policies::rounding_error< boost::math::policies::throw_on_error> >::type()));
 }
 template <class T, class U, class Policy>
-inline int iround(__gmp_expr<T,U> const& x, const Policy& pol)
-{
+inline int iround(__gmp_expr<T,U> const& x, const Policy& pol
+) {
    return iround(static_cast<mpfr_class>(x), pol);
 }
 
 template <class Policy>
-inline long lround(mpfr_class const& x, const Policy&)
-{
+inline long lround(mpfr_class const& x, const Policy&
+) {
    return boost::math::tools::real_cast<long>(boost::math::round(x, typename boost::math::policies::normalise<Policy, boost::math::policies::rounding_error< boost::math::policies::throw_on_error> >::type()));
 }
 template <class T, class U, class Policy>
-inline long lround(__gmp_expr<T,U> const& x, const Policy& pol)
-{
+inline long lround(__gmp_expr<T,U> const& x, const Policy& pol
+) {
    return lround(static_cast<mpfr_class>(x), pol);
 }
 
 template <class Policy>
-inline long long llround(mpfr_class const& x, const Policy&)
-{
+inline long long llround(mpfr_class const& x, const Policy&
+) {
    return boost::math::tools::real_cast<long long>(boost::math::round(x, typename boost::math::policies::normalise<Policy, boost::math::policies::rounding_error< boost::math::policies::throw_on_error> >::type()));
 }
 template <class T, class U, class Policy>
-inline long long llround(__gmp_expr<T,U> const& x, const Policy& pol)
-{
+inline long long llround(__gmp_expr<T,U> const& x, const Policy& pol
+) {
    return llround(static_cast<mpfr_class>(x), pol);
 }
 
 template <class Policy>
-inline int itrunc(mpfr_class const& x, const Policy&)
-{
+inline int itrunc(mpfr_class const& x, const Policy&
+) {
    return boost::math::tools::real_cast<int>(boost::math::trunc(x, typename boost::math::policies::normalise<Policy, boost::math::policies::rounding_error< boost::math::policies::throw_on_error> >::type()));
 }
 template <class T, class U, class Policy>
-inline int itrunc(__gmp_expr<T,U> const& x, const Policy& pol)
-{
+inline int itrunc(__gmp_expr<T,U> const& x, const Policy& pol
+) {
    return itrunc(static_cast<mpfr_class>(x), pol);
 }
 
 template <class Policy>
-inline long ltrunc(mpfr_class const& x, const Policy&)
-{
+inline long ltrunc(mpfr_class const& x, const Policy&
+) {
    return boost::math::tools::real_cast<long>(boost::math::trunc(x, typename boost::math::policies::normalise<Policy, boost::math::policies::rounding_error< boost::math::policies::throw_on_error> >::type()));
 }
 template <class T, class U, class Policy>
-inline long ltrunc(__gmp_expr<T,U> const& x, const Policy& pol)
-{
+inline long ltrunc(__gmp_expr<T,U> const& x, const Policy& pol
+) {
    return ltrunc(static_cast<mpfr_class>(x), pol);
 }
 
 template <class Policy>
-inline long long lltrunc(mpfr_class const& x, const Policy&)
-{
+inline long long lltrunc(mpfr_class const& x, const Policy&
+) {
    return boost::math::tools::real_cast<long long>(boost::math::trunc(x, typename boost::math::policies::normalise<Policy, boost::math::policies::rounding_error< boost::math::policies::throw_on_error> >::type()));
 }
 template <class T, class U, class Policy>
-inline long long lltrunc(__gmp_expr<T,U> const& x, const Policy& pol)
-{
+inline long long lltrunc(__gmp_expr<T,U> const& x, const Policy& pol
+) {
    return lltrunc(static_cast<mpfr_class>(x), pol);
 }
 
@@ -305,8 +305,8 @@ inline int digits<mpfr_class>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr_class)
 namespace detail{
 
 template<class Integer>
-void convert_to_long_result(mpfr_class const& r, Integer& result)
-{
+void convert_to_long_result(mpfr_class const& r, Integer& result
+) {
    result = 0;
    I last_result(0);
    mpfr_class t(r);
@@ -323,8 +323,8 @@ void convert_to_long_result(mpfr_class const& r, Integer& result)
 }
 
 template <>
-inline mpfr_class real_cast<mpfr_class, long long>(long long t)
-{
+inline mpfr_class real_cast<mpfr_class, long long>(long long t
+) {
    mpfr_class result;
    int expon = 0;
    int sign = 1;
@@ -342,43 +342,43 @@ inline mpfr_class real_cast<mpfr_class, long long>(long long t)
    return result * sign;
 }
 template <>
-inline unsigned real_cast<unsigned, mpfr_class>(mpfr_class t)
-{
+inline unsigned real_cast<unsigned, mpfr_class>(mpfr_class t
+) {
    return t.get_ui();
 }
 template <>
-inline int real_cast<int, mpfr_class>(mpfr_class t)
-{
+inline int real_cast<int, mpfr_class>(mpfr_class t
+) {
    return t.get_si();
 }
 template <>
-inline double real_cast<double, mpfr_class>(mpfr_class t)
-{
+inline double real_cast<double, mpfr_class>(mpfr_class t
+) {
    return t.get_d();
 }
 template <>
-inline float real_cast<float, mpfr_class>(mpfr_class t)
-{
+inline float real_cast<float, mpfr_class>(mpfr_class t
+) {
    return static_cast<float>(t.get_d());
 }
 template <>
-inline long real_cast<long, mpfr_class>(mpfr_class t)
-{
+inline long real_cast<long, mpfr_class>(mpfr_class t
+) {
    long result;
    detail::convert_to_long_result(t, result);
    return result;
 }
 template <>
-inline long long real_cast<long long, mpfr_class>(mpfr_class t)
-{
+inline long long real_cast<long long, mpfr_class>(mpfr_class t
+) {
    long long result;
    detail::convert_to_long_result(t, result);
    return result;
 }
 
 template <>
-inline mpfr_class max_value<mpfr_class>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr_class))
-{
+inline mpfr_class max_value<mpfr_class>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr_class)
+) {
    static bool has_init = false;
    static mpfr_class val;
    if(!has_init)
@@ -391,8 +391,8 @@ inline mpfr_class max_value<mpfr_class>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(m
 }
 
 template <>
-inline mpfr_class min_value<mpfr_class>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr_class))
-{
+inline mpfr_class min_value<mpfr_class>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr_class)
+) {
    static bool has_init = false;
    static mpfr_class val;
    if(!has_init)
@@ -405,8 +405,8 @@ inline mpfr_class min_value<mpfr_class>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(m
 }
 
 template <>
-inline mpfr_class log_max_value<mpfr_class>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr_class))
-{
+inline mpfr_class log_max_value<mpfr_class>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr_class)
+) {
    static bool has_init = false;
    static mpfr_class val = max_value<mpfr_class>();
    if(!has_init)
@@ -418,8 +418,8 @@ inline mpfr_class log_max_value<mpfr_class>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SP
 }
 
 template <>
-inline mpfr_class log_min_value<mpfr_class>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr_class))
-{
+inline mpfr_class log_min_value<mpfr_class>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr_class)
+) {
    static bool has_init = false;
    static mpfr_class val = max_value<mpfr_class>();
    if(!has_init)
@@ -431,8 +431,8 @@ inline mpfr_class log_min_value<mpfr_class>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SP
 }
 
 template <>
-inline mpfr_class epsilon<mpfr_class>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr_class))
-{
+inline mpfr_class epsilon<mpfr_class>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(mpfr_class)
+) {
    return ldexp(mpfr_class(1), 1-boost::math::policies::digits<mpfr_class, boost::math::policies::policy<> >());
 }
 
@@ -449,8 +449,8 @@ struct evaluation<__gmp_expr<T, U>, Policy>
 }
 
 template <class Policy>
-inline mpfr_class skewness(const extreme_value_distribution<mpfr_class, Policy>& /*dist*/)
-{
+inline mpfr_class skewness(const extreme_value_distribution<mpfr_class, Policy>& /*dist*/
+) {
    //
    // This is 12 * sqrt(6) * zeta(3) / pi^3:
    // See http://mathworld.wolfram.com/ExtremeValueDistribution.html
@@ -463,8 +463,8 @@ inline mpfr_class skewness(const extreme_value_distribution<mpfr_class, Policy>&
 }
 
 template <class Policy>
-inline mpfr_class skewness(const rayleigh_distribution<mpfr_class, Policy>& /*dist*/)
-{
+inline mpfr_class skewness(const rayleigh_distribution<mpfr_class, Policy>& /*dist*/
+) {
   // using namespace boost::math::constants;
   #ifdef BOOST_MATH_STANDALONE
   static_assert(sizeof(Policy) == 0, "mpfr skewness can not be calculated in standalone mode");
@@ -476,8 +476,8 @@ inline mpfr_class skewness(const rayleigh_distribution<mpfr_class, Policy>& /*di
 }
 
 template <class Policy>
-inline mpfr_class kurtosis(const rayleigh_distribution<mpfr_class, Policy>& /*dist*/)
-{
+inline mpfr_class kurtosis(const rayleigh_distribution<mpfr_class, Policy>& /*dist*/
+) {
   // using namespace boost::math::constants;
   #ifdef BOOST_MATH_STANDALONE
   static_assert(sizeof(Policy) == 0, "mpfr kurtosis can not be calculated in standalone mode");
@@ -490,8 +490,8 @@ inline mpfr_class kurtosis(const rayleigh_distribution<mpfr_class, Policy>& /*di
 }
 
 template <class Policy>
-inline mpfr_class kurtosis_excess(const rayleigh_distribution<mpfr_class, Policy>& /*dist*/)
-{
+inline mpfr_class kurtosis_excess(const rayleigh_distribution<mpfr_class, Policy>& /*dist*/
+) {
   //using namespace boost::math::constants;
   // Computed using NTL at 150 bit, about 50 decimal digits.
   #ifdef BOOST_MATH_STANDALONE
@@ -509,8 +509,8 @@ namespace detail{
 // Version of Digamma accurate to ~100 decimal digits.
 //
 template <class Policy>
-mpfr_class digamma_imp(mpfr_class x, const std::integral_constant<int, 0>* , const Policy& pol)
-{
+mpfr_class digamma_imp(mpfr_class x, const std::integral_constant<int, 0>* , const Policy& pol
+) {
    //
    // This handles reflection of negative arguments, and all our
    // empfr_classor handling, then forwards to the T-specific approximation.
@@ -549,8 +549,8 @@ mpfr_class digamma_imp(mpfr_class x, const std::integral_constant<int, 0>* , con
 // starting guess for Halley iteration:
 //
 template <class Policy>
-inline mpfr_class erf_inv_imp(const mpfr_class& p, const mpfr_class& q, const Policy&, const std::integral_constant<int, 64>*)
-{
+inline mpfr_class erf_inv_imp(const mpfr_class& p, const mpfr_class& q, const Policy&, const std::integral_constant<int, 64>*
+) {
    BOOST_MATH_STD_USING // for ADL of std names.
 
    mpfr_class result = 0;
@@ -805,8 +805,8 @@ inline mpfr_class erf_inv_imp(const mpfr_class& p, const mpfr_class& q, const Po
    return result;
 }
 
-inline mpfr_class bessel_i0(mpfr_class x)
-{
+inline mpfr_class bessel_i0(mpfr_class x
+) {
    #ifdef BOOST_MATH_STANDALONE
    static_assert(sizeof(x) == 0, "mpfr bessel_i0 can not be calculated in standalone mode");
    #endif
@@ -884,8 +884,8 @@ inline mpfr_class bessel_i0(mpfr_class x)
     return value;
 }
 
-inline mpfr_class bessel_i1(mpfr_class x)
-{
+inline mpfr_class bessel_i1(mpfr_class x
+) {
     static const mpfr_class P1[] = {
         static_cast<mpfr_class>("-1.4577180278143463643e+15"),
         static_cast<mpfr_class>("-1.7732037840791591320e+14"),

@@ -30,8 +30,8 @@ namespace boost { namespace math
 {
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline T factorial(unsigned i, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline T factorial(unsigned i, const Policy& pol
+) {
    static_assert(!boost::math::is_integral<T>::value, "Type T must not be an integral type");
    // factorial<unsigned int>(n) is not implemented
    // because it would overflow integral type T for too small n
@@ -51,31 +51,31 @@ BOOST_MATH_GPU_ENABLED inline T factorial(unsigned i, const Policy& pol)
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline T factorial(unsigned i)
-{
+BOOST_MATH_GPU_ENABLED inline T factorial(unsigned i
+) {
    return factorial<T>(i, policies::policy<>());
 }
 /*
 // Can't have these in a policy enabled world?
 template<>
-inline float factorial<float>(unsigned i)
-{
+inline float factorial<float>(unsigned i
+) {
    if(i <= max_factorial<float>::value)
       return unchecked_factorial<float>(i);
    return tools::overflow_error<float>(BOOST_CURRENT_FUNCTION);
 }
 
 template<>
-inline double factorial<double>(unsigned i)
-{
+inline double factorial<double>(unsigned i
+) {
    if(i <= max_factorial<double>::value)
       return unchecked_factorial<double>(i);
    return tools::overflow_error<double>(BOOST_CURRENT_FUNCTION);
 }
 */
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T double_factorial(unsigned i, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED T double_factorial(unsigned i, const Policy& pol
+) {
    static_assert(!boost::math::is_integral<T>::value, "Type T must not be an integral type");
    BOOST_MATH_STD_USING  // ADL lookup of std names
    if(i & 1)
@@ -109,8 +109,8 @@ BOOST_MATH_GPU_ENABLED T double_factorial(unsigned i, const Policy& pol)
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline T double_factorial(unsigned i)
-{
+BOOST_MATH_GPU_ENABLED inline T double_factorial(unsigned i
+) {
    return double_factorial<T>(i, policies::policy<>());
 }
 
@@ -120,8 +120,8 @@ BOOST_MATH_GPU_ENABLED inline T double_factorial(unsigned i)
 namespace detail{
 
 template <class T, class Policy>
-T rising_factorial_imp(T x, int n, const Policy& pol)
-{
+T rising_factorial_imp(T x, int n, const Policy& pol
+) {
    static_assert(!boost::math::is_integral<T>::value, "Type T must not be an integral type");
    if(x < 0)
    {
@@ -168,8 +168,8 @@ T rising_factorial_imp(T x, int n, const Policy& pol)
 }
 
 template <class T, class Policy>
-inline T falling_factorial_imp(T x, unsigned n, const Policy& pol)
-{
+inline T falling_factorial_imp(T x, unsigned n, const Policy& pol
+) {
    static_assert(!boost::math::is_integral<T>::value, "Type T must not be an integral type");
    BOOST_MATH_STD_USING // ADL of std names
    if(x == 0)
@@ -233,8 +233,8 @@ inline T falling_factorial_imp(T x, unsigned n, const Policy& pol)
 
 template <class RT>
 inline typename tools::promote_args<RT>::type
-   falling_factorial(RT x, unsigned n)
-{
+   falling_factorial(RT x, unsigned n
+) {
    typedef typename tools::promote_args<RT>::type result_type;
    return detail::falling_factorial_imp(
       static_cast<result_type>(x), n, policies::policy<>());
@@ -242,8 +242,8 @@ inline typename tools::promote_args<RT>::type
 
 template <class RT, class Policy>
 inline typename tools::promote_args<RT>::type
-   falling_factorial(RT x, unsigned n, const Policy& pol)
-{
+   falling_factorial(RT x, unsigned n, const Policy& pol
+) {
    typedef typename tools::promote_args<RT>::type result_type;
    return detail::falling_factorial_imp(
       static_cast<result_type>(x), n, pol);
@@ -251,8 +251,8 @@ inline typename tools::promote_args<RT>::type
 
 template <class RT>
 inline typename tools::promote_args<RT>::type
-   rising_factorial(RT x, int n)
-{
+   rising_factorial(RT x, int n
+) {
    typedef typename tools::promote_args<RT>::type result_type;
    return detail::rising_factorial_imp(
       static_cast<result_type>(x), n, policies::policy<>());
@@ -260,8 +260,8 @@ inline typename tools::promote_args<RT>::type
 
 template <class RT, class Policy>
 inline typename tools::promote_args<RT>::type
-   rising_factorial(RT x, int n, const Policy& pol)
-{
+   rising_factorial(RT x, int n, const Policy& pol
+) {
    typedef typename tools::promote_args<RT>::type result_type;
    return detail::rising_factorial_imp(
       static_cast<result_type>(x), n, pol);

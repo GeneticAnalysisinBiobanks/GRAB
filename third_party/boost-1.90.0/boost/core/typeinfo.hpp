@@ -82,8 +82,8 @@ public:
     }
 };
 
-inline char const * demangled_name( core::typeinfo const & ti )
-{
+inline char const * demangled_name( core::typeinfo const & ti 
+) {
     return ti.name();
 }
 
@@ -102,8 +102,8 @@ template<class T> struct BOOST_SYMBOL_VISIBLE core_typeid_
     }
 };
 
-BOOST_SYMBOL_VISIBLE inline void core_typeid_lib_id()
-{
+BOOST_SYMBOL_VISIBLE inline void core_typeid_lib_id(
+) {
 }
 
 template<class T> boost::core::typeinfo core_typeid_< T >::ti_( core_typeid_< T >::name(), &core_typeid_lib_id );
@@ -151,8 +151,8 @@ typedef std::type_info typeinfo;
 
 #endif
 
-inline std::string demangled_name( core::typeinfo const & ti )
-{
+inline std::string demangled_name( core::typeinfo const & ti 
+) {
     return core::demangle( ti.name() );
 }
 

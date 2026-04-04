@@ -132,6 +132,7 @@ void runSPAmixPlus(
     const std::string& spgrmGctaFile,   // empty → no GRM
     const std::string& afFile,          // empty → compute on-the-fly
     const std::string& outputFile,
+    const std::string& outPrefix,
     double spaCutoff,
     double outlierRatio,
     int    nthread,

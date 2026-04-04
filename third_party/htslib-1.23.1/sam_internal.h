@@ -44,8 +44,8 @@ void fastq_state_destroy(samFile *fp);
 // bam1_t data (re)allocation
 int sam_realloc_bam_data(bam1_t *b, size_t desired);
 
-static inline int realloc_bam_data(bam1_t *b, size_t desired)
-{
+static inline int realloc_bam_data(bam1_t *b, size_t desired
+) {
     if (desired <= b->m_data) return 0;
     return sam_realloc_bam_data(b, desired);
 }

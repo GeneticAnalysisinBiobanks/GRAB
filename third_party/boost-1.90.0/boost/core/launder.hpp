@@ -42,22 +42,22 @@ namespace core
 
 #if defined(BOOST_CORE_HAS_BUILTIN_LAUNDER)
 
-template<class T> T* launder( T* p )
-{
+template<class T> T* launder( T* p 
+) {
     return __builtin_launder( p );
 }
 
 #elif defined(BOOST_CORE_HAS_STD_LAUNDER)
 
-template<class T> T* launder( T* p )
-{
+template<class T> T* launder( T* p 
+) {
     return std::launder( p );
 }
 
 #else
 
-template<class T> T* launder( T* p )
-{
+template<class T> T* launder( T* p 
+) {
     return p;
 }
 

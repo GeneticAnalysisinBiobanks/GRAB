@@ -131,14 +131,14 @@ void hclose_abruptly(hFILE *fp);
 This would be called `herror()` and return true/false to parallel `ferror(3)`,
 but a networking-related `herror(3)` function already exists.
 */
-static inline int herrno(hFILE *fp)
-{
+static inline int herrno(hFILE *fp
+) {
     return fp->has_errno;
 }
 
 /// Clear the stream's error indicator
-static inline void hclearerr(hFILE *fp)
-{
+static inline void hclearerr(hFILE *fp
+) {
     fp->has_errno = 0;
 }
 
@@ -152,16 +152,16 @@ off_t hseek(hFILE *fp, off_t offset, int whence) HTS_RESULT_USED;
 /// Report the current stream offset
 /** @return  The offset within the stream, starting from zero.
 */
-static inline off_t htell(hFILE *fp)
-{
+static inline off_t htell(hFILE *fp
+) {
     return fp->offset + (fp->begin - fp->buffer);
 }
 
 /// Read one character from the stream
 /** @return  The character read, or `EOF` on end-of-file or error.
 */
-static inline int hgetc(hFILE *fp)
-{
+static inline int hgetc(hFILE *fp
+) {
     HTSLIB_EXPORT
     extern int hgetc2(hFILE *);
     return (fp->end > fp->begin)? (unsigned char) *(fp->begin++) : hgetc2(fp);
@@ -193,8 +193,8 @@ ssize_t hgetdelim(char *buffer, size_t size, int delim, hFILE *fp)
 Specialization of hgetdelim() for a `\n` delimiter.
 */
 static inline ssize_t HTS_RESULT_USED
-hgetln(char *buffer, size_t size, hFILE *fp)
-{
+hgetln(char *buffer, size_t size, hFILE *fp
+) {
     return hgetdelim(buffer, size, '\n', fp);
 }
 
@@ -232,8 +232,8 @@ The full _nbytes_ requested will be returned, except as limited by EOF
 or I/O errors.
 */
 static inline ssize_t HTS_RESULT_USED
-hread(hFILE *fp, void *buffer, size_t nbytes)
-{
+hread(hFILE *fp, void *buffer, size_t nbytes
+) {
     HTSLIB_EXPORT
     extern ssize_t hread2(hFILE *, void *, size_t, size_t);
 
@@ -247,8 +247,8 @@ hread(hFILE *fp, void *buffer, size_t nbytes)
 /// Write a character to the stream
 /** @return  The character written, or `EOF` if an error occurred.
 */
-static inline int hputc(int c, hFILE *fp)
-{
+static inline int hputc(int c, hFILE *fp
+) {
     HTSLIB_EXPORT
     extern int hputc2(int, hFILE *);
     if (fp->begin < fp->limit) *(fp->begin++) = c;
@@ -259,8 +259,8 @@ static inline int hputc(int c, hFILE *fp)
 /// Write a string to the stream
 /** @return  0 if successful, or `EOF` if an error occurred.
 */
-static inline int hputs(const char *text, hFILE *fp)
-{
+static inline int hputs(const char *text, hFILE *fp
+) {
     HTSLIB_EXPORT
     extern int hputs2(const char *, size_t, size_t, hFILE *);
 
@@ -277,8 +277,8 @@ static inline int hputs(const char *text, hFILE *fp)
 In the absence of I/O errors, the full _nbytes_ will be written.
 */
 static inline ssize_t HTS_RESULT_USED
-hwrite(hFILE *fp, const void *buffer, size_t nbytes)
-{
+hwrite(hFILE *fp, const void *buffer, size_t nbytes
+) {
     HTSLIB_EXPORT
     extern ssize_t hwrite2(hFILE *, const void *, size_t, size_t);
     HTSLIB_EXPORT

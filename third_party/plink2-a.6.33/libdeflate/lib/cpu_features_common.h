@@ -38,8 +38,8 @@ struct cpu_feature {
 static inline void
 disable_cpu_features_for_testing(__attribute__((unused)) u32 *features,
 				 __attribute__((unused)) const struct cpu_feature *feature_table,
-				 __attribute__((unused)) size_t feature_table_length)
-{
+				 __attribute__((unused)) size_t feature_table_length
+) {
 }
 
 #endif /* LIB_CPU_FEATURES_COMMON_H */

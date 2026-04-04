@@ -103,8 +103,8 @@ do {									\
 } while (0)
 
 static u32 MAYBE_UNUSED
-adler32_generic(u32 adler, const u8 *p, size_t len)
-{
+adler32_generic(u32 adler, const u8 *p, size_t len
+) {
 	u32 s1 = adler & 0xFFFF;
 	u32 s2 = adler >> 16;
 
@@ -138,8 +138,8 @@ static u32 dispatch_adler32(u32 adler, const u8 *p, size_t len);
 static volatile adler32_func_t adler32_impl = dispatch_adler32;
 
 /* Choose the best implementation at runtime. */
-static u32 dispatch_adler32(u32 adler, const u8 *p, size_t len)
-{
+static u32 dispatch_adler32(u32 adler, const u8 *p, size_t len
+) {
 	adler32_func_t f = arch_select_adler32_func();
 
 	if (f == NULL)
@@ -154,8 +154,8 @@ static u32 dispatch_adler32(u32 adler, const u8 *p, size_t len)
 #endif
 
 LIBDEFLATEAPI u32
-libdeflate_adler32(u32 adler, const void *buffer, size_t len)
-{
+libdeflate_adler32(u32 adler, const void *buffer, size_t len
+) {
 	if (buffer == NULL) /* Return initial value. */
 		return 1;
 	return adler32_impl(adler, buffer, len);

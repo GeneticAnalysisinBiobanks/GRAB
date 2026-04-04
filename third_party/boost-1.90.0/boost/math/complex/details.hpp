@@ -21,42 +21,42 @@
 namespace boost{ namespace math{ namespace detail{
 
 template <class T>
-inline T mult_minus_one(const T& t)
-{
+inline T mult_minus_one(const T& t
+) {
    return (boost::math::isnan)(t) ? t : (boost::math::changesign)(t);
 }
 
 template <class T>
-inline std::complex<T> mult_i(const std::complex<T>& t)
-{
+inline std::complex<T> mult_i(const std::complex<T>& t
+) {
    return std::complex<T>(mult_minus_one(t.imag()), t.real());
 }
 
 template <class T>
-inline std::complex<T> mult_minus_i(const std::complex<T>& t)
-{
+inline std::complex<T> mult_minus_i(const std::complex<T>& t
+) {
    return std::complex<T>(t.imag(), mult_minus_one(t.real()));
 }
 
 template <class T>
-inline T safe_max(T t)
-{
+inline T safe_max(T t
+) {
    return std::sqrt((std::numeric_limits<T>::max)()) / t;
 }
-inline long double safe_max(long double t)
-{
+inline long double safe_max(long double t
+) {
    // long double sqrt often returns infinity due to
    // insufficient internal precision:
    return std::sqrt((std::numeric_limits<double>::max)()) / t;
 }
 
 template <class T>
-inline T safe_min(T t)
-{
+inline T safe_min(T t
+) {
    return std::sqrt((std::numeric_limits<T>::min)()) * t;
 }
-inline long double safe_min(long double t)
-{
+inline long double safe_min(long double t
+) {
    // long double sqrt often returns zero due to
    // insufficient internal precision:
    return std::sqrt((std::numeric_limits<double>::min)()) * t;

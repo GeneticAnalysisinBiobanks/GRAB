@@ -19,6 +19,7 @@
 
 #include "io/geno_data.hpp"
 #include <fstream>
+#include <memory>
 #include <string>
 #include <vector>
 #include <Eigen/Dense>
@@ -106,9 +107,10 @@ void getAFVecFromModel(
 
 class IndivAFWriter {
 public:
-  enum class Mode { Binary, GzipText, PlainText };
+  enum class Mode { Binary, Text };
 
-  // Infer mode from outputFile extension: .bin → Binary, .gz → GzipText, else PlainText.
+  // Infer mode from outputFile extension: .bin → Binary, else Text.
+  // Text mode supports .gz, .zst, or plain via TextWriter.
   IndivAFWriter(
       const std::string& outputFile,
       uint64_t           nBimMarkers,  // total .bim lines (binary pre-alloc)
@@ -133,9 +135,8 @@ private:
   // Binary output
   std::fstream m_binOut;
 
-  // Text / gz output (gzFile is a void*)
-  void*       m_gz;          // gzFile
-  std::ofstream m_textOut;
+  // Text output (TextWriter handles gz/zst/plain)
+  std::unique_ptr<class TextWriter> m_writer;
 
   bool m_closed = false;
 };

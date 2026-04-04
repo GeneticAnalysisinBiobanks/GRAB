@@ -24,8 +24,8 @@ namespace boost::math::ccmath {
 namespace detail {
 
 template <typename T>
-constexpr T fmod_impl(T x, T y)
-{
+constexpr T fmod_impl(T x, T y
+) {
     if (x == y)
     {
         return static_cast<T>(0);
@@ -44,8 +44,8 @@ constexpr T fmod_impl(T x, T y)
 } // Namespace detail
 
 template <typename Real, std::enable_if_t<!std::is_integral_v<Real>, bool> = true>
-constexpr Real fmod(Real x, Real y)
-{
+constexpr Real fmod(Real x, Real y
+) {
     if(BOOST_MATH_IS_CONSTANT_EVALUATED(x))
     {
         if (boost::math::ccmath::abs(x) == static_cast<Real>(0) && y != static_cast<Real>(0))
@@ -83,8 +83,8 @@ constexpr Real fmod(Real x, Real y)
 }
 
 template <typename T1, typename T2>
-constexpr auto fmod(T1 x, T2 y)
-{
+constexpr auto fmod(T1 x, T2 y
+) {
     if(BOOST_MATH_IS_CONSTANT_EVALUATED(x))
     {
         using promoted_type = boost::math::tools::promote_args_t<T1, T2>;
@@ -97,14 +97,14 @@ constexpr auto fmod(T1 x, T2 y)
     }
 }
 
-constexpr float fmodf(float x, float y)
-{
+constexpr float fmodf(float x, float y
+) {
     return boost::math::ccmath::fmod(x, y);
 }
 
 #ifndef BOOST_MATH_NO_LONG_DOUBLE_MATH_FUNCTIONS
-constexpr long double fmodl(long double x, long double y)
-{
+constexpr long double fmodl(long double x, long double y
+) {
     return boost::math::ccmath::fmod(x, y);
 }
 #endif

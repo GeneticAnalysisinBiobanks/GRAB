@@ -53,16 +53,16 @@ BOOST_MATH_GPU_ENABLED inline constexpr int digits(BOOST_MATH_EXPLICIT_TEMPLATE_
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline constexpr T max_value(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE(T))  noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED inline constexpr T max_value(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE(T))  noexcept(boost::math::is_floating_point<T>::value
+) {
    static_assert( ::boost::math::numeric_limits<T>::is_specialized, "Type T must be specialized");
    return (boost::math::numeric_limits<T>::max)();
 } // Also used as a finite 'infinite' value for - and +infinity, for example:
 // -max_value<double> = -1.79769e+308, max_value<double> = 1.79769e+308.
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline constexpr T min_value(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE(T)) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED inline constexpr T min_value(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE(T)) noexcept(boost::math::is_floating_point<T>::value
+) {
    static_assert( ::boost::math::numeric_limits<T>::is_specialized, "Type T must be specialized");
 
    return (boost::math::numeric_limits<T>::min)();
@@ -78,48 +78,48 @@ namespace detail{
 // For type float first:
 //
 template <class T>
-BOOST_MATH_GPU_ENABLED constexpr T log_max_value(const boost::math::integral_constant<int, 128>& BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE(T)) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED constexpr T log_max_value(const boost::math::integral_constant<int, 128>& BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE(T)) noexcept(boost::math::is_floating_point<T>::value
+) {
    return 88.0f;
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED constexpr T log_min_value(const boost::math::integral_constant<int, 128>& BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE(T)) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED constexpr T log_min_value(const boost::math::integral_constant<int, 128>& BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE(T)) noexcept(boost::math::is_floating_point<T>::value
+) {
    return -87.0f;
 }
 //
 // Now double:
 //
 template <class T>
-BOOST_MATH_GPU_ENABLED constexpr T log_max_value(const boost::math::integral_constant<int, 1024>& BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE(T)) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED constexpr T log_max_value(const boost::math::integral_constant<int, 1024>& BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE(T)) noexcept(boost::math::is_floating_point<T>::value
+) {
    return 709.0;
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED constexpr T log_min_value(const boost::math::integral_constant<int, 1024>& BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE(T)) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED constexpr T log_min_value(const boost::math::integral_constant<int, 1024>& BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE(T)) noexcept(boost::math::is_floating_point<T>::value
+) {
    return -708.0;
 }
 //
 // 80 and 128-bit long doubles:
 //
 template <class T>
-BOOST_MATH_GPU_ENABLED inline constexpr T log_max_value(const boost::math::integral_constant<int, 16384>& BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE(T)) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED inline constexpr T log_max_value(const boost::math::integral_constant<int, 16384>& BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE(T)) noexcept(boost::math::is_floating_point<T>::value
+) {
    return 11356.0L;
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline constexpr T log_min_value(const boost::math::integral_constant<int, 16384>& BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE(T)) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED inline constexpr T log_min_value(const boost::math::integral_constant<int, 16384>& BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE(T)) noexcept(boost::math::is_floating_point<T>::value
+) {
    return -11355.0L;
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline T log_max_value(const boost::math::integral_constant<int, 0>& BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE(T))
-{
+BOOST_MATH_GPU_ENABLED inline T log_max_value(const boost::math::integral_constant<int, 0>& BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE(T)
+) {
    BOOST_MATH_STD_USING
 #ifdef __SUNPRO_CC
    static const T m = boost::math::tools::max_value<T>();
@@ -131,8 +131,8 @@ BOOST_MATH_GPU_ENABLED inline T log_max_value(const boost::math::integral_consta
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline T log_min_value(const boost::math::integral_constant<int, 0>& BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE(T))
-{
+BOOST_MATH_GPU_ENABLED inline T log_min_value(const boost::math::integral_constant<int, 0>& BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE(T)
+) {
    BOOST_MATH_STD_USING
 #ifdef __SUNPRO_CC
    static const T m = boost::math::tools::min_value<T>();
@@ -144,15 +144,15 @@ BOOST_MATH_GPU_ENABLED inline T log_min_value(const boost::math::integral_consta
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED constexpr T epsilon(const boost::math::true_type& BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE(T)) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED constexpr T epsilon(const boost::math::true_type& BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE(T)) noexcept(boost::math::is_floating_point<T>::value
+) {
    return boost::math::numeric_limits<T>::epsilon();
 }
 
 #if defined(__GNUC__) && ((LDBL_MANT_DIG == 106) || (__LDBL_MANT_DIG__ == 106))
 template <>
-BOOST_MATH_GPU_ENABLED inline constexpr long double epsilon<long double>(const boost::math::true_type& BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE(long double)) noexcept(boost::math::is_floating_point<long double>::value)
-{
+BOOST_MATH_GPU_ENABLED inline constexpr long double epsilon<long double>(const boost::math::true_type& BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE(long double)) noexcept(boost::math::is_floating_point<long double>::value
+) {
    // numeric_limits on Darwin (and elsewhere) tells lies here:
    // the issue is that long double on a few platforms is
    // really a "double double" which has a non-contiguous
@@ -170,8 +170,8 @@ BOOST_MATH_GPU_ENABLED inline constexpr long double epsilon<long double>(const b
 #endif
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline T epsilon(const boost::math::false_type& BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE(T))
-{
+BOOST_MATH_GPU_ENABLED inline T epsilon(const boost::math::false_type& BOOST_MATH_APPEND_EXPLICIT_TEMPLATE_TYPE(T)
+) {
    // Note: don't cache result as precision may vary at runtime:
    BOOST_MATH_STD_USING  // for ADL of std names
    return ldexp(static_cast<T>(1), 1-policies::digits<T, policies::policy<> >());
@@ -210,8 +210,8 @@ struct log_limit_noexcept_traits : public log_limit_noexcept_traits_imp<T, boost
 #endif
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline T log_max_value(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE(T)) noexcept(detail::log_limit_noexcept_traits<T>::value)
-{
+BOOST_MATH_GPU_ENABLED inline T log_max_value(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE(T)) noexcept(detail::log_limit_noexcept_traits<T>::value
+) {
 #ifndef BOOST_MATH_HAS_NVRTC
    #ifndef BOOST_NO_LIMITS_COMPILE_TIME_CONSTANTS
       return detail::log_max_value<T>(typename detail::log_limit_traits<T>::tag_type());
@@ -227,8 +227,8 @@ BOOST_MATH_GPU_ENABLED inline T log_max_value(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE(
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline T log_min_value(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE(T)) noexcept(detail::log_limit_noexcept_traits<T>::value)
-{
+BOOST_MATH_GPU_ENABLED inline T log_min_value(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE(T)) noexcept(detail::log_limit_noexcept_traits<T>::value
+) {
 #ifndef BOOST_MATH_HAS_NVRTC
    #ifndef BOOST_NO_LIMITS_COMPILE_TIME_CONSTANTS
       return detail::log_min_value<T>(typename detail::log_limit_traits<T>::tag_type());
@@ -248,8 +248,8 @@ BOOST_MATH_GPU_ENABLED inline T log_min_value(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE(
 #endif
 
 template <class T>
-BOOST_MATH_GPU_ENABLED constexpr T epsilon(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(T)) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED constexpr T epsilon(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(T)) noexcept(boost::math::is_floating_point<T>::value
+) {
    // NVRTC does not like this dispatching method so we just skip to where we want to go
 #ifndef BOOST_MATH_HAS_NVRTC
    #ifndef BOOST_NO_LIMITS_COMPILE_TIME_CONSTANTS
@@ -267,118 +267,118 @@ BOOST_MATH_GPU_ENABLED constexpr T epsilon(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPE
 namespace detail{
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline constexpr T root_epsilon_imp(const boost::math::integral_constant<int, 24>&) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED inline constexpr T root_epsilon_imp(const boost::math::integral_constant<int, 24>&) noexcept(boost::math::is_floating_point<T>::value
+) {
    return static_cast<T>(0.00034526698300124390839884978618400831996329879769945L);
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline constexpr T root_epsilon_imp(const T*, const boost::math::integral_constant<int, 53>&) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED inline constexpr T root_epsilon_imp(const T*, const boost::math::integral_constant<int, 53>&) noexcept(boost::math::is_floating_point<T>::value
+) {
    return static_cast<T>(0.1490116119384765625e-7L);
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline constexpr T root_epsilon_imp(const T*, const boost::math::integral_constant<int, 64>&) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED inline constexpr T root_epsilon_imp(const T*, const boost::math::integral_constant<int, 64>&) noexcept(boost::math::is_floating_point<T>::value
+) {
    return static_cast<T>(0.32927225399135962333569506281281311031656150598474e-9L);
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline constexpr T root_epsilon_imp(const T*, const boost::math::integral_constant<int, 113>&) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED inline constexpr T root_epsilon_imp(const T*, const boost::math::integral_constant<int, 113>&) noexcept(boost::math::is_floating_point<T>::value
+) {
    return static_cast<T>(0.1387778780781445675529539585113525390625e-16L);
 }
 
 template <class T, class Tag>
-BOOST_MATH_GPU_ENABLED inline T root_epsilon_imp(const T*, const Tag&)
-{
+BOOST_MATH_GPU_ENABLED inline T root_epsilon_imp(const T*, const Tag&
+) {
    BOOST_MATH_STD_USING
    BOOST_MATH_STATIC_LOCAL_VARIABLE const T r_eps = sqrt(tools::epsilon<T>());
    return r_eps;
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline T root_epsilon_imp(const T*, const boost::math::integral_constant<int, 0>&)
-{
+BOOST_MATH_GPU_ENABLED inline T root_epsilon_imp(const T*, const boost::math::integral_constant<int, 0>&
+) {
    BOOST_MATH_STD_USING
    return sqrt(tools::epsilon<T>());
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline constexpr T cbrt_epsilon_imp(const boost::math::integral_constant<int, 24>&) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED inline constexpr T cbrt_epsilon_imp(const boost::math::integral_constant<int, 24>&) noexcept(boost::math::is_floating_point<T>::value
+) {
    return static_cast<T>(0.0049215666011518482998719164346805794944150447839903L);
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline constexpr T cbrt_epsilon_imp(const T*, const boost::math::integral_constant<int, 53>&) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED inline constexpr T cbrt_epsilon_imp(const T*, const boost::math::integral_constant<int, 53>&) noexcept(boost::math::is_floating_point<T>::value
+) {
    return static_cast<T>(6.05545445239333906078989272793696693569753008995e-6L);
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline constexpr T cbrt_epsilon_imp(const T*, const boost::math::integral_constant<int, 64>&) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED inline constexpr T cbrt_epsilon_imp(const T*, const boost::math::integral_constant<int, 64>&) noexcept(boost::math::is_floating_point<T>::value
+) {
    return static_cast<T>(4.76837158203125e-7L);
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline constexpr T cbrt_epsilon_imp(const T*, const boost::math::integral_constant<int, 113>&) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED inline constexpr T cbrt_epsilon_imp(const T*, const boost::math::integral_constant<int, 113>&) noexcept(boost::math::is_floating_point<T>::value
+) {
    return static_cast<T>(5.7749313854154005630396773604745549542403508090496e-12L);
 }
 
 template <class T, class Tag>
-BOOST_MATH_GPU_ENABLED inline T cbrt_epsilon_imp(const T*, const Tag&)
-{
+BOOST_MATH_GPU_ENABLED inline T cbrt_epsilon_imp(const T*, const Tag&
+) {
    BOOST_MATH_STD_USING;
    static const T cbrt_eps = pow(tools::epsilon<T>(), T(1) / 3);
    return cbrt_eps;
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline T cbrt_epsilon_imp(const T*, const boost::math::integral_constant<int, 0>&)
-{
+BOOST_MATH_GPU_ENABLED inline T cbrt_epsilon_imp(const T*, const boost::math::integral_constant<int, 0>&
+) {
    BOOST_MATH_STD_USING;
    return pow(tools::epsilon<T>(), T(1) / 3);
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline constexpr T forth_root_epsilon_imp(const T*, const boost::math::integral_constant<int, 24>&) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED inline constexpr T forth_root_epsilon_imp(const T*, const boost::math::integral_constant<int, 24>&) noexcept(boost::math::is_floating_point<T>::value
+) {
    return static_cast<T>(0.018581361171917516667460937040007436176452688944747L);
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline constexpr T forth_root_epsilon_imp(const T*, const boost::math::integral_constant<int, 53>&) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED inline constexpr T forth_root_epsilon_imp(const T*, const boost::math::integral_constant<int, 53>&) noexcept(boost::math::is_floating_point<T>::value
+) {
    return static_cast<T>(0.0001220703125L);
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline constexpr T forth_root_epsilon_imp(const T*, const boost::math::integral_constant<int, 64>&) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED inline constexpr T forth_root_epsilon_imp(const T*, const boost::math::integral_constant<int, 64>&) noexcept(boost::math::is_floating_point<T>::value
+) {
    return static_cast<T>(0.18145860519450699870567321328132261891067079047605e-4L);
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline constexpr T forth_root_epsilon_imp(const T*, const boost::math::integral_constant<int, 113>&) noexcept(boost::math::is_floating_point<T>::value)
-{
+BOOST_MATH_GPU_ENABLED inline constexpr T forth_root_epsilon_imp(const T*, const boost::math::integral_constant<int, 113>&) noexcept(boost::math::is_floating_point<T>::value
+) {
    return static_cast<T>(0.37252902984619140625e-8L);
 }
 
 template <class T, class Tag>
-BOOST_MATH_GPU_ENABLED inline T forth_root_epsilon_imp(const T*, const Tag&)
-{
+BOOST_MATH_GPU_ENABLED inline T forth_root_epsilon_imp(const T*, const Tag&
+) {
    BOOST_MATH_STD_USING
    static const T r_eps = sqrt(sqrt(tools::epsilon<T>()));
    return r_eps;
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline T forth_root_epsilon_imp(const T*, const boost::math::integral_constant<int, 0>&)
-{
+BOOST_MATH_GPU_ENABLED inline T forth_root_epsilon_imp(const T*, const boost::math::integral_constant<int, 0>&
+) {
    BOOST_MATH_STD_USING
    return sqrt(sqrt(tools::epsilon<T>()));
 }
@@ -393,20 +393,20 @@ struct root_epsilon_traits
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline constexpr T root_epsilon() noexcept(boost::math::is_floating_point<T>::value && detail::root_epsilon_traits<T>::has_noexcept)
-{
+BOOST_MATH_GPU_ENABLED inline constexpr T root_epsilon() noexcept(boost::math::is_floating_point<T>::value && detail::root_epsilon_traits<T>::has_noexcept
+) {
    return detail::root_epsilon_imp(static_cast<T const*>(nullptr), typename detail::root_epsilon_traits<T>::tag_type());
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline constexpr T cbrt_epsilon() noexcept(boost::math::is_floating_point<T>::value && detail::root_epsilon_traits<T>::has_noexcept)
-{
+BOOST_MATH_GPU_ENABLED inline constexpr T cbrt_epsilon() noexcept(boost::math::is_floating_point<T>::value && detail::root_epsilon_traits<T>::has_noexcept
+) {
    return detail::cbrt_epsilon_imp(static_cast<T const*>(nullptr), typename detail::root_epsilon_traits<T>::tag_type());
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline constexpr T forth_root_epsilon() noexcept(boost::math::is_floating_point<T>::value && detail::root_epsilon_traits<T>::has_noexcept)
-{
+BOOST_MATH_GPU_ENABLED inline constexpr T forth_root_epsilon() noexcept(boost::math::is_floating_point<T>::value && detail::root_epsilon_traits<T>::has_noexcept
+) {
    return detail::forth_root_epsilon_imp(static_cast<T const*>(nullptr), typename detail::root_epsilon_traits<T>::tag_type());
 }
 

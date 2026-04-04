@@ -18,8 +18,8 @@
 namespace boost::math::ccmath {
 
 template <typename T>
-inline constexpr bool isfinite(T x)
-{
+inline constexpr bool isfinite(T x
+) {
     if(BOOST_MATH_IS_CONSTANT_EVALUATED(x))
     {
         // bool isfinite (IntegralType arg) is a set of overloads accepting the arg argument of any integral type

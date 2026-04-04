@@ -28,6 +28,9 @@ static void printShortHelp() {
         "  grab --method METHOD  --bfile PREFIX  --null-resid FILE  --out FILE  [OPTIONS]\n"
         "  grab --cal-ind-af-coef   --bfile PREFIX  --eigenvec FILE  --out FILE\n"
         "  grab --cal-pairwise-ibd  --sp-grm-* FILE  --bfile PREFIX  --out FILE\n"
+        "  grab --cal-admix-phi     --admix-bfile PREFIX  --sp-grm-* FILE  --out FILE\n"
+        "  grab --make-abed  --vcf FILE  --rfmix-msp FILE  --out-prefix PREFIX\n"
+        "  grab --make-abed  --admix-text-prefix PREFIX   --out-prefix PREFIX\n"
         "\n"
         "Methods:\n");
     for (const MethodDef* const* p = kAllMethods; *p; ++p)
@@ -37,16 +40,18 @@ static void printShortHelp() {
         std::fprintf(stderr, "  --%-20s %s\n", (*p)->name, (*p)->desc);
     std::fprintf(stderr,
         "\nRun 'grab --help <topic>' for details.  Topics:\n"
-        "  SPACox  SPAGRM  SPAmix  SPAmixPlus  POLMM  SPAsqr  WtCoxG  LEAF\n"
-        "  cal-ind-af-coef  cal-pairwise-ibd  options\n"
-        "  null-resid  covar  eigenvec  ref-af  sp-grm  pairwise-ibd  ind-af-coef\n");
+        "  SPACox  SPAGRM  SPAmix  SPAmixPlus  SPAmixLocalPlus  POLMM  SPAsqr  WtCoxG  LEAF\n"
+        "  cal-ind-af-coef  cal-pairwise-ibd  cal-admix-phi  make-abed  options\n"
+        "  null-resid  covar  eigenvec  ref-af  sp-grm  pairwise-ibd  ind-af-coef  admix-phi\n");
 }
 
 // ── Method help (generated from MethodDef) ─────────────────────────
 
 static void printMethodHelp(const MethodDef* m) {
     bool isUtil = (std::strcmp(m->name, "cal-ind-af-coef") == 0 ||
-                   std::strcmp(m->name, "cal-pairwise-ibd") == 0);
+                   std::strcmp(m->name, "cal-pairwise-ibd") == 0 ||
+                   std::strcmp(m->name, "cal-admix-phi") == 0 ||
+                   std::strcmp(m->name, "make-abed") == 0);
     if (isUtil)
         std::fprintf(stderr, "Mode: --%s -- %s\n", m->name, m->desc);
     else

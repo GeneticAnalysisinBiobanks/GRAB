@@ -14,8 +14,8 @@ namespace reverse_mode {
 template<typename RealType, size_t DerivativeOrder, typename LHS, typename RHS>
 mult_expr<RealType, DerivativeOrder, LHS, RHS> operator*(
     const expression<RealType, DerivativeOrder, LHS> &lhs,
-    const expression<RealType, DerivativeOrder, RHS> &rhs)
-{
+    const expression<RealType, DerivativeOrder, RHS> &rhs
+) {
     return mult_expr<RealType, DerivativeOrder, LHS, RHS>(lhs, rhs);
 }
 
@@ -29,8 +29,8 @@ template<typename RealType2,
          typename ARG,
          typename = typename std::enable_if<!detail::is_expression<RealType2>::value>::type>
 mult_const_expr<RealType1, DerivativeOrder, ARG> operator*(
-    const expression<RealType1, DerivativeOrder, ARG> &arg, const RealType2 &v)
-{
+    const expression<RealType1, DerivativeOrder, ARG> &arg, const RealType2 &v
+) {
     return mult_const_expr<RealType1, DerivativeOrder, ARG>(arg, static_cast<RealType1>(v));
 }
 template<typename RealType2,
@@ -39,8 +39,8 @@ template<typename RealType2,
          typename ARG,
          typename = typename std::enable_if<!detail::is_expression<RealType2>::value>::type>
 mult_const_expr<RealType1, DerivativeOrder, ARG> operator*(
-    const RealType2 &v, const expression<RealType1, DerivativeOrder, ARG> &arg)
-{
+    const RealType2 &v, const expression<RealType1, DerivativeOrder, ARG> &arg
+) {
     return mult_const_expr<RealType1, DerivativeOrder, ARG>(arg, static_cast<RealType1>(v));
 }
 /****************************************************************************************************************/
@@ -48,8 +48,8 @@ mult_const_expr<RealType1, DerivativeOrder, ARG> operator*(
 template<typename RealType, size_t DerivativeOrder, typename LHS, typename RHS>
 add_expr<RealType, DerivativeOrder, LHS, RHS> operator+(
     const expression<RealType, DerivativeOrder, LHS> &lhs,
-    const expression<RealType, DerivativeOrder, RHS> &rhs)
-{
+    const expression<RealType, DerivativeOrder, RHS> &rhs
+) {
     return add_expr<RealType, DerivativeOrder, LHS, RHS>(lhs, rhs);
 }
 template<typename RealType2,
@@ -58,8 +58,8 @@ template<typename RealType2,
          typename ARG,
          typename = typename std::enable_if<!detail::is_expression<RealType2>::value>::type>
 add_const_expr<RealType1, DerivativeOrder, ARG> operator+(
-    const expression<RealType1, DerivativeOrder, ARG> &arg, const RealType2 &v)
-{
+    const expression<RealType1, DerivativeOrder, ARG> &arg, const RealType2 &v
+) {
     return add_const_expr<RealType1, DerivativeOrder, ARG>(arg, static_cast<RealType1>(v));
 }
 template<typename RealType2,
@@ -68,8 +68,8 @@ template<typename RealType2,
          typename ARG,
          typename = typename std::enable_if<!detail::is_expression<RealType2>::value>::type>
 add_const_expr<RealType1, DerivativeOrder, ARG> operator+(
-    const RealType2 &v, const expression<RealType1, DerivativeOrder, ARG> &arg)
-{
+    const RealType2 &v, const expression<RealType1, DerivativeOrder, ARG> &arg
+) {
     return add_const_expr<RealType1, DerivativeOrder, ARG>(arg, static_cast<RealType1>(v));
 }
 /****************************************************************************************************************/
@@ -78,8 +78,8 @@ add_const_expr<RealType1, DerivativeOrder, ARG> operator+(
  *  negation (-1.0*rvar) */
 template<typename RealType, size_t DerivativeOrder, typename ARG>
 mult_const_expr<RealType, DerivativeOrder, ARG> operator-(
-    const expression<RealType, DerivativeOrder, ARG> &arg)
-{
+    const expression<RealType, DerivativeOrder, ARG> &arg
+) {
     return mult_const_expr<RealType, DerivativeOrder, ARG>(arg, static_cast<RealType>(-1.0));
 }
 
@@ -88,8 +88,8 @@ mult_const_expr<RealType, DerivativeOrder, ARG> operator-(
 template<typename RealType, size_t DerivativeOrder, typename LHS, typename RHS>
 sub_expr<RealType, DerivativeOrder, LHS, RHS> operator-(
     const expression<RealType, DerivativeOrder, LHS> &lhs,
-    const expression<RealType, DerivativeOrder, RHS> &rhs)
-{
+    const expression<RealType, DerivativeOrder, RHS> &rhs
+) {
     return sub_expr<RealType, DerivativeOrder, LHS, RHS>(lhs, rhs);
 }
 
@@ -101,8 +101,8 @@ template<typename RealType2,
          typename ARG,
          typename = typename std::enable_if<!detail::is_expression<RealType2>::value>::type>
 add_const_expr<RealType1, DerivativeOrder, ARG> operator-(
-    const expression<RealType1, DerivativeOrder, ARG> &arg, const RealType2 &v)
-{
+    const expression<RealType1, DerivativeOrder, ARG> &arg, const RealType2 &v
+) {
     /* rvar - float = rvar + (-float) */
     return add_const_expr<RealType1, DerivativeOrder, ARG>(arg, static_cast<RealType1>(-v));
 }
@@ -116,8 +116,8 @@ template<typename RealType2,
          size_t DerivativeOrder,
          typename ARG,
          typename = typename std::enable_if<!detail::is_expression<RealType2>::value>::type>
-auto operator-(const RealType2 &v, const expression<RealType1, DerivativeOrder, ARG> &arg)
-{
+auto operator-(const RealType2 &v, const expression<RealType1, DerivativeOrder, ARG> &arg
+) {
     auto neg = -arg;
     return neg + static_cast<RealType1>(v);
 }
@@ -126,8 +126,8 @@ auto operator-(const RealType2 &v, const expression<RealType1, DerivativeOrder, 
 template<typename RealType, size_t DerivativeOrder, typename LHS, typename RHS>
 div_expr<RealType, DerivativeOrder, LHS, RHS> operator/(
     const expression<RealType, DerivativeOrder, LHS> &lhs,
-    const expression<RealType, DerivativeOrder, RHS> &rhs)
-{
+    const expression<RealType, DerivativeOrder, RHS> &rhs
+) {
     return div_expr<RealType, DerivativeOrder, LHS, RHS>(lhs, rhs);
 }
 
@@ -137,8 +137,8 @@ template<typename RealType2,
          typename ARG,
          typename = typename std::enable_if<!detail::is_expression<RealType2>::value>::type>
 const_div_by_expr<RealType1, DerivativeOrder, ARG> operator/(
-    const RealType2 &v, const expression<RealType1, DerivativeOrder, ARG> &arg)
-{
+    const RealType2 &v, const expression<RealType1, DerivativeOrder, ARG> &arg
+) {
     return const_div_by_expr<RealType1, DerivativeOrder, ARG>(arg, static_cast<RealType1>(v));
 }
 
@@ -148,8 +148,8 @@ template<typename RealType2,
          typename ARG,
          typename = typename std::enable_if<!detail::is_expression<RealType2>::value>::type>
 div_by_const_expr<RealType1, DerivativeOrder, ARG> operator/(
-    const expression<RealType1, DerivativeOrder, ARG> &arg, const RealType2 &v)
-{
+    const expression<RealType1, DerivativeOrder, ARG> &arg, const RealType2 &v
+) {
     return div_by_const_expr<RealType1, DerivativeOrder, ARG>(arg, static_cast<RealType1>(v));
 }
 } // namespace reverse_mode

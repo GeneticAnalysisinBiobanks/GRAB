@@ -60,8 +60,8 @@
  */
 
 static u32 ATTRIBUTES MAYBE_UNUSED
-FUNCNAME(u32 adler, const u8 *p, size_t len)
-{
+FUNCNAME(u32 adler, const u8 *p, size_t len
+) {
 	const size_t max_chunk_len =
 		MIN(MAX_CHUNK_LEN, IMPL_MAX_CHUNK_LEN) -
 		(MIN(MAX_CHUNK_LEN, IMPL_MAX_CHUNK_LEN) % IMPL_SEGMENT_LEN);

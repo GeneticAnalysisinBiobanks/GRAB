@@ -34,8 +34,8 @@
 namespace boost::math {
 
 template<class Real, int p, int order>
-std::vector<Real> daubechies_scaling_dyadic_grid(int64_t j_max)
-{
+std::vector<Real> daubechies_scaling_dyadic_grid(int64_t j_max
+) {
     using std::isnan;
     using std::sqrt;
     auto c = boost::math::filters::daubechies_scaling_filter<Real, p>();

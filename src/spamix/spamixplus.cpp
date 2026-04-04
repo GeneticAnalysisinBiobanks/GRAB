@@ -59,8 +59,8 @@ SPAmixPlusMethod::SPAmixPlusMethod(
     m_AFVec(m_N),
     m_R_new(m_N),
     m_mafOutlier(static_cast<int>(outlier.posOutlier.size())),
-    m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size()))
-{}
+    m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size())
+) {}
 
 // On-the-fly AF + GRM
 SPAmixPlusMethod::SPAmixPlusMethod(
@@ -89,8 +89,8 @@ SPAmixPlusMethod::SPAmixPlusMethod(
     m_AFVec(m_N),
     m_R_new(m_N),
     m_mafOutlier(static_cast<int>(outlier.posOutlier.size())),
-    m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size()))
-{}
+    m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size())
+) {}
 
 // ── Without GRM (SPAmix) ───────────────────────────────────────────
 
@@ -119,8 +119,8 @@ SPAmixPlusMethod::SPAmixPlusMethod(
     m_AFVec(m_N),
     m_R_new(0),
     m_mafOutlier(static_cast<int>(outlier.posOutlier.size())),
-    m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size()))
-{}
+    m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size())
+) {}
 
 // On-the-fly AF, no GRM
 SPAmixPlusMethod::SPAmixPlusMethod(
@@ -148,8 +148,8 @@ SPAmixPlusMethod::SPAmixPlusMethod(
     m_AFVec(m_N),
     m_R_new(0),
     m_mafOutlier(static_cast<int>(outlier.posOutlier.size())),
-    m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size()))
-{}
+    m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size())
+) {}
 
 std::unique_ptr<MethodBase> SPAmixPlusMethod::clone() const {
   if (m_hasGRM) {
@@ -321,14 +321,15 @@ void runSPAmixPlus(
     const std::string& spgrmGctaFile,
     const std::string& afFile,
     const std::string& outputFile,
+    const std::string& outPrefix,
     double spaCutoff,
     double outlierRatio,
     int    nthread,
     int    nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff)
-{
+    double minMacCutoff
+) {
   // ---- Load residual file and PC data ----
   infoMsg("Loading residual file: %s", residFile.c_str());
   auto famIIDs = parseGenoIIDs(geno);
@@ -397,17 +398,23 @@ void runSPAmixPlus(
 
   // ---- Per-residual-column loop ----
   const int nRC = sd.residOneCols();
-  if (nRC > 1)
+  // --out: single column only; --out-prefix: all columns
+  const bool multiMode = !outPrefix.empty();
+  const int nLoop = multiMode ? nRC : 1;
+  if (nRC > 1 && multiMode)
     infoMsg("Multi-column residual file: %d columns", nRC);
+  if (nRC > 1 && !multiMode)
+    infoMsg("Multi-column residual file: %d columns (--out: using column 1 only)", nRC);
 
-  for (int rc = 0; rc < nRC; ++rc) {
+  for (int rc = 0; rc < nLoop; ++rc) {
     Eigen::VectorXd colBuf;
     if (nRC > 1) colBuf = sd.residMatrix().col(rc);
     const Eigen::VectorXd& resid = (nRC > 1) ? colBuf : sd.residuals();
 
-    std::string outFile = (nRC == 1) ? outputFile
-        : (outputFile + "." + std::to_string(rc + 1) + ".gz");
-    if (nRC > 1)
+    std::string outFile = multiMode
+        ? (outPrefix + "." + std::to_string(rc + 1) + ".tsv")
+        : outputFile;
+    if (nLoop > 1)
       infoMsg("  Column %d/%d%s -> %s", rc + 1, nRC,
               (rc < static_cast<int>(sd.residColNames().size())
                    ? (" (" + sd.residColNames()[rc] + ")").c_str() : ""),

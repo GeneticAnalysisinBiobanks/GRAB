@@ -15,8 +15,8 @@ static
 ZSTD_ALLOW_POINTER_OVERFLOW_ATTR
 void ZSTD_fillHashTableForCDict(ZSTD_MatchState_t* ms,
                         const void* const end,
-                        ZSTD_dictTableLoadMethod_e dtlm)
-{
+                        ZSTD_dictTableLoadMethod_e dtlm
+) {
     const ZSTD_compressionParameters* const cParams = &ms->cParams;
     U32* const hashTable = ms->hashTable;
     U32  const hBits = cParams->hashLog + ZSTD_SHORT_CACHE_TAG_BITS;
@@ -52,8 +52,8 @@ static
 ZSTD_ALLOW_POINTER_OVERFLOW_ATTR
 void ZSTD_fillHashTableForCCtx(ZSTD_MatchState_t* ms,
                         const void* const end,
-                        ZSTD_dictTableLoadMethod_e dtlm)
-{
+                        ZSTD_dictTableLoadMethod_e dtlm
+) {
     const ZSTD_compressionParameters* const cParams = &ms->cParams;
     U32* const hashTable = ms->hashTable;
     U32  const hBits = cParams->hashLog;
@@ -87,8 +87,8 @@ void ZSTD_fillHashTableForCCtx(ZSTD_MatchState_t* ms,
 void ZSTD_fillHashTable(ZSTD_MatchState_t* ms,
                         const void* const end,
                         ZSTD_dictTableLoadMethod_e dtlm,
-                        ZSTD_tableFillPurpose_e tfp)
-{
+                        ZSTD_tableFillPurpose_e tfp
+) {
     if (tfp == ZSTD_tfp_forCDict) {
         ZSTD_fillHashTableForCDict(ms, end, dtlm);
     } else {
@@ -100,8 +100,8 @@ void ZSTD_fillHashTable(ZSTD_MatchState_t* ms,
 typedef int (*ZSTD_match4Found) (const BYTE* currentPtr, const BYTE* matchAddress, U32 matchIdx, U32 idxLowLimit);
 
 static int
-ZSTD_match4Found_cmov(const BYTE* currentPtr, const BYTE* matchAddress, U32 matchIdx, U32 idxLowLimit)
-{
+ZSTD_match4Found_cmov(const BYTE* currentPtr, const BYTE* matchAddress, U32 matchIdx, U32 idxLowLimit
+) {
     /* Array of ~random data, should have low probability of matching data.
      * Load from here if the index is invalid.
      * Used to avoid unpredictable branches. */
@@ -125,8 +125,8 @@ ZSTD_match4Found_cmov(const BYTE* currentPtr, const BYTE* matchAddress, U32 matc
 }
 
 static int
-ZSTD_match4Found_branch(const BYTE* currentPtr, const BYTE* matchAddress, U32 matchIdx, U32 idxLowLimit)
-{
+ZSTD_match4Found_branch(const BYTE* currentPtr, const BYTE* matchAddress, U32 matchIdx, U32 idxLowLimit
+) {
     /* using a branch instead of a cmov,
      * because it's faster in scenarios where matchIdx >= idxLowLimit is generally true,
      * aka almost all candidates are within range */
@@ -192,8 +192,8 @@ ZSTD_ALLOW_POINTER_OVERFLOW_ATTR
 size_t ZSTD_compressBlock_fast_noDict_generic(
         ZSTD_MatchState_t* ms, SeqStore_t* seqStore, U32 rep[ZSTD_REP_NUM],
         void const* src, size_t srcSize,
-        U32 const mls, int useCmov)
-{
+        U32 const mls, int useCmov
+) {
     const ZSTD_compressionParameters* const cParams = &ms->cParams;
     U32* const hashTable = ms->hashTable;
     U32 const hlog = cParams->hashLog;
@@ -442,8 +442,8 @@ ZSTD_GEN_FAST_FN(noDict, 7, 0)
 
 size_t ZSTD_compressBlock_fast(
         ZSTD_MatchState_t* ms, SeqStore_t* seqStore, U32 rep[ZSTD_REP_NUM],
-        void const* src, size_t srcSize)
-{
+        void const* src, size_t srcSize
+) {
     U32 const mml = ms->cParams.minMatch;
     /* use cmov when "candidate in range" branch is likely unpredictable */
     int const useCmov = ms->cParams.windowLog < 19;
@@ -482,8 +482,8 @@ FORCE_INLINE_TEMPLATE
 ZSTD_ALLOW_POINTER_OVERFLOW_ATTR
 size_t ZSTD_compressBlock_fast_dictMatchState_generic(
         ZSTD_MatchState_t* ms, SeqStore_t* seqStore, U32 rep[ZSTD_REP_NUM],
-        void const* src, size_t srcSize, U32 const mls, U32 const hasStep)
-{
+        void const* src, size_t srcSize, U32 const mls, U32 const hasStep
+) {
     const ZSTD_compressionParameters* const cParams = &ms->cParams;
     U32* const hashTable = ms->hashTable;
     U32 const hlog = cParams->hashLog;
@@ -685,8 +685,8 @@ ZSTD_GEN_FAST_FN(dictMatchState, 7, 0)
 
 size_t ZSTD_compressBlock_fast_dictMatchState(
         ZSTD_MatchState_t* ms, SeqStore_t* seqStore, U32 rep[ZSTD_REP_NUM],
-        void const* src, size_t srcSize)
-{
+        void const* src, size_t srcSize
+) {
     U32 const mls = ms->cParams.minMatch;
     assert(ms->dictMatchState != NULL);
     switch(mls)
@@ -708,8 +708,8 @@ static
 ZSTD_ALLOW_POINTER_OVERFLOW_ATTR
 size_t ZSTD_compressBlock_fast_extDict_generic(
         ZSTD_MatchState_t* ms, SeqStore_t* seqStore, U32 rep[ZSTD_REP_NUM],
-        void const* src, size_t srcSize, U32 const mls, U32 const hasStep)
-{
+        void const* src, size_t srcSize, U32 const mls, U32 const hasStep
+) {
     const ZSTD_compressionParameters* const cParams = &ms->cParams;
     U32* const hashTable = ms->hashTable;
     U32 const hlog = cParams->hashLog;
@@ -966,8 +966,8 @@ ZSTD_GEN_FAST_FN(extDict, 7, 0)
 
 size_t ZSTD_compressBlock_fast_extDict(
         ZSTD_MatchState_t* ms, SeqStore_t* seqStore, U32 rep[ZSTD_REP_NUM],
-        void const* src, size_t srcSize)
-{
+        void const* src, size_t srcSize
+) {
     U32 const mls = ms->cParams.minMatch;
     assert(ms->dictMatchState == NULL);
     switch(mls)

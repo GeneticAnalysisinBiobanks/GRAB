@@ -12,8 +12,8 @@ namespace differentiation {
 namespace reverse_mode {
 template<typename RealType, size_t DerivativeOrder1, size_t DerivativeOrder2, class LhsExpr, class RhsExpr>
 bool operator==(const expression<RealType, DerivativeOrder1, LhsExpr> &lhs,
-                const expression<RealType, DerivativeOrder2, RhsExpr> &rhs)
-{
+                const expression<RealType, DerivativeOrder2, RhsExpr> &rhs
+) {
     return lhs.evaluate() == rhs.evaluate();
 }
 
@@ -22,8 +22,8 @@ template<typename RealType2,
          size_t DerivativeOrder,
          class ArgExpr,
          typename = typename std::enable_if<!detail::is_expression<RealType2>::value>::type>
-bool operator==(const expression<RealType1, DerivativeOrder, ArgExpr> &lhs, const RealType2 &rhs)
-{
+bool operator==(const expression<RealType1, DerivativeOrder, ArgExpr> &lhs, const RealType2 &rhs
+) {
     return lhs.evaluate() == static_cast<RealType1>(rhs);
 }
 template<typename RealType2,
@@ -31,15 +31,15 @@ template<typename RealType2,
          size_t DerivativeOrder,
          class ArgExpr,
          typename = typename std::enable_if<!detail::is_expression<RealType2>::value>::type>
-bool operator==(const RealType2 &lhs, const expression<RealType1, DerivativeOrder, ArgExpr> &rhs)
-{
+bool operator==(const RealType2 &lhs, const expression<RealType1, DerivativeOrder, ArgExpr> &rhs
+) {
     return lhs == rhs.evaluate();
 }
 
 template<typename RealType, size_t DerivativeOrder1, size_t DerivativeOrder2, class LhsExpr, class RhsExpr>
 bool operator!=(const expression<RealType, DerivativeOrder1, LhsExpr> &lhs,
-                const expression<RealType, DerivativeOrder2, RhsExpr> &rhs)
-{
+                const expression<RealType, DerivativeOrder2, RhsExpr> &rhs
+) {
     return lhs.evaluate() != rhs.evaluate();
 }
 template<typename RealType2,
@@ -47,8 +47,8 @@ template<typename RealType2,
          size_t DerivativeOrder,
          class ArgExpr,
          typename = typename std::enable_if<!detail::is_expression<RealType2>::value>::type>
-bool operator!=(const expression<RealType1, DerivativeOrder, ArgExpr> &lhs, const RealType2 &rhs)
-{
+bool operator!=(const expression<RealType1, DerivativeOrder, ArgExpr> &lhs, const RealType2 &rhs
+) {
     return lhs.evaluate() != rhs;
 }
 template<typename RealType2,
@@ -56,15 +56,15 @@ template<typename RealType2,
          size_t DerivativeOrder,
          class ArgExpr,
          typename = typename std::enable_if<!detail::is_expression<RealType2>::value>::type>
-bool operator!=(const RealType2 &lhs, const expression<RealType1, DerivativeOrder, ArgExpr> &rhs)
-{
+bool operator!=(const RealType2 &lhs, const expression<RealType1, DerivativeOrder, ArgExpr> &rhs
+) {
     return lhs != rhs.evaluate();
 }
 
 template<typename RealType, size_t DerivativeOrder1, size_t DerivativeOrder2, class LhsExpr, class RhsExpr>
 bool operator<(const expression<RealType, DerivativeOrder1, LhsExpr> &lhs,
-               const expression<RealType, DerivativeOrder2, RhsExpr> &rhs)
-{
+               const expression<RealType, DerivativeOrder2, RhsExpr> &rhs
+) {
     return lhs.evaluate() < rhs.evaluate();
 }
 template<typename RealType2,
@@ -72,8 +72,8 @@ template<typename RealType2,
          size_t DerivativeOrder,
          class ArgExpr,
          typename = typename std::enable_if<!detail::is_expression<RealType2>::value>::type>
-bool operator<(const expression<RealType1, DerivativeOrder, ArgExpr> &lhs, const RealType2 &rhs)
-{
+bool operator<(const expression<RealType1, DerivativeOrder, ArgExpr> &lhs, const RealType2 &rhs
+) {
     return lhs.evaluate() < rhs;
 }
 template<typename RealType2,
@@ -81,15 +81,15 @@ template<typename RealType2,
          size_t DerivativeOrder,
          class ArgExpr,
          typename = typename std::enable_if<!detail::is_expression<RealType2>::value>::type>
-bool operator<(const RealType2 &lhs, const expression<RealType1, DerivativeOrder, ArgExpr> &rhs)
-{
+bool operator<(const RealType2 &lhs, const expression<RealType1, DerivativeOrder, ArgExpr> &rhs
+) {
     return lhs < rhs.evaluate();
 }
 
 template<typename RealType, size_t DerivativeOrder1, size_t DerivativeOrder2, class LhsExpr, class RhsExpr>
 bool operator>(const expression<RealType, DerivativeOrder1, LhsExpr> &lhs,
-               const expression<RealType, DerivativeOrder2, RhsExpr> &rhs)
-{
+               const expression<RealType, DerivativeOrder2, RhsExpr> &rhs
+) {
     return lhs.evaluate() > rhs.evaluate();
 }
 template<typename RealType2,
@@ -97,8 +97,8 @@ template<typename RealType2,
          size_t DerivativeOrder,
          class ArgExpr,
          typename = typename std::enable_if<!detail::is_expression<RealType2>::value>::type>
-bool operator>(const expression<RealType1, DerivativeOrder, ArgExpr> &lhs, const RealType2 &rhs)
-{
+bool operator>(const expression<RealType1, DerivativeOrder, ArgExpr> &lhs, const RealType2 &rhs
+) {
     return lhs.evaluate() > rhs;
 }
 template<typename RealType2,
@@ -106,15 +106,15 @@ template<typename RealType2,
          size_t DerivativeOrder,
          class ArgExpr,
          typename = typename std::enable_if<!detail::is_expression<RealType2>::value>::type>
-bool operator>(const RealType2 &lhs, const expression<RealType1, DerivativeOrder, ArgExpr> &rhs)
-{
+bool operator>(const RealType2 &lhs, const expression<RealType1, DerivativeOrder, ArgExpr> &rhs
+) {
     return lhs > rhs.evaluate();
 }
 
 template<typename RealType, size_t DerivativeOrder1, size_t DerivativeOrder2, class LhsExpr, class RhsExpr>
 bool operator<=(const expression<RealType, DerivativeOrder1, LhsExpr> &lhs,
-                const expression<RealType, DerivativeOrder2, RhsExpr> &rhs)
-{
+                const expression<RealType, DerivativeOrder2, RhsExpr> &rhs
+) {
     return lhs.evaluate() <= rhs.evaluate();
 }
 template<typename RealType2,
@@ -122,8 +122,8 @@ template<typename RealType2,
          size_t DerivativeOrder,
          class ArgExpr,
          typename = typename std::enable_if<!detail::is_expression<RealType2>::value>::type>
-bool operator<=(const expression<RealType1, DerivativeOrder, ArgExpr> &lhs, const RealType2 &rhs)
-{
+bool operator<=(const expression<RealType1, DerivativeOrder, ArgExpr> &lhs, const RealType2 &rhs
+) {
     return lhs.evaluate() <= rhs;
 }
 template<typename RealType2,
@@ -131,15 +131,15 @@ template<typename RealType2,
          size_t DerivativeOrder,
          class ArgExpr,
          typename = typename std::enable_if<!detail::is_expression<RealType2>::value>::type>
-bool operator<=(const RealType2 &lhs, const expression<RealType1, DerivativeOrder, ArgExpr> &rhs)
-{
+bool operator<=(const RealType2 &lhs, const expression<RealType1, DerivativeOrder, ArgExpr> &rhs
+) {
     return lhs <= rhs.evaluate();
 }
 
 template<typename RealType, size_t DerivativeOrder1, size_t DerivativeOrder2, class LhsExpr, class RhsExpr>
 bool operator>=(const expression<RealType, DerivativeOrder1, LhsExpr> &lhs,
-                const expression<RealType, DerivativeOrder2, RhsExpr> &rhs)
-{
+                const expression<RealType, DerivativeOrder2, RhsExpr> &rhs
+) {
     return lhs.evaluate() >= rhs.evaluate();
 }
 template<typename RealType2,
@@ -147,8 +147,8 @@ template<typename RealType2,
          size_t DerivativeOrder,
          class ArgExpr,
          typename = typename std::enable_if<!detail::is_expression<RealType2>::value>::type>
-bool operator>=(const expression<RealType1, DerivativeOrder, ArgExpr> &lhs, const RealType2 &rhs)
-{
+bool operator>=(const expression<RealType1, DerivativeOrder, ArgExpr> &lhs, const RealType2 &rhs
+) {
     return lhs.evaluate() >= rhs;
 }
 template<typename RealType2,
@@ -156,8 +156,8 @@ template<typename RealType2,
          size_t DerivativeOrder,
          class ArgExpr,
          typename = typename std::enable_if<!detail::is_expression<RealType2>::value>::type>
-bool operator>=(const RealType2 &lhs, const expression<RealType1, DerivativeOrder, ArgExpr> &rhs)
-{
+bool operator>=(const RealType2 &lhs, const expression<RealType1, DerivativeOrder, ArgExpr> &rhs
+) {
     return lhs >= rhs.evaluate();
 }
 } // namespace reverse_mode

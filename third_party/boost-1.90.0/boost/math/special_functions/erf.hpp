@@ -72,34 +72,34 @@ private:
 // How large z has to be in order to ensure that the series converges:
 //
 template <class T>
-BOOST_MATH_GPU_ENABLED inline float erf_asymptotic_limit_N(const T&)
-{
+BOOST_MATH_GPU_ENABLED inline float erf_asymptotic_limit_N(const T&
+) {
    return (std::numeric_limits<float>::max)();
 }
-BOOST_MATH_GPU_ENABLED inline float erf_asymptotic_limit_N(const std::integral_constant<int, 24>&)
-{
+BOOST_MATH_GPU_ENABLED inline float erf_asymptotic_limit_N(const std::integral_constant<int, 24>&
+) {
    return 2.8F;
 }
-BOOST_MATH_GPU_ENABLED inline float erf_asymptotic_limit_N(const std::integral_constant<int, 53>&)
-{
+BOOST_MATH_GPU_ENABLED inline float erf_asymptotic_limit_N(const std::integral_constant<int, 53>&
+) {
    return 4.3F;
 }
-BOOST_MATH_GPU_ENABLED inline float erf_asymptotic_limit_N(const std::integral_constant<int, 64>&)
-{
+BOOST_MATH_GPU_ENABLED inline float erf_asymptotic_limit_N(const std::integral_constant<int, 64>&
+) {
    return 4.8F;
 }
-BOOST_MATH_GPU_ENABLED inline float erf_asymptotic_limit_N(const std::integral_constant<int, 106>&)
-{
+BOOST_MATH_GPU_ENABLED inline float erf_asymptotic_limit_N(const std::integral_constant<int, 106>&
+) {
    return 6.5F;
 }
-BOOST_MATH_GPU_ENABLED inline float erf_asymptotic_limit_N(const std::integral_constant<int, 113>&)
-{
+BOOST_MATH_GPU_ENABLED inline float erf_asymptotic_limit_N(const std::integral_constant<int, 113>&
+) {
    return 6.8F;
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline T erf_asymptotic_limit()
-{
+BOOST_MATH_GPU_ENABLED inline T erf_asymptotic_limit(
+) {
    typedef typename policies::precision<T, Policy>::type precision_type;
    typedef std::integral_constant<int,
       precision_type::value <= 0 ? 0 :
@@ -130,8 +130,8 @@ struct erf_series_near_zero
 };
 
 template <class T, class Policy>
-T erf_series_near_zero_sum(const T& x, const Policy& pol)
-{
+T erf_series_near_zero_sum(const T& x, const Policy& pol
+) {
    //
    // We need Kahan summation here, otherwise the errors grow fairly quickly.
    // This method is *much* faster than the alternatives even so.
@@ -144,8 +144,8 @@ T erf_series_near_zero_sum(const T& x, const Policy& pol)
 }
 
 template <class T, class Policy, class Tag>
-T erf_imp(T z, bool invert, const Policy& pol, const Tag& t)
-{
+T erf_imp(T z, bool invert, const Policy& pol, const Tag& t
+) {
    BOOST_MATH_STD_USING
 
    BOOST_MATH_INSTRUMENT_CODE("Generic erf_imp called");
@@ -214,8 +214,8 @@ T erf_imp(T z, bool invert, const Policy& pol, const Tag& t)
 // LCOV_EXCL_STOP
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T erf_imp(T z, bool invert, const Policy& pol, const std::integral_constant<int, 53>&)
-{
+BOOST_MATH_GPU_ENABLED T erf_imp(T z, bool invert, const Policy& pol, const std::integral_constant<int, 53>&
+) {
    BOOST_MATH_STD_USING
 
    BOOST_MATH_INSTRUMENT_CODE("53-bit precision erf_imp called");
@@ -470,8 +470,8 @@ BOOST_MATH_GPU_ENABLED T erf_imp(T z, bool invert, const Policy& pol, const std:
 
 
 template <class T, class Policy>
-T erf_imp(T z, bool invert, const Policy& pol, const std::integral_constant<int, 64>& t)
-{
+T erf_imp(T z, bool invert, const Policy& pol, const std::integral_constant<int, 64>& t
+) {
    BOOST_MATH_STD_USING
 
    BOOST_MATH_INSTRUMENT_CODE("64-bit precision erf_imp called");
@@ -718,8 +718,8 @@ T erf_imp(T z, bool invert, const Policy& pol, const std::integral_constant<int,
 
 // LCOV_EXCL_START multiprecision case only, excluded from coverage analysis
 template <class T, class Policy>
-T erf_imp(T z, bool invert, const Policy& pol, const std::integral_constant<int, 113>& t)
-{
+T erf_imp(T z, bool invert, const Policy& pol, const std::integral_constant<int, 113>& t
+) {
    BOOST_MATH_STD_USING
 
    BOOST_MATH_INSTRUMENT_CODE("113-bit precision erf_imp called");
@@ -1191,8 +1191,8 @@ T erf_imp(T z, bool invert, const Policy& pol, const std::integral_constant<int,
 } // namespace detail
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type erf(T z, const Policy& /* pol */)
-{
+BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type erf(T z, const Policy& /* pol */
+) {
    typedef typename tools::promote_args<T>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
    typedef typename policies::precision<result_type, Policy>::type precision_type;
@@ -1224,8 +1224,8 @@ BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type erf(T z, con
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type erfc(T z, const Policy& /* pol */)
-{
+BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type erfc(T z, const Policy& /* pol */
+) {
    typedef typename tools::promote_args<T>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
    typedef typename policies::precision<result_type, Policy>::type precision_type;
@@ -1257,14 +1257,14 @@ BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type erfc(T z, co
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type erf(T z)
-{
+BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type erf(T z
+) {
    return boost::math::erf(z, policies::policy<>());
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type erfc(T z)
-{
+BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type erfc(T z
+) {
    return boost::math::erfc(z, policies::policy<>());
 }
 
@@ -1277,50 +1277,50 @@ namespace boost {
 namespace math {
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED auto erf(T x)
-{
+BOOST_MATH_GPU_ENABLED auto erf(T x
+) {
    return ::erf(x);
 }
 
 template <>
-BOOST_MATH_GPU_ENABLED auto erf(float x)
-{
+BOOST_MATH_GPU_ENABLED auto erf(float x
+) {
    return ::erff(x);
 }
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED auto erf(T x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED auto erf(T x, const Policy&
+) {
    return ::erf(x);
 }
 
 template <typename Policy>
-BOOST_MATH_GPU_ENABLED auto erf(float x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED auto erf(float x, const Policy&
+) {
    return ::erff(x);
 }
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED auto erfc(T x)
-{
+BOOST_MATH_GPU_ENABLED auto erfc(T x
+) {
    return ::erfc(x);
 }
 
 template <>
-BOOST_MATH_GPU_ENABLED auto erfc(float x)
-{
+BOOST_MATH_GPU_ENABLED auto erfc(float x
+) {
    return ::erfcf(x);
 }
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED auto erfc(T x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED auto erfc(T x, const Policy&
+) {
    return ::erfc(x);
 }
 
 template <typename Policy>
-BOOST_MATH_GPU_ENABLED auto erfc(float x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED auto erfc(float x, const Policy&
+) {
    return ::erfcf(x);
 }
 

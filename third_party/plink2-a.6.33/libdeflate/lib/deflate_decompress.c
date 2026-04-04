@@ -385,8 +385,8 @@ do {									\
  * *_decode_results[] arrays below, where the entry format is described.
  */
 static forceinline u32
-make_decode_table_entry(const u32 decode_results[], u32 sym, u32 len)
-{
+make_decode_table_entry(const u32 decode_results[], u32 sym, u32 len
+) {
 	return decode_results[sym] + (len << 8) + len;
 }
 
@@ -726,8 +726,8 @@ build_decode_table(u32 decode_table[],
 		   unsigned table_bits,
 		   unsigned max_codeword_len,
 		   u16 *sorted_syms,
-		   unsigned *table_bits_ret)
-{
+		   unsigned *table_bits_ret
+) {
 	unsigned len_counts[DEFLATE_MAX_CODEWORD_LEN + 1];
 	unsigned offsets[DEFLATE_MAX_CODEWORD_LEN + 1];
 	unsigned sym;		/* current symbol */
@@ -1005,8 +1005,8 @@ build_decode_table(u32 decode_table[],
 
 /* Build the decode table for the precode.  */
 static bool
-build_precode_decode_table(struct libdeflate_decompressor *d)
-{
+build_precode_decode_table(struct libdeflate_decompressor *d
+) {
 	/* When you change TABLEBITS, you must change ENOUGH, and vice versa! */
 	STATIC_ASSERT(PRECODE_TABLEBITS == 7 && PRECODE_ENOUGH == 128);
 
@@ -1026,8 +1026,8 @@ build_precode_decode_table(struct libdeflate_decompressor *d)
 /* Build the decode table for the literal/length code.  */
 static bool
 build_litlen_decode_table(struct libdeflate_decompressor *d,
-			  unsigned num_litlen_syms, __attribute__((unused)) unsigned num_offset_syms)
-{
+			  unsigned num_litlen_syms, __attribute__((unused)) unsigned num_offset_syms
+) {
 	/* When you change TABLEBITS, you must change ENOUGH, and vice versa! */
 	STATIC_ASSERT(LITLEN_TABLEBITS == 11 && LITLEN_ENOUGH == 2342);
 
@@ -1047,8 +1047,8 @@ build_litlen_decode_table(struct libdeflate_decompressor *d,
 /* Build the decode table for the offset code.  */
 static bool
 build_offset_decode_table(struct libdeflate_decompressor *d,
-			  unsigned num_litlen_syms, unsigned num_offset_syms)
-{
+			  unsigned num_litlen_syms, unsigned num_offset_syms
+) {
 	/* When you change TABLEBITS, you must change ENOUGH, and vice versa! */
 	STATIC_ASSERT(OFFSET_TABLEBITS == 8 && OFFSET_ENOUGH == 402);
 
@@ -1106,8 +1106,8 @@ static enum libdeflate_result
 dispatch_decomp(struct libdeflate_decompressor *d,
 		const void *in, size_t in_nbytes,
 		void *out, size_t out_nbytes_avail,
-		size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret)
-{
+		size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret
+) {
 	decompress_func_t f = arch_select_decompress_func();
 
 	if (f == NULL)
@@ -1135,8 +1135,8 @@ libdeflate_deflate_decompress_ex(struct libdeflate_decompressor *d,
 				 const void *in, size_t in_nbytes,
 				 void *out, size_t out_nbytes_avail,
 				 size_t *actual_in_nbytes_ret,
-				 size_t *actual_out_nbytes_ret)
-{
+				 size_t *actual_out_nbytes_ret
+) {
 	return decompress_impl(d, in, in_nbytes, out, out_nbytes_avail,
 			       actual_in_nbytes_ret, actual_out_nbytes_ret);
 }
@@ -1145,16 +1145,16 @@ LIBDEFLATEAPI enum libdeflate_result
 libdeflate_deflate_decompress(struct libdeflate_decompressor *d,
 			      const void *in, size_t in_nbytes,
 			      void *out, size_t out_nbytes_avail,
-			      size_t *actual_out_nbytes_ret)
-{
+			      size_t *actual_out_nbytes_ret
+) {
 	return libdeflate_deflate_decompress_ex(d, in, in_nbytes,
 						out, out_nbytes_avail,
 						NULL, actual_out_nbytes_ret);
 }
 
 LIBDEFLATEAPI struct libdeflate_decompressor *
-libdeflate_alloc_decompressor_ex(const struct libdeflate_options *options)
-{
+libdeflate_alloc_decompressor_ex(const struct libdeflate_options *options
+) {
 	struct libdeflate_decompressor *d;
 
 	/*
@@ -1192,8 +1192,8 @@ libdeflate_alloc_decompressor_ex(const struct libdeflate_options *options)
 }
 
 LIBDEFLATEAPI struct libdeflate_decompressor *
-libdeflate_alloc_decompressor(void)
-{
+libdeflate_alloc_decompressor(void
+) {
 	static const struct libdeflate_options defaults = {
 		.sizeof_options = sizeof(defaults),
 	};
@@ -1201,8 +1201,8 @@ libdeflate_alloc_decompressor(void)
 }
 
 LIBDEFLATEAPI void
-libdeflate_free_decompressor(struct libdeflate_decompressor *d)
-{
+libdeflate_free_decompressor(struct libdeflate_decompressor *d
+) {
 	if (d)
 		d->free_func(d);
 }

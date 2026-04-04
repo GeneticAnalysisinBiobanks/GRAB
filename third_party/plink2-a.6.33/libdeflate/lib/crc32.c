@@ -174,8 +174,8 @@
 
 /* This is the default implementation.  It uses the slice-by-8 method. */
 static u32 MAYBE_UNUSED
-crc32_slice8(u32 crc, const u8 *p, size_t len)
-{
+crc32_slice8(u32 crc, const u8 *p, size_t len
+) {
 	const u8 * const end = p + len;
 	const u8 *end64;
 
@@ -209,8 +209,8 @@ crc32_slice8(u32 crc, const u8 *p, size_t len)
  * of unaligned data at the beginning and/or end of the buffer.
  */
 static forceinline u32 MAYBE_UNUSED
-crc32_slice1(u32 crc, const u8 *p, size_t len)
-{
+crc32_slice1(u32 crc, const u8 *p, size_t len
+) {
 	size_t i;
 
 	for (i = 0; i < len; i++)
@@ -238,8 +238,8 @@ static u32 dispatch_crc32(u32 crc, const u8 *p, size_t len);
 static volatile crc32_func_t crc32_impl = dispatch_crc32;
 
 /* Choose the best implementation at runtime. */
-static u32 dispatch_crc32(u32 crc, const u8 *p, size_t len)
-{
+static u32 dispatch_crc32(u32 crc, const u8 *p, size_t len
+) {
 	crc32_func_t f = arch_select_crc32_func();
 
 	if (f == NULL)
@@ -254,8 +254,8 @@ static u32 dispatch_crc32(u32 crc, const u8 *p, size_t len)
 #endif
 
 LIBDEFLATEAPI u32
-libdeflate_crc32(u32 crc, const void *p, size_t len)
-{
+libdeflate_crc32(u32 crc, const void *p, size_t len
+) {
 	if (p == NULL) /* Return initial value. */
 		return 0;
 	return ~crc32_impl(~crc, p, len);

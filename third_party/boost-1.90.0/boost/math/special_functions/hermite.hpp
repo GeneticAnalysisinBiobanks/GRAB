@@ -23,8 +23,8 @@ namespace math{
 // Recurrence relation for Hermite polynomials:
 template <class T1, class T2, class T3>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2, T3>::type 
-   hermite_next(unsigned n, T1 x, T2 Hn, T3 Hnm1)
-{
+   hermite_next(unsigned n, T1 x, T2 Hn, T3 Hnm1
+) {
    using promoted_type = tools::promote_args_t<T1, T2, T3>;
    return (2 * promoted_type(x) * promoted_type(Hn) - 2 * n * promoted_type(Hnm1));
 }
@@ -33,8 +33,8 @@ namespace detail{
 
 // Implement Hermite polynomials via recurrence:
 template <class T>
-BOOST_MATH_GPU_ENABLED T hermite_imp(unsigned n, T x)
-{
+BOOST_MATH_GPU_ENABLED T hermite_imp(unsigned n, T x
+) {
    T p0 = 1;
    T p1 = 2 * x;
 
@@ -56,8 +56,8 @@ BOOST_MATH_GPU_ENABLED T hermite_imp(unsigned n, T x)
 
 template <class T, class Policy>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type 
-   hermite(unsigned n, T x, const Policy&)
-{
+   hermite(unsigned n, T x, const Policy&
+) {
    typedef typename tools::promote_args<T>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
    return policies::checked_narrowing_cast<result_type, Policy>(detail::hermite_imp(n, static_cast<value_type>(x)), "boost::math::hermite<%1%>(unsigned, %1%)");
@@ -65,8 +65,8 @@ BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type
 
 template <class T>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type 
-   hermite(unsigned n, T x)
-{
+   hermite(unsigned n, T x
+) {
    return boost::math::hermite(n, x, policies::policy<>());
 }
 

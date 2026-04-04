@@ -33,8 +33,8 @@ namespace boost{ namespace math{
 namespace detail{
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline tools::promote_args_t<T> round(const T& v, const Policy& pol, const std::false_type&)
-{
+BOOST_MATH_GPU_ENABLED inline tools::promote_args_t<T> round(const T& v, const Policy& pol, const std::false_type&
+) {
    BOOST_MATH_STD_USING
    using result_type = tools::promote_args_t<T>;
 
@@ -68,21 +68,21 @@ BOOST_MATH_GPU_ENABLED inline tools::promote_args_t<T> round(const T& v, const P
    }
 }
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline tools::promote_args_t<T> round(const T& v, const Policy&, const std::true_type&)
-{
+BOOST_MATH_GPU_ENABLED inline tools::promote_args_t<T> round(const T& v, const Policy&, const std::true_type&
+) {
    return v;
 }
 
 } // namespace detail
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline tools::promote_args_t<T> round(const T& v, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline tools::promote_args_t<T> round(const T& v, const Policy& pol
+) {
    return detail::round(v, pol, std::integral_constant<bool, detail::is_integer_for_rounding<T>::value>());
 }
 template <class T>
-BOOST_MATH_GPU_ENABLED inline tools::promote_args_t<T> round(const T& v)
-{
+BOOST_MATH_GPU_ENABLED inline tools::promote_args_t<T> round(const T& v
+) {
    return round(v, policies::policy<>());
 }
 //
@@ -99,8 +99,8 @@ BOOST_MATH_GPU_ENABLED inline tools::promote_args_t<T> round(const T& v)
 // https://stackoverflow.com/questions/27442885/syntax-error-with-stdnumeric-limitsmax
 //
 template <class T, class Policy>
-inline int iround(const T& v, const Policy& pol)
-{
+inline int iround(const T& v, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    using result_type = tools::promote_args_t<T>;
 
@@ -141,14 +141,14 @@ inline int iround(const T& v, const Policy& pol)
    return static_cast<int>(r);
 }
 template <class T>
-BOOST_MATH_GPU_ENABLED inline int iround(const T& v)
-{
+BOOST_MATH_GPU_ENABLED inline int iround(const T& v
+) {
    return iround(v, policies::policy<>());
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline long lround(const T& v, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline long lround(const T& v, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    using result_type = tools::promote_args_t<T>;
 
@@ -189,14 +189,14 @@ BOOST_MATH_GPU_ENABLED inline long lround(const T& v, const Policy& pol)
    return static_cast<long>(r);
 }
 template <class T>
-BOOST_MATH_GPU_ENABLED inline long lround(const T& v)
-{
+BOOST_MATH_GPU_ENABLED inline long lround(const T& v
+) {
    return lround(v, policies::policy<>());
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline long long llround(const T& v, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline long long llround(const T& v, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    using result_type = boost::math::tools::promote_args_t<T>;
 
@@ -237,8 +237,8 @@ BOOST_MATH_GPU_ENABLED inline long long llround(const T& v, const Policy& pol)
    return static_cast<long long>(r);
 }
 template <class T>
-BOOST_MATH_GPU_ENABLED inline long long llround(const T& v)
-{
+BOOST_MATH_GPU_ENABLED inline long long llround(const T& v
+) {
    return llround(v, policies::policy<>());
 }
 
@@ -250,98 +250,98 @@ namespace boost {
 namespace math {
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED T round(T x)
-{
+BOOST_MATH_GPU_ENABLED T round(T x
+) {
    return ::round(x);
 }
 
 template <>
-BOOST_MATH_GPU_ENABLED float round(float x)
-{
+BOOST_MATH_GPU_ENABLED float round(float x
+) {
    return ::roundf(x);
 }
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED T round(T x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED T round(T x, const Policy&
+) {
    return ::round(x);
 }
 
 template <typename Policy>
-BOOST_MATH_GPU_ENABLED float round(float x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED float round(float x, const Policy&
+) {
    return ::roundf(x);
 }
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED int iround(T x)
-{
+BOOST_MATH_GPU_ENABLED int iround(T x
+) {
    return static_cast<int>(::lround(x));
 }
 
 template <>
-BOOST_MATH_GPU_ENABLED int iround(float x)
-{
+BOOST_MATH_GPU_ENABLED int iround(float x
+) {
    return static_cast<int>(::lroundf(x));
 }
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED int iround(T x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED int iround(T x, const Policy&
+) {
    return static_cast<int>(::lround(x));
 }
 
 template <typename Policy>
-BOOST_MATH_GPU_ENABLED int iround(float x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED int iround(float x, const Policy&
+) {
    return static_cast<int>(::lroundf(x));
 }
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED long lround(T x)
-{
+BOOST_MATH_GPU_ENABLED long lround(T x
+) {
    return ::lround(x);
 }
 
 template <>
-BOOST_MATH_GPU_ENABLED long lround(float x)
-{
+BOOST_MATH_GPU_ENABLED long lround(float x
+) {
    return ::lroundf(x);
 }
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED long lround(T x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED long lround(T x, const Policy&
+) {
    return ::lround(x);
 }
 
 template <typename Policy>
-BOOST_MATH_GPU_ENABLED long lround(float x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED long lround(float x, const Policy&
+) {
    return ::lroundf(x);
 }
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED long long llround(T x)
-{
+BOOST_MATH_GPU_ENABLED long long llround(T x
+) {
    return ::llround(x);
 }
 
 template <>
-BOOST_MATH_GPU_ENABLED long long llround(float x)
-{
+BOOST_MATH_GPU_ENABLED long long llround(float x
+) {
    return ::llroundf(x);
 }
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED long long llround(T x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED long long llround(T x, const Policy&
+) {
    return ::llround(x);
 }
 
 template <typename Policy>
-BOOST_MATH_GPU_ENABLED long long llround(float x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED long long llround(float x, const Policy&
+) {
    return ::llroundf(x);
 }
 

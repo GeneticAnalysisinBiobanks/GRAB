@@ -32,8 +32,8 @@
 
 #ifdef __AVX2__
 static forceinline void
-matchfinder_init_avx2(mf_pos_t *data, size_t size)
-{
+matchfinder_init_avx2(mf_pos_t *data, size_t size
+) {
 	__m256i *p = (__m256i *)data;
 	__m256i v = _mm256_set1_epi16(MATCHFINDER_INITVAL);
 
@@ -53,8 +53,8 @@ matchfinder_init_avx2(mf_pos_t *data, size_t size)
 #define matchfinder_init matchfinder_init_avx2
 
 static forceinline void
-matchfinder_rebase_avx2(mf_pos_t *data, size_t size)
-{
+matchfinder_rebase_avx2(mf_pos_t *data, size_t size
+) {
 	__m256i *p = (__m256i *)data;
 	__m256i v = _mm256_set1_epi16((u16)-MATCHFINDER_WINDOW_SIZE);
 
@@ -76,8 +76,8 @@ matchfinder_rebase_avx2(mf_pos_t *data, size_t size)
 
 #elif HAVE_SSE2_NATIVE
 static forceinline void
-matchfinder_init_sse2(mf_pos_t *data, size_t size)
-{
+matchfinder_init_sse2(mf_pos_t *data, size_t size
+) {
 	__m128i *p = (__m128i *)data;
 	__m128i v = _mm_set1_epi16(MATCHFINDER_INITVAL);
 
@@ -97,8 +97,8 @@ matchfinder_init_sse2(mf_pos_t *data, size_t size)
 #define matchfinder_init matchfinder_init_sse2
 
 static forceinline void
-matchfinder_rebase_sse2(mf_pos_t *data, size_t size)
-{
+matchfinder_rebase_sse2(mf_pos_t *data, size_t size
+) {
 	__m128i *p = (__m128i *)data;
 	__m128i v = _mm_set1_epi16((u16)-MATCHFINDER_WINDOW_SIZE);
 

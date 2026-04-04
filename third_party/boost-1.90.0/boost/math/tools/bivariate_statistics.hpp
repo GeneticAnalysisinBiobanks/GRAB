@@ -17,8 +17,8 @@ BOOST_MATH_HEADER_DEPRECATED("<boost/math/statistics/bivariate_statistics.hpp>")
 namespace boost{ namespace math{ namespace tools {
 
 template<class Container>
-auto means_and_covariance(Container const & u, Container const & v)
-{
+auto means_and_covariance(Container const & u, Container const & v
+) {
     using Real = typename Container::value_type;
     using std::size;
     BOOST_MATH_ASSERT_MSG(size(u) == size(v), "The size of each vector must be the same to compute covariance.");
@@ -42,15 +42,15 @@ auto means_and_covariance(Container const & u, Container const & v)
 }
 
 template<class Container>
-auto covariance(Container const & u, Container const & v)
-{
+auto covariance(Container const & u, Container const & v
+) {
     auto [mu_u, mu_v, cov] = boost::math::tools::means_and_covariance(u, v);
     return cov;
 }
 
 template<class Container>
-auto correlation_coefficient(Container const & u, Container const & v)
-{
+auto correlation_coefficient(Container const & u, Container const & v
+) {
     using Real = typename Container::value_type;
     using std::size;
     BOOST_MATH_ASSERT_MSG(size(u) == size(v), "The size of each vector must be the same to compute covariance.");

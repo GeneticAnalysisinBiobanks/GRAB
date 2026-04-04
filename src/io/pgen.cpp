@@ -252,8 +252,8 @@ PgenData::PgenData(
     m_nSubjInFile(nSamplesInFile),
     m_nSubjUsed(nUsed),
     m_usedMask(usedMask),
-    m_pgfiAlloc(nullptr, std::free)
-{
+    m_pgfiAlloc(nullptr, std::free
+) {
   m_allUsed = (nUsed == nSamplesInFile);
 
   // ---- Parse .pvar ----
@@ -403,8 +403,8 @@ struct PgenCursor::Impl {
 
 
 PgenCursor::PgenCursor(const PgenData& parent)
-  : m_parent(parent), m_impl(std::make_unique<Impl>())
-{
+  : m_parent(parent), m_impl(std::make_unique<Impl>()
+) {
   using namespace plink2;
 
   auto& impl = *m_impl;
@@ -481,8 +481,8 @@ void PgenCursor::getGenotypes(
     double& maf,
     double& mac,
     std::vector<uint32_t>& indexForMissing,
-    bool exactHwe)
-{
+    bool exactHwe
+) {
   using namespace plink2;
   auto& impl = *m_impl;
   const uint32_t sampleCt = impl.sampleCt;
@@ -553,8 +553,8 @@ void PgenCursor::getGenotypes(
 
 void PgenCursor::getGenotypesSimple(
     uint64_t gIndex,
-    Eigen::Ref<Eigen::VectorXd> out)
-{
+    Eigen::Ref<Eigen::VectorXd> out
+) {
   using namespace plink2;
   auto& impl = *m_impl;
   const uint32_t sampleCt = impl.sampleCt;

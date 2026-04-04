@@ -38,13 +38,13 @@ struct placement_new_tag {};
 } // namespace core
 } // namespace boost
 
-inline void* operator new( std::size_t, void* p, boost::core::detail::placement_new_tag )
-{
+inline void* operator new( std::size_t, void* p, boost::core::detail::placement_new_tag 
+) {
     return p;
 }
 
-inline void operator delete( void*, void*, boost::core::detail::placement_new_tag )
-{
+inline void operator delete( void*, void*, boost::core::detail::placement_new_tag 
+) {
 }
 
 namespace boost

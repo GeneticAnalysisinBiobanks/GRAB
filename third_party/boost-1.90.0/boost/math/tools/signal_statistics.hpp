@@ -27,8 +27,8 @@ BOOST_MATH_HEADER_DEPRECATED("<boost/math/statistics/signal_statistics.hpp>");
 namespace boost::math::tools {
 
 template<class ForwardIterator>
-auto absolute_gini_coefficient(ForwardIterator first, ForwardIterator last)
-{
+auto absolute_gini_coefficient(ForwardIterator first, ForwardIterator last
+) {
     using std::abs;
     using RealOrComplex = typename std::iterator_traits<ForwardIterator>::value_type;
     BOOST_MATH_ASSERT_MSG(first != last && std::next(first) != last, "Computation of the Gini coefficient requires at least two samples.");
@@ -57,21 +57,21 @@ auto absolute_gini_coefficient(ForwardIterator first, ForwardIterator last)
 }
 
 template<class RandomAccessContainer>
-inline auto absolute_gini_coefficient(RandomAccessContainer & v)
-{
+inline auto absolute_gini_coefficient(RandomAccessContainer & v
+) {
     return boost::math::tools::absolute_gini_coefficient(v.begin(), v.end());
 }
 
 template<class ForwardIterator>
-auto sample_absolute_gini_coefficient(ForwardIterator first, ForwardIterator last)
-{
+auto sample_absolute_gini_coefficient(ForwardIterator first, ForwardIterator last
+) {
     size_t n = std::distance(first, last);
     return n*boost::math::tools::absolute_gini_coefficient(first, last)/(n-1);
 }
 
 template<class RandomAccessContainer>
-inline auto sample_absolute_gini_coefficient(RandomAccessContainer & v)
-{
+inline auto sample_absolute_gini_coefficient(RandomAccessContainer & v
+) {
     return boost::math::tools::sample_absolute_gini_coefficient(v.begin(), v.end());
 }
 
@@ -79,8 +79,8 @@ inline auto sample_absolute_gini_coefficient(RandomAccessContainer & v)
 // The Hoyer sparsity measure is defined in:
 // https://arxiv.org/pdf/0811.4706.pdf
 template<class ForwardIterator>
-auto hoyer_sparsity(const ForwardIterator first, const ForwardIterator last)
-{
+auto hoyer_sparsity(const ForwardIterator first, const ForwardIterator last
+) {
     using T = typename std::iterator_traits<ForwardIterator>::value_type;
     using std::abs;
     using std::sqrt;
@@ -128,15 +128,15 @@ auto hoyer_sparsity(const ForwardIterator first, const ForwardIterator last)
 }
 
 template<class Container>
-inline auto hoyer_sparsity(Container const & v)
-{
+inline auto hoyer_sparsity(Container const & v
+) {
     return boost::math::tools::hoyer_sparsity(v.cbegin(), v.cend());
 }
 
 
 template<class Container>
-auto oracle_snr(Container const & signal, Container const & noisy_signal)
-{
+auto oracle_snr(Container const & signal, Container const & noisy_signal
+) {
     using Real = typename Container::value_type;
     BOOST_MATH_ASSERT_MSG(signal.size() == noisy_signal.size(),
                      "Signal and noisy_signal must be have the same number of elements.");
@@ -204,8 +204,8 @@ auto oracle_snr(Container const & signal, Container const & noisy_signal)
 }
 
 template<class Container>
-auto mean_invariant_oracle_snr(Container const & signal, Container const & noisy_signal)
-{
+auto mean_invariant_oracle_snr(Container const & signal, Container const & noisy_signal
+) {
     using Real = typename Container::value_type;
     BOOST_MATH_ASSERT_MSG(signal.size() == noisy_signal.size(), "Signal and noisy signal must be have the same number of elements.");
 
@@ -232,8 +232,8 @@ auto mean_invariant_oracle_snr(Container const & signal, Container const & noisy
 }
 
 template<class Container>
-auto mean_invariant_oracle_snr_db(Container const & signal, Container const & noisy_signal)
-{
+auto mean_invariant_oracle_snr_db(Container const & signal, Container const & noisy_signal
+) {
     using std::log10;
     return 10*log10(boost::math::tools::mean_invariant_oracle_snr(signal, noisy_signal));
 }
@@ -241,8 +241,8 @@ auto mean_invariant_oracle_snr_db(Container const & signal, Container const & no
 
 // Follows the definition of SNR given in Mallat, A Wavelet Tour of Signal Processing, equation 11.16.
 template<class Container>
-auto oracle_snr_db(Container const & signal, Container const & noisy_signal)
-{
+auto oracle_snr_db(Container const & signal, Container const & noisy_signal
+) {
     using std::log10;
     return 10*log10(boost::math::tools::oracle_snr(signal, noisy_signal));
 }
@@ -252,8 +252,8 @@ auto oracle_snr_db(Container const & signal, Container const & noisy_signal)
 // A nice python implementation:
 // https://github.com/gnuradio/gnuradio/blob/master/gr-digital/examples/snr_estimators.py
 template<class ForwardIterator>
-auto m2m4_snr_estimator(ForwardIterator first, ForwardIterator last, decltype(*first) estimated_signal_kurtosis=1, decltype(*first) estimated_noise_kurtosis=3)
-{
+auto m2m4_snr_estimator(ForwardIterator first, ForwardIterator last, decltype(*first) estimated_signal_kurtosis=1, decltype(*first) estimated_noise_kurtosis=3
+) {
     BOOST_MATH_ASSERT_MSG(estimated_signal_kurtosis > 0, "The estimated signal kurtosis must be positive");
     BOOST_MATH_ASSERT_MSG(estimated_noise_kurtosis > 0, "The estimated noise kurtosis must be positive.");
     using Real = typename std::iterator_traits<ForwardIterator>::value_type;
@@ -329,22 +329,22 @@ auto m2m4_snr_estimator(ForwardIterator first, ForwardIterator last, decltype(*f
 }
 
 template<class Container>
-inline auto m2m4_snr_estimator(Container const & noisy_signal,  typename Container::value_type estimated_signal_kurtosis=1, typename Container::value_type estimated_noise_kurtosis=3)
-{
+inline auto m2m4_snr_estimator(Container const & noisy_signal,  typename Container::value_type estimated_signal_kurtosis=1, typename Container::value_type estimated_noise_kurtosis=3
+) {
     return m2m4_snr_estimator(noisy_signal.cbegin(), noisy_signal.cend(), estimated_signal_kurtosis, estimated_noise_kurtosis);
 }
 
 template<class ForwardIterator>
-inline auto m2m4_snr_estimator_db(ForwardIterator first, ForwardIterator last, decltype(*first) estimated_signal_kurtosis=1, decltype(*first) estimated_noise_kurtosis=3)
-{
+inline auto m2m4_snr_estimator_db(ForwardIterator first, ForwardIterator last, decltype(*first) estimated_signal_kurtosis=1, decltype(*first) estimated_noise_kurtosis=3
+) {
     using std::log10;
     return 10*log10(m2m4_snr_estimator(first, last, estimated_signal_kurtosis, estimated_noise_kurtosis));
 }
 
 
 template<class Container>
-inline auto m2m4_snr_estimator_db(Container const & noisy_signal,  typename Container::value_type estimated_signal_kurtosis=1, typename Container::value_type estimated_noise_kurtosis=3)
-{
+inline auto m2m4_snr_estimator_db(Container const & noisy_signal,  typename Container::value_type estimated_signal_kurtosis=1, typename Container::value_type estimated_noise_kurtosis=3
+) {
     using std::log10;
     return 10*log10(m2m4_snr_estimator(noisy_signal, estimated_signal_kurtosis, estimated_noise_kurtosis));
 }

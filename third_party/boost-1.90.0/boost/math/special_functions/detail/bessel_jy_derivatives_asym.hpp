@@ -18,8 +18,8 @@
 namespace boost{ namespace math{ namespace detail{
 
 template <class T>
-inline T asymptotic_bessel_derivative_amplitude(T v, T x)
-{
+inline T asymptotic_bessel_derivative_amplitude(T v, T x
+) {
    // Calculate the amplitude for J'(v,x) and I'(v,x)
    // for large x: see A&S 9.2.30.
    BOOST_MATH_STD_USING
@@ -35,8 +35,8 @@ inline T asymptotic_bessel_derivative_amplitude(T v, T x)
 }
 
 template <class T>
-inline T asymptotic_bessel_derivative_phase_mx(T v, T x)
-{
+inline T asymptotic_bessel_derivative_phase_mx(T v, T x
+) {
    // Calculate the phase of J'(v, x) and Y'(v, x) for large x.
    // See A&S 9.2.31.
    // Note that the result returned is the phase less (x - PI(v/2 - 1/4))
@@ -57,8 +57,8 @@ inline T asymptotic_bessel_derivative_phase_mx(T v, T x)
 }
 
 template <class T, class Policy>
-inline T asymptotic_bessel_y_derivative_large_x_2(T v, T x, const Policy& pol)
-{
+inline T asymptotic_bessel_y_derivative_large_x_2(T v, T x, const Policy& pol
+) {
    // See A&S 9.2.20.
    BOOST_MATH_STD_USING
    // Get the phase and amplitude:
@@ -86,8 +86,8 @@ inline T asymptotic_bessel_y_derivative_large_x_2(T v, T x, const Policy& pol)
 }
 
 template <class T, class Policy>
-inline T asymptotic_bessel_j_derivative_large_x_2(T v, T x, const Policy& pol)
-{
+inline T asymptotic_bessel_j_derivative_large_x_2(T v, T x, const Policy& pol
+) {
    // See A&S 9.2.20.
    BOOST_MATH_STD_USING
    // Get the phase and amplitude:
@@ -116,8 +116,8 @@ inline T asymptotic_bessel_j_derivative_large_x_2(T v, T x, const Policy& pol)
 }
 
 template <class T>
-inline bool asymptotic_bessel_derivative_large_x_limit(const T& v, const T& x)
-{
+inline bool asymptotic_bessel_derivative_large_x_limit(const T& v, const T& x
+) {
    BOOST_MATH_STD_USING
    //
    // This function is the copy of math::asymptotic_bessel_large_x_limit

@@ -684,8 +684,8 @@ fvar<RealType, Order>::fvar(RealType2 const& ca) : v{{static_cast<RealType>(ca)}
 
 /*
 template<typename RealType, size_t Order>
-fvar<RealType,Order>& fvar<RealType,Order>::operator=(root_type const& ca)
-{
+fvar<RealType,Order>& fvar<RealType,Order>::operator=(root_type const& ca
+) {
     v.front() = static_cast<RealType>(ca);
     if constexpr (0 < Order)
         std::fill(v.begin()+1, v.end(), static_cast<RealType>(0));

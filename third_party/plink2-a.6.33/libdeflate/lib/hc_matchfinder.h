@@ -132,8 +132,8 @@ struct MATCHFINDER_ALIGNED hc_matchfinder  {
 
 /* Prepare the matchfinder for a new input buffer.  */
 static forceinline void
-hc_matchfinder_init(struct hc_matchfinder *mf)
-{
+hc_matchfinder_init(struct hc_matchfinder *mf
+) {
 	STATIC_ASSERT(HC_MATCHFINDER_TOTAL_HASH_SIZE %
 		      MATCHFINDER_SIZE_ALIGNMENT == 0);
 
@@ -141,8 +141,8 @@ hc_matchfinder_init(struct hc_matchfinder *mf)
 }
 
 static forceinline void
-hc_matchfinder_slide_window(struct hc_matchfinder *mf)
-{
+hc_matchfinder_slide_window(struct hc_matchfinder *mf
+) {
 	STATIC_ASSERT(sizeof(*mf) % MATCHFINDER_SIZE_ALIGNMENT == 0);
 
 	matchfinder_rebase((mf_pos_t *)mf, sizeof(*mf));
@@ -188,8 +188,8 @@ hc_matchfinder_longest_match(struct hc_matchfinder * const mf,
 			     const u32 nice_len,
 			     const u32 max_search_depth,
 			     u32 * const next_hashes,
-			     u32 * const offset_ret)
-{
+			     u32 * const offset_ret
+) {
 	u32 depth_remaining = max_search_depth;
 	const u8 *best_matchptr = in_next;
 	mf_pos_t cur_node3, cur_node4;
@@ -363,8 +363,8 @@ hc_matchfinder_skip_bytes(struct hc_matchfinder * const mf,
 			  const u8 *in_next,
 			  const u8 * const in_end,
 			  const u32 count,
-			  u32 * const next_hashes)
-{
+			  u32 * const next_hashes
+) {
 	u32 cur_pos;
 	u32 hash3, hash4;
 	u32 next_hashseq;

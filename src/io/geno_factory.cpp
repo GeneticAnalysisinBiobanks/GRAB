@@ -137,15 +137,15 @@ std::unique_ptr<GenoMeta> makeGenoData(
     const std::vector<uint64_t>& usedMask,
     uint32_t nSamplesInFile,
     uint32_t nUsed,
-    int nMarkersEachChunk)
-{
+    int nMarkersEachChunk
+) {
     switch (spec.format) {
     case GenoFormat::Plink:
         infoMsg("Loading PLINK data: %s", spec.path.c_str());
         return std::make_unique<PlinkData>(
             spec.path + ".bed", spec.path + ".bim", spec.path + ".fam",
             usedMask, nSamplesInFile, nUsed,
-            std::string{}, std::string{}, std::string{}, std::string{},
+            spec.extractFile, std::string{}, spec.excludeFile, std::string{},
             nMarkersEachChunk);
     case GenoFormat::Pgen:
         infoMsg("Loading PGEN data: %s", spec.path.c_str());

@@ -145,28 +145,28 @@ inline void throw_exception_assert_compatibility( std::exception const & ) {}
 
 #if defined( BOOST_EXCEPTION_DISABLE )
 
-template<class E> BOOST_NORETURN void throw_exception( E const & e )
-{
+template<class E> BOOST_NORETURN void throw_exception( E const & e 
+) {
     throw_exception_assert_compatibility( e );
     throw e;
 }
 
-template<class E> BOOST_NORETURN void throw_exception( E const & e, boost::source_location const & )
-{
+template<class E> BOOST_NORETURN void throw_exception( E const & e, boost::source_location const & 
+) {
     throw_exception_assert_compatibility( e );
     throw e;
 }
 
 #else // defined( BOOST_EXCEPTION_DISABLE )
 
-template<class E> BOOST_NORETURN void throw_exception( E const & e )
-{
+template<class E> BOOST_NORETURN void throw_exception( E const & e 
+) {
     throw_exception_assert_compatibility( e );
     throw wrapexcept<E>( e );
 }
 
-template<class E> BOOST_NORETURN void throw_exception( E const & e, boost::source_location const & loc )
-{
+template<class E> BOOST_NORETURN void throw_exception( E const & e, boost::source_location const & loc 
+) {
     throw_exception_assert_compatibility( e );
     throw wrapexcept<E>( e, loc );
 }
@@ -221,16 +221,16 @@ public:
 
 #if !defined(BOOST_NO_CXX11_RVALUE_REFERENCES) && !defined(BOOST_NO_CXX11_HDR_TYPE_TRAITS)
 
-template<class E> BOOST_NORETURN void throw_with_location( E && e, boost::source_location const & loc = BOOST_CURRENT_LOCATION )
-{
+template<class E> BOOST_NORETURN void throw_with_location( E && e, boost::source_location const & loc = BOOST_CURRENT_LOCATION 
+) {
     throw_exception_assert_compatibility( e );
     throw detail::with_throw_location<typename std::decay<E>::type>( std::forward<E>( e ), loc );
 }
 
 #else
 
-template<class E> BOOST_NORETURN void throw_with_location( E const & e, boost::source_location const & loc = BOOST_CURRENT_LOCATION )
-{
+template<class E> BOOST_NORETURN void throw_with_location( E const & e, boost::source_location const & loc = BOOST_CURRENT_LOCATION 
+) {
     throw_exception_assert_compatibility( e );
     throw detail::with_throw_location<E>( e, loc );
 }
@@ -239,8 +239,8 @@ template<class E> BOOST_NORETURN void throw_with_location( E const & e, boost::s
 
 #else
 
-template<class E> BOOST_NORETURN void throw_with_location( E const & e, boost::source_location const & loc = BOOST_CURRENT_LOCATION )
-{
+template<class E> BOOST_NORETURN void throw_with_location( E const & e, boost::source_location const & loc = BOOST_CURRENT_LOCATION 
+) {
     boost::throw_exception( e, loc );
 }
 
@@ -248,8 +248,8 @@ template<class E> BOOST_NORETURN void throw_with_location( E const & e, boost::s
 
 // get_throw_location
 
-template<class E> boost::source_location get_throw_location( E const & e )
-{
+template<class E> boost::source_location get_throw_location( E const & e 
+) {
 #if defined(BOOST_NO_RTTI)
 
     (void)e;

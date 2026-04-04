@@ -329,8 +329,8 @@ public:
 
 /****************************************************************************************************************/
 template<typename RealType, size_t DerivativeOrder>
-inline gradient_tape<RealType, DerivativeOrder, BOOST_MATH_BUFFER_SIZE> &get_active_tape()
-{
+inline gradient_tape<RealType, DerivativeOrder, BOOST_MATH_BUFFER_SIZE> &get_active_tape(
+) {
     static BOOST_MATH_THREAD_LOCAL gradient_tape<RealType, DerivativeOrder, BOOST_MATH_BUFFER_SIZE>
                                    tape;
     return tape;
@@ -583,29 +583,29 @@ public:
 };
 
 template<typename RealType, size_t DerivativeOrder>
-std::ostream &operator<<(std::ostream &os, const rvar<RealType, DerivativeOrder> var)
-{
+std::ostream &operator<<(std::ostream &os, const rvar<RealType, DerivativeOrder> var
+) {
     os << "rvar<" << DerivativeOrder << ">(" << var.item() << "," << var.adjoint() << ")";
     return os;
 }
 
 template<typename RealType, size_t DerivativeOrder, typename E>
-std::ostream &operator<<(std::ostream &os, const expression<RealType, DerivativeOrder, E> &expr)
-{
+std::ostream &operator<<(std::ostream &os, const expression<RealType, DerivativeOrder, E> &expr
+) {
     rvar<RealType, DerivativeOrder> tmp = expr;
     os << "rvar<" << DerivativeOrder << ">(" << tmp.item() << "," << tmp.adjoint() << ")";
     return os;
 }
 
 template<typename RealType, size_t DerivativeOrder>
-rvar<RealType, DerivativeOrder> make_rvar(const RealType v)
-{
+rvar<RealType, DerivativeOrder> make_rvar(const RealType v
+) {
     static_assert(DerivativeOrder > 0, "rvar order must be >= 1");
     return rvar<RealType, DerivativeOrder>(v);
 }
 template<typename RealType, size_t DerivativeOrder, typename E>
-rvar<RealType, DerivativeOrder> make_rvar(const expression<RealType, DerivativeOrder, E> &expr)
-{
+rvar<RealType, DerivativeOrder> make_rvar(const expression<RealType, DerivativeOrder, E> &expr
+) {
     static_assert(DerivativeOrder > 0, "rvar order must be >= 1");
     return rvar<RealType, DerivativeOrder>(expr);
 }
@@ -721,8 +721,8 @@ struct rvar_order<rvar<RealType, DerivativeOrder> *>
  * safe to call recursively with grad(grad(grad...
  */
 template<typename RealType, size_t DerivativeOrder_1, size_t DerivativeOrder_2>
-auto grad(rvar<RealType, DerivativeOrder_1> &f, std::vector<rvar<RealType, DerivativeOrder_2> *> &x)
-{
+auto grad(rvar<RealType, DerivativeOrder_1> &f, std::vector<rvar<RealType, DerivativeOrder_2> *> &x
+) {
     static_assert(DerivativeOrder_1 <= DerivativeOrder_2,
                   "variable differentiating w.r.t. must have order >= function order");
     std::vector<rvar<RealType, DerivativeOrder_1> *> xx;
@@ -734,8 +734,8 @@ auto grad(rvar<RealType, DerivativeOrder_1> &f, std::vector<rvar<RealType, Deriv
 /** @brief variadic overload of above
  */
 template<typename RealType, size_t DerivativeOrder_1, typename First, typename... Other>
-auto grad(rvar<RealType, DerivativeOrder_1> &f, First first, Other... other)
-{
+auto grad(rvar<RealType, DerivativeOrder_1> &f, First first, Other... other
+) {
     constexpr size_t DerivativeOrder_2 = detail::rvar_order<First>::value;
     static_assert(DerivativeOrder_1 <= DerivativeOrder_2,
                   "variable differentiating w.r.t. must have order >= function order");
@@ -751,15 +751,15 @@ auto grad(rvar<RealType, DerivativeOrder_1> &f, First first, Other... other)
  *  NOT recursion safe, cannot do hess(hess(
  */
 template<typename RealType, size_t DerivativeOrder_1, size_t DerivativeOrder_2>
-auto hess(rvar<RealType, DerivativeOrder_1> &f, std::vector<rvar<RealType, DerivativeOrder_2> *> &x)
-{
+auto hess(rvar<RealType, DerivativeOrder_1> &f, std::vector<rvar<RealType, DerivativeOrder_2> *> &x
+) {
     return detail::grad_nd_impl<2, RealType, DerivativeOrder_1, DerivativeOrder_2>{}(f, x);
 }
 /** @brief variadic overload of above
  */
 template<typename RealType, size_t DerivativeOrder_1, typename First, typename... Other>
-auto hess(rvar<RealType, DerivativeOrder_1> &f, First first, Other... other)
-{
+auto hess(rvar<RealType, DerivativeOrder_1> &f, First first, Other... other
+) {
     constexpr size_t DerivativeOrder_2                     = detail::rvar_order<First>::value;
     std::vector<rvar<RealType, DerivativeOrder_2> *> x_vec = {first, other...};
     return hess(f, x_vec);
@@ -773,8 +773,8 @@ auto hess(rvar<RealType, DerivativeOrder_1> &f, First first, Other... other)
  */
 template<size_t N, typename RealType, size_t DerivativeOrder_1, size_t DerivativeOrder_2>
 auto grad_nd(rvar<RealType, DerivativeOrder_1>                &f,
-             std::vector<rvar<RealType, DerivativeOrder_2> *> &x)
-{
+             std::vector<rvar<RealType, DerivativeOrder_2> *> &x
+) {
     static_assert(DerivativeOrder_1 >= N, "Function order must be at least N");
     static_assert(DerivativeOrder_2 >= DerivativeOrder_1,
                   "Variable order must be at least function order");
@@ -785,8 +785,8 @@ auto grad_nd(rvar<RealType, DerivativeOrder_1>                &f,
 /** @brief variadic overload of above
  */
 template<size_t N, typename ftype, typename First, typename... Other>
-auto grad_nd(ftype &f, First first, Other... other)
-{
+auto grad_nd(ftype &f, First first, Other... other
+) {
     using RealType                                         = typename ftype::value_type;
     constexpr size_t DerivativeOrder_1                     = detail::rvar_order<ftype *>::value;
     constexpr size_t DerivativeOrder_2                     = detail::rvar_order<First>::value;

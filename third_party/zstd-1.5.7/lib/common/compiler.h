@@ -345,8 +345,8 @@ MEM_STATIC int ZSTD_isPower2(size_t u) {
  */
 MEM_STATIC
 ZSTD_ALLOW_POINTER_OVERFLOW_ATTR
-ptrdiff_t ZSTD_wrappedPtrDiff(unsigned char const* lhs, unsigned char const* rhs)
-{
+ptrdiff_t ZSTD_wrappedPtrDiff(unsigned char const* lhs, unsigned char const* rhs
+) {
     return lhs - rhs;
 }
 
@@ -357,8 +357,8 @@ ptrdiff_t ZSTD_wrappedPtrDiff(unsigned char const* lhs, unsigned char const* rhs
  */
 MEM_STATIC
 ZSTD_ALLOW_POINTER_OVERFLOW_ATTR
-unsigned char const* ZSTD_wrappedPtrAdd(unsigned char const* ptr, ptrdiff_t add)
-{
+unsigned char const* ZSTD_wrappedPtrAdd(unsigned char const* ptr, ptrdiff_t add
+) {
     return ptr + add;
 }
 
@@ -370,8 +370,8 @@ unsigned char const* ZSTD_wrappedPtrAdd(unsigned char const* ptr, ptrdiff_t add)
  */
 MEM_STATIC
 ZSTD_ALLOW_POINTER_OVERFLOW_ATTR
-unsigned char const* ZSTD_wrappedPtrSub(unsigned char const* ptr, ptrdiff_t sub)
-{
+unsigned char const* ZSTD_wrappedPtrSub(unsigned char const* ptr, ptrdiff_t sub
+) {
     return ptr - sub;
 }
 
@@ -382,8 +382,8 @@ unsigned char const* ZSTD_wrappedPtrSub(unsigned char const* ptr, ptrdiff_t sub)
  * @returns `ptr + add` except it defines `NULL + 0 == NULL`.
  */
 MEM_STATIC
-unsigned char* ZSTD_maybeNullPtrAdd(unsigned char* ptr, ptrdiff_t add)
-{
+unsigned char* ZSTD_maybeNullPtrAdd(unsigned char* ptr, ptrdiff_t add
+) {
     return add > 0 ? ptr + add : ptr;
 }
 

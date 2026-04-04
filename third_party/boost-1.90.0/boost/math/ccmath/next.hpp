@@ -83,8 +83,8 @@ constexpr T normalize_value(const T& val, const std::true_type&)
 }
 
 template <typename T>
-constexpr T get_smallest_value(const std::true_type&)
-{
+constexpr T get_smallest_value(const std::true_type&
+) {
     //
     // numeric_limits lies about denorms being present - particularly
     // when this can be turned on or off at runtime, as is the case
@@ -95,26 +95,26 @@ constexpr T get_smallest_value(const std::true_type&)
 }
 
 template <typename T>
-constexpr T get_smallest_value(const std::false_type&)
-{
+constexpr T get_smallest_value(const std::false_type&
+) {
     return tools::min_value<T>();
 }
 
 template <typename T>
-constexpr T get_smallest_value()
-{
+constexpr T get_smallest_value(
+) {
     return get_smallest_value<T>(std::integral_constant<bool, std::numeric_limits<T>::is_specialized>());
 }
 
 template <typename T>
-constexpr T calc_min_shifted(const std::true_type&)
-{
+constexpr T calc_min_shifted(const std::true_type&
+) {
    return boost::math::ccmath::ldexp(tools::min_value<T>(), tools::digits<T>() + 1);
 }
 
 template <typename T>
-constexpr T calc_min_shifted(const std::false_type&)
-{
+constexpr T calc_min_shifted(const std::false_type&
+) {
    static_assert(std::numeric_limits<T>::is_specialized, "Type T must be specialized.");
    static_assert(std::numeric_limits<T>::radix != 2, "Type T must be specialized.");
 
@@ -122,8 +122,8 @@ constexpr T calc_min_shifted(const std::false_type&)
 }
 
 template <typename T>
-constexpr T get_min_shift_value()
-{
+constexpr T get_min_shift_value(
+) {
    const T val = calc_min_shifted<T>(std::integral_constant<bool, !std::numeric_limits<T>::is_specialized || std::numeric_limits<T>::radix == 2>());
    return val;
 }
@@ -144,8 +144,8 @@ template <typename T, bool b = boost::math::tools::detail::has_backend_type_v<T>
 using exponent_type_t = typename exponent_type<T>::type;
 
 template <typename T>
-constexpr T float_next_imp(const T& val, const std::true_type&)
-{
+constexpr T float_next_imp(const T& val, const std::true_type&
+) {
     using exponent_type = exponent_type_t<T>;
     
     exponent_type expon {};
@@ -198,8 +198,8 @@ constexpr T float_next_imp(const T& val, const std::true_type&)
 // Special version for some base other than 2:
 //
 template <typename T>
-constexpr T float_next_imp(const T& val, const std::false_type&)
-{
+constexpr T float_next_imp(const T& val, const std::false_type&
+) {
     using exponent_type = exponent_type_t<T>;
 
     static_assert(std::numeric_limits<T>::is_specialized, "Type T must be specialized.");
@@ -255,14 +255,14 @@ constexpr T float_next_imp(const T& val, const std::false_type&)
 }
 
 template <typename T, typename result_type>
-constexpr result_type float_next(const T& val)
-{
+constexpr result_type float_next(const T& val
+) {
     return detail::float_next_imp(detail::normalize_value(static_cast<result_type>(val), typename detail::has_hidden_guard_digits<result_type>::type()), std::integral_constant<bool, !std::numeric_limits<result_type>::is_specialized || (std::numeric_limits<result_type>::radix == 2)>());
 }
 
 template <typename T>
-constexpr T float_prior_imp(const T& val, const std::true_type&)
-{
+constexpr T float_prior_imp(const T& val, const std::true_type&
+) {
     using exponent_type = exponent_type_t<T>;
 
     exponent_type expon {};
@@ -317,8 +317,8 @@ constexpr T float_prior_imp(const T& val, const std::true_type&)
 // Special version for bases other than 2:
 //
 template <typename T>
-constexpr T float_prior_imp(const T& val, const std::false_type&)
-{
+constexpr T float_prior_imp(const T& val, const std::false_type&
+) {
     using exponent_type = exponent_type_t<T>;
 
     static_assert(std::numeric_limits<T>::is_specialized, "Type T must be specialized.");
@@ -374,16 +374,16 @@ constexpr T float_prior_imp(const T& val, const std::false_type&)
 } // float_prior_imp
 
 template <typename T, typename result_type>
-constexpr result_type float_prior(const T& val)
-{
+constexpr result_type float_prior(const T& val
+) {
     return detail::float_prior_imp(detail::normalize_value(static_cast<result_type>(val), typename detail::has_hidden_guard_digits<result_type>::type()), std::integral_constant<bool, !std::numeric_limits<result_type>::is_specialized || (std::numeric_limits<result_type>::radix == 2)>());
 }
 
 } // namespace detail
 
 template <typename T, typename U, typename result_type = tools::promote_args_t<T, U>>
-constexpr result_type nextafter(const T& val, const U& direction)
-{
+constexpr result_type nextafter(const T& val, const U& direction
+) {
     if (BOOST_MATH_IS_CONSTANT_EVALUATED(val))
     {
         if (boost::math::ccmath::isnan(val))
@@ -415,21 +415,21 @@ constexpr result_type nextafter(const T& val, const U& direction)
     }
 }
 
-constexpr float nextafterf(float val, float direction)
-{
+constexpr float nextafterf(float val, float direction
+) {
     return boost::math::ccmath::nextafter(val, direction);
 }
 
 #ifndef BOOST_MATH_NO_LONG_DOUBLE_MATH_FUNCTIONS
 
-constexpr long double nextafterl(long double val, long double direction)
-{
+constexpr long double nextafterl(long double val, long double direction
+) {
     return boost::math::ccmath::nextafter(val, direction);
 }
 
 template <typename T, typename result_type = tools::promote_args_t<T, long double>, typename return_type = std::conditional_t<std::is_integral_v<T>, double, T>>
-constexpr return_type nexttoward(T val, long double direction)
-{
+constexpr return_type nexttoward(T val, long double direction
+) {
     if (BOOST_MATH_IS_CONSTANT_EVALUATED(val))
     {
         return static_cast<return_type>(boost::math::ccmath::nextafter(static_cast<result_type>(val), direction));
@@ -441,13 +441,13 @@ constexpr return_type nexttoward(T val, long double direction)
     }
 }
 
-constexpr float nexttowardf(float val, long double direction)
-{
+constexpr float nexttowardf(float val, long double direction
+) {
     return boost::math::ccmath::nexttoward(val, direction);
 }
 
-constexpr long double nexttowardl(long double val, long double direction)
-{
+constexpr long double nexttowardl(long double val, long double direction
+) {
     return boost::math::ccmath::nexttoward(val, direction);
 }
 

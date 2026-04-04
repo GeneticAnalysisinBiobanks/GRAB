@@ -24,8 +24,8 @@ namespace boost{ namespace math{
 namespace detail{
 
 template <class T>
-BOOST_MATH_GPU_ENABLED T find_inverse_s(T p, T q)
-{
+BOOST_MATH_GPU_ENABLED T find_inverse_s(T p, T q
+) {
    //
    // Computation of the Incomplete Gamma Function Ratios and their Inverse
    // ARMIDO R. DIDONATO and ALFRED H. MORRIS, JR.
@@ -53,8 +53,8 @@ BOOST_MATH_GPU_ENABLED T find_inverse_s(T p, T q)
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED T didonato_SN(T a, T x, unsigned N, T tolerance = 0)
-{
+BOOST_MATH_GPU_ENABLED T didonato_SN(T a, T x, unsigned N, T tolerance = 0
+) {
    //
    // Computation of the Incomplete Gamma Function Ratios and their Inverse
    // ARMIDO R. DIDONATO and ALFRED H. MORRIS, JR.
@@ -80,8 +80,8 @@ BOOST_MATH_GPU_ENABLED T didonato_SN(T a, T x, unsigned N, T tolerance = 0)
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline T didonato_FN(T p, T a, T x, unsigned N, T tolerance, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline T didonato_FN(T p, T a, T x, unsigned N, T tolerance, const Policy& pol
+) {
    //
    // Computation of the Incomplete Gamma Function Ratios and their Inverse
    // ARMIDO R. DIDONATO and ALFRED H. MORRIS, JR.
@@ -96,8 +96,8 @@ BOOST_MATH_GPU_ENABLED inline T didonato_FN(T p, T a, T x, unsigned N, T toleran
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T find_inverse_gamma(T a, T p, T q, const Policy& pol, bool* p_has_10_digits)
-{
+BOOST_MATH_GPU_ENABLED T find_inverse_gamma(T a, T p, T q, const Policy& pol, bool* p_has_10_digits
+) {
    //
    // In order to understand what's going on here, you will
    // need to refer to:
@@ -398,8 +398,8 @@ private:
 };
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T gamma_p_inv_imp(T a, T p, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED T gamma_p_inv_imp(T a, T p, const Policy& pol
+) {
    BOOST_MATH_STD_USING  // ADL of std functions.
 
    constexpr auto function = "boost::math::gamma_p_inv<%1%>(%1%, %1%)";
@@ -473,8 +473,8 @@ BOOST_MATH_GPU_ENABLED T gamma_p_inv_imp(T a, T p, const Policy& pol)
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T gamma_q_inv_imp(T a, T q, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED T gamma_q_inv_imp(T a, T q, const Policy& pol
+) {
    BOOST_MATH_STD_USING  // ADL of std functions.
 
    constexpr auto function = "boost::math::gamma_q_inv<%1%>(%1%, %1%)";
@@ -546,8 +546,8 @@ BOOST_MATH_GPU_ENABLED T gamma_q_inv_imp(T a, T q, const Policy& pol)
 
 template <class T1, class T2, class Policy>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type
-   gamma_p_inv(T1 a, T2 p, const Policy& pol)
-{
+   gamma_p_inv(T1 a, T2 p, const Policy& pol
+) {
    typedef typename tools::promote_args<T1, T2>::type result_type;
    return detail::gamma_p_inv_imp(
       static_cast<result_type>(a),
@@ -556,8 +556,8 @@ BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type
 
 template <class T1, class T2, class Policy>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type
-   gamma_q_inv(T1 a, T2 p, const Policy& pol)
-{
+   gamma_q_inv(T1 a, T2 p, const Policy& pol
+) {
    typedef typename tools::promote_args<T1, T2>::type result_type;
    return detail::gamma_q_inv_imp(
       static_cast<result_type>(a),
@@ -566,15 +566,15 @@ BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type
 
 template <class T1, class T2>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type
-   gamma_p_inv(T1 a, T2 p)
-{
+   gamma_p_inv(T1 a, T2 p
+) {
    return gamma_p_inv(a, p, policies::policy<>());
 }
 
 template <class T1, class T2>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type
-   gamma_q_inv(T1 a, T2 p)
-{
+   gamma_q_inv(T1 a, T2 p
+) {
    return gamma_q_inv(a, p, policies::policy<>());
 }
 

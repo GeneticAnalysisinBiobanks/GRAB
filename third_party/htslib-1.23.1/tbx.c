@@ -61,8 +61,8 @@ typedef struct {
     int tid;
 } tbx_intv_t;
 
-static inline int get_tid(tbx_t *tbx, const char *ss, int is_add)
-{
+static inline int get_tid(tbx_t *tbx, const char *ss, int is_add
+) {
     khint_t k;
     khash_t(s2i) *d;
     if ((tbx->conf.preset&0xffff) == TBX_GAF) return(0);
@@ -88,13 +88,13 @@ static inline int get_tid(tbx_t *tbx, const char *ss, int is_add)
     return k == kh_end(d)? -1 : kh_val(d, k);
 }
 
-int tbx_name2id(tbx_t *tbx, const char *ss)
-{
+int tbx_name2id(tbx_t *tbx, const char *ss
+) {
     return get_tid(tbx, ss, 0);
 }
 
-int tbx_parse1(const tbx_conf_t *conf, size_t len, char *line, tbx_intv_t *intv)
-{
+int tbx_parse1(const tbx_conf_t *conf, size_t len, char *line, tbx_intv_t *intv
+) {
     size_t i, b = 0;
     int id = 1, getlen = 0, alcnt = 0, use_svlen = 0, lenpos = -1;
     char *s, *t;
@@ -312,8 +312,8 @@ int tbx_parse1(const tbx_conf_t *conf, size_t len, char *line, tbx_intv_t *intv)
     return 0;
 }
 
-static inline int get_intv(tbx_t *tbx, kstring_t *str, tbx_intv_t *intv, int is_add)
-{
+static inline int get_intv(tbx_t *tbx, kstring_t *str, tbx_intv_t *intv, int is_add
+) {
     if (tbx_parse1(&tbx->conf, str->l, str->s, intv) == 0) {
         int c = *intv->se;
         *intv->se = '\0';
@@ -350,8 +350,8 @@ static inline int get_intv(tbx_t *tbx, kstring_t *str, tbx_intv_t *intv, int is_
  *               -1 on EOF
  *            <= -2 on error
  */
-int tbx_readrec(BGZF *fp, void *tbxv, void *sv, int *tid, hts_pos_t *beg, hts_pos_t *end)
-{
+int tbx_readrec(BGZF *fp, void *tbxv, void *sv, int *tid, hts_pos_t *beg, hts_pos_t *end
+) {
     tbx_t *tbx = (tbx_t *) tbxv;
     kstring_t *s = (kstring_t *) sv;
     int ret;
@@ -372,8 +372,8 @@ int tbx_readrec(BGZF *fp, void *tbxv, void *sv, int *tid, hts_pos_t *beg, hts_po
     return ret;
 }
 
-static int tbx_set_meta(tbx_t *tbx)
-{
+static int tbx_set_meta(tbx_t *tbx
+) {
     int i, l = 0, l_nm;
     uint32_t x[7];
     char **name;
@@ -409,8 +409,8 @@ static int tbx_set_meta(tbx_t *tbx)
 // Minimal effort parser to extract reference length out of VCF header line
 // This is used only used to adjust the number of levels if necessary,
 // so not a major problem if it doesn't always work.
-static void adjust_max_ref_len_vcf(const char *str, int64_t *max_ref_len)
-{
+static void adjust_max_ref_len_vcf(const char *str, int64_t *max_ref_len
+) {
     const char *ptr;
     int64_t len;
     if (strncmp(str, "##contig", 8) != 0) return;
@@ -422,8 +422,8 @@ static void adjust_max_ref_len_vcf(const char *str, int64_t *max_ref_len)
 }
 
 // Same for sam files
-static void adjust_max_ref_len_sam(const char *str, int64_t *max_ref_len)
-{
+static void adjust_max_ref_len_sam(const char *str, int64_t *max_ref_len
+) {
     const char *ptr;
     int64_t len;
     if (strncmp(str, "@SQ", 3) != 0) return;
@@ -434,8 +434,8 @@ static void adjust_max_ref_len_sam(const char *str, int64_t *max_ref_len)
     if (*max_ref_len < len) *max_ref_len = len;
 }
 
-tbx_t *tbx_index(BGZF *fp, int min_shift, const tbx_conf_t *conf)
-{
+tbx_t *tbx_index(BGZF *fp, int min_shift, const tbx_conf_t *conf
+) {
     tbx_t *tbx;
     kstring_t str;
     int ret, first = 0, n_lvls, fmt;
@@ -509,8 +509,8 @@ tbx_t *tbx_index(BGZF *fp, int min_shift, const tbx_conf_t *conf)
     return NULL;
 }
 
-void tbx_destroy(tbx_t *tbx)
-{
+void tbx_destroy(tbx_t *tbx
+) {
     khash_t(s2i) *d = (khash_t(s2i)*)tbx->dict;
     if (d != NULL)
     {
@@ -523,8 +523,8 @@ void tbx_destroy(tbx_t *tbx)
     free(tbx);
 }
 
-int tbx_index_build3(const char *fn, const char *fnidx, int min_shift, int n_threads, const tbx_conf_t *conf)
-{
+int tbx_index_build3(const char *fn, const char *fnidx, int min_shift, int n_threads, const tbx_conf_t *conf
+) {
     tbx_t *tbx;
     BGZF *fp;
     int ret;
@@ -539,18 +539,18 @@ int tbx_index_build3(const char *fn, const char *fnidx, int min_shift, int n_thr
     return ret;
 }
 
-int tbx_index_build2(const char *fn, const char *fnidx, int min_shift, const tbx_conf_t *conf)
-{
+int tbx_index_build2(const char *fn, const char *fnidx, int min_shift, const tbx_conf_t *conf
+) {
     return tbx_index_build3(fn, fnidx, min_shift, 0, conf);
 }
 
-int tbx_index_build(const char *fn, int min_shift, const tbx_conf_t *conf)
-{
+int tbx_index_build(const char *fn, int min_shift, const tbx_conf_t *conf
+) {
     return tbx_index_build3(fn, NULL, min_shift, 0, conf);
 }
 
-static tbx_t *index_load(const char *fn, const char *fnidx, int flags)
-{
+static tbx_t *index_load(const char *fn, const char *fnidx, int flags
+) {
     tbx_t *tbx;
     uint8_t *meta;
     char *nm, *p;
@@ -596,23 +596,23 @@ static tbx_t *index_load(const char *fn, const char *fnidx, int flags)
     return NULL;
 }
 
-tbx_t *tbx_index_load3(const char *fn, const char *fnidx, int flags)
-{
+tbx_t *tbx_index_load3(const char *fn, const char *fnidx, int flags
+) {
     return index_load(fn, fnidx, flags);
 }
 
-tbx_t *tbx_index_load2(const char *fn, const char *fnidx)
-{
+tbx_t *tbx_index_load2(const char *fn, const char *fnidx
+) {
     return index_load(fn, fnidx, 1);
 }
 
-tbx_t *tbx_index_load(const char *fn)
-{
+tbx_t *tbx_index_load(const char *fn
+) {
     return index_load(fn, NULL, 1);
 }
 
-const char **tbx_seqnames(tbx_t *tbx, int *n)
-{
+const char **tbx_seqnames(tbx_t *tbx, int *n
+) {
     khash_t(s2i) *d = (khash_t(s2i)*)tbx->dict;
     if (d == NULL)
     {

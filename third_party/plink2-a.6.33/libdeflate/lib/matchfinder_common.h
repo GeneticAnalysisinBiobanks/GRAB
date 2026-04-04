@@ -18,8 +18,8 @@
  * order, at the memory location from which the input 32-bit value was loaded.
  */
 static forceinline u32
-loaded_u32_to_u24(u32 v)
-{
+loaded_u32_to_u24(u32 v
+) {
 	if (CPU_IS_LITTLE_ENDIAN())
 		return v & 0xFFFFFF;
 	else
@@ -32,8 +32,8 @@ loaded_u32_to_u24(u32 v)
  * platform-dependent.  At least 4 bytes (not 3) must be available at @p.
  */
 static forceinline u32
-load_u24_unaligned(const u8 *p)
-{
+load_u24_unaligned(const u8 *p
+) {
 #if UNALIGNED_ACCESS_IS_FAST
 	return loaded_u32_to_u24(load_u32_unaligned(p));
 #else
@@ -105,8 +105,8 @@ typedef s16 mf_pos_t;
  */
 #ifndef matchfinder_init
 static forceinline void
-matchfinder_init(mf_pos_t *data, size_t size)
-{
+matchfinder_init(mf_pos_t *data, size_t size
+) {
 	size_t num_entries = size / sizeof(*data);
 	size_t i;
 
@@ -134,8 +134,8 @@ matchfinder_init(mf_pos_t *data, size_t size)
  */
 #ifndef matchfinder_rebase
 static forceinline void
-matchfinder_rebase(mf_pos_t *data, size_t size)
-{
+matchfinder_rebase(mf_pos_t *data, size_t size
+) {
 	size_t num_entries = size / sizeof(*data);
 	size_t i;
 
@@ -166,8 +166,8 @@ matchfinder_rebase(mf_pos_t *data, size_t size)
  * the most randomness.
  */
 static forceinline u32
-lz_hash(u32 seq, unsigned num_bits)
-{
+lz_hash(u32 seq, unsigned num_bits
+) {
 	return (u32)(seq * 0x1E35A7BD) >> (32 - num_bits);
 }
 
@@ -177,8 +177,8 @@ lz_hash(u32 seq, unsigned num_bits)
  */
 static forceinline u32
 lz_extend(const u8 * const strptr, const u8 * const matchptr,
-	  const u32 start_len, const u32 max_len)
-{
+	  const u32 start_len, const u32 max_len
+) {
 	u32 len = start_len;
 	machine_word_t v_word;
 

@@ -116,8 +116,8 @@ BOOST_MATH_GPU_ENABLED inline typename detail::fraction_traits<Gen>::result_type
       // SYCL can not handle this condition so we only check float on that platform
       && noexcept(std::declval<Gen>()())
       #endif
-      )
-{
+      
+) {
    BOOST_MATH_STD_USING // ADL of std names
 
    using traits = detail::fraction_traits<Gen>;
@@ -167,8 +167,8 @@ BOOST_MATH_GPU_ENABLED inline typename detail::fraction_traits<Gen>::result_type
          #ifndef BOOST_MATH_HAS_GPU_SUPPORT
          && noexcept(std::declval<Gen>()())
          #endif
-         )
-{
+         
+) {
    return detail::continued_fraction_b_impl(g, factor, max_terms);
 }
 
@@ -178,8 +178,8 @@ BOOST_MATH_GPU_ENABLED inline typename detail::fraction_traits<Gen>::result_type
    #ifndef BOOST_MATH_HAS_GPU_SUPPORT
    && noexcept(std::declval<Gen>()())
    #endif
-   )
-{
+   
+) {
    boost::math::uintmax_t max_terms = (boost::math::numeric_limits<boost::math::uintmax_t>::max)();
    return detail::continued_fraction_b_impl(g, factor, max_terms);
 }
@@ -190,8 +190,8 @@ BOOST_MATH_GPU_ENABLED inline typename detail::fraction_traits<Gen>::result_type
    #ifndef BOOST_MATH_HAS_GPU_SUPPORT
    && noexcept(std::declval<Gen>()())
    #endif
-   )
-{
+   
+) {
    BOOST_MATH_STD_USING // ADL of std names
 
    using traits = detail::fraction_traits<Gen>;
@@ -208,8 +208,8 @@ BOOST_MATH_GPU_ENABLED inline typename detail::fraction_traits<Gen>::result_type
    #ifndef BOOST_MATH_HAS_GPU_SUPPORT
    && noexcept(std::declval<Gen>()())
    #endif
-   )
-{
+   
+) {
    BOOST_MATH_STD_USING // ADL of std names
 
    using traits = detail::fraction_traits<Gen>;
@@ -241,8 +241,8 @@ BOOST_MATH_GPU_ENABLED inline typename detail::fraction_traits<Gen>::result_type
    #ifndef BOOST_MATH_HAS_GPU_SUPPORT
    && noexcept(std::declval<Gen>()())
    #endif
-   )
-{
+   
+) {
    BOOST_MATH_STD_USING // ADL of std names
 
    using traits = detail::fraction_traits<Gen>;
@@ -294,8 +294,8 @@ BOOST_MATH_GPU_ENABLED inline typename detail::fraction_traits<Gen>::result_type
    #ifndef BOOST_MATH_HAS_GPU_SUPPORT
    && noexcept(std::declval<Gen>()())
    #endif
-   )
-{
+   
+) {
    return detail::continued_fraction_a_impl(g, factor, max_terms);
 }
 
@@ -305,8 +305,8 @@ BOOST_MATH_GPU_ENABLED inline typename detail::fraction_traits<Gen>::result_type
    #ifndef BOOST_MATH_HAS_GPU_SUPPORT
    && noexcept(std::declval<Gen>()())
    #endif
-   )
-{
+   
+) {
    boost::math::uintmax_t max_iter = (boost::math::numeric_limits<boost::math::uintmax_t>::max)();
    return detail::continued_fraction_a_impl(g, factor, max_iter);
 }
@@ -317,8 +317,8 @@ BOOST_MATH_GPU_ENABLED inline typename detail::fraction_traits<Gen>::result_type
    #ifndef BOOST_MATH_HAS_GPU_SUPPORT
    && noexcept(std::declval<Gen>()())
    #endif
-   )
-{
+   
+) {
    BOOST_MATH_STD_USING // ADL of std names
 
    typedef detail::fraction_traits<Gen> traits;
@@ -336,8 +336,8 @@ BOOST_MATH_GPU_ENABLED inline typename detail::fraction_traits<Gen>::result_type
    #ifndef BOOST_MATH_HAS_GPU_SUPPORT
    && noexcept(std::declval<Gen>()())
    #endif
-   )
-{
+   
+) {
    BOOST_MATH_STD_USING // ADL of std names
 
    using traits = detail::fraction_traits<Gen>;

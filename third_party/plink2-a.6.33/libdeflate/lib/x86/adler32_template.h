@@ -132,8 +132,8 @@
 /* Sum the 32-bit elements of v_s1 and add them to s1, and likewise for s2. */
 #undef reduce_to_32bits
 static forceinline ATTRIBUTES void
-ADD_SUFFIX(reduce_to_32bits)(vec_t v_s1, vec_t v_s2, u32 *s1_p, u32 *s2_p)
-{
+ADD_SUFFIX(reduce_to_32bits)(vec_t v_s1, vec_t v_s2, u32 *s1_p, u32 *s2_p
+) {
 	__m128i v_s1_128, v_s2_128;
 #if VL == 16
 	{
@@ -180,8 +180,8 @@ ADD_SUFFIX(reduce_to_32bits)(vec_t v_s1, vec_t v_s2, u32 *s1_p, u32 *s2_p)
 #define reduce_to_32bits	ADD_SUFFIX(reduce_to_32bits)
 
 static ATTRIBUTES u32
-ADD_SUFFIX(adler32_x86)(u32 adler, const u8 *p, size_t len)
-{
+ADD_SUFFIX(adler32_x86)(u32 adler, const u8 *p, size_t len
+) {
 #if USE_VNNI
 	/* This contains the bytes [VL, VL-1, VL-2, ..., 1]. */
 	static const u8 _aligned_attribute(VL) raw_mults[VL] = {

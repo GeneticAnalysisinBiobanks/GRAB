@@ -27,15 +27,15 @@ namespace boost {
 
 template<class C>
 inline constexpr auto
-data(C& c) noexcept(noexcept(c.data())) -> decltype(c.data())
-{
+data(C& c) noexcept(noexcept(c.data())) -> decltype(c.data()
+) {
     return c.data();
 }
 
 template<class C>
 inline constexpr auto
-data(const C& c) noexcept(noexcept(c.data())) -> decltype(c.data())
-{
+data(const C& c) noexcept(noexcept(c.data())) -> decltype(c.data()
+) {
     return c.data();
 }
 

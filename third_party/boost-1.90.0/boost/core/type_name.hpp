@@ -43,8 +43,8 @@ template<class T> struct tn_identity
 
 // tn_remove_prefix
 
-inline bool tn_remove_prefix( std::string& str, char const* prefix )
-{
+inline bool tn_remove_prefix( std::string& str, char const* prefix 
+) {
     std::size_t n = std::strlen( prefix );
 
     if( str.substr( 0, n ) == prefix )
@@ -62,8 +62,8 @@ inline bool tn_remove_prefix( std::string& str, char const* prefix )
 
 // typeid_name
 
-inline std::string fix_typeid_name( char const* n )
-{
+inline std::string fix_typeid_name( char const* n 
+) {
     std::string r = boost::core::demangle( n );
 
 #if defined(_MSC_VER)
@@ -104,26 +104,26 @@ inline std::string fix_typeid_name( char const* n )
 
 // class types can be incomplete
 // but also abstract (T[1] doesn't form)
-template<class T> std::string typeid_name_impl( int T::*, T(*)[1] )
-{
+template<class T> std::string typeid_name_impl( int T::*, T(*)[1] 
+) {
     std::string r = fix_typeid_name( typeid(T[1]).name() );
     return r.substr( 0, r.size() - 4 ); // remove ' [1]' suffix
 }
 
-template<class T> std::string typeid_name_impl( ... )
-{
+template<class T> std::string typeid_name_impl( ... 
+) {
     return fix_typeid_name( typeid(T).name() );
 }
 
-template<class T> std::string typeid_name()
-{
+template<class T> std::string typeid_name(
+) {
     return typeid_name_impl<T>( 0, 0 );
 }
 
 // template names
 
-template<class T> std::string class_template_name()
-{
+template<class T> std::string class_template_name(
+) {
 #if defined(BOOST_GCC)
 
     std::string r = typeid_name<T()>();
@@ -136,55 +136,55 @@ template<class T> std::string class_template_name()
     return r.substr( 0, r.find( '<' ) );
 }
 
-template<class T> std::string sequence_template_name()
-{
+template<class T> std::string sequence_template_name(
+) {
     return detail::class_template_name<T>();
 }
 
-template<class T> std::string set_template_name()
-{
+template<class T> std::string set_template_name(
+) {
     return detail::class_template_name<T>();
 }
 
-template<class T> std::string map_template_name()
-{
+template<class T> std::string map_template_name(
+) {
     return detail::class_template_name<T>();
 }
 
-template<class T> std::string array_template_name()
-{
+template<class T> std::string array_template_name(
+) {
     return detail::class_template_name<T>();
 }
 
 #else // #if !defined(BOOST_NO_TYPEID)
 
-template<class T> std::string typeid_name()
-{
+template<class T> std::string typeid_name(
+) {
     return "_Tp";
 }
 
-template<class T> std::string class_template_name()
-{
+template<class T> std::string class_template_name(
+) {
     return "_Tm";
 }
 
-template<class T> std::string sequence_template_name()
-{
+template<class T> std::string sequence_template_name(
+) {
     return "_Sq";
 }
 
-template<class T> std::string set_template_name()
-{
+template<class T> std::string set_template_name(
+) {
     return "_St";
 }
 
-template<class T> std::string map_template_name()
-{
+template<class T> std::string map_template_name(
+) {
     return "_Mp";
 }
 
-template<class T> std::string array_template_name()
-{
+template<class T> std::string array_template_name(
+) {
     return "_Ar";
 }
 
@@ -204,8 +204,8 @@ template<class T> std::string array_template_name()
 # define BOOST_CORE_DETAIL_SNPRINTF(buffer, format, arg) std::snprintf(buffer, sizeof(buffer)/sizeof(buffer[0]), format, arg)
 #endif
 
-inline std::string tn_to_string( std::size_t n )
-{
+inline std::string tn_to_string( std::size_t n 
+) {
     char buffer[ 32 ];
     BOOST_CORE_DETAIL_SNPRINTF( buffer, "%lu", static_cast< unsigned long >( n ) );
 
@@ -510,15 +510,15 @@ template<class T> struct tn_holder<T&&>
 
 // tn_add_each
 
-template<class T> int tn_add_each_impl( std::string& st )
-{
+template<class T> int tn_add_each_impl( std::string& st 
+) {
     if( !st.empty() ) st += ", ";
     st += tn_holder<T>::type_name( "" );
     return 0;
 }
 
-template<class... T> std::string tn_add_each()
-{
+template<class... T> std::string tn_add_each(
+) {
     std::string st;
 
     typedef int A[ sizeof...(T) + 1 ];
@@ -527,8 +527,8 @@ template<class... T> std::string tn_add_each()
     return st;
 }
 
-template<class R, class... A> std::string function_type_name( tn_identity<R(A...)>, std::string const& trailer, std::string const& suffix )
-{
+template<class R, class... A> std::string function_type_name( tn_identity<R(A...)>, std::string const& trailer, std::string const& suffix 
+) {
     std::string r = tn_holder<R>::type_name( "" );
 
     if( !suffix.empty() )
@@ -771,13 +771,13 @@ template<class T> struct tn_holder<T*>
 
 // arrays
 
-template<class T> std::pair<std::string, std::string> array_prefix_suffix( tn_identity<T> )
-{
+template<class T> std::pair<std::string, std::string> array_prefix_suffix( tn_identity<T> 
+) {
     return std::pair<std::string, std::string>( tn_holder<T>::type_name( "" ), "" );
 }
 
-template<class T, std::size_t N> std::pair<std::string, std::string> array_prefix_suffix( tn_identity<T[N]> )
-{
+template<class T, std::size_t N> std::pair<std::string, std::string> array_prefix_suffix( tn_identity<T[N]> 
+) {
     std::pair<std::string, std::string> r = detail::array_prefix_suffix( tn_identity<T>() );
 
     r.second = '[' + tn_to_string( N ) + ']' + r.second;
@@ -785,8 +785,8 @@ template<class T, std::size_t N> std::pair<std::string, std::string> array_prefi
     return r;
 }
 
-template<class T> std::string array_type_name( tn_identity<T[]>, std::string const& suffix )
-{
+template<class T> std::string array_type_name( tn_identity<T[]>, std::string const& suffix 
+) {
     std::pair<std::string, std::string> r = detail::array_prefix_suffix( tn_identity<T>() );
 
     if( suffix.empty() )
@@ -831,8 +831,8 @@ template<class T> struct tn_holder<T const volatile[]>
     }
 };
 
-template<class T, std::size_t N> std::string array_type_name( tn_identity<T[N]>, std::string const& suffix )
-{
+template<class T, std::size_t N> std::string array_type_name( tn_identity<T[N]>, std::string const& suffix 
+) {
     std::pair<std::string, std::string> r = detail::array_prefix_suffix( tn_identity<T[N]>() );
 
     if( suffix.empty() )
@@ -1175,8 +1175,8 @@ template<template<class T, std::size_t N> class L, class T, std::size_t N> struc
 
 } // namespace detail
 
-template<class T> std::string type_name()
-{
+template<class T> std::string type_name(
+) {
     return core::detail::tn_holder<T>::type_name( "" );
 }
 

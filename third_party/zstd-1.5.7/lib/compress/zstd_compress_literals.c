@@ -19,8 +19,8 @@
 ****************************************************************/
 #if DEBUGLEVEL >= 2
 
-static size_t showHexa(const void* src, size_t srcSize)
-{
+static size_t showHexa(const void* src, size_t srcSize
+) {
     const BYTE* const ip = (const BYTE*)src;
     size_t u;
     for (u=0; u<srcSize; u++) {
@@ -36,8 +36,8 @@ static size_t showHexa(const void* src, size_t srcSize)
 /* **************************************************************
 *  Literals compression - special cases
 ****************************************************************/
-size_t ZSTD_noCompressLiterals (void* dst, size_t dstCapacity, const void* src, size_t srcSize)
-{
+size_t ZSTD_noCompressLiterals (void* dst, size_t dstCapacity, const void* src, size_t srcSize
+) {
     BYTE* const ostart = (BYTE*)dst;
     U32   const flSize = 1 + (srcSize>31) + (srcSize>4095);
 
@@ -65,8 +65,8 @@ size_t ZSTD_noCompressLiterals (void* dst, size_t dstCapacity, const void* src, 
     return srcSize + flSize;
 }
 
-static int allBytesIdentical(const void* src, size_t srcSize)
-{
+static int allBytesIdentical(const void* src, size_t srcSize
+) {
     assert(srcSize >= 1);
     assert(src != NULL);
     {   const BYTE b = ((const BYTE*)src)[0];
@@ -78,8 +78,8 @@ static int allBytesIdentical(const void* src, size_t srcSize)
     }
 }
 
-size_t ZSTD_compressRleLiteralsBlock (void* dst, size_t dstCapacity, const void* src, size_t srcSize)
-{
+size_t ZSTD_compressRleLiteralsBlock (void* dst, size_t dstCapacity, const void* src, size_t srcSize
+) {
     BYTE* const ostart = (BYTE*)dst;
     U32   const flSize = 1 + (srcSize>31) + (srcSize>4095);
 
@@ -112,8 +112,8 @@ size_t ZSTD_compressRleLiteralsBlock (void* dst, size_t dstCapacity, const void*
  * Minimum is made tighter as compression strategy increases.
  */
 static size_t
-ZSTD_minLiteralsToCompress(ZSTD_strategy strategy, HUF_repeat huf_repeat)
-{
+ZSTD_minLiteralsToCompress(ZSTD_strategy strategy, HUF_repeat huf_repeat
+) {
     assert((int)strategy >= 0);
     assert((int)strategy <= 9);
     /* btultra2 : min 8 bytes;
@@ -135,8 +135,8 @@ size_t ZSTD_compressLiterals (
                   ZSTD_strategy strategy,
                   int disableLiteralCompression,
                   int suspectUncompressible,
-                  int bmi2)
-{
+                  int bmi2
+) {
     size_t const lhSize = 3 + (srcSize >= 1 KB) + (srcSize >= 16 KB);
     BYTE*  const ostart = (BYTE*)dst;
     U32 singleStream = srcSize < 256;

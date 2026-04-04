@@ -16,20 +16,20 @@ namespace boost {
 namespace math {
 
 template <typename T>
-constexpr T min BOOST_MATH_PREVENT_MACRO_SUBSTITUTION (const T& a, const T& b)
-{
+constexpr T min BOOST_MATH_PREVENT_MACRO_SUBSTITUTION (const T& a, const T& b
+) {
     return (std::min)(a, b);
 }
 
 template <typename T>
-constexpr T max BOOST_MATH_PREVENT_MACRO_SUBSTITUTION (const T& a, const T& b)
-{
+constexpr T max BOOST_MATH_PREVENT_MACRO_SUBSTITUTION (const T& a, const T& b
+) {
     return (std::max)(a, b);
 }
 
 template <typename T>
-void swap BOOST_MATH_PREVENT_MACRO_SUBSTITUTION (T& a, T& b)
-{
+void swap BOOST_MATH_PREVENT_MACRO_SUBSTITUTION (T& a, T& b
+) {
     return (std::swap)(a, b);
 }
 
@@ -42,20 +42,20 @@ namespace boost {
 namespace math {
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED constexpr T min BOOST_MATH_PREVENT_MACRO_SUBSTITUTION (const T& a, const T& b)
-{ 
+BOOST_MATH_GPU_ENABLED constexpr T min BOOST_MATH_PREVENT_MACRO_SUBSTITUTION (const T& a, const T& b
+) { 
     return a < b ? a : b; 
 }
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED constexpr T max BOOST_MATH_PREVENT_MACRO_SUBSTITUTION (const T& a, const T& b)
-{ 
+BOOST_MATH_GPU_ENABLED constexpr T max BOOST_MATH_PREVENT_MACRO_SUBSTITUTION (const T& a, const T& b
+) { 
     return a > b ? a : b;
 }
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED constexpr void swap BOOST_MATH_PREVENT_MACRO_SUBSTITUTION (T& a, T& b)
-{ 
+BOOST_MATH_GPU_ENABLED constexpr void swap BOOST_MATH_PREVENT_MACRO_SUBSTITUTION (T& a, T& b
+) { 
     T t(a); 
     a = b; 
     b = t;

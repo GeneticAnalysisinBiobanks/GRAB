@@ -19,11 +19,12 @@
 #include "io/subject_data.hpp"
 #include "io/sparse_grm.hpp"
 #include "util/logging.hpp"
+#include "util/text_stream.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <fstream>
+#include <cstdio>
 #include <numeric>
 #include <string>
 #include <vector>
@@ -43,8 +44,8 @@ void runPairwiseIBD(
     const std::string& spgrmGctaFile,
     const GenoSpec& geno,
     const std::string& outputFile,
-    double minMafIBD)
-{
+    double minMafIBD
+) {
   // ── 1. Read sample IDs and load sparse GRM ──────────────────────
   std::vector<std::string> allIIDs = parseGenoIIDs(geno);
   const uint32_t nFam = static_cast<uint32_t>(allIIDs.size());
@@ -68,9 +69,8 @@ void runPairwiseIBD(
   infoMsg("Found %zu off-diagonal (related) pairs", pairs.size());
 
   if (pairs.empty()) {
-    std::ofstream ofs(outputFile);
-    if (!ofs) throw std::runtime_error("Cannot write " + outputFile);
-    ofs << "#ID1\tID2\tpa\tpb\tpc\n";
+    TextWriter writer(outputFile);
+    writer.write("#ID1\tID2\tpa\tpb\tpc\n");
     infoMsg("No related pairs found — wrote empty output to %s", outputFile.c_str());
     return;
   }
@@ -201,13 +201,18 @@ void runPairwiseIBD(
   }
 
   // ── 8. Write output (same pair order as the sparse GRM) ────────────
-  std::ofstream ofs(outputFile);
-  if (!ofs) throw std::runtime_error("Cannot write " + outputFile);
-  ofs << "#ID1\tID2\tpa\tpb\tpc\n";
-  ofs.precision(12);
-  for (const auto& r : results)
-    ofs << allIIDs[r.idx1] << '\t' << allIIDs[r.idx2] << '\t'
-        << r.pa << '\t' << r.pb << '\t' << r.pc << '\n';
+  TextWriter writer(outputFile);
+  writer.write("#ID1\tID2\tpa\tpb\tpc\n");
+  char buf[128];
+  for (const auto& r : results) {
+    std::string line;
+    line.reserve(128);
+    line += allIIDs[r.idx1]; line += '\t';
+    line += allIIDs[r.idx2]; line += '\t';
+    int n = std::snprintf(buf, sizeof(buf), "%.17g\t%.17g\t%.17g\n", r.pa, r.pb, r.pc);
+    line.append(buf, n);
+    writer.write(line);
+  }
 
   infoMsg("Wrote %zu IBD records to %s", results.size(), outputFile.c_str());
 }

@@ -251,8 +251,8 @@ ptr_address(T* v, int) BOOST_NOEXCEPT
 template<class T>
 inline auto
 ptr_address(const T& v, int) BOOST_NOEXCEPT
--> decltype(boost::pointer_traits<T>::to_address(v))
-{
+-> decltype(boost::pointer_traits<T>::to_address(v)
+) {
     return boost::pointer_traits<T>::to_address(v);
 }
 

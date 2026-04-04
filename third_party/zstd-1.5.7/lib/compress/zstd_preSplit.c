@@ -30,8 +30,8 @@
 /* for hashLog > 8, hash 2 bytes.
  * for hashLog == 8, just take the byte, no hashing.
  * The speed of this method relies on compile-time constant propagation */
-FORCE_INLINE_TEMPLATE unsigned hash2(const void *p, unsigned hashLog)
-{
+FORCE_INLINE_TEMPLATE unsigned hash2(const void *p, unsigned hashLog
+) {
     assert(hashLog >= 8);
     if (hashLog == 8) return (U32)((const BYTE*)p)[0];
     assert(hashLog <= HASHLOG_MAX);
@@ -48,14 +48,14 @@ typedef struct {
     Fingerprint newEvents;
 } FPStats;
 
-static void initStats(FPStats* fpstats)
-{
+static void initStats(FPStats* fpstats
+) {
     ZSTD_memset(fpstats, 0, sizeof(FPStats));
 }
 
 FORCE_INLINE_TEMPLATE void
-addEvents_generic(Fingerprint* fp, const void* src, size_t srcSize, size_t samplingRate, unsigned hashLog)
-{
+addEvents_generic(Fingerprint* fp, const void* src, size_t srcSize, size_t samplingRate, unsigned hashLog
+) {
     const char* p = (const char*)src;
     size_t limit = srcSize - HASHLENGTH + 1;
     size_t n;
@@ -67,8 +67,8 @@ addEvents_generic(Fingerprint* fp, const void* src, size_t srcSize, size_t sampl
 }
 
 FORCE_INLINE_TEMPLATE void
-recordFingerprint_generic(Fingerprint* fp, const void* src, size_t srcSize, size_t samplingRate, unsigned hashLog)
-{
+recordFingerprint_generic(Fingerprint* fp, const void* src, size_t srcSize, size_t samplingRate, unsigned hashLog
+) {
     ZSTD_memset(fp, 0, sizeof(unsigned) * ((size_t)1 << hashLog));
     fp->nbEvents = 0;
     addEvents_generic(fp, src, srcSize, samplingRate, hashLog);
@@ -92,8 +92,8 @@ ZSTD_GEN_RECORD_FINGERPRINT(43, 8)
 
 static U64 abs64(S64 s64) { return (U64)((s64 < 0) ? -s64 : s64); }
 
-static U64 fpDistance(const Fingerprint* fp1, const Fingerprint* fp2, unsigned hashLog)
-{
+static U64 fpDistance(const Fingerprint* fp1, const Fingerprint* fp2, unsigned hashLog
+) {
     U64 distance = 0;
     size_t n;
     assert(hashLog <= HASHLOG_MAX);
@@ -110,8 +110,8 @@ static U64 fpDistance(const Fingerprint* fp1, const Fingerprint* fp2, unsigned h
 static int compareFingerprints(const Fingerprint* ref,
                             const Fingerprint* newfp,
                             int penalty,
-                            unsigned hashLog)
-{
+                            unsigned hashLog
+) {
     assert(ref->nbEvents > 0);
     assert(newfp->nbEvents > 0);
     {   U64 p50 = (U64)ref->nbEvents * (U64)newfp->nbEvents;
@@ -121,8 +121,8 @@ static int compareFingerprints(const Fingerprint* ref,
     }
 }
 
-static void mergeEvents(Fingerprint* acc, const Fingerprint* newfp)
-{
+static void mergeEvents(Fingerprint* acc, const Fingerprint* newfp
+) {
     size_t n;
     for (n = 0; n < HASHTABLESIZE; n++) {
         acc->events[n] += newfp->events[n];
@@ -130,8 +130,8 @@ static void mergeEvents(Fingerprint* acc, const Fingerprint* newfp)
     acc->nbEvents += newfp->nbEvents;
 }
 
-static void flushEvents(FPStats* fpstats)
-{
+static void flushEvents(FPStats* fpstats
+) {
     size_t n;
     for (n = 0; n < HASHTABLESIZE; n++) {
         fpstats->pastEvents.events[n] = fpstats->newEvents.events[n];
@@ -140,8 +140,8 @@ static void flushEvents(FPStats* fpstats)
     ZSTD_memset(&fpstats->newEvents, 0, sizeof(fpstats->newEvents));
 }
 
-static void removeEvents(Fingerprint* acc, const Fingerprint* slice)
-{
+static void removeEvents(Fingerprint* acc, const Fingerprint* slice
+) {
     size_t n;
     for (n = 0; n < HASHTABLESIZE; n++) {
         assert(acc->events[n] >= slice->events[n]);
@@ -153,8 +153,8 @@ static void removeEvents(Fingerprint* acc, const Fingerprint* slice)
 #define CHUNKSIZE (8 << 10)
 static size_t ZSTD_splitBlock_byChunks(const void* blockStart, size_t blockSize,
                         int level,
-                        void* workspace, size_t wkspSize)
-{
+                        void* workspace, size_t wkspSize
+) {
     static const RecordEvents_f records_fs[] = {
         FP_RECORD(43), FP_RECORD(11), FP_RECORD(5), FP_RECORD(1)
     };
@@ -196,8 +196,8 @@ static size_t ZSTD_splitBlock_byChunks(const void* blockStart, size_t blockSize,
  * For better accuracy, use more elaborate variant *_byChunks.
  */
 static size_t ZSTD_splitBlock_fromBorders(const void* blockStart, size_t blockSize,
-                        void* workspace, size_t wkspSize)
-{
+                        void* workspace, size_t wkspSize
+) {
 #define SEGMENT_SIZE 512
     FPStats* const fpstats = (FPStats*)workspace;
     Fingerprint* middleEvents = (Fingerprint*)(void*)((char*)workspace + 512 * sizeof(unsigned));
@@ -227,8 +227,8 @@ static size_t ZSTD_splitBlock_fromBorders(const void* blockStart, size_t blockSi
 
 size_t ZSTD_splitBlock(const void* blockStart, size_t blockSize,
                     int level,
-                    void* workspace, size_t wkspSize)
-{
+                    void* workspace, size_t wkspSize
+) {
     DEBUGLOG(6, "ZSTD_splitBlock (level=%i)", level);
     assert(0<=level && level<=4);
     if (level == 0)

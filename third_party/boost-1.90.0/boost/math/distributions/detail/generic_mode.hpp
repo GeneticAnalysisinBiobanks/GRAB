@@ -32,8 +32,8 @@ private:
 };
 
 template <class Dist>
-BOOST_MATH_GPU_ENABLED typename Dist::value_type generic_find_mode(const Dist& dist, typename Dist::value_type guess, const char* function, typename Dist::value_type step = 0)
-{
+BOOST_MATH_GPU_ENABLED typename Dist::value_type generic_find_mode(const Dist& dist, typename Dist::value_type guess, const char* function, typename Dist::value_type step = 0
+) {
    BOOST_MATH_STD_USING
    typedef typename Dist::value_type value_type;
    typedef typename Dist::policy_type policy_type;
@@ -93,8 +93,8 @@ BOOST_MATH_GPU_ENABLED typename Dist::value_type generic_find_mode(const Dist& d
 // As above,but confined to the interval [0,1]:
 //
 template <class Dist>
-BOOST_MATH_GPU_ENABLED typename Dist::value_type generic_find_mode_01(const Dist& dist, typename Dist::value_type guess, const char* function)
-{
+BOOST_MATH_GPU_ENABLED typename Dist::value_type generic_find_mode_01(const Dist& dist, typename Dist::value_type guess, const char* function
+) {
    BOOST_MATH_STD_USING
    typedef typename Dist::value_type value_type;
    typedef typename Dist::policy_type policy_type;

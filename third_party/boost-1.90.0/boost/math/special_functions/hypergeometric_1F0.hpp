@@ -19,8 +19,8 @@
 namespace boost { namespace math { namespace detail {
 
 template <class T, class Policy>
-inline T hypergeometric_1F0_imp(const T& a, const T& z, const Policy& pol)
-{
+inline T hypergeometric_1F0_imp(const T& a, const T& z, const Policy& pol
+) {
    static const char* function = "boost::math::hypergeometric_1F0<%1%,%1%>(%1%, %1%)";
    BOOST_MATH_STD_USING // pow
 
@@ -38,8 +38,8 @@ inline T hypergeometric_1F0_imp(const T& a, const T& z, const Policy& pol)
 } // namespace detail
 
 template <class T1, class T2, class Policy>
-inline typename tools::promote_args<T1, T2>::type hypergeometric_1F0(T1 a, T2 z, const Policy&)
-{
+inline typename tools::promote_args<T1, T2>::type hypergeometric_1F0(T1 a, T2 z, const Policy&
+) {
    BOOST_FPU_EXCEPTION_GUARD
    typedef typename tools::promote_args<T1, T2>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
@@ -58,8 +58,8 @@ inline typename tools::promote_args<T1, T2>::type hypergeometric_1F0(T1 a, T2 z,
 }
 
 template <class T1, class T2>
-inline typename tools::promote_args<T1, T2>::type hypergeometric_1F0(T1 a, T2 z)
-{
+inline typename tools::promote_args<T1, T2>::type hypergeometric_1F0(T1 a, T2 z
+) {
    return hypergeometric_1F0(a, z, policies::policy<>());
 }
 

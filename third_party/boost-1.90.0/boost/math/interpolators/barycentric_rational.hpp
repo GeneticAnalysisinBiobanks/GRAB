@@ -62,15 +62,15 @@ private:
 
 template <class Real>
 barycentric_rational<Real>::barycentric_rational(const Real* const x, const Real* const y, size_t n, size_t approximation_order):
- m_imp(std::make_shared<detail::barycentric_rational_imp<Real>>(x, x + n, y, approximation_order))
-{
+ m_imp(std::make_shared<detail::barycentric_rational_imp<Real>>(x, x + n, y, approximation_order)
+) {
     return;
 }
 
 template <class Real>
 barycentric_rational<Real>::barycentric_rational(std::vector<Real>&& x, std::vector<Real>&& y, size_t approximation_order):
- m_imp(std::make_shared<detail::barycentric_rational_imp<Real>>(std::move(x), std::move(y), approximation_order))
-{
+ m_imp(std::make_shared<detail::barycentric_rational_imp<Real>>(std::move(x), std::move(y), approximation_order)
+) {
     return;
 }
 
@@ -78,8 +78,8 @@ barycentric_rational<Real>::barycentric_rational(std::vector<Real>&& x, std::vec
 template <class Real>
 template <class InputIterator1, class InputIterator2>
 barycentric_rational<Real>::barycentric_rational(InputIterator1 start_x, InputIterator1 end_x, InputIterator2 start_y, size_t approximation_order, typename std::enable_if<!std::is_integral<InputIterator2>::value>::type*)
- : m_imp(std::make_shared<detail::barycentric_rational_imp<Real>>(start_x, end_x, start_y, approximation_order))
-{
+ : m_imp(std::make_shared<detail::barycentric_rational_imp<Real>>(start_x, end_x, start_y, approximation_order)
+) {
 }
 
 template<class Real>

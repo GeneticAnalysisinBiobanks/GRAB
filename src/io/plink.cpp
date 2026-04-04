@@ -131,8 +131,8 @@ __attribute__((unused))
 static void count_geno_classes(
   const uint8_t* __restrict geno_bytes,
   uint32_t n_samples,
-  uint32_t out[4])
-{
+  uint32_t out[4]
+) {
   init_lut();
 
   const uint32_t n_bytes = (n_samples + 3) / 4;
@@ -399,8 +399,8 @@ static void decodeAndCountIdentity(const uint8_t* __restrict bed,
                                    const int* genoMap,
                                    double* __restrict out,
                                    uint32_t counts[4],
-                                   std::vector<uint32_t>& indexForMissing)
-{
+                                   std::vector<uint32_t>& indexForMissing
+) {
   counts[0] = counts[1] = counts[2] = counts[3] = 0;
   const uint32_t nFullBytes = n / 4;
   uint32_t idx = 0;
@@ -445,8 +445,8 @@ static void decodeMasked(const uint8_t* __restrict raw,
                          const int* genoMap,
                          double* __restrict out,
                          uint32_t counts[4],
-                         std::vector<uint32_t>& indexForMissing)
-{
+                         std::vector<uint32_t>& indexForMissing
+) {
   counts[0] = counts[1] = counts[2] = counts[3] = 0;
   uint32_t denseIdx = 0;
   const uint32_t nWords = (nFam + 63) / 64;
@@ -481,8 +481,8 @@ static const double kNaN = std::numeric_limits<double>::quiet_NaN();
 static void decodeBedsIdentitySimple(const uint8_t* __restrict bed,
                                      uint32_t n,
                                      const int* genoMap,
-                                     double* __restrict out)
-{
+                                     double* __restrict out
+) {
   const uint32_t nFullBytes = n / 4;
   uint32_t idx = 0;
   for (uint32_t b = 0; b < nFullBytes; ++b) {
@@ -509,8 +509,8 @@ static void decodeMaskedSimple(const uint8_t* __restrict raw,
                                const uint64_t* __restrict usedMask,
                                uint32_t nFam,
                                const int* genoMap,
-                               double* __restrict out)
-{
+                               double* __restrict out
+) {
   uint32_t denseIdx = 0;
   const uint32_t nWords = (nFam + 63) / 64;
 
@@ -550,8 +550,8 @@ PlinkData::PlinkData(
     m_allUsed(nUsed == nFam),
     m_nSubjInFile(nFam),
     m_nSubjUsed(nUsed),
-    m_usedMask(usedMask)
-{
+    m_usedMask(usedMask
+) {
   // ---- Parse .bim ----
   {
     std::ifstream in(bimFile);
@@ -621,8 +621,8 @@ std::vector<PlinkData::MarkerInfo> PlinkData::getFilteredMarkers(
     const std::string& IDsToIncludeFile,
     const std::string& RangesToIncludeFile,
     const std::string& IDsToExcludeFile,
-    const std::string& RangesToExcludeFile)
-{
+    const std::string& RangesToExcludeFile
+) {
   const uint32_t nMarkers = static_cast<uint32_t>(chr.size());
   std::vector<PlinkData::MarkerInfo> all;
   all.reserve(nMarkers);
@@ -704,8 +704,8 @@ PlinkCursor::PlinkCursor(const std::string& bedFile,
     m_nMarkers(nBimLines),
     m_nUsed(nUsed),
     m_usedMask(usedMask),
-    m_allUsed(allUsed),    m_rawBytes(m_bytesPerMarker)
-{
+    m_allUsed(allUsed),    m_rawBytes(m_bytesPerMarker
+) {
   m_bedStream.open(bedFile, std::ios::binary);
   if (!m_bedStream.is_open())
     throw std::runtime_error("Cannot open PLINK bed file: " + bedFile);
@@ -723,8 +723,8 @@ PlinkCursor::PlinkCursor(const PlinkCursor& other)
     m_nUsed(other.m_nUsed),
     m_usedMask(other.m_usedMask),
     m_allUsed(other.m_allUsed),
-    m_rawBytes(other.m_rawBytes.size())
-{
+    m_rawBytes(other.m_rawBytes.size()
+) {
   m_bedStream.open(m_bedFile, std::ios::binary);
   if (!m_bedStream.is_open())
     throw std::runtime_error("Cannot open PLINK bed file: " + m_bedFile);
@@ -821,8 +821,8 @@ void PlinkCursor::getGenotypesAllUsed(
     double& maf,
     double& mac,
     std::vector<uint32_t>& indexForMissing,
-    bool exactHwe)
-{
+    bool exactHwe
+) {
   const int* genoMap = GENO_BIM5;
   indexForMissing.clear();
 
@@ -855,8 +855,8 @@ void PlinkCursor::getGenotypesMasked(
     double& maf,
     double& mac,
     std::vector<uint32_t>& indexForMissing,
-    bool exactHwe)
-{
+    bool exactHwe
+) {
   const int* genoMap = GENO_BIM5;
   indexForMissing.clear();
 
@@ -889,8 +889,8 @@ void PlinkCursor::getGenotypes(
     double& maf,
     double& mac,
     std::vector<uint32_t>& indexForMissing,
-    bool exactHwe)
-{
+    bool exactHwe
+) {
   const uint8_t* raw = readMarkerPtr(gIndex);
 
   if (m_allUsed) {
@@ -908,8 +908,8 @@ void PlinkCursor::getGenotypes(
 
 void PlinkCursor::getGenotypesSimple(
     uint64_t gIndex,
-    Eigen::Ref<Eigen::VectorXd> out)
-{
+    Eigen::Ref<Eigen::VectorXd> out
+) {
   const uint8_t* raw = readMarkerPtr(gIndex);
   const int* genoMap = GENO_BIM5;
 

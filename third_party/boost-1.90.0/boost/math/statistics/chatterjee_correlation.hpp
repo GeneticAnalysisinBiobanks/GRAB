@@ -29,8 +29,8 @@ namespace boost { namespace math { namespace statistics {
 namespace detail {
 
 template <typename BDIter>
-std::size_t chatterjee_transform(BDIter begin, BDIter end)
-{
+std::size_t chatterjee_transform(BDIter begin, BDIter end
+) {
     std::size_t sum = 0;
 
     while(++begin != end)
@@ -49,8 +49,8 @@ std::size_t chatterjee_transform(BDIter begin, BDIter end)
 }
 
 template <typename ReturnType, typename ForwardIterator>
-ReturnType chatterjee_correlation_seq_impl(ForwardIterator u_begin, ForwardIterator u_end, ForwardIterator v_begin, ForwardIterator v_end)
-{
+ReturnType chatterjee_correlation_seq_impl(ForwardIterator u_begin, ForwardIterator u_end, ForwardIterator v_begin, ForwardIterator v_end
+) {
     using std::abs;
     
     BOOST_MATH_ASSERT_MSG(std::is_sorted(u_begin, u_end), "The x values must be sorted in order to use this functionality");
@@ -74,8 +74,8 @@ ReturnType chatterjee_correlation_seq_impl(ForwardIterator u_begin, ForwardItera
 
 template <typename Container, typename Real = typename Container::value_type, 
           typename ReturnType = typename std::conditional<std::is_integral<Real>::value, double, Real>::type>
-inline ReturnType chatterjee_correlation(const Container& u, const Container& v)
-{
+inline ReturnType chatterjee_correlation(const Container& u, const Container& v
+) {
     return detail::chatterjee_correlation_seq_impl<ReturnType>(std::begin(u), std::end(u), std::begin(v), std::end(v));
 }
 
@@ -89,8 +89,8 @@ namespace detail {
 
 template <typename ReturnType, typename ExecutionPolicy, typename ForwardIterator>
 ReturnType chatterjee_correlation_par_impl(ExecutionPolicy&& exec, ForwardIterator u_begin, ForwardIterator u_end,
-                                                                   ForwardIterator v_begin, ForwardIterator v_end)
-{
+                                                                   ForwardIterator v_begin, ForwardIterator v_end
+) {
     using std::abs;
     BOOST_MATH_ASSERT_MSG(std::is_sorted(std::forward<ExecutionPolicy>(exec), u_begin, u_end), "The x values must be sorted in order to use this functionality");
 
@@ -137,8 +137,8 @@ ReturnType chatterjee_correlation_par_impl(ExecutionPolicy&& exec, ForwardIterat
 
 template <typename ExecutionPolicy, typename Container, typename Real = typename Container::value_type,
           typename ReturnType = std::conditional_t<std::is_integral_v<Real>, double, Real>>
-inline ReturnType chatterjee_correlation(ExecutionPolicy&& exec, const Container& u, const Container& v)
-{
+inline ReturnType chatterjee_correlation(ExecutionPolicy&& exec, const Container& u, const Container& v
+) {
     if constexpr (std::is_same_v<std::remove_reference_t<decltype(exec)>, decltype(std::execution::seq)>)
     {
         return detail::chatterjee_correlation_seq_impl<ReturnType>(std::cbegin(u), std::cend(u),

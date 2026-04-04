@@ -46,8 +46,8 @@ std::vector<std::string> parseFamIIDs(const std::string& famFile) {
 
 SubjectData::SubjectData(std::vector<std::string> famIIDs)
   : m_nFam(static_cast<uint32_t>(famIIDs.size())),
-    m_famIIDs(std::move(famIIDs))
-{}
+    m_famIIDs(std::move(famIIDs)
+) {}
 
 
 // ══════════════════════════════════════════════════════════════════════
@@ -55,8 +55,8 @@ SubjectData::SubjectData(std::vector<std::string> famIIDs)
 // ══════════════════════════════════════════════════════════════════════
 
 SubjectData::RawFile SubjectData::parseIIDFile(
-    const std::string& filename, int expectCols)
-{
+    const std::string& filename, int expectCols
+) {
   std::ifstream ifs(filename, std::ios::in | std::ios::binary);
   if (!ifs)
     throw std::runtime_error("Cannot open file: " + filename);

@@ -45,16 +45,16 @@ BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type
 namespace detail{
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline T expint_1_rational(const T& z, const boost::math::integral_constant<int, 0>&)
-{
+BOOST_MATH_GPU_ENABLED inline T expint_1_rational(const T& z, const boost::math::integral_constant<int, 0>&
+) {
    // this function is never actually called
    BOOST_MATH_ASSERT(0);
    return z;
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED T expint_1_rational(const T& z, const boost::math::integral_constant<int, 53>&)
-{
+BOOST_MATH_GPU_ENABLED T expint_1_rational(const T& z, const boost::math::integral_constant<int, 53>&
+) {
    BOOST_MATH_STD_USING
    T result;
    if(z <= 1)
@@ -131,8 +131,8 @@ BOOST_MATH_GPU_ENABLED T expint_1_rational(const T& z, const boost::math::integr
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED T expint_1_rational(const T& z, const boost::math::integral_constant<int, 64>&)
-{
+BOOST_MATH_GPU_ENABLED T expint_1_rational(const T& z, const boost::math::integral_constant<int, 64>&
+) {
    BOOST_MATH_STD_USING
    T result;
    if(z <= 1)
@@ -215,8 +215,8 @@ BOOST_MATH_GPU_ENABLED T expint_1_rational(const T& z, const boost::math::integr
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED T expint_1_rational(const T& z, const boost::math::integral_constant<int, 113>&)
-{
+BOOST_MATH_GPU_ENABLED T expint_1_rational(const T& z, const boost::math::integral_constant<int, 113>&
+) {
    BOOST_MATH_STD_USING
    T result;
    if(z <= 1)
@@ -385,8 +385,8 @@ private:
 };
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline T expint_as_fraction(unsigned n, T z, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline T expint_as_fraction(unsigned n, T z, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    BOOST_MATH_INSTRUMENT_VARIABLE(z)
    boost::math::uintmax_t max_iter = policies::get_max_series_iterations<Policy>();
@@ -425,8 +425,8 @@ private:
 };
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline T expint_as_series(unsigned n, T z, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline T expint_as_series(unsigned n, T z, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    boost::math::uintmax_t max_iter = policies::get_max_series_iterations<Policy>();
 
@@ -458,8 +458,8 @@ BOOST_MATH_GPU_ENABLED inline T expint_as_series(unsigned n, T z, const Policy& 
 }
 
 template <class T, class Policy, class Tag>
-BOOST_MATH_GPU_ENABLED T expint_imp(unsigned n, T z, const Policy& pol, const Tag& tag)
-{
+BOOST_MATH_GPU_ENABLED T expint_imp(unsigned n, T z, const Policy& pol, const Tag& tag
+) {
    BOOST_MATH_STD_USING
    constexpr auto function = "boost::math::expint<%1%>(unsigned, %1%)";
    if(z < 0)
@@ -522,8 +522,8 @@ private:
 };
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T expint_i_as_series(T z, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED T expint_i_as_series(T z, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    T result = log(z); // (log(z) - log(1 / z)) / 2;
    result += constants::euler<T>();
@@ -535,8 +535,8 @@ BOOST_MATH_GPU_ENABLED T expint_i_as_series(T z, const Policy& pol)
 }
 
 template <class T, class Policy, class Tag>
-BOOST_MATH_GPU_ENABLED T expint_i_imp(T z, const Policy& pol, const Tag& tag)
-{
+BOOST_MATH_GPU_ENABLED T expint_i_imp(T z, const Policy& pol, const Tag& tag
+) {
    constexpr auto function = "boost::math::expint<%1%>(%1%)";
    if(z < 0)
       return -expint_imp(1, T(-z), pol, tag);
@@ -546,8 +546,8 @@ BOOST_MATH_GPU_ENABLED T expint_i_imp(T z, const Policy& pol, const Tag& tag)
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T expint_i_imp(T z, const Policy& pol, const boost::math::integral_constant<int, 53>& tag)
-{
+BOOST_MATH_GPU_ENABLED T expint_i_imp(T z, const Policy& pol, const boost::math::integral_constant<int, 53>& tag
+) {
    BOOST_MATH_STD_USING
    constexpr auto function = "boost::math::expint<%1%>(%1%)";
    if(z < 0)
@@ -767,8 +767,8 @@ BOOST_MATH_GPU_ENABLED T expint_i_imp(T z, const Policy& pol, const boost::math:
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T expint_i_imp(T z, const Policy& pol, const boost::math::integral_constant<int, 64>& tag)
-{
+BOOST_MATH_GPU_ENABLED T expint_i_imp(T z, const Policy& pol, const boost::math::integral_constant<int, 64>& tag
+) {
    BOOST_MATH_STD_USING
    constexpr auto function = "boost::math::expint<%1%>(%1%)";
    if(z < 0)
@@ -1011,8 +1011,8 @@ BOOST_MATH_GPU_ENABLED T expint_i_imp(T z, const Policy& pol, const boost::math:
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED void expint_i_imp_113a(T& result, const T& z, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED void expint_i_imp_113a(T& result, const T& z, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    // Maximum Deviation Found:                     1.230e-36
    // Expected Error Term:                         -1.230e-36
@@ -1080,8 +1080,8 @@ BOOST_MATH_GPU_ENABLED void expint_i_imp_113a(T& result, const T& z, const Polic
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED void expint_i_113b(T& result, const T& z)
-{
+BOOST_MATH_GPU_ENABLED void expint_i_113b(T& result, const T& z
+) {
    BOOST_MATH_STD_USING
    // Maximum Deviation Found:                     7.779e-36
    // Expected Error Term:                         -7.779e-36
@@ -1131,8 +1131,8 @@ BOOST_MATH_GPU_ENABLED void expint_i_113b(T& result, const T& z)
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED void expint_i_113c(T& result, const T& z)
-{
+BOOST_MATH_GPU_ENABLED void expint_i_113c(T& result, const T& z
+) {
    BOOST_MATH_STD_USING
    // Maximum Deviation Found:                     1.082e-34
    // Expected Error Term:                         1.080e-34
@@ -1185,8 +1185,8 @@ BOOST_MATH_GPU_ENABLED void expint_i_113c(T& result, const T& z)
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED void expint_i_113d(T& result, const T& z)
-{
+BOOST_MATH_GPU_ENABLED void expint_i_113d(T& result, const T& z
+) {
    BOOST_MATH_STD_USING
    // Maximum Deviation Found:                     3.163e-35
    // Expected Error Term:                         3.163e-35
@@ -1237,8 +1237,8 @@ BOOST_MATH_GPU_ENABLED void expint_i_113d(T& result, const T& z)
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED void expint_i_113e(T& result, const T& z)
-{
+BOOST_MATH_GPU_ENABLED void expint_i_113e(T& result, const T& z
+) {
    BOOST_MATH_STD_USING
    // Maximum Deviation Found:                     7.972e-36
    // Expected Error Term:                         7.962e-36
@@ -1292,8 +1292,8 @@ BOOST_MATH_GPU_ENABLED void expint_i_113e(T& result, const T& z)
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED void expint_i_113f(T& result, const T& z)
-{
+BOOST_MATH_GPU_ENABLED void expint_i_113f(T& result, const T& z
+) {
    BOOST_MATH_STD_USING
    // Maximum Deviation Found:                     4.469e-36
    // Expected Error Term:                         4.468e-36
@@ -1340,8 +1340,8 @@ BOOST_MATH_GPU_ENABLED void expint_i_113f(T& result, const T& z)
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED void expint_i_113g(T& result, const T& z)
-{
+BOOST_MATH_GPU_ENABLED void expint_i_113g(T& result, const T& z
+) {
    BOOST_MATH_STD_USING
    // Maximum Deviation Found:                     5.588e-35
    // Expected Error Term:                         -5.566e-35
@@ -1386,8 +1386,8 @@ BOOST_MATH_GPU_ENABLED void expint_i_113g(T& result, const T& z)
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED void expint_i_113h(T& result, const T& z)
-{
+BOOST_MATH_GPU_ENABLED void expint_i_113h(T& result, const T& z
+) {
    BOOST_MATH_STD_USING
    // Maximum Deviation Found:                     4.448e-36
    // Expected Error Term:                         4.445e-36
@@ -1426,8 +1426,8 @@ BOOST_MATH_GPU_ENABLED void expint_i_113h(T& result, const T& z)
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T expint_i_imp(T z, const Policy& pol, const boost::math::integral_constant<int, 113>& tag)
-{
+BOOST_MATH_GPU_ENABLED T expint_i_imp(T z, const Policy& pol, const boost::math::integral_constant<int, 113>& tag
+) {
    BOOST_MATH_STD_USING
    constexpr auto function = "boost::math::expint<%1%>(%1%)";
    if(z < 0)
@@ -1531,8 +1531,8 @@ BOOST_MATH_GPU_ENABLED T expint_i_imp(T z, const Policy& pol, const boost::math:
 
 template <class T, class Policy>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type
-   expint_forwarder(T z, const Policy& /*pol*/, boost::math::true_type const&)
-{
+   expint_forwarder(T z, const Policy& /*pol*/, boost::math::true_type const&
+) {
    typedef typename tools::promote_args<T>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
    typedef typename policies::precision<result_type, Policy>::type precision_type;
@@ -1554,8 +1554,8 @@ BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type
 
 template <class T>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type
-expint_forwarder(unsigned n, T z, const boost::math::false_type&)
-{
+expint_forwarder(unsigned n, T z, const boost::math::false_type&
+) {
    return boost::math::expint(n, z, policies::policy<>());
 }
 
@@ -1563,8 +1563,8 @@ expint_forwarder(unsigned n, T z, const boost::math::false_type&)
 
 template <class T, class Policy>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type
-   expint(unsigned n, T z, const Policy& /*pol*/)
-{
+   expint(unsigned n, T z, const Policy& /*pol*/
+) {
    typedef typename tools::promote_args<T>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
    typedef typename policies::precision<result_type, Policy>::type precision_type;
@@ -1590,16 +1590,16 @@ BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type
 
 template <class T, class U>
 BOOST_MATH_GPU_ENABLED inline typename detail::expint_result<T, U>::type
-   expint(T const z, U const u)
-{
+   expint(T const z, U const u
+) {
    typedef typename policies::is_policy<U>::type tag_type;
    return detail::expint_forwarder(z, u, tag_type());
 }
 
 template <class T>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type
-   expint(T z)
-{
+   expint(T z
+) {
    return expint(z, policies::policy<>());
 }
 

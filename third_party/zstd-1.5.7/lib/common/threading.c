@@ -42,8 +42,8 @@ typedef struct {
     ZSTD_pthread_mutex_t initialized_mutex;
 } ZSTD_thread_params_t;
 
-static unsigned __stdcall worker(void *arg)
-{
+static unsigned __stdcall worker(void *arg
+) {
     void* (*start_routine)(void*);
     void* thread_arg;
 
@@ -68,8 +68,8 @@ static unsigned __stdcall worker(void *arg)
 }
 
 int ZSTD_pthread_create(ZSTD_pthread_t* thread, const void* unused,
-            void* (*start_routine) (void*), void* arg)
-{
+            void* (*start_routine) (void*), void* arg
+) {
     ZSTD_thread_params_t thread_param;
     (void)unused;
 
@@ -111,8 +111,8 @@ int ZSTD_pthread_create(ZSTD_pthread_t* thread, const void* unused,
     return 0;
 }
 
-int ZSTD_pthread_join(ZSTD_pthread_t thread)
-{
+int ZSTD_pthread_join(ZSTD_pthread_t thread
+) {
     DWORD result;
 
     if (!thread) return 0;
@@ -137,8 +137,8 @@ int ZSTD_pthread_join(ZSTD_pthread_t thread)
 #define ZSTD_DEPS_NEED_MALLOC
 #include "zstd_deps.h"
 
-int ZSTD_pthread_mutex_init(ZSTD_pthread_mutex_t* mutex, pthread_mutexattr_t const* attr)
-{
+int ZSTD_pthread_mutex_init(ZSTD_pthread_mutex_t* mutex, pthread_mutexattr_t const* attr
+) {
     assert(mutex != NULL);
     *mutex = (pthread_mutex_t*)ZSTD_malloc(sizeof(pthread_mutex_t));
     if (!*mutex)
@@ -146,8 +146,8 @@ int ZSTD_pthread_mutex_init(ZSTD_pthread_mutex_t* mutex, pthread_mutexattr_t con
     return pthread_mutex_init(*mutex, attr);
 }
 
-int ZSTD_pthread_mutex_destroy(ZSTD_pthread_mutex_t* mutex)
-{
+int ZSTD_pthread_mutex_destroy(ZSTD_pthread_mutex_t* mutex
+) {
     assert(mutex != NULL);
     if (!*mutex)
         return 0;
@@ -158,8 +158,8 @@ int ZSTD_pthread_mutex_destroy(ZSTD_pthread_mutex_t* mutex)
     }
 }
 
-int ZSTD_pthread_cond_init(ZSTD_pthread_cond_t* cond, pthread_condattr_t const* attr)
-{
+int ZSTD_pthread_cond_init(ZSTD_pthread_cond_t* cond, pthread_condattr_t const* attr
+) {
     assert(cond != NULL);
     *cond = (pthread_cond_t*)ZSTD_malloc(sizeof(pthread_cond_t));
     if (!*cond)
@@ -167,8 +167,8 @@ int ZSTD_pthread_cond_init(ZSTD_pthread_cond_t* cond, pthread_condattr_t const* 
     return pthread_cond_init(*cond, attr);
 }
 
-int ZSTD_pthread_cond_destroy(ZSTD_pthread_cond_t* cond)
-{
+int ZSTD_pthread_cond_destroy(ZSTD_pthread_cond_t* cond
+) {
     assert(cond != NULL);
     if (!*cond)
         return 0;

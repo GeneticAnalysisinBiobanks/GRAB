@@ -16,8 +16,8 @@
 namespace boost{ namespace math{
 
 template<class T> 
-[[deprecated("Replaced by C++11")]] std::complex<T> atan(const std::complex<T>& x)
-{
+[[deprecated("Replaced by C++11")]] std::complex<T> atan(const std::complex<T>& x
+) {
    //
    // We're using the C99 definition here; atan(z) = -i atanh(iz):
    //

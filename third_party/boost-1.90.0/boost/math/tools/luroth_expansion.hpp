@@ -116,8 +116,8 @@ private:
 
 
 template<typename Real, typename Z2>
-std::ostream& operator<<(std::ostream& out, luroth_expansion<Real, Z2>& luroth)
-{
+std::ostream& operator<<(std::ostream& out, luroth_expansion<Real, Z2>& luroth
+) {
    constexpr const int p = std::numeric_limits<Real>::max_digits10;
    if constexpr (p == 2147483647)
    {

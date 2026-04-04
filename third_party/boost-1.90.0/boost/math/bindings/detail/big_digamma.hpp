@@ -15,8 +15,8 @@
 namespace boost{ namespace math{ namespace detail{
 
 template <class T>
-T big_digamma_helper(T x)
-{
+T big_digamma_helper(T x
+) {
       static const T P[61] = {
          BOOST_MATH_BIG_CONSTANT(T, boost::math::tools::numeric_traits<T>::digits, 0.6660133691143982067148122682345055274952e81),
          BOOST_MATH_BIG_CONSTANT(T, boost::math::tools::numeric_traits<T>::digits, 0.6365271516829242456324234577164675383137e81),
@@ -281,8 +281,8 @@ T big_digamma_helper(T x)
 }
 
 template <class T>
-T big_digamma(T x)
-{
+T big_digamma(T x
+) {
    BOOST_MATH_STD_USING
 
    if(x < 0)

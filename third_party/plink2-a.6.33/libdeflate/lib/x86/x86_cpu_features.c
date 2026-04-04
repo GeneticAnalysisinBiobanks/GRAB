@@ -33,8 +33,8 @@
 
 /* Execute the CPUID instruction. */
 static inline void
-cpuid(u32 leaf, u32 subleaf, u32 *a, u32 *b, u32 *c, u32 *d)
-{
+cpuid(u32 leaf, u32 subleaf, u32 *a, u32 *b, u32 *c, u32 *d
+) {
 #ifdef _MSC_VER
 	int result[4];
 
@@ -51,8 +51,8 @@ cpuid(u32 leaf, u32 subleaf, u32 *a, u32 *b, u32 *c, u32 *d)
 
 /* Read an extended control register. */
 static inline u64
-read_xcr(u32 index)
-{
+read_xcr(u32 index
+) {
 #ifdef _MSC_VER
 	return _xgetbv(index);
 #else
@@ -89,8 +89,8 @@ static const struct cpu_feature x86_cpu_feature_table[] = {
 volatile u32 libdeflate_x86_cpu_features = 0;
 
 static inline bool
-os_supports_avx512(__attribute__((unused)) u64 xcr0)
-{
+os_supports_avx512(__attribute__((unused)) u64 xcr0
+) {
 #ifdef __APPLE__
 	/*
 	 * The Darwin kernel had a bug where it could corrupt the opmask
@@ -115,8 +115,8 @@ os_supports_avx512(__attribute__((unused)) u64 xcr0)
  * the performance of workloads that use ZMM registers only occasionally.
  */
 static inline bool
-allow_512bit_vectors(const u32 manufacturer[3], u32 family, u32 model)
-{
+allow_512bit_vectors(const u32 manufacturer[3], u32 family, u32 model
+) {
 	if (memcmp(manufacturer, "GenuineIntel", 12) != 0)
 		return true;
 	if (family != 6)
@@ -134,8 +134,8 @@ allow_512bit_vectors(const u32 manufacturer[3], u32 family, u32 model)
 }
 
 /* Initialize libdeflate_x86_cpu_features. */
-void libdeflate_init_x86_cpu_features(void)
-{
+void libdeflate_init_x86_cpu_features(void
+) {
 	u32 max_leaf;
 	u32 manufacturer[3];
 	u32 family, model;

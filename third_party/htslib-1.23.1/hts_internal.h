@@ -137,8 +137,8 @@ const char *hts_plugin_path(void);
  */
 int bgzf_idx_push(BGZF *fp, hts_idx_t *hidx, int tid, hts_pos_t beg, hts_pos_t end, uint64_t offset, int is_mapped);
 
-static inline int find_file_extension(const char *fn, char ext_out[static HTS_MAX_EXT_LEN])
-{
+static inline int find_file_extension(const char *fn, char ext_out[static HTS_MAX_EXT_LEN]
+) {
     const char *delim = fn ? strstr(fn, HTS_IDX_DELIM) : NULL, *ext;
     if (!fn) return -1;
     if (!delim) delim = fn + strlen(fn);
@@ -156,8 +156,8 @@ static inline int find_file_extension(const char *fn, char ext_out[static HTS_MA
     return 0;
 }
 
-static inline int hts_usleep(long long usec)
-{
+static inline int hts_usleep(long long usec
+) {
     struct timespec req = { usec / 1000000, (usec % 1000000) * 1000 };
     return nanosleep(&req, NULL);
 }
@@ -178,8 +178,8 @@ static inline int hts_usleep(long long usec)
   NUL-terminated.
 */
 
-static inline int svlen_on_ref_for_vcf_alt(const char *alt, int32_t size)
-{
+static inline int svlen_on_ref_for_vcf_alt(const char *alt, int32_t size
+) {
     size_t sz;
     if (*alt != '<') // Check if ALT is symbolic
         return 0;

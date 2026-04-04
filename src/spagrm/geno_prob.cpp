@@ -57,8 +57,8 @@ struct IndexedIBD {
 
 std::vector<IndexedIBD> loadIndexedIBD(
     const std::string& filename,
-    const std::unordered_map<std::string, uint32_t>& idMap)
-{
+    const std::unordered_map<std::string, uint32_t>& idMap
+) {
   std::ifstream ifs(filename);
   if (!ifs) throw std::runtime_error("Cannot open IBD file: " + filename);
   std::vector<IndexedIBD> out;
@@ -84,8 +84,8 @@ std::vector<IndexedIBD> loadIndexedIBD(
 
 // Build hash map for O(1) IBD pair lookup: (min_idx << 32 | max_idx) → index
 std::unordered_map<uint64_t, uint32_t> buildIBDPairMap(
-    const std::vector<IndexedIBD>& ibdEntries)
-{
+    const std::vector<IndexedIBD>& ibdEntries
+) {
   std::unordered_map<uint64_t, uint32_t> m;
   m.reserve(ibdEntries.size());
   for (uint32_t i = 0; i < static_cast<uint32_t>(ibdEntries.size()); ++i) {
@@ -132,8 +132,8 @@ private:
 // Return connected components as vectors of node indices.
 std::vector<std::vector<uint32_t>> getComponents(
     uint32_t nNodes,
-    const std::vector<std::pair<uint32_t, uint32_t>>& edges)
-{
+    const std::vector<std::pair<uint32_t, uint32_t>>& edges
+) {
   UnionFind uf(nNodes);
   for (const auto& [a, b] : edges)
     uf.unite(a, b);
@@ -172,8 +172,8 @@ double quantile_r7(std::vector<double>& sorted, double prob) {
 double familyQuadForm(
     const std::vector<uint32_t>& famMembers,
     const std::vector<SparseGRM::Entry>& entries,
-    const Eigen::VectorXd& resid)
-{
+    const Eigen::VectorXd& resid
+) {
   std::unordered_set<uint32_t> famSet(famMembers.begin(), famMembers.end());
 
   // Sum the quadratic form:  sum_{entries in family} factor * value * R[i] * R[j]
@@ -240,8 +240,8 @@ Eigen::MatrixXd buildChowLiuTree(
     int N,
     const std::vector<IndexedIBD>& familyIBD,
     const std::vector<uint32_t>& famMembers,
-    const std::vector<double>& maf_interval)
-{
+    const std::vector<double>& maf_interval
+) {
   // Build global → local index
   std::unordered_map<uint32_t, int> globalToLocal;
   for (int i = 0; i < N; ++i)
@@ -476,8 +476,8 @@ static SPAGRMClass buildSPAGRMNullModel(
     const std::vector<SparseGRM::Entry>& allGrmEntries,
     const std::vector<IndexedIBD>& ibdEntries,
     const std::unordered_map<uint64_t, uint32_t>& ibdPairMap,
-    double spaCutoff)
-{
+    double spaCutoff
+) {
   // ── Outlier detection (IQR) ──────────────────────────────────────
   std::vector<double> sortedResid(N);
   for (uint32_t i = 0; i < N; ++i) sortedResid[i] = Resid[i];
@@ -749,13 +749,14 @@ void runSPAGRM(
     const std::string& pairwiseIBDFile,
     const GenoSpec& geno,
     const std::string& outputFile,
+    const std::string& outPrefix,
     double spaCutoff,
     int nthreads,
     int nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff)
-{
+    double minMacCutoff
+) {
   // ══════════════════════════════════════════════════════════════════
   // 1. Load residual file (2 columns: SubjID, Resid)
   // ══════════════════════════════════════════════════════════════════
@@ -845,17 +846,23 @@ void runSPAGRM(
   // 6. Per-residual-column loop
   // ══════════════════════════════════════════════════════════════════
   const int nRC = sd.residOneCols();
-  if (nRC > 1)
+  // --out: single column only; --out-prefix: all columns
+  const bool multiMode = !outPrefix.empty();
+  const int nLoop = multiMode ? nRC : 1;
+  if (nRC > 1 && multiMode)
     infoMsg("Multi-column residual file: %d columns", nRC);
+  if (nRC > 1 && !multiMode)
+    infoMsg("Multi-column residual file: %d columns (--out: using column 1 only)", nRC);
 
-  for (int rc = 0; rc < nRC; ++rc) {
+  for (int rc = 0; rc < nLoop; ++rc) {
     Eigen::VectorXd colBuf;
     if (nRC > 1) colBuf = sd.residMatrix().col(rc);
     const Eigen::VectorXd& Resid = (nRC > 1) ? colBuf : sd.residuals();
 
-    std::string outFile = (nRC == 1) ? outputFile
-        : (outputFile + "." + std::to_string(rc + 1) + ".gz");
-    if (nRC > 1)
+    std::string outFile = multiMode
+        ? (outPrefix + "." + std::to_string(rc + 1) + ".tsv")
+        : outputFile;
+    if (nLoop > 1)
       infoMsg("  Column %d/%d%s -> %s", rc + 1, nRC,
               (rc < static_cast<int>(sd.residColNames().size())
                    ? (" (" + sd.residColNames()[rc] + ")").c_str() : ""),

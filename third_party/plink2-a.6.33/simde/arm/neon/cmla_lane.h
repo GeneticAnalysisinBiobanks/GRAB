@@ -41,8 +41,8 @@ SIMDE_BEGIN_DECLS_
 
 SIMDE_FUNCTION_ATTRIBUTES
 simde_float16x4_t simde_vcmla_lane_f16(simde_float16x4_t r, simde_float16x4_t a, simde_float16x4_t b, const int lane)
-    SIMDE_REQUIRE_CONSTANT_RANGE(lane, 0, 1)
-{
+    SIMDE_REQUIRE_CONSTANT_RANGE(lane, 0, 1
+) {
   simde_float32x4_private r_ = simde_float32x4_to_private(simde_vcvt_f32_f16(r)),
                           a_ = simde_float32x4_to_private(simde_vcvt_f32_f16(a)),
                           b_ = simde_float32x4_to_private(
@@ -73,8 +73,8 @@ simde_float16x4_t simde_vcmla_lane_f16(simde_float16x4_t r, simde_float16x4_t a,
 
 SIMDE_FUNCTION_ATTRIBUTES
 simde_float32x2_t simde_vcmla_lane_f32(simde_float32x2_t r, simde_float32x2_t a, simde_float32x2_t b, const int lane)
-    SIMDE_REQUIRE_CONSTANT_RANGE(lane, 0, 0)
-{
+    SIMDE_REQUIRE_CONSTANT_RANGE(lane, 0, 0
+) {
   simde_float32x2_private r_ = simde_float32x2_to_private(r), a_ = simde_float32x2_to_private(a),
                           b_ = simde_float32x2_to_private(simde_vdup_n_f32(simde_float32x2_to_private(b).values[lane]));
   #if defined(SIMDE_SHUFFLE_VECTOR_)
@@ -102,8 +102,8 @@ simde_float32x2_t simde_vcmla_lane_f32(simde_float32x2_t r, simde_float32x2_t a,
 
 SIMDE_FUNCTION_ATTRIBUTES
 simde_float16x4_t simde_vcmla_laneq_f16(simde_float16x4_t r, simde_float16x4_t a, simde_float16x8_t b, const int lane)
-    SIMDE_REQUIRE_CONSTANT_RANGE(lane, 0, 1)
-{
+    SIMDE_REQUIRE_CONSTANT_RANGE(lane, 0, 1
+) {
   simde_float32x4_private r_ = simde_float32x4_to_private(simde_vcvt_f32_f16(r)),
                           a_ = simde_float32x4_to_private(simde_vcvt_f32_f16(a)),
                           b_ = simde_float32x4_to_private(
@@ -134,8 +134,8 @@ simde_float16x4_t simde_vcmla_laneq_f16(simde_float16x4_t r, simde_float16x4_t a
 
 SIMDE_FUNCTION_ATTRIBUTES
 simde_float32x2_t simde_vcmla_laneq_f32(simde_float32x2_t r, simde_float32x2_t a, simde_float32x4_t b, const int lane)
-    SIMDE_REQUIRE_CONSTANT_RANGE(lane, 0, 1)
-{
+    SIMDE_REQUIRE_CONSTANT_RANGE(lane, 0, 1
+) {
   simde_float32x2_private r_ = simde_float32x2_to_private(r), a_ = simde_float32x2_to_private(a),
                           b_ = simde_float32x2_to_private(simde_vdup_n_f32(simde_float32x4_to_private(b).values[lane]));
   #if defined(SIMDE_SHUFFLE_VECTOR_)
@@ -163,8 +163,8 @@ simde_float32x2_t simde_vcmla_laneq_f32(simde_float32x2_t r, simde_float32x2_t a
 
 SIMDE_FUNCTION_ATTRIBUTES
 simde_float16x8_t simde_vcmlaq_lane_f16(simde_float16x8_t r, simde_float16x8_t a, simde_float16x4_t b, const int lane)
-    SIMDE_REQUIRE_CONSTANT_RANGE(lane, 0, 1)
-{
+    SIMDE_REQUIRE_CONSTANT_RANGE(lane, 0, 1
+) {
   simde_float32x4_private r_low = simde_float32x4_to_private(simde_vcvt_f32_f16(simde_vget_low_f16(r))),
                           a_low = simde_float32x4_to_private(simde_vcvt_f32_f16(simde_vget_low_f16(a))),
                           r_high = simde_float32x4_to_private(simde_vcvt_f32_f16(simde_vget_high_f16(r))),
@@ -202,8 +202,8 @@ simde_float16x8_t simde_vcmlaq_lane_f16(simde_float16x8_t r, simde_float16x8_t a
 
 SIMDE_FUNCTION_ATTRIBUTES
 simde_float32x4_t simde_vcmlaq_lane_f32(simde_float32x4_t r, simde_float32x4_t a, simde_float32x2_t b, const int lane)
-    SIMDE_REQUIRE_CONSTANT_RANGE(lane, 0, 0)
-{
+    SIMDE_REQUIRE_CONSTANT_RANGE(lane, 0, 0
+) {
   simde_float32x4_private r_ = simde_float32x4_to_private(r), a_ = simde_float32x4_to_private(a),
                           b_ = simde_float32x4_to_private(simde_vdupq_n_f32(simde_float32x2_to_private(b).values[lane]));
   #if defined(SIMDE_SHUFFLE_VECTOR_)
@@ -231,8 +231,8 @@ simde_float32x4_t simde_vcmlaq_lane_f32(simde_float32x4_t r, simde_float32x4_t a
 
 SIMDE_FUNCTION_ATTRIBUTES
 simde_float16x8_t simde_vcmlaq_laneq_f16(simde_float16x8_t r, simde_float16x8_t a, simde_float16x8_t b, const int lane)
-    SIMDE_REQUIRE_CONSTANT_RANGE(lane, 0, 3)
-{
+    SIMDE_REQUIRE_CONSTANT_RANGE(lane, 0, 3
+) {
   simde_float32x4_private r_low = simde_float32x4_to_private(simde_vcvt_f32_f16(simde_vget_low_f16(r))),
                           a_low = simde_float32x4_to_private(simde_vcvt_f32_f16(simde_vget_low_f16(a))),
                           r_high = simde_float32x4_to_private(simde_vcvt_f32_f16(simde_vget_high_f16(r))),
@@ -270,8 +270,8 @@ simde_float16x8_t simde_vcmlaq_laneq_f16(simde_float16x8_t r, simde_float16x8_t 
 
 SIMDE_FUNCTION_ATTRIBUTES
 simde_float32x4_t simde_vcmlaq_laneq_f32(simde_float32x4_t r, simde_float32x4_t a, simde_float32x4_t b, const int lane)
-    SIMDE_REQUIRE_CONSTANT_RANGE(lane, 0, 1)
-{
+    SIMDE_REQUIRE_CONSTANT_RANGE(lane, 0, 1
+) {
   simde_float32x4_private r_ = simde_float32x4_to_private(r), a_ = simde_float32x4_to_private(a),
                           b_ = simde_float32x4_to_private(simde_vdupq_n_f32(simde_float32x4_to_private(b).values[lane]));
 

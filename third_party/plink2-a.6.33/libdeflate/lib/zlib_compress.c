@@ -31,8 +31,8 @@
 LIBDEFLATEAPI size_t
 libdeflate_zlib_compress(struct libdeflate_compressor *c,
 			 const void *in, size_t in_nbytes,
-			 void *out, size_t out_nbytes_avail)
-{
+			 void *out, size_t out_nbytes_avail
+) {
 	u8 *out_next = out;
 	u16 hdr;
 	unsigned compression_level;
@@ -75,8 +75,8 @@ libdeflate_zlib_compress(struct libdeflate_compressor *c,
 
 LIBDEFLATEAPI size_t
 libdeflate_zlib_compress_bound(struct libdeflate_compressor *c,
-			       size_t in_nbytes)
-{
+			       size_t in_nbytes
+) {
 	return ZLIB_MIN_OVERHEAD +
 	       libdeflate_deflate_compress_bound(c, in_nbytes);
 }

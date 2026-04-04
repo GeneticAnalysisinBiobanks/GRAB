@@ -49,8 +49,8 @@ make_span(const std::array<T, N>& a) noexcept
 
 template<class R>
 inline span<typename detail::span_data<R>::type>
-make_span(R&& r)
-{
+make_span(R&& r
+) {
     return span<typename detail::span_data<R>::type>(std::forward<R>(r));
 }
 

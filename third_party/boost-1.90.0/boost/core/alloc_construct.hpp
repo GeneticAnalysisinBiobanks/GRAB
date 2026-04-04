@@ -17,22 +17,22 @@ namespace boost {
 
 template<class A, class T>
 inline void
-alloc_destroy(A& a, T* p)
-{
+alloc_destroy(A& a, T* p
+) {
     boost::allocator_destroy(a, p);
 }
 
 template<class A, class T>
 inline void
-alloc_destroy_n(A& a, T* p, std::size_t n)
-{
+alloc_destroy_n(A& a, T* p, std::size_t n
+) {
     boost::allocator_destroy_n(a, p, n);
 }
 
 template<class A, class T>
 inline void
-alloc_construct(A& a, T* p)
-{
+alloc_construct(A& a, T* p
+) {
     boost::allocator_construct(a, p);
 }
 
@@ -40,53 +40,53 @@ alloc_construct(A& a, T* p)
 #if !defined(BOOST_NO_CXX11_VARIADIC_TEMPLATES)
 template<class A, class T, class U, class... V>
 inline void
-alloc_construct(A& a, T* p, U&& u, V&&... v)
-{
+alloc_construct(A& a, T* p, U&& u, V&&... v
+) {
     boost::allocator_construct(a, p, std::forward<U>(u),
         std::forward<V>(v)...);
 }
 #else
 template<class A, class T, class U>
 inline void
-alloc_construct(A& a, T* p, U&& u)
-{
+alloc_construct(A& a, T* p, U&& u
+) {
     boost::allocator_construct(a, p, std::forward<U>(u));
 }
 #endif
 #else
 template<class A, class T, class U>
 inline void
-alloc_construct(A& a, T* p, const U& u)
-{
+alloc_construct(A& a, T* p, const U& u
+) {
     boost::allocator_construct(a, p, u);
 }
 
 template<class A, class T, class U>
 inline void
-alloc_construct(A& a, T* p, U& u)
-{
+alloc_construct(A& a, T* p, U& u
+) {
     boost::allocator_construct(a, p, u);
 }
 #endif
 
 template<class A, class T>
 inline void
-alloc_construct_n(A& a, T* p, std::size_t n)
-{
+alloc_construct_n(A& a, T* p, std::size_t n
+) {
     boost::allocator_construct_n(a, p, n);
 }
 
 template<class A, class T>
 inline void
-alloc_construct_n(A& a, T* p, std::size_t n, const T* l, std::size_t m)
-{
+alloc_construct_n(A& a, T* p, std::size_t n, const T* l, std::size_t m
+) {
     boost::allocator_construct_n(a, p, n, l, m);
 }
 
 template<class A, class T, class I>
 inline void
-alloc_construct_n(A& a, T* p, std::size_t n, I b)
-{
+alloc_construct_n(A& a, T* p, std::size_t n, I b
+) {
     boost::allocator_construct_n(a, p, n, b);
 }
 

@@ -44,8 +44,8 @@ static unsigned short _rand48_mult[3] = {
 static unsigned short _rand48_add = RAND48_ADD;
 
 static void
-_dorand48(unsigned short xseed[3])
-{
+_dorand48(unsigned short xseed[3]
+) {
 	unsigned long accu;
 	unsigned short temp[2];
 
@@ -64,8 +64,8 @@ _dorand48(unsigned short xseed[3])
 }
 
 HTSLIB_EXPORT
-void hts_srand48(long seed)
-{
+void hts_srand48(long seed
+) {
 	_rand48_seed[0] = RAND48_SEED_0;
 	_rand48_seed[1] = (unsigned short) seed;
 	_rand48_seed[2] = (unsigned short) (seed >> 16);
@@ -76,8 +76,8 @@ void hts_srand48(long seed)
 }
 
 HTSLIB_EXPORT
-double hts_erand48(unsigned short xseed[3])
-{
+double hts_erand48(unsigned short xseed[3]
+) {
 	_dorand48(xseed);
 	return ldexp((double) xseed[0], -48) +
 	       ldexp((double) xseed[1], -32) +
@@ -85,14 +85,14 @@ double hts_erand48(unsigned short xseed[3])
 }
 
 HTSLIB_EXPORT
-double hts_drand48(void)
-{
+double hts_drand48(void
+) {
 	return hts_erand48(_rand48_seed);
 }
 
 HTSLIB_EXPORT
-long hts_lrand48(void)
-{
+long hts_lrand48(void
+) {
 	_dorand48(_rand48_seed);
 	return ((long) _rand48_seed[2] << 15) + ((long) _rand48_seed[1] >> 1);
 }

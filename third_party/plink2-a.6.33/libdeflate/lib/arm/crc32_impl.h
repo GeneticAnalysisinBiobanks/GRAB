@@ -71,8 +71,8 @@
  *	the multipliers are actually x^(j*8*L - 33) instead of x^(j*8*L).
  */
 static forceinline ATTRIBUTES u32
-combine_crcs_slow(u32 crc0, u32 crc1, u32 crc2, u32 crc3)
-{
+combine_crcs_slow(u32 crc0, u32 crc1, u32 crc2, u32 crc3
+) {
 	u64 res0 = 0, res1 = 0, res2 = 0;
 	int i;
 
@@ -91,8 +91,8 @@ combine_crcs_slow(u32 crc0, u32 crc1, u32 crc2, u32 crc3)
 
 #define crc32_arm_crc	crc32_arm_crc
 static ATTRIBUTES u32
-crc32_arm_crc(u32 crc, const u8 *p, size_t len)
-{
+crc32_arm_crc(u32 crc, const u8 *p, size_t len
+) {
 	if (len >= 64) {
 		const size_t align = -(uintptr_t)p & 7;
 
@@ -228,8 +228,8 @@ crc32_arm_crc(u32 crc, const u8 *p, size_t len)
 
 /* Do carryless multiplication of two 32-bit values. */
 static forceinline ATTRIBUTES u64
-clmul_u32(u32 a, u32 b)
-{
+clmul_u32(u32 a, u32 b
+) {
 	uint64x2_t res = vreinterpretq_u64_p128(
 				compat_vmull_p64((poly64_t)a, (poly64_t)b));
 
@@ -243,8 +243,8 @@ clmul_u32(u32 a, u32 b)
  * where 1 <= i < ARRAY_LEN(crc32_mults_for_chunklen).
  */
 static forceinline ATTRIBUTES u32
-combine_crcs_fast(u32 crc0, u32 crc1, u32 crc2, u32 crc3, size_t i)
-{
+combine_crcs_fast(u32 crc0, u32 crc1, u32 crc2, u32 crc3, size_t i
+) {
 	u64 res0 = clmul_u32(crc0, crc32_mults_for_chunklen[i][0]);
 	u64 res1 = clmul_u32(crc1, crc32_mults_for_chunklen[i][1]);
 	u64 res2 = clmul_u32(crc2, crc32_mults_for_chunklen[i][2]);
@@ -254,8 +254,8 @@ combine_crcs_fast(u32 crc0, u32 crc1, u32 crc2, u32 crc3, size_t i)
 
 #define crc32_arm_crc_pmullcombine	crc32_arm_crc_pmullcombine
 static ATTRIBUTES u32
-crc32_arm_crc_pmullcombine(u32 crc, const u8 *p, size_t len)
-{
+crc32_arm_crc_pmullcombine(u32 crc, const u8 *p, size_t len
+) {
 	const size_t align = -(uintptr_t)p & 7;
 
 	if (len >= align + CRC32_NUM_CHUNKS * CRC32_MIN_VARIABLE_CHUNK_LEN) {
@@ -427,8 +427,8 @@ crc32_arm_crc_pmullcombine(u32 crc, const u8 *p, size_t len)
 #  include "crc32_pmull_helpers.h"
 
 static ATTRIBUTES u32
-crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
-{
+crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len
+) {
 	static const u64 _aligned_attribute(16) mults[3][2] = {
 		{ CRC32_X159_MODG, CRC32_X95_MODG },  /* 1 vecs */
 		{ CRC32_X543_MODG, CRC32_X479_MODG }, /* 4 vecs */
@@ -561,8 +561,8 @@ crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
 #endif
 
 static inline crc32_func_t
-arch_select_crc32_func(void)
-{
+arch_select_crc32_func(void
+) {
 	const u32 features MAYBE_UNUSED = get_arm_cpu_features();
 
 #ifdef crc32_arm_pmullx12_crc_eor3

@@ -1513,8 +1513,8 @@ int probaln_glocal(const uint8_t *ref, int l_ref, const uint8_t *query, int l_qu
     HTSLIB_EXPORT
     void hts_md5_destroy(hts_md5_context *ctx);
 
-static inline int hts_reg2bin(hts_pos_t beg, hts_pos_t end, int min_shift, int n_lvls)
-{
+static inline int hts_reg2bin(hts_pos_t beg, hts_pos_t end, int min_shift, int n_lvls
+) {
     int l, s = min_shift, t = ((1<<((n_lvls<<1) + n_lvls)) - 1) / 7;
     for (--end, l = n_lvls; l > 0; --l, s += 3, t -= 1<<((l<<1)+l))
         if (beg>>s == end>>s) return t + (beg>>s);
@@ -1547,15 +1547,15 @@ uint32_t hts_crc32(uint32_t crc, const void *buf, size_t len);
  *  Each bin on level l covers exp(2, (n_lvls - l)*3 + min_shift) base pairs.
  *  A linear index entry covers exp(2, min_shift) base pairs.
  */
-static inline int hts_bin_bot(int bin, int n_lvls)
-{
+static inline int hts_bin_bot(int bin, int n_lvls
+) {
     int l = hts_bin_level(bin);
     return (bin - hts_bin_first(l)) << (n_lvls - l) * 3;
 }
 
 /// Compute the (0-based exclusive) maximum position covered by a binning index
-static inline hts_pos_t hts_bin_maxpos(int min_shift, int n_lvls)
-{
+static inline hts_pos_t hts_bin_maxpos(int min_shift, int n_lvls
+) {
     hts_pos_t one = 1;
     return one << (min_shift + n_lvls * 3);
 }
@@ -1564,38 +1564,38 @@ static inline hts_pos_t hts_bin_maxpos(int min_shift, int n_lvls)
  * Endianness *
  **************/
 
-static inline int ed_is_big(void)
-{
+static inline int ed_is_big(void
+) {
     long one= 1;
     return !(*((char *)(&one)));
 }
-static inline uint16_t ed_swap_2(uint16_t v)
-{
+static inline uint16_t ed_swap_2(uint16_t v
+) {
     return (uint16_t)(((v & 0x00FF00FFU) << 8) | ((v & 0xFF00FF00U) >> 8));
 }
-static inline void *ed_swap_2p(void *x)
-{
+static inline void *ed_swap_2p(void *x
+) {
     *(uint16_t*)x = ed_swap_2(*(uint16_t*)x);
     return x;
 }
-static inline uint32_t ed_swap_4(uint32_t v)
-{
+static inline uint32_t ed_swap_4(uint32_t v
+) {
     v = ((v & 0x0000FFFFU) << 16) | (v >> 16);
     return ((v & 0x00FF00FFU) << 8) | ((v & 0xFF00FF00U) >> 8);
 }
-static inline void *ed_swap_4p(void *x)
-{
+static inline void *ed_swap_4p(void *x
+) {
     *(uint32_t*)x = ed_swap_4(*(uint32_t*)x);
     return x;
 }
-static inline uint64_t ed_swap_8(uint64_t v)
-{
+static inline uint64_t ed_swap_8(uint64_t v
+) {
     v = ((v & 0x00000000FFFFFFFFLLU) << 32) | (v >> 32);
     v = ((v & 0x0000FFFF0000FFFFLLU) << 16) | ((v & 0xFFFF0000FFFF0000LLU) >> 16);
     return ((v & 0x00FF00FF00FF00FFLLU) << 8) | ((v & 0xFF00FF00FF00FF00LLU) >> 8);
 }
-static inline void *ed_swap_8p(void *x)
-{
+static inline void *ed_swap_8p(void *x
+) {
     *(uint64_t*)x = ed_swap_8(*(uint64_t*)x);
     return x;
 }

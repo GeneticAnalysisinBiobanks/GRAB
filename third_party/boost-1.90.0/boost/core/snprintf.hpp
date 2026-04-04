@@ -54,13 +54,13 @@ namespace core {
 
 #if defined(BOOST_CORE_DETAIL_MINGW_SNPRINTF)
 
-inline int vsnprintf(char* buf, std::size_t size, const char* format, std::va_list args)
-{
+inline int vsnprintf(char* buf, std::size_t size, const char* format, std::va_list args
+) {
     return __mingw_vsnprintf(buf, size, format, args);
 }
 
-inline int vswprintf(wchar_t* buf, std::size_t size, const wchar_t* format, std::va_list args)
-{
+inline int vswprintf(wchar_t* buf, std::size_t size, const wchar_t* format, std::va_list args
+) {
 #if defined(__MINGW64_VERSION_MAJOR)
     int res = __mingw_vsnwprintf(buf, size, format, args);
     // __mingw_vsnwprintf returns the number of characters to be printed, but (v)swprintf is expected to return -1 on truncation
@@ -92,8 +92,8 @@ inline int vswprintf(wchar_t* buf, std::size_t size, const wchar_t* format, std:
 #pragma warning(disable: 4996)
 #endif
 
-inline int vsnprintf(char* buf, std::size_t size, const char* format, std::va_list args)
-{
+inline int vsnprintf(char* buf, std::size_t size, const char* format, std::va_list args
+) {
     if (BOOST_UNLIKELY(size == 0u))
         return 0;
     if (BOOST_UNLIKELY(size > static_cast< std::size_t >(INT_MAX)))
@@ -115,8 +115,8 @@ inline int vsnprintf(char* buf, std::size_t size, const char* format, std::va_li
     return res;
 }
 
-inline int vswprintf(wchar_t* buf, std::size_t size, const wchar_t* format, std::va_list args)
-{
+inline int vswprintf(wchar_t* buf, std::size_t size, const wchar_t* format, std::va_list args
+) {
     if (BOOST_UNLIKELY(size == 0u || size > static_cast< std::size_t >(INT_MAX)))
         return -1;
 
@@ -137,8 +137,8 @@ inline int vswprintf(wchar_t* buf, std::size_t size, const wchar_t* format, std:
 
 #endif
 
-inline int snprintf(char* buf, std::size_t size, const char* format, ...)
-{
+inline int snprintf(char* buf, std::size_t size, const char* format, ...
+) {
     std::va_list args;
     va_start(args, format);
     int res = vsnprintf(buf, size, format, args);
@@ -146,8 +146,8 @@ inline int snprintf(char* buf, std::size_t size, const char* format, ...)
     return res;
 }
 
-inline int swprintf(wchar_t* buf, std::size_t size, const wchar_t* format, ...)
-{
+inline int swprintf(wchar_t* buf, std::size_t size, const wchar_t* format, ...
+) {
     std::va_list args;
     va_start(args, format);
     int res = vswprintf(buf, size, format, args);

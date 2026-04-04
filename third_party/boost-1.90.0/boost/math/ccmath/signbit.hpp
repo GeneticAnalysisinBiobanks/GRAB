@@ -145,8 +145,8 @@ struct IEEEl2bits
 #endif
 
 template <typename T>
-constexpr bool signbit_impl(T arg)
-{
+constexpr bool signbit_impl(T arg
+) {
     if constexpr (std::is_same_v<T, float>)
     {   
         const auto u = BOOST_MATH_BIT_CAST(IEEEf2bits, arg);
@@ -181,8 +181,8 @@ constexpr bool signbit_impl(T arg)
 // therefore we static assert these cases.
 
 template <typename T>
-constexpr bool signbit_impl(T arg)
-{
+constexpr bool signbit_impl(T arg
+) {
     BOOST_MATH_ASSERT_MSG(!boost::math::ccmath::isnan(arg), "NAN is not supported without __builtin_bit_cast or std::bit_cast");
     BOOST_MATH_ASSERT_MSG(boost::math::ccmath::abs(arg) != 0, "Signed 0 is not support without __builtin_bit_cast or std::bit_cast");
 
@@ -195,8 +195,8 @@ constexpr bool signbit_impl(T arg)
 
 // Return value: true if arg is negative, false if arg is 0, NAN, or positive
 template <typename Real, std::enable_if_t<!std::is_integral_v<Real>, bool> = true>
-constexpr bool signbit(Real arg)
-{
+constexpr bool signbit(Real arg
+) {
     if (BOOST_MATH_IS_CONSTANT_EVALUATED(arg))
     {
         return boost::math::ccmath::detail::signbit_impl(arg);
@@ -209,8 +209,8 @@ constexpr bool signbit(Real arg)
 }
 
 template <typename Z, std::enable_if_t<std::is_integral_v<Z>, bool> = true>
-constexpr bool signbit(Z arg)
-{
+constexpr bool signbit(Z arg
+) {
     return boost::math::ccmath::signbit(static_cast<double>(arg));
 }
 

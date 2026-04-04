@@ -47,8 +47,8 @@
 #    define ATTRIBUTES	_target_attribute("+simd")
 #  endif
 static ATTRIBUTES MAYBE_UNUSED u32
-adler32_arm_neon(u32 adler, const u8 *p, size_t len)
-{
+adler32_arm_neon(u32 adler, const u8 *p, size_t len
+) {
 	static const u16 _aligned_attribute(16) mults[64] = {
 		64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49,
 		48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33,
@@ -233,8 +233,8 @@ adler32_arm_neon(u32 adler, const u8 *p, size_t len)
 #    define ATTRIBUTES	_target_attribute("arch=armv8.2-a+dotprod")
 #  endif
 static ATTRIBUTES u32
-adler32_arm_neon_dotprod(u32 adler, const u8 *p, size_t len)
-{
+adler32_arm_neon_dotprod(u32 adler, const u8 *p, size_t len
+) {
 	static const u8 _aligned_attribute(16) mults[64] = {
 		64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49,
 		48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33,
@@ -345,8 +345,8 @@ adler32_arm_neon_dotprod(u32 adler, const u8 *p, size_t len)
 #define DEFAULT_IMPL	adler32_arm_neon_dotprod
 #else
 static inline adler32_func_t
-arch_select_adler32_func(void)
-{
+arch_select_adler32_func(void
+) {
 	const u32 features MAYBE_UNUSED = get_arm_cpu_features();
 
 #ifdef adler32_arm_neon_dotprod

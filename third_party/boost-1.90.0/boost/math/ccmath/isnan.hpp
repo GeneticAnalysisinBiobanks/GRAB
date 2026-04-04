@@ -16,8 +16,8 @@
 namespace boost::math::ccmath {
 
 template <typename T>
-inline constexpr bool isnan BOOST_MATH_PREVENT_MACRO_SUBSTITUTION(T x)
-{
+inline constexpr bool isnan BOOST_MATH_PREVENT_MACRO_SUBSTITUTION(T x
+) {
     if(BOOST_MATH_IS_CONSTANT_EVALUATED(x))
     {
         return x != x;

@@ -237,8 +237,8 @@ BgenData::BgenData(
   : m_bgenFile(std::move(bgenFile)),
     m_nSubjInFile(nSamplesInFile),
     m_nSubjUsed(nUsed),
-    m_usedMask(usedMask)
-{
+    m_usedMask(usedMask
+) {
   m_allUsed = (nUsed == nSamplesInFile);
 
   // ---- Open and read header ----
@@ -388,8 +388,8 @@ struct BgenCursor::Impl {
 
 
 BgenCursor::BgenCursor(const BgenData& parent)
-  : m_parent(parent), m_impl(std::make_unique<Impl>())
-{
+  : m_parent(parent), m_impl(std::make_unique<Impl>()
+) {
   auto& impl = *m_impl;
   impl.nSamplesInFile = parent.nSubjInFile();
   impl.nUsed          = parent.nSubjUsed();
@@ -448,8 +448,8 @@ void BgenCursor::getGenotypes(
     double& maf,
     double& mac,
     std::vector<uint32_t>& indexForMissing,
-    bool exactHwe)
-{
+    bool exactHwe
+) {
   auto& impl = *m_impl;
   indexForMissing.clear();
 
@@ -482,8 +482,8 @@ void BgenCursor::getGenotypes(
 
 void BgenCursor::getGenotypesSimple(
     uint64_t gIndex,
-    Eigen::Ref<Eigen::VectorXd> out)
-{
+    Eigen::Ref<Eigen::VectorXd> out
+) {
   auto& impl = *m_impl;
 
   if (!impl.advanceTo(gIndex))

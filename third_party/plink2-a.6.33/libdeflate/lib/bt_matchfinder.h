@@ -102,8 +102,8 @@ struct MATCHFINDER_ALIGNED bt_matchfinder {
 
 /* Prepare the matchfinder for a new input buffer.  */
 static forceinline void
-bt_matchfinder_init(struct bt_matchfinder *mf)
-{
+bt_matchfinder_init(struct bt_matchfinder *mf
+) {
 	STATIC_ASSERT(BT_MATCHFINDER_TOTAL_HASH_SIZE %
 		      MATCHFINDER_SIZE_ALIGNMENT == 0);
 
@@ -111,22 +111,22 @@ bt_matchfinder_init(struct bt_matchfinder *mf)
 }
 
 static forceinline void
-bt_matchfinder_slide_window(struct bt_matchfinder *mf)
-{
+bt_matchfinder_slide_window(struct bt_matchfinder *mf
+) {
 	STATIC_ASSERT(sizeof(*mf) % MATCHFINDER_SIZE_ALIGNMENT == 0);
 
 	matchfinder_rebase((mf_pos_t *)mf, sizeof(*mf));
 }
 
 static forceinline mf_pos_t *
-bt_left_child(struct bt_matchfinder *mf, s32 node)
-{
+bt_left_child(struct bt_matchfinder *mf, s32 node
+) {
 	return &mf->child_tab[2 * (node & (MATCHFINDER_WINDOW_SIZE - 1)) + 0];
 }
 
 static forceinline mf_pos_t *
-bt_right_child(struct bt_matchfinder *mf, s32 node)
-{
+bt_right_child(struct bt_matchfinder *mf, s32 node
+) {
 	return &mf->child_tab[2 * (node & (MATCHFINDER_WINDOW_SIZE - 1)) + 1];
 }
 
@@ -146,8 +146,8 @@ bt_matchfinder_advance_one_byte(struct bt_matchfinder * const mf,
 				const u32 max_search_depth,
 				u32 * const next_hashes,
 				struct lz_match *lz_matchptr,
-				const bool record_matches)
-{
+				const bool record_matches
+) {
 	const u8 *in_next = in_base + cur_pos;
 	u32 depth_remaining = max_search_depth;
 	const s32 cutoff = cur_pos - MATCHFINDER_WINDOW_SIZE;
@@ -301,8 +301,8 @@ bt_matchfinder_get_matches(struct bt_matchfinder *mf,
 			   u32 nice_len,
 			   u32 max_search_depth,
 			   u32 next_hashes[2],
-			   struct lz_match *lz_matchptr)
-{
+			   struct lz_match *lz_matchptr
+) {
 	return bt_matchfinder_advance_one_byte(mf,
 					       in_base,
 					       cur_pos,
@@ -326,8 +326,8 @@ bt_matchfinder_skip_byte(struct bt_matchfinder *mf,
 			 ptrdiff_t cur_pos,
 			 u32 nice_len,
 			 u32 max_search_depth,
-			 u32 next_hashes[2])
-{
+			 u32 next_hashes[2]
+) {
 	bt_matchfinder_advance_one_byte(mf,
 					in_base,
 					cur_pos,

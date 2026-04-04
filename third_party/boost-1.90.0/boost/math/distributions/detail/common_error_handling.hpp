@@ -26,8 +26,8 @@ namespace boost{ namespace math{ namespace detail
 {
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline bool check_probability(const char* function, RealType const& prob, RealType* result, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline bool check_probability(const char* function, RealType const& prob, RealType* result, const Policy& pol
+) {
    if((prob < 0) || (prob > 1) || !(boost::math::isfinite)(prob))
    {
       *result = policies::raise_domain_error<RealType>(
@@ -39,8 +39,8 @@ BOOST_MATH_GPU_ENABLED inline bool check_probability(const char* function, RealT
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline bool check_df(const char* function, RealType const& df, RealType* result, const Policy& pol)
-{ //  df > 0 but NOT +infinity allowed.
+BOOST_MATH_GPU_ENABLED inline bool check_df(const char* function, RealType const& df, RealType* result, const Policy& pol
+) { //  df > 0 but NOT +infinity allowed.
    if((df <= 0) || !(boost::math::isfinite)(df))
    {
       *result = policies::raise_domain_error<RealType>(
@@ -52,8 +52,8 @@ BOOST_MATH_GPU_ENABLED inline bool check_df(const char* function, RealType const
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline bool check_df_gt0_to_inf(const char* function, RealType const& df, RealType* result, const Policy& pol)
-{  // df > 0 or +infinity are allowed.
+BOOST_MATH_GPU_ENABLED inline bool check_df_gt0_to_inf(const char* function, RealType const& df, RealType* result, const Policy& pol
+) {  // df > 0 or +infinity are allowed.
    if( (df <= 0) || (boost::math::isnan)(df) )
    { // is bad df <= 0 or NaN or -infinity.
       *result = policies::raise_domain_error<RealType>(
@@ -70,8 +70,8 @@ BOOST_MATH_GPU_ENABLED inline bool check_scale(
       const char* function,
       RealType scale,
       RealType* result,
-      const Policy& pol)
-{
+      const Policy& pol
+) {
    if((scale <= 0) || !(boost::math::isfinite)(scale))
    { // Assume scale == 0 is NOT valid for any distribution.
       *result = policies::raise_domain_error<RealType>(
@@ -87,8 +87,8 @@ BOOST_MATH_GPU_ENABLED inline bool check_location(
       const char* function,
       RealType location,
       RealType* result,
-      const Policy& pol)
-{
+      const Policy& pol
+) {
    if(!(boost::math::isfinite)(location))
    {
       *result = policies::raise_domain_error<RealType>(
@@ -104,8 +104,8 @@ BOOST_MATH_GPU_ENABLED inline bool check_x(
       const char* function,
       RealType x,
       RealType* result,
-      const Policy& pol)
-{
+      const Policy& pol
+) {
    // Note that this test catches both infinity and NaN.
    // Some distributions permit x to be infinite, so these must be tested 1st and return,
    // leaving this test to catch any NaNs.
@@ -125,8 +125,8 @@ BOOST_MATH_GPU_ENABLED inline bool check_x_not_NaN(
   const char* function,
   RealType x,
   RealType* result,
-  const Policy& pol)
-{
+  const Policy& pol
+) {
   // Note that this test catches only NaN.
   // Some distributions permit x to be infinite, leaving this test to catch any NaNs.
   // See Normal, Logistic, Laplace and Cauchy for example.
@@ -145,8 +145,8 @@ BOOST_MATH_GPU_ENABLED inline bool check_x_gt0(
       const char* function,
       RealType x,
       RealType* result,
-      const Policy& pol)
-{
+      const Policy& pol
+) {
    if(x <= 0)
    {
       *result = policies::raise_domain_error<RealType>(
@@ -166,8 +166,8 @@ BOOST_MATH_GPU_ENABLED inline bool check_positive_x(
       const char* function,
       RealType x,
       RealType* result,
-      const Policy& pol)
-{
+      const Policy& pol
+) {
    if(!(boost::math::isfinite)(x) || (x < 0))
    {
       *result = policies::raise_domain_error<RealType>(
@@ -186,8 +186,8 @@ BOOST_MATH_GPU_ENABLED inline bool check_non_centrality(
       const char* function,
       RealType ncp,
       RealType* result,
-      const Policy& pol)
-{
+      const Policy& pol
+) {
    BOOST_MATH_STATIC const RealType upper_limit = static_cast<RealType>((boost::math::numeric_limits<long long>::max)()) - boost::math::policies::get_max_root_iterations<Policy>();
 
    if((ncp < 0) || !(boost::math::isfinite)(ncp) || ncp > upper_limit)
@@ -205,8 +205,8 @@ BOOST_MATH_GPU_ENABLED inline bool check_finite(
       const char* function,
       RealType x,
       RealType* result,
-      const Policy& pol)
-{
+      const Policy& pol
+) {
    if(!(boost::math::isfinite)(x))
    { // Assume scale == 0 is NOT valid for any distribution.
       *result = policies::raise_domain_error<RealType>(

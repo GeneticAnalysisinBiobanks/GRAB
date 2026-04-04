@@ -1,0 +1,141 @@
+// spamixlocalp.hpp — SPAmixLocalPlus: local-ancestry-specific GWAS
+//
+// Phase 1: Phi estimation — streaming ancestry-specific kinship from admix .abed
+// Phase 2: Per-ancestry GWAS — score test with SPA tail, CCT meta-analysis
+//
+// Uses .abed binary format for local ancestry dosage/hapcount data,
+// and SparseGRM for related-pair structure.
+#pragma once
+
+#include "io/admix.hpp"
+#include "io/sparse_grm.hpp"
+#include "spamix/common.hpp"
+
+#include <cstdint>
+#include <string>
+#include <vector>
+#include <Eigen/Dense>
+
+
+// ======================================================================
+// PhiMatrices — ancestry-specific kinship for 4 haplotype scenarios
+// ======================================================================
+
+// Sparse COO storage for phi values, indexed into the "used subject" order.
+struct PhiEntry {
+    uint32_t i;       // row index (used-subject space)
+    uint32_t j;       // col index (used-subject space)
+    double   value;
+};
+
+// Four scenarios based on (h_i, h_j) haplotype counts from a specific ancestry:
+//   A: h_i=2, h_j=2   multiplier = 4 * q(1-q)
+//   B: h_i=2, h_j=1   multiplier = 2 * q(1-q)
+//   C: h_i=1, h_j=2   multiplier = 2 * q(1-q)
+//   D: h_i=1, h_j=1   multiplier = 1 * q(1-q)
+struct PhiMatrices {
+    std::vector<PhiEntry> A;  // (2,2) pairs
+    std::vector<PhiEntry> B;  // (2,1) pairs
+    std::vector<PhiEntry> C;  // (1,2) pairs
+    std::vector<PhiEntry> D;  // (1,1) pairs
+};
+
+
+// ======================================================================
+// Phi estimation
+// ======================================================================
+
+// Estimate phi matrices for one ancestry from admix binary data + sparse GRM.
+//
+// For each GRM pair (i,j), accumulates:
+//   phi_{ij}^{scenario} = (1/M) sum_s { (g_is - h_is*q_s)(g_js - h_js*q_s) / (h_is*h_js*q_s*(1-q_s)) }
+// where the sum is over SNPs where both individuals match the scenario's (h_i, h_j) pattern.
+//
+//   admixData:  the admix binary data backend
+//   grm:        sparse GRM (determines which pairs to compute)
+//   ancIdx:     which ancestry to estimate (0-based)
+//   MAF cutoff is hardcoded to 0.01.
+PhiMatrices estimatePhiOneAncestry(
+    const AdmixData& admixData,
+    const SparseGRM& grm,
+    int ancIdx);
+
+
+// ======================================================================
+// SPAmixLocalPlus variance computation
+// ======================================================================
+
+// Compute GRM-based variance for the score statistic, using phi matrices.
+//   Var(S) = sum_scenario sum_{(i,j) in phi_scenario} w_scenario * q(1-q) * phi_ij * R_i * R_j
+//            + sum_i R_i^2 * h_i * q(1-q)
+//
+// where w_scenario is the haplotype-count multiplier (4, 2, 2, or 1).
+double computePhiVariance(
+    const Eigen::VectorXd& R,
+    const Eigen::VectorXd& hapcount,
+    double q,
+    const PhiMatrices& phi);
+
+
+// ======================================================================
+// SPA p-value with outlier split
+// ======================================================================
+
+// Compute SPA p-value for the local-ancestry score test.
+//   S:        score statistic = sum(dosage * R)
+//   R:        residual vector
+//   hapcount: hapcount vector for this ancestry at this marker
+//   q:        allele frequency
+//   varS:     pre-computed variance (from computePhiVariance)
+//   outlier:  outlier positions
+//   spaCutoff: threshold for switching from normal to SPA
+//
+// Returns: {pval_spa, pval_normal}
+std::pair<double, double> spaLocalPval(
+    double S,
+    const Eigen::VectorXd& R,
+    const Eigen::VectorXd& hapcount,
+    double q,
+    double varS,
+    const OutlierData& outlier,
+    double spaCutoff);
+
+
+// ======================================================================
+// Full pipeline entry points
+// ======================================================================
+
+// Estimate phi matrices for all ancestries and write single wide file.
+//   admixPrefix:  prefix for .abed/.bim/.fam
+//   grmGrabFile / grmGctaFile: sparse GRM (exactly one non-empty)
+//   phiOutputFile: output path for wide phi file
+//   extractFile / excludeFile: for marker filtering
+void runPhiEstimation(
+    const std::string& admixPrefix,
+    const std::string& grmGrabFile,
+    const std::string& grmGctaFile,
+    const std::string& phiOutputFile,
+    const std::string& extractFile = {},
+    const std::string& excludeFile = {});
+
+// Run per-ancestry GWAS with SPAmixLocalPlus.
+//   residFile:    null model residual file
+//   admixPrefix:  prefix for .abed/.bim/.fam
+//   admixPhiFile: pre-computed wide phi file
+//   outputFile:   output GWAS results
+//   spaCutoff, outlierRatio, nthread, nSnpPerChunk: analysis params
+void runSPAmixLocalPlus(
+    const std::string& residFile,
+    const std::string& admixPrefix,
+    const std::string& admixPhiFile,
+    const std::string& outputFile,
+    const std::string& outPrefix,
+    double spaCutoff,
+    double outlierRatio,
+    int nthread,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    const std::string& extractFile = {},
+    const std::string& excludeFile = {});

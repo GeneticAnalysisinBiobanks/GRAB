@@ -40,8 +40,8 @@
 #define SR_SCORE(srt,a,b) (srt)->score[((a)<<4)|(b)]
 
 // Logical AND
-static inline int kbs_logical_and(kbitset_t *bs1, kbitset_t *bs2)
-{
+static inline int kbs_logical_and(kbitset_t *bs1, kbitset_t *bs2
+) {
     // General case, bitsets of unequal size:
     //  int i, n = bs1->n < bs2->n ? bs1->n : bs2->n;
     int i, n = bs1->n;
@@ -51,15 +51,15 @@ static inline int kbs_logical_and(kbitset_t *bs1, kbitset_t *bs2)
 }
 
 // Bitwise OR, dst will be modified, src will be left unchanged
-static inline void kbs_bitwise_or(kbitset_t *dst, kbitset_t *src)
-{
+static inline void kbs_bitwise_or(kbitset_t *dst, kbitset_t *src
+) {
     int i;
     for (i=0; i<dst->n; i++) dst->b[i] |= src->b[i];
 }
 
 
-static void bcf_sr_init_scores(sr_sort_t *srt)
-{
+static void bcf_sr_init_scores(sr_sort_t *srt
+) {
     int i,jbit,kbit;
 
     // lower number = lower priority, zero means forbidden
@@ -102,8 +102,8 @@ static void bcf_sr_init_scores(sr_sort_t *srt)
         srt->score[i] = max;
     }
 }
-static int multi_is_exact(var_t *avar, var_t *bvar)
-{
+static int multi_is_exact(var_t *avar, var_t *bvar
+) {
     if ( avar->nalt != bvar->nalt ) return 0;
 
     int alen = strlen(avar->str);
@@ -130,8 +130,8 @@ static int multi_is_exact(var_t *avar, var_t *bvar)
     }
     return 1;
 }
-static int multi_is_subset(var_t *avar, var_t *bvar)
-{
+static int multi_is_subset(var_t *avar, var_t *bvar
+) {
     char *abeg = avar->str;
     while ( *abeg )
     {
@@ -150,8 +150,8 @@ static int multi_is_subset(var_t *avar, var_t *bvar)
     }
     return 0;
 }
-static uint32_t pairing_score(sr_sort_t *srt, int ivset, int jvset)
-{
+static uint32_t pairing_score(sr_sort_t *srt, int ivset, int jvset
+) {
     varset_t *iv = &srt->vset[ivset];
     varset_t *jv = &srt->vset[jvset];
 
@@ -190,8 +190,8 @@ static uint32_t pairing_score(sr_sort_t *srt, int ivset, int jvset)
 
     return (1u<<(28+min)) + cnt;
 }
-static void remove_vset(sr_sort_t *srt, int jvset)
-{
+static void remove_vset(sr_sort_t *srt, int jvset
+) {
     if ( jvset+1 < srt->nvset )
     {
         varset_t tmp = srt->vset[jvset];
@@ -205,8 +205,8 @@ static void remove_vset(sr_sort_t *srt, int jvset)
     }
     srt->nvset--;
 }
-static int merge_vsets(sr_sort_t *srt, int ivset, int jvset)
-{
+static int merge_vsets(sr_sort_t *srt, int ivset, int jvset
+) {
     int i,j;
     if ( ivset > jvset ) { i = ivset; ivset = jvset; jvset = i; }
 
@@ -230,8 +230,8 @@ static int merge_vsets(sr_sort_t *srt, int ivset, int jvset)
     return ivset;
 }
 
-static int push_vset(sr_sort_t *srt, int ivset)
-{
+static int push_vset(sr_sort_t *srt, int ivset
+) {
     varset_t *iv = &srt->vset[ivset];
     int i,j;
     for (i=0; i<srt->sr->nreaders; i++)
@@ -255,15 +255,15 @@ static int push_vset(sr_sort_t *srt, int ivset)
     return 0; // FIXME: check for errs in this function
 }
 
-static int cmpstringp(const void *p1, const void *p2)
-{
+static int cmpstringp(const void *p1, const void *p2
+) {
     return strcmp(* (char * const *) p1, * (char * const *) p2);
 }
 
 #define DEBUG_VSETS 0
 #if DEBUG_VSETS
-void debug_vsets(sr_sort_t *srt)
-{
+void debug_vsets(sr_sort_t *srt
+) {
     int i,j,k;
     for (i=0; i<srt->nvset; i++)
     {
@@ -284,8 +284,8 @@ void debug_vsets(sr_sort_t *srt)
 
 #define DEBUG_VBUF 0
 #if DEBUG_VBUF
-void debug_vbuf(sr_sort_t *srt)
-{
+void debug_vbuf(sr_sort_t *srt
+) {
     int i, j;
     for (j=0; j<srt->vcf_buf[0].nrec; j++)
     {
@@ -300,8 +300,8 @@ void debug_vbuf(sr_sort_t *srt)
 }
 #endif
 
-static char *grp_create_key(sr_sort_t *srt)
-{
+static char *grp_create_key(sr_sort_t *srt
+) {
     if ( !srt->str.l ) return strdup("");
     int i;
     hts_expand(char*,srt->noff,srt->mcharp,srt->charp);
@@ -321,22 +321,22 @@ static char *grp_create_key(sr_sort_t *srt)
     }
     return ret;
 }
-int bcf_sr_sort_set_active(sr_sort_t *srt, int idx)
-{
+int bcf_sr_sort_set_active(sr_sort_t *srt, int idx
+) {
     hts_expand(int,idx+1,srt->mactive,srt->active);
     srt->nactive = 1;
     srt->active[srt->nactive - 1] = idx;
     return 0; // FIXME: check for errs in this function
 }
-int bcf_sr_sort_add_active(sr_sort_t *srt, int idx)
-{
+int bcf_sr_sort_add_active(sr_sort_t *srt, int idx
+) {
     hts_expand(int,idx+1,srt->mactive,srt->active);
     srt->nactive++;
     srt->active[srt->nactive - 1] = idx;
     return 0; // FIXME: check for errs in this function
 }
-static int bcf_sr_sort_set(bcf_srs_t *readers, sr_sort_t *srt, const char *chr, hts_pos_t min_pos)
-{
+static int bcf_sr_sort_set(bcf_srs_t *readers, sr_sort_t *srt, const char *chr, hts_pos_t min_pos
+) {
     if ( !srt->grp_str2int )
     {
         // first time here, initialize
@@ -590,8 +590,8 @@ static int bcf_sr_sort_set(bcf_srs_t *readers, sr_sort_t *srt, const char *chr, 
     return 0;  // FIXME: check for errs in this function
 }
 
-int bcf_sr_sort_next(bcf_srs_t *readers, sr_sort_t *srt, const char *chr, hts_pos_t min_pos)
-{
+int bcf_sr_sort_next(bcf_srs_t *readers, sr_sort_t *srt, const char *chr, hts_pos_t min_pos
+) {
     int i,j;
     assert( srt->nactive>0 );
 
@@ -659,8 +659,8 @@ int bcf_sr_sort_next(bcf_srs_t *readers, sr_sort_t *srt, const char *chr, hts_po
     }
     return nret;
 }
-void bcf_sr_sort_remove_reader(bcf_srs_t *readers, sr_sort_t *srt, int i)
-{
+void bcf_sr_sort_remove_reader(bcf_srs_t *readers, sr_sort_t *srt, int i
+) {
     //vcf_buf is allocated only in bcf_sr_sort_next
     //So, a call to bcf_sr_add_reader() followed immediately by bcf_sr_remove_reader()
     //would cause the program to crash in this segment
@@ -672,18 +672,18 @@ void bcf_sr_sort_remove_reader(bcf_srs_t *readers, sr_sort_t *srt, int i)
         memset(srt->vcf_buf + srt->nsr - 1, 0, sizeof(vcf_buf_t));
     }
 }
-sr_sort_t *bcf_sr_sort_init(sr_sort_t *srt)
-{
+sr_sort_t *bcf_sr_sort_init(sr_sort_t *srt
+) {
     if ( !srt ) return calloc(1,sizeof(sr_sort_t));
     memset(srt,0,sizeof(sr_sort_t));
     return srt;
 }
-void bcf_sr_sort_reset(sr_sort_t *srt)
-{
+void bcf_sr_sort_reset(sr_sort_t *srt
+) {
     srt->chr = NULL;
 }
-void bcf_sr_sort_destroy(sr_sort_t *srt)
-{
+void bcf_sr_sort_destroy(sr_sort_t *srt
+) {
     free(srt->active);
     if ( srt->var_str2int ) khash_str2int_destroy_free(srt->var_str2int);
     if ( srt->grp_str2int ) khash_str2int_destroy_free(srt->grp_str2int);

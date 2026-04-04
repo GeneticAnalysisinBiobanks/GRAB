@@ -71,8 +71,8 @@ students_t_distribution(RealType)->students_t_distribution<typename boost::math:
 #endif
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline const boost::math::pair<RealType, RealType> range(const students_t_distribution<RealType, Policy>& /*dist*/)
-{ // Range of permissible values for random variable x.
+BOOST_MATH_GPU_ENABLED inline const boost::math::pair<RealType, RealType> range(const students_t_distribution<RealType, Policy>& /*dist*/
+) { // Range of permissible values for random variable x.
   // Now including infinity.
    using boost::math::tools::max_value;
    //return boost::math::pair<RealType, RealType>(-max_value<RealType>(), max_value<RealType>());
@@ -80,8 +80,8 @@ BOOST_MATH_GPU_ENABLED inline const boost::math::pair<RealType, RealType> range(
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline const boost::math::pair<RealType, RealType> support(const students_t_distribution<RealType, Policy>& /*dist*/)
-{ // Range of supported values for random variable x.
+BOOST_MATH_GPU_ENABLED inline const boost::math::pair<RealType, RealType> support(const students_t_distribution<RealType, Policy>& /*dist*/
+) { // Range of supported values for random variable x.
   // Now including infinity.
    // This is range where cdf rises from 0 to 1, and outside it, the pdf is zero.
    using boost::math::tools::max_value;
@@ -90,8 +90,8 @@ BOOST_MATH_GPU_ENABLED inline const boost::math::pair<RealType, RealType> suppor
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType pdf(const students_t_distribution<RealType, Policy>& dist, const RealType& x)
-{
+BOOST_MATH_GPU_ENABLED inline RealType pdf(const students_t_distribution<RealType, Policy>& dist, const RealType& x
+) {
    BOOST_FPU_EXCEPTION_GUARD
    BOOST_MATH_STD_USING  // for ADL of std functions.
 
@@ -138,8 +138,8 @@ BOOST_MATH_GPU_ENABLED inline RealType pdf(const students_t_distribution<RealTyp
 } // pdf
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType cdf(const students_t_distribution<RealType, Policy>& dist, const RealType& x)
-{
+BOOST_MATH_GPU_ENABLED inline RealType cdf(const students_t_distribution<RealType, Policy>& dist, const RealType& x
+) {
    RealType error_result;
    // degrees_of_freedom > 0 or infinity check:
    RealType df = dist.degrees_of_freedom();
@@ -212,8 +212,8 @@ BOOST_MATH_GPU_ENABLED inline RealType cdf(const students_t_distribution<RealTyp
 } // cdf
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType quantile(const students_t_distribution<RealType, Policy>& dist, const RealType& p)
-{
+BOOST_MATH_GPU_ENABLED inline RealType quantile(const students_t_distribution<RealType, Policy>& dist, const RealType& p
+) {
    BOOST_MATH_STD_USING // for ADL of std functions
    //
    // Obtain parameters:
@@ -266,14 +266,14 @@ BOOST_MATH_GPU_ENABLED inline RealType quantile(const students_t_distribution<Re
 } // quantile
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType cdf(const complemented2_type<students_t_distribution<RealType, Policy>, RealType>& c)
-{
+BOOST_MATH_GPU_ENABLED inline RealType cdf(const complemented2_type<students_t_distribution<RealType, Policy>, RealType>& c
+) {
    return cdf(c.dist, -c.param);
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType quantile(const complemented2_type<students_t_distribution<RealType, Policy>, RealType>& c)
-{
+BOOST_MATH_GPU_ENABLED inline RealType quantile(const complemented2_type<students_t_distribution<RealType, Policy>, RealType>& c
+) {
    return -quantile(c.dist, c.param);
 }
 
@@ -316,8 +316,8 @@ BOOST_MATH_GPU_ENABLED RealType students_t_distribution<RealType, Policy>::find_
       RealType alpha,
       RealType beta,
       RealType sd,
-      RealType hint)
-{
+      RealType hint
+) {
    constexpr auto function = "boost::math::students_t_distribution<%1%>::find_degrees_of_freedom";
    //
    // Check for domain errors:
@@ -345,15 +345,15 @@ BOOST_MATH_GPU_ENABLED RealType students_t_distribution<RealType, Policy>::find_
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType mode(const students_t_distribution<RealType, Policy>& /*dist*/)
-{
+BOOST_MATH_GPU_ENABLED inline RealType mode(const students_t_distribution<RealType, Policy>& /*dist*/
+) {
   // Assume no checks on degrees of freedom are useful (unlike mean).
    return 0; // Always zero by definition.
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType median(const students_t_distribution<RealType, Policy>& /*dist*/)
-{
+BOOST_MATH_GPU_ENABLED inline RealType median(const students_t_distribution<RealType, Policy>& /*dist*/
+) {
    // Assume no checks on degrees of freedom are useful (unlike mean).
    return 0; // Always zero by definition.
 }
@@ -361,8 +361,8 @@ BOOST_MATH_GPU_ENABLED inline RealType median(const students_t_distribution<Real
 // See section 5.1 on moments at  http://en.wikipedia.org/wiki/Student%27s_t-distribution
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType mean(const students_t_distribution<RealType, Policy>& dist)
-{  // Revised for https://svn.boost.org/trac/boost/ticket/7177
+BOOST_MATH_GPU_ENABLED inline RealType mean(const students_t_distribution<RealType, Policy>& dist
+) {  // Revised for https://svn.boost.org/trac/boost/ticket/7177
    RealType df = dist.degrees_of_freedom();
    if(((boost::math::isnan)(df)) || (df <= 1) ) 
    { // mean is undefined for moment <= 1!
@@ -375,8 +375,8 @@ BOOST_MATH_GPU_ENABLED inline RealType mean(const students_t_distribution<RealTy
 } // mean
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType variance(const students_t_distribution<RealType, Policy>& dist)
-{ // http://en.wikipedia.org/wiki/Student%27s_t-distribution
+BOOST_MATH_GPU_ENABLED inline RealType variance(const students_t_distribution<RealType, Policy>& dist
+) { // http://en.wikipedia.org/wiki/Student%27s_t-distribution
   // Revised for https://svn.boost.org/trac/boost/ticket/7177
   RealType df = dist.degrees_of_freedom();
   if ((boost::math::isnan)(df) || (df <= 2))
@@ -407,8 +407,8 @@ BOOST_MATH_GPU_ENABLED inline RealType variance(const students_t_distribution<Re
 } // variance
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType skewness(const students_t_distribution<RealType, Policy>& dist)
-{
+BOOST_MATH_GPU_ENABLED inline RealType skewness(const students_t_distribution<RealType, Policy>& dist
+) {
     RealType df = dist.degrees_of_freedom();
    if( ((boost::math::isnan)(df)) || (dist.degrees_of_freedom() <= 3))
    { // Undefined for moment k = 3.
@@ -422,8 +422,8 @@ BOOST_MATH_GPU_ENABLED inline RealType skewness(const students_t_distribution<Re
 } // skewness
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType kurtosis(const students_t_distribution<RealType, Policy>& dist)
-{
+BOOST_MATH_GPU_ENABLED inline RealType kurtosis(const students_t_distribution<RealType, Policy>& dist
+) {
    RealType df = dist.degrees_of_freedom();
    if(((boost::math::isnan)(df)) || (df <= 4))
    { // Undefined or infinity for moment k = 4.
@@ -454,8 +454,8 @@ BOOST_MATH_GPU_ENABLED inline RealType kurtosis(const students_t_distribution<Re
 } // kurtosis
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType kurtosis_excess(const students_t_distribution<RealType, Policy>& dist)
-{
+BOOST_MATH_GPU_ENABLED inline RealType kurtosis_excess(const students_t_distribution<RealType, Policy>& dist
+) {
    // see http://mathworld.wolfram.com/Kurtosis.html
 
    RealType df = dist.degrees_of_freedom();
@@ -487,8 +487,8 @@ BOOST_MATH_GPU_ENABLED inline RealType kurtosis_excess(const students_t_distribu
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType entropy(const students_t_distribution<RealType, Policy>& dist)
-{
+BOOST_MATH_GPU_ENABLED inline RealType entropy(const students_t_distribution<RealType, Policy>& dist
+) {
    BOOST_MATH_STD_USING
    RealType v = dist.degrees_of_freedom();
    RealType vp1 = (v+1)/2;

@@ -48,15 +48,15 @@ template<class T, class Policy>
 T polygamma_imp(const int n, T x, const Policy &pol);
 
 template <class T, class Policy>
-T trigamma_prec(T x, const Policy& pol, const boost::math::integral_constant<int, 0>&)
-{
+T trigamma_prec(T x, const Policy& pol, const boost::math::integral_constant<int, 0>&
+) {
    return polygamma_imp(1, x, pol);
 }
 #endif
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T trigamma_prec(T x, const Policy&, const boost::math::integral_constant<int, 53>&)
-{
+BOOST_MATH_GPU_ENABLED T trigamma_prec(T x, const Policy&, const boost::math::integral_constant<int, 53>&
+) {
    // Max error in interpolated form: 3.736e-017
    BOOST_MATH_STATIC const T offset = BOOST_MATH_BIG_CONSTANT(T, 53, 2.1093254089355469);
    BOOST_MATH_STATIC const T P_1_2[] = {
@@ -128,8 +128,8 @@ BOOST_MATH_GPU_ENABLED T trigamma_prec(T x, const Policy&, const boost::math::in
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T trigamma_prec(T x, const Policy&, const boost::math::integral_constant<int, 64>&)
-{
+BOOST_MATH_GPU_ENABLED T trigamma_prec(T x, const Policy&, const boost::math::integral_constant<int, 64>&
+) {
    // Max error in interpolated form: 1.178e-020
    BOOST_MATH_STATIC const T offset_1_2 = BOOST_MATH_BIG_CONSTANT(T, 64, 2.109325408935546875);
    BOOST_MATH_STATIC const T P_1_2[] = {
@@ -206,8 +206,8 @@ BOOST_MATH_GPU_ENABLED T trigamma_prec(T x, const Policy&, const boost::math::in
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T trigamma_prec(T x, const Policy&, const boost::math::integral_constant<int, 113>&)
-{
+BOOST_MATH_GPU_ENABLED T trigamma_prec(T x, const Policy&, const boost::math::integral_constant<int, 113>&
+) {
    // Max error in interpolated form: 1.916e-035
 
    static const T P_1_2[] = {
@@ -375,8 +375,8 @@ BOOST_MATH_GPU_ENABLED T trigamma_prec(T x, const Policy&, const boost::math::in
 }
 
 template <class T, class Policy, class Tag>
-BOOST_MATH_GPU_ENABLED T trigamma_dispatch(T x, const Policy& pol, const Tag& tag)
-{
+BOOST_MATH_GPU_ENABLED T trigamma_dispatch(T x, const Policy& pol, const Tag& tag
+) {
    //
    // This handles reflection of negative arguments, and all our
    // error handling, then forwards to the T-specific approximation.
@@ -414,8 +414,8 @@ BOOST_MATH_GPU_ENABLED T trigamma_dispatch(T x, const Policy& pol, const Tag& ta
 
 template <class T, class Policy>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type
-   trigamma(T x, const Policy&)
-{
+   trigamma(T x, const Policy&
+) {
    typedef typename tools::promote_args<T>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
    typedef typename policies::precision<T, Policy>::type precision_type;
@@ -437,8 +437,8 @@ BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type
 
 template <class T>
 BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type
-   trigamma(T x)
-{
+   trigamma(T x
+) {
    return trigamma(x, policies::policy<>());
 }
 

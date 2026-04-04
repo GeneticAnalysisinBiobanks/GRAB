@@ -82,8 +82,8 @@ inline auto rank(const Container& c) -> std::vector<std::size_t>
 namespace boost::math::statistics::detail {
 
 template <typename ExecutionPolicy, typename ForwardIterator, typename T = typename std::iterator_traits<ForwardIterator>::value_type>
-auto rank(ExecutionPolicy&& exec, ForwardIterator first, ForwardIterator last)
-{
+auto rank(ExecutionPolicy&& exec, ForwardIterator first, ForwardIterator last
+) {
     std::size_t elements = std::distance(first, last);
 
     std::vector<std::pair<T, std::size_t>> rank_vector(elements);
@@ -116,20 +116,20 @@ auto rank(ExecutionPolicy&& exec, ForwardIterator first, ForwardIterator last)
 }
 
 template <typename ExecutionPolicy, typename Container>
-inline auto rank(ExecutionPolicy&& exec, const Container& c)
-{
+inline auto rank(ExecutionPolicy&& exec, const Container& c
+) {
     return rank(exec, std::cbegin(c), std::cend(c));
 }
 
 template <typename ForwardIterator, typename T = typename std::iterator_traits<ForwardIterator>::value_type>
-inline auto rank(ForwardIterator first, ForwardIterator last)
-{
+inline auto rank(ForwardIterator first, ForwardIterator last
+) {
     return rank(std::execution::seq, first, last);
 }
 
 template <typename Container>
-inline auto rank(const Container& c)
-{
+inline auto rank(const Container& c
+) {
     return rank(std::execution::seq, std::cbegin(c), std::cend(c));
 }
 

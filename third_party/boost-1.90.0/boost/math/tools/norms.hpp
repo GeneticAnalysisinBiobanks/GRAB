@@ -25,8 +25,8 @@ namespace boost::math::tools {
 
 // Mallat, "A Wavelet Tour of Signal Processing", equation 2.60:
 template<class ForwardIterator>
-auto total_variation(ForwardIterator first, ForwardIterator last)
-{
+auto total_variation(ForwardIterator first, ForwardIterator last
+) {
     using T = typename std::iterator_traits<ForwardIterator>::value_type;
     using std::abs;
     BOOST_MATH_ASSERT_MSG(first != last && std::next(first) != last, "At least two samples are required to compute the total variation.");
@@ -75,15 +75,15 @@ auto total_variation(ForwardIterator first, ForwardIterator last)
 }
 
 template<class Container>
-inline auto total_variation(Container const & v)
-{
+inline auto total_variation(Container const & v
+) {
     return total_variation(v.cbegin(), v.cend());
 }
 
 
 template<class ForwardIterator>
-auto sup_norm(ForwardIterator first, ForwardIterator last)
-{
+auto sup_norm(ForwardIterator first, ForwardIterator last
+) {
     BOOST_MATH_ASSERT_MSG(first != last, "At least one value is required to compute the sup norm.");
     using T = typename std::iterator_traits<ForwardIterator>::value_type;
     using std::abs;
@@ -111,14 +111,14 @@ auto sup_norm(ForwardIterator first, ForwardIterator last)
 }
 
 template<class Container>
-inline auto sup_norm(Container const & v)
-{
+inline auto sup_norm(Container const & v
+) {
     return sup_norm(v.cbegin(), v.cend());
 }
 
 template<class ForwardIterator>
-auto l1_norm(ForwardIterator first, ForwardIterator last)
-{
+auto l1_norm(ForwardIterator first, ForwardIterator last
+) {
     using T = typename std::iterator_traits<ForwardIterator>::value_type;
     using std::abs;
     if constexpr (std::is_unsigned<T>::value)
@@ -153,15 +153,15 @@ auto l1_norm(ForwardIterator first, ForwardIterator last)
 }
 
 template<class Container>
-inline auto l1_norm(Container const & v)
-{
+inline auto l1_norm(Container const & v
+) {
     return l1_norm(v.cbegin(), v.cend());
 }
 
 
 template<class ForwardIterator>
-auto l2_norm(ForwardIterator first, ForwardIterator last)
-{
+auto l2_norm(ForwardIterator first, ForwardIterator last
+) {
     using T = typename std::iterator_traits<ForwardIterator>::value_type;
     using std::abs;
     using std::norm;
@@ -229,14 +229,14 @@ auto l2_norm(ForwardIterator first, ForwardIterator last)
 }
 
 template<class Container>
-inline auto l2_norm(Container const & v)
-{
+inline auto l2_norm(Container const & v
+) {
     return l2_norm(v.cbegin(), v.cend());
 }
 
 template<class ForwardIterator>
-size_t l0_pseudo_norm(ForwardIterator first, ForwardIterator last)
-{
+size_t l0_pseudo_norm(ForwardIterator first, ForwardIterator last
+) {
     using RealOrComplex = typename std::iterator_traits<ForwardIterator>::value_type;
     size_t count = 0;
     for (auto it = first; it != last; ++it)
@@ -250,14 +250,14 @@ size_t l0_pseudo_norm(ForwardIterator first, ForwardIterator last)
 }
 
 template<class Container>
-inline size_t l0_pseudo_norm(Container const & v)
-{
+inline size_t l0_pseudo_norm(Container const & v
+) {
     return l0_pseudo_norm(v.cbegin(), v.cend());
 }
 
 template<class ForwardIterator>
-size_t hamming_distance(ForwardIterator first1, ForwardIterator last1, ForwardIterator first2)
-{
+size_t hamming_distance(ForwardIterator first1, ForwardIterator last1, ForwardIterator first2
+) {
     size_t count = 0;
     auto it1 = first1;
     auto it2 = first2;
@@ -272,14 +272,14 @@ size_t hamming_distance(ForwardIterator first1, ForwardIterator last1, ForwardIt
 }
 
 template<class Container>
-inline size_t hamming_distance(Container const & v, Container const & w)
-{
+inline size_t hamming_distance(Container const & v, Container const & w
+) {
     return hamming_distance(v.cbegin(), v.cend(), w.cbegin());
 }
 
 template<class ForwardIterator>
-auto lp_norm(ForwardIterator first, ForwardIterator last, unsigned p)
-{
+auto lp_norm(ForwardIterator first, ForwardIterator last, unsigned p
+) {
     using std::abs;
     using std::pow;
     using std::is_floating_point;
@@ -357,15 +357,15 @@ auto lp_norm(ForwardIterator first, ForwardIterator last, unsigned p)
 }
 
 template<class Container>
-inline auto lp_norm(Container const & v, unsigned p)
-{
+inline auto lp_norm(Container const & v, unsigned p
+) {
     return lp_norm(v.cbegin(), v.cend(), p);
 }
 
 
 template<class ForwardIterator>
-auto lp_distance(ForwardIterator first1, ForwardIterator last1, ForwardIterator first2, unsigned p)
-{
+auto lp_distance(ForwardIterator first1, ForwardIterator last1, ForwardIterator first2, unsigned p
+) {
     using std::pow;
     using std::abs;
     using std::is_floating_point;
@@ -413,15 +413,15 @@ auto lp_distance(ForwardIterator first1, ForwardIterator last1, ForwardIterator 
 }
 
 template<class Container>
-inline auto lp_distance(Container const & v, Container const & w, unsigned p)
-{
+inline auto lp_distance(Container const & v, Container const & w, unsigned p
+) {
     return lp_distance(v.cbegin(), v.cend(), w.cbegin(), p);
 }
 
 
 template<class ForwardIterator>
-auto l1_distance(ForwardIterator first1, ForwardIterator last1, ForwardIterator first2)
-{
+auto l1_distance(ForwardIterator first1, ForwardIterator last1, ForwardIterator first2
+) {
     using std::abs;
     using std::is_floating_point;
     using std::isfinite;
@@ -483,8 +483,8 @@ auto l1_distance(ForwardIterator first1, ForwardIterator last1, ForwardIterator 
 }
 
 template<class Container>
-auto l1_distance(Container const & v, Container const & w)
-{
+auto l1_distance(Container const & v, Container const & w
+) {
     using std::size;
     BOOST_MATH_ASSERT_MSG(size(v) == size(w),
                      "L1 distance requires both containers to have the same number of elements");
@@ -492,8 +492,8 @@ auto l1_distance(Container const & v, Container const & w)
 }
 
 template<class ForwardIterator>
-auto l2_distance(ForwardIterator first1, ForwardIterator last1, ForwardIterator first2)
-{
+auto l2_distance(ForwardIterator first1, ForwardIterator last1, ForwardIterator first2
+) {
     using std::abs;
     using std::norm;
     using std::sqrt;
@@ -556,8 +556,8 @@ auto l2_distance(ForwardIterator first1, ForwardIterator last1, ForwardIterator 
 }
 
 template<class Container>
-auto l2_distance(Container const & v, Container const & w)
-{
+auto l2_distance(Container const & v, Container const & w
+) {
     using std::size;
     BOOST_MATH_ASSERT_MSG(size(v) == size(w),
                      "L2 distance requires both containers to have the same number of elements");
@@ -565,8 +565,8 @@ auto l2_distance(Container const & v, Container const & w)
 }
 
 template<class ForwardIterator>
-auto sup_distance(ForwardIterator first1, ForwardIterator last1, ForwardIterator first2)
-{
+auto sup_distance(ForwardIterator first1, ForwardIterator last1, ForwardIterator first2
+) {
     using std::abs;
     using std::norm;
     using std::sqrt;
@@ -625,8 +625,8 @@ auto sup_distance(ForwardIterator first1, ForwardIterator last1, ForwardIterator
 }
 
 template<class Container>
-auto sup_distance(Container const & v, Container const & w)
-{
+auto sup_distance(Container const & v, Container const & w
+) {
     using std::size;
     BOOST_MATH_ASSERT_MSG(size(v) == size(w),
                      "sup distance requires both containers to have the same number of elements");

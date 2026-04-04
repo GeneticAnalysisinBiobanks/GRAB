@@ -13,8 +13,8 @@
 
 #include "mem.h"
 
-MEM_STATIC unsigned ZSTD_countTrailingZeros32_fallback(U32 val)
-{
+MEM_STATIC unsigned ZSTD_countTrailingZeros32_fallback(U32 val
+) {
     assert(val != 0);
     {
         static const U32 DeBruijnBytePos[32] = {0, 1, 28, 2, 29, 14, 24, 3,
@@ -25,8 +25,8 @@ MEM_STATIC unsigned ZSTD_countTrailingZeros32_fallback(U32 val)
     }
 }
 
-MEM_STATIC unsigned ZSTD_countTrailingZeros32(U32 val)
-{
+MEM_STATIC unsigned ZSTD_countTrailingZeros32(U32 val
+) {
     assert(val != 0);
 #if defined(_MSC_VER)
 #  if STATIC_BMI2
@@ -49,8 +49,8 @@ MEM_STATIC unsigned ZSTD_countTrailingZeros32(U32 val)
 #endif
 }
 
-MEM_STATIC unsigned ZSTD_countLeadingZeros32_fallback(U32 val)
-{
+MEM_STATIC unsigned ZSTD_countLeadingZeros32_fallback(U32 val
+) {
     assert(val != 0);
     {
         static const U32 DeBruijnClz[32] = {0, 9, 1, 10, 13, 21, 2, 29,
@@ -66,8 +66,8 @@ MEM_STATIC unsigned ZSTD_countLeadingZeros32_fallback(U32 val)
     }
 }
 
-MEM_STATIC unsigned ZSTD_countLeadingZeros32(U32 val)
-{
+MEM_STATIC unsigned ZSTD_countLeadingZeros32(U32 val
+) {
     assert(val != 0);
 #if defined(_MSC_VER)
 #  if STATIC_BMI2
@@ -90,8 +90,8 @@ MEM_STATIC unsigned ZSTD_countLeadingZeros32(U32 val)
 #endif
 }
 
-MEM_STATIC unsigned ZSTD_countTrailingZeros64(U64 val)
-{
+MEM_STATIC unsigned ZSTD_countTrailingZeros64(U64 val
+) {
     assert(val != 0);
 #if defined(_MSC_VER) && defined(_WIN64)
 #  if STATIC_BMI2
@@ -122,8 +122,8 @@ MEM_STATIC unsigned ZSTD_countTrailingZeros64(U64 val)
 #endif
 }
 
-MEM_STATIC unsigned ZSTD_countLeadingZeros64(U64 val)
-{
+MEM_STATIC unsigned ZSTD_countLeadingZeros64(U64 val
+) {
     assert(val != 0);
 #if defined(_MSC_VER) && defined(_WIN64)
 #  if STATIC_BMI2
@@ -154,8 +154,8 @@ MEM_STATIC unsigned ZSTD_countLeadingZeros64(U64 val)
 #endif
 }
 
-MEM_STATIC unsigned ZSTD_NbCommonBytes(size_t val)
-{
+MEM_STATIC unsigned ZSTD_NbCommonBytes(size_t val
+) {
     if (MEM_isLittleEndian()) {
         if (MEM_64bits()) {
             return ZSTD_countTrailingZeros64((U64)val) >> 3;

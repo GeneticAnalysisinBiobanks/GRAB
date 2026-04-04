@@ -25,8 +25,8 @@ namespace boost::math::ccmath {
 namespace detail {
 
 template <typename T>
-constexpr T remainder_impl(const T x, const T y)
-{
+constexpr T remainder_impl(const T x, const T y
+) {
     T n = 0;
 
     if (T fractional_part = boost::math::ccmath::modf((x / y), &n); fractional_part > static_cast<T>(1.0/2))
@@ -44,8 +44,8 @@ constexpr T remainder_impl(const T x, const T y)
 } // Namespace detail
 
 template <typename Real, std::enable_if_t<!std::is_integral_v<Real>, bool> = true>
-constexpr Real remainder(Real x, Real y)
-{
+constexpr Real remainder(Real x, Real y
+) {
     if (BOOST_MATH_IS_CONSTANT_EVALUATED(x))
     {
         if (boost::math::ccmath::isinf(x) && !boost::math::ccmath::isnan(y))
@@ -75,8 +75,8 @@ constexpr Real remainder(Real x, Real y)
 }
 
 template <typename T1, typename T2>
-constexpr auto remainder(T1 x, T2 y)
-{
+constexpr auto remainder(T1 x, T2 y
+) {
     if (BOOST_MATH_IS_CONSTANT_EVALUATED(x))
     {
         using promoted_type = boost::math::tools::promote_args_t<T1, T2>;
@@ -89,14 +89,14 @@ constexpr auto remainder(T1 x, T2 y)
     }
 }
 
-constexpr float remainderf(float x, float y)
-{
+constexpr float remainderf(float x, float y
+) {
     return boost::math::ccmath::remainder(x, y);
 }
 
 #ifndef BOOST_MATH_NO_LONG_DOUBLE_MATH_FUNCTIONS
-constexpr long double remainderl(long double x, long double y)
-{
+constexpr long double remainderl(long double x, long double y
+) {
     return boost::math::ccmath::remainder(x, y);
 }
 #endif

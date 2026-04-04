@@ -60,16 +60,16 @@ struct MATCHFINDER_ALIGNED ht_matchfinder {
 };
 
 static forceinline void
-ht_matchfinder_init(struct ht_matchfinder *mf)
-{
+ht_matchfinder_init(struct ht_matchfinder *mf
+) {
 	STATIC_ASSERT(sizeof(*mf) % MATCHFINDER_SIZE_ALIGNMENT == 0);
 
 	matchfinder_init((mf_pos_t *)mf, sizeof(*mf));
 }
 
 static forceinline void
-ht_matchfinder_slide_window(struct ht_matchfinder *mf)
-{
+ht_matchfinder_slide_window(struct ht_matchfinder *mf
+) {
 	matchfinder_rebase((mf_pos_t *)mf, sizeof(*mf));
 }
 
@@ -81,8 +81,8 @@ ht_matchfinder_longest_match(struct ht_matchfinder * const mf,
 			     const u32 max_len,
 			     const u32 nice_len,
 			     u32 * const next_hash,
-			     u32 * const offset_ret)
-{
+			     u32 * const offset_ret
+) {
 	u32 best_len = 0;
 	const u8 *best_matchptr = in_next;
 	u32 cur_pos = in_next - *in_base_p;
@@ -200,8 +200,8 @@ ht_matchfinder_skip_bytes(struct ht_matchfinder * const mf,
 			  const u8 *in_next,
 			  const u8 * const in_end,
 			  const u32 count,
-			  u32 * const next_hash)
-{
+			  u32 * const next_hash
+) {
 	s32 cur_pos = in_next - *in_base_p;
 	u32 hash;
 	u32 remaining = count;

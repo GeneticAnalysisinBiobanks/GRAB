@@ -139,8 +139,8 @@ int kputd(double d, kstring_t *s) {
 	return len;
 }
 
-int kvsprintf(kstring_t *s, const char *fmt, va_list ap)
-{
+int kvsprintf(kstring_t *s, const char *fmt, va_list ap
+) {
 	va_list args;
 	int l;
 	va_copy(args, ap);
@@ -174,8 +174,8 @@ int kvsprintf(kstring_t *s, const char *fmt, va_list ap)
 	return l;
 }
 
-int ksprintf(kstring_t *s, const char *fmt, ...)
-{
+int ksprintf(kstring_t *s, const char *fmt, ...
+) {
 	va_list ap;
 	int l;
 	va_start(ap, fmt);
@@ -184,8 +184,8 @@ int ksprintf(kstring_t *s, const char *fmt, ...)
 	return l;
 }
 
-char *kstrtok(const char *str, const char *sep_in, ks_tokaux_t *aux)
-{
+char *kstrtok(const char *str, const char *sep_in, ks_tokaux_t *aux
+) {
 	const unsigned char *p, *start, *sep = (unsigned char *) sep_in;
 	if (sep) { // set up the table
 		if (str == 0 && aux->finished) return 0; // no need to set up if we have finished
@@ -221,8 +221,8 @@ char *kstrtok(const char *str, const char *sep_in, ks_tokaux_t *aux)
 }
 
 // s MUST BE a null terminated string; l = strlen(s)
-int ksplit_core(char *s, int delimiter, int *_max, int **_offsets)
-{
+int ksplit_core(char *s, int delimiter, int *_max, int **_offsets
+) {
 	int i, n, max, last_char, last_start, *offsets, l;
 	n = 0; max = *_max; offsets = *_offsets;
 	l = strlen(s);
@@ -267,8 +267,8 @@ int ksplit_core(char *s, int delimiter, int *_max, int **_offsets)
 	return n;
 }
 
-int kgetline(kstring_t *s, kgets_func *fgets_fn, void *fp)
-{
+int kgetline(kstring_t *s, kgets_func *fgets_fn, void *fp
+) {
 	size_t l0 = s->l;
 
 	while (s->l == l0 || s->s[s->l-1] != '\n') {
@@ -290,8 +290,8 @@ int kgetline(kstring_t *s, kgets_func *fgets_fn, void *fp)
 	return 0;
 }
 
-int kgetline2(kstring_t *s, kgets_func2 *fgets_fn, void *fp)
-{
+int kgetline2(kstring_t *s, kgets_func2 *fgets_fn, void *fp
+) {
 	size_t l0 = s->l;
 
 	while (s->l == l0 || s->s[s->l-1] != '\n') {
@@ -335,8 +335,8 @@ typedef unsigned char ubyte_t;
 // required.  Karp-Rabin only needs to store a couple of hash values
 // so will always complete.
 
-static uint64_t fast_exp(uint64_t x, uint64_t n)
-{
+static uint64_t fast_exp(uint64_t x, uint64_t n
+) {
 	uint64_t y = 1;
 	if (n == 0)
 		return 1;
@@ -349,8 +349,8 @@ static uint64_t fast_exp(uint64_t x, uint64_t n)
 	return y * x;
 }
 
-static void * karp_rabin(const void *str_, size_t n, const void *pat_, size_t m)
-{
+static void * karp_rabin(const void *str_, size_t n, const void *pat_, size_t m
+) {
 	const ubyte_t *str = (const ubyte_t *) str_;
 	const ubyte_t *pat = (const ubyte_t *) pat_;
 	const uint64_t b = 31;
@@ -389,8 +389,8 @@ static void * karp_rabin(const void *str_, size_t n, const void *pat_, size_t m)
 
 
 // reference: http://www-igm.univ-mlv.fr/~lecroq/string/node14.html
-static int *ksBM_prep(const ubyte_t *pat, int m)
-{
+static int *ksBM_prep(const ubyte_t *pat, int m
+) {
 	int i, *suff, *prep, *bmGs, *bmBc;
 	if (m < 1)
 		return NULL;
@@ -434,8 +434,8 @@ static int *ksBM_prep(const ubyte_t *pat, int m)
 }
 
 static void *boyer_moore(const void *str_, size_t n, const void *pat_, int m,
-						 int **stored_prep_ptr)
-{
+						 int **stored_prep_ptr
+) {
 	size_t j;
 	int i, *prep = 0, *bmGs, *bmBc;
 	const ubyte_t *str, *pat;
@@ -480,13 +480,13 @@ static void *boyer_moore(const void *str_, size_t n, const void *pat_, int m,
 	return NULL;
 }
 
-void *kmemmem(const void *str, int n, const void *pat, int m, int **prep)
-{
+void *kmemmem(const void *str, int n, const void *pat, int m, int **prep
+) {
 	return boyer_moore(str, n >= 0 ? n : 0, pat, m, prep);
 }
 
-char *kstrstr(const char *str, const char *pat, int **prep)
-{
+char *kstrstr(const char *str, const char *pat, int **prep
+) {
 	size_t patlen = strlen(pat);
 	if (patlen <= INT_MAX)
 		return (char*)boyer_moore(str, strlen(str), pat, patlen, prep);
@@ -494,8 +494,8 @@ char *kstrstr(const char *str, const char *pat, int **prep)
 		return karp_rabin(str, strlen(str), pat, patlen);
 }
 
-char *kstrnstr(const char *str, const char *pat, int n, int **prep)
-{
+char *kstrnstr(const char *str, const char *pat, int n, int **prep
+) {
 	if (!pat || *pat == '\0')
 		return (char *) str;
 	if (n <= 0)
@@ -515,8 +515,8 @@ char *kstrnstr(const char *str, const char *pat, int n, int **prep)
 
 #ifdef KSTRING_MAIN
 #include <stdio.h>
-int main()
-{
+int main(
+) {
 	kstring_t *s;
 	int *fields, n, i;
 	ks_tokaux_t aux;

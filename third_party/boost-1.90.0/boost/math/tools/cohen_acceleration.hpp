@@ -14,8 +14,8 @@ namespace boost::math::tools {
 // Algorithm 1 of https://people.mpim-bonn.mpg.de/zagier/files/exp-math-9/fulltext.pdf
 // Convergence Acceleration of Alternating Series: Henri Cohen, Fernando Rodriguez Villegas, and Don Zagier
 template<class G>
-auto cohen_acceleration(G& generator, std::int64_t n = -1)
-{
+auto cohen_acceleration(G& generator, std::int64_t n = -1
+) {
     using Real = decltype(generator());
     // This test doesn't pass for float128, sad!
     //static_assert(std::is_floating_point_v<Real>, "Real must be a floating point type.");

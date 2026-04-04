@@ -32,8 +32,8 @@
 namespace boost{ namespace math{ namespace detail{
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline tools::promote_args_t<T> trunc(const T& v, const Policy& pol, const std::false_type&)
-{
+BOOST_MATH_GPU_ENABLED inline tools::promote_args_t<T> trunc(const T& v, const Policy& pol, const std::false_type&
+) {
    BOOST_MATH_STD_USING
    using result_type = tools::promote_args_t<T>;
    if(!(boost::math::isfinite)(v))
@@ -44,22 +44,22 @@ BOOST_MATH_GPU_ENABLED inline tools::promote_args_t<T> trunc(const T& v, const P
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline tools::promote_args_t<T> trunc(const T& v, const Policy&, const std::true_type&)
-{
+BOOST_MATH_GPU_ENABLED inline tools::promote_args_t<T> trunc(const T& v, const Policy&, const std::true_type&
+) {
    return v;
 }
 
 } // Namespace detail
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline tools::promote_args_t<T> trunc(const T& v, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline tools::promote_args_t<T> trunc(const T& v, const Policy& pol
+) {
    return detail::trunc(v, pol, std::integral_constant<bool, detail::is_integer_for_rounding<T>::value>());
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline tools::promote_args_t<T> trunc(const T& v)
-{
+BOOST_MATH_GPU_ENABLED inline tools::promote_args_t<T> trunc(const T& v
+) {
    return trunc(v, policies::policy<>());
 }
 
@@ -71,32 +71,32 @@ namespace math {
 namespace detail {
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED double trunc_impl(T x)
-{
+BOOST_MATH_GPU_ENABLED double trunc_impl(T x
+) {
    return static_cast<double>(x);
 }
 
-BOOST_MATH_GPU_ENABLED inline float trunc_impl(float x)
-{
+BOOST_MATH_GPU_ENABLED inline float trunc_impl(float x
+) {
    return ::truncf(x);
 }
 
-BOOST_MATH_GPU_ENABLED inline double trunc_impl(double x)
-{
+BOOST_MATH_GPU_ENABLED inline double trunc_impl(double x
+) {
    return ::trunc(x);
 }
 
 } // Namespace detail
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED auto trunc(T x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED auto trunc(T x, const Policy&
+) {
    return detail::trunc_impl(x);
 }
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED auto trunc(T x)
-{
+BOOST_MATH_GPU_ENABLED auto trunc(T x
+) {
    return detail::trunc_impl(x);
 }
 
@@ -118,8 +118,8 @@ BOOST_MATH_GPU_ENABLED auto trunc(T x)
 // https://stackoverflow.com/questions/27442885/syntax-error-with-stdnumeric-limitsmax
 //
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline int itrunc(const T& v, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline int itrunc(const T& v, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    using result_type = tools::promote_args_t<T>;
    result_type r = boost::math::trunc(v, pol);
@@ -160,14 +160,14 @@ BOOST_MATH_GPU_ENABLED inline int itrunc(const T& v, const Policy& pol)
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline int itrunc(const T& v)
-{
+BOOST_MATH_GPU_ENABLED inline int itrunc(const T& v
+) {
    return itrunc(v, policies::policy<>());
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline long ltrunc(const T& v, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline long ltrunc(const T& v, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    using result_type = tools::promote_args_t<T>;
    result_type r = boost::math::trunc(v, pol);
@@ -208,14 +208,14 @@ BOOST_MATH_GPU_ENABLED inline long ltrunc(const T& v, const Policy& pol)
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline long ltrunc(const T& v)
-{
+BOOST_MATH_GPU_ENABLED inline long ltrunc(const T& v
+) {
    return ltrunc(v, policies::policy<>());
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline long long lltrunc(const T& v, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline long long lltrunc(const T& v, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    using result_type = tools::promote_args_t<T>;
    result_type r = boost::math::trunc(v, pol);
@@ -256,8 +256,8 @@ BOOST_MATH_GPU_ENABLED inline long long lltrunc(const T& v, const Policy& pol)
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline long long lltrunc(const T& v)
-{
+BOOST_MATH_GPU_ENABLED inline long long lltrunc(const T& v
+) {
    return lltrunc(v, policies::policy<>());
 }
 
@@ -266,8 +266,8 @@ BOOST_MATH_GPU_ENABLED inline long long lltrunc(const T& v)
 namespace detail {
 
 template <typename TargetType, typename T>
-BOOST_MATH_GPU_ENABLED TargetType integer_trunc_impl(T v)
-{
+BOOST_MATH_GPU_ENABLED TargetType integer_trunc_impl(T v
+) {
    double r = boost::math::trunc(v);
 
    const double max_val = ldexp(1.0, boost::math::numeric_limits<TargetType>::digits);
@@ -283,38 +283,38 @@ BOOST_MATH_GPU_ENABLED TargetType integer_trunc_impl(T v)
 } // Namespace detail
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED int itrunc(T v)
-{
+BOOST_MATH_GPU_ENABLED int itrunc(T v
+) {
    return detail::integer_trunc_impl<int>(v);
 }
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED int itrunc(T v, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED int itrunc(T v, const Policy&
+) {
    return detail::integer_trunc_impl<int>(v);
 }
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED long ltrunc(T v)
-{
+BOOST_MATH_GPU_ENABLED long ltrunc(T v
+) {
    return detail::integer_trunc_impl<long>(v);
 }
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED long ltrunc(T v, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED long ltrunc(T v, const Policy&
+) {
    return detail::integer_trunc_impl<long>(v);
 }
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED long long lltrunc(T v)
-{
+BOOST_MATH_GPU_ENABLED long long lltrunc(T v
+) {
    return detail::integer_trunc_impl<long long>(v);
 }
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED long long lltrunc(T v, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED long long lltrunc(T v, const Policy&
+) {
    return detail::integer_trunc_impl<long long>(v);
 }
 
@@ -322,60 +322,60 @@ BOOST_MATH_GPU_ENABLED long long lltrunc(T v, const Policy&)
 
 template <class T, class Policy>
 BOOST_MATH_GPU_ENABLED inline boost::math::enable_if_t<boost::math::is_constructible_v<int, T>, int>
-   iconvert(const T& v, const Policy&)
-{
+   iconvert(const T& v, const Policy&
+) {
    return static_cast<int>(v);
 }
 
 template <class T, class Policy>
 BOOST_MATH_GPU_ENABLED inline boost::math::enable_if_t<!boost::math::is_constructible_v<int, T>, int>
-   iconvert(const T& v, const Policy& pol)
-{
+   iconvert(const T& v, const Policy& pol
+) {
    using boost::math::itrunc;
    return itrunc(v, pol);
 }
 
 template <class T, class Policy>
 BOOST_MATH_GPU_ENABLED inline boost::math::enable_if_t<boost::math::is_constructible_v<long, T>, long>
-   lconvert(const T& v, const Policy&)
-{
+   lconvert(const T& v, const Policy&
+) {
    return static_cast<long>(v);
 }
 
 template <class T, class Policy>
 BOOST_MATH_GPU_ENABLED inline boost::math::enable_if_t<!boost::math::is_constructible_v<long, T>, long>
-   lconvert(const T& v, const Policy& pol)
-{
+   lconvert(const T& v, const Policy& pol
+) {
    using boost::math::ltrunc;
    return ltrunc(v, pol);
 }
 
 template <class T, class Policy>
 BOOST_MATH_GPU_ENABLED inline boost::math::enable_if_t<boost::math::is_constructible_v<long long, T>, long long>
-   llconvert(const T& v, const Policy&)
-{
+   llconvert(const T& v, const Policy&
+) {
    return static_cast<long long>(v);
 }
 
 template <class T, class Policy>
 BOOST_MATH_GPU_ENABLED inline typename boost::math::enable_if_t<!boost::math::is_constructible_v<long long, T>, long long>
-   llconvert(const T& v, const Policy& pol)
-{
+   llconvert(const T& v, const Policy& pol
+) {
    using boost::math::lltrunc;
    return lltrunc(v, pol);
 }
 
 template <class T, class Policy>
 BOOST_MATH_GPU_ENABLED [[deprecated("Use llconvert")]] inline boost::math::enable_if_t<boost::math::is_constructible_v<long long, T>, long long>
-   llconvertert(const T& v, const Policy&)
-{
+   llconvertert(const T& v, const Policy&
+) {
    return static_cast<long long>(v);
 }
 
 template <class T, class Policy>
 BOOST_MATH_GPU_ENABLED [[deprecated("Use llconvert")]] inline typename boost::math::enable_if_t<!boost::math::is_constructible_v<long long, T>, long long>
-   llconvertert(const T& v, const Policy& pol)
-{
+   llconvertert(const T& v, const Policy& pol
+) {
    using boost::math::lltrunc;
    return lltrunc(v, pol);
 }

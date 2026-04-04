@@ -213,8 +213,8 @@ typedef enum {
  *           The src buffer must be before the dst buffer.
  */
 MEM_STATIC FORCE_INLINE_ATTR
-void ZSTD_wildcopy(void* dst, const void* src, ptrdiff_t length, ZSTD_overlap_e const ovtype)
-{
+void ZSTD_wildcopy(void* dst, const void* src, ptrdiff_t length, ZSTD_overlap_e const ovtype
+) {
     ptrdiff_t diff = (BYTE*)dst - (const BYTE*)src;
     const BYTE* ip = (const BYTE*)src;
     BYTE* op = (BYTE*)dst;
@@ -245,8 +245,8 @@ void ZSTD_wildcopy(void* dst, const void* src, ptrdiff_t length, ZSTD_overlap_e 
     }
 }
 
-MEM_STATIC size_t ZSTD_limitCopy(void* dst, size_t dstCapacity, const void* src, size_t srcSize)
-{
+MEM_STATIC size_t ZSTD_limitCopy(void* dst, size_t dstCapacity, const void* src, size_t srcSize
+) {
     size_t const length = MIN(dstCapacity, srcSize);
     if (length > 0) {
         ZSTD_memcpy(dst, src, length);
@@ -315,8 +315,8 @@ size_t ZSTD_decodeSeqHeaders(ZSTD_DCtx* dctx, int* nbSeqPtr,
 /**
  * @returns true iff the CPU supports dynamic BMI2 dispatch.
  */
-MEM_STATIC int ZSTD_cpuSupportsBmi2(void)
-{
+MEM_STATIC int ZSTD_cpuSupportsBmi2(void
+) {
     ZSTD_cpuid_t cpuid = ZSTD_cpuid();
     return ZSTD_cpuid_bmi1(cpuid) && ZSTD_cpuid_bmi2(cpuid);
 }

@@ -50,8 +50,8 @@ typedef struct {
     hFILE *currentfp;
 } hFILE_multipart;
 
-static void free_part(hfile_part *p)
-{
+static void free_part(hfile_part *p
+) {
     free(p->url);
     if (p->headers) {
         char **hdr;
@@ -63,15 +63,15 @@ static void free_part(hfile_part *p)
     p->headers = NULL;
 }
 
-static void free_all_parts(hFILE_multipart *fp)
-{
+static void free_all_parts(hFILE_multipart *fp
+) {
     size_t i;
     for (i = 0; i < fp->nparts; i++) free_part(&fp->parts[i]);
     free(fp->parts);
 }
 
-static ssize_t multipart_read(hFILE *fpv, void *buffer, size_t nbytes)
-{
+static ssize_t multipart_read(hFILE *fpv, void *buffer, size_t nbytes
+) {
     hFILE_multipart *fp = (hFILE_multipart *) fpv;
     size_t n;
 
@@ -111,20 +111,20 @@ open_next:
     return n;  // Number of bytes read by (or an error from) fp->currentfp
 }
 
-static ssize_t multipart_write(hFILE *fpv, const void *buffer, size_t nbytes)
-{
+static ssize_t multipart_write(hFILE *fpv, const void *buffer, size_t nbytes
+) {
     errno = EROFS;
     return -1;
 }
 
-static off_t multipart_seek(hFILE *fpv, off_t offset, int whence)
-{
+static off_t multipart_seek(hFILE *fpv, off_t offset, int whence
+) {
     errno = ESPIPE;
     return -1;
 }
 
-static int multipart_close(hFILE *fpv)
-{
+static int multipart_close(hFILE *fpv
+) {
     hFILE_multipart *fp = (hFILE_multipart *) fpv;
 
     free_all_parts(fp);
@@ -148,8 +148,8 @@ static const struct hFILE_backend multipart_backend =
 // '\0' which should be propagated.
 static char
 parse_ga4gh_body_json(hFILE_multipart *fp, hFILE *json,
-                      kstring_t *b, kstring_t *header)
-{
+                      kstring_t *b, kstring_t *header
+) {
     hts_json_token t;
 
     if (hts_json_fnext(json, &t, b) != '{') return t.type;
@@ -238,8 +238,8 @@ parse_ga4gh_redirect_json(hFILE_multipart *fp, hFILE *json,
     return 'v';
 }
 
-hFILE *hopen_htsget_redirect(hFILE *hfile, const char *mode)
-{
+hFILE *hopen_htsget_redirect(hFILE *hfile, const char *mode
+) {
     hFILE_multipart *fp;
     kstring_t s1 = { 0, 0, NULL }, s2 = { 0, 0, NULL };
     char ret;

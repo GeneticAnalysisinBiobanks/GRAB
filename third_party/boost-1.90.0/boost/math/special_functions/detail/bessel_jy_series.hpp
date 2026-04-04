@@ -48,8 +48,8 @@ private:
 // Converges rapidly for all z << v.
 //
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline T bessel_j_small_z_series(T v, T x, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline T bessel_j_small_z_series(T v, T x, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    T prefix;
    if(v < max_factorial<T>::value)
@@ -137,8 +137,8 @@ private:
 // eps/2 * v^v(x/2)^-v > (x/2)^v or log(eps/2) > v log((x/2)^2/v)
 //
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline T bessel_y_small_z_series(T v, T x, T* pscale, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline T bessel_y_small_z_series(T v, T x, T* pscale, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    constexpr auto function = "bessel_y_small_z_series<%1%>(%1%,%1%)";
    T prefix;
@@ -210,8 +210,8 @@ BOOST_MATH_GPU_ENABLED inline T bessel_y_small_z_series(T v, T x, T* pscale, con
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T bessel_yn_small_z(int n, T z, T* scale, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED T bessel_yn_small_z(int n, T z, T* scale, const Policy& pol
+) {
    //
    // See http://functions.wolfram.com/Bessel-TypeFunctions/BesselY/06/01/04/01/02/
    //

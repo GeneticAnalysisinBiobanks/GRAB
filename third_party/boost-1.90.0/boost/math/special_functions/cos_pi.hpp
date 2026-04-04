@@ -26,8 +26,8 @@
 namespace boost{ namespace math{ namespace detail{
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T cos_pi_imp(T x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED T cos_pi_imp(T x, const Policy&
+) {
    BOOST_MATH_STD_USING // ADL of std names
    // cos of pi*x:
    bool invert = false;
@@ -65,8 +65,8 @@ BOOST_MATH_GPU_ENABLED T cos_pi_imp(T x, const Policy&)
 } // namespace detail
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type cos_pi(T x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type cos_pi(T x, const Policy&
+) {
    typedef typename tools::promote_args<T>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
    typedef typename policies::normalise<
@@ -82,8 +82,8 @@ BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type cos_pi(T x, 
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type cos_pi(T x)
-{
+BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type cos_pi(T x
+) {
    return boost::math::cos_pi(x, policies::policy<>());
 }
 
@@ -96,26 +96,26 @@ namespace boost {
 namespace math {
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED auto cos_pi(T x)
-{
+BOOST_MATH_GPU_ENABLED auto cos_pi(T x
+) {
    return ::cospi(x);
 }
 
 template <>
-BOOST_MATH_GPU_ENABLED auto cos_pi(float x)
-{
+BOOST_MATH_GPU_ENABLED auto cos_pi(float x
+) {
    return ::cospif(x);
 }
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED auto cos_pi(T x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED auto cos_pi(T x, const Policy&
+) {
    return ::cospi(x);
 }
 
 template <typename Policy>
-BOOST_MATH_GPU_ENABLED auto cos_pi(float x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED auto cos_pi(float x, const Policy&
+) {
    return ::cospif(x);
 }
 

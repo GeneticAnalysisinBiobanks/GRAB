@@ -29,8 +29,17 @@ struct Args {
     std::string indAfFile;          // --ind-af-coef
     std::string pairwiseIBDFile;
     std::string outputFile;
+    std::string outPrefix;            // --out-prefix (GWAS multi-resid / --make-abed)
+    std::string extractFile;        // --extract (SNP include list)
+    std::string excludeFile;        // --exclude (SNP exclude list)
+    std::string admixBfilePrefix;   // --admix-bfile
+    std::string admixPhiFile;       // --admix-phi
+    std::string mspFile;            // --rfmix-msp
+    std::string admixTextPrefix;    // --admix-text-prefix
     bool   calIndAfCoef      = false;
     bool   calPairwiseIBD    = false;
+    bool   calAdmixPhi       = false;
+    bool   makeAbed          = false;
     double minMafIBD         = 0.01;
     double refPrevalence     = -1.0;
     double cutoff            = 0.05;

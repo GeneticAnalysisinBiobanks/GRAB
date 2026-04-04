@@ -19,8 +19,8 @@
 // ======================================================================
 
 DesignMatrix::DesignMatrix(const Eigen::MatrixXd& X)
-  : m_X(X)
-{
+  : m_X(X
+) {
   const int nCols = static_cast<int>(m_X.cols());
   m_tX = m_X.transpose();
   Eigen::MatrixXd XtX = m_tX * m_X;
@@ -135,8 +135,8 @@ SPACoxMethod::SPACoxMethod(
     m_pvalCovAdjCut(pvalCovAdjCut),
     m_spaCutoff(spaCutoff),
     m_adjGNorm(residuals.size()),
-    m_adjGVec(residuals.size())
-{
+    m_adjGVec(residuals.size()
+) {
   m_nzSet.reserve(m_N);
 }
 
@@ -403,6 +403,7 @@ void runSPACox(
     const std::string& covarFile,
     const GenoSpec& geno,
     const std::string& outputFile,
+    const std::string& outPrefix,
     double pvalCovAdjCut,
     double spaCutoff,
     int nthread,
@@ -452,17 +453,23 @@ void runSPACox(
 
   // ---- Per-residual-column loop ----
   const int nRC = sd.residOneCols();
-  if (nRC > 1)
+  // --out: single column only; --out-prefix: all columns
+  const bool multiMode = !outPrefix.empty();
+  const int nLoop = multiMode ? nRC : 1;
+  if (nRC > 1 && multiMode)
     infoMsg("Multi-column residual file: %d columns", nRC);
+  if (nRC > 1 && !multiMode)
+    infoMsg("Multi-column residual file: %d columns (--out: using column 1 only)", nRC);
 
-  for (int rc = 0; rc < nRC; ++rc) {
+  for (int rc = 0; rc < nLoop; ++rc) {
     Eigen::VectorXd colBuf;
     if (nRC > 1) colBuf = sd.residMatrix().col(rc);
     const Eigen::VectorXd& resid = (nRC > 1) ? colBuf : sd.residuals();
 
-    std::string outFile = (nRC == 1) ? outputFile
-        : (outputFile + "." + std::to_string(rc + 1) + ".gz");
-    if (nRC > 1)
+    std::string outFile = multiMode
+        ? (outPrefix + "." + std::to_string(rc + 1) + ".tsv")
+        : outputFile;
+    if (nLoop > 1)
       infoMsg("  Column %d/%d%s -> %s", rc + 1, nRC,
               (rc < static_cast<int>(sd.residColNames().size())
                    ? (" (" + sd.residColNames()[rc] + ")").c_str() : ""),

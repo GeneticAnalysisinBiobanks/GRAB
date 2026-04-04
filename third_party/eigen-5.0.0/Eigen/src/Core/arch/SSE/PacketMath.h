@@ -2336,15 +2336,15 @@ ploadquad<Packet4h>(const Eigen::half* from) {
   return pset1<Packet4h>(*from);
 }
 
-template<> EIGEN_STRONG_INLINE Packet4h pgather<Eigen::half, Packet4h>(const Eigen::half* from, Index stride)
-{
+template<> EIGEN_STRONG_INLINE Packet4h pgather<Eigen::half, Packet4h>(const Eigen::half* from, Index stride
+) {
   Packet4h result;
   result.x = _mm_set_pi16(from[3*stride].x, from[2*stride].x, from[1*stride].x, from[0*stride].x);
   return result;
 }
 
-template<> EIGEN_STRONG_INLINE void pscatter<Eigen::half, Packet4h>(Eigen::half* to, const Packet4h& from, Index stride)
-{
+template<> EIGEN_STRONG_INLINE void pscatter<Eigen::half, Packet4h>(Eigen::half* to, const Packet4h& from, Index stride
+) {
   __int64_t a = _mm_cvtm64_si64(from.x);
   to[stride*0].x = static_cast<unsigned short>(a);
   to[stride*1].x = static_cast<unsigned short>(a >> 16);

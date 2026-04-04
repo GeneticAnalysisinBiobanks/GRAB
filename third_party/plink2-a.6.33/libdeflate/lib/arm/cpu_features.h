@@ -55,8 +55,8 @@ extern volatile u32 libdeflate_arm_cpu_features;
 
 void libdeflate_init_arm_cpu_features(void);
 
-static inline u32 get_arm_cpu_features(void)
-{
+static inline u32 get_arm_cpu_features(void
+) {
 	if (libdeflate_arm_cpu_features == 0)
 		libdeflate_init_arm_cpu_features();
 	return libdeflate_arm_cpu_features;

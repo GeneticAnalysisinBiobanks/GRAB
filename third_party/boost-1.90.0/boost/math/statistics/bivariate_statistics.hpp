@@ -28,8 +28,8 @@ namespace boost{ namespace math{ namespace statistics { namespace detail {
 
 // See Equation III.9 of "Numerically Stable, Single-Pass, Parallel Statistics Algorithms", Bennet et al.
 template<typename ReturnType, typename ForwardIterator>
-ReturnType means_and_covariance_seq_impl(ForwardIterator u_begin, ForwardIterator u_end, ForwardIterator v_begin, ForwardIterator v_end)
-{
+ReturnType means_and_covariance_seq_impl(ForwardIterator u_begin, ForwardIterator u_end, ForwardIterator v_begin, ForwardIterator v_end
+) {
     using Real = typename std::tuple_element<0, ReturnType>::type;
 
     Real cov = 0;
@@ -62,8 +62,8 @@ ReturnType means_and_covariance_seq_impl(ForwardIterator u_begin, ForwardIterato
 // Numerically stable parallel computation of (co-)variance
 // https://dl.acm.org/doi/10.1145/3221269.3223036
 template<typename ReturnType, typename ForwardIterator>
-ReturnType means_and_covariance_parallel_impl(ForwardIterator u_begin, ForwardIterator u_end, ForwardIterator v_begin, ForwardIterator v_end)
-{
+ReturnType means_and_covariance_parallel_impl(ForwardIterator u_begin, ForwardIterator u_end, ForwardIterator v_begin, ForwardIterator v_end
+) {
     using Real = typename std::tuple_element<0, ReturnType>::type;
 
     const auto u_elements = std::distance(u_begin, u_end);
@@ -154,8 +154,8 @@ ReturnType means_and_covariance_parallel_impl(ForwardIterator u_begin, ForwardIt
 #endif // BOOST_MATH_EXEC_COMPATIBLE
 
 template<typename ReturnType, typename ForwardIterator>
-ReturnType correlation_coefficient_seq_impl(ForwardIterator u_begin, ForwardIterator u_end, ForwardIterator v_begin, ForwardIterator v_end)
-{
+ReturnType correlation_coefficient_seq_impl(ForwardIterator u_begin, ForwardIterator u_end, ForwardIterator v_begin, ForwardIterator v_end
+) {
     using Real = typename std::tuple_element<0, ReturnType>::type;
     using std::sqrt;
 
@@ -209,8 +209,8 @@ ReturnType correlation_coefficient_seq_impl(ForwardIterator u_begin, ForwardIter
 // Parallel computation of variance:
 // http://i.stanford.edu/pub/cstr/reports/cs/tr/79/773/CS-TR-79-773.pdf
 template<typename ReturnType, typename ForwardIterator>
-ReturnType correlation_coefficient_parallel_impl(ForwardIterator u_begin, ForwardIterator u_end, ForwardIterator v_begin, ForwardIterator v_end)
-{
+ReturnType correlation_coefficient_parallel_impl(ForwardIterator u_begin, ForwardIterator u_end, ForwardIterator v_begin, ForwardIterator v_end
+) {
     using Real = typename std::tuple_element<0, ReturnType>::type;
 
     const auto u_elements = std::distance(u_begin, u_end);
@@ -328,8 +328,8 @@ ReturnType correlation_coefficient_parallel_impl(ForwardIterator u_begin, Forwar
 #ifdef BOOST_MATH_EXEC_COMPATIBLE
 
 template<typename ExecutionPolicy, typename Container, typename Real = typename Container::value_type>
-inline auto means_and_covariance(ExecutionPolicy&& exec, Container const & u, Container const & v)
-{
+inline auto means_and_covariance(ExecutionPolicy&& exec, Container const & u, Container const & v
+) {
     if constexpr (std::is_same_v<std::remove_reference_t<decltype(exec)>, decltype(std::execution::seq)>)
     {
         if constexpr (std::is_integral_v<Real>)
@@ -363,26 +363,26 @@ inline auto means_and_covariance(ExecutionPolicy&& exec, Container const & u, Co
 }
 
 template<typename Container>
-inline auto means_and_covariance(Container const & u, Container const & v)
-{
+inline auto means_and_covariance(Container const & u, Container const & v
+) {
     return means_and_covariance(std::execution::seq, u, v);
 }
 
 template<typename ExecutionPolicy, typename Container>
-inline auto covariance(ExecutionPolicy&& exec, Container const & u, Container const & v)
-{
+inline auto covariance(ExecutionPolicy&& exec, Container const & u, Container const & v
+) {
     return std::get<2>(means_and_covariance(exec, u, v));
 }
 
 template<typename Container>
-inline auto covariance(Container const & u, Container const & v)
-{
+inline auto covariance(Container const & u, Container const & v
+) {
     return covariance(std::execution::seq, u, v);
 }
 
 template<typename ExecutionPolicy, typename Container, typename Real = typename Container::value_type>
-inline auto correlation_coefficient(ExecutionPolicy&& exec, Container const & u, Container const & v)
-{
+inline auto correlation_coefficient(ExecutionPolicy&& exec, Container const & u, Container const & v
+) {
     if constexpr (std::is_same_v<std::remove_reference_t<decltype(exec)>, decltype(std::execution::seq)>)
     {
         if constexpr (std::is_integral_v<Real>)
@@ -412,8 +412,8 @@ inline auto correlation_coefficient(ExecutionPolicy&& exec, Container const & u,
 }
 
 template<typename Container, typename Real = typename Container::value_type>
-inline auto correlation_coefficient(Container const & u, Container const & v)
-{
+inline auto correlation_coefficient(Container const & u, Container const & v
+) {
     return correlation_coefficient(std::execution::seq, u, v);
 }
 
@@ -436,29 +436,29 @@ inline auto means_and_covariance(Container const & u, Container const & v) -> st
 }
 
 template<typename Container, typename Real = typename Container::value_type, typename std::enable_if<std::is_integral<Real>::value, bool>::type = true>
-inline double covariance(Container const & u, Container const & v)
-{
+inline double covariance(Container const & u, Container const & v
+) {
     using ReturnType = std::tuple<double, double, double, double>;
     return std::get<2>(detail::means_and_covariance_seq_impl<ReturnType>(std::begin(u), std::end(u), std::begin(v), std::end(v)));
 }
 
 template<typename Container, typename Real = typename Container::value_type, typename std::enable_if<!std::is_integral<Real>::value, bool>::type = true>
-inline Real covariance(Container const & u, Container const & v)
-{
+inline Real covariance(Container const & u, Container const & v
+) {
     using ReturnType = std::tuple<Real, Real, Real, Real>;
     return std::get<2>(detail::means_and_covariance_seq_impl<ReturnType>(std::begin(u), std::end(u), std::begin(v), std::end(v)));
 }
 
 template<typename Container, typename Real = typename Container::value_type, typename std::enable_if<std::is_integral<Real>::value, bool>::type = true>
-inline double correlation_coefficient(Container const & u, Container const & v)
-{
+inline double correlation_coefficient(Container const & u, Container const & v
+) {
     using ReturnType = std::tuple<double, double, double, double, double, double, double>;
     return std::get<5>(detail::correlation_coefficient_seq_impl<ReturnType>(std::begin(u), std::end(u), std::begin(v), std::end(v)));
 }
 
 template<typename Container, typename Real = typename Container::value_type, typename std::enable_if<!std::is_integral<Real>::value, bool>::type = true>
-inline Real correlation_coefficient(Container const & u, Container const & v)
-{
+inline Real correlation_coefficient(Container const & u, Container const & v
+) {
     using ReturnType = std::tuple<Real, Real, Real, Real, Real, Real, Real>;
     return std::get<5>(detail::correlation_coefficient_seq_impl<ReturnType>(std::begin(u), std::end(u), std::begin(v), std::end(v)));
 }

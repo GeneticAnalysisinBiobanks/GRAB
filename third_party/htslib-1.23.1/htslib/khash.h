@@ -451,8 +451,8 @@ static const double __ac_HASH_UPPER = 0.77;
   @param  s     Pointer to a null terminated string
   @return       The hash value
  */
-static kh_inline khint_t __ac_X31_hash_string(const char *s)
-{
+static kh_inline khint_t __ac_X31_hash_string(const char *s
+) {
 	khint_t h = (khint_t)*s;
 	if (h) for (++s ; *s; ++s) h = (h << 5) - h + (khint_t)*s;
 	return h;
@@ -463,8 +463,8 @@ static kh_inline khint_t __ac_X31_hash_string(const char *s)
   @param  s     Pointer to a null terminated string
   @return       The hash value
  */
-static kh_inline khint_t __ac_FNV1a_hash_string(const char *s)
-{
+static kh_inline khint_t __ac_FNV1a_hash_string(const char *s
+) {
 	const khint_t offset_basis = 2166136261;
 	const khint_t FNV_prime = 16777619;
 	khint_t h = offset_basis;
@@ -489,8 +489,8 @@ static kh_inline khint_t __ac_FNV1a_hash_string(const char *s)
   @param  s     Pointer to a kstring
   @return       The hash value
  */
-static kh_inline khint_t __ac_X31_hash_kstring(const kstring_t ks)
-{
+static kh_inline khint_t __ac_X31_hash_kstring(const kstring_t ks
+) {
 	khint_t h = 0;
 	size_t i;
 	for (i = 0; i < ks.l; i++)
@@ -503,8 +503,8 @@ static kh_inline khint_t __ac_X31_hash_kstring(const kstring_t ks)
   @param  s     Pointer to a kstring
   @return       The hash value
  */
-static kh_inline khint_t __ac_FNV1a_hash_kstring(const kstring_t ks)
-{
+static kh_inline khint_t __ac_FNV1a_hash_kstring(const kstring_t ks
+) {
 	const khint_t offset_basis = 2166136261;
 	const khint_t FNV_prime = 16777619;
 	khint_t h = offset_basis;
@@ -525,8 +525,8 @@ static kh_inline khint_t __ac_FNV1a_hash_kstring(const kstring_t ks)
  */
 #define kh_kstr_hash_equal(a, b) ((a).l == (b).l && strncmp((a).s, (b).s, (a).l) == 0)
 
-static kh_inline khint_t __ac_Wang_hash(khint_t key)
-{
+static kh_inline khint_t __ac_Wang_hash(khint_t key
+) {
     key += ~(key << 15);
     key ^=  (key >> 10);
     key +=  (key << 3);

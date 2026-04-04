@@ -92,8 +92,8 @@ Real cardinal_b_spline(Real x) {
 
 
 template<unsigned n, typename Real>
-Real cardinal_b_spline_prime(Real x)
-{
+Real cardinal_b_spline_prime(Real x
+) {
     static_assert(!std::is_integral<Real>::value, "Cardinal B-splines do not work with integer types.");
 
     if (x < 0)
@@ -163,8 +163,8 @@ Real cardinal_b_spline_prime(Real x)
 
 
 template<unsigned n, typename Real>
-Real cardinal_b_spline_double_prime(Real x)
-{
+Real cardinal_b_spline_double_prime(Real x
+) {
     static_assert(!std::is_integral<Real>::value, "Cardinal B-splines do not work with integer types.");
     static_assert(n >= 3, "n>=3 for second derivatives of cardinal B-splines is required.");
 
@@ -208,8 +208,8 @@ Real cardinal_b_spline_double_prime(Real x)
 
 
 template<unsigned n, class Real>
-Real forward_cardinal_b_spline(Real x)
-{
+Real forward_cardinal_b_spline(Real x
+) {
     static_assert(!std::is_integral<Real>::value, "Cardinal B-splines do not work with integral types.");
     return cardinal_b_spline<n>(x - (n+1)/Real(2));
 }

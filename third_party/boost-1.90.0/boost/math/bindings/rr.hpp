@@ -224,146 +224,146 @@ private:
 };
 
 // Non-member arithmetic:
-inline RR operator+(const RR& a, const RR& b)
-{
+inline RR operator+(const RR& a, const RR& b
+) {
    RR result(a);
    result += b;
    return result;
 }
-inline RR operator-(const RR& a, const RR& b)
-{
+inline RR operator-(const RR& a, const RR& b
+) {
    RR result(a);
    result -= b;
    return result;
 }
-inline RR operator*(const RR& a, const RR& b)
-{
+inline RR operator*(const RR& a, const RR& b
+) {
    RR result(a);
    result *= b;
    return result;
 }
-inline RR operator/(const RR& a, const RR& b)
-{
+inline RR operator/(const RR& a, const RR& b
+) {
    RR result(a);
    result /= b;
    return result;
 }
 
 // Comparison:
-inline bool operator == (const RR& a, const RR& b)
-{ return a.value() == b.value() ? true : false; }
-inline bool operator != (const RR& a, const RR& b)
-{ return a.value() != b.value() ? true : false;}
-inline bool operator < (const RR& a, const RR& b)
-{ return a.value() < b.value() ? true : false; }
-inline bool operator <= (const RR& a, const RR& b)
-{ return a.value() <= b.value() ? true : false; }
-inline bool operator > (const RR& a, const RR& b)
-{ return a.value() > b.value() ? true : false; }
-inline bool operator >= (const RR& a, const RR& b)
-{ return a.value() >= b.value() ? true : false; }
+inline bool operator == (const RR& a, const RR& b
+) { return a.value() == b.value() ? true : false; }
+inline bool operator != (const RR& a, const RR& b
+) { return a.value() != b.value() ? true : false;}
+inline bool operator < (const RR& a, const RR& b
+) { return a.value() < b.value() ? true : false; }
+inline bool operator <= (const RR& a, const RR& b
+) { return a.value() <= b.value() ? true : false; }
+inline bool operator > (const RR& a, const RR& b
+) { return a.value() > b.value() ? true : false; }
+inline bool operator >= (const RR& a, const RR& b
+) { return a.value() >= b.value() ? true : false; }
 
 #if 0
 // Non-member mixed compare:
 template <class T>
-inline bool operator == (const T& a, const RR& b)
-{
+inline bool operator == (const T& a, const RR& b
+) {
    return a == b.value();
 }
 template <class T>
-inline bool operator != (const T& a, const RR& b)
-{
+inline bool operator != (const T& a, const RR& b
+) {
    return a != b.value();
 }
 template <class T>
-inline bool operator < (const T& a, const RR& b)
-{
+inline bool operator < (const T& a, const RR& b
+) {
    return a < b.value();
 }
 template <class T>
-inline bool operator > (const T& a, const RR& b)
-{
+inline bool operator > (const T& a, const RR& b
+) {
    return a > b.value();
 }
 template <class T>
-inline bool operator <= (const T& a, const RR& b)
-{
+inline bool operator <= (const T& a, const RR& b
+) {
    return a <= b.value();
 }
 template <class T>
-inline bool operator >= (const T& a, const RR& b)
-{
+inline bool operator >= (const T& a, const RR& b
+) {
    return a >= b.value();
 }
 #endif  // Non-member mixed compare:
 
 // Non-member functions:
 /*
-inline RR acos(RR a)
-{ return ::NTL::acos(a.value()); }
+inline RR acos(RR a
+) { return ::NTL::acos(a.value()); }
 */
-inline RR cos(RR a)
-{ return ::NTL::cos(a.value()); }
+inline RR cos(RR a
+) { return ::NTL::cos(a.value()); }
 /*
-inline RR asin(RR a)
-{ return ::NTL::asin(a.value()); }
-inline RR atan(RR a)
-{ return ::NTL::atan(a.value()); }
-inline RR atan2(RR a, RR b)
-{ return ::NTL::atan2(a.value(), b.value()); }
+inline RR asin(RR a
+) { return ::NTL::asin(a.value()); }
+inline RR atan(RR a
+) { return ::NTL::atan(a.value()); }
+inline RR atan2(RR a, RR b
+) { return ::NTL::atan2(a.value(), b.value()); }
 */
-inline RR ceil(RR a)
-{ return ::NTL::ceil(a.value()); }
+inline RR ceil(RR a
+) { return ::NTL::ceil(a.value()); }
 /*
-inline RR fmod(RR a, RR b)
-{ return ::NTL::fmod(a.value(), b.value()); }
-inline RR cosh(RR a)
-{ return ::NTL::cosh(a.value()); }
+inline RR fmod(RR a, RR b
+) { return ::NTL::fmod(a.value(), b.value()); }
+inline RR cosh(RR a
+) { return ::NTL::cosh(a.value()); }
 */
-inline RR exp(RR a)
-{ return ::NTL::exp(a.value()); }
-inline RR fabs(RR a)
-{ return ::NTL::fabs(a.value()); }
-inline RR abs(RR a)
-{ return ::NTL::abs(a.value()); }
-inline RR floor(RR a)
-{ return ::NTL::floor(a.value()); }
+inline RR exp(RR a
+) { return ::NTL::exp(a.value()); }
+inline RR fabs(RR a
+) { return ::NTL::fabs(a.value()); }
+inline RR abs(RR a
+) { return ::NTL::abs(a.value()); }
+inline RR floor(RR a
+) { return ::NTL::floor(a.value()); }
 /*
-inline RR modf(RR a, RR* ipart)
-{
+inline RR modf(RR a, RR* ipart
+) {
    ::NTL::RR ip;
    RR result = modf(a.value(), &ip);
    *ipart = ip;
    return result;
 }
-inline RR frexp(RR a, int* expon)
-{ return ::NTL::frexp(a.value(), expon); }
-inline RR ldexp(RR a, int expon)
-{ return ::NTL::ldexp(a.value(), expon); }
+inline RR frexp(RR a, int* expon
+) { return ::NTL::frexp(a.value(), expon); }
+inline RR ldexp(RR a, int expon
+) { return ::NTL::ldexp(a.value(), expon); }
 */
-inline RR log(RR a)
-{ return ::NTL::log(a.value()); }
-inline RR log10(RR a)
-{ return ::NTL::log10(a.value()); }
+inline RR log(RR a
+) { return ::NTL::log(a.value()); }
+inline RR log10(RR a
+) { return ::NTL::log10(a.value()); }
 /*
-inline RR tan(RR a)
-{ return ::NTL::tan(a.value()); }
+inline RR tan(RR a
+) { return ::NTL::tan(a.value()); }
 */
-inline RR pow(RR a, RR b)
-{ return ::NTL::pow(a.value(), b.value()); }
-inline RR pow(RR a, int b)
-{ return ::NTL::power(a.value(), b); }
-inline RR sin(RR a)
-{ return ::NTL::sin(a.value()); }
+inline RR pow(RR a, RR b
+) { return ::NTL::pow(a.value(), b.value()); }
+inline RR pow(RR a, int b
+) { return ::NTL::power(a.value(), b); }
+inline RR sin(RR a
+) { return ::NTL::sin(a.value()); }
 /*
-inline RR sinh(RR a)
-{ return ::NTL::sinh(a.value()); }
+inline RR sinh(RR a
+) { return ::NTL::sinh(a.value()); }
 */
-inline RR sqrt(RR a)
-{ return ::NTL::sqrt(a.value()); }
+inline RR sqrt(RR a
+) { return ::NTL::sqrt(a.value()); }
 /*
-inline RR tanh(RR a)
-{ return ::NTL::tanh(a.value()); }
+inline RR tanh(RR a
+) { return ::NTL::tanh(a.value()); }
 */
    inline RR pow(const RR& r, long l)
    {
@@ -399,13 +399,13 @@ inline RR tanh(RR a)
 
 // Streaming:
 template <class charT, class traits>
-inline std::basic_ostream<charT, traits>& operator<<(std::basic_ostream<charT, traits>& os, const RR& a)
-{
+inline std::basic_ostream<charT, traits>& operator<<(std::basic_ostream<charT, traits>& os, const RR& a
+) {
    return os << a.value();
 }
 template <class charT, class traits>
-inline std::basic_istream<charT, traits>& operator>>(std::basic_istream<charT, traits>& is, RR& a)
-{
+inline std::basic_istream<charT, traits>& operator>>(std::basic_istream<charT, traits>& is, RR& a
+) {
    ::NTL::RR v;
    is >> v;
    a = v;
@@ -492,21 +492,21 @@ namespace tools
 {
 
 template<>
-inline int digits<boost::math::ntl::RR>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(boost::math::ntl::RR))
-{
+inline int digits<boost::math::ntl::RR>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(boost::math::ntl::RR)
+) {
    return ::NTL::RR::precision();
 }
 
 template <>
-inline float real_cast<float, boost::math::ntl::RR>(boost::math::ntl::RR t)
-{
+inline float real_cast<float, boost::math::ntl::RR>(boost::math::ntl::RR t
+) {
    double r;
    conv(r, t.value());
    return static_cast<float>(r);
 }
 template <>
-inline double real_cast<double, boost::math::ntl::RR>(boost::math::ntl::RR t)
-{
+inline double real_cast<double, boost::math::ntl::RR>(boost::math::ntl::RR t
+) {
    double r;
    conv(r, t.value());
    return r;
@@ -515,8 +515,8 @@ inline double real_cast<double, boost::math::ntl::RR>(boost::math::ntl::RR t)
 namespace detail{
 
 template<class Integer>
-void convert_to_long_result(NTL::RR const& r, Integer& result)
-{
+void convert_to_long_result(NTL::RR const& r, Integer& result
+) {
    result = 0;
    I last_result(0);
    NTL::RR t(r);
@@ -533,49 +533,49 @@ void convert_to_long_result(NTL::RR const& r, Integer& result)
 }
 
 template <>
-inline long double real_cast<long double, boost::math::ntl::RR>(boost::math::ntl::RR t)
-{
+inline long double real_cast<long double, boost::math::ntl::RR>(boost::math::ntl::RR t
+) {
    long double result(0);
    detail::convert_to_long_result(t.value(), result);
    return result;
 }
 template <>
-inline boost::math::ntl::RR real_cast<boost::math::ntl::RR, boost::math::ntl::RR>(boost::math::ntl::RR t)
-{
+inline boost::math::ntl::RR real_cast<boost::math::ntl::RR, boost::math::ntl::RR>(boost::math::ntl::RR t
+) {
    return t;
 }
 template <>
-inline unsigned real_cast<unsigned, boost::math::ntl::RR>(boost::math::ntl::RR t)
-{
+inline unsigned real_cast<unsigned, boost::math::ntl::RR>(boost::math::ntl::RR t
+) {
    unsigned result;
    detail::convert_to_long_result(t.value(), result);
    return result;
 }
 template <>
-inline int real_cast<int, boost::math::ntl::RR>(boost::math::ntl::RR t)
-{
+inline int real_cast<int, boost::math::ntl::RR>(boost::math::ntl::RR t
+) {
    int result;
    detail::convert_to_long_result(t.value(), result);
    return result;
 }
 template <>
-inline long real_cast<long, boost::math::ntl::RR>(boost::math::ntl::RR t)
-{
+inline long real_cast<long, boost::math::ntl::RR>(boost::math::ntl::RR t
+) {
    long result;
    detail::convert_to_long_result(t.value(), result);
    return result;
 }
 template <>
-inline long long real_cast<long long, boost::math::ntl::RR>(boost::math::ntl::RR t)
-{
+inline long long real_cast<long long, boost::math::ntl::RR>(boost::math::ntl::RR t
+) {
    long long result;
    detail::convert_to_long_result(t.value(), result);
    return result;
 }
 
 template <>
-inline boost::math::ntl::RR max_value<boost::math::ntl::RR>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(boost::math::ntl::RR))
-{
+inline boost::math::ntl::RR max_value<boost::math::ntl::RR>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(boost::math::ntl::RR)
+) {
    static bool has_init = false;
    static NTL::RR val;
    if(!has_init)
@@ -588,8 +588,8 @@ inline boost::math::ntl::RR max_value<boost::math::ntl::RR>(BOOST_MATH_EXPLICIT_
 }
 
 template <>
-inline boost::math::ntl::RR min_value<boost::math::ntl::RR>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(boost::math::ntl::RR))
-{
+inline boost::math::ntl::RR min_value<boost::math::ntl::RR>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(boost::math::ntl::RR)
+) {
    static bool has_init = false;
    static NTL::RR val;
    if(!has_init)
@@ -602,8 +602,8 @@ inline boost::math::ntl::RR min_value<boost::math::ntl::RR>(BOOST_MATH_EXPLICIT_
 }
 
 template <>
-inline boost::math::ntl::RR log_max_value<boost::math::ntl::RR>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(boost::math::ntl::RR))
-{
+inline boost::math::ntl::RR log_max_value<boost::math::ntl::RR>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(boost::math::ntl::RR)
+) {
    static bool has_init = false;
    static NTL::RR val;
    if(!has_init)
@@ -617,8 +617,8 @@ inline boost::math::ntl::RR log_max_value<boost::math::ntl::RR>(BOOST_MATH_EXPLI
 }
 
 template <>
-inline boost::math::ntl::RR log_min_value<boost::math::ntl::RR>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(boost::math::ntl::RR))
-{
+inline boost::math::ntl::RR log_min_value<boost::math::ntl::RR>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(boost::math::ntl::RR)
+) {
    static bool has_init = false;
    static NTL::RR val;
    if(!has_init)
@@ -632,8 +632,8 @@ inline boost::math::ntl::RR log_min_value<boost::math::ntl::RR>(BOOST_MATH_EXPLI
 }
 
 template <>
-inline boost::math::ntl::RR epsilon<boost::math::ntl::RR>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(boost::math::ntl::RR))
-{
+inline boost::math::ntl::RR epsilon<boost::math::ntl::RR>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(boost::math::ntl::RR)
+) {
    return ldexp(boost::math::ntl::RR(1), 1-boost::math::policies::digits<boost::math::ntl::RR, boost::math::policies::policy<> >());
 }
 
@@ -645,14 +645,14 @@ inline boost::math::ntl::RR epsilon<boost::math::ntl::RR>(BOOST_MATH_EXPLICIT_TE
 //
 namespace constants{
 
-template<> inline boost::math::ntl::RR pi<boost::math::ntl::RR>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(boost::math::ntl::RR))
-{
+template<> inline boost::math::ntl::RR pi<boost::math::ntl::RR>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(boost::math::ntl::RR)
+) {
     NTL::RR result;
     ComputePi(result);
     return result;
 }
-template<> inline boost::math::ntl::RR e<boost::math::ntl::RR>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(boost::math::ntl::RR))
-{
+template<> inline boost::math::ntl::RR e<boost::math::ntl::RR>(BOOST_MATH_EXPLICIT_TEMPLATE_TYPE_SPEC(boost::math::ntl::RR)
+) {
     NTL::RR result;
     result = 1;
     return exp(result);
@@ -830,8 +830,8 @@ namespace ntl{
 namespace detail{
 
 template <class Policy>
-ntl::RR digamma_imp(ntl::RR x, const std::integral_constant<int, 0>* , const Policy& pol)
-{
+ntl::RR digamma_imp(ntl::RR x, const std::integral_constant<int, 0>* , const Policy& pol
+) {
    //
    // This handles reflection of negative arguments, and all our
    // error handling, then forwards to the T-specific approximation.

@@ -90,8 +90,8 @@ inline void demangle_free( char const * name ) BOOST_NOEXCEPT
     std::free( const_cast< char* >( name ) );
 }
 
-inline std::string demangle( char const * name )
-{
+inline std::string demangle( char const * name 
+) {
     scoped_demangled_name demangled_name( name );
     char const * p = demangled_name.get();
     if( !p )
@@ -110,8 +110,8 @@ inline void demangle_free( char const * ) BOOST_NOEXCEPT
 {
 }
 
-inline std::string demangle( char const * name )
-{
+inline std::string demangle( char const * name 
+) {
     return name;
 }
 

@@ -707,8 +707,8 @@ namespace boost { namespace math { namespace detail {
 } // namespace detail
 
 template <class T1, class T2, class T3, class Policy>
-inline typename tools::promote_args<T1, T2, T3>::type hypergeometric_1F1(T1 a, T2 b, T3 z, const Policy& /* pol */)
-{
+inline typename tools::promote_args<T1, T2, T3>::type hypergeometric_1F1(T1 a, T2 b, T3 z, const Policy& /* pol */
+) {
    BOOST_FPU_EXCEPTION_GUARD
       typedef typename tools::promote_args<T1, T2, T3>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
@@ -728,14 +728,14 @@ inline typename tools::promote_args<T1, T2, T3>::type hypergeometric_1F1(T1 a, T
 }
 
 template <class T1, class T2, class T3>
-inline typename tools::promote_args<T1, T2, T3>::type hypergeometric_1F1(T1 a, T2 b, T3 z)
-{
+inline typename tools::promote_args<T1, T2, T3>::type hypergeometric_1F1(T1 a, T2 b, T3 z
+) {
    return hypergeometric_1F1(a, b, z, policies::policy<>());
 }
 
 template <class T1, class T2, class T3, class Policy>
-inline typename tools::promote_args<T1, T2, T3>::type hypergeometric_1F1_regularized(T1 a, T2 b, T3 z, const Policy& /* pol */)
-{
+inline typename tools::promote_args<T1, T2, T3>::type hypergeometric_1F1_regularized(T1 a, T2 b, T3 z, const Policy& /* pol */
+) {
    BOOST_FPU_EXCEPTION_GUARD
       typedef typename tools::promote_args<T1, T2, T3>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
@@ -755,14 +755,14 @@ inline typename tools::promote_args<T1, T2, T3>::type hypergeometric_1F1_regular
 }
 
 template <class T1, class T2, class T3>
-inline typename tools::promote_args<T1, T2, T3>::type hypergeometric_1F1_regularized(T1 a, T2 b, T3 z)
-{
+inline typename tools::promote_args<T1, T2, T3>::type hypergeometric_1F1_regularized(T1 a, T2 b, T3 z
+) {
    return hypergeometric_1F1_regularized(a, b, z, policies::policy<>());
 }
 
 template <class T1, class T2, class T3, class Policy>
-inline typename tools::promote_args<T1, T2, T3>::type log_hypergeometric_1F1(T1 a, T2 b, T3 z, const Policy& /* pol */)
-{
+inline typename tools::promote_args<T1, T2, T3>::type log_hypergeometric_1F1(T1 a, T2 b, T3 z, const Policy& /* pol */
+) {
   BOOST_FPU_EXCEPTION_GUARD
     typedef typename tools::promote_args<T1, T2, T3>::type result_type;
   typedef typename policies::evaluation<result_type, Policy>::type value_type;
@@ -783,14 +783,14 @@ inline typename tools::promote_args<T1, T2, T3>::type log_hypergeometric_1F1(T1 
 }
 
 template <class T1, class T2, class T3>
-inline typename tools::promote_args<T1, T2, T3>::type log_hypergeometric_1F1(T1 a, T2 b, T3 z)
-{
+inline typename tools::promote_args<T1, T2, T3>::type log_hypergeometric_1F1(T1 a, T2 b, T3 z
+) {
   return log_hypergeometric_1F1(a, b, z, policies::policy<>());
 }
 
 template <class T1, class T2, class T3, class Policy>
-inline typename tools::promote_args<T1, T2, T3>::type log_hypergeometric_1F1(T1 a, T2 b, T3 z, int* sign, const Policy& /* pol */)
-{
+inline typename tools::promote_args<T1, T2, T3>::type log_hypergeometric_1F1(T1 a, T2 b, T3 z, int* sign, const Policy& /* pol */
+) {
   BOOST_FPU_EXCEPTION_GUARD
     typedef typename tools::promote_args<T1, T2, T3>::type result_type;
   typedef typename policies::evaluation<result_type, Policy>::type value_type;
@@ -811,8 +811,8 @@ inline typename tools::promote_args<T1, T2, T3>::type log_hypergeometric_1F1(T1 
 }
 
 template <class T1, class T2, class T3>
-inline typename tools::promote_args<T1, T2, T3>::type log_hypergeometric_1F1(T1 a, T2 b, T3 z, int* sign)
-{
+inline typename tools::promote_args<T1, T2, T3>::type log_hypergeometric_1F1(T1 a, T2 b, T3 z, int* sign
+) {
   return log_hypergeometric_1F1(a, b, z, sign, policies::policy<>());
 }
 

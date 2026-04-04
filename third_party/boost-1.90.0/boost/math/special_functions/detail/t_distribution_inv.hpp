@@ -27,8 +27,8 @@ namespace boost{ namespace math{ namespace detail{
 // Communications of the ACM, 13(10): 619-620, Oct., 1970.
 //
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T inverse_students_t_hill(T ndf, T u, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED T inverse_students_t_hill(T ndf, T u, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    BOOST_MATH_ASSERT(u <= 0.5);
 
@@ -77,8 +77,8 @@ BOOST_MATH_GPU_ENABLED T inverse_students_t_hill(T ndf, T u, const Policy& pol)
 // Journal of Computational Finance, Vol 9 Issue 4, pp 37-73, Summer 2006
 //
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T inverse_students_t_tail_series(T df, T v, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED T inverse_students_t_tail_series(T df, T v, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    // Tail series expansion, see section 6 of Shaw's paper.
    // w is calculated using Eq 60:
@@ -128,8 +128,8 @@ BOOST_MATH_GPU_ENABLED T inverse_students_t_tail_series(T df, T v, const Policy&
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T inverse_students_t_body_series(T df, T u, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED T inverse_students_t_body_series(T df, T u, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    //
    // Body series for small N:
@@ -207,8 +207,8 @@ BOOST_MATH_GPU_ENABLED T inverse_students_t_body_series(T df, T u, const Policy&
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T inverse_students_t(T df, T u, T v, const Policy& pol, bool* pexact = nullptr)
-{
+BOOST_MATH_GPU_ENABLED T inverse_students_t(T df, T u, T v, const Policy& pol, bool* pexact = nullptr
+) {
    //
    // df = number of degrees of freedom.
    // u = probability.
@@ -421,8 +421,8 @@ calculate_real:
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline T find_ibeta_inv_from_t_dist(T a, T p, T /*q*/, T* py, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline T find_ibeta_inv_from_t_dist(T a, T p, T /*q*/, T* py, const Policy& pol
+) {
    T u = p / 2;
    T v = 1 - u;
    T df = a * 2;
@@ -445,8 +445,8 @@ namespace detail {
 #endif
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline T fast_students_t_quantile_imp(T df, T p, const Policy& pol, const boost::math::false_type*)
-{
+BOOST_MATH_GPU_ENABLED inline T fast_students_t_quantile_imp(T df, T p, const Policy& pol, const boost::math::false_type*
+) {
    BOOST_MATH_STD_USING
    //
    // Need to use inverse incomplete beta to get
@@ -468,8 +468,8 @@ BOOST_MATH_GPU_ENABLED inline T fast_students_t_quantile_imp(T df, T p, const Po
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T fast_students_t_quantile_imp(T df, T p, const Policy& pol, const boost::math::true_type*)
-{
+BOOST_MATH_GPU_ENABLED T fast_students_t_quantile_imp(T df, T p, const Policy& pol, const boost::math::true_type*
+) {
    BOOST_MATH_STD_USING
    bool invert = false;
    if((df < 2) && (floor(df) != df))
@@ -539,8 +539,8 @@ BOOST_MATH_GPU_ENABLED T fast_students_t_quantile_imp(T df, T p, const Policy& p
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED inline T fast_students_t_quantile(T df, T p, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline T fast_students_t_quantile(T df, T p, const Policy& pol
+) {
    typedef typename policies::evaluation<T, Policy>::type value_type;
    typedef typename policies::normalise<
       Policy,

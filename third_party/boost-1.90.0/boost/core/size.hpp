@@ -26,8 +26,8 @@ namespace boost {
 
 template<class C>
 inline constexpr auto
-size(const C& c) noexcept(noexcept(c.size())) -> decltype(c.size())
-{
+size(const C& c) noexcept(noexcept(c.size())) -> decltype(c.size()
+) {
     return c.size();
 }
 

@@ -45,8 +45,8 @@ BOOST_MATH_GPU_ENABLED T ellint_d_imp(T k, const Policy& pol);
 
 // Elliptic integral (Legendre form) of the second kind
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED T ellint_d_imp(T phi, T k, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED T ellint_d_imp(T phi, T k, const Policy& pol
+) {
     BOOST_MATH_STD_USING
     using namespace boost::math::tools;
     using namespace boost::math::constants;
@@ -116,8 +116,8 @@ BOOST_MATH_GPU_ENABLED T ellint_d_imp(T phi, T k, const Policy& pol)
 
 // Complete elliptic integral (Legendre form) of the second kind
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED T ellint_d_imp(T k, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED T ellint_d_imp(T k, const Policy& pol
+) {
     BOOST_MATH_STD_USING
     using namespace boost::math::tools;
 
@@ -138,8 +138,8 @@ BOOST_MATH_GPU_ENABLED T ellint_d_imp(T k, const Policy& pol)
 }
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type ellint_d(T k, const Policy& pol, const boost::math::true_type&)
-{
+BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type ellint_d(T k, const Policy& pol, const boost::math::true_type&
+) {
    typedef typename tools::promote_args<T>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
    return policies::checked_narrowing_cast<result_type, Policy>(detail::ellint_d_imp(static_cast<value_type>(k), pol), "boost::math::ellint_d<%1%>(%1%)");
@@ -147,8 +147,8 @@ BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type ellint_d(T k
 
 // Elliptic integral (Legendre form) of the second kind
 template <class T1, class T2>
-BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type ellint_d(T1 k, T2 phi, const boost::math::false_type&)
-{
+BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type ellint_d(T1 k, T2 phi, const boost::math::false_type&
+) {
    return boost::math::ellint_d(k, phi, policies::policy<>());
 }
 
@@ -156,22 +156,22 @@ BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type ellint_
 
 // Complete elliptic integral (Legendre form) of the second kind
 template <typename T>
-BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type ellint_d(T k)
-{
+BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type ellint_d(T k
+) {
    return ellint_d(k, policies::policy<>());
 }
 
 // Elliptic integral (Legendre form) of the second kind
 template <class T1, class T2>
-BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type ellint_d(T1 k, T2 phi)
-{
+BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type ellint_d(T1 k, T2 phi
+) {
    typedef typename policies::is_policy<T2>::type tag_type;
    return detail::ellint_d(k, phi, tag_type());
 }
 
 template <class T1, class T2, class Policy>
-BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type ellint_d(T1 k, T2 phi, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type ellint_d(T1 k, T2 phi, const Policy& pol
+) {
    typedef typename tools::promote_args<T1, T2>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
    return policies::checked_narrowing_cast<result_type, Policy>(detail::ellint_d_imp(static_cast<value_type>(phi), static_cast<value_type>(k), pol), "boost::math::ellint_2<%1%>(%1%,%1%)");

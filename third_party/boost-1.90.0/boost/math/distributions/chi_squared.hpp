@@ -69,8 +69,8 @@ chi_squared_distribution(RealType)->chi_squared_distribution<typename boost::mat
 #endif
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline boost::math::pair<RealType, RealType> range(const chi_squared_distribution<RealType, Policy>& /*dist*/)
-{ // Range of permissible values for random variable x.
+BOOST_MATH_GPU_ENABLED inline boost::math::pair<RealType, RealType> range(const chi_squared_distribution<RealType, Policy>& /*dist*/
+) { // Range of permissible values for random variable x.
   BOOST_MATH_IF_CONSTEXPR (boost::math::numeric_limits<RealType>::has_infinity)
   { 
     return boost::math::pair<RealType, RealType>(static_cast<RealType>(0), boost::math::numeric_limits<RealType>::infinity()); // 0 to + infinity.
@@ -87,15 +87,15 @@ BOOST_MATH_GPU_ENABLED inline boost::math::pair<RealType, RealType> range(const 
 #endif
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline boost::math::pair<RealType, RealType> support(const chi_squared_distribution<RealType, Policy>& /*dist*/)
-{ // Range of supported values for random variable x.
+BOOST_MATH_GPU_ENABLED inline boost::math::pair<RealType, RealType> support(const chi_squared_distribution<RealType, Policy>& /*dist*/
+) { // Range of supported values for random variable x.
    // This is range where cdf rises from 0 to 1, and outside it, the pdf is zero.
    return boost::math::pair<RealType, RealType>(static_cast<RealType>(0), tools::max_value<RealType>()); // 0 to + infinity.
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED RealType pdf(const chi_squared_distribution<RealType, Policy>& dist, const RealType& chi_square)
-{
+BOOST_MATH_GPU_ENABLED RealType pdf(const chi_squared_distribution<RealType, Policy>& dist, const RealType& chi_square
+) {
    BOOST_MATH_STD_USING  // for ADL of std functions
    RealType degrees_of_freedom = dist.degrees_of_freedom();
    // Error check:
@@ -135,8 +135,8 @@ BOOST_MATH_GPU_ENABLED RealType pdf(const chi_squared_distribution<RealType, Pol
 } // pdf
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType cdf(const chi_squared_distribution<RealType, Policy>& dist, const RealType& chi_square)
-{
+BOOST_MATH_GPU_ENABLED inline RealType cdf(const chi_squared_distribution<RealType, Policy>& dist, const RealType& chi_square
+) {
    RealType degrees_of_freedom = dist.degrees_of_freedom();
    // Error check:
    RealType error_result;
@@ -156,8 +156,8 @@ BOOST_MATH_GPU_ENABLED inline RealType cdf(const chi_squared_distribution<RealTy
 } // cdf
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType quantile(const chi_squared_distribution<RealType, Policy>& dist, const RealType& p)
-{
+BOOST_MATH_GPU_ENABLED inline RealType quantile(const chi_squared_distribution<RealType, Policy>& dist, const RealType& p
+) {
    RealType degrees_of_freedom = dist.degrees_of_freedom();
    constexpr auto function = "boost::math::quantile(const chi_squared_distribution<%1%>&, %1%)";
    // Error check:
@@ -173,8 +173,8 @@ BOOST_MATH_GPU_ENABLED inline RealType quantile(const chi_squared_distribution<R
 } // quantile
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType cdf(const complemented2_type<chi_squared_distribution<RealType, Policy>, RealType>& c)
-{
+BOOST_MATH_GPU_ENABLED inline RealType cdf(const complemented2_type<chi_squared_distribution<RealType, Policy>, RealType>& c
+) {
    RealType const& degrees_of_freedom = c.dist.degrees_of_freedom();
    RealType const& chi_square = c.param;
    constexpr auto function = "boost::math::cdf(const chi_squared_distribution<%1%>&, %1%)";
@@ -194,8 +194,8 @@ BOOST_MATH_GPU_ENABLED inline RealType cdf(const complemented2_type<chi_squared_
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType quantile(const complemented2_type<chi_squared_distribution<RealType, Policy>, RealType>& c)
-{
+BOOST_MATH_GPU_ENABLED inline RealType quantile(const complemented2_type<chi_squared_distribution<RealType, Policy>, RealType>& c
+) {
    RealType const& degrees_of_freedom = c.dist.degrees_of_freedom();
    RealType const& q = c.param;
    constexpr auto function = "boost::math::quantile(const chi_squared_distribution<%1%>&, %1%)";
@@ -211,20 +211,20 @@ BOOST_MATH_GPU_ENABLED inline RealType quantile(const complemented2_type<chi_squ
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType mean(const chi_squared_distribution<RealType, Policy>& dist)
-{ // Mean of Chi-Squared distribution = v.
+BOOST_MATH_GPU_ENABLED inline RealType mean(const chi_squared_distribution<RealType, Policy>& dist
+) { // Mean of Chi-Squared distribution = v.
   return dist.degrees_of_freedom();
 } // mean
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType variance(const chi_squared_distribution<RealType, Policy>& dist)
-{ // Variance of Chi-Squared distribution = 2v.
+BOOST_MATH_GPU_ENABLED inline RealType variance(const chi_squared_distribution<RealType, Policy>& dist
+) { // Variance of Chi-Squared distribution = 2v.
   return 2 * dist.degrees_of_freedom();
 } // variance
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType mode(const chi_squared_distribution<RealType, Policy>& dist)
-{
+BOOST_MATH_GPU_ENABLED inline RealType mode(const chi_squared_distribution<RealType, Policy>& dist
+) {
    RealType df = dist.degrees_of_freedom();
    constexpr auto function = "boost::math::mode(const chi_squared_distribution<%1%>&)";
 
@@ -237,23 +237,23 @@ BOOST_MATH_GPU_ENABLED inline RealType mode(const chi_squared_distribution<RealT
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType skewness(const chi_squared_distribution<RealType, Policy>& dist)
-{
+BOOST_MATH_GPU_ENABLED inline RealType skewness(const chi_squared_distribution<RealType, Policy>& dist
+) {
    BOOST_MATH_STD_USING // For ADL
    RealType df = dist.degrees_of_freedom();
    return sqrt (8 / df);
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType kurtosis(const chi_squared_distribution<RealType, Policy>& dist)
-{
+BOOST_MATH_GPU_ENABLED inline RealType kurtosis(const chi_squared_distribution<RealType, Policy>& dist
+) {
    RealType df = dist.degrees_of_freedom();
    return 3 + 12 / df;
 }
 
 template <class RealType, class Policy>
-BOOST_MATH_GPU_ENABLED inline RealType kurtosis_excess(const chi_squared_distribution<RealType, Policy>& dist)
-{
+BOOST_MATH_GPU_ENABLED inline RealType kurtosis_excess(const chi_squared_distribution<RealType, Policy>& dist
+) {
    RealType df = dist.degrees_of_freedom();
    return 12 / df;
 }
@@ -305,8 +305,8 @@ BOOST_MATH_GPU_ENABLED RealType chi_squared_distribution<RealType, Policy>::find
    RealType alpha,
    RealType beta,
    RealType variance,
-   RealType hint)
-{
+   RealType hint
+) {
    constexpr auto function = "boost::math::chi_squared_distribution<%1%>::find_degrees_of_freedom(%1%,%1%,%1%,%1%,%1%)";
    // Check for domain errors:
    RealType error_result;

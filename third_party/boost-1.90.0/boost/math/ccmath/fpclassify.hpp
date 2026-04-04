@@ -21,8 +21,8 @@
 namespace boost::math::ccmath {
 
 template <typename T, std::enable_if_t<!std::is_integral_v<T>, bool> = true>
-inline constexpr int fpclassify BOOST_MATH_PREVENT_MACRO_SUBSTITUTION(T x)
-{
+inline constexpr int fpclassify BOOST_MATH_PREVENT_MACRO_SUBSTITUTION(T x
+) {
     if(BOOST_MATH_IS_CONSTANT_EVALUATED(x))
     {
         return (boost::math::ccmath::isnan)(x) ? FP_NAN :
@@ -38,8 +38,8 @@ inline constexpr int fpclassify BOOST_MATH_PREVENT_MACRO_SUBSTITUTION(T x)
 }
 
 template <typename Z, std::enable_if_t<std::is_integral_v<Z>, bool> = true>
-inline constexpr int fpclassify(Z x)
-{
+inline constexpr int fpclassify(Z x
+) {
     return boost::math::ccmath::fpclassify(static_cast<double>(x));
 }
 

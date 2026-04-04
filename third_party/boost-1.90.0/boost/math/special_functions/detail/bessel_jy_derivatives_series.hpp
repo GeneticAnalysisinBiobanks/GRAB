@@ -52,8 +52,8 @@ private:
 // Converges rapidly for all z << v.
 //
 template <class T, class Policy>
-inline T bessel_j_derivative_small_z_series(T v, T x, const Policy& pol)
-{
+inline T bessel_j_derivative_small_z_series(T v, T x, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    T prefix;
    if (v < boost::math::max_factorial<T>::value)
@@ -138,8 +138,8 @@ private:
 // eps/2 * v^v(x/2)^-v > (x/2)^v or log(eps/2) > v log((x/2)^2/v)
 //
 template <class T, class Policy>
-inline T bessel_y_derivative_small_z_series(T v, T x, const Policy& pol)
-{
+inline T bessel_y_derivative_small_z_series(T v, T x, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    static const char* function = "bessel_y_derivative_small_z_series<%1%>(%1%,%1%)";
    T prefix;

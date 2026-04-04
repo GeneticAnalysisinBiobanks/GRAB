@@ -31,8 +31,8 @@
 LIBDEFLATEAPI size_t
 libdeflate_gzip_compress(struct libdeflate_compressor *c,
 			 const void *in, size_t in_nbytes,
-			 void *out, size_t out_nbytes_avail)
-{
+			 void *out, size_t out_nbytes_avail
+) {
 	u8 *out_next = out;
 	unsigned compression_level;
 	u8 xfl;
@@ -83,8 +83,8 @@ libdeflate_gzip_compress(struct libdeflate_compressor *c,
 
 LIBDEFLATEAPI size_t
 libdeflate_gzip_compress_bound(struct libdeflate_compressor *c,
-			       size_t in_nbytes)
-{
+			       size_t in_nbytes
+) {
 	return GZIP_MIN_OVERHEAD +
 	       libdeflate_deflate_compress_bound(c, in_nbytes);
 }

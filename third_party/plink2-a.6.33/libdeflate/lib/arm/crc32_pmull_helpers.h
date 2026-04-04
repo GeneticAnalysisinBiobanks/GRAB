@@ -40,8 +40,8 @@
 /* Create a vector with 'a' in the first 4 bytes, and the rest zeroed out. */
 #undef u32_to_bytevec
 static forceinline ATTRIBUTES uint8x16_t
-ADD_SUFFIX(u32_to_bytevec)(u32 a)
-{
+ADD_SUFFIX(u32_to_bytevec)(u32 a
+) {
 	return vreinterpretq_u8_u32(vsetq_lane_u32(a, vdupq_n_u32(0), 0));
 }
 #define u32_to_bytevec	ADD_SUFFIX(u32_to_bytevec)
@@ -49,8 +49,8 @@ ADD_SUFFIX(u32_to_bytevec)(u32 a)
 /* Load two 64-bit values into a vector. */
 #undef load_multipliers
 static forceinline ATTRIBUTES poly64x2_t
-ADD_SUFFIX(load_multipliers)(const u64 p[2])
-{
+ADD_SUFFIX(load_multipliers)(const u64 p[2]
+) {
 	return vreinterpretq_p64_u64(vld1q_u64(p));
 }
 #define load_multipliers	ADD_SUFFIX(load_multipliers)
@@ -58,8 +58,8 @@ ADD_SUFFIX(load_multipliers)(const u64 p[2])
 /* Do carryless multiplication of the low halves of two vectors. */
 #undef clmul_low
 static forceinline ATTRIBUTES uint8x16_t
-ADD_SUFFIX(clmul_low)(uint8x16_t a, poly64x2_t b)
-{
+ADD_SUFFIX(clmul_low)(uint8x16_t a, poly64x2_t b
+) {
 	return vreinterpretq_u8_p128(
 		     compat_vmull_p64(vgetq_lane_p64(vreinterpretq_p64_u8(a), 0),
 				      vgetq_lane_p64(b, 0)));
@@ -69,8 +69,8 @@ ADD_SUFFIX(clmul_low)(uint8x16_t a, poly64x2_t b)
 /* Do carryless multiplication of the high halves of two vectors. */
 #undef clmul_high
 static forceinline ATTRIBUTES uint8x16_t
-ADD_SUFFIX(clmul_high)(uint8x16_t a, poly64x2_t b)
-{
+ADD_SUFFIX(clmul_high)(uint8x16_t a, poly64x2_t b
+) {
 #ifdef __clang__
 	/*
 	 * Use inline asm to ensure that pmull2 is really used.  This works
@@ -88,8 +88,8 @@ ADD_SUFFIX(clmul_high)(uint8x16_t a, poly64x2_t b)
 
 #undef eor3
 static forceinline ATTRIBUTES uint8x16_t
-ADD_SUFFIX(eor3)(uint8x16_t a, uint8x16_t b, uint8x16_t c)
-{
+ADD_SUFFIX(eor3)(uint8x16_t a, uint8x16_t b, uint8x16_t c
+) {
 #if ENABLE_EOR3
 	return veor3q_u8(a, b, c);
 #else
@@ -100,8 +100,8 @@ ADD_SUFFIX(eor3)(uint8x16_t a, uint8x16_t b, uint8x16_t c)
 
 #undef fold_vec
 static forceinline ATTRIBUTES uint8x16_t
-ADD_SUFFIX(fold_vec)(uint8x16_t src, uint8x16_t dst, poly64x2_t multipliers)
-{
+ADD_SUFFIX(fold_vec)(uint8x16_t src, uint8x16_t dst, poly64x2_t multipliers
+) {
 	uint8x16_t a = clmul_low(src, multipliers);
 	uint8x16_t b = clmul_high(src, multipliers);
 
@@ -119,8 +119,8 @@ ADD_SUFFIX(fold_vec)(uint8x16_t src, uint8x16_t dst, poly64x2_t multipliers)
 #undef fold_partial_vec
 static forceinline ATTRIBUTES MAYBE_UNUSED uint8x16_t
 ADD_SUFFIX(fold_partial_vec)(uint8x16_t v, const u8 *p, size_t len,
-			     poly64x2_t multipliers_1)
-{
+			     poly64x2_t multipliers_1
+) {
 	/*
 	 * vqtbl1q_u8(v, shift_tab[len..len+15]) left shifts v by 16-len bytes.
 	 * vqtbl1q_u8(v, shift_tab[len+16..len+31]) right shifts v by len bytes.

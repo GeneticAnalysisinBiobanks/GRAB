@@ -164,8 +164,8 @@ struct OutlierInfo {
 OutlierInfo detectOutliers(
     const Eigen::MatrixXd& ResidMat,
     double outlierIqrRatio,
-    double outlierAbsBound)
-{
+    double outlierAbsBound
+) {
   const Eigen::Index N = ResidMat.rows();
   const Eigen::Index K = ResidMat.cols();
 
@@ -369,8 +369,8 @@ void runSPAsqr(
     int nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff)
-{
+    double minMacCutoff
+) {
   // ── 1. Load residual matrix ────────────────────────────────────────
   infoMsg("Loading residual matrix from %s", residFile.c_str());
   auto famIIDs = parseGenoIIDs(geno);
@@ -420,8 +420,8 @@ void runSPAsqrPheno(
     int nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff)
-{
+    double minMacCutoff
+) {
   const int ntaus = static_cast<int>(taus.size());
 
   // ── 1. Load phenotype/covariate data ────────────────────────────────────

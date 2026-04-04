@@ -142,8 +142,8 @@ void updateMuMat(
     const Eigen::MatrixXd& X, const Eigen::VectorXd& beta,
     const Eigen::VectorXd& bVec, const Eigen::VectorXd& eps,
     int n, int J,
-    Eigen::MatrixXd& muMat, Eigen::MatrixXd& iRMat)
-{
+    Eigen::MatrixXd& muMat, Eigen::MatrixXd& iRMat
+) {
     // eta_i = X[i,:]*beta + bVec[i]
     Eigen::VectorXd eta = X * beta + bVec;
 
@@ -271,8 +271,8 @@ void sigmaMultiply(
     const std::vector<PsiBlock>& psiBlocks,
     const SparseGRM& grm,
     double tau, int n, int Jm1,
-    const double* v, double* result)
-{
+    const double* v, double* result
+) {
     // Part 1: Psi^{-1} * v (block diagonal, per subject)
     for (int i = 0; i < n; ++i)
         psiBlocks[i].solveVec(v + i * Jm1, result + i * Jm1, Jm1);
@@ -291,8 +291,8 @@ void precondSolve(
     const std::vector<PsiBlock>& psiBlocks,
     const std::vector<double>& diagK,
     double tau, int n, int Jm1,
-    const double* r, double* z)
-{
+    const double* r, double* z
+) {
     // M_i^{-1} ≈ (Psi_i^{-1} + tau*d_i*I)^{-1}
     // By Woodbury: (D - hh' + tau*d*I)^{-1} with D = diag(1/h)
     // This is complex. For simplicity, use Psi_i as the preconditioner:
@@ -306,8 +306,8 @@ Eigen::VectorXd pcgSolve(
     const SparseGRM& grm,
     const std::vector<double>& diagK,
     double tau, int n, int Jm1,
-    const Eigen::VectorXd& rhs)
-{
+    const Eigen::VectorXd& rhs
+) {
     const int dim = n * Jm1;
     Eigen::VectorXd x = Eigen::VectorXd::Zero(dim);
     Eigen::VectorXd r = rhs;  // r = rhs - Sigma * x, but x=0 so r=rhs
@@ -349,8 +349,8 @@ Eigen::VectorXd pcgSolve(
 void fitCLM(
     const Eigen::VectorXi& yVec, const Eigen::MatrixXd& X,
     int n, int J, int p,
-    Eigen::VectorXd& beta, Eigen::VectorXd& eps)
-{
+    Eigen::VectorXd& beta, Eigen::VectorXd& eps
+) {
     // Initialize cutpoints from marginal proportions
     eps.resize(J - 1);
     Eigen::VectorXd cumProp(J);
@@ -468,8 +468,8 @@ void fitNullModel(
     const Eigen::MatrixXd& X,
     const SparseGRM& grm,
     int n, int J, int p,
-    POLMMNullModel& null)
-{
+    POLMMNullModel& null
+) {
     const int Jm1 = J - 1;
 
     // Use cached GRM diagonal (self-relatedness per subject)
@@ -752,8 +752,8 @@ void fitNullModel(
 void computeTestMatrices(
     const Eigen::VectorXi& yVec,
     const Eigen::MatrixXd& X,
-    POLMMNullModel& null)
-{
+    POLMMNullModel& null
+) {
     const int n = null.n;
     const int J = null.J;
     const int Jm1 = J - 1;
@@ -838,8 +838,8 @@ void estimateVarianceRatios(
     const Eigen::MatrixXd& X,
     const Eigen::VectorXi& yVec,
     const SparseGRM& grm,
-    GenoMeta& genoData)
-{
+    GenoMeta& genoData
+) {
     const int n = null.n;
     const double tau = null.tau;
     const int nBins = static_cast<int>(kMacBins.size());
@@ -958,8 +958,8 @@ POLMMMethod::POLMMMethod(const POLMMNullModel& null, double spaCutoff)
       m_muMat(null.muMat),
       m_iRMat(null.iRMat),
       m_adjG(null.n),
-      m_tmpP(null.p)
-{}
+      m_tmpP(null.p
+) {}
 
 double POLMMMethod::lookupVarRatio(double mac) const {
     const int nBins = static_cast<int>(m_macBounds.size());
@@ -981,8 +981,8 @@ void POLMMMethod::getResultVec(
     Eigen::Ref<Eigen::VectorXd> GVec,
     double altFreq,
     int /*markerInChunkIdx*/,
-    std::vector<double>& result)
-{
+    std::vector<double>& result
+) {
     result.clear();
     result.resize(4, std::numeric_limits<double>::quiet_NaN());
 
@@ -1361,8 +1361,8 @@ void runPOLMM(
     int nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff)
-{
+    double minMacCutoff
+) {
     // ── 1. Load phenotype/covariate data ────────────────────────────
     infoMsg("POLMM: Loading phenotype and covariate data");
     auto famIIDs = parseGenoIIDs(geno);

@@ -15,8 +15,8 @@ void * add_predef_entry(const char * name, const char * description, unsigned va
 
 #undef BOOST_PREDEF_DECLARE_TEST
 #define BOOST_PREDEF_DECLARE_TEST(x,s) predef_entry_##x();
-void create_predef_entries()
-{
+void create_predef_entries(
+) {
 #include <boost/predef.h>
 }
 
@@ -44,8 +44,8 @@ using namespace std;
 
 unsigned generated_predef_info_count = 0;
 predef_info* generated_predef_info = 0;
-void * add_predef_entry(const char * name, const char * description, unsigned value)
-{
+void * add_predef_entry(const char * name, const char * description, unsigned value
+) {
     if (0 == generated_predef_info_count)
     {
         generated_predef_info_count = 1;
@@ -63,8 +63,8 @@ void * add_predef_entry(const char * name, const char * description, unsigned va
     return 0;
 }
 
-int predef_info_compare(const void * a, const void * b)
-{
+int predef_info_compare(const void * a, const void * b
+) {
     const predef_info * i = (const predef_info *)a;
     const predef_info * j = (const predef_info *)b;
     return strcmp(i->name,j->name);

@@ -28,8 +28,8 @@ namespace detail{
 // this version is for 80-bit long double's and smaller:
 //
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED T erf_inv_imp(const T& p, const T& q, const Policy&, const std::integral_constant<int, 64>&)
-{
+BOOST_MATH_GPU_ENABLED T erf_inv_imp(const T& p, const T& q, const Policy&, const std::integral_constant<int, 64>&
+) {
    BOOST_MATH_STD_USING // for ADL of std names.
 
    T result = 0;
@@ -315,8 +315,8 @@ private:
 };
 
 template <class T, class Policy>
-T erf_inv_imp(const T& p, const T& q, const Policy& pol, const std::integral_constant<int, 0>&)
-{
+T erf_inv_imp(const T& p, const T& q, const Policy& pol, const std::integral_constant<int, 0>&
+) {
    //
    // Generic version, get a guess that's accurate to 64-bits (10^-19)
    //
@@ -350,8 +350,8 @@ T erf_inv_imp(const T& p, const T& q, const Policy& pol, const std::integral_con
 } // namespace detail
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED typename tools::promote_args<T>::type erfc_inv(T z, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED typename tools::promote_args<T>::type erfc_inv(T z, const Policy& pol
+) {
    typedef typename tools::promote_args<T>::type result_type;
 
    //
@@ -411,8 +411,8 @@ BOOST_MATH_GPU_ENABLED typename tools::promote_args<T>::type erfc_inv(T z, const
 }
 
 template <class T, class Policy>
-BOOST_MATH_GPU_ENABLED typename tools::promote_args<T>::type erf_inv(T z, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED typename tools::promote_args<T>::type erf_inv(T z, const Policy& pol
+) {
    typedef typename tools::promote_args<T>::type result_type;
 
    //
@@ -479,14 +479,14 @@ BOOST_MATH_GPU_ENABLED typename tools::promote_args<T>::type erf_inv(T z, const 
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type erfc_inv(T z)
-{
+BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type erfc_inv(T z
+) {
    return erfc_inv(z, policies::policy<>());
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type erf_inv(T z)
-{
+BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T>::type erf_inv(T z
+) {
    return erf_inv(z, policies::policy<>());
 }
 
@@ -499,50 +499,50 @@ namespace boost {
 namespace math {
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED auto erf_inv(T x)
-{
+BOOST_MATH_GPU_ENABLED auto erf_inv(T x
+) {
    return ::erfinv(x);
 }
 
 template <>
-BOOST_MATH_GPU_ENABLED auto erf_inv(float x)
-{
+BOOST_MATH_GPU_ENABLED auto erf_inv(float x
+) {
    return ::erfinvf(x);
 }
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED auto erf_inv(T x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED auto erf_inv(T x, const Policy&
+) {
    return ::erfinv(x);
 }
 
 template <typename Policy>
-BOOST_MATH_GPU_ENABLED auto erf_inv(float x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED auto erf_inv(float x, const Policy&
+) {
    return ::erfinvf(x);
 }
 
 template <typename T>
-BOOST_MATH_GPU_ENABLED auto erfc_inv(T x)
-{
+BOOST_MATH_GPU_ENABLED auto erfc_inv(T x
+) {
    return ::erfcinv(x);
 }
 
 template <>
-BOOST_MATH_GPU_ENABLED auto erfc_inv(float x)
-{
+BOOST_MATH_GPU_ENABLED auto erfc_inv(float x
+) {
    return ::erfcinvf(x);
 }
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED auto erfc_inv(T x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED auto erfc_inv(T x, const Policy&
+) {
    return ::erfcinv(x);
 }
 
 template <typename Policy>
-BOOST_MATH_GPU_ENABLED auto erfc_inv(float x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED auto erfc_inv(float x, const Policy&
+) {
    return ::erfcinvf(x);
 }
 

@@ -30,8 +30,8 @@ namespace detail{
 
 // Elliptic integral - Jacobi Zeta
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED T heuman_lambda_imp(T phi, T k, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED T heuman_lambda_imp(T phi, T k, const Policy& pol
+) {
     BOOST_MATH_STD_USING
     using namespace boost::math::tools;
     using namespace boost::math::constants;
@@ -78,16 +78,16 @@ BOOST_MATH_GPU_ENABLED T heuman_lambda_imp(T phi, T k, const Policy& pol)
 } // detail
 
 template <class T1, class T2, class Policy>
-BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type heuman_lambda(T1 k, T2 phi, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type heuman_lambda(T1 k, T2 phi, const Policy& pol
+) {
    typedef typename tools::promote_args<T1, T2>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
    return policies::checked_narrowing_cast<result_type, Policy>(detail::heuman_lambda_imp(static_cast<value_type>(phi), static_cast<value_type>(k), pol), "boost::math::heuman_lambda<%1%>(%1%,%1%)");
 }
 
 template <class T1, class T2>
-BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type heuman_lambda(T1 k, T2 phi)
-{
+BOOST_MATH_GPU_ENABLED inline typename tools::promote_args<T1, T2>::type heuman_lambda(T1 k, T2 phi
+) {
    return boost::math::heuman_lambda(k, phi, policies::policy<>());
 }
 

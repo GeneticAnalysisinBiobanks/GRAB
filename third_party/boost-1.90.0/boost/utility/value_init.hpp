@@ -136,22 +136,22 @@ class initialized
 
 template<class T>
 BOOST_GPU_ENABLED
-T const& get ( initialized<T> const& x )
-{
+T const& get ( initialized<T> const& x 
+) {
   return x.data() ;
 }
 
 template<class T>
 BOOST_GPU_ENABLED
-T& get ( initialized<T>& x )
-{
+T& get ( initialized<T>& x 
+) {
   return x.data() ;
 }
 
 template<class T>
 BOOST_GPU_ENABLED
-void swap ( initialized<T> & lhs, initialized<T> & rhs )
-{
+void swap ( initialized<T> & lhs, initialized<T> & rhs 
+) {
   lhs.swap(rhs) ;
 }
 
@@ -205,22 +205,22 @@ class value_initialized
 
 template<class T>
 BOOST_GPU_ENABLED
-T const& get ( value_initialized<T> const& x )
-{
+T const& get ( value_initialized<T> const& x 
+) {
   return x.data() ;
 }
 
 template<class T>
 BOOST_GPU_ENABLED
-T& get ( value_initialized<T>& x )
-{
+T& get ( value_initialized<T>& x 
+) {
   return x.data() ;
 }
 
 template<class T>
 BOOST_GPU_ENABLED
-void swap ( value_initialized<T> & lhs, value_initialized<T> & rhs )
-{
+void swap ( value_initialized<T> & lhs, value_initialized<T> & rhs 
+) {
   lhs.swap(rhs) ;
 }
 

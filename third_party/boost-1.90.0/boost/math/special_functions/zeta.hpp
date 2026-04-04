@@ -65,8 +65,8 @@ struct zeta_series_cache_size
 };
 
 template <class T, class Policy>
-T zeta_series_imp(T s, T sc, const Policy&)
-{
+T zeta_series_imp(T s, T sc, const Policy&
+) {
    //
    // Series evaluation from:
    // Havil, J. Gamma: Exploring Euler's Constant.
@@ -127,8 +127,8 @@ private:
 };
 
 template <class T, class Policy>
-inline T zeta_series2_imp(T s, const Policy& pol)
-{
+inline T zeta_series2_imp(T s, const Policy& pol
+) {
    std::uintmax_t max_iter = policies::get_max_series_iterations<Policy>();;
    zeta_series2<T> f(s);
    T result = tools::sum_series(
@@ -141,8 +141,8 @@ inline T zeta_series2_imp(T s, const Policy& pol)
 #endif
 
 template <class T, class Policy>
-T zeta_polynomial_series(T s, T sc, Policy const &)
-{
+T zeta_polynomial_series(T s, T sc, Policy const &
+) {
    //
    // This is algorithm 3 from:
    //
@@ -176,8 +176,8 @@ T zeta_polynomial_series(T s, T sc, Policy const &)
 // MP only, verified as covered by the full tests:
 // LCOV_EXCL_START
 template <class T, class Policy>
-T zeta_imp_prec(T s, T sc, const Policy& pol, const std::integral_constant<int, 0>&)
-{
+T zeta_imp_prec(T s, T sc, const Policy& pol, const std::integral_constant<int, 0>&
+) {
    BOOST_MATH_STD_USING
    T result;
    if(s >= policies::digits<T, Policy>())
@@ -202,8 +202,8 @@ T zeta_imp_prec(T s, T sc, const Policy& pol, const std::integral_constant<int, 
 // LCOV_EXCL_STOP
 
 template <class T, class Policy>
-inline T zeta_imp_prec(T s, T sc, const Policy&, const std::integral_constant<int, 53>&)
-{
+inline T zeta_imp_prec(T s, T sc, const Policy&, const std::integral_constant<int, 53>&
+) {
    BOOST_MATH_STD_USING
    T result;
    if(s < 1)
@@ -383,8 +383,8 @@ inline T zeta_imp_prec(T s, T sc, const Policy&, const std::integral_constant<in
 }
 
 template <class T, class Policy>
-T zeta_imp_prec(T s, T sc, const Policy&, const std::integral_constant<int, 64>&)
-{
+T zeta_imp_prec(T s, T sc, const Policy&, const std::integral_constant<int, 64>&
+) {
    BOOST_MATH_STD_USING
    T result;
    if(s < 1)
@@ -573,8 +573,8 @@ T zeta_imp_prec(T s, T sc, const Policy&, const std::integral_constant<int, 64>&
 }
 
 template <class T, class Policy>
-T zeta_imp_prec(T s, T sc, const Policy&, const std::integral_constant<int, 113>&)
-{
+T zeta_imp_prec(T s, T sc, const Policy&, const std::integral_constant<int, 113>&
+) {
    BOOST_MATH_STD_USING
    T result;
    if(s < 1)
@@ -900,8 +900,8 @@ T zeta_imp_prec(T s, T sc, const Policy&, const std::integral_constant<int, 113>
 }
 
 template <class T, class Policy>
-T zeta_imp_odd_integer(int s, const T&, const Policy&, const std::true_type&)
-{
+T zeta_imp_odd_integer(int s, const T&, const Policy&, const std::true_type&
+) {
    // LCOV_EXCL_START
    static const T results[] = {
       BOOST_MATH_BIG_CONSTANT(T, 113, 1.2020569031595942853997381615114500), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0369277551433699263313654864570342), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0083492773819228268397975498497968), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0020083928260822144178527692324121), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0004941886041194645587022825264699), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0001227133475784891467518365263574), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000305882363070204935517285106451), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000076371976378997622736002935630), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000019082127165539389256569577951), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000004769329867878064631167196044), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000001192199259653110730677887189), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000298035035146522801860637051), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000074507117898354294919810042), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000018626597235130490064039099), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000004656629065033784072989233), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000001164155017270051977592974), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000291038504449709968692943), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000072759598350574810145209), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000018189896503070659475848), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000004547473783042154026799), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000001136868407680227849349), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000284217097688930185546), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000071054273952108527129), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000017763568435791203275), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000004440892103143813364), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000001110223025141066134), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000277555756213612417), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000069388939045441537), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000017347234760475766), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000004336808690020650), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000001084202172494241), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000271050543122347), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000067762635780452), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000016940658945098), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000004235164736273), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000001058791184068), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000000264697796017), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000000066174449004), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000000016543612251), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000000004135903063), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000000001033975766), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000000000258493941), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000000000064623485), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000000000016155871), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000000000004038968), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000000000001009742), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000000000000252435), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000000000000063109), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000000000000015777), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000000000000003944), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000000000000000986), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000000000000000247), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000000000000000062), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000000000000000015), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000000000000000004), BOOST_MATH_BIG_CONSTANT(T, 113, 1.0000000000000000000000000000000001),
@@ -911,8 +911,8 @@ T zeta_imp_odd_integer(int s, const T&, const Policy&, const std::true_type&)
 }
 
 template <class T, class Policy>
-T zeta_imp_odd_integer(int s, const T& sc, const Policy& pol, const std::false_type&)
-{
+T zeta_imp_odd_integer(int s, const T& sc, const Policy& pol, const std::false_type&
+) {
 #ifdef BOOST_MATH_NO_THREAD_LOCAL_WITH_NON_TRIVIAL_TYPES
    static_assert(std::is_trivially_destructible<T>::value, "Your platform does not support thread_local with non-trivial types, last checked with Mingw-x64-8.1, Jan 2021.  Please try a Mingw build with the POSIX threading model, see https://sourceforge.net/p/mingw-w64/bugs/527/");
 #endif
@@ -943,8 +943,8 @@ T zeta_imp_odd_integer(int s, const T& sc, const Policy& pol, const std::false_t
 }
 
 template <class T, class Policy, class Tag>
-T zeta_imp(T s, T sc, const Policy& pol, const Tag& tag)
-{
+T zeta_imp(T s, T sc, const Policy& pol, const Tag& tag
+) {
    BOOST_MATH_STD_USING
    static const char* function = "boost::math::zeta<%1%>";
    if(sc == 0)
@@ -1042,8 +1042,8 @@ T zeta_imp(T s, T sc, const Policy& pol, const Tag& tag)
 } // detail
 
 template <class T, class Policy>
-inline typename tools::promote_args<T>::type zeta(T s, const Policy&)
-{
+inline typename tools::promote_args<T>::type zeta(T s, const Policy&
+) {
    typedef typename tools::promote_args<T>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;
    typedef typename policies::precision<result_type, Policy>::type precision_type;
@@ -1068,8 +1068,8 @@ inline typename tools::promote_args<T>::type zeta(T s, const Policy&)
 }
 
 template <class T>
-inline typename tools::promote_args<T>::type zeta(T s)
-{
+inline typename tools::promote_args<T>::type zeta(T s
+) {
    return zeta(s, policies::policy<>());
 }
 

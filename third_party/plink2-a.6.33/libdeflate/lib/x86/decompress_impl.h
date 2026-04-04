@@ -43,8 +43,8 @@
 #define DEFAULT_IMPL	deflate_decompress_bmi2
 #else
 static inline decompress_func_t
-arch_select_decompress_func(void)
-{
+arch_select_decompress_func(void
+) {
 #ifdef deflate_decompress_bmi2
 	if (HAVE_BMI2(get_x86_cpu_features()))
 		return deflate_decompress_bmi2;

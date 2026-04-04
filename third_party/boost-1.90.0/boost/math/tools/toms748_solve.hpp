@@ -100,8 +100,8 @@ struct equal_nearest_integer
 namespace detail{
 
 template <class F, class T>
-BOOST_MATH_GPU_ENABLED void bracket(F f, T& a, T& b, T c, T& fa, T& fb, T& d, T& fd)
-{
+BOOST_MATH_GPU_ENABLED void bracket(F f, T& a, T& b, T c, T& fa, T& fb, T& d, T& fd
+) {
    //
    // Given a point c inside the existing enclosing interval
    // [a, b] sets a = c if f(c) == 0, otherwise finds the new 
@@ -164,8 +164,8 @@ BOOST_MATH_GPU_ENABLED void bracket(F f, T& a, T& b, T c, T& fa, T& fb, T& d, T&
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline T safe_div(T num, T denom, T r)
-{
+BOOST_MATH_GPU_ENABLED inline T safe_div(T num, T denom, T r
+) {
    //
    // return num / denom without overflow,
    // return r if overflow would occur.
@@ -181,8 +181,8 @@ BOOST_MATH_GPU_ENABLED inline T safe_div(T num, T denom, T r)
 }
 
 template <class T>
-BOOST_MATH_GPU_ENABLED inline T secant_interpolate(const T& a, const T& b, const T& fa, const T& fb)
-{
+BOOST_MATH_GPU_ENABLED inline T secant_interpolate(const T& a, const T& b, const T& fa, const T& fb
+) {
    //
    // Performs standard secant interpolation of [a,b] given
    // function evaluations f(a) and f(b).  Performs a bisection
@@ -204,8 +204,8 @@ BOOST_MATH_GPU_ENABLED inline T secant_interpolate(const T& a, const T& b, const
 template <class T>
 BOOST_MATH_GPU_ENABLED T quadratic_interpolate(const T& a, const T& b, T const& d,
                                                const T& fa, const T& fb, T const& fd, 
-                                               unsigned count)
-{
+                                               unsigned count
+) {
    //
    // Performs quadratic interpolation to determine the next point,
    // takes count Newton steps to find the location of the
@@ -260,8 +260,8 @@ BOOST_MATH_GPU_ENABLED T quadratic_interpolate(const T& a, const T& b, T const& 
 template <class T>
 BOOST_MATH_GPU_ENABLED T cubic_interpolate(const T& a, const T& b, const T& d, 
                                            const T& e, const T& fa, const T& fb, 
-                                           const T& fd, const T& fe)
-{
+                                           const T& fd, const T& fe
+) {
    //
    // Uses inverse cubic interpolation of f(x) at points 
    // [a,b,d,e] to obtain an approximate root of f(x).
@@ -307,8 +307,8 @@ BOOST_MATH_GPU_ENABLED T cubic_interpolate(const T& a, const T& b, const T& d,
 } // namespace detail
 
 template <class F, class T, class Tol, class Policy>
-BOOST_MATH_GPU_ENABLED boost::math::pair<T, T> toms748_solve(F f, const T& ax, const T& bx, const T& fax, const T& fbx, Tol tol, boost::math::uintmax_t& max_iter, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED boost::math::pair<T, T> toms748_solve(F f, const T& ax, const T& bx, const T& fax, const T& fbx, Tol tol, boost::math::uintmax_t& max_iter, const Policy& pol
+) {
    //
    // Main entry point and logic for Toms Algorithm 748
    // root finder.
@@ -490,14 +490,14 @@ BOOST_MATH_GPU_ENABLED boost::math::pair<T, T> toms748_solve(F f, const T& ax, c
 }
 
 template <class F, class T, class Tol>
-BOOST_MATH_GPU_ENABLED inline boost::math::pair<T, T> toms748_solve(F f, const T& ax, const T& bx, const T& fax, const T& fbx, Tol tol, boost::math::uintmax_t& max_iter)
-{
+BOOST_MATH_GPU_ENABLED inline boost::math::pair<T, T> toms748_solve(F f, const T& ax, const T& bx, const T& fax, const T& fbx, Tol tol, boost::math::uintmax_t& max_iter
+) {
    return toms748_solve(f, ax, bx, fax, fbx, tol, max_iter, policies::policy<>());
 }
 
 template <class F, class T, class Tol, class Policy>
-BOOST_MATH_GPU_ENABLED inline boost::math::pair<T, T> toms748_solve(F f, const T& ax, const T& bx, Tol tol, boost::math::uintmax_t& max_iter, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED inline boost::math::pair<T, T> toms748_solve(F f, const T& ax, const T& bx, Tol tol, boost::math::uintmax_t& max_iter, const Policy& pol
+) {
    if (max_iter <= 2)
       return boost::math::make_pair(ax, bx);
    max_iter -= 2;
@@ -507,14 +507,14 @@ BOOST_MATH_GPU_ENABLED inline boost::math::pair<T, T> toms748_solve(F f, const T
 }
 
 template <class F, class T, class Tol>
-BOOST_MATH_GPU_ENABLED inline boost::math::pair<T, T> toms748_solve(F f, const T& ax, const T& bx, Tol tol, boost::math::uintmax_t& max_iter)
-{
+BOOST_MATH_GPU_ENABLED inline boost::math::pair<T, T> toms748_solve(F f, const T& ax, const T& bx, Tol tol, boost::math::uintmax_t& max_iter
+) {
    return toms748_solve(f, ax, bx, tol, max_iter, policies::policy<>());
 }
 
 template <class F, class T, class Tol, class Policy>
-BOOST_MATH_GPU_ENABLED boost::math::pair<T, T> bracket_and_solve_root(F f, const T& guess, T factor, bool rising, Tol tol, boost::math::uintmax_t& max_iter, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED boost::math::pair<T, T> bracket_and_solve_root(F f, const T& guess, T factor, bool rising, Tol tol, boost::math::uintmax_t& max_iter, const Policy& pol
+) {
    BOOST_MATH_STD_USING
    constexpr auto function = "boost::math::tools::bracket_and_solve_root<%1%>";
    //
@@ -622,8 +622,8 @@ BOOST_MATH_GPU_ENABLED boost::math::pair<T, T> bracket_and_solve_root(F f, const
 }
 
 template <class F, class T, class Tol>
-BOOST_MATH_GPU_ENABLED inline boost::math::pair<T, T> bracket_and_solve_root(F f, const T& guess, const T& factor, bool rising, Tol tol, boost::math::uintmax_t& max_iter)
-{
+BOOST_MATH_GPU_ENABLED inline boost::math::pair<T, T> bracket_and_solve_root(F f, const T& guess, const T& factor, bool rising, Tol tol, boost::math::uintmax_t& max_iter
+) {
    return bracket_and_solve_root(f, guess, factor, rising, tol, max_iter, policies::policy<>());
 }
 

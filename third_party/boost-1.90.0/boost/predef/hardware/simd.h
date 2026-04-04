@@ -36,8 +36,8 @@ To check if any SIMD extension has been enabled, you can use:
 #include <boost/predef/hardware/simd.h>
 #include <iostream>
 
-int main()
-{
+int main(
+) {
 #if defined(BOOST_HW_SIMD_AVAILABLE)
     std::cout << "SIMD detected!" << std::endl;
 #endif
@@ -59,8 +59,8 @@ To check if an extension has been enabled:
 #include <boost/predef/hardware/simd.h>
 #include <iostream>
 
-int main()
-{
+int main(
+) {
 #if BOOST_HW_SIMD_X86 >= BOOST_HW_SIMD_X86_SSE3_VERSION
     std::cout << "This is SSE3!" << std::endl;
 #endif
@@ -79,8 +79,8 @@ To *"strictly"* check the most recent detected extension:
 #include <boost/predef/hardware/simd.h>
 #include <iostream>
 
-int main()
-{
+int main(
+) {
 #if BOOST_HW_SIMD_X86 == BOOST_HW_SIMD_X86_SSE3_VERSION
     std::cout << "This is SSE3 and this is the most recent enabled extension!"
         << std::endl;
@@ -97,8 +97,8 @@ extensions macros, you can easily check for ranges of supported extensions:
 #include <boost/predef/hardware/simd.h>
 #include <iostream>
 
-int main()
-{
+int main(
+) {
 #if BOOST_HW_SIMD_X86 >= BOOST_HW_SIMD_X86_SSE2_VERSION &&\
     BOOST_HW_SIMD_X86 <= BOOST_HW_SIMD_X86_SSSE3_VERSION
     std::cout << "This is SSE2, SSE3 and SSSE3!" << std::endl;

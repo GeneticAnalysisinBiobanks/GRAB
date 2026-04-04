@@ -272,15 +272,15 @@ struct kolmogorov_smirnov_negative_pdf_functor
 } // namespace detail
 
 template <class RealType, class Policy>
-inline const std::pair<RealType, RealType> range(const kolmogorov_smirnov_distribution<RealType, Policy>& /*dist*/)
-{ // Range of permissible values for random variable x.
+inline const std::pair<RealType, RealType> range(const kolmogorov_smirnov_distribution<RealType, Policy>& /*dist*/
+) { // Range of permissible values for random variable x.
    using boost::math::tools::max_value;
    return std::pair<RealType, RealType>(static_cast<RealType>(0), max_value<RealType>());
 }
 
 template <class RealType, class Policy>
-inline const std::pair<RealType, RealType> support(const kolmogorov_smirnov_distribution<RealType, Policy>& /*dist*/)
-{ // Range of supported values for random variable x.
+inline const std::pair<RealType, RealType> support(const kolmogorov_smirnov_distribution<RealType, Policy>& /*dist*/
+) { // Range of supported values for random variable x.
    // This is range where cdf rises from 0 to 1, and outside it, the pdf is zero.
    // In the exact distribution, the upper limit would be 1.
    using boost::math::tools::max_value;
@@ -288,8 +288,8 @@ inline const std::pair<RealType, RealType> support(const kolmogorov_smirnov_dist
 }
 
 template <class RealType, class Policy>
-inline RealType pdf(const kolmogorov_smirnov_distribution<RealType, Policy>& dist, const RealType& x)
-{
+inline RealType pdf(const kolmogorov_smirnov_distribution<RealType, Policy>& dist, const RealType& x
+) {
    BOOST_FPU_EXCEPTION_GUARD
    BOOST_MATH_STD_USING  // for ADL of std functions.
 
@@ -316,8 +316,8 @@ inline RealType pdf(const kolmogorov_smirnov_distribution<RealType, Policy>& dis
 } // pdf
 
 template <class RealType, class Policy>
-inline RealType cdf(const kolmogorov_smirnov_distribution<RealType, Policy>& dist, const RealType& x)
-{
+inline RealType cdf(const kolmogorov_smirnov_distribution<RealType, Policy>& dist, const RealType& x
+) {
     BOOST_MATH_STD_USING // for ADL of std function exp.
    static const char* function = "boost::math::cdf(const kolmogorov_smirnov_distribution<%1%>&, %1%)";
    RealType error_result;
@@ -365,8 +365,8 @@ inline RealType cdf(const complemented2_type<kolmogorov_smirnov_distribution<Rea
 } // cdf (complemented)
 
 template <class RealType, class Policy>
-inline RealType quantile(const kolmogorov_smirnov_distribution<RealType, Policy>& dist, const RealType& p)
-{
+inline RealType quantile(const kolmogorov_smirnov_distribution<RealType, Policy>& dist, const RealType& p
+) {
     BOOST_MATH_STD_USING
    static const char* function = "boost::math::quantile(const kolmogorov_smirnov_distribution<%1%>&, %1%)";
    // Error check:
@@ -423,8 +423,8 @@ inline RealType quantile(const complemented2_type<kolmogorov_smirnov_distributio
 } // quantile (complemented)
 
 template <class RealType, class Policy>
-inline RealType mode(const kolmogorov_smirnov_distribution<RealType, Policy>& dist)
-{
+inline RealType mode(const kolmogorov_smirnov_distribution<RealType, Policy>& dist
+) {
     BOOST_MATH_STD_USING
    static const char* function = "boost::math::mode(const kolmogorov_smirnov_distribution<%1%>&)";
    RealType n = dist.number_of_observations();
@@ -441,8 +441,8 @@ inline RealType mode(const kolmogorov_smirnov_distribution<RealType, Policy>& di
 // Mean and variance come directly from
 // https://www.jstatsoft.org/article/view/v008i18 Section 3
 template <class RealType, class Policy>
-inline RealType mean(const kolmogorov_smirnov_distribution<RealType, Policy>& dist)
-{
+inline RealType mean(const kolmogorov_smirnov_distribution<RealType, Policy>& dist
+) {
     BOOST_MATH_STD_USING
    static const char* function = "boost::math::mean(const kolmogorov_smirnov_distribution<%1%>&)";
     RealType n = dist.number_of_observations();
@@ -453,8 +453,8 @@ inline RealType mean(const kolmogorov_smirnov_distribution<RealType, Policy>& di
 }
 
 template <class RealType, class Policy>
-inline RealType variance(const kolmogorov_smirnov_distribution<RealType, Policy>& dist)
-{
+inline RealType variance(const kolmogorov_smirnov_distribution<RealType, Policy>& dist
+) {
    static const char* function = "boost::math::variance(const kolmogorov_smirnov_distribution<%1%>&)";
     RealType n = dist.number_of_observations();
     RealType error_result;
@@ -467,8 +467,8 @@ inline RealType variance(const kolmogorov_smirnov_distribution<RealType, Policy>
 // Skewness and kurtosis come from integrating the PDF
 // The alternating series pops out a Dirichlet eta function which is related to the zeta function
 template <class RealType, class Policy>
-inline RealType skewness(const kolmogorov_smirnov_distribution<RealType, Policy>& dist)
-{
+inline RealType skewness(const kolmogorov_smirnov_distribution<RealType, Policy>& dist
+) {
     BOOST_MATH_STD_USING
    static const char* function = "boost::math::skewness(const kolmogorov_smirnov_distribution<%1%>&)";
     RealType n = dist.number_of_observations();
@@ -482,8 +482,8 @@ inline RealType skewness(const kolmogorov_smirnov_distribution<RealType, Policy>
 }
 
 template <class RealType, class Policy>
-inline RealType kurtosis(const kolmogorov_smirnov_distribution<RealType, Policy>& dist)
-{
+inline RealType kurtosis(const kolmogorov_smirnov_distribution<RealType, Policy>& dist
+) {
     BOOST_MATH_STD_USING
    static const char* function = "boost::math::kurtosis(const kolmogorov_smirnov_distribution<%1%>&)";
     RealType n = dist.number_of_observations();
@@ -498,8 +498,8 @@ inline RealType kurtosis(const kolmogorov_smirnov_distribution<RealType, Policy>
 }
 
 template <class RealType, class Policy>
-inline RealType kurtosis_excess(const kolmogorov_smirnov_distribution<RealType, Policy>& dist)
-{
+inline RealType kurtosis_excess(const kolmogorov_smirnov_distribution<RealType, Policy>& dist
+) {
    static const char* function = "boost::math::kurtosis_excess(const kolmogorov_smirnov_distribution<%1%>&)";
     RealType n = dist.number_of_observations();
     RealType error_result;

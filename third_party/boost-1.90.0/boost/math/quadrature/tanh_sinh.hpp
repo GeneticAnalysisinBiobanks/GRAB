@@ -59,8 +59,8 @@ private:
 
 template<class Real, class Policy>
 template<class F>
-auto tanh_sinh<Real, Policy>::integrate(const F f, Real a, Real b, Real tolerance, Real* error, Real* L1, std::size_t* levels) const ->decltype(std::declval<F>()(std::declval<Real>()))
-{
+auto tanh_sinh<Real, Policy>::integrate(const F f, Real a, Real b, Real tolerance, Real* error, Real* L1, std::size_t* levels) const ->decltype(std::declval<F>()(std::declval<Real>())
+) {
     BOOST_MATH_STD_USING
     using boost::math::constants::half;
     using boost::math::quadrature::detail::tanh_sinh_detail;
@@ -224,8 +224,8 @@ auto tanh_sinh<Real, Policy>::integrate(const F f, Real a, Real b, Real toleranc
 
 template<class Real, class Policy>
 template<class F>
-auto tanh_sinh<Real, Policy>::integrate(const F f, Real a, Real b, Real tolerance, Real* error, Real* L1, std::size_t* levels) const ->decltype(std::declval<F>()(std::declval<Real>(), std::declval<Real>()))
-{
+auto tanh_sinh<Real, Policy>::integrate(const F f, Real a, Real b, Real tolerance, Real* error, Real* L1, std::size_t* levels) const ->decltype(std::declval<F>()(std::declval<Real>(), std::declval<Real>())
+) {
    BOOST_MATH_STD_USING
       using boost::math::constants::half;
    using boost::math::quadrature::detail::tanh_sinh_detail;
@@ -265,8 +265,8 @@ auto tanh_sinh<Real, Policy>::integrate(const F f, Real a, Real b, Real toleranc
 
 template<class Real, class Policy>
 template<class F>
-auto tanh_sinh<Real, Policy>::integrate(const F f, Real tolerance, Real* error, Real* L1, std::size_t* levels) const ->decltype(std::declval<F>()(std::declval<Real>()))
-{
+auto tanh_sinh<Real, Policy>::integrate(const F f, Real tolerance, Real* error, Real* L1, std::size_t* levels) const ->decltype(std::declval<F>()(std::declval<Real>())
+) {
    using boost::math::quadrature::detail::tanh_sinh_detail;
    static const char* function = "tanh_sinh<%1%>::integrate";
    Real min_complement = tools::epsilon<Real>();
@@ -275,8 +275,8 @@ auto tanh_sinh<Real, Policy>::integrate(const F f, Real tolerance, Real* error, 
 
 template<class Real, class Policy>
 template<class F>
-auto tanh_sinh<Real, Policy>::integrate(const F f, Real tolerance, Real* error, Real* L1, std::size_t* levels) const ->decltype(std::declval<F>()(std::declval<Real>(), std::declval<Real>()))
-{
+auto tanh_sinh<Real, Policy>::integrate(const F f, Real tolerance, Real* error, Real* L1, std::size_t* levels) const ->decltype(std::declval<F>()(std::declval<Real>(), std::declval<Real>())
+) {
    using boost::math::quadrature::detail::tanh_sinh_detail;
    static const char* function = "tanh_sinh<%1%>::integrate";
    Real min_complement = tools::min_value<Real>() * 4;

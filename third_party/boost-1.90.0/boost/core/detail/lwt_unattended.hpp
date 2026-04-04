@@ -20,8 +20,8 @@ namespace detail
 // Setup unattended mode by disabling interactive popups on
 // assertion failures
 
-inline void lwt_unattended()
-{
+inline void lwt_unattended(
+) {
 #if defined(_MSC_VER) && (_MSC_VER > 1310)
 
     // disable message boxes on assert(), abort()

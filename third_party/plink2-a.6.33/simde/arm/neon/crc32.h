@@ -34,8 +34,8 @@ SIMDE_DISABLE_UNWANTED_DIAGNOSTICS
 SIMDE_BEGIN_DECLS_
 
 SIMDE_FUNCTION_ATTRIBUTES
-uint64_t simde_crc32_reverseBits(uint64_t num, int num_of_bits)
-{
+uint64_t simde_crc32_reverseBits(uint64_t num, int num_of_bits
+) {
   uint64_t reverse_num = 0;
   for (int i = 0; i < num_of_bits; i++) {
     if (num & (1ULL << i))

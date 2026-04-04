@@ -40,8 +40,8 @@ template <typename T, typename Policy>
 BOOST_MATH_GPU_ENABLED T bessel_y0(T x, const Policy&);
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED T bessel_y0(T x, const Policy&)
-{
+BOOST_MATH_GPU_ENABLED T bessel_y0(T x, const Policy&
+) {
     BOOST_MATH_STATIC const T P1[] = {
          static_cast<T>(BOOST_MATH_BIG_CONSTANT(T, 64, 1.0723538782003176831e+11)),
         static_cast<T>(BOOST_MATH_BIG_CONSTANT(T, 64, -8.3716255451260504098e+09)),

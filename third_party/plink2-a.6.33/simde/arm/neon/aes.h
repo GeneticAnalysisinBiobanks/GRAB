@@ -34,8 +34,8 @@ HEDLEY_DIAGNOSTIC_PUSH
 SIMDE_DISABLE_UNWANTED_DIAGNOSTICS
 SIMDE_BEGIN_DECLS_
 
-static uint8_t simde_xtime(uint8_t x)
-{
+static uint8_t simde_xtime(uint8_t x
+) {
   return HEDLEY_STATIC_CAST(uint8_t, (x<<1) ^ (((x>>7) & 1) * 0x1b));
 }
 
@@ -165,8 +165,8 @@ simde_vaesmcq_u8(simde_uint8x16_t data) {
   #define vaesmcq_u8(data) simde_vaesmcq_u8((data))
 #endif
 
-static uint8_t Multiply(uint8_t x, uint8_t y)
-{
+static uint8_t Multiply(uint8_t x, uint8_t y
+) {
   return (((y & 1) * x) ^
        ((y>>1 & 1) * simde_xtime(x)) ^
        ((y>>2 & 1) * simde_xtime(simde_xtime(x))) ^

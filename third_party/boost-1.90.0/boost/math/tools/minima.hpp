@@ -27,8 +27,8 @@ BOOST_MATH_GPU_ENABLED boost::math::pair<T, T> brent_find_minima(F f, T min, T m
    #ifndef BOOST_MATH_HAS_GPU_SUPPORT
    && noexcept(std::declval<F>()(std::declval<T>()))
    #endif
-   )
-{
+   
+) {
    BOOST_MATH_STD_USING
    bits = (boost::math::min)(policies::digits<T, policies::policy<> >() / 2, bits);
    T tolerance = static_cast<T>(ldexp(1.0, 1-bits));
@@ -149,8 +149,8 @@ BOOST_MATH_GPU_ENABLED inline boost::math::pair<T, T> brent_find_minima(F f, T m
    #ifndef BOOST_MATH_HAS_GPU_SUPPORT
    && noexcept(std::declval<F>()(std::declval<T>()))
    #endif
-   )
-{
+   
+) {
    boost::math::uintmax_t m = (boost::math::numeric_limits<boost::math::uintmax_t>::max)();
    return brent_find_minima(f, min, max, digits, m);
 }

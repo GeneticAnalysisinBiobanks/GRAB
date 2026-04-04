@@ -18,8 +18,8 @@
 namespace boost { namespace math {
 
 template<typename Real>
-BOOST_MATH_GPU_ENABLED Real gegenbauer(unsigned n, Real lambda, Real x)
-{
+BOOST_MATH_GPU_ENABLED Real gegenbauer(unsigned n, Real lambda, Real x
+) {
     static_assert(!boost::math::is_integral<Real>::value, "Gegenbauer polynomials required floating point arguments.");
     if (lambda <= -1/Real(2)) {
 #ifndef BOOST_MATH_NO_EXCEPTIONS
@@ -60,8 +60,8 @@ BOOST_MATH_GPU_ENABLED Real gegenbauer(unsigned n, Real lambda, Real x)
 
 
 template<typename Real>
-BOOST_MATH_GPU_ENABLED Real gegenbauer_derivative(unsigned n, Real lambda, Real x, unsigned k)
-{
+BOOST_MATH_GPU_ENABLED Real gegenbauer_derivative(unsigned n, Real lambda, Real x, unsigned k
+) {
     if (k > n) {
         return Real(0);
     }

@@ -36,8 +36,8 @@ template<class T, class... A> false_type is_list_constructible_impl( ... );
 
 } // namespace type_traits_detail
 
-template<class T, class... A> struct is_list_constructible: decltype( type_traits_detail::is_list_constructible_impl<T, A...>(0) )
-{
+template<class T, class... A> struct is_list_constructible: decltype( type_traits_detail::is_list_constructible_impl<T, A...>(0) 
+) {
    BOOST_STATIC_ASSERT_MSG(boost::is_complete<T>::value, "Arguments to is_list_constructible must be complete types");
 };
 

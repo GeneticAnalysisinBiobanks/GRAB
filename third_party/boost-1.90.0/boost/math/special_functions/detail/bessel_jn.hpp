@@ -28,8 +28,8 @@
 namespace boost { namespace math { namespace detail{
 
 template <typename T, typename Policy>
-BOOST_MATH_GPU_ENABLED T bessel_jn(int n, T x, const Policy& pol)
-{
+BOOST_MATH_GPU_ENABLED T bessel_jn(int n, T x, const Policy& pol
+) {
     T value(0), factor, current, prev, next;
 
     BOOST_MATH_STD_USING

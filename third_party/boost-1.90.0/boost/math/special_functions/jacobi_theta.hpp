@@ -284,8 +284,8 @@ _IMAGINARY_jacobi_theta4tau(RealType z, RealType tau, const Policy&) {
 // = 2 * SUM (-1)^n * exp(i*Pi*Tau*(n+1/2)^2) * sin((2n+1)z)
 template <class RealType, class Policy>
 inline RealType
-jacobi_theta1tau_imp(RealType z, RealType tau, const Policy& pol, const char *function)
-{
+jacobi_theta1tau_imp(RealType z, RealType tau, const Policy& pol, const char *function
+) {
     BOOST_MATH_STD_USING
     unsigned n = 0;
     RealType eps = policies::get_epsilon<RealType, Policy>();
@@ -339,8 +339,8 @@ jacobi_theta1_imp(RealType z, RealType q, const Policy& pol, const char *functio
 // = 2 * SUM exp(i*Pi*Tau*(n+1/2)^2) * cos((2n+1)z)
 template <class RealType, class Policy>
 inline RealType
-jacobi_theta2tau_imp(RealType z, RealType tau, const Policy& pol, const char *function)
-{
+jacobi_theta2tau_imp(RealType z, RealType tau, const Policy& pol, const char *function
+) {
     BOOST_MATH_STD_USING
     unsigned n = 0;
     RealType eps = policies::get_epsilon<RealType, Policy>();
@@ -391,8 +391,8 @@ jacobi_theta2_imp(RealType z, RealType q, const Policy& pol, const char *functio
 // = 2 * SUM exp(i*Pi*Tau*(n)^2) * cos(2nz)
 template <class RealType, class Policy>
 inline RealType
-jacobi_theta3m1tau_imp(RealType z, RealType tau, const Policy& pol)
-{
+jacobi_theta3m1tau_imp(RealType z, RealType tau, const Policy& pol
+) {
     BOOST_MATH_STD_USING
 
     RealType eps = policies::get_epsilon<RealType, Policy>();
@@ -417,8 +417,8 @@ jacobi_theta3m1tau_imp(RealType z, RealType tau, const Policy& pol)
 // = 1 + 2 * SUM exp(i*Pi*Tau*(n)^2) * cos(2nz)
 template <class RealType, class Policy>
 inline RealType
-jacobi_theta3tau_imp(RealType z, RealType tau, const Policy& pol, const char *function)
-{
+jacobi_theta3tau_imp(RealType z, RealType tau, const Policy& pol, const char *function
+) {
     BOOST_MATH_STD_USING
     if (tau <= 0.0) {
         return policies::raise_domain_error<RealType>(function, "tau must be greater than 0 but got %1%.", tau, pol);
@@ -466,8 +466,8 @@ jacobi_theta3_imp(RealType z, RealType q, const Policy& pol, const char *functio
 // = 2 * SUM (-1)^n exp(i*Pi*Tau*(n)^2) * cos(2nz)
 template <class RealType, class Policy>
 inline RealType
-jacobi_theta4m1tau_imp(RealType z, RealType tau, const Policy& pol)
-{
+jacobi_theta4m1tau_imp(RealType z, RealType tau, const Policy& pol
+) {
     BOOST_MATH_STD_USING
 
     RealType eps = policies::get_epsilon<RealType, Policy>();
@@ -495,8 +495,8 @@ jacobi_theta4m1tau_imp(RealType z, RealType tau, const Policy& pol)
 // = 1 + 2 * SUM (-1)^n exp(i*Pi*Tau*(n)^2) * cos(2nz)
 template <class RealType, class Policy>
 inline RealType
-jacobi_theta4tau_imp(RealType z, RealType tau, const Policy& pol, const char *function)
-{
+jacobi_theta4tau_imp(RealType z, RealType tau, const Policy& pol, const char *function
+) {
     BOOST_MATH_STD_USING
     if (tau <= 0.0) {
         return policies::raise_domain_error<RealType>(function, "tau must be greater than 0 but got %1%.", tau, pol);

@@ -48,8 +48,8 @@ static inline char *RC_GetOutput(RangeCoder *rc) { return (char *)rc->out_buf; }
 static inline size_t RC_OutSize(RangeCoder *rc) { return rc->out_buf - rc->in_buf; }
 static inline size_t RC_InSize(RangeCoder *rc) { return rc->in_buf - rc->out_buf; }
 
-static inline void RC_StartEncode(RangeCoder *rc)
-{ 
+static inline void RC_StartEncode(RangeCoder *rc
+) { 
     rc->range = 0xFFFFFFFF;
     rc->low   = 0;
     rc->FFNum = 0;
@@ -59,8 +59,8 @@ static inline void RC_StartEncode(RangeCoder *rc)
     rc->err   = 0;
 }
 
-static inline void RC_StartDecode(RangeCoder *rc)
-{ 
+static inline void RC_StartDecode(RangeCoder *rc
+) { 
     rc->range = 0xFFFFFFFF;
     rc->low   = 0;
     rc->FFNum = 0;
@@ -120,8 +120,8 @@ static inline void RC_ShiftLow(RangeCoder *rc) {
     rc->low = rc->low<<8;
 }
 
-static inline int RC_FinishEncode(RangeCoder *rc)
-{ 
+static inline int RC_FinishEncode(RangeCoder *rc
+) { 
     DO(5) RC_ShiftLowCheck(rc);
     return rc->err;
 }

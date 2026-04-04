@@ -31,8 +31,8 @@ namespace boost { namespace integer {
 namespace gcd_detail {
 
 template <typename EuclideanDomain>
-inline EuclideanDomain Euclid_gcd(EuclideanDomain a, EuclideanDomain b) noexcept(std::is_arithmetic<EuclideanDomain>::value)
-{
+inline EuclideanDomain Euclid_gcd(EuclideanDomain a, EuclideanDomain b) noexcept(std::is_arithmetic<EuclideanDomain>::value
+) {
     using std::swap;
     while (b != EuclideanDomain(0))
     {
@@ -52,8 +52,8 @@ enum method_type
 } // gcd_detail
 
 template <typename Iter, typename T = typename std::iterator_traits<Iter>::value_type>
-std::pair<T, Iter> gcd_range(Iter first, Iter last) noexcept(std::is_arithmetic<T>::value)
-{
+std::pair<T, Iter> gcd_range(Iter first, Iter last) noexcept(std::is_arithmetic<T>::value
+) {
     BOOST_MATH_ASSERT(first != last);
 
     T d = *first;
@@ -107,30 +107,30 @@ namespace math{ namespace tools{
 */
 
 template <class T>
-T content(polynomial<T> const &x)
-{
+T content(polynomial<T> const &x
+) {
     return x ? boost::integer::gcd_range(x.data().begin(), x.data().end()).first : T(0);
 }
 
 // Knuth, 4.6.1
 template <class T>
-polynomial<T> primitive_part(polynomial<T> const &x, T const &cont)
-{
+polynomial<T> primitive_part(polynomial<T> const &x, T const &cont
+) {
     return x ? x / cont : polynomial<T>();
 }
 
 
 template <class T>
-polynomial<T> primitive_part(polynomial<T> const &x)
-{
+polynomial<T> primitive_part(polynomial<T> const &x
+) {
     return primitive_part(x, content(x));
 }
 
 
 // Trivial but useful convenience function referred to simply as l() in Knuth.
 template <class T>
-T leading_coefficient(polynomial<T> const &x)
-{
+T leading_coefficient(polynomial<T> const &x
+) {
     return x ? x.data().back() : T(0);
 }
 
@@ -174,8 +174,8 @@ namespace detail
 */
 template <class T>
 typename std::enable_if< std::numeric_limits<T>::is_integer, polynomial<T> >::type
-subresultant_gcd(polynomial<T> u, polynomial<T> v)
-{
+subresultant_gcd(polynomial<T> u, polynomial<T> v
+) {
     using std::swap;
     BOOST_MATH_ASSERT(u || v);
 
@@ -227,23 +227,23 @@ subresultant_gcd(polynomial<T> u, polynomial<T> v)
  */
 template <typename T>
 typename std::enable_if<std::numeric_limits<T>::is_integer && !std::numeric_limits<T>::is_bounded, polynomial<T> >::type
-gcd(polynomial<T> const &u, polynomial<T> const &v)
-{
+gcd(polynomial<T> const &u, polynomial<T> const &v
+) {
     return subresultant_gcd(u, v);
 }
 // GCD over bounded integers is not currently allowed:
 template <typename T>
 typename std::enable_if<std::numeric_limits<T>::is_integer && std::numeric_limits<T>::is_bounded, polynomial<T> >::type
-gcd(polynomial<T> const &u, polynomial<T> const &v)
-{
+gcd(polynomial<T> const &u, polynomial<T> const &v
+) {
    static_assert(sizeof(v) == 0, "GCD on polynomials of bounded integers is disallowed due to the excessive growth in the size of intermediate terms.");
    return subresultant_gcd(u, v);
 }
 // GCD over polynomials of floats can go via the Euclid algorithm:
 template <typename T>
 typename std::enable_if<!std::numeric_limits<T>::is_integer && (std::numeric_limits<T>::min_exponent != std::numeric_limits<T>::max_exponent) && !std::numeric_limits<T>::is_exact, polynomial<T> >::type
-gcd(polynomial<T> const &u, polynomial<T> const &v)
-{
+gcd(polynomial<T> const &u, polynomial<T> const &v
+) {
     return boost::integer::gcd_detail::Euclid_gcd(u, v);
 }
 

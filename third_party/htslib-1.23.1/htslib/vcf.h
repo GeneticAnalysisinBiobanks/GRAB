@@ -1491,22 +1491,22 @@ HTSLIB_EXPORT
 extern uint32_t bcf_float_vector_end;
 HTSLIB_EXPORT
 extern uint32_t bcf_float_missing;
-static inline void bcf_float_set(float *ptr, uint32_t value)
-{
+static inline void bcf_float_set(float *ptr, uint32_t value
+) {
     union { uint32_t i; float f; } u;
     u.i = value;
     *ptr = u.f;
 }
 #define bcf_float_set_vector_end(x) bcf_float_set(&(x),bcf_float_vector_end)
 #define bcf_float_set_missing(x)    bcf_float_set(&(x),bcf_float_missing)
-static inline int bcf_float_is_missing(float f)
-{
+static inline int bcf_float_is_missing(float f
+) {
     union { uint32_t i; float f; } u;
     u.f = f;
     return u.i==bcf_float_missing ? 1 : 0;
 }
-static inline int bcf_float_is_vector_end(float f)
-{
+static inline int bcf_float_is_vector_end(float f
+) {
     union { uint32_t i; float f; } u;
     u.f = f;
     return u.i==bcf_float_vector_end ? 1 : 0;
@@ -1528,13 +1528,13 @@ HTSLIB_EXPORT
 int bcf_format_gt_v2(const bcf_hdr_t *hdr, bcf_fmt_t *fmt, int isample,
     kstring_t *str) HTS_RESULT_USED;
 
-static inline int bcf_format_gt(bcf_fmt_t *fmt, int isample, kstring_t *str)
-{
+static inline int bcf_format_gt(bcf_fmt_t *fmt, int isample, kstring_t *str
+) {
     return bcf_format_gt_v2(NULL, fmt, isample, str);
 }
 
-static inline int bcf_enc_size(kstring_t *s, int size, int type)
-{
+static inline int bcf_enc_size(kstring_t *s, int size, int type
+) {
     // Most common case is first
     if (size < 15) {
         if (ks_resize(s, s->l + 1) < 0)
@@ -1568,15 +1568,15 @@ static inline int bcf_enc_size(kstring_t *s, int size, int type)
     return 0;
 }
 
-static inline int bcf_enc_inttype(long x)
-{
+static inline int bcf_enc_inttype(long x
+) {
     if (x <= BCF_MAX_BT_INT8 && x >= BCF_MIN_BT_INT8) return BCF_BT_INT8;
     if (x <= BCF_MAX_BT_INT16 && x >= BCF_MIN_BT_INT16) return BCF_BT_INT16;
     return BCF_BT_INT32;
 }
 
-static inline int bcf_enc_int1(kstring_t *s, int32_t x)
-{
+static inline int bcf_enc_int1(kstring_t *s, int32_t x
+) {
     if (ks_resize(s, s->l + 5) < 0)
         return -1;
     uint8_t *p = (uint8_t *)s->s + s->l;
@@ -1623,8 +1623,8 @@ Cautious callers can detect invalid type codes by checking that *q has
 actually been updated.
 */
 
-static inline int64_t bcf_dec_int1(const uint8_t *p, int type, uint8_t **q)
-{
+static inline int64_t bcf_dec_int1(const uint8_t *p, int type, uint8_t **q
+) {
     if (type == BCF_BT_INT8) {
         *q = (uint8_t*)p + 1;
         return le_to_i8(p);
@@ -1658,13 +1658,13 @@ the integer value.
 Cautious callers can detect invalid type codes by checking that *q has
 actually been updated.
 */
-static inline int64_t bcf_dec_typed_int1(const uint8_t *p, uint8_t **q)
-{
+static inline int64_t bcf_dec_typed_int1(const uint8_t *p, uint8_t **q
+) {
     return bcf_dec_int1(p + 1, *p&0xf, q);
 }
 
-static inline int32_t bcf_dec_size(const uint8_t *p, uint8_t **q, int *type)
-{
+static inline int32_t bcf_dec_size(const uint8_t *p, uint8_t **q, int *type
+) {
     *type = *p & 0xf;
     if (*p>>4 != 15) {
         *q = (uint8_t*)p + 1;

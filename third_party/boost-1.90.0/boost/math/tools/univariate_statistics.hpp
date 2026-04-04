@@ -25,8 +25,8 @@ BOOST_MATH_HEADER_DEPRECATED("<boost/math/statistics/univariate_statistics.hpp>"
 namespace boost::math::tools {
 
 template<class ForwardIterator>
-auto mean(ForwardIterator first, ForwardIterator last)
-{
+auto mean(ForwardIterator first, ForwardIterator last
+) {
     using Real = typename std::iterator_traits<ForwardIterator>::value_type;
     BOOST_MATH_ASSERT_MSG(first != last, "At least one sample is required to compute the mean.");
     if constexpr (std::is_integral<Real>::value)
@@ -87,14 +87,14 @@ auto mean(ForwardIterator first, ForwardIterator last)
 }
 
 template<class Container>
-inline auto mean(Container const & v)
-{
+inline auto mean(Container const & v
+) {
     return mean(v.cbegin(), v.cend());
 }
 
 template<class ForwardIterator>
-auto variance(ForwardIterator first, ForwardIterator last)
-{
+auto variance(ForwardIterator first, ForwardIterator last
+) {
     using Real = typename std::iterator_traits<ForwardIterator>::value_type;
     BOOST_MATH_ASSERT_MSG(first != last, "At least one sample is required to compute mean and variance.");
     // Higham, Accuracy and Stability, equation 1.6a and 1.6b:
@@ -129,22 +129,22 @@ auto variance(ForwardIterator first, ForwardIterator last)
 }
 
 template<class Container>
-inline auto variance(Container const & v)
-{
+inline auto variance(Container const & v
+) {
     return variance(v.cbegin(), v.cend());
 }
 
 template<class ForwardIterator>
-auto sample_variance(ForwardIterator first, ForwardIterator last)
-{
+auto sample_variance(ForwardIterator first, ForwardIterator last
+) {
     size_t n = std::distance(first, last);
     BOOST_MATH_ASSERT_MSG(n > 1, "At least two samples are required to compute the sample variance.");
     return n*variance(first, last)/(n-1);
 }
 
 template<class Container>
-inline auto sample_variance(Container const & v)
-{
+inline auto sample_variance(Container const & v
+) {
     return sample_variance(v.cbegin(), v.cend());
 }
 
@@ -152,8 +152,8 @@ inline auto sample_variance(Container const & v)
 // Follows equation 1.5 of:
 // https://prod.sandia.gov/techlib-noauth/access-control.cgi/2008/086212.pdf
 template<class ForwardIterator>
-auto skewness(ForwardIterator first, ForwardIterator last)
-{
+auto skewness(ForwardIterator first, ForwardIterator last
+) {
     using Real = typename std::iterator_traits<ForwardIterator>::value_type;
     BOOST_MATH_ASSERT_MSG(first != last, "At least one sample is required to compute skewness.");
     if constexpr (std::is_integral<Real>::value)
@@ -211,16 +211,16 @@ auto skewness(ForwardIterator first, ForwardIterator last)
 }
 
 template<class Container>
-inline auto skewness(Container const & v)
-{
+inline auto skewness(Container const & v
+) {
     return skewness(v.cbegin(), v.cend());
 }
 
 // Follows equation 1.5/1.6 of:
 // https://prod.sandia.gov/techlib-noauth/access-control.cgi/2008/086212.pdf
 template<class ForwardIterator>
-auto first_four_moments(ForwardIterator first, ForwardIterator last)
-{
+auto first_four_moments(ForwardIterator first, ForwardIterator last
+) {
     using Real = typename std::iterator_traits<ForwardIterator>::value_type;
     BOOST_MATH_ASSERT_MSG(first != last, "At least one sample is required to compute the first four moments.");
     if constexpr (std::is_integral<Real>::value)
@@ -266,8 +266,8 @@ auto first_four_moments(ForwardIterator first, ForwardIterator last)
 }
 
 template<class Container>
-inline auto first_four_moments(Container const & v)
-{
+inline auto first_four_moments(Container const & v
+) {
     return first_four_moments(v.cbegin(), v.cend());
 }
 
@@ -275,8 +275,8 @@ inline auto first_four_moments(Container const & v)
 // Follows equation 1.6 of:
 // https://prod.sandia.gov/techlib-noauth/access-control.cgi/2008/086212.pdf
 template<class ForwardIterator>
-auto kurtosis(ForwardIterator first, ForwardIterator last)
-{
+auto kurtosis(ForwardIterator first, ForwardIterator last
+) {
     auto [M1, M2, M3, M4] = first_four_moments(first, last);
     if (M2 == 0)
     {
@@ -286,27 +286,27 @@ auto kurtosis(ForwardIterator first, ForwardIterator last)
 }
 
 template<class Container>
-inline auto kurtosis(Container const & v)
-{
+inline auto kurtosis(Container const & v
+) {
     return kurtosis(v.cbegin(), v.cend());
 }
 
 template<class ForwardIterator>
-auto excess_kurtosis(ForwardIterator first, ForwardIterator last)
-{
+auto excess_kurtosis(ForwardIterator first, ForwardIterator last
+) {
     return kurtosis(first, last) - 3;
 }
 
 template<class Container>
-inline auto excess_kurtosis(Container const & v)
-{
+inline auto excess_kurtosis(Container const & v
+) {
     return excess_kurtosis(v.cbegin(), v.cend());
 }
 
 
 template<class RandomAccessIterator>
-auto median(RandomAccessIterator first, RandomAccessIterator last)
-{
+auto median(RandomAccessIterator first, RandomAccessIterator last
+) {
     size_t num_elems = std::distance(first, last);
     BOOST_MATH_ASSERT_MSG(num_elems > 0, "The median of a zero length vector is undefined.");
     if (num_elems & 1)
@@ -326,14 +326,14 @@ auto median(RandomAccessIterator first, RandomAccessIterator last)
 
 
 template<class RandomAccessContainer>
-inline auto median(RandomAccessContainer & v)
-{
+inline auto median(RandomAccessContainer & v
+) {
     return median(v.begin(), v.end());
 }
 
 template<class RandomAccessIterator>
-auto gini_coefficient(RandomAccessIterator first, RandomAccessIterator last)
-{
+auto gini_coefficient(RandomAccessIterator first, RandomAccessIterator last
+) {
     using Real = typename std::iterator_traits<RandomAccessIterator>::value_type;
     BOOST_MATH_ASSERT_MSG(first != last && std::next(first) != last, "Computation of the Gini coefficient requires at least two samples.");
 
@@ -381,27 +381,27 @@ auto gini_coefficient(RandomAccessIterator first, RandomAccessIterator last)
 }
 
 template<class RandomAccessContainer>
-inline auto gini_coefficient(RandomAccessContainer & v)
-{
+inline auto gini_coefficient(RandomAccessContainer & v
+) {
     return gini_coefficient(v.begin(), v.end());
 }
 
 template<class RandomAccessIterator>
-inline auto sample_gini_coefficient(RandomAccessIterator first, RandomAccessIterator last)
-{
+inline auto sample_gini_coefficient(RandomAccessIterator first, RandomAccessIterator last
+) {
     size_t n = std::distance(first, last);
     return n*gini_coefficient(first, last)/(n-1);
 }
 
 template<class RandomAccessContainer>
-inline auto sample_gini_coefficient(RandomAccessContainer & v)
-{
+inline auto sample_gini_coefficient(RandomAccessContainer & v
+) {
     return sample_gini_coefficient(v.begin(), v.end());
 }
 
 template<class RandomAccessIterator>
-auto median_absolute_deviation(RandomAccessIterator first, RandomAccessIterator last, typename std::iterator_traits<RandomAccessIterator>::value_type center=std::numeric_limits<typename std::iterator_traits<RandomAccessIterator>::value_type>::quiet_NaN())
-{
+auto median_absolute_deviation(RandomAccessIterator first, RandomAccessIterator last, typename std::iterator_traits<RandomAccessIterator>::value_type center=std::numeric_limits<typename std::iterator_traits<RandomAccessIterator>::value_type>::quiet_NaN()
+) {
     using std::abs;
     using Real = typename std::iterator_traits<RandomAccessIterator>::value_type;
     using std::isnan;
@@ -428,8 +428,8 @@ auto median_absolute_deviation(RandomAccessIterator first, RandomAccessIterator 
 }
 
 template<class RandomAccessContainer>
-inline auto median_absolute_deviation(RandomAccessContainer & v, typename RandomAccessContainer::value_type center=std::numeric_limits<typename RandomAccessContainer::value_type>::quiet_NaN())
-{
+inline auto median_absolute_deviation(RandomAccessContainer & v, typename RandomAccessContainer::value_type center=std::numeric_limits<typename RandomAccessContainer::value_type>::quiet_NaN()
+) {
     return median_absolute_deviation(v.begin(), v.end(), center);
 }
 

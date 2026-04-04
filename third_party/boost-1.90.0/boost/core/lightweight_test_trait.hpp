@@ -31,8 +31,8 @@ namespace detail
 {
 
 template< class T > inline void test_trait_impl( char const * trait, void (*)( T ),
-  bool expected, char const * file, int line, char const * function )
-{
+  bool expected, char const * file, int line, char const * function 
+) {
     if( T::value == expected )
     {
         test_results();
@@ -50,14 +50,14 @@ template< class T > inline void test_trait_impl( char const * trait, void (*)( T
     }
 }
 
-template<class T> inline bool test_trait_same_impl_( T )
-{
+template<class T> inline bool test_trait_same_impl_( T 
+) {
     return T::value;
 }
 
 template<class T1, class T2> inline void test_trait_same_impl( char const * types,
-  boost::core::detail::is_same<T1, T2> same, char const * file, int line, char const * function )
-{
+  boost::core::detail::is_same<T1, T2> same, char const * file, int line, char const * function 
+) {
     if( test_trait_same_impl_( same ) )
     {
         test_results();

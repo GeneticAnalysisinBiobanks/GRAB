@@ -14,8 +14,8 @@
 namespace boost{ namespace math{ namespace detail{
 
 template <class T>
-inline std::uint64_t round_x_from_p(std::uint64_t x, T p, T cum, T fudge_factor, std::uint64_t lbound, std::uint64_t /*ubound*/, const policies::discrete_quantile<policies::integer_round_down>&)
-{
+inline std::uint64_t round_x_from_p(std::uint64_t x, T p, T cum, T fudge_factor, std::uint64_t lbound, std::uint64_t /*ubound*/, const policies::discrete_quantile<policies::integer_round_down>&
+) {
    if((p < cum * fudge_factor) && (x != lbound))
    {
       BOOST_MATH_INSTRUMENT_VARIABLE(x-1);
@@ -25,8 +25,8 @@ inline std::uint64_t round_x_from_p(std::uint64_t x, T p, T cum, T fudge_factor,
 }
 
 template <class T>
-inline std::uint64_t round_x_from_p(std::uint64_t x, T p, T cum, T fudge_factor, std::uint64_t /*lbound*/, std::uint64_t ubound, const policies::discrete_quantile<policies::integer_round_up>&)
-{
+inline std::uint64_t round_x_from_p(std::uint64_t x, T p, T cum, T fudge_factor, std::uint64_t /*lbound*/, std::uint64_t ubound, const policies::discrete_quantile<policies::integer_round_up>&
+) {
    if((cum < p * fudge_factor) && (x != ubound))
    {
       BOOST_MATH_INSTRUMENT_VARIABLE(x+1);
@@ -36,30 +36,30 @@ inline std::uint64_t round_x_from_p(std::uint64_t x, T p, T cum, T fudge_factor,
 }
 
 template <class T>
-inline std::uint64_t round_x_from_p(std::uint64_t x, T p, T cum, T fudge_factor, std::uint64_t lbound, std::uint64_t ubound, const policies::discrete_quantile<policies::integer_round_inwards>&)
-{
+inline std::uint64_t round_x_from_p(std::uint64_t x, T p, T cum, T fudge_factor, std::uint64_t lbound, std::uint64_t ubound, const policies::discrete_quantile<policies::integer_round_inwards>&
+) {
    if(p >= 0.5)
       return round_x_from_p(x, p, cum, fudge_factor, lbound, ubound, policies::discrete_quantile<policies::integer_round_down>());
    return round_x_from_p(x, p, cum, fudge_factor, lbound, ubound, policies::discrete_quantile<policies::integer_round_up>());
 }
 
 template <class T>
-inline std::uint64_t round_x_from_p(std::uint64_t x, T p, T cum, T fudge_factor, std::uint64_t lbound, std::uint64_t ubound, const policies::discrete_quantile<policies::integer_round_outwards>&)
-{
+inline std::uint64_t round_x_from_p(std::uint64_t x, T p, T cum, T fudge_factor, std::uint64_t lbound, std::uint64_t ubound, const policies::discrete_quantile<policies::integer_round_outwards>&
+) {
    if(p >= 0.5)
       return round_x_from_p(x, p, cum, fudge_factor, lbound, ubound, policies::discrete_quantile<policies::integer_round_up>());
    return round_x_from_p(x, p, cum, fudge_factor, lbound, ubound, policies::discrete_quantile<policies::integer_round_down>());
 }
 
 template <class T>
-inline std::uint64_t round_x_from_p(std::uint64_t x, T /*p*/, T /*cum*/, T /*fudge_factor*/, std::uint64_t /*lbound*/, std::uint64_t /*ubound*/, const policies::discrete_quantile<policies::integer_round_nearest>&)
-{
+inline std::uint64_t round_x_from_p(std::uint64_t x, T /*p*/, T /*cum*/, T /*fudge_factor*/, std::uint64_t /*lbound*/, std::uint64_t /*ubound*/, const policies::discrete_quantile<policies::integer_round_nearest>&
+) {
    return x;
 }
 
 template <class T>
-inline std::uint64_t round_x_from_q(std::uint64_t x, T q, T cum, T fudge_factor, std::uint64_t lbound, std::uint64_t /*ubound*/, const policies::discrete_quantile<policies::integer_round_down>&)
-{
+inline std::uint64_t round_x_from_q(std::uint64_t x, T q, T cum, T fudge_factor, std::uint64_t lbound, std::uint64_t /*ubound*/, const policies::discrete_quantile<policies::integer_round_down>&
+) {
    if((q * fudge_factor > cum) && (x != lbound))
    {
       BOOST_MATH_INSTRUMENT_VARIABLE(x-1);
@@ -69,8 +69,8 @@ inline std::uint64_t round_x_from_q(std::uint64_t x, T q, T cum, T fudge_factor,
 }
 
 template <class T>
-inline std::uint64_t round_x_from_q(std::uint64_t x, T q, T cum, T fudge_factor, std::uint64_t /*lbound*/, std::uint64_t ubound, const policies::discrete_quantile<policies::integer_round_up>&)
-{
+inline std::uint64_t round_x_from_q(std::uint64_t x, T q, T cum, T fudge_factor, std::uint64_t /*lbound*/, std::uint64_t ubound, const policies::discrete_quantile<policies::integer_round_up>&
+) {
    if((q < cum * fudge_factor) && (x != ubound))
    {
       BOOST_MATH_INSTRUMENT_VARIABLE(x+1);
@@ -80,30 +80,30 @@ inline std::uint64_t round_x_from_q(std::uint64_t x, T q, T cum, T fudge_factor,
 }
 
 template <class T>
-inline std::uint64_t round_x_from_q(std::uint64_t x, T q, T cum, T fudge_factor, std::uint64_t lbound, std::uint64_t ubound, const policies::discrete_quantile<policies::integer_round_inwards>&)
-{
+inline std::uint64_t round_x_from_q(std::uint64_t x, T q, T cum, T fudge_factor, std::uint64_t lbound, std::uint64_t ubound, const policies::discrete_quantile<policies::integer_round_inwards>&
+) {
    if(q < 0.5)
       return round_x_from_q(x, q, cum, fudge_factor, lbound, ubound, policies::discrete_quantile<policies::integer_round_down>());
    return round_x_from_q(x, q, cum, fudge_factor, lbound, ubound, policies::discrete_quantile<policies::integer_round_up>());
 }
 
 template <class T>
-inline std::uint64_t round_x_from_q(std::uint64_t x, T q, T cum, T fudge_factor, std::uint64_t lbound, std::uint64_t ubound, const policies::discrete_quantile<policies::integer_round_outwards>&)
-{
+inline std::uint64_t round_x_from_q(std::uint64_t x, T q, T cum, T fudge_factor, std::uint64_t lbound, std::uint64_t ubound, const policies::discrete_quantile<policies::integer_round_outwards>&
+) {
    if(q >= 0.5)
       return round_x_from_q(x, q, cum, fudge_factor, lbound, ubound, policies::discrete_quantile<policies::integer_round_down>());
    return round_x_from_q(x, q, cum, fudge_factor, lbound, ubound, policies::discrete_quantile<policies::integer_round_up>());
 }
 
 template <class T>
-inline std::uint64_t round_x_from_q(std::uint64_t x, T /*q*/, T /*cum*/, T /*fudge_factor*/, std::uint64_t /*lbound*/, std::uint64_t /*ubound*/, const policies::discrete_quantile<policies::integer_round_nearest>&)
-{
+inline std::uint64_t round_x_from_q(std::uint64_t x, T /*q*/, T /*cum*/, T /*fudge_factor*/, std::uint64_t /*lbound*/, std::uint64_t /*ubound*/, const policies::discrete_quantile<policies::integer_round_nearest>&
+) {
    return x;
 }
 
 template <class T, class Policy>
-std::uint64_t hypergeometric_quantile_imp(T p, T q, std::uint64_t r, std::uint64_t n, std::uint64_t N, const Policy& pol)
-{
+std::uint64_t hypergeometric_quantile_imp(T p, T q, std::uint64_t r, std::uint64_t n, std::uint64_t N, const Policy& pol
+) {
 #ifdef _MSC_VER
 #  pragma warning(push)
 #  pragma warning(disable:4267)
@@ -225,8 +225,8 @@ std::uint64_t hypergeometric_quantile_imp(T p, T q, std::uint64_t r, std::uint64
 }
 
 template <class T, class Policy>
-inline std::uint64_t hypergeometric_quantile(T p, T q, std::uint64_t r, std::uint64_t n, std::uint64_t N, const Policy&)
-{
+inline std::uint64_t hypergeometric_quantile(T p, T q, std::uint64_t r, std::uint64_t n, std::uint64_t N, const Policy&
+) {
    BOOST_FPU_EXCEPTION_GUARD
    typedef typename tools::promote_args<T>::type result_type;
    typedef typename policies::evaluation<result_type, Policy>::type value_type;

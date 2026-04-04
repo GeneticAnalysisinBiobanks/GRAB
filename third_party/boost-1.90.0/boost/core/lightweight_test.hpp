@@ -79,19 +79,19 @@ private:
     int errors_;
 };
 
-inline test_result& test_results()
-{
+inline test_result& test_results(
+) {
     static test_result instance;
     return instance;
 }
 
-inline int& test_errors()
-{
+inline int& test_errors(
+) {
     return test_results().errors();
 }
 
-inline bool test_impl(char const * expr, char const * file, int line, char const * function, bool v)
-{
+inline bool test_impl(char const * expr, char const * file, int line, char const * function, bool v
+) {
     if( v )
     {
         test_results();
@@ -107,32 +107,32 @@ inline bool test_impl(char const * expr, char const * file, int line, char const
     }
 }
 
-inline void error_impl(char const * msg, char const * file, int line, char const * function)
-{
+inline void error_impl(char const * msg, char const * file, int line, char const * function
+) {
     BOOST_LIGHTWEIGHT_TEST_OSTREAM
       << file << "(" << line << "): " << msg << " in function '"
       << function << "'" << std::endl;
     ++test_results().errors();
 }
 
-inline void throw_failed_impl(const char* expr, char const * excep, char const * file, int line, char const * function)
-{
+inline void throw_failed_impl(const char* expr, char const * excep, char const * file, int line, char const * function
+) {
    BOOST_LIGHTWEIGHT_TEST_OSTREAM
     << file << "(" << line << "): expression '" << expr << "' did not throw exception '" << excep << "' in function '"
     << function << "'" << std::endl;
    ++test_results().errors();
 }
 
-inline void no_throw_failed_impl(const char* expr, const char* file, int line, const char* function)
-{
+inline void no_throw_failed_impl(const char* expr, const char* file, int line, const char* function
+) {
     BOOST_LIGHTWEIGHT_TEST_OSTREAM
         << file << "(" << line << "): expression '" << expr << "' threw an exception in function '"
         << function << "'" << std::endl;
    ++test_results().errors();
 }
 
-inline void no_throw_failed_impl(const char* expr, const char* what, const char* file, int line, const char* function)
-{
+inline void no_throw_failed_impl(const char* expr, const char* what, const char* file, int line, const char* function
+) {
     BOOST_LIGHTWEIGHT_TEST_OSTREAM
         << file << "(" << line << "): expression '" << expr << "' threw an exception in function '"
         << function << "': " << what << std::endl;
@@ -191,8 +191,8 @@ inline unsigned long test_output_impl( char16_t const& v ) { return v; }
 inline unsigned long test_output_impl( char32_t const& v ) { return v; }
 #endif
 
-inline std::string test_output_impl( char const& v )
-{
+inline std::string test_output_impl( char const& v 
+) {
     if( std::isprint( static_cast<unsigned char>( v ) ) )
     {
         return std::string( 1, v );
@@ -250,38 +250,38 @@ struct lw_test_ge
 
 // lwt_predicate_name
 
-template<class T> char const * lwt_predicate_name( T const& )
-{
+template<class T> char const * lwt_predicate_name( T const& 
+) {
     return "~=";
 }
 
-inline char const * lwt_predicate_name( lw_test_eq const& )
-{
+inline char const * lwt_predicate_name( lw_test_eq const& 
+) {
     return "==";
 }
 
-inline char const * lwt_predicate_name( lw_test_ne const& )
-{
+inline char const * lwt_predicate_name( lw_test_ne const& 
+) {
     return "!=";
 }
 
-inline char const * lwt_predicate_name( lw_test_lt const& )
-{
+inline char const * lwt_predicate_name( lw_test_lt const& 
+) {
     return "<";
 }
 
-inline char const * lwt_predicate_name( lw_test_le const& )
-{
+inline char const * lwt_predicate_name( lw_test_le const& 
+) {
     return "<=";
 }
 
-inline char const * lwt_predicate_name( lw_test_gt const& )
-{
+inline char const * lwt_predicate_name( lw_test_gt const& 
+) {
     return ">";
 }
 
-inline char const * lwt_predicate_name( lw_test_ge const& )
-{
+inline char const * lwt_predicate_name( lw_test_ge const& 
+) {
     return ">=";
 }
 
@@ -290,8 +290,8 @@ inline char const * lwt_predicate_name( lw_test_ge const& )
 template<class BinaryPredicate, class T, class U>
 inline bool test_with_impl(BinaryPredicate pred, char const * expr1, char const * expr2,
                            char const * file, int line, char const * function,
-                           T const & t, U const & u)
-{
+                           T const & t, U const & u
+) {
     if( pred(t, u) )
     {
         test_results();
@@ -309,8 +309,8 @@ inline bool test_with_impl(BinaryPredicate pred, char const * expr1, char const 
 }
 
 inline bool test_cstr_eq_impl( char const * expr1, char const * expr2,
-  char const * file, int line, char const * function, char const * const t, char const * const u )
-{
+  char const * file, int line, char const * function, char const * const t, char const * const u 
+) {
     if( std::strcmp(t, u) == 0 )
     {
         test_results();
@@ -327,8 +327,8 @@ inline bool test_cstr_eq_impl( char const * expr1, char const * expr2,
 }
 
 inline bool test_cstr_ne_impl( char const * expr1, char const * expr2,
-  char const * file, int line, char const * function, char const * const t, char const * const u )
-{
+  char const * file, int line, char const * function, char const * const t, char const * const u 
+) {
     if( std::strcmp(t, u) != 0 )
     {
         test_results();
@@ -348,8 +348,8 @@ template<class FormattedOutputFunction, class InputIterator1, class InputIterato
 bool test_all_eq_impl(FormattedOutputFunction& output,
                       char const * file, int line, char const * function,
                       InputIterator1 first_begin, InputIterator1 first_end,
-                      InputIterator2 second_begin, InputIterator2 second_end)
-{
+                      InputIterator2 second_begin, InputIterator2 second_end
+) {
     InputIterator1 first_it = first_begin;
     InputIterator2 second_it = second_begin;
     typename std::iterator_traits<InputIterator1>::difference_type first_index = 0;
@@ -419,8 +419,8 @@ bool test_all_with_impl(FormattedOutputFunction& output,
                         char const * file, int line, char const * function,
                         InputIterator1 first_begin, InputIterator1 first_end,
                         InputIterator2 second_begin, InputIterator2 second_end,
-                        BinaryPredicate predicate)
-{
+                        BinaryPredicate predicate
+) {
     InputIterator1 first_it = first_begin;
     InputIterator2 second_it = second_begin;
     typename std::iterator_traits<InputIterator1>::difference_type first_index = 0;
@@ -497,8 +497,8 @@ bool test_all_with_impl(FormattedOutputFunction& output,
 
 } // namespace detail
 
-inline int report_errors()
-{
+inline int report_errors(
+) {
     boost::detail::test_result& result = boost::detail::test_results();
     result.done();
 
@@ -522,8 +522,8 @@ inline int report_errors()
 namespace core
 {
 
-inline void lwt_init()
-{
+inline void lwt_init(
+) {
     boost::detail::test_results();
 }
 

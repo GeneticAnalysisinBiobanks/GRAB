@@ -89,8 +89,8 @@ private:
 };
 
 template<class Point, class RandomAccessContainer >
-catmull_rom<Point, RandomAccessContainer>::catmull_rom(RandomAccessContainer&& points, bool closed, typename Point::value_type alpha) : m_pnts(std::move(points))
-{
+catmull_rom<Point, RandomAccessContainer>::catmull_rom(RandomAccessContainer&& points, bool closed, typename Point::value_type alpha) : m_pnts(std::move(points)
+) {
     std::size_t num_pnts = m_pnts.size();
     //std::cout << "Number of points = " << num_pnts << "\n";
     if (num_pnts < 4)

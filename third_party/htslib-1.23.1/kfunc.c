@@ -36,8 +36,8 @@
  * \log{\Gamma(z)}
  * AS245, 2nd algorithm, http://lib.stat.cmu.edu/apstat/245
  */
-double kf_lgamma(double z)
-{
+double kf_lgamma(double z
+) {
 	double x = 0;
 	x += 0.1659470187408462e-06 / (z+7);
 	x += 0.9934937113930748e-05 / (z+6);
@@ -55,8 +55,8 @@ double kf_lgamma(double z)
  * \frac{2}{\sqrt{\pi}} \int_x^{\infty} e^{-t^2} dt
  * AS66, 2nd algorithm, http://lib.stat.cmu.edu/apstat/66
  */
-double kf_erfc(double x)
-{
+double kf_erfc(double x
+) {
 	const double p0 = 220.2068679123761;
 	const double p1 = 221.2135961699311;
 	const double p2 = 112.0792914978709;
@@ -100,8 +100,8 @@ double kf_erfc(double x)
 #define KF_TINY 1e-290
 
 // regularized lower incomplete gamma function, by series expansion
-static double _kf_gammap(double s, double z)
-{
+static double _kf_gammap(double s, double z
+) {
 	double sum, x;
 	int k;
 	for (k = 1, sum = x = 1.; k < 100; ++k) {
@@ -111,8 +111,8 @@ static double _kf_gammap(double s, double z)
 	return exp(s * log(z) - z - kf_lgamma(s + 1.) + log(sum));
 }
 // regularized upper incomplete gamma function, by continued fraction
-static double _kf_gammaq(double s, double z)
-{
+static double _kf_gammaq(double s, double z
+) {
 	int j;
 	double C, D, f;
 	f = 1. + z - s; C = f; D = 0.;
@@ -132,13 +132,13 @@ static double _kf_gammaq(double s, double z)
 	return exp(s * log(z) - z - kf_lgamma(s) - log(f));
 }
 
-double kf_gammap(double s, double z)
-{
+double kf_gammap(double s, double z
+) {
 	return z <= 1. || z < s? _kf_gammap(s, z) : 1. - _kf_gammaq(s, z);
 }
 
-double kf_gammaq(double s, double z)
-{
+double kf_gammaq(double s, double z
+) {
 	return z <= 1. || z < s? 1. - _kf_gammap(s, z) : _kf_gammaq(s, z);
 }
 
@@ -149,8 +149,8 @@ double kf_gammaq(double s, double z)
  *
  *   http://www.danielsoper.com/statcalc/calc36.aspx
  */
-static double kf_betai_aux(double a, double b, double x)
-{
+static double kf_betai_aux(double a, double b, double x
+) {
 	double C, D, f;
 	int j;
 	if (x == 0.) return 0.;
@@ -173,15 +173,15 @@ static double kf_betai_aux(double a, double b, double x)
 	}
 	return exp(kf_lgamma(a+b) - kf_lgamma(a) - kf_lgamma(b) + a * log(x) + b * log(1.-x)) / a / f;
 }
-double kf_betai(double a, double b, double x)
-{
+double kf_betai(double a, double b, double x
+) {
 	return x < (a + 1.) / (a + b + 2.)? kf_betai_aux(a, b, x) : 1. - kf_betai_aux(b, a, 1. - x);
 }
 
 #ifdef KF_MAIN
 #include <stdio.h>
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]
+) {
 	double x = 5.5, y = 3;
 	double a, b;
 	printf("erfc(%lg): %lg, %lg\n", x, erfc(x), kf_erfc(x));
@@ -194,8 +194,8 @@ int main(int argc, char *argv[])
 
 
 // log\binom{n}{k}
-static double lbinom(int n, int k)
-{
+static double lbinom(int n, int k
+) {
     if (k == 0 || n == k) return 0;
     return lgamma(n+1) - lgamma(k+1) - lgamma(n-k+1);
 }
@@ -206,8 +206,8 @@ static double lbinom(int n, int k)
 // n_1  n_2  | n
 
 // hypergeometric distribution
-static double hypergeo(int n11, int n1_, int n_1, int n)
-{
+static double hypergeo(int n11, int n1_, int n_1, int n
+) {
     return exp(lbinom(n1_, n11) + lbinom(n-n1_, n_1-n11) - lbinom(n, n_1));
 }
 
@@ -217,8 +217,8 @@ typedef struct {
 } hgacc_t;
 
 // incremental version of hypergenometric distribution
-static double hypergeo_acc(int n11, int n1_, int n_1, int n, hgacc_t *aux)
-{
+static double hypergeo_acc(int n11, int n1_, int n_1, int n, hgacc_t *aux
+) {
     if (n1_ || n_1 || n) {
         aux->n11 = n11; aux->n1_ = n1_; aux->n_1 = n_1; aux->n = n;
     } else { // then only n11 changed; the rest fixed
@@ -242,8 +242,8 @@ static double hypergeo_acc(int n11, int n1_, int n_1, int n, hgacc_t *aux)
     return aux->p;
 }
 
-double kt_fisher_exact(int n11, int n12, int n21, int n22, double *_left, double *_right, double *two)
-{
+double kt_fisher_exact(int n11, int n12, int n21, int n22, double *_left, double *_right, double *two
+) {
     int i, j, max, min;
     double p, q, left, right;
     hgacc_t aux;
