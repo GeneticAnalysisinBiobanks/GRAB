@@ -5,12 +5,40 @@
 #include "util/text_scanner.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
+
+
+// ══════════════════════════════════════════════════════════════════════
+// isMissingToken — recognise standard missing-value representations
+// ══════════════════════════════════════════════════════════════════════
+
+static bool isMissingToken(const std::string& s) {
+  if (s.empty()) return true;
+  if (s == ".") return true;
+  // NA / Na / na / nA
+  if (s.size() == 2 &&
+      (s[0]=='N'||s[0]=='n') && (s[1]=='A'||s[1]=='a')) return true;
+  // NaN / nan / Nan / NAN
+  if (s.size() == 3 &&
+      (s[0]=='N'||s[0]=='n') && (s[1]=='A'||s[1]=='a') &&
+      (s[2]=='N'||s[2]=='n')) return true;
+  // N/A / n/a
+  if (s.size() == 3 &&
+      (s[0]=='N'||s[0]=='n') && s[1]=='/' &&
+      (s[2]=='A'||s[2]=='a')) return true;
+  // NULL / null / Null
+  if (s.size() == 4 &&
+      (s[0]=='N'||s[0]=='n') && (s[1]=='U'||s[1]=='u') &&
+      (s[2]=='L'||s[2]=='l') && (s[3]=='L'||s[3]=='l')) return true;
+  return false;
+}
 
 
 // ══════════════════════════════════════════════════════════════════════
@@ -174,13 +202,18 @@ SubjectData::RawFile SubjectData::parseIIDFile(
 
       rf.iids.push_back(tokens[iidCol]);
       for (int ci : valCols) {
-        char* ep;
-        double v = std::strtod(tokens[ci].c_str(), &ep);
-        if (ep == tokens[ci].c_str())
-          throw std::runtime_error(
-              filename + " line " + std::to_string(lineNo) +
-              ": non-numeric value in column " + std::to_string(ci + 1));
-        rf.vals.push_back(v);
+        const std::string& tok = tokens[ci];
+        if (isMissingToken(tok)) {
+          rf.vals.push_back(std::numeric_limits<double>::quiet_NaN());
+        } else {
+          char* ep;
+          double v = std::strtod(tok.c_str(), &ep);
+          if (ep == tok.c_str())
+            throw std::runtime_error(
+                filename + " line " + std::to_string(lineNo) +
+                ": non-numeric value in column " + std::to_string(ci + 1));
+          rf.vals.push_back(v);
+        }
       }
     }
   } else {
@@ -195,15 +228,25 @@ SubjectData::RawFile SubjectData::parseIIDFile(
       while (p < end) {
         while (p < end && (*p == ' ' || *p == '\t')) ++p;
         if (p >= end) break;
-        char* next;
-        double v = std::strtod(p, &next);
-        if (next == p)
-          throw std::runtime_error(
-              filename + " line " + std::to_string(lno) +
-              ": non-numeric value");
-        rf.vals.push_back(v);
-        ++colsThisRow;
-        p = next;
+        // Scan token boundary, check for missing value
+        const char* tokEnd = p;
+        while (tokEnd < end && *tokEnd != ' ' && *tokEnd != '\t') ++tokEnd;
+        std::string tok(p, tokEnd);
+        if (isMissingToken(tok)) {
+          rf.vals.push_back(std::numeric_limits<double>::quiet_NaN());
+          ++colsThisRow;
+          p = tokEnd;
+        } else {
+          char* next;
+          double v = std::strtod(p, &next);
+          if (next == p)
+            throw std::runtime_error(
+                filename + " line " + std::to_string(lno) +
+                ": non-numeric value");
+          rf.vals.push_back(v);
+          ++colsThisRow;
+          p = next;
+        }
       }
 
       uint32_t rowIdx = static_cast<uint32_t>(rf.iids.size());
@@ -356,15 +399,25 @@ void SubjectData::loadCovar(const std::string& filename) {
       while (p < end) {
         while (p < end && (*p == ' ' || *p == '\t')) ++p;
         if (p >= end) break;
-        char* next;
-        double v = std::strtod(p, &next);
-        if (next == p)
-          throw std::runtime_error(
-              filename + " line " + std::to_string(lineNo2) +
-              ": non-numeric value in numeric matrix");
-        rf.vals.push_back(v);
-        ++colsThisRow;
-        p = next;
+        // Scan token; check for missing value before strtod
+        const char* tokEnd2 = p;
+        while (tokEnd2 < end && *tokEnd2 != ' ' && *tokEnd2 != '\t') ++tokEnd2;
+        std::string tok2(p, tokEnd2);
+        if (isMissingToken(tok2)) {
+          rf.vals.push_back(std::numeric_limits<double>::quiet_NaN());
+          ++colsThisRow;
+          p = tokEnd2;
+        } else {
+          char* next;
+          double v = std::strtod(p, &next);
+          if (next == p)
+            throw std::runtime_error(
+                filename + " line " + std::to_string(lineNo2) +
+                ": non-numeric value in numeric matrix");
+          rf.vals.push_back(v);
+          ++colsThisRow;
+          p = next;
+        }
       }
 
       uint32_t rowIdx = static_cast<uint32_t>(rf.iids.size());
@@ -381,6 +434,31 @@ void SubjectData::loadCovar(const std::string& filename) {
     }
     if (rf.iids.empty())
       throw std::runtime_error(filename + ": no data rows");
+
+    // Fill NaN with column mean (noIID path)
+    {
+      const size_t nRows = rf.iids.size();
+      for (int ci = 0; ci < rf.nCols; ++ci) {
+        double sum = 0.0; size_t cnt = 0;
+        for (size_t ri = 0; ri < nRows; ++ri) {
+          double v = rf.vals[ri * rf.nCols + ci];
+          if (!std::isnan(v)) { sum += v; ++cnt; }
+        }
+        if (cnt == 0)
+          throw std::runtime_error(
+              filename + ": covariate column " + std::to_string(ci + 1) +
+              " has all missing values");
+        double mean = sum / static_cast<double>(cnt);
+        uint32_t nFilled = 0;
+        for (size_t ri = 0; ri < nRows; ++ri) {
+          double& v = rf.vals[ri * rf.nCols + ci];
+          if (std::isnan(v)) { v = mean; ++nFilled; }
+        }
+        if (nFilled > 0)
+          infoMsg("--covar col%d: filled %u missing values with mean %.6f",
+                  ci + 1, nFilled, mean);
+      }
+    }
 
     m_rawCovar    = std::move(rf);
     m_hasRawCovar = true;
@@ -416,18 +494,48 @@ void SubjectData::loadCovar(const std::string& filename) {
 
     rf.iids.push_back(tokens[iidCol]);
     for (int ci : covarCols) {
-      char* end;
-      double v = std::strtod(tokens[ci].c_str(), &end);
-      if (end == tokens[ci].c_str())
-        throw std::runtime_error(
-            filename + " line " + std::to_string(lineNo) +
-            ": non-numeric covariate value: " + tokens[ci]);
-      rf.vals.push_back(v);
+      const std::string& tok = tokens[ci];
+      if (isMissingToken(tok)) {
+        rf.vals.push_back(std::numeric_limits<double>::quiet_NaN());
+      } else {
+        char* endp;
+        double v = std::strtod(tok.c_str(), &endp);
+        if (endp == tok.c_str())
+          throw std::runtime_error(
+              filename + " line " + std::to_string(lineNo) +
+              ": non-numeric covariate value: " + tok);
+        rf.vals.push_back(v);
+      }
     }
   }
 
   if (rf.iids.empty())
     throw std::runtime_error(filename + ": no data rows");
+
+  // Fill NaN with column mean (IID path)
+  {
+    const size_t nRows = rf.iids.size();
+    for (int ci = 0; ci < rf.nCols; ++ci) {
+      double sum = 0.0; size_t cnt = 0;
+      for (size_t ri = 0; ri < nRows; ++ri) {
+        double v = rf.vals[ri * rf.nCols + ci];
+        if (!std::isnan(v)) { sum += v; ++cnt; }
+      }
+      if (cnt == 0)
+        throw std::runtime_error(
+            filename + ": covariate column '" + rf.colNames[ci] +
+            "' has all missing values");
+      double mean = sum / static_cast<double>(cnt);
+      uint32_t nFilled = 0;
+      for (size_t ri = 0; ri < nRows; ++ri) {
+        double& v = rf.vals[ri * rf.nCols + ci];
+        if (std::isnan(v)) { v = mean; ++nFilled; }
+      }
+      if (nFilled > 0)
+        infoMsg("--covar %s: filled %u missing values with mean %.6f",
+                rf.colNames[ci].c_str(), nFilled, mean);
+    }
+  }
 
   m_rawCovar    = std::move(rf);
   m_hasRawCovar = true;
@@ -628,6 +736,24 @@ void SubjectData::finalize() {
   if (m_hasRawCovar)  covarMap  = text::buildIIDMap(m_rawCovar.iids);
   if (m_hasRawPheno)  phenoMap  = text::buildIIDMap(m_rawPheno.iids);
 
+  // ── Log NaN counts in residual file per column ─────────────────────
+  if (m_hasRawResid) {
+    const int nc = m_rawResid.nCols;
+    const size_t nRows = m_rawResid.iids.size();
+    for (int c = 0; c < nc; ++c) {
+      uint32_t nNaN = 0;
+      for (size_t r = 0; r < nRows; ++r)
+        if (std::isnan(m_rawResid.vals[r * nc + c])) ++nNaN;
+      if (nNaN > 0) {
+        std::string cname = (nc == 1) ? "null-resid"
+            : (!m_residColNames.empty() && c < (int)m_residColNames.size()
+               ? m_residColNames[c] : "col" + std::to_string(c + 1));
+        infoMsg("--null-resid %s: %u subjects with missing values (excluded)",
+                cname.c_str(), nNaN);
+      }
+    }
+  }
+
   // ── Intersect with .fam, build bitmask ─────────────────────────────
   const uint32_t nWords = (m_nFam + 63) / 64;
   m_usedMask.assign(nWords, 0ULL);
@@ -638,7 +764,25 @@ void SubjectData::finalize() {
 
   for (uint32_t f = 0; f < m_nFam; ++f) {
     const auto& iid = m_famIIDs[f];
-    if (m_hasRawResid  && residMap.find(iid)  == residMap.end())  continue;
+    if (m_hasRawResid) {
+      auto it = residMap.find(iid);
+      if (it == residMap.end()) continue;
+      const int nc = m_rawResid.nCols;
+      const uint32_t rr = it->second;
+      if (m_residType == ResidType::One && nc > 1) {
+        // Union mask: include subject if ANY residual column is non-NaN
+        bool anyNonNaN = false;
+        for (int c = 0; c < nc; ++c)
+          if (!std::isnan(m_rawResid.vals[rr * nc + c])) { anyNonNaN = true; break; }
+        if (!anyNonNaN) continue;
+      } else {
+        // Single-column, WtCoxG, or SPAsqr: all columns must be non-NaN
+        bool hasNaN = false;
+        for (int c = 0; c < nc; ++c)
+          if (std::isnan(m_rawResid.vals[rr * nc + c])) { hasNaN = true; break; }
+        if (hasNaN) continue;
+      }
+    }
     if (m_hasRawCovar  && covarMap.find(iid)  == covarMap.end())  continue;
     if (m_hasRawPheno  && phenoMap.find(iid)  == phenoMap.end())  continue;
     // Subject passes all loaded-file checks
@@ -646,6 +790,7 @@ void SubjectData::finalize() {
     usedFamIndices.push_back(f);
   }
   m_nUsed = static_cast<uint32_t>(usedFamIndices.size());
+  m_usedFamIndices = usedFamIndices;
 
   if (m_nUsed == 0)
     throw std::runtime_error("SubjectData: no subjects remain after intersection with .fam");
@@ -735,6 +880,18 @@ void SubjectData::finalize() {
     m_phenoColNames = m_rawPheno.colNames;
     for (int c = 0; c < static_cast<int>(m_phenoColNames.size()); ++c)
       m_phenoColMap[m_phenoColNames[c]] = c;
+    // Log per-column NA counts (subjects will be dropped when column is used)
+    for (int c = 0; c < nc; ++c) {
+      uint32_t nNaN = 0;
+      for (Eigen::Index i = 0; i < N; ++i)
+        if (std::isnan(m_phenoData(i, c))) ++nNaN;
+      if (nNaN > 0) {
+        const std::string& cname = (c < (int)m_phenoColNames.size())
+            ? m_phenoColNames[c] : ("col" + std::to_string(c + 1));
+        infoMsg("--pheno column '%s': %u subjects with missing values",
+                cname.c_str(), nNaN);
+      }
+    }
   }
 
   // ── Build column name maps for covar ───────────────────────────────
@@ -750,6 +907,42 @@ void SubjectData::finalize() {
   m_rawPheno  = RawFile{};
 
   m_finalized = true;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// Per-phenotype masks for multi-residual GWAS
+// ══════════════════════════════════════════════════════════════════════
+
+std::vector<PerPhenoInfo> SubjectData::buildPerColumnMasks() const {
+  const int K = m_nResidOneCols;
+  if (K == 0)
+    throw std::runtime_error("buildPerColumnMasks: no ResidOne columns loaded");
+
+  std::vector<PerPhenoInfo> infos(K);
+
+  for (int c = 0; c < K; ++c) {
+    auto& info = infos[c];
+    info.name = (c < static_cast<int>(m_residColNames.size()))
+                ? m_residColNames[c]
+                : "R" + std::to_string(c + 1);
+    info.unionToLocal.resize(m_nUsed, UINT32_MAX);
+
+    uint32_t localIdx = 0;
+    if (K == 1) {
+      // Single column — all union subjects are in this phenotype
+      for (uint32_t i = 0; i < m_nUsed; ++i)
+        info.unionToLocal[i] = i;
+      localIdx = m_nUsed;
+    } else {
+      for (uint32_t i = 0; i < m_nUsed; ++i) {
+        if (!std::isnan(m_residMatrix(static_cast<Eigen::Index>(i), c)))
+          info.unionToLocal[i] = localIdx++;
+      }
+    }
+    info.nUsed = localIdx;
+  }
+  return infos;
 }
 
 
@@ -797,6 +990,117 @@ void SubjectData::fillColumnsInto(
     throw std::runtime_error(
         "SubjectData::fillColumnsInto: column '" + names[i] + "' not found");
   }
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// dropNaInColumns — post-finalize NA filtering for selected pheno columns
+// ══════════════════════════════════════════════════════════════════════
+
+void SubjectData::dropNaInColumns(const std::vector<std::string>& colNames) {
+  if (!m_finalized)
+    throw std::runtime_error("dropNaInColumns called before finalize");
+  if (colNames.empty()) return;
+
+  // Reconstruct compact-index → .fam-index mapping by scanning bitmask
+  std::vector<uint32_t> famIdxOfCompact;
+  famIdxOfCompact.reserve(m_nUsed);
+  for (uint32_t w = 0; w < static_cast<uint32_t>(m_usedMask.size()); ++w) {
+    for (int b = 0; b < 64; ++b) {
+      if (m_usedMask[w] & (1ULL << b))
+        famIdxOfCompact.push_back(w * 64u + static_cast<uint32_t>(b));
+    }
+  }
+
+  // Build per-subject keep mask (false = has NaN in at least one requested column)
+  std::vector<bool> keep(m_nUsed, true);
+  for (const auto& name : colNames) {
+    auto itC = m_covarColMap.find(name);
+    auto itP = m_phenoColMap.find(name);
+    if (itC != m_covarColMap.end()) {
+      for (uint32_t i = 0; i < m_nUsed; ++i)
+        if (std::isnan(m_covar(i, itC->second))) keep[i] = false;
+    } else if (itP != m_phenoColMap.end()) {
+      for (uint32_t i = 0; i < m_nUsed; ++i)
+        if (std::isnan(m_phenoData(i, itP->second))) keep[i] = false;
+    } else {
+      throw std::runtime_error(
+          "dropNaInColumns: column '" + name + "' not found in pheno/covar data");
+    }
+  }
+
+  // Count dropped and log
+  uint32_t nDrop = 0;
+  for (uint32_t i = 0; i < m_nUsed; ++i)
+    if (!keep[i]) ++nDrop;
+  if (nDrop == 0) return;
+
+  uint32_t nNew = m_nUsed - nDrop;
+  if (nNew == 0) {
+    std::string colLabel;
+    for (size_t k = 0; k < colNames.size(); ++k) {
+      if (k) colLabel += '/';
+      colLabel += colNames[k];
+    }
+    throw std::runtime_error(
+        "dropNaInColumns: all subjects removed due to missing values in " + colLabel);
+  }
+
+  std::string colLabel;
+  for (size_t k = 0; k < colNames.size(); ++k) {
+    if (k) colLabel += '/';
+    colLabel += colNames[k];
+  }
+  infoMsg("Removed %u subjects with missing %s; N = %u remaining",
+          nDrop, colLabel.c_str(), nNew);
+
+  // Collect indices to keep and rebuild bitmask
+  std::vector<uint32_t> keepIdx;
+  keepIdx.reserve(nNew);
+  const uint32_t nWords = (m_nFam + 63) / 64;
+  m_usedMask.assign(nWords, 0ULL);
+  for (uint32_t i = 0; i < m_nUsed; ++i) {
+    if (!keep[i]) continue;
+    keepIdx.push_back(i);
+    uint32_t fi = famIdxOfCompact[i];
+    m_usedMask[fi / 64] |= 1ULL << (fi % 64);
+  }
+
+  const Eigen::Index nN = static_cast<Eigen::Index>(nNew);
+
+  // Re-filter all dense arrays
+  if (m_phenoData.rows() > 0) {
+    Eigen::MatrixXd tmp(nN, m_phenoData.cols());
+    for (Eigen::Index i = 0; i < nN; ++i) tmp.row(i) = m_phenoData.row(keepIdx[i]);
+    m_phenoData = std::move(tmp);
+  }
+  if (m_covar.rows() > 0) {
+    Eigen::MatrixXd tmp(nN, m_covar.cols());
+    for (Eigen::Index i = 0; i < nN; ++i) tmp.row(i) = m_covar.row(keepIdx[i]);
+    m_covar = std::move(tmp);
+  }
+  if (m_residuals.size() > 0) {
+    Eigen::VectorXd tmp(nN);
+    for (Eigen::Index i = 0; i < nN; ++i) tmp[i] = m_residuals[keepIdx[i]];
+    m_residuals = std::move(tmp);
+  }
+  if (m_weights.size() > 0) {
+    Eigen::VectorXd tmp(nN);
+    for (Eigen::Index i = 0; i < nN; ++i) tmp[i] = m_weights[keepIdx[i]];
+    m_weights = std::move(tmp);
+  }
+  if (m_indicator.size() > 0) {
+    Eigen::VectorXd tmp(nN);
+    for (Eigen::Index i = 0; i < nN; ++i) tmp[i] = m_indicator[keepIdx[i]];
+    m_indicator = std::move(tmp);
+  }
+  if (m_residMatrix.rows() > 0) {
+    Eigen::MatrixXd tmp(nN, m_residMatrix.cols());
+    for (Eigen::Index i = 0; i < nN; ++i) tmp.row(i) = m_residMatrix.row(keepIdx[i]);
+    m_residMatrix = std::move(tmp);
+  }
+
+  m_nUsed = nNew;
 }
 
 

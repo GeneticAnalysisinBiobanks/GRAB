@@ -30,6 +30,7 @@ struct Args {
     std::string pairwiseIBDFile;
     std::string outputFile;
     std::string outPrefix;            // --out-prefix (GWAS multi-resid / --make-abed)
+    std::string compression;          // --compression (gz|zst, default: empty = plain text)
     std::string extractFile;        // --extract (SNP include list)
     std::string excludeFile;        // --exclude (SNP exclude list)
     std::string admixBfilePrefix;   // --admix-bfile
@@ -52,6 +53,7 @@ struct Args {
     double outlierAbsBound   = 0.55;
     int    nthread           = 1;
     int    nSnpPerChunk      = 8192;
+    int    compressionLevel  = 0;       // --compression-level (0 = library default)
     int    nClusters         = 0;       // 0 = auto (from --ref-af count)
     uint64_t seed             = 0;       // 0 = use std::random_device
 };

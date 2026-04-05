@@ -573,6 +573,8 @@ static void runUnifiedGWAS(
     double mafCutoff,
     double macCutoff,
     const std::string& outputFile,
+    const std::string& compression,
+    int compressionLevel,
     int nthreads
 ) {
     const int K = admixData.nAncestries();
@@ -595,7 +597,9 @@ static void runUnifiedGWAS(
     }
     header += '\n';
 
-    TextWriter out(outputFile);
+    TextWriter out(outputFile,
+                   TextWriter::modeFromString(compression),
+                   compressionLevel);
     out.write(header);
 
     // Parallel processing using chunks
@@ -827,8 +831,9 @@ void runSPAmixLocalPlus(
     const std::string& residFile,
     const std::string& admixPrefix,
     const std::string& admixPhiFile,
-    const std::string& outputFile,
     const std::string& outPrefix,
+    const std::string& compression,
+    int compressionLevel,
     double spaCutoff,
     double outlierRatio,
     int nthread,
@@ -859,37 +864,36 @@ void runSPAmixLocalPlus(
     // Load phi from wide file (all ancestries at once)
     auto allPhi = readPhiWide(admixPhiFile, K);
 
-    // Per-residual-column loop (same pattern as SPACox)
+    // Per-residual-column loop
     const int nRC = sd.residOneCols();
-    const bool multiMode = !outPrefix.empty();
-    const int nLoop = multiMode ? nRC : 1;
-    if (nRC > 1 && multiMode)
-        infoMsg("Multi-column residual file: %d columns", nRC);
-    if (nRC > 1 && !multiMode)
-        infoMsg("Multi-column residual file: %d columns (--out: using column 1 only)", nRC);
+    if (nRC > 1) infoMsg("Multi-column residual file: %d phenotypes", nRC);
 
-    for (int rc = 0; rc < nLoop; ++rc) {
-        Eigen::VectorXd colBuf;
-        if (nRC > 1) colBuf = sd.residMatrix().col(rc);
-        const Eigen::VectorXd& resid = (nRC > 1) ? colBuf : sd.residuals();
+    auto phenoInfos = sd.buildPerColumnMasks();
 
-        std::string outFile = multiMode
-            ? (outPrefix + "." + std::to_string(rc + 1) + ".tsv")
-            : outputFile;
-        if (nLoop > 1)
-            infoMsg("  Column %d/%d%s -> %s", rc + 1, nRC,
-                    (rc < static_cast<int>(sd.residColNames().size())
-                         ? (" (" + sd.residColNames()[rc] + ")").c_str() : ""),
-                    outFile.c_str());
+    for (int rc = 0; rc < nRC; ++rc) {
+        const auto& pi = phenoInfos[rc];
+
+        // Build union-dimension residual with 0 for missing subjects
+        Eigen::VectorXd colResid;
+        if (nRC > 1) {
+            colResid = sd.residMatrix().col(rc);
+            for (Eigen::Index s = 0; s < colResid.size(); ++s)
+                if (std::isnan(colResid[s])) colResid[s] = 0.0;
+        }
+        const Eigen::VectorXd& resid = (nRC > 1) ? colResid : sd.residuals();
+
+        std::string outFile = TextWriter::buildOutputPath(
+            outPrefix, pi.name, "SPAmixLocalPlus", compression);
+
+        infoMsg("  Phenotype '%s': %u subjects -> %s",
+                pi.name.c_str(), pi.nUsed, outFile.c_str());
 
         // Detect outliers per residual column
         OutlierData outlier = detectOutliers(resid, outlierRatio);
-        if (rc == 0)
-            infoMsg("Outliers: %zu / %u", outlier.posOutlier.size(), nUsed);
 
         runUnifiedGWAS(admixData, resid, allPhi, outlier,
                        spaCutoff, minMafCutoff, minMacCutoff,
-                       outFile, nthread);
+                       outFile, compression, compressionLevel, nthread);
     }
 
     infoMsg("SPAmixLocalPlus GWAS complete.");

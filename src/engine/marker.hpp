@@ -63,6 +63,41 @@ void markerEngine(
 
 
 // ======================================================================
+// PhenoTask — one per phenotype for multiPhenoEngine
+// ======================================================================
+
+struct PhenoTask {
+  std::string phenoName;
+  std::unique_ptr<MethodBase> method;       // single-phenotype method
+  std::vector<uint32_t> unionToLocal;       // union-dense index → pheno-dense index (UINT32_MAX = absent)
+  uint32_t nUsed;                           // this phenotype's sample count
+};
+
+
+// Per-phenotype independent GWAS engine.
+//
+// Decodes genotypes once via the union mask, then for each phenotype:
+//   - extracts per-phenotype genotype vector using unionToLocal
+//   - computes per-phenotype allele stats (altFreq, MAC, missRate, HWE)
+//   - applies QC filters per phenotype
+//   - runs the method and writes to PREFIX.PHENO.METHOD[.gz|.zst]
+//
+// Threading: chunk-level work-stealing, K phenotypes sequential per chunk.
+void multiPhenoEngine(
+  const GenoMeta& genoData,
+  std::vector<PhenoTask>& tasks,
+  const std::string& outPrefix,
+  const std::string& methodName,
+  const std::string& compression,
+  int compressionLevel,
+  int nthreads,
+  double missingCutoff,
+  double minMafCutoff,
+  double minMacCutoff,
+  bool exactHwe);
+
+
+// ======================================================================
 // MultiMethod — runs N inner methods in one pass, interleaves results
 //
 // Column layout: for each residual name × each suffix

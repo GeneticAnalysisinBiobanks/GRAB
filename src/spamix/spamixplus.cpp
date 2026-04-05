@@ -320,7 +320,9 @@ void runSPAmixPlus(
     const std::string& spgrmGrabFile,
     const std::string& spgrmGctaFile,
     const std::string& afFile,
-    const std::string& outputFile,
+    const std::string& outPrefix,
+    const std::string& compression,
+    int    compressionLevel,
     double spaCutoff,
     double outlierRatio,
     int    nthread,
@@ -340,41 +342,28 @@ void runSPAmixPlus(
 
   const int N   = static_cast<int>(sd.nUsed());
   const int nPC = static_cast<int>(pcColNames.size());
-  infoMsg("  %u subjects loaded, %d PCs", sd.nUsed(), nPC);
+  infoMsg("  %u subjects in union mask, %d PCs", sd.nUsed(), nPC);
 
-  // ---- Design matrix: [1 | PCs] ----
-  Eigen::MatrixXd PCs = sd.getColumns(pcColNames);
-  Eigen::MatrixXd onePlusPCs(N, 1 + nPC);
-  onePlusPCs.col(0).setOnes();
-  onePlusPCs.rightCols(nPC) = PCs;
+  // ---- Design matrix: [1 | PCs] at union dimension ----
+  Eigen::MatrixXd unionPCs = sd.getColumns(pcColNames);
+  Eigen::MatrixXd unionOnePlusPCs(N, 1 + nPC);
+  unionOnePlusPCs.col(0).setOnes();
+  unionOnePlusPCs.rightCols(nPC) = unionPCs;
 
-  // OLS matrices — only needed for on-the-fly AF computation
-  Eigen::MatrixXd XtX_inv_Xt;
-  Eigen::VectorXd sqrt_XtX_inv_diag;
-  if (afFile.empty()) {
-    Eigen::MatrixXd XtX = onePlusPCs.transpose() * onePlusPCs;
-    Eigen::MatrixXd XtX_inv =
-        XtX.ldlt().solve(Eigen::MatrixXd::Identity(1 + nPC, 1 + nPC));
-    XtX_inv_Xt    = XtX_inv * onePlusPCs.transpose();
-    sqrt_XtX_inv_diag = XtX_inv.diagonal().cwiseSqrt();
-  }
-
-  // ---- Load sparse GRM (raw mode — lower triangle + diagonal) ----
+  // ---- Load sparse GRM at union dimension ----
   const bool hasGRM = !spgrmGrabFile.empty() || !spgrmGctaFile.empty();
-  std::unique_ptr<SparseGRM> grm;
+  std::unique_ptr<SparseGRM> unionGrm;
   if (hasGRM) {
     infoMsg("Loading sparse GRM (raw)...");
-    grm = std::make_unique<SparseGRM>(
+    unionGrm = std::make_unique<SparseGRM>(
         SparseGRM::load(spgrmGrabFile, spgrmGctaFile,
                         sd.usedIIDs(), sd.famIIDs()));
-    infoMsg("  %u subjects, %zu entries", grm->nSubjects(), grm->nnz());
+    infoMsg("  %u subjects, %zu entries", unionGrm->nSubjects(), unionGrm->nnz());
   }
 
   // ---- Load genotype data ----
   auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(),
                                nSnpPerChunk);
-  infoMsg("  %u subjects matched, %u markers",
-          genoData->nSubjUsed(), genoData->nMarkers());
 
   const auto& markerInfo = genoData->markerInfo();
   const uint32_t nMarkers = static_cast<uint32_t>(markerInfo.size());
@@ -395,56 +384,101 @@ void runSPAmixPlus(
     infoMsg("  %zu AF models loaded", afModels.size());
   }
 
-  // ---- Multi-phenotype single-file output ----
-  const int nRC = sd.residOneCols();
-  if (nRC > 1) infoMsg("Multi-column residual file: %d phenotypes", nRC);
+  // ---- Build per-phenotype tasks ----
+  auto phenoInfos = sd.buildPerColumnMasks();
+  const int K = sd.residOneCols();
+  if (K > 1) infoMsg("Multi-column residual file: %d phenotypes", K);
 
-  std::vector<Eigen::VectorXd> residBufs(nRC);
-  std::vector<Eigen::VectorXd> resid2Bufs(nRC);
-  std::vector<OutlierData>     outlierBufs(nRC);
-  std::vector<std::unique_ptr<MethodBase>> methods;
-  methods.reserve(nRC);
+  const char* methodLabel = hasGRM ? "SPAmixPlus" : "SPAmix";
 
-  for (int rc = 0; rc < nRC; ++rc) {
-    residBufs[rc]   = (nRC > 1) ? sd.residMatrix().col(rc) : sd.residuals();
-    resid2Bufs[rc]  = residBufs[rc].array().square();
-    outlierBufs[rc] = detectOutliers(residBufs[rc], outlierRatio);
+  // Per-phenotype data storage (must outlive PhenoTasks)
+  std::vector<Eigen::VectorXd> pResid(K), pResid2(K);
+  std::vector<Eigen::MatrixXd> pOnePlusPCs(K);
+  std::vector<OutlierData>     pOutlier(K);
+  std::vector<Eigen::MatrixXd> pXtX_inv_Xt(K);
+  std::vector<Eigen::VectorXd> pSqrt_XtX_inv_diag(K);
+  std::vector<SparseGRM>       pGrm;       // only for K>1 && hasGRM
 
+  std::vector<PhenoTask> tasks(K);
+
+  for (int rc = 0; rc < K; ++rc) {
+    const auto& pi = phenoInfos[rc];
+
+    // Extract per-phenotype residuals and PCs
+    if (K > 1) {
+      pResid[rc]      = extractPhenoVec(sd.residMatrix().col(rc), pi);
+      pOnePlusPCs[rc] = extractPhenoMat(unionOnePlusPCs, pi);
+    } else {
+      pResid[rc]      = sd.residuals();
+      pOnePlusPCs[rc] = unionOnePlusPCs;
+    }
+    pResid2[rc]  = pResid[rc].array().square();
+    pOutlier[rc] = detectOutliers(pResid[rc], outlierRatio);
+
+    // Build per-phenotype OLS matrices for on-the-fly AF
+    if (afFile.empty()) {
+      Eigen::MatrixXd XtX = pOnePlusPCs[rc].transpose() * pOnePlusPCs[rc];
+      Eigen::MatrixXd XtX_inv =
+          XtX.ldlt().solve(Eigen::MatrixXd::Identity(1 + nPC, 1 + nPC));
+      pXtX_inv_Xt[rc]        = XtX_inv * pOnePlusPCs[rc].transpose();
+      pSqrt_XtX_inv_diag[rc] = XtX_inv.diagonal().cwiseSqrt();
+    }
+
+    // Build per-phenotype GRM for multi-phenotype + GRM mode
+    SparseGRM* grmPtr = nullptr;
+    if (hasGRM) {
+      if (K > 1) {
+        const auto& u2l = pi.unionToLocal;
+        std::vector<SparseGRM::Entry> pEntries;
+        for (const auto& e : unionGrm->entries()) {
+          uint32_t li = u2l[e.row], lj = u2l[e.col];
+          if (li != UINT32_MAX && lj != UINT32_MAX)
+            pEntries.push_back({li, lj, e.value});
+        }
+        pGrm.push_back(SparseGRM::fromEntries(pi.nUsed, std::move(pEntries)));
+        grmPtr = &pGrm.back();
+      } else {
+        grmPtr = unionGrm.get();
+      }
+    }
+
+    // Create method
     std::unique_ptr<SPAmixPlusMethod> m;
     if (hasGRM) {
       if (!afFile.empty()) {
         m = std::make_unique<SPAmixPlusMethod>(
-            residBufs[rc], resid2Bufs[rc], onePlusPCs, outlierBufs[rc], spaCutoff,
-            *grm, afModels, genoToFlat);
+            pResid[rc], pResid2[rc], pOnePlusPCs[rc], pOutlier[rc],
+            spaCutoff, *grmPtr, afModels, genoToFlat);
       } else {
         m = std::make_unique<SPAmixPlusMethod>(
-            residBufs[rc], resid2Bufs[rc], onePlusPCs, outlierBufs[rc], spaCutoff,
-            *grm, XtX_inv_Xt, sqrt_XtX_inv_diag, nPC);
+            pResid[rc], pResid2[rc], pOnePlusPCs[rc], pOutlier[rc],
+            spaCutoff, *grmPtr,
+            pXtX_inv_Xt[rc], pSqrt_XtX_inv_diag[rc], nPC);
       }
     } else {
       if (!afFile.empty()) {
         m = std::make_unique<SPAmixPlusMethod>(
-            residBufs[rc], resid2Bufs[rc], onePlusPCs, outlierBufs[rc], spaCutoff,
-            afModels, genoToFlat);
+            pResid[rc], pResid2[rc], pOnePlusPCs[rc], pOutlier[rc],
+            spaCutoff, afModels, genoToFlat);
       } else {
         m = std::make_unique<SPAmixPlusMethod>(
-            residBufs[rc], resid2Bufs[rc], onePlusPCs, outlierBufs[rc], spaCutoff,
-            XtX_inv_Xt, sqrt_XtX_inv_diag, nPC);
+            pResid[rc], pResid2[rc], pOnePlusPCs[rc], pOutlier[rc],
+            spaCutoff,
+            pXtX_inv_Xt[rc], pSqrt_XtX_inv_diag[rc], nPC);
       }
     }
-    methods.push_back(std::move(m));
+
+    tasks[rc].phenoName    = pi.name;
+    tasks[rc].method       = std::move(m);
+    tasks[rc].unionToLocal = pi.unionToLocal;
+    tasks[rc].nUsed        = pi.nUsed;
+    infoMsg("  Phenotype '%s': %u subjects", pi.name.c_str(), pi.nUsed);
   }
 
-  auto residNames = buildResidNames(sd.residColNames(), nRC);
-  if (sd.residColNames().empty() && nRC > 1)
-    infoMsg("No header in residual file; columns named R1...R%d", nRC);
-
-  const char* methodLabel = hasGRM ? "SPAmixPlus" : "SPAmix";
-  MultiMethod method(std::move(methods), std::move(residNames),
-                     {"_P", "_Z", "_BETA", "_SE"});
   infoMsg("Running %s marker tests (%d thread(s), %d phenotype(s))...",
-          methodLabel, nthread, nRC);
-  markerEngine(*genoData, method, outputFile,
-               nthread, missingCutoff, minMafCutoff, minMacCutoff,
-               /*exactHwe=*/false);
+          methodLabel, nthread, K);
+  multiPhenoEngine(*genoData, tasks, outPrefix, methodLabel,
+                   compression, compressionLevel,
+                   nthread, missingCutoff, minMafCutoff, minMacCutoff,
+                   /*exactHwe=*/false);
 }

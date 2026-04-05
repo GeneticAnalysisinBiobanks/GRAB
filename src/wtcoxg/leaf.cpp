@@ -764,6 +764,14 @@ void runLEAFPheno(
     sdFull.loadCovar(covarFile);
   }
   sdFull.finalize();
+  // Drop subjects with NA in the selected phenotype column(s)
+  if (isSurv) {
+    std::string timeCol, eventCol;
+    regression::parseSurvSpec(survPheno, timeCol, eventCol);
+    sdFull.dropNaInColumns({timeCol, eventCol});
+  } else {
+    sdFull.dropNaInColumns({binaryPheno});
+  }
   infoMsg("  %u subjects loaded", sdFull.nUsed());
 
   const Eigen::Index N = static_cast<Eigen::Index>(sdFull.nUsed());

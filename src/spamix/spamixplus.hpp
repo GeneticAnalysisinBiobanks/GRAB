@@ -76,8 +76,7 @@ public:
   std::unique_ptr<MethodBase> clone() const override;
   int resultSize() const override { return 4; }
   std::string getHeaderColumns() const override {
-    return m_hasGRM ? "\tSPAmixPlus_P\tSPAmixPlus_Z\tSPAmixPlus_BETA\tSPAmixPlus_SE"
-                    : "\tSPAmix_P\tSPAmix_Z\tSPAmix_BETA\tSPAmix_SE";
+    return "\tP\tZ\tBETA\tSE";
   }
   void prepareChunk(const std::vector<uint64_t>& gIndices) override;
   void getResultVec(Eigen::Ref<Eigen::VectorXd> GVec,
@@ -131,7 +130,9 @@ void runSPAmixPlus(
     const std::string& spgrmGrabFile,   // empty → no GRM
     const std::string& spgrmGctaFile,   // empty → no GRM
     const std::string& afFile,          // empty → compute on-the-fly
-    const std::string& outputFile,
+    const std::string& outPrefix,
+    const std::string& compression,
+    int    compressionLevel,
     double spaCutoff,
     double outlierRatio,
     int    nthread,

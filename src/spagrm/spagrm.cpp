@@ -390,6 +390,60 @@ double SPAGRMClass::getMarkerPval(
 
 
 // ══════════════════════════════════════════════════════════════════════
+// Helper — build edges, components, family entries from GRM entries
+// ══════════════════════════════════════════════════════════════════════
+namespace {
+
+struct GRMTopology {
+  std::unordered_set<uint32_t>                      singletonSet;
+  std::vector<std::vector<uint32_t>>                families;
+  std::vector<std::vector<SparseGRM::Entry>>        familyEntries;
+};
+
+GRMTopology buildTopology(
+    uint32_t N,
+    const std::vector<SparseGRM::Entry>& entries)
+{
+  std::vector<std::pair<uint32_t, uint32_t>> edges;
+  {
+    std::unordered_set<uint64_t> seen;
+    for (const auto& e : entries) {
+      if (e.row == e.col) continue;
+      uint32_t lo = std::min(e.row, e.col);
+      uint32_t hi = std::max(e.row, e.col);
+      uint64_t key = (static_cast<uint64_t>(lo) << 32) | hi;
+      if (seen.insert(key).second)
+        edges.push_back({lo, hi});
+    }
+  }
+  auto components = nsGRMNull::getComponents(N, edges);
+
+  GRMTopology topo;
+  std::vector<std::vector<uint32_t>> singletons;
+  for (auto& comp : components) {
+    if (comp.size() == 1) singletons.push_back(std::move(comp));
+    else topo.families.push_back(std::move(comp));
+  }
+  for (const auto& s : singletons) topo.singletonSet.insert(s[0]);
+
+  std::unordered_map<uint32_t, size_t> subjToFamily;
+  for (size_t fi = 0; fi < topo.families.size(); ++fi)
+    for (uint32_t idx : topo.families[fi])
+      subjToFamily[idx] = fi;
+
+  topo.familyEntries.resize(topo.families.size());
+  for (const auto& e : entries) {
+    auto it = subjToFamily.find(e.row);
+    if (it != subjToFamily.end())
+      topo.familyEntries[it->second].push_back(e);
+  }
+  return topo;
+}
+
+} // anonymous namespace
+
+
+// ══════════════════════════════════════════════════════════════════════
 // runSPAGRM — entry point
 // ══════════════════════════════════════════════════════════════════════
 
@@ -399,7 +453,9 @@ void runSPAGRM(
     const std::string& spgrmGctaFile,
     const std::string& pairwiseIBDFile,
     const GenoSpec& geno,
-    const std::string& outputFile,
+    const std::string& outPrefix,
+    const std::string& compression,
+    int compressionLevel,
     double spaCutoff,
     int nthreads,
     int nSnpPerChunk,
@@ -413,7 +469,7 @@ void runSPAGRM(
   sd.loadResidOne(residFile);
   sd.finalize();
   const uint32_t N = sd.nUsed();
-  infoMsg("Loaded %u subjects (intersected with .fam)", N);
+  infoMsg("  %u subjects in union mask", N);
 
   auto subjIDs = sd.usedIIDs();
   auto subjIdMap = text::buildIIDMap(subjIDs);
@@ -424,80 +480,82 @@ void runSPAGRM(
 
   infoMsg("Loading pairwise IBD: %s", pairwiseIBDFile.c_str());
   auto ibdEntries = nsGRMNull::loadIndexedIBD(pairwiseIBDFile, subjIdMap);
-  auto ibdPairMap = nsGRMNull::buildIBDPairMap(ibdEntries);
   infoMsg("Loaded %zu IBD records", ibdEntries.size());
 
   const auto& allEntries = grm.entries();
-
-  std::vector<std::pair<uint32_t, uint32_t>> edges;
-  {
-    std::unordered_set<uint64_t> seen;
-    for (const auto& e : allEntries) {
-      if (e.row == e.col) continue;
-      uint32_t lo = std::min(e.row, e.col);
-      uint32_t hi = std::max(e.row, e.col);
-      uint64_t key = (static_cast<uint64_t>(lo) << 32) | hi;
-      if (seen.insert(key).second)
-        edges.push_back({lo, hi});
-    }
-  }
-  auto components = nsGRMNull::getComponents(N, edges);
-  infoMsg("Found %zu connected components", components.size());
-
-  std::vector<std::vector<uint32_t>> singletons, families;
-  for (auto& comp : components) {
-    if (comp.size() == 1)
-      singletons.push_back(std::move(comp));
-    else
-      families.push_back(std::move(comp));
-  }
-  infoMsg("Singletons: %zu, Families: %zu", singletons.size(), families.size());
-
-  std::unordered_set<uint32_t> singletonSet;
-  for (const auto& s : singletons) singletonSet.insert(s[0]);
-
   const auto& grmDiag = grm.diagonal();
-
-  std::unordered_map<uint32_t, size_t> subjToFamily;
-  for (size_t fi = 0; fi < families.size(); ++fi)
-    for (uint32_t idx : families[fi])
-      subjToFamily[idx] = fi;
-
-  std::vector<std::vector<SparseGRM::Entry>> familyEntries(families.size());
-  for (const auto& e : allEntries) {
-    auto it = subjToFamily.find(e.row);
-    if (it != subjToFamily.end())
-      familyEntries[it->second].push_back(e);
-  }
 
   auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(),
                                nSnpPerChunk);
 
-  const int nRC = sd.residOneCols();
-  if (nRC > 1) infoMsg("Multi-column residual file: %d phenotypes", nRC);
+  // ---- Build per-phenotype tasks ----
+  auto phenoInfos = sd.buildPerColumnMasks();
+  const int K = sd.residOneCols();
+  if (K > 1) infoMsg("Multi-column residual file: %d phenotypes", K);
 
-  // Build one SPAGRMMethod per residual column
-  std::vector<Eigen::VectorXd> residBufs(nRC);
-  std::vector<std::unique_ptr<MethodBase>> methods;
-  methods.reserve(nRC);
+  std::vector<PhenoTask> tasks(K);
 
-  for (int rc = 0; rc < nRC; ++rc) {
-    residBufs[rc] = (nRC > 1) ? sd.residMatrix().col(rc) : sd.residuals();
+  if (K == 1) {
+    // Single phenotype: use union structures directly
+    auto topo = buildTopology(N, allEntries);
+    auto ibdPairMap = nsGRMNull::buildIBDPairMap(ibdEntries);
     SPAGRMClass sg = nsGRMNull::buildSPAGRMNullModel(
-        residBufs[rc], N, singletonSet, grmDiag, families, familyEntries,
+        sd.residuals(), N, topo.singletonSet, grmDiag,
+        topo.families, topo.familyEntries,
         allEntries, ibdEntries, ibdPairMap, spaCutoff);
-    methods.push_back(std::make_unique<SPAGRMMethod>(std::move(sg)));
+    tasks[0].phenoName = phenoInfos[0].name;
+    tasks[0].method = std::make_unique<SPAGRMMethod>(std::move(sg));
+    tasks[0].unionToLocal = phenoInfos[0].unionToLocal;
+    tasks[0].nUsed = phenoInfos[0].nUsed;
+    infoMsg("  Phenotype '%s': %u subjects",
+            phenoInfos[0].name.c_str(), phenoInfos[0].nUsed);
+  } else {
+    for (int rc = 0; rc < K; ++rc) {
+      const auto& pi = phenoInfos[rc];
+      const auto& u2l = pi.unionToLocal;
+      const uint32_t Np = pi.nUsed;
+
+      // Re-index GRM entries to per-phenotype dense indices
+      std::vector<SparseGRM::Entry> pEntries;
+      std::vector<double> pDiag(Np, 1.0);
+      for (const auto& e : allEntries) {
+        uint32_t li = u2l[e.row], lj = u2l[e.col];
+        if (li != UINT32_MAX && lj != UINT32_MAX) {
+          pEntries.push_back({li, lj, e.value});
+          if (li == lj) pDiag[li] = e.value;
+        }
+      }
+
+      auto topo = buildTopology(Np, pEntries);
+
+      // Re-index IBD entries
+      std::vector<nsGRMNull::IndexedIBD> pIbd;
+      for (const auto& ibd : ibdEntries) {
+        uint32_t li = u2l[ibd.idx1], lj = u2l[ibd.idx2];
+        if (li != UINT32_MAX && lj != UINT32_MAX)
+          pIbd.push_back({li, lj, ibd.pa, ibd.pb, ibd.pc});
+      }
+      auto pIbdMap = nsGRMNull::buildIBDPairMap(pIbd);
+
+      Eigen::VectorXd phenoResid = extractPhenoVec(sd.residMatrix().col(rc), pi);
+
+      SPAGRMClass sg = nsGRMNull::buildSPAGRMNullModel(
+          phenoResid, Np, topo.singletonSet, pDiag,
+          topo.families, topo.familyEntries,
+          pEntries, pIbd, pIbdMap, spaCutoff);
+
+      tasks[rc].phenoName = pi.name;
+      tasks[rc].method = std::make_unique<SPAGRMMethod>(std::move(sg));
+      tasks[rc].unionToLocal = pi.unionToLocal;
+      tasks[rc].nUsed = pi.nUsed;
+      infoMsg("  Phenotype '%s': %u subjects", pi.name.c_str(), pi.nUsed);
+    }
   }
 
-  auto residNames = buildResidNames(sd.residColNames(), nRC);
-  if (sd.residColNames().empty() && nRC > 1)
-    infoMsg("No header in residual file; columns named R1...R%d", nRC);
-
-  MultiMethod method(std::move(methods), std::move(residNames), {"_P", "_Z"});
-
-  infoMsg("Starting SPAGRM marker-level association (%d threads, %d phenotype(s))",
-          nthreads, nRC);
-  markerEngine(*genoData, method, outputFile,
-               nthreads, missingCutoff, minMafCutoff, minMacCutoff,
-               /*exactHwe=*/false);
+  infoMsg("Running SPAGRM marker tests (%d thread(s), %d phenotype(s))...",
+          nthreads, K);
+  multiPhenoEngine(*genoData, tasks, outPrefix, "SPAGRM",
+                   compression, compressionLevel,
+                   nthreads, missingCutoff, minMafCutoff, minMacCutoff,
+                   /*exactHwe=*/false);
 }

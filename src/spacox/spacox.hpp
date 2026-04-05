@@ -75,7 +75,7 @@ public:
   // ---- MethodBase interface ----
   std::unique_ptr<MethodBase> clone() const override;
   int resultSize() const override { return 2; }
-  std::string getHeaderColumns() const override { return "\tSPACox_P\tSPACox_Z"; }
+  std::string getHeaderColumns() const override { return "\tP\tZ"; }
   void getResultVec(Eigen::Ref<Eigen::VectorXd> GVec,
                     double altFreq, int markerInChunkIdx,
                     std::vector<double>& result) override;
@@ -132,7 +132,9 @@ void runSPACox(
     const std::string& phenoFile,                 // pheno file (for covar columns)
     const std::string& covarFile,                 // covar file (for covar columns)
     const GenoSpec& geno,
-    const std::string& outputFile,
+    const std::string& outPrefix,
+    const std::string& compression,
+    int compressionLevel,
     double pvalCovAdjCut,
     double spaCutoff,
     int nthread,

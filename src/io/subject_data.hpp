@@ -27,6 +27,37 @@
 // Parse .fam file → IIDs (column 2, 0-indexed).
 std::vector<std::string> parseFamIIDs(const std::string& famFile);
 
+// Per-phenotype mask info for multi-residual GWAS.
+struct PerPhenoInfo {
+    std::string name;                       // column header name (e.g. "Pheno1")
+    uint32_t nUsed = 0;                     // subjects non-NA in this column
+    std::vector<uint32_t> unionToLocal;     // size = nUnionUsed; maps union-dense index → pheno-dense index (UINT32_MAX if absent)
+};
+
+// Extract dense per-phenotype vector from union-dimension vector.
+inline Eigen::VectorXd extractPhenoVec(
+    const Eigen::VectorXd& unionVec,
+    const PerPhenoInfo& info) {
+  Eigen::VectorXd out(info.nUsed);
+  for (Eigen::Index i = 0; i < unionVec.size(); ++i) {
+    uint32_t li = info.unionToLocal[static_cast<size_t>(i)];
+    if (li != UINT32_MAX) out[li] = unionVec[i];
+  }
+  return out;
+}
+
+// Extract dense per-phenotype matrix from union-dimension matrix.
+inline Eigen::MatrixXd extractPhenoMat(
+    const Eigen::MatrixXd& unionMat,
+    const PerPhenoInfo& info) {
+  Eigen::MatrixXd out(info.nUsed, unionMat.cols());
+  for (Eigen::Index i = 0; i < unionMat.rows(); ++i) {
+    uint32_t li = info.unionToLocal[static_cast<size_t>(i)];
+    if (li != UINT32_MAX) out.row(li) = unionMat.row(i);
+  }
+  return out;
+}
+
 
 class SubjectData {
 public:
@@ -89,6 +120,11 @@ public:
   void fillColumnsInto(const std::vector<std::string>& names,
                        Eigen::Ref<Eigen::MatrixXd> target) const;
 
+  // ── Post-finalize NA filtering ─────────────────────────────────────
+  // Drop subjects with NaN in any of the named pheno/covar columns.
+  // Updates bitmask, nUsed, and all dense arrays.  Call after finalize().
+  void dropNaInColumns(const std::vector<std::string>& colNames);
+
   // ── Post-finalize setters (for computed regression path) ───────────
   // Sets residuals, weights, and indicator AFTER finalize, replacing
   // whatever was loaded from file.
@@ -108,6 +144,14 @@ public:
 
   // Used IIDs in .fam order (for SparseGRM construction, logging, etc.).
   std::vector<std::string> usedIIDs() const;
+
+  // ── Per-phenotype masks for multi-residual GWAS ────────────────────
+  // Returns one PerPhenoInfo per residual column.  The union mask
+  // (usedMask()) covers all subjects non-NA in at least one column.
+  // Each PerPhenoInfo::unionToLocal maps union-dense index to the
+  // phenotype's dense index (or UINT32_MAX if the subject is NA in
+  // that column).  Only valid after finalize() with ResidType::One.
+  std::vector<PerPhenoInfo> buildPerColumnMasks() const;
 
 private:
   // ── Raw parsed data (before finalize) ──────────────────────────────
@@ -130,6 +174,7 @@ private:
 
   std::vector<std::string> m_famIIDs;
   std::vector<uint64_t>    m_usedMask;
+  std::vector<uint32_t>    m_usedFamIndices;  // dense index → .fam index
 
   // Dense per-used-subject data (populated by finalize)
   Eigen::VectorXd  m_residuals;

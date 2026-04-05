@@ -163,7 +163,7 @@ public:
   int resultSize() const override { return 2; }
 
   std::string getHeaderColumns() const override {
-    return "\tSPAGRM_P\tSPAGRM_Z";
+    return "\tP\tZ";
   }
 
   void getResultVec(
@@ -194,7 +194,9 @@ void runSPAGRM(
     const std::string& spgrmGctaFile,
     const std::string& pairwiseIBDFile,
     const GenoSpec& geno,
-    const std::string& outputFile,
+    const std::string& outPrefix,
+    const std::string& compression,
+    int compressionLevel,
     double spaCutoff,
     int nthreads,
     int nSnpPerChunk,

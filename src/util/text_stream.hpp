@@ -26,6 +26,10 @@ public:
     /// Open `path` for writing.  Compression inferred from extension.
     explicit TextWriter(const std::string& path);
 
+    /// Open `path` with explicit mode and compression level.
+    /// Level 0 means library default.
+    TextWriter(const std::string& path, Mode mode, int level);
+
     ~TextWriter();
 
     TextWriter(const TextWriter&) = delete;
@@ -46,6 +50,15 @@ public:
 
     /// Detect mode from file extension (static helper).
     static Mode inferMode(const std::string& path);
+
+    /// Convert compression string ("gz", "zst", or empty) to Mode.
+    static Mode modeFromString(const std::string& comp);
+
+    /// Build output path: prefix.pheno.method[.gz|.zst]
+    static std::string buildOutputPath(const std::string& prefix,
+                                       const std::string& phenoName,
+                                       const std::string& methodName,
+                                       const std::string& compression);
 
 private:
     void cleanup() noexcept;

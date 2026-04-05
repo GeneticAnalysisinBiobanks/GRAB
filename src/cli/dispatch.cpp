@@ -141,6 +141,7 @@ static void logArgsInEffect(const Args& args) {
     if (!args.admixTextPrefix.empty())   std::fprintf(stderr, "  --admix-text-prefix %s\n", args.admixTextPrefix.c_str());
     if (!args.outputFile.empty())        std::fprintf(stderr, "  --out %s\n",           args.outputFile.c_str());
     if (!args.outPrefix.empty())         std::fprintf(stderr, "  --out-prefix %s\n",    args.outPrefix.c_str());
+    if (!args.compression.empty())       std::fprintf(stderr, "  --compression %s\n",   args.compression.c_str());
     // numeric: log only when non-default
     if (args.refPrevalence > 0.0)        std::fprintf(stderr, "  --prevalence %g\n",               args.refPrevalence);
     if (args.nthread != 1)               std::fprintf(stderr, "  --threads %d\n",                  args.nthread);
@@ -155,6 +156,7 @@ static void logArgsInEffect(const Args& args) {
     if (args.minMacCutoff != 10.0)       std::fprintf(stderr, "  --mac %g\n",                      args.minMacCutoff);
     if (args.seed != 0)                  std::fprintf(stderr, "  --seed %llu\n",                   (unsigned long long)args.seed);
     if (args.nClusters != 0)             std::fprintf(stderr, "  --leaf-nclusters %d\n",            args.nClusters);
+    if (args.compressionLevel != 0)      std::fprintf(stderr, "  --compression-level %d\n",         args.compressionLevel);
     if (args.minMafIBD != 0.01)          std::fprintf(stderr, "  --min-maf-ibd %g\n",              args.minMafIBD);
 }
 
@@ -321,22 +323,36 @@ int run(int argc, char* argv[]) {
     }
 
     // Common required flags for all GWAS methods
-    // Exactly one of --out / --out-prefix must be provided
+    // Methods with per-phenotype output require --out-prefix; others require --out
+    const bool usesOutPrefix = (args.method == "SPACox"  || args.method == "SPAGRM" ||
+                                args.method == "SPAmix"  || args.method == "SPAmixPlus" ||
+                                args.method == "SPAmixLocalPlus");
+
     if (!args.outputFile.empty() && !args.outPrefix.empty()) {
         std::cerr << "Error: --out and --out-prefix are mutually exclusive.\n";
         return 1;
     }
-    if (args.outputFile.empty() && args.outPrefix.empty()) {
-        std::cerr << "Error: --out or --out-prefix is required for "
-                  << args.method << ".\n";
-        return 1;
+    if (usesOutPrefix) {
+        if (!args.outputFile.empty()) {
+            std::cerr << "Error: " << args.method
+                      << " requires --out-prefix, not --out.\n";
+            return 1;
+        }
+        require(args.outPrefix, "--out-prefix", args.method.c_str());
+    } else {
+        if (!args.outPrefix.empty()) {
+            std::cerr << "Error: --out-prefix is not supported for "
+                      << args.method << ". Use --out instead.\n";
+            return 1;
+        }
+        require(args.outputFile, "--out", args.method.c_str());
     }
 
-    // --out-prefix is only supported for SPAmixLocalPlus
-    bool supportsOutPrefix = (args.method == "SPAmixLocalPlus");
-    if (!args.outPrefix.empty() && !supportsOutPrefix) {
-        std::cerr << "Error: --out-prefix is not supported for " << args.method
-                  << ". Use --out instead.\n";
+    // Validate --compression
+    if (!args.compression.empty() &&
+        args.compression != "gz" && args.compression != "zst") {
+        std::cerr << "Error: --compression must be 'gz' or 'zst', got '"
+                  << args.compression << "'\n";
         return 1;
     }
 
@@ -362,12 +378,6 @@ int run(int argc, char* argv[]) {
             if (args.phenoFile.empty()) {
                 std::cerr << "Error: --pheno-quant, --pheno-binary, --pheno-surv,"
                              " and --pheno-ordinal require --pheno.\n";
-                return 1;
-            }
-            if (!args.covarFile.empty()) {
-                std::cerr << "Error: --pheno-quant, --pheno-binary, --pheno-surv,"
-                             " and --pheno-ordinal cannot be combined with --covar.\n"
-                             "  Use --covar-name to select covariate columns from --pheno.\n";
                 return 1;
             }
         }
@@ -416,13 +426,21 @@ int run(int argc, char* argv[]) {
 
     logArgsInEffect(args);
 
+    // Transitional: construct single output path from --out-prefix for methods
+    // being migrated to per-phenotype output.  multiPhenoEngine (Phase 4) will
+    // replace these calls and handle per-phenotype files natively.
+    const std::string outFile = usesOutPrefix
+        ? args.outPrefix + "." + args.method
+        : args.outputFile;
+
     try {
         // ── SPACox ─────────────────────────────────────────────────
         if (args.method == "SPACox") {
             runSPACox(
                 args.residFile, covarNames,
                 args.phenoFile, args.covarFile,
-                geno, args.outputFile,
+                geno, args.outPrefix,
+                args.compression, args.compressionLevel,
                 args.pvalCovAdjCut, args.spaCutoff, args.nthread,
                 args.nSnpPerChunk,
                 args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
@@ -434,7 +452,8 @@ int run(int argc, char* argv[]) {
             require(args.pairwiseIBDFile, "--pairwise-ibd", "SPAGRM");
             runSPAGRM(
                 args.residFile, args.spGrmGrabFile, args.spGrmPlink2File,
-                args.pairwiseIBDFile, geno, args.outputFile,
+                args.pairwiseIBDFile, geno, args.outPrefix,
+                args.compression, args.compressionLevel,
                 args.spaCutoff, args.nthread, args.nSnpPerChunk,
                 args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
         }
@@ -445,7 +464,7 @@ int run(int argc, char* argv[]) {
             require(args.pairwiseIBDFile, "--pairwise-ibd", "SAGELD");
             runSAGELD(
                 args.residFile, args.spGrmGrabFile, args.spGrmPlink2File,
-                args.pairwiseIBDFile, geno, args.outputFile,
+                args.pairwiseIBDFile, geno, outFile,
                 args.spaCutoff, args.nthread, args.nSnpPerChunk,
                 args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
         }
@@ -472,7 +491,7 @@ int run(int argc, char* argv[]) {
                 args.phenoFile, args.covarFile,
                 geno,
                 args.spGrmGrabFile, args.spGrmPlink2File, args.indAfFile,
-                args.outputFile,
+                args.outPrefix, args.compression, args.compressionLevel,
                 args.spaCutoff, args.outlierRatio, args.nthread,
                 args.nSnpPerChunk,
                 args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
@@ -666,7 +685,8 @@ int run(int argc, char* argv[]) {
             require(args.residFile,        "--null-resid",  "SPAmixLocalPlus");
             runSPAmixLocalPlus(
                 args.residFile, args.admixBfilePrefix,
-                args.admixPhiFile, args.outputFile, args.outPrefix,
+                args.admixPhiFile, args.outPrefix,
+                args.compression, args.compressionLevel,
                 args.spaCutoff, args.outlierRatio, args.nthread,
                 args.nSnpPerChunk,
                 args.missingCutoff, args.minMafCutoff, args.minMacCutoff,

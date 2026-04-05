@@ -101,7 +101,7 @@ build/grab \
   --sp-grm-grab examples/SparseGRM.txt \
   --pairwise-ibd examples/PairwiseIBD.txt \
   --bfile examples/simuPLINK \
-  --out tmp/SPAGRM_output.txt
+  --out-prefix tmp/SPAGRM_output
 
 build/grab \
   --method SPAGRM \
@@ -109,7 +109,7 @@ build/grab \
   --sp-grm-grab examples/SparseGRM.txt \
   --pairwise-ibd examples/PairwiseIBD.txt \
   --bfile examples/simuPLINK \
-  --out tmp/SPAGRM_output.txt
+  --out-prefix tmp/SPAGRM_output
 
 ## SPAsqr
 
@@ -138,13 +138,15 @@ build/grab \
   --null-resid examples/simuResid_2resids.txt \
   --covar examples/simuDesign.txt \
   --bfile examples/simuPLINK \
-  --out tmp/SPACox_output.txt
+  --out-prefix tmp/SPACox_output \
+  --compression gz \
+  --compression-level 6
 
 ## individual AF coefficient
 
 build/grab \
   --cal-ind-af-coef \
-  --covar examples/simuPheno.txt \
+  --covar examples/simuPHENO.txt \
   --pc-cols PC1,PC2,PC3,PC4 \
   --bfile examples/simuPLINK \
   --out tmp/SPAmixAfCoef.txt
@@ -154,23 +156,22 @@ build/grab \
 build/grab \
   --method SPAmix \
   --null-resid examples/simuResid_1col.txt \
-  --covar examples/simuPheno.txt \
+  --covar examples/simuPHENO.txt \
   --pc-cols PC1,PC2,PC3,PC4 \
   --bfile examples/simuPLINK \
-  --out tmp/SPAmix_output.txt
-
+  --out-prefix tmp/SPAmix_output
 
 ## SPAmixPlus
 
 build/grab \
   --method SPAmixPlus \
   --null-resid examples/simuResid_2cols.txt \
-  --covar examples/simuPheno.txt \
+  --covar examples/simuPHENO.txt \
   --pc-cols PC1,PC2,PC3,PC4 \
   --bfile examples/simuPLINK \
   --ind-af-coef tmp/SPAmixAfCoef.txt \
   --sp-grm-grab examples/SparseGRM.txt \
-  --out tmp/SPAmixPlus_output.txt
+  --out-prefix tmp/SPAmixPlus_output
 
 ## SPAmixLocalPlus
 
@@ -179,7 +180,7 @@ build/grab --make-abed \
   --rfmix-msp examples/spamixlocalp/admix_bfile/head10.msp.tsv \
   --out-prefix examples/spamixlocalp/admix_bfile/head10
   
-build/grab.exe --make-abed \
+build/grab --make-abed \
   --admix-text-prefix examples/spamixlocalp/simuAncestry \
   --out-prefix examples/spamixlocalp/simuAncestry
 
@@ -194,7 +195,7 @@ build/grab \
   --null-resid examples/simuResid_2cols.txt \
   --admix-bfile examples/spamixlocalp/simuAncestry \
   --admix-phi examples/spamixlocalp/simuAncestry.phi \
-  --out tmp/SPAmixLocalPlus_output.txt
+  --out-prefix tmp/SPAmixLocalPlus_output
 
 # SAGELD
 

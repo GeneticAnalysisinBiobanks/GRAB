@@ -1369,6 +1369,7 @@ void runPOLMM(
     SubjectData sd(std::move(famIIDs));
     sd.loadPhenoFile(phenoFile);
     sd.finalize();
+    sd.dropNaInColumns({ordinalPhenoCol});  // remove subjects with missing phenotype
 
     const int N = static_cast<int>(sd.nUsed());
     infoMsg("Subjects after intersection: %d", N);

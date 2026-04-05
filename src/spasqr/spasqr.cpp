@@ -431,6 +431,7 @@ void runSPAsqrPheno(
   if (!phenoFile.empty())  sd.loadPhenoFile(phenoFile);
   if (!covarFile.empty())  sd.loadCovar(covarFile);
   sd.finalize();
+  sd.dropNaInColumns({quantPhenoCol});  // remove subjects with missing phenotype
 
   const Eigen::Index N = static_cast<Eigen::Index>(sd.nUsed());
   infoMsg("Subjects after intersection: %lld", static_cast<long long>(N));

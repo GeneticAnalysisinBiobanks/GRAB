@@ -56,10 +56,11 @@ CXXFLAGS := -std=c++17 -O3 -DNDEBUG $(PLATFORM_FLAGS) \
             -funroll-loops $(SIMD_FLAGS) \
             -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare
 CFLAGS   := -O3 -DNDEBUG $(PLATFORM_FLAGS) -ffunction-sections -fdata-sections $(SIMD_FLAGS)
+STATIC_LIBS := -static-libstdc++ -static-libgcc
 ifeq ($(PLATFORM),macos)
-  LDFLAGS := -Wl,-dead_strip -lpthread $(PLATFORM_LDLIBS)
+  LDFLAGS := -Wl,-dead_strip -lpthread $(PLATFORM_LDLIBS) $(STATIC_LIBS)
 else
-  LDFLAGS := -Wl,--gc-sections -lpthread $(PLATFORM_LDLIBS)
+  LDFLAGS := -Wl,--gc-sections -lpthread $(PLATFORM_LDLIBS) $(STATIC_LIBS)
 endif
 
 # ── Directories ───────────────────────────────────────────────────────────────

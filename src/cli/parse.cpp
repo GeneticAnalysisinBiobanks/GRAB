@@ -71,6 +71,8 @@ Args parseArgs(int argc, char* argv[]) {
         else if (arg == "--admix-phi")                a.admixPhiFile      = next();
         else if (arg == "--rfmix-msp")                 a.mspFile           = next();
         else if (arg == "--admix-text-prefix")        a.admixTextPrefix   = next();
+        else if (arg == "--compression")              a.compression       = next();
+        else if (arg == "--compression-level")        a.compressionLevel  = std::stoi(next());
         // --phi-maf-cutoff removed: hardcoded to 0.01 inside estimatePhiOneAncestry
         else if (arg == "--cal-ind-af-coef")          a.calIndAfCoef      = true;
         else if (arg == "--cal-pairwise-ibd")         a.calPairwiseIBD    = true;

@@ -25,7 +25,7 @@ static void printShortHelp() {
         "GRAB -- Genome-wide Regression Analysis for Biobanks\n"
         "\n"
         "Usage:\n"
-        "  grab --method METHOD  --bfile PREFIX  --null-resid FILE  --out FILE  [OPTIONS]\n"
+        "  grab --method METHOD  --bfile PREFIX  --null-resid FILE  --out-prefix PREFIX  [OPTIONS]\n"
         "  grab --cal-ind-af-coef   --bfile PREFIX  --eigenvec FILE  --out FILE\n"
         "  grab --cal-pairwise-ibd  --sp-grm-* FILE  --bfile PREFIX  --out FILE\n"
         "  grab --cal-admix-phi     --admix-bfile PREFIX  --sp-grm-* FILE  --out FILE\n"

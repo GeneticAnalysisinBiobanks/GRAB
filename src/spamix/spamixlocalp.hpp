@@ -122,14 +122,15 @@ void runPhiEstimation(
 //   residFile:    null model residual file
 //   admixPrefix:  prefix for .abed/.bim/.fam
 //   admixPhiFile: pre-computed wide phi file
-//   outputFile:   output GWAS results
+//   outPrefix:   output prefix for per-phenotype GWAS results
 //   spaCutoff, outlierRatio, nthread, nSnpPerChunk: analysis params
 void runSPAmixLocalPlus(
     const std::string& residFile,
     const std::string& admixPrefix,
     const std::string& admixPhiFile,
-    const std::string& outputFile,
     const std::string& outPrefix,
+    const std::string& compression,
+    int compressionLevel,
     double spaCutoff,
     double outlierRatio,
     int nthread,

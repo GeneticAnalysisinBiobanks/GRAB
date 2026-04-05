@@ -25,6 +25,22 @@ TextWriter::Mode TextWriter::inferMode(const std::string& path) {
     return Mode::Plain;
 }
 
+TextWriter::Mode TextWriter::modeFromString(const std::string& comp) {
+    if (comp == "gz")  return Mode::Gzip;
+    if (comp == "zst") return Mode::Zstd;
+    return Mode::Plain;
+}
+
+std::string TextWriter::buildOutputPath(const std::string& prefix,
+                                        const std::string& phenoName,
+                                        const std::string& methodName,
+                                        const std::string& compression) {
+    std::string path = prefix + "." + phenoName + "." + methodName;
+    if (compression == "gz")       path += ".gz";
+    else if (compression == "zst") path += ".zst";
+    return path;
+}
+
 TextReader::Mode TextReader::inferMode(const std::string& path) {
     if (endsWith(path, ".gz"))  return Mode::Gzip;
     if (endsWith(path, ".zst")) return Mode::Zstd;
@@ -36,11 +52,21 @@ TextReader::Mode TextReader::inferMode(const std::string& path) {
 // ══════════════════════════════════════════════════════════════════════
 
 TextWriter::TextWriter(const std::string& path)
-    : m_mode(inferMode(path))
+    : TextWriter(path, inferMode(path), 0)
+{}
+
+TextWriter::TextWriter(const std::string& path, Mode mode, int level)
+    : m_mode(mode)
 {
     switch (m_mode) {
     case Mode::Gzip: {
-        gzFile gz = gzopen(path.c_str(), "wb");
+        // gzopen mode: "wb" + optional level digit
+        char gzMode[8] = "wb";
+        if (level > 0 && level <= 9) {
+            gzMode[2] = static_cast<char>('0' + level);
+            gzMode[3] = '\0';
+        }
+        gzFile gz = gzopen(path.c_str(), gzMode);
         if (!gz) throw std::runtime_error("Cannot open gzip output: " + path);
         gzbuffer(gz, 256u * 1024u);
         m_gz = static_cast<void*>(gz);
@@ -53,6 +79,8 @@ TextWriter::TextWriter(const std::string& path)
         ZSTD_CCtx* cctx = ZSTD_createCCtx();
         if (!cctx) { std::fclose(fp); m_fp = nullptr;
                      throw std::runtime_error("ZSTD_createCCtx failed"); }
+        if (level > 0)
+            ZSTD_CCtx_setParameter(cctx, ZSTD_c_compressionLevel, level);
         m_zctx = static_cast<void*>(cctx);
         break;
     }

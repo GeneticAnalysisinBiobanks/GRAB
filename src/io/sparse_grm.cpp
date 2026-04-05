@@ -39,6 +39,7 @@ SparseGRM::SparseGRM(const std::string& filename,
   while (std::getline(ifs, line)) {
     ++lineNo;
     if (text::skipLine(line)) continue;
+    if (line.rfind("ID1", 0) == 0) continue;  // header line
 
     text::TokenScanner tok(line);
     tok.skipWS();
@@ -276,4 +277,12 @@ SparseGRM SparseGRM::load(const std::string& grabFile,
   if (!gctaFile.empty())
     return fromGCTA(gctaFile, subjectOrder, famIIDs);
   return SparseGRM(grabFile, subjectOrder);
+}
+
+SparseGRM SparseGRM::fromEntries(uint32_t nSubj, std::vector<Entry> entries) {
+  SparseGRM g;
+  g.m_nSubj   = nSubj;
+  g.m_entries  = std::move(entries);
+  g.buildDiagonal();
+  return g;
 }

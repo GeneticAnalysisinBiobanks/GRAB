@@ -1,6 +1,7 @@
 // spacox.cpp — SPACox full implementation
 
 #include "spacox/spacox.hpp"
+#include "engine/marker.hpp"
 #include "io/geno_data.hpp"
 #include "io/subject_data.hpp"
 #include "util/logging.hpp"
@@ -402,7 +403,9 @@ void runSPACox(
     const std::string& phenoFile,
     const std::string& covarFile,
     const GenoSpec& geno,
-    const std::string& outputFile,
+    const std::string& outPrefix,
+    const std::string& compression,
+    int compressionLevel,
     double pvalCovAdjCut,
     double spaCutoff,
     int nthread,
@@ -421,65 +424,74 @@ void runSPACox(
   if (!covarFile.empty())
     sd.loadCovar(covarFile);
   sd.finalize();
-  infoMsg("  %u subjects loaded", sd.nUsed());
+  infoMsg("  %u subjects in union mask", sd.nUsed());
 
-  // ---- Build design-matrix projection (intercept + covariates) ----
+  // ---- Build design-matrix (intercept + covariates) at union dimension ----
   infoMsg("Building design matrix projection...");
-  Eigen::MatrixXd X;
+  Eigen::MatrixXd unionX;
   if (!covarNames.empty()) {
     auto cov = sd.getColumns(covarNames);
-    X.resize(sd.nUsed(), cov.cols() + 1);
-    X.col(0).setOnes();
-    X.rightCols(cov.cols()) = cov;
+    unionX.resize(sd.nUsed(), cov.cols() + 1);
+    unionX.col(0).setOnes();
+    unionX.rightCols(cov.cols()) = cov;
   } else if (sd.hasCovar()) {
-    // Backward compat: no --covar-name but --covar was given → use all columns
     const auto& cov = sd.covar();
-    X.resize(sd.nUsed(), cov.cols() + 1);
-    X.col(0).setOnes();
-    X.rightCols(cov.cols()) = cov;
+    unionX.resize(sd.nUsed(), cov.cols() + 1);
+    unionX.col(0).setOnes();
+    unionX.rightCols(cov.cols()) = cov;
   } else {
-    X.resize(sd.nUsed(), 1);
-    X.col(0).setOnes();
+    unionX.resize(sd.nUsed(), 1);
+    unionX.col(0).setOnes();
   }
-  DesignMatrix design(X);
-  infoMsg("  %d rows x %d cols", design.nRows(), design.nCols());
 
-  // ---- Load genotype data ----
+  // ---- Load genotype data (union mask) ----
   auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(),
                                nSnpPerChunk);
-  infoMsg("  %u subjects matched, %u markers",
-          genoData->nSubjUsed(), genoData->nMarkers());
 
-  // ---- Multi-phenotype single-file output ----
-  const int nRC = sd.residOneCols();
-  if (nRC > 1) infoMsg("Multi-column residual file: %d phenotypes", nRC);
+  // ---- Build per-phenotype tasks ----
+  auto phenoInfos = sd.buildPerColumnMasks();
+  const int K = sd.residOneCols();
+  if (K > 1) infoMsg("Multi-column residual file: %d phenotypes", K);
 
-  std::vector<Eigen::VectorXd> residBufs(nRC);
-  std::vector<CumulantTable>   cumuls(nRC);
-  std::vector<double>          varResids(nRC);
-  std::vector<std::unique_ptr<MethodBase>> methods;
-  methods.reserve(nRC);
+  // Per-phenotype data (must outlive tasks — SPACoxMethod stores references)
+  std::vector<Eigen::VectorXd> pResid(K);
+  std::vector<CumulantTable>   pCumul(K);
+  std::vector<DesignMatrix>    pDesign;
+  pDesign.reserve(K);
 
-  for (int rc = 0; rc < nRC; ++rc) {
-    residBufs[rc] = (nRC > 1) ? sd.residMatrix().col(rc) : sd.residuals();
-    cumuls[rc]    = buildCumulantTable(residBufs[rc]);
-    double meanR  = residBufs[rc].mean();
-    double varR   = (residBufs[rc].array() - meanR).square().mean();
-    double N      = static_cast<double>(residBufs[rc].size());
-    varResids[rc] = varR * N / (N - 1.0);
-    methods.push_back(std::make_unique<SPACoxMethod>(
-        residBufs[rc], varResids[rc], cumuls[rc], design,
-        pvalCovAdjCut, spaCutoff));
+  std::vector<PhenoTask> tasks(K);
+  for (int rc = 0; rc < K; ++rc) {
+    const auto& pi = phenoInfos[rc];
+
+    // Extract per-phenotype residuals and design matrix
+    pResid[rc] = (K > 1)
+        ? extractPhenoVec(sd.residMatrix().col(rc), pi)
+        : sd.residuals();
+    Eigen::MatrixXd phenoX = (K > 1)
+        ? extractPhenoMat(unionX, pi)
+        : unionX;
+
+    // Build cumulant table and design matrix from per-phenotype data
+    pCumul[rc] = buildCumulantTable(pResid[rc]);
+    double meanR = pResid[rc].mean();
+    double varR  = (pResid[rc].array() - meanR).square().mean();
+    double N     = static_cast<double>(pResid[rc].size());
+    double varResid = varR * N / (N - 1.0);
+    pDesign.emplace_back(phenoX);
+
+    tasks[rc].phenoName = pi.name;
+    tasks[rc].method = std::make_unique<SPACoxMethod>(
+        pResid[rc], varResid, pCumul[rc], pDesign[rc],
+        pvalCovAdjCut, spaCutoff);
+    tasks[rc].unionToLocal = pi.unionToLocal;
+    tasks[rc].nUsed = pi.nUsed;
+    infoMsg("  Phenotype '%s': %u subjects", pi.name.c_str(), pi.nUsed);
   }
 
-  auto residNames = buildResidNames(sd.residColNames(), nRC);
-  if (sd.residColNames().empty() && nRC > 1)
-    infoMsg("No header in residual file; columns named R1...R%d", nRC);
-
-  MultiMethod method(std::move(methods), std::move(residNames), {"_P", "_Z"});
   infoMsg("Running SPACox marker tests (%d thread(s), %d phenotype(s))...",
-          nthread, nRC);
-  markerEngine(*genoData, method, outputFile,
-               nthread, missingCutoff, minMafCutoff, minMacCutoff,
-               /*exactHwe=*/false);
+          nthread, K);
+  multiPhenoEngine(*genoData, tasks, outPrefix, "SPACox",
+                   compression, compressionLevel,
+                   nthread, missingCutoff, minMafCutoff, minMacCutoff,
+                   /*exactHwe=*/false);
 }

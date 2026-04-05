@@ -86,6 +86,9 @@ public:
                         const std::vector<std::string>& subjectOrder,
                         const std::vector<std::string>& famIIDs = {});
 
+  // ── From pre-built entries (re-indexing) ──────────────────────────
+  static SparseGRM fromEntries(uint32_t nSubj, std::vector<Entry> entries);
+
 private:
   SparseGRM() = default;  // used by fromGCTA factory
   void buildDiagonal();              // populate m_diagonal from m_entries

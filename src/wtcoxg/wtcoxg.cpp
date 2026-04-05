@@ -966,6 +966,14 @@ void runWtCoxGPheno(
     sd.loadCovar(covarFile);
   }
   sd.finalize();
+  // Drop subjects with NA in the selected phenotype column(s)
+  if (isSurv) {
+    std::string timeCol, eventCol;
+    regression::parseSurvSpec(survPheno, timeCol, eventCol);
+    sd.dropNaInColumns({timeCol, eventCol});
+  } else {
+    sd.dropNaInColumns({binaryPheno});
+  }
   infoMsg("  %u subjects loaded", sd.nUsed());
 
   const Eigen::Index N = static_cast<Eigen::Index>(sd.nUsed());
