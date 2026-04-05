@@ -109,7 +109,7 @@ build/grab \
   --sp-grm-grab examples/SparseGRM.txt \
   --pairwise-ibd examples/PairwiseIBD.txt \
   --bfile examples/simuPLINK \
-  --out-prefix tmp/SPAGRM_prefix
+  --out tmp/SPAGRM_output.txt
 
 ## SPAsqr
 
@@ -195,3 +195,14 @@ build/grab \
   --admix-bfile examples/spamixlocalp/simuAncestry \
   --admix-phi examples/spamixlocalp/simuAncestry.phi \
   --out tmp/SPAmixLocalPlus_output.txt
+
+# SAGELD
+
+build/grab \
+  --method SAGELD \
+  --null-resid examples/simuResid_SAGELD2.txt \
+  --sp-grm-grab examples/SparseGRM.txt \
+  --pairwise-ibd examples/PairwiseIBD.txt \
+  --bfile examples/simuPLINK \
+  --out tmp/SAGELD_output2.txt
+  

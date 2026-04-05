@@ -133,7 +133,6 @@ void runSPACox(
     const std::string& covarFile,                 // covar file (for covar columns)
     const GenoSpec& geno,
     const std::string& outputFile,
-    const std::string& outPrefix,
     double pvalCovAdjCut,
     double spaCutoff,
     int nthread,

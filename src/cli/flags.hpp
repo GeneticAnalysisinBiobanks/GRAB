@@ -67,17 +67,20 @@ Column layout by method:
   WtCoxG / LEAF                          : RESID  WEIGHT  INDICATOR
   SPAsqr                                 : R_tau1  R_tau2  ...  R_tauK
 
-Multi-column: each value column runs a separate GWAS.
-  Single column  -> output to --out directly.
-  Multiple cols  -> PREFIX.1.gz, PREFIX.2.gz, ...)"};
+Multi-column (SPACox / SPAGRM / SPAmix / SPAmixPlus):
+  All columns are tested in a single pass; results go to one --out file.
+  Output columns use header names as prefix (or R1, R2, ... if no header).
+  E.g. two residual columns with header names Pheno1 and Pheno2:
+    Pheno1_P  Pheno1_Z  Pheno2_P  Pheno2_Z            (SPACox/SPAGRM)
+    Pheno1_P  Pheno1_Z  Pheno1_BETA  Pheno1_SE  ...    (SPAmix/SPAmixPlus))"};
 
 inline const FlagDef kOut = {
     "--out", "FILE", "Output file path", nullptr};
 
 inline const FlagDef kOutPrefix = {
     "--out-prefix", "PREFIX",
-    "Output prefix (GWAS multi-residual: PREFIX.1.tsv, PREFIX.2.tsv, ...;\n"
-    "  --make-abed: PREFIX.abed, PREFIX.bim, PREFIX.fam)", nullptr};
+    "Output prefix (--make-abed: PREFIX.abed, PREFIX.bim, PREFIX.fam;"
+    "\n  SPAmixLocalPlus multi-residual: PREFIX.1.tsv, PREFIX.2.tsv, ...)", nullptr};
 
 inline const FlagDef kCovar = {
     "--covar", "FILE", "Covariate file (plink2 format, columns selected by --covar-name)",
@@ -205,11 +208,9 @@ Used with --vcf to produce admixed .abed ancestry tracks.)"};
 inline const FlagDef kAdmixTextPrefix = {
     "--admix-text-prefix", "PREFIX",
     "extract_tracts text output prefix (for --make-abed)",
-    R"(Two naming conventions are auto-detected:
-  New:  {PREFIX}.anc{k}.dosage.txt[.gz]   and   {PREFIX}.anc{k}.hapcount.txt[.gz]  (k=0,1,...)
-  Old:  {PREFIX}{k}_Dosage.txt[.gz]        and   {PREFIX}{k}_HapCount.txt[.gz]       (k=1,2,...)
+    R"({PREFIX}.anc{k}.dosage[.gz]   and   {PREFIX}.anc{k}.hapcount[.gz]  (k=0,1,...)
 Header: CHROM  POS  ID  REF  ALT  SAMPLE1  SAMPLE2  ...
-Values: integer 0-2 per sample; K auto-detected from file presence.)"};
+Values: integer 0-2 per sample; K auto-detected from file presence.)"};;
 inline const FlagDef kSeed          = {"--seed", "INT",
     "Random seed for reproducibility (default: 0 = use random device)", nullptr};
 
@@ -237,8 +238,9 @@ inline const MethodDef kSPACox = {
     "SPACox",
     "Saddlepoint Approximation for Cox proportional hazards",
     kSPACoxReq, kSPACoxOpt,
-    "IID  RESID [RESID2 ...]",
-    "CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  SPACox_P  SPACox_Z",
+    "#IID  RESID  [RESID2  ...]",
+    "CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P\n"
+    "  R1_P  R1_Z  [R2_P  R2_Z  ...]  (Ri = header name or R1/R2/...)",
     nullptr};
 
 // ── SPAGRM ─────────────────────────────────────────────────────────
@@ -250,9 +252,24 @@ inline const MethodDef kSPAGRM = {
     "SPAGRM",
     "SPA with sparse GRM relatedness correction",
     kSPAGRMReq, kSPAGRMOpt,
-    "IID  RESID [RESID2 ...]",
-    "CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  SPAGRM_P  SPAGRM_Z",
+    "#IID  RESID  [RESID2  ...]",
+    "CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P\n"
+    "  R1_P  R1_Z  [R2_P  R2_Z  ...]  (Ri = header name or R1/R2/...)",
     "Generate pairwise IBD file with: grab --cal-pairwise-ibd"};
+
+// ── SAGELD ─────────────────────────────────────────────────────────
+inline const FlagDef* const kSAGELDReq[] = {
+    &kGeno_input, &kNullResid, &kOut, &kSpGrm, &kPairwiseIbd, nullptr};
+inline const FlagDef* const kSAGELDOpt[] = {
+    &kSpaZThresh, &kThreads, &kChunkSize, &kGeno, &kMaf, &kMac, nullptr};
+inline const MethodDef kSAGELD = {
+    "SAGELD",
+    "G x E interaction analysis for longitudinal data with GRM correction",
+    kSAGELDReq, kSAGELDOpt,
+    "#IID  R_G  R_<E1>  R_Gx<E1>  [R_<E2>  R_Gx<E2>  ...]",
+    "CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P\n"
+    "  P_G  P_Gx<E1>  [...]  Z_G  Z_Gx<E1>  [...]",
+    "Residuals from lme4::lmer(); generate IBD with: grab --cal-pairwise-ibd"};
 
 // ── SPAmix ─────────────────────────────────────────────────────────
 inline const FlagDef* const kSPAmixReq[] = {
@@ -264,8 +281,9 @@ inline const MethodDef kSPAmix = {
     "SPAmix",
     "SPA with individual ancestry-based allele frequencies",
     kSPAmixReq, kSPAmixOpt,
-    "IID  RESID [RESID2 ...]",
-    "CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  SPAmix_P  SPAmix_Z",
+    "#IID  RESID  [RESID2  ...]",
+    "CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P\n"
+    "  R1_P  R1_Z  R1_BETA  R1_SE  [R2_P  R2_Z  R2_BETA  R2_SE  ...]",
     R"(Pre-compute AF model for speed: grab --cal-ind-af-coef
 Optional --sp-grm-grab / --sp-grm-plink2 enables GRM-based variance (same as SPAmixPlus).)"};
 
@@ -279,8 +297,9 @@ inline const MethodDef kSPAmixPlus = {
     "SPAmixPlus",
     "SPAmix with additional sparse GRM relatedness correction",
     kSPAmixPlusReq, kSPAmixPlusOpt,
-    "IID  RESID [RESID2 ...]",
-    "CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  SPAmixPlus_P  SPAmixPlus_Z",
+    "#IID  RESID  [RESID2  ...]",
+    "CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P\n"
+    "  R1_P  R1_Z  R1_BETA  R1_SE  [R2_P  R2_Z  R2_BETA  R2_SE  ...]",
     nullptr};
 
 // ── POLMM ──────────────────────────────────────────────────────────
@@ -430,7 +449,7 @@ inline const MethodDef kCalPairwiseIbd = {
 // ════════════════════════════════════════════════════════════════════
 
 inline const MethodDef* const kAllMethods[] = {
-    &kSPACox, &kSPAGRM, &kSPAmix, &kSPAmixPlus, &kSPAmixLocalPlus,
+    &kSPACox, &kSPAGRM, &kSAGELD, &kSPAmix, &kSPAmixPlus, &kSPAmixLocalPlus,
     &kPOLMM, &kSPAsqr, &kWtCoxG, &kLEAF,
     nullptr};
 

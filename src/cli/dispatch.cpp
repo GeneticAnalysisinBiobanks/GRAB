@@ -17,7 +17,8 @@
 #include "spasqr/spasqr.hpp"
 #include "polmm/polmm.hpp"
 #include "spagrm/ibd.hpp"
-#include "spagrm/geno_prob.hpp"
+#include "spagrm/spagrm.hpp"
+#include "spagrm/sageld.hpp"
 #include "io/admix_convert.hpp"
 #include "io/admix_msp.hpp"
 
@@ -259,7 +260,7 @@ int run(int argc, char* argv[]) {
             if (hasVcfMsp)
                 convertVcfMspToAbed(args.vcfFile, args.mspFile, args.outPrefix);
             else
-                convertExtractTractsToAbed(args.admixTextPrefix, args.outPrefix);
+                convertTextToAbed(args.admixTextPrefix, args.outPrefix);
         } catch (const std::exception& e) {
             std::cerr << "[ERROR] " << e.what() << "\n"; return 1;
         }
@@ -331,10 +332,8 @@ int run(int argc, char* argv[]) {
         return 1;
     }
 
-    // --out-prefix is only supported for multi-residual methods
-    bool supportsOutPrefix = (args.method == "SPACox" || args.method == "SPAGRM" ||
-                              args.method == "SPAmix" || args.method == "SPAmixPlus" ||
-                              args.method == "SPAmixLocalPlus");
+    // --out-prefix is only supported for SPAmixLocalPlus
+    bool supportsOutPrefix = (args.method == "SPAmixLocalPlus");
     if (!args.outPrefix.empty() && !supportsOutPrefix) {
         std::cerr << "Error: --out-prefix is not supported for " << args.method
                   << ". Use --out instead.\n";
@@ -373,6 +372,7 @@ int run(int argc, char* argv[]) {
             }
         }
         if (args.method == "SPACox" || args.method == "SPAGRM" ||
+            args.method == "SAGELD" ||
             args.method == "SPAmix" || args.method == "SPAmixPlus" ||
             args.method == "SPAmixLocalPlus") {
             if (hasQuantPheno || hasBinaryPheno || hasSurvPheno || hasOrdinalPheno) {
@@ -422,7 +422,7 @@ int run(int argc, char* argv[]) {
             runSPACox(
                 args.residFile, covarNames,
                 args.phenoFile, args.covarFile,
-                geno, args.outputFile, args.outPrefix,
+                geno, args.outputFile,
                 args.pvalCovAdjCut, args.spaCutoff, args.nthread,
                 args.nSnpPerChunk,
                 args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
@@ -434,7 +434,18 @@ int run(int argc, char* argv[]) {
             require(args.pairwiseIBDFile, "--pairwise-ibd", "SPAGRM");
             runSPAGRM(
                 args.residFile, args.spGrmGrabFile, args.spGrmPlink2File,
-                args.pairwiseIBDFile, geno, args.outputFile, args.outPrefix,
+                args.pairwiseIBDFile, geno, args.outputFile,
+                args.spaCutoff, args.nthread, args.nSnpPerChunk,
+                args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
+        }
+
+        // ── SAGELD ───────────────────────────────────────────────
+        else if (args.method == "SAGELD") {
+            checkSpGrm(args, /*required=*/true, "SAGELD");
+            require(args.pairwiseIBDFile, "--pairwise-ibd", "SAGELD");
+            runSAGELD(
+                args.residFile, args.spGrmGrabFile, args.spGrmPlink2File,
+                args.pairwiseIBDFile, geno, args.outputFile,
                 args.spaCutoff, args.nthread, args.nSnpPerChunk,
                 args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
         }
@@ -461,7 +472,7 @@ int run(int argc, char* argv[]) {
                 args.phenoFile, args.covarFile,
                 geno,
                 args.spGrmGrabFile, args.spGrmPlink2File, args.indAfFile,
-                args.outputFile, args.outPrefix,
+                args.outputFile,
                 args.spaCutoff, args.outlierRatio, args.nthread,
                 args.nSnpPerChunk,
                 args.missingCutoff, args.minMafCutoff, args.minMacCutoff);

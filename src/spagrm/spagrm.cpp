@@ -1,11 +1,22 @@
-// spagrm.cpp — nsSPAGRM free functions and SPAGRMClass (pure C++17 / Eigen / Boost)
+// spagrm.cpp — nsSPAGRM free functions, SPAGRMClass, and runSPAGRM
 
 #include "spagrm/spagrm.hpp"
+#include "spagrm/grm_null.hpp"
+#include "engine/marker.hpp"
+#include "io/geno_data.hpp"
+#include "io/sparse_grm.hpp"
+#include "io/subject_data.hpp"
+#include "util/logging.hpp"
 #include "util/math_helper.hpp"
+#include "util/text_scanner.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
+#include <memory>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace nsSPAGRM {
 
@@ -375,4 +386,118 @@ double SPAGRMClass::getMarkerPval(
       m_threeSubj_scratch, m_sum_R_nonOutlier, m_R_GRM_R_nonOutlier,
       -std::abs(Score_adj), MAF, true, zeta2, m_tol, m_workspace);
   return pval1 + pval2;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// runSPAGRM — entry point
+// ══════════════════════════════════════════════════════════════════════
+
+void runSPAGRM(
+    const std::string& residFile,
+    const std::string& spgrmGrabFile,
+    const std::string& spgrmGctaFile,
+    const std::string& pairwiseIBDFile,
+    const GenoSpec& geno,
+    const std::string& outputFile,
+    double spaCutoff,
+    int nthreads,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff
+) {
+  infoMsg("Loading residual file: %s", residFile.c_str());
+  auto famIIDs = parseGenoIIDs(geno);
+  SubjectData sd(std::move(famIIDs));
+  sd.loadResidOne(residFile);
+  sd.finalize();
+  const uint32_t N = sd.nUsed();
+  infoMsg("Loaded %u subjects (intersected with .fam)", N);
+
+  auto subjIDs = sd.usedIIDs();
+  auto subjIdMap = text::buildIIDMap(subjIDs);
+
+  SparseGRM grm = SparseGRM::load(spgrmGrabFile, spgrmGctaFile,
+                                   subjIDs, sd.famIIDs());
+  infoMsg("Sparse GRM: %zu entries (diagonal + off-diag)", grm.nnz());
+
+  infoMsg("Loading pairwise IBD: %s", pairwiseIBDFile.c_str());
+  auto ibdEntries = nsGRMNull::loadIndexedIBD(pairwiseIBDFile, subjIdMap);
+  auto ibdPairMap = nsGRMNull::buildIBDPairMap(ibdEntries);
+  infoMsg("Loaded %zu IBD records", ibdEntries.size());
+
+  const auto& allEntries = grm.entries();
+
+  std::vector<std::pair<uint32_t, uint32_t>> edges;
+  {
+    std::unordered_set<uint64_t> seen;
+    for (const auto& e : allEntries) {
+      if (e.row == e.col) continue;
+      uint32_t lo = std::min(e.row, e.col);
+      uint32_t hi = std::max(e.row, e.col);
+      uint64_t key = (static_cast<uint64_t>(lo) << 32) | hi;
+      if (seen.insert(key).second)
+        edges.push_back({lo, hi});
+    }
+  }
+  auto components = nsGRMNull::getComponents(N, edges);
+  infoMsg("Found %zu connected components", components.size());
+
+  std::vector<std::vector<uint32_t>> singletons, families;
+  for (auto& comp : components) {
+    if (comp.size() == 1)
+      singletons.push_back(std::move(comp));
+    else
+      families.push_back(std::move(comp));
+  }
+  infoMsg("Singletons: %zu, Families: %zu", singletons.size(), families.size());
+
+  std::unordered_set<uint32_t> singletonSet;
+  for (const auto& s : singletons) singletonSet.insert(s[0]);
+
+  const auto& grmDiag = grm.diagonal();
+
+  std::unordered_map<uint32_t, size_t> subjToFamily;
+  for (size_t fi = 0; fi < families.size(); ++fi)
+    for (uint32_t idx : families[fi])
+      subjToFamily[idx] = fi;
+
+  std::vector<std::vector<SparseGRM::Entry>> familyEntries(families.size());
+  for (const auto& e : allEntries) {
+    auto it = subjToFamily.find(e.row);
+    if (it != subjToFamily.end())
+      familyEntries[it->second].push_back(e);
+  }
+
+  auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(),
+                               nSnpPerChunk);
+
+  const int nRC = sd.residOneCols();
+  if (nRC > 1) infoMsg("Multi-column residual file: %d phenotypes", nRC);
+
+  // Build one SPAGRMMethod per residual column
+  std::vector<Eigen::VectorXd> residBufs(nRC);
+  std::vector<std::unique_ptr<MethodBase>> methods;
+  methods.reserve(nRC);
+
+  for (int rc = 0; rc < nRC; ++rc) {
+    residBufs[rc] = (nRC > 1) ? sd.residMatrix().col(rc) : sd.residuals();
+    SPAGRMClass sg = nsGRMNull::buildSPAGRMNullModel(
+        residBufs[rc], N, singletonSet, grmDiag, families, familyEntries,
+        allEntries, ibdEntries, ibdPairMap, spaCutoff);
+    methods.push_back(std::make_unique<SPAGRMMethod>(std::move(sg)));
+  }
+
+  auto residNames = buildResidNames(sd.residColNames(), nRC);
+  if (sd.residColNames().empty() && nRC > 1)
+    infoMsg("No header in residual file; columns named R1...R%d", nRC);
+
+  MultiMethod method(std::move(methods), std::move(residNames), {"_P", "_Z"});
+
+  infoMsg("Starting SPAGRM marker-level association (%d threads, %d phenotype(s))",
+          nthreads, nRC);
+  markerEngine(*genoData, method, outputFile,
+               nthreads, missingCutoff, minMafCutoff, minMacCutoff,
+               /*exactHwe=*/false);
 }

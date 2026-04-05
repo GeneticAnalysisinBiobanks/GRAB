@@ -60,3 +60,53 @@ void markerEngine(
   double minMafCutoff,
   double minMacCutoff,
   bool exactHwe);
+
+
+// ======================================================================
+// MultiMethod — runs N inner methods in one pass, interleaves results
+//
+// Column layout: for each residual name × each suffix
+//   e.g. residNames=["R1","R2"], suffixes=["_P","_Z"]
+//        → R1_P  R1_Z  R2_P  R2_Z
+// ======================================================================
+
+class MultiMethod : public MethodBase {
+public:
+  MultiMethod(
+      std::vector<std::unique_ptr<MethodBase>> methods,
+      std::vector<std::string> residNames,
+      std::vector<std::string> suffixes);
+
+  std::unique_ptr<MethodBase> clone() const override;
+  int resultSize() const override;
+  std::string getHeaderColumns() const override;
+  void prepareChunk(const std::vector<uint64_t>& gIndices) override;
+  void getResultVec(Eigen::Ref<Eigen::VectorXd> GVec,
+                    double altFreq, int markerInChunkIdx,
+                    std::vector<double>& result) override;
+
+private:
+  std::vector<std::unique_ptr<MethodBase>> m_methods;
+  std::vector<std::string> m_residNames;
+  std::vector<std::string> m_suffixes;
+};
+
+
+// ======================================================================
+// buildResidNames — resolve residual column names for output headers
+//
+// If the --null-resid file had a header, colNames carries those names;
+// otherwise colNames is empty and we generate "R1", "R2", ...
+// ======================================================================
+
+inline std::vector<std::string> buildResidNames(
+    const std::vector<std::string>& colNames, int nRC)
+{
+  if (!colNames.empty())
+    return colNames;
+  std::vector<std::string> names;
+  names.reserve(nRC);
+  for (int i = 0; i < nRC; ++i)
+    names.push_back("R" + std::to_string(i + 1));
+  return names;
+}

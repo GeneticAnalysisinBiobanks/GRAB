@@ -335,3 +335,54 @@ void markerEngine(
   infoMsg("Wall time: %.1f seconds, CPU time: %.1f seconds",
           wallSec, cpuSec);
 }
+
+
+// ──────────────────────────────────────────────────────────────────────
+// MultiMethod implementation
+// ──────────────────────────────────────────────────────────────────────
+
+MultiMethod::MultiMethod(
+    std::vector<std::unique_ptr<MethodBase>> methods,
+    std::vector<std::string> residNames,
+    std::vector<std::string> suffixes)
+  : m_methods(std::move(methods)),
+    m_residNames(std::move(residNames)),
+    m_suffixes(std::move(suffixes))
+{}
+
+std::unique_ptr<MethodBase> MultiMethod::clone() const {
+  std::vector<std::unique_ptr<MethodBase>> cloned;
+  cloned.reserve(m_methods.size());
+  for (const auto& m : m_methods) cloned.push_back(m->clone());
+  return std::make_unique<MultiMethod>(
+      std::move(cloned), m_residNames, m_suffixes);
+}
+
+int MultiMethod::resultSize() const {
+  return static_cast<int>(m_methods.size() * m_suffixes.size());
+}
+
+std::string MultiMethod::getHeaderColumns() const {
+  std::string h;
+  for (const auto& name : m_residNames)
+    for (const auto& suf : m_suffixes)
+      h += "\t" + name + suf;
+  return h;
+}
+
+void MultiMethod::prepareChunk(const std::vector<uint64_t>& gIndices) {
+  for (auto& m : m_methods) m->prepareChunk(gIndices);
+}
+
+void MultiMethod::getResultVec(
+    Eigen::Ref<Eigen::VectorXd> GVec,
+    double altFreq, int markerInChunkIdx,
+    std::vector<double>& result)
+{
+  std::vector<double> inner;
+  for (auto& m : m_methods) {
+    inner.clear();
+    m->getResultVec(GVec, altFreq, markerInChunkIdx, inner);
+    result.insert(result.end(), inner.begin(), inner.end());
+  }
+}

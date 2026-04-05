@@ -403,7 +403,6 @@ void runSPACox(
     const std::string& covarFile,
     const GenoSpec& geno,
     const std::string& outputFile,
-    const std::string& outPrefix,
     double pvalCovAdjCut,
     double spaCutoff,
     int nthread,
@@ -451,49 +450,36 @@ void runSPACox(
   infoMsg("  %u subjects matched, %u markers",
           genoData->nSubjUsed(), genoData->nMarkers());
 
-  // ---- Per-residual-column loop ----
+  // ---- Multi-phenotype single-file output ----
   const int nRC = sd.residOneCols();
-  // --out: single column only; --out-prefix: all columns
-  const bool multiMode = !outPrefix.empty();
-  const int nLoop = multiMode ? nRC : 1;
-  if (nRC > 1 && multiMode)
-    infoMsg("Multi-column residual file: %d columns", nRC);
-  if (nRC > 1 && !multiMode)
-    infoMsg("Multi-column residual file: %d columns (--out: using column 1 only)", nRC);
+  if (nRC > 1) infoMsg("Multi-column residual file: %d phenotypes", nRC);
 
-  for (int rc = 0; rc < nLoop; ++rc) {
-    Eigen::VectorXd colBuf;
-    if (nRC > 1) colBuf = sd.residMatrix().col(rc);
-    const Eigen::VectorXd& resid = (nRC > 1) ? colBuf : sd.residuals();
+  std::vector<Eigen::VectorXd> residBufs(nRC);
+  std::vector<CumulantTable>   cumuls(nRC);
+  std::vector<double>          varResids(nRC);
+  std::vector<std::unique_ptr<MethodBase>> methods;
+  methods.reserve(nRC);
 
-    std::string outFile = multiMode
-        ? (outPrefix + "." + std::to_string(rc + 1) + ".tsv")
-        : outputFile;
-    if (nLoop > 1)
-      infoMsg("  Column %d/%d%s -> %s", rc + 1, nRC,
-              (rc < static_cast<int>(sd.residColNames().size())
-                   ? (" (" + sd.residColNames()[rc] + ")").c_str() : ""),
-              outFile.c_str());
-
-    // ---- Build empirical CGF table ----
-    CumulantTable cumul = buildCumulantTable(resid);
-
-    // ---- Variance of residuals ----
-    double meanR = resid.mean();
-    double varResid = (resid.array() - meanR).square().mean();
-    double N = static_cast<double>(resid.size());
-    varResid *= N / (N - 1.0);
-
-    // ---- Construct method and run engine ----
-    if (nRC == 1) infoMsg("Running SPACox marker tests (%d thread(s))...", nthread);
-    SPACoxMethod method(resid, varResid, cumul, design,
-                        pvalCovAdjCut, spaCutoff);
-
-    markerEngine(*genoData, method, outFile,
-                 nthread,
-                 missingCutoff,
-                 minMafCutoff,
-                 minMacCutoff,
-                 /*exactHwe=*/false);
+  for (int rc = 0; rc < nRC; ++rc) {
+    residBufs[rc] = (nRC > 1) ? sd.residMatrix().col(rc) : sd.residuals();
+    cumuls[rc]    = buildCumulantTable(residBufs[rc]);
+    double meanR  = residBufs[rc].mean();
+    double varR   = (residBufs[rc].array() - meanR).square().mean();
+    double N      = static_cast<double>(residBufs[rc].size());
+    varResids[rc] = varR * N / (N - 1.0);
+    methods.push_back(std::make_unique<SPACoxMethod>(
+        residBufs[rc], varResids[rc], cumuls[rc], design,
+        pvalCovAdjCut, spaCutoff));
   }
+
+  auto residNames = buildResidNames(sd.residColNames(), nRC);
+  if (sd.residColNames().empty() && nRC > 1)
+    infoMsg("No header in residual file; columns named R1...R%d", nRC);
+
+  MultiMethod method(std::move(methods), std::move(residNames), {"_P", "_Z"});
+  infoMsg("Running SPACox marker tests (%d thread(s), %d phenotype(s))...",
+          nthread, nRC);
+  markerEngine(*genoData, method, outputFile,
+               nthread, missingCutoff, minMafCutoff, minMacCutoff,
+               /*exactHwe=*/false);
 }

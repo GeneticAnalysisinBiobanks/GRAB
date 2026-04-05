@@ -321,7 +321,6 @@ void runSPAmixPlus(
     const std::string& spgrmGctaFile,
     const std::string& afFile,
     const std::string& outputFile,
-    const std::string& outPrefix,
     double spaCutoff,
     double outlierRatio,
     int    nthread,
@@ -396,71 +395,56 @@ void runSPAmixPlus(
     infoMsg("  %zu AF models loaded", afModels.size());
   }
 
-  // ---- Per-residual-column loop ----
+  // ---- Multi-phenotype single-file output ----
   const int nRC = sd.residOneCols();
-  // --out: single column only; --out-prefix: all columns
-  const bool multiMode = !outPrefix.empty();
-  const int nLoop = multiMode ? nRC : 1;
-  if (nRC > 1 && multiMode)
-    infoMsg("Multi-column residual file: %d columns", nRC);
-  if (nRC > 1 && !multiMode)
-    infoMsg("Multi-column residual file: %d columns (--out: using column 1 only)", nRC);
+  if (nRC > 1) infoMsg("Multi-column residual file: %d phenotypes", nRC);
 
-  for (int rc = 0; rc < nLoop; ++rc) {
-    Eigen::VectorXd colBuf;
-    if (nRC > 1) colBuf = sd.residMatrix().col(rc);
-    const Eigen::VectorXd& resid = (nRC > 1) ? colBuf : sd.residuals();
+  std::vector<Eigen::VectorXd> residBufs(nRC);
+  std::vector<Eigen::VectorXd> resid2Bufs(nRC);
+  std::vector<OutlierData>     outlierBufs(nRC);
+  std::vector<std::unique_ptr<MethodBase>> methods;
+  methods.reserve(nRC);
 
-    std::string outFile = multiMode
-        ? (outPrefix + "." + std::to_string(rc + 1) + ".tsv")
-        : outputFile;
-    if (nLoop > 1)
-      infoMsg("  Column %d/%d%s -> %s", rc + 1, nRC,
-              (rc < static_cast<int>(sd.residColNames().size())
-                   ? (" (" + sd.residColNames()[rc] + ")").c_str() : ""),
-              outFile.c_str());
+  for (int rc = 0; rc < nRC; ++rc) {
+    residBufs[rc]   = (nRC > 1) ? sd.residMatrix().col(rc) : sd.residuals();
+    resid2Bufs[rc]  = residBufs[rc].array().square();
+    outlierBufs[rc] = detectOutliers(residBufs[rc], outlierRatio);
 
-    // Squared residuals
-    Eigen::VectorXd resid2 = resid.array().square();
-
-    // ---- Outlier detection ----
-    OutlierData outlier = detectOutliers(resid, outlierRatio);
-    if (nRC == 1)
-      infoMsg("  %zu outliers, %zu non-outliers",
-              outlier.posOutlier.size(), outlier.posNonOutlier.size());
-
-    // ---- Construct method and run engine ----
-    const char* methodLabel = hasGRM ? "SPAmixPlus" : "SPAmix";
-    if (nRC == 1) infoMsg("Running %s marker tests (%d thread(s))...",
-                          methodLabel, nthread);
-    std::unique_ptr<SPAmixPlusMethod> method;
+    std::unique_ptr<SPAmixPlusMethod> m;
     if (hasGRM) {
       if (!afFile.empty()) {
-        method = std::make_unique<SPAmixPlusMethod>(
-            resid, resid2, onePlusPCs, outlier, spaCutoff,
+        m = std::make_unique<SPAmixPlusMethod>(
+            residBufs[rc], resid2Bufs[rc], onePlusPCs, outlierBufs[rc], spaCutoff,
             *grm, afModels, genoToFlat);
       } else {
-        method = std::make_unique<SPAmixPlusMethod>(
-            resid, resid2, onePlusPCs, outlier, spaCutoff,
+        m = std::make_unique<SPAmixPlusMethod>(
+            residBufs[rc], resid2Bufs[rc], onePlusPCs, outlierBufs[rc], spaCutoff,
             *grm, XtX_inv_Xt, sqrt_XtX_inv_diag, nPC);
       }
     } else {
       if (!afFile.empty()) {
-        method = std::make_unique<SPAmixPlusMethod>(
-            resid, resid2, onePlusPCs, outlier, spaCutoff,
+        m = std::make_unique<SPAmixPlusMethod>(
+            residBufs[rc], resid2Bufs[rc], onePlusPCs, outlierBufs[rc], spaCutoff,
             afModels, genoToFlat);
       } else {
-        method = std::make_unique<SPAmixPlusMethod>(
-            resid, resid2, onePlusPCs, outlier, spaCutoff,
+        m = std::make_unique<SPAmixPlusMethod>(
+            residBufs[rc], resid2Bufs[rc], onePlusPCs, outlierBufs[rc], spaCutoff,
             XtX_inv_Xt, sqrt_XtX_inv_diag, nPC);
       }
     }
-
-    markerEngine(*genoData, *method, outFile,
-                 nthread,
-                 missingCutoff,
-                 minMafCutoff,
-                 minMacCutoff,
-                 /*exactHwe=*/false);
+    methods.push_back(std::move(m));
   }
+
+  auto residNames = buildResidNames(sd.residColNames(), nRC);
+  if (sd.residColNames().empty() && nRC > 1)
+    infoMsg("No header in residual file; columns named R1...R%d", nRC);
+
+  const char* methodLabel = hasGRM ? "SPAmixPlus" : "SPAmix";
+  MultiMethod method(std::move(methods), std::move(residNames),
+                     {"_P", "_Z", "_BETA", "_SE"});
+  infoMsg("Running %s marker tests (%d thread(s), %d phenotype(s))...",
+          methodLabel, nthread, nRC);
+  markerEngine(*genoData, method, outputFile,
+               nthread, missingCutoff, minMafCutoff, minMacCutoff,
+               /*exactHwe=*/false);
 }

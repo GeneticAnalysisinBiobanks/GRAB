@@ -15,6 +15,7 @@
 #include <Eigen/Dense>
 
 #include "engine/marker.hpp"   // MethodBase
+#include "io/geno_data.hpp"    // GenoSpec
 
 namespace nsSPAGRM {
 
@@ -145,3 +146,58 @@ private:
   nsSPAGRM::MgfWorkspace m_workspace;
   std::vector<nsSPAGRM::UpdatedThreeSubj> m_threeSubj_scratch;
 };
+
+
+// ══════════════════════════════════════════════════════════════════════
+// SPAGRMMethod — MethodBase adapter wrapping a single SPAGRMClass
+// ══════════════════════════════════════════════════════════════════════
+
+class SPAGRMMethod : public MethodBase {
+public:
+  explicit SPAGRMMethod(SPAGRMClass spagrm) : m_spagrm(std::move(spagrm)) {}
+
+  std::unique_ptr<MethodBase> clone() const override {
+    return std::make_unique<SPAGRMMethod>(*this);
+  }
+
+  int resultSize() const override { return 2; }
+
+  std::string getHeaderColumns() const override {
+    return "\tSPAGRM_P\tSPAGRM_Z";
+  }
+
+  void getResultVec(
+      Eigen::Ref<Eigen::VectorXd> GVec,
+      double altFreq,
+      int /*markerInChunkIdx*/,
+      std::vector<double>& result) override
+  {
+    result.clear();
+    double z;
+    double p = m_spagrm.getMarkerPval(GVec, altFreq, z);
+    result.push_back(p);
+    result.push_back(z);
+  }
+
+private:
+  SPAGRMClass m_spagrm;
+};
+
+
+// ══════════════════════════════════════════════════════════════════════
+// runSPAGRM — full workflow entry point
+// ══════════════════════════════════════════════════════════════════════
+
+void runSPAGRM(
+    const std::string& residFile,
+    const std::string& spgrmGrabFile,
+    const std::string& spgrmGctaFile,
+    const std::string& pairwiseIBDFile,
+    const GenoSpec& geno,
+    const std::string& outputFile,
+    double spaCutoff,
+    int nthreads,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff);

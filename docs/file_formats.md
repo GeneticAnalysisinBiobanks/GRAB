@@ -412,6 +412,60 @@ Random-access binary file.  No header.  Records are indexed by raw
 
 ---
 
+## extract_tracts Text Files (`--admix-text-prefix PREFIX`)
+
+Input for `grab --make-abed --admix-text-prefix PREFIX`, produced by
+`extract_tracts_fast_pgzip.py`.
+
+### File naming
+
+For each ancestry `k` (0-based, auto-detected by scanning from `k=0`):
+
+| File | Description |
+|------|-------------|
+| `{PREFIX}.anc{k}.dosage[.gz]` | Dosage values (0/1/2 per sample) for ancestry k |
+| `{PREFIX}.anc{k}.hapcount[.gz]` | Haplotype count values (0/1/2 per sample) for ancestry k |
+
+Both plain text and gzip-compressed files are accepted transparently.
+K is determined by scanning from `k=0` until no dosage file is found.
+
+### File format
+
+Tab-delimited text with a header row:
+
+```
+CHROM   POS     ID      REF     ALT     SAMPLE1 SAMPLE2 ...
+chr1    100000  rs1234  A       G       0       1       ...
+chr1    200000  rs5678  C       T       2       0       ...
+```
+
+| Column | Name | Description |
+|--------|------|-------------|
+| 1 | CHROM | Chromosome |
+| 2 | POS | Base-pair position |
+| 3 | ID | Variant identifier |
+| 4 | REF | Reference allele |
+| 5 | ALT | Alternate allele |
+| 6+ | SAMPLE_IDs | Integer value per sample (0, 1, or 2) |
+
+- The header of `{PREFIX}.anc0.dosage[.gz]` defines the `.bim` and `.fam` of the output.
+- All ancestry files must share the same marker and sample order.
+- Missing values (`NA`, `.`, `-9`) are encoded as missing in the `.abed` file.
+
+### Output
+
+`grab --make-abed --admix-text-prefix PREFIX --out-prefix OUT` writes:
+
+| File | Contents |
+|------|----------|
+| `OUT.abed` | Binary ancestry track matrix (2K tracks per marker: dosage + hapcount per ancestry) |
+| `OUT.bim` | Variant information (CHROM ID 0 POS REF ALT) from the first dosage file |
+| `OUT.fam` | Sample list from the first dosage file header (FID=IID) |
+
+Pass `OUT` as `--admix-bfile` to `SPAmixLocalPlus` or `--cal-admix-phi`.
+
+---
+
 ## Summary of Subject Matching Rules
 
 | File | IID source | Fallback | Parser | Source file |
