@@ -40,6 +40,19 @@ struct PhiMatrices {
     std::vector<PhiEntry> D;  // (1,1) pairs
 };
 
+// Pre-computed phi entries with R[i]*R[j]*phi*multiplier baked in.
+// Eliminates random R[] lookups in the per-marker variance hot path.
+struct RprodEntry {
+    uint32_t i, j;
+    double rprod;   // multiplier * phi * R[i] * R[j]
+};
+struct RprodPhi {
+    std::vector<RprodEntry> A, B, C, D;
+};
+
+// Build RprodPhi from PhiMatrices and residual vector (once per phenotype).
+RprodPhi buildRprodPhi(const PhiMatrices& phi, const Eigen::VectorXd& R);
+
 
 // ======================================================================
 // Phi estimation
@@ -84,6 +97,8 @@ double computePhiVariance(
 
 // Compute SPA p-value for the local-ancestry score test.
 //   S:        score statistic = sum(dosage * R)
+//   sMean:    pre-computed mean of S = q * hapcount.dot(R)
+//   varDiag:  diagonal-only variance = q(1-q) * sum(R_i^2 * h_i)
 //   R:        residual vector
 //   hapcount: hapcount vector for this ancestry at this marker
 //   q:        allele frequency
@@ -94,6 +109,8 @@ double computePhiVariance(
 // Returns: {pval_spa, pval_normal}
 std::pair<double, double> spaLocalPval(
     double S,
+    double sMean,
+    double varDiag,
     const Eigen::VectorXd& R,
     const Eigen::VectorXd& hapcount,
     double q,

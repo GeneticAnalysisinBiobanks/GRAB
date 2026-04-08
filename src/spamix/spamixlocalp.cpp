@@ -36,6 +36,29 @@ static constexpr double MIN_P_VALUE = std::numeric_limits<double>::min();
 
 
 // ======================================================================
+// Precomputed phi products — bake R[i]*R[j]*phi*mult into a flat double
+// ======================================================================
+
+RprodPhi buildRprodPhi(const PhiMatrices& phi, const Eigen::VectorXd& R) {
+    RprodPhi rp;
+    auto build = [&](const std::vector<PhiEntry>& src,
+                     std::vector<RprodEntry>& dst, double mult) {
+        dst.resize(src.size());
+        for (size_t p = 0; p < src.size(); ++p) {
+            dst[p].i     = src[p].i;
+            dst[p].j     = src[p].j;
+            dst[p].rprod = mult * src[p].value * R[src[p].i] * R[src[p].j];
+        }
+    };
+    build(phi.A, rp.A, 4.0);
+    build(phi.B, rp.B, 2.0);
+    build(phi.C, rp.C, 2.0);
+    build(phi.D, rp.D, 1.0);
+    return rp;
+}
+
+
+// ======================================================================
 // Phi estimation — streaming through .abed, no full-matrix materialization
 // ======================================================================
 
@@ -259,22 +282,24 @@ double computePhiVariance(
 
 namespace {
 
-// CGF derivatives for binomial genome model
-inline double kG0(double t, double maf, double h) {
-    double et = std::exp(std::clamp(t, -700.0, 700.0));
+// Fused CGF derivatives — single exp() per call instead of 3 separate calls.
+// K0 = h * log((1-p) + p*e^t),  K1 = h * p*e^t / base,  K2 = h * p*e^t*(1-p) / base^2
+inline void kG012Local(double t, double maf, double h,
+                       double& K0out, double& K1out, double& K2out) {
+    double et   = std::exp(std::clamp(t, -700.0, 700.0));
     double base = (1.0 - maf) + maf * et;
-    return (base > 0.0) ? h * std::log(base) : -std::numeric_limits<double>::infinity();
-}
-inline double kG1(double t, double maf, double h) {
-    double et = std::exp(std::clamp(t, -700.0, 700.0));
-    double denom = (1.0 - maf) + maf * et;
-    return (std::abs(denom) > 1e-15) ? h * maf * et / denom : 0.0;
-}
-inline double kG2(double t, double maf, double h) {
-    double et = std::exp(std::clamp(t, -700.0, 700.0));
-    double denom = (1.0 - maf) + maf * et;
-    double dsq = denom * denom;
-    return (dsq > 1e-15) ? h * maf * et * (1.0 - maf) / dsq : 0.0;
+    if (base > 1e-15) {
+        double pe   = maf * et;         // p * e^t
+        double q1p  = (1.0 - maf);      // (1-p)
+        double bsq  = base * base;
+        K0out = h * std::log(base);
+        K1out = h * pe / base;
+        K2out = h * pe * q1p / bsq;
+    } else {
+        K0out = -std::numeric_limits<double>::infinity();
+        K1out = 0.0;
+        K2out = 0.0;
+    }
 }
 
 // Newton-Raphson root finding for K'(t) = s
@@ -295,8 +320,10 @@ RootResult findRoot(double s,
             double K1 = 0.0, K2 = 0.0;
             for (int i = 0; i < nOut; ++i) {
                 double tR = std::clamp(t * rOut[i], -700.0, 700.0);
-                K1 += rOut[i] * kG1(tR, q, hOut[i]);
-                K2 += rOut[i] * rOut[i] * kG2(tR, q, hOut[i]);
+                double k0i, k1i, k2i;
+                kG012Local(tR, q, hOut[i], k0i, k1i, k2i);
+                K1 += rOut[i] * k1i;
+                K2 += rOut[i] * rOut[i] * k2i;
             }
             double K1total = K1 + meanNorm + varNorm * t - s;
             double K2total = K2 + varNorm;
@@ -321,8 +348,10 @@ double lugannamiRicePval(double zeta, double s, double q,
     double K0 = 0.0, K2 = 0.0;
     for (int i = 0; i < nOut; ++i) {
         double tR = std::clamp(zeta * rOut[i], -700.0, 700.0);
-        K0 += kG0(tR, q, hOut[i]);
-        K2 += rOut[i] * rOut[i] * kG2(tR, q, hOut[i]);
+        double k0i, k1i, k2i;
+        kG012Local(tR, q, hOut[i], k0i, k1i, k2i);
+        K0 += k0i;
+        K2 += rOut[i] * rOut[i] * k2i;
     }
     K0 += meanNorm * zeta + 0.5 * varNorm * zeta * zeta;
     K2 += varNorm;
@@ -356,6 +385,8 @@ double lugannamiRicePval(double zeta, double s, double q,
 
 std::pair<double, double> spaLocalPval(
     double S,
+    double sMean,
+    double varDiag,
     const Eigen::VectorXd& R,
     const Eigen::VectorXd& hapcount,
     double q,
@@ -363,10 +394,6 @@ std::pair<double, double> spaLocalPval(
     const OutlierData& outlier,
     double spaCutoff
 ) {
-    double sMean = 0.0;
-    for (int i = 0; i < static_cast<int>(R.size()); ++i)
-        sMean += q * hapcount[i] * R[i];
-
     double z = (varS > 0.0) ? (S - sMean) / std::sqrt(varS) : 0.0;
     boost::math::normal_distribution<> norm;
     double pNorm = 2.0 * boost::math::cdf(boost::math::complement(norm, std::abs(z)));
@@ -376,11 +403,7 @@ std::pair<double, double> spaLocalPval(
         return {pNorm, pNorm};
     }
 
-    // Compute diagonal variance for Var_ratio
-    double varDiag = 0.0;
-    for (int i = 0; i < static_cast<int>(R.size()); ++i)
-        varDiag += R[i] * R[i] * hapcount[i] * q * (1.0 - q);
-
+    // varDiag already computed by caller
     double varRatio = (varS > 0.0) ? varDiag / varS : 1.0;
     double sNew = S * std::sqrt(varRatio);
     double sMeanNew = sMean * std::sqrt(varRatio);
@@ -681,6 +704,16 @@ static void runUnifiedGWAS(
     std::atomic<size_t> nextChunk{0};
     size_t nChunks = chunks.size();
 
+    // Pre-compute R^2 and rprod arrays (once per phenotype, not per marker).
+    // This bakes R[i]*R[j]*phi*multiplier into a flat double, eliminating
+    // random R[] lookups in the per-marker variance hot path.
+    Eigen::ArrayXd R2 = resid.array().square();
+    std::vector<RprodPhi> rphi(K);
+    for (int k = 0; k < K; ++k)
+        rphi[k] = buildRprodPhi(allPhi[k], resid);
+
+    const bool noMissing = admixData.hasNoMissing();
+
     struct PaddedFlag { alignas(64) int ready = 0; };
     std::vector<std::string> chunkOutput(nChunks);
     std::vector<PaddedFlag> chunkReady(nChunks);
@@ -707,6 +740,8 @@ static void runUnifiedGWAS(
         Eigen::MatrixXd dosMatrix(nUsed, K), hapMatrix(nUsed, K);
         char fmtBuf[64];
         std::vector<double> ancPvals(K);
+        // Thread-local scratch: compact integer hapcount for branchless variance
+        std::vector<uint8_t> hInt(nUsed);
 
         for (size_t ci = nextChunk.fetch_add(1); ci < nChunks; ci = nextChunk.fetch_add(1)) {
             const auto& gIndices = chunks[ci];
@@ -749,7 +784,7 @@ static void runUnifiedGWAS(
                     // QC: accumulate dosage/hapcount sums, handle missing
                     double hapSum = 0.0, dosSum = 0.0;
                     uint32_t nMissing = 0;
-                    if (admixData.hasNoMissing()) {
+                    if (noMissing) {
                         // Fast path: no NaN values possible, skip isfinite checks
                         dosSum = dosCol.sum();
                         hapSum = hapCol.sum();
@@ -784,15 +819,52 @@ static void runUnifiedGWAS(
                     ar.pass = true;
 
                     double q = maf;
-                    double S = 0.0, sMean = 0.0;
-                    for (uint32_t s = 0; s < nUsed; ++s) {
-                        S += dosCol[s] * resid[s];
-                        sMean += q * hapCol[s] * resid[s];
+                    double qTerm = q * (1.0 - q);
+
+                    // Score test — Eigen SIMD dot products (replaces scalar loop)
+                    double S = dosCol.dot(resid);
+                    double sMean = q * hapCol.dot(resid);
+
+                    // ── Variance via precomputed rprod + compact hInt ──
+                    // Convert hapcount to uint8 (values are exactly 0, 1, or 2)
+                    if (noMissing) {
+                        for (uint32_t s = 0; s < nUsed; ++s)
+                            hInt[s] = static_cast<uint8_t>(hapCol[s]);
+                    } else {
+                        for (uint32_t s = 0; s < nUsed; ++s) {
+                            double h = hapCol[s];
+                            hInt[s] = std::isfinite(h) ? static_cast<uint8_t>(h) : 0;
+                        }
                     }
 
-                    double varS = computePhiVariance(resid, hapCol, q, allPhi[k]);
+                    // Off-diagonal phi variance — branchless accumulation.
+                    // Replaces: abs(hapcount[i]-target)<0.5 branch + random R[] reads
+                    // with: integer equality (branchless) + precomputed rprod (sequential).
+                    const RprodPhi& rp = rphi[k];
+                    double varOff = 0.0;
+                    for (size_t p = 0; p < rp.A.size(); ++p) {
+                        const auto& e = rp.A[p];
+                        varOff += ((hInt[e.i] == 2) & (hInt[e.j] == 2)) * e.rprod;
+                    }
+                    for (size_t p = 0; p < rp.B.size(); ++p) {
+                        const auto& e = rp.B[p];
+                        varOff += ((hInt[e.i] == 2) & (hInt[e.j] == 1)) * e.rprod;
+                    }
+                    for (size_t p = 0; p < rp.C.size(); ++p) {
+                        const auto& e = rp.C[p];
+                        varOff += ((hInt[e.i] == 1) & (hInt[e.j] == 2)) * e.rprod;
+                    }
+                    for (size_t p = 0; p < rp.D.size(); ++p) {
+                        const auto& e = rp.D[p];
+                        varOff += ((hInt[e.i] == 1) & (hInt[e.j] == 1)) * e.rprod;
+                    }
+
+                    // Diagonal variance — vectorized dot product
+                    double varDiag = qTerm * R2.matrix().dot(hapCol);
+                    double varS = varOff * qTerm + varDiag;
+
                     double z = (varS > 0.0) ? (S - sMean) / std::sqrt(varS) : 0.0;
-                    auto [pSpa, pNorm] = spaLocalPval(S, resid, hapCol, q, varS, outlier, spaCutoff);
+                    auto [pSpa, pNorm] = spaLocalPval(S, sMean, varDiag, resid, hapCol, q, varS, outlier, spaCutoff);
                     double betaG = (varS > 0.0) ? (S - sMean) / varS
                                                 : std::numeric_limits<double>::quiet_NaN();
 
