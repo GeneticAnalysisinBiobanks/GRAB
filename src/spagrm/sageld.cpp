@@ -308,13 +308,16 @@ void runSAGELD(
     int nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff
+    double minMacCutoff,
+    const std::string& keepFile,
+    const std::string& removeFile
 ) {
   // 1. Load residual file
   infoMsg("Loading residual file: %s", residFile.c_str());
   auto famIIDs = parseGenoIIDs(geno);
   SubjectData sd(std::move(famIIDs));
   sd.loadResidOne(residFile);
+  sd.setKeepRemove(keepFile, removeFile);
   sd.finalize();
   const uint32_t N = sd.nUsed();
   infoMsg("Loaded %u subjects (intersected with .fam)", N);

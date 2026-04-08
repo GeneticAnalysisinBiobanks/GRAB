@@ -9,10 +9,14 @@
 
 // Convert a phased VCF/BCF + MSP file to .abed/.bim/.fam.
 //
-//   vcfFile:   path to phased BCF/VCF/VCF.gz (used with htslib)
-//   mspFile:   path to rfmix MSP file (.msp or .msp.tsv)
-//   outPrefix: output prefix — writes {outPrefix}.abed, .bim, .fam
-//              (do NOT include the .abed extension in outPrefix)
+//   vcfFile:    path to phased BCF/VCF/VCF.gz (used with htslib)
+//   mspFile:    path to rfmix MSP file (.msp or .msp.tsv)
+//   outPrefix:  output prefix — writes {outPrefix}.abed, .bim, .fam
+//               (do NOT include the .abed extension in outPrefix)
+//   keepFile:   PLINK2-style sample ID file — only listed subjects are kept
+//               (empty = keep all)
+//   removeFile: PLINK2-style sample ID file — listed subjects are excluded
+//               (empty = remove none)
 //
 // MSP file format:
 //   Line 1: #Subpopulation order/codes: 0=X\t1=Y\t...  (K inferred from this)
@@ -25,4 +29,7 @@
 void convertVcfMspToAbed(
     const std::string& vcfFile,
     const std::string& mspFile,
-    const std::string& outPrefix);
+    const std::string& outPrefix,
+    const std::string& keepFile   = {},
+    const std::string& removeFile = {},
+    int                nthreads   = 1);

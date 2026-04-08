@@ -58,7 +58,8 @@ struct PhiMatrices {
 PhiMatrices estimatePhiOneAncestry(
     const AdmixData& admixData,
     const SparseGRM& grm,
-    int ancIdx);
+    int ancIdx,
+    int nthreads = 1);
 
 
 // ======================================================================
@@ -115,8 +116,11 @@ void runPhiEstimation(
     const std::string& grmGrabFile,
     const std::string& grmGctaFile,
     const std::string& phiOutputFile,
+    const std::string& keepFile = {},
+    const std::string& removeFile = {},
     const std::string& extractFile = {},
-    const std::string& excludeFile = {});
+    const std::string& excludeFile = {},
+    int nthreads = 1);
 
 // Run per-ancestry GWAS with SPAmixLocalPlus.
 //   residFile:    null model residual file
@@ -138,5 +142,7 @@ void runSPAmixLocalPlus(
     double missingCutoff,
     double minMafCutoff,
     double minMacCutoff,
+    const std::string& keepFile = {},
+    const std::string& removeFile = {},
     const std::string& extractFile = {},
     const std::string& excludeFile = {});

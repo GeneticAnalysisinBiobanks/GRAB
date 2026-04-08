@@ -869,13 +869,17 @@ void runWtCoxG(
     int nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff) {
+    double minMacCutoff,
+    const std::string& keepFile,
+    const std::string& removeFile
+) {
 
   // ---- Load & match ----
   infoMsg("Loading resid file: %s", residFile.c_str());
   auto famIIDs = parseGenoIIDs(geno);
   SubjectData sd(std::move(famIIDs));
   sd.loadResidWtCoxG(residFile);
+  sd.setKeepRemove(keepFile, removeFile);
   sd.finalize();
   infoMsg("  %u subjects loaded", sd.nUsed());
 
@@ -952,7 +956,10 @@ void runWtCoxGPheno(
     int nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff) {
+    double minMacCutoff,
+    const std::string& keepFile,
+    const std::string& removeFile
+) {
 
   const bool isSurv = !survPheno.empty();
 
@@ -965,6 +972,7 @@ void runWtCoxGPheno(
     infoMsg("Loading covariate file: %s", covarFile.c_str());
     sd.loadCovar(covarFile);
   }
+  sd.setKeepRemove(keepFile, removeFile);
   sd.finalize();
   // Drop subjects with NA in the selected phenotype column(s)
   if (isSurv) {

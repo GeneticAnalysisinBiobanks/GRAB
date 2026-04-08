@@ -329,7 +329,9 @@ void runSPAmixPlus(
     int    nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff
+    double minMacCutoff,
+    const std::string& keepFile,
+    const std::string& removeFile
 ) {
   // ---- Load residual file and PC data ----
   infoMsg("Loading residual file: %s", residFile.c_str());
@@ -338,6 +340,7 @@ void runSPAmixPlus(
   sd.loadResidOne(residFile);
   if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile);
   if (!covarFile.empty()) sd.loadCovar(covarFile);
+  sd.setKeepRemove(keepFile, removeFile);
   sd.finalize();
 
   const int N   = static_cast<int>(sd.nUsed());

@@ -412,7 +412,10 @@ void runSPACox(
     int nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff) {
+    double minMacCutoff,
+    const std::string& keepFile,
+    const std::string& removeFile
+) {
 
   // ---- Load resid file and covariate data ----
   infoMsg("Loading resid file: %s", residFile.c_str());
@@ -423,6 +426,7 @@ void runSPACox(
     sd.loadPhenoFile(phenoFile);
   if (!covarFile.empty())
     sd.loadCovar(covarFile);
+  sd.setKeepRemove(keepFile, removeFile);
   sd.finalize();
   infoMsg("  %u subjects in union mask", sd.nUsed());
 

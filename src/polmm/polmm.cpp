@@ -1361,14 +1361,17 @@ void runPOLMM(
     int nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff
+    double minMacCutoff,
+    const std::string& keepFile,
+    const std::string& removeFile
 ) {
     // ── 1. Load phenotype/covariate data ────────────────────────────
     infoMsg("POLMM: Loading phenotype and covariate data");
     auto famIIDs = parseGenoIIDs(geno);
     SubjectData sd(std::move(famIIDs));
     sd.loadPhenoFile(phenoFile);
-    sd.finalize();
+    sd.setKeepRemove(keepFile, removeFile);
+  sd.finalize();
     sd.dropNaInColumns({ordinalPhenoCol});  // remove subjects with missing phenotype
 
     const int N = static_cast<int>(sd.nUsed());

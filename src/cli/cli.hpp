@@ -37,6 +37,8 @@ struct Args {
     std::string admixPhiFile;       // --admix-phi
     std::string mspFile;            // --rfmix-msp
     std::string admixTextPrefix;    // --admix-text-prefix
+    std::string keepFile;           // --keep (subject include list)
+    std::string removeFile;         // --remove (subject exclude list)
     bool   calIndAfCoef      = false;
     bool   calPairwiseIBD    = false;
     bool   calAdmixPhi       = false;

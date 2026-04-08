@@ -2,6 +2,7 @@
 
 #include "io/admix_convert.hpp"
 #include "io/admix.hpp"
+#include "io/subject_filter.hpp"
 #include "util/logging.hpp"
 
 #include <zlib.h>
@@ -62,8 +63,12 @@ static std::string findExtractTractsFile(const std::string& prefix, int k,
 
 void convertTextToAbed(
     const std::string& textPrefix,
-    const std::string& outPrefix
+    const std::string& outPrefix,
+    const std::string& keepFile,
+    const std::string& removeFile,
+    int                nthreads
 ) {
+    if (nthreads < 1) nthreads = 1;
     // Auto-detect K by scanning for anc0, anc1, ...
     int K = 0;
     while (true) {
@@ -128,99 +133,130 @@ void convertTextToAbed(
             throw std::runtime_error("Empty file for anc" + std::to_string(k));
     }
 
-    // Count markers by scanning first dosage file
-    uint32_t nMarkers = 0;
-    {
-        std::string dosPath;
-        resolvePath(0, true, dosPath);
-        gzFile countGz = gzopen(dosPath.c_str(), "rb");
-        if (!countGz) throw std::runtime_error("Cannot reopen for counting");
-        std::string cntLine;
-        gzReadLine(countGz, cntLine);  // skip header
-        while (gzReadLine(countGz, cntLine)) ++nMarkers;
-        gzclose(countGz);
-    }
-    infoMsg("Detected %u markers", nMarkers);
+    // Apply --keep / --remove subject filtering
+    auto keptIndices = buildKeptIndices(sampleIDs, keepFile, removeFile);
+    uint32_t nKept = static_cast<uint32_t>(keptIndices.size());
+    if (nKept == 0)
+        throw std::runtime_error("convertTextToAbed: no subjects remain after --keep/--remove filters");
 
-    // Rewind all files
-    for (int k = 0; k < K; ++k) {
-        gzclose(files[k].dosGz);
-        gzclose(files[k].hapGz);
-        std::string dosPath, hapPath;
-        resolvePath(k, true,  dosPath);
-        resolvePath(k, false, hapPath);
-        files[k].dosGz = gzopen(dosPath.c_str(), "rb");
-        files[k].hapGz = gzopen(hapPath.c_str(), "rb");
-        if (!files[k].dosGz || !files[k].hapGz)
-            throw std::runtime_error("Cannot reopen files for anc" + std::to_string(k));
-        gzReadLine(files[k].dosGz, skipLine);
-        gzReadLine(files[k].hapGz, skipLine);
-    }
+    // Build filtered sample ID list
+    std::vector<std::string> keptSampleIDs(nKept);
+    for (uint32_t j = 0; j < nKept; ++j)
+        keptSampleIDs[j] = sampleIDs[keptIndices[j]];
 
-    // Create ABED writer + output files
-    AbedWriter writer(outPrefix + ".abed", static_cast<uint16_t>(K), nSamples, nMarkers,
-                      ABED_FLAG_NO_MISSING);
+    // Create ABED writer + output files  (no nMarkers needed in v2 header)
+    // Text input may contain missing values, so default to noMissing=false;
+    // we track hasMissing and the flag is set conservatively.
+    AbedWriter writer(outPrefix + ".abed", static_cast<uint8_t>(K), nKept,
+                      /*noMissing=*/false, nthreads);
 
     std::ofstream bimOut(outPrefix + ".bim");
     if (!bimOut) throw std::runtime_error("Cannot create " + outPrefix + ".bim");
 
     std::ofstream famOut(outPrefix + ".fam");
     if (!famOut) throw std::runtime_error("Cannot create " + outPrefix + ".fam");
-    for (const auto& sid : sampleIDs)
+    for (const auto& sid : keptSampleIDs)
         famOut << sid << "\t" << sid << "\t0\t0\t0\t-9\n";
     famOut.close();
 
-    uint64_t bytesPerTrack = (static_cast<uint64_t>(nSamples) + 3) / 4;
-    std::vector<int8_t> values(nSamples);
+    const uint64_t bytesPerTrack = (static_cast<uint64_t>(nKept) + 3) / 4;
+    std::vector<int8_t> values(nKept);
     std::string dosLine, hapLine;
     bool hasMissing = false;
 
-    auto encodeCol = [&](const std::vector<std::string>& toks, uint32_t off) {
-        for (uint32_t s = 0; s < nSamples; ++s) {
-            const auto& v = toks[off + s];
-            if (v.empty() || v == "NA" || v == "." || v == "-9") {
-                values[s] = -1; hasMissing = true;
-            } else {
-                int iv = std::stoi(v);
-                values[s] = static_cast<int8_t>(iv >= 0 && iv <= 2 ? iv : -1);
-                if (values[s] < 0) hasMissing = true;
+    // Fast column encoder: scan tab-separated line directly, no string allocation.
+    // Reads columns at sorted keptIndices[], skips others via forward scan.
+    // nHeaderCols: number of non-sample columns before the sample data starts.
+    auto fastEncodeKept = [&](const std::string& line, uint32_t nHeaderCols) {
+        const char* p = line.c_str();
+        // Skip the header columns (chrom, pos, id, ref, alt = 5 cols)
+        for (uint32_t f = 0; f < nHeaderCols; ++f) {
+            while (*p && *p != '\t') ++p;
+            if (*p == '\t') ++p;
+        }
+        // p is now at the start of sample column 0.
+        // keptIndices[] is sorted: scan left-to-right collecting requested columns.
+        uint32_t col = 0;
+        for (uint32_t ki = 0; ki < nKept; ++ki) {
+            uint32_t target = keptIndices[ki];
+            // Advance col to target by skipping (target - col) fields
+            while (col < target) {
+                while (*p && *p != '\t') ++p;
+                if (*p == '\t') ++p;
+                ++col;
             }
+            // Parse the value in [p, tab/end)
+            const char* vStart = p;
+            while (*p && *p != '\t') ++p;
+            ptrdiff_t vLen = p - vStart;
+            int8_t v;
+            if (vLen == 0 || (vLen == 1 && *vStart == '.')
+                          || (vLen == 2 && vStart[0] == 'N' && vStart[1] == 'A')
+                          || (vLen == 3 && vStart[0] == 'N' && vStart[1] == 'A' && vStart[2] == 'N')
+                          || (vLen == 2 && vStart[0] == '-' && vStart[1] == '9')) {
+                v = -1; hasMissing = true;
+            } else {
+                char* ep;
+                long iv = std::strtol(vStart, &ep, 10);
+                v = static_cast<int8_t>(iv >= 0 && iv <= 2 ? iv : -1);
+                if (v < 0) hasMissing = true;
+            }
+            values[ki] = v;
+            // p is now at '\t' or end; col still == target.
         }
         return AbedWriter::encode(values);
     };
 
-    for (uint32_t m = 0; m < nMarkers; ++m) {
+    // Fast 5-field BIM extractor: scan the first 5 tab fields without string alloc.
+    auto writeBimLine = [&](const std::string& line) {
+        const char* p = line.c_str();
+        auto nextField = [&]() -> std::string_view {
+            const char* s = p;
+            while (*p && *p != '\t') ++p;
+            std::string_view sv(s, static_cast<size_t>(p - s));
+            if (*p == '\t') ++p;
+            return sv;
+        };
+        auto chrom = nextField();  // col 0
+        auto pos   = nextField();  // col 1
+        auto id    = nextField();  // col 2
+        auto ref   = nextField();  // col 3
+        auto alt   = nextField();  // col 4
+        // BIM columns: CHROM ID CM POS REF ALT
+        bimOut << chrom << '\t' << id << "\t0\t" << pos << '\t' << ref << '\t' << alt << '\n';
+    };
+
+    if (nthreads > 1)
+        infoMsg("Note: --threads=%d has no effect on the text conversion path (I/O-bound)", nthreads);
+
+    // Stream all markers until EOF — no pre-count needed.
+    uint32_t nMarkers = 0;
+    while (true) {
+        // Read one line from each ancestry (dosage + hapcount)
+        bool eof = false;
         for (int k = 0; k < K; ++k) {
-            if (!gzReadLine(files[k].dosGz, dosLine))
-                throw std::runtime_error("Premature EOF at marker " + std::to_string(m) + " anc" + std::to_string(k));
-            if (!gzReadLine(files[k].hapGz, hapLine))
-                throw std::runtime_error("Premature EOF (hapcount) at marker " + std::to_string(m) + " anc" + std::to_string(k));
+            bool gotDos = gzReadLine(files[k].dosGz, dosLine);
+            bool gotHap = gzReadLine(files[k].hapGz, hapLine);
+            if (k == 0 && !gotDos) { eof = true; break; }
+            if (!gotDos || !gotHap)
+                throw std::runtime_error("Premature EOF at marker " + std::to_string(nMarkers) + " anc" + std::to_string(k));
 
-            auto dosToks = splitTabs(dosLine);
-            auto hapToks = splitTabs(hapLine);
+            if (k == 0) writeBimLine(dosLine);
 
-            if (k == 0) {
-                if (dosToks.size() < 5 + nSamples)
-                    throw std::runtime_error("Dosage line too short at marker " + std::to_string(m));
-                bimOut << dosToks[0] << "\t" << dosToks[2] << "\t0\t"
-                       << dosToks[1] << "\t" << dosToks[3] << "\t" << dosToks[4] << "\n";
-            }
-
-            auto packed = encodeCol(dosToks, 5); writer.writeTrack(packed.data(), bytesPerTrack);
-            packed       = encodeCol(hapToks, 5); writer.writeTrack(packed.data(), bytesPerTrack);
+            auto packed = fastEncodeKept(dosLine, 5); writer.writeTrack(packed.data(), bytesPerTrack);
+            packed       = fastEncodeKept(hapLine, 5); writer.writeTrack(packed.data(), bytesPerTrack);
         }
+        if (eof) break;
+        ++nMarkers;
 
-        if ((m + 1) % 10000 == 0)
-            infoMsg("  Converted %u / %u markers", m + 1, nMarkers);
+        if (nMarkers % 10000 == 0)
+            infoMsg("  Converted %u markers", nMarkers);
     }
-
-    if (hasMissing)
-        writer.clearFlags(ABED_FLAG_NO_MISSING);
 
     writer.close();
     bimOut.close();
     for (int k = 0; k < K; ++k) { gzclose(files[k].dosGz); gzclose(files[k].hapGz); }
 
     infoMsg("Conversion complete: %s.abed (%u markers x %u samples x %d ancestries)",
-            outPrefix.c_str(), nMarkers, nSamples, K);
+            outPrefix.c_str(), nMarkers, nKept, K);
 }

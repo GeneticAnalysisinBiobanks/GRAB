@@ -31,7 +31,9 @@ void runSPAsqr(
     int nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff);
+    double minMacCutoff,
+    const std::string& keepFile = {},
+    const std::string& removeFile = {});
 
 void runSPAsqrPheno(
     const std::string& phenoFile,
@@ -50,4 +52,6 @@ void runSPAsqrPheno(
     int nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff);
+    double minMacCutoff,
+    const std::string& keepFile = {},
+    const std::string& removeFile = {});

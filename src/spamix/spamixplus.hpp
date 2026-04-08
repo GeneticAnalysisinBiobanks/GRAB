@@ -139,4 +139,6 @@ void runSPAmixPlus(
     int    nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff);
+    double minMacCutoff,
+    const std::string& keepFile = {},
+    const std::string& removeFile = {});

@@ -205,7 +205,8 @@ int run(int argc, char* argv[]) {
                 pcColNames, args.phenoFile, args.covarFile,
                 geno, args.outputFile,
                 args.nthread, args.nSnpPerChunk,
-                args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
+                args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
+                args.keepFile, args.removeFile);
         } catch (const std::exception& e) {
             std::cerr << "[ERROR] " << e.what() << "\n"; return 1;
         }
@@ -228,7 +229,9 @@ int run(int argc, char* argv[]) {
                 args.admixBfilePrefix,
                 args.spGrmGrabFile, args.spGrmPlink2File,
                 args.outputFile,
-                args.extractFile, args.excludeFile);
+                /*keepFile=*/{}, /*removeFile=*/{},
+                args.extractFile, args.excludeFile,
+                args.nthread);
         } catch (const std::exception& e) {
             std::cerr << "[ERROR] " << e.what() << "\n"; return 1;
         }
@@ -260,9 +263,11 @@ int run(int argc, char* argv[]) {
         logArgsInEffect(args);
         try {
             if (hasVcfMsp)
-                convertVcfMspToAbed(args.vcfFile, args.mspFile, args.outPrefix);
+                convertVcfMspToAbed(args.vcfFile, args.mspFile, args.outPrefix,
+                                    args.keepFile, args.removeFile, args.nthread);
             else
-                convertTextToAbed(args.admixTextPrefix, args.outPrefix);
+                convertTextToAbed(args.admixTextPrefix, args.outPrefix,
+                                  args.keepFile, args.removeFile, args.nthread);
         } catch (const std::exception& e) {
             std::cerr << "[ERROR] " << e.what() << "\n"; return 1;
         }
@@ -443,7 +448,8 @@ int run(int argc, char* argv[]) {
                 args.compression, args.compressionLevel,
                 args.pvalCovAdjCut, args.spaCutoff, args.nthread,
                 args.nSnpPerChunk,
-                args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
+                args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
+                args.keepFile, args.removeFile);
         }
 
         // ── SPAGRM ────────────────────────────────────────────────
@@ -455,7 +461,8 @@ int run(int argc, char* argv[]) {
                 args.pairwiseIBDFile, geno, args.outPrefix,
                 args.compression, args.compressionLevel,
                 args.spaCutoff, args.nthread, args.nSnpPerChunk,
-                args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
+                args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
+                args.keepFile, args.removeFile);
         }
 
         // ── SAGELD ───────────────────────────────────────────────
@@ -466,7 +473,8 @@ int run(int argc, char* argv[]) {
                 args.residFile, args.spGrmGrabFile, args.spGrmPlink2File,
                 args.pairwiseIBDFile, geno, outFile,
                 args.spaCutoff, args.nthread, args.nSnpPerChunk,
-                args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
+                args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
+                args.keepFile, args.removeFile);
         }
 
         // ── SPAmix / SPAmixPlus (unified) ──────────────────────
@@ -494,7 +502,8 @@ int run(int argc, char* argv[]) {
                 args.outPrefix, args.compression, args.compressionLevel,
                 args.spaCutoff, args.outlierRatio, args.nthread,
                 args.nSnpPerChunk,
-                args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
+                args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
+                args.keepFile, args.removeFile);
         }
 
         // ── POLMM ───────────────────────────────────────────────────
@@ -506,7 +515,8 @@ int run(int argc, char* argv[]) {
                 args.spGrmGrabFile, args.spGrmPlink2File,
                 args.outputFile,
                 args.spaCutoff, args.nthread, args.nSnpPerChunk,
-                args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
+                args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
+                args.keepFile, args.removeFile);
         }
 
         // ── SPAsqr ─────────────────────────────────────────────────
@@ -554,14 +564,16 @@ int run(int argc, char* argv[]) {
                     geno, args.outputFile,
                     args.spaCutoff, args.outlierRatio, args.outlierAbsBound,
                     args.nthread, args.nSnpPerChunk,
-                    args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
+                    args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
+                args.keepFile, args.removeFile);
             } else {
                 runSPAsqr(
                     args.residFile, args.spGrmGrabFile, args.spGrmPlink2File,
                     geno, args.outputFile,
                     args.spaCutoff, args.outlierRatio, args.outlierAbsBound,
                     args.nthread, args.nSnpPerChunk,
-                    args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
+                    args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
+                args.keepFile, args.removeFile);
             }
         }
 
@@ -593,7 +605,8 @@ int run(int argc, char* argv[]) {
                     args.outputFile,
                     args.refPrevalence, args.cutoff, args.spaCutoff,
                     args.nthread, args.nSnpPerChunk,
-                    args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
+                    args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
+                args.keepFile, args.removeFile);
             } else {
                 // New --pheno path: compute regression internally
                 if (args.binaryPheno.empty() && args.survPheno.empty()) {
@@ -609,7 +622,8 @@ int run(int argc, char* argv[]) {
                     args.outputFile,
                     args.refPrevalence, args.cutoff, args.spaCutoff,
                     args.nthread, args.nSnpPerChunk,
-                    args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
+                    args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
+                args.keepFile, args.removeFile);
             }
         }
 
@@ -643,7 +657,8 @@ int run(int argc, char* argv[]) {
                     args.outputFile,
                     args.refPrevalence, args.cutoff, args.spaCutoff,
                     args.nthread, args.nSnpPerChunk,
-                    args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
+                    args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
+                args.keepFile, args.removeFile);
             } else {
                 // New --pheno path: K-means + per-cluster regression
                 if (args.binaryPheno.empty() && args.survPheno.empty()) {
@@ -674,7 +689,8 @@ int run(int argc, char* argv[]) {
                     args.outputFile,
                     args.refPrevalence, args.cutoff, args.spaCutoff,
                     args.nthread, args.nSnpPerChunk,
-                    args.missingCutoff, args.minMafCutoff, args.minMacCutoff);
+                    args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
+                args.keepFile, args.removeFile);
             }
         }
 
@@ -690,6 +706,7 @@ int run(int argc, char* argv[]) {
                 args.spaCutoff, args.outlierRatio, args.nthread,
                 args.nSnpPerChunk,
                 args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
+                args.keepFile, args.removeFile,
                 args.extractFile, args.excludeFile);
         }
 

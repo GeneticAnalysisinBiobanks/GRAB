@@ -67,6 +67,8 @@ Args parseArgs(int argc, char* argv[]) {
         else if (arg == "--seed")                      a.seed              = std::stoull(next());
         else if (arg == "--extract")                  a.extractFile       = next();
         else if (arg == "--exclude")                  a.excludeFile       = next();
+        else if (arg == "--keep")                     a.keepFile          = next();
+        else if (arg == "--remove")                   a.removeFile        = next();
         else if (arg == "--admix-bfile")              a.admixBfilePrefix  = next();
         else if (arg == "--admix-phi")                a.admixPhiFile      = next();
         else if (arg == "--rfmix-msp")                 a.mspFile           = next();

@@ -1,6 +1,10 @@
 // admix.hpp — Admixed ancestry binary genotype reader (.abed format)
 //
-// .abed format: 16-byte header + SNP-major 2K tracks per marker
+// .abed format: 8-byte header + SNP-major 2K tracks per marker
+//   Header: magic[2]{0xAD,0x4D} + version(0x02) + nAnc(1) + nSamples(4)
+//   nAnc bit 7 = NO_MISSING flag; K = nAnc & 0x7F.
+//   nMarkers is derived from the companion .bim file.
+//
 //   Each marker stores 2*K tracks: [dosage_anc0][hapcount_anc0]...[dosage_anc(K-1)][hapcount_anc(K-1)]
 //   Each track is ceil(N/4) bytes using PLINK-compatible 2-bit encoding.
 //   Values: 00→0, 10→1, 11→2, 01→missing  (same as PLINK BED)
@@ -22,27 +26,23 @@
 struct BGZF;  // forward declare (htslib/bgzf.h)
 
 
-// ── .abed file header (16 bytes) ─────────────────────────────────────
+// ── .abed file header (8 bytes) ───────────────────────────────────────
 
 struct AbedHeader {
     uint8_t  magic[2];      // {0xAD, 0x4D}
-    uint8_t  version;       // 0x01
-    uint8_t  mode;          // 0x01 = SNP-major
+    uint8_t  version;       // 0x02
+    uint8_t  nAnc;          // K in bits 0-6; bit 7 = NO_MISSING flag
     uint32_t nSamples;      // N (little-endian)
-    uint32_t nMarkers;      // M (little-endian)
-    uint16_t nAncestries;   // K (little-endian)
-    uint16_t reserved;      // 0x0000
 };
-static_assert(sizeof(AbedHeader) == 16, "AbedHeader must be 16 bytes");
+static_assert(sizeof(AbedHeader) == 8, "AbedHeader must be 8 bytes");
 
-static constexpr uint8_t ABED_MAGIC_0 = 0xAD;
-static constexpr uint8_t ABED_MAGIC_1 = 0x4D;
-static constexpr uint8_t ABED_VERSION = 0x01;
-static constexpr uint8_t ABED_MODE_SNP_MAJOR = 0x01;
-static constexpr uint64_t ABED_HEADER_SIZE = 16;
+static constexpr uint8_t  ABED_MAGIC_0 = 0xAD;
+static constexpr uint8_t  ABED_MAGIC_1 = 0x4D;
+static constexpr uint8_t  ABED_VERSION = 0x02;
+static constexpr uint64_t ABED_HEADER_SIZE = 8;
 
-// Header reserved-field flags
-static constexpr uint16_t ABED_FLAG_NO_MISSING = 0x0001; // bit 0: no 0b01 codes in file
+// Flag encoded in nAnc high bit
+static constexpr uint8_t  ABED_NANC_FLAG_NO_MISSING = 0x80;  // bit 7
 
 
 // ======================================================================
@@ -184,12 +184,11 @@ private:
 
 class AbedWriter {
 public:
-  // Create a new .abed file with the given header.
-  // flags: bitmask of ABED_FLAG_* values (written into AbedHeader::reserved)
-  AbedWriter(const std::string& filename, uint16_t nAnc, uint32_t nSamples, uint32_t nMarkers,
-             uint16_t flags = 0);
+  // Create a new .abed v2 file (8-byte header, no nMarkers).
+  //   noMissing: if true, sets NO_MISSING flag in nAnc high bit
+  AbedWriter(const std::string& filename, uint8_t nAnc, uint32_t nSamples,
+             bool noMissing = false, int nthreads = 1);
 
-  // Write one track (2-bit packed, ceil(nSamples/4) bytes).
   // Write one track (2-bit packed, ceil(nSamples/4) bytes).
   void writeTrack(const uint8_t* data, uint64_t nBytes);
 
@@ -197,21 +196,14 @@ public:
   // Returns packed bytes. `values` has nSamples elements.
   static std::vector<uint8_t> encode(const std::vector<int8_t>& values);
 
-  // Update flags (OR'd into existing flags).  Must be called before close().
-  void addFlags(uint16_t flags) { m_flags |= flags; }
-
-  // Clear specific flags.  Must be called before close().
-  void clearFlags(uint16_t flags) { m_flags &= static_cast<uint16_t>(~flags); }
-
   void close();
 
 private:
   BGZF*       m_bgzf;
   std::string m_filename;
   uint32_t    m_nSamples;
-  uint16_t    m_flags;
-  uint16_t    m_nAnc;
-  uint32_t    m_nMarkers;
+  uint8_t     m_nAnc;
+  bool        m_noMissing;
   bool        m_headerWritten;
 
   void ensureHeader();

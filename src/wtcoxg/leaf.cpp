@@ -435,7 +435,9 @@ void runLEAF(
     int nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff) {
+    double minMacCutoff,
+    const std::string& keepFile,
+    const std::string& removeFile) {
 
   const int nCluster = static_cast<int>(residFiles.size());
 
@@ -451,6 +453,7 @@ void runLEAF(
     auto fc = famIIDs;  // copy for each cluster
     clusterSD.emplace_back(std::move(fc));
     clusterSD.back().loadResidWtCoxG(residFiles[c]);
+    clusterSD.back().setKeepRemove(keepFile, removeFile);
     clusterSD.back().finalize();
     infoMsg("    %u subjects loaded", clusterSD.back().nUsed());
   }
@@ -748,7 +751,9 @@ void runLEAFPheno(
     int nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff) {
+    double minMacCutoff,
+    const std::string& keepFile,
+    const std::string& removeFile) {
 
   const bool isSurv = !survPheno.empty();
   const int nCluster = nClusters;
@@ -763,6 +768,7 @@ void runLEAFPheno(
     infoMsg("Loading covariate file: %s", covarFile.c_str());
     sdFull.loadCovar(covarFile);
   }
+  sdFull.setKeepRemove(keepFile, removeFile);
   sdFull.finalize();
   // Drop subjects with NA in the selected phenotype column(s)
   if (isSurv) {

@@ -1,6 +1,7 @@
 // subject_data.cpp — Unified per-subject data loader and .fam alignment
 
 #include "io/subject_data.hpp"
+#include "io/subject_filter.hpp"
 #include "util/logging.hpp"
 #include "util/text_scanner.hpp"
 
@@ -686,6 +687,17 @@ void SubjectData::loadEigenVecs(const std::string& filename) {
 
 
 // ══════════════════════════════════════════════════════════════════════
+// setKeepRemove — store --keep / --remove file paths for use in finalize()
+// ══════════════════════════════════════════════════════════════════════
+
+void SubjectData::setKeepRemove(const std::string& keepFile,
+                                const std::string& removeFile) {
+  if (m_finalized)
+    throw std::runtime_error("SubjectData::setKeepRemove called after finalize");
+  m_keepFile   = keepFile;
+  m_removeFile = removeFile;
+}
+
 // finalize — intersect, build bitmask, reorder
 // ══════════════════════════════════════════════════════════════════════
 
@@ -729,6 +741,21 @@ void SubjectData::finalize() {
     infoMsg("--covar: no IID column; assuming .fam order, %d covariate column(s)", m_rawCovar.nCols);
   if (m_hasRawPheno && m_rawPheno.noIID)
     infoMsg("--pheno: no IID column; assuming .fam order, %d column(s)", m_rawPheno.nCols);
+
+  // ── Load --keep / --remove subject ID sets ──────────────────────────────
+  const bool hasKeep   = !m_keepFile.empty();
+  const bool hasRemove = !m_removeFile.empty();
+  std::unordered_set<std::string> keepSet, removeSet;
+  if (hasKeep) {
+    keepSet = parseSubjectIDFile(m_keepFile);
+    infoMsg("--keep: %zu subjects listed in %s",
+            keepSet.size(), m_keepFile.c_str());
+  }
+  if (hasRemove) {
+    removeSet = parseSubjectIDFile(m_removeFile);
+    infoMsg("--remove: %zu subjects listed in %s",
+            removeSet.size(), m_removeFile.c_str());
+  }
 
   // ── Build IID index maps for each loaded file ──────────────────────
   std::unordered_map<std::string, uint32_t> residMap, covarMap, phenoMap;
@@ -785,6 +812,9 @@ void SubjectData::finalize() {
     }
     if (m_hasRawCovar  && covarMap.find(iid)  == covarMap.end())  continue;
     if (m_hasRawPheno  && phenoMap.find(iid)  == phenoMap.end())  continue;
+    // Apply --keep / --remove filter
+    if (hasKeep   && !keepSet.count(iid))   continue;
+    if (hasRemove &&  removeSet.count(iid)) continue;
     // Subject passes all loaded-file checks
     m_usedMask[f / 64] |= 1ULL << (f % 64);
     usedFamIndices.push_back(f);

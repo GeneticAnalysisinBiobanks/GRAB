@@ -118,7 +118,9 @@ void runLEAF(
     int nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff);
+    double minMacCutoff,
+    const std::string& keepFile = {},
+    const std::string& removeFile = {});
 
 // New --pheno path: K-means clustering + per-cluster regression
 void runLEAFPheno(
@@ -142,4 +144,6 @@ void runLEAFPheno(
     int nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff);
+    double minMacCutoff,
+    const std::string& keepFile = {},
+    const std::string& removeFile = {});

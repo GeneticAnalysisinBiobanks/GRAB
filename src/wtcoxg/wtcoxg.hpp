@@ -204,7 +204,9 @@ void runWtCoxG(
     int nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff);
+    double minMacCutoff,
+    const std::string& keepFile = {},
+    const std::string& removeFile = {});
 
 // New --pheno path: compute regression residuals internally
 void runWtCoxGPheno(
@@ -225,4 +227,6 @@ void runWtCoxGPheno(
     int nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff);
+    double minMacCutoff,
+    const std::string& keepFile = {},
+    const std::string& removeFile = {});

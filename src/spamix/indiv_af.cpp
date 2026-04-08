@@ -587,7 +587,9 @@ void runSPAmixAF(
     int    nSnpPerChunk,
     double /*missingCutoff*/,
     double /*minMafCutoff*/,
-    double /*minMacCutoff*/
+    double /*minMacCutoff*/,
+    const std::string& keepFile,
+    const std::string& removeFile
 ) {
   const auto wallStart = std::chrono::steady_clock::now();
   const std::clock_t cpuStart = std::clock();
@@ -598,6 +600,7 @@ void runSPAmixAF(
   SubjectData sd(std::move(famIIDs));
   if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile);
   if (!covarFile.empty()) sd.loadCovar(covarFile);
+  sd.setKeepRemove(keepFile, removeFile);
   sd.finalize();
 
   const int N   = static_cast<int>(sd.nUsed());

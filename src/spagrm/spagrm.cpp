@@ -461,12 +461,15 @@ void runSPAGRM(
     int nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff
+    double minMacCutoff,
+    const std::string& keepFile,
+    const std::string& removeFile
 ) {
   infoMsg("Loading residual file: %s", residFile.c_str());
   auto famIIDs = parseGenoIIDs(geno);
   SubjectData sd(std::move(famIIDs));
   sd.loadResidOne(residFile);
+  sd.setKeepRemove(keepFile, removeFile);
   sd.finalize();
   const uint32_t N = sd.nUsed();
   infoMsg("  %u subjects in union mask", N);

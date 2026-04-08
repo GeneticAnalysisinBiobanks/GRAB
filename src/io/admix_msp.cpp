@@ -15,6 +15,7 @@
 
 #include "io/admix_msp.hpp"
 #include "io/admix.hpp"
+#include "io/subject_filter.hpp"
 #include "util/logging.hpp"
 
 #include <zlib.h>
@@ -30,6 +31,7 @@ extern "C" {
 #include <fstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 // ── simple line reader for gzFile ──────────────────────────────────────────
@@ -203,18 +205,26 @@ struct WindowCursor {
 // ── Core logic: iterate VCF, match to MSP, write tracks ────────────────────
 
 // countFlag: if true, only count matching markers; writer/bimOut may be null
+// keptIndices: 0-based sample indices to include (empty = use all, for pass 1)
 // nMissingOut: if non-null, receives count of missing genotypes encountered
+// ── Core logic: single-pass VCF → .abed + .bim (with optional parallelism) ────
+
+// keptIndices: 0-based sample indices to include (empty = use all)
+// nthreads: number of compute threads (>=2 enables batch parallel encoding)
 static uint32_t processVcf(
     const std::string& vcfFile,
     const MspData&     msp,
-    uint32_t           nMarkers_expected,  // 0 in pass 1, used in pass 2 for writer
-    AbedWriter*        writer,             // nullptr in pass 1
-    std::ofstream*     bimOut,             // nullptr in pass 1
-    bool               countOnly,
-    uint64_t*          nMissingOut = nullptr
+    AbedWriter&        writer,
+    std::ofstream&     bimOut,
+    const std::vector<uint32_t>& keptIndices,
+    uint64_t*          nMissingOut = nullptr,
+    int                nthreads    = 1
 ) {
     htsFile*   fp  = hts_open(vcfFile.c_str(), "r");
     if (!fp) throw std::runtime_error("Cannot open VCF: " + vcfFile);
+
+    if (nthreads > 1)
+        hts_set_threads(fp, nthreads);
 
     bcf_hdr_t* hdr = bcf_hdr_read(fp);
     if (!hdr) { hts_close(fp); throw std::runtime_error("Cannot read VCF header: " + vcfFile); }
@@ -228,7 +238,6 @@ static uint32_t processVcf(
             "Sample count mismatch: VCF has " + std::to_string(nSamplesVcf) +
             " samples, MSP has " + std::to_string(msp.nSamples));
     }
-    // Verify sample names match
     for (int s = 0; s < nSamplesVcf; ++s) {
         const char* vcfID = hdr->samples[s];
         if (msp.sampleIDs[(uint32_t)s] != vcfID) {
@@ -242,40 +251,37 @@ static uint32_t processVcf(
     int32_t* gtArr  = nullptr;
     int      ngtArr = 0;
 
-    const int K          = msp.K;
-    const uint32_t N     = msp.nSamples;
-    const uint64_t bpt   = (static_cast<uint64_t>(N) + 3) / 4; // bytesPerTrack
-
-    std::vector<int8_t> dosage(N);
-    std::vector<int8_t> hapcount(N);
+    const int      K    = msp.K;
+    const uint32_t Nall = msp.nSamples;
+    const uint32_t Nout = keptIndices.empty()
+                          ? Nall
+                          : static_cast<uint32_t>(keptIndices.size());
+    const uint64_t bpt  = (static_cast<uint64_t>(Nout) + 3) / 4;
 
     WindowCursor cursor{msp.windows};
-    uint32_t     nMatch = 0;
+    uint32_t     nMatch   = 0;
     uint64_t     nMissing = 0;
-    bool         phasingChecked = false;
 
-    while (bcf_read(fp, hdr, rec) == 0) {
-        bcf_unpack(rec, BCF_UN_ALL);
-        if (rec->n_allele != 2) continue;  // skip non-biallelic
+    // ── Sequential — single-threaded write ──────────────────────────
+    if (nthreads <= 1) {
+        bool phasingChecked = false;
+        while (bcf_read(fp, hdr, rec) == 0) {
+            bcf_unpack(rec, BCF_UN_ALL);
+            if (rec->n_allele != 2) continue;
 
-        const char* chromStr = bcf_hdr_id2name(hdr, rec->rid);
-        int32_t     pos0     = rec->pos;   // 0-based
+            const char* chromStr = bcf_hdr_id2name(hdr, rec->rid);
+            int32_t     pos0     = rec->pos;
 
-        int winIdx = cursor.findWindow(chromStr, pos0);
-        if (winIdx < 0) continue;   // not covered by any MSP window
+            int winIdx = cursor.findWindow(chromStr, pos0);
+            if (winIdx < 0) continue;
 
-        if (!countOnly) {
-            // Write BIM: CHROM ID CM POS REF ALT  (POS is 1-based in BIM)
-            *bimOut << chromStr << "\t"
+            bimOut << chromStr << "\t"
                     << (rec->d.id && rec->d.id[0] != '.' ? rec->d.id
                                                           : std::string(chromStr) + ":" + std::to_string(pos0 + 1))
                     << "\t0\t" << (pos0 + 1) << "\t"
                     << rec->d.allele[0] << "\t" << rec->d.allele[1] << "\n";
 
-            // Get genotypes: buffer length = 2 * nSamples
             bcf_get_genotypes(hdr, rec, &gtArr, &ngtArr);
-
-            // Check phasing on first variant
             if (!phasingChecked && ngtArr >= 2) {
                 if (!bcf_gt_is_phased(gtArr[1]))
                     throw std::runtime_error(
@@ -285,36 +291,152 @@ static uint32_t processVcf(
             }
 
             const auto& w = msp.windows[(size_t)winIdx];
-
-            // For each ancestry k, compute dosage and hapcount
+            std::vector<int8_t> dosage(Nout), hapcount(Nout);
             for (int k = 0; k < K; ++k) {
-                for (uint32_t s = 0; s < N; ++s) {
+                for (uint32_t j = 0; j < Nout; ++j) {
+                    uint32_t s = keptIndices.empty() ? j : keptIndices[j];
                     int dos = 0, hap = 0;
                     for (int h = 0; h < 2; ++h) {
                         int8_t call = w.calls[2 * s + h];
                         if (call == (int8_t)k) {
                             ++hap;
                             int32_t gt = gtArr[2 * s + h];
-                            if (bcf_gt_is_missing(gt)) {
-                                ++nMissing;
-                            } else {
-                                dos += bcf_gt_allele(gt);  // 0 = ref, 1 = alt
-                            }
+                            if (bcf_gt_is_missing(gt)) { ++nMissing; }
+                            else { dos += bcf_gt_allele(gt); }
                         }
                     }
-                    dosage[s]   = static_cast<int8_t>(dos   >= 0 && dos   <= 2 ? dos   : -1);
-                    hapcount[s] = static_cast<int8_t>(hap   >= 0 && hap   <= 2 ? hap   : -1);
+                    dosage[j]   = static_cast<int8_t>(dos >= 0 && dos <= 2 ? dos : -1);
+                    hapcount[j] = static_cast<int8_t>(hap >= 0 && hap <= 2 ? hap : -1);
                 }
-                auto packedDos = AbedWriter::encode(dosage);
-                auto packedHap = AbedWriter::encode(hapcount);
-                writer->writeTrack(packedDos.data(), bpt);
-                writer->writeTrack(packedHap.data(), bpt);
+                auto pd = AbedWriter::encode(dosage);
+                auto ph = AbedWriter::encode(hapcount);
+                writer.writeTrack(pd.data(), bpt);
+                writer.writeTrack(ph.data(), bpt);
+            }
+            ++nMatch;
+            if (nMatch % 10000 == 0)
+                infoMsg("  Wrote %u markers", nMatch);
+        }
+    }
+
+    // ── Parallel — batch I/O then parallel compute then ordered write ─
+    else {
+        struct MarkerSlot {
+            std::string bimLine;
+            int         winIdx   = -1;
+            std::vector<int32_t> gt;
+            std::vector<std::vector<uint8_t>> tracks;
+            uint64_t    nMissing = 0;
+        };
+
+        const int batchCap = std::max(nthreads, 64);
+        std::vector<MarkerSlot> batch(static_cast<size_t>(batchCap));
+        for (auto& slot : batch) {
+            slot.gt.reserve(2 * Nall);
+            slot.tracks.resize(2 * K);
+        }
+        int batchUsed = 0;
+
+        auto processSlice = [&](int from, int to) {
+            std::vector<int8_t> dosage(Nout), hapcount(Nout);
+            for (int i = from; i < to; ++i) {
+                MarkerSlot& slot = batch[i];
+                slot.nMissing    = 0;
+                const auto& w    = msp.windows[(size_t)slot.winIdx];
+                for (int k = 0; k < K; ++k) {
+                    for (uint32_t j = 0; j < Nout; ++j) {
+                        uint32_t s = keptIndices.empty() ? j : keptIndices[j];
+                        int dos = 0, hap = 0;
+                        for (int h = 0; h < 2; ++h) {
+                            int8_t call = w.calls[2 * s + h];
+                            if (call == (int8_t)k) {
+                                ++hap;
+                                int32_t gtv = slot.gt[2 * s + h];
+                                if (bcf_gt_is_missing(gtv)) { ++slot.nMissing; }
+                                else { dos += bcf_gt_allele(gtv); }
+                            }
+                        }
+                        dosage[j]   = static_cast<int8_t>(dos >= 0 && dos <= 2 ? dos : -1);
+                        hapcount[j] = static_cast<int8_t>(hap >= 0 && hap <= 2 ? hap : -1);
+                    }
+                    slot.tracks[2 * k]     = AbedWriter::encode(dosage);
+                    slot.tracks[2 * k + 1] = AbedWriter::encode(hapcount);
+                }
+            }
+        };
+
+        auto flushBatch = [&]() {
+            if (batchUsed == 0) return;
+            int nt = std::min(nthreads, batchUsed);
+            int sz = (batchUsed + nt - 1) / nt;
+            std::vector<std::thread> workers;
+            workers.reserve(static_cast<size_t>(nt - 1));
+            for (int t = 0; t < nt - 1; ++t) {
+                int from = t * sz;
+                int to   = std::min(from + sz, batchUsed);
+                workers.emplace_back(processSlice, from, to);
+            }
+            processSlice((nt - 1) * sz, batchUsed);
+            for (auto& w : workers) w.join();
+            for (int i = 0; i < batchUsed; ++i) {
+                bimOut << batch[i].bimLine;
+                for (const auto& track : batch[i].tracks)
+                    writer.writeTrack(track.data(), bpt);
+                nMissing += batch[i].nMissing;
+            }
+            batchUsed = 0;
+        };
+
+        bool phasingChecked = false;
+        while (bcf_read(fp, hdr, rec) == 0) {
+            bcf_unpack(rec, BCF_UN_ALL);
+            if (rec->n_allele != 2) continue;
+
+            const char* chromStr = bcf_hdr_id2name(hdr, rec->rid);
+            int32_t     pos0     = rec->pos;
+
+            int winIdx = cursor.findWindow(chromStr, pos0);
+            if (winIdx < 0) continue;
+
+            bcf_get_genotypes(hdr, rec, &gtArr, &ngtArr);
+            if (!phasingChecked && ngtArr >= 2) {
+                if (!bcf_gt_is_phased(gtArr[1]))
+                    throw std::runtime_error(
+                        "--make-abfile: VCF genotypes are unphased. "
+                        "A phased VCF (genotypes separated by '|') is required.");
+                phasingChecked = true;
+            }
+
+            MarkerSlot& slot = batch[batchUsed];
+            {
+                const char* id_cstr = (rec->d.id && rec->d.id[0] != '.') ? rec->d.id : nullptr;
+                slot.bimLine.clear();
+                slot.bimLine += chromStr;
+                slot.bimLine += '\t';
+                if (id_cstr) slot.bimLine += id_cstr;
+                else { slot.bimLine += chromStr; slot.bimLine += ':'; slot.bimLine += std::to_string(pos0 + 1); }
+                slot.bimLine += "\t0\t";
+                slot.bimLine += std::to_string(pos0 + 1);
+                slot.bimLine += '\t';
+                slot.bimLine += rec->d.allele[0];
+                slot.bimLine += '\t';
+                slot.bimLine += rec->d.allele[1];
+                slot.bimLine += '\n';
+            }
+            slot.winIdx = winIdx;
+            slot.gt.assign(gtArr, gtArr + 2 * static_cast<int>(Nall));
+            ++batchUsed;
+            ++nMatch;
+
+            if (batchUsed == batchCap) {
+                flushBatch();
+                if (nMatch % 50000 < static_cast<uint32_t>(batchCap))
+                    infoMsg("  Wrote %u markers", nMatch);
             }
         }
-
-        ++nMatch;
-        if (!countOnly && nMatch % 10000 == 0)
-            infoMsg("  Wrote %u / %u markers", nMatch, nMarkers_expected);
+        flushBatch();
+        if (nMatch > 0 && nMatch % 50000 >= static_cast<uint32_t>(batchCap))
+            infoMsg("  Wrote %u markers", nMatch);
     }
 
     std::free(gtArr);
@@ -326,54 +448,71 @@ static uint32_t processVcf(
     return nMatch;
 }
 
+
 // ── Public API ──────────────────────────────────────────────────────────────
 
 void convertVcfMspToAbed(
     const std::string& vcfFile,
     const std::string& mspFile,
-    const std::string& outPrefix
+    const std::string& outPrefix,
+    const std::string& keepFile,
+    const std::string& removeFile,
+    int                nthreads
 ) {
+    if (nthreads < 1) nthreads = 1;
     // 1. Parse MSP
     MspData msp = parseMsp(mspFile);
 
-    // 2. Write .fam
+    // 2. Apply --keep / --remove subject filtering
+    auto keptIndices = buildKeptIndices(msp.sampleIDs, keepFile, removeFile);
+    if (keptIndices.empty() && (!keepFile.empty() || !removeFile.empty()))
+        throw std::runtime_error("convertVcfMspToAbed: no subjects remain after --keep/--remove filters");
+
+    // Build filtered sample ID list for .fam output
+    const uint32_t nKept = keptIndices.empty()
+                           ? msp.nSamples
+                           : static_cast<uint32_t>(keptIndices.size());
+    std::vector<std::string> keptSampleIDs(nKept);
+    if (keptIndices.empty()) {
+        keptSampleIDs = msp.sampleIDs;
+    } else {
+        for (uint32_t j = 0; j < nKept; ++j)
+            keptSampleIDs[j] = msp.sampleIDs[keptIndices[j]];
+    }
+
+    // 3. Write .fam (filtered)
     {
         std::ofstream fam(outPrefix + ".fam");
         if (!fam) throw std::runtime_error("Cannot create " + outPrefix + ".fam");
-        for (const auto& sid : msp.sampleIDs)
+        for (const auto& sid : keptSampleIDs)
             fam << sid << "\t" << sid << "\t0\t0\t0\t-9\n";
     }
 
-    // 3. Pass 1: count markers
-    infoMsg("Pass 1: counting markers in VCF covered by MSP windows ...");
-    uint32_t nMarkers = processVcf(vcfFile, msp, 0, nullptr, nullptr, /*countOnly=*/true);
-    infoMsg("Pass 1 complete: %u markers with MSP coverage", nMarkers);
-
-    if (nMarkers == 0)
-        throw std::runtime_error("No VCF variants fell inside MSP windows. "
-                                 "Check chromosome naming and coordinate systems.");
-
-    // 4. Pass 2: write .abed + .bim
+    // 4. Single-pass: write .abed + .bim
     //    The VCF→abed path never writes 0b01 (missing) codes — missing genotypes
     //    are silently imputed to ref (dosage=0 → 0b00).  Safe to set NO_MISSING.
-    infoMsg("Pass 2: writing .abed and .bim ...");
+    infoMsg("Writing .abed and .bim (%d thread%s)...", nthreads, nthreads > 1 ? "s" : "");
     AbedWriter writer(outPrefix + ".abed",
-                      static_cast<uint16_t>(msp.K), msp.nSamples, nMarkers,
-                      ABED_FLAG_NO_MISSING);
+                      static_cast<uint8_t>(msp.K), nKept,
+                      /*noMissing=*/true, nthreads);
 
     std::ofstream bimOut(outPrefix + ".bim");
     if (!bimOut) throw std::runtime_error("Cannot create " + outPrefix + ".bim");
 
     uint64_t nMissing = 0;
-    processVcf(vcfFile, msp, nMarkers, &writer, &bimOut, /*countOnly=*/false, &nMissing);
+    uint32_t nMarkers = processVcf(vcfFile, msp, writer, bimOut, keptIndices, &nMissing, nthreads);
 
     writer.close();
     bimOut.close();
+
+    if (nMarkers == 0)
+        throw std::runtime_error("No VCF variants fell inside MSP windows. "
+                                 "Check chromosome naming and coordinate systems.");
 
     if (nMissing > 0)
         infoMsg("[INFO] --make-abfile: %llu missing genotypes encountered (imputed to ref)",
                 (unsigned long long)nMissing);
 
     infoMsg("Conversion complete: %s.abed (%u markers x %u samples x %d ancestries)",
-            outPrefix.c_str(), nMarkers, msp.nSamples, msp.K);
+            outPrefix.c_str(), nMarkers, nKept, msp.K);
 }

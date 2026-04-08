@@ -369,13 +369,16 @@ void runSPAsqr(
     int nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff
+    double minMacCutoff,
+    const std::string& keepFile,
+    const std::string& removeFile
 ) {
   // ── 1. Load residual matrix ────────────────────────────────────────
   infoMsg("Loading residual matrix from %s", residFile.c_str());
   auto famIIDs = parseGenoIIDs(geno);
   SubjectData sd(std::move(famIIDs));
   sd.loadResidSPAsqr(residFile);
+  sd.setKeepRemove(keepFile, removeFile);
   sd.finalize();
   const Eigen::Index N = static_cast<Eigen::Index>(sd.nUsed());
   const Eigen::Index K = sd.residCols();
@@ -420,7 +423,9 @@ void runSPAsqrPheno(
     int nSnpPerChunk,
     double missingCutoff,
     double minMafCutoff,
-    double minMacCutoff
+    double minMacCutoff,
+    const std::string& keepFile,
+    const std::string& removeFile
 ) {
   const int ntaus = static_cast<int>(taus.size());
 
@@ -430,6 +435,7 @@ void runSPAsqrPheno(
   SubjectData sd(std::move(famIIDs));
   if (!phenoFile.empty())  sd.loadPhenoFile(phenoFile);
   if (!covarFile.empty())  sd.loadCovar(covarFile);
+  sd.setKeepRemove(keepFile, removeFile);
   sd.finalize();
   sd.dropNaInColumns({quantPhenoCol});  // remove subjects with missing phenotype
 

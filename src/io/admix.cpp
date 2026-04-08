@@ -8,10 +8,7 @@ extern "C" {
 #include <htslib/bgzf.h>
 }
 
-// x86 SIMD header
-#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
 #include <immintrin.h>
-#endif
 
 #include <algorithm>
 #include <cstdio>
@@ -63,7 +60,7 @@ AdmixData::AdmixData(
     std::string bimFile = prefix + ".bim";
     std::string famFile = prefix + ".fam";
 
-    // Read and validate header
+    // Read and validate 8-byte header
     BGZF* bgz = bgzf_open(m_abedFile.c_str(), "r");
     if (!bgz) throw std::runtime_error("Cannot open ABED file: " + m_abedFile);
 
@@ -77,14 +74,12 @@ AdmixData::AdmixData(
     if (hdr.magic[0] != ABED_MAGIC_0 || hdr.magic[1] != ABED_MAGIC_1)
         throw std::runtime_error("Invalid ABED magic bytes in " + m_abedFile);
     if (hdr.version != ABED_VERSION)
-        throw std::runtime_error("Unsupported ABED version in " + m_abedFile);
-    if (hdr.mode != ABED_MODE_SNP_MAJOR)
-        throw std::runtime_error("Only SNP-major mode supported in " + m_abedFile);
+        throw std::runtime_error("Unsupported ABED version " +
+                                 std::to_string(hdr.version) + " in " + m_abedFile);
 
-    m_nAnc        = hdr.nAncestries;
+    m_nAnc        = hdr.nAnc & 0x7F;
+    m_noMissing   = (hdr.nAnc & ABED_NANC_FLAG_NO_MISSING) != 0;
     m_nSubjInFile = hdr.nSamples;
-    m_noMissing   = (hdr.reserved & ABED_FLAG_NO_MISSING) != 0;
-    uint32_t fileMark = hdr.nMarkers;
 
     if (m_nSubjInFile != nFam)
         throw std::runtime_error("ABED header says " + std::to_string(m_nSubjInFile) +
@@ -100,11 +95,8 @@ AdmixData::AdmixData(
     for (auto w : m_usedMask) maskBits += __builtin_popcountll(w);
     m_allUsed = (maskBits == m_nSubjInFile);
 
-    // Parse .bim
+    // Parse .bim — marker count derived from .bim, not header
     auto allMarkers = parseBimFile(bimFile);
-    if (allMarkers.size() != fileMark)
-        throw std::runtime_error("ABED header says " + std::to_string(fileMark) +
-                                 " markers but .bim has " + std::to_string(allMarkers.size()));
 
     // Apply extract/exclude filters
     m_markerInfo = filterMarkers(allMarkers, extractFile, excludeFile);
@@ -283,39 +275,26 @@ void AdmixCursor::decodeTrack(const uint8_t* raw,
         uint32_t n = m_data.nSubjInFile();
         double* __restrict p = out.data();
 
-#if defined(__AVX2__)
         if (noMissing) {
-            // ── AVX2 fast path: 8 bytes → 32 samples per iteration ──
-            // Map 2-bit codes {0,1,2,3} → doubles {0.0, 0.0, 1.0, 2.0}
-            // Strategy: extract 2-bit codes → 32-bit ints, apply LUT, cvt to double
-            //
-            // For each byte, 4 samples are extracted, then widened to int32 and
-            // converted to double via _mm256_cvtepi32_pd (4 doubles per 128-bit int).
-            // Process 8 bytes (32 samples) at a time via 8 groups of 4 cvt ops.
-
-            // LUT: geno code → integer value (0→0, 1→0, 2→1, 3→2)
-            alignas(16) static const int32_t lut[4] = {0, 0, 1, 2};
-
+            // ── AVX2 fast path (no gather) ──────────────────────────────
+            // 2-bit code mapping: 0→0, 1→0, 2→1, 3→2 = max(0, code - 1)
+            // Process 1 byte → 4 doubles per inner step,
+            // 8 bytes (32 samples) per unrolled iteration.
             uint32_t fullBytes = n / 4;
             uint32_t di = 0;
+
+            const __m128i vone  = _mm_set1_epi32(1);
+            const __m128i vzero = _mm_setzero_si128();
 
             uint32_t b = 0;
             for (; b + 7 < fullBytes; b += 8) {
                 for (int bi = 0; bi < 8; ++bi) {
                     uint8_t byte = raw[b + bi];
-                    // Extract 4 codes, look up in LUT, convert to double
-                    alignas(16) int32_t codes[4] = {
-                        (byte     ) & 3,
-                        (byte >> 2) & 3,
-                        (byte >> 4) & 3,
-                        (byte >> 6) & 3
-                    };
-                    __m128i vcodes = _mm_load_si128(reinterpret_cast<const __m128i*>(codes));
-                    // Gather from LUT: result[i] = lut[codes[i]]
-                    __m128i vvals = _mm_i32gather_epi32(lut, vcodes, 4);
-                    // Convert int32 → double (4 values)
-                    __m256d vd = _mm256_cvtepi32_pd(vvals);
-                    _mm256_storeu_pd(p + di, vd);
+                    __m128i vc = _mm_setr_epi32(
+                        (byte     ) & 3, (byte >> 2) & 3,
+                        (byte >> 4) & 3, (byte >> 6) & 3);
+                    __m128i vi = _mm_max_epi32(_mm_sub_epi32(vc, vone), vzero);
+                    _mm256_storeu_pd(p + di, _mm256_cvtepi32_pd(vi));
                     di += 4;
                 }
             }
@@ -335,24 +314,22 @@ void AdmixCursor::decodeTrack(const uint8_t* raw,
             }
             return;
         }
-#endif // __AVX2__
 
-        // ── Scalar path ──
-        const double* lut = noMissing ? kDecodeNoMiss : kDecode;
+        // ── Scalar path (with missing values) ──
         uint32_t fullBytes = n / 4;
         uint32_t rem = n % 4;
         uint32_t di = 0;
         for (uint32_t b = 0; b < fullBytes; ++b) {
             uint8_t byte = raw[b];
-            p[di++] = lut[(byte     ) & 3];
-            p[di++] = lut[(byte >> 2) & 3];
-            p[di++] = lut[(byte >> 4) & 3];
-            p[di++] = lut[(byte >> 6) & 3];
+            p[di++] = kDecode[(byte     ) & 3];
+            p[di++] = kDecode[(byte >> 2) & 3];
+            p[di++] = kDecode[(byte >> 4) & 3];
+            p[di++] = kDecode[(byte >> 6) & 3];
         }
         if (rem > 0) {
             uint8_t byte = raw[fullBytes];
             for (uint32_t r = 0; r < rem; ++r)
-                p[di++] = lut[(byte >> (2 * r)) & 3];
+                p[di++] = kDecode[(byte >> (2 * r)) & 3];
         }
     } else {
         // Bitmask path: decode only used subjects
@@ -423,20 +400,22 @@ void AdmixCursor::getAllAncestries(
 // AbedWriter
 // ======================================================================
 
-AbedWriter::AbedWriter(const std::string& filename, uint16_t nAnc,
-                       uint32_t nSamples, uint32_t nMarkers,
-                       uint16_t flags)
+AbedWriter::AbedWriter(const std::string& filename, uint8_t nAnc,
+                       uint32_t nSamples,
+                       bool noMissing, int nthreads)
     : m_bgzf(nullptr)
     , m_filename(filename)
     , m_nSamples(nSamples)
-    , m_flags(flags)
     , m_nAnc(nAnc)
-    , m_nMarkers(nMarkers)
+    , m_noMissing(noMissing)
     , m_headerWritten(false)
 {
     m_bgzf = bgzf_open(filename.c_str(), "w");
     if (!m_bgzf)
         throw std::runtime_error("Cannot create ABED file: " + filename);
+
+    if (nthreads > 1)
+        bgzf_mt(m_bgzf, nthreads, 0);
 
     if (bgzf_index_build_init(m_bgzf) < 0) {
         bgzf_close(m_bgzf);
@@ -452,11 +431,8 @@ void AbedWriter::ensureHeader() {
     hdr.magic[0]    = ABED_MAGIC_0;
     hdr.magic[1]    = ABED_MAGIC_1;
     hdr.version     = ABED_VERSION;
-    hdr.mode        = ABED_MODE_SNP_MAJOR;
-    hdr.nAncestries = m_nAnc;
+    hdr.nAnc        = m_nAnc | (m_noMissing ? ABED_NANC_FLAG_NO_MISSING : 0);
     hdr.nSamples    = m_nSamples;
-    hdr.nMarkers    = m_nMarkers;
-    hdr.reserved    = m_flags;
 
     if (bgzf_write(m_bgzf, &hdr, sizeof(hdr)) < 0)
         throw std::runtime_error("Failed to write ABED header: " + m_filename);
@@ -475,7 +451,71 @@ std::vector<uint8_t> AbedWriter::encode(const std::vector<int8_t>& values) {
     uint64_t nBytes = (n + 3) / 4;
     std::vector<uint8_t> packed(nBytes, 0);
 
-    for (uint64_t i = 0; i < n; ++i) {
+    // ── AVX2 fast path: process 32 samples per iteration ──────────
+    // Map each int8 value to its 2-bit code via vpshufb LUT, then
+    // pack 4 adjacent codes into one byte via shifts and ORs.
+    //
+    // LUT (indexed by value & 0x0F):
+    //   0 → 0b00 = 0,  1 → 0b10 = 2,  2 → 0b11 = 3
+    //   0x0F (-1 & 0x0F = 15) → 0b01 = 1 (missing)
+    //   All other nibbles → 0b01 = 1 (missing, safe default)
+    const __m256i vlut = _mm256_setr_epi8(
+        0, 2, 3, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,
+        0, 2, 3, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1);
+    const __m256i vmask_lo = _mm256_set1_epi8(0x0F);
+
+    uint64_t i = 0;
+    uint64_t ob = 0;
+    const int8_t* src = values.data();
+
+    // Process 32 samples (8 output bytes) per iteration
+    for (; i + 31 < n; i += 32, ob += 8) {
+        __m256i v = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src + i));
+        // Map each byte to its 2-bit code
+        __m256i codes = _mm256_shuffle_epi8(vlut, _mm256_and_si256(v, vmask_lo));
+
+        // Pack 4 codes per byte: for byte positions 0,1,2,3 → bits [1:0],[3:2],[5:4],[7:6]
+        // Use _mm256_maddubs_epi16: multiply adjacent byte pairs by (1, 4)
+        // → c_even | (c_odd << 2) packed into int16 low byte
+        const __m256i vmul = _mm256_set1_epi16(0x0401);  // {1, 4} per byte pair (little-endian)
+        __m256i pairs = _mm256_maddubs_epi16(codes, vmul);
+        // pairs: 16-bit values, each = c_even | (c_odd << 2) in bits [3:0]
+
+        // Step 2: pack quads — shift odd 16-bit values left by 4 and OR into even ones
+        // Use _mm256_maddubs again on the 16-bit result? No, we need madd on 16-bit pairs.
+        // Instead: use _mm256_packs_epi16 then another maddubs, or manual shift+or:
+        // Narrow 16-bit → 8-bit by packing
+        // _mm256_packs_epi16 saturates signed – use shuffle instead:
+        // Extract bytes 0, 2, 4, ... from pairs
+        const __m256i vpack16 = _mm256_setr_epi8(
+            0, 2, 4, 6, 8, 10, 12, 14, -1,-1,-1,-1,-1,-1,-1,-1,
+            0, 2, 4, 6, 8, 10, 12, 14, -1,-1,-1,-1,-1,-1,-1,-1);
+        __m256i narrowed = _mm256_shuffle_epi8(pairs, vpack16);
+        // narrowed: bytes [0..7] in lane0, [0..7] in lane1 (each byte = 4 bits of 2 codes)
+
+        // Now pack again: adjacent bytes → 1 byte with (lo | (hi << 4))
+        // Extract to 128-bit for simplicity (8 + 8 bytes → 16 bytes, we need only 8)
+        __m128i lo128 = _mm256_castsi256_si128(narrowed);
+        __m128i hi128 = _mm256_extracti128_si256(narrowed, 1);
+        // lo128 has bytes for samples 0..15, hi128 for samples 16..31
+        // Each byte = c_pair0 | (c_pair1 << 2) in bits [3:0]
+        // Pack adjacent bytes: byte_even | (byte_odd << 4)
+        const __m128i vmul2 = _mm_set1_epi16(0x1001);  // {1, 16} per byte pair
+        __m128i q_lo = _mm_maddubs_epi16(lo128, vmul2);
+        __m128i q_hi = _mm_maddubs_epi16(hi128, vmul2);
+        // q_lo: 4 int16, each with 8 bits of packed data in low byte
+        // Narrow: extract bytes 0, 2, 4, 6
+        const __m128i vpack8 = _mm_setr_epi8(0, 2, 4, 6, -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1);
+        __m128i r_lo = _mm_shuffle_epi8(q_lo, vpack8);  // 4 bytes in [0..3]
+        __m128i r_hi = _mm_shuffle_epi8(q_hi, vpack8);  // 4 bytes in [0..3]
+        // Combine: 8 bytes total
+        __m128i result = _mm_unpacklo_epi32(r_lo, r_hi);
+        // Store 8 bytes
+        _mm_storel_epi64(reinterpret_cast<__m128i*>(packed.data() + ob), result);
+    }
+
+    // ── Scalar tail ───────────────────────────────────────────────
+    for (; i < n; ++i) {
         uint8_t code;
         switch (values[i]) {
             case 0:  code = 0b00; break;

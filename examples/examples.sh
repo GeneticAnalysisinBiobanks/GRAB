@@ -177,8 +177,8 @@ build/grab \
 
 build/grab --make-abed \
   --vcf examples/spamixlocalp/admix_bfile/head10.bcf \
-  --rfmix-msp examples/spamixlocalp/admix_bfile/head10.msp.tsv \
-  --out-prefix examples/spamixlocalp/admix_bfile/head10
+  --rfmix-msp examples/spamixlocalp/admix_bfile/head10.msp.gz \
+  --out-prefix examples/spamixlocalp/admix_bfile/head10 
   
 build/grab --make-abed \
   --admix-text-prefix examples/spamixlocalp/simuAncestry \

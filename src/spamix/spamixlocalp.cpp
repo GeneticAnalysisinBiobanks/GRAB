@@ -44,11 +44,13 @@ static constexpr double PHI_MAF_CUTOFF = 0.01;
 PhiMatrices estimatePhiOneAncestry(
     const AdmixData& admixData,
     const SparseGRM& grm,
-    int ancIdx
+    int ancIdx,
+    int nthreads
 ) {
     const double mafCutoff = PHI_MAF_CUTOFF;
     uint32_t nUsed = admixData.nSubjUsed();
     uint32_t nMarkers = admixData.nMarkers();
+    if (nthreads < 1) nthreads = 1;
 
     // Build directed pair list from GRM entries (both directions for off-diagonal)
     struct DPair { uint32_t i, j; };
@@ -60,74 +62,127 @@ PhiMatrices estimatePhiOneAncestry(
             pairs.push_back({e.col, e.row});
         }
     }
-    size_t nPairs = pairs.size();
+    const size_t nPairs = pairs.size();
 
-    // Accumulators per scenario, per pair
+    // Per-thread accumulator structure
     struct PairAcc { double ratioSum; uint32_t validCount; };
+
+    // Worker function: processes markers [mBegin, mEnd) using its own cursor
+    // and accumulates into local vectors.
+    struct ThreadResult {
+        std::vector<PairAcc> accA, accB, accC, accD;
+        uint32_t snpsPassed = 0;
+    };
+
+    auto workerFn = [&](uint32_t mBegin, uint32_t mEnd) -> ThreadResult {
+        ThreadResult res;
+        res.accA.assign(nPairs, {0.0, 0});
+        res.accB.assign(nPairs, {0.0, 0});
+        res.accC.assign(nPairs, {0.0, 0});
+        res.accD.assign(nPairs, {0.0, 0});
+
+        auto cursor = admixData.makeCursor();
+        cursor->beginSequentialBlock(mBegin);
+        Eigen::VectorXd dosage(nUsed), hapcount(nUsed);
+        double mafHigh = 1.0 - mafCutoff;
+        bool checkMissing = !admixData.hasNoMissing();
+
+        for (uint32_t m = mBegin; m < mEnd; ++m) {
+            double q = cursor->getAdmixGenotypes(m, ancIdx, dosage, hapcount);
+
+            if (q <= mafCutoff || q >= mafHigh) continue;
+            ++res.snpsPassed;
+
+            double qTerm = q * (1.0 - q);
+
+            for (size_t p = 0; p < nPairs; ++p) {
+                uint32_t i = pairs[p].i;
+                uint32_t j = pairs[p].j;
+                if (i >= nUsed || j >= nUsed) continue;
+
+                double hi = hapcount[i];
+                double hj = hapcount[j];
+                double gi = dosage[i];
+                double gj = dosage[j];
+
+                if (checkMissing) {
+                    if (!std::isfinite(hi) || !std::isfinite(hj) ||
+                        !std::isfinite(gi) || !std::isfinite(gj)) continue;
+                }
+
+                int hiInt = static_cast<int>(std::round(hi));
+                int hjInt = static_cast<int>(std::round(hj));
+
+                double denom = hi * hj * qTerm;
+                if (std::abs(denom) < 1e-15) continue;
+
+                double numer = (gi - hi * q) * (gj - hj * q);
+                double ratio = numer / denom;
+
+                if (hiInt == 2 && hjInt == 2) {
+                    res.accA[p].ratioSum += ratio;
+                    res.accA[p].validCount++;
+                } else if (hiInt == 2 && hjInt == 1) {
+                    res.accB[p].ratioSum += ratio;
+                    res.accB[p].validCount++;
+                } else if (hiInt == 1 && hjInt == 2) {
+                    res.accC[p].ratioSum += ratio;
+                    res.accC[p].validCount++;
+                } else if (hiInt == 1 && hjInt == 1) {
+                    res.accD[p].ratioSum += ratio;
+                    res.accD[p].validCount++;
+                }
+            }
+
+            if ((m + 1) % 10000 == 0)
+                infoMsg("  Phi estimation: %u / %u markers (anc%d)", m + 1, nMarkers, ancIdx);
+        }
+        return res;
+    };
+
+    // Split markers across threads
+    std::vector<ThreadResult> results(nthreads);
+    if (nthreads == 1) {
+        results[0] = workerFn(0, nMarkers);
+    } else {
+        std::vector<std::thread> workers;
+        workers.reserve(nthreads - 1);
+        uint32_t chunkSize = (nMarkers + nthreads - 1) / nthreads;
+        for (int t = 0; t < nthreads - 1; ++t) {
+            uint32_t mBegin = t * chunkSize;
+            uint32_t mEnd   = std::min(mBegin + chunkSize, nMarkers);
+            workers.emplace_back([&results, &workerFn, t, mBegin, mEnd]() {
+                results[t] = workerFn(mBegin, mEnd);
+            });
+        }
+        // Main thread handles last chunk
+        {
+            uint32_t mBegin = (nthreads - 1) * chunkSize;
+            uint32_t mEnd   = nMarkers;
+            results[nthreads - 1] = workerFn(mBegin, mEnd);
+        }
+        for (auto& w : workers) w.join();
+    }
+
+    // Merge accumulators
     std::vector<PairAcc> accA(nPairs, {0.0, 0});
     std::vector<PairAcc> accB(nPairs, {0.0, 0});
     std::vector<PairAcc> accC(nPairs, {0.0, 0});
     std::vector<PairAcc> accD(nPairs, {0.0, 0});
-
-    // Single cursor for streaming markers
-    auto cursor = admixData.makeCursor();
-    Eigen::VectorXd dosage(nUsed), hapcount(nUsed);
-
     uint32_t snpsPassed = 0;
-    double mafHigh = 1.0 - mafCutoff;
 
-    for (uint32_t m = 0; m < nMarkers; ++m) {
-        double q = cursor->getAdmixGenotypes(m, ancIdx, dosage, hapcount);
-
-        // MAF filter
-        if (q <= mafCutoff || q >= mafHigh) continue;
-        ++snpsPassed;
-
-        double qTerm = q * (1.0 - q);
-
+    for (int t = 0; t < nthreads; ++t) {
+        snpsPassed += results[t].snpsPassed;
         for (size_t p = 0; p < nPairs; ++p) {
-            uint32_t i = pairs[p].i;
-            uint32_t j = pairs[p].j;
-            if (i >= nUsed || j >= nUsed) continue;
-
-            double hi = hapcount[i];
-            double hj = hapcount[j];
-            double gi = dosage[i];
-            double gj = dosage[j];
-
-            // Check for NaN/missing (skipped when noMissing flag is set)
-            if (!admixData.hasNoMissing()) {
-                if (!std::isfinite(hi) || !std::isfinite(hj) ||
-                    !std::isfinite(gi) || !std::isfinite(gj)) continue;
-            }
-
-            int hiInt = static_cast<int>(std::round(hi));
-            int hjInt = static_cast<int>(std::round(hj));
-
-            double denom = hi * hj * qTerm;
-            if (std::abs(denom) < 1e-15) continue;
-
-            double numer = (gi - hi * q) * (gj - hj * q);
-            double ratio = numer / denom;
-
-            // Dispatch by scenario
-            if (hiInt == 2 && hjInt == 2) {
-                accA[p].ratioSum += ratio;
-                accA[p].validCount++;
-            } else if (hiInt == 2 && hjInt == 1) {
-                accB[p].ratioSum += ratio;
-                accB[p].validCount++;
-            } else if (hiInt == 1 && hjInt == 2) {
-                accC[p].ratioSum += ratio;
-                accC[p].validCount++;
-            } else if (hiInt == 1 && hjInt == 1) {
-                accD[p].ratioSum += ratio;
-                accD[p].validCount++;
-            }
+            accA[p].ratioSum   += results[t].accA[p].ratioSum;
+            accA[p].validCount += results[t].accA[p].validCount;
+            accB[p].ratioSum   += results[t].accB[p].ratioSum;
+            accB[p].validCount += results[t].accB[p].validCount;
+            accC[p].ratioSum   += results[t].accC[p].ratioSum;
+            accC[p].validCount += results[t].accC[p].validCount;
+            accD[p].ratioSum   += results[t].accD[p].ratioSum;
+            accD[p].validCount += results[t].accD[p].validCount;
         }
-
-        if ((m + 1) % 10000 == 0)
-            infoMsg("  Phi estimation: %u / %u markers (anc%d)", m + 1, nMarkers, ancIdx);
     }
 
     infoMsg("  Phi estimation: %u markers passed MAF filter (anc%d)", snpsPassed, ancIdx);
@@ -499,37 +554,56 @@ void runPhiEstimation(
     const std::string& grmGrabFile,
     const std::string& grmGctaFile,
     const std::string& phiOutputFile,
+    const std::string& keepFile,
+    const std::string& removeFile,
     const std::string& extractFile,
-    const std::string& excludeFile
+    const std::string& excludeFile,
+    int nthreads
 ) {
     infoMsg("=== SPAmixLocalPlus Phi Estimation ===");
 
-    // Load .fam IIDs
+    // Load .fam IIDs (genotype subject list)
     auto famIIDs = parseFamIIDs(admixPrefix + ".fam");
     uint32_t nFam = static_cast<uint32_t>(famIIDs.size());
+    infoMsg("Genotype (.fam): %u subjects", nFam);
 
-    // Full mask (all subjects used for phi estimation)
+    // Load GRM against full .fam order
+    auto grm = SparseGRM::load(grmGrabFile, grmGctaFile, famIIDs, famIIDs);
+    infoMsg("GRM loaded: %u subjects (dimension), %zu entries", grm.nSubjects(), grm.nnz());
+
+    // Determine GRM subjects: those with a non-zero diagonal entry
+    const auto& diag = grm.diagonal();
+    uint32_t nGrm = 0;
+    for (uint32_t i = 0; i < nFam; ++i)
+        if (diag[i] != 0.0) ++nGrm;
+    infoMsg("GRM: %u subjects with non-zero diagonal", nGrm);
+
+    // Build intersection bitmask: only subjects present in both genotype and GRM
     uint32_t nMaskWords = (nFam + 63) / 64;
-    std::vector<uint64_t> fullMask(nMaskWords, ~uint64_t(0));
-    // Clear excess bits in last word
-    uint32_t excess = nMaskWords * 64 - nFam;
-    if (excess > 0) fullMask.back() >>= excess;
+    std::vector<uint64_t> usedMask(nMaskWords, 0);
+    uint32_t nUsed = 0;
+    for (uint32_t i = 0; i < nFam; ++i) {
+        if (diag[i] != 0.0) {
+            usedMask[i / 64] |= (uint64_t(1) << (i % 64));
+            ++nUsed;
+        }
+    }
+    infoMsg("Intersection (genotype ∩ GRM): %u subjects will be analysed", nUsed);
 
-    // Load admix data
-    AdmixData admixData(admixPrefix, fullMask, nFam, nFam,
+    if (nUsed == 0)
+        throw std::runtime_error("runPhiEstimation: intersection of genotype and GRM subjects is empty");
+
+    // Load admix data using intersection mask
+    AdmixData admixData(admixPrefix, usedMask, nFam, nUsed,
                         extractFile, excludeFile);
     int K = admixData.nAncestries();
     infoMsg("Ancestries: %d, Markers: %u, Samples: %u", K, admixData.nMarkers(), admixData.nSubjUsed());
 
-    // Load GRM
-    auto grm = SparseGRM::load(grmGrabFile, grmGctaFile, famIIDs, famIIDs);
-    infoMsg("GRM loaded: %u subjects, %zu entries", grm.nSubjects(), grm.nnz());
-
     // Estimate phi for all ancestries
     std::vector<PhiMatrices> allPhi(K);
     for (int k = 0; k < K; ++k) {
-        infoMsg("Estimating phi for anc%d ...", k);
-        allPhi[k] = estimatePhiOneAncestry(admixData, grm, k);
+        infoMsg("Estimating phi for anc%d (%d thread%s)...", k, nthreads, nthreads > 1 ? "s" : "");
+        allPhi[k] = estimatePhiOneAncestry(admixData, grm, k, nthreads);
     }
 
     // Write single wide file
@@ -841,6 +915,8 @@ void runSPAmixLocalPlus(
     double missingCutoff,
     double minMafCutoff,
     double minMacCutoff,
+    const std::string& keepFile,
+    const std::string& removeFile,
     const std::string& extractFile,
     const std::string& excludeFile
 ) {
@@ -850,6 +926,7 @@ void runSPAmixLocalPlus(
     auto famIIDs = parseFamIIDs(admixPrefix + ".fam");
     SubjectData sd(famIIDs);
     sd.loadResidOne(residFile);
+    sd.setKeepRemove(keepFile, removeFile);
     sd.finalize();
 
     uint32_t nUsed = sd.nUsed();

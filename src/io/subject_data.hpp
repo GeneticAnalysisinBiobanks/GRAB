@@ -73,6 +73,12 @@ public:
   void loadPhenoFile(const std::string& filename);       // plink2 --pheno format
   void loadCovar(const std::string& filename);           // plink2 --covar format
 
+  // ── Subject filter (optional, call before finalize) ─────────────────
+  // Apply --keep / --remove subject-ID files (PLINK2-compatible format).
+  // Either path may be empty (no-op).  Must be called before finalize().
+  void setKeepRemove(const std::string& keepFile,
+                     const std::string& removeFile);
+
   // ── Build bitmask and reorder to .fam order ────────────────────────
   // Intersects all loaded IID sets with .fam, builds bitmask, reorders
   // dense data to .fam order.  Must be called exactly once, after all
@@ -202,4 +208,8 @@ private:
 
   int m_nResidOneCols = 0;
   std::vector<std::string> m_residColNames;
+
+  // --keep / --remove filter paths (empty = disabled)
+  std::string m_keepFile;
+  std::string m_removeFile;
 };
