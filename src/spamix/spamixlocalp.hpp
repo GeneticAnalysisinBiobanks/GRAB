@@ -42,16 +42,60 @@ struct PhiMatrices {
 
 // Pre-computed phi entries with R[i]*R[j]*phi*multiplier baked in.
 // Eliminates random R[] lookups in the per-marker variance hot path.
-struct RprodEntry {
-    uint32_t i, j;
-    double rprod;   // multiplier * phi * R[i] * R[j]
-};
-struct RprodPhi {
-    std::vector<RprodEntry> A, B, C, D;
+//
+// SoA (Structure-of-Arrays) layout for cache-friendly sequential scan
+// and AVX2 vectorized processing.  All four scenarios (A/B/C/D) are
+// merged into a single flat array so the hot loop makes ONE pass.
+struct RprodSoA {
+    std::vector<uint32_t> idx_i;       // subject index i
+    std::vector<uint32_t> idx_j;       // subject index j
+    std::vector<double>   rprod;       // multiplier * phi * R[i] * R[j]
+    std::vector<uint8_t>  target_hi;   // required hInt[i] value (1 or 2)
+    std::vector<uint8_t>  target_hj;   // required hInt[j] value (1 or 2)
+
+    size_t size() const { return rprod.size(); }
+
+    void reserve(size_t n) {
+        idx_i.reserve(n);
+        idx_j.reserve(n);
+        rprod.reserve(n);
+        target_hi.reserve(n);
+        target_hj.reserve(n);
+    }
+
+    void push_back(uint32_t i, uint32_t j, double rp, uint8_t th_i, uint8_t th_j) {
+        idx_i.push_back(i);
+        idx_j.push_back(j);
+        rprod.push_back(rp);
+        target_hi.push_back(th_i);
+        target_hj.push_back(th_j);
+    }
 };
 
-// Build RprodPhi from PhiMatrices and residual vector (once per phenotype).
-RprodPhi buildRprodPhi(const PhiMatrices& phi, const Eigen::VectorXd& R);
+// Build unified SoA from PhiMatrices and residual vector (once per phenotype).
+RprodSoA buildRprodSoA(const PhiMatrices& phi, const Eigen::VectorXd& R);
+
+// Compute off-diagonal variance from SoA phi entries and hapcount array.
+// Uses AVX2 when available, scalar fallback otherwise.
+double computeVarOffSoA(const RprodSoA& rp,
+                        const uint32_t* hInt,
+                        uint32_t nUsed);
+
+// Batch size for amortizing phi scan across multiple markers.
+// Scanning phi is memory-bandwidth-bound; processing B markers per scan
+// reduces DRAM traffic by factor B.
+static constexpr int PHI_BATCH = 8;
+
+// Batch off-diagonal variance: scans phi entries ONCE for PHI_BATCH markers.
+//   hIntSM:   subject-major uint32 hapcount [nUsed * PHI_BATCH]
+//             layout: hIntSM[subj * PHI_BATCH + batchIdx]
+//   batchLen: actual marker count in this batch (≤ PHI_BATCH)
+//   varOff:   output array [batchLen]
+void computeVarOffSoABatch(const RprodSoA& rp,
+                           const uint32_t* hIntSM,
+                           uint32_t nUsed,
+                           int batchLen,
+                           double* varOff);
 
 
 // ======================================================================

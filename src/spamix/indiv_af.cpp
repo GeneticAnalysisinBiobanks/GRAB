@@ -656,5 +656,5 @@ void runSPAmixAF(
       std::chrono::duration<double>(wallEnd - wallStart).count();
   const double cpuSec =
       static_cast<double>(std::clock() - cpuStart) / CLOCKS_PER_SEC;
-  infoMsg("SPAmixAF done: %.1f sec wall, %.1f sec CPU", wallSec, cpuSec);
+  infoMsg("Wall time: %.1f seconds, CPU time: %.1f seconds", wallSec, cpuSec);
 }

@@ -174,7 +174,7 @@ private:
   bool     m_hasSeqCursor = false;
   uint64_t m_nextMarker   = 0;
 
-  static constexpr uint64_t BLOCK_CAPACITY = 128;  // markers per block
+  static constexpr uint64_t BLOCK_CAPACITY = 512;  // markers per block
 };
 
 

@@ -13,7 +13,9 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
+#include <ctime>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -36,26 +38,195 @@ static constexpr double MIN_P_VALUE = std::numeric_limits<double>::min();
 
 
 // ======================================================================
-// Precomputed phi products — bake R[i]*R[j]*phi*mult into a flat double
+// Precomputed phi products — SoA layout for AVX2-friendly hot loop
 // ======================================================================
 
-RprodPhi buildRprodPhi(const PhiMatrices& phi, const Eigen::VectorXd& R) {
-    RprodPhi rp;
-    auto build = [&](const std::vector<PhiEntry>& src,
-                     std::vector<RprodEntry>& dst, double mult) {
-        dst.resize(src.size());
-        for (size_t p = 0; p < src.size(); ++p) {
-            dst[p].i     = src[p].i;
-            dst[p].j     = src[p].j;
-            dst[p].rprod = mult * src[p].value * R[src[p].i] * R[src[p].j];
-        }
+RprodSoA buildRprodSoA(const PhiMatrices& phi, const Eigen::VectorXd& R) {
+    size_t total = phi.A.size() + phi.B.size() + phi.C.size() + phi.D.size();
+    RprodSoA rp;
+    rp.reserve(total);
+
+    auto append = [&](const std::vector<PhiEntry>& src, double mult,
+                      uint8_t th_i, uint8_t th_j) {
+        for (const auto& e : src)
+            rp.push_back(e.i, e.j, mult * e.value * R[e.i] * R[e.j],
+                         th_i, th_j);
     };
-    build(phi.A, rp.A, 4.0);
-    build(phi.B, rp.B, 2.0);
-    build(phi.C, rp.C, 2.0);
-    build(phi.D, rp.D, 1.0);
+    append(phi.A, 4.0, 2, 2);
+    append(phi.B, 2.0, 2, 1);
+    append(phi.C, 2.0, 1, 2);
+    append(phi.D, 1.0, 1, 1);
     return rp;
 }
+
+// ── AVX2 off-diagonal variance from unified SoA ────────────────────
+#ifdef __AVX2__
+#include <immintrin.h>
+
+double computeVarOffSoA(const RprodSoA& rp,
+                        const uint32_t* hInt,
+                        uint32_t /*nUsed*/) {
+    const size_t N = rp.size();
+    if (N == 0) return 0.0;
+
+    const uint32_t* __restrict ii   = rp.idx_i.data();
+    const uint32_t* __restrict jj   = rp.idx_j.data();
+    const double*   __restrict rval = rp.rprod.data();
+    const uint8_t*  __restrict thi  = rp.target_hi.data();
+    const uint8_t*  __restrict thj  = rp.target_hj.data();
+
+    __m256d acc = _mm256_setzero_pd();
+    size_t p = 0;
+
+    // Process 4 entries per iteration
+    for (; p + 3 < N; p += 4) {
+        // Load 4 (i, j) index pairs
+        __m128i vi = _mm_loadu_si128(reinterpret_cast<const __m128i*>(ii + p));
+        __m128i vj = _mm_loadu_si128(reinterpret_cast<const __m128i*>(jj + p));
+
+        // Gather hInt[i] and hInt[j] — 4×int32
+        __m128i hi = _mm_i32gather_epi32(reinterpret_cast<const int*>(hInt), vi, 4);
+        __m128i hj = _mm_i32gather_epi32(reinterpret_cast<const int*>(hInt), vj, 4);
+
+        // Load target values and zero-extend uint8 → int32
+        // (4 bytes → 4 int32 via movzx-like expansion)
+        __m128i raw_thi = _mm_cvtsi32_si128(*reinterpret_cast<const int*>(thi + p));
+        __m128i raw_thj = _mm_cvtsi32_si128(*reinterpret_cast<const int*>(thj + p));
+        __m128i vthi = _mm_cvtepu8_epi32(raw_thi);
+        __m128i vthj = _mm_cvtepu8_epi32(raw_thj);
+
+        // Compare: hi == target_hi AND hj == target_hj
+        __m128i cmpi = _mm_cmpeq_epi32(hi, vthi);
+        __m128i cmpj = _mm_cmpeq_epi32(hj, vthj);
+        __m128i mask32 = _mm_and_si128(cmpi, cmpj);
+
+        // Convert int32 mask → double mask (widen 4×32 → 4×64)
+        // cmpeq returns 0xFFFFFFFF for true — extend to 0xFFFFFFFFFFFFFFFF
+        __m256i mask64 = _mm256_cvtepi32_epi64(mask32);
+        __m256d maskd = _mm256_castsi256_pd(mask64);
+
+        // Load 4 rprod values, mask-select, and accumulate
+        __m256d rv = _mm256_loadu_pd(rval + p);
+        acc = _mm256_add_pd(acc, _mm256_and_pd(maskd, rv));
+    }
+
+    // Horizontal sum of acc
+    __m128d lo = _mm256_castpd256_pd128(acc);
+    __m128d hi128 = _mm256_extractf128_pd(acc, 1);
+    __m128d sum2 = _mm_add_pd(lo, hi128);
+    double tmp[2];
+    _mm_storeu_pd(tmp, sum2);
+    double varOff = tmp[0] + tmp[1];
+
+    // Scalar tail (0–3 remaining entries)
+    for (; p < N; ++p) {
+        varOff += ((hInt[ii[p]] == thi[p]) & (hInt[jj[p]] == thj[p])) * rval[p];
+    }
+
+    return varOff;
+}
+
+#else  // scalar fallback
+
+double computeVarOffSoA(const RprodSoA& rp,
+                        const uint32_t* hInt,
+                        uint32_t /*nUsed*/) {
+    const size_t N = rp.size();
+    double varOff = 0.0;
+    for (size_t p = 0; p < N; ++p) {
+        varOff += ((hInt[rp.idx_i[p]] == rp.target_hi[p]) &
+                   (hInt[rp.idx_j[p]] == rp.target_hj[p])) * rp.rprod[p];
+    }
+    return varOff;
+}
+
+#endif  // __AVX2__
+
+
+// ======================================================================
+// Batch off-diagonal variance — scan phi entries ONCE for PHI_BATCH
+// markers.  Subject-major hIntSM layout: hIntSM[subj * PHI_BATCH + b].
+// Each phi entry reads PHI_BATCH consecutive uint32s (1–2 cache lines),
+// amortising DRAM bandwidth across all batch markers.
+// ======================================================================
+
+#ifdef __AVX2__
+
+void computeVarOffSoABatch(const RprodSoA& rp,
+                           const uint32_t* hIntSM,
+                           uint32_t /*nUsed*/,
+                           int batchLen,
+                           double* varOff) {
+    const size_t N = rp.size();
+    std::fill(varOff, varOff + batchLen, 0.0);
+    if (N == 0) return;
+
+    const uint32_t* __restrict ii   = rp.idx_i.data();
+    const uint32_t* __restrict jj   = rp.idx_j.data();
+    const double*   __restrict rval = rp.rprod.data();
+    const uint8_t*  __restrict thi  = rp.target_hi.data();
+    const uint8_t*  __restrict thj  = rp.target_hj.data();
+
+    // Two 4-wide double accumulators covering batch items [0..3] and [4..7]
+    __m256d acc0 = _mm256_setzero_pd();
+    __m256d acc1 = _mm256_setzero_pd();
+
+    for (size_t p = 0; p < N; ++p) {
+        const uint32_t* hi_ptr = hIntSM + ii[p] * PHI_BATCH;
+        const uint32_t* hj_ptr = hIntSM + jj[p] * PHI_BATCH;
+        __m128i vthi = _mm_set1_epi32(static_cast<int>(thi[p]));
+        __m128i vthj = _mm_set1_epi32(static_cast<int>(thj[p]));
+        __m256d rv   = _mm256_set1_pd(rval[p]);
+
+        // Batch items 0–3
+        {
+            __m128i hi4 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(hi_ptr));
+            __m128i hj4 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(hj_ptr));
+            __m128i mask32 = _mm_and_si128(_mm_cmpeq_epi32(hi4, vthi),
+                                           _mm_cmpeq_epi32(hj4, vthj));
+            __m256d maskd = _mm256_castsi256_pd(_mm256_cvtepi32_epi64(mask32));
+            acc0 = _mm256_add_pd(acc0, _mm256_and_pd(maskd, rv));
+        }
+        // Batch items 4–7
+        {
+            __m128i hi4 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(hi_ptr + 4));
+            __m128i hj4 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(hj_ptr + 4));
+            __m128i mask32 = _mm_and_si128(_mm_cmpeq_epi32(hi4, vthi),
+                                           _mm_cmpeq_epi32(hj4, vthj));
+            __m256d maskd = _mm256_castsi256_pd(_mm256_cvtepi32_epi64(mask32));
+            acc1 = _mm256_add_pd(acc1, _mm256_and_pd(maskd, rv));
+        }
+    }
+
+    // Store accumulators → varOff[0..7]
+    double tmp[8];
+    _mm256_storeu_pd(tmp,     acc0);
+    _mm256_storeu_pd(tmp + 4, acc1);
+    for (int b = 0; b < batchLen; ++b)
+        varOff[b] = tmp[b];
+}
+
+#else  // scalar fallback
+
+void computeVarOffSoABatch(const RprodSoA& rp,
+                           const uint32_t* hIntSM,
+                           uint32_t /*nUsed*/,
+                           int batchLen,
+                           double* varOff) {
+    const size_t N = rp.size();
+    std::fill(varOff, varOff + batchLen, 0.0);
+    for (size_t p = 0; p < N; ++p) {
+        uint32_t i = rp.idx_i[p], j = rp.idx_j[p];
+        double r   = rp.rprod[p];
+        uint32_t th_i = rp.target_hi[p], th_j = rp.target_hj[p];
+        const uint32_t* hi_ptr = hIntSM + i * PHI_BATCH;
+        const uint32_t* hj_ptr = hIntSM + j * PHI_BATCH;
+        for (int b = 0; b < batchLen; ++b)
+            varOff[b] += ((hi_ptr[b] == th_i) & (hj_ptr[b] == th_j)) * r;
+    }
+}
+
+#endif  // __AVX2__
 
 
 // ======================================================================
@@ -97,7 +268,7 @@ PhiMatrices estimatePhiOneAncestry(
         uint32_t snpsPassed = 0;
     };
 
-    auto workerFn = [&](uint32_t mBegin, uint32_t mEnd) -> ThreadResult {
+    auto workerFn = [&](int workerId, uint32_t mBegin, uint32_t mEnd) -> ThreadResult {
         ThreadResult res;
         res.accA.assign(nPairs, {0.0, 0});
         res.accB.assign(nPairs, {0.0, 0});
@@ -109,6 +280,7 @@ PhiMatrices estimatePhiOneAncestry(
         Eigen::VectorXd dosage(nUsed), hapcount(nUsed);
         double mafHigh = 1.0 - mafCutoff;
         bool checkMissing = !admixData.hasNoMissing();
+        uint32_t total = mEnd > mBegin ? mEnd - mBegin : 0;
 
         for (uint32_t m = mBegin; m < mEnd; ++m) {
             double q = cursor->getAdmixGenotypes(m, ancIdx, dosage, hapcount);
@@ -157,32 +329,42 @@ PhiMatrices estimatePhiOneAncestry(
                 }
             }
 
-            if ((m + 1) % 10000 == 0)
-                infoMsg("  Phi estimation: %u / %u markers (anc%d)", m + 1, nMarkers, ancIdx);
+            uint32_t finished = m - mBegin + 1;
+            if (finished % 10000 == 0 || finished == total)
+                infoMsg("  worker %d finished %u/%u markers",
+                        workerId, finished, total);
         }
         return res;
     };
 
     // Split markers across threads
     std::vector<ThreadResult> results(nthreads);
+    std::vector<uint32_t> workerMarkerCount(nthreads);
+    uint32_t chunkSize = (nMarkers + nthreads - 1) / nthreads;
+    for (int t = 0; t < nthreads; ++t) {
+        uint32_t mBegin = t * chunkSize;
+        uint32_t mEnd   = std::min(mBegin + chunkSize, nMarkers);
+        workerMarkerCount[t] = (mEnd > mBegin ? mEnd - mBegin : 0);
+    }
+    infoMsg("  workers 0-%d will each process ~%u markers",
+            nthreads - 1, chunkSize);
     if (nthreads == 1) {
-        results[0] = workerFn(0, nMarkers);
+        results[0] = workerFn(0, 0, nMarkers);
     } else {
         std::vector<std::thread> workers;
         workers.reserve(nthreads - 1);
-        uint32_t chunkSize = (nMarkers + nthreads - 1) / nthreads;
         for (int t = 0; t < nthreads - 1; ++t) {
             uint32_t mBegin = t * chunkSize;
             uint32_t mEnd   = std::min(mBegin + chunkSize, nMarkers);
             workers.emplace_back([&results, &workerFn, t, mBegin, mEnd]() {
-                results[t] = workerFn(mBegin, mEnd);
+                results[t] = workerFn(t, mBegin, mEnd);
             });
         }
         // Main thread handles last chunk
         {
             uint32_t mBegin = (nthreads - 1) * chunkSize;
             uint32_t mEnd   = nMarkers;
-            results[nthreads - 1] = workerFn(mBegin, mEnd);
+            results[nthreads - 1] = workerFn(nthreads - 1, mBegin, mEnd);
         }
         for (auto& w : workers) w.join();
     }
@@ -583,6 +765,8 @@ void runPhiEstimation(
     const std::string& excludeFile,
     int nthreads
 ) {
+    const auto wallStart = std::chrono::steady_clock::now();
+    const std::clock_t cpuStart = std::clock();
     infoMsg("=== SPAmixLocalPlus Phi Estimation ===");
 
     // Load .fam IIDs (genotype subject list)
@@ -632,28 +816,11 @@ void runPhiEstimation(
     // Write single wide file
     writePhiWide(phiOutputFile, allPhi, K);
 
-    infoMsg("Phi estimation complete -> %s", phiOutputFile.c_str());
-}
-
-
-// ======================================================================
-// CCT (Cauchy Combination Test) — combine per-ancestry p-values
-// ======================================================================
-
-static double cauchyCombine(const double* pvals, int K) {
-    int nValid = 0;
-    double tStat = 0.0;
-    for (int k = 0; k < K; ++k) {
-        if (!std::isfinite(pvals[k]) || pvals[k] < 0.0) continue;
-        if (pvals[k] <= 0.0) return 0.0;    // any exact zero ⇒ combined = 0
-        double pc = (pvals[k] >= 1.0) ? 0.999 : pvals[k];
-        tStat += std::tan((0.5 - pc) * M_PI);
-        ++nValid;
-    }
-    if (nValid == 0) return std::numeric_limits<double>::quiet_NaN();
-    tStat /= static_cast<double>(nValid);
-    return (tStat > 1e15) ? (1.0 / tStat) / M_PI
-                          : 0.5 - std::atan(tStat) / M_PI;
+    const auto wallEnd = std::chrono::steady_clock::now();
+    const double wallSec = std::chrono::duration<double>(wallEnd - wallStart).count();
+    const double cpuSec = static_cast<double>(std::clock() - cpuStart) / CLOCKS_PER_SEC;
+    infoMsg("Output written to: %s", phiOutputFile.c_str());
+    infoMsg("Wall time: %.1f seconds, CPU time: %.1f seconds", wallSec, cpuSec);
 }
 
 
@@ -678,19 +845,16 @@ static void runUnifiedGWAS(
     uint32_t nUsed = admixData.nSubjUsed();
     const auto& markerInfo = admixData.markerInfo();
 
-    // Build header: CHROM POS ID REF ALT  P_CCT  anc0_... anc1_...
-    std::string header = "CHROM\tPOS\tID\tREF\tALT\tP_CCT";
+    // Build header: CHROM POS ID REF ALT  anc0_... ancK_...
+    std::string header = "CHROM\tPOS\tID\tREF\tALT";
     for (int k = 0; k < K; ++k) {
         std::string pfx = "\tanc" + std::to_string(k) + "_";
-        header += pfx + "AltFreq";
-        header += pfx + "MissingRate";
+        header += pfx + "MISS_RATE";
+        header += pfx + "ALT_FREQ";
+        header += pfx + "MAC";
         header += pfx + "P";
-        header += pfx + "Pnorm";
-        header += pfx + "Stat";
-        header += pfx + "Var";
-        header += pfx + "zScore";
-        header += pfx + "AltCounts";
-        header += pfx + "BetaG";
+        header += pfx + "Z";
+        header += pfx + "BETA";
     }
     header += '\n';
 
@@ -709,10 +873,11 @@ static void runUnifiedGWAS(
     // Pre-compute R^2 and rprod arrays (once per phenotype, not per marker).
     // This bakes R[i]*R[j]*phi*multiplier into a flat double, eliminating
     // random R[] lookups in the per-marker variance hot path.
+    // SoA layout: unified A/B/C/D with AVX2-friendly sequential access.
     Eigen::ArrayXd R2 = resid.array().square();
-    std::vector<RprodPhi> rphi(K);
+    std::vector<RprodSoA> rphi(K);
     for (int k = 0; k < K; ++k)
-        rphi[k] = buildRprodPhi(allPhi[k], resid);
+        rphi[k] = buildRprodSoA(allPhi[k], resid);
 
     const bool noMissing = admixData.hasNoMissing();
 
@@ -734,214 +899,192 @@ static void runUnifiedGWAS(
         }
     });
 
-    // Worker function
+    // Worker function — mini-batched: decode PHI_BATCH markers, then
+    // scan phi entries ONCE for all of them (8× bandwidth reduction).
     auto workerFn = [&]() {
         auto cursor = admixData.makeCursor();
-        Eigen::VectorXd dosage(nUsed), hapcount(nUsed);
-        // Per-ancestry scratch for all-at-once decoding
-        Eigen::MatrixXd dosMatrix(nUsed, K), hapMatrix(nUsed, K);
         char fmtBuf[64];
-        std::vector<double> ancPvals(K);
-        // Thread-local scratch: compact integer hapcount for branchless variance
-        std::vector<uint8_t> hInt(nUsed);
+
+        // Per-batch storage: keep decoded genotypes for all batch markers
+        std::vector<Eigen::MatrixXd> bDos(PHI_BATCH, Eigen::MatrixXd(nUsed, K));
+        std::vector<Eigen::MatrixXd> bHap(PHI_BATCH, Eigen::MatrixXd(nUsed, K));
+
+        // Subject-major hInt for batched phi scan:
+        //   hIntSM[subj * PHI_BATCH + batchIdx]
+        // One per ancestry, reused across batches.
+        std::vector<std::vector<uint32_t>> hIntPerAnc(K,
+            std::vector<uint32_t>(static_cast<size_t>(nUsed) * PHI_BATCH, 0));
+        double varOffBuf[PHI_BATCH]; // output from batch phi scan
+
+        // Per-batch per-ancestry scalar results computed during Phase 1
+        struct AncScalar {
+            double maf, missRate, dosSum, mac;
+            double S, sMean, diagVar, q;
+            bool pass;
+        };
+        std::vector<std::vector<AncScalar>> bAncS(PHI_BATCH,
+            std::vector<AncScalar>(K));
 
         for (size_t ci = nextChunk.fetch_add(1); ci < nChunks; ci = nextChunk.fetch_add(1)) {
             const auto& gIndices = chunks[ci];
-            // Estimate ~(5 + 9*K + 20) chars per column per line
             std::string buf;
             buf.reserve(gIndices.size() * (80 + 90 * K));
 
             cursor->beginSequentialBlock(gIndices.front());
 
-            for (size_t mi = 0; mi < gIndices.size(); ++mi) {
-                uint64_t localIdx = gIndices[mi];
-                const auto& mInfo = markerInfo[localIdx];
+            // Process markers in mini-batches
+            for (size_t mi = 0; mi < gIndices.size(); mi += PHI_BATCH) {
+                int batchLen = static_cast<int>(
+                    std::min(static_cast<size_t>(PHI_BATCH), gIndices.size() - mi));
 
-                // Decode all K ancestries at once
-                cursor->getAllAncestries(localIdx, dosMatrix, hapMatrix);
+                // ── Phase 1: Decode + compute per-marker scalars + fill hInt ──
+                for (int b = 0; b < batchLen; ++b) {
+                    uint64_t localIdx = gIndices[mi + b];
+                    cursor->getAllAncestries(localIdx, bDos[b], bHap[b]);
 
-                // Marker meta prefix: CHROM POS ID REF ALT
-                buf += mInfo.chrom;
-                buf += '\t';
-                std::snprintf(fmtBuf, sizeof(fmtBuf), "%u", mInfo.pos);
-                buf += fmtBuf;
-                buf += '\t';
-                buf += mInfo.id;
-                buf += '\t';
-                buf += mInfo.ref;
-                buf += '\t';
-                buf += mInfo.alt;
+                    for (int k = 0; k < K; ++k) {
+                        auto dosCol = bDos[b].col(k);
+                        auto hapCol = bHap[b].col(k);
 
-                // Per-ancestry results (collected first, then CCT, then written)
-                struct AncResult {
-                    double maf, missRate, pSpa, pNorm, S, varS, z, dosSum, betaG;
-                    bool pass;
-                };
-                std::vector<AncResult> ancRes(K);
+                        double hapSum = 0.0, dosSum = 0.0;
+                        uint32_t nMissing = 0;
+                        if (noMissing) {
+                            dosSum = dosCol.sum();
+                            hapSum = hapCol.sum();
+                        } else {
+                            for (uint32_t s = 0; s < nUsed; ++s) {
+                                if (!std::isfinite(dosCol[s]) || !std::isfinite(hapCol[s])) {
+                                    ++nMissing;
+                                    dosCol[s] = 0.0;
+                                    hapCol[s] = 0.0;
+                                } else {
+                                    dosSum += dosCol[s];
+                                    hapSum += hapCol[s];
+                                }
+                            }
+                        }
 
-                for (int k = 0; k < K; ++k) {
-                    auto dosCol = dosMatrix.col(k);
-                    auto hapCol = hapMatrix.col(k);
+                        AncScalar& as = bAncS[b][k];
+                        as.missRate = static_cast<double>(nMissing) / nUsed;
+                        as.maf = (hapSum > 0) ? dosSum / hapSum : 0.0;
+                        as.mac = std::min(dosSum, hapSum - dosSum);
+                        as.dosSum = dosSum;
 
-                    // QC: accumulate dosage/hapcount sums, handle missing
-                    double hapSum = 0.0, dosSum = 0.0;
-                    uint32_t nMissing = 0;
-                    if (noMissing) {
-                        // Fast path: no NaN values possible, skip isfinite checks
-                        dosSum = dosCol.sum();
-                        hapSum = hapCol.sum();
-                    } else {
-                        for (uint32_t s = 0; s < nUsed; ++s) {
-                            if (!std::isfinite(dosCol[s]) || !std::isfinite(hapCol[s])) {
-                                ++nMissing;
-                                dosCol[s] = 0.0;
-                                hapCol[s] = 0.0;
-                            } else {
-                                dosSum += dosCol[s];
-                                hapSum += hapCol[s];
+                        if (as.maf < mafCutoff || as.maf > (1.0 - mafCutoff) || as.mac < macCutoff) {
+                            as.pass = false;
+                            // Zero out hInt slot so it won't match any scenario
+                            uint32_t* dst = hIntPerAnc[k].data() + static_cast<size_t>(b);
+                            for (uint32_t s = 0; s < nUsed; ++s)
+                                dst[s * PHI_BATCH] = 0;
+                            continue;
+                        }
+                        as.pass = true;
+                        as.q = as.maf;
+                        double qTerm = as.q * (1.0 - as.q);
+
+                        as.S     = dosCol.dot(resid);
+                        as.sMean = as.q * hapCol.dot(resid);
+                        as.diagVar = qTerm * R2.matrix().dot(hapCol);
+
+                        // Fill subject-major hInt for this batch slot
+                        uint32_t* dst = hIntPerAnc[k].data() + static_cast<size_t>(b);
+                        if (noMissing) {
+                            for (uint32_t s = 0; s < nUsed; ++s)
+                                dst[s * PHI_BATCH] = static_cast<uint32_t>(hapCol[s]);
+                        } else {
+                            for (uint32_t s = 0; s < nUsed; ++s) {
+                                double h = hapCol[s];
+                                dst[s * PHI_BATCH] = std::isfinite(h) ? static_cast<uint32_t>(h) : 0;
                             }
                         }
                     }
-
-                    double missRate = static_cast<double>(nMissing) / nUsed;
-                    double maf = (hapSum > 0) ? dosSum / hapSum : 0.0;
-                    double mac = std::min(dosSum, hapSum - dosSum);
-
-                    AncResult& ar = ancRes[k];
-                    ar.maf = maf;
-                    ar.missRate = missRate;
-                    ar.dosSum = dosSum;
-
-                    if (maf < mafCutoff || maf > (1.0 - mafCutoff) || mac < macCutoff) {
-                        ar.pass = false;
-                        ar.pSpa = std::numeric_limits<double>::quiet_NaN();
-                        ancPvals[k] = std::numeric_limits<double>::quiet_NaN();
-                        continue;
-                    }
-                    ar.pass = true;
-
-                    double q = maf;
-                    double qTerm = q * (1.0 - q);
-
-                    // Score test — Eigen SIMD dot products (replaces scalar loop)
-                    double S = dosCol.dot(resid);
-                    double sMean = q * hapCol.dot(resid);
-
-                    // ── Variance via precomputed rprod + compact hInt ──
-                    // Convert hapcount to uint8 (values are exactly 0, 1, or 2)
-                    if (noMissing) {
+                }
+                // Zero out unused batch slots (ensure no false matches)
+                for (int b = batchLen; b < PHI_BATCH; ++b) {
+                    for (int k = 0; k < K; ++k) {
+                        uint32_t* dst = hIntPerAnc[k].data() + static_cast<size_t>(b);
                         for (uint32_t s = 0; s < nUsed; ++s)
-                            hInt[s] = static_cast<uint8_t>(hapCol[s]);
-                    } else {
-                        for (uint32_t s = 0; s < nUsed; ++s) {
-                            double h = hapCol[s];
-                            hInt[s] = std::isfinite(h) ? static_cast<uint8_t>(h) : 0;
+                            dst[s * PHI_BATCH] = 0;
+                    }
+                }
+
+                // ── Phase 2: Batch phi scan — ONE pass per ancestry ──
+                // varOffAll[b][k] stores the off-diagonal variance for each marker/ancestry
+                double varOffAll[PHI_BATCH][16]; // K ≤ 16 ancestries
+                for (int k = 0; k < K; ++k) {
+                    computeVarOffSoABatch(rphi[k], hIntPerAnc[k].data(),
+                                          nUsed, batchLen, varOffBuf);
+                    for (int b = 0; b < batchLen; ++b)
+                        varOffAll[b][k] = varOffBuf[b];
+                }
+
+                // ── Phase 3: SPA + output for each marker ──
+                for (int b = 0; b < batchLen; ++b) {
+                    uint64_t localIdx = gIndices[mi + b];
+                    const auto& mInfo = markerInfo[localIdx];
+
+                    buf += mInfo.chrom;
+                    buf += '\t';
+                    std::snprintf(fmtBuf, sizeof(fmtBuf), "%u", mInfo.pos);
+                    buf += fmtBuf;
+                    buf += '\t';
+                    buf += mInfo.id;
+                    buf += '\t';
+                    buf += mInfo.ref;
+                    buf += '\t';
+                    buf += mInfo.alt;
+
+                    for (int k = 0; k < K; ++k) {
+                        const AncScalar& as = bAncS[b][k];
+                        // MISS_RATE
+                        buf += '\t';
+                        std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", as.missRate);
+                        buf += fmtBuf;
+                        // ALT_FREQ
+                        buf += '\t';
+                        std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", as.maf);
+                        buf += fmtBuf;
+                        // MAC
+                        buf += '\t';
+                        std::snprintf(fmtBuf, sizeof(fmtBuf), "%.0f", as.mac);
+                        buf += fmtBuf;
+
+                        if (!as.pass) {
+                            buf += "\tNA\tNA\tNA";
+                            continue;
+                        }
+
+                        double qTerm = as.q * (1.0 - as.q);
+                        double varS  = varOffAll[b][k] * qTerm + as.diagVar;
+
+                        double z = (varS > 0.0) ? (as.S - as.sMean) / std::sqrt(varS) : 0.0;
+                        auto hapCol = bHap[b].col(k);
+                        auto [pSpa, pNorm] = spaLocalPval(
+                            as.S, as.sMean, as.diagVar, resid, hapCol,
+                            as.q, varS, outlier, spaCutoff);
+                        double betaG = (varS > 0.0) ? (as.S - as.sMean) / varS
+                                                    : std::numeric_limits<double>::quiet_NaN();
+
+                        // P
+                        buf += '\t';
+                        std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", pSpa);
+                        buf += fmtBuf;
+                        // Z
+                        buf += '\t';
+                        std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", z);
+                        buf += fmtBuf;
+                        // BETA
+                        buf += '\t';
+                        if (std::isfinite(betaG)) {
+                            std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", betaG);
+                            buf += fmtBuf;
+                        } else {
+                            buf += "NA";
                         }
                     }
-
-                    // Off-diagonal phi variance — branchless accumulation.
-                    // Replaces: abs(hapcount[i]-target)<0.5 branch + random R[] reads
-                    // with: integer equality (branchless) + precomputed rprod (sequential).
-                    const RprodPhi& rp = rphi[k];
-                    double varOff = 0.0;
-                    for (size_t p = 0; p < rp.A.size(); ++p) {
-                        const auto& e = rp.A[p];
-                        varOff += ((hInt[e.i] == 2) & (hInt[e.j] == 2)) * e.rprod;
-                    }
-                    for (size_t p = 0; p < rp.B.size(); ++p) {
-                        const auto& e = rp.B[p];
-                        varOff += ((hInt[e.i] == 2) & (hInt[e.j] == 1)) * e.rprod;
-                    }
-                    for (size_t p = 0; p < rp.C.size(); ++p) {
-                        const auto& e = rp.C[p];
-                        varOff += ((hInt[e.i] == 1) & (hInt[e.j] == 2)) * e.rprod;
-                    }
-                    for (size_t p = 0; p < rp.D.size(); ++p) {
-                        const auto& e = rp.D[p];
-                        varOff += ((hInt[e.i] == 1) & (hInt[e.j] == 1)) * e.rprod;
-                    }
-
-                    // Diagonal variance — vectorized dot product
-                    double varDiag = qTerm * R2.matrix().dot(hapCol);
-                    double varS = varOff * qTerm + varDiag;
-
-                    double z = (varS > 0.0) ? (S - sMean) / std::sqrt(varS) : 0.0;
-                    auto [pSpa, pNorm] = spaLocalPval(S, sMean, varDiag, resid, hapCol, q, varS, outlier, spaCutoff);
-                    double betaG = (varS > 0.0) ? (S - sMean) / varS
-                                                : std::numeric_limits<double>::quiet_NaN();
-
-                    ar.S = S;
-                    ar.varS = varS;
-                    ar.z = z;
-                    ar.pSpa = pSpa;
-                    ar.pNorm = pNorm;
-                    ar.betaG = betaG;
-                    ancPvals[k] = pSpa;
+                    buf += '\n';
                 }
-
-                // CCT across ancestries
-                double pCCT = cauchyCombine(ancPvals.data(), K);
-
-                // Write P_CCT
-                buf += '\t';
-                if (std::isfinite(pCCT)) {
-                    std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", pCCT);
-                    buf += fmtBuf;
-                } else {
-                    buf += "NA";
-                }
-
-                // Write per-ancestry columns
-                for (int k = 0; k < K; ++k) {
-                    const AncResult& ar = ancRes[k];
-                    // AltFreq
-                    buf += '\t';
-                    std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", ar.maf);
-                    buf += fmtBuf;
-                    // MissingRate
-                    buf += '\t';
-                    std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", ar.missRate);
-                    buf += fmtBuf;
-
-                    if (!ar.pass) {
-                        buf += "\tNA\tNA\tNA\tNA\tNA\tNA\tNA";
-                        continue;
-                    }
-                    // P
-                    buf += '\t';
-                    std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", ar.pSpa);
-                    buf += fmtBuf;
-                    // Pnorm
-                    buf += '\t';
-                    std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", ar.pNorm);
-                    buf += fmtBuf;
-                    // Stat
-                    buf += '\t';
-                    std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", ar.S);
-                    buf += fmtBuf;
-                    // Var
-                    buf += '\t';
-                    std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", ar.varS);
-                    buf += fmtBuf;
-                    // zScore
-                    buf += '\t';
-                    std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", ar.z);
-                    buf += fmtBuf;
-                    // AltCounts
-                    buf += '\t';
-                    std::snprintf(fmtBuf, sizeof(fmtBuf), "%.0f", ar.dosSum);
-                    buf += fmtBuf;
-                    // BetaG
-                    buf += '\t';
-                    if (std::isfinite(ar.betaG)) {
-                        std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", ar.betaG);
-                        buf += fmtBuf;
-                    } else {
-                        buf += "NA";
-                    }
-                }
-                buf += '\n';
-            }
+            } // end mini-batch loop
 
             {
                 std::lock_guard<std::mutex> lk(writeMutex);
@@ -1007,6 +1150,8 @@ void runSPAmixLocalPlus(
     const std::string& extractFile,
     const std::string& excludeFile
 ) {
+    const auto wallStart = std::chrono::steady_clock::now();
+    const std::clock_t cpuStart = std::clock();
     infoMsg("=== SPAmixLocalPlus GWAS ===");
 
     // Load subjects
@@ -1060,5 +1205,8 @@ void runSPAmixLocalPlus(
                        outFile, compression, compressionLevel, nthread);
     }
 
-    infoMsg("SPAmixLocalPlus GWAS complete.");
+    const auto wallEnd = std::chrono::steady_clock::now();
+    const double wallSec = std::chrono::duration<double>(wallEnd - wallStart).count();
+    const double cpuSec = static_cast<double>(std::clock() - cpuStart) / CLOCKS_PER_SEC;
+    infoMsg("Wall time: %.1f seconds, CPU time: %.1f seconds", wallSec, cpuSec);
 }

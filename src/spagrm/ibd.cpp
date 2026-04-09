@@ -22,9 +22,11 @@
 #include "util/text_stream.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <ctime>
 #include <numeric>
 #include <string>
 #include <vector>
@@ -46,6 +48,9 @@ void runPairwiseIBD(
     const std::string& outputFile,
     double minMafIBD
 ) {
+  const auto wallStart = std::chrono::steady_clock::now();
+  const std::clock_t cpuStart = std::clock();
+
   // ── 1. Read sample IDs and load sparse GRM ──────────────────────
   std::vector<std::string> allIIDs = parseGenoIIDs(geno);
   const uint32_t nFam = static_cast<uint32_t>(allIIDs.size());
@@ -215,4 +220,8 @@ void runPairwiseIBD(
   }
 
   infoMsg("Wrote %zu IBD records to %s", results.size(), outputFile.c_str());
+
+  const double wallSec = std::chrono::duration<double>(std::chrono::steady_clock::now() - wallStart).count();
+  const double cpuSec = static_cast<double>(std::clock() - cpuStart) / CLOCKS_PER_SEC;
+  infoMsg("Wall time: %.1f seconds, CPU time: %.1f seconds", wallSec, cpuSec);
 }

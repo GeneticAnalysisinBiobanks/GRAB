@@ -179,6 +179,11 @@ inline const FlagDef kMinMafIbd    = {"--min-maf-ibd", "FLOAT",
 inline const FlagDef kNClusters    = {"--leaf-nclusters", "INT",
     "Number of K-means clusters for LEAF (default: from --ref-af count)", nullptr};
 
+inline const FlagDef kKeep    = {"--keep",    "FILE",
+    "Restrict analysis to subjects listed in file (FID IID per line)", nullptr};
+inline const FlagDef kRemove  = {"--remove",  "FILE",
+    "Exclude subjects listed in file (FID IID per line)",              nullptr};
+
 inline const FlagDef kExtract = {"--extract", "FILE",
     "Restrict analysis to SNPs listed in file (one ID per line)",
     R"(Single-column file of SNP IDs (matching .bim column 2).
@@ -427,7 +432,7 @@ Pass PREFIX as --admix-bfile to SPAmixLocalPlus or --cal-admix-phi.)"};
 inline const FlagDef* const kCalAfReq[] = {
     &kGeno_input, &kPcCols, &kOut, nullptr};
 inline const FlagDef* const kCalAfOpt[] = {
-    &kPheno, &kCovar, &kThreads, &kChunkSize, &kGeno, &kMaf, &kMac, nullptr};
+    &kPheno, &kCovar, &kKeep, &kRemove, &kThreads, &kChunkSize, &kGeno, &kMaf, &kMac, nullptr};
 inline const MethodDef kCalIndAfCoef = {
     "cal-ind-af-coef",
     "Compute per-marker individual-ancestry AF model",

@@ -299,11 +299,9 @@ void SPAmixPlusMethod::getResultVec(
   double pval = getMarkerPval(GVec, maf, zScore, VarS);
   double sqrtVarS = (VarS > 0.0) ? std::sqrt(VarS) : 0.0;
   double beta     = (sqrtVarS > 0.0) ? zScore / sqrtVarS : 0.0;
-  double betaSE   = (sqrtVarS > 0.0) ? 1.0 / sqrtVarS    : 0.0;
   result.push_back(pval);
   result.push_back(zScore);
   result.push_back(beta);
-  result.push_back(betaSE);
 }
 
 

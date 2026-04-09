@@ -5,7 +5,7 @@
 // used (SPAmix mode).  Passing an identity GRM to SPAmixPlus produces
 // results identical to SPAmix.
 //
-// Output columns: [Pvalue, zScore]
+// Output columns: [Pvalue, zScore, BETA]
 #pragma once
 
 #include "io/geno_data.hpp"
@@ -74,9 +74,9 @@ public:
       int nPC);
 
   std::unique_ptr<MethodBase> clone() const override;
-  int resultSize() const override { return 4; }
+  int resultSize() const override { return 3; }
   std::string getHeaderColumns() const override {
-    return "\tP\tZ\tBETA\tSE";
+    return "\tP\tZ\tBETA";
   }
   void prepareChunk(const std::vector<uint64_t>& gIndices) override;
   void getResultVec(Eigen::Ref<Eigen::VectorXd> GVec,
