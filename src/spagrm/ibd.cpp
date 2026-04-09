@@ -22,16 +22,18 @@
 #include "util/text_stream.hpp"
 
 #include <algorithm>
-#include <chrono>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
-#include <ctime>
+#include <mutex>
 #include <numeric>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <Eigen/Dense>
+#include <immintrin.h>
 
 
 
@@ -46,11 +48,9 @@ void runPairwiseIBD(
     const std::string& spgrmGctaFile,
     const GenoSpec& geno,
     const std::string& outputFile,
-    double minMafIBD
+    double minMafIBD,
+    int nthreads
 ) {
-  const auto wallStart = std::chrono::steady_clock::now();
-  const std::clock_t cpuStart = std::clock();
-
   // ── 1. Read sample IDs and load sparse GRM ──────────────────────
   std::vector<std::string> allIIDs = parseGenoIIDs(geno);
   const uint32_t nFam = static_cast<uint32_t>(allIIDs.size());
@@ -101,73 +101,153 @@ void runPairwiseIBD(
   infoMsg("IBD analysis: %u subjects, %u markers (MAF threshold %.4f)",
           nSubj, nMarkers, minMafIBD);
 
-  // ── 5. Initialise per-pair accumulators ────────────────────────────
-  //
-  // For each marker m with MAF ≥ threshold:
-  //   p_m         = altFreq       (allele frequency)
-  //   pro_var_m   = 2 * (p*(1-p))^2
-  //   w_m         = sqrt( pro_var / (1 - pro_var) )
-  //
-  // For each pair (i,j):
-  //   d_m  = G_i[m] - G_j[m]          (genotype difference)
-  //   x_m  = (|d-1| + |d+1| - 2) / pro_var   (IBS0 kernel)
-  //
-  //   sumXW += x_m * w_m
-  //   sumW  += w_m
-  //
-  // Then  pc_raw = 0.5 * sumXW / sumW.
-
+  // ── 5. SoA pair indices for AVX2 gather ──────────────────────────
   const size_t nPairs = pairs.size();
-  std::vector<double> sumXW(nPairs, 0.0);
-  std::vector<double> sumW(nPairs, 0.0);
+  std::vector<int32_t> pairIdx1(nPairs), pairIdx2(nPairs);
+  for (size_t k = 0; k < nPairs; ++k) {
+    pairIdx1[k] = static_cast<int32_t>(pairs[k].idx1);
+    pairIdx2[k] = static_cast<int32_t>(pairs[k].idx2);
+  }
 
-  // ── 6. Stream markers ──────────────────────────────────────────────
-  auto cursor = genoData->makeCursor();
+  // ── 6. Stream markers (multi-threaded, AVX2) ──────────────────────
+  const auto& chunks = genoData->chunkIndices();
+  const size_t nChunks = chunks.size();
+  if (nthreads < 1) nthreads = 1;
+  const int nt = std::min(nthreads, static_cast<int>(nChunks));
 
-  Eigen::VectorXd genoVec(nSubj);
-  std::vector<uint32_t> missingIdx;
-  double altFreq, altCounts, missingRate, hweP, maf, mac;
+  struct ThreadAcc {
+    std::vector<double> sumXW, sumW;
+    uint32_t nUsed = 0;
+  };
+  std::vector<ThreadAcc> threadAccs(nt);
+  for (auto& ta : threadAccs) {
+    ta.sumXW.assign(nPairs, 0.0);
+    ta.sumW.assign(nPairs, 0.0);
+  }
 
-  uint32_t nUsed = 0;  // markers actually used
+  std::atomic<size_t> nextChunk(0);
+  std::atomic<size_t> chunksDone(0);
 
-  for (const auto& chunk : genoData->chunkIndices()) {
-    cursor->beginSequentialBlock(chunk.front());
-    for (uint64_t gi : chunk) {
-      cursor->getGenotypes(gi, genoVec, altFreq, altCounts, missingRate,
-                          hweP, maf, mac, missingIdx, /*exactHwe=*/false);
+  auto workerFn = [&](int tid) {
+    auto cursor = genoData->makeCursor();
+    Eigen::VectorXd genoVec(nSubj);
+    std::vector<uint32_t> missingIdx;
+    double altFreq, altCounts, missingRate, hweP, maf, mac;
 
-      if (maf < minMafIBD) continue;
+    double* localXW = threadAccs[tid].sumXW.data();
+    double* localW  = threadAccs[tid].sumW.data();
+    uint32_t localUsed = 0;
 
-      // Mean-impute missing genotypes
-      const double meanGeno = 2.0 * altFreq;
-      for (uint32_t mi : missingIdx)
-        genoVec[mi] = meanGeno;
+    const int32_t* i1 = pairIdx1.data();
+    const int32_t* i2 = pairIdx2.data();
+    const size_t nPairs4 = nPairs & ~size_t(3);
 
-      // Pre-compute weights for this marker
-      const double pq  = altFreq * (1.0 - altFreq);   // p*(1-p)
-      const double pv  = 2.0 * pq * pq;               // pro_var
-      const double opv = 1.0 - pv;                     // 1 - pro_var
+    // AVX2 constants
+    const __m256d signmask = _mm256_set1_pd(-0.0);
+    const __m256d vones    = _mm256_set1_pd(1.0);
+    const __m256d vtwos    = _mm256_set1_pd(2.0);
 
-      // Guard against degenerate markers (MAF ~0 or ~0.5)
-      if (pv < 1e-30 || opv <= 0.0) continue;
+    while (true) {
+      const size_t ci = nextChunk.fetch_add(1);
+      if (ci >= nChunks) break;
 
-      const double inv_pv = 1.0 / pv;
-      const double w      = std::sqrt(pv / opv);
+      const auto& chunk = chunks[ci];
+      if (!chunk.empty())
+        cursor->beginSequentialBlock(chunk.front());
 
-      // Accumulate for each pair
-      for (size_t k = 0; k < nPairs; ++k) {
-        const double d = genoVec[pairs[k].idx1] - genoVec[pairs[k].idx2];
-        const double x = (std::abs(d - 1.0) + std::abs(d + 1.0) - 2.0) * inv_pv;
-        sumXW[k] += x * w;
-        sumW[k]  += w;
+      for (uint64_t gi : chunk) {
+        cursor->getGenotypes(gi, genoVec, altFreq, altCounts, missingRate,
+                            hweP, maf, mac, missingIdx, false);
+        if (maf < minMafIBD) continue;
+
+        const double meanGeno = 2.0 * altFreq;
+        for (uint32_t mi : missingIdx)
+          genoVec[mi] = meanGeno;
+
+        const double pq  = altFreq * (1.0 - altFreq);
+        const double pv  = 2.0 * pq * pq;
+        const double opv = 1.0 - pv;
+        if (pv < 1e-30 || opv <= 0.0) continue;
+
+        const double inv_pv = 1.0 / pv;
+        const double w      = std::sqrt(pv / opv);
+        const double* genoPtr = genoVec.data();
+
+        // AVX2 loop: 4 pairs at a time
+        const __m256d vinv_pv = _mm256_set1_pd(inv_pv);
+        const __m256d vw      = _mm256_set1_pd(w);
+
+        size_t k = 0;
+        for (; k < nPairs4; k += 4) {
+          __m128i vi1 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(i1 + k));
+          __m128i vi2 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(i2 + k));
+          __m256d g1 = _mm256_i32gather_pd(genoPtr, vi1, 8);
+          __m256d g2 = _mm256_i32gather_pd(genoPtr, vi2, 8);
+
+          __m256d d = _mm256_sub_pd(g1, g2);
+          __m256d abs_dm1 = _mm256_andnot_pd(signmask, _mm256_sub_pd(d, vones));
+          __m256d abs_dp1 = _mm256_andnot_pd(signmask, _mm256_add_pd(d, vones));
+          __m256d x = _mm256_mul_pd(
+              _mm256_sub_pd(_mm256_add_pd(abs_dm1, abs_dp1), vtwos), vinv_pv);
+
+          _mm256_storeu_pd(localXW + k,
+              _mm256_fmadd_pd(x, vw, _mm256_loadu_pd(localXW + k)));
+          _mm256_storeu_pd(localW + k,
+              _mm256_add_pd(_mm256_loadu_pd(localW + k), vw));
+        }
+
+        // Scalar tail
+        for (; k < nPairs; ++k) {
+          const double d = genoPtr[i1[k]] - genoPtr[i2[k]];
+          const double x = (std::abs(d - 1.0) + std::abs(d + 1.0) - 2.0) * inv_pv;
+          localXW[k] += x * w;
+          localW[k]  += w;
+        }
+
+        ++localUsed;
       }
-      ++nUsed;
+
+      const size_t done = chunksDone.fetch_add(1) + 1;
+      if (nChunks >= 10 && done % (nChunks / 10) == 0)
+        infoMsg("  IBD progress: %zu/%zu chunks", done, nChunks);
+    }
+    threadAccs[tid].nUsed = localUsed;
+  };
+
+  infoMsg("IBD: streaming %u markers (%zu chunks) with %d threads",
+          nMarkers, nChunks, nt);
+
+  if (nt == 1) {
+    workerFn(0);
+  } else {
+    std::vector<std::thread> workers;
+    workers.reserve(nt - 1);
+    for (int t = 1; t < nt; ++t)
+      workers.emplace_back(workerFn, t);
+    workerFn(0);
+    for (auto& w : workers) w.join();
+  }
+
+  // Reduce thread-local accumulators
+  uint32_t nUsed = 0;
+  for (int t = 0; t < nt; ++t)
+    nUsed += threadAccs[t].nUsed;
+  for (int t = 1; t < nt; ++t) {
+    const double* txw = threadAccs[t].sumXW.data();
+    const double* tw  = threadAccs[t].sumW.data();
+    double* rxw = threadAccs[0].sumXW.data();
+    double* rw  = threadAccs[0].sumW.data();
+    for (size_t k = 0; k < nPairs; ++k) {
+      rxw[k] += txw[k];
+      rw[k]  += tw[k];
     }
   }
 
   infoMsg("IBD: used %u / %u markers (MAF >= %.4f)", nUsed, nMarkers, minMafIBD);
 
   // ── 7. Derive (pa, pb, pc) for each pair ───────────────────────────
+  const double* sumXW = threadAccs[0].sumXW.data();
+  const double* sumW  = threadAccs[0].sumW.data();
   //
   // pc_raw = 0.5 * sumXW / sumW
   //
@@ -220,8 +300,4 @@ void runPairwiseIBD(
   }
 
   infoMsg("Wrote %zu IBD records to %s", results.size(), outputFile.c_str());
-
-  const double wallSec = std::chrono::duration<double>(std::chrono::steady_clock::now() - wallStart).count();
-  const double cpuSec = static_cast<double>(std::clock() - cpuStart) / CLOCKS_PER_SEC;
-  infoMsg("Wall time: %.1f seconds, CPU time: %.1f seconds", wallSec, cpuSec);
 }

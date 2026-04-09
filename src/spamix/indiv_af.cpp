@@ -589,7 +589,9 @@ void runSPAmixAF(
     double /*minMafCutoff*/,
     double /*minMacCutoff*/,
     const std::string& keepFile,
-    const std::string& removeFile
+    const std::string& removeFile,
+    const std::vector<int>& covarColNums,
+    const std::vector<std::string>& notCovar
 ) {
   const auto wallStart = std::chrono::steady_clock::now();
   const std::clock_t cpuStart = std::clock();
@@ -599,7 +601,7 @@ void runSPAmixAF(
   auto famIIDs = parseGenoIIDs(geno);
   SubjectData sd(std::move(famIIDs));
   if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile);
-  if (!covarFile.empty()) sd.loadCovar(covarFile);
+  if (!covarFile.empty()) sd.loadCovar(covarFile, pcColNames, covarColNums, notCovar);
   sd.setKeepRemove(keepFile, removeFile);
   sd.finalize();
 

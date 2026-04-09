@@ -71,7 +71,15 @@ public:
 
   // ── Optional per-subject files ─────────────────────────────────────
   void loadPhenoFile(const std::string& filename);       // plink2 --pheno format
-  void loadCovar(const std::string& filename);           // plink2 --covar format
+  // Load covariate file.  Optional column filters:
+  //   neededNames : only load these columns by name (empty = all)
+  //   covarColNums: also include these 1-based file column positions
+  //   notCovar    : exclude these column names
+  // When both neededNames and covarColNums are empty, loads all non-metadata columns.
+  void loadCovar(const std::string& filename,
+                 const std::vector<std::string>& neededNames = {},
+                 const std::vector<int>& covarColNums = {},
+                 const std::vector<std::string>& notCovar = {});
 
   // ── Subject filter (optional, call before finalize) ─────────────────
   // Apply --keep / --remove subject-ID files (PLINK2-compatible format).

@@ -13,6 +13,8 @@ struct Args {
     std::string phenoFile;
     std::string covarFile;
     std::string covarName;          // comma-separated covariate column names
+    std::string covarColNums;       // --covar-col-nums: 1-based column numbers/ranges
+    std::string notCovar;           // --not-covar: exclude covariate(s) by name
     std::string binaryPheno;        // column name for binary phenotype
     std::string survPheno;          // "TIME:EVENT" survival phenotype
     std::string pcCols = "PC1,PC2,PC3,PC4"; // comma-separated PC column names (default: PC1,PC2,PC3,PC4)

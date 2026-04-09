@@ -35,6 +35,9 @@ Args parseArgs(int argc, char* argv[]) {
         else if (arg == "--pheno")                    a.phenoFile         = next();
         else if (arg == "--covar")                    a.covarFile         = next();
         else if (arg == "--covar-name")               a.covarName         = next();
+        else if (arg == "--covar-col-nums")           a.covarColNums      = next();
+        else if (arg == "--not-covar" || arg == "--covarExcludeList")
+                                                      a.notCovar          = next();
         else if (arg == "--pheno-binary")             a.binaryPheno       = next();
         else if (arg == "--pheno-surv")               a.survPheno         = next();
         else if (arg == "--pc-cols")                  a.pcCols            = next();

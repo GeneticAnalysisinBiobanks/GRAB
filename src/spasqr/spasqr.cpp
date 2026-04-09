@@ -425,7 +425,9 @@ void runSPAsqrPheno(
     double minMafCutoff,
     double minMacCutoff,
     const std::string& keepFile,
-    const std::string& removeFile
+    const std::string& removeFile,
+    const std::vector<int>& covarColNums,
+    const std::vector<std::string>& notCovar
 ) {
   const int ntaus = static_cast<int>(taus.size());
 
@@ -434,7 +436,7 @@ void runSPAsqrPheno(
   auto famIIDs = parseGenoIIDs(geno);
   SubjectData sd(std::move(famIIDs));
   if (!phenoFile.empty())  sd.loadPhenoFile(phenoFile);
-  if (!covarFile.empty())  sd.loadCovar(covarFile);
+  if (!covarFile.empty())  sd.loadCovar(covarFile, covarNames, covarColNums, notCovar);
   sd.setKeepRemove(keepFile, removeFile);
   sd.finalize();
   sd.dropNaInColumns({quantPhenoCol});  // remove subjects with missing phenotype

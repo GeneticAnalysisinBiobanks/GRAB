@@ -97,6 +97,17 @@ inline const FlagDef kCovarName = {
     R"(Selects columns from --covar (preferred) or --pheno as covariates.
 An intercept is added automatically.)"};
 
+inline const FlagDef kCovarColNums = {
+    "--covar-col-nums", "NUMS", "1-based column number(s)/range(s) for covariates",
+    R"(Select covariate columns by 1-based file column position.
+Example: --covar-col-nums 3,5,7-10
+Add 2 vs. PLINK 1.x --covar-number (FID and IID occupy columns 1-2).
+Refers to --pheno file when --covar is not specified.)"};
+
+inline const FlagDef kNotCovar = {
+    "--not-covar", "COL_IDS",
+    "Exclude covariate(s) by name (alias: --covarExcludeList)", nullptr};
+
 inline const FlagDef kBinaryPheno = {
     "--pheno-binary", "COL", "Column name for binary phenotype (case/control)",
     "Selects a 0/1 column from --pheno for logistic regression."};
@@ -238,7 +249,7 @@ Levels are auto-detected from sorted unique integer values and remapped to 0..J-
 inline const FlagDef* const kSPACoxReq[] = {
     &kGeno_input, &kNullResid, &kOutPrefix, nullptr};
 inline const FlagDef* const kSPACoxOpt[] = {
-    &kCovar, &kCovarName, &kCovarPThresh,
+    &kCovar, &kCovarName, &kCovarColNums, &kNotCovar, &kCovarPThresh,
     &kSpaZThresh, &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
     &kGeno, &kMaf, &kMac, nullptr};
 inline const MethodDef kSPACox = {
@@ -316,7 +327,7 @@ inline const MethodDef kSPAmixPlus = {
 inline const FlagDef* const kPOLMMReq[] = {
     &kGeno_input, &kPheno, &kOrdinalPheno, &kOut, &kSpGrm, nullptr};
 inline const FlagDef* const kPOLMMOpt[] = {
-    &kCovarName,
+    &kCovarName, &kCovarColNums, &kNotCovar,
     &kSpaZThresh, &kThreads, &kChunkSize, &kGeno, &kMaf, &kMac, nullptr};
 inline const MethodDef kPOLMM = {
     "POLMM",
@@ -331,7 +342,8 @@ Uses sparse GRM for random effects via PCG solver.)"};
 inline const FlagDef* const kSPAsqrReq[] = {
     &kGeno_input, &kOut, &kSpGrm, nullptr};
 inline const FlagDef* const kSPAsqrOpt[] = {
-    &kNullResid, &kPheno, &kCovar, &kCovarName, &kQuantPheno, &kSpasqrTaus,
+    &kNullResid, &kPheno, &kCovar, &kCovarName, &kCovarColNums, &kNotCovar,
+    &kQuantPheno, &kSpasqrTaus,
     &kOutlierIqr, &kOutlierAbs,
     &kSpaZThresh, &kThreads, &kChunkSize, &kGeno, &kMaf, &kMac, nullptr};
 inline const MethodDef kSPAsqr = {
@@ -349,7 +361,8 @@ inline const MethodDef kSPAsqr = {
 inline const FlagDef* const kWtCoxGReq[] = {
     &kGeno_input, &kOut, &kRefAf, &kPrevalence, nullptr};
 inline const FlagDef* const kWtCoxGOpt[] = {
-    &kNullResid, &kPheno, &kCovar, &kCovarName, &kBinaryPheno, &kSurvPheno,
+    &kNullResid, &kPheno, &kCovar, &kCovarName, &kCovarColNums, &kNotCovar,
+    &kBinaryPheno, &kSurvPheno,
     &kSpGrm, &kBatchPThresh,
     &kSpaZThresh, &kThreads, &kChunkSize, &kGeno, &kMaf, &kMac, nullptr};
 inline const MethodDef kWtCoxG = {
@@ -365,7 +378,8 @@ inline const MethodDef kWtCoxG = {
 inline const FlagDef* const kLEAFReq[] = {
     &kGeno_input, &kOut, &kRefAf, &kPrevalence, nullptr};
 inline const FlagDef* const kLEAFOpt[] = {
-    &kNullResid, &kPheno, &kCovar, &kCovarName, &kBinaryPheno, &kSurvPheno, &kPcCols,
+    &kNullResid, &kPheno, &kCovar, &kCovarName, &kCovarColNums, &kNotCovar,
+    &kBinaryPheno, &kSurvPheno, &kPcCols,
     &kNClusters, &kSeed, &kSpGrm, &kBatchPThresh,
     &kSpaZThresh, &kThreads, &kChunkSize, &kGeno, &kMaf, &kMac, nullptr};
 inline const MethodDef kLEAF = {

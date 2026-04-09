@@ -10,6 +10,7 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -58,6 +59,7 @@ CumulantTable buildCumulantTable(const Eigen::VectorXd& residuals) {
   // Cauchy-quantile spacing: idx0 = tan(pi*(k/(L+1) - 0.5))
   // then rescale so max(idx1) = rangeMax.
   Eigen::VectorXd xGrid(L);
+  double gridScale;
   {
     double maxAbs = 0.0;
     for (int k = 0; k < L; ++k) {
@@ -66,8 +68,8 @@ CumulantTable buildCumulantTable(const Eigen::VectorXd& residuals) {
       double a = std::fabs(xGrid[k]);
       if (a > maxAbs) maxAbs = a;
     }
-    double scale = rangeMax / maxAbs;
-    xGrid *= scale;
+    gridScale = rangeMax / maxAbs;
+    xGrid *= gridScale;
   }
 
   const int N = static_cast<int>(residuals.size());
@@ -108,6 +110,8 @@ CumulantTable buildCumulantTable(const Eigen::VectorXd& residuals) {
   CumulantTable ct;
   ct.xGrid  = std::move(xGrid);
   ct.nGrid  = L;
+  ct.invScale = 1.0 / gridScale;
+  ct.Lp1    = static_cast<double>(L + 1);
   ct.yK0    = std::move(yK0);
   ct.slopeK0 = computeSlopes(ct.xGrid, ct.yK0);
   ct.yK1    = std::move(yK1);
@@ -149,36 +153,48 @@ std::unique_ptr<MethodBase> SPACoxMethod::clone() const {
 }
 
 // ======================================================================
-// CGF interpolation (binary-search piecewise linear)
+// CGF interpolation — O(1) Cauchy-inverse index lookup
 // ======================================================================
 
-double SPACoxMethod::interp(const double* yp, const double* sp, double v) const {
-  const double* xp = m_cumul.xGrid.data();
-  const int n = m_cumul.nGrid;
+int SPACoxMethod::interpIdx(double v) const {
+  // Inverse of Cauchy-quantile grid: idx = (atan(v/scale)/π + 0.5)*(L+1) - 1
+  double fIdx = (std::atan(v * m_cumul.invScale) * (1.0 / M_PI) + 0.5)
+                * m_cumul.Lp1 - 1.0;
+  int lo = static_cast<int>(fIdx);
+  if (lo < 0) lo = 0;
+  if (lo >= m_cumul.nGrid - 1) lo = m_cumul.nGrid - 2;
+  return lo;
+}
 
-  if (v <= xp[0])     return yp[0];
-  if (v >= xp[n - 1]) return yp[n - 1];
-
-  int lo = 0, hi = n - 1;
-  while (lo < hi - 1) {
-    int mid = (lo + hi) >> 1;
-    if (v < xp[mid]) hi = mid; else lo = mid;
-  }
-  return yp[lo] + (v - xp[lo]) * sp[lo];
+double SPACoxMethod::interp(const double* yp, const double* sp,
+                            int lo, double v) const {
+  return yp[lo] + (v - m_cumul.xGrid.data()[lo]) * sp[lo];
 }
 
 double SPACoxMethod::interpK0(double v) const {
-  return interp(m_cumul.yK0.data(), m_cumul.slopeK0.data(), v);
+  const int n = m_cumul.nGrid;
+  if (v <= m_cumul.xGrid.data()[0])     return m_cumul.yK0.data()[0];
+  if (v >= m_cumul.xGrid.data()[n - 1]) return m_cumul.yK0.data()[n - 1];
+  int lo = interpIdx(v);
+  return interp(m_cumul.yK0.data(), m_cumul.slopeK0.data(), lo, v);
 }
 double SPACoxMethod::interpK1(double v) const {
-  return interp(m_cumul.yK1.data(), m_cumul.slopeK1.data(), v);
+  const int n = m_cumul.nGrid;
+  if (v <= m_cumul.xGrid.data()[0])     return m_cumul.yK1.data()[0];
+  if (v >= m_cumul.xGrid.data()[n - 1]) return m_cumul.yK1.data()[n - 1];
+  int lo = interpIdx(v);
+  return interp(m_cumul.yK1.data(), m_cumul.slopeK1.data(), lo, v);
 }
 double SPACoxMethod::interpK2(double v) const {
-  return interp(m_cumul.yK2.data(), m_cumul.slopeK2.data(), v);
+  const int n = m_cumul.nGrid;
+  if (v <= m_cumul.xGrid.data()[0])     return m_cumul.yK2.data()[0];
+  if (v >= m_cumul.xGrid.data()[n - 1]) return m_cumul.yK2.data()[n - 1];
+  int lo = interpIdx(v);
+  return interp(m_cumul.yK2.data(), m_cumul.slopeK2.data(), lo, v);
 }
 
 // ======================================================================
-// Cumulant evaluation — scalar loops, no heap alloc
+// Cumulant evaluation — fused K1+K2 for Newton-Raphson
 // ======================================================================
 
 double SPACoxMethod::evalK0(
@@ -193,40 +209,59 @@ double SPACoxMethod::evalK0(
   return sum;
 }
 
-double SPACoxMethod::evalK1(
+std::pair<double,double> SPACoxMethod::evalK1K2(
     double t, int N0, double adjG0,
     const double* adjG, const uint32_t* idx, int n, double q2) const {
-  double sum = N0 * adjG0 * interpK1(t * adjG0);
-  if (idx) {
-    for (int k = 0; k < n; ++k) {
-      double a = adjG[idx[k]];
-      sum += a * interpK1(t * a);
-    }
-  } else {
-    for (int k = 0; k < n; ++k) {
-      double a = adjG[k];
-      sum += a * interpK1(t * a);
-    }
-  }
-  return sum - q2;
-}
 
-double SPACoxMethod::evalK2(
-    double t, int N0, double adjG0,
-    const double* adjG, const uint32_t* idx, int n) const {
-  double sum = N0 * adjG0 * adjG0 * interpK2(t * adjG0);
+  const double* xp  = m_cumul.xGrid.data();
+  const double* y1  = m_cumul.yK1.data();
+  const double* s1  = m_cumul.slopeK1.data();
+  const double* y2  = m_cumul.yK2.data();
+  const double* s2  = m_cumul.slopeK2.data();
+  const int nG = m_cumul.nGrid;
+  const double invS = m_cumul.invScale;
+  const double Lp1  = m_cumul.Lp1;
+  const double invPi = 1.0 / M_PI;
+
+  // Inline interpolation: compute bin once, read K1 and K2 from same bin
+  auto interpBoth = [&](double v) -> std::pair<double,double> {
+    if (v <= xp[0])      return {y1[0],      y2[0]};
+    if (v >= xp[nG - 1]) return {y1[nG - 1], y2[nG - 1]};
+    double fIdx = (std::atan(v * invS) * invPi + 0.5) * Lp1 - 1.0;
+    int lo = static_cast<int>(fIdx);
+    if (lo < 0) lo = 0;
+    if (lo >= nG - 1) lo = nG - 2;
+    double dx = v - xp[lo];
+    return {y1[lo] + dx * s1[lo], y2[lo] + dx * s2[lo]};
+  };
+
+  double sumK1 = 0.0, sumK2 = 0.0;
+
+  // Contribution from N0 zero-genotype subjects
+  {
+    double v0 = t * adjG0;
+    auto [k1, k2] = interpBoth(v0);
+    sumK1 = N0 * adjG0 * k1;
+    sumK2 = N0 * adjG0 * adjG0 * k2;
+  }
+
   if (idx) {
     for (int k = 0; k < n; ++k) {
       double a = adjG[idx[k]];
-      sum += a * a * interpK2(t * a);
+      auto [k1, k2] = interpBoth(t * a);
+      sumK1 += a * k1;
+      sumK2 += a * a * k2;
     }
   } else {
     for (int k = 0; k < n; ++k) {
       double a = adjG[k];
-      sum += a * a * interpK2(t * a);
+      auto [k1, k2] = interpBoth(t * a);
+      sumK1 += a * k1;
+      sumK2 += a * a * k2;
     }
   }
-  return sum;
+
+  return {sumK1 - q2, sumK2};
 }
 
 // ======================================================================
@@ -249,8 +284,9 @@ SPACoxMethod::RootResult SPACoxMethod::fastGetRootK1(
     oldDiffX = diffX;
     oldK1    = K1val;
 
-    K1val = evalK1(x, N0, adjG0, adjG, idx, n, q2);
-    K2val = evalK2(x, N0, adjG0, adjG, idx, n);
+    auto [k1, k2] = evalK1K2(x, N0, adjG0, adjG, idx, n, q2);
+    K1val = k1;
+    K2val = k2;
 
     diffX = -K1val / K2val;
 
@@ -287,7 +323,7 @@ double SPACoxMethod::getProbSpa(
   double zeta = rr.root;
 
   double k0val = evalK0(zeta, N0, adjG0, adjG, idx, n);
-  double k2val = evalK2(zeta, N0, adjG0, adjG, idx, n);
+  double k2val = rr.K2;  // already computed at converged root
   double temp1 = zeta * q2 - k0val;
 
   if (!std::isfinite(zeta) || temp1 < 0.0 || k2val <= 0.0)
@@ -414,7 +450,9 @@ void runSPACox(
     double minMafCutoff,
     double minMacCutoff,
     const std::string& keepFile,
-    const std::string& removeFile
+    const std::string& removeFile,
+    const std::vector<int>& covarColNums,
+    const std::vector<std::string>& notCovar
 ) {
 
   // ---- Load resid file and covariate data ----
@@ -425,7 +463,7 @@ void runSPACox(
   if (!phenoFile.empty())
     sd.loadPhenoFile(phenoFile);
   if (!covarFile.empty())
-    sd.loadCovar(covarFile);
+    sd.loadCovar(covarFile, covarNames, covarColNums, notCovar);
   sd.setKeepRemove(keepFile, removeFile);
   sd.finalize();
   infoMsg("  %u subjects in union mask", sd.nUsed());

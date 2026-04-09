@@ -5,15 +5,18 @@
 #include "spagrm/grm_null.hpp"
 #include "spagrm/spagrm.hpp"
 #include "io/sparse_grm.hpp"
+#include "util/logging.hpp"
 #include "util/text_scanner.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <limits>
 #include <numeric>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -74,7 +77,7 @@ std::unordered_map<uint64_t, uint32_t> buildIBDPairMap(
 // UnionFind
 // ══════════════════════════════════════════════════════════════════════
 
-UnionFind::UnionFind(uint32_t n) : parent_(n), rank_(n, 0) {
+UnionFind::UnionFind(uint32_t n) : parent_(n), rank_(n, 0), size_(n, 1) {
   std::iota(parent_.begin(), parent_.end(), 0u);
 }
 
@@ -91,6 +94,7 @@ void UnionFind::unite(uint32_t a, uint32_t b) {
   if (a == b) return;
   if (rank_[a] < rank_[b]) std::swap(a, b);
   parent_[b] = a;
+  size_[a] += size_[b];
   if (rank_[a] == rank_[b]) ++rank_[a];
 }
 
@@ -351,7 +355,8 @@ SPAGRMClass buildSPAGRMNullModel(
     const std::vector<SparseGRM::Entry>& allGrmEntries,
     const std::vector<IndexedIBD>& ibdEntries,
     const std::unordered_map<uint64_t, uint32_t>& ibdPairMap,
-    double spaCutoff
+    double spaCutoff,
+    int nthreads
 ) {
   // ── Outlier detection (IQR) ──────────────────────────────────────
   std::vector<double> sortedResid(N);
@@ -391,6 +396,9 @@ SPAGRMClass buildSPAGRMNullModel(
     }
   }
 
+  infoMsg("  Outlier detection: %d outliers (%.1f%%) from %u subjects",
+          nOutlier, 100.0 * nOutlier / N, N);
+
   // ── Accumulate global variance terms for singletons ──────────────
   double R_GRM_R = 0.0;
   double sum_R_nonOutlier = 0.0;
@@ -421,121 +429,201 @@ SPAGRMClass buildSPAGRMNullModel(
   std::vector<std::vector<double>> threeSubj_standS_list;
   std::vector<Eigen::MatrixXd> threeSubj_CLT_list;
 
-  // ── Process families ─────────────────────────────────────────────
+  // ── Process families (multi-threaded) ──────────────────────────────
+  struct FamAccum {
+    double r_grm_r = 0.0;
+    double sum_r_no = 0.0;
+    double r_grm_r_no = 0.0;
+    size_t nSplit = 0;
+    std::vector<std::vector<uint32_t>> outlierFams;
+  };
+
+  const int nWorkers = std::max(1, std::min(nthreads,
+                                static_cast<int>(families.size())));
+  std::vector<FamAccum> accums(nWorkers);
+  std::atomic<size_t> nextFam{0};
+
+  auto familyWorker = [&](int tid) {
+    auto& acc = accums[tid];
+    while (true) {
+      const size_t fi = nextFam.fetch_add(1, std::memory_order_relaxed);
+      if (fi >= families.size()) break;
+
+      const auto& fam = families[fi];
+
+      bool hasOutlier = false;
+      for (uint32_t idx : fam)
+        if (isOutlier[idx]) { hasOutlier = true; break; }
+
+      // Direct quad form — no hash set needed, entries belong to this family
+      double famQuad = 0.0;
+      for (const auto& e : familyEntries[fi]) {
+        double factor = (e.row == e.col) ? 1.0 : 2.0;
+        famQuad += factor * e.value * Resid[e.row] * Resid[e.col];
+      }
+      acc.r_grm_r += famQuad;
+
+      if (!hasOutlier) {
+        double famSum = 0.0;
+        for (uint32_t idx : fam) famSum += Resid[idx];
+        acc.sum_r_no += famSum;
+        acc.r_grm_r_no += famQuad;
+        continue;
+      }
+
+      if (static_cast<int>(fam.size()) <= MAX_NUM_IN_FAM) {
+        acc.outlierFams.push_back(fam);
+        continue;
+      }
+
+      // ── Greedy family splitting (binary search + Union-Find) ─────
+      ++acc.nSplit;
+      const uint32_t famN = static_cast<uint32_t>(fam.size());
+      std::unordered_map<uint32_t, uint32_t> g2l;
+      g2l.reserve(famN);
+      for (uint32_t i = 0; i < famN; ++i) g2l[fam[i]] = i;
+
+      struct OffDiagEntry {
+        uint32_t localRow, localCol;
+        double value, cov;
+      };
+      std::vector<OffDiagEntry> famEdges;
+      for (const auto& e : familyEntries[fi]) {
+        if (e.row == e.col) continue;
+        if (e.row < e.col)
+          famEdges.push_back({g2l[e.row], g2l[e.col], e.value,
+                             std::abs(e.value * Resid[e.row] * Resid[e.col])});
+      }
+      std::sort(famEdges.begin(), famEdges.end(),
+                [](const OffDiagEntry& a, const OffDiagEntry& b) {
+                  return a.cov < b.cov;
+                });
+
+      const int nEdges = static_cast<int>(famEdges.size());
+
+      auto maxCompKeeping = [&](int j) -> int {
+        UnionFind uf(famN);
+        for (int k = j + 1; k < nEdges; ++k)
+          uf.unite(famEdges[k].localRow, famEdges[k].localCol);
+        uint32_t maxSz = 0;
+        for (uint32_t v = 0; v < famN; ++v)
+          maxSz = std::max(maxSz, uf.componentSize(v));
+        return static_cast<int>(maxSz);
+      };
+
+      int removeUpTo = -1;
+      if (maxCompKeeping(-1) > MAX_NUM_IN_FAM) {
+        int lo = 0, hi = nEdges - 1;
+        while (lo <= hi) {
+          int mid = lo + (hi - lo) / 2;
+          if (maxCompKeeping(mid) <= MAX_NUM_IN_FAM) {
+            removeUpTo = mid;
+            hi = mid - 1;
+          } else {
+            lo = mid + 1;
+          }
+        }
+      }
+
+      std::vector<bool> edgeKept(nEdges, false);
+      {
+        UnionFind uf(famN);
+        for (int k = removeUpTo + 1; k < nEdges; ++k) {
+          uf.unite(famEdges[k].localRow, famEdges[k].localCol);
+          edgeKept[k] = true;
+        }
+        for (int k = removeUpTo; k >= 0; --k) {
+          uint32_t ra = uf.find(famEdges[k].localRow);
+          uint32_t rb = uf.find(famEdges[k].localCol);
+          if (ra == rb) {
+            edgeKept[k] = true;
+          } else if (uf.componentSize(ra) + uf.componentSize(rb)
+                     <= static_cast<uint32_t>(MAX_NUM_IN_FAM)) {
+            uf.unite(ra, rb);
+            edgeKept[k] = true;
+          }
+        }
+      }
+
+      {
+        UnionFind uf(famN);
+        for (int k = 0; k < nEdges; ++k)
+          if (edgeKept[k])
+            uf.unite(famEdges[k].localRow, famEdges[k].localCol);
+
+        // Compute all sub-family quad forms in one pass — O(E) total
+        std::unordered_map<uint32_t, double> compQuad;
+        for (const auto& e : familyEntries[fi]) {
+          uint32_t lr = g2l[e.row], lc = g2l[e.col];
+          uint32_t rr = uf.find(lr), rc = uf.find(lc);
+          if (rr != rc) continue;  // cross-component edge, removed
+          double factor = (e.row == e.col) ? 1.0 : 2.0;
+          compQuad[rr] += factor * e.value * Resid[e.row] * Resid[e.col];
+        }
+
+        std::unordered_map<uint32_t, std::vector<uint32_t>> compMap;
+        for (uint32_t v = 0; v < famN; ++v)
+          compMap[uf.find(v)].push_back(v);
+
+        for (auto& [root, localMembers] : compMap) {
+          std::vector<uint32_t> subFam;
+          subFam.reserve(localMembers.size());
+          for (uint32_t li : localMembers) subFam.push_back(fam[li]);
+
+          bool subHasOutlier = false;
+          for (uint32_t idx : subFam)
+            if (isOutlier[idx]) { subHasOutlier = true; break; }
+
+          if (!subHasOutlier) {
+            double subSum = 0.0;
+            for (uint32_t idx : subFam) subSum += Resid[idx];
+            acc.sum_r_no += subSum;
+            acc.r_grm_r_no += compQuad[root];
+          } else {
+            acc.outlierFams.push_back(std::move(subFam));
+          }
+        }
+      }
+    }
+  };
+
+  {
+    std::vector<std::thread> threads;
+    for (int t = 1; t < nWorkers; ++t)
+      threads.emplace_back(familyWorker, t);
+    familyWorker(0);
+    for (auto& t : threads) t.join();
+  }
+
+  // Merge thread-local accumulators
   std::vector<std::vector<uint32_t>> outlierFamilies;
+  size_t nSplitFamilies = 0;
+  for (auto& acc : accums) {
+    R_GRM_R += acc.r_grm_r;
+    sum_R_nonOutlier += acc.sum_r_no;
+    R_GRM_R_nonOutlier += acc.r_grm_r_no;
+    nSplitFamilies += acc.nSplit;
+    for (auto& fam : acc.outlierFams)
+      outlierFamilies.push_back(std::move(fam));
+  }
 
-  for (size_t fi = 0; fi < families.size(); ++fi) {
-    const auto& fam = families[fi];
+  infoMsg("  %zu singletons, %zu families (%zu needed splitting)",
+          singletonSet.size(), families.size(), nSplitFamilies);
+  infoMsg("  %zu outlier families to process", outlierFamilies.size());
 
-    bool hasOutlier = false;
-    for (uint32_t idx : fam)
-      if (isOutlier[idx]) { hasOutlier = true; break; }
+  // ── Build Chow-Liu trees for outlier families ────────────────────
 
-    double famQuad = familyQuadForm(fam, familyEntries[fi], Resid);
-    R_GRM_R += famQuad;
-
-    if (!hasOutlier) {
-      double famSum = 0.0;
-      for (uint32_t idx : fam) famSum += Resid[idx];
-      sum_R_nonOutlier += famSum;
-      R_GRM_R_nonOutlier += famQuad;
-      continue;
-    }
-
-    if (static_cast<int>(fam.size()) <= MAX_NUM_IN_FAM) {
-      outlierFamilies.push_back(fam);
-      continue;
-    }
-
-    // ── Greedy family splitting ──────────────────────────────────
-    std::unordered_set<uint32_t> famSet(fam.begin(), fam.end());
-
-    struct OffDiagEntry {
-      uint32_t row, col;
-      double value, cov;
-    };
-    std::vector<OffDiagEntry> famEdges;
-    for (const auto& e : familyEntries[fi]) {
-      if (e.row == e.col) continue;
-      if (e.row < e.col)
-        famEdges.push_back({e.row, e.col, e.value,
-                           std::abs(e.value * Resid[e.row] * Resid[e.col])});
-    }
-    std::sort(famEdges.begin(), famEdges.end(),
-              [](const OffDiagEntry& a, const OffDiagEntry& b) {
-                return a.cov < b.cov;
-              });
-
-    std::vector<bool> edgeRemoved(famEdges.size(), false);
-    int removeUpTo = -1;
-    for (size_t j = 0; j < famEdges.size(); ++j) {
-      edgeRemoved[j] = true;
-      std::vector<std::pair<uint32_t, uint32_t>> remainingEdges;
-      for (size_t k = 0; k < famEdges.size(); ++k) {
-        if (!edgeRemoved[k])
-          remainingEdges.push_back({famEdges[k].row, famEdges[k].col});
-      }
-      auto subComps = getComponents(N, remainingEdges);
-      int maxComp = 0;
-      for (const auto& sc : subComps) {
-        int cnt = 0;
-        for (uint32_t idx : sc) if (famSet.count(idx)) ++cnt;
-        maxComp = std::max(maxComp, cnt);
-      }
-      if (maxComp <= MAX_NUM_IN_FAM) {
-        removeUpTo = static_cast<int>(j);
-        break;
-      }
-    }
-
-    if (removeUpTo >= 0) {
-      for (int j = removeUpTo; j >= 0; --j) {
-        edgeRemoved[j] = false;
-        std::vector<std::pair<uint32_t, uint32_t>> remainingEdges;
-        for (size_t k = 0; k < famEdges.size(); ++k) {
-          if (!edgeRemoved[k])
-            remainingEdges.push_back({famEdges[k].row, famEdges[k].col});
-        }
-        auto subComps = getComponents(N, remainingEdges);
-        int maxComp = 0;
-        for (const auto& sc : subComps) {
-          int cnt = 0;
-          for (uint32_t idx : sc) if (famSet.count(idx)) ++cnt;
-          maxComp = std::max(maxComp, cnt);
-        }
-        if (maxComp > MAX_NUM_IN_FAM) edgeRemoved[j] = true;
-      }
-    }
-
-    std::vector<std::pair<uint32_t, uint32_t>> finalEdges;
-    for (size_t k = 0; k < famEdges.size(); ++k) {
-      if (!edgeRemoved[k])
-        finalEdges.push_back({famEdges[k].row, famEdges[k].col});
-    }
-    auto subComps = getComponents(N, finalEdges);
-
-    for (const auto& sc : subComps) {
-      std::vector<uint32_t> subFam;
-      for (uint32_t idx : sc) if (famSet.count(idx)) subFam.push_back(idx);
-      if (subFam.empty()) continue;
-
-      bool subHasOutlier = false;
-      for (uint32_t idx : subFam) if (isOutlier[idx]) { subHasOutlier = true; break; }
-
-      double subQuad = familyQuadForm(subFam, familyEntries[fi], Resid);
-
-      if (!subHasOutlier) {
-        double subSum = 0.0;
-        for (uint32_t idx : subFam) subSum += Resid[idx];
-        sum_R_nonOutlier += subSum;
-        R_GRM_R_nonOutlier += subQuad;
-      } else {
-        outlierFamilies.push_back(std::move(subFam));
-      }
+  // Build GRM off-diagonal map for O(1) pair lookups
+  std::unordered_map<uint64_t, double> grmOffDiagMap;
+  grmOffDiagMap.reserve(allGrmEntries.size());
+  for (const auto& e : allGrmEntries) {
+    if (e.row != e.col) {
+      uint32_t lo = std::min(e.row, e.col);
+      uint32_t hi = std::max(e.row, e.col);
+      grmOffDiagMap[(static_cast<uint64_t>(lo) << 32) | hi] = e.value;
     }
   }
 
-  // ── Build Chow-Liu trees for outlier families ────────────────────
   for (const auto& fam : outlierFamilies) {
     const int n1 = static_cast<int>(fam.size());
 
@@ -546,12 +634,20 @@ SPAGRMClass buildSPAGRMNullModel(
 
     if (n1 == 2) {
       double R1 = Resid[fam[0]], R2 = Resid[fam[1]];
-      double pairQuad = familyQuadForm(fam, allGrmEntries, Resid);
-      R_GRM_R_TwoSubjOutlier += pairQuad;
 
+      // Direct quad form: diag[a]*R1² + diag[b]*R2² + 2*grm(a,b)*R1*R2
       uint32_t lo = std::min(fam[0], fam[1]);
       uint32_t hi = std::max(fam[0], fam[1]);
       uint64_t key = (static_cast<uint64_t>(lo) << 32) | hi;
+
+      double offDiag = 0.0;
+      auto grmIt = grmOffDiagMap.find(key);
+      if (grmIt != grmOffDiagMap.end()) offDiag = grmIt->second;
+      double pairQuad = grmDiag[fam[0]] * R1 * R1
+                      + grmDiag[fam[1]] * R2 * R2
+                      + 2.0 * offDiag * R1 * R2;
+      R_GRM_R_TwoSubjOutlier += pairQuad;
+
       double pa = 0, pb = 0;
       auto ibdIt = ibdPairMap.find(key);
       if (ibdIt != ibdPairMap.end()) {
@@ -573,11 +669,17 @@ SPAGRMClass buildSPAGRMNullModel(
       famResid[i] = Resid[fam[i]];
     }
 
-    std::unordered_set<uint32_t> famIdxSet(fam.begin(), fam.end());
+    // Enumerate all pairs in the family for IBD lookup (at most C(5,2)=10)
     std::vector<IndexedIBD> famIBD;
-    for (const auto& ibd : ibdEntries) {
-      if (famIdxSet.count(ibd.idx1) && famIdxSet.count(ibd.idx2))
-        famIBD.push_back(ibd);
+    for (int i = 0; i < n1; ++i) {
+      for (int j = i + 1; j < n1; ++j) {
+        uint32_t lo = std::min(fam[i], fam[j]);
+        uint32_t hi = std::max(fam[i], fam[j]);
+        uint64_t key = (static_cast<uint64_t>(lo) << 32) | hi;
+        auto it = ibdPairMap.find(key);
+        if (it != ibdPairMap.end())
+          famIBD.push_back(ibdEntries[it->second]);
+      }
     }
 
     Eigen::MatrixXd CLT = buildChowLiuTree(n1, famIBD, fam, MAF_INTERVAL);
@@ -588,6 +690,11 @@ SPAGRMClass buildSPAGRMNullModel(
   }
 
   // ── Assemble SPAGRMClass ─────────────────────────────────────────
+  infoMsg("  Built %zu two-subject, %zu multi-subject family models, "
+          "%zu unrelated outliers",
+          twoSubj_resid_list.size(), threeSubj_CLT_list.size(),
+          unrelatedOutlierResids.size());
+
   Eigen::VectorXd residOutliers = Eigen::Map<Eigen::VectorXd>(
       unrelatedOutlierResids.data(),
       static_cast<Eigen::Index>(unrelatedOutlierResids.size()));

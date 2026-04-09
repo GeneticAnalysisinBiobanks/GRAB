@@ -490,6 +490,8 @@ void runSPAGRM(
 
   auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(),
                                nSnpPerChunk);
+  infoMsg("Genotype data: %u markers, %u subjects",
+          genoData->nMarkers(), genoData->nSubjUsed());
 
   // ---- Build per-phenotype tasks ----
   auto phenoInfos = sd.buildPerColumnMasks();
@@ -502,10 +504,11 @@ void runSPAGRM(
     // Single phenotype: use union structures directly
     auto topo = buildTopology(N, allEntries);
     auto ibdPairMap = nsGRMNull::buildIBDPairMap(ibdEntries);
+    infoMsg("Building null model for '%s'...", phenoInfos[0].name.c_str());
     SPAGRMClass sg = nsGRMNull::buildSPAGRMNullModel(
         sd.residuals(), N, topo.singletonSet, grmDiag,
         topo.families, topo.familyEntries,
-        allEntries, ibdEntries, ibdPairMap, spaCutoff);
+        allEntries, ibdEntries, ibdPairMap, spaCutoff, nthreads);
     tasks[0].phenoName = phenoInfos[0].name;
     tasks[0].method = std::make_unique<SPAGRMMethod>(std::move(sg));
     tasks[0].unionToLocal = phenoInfos[0].unionToLocal;
@@ -542,10 +545,12 @@ void runSPAGRM(
 
       Eigen::VectorXd phenoResid = extractPhenoVec(sd.residMatrix().col(rc), pi);
 
+      infoMsg("Building null model for '%s' (%u subjects)...",
+              pi.name.c_str(), Np);
       SPAGRMClass sg = nsGRMNull::buildSPAGRMNullModel(
           phenoResid, Np, topo.singletonSet, pDiag,
           topo.families, topo.familyEntries,
-          pEntries, pIbd, pIbdMap, spaCutoff);
+          pEntries, pIbd, pIbdMap, spaCutoff, nthreads);
 
       tasks[rc].phenoName = pi.name;
       tasks[rc].method = std::make_unique<SPAGRMMethod>(std::move(sg));

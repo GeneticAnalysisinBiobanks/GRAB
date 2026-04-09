@@ -753,7 +753,9 @@ void runLEAFPheno(
     double minMafCutoff,
     double minMacCutoff,
     const std::string& keepFile,
-    const std::string& removeFile) {
+    const std::string& removeFile,
+    const std::vector<int>& covarColNums,
+    const std::vector<std::string>& notCovar) {
 
   const bool isSurv = !survPheno.empty();
   const int nCluster = nClusters;
@@ -766,7 +768,10 @@ void runLEAFPheno(
   sdFull.loadPhenoFile(phenoFile);
   if (!covarFile.empty()) {
     infoMsg("Loading covariate file: %s", covarFile.c_str());
-    sdFull.loadCovar(covarFile);
+    // Need both covarNames and pcColNames from the covar file
+    std::vector<std::string> needed = covarNames;
+    needed.insert(needed.end(), pcColNames.begin(), pcColNames.end());
+    sdFull.loadCovar(covarFile, needed, covarColNums, notCovar);
   }
   sdFull.setKeepRemove(keepFile, removeFile);
   sdFull.finalize();

@@ -48,6 +48,8 @@ private:
 struct CumulantTable {
   Eigen::VectorXd xGrid;    // length L, strictly increasing
   int             nGrid;
+  double          invScale; // 1/scale for O(1) bin lookup
+  double          Lp1;      // L + 1
   Eigen::VectorXd yK0, slopeK0;
   Eigen::VectorXd yK1, slopeK1;
   Eigen::VectorXd yK2, slopeK2;
@@ -81,8 +83,9 @@ public:
                     std::vector<double>& result) override;
 
 private:
-  // ---- CGF interpolation ----
-  double interp(const double* yp, const double* sp, double v) const;
+  // ---- CGF interpolation (O(1) Cauchy-inverse index) ----
+  int interpIdx(double v) const;
+  double interp(const double* yp, const double* sp, int lo, double v) const;
   double interpK0(double v) const;
   double interpK1(double v) const;
   double interpK2(double v) const;
@@ -90,10 +93,9 @@ private:
   // ---- Cumulant evaluation (scalar loops, no heap alloc) ----
   double evalK0(double t, int N0, double adjG0,
                 const double* adjG, const uint32_t* idx, int n) const;
-  double evalK1(double t, int N0, double adjG0,
+  // Fused K1+K2 evaluation — single loop, one interp lookup per element
+  std::pair<double,double> evalK1K2(double t, int N0, double adjG0,
                 const double* adjG, const uint32_t* idx, int n, double q2) const;
-  double evalK2(double t, int N0, double adjG0,
-                const double* adjG, const uint32_t* idx, int n) const;
 
   // ---- SPA root-finding & tail probability ----
   struct RootResult { double root; bool converge; double K2; };
@@ -143,4 +145,6 @@ void runSPACox(
     double minMafCutoff,
     double minMacCutoff,
     const std::string& keepFile = {},
-    const std::string& removeFile = {});
+    const std::string& removeFile = {},
+    const std::vector<int>& covarColNums = {},
+    const std::vector<std::string>& notCovar = {});

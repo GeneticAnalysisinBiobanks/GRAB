@@ -329,7 +329,9 @@ void runSPAmixPlus(
     double minMafCutoff,
     double minMacCutoff,
     const std::string& keepFile,
-    const std::string& removeFile
+    const std::string& removeFile,
+    const std::vector<int>& covarColNums,
+    const std::vector<std::string>& notCovar
 ) {
   // ---- Load residual file and PC data ----
   infoMsg("Loading residual file: %s", residFile.c_str());
@@ -337,7 +339,7 @@ void runSPAmixPlus(
   SubjectData sd(std::move(famIIDs));
   sd.loadResidOne(residFile);
   if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile);
-  if (!covarFile.empty()) sd.loadCovar(covarFile);
+  if (!covarFile.empty()) sd.loadCovar(covarFile, pcColNames, covarColNums, notCovar);
   sd.setKeepRemove(keepFile, removeFile);
   sd.finalize();
 

@@ -13,9 +13,7 @@
 
 #include <algorithm>
 #include <atomic>
-#include <chrono>
 #include <cmath>
-#include <ctime>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -765,8 +763,6 @@ void runPhiEstimation(
     const std::string& excludeFile,
     int nthreads
 ) {
-    const auto wallStart = std::chrono::steady_clock::now();
-    const std::clock_t cpuStart = std::clock();
     infoMsg("=== SPAmixLocalPlus Phi Estimation ===");
 
     // Load .fam IIDs (genotype subject list)
@@ -816,11 +812,7 @@ void runPhiEstimation(
     // Write single wide file
     writePhiWide(phiOutputFile, allPhi, K);
 
-    const auto wallEnd = std::chrono::steady_clock::now();
-    const double wallSec = std::chrono::duration<double>(wallEnd - wallStart).count();
-    const double cpuSec = static_cast<double>(std::clock() - cpuStart) / CLOCKS_PER_SEC;
     infoMsg("Output written to: %s", phiOutputFile.c_str());
-    infoMsg("Wall time: %.1f seconds, CPU time: %.1f seconds", wallSec, cpuSec);
 }
 
 
@@ -1150,8 +1142,6 @@ void runSPAmixLocalPlus(
     const std::string& extractFile,
     const std::string& excludeFile
 ) {
-    const auto wallStart = std::chrono::steady_clock::now();
-    const std::clock_t cpuStart = std::clock();
     infoMsg("=== SPAmixLocalPlus GWAS ===");
 
     // Load subjects
@@ -1204,9 +1194,4 @@ void runSPAmixLocalPlus(
                        spaCutoff, minMafCutoff, minMacCutoff,
                        outFile, compression, compressionLevel, nthread);
     }
-
-    const auto wallEnd = std::chrono::steady_clock::now();
-    const double wallSec = std::chrono::duration<double>(wallEnd - wallStart).count();
-    const double cpuSec = static_cast<double>(std::clock() - cpuStart) / CLOCKS_PER_SEC;
-    infoMsg("Wall time: %.1f seconds, CPU time: %.1f seconds", wallSec, cpuSec);
 }

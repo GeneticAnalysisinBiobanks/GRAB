@@ -336,7 +336,10 @@ void SubjectData::loadResidSPAsqr(const std::string& filename) {
 // Optional per-subject file loaders
 // ══════════════════════════════════════════════════════════════════════
 
-void SubjectData::loadCovar(const std::string& filename) {
+void SubjectData::loadCovar(const std::string& filename,
+                            const std::vector<std::string>& neededNames,
+                            const std::vector<int>& covarColNums,
+                            const std::vector<std::string>& notCovar) {
   if (m_hasRawCovar)
     throw std::runtime_error("loadCovar already called");
 
@@ -357,22 +360,66 @@ void SubjectData::loadCovar(const std::string& filename) {
   { std::istringstream hss(line); std::string tok;
     while (hss >> tok) headers.push_back(tok); }
 
-  // ── Find IID column and covariate columns ──────────────────────────
-  // Skip standard plink2 metadata columns: FID, IID, SID, PAT, MAT, SEX, PHENO*
+  // ── Find IID column ────────────────────────────────────────────────
   int iidCol = -1;
-  std::vector<int> covarCols;
-
+  int fidCol = -1;
   for (int c = 0; c < static_cast<int>(headers.size()); ++c) {
     const auto& h = headers[c];
-    if (h == "IID" || h == "#IID") {
-      iidCol = c;
-    } else if (h == "#FID" || h == "FID" || h == "SID" ||
-               h == "PAT"  || h == "MAT" || h == "SEX") {
-      // skip
-    } else if (h.size() >= 5 && h.substr(0, 5) == "PHENO") {
-      // skip phenotype columns
+    if (h == "IID" || h == "#IID")  iidCol = c;
+    if (h == "FID" || h == "#FID")  fidCol = c;
+  }
+
+  // ── Determine which columns to load ────────────────────────────────
+  const bool hasExplicitFilter = !neededNames.empty() || !covarColNums.empty();
+  std::vector<int> covarCols;
+
+  if (iidCol >= 0) {
+    if (hasExplicitFilter) {
+      // Explicit selection: include only named / numbered columns.
+      std::unordered_set<int> keepCols;
+
+      // --covar-name: match by header name (skip IID/FID)
+      if (!neededNames.empty()) {
+        std::unordered_set<std::string> nameSet(neededNames.begin(), neededNames.end());
+        for (int c = 0; c < static_cast<int>(headers.size()); ++c) {
+          if (c == iidCol || c == fidCol) continue;
+          if (nameSet.count(headers[c])) keepCols.insert(c);
+        }
+      }
+
+      // --covar-col-nums: 1-based file column positions (skip IID/FID)
+      for (int num : covarColNums) {
+        int idx = num - 1; // convert to 0-based
+        if (idx >= 0 && idx < static_cast<int>(headers.size())
+            && idx != iidCol && idx != fidCol)
+          keepCols.insert(idx);
+      }
+
+      for (int c = 0; c < static_cast<int>(headers.size()); ++c) {
+        if (keepCols.count(c)) covarCols.push_back(c);
+      }
     } else {
-      covarCols.push_back(c);
+      // Default: skip standard plink2 metadata columns
+      for (int c = 0; c < static_cast<int>(headers.size()); ++c) {
+        const auto& h = headers[c];
+        if (h == "IID" || h == "#IID" ||
+            h == "#FID" || h == "FID" || h == "SID" ||
+            h == "PAT"  || h == "MAT" || h == "SEX")
+          continue;
+        if (h.size() >= 5 && h.substr(0, 5) == "PHENO")
+          continue;
+        covarCols.push_back(c);
+      }
+    }
+
+    // --not-covar: exclude by name
+    if (!notCovar.empty()) {
+      std::unordered_set<std::string> excludeSet(notCovar.begin(), notCovar.end());
+      std::vector<int> filtered;
+      for (int c : covarCols) {
+        if (!excludeSet.count(headers[c])) filtered.push_back(c);
+      }
+      covarCols = std::move(filtered);
     }
   }
 

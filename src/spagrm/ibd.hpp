@@ -22,4 +22,5 @@ void runPairwiseIBD(
     const std::string& spgrmGctaFile,
     const GenoSpec& geno,
     const std::string& outputFile,
-    double minMafIBD = 0.01);
+    double minMafIBD = 0.01,
+    int nthreads = 1);

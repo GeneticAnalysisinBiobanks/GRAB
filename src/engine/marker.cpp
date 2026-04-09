@@ -21,8 +21,6 @@
 #include <cmath>
 #include <exception>
 #include <cstdio>
-#include <chrono>
-#include <ctime>
 #include <cstdint>
 
 
@@ -157,9 +155,6 @@ void markerEngine(
     double minMacCutoff,
     bool exactHwe
 ) {
-  const auto wallStart = std::chrono::steady_clock::now();
-  const std::clock_t cpuStart = std::clock();
-
   const size_t nTotalChunks = genoData.chunkIndices().size();
   const int effective_nthreads =
       std::min(nthreads, static_cast<int>(nTotalChunks));
@@ -327,13 +322,7 @@ void markerEngine(
 
   if (workerError) std::rethrow_exception(workerError);
 
-  const double wallSec = std::chrono::duration<double>(
-      std::chrono::steady_clock::now() - wallStart).count();
-  const double cpuSec =
-      static_cast<double>(std::clock() - cpuStart) / CLOCKS_PER_SEC;
   infoMsg("Output written to: %s", outputFile.c_str());
-  infoMsg("Wall time: %.1f seconds, CPU time: %.1f seconds",
-          wallSec, cpuSec);
 }
 
 
@@ -538,9 +527,6 @@ void multiPhenoEngine(
     double minMacCutoff,
     bool exactHwe
 ) {
-  const auto wallStart = std::chrono::steady_clock::now();
-  const std::clock_t cpuStart = std::clock();
-
   const size_t K = tasks.size();
   const size_t nTotalChunks = genoData.chunkIndices().size();
   const int effective_nthreads =
@@ -763,12 +749,6 @@ void multiPhenoEngine(
 
   if (workerError) std::rethrow_exception(workerError);
 
-  const double wallSec = std::chrono::duration<double>(
-      std::chrono::steady_clock::now() - wallStart).count();
-  const double cpuSec =
-      static_cast<double>(std::clock() - cpuStart) / CLOCKS_PER_SEC;
   for (size_t p = 0; p < K; ++p)
     infoMsg("Output written to: %s", outPaths[p].c_str());
-  infoMsg("Wall time: %.1f seconds, CPU time: %.1f seconds",
-          wallSec, cpuSec);
 }

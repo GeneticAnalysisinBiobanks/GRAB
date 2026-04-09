@@ -23,7 +23,9 @@
 #include "io/admix_msp.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
+#include <ctime>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -81,6 +83,36 @@ static std::vector<std::string> splitComma(const std::string& s,
     return out;
 }
 
+// Parse "3,5,7-10" → {3,5,7,8,9,10}
+static std::vector<int> parseColNums(const std::string& s) {
+    std::vector<int> out;
+    if (s.empty()) return out;
+    std::istringstream iss(s);
+    std::string tok;
+    while (std::getline(iss, tok, ',')) {
+        if (tok.empty()) continue;
+        auto dash = tok.find('-');
+        if (dash != std::string::npos && dash > 0) {
+            int lo = std::stoi(tok.substr(0, dash));
+            int hi = std::stoi(tok.substr(dash + 1));
+            if (lo < 1 || hi < lo) {
+                std::cerr << "Error: --covar-col-nums: invalid range '"
+                          << tok << "'\n";
+                std::exit(1);
+            }
+            for (int i = lo; i <= hi; ++i) out.push_back(i);
+        } else {
+            int v = std::stoi(tok);
+            if (v < 1) {
+                std::cerr << "Error: --covar-col-nums: column numbers must be >= 1\n";
+                std::exit(1);
+            }
+            out.push_back(v);
+        }
+    }
+    return out;
+}
+
 static void checkSpGrm(const Args& a, bool required, const char* ctx) {
     if (!a.spGrmGrabFile.empty() && !a.spGrmPlink2File.empty()) {
         std::cerr << "Error: --sp-grm-grab and --sp-grm-plink2 are mutually"
@@ -113,6 +145,8 @@ static void logArgsInEffect(const Args& args) {
     if (!args.phenoFile.empty())         std::fprintf(stderr, "  --pheno %s\n",        args.phenoFile.c_str());
     if (!args.covarFile.empty())         std::fprintf(stderr, "  --covar %s\n",        args.covarFile.c_str());
     if (!args.covarName.empty())         std::fprintf(stderr, "  --covar-name %s\n",   args.covarName.c_str());
+    if (!args.covarColNums.empty())      std::fprintf(stderr, "  --covar-col-nums %s\n", args.covarColNums.c_str());
+    if (!args.notCovar.empty())          std::fprintf(stderr, "  --not-covar %s\n",    args.notCovar.c_str());
     if (!args.binaryPheno.empty())       std::fprintf(stderr, "  --pheno-binary %s\n", args.binaryPheno.c_str());
     if (!args.survPheno.empty())         std::fprintf(stderr, "  --pheno-surv %s\n",   args.survPheno.c_str());
     if (!args.quantPheno.empty())        std::fprintf(stderr, "  --pheno-quant %s\n",  args.quantPheno.c_str());
@@ -165,7 +199,19 @@ static void logArgsInEffect(const Args& args) {
 int run(int argc, char* argv[]) {
     if (argc < 2) { printHelp("__short__"); return 1; }
 
+    const auto wallStart = std::chrono::steady_clock::now();
+    const std::clock_t cpuStart = std::clock();
+
     Args args = parseArgs(argc, argv);
+
+    auto printTimer = [&]() {
+        const double wallSec = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - wallStart).count();
+        const double cpuSec =
+            static_cast<double>(std::clock() - cpuStart) / CLOCKS_PER_SEC;
+        infoMsg("Wall time: %.1f seconds, CPU time: %.1f seconds",
+                wallSec, cpuSec);
+    };
 
     // ── Help dispatch ──────────────────────────────────────────────
     if (!args.helpTopic.empty()) {
@@ -180,6 +226,10 @@ int run(int argc, char* argv[]) {
     auto covarNames   = args.covarName.empty()
         ? std::vector<std::string>{}
         : splitComma(args.covarName, "--covar-name", 1);
+    auto covarColNums = parseColNums(args.covarColNums);
+    auto notCovar     = args.notCovar.empty()
+        ? std::vector<std::string>{}
+        : splitComma(args.notCovar, "--not-covar", 1);
 
     // ── Mode: --cal-ind-af-coef ────────────────────────────────────
     if (args.calIndAfCoef) {
@@ -206,10 +256,12 @@ int run(int argc, char* argv[]) {
                 geno, args.outputFile,
                 args.nthread, args.nSnpPerChunk,
                 args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
-                args.keepFile, args.removeFile);
+                args.keepFile, args.removeFile,
+                covarColNums, notCovar);
         } catch (const std::exception& e) {
             std::cerr << "[ERROR] " << e.what() << "\n"; return 1;
         }
+        printTimer();
         return 0;
     }
 
@@ -235,6 +287,7 @@ int run(int argc, char* argv[]) {
         } catch (const std::exception& e) {
             std::cerr << "[ERROR] " << e.what() << "\n"; return 1;
         }
+        printTimer();
         return 0;
     }
 
@@ -273,6 +326,7 @@ int run(int argc, char* argv[]) {
         } catch (const std::exception& e) {
             std::cerr << "[ERROR] " << e.what() << "\n"; return 1;
         }
+        printTimer();
         return 0;
     }
 
@@ -290,10 +344,11 @@ int run(int argc, char* argv[]) {
         try {
             runPairwiseIBD(
                 args.spGrmGrabFile, args.spGrmPlink2File, geno,
-                args.outputFile, args.minMafIBD);
+                args.outputFile, args.minMafIBD, args.nthread);
         } catch (const std::exception& e) {
             std::cerr << "[ERROR] " << e.what() << "\n"; return 1;
         }
+        printTimer();
         return 0;
     }
 
@@ -451,7 +506,8 @@ int run(int argc, char* argv[]) {
                 args.pvalCovAdjCut, args.spaCutoff, args.nthread,
                 args.nSnpPerChunk,
                 args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
-                args.keepFile, args.removeFile);
+                args.keepFile, args.removeFile,
+                covarColNums, notCovar);
         }
 
         // ── SPAGRM ────────────────────────────────────────────────
@@ -505,7 +561,8 @@ int run(int argc, char* argv[]) {
                 args.spaCutoff, args.outlierRatio, args.nthread,
                 args.nSnpPerChunk,
                 args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
-                args.keepFile, args.removeFile);
+                args.keepFile, args.removeFile,
+                covarColNums, notCovar);
         }
 
         // ── POLMM ───────────────────────────────────────────────────
@@ -567,7 +624,8 @@ int run(int argc, char* argv[]) {
                     args.spaCutoff, args.outlierRatio, args.outlierAbsBound,
                     args.nthread, args.nSnpPerChunk,
                     args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
-                args.keepFile, args.removeFile);
+                    args.keepFile, args.removeFile,
+                    covarColNums, notCovar);
             } else {
                 runSPAsqr(
                     args.residFile, args.spGrmGrabFile, args.spGrmPlink2File,
@@ -625,7 +683,8 @@ int run(int argc, char* argv[]) {
                     args.refPrevalence, args.cutoff, args.spaCutoff,
                     args.nthread, args.nSnpPerChunk,
                     args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
-                args.keepFile, args.removeFile);
+                    args.keepFile, args.removeFile,
+                    covarColNums, notCovar);
             }
         }
 
@@ -692,7 +751,8 @@ int run(int argc, char* argv[]) {
                     args.refPrevalence, args.cutoff, args.spaCutoff,
                     args.nthread, args.nSnpPerChunk,
                     args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
-                args.keepFile, args.removeFile);
+                    args.keepFile, args.removeFile,
+                    covarColNums, notCovar);
             }
         }
 
@@ -716,6 +776,7 @@ int run(int argc, char* argv[]) {
         std::cerr << "[ERROR] " << e.what() << "\n";
         return 1;
     }
+    printTimer();
     return 0;
 }
 

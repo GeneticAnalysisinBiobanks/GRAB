@@ -58,9 +58,11 @@ public:
   explicit UnionFind(uint32_t n);
   uint32_t find(uint32_t x);
   void unite(uint32_t a, uint32_t b);
+  uint32_t componentSize(uint32_t x) { return size_[find(x)]; }
 private:
   std::vector<uint32_t> parent_;
   std::vector<uint32_t> rank_;
+  std::vector<uint32_t> size_;
 };
 
 /// Return connected components as vectors of node indices.
@@ -120,6 +122,7 @@ SPAGRMClass buildSPAGRMNullModel(
     const std::vector<SparseGRM::Entry>& allGrmEntries,
     const std::vector<IndexedIBD>& ibdEntries,
     const std::unordered_map<uint64_t, uint32_t>& ibdPairMap,
-    double spaCutoff);
+    double spaCutoff,
+    int nthreads = 1);
 
 } // namespace nsGRMNull

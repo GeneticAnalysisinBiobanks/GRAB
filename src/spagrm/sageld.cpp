@@ -197,15 +197,16 @@ GRMTopology loadGRMTopology(
 }
 
 // Compute R' * GRM * R using pre-loaded topology.
+// Single pass over all entries — O(E), no per-family hash sets.
 double computeRGRMR(
     const Eigen::VectorXd& R,
     const GRMTopology& topo)
 {
   double acc = 0.0;
-  for (uint32_t idx : topo.singletonSet)
-    acc += topo.grmDiag[idx] * R[idx] * R[idx];
-  for (size_t fi = 0; fi < topo.families.size(); ++fi)
-    acc += nsGRMNull::familyQuadForm(topo.families[fi], topo.familyEntries[fi], R);
+  for (const auto& e : topo.allEntries) {
+    double factor = (e.row == e.col) ? 1.0 : 2.0;
+    acc += factor * e.value * R[e.row] * R[e.col];
+  }
   return acc;
 }
 
@@ -364,7 +365,8 @@ void runSAGELD(
     SPAGRMClass spagrm_combined = nsGRMNull::buildSPAGRMNullModel(
         Resid_combined, N, topo.singletonSet, topo.grmDiag,
         topo.families, topo.familyEntries,
-        topo.allEntries, topo.ibdEntries, topo.ibdPairMap, spaCutoff);
+        topo.allEntries, topo.ibdEntries, topo.ibdPairMap, spaCutoff,
+        nthreads);
 
     envData.push_back({std::move(spagrm_combined)});
     envNames.push_back(es.name);

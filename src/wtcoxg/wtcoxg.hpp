@@ -229,4 +229,6 @@ void runWtCoxGPheno(
     double minMafCutoff,
     double minMacCutoff,
     const std::string& keepFile = {},
-    const std::string& removeFile = {});
+    const std::string& removeFile = {},
+    const std::vector<int>& covarColNums = {},
+    const std::vector<std::string>& notCovar = {});
