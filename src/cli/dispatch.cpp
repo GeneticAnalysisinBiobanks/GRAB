@@ -261,6 +261,8 @@ int run(int argc, char* argv[]) {
         }
         require(args.outPrefix, "--out-prefix", "--make-abed");
         logArgsInEffect(args);
+        if (hasVcfMsp)
+            infoMsg("Parsing MSP file into memory; this may take several minutes and memory scales with sample count and window count.");
         try {
             if (hasVcfMsp)
                 convertVcfMspToAbed(args.vcfFile, args.mspFile, args.outPrefix,

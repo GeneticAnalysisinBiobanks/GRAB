@@ -248,8 +248,10 @@ static uint32_t processVcf(
     htsFile*   fp  = hts_open(vcfFile.c_str(), "r");
     if (!fp) throw std::runtime_error("Cannot open VCF: " + vcfFile);
 
-    if (nthreads > 1)
-        hts_set_threads(fp, nthreads);
+    if (nthreads > 1) {
+        int nDecompressThreads = std::min(nthreads, 4);
+        hts_set_threads(fp, nDecompressThreads);
+    }
 
     bcf_hdr_t* hdr = bcf_hdr_read(fp);
     if (!hdr) { hts_close(fp); throw std::runtime_error("Cannot read VCF header: " + vcfFile); }
