@@ -702,7 +702,9 @@ static void runUnifiedGWAS(
     // Parallel processing using chunks
     const auto& chunks = admixData.chunkIndices();
     std::atomic<size_t> nextChunk{0};
+    std::atomic<size_t> chunksCompleted{0};
     size_t nChunks = chunks.size();
+    uint32_t nMarkers = admixData.nMarkers();
 
     // Pre-compute R^2 and rprod arrays (once per phenotype, not per marker).
     // This bakes R[i]*R[j]*phi*multiplier into a flat double, eliminating
@@ -947,6 +949,19 @@ static void runUnifiedGWAS(
                 chunkReady[ci].ready = 1;
             }
             writeCv.notify_all();
+
+            // Progress logging: report at ~25%, 50%, 75%
+            size_t done = chunksCompleted.fetch_add(1) + 1;
+            if (nChunks >= 20) {
+                size_t q1 = nChunks / 4, q2 = nChunks / 2, q3 = nChunks * 3 / 4;
+                if (done == q1 || done == q2 || done == q3) {
+                    uint32_t markersDone = static_cast<uint32_t>(
+                        static_cast<uint64_t>(done) * nMarkers / nChunks);
+                    infoMsg("    %u / %u markers (~%u%%)",
+                            markersDone, nMarkers,
+                            static_cast<unsigned>(done * 100 / nChunks));
+                }
+            }
         }
     };
 
@@ -1034,8 +1049,8 @@ void runSPAmixLocalPlus(
         std::string outFile = TextWriter::buildOutputPath(
             outPrefix, pi.name, "SPAmixLocalPlus", compression);
 
-        infoMsg("  Phenotype '%s': %u subjects -> %s",
-                pi.name.c_str(), pi.nUsed, outFile.c_str());
+        infoMsg("  Phenotype '%s': %u subjects, %u markers, %d ancestries -> %s",
+                pi.name.c_str(), pi.nUsed, admixData.nMarkers(), K, outFile.c_str());
 
         // Detect outliers per residual column
         OutlierData outlier = detectOutliers(resid, outlierRatio);

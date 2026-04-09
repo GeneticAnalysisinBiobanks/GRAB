@@ -180,6 +180,31 @@ static MspData parseMsp(const std::string& mspFile) {
 // Returns index into msp.windows for the window covering (chrom, pos0based),
 // or -1 if not found.  Uses a cursor that advances monotonically.
 
+// ── Chromosome comparison helper ─────────────────────────────────────────────
+// Compares chromosome names numerically when possible (chr1 < chr2 < ... < chr10)
+// instead of lexicographically (where chr10 < chr2).
+static bool chromLessThan(const std::string& a, const std::string& b) {
+    if (a == b) return false;
+    // Strip leading "chr" or "Chr" or "CHR" prefix
+    auto stripChr = [](const std::string& s) -> std::string {
+        if (s.size() >= 3 &&
+            (s[0] == 'c' || s[0] == 'C') &&
+            (s[1] == 'h' || s[1] == 'H') &&
+            (s[2] == 'r' || s[2] == 'R'))
+            return s.substr(3);
+        return s;
+    };
+    std::string sa = stripChr(a), sb = stripChr(b);
+    // Try numeric comparison
+    bool aNum = !sa.empty() && sa.find_first_not_of("0123456789") == std::string::npos;
+    bool bNum = !sb.empty() && sb.find_first_not_of("0123456789") == std::string::npos;
+    if (aNum && bNum)
+        return std::stoi(sa) < std::stoi(sb);
+    // Numeric before non-numeric (e.g., chr22 < chrX)
+    if (aNum != bNum) return aNum;
+    return sa < sb;
+}
+
 struct WindowCursor {
     const std::vector<MspWindow>& windows;
     size_t idx = 0;
@@ -188,7 +213,7 @@ struct WindowCursor {
         // Advance past windows that end before or are on earlier chroms
         while (idx < windows.size()) {
             const auto& w = windows[idx];
-            if (w.chrom < chrom || (w.chrom == chrom && w.epos <= pos0)) {
+            if (chromLessThan(w.chrom, chrom) || (w.chrom == chrom && w.epos <= pos0)) {
                 ++idx;
                 continue;
             }
