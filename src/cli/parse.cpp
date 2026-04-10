@@ -53,8 +53,7 @@ Args parseArgs(int argc, char* argv[]) {
         else if (arg == "--sp-grm-plink2")            a.spGrmPlink2File   = next();
         else if (arg == "--ind-af-coef")              a.indAfFile         = next();
         else if (arg == "--pairwise-ibd")             a.pairwiseIBDFile   = next();
-        else if (arg == "--out")                      a.outputFile        = next();
-        else if (arg == "--out-prefix")               a.outPrefix         = next();
+        else if (arg == "--out")                      a.outPrefix         = next();
         else if (arg == "--prevalence")               a.refPrevalence     = std::stod(next());
         else if (arg == "--batch-effect-p-threshold") a.cutoff            = std::stod(next());
         else if (arg == "--spa-z-threshold")          a.spaCutoff         = std::stod(next());

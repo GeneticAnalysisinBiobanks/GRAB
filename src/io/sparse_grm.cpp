@@ -36,10 +36,21 @@ SparseGRM::SparseGRM(const std::string& filename,
   raw.reserve(subjectOrder.size() * 4);  // rough guess
 
   uint32_t lineNo = 0;
+  bool foundHeader = false;
   while (std::getline(ifs, line)) {
     ++lineNo;
     if (text::skipLine(line)) continue;
-    if (line.rfind("ID1", 0) == 0) continue;  // header line
+
+    // Require header: first non-comment line must start with ID1 or #ID1
+    if (!foundHeader) {
+      if (line.rfind("ID1", 0) == 0 || line.rfind("#ID1", 0) == 0) {
+        foundHeader = true;
+        continue;
+      }
+      throw std::runtime_error(
+          filename + ": first non-comment line must be a header starting with "
+          "'ID1' or '#ID1' (got: " + line.substr(0, 40) + ")");
+    }
 
     text::TokenScanner tok(line);
     tok.skipWS();

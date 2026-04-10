@@ -30,8 +30,7 @@ struct Args {
     std::string spGrmPlink2File;    // --sp-grm-plink2 (.grm.sp file)
     std::string indAfFile;          // --ind-af-coef
     std::string pairwiseIBDFile;
-    std::string outputFile;
-    std::string outPrefix;            // --out-prefix (GWAS multi-resid / --make-abed)
+    std::string outPrefix;            // --out PREFIX (always a prefix)
     std::string compression;          // --compression (gz|zst, default: empty = plain text)
     std::string extractFile;        // --extract (SNP include list)
     std::string excludeFile;        // --exclude (SNP exclude list)

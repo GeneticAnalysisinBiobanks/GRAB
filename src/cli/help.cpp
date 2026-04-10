@@ -22,27 +22,49 @@ static void printFlag(const FlagDef* f) {
 
 static void printShortHelp() {
     std::fprintf(stderr,
-        "GRAB -- Genome-wide Regression Analysis for Biobanks\n"
+        "GRAB -- Genome-Wide Robust Analysis for Biobank Data\n"
         "\n"
         "Usage:\n"
-        "  grab --method METHOD  --bfile PREFIX  --null-resid FILE  --out-prefix PREFIX  [OPTIONS]\n"
-        "  grab --cal-ind-af-coef   --bfile PREFIX  --eigenvec FILE  --out FILE\n"
-        "  grab --cal-pairwise-ibd  --sp-grm-* FILE  --bfile PREFIX  --out FILE\n"
-        "  grab --cal-admix-phi     --admix-bfile PREFIX  --sp-grm-* FILE  --out FILE\n"
-        "  grab --make-abed  --vcf FILE  --rfmix-msp FILE  --out-prefix PREFIX\n"
-        "  grab --make-abed  --admix-text-prefix PREFIX   --out-prefix PREFIX\n"
         "\n"
-        "Methods:\n");
+        "  Null-resid methods (pre-computed residual file):\n"
+        "    grab --method SPACox|SPAGRM|SAGELD|SPAmix|SPAmixPlus  \\\n"
+        "         --bfile PREFIX  --null-resid FILE  --out PREFIX  [OPTIONS]\n"
+        "\n"
+        "  Pheno methods (phenotype + covariate files, null model fitted internally):\n"
+        "    grab --method WtCoxG|LEAF  --bfile PREFIX  \\\n"
+        "         --pheno FILE  --pheno-binary COL | --pheno-surv TIME:EVENT  \\\n"
+        "         --ref-af FILE  --prevalence FLOAT  --out PREFIX  [OPTIONS]\n"
+        "    grab --method SPAsqr  --bfile PREFIX  \\\n"
+        "         --pheno FILE  --pheno-quant COL  --sp-grm-* FILE  --out PREFIX  [OPTIONS]\n"
+        "    grab --method POLMM   --bfile PREFIX  \\\n"
+        "         --pheno FILE  --pheno-ordinal COL  --sp-grm-* FILE  --out PREFIX  [OPTIONS]\n"
+        "\n"
+        "  Null-resid or pheno methods:\n"
+        "    grab --method WtCoxG|LEAF  --bfile PREFIX  --null-resid FILE  \\\n"
+        "         --ref-af FILE  --prevalence FLOAT  --out PREFIX  [OPTIONS]\n"
+        "    grab --method SPAsqr  --bfile PREFIX  --null-resid FILE  \\\n"
+        "         --sp-grm-* FILE  --out PREFIX  [OPTIONS]\n"
+        "\n"
+        "  Local-ancestry GWAS:\n"
+        "    grab --method SPAmixLocalPlus  --admix-bfile PREFIX  --admix-phi FILE  \\\n"
+        "         --null-resid FILE  --out PREFIX  [OPTIONS]\n"
+        "\n"
+        "  Utility modes:\n"
+        "    grab --cal-ind-af-coef   --bfile PREFIX  --covar FILE  --pc-cols COLS  --out PREFIX\n"
+        "    grab --cal-pairwise-ibd  --bfile PREFIX  --sp-grm-* FILE  --out PREFIX\n"
+        "    grab --cal-admix-phi     --admix-bfile PREFIX  --sp-grm-* FILE  --out PREFIX\n"
+        "    grab --make-abed  --vcf FILE  --rfmix-msp FILE  --out PREFIX\n"
+        "    grab --make-abed  --admix-text-prefix PREFIX  --out PREFIX\n"
+        "\n");
+    std::fprintf(stderr, "Run 'grab --help <topic>' for details.  Topics:\n");
     for (const MethodDef* const* p = kAllMethods; *p; ++p)
-        std::fprintf(stderr, "  %-14s %s\n", (*p)->name, (*p)->desc);
-    std::fprintf(stderr, "\nUtility modes:\n");
+        std::fprintf(stderr, "  %-20s %s\n", (*p)->name, (*p)->desc);
+    std::fprintf(stderr, "\n");
     for (const MethodDef* const* p = kAllUtilModes; *p; ++p)
         std::fprintf(stderr, "  --%-20s %s\n", (*p)->name, (*p)->desc);
     std::fprintf(stderr,
-        "\nRun 'grab --help <topic>' for details.  Topics:\n"
-        "  SPACox  SPAGRM  SPAmix  SPAmixPlus  SPAmixLocalPlus  POLMM  SPAsqr  WtCoxG  LEAF\n"
-        "  cal-ind-af-coef  cal-pairwise-ibd  cal-admix-phi  make-abed  options\n"
-        "  null-resid  covar  eigenvec  ref-af  sp-grm  pairwise-ibd  ind-af-coef  admix-phi\n");
+        "\n  options             Show all options\n"
+        "  null-resid  covar  ref-af  sp-grm  pairwise-ibd  ind-af-coef  admix-phi\n");
 }
 
 // ── Method help (generated from MethodDef) ─────────────────────────

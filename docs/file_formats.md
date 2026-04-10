@@ -1,486 +1,529 @@
-# GRAB Input File Formats
+# GRAB File Format Reference
 
-Reference for every input file format accepted by `grab`.  
-Each section describes the on-disk layout, column semantics, and
-subject-matching rules.
+This page describes the file formats accepted and produced by GRAB
+(Genome-Wide Robust Analysis for Biobank Data).
+
+Input text files are **whitespace-delimited**
+(tabs and/or spaces). Lines beginning with `##` are skipped as comments.
+Output files are tab-delimited with one header line.
+
+Compressed output (`.gz` or `.zst`) is controlled by `--compression` and
+`--compression-level`. Plain text is the default.
 
 ---
 
-## PLINK Binary Genotypes (`--bfile PREFIX`)
+## Subject set intersection
 
-Three companion files must share the same PREFIX.
+GRAB uses the **intersection** of subjects across all provided per-subject
+input files. A subject must appear in **every** loaded file to be included in
+the analysis. The procedure is:
 
-### PREFIX.bed — Binary Genotype Matrix
+1. **Start with genotype subjects.** The `.fam` / `.psam` / VCF header /
+   BGEN sample-identifier block defines the full list of candidate subjects.
+2. **Intersect with each loaded file.** For every per-subject file that was
+   given (`--pheno`, `--covar`, `--null-resid`), a subject is kept only if it
+   appears in that file with a valid (non-missing) key. Subjects present in
+   one file but absent from another are **dropped**, not filled with missing
+   values.
+3. **Drop subjects with NaN residuals.** When `--null-resid` is used, any
+   subject whose residual value is `NaN` is excluded.
+4. **Apply `--keep` / `--remove`.** These filters run **after** the
+   intersection, so they further restrict the intersected set. `--keep`
+   retains only listed subjects; `--remove` excludes listed subjects.
+5. **Filter the sparse GRM.** The sparse GRM (`--sp-grm-grab` /
+   `--sp-grm-plink2`) is loaded **after** the subject set is finalized. GRM
+   entries whose subjects are not in the final set are silently dropped.
 
-| Property | Value |
-|---|---|
-| Encoding | Binary, 2-bit per sample, SNP-major |
-| Magic bytes | `0x6C 0x1B 0x01` |
+### Example
 
-Standard PLINK 1 binary BED format.  Each marker is stored as a
-packed array of 2-bit codes:
+Suppose the genotype file has subjects {A, B, C, D, E}, the phenotype file
+has {A, B, C, F}, and the covariate file has {B, C, D, F}.
 
-| Code | Meaning |
+* After intersecting genotype ∩ pheno ∩ covar, the set is {B, C}.
+* If `--keep` lists {A, B}, the final set is {B}.
+* If a sparse GRM mentions pairs involving A or D, those entries are dropped.
+
+### Input file categories
+
+Files are grouped by what they are keyed on. Header and IID requirements
+differ across groups.
+
+#### (a) Per-subject files
+
+These files have one row per subject. Two lines are shown when both headered
+and headerless modes are supported.
+
+| Flag | Subject matching | plink2-compatible |
+|------|------------------|-------------------|
+| `--pheno` (headered) | match by `IID` column | Yes |
+| `--covar` (headered) | match by `IID` column | Yes |
+| `--covar` (headerless) | assume identical subjects as genotype file | Yes |
+| `--null-resid` (headered) | match by `IID` column | — |
+| `--null-resid` (headerless) | assume identical subjects as genotype file | — |
+| `--keep` / `--remove` (auto) | — | Yes |
+
+#### (b) Per-subject-pair files
+
+These files have one row per pair of subjects.
+
+| Flag | Subject matching | plink2-compatible |
+|------|------------------|-------------------|
+| `--sp-grm-grab` (headered) | match by `ID1` `ID2` columns | — |
+| `--sp-grm-plink2` (headerless) | match by `.grm.id` or assume identical subjects as genotype file | produced by `plink2 --make-grm-sparse` |
+| `--pairwise-ibd` (headered) | match by `ID1` `ID2` columns | — |
+| `--admix-phi` (headerless) | assume identical subjects as genotype file | — |
+
+---
+
+## Genotype input
+
+Exactly one of the following is required for GWAS methods and some utility
+modes.
+
+| Flag | Format | Subject ID source |
+|------|--------|-------------------|
+| `--bfile PREFIX` | PLINK 1 (.bed/.bim/.fam) | `.fam` |
+| `--pfile PREFIX` | PLINK 2 (.pgen/.pvar/.psam) | `.psam` |
+| `--vcf FILE` | VCF/BCF (.vcf, .vcf.gz, .bcf) | header line |
+| `--bgen FILE` | BGEN v1.2 (.bgen, .sample) | Embedded sample-ID block → companion `.sample` file |
+
+For `--bgen`: if the BGEN file contains an embedded sample-identifier block,
+those IDs are used. Otherwise GRAB looks for a companion `.sample` file (Oxford
+format: header `ID_1 ID_2 missing`, type row `0 0 0`, then `FID IID ...` data
+lines). If neither is found, numeric IDs (`"0"`, `"1"`, ...) are generated.
+
+---
+
+## Phenotype file — `--pheno FILE`  *(plink2-compatible)*
+
+Whitespace-delimited with a mandatory header containing `IID` (or `#IID`).
+One row per subject. See [plink2 phenotype file format](https://www.cog-genomics.org/plink/2.0/input#pheno)
+for full specification.
+
+Related flags:
+
+| Flag | Purpose |
 |------|---------|
-| `00` | Homozygous A1 |
-| `01` | Missing |
-| `10` | Heterozygous |
-| `11` | Homozygous A2 |
+| `--pheno-binary COL` | Select a 0/1 case/control column (WtCoxG, LEAF) |
+| `--pheno-surv TIME:EVENT` | Select survival time + event columns (WtCoxG, LEAF) |
+| `--pheno-quant COL` | Select a quantitative column (SPAsqr) |
+| `--pheno-ordinal COL` | Select an ordinal column (POLMM) |
 
-Rows are padded to full bytes.
+Example:
 
-### PREFIX.bim — Variant Information
+```
+#FID  IID       AGE  BMI  BinaryPheno  SurvTime  SurvEvent  QuantPheno
+FAM1  SAMPLE01  55   1.2  1            4.5       1          12.3
+FAM2  SAMPLE02  43   0.8  0            NA        0          8.1
+```
 
-Whitespace-delimited, one line per variant.
+### Missing values
 
-| Column | Name | Description |
-|--------|------|-------------|
-| 1 | CHROM | Chromosome code |
-| 2 | ID | Variant identifier |
-| 3 | CM | Genetic distance (centiMorgans), ignored |
-| 4 | POS | Base-pair position |
-| 5 | A1 | Allele 1 (usually minor/alt) |
-| 6 | A2 | Allele 2 (usually major/ref) |
+Any of the following tokens represent a missing value:
 
-### PREFIX.fam — Sample Information
+    .    NA    na    Na    nA    NaN    nan    Nan    NAN    N/A    n/a    NULL    null    Null
 
-Whitespace-delimited, one line per sample.
-
-| Column | Name | Description |
-|--------|------|-------------|
-| 1 | FID | Family ID |
-| 2 | IID | Individual ID (primary key for subject matching) |
-| 3 | PAT | Paternal ID (ignored) |
-| 4 | MAT | Maternal ID (ignored) |
-| 5 | SEX | Sex code (ignored) |
-| 6 | PHENO | Phenotype (ignored) |
-
-The `.fam` file defines the **canonical subject order**.  All other
-per-subject files are re-aligned to this order during loading.
+Missing values are preserved as `NaN` internally.
 
 ---
 
-## Null Model Residuals (`--null-resid FILE`)
+## Covariate file — `--covar FILE`  *(plink2-compatible)*
 
-Accepted formats, in detection order:
+Two formats are supported:
 
-### Format A — Header with IID column
+**Format A: IID-keyed (recommended).** Same plink2-compatible format as
+`--pheno`; subjects are matched by `IID`.
+
+**Format B: Pure numeric matrix.** All columns numeric, no header. Row count
+must equal the genotype subject count; rows in genotype order.
+
+Related flags:
+
+| Flag | Purpose |
+|------|---------|
+| `--covar-name COL1,COL2,...` | Select named columns as covariates |
+| `--covar-col-nums 3,5,7-10` | Select by 1-based column position |
+| `--not-covar COL1,COL2,...` | Exclude named columns |
+| `--pc-cols COL1,COL2,...` | PC columns (default: `PC1,PC2,PC3,PC4`) |
+
+When none of `--covar-name`, `--covar-col-nums`, `--not-covar` are given, all
+columns are loaded **except** `FID`, `IID`, `SID`, `PAT`, `MAT`, `SEX`, and
+columns starting with `PHENO`. Missing values are imputed with the column mean.
+
+Example:
 
 ```
-#IID    Residual
-Subj-1  -0.006972
-Subj-2   0.034234
+#FID  IID       AGE  SEX  PC1      PC2
+FAM1  SAMPLE01  55   1    0.012   -0.003
+FAM2  SAMPLE02  43   0    0.005    0.021
 ```
 
-- Lines starting with `##` are skipped (plink2-style comments).
-- The first non-`##` line starting with `#FID`, `FID`, `#IID`, or `IID`
-  is treated as a header.
-- The `IID` (or `#IID`) column identifies subjects.
-- `#FID` / `FID` columns are skipped; all other columns are value columns.
-- **Header names (apart from IID/FID) are recorded but do not affect
-  parsing** — the parser uses column order, not column names, to
-  determine which values are residuals/weights/indicators.
+---
 
-### Format B — Pure numeric matrix (no IID, no header)
+## Null-model residual file — `--null-resid FILE`
+
+Pre-computed residuals from an external null model (e.g., R). Two formats are
+supported: **IID-keyed** (with header) and **pure numeric matrix** (no header).
+
+### Format A: IID-keyed (recommended)
+
+A whitespace-delimited text file with a header containing `IID` (or `#IID`).
+The remaining columns are residual values.
 
 ```
--0.006972    0.890109    0
- 0.034234    0.890109    0
+#IID       RESID1   RESID2
+SAMPLE01   0.523    -0.112
+SAMPLE02  -0.311     0.847
 ```
 
-- First token of the first data line is numeric → pure numeric mode.
-- All columns are value columns; no IID column exists.
-- **Row count must equal the number of subjects in `.fam`.**
-  Rows are assumed to be in `.fam` order.
-- If no header is found and the first token is **not** numeric, an error
-  is raised.  Add a header line with an `IID` column to fix this.
+Subject order need not match the genotype file; subjects are matched by IID.
+
+### Format B: Pure numeric matrix
+
+All columns are numeric (no IID/FID header). Row count must equal the genotype
+subject count, and rows are assumed to be in genotype order.
+
+```
+ 0.523  -0.112
+-0.311   0.847
+```
 
 ### Column layout by method
 
-| Method | Columns after IID |
-|--------|------------------|
-| SPACox, SPAGRM, SPAmix, SPAmixPlus | `Residual` (1 or more; multi-column → multi-GWAS) |
-| WtCoxG, LEAF | `Residual Weight Indicator` (exactly 3) |
-| SPAsqr | `R_tau1 R_tau2 ... R_tauK` (K quantile residual columns) |
+| Method | Columns |
+|--------|---------|
+| SPACox, SPAGRM, SPAmix, SPAmixPlus, SPAmixLocalPlus | `RESID [RESID2 ...]` — one GWAS per column |
+| WtCoxG, LEAF | `RESID  WEIGHT  INDICATOR` — 3 fixed columns |
+| SPAsqr | `R_tau1  R_tau2  ...  R_tauK` — one column per quantile level |
+| SAGELD | `R_G  R_<E1>  R_Gx<E1>  [R_<E2>  R_Gx<E2>  ...]` |
 
-When multiple residual columns are present (SPACox/SPAGRM/SPAmix/SPAmixPlus),
-each column is run as a separate GWAS.  Single-column output goes to `--out`
-directly; multi-column output produces `PREFIX.1.gz`, `PREFIX.2.gz`, etc.
-
-### Subject matching
-
-- Format A: subjects are intersected with `.fam` by IID.
-  Only subjects present in **all** loaded files are retained.
-- Format B: rows are assumed to be in `.fam` order; no intersection
-  is performed.
+For multi-column residual files (SPACox, SPAGRM, SPAmix, SPAmixPlus,
+SPAmixLocalPlus), each column produces a separate output file:
+`PREFIX.PHENO.METHOD[.gz|.zst]`. Per-phenotype subject masks, allele counts,
+and QC stats are independent.
 
 ---
 
-## Covariate File (`--covar FILE`)
+## Reference allele frequency — `--ref-af FILE`
 
-Accepted formats:
+Two formats accepted (see also [Marker set intersection](#marker-set-intersection)):
 
-### Format A — plink2 .cov header
-
-```
-#IID    AGE     GENDER
-Subj-1  59.61   0
-Subj-2  61.32   1
-```
-
-- A header line is required (first non-blank line).
-- The `IID` (or `#IID`) column is identified for subject matching.
-- Automatically skipped columns: `#FID`, `FID`, `SID`, `PAT`, `MAT`, `SEX`,
-  `PHENO*` (any column whose name starts with "PHENO").
-- **Column names of remaining columns do not matter** — all non-skipped,
-  non-IID columns are used as covariates, identified by position.
-- An intercept column is added automatically by the method code.
-
-### Format B — Pure numeric matrix (no IID, no header)
+**Format A: PLINK 2 `.afreq`** *(plink2-compatible, produced by `plink2 --freq`)* —
+matched to genotype variants by `(CHROM, ID)` with automatic allele flip
+detection.
 
 ```
-59.61   0
-61.32   1
+#CHROM  ID  REF  ALT  ALT_FREQS  OBS_CT
+1       rs1 A    G    0.35       1000
 ```
 
-- When no `IID` or `#IID` column is found in the first line, and all
-  tokens are numeric, the file is treated as a pure numeric matrix.
-- **Row count must equal the number of subjects in `.fam`.**
-  Rows are assumed to be in `.fam` order.
+**Format B: Two-column numeric** — no header; rows in genotype variant order.
+
+```
+0.35  1000
+```
+
+For LEAF: multiple files are comma-separated on the command line, one per
+reference population.
 
 ---
 
-## Eigenvector File (`--eigenvec FILE`)
+## Sparse GRM
 
-Accepted formats:
+Provide exactly one of the following.
 
-### Format A — plink2 .eigenvec header
+### `--sp-grm-grab FILE`
 
-```
-#IID    PC1     PC2
-Subj-1  -0.8293 -0.2644
-Subj-2   0.5602  0.2659
-```
+GRAB 3-column format: whitespace-delimited.
 
-- A header line is required (first non-blank line).
-- The `IID` (or `#IID`) column is identified for subject matching.
-- Skipped columns: `#FID`, `FID`, `SID`.
-- **PC columns are identified by column name**: any header matching
-  `^[Pp][Cc]` (e.g., `PC1`, `pc2`, `PC10`) is treated as a PC column.
-  Unlike `--null-resid` and `--covar`, non-matching column names are
-  silently ignored, so column names *do* matter here.
-
-Produced by `plink2 --pca`
-
-### Format B — Pure numeric matrix (no IID, no header)
+**Header required:** Yes. The first non-comment line must be a header starting
+with `ID1` (or `#ID1`). The three columns are `ID1`, `ID2`, and `VALUE`.
+Lines beginning with `#` (after the header) are skipped as comments.
 
 ```
--0.8293  -0.2644
- 0.5602   0.2659
+ID1       ID2       VALUE
+SAMPLE01  SAMPLE01  1.002
+SAMPLE01  SAMPLE02  0.498
 ```
 
-- When no `IID` or `#IID` column is found, and all tokens are numeric,
-  the file is treated as a pure numeric matrix.
-- **Row count must equal the number of subjects in `.fam`.**
-  Rows are assumed to be in `.fam` order.
-- All columns are treated as PCs.
+Subjects not in the genotype file are silently dropped.
+
+### `--sp-grm-plink2 FILE`  *(plink2-compatible)*
+
+PLINK 2 sparse GRM (`.grm.sp`) format. A companion `.grm.id` file (headerless,
+`FID  IID` per line — as produced by `plink2 --make-grm-sparse`) is
+auto-detected by replacing `.grm.sp` with `.grm.id` in the file path. If
+`.grm.id` is absent, 0-based indices matching genotype order are assumed.
 
 ---
 
-## Sparse GRM (`--sp-grm-grab FILE` or `--sp-grm-plink2 PREFIX`)
+## Subject filtering
 
-Exactly one of the two formats must be provided.  They are mutually
-exclusive.
+### `--keep FILE` / `--remove FILE`  *(plink2-compatible)*
 
-### `--sp-grm-grab FILE` — GRAB format
+Restrict or exclude analysis subjects. Four formats are auto-detected:
 
-Three-column whitespace-delimited text file.
+| Format | Example |
+|--------|---------|
+| PLINK 2 with `#FID` | `#FID  IID\nFAM1  ID1` |
+| PLINK 2 with `#IID` | `#IID\nID1` |
+| Two-column (FID IID) | `FAM1  ID1` |
+| Single-column (IID) | `ID1` |
 
-```
-#IID1   IID2    COEF
-f1_1    f1_1    0.955062
-f1_2    f1_2    1.027229
-f1_1    f1_2    0.482510
-```
+### `--extract FILE` / `--exclude FILE`  *(plink2-compatible)*
 
-| Column | Name | Description |
-|--------|------|-------------|
-| 1 | ID1 | Subject ID (matches `.fam` IID) |
-| 2 | ID2 | Subject ID (matches `.fam` IID) |
-| 3 | VALUE | GRM coefficient |
-
-- Lines starting with `#` are skipped.
-- Subjects not present in `.fam` are silently dropped.
-- Diagonal entries (`ID1 == ID2`) and off-diagonal entries are both accepted.
-- For off-diagonal entries, the symmetric counterpart `(ID2, ID1)` is
-  added automatically when needed.
-
-This format is produced by the GRAB R package
-(`GRAB.SparseGRM()`).
-
-### `--sp-grm-plink2 PREFIX` — plink2 / GCTA format
-
-Two companion files:
-
-#### PREFIX.grm.id — Subject Index (optional)
-
-```
-f1_1    f1_1
-f1_2    f1_2
-f1_3    f1_3
-```
-
-| Column | Name | Description |
-|--------|------|-------------|
-| 1 | FID | Family ID (ignored) |
-| 2 | IID | Individual ID (maps 0-based line index to IID) |
-
-If `PREFIX.grm.id` **does not exist**, the 0-based indices in `.grm.sp`
-are assumed to correspond to `.fam` subject order.  This requires that the
-maximum index in `.grm.sp` is less than the number of subjects in `.fam`.
-
-#### PREFIX.grm.sp — Sparse GRM Entries
-
-```
-0       0       0.92288343
-1       1       1.04717390
-0       1       0.48251000
-```
-
-| Column | Name | Description |
-|--------|------|-------------|
-| 1 | idx1 | 0-based row index |
-| 2 | idx2 | 0-based column index |
-| 3 | value | GRM coefficient |
-
-- Indices reference the line order in `.grm.id` (or `.fam` when
-  `.grm.id` is absent).
-- Lower-triangular + diagonal entries are expected.
-
-Produced by `plink2 --make-grm-sparse`.
+Single-column file of SNP IDs (one per line, matching `.bim` column 2).
 
 ---
 
-## Reference Allele Frequency (`--ref-af FILE`)
+## Marker set intersection
 
-### Format A — plink2 `.afreq` header (default)
+Markers (variants) follow a similar intersection logic as subjects. The
+genotype file's variant list (`.bim`, `.pvar`, VCF records, or BGEN variant
+metadata) is the starting set.
 
-Produced by `plink2 --freq`.
+1. **Apply `--extract` / `--exclude`.** Restrict or remove markers by SNP ID.
+   Both filter by exact ID string match against the genotype variant list.
+2. **Match per-marker input files.** Files like `--ref-af` (`.afreq` format)
+   are matched to genotypes by `(CHROM, ID)` with allele-flip detection.
+   Positional per-marker files (`--ref-af` 2-column numeric, `--ind-af-coef`)
+   assume rows in the same order as the (filtered) genotype variant list.
+3. **Intersect `--bfile` with `--admix-bfile`.** When both are provided
+   (SPAmixLocalPlus), `--extract` / `--exclude` are applied to both, and only
+   markers present in both `.bim` files are analysed. Markers are matched by
+   SNP ID.
 
-```
-#CHROM  ID      REF     ALT     ALT_FREQS       OBS_CT
-1       SNP_1   A       G       0.251           1000
-```
+### Per-marker input files
 
-| Column | Name | Description |
-|--------|------|-------------|
-| 1 | #CHROM | Chromosome code |
-| 2 | ID | Variant identifier |
-| 3 | REF | Reference allele |
-| 4 | ALT | Alternate allele |
-| 5 | ALT_FREQS | Alternate allele frequency in the reference population |
-| 6 | OBS_CT | Total allele number in the reference population (sample size = OBS_CT / 2) |
-
-### Variant matching (Format A)
-
-Markers are matched to `.bim` by **(CHROM, ID)** — both must agree.
-After a CHROM+ID match the alleles are checked:
-
-- **Same orientation**: `.afreq` ALT == `.bim` col 5, `.afreq` REF == `.bim` col 6
-  → `AF_ref = ALT_FREQS`.
-- **Flipped orientation**: `.afreq` REF == `.bim` col 5, `.afreq` ALT == `.bim` col 6
-  → `AF_ref = 1 − ALT_FREQS`.
-- **No allele match** → marker is dropped.
-
-Alleles are compared case-insensitively.
-
-### Format B — two-column numeric fallback
-
-A headerless file with exactly two numeric columns per line.
-Rows are assumed to be in the same order as the `.bim` file, and the
-row count must equal the number of `.bim` markers.  No variant-ID or
-allele matching is performed — frequencies are taken as the
-`.bim` col 5 allele frequency directly.
-
-```
-0.251   1000
-0.490   998
-```
-
-| Column | Description |
-|--------|-------------|
-| 1 | `ALT_FREQS` — frequency of the `.bim` col 5 allele in the reference population |
-| 2 | `OBS_CT` — total allele number in the reference population (sample size = OBS_CT / 2) |
-
-### LEAF multi-population
-
-For **LEAF**, provide one `--ref-af` file per **reference population**
-and one `--null-resid` file per **ancestry cluster** as comma-separated
-lists.  The number of reference populations and clusters are independent:
-
-```
---null-resid cluster1_resid.txt,cluster2_resid.txt,cluster3_resid.txt
---ref-af     pop1.afreq,pop2.afreq
-```
-
-Summix uses the `nPop` reference AFs to estimate ancestry proportions
-for each cluster; per-cluster analysis then proceeds as WtCoxG.
-Either ref-af format (A or B) may be used.
+| Flag | Header | Key columns | plink2-compatible |
+|------|--------|-------------|-------------------|
+| `--ref-af` (`.afreq`) | Mandatory | `#CHROM  ID` | produced by `plink2 --freq` |
+| `--ref-af` (2-col numeric) | — | — | — |
+| `--ind-af-coef` | `#STATUS` (skipped) | — (positional) | — |
+| `--extract` / `--exclude` | No | Single SNP ID column | Yes |
 
 ---
 
-## Pairwise IBD (`--pairwise-ibd FILE`)
+## SNP-level individual AF model — `--ind-af-coef FILE`
 
-Tab-separated output from `grab --cal-pairwise-ibd`.
+Produced by `grab --cal-ind-af-coef --out PREFIX`. Output is `PREFIX.afc[.gz|.zst]`.
 
 ```
-#ID1    ID2     pa      pb      pc
-f1_1    f1_2    0.002   0.480   0.518
+#STATUS  BETA0  BETA1  ...
+0        0.35   0.02   ...
+1        0.35   0.02   0.001  ...
+2        0.35   0.02  -0.003  ...
 ```
 
-| Column | Name | Description |
-|--------|------|-------------|
-| 1 | ID1 | Subject ID |
-| 2 | ID2 | Subject ID |
-| 3 | pa | P(IBD = 0) |
-| 4 | pb | P(IBD = 1) |
-| 5 | pc | P(IBD = 2) |
+One row per filtered marker, in the same order as the genotype variant list
+(positional matching — no CHROM or ID columns). The header line `#STATUS ...`
+is skipped on read.
 
-- The header line starts with `#` and is skipped by the reader.
-- Lines starting with `#` are ignored, so headerless files from
-  older versions are also accepted.
-
-Required by SPAGRM.
+`STATUS` is an integer: `0` = uniform (MAC ≤ 20), `1` = OLS, `2` = logistic.
+`BETA0..BETAK` are the regression coefficients (intercept + one per PC).
+Row count must equal the number of filtered markers.
 
 ---
 
-## Individual AF Coefficients (`--ind-af-coef FILE`)
+## Pairwise IBD file — `--pairwise-ibd FILE`
 
-Pre-computed allele-frequency model produced by
-`grab --cal-ind-af-coef`.
+Produced by `grab --cal-pairwise-ibd --out PREFIX`. Output is `PREFIX.ibd[.gz|.zst]`.
 
-Markers are **not** matched by ID.  Both text and binary formats assume
-the same marker order as the `.bim` file used when the model was
-computed.  The marker count must match exactly.
-
-### Text/gzip format (`.txt` / `.gz`)
+**Header required:** Yes. The first non-comment line must be a header starting
+with `ID1` (or `#ID1`). The five columns are `ID1`, `ID2`, `pa`, `pb`, `pc`.
 
 Tab-separated with header:
 
 ```
-#STATUS BETA0   BETA1   BETA2
-0       0.25    0       0
-1       0.25    -0.03   0.01
-2       -1.10   0       0.08
+#ID1      ID2       pa          pb          pc
+SAMPLE01  SAMPLE02  0.00123     0.24500     0.75377
 ```
 
-| Column | Name | Description |
-|--------|------|-------------|
-| 1 | STATUS | Model fit status (integer, see below) |
-| 2+ | BETA0 ... BETAp | Regression coefficients (intercept + PC betas) |
-
-STATUS values:
-
-| Value | Meaning |
-|-------|---------|
-| 0 | Uniform — MAC too low, use population allele frequency |
-| 1 | OLS — linear regression fit used |
-| 2 | Logistic — logistic regression on significant PCs |
-
-- Lines starting with `#` are treated as header/comments and skipped.
-- One data row per filtered marker, in `.bim` order.
-
-### Binary format (`.bin`)
-
-Random-access binary file.  No header.  Records are indexed by raw
-`.bim` line number (genoIndex), so the file is pre-allocated to
-`nBimMarkers * recordSize` bytes.
-
-**Record layout** (one per `.bim` marker):
-
-| Offset | Type | Description |
-|--------|------|-------------|
-| 0 | `int8_t` | STATUS (0, 1, or 2) |
-| 1 | `double[1+nPC]` | BETA0, BETA1, ..., BETAp |
-
-`recordSize = sizeof(int8_t) + (1 + nPC) * sizeof(double)`
-
-- Unprocessed markers (e.g. filtered out) are all-zero (status 0, betas 0).
-- The number of PCs (`nPC`) must be known at read time (same value used
-  when the file was written).
-- Byte order is machine-native (not portable across architectures).
+`pa`, `pb`, `pc` are probabilities of sharing 2, 1, 0 alleles IBD respectively.
 
 ---
 
-## extract_tracts Text Files (`--admix-text-prefix PREFIX`)
+## Phi kinship file — `--admix-phi FILE`
 
-Input for `grab --make-abed --admix-text-prefix PREFIX`, produced by
-`extract_tracts_fast_pgzip.py`.
+Produced by `grab --cal-admix-phi --out PREFIX`. Output is `PREFIX.phi[.gz|.zst]`.
 
-### File naming
+Wide tab-separated format with one row per related pair:
 
-For each ancestry `k` (0-based, auto-detected by scanning from `k=0`):
+```
+idx1  idx2  anc0_A     anc0_B     anc0_C     anc0_D     anc1_A     anc1_B     ...
+0     5     0.12345    0.00000    0.00000    0.12345    0.23456    0.00000    ...
+```
+
+Indices are 0-based into `.fam` row order. Four phi matrix values (A, B, C, D)
+per ancestry.
+
+---
+
+## Admixed ancestry genotypes (.abed) — `--admix-bfile PREFIX`
+
+A GRAB-specific binary format for ancestry-specific dosage and hapcount data.
+Produced by `grab --make-abed --out PREFIX`.
 
 | File | Description |
 |------|-------------|
-| `{PREFIX}.anc{k}.dosage[.gz]` | Dosage values (0/1/2 per sample) for ancestry k |
-| `{PREFIX}.anc{k}.hapcount[.gz]` | Haplotype count values (0/1/2 per sample) for ancestry k |
+| `PREFIX.abed` | BGZF-compressed binary ancestry dosage/hapcount matrix |
+| `PREFIX.bim` | Standard PLINK `.bim` variant file (shared with PLINK) |
+| `PREFIX.fam` | Standard PLINK `.fam` subject file (shared with PLINK) |
 
-Both plain text and gzip-compressed files are accepted transparently.
-K is determined by scanning from `k=0` until no dosage file is found.
+### Binary layout
 
-### File format
+The `.abed` file is BGZF-compressed (indexed via `.abed.gzi`).
 
-Tab-delimited text with a header row:
+**Header (8 bytes):**
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 2 | `magic` | `{0xAD, 0x4D}` |
+| 2 | 1 | `version` | `0x02` |
+| 3 | 1 | `nAnc` | Bits 0–6: number of ancestries K (1–127). Bit 7: NO_MISSING flag |
+| 4 | 4 | `nSamples` | Subject count N (little-endian uint32) |
+
+Marker count M is derived from the companion `.bim` file.
+
+**Body (SNP-major):**
+
+For each of the M markers, 2K tracks are stored sequentially:
 
 ```
-CHROM   POS     ID      REF     ALT     SAMPLE1 SAMPLE2 ...
-chr1    100000  rs1234  A       G       0       1       ...
-chr1    200000  rs5678  C       T       2       0       ...
+[dosage_anc0][hapcount_anc0][dosage_anc1][hapcount_anc1]...[dosage_anc(K-1)][hapcount_anc(K-1)]
 ```
 
-| Column | Name | Description |
-|--------|------|-------------|
-| 1 | CHROM | Chromosome |
-| 2 | POS | Base-pair position |
-| 3 | ID | Variant identifier |
-| 4 | REF | Reference allele |
-| 5 | ALT | Alternate allele |
-| 6+ | SAMPLE_IDs | Integer value per sample (0, 1, or 2) |
+Each track is `ceil(N / 4)` bytes using **PLINK-compatible 2-bit encoding**
+(4 subjects per byte, LSB first):
 
-- The header of `{PREFIX}.anc0.dosage[.gz]` defines the `.bim` and `.fam` of the output.
-- All ancestry files must share the same marker and sample order.
-- Missing values (`NA`, `.`, `-9`) are encoded as missing in the `.abed` file.
+| 2-bit code | Value |
+|------------|-------|
+| `00` | 0 (reference homozygote) |
+| `10` | 1 (heterozygote) |
+| `11` | 2 (alternate homozygote) |
+| `01` | missing |
 
-### Output
+When the NO_MISSING flag is set (bit 7 of `nAnc`), code `01` is treated as 0.
 
-`grab --make-abed --admix-text-prefix PREFIX --out-prefix OUT` writes:
+**Total file size:** `8 + M × 2K × ceil(N/4)` bytes (before BGZF compression).
 
-| File | Contents |
-|------|----------|
-| `OUT.abed` | Binary ancestry track matrix (2K tracks per marker: dosage + hapcount per ancestry) |
-| `OUT.bim` | Variant information (CHROM ID 0 POS REF ALT) from the first dosage file |
-| `OUT.fam` | Sample list from the first dosage file header (FID=IID) |
+### Production
 
-Pass `OUT` as `--admix-bfile` to `SPAmixLocalPlus` or `--cal-admix-phi`.
+Two input modes (mutually exclusive):
+
+- `grab --make-abed --vcf FILE --rfmix-msp FILE --out PREFIX` — phased VCF/BCF
+  + rfmix2 MSP → `.abed`
+- `grab --make-abed --admix-text-prefix PREFIX --out PREFIX` — extract_tracts
+  text output → `.abed`
+
+### Usage
+
+Pass `PREFIX` as `--admix-bfile PREFIX` to SPAmixLocalPlus or `--cal-admix-phi`.
 
 ---
 
-## Summary of Subject Matching Rules
+## MSP local-ancestry file — `--rfmix-msp FILE`
 
-| File | IID source | Fallback | Parser | Source file |
-|------|-----------|----------|--------|-------------|
-| `.fam` | Column 2 (IID) | — | `parseFamIIDs()` | `io/subject_data.cpp` |
-| `--null-resid` | Header `IID` / `#IID` column | Pure numeric: `.fam` order (row count must match) | `SubjectData::parseIIDFile()` | `io/subject_data.cpp` |
-| `--covar` | Header `IID` / `#IID` column | Pure numeric: `.fam` order (row count must match) | `SubjectData::loadCovar()` | `io/subject_data.cpp` |
-| `--eigenvec` | Header `IID` / `#IID` column | Pure numeric: `.fam` order (row count must match) | `SubjectData::loadEigenVecs()` | `io/subject_data.cpp` |
-| `--sp-grm-grab` | ID1 / ID2 columns | — | `SparseGRM()` constructor | `io/sparse_grm.cpp` |
-| `--sp-grm-plink2` | `.grm.id` file | `.fam` order when `.grm.id` absent | `SparseGRM::fromGCTA()` | `io/sparse_grm.cpp` |
-| `--pairwise-ibd` | ID1 / ID2 columns | — | `loadIBD()` | `spagrm/geno_prob.cpp` |
-| `--ref-af` | CHROM + ID matching, allele flip | Two-column numeric: `.bim` order (row count must match) | `loadRefAfFile()` + `matchMarkers()` / `matchMarkersNumeric()` | `wtcoxg/wtcoxg.cpp` |
-| `--ind-af-coef` | Same marker order as `.bim` | — | `loadAFModels()` / `IndivAFReader` | `spamix/indiv_af.cpp` |
+rfmix2 output format accepted by `--make-abed`:
 
-When subject IIDs are provided, the analysis uses the **intersection**
-of all loaded files and `.fam`.  When a file uses `.fam`-order fallback
-(pure numeric matrix or missing `.grm.id`), all `.fam` subjects are
-implicitly included from that file.
+```
+#Subpopulation order/codes: 0=POP0\t1=POP1\t...
+#chm  spos  epos  sgpos  egpos  n snps  IID0.0  IID0.1  ...
+1     0     50000 0.0    0.5    100      0       1       ...
+```
+
+Line 1 defines ancestry codes (K inferred from count).
+Line 2 is the column header.
+Data lines: chromosome, start/end positions (0-based, exclusive end),
+genetic positions, SNP count, then per-haplotype ancestry calls.
+
+---
+
+## Extract-tracts text format — `--admix-text-prefix PREFIX`
+
+Text files produced by extract_tracts:
+
+```
+{PREFIX}.anc{k}.dosage[.gz]
+{PREFIX}.anc{k}.hapcount[.gz]
+```
+
+For k = 0, 1, ... (K auto-detected from file presence). Each file has:
+
+```
+CHROM  POS  ID  REF  ALT  SAMPLE1  SAMPLE2  ...
+1      100  rs1 A    G    0        2        ...
+```
+
+Values are integers 0–2.
+
+---
+
+## Output files
+
+All GWAS methods write to `--out PREFIX` with a suffix determined by the method.
+
+### GWAS output naming
+
+| Method | Suffix | Output path |
+|--------|--------|-------------|
+| SPACox | `.PHENO.SPACox` | `PREFIX.PHENO.SPACox[.gz\|.zst]` |
+| SPAGRM | `.PHENO.SPAGRM` | `PREFIX.PHENO.SPAGRM[.gz\|.zst]` |
+| SPAmix | `.PHENO.SPAmix` | `PREFIX.PHENO.SPAmix[.gz\|.zst]` |
+| SPAmixPlus | `.PHENO.SPAmixP` | `PREFIX.PHENO.SPAmixP[.gz\|.zst]` |
+| SPAmixLocalPlus | `.PHENO.LocalPlus` | `PREFIX.PHENO.LocalPlus[.gz\|.zst]` |
+| SAGELD | `.SAGELD` | `PREFIX.SAGELD[.gz\|.zst]` |
+| POLMM | `.POLMM` | `PREFIX.POLMM[.gz\|.zst]` |
+| SPAsqr | `.SPAsqr` | `PREFIX.SPAsqr[.gz\|.zst]` |
+| WtCoxG | `.WtCoxG` | `PREFIX.WtCoxG[.gz\|.zst]` |
+| LEAF | `.LEAF` | `PREFIX.LEAF[.gz\|.zst]` |
+
+For multi-residual methods (SPACox, SPAGRM, SPAmix, SPAmixPlus,
+SPAmixLocalPlus), `PHENO` is the column name from `--null-resid`.
+
+### Utility output naming
+
+| Mode | Suffix | Output path |
+|------|--------|-------------|
+| `--cal-ind-af-coef` | `.afc` | `PREFIX.afc[.gz\|.zst]` |
+| `--cal-pairwise-ibd` | `.ibd` | `PREFIX.ibd[.gz\|.zst]` |
+| `--cal-admix-phi` | `.phi` | `PREFIX.phi[.gz\|.zst]` |
+| `--make-abed` | `.abed` / `.bim` / `.fam` | `PREFIX.abed`, `PREFIX.bim`, `PREFIX.fam` |
+
+### Common GWAS output columns
+
+All GWAS output files are tab-separated with one header line. The first columns
+are always marker metadata:
+
+```
+CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+```
+
+| Column | Description |
+|--------|-------------|
+| `CHROM` | Chromosome |
+| `POS` | Base-pair position |
+| `ID` | Variant ID (from `.bim`) |
+| `REF` | Reference allele |
+| `ALT` | Alternate allele |
+| `MISS_RATE` | Per-marker missing rate |
+| `ALT_FREQ` | Alternate allele frequency (after QC filtering) |
+| `MAC` | Minor allele count |
+| `HWE_P` | Hardy-Weinberg equilibrium p-value |
+
+Method-specific columns follow the metadata columns (see `grab --help METHOD`
+for each method's output column details).
+
+---
+
+## Compression
+
+Output compression is controlled by two flags:
+
+| Flag | Values | Default |
+|------|--------|---------|
+| `--compression` | `gz` (gzip) or `zst` (Zstandard) | plain text |
+| `--compression-level` | gz: 1–9; zst: 1–22 | 0 (library default) |
+
+Input files with `.gz` or `.zst` extensions are auto-detected and decompressed
+transparently.

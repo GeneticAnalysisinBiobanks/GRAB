@@ -800,7 +800,7 @@ void runPhiEstimation(
     AdmixData admixData(admixPrefix, usedMask, nFam, nUsed,
                         extractFile, excludeFile);
     int K = admixData.nAncestries();
-    infoMsg("Ancestries: %d, Markers: %u, Samples: %u", K, admixData.nMarkers(), admixData.nSubjUsed());
+    infoMsg("Ancestries: %d, Markers: %u, Subjects: %u", K, admixData.nMarkers(), admixData.nSubjUsed());
 
     // Estimate phi for all ancestries
     std::vector<PhiMatrices> allPhi(K);
@@ -1182,7 +1182,7 @@ void runSPAmixLocalPlus(
         const Eigen::VectorXd& resid = (nRC > 1) ? colResid : sd.residuals();
 
         std::string outFile = TextWriter::buildOutputPath(
-            outPrefix, pi.name, "SPAmixLocalPlus", compression);
+            outPrefix, pi.name, "LocalP", compression);
 
         infoMsg("  Phenotype '%s': %u subjects, %u markers, %d ancestries -> %s",
                 pi.name.c_str(), pi.nUsed, admixData.nMarkers(), K, outFile.c_str());

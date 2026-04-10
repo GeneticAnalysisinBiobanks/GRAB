@@ -106,10 +106,41 @@ static std::vector<std::string> parseBgenSampleIDs(const std::string& bgenFile) 
             ids.push_back(std::move(id));
         }
     } else {
-        // No sample IDs in file: generate 0-based numeric IDs
-        ids.reserve(nSamples);
-        for (uint32_t i = 0; i < nSamples; ++i)
-            ids.push_back(std::to_string(i));
+        // No sample IDs in BGEN — try companion .sample file (Oxford format)
+        std::string sampleFile = bgenFile;
+        auto dotPos = sampleFile.rfind('.');
+        if (dotPos != std::string::npos)
+            sampleFile = sampleFile.substr(0, dotPos);
+        sampleFile += ".sample";
+        std::ifstream sfs(sampleFile);
+        if (sfs) {
+            // Oxford .sample: line 1 = header, line 2 = type row, data lines = FID IID ...
+            std::string line;
+            std::getline(sfs, line);  // header (e.g. "ID_1 ID_2 missing")
+            std::getline(sfs, line);  // type row (e.g. "0 0 0")
+            ids.reserve(nSamples);
+            while (std::getline(sfs, line)) {
+                if (line.empty()) continue;
+                // IID is the second whitespace-delimited token
+                std::istringstream iss(line);
+                std::string fid, iid;
+                iss >> fid >> iid;
+                if (iid.empty()) iid = fid;  // single-column fallback
+                ids.push_back(std::move(iid));
+            }
+            if (ids.size() != nSamples)
+                throw std::runtime_error(
+                    sampleFile + ": expected " + std::to_string(nSamples) +
+                    " subjects but found " + std::to_string(ids.size()));
+            infoMsg("BGEN: read %u subject IDs from %s", nSamples, sampleFile.c_str());
+        } else {
+            // No .sample file either: generate 0-based numeric IDs
+            ids.reserve(nSamples);
+            for (uint32_t i = 0; i < nSamples; ++i)
+                ids.push_back(std::to_string(i));
+            infoMsg("BGEN: no sample ID block and no .sample file; using numeric IDs 0..%u",
+                    nSamples - 1);
+        }
     }
     return ids;
 }

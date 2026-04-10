@@ -127,7 +127,7 @@ static MspData parseMsp(const std::string& mspFile) {
         size_t nHapCols = cols.size() - 6;
         if (nHapCols == 0 || nHapCols % 2 != 0) {
             gzclose(gz);
-            throw std::runtime_error("MSP header line 2: expected even number of sample columns (got "
+            throw std::runtime_error("MSP header line 2: expected even number of subject columns (got "
                                      + std::to_string(nHapCols) + ")");
         }
         msp.nSamples = static_cast<uint32_t>(nHapCols / 2);
@@ -171,7 +171,7 @@ static MspData parseMsp(const std::string& mspFile) {
     if (msp.windows.empty())
         throw std::runtime_error("MSP file has no data rows: " + mspFile);
 
-    infoMsg("MSP: K=%d, %u samples, %zu windows", msp.K, msp.nSamples,
+    infoMsg("MSP: K=%d, %u subjects, %zu windows", msp.K, msp.nSamples,
             msp.windows.size());
     return msp;
 }
@@ -262,15 +262,15 @@ static uint32_t processVcf(
     if ((uint32_t)nSamplesVcf != msp.nSamples) {
         bcf_destroy(rec); bcf_hdr_destroy(hdr); hts_close(fp);
         throw std::runtime_error(
-            "Sample count mismatch: VCF has " + std::to_string(nSamplesVcf) +
-            " samples, MSP has " + std::to_string(msp.nSamples));
+            "Subject count mismatch: VCF has " + std::to_string(nSamplesVcf) +
+            " subjects, MSP has " + std::to_string(msp.nSamples));
     }
     for (int s = 0; s < nSamplesVcf; ++s) {
         const char* vcfID = hdr->samples[s];
         if (msp.sampleIDs[(uint32_t)s] != vcfID) {
             bcf_destroy(rec); bcf_hdr_destroy(hdr); hts_close(fp);
             throw std::runtime_error(
-                "Sample name mismatch at index " + std::to_string(s) +
+                "Subject name mismatch at index " + std::to_string(s) +
                 ": VCF has '" + vcfID + "', MSP has '" + msp.sampleIDs[(uint32_t)s] + "'");
         }
     }
@@ -540,6 +540,6 @@ void convertVcfMspToAbed(
         infoMsg("[INFO] --make-abfile: %llu missing genotypes encountered (imputed to ref)",
                 (unsigned long long)nMissing);
 
-    infoMsg("Conversion complete: %s.abed (%u markers x %u samples x %d ancestries)",
+    infoMsg("Conversion complete: %s.abed (%u markers x %u subjects x %d ancestries)",
             outPrefix.c_str(), nMarkers, nKept, msp.K);
 }

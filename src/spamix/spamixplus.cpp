@@ -392,7 +392,7 @@ void runSPAmixPlus(
   const int K = sd.residOneCols();
   if (K > 1) infoMsg("Multi-column residual file: %d phenotypes", K);
 
-  const char* methodLabel = hasGRM ? "SPAmixPlus" : "SPAmix";
+  const char* methodLabel = hasGRM ? "SPAmixP" : "SPAmix";
 
   // Per-phenotype data storage (must outlive PhenoTasks)
   std::vector<Eigen::VectorXd> pResid(K), pResid2(K);

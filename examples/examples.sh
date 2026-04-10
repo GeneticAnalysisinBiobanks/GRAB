@@ -7,7 +7,7 @@ build/grab \
   --covar-name AGE,GENDER,PC1,PC2 \
   --bfile examples/simuPLINK \
   --sp-grm-grab examples/SparseGRM.txt \
-  --out tmp/POLMM_output.txt \
+  --out tmp/POLMM_output \
   --threads 3
 
 ## WtCoxG
@@ -19,7 +19,7 @@ build/grab \
   --ref-af examples/simuPLINK.afreq \
   --sp-grm-plink2 examples/simuPLINK.grm.sp \
   --prevalence 0.1 \
-  --out tmp/WtCoxG_output.txt \
+  --out tmp/WtCoxG_output \
   --threads 3
 
 build/grab \
@@ -31,7 +31,7 @@ build/grab \
   --ref-af examples/simuPLINK.afreq \
   --sp-grm-plink2 examples/simuPLINK.grm.sp \
   --prevalence 0.1 \
-  --out tmp/WtCoxG_binary.txt \
+  --out tmp/WtCoxG_binary \
   --threads 3
 
 build/grab \
@@ -43,7 +43,7 @@ build/grab \
   --ref-af examples/simuPLINK.afreq \
   --sp-grm-plink2 examples/simuPLINK.grm.sp \
   --prevalence 0.1 \
-  --out tmp/WtCoxG_survival.txt \
+  --out tmp/WtCoxG_survival \
   --threads 3
 
 ## LEAF
@@ -55,7 +55,7 @@ build/grab \
   --ref-af examples/simuPLINK.afreq,examples/simuPLINK.afreq \
   --sp-grm-grab examples/SparseGRM.txt \
   --prevalence 0.1 \
-  --out tmp/LEAF_output.txt \
+  --out tmp/LEAF_output \
   --chunk-size 256 \
   --threads 3
 
@@ -70,7 +70,7 @@ build/grab \
   --ref-af examples/simuPLINK.afreq,examples/simuPLINK.afreq \
   --sp-grm-plink2 examples/simuPLINK.grm.sp \
   --prevalence 0.1 \
-  --out tmp/LEAF_binary.txt \
+  --out tmp/LEAF_binary \
   --threads 3
 
 build/grab \
@@ -84,7 +84,7 @@ build/grab \
   --ref-af examples/simuPLINK.afreq,examples/simuPLINK.afreq \
   --sp-grm-plink2 examples/simuPLINK.grm.sp \
   --prevalence 0.1 \
-  --out tmp/LEAF_survival.txt \
+  --out tmp/LEAF_survival \
   --threads 3
 
 ## SPAGRM
@@ -93,23 +93,23 @@ build/grab \
   --cal-pairwise-ibd \
   --sp-grm-grab examples/SparseGRM.txt \
   --bfile examples/simuPLINK \
-  --out examples/PairwiseIBD.txt
+  --out examples/PairwiseIBD
 
 build/grab \
   --method SPAGRM \
   --null-resid examples/simuResid_2cols.txt \
   --sp-grm-grab examples/SparseGRM.txt \
-  --pairwise-ibd examples/PairwiseIBD.txt \
+  --pairwise-ibd examples/PairwiseIBD.ibd \
   --bfile examples/simuPLINK \
-  --out-prefix tmp/SPAGRM_output
+  --out tmp/SPAGRM_output
 
 build/grab \
   --method SPAGRM \
   --null-resid examples/simuResid_2resids.txt \
   --sp-grm-grab examples/SparseGRM.txt \
-  --pairwise-ibd examples/PairwiseIBD.txt \
+  --pairwise-ibd examples/PairwiseIBD.ibd \
   --bfile examples/simuPLINK \
-  --out-prefix tmp/SPAGRM_output
+  --out tmp/SPAGRM_output
 
 ## SPAsqr
 
@@ -118,7 +118,7 @@ build/grab \
   --null-resid examples/simuResidMat.txt \
   --sp-grm-plink2 examples/simuPLINK.grm.sp \
   --bfile examples/simuPLINK \
-  --out tmp/SPAsqr_output.txt
+  --out tmp/SPAsqr_output
 
 build/grab \
   --method SPAsqr \
@@ -128,7 +128,7 @@ build/grab \
   --covar-name AGE,GENDER,PC1,PC2,PC3,PC4 \
   --bfile examples/simuPLINK \
   --sp-grm-plink2 examples/simuPLINK.grm.sp \
-  --out tmp/SPAsqr_output.txt \
+  --out tmp/SPAsqr_output \
   --threads 3
 
 ## SPACox
@@ -138,7 +138,7 @@ build/grab \
   --null-resid examples/simuResid_2resids.txt \
   --covar examples/simuDesign.txt \
   --bfile examples/simuPLINK \
-  --out-prefix tmp/SPACox_output \
+  --out tmp/SPACox_output \
   --compression gz \
   --compression-level 6
 
@@ -149,7 +149,7 @@ build/grab \
   --covar examples/simuPHENO.txt \
   --pc-cols PC1,PC2,PC3,PC4 \
   --bfile examples/simuPLINK \
-  --out tmp/SPAmixAfCoef.txt
+  --out tmp/SPAmixAfCoef
 
 ## SPAmix
 
@@ -159,7 +159,7 @@ build/grab \
   --covar examples/simuPHENO.txt \
   --pc-cols PC1,PC2,PC3,PC4 \
   --bfile examples/simuPLINK \
-  --out-prefix tmp/SPAmix_output
+  --out tmp/SPAmix_output
 
 ## SPAmixPlus
 
@@ -169,33 +169,33 @@ build/grab \
   --covar examples/simuPHENO.txt \
   --pc-cols PC1,PC2,PC3,PC4 \
   --bfile examples/simuPLINK \
-  --ind-af-coef tmp/SPAmixAfCoef.txt \
+  --ind-af-coef tmp/SPAmixAfCoef.afc \
   --sp-grm-grab examples/SparseGRM.txt \
-  --out-prefix tmp/SPAmixPlus_output
+  --out tmp/SPAmixPlus_output
 
 ## SPAmixLocalPlus
 
 build/grab --make-abed \
   --vcf examples/spamixlocalp/admix_bfile/head10.bcf \
   --rfmix-msp examples/spamixlocalp/admix_bfile/head10.msp.gz \
-  --out-prefix examples/spamixlocalp/admix_bfile/head10 
+  --out examples/spamixlocalp/admix_bfile/head10 
   
 build/grab --make-abed \
   --admix-text-prefix examples/spamixlocalp/simuAncestry \
-  --out-prefix examples/spamixlocalp/simuAncestry
+  --out examples/spamixlocalp/simuAncestry
 
 build/grab \
   --cal-admix-phi \
   --admix-bfile examples/spamixlocalp/simuAncestry \
   --sp-grm-plink2 examples/simuPLINK.grm.sp \
-  --out examples/spamixlocalp/simuAncestry.phi
+  --out examples/spamixlocalp/simuAncestry
 
 build/grab \
   --method SPAmixLocalPlus \
   --null-resid examples/simuResid_2cols.txt \
   --admix-bfile examples/spamixlocalp/simuAncestry \
   --admix-phi examples/spamixlocalp/simuAncestry.phi \
-  --out-prefix tmp/SPAmixLocalPlus_output
+  --out tmp/SPAmixLocalPlus_output
 
 # SAGELD
 
@@ -203,7 +203,7 @@ build/grab \
   --method SAGELD \
   --null-resid examples/simuResid_SAGELD2.txt \
   --sp-grm-grab examples/SparseGRM.txt \
-  --pairwise-ibd examples/PairwiseIBD.txt \
+  --pairwise-ibd examples/PairwiseIBD.ibd \
   --bfile examples/simuPLINK \
-  --out tmp/SAGELD_output2.txt
+  --out tmp/SAGELD_output2
   

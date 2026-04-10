@@ -173,8 +173,7 @@ static void logArgsInEffect(const Args& args) {
     if (!args.admixPhiFile.empty())      std::fprintf(stderr, "  --admix-phi %s\n",     args.admixPhiFile.c_str());
     if (!args.mspFile.empty())           std::fprintf(stderr, "  --rfmix-msp %s\n",     args.mspFile.c_str());
     if (!args.admixTextPrefix.empty())   std::fprintf(stderr, "  --admix-text-prefix %s\n", args.admixTextPrefix.c_str());
-    if (!args.outputFile.empty())        std::fprintf(stderr, "  --out %s\n",           args.outputFile.c_str());
-    if (!args.outPrefix.empty())         std::fprintf(stderr, "  --out-prefix %s\n",    args.outPrefix.c_str());
+    if (!args.outPrefix.empty())         std::fprintf(stderr, "  --out %s\n",           args.outPrefix.c_str());
     if (!args.compression.empty())       std::fprintf(stderr, "  --compression %s\n",   args.compression.c_str());
     // numeric: log only when non-default
     if (args.refPrevalence > 0.0)        std::fprintf(stderr, "  --prevalence %g\n",               args.refPrevalence);
@@ -238,7 +237,7 @@ int run(int argc, char* argv[]) {
                          " --method or --cal-pairwise-ibd.\n";
             return 1;
         }
-        require(args.outputFile,  "--out",     "--cal-ind-af-coef");
+        require(args.outPrefix,  "--out",     "--cal-ind-af-coef");
         auto geno = resolveGenoSpec(args, "--cal-ind-af-coef");
         if (pcColNames.empty()) {
             std::cerr << "Error: --pc-cols is required for --cal-ind-af-coef.\n";
@@ -250,10 +249,14 @@ int run(int argc, char* argv[]) {
             return 1;
         }
         logArgsInEffect(args);
+        std::string afcSuffix = ".afc";
+        if (args.compression == "gz")       afcSuffix += ".gz";
+        else if (args.compression == "zst") afcSuffix += ".zst";
+        std::string afcOutput = args.outPrefix + afcSuffix;
         try {
             runSPAmixAF(
                 pcColNames, args.phenoFile, args.covarFile,
-                geno, args.outputFile,
+                geno, afcOutput,
                 args.nthread, args.nSnpPerChunk,
                 args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
                 args.keepFile, args.removeFile,
@@ -273,14 +276,18 @@ int run(int argc, char* argv[]) {
             return 1;
         }
         require(args.admixBfilePrefix, "--admix-bfile", "--cal-admix-phi");
-        require(args.outputFile,       "--out",         "--cal-admix-phi");
+        require(args.outPrefix,       "--out",         "--cal-admix-phi");
         checkSpGrm(args, /*required=*/true, "--cal-admix-phi");
         logArgsInEffect(args);
+        std::string phiSuffix = ".phi";
+        if (args.compression == "gz")       phiSuffix += ".gz";
+        else if (args.compression == "zst") phiSuffix += ".zst";
+        std::string phiOutput = args.outPrefix + phiSuffix;
         try {
             runPhiEstimation(
                 args.admixBfilePrefix,
                 args.spGrmGrabFile, args.spGrmPlink2File,
-                args.outputFile,
+                phiOutput,
                 /*keepFile=*/{}, /*removeFile=*/{},
                 args.extractFile, args.excludeFile,
                 args.nthread);
@@ -312,7 +319,7 @@ int run(int argc, char* argv[]) {
                          " or (--admix-text-prefix PREFIX).\n";
             return 1;
         }
-        require(args.outPrefix, "--out-prefix", "--make-abed");
+        require(args.outPrefix, "--out", "--make-abed");
         logArgsInEffect(args);
         if (hasVcfMsp)
             infoMsg("Parsing MSP file into memory; this may take several minutes and memory scales with sample count and window count.");
@@ -337,14 +344,18 @@ int run(int argc, char* argv[]) {
                          " --method.\n";
             return 1;
         }
-        require(args.outputFile,  "--out",   "--cal-pairwise-ibd");
+        require(args.outPrefix,  "--out",   "--cal-pairwise-ibd");
         auto geno = resolveGenoSpec(args, "--cal-pairwise-ibd");
         checkSpGrm(args, /*required=*/true, "--cal-pairwise-ibd");
         logArgsInEffect(args);
+        std::string ibdSuffix = ".ibd";
+        if (args.compression == "gz")       ibdSuffix += ".gz";
+        else if (args.compression == "zst") ibdSuffix += ".zst";
+        std::string ibdOutput = args.outPrefix + ibdSuffix;
         try {
             runPairwiseIBD(
                 args.spGrmGrabFile, args.spGrmPlink2File, geno,
-                args.outputFile, args.minMafIBD, args.nthread);
+                ibdOutput, args.minMafIBD, args.nthread);
         } catch (const std::exception& e) {
             std::cerr << "[ERROR] " << e.what() << "\n"; return 1;
         }
@@ -385,30 +396,7 @@ int run(int argc, char* argv[]) {
     }
 
     // Common required flags for all GWAS methods
-    // Methods with per-phenotype output require --out-prefix; others require --out
-    const bool usesOutPrefix = (args.method == "SPACox"  || args.method == "SPAGRM" ||
-                                args.method == "SPAmix"  || args.method == "SPAmixPlus" ||
-                                args.method == "SPAmixLocalPlus");
-
-    if (!args.outputFile.empty() && !args.outPrefix.empty()) {
-        std::cerr << "Error: --out and --out-prefix are mutually exclusive.\n";
-        return 1;
-    }
-    if (usesOutPrefix) {
-        if (!args.outputFile.empty()) {
-            std::cerr << "Error: " << args.method
-                      << " requires --out-prefix, not --out.\n";
-            return 1;
-        }
-        require(args.outPrefix, "--out-prefix", args.method.c_str());
-    } else {
-        if (!args.outPrefix.empty()) {
-            std::cerr << "Error: --out-prefix is not supported for "
-                      << args.method << ". Use --out instead.\n";
-            return 1;
-        }
-        require(args.outputFile, "--out", args.method.c_str());
-    }
+    require(args.outPrefix, "--out", args.method.c_str());
 
     // Validate --compression
     if (!args.compression.empty() &&
@@ -488,12 +476,13 @@ int run(int argc, char* argv[]) {
 
     logArgsInEffect(args);
 
-    // Transitional: construct single output path from --out-prefix for methods
-    // being migrated to per-phenotype output.  multiPhenoEngine (Phase 4) will
-    // replace these calls and handle per-phenotype files natively.
-    const std::string outFile = usesOutPrefix
-        ? args.outPrefix + "." + args.method
-        : args.outputFile;
+    // Build suffix-based output path for single-file methods (SAGELD, POLMM, SPAsqr, WtCoxG, LEAF)
+    auto buildOutputPath = [&](const std::string& suffix) -> std::string {
+        std::string path = args.outPrefix + suffix;
+        if (args.compression == "gz")       path += ".gz";
+        else if (args.compression == "zst") path += ".zst";
+        return path;
+    };
 
     try {
         // ── SPACox ─────────────────────────────────────────────────
@@ -529,7 +518,7 @@ int run(int argc, char* argv[]) {
             require(args.pairwiseIBDFile, "--pairwise-ibd", "SAGELD");
             runSAGELD(
                 args.residFile, args.spGrmGrabFile, args.spGrmPlink2File,
-                args.pairwiseIBDFile, geno, outFile,
+                args.pairwiseIBDFile, geno, buildOutputPath(".SAGELD"),
                 args.spaCutoff, args.nthread, args.nSnpPerChunk,
                 args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
                 args.keepFile, args.removeFile);
@@ -572,7 +561,7 @@ int run(int argc, char* argv[]) {
                 args.phenoFile, args.ordinalPheno, covarNames,
                 geno,
                 args.spGrmGrabFile, args.spGrmPlink2File,
-                args.outputFile,
+                buildOutputPath(".POLMM"),
                 args.spaCutoff, args.nthread, args.nSnpPerChunk,
                 args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
                 args.keepFile, args.removeFile);
@@ -620,7 +609,7 @@ int run(int argc, char* argv[]) {
                     args.phenoFile, args.covarFile,
                     args.quantPheno, covarNames, taus,
                     args.spGrmGrabFile, args.spGrmPlink2File,
-                    geno, args.outputFile,
+                    geno, buildOutputPath(".SPAsqr"),
                     args.spaCutoff, args.outlierRatio, args.outlierAbsBound,
                     args.nthread, args.nSnpPerChunk,
                     args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
@@ -629,11 +618,11 @@ int run(int argc, char* argv[]) {
             } else {
                 runSPAsqr(
                     args.residFile, args.spGrmGrabFile, args.spGrmPlink2File,
-                    geno, args.outputFile,
+                    geno, buildOutputPath(".SPAsqr"),
                     args.spaCutoff, args.outlierRatio, args.outlierAbsBound,
                     args.nthread, args.nSnpPerChunk,
                     args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
-                args.keepFile, args.removeFile);
+                    args.keepFile, args.removeFile);
             }
         }
 
@@ -662,7 +651,7 @@ int run(int argc, char* argv[]) {
                 runWtCoxG(
                     args.residFile, geno, args.refAfFile,
                     args.spGrmGrabFile, args.spGrmPlink2File,
-                    args.outputFile,
+                    buildOutputPath(".WtCoxG"),
                     args.refPrevalence, args.cutoff, args.spaCutoff,
                     args.nthread, args.nSnpPerChunk,
                     args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
@@ -679,7 +668,7 @@ int run(int argc, char* argv[]) {
                     args.binaryPheno, args.survPheno,
                     geno, args.refAfFile,
                     args.spGrmGrabFile, args.spGrmPlink2File,
-                    args.outputFile,
+                    buildOutputPath(".WtCoxG"),
                     args.refPrevalence, args.cutoff, args.spaCutoff,
                     args.nthread, args.nSnpPerChunk,
                     args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
@@ -715,7 +704,7 @@ int run(int argc, char* argv[]) {
                 runLEAF(
                     residFiles, geno, refAfFiles,
                     args.spGrmGrabFile, args.spGrmPlink2File,
-                    args.outputFile,
+                    buildOutputPath(".LEAF"),
                     args.refPrevalence, args.cutoff, args.spaCutoff,
                     args.nthread, args.nSnpPerChunk,
                     args.missingCutoff, args.minMafCutoff, args.minMacCutoff,
@@ -747,7 +736,7 @@ int run(int argc, char* argv[]) {
                     nClusters, args.seed,
                     geno, refAfFiles,
                     args.spGrmGrabFile, args.spGrmPlink2File,
-                    args.outputFile,
+                    buildOutputPath(".LEAF"),
                     args.refPrevalence, args.cutoff, args.spaCutoff,
                     args.nthread, args.nSnpPerChunk,
                     args.missingCutoff, args.minMafCutoff, args.minMacCutoff,

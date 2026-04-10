@@ -69,15 +69,11 @@ Column layout by method:
 
 Multi-column (SPACox / SPAGRM / SPAmix / SPAmixPlus / SPAmixLocalPlus):
   Each column produces a separate output file: PREFIX.PHENO.METHOD[.gz|.zst]
-  Use --out-prefix to specify the output prefix.
-  Per-phenotype sample masks, allele counts, and QC stats are independent.)"};
+  Use --out to specify the output prefix.
+  Per-phenotype subject masks, allele counts, and QC stats are independent.)"};
 
 inline const FlagDef kOut = {
-    "--out", "FILE", "Output file path", nullptr};
-
-inline const FlagDef kOutPrefix = {
-    "--out-prefix", "PREFIX",
-    "Output prefix (GWAS: PREFIX.PHENO.METHOD[.gz|.zst]; make-abed: PREFIX.abed/.bim/.fam)", nullptr};
+    "--out", "PREFIX", "Output prefix (suffix added per mode/method)", nullptr};
 
 inline const FlagDef kCovar = {
     "--covar", "FILE", "Covariate file (plink2 format, columns selected by --covar-name)",
@@ -131,7 +127,8 @@ For LEAF: comma-separated, one file per reference population.)"};
 
 inline const FlagDef kSpGrmGrab = {
     "--sp-grm-grab", "FILE", "Sparse GRM, GRAB format (ID1 ID2 VALUE)",
-    R"(Whitespace-delimited; #-lines skipped.
+    R"(Whitespace-delimited with mandatory header: ID1  ID2  VALUE
+(header may have # prefix).  #-comment lines skipped.
 Subjects not in .fam are silently dropped.
 Mutually exclusive with --sp-grm-plink2.)"};
 
@@ -149,8 +146,8 @@ inline const FlagDef kSpGrm = {
 inline const FlagDef kIndAfCoef = {
     "--ind-af-coef", "FILE", "Pre-computed individual AF model",
     R"(Produced by --cal-ind-af-coef.
-Text/gz: #CHROM  ID  STATUS  BETA0  BETA1 ...
-Binary (.bin): native format.)"};
+Text/gz: #STATUS  BETA0  BETA1 ...
+Rows in filtered-marker order (positional matching).)"};
 
 inline const FlagDef kPairwiseIbd = {
     "--pairwise-ibd", "FILE", "Pairwise IBD file",
@@ -178,7 +175,7 @@ inline const FlagDef kChunkSize    = {"--chunk-size", "INT",
 inline const FlagDef kCompression  = {"--compression", "gz|zst",
     "Compress output files (default: plain text)", nullptr};
 inline const FlagDef kCompressionLevel = {"--compression-level", "INT",
-    "Compression level (default: 0 = library default)", nullptr};
+    "Compression level (gz: 1-9, zst: 1-22; default: 0 = library default)", nullptr};
 inline const FlagDef kGeno         = {"--geno", "FLOAT",
     "Per-marker missing rate cutoff (default: 0.1)", nullptr};
 inline const FlagDef kMaf          = {"--maf",  "FLOAT",
@@ -209,7 +206,7 @@ inline const FlagDef kAdmixBfile = {"--admix-bfile", "PREFIX",
     R"(Binary format storing 2K tracks (dosage + hapcount per ancestry).
 Shares standard PLINK .fam and .bim files.
 The .abed file has a 16-byte header with magic 0xAD4D, version,
-number of ancestries K, number of samples N, and markers M.)"};
+number of ancestries K, number of subjects N, and markers M.)"};
 inline const FlagDef kAdmixPhi = {"--admix-phi", "FILE",
     "Pre-computed phi file from --cal-admix-phi (wide format)",
     R"(Tab-separated: idx1  idx2  anc0_A  anc0_B  anc0_C  anc0_D  [anc1_A ...]
@@ -227,7 +224,7 @@ inline const FlagDef kAdmixTextPrefix = {
     "extract_tracts text output prefix (for --make-abed)",
     R"({PREFIX}.anc{k}.dosage[.gz]   and   {PREFIX}.anc{k}.hapcount[.gz]  (k=0,1,...)
 Header: CHROM  POS  ID  REF  ALT  SAMPLE1  SAMPLE2  ...
-Values: integer 0-2 per sample; K auto-detected from file presence.)"};;
+Values: integer 0-2 per subject; K auto-detected from file presence.)"};;
 inline const FlagDef kSeed          = {"--seed", "INT",
     "Random seed for reproducibility (default: 0 = use random device)", nullptr};
 
@@ -247,7 +244,7 @@ Levels are auto-detected from sorted unique integer values and remapped to 0..J-
 
 // ── SPACox ─────────────────────────────────────────────────────────
 inline const FlagDef* const kSPACoxReq[] = {
-    &kGeno_input, &kNullResid, &kOutPrefix, nullptr};
+    &kGeno_input, &kNullResid, &kOut, nullptr};
 inline const FlagDef* const kSPACoxOpt[] = {
     &kCovar, &kCovarName, &kCovarColNums, &kNotCovar, &kCovarPThresh,
     &kSpaZThresh, &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
@@ -263,7 +260,7 @@ inline const MethodDef kSPACox = {
 
 // ── SPAGRM ─────────────────────────────────────────────────────────
 inline const FlagDef* const kSPAGRMReq[] = {
-    &kGeno_input, &kNullResid, &kOutPrefix, &kSpGrm, &kPairwiseIbd, nullptr};
+    &kGeno_input, &kNullResid, &kOut, &kSpGrm, &kPairwiseIbd, nullptr};
 inline const FlagDef* const kSPAGRMOpt[] = {
     &kSpaZThresh, &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
     &kGeno, &kMaf, &kMac, nullptr};
@@ -292,7 +289,7 @@ inline const MethodDef kSAGELD = {
 
 // ── SPAmix ─────────────────────────────────────────────────────────
 inline const FlagDef* const kSPAmixReq[] = {
-    &kGeno_input, &kNullResid, &kOutPrefix, &kPcCols, nullptr};
+    &kGeno_input, &kNullResid, &kOut, &kPcCols, nullptr};
 inline const FlagDef* const kSPAmixOpt[] = {
     &kPheno, &kCovar, &kIndAfCoef, &kSpGrm, &kOutlierIqr,
     &kSpaZThresh, &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
@@ -309,7 +306,7 @@ Optional --sp-grm-grab / --sp-grm-plink2 enables GRM-based variance (same as SPA
 
 // ── SPAmixPlus ─────────────────────────────────────────────────────
 inline const FlagDef* const kSPAmixPlusReq[] = {
-    &kGeno_input, &kNullResid, &kOutPrefix, &kPcCols, &kSpGrm, nullptr};
+    &kGeno_input, &kNullResid, &kOut, &kPcCols, &kSpGrm, nullptr};
 inline const FlagDef* const kSPAmixPlusOpt[] = {
     &kPheno, &kCovar, &kIndAfCoef, &kOutlierIqr,
     &kSpaZThresh, &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
@@ -319,7 +316,7 @@ inline const MethodDef kSPAmixPlus = {
     "SPAmix with additional sparse GRM relatedness correction",
     kSPAmixPlusReq, kSPAmixPlusOpt,
     "#IID  RESID  [RESID2  ...]",
-    "Per residual column: PREFIX.PHENO.SPAmixPlus[.gz|.zst]\n"
+    "Per residual column: PREFIX.PHENO.SPAmixP[.gz|.zst]\n"
     "  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  P  Z  BETA  SE",
     nullptr};
 
@@ -397,19 +394,20 @@ Summix estimates per-cluster ancestry proportions from the reference populations
 inline const FlagDef* const kCalPhiReq[] = {
     &kAdmixBfile, &kSpGrm, &kOut, nullptr};
 inline const FlagDef* const kCalPhiOpt[] = {
-    &kExtract, &kExclude, nullptr};
+    &kExtract, &kExclude, &kCompression, &kCompressionLevel, nullptr};
 inline const MethodDef kCalAdmixPhi = {
     "cal-admix-phi",
     "Compute phi kinship matrices from admixed genotypes + sparse GRM",
     kCalPhiReq, kCalPhiOpt,
     nullptr,
-    "Wide tab-separated: idx1  idx2  anc0_A  anc0_B  anc0_C  anc0_D  [anc1_A ...]",
+    "Wide tab-separated: idx1  idx2  anc0_A  anc0_B  anc0_C  anc0_D  [anc1_A ...]\n"
+    "Output: PREFIX.phi[.gz|.zst]",
     "Pass output to --admix-phi for SPAmixLocalPlus GWAS."};
 
 // ── SPAmixLocalPlus (implicit: --null-resid + --admix-bfile + --admix-phi) ──
 // Not in kAllMethods—dispatched automatically when the three flags are present.
 inline const FlagDef* const kSPAmixLocalPlusReq[] = {
-    &kAdmixBfile, &kNullResid, &kAdmixPhi, &kOutPrefix, nullptr};
+    &kAdmixBfile, &kNullResid, &kAdmixPhi, &kOut, nullptr};
 inline const FlagDef* const kSPAmixLocalPlusOpt[] = {
     &kExtract, &kExclude, &kOutlierIqr,
     &kSpaZThresh, &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
@@ -423,12 +421,12 @@ inline const MethodDef kSPAmixLocalPlus = {
   anc0_AltFreq  anc0_MissingRate  anc0_P  anc0_Pnorm  anc0_Stat  anc0_Var  anc0_zScore  anc0_AltCounts  anc0_BetaG
   anc1_AltFreq  ...  (repeated for each ancestry k))",
     R"(Two-phase workflow:
-  1. grab --cal-admix-phi --admix-bfile PREFIX --sp-grm-plink2 FILE --out OUTPUT.phi
-  2. grab --method SPAmixLocalPlus --admix-bfile PREFIX --admix-phi OUTPUT.phi --null-resid FILE --out-prefix PREFIX
-Output: PREFIX.PHENO.SPAmixLocalPlus[.gz|.zst] per residual column)"};
+  1. grab --cal-admix-phi --admix-bfile PREFIX --sp-grm-plink2 FILE --out OUTPUT_PREFIX
+  2. grab --method SPAmixLocalPlus --admix-bfile PREFIX --admix-phi OUTPUT_PREFIX.phi --null-resid FILE --out PREFIX
+Output: PREFIX.PHENO.LocalP[.gz|.zst] per residual column)"};
 
 // ── Utility mode: make-abed ────────────────────────────────────────
-inline const FlagDef* const kMakeAbedReq[] = {&kOutPrefix, nullptr};
+inline const FlagDef* const kMakeAbedReq[] = {&kOut, nullptr};
 inline const FlagDef* const kMakeAbedOpt[] = {&kVcf, &kMsp, &kAdmixTextPrefix, nullptr};
 inline const MethodDef kMakeAbed = {
     "make-abed",
@@ -439,32 +437,34 @@ inline const MethodDef kMakeAbed = {
     R"(Two modes (mutually exclusive):
   --vcf FILE --rfmix-msp FILE  phased VCF/BCF + rfmix2 MSP  ->  .abed
   --admix-text-prefix PREFIX   extract_tracts text output   ->  .abed
---out-prefix PREFIX writes PREFIX.abed, PREFIX.bim, PREFIX.fam.
+--out PREFIX writes PREFIX.abed, PREFIX.bim, PREFIX.fam.
 Pass PREFIX as --admix-bfile to SPAmixLocalPlus or --cal-admix-phi.)"};
 
 // ── Utility mode: cal-ind-af-coef ──────────────────────────────────
 inline const FlagDef* const kCalAfReq[] = {
     &kGeno_input, &kPcCols, &kOut, nullptr};
 inline const FlagDef* const kCalAfOpt[] = {
-    &kPheno, &kCovar, &kKeep, &kRemove, &kThreads, &kChunkSize, &kGeno, &kMaf, &kMac, nullptr};
+    &kPheno, &kCovar, &kKeep, &kRemove, &kCompression, &kCompressionLevel,
+    &kThreads, &kChunkSize, &kGeno, &kMaf, &kMac, nullptr};
 inline const MethodDef kCalIndAfCoef = {
     "cal-ind-af-coef",
     "Compute per-marker individual-ancestry AF model",
     kCalAfReq, kCalAfOpt,
     nullptr,
-    "Binary .bin file (pass to --ind-af-coef for SPAmix/SPAmixPlus).",
+    "Output: PREFIX.afc[.gz|.zst] (pass to --ind-af-coef for SPAmix/SPAmixPlus)",
     nullptr};
 
 // ── Utility mode: cal-pairwise-ibd ────────────────────────────────
 inline const FlagDef* const kCalIbdReq[] = {
     &kGeno_input, &kOut, &kSpGrm, nullptr};
 inline const FlagDef* const kCalIbdOpt[] = {
-    &kMinMafIbd, nullptr};
+    &kMinMafIbd, &kCompression, &kCompressionLevel, nullptr};
 inline const MethodDef kCalPairwiseIbd = {
     "cal-pairwise-ibd",
     "Compute pairwise IBD probabilities from sparse GRM + genotypes",
     kCalIbdReq, kCalIbdOpt,
     nullptr,
+    "Output: PREFIX.ibd[.gz|.zst]\n"
     "Tab-separated: #ID1  ID2  pa  pb  pc\n"
     "Pass to --pairwise-ibd for SPAGRM.",
     nullptr};
@@ -490,7 +490,7 @@ inline const FlagDef* const kFileFlags[] = {
 // All flags grouped for --help options
 inline const FlagDef* const kInputFlags[] = {
     &kBfile, &kPfile, &kVcf, &kBgen, &kAdmixBfile,
-    &kNullResid, &kOut, &kOutPrefix, &kCompression,
+    &kNullResid, &kOut, &kCompression, &kCompressionLevel,
     &kPheno, &kCovar, &kCovarName, &kBinaryPheno, &kSurvPheno, &kOrdinalPheno, &kPcCols,
     &kRefAf,
     &kSpGrmGrab, &kSpGrmPlink2, &kIndAfCoef, &kPairwiseIbd, &kAdmixPhi,
