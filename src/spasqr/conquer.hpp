@@ -10,8 +10,8 @@
 //   R package version 1.3.3, https://CRAN.R-project.org/package=conquer
 #pragma once
 
-#include <vector>
 #include <Eigen/Dense>
+#include <vector>
 
 namespace conquer {
 
@@ -24,14 +24,13 @@ namespace conquer {
 //
 // Returns (p+1) coefficient vector:  beta(0) = intercept,  beta(1..p) = slopes.
 // Also stores the final n-vector of residuals in `residOut` if non-null.
-Eigen::VectorXd smqrGauss(
-    const Eigen::MatrixXd& X,
-    const Eigen::VectorXd& Y,
-    double tau,
-    double h,
-    Eigen::VectorXd* residOut = nullptr,
-    double tol     = 1e-4,
-    int    iteMax  = 5000,
-    double stepMax = 100.0);
+Eigen::VectorXd smqrGauss(const Eigen::MatrixXd &X,
+                          const Eigen::VectorXd &Y,
+                          double tau,
+                          double h,
+                          Eigen::VectorXd *residOut = nullptr,
+                          double tol = 1e-4,
+                          int iteMax = 5000,
+                          double stepMax = 100.0);
 
 } // namespace conquer

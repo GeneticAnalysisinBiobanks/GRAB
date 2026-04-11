@@ -14,34 +14,39 @@ Compressed output (`.gz` or `.zst`) is controlled by `--compression` and
 
 ## Subject set intersection
 
-GRAB uses the **intersection** of subjects across all provided per-subject
-input files. A subject must appear in **every** loaded file to be included in
-the analysis. The procedure is:
+GRAB builds the analysis subject set through a multi-step pipeline.
+See [subject_marker_pipeline.md](subject_marker_pipeline.md) for the full
+specification and log format.
 
-1. **Start with genotype subjects.** The `.fam` / `.psam` / VCF header /
-   BGEN sample-identifier block defines the full list of candidate subjects.
-2. **Intersect with each loaded file.** For every per-subject file that was
-   given (`--pheno`, `--covar`, `--null-resid`), a subject is kept only if it
-   appears in that file with a valid (non-missing) key. Subjects present in
-   one file but absent from another are **dropped**, not filled with missing
-   values.
-3. **Drop subjects with NaN residuals.** When `--null-resid` is used, any
-   subject whose residual value is `NaN` is excluded.
-4. **Apply `--keep` / `--remove`.** These filters run **after** the
-   intersection, so they further restrict the intersected set. `--keep`
-   retains only listed subjects; `--remove` excludes listed subjects.
-5. **Filter the sparse GRM.** The sparse GRM (`--sp-grm-grab` /
-   `--sp-grm-plink2`) is loaded **after** the subject set is finalized. GRM
-   entries whose subjects are not in the final set are silently dropped.
+Key points (filtering order):
+
+1. **genotype** — all subjects in `.fam` / `.psam` / VCF / BGEN sample block.
+2. **∩ GRM** — intersect with sparse GRM subjects (if a GRM is provided).
+   GRM subject IDs are pre-parsed before the full GRM load.
+3. **∩ keep** — apply `--keep` filter (if provided).
+4. **\ remove** — apply `--remove` filter (if provided).
+5. **∩ pheno/resid** — intersect with phenotype / residual (subjects with
+   non-NaN values).  Applied last so multi-residual analyses can compute
+   per-phenotype masks on the already-filtered set.
+
+**Covariates are not part of the intersection.**  A subject that passes
+all pipeline steps but is missing from `--covar` will have its covariate
+values filled with the per-column mean.  This avoids discarding subjects
+just because a covariate is unavailable.
 
 ### Example
 
-Suppose the genotype file has subjects {A, B, C, D, E}, the phenotype file
-has {A, B, C, F}, and the covariate file has {B, C, D, F}.
+Suppose the genotype file has subjects {A, B, C, D, E}, the GRM has
+{B, C, D}, and the residual file has {A, B, C, F}.
 
-* After intersecting genotype ∩ pheno ∩ covar, the set is {B, C}.
-* If `--keep` lists {A, B}, the final set is {B}.
-* If a sparse GRM mentions pairs involving A or D, those entries are dropped.
+* genotype = {A, B, C, D, E}
+* ∩ GRM = {B, C, D}
+* No `--keep` / `--remove`, so stays {B, C, D}
+* ∩ pheno/resid = {B, C}   ← residual has {A, B, C, F}
+* If `--keep` lists {A, B}: after keep = {B}, final ∩ resid = {B}.
+* The covariate file is not part of the intersection — if it has {B, C, D},
+  subject B gets its values from the file; if it were missing, B would get
+  per-column means.
 
 ### Input file categories
 
@@ -53,44 +58,32 @@ differ across groups.
 These files have one row per subject. Two lines are shown when both headered
 and headerless modes are supported.
 
-| Flag | Subject matching | plink2-compatible |
-|------|------------------|-------------------|
-| `--pheno` (headered) | match by `IID` column | Yes |
-| `--covar` (headered) | match by `IID` column | Yes |
-| `--covar` (headerless) | assume identical subjects as genotype file | Yes |
-| `--null-resid` (headered) | match by `IID` column | — |
-| `--null-resid` (headerless) | assume identical subjects as genotype file | — |
-| `--keep` / `--remove` (auto) | — | Yes |
+| Flag                              | Subject matching                                      | plink2-compatible   |
+| --------------------------------- | ----------------------------------------------------- | ------------------- |
+| `--pheno` (headered)              | match by `IID` column                                 | Yes                 |
+| `--covar` (headered)              | match by `IID` column                                 | Yes                 |
+| `--covar` (numeric matrix)        | assume identical subjects as genotype file            | Yes                 |
+| `--null-resid` (headered)         | match by `IID` column                                 | —                   |
+| `--null-resid` (numeric matrix)   | assume identical subjects as genotype file            | —                   |
+| `--keep` / `--remove` (auto)      | —                                                     | Yes                 |
 
 #### (b) Per-subject-pair files
 
 These files have one row per pair of subjects.
 
-| Flag | Subject matching | plink2-compatible |
-|------|------------------|-------------------|
-| `--sp-grm-grab` (headered) | match by `ID1` `ID2` columns | — |
-| `--sp-grm-plink2` (headerless) | match by `.grm.id` or assume identical subjects as genotype file | produced by `plink2 --make-grm-sparse` |
-| `--pairwise-ibd` (headered) | match by `ID1` `ID2` columns | — |
-| `--admix-phi` (headerless) | assume identical subjects as genotype file | — |
+| Flag                             | Subject matching                                                   | plink2-compatible                        |
+| -------------------------------- | ------------------------------------------------------------------ | ---------------------------------------- |
+| `--sp-grm-grab` (headered)       | match by `ID1` `ID2` columns                                       | —                                        |
+| `--sp-grm-plink2` (headerless)   | match by `.grm.id` or assume identical subjects as genotype file   | produced by `plink2 --make-grm-sparse`   |
+| `--pairwise-ibd` (headered)      | match by `ID1` `ID2` columns                                       | —                                        |
+| `--admix-phi` (headerless)       | assume identical subjects as genotype file                         | —                                        |
 
 ---
 
 ## Genotype input
 
-Exactly one of the following is required for GWAS methods and some utility
-modes.
-
-| Flag | Format | Subject ID source |
-|------|--------|-------------------|
-| `--bfile PREFIX` | PLINK 1 (.bed/.bim/.fam) | `.fam` |
-| `--pfile PREFIX` | PLINK 2 (.pgen/.pvar/.psam) | `.psam` |
-| `--vcf FILE` | VCF/BCF (.vcf, .vcf.gz, .bcf) | header line |
-| `--bgen FILE` | BGEN v1.2 (.bgen, .sample) | Embedded sample-ID block → companion `.sample` file |
-
-For `--bgen`: if the BGEN file contains an embedded sample-identifier block,
-those IDs are used. Otherwise GRAB looks for a companion `.sample` file (Oxford
-format: header `ID_1 ID_2 missing`, type row `0 0 0`, then `FID IID ...` data
-lines). If neither is found, numeric IDs (`"0"`, `"1"`, ...) are generated.
+See [genotype.md](genotype.md) for supported genotype formats, QC filtering,
+and the complete genotype processing workflow.
 
 ---
 
@@ -102,12 +95,12 @@ for full specification.
 
 Related flags:
 
-| Flag | Purpose |
-|------|---------|
-| `--pheno-binary COL` | Select a 0/1 case/control column (WtCoxG, LEAF) |
-| `--pheno-surv TIME:EVENT` | Select survival time + event columns (WtCoxG, LEAF) |
-| `--pheno-quant COL` | Select a quantitative column (SPAsqr) |
-| `--pheno-ordinal COL` | Select an ordinal column (POLMM) |
+| Flag                        | Purpose                                             |
+| --------------------------- | --------------------------------------------------- |
+| `--pheno-binary COL`        | Select a 0/1 case/control column (WtCoxG, LEAF)     |
+| `--pheno-surv TIME:EVENT`   | Select survival time + event columns (WtCoxG, LEAF) |
+| `--pheno-quant COL`         | Select a quantitative column (SPAsqr)               |
+| `--pheno-ordinal COL`       | Select an ordinal column (POLMM)                    |
 
 Example:
 
@@ -139,12 +132,12 @@ must equal the genotype subject count; rows in genotype order.
 
 Related flags:
 
-| Flag | Purpose |
-|------|---------|
-| `--covar-name COL1,COL2,...` | Select named columns as covariates |
-| `--covar-col-nums 3,5,7-10` | Select by 1-based column position |
-| `--not-covar COL1,COL2,...` | Exclude named columns |
-| `--pc-cols COL1,COL2,...` | PC columns (default: `PC1,PC2,PC3,PC4`) |
+| Flag                            | Purpose                                             |
+| ------------------------------- | --------------------------------------------------- |
+| `--covar-name COL1,COL2,...`    | Select named columns as covariates                  |
+| `--covar-col-nums 3,5,7-10`     | Select by 1-based column position                   |
+| `--not-covar COL1,COL2,...`     | Exclude named columns                               |
+| `--pc-cols COL1,COL2,...`       | PC columns (default: `PC1,PC2,PC3,PC4`)             |
 
 When none of `--covar-name`, `--covar-col-nums`, `--not-covar` are given, all
 columns are loaded **except** `FID`, `IID`, `SID`, `PAT`, `MAT`, `SEX`, and
@@ -190,12 +183,12 @@ subject count, and rows are assumed to be in genotype order.
 
 ### Column layout by method
 
-| Method | Columns |
-|--------|---------|
-| SPACox, SPAGRM, SPAmix, SPAmixPlus, SPAmixLocalPlus | `RESID [RESID2 ...]` — one GWAS per column |
-| WtCoxG, LEAF | `RESID  WEIGHT  INDICATOR` — 3 fixed columns |
-| SPAsqr | `R_tau1  R_tau2  ...  R_tauK` — one column per quantile level |
-| SAGELD | `R_G  R_<E1>  R_Gx<E1>  [R_<E2>  R_Gx<E2>  ...]` |
+| Method                                                | Columns                                                       |
+| ----------------------------------------------------- | ------------------------------------------------------------- |
+| SPACox, SPAGRM, SPAmix, SPAmixPlus, SPAmixLocalPlus   | `RESID [RESID2 ...]` — one GWAS per column                    |
+| WtCoxG, LEAF                                          | `RESID  WEIGHT  INDICATOR` — 3 fixed columns                  |
+| SPAsqr                                                | `R_tau1  R_tau2  ...  R_tauK` — one column per quantile level |
+| SAGELD                                                | `R_G  R_<E1>  R_Gx<E1>  [R_<E2>  R_Gx<E2>  ...]`              |
 
 For multi-column residual files (SPACox, SPAGRM, SPAmix, SPAmixPlus,
 SPAmixLocalPlus), each column produces a separate output file:
@@ -263,12 +256,12 @@ auto-detected by replacing `.grm.sp` with `.grm.id` in the file path. If
 
 Restrict or exclude analysis subjects. Four formats are auto-detected:
 
-| Format | Example |
-|--------|---------|
-| PLINK 2 with `#FID` | `#FID  IID\nFAM1  ID1` |
-| PLINK 2 with `#IID` | `#IID\nID1` |
-| Two-column (FID IID) | `FAM1  ID1` |
-| Single-column (IID) | `ID1` |
+| Format                  | Example                  |
+| ----------------------- | ------------------------ |
+| PLINK 2 with `#FID`     | `#FID  IID\nFAM1  ID1`   |
+| PLINK 2 with `#IID`     | `#IID\nID1`              |
+| Two-column (FID IID)    | `FAM1  ID1`              |
+| Single-column (IID)     | `ID1`                    |
 
 ### `--extract FILE` / `--exclude FILE`  *(plink2-compatible)*
 
@@ -295,18 +288,18 @@ metadata) is the starting set.
 
 ### Per-marker input files
 
-| Flag | Header | Key columns | plink2-compatible |
-|------|--------|-------------|-------------------|
-| `--ref-af` (`.afreq`) | Mandatory | `#CHROM  ID` | produced by `plink2 --freq` |
-| `--ref-af` (2-col numeric) | — | — | — |
-| `--ind-af-coef` | `#STATUS` (skipped) | — (positional) | — |
-| `--extract` / `--exclude` | No | Single SNP ID column | Yes |
+| Flag                           | Header                            | Key columns                        | plink2-compatible                        |
+| ------------------------------ | --------------------------------- | ---------------------------------- | ---------------------------------------- |
+| `--ref-af` (`.afreq`)          | Mandatory                         | `#CHROM  ID`                       | produced by `plink2 --freq`              |
+| `--ref-af` (2-col numeric)     | —                                 | —                                  | —                                        |
+| `--ind-af-coef`                | `#STATUS` (skipped)               | — (positional)                     | —                                        |
+| `--extract` / `--exclude`      | No                                | Single SNP ID column               | Yes                                      |
 
 ---
 
 ## SNP-level individual AF model — `--ind-af-coef FILE`
 
-Produced by `grab --cal-ind-af-coef --out PREFIX`. Output is `PREFIX.afc[.gz|.zst]`.
+Produced by `grab --cal-af-coef --out PREFIX`. Output is `PREFIX.afc[.gz|.zst]`.
 
 ```
 #STATUS  BETA0  BETA1  ...
@@ -345,7 +338,7 @@ SAMPLE01  SAMPLE02  0.00123     0.24500     0.75377
 
 ## Phi kinship file — `--admix-phi FILE`
 
-Produced by `grab --cal-admix-phi --out PREFIX`. Output is `PREFIX.phi[.gz|.zst]`.
+Produced by `grab --cal-phi --out PREFIX`. Output is `PREFIX.phi[.gz|.zst]`.
 
 Wide tab-separated format with one row per related pair:
 
@@ -364,11 +357,11 @@ per ancestry.
 A GRAB-specific binary format for ancestry-specific dosage and hapcount data.
 Produced by `grab --make-abed --out PREFIX`.
 
-| File | Description |
-|------|-------------|
-| `PREFIX.abed` | BGZF-compressed binary ancestry dosage/hapcount matrix |
-| `PREFIX.bim` | Standard PLINK `.bim` variant file (shared with PLINK) |
-| `PREFIX.fam` | Standard PLINK `.fam` subject file (shared with PLINK) |
+| File            | Description                                                   |
+| --------------- | ------------------------------------------------------------- |
+| `PREFIX.abed`   | BGZF-compressed binary ancestry dosage/hapcount matrix        |
+| `PREFIX.bim`    | Standard PLINK `.bim` variant file (shared with PLINK)        |
+| `PREFIX.fam`    | Standard PLINK `.fam` subject file (shared with PLINK)        |
 
 ### Binary layout
 
@@ -376,12 +369,12 @@ The `.abed` file is BGZF-compressed (indexed via `.abed.gzi`).
 
 **Header (8 bytes):**
 
-| Offset | Size | Field | Description |
-|--------|------|-------|-------------|
-| 0 | 2 | `magic` | `{0xAD, 0x4D}` |
-| 2 | 1 | `version` | `0x02` |
-| 3 | 1 | `nAnc` | Bits 0–6: number of ancestries K (1–127). Bit 7: NO_MISSING flag |
-| 4 | 4 | `nSamples` | Subject count N (little-endian uint32) |
+| Offset   | Size   | Field         | Description                                                      |
+| -------- | ------ | ------------- | ---------------------------------------------------------------- |
+| 0        | 2      | `magic`       | `{0xAD, 0x4D}`                                                   |
+| 2        | 1      | `version`     | `0x02`                                                           |
+| 3        | 1      | `nAnc`        | Bits 0–6: number of ancestries K (1–127). Bit 7: NO_MISSING flag |
+| 4        | 4      | `nSamples`    | Subject count N (little-endian uint32)                           |
 
 Marker count M is derived from the companion `.bim` file.
 
@@ -396,12 +389,12 @@ For each of the M markers, 2K tracks are stored sequentially:
 Each track is `ceil(N / 4)` bytes using **PLINK-compatible 2-bit encoding**
 (4 subjects per byte, LSB first):
 
-| 2-bit code | Value |
-|------------|-------|
-| `00` | 0 (reference homozygote) |
-| `10` | 1 (heterozygote) |
-| `11` | 2 (alternate homozygote) |
-| `01` | missing |
+| 2-bit code   | Value                    |
+| ------------ | ------------------------ |
+| `00`         | 0 (reference homozygote) |
+| `10`         | 1 (heterozygote)         |
+| `11`         | 2 (alternate homozygote) |
+| `01`         | missing                  |
 
 When the NO_MISSING flag is set (bit 7 of `nAnc`), code `01` is treated as 0.
 
@@ -418,7 +411,7 @@ Two input modes (mutually exclusive):
 
 ### Usage
 
-Pass `PREFIX` as `--admix-bfile PREFIX` to SPAmixLocalPlus or `--cal-admix-phi`.
+Pass `PREFIX` as `--admix-bfile PREFIX` to SPAmixLocalPlus or `--cal-phi`.
 
 ---
 
@@ -465,30 +458,30 @@ All GWAS methods write to `--out PREFIX` with a suffix determined by the method.
 
 ### GWAS output naming
 
-| Method | Suffix | Output path |
-|--------|--------|-------------|
-| SPACox | `.PHENO.SPACox` | `PREFIX.PHENO.SPACox[.gz\|.zst]` |
-| SPAGRM | `.PHENO.SPAGRM` | `PREFIX.PHENO.SPAGRM[.gz\|.zst]` |
-| SPAmix | `.PHENO.SPAmix` | `PREFIX.PHENO.SPAmix[.gz\|.zst]` |
-| SPAmixPlus | `.PHENO.SPAmixP` | `PREFIX.PHENO.SPAmixP[.gz\|.zst]` |
-| SPAmixLocalPlus | `.PHENO.LocalPlus` | `PREFIX.PHENO.LocalPlus[.gz\|.zst]` |
-| SAGELD | `.SAGELD` | `PREFIX.SAGELD[.gz\|.zst]` |
-| POLMM | `.POLMM` | `PREFIX.POLMM[.gz\|.zst]` |
-| SPAsqr | `.SPAsqr` | `PREFIX.SPAsqr[.gz\|.zst]` |
-| WtCoxG | `.WtCoxG` | `PREFIX.WtCoxG[.gz\|.zst]` |
-| LEAF | `.LEAF` | `PREFIX.LEAF[.gz\|.zst]` |
+| Method               | Suffix                | Output path                                  |        |
+| -------------------- | --------------------- | -------------------------------------------- | ------ |
+| SPACox               | `.PHENO.SPACox`       | `PREFIX.PHENO.SPACox[.gz\                    | .zst]` |
+| SPAGRM               | `.PHENO.SPAGRM`       | `PREFIX.PHENO.SPAGRM[.gz\                    | .zst]` |
+| SPAmix               | `.PHENO.SPAmix`       | `PREFIX.PHENO.SPAmix[.gz\                    | .zst]` |
+| SPAmixPlus           | `.PHENO.SPAmixP`      | `PREFIX.PHENO.SPAmixP[.gz\                   | .zst]` |
+| SPAmixLocalPlus      | `.PHENO.LocalP`       | `PREFIX.PHENO.LocalP[.gz\                    | .zst]` |
+| SAGELD               | `.SAGELD`             | `PREFIX.SAGELD[.gz\                          | .zst]` |
+| POLMM                | `.POLMM`              | `PREFIX.POLMM[.gz\                           | .zst]` |
+| SPAsqr               | `.SPAsqr`             | `PREFIX.SPAsqr[.gz\                          | .zst]` |
+| WtCoxG               | `.WtCoxG`             | `PREFIX.WtCoxG[.gz\                          | .zst]` |
+| LEAF                 | `.LEAF`               | `PREFIX.LEAF[.gz\                            | .zst]` |
 
 For multi-residual methods (SPACox, SPAGRM, SPAmix, SPAmixPlus,
 SPAmixLocalPlus), `PHENO` is the column name from `--null-resid`.
 
 ### Utility output naming
 
-| Mode | Suffix | Output path |
-|------|--------|-------------|
-| `--cal-ind-af-coef` | `.afc` | `PREFIX.afc[.gz\|.zst]` |
-| `--cal-pairwise-ibd` | `.ibd` | `PREFIX.ibd[.gz\|.zst]` |
-| `--cal-admix-phi` | `.phi` | `PREFIX.phi[.gz\|.zst]` |
-| `--make-abed` | `.abed` / `.bim` / `.fam` | `PREFIX.abed`, `PREFIX.bim`, `PREFIX.fam` |
+| Mode                      | Suffix                    | Output path                                |        |
+| ------------------------- | ------------------------- | ------------------------------------------ | ------ |
+| `--cal-af-coef`            | `.afc`                    | `PREFIX.afc[.gz\                           | .zst]` |
+| `--cal-pairwise-ibd`      | `.ibd`                    | `PREFIX.ibd[.gz\                           | .zst]` |
+| `--cal-phi`               | `.phi`                    | `PREFIX.phi[.gz\                           | .zst]` |
+| `--make-abed`             | `.abed` / `.bim` / `.fam` | `PREFIX.abed`, `PREFIX.bim`, `PREFIX.fam`  |        |
 
 ### Common GWAS output columns
 
@@ -499,17 +492,17 @@ are always marker metadata:
 CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
 ```
 
-| Column | Description |
-|--------|-------------|
-| `CHROM` | Chromosome |
-| `POS` | Base-pair position |
-| `ID` | Variant ID (from `.bim`) |
-| `REF` | Reference allele |
-| `ALT` | Alternate allele |
-| `MISS_RATE` | Per-marker missing rate |
-| `ALT_FREQ` | Alternate allele frequency (after QC filtering) |
-| `MAC` | Minor allele count |
-| `HWE_P` | Hardy-Weinberg equilibrium p-value |
+| Column       | Description                                        |
+| ------------ | -------------------------------------------------- |
+| `CHROM`      | Chromosome                                         |
+| `POS`        | Base-pair position                                 |
+| `ID`         | Variant ID (from `.bim`)                           |
+| `REF`        | Reference allele                                   |
+| `ALT`        | Alternate allele                                   |
+| `MISS_RATE`  | Per-marker missing rate                            |
+| `ALT_FREQ`   | Alternate allele frequency (after QC filtering)    |
+| `MAC`        | Minor allele count                                 |
+| `HWE_P`      | Hardy-Weinberg equilibrium p-value                 |
 
 Method-specific columns follow the metadata columns (see `grab --help METHOD`
 for each method's output column details).
@@ -520,10 +513,10 @@ for each method's output column details).
 
 Output compression is controlled by two flags:
 
-| Flag | Values | Default |
-|------|--------|---------|
-| `--compression` | `gz` (gzip) or `zst` (Zstandard) | plain text |
-| `--compression-level` | gz: 1–9; zst: 1–22 | 0 (library default) |
+| Flag                   | Values                              | Default               |
+| ---------------------- | ----------------------------------- | --------------------- |
+| `--compression`        | `gz` (gzip) or `zst` (Zstandard)    | plain text            |
+| `--compression-level`  | gz: 1–9; zst: 1–22                  | 0 (library default)   |
 
 Input files with `.gz` or `.zst` extensions are auto-detected and decompressed
 transparently.

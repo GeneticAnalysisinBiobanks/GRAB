@@ -145,7 +145,7 @@ build/grab \
 ## individual AF coefficient
 
 build/grab \
-  --cal-ind-af-coef \
+  --cal-af-coef \
   --covar examples/simuPHENO.txt \
   --pc-cols PC1,PC2,PC3,PC4 \
   --bfile examples/simuPLINK \
@@ -185,7 +185,7 @@ build/grab --make-abed \
   --out examples/spamixlocalp/simuAncestry
 
 build/grab \
-  --cal-admix-phi \
+  --cal-phi \
   --admix-bfile examples/spamixlocalp/simuAncestry \
   --sp-grm-plink2 examples/simuPLINK.grm.sp \
   --out examples/spamixlocalp/simuAncestry

@@ -16,9 +16,9 @@ namespace text {
 
 // Strip trailing \r from `line`.  Returns true if the line should be skipped
 // (blank or starts with '#').
-inline bool skipLine(std::string& line) {
-  if (!line.empty() && line.back() == '\r') line.pop_back();
-  return line.empty() || line[0] == '#';
+inline bool skipLine(std::string &line) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    return line.empty() || line[0] == '#';
 }
 
 // Lightweight cursor for whitespace-delimited tokenisation of a std::string.
@@ -31,35 +31,35 @@ inline bool skipLine(std::string& line) {
 //   tok.skipWS();
 //   double val = std::strtod(tok.pos(), &endPtr);
 struct TokenScanner {
-  const char* p;
-  const char* end;
+    const char *p;
+    const char *end;
 
-  explicit TokenScanner(const std::string& line)
-      : p(line.c_str()), end(p + line.size()) {}
+    explicit TokenScanner(const std::string &line) : p(line.c_str()), end(p + line.size()) {}
 
-  void skipWS() {
-    while (p < end && (*p == ' ' || *p == '\t')) ++p;
-  }
+    void skipWS() {
+        while (p < end && (*p == ' ' || *p == '\t'))
+            ++p;
+    }
 
-  const char* pos() const { return p; }
-  bool atEnd() const { return p >= end; }
+    const char *pos() const { return p; }
+    bool atEnd() const { return p >= end; }
 
-  std::string next() {
-    skipWS();
-    const char* s = p;
-    while (p < end && *p != ' ' && *p != '\t') ++p;
-    return std::string(s, p);
-  }
+    std::string next() {
+        skipWS();
+        const char *s = p;
+        while (p < end && *p != ' ' && *p != '\t')
+            ++p;
+        return std::string(s, p);
+    }
 };
 
 // Build an IID → index map from a vector of subject IDs.
-inline std::unordered_map<std::string, uint32_t>
-buildIIDMap(const std::vector<std::string>& iids) {
-  std::unordered_map<std::string, uint32_t> m;
-  m.reserve(iids.size());
-  for (uint32_t i = 0; i < static_cast<uint32_t>(iids.size()); ++i)
-    m.emplace(iids[i], i);
-  return m;
+inline std::unordered_map<std::string, uint32_t> buildIIDMap(const std::vector<std::string> &iids) {
+    std::unordered_map<std::string, uint32_t> m;
+    m.reserve(iids.size());
+    for (uint32_t i = 0; i < static_cast<uint32_t>(iids.size()); ++i)
+        m.emplace(iids[i], i);
+    return m;
 }
 
 } // namespace text

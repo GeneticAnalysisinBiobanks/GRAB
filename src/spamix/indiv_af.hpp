@@ -17,20 +17,20 @@
 // Shared between SPAmixAF (pre-compute step) and SPAmix (on-the-fly).
 #pragma once
 
-#include "io/geno_data.hpp"
+#include "geno_factory/geno_data.hpp"
+#include <Eigen/Dense>
 #include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
-#include <Eigen/Dense>
 
 // ======================================================================
 // AFModel — result of fitting one marker
 // ======================================================================
 
 struct AFModel {
-  int8_t          status;  // 0=uniform, 1=OLS, 2=logistic
-  Eigen::VectorXd betas;   // length (1+nPC); all zeros for status 0
+    int8_t status;         // 0=uniform, 1=OLS, 2=logistic
+    Eigen::VectorXd betas; // length (1+nPC); all zeros for status 0
 };
 
 // ======================================================================
@@ -38,12 +38,12 @@ struct AFModel {
 // ======================================================================
 
 struct AFContext {
-  const Eigen::MatrixXd& onePlusPCs;        // (N × 1+nPC) = [1 | PCs]
-  const Eigen::MatrixXd& XtX_inv_Xt;        // (1+nPC × N) = (X'X)^{-1} X'
-  const Eigen::VectorXd& sqrt_XtX_inv_diag; // (1+nPC) = sqrt(diag((X'X)^{-1}))
-  Eigen::Ref<const Eigen::MatrixXd> PCs;    // (N × nPC) — accepts MatrixXd or block
-  int N;
-  int nPC;
+    const Eigen::MatrixXd &onePlusPCs;        // (N × 1+nPC) = [1 | PCs]
+    const Eigen::MatrixXd &XtX_inv_Xt;        // (1+nPC × N) = (X'X)^{-1} X'
+    const Eigen::VectorXd &sqrt_XtX_inv_diag; // (1+nPC) = sqrt(diag((X'X)^{-1}))
+    Eigen::Ref<const Eigen::MatrixXd> PCs;    // (N × nPC) — accepts MatrixXd or block
+    int N;
+    int nPC;
 };
 
 // ======================================================================
@@ -56,10 +56,7 @@ struct AFContext {
 //   logistic on sig PCs     → status 2 (betas mapped to full (1+nPC) vector)
 // ======================================================================
 
-AFModel computeAFModel(
-    const Eigen::Ref<const Eigen::VectorXd>& g,
-    double altFreq,
-    const AFContext& ctx);
+AFModel computeAFModel(const Eigen::Ref<const Eigen::VectorXd> &g, double altFreq, const AFContext &ctx);
 
 // ======================================================================
 // computeAFVec — fused compute: directly writes per-individual AF into out
@@ -70,11 +67,10 @@ AFModel computeAFModel(
 // for the logistic path.  Preferred for on-the-fly usage (SPAmix).
 // ======================================================================
 
-void computeAFVec(
-    const Eigen::Ref<const Eigen::VectorXd>& g,
-    double altFreq,
-    const AFContext& ctx,
-    Eigen::Ref<Eigen::VectorXd> out);
+void computeAFVec(const Eigen::Ref<const Eigen::VectorXd> &g,
+                  double altFreq,
+                  const AFContext &ctx,
+                  Eigen::Ref<Eigen::VectorXd> out);
 
 // ======================================================================
 // getAFVecFromModel — reconstruct per-individual AF from a stored model
@@ -87,11 +83,7 @@ void computeAFVec(
 // ======================================================================
 
 void getAFVecFromModel(
-    const AFModel& model,
-    double altFreq,
-    const Eigen::MatrixXd& onePlusPCs,
-    int N,
-    Eigen::Ref<Eigen::VectorXd> out);
+    const AFModel &model, double altFreq, const Eigen::MatrixXd &onePlusPCs, int N, Eigen::Ref<Eigen::VectorXd> out);
 
 // ======================================================================
 // IndivAFWriter — write all marker AF models to disk
@@ -106,39 +98,36 @@ void getAFVecFromModel(
 // Caller passes CHR / BP as strings / uint32_t directly.
 
 class IndivAFWriter {
-public:
-  enum class Mode { Binary, Text };
+  public:
+    enum class Mode { Binary, Text };
 
-  // Infer mode from outputFile extension: .bin → Binary, else Text.
-  // Text mode supports .gz, .zst, or plain via TextWriter.
-  IndivAFWriter(
-      const std::string& outputFile,
-      uint64_t           nBimMarkers,  // total .bim lines (binary pre-alloc)
-      int                nPC);
+    // Infer mode from outputFile extension: .bin → Binary, else Text.
+    // Text mode supports .gz, .zst, or plain via TextWriter.
+    IndivAFWriter(const std::string &outputFile,
+                  uint64_t nBimMarkers, // total .bim lines (binary pre-alloc)
+                  int nPC);
 
-  ~IndivAFWriter();
+    ~IndivAFWriter();
 
-  // Write one record.  For Binary, genoIndex determines the file offset.
-  void write(uint64_t genoIndex,
-             int8_t status,
-             const Eigen::VectorXd& betas);
+    // Write one record.  For Binary, genoIndex determines the file offset.
+    void write(uint64_t genoIndex, int8_t status, const Eigen::VectorXd &betas);
 
-  void close();
+    void close();
 
-  Mode mode() const { return m_mode; }
+    Mode mode() const { return m_mode; }
 
-private:
-  Mode        m_mode;
-  int         m_nPC;
-  long long   m_recordSize;   // valid only for Binary
+  private:
+    Mode m_mode;
+    int m_nPC;
+    long long m_recordSize; // valid only for Binary
 
-  // Binary output
-  std::fstream m_binOut;
+    // Binary output
+    std::fstream m_binOut;
 
-  // Text output (TextWriter handles gz/zst/plain)
-  std::unique_ptr<class TextWriter> m_writer;
+    // Text output (TextWriter handles gz/zst/plain)
+    std::unique_ptr<class TextWriter> m_writer;
 
-  bool m_closed = false;
+    bool m_closed = false;
 };
 
 // ======================================================================
@@ -148,18 +137,18 @@ private:
 // ======================================================================
 
 class IndivAFReader {
-public:
-  IndivAFReader(const std::string& binFile, int nPC);
-  ~IndivAFReader();
+  public:
+    IndivAFReader(const std::string &binFile, int nPC);
+    ~IndivAFReader();
 
-  // Seek to genoIndex and fill model.  Returns false if status = 0 (caller
-  // may still use the returned status-0 model for a uniform AF estimate).
-  bool read(uint64_t genoIndex, AFModel& model);
+    // Seek to genoIndex and fill model.  Returns false if status = 0 (caller
+    // may still use the returned status-0 model for a uniform AF estimate).
+    bool read(uint64_t genoIndex, AFModel &model);
 
-private:
-  std::ifstream m_in;
-  int           m_nPC;
-  long long     m_recordSize;
+  private:
+    std::ifstream m_in;
+    int m_nPC;
+    long long m_recordSize;
 };
 
 // ======================================================================
@@ -173,11 +162,8 @@ private:
 // Always returns exactly nMarkers models in flat marker order.
 // ======================================================================
 
-std::vector<AFModel> loadAFModels(
-    const std::string& path,
-    int nPC,
-    uint32_t nMarkers,
-    const std::vector<uint64_t>& genoIndices);
+std::vector<AFModel>
+loadAFModels(const std::string &path, int nPC, uint32_t nMarkers, const std::vector<uint64_t> &genoIndices);
 
 // ======================================================================
 // runSPAmixAF — pre-compute per-marker AF models and write to disk.
@@ -191,26 +177,25 @@ std::vector<AFModel> loadAFModels(
 
 // Compute AF models for all markers in parallel, storing results in memory.
 // genoToFlat maps raw genoIndex → flat marker index (UINT32_MAX = skip).
-// Callers must also include "io/plink.hpp".
+// Callers must also include "geno_factory/plink.hpp".
 class GenoMeta;
-std::vector<AFModel> computeAFModelsInMemory(
-    const GenoMeta& plinkData,
-    const AFContext& afCtx,
-    const std::vector<uint32_t>& genoToFlat,
-    int nthread);
+std::vector<AFModel> computeAFModelsInMemory(const GenoMeta &plinkData,
+                                             const AFContext &afCtx,
+                                             const std::vector<uint32_t> &genoToFlat,
+                                             int nthread);
 
-void runSPAmixAF(
-    const std::vector<std::string>& pcColNames,
-    const std::string& phenoFile,
-    const std::string& covarFile,
-    const GenoSpec& geno,
-    const std::string& outputFile,
-    int    nthread,
-    int    nSnpPerChunk,
-    double missingCutoff,
-    double minMafCutoff,
-    double minMacCutoff,
-    const std::string& keepFile = {},
-    const std::string& removeFile = {},
-    const std::vector<int>& covarColNums = {},
-    const std::vector<std::string>& notCovar = {});
+void runSPAmixAF(const std::vector<std::string> &pcColNames,
+                 const std::string &phenoFile,
+                 const std::string &covarFile,
+                 const GenoSpec &geno,
+                 const std::string &outputFile,
+                 int nthread,
+                 int nSnpPerChunk,
+                 double missingCutoff,
+                 double minMafCutoff,
+                 double minMacCutoff,
+                 double hweCutoff,
+                 const std::string &keepFile = {},
+                 const std::string &removeFile = {},
+                 const std::vector<int> &covarColNums = {},
+                 const std::vector<std::string> &notCovar = {});

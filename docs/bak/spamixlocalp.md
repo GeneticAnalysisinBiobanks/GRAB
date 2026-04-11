@@ -58,7 +58,7 @@ Please implement the phi-calculation. The user cmd is
 
 ```sh
 build/grab \
-  --cal-admix-phi \
+  --cal-phi \
   --admix-bfile examples/admix_bfile_prefix \
   --sp-grm-plink2 examples/simuPLINK.grm.sp \
   --out examples/admix_bfile_prefix.phi

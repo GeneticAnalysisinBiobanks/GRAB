@@ -28,16 +28,13 @@ namespace regression {
 // Returns: weight vector (n)
 // ──────────────────────────────────────────────────────────────────────
 
-Eigen::VectorXd calRegrWeight(double prevalence,
-                              const Eigen::Ref<const Eigen::VectorXd>& indicator);
+Eigen::VectorXd calRegrWeight(double prevalence, const Eigen::Ref<const Eigen::VectorXd> &indicator);
 
 // ──────────────────────────────────────────────────────────────────────
 // parseSurvSpec — parse "TIME:EVENT" into two column names
 // ──────────────────────────────────────────────────────────────────────
 
-void parseSurvSpec(const std::string& spec,
-                   std::string& timeCol,
-                   std::string& eventCol);
+void parseSurvSpec(const std::string &spec, std::string &timeCol, std::string &eventCol);
 
 // ──────────────────────────────────────────────────────────────────────
 // § 1  Weighted Cox regression  (Breslow partial likelihood, Newton-Raphson)
@@ -60,13 +57,12 @@ void parseSurvSpec(const std::string& spec,
 // Returns martingale residuals for the kept rows (length ≤ n).
 // ──────────────────────────────────────────────────────────────────────
 
-Eigen::VectorXd coxResiduals(
-    const Eigen::Ref<const Eigen::VectorXd>& time,
-    const Eigen::Ref<const Eigen::VectorXd>& event,
-    const Eigen::Ref<const Eigen::MatrixXd>& X,
-    const Eigen::Ref<const Eigen::VectorXd>& weights,
-    double tol = 1e-10, int maxIter = 40);
-
+Eigen::VectorXd coxResiduals(const Eigen::Ref<const Eigen::VectorXd> &time,
+                             const Eigen::Ref<const Eigen::VectorXd> &event,
+                             const Eigen::Ref<const Eigen::MatrixXd> &X,
+                             const Eigen::Ref<const Eigen::VectorXd> &weights,
+                             double tol = 1e-10,
+                             int maxIter = 40);
 
 // ──────────────────────────────────────────────────────────────────────
 // § 2  Weighted logistic regression  (IRLS)
@@ -86,10 +82,10 @@ Eigen::VectorXd coxResiduals(
 // Returns response residuals for the kept rows (length ≤ n).
 // ──────────────────────────────────────────────────────────────────────
 
-Eigen::VectorXd logisticResiduals(
-    const Eigen::Ref<const Eigen::VectorXd>& y,
-    const Eigen::Ref<const Eigen::MatrixXd>& X,
-    const Eigen::Ref<const Eigen::VectorXd>& weights,
-    double tol = 1e-9, int maxIter = 50);
+Eigen::VectorXd logisticResiduals(const Eigen::Ref<const Eigen::VectorXd> &y,
+                                  const Eigen::Ref<const Eigen::MatrixXd> &X,
+                                  const Eigen::Ref<const Eigen::VectorXd> &weights,
+                                  double tol = 1e-9,
+                                  int maxIter = 50);
 
-}  // namespace regression
+} // namespace regression

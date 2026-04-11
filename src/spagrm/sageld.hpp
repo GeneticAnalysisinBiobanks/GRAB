@@ -13,22 +13,22 @@
 //   P_G  P_Gx<E1>  [P_Gx<E2>  ...]  Z_G  Z_Gx<E1>  [Z_Gx<E2>  ...]
 #pragma once
 
-#include "io/geno_data.hpp"
+#include "geno_factory/geno_data.hpp"
 
 #include <string>
 
-void runSAGELD(
-    const std::string& residFile,
-    const std::string& spgrmGrabFile,
-    const std::string& spgrmGctaFile,
-    const std::string& pairwiseIBDFile,
-    const GenoSpec& geno,
-    const std::string& outputFile,
-    double spaCutoff,
-    int nthreads,
-    int nSnpPerChunk,
-    double missingCutoff,
-    double minMafCutoff,
-    double minMacCutoff,
-    const std::string& keepFile = {},
-    const std::string& removeFile = {});
+void runSAGELD(const std::string &residFile,
+               const std::string &spgrmGrabFile,
+               const std::string &spgrmGctaFile,
+               const std::string &pairwiseIBDFile,
+               const GenoSpec &geno,
+               const std::string &outputFile,
+               double spaCutoff,
+               int nthreads,
+               int nSnpPerChunk,
+               double missingCutoff,
+               double minMafCutoff,
+               double minMacCutoff,
+               double hweCutoff,
+               const std::string &keepFile = {},
+               const std::string &removeFile = {});
