@@ -798,22 +798,7 @@ void SubjectData::finalize() {
     if (m_hasRawPheno) phenoMap = text::buildIIDMap(m_rawPheno.iids);
 
     // ── Log NaN counts in residual file per column ─────────────────────
-    if (m_hasRawResid) {
-        const int nc = m_rawResid.nCols;
-        const size_t nRows = m_rawResid.iids.size();
-        for (int c = 0; c < nc; ++c) {
-            uint32_t nNaN = 0;
-            for (size_t r = 0; r < nRows; ++r)
-                if (std::isnan(m_rawResid.vals[r * nc + c])) ++nNaN;
-            if (nNaN > 0) {
-                std::string cname = (nc == 1) ? "null-resid"
-                                              : (!m_residColNames.empty() && c < (int)m_residColNames.size()
-                                                     ? m_residColNames[c]
-                                                     : "col" + std::to_string(c + 1));
-                infoMsg("--null-resid %s: %u subjects with missing values (excluded)", cname.c_str(), nNaN);
-            }
-        }
-    }
+    // (per-column stats are logged after the intersection below)
 
     // ── Narrow by phenotype / residual intersection ────────────────────
     // Start from SubjectSet's bitmask and further restrict by pheno/resid.
@@ -873,12 +858,51 @@ void SubjectData::finalize() {
 
     if (m_nUsed == 0) throw std::runtime_error("SubjectData: no subjects remain after intersection with .fam");
 
-    // ── Log phenotype/residual step ────────────────────────────────────
-    if (m_hasRawResid || m_hasRawPheno)
-        infoMsg("  \xe2\x88\xa9 pheno/resid    %6u  phenotype / residual (non-NaN, final)", nPheno);
-    else
-        infoMsg("  (no phenotype/residual filter applied)");
+    // ── Log per-column stats ───────────────────────────────────────────
+    const uint32_t nFiltered = m_subjectSet.nUsed(); // subjects after subject filters
+    if (m_hasRawResid) {
+        const int nc = m_rawResid.nCols;
+        for (int c = 0; c < nc; ++c) {
+            // Count non-NaN in the raw file
+            uint32_t nValid = 0;
+            for (size_t r = 0; r < m_rawResid.iids.size(); ++r)
+                if (!std::isnan(m_rawResid.vals[r * nc + c])) ++nValid;
+            // Count non-NaN subjects that are also in the filtered set
+            uint32_t nUsedCol = 0;
+            for (uint32_t f : usedFamIndices) {
+                auto it = residMap.find(famIIDs[f]);
+                if (it != residMap.end() && !std::isnan(m_rawResid.vals[it->second * nc + c]))
+                    ++nUsedCol;
+            }
+            std::string cname = (!m_residColNames.empty() && c < (int)m_residColNames.size())
+                                    ? m_residColNames[c]
+                                    : "col" + std::to_string(c + 1);
+            std::fprintf(stderr, "  %s: %u valid, %u after filtering\n", cname.c_str(), nValid, nUsedCol);
+        }
+    }
+    if (m_hasRawPheno) {
+        const int nc = m_rawPheno.nCols;
+        for (int c = 0; c < nc; ++c) {
+            uint32_t nValid = 0;
+            for (size_t r = 0; r < m_rawPheno.iids.size(); ++r)
+                if (!std::isnan(m_rawPheno.vals[r * nc + c])) ++nValid;
+            uint32_t nUsedCol = 0;
+            for (uint32_t f : usedFamIndices) {
+                auto it = phenoMap.find(famIIDs[f]);
+                if (it != phenoMap.end() && !std::isnan(m_rawPheno.vals[it->second * nc + c]))
+                    ++nUsedCol;
+            }
+            std::string cname = (c < (int)m_rawPheno.colNames.size())
+                                    ? m_rawPheno.colNames[c]
+                                    : "col" + std::to_string(c + 1);
+            std::fprintf(stderr, "  %s: %u valid, %u after filtering\n", cname.c_str(), nValid, nUsedCol);
+        }
+    }
+    if (!m_hasRawResid && !m_hasRawPheno)
+        std::fprintf(stderr, "  (no phenotype/residual filter)\n");
+    std::fprintf(stderr, "\n");
     (void)nWords;
+    (void)nFiltered;
 
     // ── Allocate and fill dense arrays in .fam order ───────────────────
     const Eigen::Index N = static_cast<Eigen::Index>(m_nUsed);

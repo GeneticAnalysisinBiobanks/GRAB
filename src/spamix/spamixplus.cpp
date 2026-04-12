@@ -274,6 +274,8 @@ void runSPAmixPlus(const std::string &residFile,
     sd.setKeepRemove(keepFile, removeFile);
     if (!spgrmGrabFile.empty() || !spgrmGctaFile.empty())
         sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
+    sd.setGenoLabel(geno.flagLabel());
+    sd.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
     sd.finalize();
 
     const int N = static_cast<int>(sd.nUsed());

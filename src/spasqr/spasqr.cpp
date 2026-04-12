@@ -59,12 +59,12 @@ class SPAsqrMethod : public MethodBase {
             for (int i = 0; i < m_ntaus; ++i)
                 oss << "\tZ_" << m_tauLabels[i];
         } else {
-            // Legacy: Z_tau1..Z_tauK  P_tau1..P_tauK  P_CCT
-            for (int i = 1; i <= m_ntaus; ++i)
-                oss << "\tZ_tau" << i;
+            // Legacy: P_CCT  P_tau1..P_tauK  Z_tau1..Z_tauK
+            oss << "\tP_CCT";
             for (int i = 1; i <= m_ntaus; ++i)
                 oss << "\tP_tau" << i;
-            oss << "\tP_CCT";
+            for (int i = 1; i <= m_ntaus; ++i)
+                oss << "\tZ_tau" << i;
         }
         return oss.str();
     }
@@ -120,12 +120,12 @@ class SPAsqrMethod : public MethodBase {
             for (int i = 0; i < m_ntaus; ++i)
                 result.push_back(zScores[i]);
         } else {
-            // Legacy: Z_tau1..Z_tauK  P_tau1..P_tauK  P_CCT
-            for (int i = 0; i < m_ntaus; ++i)
-                result.push_back(zScores[i]);
+            // Legacy: P_CCT  P_tau1..P_tauK  Z_tau1..Z_tauK
+            result.push_back(pCCT);
             for (int i = 0; i < m_ntaus; ++i)
                 result.push_back(pvals[i]);
-            result.push_back(pCCT);
+            for (int i = 0; i < m_ntaus; ++i)
+                result.push_back(zScores[i]);
         }
     }
 
@@ -344,6 +344,8 @@ void runSPAsqr(const std::string &residFile,
     sd.loadResidSPAsqr(residFile);
     sd.setKeepRemove(keepFile, removeFile);
     sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
+    sd.setGenoLabel(geno.flagLabel());
+    sd.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
     sd.finalize();
     const Eigen::Index N = static_cast<Eigen::Index>(sd.nUsed());
     const Eigen::Index K = sd.residCols();
@@ -381,6 +383,9 @@ void runSPAsqrPheno(const std::string &phenoFile,
                     double minMafCutoff,
                     double minMacCutoff,
                     double hweCutoff,
+                    double spasqrTol,
+                    double spasqrH,
+                    double spasqrHScale,
                     const std::string &keepFile,
                     const std::string &removeFile,
                     const std::vector<int> &covarColNums,
@@ -395,6 +400,8 @@ void runSPAsqrPheno(const std::string &phenoFile,
     if (!covarFile.empty()) sd.loadCovar(covarFile, covarNames, covarColNums, notCovar);
     sd.setKeepRemove(keepFile, removeFile);
     sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
+    sd.setGenoLabel(geno.flagLabel());
+    sd.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
     sd.finalize();
     sd.dropNaInColumns({quantPhenoCol}); // remove subjects with missing phenotype
 
@@ -407,21 +414,29 @@ void runSPAsqrPheno(const std::string &phenoFile,
     const int p = static_cast<int>(X.cols());
     infoMsg("Quantitative phenotype: %s, %d covariates, %d tau levels", quantPhenoCol.c_str(), p, ntaus);
 
-    // ── 2. Compute bandwidth h = IQR(Y) / 3 ──────────────────────────
+    // ── 2. Compute bandwidth h ─────────────────────────────────────
     {
-        std::vector<double> ysorted(N);
-        Eigen::VectorXd::Map(ysorted.data(), N) = Y;
-        std::sort(ysorted.begin(), ysorted.end());
-        auto quantile = [&](double prob) -> double {
-            double idx = prob * (N - 1);
-            Eigen::Index lo = static_cast<Eigen::Index>(std::floor(idx));
-            Eigen::Index hi = std::min(lo + 1, N - 1);
-            double frac = idx - lo;
-            return ysorted[lo] * (1.0 - frac) + ysorted[hi] * frac;
-        };
-        double iqr = quantile(0.75) - quantile(0.25);
-        double h = iqr / 3.0;
-        if (h <= 0.0) h = std::max(std::pow((std::log(N) + p) / static_cast<double>(N), 0.4), 0.05);
+        double h;
+        if (spasqrH >= 0.0) {
+            // Explicit bandwidth from --spasqr-h
+            h = spasqrH;
+        } else {
+            // IQR-based: h = IQR(Y) / scale
+            std::vector<double> ysorted(N);
+            Eigen::VectorXd::Map(ysorted.data(), N) = Y;
+            std::sort(ysorted.begin(), ysorted.end());
+            auto quantile = [&](double prob) -> double {
+                double idx = prob * (N - 1);
+                Eigen::Index lo = static_cast<Eigen::Index>(std::floor(idx));
+                Eigen::Index hi = std::min(lo + 1, N - 1);
+                double frac = idx - lo;
+                return ysorted[lo] * (1.0 - frac) + ysorted[hi] * frac;
+            };
+            double iqr = quantile(0.75) - quantile(0.25);
+            double scale = (spasqrHScale >= 0.0) ? spasqrHScale : 3.0;
+            h = iqr / scale;
+            if (h <= 0.0) h = std::max(std::pow((std::log(N) + p) / static_cast<double>(N), 0.4), 0.05);
+        }
         infoMsg("Bandwidth h = %.6f", h);
 
         // ── 3. Run conquer for each tau → build residual matrix ───────────
@@ -429,7 +444,7 @@ void runSPAsqrPheno(const std::string &phenoFile,
         for (int t = 0; t < ntaus; ++t) {
             infoMsg("  conquer tau=%.4f ...", taus[t]);
             Eigen::VectorXd resid;
-            Eigen::VectorXd beta = conquer::smqrGauss(X, Y, taus[t], h, &resid);
+            Eigen::VectorXd beta = conquer::smqrGauss(X, Y, taus[t], h, &resid, spasqrTol);
             infoMsg("    intercept=%.6f", beta(0));
 
             // ResidMat column = tau - Phi(-resid / h)   (smoothed quantile residual)

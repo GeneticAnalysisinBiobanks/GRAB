@@ -27,6 +27,11 @@ class SubjectSet {
     // Set --keep / --remove filter files.  Empty path → skip that filter.
     void setKeepRemove(const std::string &keepFile, const std::string &removeFile);
 
+    // Set descriptive labels for pipeline logging (e.g., "--bfile d_bed").
+    // If not set, generic descriptions are used.
+    void setGenoLabel(const std::string &label) { m_genoLabel = label; }
+    void setGrmLabel(const std::string &label) { m_grmLabel = label; }
+
     // ── Build bitmask ──────────────────────────────────────────────────
     // Applies the pipeline: genotype → GRM → keep → remove.
     // Prints the "Subject pipeline" log table.
@@ -66,4 +71,6 @@ class SubjectSet {
     std::string m_keepFile;
     std::string m_removeFile;
     std::unordered_set<std::string> m_grmSubjects;
+    std::string m_genoLabel; // e.g., "--bfile d_bed"
+    std::string m_grmLabel;  // e.g., "--sp-grm-grab e_grm.grab"
 };

@@ -1312,6 +1312,8 @@ void runPOLMM(const std::string &phenoFile,
     sd.loadPhenoFile(phenoFile);
     sd.setKeepRemove(keepFile, removeFile);
     sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
+    sd.setGenoLabel(geno.flagLabel());
+    sd.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
     sd.finalize();
     sd.dropNaInColumns({ordinalPhenoCol}); // remove subjects with missing phenotype
 

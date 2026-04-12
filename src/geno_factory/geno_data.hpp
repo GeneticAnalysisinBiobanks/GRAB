@@ -28,7 +28,26 @@ struct GenoSpec {
     std::string path;        // bfilePrefix for Plink/Pgen, full file for Vcf/Bgen
     std::string extractFile; // --extract: SNP include list
     std::string excludeFile; // --exclude: SNP exclude list
+
+    // Return a descriptive flag label, e.g. "--bfile d_bed".
+    std::string flagLabel() const {
+        const char *flag = nullptr;
+        switch (format) {
+        case GenoFormat::Plink: flag = "--bfile"; break;
+        case GenoFormat::Pgen:  flag = "--pfile"; break;
+        case GenoFormat::Vcf:   flag = "--vcf";   break;
+        case GenoFormat::Bgen:  flag = "--bgen";  break;
+        }
+        return std::string(flag) + " " + path;
+    }
 };
+
+// Return a descriptive label for the GRM source, e.g. "--sp-grm-grab e_grm.grab".
+inline std::string grmFlagLabel(const std::string &grabFile, const std::string &gctaFile) {
+    if (!grabFile.empty()) return "--sp-grm-grab " + grabFile;
+    if (!gctaFile.empty()) return "--sp-grm-plink2 " + gctaFile;
+    return "";
+}
 
 // Extract all sample IIDs from the genotype file metadata
 // (plink .fam, pgen .psam, VCF header, BGEN sample block).

@@ -74,39 +74,30 @@ void SubjectSet::finalize() {
 
     if (m_nUsed == 0) throw std::runtime_error("SubjectSet: no subjects remain after filtering");
 
-    // ── Log subject pipeline table ──────────────────────────────────────
+    // ── Log subject pipeline ──────────────────────────────────────────
     const uint32_t nAfterGrm = hasGrm ? nGrm : nGeno;
     const uint32_t nAfterKeep = hasKeep ? nKeep : nAfterGrm;
     const uint32_t nAfterRemove = hasRemove ? nRemove : nAfterKeep;
-    (void)nAfterRemove; // last step count is m_nUsed
+    (void)nAfterRemove;
 
-    std::fprintf(
-        stderr,
-        "\n\xe2\x94\x80\xe2\x94\x80 Subject pipeline "
-        "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80"
-        "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80"
-        "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80"
-        "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\n"
-        "  Step              Count  Description\n"
-        "  genotype         %6u  .fam / .psam / VCF / BGEN subjects\n",
-        nGeno);
+    const std::string genoLabel = m_genoLabel.empty() ? "genotype file" : m_genoLabel;
+    const std::string grmLabel = m_grmLabel.empty() ? "sparse GRM" : m_grmLabel;
+
+    std::fprintf(stderr, "\n");
+    std::fprintf(stderr, "  %u subjects in %s\n", nGeno, genoLabel.c_str());
     if (hasGrm)
-        std::fprintf(stderr, "  \xe2\x88\xa9 GRM            %6u  sparse GRM subjects\n", nGrm);
+        std::fprintf(stderr, "  %u subjects in %s\n", nGrm, grmLabel.c_str());
     else
-        std::fprintf(stderr, "  \xe2\x88\xa9 GRM                 -  (no GRM provided)\n");
-    std::fprintf(stderr,
-                 "  \xe2\x88\xa9 keep           %6u  %s\n"
-                 "  \\ remove         %6u  %s\n",
-                 nAfterKeep, hasKeep ? "--keep filter" : "(no --keep provided)", nAfterRemove,
-                 hasRemove ? "--remove filter" : "(no --remove provided)");
-    std::fprintf(stderr,
-                 "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2"
-                 "\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94"
-                 "\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80"
-                 "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2"
-                 "\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94"
-                 "\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80"
-                 "\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\xe2\x94\x80\n\n");
+        std::fprintf(stderr, "  (no GRM provided, skipping GRM intersection)\n");
+    if (hasKeep)
+        std::fprintf(stderr, "  %u subjects in --keep %s\n", nAfterKeep, m_keepFile.c_str());
+    else
+        std::fprintf(stderr, "  (no --keep provided)\n");
+    if (hasRemove)
+        std::fprintf(stderr, "  %u subjects after --remove %s\n", nAfterRemove, m_removeFile.c_str());
+    else
+        std::fprintf(stderr, "  (no --remove provided)\n");
+    std::fprintf(stderr, "  %u subjects after filtering\n", m_nUsed);
 
     m_finalized = true;
 }

@@ -876,6 +876,8 @@ void runWtCoxG(const std::string &residFile,
     sd.setKeepRemove(keepFile, removeFile);
     if (!spgrmGrabFile.empty() || !spgrmGctaFile.empty())
         sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
+    sd.setGenoLabel(geno.flagLabel());
+    sd.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
     sd.finalize();
     infoMsg("  %u subjects loaded", sd.nUsed());
 
@@ -956,6 +958,8 @@ void runWtCoxGPheno(const std::string &phenoFile,
     sd.setKeepRemove(keepFile, removeFile);
     if (!spgrmGrabFile.empty() || !spgrmGctaFile.empty())
         sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
+    sd.setGenoLabel(geno.flagLabel());
+    sd.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
     sd.finalize();
     // Drop subjects with NA in the selected phenotype column(s)
     if (isSurv) {

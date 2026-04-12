@@ -196,6 +196,12 @@ inline const FlagDef kSeed = {"--seed", "INT", "Random seed for reproducibility 
 inline const FlagDef kQuantPheno = {"--pheno-quant", "COL", "Column name for quantitative phenotype (SPAsqr)", nullptr};
 inline const FlagDef kSpasqrTaus = {"--spasqr-taus", "LIST",
                                     "Comma-separated tau levels for SPAsqr (default: 0.1,0.3,0.5,0.7,0.9)", nullptr};
+inline const FlagDef kSpasqrTol = {"--spasqr-tol", "FLOAT",
+                                   "Convergence tolerance for conquer quantile regression (default: 1e-7)", nullptr};
+inline const FlagDef kSpasqrH = {"--spasqr-h", "FLOAT",
+                                  "Explicit bandwidth for conquer (mutually exclusive with --spasqr-h-scale)", nullptr};
+inline const FlagDef kSpasqrHScale = {"--spasqr-h-scale", "FLOAT",
+                                      "Divisor for IQR-based bandwidth: h = IQR(Y) / SCALE (default: 3; mutually exclusive with --spasqr-h)", nullptr};
 
 inline const FlagDef kOrdinalPheno = {"--pheno-ordinal", "COL", "Column name for ordinal categorical phenotype (POLMM)",
                                       R"(Selects an ordinal column from --pheno for proportional odds mixed model.
@@ -292,7 +298,8 @@ Uses sparse GRM for random effects via PCG solver.)"};
 // ── SPAsqr ─────────────────────────────────────────────────────────
 inline const FlagDef *const kSPAsqrReq[] = {&kGeno_input, &kOut, &kSpGrm, nullptr};
 inline const FlagDef *const kSPAsqrOpt[] = {&kNullResid,  &kPheno,      &kCovar,      &kCovarName,  &kCovarColNums,
-                                            &kNotCovar,   &kQuantPheno, &kSpasqrTaus, &kOutlierIqr, &kOutlierAbs,
+                                            &kNotCovar,   &kQuantPheno, &kSpasqrTaus, &kSpasqrTol,  &kSpasqrH,
+                                            &kSpasqrHScale, &kOutlierIqr, &kOutlierAbs,
                                             &kSpaZThresh, &kThreads,    &kChunkSize,  &kGeno,       &kMaf,
                                             &kMac,        &kHwe,        nullptr};
 inline const MethodDef kSPAsqr = {"SPAsqr",

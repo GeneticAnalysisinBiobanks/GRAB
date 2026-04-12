@@ -750,6 +750,7 @@ void runPhiEstimation(const std::string &admixPrefix,
     auto grmIDs = SparseGRM::parseSubjectIDs(grmGrabFile, grmGctaFile, famIIDs);
     if (!grmIDs.empty()) ss.setGrmSubjects(std::move(grmIDs));
 
+    ss.setGrmLabel(grmFlagLabel(grmGrabFile, grmGctaFile));
     ss.setKeepRemove(keepFile, removeFile);
     ss.finalize();
 

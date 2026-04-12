@@ -63,17 +63,16 @@ After finalize, a covariate imputation table is printed:
 
 ### Pipeline Log
 
-GRAB prints a summary table after subject intersection:
+GRAB prints a summary after subject intersection:
 
 ```
-── Subject pipeline ──────────────────────────────────
-  Step              Count  Description
-  genotype           5000  .fam / .psam / VCF / BGEN subjects
-  ∩ GRM              4900  sparse GRM subjects
-  ∩ keep             4900  (no --keep provided)
-  \ remove           4900  (no --remove provided)
-  ∩ pheno/resid      4700  phenotype / residual (non-NaN, final)
-──────────────────────────────────────────────────────
+  5000 subjects in --bfile my_data
+  4900 subjects in --sp-grm-grab my_grm.grab
+  (no --keep provided)
+  (no --remove provided)
+  4900 subjects after filtering
+  Residual1: 4800 valid, 4700 after filtering
+  Residual2: 4900 valid, 4700 after filtering
 ```
 
 ---

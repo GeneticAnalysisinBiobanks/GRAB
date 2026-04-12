@@ -425,6 +425,8 @@ void runSPAGRM(const std::string &residFile,
     sd.loadResidOne(residFile);
     sd.setKeepRemove(keepFile, removeFile);
     sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
+    sd.setGenoLabel(geno.flagLabel());
+    sd.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
     sd.finalize();
     const uint32_t N = sd.nUsed();
     infoMsg("  %u subjects in union mask", N);

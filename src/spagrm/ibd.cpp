@@ -57,6 +57,7 @@ void runPairwiseIBD(const std::string &spgrmGrabFile,
     // Build filtered subject set via SubjectSet
     SubjectSet ss(std::move(allIIDs));
     ss.setKeepRemove(keepFile, removeFile);
+    ss.setGenoLabel(geno.flagLabel());
     ss.finalize();
 
     const uint32_t nFam = ss.nFam();

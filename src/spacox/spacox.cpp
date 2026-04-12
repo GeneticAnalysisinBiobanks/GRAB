@@ -437,6 +437,7 @@ void runSPACox(const std::string &residFile,
     if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile);
     if (!covarFile.empty()) sd.loadCovar(covarFile, covarNames, covarColNums, notCovar);
     sd.setKeepRemove(keepFile, removeFile);
+    sd.setGenoLabel(geno.flagLabel());
     sd.finalize();
     infoMsg("  %u subjects in union mask", sd.nUsed());
 

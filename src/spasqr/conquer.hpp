@@ -29,7 +29,7 @@ Eigen::VectorXd smqrGauss(const Eigen::MatrixXd &X,
                           double tau,
                           double h,
                           Eigen::VectorXd *residOut = nullptr,
-                          double tol = 1e-4,
+                          double tol = 1e-7,
                           int iteMax = 5000,
                           double stepMax = 100.0);
 

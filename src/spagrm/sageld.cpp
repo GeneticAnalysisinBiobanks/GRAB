@@ -296,6 +296,8 @@ void runSAGELD(const std::string &residFile,
     sd.loadResidOne(residFile);
     sd.setKeepRemove(keepFile, removeFile);
     sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
+    sd.setGenoLabel(geno.flagLabel());
+    sd.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
     sd.finalize();
     const uint32_t N = sd.nUsed();
     infoMsg("Loaded %u subjects (intersected with .fam)", N);

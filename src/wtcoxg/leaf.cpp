@@ -443,6 +443,7 @@ void runLEAF(const std::vector<std::string> &residFiles,
         clusterSD.back().loadResidWtCoxG(residFiles[c]);
         clusterSD.back().setKeepRemove(keepFile, removeFile);
         if (!grmIDs.empty()) clusterSD.back().setGrmSubjects(grmIDs);
+        clusterSD.back().setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
         clusterSD.back().finalize();
         infoMsg("    %u subjects loaded", clusterSD.back().nUsed());
     }
@@ -746,6 +747,8 @@ void runLEAFPheno(const std::string &phenoFile,
     sdFull.setKeepRemove(keepFile, removeFile);
     if (!spgrmGrabFile.empty() || !spgrmGctaFile.empty())
         sdFull.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sdFull.famIIDs()));
+    sdFull.setGenoLabel(geno.flagLabel());
+    sdFull.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
     sdFull.finalize();
     // Drop subjects with NA in the selected phenotype column(s)
     if (isSurv) {

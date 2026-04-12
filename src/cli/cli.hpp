@@ -21,6 +21,9 @@ struct Args {
     std::string quantPheno;                         // column name for quantitative phenotype (SPAsqr)
     std::string ordinalPheno;                       // column name for ordinal phenotype (POLMM)
     std::string spasqrTaus = "0.1,0.3,0.5,0.7,0.9"; // default tau levels (SPAsqr)
+    double spasqrTol = 1e-7;                          // --spasqr-tol (conquer convergence tolerance)
+    double spasqrH = -1.0;                            // --spasqr-h (explicit bandwidth; -1 = auto)
+    double spasqrHScale = -1.0;                       // --spasqr-h-scale (IQR divisor; -1 = auto → 3)
     std::string bfilePrefix;
     std::string pfilePrefix; // --pfile (pgen/pvar/psam)
     std::string vcfFile;     // --vcf (vcf/bcf)

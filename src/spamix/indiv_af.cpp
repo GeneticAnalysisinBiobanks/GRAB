@@ -555,6 +555,7 @@ void runSPAmixAF(const std::vector<std::string> &pcColNames,
     if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile);
     if (!covarFile.empty()) sd.loadCovar(covarFile, pcColNames, covarColNums, notCovar);
     sd.setKeepRemove(keepFile, removeFile);
+    sd.setGenoLabel(geno.flagLabel());
     sd.finalize();
 
     const int N = static_cast<int>(sd.nUsed());

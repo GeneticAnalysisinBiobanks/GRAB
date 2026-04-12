@@ -56,6 +56,12 @@ Args parseArgs(int argc, char *argv[]) {
             a.ordinalPheno = next();
         else if (arg == "--spasqr-taus")
             a.spasqrTaus = next();
+        else if (arg == "--spasqr-tol")
+            a.spasqrTol = std::stod(next());
+        else if (arg == "--spasqr-h")
+            a.spasqrH = std::stod(next());
+        else if (arg == "--spasqr-h-scale")
+            a.spasqrHScale = std::stod(next());
         else if (arg == "--bfile")
             a.bfilePrefix = next();
         else if (arg == "--pfile")

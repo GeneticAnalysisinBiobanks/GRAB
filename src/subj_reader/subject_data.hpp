@@ -88,6 +88,10 @@ class SubjectData {
     // Call before finalize().  Empty set → skip GRM intersection.
     void setGrmSubjects(std::unordered_set<std::string> grmIDs);
 
+    // Set descriptive labels for the subject pipeline log.
+    void setGenoLabel(const std::string &label) { m_subjectSet.setGenoLabel(label); }
+    void setGrmLabel(const std::string &label) { m_subjectSet.setGrmLabel(label); }
+
     // Access the underlying SubjectSet (valid after finalize).
     const SubjectSet &subjectSet() const { return m_subjectSet; }
 

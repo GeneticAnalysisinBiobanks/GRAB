@@ -560,6 +560,11 @@ int run(int argc, char *argv[]) {
                                  " using --pheno-quant.\n";
                     return 1;
                 }
+                if (args.spasqrH >= 0.0 && args.spasqrHScale >= 0.0) {
+                    std::cerr << "Error: --spasqr-h and --spasqr-h-scale"
+                                 " are mutually exclusive.\n";
+                    return 1;
+                }
                 if (args.spasqrTaus.empty()) {
                     std::cerr << "Error: --spasqr-taus is required when using"
                                  " --pheno-quant.\n";
@@ -579,9 +584,16 @@ int run(int argc, char *argv[]) {
                 runSPAsqrPheno(args.phenoFile, args.covarFile, args.quantPheno, covarNames, taus, args.spGrmGrabFile,
                                args.spGrmPlink2File, geno, buildOutputPath(".SPAsqr"), args.spaCutoff,
                                args.outlierRatio, args.outlierAbsBound, args.nthread, args.nSnpPerChunk,
-                               args.missingCutoff, args.minMafCutoff, args.minMacCutoff, args.hweCutoff, args.keepFile,
-                               args.removeFile, covarColNums, notCovar);
+                               args.missingCutoff, args.minMafCutoff, args.minMacCutoff, args.hweCutoff,
+                               args.spasqrTol, args.spasqrH, args.spasqrHScale,
+                               args.keepFile, args.removeFile, covarColNums, notCovar);
             } else {
+                if (args.spasqrTol != 1e-7)
+                    infoMsg("Warning: --spasqr-tol is ignored with --null-resid");
+                if (args.spasqrH >= 0.0)
+                    infoMsg("Warning: --spasqr-h is ignored with --null-resid");
+                if (args.spasqrHScale >= 0.0)
+                    infoMsg("Warning: --spasqr-h-scale is ignored with --null-resid");
                 runSPAsqr(args.residFile, args.spGrmGrabFile, args.spGrmPlink2File, geno, buildOutputPath(".SPAsqr"),
                           args.spaCutoff, args.outlierRatio, args.outlierAbsBound, args.nthread, args.nSnpPerChunk,
                           args.missingCutoff, args.minMafCutoff, args.minMacCutoff, args.hweCutoff, args.keepFile,
