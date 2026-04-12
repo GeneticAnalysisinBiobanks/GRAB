@@ -98,36 +98,38 @@ void getAFVecFromModel(
 // Caller passes CHR / BP as strings / uint32_t directly.
 
 class IndivAFWriter {
-  public:
-    enum class Mode { Binary, Text };
+public:
+enum class Mode { Binary, Text };
 
-    // Infer mode from outputFile extension: .bin → Binary, else Text.
-    // Text mode supports .gz, .zst, or plain via TextWriter.
-    IndivAFWriter(const std::string &outputFile,
-                  uint64_t nBimMarkers, // total .bim lines (binary pre-alloc)
-                  int nPC);
+// Infer mode from outputFile extension: .bin → Binary, else Text.
+// Text mode supports .gz, .zst, or plain via TextWriter.
+IndivAFWriter(const std::string &outputFile,
+              uint64_t nBimMarkers,     // total .bim lines (binary pre-alloc)
+              int nPC);
 
-    ~IndivAFWriter();
+~IndivAFWriter();
 
-    // Write one record.  For Binary, genoIndex determines the file offset.
-    void write(uint64_t genoIndex, int8_t status, const Eigen::VectorXd &betas);
+// Write one record.  For Binary, genoIndex determines the file offset.
+void write(uint64_t genoIndex, int8_t status, const Eigen::VectorXd &betas);
 
-    void close();
+void close();
 
-    Mode mode() const { return m_mode; }
+Mode mode() const {
+    return m_mode;
+}
 
-  private:
-    Mode m_mode;
-    int m_nPC;
-    long long m_recordSize; // valid only for Binary
+private:
+Mode m_mode;
+int m_nPC;
+long long m_recordSize;     // valid only for Binary
 
-    // Binary output
-    std::fstream m_binOut;
+// Binary output
+std::fstream m_binOut;
 
-    // Text output (TextWriter handles gz/zst/plain)
-    std::unique_ptr<class TextWriter> m_writer;
+// Text output (TextWriter handles gz/zst/plain)
+std::unique_ptr<class TextWriter> m_writer;
 
-    bool m_closed = false;
+bool m_closed = false;
 };
 
 // ======================================================================
@@ -137,18 +139,18 @@ class IndivAFWriter {
 // ======================================================================
 
 class IndivAFReader {
-  public:
-    IndivAFReader(const std::string &binFile, int nPC);
-    ~IndivAFReader();
+public:
+IndivAFReader(const std::string &binFile, int nPC);
+~IndivAFReader();
 
-    // Seek to genoIndex and fill model.  Returns false if status = 0 (caller
-    // may still use the returned status-0 model for a uniform AF estimate).
-    bool read(uint64_t genoIndex, AFModel &model);
+// Seek to genoIndex and fill model.  Returns false if status = 0 (caller
+// may still use the returned status-0 model for a uniform AF estimate).
+bool read(uint64_t genoIndex, AFModel &model);
 
-  private:
-    std::ifstream m_in;
-    int m_nPC;
-    long long m_recordSize;
+private:
+std::ifstream m_in;
+int m_nPC;
+long long m_recordSize;
 };
 
 // ======================================================================
@@ -196,6 +198,4 @@ void runSPAmixAF(const std::vector<std::string> &pcColNames,
                  double minMacCutoff,
                  double hweCutoff,
                  const std::string &keepFile = {},
-                 const std::string &removeFile = {},
-                 const std::vector<int> &covarColNums = {},
-                 const std::vector<std::string> &notCovar = {});
+                 const std::string &removeFile = {});

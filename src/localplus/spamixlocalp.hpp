@@ -9,7 +9,7 @@
 
 #include "localplus/abed_io.hpp"
 #include "spamix/common.hpp"
-#include "subj_reader/sparse_grm.hpp"
+#include "io/sparse_grm.hpp"
 
 #include <Eigen/Dense>
 #include <cstdint>
@@ -163,12 +163,14 @@ void runPhiEstimation(const std::string &admixPrefix,
                       int nthreads = 1);
 
 // Run per-ancestry GWAS with SPAmixLocalPlus.
-//   residFile:    null model residual file
+//   phenoFile:   phenotype file (columns selected by residNames)
+//   residNames:  column names to use as residuals from phenoFile
 //   admixPrefix:  prefix for .abed/.bim/.fam
 //   admixPhiFile: pre-computed wide phi file
 //   outPrefix:   output prefix for per-phenotype GWAS results
 //   spaCutoff, outlierRatio, nthread, nSnpPerChunk: analysis params
-void runSPAmixLocalPlus(const std::string &residFile,
+void runSPAmixLocalPlus(const std::string &phenoFile,
+                        const std::vector<std::string> &residNames,
                         const std::string &admixPrefix,
                         const std::string &admixPhiFile,
                         const std::string &outPrefix,

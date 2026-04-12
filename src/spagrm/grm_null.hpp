@@ -6,7 +6,7 @@
 #pragma once
 
 #include "spagrm/spagrm.hpp"
-#include "subj_reader/sparse_grm.hpp"
+#include "io/sparse_grm.hpp"
 
 #include <cstdint>
 #include <string>

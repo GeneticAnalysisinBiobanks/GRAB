@@ -4,8 +4,8 @@
 #include "engine/marker.hpp"
 #include "geno_factory/geno_data.hpp"
 #include "spagrm/grm_null.hpp"
-#include "subj_reader/sparse_grm.hpp"
-#include "subj_reader/subject_data.hpp"
+#include "io/sparse_grm.hpp"
+#include "io/subject_data.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
 #include "util/text_scanner.hpp"
@@ -402,7 +402,8 @@ GRMTopology buildTopology(uint32_t N, const std::vector<SparseGRM::Entry> &entri
 // runSPAGRM — entry point
 // ══════════════════════════════════════════════════════════════════════
 
-void runSPAGRM(const std::string &residFile,
+void runSPAGRM(const std::string &phenoFile,
+               const std::vector<std::string> &residNames,
                const std::string &spgrmGrabFile,
                const std::string &spgrmGctaFile,
                const std::string &pairwiseIBDFile,
@@ -419,10 +420,10 @@ void runSPAGRM(const std::string &residFile,
                double hweCutoff,
                const std::string &keepFile,
                const std::string &removeFile) {
-    infoMsg("Loading residual file: %s", residFile.c_str());
+    infoMsg("Loading pheno file: %s", phenoFile.c_str());
     auto famIIDs = parseGenoIIDs(geno);
     SubjectData sd(std::move(famIIDs));
-    sd.loadResidOne(residFile);
+    sd.loadResidOne(phenoFile, residNames);
     sd.setKeepRemove(keepFile, removeFile);
     sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
     sd.setGenoLabel(geno.flagLabel());

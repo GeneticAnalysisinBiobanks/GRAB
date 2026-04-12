@@ -174,7 +174,8 @@ class SPAGRMMethod : public MethodBase {
 // runSPAGRM — full workflow entry point
 // ══════════════════════════════════════════════════════════════════════
 
-void runSPAGRM(const std::string &residFile,
+void runSPAGRM(const std::string &phenoFile,
+               const std::vector<std::string> &residNames,
                const std::string &spgrmGrabFile,
                const std::string &spgrmGctaFile,
                const std::string &pairwiseIBDFile,

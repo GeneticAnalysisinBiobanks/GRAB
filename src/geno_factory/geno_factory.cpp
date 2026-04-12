@@ -8,7 +8,7 @@
 #include "geno_factory/pgen.hpp"
 #include "geno_factory/plink.hpp"
 #include "geno_factory/vcf.hpp"
-#include "subj_reader/subject_data.hpp"
+#include "io/subject_data.hpp"
 #include "util/logging.hpp"
 
 #include <fstream>

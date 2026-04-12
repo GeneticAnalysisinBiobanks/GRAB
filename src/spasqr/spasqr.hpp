@@ -2,38 +2,17 @@
 //
 // Pure C++17 / Eigen / Boost port of ref_code/src/mtSPAsqr.h + SPAsqr.R.
 //
-// Legacy workflow (--null-resid):
-//   1. Load multi-column residual matrix (one column per tau)
-//   2. Detect outliers per column (IQR-based, configurable)
-//   3. Load sparse GRM and compute variance terms per column
-//   4. Build one SPAGRMClass instance per tau
-//   5. Per-marker: delegate to each SPAGRMClass, collect Z/P, compute CCT
-//
-// Pheno workflow (--pheno + --pheno-quantitative + --spasqr-taus):
+// Workflow (--pheno + --pheno-quantitative + --spasqr-taus):
 //   1. Load phenotype/covariates, run conquer quantile regression per tau
 //   2. Build smoothed residual matrix: R(i,t) = tau - Phi(-resid(i)/h)
-//   3-5. Same as above
+//   3. Detect outliers per column (IQR-based, configurable)
+//   4. Load sparse GRM and compute variance terms per column
+//   5. Build one SPAGRMClass instance per tau
+//   6. Per-marker: delegate to each SPAGRMClass, collect Z/P, compute CCT
 #pragma once
 
 #include "geno_factory/geno_data.hpp"
 #include <vector>
-
-void runSPAsqr(const std::string &residFile,
-               const std::string &spgrmGrabFile,
-               const std::string &spgrmGctaFile,
-               const GenoSpec &geno,
-               const std::string &outputFile,
-               double spaCutoff,
-               double outlierIqrRatio,
-               double outlierAbsBound,
-               int nthreads,
-               int nSnpPerChunk,
-               double missingCutoff,
-               double minMafCutoff,
-               double minMacCutoff,
-               double hweCutoff,
-               const std::string &keepFile = {},
-               const std::string &removeFile = {});
 
 void runSPAsqrPheno(const std::string &phenoFile,
                     const std::string &covarFile,
@@ -43,7 +22,9 @@ void runSPAsqrPheno(const std::string &phenoFile,
                     const std::string &spgrmGrabFile,
                     const std::string &spgrmGctaFile,
                     const GenoSpec &geno,
-                    const std::string &outputFile,
+                    const std::string &outPrefix,
+                    const std::string &compression,
+                    int compressionLevel,
                     double spaCutoff,
                     double outlierIqrRatio,
                     double outlierAbsBound,
@@ -57,6 +38,4 @@ void runSPAsqrPheno(const std::string &phenoFile,
                     double spasqrH = -1.0,
                     double spasqrHScale = -1.0,
                     const std::string &keepFile = {},
-                    const std::string &removeFile = {},
-                    const std::vector<int> &covarColNums = {},
-                    const std::vector<std::string> &notCovar = {});
+                    const std::string &removeFile = {});

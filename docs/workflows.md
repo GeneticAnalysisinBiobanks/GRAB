@@ -42,8 +42,7 @@ Both use chunk-level **work-stealing** with ordered output.
 
 #### `markerEngine` — single-phenotype engine
 
-Used by methods that produce a single output file (SAGELD, POLMM, WtCoxG,
-LEAF, SPAsqr).
+Used by methods that produce a single output file (SAGELD).
 
 Thread model:
 
@@ -78,8 +77,8 @@ Per-marker flow inside a worker:
 
 #### `multiPhenoEngine` — multi-phenotype engine
 
-Used by methods that produce one output file **per residual column**
-(SPACox, SPAGRM, SPAmixPlus).
+Used by methods that produce one output file **per phenotype**
+(SPACox, SPAGRM, SPAmixPlus, POLMM, WtCoxG, LEAF, SPAsqr).
 
 Differences from `markerEngine`:
 
@@ -156,7 +155,7 @@ Utility modes use `SubjectSet` directly (no phenotype loading).
 
 | Property | Value |
 | -------- | ----- |
-| Input | Single-column `--null-resid`, optional `--pheno`, `--covar` |
+| Input | Single-column `--pheno --resid-name`, optional `--covar` |
 | GRM | Not required |
 | Engine | `multiPhenoEngine` |
 | MethodBase | `SPACoxMethod`, `resultSize() = 2` (P, Z) |
@@ -189,7 +188,7 @@ Utility modes use `SubjectSet` directly (no phenotype loading).
 
 | Property | Value |
 | -------- | ----- |
-| Input | Single-column `--null-resid` |
+| Input | Single-column `--pheno --resid-name` |
 | GRM | Required (`--sp-grm-*` + `--pairwise-ibd`) |
 | Engine | `multiPhenoEngine` |
 | MethodBase | `SPAGRMMethod`, `resultSize() = 2` (P, Z) |
@@ -226,7 +225,7 @@ be parallelized across bins.
 
 | Property | Value |
 | -------- | ----- |
-| Input | Multi-column `--null-resid` (R_G, R_E1, R_GxE1, ...) |
+| Input | Multi-column `--pheno --resid-name` (R_G, R_E1, R_GxE1, ...) |
 | GRM | Required |
 | Engine | `markerEngine` |
 | MethodBase | `SAGELDMethod`, `resultSize() = 2 × nEnv` |
@@ -260,7 +259,7 @@ Output: `P_G, P_GxE1, P_GxE2, ..., Z_G, Z_GxE1, Z_GxE2, ...`.
 
 | Property | Value |
 | -------- | ----- |
-| Input | Multi-column `--null-resid` + `--pc-cols` |
+| Input | Multi-column `--pheno --resid-name` + `--pc-cols` |
 | GRM | Optional |
 | Engine | `multiPhenoEngine` |
 | MethodBase | `SPAmixPlusMethod`, `resultSize() = 3` (P, Z, BETA) |
@@ -290,7 +289,7 @@ Output: `P_G, P_GxE1, P_GxE2, ..., Z_G, Z_GxE1, Z_GxE2, ...`.
 
 | Property | Value |
 | -------- | ----- |
-| Input | Multi-column `--null-resid` + `.abed` + `.phi` |
+| Input | Multi-column `--pheno --resid-name` + `.abed` + `.phi` |
 | GRM | Not directly (uses pre-computed phi matrices) |
 | Engine | Custom `runUnifiedGWAS` (NOT standard marker engine) |
 | Output | Per-ancestry columns × per-residual output files |
@@ -340,8 +339,23 @@ hardware.
 | -------- | ----- |
 | Input | Ordinal `--pheno` (0..J−1) + `--covar` |
 | GRM | Required |
-| Engine | `markerEngine` |
+| Engine | `multiPhenoEngine` |
+| Multi-phenotype | **K ≥ 1** (one PhenoTask per `--pheno-name` column) |
 | MethodBase | `POLMMMethod`, `resultSize() = 4` (P, Z, BETA, SE) |
+
+**Multi-phenotype work sharing:**
+
+| Step | Shared / Per-phenotype | Detail |
+| ---- | ---------------------- | ------ |
+| Load phenotype file | Shared | `loadPhenoFile()` + `finalize()` on union of all subjects |
+| Build `GenoData` | Shared | One union mask for all traits |
+| Load sparse GRM | Shared | `unionGrm` loaded once in union ordering |
+| Build per-phenotype mapping | Per-phenotype | `unionToLocal` / `localToUnion` excluding per-phenotype NaN subjects |
+| Re-index GRM | Per-phenotype | `reindexGrm()` extracts sub-GRM via `unionToLocal` |
+| Fit null model | Per-phenotype | `fitNullModel()` — PQL iteration (expensive) |
+| Compute test matrices | Per-phenotype | `computeTestMatrices()` — RPsiR, RymuVec, projections |
+| Estimate variance ratios | Per-phenotype | ~120 SNPs sampled per MAC bin; reads union genotypes, extracts per-phenotype subsets |
+| Marker-level genotype I/O | Shared | Decoded once per chunk, extracted K times |
 
 **Pre-marker setup — most expensive of all methods:**
 
@@ -357,9 +371,10 @@ hardware.
    - Per-subject weights `RPsiR_i`, response residuals `RymuVec_i`.
    - `XXR_Psi_RX`, `XR_Psi_R` matrices.
 
-3. **Variance ratio estimation** (`estimateVarianceRatios`):
+3. **Variance ratio estimation** (`estimateVarianceRatiosFromUnion`):
    - 4 MAC bins: [20,50), [50,100), [100,500), [500,∞).
-   - Sample ~200 SNPs per bin; estimate per-bin variance ratio.
+   - Sample ~120 SNPs per bin from union genotypes; extract per-phenotype
+     subsets via `localToUnion` mapping.
    - Involves repeated PQL-like calculations per sampled SNP.
 
 **Per-marker test:**
@@ -371,33 +386,39 @@ hardware.
 **Performance:**
 - Null model fitting can take minutes for large samples with many
   ordinal levels (J > 5).  The PCG solves dominate.
-- Variance ratio estimation is also expensive (~200 SNPs × 4 bins ×
+- Variance ratio estimation is also expensive (~120 SNPs × 4 bins ×
   PQL solve each).
 - Per-marker is relatively cheap: O(n) score, O(1) bin lookup.
 
-**Optimization opportunity:** PCG convergence could be accelerated with
-a better preconditioner (currently diagonal).  Hutchinson trace samples
-could run in parallel.
+**Optimization opportunities:**
+- The K null model fits are independent — the serial loop
+  could be parallelized with `min(nthreads, K)` threads.
+- PCG convergence could be accelerated with a better preconditioner
+  (currently diagonal).
 
 ---
 
 ### WtCoxG
 
-**Source:** `src/wtcoxg/wtcoxg.cpp` — `runWtCoxG()`
+**Source:** `src/wtcoxg/wtcoxg.cpp` — `runWtCoxGPheno()`
 
 | Property | Value |
 | -------- | ----- |
-| Input | 3-column `--null-resid` (residual, weight, indicator) + `--ref-af` |
+| Input | Binary or survival `--pheno` + `--ref-af` |
 | GRM | Optional |
-| Engine | `markerEngine` |
+| Engine | `multiPhenoEngine` |
+| Multi-phenotype | **K = 1** |
 | MethodBase | `WtCoxGMethod`, `resultSize() = 5` (p_ext, p_noext, z_ext, z_noext, p_batch) |
 
 **Pre-marker setup — 3 phases:**
 
-1. **Phase 1**: Load residual + reference AF file.  Match markers by
-   (CHROM, ID) with allele-flip detection.
+1. **Phase 1**: Load phenotype + covariates, fit null model
+   (logistic or Cox regression), compute residuals / weights / indicator.
+   Load reference AF file.  Match markers by (CHROM, ID) with allele
+   flip detection.
 
 2. **Phase 2** (expensive): For every matched marker:
+   - Compute per-marker case/ctrl AF statistics.
    - Fit logistic: `P(batch=1 | G, AF_ref)`.
    - Test batch effect.
    - Estimate TPR, σ² (extra variance).
@@ -406,6 +427,17 @@ could run in parallel.
    - Store result in `WtCoxGRefInfo` map.
 
 3. **Phase 3**: refInfoMap ready for lookup during marker streaming.
+
+**K > 1 extension (not yet implemented):**
+
+| Step | Would be shared | Would be per-phenotype |
+| ---- | --------------- | ---------------------- |
+| Load ref AF, match markers | Yes | — |
+| Build `GenoData` | Yes | — |
+| Load sparse GRM | Yes | — |
+| Fit null model (regression) | — | Yes |
+| `computeMarkerStats()` | — | Yes (depends on indicator per phenotype) |
+| `testBatchEffects()` | — | Yes (depends on residuals / weights) |
 
 **Per-marker test:**
 - `prepareChunk()`: populate chunk-level ref info from map.
@@ -422,23 +454,42 @@ could run in parallel.
 
 ### LEAF
 
-**Source:** `src/wtcoxg/leaf.cpp` — `runLEAF()`
+**Source:** `src/wtcoxg/leaf.cpp` — `runLEAFPheno()`
 
 | Property | Value |
 | -------- | ----- |
-| Input | K cluster `--null-resid` files + K `--ref-af` files |
+| Input | Binary or survival `--pheno` + K `--ref-af` files |
 | GRM | Optional |
-| Engine | `markerEngine` |
+| Engine | `multiPhenoEngine` |
+| Multi-phenotype | **K = 1** |
 | MethodBase | `LEAFMethod` |
 
 **Pre-marker setup:**
-Per cluster:
 
-1. Load residual file + reference AF file.
-2. K-means clustering (Lloyd's + K-means++ init) for ancestry assignment.
-3. Per-cluster-in-population: ancestry proportion estimation via `summix()`.
-4. Ancestry-matched AF: `AF_matched = Σ p_k × AF_pop_k`.
-5. Batch-effect test via `WtCoxGMethod` per cluster.
+1. Load phenotype + covariates; fit null model; compute residuals /
+   weights / indicator.
+2. K-means clustering (Lloyd's + K-means++ init) on PC columns for
+   ancestry assignment.
+3. Per cluster:
+   - Load reference AF file per reference population.
+   - Ancestry proportion estimation via `summix()`.
+   - Ancestry-matched AF: `AF_matched = Σ p_k × AF_pop_k`.
+   - Match markers against reference AF.
+   - Compute per-cluster case/ctrl AF stats.
+   - Per-cluster batch-effect testing via `WtCoxGMethod`.
+
+**K > 1 extension (not yet implemented):**
+
+| Step | Would be shared | Would be per-phenotype |
+| ---- | --------------- | ---------------------- |
+| K-means clustering | Yes (PC-based, trait-agnostic) | — |
+| Load ref AF files, match markers | Yes | — |
+| Summix estimation | Yes (genotype AF, trait-agnostic) | — |
+| Build `GenoData` | Yes | — |
+| Fit null model | — | Yes |
+| Per-cluster `computeMarkerStats` | — | Yes (depends on indicator) |
+| Per-cluster `testBatchEffects` | — | Yes |
+| Load sparse GRM | Currently loaded per cluster (redundant) | Could load once, re-index per cluster |
 
 **Per-marker test:**
 - For each cluster: extract cluster-specific genotype subvector, run
@@ -448,7 +499,10 @@ Per cluster:
 **Performance:**
 - Pre-marker K-means is cheap.  Batch-effect pre-computation per cluster
   has the same cost as a single WtCoxG run per cluster.
-- Per-marker: K × WtCoxG per-marker cost + CCT combination.
+- Per-marker: K_clusters × WtCoxG per-marker cost + CCT combination.
+
+**Optimization opportunity:** The sparse GRM is currently loaded
+once per cluster.  Could load once and re-index per cluster.
 
 **Note:** Uses `__builtin_popcountll` and `__builtin_ctzll` for bitmask
 operations (GCC/Clang built-ins, unconditional on x86-64).
@@ -457,27 +511,33 @@ operations (GCC/Clang built-ins, unconditional on x86-64).
 
 ### SPAsqr
 
-**Source:** `src/spasqr/spasqr.cpp` — `runSPAsqr()` / `runSPAsqrPheno()`
+**Source:** `src/spasqr/spasqr.cpp` — `runSPAsqrPheno()`
 
 | Property | Value |
 | -------- | ----- |
-| Input | Multi-tau `--null-resid` OR `--pheno` + quantile levels |
+| Input | `--pheno` + quantile levels (`--spasqr-taus`) |
 | GRM | Required |
-| Engine | `markerEngine` |
+| Engine | `multiPhenoEngine` |
+| Multi-phenotype | **K = 1** (multiple taus are within one SPAsqrMethod) |
 | MethodBase | `SPAsqrMethod` |
 
-**Two entry points:**
-- `runSPAsqr(residFile, ...)` — pre-computed residuals (one column per tau).
-- `runSPAsqrPheno(phenoFile, taus, ...)` — raw phenotype + covariates;
-  fits conquer quantile regression internally to produce residuals.
-
 **Pre-marker setup:**
-Per tau (residual column):
+`runSPAsqrPheno` fits conquer quantile regression internally to produce
+residuals (one per tau).  Then per tau:
 
 1. Outlier detection: IQR-based + absolute bound.
 2. Load sparse GRM.
 3. Build `SPAGRMClass` null model (same as SPAGRM, per tau).
 4. Precompute variance terms.
+
+**K > 1 extension (not yet implemented):**
+
+| Step | Would be shared | Would be per-phenotype |
+| ---- | --------------- | ---------------------- |
+| Load sparse GRM | Yes (currently inside `buildSPAsqrMethod`) | — |
+| Build `GenoData` | Yes | — |
+| Conquer QR (per tau) | — | Yes (τ × phenotype fits) |
+| Build SPAGRMClass (per tau) | — | Yes |
 
 **Per-marker test:**
 - For each tau: delegate to corresponding `SPAGRMClass`.
@@ -488,7 +548,7 @@ Per tau (residual column):
 **Performance:**
 - Pre-marker cost = nTau × SPAGRM null model cost.
 - Per-marker cost = nTau × SPAGRM per-marker cost + CCT.
-- The conquer quantile regression (when using `--pheno`) adds a one-time
+- The conquer quantile regression adds a one-time
   O(n × p²) cost per tau.
 
 ---
@@ -632,10 +692,10 @@ translation units.  There is no runtime dispatch.
 | SAGELD | Multi-col G×E resid | Yes | `markerEngine` | SAGELDMethod | 2×nEnv | — |
 | SPAmixPlus | Multi-col resid + PCs | Optional | `multiPhenoEngine` | SPAmixPlusMethod | 3 | — |
 | SPAmixLocalPlus | Multi-col resid + .abed + .phi | Via phi | `runUnifiedGWAS` | Custom | 6×K | Yes |
-| POLMM | Ordinal pheno | Yes | `markerEngine` | POLMMMethod | 4 | — |
-| WtCoxG | 3-col resid + ref AF | Optional | `markerEngine` | WtCoxGMethod | 5 | — |
-| LEAF | K-cluster resid + ref AF | Optional | `markerEngine` | LEAFMethod | 3+K | Built-ins |
-| SPAsqr | Multi-tau resid or pheno | Yes | `markerEngine` | SPAsqrMethod | 3+ | — |
+| POLMM | Ordinal pheno | Yes | `multiPhenoEngine` | POLMMMethod | 4 | — |
+| WtCoxG | Binary/surv pheno + ref AF | Optional | `multiPhenoEngine` | WtCoxGMethod | 5 | — |
+| LEAF | Binary/surv pheno + ref AF | Optional | `multiPhenoEngine` | LEAFMethod | 3+K | Built-ins |
+| SPAsqr | Quant pheno + taus | Yes | `multiPhenoEngine` | SPAsqrMethod | 3+ | — |
 | cal-af-coef | PCs + geno | No | Own | — | Binary | — |
 | cal-pairwise-ibd | geno + GRM | Yes | Own | — | 3 (a,b,c) | Yes |
 | cal-phi | .abed + GRM | Yes | Own | — | 4×K | — |

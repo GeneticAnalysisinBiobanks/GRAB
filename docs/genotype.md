@@ -79,7 +79,7 @@ per-marker association results.
                              ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │  2. Subject intersection                                         │
-│     Intersect with --null-resid / --pheno / --covar subjects     │
+│     Intersect with --pheno / --covar subjects                    │
 │     Drop NaN residuals, apply --keep / --remove                  │
 │     Build usedMask bitset for fast subject subsetting             │
 └────────────────────────────┬─────────────────────────────────────┘
@@ -129,8 +129,9 @@ per-marker association results.
 
 ### Multi-phenotype extension
 
-When `--null-resid` contains multiple columns (SPACox, SPAGRM, SPAmix,
-SPAmixPlus, SPAmixLocalPlus):
+When `--resid-name` selects multiple columns (SPACox, SPAGRM, SPAmix,
+SPAmixPlus, SPAmixLocalPlus), or when multiple phenotypes are analysed
+(POLMM, WtCoxG, LEAF, SPAsqr):
 
 1. Union mask: subjects present in **any** phenotype column
 2. Genotypes decoded once per marker using the union mask
@@ -144,7 +145,7 @@ SPAmixPlus, SPAmixLocalPlus):
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│  1. Load subjects from .fam, intersect with --null-resid         │
+│  1. Load subjects from .fam, intersect with --pheno             │
 │     Apply --keep / --remove                                      │
 └────────────────────────────┬─────────────────────────────────────┘
                              ▼

@@ -39,18 +39,6 @@ Eigen::VectorXd calRegrWeight(double prevalence, const Eigen::Ref<const Eigen::V
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// parseSurvSpec — parse "TIME:EVENT" into two column names
-// ──────────────────────────────────────────────────────────────────────
-
-void parseSurvSpec(const std::string &spec, std::string &timeCol, std::string &eventCol) {
-    auto pos = spec.find(':');
-    if (pos == std::string::npos || pos == 0 || pos == spec.size() - 1)
-        throw std::runtime_error("Invalid --pheno-survival format: expected TIME:EVENT, got '" + spec + "'");
-    timeCol = spec.substr(0, pos);
-    eventCol = spec.substr(pos + 1);
-}
-
-// ──────────────────────────────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────────────────────────────
 

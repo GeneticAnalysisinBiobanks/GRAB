@@ -1,7 +1,7 @@
 // subject_set.cpp — Lightweight genotype→GRM→keep→remove subject filter
 
-#include "subj_reader/subject_set.hpp"
-#include "subj_reader/subject_filter.hpp"
+#include "io/subject_set.hpp"
+#include "io/subject_filter.hpp"
 #include "util/logging.hpp"
 
 #include <cstdio>

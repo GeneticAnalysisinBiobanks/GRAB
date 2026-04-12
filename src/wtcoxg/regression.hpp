@@ -4,7 +4,6 @@
 //   calRegrWeight        — case-control sampling weights from prevalence
 //   coxResiduals         — weighted Cox PH → martingale residuals
 //   logisticResiduals    — weighted logistic IRLS → response residuals
-//   parseSurvSpec        — parse "TIME:EVENT" survival spec
 //
 // Both regression functions accept a pre-formed design matrix (with
 // intercept column) and drop rows containing any NaN before fitting.
@@ -29,12 +28,6 @@ namespace regression {
 // ──────────────────────────────────────────────────────────────────────
 
 Eigen::VectorXd calRegrWeight(double prevalence, const Eigen::Ref<const Eigen::VectorXd> &indicator);
-
-// ──────────────────────────────────────────────────────────────────────
-// parseSurvSpec — parse "TIME:EVENT" into two column names
-// ──────────────────────────────────────────────────────────────────────
-
-void parseSurvSpec(const std::string &spec, std::string &timeCol, std::string &eventCol);
 
 // ──────────────────────────────────────────────────────────────────────
 // § 1  Weighted Cox regression  (Breslow partial likelihood, Newton-Raphson)

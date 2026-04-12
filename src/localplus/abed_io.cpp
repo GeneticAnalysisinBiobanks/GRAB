@@ -1,7 +1,7 @@
 // abed_io.cpp — Admixed ancestry binary genotype reader/writer (.abed format)
 
 #include "localplus/abed_io.hpp"
-#include "subj_reader/subject_data.hpp" // parseFamIIDs, parseBimLines
+#include "io/subject_data.hpp" // parseFamIIDs, parseBimLines
 #include "util/logging.hpp"
 
 extern "C" {

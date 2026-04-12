@@ -1,6 +1,6 @@
 // sparse_grm.cpp — SparseGRM parser and quadratic-form implementation
 
-#include "subj_reader/sparse_grm.hpp"
+#include "io/sparse_grm.hpp"
 #include "util/logging.hpp"
 #include "util/text_scanner.hpp"
 

@@ -15,7 +15,7 @@ Each analysis method applies successive filtering steps in this order:
 | ∩ GRM             | Sparse GRM              | Subjects present in the sparse GRM (diagonal entries)         |
 | ∩ keep            | `--keep` filter         | Restrict to keep-list (no-op when `--keep` is not provided)   |
 | \ remove          | `--remove` filter       | Exclude remove-list (no-op when `--remove` is not provided)   |
-| ∩ pheno/resid     | Phenotype / Residual    | Subjects with non-`NaN` values in `--null-resid` or `--pheno` |
+| ∩ pheno/resid     | Phenotype / Residual    | Subjects with non-`NaN` values in `--pheno`                    |
 
 The final step produces the working sample for that analysis.
 
@@ -104,8 +104,8 @@ These filters are applied before QC.
 
 ### Multi-Phenotype QC
 
-When multiple residual columns are loaded (`--null-resid` with > 1
-value column), each phenotype receives independent marker QC.  The union
+When multiple residual columns are loaded (`--resid-name` with > 1
+column), each phenotype receives independent marker QC.  The union
 bitmask covers subjects non-`NaN` in **any** column; per-phenotype
 allele stats are computed from the per-phenotype non-missing set.
 

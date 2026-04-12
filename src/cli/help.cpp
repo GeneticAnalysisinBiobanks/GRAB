@@ -25,28 +25,22 @@ static void printShortHelp() {
                          "\n"
                          "Usage:\n"
                          "\n"
-                         "  Null-resid methods (pre-computed residual file):\n"
+                         "  Residual-based methods (pre-computed residuals via --pheno + --resid-name):\n"
                          "    grab --method SPACox|SPAGRM|SAGELD|SPAmix|SPAmixPlus  \\\n"
-                         "         --bfile PREFIX  --null-resid FILE  --out PREFIX  [OPTIONS]\n"
+                         "         --bfile PREFIX  --pheno FILE  --out PREFIX  [OPTIONS]\n"
                          "\n"
                          "  Pheno methods (phenotype + covariate files, null model fitted internally):\n"
                          "    grab --method WtCoxG|LEAF  --bfile PREFIX  \\\n"
-                         "         --pheno FILE  --pheno-binary COL | --pheno-surv TIME:EVENT  \\\n"
+                         "         --pheno FILE  --pheno-name COLS  \\\n"
                          "         --ref-af FILE  --prevalence FLOAT  --out PREFIX  [OPTIONS]\n"
                          "    grab --method SPAsqr  --bfile PREFIX  \\\n"
-                         "         --pheno FILE  --pheno-quant COL  --sp-grm-* FILE  --out PREFIX  [OPTIONS]\n"
+                         "         --pheno FILE  --pheno-name COL  --sp-grm-* FILE  --out PREFIX  [OPTIONS]\n"
                          "    grab --method POLMM   --bfile PREFIX  \\\n"
-                         "         --pheno FILE  --pheno-ordinal COL  --sp-grm-* FILE  --out PREFIX  [OPTIONS]\n"
-                         "\n"
-                         "  Null-resid or pheno methods:\n"
-                         "    grab --method WtCoxG|LEAF  --bfile PREFIX  --null-resid FILE  \\\n"
-                         "         --ref-af FILE  --prevalence FLOAT  --out PREFIX  [OPTIONS]\n"
-                         "    grab --method SPAsqr  --bfile PREFIX  --null-resid FILE  \\\n"
-                         "         --sp-grm-* FILE  --out PREFIX  [OPTIONS]\n"
+                         "         --pheno FILE  --pheno-name COL  --sp-grm-* FILE  --out PREFIX  [OPTIONS]\n"
                          "\n"
                          "  Local-ancestry GWAS:\n"
                          "    grab --method SPAmixLocalPlus  --admix-bfile PREFIX  --admix-phi FILE  \\\n"
-                         "         --null-resid FILE  --out PREFIX  [OPTIONS]\n"
+                         "         --pheno FILE  --out PREFIX  [OPTIONS]\n"
                          "\n"
                          "  Utility modes:\n"
                          "    grab --cal-af-coef      --bfile PREFIX  --covar FILE  --pc-cols COLS  --out PREFIX\n"
@@ -62,7 +56,7 @@ static void printShortHelp() {
     for (const MethodDef *const *p = kAllUtilModes; *p; ++p)
         std::fprintf(stderr, "  --%-20s %s\n", (*p)->name, (*p)->desc);
     std::fprintf(stderr, "\n  options             Show all options\n"
-                         "  null-resid  covar  ref-af  sp-grm  pairwise-ibd  ind-af-coef  admix-phi\n");
+                         "  pheno  covar  ref-af  sp-grm  pairwise-ibd  ind-af-coef  admix-phi\n");
 }
 
 // ── Method help (generated from MethodDef) ─────────────────────────
@@ -79,7 +73,7 @@ static void printMethodHelp(const MethodDef *m) {
     for (const FlagDef *const *p = m->required; *p; ++p)
         printFlag(*p);
 
-    if (m->residNote) std::fprintf(stderr, "\n  --null-resid columns: %s\n", m->residNote);
+    if (m->residNote) std::fprintf(stderr, "\n  Residual columns (via --pheno): %s\n", m->residNote);
 
     if (m->optional && m->optional[0]) {
         std::fprintf(stderr, "\nOptional:\n");
@@ -92,7 +86,7 @@ static void printMethodHelp(const MethodDef *m) {
     std::fprintf(stderr, "\nOutput:\n  %s\n", m->outputCols);
 }
 
-// ── Flag topic help (--help null-resid, --help sp-grm, etc.) ───────
+// ── Flag topic help (--help pheno, --help sp-grm, etc.) ───────
 
 static void printFlagHelp(const char *topic) {
     // Special case: "sp-grm" covers both flags

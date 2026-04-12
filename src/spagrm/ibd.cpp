@@ -16,9 +16,9 @@
 #include "spagrm/ibd.hpp"
 
 #include "geno_factory/geno_data.hpp"
-#include "subj_reader/sparse_grm.hpp"
-#include "subj_reader/subject_data.hpp"
-#include "subj_reader/subject_set.hpp"
+#include "io/sparse_grm.hpp"
+#include "io/subject_data.hpp"
+#include "io/subject_set.hpp"
 #include "util/logging.hpp"
 #include "util/text_stream.hpp"
 

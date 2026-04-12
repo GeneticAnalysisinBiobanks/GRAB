@@ -15,7 +15,7 @@
 
 #include "localplus/abed_convert_msp.hpp"
 #include "localplus/abed_io.hpp"
-#include "subj_reader/subject_filter.hpp"
+#include "io/subject_filter.hpp"
 #include "util/logging.hpp"
 
 #include <zlib.h>

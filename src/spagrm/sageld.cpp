@@ -13,8 +13,8 @@
 #include "geno_factory/geno_data.hpp"
 #include "spagrm/grm_null.hpp"
 #include "spagrm/spagrm.hpp"
-#include "subj_reader/sparse_grm.hpp"
-#include "subj_reader/subject_data.hpp"
+#include "io/sparse_grm.hpp"
+#include "io/subject_data.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
 #include "util/text_scanner.hpp"
@@ -274,7 +274,8 @@ class SAGELDMethod : public MethodBase {
 // runSAGELD — entry point
 // ══════════════════════════════════════════════════════════════════════
 
-void runSAGELD(const std::string &residFile,
+void runSAGELD(const std::string &phenoFile,
+               const std::vector<std::string> &residNames,
                const std::string &spgrmGrabFile,
                const std::string &spgrmGctaFile,
                const std::string &pairwiseIBDFile,
@@ -290,10 +291,10 @@ void runSAGELD(const std::string &residFile,
                const std::string &keepFile,
                const std::string &removeFile) {
     // 1. Load residual file
-    infoMsg("Loading residual file: %s", residFile.c_str());
+    infoMsg("Loading pheno file: %s", phenoFile.c_str());
     auto famIIDs = parseGenoIIDs(geno);
     SubjectData sd(std::move(famIIDs));
-    sd.loadResidOne(residFile);
+    sd.loadResidOne(phenoFile, residNames);
     sd.setKeepRemove(keepFile, removeFile);
     sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
     sd.setGenoLabel(geno.flagLabel());

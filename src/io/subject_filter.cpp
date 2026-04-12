@@ -1,6 +1,6 @@
 // subject_filter.cpp — PLINK2-compatible --keep / --remove file parser
 
-#include "subj_reader/subject_filter.hpp"
+#include "io/subject_filter.hpp"
 #include "util/logging.hpp"
 
 #include <fstream>

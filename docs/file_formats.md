@@ -63,8 +63,6 @@ and headerless modes are supported.
 | `--pheno` (headered)              | match by `IID` column                                 | Yes                 |
 | `--covar` (headered)              | match by `IID` column                                 | Yes                 |
 | `--covar` (numeric matrix)        | assume identical subjects as genotype file            | Yes                 |
-| `--null-resid` (headered)         | match by `IID` column                                 | —                   |
-| `--null-resid` (numeric matrix)   | assume identical subjects as genotype file            | —                   |
 | `--keep` / `--remove` (auto)      | —                                                     | Yes                 |
 
 #### (b) Per-subject-pair files
@@ -76,7 +74,7 @@ These files have one row per pair of subjects.
 | `--sp-grm-grab` (headered)       | match by `ID1` `ID2` columns                                       | —                                        |
 | `--sp-grm-plink2` (headerless)   | match by `.grm.id` or assume identical subjects as genotype file   | produced by `plink2 --make-grm-sparse`   |
 | `--pairwise-ibd` (headered)      | match by `ID1` `ID2` columns                                       | —                                        |
-| `--admix-phi` (headerless)       | assume identical subjects as genotype file                         | —                                        |
+| `--admix-phi` (headered)         | 0-based indices into `.fam` row order                              | —                                        |
 
 ---
 
@@ -87,20 +85,28 @@ and the complete genotype processing workflow.
 
 ---
 
-## Phenotype file — `--pheno FILE`  *(plink2-compatible)*
+## Phenotype file — `--pheno FILE`
 
-Whitespace-delimited with a mandatory header containing `IID` (or `#IID`).
-One row per subject. See [plink2 phenotype file format](https://www.cog-genomics.org/plink/2.0/input#pheno)
-for full specification.
+Whitespace-delimited with a mandatory header line.  The first column is always
+the individual ID regardless of the header name.  All column names must match
+`[0-9A-Za-z_\-.]+`.  One row per subject.
 
 Related flags:
 
-| Flag                        | Purpose                                             |
-| --------------------------- | --------------------------------------------------- |
-| `--pheno-binary COL`        | Select a 0/1 case/control column (WtCoxG, LEAF)     |
-| `--pheno-surv TIME:EVENT`   | Select survival time + event columns (WtCoxG, LEAF) |
-| `--pheno-quant COL`         | Select a quantitative column (SPAsqr)               |
-| `--pheno-ordinal COL`       | Select an ordinal column (POLMM)                    |
+| Flag                         | Purpose                                                              |
+| ---------------------------- | -------------------------------------------------------------------- |
+| `--pheno-name COL[,COL2]`    | Select phenotype column(s) from `--pheno`                            |
+| `--resid-name COL1[,COL2]`   | Select columns from `--pheno` for use as pre-computed residuals      |
+
+`--pheno-name` selects columns by name.  Required for phenotype-based methods
+(POLMM, WtCoxG, LEAF, SPAsqr).  The interpretation depends on the method:
+binary (WtCoxG, LEAF), survival time:event (WtCoxG, LEAF), quantitative
+(SPAsqr), or ordinal (POLMM).  For WtCoxG/LEAF survival analysis, pass
+`TIME,EVENT` as two comma-separated column names.
+
+`--resid-name` selects pre-computed residual columns.  Required for
+residual-based methods (SPACox, SPAGRM, SAGELD, SPAmix, SPAmixPlus,
+SPAmixLocalPlus).
 
 Example:
 
@@ -120,28 +126,36 @@ Missing values are preserved as `NaN` internally.
 
 ---
 
-## Covariate file — `--covar FILE`  *(plink2-compatible)*
+## Covariate file — `--covar FILE`
 
-Two formats are supported:
-
-**Format A: IID-keyed (recommended).** Same plink2-compatible format as
-`--pheno`; subjects are matched by `IID`.
-
-**Format B: Pure numeric matrix.** All columns numeric, no header. Row count
-must equal the genotype subject count; rows in genotype order.
+Same strict format as `--pheno`: whitespace-delimited with a mandatory header
+line, first column = individual ID.  All column names must match
+`[0-9A-Za-z_\-.]+`.  One row per subject.
 
 Related flags:
 
 | Flag                            | Purpose                                             |
 | ------------------------------- | --------------------------------------------------- |
 | `--covar-name COL1,COL2,...`    | Select named columns as covariates                  |
-| `--covar-col-nums 3,5,7-10`     | Select by 1-based column position                   |
-| `--not-covar COL1,COL2,...`     | Exclude named columns                               |
 | `--pc-cols COL1,COL2,...`       | PC columns (default: `PC1,PC2,PC3,PC4`)             |
 
-When none of `--covar-name`, `--covar-col-nums`, `--not-covar` are given, all
-columns are loaded **except** `FID`, `IID`, `SID`, `PAT`, `MAT`, `SEX`, and
-columns starting with `PHENO`. Missing values are imputed with the column mean.
+### Covariate loading rules
+
+At least one of `--covar` or `--covar-name` must be provided for methods that
+use covariates.
+
+| Combination                       | Behavior                                                  |
+| --------------------------------- | --------------------------------------------------------- |
+| `--covar FILE --covar-name COLS`  | Load named columns from covariate file                    |
+| `--covar FILE` (no `--covar-name`)| Load **all** columns from covariate file as covariates    |
+| `--covar-name COLS` (no `--covar`)| Load named columns from `--pheno` file instead            |
+
+Missing values are imputed with the per-column mean.  An intercept is added
+automatically.
+
+**Covariates are not part of the subject intersection.**  A subject that passes
+all pipeline steps but is missing from `--covar` will have its covariate
+values filled with the per-column mean.
 
 Example:
 
@@ -153,45 +167,32 @@ FAM2  SAMPLE02  43   0    0.005    0.021
 
 ---
 
-## Null-model residual file — `--null-resid FILE`
+## Pre-computed residuals — `--pheno FILE --resid-name COLS`
 
-Pre-computed residuals from an external null model (e.g., R). Two formats are
-supported: **IID-keyed** (with header) and **pure numeric matrix** (no header).
+Pre-computed residuals from an external null model (e.g., R).  The residual
+columns are selected from the `--pheno` file using `--resid-name COL1,COL2,...`.
+Both `--pheno` and `--resid-name` are required for residual-based methods
+(SPACox, SPAGRM, SAGELD, SPAmix, SPAmixPlus, SPAmixLocalPlus).
 
-### Format A: IID-keyed (recommended)
-
-A whitespace-delimited text file with a header containing `IID` (or `#IID`).
-The remaining columns are residual values.
+The `--pheno` file must have a mandatory header line with the first column as
+the individual ID.  The remaining columns contain residual values.
 
 ```
-#IID       RESID1   RESID2
-SAMPLE01   0.523    -0.112
-SAMPLE02  -0.311     0.847
+#IID       Residual1   Residual2
+SAMPLE01   0.523       -0.112
+SAMPLE02  -0.311        0.847
 ```
 
 Subject order need not match the genotype file; subjects are matched by IID.
 
-### Format B: Pure numeric matrix
-
-All columns are numeric (no IID/FID header). Row count must equal the genotype
-subject count, and rows are assumed to be in genotype order.
-
-```
- 0.523  -0.112
--0.311   0.847
-```
-
 ### Column layout by method
 
-| Method                                                | Columns                                                       |
+| Method                                                | `--resid-name` columns                                        |
 | ----------------------------------------------------- | ------------------------------------------------------------- |
-| SPACox, SPAGRM, SPAmix, SPAmixPlus, SPAmixLocalPlus   | `RESID [RESID2 ...]` — one GWAS per column                    |
-| WtCoxG, LEAF                                          | `RESID  WEIGHT  INDICATOR` — 3 fixed columns                  |
-| SPAsqr                                                | `R_tau1  R_tau2  ...  R_tauK` — one column per quantile level |
-| SAGELD                                                | `R_G  R_<E1>  R_Gx<E1>  [R_<E2>  R_Gx<E2>  ...]`              |
+| SPACox, SPAGRM, SPAmix, SPAmixPlus, SPAmixLocalPlus   | `RESID[,RESID2,...]` — one GWAS per column                    |
+| SAGELD                                                | `R_G,R_<E1>,R_Gx<E1>[,R_<E2>,R_Gx<E2>,...]`                  |
 
-For multi-column residual files (SPACox, SPAGRM, SPAmix, SPAmixPlus,
-SPAmixLocalPlus), each column produces a separate output file:
+For multi-column residuals, each column produces a separate output file:
 `PREFIX.PHENO.METHOD[.gz|.zst]`. Per-phenotype subject masks, allele counts,
 and QC stats are independent.
 
@@ -340,6 +341,8 @@ SAMPLE01  SAMPLE02  0.00123     0.24500     0.75377
 
 Produced by `grab --cal-phi --out PREFIX`. Output is `PREFIX.phi[.gz|.zst]`.
 
+**Header required:** Yes.  The first token must be `idx1` or `#idx1`.
+
 Wide tab-separated format with one row per related pair:
 
 ```
@@ -466,13 +469,17 @@ All GWAS methods write to `--out PREFIX` with a suffix determined by the method.
 | SPAmixPlus           | `.PHENO.SPAmixP`      | `PREFIX.PHENO.SPAmixP[.gz\                   | .zst]` |
 | SPAmixLocalPlus      | `.PHENO.LocalP`       | `PREFIX.PHENO.LocalP[.gz\                    | .zst]` |
 | SAGELD               | `.SAGELD`             | `PREFIX.SAGELD[.gz\                          | .zst]` |
-| POLMM                | `.POLMM`              | `PREFIX.POLMM[.gz\                           | .zst]` |
-| SPAsqr               | `.SPAsqr`             | `PREFIX.SPAsqr[.gz\                          | .zst]` |
-| WtCoxG               | `.WtCoxG`             | `PREFIX.WtCoxG[.gz\                          | .zst]` |
-| LEAF                 | `.LEAF`               | `PREFIX.LEAF[.gz\                            | .zst]` |
+| POLMM                | `.PHENO.POLMM`        | `PREFIX.PHENO.POLMM[.gz\                     | .zst]` |
+| SPAsqr               | `.PHENO.SPAsqr`       | `PREFIX.PHENO.SPAsqr[.gz\                    | .zst]` |
+| WtCoxG               | `.PHENO.WtCoxG`       | `PREFIX.PHENO.WtCoxG[.gz\                    | .zst]` |
+| LEAF                 | `.PHENO.LEAF`         | `PREFIX.PHENO.LEAF[.gz\                      | .zst]` |
 
 For multi-residual methods (SPACox, SPAGRM, SPAmix, SPAmixPlus,
-SPAmixLocalPlus), `PHENO` is the column name from `--null-resid`.
+SPAmixLocalPlus), `PHENO` is the column name from `--resid-name`.
+For POLMM, `PHENO` is the ordinal column name from `--pheno-name`.
+For WtCoxG/LEAF, `PHENO` is the binary or survival column name from
+`--pheno-name`.  For SPAsqr, `PHENO` is the quantitative column name
+from `--pheno-name`.
 
 ### Utility output naming
 

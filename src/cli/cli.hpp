@@ -9,17 +9,12 @@ namespace cli {
 struct Args {
     std::string method;
     std::string helpTopic; // set when --help <topic> is used
-    std::string residFile;
     std::string phenoFile;
     std::string covarFile;
     std::string covarName;                          // comma-separated covariate column names
-    std::string covarColNums;                       // --covar-col-nums: 1-based column numbers/ranges
-    std::string notCovar;                           // --not-covar: exclude covariate(s) by name
-    std::string binaryPheno;                        // column name for binary phenotype
-    std::string survPheno;                          // "TIME:EVENT" survival phenotype
+    std::string phenoName;                          // comma-separated phenotype column names
+    std::string residName;                          // comma-separated residual column names
     std::string pcCols = "PC1,PC2,PC3,PC4";         // comma-separated PC column names (default: PC1,PC2,PC3,PC4)
-    std::string quantPheno;                         // column name for quantitative phenotype (SPAsqr)
-    std::string ordinalPheno;                       // column name for ordinal phenotype (POLMM)
     std::string spasqrTaus = "0.1,0.3,0.5,0.7,0.9"; // default tau levels (SPAsqr)
     double spasqrTol = 1e-7;                          // --spasqr-tol (conquer convergence tolerance)
     double spasqrH = -1.0;                            // --spasqr-h (explicit bandwidth; -1 = auto)
