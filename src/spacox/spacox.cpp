@@ -20,7 +20,9 @@
 // DesignMatrix
 // ======================================================================
 
-DesignMatrix::DesignMatrix(const Eigen::MatrixXd &X) : m_X(X) {
+DesignMatrix::DesignMatrix(const Eigen::MatrixXd &X)
+    : m_X(X)
+{
     const int nCols = static_cast<int>(m_X.cols());
     m_tX = m_X.transpose();
     Eigen::MatrixXd XtX = m_tX * m_X;
@@ -132,9 +134,16 @@ SPACoxMethod::SPACoxMethod(
     double pvalCovAdjCut,
     double spaCutoff
 )
-    : m_resid(residuals), m_varResid(varResid), m_cumul(cumul), m_design(design),
-    m_N(static_cast<int>(residuals.size())), m_pvalCovAdjCut(pvalCovAdjCut), m_spaCutoff(spaCutoff),
-    m_adjGNorm(residuals.size()), m_adjGVec(residuals.size()) {
+    : m_resid(residuals),
+      m_varResid(varResid),
+      m_cumul(cumul),
+      m_design(design),
+      m_N(static_cast<int>(residuals.size())),
+      m_pvalCovAdjCut(pvalCovAdjCut),
+      m_spaCutoff(spaCutoff),
+      m_adjGNorm(residuals.size()),
+      m_adjGVec(residuals.size())
+{
     m_nzSet.reserve(m_N);
 }
 
@@ -517,30 +526,51 @@ void runSPACox(
     std::vector<CumulantTable> pCumul(K);
     std::vector<DesignMatrix> pDesign;
     pDesign.reserve(K);
+    std::vector<size_t> designIdx(K);
 
     std::vector<PhenoTask> tasks(K);
     for (int rc = 0; rc < K; ++rc) {
         const auto &pi = phenoInfos[rc];
 
-        // Extract per-phenotype residuals and design matrix
+        // Extract per-phenotype residuals (always per-phenotype — residuals differ)
         pResid[rc] = (K > 1) ? extractPhenoVec(sd.residMatrix().col(rc), pi) : sd.residuals();
-        Eigen::MatrixXd phenoX = (K > 1) ? extractPhenoMat(unionX, pi) : unionX;
 
-        // Build cumulant table and design matrix from per-phenotype data
+        // Cache DesignMatrix by non-missingness pattern (unionToLocal).
+        // Phenotypes sharing the same valid-subject set produce identical
+        // covariate matrices, so we deduplicate the expensive (X'X)^{-1}.
+        size_t dIdx = pDesign.size(); // default: build new
+        if (K > 1) {
+            for (int j = 0; j < rc; ++j) {
+                if (phenoInfos[j].unionToLocal == pi.unionToLocal) {
+                    dIdx = designIdx[j];
+                    infoMsg("  Phenotype '%s': reusing design matrix from '%s'",
+                            pi.name.c_str(), phenoInfos[j].name.c_str());
+                    break;
+                }
+            }
+        }
+        if (dIdx == pDesign.size()) {
+            Eigen::MatrixXd phenoX = (K > 1) ? extractPhenoMat(unionX, pi) : unionX;
+            pDesign.emplace_back(phenoX);
+        }
+        designIdx[rc] = dIdx;
+
+        // Build cumulant table from per-phenotype residuals (not cacheable)
         pCumul[rc] = buildCumulantTable(pResid[rc]);
         double meanR = pResid[rc].mean();
         double varR = (pResid[rc].array() - meanR).square().mean();
         double N = static_cast<double>(pResid[rc].size());
         double varResid = varR * N / (N - 1.0);
-        pDesign.emplace_back(phenoX);
 
         tasks[rc].phenoName = pi.name;
-        tasks[rc].method =
-            std::make_unique<SPACoxMethod>(pResid[rc], varResid, pCumul[rc], pDesign[rc], pvalCovAdjCut, spaCutoff);
+        tasks[rc].method = std::make_unique<SPACoxMethod>(
+            pResid[rc], varResid, pCumul[rc], pDesign[designIdx[rc]], pvalCovAdjCut, spaCutoff);
         tasks[rc].unionToLocal = pi.unionToLocal;
         tasks[rc].nUsed = pi.nUsed;
         infoMsg("  Phenotype '%s': %u subjects", pi.name.c_str(), pi.nUsed);
     }
+    if (K > 1)
+        infoMsg("  %zu unique design matrix(es) for %d phenotypes", pDesign.size(), K);
 
     infoMsg("Running SPACox marker tests (%d thread(s), %d phenotype(s))...", nthread, K);
     multiPhenoEngine(

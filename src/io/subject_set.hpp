@@ -25,7 +25,10 @@ class SubjectSet {
     void setGrmSubjects(std::unordered_set<std::string> grmIDs);
 
     // Set --keep / --remove filter files.  Empty path → skip that filter.
-    void setKeepRemove(const std::string &keepFile, const std::string &removeFile);
+    void setKeepRemove(
+        const std::string &keepFile,
+        const std::string &removeFile
+    );
 
     // Set descriptive labels for pipeline logging (e.g., "--bfile d_bed").
     // If not set, generic descriptions are used.
@@ -76,7 +79,10 @@ class SubjectSet {
     // ── Post-finalize mask manipulation ────────────────────────────────
     // Remove a subject from the used set (clear its bit, rebuild indices).
     // Used by SubjectData when phenotype/residual filtering narrows the set.
-    void narrowMask(const std::vector<uint64_t> &newMask, uint32_t newNUsed);
+    void narrowMask(
+        const std::vector<uint64_t> &newMask,
+        uint32_t newNUsed
+    );
 
   private:
     uint32_t m_nFam = 0;

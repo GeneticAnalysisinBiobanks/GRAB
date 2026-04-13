@@ -29,7 +29,11 @@ namespace nsGRMNull {
 // buildMafInterval — dynamic MAF grid from QC cutoffs
 // ══════════════════════════════════════════════════════════════════════
 
-std::vector<double> buildMafInterval(double mafCutoff, double macCutoff, uint32_t nUsed) {
+std::vector<double> buildMafInterval(
+    double mafCutoff,
+    double macCutoff,
+    uint32_t nUsed
+) {
     // Effective minimum MAF that can pass QC
     double effMin = mafCutoff;
     if (nUsed > 0) {
@@ -126,7 +130,11 @@ std::unordered_map<uint64_t, uint32_t> buildIBDPairMap(const std::vector<Indexed
 // UnionFind
 // ══════════════════════════════════════════════════════════════════════
 
-UnionFind::UnionFind(uint32_t n) : parent_(n), rank_(n, 0), size_(n, 1) {
+UnionFind::UnionFind(uint32_t n)
+    : parent_(n),
+      rank_(n, 0),
+      size_(n, 1)
+{
     std::iota(parent_.begin(), parent_.end(), 0u);
 }
 
@@ -138,7 +146,10 @@ uint32_t UnionFind::find(uint32_t x) {
     return x;
 }
 
-void UnionFind::unite(uint32_t a, uint32_t b) {
+void UnionFind::unite(
+    uint32_t a,
+    uint32_t b
+) {
     a = find(a);
     b = find(b);
     if (a == b) return;
@@ -175,7 +186,10 @@ std::vector<std::vector<uint32_t> > getComponents(
 // quantile_r7
 // ══════════════════════════════════════════════════════════════════════
 
-double quantile_r7(std::vector<double> &sorted, double prob) {
+double quantile_r7(
+    std::vector<double> &sorted,
+    double prob
+) {
     const size_t n = sorted.size();
     const double idx = prob * static_cast<double>(n - 1);
     const size_t lo = static_cast<size_t>(std::floor(idx));
@@ -208,7 +222,10 @@ double familyQuadForm(
 // primMST
 // ══════════════════════════════════════════════════════════════════════
 
-std::vector<MSTEdge> primMST(int N, const std::vector<std::vector<double> > &weight) {
+std::vector<MSTEdge> primMST(
+    int N,
+    const std::vector<std::vector<double> > &weight
+) {
     std::vector<MSTEdge> edges;
     edges.reserve(N - 1);
     std::vector<bool> inTree(N, false);
@@ -367,7 +384,10 @@ Eigen::MatrixXd buildChowLiuTree(
 // buildStandS
 // ══════════════════════════════════════════════════════════════════════
 
-std::vector<double> buildStandS(int N, const std::vector<double> &resid) {
+std::vector<double> buildStandS(
+    int N,
+    const std::vector<double> &resid
+) {
     int arrSize = 1;
     for (int i = 0; i < N; ++i)
         arrSize *= 3;

@@ -15,7 +15,10 @@
 
 // ── Gzip line reader ─────────────────────────────────────────────────
 
-static bool gzReadLine(gzFile gz, std::string &line) {
+static bool gzReadLine(
+    gzFile gz,
+    std::string &line
+) {
     line.clear();
     char buf[65536];
     while (gzgets(gz, buf, sizeof(buf)) != nullptr) {
@@ -50,7 +53,12 @@ static std::vector<std::string> splitTabs(const std::string &s) {
 // Converts extract_tracts_fast_pgzip.py output to .abed.
 // File naming: {prefix}.anc{k}.dosage[.gz] and {prefix}.anc{k}.hapcount[.gz]  (k=0,1,...)
 
-static std::string findExtractTractsFile(const std::string &prefix, int k, const char *type, std::string &foundPath) {
+static std::string findExtractTractsFile(
+    const std::string &prefix,
+    int k,
+    const char *type,
+    std::string &foundPath
+) {
     // Try .gz first, then plain
     for (const char *ext : {".gz", ""}) {
         std::string path = prefix + ".anc" + std::to_string(k) + "." + type + ext;

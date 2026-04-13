@@ -35,7 +35,11 @@ namespace cli {
 
 // ── Validation helpers ─────────────────────────────────────────────
 
-static void require(const std::string &val, const char *flag, const char *ctx) {
+static void require(
+    const std::string &val,
+    const char *flag,
+    const char *ctx
+) {
     if (val.empty()) {
         std::cerr << "Error: " << flag << " is required for " << ctx << ".\n";
         std::exit(1);
@@ -44,7 +48,10 @@ static void require(const std::string &val, const char *flag, const char *ctx) {
 
 // Resolve which genotype format was specified.
 // Exactly one of --bfile / --pfile / --vcf / --bgen must be given.
-static GenoSpec resolveGenoSpec(const Args &a, const char *ctx) {
+static GenoSpec resolveGenoSpec(
+    const Args &a,
+    const char *ctx
+) {
     int count = !a.bfilePrefix.empty() + !a.pfilePrefix.empty() + !a.vcfFile.empty() + !a.bgenFile.empty();
     if (count == 0) {
         std::cerr << "Error: a genotype input (--bfile, --pfile, --vcf, or --bgen)"
@@ -76,7 +83,11 @@ static GenoSpec resolveGenoSpec(const Args &a, const char *ctx) {
     return spec;
 }
 
-static std::vector<std::string> splitComma(const std::string &s, const char *flag, size_t minCount) {
+static std::vector<std::string> splitComma(
+    const std::string &s,
+    const char *flag,
+    size_t minCount
+) {
     std::vector<std::string> out;
     std::istringstream iss(s);
     std::string tok;
@@ -89,7 +100,11 @@ static std::vector<std::string> splitComma(const std::string &s, const char *fla
     return out;
 }
 
-static void checkSpGrm(const Args &a, bool required, const char *ctx) {
+static void checkSpGrm(
+    const Args &a,
+    bool required,
+    const char *ctx
+) {
     if (!a.spGrmGrabFile.empty() && !a.spGrmPlink2File.empty()) {
         std::cerr << "Error: --sp-grm-grab and --sp-grm-plink2 are mutually"
             " exclusive.\n";
@@ -168,7 +183,10 @@ static void logArgsInEffect(const Args &args) {
 
 // ── Entry point ────────────────────────────────────────────────────
 
-int run(int argc, char *argv[]) {
+int run(
+    int argc,
+    char *argv[]
+) {
     if (argc < 2) {
         printHelp("__short__");
         return 1;
@@ -633,35 +651,33 @@ int run(int argc, char *argv[]) {
                 std::cerr << "Error: --pheno-name is required for SPAsqr.\n";
                 return 1;
             }
-            for (const auto &pheno : phenoNames) {
-                runSPAsqrPheno(
-                    args.phenoFile,
-                    effectiveCovarFile,
-                    pheno,
-                    covarNames,
-                    taus,
-                    args.spGrmGrabFile,
-                    args.spGrmPlink2File,
-                    geno,
-                    args.outPrefix,
-                    args.compression,
-                    args.compressionLevel,
-                    args.spaCutoff,
-                    args.outlierRatio,
-                    args.outlierAbsBound,
-                    args.nthread,
-                    args.nSnpPerChunk,
-                    args.missingCutoff,
-                    args.minMafCutoff,
-                    args.minMacCutoff,
-                    args.hweCutoff,
-                    args.spasqrTol,
-                    args.spasqrH,
-                    args.spasqrHScale,
-                    args.keepFile,
-                    args.removeFile
-                );
-            }
+            runSPAsqr(
+                args.phenoFile,
+                effectiveCovarFile,
+                phenoNames,
+                covarNames,
+                taus,
+                args.spGrmGrabFile,
+                args.spGrmPlink2File,
+                geno,
+                args.outPrefix,
+                args.compression,
+                args.compressionLevel,
+                args.spaCutoff,
+                args.outlierRatio,
+                args.outlierAbsBound,
+                args.nthread,
+                args.nSnpPerChunk,
+                args.missingCutoff,
+                args.minMafCutoff,
+                args.minMacCutoff,
+                args.hweCutoff,
+                args.spasqrTol,
+                args.spasqrH,
+                args.spasqrHScale,
+                args.keepFile,
+                args.removeFile
+            );
         }
 
         // ── WtCoxG ─────────────────────────────────────────────────
@@ -678,42 +694,32 @@ int run(int argc, char *argv[]) {
                 return 1;
             }
             checkSpGrm(args, /*required=*/ false, "WtCoxG");
-            // Each --pheno-name entry is "TIME:EVENT" (survival) or "COLNAME" (binary).
-            // Run WtCoxG once per phenotype specification.
-            for (const auto &spec : phenoNames) {
-                std::vector<std::string> cols;
-                auto colon = spec.find(':');
-                if (colon != std::string::npos) {
-                    cols.push_back(spec.substr(0, colon));  // TIME column
-                    cols.push_back(spec.substr(colon + 1)); // EVENT column
-                } else {
-                    cols.push_back(spec);  // binary column
-                }
-                runWtCoxGPheno(
-                    args.phenoFile,
-                    effectiveCovarFile,
-                    covarNames,
-                    cols,
-                    geno,
-                    args.refAfFile,
-                    args.spGrmGrabFile,
-                    args.spGrmPlink2File,
-                    args.outPrefix,
-                    args.compression,
-                    args.compressionLevel,
-                    args.refPrevalence,
-                    args.cutoff,
-                    args.spaCutoff,
-                    args.nthread,
-                    args.nSnpPerChunk,
-                    args.missingCutoff,
-                    args.minMafCutoff,
-                    args.minMacCutoff,
-                    args.hweCutoff,
-                    args.keepFile,
-                    args.removeFile
-                );
-            }
+            // Multi-phenotype entry point: shared loading + parallel null models +
+            // one matched-marker scan + parallel batch-effect + single engine.
+            runWtCoxG(
+                args.phenoFile,
+                effectiveCovarFile,
+                covarNames,
+                phenoNames,
+                geno,
+                args.refAfFile,
+                args.spGrmGrabFile,
+                args.spGrmPlink2File,
+                args.outPrefix,
+                args.compression,
+                args.compressionLevel,
+                args.refPrevalence,
+                args.cutoff,
+                args.spaCutoff,
+                args.nthread,
+                args.nSnpPerChunk,
+                args.missingCutoff,
+                args.minMafCutoff,
+                args.minMacCutoff,
+                args.hweCutoff,
+                args.keepFile,
+                args.removeFile
+            );
         }
 
         // ── LEAF ───────────────────────────────────────────────────
@@ -741,45 +747,35 @@ int run(int argc, char *argv[]) {
                     " Use TIME:EVENT for survival or COLNAME for binary.\n";
                 return 1;
             }
-            // Each --pheno-name entry is "TIME:EVENT" (survival) or "COLNAME" (binary).
-            // Run LEAF once per phenotype specification.
-            for (const auto &spec : phenoNames) {
-                std::vector<std::string> cols;
-                auto colon = spec.find(':');
-                if (colon != std::string::npos) {
-                    cols.push_back(spec.substr(0, colon));  // TIME column
-                    cols.push_back(spec.substr(colon + 1)); // EVENT column
-                } else {
-                    cols.push_back(spec);  // binary column
-                }
-                runLEAFPheno(
-                    args.phenoFile,
-                    effectiveCovarFile,
-                    covarNames,
-                    cols,
-                    pcColNames,
-                    nClusters,
-                    args.seed,
-                    geno,
-                    refAfFiles,
-                    args.spGrmGrabFile,
-                    args.spGrmPlink2File,
-                    args.outPrefix,
-                    args.compression,
-                    args.compressionLevel,
-                    args.refPrevalence,
-                    args.cutoff,
-                    args.spaCutoff,
-                    args.nthread,
-                    args.nSnpPerChunk,
-                    args.missingCutoff,
-                    args.minMafCutoff,
-                    args.minMacCutoff,
-                    args.hweCutoff,
-                    args.keepFile,
-                    args.removeFile
-                );
-            }
+            // Multi-phenotype entry point: shared K-means + geno scan + summix + GRM,
+            // parallel regression and batch-effect, single engine.
+            runLEAF(
+                args.phenoFile,
+                effectiveCovarFile,
+                covarNames,
+                phenoNames,
+                pcColNames,
+                nClusters,
+                args.seed,
+                geno,
+                refAfFiles,
+                args.spGrmGrabFile,
+                args.spGrmPlink2File,
+                args.outPrefix,
+                args.compression,
+                args.compressionLevel,
+                args.refPrevalence,
+                args.cutoff,
+                args.spaCutoff,
+                args.nthread,
+                args.nSnpPerChunk,
+                args.missingCutoff,
+                args.minMafCutoff,
+                args.minMacCutoff,
+                args.hweCutoff,
+                args.keepFile,
+                args.removeFile
+            );
         }
 
         // ── SPAmixLocalPlus ────────────────────────────────────────

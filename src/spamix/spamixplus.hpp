@@ -97,7 +97,12 @@ class SPAmixPlusMethod : public MethodBase {
     ) override;
 
   private:
-    double getMarkerPval(const Eigen::Ref<const Eigen::VectorXd> &GVec, double altFreq, double &zScore, double &outVarS)
+    double getMarkerPval(
+        const Eigen::Ref<const Eigen::VectorXd> &GVec,
+        double altFreq,
+        double &zScore,
+        double &outVarS
+    )
     ;
 
 // Read-only shared data (stable references — owner outlives all clones)

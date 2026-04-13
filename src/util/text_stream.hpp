@@ -28,7 +28,11 @@ class TextWriter {
 
     /// Open `path` with explicit mode and compression level.
     /// Level 0 means library default.
-    TextWriter(const std::string &path, Mode mode, int level);
+    TextWriter(
+        const std::string &path,
+        Mode mode,
+        int level
+    );
 
     ~TextWriter();
 
@@ -39,7 +43,10 @@ class TextWriter {
     TextWriter &operator=(TextWriter &&o) noexcept;
 
     /// Write raw bytes.
-    void write(const char *data, size_t len);
+    void write(
+        const char *data,
+        size_t len
+    );
 
     /// Convenience: write a string_view (also handles std::string and const char*).
     void write(std::string_view sv) {

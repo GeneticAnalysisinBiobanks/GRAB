@@ -9,6 +9,7 @@
 #include "wtcoxg/wtcoxg.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cmath>
 #include <fstream>
@@ -18,6 +19,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -26,7 +28,10 @@
 // loadAndMatchRefAf — load one plink2 .afreq and match vs PlinkData
 // ======================================================================
 
-std::vector<PopMatchedAF> loadAndMatchRefAf(const GenoMeta &plinkData, const std::string &afreqFile) {
+std::vector<PopMatchedAF> loadAndMatchRefAf(
+    const GenoMeta &plinkData,
+    const std::string &afreqFile
+) {
 
     bool isNumeric = false;
     auto records = loadRefAfFile(afreqFile, &isNumeric);
@@ -99,114 +104,142 @@ std::vector<PopMatchedAF> loadAndMatchRefAf(const GenoMeta &plinkData, const std
 // O(n·k·p) with excellent vectorisation and cache behaviour.
 // ======================================================================
 
-Eigen::VectorXi kmeansCluster(const Eigen::Ref<const Eigen::MatrixXd> &X, int k, int nstart, uint64_t seed) {
+Eigen::VectorXi kmeansCluster(
+    const Eigen::Ref<const Eigen::MatrixXd> &X,
+    int k,
+    int nstart,
+    uint64_t seed,
+    int nthreads
+) {
 
     const Eigen::Index n = X.rows();
     const Eigen::Index p = X.cols();
 
     if (k <= 0 || k > n) throw std::runtime_error("kmeansCluster: k must be in [1, n]");
 
-    // Pre-compute ||x_i||² (used in every restart).
+    // Pre-compute ||x_i||² (read-only, shared across threads).
     Eigen::VectorXd xSqNorm = X.rowwise().squaredNorm(); // (n)
 
-    // Seed the RNG: use user-provided seed or random_device.
-    std::mt19937_64 rng(seed != 0 ? seed : static_cast<uint64_t>(std::random_device{}()));
-
-    Eigen::VectorXi bestLabels = Eigen::VectorXi::Zero(n);
-    double bestInertia = std::numeric_limits<double>::infinity();
-
-    // Scratch buffers (allocated once, reused across restarts).
-    Eigen::MatrixXd centers(k, p);
-    Eigen::MatrixXd XC(n, k);   // −2 X Cᵀ  (reused as dist²)
-    Eigen::VectorXd cSqNorm(k); // ||c_j||²
-    Eigen::VectorXi labels(n);
-    Eigen::VectorXd minDist(n); // for K-means++ sampling
-    Eigen::VectorXd counts(k);
-
+    const uint64_t baseSeed = (seed != 0) ? seed : static_cast<uint64_t>(std::random_device{}());
     const int maxIter = 300;
 
-    for (int restart = 0; restart < nstart; ++restart) {
+    // Per-thread state for parallel restarts.
+    struct ThreadState {
+        Eigen::VectorXi bestLabels;
+        double bestInertia = std::numeric_limits<double>::infinity();
+    };
 
-        // ── K-means++ initialisation ──────────────────────────────────
-        {
-            std::uniform_int_distribution<Eigen::Index> uniIdx(0, n - 1);
-            centers.row(0) = X.row(uniIdx(rng));
+    const int nWorkers = std::min(nthreads, nstart);
+    std::vector<ThreadState> threadState(nWorkers);
+    for (auto &ts : threadState)
+        ts.bestLabels = Eigen::VectorXi::Zero(n);
 
-            // Distance from each point to its nearest chosen centre.
-            minDist = (X.rowwise() - centers.row(0)).rowwise().squaredNorm();
+    std::atomic<int> nextRestart{0};
 
-            for (int c = 1; c < k; ++c) {
-                // Sample proportional to minDist  (D² weighting).
-                std::discrete_distribution<Eigen::Index> dd(minDist.data(), minDist.data() + n);
-                Eigen::Index pick = dd(rng);
-                centers.row(c) = X.row(pick);
+    auto worker = [&](int workerIdx) {
+        // Per-thread RNG (deterministic: baseSeed + restart index).
+        // Per-thread scratch buffers.
+        Eigen::MatrixXd centers(k, p);
+        Eigen::MatrixXd XC(n, k);
+        Eigen::VectorXd cSqNorm(k);
+        Eigen::VectorXi labels(n);
+        Eigen::VectorXd minDist(n);
+        Eigen::VectorXd counts(k);
 
-                // Update minDist.
-                Eigen::VectorXd newDist = (X.rowwise() - centers.row(c)).rowwise().squaredNorm();
-                minDist = minDist.cwiseMin(newDist);
+        auto &ts = threadState[workerIdx];
+
+        for (;;) {
+            int restart = nextRestart.fetch_add(1, std::memory_order_relaxed);
+            if (restart >= nstart) break;
+
+            std::mt19937_64 rng(baseSeed + static_cast<uint64_t>(restart));
+
+            // ── K-means++ initialisation ──────────────────────────────
+            {
+                std::uniform_int_distribution<Eigen::Index> uniIdx(0, n - 1);
+                centers.row(0) = X.row(uniIdx(rng));
+                minDist = (X.rowwise() - centers.row(0)).rowwise().squaredNorm();
+
+                for (int c = 1; c < k; ++c) {
+                    std::discrete_distribution<Eigen::Index> dd(minDist.data(), minDist.data() + n);
+                    Eigen::Index pick = dd(rng);
+                    centers.row(c) = X.row(pick);
+                    Eigen::VectorXd newDist = (X.rowwise() - centers.row(c)).rowwise().squaredNorm();
+                    minDist = minDist.cwiseMin(newDist);
+                }
             }
-        }
 
-        // ── Lloyd iterations ──────────────────────────────────────────
-        double inertia = 0.0;
+            // ── Lloyd iterations ──────────────────────────────────────
+            double inertia = 0.0;
 
-        for (int iter = 0; iter < maxIter; ++iter) {
+            for (int iter = 0; iter < maxIter; ++iter) {
+                cSqNorm = centers.rowwise().squaredNorm();
+                XC.noalias() = X * centers.transpose(); // BLAS dgemm
 
-            // ---- Assignment step ----
-            // dist²(i,j) = ||x_i||² − 2 x_i·c_j + ||c_j||²
-            cSqNorm = centers.rowwise().squaredNorm(); // (k)
-            XC.noalias() = X * centers.transpose();    // (n × k)  BLAS dgemm
-
-            inertia = 0.0;
-            bool changed = false;
-            for (Eigen::Index i = 0; i < n; ++i) {
-                double best = std::numeric_limits<double>::infinity();
-                int bestJ = 0;
-                const double xi2 = xSqNorm[i];
-                for (int j = 0; j < k; ++j) {
-                    double d2 = xi2 - 2.0 * XC(i, j) + cSqNorm[j];
-                    if (d2 < best) {
-                        best = d2;
-                        bestJ = j;
+                inertia = 0.0;
+                bool changed = false;
+                for (Eigen::Index i = 0; i < n; ++i) {
+                    double best = std::numeric_limits<double>::infinity();
+                    int bestJ = 0;
+                    const double xi2 = xSqNorm[i];
+                    for (int j = 0; j < k; ++j) {
+                        double d2 = xi2 - 2.0 * XC(i, j) + cSqNorm[j];
+                        if (d2 < best) {
+                            best = d2;
+                            bestJ = j;
+                        }
                     }
+                    if (labels[i] != bestJ) {
+                        labels[i] = bestJ;
+                        changed = true;
+                    }
+                    inertia += best;
                 }
-                if (labels[i] != bestJ) {
-                    labels[i] = bestJ;
-                    changed = true;
+
+                centers.setZero();
+                counts.setZero();
+                for (Eigen::Index i = 0; i < n; ++i) {
+                    int c = labels[i];
+                    centers.row(c) += X.row(i);
+                    counts[c] += 1.0;
                 }
-                inertia += best;
+                for (int j = 0; j < k; ++j) {
+                    if (counts[j] > 0.0) centers.row(j) /= counts[j];
+                }
+
+                if (!changed) break;
             }
 
-            // ---- Update step: new centroids ----
-            centers.setZero();
-            counts.setZero();
-            for (Eigen::Index i = 0; i < n; ++i) {
-                int c = labels[i];
-                centers.row(c) += X.row(i);
-                counts[c] += 1.0;
+            if (inertia < ts.bestInertia) {
+                ts.bestInertia = inertia;
+                ts.bestLabels = labels;
             }
-            for (int j = 0; j < k; ++j) {
-                if (counts[j] > 0.0) centers.row(j) /= counts[j];
-            }
-
-            if (!changed) break;
         }
+    };
 
-        if (inertia < bestInertia) {
-            bestInertia = inertia;
-            bestLabels = labels;
-        }
-    }
+    // Launch workers.
+    std::vector<std::thread> threads;
+    threads.reserve(nWorkers - 1);
+    for (int t = 1; t < nWorkers; ++t)
+        threads.emplace_back(worker, t);
+    worker(0); // main thread participates
+    for (auto &th : threads) th.join();
 
-    // Convert from 0-based to 1-based labels (R convention).
-    bestLabels.array() += 1;
+    // Reduce: pick global best across threads.
+    int bestIdx = 0;
+    for (int t = 1; t < nWorkers; ++t)
+        if (threadState[t].bestInertia < threadState[bestIdx].bestInertia)
+            bestIdx = t;
+
+    Eigen::VectorXi bestLabels = std::move(threadState[bestIdx].bestLabels);
+    bestLabels.array() += 1; // 0-based → 1-based (R convention)
     return bestLabels;
 }
 
 // ======================================================================
 // Summix — exact active-set enumeration with KKT / Lagrange multiplier
 //
-// For each non-empty subset S ⊆ {0..K-1} (K ≤ 6 → max 63 subsets),
+// For each non-empty subset S ⊆ {0..K-1} (K ≤ 8 → max 255 subsets),
 // solve the equality-constrained LS:
 //   min ||D_S * p_S - o||²   s.t.  1'p_S = 1
 // via the (|S|+1) × (|S|+1) KKT system:
@@ -215,11 +248,14 @@ Eigen::VectorXi kmeansCluster(const Eigen::Ref<const Eigen::MatrixXd> &X, int k,
 // Keep the solution with all p_S ≥ 0 and lowest objective.
 // ======================================================================
 
-Eigen::VectorXd summixEstimate(const Eigen::VectorXd &observedAF, const Eigen::MatrixXd &refAF) {
+Eigen::VectorXd summixEstimate(
+    const Eigen::VectorXd &observedAF,
+    const Eigen::MatrixXd &refAF
+) {
 
     const int K = static_cast<int>(refAF.cols());
     if (K == 0) return Eigen::VectorXd();
-    if (K > 6) throw std::runtime_error("summix: nPop > 6 not supported (got " + std::to_string(K) + ")");
+    if (K > 8) throw std::runtime_error("summix: nPop > 8 not supported (got " + std::to_string(K) + ")");
 
     // Filter out rows with NaN
     std::vector<Eigen::Index> validRows;
@@ -258,7 +294,7 @@ Eigen::VectorXd summixEstimate(const Eigen::VectorXd &observedAF, const Eigen::M
     for (int mask = 1; mask < nSubsets; ++mask) {
         // Count and collect active indices
         int s = 0;
-        int idx[6];
+        int idx[8];
         for (int j = 0; j < K; ++j)
             if (mask & (1 << j)) idx[s++] = j;
 
@@ -325,8 +361,10 @@ LEAFMethod::LEAFMethod(
     std::vector<std::unique_ptr<WtCoxGMethod> > clusterMethods,
     std::vector<std::vector<uint32_t> > clusterIndices
 )
-    : m_nCluster(static_cast<int>(clusterMethods.size())), m_clusterMethods(std::move(clusterMethods)),
-    m_clusterIndices(std::move(clusterIndices)) {
+    : m_nCluster(static_cast<int>(clusterMethods.size())),
+      m_clusterMethods(std::move(clusterMethods)),
+      m_clusterIndices(std::move(clusterIndices))
+{
     m_clusterGVec.resize(m_nCluster);
     for (int c = 0; c < m_nCluster; ++c)
         m_clusterGVec[c].resize(m_clusterIndices[c].size());
@@ -520,7 +558,7 @@ void runLEAFPheno(
     Eigen::MatrixXd PCs = sdFull.getColumns(pcColNames);
     infoMsg("  %d PCs for K-means clustering", static_cast<int>(PCs.cols()));
     infoMsg("K-means clustering into %d clusters...", nCluster);
-    Eigen::VectorXi clusterLabels = kmeansCluster(PCs, nCluster, /*nstart=*/ 25, seed);
+    Eigen::VectorXi clusterLabels = kmeansCluster(PCs, nCluster, /*nstart=*/ 25, seed, nthread);
 
     // ---- 3. Per-cluster regression → resid/weight/indicator ----
     //
@@ -674,8 +712,8 @@ void runLEAFPheno(
 
     // Build intersection of markers present in all populations
     struct MultiPopEntry {
-        double af[6];
-        double obs_ct[6];
+        double af[8];
+        double obs_ct[8];
     };
 
     std::unordered_map<uint64_t, MultiPopEntry> allPopMap;
@@ -703,8 +741,8 @@ void runLEAFPheno(
     // Convert to sorted vector for deterministic order
     struct MatchedMultiPop {
         uint64_t genoIndex;
-        double popAF[6];
-        double popObsCt[6];
+        double popAF[8];
+        double popObsCt[8];
     };
 
     std::vector<MatchedMultiPop> matchedMulti;
@@ -884,6 +922,573 @@ void runLEAFPheno(
         compression,
         compressionLevel,
         nthread,
+        missingCutoff,
+        minMafCutoff,
+        minMacCutoff,
+        hweCutoff
+    );
+}
+
+// ======================================================================
+// runLEAF — multi-phenotype entry point
+//
+// Phases:
+//   A  Shared data loading, K-means, masks, genoData, ref-AF, GRM
+//   B  Parallel null-model regression  (min(T, P) threads, K fits each)
+//   C  Shared genotype scan, summix, AF synthesis
+//   D  Parallel batch-effect testing   (min(T, P×K) threads)
+//   E  Single multiPhenoEngine call    (T-thread chunk parallel)
+// ======================================================================
+
+static std::vector<std::string> parsePhenoSpecLEAF(const std::string &spec) {
+    std::vector<std::string> cols;
+    auto colon = spec.find(':');
+    if (colon != std::string::npos) {
+        cols.push_back(spec.substr(0, colon));
+        cols.push_back(spec.substr(colon + 1));
+    } else {
+        cols.push_back(spec);
+    }
+    return cols;
+}
+
+void runLEAF(
+    const std::string &phenoFile,
+    const std::string &covarFile,
+    const std::vector<std::string> &covarNames,
+    const std::vector<std::string> &phenoSpecs,
+    const std::vector<std::string> &pcColNames,
+    int nClusters,
+    uint64_t seed,
+    const GenoSpec &geno,
+    const std::vector<std::string> &refAfFiles,
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double refPrevalence,
+    double cutoff,
+    double spaCutoff,
+    int nthreads,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile,
+    const std::string &removeFile
+) {
+    const int P = static_cast<int>(phenoSpecs.size());
+    const int K = nClusters;
+    const int nPop = static_cast<int>(refAfFiles.size());
+
+    // ── Parse each spec into column names ───────────────────────────
+    std::vector<std::vector<std::string> > phenoCols(P);
+    std::vector<std::string> allPhenoCols;
+    for (int p = 0; p < P; ++p) {
+        phenoCols[p] = parsePhenoSpecLEAF(phenoSpecs[p]);
+        for (const auto &col : phenoCols[p])
+            allPhenoCols.push_back(col);
+    }
+
+    // ── Phase A: shared data loading ────────────────────────────────
+    infoMsg("LEAF: Loading data (%d phenotypes, %d clusters)", P, K);
+    auto famIIDs = parseGenoIIDs(geno);
+    const uint32_t nFamTotal = static_cast<uint32_t>(famIIDs.size());
+    SubjectData sdFull(famIIDs); // copy — need famIIDs later
+    sdFull.loadPhenoFile(phenoFile);
+    if (!covarFile.empty()) {
+        std::vector<std::string> needed = covarNames;
+        needed.insert(needed.end(), pcColNames.begin(), pcColNames.end());
+        sdFull.loadCovar(covarFile, needed);
+    }
+    sdFull.setKeepRemove(keepFile, removeFile);
+    if (!spgrmGrabFile.empty() || !spgrmGctaFile.empty())
+        sdFull.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sdFull.famIIDs()));
+    sdFull.setGenoLabel(geno.flagLabel());
+    sdFull.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
+    sdFull.finalize();
+    sdFull.dropNaInColumns(allPhenoCols);
+
+    const Eigen::Index N = static_cast<Eigen::Index>(sdFull.nUsed());
+    infoMsg("  %lld subjects after intersection", static_cast<long long>(N));
+
+    // Shared covariate matrix
+    const int nCov = covarNames.empty() ? 0 : static_cast<int>(covarNames.size());
+    Eigen::MatrixXd covarMat;
+    if (nCov > 0) covarMat = sdFull.getColumns(covarNames);
+    Eigen::MatrixXd logisticDesign;
+    // Will be built per-cluster, not globally
+
+    // K-means clustering on PCs (phenotype-independent)
+    Eigen::MatrixXd PCs = sdFull.getColumns(pcColNames);
+    infoMsg("  %d PCs for K-means clustering", static_cast<int>(PCs.cols()));
+    infoMsg("K-means clustering into %d clusters...", K);
+    Eigen::VectorXi clusterLabels = kmeansCluster(PCs, K, /*nstart=*/ 25, seed, nthreads);
+
+    // Cluster member indices (into full used-subject array)
+    std::vector<std::vector<uint32_t> > clusterMemberIdx(K);
+    for (Eigen::Index i = 0; i < N; ++i)
+        clusterMemberIdx[clusterLabels[i] - 1].push_back(static_cast<uint32_t>(i));
+
+    // Build per-cluster bitmasks from fullMask + clusterLabels
+    const size_t nMaskWords = (nFamTotal + 63) / 64;
+    std::vector<std::vector<uint64_t> > clusterMasks(K);
+    for (int c = 0; c < K; ++c)
+        clusterMasks[c].assign(nMaskWords, 0);
+    {
+        const auto &fullMask = sdFull.usedMask();
+        uint32_t usedIdx = 0;
+        for (uint32_t f = 0; f < nFamTotal; ++f) {
+            if (fullMask[f / 64] & (1ULL << (f % 64))) {
+                int cl = clusterLabels[usedIdx] - 1;
+                clusterMasks[cl][f / 64] |= 1ULL << (f % 64);
+                ++usedIdx;
+            }
+        }
+    }
+
+    std::vector<uint32_t> clusterN(K, 0);
+    for (int c = 0; c < K; ++c)
+        for (size_t w = 0; w < nMaskWords; ++w)
+            clusterN[c] += static_cast<uint32_t>(__builtin_popcountll(clusterMasks[c][w]));
+
+    // Union mask and cluster→union index mapping
+    std::vector<uint64_t> unionMask(nMaskWords, 0);
+    for (int c = 0; c < K; ++c)
+        for (size_t w = 0; w < nMaskWords; ++w)
+            unionMask[w] |= clusterMasks[c][w];
+    uint32_t nUnion = 0;
+    for (size_t w = 0; w < nMaskWords; ++w)
+        nUnion += static_cast<uint32_t>(__builtin_popcountll(unionMask[w]));
+
+    std::vector<std::vector<uint32_t> > clusterIndices(K);
+    for (int c = 0; c < K; ++c)
+        clusterIndices[c].reserve(clusterN[c]);
+    {
+        uint32_t denseIdx = 0;
+        for (size_t w = 0; w < nMaskWords; ++w) {
+            uint64_t bits = unionMask[w];
+            while (bits) {
+                int bit = __builtin_ctzll(bits);
+                uint64_t bitVal = uint64_t(1) << bit;
+                for (int c = 0; c < K; ++c) {
+                    if (clusterMasks[c][w] & bitVal) {
+                        clusterIndices[c].push_back(denseIdx);
+                        break;
+                    }
+                }
+                ++denseIdx;
+                bits &= bits - 1;
+            }
+        }
+    }
+    infoMsg("  Total subjects (union): %u", nUnion);
+
+    // Shared genotype data with union mask
+    auto genoData = makeGenoData(geno, unionMask, nFamTotal, nUnion, nSnpPerChunk);
+    infoMsg("  %u subjects matched, %u markers", genoData->nSubjUsed(), genoData->nMarkers());
+
+    // Shared ref-AF loading
+    infoMsg("Loading %d reference AF files...", nPop);
+    std::vector<std::vector<PopMatchedAF> > popMatched(nPop);
+    for (int r = 0; r < nPop; ++r) {
+        infoMsg("  Pop %d: %s", r + 1, refAfFiles[r].c_str());
+        popMatched[r] = loadAndMatchRefAf(*genoData, refAfFiles[r]);
+        infoMsg("    %zu markers matched", popMatched[r].size());
+    }
+
+    // Build intersection of markers across all populations
+    struct MultiPopEntry {
+        double af[8];
+        double obs_ct[8];
+    };
+
+    std::unordered_map<uint64_t, MultiPopEntry> allPopMap;
+    if (nPop > 0) {
+        for (const auto &pm : popMatched[0]) {
+            MultiPopEntry e{};
+            e.af[0] = pm.af;
+            e.obs_ct[0] = pm.obs_ct;
+            allPopMap.emplace(pm.genoIndex, e);
+        }
+    }
+    for (int r = 1; r < nPop; ++r) {
+        std::unordered_map<uint64_t, MultiPopEntry> next;
+        for (const auto &pm : popMatched[r]) {
+            auto it = allPopMap.find(pm.genoIndex);
+            if (it == allPopMap.end()) continue;
+            auto entry = it->second;
+            entry.af[r] = pm.af;
+            entry.obs_ct[r] = pm.obs_ct;
+            next.emplace(pm.genoIndex, entry);
+        }
+        allPopMap = std::move(next);
+    }
+
+    struct MatchedMultiPop {
+        uint64_t genoIndex;
+        double popAF[8];
+        double popObsCt[8];
+    };
+
+    std::vector<MatchedMultiPop> matchedMulti;
+    matchedMulti.reserve(allPopMap.size());
+    for (auto &[gi, e] : allPopMap) {
+        MatchedMultiPop mm{};
+        mm.genoIndex = gi;
+        for (int r = 0; r < nPop; ++r) {
+            mm.popAF[r] = e.af[r];
+            mm.popObsCt[r] = e.obs_ct[r];
+        }
+        matchedMulti.push_back(mm);
+    }
+    std::sort(matchedMulti.begin(), matchedMulti.end(),
+              [](const auto &a, const auto &b) {
+        return a.genoIndex < b.genoIndex;
+    });
+    const size_t nMatched = matchedMulti.size();
+    infoMsg("  %zu markers present in all %d populations", nMatched, nPop);
+
+    // Build per-cluster usedIIDs for GRM loading (phenotype-independent)
+    std::vector<std::vector<std::string> > clusterUsedIIDs(K);
+    for (int c = 0; c < K; ++c) {
+        clusterUsedIIDs[c].reserve(clusterN[c]);
+        for (uint32_t f = 0; f < nFamTotal; ++f)
+            if (clusterMasks[c][f / 64] & (1ULL << (f % 64)))
+                clusterUsedIIDs[c].push_back(famIIDs[f]);
+    }
+
+    // Load K GRMs once (phenotype-independent)
+    std::vector<std::unique_ptr<SparseGRM> > clGRMs(K);
+    if (!spgrmGctaFile.empty() || !spgrmGrabFile.empty()) {
+        infoMsg("Loading %d per-cluster sparse GRMs...", K);
+        for (int c = 0; c < K; ++c) {
+            clGRMs[c] = std::make_unique<SparseGRM>(
+                SparseGRM::load(spgrmGrabFile, spgrmGctaFile, clusterUsedIIDs[c], famIIDs));
+            infoMsg("  Cluster %d: %u subjects, %zu non-zeros",
+                    c + 1, clGRMs[c]->nSubjects(), clGRMs[c]->nnz());
+        }
+    }
+
+    // ── Phase B: parallel null-model regression ─────────────────────
+    // Per-phenotype, per-cluster: residuals, weights, indicator
+    struct ClusterRWI {
+        Eigen::VectorXd resid, weight, ind;
+    };
+
+    // clRWI[p][c]
+    std::vector<std::vector<ClusterRWI> > clRWI(P, std::vector<ClusterRWI>(K));
+    std::vector<std::string> traitNames(P);
+
+    {
+        const int totalTasks = P * K;
+        const int nWorkers = std::min(nthreads, totalTasks);
+        infoMsg("LEAF: Fitting %d × %d null models with %d threads", P, K, nWorkers);
+        std::atomic<int> nextTask{0};
+        std::vector<std::string> regrErrors(totalTasks);
+
+        // Pre-compute traitNames (outside worker to avoid races).
+        for (int p = 0; p < P; ++p) {
+            const auto &cols = phenoCols[p];
+            const bool isSurv = (cols.size() >= 2);
+            traitNames[p] = isSurv ? cols[0] + "_" + cols[1] : cols[0];
+        }
+
+        auto regrWorker = [&]() {
+            for (;;) {
+                int t = nextTask.fetch_add(1, std::memory_order_relaxed);
+                if (t >= totalTasks) break;
+                int p = t / K;
+                int c = t % K;
+                try {
+                    const auto &cols = phenoCols[p];
+                    const bool isSurv = (cols.size() >= 2);
+
+                    // Extract full indicator/survTime
+                    Eigen::VectorXd fullInd, fullTime;
+                    if (isSurv) {
+                        fullTime = sdFull.getColumn(cols[0]);
+                        fullInd = sdFull.getColumn(cols[1]);
+                    } else {
+                        fullInd = sdFull.getColumn(cols[0]);
+                    }
+
+                    const auto &members = clusterMemberIdx[c];
+                    const Eigen::Index Nc = static_cast<Eigen::Index>(members.size());
+
+                    // Subset for cluster
+                    Eigen::VectorXd cInd(Nc), cTime(Nc);
+                    for (Eigen::Index j = 0; j < Nc; ++j) {
+                        cInd[j] = fullInd[members[j]];
+                        if (isSurv) cTime[j] = fullTime[members[j]];
+                    }
+
+                    Eigen::VectorXd cWeight = regression::calRegrWeight(refPrevalence, cInd);
+
+                    Eigen::VectorXd cResid;
+                    if (isSurv) {
+                        Eigen::MatrixXd cCov(Nc, covarMat.cols());
+                        for (Eigen::Index j = 0; j < Nc; ++j)
+                            cCov.row(j) = covarMat.row(members[j]);
+                        cResid = regression::coxResiduals(cTime, cInd, cCov, cWeight);
+                    } else {
+                        Eigen::MatrixXd cDesign(Nc, 1 + nCov);
+                        cDesign.col(0).setOnes();
+                        if (nCov > 0) {
+                            for (Eigen::Index j = 0; j < Nc; ++j)
+                                cDesign.row(j).tail(nCov) = covarMat.row(members[j]);
+                        }
+                        cResid = regression::logisticResiduals(cInd, cDesign, cWeight);
+                    }
+                    clRWI[p][c] = {std::move(cResid), std::move(cWeight), std::move(cInd)};
+                    infoMsg("  [%s cl%d] null model done", traitNames[p].c_str(), c + 1);
+                } catch (const std::exception &ex) {
+                    regrErrors[t] = ex.what();
+                }
+            }
+        };
+
+        std::vector<std::thread> threads;
+        threads.reserve(nWorkers - 1);
+        for (int t = 0; t < nWorkers - 1; ++t)
+            threads.emplace_back(regrWorker);
+        regrWorker();
+        for (auto &th : threads) th.join();
+
+        for (int t = 0; t < totalTasks; ++t)
+            if (!regrErrors[t].empty()) {
+                int p = t / K, c = t % K;
+                throw std::runtime_error(
+                          "LEAF null model failed for '" + traitNames[p] +
+                          "' cluster " + std::to_string(c + 1) + ": " + regrErrors[t]);
+            }
+    }
+
+    // ── Phase C: shared genotype scan + summix + AF synthesis ───────
+    // One I/O pass: compute intAF (shared) + per-phenotype mu0/mu1
+    infoMsg("LEAF: Scanning %zu matched markers for %d clusters × %d phenotypes",
+            nMatched, K, P);
+
+    // intAF: [K][nMatched] — phenotype-independent
+    std::vector<std::vector<double> > clIntAF(K, std::vector<double>(nMatched));
+    // Per-phenotype per-cluster scan: mu0/mu1/n0/n1/mu_int
+    struct MarkerPhStat {
+        double mu0, mu1, n0, n1, mu_int;
+    };
+
+    // phClStats[p][c][m]
+    std::vector<std::vector<std::vector<MarkerPhStat> > > phClStats(
+        P, std::vector<std::vector<MarkerPhStat> >(K, std::vector<MarkerPhStat>(nMatched)));
+
+    {
+        const uint32_t nFull = genoData->nSubjUsed();
+        auto cursor = genoData->makeCursor();
+        if (!matchedMulti.empty())
+            cursor->beginSequentialBlock(matchedMulti.front().genoIndex);
+        Eigen::VectorXd fullGVec(nFull);
+
+        for (size_t m = 0; m < nMatched; ++m) {
+            cursor->getGenotypesSimple(matchedMulti[m].genoIndex, fullGVec);
+
+            for (int c = 0; c < K; ++c) {
+                const auto &idx = clusterIndices[c];
+                const size_t Nc = idx.size();
+
+                // One pass over cluster members: compute phenotype-independent total
+                // and per-phenotype case/control sums
+                double totalSum = 0, totalCnt = 0;
+                std::vector<double> sum0(P, 0), sum1(P, 0), cnt0(P, 0), cnt1(P, 0);
+
+                for (size_t k = 0; k < Nc; ++k) {
+                    double g = fullGVec[idx[k]];
+                    if (std::isnan(g)) continue;
+                    totalSum += g;
+                    totalCnt += 1.0;
+                    for (int p = 0; p < P; ++p) {
+                        if (clRWI[p][c].ind[static_cast<Eigen::Index>(k)] == 1.0) {
+                            sum1[p] += g;
+                            cnt1[p] += 1.0;
+                        } else {
+                            sum0[p] += g;
+                            cnt0[p] += 1.0;
+                        }
+                    }
+                }
+
+                clIntAF[c][m] = (totalCnt > 0)
+                    ? (totalSum) / (2.0 * totalCnt)
+                    : std::numeric_limits<double>::quiet_NaN();
+
+                for (int p = 0; p < P; ++p) {
+                    auto &st = phClStats[p][c][m];
+                    st.mu0 = (cnt0[p] > 0) ? sum0[p] / (2.0 * cnt0[p]) : 0.0;
+                    st.mu1 = (cnt1[p] > 0) ? sum1[p] / (2.0 * cnt1[p]) : 0.0;
+                    st.n0 = cnt0[p];
+                    st.n1 = cnt1[p];
+                    st.mu_int = clIntAF[c][m];
+                }
+            }
+        }
+    }
+
+    // Per-cluster summix (phenotype-independent — uses only intAF)
+    // K calls are independent; parallelize with min(T, K) workers.
+    std::vector<Eigen::VectorXd> clProportions(K);
+    {
+        const int nWorkers = std::min(nthreads, K);
+        infoMsg("LEAF: Running summix for %d clusters with %d threads", K, nWorkers);
+        std::atomic<int> nextCl{0};
+
+        // Build refMat once (shared read-only across clusters).
+        Eigen::MatrixXd refMat(nMatched, nPop);
+        for (size_t m = 0; m < nMatched; ++m)
+            for (int r = 0; r < nPop; ++r)
+                refMat(m, r) = matchedMulti[m].popAF[r];
+
+        auto summixWorker = [&]() {
+            for (;;) {
+                int c = nextCl.fetch_add(1, std::memory_order_relaxed);
+                if (c >= K) break;
+                Eigen::VectorXd obsAF(nMatched);
+                for (size_t m = 0; m < nMatched; ++m)
+                    obsAF[m] = clIntAF[c][m];
+                clProportions[c] = summixEstimate(obsAF, refMat);
+                for (int r = 0; r < nPop; ++r)
+                    infoMsg("  Cluster %d pop%d: %.4f", c + 1, r + 1, clProportions[c][r]);
+            }
+        };
+
+        std::vector<std::thread> threads;
+        threads.reserve(nWorkers - 1);
+        for (int t = 0; t < nWorkers - 1; ++t)
+            threads.emplace_back(summixWorker);
+        summixWorker();
+        for (auto &th : threads) th.join();
+    }
+
+    // Per-cluster AF_ref and obs_ct synthesis (shared across phenotypes)
+    // Then per-phenotype × per-cluster: build MatchedMarkerInfo with phenotype-specific mu0/mu1
+    // clMatchedInfo[p][c] — vector of MatchedMarkerInfo
+    std::vector<std::vector<std::vector<MatchedMarkerInfo> > > clMatchedInfo(
+        P, std::vector<std::vector<MatchedMarkerInfo> >(K));
+
+    for (int c = 0; c < K; ++c) {
+        // Synthesize shared AF_ref and obs_ct for cluster c
+        std::vector<double> sharedAFRef(nMatched);
+        std::vector<double> sharedObsCt(nMatched);
+        for (size_t m = 0; m < nMatched; ++m) {
+            double af_ref = 0.0;
+            for (int r = 0; r < nPop; ++r)
+                af_ref += clProportions[c][r] * matchedMulti[m].popAF[r];
+            sharedAFRef[m] = af_ref;
+
+            double denom = 0.0;
+            for (int r = 0; r < nPop; ++r) {
+                double oc = matchedMulti[m].popObsCt[r];
+                if (oc > 0 && clProportions[c][r] > 0)
+                    denom += (clProportions[c][r] * clProportions[c][r]) / oc;
+            }
+            sharedObsCt[m] = (denom > 0) ? 1.0 / denom : 0.0;
+        }
+
+        for (int p = 0; p < P; ++p) {
+            clMatchedInfo[p][c].resize(nMatched);
+            for (size_t m = 0; m < nMatched; ++m) {
+                auto &mi = clMatchedInfo[p][c][m];
+                mi.genoIndex = matchedMulti[m].genoIndex;
+                mi.AF_ref = sharedAFRef[m];
+                mi.obs_ct = sharedObsCt[m];
+                mi.mu0 = phClStats[p][c][m].mu0;
+                mi.mu1 = phClStats[p][c][m].mu1;
+                mi.n0 = phClStats[p][c][m].n0;
+                mi.n1 = phClStats[p][c][m].n1;
+                mi.mu_int = phClStats[p][c][m].mu_int;
+            }
+        }
+    }
+
+    // ── Phase D: parallel batch-effect testing ──────────────────────
+    // P × K tasks, parallelized with min(T, P*K) workers
+    // clRefMaps[p][c]
+    std::vector<std::vector<std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> > > > clRefMaps(
+        P, std::vector<std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> > >(K));
+    {
+        const int totalTasks = P * K;
+        const int nWorkers = std::min(nthreads, totalTasks);
+        infoMsg("LEAF: Batch-effect testing for %d phenotypes × %d clusters with %d threads",
+                P, K, nWorkers);
+        std::atomic<int> nextTask{0};
+        std::vector<std::string> batchErrors(totalTasks);
+
+        auto batchWorker = [&]() {
+            for (;;) {
+                int t = nextTask.fetch_add(1, std::memory_order_relaxed);
+                if (t >= totalTasks) break;
+                int p = t / K;
+                int c = t % K;
+                try {
+                    clRefMaps[p][c] = testBatchEffects(
+                        clMatchedInfo[p][c],
+                        clRWI[p][c].resid,
+                        clRWI[p][c].weight,
+                        clRWI[p][c].ind,
+                        clGRMs[c].get(),
+                        refPrevalence,
+                        cutoff);
+                    infoMsg("  [%s cl%d] %zu markers retained",
+                            traitNames[p].c_str(), c + 1, clRefMaps[p][c]->size());
+                } catch (const std::exception &ex) {
+                    batchErrors[t] = ex.what();
+                }
+            }
+        };
+
+        std::vector<std::thread> threads;
+        threads.reserve(nWorkers - 1);
+        for (int t = 0; t < nWorkers - 1; ++t)
+            threads.emplace_back(batchWorker);
+        batchWorker();
+        for (auto &th : threads) th.join();
+
+        for (int t = 0; t < totalTasks; ++t)
+            if (!batchErrors[t].empty()) {
+                int p = t / K, c = t % K;
+                throw std::runtime_error(
+                          "LEAF batch-effect failed for '" + traitNames[p] +
+                          "' cluster " + std::to_string(c + 1) + ": " + batchErrors[t]);
+            }
+    }
+
+    // ── Phase E: multi-phenotype marker engine ──────────────────────
+    std::vector<PhenoTask> tasks(P);
+    for (int p = 0; p < P; ++p) {
+        std::vector<std::unique_ptr<WtCoxGMethod> > clMethods;
+        clMethods.reserve(K);
+        for (int c = 0; c < K; ++c) {
+            clMethods.push_back(std::make_unique<WtCoxGMethod>(
+                                    clRWI[p][c].resid, clRWI[p][c].weight,
+                                    cutoff, spaCutoff, clRefMaps[p][c]));
+        }
+        auto method = std::make_unique<LEAFMethod>(std::move(clMethods), clusterIndices);
+        tasks[p].phenoName = traitNames[p];
+        tasks[p].method = std::move(method);
+        tasks[p].unionToLocal.resize(genoData->nSubjUsed());
+        std::iota(tasks[p].unionToLocal.begin(), tasks[p].unionToLocal.end(), 0u);
+        tasks[p].nUsed = genoData->nSubjUsed();
+    }
+
+    infoMsg("LEAF: Starting multi-phenotype association (%d phenotypes, %d clusters, %d threads)",
+            P, K, nthreads);
+    multiPhenoEngine(
+        *genoData,
+        tasks,
+        outPrefix,
+        "LEAF",
+        compression,
+        compressionLevel,
+        nthreads,
         missingCutoff,
         minMafCutoff,
         minMacCutoff,

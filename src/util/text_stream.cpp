@@ -14,7 +14,10 @@
 //  Helper: extension-based mode detection
 // ══════════════════════════════════════════════════════════════════════
 
-static bool endsWith(const std::string &s, const char *suffix) {
+static bool endsWith(
+    const std::string &s,
+    const char *suffix
+) {
     size_t n = std::strlen(suffix);
     return s.size() >= n && s.compare(s.size() - n, n, suffix) == 0;
 }
@@ -55,10 +58,18 @@ TextReader::Mode TextReader::inferMode(const std::string &path) {
 //  TextWriter
 // ══════════════════════════════════════════════════════════════════════
 
-TextWriter::TextWriter(const std::string &path) : TextWriter(path, inferMode(path), 0) {
+TextWriter::TextWriter(const std::string &path)
+    : TextWriter(path, inferMode(path), 0)
+{
 }
 
-TextWriter::TextWriter(const std::string &path, Mode mode, int level) : m_mode(mode) {
+TextWriter::TextWriter(
+    const std::string &path,
+    Mode mode,
+    int level
+)
+    : m_mode(mode)
+{
     switch (m_mode) {
     case Mode::Gzip: {
         // gzopen mode: "wb" + optional level digit
@@ -98,12 +109,18 @@ TextWriter::TextWriter(const std::string &path, Mode mode, int level) : m_mode(m
     }
 }
 
-TextWriter::~TextWriter() {
+TextWriter::~TextWriter()
+{
     cleanup();
 }
 
 TextWriter::TextWriter(TextWriter &&o) noexcept
-    : m_mode(o.m_mode), m_fp(o.m_fp), m_gz(o.m_gz), m_zctx(o.m_zctx), m_closed(o.m_closed) {
+    : m_mode(o.m_mode),
+      m_fp(o.m_fp),
+      m_gz(o.m_gz),
+      m_zctx(o.m_zctx),
+      m_closed(o.m_closed)
+{
     o.m_fp = nullptr;
     o.m_gz = nullptr;
     o.m_zctx = nullptr;
@@ -126,7 +143,10 @@ TextWriter &TextWriter::operator=(TextWriter &&o) noexcept {
     return *this;
 }
 
-void TextWriter::write(const char *data, size_t len) {
+void TextWriter::write(
+    const char *data,
+    size_t len
+) {
     if (m_closed || len == 0) return;
     switch (m_mode) {
     case Mode::Gzip:
@@ -215,7 +235,9 @@ void TextWriter::cleanup() noexcept {
 //  TextReader
 // ══════════════════════════════════════════════════════════════════════
 
-TextReader::TextReader(const std::string &path) : m_mode(inferMode(path)) {
+TextReader::TextReader(const std::string &path)
+    : m_mode(inferMode(path))
+{
     switch (m_mode) {
     case Mode::Gzip: {
         gzFile gz = gzopen(path.c_str(), "rb");
@@ -248,14 +270,26 @@ TextReader::TextReader(const std::string &path) : m_mode(inferMode(path)) {
     }
 }
 
-TextReader::~TextReader() {
+TextReader::~TextReader()
+{
     cleanup();
 }
 
 TextReader::TextReader(TextReader &&o) noexcept
-    : m_mode(o.m_mode), m_fp(o.m_fp), m_gz(o.m_gz), m_zdctx(o.m_zdctx), m_zfp(o.m_zfp), m_closed(o.m_closed),
-    m_zInBuf(o.m_zInBuf), m_zOutBuf(o.m_zOutBuf), m_zInPos(o.m_zInPos), m_zInSize(o.m_zInSize),
-    m_zOutPos(o.m_zOutPos), m_zOutSize(o.m_zOutSize), m_zEof(o.m_zEof) {
+    : m_mode(o.m_mode),
+      m_fp(o.m_fp),
+      m_gz(o.m_gz),
+      m_zdctx(o.m_zdctx),
+      m_zfp(o.m_zfp),
+      m_closed(o.m_closed),
+      m_zInBuf(o.m_zInBuf),
+      m_zOutBuf(o.m_zOutBuf),
+      m_zInPos(o.m_zInPos),
+      m_zInSize(o.m_zInSize),
+      m_zOutPos(o.m_zOutPos),
+      m_zOutSize(o.m_zOutSize),
+      m_zEof(o.m_zEof)
+{
     o.m_fp = nullptr;
     o.m_gz = nullptr;
     o.m_zdctx = nullptr;

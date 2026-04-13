@@ -34,9 +34,133 @@
 #include <vector>
 
 #include <Eigen/Dense>
-#ifdef __AVX2__
 #include <immintrin.h>
-#endif
+#include "util/simd_dispatch.hpp"
+
+// ── IBD pair accumulation — multi-versioned SIMD kernels ─────────────
+
+__attribute__((target("avx2,avx512f,avx512vl,fma")))
+static void ibdAccPairs_avx512(
+    const double *genoPtr,
+    const int32_t *i1,
+    const int32_t *i2,
+    double *localXW,
+    double *localW,
+    double inv_pv,
+    double w,
+    size_t nPairs
+) {
+    const __m512d signmask = _mm512_set1_pd(-0.0);
+    const __m512d vones = _mm512_set1_pd(1.0);
+    const __m512d vtwos = _mm512_set1_pd(2.0);
+    const __m512d vinv_pv = _mm512_set1_pd(inv_pv);
+    const __m512d vw = _mm512_set1_pd(w);
+
+    const size_t nPairs8 = nPairs & ~size_t(7);
+    size_t k = 0;
+
+    for (; k < nPairs8; k += 8) {
+        __m256i vi1 = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(i1 + k));
+        __m256i vi2 = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(i2 + k));
+        __m512d g1 = _mm512_i32gather_pd(vi1, genoPtr, 8);
+        __m512d g2 = _mm512_i32gather_pd(vi2, genoPtr, 8);
+
+        __m512d d = _mm512_sub_pd(g1, g2);
+        // |d - 1| + |d + 1| - 2
+        __m512d dm1 = _mm512_sub_pd(d, vones);
+        __m512d dp1 = _mm512_add_pd(d, vones);
+        // abs via andnot(signmask, x) — clear sign bit
+        __m512d abs_dm1 = (__m512d)_mm512_andnot_si512((__m512i)signmask, (__m512i)dm1);
+        __m512d abs_dp1 = (__m512d)_mm512_andnot_si512((__m512i)signmask, (__m512i)dp1);
+        __m512d x = _mm512_mul_pd(_mm512_sub_pd(_mm512_add_pd(abs_dm1, abs_dp1), vtwos), vinv_pv);
+
+        _mm512_storeu_pd(localXW + k, _mm512_fmadd_pd(x, vw, _mm512_loadu_pd(localXW + k)));
+        _mm512_storeu_pd(localW + k, _mm512_add_pd(_mm512_loadu_pd(localW + k), vw));
+    }
+
+    // Scalar tail
+    for (; k < nPairs; ++k) {
+        const double d = genoPtr[i1[k]] - genoPtr[i2[k]];
+        const double x = (std::abs(d - 1.0) + std::abs(d + 1.0) - 2.0) * inv_pv;
+        localXW[k] += x * w;
+        localW[k] += w;
+    }
+}
+
+__attribute__((target("avx2,fma")))
+static void ibdAccPairs_avx2(
+    const double *genoPtr,
+    const int32_t *i1,
+    const int32_t *i2,
+    double *localXW,
+    double *localW,
+    double inv_pv,
+    double w,
+    size_t nPairs
+) {
+    const __m256d signmask = _mm256_set1_pd(-0.0);
+    const __m256d vones = _mm256_set1_pd(1.0);
+    const __m256d vtwos = _mm256_set1_pd(2.0);
+    const __m256d vinv_pv = _mm256_set1_pd(inv_pv);
+    const __m256d vw = _mm256_set1_pd(w);
+
+    const size_t nPairs4 = nPairs & ~size_t(3);
+    size_t k = 0;
+
+    for (; k < nPairs4; k += 4) {
+        __m128i vi1 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(i1 + k));
+        __m128i vi2 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(i2 + k));
+        __m256d g1 = _mm256_i32gather_pd(genoPtr, vi1, 8);
+        __m256d g2 = _mm256_i32gather_pd(genoPtr, vi2, 8);
+
+        __m256d d = _mm256_sub_pd(g1, g2);
+        __m256d abs_dm1 = _mm256_andnot_pd(signmask, _mm256_sub_pd(d, vones));
+        __m256d abs_dp1 = _mm256_andnot_pd(signmask, _mm256_add_pd(d, vones));
+        __m256d x = _mm256_mul_pd(_mm256_sub_pd(_mm256_add_pd(abs_dm1, abs_dp1), vtwos), vinv_pv);
+
+        _mm256_storeu_pd(localXW + k, _mm256_fmadd_pd(x, vw, _mm256_loadu_pd(localXW + k)));
+        _mm256_storeu_pd(localW + k, _mm256_add_pd(_mm256_loadu_pd(localW + k), vw));
+    }
+
+    // Scalar tail
+    for (; k < nPairs; ++k) {
+        const double d = genoPtr[i1[k]] - genoPtr[i2[k]];
+        const double x = (std::abs(d - 1.0) + std::abs(d + 1.0) - 2.0) * inv_pv;
+        localXW[k] += x * w;
+        localW[k] += w;
+    }
+}
+
+static void ibdAccPairs_scalar(
+    const double *genoPtr,
+    const int32_t *i1,
+    const int32_t *i2,
+    double *localXW,
+    double *localW,
+    double inv_pv,
+    double w,
+    size_t nPairs
+) {
+    for (size_t k = 0; k < nPairs; ++k) {
+        const double d = genoPtr[i1[k]] - genoPtr[i2[k]];
+        const double x = (std::abs(d - 1.0) + std::abs(d + 1.0) - 2.0) * inv_pv;
+        localXW[k] += x * w;
+        localW[k] += w;
+    }
+}
+
+using IbdAccFn = void (*)(const double *, const int32_t *, const int32_t *,
+                          double *, double *, double, double, size_t);
+
+static IbdAccFn pickIbdAccFn() {
+    switch (simdLevel()) {
+    case SimdLevel::AVX512: return ibdAccPairs_avx512;
+    case SimdLevel::AVX2:   return ibdAccPairs_avx2;
+    default:                return ibdAccPairs_scalar;
+    }
+}
+
+static const IbdAccFn ibdAccPairs = pickIbdAccFn();
 
 // ══════════════════════════════════════════════════════════════════════════════
 // runPairwiseIBD
@@ -146,15 +270,6 @@ void runPairwiseIBD(
         const int32_t *i1 = pairIdx1.data();
         const int32_t *i2 = pairIdx2.data();
 
-#ifdef __AVX2__
-        const size_t nPairs4 = nPairs & ~size_t(3);
-
-        // AVX2 constants
-        const __m256d signmask = _mm256_set1_pd(-0.0);
-        const __m256d vones = _mm256_set1_pd(1.0);
-        const __m256d vtwos = _mm256_set1_pd(2.0);
-#endif
-
         while (true) {
             const size_t ci = nextChunk.fetch_add(1);
             if (ci >= nChunks) break;
@@ -179,43 +294,7 @@ void runPairwiseIBD(
                 const double w = std::sqrt(pv / opv);
                 const double *genoPtr = genoVec.data();
 
-#ifdef __AVX2__
-                // AVX2 loop: 4 pairs at a time
-                const __m256d vinv_pv = _mm256_set1_pd(inv_pv);
-                const __m256d vw = _mm256_set1_pd(w);
-
-                size_t k = 0;
-                for (; k < nPairs4; k += 4) {
-                    __m128i vi1 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(i1 + k));
-                    __m128i vi2 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(i2 + k));
-                    __m256d g1 = _mm256_i32gather_pd(genoPtr, vi1, 8);
-                    __m256d g2 = _mm256_i32gather_pd(genoPtr, vi2, 8);
-
-                    __m256d d = _mm256_sub_pd(g1, g2);
-                    __m256d abs_dm1 = _mm256_andnot_pd(signmask, _mm256_sub_pd(d, vones));
-                    __m256d abs_dp1 = _mm256_andnot_pd(signmask, _mm256_add_pd(d, vones));
-                    __m256d x = _mm256_mul_pd(_mm256_sub_pd(_mm256_add_pd(abs_dm1, abs_dp1), vtwos), vinv_pv);
-
-                    _mm256_storeu_pd(localXW + k, _mm256_fmadd_pd(x, vw, _mm256_loadu_pd(localXW + k)));
-                    _mm256_storeu_pd(localW + k, _mm256_add_pd(_mm256_loadu_pd(localW + k), vw));
-                }
-
-                // Scalar tail
-                for (; k < nPairs; ++k) {
-                    const double d = genoPtr[i1[k]] - genoPtr[i2[k]];
-                    const double x = (std::abs(d - 1.0) + std::abs(d + 1.0) - 2.0) * inv_pv;
-                    localXW[k] += x * w;
-                    localW[k] += w;
-                }
-#else
-                // Scalar fallback for non-AVX2 builds
-                for (size_t k = 0; k < nPairs; ++k) {
-                    const double d = genoPtr[i1[k]] - genoPtr[i2[k]];
-                    const double x = (std::abs(d - 1.0) + std::abs(d + 1.0) - 2.0) * inv_pv;
-                    localXW[k] += x * w;
-                    localW[k] += w;
-                }
-#endif
+                ibdAccPairs(genoPtr, i1, i2, localXW, localW, inv_pv, w, nPairs);
 
                 ++localUsed;
             }

@@ -56,7 +56,11 @@ struct AFContext {
 //   logistic on sig PCs     → status 2 (betas mapped to full (1+nPC) vector)
 // ======================================================================
 
-AFModel computeAFModel(const Eigen::Ref<const Eigen::VectorXd> &g, double altFreq, const AFContext &ctx);
+AFModel computeAFModel(
+    const Eigen::Ref<const Eigen::VectorXd> &g,
+    double altFreq,
+    const AFContext &ctx
+);
 
 // ======================================================================
 // computeAFVec — fused compute: directly writes per-individual AF into out
@@ -119,7 +123,11 @@ class IndivAFWriter {
     ~IndivAFWriter();
 
 // Write one record.  For Binary, genoIndex determines the file offset.
-    void write(uint64_t genoIndex, int8_t status, const Eigen::VectorXd &betas);
+    void write(
+        uint64_t genoIndex,
+        int8_t status,
+        const Eigen::VectorXd &betas
+    );
 
     void close();
 
@@ -149,12 +157,18 @@ class IndivAFWriter {
 
 class IndivAFReader {
   public:
-    IndivAFReader(const std::string &binFile, int nPC);
+    IndivAFReader(
+        const std::string &binFile,
+        int nPC
+    );
     ~IndivAFReader();
 
 // Seek to genoIndex and fill model.  Returns false if status = 0 (caller
 // may still use the returned status-0 model for a uniform AF estimate).
-    bool read(uint64_t genoIndex, AFModel &model);
+    bool read(
+        uint64_t genoIndex,
+        AFModel &model
+    );
 
   private:
     std::ifstream m_in;

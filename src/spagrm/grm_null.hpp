@@ -31,7 +31,11 @@ constexpr double TOL_DEFAULT = 1e-6;
 
 /// Build MAF grid from QC cutoffs: starts at min(mafCutoff, macCutoff/(2*n)),
 /// uses half-decade steps (1-3-10-30-...) up to 0.5.
-std::vector<double> buildMafInterval(double mafCutoff, double macCutoff, uint32_t nUsed);
+std::vector<double> buildMafInterval(
+    double mafCutoff,
+    double macCutoff,
+    uint32_t nUsed
+);
 
 // ══════════════════════════════════════════════════════════════════════
 // Indexed IBD entry (dense subject indices, no strings)
@@ -58,7 +62,10 @@ class UnionFind {
     explicit UnionFind(uint32_t n);
     uint32_t find(uint32_t x);
 
-    void unite(uint32_t a, uint32_t b);
+    void unite(
+        uint32_t a,
+        uint32_t b
+    );
 
     uint32_t componentSize(uint32_t x) {
         return size_[find(x)];
@@ -79,7 +86,10 @@ std::vector<std::vector<uint32_t> > getComponents(
 // ══════════════════════════════════════════════════════════════════════
 // Quantile (R type=7 linear interpolation)
 // ══════════════════════════════════════════════════════════════════════
-double quantile_r7(std::vector<double> &sorted, double prob);
+double quantile_r7(
+    std::vector<double> &sorted,
+    double prob
+);
 
 // ══════════════════════════════════════════════════════════════════════
 // Quadratic form R' * blockGRM * R for a (sub-)family.
@@ -97,7 +107,10 @@ struct MSTEdge {
     int from, to;
 };
 
-std::vector<MSTEdge> primMST(int N, const std::vector<std::vector<double> > &weight);
+std::vector<MSTEdge> primMST(
+    int N,
+    const std::vector<std::vector<double> > &weight
+);
 
 // ══════════════════════════════════════════════════════════════════════
 // Chow-Liu tree builder — 3^N × nMAF probability matrix
@@ -112,7 +125,10 @@ Eigen::MatrixXd buildChowLiuTree(
 // ══════════════════════════════════════════════════════════════════════
 // Build stand.S array for a family of size N
 // ══════════════════════════════════════════════════════════════════════
-std::vector<double> buildStandS(int N, const std::vector<double> &resid);
+std::vector<double> buildStandS(
+    int N,
+    const std::vector<double> &resid
+);
 
 // ══════════════════════════════════════════════════════════════════════
 // buildSPAGRMNullModel — per-column null model construction

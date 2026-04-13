@@ -39,7 +39,10 @@ static constexpr double MIN_P_VALUE = std::numeric_limits<double>::min();
 // Precomputed phi products — SoA layout for AVX2-friendly hot loop
 // ======================================================================
 
-RprodSoA buildRprodSoA(const PhiMatrices &phi, const Eigen::VectorXd &R) {
+RprodSoA buildRprodSoA(
+    const PhiMatrices &phi,
+    const Eigen::VectorXd &R
+) {
     size_t total = phi.A.size() + phi.B.size() + phi.C.size() + phi.D.size();
     RprodSoA rp;
     rp.reserve(total);
@@ -55,11 +58,79 @@ RprodSoA buildRprodSoA(const PhiMatrices &phi, const Eigen::VectorXd &R) {
     return rp;
 }
 
-// ── AVX2 off-diagonal variance from unified SoA ────────────────────
-#ifdef __AVX2__
-#include <immintrin.h>
+// ── Runtime SIMD dispatch — phi variance functions ──────────────────
+//
+// Three tiers: AVX-512 (8 doubles / 512 bits), AVX2 (4 doubles / 256 bits),
+// and scalar.  The resolver runs once at process startup via
+// __builtin_cpu_supports() and caches the result; callers pay only a
+// predictable branch per invocation.
 
-double computeVarOffSoA(const RprodSoA &rp, const uint32_t *hInt, uint32_t /*nUsed*/) {
+#include <immintrin.h>
+#include "util/simd_dispatch.hpp"
+
+// ════════════════════════════════════════════════════════════════════════
+// computeVarOffSoA — single-marker off-diagonal variance
+// ════════════════════════════════════════════════════════════════════════
+
+// ── AVX-512: 8 phi entries per iteration ────────────────────────────
+
+__attribute__((target("avx2,avx512f,avx512vl,fma")))
+static double computeVarOffSoA_avx512(
+    const RprodSoA &rp,
+    const uint32_t *hInt
+) {
+    const size_t N = rp.size();
+    if (N == 0) return 0.0;
+
+    const uint32_t *__restrict ii = rp.idx_i.data();
+    const uint32_t *__restrict jj = rp.idx_j.data();
+    const double *__restrict rval = rp.rprod.data();
+    const uint8_t *__restrict thi = rp.target_hi.data();
+    const uint8_t *__restrict thj = rp.target_hj.data();
+
+    __m512d acc = _mm512_setzero_pd();
+    size_t p = 0;
+
+    for (; p + 7 < N; p += 8) {
+        // Load 8 index pairs (8×uint32 = 256 bits)
+        __m256i vi = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(ii + p));
+        __m256i vj = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(jj + p));
+
+        // Gather hInt[i] and hInt[j] — 8×int32
+        __m256i hi = _mm256_i32gather_epi32(reinterpret_cast<const int *>(hInt), vi, 4);
+        __m256i hj = _mm256_i32gather_epi32(reinterpret_cast<const int *>(hInt), vj, 4);
+
+        // Load 8 target bytes → 8×int32
+        __m128i raw_thi = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(thi + p));
+        __m128i raw_thj = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(thj + p));
+        __m256i vthi = _mm256_cvtepu8_epi32(raw_thi);
+        __m256i vthj = _mm256_cvtepu8_epi32(raw_thj);
+
+        // Compare → __mmask8 (AVX-512VL)
+        __mmask8 mi = _mm256_cmpeq_epi32_mask(hi, vthi);
+        __mmask8 mj = _mm256_cmpeq_epi32_mask(hj, vthj);
+
+        // Masked accumulate 8 rprod doubles
+        __m512d rv = _mm512_loadu_pd(rval + p);
+        acc = _mm512_mask_add_pd(acc, static_cast<__mmask8>(mi & mj), acc, rv);
+    }
+
+    double varOff = _mm512_reduce_add_pd(acc);
+
+    // Scalar tail (0–7 remaining entries)
+    for (; p < N; ++p)
+        varOff += ((hInt[ii[p]] == thi[p]) & (hInt[jj[p]] == thj[p])) * rval[p];
+
+    return varOff;
+}
+
+// ── AVX2: 4 phi entries per iteration ───────────────────────────────
+
+__attribute__((target("avx2,fma")))
+static double computeVarOffSoA_avx2(
+    const RprodSoA &rp,
+    const uint32_t *hInt
+) {
     const size_t N = rp.size();
     if (N == 0) return 0.0;
 
@@ -72,39 +143,29 @@ double computeVarOffSoA(const RprodSoA &rp, const uint32_t *hInt, uint32_t /*nUs
     __m256d acc = _mm256_setzero_pd();
     size_t p = 0;
 
-    // Process 4 entries per iteration
     for (; p + 3 < N; p += 4) {
-        // Load 4 (i, j) index pairs
         __m128i vi = _mm_loadu_si128(reinterpret_cast<const __m128i *>(ii + p));
         __m128i vj = _mm_loadu_si128(reinterpret_cast<const __m128i *>(jj + p));
 
-        // Gather hInt[i] and hInt[j] — 4×int32
         __m128i hi = _mm_i32gather_epi32(reinterpret_cast<const int *>(hInt), vi, 4);
         __m128i hj = _mm_i32gather_epi32(reinterpret_cast<const int *>(hInt), vj, 4);
 
-        // Load target values and zero-extend uint8 → int32
-        // (4 bytes → 4 int32 via movzx-like expansion)
         __m128i raw_thi = _mm_cvtsi32_si128(*reinterpret_cast<const int *>(thi + p));
         __m128i raw_thj = _mm_cvtsi32_si128(*reinterpret_cast<const int *>(thj + p));
         __m128i vthi = _mm_cvtepu8_epi32(raw_thi);
         __m128i vthj = _mm_cvtepu8_epi32(raw_thj);
 
-        // Compare: hi == target_hi AND hj == target_hj
         __m128i cmpi = _mm_cmpeq_epi32(hi, vthi);
         __m128i cmpj = _mm_cmpeq_epi32(hj, vthj);
         __m128i mask32 = _mm_and_si128(cmpi, cmpj);
 
-        // Convert int32 mask → double mask (widen 4×32 → 4×64)
-        // cmpeq returns 0xFFFFFFFF for true — extend to 0xFFFFFFFFFFFFFFFF
         __m256i mask64 = _mm256_cvtepi32_epi64(mask32);
         __m256d maskd = _mm256_castsi256_pd(mask64);
 
-        // Load 4 rprod values, mask-select, and accumulate
         __m256d rv = _mm256_loadu_pd(rval + p);
         acc = _mm256_add_pd(acc, _mm256_and_pd(maskd, rv));
     }
 
-    // Horizontal sum of acc
     __m128d lo = _mm256_castpd256_pd128(acc);
     __m128d hi128 = _mm256_extractf128_pd(acc, 1);
     __m128d sum2 = _mm_add_pd(lo, hi128);
@@ -112,40 +173,52 @@ double computeVarOffSoA(const RprodSoA &rp, const uint32_t *hInt, uint32_t /*nUs
     _mm_storeu_pd(tmp, sum2);
     double varOff = tmp[0] + tmp[1];
 
-    // Scalar tail (0–3 remaining entries)
-    for (; p < N; ++p) {
+    for (; p < N; ++p)
         varOff += ((hInt[ii[p]] == thi[p]) & (hInt[jj[p]] == thj[p])) * rval[p];
-    }
 
     return varOff;
 }
 
-#else // scalar fallback
+// ── Scalar baseline ─────────────────────────────────────────────────
 
-double computeVarOffSoA(const RprodSoA &rp, const uint32_t *hInt, uint32_t /*nUsed*/) {
+static double computeVarOffSoA_scalar(
+    const RprodSoA &rp,
+    const uint32_t *hInt
+) {
     const size_t N = rp.size();
     double varOff = 0.0;
-    for (size_t p = 0; p < N; ++p) {
+    for (size_t p = 0; p < N; ++p)
         varOff += ((hInt[rp.idx_i[p]] == rp.target_hi[p]) & (hInt[rp.idx_j[p]] == rp.target_hj[p])) * rp.rprod[p];
-    }
     return varOff;
 }
 
-#endif // __AVX2__
+// ── Public dispatch ─────────────────────────────────────────────────
 
-// ======================================================================
-// Batch off-diagonal variance — scan phi entries ONCE for PHI_BATCH
-// markers.  Subject-major hIntSM layout: hIntSM[subj * PHI_BATCH + b].
+double computeVarOffSoA(
+    const RprodSoA &rp,
+    const uint32_t *hInt,
+    uint32_t                                                               /*nUsed*/
+) {
+    switch (simdLevel()) {
+    case SimdLevel::AVX512: return computeVarOffSoA_avx512(rp, hInt);
+    case SimdLevel::AVX2:   return computeVarOffSoA_avx2(rp, hInt);
+    default:                return computeVarOffSoA_scalar(rp, hInt);
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// computeVarOffSoABatch — scan phi entries ONCE for PHI_BATCH markers.
+// Subject-major hIntSM layout: hIntSM[subj * PHI_BATCH + b].
 // Each phi entry reads PHI_BATCH consecutive uint32s (1–2 cache lines),
 // amortising DRAM bandwidth across all batch markers.
-// ======================================================================
+// ════════════════════════════════════════════════════════════════════════
 
-#ifdef __AVX2__
+// ── AVX-512: one __m512d accumulator covers all 8 batch items ───────
 
-void computeVarOffSoABatch(
+__attribute__((target("avx2,avx512f,avx512vl,fma")))
+static void computeVarOffSoABatch_avx512(
     const RprodSoA &rp,
     const uint32_t *hIntSM,
-    uint32_t /*nUsed*/,
     int batchLen,
     double *varOff
 ) {
@@ -159,7 +232,55 @@ void computeVarOffSoABatch(
     const uint8_t *__restrict thi = rp.target_hi.data();
     const uint8_t *__restrict thj = rp.target_hj.data();
 
-    // Two 4-wide double accumulators covering batch items [0..3] and [4..7]
+    // Single 512-bit accumulator for all 8 batch items
+    __m512d acc = _mm512_setzero_pd();
+
+    for (size_t p = 0; p < N; ++p) {
+        const uint32_t *hi_ptr = hIntSM + ii[p] * PHI_BATCH;
+        const uint32_t *hj_ptr = hIntSM + jj[p] * PHI_BATCH;
+
+        // Load 8 hInt values per subject (256 bits)
+        __m256i hi8 = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(hi_ptr));
+        __m256i hj8 = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(hj_ptr));
+
+        // Broadcast targets
+        __m256i vthi = _mm256_set1_epi32(static_cast<int>(thi[p]));
+        __m256i vthj = _mm256_set1_epi32(static_cast<int>(thj[p]));
+
+        // Compare → __mmask8 (AVX-512VL)
+        __mmask8 mi = _mm256_cmpeq_epi32_mask(hi8, vthi);
+        __mmask8 mj = _mm256_cmpeq_epi32_mask(hj8, vthj);
+
+        // Broadcast rprod and masked-accumulate
+        __m512d rv = _mm512_set1_pd(rval[p]);
+        acc = _mm512_mask_add_pd(acc, static_cast<__mmask8>(mi & mj), acc, rv);
+    }
+
+    double tmp[8];
+    _mm512_storeu_pd(tmp, acc);
+    for (int b = 0; b < batchLen; ++b)
+        varOff[b] = tmp[b];
+}
+
+// ── AVX2: two __m256d accumulators for batch[0..3] and [4..7] ───────
+
+__attribute__((target("avx2,fma")))
+static void computeVarOffSoABatch_avx2(
+    const RprodSoA &rp,
+    const uint32_t *hIntSM,
+    int batchLen,
+    double *varOff
+) {
+    const size_t N = rp.size();
+    std::fill(varOff, varOff + batchLen, 0.0);
+    if (N == 0) return;
+
+    const uint32_t *__restrict ii = rp.idx_i.data();
+    const uint32_t *__restrict jj = rp.idx_j.data();
+    const double *__restrict rval = rp.rprod.data();
+    const uint8_t *__restrict thi = rp.target_hi.data();
+    const uint8_t *__restrict thj = rp.target_hj.data();
+
     __m256d acc0 = _mm256_setzero_pd();
     __m256d acc1 = _mm256_setzero_pd();
 
@@ -188,7 +309,6 @@ void computeVarOffSoABatch(
         }
     }
 
-    // Store accumulators → varOff[0..7]
     double tmp[8];
     _mm256_storeu_pd(tmp, acc0);
     _mm256_storeu_pd(tmp + 4, acc1);
@@ -196,12 +316,11 @@ void computeVarOffSoABatch(
         varOff[b] = tmp[b];
 }
 
-#else // scalar fallback
+// ── Scalar baseline ─────────────────────────────────────────────────
 
-void computeVarOffSoABatch(
+static void computeVarOffSoABatch_scalar(
     const RprodSoA &rp,
     const uint32_t *hIntSM,
-    uint32_t /*nUsed*/,
     int batchLen,
     double *varOff
 ) {
@@ -218,7 +337,21 @@ void computeVarOffSoABatch(
     }
 }
 
-#endif // __AVX2__
+// ── Public dispatch ─────────────────────────────────────────────────
+
+void computeVarOffSoABatch(
+    const RprodSoA &rp,
+    const uint32_t *hIntSM,
+    uint32_t /*nUsed*/,
+    int batchLen,
+    double *varOff
+) {
+    switch (simdLevel()) {
+    case SimdLevel::AVX512: computeVarOffSoABatch_avx512(rp, hIntSM, batchLen, varOff); break;
+    case SimdLevel::AVX2:   computeVarOffSoABatch_avx2(rp, hIntSM, batchLen, varOff); break;
+    default:                computeVarOffSoABatch_scalar(rp, hIntSM, batchLen, varOff); break;
+    }
+}
 
 // ======================================================================
 // Phi estimation — streaming through .abed, no full-matrix materialization
@@ -226,7 +359,12 @@ void computeVarOffSoABatch(
 
 static constexpr double PHI_MAF_CUTOFF = 0.01;
 
-PhiMatrices estimatePhiOneAncestry(const AdmixData &admixData, const SparseGRM &grm, int ancIdx, int nthreads) {
+PhiMatrices estimatePhiOneAncestry(
+    const AdmixData &admixData,
+    const SparseGRM &grm,
+    int ancIdx,
+    int nthreads
+) {
     const double mafCutoff = PHI_MAF_CUTOFF;
     uint32_t nUsed = admixData.nSubjUsed();
     uint32_t nMarkers = admixData.nMarkers();
@@ -419,7 +557,12 @@ PhiMatrices estimatePhiOneAncestry(const AdmixData &admixData, const SparseGRM &
 // Variance computation with phi matrices
 // ======================================================================
 
-double computePhiVariance(const Eigen::VectorXd &R, const Eigen::VectorXd &hapcount, double q, const PhiMatrices &phi) {
+double computePhiVariance(
+    const Eigen::VectorXd &R,
+    const Eigen::VectorXd &hapcount,
+    double q,
+    const PhiMatrices &phi
+) {
     double qTerm = q * (1.0 - q);
     double var = 0.0;
 
@@ -461,7 +604,14 @@ namespace {
 
 // Fused CGF derivatives — single exp() per call instead of 3 separate calls.
 // K0 = h * log((1-p) + p*e^t),  K1 = h * p*e^t / base,  K2 = h * p*e^t*(1-p) / base^2
-inline void kG012Local(double t, double maf, double h, double &K0out, double &K1out, double &K2out) {
+inline void kG012Local(
+    double t,
+    double maf,
+    double h,
+    double &K0out,
+    double &K1out,
+    double &K2out
+) {
     double et = std::exp(std::clamp(t, -700.0, 700.0));
     double base = (1.0 - maf) + maf * et;
     if (base > 1e-15) {
@@ -651,7 +801,11 @@ std::pair<double, double> spaLocalPval(
 // Indices are 0-based into .fam order.  No .id sidecar needed.
 // ======================================================================
 
-static void writePhiWide(const std::string &path, const std::vector<PhiMatrices> &allPhi, int K) {
+static void writePhiWide(
+    const std::string &path,
+    const std::vector<PhiMatrices> &allPhi,
+    int K
+) {
     // Collect union of all (i,j) pairs across ancestries and scenarios
     struct PairKey {
         uint32_t i, j;
@@ -721,7 +875,10 @@ static void writePhiWide(const std::string &path, const std::vector<PhiMatrices>
     infoMsg("Phi written: %zu pairs x %d columns -> %s", rows.size(), nCols, path.c_str());
 }
 
-static std::vector<PhiMatrices> readPhiWide(const std::string &path, int K) {
+static std::vector<PhiMatrices> readPhiWide(
+    const std::string &path,
+    int K
+) {
     TextReader reader(path);
 
     // Parse header to determine column mapping

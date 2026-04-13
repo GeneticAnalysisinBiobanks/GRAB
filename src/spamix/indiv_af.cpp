@@ -22,7 +22,11 @@
 // computeAFModel — returns status + betas for file storage
 // ======================================================================
 
-AFModel computeAFModel(const Eigen::Ref<const Eigen::VectorXd> &g, double altFreq, const AFContext &ctx) {
+AFModel computeAFModel(
+    const Eigen::Ref<const Eigen::VectorXd> &g,
+    double altFreq,
+    const AFContext &ctx
+) {
     constexpr double PCs_pval_cut = 0.05;
     constexpr double negRatioCut = 0.1;
     constexpr double MAC_cutoff = 20.0;
@@ -241,10 +245,16 @@ static IndivAFWriter::Mode inferMode(const std::string &path) {
 // IndivAFWriter — constructor
 // ======================================================================
 
-IndivAFWriter::IndivAFWriter(const std::string &outputFile, uint64_t nBimMarkers, int nPC)
-    : m_mode(inferMode(outputFile)), m_nPC(nPC),
-    m_recordSize(static_cast<long long>(sizeof(int8_t)) +
-                 static_cast<long long>(1 + nPC) * static_cast<long long>(sizeof(double))) {
+IndivAFWriter::IndivAFWriter(
+    const std::string &outputFile,
+    uint64_t nBimMarkers,
+    int nPC
+)
+    : m_mode(inferMode(outputFile)),
+      m_nPC(nPC),
+      m_recordSize(static_cast<long long>(sizeof(int8_t)) +
+                   static_cast<long long>(1 + nPC) * static_cast<long long>(sizeof(double)))
+{
     if (m_mode == Mode::Binary) {
         // Pre-allocate the file to nBimMarkers * recordSize zeros so that each
         // marker can be written at its genoIndex-based offset independently.
@@ -283,7 +293,11 @@ IndivAFWriter::IndivAFWriter(const std::string &outputFile, uint64_t nBimMarkers
 // IndivAFWriter — write one record
 // ======================================================================
 
-void IndivAFWriter::write(uint64_t genoIndex, int8_t status, const Eigen::VectorXd &betas) {
+void IndivAFWriter::write(
+    uint64_t genoIndex,
+    int8_t status,
+    const Eigen::VectorXd &betas
+) {
     if (m_mode == Mode::Binary) {
         const long long filePos = static_cast<long long>(genoIndex) * m_recordSize;
         m_binOut.seekp(filePos);
@@ -323,7 +337,8 @@ void IndivAFWriter::close() {
     else if (m_writer)m_writer->close();
 }
 
-IndivAFWriter::~IndivAFWriter() {
+IndivAFWriter::~IndivAFWriter()
+{
     close();
 }
 
@@ -331,18 +346,27 @@ IndivAFWriter::~IndivAFWriter() {
 // IndivAFReader
 // ======================================================================
 
-IndivAFReader::IndivAFReader(const std::string &binFile, int nPC)
-    : m_nPC(nPC), m_recordSize(static_cast<long long>(sizeof(int8_t)) +
-                               static_cast<long long>(1 + nPC) * static_cast<long long>(sizeof(double))) {
+IndivAFReader::IndivAFReader(
+    const std::string &binFile,
+    int nPC
+)
+    : m_nPC(nPC),
+      m_recordSize(static_cast<long long>(sizeof(int8_t)) +
+                   static_cast<long long>(1 + nPC) * static_cast<long long>(sizeof(double)))
+{
     m_in.open(binFile, std::ios::binary);
     if (!m_in.is_open()) throw std::runtime_error("Cannot open binary AF file: " + binFile);
 }
 
-IndivAFReader::~IndivAFReader() {
+IndivAFReader::~IndivAFReader()
+{
     m_in.close();
 }
 
-bool IndivAFReader::read(uint64_t genoIndex, AFModel &model) {
+bool IndivAFReader::read(
+    uint64_t genoIndex,
+    AFModel &model
+) {
     const long long filePos = static_cast<long long>(genoIndex) * m_recordSize;
     m_in.seekg(filePos);
     if (!m_in.good()) throw std::runtime_error("Binary AF seek failed at genoIndex=" + std::to_string(genoIndex));
@@ -375,7 +399,11 @@ static std::vector<AFModel>loadAFModelsBinary(
     return models;
 }
 
-static std::vector<AFModel> loadAFModelsText(const std::string &path, int nPC, uint32_t nExpected) {
+static std::vector<AFModel> loadAFModelsText(
+    const std::string &path,
+    int nPC,
+    uint32_t nExpected
+) {
     std::vector<AFModel> models;
     models.reserve(nExpected);
 
@@ -452,7 +480,10 @@ struct GenoQC {
     int nValid = 0;
 };
 
-GenoQC computeGenoQC(const Eigen::Ref<const Eigen::VectorXd> &g, int N) {
+GenoQC computeGenoQC(
+    const Eigen::Ref<const Eigen::VectorXd> &g,
+    int N
+) {
     GenoQC qc;
     double sum = 0.0;
     int nMiss = 0;
@@ -467,7 +498,11 @@ GenoQC computeGenoQC(const Eigen::Ref<const Eigen::VectorXd> &g, int N) {
     return qc;
 }
 
-void imputeMissing(Eigen::Ref<Eigen::VectorXd> g, int N, double altFreq) {
+void imputeMissing(
+    Eigen::Ref<Eigen::VectorXd> g,
+    int N,
+    double altFreq
+) {
     const double mean = 2.0 * altFreq;
     for (int i = 0; i < N; ++i)
         if (std::isnan(g[i])) g[i] = mean;

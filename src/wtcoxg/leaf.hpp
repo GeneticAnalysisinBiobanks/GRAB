@@ -34,7 +34,10 @@ struct PopMatchedAF {
 
 // Load one plink2 .afreq file and match against PlinkData .bim markers
 // by (CHROM, ID) with allele flip detection.  Returns matched entries.
-std::vector<PopMatchedAF> loadAndMatchRefAf(const class GenoMeta &plinkData, const std::string &afreqFile);
+std::vector<PopMatchedAF> loadAndMatchRefAf(
+    const class GenoMeta &plinkData,
+    const std::string &afreqFile
+);
 
 // ======================================================================
 // K-means clustering
@@ -46,7 +49,13 @@ std::vector<PopMatchedAF> loadAndMatchRefAf(const class GenoMeta &plinkData, con
 //   k:       number of clusters
 //   nstart:  number of random restarts (best result kept)
 // Returns integer cluster labels in {1, …, k} (length n).
-Eigen::VectorXi kmeansCluster(const Eigen::Ref<const Eigen::MatrixXd> &X, int k, int nstart = 25, uint64_t seed = 0);
+Eigen::VectorXi kmeansCluster(
+    const Eigen::Ref<const Eigen::MatrixXd> &X,
+    int k,
+    int nstart = 25,
+    uint64_t seed = 0,
+    int nthreads = 1
+);
 
 // ======================================================================
 // Summix — ancestry proportion estimation
@@ -54,12 +63,15 @@ Eigen::VectorXi kmeansCluster(const Eigen::Ref<const Eigen::MatrixXd> &X, int k,
 
 // Estimate ancestry proportions by minimising ||D*p − o||²
 // subject to p ≥ 0, Σp = 1.
-// Uses exact active-set enumeration (K ≤ 6 populations, up to 2^K subsets)
+// Uses exact active-set enumeration (K ≤ 8 populations, up to 2^K subsets)
 // with KKT / Lagrange-multiplier equality-constrained least squares.
 //   observedAF: per-marker internal AF   (nSNP)
-//   refAF:      reference pop AFs        (nSNP × nPop, nPop ≤ 6)
+//   refAF:      reference pop AFs        (nSNP × nPop, nPop ≤ 8)
 // Returns: proportion vector (nPop), sums to 1.
-Eigen::VectorXd summixEstimate(const Eigen::VectorXd &observedAF, const Eigen::MatrixXd &refAF);
+Eigen::VectorXd summixEstimate(
+    const Eigen::VectorXd &observedAF,
+    const Eigen::MatrixXd &refAF
+);
 
 // ======================================================================
 // LEAFMethod — MethodBase implementation for cluster-stratified WtCoxG
@@ -130,4 +142,35 @@ void runLEAFPheno(
     const std::string &keepFile = {},
     const std::string &removeFile = {}
 
+);
+
+// Multi-phenotype entry point: shared K-means + geno scan + summix + GRM,
+// parallel per-phenotype regression and batch-effect testing,
+// single multiPhenoEngine call.
+void runLEAF(
+    const std::string &phenoFile,
+    const std::string &covarFile,
+    const std::vector<std::string> &covarNames,
+    const std::vector<std::string> &phenoSpecs,               // "TIME:EVENT" or "COL"
+    const std::vector<std::string> &pcColNames,
+    int nClusters,
+    uint64_t seed,
+    const GenoSpec &geno,
+    const std::vector<std::string> &refAfFiles,
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double refPrevalence,
+    double cutoff,
+    double spaCutoff,
+    int nthreads,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile = {},
+    const std::string &removeFile = {}
 );

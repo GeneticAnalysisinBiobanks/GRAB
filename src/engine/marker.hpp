@@ -134,19 +134,3 @@ class MultiMethod : public MethodBase {
     std::vector<std::string> m_residNames;
     std::vector<std::string> m_suffixes;
 };
-
-// ======================================================================
-// buildResidNames — resolve residual column names for output headers
-//
-// If the --null-resid file had a header, colNames carries those names;
-// otherwise colNames is empty and we generate "R1", "R2", ...
-// ======================================================================
-
-inline std::vector<std::string> buildResidNames(const std::vector<std::string> &colNames, int nRC) {
-    if (!colNames.empty()) return colNames;
-    std::vector<std::string> names;
-    names.reserve(nRC);
-    for (int i = 0; i < nRC; ++i)
-        names.push_back("R" + std::to_string(i + 1));
-    return names;
-}

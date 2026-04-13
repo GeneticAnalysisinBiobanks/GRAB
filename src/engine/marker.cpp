@@ -44,7 +44,10 @@ std::string makeNaSuffix(int nResultCols) {
 }
 
 // Format double: "NA" | "Inf" | "-Inf" | "%.6g".  Returns char count.
-int numToChars(char *buf, double x) {
+int numToChars(
+    char *buf,
+    double x
+) {
     if (std::isnan(x)) {
         buf[0] = 'N';
         buf[1] = 'A';
@@ -159,8 +162,14 @@ struct ThreadContext {
     std::unique_ptr<GenoCursor> cursor; // per-thread genotype decoder
     std::string naSuffix;
 
-    ThreadContext(const MethodBase &proto, const GenoMeta &gd)
-        : method(proto.clone()), cursor(gd.makeCursor()), naSuffix(makeNaSuffix(proto.resultSize())) {
+    ThreadContext(
+        const MethodBase &proto,
+        const GenoMeta &gd
+    )
+        : method(proto.clone()),
+          cursor(gd.makeCursor()),
+          naSuffix(makeNaSuffix(proto.resultSize()))
+    {
     }
 
 };
@@ -374,7 +383,10 @@ MultiMethod::MultiMethod(
     std::vector<std::string> residNames,
     std::vector<std::string> suffixes
 )
-    : m_methods(std::move(methods)), m_residNames(std::move(residNames)), m_suffixes(std::move(suffixes)) {
+    : m_methods(std::move(methods)),
+      m_residNames(std::move(residNames)),
+      m_suffixes(std::move(suffixes))
+{
 }
 
 std::unique_ptr<MethodBase> MultiMethod::clone() const {
@@ -427,7 +439,11 @@ struct PhenoGenoStats {
     double altFreq, mac, missingRate, hweP;
 };
 
-static PhenoGenoStats statsFromGVec(const double *g, uint32_t n, std::vector<uint32_t> &indexForMissing) {
+static PhenoGenoStats statsFromGVec(
+    const double *g,
+    uint32_t n,
+    std::vector<uint32_t> &indexForMissing
+) {
     indexForMissing.clear();
     uint32_t nHomRef = 0, nHet = 0, nHomAlt = 0;
     for (uint32_t i = 0; i < n; ++i) {

@@ -14,7 +14,10 @@ namespace regression {
 // calRegrWeight — case-control sampling-weight correction
 // ──────────────────────────────────────────────────────────────────────
 
-Eigen::VectorXd calRegrWeight(double prevalence, const Eigen::Ref<const Eigen::VectorXd> &indicator) {
+Eigen::VectorXd calRegrWeight(
+    double prevalence,
+    const Eigen::Ref<const Eigen::VectorXd> &indicator
+) {
     const Eigen::Index N = indicator.size();
     double nCase = 0;
     for (Eigen::Index i = 0; i < N; ++i)
@@ -71,14 +74,20 @@ std::vector<Eigen::Index> completeRows(
 }
 
 // Subset rows by index vector.
-Eigen::MatrixXd subsetRows(const Eigen::Ref<const Eigen::MatrixXd> &M, const std::vector<Eigen::Index> &idx) {
+Eigen::MatrixXd subsetRows(
+    const Eigen::Ref<const Eigen::MatrixXd> &M,
+    const std::vector<Eigen::Index> &idx
+) {
     Eigen::MatrixXd out(static_cast<Eigen::Index>(idx.size()), M.cols());
     for (Eigen::Index i = 0; i < static_cast<Eigen::Index>(idx.size()); ++i)
         out.row(i) = M.row(idx[i]);
     return out;
 }
 
-Eigen::VectorXd subsetVec(const Eigen::Ref<const Eigen::VectorXd> &v, const std::vector<Eigen::Index> &idx) {
+Eigen::VectorXd subsetVec(
+    const Eigen::Ref<const Eigen::VectorXd> &v,
+    const std::vector<Eigen::Index> &idx
+) {
     Eigen::VectorXd out(static_cast<Eigen::Index>(idx.size()));
     for (Eigen::Index i = 0; i < static_cast<Eigen::Index>(idx.size()); ++i)
         out[i] = v[idx[i]];

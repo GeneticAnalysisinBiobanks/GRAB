@@ -12,7 +12,10 @@
 namespace {
 
 // R-style type-7 quantile on a pre-sorted vector.
-double quantile7(const std::vector<double> &sorted, double p) {
+double quantile7(
+    const std::vector<double> &sorted,
+    double p
+) {
     const int n = static_cast<int>(sorted.size());
     double h = (n - 1) * p;
     int j = static_cast<int>(h);
@@ -22,7 +25,12 @@ double quantile7(const std::vector<double> &sorted, double p) {
 }
 
 // Evaluate outlier CGF K0 and K2 at saddlepoint parameter t.
-inline std::pair<double, double> evalOutlierK0K2(double t, const double *resid, const double *maf, int n) {
+inline std::pair<double, double> evalOutlierK0K2(
+    double t,
+    const double *resid,
+    const double *maf,
+    int n
+) {
     double K0 = 0.0, K2 = 0.0;
     for (int i = 0; i < n; ++i) {
         const double tr = t * resid[i];
@@ -35,7 +43,13 @@ inline std::pair<double, double> evalOutlierK0K2(double t, const double *resid, 
 }
 
 // Evaluate outlier K1_adj (= K1_outlier − s) and K2 at saddlepoint parameter t.
-inline std::pair<double, double> evalOutlierK1adjK2(double t, double s, const double *resid, const double *maf, int n) {
+inline std::pair<double, double> evalOutlierK1adjK2(
+    double t,
+    double s,
+    const double *resid,
+    const double *maf,
+    int n
+) {
     double K1_adj = -s, K2 = 0.0;
     for (int i = 0; i < n; ++i) {
         const double tr = t * resid[i];
@@ -108,7 +122,10 @@ RootResult fastGetRootK1(
 // Outlier detection (IQR-based, R-default quantile)
 // ======================================================================
 
-OutlierData detectOutliers(const Eigen::VectorXd &resid, double outlierRatio) {
+OutlierData detectOutliers(
+    const Eigen::VectorXd &resid,
+    double outlierRatio
+) {
     const int N = static_cast<int>(resid.size());
 
     std::vector<double> sorted(resid.data(), resid.data() + N);

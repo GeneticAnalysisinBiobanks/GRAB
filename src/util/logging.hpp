@@ -12,7 +12,10 @@
 
 // Function-local static ensures the mutex is initialized exactly once
 // even across translation units (C++17 magic statics are thread-safe).
-inline void infoMsg(const char *fmt, ...) {
+inline void infoMsg(
+    const char *fmt,
+    ...
+) {
     static std::mutex s_logMutex;
     char buf[512];
     va_list args;

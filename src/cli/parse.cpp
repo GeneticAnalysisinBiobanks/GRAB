@@ -8,7 +8,10 @@
 
 namespace cli {
 
-Args parseArgs(int argc, char *argv[]) {
+Args parseArgs(
+    int argc,
+    char *argv[]
+) {
     Args a;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];

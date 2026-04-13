@@ -15,12 +15,14 @@
 #include "util/logging.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <limits>
 #include <numeric>
 #include <random>
 #include <set>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 
 #include <Eigen/Dense>
@@ -78,7 +80,13 @@ inline double clampProb(double p) {
 // When stride==1, delegates to the common SparseGRM::multiply().
 // ══════════════════════════════════════════════════════════════════════
 
-void batchSpmvInterleaved(const SparseGRM &grm, const double *x, double *result, uint32_t n, int stride) {
+void batchSpmvInterleaved(
+    const SparseGRM &grm,
+    const double *x,
+    double *result,
+    uint32_t n,
+    int stride
+) {
     if (stride == 1) {
         grm.multiply(x, result, n);
         return;
@@ -212,7 +220,11 @@ struct PsiBlock {
     // h_j = dlogistic(eps_j - eta_i) for j = 0..J-2
     Eigen::VectorXd h; // (J-1)
 
-    void compute(double eta_i, const Eigen::VectorXd &eps, int Jm1) {
+    void compute(
+        double eta_i,
+        const Eigen::VectorXd &eps,
+        int Jm1
+    ) {
         h.resize(Jm1);
         for (int j = 0; j < Jm1; ++j)
             h(j) = dlogistic(eps(j) - eta_i);
@@ -220,7 +232,11 @@ struct PsiBlock {
 
     // y = Psi * x = diag(h)*x - h*(h'x)
     // Optimization 1: K=2 scalar fast path when Jm1==1
-    void mulVec(const double *x, double *y, int Jm1) const {
+    void mulVec(
+        const double *x,
+        double *y,
+        int Jm1
+    ) const {
         if (Jm1 == 1) {
             y[0] = h(0) * (1.0 - h(0)) * x[0];
             return;
@@ -235,7 +251,11 @@ struct PsiBlock {
     // y = Psi^{-1} * x = diag(1/h)*x + 11' * x / (1 - sum(h))
     // By Sherman-Morrison: (diag(h) - h h')^{-1} = diag(1/h) + 11'/(1 - sum(h))
     // Optimization 1: K=2 scalar fast path when Jm1==1
-    void solveVec(const double *x, double *y, int Jm1) const {
+    void solveVec(
+        const double *x,
+        double *y,
+        int Jm1
+    ) const {
         if (Jm1 == 1) {
             double psi = std::max(h(0) * (1.0 - h(0)), 1e-20);
             y[0] = x[0] / psi;
@@ -286,10 +306,16 @@ void sigmaMultiply(
 }
 
 // Preconditioner: block diagonal of Sigma.
-// For each subject, the (J-1)×(J-1) block is Psi_i^{-1} + tau*K_ii*I
-// We use the simpler preconditioner: M_i = Psi_i^{-1} + tau * diagK_i * I
-// and solve M_i * z = r per block.
-// diagK is the diagonal of K (self-relatedness, usually close to 1).
+// For each subject, the (J-1)×(J-1) block is M_i = Psi_i^{-1} + tau*K_ii*I.
+// We solve M_i * z_i = r_i per block using Sherman-Morrison.
+//
+// Psi_i^{-1} = diag(1/h) + 11'/(1 - sum(h))  (from PsiBlock::solveVec)
+// So M_i = diag(1/h_j + tau*d_i) + 11'/(1 - sum(h))
+//        = diag(D_j) + uu'   where D_j = 1/h_j + tau*d_i,  u = 1/sqrt(1-sum(h))
+//
+// By Sherman-Morrison:
+//   M_i^{-1} = diag(a) - a*a' / ((1-sum(h))^{-1} + sum(a))
+//   where a_j = 1/D_j = 1/(1/h_j + tau*d_i) = h_j/(1 + tau*d_i*h_j)
 void precondSolve(
     const std::vector<PsiBlock> &psiBlocks,
     const std::vector<double> &diagK,
@@ -299,12 +325,40 @@ void precondSolve(
     const double *r,
     double *z
 ) {
-    // M_i^{-1} ≈ (Psi_i^{-1} + tau*d_i*I)^{-1}
-    // By Woodbury: (D - hh' + tau*d*I)^{-1} with D = diag(1/h)
-    // This is complex. For simplicity, use Psi_i as the preconditioner:
-    // M_i ≈ Psi_i^{-1} → M_i^{-1} = Psi_i
-    for (int i = 0; i < n; ++i)
-        psiBlocks[i].mulVec(r + i * Jm1, z + i * Jm1, Jm1);
+    for (int i = 0; i < n; ++i) {
+        const double *ri = r + i * Jm1;
+        double *zi = z + i * Jm1;
+        const auto &h = psiBlocks[i].h;
+        const double td = tau * diagK[i];
+
+        if (Jm1 == 1) {
+            // J=2 fast path: M = 1/(h*(1-h)) + tau*d = (1 + tau*d*h*(1-h)) / (h*(1-h))
+            double psi = std::max(h(0) * (1.0 - h(0)), 1e-20);
+            zi[0] = ri[0] / (1.0 / psi + td);
+            return;
+        }
+
+        // General case: a_j = h_j / (1 + td * h_j)
+        double sumH = 0.0;
+        double sumA = 0.0;
+        double adotR = 0.0;
+        for (int j = 0; j < Jm1; ++j) {
+            double hj = std::max(h(j), 1e-20);
+            double aj = hj / (1.0 + td * hj);
+            sumH += hj;
+            sumA += aj;
+            zi[j] = aj * ri[j];   // diag(a) * r
+            adotR += aj * ri[j];
+        }
+        // Subtract rank-1 correction: a*a'*r / ((1-sumH)^{-1} + sumA)
+        double denom = 1.0 / std::max(1.0 - sumH, 1e-20) + sumA;
+        double scale = adotR / denom;
+        for (int j = 0; j < Jm1; ++j) {
+            double hj = std::max(h(j), 1e-20);
+            double aj = hj / (1.0 + td * hj);
+            zi[j] -= aj * scale;
+        }
+    }
 }
 
 Eigen::VectorXd pcgSolve(
@@ -453,7 +507,11 @@ void fitCLM(
 // ══════════════════════════════════════════════════════════════════════
 
 // Y indicator matrix: yMat(i, j) = 1 if yVec(i) == j
-Eigen::MatrixXd makeYMat(const Eigen::VectorXi &yVec, int n, int J) {
+Eigen::MatrixXd makeYMat(
+    const Eigen::VectorXi &yVec,
+    int n,
+    int J
+) {
     Eigen::MatrixXd yMat = Eigen::MatrixXd::Zero(n, J);
     for (int i = 0; i < n; ++i)
         yMat(i, yVec(i)) = 1.0;
@@ -478,7 +536,9 @@ void fitNullModel(
     int n,
     int J,
     int p,
-    POLMMNullModel &null
+    POLMMNullModel &null,
+    const char *tag = "",
+    int nLocalThreads = 1
 ) {
     const int Jm1 = J - 1;
 
@@ -486,10 +546,10 @@ void fitNullModel(
     const auto &diagK = grm.diagonal();
 
     // 1. CLM initialization
-    infoMsg("POLMM: CLM initialization (J=%d levels, p=%d covariates)", J, p);
+    infoMsg("[%s] CLM initialization (J=%d levels, p=%d covariates)", tag, J, p);
     Eigen::VectorXd beta, eps;
     fitCLM(yVec, X, n, J, p, beta, eps);
-    infoMsg("POLMM: CLM done. eps[0]=%.4f, eps[J-2]=%.4f", eps(0), eps(Jm1 - 1));
+    infoMsg("[%s] CLM done. eps[0]=%.4f, eps[J-2]=%.4f", tag, eps(0), eps(Jm1 - 1));
 
     Eigen::VectorXd bVec = Eigen::VectorXd::Zero(n);
     double tau = 0.1; // initial variance component
@@ -501,7 +561,7 @@ void fitNullModel(
     Eigen::MatrixXd yMat = makeYMat(yVec, n, J);
 
     // 2. PQL iteration (outer loop over tau, inner loop over beta, b, eps)
-    infoMsg("POLMM: Starting PQL iteration");
+    infoMsg("[%s] Starting PQL iteration", tag);
     for (int outerIter = 0; outerIter < kMaxIterPQL; ++outerIter) {
         double tau_old = tau;
 
@@ -701,22 +761,55 @@ void fitNullModel(
 
         double traceEst = 0.0;
         {
+            // Pre-generate all probe vectors for deterministic results
+            // regardless of thread count.
             std::mt19937 rng(42 + outerIter);
             std::normal_distribution<double> normal(0.0, 1.0);
+            const int dim = n * Jm1;
+            std::vector<Eigen::VectorXd> probeVecs(kTraceNRun);
             for (int run = 0; run < kTraceNRun; ++run) {
-                Eigen::VectorXd u(n * Jm1);
-                for (int k = 0; k < n * Jm1; ++k)
-                    u(k) = normal(rng);
+                probeVecs[run].resize(dim);
+                for (int k = 0; k < dim; ++k)
+                    probeVecs[run](k) = normal(rng);
+            }
 
-                // Compute Sigma^{-1} * u via PCG
-                Eigen::VectorXd SinvU = pcgSolve(psiBlocks, grm, diagK, tau, n, Jm1, u);
+            const int probeThreads = std::min(nLocalThreads, kTraceNRun);
+            if (probeThreads <= 1) {
+                // Serial path
+                for (int run = 0; run < kTraceNRun; ++run) {
+                    Eigen::VectorXd SinvU = pcgSolve(psiBlocks, grm, diagK, tau, n, Jm1, probeVecs[run]);
+                    Eigen::VectorXd KSinvU(dim);
+                    batchSpmvInterleaved(grm, SinvU.data(), KSinvU.data(), static_cast<uint32_t>(n), Jm1);
+                    traceEst += probeVecs[run].dot(KSinvU);
+                }
+            } else {
+                // Parallel probes: each thread runs its share of PCG solves.
+                // pcgSolve is thread-safe (reads shared psiBlocks/grm/diagK,
+                // all mutable state is stack-local).
+                std::vector<double> probeTraces(kTraceNRun, 0.0);
+                std::atomic<int> nextProbe{0};
 
-                // Then K * SinvU (for each j-th block dimension)
-                // Optimization 3: batch spmv for all J-1 dimensions at once
-                Eigen::VectorXd KSinvU(n * Jm1);
-                batchSpmvInterleaved(grm, SinvU.data(), KSinvU.data(), static_cast<uint32_t>(n), Jm1);
+                auto probeWork = [&]() {
+                    for (;;) {
+                        int run = nextProbe.fetch_add(1, std::memory_order_relaxed);
+                        if (run >= kTraceNRun) break;
+                        Eigen::VectorXd SinvU = pcgSolve(psiBlocks, grm, diagK, tau, n, Jm1, probeVecs[run]);
+                        Eigen::VectorXd KSinvU(dim);
+                        batchSpmvInterleaved(grm, SinvU.data(), KSinvU.data(), static_cast<uint32_t>(n), Jm1);
+                        probeTraces[run] = probeVecs[run].dot(KSinvU);
+                    }
+                };
 
-                traceEst += u.dot(KSinvU);
+                std::vector<std::thread> threads;
+                threads.reserve(probeThreads - 1);
+                for (int t = 0; t < probeThreads - 1; ++t)
+                    threads.emplace_back(probeWork);
+                probeWork(); // caller participates
+                for (auto &th : threads)
+                    th.join();
+
+                for (int run = 0; run < kTraceNRun; ++run)
+                    traceEst += probeTraces[run];
             }
             traceEst *= tau / kTraceNRun;
         }
@@ -727,7 +820,8 @@ void fitNullModel(
         tau_new = std::max(tau_new, 1e-6);
 
         infoMsg(
-            "POLMM PQL iter %d: tau=%.6f -> %.6f, |delta|=%.2e",
+            "[%s] PQL iter %d: tau=%.6f -> %.6f, |delta|=%.2e",
+            tag,
             outerIter + 1,
             tau_old,
             tau_new,
@@ -739,7 +833,7 @@ void fitNullModel(
         if (std::abs(tau - tau_old) / std::max(tau_old, 1e-10) < kTolTau) break;
     }
 
-    infoMsg("POLMM: Null model converged. tau=%.6f", tau);
+    infoMsg("[%s] Null model converged. tau=%.6f", tag, tau);
 
     // Store results
     null.n = n;
@@ -757,7 +851,13 @@ void fitNullModel(
 // getobjP: precompute marker-test matrices
 // ══════════════════════════════════════════════════════════════════════
 
-void computeTestMatrices(const Eigen::VectorXi &yVec, const Eigen::MatrixXd &X, POLMMNullModel &null) {
+void computeTestMatrices(
+    const Eigen::VectorXi &yVec,
+    const Eigen::MatrixXd &X,
+    POLMMNullModel &null,
+    const char *tag =
+    ""
+) {
     const int n = null.n;
     const int J = null.J;
     const int Jm1 = J - 1;
@@ -824,7 +924,7 @@ void computeTestMatrices(const Eigen::VectorXi &yVec, const Eigen::MatrixXd &X, 
     null.XXR_Psi_RX_new = XXR;  // n × p
     null.XR_Psi_R_new = XR_new; // p × n
 
-    infoMsg("POLMM: Test matrices computed. mean(RPsiR)=%.6f", RPsiR.mean());
+    infoMsg("[%s] Test matrices computed. mean(RPsiR)=%.6f", tag, RPsiR.mean());
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -862,13 +962,14 @@ void estimateVarianceRatiosFromUnion(
     const Eigen::VectorXi &yVec,
     const SparseGRM &grm,
     GenoMeta &genoData,
-    const std::vector<uint32_t> &localToUnion
+    const std::vector<uint32_t> &localToUnion,
+    const char *tag = ""
 ) {
     const int n = null.n;
     const double tau = null.tau;
     const int nBins = static_cast<int>(kMacBins.size());
 
-    infoMsg("POLMM: Estimating MAC-binned variance ratios (%d bins, %d SNPs/bin)", nBins, kNSnpsPerBin);
+    infoMsg("[%s] Estimating MAC-binned variance ratios (%d bins, %d SNPs/bin)", tag, nBins, kNSnpsPerBin);
 
     const uint32_t M = genoData.nMarkers();
     const uint32_t nUnion = genoData.nSubjUsed();
@@ -937,7 +1038,8 @@ void estimateVarianceRatiosFromUnion(
         if (!binRatios[b].empty()) {
             varRatios[b] = std::accumulate(binRatios[b].begin(), binRatios[b].end(), 0.0) / binRatios[b].size();
             infoMsg(
-                "POLMM: VarRatio bin %d [MAC>=%.0f]: %.6f (from %zu SNPs)",
+                "[%s] VarRatio bin %d [MAC>=%.0f]: %.6f (from %zu SNPs)",
+                tag,
                 b,
                 kMacBins[b],
                 varRatios[b],
@@ -957,7 +1059,8 @@ void estimateVarianceRatiosFromUnion(
                 }
             }
             varRatios[b] = (best > 0.0) ? best : 1.0;
-            infoMsg("POLMM: VarRatio bin %d [MAC>=%.0f]: %.6f (borrowed from neighbor)", b, kMacBins[b], varRatios[b]);
+            infoMsg("[%s] VarRatio bin %d [MAC>=%.0f]: %.6f (borrowed from neighbor)", tag, b, kMacBins[b], varRatios[b]
+            );
         }
     }
 
@@ -970,10 +1073,24 @@ void estimateVarianceRatiosFromUnion(
 // ══════════════════════════════════════════════════════════════════════
 // POLMMMethod implementation
 
-POLMMMethod::POLMMMethod(const POLMMNullModel &null, double spaCutoff)
-    : m_n(null.n), m_J(null.J), m_XXR_Psi_RX_new(null.XXR_Psi_RX_new), m_XR_Psi_R_new(null.XR_Psi_R_new),
-    m_RymuVec(null.RymuVec), m_RPsiR(null.RPsiR), m_spaCutoff(spaCutoff), m_macBounds(null.macBounds),
-    m_varRatios(null.varRatios), m_muMat(null.muMat), m_iRMat(null.iRMat), m_adjG(null.n), m_tmpP(null.p) {
+POLMMMethod::POLMMMethod(
+    const POLMMNullModel &null,
+    double spaCutoff
+)
+    : m_n(null.n),
+      m_J(null.J),
+      m_XXR_Psi_RX_new(null.XXR_Psi_RX_new),
+      m_XR_Psi_R_new(null.XR_Psi_R_new),
+      m_RymuVec(null.RymuVec),
+      m_RPsiR(null.RPsiR),
+      m_spaCutoff(spaCutoff),
+      m_macBounds(null.macBounds),
+      m_varRatios(null.varRatios),
+      m_muMat(null.muMat),
+      m_iRMat(null.iRMat),
+      m_adjG(null.n),
+      m_tmpP(null.p)
+{
 }
 
 double POLMMMethod::lookupVarRatio(double mac) const {
@@ -1064,7 +1181,15 @@ void POLMMMethod::getResultVec(
 // Uses the "partial normal approximation": G==0 subjects contribute a
 // normal component, G!=0 subjects contribute the exact ordinal CGF.
 
-double POLMMMethod::K0(double t, const double *cMat, const double *muSub, int nSub, int Jm1, double Ratio0, double m1)
+double POLMMMethod::K0(
+    double t,
+    const double *cMat,
+    const double *muSub,
+    int nSub,
+    int Jm1,
+    double Ratio0,
+    double m1
+)
 const {
     // K(t) = 0.5 * Ratio0 * t^2  (normal part from G==0)
     //      + sum_i log(1 + sum_j mu_ij * (exp(c_ij * t) - 1))  (ordinal part)
@@ -1084,7 +1209,15 @@ const {
     return K;
 }
 
-double POLMMMethod::K1(double t, const double *cMat, const double *muSub, int nSub, int Jm1, double Ratio0, double m1)
+double POLMMMethod::K1(
+    double t,
+    const double *cMat,
+    const double *muSub,
+    int nSub,
+    int Jm1,
+    double Ratio0,
+    double m1
+)
 const {
     // K'(t) = Ratio0 * t - m1
     //       + sum_i [sum_j mu_ij * c_ij * exp(c_ij*t)] / [1 + sum_j mu_ij*(exp(c_ij*t)-1)]
@@ -1103,7 +1236,14 @@ const {
     return K1val;
 }
 
-double POLMMMethod::K2(double t, const double *cMat, const double *muSub, int nSub, int Jm1, double Ratio0) const {
+double POLMMMethod::K2(
+    double t,
+    const double *cMat,
+    const double *muSub,
+    int nSub,
+    int Jm1,
+    double Ratio0
+) const {
     // K''(t) = Ratio0
     //        + sum_i [(sum mu*c^2*exp(ct))*den - (sum mu*c*exp(ct))^2] / den^2
     double K2val = Ratio0;
@@ -1122,7 +1262,10 @@ double POLMMMethod::K2(double t, const double *cMat, const double *muSub, int nS
     return K2val;
 }
 
-double POLMMMethod::spaTest(double Stat, double VarW) const {
+double POLMMMethod::spaTest(
+    double Stat,
+    double VarW
+) const {
     const int n = m_n;
     const int J = m_J;
     const int Jm1 = J - 1;
@@ -1229,7 +1372,10 @@ double POLMMMethod::spaTest(double Stat, double VarW) const {
 // where mu_i = P(y=0) and g_i = adjG(i) / iRMat(i,0) / sqrt(VarW)
 // ══════════════════════════════════════════════════════════════════════
 
-double POLMMMethod::spaTestBinary(double Stat, double VarW) const {
+double POLMMMethod::spaTestBinary(
+    double Stat,
+    double VarW
+) const {
     const int n = m_n;
 
     // Identify subjects with non-zero adjusted genotype
@@ -1423,66 +1569,100 @@ void runPOLMM(
     SparseGRM unionGrm = SparseGRM::load(spgrmGrabFile, spgrmGctaFile, usedIIDs, sd.famIIDs());
     infoMsg("Sparse GRM: %zu entries, %u subjects", unionGrm.nnz(), unionGrm.nSubjects());
 
-    // ── 5. Per-phenotype: fit null model + variance ratios ──────────
+    // ── 5. Per-phenotype: fit null model + variance ratios (parallel) ─
     std::vector<PhenoTask> tasks(K);
+    const int nFitThreads = std::min(nthreads, K);
+    // When K < T, each worker gets multiple threads for intra-phenotype
+    // parallelism (Hutchinson probes).  Total ≤ T (no oversubscription).
+    const int nLocalThreads = std::max(1, nthreads / std::max(K, 1));
+    infoMsg("POLMM: Fitting %d null models with %d threads (%d threads/phenotype)",
+            K, nFitThreads, nLocalThreads);
 
+    std::atomic<int> nextK{0};
+    std::vector<std::string> fitErrors(K);
+
+    auto fitWorker = [&]() {
+        for (;;) {
+            int k = nextK.fetch_add(1, std::memory_order_relaxed);
+            if (k >= K) break;
+
+            try {
+                const std::string &name = phenoNames[k];
+                const uint32_t n_k = phenoMap[k].nUsed;
+                const auto &localToUnion = phenoMap[k].localToUnion;
+                infoMsg("[%s] Fitting null model (%u subjects)", name.c_str(), n_k);
+
+                // Extract per-phenotype dense Y
+                Eigen::VectorXd yRaw(n_k);
+                for (uint32_t i = 0; i < n_k; ++i)
+                    yRaw[i] = phenoMat(localToUnion[i], k);
+
+                // Auto-detect ordinal levels: sort unique values, remap to 0..J-1
+                std::set<int> levels;
+                for (uint32_t i = 0; i < n_k; ++i)
+                    levels.insert(static_cast<int>(std::round(yRaw[i])));
+                std::vector<int> levelVec(levels.begin(), levels.end());
+
+                const int J = static_cast<int>(levelVec.size());
+                if (J < 2) throw std::runtime_error("POLMM: ordinal phenotype '" + name + "' must have >= 2 levels");
+
+                for (int j = 0; j < J; ++j)
+                    infoMsg("[%s] Level %d -> category %d", name.c_str(), levelVec[j], j);
+
+                Eigen::VectorXi yVec(n_k);
+                for (uint32_t i = 0; i < n_k; ++i) {
+                    int val = static_cast<int>(std::round(yRaw[i]));
+                    auto it = std::lower_bound(levelVec.begin(), levelVec.end(), val);
+                    yVec[i] = static_cast<int>(it - levelVec.begin());
+                }
+
+                infoMsg("[%s] %u subjects, %d ordinal levels", name.c_str(), n_k, J);
+
+                // Build per-phenotype covariate matrix (intercept + user covariates)
+                const int p = 1 + nCovar;
+                Eigen::MatrixXd X(n_k, p);
+                X.col(0).setOnes();
+                if (nCovar > 0) {
+                    for (uint32_t i = 0; i < n_k; ++i)
+                        X.row(i).tail(nCovar) = unionCovar.row(localToUnion[i]);
+                }
+
+                // Re-index GRM for per-phenotype ordering
+                SparseGRM phenoGrm = reindexGrm(unionGrm, phenoMap[k].unionToLocal, n_k);
+                infoMsg("[%s] Per-phenotype GRM: %zu entries", name.c_str(), phenoGrm.nnz());
+
+                // Fit null model
+                POLMMNullModel null;
+                fitNullModel(yVec, X, phenoGrm, static_cast<int>(n_k), J, p, null, name.c_str(), nLocalThreads);
+                computeTestMatrices(yVec, X, null, name.c_str());
+
+                // Estimate MAC-binned variance ratios (using union genotypes + extraction)
+                estimateVarianceRatiosFromUnion(null, X, yVec, phenoGrm, *genoData, localToUnion, name.c_str());
+
+                // Build PhenoTask
+                tasks[k].phenoName = name;
+                tasks[k].method = std::make_unique<POLMMMethod>(null, spaCutoff);
+                tasks[k].unionToLocal = phenoMap[k].unionToLocal;
+                tasks[k].nUsed = n_k;
+            } catch (const std::exception &ex) {
+                fitErrors[k] = ex.what();
+            }
+        }
+    };
+
+    {
+        std::vector<std::thread> threads;
+        threads.reserve(nFitThreads);
+        for (int t = 0; t < nFitThreads; ++t)
+            threads.emplace_back(fitWorker);
+        for (auto &th : threads)
+            th.join();
+    }
+
+    // Check for errors
     for (int k = 0; k < K; ++k) {
-        const uint32_t n_k = phenoMap[k].nUsed;
-        const auto &localToUnion = phenoMap[k].localToUnion;
-        infoMsg("POLMM: Fitting null model for phenotype '%s' (%u subjects)", phenoNames[k].c_str(), n_k);
-
-        // Extract per-phenotype dense Y
-        Eigen::VectorXd yRaw(n_k);
-        for (uint32_t i = 0; i < n_k; ++i)
-            yRaw[i] = phenoMat(localToUnion[i], k);
-
-        // Auto-detect ordinal levels: sort unique values, remap to 0..J-1
-        std::set<int> levels;
-        for (uint32_t i = 0; i < n_k; ++i)
-            levels.insert(static_cast<int>(std::round(yRaw[i])));
-        std::vector<int> levelVec(levels.begin(), levels.end());
-
-        const int J = static_cast<int>(levelVec.size());
-        if (J < 2)throw std::runtime_error("POLMM: ordinal phenotype '" + phenoNames[k] + "' must have >= 2 levels");
-
-        for (int j = 0; j < J; ++j)
-            infoMsg("  Level %d -> category %d", levelVec[j], j);
-
-        Eigen::VectorXi yVec(n_k);
-        for (uint32_t i = 0; i < n_k; ++i) {
-            int val = static_cast<int>(std::round(yRaw[i]));
-            auto it = std::lower_bound(levelVec.begin(), levelVec.end(), val);
-            yVec[i] = static_cast<int>(it - levelVec.begin());
-        }
-
-        infoMsg("POLMM: %u subjects, %d ordinal levels", n_k, J);
-
-        // Build per-phenotype covariate matrix (intercept + user covariates)
-        const int p = 1 + nCovar;
-        Eigen::MatrixXd X(n_k, p);
-        X.col(0).setOnes();
-        if (nCovar > 0) {
-            for (uint32_t i = 0; i < n_k; ++i)
-                X.row(i).tail(nCovar) = unionCovar.row(localToUnion[i]);
-        }
-
-        // Re-index GRM for per-phenotype ordering
-        SparseGRM phenoGrm = reindexGrm(unionGrm, phenoMap[k].unionToLocal, n_k);
-        infoMsg("  Per-phenotype GRM: %zu entries", phenoGrm.nnz());
-
-        // Fit null model
-        POLMMNullModel null;
-        fitNullModel(yVec, X, phenoGrm, static_cast<int>(n_k), J, p, null);
-        computeTestMatrices(yVec, X, null);
-
-        // Estimate MAC-binned variance ratios (using union genotypes + extraction)
-        estimateVarianceRatiosFromUnion(null, X, yVec, phenoGrm, *genoData, localToUnion);
-
-        // Build PhenoTask
-        tasks[k].phenoName = phenoNames[k];
-        tasks[k].method = std::make_unique<POLMMMethod>(null, spaCutoff);
-        tasks[k].unionToLocal = phenoMap[k].unionToLocal;
-        tasks[k].nUsed = n_k;
+        if (!fitErrors[k].empty())
+            throw std::runtime_error("POLMM: phenotype '" + phenoNames[k] + "' failed: " + fitErrors[k]);
     }
 
     // ── 6. Run multi-phenotype engine ───────────────────────────────

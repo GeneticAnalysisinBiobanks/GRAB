@@ -44,12 +44,24 @@ SPAmixPlusMethod::SPAmixPlusMethod(
     const std::vector<AFModel> &afModels,
     const std::vector<uint32_t> &genoToFlat
 )
-    : m_resid(residuals), m_resid2(resid2), m_onePlusPCs(onePlusPCs), m_outlier(outlier), m_spaCutoff(spaCutoff),
-    m_hasGRM(true), m_grm(&grm), m_N(static_cast<int>(residuals.size())),
-    m_nPC(static_cast<int>(onePlusPCs.cols()) - 1), m_afModels(&afModels), m_genoToFlat(&genoToFlat),
-    m_XtX_inv_Xt(nullptr), m_sqrt_XtX_inv_diag(nullptr), m_AFVec(m_N), m_R_new(m_N),
-    m_mafOutlier(static_cast<int>(outlier.posOutlier.size())),
-    m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size())) {
+    : m_resid(residuals),
+      m_resid2(resid2),
+      m_onePlusPCs(onePlusPCs),
+      m_outlier(outlier),
+      m_spaCutoff(spaCutoff),
+      m_hasGRM(true),
+      m_grm(&grm),
+      m_N(static_cast<int>(residuals.size())),
+      m_nPC(static_cast<int>(onePlusPCs.cols()) - 1),
+      m_afModels(&afModels),
+      m_genoToFlat(&genoToFlat),
+      m_XtX_inv_Xt(nullptr),
+      m_sqrt_XtX_inv_diag(nullptr),
+      m_AFVec(m_N),
+      m_R_new(m_N),
+      m_mafOutlier(static_cast<int>(outlier.posOutlier.size())),
+      m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size()))
+{
 }
 
 // On-the-fly AF + GRM
@@ -64,11 +76,24 @@ SPAmixPlusMethod::SPAmixPlusMethod(
     const Eigen::VectorXd &sqrt_XtX_inv_diag,
     int nPC
 )
-    : m_resid(residuals), m_resid2(resid2), m_onePlusPCs(onePlusPCs), m_outlier(outlier), m_spaCutoff(spaCutoff),
-    m_hasGRM(true), m_grm(&grm), m_N(static_cast<int>(residuals.size())), m_nPC(nPC), m_afModels(nullptr),
-    m_genoToFlat(nullptr), m_XtX_inv_Xt(&XtX_inv_Xt), m_sqrt_XtX_inv_diag(&sqrt_XtX_inv_diag), m_AFVec(m_N),
-    m_R_new(m_N), m_mafOutlier(static_cast<int>(outlier.posOutlier.size())),
-    m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size())) {
+    : m_resid(residuals),
+      m_resid2(resid2),
+      m_onePlusPCs(onePlusPCs),
+      m_outlier(outlier),
+      m_spaCutoff(spaCutoff),
+      m_hasGRM(true),
+      m_grm(&grm),
+      m_N(static_cast<int>(residuals.size())),
+      m_nPC(nPC),
+      m_afModels(nullptr),
+      m_genoToFlat(nullptr),
+      m_XtX_inv_Xt(&XtX_inv_Xt),
+      m_sqrt_XtX_inv_diag(&sqrt_XtX_inv_diag),
+      m_AFVec(m_N),
+      m_R_new(m_N),
+      m_mafOutlier(static_cast<int>(outlier.posOutlier.size())),
+      m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size()))
+{
 }
 
 // ── Without GRM (SPAmix) ───────────────────────────────────────────
@@ -83,12 +108,24 @@ SPAmixPlusMethod::SPAmixPlusMethod(
     const std::vector<AFModel> &afModels,
     const std::vector<uint32_t> &genoToFlat
 )
-    : m_resid(residuals), m_resid2(resid2), m_onePlusPCs(onePlusPCs), m_outlier(outlier), m_spaCutoff(spaCutoff),
-    m_hasGRM(false), m_grm(nullptr), m_N(static_cast<int>(residuals.size())),
-    m_nPC(static_cast<int>(onePlusPCs.cols()) - 1), m_afModels(&afModels), m_genoToFlat(&genoToFlat),
-    m_XtX_inv_Xt(nullptr), m_sqrt_XtX_inv_diag(nullptr), m_AFVec(m_N), m_R_new(0),
-    m_mafOutlier(static_cast<int>(outlier.posOutlier.size())),
-    m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size())) {
+    : m_resid(residuals),
+      m_resid2(resid2),
+      m_onePlusPCs(onePlusPCs),
+      m_outlier(outlier),
+      m_spaCutoff(spaCutoff),
+      m_hasGRM(false),
+      m_grm(nullptr),
+      m_N(static_cast<int>(residuals.size())),
+      m_nPC(static_cast<int>(onePlusPCs.cols()) - 1),
+      m_afModels(&afModels),
+      m_genoToFlat(&genoToFlat),
+      m_XtX_inv_Xt(nullptr),
+      m_sqrt_XtX_inv_diag(nullptr),
+      m_AFVec(m_N),
+      m_R_new(0),
+      m_mafOutlier(static_cast<int>(outlier.posOutlier.size())),
+      m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size()))
+{
 }
 
 // On-the-fly AF, no GRM
@@ -102,11 +139,24 @@ SPAmixPlusMethod::SPAmixPlusMethod(
     const Eigen::VectorXd &sqrt_XtX_inv_diag,
     int nPC
 )
-    : m_resid(residuals), m_resid2(resid2), m_onePlusPCs(onePlusPCs), m_outlier(outlier), m_spaCutoff(spaCutoff),
-    m_hasGRM(false), m_grm(nullptr), m_N(static_cast<int>(residuals.size())), m_nPC(nPC), m_afModels(nullptr),
-    m_genoToFlat(nullptr), m_XtX_inv_Xt(&XtX_inv_Xt), m_sqrt_XtX_inv_diag(&sqrt_XtX_inv_diag), m_AFVec(m_N),
-    m_R_new(0), m_mafOutlier(static_cast<int>(outlier.posOutlier.size())),
-    m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size())) {
+    : m_resid(residuals),
+      m_resid2(resid2),
+      m_onePlusPCs(onePlusPCs),
+      m_outlier(outlier),
+      m_spaCutoff(spaCutoff),
+      m_hasGRM(false),
+      m_grm(nullptr),
+      m_N(static_cast<int>(residuals.size())),
+      m_nPC(nPC),
+      m_afModels(nullptr),
+      m_genoToFlat(nullptr),
+      m_XtX_inv_Xt(&XtX_inv_Xt),
+      m_sqrt_XtX_inv_diag(&sqrt_XtX_inv_diag),
+      m_AFVec(m_N),
+      m_R_new(0),
+      m_mafOutlier(static_cast<int>(outlier.posOutlier.size())),
+      m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size()))
+{
 }
 
 std::unique_ptr<MethodBase> SPAmixPlusMethod::clone() const {
@@ -394,48 +444,74 @@ void runSPAmixPlus(
 
     // Per-phenotype data storage (must outlive PhenoTasks)
     std::vector<Eigen::VectorXd> pResid(K), pResid2(K);
-    std::vector<Eigen::MatrixXd> pOnePlusPCs(K);
     std::vector<OutlierData> pOutlier(K);
-    std::vector<Eigen::MatrixXd> pXtX_inv_Xt(K);
-    std::vector<Eigen::VectorXd> pSqrt_XtX_inv_diag(K);
-    std::vector<SparseGRM> pGrm; // only for K>1 && hasGRM
+
+    // Deduped pools keyed by non-missingness pattern (unionToLocal).
+    // Phenotypes sharing the same valid-subject set produce identical
+    // PC matrices, OLS matrices, and GRM sub-matrices.
+    std::vector<Eigen::MatrixXd> poolOnePlusPCs;
+    std::vector<Eigen::MatrixXd> poolXtX_inv_Xt;
+    std::vector<Eigen::VectorXd> poolSqrt_XtX_inv_diag;
+    std::vector<SparseGRM> poolGrm;
+    std::vector<size_t> maskIdx(K);   // phenotype rc -> index into pools
 
     std::vector<PhenoTask> tasks(K);
 
     for (int rc = 0; rc < K; ++rc) {
         const auto &pi = phenoInfos[rc];
 
-        // Extract per-phenotype residuals and PCs
-        if (K > 1) {
-            pResid[rc] = extractPhenoVec(sd.residMatrix().col(rc), pi);
-            pOnePlusPCs[rc] = extractPhenoMat(unionOnePlusPCs, pi);
-        } else {
-            pResid[rc] = sd.residuals();
-            pOnePlusPCs[rc] = unionOnePlusPCs;
-        }
+        // Extract per-phenotype residuals (always per-phenotype)
+        pResid[rc] = (K > 1) ? extractPhenoVec(sd.residMatrix().col(rc), pi) : sd.residuals();
         pResid2[rc] = pResid[rc].array().square();
         pOutlier[rc] = detectOutliers(pResid[rc], outlierRatio);
 
-        // Build per-phenotype OLS matrices for on-the-fly AF
-        if (afFile.empty()) {
-            Eigen::MatrixXd XtX = pOnePlusPCs[rc].transpose() * pOnePlusPCs[rc];
-            Eigen::MatrixXd XtX_inv = XtX.ldlt().solve(Eigen::MatrixXd::Identity(1 + nPC, 1 + nPC));
-            pXtX_inv_Xt[rc] = XtX_inv * pOnePlusPCs[rc].transpose();
-            pSqrt_XtX_inv_diag[rc] = XtX_inv.diagonal().cwiseSqrt();
+        // Cache PC matrix, OLS matrices, and GRM by non-missingness pattern.
+        size_t mIdx = poolOnePlusPCs.size(); // default: build new
+        if (K > 1) {
+            for (int j = 0; j < rc; ++j) {
+                if (phenoInfos[j].unionToLocal == pi.unionToLocal) {
+                    mIdx = maskIdx[j];
+                    infoMsg("  Phenotype '%s': reusing PC/OLS/GRM from '%s'",
+                            pi.name.c_str(), phenoInfos[j].name.c_str());
+                    break;
+                }
+            }
         }
-
-        // Build per-phenotype GRM for multi-phenotype + GRM mode
-        SparseGRM *grmPtr = nullptr;
-        if (hasGRM) {
+        if (mIdx == poolOnePlusPCs.size()) {
+            // New non-missingness pattern — build all derived objects
             if (K > 1) {
+                poolOnePlusPCs.push_back(extractPhenoMat(unionOnePlusPCs, pi));
+            } else {
+                poolOnePlusPCs.push_back(unionOnePlusPCs);
+            }
+            const auto &curPCs = poolOnePlusPCs.back();
+
+            if (afFile.empty()) {
+                Eigen::MatrixXd XtX = curPCs.transpose() * curPCs;
+                Eigen::MatrixXd XtX_inv = XtX.ldlt().solve(Eigen::MatrixXd::Identity(1 + nPC, 1 + nPC));
+                poolXtX_inv_Xt.push_back(XtX_inv * curPCs.transpose());
+                poolSqrt_XtX_inv_diag.push_back(XtX_inv.diagonal().cwiseSqrt());
+            }
+
+            if (hasGRM && K > 1) {
                 const auto &u2l = pi.unionToLocal;
                 std::vector<SparseGRM::Entry> pEntries;
                 for (const auto &e : unionGrm->entries()) {
                     uint32_t li = u2l[e.row], lj = u2l[e.col];
                     if (li != UINT32_MAX && lj != UINT32_MAX) pEntries.push_back({li, lj, e.value});
                 }
-                pGrm.push_back(SparseGRM::fromEntries(pi.nUsed, std::move(pEntries)));
-                grmPtr = &pGrm.back();
+                poolGrm.push_back(SparseGRM::fromEntries(pi.nUsed, std::move(pEntries)));
+            }
+        }
+        maskIdx[rc] = mIdx;
+
+        // Resolve pointers into deduped pools
+        const auto &curPCs = poolOnePlusPCs[mIdx];
+
+        SparseGRM *grmPtr = nullptr;
+        if (hasGRM) {
+            if (K > 1) {
+                grmPtr = &poolGrm[mIdx];
             } else {
                 grmPtr = unionGrm.get();
             }
@@ -446,50 +522,24 @@ void runSPAmixPlus(
         if (hasGRM) {
             if (!afFile.empty()) {
                 m = std::make_unique<SPAmixPlusMethod>(
-                    pResid[rc],
-                    pResid2[rc],
-                    pOnePlusPCs[rc],
-                    pOutlier[rc],
-                    spaCutoff,
-                    *grmPtr,
-                    afModels,
-                    genoToFlat
-                );
+                    pResid[rc], pResid2[rc], curPCs, pOutlier[rc],
+                    spaCutoff, *grmPtr, afModels, genoToFlat);
             } else {
                 m = std::make_unique<SPAmixPlusMethod>(
-                    pResid[rc],
-                    pResid2[rc],
-                    pOnePlusPCs[rc],
-                    pOutlier[rc],
-                    spaCutoff,
-                    *grmPtr,
-                    pXtX_inv_Xt[rc],
-                    pSqrt_XtX_inv_diag[rc],
-                    nPC
-                );
+                    pResid[rc], pResid2[rc], curPCs, pOutlier[rc],
+                    spaCutoff, *grmPtr,
+                    poolXtX_inv_Xt[mIdx], poolSqrt_XtX_inv_diag[mIdx], nPC);
             }
         } else {
             if (!afFile.empty()) {
                 m = std::make_unique<SPAmixPlusMethod>(
-                    pResid[rc],
-                    pResid2[rc],
-                    pOnePlusPCs[rc],
-                    pOutlier[rc],
-                    spaCutoff,
-                    afModels,
-                    genoToFlat
-                );
+                    pResid[rc], pResid2[rc], curPCs, pOutlier[rc],
+                    spaCutoff, afModels, genoToFlat);
             } else {
                 m = std::make_unique<SPAmixPlusMethod>(
-                    pResid[rc],
-                    pResid2[rc],
-                    pOnePlusPCs[rc],
-                    pOutlier[rc],
+                    pResid[rc], pResid2[rc], curPCs, pOutlier[rc],
                     spaCutoff,
-                    pXtX_inv_Xt[rc],
-                    pSqrt_XtX_inv_diag[rc],
-                    nPC
-                );
+                    poolXtX_inv_Xt[mIdx], poolSqrt_XtX_inv_diag[mIdx], nPC);
             }
         }
 
@@ -499,6 +549,8 @@ void runSPAmixPlus(
         tasks[rc].nUsed = pi.nUsed;
         infoMsg("  Phenotype '%s': %u subjects", pi.name.c_str(), pi.nUsed);
     }
+    if (K > 1)
+        infoMsg("  %zu unique subject mask(s) for %d phenotypes", poolOnePlusPCs.size(), K);
 
     infoMsg("Running %s marker tests (%d thread(s), %d phenotype(s))...", methodLabel, nthread, K);
     multiPhenoEngine(

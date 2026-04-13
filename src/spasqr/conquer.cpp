@@ -46,7 +46,10 @@ double eigMad(const Eigen::VectorXd &v) {
 }
 
 // R type-7 quantile
-double eigQuantile(const Eigen::VectorXd &v, double prob) {
+double eigQuantile(
+    const Eigen::VectorXd &v,
+    double prob
+) {
     const Eigen::Index n = v.size();
     std::vector<double> buf(n);
     Eigen::VectorXd::Map(buf.data(), n) = v;
@@ -59,7 +62,10 @@ double eigQuantile(const Eigen::VectorXd &v, double prob) {
 }
 
 // Element-wise Φ(x) (standard normal CDF) into an existing vector.
-void vecPnorm(const Eigen::VectorXd &x, Eigen::VectorXd &out) {
+void vecPnorm(
+    const Eigen::VectorXd &x,
+    Eigen::VectorXd &out
+) {
     out.resize(x.size());
     for (Eigen::Index i = 0; i < x.size(); ++i)
         out(i) = math::pnorm(x(i));

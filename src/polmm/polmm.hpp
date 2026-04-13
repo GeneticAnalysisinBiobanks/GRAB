@@ -55,7 +55,10 @@ struct POLMMNullModel {
 
 class POLMMMethod : public MethodBase {
   public:
-    POLMMMethod(const POLMMNullModel &null, double spaCutoff);
+    POLMMMethod(
+        const POLMMNullModel &null,
+        double spaCutoff
+    );
 
     std::unique_ptr<MethodBase> clone() const override;
 
@@ -97,15 +100,44 @@ class POLMMMethod : public MethodBase {
     Eigen::VectorXd m_tmpP; // (p)
 
 // SPA internals
-    double spaTest(double Stat, double VarW) const;
+    double spaTest(
+        double Stat,
+        double VarW
+    ) const;
 
-    double spaTestBinary(double Stat, double VarW) const; // K=2 fast path
+    double spaTestBinary(
+        double Stat,
+        double VarW
+    ) const;                                              // K=2 fast path
 
-    double K0(double t, const double *cMat, const double *muSub, int nSub, int Jm1, double Ratio0, double m1) const;
+    double K0(
+        double t,
+        const double *cMat,
+        const double *muSub,
+        int nSub,
+        int Jm1,
+        double Ratio0,
+        double m1
+    ) const;
 
-    double K1(double t, const double *cMat, const double *muSub, int nSub, int Jm1, double Ratio0, double m1) const;
+    double K1(
+        double t,
+        const double *cMat,
+        const double *muSub,
+        int nSub,
+        int Jm1,
+        double Ratio0,
+        double m1
+    ) const;
 
-    double K2(double t, const double *cMat, const double *muSub, int nSub, int Jm1, double Ratio0) const;
+    double K2(
+        double t,
+        const double *cMat,
+        const double *muSub,
+        int nSub,
+        int Jm1,
+        double Ratio0
+    ) const;
 
 };
 

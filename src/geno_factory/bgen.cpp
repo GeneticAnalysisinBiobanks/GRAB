@@ -49,7 +49,10 @@ struct DosageSetter {
     uint32_t nHomAlt = 0;
     uint32_t nMissing = 0;
 
-    void initialise(std::size_t /*nsamples*/, std::size_t /*nalleles*/) {
+    void initialise(
+        std::size_t /*nsamples*/,
+        std::size_t                                       /*nalleles*/
+    ) {
         outIdx = 0;
         nHomRef = nHet = nHomAlt = nMissing = 0;
     }
@@ -70,7 +73,10 @@ struct DosageSetter {
     ) {
     }
 
-    void set_value(uint32_t idx, double value) {
+    void set_value(
+        uint32_t idx,
+        double value
+    ) {
         if (!currentUsed) return;
         // For biallelic diploid: idx 0 = P(RR), idx 1 = P(RA), idx 2 = P(AA)
         if (idx == 1)
@@ -92,7 +98,10 @@ struct DosageSetter {
         }
     }
 
-    void set_value(uint32_t /*idx*/, genfile::MissingValue) {
+    void set_value(
+        uint32_t /*idx*/,
+        genfile::MissingValue
+    ) {
         if (!currentUsed) return;
         ++probIdx;
         // Mark missing at last index
@@ -122,7 +131,11 @@ BgenData::BgenData(
     uint32_t nUsed,
     int nMarkersEachChunk
 )
-    : m_bgenFile(std::move(bgenFile)), m_nSubjInFile(nSamplesInFile), m_nSubjUsed(nUsed), m_usedMask(usedMask) {
+    : m_bgenFile(std::move(bgenFile)),
+      m_nSubjInFile(nSamplesInFile),
+      m_nSubjUsed(nUsed),
+      m_usedMask(usedMask)
+{
     m_allUsed = (nUsed == nSamplesInFile);
 
     // ---- Open and read header ----
@@ -192,7 +205,10 @@ BgenData::BgenData(
 
 BgenData::~BgenData() = default;
 
-std::vector<std::vector<uint64_t> > BgenData::buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize) {
+std::vector<std::vector<uint64_t> > BgenData::buildChunks(
+    const std::vector<MarkerInfo> &markers,
+    int chunkSize
+) {
     std::vector<std::vector<uint64_t> > chunks;
     if (markers.empty()) return chunks;
     std::vector<uint64_t> cur;
@@ -267,7 +283,10 @@ struct BgenCursor::Impl {
 
 };
 
-BgenCursor::BgenCursor(const BgenData &parent) : m_parent(parent), m_impl(std::make_unique<Impl>()) {
+BgenCursor::BgenCursor(const BgenData &parent)
+    : m_parent(parent),
+      m_impl(std::make_unique<Impl>())
+{
     auto &impl = *m_impl;
     impl.nSamplesInFile = parent.nSubjInFile();
     impl.nUsed = parent.nSubjUsed();
@@ -352,7 +371,10 @@ void BgenCursor::getGenotypes(
     ++impl.currentBiallelicIdx;
 }
 
-void BgenCursor::getGenotypesSimple(uint64_t gIndex, Eigen::Ref<Eigen::VectorXd> out) {
+void BgenCursor::getGenotypesSimple(
+    uint64_t gIndex,
+    Eigen::Ref<Eigen::VectorXd> out
+) {
     auto &impl = *m_impl;
 
     if (!impl.advanceTo(gIndex))

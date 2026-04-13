@@ -16,12 +16,14 @@
 #include "util/math_helper.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <limits>
 #include <memory>
 #include <numeric>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <Eigen/Dense>
@@ -37,14 +39,16 @@ class SPAsqrMethod : public MethodBase {
 // Constructor with tau labels (used by pheno path):
 //   labels like "Tau0.1", "Tau0.3", ...
 //   Output order: P_CCT  P_tau0.1 ... P_tau0.9  Z_tau0.1 ... Z_tau0.9
-    SPAsqrMethod(int ntaus, std::vector<SPAGRMClass> spagrm_vec, std::vector<std::string> tauLabels)
-        : m_ntaus(ntaus), m_spagrm_vec(std::move(spagrm_vec)), m_tauLabels(std::move(tauLabels)), m_hasLabels(true) {
-    }
-
-// Constructor without labels (used by legacy --null-resid path):
-//   Output order: Z_tau1 ... Z_tauK  P_tau1 ... P_tauK  P_CCT
-    SPAsqrMethod(int ntaus, std::vector<SPAGRMClass> spagrm_vec)
-        : m_ntaus(ntaus), m_spagrm_vec(std::move(spagrm_vec)), m_hasLabels(false) {
+    SPAsqrMethod(
+        int ntaus,
+        std::vector<SPAGRMClass> spagrm_vec,
+        std::vector<std::string> tauLabels
+    )
+        : m_ntaus(ntaus),
+          m_spagrm_vec(std::move(spagrm_vec)),
+          m_tauLabels(std::move(tauLabels)),
+          m_hasLabels(true)
+    {
     }
 
     std::unique_ptr<MethodBase> clone() const override {
@@ -158,7 +162,11 @@ struct OutlierInfo {
     std::vector<std::vector<bool> > isOutlier;
 };
 
-OutlierInfo detectOutliers(const Eigen::MatrixXd &ResidMat, double outlierIqrRatio, double outlierAbsBound) {
+OutlierInfo detectOutliers(
+    const Eigen::MatrixXd &ResidMat,
+    double outlierIqrRatio,
+    double outlierAbsBound
+) {
     const Eigen::Index N = ResidMat.rows();
     const Eigen::Index K = ResidMat.cols();
 
@@ -222,13 +230,33 @@ OutlierInfo detectOutliers(const Eigen::MatrixXd &ResidMat, double outlierIqrRat
 // Shared pipeline: outlier detection → GRM → SPAGRM → marker engine
 // ══════════════════════════════════════════════════════════════════════
 
-static std::unique_ptr<SPAsqrMethod> buildSPAsqrMethod(
-    Eigen::MatrixXd &ResidMat,
+struct GRMEntry {
+    uint32_t row, col;
+    double value;
+    double factor; // 1 for diagonal, 2 for off-diagonal
+};
+
+// Load GRM entries from disk and convert to flat GRMEntry vector.
+static std::vector<GRMEntry> loadGrmEntries(
     const std::vector<std::string> &subjOrder,
     const std::vector<std::string> &famIIDs,
-    uint32_t nUsed,
     const std::string &spgrmGrabFile,
-    const std::string &spgrmGctaFile,
+    const std::string &spgrmGctaFile
+) {
+    SparseGRM grm = SparseGRM::load(spgrmGrabFile, spgrmGctaFile, subjOrder, famIIDs);
+    infoMsg("Sparse GRM: %zu entries after filtering", grm.nnz());
+    std::vector<GRMEntry> entries;
+    entries.reserve(grm.nnz());
+    for (const auto &e : grm.entries())
+        entries.push_back({e.row, e.col, e.value, (e.row == e.col) ? 1.0 : 2.0});
+    return entries;
+}
+
+// Build SPAsqrMethod from a pre-computed residual matrix and pre-loaded GRM entries.
+static std::unique_ptr<SPAsqrMethod> buildSPAsqrMethod(
+    Eigen::MatrixXd &ResidMat,
+    const std::vector<GRMEntry> &grmEntries,
+    uint32_t nUsed,
     double spaCutoff,
     double outlierIqrRatio,
     double outlierAbsBound,
@@ -243,25 +271,7 @@ static std::unique_ptr<SPAsqrMethod> buildSPAsqrMethod(
     infoMsg("Detecting outliers (IQR ratio=%.2f, abs bound=%.2f)", outlierIqrRatio, outlierAbsBound);
     OutlierInfo outlierInfo = detectOutliers(ResidMat, outlierIqrRatio, outlierAbsBound);
 
-    // ── 4. Load sparse GRM and compute variance terms ──────────────────
-
-    struct GRMEntry {
-        uint32_t row, col;
-        double value;
-        double factor; // 1 for diagonal, 2 for off-diagonal
-    };
-
-    std::vector<GRMEntry> grmEntries;
-
-    {
-        SparseGRM grm = SparseGRM::load(spgrmGrabFile, spgrmGctaFile, subjOrder, famIIDs);
-        infoMsg("Sparse GRM: %zu entries after filtering", grm.nnz());
-        grmEntries.reserve(grm.nnz());
-        for (const auto &e : grm.entries())
-            grmEntries.push_back({e.row, e.col, e.value, (e.row == e.col) ? 1.0 : 2.0});
-    }
-
-    // ── 5. Compute per-column variance terms ───────────────────────────
+    // ── 4. Compute per-column variance terms using pre-loaded GRM ────
     const int ntaus = static_cast<int>(K);
     std::vector<double> R_GRM_R_vec(ntaus, 0.0);
     std::vector<double> R_GRM_R_nonOutlier_vec(ntaus, 0.0);
@@ -323,22 +333,24 @@ static std::unique_ptr<SPAsqrMethod> buildSPAsqrMethod(
     }
 
     // ── 7. Build method ──────────────────────────────────────────────
-    std::unique_ptr<SPAsqrMethod> method;
-    if (tauLabels.empty())method = std::make_unique<SPAsqrMethod>(ntaus, std::move(spagrm_vec));
-    else method = std::make_unique<SPAsqrMethod>(ntaus, std::move(spagrm_vec), std::move(tauLabels));
+    std::unique_ptr<SPAsqrMethod> method = std::make_unique<SPAsqrMethod>(
+        ntaus,
+        std::move(spagrm_vec),
+        std::move(tauLabels)
+    );
 
     infoMsg("SPAsqr method built (%d taus)", ntaus);
     return method;
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// runSPAsqrPheno — --pheno + --pheno-quantitative entry point
+// runSPAsqr — multi-phenotype entry point with parallel conquer fits
 // ══════════════════════════════════════════════════════════════════════
 
-void runSPAsqrPheno(
+void runSPAsqr(
     const std::string &phenoFile,
     const std::string &covarFile,
-    const std::string &quantPhenoCol,
+    const std::vector<std::string> &phenoNames,
     const std::vector<std::string> &covarNames,
     const std::vector<double> &taus,
     const std::string &spgrmGrabFile,
@@ -362,10 +374,11 @@ void runSPAsqrPheno(
     const std::string &keepFile,
     const std::string &removeFile
 ) {
+    const int K = static_cast<int>(phenoNames.size());
     const int ntaus = static_cast<int>(taus.size());
 
-    // ── 1. Load phenotype/covariate data ────────────────────────────────────
-    infoMsg("Loading phenotype and covariate data");
+    // ── 1. Load phenotype/covariate data (union mask) ───────────────
+    infoMsg("SPAsqr: Loading phenotype and covariate data (%d phenotypes, %d taus)", K, ntaus);
     auto famIIDs = parseGenoIIDs(geno);
     SubjectData sd(std::move(famIIDs));
     if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile);
@@ -375,106 +388,152 @@ void runSPAsqrPheno(
     sd.setGenoLabel(geno.flagLabel());
     sd.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
     sd.finalize();
-    sd.dropNaInColumns({quantPhenoCol}); // remove subjects with missing phenotype
+    // Drop subjects with NA in ANY phenotype column (complete cases across traits).
+    sd.dropNaInColumns(phenoNames);
 
     const Eigen::Index N = static_cast<Eigen::Index>(sd.nUsed());
     infoMsg("Subjects after intersection: %lld", static_cast<long long>(N));
 
-    // Extract Y and X
-    Eigen::VectorXd Y = sd.getColumn(quantPhenoCol);
+    // ── 2. Extract covariates (shared across all phenotypes) ────────
     Eigen::MatrixXd X = covarNames.empty() ? Eigen::MatrixXd(N, 0) : sd.getColumns(covarNames);
     const int p = static_cast<int>(X.cols());
-    infoMsg("Quantitative phenotype: %s, %d covariates, %d tau levels", quantPhenoCol.c_str(), p, ntaus);
 
-    // ── 2. Compute bandwidth h ─────────────────────────────────────
+    // ── 3. Compute bandwidth h (shared) ─────────────────────────────
+    // Use the first phenotype's IQR for bandwidth; all phenotypes share h.
+    Eigen::VectorXd Y0 = sd.getColumn(phenoNames[0]);
+    double h;
+    if (spasqrH >= 0.0) {
+        h = spasqrH;
+    } else {
+        std::vector<double> ysorted(N);
+        Eigen::VectorXd::Map(ysorted.data(), N) = Y0;
+        std::sort(ysorted.begin(), ysorted.end());
+        auto quantile = [&](double prob) -> double {
+            double idx = prob * (N - 1);
+            Eigen::Index lo = static_cast<Eigen::Index>(std::floor(idx));
+            Eigen::Index hi = std::min(lo + 1, N - 1);
+            double frac = idx - lo;
+            return ysorted[lo] * (1.0 - frac) + ysorted[hi] * frac;
+        };
+        double iqr = quantile(0.75) - quantile(0.25);
+        double scale = (spasqrHScale >= 0.0) ? spasqrHScale : 3.0;
+        h = iqr / scale;
+        if (h <= 0.0) h = std::max(std::pow((std::log(N) + p) / static_cast<double>(N), 0.4), 0.05);
+    }
+    infoMsg("Bandwidth h = %.6f", h);
+
+    // ── 4. Parallel conquer fits: K × ntaus independent regressions ─
+    // Build flat work items: (pheno_idx, tau_idx).
+    // Each worker runs conquer::smqrGauss and writes one column of the
+    // per-phenotype ResidMat.
+    std::vector<Eigen::VectorXd> phenoY(K);
+    for (int k = 0; k < K; ++k)
+        phenoY[k] = sd.getColumn(phenoNames[k]);
+
+    // Per-phenotype residual matrices
+    std::vector<Eigen::MatrixXd> ResidMats(K);
+    for (int k = 0; k < K; ++k)
+        ResidMats[k].resize(N, ntaus);
+
+    const int totalFits = K * ntaus;
+    const int nWorkers = std::min(nthreads, totalFits);
+    infoMsg("SPAsqr: Running %d conquer fits with %d threads", totalFits, nWorkers);
+
+    std::atomic<int> nextFit{0};
+    std::vector<std::string> fitErrors(totalFits);
+
+    auto fitWorker = [&]() {
+        const double h1 = 1.0 / h;
+        for (;;) {
+            int idx = nextFit.fetch_add(1, std::memory_order_relaxed);
+            if (idx >= totalFits) break;
+            int k = idx / ntaus;
+            int t = idx % ntaus;
+
+            try {
+                infoMsg("[%s] conquer tau=%.4f ...", phenoNames[k].c_str(), taus[t]);
+                Eigen::VectorXd resid;
+                Eigen::VectorXd beta = conquer::smqrGauss(X, phenoY[k], taus[t], h, &resid, spasqrTol);
+                infoMsg("[%s] tau=%.4f intercept=%.6f", phenoNames[k].c_str(), taus[t], beta(0));
+
+                for (Eigen::Index i = 0; i < N; ++i) ResidMats[k](i, t) = taus[t] - math::pnorm(-resid(i) * h1);
+            } catch (const std::exception &ex) {
+                fitErrors[idx] = ex.what();
+            }
+        }
+    };
+
     {
-        double h;
-        if (spasqrH >= 0.0) {
-            // Explicit bandwidth from --spasqr-h
-            h = spasqrH;
-        } else {
-            // IQR-based: h = IQR(Y) / scale
-            std::vector<double> ysorted(N);
-            Eigen::VectorXd::Map(ysorted.data(), N) = Y;
-            std::sort(ysorted.begin(), ysorted.end());
-            auto quantile = [&](double prob) -> double {
-                double idx = prob * (N - 1);
-                Eigen::Index lo = static_cast<Eigen::Index>(std::floor(idx));
-                Eigen::Index hi = std::min(lo + 1, N - 1);
-                double frac = idx - lo;
-                return ysorted[lo] * (1.0 - frac) + ysorted[hi] * frac;
-            };
-            double iqr = quantile(0.75) - quantile(0.25);
-            double scale = (spasqrHScale >= 0.0) ? spasqrHScale : 3.0;
-            h = iqr / scale;
-            if (h <= 0.0) h = std::max(std::pow((std::log(N) + p) / static_cast<double>(N), 0.4), 0.05);
+        std::vector<std::thread> threads;
+        threads.reserve(nWorkers - 1);
+        for (int t = 0; t < nWorkers - 1; ++t)
+            threads.emplace_back(fitWorker);
+        fitWorker(); // caller participates
+        for (auto &th : threads)
+            th.join();
+    }
+
+    for (int idx = 0; idx < totalFits; ++idx) {
+        if (!fitErrors[idx].empty()) {
+            int k = idx / ntaus;
+            int t = idx % ntaus;
+            throw std::runtime_error("SPAsqr: conquer failed for phenotype '" +
+                                     phenoNames[k] + "' tau=" + std::to_string(taus[t]) + ": " + fitErrors[idx]);
         }
-        infoMsg("Bandwidth h = %.6f", h);
+    }
 
-        // ── 3. Run conquer for each tau → build residual matrix ───────────
-        Eigen::MatrixXd ResidMat(N, ntaus);
-        for (int t = 0; t < ntaus; ++t) {
-            infoMsg("  conquer tau=%.4f ...", taus[t]);
-            Eigen::VectorXd resid;
-            Eigen::VectorXd beta = conquer::smqrGauss(X, Y, taus[t], h, &resid, spasqrTol);
-            infoMsg("    intercept=%.6f", beta(0));
+    // ── 5. Build tau labels ────────────────────────────────────────────
+    std::vector<std::string> tauLabels;
+    tauLabels.reserve(ntaus);
+    for (double tau : taus) {
+        std::ostringstream oss;
+        oss << "Tau" << tau;
+        tauLabels.push_back(oss.str());
+    }
 
-            // ResidMat column = tau - Phi(-resid / h)   (smoothed quantile residual)
-            const double h1 = 1.0 / h;
-            for (Eigen::Index i = 0; i < N; ++i)
-                ResidMat(i, t) = taus[t] - math::pnorm(-resid(i) * h1);
-        }
+    // ── 6. Load genotype data and GRM once (shared) ────────────────
+    auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(), nSnpPerChunk);
 
-        // ── 4. Build tau labels ────────────────────────────────────────────
-        std::vector<std::string> tauLabels;
-        tauLabels.reserve(ntaus);
-        for (double tau : taus) {
-            std::ostringstream oss;
-            oss << "Tau" << tau;
-            tauLabels.push_back(oss.str());
-        }
+    std::vector<GRMEntry> grmEntries = loadGrmEntries(sd.usedIIDs(), sd.famIIDs(), spgrmGrabFile, spgrmGctaFile);
 
-        // ── 5. Load genotype data ────────────────────────────────────────────────
-        auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(), nSnpPerChunk);
+    // ── 7. Build per-phenotype SPAsqrMethod + PhenoTask ─────────────
+    std::vector<PhenoTask> tasks(K);
 
-        // ── 6. Build method via shared pipeline ──────────────────────────────────
+    for (int k = 0; k < K; ++k) {
+        infoMsg("[%s] Building SPAsqr method (%d taus)", phenoNames[k].c_str(), ntaus);
         auto method = buildSPAsqrMethod(
-            ResidMat,
-            sd.usedIIDs(),
-            sd.famIIDs(),
+            ResidMats[k],
+            grmEntries,
             genoData->nSubjUsed(),
-            spgrmGrabFile,
-            spgrmGctaFile,
             spaCutoff,
             outlierIqrRatio,
             outlierAbsBound,
             minMafCutoff,
             minMacCutoff,
-            std::move(tauLabels)
+            tauLabels // copy; last iteration could move but let's keep it simple
         );
 
-        // ── 7. Build PhenoTask and run multiPhenoEngine ──────────────────────────
-        std::vector<PhenoTask> tasks(1);
-        tasks[0].phenoName = quantPhenoCol;
-        tasks[0].method = std::move(method);
-        // Identity mapping: all subjects in union = all subjects in phenotype (K=1)
-        tasks[0].unionToLocal.resize(genoData->nSubjUsed());
-        std::iota(tasks[0].unionToLocal.begin(), tasks[0].unionToLocal.end(), 0u);
-        tasks[0].nUsed = genoData->nSubjUsed();
-
-        infoMsg("Starting marker-level association (SPAsqr, %d taus, %d threads)", ntaus, nthreads);
-        multiPhenoEngine(
-            *genoData,
-            tasks,
-            outPrefix,
-            "SPAsqr",
-            compression,
-            compressionLevel,
-            nthreads,
-            missingCutoff,
-            minMafCutoff,
-            minMacCutoff,
-            hweCutoff
-        );
+        tasks[k].phenoName = phenoNames[k];
+        tasks[k].method = std::move(method);
+        // Identity mapping: all subjects are in the union (complete cases)
+        tasks[k].unionToLocal.resize(genoData->nSubjUsed());
+        std::iota(tasks[k].unionToLocal.begin(), tasks[k].unionToLocal.end(), 0u);
+        tasks[k].nUsed = genoData->nSubjUsed();
     }
+
+    // ── 8. Run multi-phenotype engine ───────────────────────────────
+    infoMsg("SPAsqr: Starting multi-phenotype association (%d phenotypes, %d taus, %d threads)", K, ntaus, nthreads);
+    multiPhenoEngine(
+        *genoData,
+        tasks,
+        outPrefix,
+        "SPAsqr",
+        compression,
+        compressionLevel,
+        nthreads,
+        missingCutoff,
+        minMafCutoff,
+        minMacCutoff,
+        hweCutoff
+    );
 }

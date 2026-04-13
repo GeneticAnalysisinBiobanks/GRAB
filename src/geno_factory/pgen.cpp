@@ -134,8 +134,12 @@ PgenData::PgenData(
     uint32_t nUsed,
     int nMarkersEachChunk
 )
-    : m_pgenFile(std::move(pgenFile)), m_nSubjInFile(nSamplesInFile), m_nSubjUsed(nUsed), m_usedMask(usedMask),
-    m_pgfiAlloc(nullptr, std::free) {
+    : m_pgenFile(std::move(pgenFile)),
+      m_nSubjInFile(nSamplesInFile),
+      m_nSubjUsed(nUsed),
+      m_usedMask(usedMask),
+      m_pgfiAlloc(nullptr, std::free)
+{
     m_allUsed = (nUsed == nSamplesInFile);
 
     // ---- Parse .pvar ----
@@ -211,7 +215,10 @@ PgenData::PgenData(
 
 PgenData::~PgenData() = default;
 
-std::vector<std::vector<uint64_t> > PgenData::buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize) {
+std::vector<std::vector<uint64_t> > PgenData::buildChunks(
+    const std::vector<MarkerInfo> &markers,
+    int chunkSize
+) {
     std::vector<std::vector<uint64_t> > chunks;
     if (markers.empty()) return chunks;
     std::vector<uint64_t> cur;
@@ -256,17 +263,23 @@ struct PgenCursor::Impl {
     uint32_t rawSampleCt;
     bool allUsed;
 
-    Impl() : pgrAlloc(nullptr, std::free) {
+    Impl()
+        : pgrAlloc(nullptr, std::free)
+    {
     }
 
-    ~Impl() {
+    ~Impl()
+    {
         plink2::PglErr reterr = plink2::kPglRetSuccess;
         plink2::CleanupPgr(&pgr, &reterr);
     }
 
 };
 
-PgenCursor::PgenCursor(const PgenData &parent) : m_parent(parent), m_impl(std::make_unique<Impl>()) {
+PgenCursor::PgenCursor(const PgenData &parent)
+    : m_parent(parent),
+      m_impl(std::make_unique<Impl>())
+{
     using namespace plink2;
 
     auto &impl = *m_impl;
@@ -402,7 +415,10 @@ void PgenCursor::getGenotypes(
     mac = gs.mac;
 }
 
-void PgenCursor::getGenotypesSimple(uint64_t gIndex, Eigen::Ref<Eigen::VectorXd> out) {
+void PgenCursor::getGenotypesSimple(
+    uint64_t gIndex,
+    Eigen::Ref<Eigen::VectorXd> out
+) {
     using namespace plink2;
     auto &impl = *m_impl;
     const uint32_t sampleCt = impl.sampleCt;

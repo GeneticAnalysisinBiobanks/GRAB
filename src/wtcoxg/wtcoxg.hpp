@@ -81,7 +81,10 @@ class WtCoxGMethod : public MethodBase {
         double score_ext, score_noext;
     };
 
-    DualResult computeDual(Eigen::Ref<Eigen::VectorXd> GVec, int markerInChunkIdx);
+    DualResult computeDual(
+        Eigen::Ref<Eigen::VectorXd> GVec,
+        int markerInChunkIdx
+    );
 
 // Access per-chunk ref info (for LEAF meta-analysis).
     const WtCoxGRefInfo &chunkRefInfoAt(int idx) const {
@@ -148,7 +151,10 @@ struct RefAfRecord {
 // Two-column numeric fallback: if there is no header and each line has exactly
 // two numeric values, they are treated as (ALT_FREQS, OBS_CT) in .bim order.
 // When isNumericFallback is non-null it is set to true in that case.
-std::vector<RefAfRecord> loadRefAfFile(const std::string &filename, bool *isNumericFallback = nullptr);
+std::vector<RefAfRecord> loadRefAfFile(
+    const std::string &filename,
+    bool *isNumericFallback = nullptr
+);
 
 // Match bim markers to ref-af records by (chr, bp, a1, a2) — exact only.
 // Returns a map: genoIndex → {AF_ref, obs_ct, ...} for matched markers.
@@ -167,14 +173,20 @@ struct MatchedMarkerInfo {
 // Sequential assignment for the two-column numeric fallback: rows are
 // assumed to be in .bim order, AF_ref = ALT_FREQS directly (col 5 freq).
 // Throws if row count != bim marker count.
-std::vector<MatchedMarkerInfo> matchMarkersNumeric(const GenoMeta &plinkData, const std::vector<RefAfRecord> &refAf);
+std::vector<MatchedMarkerInfo> matchMarkersNumeric(
+    const GenoMeta &plinkData,
+    const std::vector<RefAfRecord> &refAf
+);
 
 // Match bim markers to ref-af records by (CHROM, ID) with allele orientation:
 //   If afreq (ALT,REF) matches bim (col5,col6) -> AF_ref = ALT_FREQS
 //   If afreq (REF,ALT) matches bim (col5,col6) -> AF_ref = 1-ALT_FREQS
 //   Otherwise the marker is dropped.
 // obs_ct is passed through directly (allele count).
-std::vector<MatchedMarkerInfo> matchMarkers(const GenoMeta &plinkData, const std::vector<RefAfRecord> &refAf);
+std::vector<MatchedMarkerInfo> matchMarkers(
+    const GenoMeta &plinkData,
+    const std::vector<RefAfRecord> &refAf
+);
 
 // Scan genotypes to compute per-marker case/control allele frequencies.
 // Populates mu0, mu1, n0, n1, mu_int in each MatchedMarkerInfo.
@@ -235,4 +247,33 @@ void runWtCoxGPheno(
     const std::string &keepFile = {},
     const std::string &removeFile = {}
 
+);
+
+// Multi-phenotype entry point: loads data/ref-AF/GRM once, parallelizes
+// P null-model fits and batch-effect tests with min(nthreads, P) workers,
+// then runs a single multiPhenoEngine call for all P phenotypes.
+// Each phenoSpec is "TIME:EVENT" (survival) or "COLNAME" (binary).
+void runWtCoxG(
+    const std::string &phenoFile,
+    const std::string &covarFile,
+    const std::vector<std::string> &covarNames,
+    const std::vector<std::string> &phenoSpecs,
+    const GenoSpec &geno,
+    const std::string &refAfFile,
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double refPrevalence,
+    double cutoff,
+    double spaCutoff,
+    int nthreads,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile = {},
+    const std::string &removeFile = {}
 );

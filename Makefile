@@ -50,10 +50,30 @@ else
   SIMD_FLAGS :=
 endif
 
+# ── Architecture baseline for GRAB sources (runtime SIMD dispatch) ────────────
+# GRAB's own SIMD kernels use __attribute__((target(...))) to generate
+# AVX-512 / AVX2 / scalar variants and resolve at startup via
+# __builtin_cpu_supports().  The baseline march must NOT include AVX2 so
+# that the scalar codepaths remain runnable on older x86-64 hardware.
+# Third-party code (pgenlib, bgen, htslib, …) keeps compile-time SIMD_FLAGS.
+UNAME_M := $(shell uname -m 2>/dev/null)
+ifeq ($(UNAME_M),x86_64)
+  # x86-64-v2 = SSE4.2, SSSE3, POPCNT, CX16 (Nehalem 2008+)
+  GRAB_MARCH := -march=x86-64-v2
+else
+  GRAB_MARCH :=
+endif
+
 # ── Compiler & linker flags ───────────────────────────────────────────────────
+# CXXFLAGS: used for third-party C++ (pgenlib, bgen) — includes SIMD_FLAGS.
 CXXFLAGS := -std=c++17 -O3 -DNDEBUG $(PLATFORM_FLAGS) \
             -ffunction-sections -fdata-sections \
             -funroll-loops $(SIMD_FLAGS) \
+            -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare
+# GRAB_CXXFLAGS: used for src/*.cpp — no compile-time SIMD; uses target attrs.
+GRAB_CXXFLAGS := -std=c++17 -O3 -DNDEBUG $(GRAB_MARCH) $(PLATFORM_FLAGS) \
+            -ffunction-sections -fdata-sections \
+            -funroll-loops \
             -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare
 CFLAGS   := -O3 -DNDEBUG $(PLATFORM_FLAGS) -ffunction-sections -fdata-sections $(SIMD_FLAGS)
 STATIC_LIBS := -static-libstdc++ -static-libgcc
@@ -160,7 +180,7 @@ $(BUILD_DIR) tmp:
 # ── Compile GRAB (C++) ────────────────────────────────────────────────────────
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | tmp
 	@mkdir -p $(@D)
-	$(CXX) $(CXXFLAGS) -MMD -MP $(INCLUDES) -c $< -o $@
+	$(CXX) $(GRAB_CXXFLAGS) -MMD -MP $(INCLUDES) -c $< -o $@
 
 -include $(DEPS)
 

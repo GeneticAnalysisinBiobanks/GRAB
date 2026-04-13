@@ -142,7 +142,10 @@ class AdmixData {
         const std::string &excludeFile
     );
 
-    static std::vector<std::vector<uint64_t> > buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize);
+    static std::vector<std::vector<uint64_t> > buildChunks(
+        const std::vector<MarkerInfo> &markers,
+        int chunkSize
+    );
 
     std::string m_abedFile;
     uint16_t m_nAnc;
@@ -197,11 +200,17 @@ class AdmixCursor {
   private:
     void loadBlock(uint64_t startMarker);
 
-    const uint8_t *readTrackPtr(uint64_t genoIndex, int trackIdx);
+    const uint8_t *readTrackPtr(
+        uint64_t genoIndex,
+        int trackIdx
+    );
 
     // Decode a single track from raw bytes into a dense vector.
     // Handles bitmask (subset) or all-used (identity) path.
-    void decodeTrack(const uint8_t *raw, Eigen::Ref<Eigen::VectorXd> out);
+    void decodeTrack(
+        const uint8_t *raw,
+        Eigen::Ref<Eigen::VectorXd> out
+    );
 
     const AdmixData &m_data;
     BGZF *m_bgzf;
@@ -232,10 +241,19 @@ class AbedWriter {
   public:
     // Create a new .abed v2 file (8-byte header, no nMarkers).
     //   noMissing: if true, sets NO_MISSING flag in nAnc high bit
-    AbedWriter(const std::string &filename, uint8_t nAnc, uint32_t nSamples, bool noMissing = false, int nthreads = 1);
+    AbedWriter(
+        const std::string &filename,
+        uint8_t nAnc,
+        uint32_t nSamples,
+        bool noMissing = false,
+        int nthreads = 1
+    );
 
     // Write one track (2-bit packed, ceil(nSamples/4) bytes).
-    void writeTrack(const uint8_t *data, uint64_t nBytes);
+    void writeTrack(
+        const uint8_t *data,
+        uint64_t nBytes
+    );
 
     // Encode integer values (0, 1, 2 or -1 for missing) into 2-bit packed format.
     // Returns packed bytes. `values` has nSamples elements.

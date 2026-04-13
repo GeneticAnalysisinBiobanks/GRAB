@@ -29,7 +29,13 @@ namespace math {
 // ──────────────────────────────────────────────────────────────────────
 
 // Normal CDF: P(X ≤ x) or complementary tail, optionally on log scale.
-inline double pnorm(double x, double mean = 0.0, double sd = 1.0, bool lower_tail = true, bool log_p = false) {
+inline double pnorm(
+    double x,
+    double mean = 0.0,
+    double sd = 1.0,
+    bool lower_tail = true,
+    bool log_p = false
+) {
     if (std::isnan(x)) return std::numeric_limits<double>::quiet_NaN();
     if (!std::isfinite(x)) {
         double r = ((x > 0) == lower_tail) ? 1.0 : 0.0;
@@ -43,7 +49,13 @@ inline double pnorm(double x, double mean = 0.0, double sd = 1.0, bool lower_tai
 }
 
 // Normal quantile (inverse CDF).
-inline double qnorm(double p, double mean = 0.0, double sd = 1.0, bool lower_tail = true, bool log_p = false) {
+inline double qnorm(
+    double p,
+    double mean = 0.0,
+    double sd = 1.0,
+    bool lower_tail = true,
+    bool log_p = false
+) {
     if (log_p) p = std::exp(p);
     if (!lower_tail) p = 1.0 - p;
     p = std::clamp(p, 1e-300, 1.0 - 1e-15);
@@ -52,7 +64,12 @@ inline double qnorm(double p, double mean = 0.0, double sd = 1.0, bool lower_tai
 }
 
 // Chi-squared quantile.
-inline double qchisq(double p, double df, bool lower_tail = true, bool log_p = false) {
+inline double qchisq(
+    double p,
+    double df,
+    bool lower_tail = true,
+    bool log_p = false
+) {
     if (log_p) p = std::exp(p);
     if (!lower_tail) p = 1.0 - p;
     p = std::clamp(p, 1e-300, 1.0 - 1e-15);
@@ -61,7 +78,11 @@ inline double qchisq(double p, double df, bool lower_tail = true, bool log_p = f
 }
 
 // Student-t CDF (two-tailed p-value helper).
-inline double pt(double t, double df, bool lower_tail = true) {
+inline double pt(
+    double t,
+    double df,
+    bool lower_tail = true
+) {
     if (std::isnan(t)) return std::numeric_limits<double>::quiet_NaN();
     boost::math::students_t_distribution<double> dist(df);
     return lower_tail ? boost::math::cdf(dist, t) : boost::math::cdf(boost::math::complement(dist, t));
@@ -72,10 +93,22 @@ inline double pt(double t, double df, bool lower_tail = true) {
 // ──────────────────────────────────────────────────────────────────────
 
 // P(X ≤ dh, Y ≤ dk) where (X,Y) ~ BVN(0, 0, 1, 1, r).
-double bvnCdf(double dh, double dk, double r);
+double bvnCdf(
+    double dh,
+    double dk,
+    double r
+);
 
 // P(lo1 < X ≤ hi1, lo2 < Y ≤ hi2) where (X,Y) ~ BVN(0, [var1, cov12; cov12, var2]).
-double pmvnorm2d(double lo1, double hi1, double lo2, double hi2, double var1, double cov12, double var2);
+double pmvnorm2d(
+    double lo1,
+    double hi1,
+    double lo2,
+    double hi2,
+    double var1,
+    double cov12,
+    double var2
+);
 
 // ──────────────────────────────────────────────────────────────────────
 // § 3  Brent root-finding
@@ -83,7 +116,12 @@ double pmvnorm2d(double lo1, double hi1, double lo2, double hi2, double var1, do
 
 // Find x in [a,b] s.t. f(x) ≈ 0 using Brent's method.
 // Requires f(a) and f(b) to have opposite signs.
-template <typename F> double findRootBrent(F &&f, double a, double b, double tol = 1e-8) {
+template <typename F> double findRootBrent(
+    F &&f,
+    double a,
+    double b,
+    double tol = 1e-8
+) {
     double fa = f(a);
     double fb = f(b);
     if (fa * fb > 0.0) throw std::runtime_error("findRootBrent: root not bracketed");
@@ -152,31 +190,49 @@ template <typename F> double findRootBrent(F &&f, double a, double b, double tol
 // ──────────────────────────────────────────────────────────────────────
 
 // MGF: M_G^(k)(t) for k = 0, 1, 2.
-inline double mG0(double t, double MAF) {
+inline double mG0(
+    double t,
+    double MAF
+) {
     double a = 1.0 - MAF + MAF * std::exp(t);
     return a * a;
 }
 
-inline double mG1(double t, double MAF) {
+inline double mG1(
+    double t,
+    double MAF
+) {
     double e = MAF * std::exp(t);
     return 2.0 * e * (1.0 - MAF + e);
 }
 
-inline double mG2(double t, double MAF) {
+inline double mG2(
+    double t,
+    double MAF
+) {
     double e = MAF * std::exp(t);
     return 2.0 * e * e + 2.0 * e * (1.0 - MAF + e);
 }
 
 // CGF: K^(k)(t) = d^k/dt^k log M(t).
-inline double kG0(double t, double MAF) {
+inline double kG0(
+    double t,
+    double MAF
+) {
     return std::log(mG0(t, MAF));
 }
 
-inline double kG1(double t, double MAF) {
+inline double kG1(
+    double t,
+    double MAF
+) {
     return mG1(t, MAF) / mG0(t, MAF);
 }
 
-inline double kG2(double t, double MAF) {
+inline double kG2(
+    double t,
+    double MAF
+) {
     double m0 = mG0(t, MAF);
     double m1 = mG1(t, MAF);
     double m2 = mG2(t, MAF);
@@ -185,7 +241,13 @@ inline double kG2(double t, double MAF) {
 
 // Fused: compute K0, K1, K2 with a single exp() call per subject.
 // ~2x fewer floating-point ops than calling kG0/kG1/kG2 separately.
-inline void kG012(double t, double MAF, double &K0, double &K1, double &K2) {
+inline void kG012(
+    double t,
+    double MAF,
+    double &K0,
+    double &K1,
+    double &K2
+) {
     const double e = MAF * std::exp(t);
     const double a = 1.0 - MAF + e; // (1-p) + p*e^t
     const double m0 = a * a;
@@ -247,7 +309,13 @@ OptimResult nelderMead(
 // ──────────────────────────────────────────────────────────────────────
 
 // Minimise f(x) on [lo, hi] using Brent's parabolic / golden-section method.
-template <typename F> double brentMin(F &&f, double lo, double hi, double tol = 1e-6, int maxIter = 200) {
+template <typename F> double brentMin(
+    F &&f,
+    double lo,
+    double hi,
+    double tol = 1e-6,
+    int maxIter = 200
+) {
     constexpr double golden = 0.3819660112501051; // (3 - sqrt(5)) / 2
     double a = lo, b = hi;
     double x = a + golden * (b - a);

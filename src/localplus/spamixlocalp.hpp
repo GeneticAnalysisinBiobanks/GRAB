@@ -64,7 +64,13 @@ struct RprodSoA {
         target_hj.reserve(n);
     }
 
-    void push_back(uint32_t i, uint32_t j, double rp, uint8_t th_i, uint8_t th_j) {
+    void push_back(
+        uint32_t i,
+        uint32_t j,
+        double rp,
+        uint8_t th_i,
+        uint8_t th_j
+    ) {
         idx_i.push_back(i);
         idx_j.push_back(j);
         rprod.push_back(rp);
@@ -75,11 +81,18 @@ struct RprodSoA {
 };
 
 // Build unified SoA from PhiMatrices and residual vector (once per phenotype).
-RprodSoA buildRprodSoA(const PhiMatrices &phi, const Eigen::VectorXd &R);
+RprodSoA buildRprodSoA(
+    const PhiMatrices &phi,
+    const Eigen::VectorXd &R
+);
 
 // Compute off-diagonal variance from SoA phi entries and hapcount array.
 // Uses AVX2 when available, scalar fallback otherwise.
-double computeVarOffSoA(const RprodSoA &rp, const uint32_t *hInt, uint32_t nUsed);
+double computeVarOffSoA(
+    const RprodSoA &rp,
+    const uint32_t *hInt,
+    uint32_t nUsed
+);
 
 // Batch size for amortizing phi scan across multiple markers.
 // Scanning phi is memory-bandwidth-bound; processing B markers per scan
@@ -91,7 +104,13 @@ static constexpr int PHI_BATCH = 8;
 //             layout: hIntSM[subj * PHI_BATCH + batchIdx]
 //   batchLen: actual marker count in this batch (≤ PHI_BATCH)
 //   varOff:   output array [batchLen]
-void computeVarOffSoABatch(const RprodSoA &rp, const uint32_t *hIntSM, uint32_t nUsed, int batchLen, double *varOff);
+void computeVarOffSoABatch(
+    const RprodSoA &rp,
+    const uint32_t *hIntSM,
+    uint32_t nUsed,
+    int batchLen,
+    double *varOff
+);
 
 // ======================================================================
 // Phi estimation
@@ -107,7 +126,12 @@ void computeVarOffSoABatch(const RprodSoA &rp, const uint32_t *hIntSM, uint32_t 
 //   grm:        sparse GRM (determines which pairs to compute)
 //   ancIdx:     which ancestry to estimate (0-based)
 //   MAF cutoff is hardcoded to 0.01.
-PhiMatrices estimatePhiOneAncestry(const AdmixData &admixData, const SparseGRM &grm, int ancIdx, int nthreads = 1);
+PhiMatrices estimatePhiOneAncestry(
+    const AdmixData &admixData,
+    const SparseGRM &grm,
+    int ancIdx,
+    int nthreads = 1
+);
 
 // ======================================================================
 // SPAmixLocalPlus variance computation
@@ -118,7 +142,12 @@ PhiMatrices estimatePhiOneAncestry(const AdmixData &admixData, const SparseGRM &
 //            + sum_i R_i^2 * h_i * q(1-q)
 //
 // where w_scenario is the haplotype-count multiplier (4, 2, 2, or 1).
-double computePhiVariance(const Eigen::VectorXd &R, const Eigen::VectorXd &hapcount, double q, const PhiMatrices &phi);
+double computePhiVariance(
+    const Eigen::VectorXd &R,
+    const Eigen::VectorXd &hapcount,
+    double q,
+    const PhiMatrices &phi
+);
 
 // ======================================================================
 // SPA p-value with outlier split

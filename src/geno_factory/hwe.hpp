@@ -23,8 +23,18 @@ struct GenoStats {
 // Exact HWE test (SNPHWE2).  O(het_count) time, O(1) auxiliary memory.
 // This is the plink2 --hardy default method.
 // Returns p-value in [0, 1].
-double HweExact(uint32_t obs_hets, uint32_t obs_hom1, uint32_t obs_hom2);
+double HweExact(
+    uint32_t obs_hets,
+    uint32_t obs_hom1,
+    uint32_t obs_hom2
+);
 
 // Compute QC stats from genotype class counts.
 // Always uses the exact test (plink2 default).
-GenoStats statsFromCounts(uint32_t nHom1, uint32_t nHet, uint32_t nHom2, uint32_t nMissing, uint32_t nSamples);
+GenoStats statsFromCounts(
+    uint32_t nHom1,
+    uint32_t nHet,
+    uint32_t nHom2,
+    uint32_t nMissing,
+    uint32_t nSamples
+);

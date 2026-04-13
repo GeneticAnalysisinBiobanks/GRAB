@@ -37,7 +37,10 @@ struct PerPhenoInfo {
 };
 
 // Extract dense per-phenotype vector from union-dimension vector.
-inline Eigen::VectorXd extractPhenoVec(const Eigen::VectorXd &unionVec, const PerPhenoInfo &info) {
+inline Eigen::VectorXd extractPhenoVec(
+    const Eigen::VectorXd &unionVec,
+    const PerPhenoInfo &info
+) {
     Eigen::VectorXd out(info.nUsed);
     for (Eigen::Index i = 0; i < unionVec.size(); ++i) {
         uint32_t li = info.unionToLocal[static_cast<size_t>(i)];
@@ -47,7 +50,10 @@ inline Eigen::VectorXd extractPhenoVec(const Eigen::VectorXd &unionVec, const Pe
 }
 
 // Extract dense per-phenotype matrix from union-dimension matrix.
-inline Eigen::MatrixXd extractPhenoMat(const Eigen::MatrixXd &unionMat, const PerPhenoInfo &info) {
+inline Eigen::MatrixXd extractPhenoMat(
+    const Eigen::MatrixXd &unionMat,
+    const PerPhenoInfo &info
+) {
     Eigen::MatrixXd out(info.nUsed, unionMat.cols());
     for (Eigen::Index i = 0; i < unionMat.rows(); ++i) {
         uint32_t li = info.unionToLocal[static_cast<size_t>(i)];
@@ -82,7 +88,10 @@ class SubjectData {
 // ── Subject filter (optional, call before finalize) ─────────────────
 // Apply --keep / --remove subject-ID files (PLINK2-compatible format).
 // Either path may be empty (no-op).  Must be called before finalize().
-    void setKeepRemove(const std::string &keepFile, const std::string &removeFile);
+    void setKeepRemove(
+        const std::string &keepFile,
+        const std::string &removeFile
+    );
 
 // Set GRM subject IDs for intersection (GRM step).
 // Call before finalize().  Empty set → skip GRM intersection.
@@ -187,7 +196,10 @@ class SubjectData {
     Eigen::MatrixXd getColumns(const std::vector<std::string> &names) const;
 
 // Zero-allocation: copy named columns directly into target matrix columns.
-    void fillColumnsInto(const std::vector<std::string> &names, Eigen::Ref<Eigen::MatrixXd> target) const;
+    void fillColumnsInto(
+        const std::vector<std::string> &names,
+        Eigen::Ref<Eigen::MatrixXd> target
+    ) const;
 
 // ── Post-finalize NA filtering ─────────────────────────────────────
 // Drop subjects with NaN in any of the named pheno/covar columns.
@@ -197,7 +209,11 @@ class SubjectData {
 // ── Post-finalize setters (for computed regression path) ───────────
 // Sets residuals, weights, and indicator AFTER finalize, replacing
 // whatever was loaded from file.
-    void setResidWeightIndicator(Eigen::VectorXd resid, Eigen::VectorXd weight, Eigen::VectorXd ind);
+    void setResidWeightIndicator(
+        Eigen::VectorXd resid,
+        Eigen::VectorXd weight,
+        Eigen::VectorXd ind
+    );
 
 // ── Direct initialization from a pre-computed bitmask ──────────────
 // Bypasses the normal load/finalize pipeline.  Sets the used-mask,
@@ -232,7 +248,10 @@ class SubjectData {
         std::vector<std::string> colNames; // from header (always populated)
     };
 
-    static RawFile parseIIDFile(const std::string &filename, int expectCols);
+    static RawFile parseIIDFile(
+        const std::string &filename,
+        int expectCols
+    );
 
 // expectCols: -1 = auto-detect from header;
 //              N = require exactly N data columns.

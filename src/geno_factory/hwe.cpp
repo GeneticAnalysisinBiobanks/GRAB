@@ -15,7 +15,11 @@
 #include <cstdint>
 #include <limits>
 
-double HweExact(uint32_t obs_hets, uint32_t obs_hom1, uint32_t obs_hom2) {
+double HweExact(
+    uint32_t obs_hets,
+    uint32_t obs_hom1,
+    uint32_t obs_hom2
+) {
     const int64_t obs_homc = std::max(obs_hom1, obs_hom2);
     const int64_t obs_homr = std::min(obs_hom1, obs_hom2);
     const int64_t rare = 2 * obs_homr + static_cast<int64_t>(obs_hets);
@@ -113,7 +117,13 @@ double HweExact(uint32_t obs_hets, uint32_t obs_hom1, uint32_t obs_hom2) {
     return std::min(p / sum, 1.0);
 }
 
-GenoStats statsFromCounts(uint32_t nHom1, uint32_t nHet, uint32_t nHom2, uint32_t nMissing, uint32_t nSamples) {
+GenoStats statsFromCounts(
+    uint32_t nHom1,
+    uint32_t nHet,
+    uint32_t nHom2,
+    uint32_t nMissing,
+    uint32_t nSamples
+) {
     const uint32_t nonMissing = nSamples - nMissing;
     GenoStats gs;
     gs.altCounts = 2 * nHom1 + nHet; // count A1 (ALT)

@@ -44,7 +44,10 @@ struct GenoSpec {
 };
 
 // Return a descriptive label for the GRM source, e.g. "--sp-grm-grab e_grm.grab".
-inline std::string grmFlagLabel(const std::string &grabFile, const std::string &gctaFile) {
+inline std::string grmFlagLabel(
+    const std::string &grabFile,
+    const std::string &gctaFile
+) {
     if (!grabFile.empty()) return "--sp-grm-grab " + grabFile;
     if (!gctaFile.empty()) return "--sp-grm-plink2 " + gctaFile;
     return "";
@@ -131,6 +134,9 @@ class GenoCursor {
     ) = 0;
 
     // Lightweight variant: genotype vector only, missing → NaN, no QC stats.
-    virtual void getGenotypesSimple(uint64_t gIndex, Eigen::Ref<Eigen::VectorXd> out) = 0;
+    virtual void getGenotypesSimple(
+        uint64_t gIndex,
+        Eigen::Ref<Eigen::VectorXd> out
+    ) = 0;
 
 };

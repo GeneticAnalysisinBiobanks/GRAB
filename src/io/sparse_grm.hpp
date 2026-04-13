@@ -32,7 +32,10 @@ class SparseGRM {
     // dropped.  `subjectOrder` defines the canonical index mapping so that
     // quadratic-form vectors can use the same ordering.
     // Stores lower triangle + diagonal only (half-storage).
-    SparseGRM(const std::string &filename, const std::vector<std::string> &subjectOrder);
+    SparseGRM(
+        const std::string &filename,
+        const std::vector<std::string> &subjectOrder
+    );
 
     // ── GCTA format (plink2 --make-grm-sparse) ────────────────────────
     // Reads `spFile` (the .grm.sp file) and derives the .grm.id path from it.
@@ -60,19 +63,33 @@ class SparseGRM {
     // Compute  x^T G x  using half-storage:
     //   sum_diag(value * x[i]²) + 2 * sum_offdiag(value * x[i] * x[j]).
     // `x` must have size == nSubjects() and use the same order as subjectOrder.
-    double quadForm(const double *x, uint32_t n) const;
+    double quadForm(
+        const double *x,
+        uint32_t n
+    ) const;
 
     // Compute  x^T G y  (full bilinear form, symmetric G):
     //   sum_diag(value * x[i]*y[i]) + sum_offdiag(value * (x[i]*y[j] + x[j]*y[i])).
-    double bilinearForm(const double *x, const double *y, uint32_t n) const;
+    double bilinearForm(
+        const double *x,
+        const double *y,
+        uint32_t n
+    ) const;
 
     // Matrix-vector multiply:  result = G * x
     // Handles lower-tri symmetry internally (result is size n).
-    void multiply(const double *x, double *result, uint32_t n) const;
+    void multiply(
+        const double *x,
+        double *result,
+        uint32_t n
+    ) const;
 
     // SPAmixPlus variance:  2 * sum(grm * R[i]*R[j]) - R·R
     //   (summing over lower-tri + diagonal entries).
-    double spaVariance(const double *R, uint32_t n) const;
+    double spaVariance(
+        const double *R,
+        uint32_t n
+    ) const;
 
     const std::vector<Entry> &entries() const {
         return m_entries;
@@ -101,7 +118,10 @@ class SparseGRM {
     );
 
     // ── From pre-built entries (re-indexing) ──────────────────────────
-    static SparseGRM fromEntries(uint32_t nSubj, std::vector<Entry> entries);
+    static SparseGRM fromEntries(
+        uint32_t nSubj,
+        std::vector<Entry> entries
+    );
 
     // ── Lightweight subject-ID scanner ─────────────────────────────────
     // Scans GRM file(s) and returns the set of unique subject IDs that

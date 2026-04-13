@@ -20,7 +20,11 @@ static std::vector<std::string> splitWS(const std::string &s) {
 
 // Determine which 0-based column index is the IID given the first line.
 // Returns the IID column index (0-based) and whether the first line is a header.
-static void detectFormat(const std::string &firstLine, int &iidCol, bool &hasHeader) {
+static void detectFormat(
+    const std::string &firstLine,
+    int &iidCol,
+    bool &hasHeader
+) {
     if (!firstLine.empty() && firstLine[0] == '#') {
         // Header line
         hasHeader = true;

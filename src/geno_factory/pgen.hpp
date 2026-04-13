@@ -113,7 +113,10 @@ class PgenData : public GenoMeta {
   private:
     void parsePvar(const std::string &pvarFile);
 
-    static std::vector<std::vector<uint64_t> > buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize);
+    static std::vector<std::vector<uint64_t> > buildChunks(
+        const std::vector<MarkerInfo> &markers,
+        int chunkSize
+    );
 
     std::string m_pgenFile;
     bool m_allUsed;
@@ -165,7 +168,10 @@ class PgenCursor : public GenoCursor {
         std::vector<uint32_t> &indexForMissing
     ) override;
 
-    void getGenotypesSimple(uint64_t gIndex, Eigen::Ref<Eigen::VectorXd> out) override;
+    void getGenotypesSimple(
+        uint64_t gIndex,
+        Eigen::Ref<Eigen::VectorXd> out
+    ) override;
 
   private:
     const PgenData &m_parent;

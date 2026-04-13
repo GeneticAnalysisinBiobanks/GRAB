@@ -22,7 +22,11 @@ std::string grmIdPath(const std::string &spFile) {
 
 } // anonymous namespace
 
-SparseGRM::SparseGRM(const std::string &filename, const std::vector<std::string> &subjectOrder) {
+SparseGRM::SparseGRM(
+    const std::string &filename,
+    const std::vector<std::string> &subjectOrder
+)
+{
     auto idMap = text::buildIIDMap(subjectOrder);
     m_nSubj = static_cast<uint32_t>(subjectOrder.size());
 
@@ -216,7 +220,11 @@ void SparseGRM::buildDiagonal() {
     }
 }
 
-void SparseGRM::multiply(const double *x, double *result, uint32_t n) const {
+void SparseGRM::multiply(
+    const double *x,
+    double *result,
+    uint32_t n
+) const {
     if (n != m_nSubj) throw std::runtime_error("SparseGRM::multiply: size mismatch");
     std::fill(result, result + n, 0.0);
     for (const auto &e : m_entries) {
@@ -225,7 +233,10 @@ void SparseGRM::multiply(const double *x, double *result, uint32_t n) const {
     }
 }
 
-double SparseGRM::quadForm(const double *x, uint32_t n) const {
+double SparseGRM::quadForm(
+    const double *x,
+    uint32_t n
+) const {
     if (n != m_nSubj) throw std::runtime_error("SparseGRM::quadForm: size mismatch");
     double sum = 0.0;
     for (const auto &e : m_entries) {
@@ -236,7 +247,11 @@ double SparseGRM::quadForm(const double *x, uint32_t n) const {
     return sum;
 }
 
-double SparseGRM::bilinearForm(const double *x, const double *y, uint32_t n) const {
+double SparseGRM::bilinearForm(
+    const double *x,
+    const double *y,
+    uint32_t n
+) const {
     if (n != m_nSubj) throw std::runtime_error("SparseGRM::bilinearForm: size mismatch");
     double sum = 0.0;
     for (const auto &e : m_entries) {
@@ -248,7 +263,10 @@ double SparseGRM::bilinearForm(const double *x, const double *y, uint32_t n) con
     return sum;
 }
 
-double SparseGRM::spaVariance(const double *R, uint32_t n) const {
+double SparseGRM::spaVariance(
+    const double *R,
+    uint32_t n
+) const {
     if (n != m_nSubj) throw std::runtime_error("SparseGRM::spaVariance: size mismatch");
     double covSum = 0.0;
     for (const auto &e : m_entries)
@@ -270,7 +288,10 @@ SparseGRM SparseGRM::load(
     return SparseGRM(grabFile, subjectOrder);
 }
 
-SparseGRM SparseGRM::fromEntries(uint32_t nSubj, std::vector<Entry> entries) {
+SparseGRM SparseGRM::fromEntries(
+    uint32_t nSubj,
+    std::vector<Entry> entries
+) {
     SparseGRM g;
     g.m_nSubj = nSubj;
     g.m_entries = std::move(entries);

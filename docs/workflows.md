@@ -6,8 +6,78 @@ opportunities.
 
 ---
 
+## Complexity & Parallelization Overview
+
+### Notation
+
+| Symbol | Meaning | Typical Range |
+|--------|---------|---------------|
+| N | Subjects | 100K – 1M |
+| M | Markers | 1M – 10M |
+| E | GRM non-zero entries | 2–5 × N |
+| C | Covariates / PCs | 5 – 20 |
+| P | Phenotypes | 1 – 20 |
+| J | Ordinal levels (POLMM) | 2 – 10 |
+| K_τ | Quantile levels (SPAsqr) | 5 – 9 |
+| K_env | Environments (SAGELD) | 1 – 5 |
+| K_anc | Ancestries (SPAmixLocalPlus) | 2 – 3 |
+| K_clust | Clusters (LEAF) | 3 – 5 |
+| F | Families; K_fam = max family size | K_fam ≤ 10 |
+| T | Worker threads | 8 – 64 |
+| M_ref | Matched reference markers | ~ M |
+
+### Summary Table
+
+All per-marker costs are **per marker**; total marker-phase wall time ≈
+Cost × M / T.  Pre-marker stages run once (or once per phenotype) before
+marker streaming begins.
+
+| Method | Phase | Dominant Stage | CPU Cost | Parallel | Notes |
+|--------|-------|----------------|----------|----------|-------|
+| **SPACox** | Pre | CGF interpolation grid | O(N) | Serial | CGF per phenotype (residual-dependent) |
+| | Per marker | Score + SPA tail | O(N) | Chunk ∥ | SPA tail for extreme Z only |
+| **SPAGRM** | Pre | Chow-Liu tree + MAF-bin tables | O(E + F·3^K_fam) | Serial | K_fam ≤ 10 bounds the exponent |
+| | Per marker | Score + GRM variance + SPA | O(N + E) | Chunk ∥ | O(1) MAF-bin interpolation |
+| **SAGELD** | Pre | K_env × SPAGRM null model | O(K_env · (E + F·3^K_fam)) | Serial | Envs sequential ᴮ |
+| | Per marker | K_env × SPAGRM test | O(K_env · (N + E)) | Chunk ∥ | |
+| **SPAmixPlus** | Pre | OLS matrices | O(N·C²) | Serial | (X′X)⁻¹ deduped by NA pattern |
+| | Per marker | Score + GRM variance | O(N + E) | Chunk ∥ | O(N) without GRM |
+| **SPAmixLocalP** | Pre | RprodSoA build | O(E·K_anc) | Serial | Per residual column |
+| | Per marker | Batch score + phi variance | O(N·K_anc + E) | Chunk ∥ + AVX2 | 8-marker mini-batch |
+| **POLMM** | Pre (1) | PQL null model (PCG) | O(5000·E·J) | min(T,P) ∥ + T/P probes | Atomic work-stealing; block-diagonal Σ preconditioner |
+| | Pre (2) | Variance ratio estimation | O(480·E) | Serial | 120 SNPs × 4 MAC bins |
+| | Per marker | Score + ordinal SPA | O(N·C + N·J) | Chunk ∥ | O(1) bin lookup |
+| **WtCoxG** | Phase A | Shared loading + ref-AF + GRM | O(M_ref + N·C²) | Serial | `runWtCoxG` multi-pheno entry |
+| | Phase B | P null models | O(P·N·C²) | min(T,P) ∥ | Parallel regression |
+| | Phase C | 1× geno scan (P indicators) | O(M_ref·N·P) | Serial | Replaces P×`computeMarkerStats` |
+| | Phase D | P batch-effect tests | O(P·M_ref·N) | min(T,P) ∥ | GRM shared |
+| | Per marker | P × score + bivariate SPA | O(P·N) | Chunk ∥ | Single `multiPhenoEngine` |
+| **LEAF** | Phase A | Shared loading + K-means + GRM×K | O(M_ref + 300·N·K·C + K·GRM) | min(T,25) ∥ | K-means restarts parallel |
+| | Phase B | P × K null models | O(P·K·N·C²) | min(T,P·K) ∥ | Per (p,c) atomic work-stealing |
+| | Phase C | 1× geno scan + K summix | O(M_ref·N·P·K) | min(T,K) ∥ summix | intAF shared; AF_ref synthesis shared |
+| | Phase D | P × K batch-effect tests | O(P·K·M_ref·N) | min(T,P·K) ∥ | GRMs preloaded |
+| | Per marker | P × (K tests + CCT) | O(P·K·N) | Chunk ∥ | Single `multiPhenoEngine` |
+| **SPAsqr** | Pre (1) | P × K_τ × conquer QR | O(P·K_τ·N·C²) | min(T,P·K_τ) ∥ | Atomic work-stealing; GRM/geno shared |
+| | Pre (2) | P × K_τ × GRM variance + outlier detect | O(P·K_τ·E) | Serial | No family work; negligible vs Pre (1) |
+| | Per marker | K_τ × SPAGRM test + CCT | O(K_τ·(N + E)) | Chunk ∥ | Per-phenotype via multiPhenoEngine |
+| **cal-af-coef** | Pre | Design matrix X | O(N·C²) | Serial | One-time |
+| | Per marker | OLS / logistic AF model | O(N·C) | Chunk ∥ | I/O bound |
+| **cal-pairwise-ibd** | Pre | GRM pair index | O(E) | Serial | One-time |
+| | Per marker | Pair accumulation | O(E_pairs) | Chunk ∥ + AVX2 | 4 pairs/cycle |
+| **cal-phi** | Pre | GRM + AdmixData load | O(E + M·K_anc) | Serial | |
+| | Per marker | Per-ancestry phi accum. | O(E_pairs·K_anc) | Chunk ∥ | |
+
+### Remaining Optimization Candidates
+
+| ID | Issue | Affected Methods | Suggested Fix |
+|----|-------|-----------------|---------------|
+| ᴮ | SPAGRM null models built sequentially per environment | SAGELD | Parallelize across K_env (independent models) |
+
+---
+
 ## Table of Contents
 
+0. [Complexity & Parallelization Overview](#complexity--parallelization-overview)
 1. [Shared Infrastructure](#shared-infrastructure)
    - [Marker Engines](#marker-engines)
    - [MethodBase Interface](#methodbase-interface)
@@ -28,7 +98,7 @@ opportunities.
    - [cal-af-coef](#cal-af-coef)
    - [cal-pairwise-ibd](#cal-pairwise-ibd)
    - [cal-phi](#cal-phi)
-4. [AVX2 and SIMD](#avx2-and-simd)
+4. [SIMD and Runtime Dispatch](#simd-and-runtime-dispatch)
 5. [Summary Table](#summary-table)
 
 ---
@@ -176,8 +246,14 @@ Utility modes use `SubjectSet` directly (no phenotype loading).
    via `X (X'X)⁻¹X' G` subtraction.
 
 **Performance:**
-- Pre-marker is fast (O(n) for the grid, one-time).
-- Per-marker is O(n) score + O(n) SPA tail (only for significant markers).
+- Pre-marker: O(N) per phenotype — CGF grid dominates (10K × N summations).
+  Currently serial; CGF table is built per phenotype (residual-dependent).
+  Design matrices are deduped across phenotypes sharing the same
+  non-missingness pattern.
+- Per-marker: O(N) score.  SPA tail (also O(N)) fires only when
+  `|Z| > spaCutoff`.  Covariate adjustment adds O(N·P) for markers passing
+  `pvalCovAdjCut`.
+- Marker phase wall time: O(M·N / T).
 - CGF table avoids repeated `exp()` calls inside SPA root-finding.
 
 ---
@@ -210,12 +286,16 @@ Utility modes use `SubjectSet` directly (no phenotype loading).
 - SPA tail via `fastGetRoot()` when `|Z| > spaCutoff`.
 
 **Performance:**
-- Pre-marker is expensive: Chow-Liu tree + per-bin precomputation scales
-  with family size (exponential in K, but K is typically small ≤ 10).
-- Per-marker is efficient: O(n) score, O(pairs) variance, O(1) bin lookup.
+- Pre-marker: O(E + F·3^K_fam) — GRM load O(E), Chow-Liu tree
+  O(F·K_fam²·3^K_fam), MAF-bin tables O(11·F·3^K_fam).  Exponential in
+  K_fam but K_fam ≤ 10 (3^10 ≈ 59K), so the constant is manageable.
+  Entire pre-marker is serial.
+- Per-marker: O(N) score + O(E) GRM variance + O(1) MAF-bin lookup.
+  SPA tail O(E) only when `|Z| > cutoff`.
+- Marker phase wall time: O(M·(N+E) / T).
 
 **Optimization opportunity:** The MAF-bin precomputation is serial; it could
-be parallelized across bins.
+be parallelized across the 11 bins (independent computations).
 
 ---
 
@@ -248,8 +328,12 @@ For each environment, compute score via corresponding `SPAGRMClass`.
 Output: `P_G, P_GxE1, P_GxE2, ..., Z_G, Z_GxE1, Z_GxE2, ...`.
 
 **Performance:**
-- Pre-marker cost scales linearly with number of environments.
-- Per-marker cost = nEnv × SPAGRM per-marker cost.
+- Pre-marker: O(K_env · (E + F·3^K_fam)) — builds K_env independent
+  `SPAGRMClass` null models, one per combined residual.  Currently serial
+  across environments; could parallelize (independent models).
+- Per-marker: O(K_env · (N + E)) — K_env score tests, each with GRM
+  variance computation.
+- Marker phase wall time: O(K_env · M · (N+E) / T).
 
 ---
 
@@ -278,8 +362,12 @@ Output: `P_G, P_GxE1, P_GxE2, ..., Z_G, Z_GxE1, Z_GxE2, ...`.
 - **Without GRM** (SPAmix): variance = `diag(Σ resid² × 2 × AF × (1−AF))`.
 
 **Performance:**
-- Pre-marker OLS is cheap: O(nPC² × n) per phenotype.
-- Per-marker: O(n) score + O(pairs) GRM variance (if GRM present).
+- Pre-marker: O(N·P²) per unique non-missingness pattern for OLS matrices.
+  Design-matrix inverse (X′X)⁻¹, PC matrices, and GRM sub-matrices are
+  deduped across phenotypes sharing the same valid-subject set.
+- Per-marker (with GRM): O(N) score + O(E) GRM variance.
+- Per-marker (without GRM): O(N) score + O(N) diagonal variance.
+- Marker phase wall time: O(M·(N+E) / T) with GRM, O(M·N / T) without.
 
 ---
 
@@ -313,21 +401,35 @@ approach:
    from random-access phi reads).
 3. Per marker × ancestry: compute score via `RprodSoA`.
 
-**AVX2 usage:** `computeVarOffSoA()` and `computeVarOffSoABatch()` use
-SSE/AVX2 gather intrinsics (`_mm_i32gather_epi32`, mask operations) for
-phi scanning, with a scalar fallback when AVX2 is unavailable.
+**SIMD usage:** `computeVarOffSoA()` and `computeVarOffSoABatch()` use
+runtime SIMD dispatch with three tiers:
+- **AVX-512** (512-bit): 8 phi entries per iteration
+  (`computeVarOffSoA`), all 8 batch items in one `__m512d` register
+  (`computeVarOffSoABatch`).  Uses `_mm256_cmpeq_epi32_mask` (AVX-512VL)
+  for direct mask generation.
+- **AVX2** (256-bit): 4 phi entries per iteration, two `__m256d`
+  accumulators for the 8-marker batch.
+- **Scalar**: portable fallback for pre-Haswell hardware.
+
+Resolution is via `__builtin_cpu_supports()` at process startup.
 
 **Performance:**
 - The mini-batch approach reduces random memory access by ~8× compared
   to marker-by-marker processing.
 - The SoA phi layout is critical: row-major variant processing would
   thrash cache with 4K × 4K phi matrices.
-- Phi pre-computation makes per-marker variance O(pairs) instead of
-  O(pairs × K_ancestry).
+- Phi pre-computation makes per-marker variance O(E) instead of
+  O(E × K_anc).
 
-**Optimization opportunity:** The per-ancestry score computation inside
-the inner loop could benefit from wider SIMD (AVX-512) on supported
-hardware.
+**Complexity:**
+- Pre-marker: O(E·K_anc) per residual column for RprodSoA build (serial).
+- Per-marker (amortized over PHI_BATCH=8): O(N·K_anc) score +
+  O(E) batch phi variance.
+- Marker phase wall time: O(M·(N·K_anc + E) / T).
+
+**SIMD tiers:** The phi variance kernel already dispatches to AVX-512
+(8 entries/iteration), AVX2 (4 entries/iteration), or scalar at runtime.
+The per-ancestry score computation is not yet vectorized.
 
 ---
 
@@ -384,33 +486,45 @@ hardware.
 - Custom ordinal SPA (supports J > 2 outcome levels).
 
 **Performance:**
-- Null model fitting can take minutes for large samples with many
-  ordinal levels (J > 5).  The PCG solves dominate.
-- Variance ratio estimation is also expensive (~120 SNPs × 4 bins ×
-  PQL solve each).
-- Per-marker is relatively cheap: O(n) score, O(1) bin lookup.
+- Pre-marker (null model): O(5000·E·J) per phenotype — ~50 PQL outer
+  iterations × ~(30 Hutchinson probes + 1) PCG solves per iteration ×
+  ~100 CG iterations × O(E·J) per CG step.  Parallelized across P
+  phenotypes with min(T,P) threads; intra-phenotype Hutchinson probes
+  also parallelized (see below).
+- Pre-marker (variance ratios): O(480·(N·P + E)) — 120 sampled SNPs
+  × 4 MAC bins, each requiring PQL-like calculation.  Serial.
+- Per-marker: O(N·P) covariate adjustment + O(N·J) ordinal SPA +
+  O(1) MAC-bin variance ratio lookup.
+- Marker phase wall time: O(M·N·J / T).
 
-**Optimization opportunities:**
-- The K null model fits are independent — the serial loop
-  could be parallelized with `min(nthreads, K)` threads.
-- PCG convergence could be accelerated with a better preconditioner
-  (currently diagonal).
+**Parallelization (pre-marker):**
+- Null model fits run in parallel with `min(T, K)` threads via
+  `std::thread` + `std::atomic<int>` work-stealing.
+- Block-diagonal Σ preconditioner: Σ = (Ψ⁻¹ + τ·K_ii·I)⁻¹ via
+  Sherman-Morrison, reducing CG iterations ~2–3× at O(J) cost per
+  subject.
+- Intra-phenotype parallelism: when K < T, each worker gets
+  `nt = floor(T/K)` threads.  The 30 Hutchinson trace probes (each an
+  independent PCG solve — the dominant cost) are dispatched across `nt`
+  threads via atomic work-stealing, giving near-linear speedup on ~97%
+  of null-model wall time.  Probe vectors are pre-generated sequentially
+  for deterministic results regardless of thread count.
 
 ---
 
 ### WtCoxG
 
-**Source:** `src/wtcoxg/wtcoxg.cpp` — `runWtCoxGPheno()`
+**Source:** `src/wtcoxg/wtcoxg.cpp` — `runWtCoxG()` / `runWtCoxGPheno()`
 
 | Property | Value |
 | -------- | ----- |
 | Input | Binary or survival `--pheno` + `--ref-af` |
 | GRM | Optional |
 | Engine | `multiPhenoEngine` |
-| Multi-phenotype | **K = 1** |
+| Multi-phenotype | **P ≥ 1** via `runWtCoxG` |
 | MethodBase | `WtCoxGMethod`, `resultSize() = 5` (p_ext, p_noext, z_ext, z_noext, p_batch) |
 
-**Pre-marker setup — 3 phases:**
+**Per-phenotype setup (inside `runWtCoxGPheno`):**
 
 1. **Phase 1**: Load phenotype + covariates, fit null model
    (logistic or Cox regression), compute residuals / weights / indicator.
@@ -428,16 +542,17 @@ hardware.
 
 3. **Phase 3**: refInfoMap ready for lookup during marker streaming.
 
-**K > 1 extension (not yet implemented):**
+**Multi-phenotype work sharing (`runWtCoxG`):**
 
-| Step | Would be shared | Would be per-phenotype |
-| ---- | --------------- | ---------------------- |
+| Step | Shared | Per-phenotype |
+| ---- | ------ | ------------- |
 | Load ref AF, match markers | Yes | — |
 | Build `GenoData` | Yes | — |
 | Load sparse GRM | Yes | — |
-| Fit null model (regression) | — | Yes |
-| `computeMarkerStats()` | — | Yes (depends on indicator per phenotype) |
-| `testBatchEffects()` | — | Yes (depends on residuals / weights) |
+| Fit null model (regression) | — | min(T,P) ∥ |
+| 1× geno scan (all P indicators) | Yes | — |
+| `testBatchEffects()` | — | min(T,P) ∥ |
+| Per-marker test | Single `multiPhenoEngine` | Genotype decoded once |
 
 **Per-marker test:**
 - `prepareChunk()`: populate chunk-level ref info from map.
@@ -446,50 +561,50 @@ hardware.
 - Both paths: score + variance via bivariate normal + SPA.
 
 **Performance:**
-- Phase 2 cost is proportional to number of matched markers.  Brent
-  minimization converges fast (typically < 20 iterations).
-- Per-marker is O(n) + O(1) ref lookup.
+- Pre-marker Phase 1: O(M_ref) file I/O + O(N·P²) null model — fast.
+- Pre-marker Phase 2: O(M_ref·N) — genotype scan for case/ctrl AF
+  statistics dominates; Brent minimization adds O(M_ref·20) (fast
+  convergence).  Shared scan across P phenotypes; batch-effect testing
+  parallelized with min(T,P) threads.
+- Per-marker: O(N) score + SPA + O(1) ref lookup.
+- Marker phase wall time: O(M·N / T).
 
 ---
 
 ### LEAF
 
-**Source:** `src/wtcoxg/leaf.cpp` — `runLEAFPheno()`
+**Source:** `src/wtcoxg/leaf.cpp` — `runLEAF()` / `runLEAFPheno()`
 
 | Property | Value |
 | -------- | ----- |
 | Input | Binary or survival `--pheno` + K `--ref-af` files |
 | GRM | Optional |
 | Engine | `multiPhenoEngine` |
-| Multi-phenotype | **K = 1** |
+| Multi-phenotype | **P ≥ 1** via `runLEAF` |
 | MethodBase | `LEAFMethod` |
 
-**Pre-marker setup:**
+**Per-phenotype setup (inside `runLEAFPheno`):**
 
 1. Load phenotype + covariates; fit null model; compute residuals /
    weights / indicator.
-2. K-means clustering (Lloyd's + K-means++ init) on PC columns for
-   ancestry assignment.
-3. Per cluster:
-   - Load reference AF file per reference population.
-   - Ancestry proportion estimation via `summix()`.
-   - Ancestry-matched AF: `AF_matched = Σ p_k × AF_pop_k`.
-   - Match markers against reference AF.
-   - Compute per-cluster case/ctrl AF stats.
-   - Per-cluster batch-effect testing via `WtCoxGMethod`.
+2. K-means clustering on PC columns for ancestry assignment.
+3. Per cluster: load ref AF, estimate ancestry proportions via `summix()`,
+   compute ancestry-matched AF, match markers, compute per-cluster
+   case/ctrl AF stats, run batch-effect testing.
 
-**K > 1 extension (not yet implemented):**
+**Multi-phenotype work sharing (`runLEAF`):**
 
-| Step | Would be shared | Would be per-phenotype |
-| ---- | --------------- | ---------------------- |
-| K-means clustering | Yes (PC-based, trait-agnostic) | — |
+| Step | Shared | Per-phenotype |
+| ---- | ------ | ------------- |
+| K-means clustering (25 restarts) | Yes — min(T,25) ∥ | — |
 | Load ref AF files, match markers | Yes | — |
-| Summix estimation | Yes (genotype AF, trait-agnostic) | — |
+| Summix estimation (K clusters) | Yes — min(T,K) ∥ | — |
 | Build `GenoData` | Yes | — |
-| Fit null model | — | Yes |
-| Per-cluster `computeMarkerStats` | — | Yes (depends on indicator) |
-| Per-cluster `testBatchEffects` | — | Yes |
-| Load sparse GRM | Currently loaded per cluster (redundant) | Could load once, re-index per cluster |
+| Load sparse GRM (×K clusters) | Yes — loaded once, shared across P | — |
+| Fit null model (×K clusters) | — | min(T,P·K) ∥ — atomic work-stealing |
+| 1× geno scan (all P×K indicators) | Yes | — |
+| Per-cluster `testBatchEffects` | — | min(T,P·K) ∥ |
+| Per-marker test | Single `multiPhenoEngine` | Genotype decoded once |
 
 **Per-marker test:**
 - For each cluster: extract cluster-specific genotype subvector, run
@@ -497,12 +612,14 @@ hardware.
 - **CCT meta-analysis** (Cauchy Combination Test) across clusters.
 
 **Performance:**
-- Pre-marker K-means is cheap.  Batch-effect pre-computation per cluster
-  has the same cost as a single WtCoxG run per cluster.
-- Per-marker: K_clusters × WtCoxG per-marker cost + CCT combination.
-
-**Optimization opportunity:** The sparse GRM is currently loaded
-once per cluster.  Could load once and re-index per cluster.
+- Pre-marker (K-means): O(300·N·K_clust·P) — parallelized across 25
+  restarts with min(T,25) workers; deterministic per-restart RNG.
+- Pre-marker (per-cluster batch effect): O(K_clust · M_ref · N) total.
+  GRM loaded K times (once per cluster), shared across P phenotypes.
+  Batch-effect testing parallelized with min(T,P·K) threads.
+- Per-marker: O(N) total across K_clust clusters (each processes
+  ~N/K_clust subjects) + O(K_clust) CCT combination.
+- Marker phase wall time: O(M·N / T).
 
 **Note:** Uses `__builtin_popcountll` and `__builtin_ctzll` for bitmask
 operations (GCC/Clang built-ins, unconditional on x86-64).
@@ -511,33 +628,31 @@ operations (GCC/Clang built-ins, unconditional on x86-64).
 
 ### SPAsqr
 
-**Source:** `src/spasqr/spasqr.cpp` — `runSPAsqrPheno()`
+**Source:** `src/spasqr/spasqr.cpp` — `runSPAsqr()` / `runSPAsqrPheno()`
 
 | Property | Value |
 | -------- | ----- |
 | Input | `--pheno` + quantile levels (`--spasqr-taus`) |
 | GRM | Required |
 | Engine | `multiPhenoEngine` |
-| Multi-phenotype | **K = 1** (multiple taus are within one SPAsqrMethod) |
+| Multi-phenotype | **P ≥ 1** via `runSPAsqr` |
 | MethodBase | `SPAsqrMethod` |
 
-**Pre-marker setup:**
-`runSPAsqrPheno` fits conquer quantile regression internally to produce
-residuals (one per tau).  Then per tau:
+**Per-phenotype setup (inside `runSPAsqrPheno`):**
 
-1. Outlier detection: IQR-based + absolute bound.
-2. Load sparse GRM.
-3. Build `SPAGRMClass` null model (same as SPAGRM, per tau).
-4. Precompute variance terms.
+Fits conquer quantile regression to produce residuals (one per tau).
+Then per tau: outlier detection, build `SPAGRMClass` null model,
+precompute variance terms.
 
-**K > 1 extension (not yet implemented):**
+**Multi-phenotype work sharing (`runSPAsqr`):**
 
-| Step | Would be shared | Would be per-phenotype |
-| ---- | --------------- | ---------------------- |
-| Load sparse GRM | Yes (currently inside `buildSPAsqrMethod`) | — |
+| Step | Shared | Per-phenotype |
+| ---- | ------ | ------------- |
+| Load sparse GRM | Yes | — |
 | Build `GenoData` | Yes | — |
-| Conquer QR (per tau) | — | Yes (τ × phenotype fits) |
-| Build SPAGRMClass (per tau) | — | Yes |
+| Conquer QR (×K_τ) | — | min(T,P·K_τ) ∥ — atomic work-stealing |
+| Build SPAGRMClass (×K_τ) | — | Serial per tau |
+| Per-marker test | Single `multiPhenoEngine` | Genotype decoded once |
 
 **Per-marker test:**
 - For each tau: delegate to corresponding `SPAGRMClass`.
@@ -546,10 +661,14 @@ residuals (one per tau).  Then per tau:
 - Output: `CCT_P, combined_Z, tau1_Z, tau2_Z, ...`.
 
 **Performance:**
-- Pre-marker cost = nTau × SPAGRM null model cost.
-- Per-marker cost = nTau × SPAGRM per-marker cost + CCT.
-- The conquer quantile regression adds a one-time
-  O(n × p²) cost per tau.
+- Pre-marker (conquer QR): O(K_τ · N · P²) — one quantile regression
+  per τ level.  Parallelized across P·K_τ fits with min(T,P·K_τ)
+  threads via atomic work-stealing; GRM and genotype data shared.
+- Pre-marker (null models): O(P·K_τ·E) — builds P × K_τ `SPAGRMClass`
+  instances with GRM variance terms only (no family/Chow-Liu work).
+  Serial but negligible vs Pre (1).
+- Per-marker: O(K_τ · (N + E)) — K_τ SPAGRM tests + O(K_τ) CCT.
+- Marker phase wall time: O(K_τ · M · (N+E) / T).
 
 ---
 
@@ -582,9 +701,11 @@ They have their own streaming loops.
    - Write binary records: `int8_t status + double betas[1+nPC]`.
 
 **Performance:**
-- I/O bound for large genotype files.  Model fitting is cheap per marker
-  (OLS or logistic with few PCs).
-- Threading scales well: each chunk is independent.
+- Pre-marker: O(N·P²) for design matrix — one-time.
+- Per-marker: O(N·P) for OLS or logistic fit.  I/O bound for large
+  genotype files (model fitting is cheap relative to disk reads).
+- Marker phase wall time: O(M·N·P / T).  Threading scales well:
+  each chunk is independent, no cross-marker state.
 
 ---
 
@@ -607,18 +728,18 @@ They have their own streaming loops.
    - Per chunk: decode genotypes for all subjects.
    - Per pair (i,j): accumulate `X_ij += G_i × G_j × weight` where
      weight is allele-frequency-dependent.
-   - AVX2: process 4 pairs/iteration via `_mm256_i32gather_pd` + FMA.
+   - Runtime SIMD dispatch: AVX-512 (8 pairs), AVX2 (4 pairs), or
+     scalar per iteration.
 4. Post-compute: convert accumulated statistics to IBD sharing
    probabilities (pa, pb, pc).
 
 **Performance:**
-- Hot loop is O(nMarkers × nPairs).  AVX2 gather amortizes the pair
-  inner loop by 4×.
-- Memory: O(nPairs) accumulators per thread, reduced at end.
-
-**Note:** No scalar fallback for the AVX2 gather path.  The code
-compiles with `#ifdef __AVX2__` but has no `#else` branch, so this
-mode requires AVX2 hardware.
+- Pre-marker: O(E) for GRM pair index construction — one-time.
+- Per-marker: O(E_pairs) pair accumulation, where E_pairs = number of
+  off-diagonal GRM pairs.
+- Total wall time: O(M·E_pairs / T).  AVX-512 gather processes 8 pairs
+  per cycle (~8× scalar), AVX2 processes 4 pairs (~4× scalar).
+- Memory: O(E_pairs) accumulators per thread, reduced at end.
 
 ---
 
@@ -645,57 +766,77 @@ mode requires AVX2 hardware.
 5. Write wide-format TSV.
 
 **Performance:**
-- O(nMarkers × nPairs × K_ancestry) — scales with number of ancestries.
-- Threading via chunk-level work-stealing over marker dimension.
+- Pre-marker: O(E + M·K_anc) for GRM pair load + AdmixData.
+- Per-marker: O(E_pairs · K_anc) — per-ancestry phi accumulation for
+  each off-diagonal pair.
+- Total wall time: O(M · E_pairs · K_anc / T).  Threading via
+  chunk-level work-stealing over marker dimension.
 
 ---
 
-## AVX2 and SIMD
+## SIMD and Runtime Dispatch
 
-GRAB optionally compiles with `-mavx2 -mbmi -mbmi2 -mlzcnt -mfma`.
-The Makefile probes for AVX2 support at compile time:
+GRAB uses **runtime SIMD dispatch** via `__attribute__((target(...)))`
+and `__builtin_cpu_supports()` for its hand-written SIMD kernels.  The
+resolver runs once at process startup and caches a `SimdLevel` enum
+(`Scalar`, `AVX2`, `AVX512`) used by all dispatch sites.
+
+### Build Configuration
+
+GRAB's own sources compile with `-march=x86-64-v2` (SSE4.2 + POPCNT
+baseline).  Third-party code (pgenlib, htslib, bgen) retains global
+`-mavx2 -mbmi -mbmi2 -mlzcnt -mfma` flags when the compiler supports
+them.
 
 ```makefile
-AVX2_OK = $(shell $(CXX) ... -mavx2 ... && echo 1 || echo 0)
+# GRAB sources: runtime dispatch, no compile-time SIMD
+GRAB_CXXFLAGS := ... -march=x86-64-v2 ...
+# Third-party: compile-time SIMD for best codegen
+CXXFLAGS      := ... $(SIMD_FLAGS) ...
 ```
 
-If AVX2 is available, these flags are applied **globally** to all
-translation units.  There is no runtime dispatch.
+### Dispatch Header
 
-### AVX2 Usage Sites
+`src/util/simd_dispatch.hpp` provides:
 
-| Component | File | Functions | Fallback |
-| --------- | ---- | --------- | -------- |
-| Pairwise IBD | `spagrm/ibd.cpp` | Worker inner loop | **Scalar** (`#else`) |
-| SPAmixLocalP variance | `localplus/spamixlocalp.cpp` | `computeVarOffSoA`, `computeVarOffSoABatch` | **Scalar** (`#else`) |
-| LEAF bitmask | `wtcoxg/leaf.cpp` | Cluster bitmask ops | **None** (GCC built-ins) |
+```cpp
+enum class SimdLevel : int { Scalar = 0, AVX2 = 1, AVX512 = 2 };
+inline SimdLevel simdLevel();  // cached, thread-safe
+```
 
-**Fallback status:**
-- `ibd.cpp` and `spamixlocalp.cpp` both have proper `#ifdef __AVX2__` /
-  `#else` scalar fallbacks.
+### SIMD Usage Sites
+
+| Component | File | Functions | Tiers | Width |
+| --------- | ---- | --------- | ----- | ----- |
+| SPAmixLocalP variance | `localplus/spamixlocalp.cpp` | `computeVarOffSoA`, `computeVarOffSoABatch` | AVX-512 / AVX2 / Scalar | 8 / 4 / 1 entries |
+| Pairwise IBD | `spagrm/ibd.cpp` | `ibdAccPairs` | AVX-512 / AVX2 / Scalar | 8 / 4 / 1 pairs |
+| ABED decode | `localplus/abed_io.cpp` | `decodeNoMissAVX2`, `encodeSamplesAVX2` | AVX2 / Scalar | 32 / 1 samples |
+| LEAF bitmask | `wtcoxg/leaf.cpp` | Cluster bitmask ops | — | GCC built-ins |
+
+**Notes:**
 - `leaf.cpp` uses `__builtin_popcountll` / `__builtin_ctzll` which are
-  unconditional GCC/Clang built-ins on x86-64 (no AVX2 needed, uses
-  `popcnt` instruction).
+  unconditional GCC/Clang built-ins on x86-64 (`popcnt` instruction,
+  part of x86-64-v2 baseline).
 - The PLINK BED decoder (`geno_factory/plink.cpp`) uses plink2's SIMD
   primitives (`GenoarrCountFreqsUnsafe`, `GenoarrLookup16x8bx2`,
-  `GenoarrCountSubsetFreqs2`) from pgenlib for vectorized counting and
-  decoding.  The bitmask scatter path remains scalar.
+  `GenoarrCountSubsetFreqs2`) from pgenlib — compiled with third-party
+  flags, not covered by runtime dispatch.
 
 ---
 
 ## Summary Table
 
-| Method | Input Type | GRM | Engine | MethodBase | Result Cols | AVX2 |
+| Method | Input Type | GRM | Engine | MethodBase | Result Cols | SIMD |
 | ------ | ---------- | --- | ------ | ---------- | ----------- | ---- |
 | SPACox | 1-col resid | No | `multiPhenoEngine` | SPACoxMethod | 2 | — |
 | SPAGRM | 1-col resid | Yes | `multiPhenoEngine` | SPAGRMMethod | 2 | — |
 | SAGELD | Multi-col G×E resid | Yes | `markerEngine` | SAGELDMethod | 2×nEnv | — |
 | SPAmixPlus | Multi-col resid + PCs | Optional | `multiPhenoEngine` | SPAmixPlusMethod | 3 | — |
-| SPAmixLocalPlus | Multi-col resid + .abed + .phi | Via phi | `runUnifiedGWAS` | Custom | 6×K | Yes |
+| SPAmixLocalPlus | Multi-col resid + .abed + .phi | Via phi | `runUnifiedGWAS` | Custom | 6×K | 512/2/— |
 | POLMM | Ordinal pheno | Yes | `multiPhenoEngine` | POLMMMethod | 4 | — |
 | WtCoxG | Binary/surv pheno + ref AF | Optional | `multiPhenoEngine` | WtCoxGMethod | 5 | — |
 | LEAF | Binary/surv pheno + ref AF | Optional | `multiPhenoEngine` | LEAFMethod | 3+K | Built-ins |
 | SPAsqr | Quant pheno + taus | Yes | `multiPhenoEngine` | SPAsqrMethod | 3+ | — |
 | cal-af-coef | PCs + geno | No | Own | — | Binary | — |
-| cal-pairwise-ibd | geno + GRM | Yes | Own | — | 3 (a,b,c) | Yes |
+| cal-pairwise-ibd | geno + GRM | Yes | Own | — | 3 (a,b,c) | 512/2/— |
 | cal-phi | .abed + GRM | Yes | Own | — | 4×K | — |

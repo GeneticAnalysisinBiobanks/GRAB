@@ -89,7 +89,10 @@ class VcfData : public GenoMeta {
     }
 
   private:
-    static std::vector<std::vector<uint64_t> > buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize);
+    static std::vector<std::vector<uint64_t> > buildChunks(
+        const std::vector<MarkerInfo> &markers,
+        int chunkSize
+    );
 
     std::string m_vcfFile;
     bool m_allUsed;
@@ -130,7 +133,10 @@ class VcfCursor : public GenoCursor {
         std::vector<uint32_t> &indexForMissing
     ) override;
 
-    void getGenotypesSimple(uint64_t gIndex, Eigen::Ref<Eigen::VectorXd> out) override;
+    void getGenotypesSimple(
+        uint64_t gIndex,
+        Eigen::Ref<Eigen::VectorXd> out
+    ) override;
 
   private:
     const VcfData &m_parent;

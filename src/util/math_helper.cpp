@@ -5,7 +5,11 @@ namespace math {
 
 // § 2  Bivariate normal CDF  (Genz 2004, 6-point quadrature)
 
-double bvnCdf(double dh, double dk, double r) {
+double bvnCdf(
+    double dh,
+    double dk,
+    double r
+) {
     // Independent case
     if (std::abs(r) < 1e-15) return 0.5 * std::erfc(-dh / std::sqrt(2.0)) * 0.5 * std::erfc(-dk / std::sqrt(2.0));
 
@@ -83,7 +87,15 @@ double bvnCdf(double dh, double dk, double r) {
     return bvn;
 }
 
-double pmvnorm2d(double lo1, double hi1, double lo2, double hi2, double var1, double cov12, double var2) {
+double pmvnorm2d(
+    double lo1,
+    double hi1,
+    double lo2,
+    double hi2,
+    double var1,
+    double cov12,
+    double var2
+) {
     const double sd1 = std::sqrt(var1);
     const double sd2 = std::sqrt(var2);
     const double rho = cov12 / (sd1 * sd2);

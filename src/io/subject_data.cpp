@@ -63,7 +63,9 @@ std::vector<std::string> parseFamIIDs(const std::string &famFile) {
 // SubjectData construction
 // ══════════════════════════════════════════════════════════════════════
 
-SubjectData::SubjectData(std::vector<std::string> famIIDs) : m_subjectSet(std::move(famIIDs)) {
+SubjectData::SubjectData(std::vector<std::string> famIIDs)
+    : m_subjectSet(std::move(famIIDs))
+{
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -80,7 +82,10 @@ static bool isValidHeaderName(const std::string &s) {
     return true;
 }
 
-SubjectData::RawFile SubjectData::parseIIDFile(const std::string &filename, int expectCols) {
+SubjectData::RawFile SubjectData::parseIIDFile(
+    const std::string &filename,
+    int expectCols
+) {
     std::ifstream ifs(filename, std::ios::in | std::ios::binary);
     if (!ifs) throw std::runtime_error("Cannot open file: " + filename);
 
@@ -448,7 +453,10 @@ void SubjectData::loadEigenVecs(const std::string& filename) {
 // setKeepRemove — store --keep / --remove file paths for use in finalize()
 // ══════════════════════════════════════════════════════════════════════
 
-void SubjectData::setKeepRemove(const std::string &keepFile, const std::string &removeFile) {
+void SubjectData::setKeepRemove(
+    const std::string &keepFile,
+    const std::string &removeFile
+) {
     if (m_finalized) throw std::runtime_error("SubjectData::setKeepRemove called after finalize");
     m_subjectSet.setKeepRemove(keepFile, removeFile);
 }
@@ -753,7 +761,10 @@ Eigen::MatrixXd SubjectData::getColumns(const std::vector<std::string> &names) c
     return mat;
 }
 
-void SubjectData::fillColumnsInto(const std::vector<std::string> &names, Eigen::Ref<Eigen::MatrixXd> target) const {
+void SubjectData::fillColumnsInto(
+    const std::vector<std::string> &names,
+    Eigen::Ref<Eigen::MatrixXd> target
+) const {
     for (size_t i = 0; i < names.size(); ++i) {
         auto it = m_covarColMap.find(names[i]);
         if (it != m_covarColMap.end()) {
@@ -884,7 +895,11 @@ void SubjectData::dropNaInColumns(const std::vector<std::string> &colNames) {
 // setResidWeightIndicator — post-finalize setter for computed regression
 // ══════════════════════════════════════════════════════════════════════
 
-void SubjectData::setResidWeightIndicator(Eigen::VectorXd resid, Eigen::VectorXd weight, Eigen::VectorXd ind) {
+void SubjectData::setResidWeightIndicator(
+    Eigen::VectorXd resid,
+    Eigen::VectorXd weight,
+    Eigen::VectorXd ind
+) {
     if (!m_finalized) throw std::runtime_error("setResidWeightIndicator: finalize must be called first");
     const auto N = static_cast<Eigen::Index>(m_nUsed);
     if (resid.size() != N || weight.size() != N || ind.size() != N)throw std::runtime_error(

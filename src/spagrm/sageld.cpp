@@ -55,7 +55,10 @@ struct EnvSpec {
 // nRC must be odd and ≥ 3.
 //
 // If colNames is empty (no header), parse positionally and name envs E1, E2, ...
-std::vector<EnvSpec> parseEnvSpecs(int nRC, const std::vector<std::string> &colNames) {
+std::vector<EnvSpec> parseEnvSpecs(
+    int nRC,
+    const std::vector<std::string> &colNames
+) {
     if (nRC < 3 || (nRC - 1) % 2 != 0)
         throw std::runtime_error("SAGELD residual file: expected odd number of columns ≥ 3 "
                                  "(R_G  R_<E1>  R_Gx<E1>  [R_<E2>  R_Gx<E2>  ...]), "
@@ -191,7 +194,10 @@ GRMTopology loadGRMTopology(
 
 // Compute R' * GRM * R using pre-loaded topology.
 // Single pass over all entries — O(E), no per-family hash sets.
-double computeRGRMR(const Eigen::VectorXd &R, const GRMTopology &topo) {
+double computeRGRMR(
+    const Eigen::VectorXd &R,
+    const GRMTopology &topo
+) {
     double acc = 0.0;
     for (const auto &e : topo.allEntries) {
         double factor = (e.row == e.col) ? 1.0 : 2.0;
@@ -219,9 +225,17 @@ class SAGELDMethod : public MethodBase {
         SPAGRMClass spagrm_combined;
     };
 
-    SAGELDMethod(Eigen::VectorXd resid_G, double R_GRM_R_G, std::vector<PerEnv> envs, std::vector<std::string> envNames)
-        : m_resid_G(std::move(resid_G)), m_R_GRM_R_G(R_GRM_R_G), m_envs(std::move(envs)),
-        m_envNames(std::move(envNames)) {
+    SAGELDMethod(
+        Eigen::VectorXd resid_G,
+        double R_GRM_R_G,
+        std::vector<PerEnv> envs,
+        std::vector<std::string> envNames
+    )
+        : m_resid_G(std::move(resid_G)),
+          m_R_GRM_R_G(R_GRM_R_G),
+          m_envs(std::move(envs)),
+          m_envNames(std::move(envNames))
+    {
     }
 
     std::unique_ptr<MethodBase> clone() const override {

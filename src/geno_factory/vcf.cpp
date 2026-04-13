@@ -31,7 +31,11 @@ VcfData::VcfData(
     uint32_t nUsed,
     int nMarkersEachChunk
 )
-    : m_vcfFile(std::move(vcfFile)), m_nSubjInFile(nSamplesInFile), m_nSubjUsed(nUsed), m_usedMask(usedMask) {
+    : m_vcfFile(std::move(vcfFile)),
+      m_nSubjInFile(nSamplesInFile),
+      m_nSubjUsed(nUsed),
+      m_usedMask(usedMask)
+{
     m_allUsed = (nUsed == nSamplesInFile);
 
     // ---- First pass: read all variant metadata ----
@@ -90,7 +94,10 @@ VcfData::VcfData(
 
 VcfData::~VcfData() = default;
 
-std::vector<std::vector<uint64_t> > VcfData::buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize) {
+std::vector<std::vector<uint64_t> > VcfData::buildChunks(
+    const std::vector<MarkerInfo> &markers,
+    int chunkSize
+) {
     std::vector<std::vector<uint64_t> > chunks;
     if (markers.empty()) return chunks;
     std::vector<uint64_t> cur;
@@ -151,7 +158,8 @@ struct VcfCursor::Impl {
         return false; // should not happen if gIndex is valid
     }
 
-    ~Impl() {
+    ~Impl()
+    {
         std::free(gtArr);
         std::free(dsArr);
         if (rec) bcf_destroy(rec);
@@ -161,7 +169,10 @@ struct VcfCursor::Impl {
 
 };
 
-VcfCursor::VcfCursor(const VcfData &parent) : m_parent(parent), m_impl(std::make_unique<Impl>()) {
+VcfCursor::VcfCursor(const VcfData &parent)
+    : m_parent(parent),
+      m_impl(std::make_unique<Impl>())
+{
     auto &impl = *m_impl;
     impl.nSamplesInFile = parent.nSubjInFile();
     impl.nUsed = parent.nSubjUsed();
@@ -315,7 +326,10 @@ void VcfCursor::getGenotypes(
     ++impl.currentRecordIdx;
 }
 
-void VcfCursor::getGenotypesSimple(uint64_t gIndex, Eigen::Ref<Eigen::VectorXd> out) {
+void VcfCursor::getGenotypesSimple(
+    uint64_t gIndex,
+    Eigen::Ref<Eigen::VectorXd> out
+) {
     auto &impl = *m_impl;
 
     if (!impl.advanceTo(gIndex))

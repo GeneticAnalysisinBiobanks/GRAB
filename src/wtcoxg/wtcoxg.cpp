@@ -9,6 +9,7 @@
 #include "util/text_scanner.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
@@ -17,6 +18,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -201,7 +203,10 @@ SpaResult spaGOneSnpHomo(
 // Phase 1 — File parsing & marker matching
 // ======================================================================
 
-std::vector<RefAfRecord> loadRefAfFile(const std::string &filename, bool *isNumericFallback) {
+std::vector<RefAfRecord> loadRefAfFile(
+    const std::string &filename,
+    bool *isNumericFallback
+) {
     std::ifstream ifs(filename);
     if (!ifs) throw std::runtime_error("Cannot open ref-af file: " + filename);
 
@@ -336,7 +341,10 @@ std::vector<RefAfRecord> loadRefAfFile(const std::string &filename, bool *isNume
     return recs;
 }
 
-std::vector<MatchedMarkerInfo> matchMarkers(const GenoMeta &plinkData, const std::vector<RefAfRecord> &refAf) {
+std::vector<MatchedMarkerInfo> matchMarkers(
+    const GenoMeta &plinkData,
+    const std::vector<RefAfRecord> &refAf
+) {
 
     // Build ref lookup: key = "chrom:id" → index into refAf
     auto makeKey = [](const std::string &chr, const std::string &id) -> std::string {
@@ -387,7 +395,10 @@ std::vector<MatchedMarkerInfo> matchMarkers(const GenoMeta &plinkData, const std
     return matched;
 }
 
-std::vector<MatchedMarkerInfo> matchMarkersNumeric(const GenoMeta &plinkData, const std::vector<RefAfRecord> &refAf) {
+std::vector<MatchedMarkerInfo> matchMarkersNumeric(
+    const GenoMeta &plinkData,
+    const std::vector<RefAfRecord> &refAf
+) {
 
     const auto &markers = plinkData.markerInfo();
     if (refAf.size() != markers.size())throw std::runtime_error(
@@ -771,8 +782,15 @@ WtCoxGMethod::WtCoxGMethod(
     double SPA_Cutoff,
     std::shared_ptr<const std::unordered_map<uint64_t, WtCoxGRefInfo> > refMap
 )
-    : m_R(std::move(R)), m_w(std::move(w)), m_w1(m_w / (2.0 * m_w.sum())), m_meanR(m_R.mean()), m_sumR(m_R.sum()),
-    m_cutoff(cutoff), m_SPA_Cutoff(SPA_Cutoff), m_refMap(std::move(refMap)) {
+    : m_R(std::move(R)),
+      m_w(std::move(w)),
+      m_w1(m_w / (2.0 * m_w.sum())),
+      m_meanR(m_R.mean()),
+      m_sumR(m_R.sum()),
+      m_cutoff(cutoff),
+      m_SPA_Cutoff(SPA_Cutoff),
+      m_refMap(std::move(refMap))
+{
 }
 
 std::unique_ptr<MethodBase> WtCoxGMethod::clone() const {
@@ -848,7 +866,10 @@ void WtCoxGMethod::getResultVec(
     result.push_back(info.pvalue_bat);
 }
 
-WtCoxGMethod::DualResult WtCoxGMethod::computeDual(Eigen::Ref<Eigen::VectorXd> GVec, int markerInChunkIdx) {
+WtCoxGMethod::DualResult WtCoxGMethod::computeDual(
+    Eigen::Ref<Eigen::VectorXd> GVec,
+    int markerInChunkIdx
+) {
 
     const auto &info = m_chunkRefInfo[markerInChunkIdx];
 
@@ -1135,6 +1156,283 @@ void runWtCoxGPheno(
         compression,
         compressionLevel,
         nthread,
+        missingCutoff,
+        minMafCutoff,
+        minMacCutoff,
+        hweCutoff
+    );
+}
+
+// ======================================================================
+// runWtCoxG — multi-phenotype entry point
+//
+// Phases:
+//   A  Shared data loading (SubjectData, ref-AF, genoData, GRM)
+//   B  Parallel null-model regression  (min(T, P) threads)
+//   C  Shared matched-marker scan (1× I/O, all P phenotypes)
+//   D  Parallel batch-effect testing   (min(T, P) threads)
+//   E  Single multiPhenoEngine call    (T-thread chunk parallel)
+// ======================================================================
+
+// Parse "TIME:EVENT" → {TIME, EVENT}  or  "COL" → {COL}.
+static std::vector<std::string> parsePhenoSpec(const std::string &spec) {
+    std::vector<std::string> cols;
+    auto colon = spec.find(':');
+    if (colon != std::string::npos) {
+        cols.push_back(spec.substr(0, colon));
+        cols.push_back(spec.substr(colon + 1));
+    } else {
+        cols.push_back(spec);
+    }
+    return cols;
+}
+
+void runWtCoxG(
+    const std::string &phenoFile,
+    const std::string &covarFile,
+    const std::vector<std::string> &covarNames,
+    const std::vector<std::string> &phenoSpecs,
+    const GenoSpec &geno,
+    const std::string &refAfFile,
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double refPrevalence,
+    double cutoff,
+    double spaCutoff,
+    int nthreads,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile,
+    const std::string &removeFile
+) {
+    const int P = static_cast<int>(phenoSpecs.size());
+
+    // ── Parse each spec into column names; collect all pheno columns ──
+    std::vector<std::vector<std::string> > phenoCols(P);
+    std::vector<std::string> allPhenoCols;
+    for (int p = 0; p < P; ++p) {
+        phenoCols[p] = parsePhenoSpec(phenoSpecs[p]);
+        for (const auto &c : phenoCols[p])
+            allPhenoCols.push_back(c);
+    }
+
+    // ── Phase A: shared data loading ────────────────────────────────
+    infoMsg("WtCoxG: Loading data (%d phenotypes)", P);
+    auto famIIDs = parseGenoIIDs(geno);
+    SubjectData sd(std::move(famIIDs));
+    sd.loadPhenoFile(phenoFile);
+    if (!covarFile.empty()) sd.loadCovar(covarFile, covarNames);
+    sd.setKeepRemove(keepFile, removeFile);
+    if (!spgrmGrabFile.empty() || !spgrmGctaFile.empty())
+        sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
+    sd.setGenoLabel(geno.flagLabel());
+    sd.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
+    sd.finalize();
+    sd.dropNaInColumns(allPhenoCols);
+
+    const Eigen::Index N = static_cast<Eigen::Index>(sd.nUsed());
+    infoMsg("  %lld subjects after intersection", static_cast<long long>(N));
+
+    // Shared covariate matrix
+    const int nCov = covarNames.empty() ? 0 : static_cast<int>(covarNames.size());
+    Eigen::MatrixXd covarMat;
+    if (nCov > 0) covarMat = sd.getColumns(covarNames);
+
+    // Shared ref-AF
+    infoMsg("Loading ref-af file: %s", refAfFile.c_str());
+    bool refAfNumeric = false;
+    auto refAf = loadRefAfFile(refAfFile, &refAfNumeric);
+    infoMsg("  %zu reference records loaded", refAf.size());
+
+    // Shared genotype data
+    auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(), nSnpPerChunk);
+    infoMsg("  %u subjects, %u markers", genoData->nSubjUsed(), genoData->nMarkers());
+
+    // Shared marker matching (AF_ref, obs_ct only; mu0/mu1 zeroed)
+    auto matchedBase = refAfNumeric
+        ? matchMarkersNumeric(*genoData, refAf)
+        : matchMarkers(*genoData, refAf);
+    infoMsg("  %zu markers matched", matchedBase.size());
+
+    // Shared GRM
+    std::unique_ptr<SparseGRM> grm;
+    if (!spgrmGctaFile.empty() || !spgrmGrabFile.empty()) {
+        grm = std::make_unique<SparseGRM>(
+            SparseGRM::load(spgrmGrabFile, spgrmGctaFile, sd.usedIIDs(), sd.famIIDs()));
+        infoMsg("  Sparse GRM: %u subjects, %zu non-zeros", grm->nSubjects(), grm->nnz());
+    }
+
+    // ── Phase B: parallel null-model regression ─────────────────────
+    struct PhenoData {
+        Eigen::VectorXd indicator;
+        Eigen::VectorXd survTime;
+        Eigen::VectorXd weights;
+        Eigen::VectorXd residuals;
+        bool isSurv = false;
+        std::string traitName;
+        std::string error;
+    };
+
+    std::vector<PhenoData> pd(P);
+
+    {
+        const int nWorkers = std::min(nthreads, P);
+        infoMsg("WtCoxG: Fitting %d null models with %d threads", P, nWorkers);
+        std::atomic<int> nextPheno{0};
+
+        auto regrWorker = [&]() {
+            for (;;) {
+                int p = nextPheno.fetch_add(1, std::memory_order_relaxed);
+                if (p >= P) break;
+                try {
+                    const auto &cols = phenoCols[p];
+                    pd[p].isSurv = (cols.size() >= 2);
+                    pd[p].traitName = pd[p].isSurv
+                        ? cols[0] + "_" + cols[1]
+                        : cols[0];
+
+                    if (pd[p].isSurv) {
+                        pd[p].survTime = sd.getColumn(cols[0]);
+                        pd[p].indicator = sd.getColumn(cols[1]);
+                    } else {
+                        pd[p].indicator = sd.getColumn(cols[0]);
+                    }
+
+                    pd[p].weights = regression::calRegrWeight(
+                        refPrevalence, pd[p].indicator);
+
+                    if (pd[p].isSurv) {
+                        pd[p].residuals = regression::coxResiduals(
+                            pd[p].survTime, pd[p].indicator, covarMat, pd[p].weights);
+                    } else {
+                        Eigen::MatrixXd designMat(N, 1 + nCov);
+                        designMat.col(0).setOnes();
+                        if (nCov > 0) designMat.rightCols(nCov) = covarMat;
+                        pd[p].residuals = regression::logisticResiduals(
+                            pd[p].indicator, designMat, pd[p].weights);
+                    }
+                    infoMsg("  [%s] null model done", pd[p].traitName.c_str());
+                } catch (const std::exception &ex) {
+                    pd[p].error = ex.what();
+                }
+            }
+        };
+
+        std::vector<std::thread> threads;
+        threads.reserve(nWorkers - 1);
+        for (int t = 0; t < nWorkers - 1; ++t)
+            threads.emplace_back(regrWorker);
+        regrWorker();  // main thread participates
+        for (auto &th : threads) th.join();
+    }
+    for (int p = 0; p < P; ++p)
+        if (!pd[p].error.empty())
+            throw std::runtime_error(
+                      "WtCoxG null model failed for '" + pd[p].traitName + "': " + pd[p].error);
+
+    // ── Phase C: shared matched-marker scan ─────────────────────────
+    // One I/O pass over matched markers; compute per-phenotype mu0/mu1
+    infoMsg("WtCoxG: Scanning %zu matched markers for %d phenotypes",
+            matchedBase.size(), P);
+    std::vector<std::vector<MatchedMarkerInfo> > phenoMatched(P);
+    for (int p = 0; p < P; ++p)
+        phenoMatched[p] = matchedBase;  // copies AF_ref/obs_ct; mu0/mu1 zeroed
+
+    {
+        const uint32_t n = genoData->nSubjUsed();
+        auto cursor = genoData->makeCursor();
+        if (!matchedBase.empty())
+            cursor->beginSequentialBlock(matchedBase.front().genoIndex);
+        Eigen::VectorXd gvec(n);
+
+        for (size_t mi = 0; mi < matchedBase.size(); ++mi) {
+            cursor->getGenotypesSimple(matchedBase[mi].genoIndex, gvec);
+            for (int p = 0; p < P; ++p) {
+                const auto &ind = pd[p].indicator;
+                double sum0 = 0, sum1 = 0, cnt0 = 0, cnt1 = 0;
+                for (uint32_t i = 0; i < n; ++i) {
+                    if (std::isnan(gvec[i])) continue;
+                    if (ind[i] == 1.0) { sum1 += gvec[i]; cnt1 += 1.0; }
+                    else                { sum0 += gvec[i]; cnt0 += 1.0; }
+                }
+                auto &m = phenoMatched[p][mi];
+                m.mu0   = (cnt0 > 0) ? sum0 / cnt0 / 2.0 : 0.0;
+                m.mu1   = (cnt1 > 0) ? sum1 / cnt1 / 2.0 : 0.0;
+                m.n0    = cnt0;
+                m.n1    = cnt1;
+                m.mu_int = (cnt0 + cnt1 > 0)
+                    ? (sum0 + sum1) / (2.0 * (cnt0 + cnt1))
+                    : 0.0;
+            }
+        }
+    }
+
+    // ── Phase D: parallel batch-effect testing ──────────────────────
+    std::vector<std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> > > refMaps(P);
+    {
+        const int nWorkers = std::min(nthreads, P);
+        infoMsg("WtCoxG: Batch-effect testing for %d phenotypes with %d threads",
+                P, nWorkers);
+        std::atomic<int> nextPheno{0};
+        std::vector<std::string> batchErrors(P);
+
+        auto batchWorker = [&]() {
+            for (;;) {
+                int p = nextPheno.fetch_add(1, std::memory_order_relaxed);
+                if (p >= P) break;
+                try {
+                    refMaps[p] = testBatchEffects(
+                        phenoMatched[p], pd[p].residuals, pd[p].weights,
+                        pd[p].indicator, grm.get(), refPrevalence, cutoff);
+                    infoMsg("  [%s] %zu markers retained",
+                            pd[p].traitName.c_str(), refMaps[p]->size());
+                } catch (const std::exception &ex) {
+                    batchErrors[p] = ex.what();
+                }
+            }
+        };
+
+        std::vector<std::thread> threads;
+        threads.reserve(nWorkers - 1);
+        for (int t = 0; t < nWorkers - 1; ++t)
+            threads.emplace_back(batchWorker);
+        batchWorker();
+        for (auto &th : threads) th.join();
+
+        for (int p = 0; p < P; ++p)
+            if (!batchErrors[p].empty())
+                throw std::runtime_error(
+                          "WtCoxG batch-effect failed for '" + pd[p].traitName + "': " + batchErrors[p]);
+    }
+
+    // ── Phase E: multi-phenotype marker engine ──────────────────────
+    std::vector<PhenoTask> tasks(P);
+    for (int p = 0; p < P; ++p) {
+        auto method = std::make_unique<WtCoxGMethod>(
+            pd[p].residuals, pd[p].weights, cutoff, spaCutoff, refMaps[p]);
+        tasks[p].phenoName = pd[p].traitName;
+        tasks[p].method    = std::move(method);
+        tasks[p].unionToLocal.resize(genoData->nSubjUsed());
+        std::iota(tasks[p].unionToLocal.begin(), tasks[p].unionToLocal.end(), 0u);
+        tasks[p].nUsed = genoData->nSubjUsed();
+    }
+
+    infoMsg("WtCoxG: Starting multi-phenotype association (%d phenotypes, %d threads)",
+            P, nthreads);
+    multiPhenoEngine(
+        *genoData,
+        tasks,
+        outPrefix,
+        "WtCoxG",
+        compression,
+        compressionLevel,
+        nthreads,
         missingCutoff,
         minMafCutoff,
         minMacCutoff,

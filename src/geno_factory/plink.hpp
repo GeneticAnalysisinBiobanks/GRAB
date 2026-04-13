@@ -118,7 +118,10 @@ class PlinkData : public GenoMeta {
         const std::string &RangesToExcludeFile
     );
 
-    static std::vector<std::vector<uint64_t> > buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize);
+    static std::vector<std::vector<uint64_t> > buildChunks(
+        const std::vector<MarkerInfo> &markers,
+        int chunkSize
+    );
 
     std::string m_bedFile;
     bool m_allUsed;
@@ -172,7 +175,10 @@ class PlinkCursor : public GenoCursor {
     ) override;
 
     // Lightweight variant: genotype vector only, missing → NaN, no QC stats.
-    void getGenotypesSimple(uint64_t gIndex, Eigen::Ref<Eigen::VectorXd> out) override;
+    void getGenotypesSimple(
+        uint64_t gIndex,
+        Eigen::Ref<Eigen::VectorXd> out
+    ) override;
 
   private:
     void loadBlock(uint64_t startMarker);

@@ -34,7 +34,10 @@ struct TokenScanner {
     const char *p;
     const char *end;
 
-    explicit TokenScanner(const std::string &line) : p(line.c_str()), end(p + line.size()) {
+    explicit TokenScanner(const std::string &line)
+        : p(line.c_str()),
+          end(p + line.size())
+    {
     }
 
     void skipWS() {

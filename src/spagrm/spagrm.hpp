@@ -35,7 +35,11 @@ struct FamilyData {
 };
 
 // Total number of elements in the mgf output vectors.
-inline size_t mgfOutputSize(size_t n_unrelated, const std::vector<std::vector<double> > &TwoSubj_rho, size_t nThreeSubj)
+inline size_t mgfOutputSize(
+    size_t n_unrelated,
+    const std::vector<std::vector<double> > &TwoSubj_rho,
+    size_t nThreeSubj
+)
 {
     size_t sz = n_unrelated;
     for (const auto &r : TwoSubj_rho)
@@ -52,9 +56,19 @@ struct MgfWorkspace {
     Eigen::VectorXd ul_lambda, ul_alpha, ul_alpha_1, ul_alpha_2;
 
     MgfWorkspace() = default;
-    MgfWorkspace(Eigen::Index mgfSz, Eigen::Index n_unrelated)
-        : MGF0(mgfSz), MGF1(mgfSz), MGF2(mgfSz), temp(mgfSz), ul_lambda(n_unrelated), ul_alpha(n_unrelated),
-        ul_alpha_1(n_unrelated), ul_alpha_2(n_unrelated) {
+    MgfWorkspace(
+        Eigen::Index mgfSz,
+        Eigen::Index n_unrelated
+    )
+        : MGF0(mgfSz),
+          MGF1(mgfSz),
+          MGF2(mgfSz),
+          temp(mgfSz),
+          ul_lambda(n_unrelated),
+          ul_alpha(n_unrelated),
+          ul_alpha_1(n_unrelated),
+          ul_alpha_2(n_unrelated)
+    {
     }
 
 };
@@ -127,7 +141,11 @@ class SPAGRMClass {
     SPAGRMClass(const SPAGRMClass &o);
     SPAGRMClass &operator=(const SPAGRMClass &) = delete;
 
-    double getMarkerPval(const Eigen::VectorXd &GVec, double altFreq, double &zScore);
+    double getMarkerPval(
+        const Eigen::VectorXd &GVec,
+        double altFreq,
+        double &zScore
+    );
 
   private:
     Eigen::VectorXd m_resid;
@@ -157,7 +175,9 @@ class SPAGRMClass {
 
 class SPAGRMMethod : public MethodBase {
   public:
-    explicit SPAGRMMethod(SPAGRMClass spagrm) : m_spagrm(std::move(spagrm)) {
+    explicit SPAGRMMethod(SPAGRMClass spagrm)
+        : m_spagrm(std::move(spagrm))
+    {
     }
 
     std::unique_ptr<MethodBase> clone() const override {

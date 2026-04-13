@@ -22,7 +22,10 @@ struct OutlierData {
 
 // Detect outlier residuals using IQR method.
 // outlierRatio shrinks by 0.8x until at least one outlier is found.
-OutlierData detectOutliers(const Eigen::VectorXd &resid, double outlierRatio);
+OutlierData detectOutliers(
+    const Eigen::VectorXd &resid,
+    double outlierRatio
+);
 
 // ======================================================================
 // SPA helpers — Lugannani-Rice tail probability with outlier/non-outlier split

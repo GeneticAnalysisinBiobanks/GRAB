@@ -14,10 +14,12 @@
 #include "geno_factory/geno_data.hpp"
 #include <vector>
 
-void runSPAsqrPheno(
+// Multi-phenotype entry point: loads data/GRM once, parallelizes
+// ntraits × ntaus conquer fits with min(nthreads, ntraits × ntaus) workers.
+void runSPAsqr(
     const std::string &phenoFile,
     const std::string &covarFile,
-    const std::string &quantPhenoCol,
+    const std::vector<std::string> &phenoNames,
     const std::vector<std::string> &covarNames,
     const std::vector<double> &taus,
     const std::string &spgrmGrabFile,
@@ -40,5 +42,4 @@ void runSPAsqrPheno(
     double spasqrHScale = -1.0,
     const std::string &keepFile = {},
     const std::string &removeFile = {}
-
 );

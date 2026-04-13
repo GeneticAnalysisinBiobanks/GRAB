@@ -260,12 +260,22 @@ SPAGRMClass::SPAGRMClass(
     double zeta,
     double tol
 )
-    : m_resid(std::move(resid)), m_resid_unrelated_outliers(std::move(fam.resid_unrelated_outliers)),
-    m_sum_unrelated_outliers2(m_resid_unrelated_outliers.squaredNorm()), m_sum_R_nonOutlier(sum_R_nonOutlier),
-    m_R_GRM_R_nonOutlier(R_GRM_R_nonOutlier), m_R_GRM_R_TwoSubjOutlier(R_GRM_R_TwoSubjOutlier), m_R_GRM_R(R_GRM_R),
-    m_MAF_interval(std::move(MAF_interval)), m_TwoSubj_resid_list(std::move(fam.twoSubj_resid)),
-    m_TwoSubj_rho_list(std::move(fam.twoSubj_rho)), m_ThreeSubj_standS_list(std::move(fam.threeSubj_standS)),
-    m_ThreeSubj_CLT_list(std::move(fam.threeSubj_CLT)), m_SPA_Cutoff(SPA_Cutoff), m_zeta(zeta), m_tol(tol) {
+    : m_resid(std::move(resid)),
+      m_resid_unrelated_outliers(std::move(fam.resid_unrelated_outliers)),
+      m_sum_unrelated_outliers2(m_resid_unrelated_outliers.squaredNorm()),
+      m_sum_R_nonOutlier(sum_R_nonOutlier),
+      m_R_GRM_R_nonOutlier(R_GRM_R_nonOutlier),
+      m_R_GRM_R_TwoSubjOutlier(R_GRM_R_TwoSubjOutlier),
+      m_R_GRM_R(R_GRM_R),
+      m_MAF_interval(std::move(MAF_interval)),
+      m_TwoSubj_resid_list(std::move(fam.twoSubj_resid)),
+      m_TwoSubj_rho_list(std::move(fam.twoSubj_rho)),
+      m_ThreeSubj_standS_list(std::move(fam.threeSubj_standS)),
+      m_ThreeSubj_CLT_list(std::move(fam.threeSubj_CLT)),
+      m_SPA_Cutoff(SPA_Cutoff),
+      m_zeta(zeta),
+      m_tol(tol)
+{
     const auto n_unrel = m_resid_unrelated_outliers.size();
     const auto mgfSz = static_cast<Eigen::Index>(
         nsSPAGRM::mgfOutputSize(static_cast<size_t>(n_unrel), m_TwoSubj_rho_list, m_ThreeSubj_standS_list.size()));
@@ -280,12 +290,22 @@ SPAGRMClass::SPAGRMClass(
 }
 
 SPAGRMClass::SPAGRMClass(const SPAGRMClass &o)
-    : m_resid(o.m_resid), m_resid_unrelated_outliers(o.m_resid_unrelated_outliers),
-    m_sum_unrelated_outliers2(o.m_sum_unrelated_outliers2), m_sum_R_nonOutlier(o.m_sum_R_nonOutlier),
-    m_R_GRM_R_nonOutlier(o.m_R_GRM_R_nonOutlier), m_R_GRM_R_TwoSubjOutlier(o.m_R_GRM_R_TwoSubjOutlier),
-    m_R_GRM_R(o.m_R_GRM_R), m_MAF_interval(o.m_MAF_interval), m_TwoSubj_resid_list(o.m_TwoSubj_resid_list),
-    m_TwoSubj_rho_list(o.m_TwoSubj_rho_list), m_ThreeSubj_standS_list(o.m_ThreeSubj_standS_list),
-    m_ThreeSubj_CLT_list(o.m_ThreeSubj_CLT_list), m_SPA_Cutoff(o.m_SPA_Cutoff), m_zeta(o.m_zeta), m_tol(o.m_tol) {
+    : m_resid(o.m_resid),
+      m_resid_unrelated_outliers(o.m_resid_unrelated_outliers),
+      m_sum_unrelated_outliers2(o.m_sum_unrelated_outliers2),
+      m_sum_R_nonOutlier(o.m_sum_R_nonOutlier),
+      m_R_GRM_R_nonOutlier(o.m_R_GRM_R_nonOutlier),
+      m_R_GRM_R_TwoSubjOutlier(o.m_R_GRM_R_TwoSubjOutlier),
+      m_R_GRM_R(o.m_R_GRM_R),
+      m_MAF_interval(o.m_MAF_interval),
+      m_TwoSubj_resid_list(o.m_TwoSubj_resid_list),
+      m_TwoSubj_rho_list(o.m_TwoSubj_rho_list),
+      m_ThreeSubj_standS_list(o.m_ThreeSubj_standS_list),
+      m_ThreeSubj_CLT_list(o.m_ThreeSubj_CLT_list),
+      m_SPA_Cutoff(o.m_SPA_Cutoff),
+      m_zeta(o.m_zeta),
+      m_tol(o.m_tol)
+{
     // Rebuild scratch for thread safety
     const auto n_unrel = m_resid_unrelated_outliers.size();
     const auto mgfSz = static_cast<Eigen::Index>(
@@ -300,7 +320,11 @@ SPAGRMClass::SPAGRMClass(const SPAGRMClass &o)
     }
 }
 
-double SPAGRMClass::getMarkerPval(const Eigen::VectorXd &GVec, double altFreq, double &zScore) {
+double SPAGRMClass::getMarkerPval(
+    const Eigen::VectorXd &GVec,
+    double altFreq,
+    double &zScore
+) {
     const double MAF = std::min(altFreq, 1.0 - altFreq);
     const double Score = GVec.dot(m_resid) - GVec.mean() * m_resid.sum();
     const double G_var = 2.0 * MAF * (1.0 - MAF);
@@ -368,7 +392,10 @@ struct GRMTopology {
     std::vector<std::vector<SparseGRM::Entry> > familyEntries;
 };
 
-GRMTopology buildTopology(uint32_t N, const std::vector<SparseGRM::Entry> &entries) {
+GRMTopology buildTopology(
+    uint32_t N,
+    const std::vector<SparseGRM::Entry> &entries
+) {
     std::vector<std::pair<uint32_t, uint32_t> > edges;
     {
         std::unordered_set<uint64_t> seen;

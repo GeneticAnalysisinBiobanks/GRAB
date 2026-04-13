@@ -36,7 +36,10 @@ extern "C" {
 
 // ── simple line reader for gzFile ──────────────────────────────────────────
 
-static bool mspReadLine(gzFile gz, std::string &line) {
+static bool mspReadLine(
+    gzFile gz,
+    std::string &line
+) {
     line.clear();
     char buf[131072];
     while (gzgets(gz, buf, sizeof(buf)) != nullptr) {
@@ -184,7 +187,10 @@ static MspData parseMsp(const std::string &mspFile) {
 // ── Chromosome comparison helper ─────────────────────────────────────────────
 // Compares chromosome names numerically when possible (chr1 < chr2 < ... < chr10)
 // instead of lexicographically (where chr10 < chr2).
-static bool chromLessThan(const std::string &a, const std::string &b) {
+static bool chromLessThan(
+    const std::string &a,
+    const std::string &b
+) {
     if (a == b) return false;
     // Strip leading "chr" or "Chr" or "CHR" prefix
     auto stripChr = [](const std::string &s) -> std::string {
@@ -207,7 +213,10 @@ struct WindowCursor {
     const std::vector<MspWindow> &windows;
     size_t idx = 0;
 
-    int findWindow(const std::string &chrom, int32_t pos0) {
+    int findWindow(
+        const std::string &chrom,
+        int32_t pos0
+    ) {
         // Advance past windows that end before or are on earlier chroms
         while (idx < windows.size()) {
             const auto &w = windows[idx];

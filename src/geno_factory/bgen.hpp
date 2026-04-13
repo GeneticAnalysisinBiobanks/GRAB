@@ -98,7 +98,10 @@ class BgenData : public GenoMeta {
     }
 
   private:
-    static std::vector<std::vector<uint64_t> > buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize);
+    static std::vector<std::vector<uint64_t> > buildChunks(
+        const std::vector<MarkerInfo> &markers,
+        int chunkSize
+    );
 
     std::string m_bgenFile;
     bool m_allUsed;
@@ -142,7 +145,10 @@ class BgenCursor : public GenoCursor {
         std::vector<uint32_t> &indexForMissing
     ) override;
 
-    void getGenotypesSimple(uint64_t gIndex, Eigen::Ref<Eigen::VectorXd> out) override;
+    void getGenotypesSimple(
+        uint64_t gIndex,
+        Eigen::Ref<Eigen::VectorXd> out
+    ) override;
 
   private:
     const BgenData &m_parent;

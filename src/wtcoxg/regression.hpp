@@ -27,7 +27,10 @@ namespace regression {
 // Returns: weight vector (n)
 // ──────────────────────────────────────────────────────────────────────
 
-Eigen::VectorXd calRegrWeight(double prevalence, const Eigen::Ref<const Eigen::VectorXd> &indicator);
+Eigen::VectorXd calRegrWeight(
+    double prevalence,
+    const Eigen::Ref<const Eigen::VectorXd> &indicator
+);
 
 // ──────────────────────────────────────────────────────────────────────
 // § 1  Weighted Cox regression  (Breslow partial likelihood, Newton-Raphson)

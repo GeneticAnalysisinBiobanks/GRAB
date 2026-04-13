@@ -8,7 +8,9 @@
 #include <stdexcept>
 
 SubjectSet::SubjectSet(std::vector<std::string> famIIDs)
-    : m_nFam(static_cast<uint32_t>(famIIDs.size())), m_famIIDs(std::move(famIIDs)) {
+    : m_nFam(static_cast<uint32_t>(famIIDs.size())),
+      m_famIIDs(std::move(famIIDs))
+{
 }
 
 void SubjectSet::setGrmSubjects(std::unordered_set<std::string> grmIDs) {
@@ -16,7 +18,10 @@ void SubjectSet::setGrmSubjects(std::unordered_set<std::string> grmIDs) {
     m_grmSubjects = std::move(grmIDs);
 }
 
-void SubjectSet::setKeepRemove(const std::string &keepFile, const std::string &removeFile) {
+void SubjectSet::setKeepRemove(
+    const std::string &keepFile,
+    const std::string &removeFile
+) {
     if (m_finalized) throw std::runtime_error("SubjectSet::setKeepRemove called after finalize");
     m_keepFile = keepFile;
     m_removeFile = removeFile;
@@ -111,7 +116,10 @@ std::vector<std::string> SubjectSet::usedIIDs() const {
     return result;
 }
 
-void SubjectSet::narrowMask(const std::vector<uint64_t> &newMask, uint32_t newNUsed) {
+void SubjectSet::narrowMask(
+    const std::vector<uint64_t> &newMask,
+    uint32_t newNUsed
+) {
     m_usedMask = newMask;
     m_nUsed = newNUsed;
     m_usedFamIndices.clear();
