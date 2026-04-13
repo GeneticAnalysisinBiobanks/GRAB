@@ -45,9 +45,9 @@ RprodSoA buildRprodSoA(const PhiMatrices &phi, const Eigen::VectorXd &R) {
     rp.reserve(total);
 
     auto append = [&](const std::vector<PhiEntry> &src, double mult, uint8_t th_i, uint8_t th_j) {
-		      for (const auto &e : src)
-			  rp.push_back(e.i, e.j, mult * e.value * R[e.i] * R[e.j], th_i, th_j);
-		  };
+        for (const auto &e : src)
+            rp.push_back(e.i, e.j, mult * e.value * R[e.i] * R[e.j], th_i, th_j);
+    };
     append(phi.A, 4.0, 2, 2);
     append(phi.B, 2.0, 2, 1);
     append(phi.C, 2.0, 1, 2);
@@ -74,34 +74,34 @@ double computeVarOffSoA(const RprodSoA &rp, const uint32_t *hInt, uint32_t /*nUs
 
     // Process 4 entries per iteration
     for (; p + 3 < N; p += 4) {
-	// Load 4 (i, j) index pairs
-	__m128i vi = _mm_loadu_si128(reinterpret_cast<const __m128i *>(ii + p));
-	__m128i vj = _mm_loadu_si128(reinterpret_cast<const __m128i *>(jj + p));
+        // Load 4 (i, j) index pairs
+        __m128i vi = _mm_loadu_si128(reinterpret_cast<const __m128i *>(ii + p));
+        __m128i vj = _mm_loadu_si128(reinterpret_cast<const __m128i *>(jj + p));
 
-	// Gather hInt[i] and hInt[j] — 4×int32
-	__m128i hi = _mm_i32gather_epi32(reinterpret_cast<const int *>(hInt), vi, 4);
-	__m128i hj = _mm_i32gather_epi32(reinterpret_cast<const int *>(hInt), vj, 4);
+        // Gather hInt[i] and hInt[j] — 4×int32
+        __m128i hi = _mm_i32gather_epi32(reinterpret_cast<const int *>(hInt), vi, 4);
+        __m128i hj = _mm_i32gather_epi32(reinterpret_cast<const int *>(hInt), vj, 4);
 
-	// Load target values and zero-extend uint8 → int32
-	// (4 bytes → 4 int32 via movzx-like expansion)
-	__m128i raw_thi = _mm_cvtsi32_si128(*reinterpret_cast<const int *>(thi + p));
-	__m128i raw_thj = _mm_cvtsi32_si128(*reinterpret_cast<const int *>(thj + p));
-	__m128i vthi = _mm_cvtepu8_epi32(raw_thi);
-	__m128i vthj = _mm_cvtepu8_epi32(raw_thj);
+        // Load target values and zero-extend uint8 → int32
+        // (4 bytes → 4 int32 via movzx-like expansion)
+        __m128i raw_thi = _mm_cvtsi32_si128(*reinterpret_cast<const int *>(thi + p));
+        __m128i raw_thj = _mm_cvtsi32_si128(*reinterpret_cast<const int *>(thj + p));
+        __m128i vthi = _mm_cvtepu8_epi32(raw_thi);
+        __m128i vthj = _mm_cvtepu8_epi32(raw_thj);
 
-	// Compare: hi == target_hi AND hj == target_hj
-	__m128i cmpi = _mm_cmpeq_epi32(hi, vthi);
-	__m128i cmpj = _mm_cmpeq_epi32(hj, vthj);
-	__m128i mask32 = _mm_and_si128(cmpi, cmpj);
+        // Compare: hi == target_hi AND hj == target_hj
+        __m128i cmpi = _mm_cmpeq_epi32(hi, vthi);
+        __m128i cmpj = _mm_cmpeq_epi32(hj, vthj);
+        __m128i mask32 = _mm_and_si128(cmpi, cmpj);
 
-	// Convert int32 mask → double mask (widen 4×32 → 4×64)
-	// cmpeq returns 0xFFFFFFFF for true — extend to 0xFFFFFFFFFFFFFFFF
-	__m256i mask64 = _mm256_cvtepi32_epi64(mask32);
-	__m256d maskd = _mm256_castsi256_pd(mask64);
+        // Convert int32 mask → double mask (widen 4×32 → 4×64)
+        // cmpeq returns 0xFFFFFFFF for true — extend to 0xFFFFFFFFFFFFFFFF
+        __m256i mask64 = _mm256_cvtepi32_epi64(mask32);
+        __m256d maskd = _mm256_castsi256_pd(mask64);
 
-	// Load 4 rprod values, mask-select, and accumulate
-	__m256d rv = _mm256_loadu_pd(rval + p);
-	acc = _mm256_add_pd(acc, _mm256_and_pd(maskd, rv));
+        // Load 4 rprod values, mask-select, and accumulate
+        __m256d rv = _mm256_loadu_pd(rval + p);
+        acc = _mm256_add_pd(acc, _mm256_and_pd(maskd, rv));
     }
 
     // Horizontal sum of acc
@@ -114,7 +114,7 @@ double computeVarOffSoA(const RprodSoA &rp, const uint32_t *hInt, uint32_t /*nUs
 
     // Scalar tail (0–3 remaining entries)
     for (; p < N; ++p) {
-	varOff += ((hInt[ii[p]] == thi[p]) & (hInt[jj[p]] == thj[p])) * rval[p];
+        varOff += ((hInt[ii[p]] == thi[p]) & (hInt[jj[p]] == thj[p])) * rval[p];
     }
 
     return varOff;
@@ -126,7 +126,7 @@ double computeVarOffSoA(const RprodSoA &rp, const uint32_t *hInt, uint32_t /*nUs
     const size_t N = rp.size();
     double varOff = 0.0;
     for (size_t p = 0; p < N; ++p) {
-	varOff += ((hInt[rp.idx_i[p]] == rp.target_hi[p]) & (hInt[rp.idx_j[p]] == rp.target_hj[p])) * rp.rprod[p];
+        varOff += ((hInt[rp.idx_i[p]] == rp.target_hi[p]) & (hInt[rp.idx_j[p]] == rp.target_hj[p])) * rp.rprod[p];
     }
     return varOff;
 }
@@ -148,7 +148,7 @@ void computeVarOffSoABatch(
     uint32_t /*nUsed*/,
     int batchLen,
     double *varOff
-    ) {
+) {
     const size_t N = rp.size();
     std::fill(varOff, varOff + batchLen, 0.0);
     if (N == 0) return;
@@ -164,28 +164,28 @@ void computeVarOffSoABatch(
     __m256d acc1 = _mm256_setzero_pd();
 
     for (size_t p = 0; p < N; ++p) {
-	const uint32_t *hi_ptr = hIntSM + ii[p] * PHI_BATCH;
-	const uint32_t *hj_ptr = hIntSM + jj[p] * PHI_BATCH;
-	__m128i vthi = _mm_set1_epi32(static_cast<int>(thi[p]));
-	__m128i vthj = _mm_set1_epi32(static_cast<int>(thj[p]));
-	__m256d rv = _mm256_set1_pd(rval[p]);
+        const uint32_t *hi_ptr = hIntSM + ii[p] * PHI_BATCH;
+        const uint32_t *hj_ptr = hIntSM + jj[p] * PHI_BATCH;
+        __m128i vthi = _mm_set1_epi32(static_cast<int>(thi[p]));
+        __m128i vthj = _mm_set1_epi32(static_cast<int>(thj[p]));
+        __m256d rv = _mm256_set1_pd(rval[p]);
 
-	// Batch items 0–3
-	{
-	    __m128i hi4 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(hi_ptr));
-	    __m128i hj4 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(hj_ptr));
-	    __m128i mask32 = _mm_and_si128(_mm_cmpeq_epi32(hi4, vthi), _mm_cmpeq_epi32(hj4, vthj));
-	    __m256d maskd = _mm256_castsi256_pd(_mm256_cvtepi32_epi64(mask32));
-	    acc0 = _mm256_add_pd(acc0, _mm256_and_pd(maskd, rv));
-	}
-	// Batch items 4–7
-	{
-	    __m128i hi4 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(hi_ptr + 4));
-	    __m128i hj4 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(hj_ptr + 4));
-	    __m128i mask32 = _mm_and_si128(_mm_cmpeq_epi32(hi4, vthi), _mm_cmpeq_epi32(hj4, vthj));
-	    __m256d maskd = _mm256_castsi256_pd(_mm256_cvtepi32_epi64(mask32));
-	    acc1 = _mm256_add_pd(acc1, _mm256_and_pd(maskd, rv));
-	}
+        // Batch items 0–3
+        {
+            __m128i hi4 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(hi_ptr));
+            __m128i hj4 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(hj_ptr));
+            __m128i mask32 = _mm_and_si128(_mm_cmpeq_epi32(hi4, vthi), _mm_cmpeq_epi32(hj4, vthj));
+            __m256d maskd = _mm256_castsi256_pd(_mm256_cvtepi32_epi64(mask32));
+            acc0 = _mm256_add_pd(acc0, _mm256_and_pd(maskd, rv));
+        }
+        // Batch items 4–7
+        {
+            __m128i hi4 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(hi_ptr + 4));
+            __m128i hj4 = _mm_loadu_si128(reinterpret_cast<const __m128i *>(hj_ptr + 4));
+            __m128i mask32 = _mm_and_si128(_mm_cmpeq_epi32(hi4, vthi), _mm_cmpeq_epi32(hj4, vthj));
+            __m256d maskd = _mm256_castsi256_pd(_mm256_cvtepi32_epi64(mask32));
+            acc1 = _mm256_add_pd(acc1, _mm256_and_pd(maskd, rv));
+        }
     }
 
     // Store accumulators → varOff[0..7]
@@ -193,7 +193,7 @@ void computeVarOffSoABatch(
     _mm256_storeu_pd(tmp, acc0);
     _mm256_storeu_pd(tmp + 4, acc1);
     for (int b = 0; b < batchLen; ++b)
-	varOff[b] = tmp[b];
+        varOff[b] = tmp[b];
 }
 
 #else // scalar fallback
@@ -204,17 +204,17 @@ void computeVarOffSoABatch(
     uint32_t /*nUsed*/,
     int batchLen,
     double *varOff
-    ) {
+) {
     const size_t N = rp.size();
     std::fill(varOff, varOff + batchLen, 0.0);
     for (size_t p = 0; p < N; ++p) {
-	uint32_t i = rp.idx_i[p], j = rp.idx_j[p];
-	double r = rp.rprod[p];
-	uint32_t th_i = rp.target_hi[p], th_j = rp.target_hj[p];
-	const uint32_t *hi_ptr = hIntSM + i * PHI_BATCH;
-	const uint32_t *hj_ptr = hIntSM + j * PHI_BATCH;
-	for (int b = 0; b < batchLen; ++b)
-	    varOff[b] += ((hi_ptr[b] == th_i) & (hj_ptr[b] == th_j)) * r;
+        uint32_t i = rp.idx_i[p], j = rp.idx_j[p];
+        double r = rp.rprod[p];
+        uint32_t th_i = rp.target_hi[p], th_j = rp.target_hj[p];
+        const uint32_t *hi_ptr = hIntSM + i * PHI_BATCH;
+        const uint32_t *hj_ptr = hIntSM + j * PHI_BATCH;
+        for (int b = 0; b < batchLen; ++b)
+            varOff[b] += ((hi_ptr[b] == th_i) & (hj_ptr[b] == th_j)) * r;
     }
 }
 
@@ -234,135 +234,136 @@ PhiMatrices estimatePhiOneAncestry(const AdmixData &admixData, const SparseGRM &
 
     // Build directed pair list from GRM entries (both directions for off-diagonal)
     struct DPair {
-	uint32_t i, j;
+        uint32_t i, j;
     };
+
     std::vector<DPair> pairs;
     pairs.reserve(grm.nnz() * 2);
     for (const auto &e : grm.entries()) {
-	if (e.row != e.col) {
-	    pairs.push_back({e.row, e.col});
-	    pairs.push_back({e.col, e.row});
-	}
+        if (e.row != e.col) {
+            pairs.push_back({e.row, e.col});
+            pairs.push_back({e.col, e.row});
+        }
     }
     const size_t nPairs = pairs.size();
 
     // Per-thread accumulator structure
     struct PairAcc {
-	double ratioSum;
-	uint32_t validCount;
+        double ratioSum;
+        uint32_t validCount;
     };
 
     // Worker function: processes markers [mBegin, mEnd) using its own cursor
     // and accumulates into local vectors.
     struct ThreadResult {
-	std::vector<PairAcc> accA, accB, accC, accD;
-	uint32_t snpsPassed = 0;
+        std::vector<PairAcc> accA, accB, accC, accD;
+        uint32_t snpsPassed = 0;
     };
 
     auto workerFn = [&](int workerId, uint32_t mBegin, uint32_t mEnd) -> ThreadResult {
-			ThreadResult res;
-			res.accA.assign(nPairs, {0.0, 0});
-			res.accB.assign(nPairs, {0.0, 0});
-			res.accC.assign(nPairs, {0.0, 0});
-			res.accD.assign(nPairs, {0.0, 0});
+        ThreadResult res;
+        res.accA.assign(nPairs, {0.0, 0});
+        res.accB.assign(nPairs, {0.0, 0});
+        res.accC.assign(nPairs, {0.0, 0});
+        res.accD.assign(nPairs, {0.0, 0});
 
-			auto cursor = admixData.makeCursor();
-			cursor->beginSequentialBlock(mBegin);
-			Eigen::VectorXd dosage(nUsed), hapcount(nUsed);
-			double mafHigh = 1.0 - mafCutoff;
-			bool checkMissing = !admixData.hasNoMissing();
-			uint32_t total = mEnd > mBegin ? mEnd - mBegin : 0;
+        auto cursor = admixData.makeCursor();
+        cursor->beginSequentialBlock(mBegin);
+        Eigen::VectorXd dosage(nUsed), hapcount(nUsed);
+        double mafHigh = 1.0 - mafCutoff;
+        bool checkMissing = !admixData.hasNoMissing();
+        uint32_t total = mEnd > mBegin ? mEnd - mBegin : 0;
 
-			for (uint32_t m = mBegin; m < mEnd; ++m) {
-			    double q = cursor->getAdmixGenotypes(m, ancIdx, dosage, hapcount);
+        for (uint32_t m = mBegin; m < mEnd; ++m) {
+            double q = cursor->getAdmixGenotypes(m, ancIdx, dosage, hapcount);
 
-			    if (q <= mafCutoff || q >= mafHigh) continue;
-			    ++res.snpsPassed;
+            if (q <= mafCutoff || q >= mafHigh) continue;
+            ++res.snpsPassed;
 
-			    double qTerm = q * (1.0 - q);
+            double qTerm = q * (1.0 - q);
 
-			    for (size_t p = 0; p < nPairs; ++p) {
-				uint32_t i = pairs[p].i;
-				uint32_t j = pairs[p].j;
-				if (i >= nUsed || j >= nUsed) continue;
+            for (size_t p = 0; p < nPairs; ++p) {
+                uint32_t i = pairs[p].i;
+                uint32_t j = pairs[p].j;
+                if (i >= nUsed || j >= nUsed) continue;
 
-				double hi = hapcount[i];
-				double hj = hapcount[j];
-				double gi = dosage[i];
-				double gj = dosage[j];
+                double hi = hapcount[i];
+                double hj = hapcount[j];
+                double gi = dosage[i];
+                double gj = dosage[j];
 
-				if (checkMissing) {
-				    if (!std::isfinite(hi) || !std::isfinite(hj) || !std::isfinite(gi) ||
-				        !std::isfinite(gj)) continue;
-				}
+                if (checkMissing) {
+                    if (!std::isfinite(hi) || !std::isfinite(hj) || !std::isfinite(gi) ||
+                        !std::isfinite(gj)) continue;
+                }
 
-				int hiInt = static_cast<int>(std::round(hi));
-				int hjInt = static_cast<int>(std::round(hj));
+                int hiInt = static_cast<int>(std::round(hi));
+                int hjInt = static_cast<int>(std::round(hj));
 
-				double denom = hi * hj * qTerm;
-				if (std::abs(denom) < 1e-15) continue;
+                double denom = hi * hj * qTerm;
+                if (std::abs(denom) < 1e-15) continue;
 
-				double numer = (gi - hi * q) * (gj - hj * q);
-				double ratio = numer / denom;
+                double numer = (gi - hi * q) * (gj - hj * q);
+                double ratio = numer / denom;
 
-				if (hiInt == 2 && hjInt == 2) {
-				    res.accA[p].ratioSum += ratio;
-				    res.accA[p].validCount++;
-				} else if (hiInt == 2 && hjInt == 1) {
-				    res.accB[p].ratioSum += ratio;
-				    res.accB[p].validCount++;
-				} else if (hiInt == 1 && hjInt == 2) {
-				    res.accC[p].ratioSum += ratio;
-				    res.accC[p].validCount++;
-				} else if (hiInt == 1 && hjInt == 1) {
-				    res.accD[p].ratioSum += ratio;
-				    res.accD[p].validCount++;
-				}
-			    }
+                if (hiInt == 2 && hjInt == 2) {
+                    res.accA[p].ratioSum += ratio;
+                    res.accA[p].validCount++;
+                } else if (hiInt == 2 && hjInt == 1) {
+                    res.accB[p].ratioSum += ratio;
+                    res.accB[p].validCount++;
+                } else if (hiInt == 1 && hjInt == 2) {
+                    res.accC[p].ratioSum += ratio;
+                    res.accC[p].validCount++;
+                } else if (hiInt == 1 && hjInt == 1) {
+                    res.accD[p].ratioSum += ratio;
+                    res.accD[p].validCount++;
+                }
+            }
 
-			    uint32_t finished = m - mBegin + 1;
-			    if (finished % 10000 == 0 || finished == total)infoMsg(
-				"  worker %d finished %u/%u markers",
-				workerId,
-				finished,
-				total
-				);
-			}
-			return res;
-		    };
+            uint32_t finished = m - mBegin + 1;
+            if (finished % 10000 == 0 || finished == total) infoMsg(
+                    "  worker %d finished %u/%u markers",
+                    workerId,
+                    finished,
+                    total
+            );
+        }
+        return res;
+    };
 
     // Split markers across threads
     std::vector<ThreadResult> results(nthreads);
     std::vector<uint32_t> workerMarkerCount(nthreads);
     uint32_t chunkSize = (nMarkers + nthreads - 1) / nthreads;
     for (int t = 0; t < nthreads; ++t) {
-	uint32_t mBegin = t * chunkSize;
-	uint32_t mEnd = std::min(mBegin + chunkSize, nMarkers);
-	workerMarkerCount[t] = (mEnd > mBegin ? mEnd - mBegin : 0);
+        uint32_t mBegin = t * chunkSize;
+        uint32_t mEnd = std::min(mBegin + chunkSize, nMarkers);
+        workerMarkerCount[t] = (mEnd > mBegin ? mEnd - mBegin : 0);
     }
     infoMsg("  workers 0-%d will each process ~%u markers", nthreads - 1, chunkSize);
     if (nthreads == 1) {
-	results[0] = workerFn(0, 0, nMarkers);
+        results[0] = workerFn(0, 0, nMarkers);
     } else {
-	std::vector<std::thread> workers;
-	workers.reserve(nthreads - 1);
-	for (int t = 0; t < nthreads - 1; ++t) {
-	    uint32_t mBegin = t * chunkSize;
-	    uint32_t mEnd = std::min(mBegin + chunkSize, nMarkers);
-	    workers.emplace_back(
-		[&results, &workerFn, t, mBegin, mEnd]() {
-		results[t] = workerFn(t, mBegin, mEnd);
-	    }
-		);
-	}
-	// Main thread handles last chunk
-	{
-	    uint32_t mBegin = (nthreads - 1) * chunkSize;
-	    uint32_t mEnd = nMarkers;
-	    results[nthreads - 1] = workerFn(nthreads - 1, mBegin, mEnd);
-	}
-	for (auto &w : workers)
-	    w.join();
+        std::vector<std::thread> workers;
+        workers.reserve(nthreads - 1);
+        for (int t = 0; t < nthreads - 1; ++t) {
+            uint32_t mBegin = t * chunkSize;
+            uint32_t mEnd = std::min(mBegin + chunkSize, nMarkers);
+            workers.emplace_back(
+                [&results, &workerFn, t, mBegin, mEnd]() {
+                results[t] = workerFn(t, mBegin, mEnd);
+            }
+            );
+        }
+        // Main thread handles last chunk
+        {
+            uint32_t mBegin = (nthreads - 1) * chunkSize;
+            uint32_t mEnd = nMarkers;
+            results[nthreads - 1] = workerFn(nthreads - 1, mBegin, mEnd);
+        }
+        for (auto &w : workers)
+            w.join();
     }
 
     // Merge accumulators
@@ -373,17 +374,17 @@ PhiMatrices estimatePhiOneAncestry(const AdmixData &admixData, const SparseGRM &
     uint32_t snpsPassed = 0;
 
     for (int t = 0; t < nthreads; ++t) {
-	snpsPassed += results[t].snpsPassed;
-	for (size_t p = 0; p < nPairs; ++p) {
-	    accA[p].ratioSum += results[t].accA[p].ratioSum;
-	    accA[p].validCount += results[t].accA[p].validCount;
-	    accB[p].ratioSum += results[t].accB[p].ratioSum;
-	    accB[p].validCount += results[t].accB[p].validCount;
-	    accC[p].ratioSum += results[t].accC[p].ratioSum;
-	    accC[p].validCount += results[t].accC[p].validCount;
-	    accD[p].ratioSum += results[t].accD[p].ratioSum;
-	    accD[p].validCount += results[t].accD[p].validCount;
-	}
+        snpsPassed += results[t].snpsPassed;
+        for (size_t p = 0; p < nPairs; ++p) {
+            accA[p].ratioSum += results[t].accA[p].ratioSum;
+            accA[p].validCount += results[t].accA[p].validCount;
+            accB[p].ratioSum += results[t].accB[p].ratioSum;
+            accB[p].validCount += results[t].accB[p].validCount;
+            accC[p].ratioSum += results[t].accC[p].ratioSum;
+            accC[p].validCount += results[t].accC[p].validCount;
+            accD[p].ratioSum += results[t].accD[p].ratioSum;
+            accD[p].validCount += results[t].accD[p].validCount;
+        }
     }
 
     infoMsg("  Phi estimation: %u markers passed MAF filter (anc%d)", snpsPassed, ancIdx);
@@ -391,25 +392,25 @@ PhiMatrices estimatePhiOneAncestry(const AdmixData &admixData, const SparseGRM &
     // Build PhiMatrices from accumulators
     PhiMatrices result;
     auto buildEntries = [&](const std::vector<PairAcc> &acc, std::vector<PhiEntry> &out) {
-			    for (size_t p = 0; p < nPairs; ++p) {
-				if (acc[p].validCount > 0) {
-				    double phi = acc[p].ratioSum / acc[p].validCount;
-				    out.push_back({pairs[p].i, pairs[p].j, phi});
-				}
-			    }
-			};
+        for (size_t p = 0; p < nPairs; ++p) {
+            if (acc[p].validCount > 0) {
+                double phi = acc[p].ratioSum / acc[p].validCount;
+                out.push_back({pairs[p].i, pairs[p].j, phi});
+            }
+        }
+    };
     buildEntries(accA, result.A);
     buildEntries(accB, result.B);
     buildEntries(accC, result.C);
     buildEntries(accD, result.D);
 
     infoMsg(
-	"  Phi entries: A=%zu, B=%zu, C=%zu, D=%zu",
-	result.A.size(),
-	result.B.size(),
-	result.C.size(),
-	result.D.size()
-	);
+        "  Phi entries: A=%zu, B=%zu, C=%zu, D=%zu",
+        result.A.size(),
+        result.B.size(),
+        result.C.size(),
+        result.D.size()
+    );
 
     return result;
 }
@@ -425,24 +426,28 @@ double computePhiVariance(const Eigen::VectorXd &R, const Eigen::VectorXd &hapco
     // Off-diagonal terms (phi already has bidirectional pairs)
     // Scenario A: h_i=2, h_j=2 → multiplier = 4
     for (const auto &e : phi.A) {
-	if (std::abs(hapcount[e.i] - 2.0) < 0.5 && std::abs(hapcount[e.j] - 2.0) < 0.5)var += 4.0 * qTerm * e.value * R[e.i] * R[e.j];
+        if (std::abs(hapcount[e.i] - 2.0) < 0.5 && std::abs(hapcount[e.j] - 2.0) < 0.5)var += 4.0 * qTerm * e.value * R[
+                e.i] * R[e.j];
     }
     // Scenario B: h_i=2, h_j=1 → multiplier = 2
     for (const auto &e : phi.B) {
-	if (std::abs(hapcount[e.i] - 2.0) < 0.5 && std::abs(hapcount[e.j] - 1.0) < 0.5)var += 2.0 * qTerm * e.value * R[e.i] * R[e.j];
+        if (std::abs(hapcount[e.i] - 2.0) < 0.5 && std::abs(hapcount[e.j] - 1.0) < 0.5)var += 2.0 * qTerm * e.value * R[
+                e.i] * R[e.j];
     }
     // Scenario C: h_i=1, h_j=2 → multiplier = 2
     for (const auto &e : phi.C) {
-	if (std::abs(hapcount[e.i] - 1.0) < 0.5 && std::abs(hapcount[e.j] - 2.0) < 0.5)var += 2.0 * qTerm * e.value * R[e.i] * R[e.j];
+        if (std::abs(hapcount[e.i] - 1.0) < 0.5 && std::abs(hapcount[e.j] - 2.0) < 0.5)var += 2.0 * qTerm * e.value * R[
+                e.i] * R[e.j];
     }
     // Scenario D: h_i=1, h_j=1 → multiplier = 1
     for (const auto &e : phi.D) {
-	if (std::abs(hapcount[e.i] - 1.0) < 0.5 && std::abs(hapcount[e.j] - 1.0) < 0.5)var += 1.0 * qTerm * e.value * R[e.i] * R[e.j];
+        if (std::abs(hapcount[e.i] - 1.0) < 0.5 && std::abs(hapcount[e.j] - 1.0) < 0.5)var += 1.0 * qTerm * e.value * R[
+                e.i] * R[e.j];
     }
 
     // Diagonal: sum_i R_i^2 * h_i * q(1-q)
     for (int i = 0; i < static_cast<int>(R.size()); ++i) {
-	var += R[i] * R[i] * hapcount[i] * qTerm;
+        var += R[i] * R[i] * hapcount[i] * qTerm;
     }
 
     return var;
@@ -460,16 +465,16 @@ inline void kG012Local(double t, double maf, double h, double &K0out, double &K1
     double et = std::exp(std::clamp(t, -700.0, 700.0));
     double base = (1.0 - maf) + maf * et;
     if (base > 1e-15) {
-	double pe = maf * et;     // p * e^t
-	double q1p = (1.0 - maf); // (1-p)
-	double bsq = base * base;
-	K0out = h * std::log(base);
-	K1out = h * pe / base;
-	K2out = h * pe * q1p / bsq;
+        double pe = maf * et;     // p * e^t
+        double q1p = (1.0 - maf); // (1-p)
+        double bsq = base * base;
+        K0out = h * std::log(base);
+        K1out = h * pe / base;
+        K2out = h * pe * q1p / bsq;
     } else {
-	K0out = -std::numeric_limits<double>::infinity();
-	K1out = 0.0;
-	K2out = 0.0;
+        K0out = -std::numeric_limits<double>::infinity();
+        K1out = 0.0;
+        K2out = 0.0;
     }
 }
 
@@ -479,41 +484,49 @@ struct RootResult {
     bool converged;
 };
 
-RootResult
-findRoot(double s, const double *rOut, const double *hOut, int nOut, double q, double meanNorm, double varNorm) {
+RootResult findRoot(
+    double s,
+    const double *rOut,
+    const double *hOut,
+    int nOut,
+    double q,
+    double meanNorm,
+    double
+    varNorm
+) {
     static constexpr double tol = 0.001;
     static constexpr int maxIter = 100;
     double initVals[] = {0.0, -1.0, 1.0, -2.0, 2.0};
 
     for (double init : initVals) {
-	double t = init;
-	bool conv = false;
-	for (int iter = 0; iter < maxIter; ++iter) {
-	    double K1 = 0.0, K2 = 0.0;
-	    for (int i = 0; i < nOut; ++i) {
-		double tR = std::clamp(t * rOut[i], -700.0, 700.0);
-		double k0i, k1i, k2i;
-		kG012Local(tR, q, hOut[i], k0i, k1i, k2i);
-		K1 += rOut[i] * k1i;
-		K2 += rOut[i] * rOut[i] * k2i;
-	    }
-	    double K1total = K1 + meanNorm + varNorm * t - s;
-	    double K2total = K2 + varNorm;
+        double t = init;
+        bool conv = false;
+        for (int iter = 0; iter < maxIter; ++iter) {
+            double K1 = 0.0, K2 = 0.0;
+            for (int i = 0; i < nOut; ++i) {
+                double tR = std::clamp(t * rOut[i], -700.0, 700.0);
+                double k0i, k1i, k2i;
+                kG012Local(tR, q, hOut[i], k0i, k1i, k2i);
+                K1 += rOut[i] * k1i;
+                K2 += rOut[i] * rOut[i] * k2i;
+            }
+            double K1total = K1 + meanNorm + varNorm * t - s;
+            double K2total = K2 + varNorm;
 
-	    if (std::abs(K1total) < tol) {
-		conv = true;
-		break;
-	    }
-	    if (K2total <= 1e-10) break;
+            if (std::abs(K1total) < tol) {
+                conv = true;
+                break;
+            }
+            if (K2total <= 1e-10) break;
 
-	    double dt = std::clamp(-K1total / K2total, -2.0, 2.0);
-	    t = std::clamp(t + dt, -20.0, 20.0);
-	    if (std::abs(dt) < tol) {
-		conv = true;
-		break;
-	    }
-	}
-	if (conv) return {t, true};
+            double dt = std::clamp(-K1total / K2total, -2.0, 2.0);
+            t = std::clamp(t + dt, -20.0, 20.0);
+            if (std::abs(dt) < tol) {
+                conv = true;
+                break;
+            }
+        }
+        if (conv) return {t, true};
     }
     return {0.0, false};
 }
@@ -529,24 +542,24 @@ double lugannamiRicePval(
     double meanNorm,
     double varNorm,
     bool upperTail
-    ) {
+) {
     double K0 = 0.0, K2 = 0.0;
     for (int i = 0; i < nOut; ++i) {
-	double tR = std::clamp(zeta * rOut[i], -700.0, 700.0);
-	double k0i, k1i, k2i;
-	kG012Local(tR, q, hOut[i], k0i, k1i, k2i);
-	K0 += k0i;
-	K2 += rOut[i] * rOut[i] * k2i;
+        double tR = std::clamp(zeta * rOut[i], -700.0, 700.0);
+        double k0i, k1i, k2i;
+        kG012Local(tR, q, hOut[i], k0i, k1i, k2i);
+        K0 += k0i;
+        K2 += rOut[i] * rOut[i] * k2i;
     }
     K0 += meanNorm * zeta + 0.5 * varNorm * zeta * zeta;
     K2 += varNorm;
 
     double temp = zeta * s - K0;
     if (temp <= 0 || K2 <= 0) {
-	// Fallback to normal
-	double z = std::abs(s) / std::sqrt(K2 > 0 ? K2 : 1.0);
-	boost::math::normal_distribution<> norm;
-	return boost::math::cdf(boost::math::complement(norm, z));
+        // Fallback to normal
+        double z = std::abs(s) / std::sqrt(K2 > 0 ? K2 : 1.0);
+        boost::math::normal_distribution<> norm;
+        return boost::math::cdf(boost::math::complement(norm, z));
     }
 
     double w = std::copysign(std::sqrt(2.0 * temp), zeta);
@@ -559,9 +572,9 @@ double lugannamiRicePval(
 
     boost::math::normal_distribution<> norm;
     if (upperTail) {
-	return boost::math::cdf(boost::math::complement(norm, lr_arg));
+        return boost::math::cdf(boost::math::complement(norm, lr_arg));
     } else {
-	return boost::math::cdf(norm, lr_arg);
+        return boost::math::cdf(norm, lr_arg);
     }
 }
 
@@ -577,14 +590,14 @@ std::pair<double, double> spaLocalPval(
     double varS,
     const OutlierData &outlier,
     double spaCutoff
-    ) {
+) {
     double z = (varS > 0.0) ? (S - sMean) / std::sqrt(varS) : 0.0;
     boost::math::normal_distribution<> norm;
     double pNorm = 2.0 * boost::math::cdf(boost::math::complement(norm, std::abs(z)));
     if (pNorm <= 0.0) pNorm = MIN_P_VALUE;
 
     if (std::abs(z) < spaCutoff || outlier.posOutlier.empty()) {
-	return {pNorm, pNorm};
+        return {pNorm, pNorm};
     }
 
     // varDiag already computed by caller
@@ -598,13 +611,13 @@ std::pair<double, double> spaLocalPval(
     double meanNorm = 0.0, varNorm = 0.0;
 
     for (int i = 0; i < nOut; ++i) {
-	uint32_t idx = outlier.posOutlier[i];
-	rOut[i] = R[idx];
-	hOut[i] = hapcount[idx];
+        uint32_t idx = outlier.posOutlier[i];
+        rOut[i] = R[idx];
+        hOut[i] = hapcount[idx];
     }
     for (uint32_t idx : outlier.posNonOutlier) {
-	meanNorm += R[idx] * q * hapcount[idx];
-	varNorm += R[idx] * R[idx] * q * (1.0 - q) * hapcount[idx];
+        meanNorm += R[idx] * q * hapcount[idx];
+        varNorm += R[idx] * R[idx] * q * (1.0 - q) * hapcount[idx];
     }
 
     double sUpper = std::max(sNew, 2.0 * sMeanNew - sNew);
@@ -615,17 +628,17 @@ std::pair<double, double> spaLocalPval(
 
     double pval = 0.0;
     if (rootUpper.converged) {
-	pval += lugannamiRicePval(rootUpper.root, sUpper, q, rOut.data(), hOut.data(), nOut, meanNorm, varNorm, true);
+        pval += lugannamiRicePval(rootUpper.root, sUpper, q, rOut.data(), hOut.data(), nOut, meanNorm, varNorm, true);
     }
     if (rootLower.converged) {
-	pval += lugannamiRicePval(rootLower.root, sLower, q, rOut.data(), hOut.data(), nOut, meanNorm, varNorm, false);
+        pval += lugannamiRicePval(rootLower.root, sLower, q, rOut.data(), hOut.data(), nOut, meanNorm, varNorm, false);
     }
 
     if (!rootUpper.converged && !rootLower.converged) pval = std::numeric_limits<double>::quiet_NaN();
 
     if (std::isfinite(pval)) {
-	if (pval <= 0.0) pval = MIN_P_VALUE;
-	if (pval > 1.0) pval = 1.0;
+        if (pval <= 0.0) pval = MIN_P_VALUE;
+        if (pval > 1.0) pval = 1.0;
     }
 
     return {pval, pNorm};
@@ -641,37 +654,38 @@ std::pair<double, double> spaLocalPval(
 static void writePhiWide(const std::string &path, const std::vector<PhiMatrices> &allPhi, int K) {
     // Collect union of all (i,j) pairs across ancestries and scenarios
     struct PairKey {
-	uint32_t i, j;
+        uint32_t i, j;
     };
+
     auto pairHash = [](const PairKey &p) {
-			return std::hash<uint64_t>{}(uint64_t(p.i) << 32 | p.j);
-		    };
+        return std::hash<uint64_t>{}(uint64_t(p.i) << 32 | p.j);
+    };
     auto pairEq = [](const PairKey &a, const PairKey &b) {
-		      return a.i == b.i && a.j == b.j;
-		  };
+        return a.i == b.i && a.j == b.j;
+    };
     std::unordered_map<PairKey, std::vector<double>, decltype(pairHash), decltype(pairEq)> rows(0, pairHash, pairEq);
 
     int nCols = K * 4; // A,B,C,D per ancestry
 
     auto insertEntries = [&](const std::vector<PhiEntry> &entries, int colIdx) {
-			     for (const auto &e : entries) {
-				 auto [it, inserted] =
-				     rows.try_emplace(
-					 {e.i, e.j},
-					 std::vector<double>(
-					     nCols,
-					     std::numeric_limits<double>::quiet_NaN()
-					     )
-					 );
-				 it->second[colIdx] = e.value;
-			     }
-			 };
+        for (const auto &e : entries) {
+            auto [it, inserted] =
+                rows.try_emplace(
+                    {e.i, e.j},
+                    std::vector<double>(
+                        nCols,
+                        std::numeric_limits<double>::quiet_NaN()
+                    )
+                );
+            it->second[colIdx] = e.value;
+        }
+    };
 
     for (int k = 0; k < K; ++k) {
-	insertEntries(allPhi[k].A, k * 4 + 0);
-	insertEntries(allPhi[k].B, k * 4 + 1);
-	insertEntries(allPhi[k].C, k * 4 + 2);
-	insertEntries(allPhi[k].D, k * 4 + 3);
+        insertEntries(allPhi[k].A, k * 4 + 0);
+        insertEntries(allPhi[k].B, k * 4 + 1);
+        insertEntries(allPhi[k].C, k * 4 + 2);
+        insertEntries(allPhi[k].D, k * 4 + 3);
     }
 
     // Write
@@ -681,27 +695,27 @@ static void writePhiWide(const std::string &path, const std::vector<PhiMatrices>
     std::string hdr = "idx1\tidx2";
     const char *scenarioTag[] = {"_A", "_B", "_C", "_D"};
     for (int k = 0; k < K; ++k)
-	for (int s = 0; s < 4; ++s)
-	    hdr += std::string("\tanc") + std::to_string(k) + scenarioTag[s];
+        for (int s = 0; s < 4; ++s)
+            hdr += std::string("\tanc") + std::to_string(k) + scenarioTag[s];
     hdr += '\n';
     out.write(hdr);
 
     // Data rows
     char buf[64];
     for (const auto &[pair, vals] : rows) {
-	std::string line;
-	line.reserve(64 + 16 * nCols);
-	std::snprintf(buf, sizeof(buf), "%u\t%u", pair.i, pair.j);
-	line += buf;
-	for (int c = 0; c < nCols; ++c) {
-	    if (std::isnan(vals[c]))line += "\tNA";
-	    else {
-		std::snprintf(buf, sizeof(buf), "\t%.17g", vals[c]);
-		line += buf;
-	    }
-	}
-	line += '\n';
-	out.write(line);
+        std::string line;
+        line.reserve(64 + 16 * nCols);
+        std::snprintf(buf, sizeof(buf), "%u\t%u", pair.i, pair.j);
+        line += buf;
+        for (int c = 0; c < nCols; ++c) {
+            if (std::isnan(vals[c]))line += "\tNA";
+            else {
+                std::snprintf(buf, sizeof(buf), "\t%.17g", vals[c]);
+                line += buf;
+            }
+        }
+        line += '\n';
+        out.write(line);
     }
 
     infoMsg("Phi written: %zu pairs x %d columns -> %s", rows.size(), nCols, path.c_str());
@@ -715,10 +729,12 @@ static std::vector<PhiMatrices> readPhiWide(const std::string &path, int K) {
     if (!reader.getline(header)) throw std::runtime_error("Cannot read phi file header: " + path);
     // Validate header: first token must be idx1 or #idx1
     {
-	std::istringstream hs(header);
-	std::string firstCol;
-	hs >> firstCol;
-	if (firstCol != "idx1" && firstCol != "#idx1")throw std::runtime_error(path + ": header must start with idx1 or #idx1, got '" + firstCol + "'");
+        std::istringstream hs(header);
+        std::string firstCol;
+        hs >> firstCol;
+        if (firstCol != "idx1" && firstCol != "#idx1")throw std::runtime_error(path +
+                                                                               ": header must start with idx1 or #idx1, got '"
+                                                                               + firstCol + "'");
     }
 
     int nCols = K * 4;
@@ -726,45 +742,45 @@ static std::vector<PhiMatrices> readPhiWide(const std::string &path, int K) {
 
     std::string line;
     while (reader.getline(line)) {
-	if (line.empty()) continue;
-	std::istringstream ss(line);
-	uint32_t i, j;
-	ss >> i >> j;
+        if (line.empty()) continue;
+        std::istringstream ss(line);
+        uint32_t i, j;
+        ss >> i >> j;
 
-	for (int c = 0; c < nCols; ++c) {
-	    std::string tok;
-	    ss >> tok;
-	    if (tok == "NA" || tok.empty()) continue;
-	    double val = std::stod(tok);
-	    int k = c / 4;
-	    int s = c % 4;
-	    PhiEntry entry{i, j, val};
-	    switch (s) {
-	    case 0:
-		result[k].A.push_back(entry);
-		break;
-	    case 1:
-		result[k].B.push_back(entry);
-		break;
-	    case 2:
-		result[k].C.push_back(entry);
-		break;
-	    case 3:
-		result[k].D.push_back(entry);
-		break;
-	    }
-	}
+        for (int c = 0; c < nCols; ++c) {
+            std::string tok;
+            ss >> tok;
+            if (tok == "NA" || tok.empty()) continue;
+            double val = std::stod(tok);
+            int k = c / 4;
+            int s = c % 4;
+            PhiEntry entry{i, j, val};
+            switch (s) {
+            case 0:
+                result[k].A.push_back(entry);
+                break;
+            case 1:
+                result[k].B.push_back(entry);
+                break;
+            case 2:
+                result[k].C.push_back(entry);
+                break;
+            case 3:
+                result[k].D.push_back(entry);
+                break;
+            }
+        }
     }
 
     for (int k = 0; k < K; ++k)
-	infoMsg(
-	    "  anc%d phi: A=%zu B=%zu C=%zu D=%zu",
-	    k,
-	    result[k].A.size(),
-	    result[k].B.size(),
-	    result[k].C.size(),
-	    result[k].D.size()
-	    );
+        infoMsg(
+            "  anc%d phi: A=%zu B=%zu C=%zu D=%zu",
+            k,
+            result[k].A.size(),
+            result[k].B.size(),
+            result[k].C.size(),
+            result[k].D.size()
+        );
 
     return result;
 }
@@ -783,7 +799,7 @@ void runPhiEstimation(
     const std::string &extractFile,
     const std::string &excludeFile,
     int nthreads
-    ) {
+) {
     infoMsg("=== SPAmixLocalPlus Phi Estimation ===");
 
     // Load .fam IIDs (genotype subject list)
@@ -818,8 +834,8 @@ void runPhiEstimation(
     // Estimate phi for all ancestries
     std::vector<PhiMatrices> allPhi(K);
     for (int k = 0; k < K; ++k) {
-	infoMsg("Estimating phi for anc%d (%d thread%s)...", k, nthreads, nthreads > 1 ? "s" : "");
-	allPhi[k] = estimatePhiOneAncestry(admixData, grm, k, nthreads);
+        infoMsg("Estimating phi for anc%d (%d thread%s)...", k, nthreads, nthreads > 1 ? "s" : "");
+        allPhi[k] = estimatePhiOneAncestry(admixData, grm, k, nthreads);
     }
 
     // Write single wide file
@@ -845,7 +861,7 @@ static void runUnifiedGWAS(
     const std::string &compression,
     int compressionLevel,
     int nthreads
-    ) {
+) {
     const int K = admixData.nAncestries();
     uint32_t nUsed = admixData.nSubjUsed();
     const auto &markerInfo = admixData.markerInfo();
@@ -853,13 +869,13 @@ static void runUnifiedGWAS(
     // Build header: CHROM POS ID REF ALT  anc0_... ancK_...
     std::string header = "CHROM\tPOS\tID\tREF\tALT";
     for (int k = 0; k < K; ++k) {
-	std::string pfx = "\tanc" + std::to_string(k) + "_";
-	header += pfx + "MISS_RATE";
-	header += pfx + "ALT_FREQ";
-	header += pfx + "MAC";
-	header += pfx + "P";
-	header += pfx + "Z";
-	header += pfx + "BETA";
+        std::string pfx = "\tanc" + std::to_string(k) + "_";
+        header += pfx + "MISS_RATE";
+        header += pfx + "ALT_FREQ";
+        header += pfx + "MAC";
+        header += pfx + "P";
+        header += pfx + "Z";
+        header += pfx + "BETA";
     }
     header += '\n';
 
@@ -880,13 +896,14 @@ static void runUnifiedGWAS(
     Eigen::ArrayXd R2 = resid.array().square();
     std::vector<RprodSoA> rphi(K);
     for (int k = 0; k < K; ++k)
-	rphi[k] = buildRprodSoA(allPhi[k], resid);
+        rphi[k] = buildRprodSoA(allPhi[k], resid);
 
     const bool noMissing = admixData.hasNoMissing();
 
     struct PaddedFlag {
-	alignas(64) int ready = 0;
+        alignas(64) int ready = 0;
     };
+
     std::vector<std::string> chunkOutput(nChunks);
     std::vector<PaddedFlag> chunkReady(nChunks);
 
@@ -896,257 +913,258 @@ static void runUnifiedGWAS(
 
     // Writer thread
     std::thread writer([&]() {
-                       for (size_t ci = 0; ci < nChunks; ++ci) {
-			   std::unique_lock<std::mutex> lk(writeMutex);
-			   writeCv.wait(
-			       lk,
-			       [&] {
-			       return chunkReady[ci].ready || stopWriter;
-		}
-			       );
-			   if (chunkReady[ci].ready) out.write(chunkOutput[ci]);
-		       }
-	});
+        for (size_t ci = 0; ci < nChunks; ++ci) {
+            std::unique_lock<std::mutex> lk(writeMutex);
+            writeCv.wait(
+                lk,
+                [&] {
+                return chunkReady[ci].ready || stopWriter;
+            }
+            );
+            if (chunkReady[ci].ready) out.write(chunkOutput[ci]);
+        }
+    });
 
     // Worker function — mini-batched: decode PHI_BATCH markers, then
     // scan phi entries ONCE for all of them (8× bandwidth reduction).
     auto workerFn = [&]() {
-			auto cursor = admixData.makeCursor();
-			char fmtBuf[64];
+        auto cursor = admixData.makeCursor();
+        char fmtBuf[64];
 
-			// Per-batch storage: keep decoded genotypes for all batch markers
-			std::vector<Eigen::MatrixXd> bDos(PHI_BATCH, Eigen::MatrixXd(nUsed, K));
-			std::vector<Eigen::MatrixXd> bHap(PHI_BATCH, Eigen::MatrixXd(nUsed, K));
+        // Per-batch storage: keep decoded genotypes for all batch markers
+        std::vector<Eigen::MatrixXd> bDos(PHI_BATCH, Eigen::MatrixXd(nUsed, K));
+        std::vector<Eigen::MatrixXd> bHap(PHI_BATCH, Eigen::MatrixXd(nUsed, K));
 
-			// Subject-major hInt for batched phi scan:
-			//   hIntSM[subj * PHI_BATCH + batchIdx]
-			// One per ancestry, reused across batches.
-			std::vector<std::vector<uint32_t> > hIntPerAnc(K,
-			                                               std::vector<uint32_t>(
-									   static_cast<size_t>(nUsed) * PHI_BATCH,
-									   0
-									   ));
-			double varOffBuf[PHI_BATCH]; // output from batch phi scan
+        // Subject-major hInt for batched phi scan:
+        //   hIntSM[subj * PHI_BATCH + batchIdx]
+        // One per ancestry, reused across batches.
+        std::vector<std::vector<uint32_t> > hIntPerAnc(K,
+                                                       std::vector<uint32_t>(
+                                                           static_cast<size_t>(nUsed) * PHI_BATCH,
+                                                           0
+        ));
+        double varOffBuf[PHI_BATCH];                 // output from batch phi scan
 
-			// Per-batch per-ancestry scalar results computed during Phase 1
-			struct AncScalar {
-			    double maf, missRate, dosSum, mac;
-			    double S, sMean, diagVar, q;
-			    bool pass;
-			};
-			std::vector<std::vector<AncScalar> > bAncS(PHI_BATCH, std::vector<AncScalar>(K));
+        // Per-batch per-ancestry scalar results computed during Phase 1
+        struct AncScalar {
+            double maf, missRate, dosSum, mac;
+            double S, sMean, diagVar, q;
+            bool pass;
+        };
 
-			for (size_t ci = nextChunk.fetch_add(1); ci < nChunks; ci = nextChunk.fetch_add(1)) {
-			    const auto &gIndices = chunks[ci];
-			    std::string buf;
-			    buf.reserve(gIndices.size() * (80 + 90 * K));
+        std::vector<std::vector<AncScalar> > bAncS(PHI_BATCH, std::vector<AncScalar>(K));
 
-			    cursor->beginSequentialBlock(gIndices.front());
+        for (size_t ci = nextChunk.fetch_add(1); ci < nChunks; ci = nextChunk.fetch_add(1)) {
+            const auto &gIndices = chunks[ci];
+            std::string buf;
+            buf.reserve(gIndices.size() * (80 + 90 * K));
 
-			    // Process markers in mini-batches
-			    for (size_t mi = 0; mi < gIndices.size(); mi += PHI_BATCH) {
-				int batchLen = static_cast<int>(std::min(
-				    static_cast<size_t>(PHI_BATCH),
-				    gIndices.size() - mi
-				    ));
+            cursor->beginSequentialBlock(gIndices.front());
 
-				// ── Phase 1: Decode + compute per-marker scalars + fill hInt ──
-				for (int b = 0; b < batchLen; ++b) {
-				    uint64_t localIdx = gIndices[mi + b];
-				    cursor->getAllAncestries(localIdx, bDos[b], bHap[b]);
+            // Process markers in mini-batches
+            for (size_t mi = 0; mi < gIndices.size(); mi += PHI_BATCH) {
+                int batchLen = static_cast<int>(std::min(
+                                                    static_cast<size_t>(PHI_BATCH),
+                                                    gIndices.size() - mi
+                ));
 
-				    for (int k = 0; k < K; ++k) {
-					auto dosCol = bDos[b].col(k);
-					auto hapCol = bHap[b].col(k);
+                // ── Phase 1: Decode + compute per-marker scalars + fill hInt ──
+                for (int b = 0; b < batchLen; ++b) {
+                    uint64_t localIdx = gIndices[mi + b];
+                    cursor->getAllAncestries(localIdx, bDos[b], bHap[b]);
 
-					double hapSum = 0.0, dosSum = 0.0;
-					uint32_t nMissing = 0;
-					if (noMissing) {
-					    dosSum = dosCol.sum();
-					    hapSum = hapCol.sum();
-					} else {
-					    for (uint32_t s = 0; s < nUsed; ++s) {
-						if (!std::isfinite(dosCol[s]) || !std::isfinite(hapCol[s])) {
-						    ++nMissing;
-						    dosCol[s] = 0.0;
-						    hapCol[s] = 0.0;
-						} else {
-						    dosSum += dosCol[s];
-						    hapSum += hapCol[s];
-						}
-					    }
-					}
+                    for (int k = 0; k < K; ++k) {
+                        auto dosCol = bDos[b].col(k);
+                        auto hapCol = bHap[b].col(k);
 
-					AncScalar &as = bAncS[b][k];
-					as.missRate = static_cast<double>(nMissing) / nUsed;
-					as.maf = (hapSum > 0) ? dosSum / hapSum : 0.0;
-					as.mac = std::min(dosSum, hapSum - dosSum);
-					as.dosSum = dosSum;
+                        double hapSum = 0.0, dosSum = 0.0;
+                        uint32_t nMissing = 0;
+                        if (noMissing) {
+                            dosSum = dosCol.sum();
+                            hapSum = hapCol.sum();
+                        } else {
+                            for (uint32_t s = 0; s < nUsed; ++s) {
+                                if (!std::isfinite(dosCol[s]) || !std::isfinite(hapCol[s])) {
+                                    ++nMissing;
+                                    dosCol[s] = 0.0;
+                                    hapCol[s] = 0.0;
+                                } else {
+                                    dosSum += dosCol[s];
+                                    hapSum += hapCol[s];
+                                }
+                            }
+                        }
 
-					if (as.missRate > missingCutoff || as.maf < mafCutoff ||
-					    as.maf > (1.0 - mafCutoff) ||
-					    as.mac < macCutoff) {
-					    as.pass = false;
-					    // Zero out hInt slot so it won't match any scenario
-					    uint32_t *dst = hIntPerAnc[k].data() + static_cast<size_t>(b);
-					    for (uint32_t s = 0; s < nUsed; ++s)
-						dst[s * PHI_BATCH] = 0;
-					    continue;
-					}
-					as.pass = true;
-					as.q = as.maf;
-					double qTerm = as.q * (1.0 - as.q);
+                        AncScalar &as = bAncS[b][k];
+                        as.missRate = static_cast<double>(nMissing) / nUsed;
+                        as.maf = (hapSum > 0) ? dosSum / hapSum : 0.0;
+                        as.mac = std::min(dosSum, hapSum - dosSum);
+                        as.dosSum = dosSum;
 
-					as.S = dosCol.dot(resid);
-					as.sMean = as.q * hapCol.dot(resid);
-					as.diagVar = qTerm * R2.matrix().dot(hapCol);
+                        if (as.missRate > missingCutoff || as.maf < mafCutoff ||
+                            as.maf > (1.0 - mafCutoff) ||
+                            as.mac < macCutoff) {
+                            as.pass = false;
+                            // Zero out hInt slot so it won't match any scenario
+                            uint32_t *dst = hIntPerAnc[k].data() + static_cast<size_t>(b);
+                            for (uint32_t s = 0; s < nUsed; ++s)
+                                dst[s * PHI_BATCH] = 0;
+                            continue;
+                        }
+                        as.pass = true;
+                        as.q = as.maf;
+                        double qTerm = as.q * (1.0 - as.q);
 
-					// Fill subject-major hInt for this batch slot
-					uint32_t *dst = hIntPerAnc[k].data() + static_cast<size_t>(b);
-					if (noMissing) {
-					    for (uint32_t s = 0; s < nUsed; ++s)
-						dst[s * PHI_BATCH] = static_cast<uint32_t>(hapCol[s]);
-					} else {
-					    for (uint32_t s = 0; s < nUsed; ++s) {
-						double h = hapCol[s];
-						dst[s * PHI_BATCH] = std::isfinite(h) ? static_cast<uint32_t>(h) : 0;
-					    }
-					}
-				    }
-				}
-				// Zero out unused batch slots (ensure no false matches)
-				for (int b = batchLen; b < PHI_BATCH; ++b) {
-				    for (int k = 0; k < K; ++k) {
-					uint32_t *dst = hIntPerAnc[k].data() + static_cast<size_t>(b);
-					for (uint32_t s = 0; s < nUsed; ++s)
-					    dst[s * PHI_BATCH] = 0;
-				    }
-				}
+                        as.S = dosCol.dot(resid);
+                        as.sMean = as.q * hapCol.dot(resid);
+                        as.diagVar = qTerm * R2.matrix().dot(hapCol);
 
-				// ── Phase 2: Batch phi scan — ONE pass per ancestry ──
-				// varOffAll[b][k] stores the off-diagonal variance for each marker/ancestry
-				double varOffAll[PHI_BATCH][16]; // K ≤ 16 ancestries
-				for (int k = 0; k < K; ++k) {
-				    computeVarOffSoABatch(rphi[k], hIntPerAnc[k].data(), nUsed, batchLen, varOffBuf);
-				    for (int b = 0; b < batchLen; ++b)
-					varOffAll[b][k] = varOffBuf[b];
-				}
+                        // Fill subject-major hInt for this batch slot
+                        uint32_t *dst = hIntPerAnc[k].data() + static_cast<size_t>(b);
+                        if (noMissing) {
+                            for (uint32_t s = 0; s < nUsed; ++s)
+                                dst[s * PHI_BATCH] = static_cast<uint32_t>(hapCol[s]);
+                        } else {
+                            for (uint32_t s = 0; s < nUsed; ++s) {
+                                double h = hapCol[s];
+                                dst[s * PHI_BATCH] = std::isfinite(h) ? static_cast<uint32_t>(h) : 0;
+                            }
+                        }
+                    }
+                }
+                // Zero out unused batch slots (ensure no false matches)
+                for (int b = batchLen; b < PHI_BATCH; ++b) {
+                    for (int k = 0; k < K; ++k) {
+                        uint32_t *dst = hIntPerAnc[k].data() + static_cast<size_t>(b);
+                        for (uint32_t s = 0; s < nUsed; ++s)
+                            dst[s * PHI_BATCH] = 0;
+                    }
+                }
 
-				// ── Phase 3: SPA + output for each marker ──
-				for (int b = 0; b < batchLen; ++b) {
-				    uint64_t localIdx = gIndices[mi + b];
-				    const auto &mInfo = markerInfo[localIdx];
+                // ── Phase 2: Batch phi scan — ONE pass per ancestry ──
+                // varOffAll[b][k] stores the off-diagonal variance for each marker/ancestry
+                double varOffAll[PHI_BATCH][16];                 // K ≤ 16 ancestries
+                for (int k = 0; k < K; ++k) {
+                    computeVarOffSoABatch(rphi[k], hIntPerAnc[k].data(), nUsed, batchLen, varOffBuf);
+                    for (int b = 0; b < batchLen; ++b)
+                        varOffAll[b][k] = varOffBuf[b];
+                }
 
-				    buf += mInfo.chrom;
-				    buf += '\t';
-				    std::snprintf(fmtBuf, sizeof(fmtBuf), "%u", mInfo.pos);
-				    buf += fmtBuf;
-				    buf += '\t';
-				    buf += mInfo.id;
-				    buf += '\t';
-				    buf += mInfo.ref;
-				    buf += '\t';
-				    buf += mInfo.alt;
+                // ── Phase 3: SPA + output for each marker ──
+                for (int b = 0; b < batchLen; ++b) {
+                    uint64_t localIdx = gIndices[mi + b];
+                    const auto &mInfo = markerInfo[localIdx];
 
-				    for (int k = 0; k < K; ++k) {
-					const AncScalar &as = bAncS[b][k];
-					// MISS_RATE
-					buf += '\t';
-					std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", as.missRate);
-					buf += fmtBuf;
-					// ALT_FREQ
-					buf += '\t';
-					std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", as.maf);
-					buf += fmtBuf;
-					// MAC
-					buf += '\t';
-					std::snprintf(fmtBuf, sizeof(fmtBuf), "%.0f", as.mac);
-					buf += fmtBuf;
+                    buf += mInfo.chrom;
+                    buf += '\t';
+                    std::snprintf(fmtBuf, sizeof(fmtBuf), "%u", mInfo.pos);
+                    buf += fmtBuf;
+                    buf += '\t';
+                    buf += mInfo.id;
+                    buf += '\t';
+                    buf += mInfo.ref;
+                    buf += '\t';
+                    buf += mInfo.alt;
 
-					if (!as.pass) {
-					    buf += "\tNA\tNA\tNA";
-					    continue;
-					}
+                    for (int k = 0; k < K; ++k) {
+                        const AncScalar &as = bAncS[b][k];
+                        // MISS_RATE
+                        buf += '\t';
+                        std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", as.missRate);
+                        buf += fmtBuf;
+                        // ALT_FREQ
+                        buf += '\t';
+                        std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", as.maf);
+                        buf += fmtBuf;
+                        // MAC
+                        buf += '\t';
+                        std::snprintf(fmtBuf, sizeof(fmtBuf), "%.0f", as.mac);
+                        buf += fmtBuf;
 
-					double qTerm = as.q * (1.0 - as.q);
-					double varS = varOffAll[b][k] * qTerm + as.diagVar;
+                        if (!as.pass) {
+                            buf += "\tNA\tNA\tNA";
+                            continue;
+                        }
 
-					double z = (varS > 0.0) ? (as.S - as.sMean) / std::sqrt(varS) : 0.0;
-					auto hapCol = bHap[b].col(k);
-					auto [pSpa, pNorm] =
-					    spaLocalPval(
-						as.S,
-						as.sMean,
-						as.diagVar,
-						resid,
-						hapCol,
-						as.q,
-						varS,
-						outlier,
-						spaCutoff
-						);
-					double betaG =
-					    (varS >
-					     0.0) ? (as.S - as.sMean) / varS : std::numeric_limits<double>::quiet_NaN();
+                        double qTerm = as.q * (1.0 - as.q);
+                        double varS = varOffAll[b][k] * qTerm + as.diagVar;
 
-					// P
-					buf += '\t';
-					std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", pSpa);
-					buf += fmtBuf;
-					// Z
-					buf += '\t';
-					std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", z);
-					buf += fmtBuf;
-					// BETA
-					buf += '\t';
-					if (std::isfinite(betaG)) {
-					    std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", betaG);
-					    buf += fmtBuf;
-					} else {
-					    buf += "NA";
-					}
-				    }
-				    buf += '\n';
-				}
-			    } // end mini-batch loop
+                        double z = (varS > 0.0) ? (as.S - as.sMean) / std::sqrt(varS) : 0.0;
+                        auto hapCol = bHap[b].col(k);
+                        auto [pSpa, pNorm] =
+                            spaLocalPval(
+                                as.S,
+                                as.sMean,
+                                as.diagVar,
+                                resid,
+                                hapCol,
+                                as.q,
+                                varS,
+                                outlier,
+                                spaCutoff
+                            );
+                        double betaG =
+                            (varS >
+                             0.0) ? (as.S - as.sMean) / varS : std::numeric_limits<double>::quiet_NaN();
 
-			    {
-				std::lock_guard<std::mutex> lk(writeMutex);
-				chunkOutput[ci] = std::move(buf);
-				chunkReady[ci].ready = 1;
-			    }
-			    writeCv.notify_all();
+                        // P
+                        buf += '\t';
+                        std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", pSpa);
+                        buf += fmtBuf;
+                        // Z
+                        buf += '\t';
+                        std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", z);
+                        buf += fmtBuf;
+                        // BETA
+                        buf += '\t';
+                        if (std::isfinite(betaG)) {
+                            std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", betaG);
+                            buf += fmtBuf;
+                        } else {
+                            buf += "NA";
+                        }
+                    }
+                    buf += '\n';
+                }
+            }                 // end mini-batch loop
 
-			    // Progress logging: report at ~25%, 50%, 75%
-			    size_t done = chunksCompleted.fetch_add(1) + 1;
-			    if (nChunks >= 20) {
-				size_t q1 = nChunks / 4, q2 = nChunks / 2, q3 = nChunks * 3 / 4;
-				if (done == q1 || done == q2 || done == q3) {
-				    uint32_t markersDone = static_cast<uint32_t>(static_cast<uint64_t>(done) *
-				                                                 nMarkers / nChunks);
-				    infoMsg(
-					"    %u / %u markers (~%u%%)",
-					markersDone,
-					nMarkers,
-					static_cast<unsigned>(done * 100 / nChunks)
-					);
-				}
-			    }
-			}
-		    };
+            {
+                std::lock_guard<std::mutex> lk(writeMutex);
+                chunkOutput[ci] = std::move(buf);
+                chunkReady[ci].ready = 1;
+            }
+            writeCv.notify_all();
+
+            // Progress logging: report at ~25%, 50%, 75%
+            size_t done = chunksCompleted.fetch_add(1) + 1;
+            if (nChunks >= 20) {
+                size_t q1 = nChunks / 4, q2 = nChunks / 2, q3 = nChunks * 3 / 4;
+                if (done == q1 || done == q2 || done == q3) {
+                    uint32_t markersDone = static_cast<uint32_t>(static_cast<uint64_t>(done) *
+                                                                 nMarkers / nChunks);
+                    infoMsg(
+                        "    %u / %u markers (~%u%%)",
+                        markersDone,
+                        nMarkers,
+                        static_cast<unsigned>(done * 100 / nChunks)
+                    );
+                }
+            }
+        }
+    };
 
     // Launch workers
     int nWorkers = std::max(1, nthreads);
     std::vector<std::thread> workers;
     workers.reserve(nWorkers);
     for (int t = 0; t < nWorkers; ++t)
-	workers.emplace_back(workerFn);
+        workers.emplace_back(workerFn);
 
     for (auto &w : workers)
-	w.join();
+        w.join();
     {
-	std::lock_guard<std::mutex> lk(writeMutex);
-	stopWriter = true;
+        std::lock_guard<std::mutex> lk(writeMutex);
+        stopWriter = true;
     }
     writeCv.notify_all();
     writer.join();
@@ -1178,7 +1196,7 @@ void runSPAmixLocalPlus(
     const std::string &removeFile,
     const std::string &extractFile,
     const std::string &excludeFile
-    ) {
+) {
     infoMsg("=== SPAmixLocalPlus GWAS ===");
 
     // Load subjects
@@ -1206,44 +1224,44 @@ void runSPAmixLocalPlus(
     auto phenoInfos = sd.buildPerColumnMasks();
 
     for (int rc = 0; rc < nRC; ++rc) {
-	const auto &pi = phenoInfos[rc];
+        const auto &pi = phenoInfos[rc];
 
-	// Build union-dimension residual with 0 for missing subjects
-	Eigen::VectorXd colResid;
-	if (nRC > 1) {
-	    colResid = sd.residMatrix().col(rc);
-	    for (Eigen::Index s = 0; s < colResid.size(); ++s)
-		if (std::isnan(colResid[s])) colResid[s] = 0.0;
-	}
-	const Eigen::VectorXd &resid = (nRC > 1) ? colResid : sd.residuals();
+        // Build union-dimension residual with 0 for missing subjects
+        Eigen::VectorXd colResid;
+        if (nRC > 1) {
+            colResid = sd.residMatrix().col(rc);
+            for (Eigen::Index s = 0; s < colResid.size(); ++s)
+                if (std::isnan(colResid[s])) colResid[s] = 0.0;
+        }
+        const Eigen::VectorXd &resid = (nRC > 1) ? colResid : sd.residuals();
 
-	std::string outFile = TextWriter::buildOutputPath(outPrefix, pi.name, "LocalP", compression);
+        std::string outFile = TextWriter::buildOutputPath(outPrefix, pi.name, "LocalP", compression);
 
-	infoMsg(
-	    "  Phenotype '%s': %u subjects, %u markers, %d ancestries -> %s",
-	    pi.name.c_str(),
-	    pi.nUsed,
-	    admixData.nMarkers(),
-	    K,
-	    outFile.c_str()
-	    );
+        infoMsg(
+            "  Phenotype '%s': %u subjects, %u markers, %d ancestries -> %s",
+            pi.name.c_str(),
+            pi.nUsed,
+            admixData.nMarkers(),
+            K,
+            outFile.c_str()
+        );
 
-	// Detect outliers per residual column
-	OutlierData outlier = detectOutliers(resid, outlierRatio);
+        // Detect outliers per residual column
+        OutlierData outlier = detectOutliers(resid, outlierRatio);
 
-	runUnifiedGWAS(
-	    admixData,
-	    resid,
-	    allPhi,
-	    outlier,
-	    spaCutoff,
-	    missingCutoff,
-	    minMafCutoff,
-	    minMacCutoff,
-	    outFile,
-	    compression,
-	    compressionLevel,
-	    nthread
-	    );
+        runUnifiedGWAS(
+            admixData,
+            resid,
+            allPhi,
+            outlier,
+            spaCutoff,
+            missingCutoff,
+            minMafCutoff,
+            minMacCutoff,
+            outFile,
+            compression,
+            compressionLevel,
+            nthread
+        );
     }
 }

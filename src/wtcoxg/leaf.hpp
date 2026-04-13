@@ -66,28 +66,36 @@ Eigen::VectorXd summixEstimate(const Eigen::VectorXd &observedAF, const Eigen::M
 // ======================================================================
 
 class LEAFMethod : public MethodBase {
-public:
+  public:
 // Constructs from per-cluster WtCoxGMethod objects and index arrays.
 //   clusterMethods:  one WtCoxGMethod per cluster (ownership transferred)
 //   clusterIndices:  per-cluster indices into the full subject vector
-LEAFMethod(std::vector<std::unique_ptr<WtCoxGMethod> > clusterMethods,
-           std::vector<std::vector<uint32_t> > clusterIndices);
+    LEAFMethod(
+        std::vector<std::unique_ptr<WtCoxGMethod> > clusterMethods,
+        std::vector<std::vector<uint32_t> > clusterIndices
+    );
 
 // ---- MethodBase interface ----
-std::unique_ptr<MethodBase> clone() const override;
-int resultSize() const override;
-std::string getHeaderColumns() const override;
-void prepareChunk(const std::vector<uint64_t> &gIndices) override;
-void getResultVec(Eigen::Ref<Eigen::VectorXd> GVec,
-                  double altFreq,
-                  int markerInChunkIdx,
-                  std::vector<double> &result) override;
+    std::unique_ptr<MethodBase> clone() const override;
 
-private:
-int m_nCluster;
-std::vector<std::unique_ptr<WtCoxGMethod> > m_clusterMethods;
-std::vector<std::vector<uint32_t> > m_clusterIndices;
-std::vector<Eigen::VectorXd> m_clusterGVec;     // pre-allocated buffers
+    int resultSize() const override;
+
+    std::string getHeaderColumns() const override;
+
+    void prepareChunk(const std::vector<uint64_t> &gIndices) override;
+
+    void getResultVec(
+        Eigen::Ref<Eigen::VectorXd> GVec,
+        double altFreq,
+        int markerInChunkIdx,
+        std::vector<double> &result
+    ) override;
+
+  private:
+    int m_nCluster;
+    std::vector<std::unique_ptr<WtCoxGMethod> > m_clusterMethods;
+    std::vector<std::vector<uint32_t> > m_clusterIndices;
+    std::vector<Eigen::VectorXd> m_clusterGVec; // pre-allocated buffers
 };
 
 // ======================================================================
@@ -95,28 +103,31 @@ std::vector<Eigen::VectorXd> m_clusterGVec;     // pre-allocated buffers
 // ======================================================================
 
 // --pheno path: K-means clustering + per-cluster regression
-void runLEAFPheno(const std::string &phenoFile,
-                  const std::string &covarFile,               // empty = no separate covar file
-                  const std::vector<std::string> &covarNames, // covariate columns for regression
-                  const std::vector<std::string> &phenoNames, // selected phenotype columns
-                  const std::vector<std::string> &pcColNames, // PC columns for K-means
-                  int nClusters,                              // K for K-means
-                  uint64_t seed,                              // RNG seed (0 = random)
-                  const GenoSpec &geno,
-                  const std::vector<std::string> &refAfFiles, // one .afreq per ref pop
-                  const std::string &spgrmGrabFile,
-                  const std::string &spgrmGctaFile,
-                  const std::string &outPrefix,
-                  const std::string &compression,
-                  int compressionLevel,
-                  double refPrevalence,
-                  double cutoff,
-                  double spaCutoff,
-                  int nthread,
-                  int nSnpPerChunk,
-                  double missingCutoff,
-                  double minMafCutoff,
-                  double minMacCutoff,
-                  double hweCutoff,
-                  const std::string &keepFile = {},
-                  const std::string &removeFile = {});
+void runLEAFPheno(
+    const std::string &phenoFile,
+    const std::string &covarFile,                             // empty = no separate covar file
+    const std::vector<std::string> &covarNames,               // covariate columns for regression
+    const std::vector<std::string> &phenoNames,               // selected phenotype columns
+    const std::vector<std::string> &pcColNames,               // PC columns for K-means
+    int nClusters,                                            // K for K-means
+    uint64_t seed,                                            // RNG seed (0 = random)
+    const GenoSpec &geno,
+    const std::vector<std::string> &refAfFiles,               // one .afreq per ref pop
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double refPrevalence,
+    double cutoff,
+    double spaCutoff,
+    int nthread,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile = {},
+    const std::string &removeFile = {}
+
+);

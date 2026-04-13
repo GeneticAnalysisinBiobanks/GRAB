@@ -67,14 +67,16 @@ void vecPnorm(const Eigen::VectorXd &x, Eigen::VectorXd &out) {
 
 // ── Asymmetric Huber gradient ────────────────────────────────────────
 
-void updateHuber(const Eigen::MatrixXd &Z,
-                 const Eigen::VectorXd &res,
-                 double tau,
-                 Eigen::VectorXd &der,
-                 Eigen::VectorXd &grad,
-                 int n,
-                 double rob,
-                 double n1) {
+void updateHuber(
+    const Eigen::MatrixXd &Z,
+    const Eigen::VectorXd &res,
+    double tau,
+    Eigen::VectorXd &der,
+    Eigen::VectorXd &grad,
+    int n,
+    double rob,
+    double n1
+) {
     for (int i = 0; i < n; ++i) {
         double cur = res(i);
         if (cur > rob)
@@ -91,13 +93,15 @@ void updateHuber(const Eigen::MatrixXd &Z,
 
 // ── Gaussian kernel gradient ─────────────────────────────────────────
 
-void updateGauss(const Eigen::MatrixXd &Z,
-                 const Eigen::VectorXd &res,
-                 Eigen::VectorXd &der,
-                 Eigen::VectorXd &grad,
-                 double tau,
-                 double n1,
-                 double h1) {
+void updateGauss(
+    const Eigen::MatrixXd &Z,
+    const Eigen::VectorXd &res,
+    Eigen::VectorXd &der,
+    Eigen::VectorXd &grad,
+    double tau,
+    double n1,
+    double h1
+) {
     Eigen::VectorXd arg = -res * h1;
     vecPnorm(arg, der);
     der.array() -= tau;
@@ -106,19 +110,21 @@ void updateGauss(const Eigen::MatrixXd &Z,
 
 // ── Huber regression (BB gradient descent) ───────────────────────────
 
-Eigen::VectorXd huberReg(const Eigen::MatrixXd &Z,
-                         const Eigen::VectorXd &Y,
-                         double tau,
-                         Eigen::VectorXd &der,
-                         Eigen::VectorXd &gradOld,
-                         Eigen::VectorXd &gradNew,
-                         int n,
-                         int p,
-                         double n1,
-                         double tol,
-                         double constTau,
-                         int iteMax,
-                         double stepMax) {
+Eigen::VectorXd huberReg(
+    const Eigen::MatrixXd &Z,
+    const Eigen::VectorXd &Y,
+    double tau,
+    Eigen::VectorXd &der,
+    Eigen::VectorXd &gradOld,
+    Eigen::VectorXd &gradNew,
+    int n,
+    int p,
+    double n1,
+    double tol,
+    double constTau,
+    int iteMax,
+    double stepMax
+) {
     double rob = constTau * eigMad(Y);
     updateHuber(Z, Y, tau, der, gradOld, n, rob, n1);
     Eigen::VectorXd beta = -gradOld;
@@ -154,14 +160,16 @@ Eigen::VectorXd huberReg(const Eigen::MatrixXd &Z,
 // smqrGauss — main entry point
 // ══════════════════════════════════════════════════════════════════════
 
-Eigen::VectorXd smqrGauss(const Eigen::MatrixXd &X,
-                          const Eigen::VectorXd &Y,
-                          double tau,
-                          double h,
-                          Eigen::VectorXd *residOut,
-                          double tol,
-                          int iteMax,
-                          double stepMax) {
+Eigen::VectorXd smqrGauss(
+    const Eigen::MatrixXd &X,
+    const Eigen::VectorXd &Y,
+    double tau,
+    double h,
+    Eigen::VectorXd *residOut,
+    double tol,
+    int iteMax,
+    double stepMax
+) {
     const int n = static_cast<int>(X.rows());
     const int p = static_cast<int>(X.cols());
     const double constTau = 1.345;

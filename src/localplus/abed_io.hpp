@@ -33,6 +33,7 @@ struct AbedHeader {
     uint8_t nAnc;      // K in bits 0-6; bit 7 = NO_MISSING flag
     uint32_t nSamples; // N (little-endian)
 };
+
 static_assert(sizeof(AbedHeader) == 8, "AbedHeader must be 8 bytes");
 
 static constexpr uint8_t ABED_MAGIC_0 = 0xAD;
@@ -53,43 +54,95 @@ class AdmixData {
 
     // Construct from prefix: reads {prefix}.abed, {prefix}.bim, {prefix}.fam
     // usedMask: ceil(nFam/64) words, bit i set ↔ subject i included
-    AdmixData(const std::string &prefix,
-              const std::vector<uint64_t> &usedMask,
-              uint32_t nFam,
-              uint32_t nUsed,
-              const std::string &extractFile = {},
-              const std::string &excludeFile = {},
-              int nMarkersEachChunk = 1024);
+    AdmixData(
+        const std::string &prefix,
+        const std::vector<uint64_t> &usedMask,
+        uint32_t nFam,
+        uint32_t nUsed,
+        const std::string &extractFile = {},
+        const std::string &excludeFile = {},
+        int nMarkersEachChunk = 1024
+    );
 
-    uint16_t nAncestries() const { return m_nAnc; }
-    uint32_t nMarkers() const { return m_nMarkers; }
-    uint32_t nSubjUsed() const { return m_nSubjUsed; }
-    uint32_t nSubjInFile() const { return m_nSubjInFile; }
-    uint64_t bytesPerTrack() const { return m_bytesPerTrack; }
-    uint64_t bytesPerMarker() const { return m_bytesPerMarker; }
-    bool allUsed() const { return m_allUsed; }
-    bool hasNoMissing() const { return m_noMissing; }
+    uint16_t nAncestries() const {
+        return m_nAnc;
+    }
 
-    const std::string &abedFile() const { return m_abedFile; }
-    const std::vector<uint64_t> &usedMask() const { return m_usedMask; }
+    uint32_t nMarkers() const {
+        return m_nMarkers;
+    }
 
-    const std::vector<MarkerInfo> &markerInfo() const { return m_markerInfo; }
-    const std::vector<std::vector<uint64_t>> &chunkIndices() const { return m_chunkIndices; }
+    uint32_t nSubjUsed() const {
+        return m_nSubjUsed;
+    }
 
-    std::string_view chr(uint64_t i) const { return m_markerInfo[i].chrom; }
-    std::string_view markerId(uint64_t i) const { return m_markerInfo[i].id; }
-    uint32_t pos(uint64_t i) const { return m_markerInfo[i].pos; }
-    std::string_view ref(uint64_t i) const { return m_markerInfo[i].ref; }
-    std::string_view alt(uint64_t i) const { return m_markerInfo[i].alt; }
+    uint32_t nSubjInFile() const {
+        return m_nSubjInFile;
+    }
+
+    uint64_t bytesPerTrack() const {
+        return m_bytesPerTrack;
+    }
+
+    uint64_t bytesPerMarker() const {
+        return m_bytesPerMarker;
+    }
+
+    bool allUsed() const {
+        return m_allUsed;
+    }
+
+    bool hasNoMissing() const {
+        return m_noMissing;
+    }
+
+    const std::string &abedFile() const {
+        return m_abedFile;
+    }
+
+    const std::vector<uint64_t> &usedMask() const {
+        return m_usedMask;
+    }
+
+    const std::vector<MarkerInfo> &markerInfo() const {
+        return m_markerInfo;
+    }
+
+    const std::vector<std::vector<uint64_t> > &chunkIndices() const {
+        return m_chunkIndices;
+    }
+
+    std::string_view chr(uint64_t i) const {
+        return m_markerInfo[i].chrom;
+    }
+
+    std::string_view markerId(uint64_t i) const {
+        return m_markerInfo[i].id;
+    }
+
+    uint32_t pos(uint64_t i) const {
+        return m_markerInfo[i].pos;
+    }
+
+    std::string_view ref(uint64_t i) const {
+        return m_markerInfo[i].ref;
+    }
+
+    std::string_view alt(uint64_t i) const {
+        return m_markerInfo[i].alt;
+    }
 
     // Create per-thread cursor
     std::unique_ptr<class AdmixCursor> makeCursor() const;
 
   private:
-    static std::vector<MarkerInfo>
-    filterMarkers(const std::vector<MarkerInfo> &all, const std::string &extractFile, const std::string &excludeFile);
+    static std::vector<MarkerInfo>filterMarkers(
+        const std::vector<MarkerInfo> &all,
+        const std::string &extractFile,
+        const std::string &excludeFile
+    );
 
-    static std::vector<std::vector<uint64_t>> buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize);
+    static std::vector<std::vector<uint64_t> > buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize);
 
     std::string m_abedFile;
     uint16_t m_nAnc;
@@ -102,7 +155,7 @@ class AdmixData {
     bool m_noMissing;
     std::vector<uint64_t> m_usedMask;
     std::vector<MarkerInfo> m_markerInfo;
-    std::vector<std::vector<uint64_t>> m_chunkIndices;
+    std::vector<std::vector<uint64_t> > m_chunkIndices;
 };
 
 // ======================================================================
@@ -125,20 +178,25 @@ class AdmixCursor {
     //   dosageOut: receives dosage values (N_used elements)
     //   hapcountOut: receives hapcount values (N_used elements)
     //   Returns: altFreq (dosage sum / hapcount sum)
-    double getAdmixGenotypes(uint64_t genoIndex,
-                             int ancIdx,
-                             Eigen::Ref<Eigen::VectorXd> dosageOut,
-                             Eigen::Ref<Eigen::VectorXd> hapcountOut);
+    double getAdmixGenotypes(
+        uint64_t genoIndex,
+        int ancIdx,
+        Eigen::Ref<Eigen::VectorXd> dosageOut,
+        Eigen::Ref<Eigen::VectorXd> hapcountOut
+    );
 
     // Decode ALL ancestries at once for a given marker.
     //   dosageMatrix: N_used × K matrix, column k = dosage for ancestry k
     //   hapcountMatrix: N_used × K matrix, column k = hapcount for ancestry k
-    void getAllAncestries(uint64_t genoIndex,
-                          Eigen::Ref<Eigen::MatrixXd> dosageMatrix,
-                          Eigen::Ref<Eigen::MatrixXd> hapcountMatrix);
+    void getAllAncestries(
+        uint64_t genoIndex,
+        Eigen::Ref<Eigen::MatrixXd> dosageMatrix,
+        Eigen::Ref<Eigen::MatrixXd> hapcountMatrix
+    );
 
   private:
     void loadBlock(uint64_t startMarker);
+
     const uint8_t *readTrackPtr(uint64_t genoIndex, int trackIdx);
 
     // Decode a single track from raw bytes into a dense vector.
@@ -194,4 +252,5 @@ class AbedWriter {
     bool m_headerWritten;
 
     void ensureHeader();
+
 };

@@ -26,9 +26,11 @@
 // The number of ancestries K is auto-detected from line 1.
 // Sample IDs are extracted from line 2 (even .0 suffix columns).
 // Variants outside all MSP windows are silently skipped.
-void convertVcfMspToAbed(const std::string &vcfFile,
-                         const std::string &mspFile,
-                         const std::string &outPrefix,
-                         const std::string &keepFile = {},
-                         const std::string &removeFile = {},
-                         int nthreads = 1);
+void convertVcfMspToAbed(
+    const std::string &vcfFile,
+    const std::string &mspFile,
+    const std::string &outPrefix,
+    const std::string &keepFile = {},
+    const std::string &removeFile = {},
+    int nthreads = 1
+);

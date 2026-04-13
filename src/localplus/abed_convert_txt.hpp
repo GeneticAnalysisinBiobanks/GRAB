@@ -20,8 +20,10 @@
 //   Header row:  CHROM  POS  ID  REF  ALT  SAMPLE1  SAMPLE2 ...
 //   Data rows:   chr    pos  id  ref  alt  value1   value2   ...
 // File naming: {prefix}.anc{k}.dosage[.gz] and {prefix}.anc{k}.hapcount[.gz]  (k=0,1,...)
-void convertTextToAbed(const std::string &textPrefix,
-                       const std::string &outPrefix,
-                       const std::string &keepFile = {},
-                       const std::string &removeFile = {},
-                       int nthreads = 1);
+void convertTextToAbed(
+    const std::string &textPrefix,
+    const std::string &outPrefix,
+    const std::string &keepFile = {},
+    const std::string &removeFile = {},
+    int nthreads = 1
+);

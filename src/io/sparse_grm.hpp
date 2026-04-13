@@ -40,15 +40,22 @@ class SparseGRM {
     // If .grm.id does not exist and `famIIDs` is provided, the 0-based
     // indices in .grm.sp are assumed to correspond to `famIIDs` order.
     // Stores lower triangle + diagonal only (half-storage).
-    static SparseGRM fromGCTA(const std::string &spFile,
-                              const std::vector<std::string> &subjectOrder,
-                              const std::vector<std::string> &famIIDs = {});
+    static SparseGRM fromGCTA(
+        const std::string &spFile,
+        const std::vector<std::string> &subjectOrder,
+        const std::vector<std::string> &famIIDs = {}
+
+    );
 
     // Number of subjects that appear in both the file and subjectOrder.
-    uint32_t nSubjects() const { return m_nSubj; }
+    uint32_t nSubjects() const {
+        return m_nSubj;
+    }
 
     // Number of stored entries (lower triangle + diagonal, no double-counting).
-    size_t nnz() const { return m_entries.size(); }
+    size_t nnz() const {
+        return m_entries.size();
+    }
 
     // Compute  x^T G x  using half-storage:
     //   sum_diag(value * x[i]²) + 2 * sum_offdiag(value * x[i] * x[j]).
@@ -67,11 +74,15 @@ class SparseGRM {
     //   (summing over lower-tri + diagonal entries).
     double spaVariance(const double *R, uint32_t n) const;
 
-    const std::vector<Entry> &entries() const { return m_entries; }
+    const std::vector<Entry> &entries() const {
+        return m_entries;
+    }
 
     // Cached diagonal of G (self-relatedness per subject).
     // diagonal()[i] == G(i,i).  Default 0.0 if subject has no diagonal entry.
-    const std::vector<double> &diagonal() const { return m_diagonal; }
+    const std::vector<double> &diagonal() const {
+        return m_diagonal;
+    }
 
     // ── Shared GCTA .grm.id reader ────────────────────────────────────
     // Given a .grm.sp file path, derive the .grm.id path and read IIDs.
@@ -81,10 +92,13 @@ class SparseGRM {
     // ── Convenience loader ─────────────────────────────────────────────
     // Dispatches to fromGCTA() or the text constructor based on which
     // path is non-empty.  Exactly one of grabFile / gctaFile must be set.
-    static SparseGRM load(const std::string &grabFile,
-                          const std::string &gctaFile,
-                          const std::vector<std::string> &subjectOrder,
-                          const std::vector<std::string> &famIIDs = {});
+    static SparseGRM load(
+        const std::string &grabFile,
+        const std::string &gctaFile,
+        const std::vector<std::string> &subjectOrder,
+        const std::vector<std::string> &famIIDs = {}
+
+    );
 
     // ── From pre-built entries (re-indexing) ──────────────────────────
     static SparseGRM fromEntries(uint32_t nSubj, std::vector<Entry> entries);
@@ -96,13 +110,17 @@ class SparseGRM {
     //   grabFile  — GRAB format path (empty to skip)
     //   gctaFile  — GCTA/plink2 .grm.sp path (empty to skip)
     //   famIIDs   — .fam IIDs (fallback when GCTA .grm.id is absent)
-    static std::unordered_set<std::string> parseSubjectIDs(const std::string &grabFile,
-                                                           const std::string &gctaFile,
-                                                           const std::vector<std::string> &famIIDs = {});
+    static std::unordered_set<std::string> parseSubjectIDs(
+        const std::string &grabFile,
+        const std::string &gctaFile,
+        const std::vector<std::string> &famIIDs = {}
+
+    );
 
   private:
     SparseGRM() = default; // used by fromGCTA factory
     void buildDiagonal();  // populate m_diagonal from m_entries
+
     uint32_t m_nSubj = 0;
     std::vector<Entry> m_entries;   // lower-tri + diagonal COO
     std::vector<double> m_diagonal; // cached G(i,i) per subject

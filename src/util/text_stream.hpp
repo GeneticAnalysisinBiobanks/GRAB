@@ -34,6 +34,7 @@ class TextWriter {
 
     TextWriter(const TextWriter &) = delete;
     TextWriter &operator=(const TextWriter &) = delete;
+
     TextWriter(TextWriter &&o) noexcept;
     TextWriter &operator=(TextWriter &&o) noexcept;
 
@@ -41,12 +42,16 @@ class TextWriter {
     void write(const char *data, size_t len);
 
     /// Convenience: write a string_view (also handles std::string and const char*).
-    void write(std::string_view sv) { write(sv.data(), sv.size()); }
+    void write(std::string_view sv) {
+        write(sv.data(), sv.size());
+    }
 
     /// Flush and close.  Called automatically by destructor.
     void close();
 
-    Mode mode() const { return m_mode; }
+    Mode mode() const {
+        return m_mode;
+    }
 
     /// Detect mode from file extension (static helper).
     static Mode inferMode(const std::string &path);
@@ -55,10 +60,12 @@ class TextWriter {
     static Mode modeFromString(const std::string &comp);
 
     /// Build output path: prefix.pheno.method[.gz|.zst]
-    static std::string buildOutputPath(const std::string &prefix,
-                                       const std::string &phenoName,
-                                       const std::string &methodName,
-                                       const std::string &compression);
+    static std::string buildOutputPath(
+        const std::string &prefix,
+        const std::string &phenoName,
+        const std::string &methodName,
+        const std::string &compression
+    );
 
   private:
     void cleanup() noexcept;
@@ -85,6 +92,7 @@ class TextReader {
 
     TextReader(const TextReader &) = delete;
     TextReader &operator=(const TextReader &) = delete;
+
     TextReader(TextReader &&o) noexcept;
     TextReader &operator=(TextReader &&o) noexcept;
 
@@ -94,7 +102,9 @@ class TextReader {
     /// Close the file.  Called automatically by destructor.
     void close();
 
-    Mode mode() const { return m_mode; }
+    Mode mode() const {
+        return m_mode;
+    }
 
     static Mode inferMode(const std::string &path);
 
@@ -121,4 +131,5 @@ class TextReader {
 
     // Fill decompressed output buffer; returns false when done
     bool zstdFillBuf();
+
 };

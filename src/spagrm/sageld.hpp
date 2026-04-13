@@ -17,19 +17,22 @@
 
 #include <string>
 
-void runSAGELD(const std::string &phenoFile,
-               const std::vector<std::string> &residNames,
-               const std::string &spgrmGrabFile,
-               const std::string &spgrmGctaFile,
-               const std::string &pairwiseIBDFile,
-               const GenoSpec &geno,
-               const std::string &outputFile,
-               double spaCutoff,
-               int nthreads,
-               int nSnpPerChunk,
-               double missingCutoff,
-               double minMafCutoff,
-               double minMacCutoff,
-               double hweCutoff,
-               const std::string &keepFile = {},
-               const std::string &removeFile = {});
+void runSAGELD(
+    const std::string &phenoFile,
+    const std::vector<std::string> &residNames,
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const std::string &pairwiseIBDFile,
+    const GenoSpec &geno,
+    const std::string &outputFile,
+    double spaCutoff,
+    int nthreads,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile = {},
+    const std::string &removeFile = {}
+
+);

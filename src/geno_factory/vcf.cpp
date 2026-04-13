@@ -24,11 +24,13 @@ extern "C" {
 // VcfData
 // ══════════════════════════════════════════════════════════════════════════════
 
-VcfData::VcfData(std::string vcfFile,
-                 const std::vector<uint64_t> &usedMask,
-                 uint32_t nSamplesInFile,
-                 uint32_t nUsed,
-                 int nMarkersEachChunk)
+VcfData::VcfData(
+    std::string vcfFile,
+    const std::vector<uint64_t> &usedMask,
+    uint32_t nSamplesInFile,
+    uint32_t nUsed,
+    int nMarkersEachChunk
+)
     : m_vcfFile(std::move(vcfFile)), m_nSubjInFile(nSamplesInFile), m_nSubjUsed(nUsed), m_usedMask(usedMask) {
     m_allUsed = (nUsed == nSamplesInFile);
 
@@ -88,8 +90,8 @@ VcfData::VcfData(std::string vcfFile,
 
 VcfData::~VcfData() = default;
 
-std::vector<std::vector<uint64_t>> VcfData::buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize) {
-    std::vector<std::vector<uint64_t>> chunks;
+std::vector<std::vector<uint64_t> > VcfData::buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize) {
+    std::vector<std::vector<uint64_t> > chunks;
     if (markers.empty()) return chunks;
     std::vector<uint64_t> cur;
     cur.reserve(chunkSize);
@@ -107,7 +109,9 @@ std::vector<std::vector<uint64_t>> VcfData::buildChunks(const std::vector<Marker
     return chunks;
 }
 
-std::unique_ptr<GenoCursor> VcfData::makeCursor() const { return std::make_unique<VcfCursor>(*this); }
+std::unique_ptr<GenoCursor> VcfData::makeCursor() const {
+    return std::make_unique<VcfCursor>(*this);
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // VcfCursor::Impl
@@ -154,6 +158,7 @@ struct VcfCursor::Impl {
         if (hdr) bcf_hdr_destroy(hdr);
         if (fp) hts_close(fp);
     }
+
 };
 
 VcfCursor::VcfCursor(const VcfData &parent) : m_parent(parent), m_impl(std::make_unique<Impl>()) {
@@ -201,15 +206,17 @@ void VcfCursor::beginSequentialBlock(uint64_t /*firstMarker*/) {
     impl.currentRecordIdx = 0;
 }
 
-void VcfCursor::getGenotypes(uint64_t gIndex,
-                             Eigen::Ref<Eigen::VectorXd> out,
-                             double &altFreq,
-                             double &altCounts,
-                             double &missingRate,
-                             double &hweP,
-                             double &maf,
-                             double &mac,
-                             std::vector<uint32_t> &indexForMissing) {
+void VcfCursor::getGenotypes(
+    uint64_t gIndex,
+    Eigen::Ref<Eigen::VectorXd> out,
+    double &altFreq,
+    double &altCounts,
+    double &missingRate,
+    double &hweP,
+    double &maf,
+    double &mac,
+    std::vector<uint32_t> &indexForMissing
+) {
     auto &impl = *m_impl;
     const uint32_t nUsed = impl.nUsed;
     indexForMissing.clear();

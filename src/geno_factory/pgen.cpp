@@ -126,14 +126,16 @@ void PgenData::PgfiDeleter::operator()(PgenFileInfo *p) const {
     }
 }
 
-PgenData::PgenData(std::string pgenFile,
-                   std::string pvarFile,
-                   const std::vector<uint64_t> &usedMask,
-                   uint32_t nSamplesInFile,
-                   uint32_t nUsed,
-                   int nMarkersEachChunk)
+PgenData::PgenData(
+    std::string pgenFile,
+    std::string pvarFile,
+    const std::vector<uint64_t> &usedMask,
+    uint32_t nSamplesInFile,
+    uint32_t nUsed,
+    int nMarkersEachChunk
+)
     : m_pgenFile(std::move(pgenFile)), m_nSubjInFile(nSamplesInFile), m_nSubjUsed(nUsed), m_usedMask(usedMask),
-      m_pgfiAlloc(nullptr, std::free) {
+    m_pgfiAlloc(nullptr, std::free) {
     m_allUsed = (nUsed == nSamplesInFile);
 
     // ---- Parse .pvar ----
@@ -209,8 +211,8 @@ PgenData::PgenData(std::string pgenFile,
 
 PgenData::~PgenData() = default;
 
-std::vector<std::vector<uint64_t>> PgenData::buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize) {
-    std::vector<std::vector<uint64_t>> chunks;
+std::vector<std::vector<uint64_t> > PgenData::buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize) {
+    std::vector<std::vector<uint64_t> > chunks;
     if (markers.empty()) return chunks;
     std::vector<uint64_t> cur;
     cur.reserve(chunkSize);
@@ -228,7 +230,9 @@ std::vector<std::vector<uint64_t>> PgenData::buildChunks(const std::vector<Marke
     return chunks;
 }
 
-std::unique_ptr<GenoCursor> PgenData::makeCursor() const { return std::make_unique<PgenCursor>(*this); }
+std::unique_ptr<GenoCursor> PgenData::makeCursor() const {
+    return std::make_unique<PgenCursor>(*this);
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // PgenCursor::Impl — per-thread pgenlib reader state
@@ -252,11 +256,14 @@ struct PgenCursor::Impl {
     uint32_t rawSampleCt;
     bool allUsed;
 
-    Impl() : pgrAlloc(nullptr, std::free) {}
+    Impl() : pgrAlloc(nullptr, std::free) {
+    }
+
     ~Impl() {
         plink2::PglErr reterr = plink2::kPglRetSuccess;
         plink2::CleanupPgr(&pgr, &reterr);
     }
+
 };
 
 PgenCursor::PgenCursor(const PgenData &parent) : m_parent(parent), m_impl(std::make_unique<Impl>()) {
@@ -316,15 +323,17 @@ void PgenCursor::beginSequentialBlock(uint64_t /*firstMarker*/) {
     // pgenlib handles seeking internally; nothing to do.
 }
 
-void PgenCursor::getGenotypes(uint64_t gIndex,
-                              Eigen::Ref<Eigen::VectorXd> out,
-                              double &altFreq,
-                              double &altCounts,
-                              double &missingRate,
-                              double &hweP,
-                              double &maf,
-                              double &mac,
-                              std::vector<uint32_t> &indexForMissing) {
+void PgenCursor::getGenotypes(
+    uint64_t gIndex,
+    Eigen::Ref<Eigen::VectorXd> out,
+    double &altFreq,
+    double &altCounts,
+    double &missingRate,
+    double &hweP,
+    double &maf,
+    double &mac,
+    std::vector<uint32_t> &indexForMissing
+) {
     using namespace plink2;
     auto &impl = *m_impl;
     const uint32_t sampleCt = impl.sampleCt;

@@ -42,79 +42,90 @@ struct WtCoxGRefInfo {
 // ======================================================================
 
 class WtCoxGMethod : public MethodBase {
-public:
+  public:
 // Construct from pre-computed null-model quantities.
 //   R:           martingale residuals (nSubj)
 //   w:           sampling weights     (nSubj)
 //   cutoff:      batch-effect p-value threshold (e.g. 0.05)
 //   SPA_Cutoff:  z-score threshold to switch from normal to SPA
 //   refMap:      genoIndex → WtCoxGRefInfo (from Phase 2)
-WtCoxGMethod(Eigen::VectorXd R,
-             Eigen::VectorXd w,
-             double cutoff,
-             double SPA_Cutoff,
-             std::shared_ptr<const std::unordered_map<uint64_t, WtCoxGRefInfo> > refMap);
+    WtCoxGMethod(
+        Eigen::VectorXd R,
+        Eigen::VectorXd w,
+        double cutoff,
+        double SPA_Cutoff,
+        std::shared_ptr<const std::unordered_map<uint64_t, WtCoxGRefInfo> > refMap
+    );
 
 // ---- MethodBase interface ----
-std::unique_ptr<MethodBase> clone() const override;
-int resultSize() const override {
-    return 5;
-}
-std::string getHeaderColumns() const override;
-void prepareChunk(const std::vector<uint64_t> &gIndices) override;
-void getResultVec(Eigen::Ref<Eigen::VectorXd> GVec,
-                  double altFreq,
-                  int markerInChunkIdx,
-                  std::vector<double> &result) override;
+    std::unique_ptr<MethodBase> clone() const override;
+
+    int resultSize() const override {
+        return 5;
+    }
+
+    std::string getHeaderColumns() const override;
+
+    void prepareChunk(const std::vector<uint64_t> &gIndices) override;
+
+    void getResultVec(
+        Eigen::Ref<Eigen::VectorXd> GVec,
+        double altFreq,
+        int markerInChunkIdx,
+        std::vector<double> &result
+    ) override;
 
 // For LEAF: compute ext/noext results with raw scores for meta-analysis.
-struct DualResult {
-    double p_ext, p_noext;
-    double score_ext, score_noext;
-};
-DualResult computeDual(Eigen::Ref<Eigen::VectorXd> GVec, int markerInChunkIdx);
+    struct DualResult {
+        double p_ext, p_noext;
+        double score_ext, score_noext;
+    };
+
+    DualResult computeDual(Eigen::Ref<Eigen::VectorXd> GVec, int markerInChunkIdx);
 
 // Access per-chunk ref info (for LEAF meta-analysis).
-const WtCoxGRefInfo &chunkRefInfoAt(int idx) const {
-    return m_chunkRefInfo[idx];
-}
+    const WtCoxGRefInfo &chunkRefInfoAt(int idx) const {
+        return m_chunkRefInfo[idx];
+    }
 
-private:
-struct WtResult {
-    double pval;
-    double score;
-    double zscore;
-};
+  private:
+    struct WtResult {
+        double pval;
+        double score;
+        double zscore;
+    };
 
 // Core SPA test for one marker with external adjustment.
-WtResult wtCoxGTest(const Eigen::Ref<const Eigen::VectorXd> &g,
-                    double p_bat,
-                    double TPR,
-                    double sigma2,
-                    double b,
-                    double var_ratio_int,
-                    double var_ratio_w0,
-                    double var_ratio_w1,
-                    double var_ratio0,
-                    double var_ratio1,
-                    double mu_ext,
-                    double obs_ct,
-                    double p_cut) const;
+    WtResult wtCoxGTest(
+        const Eigen::Ref<const Eigen::VectorXd> &g,
+        double p_bat,
+        double TPR,
+        double sigma2,
+        double b,
+        double var_ratio_int,
+        double var_ratio_w0,
+        double var_ratio_w1,
+        double var_ratio0,
+        double var_ratio1,
+        double mu_ext,
+        double obs_ct,
+        double p_cut
+    ) const;
 
 // Members (const after construction, except per-chunk scratch)
-Eigen::VectorXd m_R;
-Eigen::VectorXd m_w;
-Eigen::VectorXd m_w1;     // w / (2 * sum(w))
-double m_meanR;
-double m_sumR;
-double m_cutoff;
-double m_SPA_Cutoff;
-std::shared_ptr<const std::unordered_map<uint64_t, WtCoxGRefInfo> > m_refMap;
+    Eigen::VectorXd m_R;
+    Eigen::VectorXd m_w;
+    Eigen::VectorXd m_w1; // w / (2 * sum(w))
+    double m_meanR;
+    double m_sumR;
+    double m_cutoff;
+    double m_SPA_Cutoff;
+    std::shared_ptr<const std::unordered_map<uint64_t, WtCoxGRefInfo> > m_refMap;
 
 // Per-chunk scratch (rebuilt in prepareChunk)
-std::vector<WtCoxGRefInfo> m_chunkRefInfo;
-std::array<double, 2> m_scoreArr;
-std::array<double, 2> m_zScoreArr;
+    std::vector<WtCoxGRefInfo> m_chunkRefInfo;
+    std::array<double, 2> m_scoreArr;
+    std::array<double, 2> m_zScoreArr;
 };
 
 // ======================================================================
@@ -167,9 +178,11 @@ std::vector<MatchedMarkerInfo> matchMarkers(const GenoMeta &plinkData, const std
 
 // Scan genotypes to compute per-marker case/control allele frequencies.
 // Populates mu0, mu1, n0, n1, mu_int in each MatchedMarkerInfo.
-void computeMarkerStats(std::vector<MatchedMarkerInfo> &matched,
-                        const GenoMeta &plinkData,
-                        const Eigen::VectorXd &indicator);
+void computeMarkerStats(
+    std::vector<MatchedMarkerInfo> &matched,
+    const GenoMeta &plinkData,
+    const Eigen::VectorXd &indicator
+);
 
 // ======================================================================
 // Phase 2 — Batch-effect testing and parameter estimation
@@ -183,39 +196,43 @@ void computeMarkerStats(std::vector<MatchedMarkerInfo> &matched,
 //   5. Compute var_ratio_ext per MAF group from sparse GRM (if provided)
 //
 // Populates refInfo for each matched marker and returns a shared map.
-std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >
-testBatchEffects(const std::vector<MatchedMarkerInfo> &matched,
-                 const Eigen::VectorXd &residuals,
-                 const Eigen::VectorXd &weights,
-                 const Eigen::VectorXd &indicator,
-                 const SparseGRM *grm,
-                 double refPrevalence,
-                 double cutoff);
+std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
+    const std::vector<MatchedMarkerInfo> &matched,
+    const Eigen::VectorXd &residuals,
+    const Eigen::VectorXd &weights,
+    const Eigen::VectorXd &indicator,
+    const SparseGRM *grm,
+    double refPrevalence,
+    double cutoff
+);
 
 // ======================================================================
 // Top-level orchestration — called from main()
 // ======================================================================
 
 // --pheno path: compute regression residuals internally
-void runWtCoxGPheno(const std::string &phenoFile,
-                    const std::string &covarFile,               // empty = no separate covar file
-                    const std::vector<std::string> &covarNames, // empty = intercept only
-                    const std::vector<std::string> &phenoNames, // selected phenotype columns
-                    const GenoSpec &geno,
-                    const std::string &refAfFile,
-                    const std::string &spgrmGrabFile,
-                    const std::string &spgrmGctaFile,
-                    const std::string &outPrefix,
-                    const std::string &compression,
-                    int compressionLevel,
-                    double refPrevalence,
-                    double cutoff,
-                    double spaCutoff,
-                    int nthread,
-                    int nSnpPerChunk,
-                    double missingCutoff,
-                    double minMafCutoff,
-                    double minMacCutoff,
-                    double hweCutoff,
-                    const std::string &keepFile = {},
-                    const std::string &removeFile = {});
+void runWtCoxGPheno(
+    const std::string &phenoFile,
+    const std::string &covarFile,                               // empty = no separate covar file
+    const std::vector<std::string> &covarNames,                 // empty = intercept only
+    const std::vector<std::string> &phenoNames,                 // selected phenotype columns
+    const GenoSpec &geno,
+    const std::string &refAfFile,
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double refPrevalence,
+    double cutoff,
+    double spaCutoff,
+    int nthread,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile = {},
+    const std::string &removeFile = {}
+
+);

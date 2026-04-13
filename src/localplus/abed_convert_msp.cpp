@@ -222,6 +222,7 @@ struct WindowCursor {
         if (w.chrom == chrom && w.spos <= pos0 && pos0 < w.epos) return static_cast<int>(idx);
         return -1; // gap between windows on the same chrom, or different chrom
     }
+
 };
 
 // ── Core logic: iterate VCF, match to MSP, write tracks ────────────────────
@@ -233,13 +234,15 @@ struct WindowCursor {
 
 // keptIndices: 0-based sample indices to include (empty = use all)
 // nthreads: number of compute threads (>=2 enables batch parallel encoding)
-static uint32_t processVcf(const std::string &vcfFile,
-                           const MspData &msp,
-                           AbedWriter &writer,
-                           std::ofstream &bimOut,
-                           const std::vector<uint32_t> &keptIndices,
-                           uint64_t *nMissingOut = nullptr,
-                           int nthreads = 1) {
+static uint32_t processVcf(
+    const std::string &vcfFile,
+    const MspData &msp,
+    AbedWriter &writer,
+    std::ofstream &bimOut,
+    const std::vector<uint32_t> &keptIndices,
+    uint64_t *nMissingOut = nullptr,
+    int nthreads = 1
+) {
     htsFile *fp = hts_open(vcfFile.c_str(), "r");
     if (!fp) throw std::runtime_error("Cannot open VCF: " + vcfFile);
 
@@ -350,7 +353,7 @@ static uint32_t processVcf(const std::string &vcfFile,
             std::string bimLine;
             int winIdx = -1;
             std::vector<int32_t> gt;
-            std::vector<std::vector<uint8_t>> tracks;
+            std::vector<std::vector<uint8_t> > tracks;
             uint64_t nMissing = 0;
         };
 
@@ -481,12 +484,14 @@ static uint32_t processVcf(const std::string &vcfFile,
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
-void convertVcfMspToAbed(const std::string &vcfFile,
-                         const std::string &mspFile,
-                         const std::string &outPrefix,
-                         const std::string &keepFile,
-                         const std::string &removeFile,
-                         int nthreads) {
+void convertVcfMspToAbed(
+    const std::string &vcfFile,
+    const std::string &mspFile,
+    const std::string &outPrefix,
+    const std::string &keepFile,
+    const std::string &removeFile,
+    int nthreads
+) {
     if (nthreads < 1) nthreads = 1;
     // 1. Parse MSP
     MspData msp = parseMsp(mspFile);
@@ -519,7 +524,7 @@ void convertVcfMspToAbed(const std::string &vcfFile,
     //    are silently imputed to ref (dosage=0 → 0b00).  Safe to set NO_MISSING.
     infoMsg("Writing .abed and .bim (%d thread%s)...", nthreads, nthreads > 1 ? "s" : "");
     AbedWriter writer(outPrefix + ".abed", static_cast<uint8_t>(msp.K), nKept,
-                      /*noMissing=*/true, nthreads);
+                      /*noMissing=*/ true, nthreads);
 
     std::ofstream bimOut(outPrefix + ".bim");
     if (!bimOut) throw std::runtime_error("Cannot create " + outPrefix + ".bim");

@@ -19,6 +19,7 @@ std::string grmIdPath(const std::string &spFile) {
     auto dot = spFile.rfind('.');
     return (dot != std::string::npos ? spFile.substr(0, dot) : spFile) + ".grm.id";
 }
+
 } // anonymous namespace
 
 SparseGRM::SparseGRM(const std::string &filename, const std::vector<std::string> &subjectOrder) {
@@ -70,7 +71,9 @@ SparseGRM::SparseGRM(const std::string &filename, const std::vector<std::string>
 
     // Sort by (row, col) for cache-friendly access in quadForm
     std::sort(raw.begin(), raw.end(),
-              [](const Entry &a, const Entry &b) { return a.row < b.row || (a.row == b.row && a.col < b.col); });
+              [](const Entry &a, const Entry &b) {
+        return a.row < b.row || (a.row == b.row && a.col < b.col);
+    });
 
     m_entries = std::move(raw);
     buildDiagonal();
@@ -104,9 +107,11 @@ std::vector<std::string> SparseGRM::readGctaIIDs(const std::string &spFile) {
 // GCTA format: .grm.sp file + companion .grm.id
 // ══════════════════════════════════════════════════════════════════════
 
-SparseGRM SparseGRM::fromGCTA(const std::string &spFile,
-                              const std::vector<std::string> &subjectOrder,
-                              const std::vector<std::string> &famIIDs) {
+SparseGRM SparseGRM::fromGCTA(
+    const std::string &spFile,
+    const std::vector<std::string> &subjectOrder,
+    const std::vector<std::string> &famIIDs
+) {
     SparseGRM grm;
 
     auto idMap = text::buildIIDMap(subjectOrder);
@@ -195,7 +200,9 @@ SparseGRM SparseGRM::fromGCTA(const std::string &spFile,
     }
 
     std::sort(raw.begin(), raw.end(),
-              [](const Entry &a, const Entry &b) { return a.row < b.row || (a.row == b.row && a.col < b.col); });
+              [](const Entry &a, const Entry &b) {
+        return a.row < b.row || (a.row == b.row && a.col < b.col);
+    });
 
     grm.m_entries = std::move(raw);
     grm.buildDiagonal();
@@ -253,10 +260,12 @@ double SparseGRM::spaVariance(const double *R, uint32_t n) const {
     return 2.0 * covSum - dotRR;
 }
 
-SparseGRM SparseGRM::load(const std::string &grabFile,
-                          const std::string &gctaFile,
-                          const std::vector<std::string> &subjectOrder,
-                          const std::vector<std::string> &famIIDs) {
+SparseGRM SparseGRM::load(
+    const std::string &grabFile,
+    const std::string &gctaFile,
+    const std::vector<std::string> &subjectOrder,
+    const std::vector<std::string> &famIIDs
+) {
     if (!gctaFile.empty()) return fromGCTA(gctaFile, subjectOrder, famIIDs);
     return SparseGRM(grabFile, subjectOrder);
 }
@@ -273,9 +282,11 @@ SparseGRM SparseGRM::fromEntries(uint32_t nSubj, std::vector<Entry> entries) {
 // Lightweight subject-ID scanner (no numeric data loaded)
 // ══════════════════════════════════════════════════════════════════════
 
-std::unordered_set<std::string> SparseGRM::parseSubjectIDs(const std::string &grabFile,
-                                                           const std::string &gctaFile,
-                                                           const std::vector<std::string> &famIIDs) {
+std::unordered_set<std::string> SparseGRM::parseSubjectIDs(
+    const std::string &grabFile,
+    const std::string &gctaFile,
+    const std::vector<std::string> &famIIDs
+) {
     std::unordered_set<std::string> ids;
 
     if (!gctaFile.empty()) {

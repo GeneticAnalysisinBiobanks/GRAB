@@ -122,18 +122,20 @@ struct GRMTopology {
     std::vector<SparseGRM::Entry> allEntries;
     std::vector<double> grmDiag;
     std::unordered_set<uint32_t> singletonSet;
-    std::vector<std::vector<uint32_t>> families;
-    std::vector<std::vector<SparseGRM::Entry>> familyEntries;
+    std::vector<std::vector<uint32_t> > families;
+    std::vector<std::vector<SparseGRM::Entry> > familyEntries;
     std::vector<nsGRMNull::IndexedIBD> ibdEntries;
     std::unordered_map<uint64_t, uint32_t> ibdPairMap;
 };
 
-GRMTopology loadGRMTopology(const std::string &spgrmGrabFile,
-                            const std::string &spgrmGctaFile,
-                            const std::string &pairwiseIBDFile,
-                            const std::vector<std::string> &subjIDs,
-                            const std::vector<std::string> &famIIDs,
-                            uint32_t N) {
+GRMTopology loadGRMTopology(
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const std::string &pairwiseIBDFile,
+    const std::vector<std::string> &subjIDs,
+    const std::vector<std::string> &famIIDs,
+    uint32_t N
+) {
     GRMTopology topo;
 
     SparseGRM grm = SparseGRM::load(spgrmGrabFile, spgrmGctaFile, subjIDs, famIIDs);
@@ -149,7 +151,7 @@ GRMTopology loadGRMTopology(const std::string &spgrmGrabFile,
     topo.grmDiag = grm.diagonal();
 
     // Build connected components for family/singleton split
-    std::vector<std::pair<uint32_t, uint32_t>> edges;
+    std::vector<std::pair<uint32_t, uint32_t> > edges;
     {
         std::unordered_set<uint64_t> seen;
         for (const auto &e : topo.allEntries) {
@@ -163,7 +165,7 @@ GRMTopology loadGRMTopology(const std::string &spgrmGrabFile,
     auto components = nsGRMNull::getComponents(N, edges);
     infoMsg("Found %zu connected components", components.size());
 
-    std::vector<std::vector<uint32_t>> singletons;
+    std::vector<std::vector<uint32_t> > singletons;
     for (auto &comp : components) {
         if (comp.size() == 1)
             singletons.push_back(std::move(comp));
@@ -219,11 +221,16 @@ class SAGELDMethod : public MethodBase {
 
     SAGELDMethod(Eigen::VectorXd resid_G, double R_GRM_R_G, std::vector<PerEnv> envs, std::vector<std::string> envNames)
         : m_resid_G(std::move(resid_G)), m_R_GRM_R_G(R_GRM_R_G), m_envs(std::move(envs)),
-          m_envNames(std::move(envNames)) {}
+        m_envNames(std::move(envNames)) {
+    }
 
-    std::unique_ptr<MethodBase> clone() const override { return std::make_unique<SAGELDMethod>(*this); }
+    std::unique_ptr<MethodBase> clone() const override {
+        return std::make_unique<SAGELDMethod>(*this);
+    }
 
-    int resultSize() const override { return 2 + 2 * static_cast<int>(m_envs.size()); }
+    int resultSize() const override {
+        return 2 + 2 * static_cast<int>(m_envs.size());
+    }
 
     // P_G  P_Gx<E1>  ...  Z_G  Z_Gx<E1>  ...
     std::string getHeaderColumns() const override {
@@ -236,10 +243,12 @@ class SAGELDMethod : public MethodBase {
         return h;
     }
 
-    void getResultVec(Eigen::Ref<Eigen::VectorXd> GVec,
-                      double altFreq,
-                      int /*markerInChunkIdx*/,
-                      std::vector<double> &result) override {
+    void getResultVec(
+        Eigen::Ref<Eigen::VectorXd> GVec,
+        double altFreq,
+        int /*markerInChunkIdx*/,
+        std::vector<double> &result
+    ) override {
         const int nE = static_cast<int>(m_envs.size());
         result.resize(2 + 2 * nE);
 
@@ -274,22 +283,24 @@ class SAGELDMethod : public MethodBase {
 // runSAGELD — entry point
 // ══════════════════════════════════════════════════════════════════════
 
-void runSAGELD(const std::string &phenoFile,
-               const std::vector<std::string> &residNames,
-               const std::string &spgrmGrabFile,
-               const std::string &spgrmGctaFile,
-               const std::string &pairwiseIBDFile,
-               const GenoSpec &geno,
-               const std::string &outputFile,
-               double spaCutoff,
-               int nthreads,
-               int nSnpPerChunk,
-               double missingCutoff,
-               double minMafCutoff,
-               double minMacCutoff,
-               double hweCutoff,
-               const std::string &keepFile,
-               const std::string &removeFile) {
+void runSAGELD(
+    const std::string &phenoFile,
+    const std::vector<std::string> &residNames,
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const std::string &pairwiseIBDFile,
+    const GenoSpec &geno,
+    const std::string &outputFile,
+    double spaCutoff,
+    int nthreads,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile,
+    const std::string &removeFile
+) {
     // 1. Load residual file
     infoMsg("Loading pheno file: %s", phenoFile.c_str());
     auto famIIDs = parseGenoIIDs(geno);

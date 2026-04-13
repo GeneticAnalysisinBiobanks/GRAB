@@ -65,11 +65,13 @@ static std::string findExtractTractsFile(const std::string &prefix, int k, const
     return "";
 }
 
-void convertTextToAbed(const std::string &textPrefix,
-                       const std::string &outPrefix,
-                       const std::string &keepFile,
-                       const std::string &removeFile,
-                       int nthreads) {
+void convertTextToAbed(
+    const std::string &textPrefix,
+    const std::string &outPrefix,
+    const std::string &keepFile,
+    const std::string &removeFile,
+    int nthreads
+) {
     if (nthreads < 1) nthreads = 1;
     // Auto-detect K by scanning for anc0, anc1, ...
     int K = 0;
@@ -96,6 +98,7 @@ void convertTextToAbed(const std::string &textPrefix,
         gzFile dosGz;
         gzFile hapGz;
     };
+
     std::vector<AncFile> files(K);
 
     for (int k = 0; k < K; ++k) {
@@ -147,7 +150,7 @@ void convertTextToAbed(const std::string &textPrefix,
     // Text input may contain missing values, so default to noMissing=false;
     // we track hasMissing and the flag is set conservatively.
     AbedWriter writer(outPrefix + ".abed", static_cast<uint8_t>(K), nKept,
-                      /*noMissing=*/false, nthreads);
+                      /*noMissing=*/ false, nthreads);
 
     std::ofstream bimOut(outPrefix + ".bim");
     if (!bimOut) throw std::runtime_error("Cannot create " + outPrefix + ".bim");

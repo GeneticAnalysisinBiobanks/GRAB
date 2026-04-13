@@ -32,16 +32,16 @@ void DesignMatrix::adjustGenotype(
     const uint32_t *nzIdx,
     int nNz,
     Eigen::Ref<Eigen::VectorXd> adjG
-    ) const {
+) const {
 
     const int p = nCols();
     const int N = nRows();
 
     Eigen::VectorXd tX_g = Eigen::VectorXd::Zero(p);
     for (int k = 0; k < nNz; ++k) {
-	uint32_t j = nzIdx[k];
-	double gj = G[j];
-	tX_g.noalias() += gj * m_tX.col(j);
+        uint32_t j = nzIdx[k];
+        double gj = G[j];
+        tX_g.noalias() += gj * m_tX.col(j);
     }
 
     Eigen::Map<const Eigen::VectorXd> gVec(G, N);
@@ -61,15 +61,15 @@ CumulantTable buildCumulantTable(const Eigen::VectorXd &residuals) {
     Eigen::VectorXd xGrid(L);
     double gridScale;
     {
-	double maxAbs = 0.0;
-	for (int k = 0; k < L; ++k) {
-	    double p = static_cast<double>(k + 1) / static_cast<double>(L + 1);
-	    xGrid[k] = std::tan(M_PI * (p - 0.5));
-	    double a = std::fabs(xGrid[k]);
-	    if (a > maxAbs) maxAbs = a;
-	}
-	gridScale = rangeMax / maxAbs;
-	xGrid *= gridScale;
+        double maxAbs = 0.0;
+        for (int k = 0; k < L; ++k) {
+            double p = static_cast<double>(k + 1) / static_cast<double>(L + 1);
+            xGrid[k] = std::tan(M_PI * (p - 0.5));
+            double a = std::fabs(xGrid[k]);
+            if (a > maxAbs) maxAbs = a;
+        }
+        gridScale = rangeMax / maxAbs;
+        xGrid *= gridScale;
     }
 
     const int N = static_cast<int>(residuals.size());
@@ -78,33 +78,33 @@ CumulantTable buildCumulantTable(const Eigen::VectorXd &residuals) {
     Eigen::VectorXd yK0(L), yK1(L), yK2(L);
 
     for (int i = 0; i < L; ++i) {
-	double t = xGrid[i];
-	double M0 = 0.0, M1 = 0.0, M2 = 0.0;
-	for (int j = 0; j < N; ++j) {
-	    double r = rp[j];
-	    double e = std::exp(r * t);
-	    M0 += e;
-	    double re = r * e;
-	    M1 += re;
-	    M2 += r * re;
-	}
-	double invN = 1.0 / static_cast<double>(N);
-	M0 *= invN;
-	M1 *= invN;
-	M2 *= invN;
-	yK0[i] = std::log(M0);
-	yK1[i] = M1 / M0;
-	yK2[i] = (M0 * M2 - M1 * M1) / (M0 * M0);
+        double t = xGrid[i];
+        double M0 = 0.0, M1 = 0.0, M2 = 0.0;
+        for (int j = 0; j < N; ++j) {
+            double r = rp[j];
+            double e = std::exp(r * t);
+            M0 += e;
+            double re = r * e;
+            M1 += re;
+            M2 += r * re;
+        }
+        double invN = 1.0 / static_cast<double>(N);
+        M0 *= invN;
+        M1 *= invN;
+        M2 *= invN;
+        yK0[i] = std::log(M0);
+        yK1[i] = M1 / M0;
+        yK2[i] = (M0 * M2 - M1 * M1) / (M0 * M0);
     }
 
     // Pre-compute slopes for piecewise-linear interpolation.
     auto computeSlopes = [](const Eigen::VectorXd &x, const Eigen::VectorXd &y) -> Eigen::VectorXd {
-			     const int n = static_cast<int>(x.size());
-			     Eigen::VectorXd s(n - 1);
-			     for (int i = 0; i < n - 1; ++i)
-				 s[i] = (y[i + 1] - y[i]) / (x[i + 1] - x[i]);
-			     return s;
-			 };
+        const int n = static_cast<int>(x.size());
+        Eigen::VectorXd s(n - 1);
+        for (int i = 0; i < n - 1; ++i)
+            s[i] = (y[i + 1] - y[i]) / (x[i + 1] - x[i]);
+        return s;
+    };
 
     CumulantTable ct;
     ct.xGrid = std::move(xGrid);
@@ -131,7 +131,7 @@ SPACoxMethod::SPACoxMethod(
     const DesignMatrix &design,
     double pvalCovAdjCut,
     double spaCutoff
-    )
+)
     : m_resid(residuals), m_varResid(varResid), m_cumul(cumul), m_design(design),
     m_N(static_cast<int>(residuals.size())), m_pvalCovAdjCut(pvalCovAdjCut), m_spaCutoff(spaCutoff),
     m_adjGNorm(residuals.size()), m_adjGVec(residuals.size()) {
@@ -156,7 +156,12 @@ int SPACoxMethod::interpIdx(double v) const {
     return lo;
 }
 
-double SPACoxMethod::interp(const double *yp, const double *sp, int lo, double v) const {
+double SPACoxMethod::interp(
+    const double *yp,
+    const double *sp,
+    int lo,
+    double v
+) const {
     return yp[lo] + (v - m_cumul.xGrid.data()[lo]) * sp[lo];
 }
 
@@ -167,6 +172,7 @@ double SPACoxMethod::interpK0(double v) const {
     int lo = interpIdx(v);
     return interp(m_cumul.yK0.data(), m_cumul.slopeK0.data(), lo, v);
 }
+
 double SPACoxMethod::interpK1(double v) const {
     const int n = m_cumul.nGrid;
     if (v <= m_cumul.xGrid.data()[0]) return m_cumul.yK1.data()[0];
@@ -174,6 +180,7 @@ double SPACoxMethod::interpK1(double v) const {
     int lo = interpIdx(v);
     return interp(m_cumul.yK1.data(), m_cumul.slopeK1.data(), lo, v);
 }
+
 double SPACoxMethod::interpK2(double v) const {
     const int n = m_cumul.nGrid;
     if (v <= m_cumul.xGrid.data()[0]) return m_cumul.yK2.data()[0];
@@ -186,14 +193,21 @@ double SPACoxMethod::interpK2(double v) const {
 // Cumulant evaluation — fused K1+K2 for Newton-Raphson
 // ======================================================================
 
-double SPACoxMethod::evalK0(double t, int N0, double adjG0, const double *adjG, const uint32_t *idx, int n) const {
+double SPACoxMethod::evalK0(
+    double t,
+    int N0,
+    double adjG0,
+    const double *adjG,
+    const uint32_t *idx,
+    int n
+) const {
     double sum = N0 * interpK0(t * adjG0);
     if (idx) {
-	for (int k = 0; k < n; ++k)
-	    sum += interpK0(t * adjG[idx[k]]);
+        for (int k = 0; k < n; ++k)
+            sum += interpK0(t * adjG[idx[k]]);
     } else {
-	for (int k = 0; k < n; ++k)
-	    sum += interpK0(t * adjG[k]);
+        for (int k = 0; k < n; ++k)
+            sum += interpK0(t * adjG[k]);
     }
     return sum;
 }
@@ -206,7 +220,7 @@ std::pair<double, double> SPACoxMethod::evalK1K2(
     const uint32_t *idx,
     int n,
     double q2
-    ) const {
+) const {
 
     const double *xp = m_cumul.xGrid.data();
     const double *y1 = m_cumul.yK1.data();
@@ -220,40 +234,40 @@ std::pair<double, double> SPACoxMethod::evalK1K2(
 
     // Inline interpolation: compute bin once, read K1 and K2 from same bin
     auto interpBoth = [&](double v) -> std::pair<double, double> {
-			  if (v <= xp[0]) return {y1[0], y2[0]};
-			  if (v >= xp[nG - 1]) return {y1[nG - 1], y2[nG - 1]};
-			  double fIdx = (std::atan(v * invS) * invPi + 0.5) * Lp1 - 1.0;
-			  int lo = static_cast<int>(fIdx);
-			  if (lo < 0) lo = 0;
-			  if (lo >= nG - 1) lo = nG - 2;
-			  double dx = v - xp[lo];
-			  return {y1[lo] + dx * s1[lo], y2[lo] + dx * s2[lo]};
-		      };
+        if (v <= xp[0]) return {y1[0], y2[0]};
+        if (v >= xp[nG - 1]) return {y1[nG - 1], y2[nG - 1]};
+        double fIdx = (std::atan(v * invS) * invPi + 0.5) * Lp1 - 1.0;
+        int lo = static_cast<int>(fIdx);
+        if (lo < 0) lo = 0;
+        if (lo >= nG - 1) lo = nG - 2;
+        double dx = v - xp[lo];
+        return {y1[lo] + dx * s1[lo], y2[lo] + dx * s2[lo]};
+    };
 
     double sumK1 = 0.0, sumK2 = 0.0;
 
     // Contribution from N0 zero-genotype subjects
     {
-	double v0 = t * adjG0;
-	auto [k1, k2] = interpBoth(v0);
-	sumK1 = N0 * adjG0 * k1;
-	sumK2 = N0 * adjG0 * adjG0 * k2;
+        double v0 = t * adjG0;
+        auto [k1, k2] = interpBoth(v0);
+        sumK1 = N0 * adjG0 * k1;
+        sumK2 = N0 * adjG0 * adjG0 * k2;
     }
 
     if (idx) {
-	for (int k = 0; k < n; ++k) {
-	    double a = adjG[idx[k]];
-	    auto [k1, k2] = interpBoth(t * a);
-	    sumK1 += a * k1;
-	    sumK2 += a * a * k2;
-	}
+        for (int k = 0; k < n; ++k) {
+            double a = adjG[idx[k]];
+            auto [k1, k2] = interpBoth(t * a);
+            sumK1 += a * k1;
+            sumK2 += a * a * k2;
+        }
     } else {
-	for (int k = 0; k < n; ++k) {
-	    double a = adjG[k];
-	    auto [k1, k2] = interpBoth(t * a);
-	    sumK1 += a * k1;
-	    sumK2 += a * a * k2;
-	}
+        for (int k = 0; k < n; ++k) {
+            double a = adjG[k];
+            auto [k1, k2] = interpBoth(t * a);
+            sumK1 += a * k1;
+            sumK2 += a * a * k2;
+        }
     }
 
     return {sumK1 - q2, sumK2};
@@ -271,7 +285,7 @@ SPACoxMethod::RootResult SPACoxMethod::fastGetRootK1(
     const uint32_t *idx,
     int n,
     double q2
-    ) const {
+) const {
 
     double x = initX, oldX;
     double K1val = 0.0, K2val = 0.0, oldK1;
@@ -281,31 +295,31 @@ SPACoxMethod::RootResult SPACoxMethod::fastGetRootK1(
     constexpr int maxiter = 100;
 
     for (int iter = 0; iter < maxiter; ++iter) {
-	oldX = x;
-	oldDiffX = diffX;
-	oldK1 = K1val;
+        oldX = x;
+        oldDiffX = diffX;
+        oldK1 = K1val;
 
-	auto [k1, k2] = evalK1K2(x, N0, adjG0, adjG, idx, n, q2);
-	K1val = k1;
-	K2val = k2;
+        auto [k1, k2] = evalK1K2(x, N0, adjG0, adjG, idx, n, q2);
+        K1val = k1;
+        K2val = k2;
 
-	diffX = -K1val / K2val;
+        diffX = -K1val / K2val;
 
-	if (!std::isfinite(K1val)) {
-	    x = std::numeric_limits<double>::infinity();
-	    K2val = 0.0;
-	    break;
-	}
+        if (!std::isfinite(K1val)) {
+            x = std::numeric_limits<double>::infinity();
+            K2val = 0.0;
+            break;
+        }
 
-	if ((K1val > 0) != (oldK1 > 0)) {
-	    while (std::abs(diffX) > std::abs(oldDiffX) - tol)
-		diffX *= 0.5;
-	}
+        if ((K1val > 0) != (oldK1 > 0)) {
+            while (std::abs(diffX) > std::abs(oldDiffX) - tol)
+                diffX *= 0.5;
+        }
 
-	if (std::abs(diffX) < tol) break;
-	x = oldX + diffX;
+        if (std::abs(diffX) < tol) break;
+        x = oldX + diffX;
 
-	if (iter == maxiter - 1) converge = false;
+        if (iter == maxiter - 1) converge = false;
     }
     return {x, converge, K2val};
 }
@@ -322,7 +336,7 @@ double SPACoxMethod::getProbSpa(
     int N0,
     double q2,
     bool lowerTail
-    ) const {
+) const {
 
     double initX = (q2 > 0) ? 3.0 : -3.0;
 
@@ -348,7 +362,11 @@ double SPACoxMethod::getProbSpa(
 // Per-marker p-value (two-stage SPA)
 // ======================================================================
 
-double SPACoxMethod::getMarkerPval(const Eigen::Ref<Eigen::VectorXd> &GVec, double MAF, double &zScore) {
+double SPACoxMethod::getMarkerPval(
+    const Eigen::Ref<Eigen::VectorXd> &GVec,
+    double MAF,
+    double &zScore
+) {
 
     // Score statistic S = G' * resid
     double S = GVec.dot(m_resid);
@@ -358,13 +376,13 @@ double SPACoxMethod::getMarkerPval(const Eigen::Ref<Eigen::VectorXd> &GVec, doub
     // VarS = varResid * Σ(g_i - 2·MAF)²
     double sumAdjG2 = 0.0;
     for (int i = 0; i < m_N; ++i) {
-	double adj = gp[i] - twoMAF;
-	sumAdjG2 += adj * adj;
+        double adj = gp[i] - twoMAF;
+        sumAdjG2 += adj * adj;
     }
     double VarS = m_varResid * sumAdjG2;
     if (VarS <= 0.0) {
-	zScore = 0.0;
-	return std::numeric_limits<double>::quiet_NaN();
+        zScore = 0.0;
+        return std::numeric_limits<double>::quiet_NaN();
     }
     zScore = S / std::sqrt(VarS);
 
@@ -378,8 +396,8 @@ double SPACoxMethod::getMarkerPval(const Eigen::Ref<Eigen::VectorXd> &GVec, doub
     double *anp = m_adjGNorm.data();
     m_nzSet.clear();
     for (int i = 0; i < m_N; ++i) {
-	anp[i] = (gp[i] - twoMAF) / sqrtVarS;
-	if (gp[i] != 0.0) m_nzSet.push_back(static_cast<uint32_t>(i));
+        anp[i] = (gp[i] - twoMAF) / sqrtVarS;
+        if (gp[i] != 0.0) m_nzSet.push_back(static_cast<uint32_t>(i));
     }
     int nNz = static_cast<int>(m_nzSet.size());
     int N0 = m_N - nNz;
@@ -395,15 +413,15 @@ double SPACoxMethod::getMarkerPval(const Eigen::Ref<Eigen::VectorXd> &GVec, doub
 
     VarS = m_varResid * m_adjGVec.squaredNorm();
     if (VarS <= 0.0) {
-	zScore = 0.0;
-	return std::numeric_limits<double>::quiet_NaN();
+        zScore = 0.0;
+        return std::numeric_limits<double>::quiet_NaN();
     }
     zScore = S / std::sqrt(VarS);
     sqrtVarS = std::sqrt(VarS);
 
     const double *avp = m_adjGVec.data();
     for (int i = 0; i < m_N; ++i)
-	anp[i] = avp[i] / sqrtVarS;
+        anp[i] = avp[i] / sqrtVarS;
 
     // Full-vector SPA (no sparsity shortcut after adjustment)
     absZ = std::abs(zScore);
@@ -421,7 +439,7 @@ void SPACoxMethod::getResultVec(
     double altFreq,
     int /*markerInChunkIdx*/,
     std::vector<double> &result
-    ) {
+) {
 
     // altFreq = freq(bim col5 = ALT); GVec counts bim col5 alleles.
     double zScore;
@@ -454,7 +472,7 @@ void runSPACox(
     double hweCutoff,
     const std::string &keepFile,
     const std::string &removeFile
-    ) {
+) {
 
     // ---- Load resid file and covariate data ----
     infoMsg("Loading pheno file: %s", phenoFile.c_str());
@@ -472,18 +490,18 @@ void runSPACox(
     infoMsg("Building design matrix projection...");
     Eigen::MatrixXd unionX;
     if (!covarNames.empty()) {
-	auto cov = sd.getColumns(covarNames);
-	unionX.resize(sd.nUsed(), cov.cols() + 1);
-	unionX.col(0).setOnes();
-	unionX.rightCols(cov.cols()) = cov;
+        auto cov = sd.getColumns(covarNames);
+        unionX.resize(sd.nUsed(), cov.cols() + 1);
+        unionX.col(0).setOnes();
+        unionX.rightCols(cov.cols()) = cov;
     } else if (sd.hasCovar()) {
-	const auto &cov = sd.covar();
-	unionX.resize(sd.nUsed(), cov.cols() + 1);
-	unionX.col(0).setOnes();
-	unionX.rightCols(cov.cols()) = cov;
+        const auto &cov = sd.covar();
+        unionX.resize(sd.nUsed(), cov.cols() + 1);
+        unionX.col(0).setOnes();
+        unionX.rightCols(cov.cols()) = cov;
     } else {
-	unionX.resize(sd.nUsed(), 1);
-	unionX.col(0).setOnes();
+        unionX.resize(sd.nUsed(), 1);
+        unionX.col(0).setOnes();
     }
 
     // ---- Load genotype data (union mask) ----
@@ -502,40 +520,40 @@ void runSPACox(
 
     std::vector<PhenoTask> tasks(K);
     for (int rc = 0; rc < K; ++rc) {
-	const auto &pi = phenoInfos[rc];
+        const auto &pi = phenoInfos[rc];
 
-	// Extract per-phenotype residuals and design matrix
-	pResid[rc] = (K > 1) ? extractPhenoVec(sd.residMatrix().col(rc), pi) : sd.residuals();
-	Eigen::MatrixXd phenoX = (K > 1) ? extractPhenoMat(unionX, pi) : unionX;
+        // Extract per-phenotype residuals and design matrix
+        pResid[rc] = (K > 1) ? extractPhenoVec(sd.residMatrix().col(rc), pi) : sd.residuals();
+        Eigen::MatrixXd phenoX = (K > 1) ? extractPhenoMat(unionX, pi) : unionX;
 
-	// Build cumulant table and design matrix from per-phenotype data
-	pCumul[rc] = buildCumulantTable(pResid[rc]);
-	double meanR = pResid[rc].mean();
-	double varR = (pResid[rc].array() - meanR).square().mean();
-	double N = static_cast<double>(pResid[rc].size());
-	double varResid = varR * N / (N - 1.0);
-	pDesign.emplace_back(phenoX);
+        // Build cumulant table and design matrix from per-phenotype data
+        pCumul[rc] = buildCumulantTable(pResid[rc]);
+        double meanR = pResid[rc].mean();
+        double varR = (pResid[rc].array() - meanR).square().mean();
+        double N = static_cast<double>(pResid[rc].size());
+        double varResid = varR * N / (N - 1.0);
+        pDesign.emplace_back(phenoX);
 
-	tasks[rc].phenoName = pi.name;
-	tasks[rc].method =
-	    std::make_unique<SPACoxMethod>(pResid[rc], varResid, pCumul[rc], pDesign[rc], pvalCovAdjCut, spaCutoff);
-	tasks[rc].unionToLocal = pi.unionToLocal;
-	tasks[rc].nUsed = pi.nUsed;
-	infoMsg("  Phenotype '%s': %u subjects", pi.name.c_str(), pi.nUsed);
+        tasks[rc].phenoName = pi.name;
+        tasks[rc].method =
+            std::make_unique<SPACoxMethod>(pResid[rc], varResid, pCumul[rc], pDesign[rc], pvalCovAdjCut, spaCutoff);
+        tasks[rc].unionToLocal = pi.unionToLocal;
+        tasks[rc].nUsed = pi.nUsed;
+        infoMsg("  Phenotype '%s': %u subjects", pi.name.c_str(), pi.nUsed);
     }
 
     infoMsg("Running SPACox marker tests (%d thread(s), %d phenotype(s))...", nthread, K);
     multiPhenoEngine(
-	*genoData,
-	tasks,
-	outPrefix,
-	"SPACox",
-	compression,
-	compressionLevel,
-	nthread,
-	missingCutoff,
-	minMafCutoff,
-	minMacCutoff,
-	hweCutoff
-	);
+        *genoData,
+        tasks,
+        outPrefix,
+        "SPACox",
+        compression,
+        compressionLevel,
+        nthread,
+        missingCutoff,
+        minMafCutoff,
+        minMacCutoff,
+        hweCutoff
+    );
 }

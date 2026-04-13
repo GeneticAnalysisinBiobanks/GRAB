@@ -62,10 +62,13 @@ struct DosageSetter {
         return true; // always receive data to advance correctly
     }
 
-    void set_number_of_entries(std::size_t /*ploidy*/,
-                               std::size_t /*Z*/,
-                               genfile::OrderType /*order*/,
-                               genfile::ValueType /*valueType*/) {}
+    void set_number_of_entries(
+        std::size_t /*ploidy*/,
+        std::size_t /*Z*/,
+        genfile::OrderType /*order*/,
+        genfile::ValueType                        /*valueType*/
+    ) {
+    }
 
     void set_value(uint32_t idx, double value) {
         if (!currentUsed) return;
@@ -101,7 +104,9 @@ struct DosageSetter {
         }
     }
 
-    void finalise() {}
+    void finalise() {
+    }
+
 };
 
 } // anonymous namespace
@@ -110,11 +115,13 @@ struct DosageSetter {
 // BgenData
 // ══════════════════════════════════════════════════════════════════════════════
 
-BgenData::BgenData(std::string bgenFile,
-                   const std::vector<uint64_t> &usedMask,
-                   uint32_t nSamplesInFile,
-                   uint32_t nUsed,
-                   int nMarkersEachChunk)
+BgenData::BgenData(
+    std::string bgenFile,
+    const std::vector<uint64_t> &usedMask,
+    uint32_t nSamplesInFile,
+    uint32_t nUsed,
+    int nMarkersEachChunk
+)
     : m_bgenFile(std::move(bgenFile)), m_nSubjInFile(nSamplesInFile), m_nSubjUsed(nUsed), m_usedMask(usedMask) {
     m_allUsed = (nUsed == nSamplesInFile);
 
@@ -136,7 +143,8 @@ BgenData::BgenData(std::string bgenFile,
 
     // Skip sample identifiers if present
     if (context.flags & genfile::bgen::e_SampleIdentifiers) {
-        genfile::bgen::read_sample_identifier_block(stream, context, [](std::string const &) {});
+        genfile::bgen::read_sample_identifier_block(stream, context, [](std::string const &) {
+        });
     }
 
     // Seek to first variant
@@ -150,8 +158,12 @@ BgenData::BgenData(std::string bgenFile,
     uint64_t variantIdx = 0;
 
     while (genfile::bgen::read_snp_identifying_data(
-        stream, context, &SNPID, &RSID, &chromosome, &position, [&](std::size_t n) { alleles.resize(n); },
-        [&](std::size_t i, std::string const &a) { alleles[i] = a; })) {
+               stream, context, &SNPID, &RSID, &chromosome, &position, [&](std::size_t n) {
+        alleles.resize(n);
+    },
+               [&](std::size_t i, std::string const &a) {
+        alleles[i] = a;
+    })) {
 
         // Skip non-biallelic
         if (alleles.size() != 2) {
@@ -180,8 +192,8 @@ BgenData::BgenData(std::string bgenFile,
 
 BgenData::~BgenData() = default;
 
-std::vector<std::vector<uint64_t>> BgenData::buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize) {
-    std::vector<std::vector<uint64_t>> chunks;
+std::vector<std::vector<uint64_t> > BgenData::buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize) {
+    std::vector<std::vector<uint64_t> > chunks;
     if (markers.empty()) return chunks;
     std::vector<uint64_t> cur;
     cur.reserve(chunkSize);
@@ -199,7 +211,9 @@ std::vector<std::vector<uint64_t>> BgenData::buildChunks(const std::vector<Marke
     return chunks;
 }
 
-std::unique_ptr<GenoCursor> BgenData::makeCursor() const { return std::make_unique<BgenCursor>(*this); }
+std::unique_ptr<GenoCursor> BgenData::makeCursor() const {
+    return std::make_unique<BgenCursor>(*this);
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // BgenCursor::Impl
@@ -230,8 +244,12 @@ struct BgenCursor::Impl {
 
         while (currentBiallelicIdx <= gIndex) {
             if (!genfile::bgen::read_snp_identifying_data(
-                    stream, context, &SNPID, &RSID, &chromosome, &position, [&](std::size_t n) { alleles.resize(n); },
-                    [&](std::size_t i, std::string const &a) { alleles[i] = a; }))
+                    stream, context, &SNPID, &RSID, &chromosome, &position, [&](std::size_t n) {
+                alleles.resize(n);
+            },
+                    [&](std::size_t i, std::string const &a) {
+                alleles[i] = a;
+            }))
                 return false;
 
             if (alleles.size() != 2) {
@@ -246,6 +264,7 @@ struct BgenCursor::Impl {
         }
         return false;
     }
+
 };
 
 BgenCursor::BgenCursor(const BgenData &parent) : m_parent(parent), m_impl(std::make_unique<Impl>()) {
@@ -265,7 +284,8 @@ BgenCursor::BgenCursor(const BgenData &parent) : m_parent(parent), m_impl(std::m
 
     // Skip sample identifiers
     if (impl.context.flags & genfile::bgen::e_SampleIdentifiers) {
-        genfile::bgen::read_sample_identifier_block(impl.stream, impl.context, [](std::string const &) {});
+        genfile::bgen::read_sample_identifier_block(impl.stream, impl.context, [](std::string const &) {
+        });
     }
 
     impl.stream.seekg(offset + 4);
@@ -286,22 +306,25 @@ void BgenCursor::beginSequentialBlock(uint64_t /*firstMarker*/) {
     genfile::bgen::read_header_block(impl.stream, &impl.context);
 
     if (impl.context.flags & genfile::bgen::e_SampleIdentifiers) {
-        genfile::bgen::read_sample_identifier_block(impl.stream, impl.context, [](std::string const &) {});
+        genfile::bgen::read_sample_identifier_block(impl.stream, impl.context, [](std::string const &) {
+        });
     }
 
     impl.stream.seekg(offset + 4);
     impl.currentBiallelicIdx = 0;
 }
 
-void BgenCursor::getGenotypes(uint64_t gIndex,
-                              Eigen::Ref<Eigen::VectorXd> out,
-                              double &altFreq,
-                              double &altCounts,
-                              double &missingRate,
-                              double &hweP,
-                              double &maf,
-                              double &mac,
-                              std::vector<uint32_t> &indexForMissing) {
+void BgenCursor::getGenotypes(
+    uint64_t gIndex,
+    Eigen::Ref<Eigen::VectorXd> out,
+    double &altFreq,
+    double &altCounts,
+    double &missingRate,
+    double &hweP,
+    double &maf,
+    double &mac,
+    std::vector<uint32_t> &indexForMissing
+) {
     auto &impl = *m_impl;
     indexForMissing.clear();
 

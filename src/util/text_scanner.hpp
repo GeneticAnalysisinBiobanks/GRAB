@@ -34,15 +34,21 @@ struct TokenScanner {
     const char *p;
     const char *end;
 
-    explicit TokenScanner(const std::string &line) : p(line.c_str()), end(p + line.size()) {}
+    explicit TokenScanner(const std::string &line) : p(line.c_str()), end(p + line.size()) {
+    }
 
     void skipWS() {
         while (p < end && (*p == ' ' || *p == '\t'))
             ++p;
     }
 
-    const char *pos() const { return p; }
-    bool atEnd() const { return p >= end; }
+    const char *pos() const {
+        return p;
+    }
+
+    bool atEnd() const {
+        return p >= end;
+    }
 
     std::string next() {
         skipWS();
@@ -51,6 +57,7 @@ struct TokenScanner {
             ++p;
         return std::string(s, p);
     }
+
 };
 
 // Build an IID → index map from a vector of subject IDs.

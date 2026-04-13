@@ -52,8 +52,8 @@ static const std::vector<double> kMacBins = {20.0, 50.0, 100.0, 500.0};
 
 inline double logistic(double x) {
     if (x >= 0.0) {
-	double ez = std::exp(-x);
-	return 1.0 / (1.0 + ez);
+        double ez = std::exp(-x);
+        return 1.0 / (1.0 + ez);
     }
     double ez = std::exp(x);
     return ez / (1.0 + ez);
@@ -80,21 +80,21 @@ inline double clampProb(double p) {
 
 void batchSpmvInterleaved(const SparseGRM &grm, const double *x, double *result, uint32_t n, int stride) {
     if (stride == 1) {
-	grm.multiply(x, result, n);
-	return;
+        grm.multiply(x, result, n);
+        return;
     }
     const int total = static_cast<int>(n) * stride;
     std::fill(result, result + total, 0.0);
     for (const auto &e : grm.entries()) {
-	const double v = e.value;
-	const int ri = static_cast<int>(e.row) * stride;
-	const int ci = static_cast<int>(e.col) * stride;
-	for (int j = 0; j < stride; ++j)
-	    result[ri + j] += v * x[ci + j];
-	if (e.row != e.col) {
-	    for (int j = 0; j < stride; ++j)
-		result[ci + j] += v * x[ri + j];
-	}
+        const double v = e.value;
+        const int ri = static_cast<int>(e.row) * stride;
+        const int ci = static_cast<int>(e.col) * stride;
+        for (int j = 0; j < stride; ++j)
+            result[ri + j] += v * x[ci + j];
+        if (e.row != e.col) {
+            for (int j = 0; j < stride; ++j)
+                result[ci + j] += v * x[ri + j];
+        }
     }
 }
 
@@ -107,24 +107,24 @@ void batchSpmvInterleavedAdd(
     uint32_t n,
     int stride,
     double alpha
-    ) {
+) {
     if (stride == 1) {
-	for (const auto &e : grm.entries()) {
-	    result[e.row] += alpha * e.value * x[e.col];
-	    if (e.row != e.col) result[e.col] += alpha * e.value * x[e.row];
-	}
-	return;
+        for (const auto &e : grm.entries()) {
+            result[e.row] += alpha * e.value * x[e.col];
+            if (e.row != e.col) result[e.col] += alpha * e.value * x[e.row];
+        }
+        return;
     }
     for (const auto &e : grm.entries()) {
-	const double av = alpha * e.value;
-	const int ri = static_cast<int>(e.row) * stride;
-	const int ci = static_cast<int>(e.col) * stride;
-	for (int j = 0; j < stride; ++j)
-	    result[ri + j] += av * x[ci + j];
-	if (e.row != e.col) {
-	    for (int j = 0; j < stride; ++j)
-		result[ci + j] += av * x[ri + j];
-	}
+        const double av = alpha * e.value;
+        const int ri = static_cast<int>(e.row) * stride;
+        const int ci = static_cast<int>(e.col) * stride;
+        for (int j = 0; j < stride; ++j)
+            result[ri + j] += av * x[ci + j];
+        if (e.row != e.col) {
+            for (int j = 0; j < stride; ++j)
+                result[ci + j] += av * x[ri + j];
+        }
     }
 }
 
@@ -146,7 +146,7 @@ void updateMuMat(
     int J,
     Eigen::MatrixXd &muMat,
     Eigen::MatrixXd &iRMat
-    ) {
+) {
     // eta_i = X[i,:]*beta + bVec[i]
     Eigen::VectorXd eta = X * beta + bVec;
 
@@ -154,24 +154,24 @@ void updateMuMat(
     iRMat.resize(n, J - 1);
 
     for (int i = 0; i < n; ++i) {
-	double prevCdf = 0.0;
-	for (int j = 0; j < J; ++j) {
-	    double cdf_j;
-	    if (j == J - 1)cdf_j = 1.0;
-	    else cdf_j = logistic(eps(j) - eta(i));
-	    double mu_ij = clampProb(cdf_j - prevCdf);
-	    muMat(i, j) = mu_ij;
-	    prevCdf = cdf_j;
-	}
-	// Compute iRMat: working correlation inverse scales
-	double cumMu = 0.0;
-	for (int j = 0; j < J - 1; ++j) {
-	    cumMu += muMat(i, j);
-	    double cumMuBar = 1.0 - cumMu; // = sum_{k > j} mu(i,k)
-	    cumMuBar = std::max(cumMuBar, 1e-10);
-	    double v = muMat(i, j) * cumMuBar;
-	    iRMat(i, j) = 1.0 / std::sqrt(std::max(v, 1e-20));
-	}
+        double prevCdf = 0.0;
+        for (int j = 0; j < J; ++j) {
+            double cdf_j;
+            if (j == J - 1)cdf_j = 1.0;
+            else cdf_j = logistic(eps(j) - eta(i));
+            double mu_ij = clampProb(cdf_j - prevCdf);
+            muMat(i, j) = mu_ij;
+            prevCdf = cdf_j;
+        }
+        // Compute iRMat: working correlation inverse scales
+        double cumMu = 0.0;
+        for (int j = 0; j < J - 1; ++j) {
+            cumMu += muMat(i, j);
+            double cumMuBar = 1.0 - cumMu; // = sum_{k > j} mu(i,k)
+            cumMuBar = std::max(cumMuBar, 1e-10);
+            double v = muMat(i, j) * cumMuBar;
+            iRMat(i, j) = 1.0 / std::sqrt(std::max(v, 1e-20));
+        }
     }
 }
 
@@ -213,47 +213,48 @@ struct PsiBlock {
     Eigen::VectorXd h; // (J-1)
 
     void compute(double eta_i, const Eigen::VectorXd &eps, int Jm1) {
-	h.resize(Jm1);
-	for (int j = 0; j < Jm1; ++j)
-	    h(j) = dlogistic(eps(j) - eta_i);
+        h.resize(Jm1);
+        for (int j = 0; j < Jm1; ++j)
+            h(j) = dlogistic(eps(j) - eta_i);
     }
 
     // y = Psi * x = diag(h)*x - h*(h'x)
     // Optimization 1: K=2 scalar fast path when Jm1==1
     void mulVec(const double *x, double *y, int Jm1) const {
-	if (Jm1 == 1) {
-	    y[0] = h(0) * (1.0 - h(0)) * x[0];
-	    return;
-	}
-	double hdotx = 0.0;
-	for (int j = 0; j < Jm1; ++j)
-	    hdotx += h(j) * x[j];
-	for (int j = 0; j < Jm1; ++j)
-	    y[j] = h(j) * x[j] - h(j) * hdotx;
+        if (Jm1 == 1) {
+            y[0] = h(0) * (1.0 - h(0)) * x[0];
+            return;
+        }
+        double hdotx = 0.0;
+        for (int j = 0; j < Jm1; ++j)
+            hdotx += h(j) * x[j];
+        for (int j = 0; j < Jm1; ++j)
+            y[j] = h(j) * x[j] - h(j) * hdotx;
     }
 
     // y = Psi^{-1} * x = diag(1/h)*x + 11' * x / (1 - sum(h))
     // By Sherman-Morrison: (diag(h) - h h')^{-1} = diag(1/h) + 11'/(1 - sum(h))
     // Optimization 1: K=2 scalar fast path when Jm1==1
     void solveVec(const double *x, double *y, int Jm1) const {
-	if (Jm1 == 1) {
-	    double psi = std::max(h(0) * (1.0 - h(0)), 1e-20);
-	    y[0] = x[0] / psi;
-	    return;
-	}
-	double sumH = 0.0;
-	double sumXoverH = 0.0;
-	for (int j = 0; j < Jm1; ++j) {
-	    sumH += h(j);
-	    double hi = std::max(h(j), 1e-20);
-	    y[j] = x[j] / hi;
-	    sumXoverH += y[j];
-	}
-	double denom = std::max(1.0 - sumH, 1e-20);
-	double add = sumXoverH / denom;
-	for (int j = 0; j < Jm1; ++j)
-	    y[j] += add;
+        if (Jm1 == 1) {
+            double psi = std::max(h(0) * (1.0 - h(0)), 1e-20);
+            y[0] = x[0] / psi;
+            return;
+        }
+        double sumH = 0.0;
+        double sumXoverH = 0.0;
+        for (int j = 0; j < Jm1; ++j) {
+            sumH += h(j);
+            double hi = std::max(h(j), 1e-20);
+            y[j] = x[j] / hi;
+            sumXoverH += y[j];
+        }
+        double denom = std::max(1.0 - sumH, 1e-20);
+        double add = sumXoverH / denom;
+        for (int j = 0; j < Jm1; ++j)
+            y[j] += add;
     }
+
 };
 
 // ══════════════════════════════════════════════════════════════════════
@@ -274,10 +275,10 @@ void sigmaMultiply(
     int Jm1,
     const double *v,
     double *result
-    ) {
+) {
     // Part 1: Psi^{-1} * v (block diagonal, per subject)
     for (int i = 0; i < n; ++i)
-	psiBlocks[i].solveVec(v + i * Jm1, result + i * Jm1, Jm1);
+        psiBlocks[i].solveVec(v + i * Jm1, result + i * Jm1, Jm1);
 
     // Part 2: result += tau * (K ⊗ I_{J-1}) * v
     // Zero-copy accumulate — no intermediate buffer.
@@ -297,13 +298,13 @@ void precondSolve(
     int Jm1,
     const double *r,
     double *z
-    ) {
+) {
     // M_i^{-1} ≈ (Psi_i^{-1} + tau*d_i*I)^{-1}
     // By Woodbury: (D - hh' + tau*d*I)^{-1} with D = diag(1/h)
     // This is complex. For simplicity, use Psi_i as the preconditioner:
     // M_i ≈ Psi_i^{-1} → M_i^{-1} = Psi_i
     for (int i = 0; i < n; ++i)
-	psiBlocks[i].mulVec(r + i * Jm1, z + i * Jm1, Jm1);
+        psiBlocks[i].mulVec(r + i * Jm1, z + i * Jm1, Jm1);
 }
 
 Eigen::VectorXd pcgSolve(
@@ -314,7 +315,7 @@ Eigen::VectorXd pcgSolve(
     int n,
     int Jm1,
     const Eigen::VectorXd &rhs
-    ) {
+) {
     const int dim = n * Jm1;
     Eigen::VectorXd x = Eigen::VectorXd::Zero(dim);
     Eigen::VectorXd r = rhs; // r = rhs - Sigma * x, but x=0 so r=rhs
@@ -326,22 +327,22 @@ Eigen::VectorXd pcgSolve(
     double rz = r.dot(z);
 
     for (int iter = 0; iter < kMaxIterPCG; ++iter) {
-	// Ap = Sigma * p
-	sigmaMultiply(psiBlocks, grm, tau, n, Jm1, p.data(), Ap.data());
-	double pAp = p.dot(Ap);
-	if (std::abs(pAp) < 1e-30) break;
-	double alpha = rz / pAp;
-	x += alpha * p;
-	r -= alpha * Ap;
+        // Ap = Sigma * p
+        sigmaMultiply(psiBlocks, grm, tau, n, Jm1, p.data(), Ap.data());
+        double pAp = p.dot(Ap);
+        if (std::abs(pAp) < 1e-30) break;
+        double alpha = rz / pAp;
+        x += alpha * p;
+        r -= alpha * Ap;
 
-	double rNorm = r.norm();
-	if (rNorm < kTolPCG * rhs.norm()) break;
+        double rNorm = r.norm();
+        if (rNorm < kTolPCG * rhs.norm()) break;
 
-	precondSolve(psiBlocks, diagK, tau, n, Jm1, r.data(), z.data());
-	double rz_new = r.dot(z);
-	double beta = rz_new / std::max(rz, 1e-30);
-	p = z + beta * p;
-	rz = rz_new;
+        precondSolve(psiBlocks, diagK, tau, n, Jm1, r.data(), z.data());
+        double rz_new = r.dot(z);
+        double beta = rz_new / std::max(rz, 1e-30);
+        p = z + beta * p;
+        rz = rz_new;
     }
     return x;
 }
@@ -360,20 +361,20 @@ void fitCLM(
     int p,
     Eigen::VectorXd &beta,
     Eigen::VectorXd &eps
-    ) {
+) {
     // Initialize cutpoints from marginal proportions
     eps.resize(J - 1);
     Eigen::VectorXd cumProp(J);
     cumProp.setZero();
     for (int i = 0; i < n; ++i)
-	cumProp(yVec(i)) += 1.0;
+        cumProp(yVec(i)) += 1.0;
     cumProp /= static_cast<double>(n);
 
     double cumSum = 0.0;
     for (int j = 0; j < J - 1; ++j) {
-	cumSum += cumProp(j);
-	cumSum = std::max(0.01, std::min(0.99, cumSum));
-	eps(j) = std::log(cumSum / (1.0 - cumSum)); // logit
+        cumSum += cumProp(j);
+        cumSum = std::max(0.01, std::min(0.99, cumSum));
+        eps(j) = std::log(cumSum / (1.0 - cumSum)); // logit
     }
     beta.setZero(p);
 
@@ -382,69 +383,69 @@ void fitCLM(
     const int nTheta = (J - 1) + p; // total parameters: eps + beta
 
     for (int iter = 0; iter < maxIter; ++iter) {
-	// Build working response and weights
-	// For cumulative logit: P(y <= j) = logistic(eps_j - X*beta)
-	Eigen::VectorXd eta = X * beta;
+        // Build working response and weights
+        // For cumulative logit: P(y <= j) = logistic(eps_j - X*beta)
+        Eigen::VectorXd eta = X * beta;
 
-	// Gradient and Hessian w.r.t. [eps; beta]
-	Eigen::VectorXd grad = Eigen::VectorXd::Zero(nTheta);
-	Eigen::MatrixXd hess = Eigen::MatrixXd::Zero(nTheta, nTheta);
+        // Gradient and Hessian w.r.t. [eps; beta]
+        Eigen::VectorXd grad = Eigen::VectorXd::Zero(nTheta);
+        Eigen::MatrixXd hess = Eigen::MatrixXd::Zero(nTheta, nTheta);
 
-	for (int i = 0; i < n; ++i) {
-	    int yi = yVec(i);
-	    // Compute P(y=yi) and derivatives
-	    // gamma_j = eps_j - eta_i
-	    // F_j = logistic(gamma_j), f_j = F_j*(1-F_j)
-	    // P(y=yi) = F_{yi} - F_{yi-1}  (F_{-1}=0, F_{J-1}=1)
+        for (int i = 0; i < n; ++i) {
+            int yi = yVec(i);
+            // Compute P(y=yi) and derivatives
+            // gamma_j = eps_j - eta_i
+            // F_j = logistic(gamma_j), f_j = F_j*(1-F_j)
+            // P(y=yi) = F_{yi} - F_{yi-1}  (F_{-1}=0, F_{J-1}=1)
 
-	    double F_yi = (yi < J - 1) ? logistic(eps(yi) - eta(i)) : 1.0;
-	    double F_yim1 = (yi > 0) ? logistic(eps(yi - 1) - eta(i)) : 0.0;
-	    double p_yi = clampProb(F_yi - F_yim1);
+            double F_yi = (yi < J - 1) ? logistic(eps(yi) - eta(i)) : 1.0;
+            double F_yim1 = (yi > 0) ? logistic(eps(yi - 1) - eta(i)) : 0.0;
+            double p_yi = clampProb(F_yi - F_yim1);
 
-	    double f_yi = (yi < J - 1) ? dlogistic(eps(yi) - eta(i)) : 0.0;
-	    double f_yim1 = (yi > 0) ? dlogistic(eps(yi - 1) - eta(i)) : 0.0;
+            double f_yi = (yi < J - 1) ? dlogistic(eps(yi) - eta(i)) : 0.0;
+            double f_yim1 = (yi > 0) ? dlogistic(eps(yi - 1) - eta(i)) : 0.0;
 
-	    // Gradient w.r.t eps_j: dlog(p_yi)/deps_j
-	    //   = (f_yi * 1{j==yi} - f_yim1 * 1{j==yi-1}) / p_yi
-	    if (yi < J - 1) grad(yi) += f_yi / p_yi;
-	    if (yi > 0) grad(yi - 1) -= f_yim1 / p_yi;
+            // Gradient w.r.t eps_j: dlog(p_yi)/deps_j
+            //   = (f_yi * 1{j==yi} - f_yim1 * 1{j==yi-1}) / p_yi
+            if (yi < J - 1) grad(yi) += f_yi / p_yi;
+            if (yi > 0) grad(yi - 1) -= f_yim1 / p_yi;
 
-	    // Gradient w.r.t beta: dlog(p_yi)/dbeta = -(f_yi - f_yim1) / p_yi * X[i,:]
-	    double dLogPdEta = -(f_yi - f_yim1) / p_yi;
-	    grad.tail(p) += dLogPdEta * X.row(i).transpose();
+            // Gradient w.r.t beta: dlog(p_yi)/dbeta = -(f_yi - f_yim1) / p_yi * X[i,:]
+            double dLogPdEta = -(f_yi - f_yim1) / p_yi;
+            grad.tail(p) += dLogPdEta * X.row(i).transpose();
 
-	    // Approximate Hessian (Fisher information, negative expected)
-	    // For simplicity, use the outer product of scores (BFGS-like)
-	    // or the exact Fisher info. Use the diagonal of working weights.
-	    double w = (f_yi - f_yim1) * (f_yi - f_yim1) / (p_yi * p_yi);
-	    w = std::max(w, 1e-10);
+            // Approximate Hessian (Fisher information, negative expected)
+            // For simplicity, use the outer product of scores (BFGS-like)
+            // or the exact Fisher info. Use the diagonal of working weights.
+            double w = (f_yi - f_yim1) * (f_yi - f_yim1) / (p_yi * p_yi);
+            w = std::max(w, 1e-10);
 
-	    // Hessian contributions for eps-eps, eps-beta, beta-beta blocks
-	    // Use score outer product as a simple approximation
-	    Eigen::VectorXd score_i(nTheta);
-	    score_i.setZero();
-	    if (yi < J - 1) score_i(yi) = f_yi / p_yi;
-	    if (yi > 0) score_i(yi - 1) = -f_yim1 / p_yi;
-	    score_i.tail(p) = dLogPdEta * X.row(i).transpose();
-	    hess += score_i * score_i.transpose();
-	}
+            // Hessian contributions for eps-eps, eps-beta, beta-beta blocks
+            // Use score outer product as a simple approximation
+            Eigen::VectorXd score_i(nTheta);
+            score_i.setZero();
+            if (yi < J - 1) score_i(yi) = f_yi / p_yi;
+            if (yi > 0) score_i(yi - 1) = -f_yim1 / p_yi;
+            score_i.tail(p) = dLogPdEta * X.row(i).transpose();
+            hess += score_i * score_i.transpose();
+        }
 
-	// Newton step: theta_new = theta + H^{-1} * grad
-	// (using observed info = outer product of scores)
-	// Add small ridge for stability
-	hess.diagonal().array() += 1e-6;
-	Eigen::VectorXd delta = hess.ldlt().solve(grad);
+        // Newton step: theta_new = theta + H^{-1} * grad
+        // (using observed info = outer product of scores)
+        // Add small ridge for stability
+        hess.diagonal().array() += 1e-6;
+        Eigen::VectorXd delta = hess.ldlt().solve(grad);
 
-	// Update
-	for (int j = 0; j < J - 1; ++j)
-	    eps(j) += delta(j);
-	beta += delta.tail(p);
+        // Update
+        for (int j = 0; j < J - 1; ++j)
+            eps(j) += delta(j);
+        beta += delta.tail(p);
 
-	if (delta.norm() < 1e-6) break;
+        if (delta.norm() < 1e-6) break;
     }
     // Ensure cutpoints are ordered
     for (int j = 1; j < J - 1; ++j)
-	eps(j) = std::max(eps(j), eps(j - 1) + 0.01);
+        eps(j) = std::max(eps(j), eps(j - 1) + 0.01);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -455,7 +456,7 @@ void fitCLM(
 Eigen::MatrixXd makeYMat(const Eigen::VectorXi &yVec, int n, int J) {
     Eigen::MatrixXd yMat = Eigen::MatrixXd::Zero(n, J);
     for (int i = 0; i < n; ++i)
-	yMat(i, yVec(i)) = 1.0;
+        yMat(i, yVec(i)) = 1.0;
     return yMat;
 }
 
@@ -478,7 +479,7 @@ void fitNullModel(
     int J,
     int p,
     POLMMNullModel &null
-    ) {
+) {
     const int Jm1 = J - 1;
 
     // Use cached GRM diagonal (self-relatedness per subject)
@@ -502,240 +503,240 @@ void fitNullModel(
     // 2. PQL iteration (outer loop over tau, inner loop over beta, b, eps)
     infoMsg("POLMM: Starting PQL iteration");
     for (int outerIter = 0; outerIter < kMaxIterPQL; ++outerIter) {
-	double tau_old = tau;
+        double tau_old = tau;
 
-	// Inner loop: update beta, bVec, eps with fixed tau
-	for (int innerIter = 0; innerIter < 10; ++innerIter) {
-	    Eigen::VectorXd beta_old = beta;
+        // Inner loop: update beta, bVec, eps with fixed tau
+        for (int innerIter = 0; innerIter < 10; ++innerIter) {
+            Eigen::VectorXd beta_old = beta;
 
-	    // Update working matrices
-	    updateMuMat(X, beta, bVec, eps, n, J, muMat, iRMat);
+            // Update working matrices
+            updateMuMat(X, beta, bVec, eps, n, J, muMat, iRMat);
 
-	    // Compute PsiBlocks
-	    Eigen::VectorXd eta = X * beta + bVec;
-	    for (int i = 0; i < n; ++i)
-		psiBlocks[i].compute(eta(i), eps, Jm1);
+            // Compute PsiBlocks
+            Eigen::VectorXd eta = X * beta + bVec;
+            for (int i = 0; i < n; ++i)
+                psiBlocks[i].compute(eta(i), eps, Jm1);
 
-	    // Working response: Y_tilde = cumulative indicators - cumulative mu
-	    // Y_tilde_i[j] = 1{y_i <= j} - F(eps_j - eta_i) for j = 0..J-2
-	    // Then: working variate W = Psi^{-1} * Y_tilde
-	    Eigen::VectorXd ytilde(n * Jm1);
-	    for (int i = 0; i < n; ++i) {
-		double cumY = 0.0, cumMu = 0.0;
-		for (int j = 0; j < Jm1; ++j) {
-		    cumY += yMat(i, j);
-		    cumMu += muMat(i, j);
-		    ytilde(i * Jm1 + j) = cumY - cumMu;
-		}
-	    }
+            // Working response: Y_tilde = cumulative indicators - cumulative mu
+            // Y_tilde_i[j] = 1{y_i <= j} - F(eps_j - eta_i) for j = 0..J-2
+            // Then: working variate W = Psi^{-1} * Y_tilde
+            Eigen::VectorXd ytilde(n * Jm1);
+            for (int i = 0; i < n; ++i) {
+                double cumY = 0.0, cumMu = 0.0;
+                for (int j = 0; j < Jm1; ++j) {
+                    cumY += yMat(i, j);
+                    cumMu += muMat(i, j);
+                    ytilde(i * Jm1 + j) = cumY - cumMu;
+                }
+            }
 
-	    // Working response in the mixed model:
-	    // Y_star = X_exp * beta_exp + b_exp + Psi^{-1} * ytilde
-	    // where X_exp is the expanded design matrix (n*Jm1 × (Jm1+p))
-	    // and b_exp repeats b_i for each j block.
-	    //
-	    // The POLMM approach directly solves:
-	    //   Sigma^{-1} * (Y_w - X_exp * beta - b_exp) = 0
-	    // where Y_w = eta_exp + Psi^{-1} * ytilde
-	    //
-	    // For the beta update: solve normal equations
-	    //   (X_exp' Sigma^{-1} X_exp) beta = X_exp' Sigma^{-1} Y_w
-	    //
-	    // To simplify, we work with n-vectors by contracting over the J-1 dimension.
-	    // The score for beta is: sum_j X' * (something per j)
-	    // Following POLMM: S_beta = X' * R * Psi * R * (y_tilde - mu_tilde)
-	    // which reduces to an n-vector operation.
+            // Working response in the mixed model:
+            // Y_star = X_exp * beta_exp + b_exp + Psi^{-1} * ytilde
+            // where X_exp is the expanded design matrix (n*Jm1 × (Jm1+p))
+            // and b_exp repeats b_i for each j block.
+            //
+            // The POLMM approach directly solves:
+            //   Sigma^{-1} * (Y_w - X_exp * beta - b_exp) = 0
+            // where Y_w = eta_exp + Psi^{-1} * ytilde
+            //
+            // For the beta update: solve normal equations
+            //   (X_exp' Sigma^{-1} X_exp) beta = X_exp' Sigma^{-1} Y_w
+            //
+            // To simplify, we work with n-vectors by contracting over the J-1 dimension.
+            // The score for beta is: sum_j X' * (something per j)
+            // Following POLMM: S_beta = X' * R * Psi * R * (y_tilde - mu_tilde)
+            // which reduces to an n-vector operation.
 
-	    // Compute R * ytilde: R_i[j] = iRMat(i,j), multiply element-wise
-	    // Then Psi * R * ytilde, then R * that → gives RPsiR * something
+            // Compute R * ytilde: R_i[j] = iRMat(i,j), multiply element-wise
+            // Then Psi * R * ytilde, then R * that → gives RPsiR * something
 
-	    // Simpler approach: update beta via the score equation
-	    // Score_beta = X' * W * (eta + W^{-1} * (y - mu) - X*beta - b)
-	    // where W is diagonal working weights (collapsed to n-vector)
-	    // This is the standard IRLS for the mean parameters.
+            // Simpler approach: update beta via the score equation
+            // Score_beta = X' * W * (eta + W^{-1} * (y - mu) - X*beta - b)
+            // where W is diagonal working weights (collapsed to n-vector)
+            // This is the standard IRLS for the mean parameters.
 
-	    // Collapse to n-vector: summing over J-1 thresholds
-	    // Working weight per subject: w_i = sum_j h_i[j]^2 / p_ij - (sum h)^2
-	    // This is RPsiR from the POLMM paper.
-	    Eigen::VectorXd RPsiR(n);
-	    for (int i = 0; i < n; ++i) {
-		double sumH = 0.0, sumH2 = 0.0;
-		for (int j = 0; j < Jm1; ++j) {
-		    double h = psiBlocks[i].h(j);
-		    sumH += h;
-		    sumH2 += h * h;
-		}
-		RPsiR(i) = std::max(sumH2 - sumH * sumH, 1e-10);
-		// Note: this is actually trace of the Psi block = sum of eigenvalues
-		// which equals sum(h_j) - sum(h_j)^2 for rank-1 update
-		// Actually for Psi = diag(h) - h*h':
-		//   sum diag = sum(h) - sum(h^2)   <- NO
-		//   trace(Psi) = sum(h_j) - sum(h_j^2)  <- NO
-		//   trace(Psi) = sum(h_j) - ||h||^2  <- that's sum(h) - sum(h^2)
-		// For RPsiR where R = I (no iR scaling at this point):
-		//   RPsiR_i = sum_j sum_k Psi_i[j,k] = sum_j (h_j - h_j * sum(h))
-		//           = sum(h) - sum(h) * sum(h) = sum(h) * (1 - sum(h))
-		RPsiR(i) = std::max(sumH * (1.0 - sumH), 1e-10);
-	    }
+            // Collapse to n-vector: summing over J-1 thresholds
+            // Working weight per subject: w_i = sum_j h_i[j]^2 / p_ij - (sum h)^2
+            // This is RPsiR from the POLMM paper.
+            Eigen::VectorXd RPsiR(n);
+            for (int i = 0; i < n; ++i) {
+                double sumH = 0.0, sumH2 = 0.0;
+                for (int j = 0; j < Jm1; ++j) {
+                    double h = psiBlocks[i].h(j);
+                    sumH += h;
+                    sumH2 += h * h;
+                }
+                RPsiR(i) = std::max(sumH2 - sumH * sumH, 1e-10);
+                // Note: this is actually trace of the Psi block = sum of eigenvalues
+                // which equals sum(h_j) - sum(h_j)^2 for rank-1 update
+                // Actually for Psi = diag(h) - h*h':
+                //   sum diag = sum(h) - sum(h^2)   <- NO
+                //   trace(Psi) = sum(h_j) - sum(h_j^2)  <- NO
+                //   trace(Psi) = sum(h_j) - ||h||^2  <- that's sum(h) - sum(h^2)
+                // For RPsiR where R = I (no iR scaling at this point):
+                //   RPsiR_i = sum_j sum_k Psi_i[j,k] = sum_j (h_j - h_j * sum(h))
+                //           = sum(h) - sum(h) * sum(h) = sum(h) * (1 - sum(h))
+                RPsiR(i) = std::max(sumH * (1.0 - sumH), 1e-10);
+            }
 
-	    // Score for beta: X' * RPsiR * (eta + RPsiR^{-1} * RymuVec - X*beta - bVec)
-	    // RymuVec_i = sum_j f_j * (1{y<=j} - F(eps_j-eta_i))
-	    Eigen::VectorXd RymuVec(n);
-	    for (int i = 0; i < n; ++i) {
-		double val = 0.0;
-		double cumY = 0.0, cumMu = 0.0;
-		for (int j = 0; j < Jm1; ++j) {
-		    cumY += yMat(i, j);
-		    cumMu += muMat(i, j);
-		    val += psiBlocks[i].h(j) * (cumY - cumMu);
-		}
-		RymuVec(i) = val;
-	    }
+            // Score for beta: X' * RPsiR * (eta + RPsiR^{-1} * RymuVec - X*beta - bVec)
+            // RymuVec_i = sum_j f_j * (1{y<=j} - F(eps_j-eta_i))
+            Eigen::VectorXd RymuVec(n);
+            for (int i = 0; i < n; ++i) {
+                double val = 0.0;
+                double cumY = 0.0, cumMu = 0.0;
+                for (int j = 0; j < Jm1; ++j) {
+                    cumY += yMat(i, j);
+                    cumMu += muMat(i, j);
+                    val += psiBlocks[i].h(j) * (cumY - cumMu);
+                }
+                RymuVec(i) = val;
+            }
 
-	    // IRLS for beta: beta_new = (X' W X)^{-1} X' W z
-	    // where z_i = eta_i + RPsiR_i^{-1} * RymuVec_i - bVec_i
-	    //       W_i = RPsiR_i
-	    Eigen::VectorXd z(n);
-	    for (int i = 0; i < n; ++i)
-		z(i) = eta(i) + RymuVec(i) / RPsiR(i) - bVec(i);
+            // IRLS for beta: beta_new = (X' W X)^{-1} X' W z
+            // where z_i = eta_i + RPsiR_i^{-1} * RymuVec_i - bVec_i
+            //       W_i = RPsiR_i
+            Eigen::VectorXd z(n);
+            for (int i = 0; i < n; ++i)
+                z(i) = eta(i) + RymuVec(i) / RPsiR(i) - bVec(i);
 
-	    // (X' diag(RPsiR) X) beta = X' diag(RPsiR) z
-	    Eigen::MatrixXd XtWX = X.transpose() * RPsiR.asDiagonal() * X;
-	    XtWX.diagonal().array() += 1e-8; // regularize
-	    Eigen::VectorXd XtWz = X.transpose() * (RPsiR.array() * z.array()).matrix();
-	    beta = XtWX.ldlt().solve(XtWz);
+            // (X' diag(RPsiR) X) beta = X' diag(RPsiR) z
+            Eigen::MatrixXd XtWX = X.transpose() * RPsiR.asDiagonal() * X;
+            XtWX.diagonal().array() += 1e-8; // regularize
+            Eigen::VectorXd XtWz = X.transpose() * (RPsiR.array() * z.array()).matrix();
+            beta = XtWX.ldlt().solve(XtWz);
 
-	    // Update bVec via BLUP:
-	    //   b = tau * K * Sigma^{-1} * (Y_w - X*beta)
-	    // Using the collapsed formulation:
-	    //   b = tau * K * RPsiR * r / (RPsiR + tau * diagK) approximately
-	    // Or use PCG for the full n*(J-1) system, but that's expensive.
-	    //
-	    // Use the simpler diagonal approximation for the inner loop:
-	    Eigen::VectorXd resid = z - X * beta;
-	    Eigen::VectorXd rhs_b(n);
-	    for (int i = 0; i < n; ++i)
-		rhs_b(i) = tau * RPsiR(i) * resid(i);
-	    // b ≈ tau * K * diag(RPsiR / (RPsiR + tau*diagK)) * resid
-	    // Direct GRM multiply
-	    std::vector<double> tmp_in(n), tmp_out(n);
-	    for (int i = 0; i < n; ++i)
-		tmp_in[i] = RPsiR(i) / (RPsiR(i) + tau * diagK[i]) * resid(i);
-	    grm.multiply(tmp_in.data(), tmp_out.data(), static_cast<uint32_t>(n));
-	    for (int i = 0; i < n; ++i)
-		bVec(i) = tau * tmp_out[i];
+            // Update bVec via BLUP:
+            //   b = tau * K * Sigma^{-1} * (Y_w - X*beta)
+            // Using the collapsed formulation:
+            //   b = tau * K * RPsiR * r / (RPsiR + tau * diagK) approximately
+            // Or use PCG for the full n*(J-1) system, but that's expensive.
+            //
+            // Use the simpler diagonal approximation for the inner loop:
+            Eigen::VectorXd resid = z - X * beta;
+            Eigen::VectorXd rhs_b(n);
+            for (int i = 0; i < n; ++i)
+                rhs_b(i) = tau * RPsiR(i) * resid(i);
+            // b ≈ tau * K * diag(RPsiR / (RPsiR + tau*diagK)) * resid
+            // Direct GRM multiply
+            std::vector<double> tmp_in(n), tmp_out(n);
+            for (int i = 0; i < n; ++i)
+                tmp_in[i] = RPsiR(i) / (RPsiR(i) + tau * diagK[i]) * resid(i);
+            grm.multiply(tmp_in.data(), tmp_out.data(), static_cast<uint32_t>(n));
+            for (int i = 0; i < n; ++i)
+                bVec(i) = tau * tmp_out[i];
 
-	    // Update eps via Newton-Raphson
-	    eta = X * beta + bVec;
-	    updateMuMat(X, beta, bVec, eps, n, J, muMat, iRMat);
+            // Update eps via Newton-Raphson
+            eta = X * beta + bVec;
+            updateMuMat(X, beta, bVec, eps, n, J, muMat, iRMat);
 
-	    for (int epsIter = 0; epsIter < kMaxIterEps; ++epsIter) {
-		Eigen::VectorXd epsGrad(Jm1);
-		Eigen::MatrixXd epsHess = Eigen::MatrixXd::Zero(Jm1, Jm1);
-		epsGrad.setZero();
+            for (int epsIter = 0; epsIter < kMaxIterEps; ++epsIter) {
+                Eigen::VectorXd epsGrad(Jm1);
+                Eigen::MatrixXd epsHess = Eigen::MatrixXd::Zero(Jm1, Jm1);
+                epsGrad.setZero();
 
-		for (int i = 0; i < n; ++i) {
-		    int yi = yVec(i);
-		    for (int j = 0; j < Jm1; ++j) {
-			double f_j = dlogistic(eps(j) - eta(i));
+                for (int i = 0; i < n; ++i) {
+                    int yi = yVec(i);
+                    for (int j = 0; j < Jm1; ++j) {
+                        double f_j = dlogistic(eps(j) - eta(i));
 
-			// P(y = j) contribution
-			double p_j = clampProb(muMat(i, j));
-			double p_jp1 = (j + 1 < J) ? clampProb(muMat(i, j + 1)) : 0.0;
+                        // P(y = j) contribution
+                        double p_j = clampProb(muMat(i, j));
+                        double p_jp1 = (j + 1 < J) ? clampProb(muMat(i, j + 1)) : 0.0;
 
-			// Gradient: (1{yi==j}/p_j - 1{yi==j+1}/p_{j+1}) * f_j
-			double g = 0.0;
-			if (yi == j) g += f_j / p_j;
-			if (yi == j + 1) g -= f_j / p_jp1;
-			epsGrad(j) += g;
+                        // Gradient: (1{yi==j}/p_j - 1{yi==j+1}/p_{j+1}) * f_j
+                        double g = 0.0;
+                        if (yi == j) g += f_j / p_j;
+                        if (yi == j + 1) g -= f_j / p_jp1;
+                        epsGrad(j) += g;
 
-			// Hessian (diagonal approximation)
-			epsHess(j, j) -= f_j * f_j / (p_j * p_jp1);
-		    }
-		}
+                        // Hessian (diagonal approximation)
+                        epsHess(j, j) -= f_j * f_j / (p_j * p_jp1);
+                    }
+                }
 
-		// Regularize
-		epsHess.diagonal().array() -= 1e-6;
-		Eigen::VectorXd epsDelta = epsHess.ldlt().solve(epsGrad);
-		// Negate because we used -Hessian
-		eps -= epsDelta;
+                // Regularize
+                epsHess.diagonal().array() -= 1e-6;
+                Eigen::VectorXd epsDelta = epsHess.ldlt().solve(epsGrad);
+                // Negate because we used -Hessian
+                eps -= epsDelta;
 
-		// Ensure ordering
-		for (int j = 1; j < Jm1; ++j)
-		    eps(j) = std::max(eps(j), eps(j - 1) + 1e-4);
+                // Ensure ordering
+                for (int j = 1; j < Jm1; ++j)
+                    eps(j) = std::max(eps(j), eps(j - 1) + 1e-4);
 
-		updateMuMat(X, beta, bVec, eps, n, J, muMat, iRMat);
+                updateMuMat(X, beta, bVec, eps, n, J, muMat, iRMat);
 
-		if (epsDelta.norm() < kTolEps) break;
-	    }
+                if (epsDelta.norm() < kTolEps) break;
+            }
 
-	    // Check beta convergence
-	    if ((beta - beta_old).cwiseAbs().maxCoeff() < kTolBeta) break;
-	}
+            // Check beta convergence
+            if ((beta - beta_old).cwiseAbs().maxCoeff() < kTolBeta) break;
+        }
 
-	// Outer loop: update tau
-	// tau = b' * b / (n - trace(tau * K * Sigma^{-1}))
-	// Use Hutchinson's trace estimator for trace(tau * K * Sigma^{-1})
+        // Outer loop: update tau
+        // tau = b' * b / (n - trace(tau * K * Sigma^{-1}))
+        // Use Hutchinson's trace estimator for trace(tau * K * Sigma^{-1})
 
-	// Simple tau estimate: tau = b'Kb / tr(K * something)
-	// Use REML-style: tau_new = (b' K^{-1}_reg b) / n_eff
-	// Simplified: tau = sum(b^2) / (n - p)  (like REML for LMM)
-	// A better estimate: use quadratic form
-	double btb = bVec.squaredNorm();
+        // Simple tau estimate: tau = b'Kb / tr(K * something)
+        // Use REML-style: tau_new = (b' K^{-1}_reg b) / n_eff
+        // Simplified: tau = sum(b^2) / (n - p)  (like REML for LMM)
+        // A better estimate: use quadratic form
+        double btb = bVec.squaredNorm();
 
-	// Hutchinson trace: trace(tau * K * Sigma^{-1}) ≈ sum of random probes
-	// For now, use a simpler estimate:
-	//   tau_new = bKb / (n - p)
-	// This is a rough REML estimate.
-	// Actually: use the update from POLMM paper:
-	//   tau_new = (b' * Sigma^{-1} * K * Sigma^{-1} * b) / trace(K * Sigma^{-2})
-	// which is intractable. Use the simpler:
-	//   tau_new = tau * bKb / btb  (ratio scaling)
+        // Hutchinson trace: trace(tau * K * Sigma^{-1}) ≈ sum of random probes
+        // For now, use a simpler estimate:
+        //   tau_new = bKb / (n - p)
+        // This is a rough REML estimate.
+        // Actually: use the update from POLMM paper:
+        //   tau_new = (b' * Sigma^{-1} * K * Sigma^{-1} * b) / trace(K * Sigma^{-2})
+        // which is intractable. Use the simpler:
+        //   tau_new = tau * bKb / btb  (ratio scaling)
 
-	// Even simpler Brent-style: tau_new = bKb / n
-	// The proper REML uses trace estimation. Let's implement Hutchinson:
-	Eigen::VectorXd eta = X * beta + bVec;
-	for (int i = 0; i < n; ++i)
-	    psiBlocks[i].compute(eta(i), eps, Jm1);
+        // Even simpler Brent-style: tau_new = bKb / n
+        // The proper REML uses trace estimation. Let's implement Hutchinson:
+        Eigen::VectorXd eta = X * beta + bVec;
+        for (int i = 0; i < n; ++i)
+            psiBlocks[i].compute(eta(i), eps, Jm1);
 
-	double traceEst = 0.0;
-	{
-	    std::mt19937 rng(42 + outerIter);
-	    std::normal_distribution<double> normal(0.0, 1.0);
-	    for (int run = 0; run < kTraceNRun; ++run) {
-		Eigen::VectorXd u(n * Jm1);
-		for (int k = 0; k < n * Jm1; ++k)
-		    u(k) = normal(rng);
+        double traceEst = 0.0;
+        {
+            std::mt19937 rng(42 + outerIter);
+            std::normal_distribution<double> normal(0.0, 1.0);
+            for (int run = 0; run < kTraceNRun; ++run) {
+                Eigen::VectorXd u(n * Jm1);
+                for (int k = 0; k < n * Jm1; ++k)
+                    u(k) = normal(rng);
 
-		// Compute Sigma^{-1} * u via PCG
-		Eigen::VectorXd SinvU = pcgSolve(psiBlocks, grm, diagK, tau, n, Jm1, u);
+                // Compute Sigma^{-1} * u via PCG
+                Eigen::VectorXd SinvU = pcgSolve(psiBlocks, grm, diagK, tau, n, Jm1, u);
 
-		// Then K * SinvU (for each j-th block dimension)
-		// Optimization 3: batch spmv for all J-1 dimensions at once
-		Eigen::VectorXd KSinvU(n * Jm1);
-		batchSpmvInterleaved(grm, SinvU.data(), KSinvU.data(), static_cast<uint32_t>(n), Jm1);
+                // Then K * SinvU (for each j-th block dimension)
+                // Optimization 3: batch spmv for all J-1 dimensions at once
+                Eigen::VectorXd KSinvU(n * Jm1);
+                batchSpmvInterleaved(grm, SinvU.data(), KSinvU.data(), static_cast<uint32_t>(n), Jm1);
 
-		traceEst += u.dot(KSinvU);
-	    }
-	    traceEst *= tau / kTraceNRun;
-	}
+                traceEst += u.dot(KSinvU);
+            }
+            traceEst *= tau / kTraceNRun;
+        }
 
-	// REML update: tau_new = b'b / (n - trace(tau*K*Sigma^{-1}))
-	double neff = std::max(static_cast<double>(n) - traceEst, 1.0);
-	double tau_new = btb / neff;
-	tau_new = std::max(tau_new, 1e-6);
+        // REML update: tau_new = b'b / (n - trace(tau*K*Sigma^{-1}))
+        double neff = std::max(static_cast<double>(n) - traceEst, 1.0);
+        double tau_new = btb / neff;
+        tau_new = std::max(tau_new, 1e-6);
 
-	infoMsg(
-	    "POLMM PQL iter %d: tau=%.6f -> %.6f, |delta|=%.2e",
-	    outerIter + 1,
-	    tau_old,
-	    tau_new,
-	    std::abs(tau_new - tau_old) / std::max(tau_old, 1e-10)
-	    );
+        infoMsg(
+            "POLMM PQL iter %d: tau=%.6f -> %.6f, |delta|=%.2e",
+            outerIter + 1,
+            tau_old,
+            tau_new,
+            std::abs(tau_new - tau_old) / std::max(tau_old, 1e-10)
+        );
 
-	tau = tau_new;
+        tau = tau_new;
 
-	if (std::abs(tau - tau_old) / std::max(tau_old, 1e-10) < kTolTau) break;
+        if (std::abs(tau - tau_old) / std::max(tau_old, 1e-10) < kTolTau) break;
     }
 
     infoMsg("POLMM: Null model converged. tau=%.6f", tau);
@@ -790,18 +791,18 @@ void computeTestMatrices(const Eigen::VectorXi &yVec, const Eigen::MatrixXd &X, 
     Eigen::VectorXd RymuVec(n);
 
     for (int i = 0; i < n; ++i) {
-	double sumF = 0.0;
-	double rym = 0.0;
-	double cumY = 0.0;
-	for (int j = 0; j < Jm1; ++j) {
-	    double f_j = dlogistic(null.eps(j) - eta(i));
-	    sumF += f_j;
-	    cumY += (yVec(i) == j) ? 1.0 : 0.0;
-	    double cumMu_j = logistic(null.eps(j) - eta(i));
-	    rym += f_j * (cumY - cumMu_j);
-	}
-	RPsiR(i) = std::max(sumF * (1.0 - sumF), 1e-10);
-	RymuVec(i) = rym;
+        double sumF = 0.0;
+        double rym = 0.0;
+        double cumY = 0.0;
+        for (int j = 0; j < Jm1; ++j) {
+            double f_j = dlogistic(null.eps(j) - eta(i));
+            sumF += f_j;
+            cumY += (yVec(i) == j) ? 1.0 : 0.0;
+            double cumMu_j = logistic(null.eps(j) - eta(i));
+            rym += f_j * (cumY - cumMu_j);
+        }
+        RPsiR(i) = std::max(sumF * (1.0 - sumF), 1e-10);
+        RymuVec(i) = rym;
     }
 
     // XR_Psi_R_new (p × n): X' * diag(RPsiR)
@@ -835,16 +836,16 @@ SparseGRM reindexGrm(
     const SparseGRM &unionGrm,
     const std::vector<uint32_t> &unionToLocal,
     uint32_t nPheno
-    ) {
+) {
     std::vector<SparseGRM::Entry> entries;
     entries.reserve(unionGrm.nnz());
     for (const auto &e : unionGrm.entries()) {
-	uint32_t lr = unionToLocal[e.row];
-	uint32_t lc = unionToLocal[e.col];
-	if (lr == UINT32_MAX || lc == UINT32_MAX) continue;
-	// Maintain lower-triangle invariant: row >= col
-	if (lr < lc) std::swap(lr, lc);
-	entries.push_back({lr, lc, e.value});
+        uint32_t lr = unionToLocal[e.row];
+        uint32_t lc = unionToLocal[e.col];
+        if (lr == UINT32_MAX || lc == UINT32_MAX) continue;
+        // Maintain lower-triangle invariant: row >= col
+        if (lr < lc) std::swap(lr, lc);
+        entries.push_back({lr, lc, e.value});
     }
     return SparseGRM::fromEntries(nPheno, std::move(entries));
 }
@@ -862,7 +863,7 @@ void estimateVarianceRatiosFromUnion(
     const SparseGRM &grm,
     GenoMeta &genoData,
     const std::vector<uint32_t> &localToUnion
-    ) {
+) {
     const int n = null.n;
     const double tau = null.tau;
     const int nBins = static_cast<int>(kMacBins.size());
@@ -887,77 +888,77 @@ void estimateVarianceRatiosFromUnion(
     int totalNeeded = nBins * kNSnpsPerBin;
 
     for (uint32_t ci = 0; ci < candidates.size() && totalNeeded > 0; ++ci) {
-	uint32_t midx = candidates[ci];
+        uint32_t midx = candidates[ci];
 
-	double altFreq, altCounts, missingRate, hweP, maf, mac;
-	std::vector<uint32_t> indexForMissing;
-	cursor->beginSequentialBlock(midx);
-	cursor->getGenotypes(midx, unionGVec, altFreq, altCounts, missingRate, hweP, maf, mac, indexForMissing);
+        double altFreq, altCounts, missingRate, hweP, maf, mac;
+        std::vector<uint32_t> indexForMissing;
+        cursor->beginSequentialBlock(midx);
+        cursor->getGenotypes(midx, unionGVec, altFreq, altCounts, missingRate, hweP, maf, mac, indexForMissing);
 
-	for (uint32_t mi : indexForMissing)
-	    unionGVec(mi) = 2.0 * altFreq;
+        for (uint32_t mi : indexForMissing)
+            unionGVec(mi) = 2.0 * altFreq;
 
-	// Extract per-phenotype genotypes
-	for (uint32_t i = 0; i < nPheno; ++i)
-	    GVec[i] = unionGVec[localToUnion[i]];
+        // Extract per-phenotype genotypes
+        for (uint32_t i = 0; i < nPheno; ++i)
+            GVec[i] = unionGVec[localToUnion[i]];
 
-	// Compute per-phenotype MAC
-	double phenoAltSum = GVec.sum();
-	double phenoMac = std::min(phenoAltSum, 2.0 * nPheno - phenoAltSum);
+        // Compute per-phenotype MAC
+        double phenoAltSum = GVec.sum();
+        double phenoMac = std::min(phenoAltSum, 2.0 * nPheno - phenoAltSum);
 
-	if (phenoMac < kMacBins[0]) continue;
+        if (phenoMac < kMacBins[0]) continue;
 
-	int bin = nBins - 1;
-	for (int b = 0; b < nBins - 1; ++b) {
-	    if (phenoMac < kMacBins[b + 1]) {
-		bin = b;
-		break;
-	    }
-	}
+        int bin = nBins - 1;
+        for (int b = 0; b < nBins - 1; ++b) {
+            if (phenoMac < kMacBins[b + 1]) {
+                bin = b;
+                break;
+            }
+        }
 
-	if (static_cast<int>(binRatios[bin].size()) >= binTarget[bin]) continue;
+        if (static_cast<int>(binRatios[bin].size()) >= binTarget[bin]) continue;
 
-	Eigen::VectorXd tmpP = null.XR_Psi_R_new * GVec;
-	Eigen::VectorXd adjG = GVec - null.XXR_Psi_RX_new * tmpP;
+        Eigen::VectorXd tmpP = null.XR_Psi_R_new * GVec;
+        Eigen::VectorXd adjG = GVec - null.XXR_Psi_RX_new * tmpP;
 
-	double VarW = (null.RPsiR.array() * adjG.array().square()).sum();
-	if (VarW < 1e-10) continue;
+        double VarW = (null.RPsiR.array() * adjG.array().square()).sum();
+        if (VarW < 1e-10) continue;
 
-	double GKG = grm.quadForm(adjG.data(), static_cast<uint32_t>(n));
-	double VarP = VarW + tau * GKG;
-	double ratio = VarP / VarW;
+        double GKG = grm.quadForm(adjG.data(), static_cast<uint32_t>(n));
+        double VarP = VarW + tau * GKG;
+        double ratio = VarP / VarW;
 
-	binRatios[bin].push_back(ratio);
-	if (static_cast<int>(binRatios[bin].size()) >= binTarget[bin]) --totalNeeded;
+        binRatios[bin].push_back(ratio);
+        if (static_cast<int>(binRatios[bin].size()) >= binTarget[bin]) --totalNeeded;
     }
 
     std::vector<double> varRatios(nBins, 0.0);
     for (int b = 0; b < nBins; ++b) {
-	if (!binRatios[b].empty()) {
-	    varRatios[b] = std::accumulate(binRatios[b].begin(), binRatios[b].end(), 0.0) / binRatios[b].size();
-	    infoMsg(
-		"POLMM: VarRatio bin %d [MAC>=%.0f]: %.6f (from %zu SNPs)",
-		b,
-		kMacBins[b],
-		varRatios[b],
-		binRatios[b].size()
-		);
-	}
+        if (!binRatios[b].empty()) {
+            varRatios[b] = std::accumulate(binRatios[b].begin(), binRatios[b].end(), 0.0) / binRatios[b].size();
+            infoMsg(
+                "POLMM: VarRatio bin %d [MAC>=%.0f]: %.6f (from %zu SNPs)",
+                b,
+                kMacBins[b],
+                varRatios[b],
+                binRatios[b].size()
+            );
+        }
     }
 
     for (int b = 0; b < nBins; ++b) {
-	if (binRatios[b].empty()) {
-	    double best = 0.0;
-	    int bestDist = nBins + 1;
-	    for (int ob = 0; ob < nBins; ++ob) {
-		if (!binRatios[ob].empty() && std::abs(ob - b) < bestDist) {
-		    bestDist = std::abs(ob - b);
-		    best = varRatios[ob];
-		}
-	    }
-	    varRatios[b] = (best > 0.0) ? best : 1.0;
-	    infoMsg("POLMM: VarRatio bin %d [MAC>=%.0f]: %.6f (borrowed from neighbor)", b, kMacBins[b], varRatios[b]);
-	}
+        if (binRatios[b].empty()) {
+            double best = 0.0;
+            int bestDist = nBins + 1;
+            for (int ob = 0; ob < nBins; ++ob) {
+                if (!binRatios[ob].empty() && std::abs(ob - b) < bestDist) {
+                    bestDist = std::abs(ob - b);
+                    best = varRatios[ob];
+                }
+            }
+            varRatios[b] = (best > 0.0) ? best : 1.0;
+            infoMsg("POLMM: VarRatio bin %d [MAC>=%.0f]: %.6f (borrowed from neighbor)", b, kMacBins[b], varRatios[b]);
+        }
     }
 
     null.macBounds = kMacBins;
@@ -979,10 +980,10 @@ double POLMMMethod::lookupVarRatio(double mac) const {
     const int nBins = static_cast<int>(m_macBounds.size());
     int bin = nBins - 1;
     for (int b = 0; b < nBins - 1; ++b) {
-	if (mac < m_macBounds[b + 1]) {
-	    bin = b;
-	    break;
-	}
+        if (mac < m_macBounds[b + 1]) {
+            bin = b;
+            break;
+        }
     }
     return m_varRatios[bin];
 }
@@ -996,15 +997,15 @@ void POLMMMethod::getResultVec(
     double altFreq,
     int /*markerInChunkIdx*/,
     std::vector<double> &result
-    ) {
+) {
     result.clear();
     result.resize(4, std::numeric_limits<double>::quiet_NaN());
 
     // Flip allele if altFreq > 0.5 for SPA numerical stability
     bool flipped = (altFreq > 0.5);
     if (flipped) {
-	GVec.array() = 2.0 - GVec.array();
-	altFreq = 1.0 - altFreq;
+        GVec.array() = 2.0 - GVec.array();
+        altFreq = 1.0 - altFreq;
     }
 
     // Covariate adjustment: adjG = G - XXR * (XR_new * G)
@@ -1029,14 +1030,14 @@ void POLMMMethod::getResultVec(
 
     double pval;
     if (absZ < m_spaCutoff) {
-	pval = 2.0 * 0.5 * std::erfc(absZ / M_SQRT2);
+        pval = 2.0 * 0.5 * std::erfc(absZ / M_SQRT2);
     } else {
-	// Optimization 2: use binary SPA fast path when J=2
-	pval = (m_J == 2) ? spaTestBinary(Stat, VarW) : spaTest(Stat, VarW);
-	if (std::isnan(pval)) {
-	    // Fallback to normal
-	    pval = 2.0 * 0.5 * std::erfc(absZ / M_SQRT2);
-	}
+        // Optimization 2: use binary SPA fast path when J=2
+        pval = (m_J == 2) ? spaTestBinary(Stat, VarW) : spaTest(Stat, VarW);
+        if (std::isnan(pval)) {
+            // Fallback to normal
+            pval = 2.0 * 0.5 * std::erfc(absZ / M_SQRT2);
+        }
     }
 
     // Effect size
@@ -1045,8 +1046,8 @@ void POLMMMethod::getResultVec(
 
     // Flip sign back if allele was flipped
     if (flipped) {
-	Z = -Z;
-	BETA = -BETA;
+        Z = -Z;
+        BETA = -BETA;
     }
 
     result[0] = pval;
@@ -1063,41 +1064,41 @@ void POLMMMethod::getResultVec(
 // Uses the "partial normal approximation": G==0 subjects contribute a
 // normal component, G!=0 subjects contribute the exact ordinal CGF.
 
-double
-POLMMMethod::K0(double t, const double *cMat, const double *muSub, int nSub, int Jm1, double Ratio0, double m1) const {
+double POLMMMethod::K0(double t, const double *cMat, const double *muSub, int nSub, int Jm1, double Ratio0, double m1)
+const {
     // K(t) = 0.5 * Ratio0 * t^2  (normal part from G==0)
     //      + sum_i log(1 + sum_j mu_ij * (exp(c_ij * t) - 1))  (ordinal part)
     //      - m1 * t
     double K = 0.5 * Ratio0 * t * t - m1 * t;
     for (int i = 0; i < nSub; ++i) {
-	double s = 0.0;
-	for (int j = 0; j < Jm1; ++j) {
-	    double c = cMat[i * Jm1 + j];
-	    double mu = muSub[i * (Jm1 + 1) + j]; // muMat columns 0..J-2
-	    s += mu * (std::exp(c * t) - 1.0);
-	}
-	// Add the last category (J-1): mu_{J-1} has c=0, so contribution = 0
-	// Actually last category doesn't appear in threshold-based cMat
-	K += std::log(1.0 + s);
+        double s = 0.0;
+        for (int j = 0; j < Jm1; ++j) {
+            double c = cMat[i * Jm1 + j];
+            double mu = muSub[i * (Jm1 + 1) + j]; // muMat columns 0..J-2
+            s += mu * (std::exp(c * t) - 1.0);
+        }
+        // Add the last category (J-1): mu_{J-1} has c=0, so contribution = 0
+        // Actually last category doesn't appear in threshold-based cMat
+        K += std::log(1.0 + s);
     }
     return K;
 }
 
-double
-POLMMMethod::K1(double t, const double *cMat, const double *muSub, int nSub, int Jm1, double Ratio0, double m1) const {
+double POLMMMethod::K1(double t, const double *cMat, const double *muSub, int nSub, int Jm1, double Ratio0, double m1)
+const {
     // K'(t) = Ratio0 * t - m1
     //       + sum_i [sum_j mu_ij * c_ij * exp(c_ij*t)] / [1 + sum_j mu_ij*(exp(c_ij*t)-1)]
     double K1val = Ratio0 * t - m1;
     for (int i = 0; i < nSub; ++i) {
-	double num = 0.0, den = 1.0;
-	for (int j = 0; j < Jm1; ++j) {
-	    double c = cMat[i * Jm1 + j];
-	    double mu = muSub[i * (Jm1 + 1) + j];
-	    double ect = std::exp(c * t);
-	    num += mu * c * ect;
-	    den += mu * (ect - 1.0);
-	}
-	K1val += num / den;
+        double num = 0.0, den = 1.0;
+        for (int j = 0; j < Jm1; ++j) {
+            double c = cMat[i * Jm1 + j];
+            double mu = muSub[i * (Jm1 + 1) + j];
+            double ect = std::exp(c * t);
+            num += mu * c * ect;
+            den += mu * (ect - 1.0);
+        }
+        K1val += num / den;
     }
     return K1val;
 }
@@ -1107,16 +1108,16 @@ double POLMMMethod::K2(double t, const double *cMat, const double *muSub, int nS
     //        + sum_i [(sum mu*c^2*exp(ct))*den - (sum mu*c*exp(ct))^2] / den^2
     double K2val = Ratio0;
     for (int i = 0; i < nSub; ++i) {
-	double s1 = 0.0, s2 = 0.0, den = 1.0;
-	for (int j = 0; j < Jm1; ++j) {
-	    double c = cMat[i * Jm1 + j];
-	    double mu = muSub[i * (Jm1 + 1) + j];
-	    double ect = std::exp(c * t);
-	    s1 += mu * c * ect;
-	    s2 += mu * c * c * ect;
-	    den += mu * (ect - 1.0);
-	}
-	K2val += (s2 * den - s1 * s1) / (den * den);
+        double s1 = 0.0, s2 = 0.0, den = 1.0;
+        for (int j = 0; j < Jm1; ++j) {
+            double c = cMat[i * Jm1 + j];
+            double mu = muSub[i * (Jm1 + 1) + j];
+            double ect = std::exp(c * t);
+            s1 += mu * c * ect;
+            s2 += mu * c * c * ect;
+            den += mu * (ect - 1.0);
+        }
+        K2val += (s2 * den - s1 * s1) / (den * den);
     }
     return K2val;
 }
@@ -1131,11 +1132,11 @@ double POLMMMethod::spaTest(double Stat, double VarW) const {
     nzIdx.reserve(n);
     double VarW0 = 0.0;
     for (int i = 0; i < n; ++i) {
-	if (std::abs(m_adjG(i)) > 1e-10) {
-	    nzIdx.push_back(i);
-	} else {
-	    VarW0 += m_RPsiR(i) * m_adjG(i) * m_adjG(i);
-	}
+        if (std::abs(m_adjG(i)) > 1e-10) {
+            nzIdx.push_back(i);
+        } else {
+            VarW0 += m_RPsiR(i) * m_adjG(i) * m_adjG(i);
+        }
     }
     int nSub = static_cast<int>(nzIdx.size());
     if (nSub == 0) return std::numeric_limits<double>::quiet_NaN();
@@ -1152,58 +1153,58 @@ double POLMMMethod::spaTest(double Stat, double VarW) const {
     double m1 = 0.0; // = sum_i sum_j muMat(i,j) * cMat(i,j)
 
     for (int si = 0; si < nSub; ++si) {
-	int i = nzIdx[si];
-	for (int j = 0; j < Jm1; ++j) {
-	    double c = m_adjG(i) / m_iRMat(i, j) / sqrtVarW;
-	    cMat[si * Jm1 + j] = c;
-	    double mu = m_muMat(i, j);
-	    muSub[si * (Jm1 + 1) + j] = mu;
-	    m1 += mu * c;
-	}
-	// Last category
-	muSub[si * (Jm1 + 1) + Jm1] = m_muMat(i, J - 1);
+        int i = nzIdx[si];
+        for (int j = 0; j < Jm1; ++j) {
+            double c = m_adjG(i) / m_iRMat(i, j) / sqrtVarW;
+            cMat[si * Jm1 + j] = c;
+            double mu = m_muMat(i, j);
+            muSub[si * (Jm1 + 1) + j] = mu;
+            m1 += mu * c;
+        }
+        // Last category
+        muSub[si * (Jm1 + 1) + Jm1] = m_muMat(i, J - 1);
     }
 
     double qNorm = Stat / sqrtVarW;
 
     // Solve for both tails
     auto solveTail = [&](double target) -> double {
-			 // Newton-Raphson: find zeta such that K'(zeta) = target
-			 double zeta = target; // initial guess
-			 for (int iter = 0; iter < 100; ++iter) {
-			     double k1 = K1(zeta, cMat.data(), muSub.data(), nSub, Jm1, Ratio0, m1);
-			     double k2 = K2(zeta, cMat.data(), muSub.data(), nSub, Jm1, Ratio0);
-			     if (std::abs(k2) < 1e-30) break;
-			     double delta = (k1 - target) / k2;
-			     zeta -= delta;
-			     if (std::abs(delta) < 1e-6) break;
-			 }
-			 return zeta;
-		     };
+        // Newton-Raphson: find zeta such that K'(zeta) = target
+        double zeta = target;                  // initial guess
+        for (int iter = 0; iter < 100; ++iter) {
+            double k1 = K1(zeta, cMat.data(), muSub.data(), nSub, Jm1, Ratio0, m1);
+            double k2 = K2(zeta, cMat.data(), muSub.data(), nSub, Jm1, Ratio0);
+            if (std::abs(k2) < 1e-30) break;
+            double delta = (k1 - target) / k2;
+            zeta -= delta;
+            if (std::abs(delta) < 1e-6) break;
+        }
+        return zeta;
+    };
 
     auto tailProb = [&](double zeta, double target) -> double {
-			// Lugannani-Rice formula
-			double k0 = K0(zeta, cMat.data(), muSub.data(), nSub, Jm1, Ratio0, m1);
-			double k2 = K2(zeta, cMat.data(), muSub.data(), nSub, Jm1, Ratio0);
+        // Lugannani-Rice formula
+        double k0 = K0(zeta, cMat.data(), muSub.data(), nSub, Jm1, Ratio0, m1);
+        double k2 = K2(zeta, cMat.data(), muSub.data(), nSub, Jm1, Ratio0);
 
-			double w2 = 2.0 * (zeta * target - k0);
-			if (w2 < 0.0) return std::numeric_limits<double>::quiet_NaN();
-			double w = std::copysign(std::sqrt(w2), zeta);
-			double v = zeta * std::sqrt(k2);
+        double w2 = 2.0 * (zeta * target - k0);
+        if (w2 < 0.0) return std::numeric_limits<double>::quiet_NaN();
+        double w = std::copysign(std::sqrt(w2), zeta);
+        double v = zeta * std::sqrt(k2);
 
-			if (std::abs(w) < 1e-10 || std::abs(v) < 1e-10) return std::numeric_limits<double>::quiet_NaN();
+        if (std::abs(w) < 1e-10 || std::abs(v) < 1e-10) return std::numeric_limits<double>::quiet_NaN();
 
-			// Lugannani-Rice: P ≈ Phi(-w) + phi(w)*(1/w - 1/v)
-			// where Phi = normal CDF, phi = normal PDF
-			double phi_w = std::exp(-0.5 * w * w) / std::sqrt(2.0 * M_PI);
-			double Phi_w = 0.5 * std::erfc(w / M_SQRT2); // Phi(-w) = 0.5*erfc(w/sqrt2)
-			// Wait: Phi_w should be the LOWER tail for the negative side
-			// For p_upper: P(Z > w) = 1 - Phi(w) = 0.5 * erfc(w/sqrt2)
-			// For p_lower: P(Z < -w) = 0.5 * erfc(w/sqrt2)  (same by symmetry)
-			double p_tail = Phi_w + phi_w * (1.0 / w - 1.0 / v);
+        // Lugannani-Rice: P ≈ Phi(-w) + phi(w)*(1/w - 1/v)
+        // where Phi = normal CDF, phi = normal PDF
+        double phi_w = std::exp(-0.5 * w * w) / std::sqrt(2.0 * M_PI);
+        double Phi_w = 0.5 * std::erfc(w / M_SQRT2);                 // Phi(-w) = 0.5*erfc(w/sqrt2)
+        // Wait: Phi_w should be the LOWER tail for the negative side
+        // For p_upper: P(Z > w) = 1 - Phi(w) = 0.5 * erfc(w/sqrt2)
+        // For p_lower: P(Z < -w) = 0.5 * erfc(w/sqrt2)  (same by symmetry)
+        double p_tail = Phi_w + phi_w * (1.0 / w - 1.0 / v);
 
-			return std::max(p_tail, 0.0);
-		    };
+        return std::max(p_tail, 0.0);
+    };
 
     // Upper tail: target = qNorm
     double zeta_upper = solveTail(qNorm);
@@ -1236,11 +1237,11 @@ double POLMMMethod::spaTestBinary(double Stat, double VarW) const {
     nzIdx.reserve(n);
     double VarW0 = 0.0;
     for (int i = 0; i < n; ++i) {
-	if (std::abs(m_adjG(i)) > 1e-10) {
-	    nzIdx.push_back(i);
-	} else {
-	    VarW0 += m_RPsiR(i) * m_adjG(i) * m_adjG(i);
-	}
+        if (std::abs(m_adjG(i)) > 1e-10) {
+            nzIdx.push_back(i);
+        } else {
+            VarW0 += m_RPsiR(i) * m_adjG(i) * m_adjG(i);
+        }
     }
     int nSub = static_cast<int>(nzIdx.size());
     if (nSub == 0) return std::numeric_limits<double>::quiet_NaN();
@@ -1252,76 +1253,76 @@ double POLMMMethod::spaTestBinary(double Stat, double VarW) const {
     std::vector<double> muVec(nSub), gVec(nSub);
     double m1 = 0.0;
     for (int si = 0; si < nSub; ++si) {
-	int i = nzIdx[si];
-	muVec[si] = m_muMat(i, 0); // P(y = 0)
-	gVec[si] = m_adjG(i) / m_iRMat(i, 0) / sqrtVarW;
-	m1 += muVec[si] * gVec[si];
+        int i = nzIdx[si];
+        muVec[si] = m_muMat(i, 0); // P(y = 0)
+        gVec[si] = m_adjG(i) / m_iRMat(i, 0) / sqrtVarW;
+        m1 += muVec[si] * gVec[si];
     }
 
     // Binomial CGF and derivatives (partial normal approximation)
     auto K0bin = [&](double t) -> double {
-		     double K = 0.5 * Ratio0 * t * t - m1 * t;
-		     for (int si = 0; si < nSub; ++si) {
-			 double egt = std::exp(gVec[si] * t);
-			 K += std::log(1.0 - muVec[si] + muVec[si] * egt);
-		     }
-		     return K;
-		 };
+        double K = 0.5 * Ratio0 * t * t - m1 * t;
+        for (int si = 0; si < nSub; ++si) {
+            double egt = std::exp(gVec[si] * t);
+            K += std::log(1.0 - muVec[si] + muVec[si] * egt);
+        }
+        return K;
+    };
 
     auto K1bin = [&](double t) -> double {
-		     double K1 = Ratio0 * t - m1;
-		     for (int si = 0; si < nSub; ++si) {
-			 double egt = std::exp(gVec[si] * t);
-			 double den = 1.0 - muVec[si] + muVec[si] * egt;
-			 K1 += muVec[si] * gVec[si] * egt / den;
-		     }
-		     return K1;
-		 };
+        double K1 = Ratio0 * t - m1;
+        for (int si = 0; si < nSub; ++si) {
+            double egt = std::exp(gVec[si] * t);
+            double den = 1.0 - muVec[si] + muVec[si] * egt;
+            K1 += muVec[si] * gVec[si] * egt / den;
+        }
+        return K1;
+    };
 
     auto K2bin = [&](double t) -> double {
-		     double K2 = Ratio0;
-		     for (int si = 0; si < nSub; ++si) {
-			 double egt = std::exp(gVec[si] * t);
-			 double den = 1.0 - muVec[si] + muVec[si] * egt;
-			 double g2 = gVec[si] * gVec[si];
-			 K2 += muVec[si] * (1.0 - muVec[si]) * g2 * egt / (den * den);
-		     }
-		     return K2;
-		 };
+        double K2 = Ratio0;
+        for (int si = 0; si < nSub; ++si) {
+            double egt = std::exp(gVec[si] * t);
+            double den = 1.0 - muVec[si] + muVec[si] * egt;
+            double g2 = gVec[si] * gVec[si];
+            K2 += muVec[si] * (1.0 - muVec[si]) * g2 * egt / (den * den);
+        }
+        return K2;
+    };
 
     double qNorm = Stat / sqrtVarW;
 
     // Newton-Raphson to find saddlepoint
     auto solveTail = [&](double target) -> double {
-			 double zeta = target;
-			 for (int iter = 0; iter < 100; ++iter) {
-			     double k1 = K1bin(zeta);
-			     double k2 = K2bin(zeta);
-			     if (std::abs(k2) < 1e-30) break;
-			     double delta = (k1 - target) / k2;
-			     zeta -= delta;
-			     if (std::abs(delta) < 1e-6) break;
-			 }
-			 return zeta;
-		     };
+        double zeta = target;
+        for (int iter = 0; iter < 100; ++iter) {
+            double k1 = K1bin(zeta);
+            double k2 = K2bin(zeta);
+            if (std::abs(k2) < 1e-30) break;
+            double delta = (k1 - target) / k2;
+            zeta -= delta;
+            if (std::abs(delta) < 1e-6) break;
+        }
+        return zeta;
+    };
 
     // Lugannani-Rice tail probability
     auto tailProb = [&](double zeta, double target) -> double {
-			double k0 = K0bin(zeta);
-			double k2 = K2bin(zeta);
+        double k0 = K0bin(zeta);
+        double k2 = K2bin(zeta);
 
-			double w2 = 2.0 * (zeta * target - k0);
-			if (w2 < 0.0) return std::numeric_limits<double>::quiet_NaN();
-			double w = std::copysign(std::sqrt(w2), zeta);
-			double v = zeta * std::sqrt(k2);
+        double w2 = 2.0 * (zeta * target - k0);
+        if (w2 < 0.0) return std::numeric_limits<double>::quiet_NaN();
+        double w = std::copysign(std::sqrt(w2), zeta);
+        double v = zeta * std::sqrt(k2);
 
-			if (std::abs(w) < 1e-10 || std::abs(v) < 1e-10) return std::numeric_limits<double>::quiet_NaN();
+        if (std::abs(w) < 1e-10 || std::abs(v) < 1e-10) return std::numeric_limits<double>::quiet_NaN();
 
-			double phi_w = std::exp(-0.5 * w * w) / std::sqrt(2.0 * M_PI);
-			double Phi_w = 0.5 * std::erfc(w / M_SQRT2);
-			double p_tail = Phi_w + phi_w * (1.0 / w - 1.0 / v);
-			return std::max(p_tail, 0.0);
-		    };
+        double phi_w = std::exp(-0.5 * w * w) / std::sqrt(2.0 * M_PI);
+        double Phi_w = 0.5 * std::erfc(w / M_SQRT2);
+        double p_tail = Phi_w + phi_w * (1.0 / w - 1.0 / v);
+        return std::max(p_tail, 0.0);
+    };
 
     double zeta_upper = solveTail(qNorm);
     double p_upper = tailProb(zeta_upper, qNorm);
@@ -1361,7 +1362,7 @@ void runPOLMM(
     double hweCutoff,
     const std::string &keepFile,
     const std::string &removeFile
-    ) {
+) {
     const int K = static_cast<int>(phenoNames.size());
 
     // ── 1. Load phenotype/covariate data (union mask) ───────────────
@@ -1387,30 +1388,31 @@ void runPOLMM(
     const int nCovar = static_cast<int>(covarNames.size());
     Eigen::MatrixXd unionCovar;
     if (nCovar > 0) {
-	unionCovar.resize(N_union, nCovar);
-	sd.fillColumnsInto(covarNames, unionCovar);
+        unionCovar.resize(N_union, nCovar);
+        sd.fillColumnsInto(covarNames, unionCovar);
     }
 
     // Per-phenotype mappings
     struct PerPhenoMap {
-	std::vector<uint32_t> unionToLocal; // UINT32_MAX = excluded
-	std::vector<uint32_t> localToUnion;
-	uint32_t nUsed;
+        std::vector<uint32_t> unionToLocal; // UINT32_MAX = excluded
+        std::vector<uint32_t> localToUnion;
+        uint32_t nUsed;
     };
+
     std::vector<PerPhenoMap> phenoMap(K);
     for (int k = 0; k < K; ++k) {
-	phenoMap[k].unionToLocal.resize(N_union, UINT32_MAX);
-	uint32_t n = 0;
-	for (uint32_t i = 0; i < N_union; ++i) {
-	    if (!std::isnan(phenoMat(i, k))) {
-		phenoMap[k].unionToLocal[i] = n;
-		phenoMap[k].localToUnion.push_back(i);
-		++n;
-	    }
-	}
-	phenoMap[k].nUsed = n;
-	infoMsg("  Phenotype '%s': %u subjects (non-NA)", phenoNames[k].c_str(), n);
-	if (n == 0) throw std::runtime_error("POLMM: phenotype '" + phenoNames[k] + "' has no non-missing subjects");
+        phenoMap[k].unionToLocal.resize(N_union, UINT32_MAX);
+        uint32_t n = 0;
+        for (uint32_t i = 0; i < N_union; ++i) {
+            if (!std::isnan(phenoMat(i, k))) {
+                phenoMap[k].unionToLocal[i] = n;
+                phenoMap[k].localToUnion.push_back(i);
+                ++n;
+            }
+        }
+        phenoMap[k].nUsed = n;
+        infoMsg("  Phenotype '%s': %u subjects (non-NA)", phenoNames[k].c_str(), n);
+        if (n == 0) throw std::runtime_error("POLMM: phenotype '" + phenoNames[k] + "' has no non-missing subjects");
     }
 
     // ── 3. Build GenoData on union mask ─────────────────────────────
@@ -1425,77 +1427,77 @@ void runPOLMM(
     std::vector<PhenoTask> tasks(K);
 
     for (int k = 0; k < K; ++k) {
-	const uint32_t n_k = phenoMap[k].nUsed;
-	const auto &localToUnion = phenoMap[k].localToUnion;
-	infoMsg("POLMM: Fitting null model for phenotype '%s' (%u subjects)", phenoNames[k].c_str(), n_k);
+        const uint32_t n_k = phenoMap[k].nUsed;
+        const auto &localToUnion = phenoMap[k].localToUnion;
+        infoMsg("POLMM: Fitting null model for phenotype '%s' (%u subjects)", phenoNames[k].c_str(), n_k);
 
-	// Extract per-phenotype dense Y
-	Eigen::VectorXd yRaw(n_k);
-	for (uint32_t i = 0; i < n_k; ++i)
-	    yRaw[i] = phenoMat(localToUnion[i], k);
+        // Extract per-phenotype dense Y
+        Eigen::VectorXd yRaw(n_k);
+        for (uint32_t i = 0; i < n_k; ++i)
+            yRaw[i] = phenoMat(localToUnion[i], k);
 
-	// Auto-detect ordinal levels: sort unique values, remap to 0..J-1
-	std::set<int> levels;
-	for (uint32_t i = 0; i < n_k; ++i)
-	    levels.insert(static_cast<int>(std::round(yRaw[i])));
-	std::vector<int> levelVec(levels.begin(), levels.end());
+        // Auto-detect ordinal levels: sort unique values, remap to 0..J-1
+        std::set<int> levels;
+        for (uint32_t i = 0; i < n_k; ++i)
+            levels.insert(static_cast<int>(std::round(yRaw[i])));
+        std::vector<int> levelVec(levels.begin(), levels.end());
 
-	const int J = static_cast<int>(levelVec.size());
-	if (J < 2)throw std::runtime_error("POLMM: ordinal phenotype '" + phenoNames[k] + "' must have >= 2 levels");
+        const int J = static_cast<int>(levelVec.size());
+        if (J < 2)throw std::runtime_error("POLMM: ordinal phenotype '" + phenoNames[k] + "' must have >= 2 levels");
 
-	for (int j = 0; j < J; ++j)
-	    infoMsg("  Level %d -> category %d", levelVec[j], j);
+        for (int j = 0; j < J; ++j)
+            infoMsg("  Level %d -> category %d", levelVec[j], j);
 
-	Eigen::VectorXi yVec(n_k);
-	for (uint32_t i = 0; i < n_k; ++i) {
-	    int val = static_cast<int>(std::round(yRaw[i]));
-	    auto it = std::lower_bound(levelVec.begin(), levelVec.end(), val);
-	    yVec[i] = static_cast<int>(it - levelVec.begin());
-	}
+        Eigen::VectorXi yVec(n_k);
+        for (uint32_t i = 0; i < n_k; ++i) {
+            int val = static_cast<int>(std::round(yRaw[i]));
+            auto it = std::lower_bound(levelVec.begin(), levelVec.end(), val);
+            yVec[i] = static_cast<int>(it - levelVec.begin());
+        }
 
-	infoMsg("POLMM: %u subjects, %d ordinal levels", n_k, J);
+        infoMsg("POLMM: %u subjects, %d ordinal levels", n_k, J);
 
-	// Build per-phenotype covariate matrix (intercept + user covariates)
-	const int p = 1 + nCovar;
-	Eigen::MatrixXd X(n_k, p);
-	X.col(0).setOnes();
-	if (nCovar > 0) {
-	    for (uint32_t i = 0; i < n_k; ++i)
-		X.row(i).tail(nCovar) = unionCovar.row(localToUnion[i]);
-	}
+        // Build per-phenotype covariate matrix (intercept + user covariates)
+        const int p = 1 + nCovar;
+        Eigen::MatrixXd X(n_k, p);
+        X.col(0).setOnes();
+        if (nCovar > 0) {
+            for (uint32_t i = 0; i < n_k; ++i)
+                X.row(i).tail(nCovar) = unionCovar.row(localToUnion[i]);
+        }
 
-	// Re-index GRM for per-phenotype ordering
-	SparseGRM phenoGrm = reindexGrm(unionGrm, phenoMap[k].unionToLocal, n_k);
-	infoMsg("  Per-phenotype GRM: %zu entries", phenoGrm.nnz());
+        // Re-index GRM for per-phenotype ordering
+        SparseGRM phenoGrm = reindexGrm(unionGrm, phenoMap[k].unionToLocal, n_k);
+        infoMsg("  Per-phenotype GRM: %zu entries", phenoGrm.nnz());
 
-	// Fit null model
-	POLMMNullModel null;
-	fitNullModel(yVec, X, phenoGrm, static_cast<int>(n_k), J, p, null);
-	computeTestMatrices(yVec, X, null);
+        // Fit null model
+        POLMMNullModel null;
+        fitNullModel(yVec, X, phenoGrm, static_cast<int>(n_k), J, p, null);
+        computeTestMatrices(yVec, X, null);
 
-	// Estimate MAC-binned variance ratios (using union genotypes + extraction)
-	estimateVarianceRatiosFromUnion(null, X, yVec, phenoGrm, *genoData, localToUnion);
+        // Estimate MAC-binned variance ratios (using union genotypes + extraction)
+        estimateVarianceRatiosFromUnion(null, X, yVec, phenoGrm, *genoData, localToUnion);
 
-	// Build PhenoTask
-	tasks[k].phenoName = phenoNames[k];
-	tasks[k].method = std::make_unique<POLMMMethod>(null, spaCutoff);
-	tasks[k].unionToLocal = phenoMap[k].unionToLocal;
-	tasks[k].nUsed = n_k;
+        // Build PhenoTask
+        tasks[k].phenoName = phenoNames[k];
+        tasks[k].method = std::make_unique<POLMMMethod>(null, spaCutoff);
+        tasks[k].unionToLocal = phenoMap[k].unionToLocal;
+        tasks[k].nUsed = n_k;
     }
 
     // ── 6. Run multi-phenotype engine ───────────────────────────────
     infoMsg("POLMM: Starting multi-phenotype association (%d phenotypes, %d threads)", K, nthreads);
     multiPhenoEngine(
-	*genoData,
-	tasks,
-	outPrefix,
-	"POLMM",
-	compression,
-	compressionLevel,
-	nthreads,
-	missingCutoff,
-	minMafCutoff,
-	minMacCutoff,
-	hweCutoff
-	);
+        *genoData,
+        tasks,
+        outPrefix,
+        "POLMM",
+        compression,
+        compressionLevel,
+        nthreads,
+        missingCutoff,
+        minMafCutoff,
+        minMacCutoff,
+        hweCutoff
+    );
 }

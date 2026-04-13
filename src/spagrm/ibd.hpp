@@ -17,11 +17,13 @@
 /// @param bfilePrefix     PLINK binary prefix (.bed/.bim/.fam).
 /// @param outputFile      Tab-separated output (ID1 ID2 pa pb pc).
 /// @param minMafIBD       Minimum MAF for a marker to be used (default 0.01).
-void runPairwiseIBD(const std::string &spgrmGrabFile,
-                    const std::string &spgrmGctaFile,
-                    const GenoSpec &geno,
-                    const std::string &outputFile,
-                    const std::string &keepFile = {},
-                    const std::string &removeFile = {},
-                    double minMafIBD = 0.01,
-                    int nthreads = 1);
+void runPairwiseIBD(
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const GenoSpec &geno,
+    const std::string &outputFile,
+    const std::string &keepFile = {},
+    const std::string &removeFile = {},
+    double minMafIBD = 0.01,
+    int nthreads = 1
+);

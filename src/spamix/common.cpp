@@ -54,12 +54,14 @@ struct RootResult {
     double K2;
 };
 
-RootResult fastGetRootK1(double s,
-                         const double *mafOutlier,
-                         const double *residOutlier,
-                         int nOutlier,
-                         double mean_nonOutlier,
-                         double var_nonOutlier) {
+RootResult fastGetRootK1(
+    double s,
+    const double *mafOutlier,
+    const double *residOutlier,
+    int nOutlier,
+    double mean_nonOutlier,
+    double var_nonOutlier
+) {
 
     double x = 0.0, oldX;
     double K1 = 0.0, K2 = 0.0, oldK1;
@@ -166,13 +168,15 @@ OutlierData detectOutliers(const Eigen::VectorXd &resid, double outlierRatio) {
 // spa::getProbSpaG — Lugannani-Rice saddlepoint tail probability
 // ======================================================================
 
-double spa::getProbSpaG(const double *mafOutlier,
-                        const double *residOutlier,
-                        int nOutlier,
-                        double s,
-                        bool lowerTail,
-                        double mean_nonOutlier,
-                        double var_nonOutlier) {
+double spa::getProbSpaG(
+    const double *mafOutlier,
+    const double *residOutlier,
+    int nOutlier,
+    double s,
+    bool lowerTail,
+    double mean_nonOutlier,
+    double var_nonOutlier
+) {
 
     auto rootRes = fastGetRootK1(s, mafOutlier, residOutlier, nOutlier, mean_nonOutlier, var_nonOutlier);
     double zeta = rootRes.root;

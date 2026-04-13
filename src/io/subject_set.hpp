@@ -29,8 +29,13 @@ class SubjectSet {
 
     // Set descriptive labels for pipeline logging (e.g., "--bfile d_bed").
     // If not set, generic descriptions are used.
-    void setGenoLabel(const std::string &label) { m_genoLabel = label; }
-    void setGrmLabel(const std::string &label) { m_grmLabel = label; }
+    void setGenoLabel(const std::string &label) {
+        m_genoLabel = label;
+    }
+
+    void setGrmLabel(const std::string &label) {
+        m_grmLabel = label;
+    }
 
     // ── Build bitmask ──────────────────────────────────────────────────
     // Applies the pipeline: genotype → GRM → keep → remove.
@@ -40,15 +45,30 @@ class SubjectSet {
 
     // ── Accessors (valid after finalize) ───────────────────────────────
 
-    uint32_t nFam() const { return m_nFam; }
-    uint32_t nUsed() const { return m_nUsed; }
+    uint32_t nFam() const {
+        return m_nFam;
+    }
 
-    const std::vector<std::string> &famIIDs() const { return m_famIIDs; }
-    const std::vector<uint64_t> &usedMask() const { return m_usedMask; }
-    uint32_t nMaskWords() const { return static_cast<uint32_t>(m_usedMask.size()); }
+    uint32_t nUsed() const {
+        return m_nUsed;
+    }
+
+    const std::vector<std::string> &famIIDs() const {
+        return m_famIIDs;
+    }
+
+    const std::vector<uint64_t> &usedMask() const {
+        return m_usedMask;
+    }
+
+    uint32_t nMaskWords() const {
+        return static_cast<uint32_t>(m_usedMask.size());
+    }
 
     // Dense index → .fam index mapping.
-    const std::vector<uint32_t> &usedFamIndices() const { return m_usedFamIndices; }
+    const std::vector<uint32_t> &usedFamIndices() const {
+        return m_usedFamIndices;
+    }
 
     // IIDs of used subjects in .fam order.
     std::vector<std::string> usedIIDs() const;

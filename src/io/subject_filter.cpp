@@ -84,9 +84,11 @@ std::unordered_set<std::string> parseSubjectIDFile(const std::string &path) {
     return result;
 }
 
-std::vector<uint32_t> buildKeptIndices(const std::vector<std::string> &sampleIDs,
-                                       const std::string &keepFile,
-                                       const std::string &removeFile) {
+std::vector<uint32_t> buildKeptIndices(
+    const std::vector<std::string> &sampleIDs,
+    const std::string &keepFile,
+    const std::string &removeFile
+) {
     const uint32_t N = static_cast<uint32_t>(sampleIDs.size());
     std::vector<uint32_t> kept;
     kept.reserve(N);

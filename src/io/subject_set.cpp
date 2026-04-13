@@ -8,7 +8,8 @@
 #include <stdexcept>
 
 SubjectSet::SubjectSet(std::vector<std::string> famIIDs)
-    : m_nFam(static_cast<uint32_t>(famIIDs.size())), m_famIIDs(std::move(famIIDs)) {}
+    : m_nFam(static_cast<uint32_t>(famIIDs.size())), m_famIIDs(std::move(famIIDs)) {
+}
 
 void SubjectSet::setGrmSubjects(std::unordered_set<std::string> grmIDs) {
     if (m_finalized) throw std::runtime_error("SubjectSet::setGrmSubjects called after finalize");

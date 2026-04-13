@@ -66,6 +66,7 @@ int run(int argc, char *argv[]);
 // ── Shared helpers (used across cli translation units) ─────────────
 
 Args parseArgs(int argc, char *argv[]);
+
 void printHelp(const std::string &topic);
 
 } // namespace cli

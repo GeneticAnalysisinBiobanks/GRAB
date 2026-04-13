@@ -43,13 +43,15 @@ static std::vector<GenoMeta::MarkerInfo> parseBimFile(const std::string &bimFile
 // AdmixData
 // ======================================================================
 
-AdmixData::AdmixData(const std::string &prefix,
-                     const std::vector<uint64_t> &usedMask,
-                     uint32_t nFam,
-                     uint32_t nUsed,
-                     const std::string &extractFile,
-                     const std::string &excludeFile,
-                     int nMarkersEachChunk) {
+AdmixData::AdmixData(
+    const std::string &prefix,
+    const std::vector<uint64_t> &usedMask,
+    uint32_t nFam,
+    uint32_t nUsed,
+    const std::string &extractFile,
+    const std::string &excludeFile,
+    int nMarkersEachChunk
+) {
     m_abedFile = prefix + ".abed";
     std::string bimFile = prefix + ".bim";
     std::string famFile = prefix + ".fam";
@@ -103,9 +105,11 @@ AdmixData::AdmixData(const std::string &prefix,
             m_nSubjUsed);
 }
 
-std::vector<GenoMeta::MarkerInfo> AdmixData::filterMarkers(const std::vector<MarkerInfo> &all,
-                                                           const std::string &extractFile,
-                                                           const std::string &excludeFile) {
+std::vector<GenoMeta::MarkerInfo> AdmixData::filterMarkers(
+    const std::vector<MarkerInfo> &all,
+    const std::string &extractFile,
+    const std::string &excludeFile
+) {
     std::unordered_set<std::string> includeSet, excludeSet;
 
     auto readIDFile = [](const std::string &path, std::unordered_set<std::string> &out) {
@@ -132,8 +136,8 @@ std::vector<GenoMeta::MarkerInfo> AdmixData::filterMarkers(const std::vector<Mar
     return filtered;
 }
 
-std::vector<std::vector<uint64_t>> AdmixData::buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize) {
-    std::vector<std::vector<uint64_t>> chunks;
+std::vector<std::vector<uint64_t> > AdmixData::buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize) {
+    std::vector<std::vector<uint64_t> > chunks;
     if (markers.empty()) return chunks;
 
     std::vector<uint64_t> cur;
@@ -160,7 +164,9 @@ std::vector<std::vector<uint64_t>> AdmixData::buildChunks(const std::vector<Mark
     return chunks;
 }
 
-std::unique_ptr<AdmixCursor> AdmixData::makeCursor() const { return std::make_unique<AdmixCursor>(*this); }
+std::unique_ptr<AdmixCursor> AdmixData::makeCursor() const {
+    return std::make_unique<AdmixCursor>(*this);
+}
 
 // ======================================================================
 // AdmixCursor
@@ -168,7 +174,7 @@ std::unique_ptr<AdmixCursor> AdmixData::makeCursor() const { return std::make_un
 
 AdmixCursor::AdmixCursor(const AdmixData &data)
     : m_data(data), m_bgzf(nullptr), m_nUsed(data.nSubjUsed()), m_bytesPerTrack(data.bytesPerTrack()),
-      m_bytesPerMarker(data.bytesPerMarker()), m_nTracks(2 * data.nAncestries()) {
+    m_bytesPerMarker(data.bytesPerMarker()), m_nTracks(2 * data.nAncestries()) {
     m_bgzf = bgzf_open(data.abedFile().c_str(), "r");
     if (!m_bgzf) throw std::runtime_error("AdmixCursor: cannot open " + data.abedFile());
 
@@ -331,10 +337,12 @@ void AdmixCursor::decodeTrack(const uint8_t *raw, Eigen::Ref<Eigen::VectorXd> ou
     }
 }
 
-double AdmixCursor::getAdmixGenotypes(uint64_t markerLocalIdx,
-                                      int ancIdx,
-                                      Eigen::Ref<Eigen::VectorXd> dosageOut,
-                                      Eigen::Ref<Eigen::VectorXd> hapcountOut) {
+double AdmixCursor::getAdmixGenotypes(
+    uint64_t markerLocalIdx,
+    int ancIdx,
+    Eigen::Ref<Eigen::VectorXd> dosageOut,
+    Eigen::Ref<Eigen::VectorXd> hapcountOut
+) {
     int dosageTrack = 2 * ancIdx;
     int hapTrack = 2 * ancIdx + 1;
 
@@ -360,9 +368,11 @@ double AdmixCursor::getAdmixGenotypes(uint64_t markerLocalIdx,
     return (hapSum > 0.0) ? dosSum / hapSum : 0.0;
 }
 
-void AdmixCursor::getAllAncestries(uint64_t markerLocalIdx,
-                                   Eigen::Ref<Eigen::MatrixXd> dosageMatrix,
-                                   Eigen::Ref<Eigen::MatrixXd> hapcountMatrix) {
+void AdmixCursor::getAllAncestries(
+    uint64_t markerLocalIdx,
+    Eigen::Ref<Eigen::MatrixXd> dosageMatrix,
+    Eigen::Ref<Eigen::MatrixXd> hapcountMatrix
+) {
     int K = m_data.nAncestries();
     for (int k = 0; k < K; ++k) {
         getAdmixGenotypes(markerLocalIdx, k, dosageMatrix.col(k), hapcountMatrix.col(k));
@@ -375,7 +385,7 @@ void AdmixCursor::getAllAncestries(uint64_t markerLocalIdx,
 
 AbedWriter::AbedWriter(const std::string &filename, uint8_t nAnc, uint32_t nSamples, bool noMissing, int nthreads)
     : m_bgzf(nullptr), m_filename(filename), m_nSamples(nSamples), m_nAnc(nAnc), m_noMissing(noMissing),
-      m_headerWritten(false) {
+    m_headerWritten(false) {
     m_bgzf = bgzf_open(filename.c_str(), "w");
     if (!m_bgzf) throw std::runtime_error("Cannot create ABED file: " + filename);
 

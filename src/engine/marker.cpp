@@ -68,17 +68,19 @@ int numToChars(char *buf, double x) {
 }
 
 // Append 9 meta columns: CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC HWE_P
-inline void appendMeta(std::string &out,
-                       char *buf,
-                       std::string_view chrom,
-                       uint32_t pos,
-                       std::string_view id,
-                       std::string_view ref,
-                       std::string_view alt,
-                       double missRate,
-                       double altFreq,
-                       double mac,
-                       double hweP) {
+inline void appendMeta(
+    std::string &out,
+    char *buf,
+    std::string_view chrom,
+    uint32_t pos,
+    std::string_view id,
+    std::string_view ref,
+    std::string_view alt,
+    double missRate,
+    double altFreq,
+    double mac,
+    double hweP
+) {
     int n;
     out += chrom;
     out += '\t';
@@ -105,18 +107,20 @@ inline void appendMeta(std::string &out,
 }
 
 // Full result line: meta + tab-separated doubles.
-void formatLine(std::string &out,
-                char *buf,
-                std::string_view chrom,
-                uint32_t pos,
-                std::string_view id,
-                std::string_view ref,
-                std::string_view alt,
-                double missRate,
-                double altFreq,
-                double mac,
-                double hweP,
-                const std::vector<double> &vals) {
+void formatLine(
+    std::string &out,
+    char *buf,
+    std::string_view chrom,
+    uint32_t pos,
+    std::string_view id,
+    std::string_view ref,
+    std::string_view alt,
+    double missRate,
+    double altFreq,
+    double mac,
+    double hweP,
+    const std::vector<double> &vals
+) {
     appendMeta(out, buf, chrom, pos, id, ref, alt, missRate, altFreq, mac, hweP);
     for (double v : vals) {
         out += '\t';
@@ -127,18 +131,20 @@ void formatLine(std::string &out,
 }
 
 // Fail-QC line: meta + precomputed NA suffix.
-void formatLineNA(std::string &out,
-                  char *buf,
-                  std::string_view chrom,
-                  uint32_t pos,
-                  std::string_view id,
-                  std::string_view ref,
-                  std::string_view alt,
-                  double missRate,
-                  double altFreq,
-                  double mac,
-                  double hweP,
-                  const std::string &naSuffix) {
+void formatLineNA(
+    std::string &out,
+    char *buf,
+    std::string_view chrom,
+    uint32_t pos,
+    std::string_view id,
+    std::string_view ref,
+    std::string_view alt,
+    double missRate,
+    double altFreq,
+    double mac,
+    double hweP,
+    const std::string &naSuffix
+) {
     appendMeta(out, buf, chrom, pos, id, ref, alt, missRate, altFreq, mac, hweP);
     out += naSuffix;
     out += '\n';
@@ -154,7 +160,9 @@ struct ThreadContext {
     std::string naSuffix;
 
     ThreadContext(const MethodBase &proto, const GenoMeta &gd)
-        : method(proto.clone()), cursor(gd.makeCursor()), naSuffix(makeNaSuffix(proto.resultSize())) {}
+        : method(proto.clone()), cursor(gd.makeCursor()), naSuffix(makeNaSuffix(proto.resultSize())) {
+    }
+
 };
 
 // ──────────────────────────────────────────────────────────────────────
@@ -163,7 +171,9 @@ struct ThreadContext {
 
 constexpr const char *META_HEADER = "CHROM\tPOS\tID\tREF\tALT\tMISS_RATE\tALT_FREQ\tMAC\tHWE_P";
 
-std::string buildHeader(const MethodBase &method) { return std::string(META_HEADER) + method.getHeaderColumns(); }
+std::string buildHeader(const MethodBase &method) {
+    return std::string(META_HEADER) + method.getHeaderColumns();
+}
 
 // ──────────────────────────────────────────────────────────────────────
 // Padded flag: one per chunk, prevents false sharing between workers
@@ -172,6 +182,7 @@ std::string buildHeader(const MethodBase &method) { return std::string(META_HEAD
 struct alignas(64) PaddedFlag {
     char ready;
 };
+
 static_assert(sizeof(PaddedFlag) == 64, "PaddedFlag must be 64 bytes");
 
 } // anonymous namespace
@@ -180,14 +191,16 @@ static_assert(sizeof(PaddedFlag) == 64, "PaddedFlag must be 64 bytes");
 // Engine
 // ══════════════════════════════════════════════════════════════════════
 
-void markerEngine(const GenoMeta &genoData,
-                  const MethodBase &method,
-                  const std::string &outputFile,
-                  int nthreads,
-                  double missingCutoff,
-                  double minMafCutoff,
-                  double minMacCutoff,
-                  double hweCutoff) {
+void markerEngine(
+    const GenoMeta &genoData,
+    const MethodBase &method,
+    const std::string &outputFile,
+    int nthreads,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff
+) {
     const size_t nTotalChunks = genoData.chunkIndices().size();
     const int effective_nthreads = std::min(nthreads, static_cast<int>(nTotalChunks));
 
@@ -222,7 +235,9 @@ void markerEngine(const GenoMeta &genoData,
                 std::string tmp;
                 {
                     std::unique_lock<std::mutex> lk(writeMutex);
-                    writeCv.wait(lk, [&]() { return chunkReady[i].ready || stopWriter.load(); });
+                    writeCv.wait(lk, [&]() {
+                        return chunkReady[i].ready || stopWriter.load();
+                    });
                     if (!chunkReady[i].ready) break;
                     tmp = std::move(chunkOutput[i]);
                 }
@@ -354,20 +369,25 @@ void markerEngine(const GenoMeta &genoData,
 // MultiMethod implementation
 // ──────────────────────────────────────────────────────────────────────
 
-MultiMethod::MultiMethod(std::vector<std::unique_ptr<MethodBase>> methods,
-                         std::vector<std::string> residNames,
-                         std::vector<std::string> suffixes)
-    : m_methods(std::move(methods)), m_residNames(std::move(residNames)), m_suffixes(std::move(suffixes)) {}
+MultiMethod::MultiMethod(
+    std::vector<std::unique_ptr<MethodBase> > methods,
+    std::vector<std::string> residNames,
+    std::vector<std::string> suffixes
+)
+    : m_methods(std::move(methods)), m_residNames(std::move(residNames)), m_suffixes(std::move(suffixes)) {
+}
 
 std::unique_ptr<MethodBase> MultiMethod::clone() const {
-    std::vector<std::unique_ptr<MethodBase>> cloned;
+    std::vector<std::unique_ptr<MethodBase> > cloned;
     cloned.reserve(m_methods.size());
     for (const auto &m : m_methods)
         cloned.push_back(m->clone());
     return std::make_unique<MultiMethod>(std::move(cloned), m_residNames, m_suffixes);
 }
 
-int MultiMethod::resultSize() const { return static_cast<int>(m_methods.size() * m_suffixes.size()); }
+int MultiMethod::resultSize() const {
+    return static_cast<int>(m_methods.size() * m_suffixes.size());
+}
 
 std::string MultiMethod::getHeaderColumns() const {
     std::string h;
@@ -382,10 +402,12 @@ void MultiMethod::prepareChunk(const std::vector<uint64_t> &gIndices) {
         m->prepareChunk(gIndices);
 }
 
-void MultiMethod::getResultVec(Eigen::Ref<Eigen::VectorXd> GVec,
-                               double altFreq,
-                               int markerInChunkIdx,
-                               std::vector<double> &result) {
+void MultiMethod::getResultVec(
+    Eigen::Ref<Eigen::VectorXd> GVec,
+    double altFreq,
+    int markerInChunkIdx,
+    std::vector<double> &result
+) {
     std::vector<double> inner;
     for (auto &m : m_methods) {
         inner.clear();
@@ -443,8 +465,13 @@ static PhenoGenoStats statsFromGVec(const double *g, uint32_t n, std::vector<uin
 }
 
 // Extract per-phenotype genotype vector from union vector.
-static void
-extractPhenoGVec(const double *unionG, uint32_t nUnion, const uint32_t *unionToLocal, uint32_t nPheno, double *phenoG) {
+static void extractPhenoGVec(
+    const double *unionG,
+    uint32_t nUnion,
+    const uint32_t *unionToLocal,
+    uint32_t nPheno,
+    double *phenoG
+) {
     for (uint32_t i = 0; i < nUnion; ++i) {
         uint32_t li = unionToLocal[i];
         if (li != UINT32_MAX) phenoG[li] = unionG[i];
@@ -453,17 +480,19 @@ extractPhenoGVec(const double *unionG, uint32_t nUnion, const uint32_t *unionToL
 
 } // anonymous namespace
 
-void multiPhenoEngine(const GenoMeta &genoData,
-                      std::vector<PhenoTask> &tasks,
-                      const std::string &outPrefix,
-                      const std::string &methodName,
-                      const std::string &compression,
-                      int compressionLevel,
-                      int nthreads,
-                      double missingCutoff,
-                      double minMafCutoff,
-                      double minMacCutoff,
-                      double hweCutoff) {
+void multiPhenoEngine(
+    const GenoMeta &genoData,
+    std::vector<PhenoTask> &tasks,
+    const std::string &outPrefix,
+    const std::string &methodName,
+    const std::string &compression,
+    int compressionLevel,
+    int nthreads,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff
+) {
     const size_t K = tasks.size();
     const size_t nTotalChunks = genoData.chunkIndices().size();
     const int effective_nthreads = std::min(nthreads, static_cast<int>(nTotalChunks));
@@ -501,7 +530,7 @@ void multiPhenoEngine(const GenoMeta &genoData,
 
     // Per-chunk, per-phenotype output buffers + ready flags.
     // chunkOutput[chunk][pheno]
-    std::vector<std::vector<std::string>> chunkOutput(nTotalChunks, std::vector<std::string>(K));
+    std::vector<std::vector<std::string> > chunkOutput(nTotalChunks, std::vector<std::string>(K));
     std::vector<PaddedFlag> chunkReady(nTotalChunks, {0});
     std::atomic<size_t> nextChunk(0);
 
@@ -525,7 +554,9 @@ void multiPhenoEngine(const GenoMeta &genoData,
                 std::vector<std::string> tmp(K);
                 {
                     std::unique_lock<std::mutex> lk(writeMutex);
-                    writeCv.wait(lk, [&]() { return chunkReady[i].ready || stopWriter.load(); });
+                    writeCv.wait(lk, [&]() {
+                        return chunkReady[i].ready || stopWriter.load();
+                    });
                     if (!chunkReady[i].ready) break;
                     for (size_t p = 0; p < K; ++p)
                         tmp[p] = std::move(chunkOutput[i][p]);
@@ -549,7 +580,7 @@ void multiPhenoEngine(const GenoMeta &genoData,
         try {
             // Per-thread state
             auto cursor = genoData.makeCursor();
-            std::vector<std::unique_ptr<MethodBase>> methods(K);
+            std::vector<std::unique_ptr<MethodBase> > methods(K);
             for (size_t p = 0; p < K; ++p)
                 methods[p] = tasks[p].method->clone();
 

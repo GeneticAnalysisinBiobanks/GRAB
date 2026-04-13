@@ -37,8 +37,8 @@ namespace cli {
 
 static void require(const std::string &val, const char *flag, const char *ctx) {
     if (val.empty()) {
-	std::cerr << "Error: " << flag << " is required for " << ctx << ".\n";
-	std::exit(1);
+        std::cerr << "Error: " << flag << " is required for " << ctx << ".\n";
+        std::exit(1);
     }
 }
 
@@ -47,31 +47,31 @@ static void require(const std::string &val, const char *flag, const char *ctx) {
 static GenoSpec resolveGenoSpec(const Args &a, const char *ctx) {
     int count = !a.bfilePrefix.empty() + !a.pfilePrefix.empty() + !a.vcfFile.empty() + !a.bgenFile.empty();
     if (count == 0) {
-	std::cerr << "Error: a genotype input (--bfile, --pfile, --vcf, or --bgen)"
-	    " is required for "
-	          << ctx << ".\n";
-	std::exit(1);
+        std::cerr << "Error: a genotype input (--bfile, --pfile, --vcf, or --bgen)"
+            " is required for "
+                  << ctx << ".\n";
+        std::exit(1);
     }
     if (count > 1) {
-	std::cerr << "Error: --bfile, --pfile, --vcf, and --bgen are mutually"
-	    " exclusive.\n";
-	std::exit(1);
+        std::cerr << "Error: --bfile, --pfile, --vcf, and --bgen are mutually"
+            " exclusive.\n";
+        std::exit(1);
     }
     GenoSpec spec;
     spec.extractFile = a.extractFile;
     spec.excludeFile = a.excludeFile;
     if (!a.bfilePrefix.empty()) {
-	spec.format = GenoFormat::Plink;
-	spec.path = a.bfilePrefix;
+        spec.format = GenoFormat::Plink;
+        spec.path = a.bfilePrefix;
     } else if (!a.pfilePrefix.empty()) {
-	spec.format = GenoFormat::Pgen;
-	spec.path = a.pfilePrefix;
+        spec.format = GenoFormat::Pgen;
+        spec.path = a.pfilePrefix;
     } else if (!a.vcfFile.empty()) {
-	spec.format = GenoFormat::Vcf;
-	spec.path = a.vcfFile;
+        spec.format = GenoFormat::Vcf;
+        spec.path = a.vcfFile;
     } else {
-	spec.format = GenoFormat::Bgen;
-	spec.path = a.bgenFile;
+        spec.format = GenoFormat::Bgen;
+        spec.path = a.bgenFile;
     }
     return spec;
 }
@@ -81,23 +81,23 @@ static std::vector<std::string> splitComma(const std::string &s, const char *fla
     std::istringstream iss(s);
     std::string tok;
     while (std::getline(iss, tok, ','))
-	if (!tok.empty()) out.push_back(tok);
+        if (!tok.empty()) out.push_back(tok);
     if (out.size() < minCount) {
-	std::cerr << "Error: " << flag << " requires at least " << minCount << " comma-separated values.\n";
-	std::exit(1);
+        std::cerr << "Error: " << flag << " requires at least " << minCount << " comma-separated values.\n";
+        std::exit(1);
     }
     return out;
 }
 
 static void checkSpGrm(const Args &a, bool required, const char *ctx) {
     if (!a.spGrmGrabFile.empty() && !a.spGrmPlink2File.empty()) {
-	std::cerr << "Error: --sp-grm-grab and --sp-grm-plink2 are mutually"
-	    " exclusive.\n";
-	std::exit(1);
+        std::cerr << "Error: --sp-grm-grab and --sp-grm-plink2 are mutually"
+            " exclusive.\n";
+        std::exit(1);
     }
     if (required && a.spGrmGrabFile.empty() && a.spGrmPlink2File.empty()) {
-	std::cerr << "Error: --sp-grm-grab or --sp-grm-plink2 is required for " << ctx << ".\n";
-	std::exit(1);
+        std::cerr << "Error: --sp-grm-grab or --sp-grm-plink2 is required for " << ctx << ".\n";
+        std::exit(1);
     }
 }
 
@@ -123,16 +123,16 @@ static void logArgsInEffect(const Args &args) {
     if (!args.residName.empty()) std::fprintf(stderr, "  --resid-name %s\n", args.residName.c_str());
     // pc-cols: relevant for SPAmix/SPAmixPlus/LEAF and cal-af-coef
     {
-	bool usesPcCols =
-	    args.calAfCoef || args.method == "SPAmix" || args.method == "SPAmixPlus" || args.method == "LEAF";
-	if (usesPcCols && !args.pcCols.empty()) std::fprintf(stderr, "  --pc-cols %s\n", args.pcCols.c_str());
+        bool usesPcCols =
+            args.calAfCoef || args.method == "SPAmix" || args.method == "SPAmixPlus" || args.method == "LEAF";
+        if (usesPcCols && !args.pcCols.empty()) std::fprintf(stderr, "  --pc-cols %s\n", args.pcCols.c_str());
     }
     // spasqr-taus: relevant for SPAsqr pheno path
     if (args.method == "SPAsqr" && !args.phenoName.empty() && !args.spasqrTaus.empty())std::fprintf(
-	stderr,
-	"  --spasqr-taus %s\n",
-	args.spasqrTaus.c_str()
-	);
+            stderr,
+            "  --spasqr-taus %s\n",
+            args.spasqrTaus.c_str()
+    );
     // other files
     if (!args.refAfFile.empty()) std::fprintf(stderr, "  --ref-af %s\n", args.refAfFile.c_str());
     if (!args.spGrmGrabFile.empty()) std::fprintf(stderr, "  --sp-grm-grab %s\n", args.spGrmGrabFile.c_str());
@@ -170,8 +170,8 @@ static void logArgsInEffect(const Args &args) {
 
 int run(int argc, char *argv[]) {
     if (argc < 2) {
-	printHelp("__short__");
-	return 1;
+        printHelp("__short__");
+        return 1;
     }
 
     const auto wallStart = std::chrono::steady_clock::now();
@@ -180,28 +180,28 @@ int run(int argc, char *argv[]) {
     Args args = parseArgs(argc, argv);
 
     auto printTimer = [&]() {
-			  const double wallSec = std::chrono::duration<double>(
-			      std::chrono::steady_clock::now() -
-			      wallStart
-			      ).count();
-			  const double cpuSec = static_cast<double>(std::clock() - cpuStart) / CLOCKS_PER_SEC;
-			  infoMsg("Wall time: %.1f seconds, CPU time: %.1f seconds", wallSec, cpuSec);
-		      };
+        const double wallSec = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() -
+            wallStart
+        ).count();
+        const double cpuSec = static_cast<double>(std::clock() - cpuStart) / CLOCKS_PER_SEC;
+        infoMsg("Wall time: %.1f seconds, CPU time: %.1f seconds", wallSec, cpuSec);
+    };
 
     // ── Help dispatch ──────────────────────────────────────────────
     if (!args.helpTopic.empty()) {
-	printHelp(args.helpTopic);
-	return 0;
+        printHelp(args.helpTopic);
+        return 0;
     }
 
     // ── Convenience: parse comma-separated column name lists ───────
     auto pcColNames = args.pcCols.empty() ? std::vector<std::string>{} : splitComma(args.pcCols, "--pc-cols", 1);
     auto covarNames =
-	args.covarName.empty() ? std::vector<std::string>{} : splitComma(args.covarName, "--covar-name", 1);
+        args.covarName.empty() ? std::vector<std::string>{} : splitComma(args.covarName, "--covar-name", 1);
     auto phenoNames =
-	args.phenoName.empty() ? std::vector<std::string>{} : splitComma(args.phenoName, "--pheno-name", 1);
+        args.phenoName.empty() ? std::vector<std::string>{} : splitComma(args.phenoName, "--pheno-name", 1);
     auto residNames =
-	args.residName.empty() ? std::vector<std::string>{} : splitComma(args.residName, "--resid-name", 1);
+        args.residName.empty() ? std::vector<std::string>{} : splitComma(args.residName, "--resid-name", 1);
 
     // Covar-from-pheno fallback: when --covar is absent, --covar-name
     // selects columns from --pheno instead.
@@ -211,195 +211,195 @@ int run(int argc, char *argv[]) {
 
     // ── Mode: --cal-af-coef ────────────────────────────────────────────
     if (args.calAfCoef) {
-	if (!args.method.empty() || args.calPairwiseIBD) {
-	    std::cerr << "Error: --cal-af-coef cannot be combined with"
-	        " --method or --cal-pairwise-ibd.\n";
-	    return 1;
-	}
-	require(args.outPrefix, "--out", "--cal-af-coef");
-	auto geno = resolveGenoSpec(args, "--cal-af-coef");
-	if (pcColNames.empty()) {
-	    std::cerr << "Error: --pc-cols is required for --cal-af-coef.\n";
-	    return 1;
-	}
-	if (args.phenoFile.empty() && args.covarFile.empty()) {
-	    std::cerr << "Error: --pheno or --covar required for --cal-af-coef"
-	        " (provides PC columns).\n";
-	    return 1;
-	}
-	logArgsInEffect(args);
-	std::string afcSuffix = ".afc";
-	if (args.compression == "gz")afcSuffix += ".gz";
-	else if (args.compression == "zst")afcSuffix += ".zst";
-	std::string afcOutput = args.outPrefix + afcSuffix;
-	try {
-	    runSPAmixAF(
-		pcColNames,
-		args.phenoFile,
-		args.covarFile,
-		geno,
-		afcOutput,
-		args.nthread,
-		args.nSnpPerChunk,
-		args.missingCutoff,
-		args.minMafCutoff,
-		args.minMacCutoff,
-		args.hweCutoff,
-		args.keepFile,
-		args.removeFile
-		);
-	} catch (const std::exception &e) {
-	    std::cerr << "[ERROR] " << e.what() << "\n";
-	    return 1;
-	}
-	printTimer();
-	return 0;
+        if (!args.method.empty() || args.calPairwiseIBD) {
+            std::cerr << "Error: --cal-af-coef cannot be combined with"
+                " --method or --cal-pairwise-ibd.\n";
+            return 1;
+        }
+        require(args.outPrefix, "--out", "--cal-af-coef");
+        auto geno = resolveGenoSpec(args, "--cal-af-coef");
+        if (pcColNames.empty()) {
+            std::cerr << "Error: --pc-cols is required for --cal-af-coef.\n";
+            return 1;
+        }
+        if (args.phenoFile.empty() && args.covarFile.empty()) {
+            std::cerr << "Error: --pheno or --covar required for --cal-af-coef"
+                " (provides PC columns).\n";
+            return 1;
+        }
+        logArgsInEffect(args);
+        std::string afcSuffix = ".afc";
+        if (args.compression == "gz")afcSuffix += ".gz";
+        else if (args.compression == "zst")afcSuffix += ".zst";
+        std::string afcOutput = args.outPrefix + afcSuffix;
+        try {
+            runSPAmixAF(
+                pcColNames,
+                args.phenoFile,
+                args.covarFile,
+                geno,
+                afcOutput,
+                args.nthread,
+                args.nSnpPerChunk,
+                args.missingCutoff,
+                args.minMafCutoff,
+                args.minMacCutoff,
+                args.hweCutoff,
+                args.keepFile,
+                args.removeFile
+            );
+        } catch (const std::exception &e) {
+            std::cerr << "[ERROR] " << e.what() << "\n";
+            return 1;
+        }
+        printTimer();
+        return 0;
     }
 
     // ── Mode: --cal-phi ─────────────────────────────────────────────
     if (args.calPhi) {
-	if (!args.method.empty() || args.calAfCoef || args.calPairwiseIBD) {
-	    std::cerr << "Error: --cal-phi cannot be combined with"
-	        " --method, --cal-af-coef, or --cal-pairwise-ibd.\n";
-	    return 1;
-	}
-	require(args.admixBfilePrefix, "--admix-bfile", "--cal-phi");
-	require(args.outPrefix, "--out", "--cal-phi");
-	checkSpGrm(args, /*required=*/ true, "--cal-phi");
-	logArgsInEffect(args);
-	std::string phiSuffix = ".phi";
-	if (args.compression == "gz")phiSuffix += ".gz";
-	else if (args.compression == "zst")phiSuffix += ".zst";
-	std::string phiOutput = args.outPrefix + phiSuffix;
-	try {
-	    runPhiEstimation(
-		args.admixBfilePrefix,
-		args.spGrmGrabFile,
-		args.spGrmPlink2File,
-		phiOutput,
-		args.keepFile,
-		args.removeFile,
-		args.extractFile,
-		args.excludeFile,
-		args.nthread
-		);
-	} catch (const std::exception &e) {
-	    std::cerr << "[ERROR] " << e.what() << "\n";
-	    return 1;
-	}
-	printTimer();
-	return 0;
+        if (!args.method.empty() || args.calAfCoef || args.calPairwiseIBD) {
+            std::cerr << "Error: --cal-phi cannot be combined with"
+                " --method, --cal-af-coef, or --cal-pairwise-ibd.\n";
+            return 1;
+        }
+        require(args.admixBfilePrefix, "--admix-bfile", "--cal-phi");
+        require(args.outPrefix, "--out", "--cal-phi");
+        checkSpGrm(args, /*required=*/ true, "--cal-phi");
+        logArgsInEffect(args);
+        std::string phiSuffix = ".phi";
+        if (args.compression == "gz")phiSuffix += ".gz";
+        else if (args.compression == "zst")phiSuffix += ".zst";
+        std::string phiOutput = args.outPrefix + phiSuffix;
+        try {
+            runPhiEstimation(
+                args.admixBfilePrefix,
+                args.spGrmGrabFile,
+                args.spGrmPlink2File,
+                phiOutput,
+                args.keepFile,
+                args.removeFile,
+                args.extractFile,
+                args.excludeFile,
+                args.nthread
+            );
+        } catch (const std::exception &e) {
+            std::cerr << "[ERROR] " << e.what() << "\n";
+            return 1;
+        }
+        printTimer();
+        return 0;
     }
 
     // ── Mode: --make-abed ──────────────────────────────────────────
     if (args.makeAbed) {
-	if (!args.method.empty() || args.calAfCoef || args.calPairwiseIBD || args.calPhi) {
-	    std::cerr << "Error: --make-abed cannot be combined with"
-	        " --method, --cal-af-coef, --cal-pairwise-ibd,"
-	        " or --cal-phi.\n";
-	    return 1;
-	}
-	bool hasVcfMsp = !args.vcfFile.empty() && !args.mspFile.empty();
-	bool hasTextPre = !args.admixTextPrefix.empty();
-	if (hasVcfMsp && hasTextPre) {
-	    std::cerr << "Error: --make-abed requires either (--vcf + --rfmix-msp) or"
-	        " --admix-text-prefix, not both.\n";
-	    return 1;
-	}
-	if (!hasVcfMsp && !hasTextPre) {
-	    std::cerr << "Error: --make-abed requires either (--vcf FILE --rfmix-msp FILE)"
-	        " or (--admix-text-prefix PREFIX).\n";
-	    return 1;
-	}
-	require(args.outPrefix, "--out", "--make-abed");
-	logArgsInEffect(args);
-	if (hasVcfMsp)infoMsg(
-	    "Parsing MSP file into memory; this may take several minutes and memory scales with sample count "
-	    "and window count."
-	    );
-	try {
-	    if (hasVcfMsp)convertVcfMspToAbed(
-		args.vcfFile,
-		args.mspFile,
-		args.outPrefix,
-		args.keepFile,
-		args.removeFile,
-		args.nthread
-		);
-	    else convertTextToAbed(args.admixTextPrefix, args.outPrefix, args.keepFile, args.removeFile, args.nthread);
-	} catch (const std::exception &e) {
-	    std::cerr << "[ERROR] " << e.what() << "\n";
-	    return 1;
-	}
-	printTimer();
-	return 0;
+        if (!args.method.empty() || args.calAfCoef || args.calPairwiseIBD || args.calPhi) {
+            std::cerr << "Error: --make-abed cannot be combined with"
+                " --method, --cal-af-coef, --cal-pairwise-ibd,"
+                " or --cal-phi.\n";
+            return 1;
+        }
+        bool hasVcfMsp = !args.vcfFile.empty() && !args.mspFile.empty();
+        bool hasTextPre = !args.admixTextPrefix.empty();
+        if (hasVcfMsp && hasTextPre) {
+            std::cerr << "Error: --make-abed requires either (--vcf + --rfmix-msp) or"
+                " --admix-text-prefix, not both.\n";
+            return 1;
+        }
+        if (!hasVcfMsp && !hasTextPre) {
+            std::cerr << "Error: --make-abed requires either (--vcf FILE --rfmix-msp FILE)"
+                " or (--admix-text-prefix PREFIX).\n";
+            return 1;
+        }
+        require(args.outPrefix, "--out", "--make-abed");
+        logArgsInEffect(args);
+        if (hasVcfMsp)infoMsg(
+                "Parsing MSP file into memory; this may take several minutes and memory scales with sample count "
+                "and window count."
+        );
+        try {
+            if (hasVcfMsp)convertVcfMspToAbed(
+                    args.vcfFile,
+                    args.mspFile,
+                    args.outPrefix,
+                    args.keepFile,
+                    args.removeFile,
+                    args.nthread
+            );
+            else convertTextToAbed(args.admixTextPrefix, args.outPrefix, args.keepFile, args.removeFile, args.nthread);
+        } catch (const std::exception &e) {
+            std::cerr << "[ERROR] " << e.what() << "\n";
+            return 1;
+        }
+        printTimer();
+        return 0;
     }
 
     // ── Mode: --cal-pairwise-ibd ───────────────────────────────────
     if (args.calPairwiseIBD) {
-	if (!args.method.empty()) {
-	    std::cerr << "Error: --cal-pairwise-ibd cannot be combined with"
-	        " --method.\n";
-	    return 1;
-	}
-	require(args.outPrefix, "--out", "--cal-pairwise-ibd");
-	auto geno = resolveGenoSpec(args, "--cal-pairwise-ibd");
-	checkSpGrm(args, /*required=*/ true, "--cal-pairwise-ibd");
-	logArgsInEffect(args);
-	std::string ibdSuffix = ".ibd";
-	if (args.compression == "gz")ibdSuffix += ".gz";
-	else if (args.compression == "zst")ibdSuffix += ".zst";
-	std::string ibdOutput = args.outPrefix + ibdSuffix;
-	try {
-	    runPairwiseIBD(
-		args.spGrmGrabFile,
-		args.spGrmPlink2File,
-		geno,
-		ibdOutput,
-		args.keepFile,
-		args.removeFile,
-		args.minMafIBD,
-		args.nthread
-		);
-	} catch (const std::exception &e) {
-	    std::cerr << "[ERROR] " << e.what() << "\n";
-	    return 1;
-	}
-	printTimer();
-	return 0;
+        if (!args.method.empty()) {
+            std::cerr << "Error: --cal-pairwise-ibd cannot be combined with"
+                " --method.\n";
+            return 1;
+        }
+        require(args.outPrefix, "--out", "--cal-pairwise-ibd");
+        auto geno = resolveGenoSpec(args, "--cal-pairwise-ibd");
+        checkSpGrm(args, /*required=*/ true, "--cal-pairwise-ibd");
+        logArgsInEffect(args);
+        std::string ibdSuffix = ".ibd";
+        if (args.compression == "gz")ibdSuffix += ".gz";
+        else if (args.compression == "zst")ibdSuffix += ".zst";
+        std::string ibdOutput = args.outPrefix + ibdSuffix;
+        try {
+            runPairwiseIBD(
+                args.spGrmGrabFile,
+                args.spGrmPlink2File,
+                geno,
+                ibdOutput,
+                args.keepFile,
+                args.removeFile,
+                args.minMafIBD,
+                args.nthread
+            );
+        } catch (const std::exception &e) {
+            std::cerr << "[ERROR] " << e.what() << "\n";
+            return 1;
+        }
+        printTimer();
+        return 0;
     }
 
     // Guard: admix GWAS flags present but --method omitted
     if (args.method.empty() && (!args.admixBfilePrefix.empty() || !args.admixPhiFile.empty())) {
-	std::cerr << "Error: --admix-bfile and --admix-phi require"
-	    " --method SPAmixLocalPlus.\n";
-	return 1;
+        std::cerr << "Error: --admix-bfile and --admix-phi require"
+            " --method SPAmixLocalPlus.\n";
+        return 1;
     }
 
     // ── Mode: --method ─────────────────────────────────────────────
     // Normalize to canonical case (accept spacox, SPACOX, SPACox, etc.)
     bool methodOk = false;
     {
-	std::string lower = args.method;
-	std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-	for (const MethodDef *const *p = kAllMethods; *p; ++p) {
-	    std::string canonLower = (*p)->name;
-	    std::transform(canonLower.begin(), canonLower.end(), canonLower.begin(), ::tolower);
-	    if (lower == canonLower) {
-		args.method = (*p)->name;
-		methodOk = true;
-		break;
-	    }
-	}
+        std::string lower = args.method;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        for (const MethodDef *const *p = kAllMethods; *p; ++p) {
+            std::string canonLower = (*p)->name;
+            std::transform(canonLower.begin(), canonLower.end(), canonLower.begin(), ::tolower);
+            if (lower == canonLower) {
+                args.method = (*p)->name;
+                methodOk = true;
+                break;
+            }
+        }
     }
 
     if (!methodOk) {
-	if (args.method.empty())
-	    std::cerr << "Error: --method is required (or use"
-	        " --cal-af-coef / --cal-pairwise-ibd / --cal-phi"
-	        " / --make-abed).\n";
-	else std::cerr << "Error: unknown method '" << args.method << "'.  Run 'grab --help' for supported methods.\n";
-	return 1;
+        if (args.method.empty())
+            std::cerr << "Error: --method is required (or use"
+                " --cal-af-coef / --cal-pairwise-ibd / --cal-phi"
+                " / --make-abed).\n";
+        else std::cerr << "Error: unknown method '" << args.method << "'.  Run 'grab --help' for supported methods.\n";
+        return 1;
     }
 
     // Common required flags for all GWAS methods
@@ -407,8 +407,8 @@ int run(int argc, char *argv[]) {
 
     // Validate --compression
     if (!args.compression.empty() && args.compression != "gz" && args.compression != "zst") {
-	std::cerr << "Error: --compression must be 'gz' or 'zst', got '" << args.compression << "'\n";
-	return 1;
+        std::cerr << "Error: --compression must be 'gz' or 'zst', got '" << args.compression << "'\n";
+        return 1;
     }
 
     // SPAmixLocalPlus uses --admix-bfile instead of standard geno input
@@ -420,399 +420,399 @@ int run(int argc, char *argv[]) {
 
     // Method-specific phenotype flag validation
     {
-	const bool hasPhenoName = !args.phenoName.empty();
-	const bool hasResidName = !args.residName.empty();
-	if (args.method == "POLMM") {
-	    if (!hasPhenoName) {
-		std::cerr << "Error: POLMM requires --pheno-name.\n";
-		return 1;
-	    }
-	} else if (args.method == "WtCoxG" || args.method == "LEAF") {
-	    if (!hasPhenoName) {
-		std::cerr << "Error: " << args.method << " requires --pheno-name.\n";
-		return 1;
-	    }
-	} else if (args.method == "SPAsqr") {
-	    if (!hasPhenoName) {
-		std::cerr << "Error: SPAsqr requires --pheno-name.\n";
-		return 1;
-	    }
-	}
-	// Residual-based methods require --resid-name
-	if (args.method == "SPACox" || args.method == "SPAGRM" ||
-	    args.method == "SAGELD" || args.method == "SPAmix" ||
-	    args.method == "SPAmixPlus" || args.method == "SPAmixLocalPlus") {
-	    if (!hasResidName) {
-		std::cerr << "Error: " << args.method << " requires --resid-name.\n";
-		return 1;
-	    }
-	}
+        const bool hasPhenoName = !args.phenoName.empty();
+        const bool hasResidName = !args.residName.empty();
+        if (args.method == "POLMM") {
+            if (!hasPhenoName) {
+                std::cerr << "Error: POLMM requires --pheno-name.\n";
+                return 1;
+            }
+        } else if (args.method == "WtCoxG" || args.method == "LEAF") {
+            if (!hasPhenoName) {
+                std::cerr << "Error: " << args.method << " requires --pheno-name.\n";
+                return 1;
+            }
+        } else if (args.method == "SPAsqr") {
+            if (!hasPhenoName) {
+                std::cerr << "Error: SPAsqr requires --pheno-name.\n";
+                return 1;
+            }
+        }
+        // Residual-based methods require --resid-name
+        if (args.method == "SPACox" || args.method == "SPAGRM" ||
+            args.method == "SAGELD" || args.method == "SPAmix" ||
+            args.method == "SPAmixPlus" || args.method == "SPAmixLocalPlus") {
+            if (!hasResidName) {
+                std::cerr << "Error: " << args.method << " requires --resid-name.\n";
+                return 1;
+            }
+        }
     }
 
     if (args.nSnpPerChunk < 256) {
-	std::cerr << "Error: --chunk-size must be >= 256 (got " << args.nSnpPerChunk << ")\n";
-	return 1;
+        std::cerr << "Error: --chunk-size must be >= 256 (got " << args.nSnpPerChunk << ")\n";
+        return 1;
     }
 
     logArgsInEffect(args);
 
     // Build suffix-based output path for single-file methods (SAGELD, POLMM, SPAsqr, WtCoxG, LEAF)
     auto buildOutputPath = [&](const std::string &suffix) -> std::string {
-			       std::string path = args.outPrefix + suffix;
-			       if (args.compression == "gz")path += ".gz";
-			       else if (args.compression == "zst")path += ".zst";
-			       return path;
-			   };
+        std::string path = args.outPrefix + suffix;
+        if (args.compression == "gz") path += ".gz";
+        else if (args.compression == "zst") path += ".zst";
+        return path;
+    };
 
     try {
-	// ── SPACox ─────────────────────────────────────────────────
-	if (args.method == "SPACox") {
-	    runSPACox(
-		residNames,
-		covarNames,
-		args.phenoFile,
-		effectiveCovarFile,
-		geno,
-		args.outPrefix,
-		args.compression,
-		args.compressionLevel,
-		args.pvalCovAdjCut,
-		args.spaCutoff,
-		args.nthread,
-		args.nSnpPerChunk,
-		args.missingCutoff,
-		args.minMafCutoff,
-		args.minMacCutoff,
-		args.hweCutoff,
-		args.keepFile,
-		args.removeFile
-		);
-	}
+        // ── SPACox ─────────────────────────────────────────────────
+        if (args.method == "SPACox") {
+            runSPACox(
+                residNames,
+                covarNames,
+                args.phenoFile,
+                effectiveCovarFile,
+                geno,
+                args.outPrefix,
+                args.compression,
+                args.compressionLevel,
+                args.pvalCovAdjCut,
+                args.spaCutoff,
+                args.nthread,
+                args.nSnpPerChunk,
+                args.missingCutoff,
+                args.minMafCutoff,
+                args.minMacCutoff,
+                args.hweCutoff,
+                args.keepFile,
+                args.removeFile
+            );
+        }
 
-	// ── SPAGRM ────────────────────────────────────────────────
-	else if (args.method == "SPAGRM") {
-	    checkSpGrm(args, /*required=*/ true, "SPAGRM");
-	    require(args.pairwiseIBDFile, "--pairwise-ibd", "SPAGRM");
-	    runSPAGRM(
-		args.phenoFile,
-		residNames,
-		args.spGrmGrabFile,
-		args.spGrmPlink2File,
-		args.pairwiseIBDFile,
-		geno,
-		args.outPrefix,
-		args.compression,
-		args.compressionLevel,
-		args.spaCutoff,
-		args.nthread,
-		args.nSnpPerChunk,
-		args.missingCutoff,
-		args.minMafCutoff,
-		args.minMacCutoff,
-		args.hweCutoff,
-		args.keepFile,
-		args.removeFile
-		);
-	}
+        // ── SPAGRM ────────────────────────────────────────────────
+        else if (args.method == "SPAGRM") {
+            checkSpGrm(args, /*required=*/ true, "SPAGRM");
+            require(args.pairwiseIBDFile, "--pairwise-ibd", "SPAGRM");
+            runSPAGRM(
+                args.phenoFile,
+                residNames,
+                args.spGrmGrabFile,
+                args.spGrmPlink2File,
+                args.pairwiseIBDFile,
+                geno,
+                args.outPrefix,
+                args.compression,
+                args.compressionLevel,
+                args.spaCutoff,
+                args.nthread,
+                args.nSnpPerChunk,
+                args.missingCutoff,
+                args.minMafCutoff,
+                args.minMacCutoff,
+                args.hweCutoff,
+                args.keepFile,
+                args.removeFile
+            );
+        }
 
-	// ── SAGELD ───────────────────────────────────────────────
-	else if (args.method == "SAGELD") {
-	    checkSpGrm(args, /*required=*/ true, "SAGELD");
-	    require(args.pairwiseIBDFile, "--pairwise-ibd", "SAGELD");
-	    runSAGELD(
-		args.phenoFile,
-		residNames,
-		args.spGrmGrabFile,
-		args.spGrmPlink2File,
-		args.pairwiseIBDFile,
-		geno,
-		buildOutputPath(".SAGELD"),
-		args.spaCutoff,
-		args.nthread,
-		args.nSnpPerChunk,
-		args.missingCutoff,
-		args.minMafCutoff,
-		args.minMacCutoff,
-		args.hweCutoff,
-		args.keepFile,
-		args.removeFile
-		);
-	}
+        // ── SAGELD ───────────────────────────────────────────────
+        else if (args.method == "SAGELD") {
+            checkSpGrm(args, /*required=*/ true, "SAGELD");
+            require(args.pairwiseIBDFile, "--pairwise-ibd", "SAGELD");
+            runSAGELD(
+                args.phenoFile,
+                residNames,
+                args.spGrmGrabFile,
+                args.spGrmPlink2File,
+                args.pairwiseIBDFile,
+                geno,
+                buildOutputPath(".SAGELD"),
+                args.spaCutoff,
+                args.nthread,
+                args.nSnpPerChunk,
+                args.missingCutoff,
+                args.minMafCutoff,
+                args.minMacCutoff,
+                args.hweCutoff,
+                args.keepFile,
+                args.removeFile
+            );
+        }
 
-	// ── SPAmix / SPAmixPlus (unified) ──────────────────────
-	else if (args.method == "SPAmix" || args.method == "SPAmixPlus") {
-	    if (pcColNames.empty()) {
-		std::cerr << "Error: --pc-cols is required for " << args.method << ".\n";
-		return 1;
-	    }
-	    if (args.phenoFile.empty() && args.covarFile.empty()) {
-		std::cerr << "Error: --pheno or --covar required for " << args.method << " (provides PC columns).\n";
-		return 1;
-	    }
-	    if (args.method == "SPAmixPlus")checkSpGrm(args, /*required=*/ true, "SPAmixPlus");
-	    else checkSpGrm(args, /*required=*/ false, "SPAmix");
-	    runSPAmixPlus(
-		residNames,
-		pcColNames,
-		args.phenoFile,
-		args.covarFile,
-		geno,
-		args.spGrmGrabFile,
-		args.spGrmPlink2File,
-		args.indAfFile,
-		args.outPrefix,
-		args.compression,
-		args.compressionLevel,
-		args.spaCutoff,
-		args.outlierRatio,
-		args.nthread,
-		args.nSnpPerChunk,
-		args.missingCutoff,
-		args.minMafCutoff,
-		args.minMacCutoff,
-		args.hweCutoff,
-		args.keepFile,
-		args.removeFile
-		);
-	}
+        // ── SPAmix / SPAmixPlus (unified) ──────────────────────
+        else if (args.method == "SPAmix" || args.method == "SPAmixPlus") {
+            if (pcColNames.empty()) {
+                std::cerr << "Error: --pc-cols is required for " << args.method << ".\n";
+                return 1;
+            }
+            if (args.phenoFile.empty() && args.covarFile.empty()) {
+                std::cerr << "Error: --pheno or --covar required for " << args.method << " (provides PC columns).\n";
+                return 1;
+            }
+            if (args.method == "SPAmixPlus")checkSpGrm(args, /*required=*/ true, "SPAmixPlus");
+            else checkSpGrm(args, /*required=*/ false, "SPAmix");
+            runSPAmixPlus(
+                residNames,
+                pcColNames,
+                args.phenoFile,
+                args.covarFile,
+                geno,
+                args.spGrmGrabFile,
+                args.spGrmPlink2File,
+                args.indAfFile,
+                args.outPrefix,
+                args.compression,
+                args.compressionLevel,
+                args.spaCutoff,
+                args.outlierRatio,
+                args.nthread,
+                args.nSnpPerChunk,
+                args.missingCutoff,
+                args.minMafCutoff,
+                args.minMacCutoff,
+                args.hweCutoff,
+                args.keepFile,
+                args.removeFile
+            );
+        }
 
-	// ── POLMM ───────────────────────────────────────────────────
-	else if (args.method == "POLMM") {
-	    checkSpGrm(args, /*required=*/ true, "POLMM");
-	    runPOLMM(
-		args.phenoFile,
-		effectiveCovarFile,
-		phenoNames,
-		covarNames,
-		geno,
-		args.spGrmGrabFile,
-		args.spGrmPlink2File,
-		args.outPrefix,
-		args.compression,
-		args.compressionLevel,
-		args.spaCutoff,
-		args.nthread,
-		args.nSnpPerChunk,
-		args.missingCutoff,
-		args.minMafCutoff,
-		args.minMacCutoff,
-		args.hweCutoff,
-		args.keepFile,
-		args.removeFile
-		);
-	}
+        // ── POLMM ───────────────────────────────────────────────────
+        else if (args.method == "POLMM") {
+            checkSpGrm(args, /*required=*/ true, "POLMM");
+            runPOLMM(
+                args.phenoFile,
+                effectiveCovarFile,
+                phenoNames,
+                covarNames,
+                geno,
+                args.spGrmGrabFile,
+                args.spGrmPlink2File,
+                args.outPrefix,
+                args.compression,
+                args.compressionLevel,
+                args.spaCutoff,
+                args.nthread,
+                args.nSnpPerChunk,
+                args.missingCutoff,
+                args.minMafCutoff,
+                args.minMacCutoff,
+                args.hweCutoff,
+                args.keepFile,
+                args.removeFile
+            );
+        }
 
-	// ── SPAsqr ─────────────────────────────────────────────────
-	else if (args.method == "SPAsqr") {
-	    checkSpGrm(args, /*required=*/ true, "SPAsqr");
-	    if (args.phenoFile.empty() && args.covarFile.empty()) {
-		std::cerr << "Error: --pheno or --covar required for SPAsqr.\n";
-		return 1;
-	    }
-	    if (args.spasqrH >= 0.0 && args.spasqrHScale >= 0.0) {
-		std::cerr << "Error: --spasqr-h and --spasqr-h-scale"
-		    " are mutually exclusive.\n";
-		return 1;
-	    }
-	    if (args.spasqrTaus.empty()) {
-		std::cerr << "Error: --spasqr-taus is required for SPAsqr.\n";
-		return 1;
-	    }
-	    auto tauStrs = splitComma(args.spasqrTaus, "--spasqr-taus", 1);
-	    std::vector<double> taus;
-	    taus.reserve(tauStrs.size());
-	    for (const auto &s : tauStrs) {
-		double t = std::stod(s);
-		if (t <= 0.0 || t >= 1.0) {
-		    std::cerr << "Error: tau values must be in (0,1), got " << s << "\n";
-		    return 1;
-		}
-		taus.push_back(t);
-	    }
-	    if (phenoNames.empty()) {
-		std::cerr << "Error: --pheno-name is required for SPAsqr.\n";
-		return 1;
-	    }
-	    for (const auto &pheno : phenoNames) {
-		runSPAsqrPheno(
-		    args.phenoFile,
-		    effectiveCovarFile,
-		    pheno,
-		    covarNames,
-		    taus,
-		    args.spGrmGrabFile,
-		    args.spGrmPlink2File,
-		    geno,
-		    args.outPrefix,
-		    args.compression,
-		    args.compressionLevel,
-		    args.spaCutoff,
-		    args.outlierRatio,
-		    args.outlierAbsBound,
-		    args.nthread,
-		    args.nSnpPerChunk,
-		    args.missingCutoff,
-		    args.minMafCutoff,
-		    args.minMacCutoff,
-		    args.hweCutoff,
-		    args.spasqrTol,
-		    args.spasqrH,
-		    args.spasqrHScale,
-		    args.keepFile,
-		    args.removeFile
-		    );
-	    }
-	}
+        // ── SPAsqr ─────────────────────────────────────────────────
+        else if (args.method == "SPAsqr") {
+            checkSpGrm(args, /*required=*/ true, "SPAsqr");
+            if (args.phenoFile.empty() && args.covarFile.empty()) {
+                std::cerr << "Error: --pheno or --covar required for SPAsqr.\n";
+                return 1;
+            }
+            if (args.spasqrH >= 0.0 && args.spasqrHScale >= 0.0) {
+                std::cerr << "Error: --spasqr-h and --spasqr-h-scale"
+                    " are mutually exclusive.\n";
+                return 1;
+            }
+            if (args.spasqrTaus.empty()) {
+                std::cerr << "Error: --spasqr-taus is required for SPAsqr.\n";
+                return 1;
+            }
+            auto tauStrs = splitComma(args.spasqrTaus, "--spasqr-taus", 1);
+            std::vector<double> taus;
+            taus.reserve(tauStrs.size());
+            for (const auto &s : tauStrs) {
+                double t = std::stod(s);
+                if (t <= 0.0 || t >= 1.0) {
+                    std::cerr << "Error: tau values must be in (0,1), got " << s << "\n";
+                    return 1;
+                }
+                taus.push_back(t);
+            }
+            if (phenoNames.empty()) {
+                std::cerr << "Error: --pheno-name is required for SPAsqr.\n";
+                return 1;
+            }
+            for (const auto &pheno : phenoNames) {
+                runSPAsqrPheno(
+                    args.phenoFile,
+                    effectiveCovarFile,
+                    pheno,
+                    covarNames,
+                    taus,
+                    args.spGrmGrabFile,
+                    args.spGrmPlink2File,
+                    geno,
+                    args.outPrefix,
+                    args.compression,
+                    args.compressionLevel,
+                    args.spaCutoff,
+                    args.outlierRatio,
+                    args.outlierAbsBound,
+                    args.nthread,
+                    args.nSnpPerChunk,
+                    args.missingCutoff,
+                    args.minMafCutoff,
+                    args.minMacCutoff,
+                    args.hweCutoff,
+                    args.spasqrTol,
+                    args.spasqrH,
+                    args.spasqrHScale,
+                    args.keepFile,
+                    args.removeFile
+                );
+            }
+        }
 
-	// ── WtCoxG ─────────────────────────────────────────────────
-	else if (args.method == "WtCoxG") {
-	    require(args.refAfFile, "--ref-af", "WtCoxG");
-	    if (args.refPrevalence <= 0.0) {
-		std::cerr << "Error: --prevalence is required for WtCoxG"
-		    " and must be positive.\n";
-		return 1;
-	    }
-	    if (phenoNames.empty()) {
-		std::cerr << "Error: --pheno-name is required for WtCoxG."
-		    " Use TIME:EVENT for survival or COLNAME for binary.\n";
-		return 1;
-	    }
-	    checkSpGrm(args, /*required=*/ false, "WtCoxG");
-	    // Each --pheno-name entry is "TIME:EVENT" (survival) or "COLNAME" (binary).
-	    // Run WtCoxG once per phenotype specification.
-	    for (const auto &spec : phenoNames) {
-		std::vector<std::string> cols;
-		auto colon = spec.find(':');
-		if (colon != std::string::npos) {
-		    cols.push_back(spec.substr(0, colon));  // TIME column
-		    cols.push_back(spec.substr(colon + 1)); // EVENT column
-		} else {
-		    cols.push_back(spec);  // binary column
-		}
-		runWtCoxGPheno(
-		    args.phenoFile,
-		    effectiveCovarFile,
-		    covarNames,
-		    cols,
-		    geno,
-		    args.refAfFile,
-		    args.spGrmGrabFile,
-		    args.spGrmPlink2File,
-		    args.outPrefix,
-		    args.compression,
-		    args.compressionLevel,
-		    args.refPrevalence,
-		    args.cutoff,
-		    args.spaCutoff,
-		    args.nthread,
-		    args.nSnpPerChunk,
-		    args.missingCutoff,
-		    args.minMafCutoff,
-		    args.minMacCutoff,
-		    args.hweCutoff,
-		    args.keepFile,
-		    args.removeFile
-		    );
-	    }
-	}
+        // ── WtCoxG ─────────────────────────────────────────────────
+        else if (args.method == "WtCoxG") {
+            require(args.refAfFile, "--ref-af", "WtCoxG");
+            if (args.refPrevalence <= 0.0) {
+                std::cerr << "Error: --prevalence is required for WtCoxG"
+                    " and must be positive.\n";
+                return 1;
+            }
+            if (phenoNames.empty()) {
+                std::cerr << "Error: --pheno-name is required for WtCoxG."
+                    " Use TIME:EVENT for survival or COLNAME for binary.\n";
+                return 1;
+            }
+            checkSpGrm(args, /*required=*/ false, "WtCoxG");
+            // Each --pheno-name entry is "TIME:EVENT" (survival) or "COLNAME" (binary).
+            // Run WtCoxG once per phenotype specification.
+            for (const auto &spec : phenoNames) {
+                std::vector<std::string> cols;
+                auto colon = spec.find(':');
+                if (colon != std::string::npos) {
+                    cols.push_back(spec.substr(0, colon));  // TIME column
+                    cols.push_back(spec.substr(colon + 1)); // EVENT column
+                } else {
+                    cols.push_back(spec);  // binary column
+                }
+                runWtCoxGPheno(
+                    args.phenoFile,
+                    effectiveCovarFile,
+                    covarNames,
+                    cols,
+                    geno,
+                    args.refAfFile,
+                    args.spGrmGrabFile,
+                    args.spGrmPlink2File,
+                    args.outPrefix,
+                    args.compression,
+                    args.compressionLevel,
+                    args.refPrevalence,
+                    args.cutoff,
+                    args.spaCutoff,
+                    args.nthread,
+                    args.nSnpPerChunk,
+                    args.missingCutoff,
+                    args.minMafCutoff,
+                    args.minMacCutoff,
+                    args.hweCutoff,
+                    args.keepFile,
+                    args.removeFile
+                );
+            }
+        }
 
-	// ── LEAF ───────────────────────────────────────────────────
-	else if (args.method == "LEAF") {
-	    require(args.refAfFile, "--ref-af", "LEAF");
-	    if (args.refPrevalence <= 0.0) {
-		std::cerr << "Error: --prevalence is required for LEAF"
-		    " and must be positive.\n";
-		return 1;
-	    }
-	    if (pcColNames.empty()) {
-		std::cerr << "Error: --pc-cols is required for LEAF.\n";
-		return 1;
-	    }
-	    checkSpGrm(args, /*required=*/ false, "LEAF");
-	    auto refAfFiles = splitComma(args.refAfFile, "--ref-af", 1);
-	    int nClusters = args.nClusters > 0 ? args.nClusters : static_cast<int>(refAfFiles.size());
-	    if (nClusters < 2) {
-		std::cerr << "Error: LEAF needs at least"
-		    " 2 clusters (--leaf-nclusters or 2+ --ref-af).\n";
-		return 1;
-	    }
-	    if (phenoNames.empty()) {
-		std::cerr << "Error: --pheno-name is required for LEAF."
-		    " Use TIME:EVENT for survival or COLNAME for binary.\n";
-		return 1;
-	    }
-	    // Each --pheno-name entry is "TIME:EVENT" (survival) or "COLNAME" (binary).
-	    // Run LEAF once per phenotype specification.
-	    for (const auto &spec : phenoNames) {
-		std::vector<std::string> cols;
-		auto colon = spec.find(':');
-		if (colon != std::string::npos) {
-		    cols.push_back(spec.substr(0, colon));  // TIME column
-		    cols.push_back(spec.substr(colon + 1)); // EVENT column
-		} else {
-		    cols.push_back(spec);  // binary column
-		}
-		runLEAFPheno(
-		    args.phenoFile,
-		    effectiveCovarFile,
-		    covarNames,
-		    cols,
-		    pcColNames,
-		    nClusters,
-		    args.seed,
-		    geno,
-		    refAfFiles,
-		    args.spGrmGrabFile,
-		    args.spGrmPlink2File,
-		    args.outPrefix,
-		    args.compression,
-		    args.compressionLevel,
-		    args.refPrevalence,
-		    args.cutoff,
-		    args.spaCutoff,
-		    args.nthread,
-		    args.nSnpPerChunk,
-		    args.missingCutoff,
-		    args.minMafCutoff,
-		    args.minMacCutoff,
-		    args.hweCutoff,
-		    args.keepFile,
-		    args.removeFile
-		    );
-	    }
-	}
+        // ── LEAF ───────────────────────────────────────────────────
+        else if (args.method == "LEAF") {
+            require(args.refAfFile, "--ref-af", "LEAF");
+            if (args.refPrevalence <= 0.0) {
+                std::cerr << "Error: --prevalence is required for LEAF"
+                    " and must be positive.\n";
+                return 1;
+            }
+            if (pcColNames.empty()) {
+                std::cerr << "Error: --pc-cols is required for LEAF.\n";
+                return 1;
+            }
+            checkSpGrm(args, /*required=*/ false, "LEAF");
+            auto refAfFiles = splitComma(args.refAfFile, "--ref-af", 1);
+            int nClusters = args.nClusters > 0 ? args.nClusters : static_cast<int>(refAfFiles.size());
+            if (nClusters < 2) {
+                std::cerr << "Error: LEAF needs at least"
+                    " 2 clusters (--leaf-nclusters or 2+ --ref-af).\n";
+                return 1;
+            }
+            if (phenoNames.empty()) {
+                std::cerr << "Error: --pheno-name is required for LEAF."
+                    " Use TIME:EVENT for survival or COLNAME for binary.\n";
+                return 1;
+            }
+            // Each --pheno-name entry is "TIME:EVENT" (survival) or "COLNAME" (binary).
+            // Run LEAF once per phenotype specification.
+            for (const auto &spec : phenoNames) {
+                std::vector<std::string> cols;
+                auto colon = spec.find(':');
+                if (colon != std::string::npos) {
+                    cols.push_back(spec.substr(0, colon));  // TIME column
+                    cols.push_back(spec.substr(colon + 1)); // EVENT column
+                } else {
+                    cols.push_back(spec);  // binary column
+                }
+                runLEAFPheno(
+                    args.phenoFile,
+                    effectiveCovarFile,
+                    covarNames,
+                    cols,
+                    pcColNames,
+                    nClusters,
+                    args.seed,
+                    geno,
+                    refAfFiles,
+                    args.spGrmGrabFile,
+                    args.spGrmPlink2File,
+                    args.outPrefix,
+                    args.compression,
+                    args.compressionLevel,
+                    args.refPrevalence,
+                    args.cutoff,
+                    args.spaCutoff,
+                    args.nthread,
+                    args.nSnpPerChunk,
+                    args.missingCutoff,
+                    args.minMafCutoff,
+                    args.minMacCutoff,
+                    args.hweCutoff,
+                    args.keepFile,
+                    args.removeFile
+                );
+            }
+        }
 
-	// ── SPAmixLocalPlus ────────────────────────────────────────
-	else if (args.method == "SPAmixLocalPlus") {
-	    require(args.admixBfilePrefix, "--admix-bfile", "SPAmixLocalPlus");
-	    require(args.admixPhiFile, "--admix-phi", "SPAmixLocalPlus");
-	    require(args.phenoFile, "--pheno", "SPAmixLocalPlus");
-	    runSPAmixLocalPlus(
-		args.phenoFile,
-		residNames,
-		args.admixBfilePrefix,
-		args.admixPhiFile,
-		args.outPrefix,
-		args.compression,
-		args.compressionLevel,
-		args.spaCutoff,
-		args.outlierRatio,
-		args.nthread,
-		args.nSnpPerChunk,
-		args.missingCutoff,
-		args.minMafCutoff,
-		args.minMacCutoff,
-		args.hweCutoff,
-		args.keepFile,
-		args.removeFile,
-		args.extractFile,
-		args.excludeFile
-		);
-	}
+        // ── SPAmixLocalPlus ────────────────────────────────────────
+        else if (args.method == "SPAmixLocalPlus") {
+            require(args.admixBfilePrefix, "--admix-bfile", "SPAmixLocalPlus");
+            require(args.admixPhiFile, "--admix-phi", "SPAmixLocalPlus");
+            require(args.phenoFile, "--pheno", "SPAmixLocalPlus");
+            runSPAmixLocalPlus(
+                args.phenoFile,
+                residNames,
+                args.admixBfilePrefix,
+                args.admixPhiFile,
+                args.outPrefix,
+                args.compression,
+                args.compressionLevel,
+                args.spaCutoff,
+                args.outlierRatio,
+                args.nthread,
+                args.nSnpPerChunk,
+                args.missingCutoff,
+                args.minMafCutoff,
+                args.minMacCutoff,
+                args.hweCutoff,
+                args.keepFile,
+                args.removeFile,
+                args.extractFile,
+                args.excludeFile
+            );
+        }
 
     } catch (const std::exception &e) {
-	std::cerr << "[ERROR] " << e.what() << "\n";
-	return 1;
+        std::cerr << "[ERROR] " << e.what() << "\n";
+        return 1;
     }
     printTimer();
     return 0;

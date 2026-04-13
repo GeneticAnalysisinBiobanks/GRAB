@@ -30,45 +30,90 @@ class PgenData : public GenoMeta {
     // pgenFile: path to .pgen
     // pvarFile: path to .pvar (tab-delimited with #CHROM POS ID REF ALT header)
     // usedMask, nSamplesInFile, nUsed: from SubjectData (same semantics as PlinkData)
-    PgenData(std::string pgenFile,
-             std::string pvarFile,
-             const std::vector<uint64_t> &usedMask,
-             uint32_t nSamplesInFile,
-             uint32_t nUsed,
-             int nMarkersEachChunk = 1024);
+    PgenData(
+        std::string pgenFile,
+        std::string pvarFile,
+        const std::vector<uint64_t> &usedMask,
+        uint32_t nSamplesInFile,
+        uint32_t nUsed,
+        int nMarkersEachChunk = 1024
+    );
 
     ~PgenData() override;
 
     // ---- GenoMeta overrides ----
-    uint32_t nMarkers() const override { return m_nMarkers; }
-    uint32_t nSubjUsed() const override { return m_nSubjUsed; }
-    uint32_t nSubjInFile() const override { return m_nSubjInFile; }
+    uint32_t nMarkers() const override {
+        return m_nMarkers;
+    }
 
-    std::string_view chr(uint64_t i) const override { return m_chr[i]; }
-    std::string_view markerId(uint64_t i) const override { return m_markerId[i]; }
-    uint32_t pos(uint64_t i) const override { return m_pos[i]; }
-    std::string_view ref(uint64_t i) const override { return m_ref[i]; }
-    std::string_view alt(uint64_t i) const override { return m_alt[i]; }
+    uint32_t nSubjUsed() const override {
+        return m_nSubjUsed;
+    }
 
-    const std::vector<MarkerInfo> &markerInfo() const override { return m_markerInfo; }
-    const std::vector<std::vector<uint64_t>> &chunkIndices() const override { return m_chunkIndices; }
+    uint32_t nSubjInFile() const override {
+        return m_nSubjInFile;
+    }
+
+    std::string_view chr(uint64_t i) const override {
+        return m_chr[i];
+    }
+
+    std::string_view markerId(uint64_t i) const override {
+        return m_markerId[i];
+    }
+
+    uint32_t pos(uint64_t i) const override {
+        return m_pos[i];
+    }
+
+    std::string_view ref(uint64_t i) const override {
+        return m_ref[i];
+    }
+
+    std::string_view alt(uint64_t i) const override {
+        return m_alt[i];
+    }
+
+    const std::vector<MarkerInfo> &markerInfo() const override {
+        return m_markerInfo;
+    }
+
+    const std::vector<std::vector<uint64_t> > &chunkIndices() const override {
+        return m_chunkIndices;
+    }
 
     std::unique_ptr<GenoCursor> makeCursor() const override;
 
     // ---- Pgen-specific accessors ----
-    const std::string &pgenFile() const { return m_pgenFile; }
-    bool allUsed() const { return m_allUsed; }
-    const std::vector<uint64_t> &usedMask() const { return m_usedMask; }
+    const std::string &pgenFile() const {
+        return m_pgenFile;
+    }
+
+    bool allUsed() const {
+        return m_allUsed;
+    }
+
+    const std::vector<uint64_t> &usedMask() const {
+        return m_usedMask;
+    }
 
     // Shared pgfi for all cursors (read-only after init).
-    PgenFileInfo *pgfi() const { return m_pgfi.get(); }
-    uint32_t maxVrecWidth() const { return m_maxVrecWidth; }
-    std::size_t pgrAllocCachelineCt() const { return m_pgrAllocCachelineCt; }
+    PgenFileInfo *pgfi() const {
+        return m_pgfi.get();
+    }
+
+    uint32_t maxVrecWidth() const {
+        return m_maxVrecWidth;
+    }
+
+    std::size_t pgrAllocCachelineCt() const {
+        return m_pgrAllocCachelineCt;
+    }
 
   private:
     void parsePvar(const std::string &pvarFile);
 
-    static std::vector<std::vector<uint64_t>> buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize);
+    static std::vector<std::vector<uint64_t> > buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize);
 
     std::string m_pgenFile;
     bool m_allUsed;
@@ -84,12 +129,14 @@ class PgenData : public GenoMeta {
     std::vector<std::string> m_ref;
     std::vector<std::string> m_alt;
     std::vector<MarkerInfo> m_markerInfo;
-    std::vector<std::vector<uint64_t>> m_chunkIndices;
+    std::vector<std::vector<uint64_t> > m_chunkIndices;
 
     // pgenlib state
     struct PgfiDeleter {
         void operator()(PgenFileInfo *p) const;
+
     };
+
     std::unique_ptr<PgenFileInfo, PgfiDeleter> m_pgfi;
     std::unique_ptr<unsigned char, void (*)(void *)> m_pgfiAlloc;
     uint32_t m_maxVrecWidth = 0;
@@ -106,15 +153,17 @@ class PgenCursor : public GenoCursor {
 
     void beginSequentialBlock(uint64_t firstMarker) override;
 
-    void getGenotypes(uint64_t gIndex,
-                      Eigen::Ref<Eigen::VectorXd> out,
-                      double &altFreq,
-                      double &altCounts,
-                      double &missingRate,
-                      double &hweP,
-                      double &maf,
-                      double &mac,
-                      std::vector<uint32_t> &indexForMissing) override;
+    void getGenotypes(
+        uint64_t gIndex,
+        Eigen::Ref<Eigen::VectorXd> out,
+        double &altFreq,
+        double &altCounts,
+        double &missingRate,
+        double &hweP,
+        double &maf,
+        double &mac,
+        std::vector<uint32_t> &indexForMissing
+    ) override;
 
     void getGenotypesSimple(uint64_t gIndex, Eigen::Ref<Eigen::VectorXd> out) override;
 

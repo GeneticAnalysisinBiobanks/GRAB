@@ -164,11 +164,13 @@ std::vector<std::string> parseGenoIIDs(const GenoSpec &spec) {
 
 // ── makeGenoData ─────────────────────────────────────────────────────
 
-std::unique_ptr<GenoMeta> makeGenoData(const GenoSpec &spec,
-                                       const std::vector<uint64_t> &usedMask,
-                                       uint32_t nSamplesInFile,
-                                       uint32_t nUsed,
-                                       int nMarkersEachChunk) {
+std::unique_ptr<GenoMeta> makeGenoData(
+    const GenoSpec &spec,
+    const std::vector<uint64_t> &usedMask,
+    uint32_t nSamplesInFile,
+    uint32_t nUsed,
+    int nMarkersEachChunk
+) {
     switch (spec.format) {
     case GenoFormat::Plink:
         infoMsg("Loading PLINK data: %s", spec.path.c_str());

@@ -50,12 +50,14 @@ Eigen::VectorXd calRegrWeight(double prevalence, const Eigen::Ref<const Eigen::V
 // Returns martingale residuals for the kept rows (length ≤ n).
 // ──────────────────────────────────────────────────────────────────────
 
-Eigen::VectorXd coxResiduals(const Eigen::Ref<const Eigen::VectorXd> &time,
-                             const Eigen::Ref<const Eigen::VectorXd> &event,
-                             const Eigen::Ref<const Eigen::MatrixXd> &X,
-                             const Eigen::Ref<const Eigen::VectorXd> &weights,
-                             double tol = 1e-10,
-                             int maxIter = 40);
+Eigen::VectorXd coxResiduals(
+    const Eigen::Ref<const Eigen::VectorXd> &time,
+    const Eigen::Ref<const Eigen::VectorXd> &event,
+    const Eigen::Ref<const Eigen::MatrixXd> &X,
+    const Eigen::Ref<const Eigen::VectorXd> &weights,
+    double tol = 1e-10,
+    int maxIter = 40
+);
 
 // ──────────────────────────────────────────────────────────────────────
 // § 2  Weighted logistic regression  (IRLS)
@@ -75,10 +77,12 @@ Eigen::VectorXd coxResiduals(const Eigen::Ref<const Eigen::VectorXd> &time,
 // Returns response residuals for the kept rows (length ≤ n).
 // ──────────────────────────────────────────────────────────────────────
 
-Eigen::VectorXd logisticResiduals(const Eigen::Ref<const Eigen::VectorXd> &y,
-                                  const Eigen::Ref<const Eigen::MatrixXd> &X,
-                                  const Eigen::Ref<const Eigen::VectorXd> &weights,
-                                  double tol = 1e-9,
-                                  int maxIter = 50);
+Eigen::VectorXd logisticResiduals(
+    const Eigen::Ref<const Eigen::VectorXd> &y,
+    const Eigen::Ref<const Eigen::MatrixXd> &X,
+    const Eigen::Ref<const Eigen::VectorXd> &weights,
+    double tol = 1e-9,
+    int maxIter = 50
+);
 
 } // namespace regression

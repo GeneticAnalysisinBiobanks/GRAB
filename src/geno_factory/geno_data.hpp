@@ -40,6 +40,7 @@ struct GenoSpec {
         }
         return std::string(flag) + " " + path;
     }
+
 };
 
 // Return a descriptive label for the GRM source, e.g. "--sp-grm-grab e_grm.grab".
@@ -54,11 +55,13 @@ inline std::string grmFlagLabel(const std::string &grabFile, const std::string &
 std::vector<std::string> parseGenoIIDs(const GenoSpec &spec);
 
 // Construct the appropriate GenoMeta backend from a spec + subject mask.
-std::unique_ptr<class GenoMeta> makeGenoData(const GenoSpec &spec,
-                                             const std::vector<uint64_t> &usedMask,
-                                             uint32_t nSamplesInFile,
-                                             uint32_t nUsed,
-                                             int nMarkersEachChunk = 1024);
+std::unique_ptr<class GenoMeta> makeGenoData(
+    const GenoSpec &spec,
+    const std::vector<uint64_t> &usedMask,
+    uint32_t nSamplesInFile,
+    uint32_t nUsed,
+    int nMarkersEachChunk = 1024
+);
 
 // ======================================================================
 // GenoMeta — shared, read-only genotype metadata + cursor factory
@@ -78,20 +81,28 @@ class GenoMeta {
     virtual ~GenoMeta() = default;
 
     virtual uint32_t nMarkers() const = 0;
+
     virtual uint32_t nSubjUsed() const = 0;
+
     virtual uint32_t nSubjInFile() const = 0;
 
     virtual std::string_view chr(uint64_t i) const = 0;
+
     virtual std::string_view markerId(uint64_t i) const = 0;
+
     virtual uint32_t pos(uint64_t i) const = 0;
+
     virtual std::string_view ref(uint64_t i) const = 0;
+
     virtual std::string_view alt(uint64_t i) const = 0;
 
     virtual const std::vector<MarkerInfo> &markerInfo() const = 0;
-    virtual const std::vector<std::vector<uint64_t>> &chunkIndices() const = 0;
+
+    virtual const std::vector<std::vector<uint64_t> > &chunkIndices() const = 0;
 
     // Factory: create a per-thread cursor for genotype decoding.
     virtual std::unique_ptr<GenoCursor> makeCursor() const = 0;
+
 };
 
 // ======================================================================
@@ -107,16 +118,19 @@ class GenoCursor {
 
     // Decode genotype for marker gIndex into caller-owned Eigen vector.
     // Returns QC statistics through the output parameters.
-    virtual void getGenotypes(uint64_t gIndex,
-                              Eigen::Ref<Eigen::VectorXd> out,
-                              double &altFreq,
-                              double &altCounts,
-                              double &missingRate,
-                              double &hweP,
-                              double &maf,
-                              double &mac,
-                              std::vector<uint32_t> &indexForMissing) = 0;
+    virtual void getGenotypes(
+        uint64_t gIndex,
+        Eigen::Ref<Eigen::VectorXd> out,
+        double &altFreq,
+        double &altCounts,
+        double &missingRate,
+        double &hweP,
+        double &maf,
+        double &mac,
+        std::vector<uint32_t> &indexForMissing
+    ) = 0;
 
     // Lightweight variant: genotype vector only, missing → NaN, no QC stats.
     virtual void getGenotypesSimple(uint64_t gIndex, Eigen::Ref<Eigen::VectorXd> out) = 0;
+
 };

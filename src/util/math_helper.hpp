@@ -156,18 +156,26 @@ inline double mG0(double t, double MAF) {
     double a = 1.0 - MAF + MAF * std::exp(t);
     return a * a;
 }
+
 inline double mG1(double t, double MAF) {
     double e = MAF * std::exp(t);
     return 2.0 * e * (1.0 - MAF + e);
 }
+
 inline double mG2(double t, double MAF) {
     double e = MAF * std::exp(t);
     return 2.0 * e * e + 2.0 * e * (1.0 - MAF + e);
 }
 
 // CGF: K^(k)(t) = d^k/dt^k log M(t).
-inline double kG0(double t, double MAF) { return std::log(mG0(t, MAF)); }
-inline double kG1(double t, double MAF) { return mG1(t, MAF) / mG0(t, MAF); }
+inline double kG0(double t, double MAF) {
+    return std::log(mG0(t, MAF));
+}
+
+inline double kG1(double t, double MAF) {
+    return mG1(t, MAF) / mG0(t, MAF);
+}
+
 inline double kG2(double t, double MAF) {
     double m0 = mG0(t, MAF);
     double m1 = mG1(t, MAF);
@@ -198,15 +206,19 @@ inline void kG012(double t, double MAF, double &K0, double &K1, double &K2) {
 // Solve logistic(y | X) → β  using IRLS.
 // X: (n × p) covariate matrix (intercept NOT included; added internally).
 // y: (n × 1) binary outcome in {0, 1}.
-Eigen::VectorXd logisticRegressionBeta(const Eigen::Ref<const Eigen::MatrixXd> &X,
-                                       const Eigen::Ref<const Eigen::VectorXd> &y,
-                                       double tol = 1e-6,
-                                       int maxIter = 100);
+Eigen::VectorXd logisticRegressionBeta(
+    const Eigen::Ref<const Eigen::MatrixXd> &X,
+    const Eigen::Ref<const Eigen::VectorXd> &y,
+    double tol = 1e-6,
+    int maxIter = 100
+);
 
 // Logistic regression → predicted allele frequency transform:
 //   mu = sigmoid(X_new * beta),  return 1 - sqrt(1 - mu).
-Eigen::VectorXd logisticRegression(const Eigen::Ref<const Eigen::MatrixXd> &X,
-                                   const Eigen::Ref<const Eigen::VectorXd> &y);
+Eigen::VectorXd logisticRegression(
+    const Eigen::Ref<const Eigen::MatrixXd> &X,
+    const Eigen::Ref<const Eigen::VectorXd> &y
+);
 
 // ──────────────────────────────────────────────────────────────────────
 // § 6  Nelder-Mead simplex optimiser (n-dimensional, unconstrained)
@@ -223,10 +235,12 @@ struct OptimResult {
 // init:    starting point  (length n)
 // tol:     convergence tolerance on the simplex diameter
 // maxIter: iteration cap
-OptimResult nelderMead(std::function<double(const std::vector<double> &)> f,
-                       const std::vector<double> &init,
-                       double tol = 1e-8,
-                       int maxIter = 500);
+OptimResult nelderMead(
+    std::function<double(const std::vector<double> &)> f,
+    const std::vector<double> &init,
+    double tol = 1e-8,
+    int maxIter = 500
+);
 
 // ──────────────────────────────────────────────────────────────────────
 // § 7  Bounded 1-D minimiser  (Brent's method for minima)

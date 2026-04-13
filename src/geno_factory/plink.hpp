@@ -25,55 +25,100 @@ class PlinkData : public GenoMeta {
   public:
     // `usedMask` has ceil(nFam/64) words; bit i set ↔ .fam subject i is used.
     // `nFam` = total .fam lines.  `nUsed` = popcount(usedMask).
-    PlinkData(std::string bedFile,
-              std::string bimFile,
-              std::string famFile,
-              const std::vector<uint64_t> &usedMask,
-              uint32_t nFam,
-              uint32_t nUsed,
-              std::string IDsToIncludeFile = {},
-              std::string RangesToIncludeFile = {},
-              std::string IDsToExcludeFile = {},
-              std::string RangesToExcludeFile = {},
-              int nMarkersEachChunk = 1024);
+    PlinkData(
+        std::string bedFile,
+        std::string bimFile,
+        std::string famFile,
+        const std::vector<uint64_t> &usedMask,
+        uint32_t nFam,
+        uint32_t nUsed,
+        std::string IDsToIncludeFile = {},
+        std::string RangesToIncludeFile = {},
+        std::string IDsToExcludeFile = {},
+        std::string RangesToExcludeFile = {},
+        int nMarkersEachChunk = 1024
+    );
 
     // MarkerInfo is inherited from GenoMeta.
 
     // ---- GenoMeta overrides ----
-    uint32_t nMarkers() const override { return m_nMarkers; }
-    uint32_t nSubjUsed() const override { return m_nSubjUsed; }
-    uint32_t nSubjInFile() const override { return m_nSubjInFile; }
+    uint32_t nMarkers() const override {
+        return m_nMarkers;
+    }
 
-    std::string_view chr(uint64_t i) const override { return m_chr[i]; }
-    std::string_view markerId(uint64_t i) const override { return m_markerId[i]; }
-    uint32_t pos(uint64_t i) const override { return m_pos[i]; }
-    std::string_view ref(uint64_t i) const override { return m_ref[i]; }
-    std::string_view alt(uint64_t i) const override { return m_alt[i]; }
+    uint32_t nSubjUsed() const override {
+        return m_nSubjUsed;
+    }
 
-    const std::vector<MarkerInfo> &markerInfo() const override { return m_markerInfo; }
-    const std::vector<std::vector<uint64_t>> &chunkIndices() const override { return m_chunkIndices; }
+    uint32_t nSubjInFile() const override {
+        return m_nSubjInFile;
+    }
+
+    std::string_view chr(uint64_t i) const override {
+        return m_chr[i];
+    }
+
+    std::string_view markerId(uint64_t i) const override {
+        return m_markerId[i];
+    }
+
+    uint32_t pos(uint64_t i) const override {
+        return m_pos[i];
+    }
+
+    std::string_view ref(uint64_t i) const override {
+        return m_ref[i];
+    }
+
+    std::string_view alt(uint64_t i) const override {
+        return m_alt[i];
+    }
+
+    const std::vector<MarkerInfo> &markerInfo() const override {
+        return m_markerInfo;
+    }
+
+    const std::vector<std::vector<uint64_t> > &chunkIndices() const override {
+        return m_chunkIndices;
+    }
 
     std::unique_ptr<GenoCursor> makeCursor() const override;
 
     // ---- PLINK-specific accessors ----
-    uint64_t bytesPerMarker() const { return m_bytesPerMarker; }
-    const std::string &bedFile() const { return m_bedFile; }
-    bool allUsed() const { return m_allUsed; }
-    const std::vector<uint64_t> &usedMask() const { return m_usedMask; }
-    uint32_t nMaskWords() const { return static_cast<uint32_t>(m_usedMask.size()); }
+    uint64_t bytesPerMarker() const {
+        return m_bytesPerMarker;
+    }
+
+    const std::string &bedFile() const {
+        return m_bedFile;
+    }
+
+    bool allUsed() const {
+        return m_allUsed;
+    }
+
+    const std::vector<uint64_t> &usedMask() const {
+        return m_usedMask;
+    }
+
+    uint32_t nMaskWords() const {
+        return static_cast<uint32_t>(m_usedMask.size());
+    }
 
   private:
-    static std::vector<MarkerInfo> getFilteredMarkers(const std::vector<std::string> &chr,
-                                                      const std::vector<uint32_t> &pos,
-                                                      const std::vector<std::string> &markerId,
-                                                      const std::vector<std::string> &ref,
-                                                      const std::vector<std::string> &alt,
-                                                      const std::string &IDsToIncludeFile,
-                                                      const std::string &RangesToIncludeFile,
-                                                      const std::string &IDsToExcludeFile,
-                                                      const std::string &RangesToExcludeFile);
+    static std::vector<MarkerInfo> getFilteredMarkers(
+        const std::vector<std::string> &chr,
+        const std::vector<uint32_t> &pos,
+        const std::vector<std::string> &markerId,
+        const std::vector<std::string> &ref,
+        const std::vector<std::string> &alt,
+        const std::string &IDsToIncludeFile,
+        const std::string &RangesToIncludeFile,
+        const std::string &IDsToExcludeFile,
+        const std::string &RangesToExcludeFile
+    );
 
-    static std::vector<std::vector<uint64_t>> buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize);
+    static std::vector<std::vector<uint64_t> > buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize);
 
     std::string m_bedFile;
     bool m_allUsed;
@@ -88,7 +133,7 @@ class PlinkData : public GenoMeta {
     std::vector<std::string> m_ref;
     std::vector<std::string> m_alt;
     std::vector<MarkerInfo> m_markerInfo;
-    std::vector<std::vector<uint64_t>> m_chunkIndices;
+    std::vector<std::vector<uint64_t> > m_chunkIndices;
 };
 
 // ======== PlinkCursor: per-thread, lightweight ========
@@ -98,12 +143,14 @@ class PlinkData : public GenoMeta {
 
 class PlinkCursor : public GenoCursor {
   public:
-    PlinkCursor(const std::string &bedFile,
-                uint32_t nBimLines,
-                uint32_t nFamLines,
-                const std::vector<uint64_t> &usedMask,
-                uint32_t nUsed,
-                bool allUsed);
+    PlinkCursor(
+        const std::string &bedFile,
+        uint32_t nBimLines,
+        uint32_t nFamLines,
+        const std::vector<uint64_t> &usedMask,
+        uint32_t nUsed,
+        bool allUsed
+    );
 
     PlinkCursor(const PlinkCursor &other);
 
@@ -112,45 +159,52 @@ class PlinkCursor : public GenoCursor {
 
     // Decode genotype for marker gIndex into caller-owned Eigen vector.
     // Returns QC statistics through the output parameters.
-    void getGenotypes(uint64_t gIndex,
-                      Eigen::Ref<Eigen::VectorXd> out,
-                      double &altFreq,
-                      double &altCounts,
-                      double &missingRate,
-                      double &hweP,
-                      double &maf,
-                      double &mac,
-                      std::vector<uint32_t> &indexForMissing) override;
+    void getGenotypes(
+        uint64_t gIndex,
+        Eigen::Ref<Eigen::VectorXd> out,
+        double &altFreq,
+        double &altCounts,
+        double &missingRate,
+        double &hweP,
+        double &maf,
+        double &mac,
+        std::vector<uint32_t> &indexForMissing
+    ) override;
 
     // Lightweight variant: genotype vector only, missing → NaN, no QC stats.
     void getGenotypesSimple(uint64_t gIndex, Eigen::Ref<Eigen::VectorXd> out) override;
 
   private:
     void loadBlock(uint64_t startMarker);
+
     const uint8_t *readMarkerPtr(uint64_t gIndex);
 
     // ---- All-used fast path (identity decode, no scatter) ----
-    void getGenotypesAllUsed(const uint8_t *raw,
-                             uint32_t n,
-                             Eigen::Ref<Eigen::VectorXd> out,
-                             double &altFreq,
-                             double &altCounts,
-                             double &missingRate,
-                             double &hweP,
-                             double &maf,
-                             double &mac,
-                             std::vector<uint32_t> &indexForMissing);
+    void getGenotypesAllUsed(
+        const uint8_t *raw,
+        uint32_t n,
+        Eigen::Ref<Eigen::VectorXd> out,
+        double &altFreq,
+        double &altCounts,
+        double &missingRate,
+        double &hweP,
+        double &maf,
+        double &mac,
+        std::vector<uint32_t> &indexForMissing
+    );
 
     // ---- Bitmask path (decode only set-bit subjects) ----
-    void getGenotypesMasked(const uint8_t *raw,
-                            Eigen::Ref<Eigen::VectorXd> out,
-                            double &altFreq,
-                            double &altCounts,
-                            double &missingRate,
-                            double &hweP,
-                            double &maf,
-                            double &mac,
-                            std::vector<uint32_t> &indexForMissing);
+    void getGenotypesMasked(
+        const uint8_t *raw,
+        Eigen::Ref<Eigen::VectorXd> out,
+        double &altFreq,
+        double &altCounts,
+        double &missingRate,
+        double &hweP,
+        double &maf,
+        double &mac,
+        std::vector<uint32_t> &indexForMissing
+    );
 
     std::string m_bedFile;
     std::ifstream m_bedStream;

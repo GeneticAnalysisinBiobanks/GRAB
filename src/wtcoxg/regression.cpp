@@ -45,8 +45,10 @@ Eigen::VectorXd calRegrWeight(double prevalence, const Eigen::Ref<const Eigen::V
 namespace {
 
 // Return indices of rows where no element is NaN across all vectors/matrix.
-std::vector<Eigen::Index> completeRows(const Eigen::Ref<const Eigen::MatrixXd> &X,
-                                       std::initializer_list<const Eigen::Ref<const Eigen::VectorXd> *> vecs) {
+std::vector<Eigen::Index> completeRows(
+    const Eigen::Ref<const Eigen::MatrixXd> &X,
+    std::initializer_list<const Eigen::Ref<const Eigen::VectorXd> *> vecs
+) {
     const Eigen::Index n = X.rows();
     std::vector<Eigen::Index> keep;
     keep.reserve(n);
@@ -93,12 +95,14 @@ Eigen::VectorXd subsetVec(const Eigen::Ref<const Eigen::VectorXd> &v, const std:
 //
 // startCol: first column to check for zero variance.
 //   Pass 0 for Cox (no intercept), 1 for logistic (col 0 = all-ones intercept).
-void validateSubset(const std::string &fname,
-                    Eigen::Index n,
-                    Eigen::Index p,
-                    const Eigen::VectorXd &w,
-                    const Eigen::MatrixXd &X,
-                    Eigen::Index startCol = 0) {
+void validateSubset(
+    const std::string &fname,
+    Eigen::Index n,
+    Eigen::Index p,
+    const Eigen::VectorXd &w,
+    const Eigen::MatrixXd &X,
+    Eigen::Index startCol = 0
+) {
     if (n == 0) throw std::runtime_error(fname + ": no complete cases after NaN removal");
     if (n <= p)
         throw std::runtime_error(fname + ": n (" + std::to_string(n) + ") must exceed p (" + std::to_string(p) +
@@ -140,12 +144,14 @@ void validateSubset(const std::string &fname,
 // We avoid explicit risk-set enumeration by sorting and cumsum.
 // ──────────────────────────────────────────────────────────────────────
 
-Eigen::VectorXd coxResiduals(const Eigen::Ref<const Eigen::VectorXd> &time,
-                             const Eigen::Ref<const Eigen::VectorXd> &event,
-                             const Eigen::Ref<const Eigen::MatrixXd> &X,
-                             const Eigen::Ref<const Eigen::VectorXd> &weights,
-                             double tol,
-                             int maxIter) {
+Eigen::VectorXd coxResiduals(
+    const Eigen::Ref<const Eigen::VectorXd> &time,
+    const Eigen::Ref<const Eigen::VectorXd> &event,
+    const Eigen::Ref<const Eigen::MatrixXd> &X,
+    const Eigen::Ref<const Eigen::VectorXd> &weights,
+    double tol,
+    int maxIter
+) {
 
     // ── Drop rows with NaN ─────────────────────────────────────────────
     auto keep = completeRows(X, {&time, &event, &weights});
@@ -158,13 +164,15 @@ Eigen::VectorXd coxResiduals(const Eigen::Ref<const Eigen::VectorXd> &time,
     Eigen::VectorXd w_ = subsetVec(weights, keep);
 
     // ── Input validation ──────────────────────────────────────────────
-    validateSubset("coxResiduals", n, p, w_, X_, /*startCol=*/0);
+    validateSubset("coxResiduals", n, p, w_, X_, /*startCol=*/ 0);
     if (d_.sum() < 1.0) throw std::runtime_error("coxResiduals: no observed events (all censored)");
 
     // ── Sort by descending time (stable, so tied times keep order) ─────
     std::vector<Eigen::Index> ord(n);
     std::iota(ord.begin(), ord.end(), 0);
-    std::sort(ord.begin(), ord.end(), [&](Eigen::Index a, Eigen::Index b) { return t_[a] > t_[b]; });
+    std::sort(ord.begin(), ord.end(), [&](Eigen::Index a, Eigen::Index b) {
+        return t_[a] > t_[b];
+    });
 
     Eigen::VectorXd ts(n), ds(n), ws(n);
     Eigen::MatrixXd Xs(n, p);
@@ -360,11 +368,13 @@ Eigen::VectorXd coxResiduals(const Eigen::Ref<const Eigen::VectorXd> &time,
 //   |dev - devOld| / (|dev| + 0.1) < tol
 // ──────────────────────────────────────────────────────────────────────
 
-Eigen::VectorXd logisticResiduals(const Eigen::Ref<const Eigen::VectorXd> &y,
-                                  const Eigen::Ref<const Eigen::MatrixXd> &X,
-                                  const Eigen::Ref<const Eigen::VectorXd> &weights,
-                                  double tol,
-                                  int maxIter) {
+Eigen::VectorXd logisticResiduals(
+    const Eigen::Ref<const Eigen::VectorXd> &y,
+    const Eigen::Ref<const Eigen::MatrixXd> &X,
+    const Eigen::Ref<const Eigen::VectorXd> &weights,
+    double tol,
+    int maxIter
+) {
 
     // ── Drop rows with NaN ─────────────────────────────────────────────
     auto keep = completeRows(X, {&y, &weights});
@@ -377,7 +387,7 @@ Eigen::VectorXd logisticResiduals(const Eigen::Ref<const Eigen::VectorXd> &y,
 
     // ── Input validation ──────────────────────────────────────────────
     // startCol=1: skip col 0 (all-ones intercept), check covariate cols only.
-    validateSubset("logisticResiduals", nk, p, ws, Xs, /*startCol=*/1);
+    validateSubset("logisticResiduals", nk, p, ws, Xs, /*startCol=*/ 1);
     {
         double nCase = ys.sum();
         if (nCase < 1.0) throw std::runtime_error("logisticResiduals: no cases (y=1) after NaN removal");

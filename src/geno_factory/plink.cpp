@@ -89,11 +89,13 @@ static const double kBedDoublePairs[32] __attribute__((aligned(16))) =
 
 static const double kNaN = std::numeric_limits<double>::quiet_NaN();
 
-static void decodeMaskedSimple(const uint8_t *__restrict raw,
-                               const uint64_t *__restrict usedMask,
-                               uint32_t nFam,
-                               const int *genoMap,
-                               double *__restrict out) {
+static void decodeMaskedSimple(
+    const uint8_t *__restrict raw,
+    const uint64_t *__restrict usedMask,
+    uint32_t nFam,
+    const int *genoMap,
+    double *__restrict out
+) {
     uint32_t denseIdx = 0;
     const uint32_t nWords = (nFam + 63) / 64;
 
@@ -116,19 +118,21 @@ static void decodeMaskedSimple(const uint8_t *__restrict raw,
 // PlinkData
 // ══════════════════════════════════════════════════════════════════════
 
-PlinkData::PlinkData(std::string bedFile,
-                     std::string bimFile,
-                     std::string famFile,
-                     const std::vector<uint64_t> &usedMask,
-                     uint32_t nFam,
-                     uint32_t nUsed,
-                     std::string IDsToIncludeFile,
-                     std::string RangesToIncludeFile,
-                     std::string IDsToExcludeFile,
-                     std::string RangesToExcludeFile,
-                     int nMarkersEachChunk)
+PlinkData::PlinkData(
+    std::string bedFile,
+    std::string bimFile,
+    std::string famFile,
+    const std::vector<uint64_t> &usedMask,
+    uint32_t nFam,
+    uint32_t nUsed,
+    std::string IDsToIncludeFile,
+    std::string RangesToIncludeFile,
+    std::string IDsToExcludeFile,
+    std::string RangesToExcludeFile,
+    int nMarkersEachChunk
+)
     : m_bedFile(std::move(bedFile)), m_allUsed(nUsed == nFam), m_nSubjInFile(nFam), m_nSubjUsed(nUsed),
-      m_usedMask(usedMask) {
+    m_usedMask(usedMask) {
     // ---- Parse .bim ----
     {
         std::ifstream in(bimFile);
@@ -182,15 +186,17 @@ PlinkData::PlinkData(std::string bedFile,
     m_chunkIndices = buildChunks(m_markerInfo, nMarkersEachChunk);
 }
 
-std::vector<PlinkData::MarkerInfo> PlinkData::getFilteredMarkers(const std::vector<std::string> &chr,
-                                                                 const std::vector<uint32_t> &pos,
-                                                                 const std::vector<std::string> &markerId,
-                                                                 const std::vector<std::string> &ref,
-                                                                 const std::vector<std::string> &alt,
-                                                                 const std::string &IDsToIncludeFile,
-                                                                 const std::string &RangesToIncludeFile,
-                                                                 const std::string &IDsToExcludeFile,
-                                                                 const std::string &RangesToExcludeFile) {
+std::vector<PlinkData::MarkerInfo> PlinkData::getFilteredMarkers(
+    const std::vector<std::string> &chr,
+    const std::vector<uint32_t> &pos,
+    const std::vector<std::string> &markerId,
+    const std::vector<std::string> &ref,
+    const std::vector<std::string> &alt,
+    const std::string &IDsToIncludeFile,
+    const std::string &RangesToIncludeFile,
+    const std::string &IDsToExcludeFile,
+    const std::string &RangesToExcludeFile
+) {
     const uint32_t nMarkers = static_cast<uint32_t>(chr.size());
     std::vector<PlinkData::MarkerInfo> all;
     all.reserve(nMarkers);
@@ -229,8 +235,8 @@ std::vector<PlinkData::MarkerInfo> PlinkData::getFilteredMarkers(const std::vect
     return filtered;
 }
 
-std::vector<std::vector<uint64_t>> PlinkData::buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize) {
-    std::vector<std::vector<uint64_t>> chunks;
+std::vector<std::vector<uint64_t> > PlinkData::buildChunks(const std::vector<MarkerInfo> &markers, int chunkSize) {
+    std::vector<std::vector<uint64_t> > chunks;
     size_t start = 0;
     while (start < markers.size()) {
         const std::string &chrom = markers[start].chrom;
@@ -255,15 +261,17 @@ std::vector<std::vector<uint64_t>> PlinkData::buildChunks(const std::vector<Mark
 // PlinkCursor
 // ══════════════════════════════════════════════════════════════════════
 
-PlinkCursor::PlinkCursor(const std::string &bedFile,
-                         uint32_t nBimLines,
-                         uint32_t nFamLines,
-                         const std::vector<uint64_t> &usedMask,
-                         uint32_t nUsed,
-                         bool allUsed)
+PlinkCursor::PlinkCursor(
+    const std::string &bedFile,
+    uint32_t nBimLines,
+    uint32_t nFamLines,
+    const std::vector<uint64_t> &usedMask,
+    uint32_t nUsed,
+    bool allUsed
+)
     : m_bedFile(bedFile), m_nSubjInFile(nFamLines), m_bytesPerMarker((nFamLines + 3) / 4), m_nMarkers(nBimLines),
-      m_nUsed(nUsed), m_usedMask(usedMask), m_allUsed(allUsed), m_rawBytes(m_bytesPerMarker),
-      m_alignedBed((m_bytesPerMarker + sizeof(uintptr_t) - 1) / sizeof(uintptr_t)) {
+    m_nUsed(nUsed), m_usedMask(usedMask), m_allUsed(allUsed), m_rawBytes(m_bytesPerMarker),
+    m_alignedBed((m_bytesPerMarker + sizeof(uintptr_t) - 1) / sizeof(uintptr_t)) {
     m_bedStream.open(bedFile, std::ios::binary);
     if (!m_bedStream.is_open()) throw std::runtime_error("Cannot open PLINK bed file: " + bedFile);
     char magic[3] = {0};
@@ -274,8 +282,8 @@ PlinkCursor::PlinkCursor(const std::string &bedFile,
 
 PlinkCursor::PlinkCursor(const PlinkCursor &other)
     : m_bedFile(other.m_bedFile), m_nSubjInFile(other.m_nSubjInFile), m_bytesPerMarker(other.m_bytesPerMarker),
-      m_nMarkers(other.m_nMarkers), m_nUsed(other.m_nUsed), m_usedMask(other.m_usedMask), m_allUsed(other.m_allUsed),
-      m_rawBytes(other.m_rawBytes.size()), m_alignedBed(other.m_alignedBed.size()) {
+    m_nMarkers(other.m_nMarkers), m_nUsed(other.m_nUsed), m_usedMask(other.m_usedMask), m_allUsed(other.m_allUsed),
+    m_rawBytes(other.m_rawBytes.size()), m_alignedBed(other.m_alignedBed.size()) {
     m_bedStream.open(m_bedFile, std::ios::binary);
     if (!m_bedStream.is_open()) throw std::runtime_error("Cannot open PLINK bed file: " + m_bedFile);
     char magic[3] = {0};
@@ -349,16 +357,18 @@ const uint8_t *PlinkCursor::readMarkerPtr(uint64_t gIndex) {
 // ── All-used fast path ───────────────────────────────────────────────
 // All subjects in file order → plink2 SIMD decode + count.
 
-void PlinkCursor::getGenotypesAllUsed(const uint8_t *raw,
-                                      uint32_t n,
-                                      Eigen::Ref<Eigen::VectorXd> out,
-                                      double &altFreq,
-                                      double &altCounts,
-                                      double &missingRate,
-                                      double &hweP,
-                                      double &maf,
-                                      double &mac,
-                                      std::vector<uint32_t> &indexForMissing) {
+void PlinkCursor::getGenotypesAllUsed(
+    const uint8_t *raw,
+    uint32_t n,
+    Eigen::Ref<Eigen::VectorXd> out,
+    double &altFreq,
+    double &altCounts,
+    double &missingRate,
+    double &hweP,
+    double &maf,
+    double &mac,
+    std::vector<uint32_t> &indexForMissing
+) {
     indexForMissing.clear();
 
     // Copy BED bytes to word-aligned buffer; trailing bytes stay zero.
@@ -394,15 +404,17 @@ void PlinkCursor::getGenotypesAllUsed(const uint8_t *raw,
 // Subset selection via bitmask → plink2 vectorized counting +
 // scalar scatter for decode.
 
-void PlinkCursor::getGenotypesMasked(const uint8_t *raw,
-                                     Eigen::Ref<Eigen::VectorXd> out,
-                                     double &altFreq,
-                                     double &altCounts,
-                                     double &missingRate,
-                                     double &hweP,
-                                     double &maf,
-                                     double &mac,
-                                     std::vector<uint32_t> &indexForMissing) {
+void PlinkCursor::getGenotypesMasked(
+    const uint8_t *raw,
+    Eigen::Ref<Eigen::VectorXd> out,
+    double &altFreq,
+    double &altCounts,
+    double &missingRate,
+    double &hweP,
+    double &maf,
+    double &mac,
+    std::vector<uint32_t> &indexForMissing
+) {
     indexForMissing.clear();
 
     // Copy BED bytes to word-aligned buffer for plink2.
@@ -449,15 +461,17 @@ void PlinkCursor::getGenotypesMasked(const uint8_t *raw,
 
 // ── Public entry point ───────────────────────────────────────────────
 
-void PlinkCursor::getGenotypes(uint64_t gIndex,
-                               Eigen::Ref<Eigen::VectorXd> out,
-                               double &altFreq,
-                               double &altCounts,
-                               double &missingRate,
-                               double &hweP,
-                               double &maf,
-                               double &mac,
-                               std::vector<uint32_t> &indexForMissing) {
+void PlinkCursor::getGenotypes(
+    uint64_t gIndex,
+    Eigen::Ref<Eigen::VectorXd> out,
+    double &altFreq,
+    double &altCounts,
+    double &missingRate,
+    double &hweP,
+    double &maf,
+    double &mac,
+    std::vector<uint32_t> &indexForMissing
+) {
     const uint8_t *raw = readMarkerPtr(gIndex);
 
     if (m_allUsed) {

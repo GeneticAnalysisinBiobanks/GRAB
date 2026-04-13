@@ -30,7 +30,8 @@ class MethodBase {
     virtual std::string getHeaderColumns() const = 0;
 
     // Called once per chunk before processing markers.  Default: no-op.
-    virtual void prepareChunk(const std::vector<uint64_t> & /*gIndices*/) {}
+    virtual void prepareChunk(const std::vector<uint64_t> & /*gIndices*/) {
+    }
 
     // Per-marker analysis.  The engine handles QC and imputation before
     // calling this.  `result` is cleared before each call.
@@ -39,24 +40,29 @@ class MethodBase {
     //   altFreq          — ALT allele frequency (= freq of bim col5)
     //   markerInChunkIdx — 0-based index within current chunk
     //   result           — output: method-specific result values
-    virtual void getResultVec(Eigen::Ref<Eigen::VectorXd> GVec,
-                              double altFreq,
-                              int markerInChunkIdx,
-                              std::vector<double> &result) = 0;
+    virtual void getResultVec(
+        Eigen::Ref<Eigen::VectorXd> GVec,
+        double altFreq,
+        int markerInChunkIdx,
+        std::vector<double> &result
+    ) = 0;
+
 };
 
 // ======================================================================
 // Engine entry point
 // ======================================================================
 
-void markerEngine(const GenoMeta &genoData,
-                  const MethodBase &method,
-                  const std::string &outputFile,
-                  int nthreads,
-                  double missingCutoff,
-                  double minMafCutoff,
-                  double minMacCutoff,
-                  double hweCutoff);
+void markerEngine(
+    const GenoMeta &genoData,
+    const MethodBase &method,
+    const std::string &outputFile,
+    int nthreads,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff
+);
 
 // ======================================================================
 // PhenoTask — one per phenotype for multiPhenoEngine
@@ -78,17 +84,19 @@ struct PhenoTask {
 //   - runs the method and writes to PREFIX.PHENO.METHOD[.gz|.zst]
 //
 // Threading: chunk-level work-stealing, K phenotypes sequential per chunk.
-void multiPhenoEngine(const GenoMeta &genoData,
-                      std::vector<PhenoTask> &tasks,
-                      const std::string &outPrefix,
-                      const std::string &methodName,
-                      const std::string &compression,
-                      int compressionLevel,
-                      int nthreads,
-                      double missingCutoff,
-                      double minMafCutoff,
-                      double minMacCutoff,
-                      double hweCutoff);
+void multiPhenoEngine(
+    const GenoMeta &genoData,
+    std::vector<PhenoTask> &tasks,
+    const std::string &outPrefix,
+    const std::string &methodName,
+    const std::string &compression,
+    int compressionLevel,
+    int nthreads,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff
+);
 
 // ======================================================================
 // MultiMethod — runs N inner methods in one pass, interleaves results
@@ -100,21 +108,29 @@ void multiPhenoEngine(const GenoMeta &genoData,
 
 class MultiMethod : public MethodBase {
   public:
-    MultiMethod(std::vector<std::unique_ptr<MethodBase>> methods,
-                std::vector<std::string> residNames,
-                std::vector<std::string> suffixes);
+    MultiMethod(
+        std::vector<std::unique_ptr<MethodBase> > methods,
+        std::vector<std::string> residNames,
+        std::vector<std::string> suffixes
+    );
 
     std::unique_ptr<MethodBase> clone() const override;
+
     int resultSize() const override;
+
     std::string getHeaderColumns() const override;
+
     void prepareChunk(const std::vector<uint64_t> &gIndices) override;
-    void getResultVec(Eigen::Ref<Eigen::VectorXd> GVec,
-                      double altFreq,
-                      int markerInChunkIdx,
-                      std::vector<double> &result) override;
+
+    void getResultVec(
+        Eigen::Ref<Eigen::VectorXd> GVec,
+        double altFreq,
+        int markerInChunkIdx,
+        std::vector<double> &result
+    ) override;
 
   private:
-    std::vector<std::unique_ptr<MethodBase>> m_methods;
+    std::vector<std::unique_ptr<MethodBase> > m_methods;
     std::vector<std::string> m_residNames;
     std::vector<std::string> m_suffixes;
 };

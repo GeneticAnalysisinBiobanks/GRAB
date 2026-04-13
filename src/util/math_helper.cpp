@@ -102,10 +102,12 @@ double pmvnorm2d(double lo1, double hi1, double lo2, double hi2, double var1, do
 
 // § 5  Logistic regression (IRLS)
 
-Eigen::VectorXd logisticRegressionBeta(const Eigen::Ref<const Eigen::MatrixXd> &X,
-                                       const Eigen::Ref<const Eigen::VectorXd> &y,
-                                       double tol,
-                                       int maxIter) {
+Eigen::VectorXd logisticRegressionBeta(
+    const Eigen::Ref<const Eigen::MatrixXd> &X,
+    const Eigen::Ref<const Eigen::VectorXd> &y,
+    double tol,
+    int maxIter
+) {
 
     const Eigen::Index n = X.rows();
     const Eigen::Index p = X.cols();
@@ -148,8 +150,10 @@ Eigen::VectorXd logisticRegressionBeta(const Eigen::Ref<const Eigen::MatrixXd> &
     return beta;
 }
 
-Eigen::VectorXd logisticRegression(const Eigen::Ref<const Eigen::MatrixXd> &X,
-                                   const Eigen::Ref<const Eigen::VectorXd> &y) {
+Eigen::VectorXd logisticRegression(
+    const Eigen::Ref<const Eigen::MatrixXd> &X,
+    const Eigen::Ref<const Eigen::VectorXd> &y
+) {
 
     Eigen::VectorXd beta = logisticRegressionBeta(X, y);
 
@@ -168,16 +172,18 @@ Eigen::VectorXd logisticRegression(const Eigen::Ref<const Eigen::MatrixXd> &X,
 
 // § 6  Nelder-Mead simplex optimiser
 
-OptimResult nelderMead(std::function<double(const std::vector<double> &)> f,
-                       const std::vector<double> &init,
-                       double tol,
-                       int maxIter) {
+OptimResult nelderMead(
+    std::function<double(const std::vector<double> &)> f,
+    const std::vector<double> &init,
+    double tol,
+    int maxIter
+) {
 
     const int n = static_cast<int>(init.size());
     const int nv = n + 1; // simplex has n+1 vertices
 
     // Build initial simplex: init + unit perturbations
-    std::vector<std::vector<double>> simplex(nv, init);
+    std::vector<std::vector<double> > simplex(nv, init);
     std::vector<double> fvals(nv);
     for (int i = 0; i < n; ++i) {
         double delta = (init[i] == 0.0) ? 0.05 : 0.05 * std::abs(init[i]);

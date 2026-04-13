@@ -24,13 +24,15 @@ namespace conquer {
 //
 // Returns (p+1) coefficient vector:  beta(0) = intercept,  beta(1..p) = slopes.
 // Also stores the final n-vector of residuals in `residOut` if non-null.
-Eigen::VectorXd smqrGauss(const Eigen::MatrixXd &X,
-                          const Eigen::VectorXd &Y,
-                          double tau,
-                          double h,
-                          Eigen::VectorXd *residOut = nullptr,
-                          double tol = 1e-7,
-                          int iteMax = 5000,
-                          double stepMax = 100.0);
+Eigen::VectorXd smqrGauss(
+    const Eigen::MatrixXd &X,
+    const Eigen::VectorXd &Y,
+    double tau,
+    double h,
+    Eigen::VectorXd *residOut = nullptr,
+    double tol = 1e-7,
+    int iteMax = 5000,
+    double stepMax = 100.0
+);
 
 } // namespace conquer

@@ -52,7 +52,9 @@ struct RprodSoA {
     std::vector<uint8_t> target_hi; // required hInt[i] value (1 or 2)
     std::vector<uint8_t> target_hj; // required hInt[j] value (1 or 2)
 
-    size_t size() const { return rprod.size(); }
+    size_t size() const {
+        return rprod.size();
+    }
 
     void reserve(size_t n) {
         idx_i.reserve(n);
@@ -69,6 +71,7 @@ struct RprodSoA {
         target_hi.push_back(th_i);
         target_hj.push_back(th_j);
     }
+
 };
 
 // Build unified SoA from PhiMatrices and residual vector (once per phenotype).
@@ -133,15 +136,17 @@ double computePhiVariance(const Eigen::VectorXd &R, const Eigen::VectorXd &hapco
 //   spaCutoff: threshold for switching from normal to SPA
 //
 // Returns: {pval_spa, pval_normal}
-std::pair<double, double> spaLocalPval(double S,
-                                       double sMean,
-                                       double varDiag,
-                                       const Eigen::VectorXd &R,
-                                       const Eigen::VectorXd &hapcount,
-                                       double q,
-                                       double varS,
-                                       const OutlierData &outlier,
-                                       double spaCutoff);
+std::pair<double, double> spaLocalPval(
+    double S,
+    double sMean,
+    double varDiag,
+    const Eigen::VectorXd &R,
+    const Eigen::VectorXd &hapcount,
+    double q,
+    double varS,
+    const OutlierData &outlier,
+    double spaCutoff
+);
 
 // ======================================================================
 // Full pipeline entry points
@@ -152,15 +157,17 @@ std::pair<double, double> spaLocalPval(double S,
 //   grmGrabFile / grmGctaFile: sparse GRM (exactly one non-empty)
 //   phiOutputFile: output path for wide phi file
 //   extractFile / excludeFile: for marker filtering
-void runPhiEstimation(const std::string &admixPrefix,
-                      const std::string &grmGrabFile,
-                      const std::string &grmGctaFile,
-                      const std::string &phiOutputFile,
-                      const std::string &keepFile = {},
-                      const std::string &removeFile = {},
-                      const std::string &extractFile = {},
-                      const std::string &excludeFile = {},
-                      int nthreads = 1);
+void runPhiEstimation(
+    const std::string &admixPrefix,
+    const std::string &grmGrabFile,
+    const std::string &grmGctaFile,
+    const std::string &phiOutputFile,
+    const std::string &keepFile = {},
+    const std::string &removeFile = {},
+    const std::string &extractFile = {},
+    const std::string &excludeFile = {},
+    int nthreads = 1
+);
 
 // Run per-ancestry GWAS with SPAmixLocalPlus.
 //   phenoFile:   phenotype file (columns selected by residNames)
@@ -169,22 +176,25 @@ void runPhiEstimation(const std::string &admixPrefix,
 //   admixPhiFile: pre-computed wide phi file
 //   outPrefix:   output prefix for per-phenotype GWAS results
 //   spaCutoff, outlierRatio, nthread, nSnpPerChunk: analysis params
-void runSPAmixLocalPlus(const std::string &phenoFile,
-                        const std::vector<std::string> &residNames,
-                        const std::string &admixPrefix,
-                        const std::string &admixPhiFile,
-                        const std::string &outPrefix,
-                        const std::string &compression,
-                        int compressionLevel,
-                        double spaCutoff,
-                        double outlierRatio,
-                        int nthread,
-                        int nSnpPerChunk,
-                        double missingCutoff,
-                        double minMafCutoff,
-                        double minMacCutoff,
-                        double hweCutoff,
-                        const std::string &keepFile = {},
-                        const std::string &removeFile = {},
-                        const std::string &extractFile = {},
-                        const std::string &excludeFile = {});
+void runSPAmixLocalPlus(
+    const std::string &phenoFile,
+    const std::vector<std::string> &residNames,
+    const std::string &admixPrefix,
+    const std::string &admixPhiFile,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double spaCutoff,
+    double outlierRatio,
+    int nthread,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile = {},
+    const std::string &removeFile = {},
+    const std::string &extractFile = {},
+    const std::string &excludeFile = {}
+
+);

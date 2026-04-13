@@ -35,12 +35,14 @@ namespace spa {
 //   s:            score statistic value to evaluate
 //   lowerTail:    true → P(S ≤ s), false → P(S > s)
 //   mean_nonOutlier / var_nonOutlier: normal-approx terms for non-outlier part
-double getProbSpaG(const double *mafOutlier,
-                   const double *residOutlier,
-                   int nOutlier,
-                   double s,
-                   bool lowerTail,
-                   double mean_nonOutlier,
-                   double var_nonOutlier);
+double getProbSpaG(
+    const double *mafOutlier,
+    const double *residOutlier,
+    int nOutlier,
+    double s,
+    bool lowerTail,
+    double mean_nonOutlier,
+    double var_nonOutlier
+);
 
 } // namespace spa

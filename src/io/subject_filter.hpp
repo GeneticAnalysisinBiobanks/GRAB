@@ -26,5 +26,9 @@ std::unordered_set<std::string> parseSubjectIDFile(const std::string &path);
 //
 // Subjects in keepFile that are not present in sampleIDs are silently ignored
 // (with an info message).  The returned vector preserves the original order.
-std::vector<uint32_t>
-buildKeptIndices(const std::vector<std::string> &sampleIDs, const std::string &keepFile, const std::string &removeFile);
+std::vector<uint32_t>buildKeptIndices(
+    const std::vector<std::string> &sampleIDs,
+    const std::string &keepFile,
+    const
+    std::string &removeFile
+);

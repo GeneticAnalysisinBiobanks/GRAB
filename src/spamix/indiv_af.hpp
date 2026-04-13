@@ -67,10 +67,12 @@ AFModel computeAFModel(const Eigen::Ref<const Eigen::VectorXd> &g, double altFre
 // for the logistic path.  Preferred for on-the-fly usage (SPAmix).
 // ======================================================================
 
-void computeAFVec(const Eigen::Ref<const Eigen::VectorXd> &g,
-                  double altFreq,
-                  const AFContext &ctx,
-                  Eigen::Ref<Eigen::VectorXd> out);
+void computeAFVec(
+    const Eigen::Ref<const Eigen::VectorXd> &g,
+    double altFreq,
+    const AFContext &ctx,
+    Eigen::Ref<Eigen::VectorXd> out
+);
 
 // ======================================================================
 // getAFVecFromModel — reconstruct per-individual AF from a stored model
@@ -83,7 +85,12 @@ void computeAFVec(const Eigen::Ref<const Eigen::VectorXd> &g,
 // ======================================================================
 
 void getAFVecFromModel(
-    const AFModel &model, double altFreq, const Eigen::MatrixXd &onePlusPCs, int N, Eigen::Ref<Eigen::VectorXd> out);
+    const AFModel &model,
+    double altFreq,
+    const Eigen::MatrixXd &onePlusPCs,
+    int N,
+    Eigen::Ref<Eigen::VectorXd> out
+);
 
 // ======================================================================
 // IndivAFWriter — write all marker AF models to disk
@@ -98,38 +105,40 @@ void getAFVecFromModel(
 // Caller passes CHR / BP as strings / uint32_t directly.
 
 class IndivAFWriter {
-public:
-enum class Mode { Binary, Text };
+  public:
+    enum class Mode { Binary, Text };
 
 // Infer mode from outputFile extension: .bin → Binary, else Text.
 // Text mode supports .gz, .zst, or plain via TextWriter.
-IndivAFWriter(const std::string &outputFile,
-              uint64_t nBimMarkers,     // total .bim lines (binary pre-alloc)
-              int nPC);
+    IndivAFWriter(
+        const std::string &outputFile,
+        uint64_t nBimMarkers,           // total .bim lines (binary pre-alloc)
+        int nPC
+    );
 
-~IndivAFWriter();
+    ~IndivAFWriter();
 
 // Write one record.  For Binary, genoIndex determines the file offset.
-void write(uint64_t genoIndex, int8_t status, const Eigen::VectorXd &betas);
+    void write(uint64_t genoIndex, int8_t status, const Eigen::VectorXd &betas);
 
-void close();
+    void close();
 
-Mode mode() const {
-    return m_mode;
-}
+    Mode mode() const {
+        return m_mode;
+    }
 
-private:
-Mode m_mode;
-int m_nPC;
-long long m_recordSize;     // valid only for Binary
+  private:
+    Mode m_mode;
+    int m_nPC;
+    long long m_recordSize; // valid only for Binary
 
 // Binary output
-std::fstream m_binOut;
+    std::fstream m_binOut;
 
 // Text output (TextWriter handles gz/zst/plain)
-std::unique_ptr<class TextWriter> m_writer;
+    std::unique_ptr<class TextWriter> m_writer;
 
-bool m_closed = false;
+    bool m_closed = false;
 };
 
 // ======================================================================
@@ -139,18 +148,18 @@ bool m_closed = false;
 // ======================================================================
 
 class IndivAFReader {
-public:
-IndivAFReader(const std::string &binFile, int nPC);
-~IndivAFReader();
+  public:
+    IndivAFReader(const std::string &binFile, int nPC);
+    ~IndivAFReader();
 
 // Seek to genoIndex and fill model.  Returns false if status = 0 (caller
 // may still use the returned status-0 model for a uniform AF estimate).
-bool read(uint64_t genoIndex, AFModel &model);
+    bool read(uint64_t genoIndex, AFModel &model);
 
-private:
-std::ifstream m_in;
-int m_nPC;
-long long m_recordSize;
+  private:
+    std::ifstream m_in;
+    int m_nPC;
+    long long m_recordSize;
 };
 
 // ======================================================================
@@ -164,8 +173,13 @@ long long m_recordSize;
 // Always returns exactly nMarkers models in flat marker order.
 // ======================================================================
 
-std::vector<AFModel>
-loadAFModels(const std::string &path, int nPC, uint32_t nMarkers, const std::vector<uint64_t> &genoIndices);
+std::vector<AFModel>loadAFModels(
+    const std::string &path,
+    int nPC,
+    uint32_t nMarkers,
+    const std::vector<uint64_t> &
+    genoIndices
+);
 
 // ======================================================================
 // runSPAmixAF — pre-compute per-marker AF models and write to disk.
@@ -181,21 +195,26 @@ loadAFModels(const std::string &path, int nPC, uint32_t nMarkers, const std::vec
 // genoToFlat maps raw genoIndex → flat marker index (UINT32_MAX = skip).
 // Callers must also include "geno_factory/plink.hpp".
 class GenoMeta;
-std::vector<AFModel> computeAFModelsInMemory(const GenoMeta &plinkData,
-                                             const AFContext &afCtx,
-                                             const std::vector<uint32_t> &genoToFlat,
-                                             int nthread);
+std::vector<AFModel> computeAFModelsInMemory(
+    const GenoMeta &plinkData,
+    const AFContext &afCtx,
+    const std::vector<uint32_t> &genoToFlat,
+    int nthread
+);
 
-void runSPAmixAF(const std::vector<std::string> &pcColNames,
-                 const std::string &phenoFile,
-                 const std::string &covarFile,
-                 const GenoSpec &geno,
-                 const std::string &outputFile,
-                 int nthread,
-                 int nSnpPerChunk,
-                 double missingCutoff,
-                 double minMafCutoff,
-                 double minMacCutoff,
-                 double hweCutoff,
-                 const std::string &keepFile = {},
-                 const std::string &removeFile = {});
+void runSPAmixAF(
+    const std::vector<std::string> &pcColNames,
+    const std::string &phenoFile,
+    const std::string &covarFile,
+    const GenoSpec &geno,
+    const std::string &outputFile,
+    int nthread,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile = {},
+    const std::string &removeFile = {}
+
+);

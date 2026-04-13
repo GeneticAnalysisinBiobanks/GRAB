@@ -42,14 +42,16 @@
 // runPairwiseIBD
 // ══════════════════════════════════════════════════════════════════════════════
 
-void runPairwiseIBD(const std::string &spgrmGrabFile,
-                    const std::string &spgrmGctaFile,
-                    const GenoSpec &geno,
-                    const std::string &outputFile,
-                    const std::string &keepFile,
-                    const std::string &removeFile,
-                    double minMafIBD,
-                    int nthreads) {
+void runPairwiseIBD(
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const GenoSpec &geno,
+    const std::string &outputFile,
+    const std::string &keepFile,
+    const std::string &removeFile,
+    double minMafIBD,
+    int nthreads
+) {
     // ── 1. Read sample IDs and apply keep/remove filters ────────────
     std::vector<std::string> allIIDs = parseGenoIIDs(geno);
     infoMsg("Read %u subjects from genotype file", static_cast<uint32_t>(allIIDs.size()));
@@ -121,6 +123,7 @@ void runPairwiseIBD(const std::string &spgrmGrabFile,
         std::vector<double> sumXW, sumW;
         uint32_t nUsed = 0;
     };
+
     std::vector<ThreadAcc> threadAccs(nt);
     for (auto &ta : threadAccs) {
         ta.sumXW.assign(nPairs, 0.0);
@@ -272,6 +275,7 @@ void runPairwiseIBD(const std::string &spgrmGrabFile,
         uint32_t idx1, idx2;
         double pa, pb, pc;
     };
+
     std::vector<IBDResult> results(nPairs);
 
     for (size_t k = 0; k < nPairs; ++k) {

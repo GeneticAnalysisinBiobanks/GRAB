@@ -42,8 +42,10 @@ struct IndexedIBD {
 };
 
 /// Load pairwise IBD file into dense-indexed entries.
-std::vector<IndexedIBD> loadIndexedIBD(const std::string &filename,
-                                       const std::unordered_map<std::string, uint32_t> &idMap);
+std::vector<IndexedIBD> loadIndexedIBD(
+    const std::string &filename,
+    const std::unordered_map<std::string, uint32_t> &idMap
+);
 
 /// Build hash map for O(1) IBD pair lookup: (min_idx << 32 | max_idx) → index.
 std::unordered_map<uint64_t, uint32_t> buildIBDPairMap(const std::vector<IndexedIBD> &ibdEntries);
@@ -55,8 +57,12 @@ class UnionFind {
   public:
     explicit UnionFind(uint32_t n);
     uint32_t find(uint32_t x);
+
     void unite(uint32_t a, uint32_t b);
-    uint32_t componentSize(uint32_t x) { return size_[find(x)]; }
+
+    uint32_t componentSize(uint32_t x) {
+        return size_[find(x)];
+    }
 
   private:
     std::vector<uint32_t> parent_;
@@ -65,8 +71,10 @@ class UnionFind {
 };
 
 /// Return connected components as vectors of node indices.
-std::vector<std::vector<uint32_t>> getComponents(uint32_t nNodes,
-                                                 const std::vector<std::pair<uint32_t, uint32_t>> &edges);
+std::vector<std::vector<uint32_t> > getComponents(
+    uint32_t nNodes,
+    const std::vector<std::pair<uint32_t, uint32_t> > &edges
+);
 
 // ══════════════════════════════════════════════════════════════════════
 // Quantile (R type=7 linear interpolation)
@@ -76,9 +84,11 @@ double quantile_r7(std::vector<double> &sorted, double prob);
 // ══════════════════════════════════════════════════════════════════════
 // Quadratic form R' * blockGRM * R for a (sub-)family.
 // ══════════════════════════════════════════════════════════════════════
-double familyQuadForm(const std::vector<uint32_t> &famMembers,
-                      const std::vector<SparseGRM::Entry> &entries,
-                      const Eigen::VectorXd &resid);
+double familyQuadForm(
+    const std::vector<uint32_t> &famMembers,
+    const std::vector<SparseGRM::Entry> &entries,
+    const Eigen::VectorXd &resid
+);
 
 // ══════════════════════════════════════════════════════════════════════
 // Prim's MST on small dense graphs (used for Chow-Liu tree)
@@ -87,15 +97,17 @@ struct MSTEdge {
     int from, to;
 };
 
-std::vector<MSTEdge> primMST(int N, const std::vector<std::vector<double>> &weight);
+std::vector<MSTEdge> primMST(int N, const std::vector<std::vector<double> > &weight);
 
 // ══════════════════════════════════════════════════════════════════════
 // Chow-Liu tree builder — 3^N × nMAF probability matrix
 // ══════════════════════════════════════════════════════════════════════
-Eigen::MatrixXd buildChowLiuTree(int N,
-                                 const std::vector<IndexedIBD> &familyIBD,
-                                 const std::vector<uint32_t> &famMembers,
-                                 const std::vector<double> &maf_interval);
+Eigen::MatrixXd buildChowLiuTree(
+    int N,
+    const std::vector<IndexedIBD> &familyIBD,
+    const std::vector<uint32_t> &famMembers,
+    const std::vector<double> &maf_interval
+);
 
 // ══════════════════════════════════════════════════════════════════════
 // Build stand.S array for a family of size N
@@ -108,18 +120,20 @@ std::vector<double> buildStandS(int N, const std::vector<double> &resid);
 // Shared by SPAGRM and SAGELD.  Takes a residual vector and everything
 // loaded by the run* entry point, returns a ready-to-use SPAGRMClass.
 // ══════════════════════════════════════════════════════════════════════
-SPAGRMClass buildSPAGRMNullModel(const Eigen::VectorXd &Resid,
-                                 uint32_t N,
-                                 const std::unordered_set<uint32_t> &singletonSet,
-                                 const std::vector<double> &grmDiag,
-                                 const std::vector<std::vector<uint32_t>> &families,
-                                 const std::vector<std::vector<SparseGRM::Entry>> &familyEntries,
-                                 const std::vector<SparseGRM::Entry> &allGrmEntries,
-                                 const std::vector<IndexedIBD> &ibdEntries,
-                                 const std::unordered_map<uint64_t, uint32_t> &ibdPairMap,
-                                 double spaCutoff,
-                                 double minMafCutoff,
-                                 double minMacCutoff,
-                                 int nthreads = 1);
+SPAGRMClass buildSPAGRMNullModel(
+    const Eigen::VectorXd &Resid,
+    uint32_t N,
+    const std::unordered_set<uint32_t> &singletonSet,
+    const std::vector<double> &grmDiag,
+    const std::vector<std::vector<uint32_t> > &families,
+    const std::vector<std::vector<SparseGRM::Entry> > &familyEntries,
+    const std::vector<SparseGRM::Entry> &allGrmEntries,
+    const std::vector<IndexedIBD> &ibdEntries,
+    const std::unordered_map<uint64_t, uint32_t> &ibdPairMap,
+    double spaCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    int nthreads = 1
+);
 
 } // namespace nsGRMNull

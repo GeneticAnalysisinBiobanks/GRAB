@@ -24,13 +24,15 @@ namespace nsSPAGRM {
 // MGF and its first two derivatives
 // ──────────────────────────────────────────────────────────────────────
 
-void mgf(double t,
-         const Eigen::VectorXd &resid_unrelated_outliers,
-         const std::vector<std::array<double, 2>> &TwoSubj_resid,
-         const std::vector<std::vector<double>> &TwoSubj_rho,
-         const std::vector<UpdatedThreeSubj> &threeSubj,
-         double MAF,
-         MgfWorkspace &ws) {
+void mgf(
+    double t,
+    const Eigen::VectorXd &resid_unrelated_outliers,
+    const std::vector<std::array<double, 2> > &TwoSubj_resid,
+    const std::vector<std::vector<double> > &TwoSubj_rho,
+    const std::vector<UpdatedThreeSubj> &threeSubj,
+    double MAF,
+    MgfWorkspace &ws
+) {
     Eigen::Index w = 0;
     const Eigen::Index nu = resid_unrelated_outliers.size();
 
@@ -109,20 +111,24 @@ void mgf(double t,
 // Newton-Raphson root finder
 // ──────────────────────────────────────────────────────────────────────
 
-static inline double signOf(double x) { return (x > 0.0) ? 1.0 : ((x < 0.0) ? -1.0 : 0.0); }
+static inline double signOf(double x) {
+    return (x > 0.0) ? 1.0 : ((x < 0.0) ? -1.0 : 0.0);
+}
 
-double fastGetRoot(const Eigen::VectorXd &resid_unrelated_outliers,
-                   const std::vector<std::array<double, 2>> &TwoSubj_resid,
-                   const std::vector<std::vector<double>> &TwoSubj_rho,
-                   const std::vector<UpdatedThreeSubj> &threeSubj,
-                   double sum_R_nonOutlier,
-                   double R_GRM_R_nonOutlier,
-                   double Score,
-                   double MAF,
-                   double init_t,
-                   double tol,
-                   MgfWorkspace &ws,
-                   int maxiter) {
+double fastGetRoot(
+    const Eigen::VectorXd &resid_unrelated_outliers,
+    const std::vector<std::array<double, 2> > &TwoSubj_resid,
+    const std::vector<std::vector<double> > &TwoSubj_rho,
+    const std::vector<UpdatedThreeSubj> &threeSubj,
+    double sum_R_nonOutlier,
+    double R_GRM_R_nonOutlier,
+    double Score,
+    double MAF,
+    double init_t,
+    double tol,
+    MgfWorkspace &ws,
+    int maxiter
+) {
     double t = init_t;
     double CGF1 = 0.0, CGF2 = 0.0;
     double diff_t = std::numeric_limits<double>::infinity();
@@ -191,18 +197,20 @@ double fastGetRoot(const Eigen::VectorXd &resid_unrelated_outliers,
 // Saddlepoint approximation tail probability
 // ──────────────────────────────────────────────────────────────────────
 
-double getProbSpa(const Eigen::VectorXd &resid_unrelated_outliers,
-                  const std::vector<std::array<double, 2>> &TwoSubj_resid,
-                  const std::vector<std::vector<double>> &TwoSubj_rho,
-                  const std::vector<UpdatedThreeSubj> &threeSubj,
-                  double sum_R_nonOutlier,
-                  double R_GRM_R_nonOutlier,
-                  double Score,
-                  double MAF,
-                  bool lower_tail,
-                  double zeta,
-                  double tol,
-                  MgfWorkspace &ws) {
+double getProbSpa(
+    const Eigen::VectorXd &resid_unrelated_outliers,
+    const std::vector<std::array<double, 2> > &TwoSubj_resid,
+    const std::vector<std::vector<double> > &TwoSubj_rho,
+    const std::vector<UpdatedThreeSubj> &threeSubj,
+    double sum_R_nonOutlier,
+    double R_GRM_R_nonOutlier,
+    double Score,
+    double MAF,
+    bool lower_tail,
+    double zeta,
+    double tol,
+    MgfWorkspace &ws
+) {
     zeta = fastGetRoot(resid_unrelated_outliers, TwoSubj_resid, TwoSubj_rho, threeSubj, sum_R_nonOutlier,
                        R_GRM_R_nonOutlier, Score, MAF, zeta, tol, ws);
 
@@ -240,22 +248,24 @@ double getProbSpa(const Eigen::VectorXd &resid_unrelated_outliers,
 // SPAGRMClass
 // ══════════════════════════════════════════════════════════════════════
 
-SPAGRMClass::SPAGRMClass(Eigen::VectorXd resid,
-                         double sum_R_nonOutlier,
-                         double R_GRM_R_nonOutlier,
-                         double R_GRM_R_TwoSubjOutlier,
-                         double R_GRM_R,
-                         std::vector<double> MAF_interval,
-                         nsSPAGRM::FamilyData fam,
-                         double SPA_Cutoff,
-                         double zeta,
-                         double tol)
+SPAGRMClass::SPAGRMClass(
+    Eigen::VectorXd resid,
+    double sum_R_nonOutlier,
+    double R_GRM_R_nonOutlier,
+    double R_GRM_R_TwoSubjOutlier,
+    double R_GRM_R,
+    std::vector<double> MAF_interval,
+    nsSPAGRM::FamilyData fam,
+    double SPA_Cutoff,
+    double zeta,
+    double tol
+)
     : m_resid(std::move(resid)), m_resid_unrelated_outliers(std::move(fam.resid_unrelated_outliers)),
-      m_sum_unrelated_outliers2(m_resid_unrelated_outliers.squaredNorm()), m_sum_R_nonOutlier(sum_R_nonOutlier),
-      m_R_GRM_R_nonOutlier(R_GRM_R_nonOutlier), m_R_GRM_R_TwoSubjOutlier(R_GRM_R_TwoSubjOutlier), m_R_GRM_R(R_GRM_R),
-      m_MAF_interval(std::move(MAF_interval)), m_TwoSubj_resid_list(std::move(fam.twoSubj_resid)),
-      m_TwoSubj_rho_list(std::move(fam.twoSubj_rho)), m_ThreeSubj_standS_list(std::move(fam.threeSubj_standS)),
-      m_ThreeSubj_CLT_list(std::move(fam.threeSubj_CLT)), m_SPA_Cutoff(SPA_Cutoff), m_zeta(zeta), m_tol(tol) {
+    m_sum_unrelated_outliers2(m_resid_unrelated_outliers.squaredNorm()), m_sum_R_nonOutlier(sum_R_nonOutlier),
+    m_R_GRM_R_nonOutlier(R_GRM_R_nonOutlier), m_R_GRM_R_TwoSubjOutlier(R_GRM_R_TwoSubjOutlier), m_R_GRM_R(R_GRM_R),
+    m_MAF_interval(std::move(MAF_interval)), m_TwoSubj_resid_list(std::move(fam.twoSubj_resid)),
+    m_TwoSubj_rho_list(std::move(fam.twoSubj_rho)), m_ThreeSubj_standS_list(std::move(fam.threeSubj_standS)),
+    m_ThreeSubj_CLT_list(std::move(fam.threeSubj_CLT)), m_SPA_Cutoff(SPA_Cutoff), m_zeta(zeta), m_tol(tol) {
     const auto n_unrel = m_resid_unrelated_outliers.size();
     const auto mgfSz = static_cast<Eigen::Index>(
         nsSPAGRM::mgfOutputSize(static_cast<size_t>(n_unrel), m_TwoSubj_rho_list, m_ThreeSubj_standS_list.size()));
@@ -271,11 +281,11 @@ SPAGRMClass::SPAGRMClass(Eigen::VectorXd resid,
 
 SPAGRMClass::SPAGRMClass(const SPAGRMClass &o)
     : m_resid(o.m_resid), m_resid_unrelated_outliers(o.m_resid_unrelated_outliers),
-      m_sum_unrelated_outliers2(o.m_sum_unrelated_outliers2), m_sum_R_nonOutlier(o.m_sum_R_nonOutlier),
-      m_R_GRM_R_nonOutlier(o.m_R_GRM_R_nonOutlier), m_R_GRM_R_TwoSubjOutlier(o.m_R_GRM_R_TwoSubjOutlier),
-      m_R_GRM_R(o.m_R_GRM_R), m_MAF_interval(o.m_MAF_interval), m_TwoSubj_resid_list(o.m_TwoSubj_resid_list),
-      m_TwoSubj_rho_list(o.m_TwoSubj_rho_list), m_ThreeSubj_standS_list(o.m_ThreeSubj_standS_list),
-      m_ThreeSubj_CLT_list(o.m_ThreeSubj_CLT_list), m_SPA_Cutoff(o.m_SPA_Cutoff), m_zeta(o.m_zeta), m_tol(o.m_tol) {
+    m_sum_unrelated_outliers2(o.m_sum_unrelated_outliers2), m_sum_R_nonOutlier(o.m_sum_R_nonOutlier),
+    m_R_GRM_R_nonOutlier(o.m_R_GRM_R_nonOutlier), m_R_GRM_R_TwoSubjOutlier(o.m_R_GRM_R_TwoSubjOutlier),
+    m_R_GRM_R(o.m_R_GRM_R), m_MAF_interval(o.m_MAF_interval), m_TwoSubj_resid_list(o.m_TwoSubj_resid_list),
+    m_TwoSubj_rho_list(o.m_TwoSubj_rho_list), m_ThreeSubj_standS_list(o.m_ThreeSubj_standS_list),
+    m_ThreeSubj_CLT_list(o.m_ThreeSubj_CLT_list), m_SPA_Cutoff(o.m_SPA_Cutoff), m_zeta(o.m_zeta), m_tol(o.m_tol) {
     // Rebuild scratch for thread safety
     const auto n_unrel = m_resid_unrelated_outliers.size();
     const auto mgfSz = static_cast<Eigen::Index>(
@@ -298,7 +308,7 @@ double SPAGRMClass::getMarkerPval(const Eigen::VectorXd &GVec, double altFreq, d
     zScore = Score / std::sqrt(Score_var);
 
     if (std::abs(zScore) <= m_SPA_Cutoff) {
-        return 2.0 * math::pnorm(std::abs(zScore), 0.0, 1.0, /*lower_tail=*/false);
+        return 2.0 * math::pnorm(std::abs(zScore), 0.0, 1.0, /*lower_tail=*/ false);
     }
 
     int order2 =
@@ -354,12 +364,12 @@ namespace {
 
 struct GRMTopology {
     std::unordered_set<uint32_t> singletonSet;
-    std::vector<std::vector<uint32_t>> families;
-    std::vector<std::vector<SparseGRM::Entry>> familyEntries;
+    std::vector<std::vector<uint32_t> > families;
+    std::vector<std::vector<SparseGRM::Entry> > familyEntries;
 };
 
 GRMTopology buildTopology(uint32_t N, const std::vector<SparseGRM::Entry> &entries) {
-    std::vector<std::pair<uint32_t, uint32_t>> edges;
+    std::vector<std::pair<uint32_t, uint32_t> > edges;
     {
         std::unordered_set<uint64_t> seen;
         for (const auto &e : entries) {
@@ -373,7 +383,7 @@ GRMTopology buildTopology(uint32_t N, const std::vector<SparseGRM::Entry> &entri
     auto components = nsGRMNull::getComponents(N, edges);
 
     GRMTopology topo;
-    std::vector<std::vector<uint32_t>> singletons;
+    std::vector<std::vector<uint32_t> > singletons;
     for (auto &comp : components) {
         if (comp.size() == 1)
             singletons.push_back(std::move(comp));
@@ -402,24 +412,26 @@ GRMTopology buildTopology(uint32_t N, const std::vector<SparseGRM::Entry> &entri
 // runSPAGRM — entry point
 // ══════════════════════════════════════════════════════════════════════
 
-void runSPAGRM(const std::string &phenoFile,
-               const std::vector<std::string> &residNames,
-               const std::string &spgrmGrabFile,
-               const std::string &spgrmGctaFile,
-               const std::string &pairwiseIBDFile,
-               const GenoSpec &geno,
-               const std::string &outPrefix,
-               const std::string &compression,
-               int compressionLevel,
-               double spaCutoff,
-               int nthreads,
-               int nSnpPerChunk,
-               double missingCutoff,
-               double minMafCutoff,
-               double minMacCutoff,
-               double hweCutoff,
-               const std::string &keepFile,
-               const std::string &removeFile) {
+void runSPAGRM(
+    const std::string &phenoFile,
+    const std::vector<std::string> &residNames,
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const std::string &pairwiseIBDFile,
+    const GenoSpec &geno,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double spaCutoff,
+    int nthreads,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile,
+    const std::string &removeFile
+) {
     infoMsg("Loading pheno file: %s", phenoFile.c_str());
     auto famIIDs = parseGenoIIDs(geno);
     SubjectData sd(std::move(famIIDs));
