@@ -12,10 +12,10 @@
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <limits>
 #include <numeric>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -223,18 +223,19 @@ std::vector<RefAfRecord> loadRefAfFile(
         if (line.empty()) continue;
         if (line[0] != '#') break; // first non-header line
         // Parse header columns
-        std::istringstream hss(line);
-        std::string tok;
+        text::TokenScanner hts(line);
         int col = 0;
-        while (hss >> tok) {
+        while (!hts.atEnd()) {
+            auto sv = hts.nextView();
+            if (sv.empty()) break;
             // Strip leading '#' from the first token
-            if (col == 0 && !tok.empty() && tok[0] == '#') tok = tok.substr(1);
-            if (tok == "CHROM")colChrom = col;
-            else if (tok == "ID")colId = col;
-            else if (tok == "REF")colRef = col;
-            else if (tok == "ALT" || tok == "ALT1")colAlt = col;
-            else if (tok == "ALT_FREQS" || tok == "ALT1_FREQ")colAltFreqs = col;
-            else if (tok == "OBS_CT")colObsCt = col;
+            if (col == 0 && !sv.empty() && sv[0] == '#') sv.remove_prefix(1);
+            if (sv == "CHROM")colChrom = col;
+            else if (sv == "ID")colId = col;
+            else if (sv == "REF")colRef = col;
+            else if (sv == "ALT" || sv == "ALT1")colAlt = col;
+            else if (sv == "ALT_FREQS" || sv == "ALT1_FREQ")colAltFreqs = col;
+            else if (sv == "OBS_CT")colObsCt = col;
             ++col;
         }
         // Keep reading — last '#' line wins (plink2 puts one header line)
@@ -246,23 +247,34 @@ std::vector<RefAfRecord> loadRefAfFile(
         // numeric tokens, treat the whole file as (ALT_FREQS  OBS_CT) rows
         // assumed to be in .bim order.
         if (!line.empty() && line[0] != '#') {
-            char *end1 = nullptr;
-            char *end2 = nullptr;
-            std::istringstream probe(line);
-            std::string t1, t2, t3;
-            if ((probe >> t1 >> t2) && !(probe >> t3)) {
-                std::strtod(t1.c_str(), &end1);
-                std::strtod(t2.c_str(), &end2);
-                if (end1 != t1.c_str() && end2 != t2.c_str()) {
+            text::TokenScanner probe(line);
+            auto sv1 = probe.nextView();
+            auto sv2 = probe.nextView();
+            probe.skipWS();
+            if (!sv1.empty() && !sv2.empty() && probe.atEnd()) {
+                char *end1 = nullptr, *end2 = nullptr;
+                std::strtod(sv1.data(), &end1);
+                std::strtod(sv2.data(), &end2);
+                if (end1 != sv1.data() && end2 != sv2.data()) {
                     // Confirmed two-column numeric format
                     if (isNumericFallback) *isNumericFallback = true;
                     uint32_t lineNo = 0;
                     auto parseNumLine = [&](const std::string &ln) {
                         ++lineNo;
                         if (ln.empty()) return;
-                        std::istringstream iss(ln);
+                        text::TokenScanner ts(ln);
+                        ts.skipWS();
+                        char *ep;
                         RefAfRecord r;
-                        if (!(iss >> r.alt_freq >> r.obs_ct)) throw std::runtime_error(
+                        r.alt_freq = std::strtod(ts.pos(), &ep);
+                        if (ep == ts.pos()) throw std::runtime_error(
+                                      filename + " line " + std::to_string(lineNo) +
+                                      ": expected 2 numeric columns (ALT_FREQS OBS_CT)"
+                        );
+                        ts.p = ep;
+                        ts.skipWS();
+                        r.obs_ct = std::strtod(ts.pos(), &ep);
+                        if (ep == ts.pos()) throw std::runtime_error(
                                       filename + " line " + std::to_string(lineNo) +
                                       ": expected 2 numeric columns (ALT_FREQS OBS_CT)"
                         );
@@ -293,23 +305,26 @@ std::vector<RefAfRecord> loadRefAfFile(
     auto parseLine = [&](const std::string &ln) {
         ++lineNo;
         if (ln.empty()) return;
-        // Tokenise
-        std::vector<std::string> tokens;
-        tokens.reserve(maxCol + 2);
-        std::istringstream iss(ln);
-        std::string t;
-        while (iss >> t)
-            tokens.push_back(std::move(t));
-        if (static_cast<int>(tokens.size()) <= maxCol) throw std::runtime_error(
+        // Tokenise with zero-copy scanner, only allocate strings we keep
+        text::TokenScanner ts(ln);
+        // Read tokens up to maxCol+1
+        std::vector<std::string_view> tokViews;
+        tokViews.reserve(maxCol + 2);
+        while (!ts.atEnd()) {
+            auto sv = ts.nextView();
+            if (sv.empty()) break;
+            tokViews.push_back(sv);
+        }
+        if (static_cast<int>(tokViews.size()) <= maxCol) throw std::runtime_error(
                       filename + " line " + std::to_string(lineNo) + ": expected at least " +
-                      std::to_string(maxCol + 1) + " columns, got " + std::to_string(tokens.size())
+                      std::to_string(maxCol + 1) + " columns, got " + std::to_string(tokViews.size())
         );
 
         RefAfRecord r;
-        r.chrom = std::move(tokens[colChrom]);
-        r.id = std::move(tokens[colId]);
-        r.ref_allele = std::move(tokens[colRef]);
-        r.alt_allele = std::move(tokens[colAlt]);
+        r.chrom = std::string(tokViews[colChrom]);
+        r.id = std::string(tokViews[colId]);
+        r.ref_allele = std::string(tokViews[colRef]);
+        r.alt_allele = std::string(tokViews[colAlt]);
         // Uppercase alleles for consistent matching
         for (auto &ch : r.ref_allele)
             ch = static_cast<char>(std::toupper(ch));
@@ -317,18 +332,18 @@ std::vector<RefAfRecord> loadRefAfFile(
             ch = static_cast<char>(std::toupper(ch));
 
         char *endPtr;
-        r.alt_freq = std::strtod(tokens[colAltFreqs].c_str(), &endPtr);
-        if (endPtr ==
-            tokens[colAltFreqs].c_str()) throw std::runtime_error(
+        const auto &afSv = tokViews[colAltFreqs];
+        r.alt_freq = std::strtod(afSv.data(), &endPtr);
+        if (endPtr == afSv.data()) throw std::runtime_error(
                       filename + " line " +
                       std::to_string(lineNo) + ": invalid ALT_FREQS value"
-            );
-        r.obs_ct = std::strtod(tokens[colObsCt].c_str(), &endPtr);
-        if (endPtr ==
-            tokens[colObsCt].c_str()) throw std::runtime_error(
+        );
+        const auto &ctSv = tokViews[colObsCt];
+        r.obs_ct = std::strtod(ctSv.data(), &endPtr);
+        if (endPtr == ctSv.data()) throw std::runtime_error(
                       filename + " line " +
                       std::to_string(lineNo) + ": invalid OBS_CT value"
-            );
+        );
         recs.push_back(std::move(r));
     };
 
@@ -1071,18 +1086,29 @@ void runWtCoxGPheno(
         infoMsg("  Survival phenotype: time=%s, event=%s", phenoNames[0].c_str(), phenoNames[1].c_str());
     } else {
         indicator = sd.getColumn(phenoNames[0]);
+        // Validate binary: all values must be 0 or 1
+        for (Eigen::Index i = 0; i < indicator.size(); ++i) {
+            double v = indicator[i];
+            if (v != 0.0 && v != 1.0)
+                throw std::runtime_error(
+                          "Phenotype '" + phenoNames[0] + "' is not binary"
+                          " (found value " + std::to_string(v) + ")."
+                          " For survival phenotypes use --pheno-name TIME:EVENT.");
+        }
         infoMsg("  Binary phenotype: %s", phenoNames[0].c_str());
     }
 
     // ---- Build design matrices ----
     // Logistic: [1 | covariates] (intercept needed)
     // Cox PH:   [covariates]     (no intercept — absorbed into baseline hazard)
-    const int nCov = covarNames.empty() ? 0 : static_cast<int>(covarNames.size());
     Eigen::MatrixXd covarMat;
-    if (nCov > 0) {
+    if (!covarNames.empty()) {
         covarMat = sd.getColumns(covarNames);
-        infoMsg("  %d covariate(s) from --covar-name", nCov);
+    } else if (sd.hasCovar()) {
+        covarMat = sd.covar();
     }
+    const int nCov = static_cast<int>(covarMat.cols());
+    if (nCov > 0) infoMsg("  %d covariate(s)", nCov);
 
     // ---- Compute regression weights ----
     Eigen::VectorXd regrWeight = regression::calRegrWeight(refPrevalence, indicator);
@@ -1240,9 +1266,13 @@ void runWtCoxG(
     infoMsg("  %lld subjects after intersection", static_cast<long long>(N));
 
     // Shared covariate matrix
-    const int nCov = covarNames.empty() ? 0 : static_cast<int>(covarNames.size());
     Eigen::MatrixXd covarMat;
-    if (nCov > 0) covarMat = sd.getColumns(covarNames);
+    if (!covarNames.empty()) {
+        covarMat = sd.getColumns(covarNames);
+    } else if (sd.hasCovar()) {
+        covarMat = sd.covar();
+    }
+    const int nCov = static_cast<int>(covarMat.cols());
 
     // Shared ref-AF
     infoMsg("Loading ref-af file: %s", refAfFile.c_str());
@@ -1302,6 +1332,15 @@ void runWtCoxG(
                         pd[p].indicator = sd.getColumn(cols[1]);
                     } else {
                         pd[p].indicator = sd.getColumn(cols[0]);
+                        // Validate binary: all values must be 0 or 1
+                        for (Eigen::Index i = 0; i < pd[p].indicator.size(); ++i) {
+                            double v = pd[p].indicator[i];
+                            if (v != 0.0 && v != 1.0)
+                                throw std::runtime_error(
+                                          "Phenotype '" + cols[0] + "' is not binary"
+                                          " (found value " + std::to_string(v) + ")."
+                                          " For survival phenotypes use --pheno-name TIME:EVENT.");
+                        }
                     }
 
                     pd[p].weights = regression::calRegrWeight(

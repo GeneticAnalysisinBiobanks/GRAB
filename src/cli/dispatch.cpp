@@ -6,6 +6,7 @@
 #include "cli/cli.hpp"
 #include "cli/flags.hpp"
 #include "geno_factory/geno_data.hpp"
+#include "io/subject_data.hpp"
 #include "util/logging.hpp"
 
 #include "localplus/abed_convert_msp.hpp"
@@ -26,6 +27,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <ctime>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -472,19 +474,22 @@ int run(
     {
         const bool hasPhenoName = !args.phenoName.empty();
         const bool hasResidName = !args.residName.empty();
-        if (args.method == "POLMM") {
-            if (!hasPhenoName) {
-                std::cerr << "Error: POLMM requires --pheno-name.\n";
-                return 1;
+        if (args.method == "SPAsqr" || args.method == "POLMM" ||
+            args.method == "WtCoxG" || args.method == "LEAF") {
+            // Auto-populate from pheno file header when --pheno-name is absent
+            if (!hasPhenoName && !args.phenoFile.empty()) {
+                phenoNames = SubjectData::readColumnNames(args.phenoFile);
+                if (args.method == "WtCoxG" || args.method == "LEAF") {
+                    infoMsg("--pheno-name not specified; using all %zu phenotype"
+                            " columns as binary traits", phenoNames.size());
+                } else {
+                    infoMsg("--pheno-name not specified; using all %zu phenotype columns",
+                            phenoNames.size());
+                }
             }
-        } else if (args.method == "WtCoxG" || args.method == "LEAF") {
-            if (!hasPhenoName) {
-                std::cerr << "Error: " << args.method << " requires --pheno-name.\n";
-                return 1;
-            }
-        } else if (args.method == "SPAsqr") {
-            if (!hasPhenoName) {
-                std::cerr << "Error: SPAsqr requires --pheno-name.\n";
+            if (phenoNames.empty()) {
+                std::cerr << "Error: " << args.method << " requires --pheno-name"
+                    " (or a --pheno file with named columns).\n";
                 return 1;
             }
         }
@@ -679,37 +684,90 @@ int run(
                 }
                 taus.push_back(t);
             }
-            if (phenoNames.empty()) {
-                std::cerr << "Error: --pheno-name is required for SPAsqr.\n";
-                return 1;
+            if (!args.predListFile.empty()) {
+                // Early validation: check all phenotypes have LOCO entries
+                {
+                    std::ifstream pf(args.predListFile);
+                    if (!pf.is_open()) {
+                        std::cerr << "Error: cannot open --pred-list file: "
+                                  << args.predListFile << "\n";
+                        return 1;
+                    }
+                    std::unordered_set<std::string> predPhenos;
+                    std::string ln;
+                    while (std::getline(pf, ln)) {
+                        if (ln.empty()) continue;
+                        std::istringstream lss(ln);
+                        std::string ph;
+                        lss >> ph;
+                        if (!ph.empty()) predPhenos.insert(ph);
+                    }
+                    for (const auto &pn : phenoNames) {
+                        if (predPhenos.find(pn) == predPhenos.end()) {
+                            std::cerr << "Error: phenotype '" << pn
+                                      << "' not found in --pred-list file: "
+                                      << args.predListFile << "\n";
+                            return 1;
+                        }
+                    }
+                }
+                runSPAsqrLoco(
+                    args.phenoFile,
+                    effectiveCovarFile,
+                    phenoNames,
+                    covarNames,
+                    taus,
+                    args.spGrmGrabFile,
+                    args.spGrmPlink2File,
+                    geno,
+                    args.predListFile,
+                    args.outPrefix,
+                    args.compression,
+                    args.compressionLevel,
+                    args.spaCutoff,
+                    args.outlierRatio,
+                    args.outlierAbsBound,
+                    args.nthread,
+                    args.nSnpPerChunk,
+                    args.missingCutoff,
+                    args.minMafCutoff,
+                    args.minMacCutoff,
+                    args.hweCutoff,
+                    args.spasqrTol,
+                    args.spasqrH,
+                    args.spasqrHScale,
+                    args.keepFile,
+                    args.removeFile
+                );
+            } else {
+                runSPAsqr(
+                    args.phenoFile,
+                    effectiveCovarFile,
+                    phenoNames,
+                    covarNames,
+                    taus,
+                    args.spGrmGrabFile,
+                    args.spGrmPlink2File,
+                    geno,
+                    args.outPrefix,
+                    args.compression,
+                    args.compressionLevel,
+                    args.spaCutoff,
+                    args.outlierRatio,
+                    args.outlierAbsBound,
+                    args.nthread,
+                    args.nSnpPerChunk,
+                    args.missingCutoff,
+                    args.minMafCutoff,
+                    args.minMacCutoff,
+                    args.hweCutoff,
+                    args.spasqrTol,
+                    args.spasqrH,
+                    args.spasqrHScale,
+                    args.keepFile,
+                    args.removeFile
+                );
             }
-            runSPAsqr(
-                args.phenoFile,
-                effectiveCovarFile,
-                phenoNames,
-                covarNames,
-                taus,
-                args.spGrmGrabFile,
-                args.spGrmPlink2File,
-                geno,
-                args.outPrefix,
-                args.compression,
-                args.compressionLevel,
-                args.spaCutoff,
-                args.outlierRatio,
-                args.outlierAbsBound,
-                args.nthread,
-                args.nSnpPerChunk,
-                args.missingCutoff,
-                args.minMafCutoff,
-                args.minMacCutoff,
-                args.hweCutoff,
-                args.spasqrTol,
-                args.spasqrH,
-                args.spasqrHScale,
-                args.keepFile,
-                args.removeFile
-            );
         }
 
         // ── WtCoxG ─────────────────────────────────────────────────
@@ -718,11 +776,6 @@ int run(
             if (args.refPrevalence <= 0.0) {
                 std::cerr << "Error: --prevalence is required for WtCoxG"
                     " and must be positive.\n";
-                return 1;
-            }
-            if (phenoNames.empty()) {
-                std::cerr << "Error: --pheno-name is required for WtCoxG."
-                    " Use TIME:EVENT for survival or COLNAME for binary.\n";
                 return 1;
             }
             checkSpGrm(args, /*required=*/ false, "WtCoxG");
@@ -772,11 +825,6 @@ int run(
             if (nClusters < 2) {
                 std::cerr << "Error: LEAF needs at least"
                     " 2 clusters (--leaf-nclusters or 2+ --ref-af).\n";
-                return 1;
-            }
-            if (phenoNames.empty()) {
-                std::cerr << "Error: --pheno-name is required for LEAF."
-                    " Use TIME:EVENT for survival or COLNAME for binary.\n";
                 return 1;
             }
             // Multi-phenotype entry point: shared K-means + geno scan + summix + GRM,

@@ -202,7 +202,7 @@ inline const FlagDef kCompression = {
 };
 
 inline const FlagDef kCompressionLevel = {
-    "--compression-level", "INT", "Compression level (gz: 1-9, zst: 1-22; default: 0 = library default)", 
+    "--compression-level", "INT", "Compression level (gz: 1-9, zst: 1-22; default: 0 = library default)",
     nullptr
 };
 
@@ -247,6 +247,11 @@ inline const FlagDef kRemove = {
     nullptr
 };
 
+inline const FlagDef kPredList = {
+    "--pred-list", "FILE", "Regenie step 1 pred.list file for LOCO analysis (phenoName locoPath per line)",
+    R"(Space-separated file with two columns: phenotype name and path to
+the corresponding .loco file from Regenie step 1.)"
+};
 
 inline const FlagDef kExtract = {
     "--extract", "FILE", "Restrict analysis to SNPs listed in file (one ID per line)",
@@ -473,7 +478,7 @@ inline const FlagDef *const kSPAsqrOpt[] = {
     &kPhenoName,    &kSpasqrTaus, &kSpasqrTol,  &kSpasqrH,
     &kSpasqrHScale, &kOutlierIqr, &kOutlierAbs,
     &kSpaZThresh,   &kThreads,    &kChunkSize,  &kGeno, &kMaf,
-    &kMac,          &kHwe,        &kChr,
+    &kMac,          &kHwe,        &kChr,        &kPredList,
     nullptr
 };
 

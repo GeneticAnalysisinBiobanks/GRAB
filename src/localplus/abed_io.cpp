@@ -3,6 +3,7 @@
 #include "localplus/abed_io.hpp"
 #include "io/subject_data.hpp" // parseFamIIDs, parseBimLines
 #include "util/logging.hpp"
+#include "util/text_scanner.hpp"
 
 extern "C" {
 #include <htslib/bgzf.h>
@@ -13,9 +14,9 @@ extern "C" {
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
-#include <sstream>
 #include <stdexcept>
 #include <unordered_set>
 
@@ -30,11 +31,18 @@ static std::vector<GenoMeta::MarkerInfo> parseBimFile(const std::string &bimFile
     uint64_t idx = 0;
     while (std::getline(ifs, line)) {
         if (line.empty() || line[0] == '#') continue;
-        std::istringstream ss(line);
-        std::string chrom, id, cm, ref, alt;
-        uint32_t pos = 0;
-        ss >> chrom >> id >> cm >> pos >> ref >> alt;
-        if (ss.fail()) throw std::runtime_error("Malformed BIM line: " + line);
+        text::TokenScanner ts(line);
+        std::string chrom = ts.next();
+        std::string id    = ts.next();
+        ts.nextView(); // skip cM
+        ts.skipWS();
+        char *ep;
+        uint32_t pos = static_cast<uint32_t>(std::strtoul(ts.pos(), &ep, 10));
+        ts.p = ep;
+        std::string ref = ts.next();
+        std::string alt = ts.next();
+        if (chrom.empty() || id.empty())
+            throw std::runtime_error("Malformed BIM line: " + line);
         markers.push_back({std::move(chrom), pos, std::move(id), std::move(ref), std::move(alt), idx++});
     }
     return markers;

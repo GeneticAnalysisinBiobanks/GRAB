@@ -10,6 +10,7 @@
 #include "io/subject_data.hpp"
 #include "io/subject_set.hpp"
 #include "util/logging.hpp"
+#include "util/text_scanner.hpp"
 #include "util/text_stream.hpp"
 
 #include <algorithm>
@@ -22,9 +23,9 @@
 
 #include <condition_variable>
 #include <cstdio>
+#include <cstdlib>
 #include <mutex>
 #include <numeric>
-#include <sstream>
 #include <stdexcept>
 #include <thread>
 #include <unordered_map>
@@ -886,12 +887,11 @@ static std::vector<PhiMatrices> readPhiWide(
     if (!reader.getline(header)) throw std::runtime_error("Cannot read phi file header: " + path);
     // Validate header: first token must be idx1 or #idx1
     {
-        std::istringstream hs(header);
-        std::string firstCol;
-        hs >> firstCol;
+        text::TokenScanner hts(header);
+        auto firstCol = hts.nextView();
         if (firstCol != "idx1" && firstCol != "#idx1")throw std::runtime_error(path +
                                                                                ": header must start with idx1 or #idx1, got '"
-                                                                               + firstCol + "'");
+                                                                               + std::string(firstCol) + "'");
     }
 
     int nCols = K * 4;
@@ -900,15 +900,19 @@ static std::vector<PhiMatrices> readPhiWide(
     std::string line;
     while (reader.getline(line)) {
         if (line.empty()) continue;
-        std::istringstream ss(line);
-        uint32_t i, j;
-        ss >> i >> j;
+        text::TokenScanner ts(line);
+        ts.skipWS();
+        char *ep;
+        uint32_t i = static_cast<uint32_t>(std::strtoul(ts.pos(), &ep, 10));
+        ts.p = ep;
+        ts.skipWS();
+        uint32_t j = static_cast<uint32_t>(std::strtoul(ts.pos(), &ep, 10));
+        ts.p = ep;
 
         for (int c = 0; c < nCols; ++c) {
-            std::string tok;
-            ss >> tok;
-            if (tok == "NA" || tok.empty()) continue;
-            double val = std::stod(tok);
+            auto sv = ts.nextView();
+            if (sv.empty() || sv == "NA") continue;
+            double val = std::strtod(sv.data(), &ep);
             int k = c / 4;
             int s = c % 4;
             PhiEntry entry{i, j, val};

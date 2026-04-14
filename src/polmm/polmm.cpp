@@ -1531,12 +1531,14 @@ void runPOLMM(
     sd.fillColumnsInto(phenoNames, phenoMat);
 
     // Extract covariates once (union-sized)
-    const int nCovar = static_cast<int>(covarNames.size());
     Eigen::MatrixXd unionCovar;
-    if (nCovar > 0) {
-        unionCovar.resize(N_union, nCovar);
+    if (!covarNames.empty()) {
+        unionCovar.resize(N_union, static_cast<Eigen::Index>(covarNames.size()));
         sd.fillColumnsInto(covarNames, unionCovar);
+    } else if (sd.hasCovar()) {
+        unionCovar = sd.covar();
     }
+    const int nCovar = static_cast<int>(unionCovar.cols());
 
     // Per-phenotype mappings
     struct PerPhenoMap {

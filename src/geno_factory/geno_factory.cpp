@@ -12,10 +12,11 @@
 #include "util/logging.hpp"
 
 #include <fstream>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+#include "util/text_scanner.hpp"
 
 extern "C" {
 #include <htslib/hts.h>
@@ -35,11 +36,12 @@ static std::vector<std::string> parsePsamIIDs(const std::string &psamFile) {
     while (std::getline(ifs, line)) {
         if (line.empty()) continue;
         if (line[0] == '#' && line.size() > 1 && line[1] == '#') continue; // ## comment
-        std::istringstream iss(line);
+        text::TokenScanner ts(line);
         std::vector<std::string> toks;
-        std::string tok;
-        while (iss >> tok)
-            toks.push_back(tok);
+        while (!ts.atEnd()) {
+            auto sv = ts.nextView();
+            if (!sv.empty()) toks.emplace_back(sv);
+        }
         if (toks.empty()) continue;
         if (!headerSeen && (toks[0] == "#FID" || toks[0] == "FID" || toks[0] == "#IID" || toks[0] == "IID")) {
             headerSeen = true;
@@ -125,9 +127,9 @@ static std::vector<std::string> parseBgenSampleIDs(const std::string &bgenFile) 
             while (std::getline(sfs, line)) {
                 if (line.empty()) continue;
                 // IID is the second whitespace-delimited token
-                std::istringstream iss(line);
-                std::string fid, iid;
-                iss >> fid >> iid;
+                text::TokenScanner ts(line);
+                std::string fid = ts.next();
+                std::string iid = ts.next();
                 if (iid.empty()) iid = fid; // single-column fallback
                 ids.push_back(std::move(iid));
             }

@@ -353,16 +353,20 @@ bool TextReader::getline(std::string &line) {
     }
     case Mode::Zstd: {
         while (true) {
-            // Scan decompressed buffer for newline
-            while (m_zOutPos < m_zOutSize) {
-                char c = m_zOutBuf[m_zOutPos++];
-                if (c == '\n') {
-                    if (!line.empty() && line.back() == '\r') line.pop_back();
-                    return true;
-                }
-                line += c;
+            // Scan decompressed buffer for newline — batch append between newlines
+            const char *scanStart = m_zOutBuf + m_zOutPos;
+            const char *scanEnd   = m_zOutBuf + m_zOutSize;
+            const char *nl = static_cast<const char *>(
+                std::memchr(scanStart, '\n', static_cast<size_t>(scanEnd - scanStart)));
+            if (nl) {
+                line.append(scanStart, static_cast<size_t>(nl - scanStart));
+                m_zOutPos = static_cast<size_t>(nl - m_zOutBuf) + 1;
+                if (!line.empty() && line.back() == '\r') line.pop_back();
+                return true;
             }
-            // Need more decompressed data
+            // No newline in buffer — append remainder and refill
+            line.append(scanStart, static_cast<size_t>(scanEnd - scanStart));
+            m_zOutPos = m_zOutSize;
             if (!zstdFillBuf()) {
                 // No more data
                 if (!line.empty()) {

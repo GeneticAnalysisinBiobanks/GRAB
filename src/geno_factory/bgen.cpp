@@ -193,7 +193,8 @@ BgenData::BgenData(
         m_ref.push_back(alleles[0]);
         m_alt.push_back(alleles[1]);
         if (chrFilter.empty() || chrFilter.count(chromosome))
-            m_markerInfo.push_back({chromosome, position, RSID.empty() ? SNPID : RSID, alleles[0], alleles[1], variantIdx});
+            m_markerInfo.push_back({chromosome, position, RSID.empty() ? SNPID : RSID, alleles[0], alleles[1],
+                                    variantIdx});
         ++variantIdx;
 
         genfile::bgen::ignore_genotype_data_block(stream, context);

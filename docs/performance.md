@@ -163,6 +163,70 @@ Differences from `markerEngine`:
 Performance note: genotype I/O is shared across phenotypes, so multi-pheno
 runs are substantially cheaper than K separate single-pheno runs.
 
+#### `locoEngine` — per-chromosome LOCO engine
+
+Used by methods with `--pred-list` (currently SPAsqr via
+`runSPAsqrLoco`).  Designed for any `--covar`-based method where a
+leave-one-chromosome-out null model is rebuilt per chromosome.
+
+**Relationship to `multiPhenoEngine`:**
+
+`locoEngine` wraps the same inner loop as `multiPhenoEngine` inside a
+per-chromosome outer loop.  The table below compares their function-level
+workflows step by step.
+
+| Step | `multiPhenoEngine` | `locoEngine` |
+|------|--------------------|--------------|
+| **Entry point** | `multiPhenoEngine(genoData, tasks, ...)` | `locoEngine(genoData, locoChroms, phenoNames, buildTasks, ...)` |
+| **Task source** | Caller passes `vector<PhenoTask>` once | Callback `buildTasks(chr, tasks)` invoked per chromosome |
+| **Writer lifecycle** | Open K writers → write header → process all chunks → close | Open K writers → write header → **serially iterate chromosomes**, each flushing its chunks → close |
+| **Chunk scope** | All chunks across all chromosomes at once | Chunks partitioned by chromosome; only one chromosome's chunks are active at a time |
+| **Work-stealing granularity** | `atomic<size_t> nextChunk` over all M/chunkSize chunks | `atomic<size_t> nextChunk` over C_chr chunks (one chromosome's worth) |
+| **Genotype decode** | One pass over entire genotype file | One sequential pass per chromosome (chunks are chromosome-aligned) |
+| **Method lifetime** | K methods cloned per worker thread, used for all chunks | K methods rebuilt (or cloned) per chromosome via `buildTasks` callback |
+| **Output order** | Chunks drain in global index order | Chunks drain in per-chromosome order; chromosomes are concatenated in genotype encounter order |
+| **Chromosome filtering** | None — `--chr` applied at genotype load time | Intersects genotype chromosomes with `locoChroms` from pred.list; warns and skips missing chromosomes |
+
+**Function call flow:**
+
+```
+runSPAsqrLoco()                               runSPAsqr()
+  ├─ SubjectData load + finalize                ├─ SubjectData load + finalize
+  ├─ per-phenotype h = IQR(Y_k)/scale          ├─ shared h = IQR(Y_0)/scale
+  ├─ LocoData::load(pred.list)                  │
+  ├─ makeGenoData()                             ├─ makeGenoData()
+  ├─ loadGrmEntries()                           ├─ loadGrmEntries()
+  ├─ K×K_τ conquer fits (shared thread pool)    ├─ K×K_τ conquer fits (shared thread pool)
+  ├─ K × buildSPAsqrMethod()                    ├─ K × buildSPAsqrMethod()
+  ├─ locoEngine(buildTasks=clone)               ├─ multiPhenoEngine(tasks)
+  │    ├─ open K writers + headers              │    ├─ open K writers + headers
+  │    ├─ for each chr in locoChroms:           │    ├─ atomic nextChunk over all chunks
+  │    │    ├─ buildTasks(chr) → clone methods  │    │    ├─ worker: decode + K × QC + test
+  │    │    ├─ atomic nextChunk over chr chunks  │    │    └─ writer: drain in order
+  │    │    │    ├─ worker: decode + K × test    │    └─ close K writers
+  │    │    │    └─ drain to writers in order    │
+  │    │    └─ (next chromosome)                │
+  │    └─ close K writers                       │
+  └─ done                                       └─ done
+```
+
+**Key design notes:**
+
+1. **Writers persist across chromosomes.**  `locoEngine` opens output
+   files once and appends each chromosome's results.  This matches the
+   serial workflow where per-chromosome files are concatenated with
+   `head -1 chr1.file && for f in chr*.file; do sed '1d' "$f"; done`.
+
+2. **Callback pattern.**  The `LocoTaskBuilder` callback lets the caller
+   decide whether to rebuild methods per chromosome (true LOCO with
+   per-chromosome residuals) or just clone pre-built methods (current
+   SPAsqr path where conquer fits are chromosome-independent).
+
+3. **Chromosome skipping (O4).**  If a chromosome appears in the
+   genotype data but not in the pred.list LOCO data, `locoEngine` logs
+   a warning and skips it.  This is safe: `--chr` is applied at genotype
+   load time, so the genotype data already reflects the user's filter.
+
 ### MethodBase Interface
 
 ```
@@ -836,7 +900,7 @@ inline SimdLevel simdLevel();  // cached, thread-safe
 | POLMM | Ordinal pheno | Yes | `multiPhenoEngine` | POLMMMethod | 4 | — |
 | WtCoxG | Binary/surv pheno + ref AF | Optional | `multiPhenoEngine` | WtCoxGMethod | 5 | — |
 | LEAF | Binary/surv pheno + ref AF | Optional | `multiPhenoEngine` | LEAFMethod | 3+K | Built-ins |
-| SPAsqr | Quant pheno + taus | Yes | `multiPhenoEngine` | SPAsqrMethod | 3+ | — |
+| SPAsqr | Quant pheno + taus | Yes | `multiPhenoEngine` or `locoEngine` | SPAsqrMethod | 3+ | — |
 | cal-af-coef | PCs + geno | No | Own | — | Binary | — |
 | cal-pairwise-ibd | geno + GRM | Yes | Own | — | 3 (a,b,c) | 512/2/— |
 | cal-phi | .abed + GRM | Yes | Own | — | 4×K | — |

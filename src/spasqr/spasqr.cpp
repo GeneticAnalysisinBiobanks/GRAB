@@ -5,6 +5,7 @@
 #endif
 
 #include "spasqr/spasqr.hpp"
+#include "engine/loco.hpp"
 #include "engine/marker.hpp"
 #include "geno_factory/geno_data.hpp"
 #include "spagrm/grm_null.hpp"
@@ -18,6 +19,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <iomanip>
 #include <limits>
 #include <memory>
 #include <numeric>
@@ -49,10 +51,13 @@ class SPAsqrMethod : public MethodBase {
           m_tauLabels(std::move(tauLabels)),
           m_hasLabels(true)
     {
+        buildResidMat();
     }
 
     std::unique_ptr<MethodBase> clone() const override {
-        return std::make_unique<SPAsqrMethod>(*this);
+        auto p = std::make_unique<SPAsqrMethod>(*this);
+        p->buildResidMat(); // rebuild from (deep-copied) spagrm_vec
+        return p;
     }
 
     int resultSize() const override {
@@ -91,9 +96,16 @@ class SPAsqrMethod : public MethodBase {
         std::vector<double> zScores(m_ntaus);
         std::vector<double> pvals(m_ntaus);
 
+        // Fused: one pass over GVec computes mean + all ntaus dot products.
+        // Reads GVec once (~3.2MB) instead of ntaus+1 times.
+        const double gMean = GVec.mean();
+        Eigen::VectorXd scores = m_residMat.transpose() * GVec;
+        for (int i = 0; i < m_ntaus; ++i)
+            scores[i] -= gMean * m_residSums[i];
+
         for (int i = 0; i < m_ntaus; ++i) {
             double z;
-            double p = m_spagrm_vec[i].getMarkerPval(GVec, altFreq, z);
+            double p = m_spagrm_vec[i].getMarkerPvalFromScore(scores[i], altFreq, z);
             zScores[i] = z;
             pvals[i] = p;
         }
@@ -146,6 +158,22 @@ class SPAsqrMethod : public MethodBase {
     std::vector<SPAGRMClass> m_spagrm_vec;
     std::vector<std::string> m_tauLabels;
     bool m_hasLabels;
+
+    // Contiguous resid matrix (N × ntaus) + residSum vector for fused dot products.
+    // Built from m_spagrm_vec resid vectors; avoids ntaus separate DRAM reads of GVec.
+    Eigen::MatrixXd m_residMat;
+    Eigen::VectorXd m_residSums;
+
+    void buildResidMat() {
+        const Eigen::Index N = m_spagrm_vec[0].resid().size();
+        m_residMat.resize(N, m_ntaus);
+        m_residSums.resize(m_ntaus);
+        for (int t = 0; t < m_ntaus; ++t) {
+            m_residMat.col(t) = m_spagrm_vec[t].resid();
+            m_residSums[t] = m_spagrm_vec[t].residSum();
+        }
+    }
+
 };
 
 // ══════════════════════════════════════════════════════════════════════
@@ -212,14 +240,6 @@ OutlierInfo detectOutliers(
                 ++nOutlier;
             }
         }
-
-        infoMsg(
-            "  Column %d: outlier ratio = %.4f (%d / %lld)",
-            static_cast<int>(col + 1),
-            static_cast<double>(nOutlier) / N,
-            nOutlier,
-            static_cast<long long>(N)
-        );
     }
     return info;
 }
@@ -230,21 +250,17 @@ OutlierInfo detectOutliers(
 // Shared pipeline: outlier detection → GRM → SPAGRM → marker engine
 // ══════════════════════════════════════════════════════════════════════
 
-struct GRMEntry {
-    uint32_t row, col;
-    double value;
-    double factor; // 1 for diagonal, 2 for off-diagonal
-};
+// GRMEntry is now declared in spasqr.hpp
 
 // Load GRM entries from disk and convert to flat GRMEntry vector.
-static std::vector<GRMEntry> loadGrmEntries(
+std::vector<GRMEntry> loadGrmEntries(
     const std::vector<std::string> &subjOrder,
     const std::vector<std::string> &famIIDs,
     const std::string &spgrmGrabFile,
     const std::string &spgrmGctaFile
 ) {
     SparseGRM grm = SparseGRM::load(spgrmGrabFile, spgrmGctaFile, subjOrder, famIIDs);
-    infoMsg("Sparse GRM: %zu entries after filtering", grm.nnz());
+    infoMsg("Sparse GRM: %zu entries used", grm.nnz());
     std::vector<GRMEntry> entries;
     entries.reserve(grm.nnz());
     for (const auto &e : grm.entries())
@@ -253,7 +269,7 @@ static std::vector<GRMEntry> loadGrmEntries(
 }
 
 // Build SPAsqrMethod from a pre-computed residual matrix and pre-loaded GRM entries.
-static std::unique_ptr<SPAsqrMethod> buildSPAsqrMethod(
+std::unique_ptr<MethodBase> buildSPAsqrMethod(
     Eigen::MatrixXd &ResidMat,
     const std::vector<GRMEntry> &grmEntries,
     uint32_t nUsed,
@@ -262,14 +278,22 @@ static std::unique_ptr<SPAsqrMethod> buildSPAsqrMethod(
     double outlierAbsBound,
     double minMafCutoff,
     double minMacCutoff,
-    std::vector<std::string> tauLabels
+    std::vector<std::string> tauLabels,
+    std::vector<double> *outlierRatiosOut
 )
 {
     const Eigen::Index K = ResidMat.cols();
 
     // ── 3. Outlier detection ───────────────────────────────────────────
-    infoMsg("Detecting outliers (IQR ratio=%.2f, abs bound=%.2f)", outlierIqrRatio, outlierAbsBound);
     OutlierInfo outlierInfo = detectOutliers(ResidMat, outlierIqrRatio, outlierAbsBound);
+
+    // Populate outlier ratios for caller to format
+    if (outlierRatiosOut) {
+        outlierRatiosOut->resize(K);
+        const Eigen::Index N = ResidMat.rows();
+        for (Eigen::Index c = 0; c < K; ++c)
+            (*outlierRatiosOut)[c] = static_cast<double>(outlierInfo.outlierIdx[c].size()) / N;
+    }
 
     // ── 4. Compute per-column variance terms using pre-loaded GRM ────
     const int ntaus = static_cast<int>(K);
@@ -339,8 +363,28 @@ static std::unique_ptr<SPAsqrMethod> buildSPAsqrMethod(
         std::move(tauLabels)
     );
 
-    infoMsg("SPAsqr method built (%d taus)", ntaus);
     return method;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// Re-index GRM entries from union-dense space to pheno-dense space
+// ══════════════════════════════════════════════════════════════════════
+
+static std::vector<GRMEntry> reindexGrm(
+    const std::vector<GRMEntry> &unionGrm,
+    const std::vector<uint32_t> &unionToLocal, // union index → pheno index (UINT32_MAX = absent)
+    uint32_t nUnion
+) {
+    std::vector<GRMEntry> out;
+    out.reserve(unionGrm.size());
+    for (const auto &e : unionGrm) {
+        if (e.row >= nUnion || e.col >= nUnion) continue;
+        uint32_t lr = unionToLocal[e.row];
+        uint32_t lc = unionToLocal[e.col];
+        if (lr == UINT32_MAX || lc == UINT32_MAX) continue;
+        out.push_back({lr, lc, e.value, e.factor});
+    }
+    return out;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -378,63 +422,106 @@ void runSPAsqr(
     const int ntaus = static_cast<int>(taus.size());
 
     // ── 1. Load phenotype/covariate data (union mask) ───────────────
+    // Union = subjects with genotype ∩ GRM ∩ keep/remove.  Per-phenotype
+    // NA filtering is deferred — each phenotype uses its own non-missing
+    // subset of the union.
     infoMsg("SPAsqr: Loading phenotype and covariate data (%d phenotypes, %d taus)", K, ntaus);
     auto famIIDs = parseGenoIIDs(geno);
     SubjectData sd(std::move(famIIDs));
-    if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile);
+    if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile, phenoNames);
     if (!covarFile.empty()) sd.loadCovar(covarFile, covarNames);
     sd.setKeepRemove(keepFile, removeFile);
     sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
     sd.setGenoLabel(geno.flagLabel());
     sd.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
     sd.finalize();
-    // Drop subjects with NA in ANY phenotype column (complete cases across traits).
-    sd.dropNaInColumns(phenoNames);
 
-    const Eigen::Index N = static_cast<Eigen::Index>(sd.nUsed());
-    infoMsg("Subjects after intersection: %lld", static_cast<long long>(N));
+    const uint32_t nUnion = sd.nUsed();
+    const Eigen::Index N = static_cast<Eigen::Index>(nUnion);
 
-    // ── 2. Extract covariates (shared across all phenotypes) ────────
-    Eigen::MatrixXd X = covarNames.empty() ? Eigen::MatrixXd(N, 0) : sd.getColumns(covarNames);
-    const int p = static_cast<int>(X.cols());
+    // ── 2. Extract union-space covariates ───────────────────────────
+    Eigen::MatrixXd unionX = covarNames.empty()
+        ? (sd.hasCovar() ? Eigen::MatrixXd(sd.covar()) : Eigen::MatrixXd(N, 0))
+        : sd.getColumns(covarNames);
+    const int nCov = static_cast<int>(unionX.cols());
 
-    // ── 3. Compute bandwidth h (shared) ─────────────────────────────
-    // Use the first phenotype's IQR for bandwidth; all phenotypes share h.
-    Eigen::VectorXd Y0 = sd.getColumn(phenoNames[0]);
-    double h;
-    if (spasqrH >= 0.0) {
-        h = spasqrH;
-    } else {
-        std::vector<double> ysorted(N);
-        Eigen::VectorXd::Map(ysorted.data(), N) = Y0;
-        std::sort(ysorted.begin(), ysorted.end());
-        auto quantile = [&](double prob) -> double {
-            double idx = prob * (N - 1);
-            Eigen::Index lo = static_cast<Eigen::Index>(std::floor(idx));
-            Eigen::Index hi = std::min(lo + 1, N - 1);
-            double frac = idx - lo;
-            return ysorted[lo] * (1.0 - frac) + ysorted[hi] * frac;
-        };
-        double iqr = quantile(0.75) - quantile(0.25);
-        double scale = (spasqrHScale >= 0.0) ? spasqrHScale : 3.0;
-        h = iqr / scale;
-        if (h <= 0.0) h = std::max(std::pow((std::log(N) + p) / static_cast<double>(N), 0.4), 0.05);
+    // ── 3. Per-phenotype: build non-missing mask, extract Y/X ───────
+    struct PhenoWork {
+        std::vector<uint32_t> unionToLocal; // size nUnion; UINT32_MAX = absent
+        uint32_t nk;                        // non-missing count
+        Eigen::VectorXd Y;                  // nk
+        Eigen::MatrixXd X;                  // nk × nCov
+        double h;                           // bandwidth
+        Eigen::MatrixXd ResidMat;           // nk × ntaus (filled by conquer)
+    };
+
+    std::vector<PhenoWork> pw(K);
+
+    for (int k = 0; k < K; ++k) {
+        Eigen::VectorXd fullY = sd.getColumn(phenoNames[k]);
+        pw[k].unionToLocal.resize(nUnion, UINT32_MAX);
+        uint32_t localIdx = 0;
+        for (uint32_t i = 0; i < nUnion; ++i) {
+            if (!std::isnan(fullY[i])) {
+                pw[k].unionToLocal[i] = localIdx++;
+            }
+        }
+        pw[k].nk = localIdx;
+        if (pw[k].nk == 0)
+            throw std::runtime_error("SPAsqr: phenotype '" + phenoNames[k] + "' has no non-missing subjects");
+
+        const Eigen::Index Nk = static_cast<Eigen::Index>(pw[k].nk);
+        pw[k].Y.resize(Nk);
+        pw[k].X.resize(Nk, nCov);
+        for (uint32_t i = 0; i < nUnion; ++i) {
+            uint32_t li = pw[k].unionToLocal[i];
+            if (li == UINT32_MAX) continue;
+            pw[k].Y[li] = fullY[i];
+            if (nCov > 0) pw[k].X.row(li) = unionX.row(i);
+        }
+
+        // Per-phenotype bandwidth
+        if (spasqrH >= 0.0) {
+            pw[k].h = spasqrH;
+        } else {
+            std::vector<double> ysorted(Nk);
+            Eigen::VectorXd::Map(ysorted.data(), Nk) = pw[k].Y;
+            std::sort(ysorted.begin(), ysorted.end());
+            auto quantile = [&](double prob) -> double {
+                double idx = prob * (Nk - 1);
+                Eigen::Index lo = static_cast<Eigen::Index>(std::floor(idx));
+                Eigen::Index hi = std::min(lo + 1, Nk - 1);
+                double frac = idx - lo;
+                return ysorted[lo] * (1.0 - frac) + ysorted[hi] * frac;
+            };
+            double iqr = quantile(0.75) - quantile(0.25);
+            double scale = (spasqrHScale >= 0.0) ? spasqrHScale : 3.0;
+            pw[k].h = iqr / scale;
+            if (pw[k].h <= 0.0)
+                pw[k].h = std::max(std::pow((std::log(Nk) + nCov) / static_cast<double>(Nk), 0.4), 0.05);
+        }
+
+        pw[k].ResidMat.resize(Nk, ntaus);
     }
-    infoMsg("Bandwidth h = %.6f", h);
 
-    // ── 4. Parallel conquer fits: K × ntaus independent regressions ─
-    // Build flat work items: (pheno_idx, tau_idx).
-    // Each worker runs conquer::smqrGauss and writes one column of the
-    // per-phenotype ResidMat.
-    std::vector<Eigen::VectorXd> phenoY(K);
-    for (int k = 0; k < K; ++k)
-        phenoY[k] = sd.getColumn(phenoNames[k]);
+    // Log N/bandwidth table
+    {
+        infoMsg("Sample size and smooth bandwidth per phenotype:");
+        size_t nameW = 4;
+        for (int k = 0; k < K; ++k)
+            nameW = std::max(nameW, phenoNames[k].size());
+        nameW += 2;
+        char row[256];
+        std::snprintf(row, sizeof(row), "    %-*s %10s %12s\n", static_cast<int>(nameW), "", "N", "bandwidth");
+        fprintf(stderr, "%s", row);
+        for (int k = 0; k < K; ++k) {
+            std::snprintf(row, sizeof(row), "    %-*s %10u %12.6f\n",
+                          static_cast<int>(nameW), phenoNames[k].c_str(), pw[k].nk, pw[k].h);
+            fprintf(stderr, "%s", row);
+        }
+    }
 
-    // Per-phenotype residual matrices
-    std::vector<Eigen::MatrixXd> ResidMats(K);
-    for (int k = 0; k < K; ++k)
-        ResidMats[k].resize(N, ntaus);
-
+    // ── 4. Parallel conquer fits: K × ntaus ─────────────────────────
     const int totalFits = K * ntaus;
     const int nWorkers = std::min(nthreads, totalFits);
     infoMsg("SPAsqr: Running %d conquer fits with %d threads", totalFits, nWorkers);
@@ -443,20 +530,21 @@ void runSPAsqr(
     std::vector<std::string> fitErrors(totalFits);
 
     auto fitWorker = [&]() {
-        const double h1 = 1.0 / h;
         for (;;) {
             int idx = nextFit.fetch_add(1, std::memory_order_relaxed);
             if (idx >= totalFits) break;
             int k = idx / ntaus;
             int t = idx % ntaus;
+            const double h1 = 1.0 / pw[k].h;
 
             try {
-                infoMsg("[%s] conquer tau=%.4f ...", phenoNames[k].c_str(), taus[t]);
                 Eigen::VectorXd resid;
-                Eigen::VectorXd beta = conquer::smqrGauss(X, phenoY[k], taus[t], h, &resid, spasqrTol);
+                Eigen::VectorXd beta = conquer::smqrGauss(pw[k].X, pw[k].Y, taus[t], pw[k].h, &resid, spasqrTol);
                 infoMsg("[%s] tau=%.4f intercept=%.6f", phenoNames[k].c_str(), taus[t], beta(0));
 
-                for (Eigen::Index i = 0; i < N; ++i) ResidMats[k](i, t) = taus[t] - math::pnorm(-resid(i) * h1);
+                const Eigen::Index Nk = static_cast<Eigen::Index>(pw[k].nk);
+                for (Eigen::Index i = 0; i < Nk; ++i)
+                    pw[k].ResidMat(i, t) = taus[t] - math::pnorm(-resid(i) * h1);
             } catch (const std::exception &ex) {
                 fitErrors[idx] = ex.what();
             }
@@ -468,7 +556,7 @@ void runSPAsqr(
         threads.reserve(nWorkers - 1);
         for (int t = 0; t < nWorkers - 1; ++t)
             threads.emplace_back(fitWorker);
-        fitWorker(); // caller participates
+        fitWorker();
         for (auto &th : threads)
             th.join();
     }
@@ -491,41 +579,379 @@ void runSPAsqr(
         tauLabels.push_back(oss.str());
     }
 
-    // ── 6. Load genotype data and GRM once (shared) ────────────────
+    // ── 6. Load genotype data and GRM once (shared, union space) ────
     auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(), nSnpPerChunk);
 
-    std::vector<GRMEntry> grmEntries = loadGrmEntries(sd.usedIIDs(), sd.famIIDs(), spgrmGrabFile, spgrmGctaFile);
+    std::vector<GRMEntry> unionGrm = loadGrmEntries(sd.usedIIDs(), sd.famIIDs(), spgrmGrabFile, spgrmGctaFile);
 
     // ── 7. Build per-phenotype SPAsqrMethod + PhenoTask ─────────────
     std::vector<PhenoTask> tasks(K);
+    std::vector<std::vector<double> > allOutlierRatios(K);
 
     for (int k = 0; k < K; ++k) {
-        infoMsg("[%s] Building SPAsqr method (%d taus)", phenoNames[k].c_str(), ntaus);
+        infoMsg("[%s] Building SPAsqr method (%d taus, %u subjects)",
+                phenoNames[k].c_str(), ntaus, pw[k].nk);
+
+        // Re-index GRM to pheno-dense space
+        auto phenoGrm = reindexGrm(unionGrm, pw[k].unionToLocal, nUnion);
+
         auto method = buildSPAsqrMethod(
-            ResidMats[k],
-            grmEntries,
-            genoData->nSubjUsed(),
+            pw[k].ResidMat,
+            phenoGrm,
+            pw[k].nk,
             spaCutoff,
             outlierIqrRatio,
             outlierAbsBound,
             minMafCutoff,
             minMacCutoff,
-            tauLabels // copy; last iteration could move but let's keep it simple
+            tauLabels,
+            &allOutlierRatios[k]
         );
 
         tasks[k].phenoName = phenoNames[k];
         tasks[k].method = std::move(method);
-        // Identity mapping: all subjects are in the union (complete cases)
-        tasks[k].unionToLocal.resize(genoData->nSubjUsed());
-        std::iota(tasks[k].unionToLocal.begin(), tasks[k].unionToLocal.end(), 0u);
-        tasks[k].nUsed = genoData->nSubjUsed();
+        tasks[k].unionToLocal = pw[k].unionToLocal;
+        tasks[k].nUsed = pw[k].nk;
     }
+
+    // Print outlier ratio table line-by-line
+    {
+        size_t nameW = 4;
+        for (int k = 0; k < K; ++k)
+            nameW = std::max(nameW, phenoNames[k].size());
+        nameW += 2;
+
+        infoMsg("Outlier ratios (IQR=%.2f, bound=%.2f):", outlierIqrRatio, outlierAbsBound);
+
+        std::ostringstream hdr;
+        hdr << "    " << std::setw(static_cast<int>(nameW)) << std::left << "";
+        for (const auto &tl : tauLabels)
+            hdr << std::setw(10) << std::right << tl;
+        fprintf(stderr, "%s\n", hdr.str().c_str());
+
+        for (int k = 0; k < K; ++k) {
+            std::ostringstream row;
+            row << "    " << std::setw(static_cast<int>(nameW)) << std::left << phenoNames[k];
+            for (double r : allOutlierRatios[k])
+                row << std::setw(10) << std::right << std::fixed << std::setprecision(4) << r;
+            fprintf(stderr, "%s\n", row.str().c_str());
+        }
+    }
+
+    // Free per-phenotype work data
+    pw.clear();
 
     // ── 8. Run multi-phenotype engine ───────────────────────────────
     infoMsg("SPAsqr: Starting multi-phenotype association (%d phenotypes, %d taus, %d threads)", K, ntaus, nthreads);
     multiPhenoEngine(
         *genoData,
         tasks,
+        outPrefix,
+        "SPAsqr",
+        compression,
+        compressionLevel,
+        nthreads,
+        missingCutoff,
+        minMafCutoff,
+        minMacCutoff,
+        hweCutoff
+    );
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// runSPAsqrLoco — LOCO entry point
+//
+// Matches the serial workflow (2.serial_loco.sh):
+//   - conquer fits are chromosome-independent (same Y, same X)
+//   - per-phenotype bandwidth h
+//   - SPAsqrMethod built once per phenotype, cloned per chromosome
+//   - locoEngine iterates chromosomes, testing each chromosome's markers
+// ══════════════════════════════════════════════════════════════════════
+
+void runSPAsqrLoco(
+    const std::string &phenoFile,
+    const std::string &covarFile,
+    const std::vector<std::string> &phenoNames,
+    const std::vector<std::string> &covarNames,
+    const std::vector<double> &taus,
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const GenoSpec &geno,
+    const std::string &predListFile,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double spaCutoff,
+    double outlierIqrRatio,
+    double outlierAbsBound,
+    int nthreads,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    double spasqrTol,
+    double spasqrH,
+    double spasqrHScale,
+    const std::string &keepFile,
+    const std::string &removeFile
+) {
+    const int K = static_cast<int>(phenoNames.size());
+    const int ntaus = static_cast<int>(taus.size());
+
+    // ── 1. Load phenotype/covariate data (union mask) ───────────────
+    // Union = subjects with genotype ∩ GRM ∩ keep/remove.  Per-phenotype
+    // NA filtering is deferred — each phenotype uses its own non-missing
+    // subset of the union.
+    infoMsg("SPAsqr-LOCO: Loading phenotype and covariate data (%d phenotypes, %d taus)", K, ntaus);
+    auto famIIDs = parseGenoIIDs(geno);
+    SubjectData sd(std::move(famIIDs));
+    if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile, phenoNames);
+    if (!covarFile.empty()) sd.loadCovar(covarFile, covarNames);
+    sd.setKeepRemove(keepFile, removeFile);
+    sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
+    sd.setGenoLabel(geno.flagLabel());
+    sd.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
+    sd.finalize();
+
+    const uint32_t nUnion = sd.nUsed();
+    const Eigen::Index N = static_cast<Eigen::Index>(nUnion);
+
+    // ── 2. Extract union-space covariates ───────────────────────────
+    Eigen::MatrixXd unionX = covarNames.empty()
+        ? (sd.hasCovar() ? Eigen::MatrixXd(sd.covar()) : Eigen::MatrixXd(N, 0))
+        : sd.getColumns(covarNames);
+    const int nCov = static_cast<int>(unionX.cols());
+
+    // ── 3. Per-phenotype: build non-missing mask, extract Y/baseX ──
+    struct PhenoWork {
+        std::vector<uint32_t> unionToLocal; // size nUnion; UINT32_MAX = absent
+        uint32_t nk;                        // non-missing count
+        Eigen::VectorXd Y;                  // nk
+        Eigen::MatrixXd baseX;              // nk × nCov
+        double h;                           // bandwidth
+    };
+
+    std::vector<PhenoWork> pw(K);
+
+    for (int k = 0; k < K; ++k) {
+        Eigen::VectorXd fullY = sd.getColumn(phenoNames[k]);
+        pw[k].unionToLocal.resize(nUnion, UINT32_MAX);
+        uint32_t localIdx = 0;
+        for (uint32_t i = 0; i < nUnion; ++i) {
+            if (!std::isnan(fullY[i])) {
+                pw[k].unionToLocal[i] = localIdx++;
+            }
+        }
+        pw[k].nk = localIdx;
+        if (pw[k].nk == 0)
+            throw std::runtime_error("SPAsqr-LOCO: phenotype '" + phenoNames[k] + "' has no non-missing subjects");
+
+        const Eigen::Index Nk = static_cast<Eigen::Index>(pw[k].nk);
+        pw[k].Y.resize(Nk);
+        pw[k].baseX.resize(Nk, nCov);
+        for (uint32_t i = 0; i < nUnion; ++i) {
+            uint32_t li = pw[k].unionToLocal[i];
+            if (li == UINT32_MAX) continue;
+            pw[k].Y[li] = fullY[i];
+            if (nCov > 0) pw[k].baseX.row(li) = unionX.row(i);
+        }
+
+        // Per-phenotype bandwidth
+        if (spasqrH >= 0.0) {
+            pw[k].h = spasqrH;
+        } else {
+            std::vector<double> ysorted(Nk);
+            Eigen::VectorXd::Map(ysorted.data(), Nk) = pw[k].Y;
+            std::sort(ysorted.begin(), ysorted.end());
+            auto quantile = [&](double prob) -> double {
+                double idx = prob * (Nk - 1);
+                Eigen::Index lo = static_cast<Eigen::Index>(std::floor(idx));
+                Eigen::Index hi = std::min(lo + 1, Nk - 1);
+                double frac = idx - lo;
+                return ysorted[lo] * (1.0 - frac) + ysorted[hi] * frac;
+            };
+            double iqr = quantile(0.75) - quantile(0.25);
+            double scale = (spasqrHScale >= 0.0) ? spasqrHScale : 3.0;
+            pw[k].h = iqr / scale;
+            if (pw[k].h <= 0.0)
+                pw[k].h = std::max(std::pow((std::log(Nk) + nCov) / static_cast<double>(Nk), 0.4), 0.05);
+        }
+    }
+
+    // Log N/bandwidth table
+    {
+        infoMsg("Sample size and smooth bandwidth per phenotype:");
+        size_t nameW = 4;
+        for (int k = 0; k < K; ++k)
+            nameW = std::max(nameW, phenoNames[k].size());
+        nameW += 2;
+        char row[256];
+        std::snprintf(row, sizeof(row), "    %-*s %10s %12s\n", static_cast<int>(nameW), "", "N", "bandwidth");
+        fprintf(stderr, "%s", row);
+        for (int k = 0; k < K; ++k) {
+            std::snprintf(row, sizeof(row), "    %-*s %10u %12.6f\n",
+                          static_cast<int>(nameW), phenoNames[k].c_str(), pw[k].nk, pw[k].h);
+            fprintf(stderr, "%s", row);
+        }
+    }
+
+    // ── 4. Load LOCO predictions (union space) ─────────────────────
+    LocoData loco = LocoData::load(predListFile, phenoNames, sd.usedIIDs(), sd.famIIDs());
+    auto locoChroms = loco.availableChromosomes();
+    infoMsg("LOCO: %zu chromosomes available across all phenotypes", locoChroms.size());
+
+    // ── 5. Build tau labels ─────────────────────────────────────────
+    std::vector<std::string> tauLabels;
+    tauLabels.reserve(ntaus);
+    for (double tau : taus) {
+        std::ostringstream oss;
+        oss << "Tau" << tau;
+        tauLabels.push_back(oss.str());
+    }
+
+    // ── 6. Load genotype data and GRM once (union space) ────────────
+    auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(), nSnpPerChunk);
+
+    std::vector<GRMEntry> unionGrm = loadGrmEntries(sd.usedIIDs(), sd.famIIDs(), spgrmGrabFile, spgrmGctaFile);
+
+    // Pre-compute per-phenotype re-indexed GRM (shared across chromosomes)
+    std::vector<std::vector<GRMEntry> > phenoGrms(K);
+    for (int k = 0; k < K; ++k)
+        phenoGrms[k] = reindexGrm(unionGrm, pw[k].unionToLocal, nUnion);
+
+    // ── 7. Build LocoTaskBuilder callback ──────────────────────────
+    // For each chromosome, augment base covariates with the LOCO column
+    // (mapped to pheno-dense space), run K × ntaus conquer fits, and
+    // build K SPAsqrMethods.
+    auto buildTasks = [&](const std::string &chr, std::vector<PhenoTask> &tasks) {
+        tasks.resize(K);
+
+        // Augment base covariates with LOCO column per phenotype (pheno-dense)
+        std::vector<Eigen::MatrixXd> X_augs(K);
+        for (int k = 0; k < K; ++k) {
+            const Eigen::Index Nk = static_cast<Eigen::Index>(pw[k].nk);
+            X_augs[k].resize(Nk, nCov + 1);
+            X_augs[k].leftCols(nCov) = pw[k].baseX;
+            // Extract LOCO scores from union to pheno-dense space
+            const auto &locoVec = loco.scores.at(phenoNames[k]).at(chr);
+            for (uint32_t i = 0; i < nUnion; ++i) {
+                uint32_t li = pw[k].unionToLocal[i];
+                if (li != UINT32_MAX)
+                    X_augs[k](li, nCov) = locoVec[i];
+            }
+        }
+
+        // Parallel conquer fits: K × ntaus
+        std::vector<Eigen::MatrixXd> ResidMats(K);
+        for (int k = 0; k < K; ++k)
+            ResidMats[k].resize(static_cast<Eigen::Index>(pw[k].nk), ntaus);
+
+        const int totalFits = K * ntaus;
+        const int nWorkers = std::min(nthreads, totalFits);
+        infoMsg("SPAsqr-LOCO chr%s: Running %d conquer fits with %d threads",
+                chr.c_str(), totalFits, nWorkers);
+
+        std::atomic<int> nextFit{0};
+        std::vector<std::string> fitErrors(totalFits);
+
+        auto fitWorker = [&]() {
+            for (;;) {
+                int idx = nextFit.fetch_add(1, std::memory_order_relaxed);
+                if (idx >= totalFits) break;
+                int k = idx / ntaus;
+                int t = idx % ntaus;
+                const double h1 = 1.0 / pw[k].h;
+
+                try {
+                    Eigen::VectorXd resid;
+                    conquer::smqrGauss(X_augs[k], pw[k].Y, taus[t], pw[k].h, &resid, spasqrTol);
+
+                    const Eigen::Index Nk = static_cast<Eigen::Index>(pw[k].nk);
+                    for (Eigen::Index i = 0; i < Nk; ++i)
+                        ResidMats[k](i, t) = taus[t] - math::pnorm(-resid(i) * h1);
+                } catch (const std::exception &ex) {
+                    fitErrors[idx] = ex.what();
+                }
+            }
+        };
+
+        {
+            std::vector<std::thread> threads;
+            threads.reserve(nWorkers - 1);
+            for (int t = 0; t < nWorkers - 1; ++t)
+                threads.emplace_back(fitWorker);
+            fitWorker();
+            for (auto &th : threads)
+                th.join();
+        }
+
+        for (int idx = 0; idx < totalFits; ++idx) {
+            if (!fitErrors[idx].empty()) {
+                int k = idx / ntaus;
+                int t = idx % ntaus;
+                throw std::runtime_error("SPAsqr-LOCO chr" + chr + ": conquer failed for phenotype '" +
+                                         phenoNames[k] + "' tau=" + std::to_string(taus[t]) + ": " + fitErrors[idx]);
+            }
+        }
+
+        // Build SPAsqrMethod for each phenotype (pheno-dense space)
+        std::vector<std::vector<double> > allOutlierRatios(K);
+        for (int k = 0; k < K; ++k) {
+            auto method = buildSPAsqrMethod(
+                ResidMats[k],
+                phenoGrms[k],
+                pw[k].nk,
+                spaCutoff,
+                outlierIqrRatio,
+                outlierAbsBound,
+                minMafCutoff,
+                minMacCutoff,
+                tauLabels,
+                &allOutlierRatios[k]
+            );
+
+            tasks[k].phenoName = phenoNames[k];
+            tasks[k].method = std::move(method);
+            tasks[k].unionToLocal = pw[k].unionToLocal;
+            tasks[k].nUsed = pw[k].nk;
+        }
+
+        // Print outlier ratio table for this chromosome line-by-line
+        {
+            size_t nameW = 4;
+            for (int k = 0; k < K; ++k)
+                nameW = std::max(nameW, phenoNames[k].size());
+            nameW += 2;
+
+            infoMsg("chr%s outlier ratios (IQR=%.2f, bound=%.2f):",
+                    chr.c_str(), outlierIqrRatio, outlierAbsBound);
+
+            std::ostringstream hdr;
+            hdr << "    " << std::setw(static_cast<int>(nameW)) << std::left << "";
+            for (const auto &tl : tauLabels)
+                hdr << std::setw(10) << std::right << tl;
+            fprintf(stderr, "%s\n", hdr.str().c_str());
+
+            for (int k = 0; k < K; ++k) {
+                std::ostringstream row;
+                row << "    " << std::setw(static_cast<int>(nameW)) << std::left << phenoNames[k];
+                for (double r : allOutlierRatios[k])
+                    row << std::setw(10) << std::right << std::fixed << std::setprecision(4) << r;
+                fprintf(stderr, "%s\n", row.str().c_str());
+            }
+        }
+    };
+
+    // ── 8. Run LOCO engine ─────────────────────────────────────────
+    const int nChroms = static_cast<int>(locoChroms.size());
+    infoMsg("SPAsqr-LOCO: Starting LOCO association (%d phenotypes, %d taus, %d chroms, %d threads)",
+            K, ntaus, nChroms, nthreads);
+    locoEngine(
+        *genoData,
+        locoChroms,
+        phenoNames,
+        buildTasks,
         outPrefix,
         "SPAsqr",
         compression,

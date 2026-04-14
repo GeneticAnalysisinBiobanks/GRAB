@@ -6,13 +6,15 @@
 // plink2 SIMD primitives for BED decode + counting
 #include "pgenlib_misc.h"
 
+#include "util/text_scanner.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <mutex>
-#include <sstream>
 #include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
@@ -24,11 +26,13 @@ namespace {
 // ──────────────────────────────────────────────────────────────────────
 
 std::vector<std::string> splitWhitespace(const std::string &line) {
-    std::istringstream iss(line);
+    text::TokenScanner ts(line);
     std::vector<std::string> tokens;
-    std::string tok;
-    while (iss >> tok)
-        tokens.push_back(std::move(tok));
+    while (!ts.atEnd()) {
+        auto sv = ts.nextView();
+        if (sv.empty()) break;
+        tokens.emplace_back(sv);
+    }
     return tokens;
 }
 

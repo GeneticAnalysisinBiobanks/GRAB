@@ -144,8 +144,25 @@ class SPAGRMClass {
     double getMarkerPval(
         const Eigen::VectorXd &GVec,
         double altFreq,
+        double &zScore,
+        double gMean = std::numeric_limits<double>::quiet_NaN()
+    );
+
+    // Fast path: caller pre-computes Score = GVec.dot(m_resid) - gMean * m_resid_sum
+    // via a fused multi-tau matrix multiply, avoiding redundant GVec reads.
+    double getMarkerPvalFromScore(
+        double Score,
+        double altFreq,
         double &zScore
     );
+
+    const Eigen::VectorXd &resid() const {
+        return m_resid;
+    }
+
+    double residSum() const {
+        return m_resid_sum;
+    }
 
   private:
     Eigen::VectorXd m_resid;
@@ -155,7 +172,7 @@ class SPAGRMClass {
     double m_R_GRM_R_nonOutlier;
     double m_R_GRM_R_TwoSubjOutlier;
     double m_R_GRM_R;
-    std::vector<double> m_MAF_interval;
+    double m_resid_sum;    std::vector<double> m_MAF_interval;
     std::vector<std::array<double, 2> > m_TwoSubj_resid_list;
     std::vector<std::vector<double> > m_TwoSubj_rho_list;
     std::vector<std::vector<double> > m_ThreeSubj_standS_list;

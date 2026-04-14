@@ -7,12 +7,13 @@
 #include "geno_factory/hwe.hpp"
 #include "util/logging.hpp"
 
+#include "util/text_scanner.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <fstream>
 #include <limits>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -52,19 +53,20 @@ std::vector<PvarRecord> parsePvarFile(const std::string &path) {
         // Parse header
         if (!headerSeen && line[0] == '#') {
             headerSeen = true;
-            std::istringstream iss(line);
-            std::string tok;
+            text::TokenScanner ts(line);
             int col = 0;
-            while (iss >> tok) {
-                if (tok == "#CHROM" || tok == "CHROM")
+            while (!ts.atEnd()) {
+                auto sv = ts.nextView();
+                if (sv.empty()) break;
+                if (sv == "#CHROM" || sv == "CHROM")
                     colChrom = col;
-                else if (tok == "POS")
+                else if (sv == "POS")
                     colPos = col;
-                else if (tok == "ID")
+                else if (sv == "ID")
                     colId = col;
-                else if (tok == "REF")
+                else if (sv == "REF")
                     colRef = col;
-                else if (tok == "ALT")
+                else if (sv == "ALT")
                     colAlt = col;
                 ++col;
             }
@@ -84,23 +86,26 @@ std::vector<PvarRecord> parsePvarFile(const std::string &path) {
             // Fall through to parse this line as data
         }
 
-        // Parse data line
-        std::istringstream iss(line);
-        std::vector<std::string> tokens;
-        std::string tok;
-        while (iss >> tok)
-            tokens.push_back(std::move(tok));
-
+        // Parse data line with zero-copy token scanning
         int maxCol = std::max({colChrom, colPos, colId, colRef, colAlt});
-        if (static_cast<int>(tokens.size()) <= maxCol)
+        text::TokenScanner ts(line);
+        std::vector<std::string_view> tokViews;
+        tokViews.reserve(maxCol + 2);
+        while (!ts.atEnd()) {
+            auto sv = ts.nextView();
+            if (sv.empty()) break;
+            tokViews.push_back(sv);
+            if (static_cast<int>(tokViews.size()) > maxCol) break; // enough columns
+        }
+        if (static_cast<int>(tokViews.size()) <= maxCol)
             throw std::runtime_error(".pvar line has too few columns: " + line);
 
         PvarRecord r;
-        r.chrom = tokens[colChrom];
-        r.pos = static_cast<uint32_t>(std::stoul(tokens[colPos]));
-        r.id = tokens[colId];
-        r.ref = tokens[colRef];
-        r.alt = tokens[colAlt];
+        r.chrom = std::string(tokViews[colChrom]);
+        r.pos = static_cast<uint32_t>(std::stoul(std::string(tokViews[colPos])));
+        r.id = std::string(tokViews[colId]);
+        r.ref = std::string(tokViews[colRef]);
+        r.alt = std::string(tokViews[colAlt]);
         // For multiallelic with comma-separated ALT, take only the first
         auto comma = r.alt.find(',');
         if (comma != std::string::npos) r.alt.resize(comma);

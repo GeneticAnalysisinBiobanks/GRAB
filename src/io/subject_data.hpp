@@ -67,6 +67,10 @@ class SubjectData {
 // Construct with .fam IIDs (caller obtains from parseFamIIDs).
     explicit SubjectData(std::vector<std::string> famIIDs);
 
+// Read data column names from a pheno/covar file header (lightweight,
+// no data rows parsed).  Handles the FID+IID header convention.
+    static std::vector<std::string> readColumnNames(const std::string &filename);
+
 // ── Residual loaders (call exactly one before finalize) ────────────
     void loadResidOne(
         const std::string &filename,
@@ -75,7 +79,11 @@ class SubjectData {
     );                                                                  // IID + selected resid cols
 
 // ── Optional per-subject files ─────────────────────────────────────
-    void loadPhenoFile(const std::string &filename); // strict format: IID + named columns
+    void loadPhenoFile(
+        const std::string &filename,
+        const std::vector<std::string> &neededNames = {}
+
+    );                                                                   // strict format: IID + named columns
 
 // Load covariate file.  neededNames selects columns by name (empty = all).
 // When neededNames is empty, loads all data columns (columns 1..N).
@@ -186,6 +194,10 @@ class SubjectData {
         return m_covar;
     }
 
+    const std::vector<std::string> &covarColNames() const {
+        return m_covarColNames;
+    }
+
 // ── Named column access (valid after finalize) ─────────────────────
 // Searches covar columns first, then pheno columns.
 // Throws if name not found.
@@ -250,7 +262,8 @@ class SubjectData {
 
     static RawFile parseIIDFile(
         const std::string &filename,
-        int expectCols
+        int expectCols,
+        const std::vector<std::string> &neededCols = {}
     );
 
 // expectCols: -1 = auto-detect from header;

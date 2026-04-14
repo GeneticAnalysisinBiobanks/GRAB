@@ -535,18 +535,29 @@ void runLEAFPheno(
         infoMsg("  Survival phenotype: time=%s, event=%s", phenoNames[0].c_str(), phenoNames[1].c_str());
     } else {
         indicator = sdFull.getColumn(phenoNames[0]);
+        // Validate binary: all values must be 0 or 1
+        for (Eigen::Index i = 0; i < indicator.size(); ++i) {
+            double v = indicator[i];
+            if (v != 0.0 && v != 1.0)
+                throw std::runtime_error(
+                          "Phenotype '" + phenoNames[0] + "' is not binary"
+                          " (found value " + std::to_string(v) + ")."
+                          " For survival phenotypes use --pheno-name TIME:EVENT.");
+        }
         infoMsg("  Binary phenotype: %s", phenoNames[0].c_str());
     }
 
     // ---- Build design matrices ----
     // Logistic: [1 | covariates] (intercept needed)
     // Cox PH:   [covariates]     (no intercept — absorbed into baseline hazard)
-    const int nCov = covarNames.empty() ? 0 : static_cast<int>(covarNames.size());
     Eigen::MatrixXd covarMat;
-    if (nCov > 0) {
+    if (!covarNames.empty()) {
         covarMat = sdFull.getColumns(covarNames);
-        infoMsg("  %d covariate(s) from --covar-name", nCov);
+    } else if (sdFull.hasCovar()) {
+        covarMat = sdFull.covar();
     }
+    const int nCov = static_cast<int>(covarMat.cols());
+    if (nCov > 0) infoMsg("  %d covariate(s)", nCov);
     Eigen::MatrixXd logisticDesign; // only built if needed
     if (!isSurv) {
         logisticDesign.resize(N, 1 + nCov);
@@ -1015,9 +1026,13 @@ void runLEAF(
     infoMsg("  %lld subjects after intersection", static_cast<long long>(N));
 
     // Shared covariate matrix
-    const int nCov = covarNames.empty() ? 0 : static_cast<int>(covarNames.size());
     Eigen::MatrixXd covarMat;
-    if (nCov > 0) covarMat = sdFull.getColumns(covarNames);
+    if (!covarNames.empty()) {
+        covarMat = sdFull.getColumns(covarNames);
+    } else if (sdFull.hasCovar()) {
+        covarMat = sdFull.covar();
+    }
+    const int nCov = static_cast<int>(covarMat.cols());
     Eigen::MatrixXd logisticDesign;
     // Will be built per-cluster, not globally
 
@@ -1213,6 +1228,15 @@ void runLEAF(
                         fullInd = sdFull.getColumn(cols[1]);
                     } else {
                         fullInd = sdFull.getColumn(cols[0]);
+                        // Validate binary: all values must be 0 or 1
+                        for (Eigen::Index i = 0; i < fullInd.size(); ++i) {
+                            double v = fullInd[i];
+                            if (v != 0.0 && v != 1.0)
+                                throw std::runtime_error(
+                                          "Phenotype '" + cols[0] + "' is not binary"
+                                          " (found value " + std::to_string(v) + ")."
+                                          " For survival phenotypes use --pheno-name TIME:EVENT.");
+                        }
                     }
 
                     const auto &members = clusterMemberIdx[c];

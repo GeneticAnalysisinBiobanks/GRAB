@@ -61,6 +61,33 @@ struct TokenScanner {
         return std::string(s, p);
     }
 
+    // Zero-copy token as string_view (valid until the underlying string is destroyed).
+    std::string_view nextView() {
+        skipWS();
+        const char *s = p;
+        while (p < end && *p != ' ' && *p != '\t')
+            ++p;
+        return {s, static_cast<size_t>(p - s)};
+    }
+
+    // Count remaining whitespace-delimited tokens without advancing.
+    int countRemaining() const {
+        const char *q = p;
+        int n = 0;
+        while (q < end) {
+            while (q < end && (*q == ' ' || *q == '\t')) ++q;
+            if (q >= end) break;
+            ++n;
+            while (q < end && *q != ' ' && *q != '\t') ++q;
+        }
+        return n;
+    }
+
+    // Count all tokens (call on a fresh scanner).
+    int countAll() const {
+        return countRemaining();
+    }
+
 };
 
 // Build an IID → index map from a vector of subject IDs.

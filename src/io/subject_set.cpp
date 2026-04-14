@@ -103,7 +103,7 @@ void SubjectSet::finalize() {
         std::fprintf(stderr, "  %u subjects after --remove %s\n", nAfterRemove, m_removeFile.c_str());
     else
         std::fprintf(stderr, "  (no --remove provided)\n");
-    std::fprintf(stderr, "  %u subjects after filtering\n", m_nUsed);
+    std::fprintf(stderr, "  %u subjects used in analysis\n\n", m_nUsed);
 
     m_finalized = true;
 }

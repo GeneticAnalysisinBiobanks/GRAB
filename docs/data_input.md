@@ -206,6 +206,40 @@ is logged).
 
 ---
 
+## LOCO predictions — `--pred-list FILE`
+
+Regenie step 1 `pred.list` file for LOCO (leave-one-chromosome-out) analysis.
+Each line maps a phenotype name to its LOCO prediction file:
+
+```
+pheno1  /path/to/pheno1_loco.txt
+pheno2  /path/to/pheno2_loco.txt
+```
+
+Each LOCO file is whitespace-delimited with a header row of subject IDs followed
+by one row per chromosome.  The first column is the chromosome label and the
+remaining columns are per-subject LOCO scores:
+
+```
+IID_1  IID_2  IID_3  ...
+1      0.123  0.456  0.789  ...
+2      0.234  0.567  0.890  ...
+...
+22     0.345  0.678  0.901  ...
+```
+
+Requirements:
+
+- All 22 autosomal chromosomes (1–22) must be present; GRAB throws an error
+  otherwise.
+- The header subject IDs are matched to `--covar` subjects; every covariate
+  subject must appear in the LOCO file.
+- Non-autosomal rows (chr 23, X, Y, etc.) are silently skipped.
+
+Used by `--method SPAsqr` when LOCO analysis is requested.
+
+---
+
 ## Pairwise IBD — `--pairwise-ibd FILE`
 
 Tab-separated with a mandatory header:
@@ -376,6 +410,6 @@ default.
 | SPAmixPlus      | `--bfile/pfile/…` | `--resid-name`     | `--sp-grm-*`       | `--ind-af-coef`               |
 | SPAmixLocalPlus | `--admix-bfile`   | `--resid-name`     | —                  | `--admix-phi`                 |
 | POLMM           | `--bfile/pfile/…` | `--pheno-name`     | `--sp-grm-*`       | —                             |
-| SPAsqr          | `--bfile/pfile/…` | `--pheno-name`     | `--sp-grm-*`       | —                             |
+| SPAsqr          | `--bfile/pfile/…` | `--pheno-name`     | `--sp-grm-*`       | `--pred-list` (LOCO)          |
 | WtCoxG          | `--bfile/pfile/…` | `--pheno-name`     | `--sp-grm-*`       | `--ref-af`                    |
 | LEAF            | `--bfile/pfile/…` | `--pheno-name`     | `--sp-grm-*`       | `--ref-af`                    |

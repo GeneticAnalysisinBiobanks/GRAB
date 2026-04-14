@@ -7,9 +7,9 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -408,22 +408,32 @@ static std::vector<AFModel> loadAFModelsText(
     models.reserve(nExpected);
 
     uint32_t lineNo = 0;
-    auto parseLine = [&](std::string line) {
+    auto parseLine = [&](std::string &line) {
         ++lineNo;
         if (text::skipLine(line)) return;
-        std::istringstream iss(line);
-        int status;
-        if (!(iss >>
-              status)) throw std::runtime_error(path + " line " + std::to_string(lineNo) +
-                                                ": expected STATUS BETA0 ...");
+        text::TokenScanner ts(line);
+        auto sv = ts.nextView();
+        if (sv.empty()) return;
+        char *end;
+        long status = std::strtol(sv.data(), &end, 10);
+        if (end == sv.data()) throw std::runtime_error(path + " line " + std::to_string(lineNo) +
+                                                       ": expected STATUS BETA0 ...");
         AFModel m;
         m.status = static_cast<int8_t>(status);
         m.betas.resize(1 + nPC);
         for (int j = 0; j <= nPC; ++j) {
-            if (!(iss >> m.betas[j])) throw std::runtime_error(
+            ts.skipWS();
+            if (ts.atEnd()) throw std::runtime_error(
                           path + " line " + std::to_string(lineNo) + ": expected " +
                           std::to_string(1 + nPC) + " beta values"
             );
+            const char *cur = ts.pos();
+            m.betas[j] = std::strtod(cur, &end);
+            if (end == cur) throw std::runtime_error(
+                          path + " line " + std::to_string(lineNo) + ": expected " +
+                          std::to_string(1 + nPC) + " beta values"
+            );
+            ts.p = end;
         }
         models.push_back(std::move(m));
     };

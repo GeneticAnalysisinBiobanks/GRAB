@@ -170,7 +170,8 @@ double fastGetRoot(
                 t = old_t + diff_t;
                 break;
             } else {
-                while (std::abs(old_diff_t) > tol && std::abs(diff_t) > std::abs(old_diff_t) - tol)
+                for (int bisect = 0; bisect < 200 && std::abs(old_diff_t) > tol &&
+                     std::abs(diff_t) > std::abs(old_diff_t) - tol; ++bisect)
                     diff_t /= 2.0;
                 t = old_t + diff_t;
                 continue;
@@ -178,7 +179,7 @@ double fastGetRoot(
         }
 
         if (signOf(Score) != signOf(old_t + diff_t) && (signOf(old_CGF1) == 0 || signOf(CGF1) == signOf(old_CGF1))) {
-            while (signOf(Score) != signOf(old_t + diff_t))
+            for (int bisect = 0; bisect < 200 && signOf(Score) != signOf(old_t + diff_t); ++bisect)
                 diff_t /= 2.0;
             t = old_t + diff_t;
             continue;
@@ -267,6 +268,7 @@ SPAGRMClass::SPAGRMClass(
       m_R_GRM_R_nonOutlier(R_GRM_R_nonOutlier),
       m_R_GRM_R_TwoSubjOutlier(R_GRM_R_TwoSubjOutlier),
       m_R_GRM_R(R_GRM_R),
+      m_resid_sum(m_resid.sum()),
       m_MAF_interval(std::move(MAF_interval)),
       m_TwoSubj_resid_list(std::move(fam.twoSubj_resid)),
       m_TwoSubj_rho_list(std::move(fam.twoSubj_rho)),
@@ -297,6 +299,7 @@ SPAGRMClass::SPAGRMClass(const SPAGRMClass &o)
       m_R_GRM_R_nonOutlier(o.m_R_GRM_R_nonOutlier),
       m_R_GRM_R_TwoSubjOutlier(o.m_R_GRM_R_TwoSubjOutlier),
       m_R_GRM_R(o.m_R_GRM_R),
+      m_resid_sum(o.m_resid_sum),
       m_MAF_interval(o.m_MAF_interval),
       m_TwoSubj_resid_list(o.m_TwoSubj_resid_list),
       m_TwoSubj_rho_list(o.m_TwoSubj_rho_list),
@@ -323,13 +326,27 @@ SPAGRMClass::SPAGRMClass(const SPAGRMClass &o)
 double SPAGRMClass::getMarkerPval(
     const Eigen::VectorXd &GVec,
     double altFreq,
-    double &zScore
+    double &zScore,
+    double gMean
 ) {
     const double MAF = std::min(altFreq, 1.0 - altFreq);
-    const double Score = GVec.dot(m_resid) - GVec.mean() * m_resid.sum();
+    if (std::isnan(gMean))
+        gMean = GVec.mean();
+    const double Score = GVec.dot(m_resid) - gMean * m_resid_sum;
     const double G_var = 2.0 * MAF * (1.0 - MAF);
     const double Score_var = G_var * m_R_GRM_R;
+
+    // Guard: monomorphic or degenerate marker — skip SPA entirely
+    if (Score_var <= 0.0 || MAF <= 0.0) {
+        zScore = 0.0;
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+
     zScore = Score / std::sqrt(Score_var);
+
+    if (!std::isfinite(zScore)) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
 
     if (std::abs(zScore) <= m_SPA_Cutoff) {
         return 2.0 * math::pnorm(std::abs(zScore), 0.0, 1.0, /*lower_tail=*/ false);
@@ -346,6 +363,74 @@ double SPAGRMClass::getMarkerPval(
     const double one_minus_mr = 1.0 - MAF_ratio;
 
     // Update arr_prob in-place for three-subject families.
+    double Var_ThreeOutlier = 0.0;
+    const int n3 = static_cast<int>(m_threeSubj_scratch.size());
+    for (int i = 0; i < n3; ++i) {
+        const double *c1 = m_ThreeSubj_CLT_list[i].col(order1).data();
+        const double *c2 = m_ThreeSubj_CLT_list[i].col(order2).data();
+        const double *ss = m_threeSubj_scratch[i].stand_S.data();
+        double *ap = m_threeSubj_scratch[i].arr_prob.data();
+        const size_t sz = m_threeSubj_scratch[i].stand_S.size();
+        double s1 = 0.0, s2 = 0.0;
+        for (size_t k = 0; k < sz; ++k) {
+            ap[k] = MAF_ratio * c1[k] + one_minus_mr * c2[k];
+            const double tmp = ss[k] * ap[k];
+            s1 += tmp;
+            s2 += ss[k] * tmp;
+        }
+        Var_ThreeOutlier += s2 - s1 * s1;
+    }
+
+    const double EmpVar =
+        G_var * (m_R_GRM_R_nonOutlier + m_sum_unrelated_outliers2 + m_R_GRM_R_TwoSubjOutlier) + Var_ThreeOutlier;
+    const double Score_adj = Score * std::sqrt(EmpVar / Score_var);
+
+    double zeta1 = std::abs(Score_adj) / Score_var;
+    zeta1 = std::min(zeta1, 1.2);
+    const double zeta2 = -std::abs(m_zeta);
+
+    const double pval1 = nsSPAGRM::getProbSpa(m_resid_unrelated_outliers, m_TwoSubj_resid_list, m_TwoSubj_rho_list,
+                                              m_threeSubj_scratch, m_sum_R_nonOutlier, m_R_GRM_R_nonOutlier,
+                                              std::abs(Score_adj), MAF, false, zeta1, 1e-4, m_workspace);
+    const double pval2 = nsSPAGRM::getProbSpa(m_resid_unrelated_outliers, m_TwoSubj_resid_list, m_TwoSubj_rho_list,
+                                              m_threeSubj_scratch, m_sum_R_nonOutlier, m_R_GRM_R_nonOutlier,
+                                              -std::abs(Score_adj), MAF, true, zeta2, m_tol, m_workspace);
+    return pval1 + pval2;
+}
+
+double SPAGRMClass::getMarkerPvalFromScore(
+    double Score,
+    double altFreq,
+    double &zScore
+) {
+    const double MAF = std::min(altFreq, 1.0 - altFreq);
+    const double G_var = 2.0 * MAF * (1.0 - MAF);
+    const double Score_var = G_var * m_R_GRM_R;
+
+    if (Score_var <= 0.0 || MAF <= 0.0) {
+        zScore = 0.0;
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+
+    zScore = Score / std::sqrt(Score_var);
+
+    if (!std::isfinite(zScore)) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+
+    if (std::abs(zScore) <= m_SPA_Cutoff) {
+        return 2.0 * math::pnorm(std::abs(zScore), 0.0, 1.0, /*lower_tail=*/ false);
+    }
+
+    int order2 =
+        static_cast<int>(std::lower_bound(m_MAF_interval.begin(), m_MAF_interval.end(), MAF) - m_MAF_interval.begin());
+    const int nBins = static_cast<int>(m_MAF_interval.size());
+    if (order2 <= 0) order2 = 1;
+    if (order2 >= nBins) order2 = nBins - 1;
+    const int order1 = order2 - 1;
+    const double MAF_ratio = (m_MAF_interval[order2] - MAF) / (m_MAF_interval[order2] - m_MAF_interval[order1]);
+    const double one_minus_mr = 1.0 - MAF_ratio;
+
     double Var_ThreeOutlier = 0.0;
     const int n3 = static_cast<int>(m_threeSubj_scratch.size());
     for (int i = 0; i < n3; ++i) {

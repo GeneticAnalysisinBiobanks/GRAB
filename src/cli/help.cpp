@@ -22,7 +22,7 @@ static void printFlag(const FlagDef *f) {
 
 static void printShortHelp() {
     std::fputs(
-R"(GRAB -- Genome-Wide Robust Analysis for Biobank Data
+        R"(GRAB -- Genome-Wide Robust Analysis for Biobank Data
 
 Usage:
 
@@ -50,7 +50,8 @@ Usage:
     grab --make-abed  --vcf FILE  --rfmix-msp FILE  --out PREFIX
     grab --make-abed  --admix-text-prefix PREFIX  --out PREFIX
 
-)", stderr);
+)",
+        stderr);
     std::fprintf(stderr, "Run 'grab --help <topic>' for details.  Topics:\n");
     for (const MethodDef *const *p = kAllMethods; *p; ++p)
         std::fprintf(stderr, "  %-20s %s\n", (*p)->name, (*p)->desc);
@@ -58,10 +59,11 @@ Usage:
     for (const MethodDef *const *p = kAllUtilModes; *p; ++p)
         std::fprintf(stderr, "  --%-20s %s\n", (*p)->name, (*p)->desc);
     std::fputs(
-R"(
+        R"(
   options             Show all options
   pheno  covar  ref-af  sp-grm  pairwise-ibd  ind-af-coef  admix-phi
-)", stderr);
+)",
+        stderr);
 }
 
 // ── Method help (generated from MethodDef) ─────────────────────────

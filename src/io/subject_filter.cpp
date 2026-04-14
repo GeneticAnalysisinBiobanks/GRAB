@@ -2,19 +2,21 @@
 
 #include "io/subject_filter.hpp"
 #include "util/logging.hpp"
+#include "util/text_scanner.hpp"
 
 #include <fstream>
-#include <sstream>
 #include <stdexcept>
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 static std::vector<std::string> splitWS(const std::string &s) {
+    text::TokenScanner ts(s);
     std::vector<std::string> tokens;
-    std::istringstream ss(s);
-    std::string tok;
-    while (ss >> tok)
-        tokens.push_back(tok);
+    while (!ts.atEnd()) {
+        auto sv = ts.nextView();
+        if (sv.empty()) break;
+        tokens.emplace_back(sv);
+    }
     return tokens;
 }
 
