@@ -32,6 +32,7 @@ struct Args {
     std::string compression;      // --compression (gz|zst, default: empty = plain text)
     std::string extractFile;      // --extract (SNP include list)
     std::string excludeFile;      // --exclude (SNP exclude list)
+    std::string chrSpec;          // --chr (chromosome filter, e.g. "1-4,6,22")
     std::string admixBfilePrefix; // --admix-bfile
     std::string admixPhiFile;     // --admix-phi
     std::string mspFile;          // --rfmix-msp

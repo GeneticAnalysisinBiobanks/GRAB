@@ -132,6 +132,7 @@ PgenData::PgenData(
     const std::vector<uint64_t> &usedMask,
     uint32_t nSamplesInFile,
     uint32_t nUsed,
+    std::unordered_set<std::string> chrFilter,
     int nMarkersEachChunk
 )
     : m_pgenFile(std::move(pgenFile)),
@@ -164,6 +165,16 @@ PgenData::PgenData(
         // This matches our convention: always count ALT.
         m_markerInfo.push_back({r.chrom, r.pos, r.id, r.ref, r.alt, i});
     }
+
+    // ---- Apply --chr filter ----
+    if (!chrFilter.empty()) {
+        std::vector<MarkerInfo> filtered;
+        filtered.reserve(m_markerInfo.size());
+        for (const auto &m : m_markerInfo)
+            if (chrFilter.count(m.chrom)) filtered.push_back(m);
+        m_markerInfo = std::move(filtered);
+    }
+
     m_chunkIndices = buildChunks(m_markerInfo, nMarkersEachChunk);
 
     // ---- Initialize pgenlib (two-phase) ----

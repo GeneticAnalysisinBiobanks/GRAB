@@ -29,6 +29,7 @@ VcfData::VcfData(
     const std::vector<uint64_t> &usedMask,
     uint32_t nSamplesInFile,
     uint32_t nUsed,
+    std::unordered_set<std::string> chrFilter,
     int nMarkersEachChunk
 )
     : m_vcfFile(std::move(vcfFile)),
@@ -78,7 +79,8 @@ VcfData::VcfData(
         m_markerId.push_back(id);
         m_ref.push_back(refAllele);
         m_alt.push_back(altAllele);
-        m_markerInfo.push_back({chrom, pos, id, refAllele, altAllele, variantIdx});
+        if (chrFilter.empty() || chrFilter.count(chrom))
+            m_markerInfo.push_back({chrom, pos, id, refAllele, altAllele, variantIdx});
         ++variantIdx;
     }
 

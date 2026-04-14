@@ -15,6 +15,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 class BgenData : public GenoMeta {
@@ -27,6 +28,7 @@ class BgenData : public GenoMeta {
         const std::vector<uint64_t> &usedMask,
         uint32_t nSamplesInFile,
         uint32_t nUsed,
+        std::unordered_set<std::string> chrFilter = {},
         int nMarkersEachChunk = 1024
     );
 

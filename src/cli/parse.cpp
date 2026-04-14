@@ -68,6 +68,7 @@ Args parseArgs(
         else if (arg == "--seed")a.seed = std::stoull(next());
         else if (arg == "--extract")a.extractFile = next();
         else if (arg == "--exclude")a.excludeFile = next();
+        else if (arg == "--chr")a.chrSpec = next();
         else if (arg == "--keep")a.keepFile = next();
         else if (arg == "--remove")a.removeFile = next();
         else if (arg == "--admix-bfile")a.admixBfilePrefix = next();

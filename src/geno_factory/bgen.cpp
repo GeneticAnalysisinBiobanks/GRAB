@@ -129,6 +129,7 @@ BgenData::BgenData(
     const std::vector<uint64_t> &usedMask,
     uint32_t nSamplesInFile,
     uint32_t nUsed,
+    std::unordered_set<std::string> chrFilter,
     int nMarkersEachChunk
 )
     : m_bgenFile(std::move(bgenFile)),
@@ -191,7 +192,8 @@ BgenData::BgenData(
         // BGEN convention: allele[0] = first allele (typically REF), allele[1] = ALT
         m_ref.push_back(alleles[0]);
         m_alt.push_back(alleles[1]);
-        m_markerInfo.push_back({chromosome, position, RSID.empty() ? SNPID : RSID, alleles[0], alleles[1], variantIdx});
+        if (chrFilter.empty() || chrFilter.count(chromosome))
+            m_markerInfo.push_back({chromosome, position, RSID.empty() ? SNPID : RSID, alleles[0], alleles[1], variantIdx});
         ++variantIdx;
 
         genfile::bgen::ignore_genotype_data_block(stream, context);

@@ -14,6 +14,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 // ======== PlinkData: shared, constructed once on main thread ========
@@ -36,6 +37,7 @@ class PlinkData : public GenoMeta {
         std::string RangesToIncludeFile = {},
         std::string IDsToExcludeFile = {},
         std::string RangesToExcludeFile = {},
+        std::unordered_set<std::string> chrFilter = {},
         int nMarkersEachChunk = 1024
     );
 
@@ -115,7 +117,8 @@ class PlinkData : public GenoMeta {
         const std::string &IDsToIncludeFile,
         const std::string &RangesToIncludeFile,
         const std::string &IDsToExcludeFile,
-        const std::string &RangesToExcludeFile
+        const std::string &RangesToExcludeFile,
+        const std::unordered_set<std::string> &chrFilter
     );
 
     static std::vector<std::vector<uint64_t> > buildChunks(

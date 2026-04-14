@@ -260,6 +260,12 @@ inline const FlagDef kExclude = {
 Applied to both --bfile and --admix-bfile inputs.)"
 };
 
+inline const FlagDef kChr = {
+    "--chr", "NUMS", "Restrict analysis to specified chromosomes",
+    R"(Comma-separated chromosome numbers or ranges.
+Examples: --chr 5   --chr 2,3   --chr 1-4,6-8,22)"
+};
+
 inline const FlagDef kAdmixBfile = {
     "--admix-bfile", "PREFIX",
     "Admixed ancestry binary genotype prefix (.abed/.bim/.fam)",
@@ -332,7 +338,7 @@ inline const FlagDef *const kSPACoxReq[] = {
 };
 inline const FlagDef *const kSPACoxOpt[] = {
     &kCovar,       &kCovarName,        &kResidName,    &kCovarPThresh, &kSpaZThresh, &kThreads, &kChunkSize,
-    &kCompression, &kCompressionLevel, &kGeno,         &kMaf,         &kMac,        &kHwe,
+    &kCompression, &kCompressionLevel, &kGeno,         &kMaf,         &kMac,        &kHwe,     &kChr,
     nullptr
 };
 inline const MethodDef kSPACox = {
@@ -353,7 +359,7 @@ inline const FlagDef *const kSPAGRMReq[] = {
 };
 inline const FlagDef *const kSPAGRMOpt[] = {
     &kSpaZThresh, &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
-    &kGeno,       &kMaf,     &kMac,       &kHwe,
+    &kGeno,       &kMaf,     &kMac,       &kHwe,         &kChr,
     nullptr
 };
 inline const MethodDef kSPAGRM = {
@@ -373,7 +379,7 @@ inline const FlagDef *const kSAGELDReq[] = {
     nullptr
 };
 inline const FlagDef *const kSAGELDOpt[] = {
-    &kSpaZThresh, &kThreads, &kChunkSize, &kGeno, &kMaf, &kMac, &kHwe,
+    &kSpaZThresh, &kThreads, &kChunkSize, &kGeno, &kMaf, &kMac, &kHwe, &kChr,
     nullptr
 };
 inline const MethodDef kSAGELD = {
@@ -395,7 +401,7 @@ inline const FlagDef *const kSPAmixReq[] = {
 inline const FlagDef *const kSPAmixOpt[] = {
     &kPheno,      &kCovar,   &kIndAfCoef, &kSpGrm,       &kOutlierIqr,
     &kSpaZThresh, &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
-    &kGeno,       &kMaf,     &kMac,       &kHwe,
+    &kGeno,       &kMaf,     &kMac,       &kHwe,         &kChr,
     nullptr
 };
 inline const MethodDef kSPAmix = {
@@ -418,7 +424,7 @@ inline const FlagDef *const kSPAmixPlusReq[] = {
 inline const FlagDef *const kSPAmixPlusOpt[] = {
     &kCovar,     &kIndAfCoef,        &kOutlierIqr, &kSpaZThresh, &kThreads,
     &kChunkSize, &kCompression, &kCompressionLevel, &kGeno,       &kMaf,        &kMac,
-    &kHwe,
+    &kHwe,       &kChr,
     nullptr
 };
 inline const MethodDef kSPAmixPlus = {
@@ -441,7 +447,7 @@ inline const FlagDef *const kPOLMMReq[] = {
 inline const FlagDef *const kPOLMMOpt[] = {
     &kCovar,   &kCovarName, &kSpaZThresh,
     &kThreads, &kChunkSize, &kGeno,     &kMaf,
-    &kMac,     &kHwe,
+    &kMac,     &kHwe,       &kChr,
     nullptr
 };
 
@@ -467,7 +473,7 @@ inline const FlagDef *const kSPAsqrOpt[] = {
     &kPhenoName,    &kSpasqrTaus, &kSpasqrTol,  &kSpasqrH,
     &kSpasqrHScale, &kOutlierIqr, &kOutlierAbs,
     &kSpaZThresh,   &kThreads,    &kChunkSize,  &kGeno, &kMaf,
-    &kMac,          &kHwe,
+    &kMac,          &kHwe,        &kChr,
     nullptr
 };
 
@@ -492,7 +498,7 @@ inline const FlagDef *const kWtCoxGOpt[] = {
     &kPheno,      &kCovar,  &kCovarName, &kResidName,
     &kPhenoName,  &kSpGrm,  &kBatchPThresh,
     &kSpaZThresh, &kThreads, &kChunkSize, &kGeno, &kMaf,
-    &kMac,        &kHwe,
+    &kMac,        &kHwe,    &kChr,
     nullptr
 };
 
@@ -516,7 +522,7 @@ inline const FlagDef *const kLEAFReq[] = {
 inline const FlagDef *const kLEAFOpt[] = {
     &kPheno,     &kCovar,     &kCovarName, &kResidName, &kPhenoName,
     &kPcCols,    &kNClusters, &kSeed,      &kSpGrm,     &kBatchPThresh, &kSpaZThresh,
-    &kThreads,   &kChunkSize, &kGeno,      &kMaf,       &kMac,          &kHwe,
+    &kThreads,   &kChunkSize, &kGeno,      &kMaf,       &kMac,          &kHwe,        &kChr,
     nullptr
 };
 
@@ -540,7 +546,7 @@ inline const FlagDef *const kCalPhiReq[] = {
 };
 
 inline const FlagDef *const kCalPhiOpt[] = {
-    &kKeep,        &kRemove,           &kExtract, &kExclude,
+    &kKeep,        &kRemove,           &kExtract, &kExclude, &kChr,
     &kCompression, &kCompressionLevel,
     nullptr
 };
@@ -565,7 +571,7 @@ inline const FlagDef *const kSPAmixLocalPlusReq[] = {
 
 inline const FlagDef *const kSPAmixLocalPlusOpt[] = {
     &kExtract,          &kExclude, &kOutlierIqr, &kSpaZThresh, &kThreads, &kChunkSize, &kCompression,
-    &kCompressionLevel, &kGeno,    &kMaf,        &kMac,        &kHwe,
+    &kCompressionLevel, &kGeno,    &kMaf,        &kMac,        &kHwe,     &kChr,
     nullptr
 };
 
@@ -617,7 +623,7 @@ inline const FlagDef *const kCalAfReq[] = {
 
 inline const FlagDef *const kCalAfOpt[] = {
     &kPheno,   &kCovar,     &kKeep, &kRemove, &kCompression, &kCompressionLevel,
-    &kThreads, &kChunkSize, &kGeno, &kMaf,    &kMac,         &kHwe,
+    &kThreads, &kChunkSize, &kGeno, &kMaf,    &kMac,         &kHwe,             &kChr,
     nullptr
 };
 
@@ -686,7 +692,7 @@ inline const FlagDef *const kInputFlags[] = {
     &kPcCols,      &kRefAf,       &kSpGrmGrab,
     &kSpGrmPlink2, &kIndAfCoef,   &kPairwiseIbd,
     &kAdmixPhi,    &kMsp,         &kAdmixTextPrefix,
-    &kExtract,     &kExclude,
+    &kExtract,     &kExclude,     &kChr,
     nullptr
 };
 
@@ -698,7 +704,7 @@ inline const FlagDef *const kNumericFlags[] = {
 };
 
 inline const FlagDef *const kFilterFlags[] = {
-    &kExtract, &kExclude,
+    &kExtract, &kExclude, &kChr,
     nullptr
 };
 

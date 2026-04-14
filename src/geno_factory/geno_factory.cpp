@@ -176,17 +176,19 @@ std::unique_ptr<GenoMeta> makeGenoData(
         infoMsg("Loading PLINK data: %s", spec.path.c_str());
         return std::make_unique<PlinkData>(spec.path + ".bed", spec.path + ".bim", spec.path + ".fam", usedMask,
                                            nSamplesInFile, nUsed, spec.extractFile, std::string{}, spec.excludeFile,
-                                           std::string{}, nMarkersEachChunk);
+                                           std::string{}, spec.chrFilter, nMarkersEachChunk);
     case GenoFormat::Pgen:
         infoMsg("Loading PGEN data: %s", spec.path.c_str());
         return std::make_unique<PgenData>(spec.path + ".pgen", spec.path + ".pvar", usedMask, nSamplesInFile, nUsed,
-                                          nMarkersEachChunk);
+                                          spec.chrFilter, nMarkersEachChunk);
     case GenoFormat::Vcf:
         infoMsg("Loading VCF/BCF data: %s", spec.path.c_str());
-        return std::make_unique<VcfData>(spec.path, usedMask, nSamplesInFile, nUsed, nMarkersEachChunk);
+        return std::make_unique<VcfData>(spec.path, usedMask, nSamplesInFile, nUsed, spec.chrFilter,
+                                         nMarkersEachChunk);
     case GenoFormat::Bgen:
         infoMsg("Loading BGEN data: %s", spec.path.c_str());
-        return std::make_unique<BgenData>(spec.path, usedMask, nSamplesInFile, nUsed, nMarkersEachChunk);
+        return std::make_unique<BgenData>(spec.path, usedMask, nSamplesInFile, nUsed, spec.chrFilter,
+                                          nMarkersEachChunk);
     }
     throw std::runtime_error("Unknown genotype format");
 }

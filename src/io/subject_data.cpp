@@ -114,17 +114,33 @@ SubjectData::RawFile SubjectData::parseIIDFile(
     }
     if (headers.size() < 2)throw std::runtime_error(filename + ": header must have at least 2 columns (ID + data)");
 
-    // Validate all header names
-    for (const auto &h : headers) {
-        if (!isValidHeaderName(h))throw std::runtime_error(
-                      filename + ": invalid header name '" + h +
+    // ── Detect FID+IID header layout ───────────────────────────────────
+    // If the first column is #FID or FID and the second is IID, skip FID
+    // and use IID as the subject-ID column.
+    int iidCol   = 0; // index of the subject-ID column
+    int dataStart = 1; // first data column index
+
+    if (headers.size() >= 3 &&
+        (headers[0] == "#FID" || headers[0] == "FID") &&
+        headers[1] == "IID")
+    {
+        iidCol    = 1;
+        dataStart = 2;
+        infoMsg("%s: detected FID+IID header; using IID column, ignoring FID",
+                filename.c_str());
+    }
+
+    // Validate data column header names (skip FID / IID labels)
+    for (size_t c = static_cast<size_t>(dataStart); c < headers.size(); ++c) {
+        if (!isValidHeaderName(headers[c]))throw std::runtime_error(
+                      filename + ": invalid header name '" + headers[c] +
                       "'. Names must match [0-9A-Za-z_\\-.]+ "
         );
     }
 
-    // Column 0 = subject ID, columns 1..N = data
-    rf.nCols = static_cast<int>(headers.size()) - 1;
-    for (size_t c = 1; c < headers.size(); ++c)
+    // Data columns start at dataStart
+    rf.nCols = static_cast<int>(headers.size()) - dataStart;
+    for (size_t c = static_cast<size_t>(dataStart); c < headers.size(); ++c)
         rf.colNames.push_back(headers[c]);
 
     if (expectCols >= 0 && rf.nCols != expectCols)throw std::runtime_error(
@@ -155,8 +171,8 @@ SubjectData::RawFile SubjectData::parseIIDFile(
                       std::to_string(tokens.size())
             );
 
-        rf.iids.push_back(tokens[0]); // column 0 = subject ID
-        for (int ci = 1; ci < nExpectedToks; ++ci) {
+        rf.iids.push_back(tokens[iidCol]); // subject ID column
+        for (int ci = dataStart; ci < nExpectedToks; ++ci) {
             const std::string &tok = tokens[ci];
             if (isMissingToken(tok)) {
                 rf.vals.push_back(std::numeric_limits<double>::quiet_NaN());

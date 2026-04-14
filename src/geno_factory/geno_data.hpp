@@ -13,6 +13,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 class GenoCursor;
@@ -28,6 +29,7 @@ struct GenoSpec {
     std::string path;        // bfilePrefix for Plink/Pgen, full file for Vcf/Bgen
     std::string extractFile; // --extract: SNP include list
     std::string excludeFile; // --exclude: SNP exclude list
+    std::unordered_set<std::string> chrFilter; // --chr: chromosome include set
 
     // Return a descriptive flag label, e.g. "--bfile d_bed".
     std::string flagLabel() const {

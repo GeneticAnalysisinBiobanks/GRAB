@@ -29,11 +29,41 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace cli {
 
 // ── Validation helpers ─────────────────────────────────────────────
+
+// Parse --chr spec: "5", "2,3", "1-4,6-8,22" → set of chromosome strings.
+static std::unordered_set<std::string> parseChrSpec(const std::string &spec) {
+    std::unordered_set<std::string> result;
+    std::istringstream iss(spec);
+    std::string token;
+    while (std::getline(iss, token, ',')) {
+        if (token.empty()) continue;
+        auto dash = token.find('-');
+        if (dash != std::string::npos && dash > 0 && dash < token.size() - 1) {
+            // Range: e.g. "1-4"
+            int lo = std::stoi(token.substr(0, dash));
+            int hi = std::stoi(token.substr(dash + 1));
+            if (lo > hi) {
+                std::cerr << "Error: invalid --chr range '" << token << "' (start > end).\n";
+                std::exit(1);
+            }
+            for (int c = lo; c <= hi; ++c)
+                result.insert(std::to_string(c));
+        } else {
+            result.insert(token);
+        }
+    }
+    if (result.empty()) {
+        std::cerr << "Error: --chr produced an empty chromosome set.\n";
+        std::exit(1);
+    }
+    return result;
+}
 
 static void require(
     const std::string &val,
@@ -67,6 +97,7 @@ static GenoSpec resolveGenoSpec(
     GenoSpec spec;
     spec.extractFile = a.extractFile;
     spec.excludeFile = a.excludeFile;
+    if (!a.chrSpec.empty()) spec.chrFilter = parseChrSpec(a.chrSpec);
     if (!a.bfilePrefix.empty()) {
         spec.format = GenoFormat::Plink;
         spec.path = a.bfilePrefix;
@@ -156,6 +187,7 @@ static void logArgsInEffect(const Args &args) {
     if (!args.pairwiseIBDFile.empty()) std::fprintf(stderr, "  --pairwise-ibd %s\n", args.pairwiseIBDFile.c_str());
     if (!args.extractFile.empty()) std::fprintf(stderr, "  --extract %s\n", args.extractFile.c_str());
     if (!args.excludeFile.empty()) std::fprintf(stderr, "  --exclude %s\n", args.excludeFile.c_str());
+    if (!args.chrSpec.empty()) std::fprintf(stderr, "  --chr %s\n", args.chrSpec.c_str());
     if (!args.admixBfilePrefix.empty()) std::fprintf(stderr, "  --admix-bfile %s\n", args.admixBfilePrefix.c_str());
     if (!args.admixPhiFile.empty()) std::fprintf(stderr, "  --admix-phi %s\n", args.admixPhiFile.c_str());
     if (!args.mspFile.empty()) std::fprintf(stderr, "  --rfmix-msp %s\n", args.mspFile.c_str());

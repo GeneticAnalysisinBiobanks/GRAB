@@ -52,9 +52,17 @@ The `.abed` file is produced by `grab --make-abed` from one of:
 
 ## Phenotype file — `--pheno FILE`
 
-Whitespace-delimited with a mandatory header line.  The first column is the
-subject ID regardless of its header name.  All column names must match
-`[0-9A-Za-z_\-.]+`.  One row per subject.
+Whitespace-delimited with a mandatory header line.  One row per subject.
+All data column names must match `[0-9A-Za-z_\-.]+`.
+
+The subject ID column is determined from the header:
+
+| Header columns 1–2        | Subject ID   | Data columns start at |
+| ------------------------- | ------------ | --------------------- |
+| `#FID  IID  …` or `FID  IID  …` | column 2 (IID) | column 3            |
+| anything else             | column 1     | column 2              |
+
+When `#FID`/`FID` + `IID` is detected, the FID column is silently ignored.
 
 | Flag                        | Purpose                                                    |
 | --------------------------- | ---------------------------------------------------------- |
@@ -99,8 +107,9 @@ subject filtering (see [data_filter.md](data_filter.md)).
 
 ## Covariate file — `--covar FILE`
 
-Same format as `--pheno`: whitespace-delimited, mandatory header, first
-column = subject ID.  All column names must match `[0-9A-Za-z_\-.]+`.
+Same format as `--pheno`: whitespace-delimited, mandatory header.
+Subject ID detection follows the same `#FID`/`FID` + `IID` rule as `--pheno`.
+All data column names must match `[0-9A-Za-z_\-.]+`.
 
 | Flag                          | Purpose                                          |
 | ----------------------------- | ------------------------------------------------ |
@@ -283,6 +292,23 @@ Applied to both `--bfile` and `--admix-bfile` inputs.
 
 ---
 
+## Chromosome filter — `--chr`
+
+Restrict analysis to the specified chromosomes.  Accepts a comma-separated
+list of chromosome numbers and/or ranges:
+
+```
+--chr 5
+--chr 2,3
+--chr 1-4,6-8,22
+```
+
+Chromosomes are matched as strings against the CHROM column (`.bim` column 1,
+`.pvar` `#CHROM`, VCF `CHROM`, or BGEN chromosome field).  Applied to all
+genotype formats (`--bfile`, `--pfile`, `--vcf`, `--bgen`).
+
+---
+
 ## Marker QC flags
 
 | Flag     | Default | Description                                        |
@@ -346,10 +372,10 @@ default.
 | SPACox          | `--bfile/pfile/…` | `--resid-name`     | —                  | —                             |
 | SPAGRM          | `--bfile/pfile/…` | `--resid-name`     | `--sp-grm-*`       | `--pairwise-ibd`              |
 | SAGELD          | `--bfile/pfile/…` | `--resid-name`     | `--sp-grm-*`       | `--pairwise-ibd`              |
-| SPAmix          | `--bfile/pfile/…` | `--resid-name`     | `--sp-grm-*`       | `--ref-af`, `--ind-af-coef`   |
-| SPAmixPlus      | `--bfile/pfile/…` | `--resid-name`     | `--sp-grm-*`       | `--ref-af`, `--ind-af-coef`   |
+| SPAmix          | `--bfile/pfile/…` | `--resid-name`     | —                  | `--ind-af-coef`               |
+| SPAmixPlus      | `--bfile/pfile/…` | `--resid-name`     | `--sp-grm-*`       | `--ind-af-coef`               |
 | SPAmixLocalPlus | `--admix-bfile`   | `--resid-name`     | —                  | `--admix-phi`                 |
 | POLMM           | `--bfile/pfile/…` | `--pheno-name`     | `--sp-grm-*`       | —                             |
 | SPAsqr          | `--bfile/pfile/…` | `--pheno-name`     | `--sp-grm-*`       | —                             |
-| WtCoxG          | `--bfile/pfile/…` | `--pheno-name`     | `--sp-grm-*`       | —                             |
+| WtCoxG          | `--bfile/pfile/…` | `--pheno-name`     | `--sp-grm-*`       | `--ref-af`                    |
 | LEAF            | `--bfile/pfile/…` | `--pheno-name`     | `--sp-grm-*`       | `--ref-af`                    |

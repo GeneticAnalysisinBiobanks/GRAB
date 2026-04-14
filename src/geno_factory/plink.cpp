@@ -132,6 +132,7 @@ PlinkData::PlinkData(
     std::string RangesToIncludeFile,
     std::string IDsToExcludeFile,
     std::string RangesToExcludeFile,
+    std::unordered_set<std::string> chrFilter,
     int nMarkersEachChunk
 )
     : m_bedFile(std::move(bedFile)),
@@ -188,7 +189,7 @@ PlinkData::PlinkData(
 
     // ---- Filter markers and build chunks ----
     m_markerInfo = getFilteredMarkers(m_chr, m_pos, m_markerId, m_ref, m_alt, IDsToIncludeFile, RangesToIncludeFile,
-                                      IDsToExcludeFile, RangesToExcludeFile);
+                                      IDsToExcludeFile, RangesToExcludeFile, chrFilter);
     if (m_markerInfo.empty()) throw std::runtime_error("No markers remain after PLINK marker filtering.");
     m_chunkIndices = buildChunks(m_markerInfo, nMarkersEachChunk);
 }
@@ -202,7 +203,8 @@ std::vector<PlinkData::MarkerInfo> PlinkData::getFilteredMarkers(
     const std::string &IDsToIncludeFile,
     const std::string &RangesToIncludeFile,
     const std::string &IDsToExcludeFile,
-    const std::string &RangesToExcludeFile
+    const std::string &RangesToExcludeFile,
+    const std::unordered_set<std::string> &chrFilter
 ) {
     const uint32_t nMarkers = static_cast<uint32_t>(chr.size());
     std::vector<PlinkData::MarkerInfo> all;
@@ -225,13 +227,15 @@ std::vector<PlinkData::MarkerInfo> PlinkData::getFilteredMarkers(
     }
     if (!RangesToExcludeFile.empty()) excludeRanges = readRangeFile(RangesToExcludeFile);
 
+    const bool anyChr     = !chrFilter.empty();
     const bool anyInclude = !includeIds.empty() || !includeRanges.empty();
     const bool anyExclude = !excludeIds.empty() || !excludeRanges.empty();
-    if (!anyInclude && !anyExclude) return all;
+    if (!anyChr && !anyInclude && !anyExclude) return all;
 
     std::vector<PlinkData::MarkerInfo> filtered;
     filtered.reserve(all.size());
     for (const auto &m : all) {
+        if (anyChr && chrFilter.count(m.chrom) == 0) continue;
         bool inc = !anyInclude;
         if (anyInclude) inc = (includeIds.count(m.id) > 0) || markerInRanges(m, includeRanges);
         if (!inc) continue;
