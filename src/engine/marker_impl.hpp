@@ -16,6 +16,16 @@
 #include <string_view>
 #include <vector>
 
+// Forward-declare plink2's fast double-to-string (6 sig figs, ~5-10× faster
+// than snprintf("%.6g")).  Already compiled and linked via pgenlib.
+namespace plink2 {
+char *dtoa_g(
+    double dxx,
+    char *start
+);
+
+} // namespace plink2
+
 namespace engine_impl {
 
 // ──────────────────────────────────────────────────────────────────────
@@ -35,7 +45,8 @@ inline std::string makeNaSuffix(int nResultCols) {
     return s;
 }
 
-// Format double: "NA" | "Inf" | "-Inf" | "%.6g".  Returns char count.
+// Format double: "NA" | "Inf" | "-Inf" | 6-sig-fig decimal/scientific.
+// Returns char count.  Uses plink2's dtoa_g for ~5-10× speedup over snprintf.
 inline int numToChars(
     char *buf,
     double x
@@ -59,7 +70,8 @@ inline int numToChars(
             return 4;
         }
     }
-    return std::snprintf(buf, 32, "%.6g", x);
+    char *end = plink2::dtoa_g(x, buf);
+    return static_cast<int>(end - buf);
 }
 
 // Append 9 meta columns: CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC HWE_P
@@ -306,6 +318,69 @@ inline void extractAndStatsBatched(
     }
 
     if (K > kStackMax) delete[] acc;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Sparse genotype: fill + scatter + stats for one phenotype batch
+//
+// Given a difflist (sparse representation from pgenlib), fills the phenotype
+// vector with the common genotype, scatters difflist entries, and computes
+// per-phenotype stats — all in O(diffLen) rather than O(nPheno).
+// ──────────────────────────────────────────────────────────────────────
+
+inline PhenoGenoStats sparseExtractAndStats(
+    double *phenoG,
+    uint32_t nPheno,
+    const uint32_t *unionToLocal,
+    uint32_t commonGeno,
+    const uint32_t *diffSampleIds,
+    const uint8_t *diffGenoCodes,
+    uint32_t diffLen,
+    std::vector<uint32_t> &indexForMissing
+) {
+    indexForMissing.clear();
+
+    // Fill with common genotype (sequential write, very cache-friendly)
+    const double commonD = static_cast<double>(commonGeno);
+    std::fill(phenoG, phenoG + nPheno, commonD);
+
+    // Count genotypes from difflist entries within this phenotype
+    uint32_t counts[4] = {0, 0, 0, 0}; // [0]=hom_ref, [1]=het, [2]=hom_alt, [3]=missing
+    for (uint32_t j = 0; j < diffLen; ++j) {
+        const uint32_t li = unionToLocal[diffSampleIds[j]];
+        if (li == UINT32_MAX) continue;
+        const uint8_t gc = diffGenoCodes[j];
+        if (gc == 3) {
+            phenoG[li] = std::numeric_limits<double>::quiet_NaN();
+            indexForMissing.push_back(li);
+        } else {
+            phenoG[li] = static_cast<double>(gc);
+        }
+        counts[gc]++;
+    }
+
+    // All remaining samples have the common genotype
+    const uint32_t nDiffInPheno = counts[0] + counts[1] + counts[2] + counts[3];
+    counts[commonGeno] += nPheno - nDiffInPheno;
+
+    // Compute stats from counts
+    PhenoGenoStats s;
+    const uint32_t nonMissing = counts[0] + counts[1] + counts[2];
+    if (nonMissing == 0) {
+        s.altFreq = NAN;
+        s.mac = NAN;
+        s.missingRate = 1.0;
+        s.hweP = NAN;
+        return s;
+    }
+    const uint32_t altCounts = 2 * counts[2] + counts[1];
+    const double n2 = 2.0 * nonMissing;
+    s.altFreq = altCounts / n2;
+    const double maf = std::min(s.altFreq, 1.0 - s.altFreq);
+    s.mac = maf * n2;
+    s.missingRate = static_cast<double>(counts[3]) / nPheno;
+    s.hweP = HweExact(counts[1], counts[2], counts[0]);
+    return s;
 }
 
 // ──────────────────────────────────────────────────────────────────────

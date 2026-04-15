@@ -14,6 +14,8 @@ struct Args {
     std::string covarName;                          // comma-separated covariate column names
     std::string phenoName;                          // comma-separated phenotype column names
     std::string residName;                          // comma-separated residual column names
+    std::string phenoMissing = "drop";                // --pheno-missing [drop|impute] (default: drop)
+    bool phenoMissingExplicit = false;                 // true if user explicitly set --pheno-missing
     std::string pcCols = "PC1,PC2,PC3,PC4";         // comma-separated PC column names (default: PC1,PC2,PC3,PC4)
     std::string spasqrTaus = "0.1,0.3,0.5,0.7,0.9"; // default tau levels (SPAsqr)
     double spasqrTol = 1e-7;                          // --spasqr-tol (conquer convergence tolerance)

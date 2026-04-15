@@ -1356,7 +1356,8 @@ void runSPAmixLocalPlus(
     const std::string &keepFile,
     const std::string &removeFile,
     const std::string &extractFile,
-    const std::string &excludeFile
+    const std::string &excludeFile,
+    const std::string &phenoMissing
 ) {
     infoMsg("=== SPAmixLocalPlus GWAS ===");
 

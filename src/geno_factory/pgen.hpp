@@ -175,6 +175,15 @@ class PgenCursor : public GenoCursor {
         Eigen::Ref<Eigen::VectorXd> out
     ) override;
 
+    uint32_t getGenotypesMaybeSparse(
+        uint64_t gIndex,
+        Eigen::Ref<Eigen::VectorXd> out,
+        uint32_t maxLen,
+        uint32_t *diffSampleIds,
+        uint8_t *diffGenoCodes,
+        uint32_t &diffLen
+    ) override;
+
   private:
     const PgenData &m_parent;
 

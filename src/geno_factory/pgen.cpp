@@ -119,6 +119,23 @@ std::vector<PvarRecord> parsePvarFile(const std::string &path) {
 
 } // anonymous namespace
 
+// Allocate zero-initialized memory with 32-byte alignment (required by pgenlib AVX2).
+static uintptr_t* allocAligned(size_t nWords) {
+    if (nWords == 0) return nullptr;
+    const size_t nBytes = nWords * sizeof(uintptr_t);
+    void* ptr = nullptr;
+    if (posix_memalign(&ptr, 32, nBytes) != 0)
+        throw std::bad_alloc();
+    std::memset(ptr, 0, nBytes);
+    return static_cast<uintptr_t*>(ptr);
+}
+
+// Free a buffer allocated by plink2::cachealigned_malloc / aligned_malloc.
+// These store the original malloc pointer at aligned_ptr[-1].
+static void freeCacheAligned(void* p) {
+    if (p) plink2::aligned_free(p);
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // PgenData
 // ══════════════════════════════════════════════════════════════════════════════
@@ -144,7 +161,7 @@ PgenData::PgenData(
       m_nSubjInFile(nSamplesInFile),
       m_nSubjUsed(nUsed),
       m_usedMask(usedMask),
-      m_pgfiAlloc(nullptr, std::free)
+      m_pgfiAlloc(nullptr, freeCacheAligned)
 {
     m_allUsed = (nUsed == nSamplesInFile);
 
@@ -266,13 +283,19 @@ struct PgenCursor::Impl {
     std::unique_ptr<unsigned char, void (*)(void *)> pgrAlloc;
     plink2::PgrSampleSubsetIndex pssi;
 
-    // Genotype scratch buffers (owned per-thread)
-    std::vector<uintptr_t> genovec;       // packed 2-bit genotypes
-    std::vector<uintptr_t> dosagePresent; // dosage presence bitarray
-    std::vector<uint16_t> dosageMain;     // raw dosage values
+    // Genotype scratch buffers — must be 32-byte aligned for pgenlib AVX2 SIMD.
+    // Sizes are rounded up to VecW (kWordsPerVec) boundary so SIMD loops
+    // that process in 32-byte chunks never overrun.
+    uintptr_t* genovec = nullptr;         // packed 2-bit genotypes
+    uintptr_t* dosagePresent = nullptr;   // dosage presence bitarray
+    std::vector<uint16_t> dosageMain;     // raw dosage values (no SIMD alignment needed)
+
+    // Difflist scratch buffers for sparse read
+    uintptr_t* diffRaregeno = nullptr;    // 2-bit packed rare genotype codes
+    std::vector<uint32_t> diffSampleIdsRaw;
 
     // Sample subsetting support
-    std::vector<uintptr_t> sampleInclude;
+    uintptr_t* sampleInclude = nullptr;   // pgenlib reads with SIMD
     std::vector<uint32_t> cumulativePopcounts;
 
     uint32_t sampleCt;
@@ -280,7 +303,7 @@ struct PgenCursor::Impl {
     bool allUsed;
 
     Impl()
-        : pgrAlloc(nullptr, std::free)
+        : pgrAlloc(nullptr, freeCacheAligned)
     {
     }
 
@@ -288,6 +311,10 @@ struct PgenCursor::Impl {
     {
         plink2::PglErr reterr = plink2::kPglRetSuccess;
         plink2::CleanupPgr(&pgr, &reterr);
+        free(genovec);
+        free(dosagePresent);
+        free(diffRaregeno);
+        free(sampleInclude);
     }
 
 };
@@ -303,27 +330,34 @@ PgenCursor::PgenCursor(const PgenData &parent)
     impl.sampleCt = parent.nSubjUsed();
     impl.allUsed = parent.allUsed();
 
-    // Allocate genovec buffer: ceil(raw_sample_ct / kBitsPerWordD2) words
-    const uint32_t rawSampleCtl2 = DivUp(impl.rawSampleCt, kBitsPerWordD2);
-    impl.genovec.resize(rawSampleCtl2, 0);
+    // Allocate genovec buffer: rounded up to VecW boundary for AVX2 safety
+    const uint32_t rawSampleCtl2 = plink2::NypCtToVecCt(impl.rawSampleCt) * plink2::kWordsPerVec;
+    impl.genovec = allocAligned(rawSampleCtl2);
 
     // Dosage buffers (sized for raw_sample_ct)
-    const uint32_t rawSampleCtaw = BitCtToAlignedWordCt(impl.rawSampleCt);
-    impl.dosagePresent.resize(rawSampleCtaw, 0);
+    const uint32_t rawSampleCtaw = plink2::BitCtToAlignedWordCt(impl.rawSampleCt);
+    impl.dosagePresent = allocAligned(rawSampleCtaw);
     impl.dosageMain.resize(impl.rawSampleCt, 0);
+
+    // Difflist buffers for sparse read — round up to VecW boundary
+    const uint32_t maxDifflistLen = impl.sampleCt / 8;
+    const uint32_t diffRaregenoWords = plink2::NypCtToVecCt(maxDifflistLen + 1) * plink2::kWordsPerVec;
+    impl.diffRaregeno = allocAligned(diffRaregenoWords);
+    impl.diffSampleIdsRaw.resize(maxDifflistLen + 2, 0); // +2 for pgenlib sentinel
 
     // Sample include bitmask + cumulative popcounts
     const uint32_t rawSampleCtl = BitCtToWordCt(impl.rawSampleCt);
     if (!impl.allUsed) {
-        impl.sampleInclude.resize(rawSampleCtl, 0);
+        const uint32_t sampleIncludeWords = plink2::BitCtToVecCt(impl.rawSampleCt) * plink2::kWordsPerVec;
+        impl.sampleInclude = allocAligned(sampleIncludeWords);
         // Convert our uint64_t usedMask to pgenlib's uintptr_t bitarray
         const auto &mask = parent.usedMask();
         static_assert(sizeof(uintptr_t) == sizeof(uint64_t), "PgenCursor assumes LP64 (64-bit uintptr_t)");
-        std::memcpy(impl.sampleInclude.data(), mask.data(),
-                    std::min(impl.sampleInclude.size(), mask.size()) * sizeof(uintptr_t));
+        std::memcpy(impl.sampleInclude, mask.data(),
+                    std::min(static_cast<size_t>(rawSampleCtl), mask.size()) * sizeof(uintptr_t));
 
         impl.cumulativePopcounts.resize(rawSampleCtl, 0);
-        FillCumulativePopcounts(impl.sampleInclude.data(), rawSampleCtl, impl.cumulativePopcounts.data());
+        FillCumulativePopcounts(impl.sampleInclude, rawSampleCtl, impl.cumulativePopcounts.data());
     }
 
     // Initialize PgenReader
@@ -371,8 +405,8 @@ void PgenCursor::getGenotypes(
     // Read genotypes with dosage
     uint32_t dosage_ct = 0;
     PglErr err =
-        PgrGetD(impl.allUsed ? nullptr : impl.sampleInclude.data(), impl.pssi, sampleCt, static_cast<uint32_t>(gIndex),
-                &impl.pgr, impl.genovec.data(), impl.dosagePresent.data(), impl.dosageMain.data(), &dosage_ct);
+        PgrGetD(impl.allUsed ? nullptr : impl.sampleInclude, impl.pssi, sampleCt, static_cast<uint32_t>(gIndex),
+                &impl.pgr, impl.genovec, impl.dosagePresent, impl.dosageMain.data(), &dosage_ct);
 
     if (err != kPglRetSuccess) throw std::runtime_error("pgen: PgrGetD failed at variant " + std::to_string(gIndex));
 
@@ -380,7 +414,7 @@ void PgenCursor::getGenotypes(
     // pgen 2-bit codes: 0=hom_ref, 1=het, 2=hom_alt, 3=missing
     // We want ALT allele dosage: 0, 1, 2, NaN
     uint32_t nHomRef = 0, nHet = 0, nHomAlt = 0, nMissing = 0;
-    const uintptr_t *gv = impl.genovec.data();
+    const uintptr_t *gv = impl.genovec;
 
     for (uint32_t i = 0; i < sampleCt; ++i) {
         const uint32_t code = (gv[i / kBitsPerWordD2] >> (2 * (i % kBitsPerWordD2))) & 3;
@@ -407,7 +441,7 @@ void PgenCursor::getGenotypes(
 
     // Overlay dosage values where present
     if (dosage_ct > 0) {
-        const uintptr_t *dp = impl.dosagePresent.data();
+        const uintptr_t *dp = impl.dosagePresent;
         const uint16_t *dm = impl.dosageMain.data();
         uint32_t dIdx = 0;
         for (uint32_t i = 0; i < sampleCt && dIdx < dosage_ct; ++i) {
@@ -439,12 +473,12 @@ void PgenCursor::getGenotypesSimple(
     auto &impl = *m_impl;
     const uint32_t sampleCt = impl.sampleCt;
 
-    PglErr err = PgrGet(impl.allUsed ? nullptr : impl.sampleInclude.data(), impl.pssi, sampleCt,
-                        static_cast<uint32_t>(gIndex), &impl.pgr, impl.genovec.data());
+    PglErr err = PgrGet(impl.allUsed ? nullptr : impl.sampleInclude, impl.pssi, sampleCt,
+                        static_cast<uint32_t>(gIndex), &impl.pgr, impl.genovec);
 
     if (err != kPglRetSuccess) throw std::runtime_error("pgen: PgrGet failed at variant " + std::to_string(gIndex));
 
-    const uintptr_t *gv = impl.genovec.data();
+    const uintptr_t *gv = impl.genovec;
     for (uint32_t i = 0; i < sampleCt; ++i) {
         const uint32_t code = (gv[i / kBitsPerWordD2] >> (2 * (i % kBitsPerWordD2))) & 3;
         switch (code) {
@@ -462,4 +496,56 @@ void PgenCursor::getGenotypesSimple(
             break;
         }
     }
+}
+
+uint32_t PgenCursor::getGenotypesMaybeSparse(
+    uint64_t gIndex,
+    Eigen::Ref<Eigen::VectorXd> out,
+    uint32_t maxLen,
+    uint32_t *diffSampleIds,
+    uint8_t *diffGenoCodes,
+    uint32_t &diffLen
+) {
+    using namespace plink2;
+    auto &impl = *m_impl;
+    const uint32_t sampleCt = impl.sampleCt;
+
+    // Cap maxLen at our pre-allocated buffer size (sampleCt / 8)
+    const uint32_t bufMaxLen = sampleCt / 8;
+    if (maxLen > bufMaxLen) maxLen = bufMaxLen;
+
+    uint32_t commonGeno = UINT32_MAX;
+    diffLen = 0;
+
+    PglErr err = PgrGetDifflistOrGenovec(
+        impl.allUsed ? nullptr : impl.sampleInclude,
+        impl.pssi, sampleCt, maxLen,
+        static_cast<uint32_t>(gIndex), &impl.pgr,
+        impl.genovec, &commonGeno,
+        impl.diffRaregeno, impl.diffSampleIdsRaw.data(), &diffLen);
+
+    if (err != kPglRetSuccess)
+        throw std::runtime_error("pgen: PgrGetDifflistOrGenovec failed at variant " +
+                                 std::to_string(gIndex));
+
+    if (commonGeno == UINT32_MAX) {
+        // Dense: expand genovec to doubles
+        const uintptr_t *gv = impl.genovec;
+        for (uint32_t i = 0; i < sampleCt; ++i) {
+            const uint32_t code = (gv[i / kBitsPerWordD2] >> (2 * (i % kBitsPerWordD2))) & 3;
+            out[i] = (code < 3) ? static_cast<double>(code)
+                                : std::numeric_limits<double>::quiet_NaN();
+        }
+        return UINT32_MAX;
+    }
+
+    // Sparse: unpack 2-bit raregeno to uint8 + copy sample IDs
+    const uintptr_t *rg = impl.diffRaregeno;
+    for (uint32_t j = 0; j < diffLen; ++j) {
+        diffGenoCodes[j] = static_cast<uint8_t>(
+            (rg[j / kBitsPerWordD2] >> (2 * (j % kBitsPerWordD2))) & 3);
+        diffSampleIds[j] = impl.diffSampleIdsRaw[j];
+    }
+
+    return commonGeno;
 }

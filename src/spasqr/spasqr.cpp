@@ -39,7 +39,7 @@ namespace {
 class SPAsqrMethod : public MethodBase {
   public:
 // Constructor with tau labels (used by pheno path):
-//   labels like "Tau0.1", "Tau0.3", ...
+//   labels like "tau0.1", "tau0.3", ...
 //   Output order: P_CCT  P_tau0.1 ... P_tau0.9  Z_tau0.1 ... Z_tau0.9
     SPAsqrMethod(
         int ntaus,
@@ -153,11 +153,26 @@ class SPAsqrMethod : public MethodBase {
         }
     }
 
+    void padToUnionSpace(
+        const uint32_t *unionToLocal,
+        uint32_t nUnion
+    ) override {
+        for (int t = 0; t < m_ntaus; ++t)
+            m_spagrm_vec[t].padToUnionSpace(unionToLocal, nUnion);
+        buildResidMat();
+        m_padded = true;
+    }
+
+    bool supportsImputeEngine() const override {
+        return m_padded;
+    }
+
   private:
     int m_ntaus;
     std::vector<SPAGRMClass> m_spagrm_vec;
     std::vector<std::string> m_tauLabels;
     bool m_hasLabels;
+    bool m_padded = false;
 
     // Contiguous resid matrix (N × ntaus) + residSum vector for fused dot products.
     // Built from m_spagrm_vec resid vectors; avoids ntaus separate DRAM reads of GVec.
@@ -412,6 +427,7 @@ void runSPAsqr(
     double minMafCutoff,
     double minMacCutoff,
     double hweCutoff,
+    const std::string &phenoMissing,
     double spasqrTol,
     double spasqrH,
     double spasqrHScale,
@@ -575,7 +591,7 @@ void runSPAsqr(
     tauLabels.reserve(ntaus);
     for (double tau : taus) {
         std::ostringstream oss;
-        oss << "Tau" << tau;
+        oss << "tau" << tau;
         tauLabels.push_back(oss.str());
     }
 
@@ -643,19 +659,18 @@ void runSPAsqr(
 
     // ── 8. Run multi-phenotype engine ───────────────────────────────
     infoMsg("SPAsqr: Starting multi-phenotype association (%d phenotypes, %d taus, %d threads)", K, ntaus, nthreads);
-    multiPhenoEngine(
-        *genoData,
-        tasks,
-        outPrefix,
-        "SPAsqr",
-        compression,
-        compressionLevel,
-        nthreads,
-        missingCutoff,
-        minMafCutoff,
-        minMacCutoff,
-        hweCutoff
-    );
+    const int totalTasks = static_cast<int>(tasks.size());
+    if (phenoMissing == "impute" && totalTasks > 1) {
+        imputeMultiPhenoEngine(
+            *genoData, tasks, outPrefix, "SPAsqr", compression, compressionLevel,
+            nthreads, missingCutoff, minMafCutoff, minMacCutoff, hweCutoff
+        );
+    } else {
+        multiPhenoEngine(
+            *genoData, tasks, outPrefix, "SPAsqr", compression, compressionLevel,
+            nthreads, missingCutoff, minMafCutoff, minMacCutoff, hweCutoff
+        );
+    }
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -690,6 +705,7 @@ void runSPAsqrLoco(
     double minMafCutoff,
     double minMacCutoff,
     double hweCutoff,
+    const std::string &phenoMissing,
     double spasqrTol,
     double spasqrH,
     double spasqrHScale,
@@ -806,7 +822,7 @@ void runSPAsqrLoco(
     tauLabels.reserve(ntaus);
     for (double tau : taus) {
         std::ostringstream oss;
-        oss << "Tau" << tau;
+        oss << "tau" << tau;
         tauLabels.push_back(oss.str());
     }
 
@@ -947,6 +963,7 @@ void runSPAsqrLoco(
     const int nChroms = static_cast<int>(locoChroms.size());
     infoMsg("SPAsqr-LOCO: Starting LOCO association (%d phenotypes, %d taus, %d chroms, %d threads)",
             K, ntaus, nChroms, nthreads);
+    const bool useImpute = (phenoMissing == "impute" && K > 1);
     locoEngine(
         *genoData,
         locoChroms,
@@ -960,6 +977,7 @@ void runSPAsqrLoco(
         missingCutoff,
         minMafCutoff,
         minMacCutoff,
-        hweCutoff
+        hweCutoff,
+        useImpute
     );
 }

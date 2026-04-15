@@ -1235,7 +1235,8 @@ void runWtCoxG(
     double minMacCutoff,
     double hweCutoff,
     const std::string &keepFile,
-    const std::string &removeFile
+    const std::string &removeFile,
+    const std::string &phenoMissing
 ) {
     const int P = static_cast<int>(phenoSpecs.size());
 

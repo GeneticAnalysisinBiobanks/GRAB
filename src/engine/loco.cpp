@@ -271,10 +271,10 @@ void locoEngine(
     double missingCutoff,
     double minMafCutoff,
     double minMacCutoff,
-    double hweCutoff
+    double hweCutoff,
+    bool imputeMode
 ) {
     const size_t K = phenoNames.size();
-    const uint32_t nUnion = genoData.nSubjUsed();
     const auto &allChunks = genoData.chunkIndices();
     const auto &markers = genoData.markerInfo();
 
@@ -371,190 +371,32 @@ void locoEngine(
         if (chrIdx > 0)
             buildTasks(chr, tasks);
 
+        // In impute mode, pad each task's method to union space
+        if (imputeMode && K > 1) {
+            const uint32_t nUnion = genoData.nSubjUsed();
+            for (size_t p = 0; p < K; ++p) {
+                tasks[p].method->padToUnionSpace(tasks[p].unionToLocal.data(), nUnion);
+                tasks[p].nUsed = nUnion;
+            }
+        }
+
         // Build per-phenotype NA suffixes for this chromosome's methods
         std::vector<std::string> naSuffixes(K);
         for (size_t p = 0; p < K; ++p)
             naSuffixes[p] = makeNaSuffix(tasks[p].method->resultSize());
 
-        const int effective_nthreads = std::min(nthreads, static_cast<int>(nChrChunks));
-
         infoMsg("LOCO: chromosome %s — %zu chunks, %d workers (%zu/%zu)",
-                chr.c_str(), nChrChunks, effective_nthreads,
+                chr.c_str(), nChrChunks,
+                std::min(nthreads, static_cast<int>(nChrChunks)),
                 chrIdx + 1, activeChroms.size());
 
-        // Per-chunk, per-phenotype output buffers
-        std::vector<std::vector<std::string> > chunkOutput(nChrChunks, std::vector<std::string>(K));
-        std::vector<PaddedFlag> chunkReady(nChrChunks, {0});
-        std::atomic<size_t> nextChunk(0);
-
-        std::exception_ptr workerError = nullptr;
-        std::mutex errorMutex;
-        std::mutex writeMutex;
-        std::condition_variable writeCv;
-        std::atomic<bool> stopWorker{false};
-
-        // ── Worker function ────────────────────────────────────────
-        auto workerFn = [&]() {
-            try {
-                auto cursor = genoData.makeCursor();
-                std::vector<std::unique_ptr<MethodBase> > methods(K);
-                for (size_t p = 0; p < K; ++p)
-                    methods[p] = tasks[p].method->clone();
-
-                Eigen::VectorXd GVec_union(nUnion);
-                std::vector<Eigen::VectorXd> GVec_phenos(K);
-                for (size_t p = 0; p < K; ++p)
-                    GVec_phenos[p].resize(tasks[p].nUsed);
-                std::vector<uint32_t> unionMissing;
-                unionMissing.reserve(nUnion / 10);
-
-                // Batched extract+stats buffers (allocated once, reused per marker)
-                std::vector<const uint32_t *> utlPtrs(K);
-                std::vector<uint32_t> nPhenoArr(K);
-                std::vector<double *> phenoGPtrs(K);
-                for (size_t p = 0; p < K; ++p) {
-                    utlPtrs[p] = tasks[p].unionToLocal.data();
-                    nPhenoArr[p] = tasks[p].nUsed;
-                    phenoGPtrs[p] = GVec_phenos[p].data();
-                }
-                std::vector<PhenoGenoStats> batchStats(K);
-                std::vector<std::vector<uint32_t> > batchMissings(K);
-                for (size_t p = 0; p < K; ++p)
-                    batchMissings[p].reserve(tasks[p].nUsed / 10);
-
-                std::vector<double> rv;
-                rv.reserve(16);
-                char fmtBuf[32];
-
-                while (!stopWorker.load(std::memory_order_relaxed)) {
-                    const size_t localIdx = nextChunk.fetch_add(1);
-                    if (localIdx >= nChrChunks) break;
-
-                    const size_t globalIdx = chunkStart + localIdx;
-                    const auto &gIdx = allChunks[globalIdx];
-
-                    std::vector<std::string> phenoOut(K);
-                    for (size_t p = 0; p < K; ++p)
-                        phenoOut[p].reserve(gIdx.size() * 128);
-
-                    if (!gIdx.empty()) cursor->beginSequentialBlock(gIdx.front());
-                    for (size_t p = 0; p < K; ++p)
-                        methods[p]->prepareChunk(gIdx);
-
-                    for (size_t i = 0; i < gIdx.size(); ++i) {
-                        double uAltFreq, uAltCounts, uMissRate, uHweP, uMaf, uMac;
-                        unionMissing.clear();
-                        cursor->getGenotypes(gIdx[i], GVec_union, uAltFreq, uAltCounts,
-                                             uMissRate, uHweP, uMaf, uMac, unionMissing);
-
-                        const std::string_view chrSv = genoData.chr(gIdx[i]);
-                        const std::string_view ref = genoData.ref(gIdx[i]);
-                        const std::string_view alt = genoData.alt(gIdx[i]);
-                        const std::string_view marker = genoData.markerId(gIdx[i]);
-                        const uint32_t pos = genoData.pos(gIdx[i]);
-
-                        // Fused: extract all K phenotypes + compute stats in one pass
-                        extractAndStatsBatched(
-                            GVec_union.data(), nUnion, K,
-                            utlPtrs.data(), nPhenoArr.data(),
-                            phenoGPtrs.data(), batchStats.data(), batchMissings.data());
-
-                        for (size_t p = 0; p < K; ++p) {
-                            const PhenoGenoStats &gs = batchStats[p];
-
-                            double pMaf = std::min(gs.altFreq, 1.0 - gs.altFreq);
-                            const bool passQC = !(gs.missingRate > missingCutoff ||
-                                                  pMaf < minMafCutoff ||
-                                                  gs.mac < minMacCutoff ||
-                                                  (hweCutoff > 0 && gs.hweP < hweCutoff));
-
-                            if (!passQC) {
-                                formatLineNA(phenoOut[p], fmtBuf, chrSv, pos, marker,
-                                             alt, ref, gs.missingRate, gs.altFreq,
-                                             gs.mac, gs.hweP, naSuffixes[p]);
-                                continue;
-                            }
-
-                            const double imputeG = 2.0 * gs.altFreq;
-                            double *gPtr = GVec_phenos[p].data();
-                            for (uint32_t j : batchMissings[p])
-                                gPtr[j] = imputeG;
-
-                            rv.clear();
-                            methods[p]->getResultVec(GVec_phenos[p].head(tasks[p].nUsed),
-                                                     gs.altFreq,
-                                                     static_cast<int>(i), rv);
-
-                            formatLine(phenoOut[p], fmtBuf, chrSv, pos, marker,
-                                       alt, ref, gs.missingRate, gs.altFreq,
-                                       gs.mac, gs.hweP, rv);
-                        }
-                    }
-
-                    {
-                        std::lock_guard<std::mutex> lk(writeMutex);
-                        for (size_t p = 0; p < K; ++p)
-                            chunkOutput[localIdx][p] = std::move(phenoOut[p]);
-                        chunkReady[localIdx].ready = 1;
-                    }
-                    infoMsg("Calculation finished: chunk %zu/%zu", localIdx + 1, nChrChunks);
-                    writeCv.notify_all();
-                }
-            } catch (...) {
-                {
-                    std::lock_guard<std::mutex> lk(errorMutex);
-                    if (!workerError) workerError = std::current_exception();
-                }
-                {
-                    std::lock_guard<std::mutex> lk(writeMutex);
-                    stopWorker = true;
-                }
-                writeCv.notify_all();
-            }
-        };
-
-        // ── Launch workers ─────────────────────────────────────────
-        // Writer thread: drains completed chunks in order to persistent writers.
-        std::thread writerThread([&]() {
-            try {
-                for (size_t ci = 0; ci < nChrChunks; ++ci) {
-                    {
-                        std::unique_lock<std::mutex> lk(writeMutex);
-                        writeCv.wait(lk, [&]() {
-                            return chunkReady[ci].ready || stopWorker.load();
-                        });
-                        if (!chunkReady[ci].ready) break;
-                    }
-                    for (size_t p = 0; p < K; ++p)
-                        writers[p].write(chunkOutput[ci][p]);
-                    infoMsg("Writing finished: chunk %zu/%zu", ci + 1, nChrChunks);
-                }
-            } catch (...) {
-                std::lock_guard<std::mutex> lk(errorMutex);
-                if (!workerError) workerError = std::current_exception();
-                stopWorker = true;
-            }
-        });
-
-        if (effective_nthreads <= 1) {
-            workerFn();
+        if (imputeMode && K > 1) {
+            imputeMultiPhenoEngineRange(genoData, tasks, naSuffixes, chunkStart, chunkEnd, writers,
+                                        nthreads, missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
         } else {
-            std::vector<std::thread> workers;
-            workers.reserve(effective_nthreads);
-            for (int t = 0; t < effective_nthreads; ++t)
-                workers.emplace_back(workerFn);
-            for (auto &th : workers)
-                th.join();
+            multiPhenoEngineRange(genoData, tasks, naSuffixes, chunkStart, chunkEnd, writers,
+                                  nthreads, missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
         }
-
-        {
-            std::lock_guard<std::mutex> lk(writeMutex);
-            stopWorker = true;
-        }
-        writeCv.notify_all();
-        writerThread.join();
-
-        if (workerError) std::rethrow_exception(workerError);
 
         infoMsg("LOCO: chromosome %s finished (%zu/%zu)",
                 chr.c_str(), chrIdx + 1, activeChroms.size());

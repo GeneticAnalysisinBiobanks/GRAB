@@ -164,6 +164,13 @@ class SPAGRMClass {
         return m_resid_sum;
     }
 
+    // Expand m_resid from per-phenotype-dense (Np) to union-dense
+    // (nUnion) space.  Absent subjects get residual = 0.
+    void padToUnionSpace(
+        const uint32_t *unionToLocal,
+        uint32_t nUnion
+    );
+
   private:
     Eigen::VectorXd m_resid;
     Eigen::VectorXd m_resid_unrelated_outliers;
@@ -222,8 +229,21 @@ class SPAGRMMethod : public MethodBase {
         result.push_back(z);
     }
 
+    void padToUnionSpace(
+        const uint32_t *unionToLocal,
+        uint32_t nUnion
+    ) override {
+        m_spagrm.padToUnionSpace(unionToLocal, nUnion);
+        m_padded = true;
+    }
+
+    bool supportsImputeEngine() const override {
+        return m_padded;
+    }
+
   private:
     SPAGRMClass m_spagrm;
+    bool m_padded = false;
 };
 
 // ══════════════════════════════════════════════════════════════════════
@@ -248,6 +268,7 @@ void runSPAGRM(
     double minMacCutoff,
     double hweCutoff,
     const std::string &keepFile = {},
-    const std::string &removeFile = {}
+    const std::string &removeFile = {},
+    const std::string &phenoMissing = "impute"
 
 );

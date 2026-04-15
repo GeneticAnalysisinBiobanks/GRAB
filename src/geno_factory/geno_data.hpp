@@ -141,4 +141,28 @@ class GenoCursor {
         Eigen::Ref<Eigen::VectorXd> out
     ) = 0;
 
+    // Optional sparse genotype read via pgenlib difflist.
+    //
+    // If the variant qualifies as sparse (difflist_len <= maxLen):
+    //   Returns commonGeno (0, 1, or 2).  diffSampleIds[0..diffLen-1]
+    //   contains subsetted sample indices; diffGenoCodes[0..diffLen-1]
+    //   contains 2-bit genotype codes (0/1/2/3).  `out` is NOT populated.
+    //
+    // If dense (commonGeno == UINT32_MAX):
+    //   `out` is populated as in getGenotypesSimple.  Diff arrays ignored.
+    //
+    // Buffers must be sized for at least maxLen entries.
+    // Default: always returns dense.
+    virtual uint32_t getGenotypesMaybeSparse(
+        uint64_t gIndex,
+        Eigen::Ref<Eigen::VectorXd> out,
+        uint32_t maxLen,
+        uint32_t *diffSampleIds,
+        uint8_t *diffGenoCodes,
+        uint32_t &diffLen
+    ) {
+        getGenotypesSimple(gIndex, out);
+        return UINT32_MAX;
+    }
+
 };

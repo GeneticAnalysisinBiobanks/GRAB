@@ -1,23 +1,59 @@
 # Engine Comparison
 
-GRAB has three marker-scan engines.  All share the work-stealing
+GRAB has four marker-scan engines.  All share the work-stealing
 chunk-parallel design in `src/engine/` but differ in how they handle
-phenotype multiplexing and chromosome iteration.
+phenotype multiplexing, chromosome iteration, and residual missingness.
 
-| Property | `markerEngine` | `multiPhenoEngine` | `locoEngine` |
-|---|---|---|---|
-| Entry point | `marker.cpp` | `marker.cpp` | `loco.cpp` |
-| Phenotypes | 1 | K | K |
-| Output files | 1 | K | K |
-| Geno decode per marker | 1 | 1 (union) | 1 (union) |
-| Per-phenotype stats | same as union | independent | independent |
-| Per-phenotype QC | same as union | independent | independent |
-| Task rebuild | never | never | per chromosome |
-| Chunk buffer scope | all chunks | all chunks | one chromosome |
-| Writer architecture | dedicated thread | dedicated thread | main thread (after join) |
-| Output file lifecycle | open/close by writer | open/close by writer | open before chr loop, close after |
-| Worker lifetime | one launch | one launch | re-launched per chromosome |
-| Used by | SPACox, SPAGRM, SAGELD, SPAmix, SPAmixPlus | POLMM, SPAsqr, WtCoxG, LEAF | SPAsqr-LOCO |
+| Property | `markerEngine` | `multiPhenoEngine` | `imputeMultiPhenoEngine` | `locoEngine` |
+|---|---|---|---|---|
+| Entry point | `marker.cpp` | `marker.cpp` | `marker.cpp` | `loco.cpp` |
+| Phenotypes | 1 | K | K | K |
+| Output files | 1 | K | K | K |
+| Geno decode per marker | 1 | 1 (union) | 1 (union) | 1 (union) |
+| Per-phenotype GVec buffer | N/A | 1 per thread | **none** | 1 per thread / none (impute) |
+| Per-phenotype stats | same as union | independent | **union (shared)** | independent / union (impute) |
+| Per-phenotype QC | same as union | independent | **union (shared)** | independent / union (impute) |
+| Residual imputation | N/A | N/A | **0-pad missing** | N/A / 0-pad (impute) |
+| Task rebuild | never | never | never | per chromosome |
+| Chunk buffer scope | all chunks | all chunks | all chunks | one chromosome |
+| Writer architecture | dedicated thread | dedicated thread | dedicated thread | main thread (after join) |
+| Used by | SAGELD | SPACox, SPAGRM (drop), SPAmixPlus, POLMM, SPAsqr (drop), WtCoxG, LEAF | SPAGRM (impute, K>1), SPAsqr (impute, K>1) | SPAsqr-LOCO |
+
+### `--pheno-missing` flag
+
+The `--pheno-missing` flag controls how missing residuals are handled in
+multi-phenotype runs:
+
+- **`impute`**: Residuals for missing subjects are zero-padded
+  to the union sample space.  All K phenotypes share **one union GVec**
+  — no per-phenotype genotype extraction or per-phenotype QC.  This
+  eliminates K per-phenotype GVec buffers per thread, reducing memory
+  from O(T × K × N) to O(T × N) and removing K extraction loops per
+  marker.
+
+- **`drop`**: Original behaviour.  Each phenotype uses only its
+  non-missing subjects (per-phenotype GVec extraction, per-phenotype
+  QC stats).
+
+When only one phenotype/residual is in the analysis, the flag has no
+effect and is silently ignored: the single-phenotype path is always used.
+
+### Which methods support `--pheno-missing`?
+
+| Method | Impute engine support | Why not? |
+|---|---|---|
+| SPAGRM | ✅ Yes | `SPAGRMClass::padToUnionSpace()` expands residuals to union size |
+| SPAsqr | ✅ Yes | Pads each inner `SPAGRMClass` and rebuilds `m_residMat` |
+| SPAsqr-LOCO | ✅ Yes | Via `locoEngine(…, imputeMode=true)` |
+| SPACox | ❌ | Loop bound `m_N`, const ref residuals, pre-computed `m_varResid` |
+| SPAmixPlus | ❌ | Outlier indices are per-phenotype, per-subject AF vector sized by `m_N`, GRM variance call uses `m_N` |
+| POLMM | ❌ | Internal `m_N` loops, ordinal model state not resizable |
+| WtCoxG | ❌ | Multi-phenotype dispatch is per-phenotype entry, internal size assumptions |
+| LEAF | ❌ | Same as WtCoxG (shared codebase) |
+| SAGELD | N/A | Single-phenotype only (`markerEngine`) |
+
+Passing `--pheno-missing` with an unsupported method is a hard error.
+Only SPAGRM and SPAsqr accept this flag.
 
 ---
 
@@ -190,7 +226,107 @@ multiPhenoEngine
 
 ---
 
-## 3. `locoEngine` — per-chromosome LOCO with K phenotypes
+## 3. `imputeMultiPhenoEngine` — K phenotypes, shared union GVec (impute mode)
+
+```
+void imputeMultiPhenoEngine(
+    const GenoMeta &genoData,
+    vector<PhenoTask> &tasks,
+    const string &outPrefix, const string &methodName,
+    const string &compression, int compressionLevel,
+    int nthreads,
+    double missingCutoff, double minMafCutoff,
+    double minMacCutoff,  double hweCutoff);
+```
+
+Selected when `--pheno-missing impute` and K > 1 for methods that
+support it (SPAGRM, SPAsqr).  Wraps `imputeMultiPhenoEngineRange`.
+
+### Key difference from `multiPhenoEngine`
+
+Before entering the engine loop, each task's method is padded to union
+space via `padToUnionSpace(unionToLocal, nUnion)`.  This zero-pads
+residuals for missing subjects, so the score statistic naturally cancels
+absent subjects.
+
+### Function-level flow
+
+```
+imputeMultiPhenoEngine
+  ├── for p = 0..K-1:
+  │     tasks[p].method.padToUnionSpace(utl, nUnion)   ← expand residuals
+  │     tasks[p].nUsed = nUnion
+  ├── build K headers, K NA-suffixes, K output paths
+  ├── allocate chunkOutput[C][K], chunkReady[C], nextChunk=0
+  ├── launch writerThread
+  ├── launch N workerThreads
+  │     each worker:
+  │       ├── cursor = makeCursor()
+  │       ├── methods[K] = tasks[0..K-1].method.clone()
+  │       ├── allocate GVec_union(nUnion), indexForMissing ← NO GVec_pheno
+  │       └── loop: cidx = nextChunk++
+  │             ├── cursor.beginSequentialBlock
+  │             ├── methods[0..K-1].prepareChunk
+  │             └── for each marker:
+  │                   ├── cursor.getGenotypesSimple(GVec_union) ← 1 decode
+  │                   ├── statsFromGVec(GVec_union)        ← 1 stats call
+  │                   ├── QC check (shared for all K)
+  │                   ├── impute missing: GVec[j] = 2·altFreq
+  │                   └── for p = 0..K-1:
+  │                         ├── methods[p].getResultVec(GVec_union)
+  │                         └── formatLine → phenoOut[p]
+  │             publish: chunkOutput[cidx][0..K-1] = move
+  ├── join workers, signal stopWriter, join writer
+  └── rethrow if error
+```
+
+### Per-thread allocation (one-time)
+
+| Object | Size |
+|---|---|
+| K `MethodBase` clones | method-dependent × K |
+| `GenoCursor` | genotype-format-dependent |
+| `GVec_union` | nUnion × 8 bytes |
+| `indexForMissing` | reserved nUnion/10 |
+
+No `GVec_pheno` buffer.  No `unionMissing` / `phenoMissing` arrays.
+
+### Memory savings vs `multiPhenoEngine`
+
+| Component | `multiPhenoEngine` | `imputeMultiPhenoEngine` |
+|---|---|---|
+| GVec buffers per thread | 1 union + 1 pheno | 1 union |
+| Stats calls per marker | K | 1 |
+| Extract calls per marker | K | 0 |
+| QC checks per marker | K | 1 |
+
+For K=100 phenotypes, N=400k, T=16 threads:
+- `multiPhenoEngine`: T × (nUnion + maxN) × 8 ≈ 100 MB for GVec alone,
+  plus T × K × method clones.
+- `imputeMultiPhenoEngine`: T × nUnion × 8 ≈ 50 MB for GVec, plus
+  T × K × method clones.  K-fold reduction in stats/extract overhead.
+
+### Residual imputation correctness
+
+The score statistic is `Score = resid · GVec`.  For a subject j that is
+missing from phenotype p:
+
+- `padToUnionSpace` sets `resid_padded[j] = 0`
+- After imputation: `GVec[j] = 2 · altFreq`
+- Contribution: `0 × 2·altFreq = 0` — no effect on the score
+
+The score variance (`R_GRM_R`, `m_varResid`, cumulant tables) is
+computed from the original per-phenotype residuals before padding, so
+the SPA adjustment uses the correct per-phenotype null distribution.
+
+The union-level QC stats (altFreq, MAC, missRate, HWE) are computed
+from all union subjects, not per-phenotype.  This uses a slightly
+larger denominator than per-phenotype stats but is acceptable for QC
+filtering purposes.
+
+---
+
+## 4. `locoEngine` — per-chromosome LOCO with K phenotypes
 
 ```
 void locoEngine(

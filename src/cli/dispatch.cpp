@@ -169,6 +169,7 @@ static void logArgsInEffect(const Args &args) {
     if (!args.covarName.empty()) std::fprintf(stderr, "  --covar-name %s\n", args.covarName.c_str());
     if (!args.phenoName.empty()) std::fprintf(stderr, "  --pheno-name %s\n", args.phenoName.c_str());
     if (!args.residName.empty()) std::fprintf(stderr, "  --resid-name %s\n", args.residName.c_str());
+    if (args.phenoMissing != "impute") std::fprintf(stderr, "  --pheno-missing %s\n", args.phenoMissing.c_str());
     // pc-cols: relevant for SPAmix/SPAmixPlus/LEAF and cal-af-coef
     {
         bool usesPcCols =
@@ -463,6 +464,33 @@ int run(
         return 1;
     }
 
+    // Validate --pheno-missing
+    if (args.phenoMissing != "drop" && args.phenoMissing != "impute") {
+        std::cerr << "Error: --pheno-missing must be 'drop' or 'impute', got '" << args.phenoMissing << "'\n";
+        return 1;
+    }
+
+    // --pheno-missing is only supported by SPAGRM and SPAsqr.
+    // Error if the user explicitly set it for any other method.
+    if (args.phenoMissingExplicit && !args.method.empty() &&
+        args.method != "SPAGRM" && args.method != "SPAsqr") {
+        std::cerr << "Error: --pheno-missing is only supported by SPAGRM and SPAsqr, "
+            "not '" << args.method << "'.\n";
+        return 1;
+    }
+
+    // If only one phenotype/residual, --pheno-missing has no effect.
+    {
+        size_t nTraits = 0;
+        if (!residNames.empty()) nTraits = residNames.size();
+        else if (!phenoNames.empty()) nTraits = phenoNames.size();
+        if (nTraits <= 1 && args.phenoMissingExplicit) {
+            std::fprintf(stderr, "Note: --pheno-missing ignored (only %zu phenotype/residual in analysis)\n",
+                         nTraits);
+            args.phenoMissing = "impute";
+        }
+    }
+
     // SPAmixLocalPlus uses --admix-bfile instead of standard geno input
     GenoSpec geno{};
     if (args.method != "SPAmixLocalPlus") geno = resolveGenoSpec(args, args.method.c_str());
@@ -540,7 +568,8 @@ int run(
                 args.minMacCutoff,
                 args.hweCutoff,
                 args.keepFile,
-                args.removeFile
+                args.removeFile,
+                args.phenoMissing
             );
         }
 
@@ -566,7 +595,8 @@ int run(
                 args.minMacCutoff,
                 args.hweCutoff,
                 args.keepFile,
-                args.removeFile
+                args.removeFile,
+                args.phenoMissing
             );
         }
 
@@ -590,7 +620,8 @@ int run(
                 args.minMacCutoff,
                 args.hweCutoff,
                 args.keepFile,
-                args.removeFile
+                args.removeFile,
+                args.phenoMissing
             );
         }
 
@@ -627,7 +658,8 @@ int run(
                 args.minMacCutoff,
                 args.hweCutoff,
                 args.keepFile,
-                args.removeFile
+                args.removeFile,
+                args.phenoMissing
             );
         }
 
@@ -653,7 +685,8 @@ int run(
                 args.minMacCutoff,
                 args.hweCutoff,
                 args.keepFile,
-                args.removeFile
+                args.removeFile,
+                args.phenoMissing
             );
         }
 
@@ -733,6 +766,7 @@ int run(
                     args.minMafCutoff,
                     args.minMacCutoff,
                     args.hweCutoff,
+                    args.phenoMissing,
                     args.spasqrTol,
                     args.spasqrH,
                     args.spasqrHScale,
@@ -761,6 +795,7 @@ int run(
                     args.minMafCutoff,
                     args.minMacCutoff,
                     args.hweCutoff,
+                    args.phenoMissing,
                     args.spasqrTol,
                     args.spasqrH,
                     args.spasqrHScale,
@@ -803,7 +838,8 @@ int run(
                 args.minMacCutoff,
                 args.hweCutoff,
                 args.keepFile,
-                args.removeFile
+                args.removeFile,
+                args.phenoMissing
             );
         }
 
@@ -854,7 +890,8 @@ int run(
                 args.minMacCutoff,
                 args.hweCutoff,
                 args.keepFile,
-                args.removeFile
+                args.removeFile,
+                args.phenoMissing
             );
         }
 
@@ -882,7 +919,8 @@ int run(
                 args.keepFile,
                 args.removeFile,
                 args.extractFile,
-                args.excludeFile
+                args.excludeFile,
+                args.phenoMissing
             );
         }
 

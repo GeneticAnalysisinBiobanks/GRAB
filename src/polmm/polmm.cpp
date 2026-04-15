@@ -1507,7 +1507,8 @@ void runPOLMM(
     double minMacCutoff,
     double hweCutoff,
     const std::string &keepFile,
-    const std::string &removeFile
+    const std::string &removeFile,
+    const std::string &phenoMissing
 ) {
     const int K = static_cast<int>(phenoNames.size());
 

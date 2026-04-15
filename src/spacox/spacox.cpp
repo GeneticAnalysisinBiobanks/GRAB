@@ -480,7 +480,8 @@ void runSPACox(
     double minMacCutoff,
     double hweCutoff,
     const std::string &keepFile,
-    const std::string &removeFile
+    const std::string &removeFile,
+    const std::string &phenoMissing
 ) {
 
     // ---- Load resid file and covariate data ----

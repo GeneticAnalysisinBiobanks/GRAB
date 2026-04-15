@@ -257,16 +257,16 @@ void MultiMethod::getResultVec(
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// multiPhenoEngine — per-phenotype independent GWAS
+// multiPhenoEngineRange — shared worker+writer loop for a chunk range
 // ══════════════════════════════════════════════════════════════════════
 
-void multiPhenoEngine(
+void multiPhenoEngineRange(
     const GenoMeta &genoData,
     std::vector<PhenoTask> &tasks,
-    const std::string &outPrefix,
-    const std::string &methodName,
-    const std::string &compression,
-    int compressionLevel,
+    const std::vector<std::string> &naSuffixes,
+    size_t chunkStart,
+    size_t chunkEnd,
+    std::vector<TextWriter> &writers,
     int nthreads,
     double missingCutoff,
     double minMafCutoff,
@@ -274,86 +274,81 @@ void multiPhenoEngine(
     double hweCutoff
 ) {
     const size_t K = tasks.size();
-    const size_t nTotalChunks = genoData.chunkIndices().size();
-    const int effective_nthreads = std::min(nthreads, static_cast<int>(nTotalChunks));
+    const size_t nChunks = chunkEnd - chunkStart;
+    const int effective_nthreads = std::min(nthreads, static_cast<int>(nChunks));
     const uint32_t nUnion = genoData.nSubjUsed();
+    const auto &allChunks = genoData.chunkIndices();
 
-    infoMsg("Number of subjects in the input file: %u", genoData.nSubjInFile());
-    infoMsg("Number of subjects in union mask: %u", nUnion);
-    for (size_t p = 0; p < K; ++p)
-        infoMsg("  Phenotype '%s': %u subjects", tasks[p].phenoName.c_str(), tasks[p].nUsed);
-    infoMsg("Number of markers in the input file: %u", genoData.nMarkers());
-    infoMsg("Number of markers to test: %zu", genoData.markerInfo().size());
-    infoMsg("Number of chunks for all markers: %zu", nTotalChunks);
-    infoMsg("Start chunk-level parallel processing with %d worker threads, %zu phenotypes.", effective_nthreads, K);
+    // ── Missingness-pattern batching ───────────────────────────────────
+    // Group phenotypes with identical unionToLocal (= same non-missing
+    // sample set).  All phenotypes in a batch share ONE genotype extraction
+    // and ONE stats computation, eliminating (K - nBatches) scattered
+    // extract passes and stats passes per marker.
+    struct MissBatch {
+        size_t rep;                  // representative phenotype index
+        std::vector<size_t> members; // all phenotype indices with this pattern
+    };
 
-    // Build per-phenotype headers.
-    std::vector<std::string> headers(K);
-    for (size_t p = 0; p < K; ++p)
-        headers[p] = std::string(META_HEADER) + tasks[p].method->getHeaderColumns() + "\n";
-
-    // Build per-phenotype NA suffixes.
-    std::vector<std::string> naSuffixes(K);
-    for (size_t p = 0; p < K; ++p)
-        naSuffixes[p] = makeNaSuffix(tasks[p].method->resultSize());
-
-    // Build output file paths.
-    auto writerMode = TextWriter::modeFromString(compression);
-    std::vector<std::string> outPaths(K);
-    for (size_t p = 0; p < K; ++p)
-        outPaths[p] = TextWriter::buildOutputPath(outPrefix, tasks[p].phenoName, methodName, compression);
+    std::vector<MissBatch> missBatches;
+    {
+        std::vector<bool> assigned(K, false);
+        for (size_t p = 0; p < K; ++p) {
+            if (assigned[p]) continue;
+            MissBatch batch;
+            batch.rep = p;
+            batch.members.push_back(p);
+            assigned[p] = true;
+            for (size_t q = p + 1; q < K; ++q) {
+                if (assigned[q]) continue;
+                if (tasks[p].nUsed == tasks[q].nUsed &&
+                    tasks[p].unionToLocal == tasks[q].unionToLocal) {
+                    batch.members.push_back(q);
+                    assigned[q] = true;
+                }
+            }
+            missBatches.push_back(std::move(batch));
+        }
+    }
+    const size_t nBatches = missBatches.size();
+    if (nBatches < K)
+        infoMsg("Missingness-pattern batching: %zu unique patterns for %zu phenotypes", nBatches, K);
 
     // Per-chunk, per-phenotype output buffers + ready flags.
-    // chunkOutput[chunk][pheno]
-    std::vector<std::vector<std::string> > chunkOutput(nTotalChunks, std::vector<std::string>(K));
-    std::vector<PaddedFlag> chunkReady(nTotalChunks, {0});
+    std::vector<std::vector<std::string> > chunkOutput(nChunks, std::vector<std::string>(K));
+    std::vector<PaddedFlag> chunkReady(nChunks, {0});
     std::atomic<size_t> nextChunk(0);
 
     std::exception_ptr workerError = nullptr;
     std::mutex errorMutex;
     std::mutex writeMutex;
     std::condition_variable writeCv;
-    std::atomic<bool> stopWriter{false};
+    std::atomic<bool> stopFlag{false};
 
     // ── Writer thread ──────────────────────────────────────────────────
     std::thread writerThread([&]() {
         try {
-            std::vector<TextWriter> writers;
-            writers.reserve(K);
-            for (size_t p = 0; p < K; ++p) {
-                writers.emplace_back(outPaths[p], writerMode, compressionLevel);
-                writers[p].write(headers[p]);
-            }
-
-            for (size_t i = 0; i < nTotalChunks; ++i) {
-                std::vector<std::string> tmp(K);
+            for (size_t ci = 0; ci < nChunks; ++ci) {
                 {
                     std::unique_lock<std::mutex> lk(writeMutex);
                     writeCv.wait(lk, [&]() {
-                        return chunkReady[i].ready || stopWriter.load();
+                        return chunkReady[ci].ready || stopFlag.load();
                     });
-                    if (!chunkReady[i].ready) break;
-                    for (size_t p = 0; p < K; ++p)
-                        tmp[p] = std::move(chunkOutput[i][p]);
+                    if (!chunkReady[ci].ready) break;
                 }
                 for (size_t p = 0; p < K; ++p)
-                    writers[p].write(tmp[p]);
-                infoMsg("Writing finished: chunk %zu/%zu", i + 1, nTotalChunks);
+                    writers[p].write(chunkOutput[ci][p]);
+                infoMsg("Writing finished: chunk %zu/%zu", ci + 1, nChunks);
             }
-
-            for (auto &w : writers)
-                w.close();
         } catch (...) {
-            std::lock_guard<std::mutex> lock(errorMutex);
-            workerError = std::current_exception();
-            stopWriter.store(true);
+            std::lock_guard<std::mutex> lk(errorMutex);
+            if (!workerError) workerError = std::current_exception();
+            stopFlag = true;
         }
     });
 
     // ── Worker function ────────────────────────────────────────────────
     auto workerFn = [&]() {
         try {
-            // Per-thread state
             auto cursor = genoData.makeCursor();
             std::vector<std::unique_ptr<MethodBase> > methods(K);
             for (size_t p = 0; p < K; ++p)
@@ -363,8 +358,6 @@ void multiPhenoEngine(
             std::vector<Eigen::VectorXd> GVec_phenos(K);
             for (size_t p = 0; p < K; ++p)
                 GVec_phenos[p].resize(tasks[p].nUsed);
-            std::vector<uint32_t> unionMissing;
-            unionMissing.reserve(nUnion / 10);
 
             // Batched extract+stats buffers (allocated once, reused per marker)
             std::vector<const uint32_t *> utlPtrs(K);
@@ -384,13 +377,17 @@ void multiPhenoEngine(
             rv.reserve(16);
             char fmtBuf[32];
 
-            const auto &localChunks = genoData.chunkIndices();
+            // Difflist buffers for sparse genotype path
+            const uint32_t maxDiffLen = nUnion / 8;
+            std::vector<uint32_t> diffSampleIds(maxDiffLen + 2);
+            std::vector<uint8_t> diffGenoCodes(maxDiffLen + 2);
 
-            while (!stopWriter.load(std::memory_order_relaxed)) {
-                const size_t cidx = nextChunk.fetch_add(1);
-                if (cidx >= localChunks.size()) break;
+            while (!stopFlag.load(std::memory_order_relaxed)) {
+                const size_t localIdx = nextChunk.fetch_add(1);
+                if (localIdx >= nChunks) break;
 
-                const auto &gIdx = localChunks[cidx];
+                const size_t globalIdx = chunkStart + localIdx;
+                const auto &gIdx = allChunks[globalIdx];
 
                 // Per-phenotype output buffers for this chunk.
                 std::vector<std::string> phenoOut(K);
@@ -402,23 +399,57 @@ void multiPhenoEngine(
                     methods[p]->prepareChunk(gIdx);
 
                 for (size_t i = 0; i < gIdx.size(); ++i) {
-                    // 1. Decode genotypes for union mask
-                    double uAltFreq, uAltCounts, uMissRate, uHweP, uMaf, uMac;
-                    unionMissing.clear();
-                    cursor->getGenotypes(gIdx[i], GVec_union, uAltFreq, uAltCounts, uMissRate, uHweP, uMaf, uMac,
-                                         unionMissing);
-
                     const std::string_view chr = genoData.chr(gIdx[i]);
                     const std::string_view ref = genoData.ref(gIdx[i]);
                     const std::string_view alt = genoData.alt(gIdx[i]);
                     const std::string_view marker = genoData.markerId(gIdx[i]);
                     const uint32_t pos = genoData.pos(gIdx[i]);
 
-                    // 2. Fused: extract all K phenotypes + compute stats in one pass
-                    extractAndStatsBatched(
-                        GVec_union.data(), nUnion, K,
-                        utlPtrs.data(), nPhenoArr.data(),
-                        phenoGPtrs.data(), batchStats.data(), batchMissings.data());
+                    // Try sparse read first; falls back to dense internally.
+                    uint32_t diffLen = 0;
+                    const uint32_t commonGeno = cursor->getGenotypesMaybeSparse(
+                        gIdx[i], GVec_union, maxDiffLen,
+                        diffSampleIds.data(), diffGenoCodes.data(), diffLen);
+
+                    if (commonGeno != UINT32_MAX) {
+                        // ── Sparse path ────────────────────────────────────
+                        for (size_t b = 0; b < nBatches; ++b) {
+                            const auto &batch = missBatches[b];
+                            const size_t rep = batch.rep;
+                            batchStats[rep] = sparseExtractAndStats(
+                                phenoGPtrs[rep], nPhenoArr[rep], utlPtrs[rep],
+                                commonGeno, diffSampleIds.data(),
+                                diffGenoCodes.data(), diffLen, batchMissings[rep]);
+                            for (size_t mi = 1; mi < batch.members.size(); ++mi) {
+                                const size_t p = batch.members[mi];
+                                std::copy(phenoGPtrs[rep],
+                                          phenoGPtrs[rep] + nPhenoArr[rep],
+                                          phenoGPtrs[p]);
+                                batchStats[p] = batchStats[rep];
+                                batchMissings[p] = batchMissings[rep];
+                            }
+                        }
+                    } else {
+                        // ── Dense path ─────────────────────────────────────
+                        for (size_t b = 0; b < nBatches; ++b) {
+                            const auto &batch = missBatches[b];
+                            const size_t rep = batch.rep;
+                            extractPhenoGVec(GVec_union.data(), nUnion,
+                                             utlPtrs[rep], nPhenoArr[rep],
+                                             phenoGPtrs[rep]);
+                            batchStats[rep] = statsFromGVec(
+                                phenoGPtrs[rep], nPhenoArr[rep],
+                                batchMissings[rep]);
+                            for (size_t mi = 1; mi < batch.members.size(); ++mi) {
+                                const size_t p = batch.members[mi];
+                                std::copy(phenoGPtrs[rep],
+                                          phenoGPtrs[rep] + nPhenoArr[rep],
+                                          phenoGPtrs[p]);
+                                batchStats[p] = batchStats[rep];
+                                batchMissings[p] = batchMissings[rep];
+                            }
+                        }
+                    }
 
                     for (size_t p = 0; p < K; ++p) {
                         const PhenoGenoStats &gs = batchStats[p];
@@ -451,10 +482,10 @@ void multiPhenoEngine(
                 {
                     std::lock_guard<std::mutex> lk(writeMutex);
                     for (size_t p = 0; p < K; ++p)
-                        chunkOutput[cidx][p] = std::move(phenoOut[p]);
-                    chunkReady[cidx].ready = 1;
+                        chunkOutput[localIdx][p] = std::move(phenoOut[p]);
+                    chunkReady[localIdx].ready = 1;
                 }
-                infoMsg("Calculation finished: chunk %zu/%zu", cidx + 1, nTotalChunks);
+                infoMsg("Calculation finished: chunk %zu/%zu", localIdx + 1, nChunks);
                 writeCv.notify_all();
             }
         } catch (...) {
@@ -464,7 +495,7 @@ void multiPhenoEngine(
             }
             {
                 std::lock_guard<std::mutex> lk(writeMutex);
-                stopWriter = true;
+                stopFlag = true;
             }
             writeCv.notify_all();
         }
@@ -484,12 +515,67 @@ void multiPhenoEngine(
 
     {
         std::lock_guard<std::mutex> lk(writeMutex);
-        stopWriter = true;
+        stopFlag = true;
     }
     writeCv.notify_all();
     writerThread.join();
 
     if (workerError) std::rethrow_exception(workerError);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// multiPhenoEngine — per-phenotype independent GWAS
+// ══════════════════════════════════════════════════════════════════════
+
+void multiPhenoEngine(
+    const GenoMeta &genoData,
+    std::vector<PhenoTask> &tasks,
+    const std::string &outPrefix,
+    const std::string &methodName,
+    const std::string &compression,
+    int compressionLevel,
+    int nthreads,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff
+) {
+    const size_t K = tasks.size();
+    const size_t nTotalChunks = genoData.chunkIndices().size();
+
+    infoMsg("Number of subjects in the input file: %u", genoData.nSubjInFile());
+    infoMsg("Number of subjects in union mask: %u", genoData.nSubjUsed());
+    for (size_t p = 0; p < K; ++p)
+        infoMsg("  Phenotype '%s': %u subjects", tasks[p].phenoName.c_str(), tasks[p].nUsed);
+    infoMsg("Number of markers in the input file: %u", genoData.nMarkers());
+    infoMsg("Number of markers to test: %zu", genoData.markerInfo().size());
+    infoMsg("Number of chunks for all markers: %zu", nTotalChunks);
+    infoMsg("Start chunk-level parallel processing with %d worker threads, %zu phenotypes.",
+            std::min(nthreads, static_cast<int>(nTotalChunks)), K);
+
+    // Build per-phenotype NA suffixes.
+    std::vector<std::string> naSuffixes(K);
+    for (size_t p = 0; p < K; ++p)
+        naSuffixes[p] = makeNaSuffix(tasks[p].method->resultSize());
+
+    // Build output file paths and open writers.
+    auto writerMode = TextWriter::modeFromString(compression);
+    std::vector<std::string> outPaths(K);
+    std::vector<TextWriter> writers;
+    writers.reserve(K);
+    for (size_t p = 0; p < K; ++p) {
+        outPaths[p] = TextWriter::buildOutputPath(outPrefix, tasks[p].phenoName, methodName, compression);
+        writers.emplace_back(outPaths[p], writerMode, compressionLevel);
+        std::string header = std::string(META_HEADER) + tasks[p].method->getHeaderColumns() + "\n";
+        writers[p].write(header);
+    }
+
+    // Delegate to the range engine.
+    multiPhenoEngineRange(genoData, tasks, naSuffixes, 0, nTotalChunks, writers,
+                          nthreads, missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
+
+    for (auto &w : writers)
+        w.close();
 
     for (size_t p = 0; p < K; ++p)
         infoMsg("Output written to: %s", outPaths[p].c_str());

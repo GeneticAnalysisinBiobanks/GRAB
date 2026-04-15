@@ -376,7 +376,8 @@ void runSPAmixPlus(
     double minMacCutoff,
     double hweCutoff,
     const std::string &keepFile,
-    const std::string &removeFile
+    const std::string &removeFile,
+    const std::string &phenoMissing
 ) {
     // ---- Load residual file and PC data ----
     infoMsg("Loading pheno file: %s", phenoFile.c_str());

@@ -323,6 +323,23 @@ SPAGRMClass::SPAGRMClass(const SPAGRMClass &o)
     }
 }
 
+void SPAGRMClass::padToUnionSpace(
+    const uint32_t *unionToLocal,
+    uint32_t nUnion
+) {
+    // Expand m_resid from per-phenotype-dense (Np) to union-dense (nUnion).
+    // Absent subjects get 0, so score = resid · GVec naturally skips them.
+    // m_resid_sum and all variance/MGF tables are unchanged.
+    const Eigen::Index Np = m_resid.size();
+    Eigen::VectorXd padded = Eigen::VectorXd::Zero(nUnion);
+    for (uint32_t i = 0; i < nUnion; ++i) {
+        uint32_t li = unionToLocal[i];
+        if (li != UINT32_MAX && li < static_cast<uint32_t>(Np))
+            padded[i] = m_resid[li];
+    }
+    m_resid = std::move(padded);
+}
+
 double SPAGRMClass::getMarkerPval(
     const Eigen::VectorXd &GVec,
     double altFreq,
@@ -542,7 +559,8 @@ void runSPAGRM(
     double minMacCutoff,
     double hweCutoff,
     const std::string &keepFile,
-    const std::string &removeFile
+    const std::string &removeFile,
+    const std::string &phenoMissing
 ) {
     infoMsg("Loading pheno file: %s", phenoFile.c_str());
     auto famIIDs = parseGenoIIDs(geno);
@@ -635,6 +653,11 @@ void runSPAGRM(
     }
 
     infoMsg("Running SPAGRM marker tests (%d thread(s), %d phenotype(s))...", nthreads, K);
-    multiPhenoEngine(*genoData, tasks, outPrefix, "SPAGRM", compression, compressionLevel, nthreads, missingCutoff,
-                     minMafCutoff, minMacCutoff, hweCutoff);
+    if (phenoMissing == "impute" && K > 1) {
+        imputeMultiPhenoEngine(*genoData, tasks, outPrefix, "SPAGRM", compression, compressionLevel, nthreads,
+                               missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
+    } else {
+        multiPhenoEngine(*genoData, tasks, outPrefix, "SPAGRM", compression, compressionLevel, nthreads,
+                         missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
+    }
 }

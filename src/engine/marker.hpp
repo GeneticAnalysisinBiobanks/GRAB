@@ -47,6 +47,21 @@ class MethodBase {
         std::vector<double> &result
     ) = 0;
 
+    // Expand internal residuals from per-phenotype-dense (Np) to
+    // union-dense (nUnion) space, filling absent entries with 0.
+    // After this call, getResultVec() expects GVec of size nUnion.
+    virtual void padToUnionSpace(
+        const uint32_t * /*unionToLocal*/,
+        uint32_t                                                             /*nUnion*/
+    ) {
+    }
+
+    // Return true if this method supports the impute engine
+    // (i.e. padToUnionSpace has been implemented and called).
+    virtual bool supportsImputeEngine() const {
+        return false;
+    }
+
 };
 
 // ======================================================================
@@ -75,6 +90,45 @@ struct PhenoTask {
     uint32_t nUsed;                     // this phenotype's sample count
 };
 
+class TextWriter;
+
+// Process a range of chunks [chunkStart, chunkEnd) through K phenotype tasks,
+// writing results to pre-opened writers.  Writers must already have headers.
+// Used internally by multiPhenoEngine and locoEngine.
+void multiPhenoEngineRange(
+    const GenoMeta &genoData,
+    std::vector<PhenoTask> &tasks,
+    const std::vector<std::string> &naSuffixes,
+    size_t chunkStart,
+    size_t chunkEnd,
+    std::vector<TextWriter> &writers,
+    int nthreads,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff
+);
+
+// Impute-mode multi-phenotype engine: all phenotypes share one union GVec.
+//
+// Assumes every task's method has been padToUnionSpace'd so that residuals
+// are union-dense (missing subjects have residual 0).  Decodes genotypes
+// once, computes union-level stats once, and calls each method with the
+// same GVec.  Eliminates K per-phenotype GVec buffers and extraction loops.
+void imputeMultiPhenoEngineRange(
+    const GenoMeta &genoData,
+    std::vector<PhenoTask> &tasks,
+    const std::vector<std::string> &naSuffixes,
+    size_t chunkStart,
+    size_t chunkEnd,
+    std::vector<TextWriter> &writers,
+    int nthreads,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff
+);
+
 // Per-phenotype independent GWAS engine.
 //
 // Decodes genotypes once via the union mask, then for each phenotype:
@@ -85,6 +139,22 @@ struct PhenoTask {
 //
 // Threading: chunk-level work-stealing, K phenotypes sequential per chunk.
 void multiPhenoEngine(
+    const GenoMeta &genoData,
+    std::vector<PhenoTask> &tasks,
+    const std::string &outPrefix,
+    const std::string &methodName,
+    const std::string &compression,
+    int compressionLevel,
+    int nthreads,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff
+);
+
+// Impute-mode wrapper: pads tasks to union space, then delegates to
+// imputeMultiPhenoEngineRange.  Same interface as multiPhenoEngine.
+void imputeMultiPhenoEngine(
     const GenoMeta &genoData,
     std::vector<PhenoTask> &tasks,
     const std::string &outPrefix,

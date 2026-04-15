@@ -106,6 +106,24 @@ Required by SPACox, SPAGRM, SAGELD, SPAmix, SPAmixPlus, SPAmixLocalPlus.
 Default: all residual columns.)"
 };
 
+inline const FlagDef kPhenoMissing = {
+    "--pheno-missing", "MODE", "Missing phenotype handling: drop or impute (default: drop)",
+    R"(Controls how subjects with missing phenotype/residual values are handled
+in multi-phenotype runs.
+
+  drop    — Current behaviour: drop any subject with a missing value in
+            any residual/phenotype column.  Per-phenotype genotype vectors
+            are extracted separately (memory scales with K × N × T).
+
+  impute  — Keep subjects present in at least one column.  Missing
+            residuals are imputed as 0, so the score statistic
+            (residual · genotype) naturally skips them.  All phenotypes
+            share a single union genotype vector, dramatically reducing
+            memory (one GVec per thread instead of K).
+
+Default: drop.  Single-phenotype runs are unaffected.)"
+};
+
 inline const FlagDef kPcCols = {
     "--pc-cols", "COL_IDS", "Comma-separated PC column names (default: PC1,PC2,PC3,PC4)",
     R"(Selects columns from --covar or --pheno as principal components.

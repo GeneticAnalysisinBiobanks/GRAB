@@ -313,7 +313,8 @@ void runSAGELD(
     double minMacCutoff,
     double hweCutoff,
     const std::string &keepFile,
-    const std::string &removeFile
+    const std::string &removeFile,
+    const std::string &phenoMissing
 ) {
     // 1. Load residual file
     infoMsg("Loading pheno file: %s", phenoFile.c_str());
