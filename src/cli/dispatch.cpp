@@ -48,8 +48,14 @@ static std::unordered_set<std::string> parseChrSpec(const std::string &spec) {
         auto dash = token.find('-');
         if (dash != std::string::npos && dash > 0 && dash < token.size() - 1) {
             // Range: e.g. "1-4"
-            int lo = std::stoi(token.substr(0, dash));
-            int hi = std::stoi(token.substr(dash + 1));
+            int lo, hi;
+            try {
+                lo = std::stoi(token.substr(0, dash));
+                hi = std::stoi(token.substr(dash + 1));
+            } catch (const std::exception &) {
+                std::cerr << "Error: invalid --chr range '" << token << "' (non-numeric).\n";
+                std::exit(1);
+            }
             if (lo > hi) {
                 std::cerr << "Error: invalid --chr range '" << token << "' (start > end).\n";
                 std::exit(1);

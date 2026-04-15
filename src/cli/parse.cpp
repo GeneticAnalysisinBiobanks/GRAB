@@ -4,9 +4,74 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 
 namespace cli {
+
+// Safe numeric parsers — print a clear error and exit instead of throwing.
+static double parseDouble(
+    const std::string &val,
+    const std::string &flag
+) {
+    try {
+        size_t pos = 0;
+        double v = std::stod(val, &pos);
+        if (pos != val.size()) {
+            std::cerr << "Error: " << flag << " requires a numeric value, got '" << val << "'\n";
+            std::exit(1);
+        }
+        return v;
+    } catch (const std::invalid_argument &) {
+        std::cerr << "Error: " << flag << " requires a numeric value, got '" << val << "'\n";
+        std::exit(1);
+    } catch (const std::out_of_range &) {
+        std::cerr << "Error: " << flag << " value out of range: '" << val << "'\n";
+        std::exit(1);
+    }
+}
+
+static int parseInt(
+    const std::string &val,
+    const std::string &flag
+) {
+    try {
+        size_t pos = 0;
+        int v = std::stoi(val, &pos);
+        if (pos != val.size()) {
+            std::cerr << "Error: " << flag << " requires an integer value, got '" << val << "'\n";
+            std::exit(1);
+        }
+        return v;
+    } catch (const std::invalid_argument &) {
+        std::cerr << "Error: " << flag << " requires an integer value, got '" << val << "'\n";
+        std::exit(1);
+    } catch (const std::out_of_range &) {
+        std::cerr << "Error: " << flag << " value out of range: '" << val << "'\n";
+        std::exit(1);
+    }
+}
+
+static unsigned long long parseULL(
+    const std::string &val,
+    const std::string &flag
+) {
+    try {
+        size_t pos = 0;
+        unsigned long long v = std::stoull(val, &pos);
+        if (pos != val.size()) {
+            std::cerr << "Error: " << flag << " requires an integer value, got '" << val << "'\n";
+            std::exit(1);
+        }
+        return v;
+    } catch (const std::invalid_argument &) {
+        std::cerr << "Error: " << flag << " requires an integer value, got '" << val << "'\n";
+        std::exit(1);
+    } catch (const std::out_of_range &) {
+        std::cerr << "Error: " << flag << " value out of range: '" << val << "'\n";
+        std::exit(1);
+    }
+}
 
 Args parseArgs(
     int argc,
@@ -40,9 +105,9 @@ Args parseArgs(
         else if (arg == "--pheno-missing"){ a.phenoMissing = next(); a.phenoMissingExplicit = true; }
         else if (arg == "--pc-cols")a.pcCols = next();
         else if (arg == "--spasqr-taus")a.spasqrTaus = next();
-        else if (arg == "--spasqr-tol")a.spasqrTol = std::stod(next());
-        else if (arg == "--spasqr-h")a.spasqrH = std::stod(next());
-        else if (arg == "--spasqr-h-scale")a.spasqrHScale = std::stod(next());
+        else if (arg == "--spasqr-tol")a.spasqrTol = parseDouble(next(), arg);
+        else if (arg == "--spasqr-h")a.spasqrH = parseDouble(next(), arg);
+        else if (arg == "--spasqr-h-scale")a.spasqrHScale = parseDouble(next(), arg);
         else if (arg == "--bfile")a.bfilePrefix = next();
         else if (arg == "--pfile")a.pfilePrefix = next();
         else if (arg == "--vcf")a.vcfFile = next();
@@ -53,20 +118,20 @@ Args parseArgs(
         else if (arg == "--ind-af-coef")a.indAfFile = next();
         else if (arg == "--pairwise-ibd")a.pairwiseIBDFile = next();
         else if (arg == "--out")a.outPrefix = next();
-        else if (arg == "--prevalence")a.refPrevalence = std::stod(next());
-        else if (arg == "--batch-effect-p-threshold")a.cutoff = std::stod(next());
-        else if (arg == "--spa-z-threshold")a.spaCutoff = std::stod(next());
-        else if (arg == "--covar-p-threshold")a.pvalCovAdjCut = std::stod(next());
-        else if (arg == "--geno")a.missingCutoff = std::stod(next());
-        else if (arg == "--maf")a.minMafCutoff = std::stod(next());
-        else if (arg == "--mac")a.minMacCutoff = std::stod(next());
-        else if (arg == "--hwe")a.hweCutoff = std::stod(next());
-        else if (arg == "--outlier-iqr-threshold")a.outlierRatio = std::stod(next());
-        else if (arg == "--outlier-abs-bound")a.outlierAbsBound = std::stod(next());
-        else if (arg == "--threads")a.nthread = std::stoi(next());
-        else if (arg == "--chunk-size")a.nSnpPerChunk = std::stoi(next());
-        else if (arg == "--leaf-nclusters")a.nClusters = std::stoi(next());
-        else if (arg == "--seed")a.seed = std::stoull(next());
+        else if (arg == "--prevalence")a.refPrevalence = parseDouble(next(), arg);
+        else if (arg == "--batch-effect-p-threshold")a.cutoff = parseDouble(next(), arg);
+        else if (arg == "--spa-z-threshold")a.spaCutoff = parseDouble(next(), arg);
+        else if (arg == "--covar-p-threshold")a.pvalCovAdjCut = parseDouble(next(), arg);
+        else if (arg == "--geno")a.missingCutoff = parseDouble(next(), arg);
+        else if (arg == "--maf")a.minMafCutoff = parseDouble(next(), arg);
+        else if (arg == "--mac")a.minMacCutoff = parseDouble(next(), arg);
+        else if (arg == "--hwe")a.hweCutoff = parseDouble(next(), arg);
+        else if (arg == "--outlier-iqr-threshold")a.outlierRatio = parseDouble(next(), arg);
+        else if (arg == "--outlier-abs-bound")a.outlierAbsBound = parseDouble(next(), arg);
+        else if (arg == "--threads")a.nthread = parseInt(next(), arg);
+        else if (arg == "--chunk-size")a.nSnpPerChunk = parseInt(next(), arg);
+        else if (arg == "--leaf-nclusters")a.nClusters = parseInt(next(), arg);
+        else if (arg == "--seed")a.seed = parseULL(next(), arg);
         else if (arg == "--extract")a.extractFile = next();
         else if (arg == "--exclude")a.excludeFile = next();
         else if (arg == "--chr")a.chrSpec = next();
@@ -78,13 +143,13 @@ Args parseArgs(
         else if (arg == "--rfmix-msp")a.mspFile = next();
         else if (arg == "--admix-text-prefix")a.admixTextPrefix = next();
         else if (arg == "--compression")a.compression = next();
-        else if (arg == "--compression-level")a.compressionLevel = std::stoi(next());
+        else if (arg == "--compression-level")a.compressionLevel = parseInt(next(), arg);
         // --phi-maf-cutoff removed: hardcoded to 0.01 inside estimatePhiOneAncestry
         else if (arg == "--cal-af-coef")a.calAfCoef = true;
         else if (arg == "--cal-pairwise-ibd")a.calPairwiseIBD = true;
         else if (arg == "--cal-phi")a.calPhi = true;
         else if (arg == "--make-abed")a.makeAbed = true;
-        else if (arg == "--min-maf-ibd")a.minMafIBD = std::stod(next());
+        else if (arg == "--min-maf-ibd")a.minMafIBD = parseDouble(next(), arg);
         else {
             std::cerr << "Error: unknown option: " << arg << "  (run 'grab --help' for usage)\n";
             std::exit(1);

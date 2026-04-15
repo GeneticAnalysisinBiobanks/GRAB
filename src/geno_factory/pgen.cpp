@@ -244,6 +244,15 @@ PgenData::PgenData(
     if (err != kPglRetSuccess) throw std::runtime_error(std::string("pgen init phase 2 failed: ") + errstr_buf);
 
     m_pgrAllocCachelineCt = pgr_alloc_cacheline_ct;
+
+    // Close the shared file handle so that each PgenCursor (PgrInit) opens
+    // its own independent FILE*.  Without this, the very first PgrInit call
+    // steals shared_ff, and concurrent PgrInit calls from worker threads
+    // can race on the same pointer (data race → double-fclose / corrupt reads).
+    if (pgfi_raw->shared_ff) {
+        fclose(pgfi_raw->shared_ff);
+        pgfi_raw->shared_ff = nullptr;
+    }
 }
 
 PgenData::~PgenData() = default;
