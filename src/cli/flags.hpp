@@ -309,7 +309,7 @@ inline const FlagDef kSeed = {
 
 inline const FlagDef kSpasqrTaus = {
     "--spasqr-taus", "LIST",
-    "Comma-separated tau levels for SPAsqr (default: 0.1,0.3,0.5,0.7,0.9)",
+    "Comma-separated tau levels for SPAsqr, max 20 (default: 0.1,0.3,0.5,0.7,0.9)",
     nullptr
 };
 

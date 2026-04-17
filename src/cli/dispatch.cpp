@@ -680,6 +680,11 @@ int run(
                 return 1;
             }
             auto tauStrs = splitComma(args.spasqrTaus, "--spasqr-taus", 1);
+            if (tauStrs.size() > 20) {
+                std::cerr << "Error: --spasqr-taus accepts at most 20 tau levels, got "
+                          << tauStrs.size() << "\n";
+                return 1;
+            }
             std::vector<double> taus;
             taus.reserve(tauStrs.size());
             for (const auto &s : tauStrs) {

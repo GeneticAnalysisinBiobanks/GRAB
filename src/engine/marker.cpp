@@ -467,6 +467,41 @@ void multiPhenoEngineRange(
                 nFuseable, totalFusedCols, nFuseable, augCols, nonFusedPhenos.size());
     }
 
+    // ── Group fuseable phenotypes by identical subject sets (D1) ───────
+    // Phenotypes sharing the same unionToLocal (same subjects) produce
+    // identical statsFromUnionVec results, so we compute QC once per group.
+    struct FusedStatsGroup {
+        size_t repFi;                   // representative index in fusedPhenos[]
+        std::vector<size_t> fiIndices;  // all fusedPhenos[] indices in this group
+    };
+
+    std::vector<FusedStatsGroup> fusedGroups;
+    if (hasFused) {
+        std::vector<bool> grouped(nFuseable, false);
+        for (size_t fi = 0; fi < nFuseable; ++fi) {
+            if (grouped[fi]) continue;
+            FusedStatsGroup g;
+            g.repFi = fi;
+            g.fiIndices.push_back(fi);
+            grouped[fi] = true;
+            const size_t pi = fusedPhenos[fi].taskIdx;
+            for (size_t fj = fi + 1; fj < nFuseable; ++fj) {
+                if (grouped[fj]) continue;
+                const size_t pj = fusedPhenos[fj].taskIdx;
+                if (tasks[pi].nUsed == tasks[pj].nUsed &&
+                    tasks[pi].unionToLocal == tasks[pj].unionToLocal) {
+                    g.fiIndices.push_back(fj);
+                    grouped[fj] = true;
+                }
+            }
+            fusedGroups.push_back(std::move(g));
+        }
+        if (fusedGroups.size() < nFuseable)
+            infoMsg("Fused QC groups: %zu groups for %zu fuseable phenotypes (%.0f%% QC savings)",
+                    fusedGroups.size(), nFuseable,
+                    100.0 * (1.0 - static_cast<double>(fusedGroups.size()) / static_cast<double>(nFuseable)));
+    }
+
     // ── Missingness-pattern batching (non-fuseable phenotypes only) ────
     struct MissBatch {
         size_t rep;
@@ -598,6 +633,15 @@ void multiPhenoEngineRange(
                 passGSums.reserve(B);
             }
 
+            // Pre-allocated passScores buffer (A2): reused across windows.
+            int maxFusedNCols = 0;
+            Eigen::MatrixXd passScoresBuf;
+            if (hasFused) {
+                for (size_t fi = 0; fi < nFuseable; ++fi)
+                    maxFusedNCols = std::max(maxFusedNCols, fusedPhenos[fi].nCols);
+                passScoresBuf.resize(maxFusedNCols, commonB);
+            }
+
             // ── Non-fuseable fallback buffers ──────────────────────────
             uint32_t maxNonFusedN = 0;
             std::vector<Eigen::VectorXd> GVec_phenos_nf;       // per non-fuseable phenotype
@@ -724,43 +768,34 @@ void multiPhenoEngineRange(
                         allScoresAndSums.leftCols(wlenI).noalias() =
                             AugResid.transpose() * GBatch_union.leftCols(wlenI);
 
-                        // Phase 3: Per fuseable phenotype — QC + processScoreBatch.
-                        for (size_t fi = 0; fi < nFuseable; ++fi) {
-                            const auto &fp = fusedPhenos[fi];
-                            const size_t p = fp.taskIdx;
+                        // Phase 3: Per fuseable-phenotype group — shared QC + processScoreBatch.
+                        // D1: Phenotypes with identical subjects share statsFromUnionVec results.
+                        struct FusedMarkerQC {
+                            double missingRate, altFreq, mac, hweP;
+                            bool pass;
+                        };
 
-                            // Extract per-marker QC from gSums.
+                        FusedMarkerQC wmQC[64];  // B ≤ 64
+
+                        for (const auto &group : fusedGroups) {
+                            // ── Compute QC once using the representative phenotype ──
+                            const auto &repFp = fusedPhenos[group.repFi];
+                            const double *maskCol = AugResid.col(repFp.maskCol).data();
+
                             passAltFreqs.clear();
                             passGSums.clear();
-
-                            // Track which window markers pass QC for this phenotype.
-                            // We need per-marker pass/fail + stats for formatting.
-                            struct FusedMarkerQC {
-                                double missingRate, altFreq, mac, hweP;
-                                bool pass;
-                            };
-
-                            // Use stack buffer for small B.
-                            FusedMarkerQC wmQC[64];  // B ≤ 64
-
-                            // Pointer to this phenotype's mask column in AugResid.
-                            const double *maskCol = AugResid.col(fp.maskCol).data();
-
                             int passCount = 0;
 
                             for (size_t bi = 0; bi < wlen; ++bi) {
                                 const double *unionCol = GBatch_union.col(
                                     static_cast<Eigen::Index>(bi)).data();
 
-                                // Compute full stats from union genotypes + mask.
                                 PhenoGenoStats gs = statsFromUnionVec(
-                                    unionCol, maskCol, nUnion, fp.nUsed);
+                                    unionCol, maskCol, nUnion, repFp.nUsed);
 
-                                // For dosage data, statsFromUnionVec returns altFreq=0;
-                                // use gSum-based AF instead.
                                 const double gSum = allScoresAndSums(
-                                    fp.maskCol, static_cast<Eigen::Index>(bi));
-                                const double twoN = 2.0 * static_cast<double>(fp.nUsed);
+                                    repFp.maskCol, static_cast<Eigen::Index>(bi));
+                                const double twoN = 2.0 * static_cast<double>(repFp.nUsed);
                                 if (gs.altFreq == 0.0 && gs.hweP == 1.0) {
                                     gs.altFreq = gSum / twoN;
                                     double maf = std::min(gs.altFreq, 1.0 - gs.altFreq);
@@ -783,45 +818,51 @@ void multiPhenoEngineRange(
                                 }
                             }
 
-                            // Call processScoreBatch with pass-QC scores.
-                            if (passCount > 0) {
-                                // Compact pass-QC score columns into a contiguous block.
-                                Eigen::MatrixXd passScores(fp.nCols, passCount);
-                                int pi = 0;
-                                for (size_t bi = 0; bi < wlen; ++bi) {
-                                    if (wmQC[bi].pass) {
-                                        passScores.col(pi) = allScoresAndSums.block(
-                                            fp.colOffset, static_cast<Eigen::Index>(bi),
-                                            fp.nCols, 1);
-                                        ++pi;
+                            // ── Per member: compact scores, run SPA, format output ──
+                            for (size_t fi : group.fiIndices) {
+                                const auto &fp = fusedPhenos[fi];
+                                const size_t p = fp.taskIdx;
+
+                                if (passCount > 0) {
+                                    // Compact pass-QC score columns into pre-allocated buffer.
+                                    int pi = 0;
+                                    for (size_t bi = 0; bi < wlen; ++bi) {
+                                        if (wmQC[bi].pass) {
+                                            passScoresBuf.col(pi).head(fp.nCols) =
+                                                allScoresAndSums.block(
+                                                    fp.colOffset, static_cast<Eigen::Index>(bi),
+                                                    fp.nCols, 1);
+                                            ++pi;
+                                        }
                                     }
+
+                                    methods[p]->processScoreBatch(
+                                        passScoresBuf.topLeftCorner(fp.nCols, passCount),
+                                        passGSums.data(), fp.nUsed,
+                                        passAltFreqs, fusedResultsBuf);
                                 }
 
-                                methods[p]->processScoreBatch(
-                                    passScores, passGSums.data(), fp.nUsed,
-                                    passAltFreqs, fusedResultsBuf);
-                            }
-
-                            // Format output lines.
-                            int ri = 0;
-                            for (size_t bi = 0; bi < wlen; ++bi) {
-                                const auto &wm = winMarkers[bi];
-                                if (wmQC[bi].pass) {
-                                    formatLine(phenoOut[p], fmtBuf, wm.chr, wm.pos,
-                                               wm.marker, wm.alt, wm.ref,
-                                               wmQC[bi].missingRate,
-                                               wmQC[bi].altFreq,
-                                               wmQC[bi].mac,
-                                               wmQC[bi].hweP,
-                                               fusedResultsBuf[ri++]);
-                                } else {
-                                    formatLineNA(phenoOut[p], fmtBuf, wm.chr, wm.pos,
-                                                 wm.marker, wm.alt, wm.ref,
-                                                 wmQC[bi].missingRate,
-                                                 wmQC[bi].altFreq,
-                                                 wmQC[bi].mac,
-                                                 wmQC[bi].hweP,
-                                                 naSuffixes[p]);
+                                // Format output lines.
+                                int ri = 0;
+                                for (size_t bi = 0; bi < wlen; ++bi) {
+                                    const auto &wm = winMarkers[bi];
+                                    if (wmQC[bi].pass) {
+                                        formatLine(phenoOut[p], fmtBuf, wm.chr, wm.pos,
+                                                   wm.marker, wm.alt, wm.ref,
+                                                   wmQC[bi].missingRate,
+                                                   wmQC[bi].altFreq,
+                                                   wmQC[bi].mac,
+                                                   wmQC[bi].hweP,
+                                                   fusedResultsBuf[ri++]);
+                                    } else {
+                                        formatLineNA(phenoOut[p], fmtBuf, wm.chr, wm.pos,
+                                                     wm.marker, wm.alt, wm.ref,
+                                                     wmQC[bi].missingRate,
+                                                     wmQC[bi].altFreq,
+                                                     wmQC[bi].mac,
+                                                     wmQC[bi].hweP,
+                                                     naSuffixes[p]);
+                                    }
                                 }
                             }
                         }
