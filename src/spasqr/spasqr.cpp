@@ -55,9 +55,9 @@ class SPAsqrMethod : public MethodBase {
     }
 
     std::unique_ptr<MethodBase> clone() const override {
-        auto p = std::make_unique<SPAsqrMethod>(*this);
-        p->buildResidMat(); // rebuild from (deep-copied) spagrm_vec
-        return p;
+        // SPAGRMClass copies share read-only data via shared_ptr.
+        // m_methodShared (residMat + residSums) is also shared, not deep-copied.
+        return std::make_unique<SPAsqrMethod>(*this);
     }
 
     int resultSize() const override {
@@ -99,9 +99,9 @@ class SPAsqrMethod : public MethodBase {
         // Fused: one pass over GVec computes mean + all ntaus dot products.
         // Reads GVec once (~3.2MB) instead of ntaus+1 times.
         const double gMean = GVec.mean();
-        Eigen::VectorXd scores = m_residMat.transpose() * GVec;
+        Eigen::VectorXd scores = m_methodShared->residMat.transpose() * GVec;
         for (int i = 0; i < m_ntaus; ++i)
-            scores[i] -= gMean * m_residSums[i];
+            scores[i] -= gMean * m_methodShared->residSums[i];
 
         for (int i = 0; i < m_ntaus; ++i) {
             double z;
@@ -153,18 +153,86 @@ class SPAsqrMethod : public MethodBase {
         }
     }
 
-    void padToUnionSpace(
-        const uint32_t *unionToLocal,
-        uint32_t nUnion
+    // ── Batched analysis: B markers at once ────────────────────────────
+    // Converts per-marker residMat^T * GVec (GEMV) into a single
+    // residMat^T * GBatch (Eigen matrix multiply), so the N × ntaus
+    // residual matrix is loaded from DRAM once instead of B times.
+    void getResultBatch(
+        const Eigen::Ref<const Eigen::MatrixXd> &GBatch,
+        const std::vector<double> &altFreqs,
+        std::vector<std::vector<double> > &results
     ) override {
-        for (int t = 0; t < m_ntaus; ++t)
-            m_spagrm_vec[t].padToUnionSpace(unionToLocal, nUnion);
-        buildResidMat();
-        m_padded = true;
+        const int B = static_cast<int>(GBatch.cols());
+        results.resize(B);
+
+        // ── Fused score computation: ntaus × B matrix in one multiply ──
+        // residMat is N × ntaus, GBatch is N × B
+        // scoreMatrix is ntaus × B
+        Eigen::MatrixXd scoreMatrix;
+        scoreMatrix.noalias() = m_methodShared->residMat.transpose() * GBatch;
+
+        // Column means of GBatch (length B)
+        const Eigen::VectorXd gMeans = GBatch.colwise().mean();
+
+        // Adjust scores: score[t][b] -= gMean[b] * residSums[t]
+        // residSums is ntaus × 1, gMeans is B × 1
+        // Outer product: ntaus × B
+        scoreMatrix.noalias() -= m_methodShared->residSums * gMeans.transpose();
+
+        // ── Per-marker SPA + CCT (not batchable) ──────────────────────
+        std::vector<double> zScores(m_ntaus);
+        std::vector<double> pvals(m_ntaus);
+        std::vector<double> valid_p;
+        valid_p.reserve(m_ntaus);
+
+        for (int b = 0; b < B; ++b) {
+            auto &result = results[b];
+            result.clear();
+            result.reserve(2 * m_ntaus + 1);
+
+            for (int i = 0; i < m_ntaus; ++i) {
+                double z;
+                double p = m_spagrm_vec[i].getMarkerPvalFromScore(scoreMatrix(i, b), altFreqs[b], z);
+                zScores[i] = z;
+                pvals[i] = p;
+            }
+
+            // CCT (Cauchy combination test) p-value
+            valid_p.clear();
+            for (int i = 0; i < m_ntaus; ++i)
+                if (!std::isnan(pvals[i])) valid_p.push_back(pvals[i]);
+
+            double pCCT = std::numeric_limits<double>::quiet_NaN();
+            if (!valid_p.empty()) {
+                bool hasZero = false;
+                double tStat = 0.0;
+                for (double p : valid_p) {
+                    if (p <= 0.0) {
+                        hasZero = true;
+                        break;
+                    }
+                    double pc = (p >= 1.0) ? 0.999 : p;
+                    tStat += std::tan((0.5 - pc) * M_PI);
+                }
+                if (hasZero) {
+                    pCCT = 0.0;
+                } else {
+                    tStat /= static_cast<double>(valid_p.size());
+                    pCCT = (tStat > 1e15) ? (1.0 / tStat) / M_PI : 0.5 - std::atan(tStat) / M_PI;
+                }
+            }
+
+            result.push_back(pCCT);
+            for (int i = 0; i < m_ntaus; ++i)
+                result.push_back(pvals[i]);
+            for (int i = 0; i < m_ntaus; ++i)
+                result.push_back(zScores[i]);
+        }
     }
 
-    bool supportsImputeEngine() const override {
-        return m_padded;
+    int preferredBatchSize() const override {
+        // ~4 × model columns, capped at 32. For τ=9: min(36, 32) = 32 → use 16.
+        return std::min(std::max(4, 2 * m_ntaus), 16);
     }
 
   private:
@@ -172,21 +240,25 @@ class SPAsqrMethod : public MethodBase {
     std::vector<SPAGRMClass> m_spagrm_vec;
     std::vector<std::string> m_tauLabels;
     bool m_hasLabels;
-    bool m_padded = false;
 
-    // Contiguous resid matrix (N × ntaus) + residSum vector for fused dot products.
-    // Built from m_spagrm_vec resid vectors; avoids ntaus separate DRAM reads of GVec.
-    Eigen::MatrixXd m_residMat;
-    Eigen::VectorXd m_residSums;
+    // Shared read-only data: residual matrix and sums for fused dot products.
+    struct SharedMethodData {
+        Eigen::MatrixXd residMat;   // N × ntaus
+        Eigen::VectorXd residSums;  // ntaus
+    };
+
+    std::shared_ptr<const SharedMethodData> m_methodShared;
 
     void buildResidMat() {
         const Eigen::Index N = m_spagrm_vec[0].resid().size();
-        m_residMat.resize(N, m_ntaus);
-        m_residSums.resize(m_ntaus);
+        auto sd = std::make_shared<SharedMethodData>();
+        sd->residMat.resize(N, m_ntaus);
+        sd->residSums.resize(m_ntaus);
         for (int t = 0; t < m_ntaus; ++t) {
-            m_residMat.col(t) = m_spagrm_vec[t].resid();
-            m_residSums[t] = m_spagrm_vec[t].residSum();
+            sd->residMat.col(t) = m_spagrm_vec[t].resid();
+            sd->residSums[t] = m_spagrm_vec[t].residSum();
         }
+        m_methodShared = std::move(sd);
     }
 
 };
@@ -427,7 +499,6 @@ void runSPAsqr(
     double minMafCutoff,
     double minMacCutoff,
     double hweCutoff,
-    const std::string &phenoMissing,
     double spasqrTol,
     double spasqrH,
     double spasqrHScale,
@@ -659,18 +730,10 @@ void runSPAsqr(
 
     // ── 8. Run multi-phenotype engine ───────────────────────────────
     infoMsg("SPAsqr: Starting multi-phenotype association (%d phenotypes, %d taus, %d threads)", K, ntaus, nthreads);
-    const int totalTasks = static_cast<int>(tasks.size());
-    if (phenoMissing == "impute" && totalTasks > 1) {
-        imputeMultiPhenoEngine(
-            *genoData, tasks, outPrefix, "SPAsqr", compression, compressionLevel,
-            nthreads, missingCutoff, minMafCutoff, minMacCutoff, hweCutoff
-        );
-    } else {
-        multiPhenoEngine(
-            *genoData, tasks, outPrefix, "SPAsqr", compression, compressionLevel,
-            nthreads, missingCutoff, minMafCutoff, minMacCutoff, hweCutoff
-        );
-    }
+    multiPhenoEngine(
+        *genoData, tasks, outPrefix, "SPAsqr", compression, compressionLevel,
+        nthreads, missingCutoff, minMafCutoff, minMacCutoff, hweCutoff
+    );
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -705,7 +768,6 @@ void runSPAsqrLoco(
     double minMafCutoff,
     double minMacCutoff,
     double hweCutoff,
-    const std::string &phenoMissing,
     double spasqrTol,
     double spasqrH,
     double spasqrHScale,
@@ -963,7 +1025,6 @@ void runSPAsqrLoco(
     const int nChroms = static_cast<int>(locoChroms.size());
     infoMsg("SPAsqr-LOCO: Starting LOCO association (%d phenotypes, %d taus, %d chroms, %d threads)",
             K, ntaus, nChroms, nthreads);
-    const bool useImpute = (phenoMissing == "impute" && K > 1);
     locoEngine(
         *genoData,
         locoChroms,
@@ -977,7 +1038,6 @@ void runSPAsqrLoco(
         missingCutoff,
         minMafCutoff,
         minMacCutoff,
-        hweCutoff,
-        useImpute
+        hweCutoff
     );
 }

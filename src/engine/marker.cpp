@@ -108,6 +108,27 @@ void markerEngine(
             rv.reserve(16);
             char fmtBuf[32];
 
+            // ── Batch buffers (GEMV → GEMM optimisation) ───────────────
+            const int batchB = meth.preferredBatchSize();
+
+            struct MarkerMeta {
+                double altFreq, missingRate, mac, hweP;
+                std::string_view chr, ref, alt, marker;
+                uint32_t pos;
+                bool passQC;
+            };
+
+            Eigen::MatrixXd GBatch;
+            std::vector<double> passAltFreqs;
+            std::vector<std::vector<double> > batchResults;
+            std::vector<MarkerMeta> batchMeta;
+
+            if (batchB > 1) {
+                GBatch.resize(gd.nSubjUsed(), batchB);
+                passAltFreqs.reserve(batchB);
+                batchMeta.resize(batchB);
+            }
+
             while (!stopWriter.load(std::memory_order_relaxed)) {
                 const size_t cidx = nextChunk.fetch_add(1);
                 if (cidx >= localChunks.size()) break;
@@ -119,42 +140,104 @@ void markerEngine(
                 if (!gIdx.empty()) cursor.beginSequentialBlock(gIdx.front());
                 meth.prepareChunk(gIdx);
 
-                for (size_t i = 0; i < gIdx.size(); ++i) {
-                    double altFreq = NAN, altCounts = NAN;
-                    double missingRate = NAN, hweP = NAN;
-                    double maf = NAN, mac = NAN;
-                    indexForMissing.clear();
+                if (batchB > 1) {
+                    // ── Batched path: process batchB markers at a time ─────
+                    const size_t B = static_cast<size_t>(batchB);
+                    for (size_t bstart = 0; bstart < gIdx.size(); bstart += B) {
+                        const size_t blen = std::min(B, gIdx.size() - bstart);
 
-                    cursor.getGenotypes(gIdx[i], GVec, altFreq, altCounts, missingRate, hweP, maf, mac,
-                                        indexForMissing);
+                        passAltFreqs.clear();
+                        int passCount = 0;
 
-                    const std::string_view chr = gd.chr(gIdx[i]);
-                    const std::string_view ref = gd.ref(gIdx[i]);
-                    const std::string_view alt = gd.alt(gIdx[i]);
-                    const std::string_view marker = gd.markerId(gIdx[i]);
-                    const uint32_t pos = gd.pos(gIdx[i]);
+                        for (size_t bi = 0; bi < blen; ++bi) {
+                            const size_t i = bstart + bi;
+                            double altFreq = NAN, altCounts = NAN;
+                            double missingRate = NAN, hweP = NAN;
+                            double maf = NAN, mac = NAN;
+                            indexForMissing.clear();
 
-                    const bool passQC = !(missingRate > missingCutoff || maf < minMafCutoff || mac < minMacCutoff ||
-                                          (hweCutoff > 0 && hweP < hweCutoff));
+                            cursor.getGenotypes(gIdx[i], GVec, altFreq, altCounts,
+                                                missingRate, hweP, maf, mac, indexForMissing);
 
-                    if (!passQC) {
-                        formatLineNA(out, fmtBuf, chr, pos, marker, alt /*REF=bim6*/, ref /*ALT=bim5*/, missingRate,
-                                     altFreq, mac, hweP, naSuffix);
-                        continue;
+                            auto &mi = batchMeta[bi];
+                            mi.altFreq = altFreq;
+                            mi.missingRate = missingRate;
+                            mi.mac = mac;
+                            mi.hweP = hweP;
+                            mi.chr = gd.chr(gIdx[i]);
+                            mi.ref = gd.ref(gIdx[i]);
+                            mi.alt = gd.alt(gIdx[i]);
+                            mi.marker = gd.markerId(gIdx[i]);
+                            mi.pos = gd.pos(gIdx[i]);
+                            mi.passQC = !(missingRate > missingCutoff || maf < minMafCutoff ||
+                                          mac < minMacCutoff || (hweCutoff > 0 && hweP < hweCutoff));
+
+                            if (mi.passQC) {
+                                const double imputeG = 2.0 * altFreq;
+                                double *gPtr = GVec.data();
+                                for (uint32_t j : indexForMissing)
+                                    gPtr[j] = imputeG;
+                                GBatch.col(passCount) = GVec;
+                                passAltFreqs.push_back(altFreq);
+                                ++passCount;
+                            }
+                        }
+
+                        if (passCount > 0)
+                            meth.getResultBatch(GBatch.leftCols(passCount), passAltFreqs, batchResults);
+
+                        int ri = 0;
+                        for (size_t bi = 0; bi < blen; ++bi) {
+                            const auto &mi = batchMeta[bi];
+                            if (!mi.passQC) {
+                                formatLineNA(out, fmtBuf, mi.chr, mi.pos, mi.marker,
+                                             mi.alt, mi.ref, mi.missingRate, mi.altFreq,
+                                             mi.mac, mi.hweP, naSuffix);
+                            } else {
+                                formatLine(out, fmtBuf, mi.chr, mi.pos, mi.marker,
+                                           mi.alt, mi.ref, mi.missingRate, mi.altFreq,
+                                           mi.mac, mi.hweP, batchResults[ri++]);
+                            }
+                        }
                     }
+                } else {
+                    // ── Original single-marker path ────────────────────────
+                    for (size_t i = 0; i < gIdx.size(); ++i) {
+                        double altFreq = NAN, altCounts = NAN;
+                        double missingRate = NAN, hweP = NAN;
+                        double maf = NAN, mac = NAN;
+                        indexForMissing.clear();
 
-                    // Impute missing genotypes with mean (2 × altFreq).
-                    const double imputeG = 2.0 * altFreq;
-                    double *gPtr = GVec.data();
-                    const uint32_t nMissing = static_cast<uint32_t>(indexForMissing.size());
-                    for (uint32_t j = 0; j < nMissing; ++j)
-                        gPtr[indexForMissing[j]] = imputeG;
+                        cursor.getGenotypes(gIdx[i], GVec, altFreq, altCounts, missingRate, hweP, maf, mac,
+                                            indexForMissing);
 
-                    rv.clear();
-                    meth.getResultVec(GVec, altFreq, static_cast<int>(i), rv);
+                        const std::string_view chr = gd.chr(gIdx[i]);
+                        const std::string_view ref = gd.ref(gIdx[i]);
+                        const std::string_view alt = gd.alt(gIdx[i]);
+                        const std::string_view marker = gd.markerId(gIdx[i]);
+                        const uint32_t pos = gd.pos(gIdx[i]);
 
-                    formatLine(out, fmtBuf, chr, pos, marker, alt /*REF=bim6*/, ref /*ALT=bim5*/, missingRate, altFreq,
-                               mac, hweP, rv);
+                        const bool passQC = !(missingRate > missingCutoff || maf < minMafCutoff ||
+                                              mac < minMacCutoff || (hweCutoff > 0 && hweP < hweCutoff));
+
+                        if (!passQC) {
+                            formatLineNA(out, fmtBuf, chr, pos, marker, alt /*REF=bim6*/, ref /*ALT=bim5*/,
+                                         missingRate, altFreq, mac, hweP, naSuffix);
+                            continue;
+                        }
+
+                        const double imputeG = 2.0 * altFreq;
+                        double *gPtr = GVec.data();
+                        const uint32_t nMissing = static_cast<uint32_t>(indexForMissing.size());
+                        for (uint32_t j = 0; j < nMissing; ++j)
+                            gPtr[indexForMissing[j]] = imputeG;
+
+                        rv.clear();
+                        meth.getResultVec(GVec, altFreq, static_cast<int>(i), rv);
+
+                        formatLine(out, fmtBuf, chr, pos, marker, alt /*REF=bim6*/, ref /*ALT=bim5*/,
+                                   missingRate, altFreq, mac, hweP, rv);
+                    }
                 }
 
                 {
@@ -254,6 +337,31 @@ void MultiMethod::getResultVec(
         m->getResultVec(GVec, altFreq, markerInChunkIdx, inner);
         result.insert(result.end(), inner.begin(), inner.end());
     }
+}
+
+void MultiMethod::getResultBatch(
+    const Eigen::Ref<const Eigen::MatrixXd> &GBatch,
+    const std::vector<double> &altFreqs,
+    std::vector<std::vector<double> > &results
+) {
+    const int B = static_cast<int>(GBatch.cols());
+    results.resize(B);
+    for (int b = 0; b < B; ++b)
+        results[b].clear();
+
+    std::vector<std::vector<double> > innerResults;
+    for (auto &m : m_methods) {
+        m->getResultBatch(GBatch, altFreqs, innerResults);
+        for (int b = 0; b < B; ++b)
+            results[b].insert(results[b].end(), innerResults[b].begin(), innerResults[b].end());
+    }
+}
+
+int MultiMethod::preferredBatchSize() const {
+    int best = 0;
+    for (const auto &m : m_methods)
+        best = std::max(best, m->preferredBatchSize());
+    return best;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -382,6 +490,38 @@ void multiPhenoEngineRange(
             std::vector<uint32_t> diffSampleIds(maxDiffLen + 2);
             std::vector<uint8_t> diffGenoCodes(maxDiffLen + 2);
 
+            // ── Per-phenotype marker-batch buffers (GEMV → GEMM) ───────
+            int commonB = 0;
+            for (size_t p = 0; p < K; ++p)
+                commonB = std::max(commonB, methods[p]->preferredBatchSize());
+
+            struct WindowMarkerMeta {
+                std::string_view chr, ref, alt, marker;
+                uint32_t pos;
+            };
+
+            std::vector<Eigen::MatrixXd> GBatchPhenos;
+            std::vector<std::vector<double> > phenoPassAltFreqs;
+            std::vector<std::vector<std::vector<double> > > phenoResults;
+            std::vector<int> phenoPassCounts;
+            std::vector<WindowMarkerMeta> winMarkers;
+            std::vector<PhenoGenoStats> winPhenoStats;   // [bi * K + p]
+            std::vector<char> winPassQC;                  // [bi * K + p]
+
+            if (commonB > 1) {
+                GBatchPhenos.resize(K);
+                phenoPassAltFreqs.resize(K);
+                phenoResults.resize(K);
+                phenoPassCounts.resize(K, 0);
+                for (size_t p = 0; p < K; ++p) {
+                    GBatchPhenos[p].resize(tasks[p].nUsed, commonB);
+                    phenoPassAltFreqs[p].reserve(commonB);
+                }
+                winMarkers.resize(commonB);
+                winPhenoStats.resize(static_cast<size_t>(commonB) * K);
+                winPassQC.resize(static_cast<size_t>(commonB) * K, 0);
+            }
+
             while (!stopFlag.load(std::memory_order_relaxed)) {
                 const size_t localIdx = nextChunk.fetch_add(1);
                 if (localIdx >= nChunks) break;
@@ -398,84 +538,200 @@ void multiPhenoEngineRange(
                 for (size_t p = 0; p < K; ++p)
                     methods[p]->prepareChunk(gIdx);
 
-                for (size_t i = 0; i < gIdx.size(); ++i) {
-                    const std::string_view chr = genoData.chr(gIdx[i]);
-                    const std::string_view ref = genoData.ref(gIdx[i]);
-                    const std::string_view alt = genoData.alt(gIdx[i]);
-                    const std::string_view marker = genoData.markerId(gIdx[i]);
-                    const uint32_t pos = genoData.pos(gIdx[i]);
+                if (commonB > 1) {
+                    // ── Batched path: process commonB markers at a time ────
+                    const size_t B = static_cast<size_t>(commonB);
+                    for (size_t wstart = 0; wstart < gIdx.size(); wstart += B) {
+                        const size_t wlen = std::min(B, gIdx.size() - wstart);
 
-                    // Try sparse read first; falls back to dense internally.
-                    uint32_t diffLen = 0;
-                    const uint32_t commonGeno = cursor->getGenotypesMaybeSparse(
-                        gIdx[i], GVec_union, maxDiffLen,
-                        diffSampleIds.data(), diffGenoCodes.data(), diffLen);
+                        for (size_t p = 0; p < K; ++p) {
+                            phenoPassAltFreqs[p].clear();
+                            phenoPassCounts[p] = 0;
+                        }
 
-                    if (commonGeno != UINT32_MAX) {
-                        // ── Sparse path ────────────────────────────────────
-                        for (size_t b = 0; b < nBatches; ++b) {
-                            const auto &batch = missBatches[b];
-                            const size_t rep = batch.rep;
-                            batchStats[rep] = sparseExtractAndStats(
-                                phenoGPtrs[rep], nPhenoArr[rep], utlPtrs[rep],
-                                commonGeno, diffSampleIds.data(),
-                                diffGenoCodes.data(), diffLen, batchMissings[rep]);
-                            for (size_t mi = 1; mi < batch.members.size(); ++mi) {
-                                const size_t p = batch.members[mi];
-                                std::copy(phenoGPtrs[rep],
-                                          phenoGPtrs[rep] + nPhenoArr[rep],
-                                          phenoGPtrs[p]);
-                                batchStats[p] = batchStats[rep];
-                                batchMissings[p] = batchMissings[rep];
+                        // Phase 1: Decode + extract + QC + impute + accumulate
+                        for (size_t bi = 0; bi < wlen; ++bi) {
+                            const size_t i = wstart + bi;
+
+                            winMarkers[bi].chr = genoData.chr(gIdx[i]);
+                            winMarkers[bi].ref = genoData.ref(gIdx[i]);
+                            winMarkers[bi].alt = genoData.alt(gIdx[i]);
+                            winMarkers[bi].marker = genoData.markerId(gIdx[i]);
+                            winMarkers[bi].pos = genoData.pos(gIdx[i]);
+
+                            uint32_t diffLen = 0;
+                            const uint32_t commonGeno = cursor->getGenotypesMaybeSparse(
+                                gIdx[i], GVec_union, maxDiffLen,
+                                diffSampleIds.data(), diffGenoCodes.data(), diffLen);
+
+                            if (commonGeno != UINT32_MAX) {
+                                for (size_t b = 0; b < nBatches; ++b) {
+                                    const auto &batch = missBatches[b];
+                                    const size_t rep = batch.rep;
+                                    batchStats[rep] = sparseExtractAndStats(
+                                        phenoGPtrs[rep], nPhenoArr[rep], utlPtrs[rep],
+                                        commonGeno, diffSampleIds.data(),
+                                        diffGenoCodes.data(), diffLen, batchMissings[rep]);
+                                    for (size_t mi = 1; mi < batch.members.size(); ++mi) {
+                                        const size_t p = batch.members[mi];
+                                        std::copy(phenoGPtrs[rep],
+                                                  phenoGPtrs[rep] + nPhenoArr[rep],
+                                                  phenoGPtrs[p]);
+                                        batchStats[p] = batchStats[rep];
+                                        batchMissings[p] = batchMissings[rep];
+                                    }
+                                }
+                            } else {
+                                for (size_t b = 0; b < nBatches; ++b) {
+                                    const auto &batch = missBatches[b];
+                                    const size_t rep = batch.rep;
+                                    extractPhenoGVec(GVec_union.data(), nUnion,
+                                                     utlPtrs[rep], nPhenoArr[rep],
+                                                     phenoGPtrs[rep]);
+                                    batchStats[rep] = statsFromGVec(
+                                        phenoGPtrs[rep], nPhenoArr[rep],
+                                        batchMissings[rep]);
+                                    for (size_t mi = 1; mi < batch.members.size(); ++mi) {
+                                        const size_t p = batch.members[mi];
+                                        std::copy(phenoGPtrs[rep],
+                                                  phenoGPtrs[rep] + nPhenoArr[rep],
+                                                  phenoGPtrs[p]);
+                                        batchStats[p] = batchStats[rep];
+                                        batchMissings[p] = batchMissings[rep];
+                                    }
+                                }
+                            }
+
+                            for (size_t p = 0; p < K; ++p) {
+                                const PhenoGenoStats &gs = batchStats[p];
+                                const size_t idx = bi * K + p;
+
+                                winPhenoStats[idx] = gs;
+                                double pMaf = std::min(gs.altFreq, 1.0 - gs.altFreq);
+                                const bool pass = !(gs.missingRate > missingCutoff || pMaf < minMafCutoff ||
+                                                    gs.mac < minMacCutoff ||
+                                                    (hweCutoff > 0 && gs.hweP < hweCutoff));
+                                winPassQC[idx] = pass ? 1 : 0;
+
+                                if (pass) {
+                                    const double imputeG = 2.0 * gs.altFreq;
+                                    double *gPtr = GVec_phenos[p].data();
+                                    for (uint32_t j : batchMissings[p])
+                                        gPtr[j] = imputeG;
+                                    GBatchPhenos[p].col(phenoPassCounts[p]) =
+                                        GVec_phenos[p].head(tasks[p].nUsed);
+                                    phenoPassAltFreqs[p].push_back(gs.altFreq);
+                                    ++phenoPassCounts[p];
+                                }
                             }
                         }
-                    } else {
-                        // ── Dense path ─────────────────────────────────────
-                        for (size_t b = 0; b < nBatches; ++b) {
-                            const auto &batch = missBatches[b];
-                            const size_t rep = batch.rep;
-                            extractPhenoGVec(GVec_union.data(), nUnion,
-                                             utlPtrs[rep], nPhenoArr[rep],
-                                             phenoGPtrs[rep]);
-                            batchStats[rep] = statsFromGVec(
-                                phenoGPtrs[rep], nPhenoArr[rep],
-                                batchMissings[rep]);
-                            for (size_t mi = 1; mi < batch.members.size(); ++mi) {
-                                const size_t p = batch.members[mi];
-                                std::copy(phenoGPtrs[rep],
-                                          phenoGPtrs[rep] + nPhenoArr[rep],
-                                          phenoGPtrs[p]);
-                                batchStats[p] = batchStats[rep];
-                                batchMissings[p] = batchMissings[rep];
+
+                        // Phase 2: getResultBatch per phenotype
+                        for (size_t p = 0; p < K; ++p) {
+                            if (phenoPassCounts[p] > 0)
+                                methods[p]->getResultBatch(
+                                    GBatchPhenos[p].leftCols(phenoPassCounts[p]),
+                                    phenoPassAltFreqs[p], phenoResults[p]);
+                        }
+
+                        // Phase 3: Format output in marker order
+                        std::vector<int> resultIdxs(K, 0);
+                        for (size_t bi = 0; bi < wlen; ++bi) {
+                            const auto &wm = winMarkers[bi];
+                            for (size_t p = 0; p < K; ++p) {
+                                const size_t idx = bi * K + p;
+                                if (winPassQC[idx]) {
+                                    formatLine(phenoOut[p], fmtBuf, wm.chr, wm.pos, wm.marker,
+                                               wm.alt, wm.ref, winPhenoStats[idx].missingRate,
+                                               winPhenoStats[idx].altFreq, winPhenoStats[idx].mac,
+                                               winPhenoStats[idx].hweP, phenoResults[p][resultIdxs[p]++]);
+                                } else {
+                                    formatLineNA(phenoOut[p], fmtBuf, wm.chr, wm.pos, wm.marker,
+                                                 wm.alt, wm.ref, winPhenoStats[idx].missingRate,
+                                                 winPhenoStats[idx].altFreq, winPhenoStats[idx].mac,
+                                                 winPhenoStats[idx].hweP, naSuffixes[p]);
+                                }
                             }
                         }
                     }
+                } else {
+                    // ── Original single-marker path ────────────────────────
+                    for (size_t i = 0; i < gIdx.size(); ++i) {
+                        const std::string_view chr = genoData.chr(gIdx[i]);
+                        const std::string_view ref = genoData.ref(gIdx[i]);
+                        const std::string_view alt = genoData.alt(gIdx[i]);
+                        const std::string_view marker = genoData.markerId(gIdx[i]);
+                        const uint32_t pos = genoData.pos(gIdx[i]);
 
-                    for (size_t p = 0; p < K; ++p) {
-                        const PhenoGenoStats &gs = batchStats[p];
+                        uint32_t diffLen = 0;
+                        const uint32_t commonGeno = cursor->getGenotypesMaybeSparse(
+                            gIdx[i], GVec_union, maxDiffLen,
+                            diffSampleIds.data(), diffGenoCodes.data(), diffLen);
 
-                        double pMaf = std::min(gs.altFreq, 1.0 - gs.altFreq);
-                        const bool passQC = !(gs.missingRate > missingCutoff || pMaf < minMafCutoff ||
-                                              gs.mac < minMacCutoff || (hweCutoff > 0 && gs.hweP < hweCutoff));
-
-                        if (!passQC) {
-                            formatLineNA(phenoOut[p], fmtBuf, chr, pos, marker, alt, ref, gs.missingRate, gs.altFreq,
-                                         gs.mac, gs.hweP, naSuffixes[p]);
-                            continue;
+                        if (commonGeno != UINT32_MAX) {
+                            for (size_t b = 0; b < nBatches; ++b) {
+                                const auto &batch = missBatches[b];
+                                const size_t rep = batch.rep;
+                                batchStats[rep] = sparseExtractAndStats(
+                                    phenoGPtrs[rep], nPhenoArr[rep], utlPtrs[rep],
+                                    commonGeno, diffSampleIds.data(),
+                                    diffGenoCodes.data(), diffLen, batchMissings[rep]);
+                                for (size_t mi = 1; mi < batch.members.size(); ++mi) {
+                                    const size_t p = batch.members[mi];
+                                    std::copy(phenoGPtrs[rep],
+                                              phenoGPtrs[rep] + nPhenoArr[rep],
+                                              phenoGPtrs[p]);
+                                    batchStats[p] = batchStats[rep];
+                                    batchMissings[p] = batchMissings[rep];
+                                }
+                            }
+                        } else {
+                            for (size_t b = 0; b < nBatches; ++b) {
+                                const auto &batch = missBatches[b];
+                                const size_t rep = batch.rep;
+                                extractPhenoGVec(GVec_union.data(), nUnion,
+                                                 utlPtrs[rep], nPhenoArr[rep],
+                                                 phenoGPtrs[rep]);
+                                batchStats[rep] = statsFromGVec(
+                                    phenoGPtrs[rep], nPhenoArr[rep],
+                                    batchMissings[rep]);
+                                for (size_t mi = 1; mi < batch.members.size(); ++mi) {
+                                    const size_t p = batch.members[mi];
+                                    std::copy(phenoGPtrs[rep],
+                                              phenoGPtrs[rep] + nPhenoArr[rep],
+                                              phenoGPtrs[p]);
+                                    batchStats[p] = batchStats[rep];
+                                    batchMissings[p] = batchMissings[rep];
+                                }
+                            }
                         }
 
-                        // Impute missing with mean
-                        const double imputeG = 2.0 * gs.altFreq;
-                        double *gPtr = GVec_phenos[p].data();
-                        for (uint32_t j : batchMissings[p])
-                            gPtr[j] = imputeG;
+                        for (size_t p = 0; p < K; ++p) {
+                            const PhenoGenoStats &gs = batchStats[p];
 
-                        rv.clear();
-                        methods[p]->getResultVec(GVec_phenos[p].head(tasks[p].nUsed), gs.altFreq, static_cast<int>(i),
-                                                 rv);
+                            double pMaf = std::min(gs.altFreq, 1.0 - gs.altFreq);
+                            const bool passQC = !(gs.missingRate > missingCutoff || pMaf < minMafCutoff ||
+                                                  gs.mac < minMacCutoff ||
+                                                  (hweCutoff > 0 && gs.hweP < hweCutoff));
 
-                        formatLine(phenoOut[p], fmtBuf, chr, pos, marker, alt, ref, gs.missingRate, gs.altFreq, gs.mac,
-                                   gs.hweP, rv);
+                            if (!passQC) {
+                                formatLineNA(phenoOut[p], fmtBuf, chr, pos, marker, alt, ref, gs.missingRate,
+                                             gs.altFreq, gs.mac, gs.hweP, naSuffixes[p]);
+                                continue;
+                            }
+
+                            const double imputeG = 2.0 * gs.altFreq;
+                            double *gPtr = GVec_phenos[p].data();
+                            for (uint32_t j : batchMissings[p])
+                                gPtr[j] = imputeG;
+
+                            rv.clear();
+                            methods[p]->getResultVec(GVec_phenos[p].head(tasks[p].nUsed), gs.altFreq,
+                                                     static_cast<int>(i), rv);
+
+                            formatLine(phenoOut[p], fmtBuf, chr, pos, marker, alt, ref, gs.missingRate,
+                                       gs.altFreq, gs.mac, gs.hweP, rv);
+                        }
                     }
                 }
 

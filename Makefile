@@ -58,8 +58,9 @@ endif
 # Third-party code (pgenlib, bgen, htslib, …) keeps compile-time SIMD_FLAGS.
 UNAME_M := $(shell uname -m 2>/dev/null)
 ifeq ($(UNAME_M),x86_64)
-  # x86-64-v2 = SSE4.2, SSSE3, POPCNT, CX16 (Nehalem 2008+)
-  GRAB_MARCH := -march=x86-64-v2
+  # Default: native arch for best SIMD (AVX-512 on Zen 5, etc.).
+  # Override with GRAB_MARCH=-march=x86-64-v2 for portable binaries.
+  GRAB_MARCH := -march=native
 else
   GRAB_MARCH :=
 endif
@@ -74,7 +75,8 @@ CXXFLAGS := -std=c++17 -O3 -DNDEBUG $(PLATFORM_FLAGS) \
 GRAB_CXXFLAGS := -std=c++17 -O3 -DNDEBUG $(GRAB_MARCH) $(PLATFORM_FLAGS) \
             -ffunction-sections -fdata-sections \
             -funroll-loops \
-            -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare
+            -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare \
+            -Wno-maybe-uninitialized
 CFLAGS   := -O3 -DNDEBUG $(PLATFORM_FLAGS) -ffunction-sections -fdata-sections $(SIMD_FLAGS)
 STATIC_LIBS := -static-libstdc++ -static-libgcc
 ifeq ($(PLATFORM),macos)

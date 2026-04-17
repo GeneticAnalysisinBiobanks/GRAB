@@ -157,40 +157,46 @@ class SPAGRMClass {
     );
 
     const Eigen::VectorXd &resid() const {
-        return m_resid;
+        return m_shared->resid;
     }
 
     double residSum() const {
-        return m_resid_sum;
+        return m_shared->resid_sum;
     }
 
-    // Expand m_resid from per-phenotype-dense (Np) to union-dense
-    // (nUnion) space.  Absent subjects get residual = 0.
-    void padToUnionSpace(
-        const uint32_t *unionToLocal,
-        uint32_t nUnion
-    );
+    // Read-only data shared across clones via shared_ptr.
+    struct SharedData {
+        Eigen::VectorXd resid;
+        Eigen::VectorXd resid_unrelated_outliers;
+        double sum_unrelated_outliers2;
+        double sum_R_nonOutlier;
+        double R_GRM_R_nonOutlier;
+        double R_GRM_R_TwoSubjOutlier;
+        double R_GRM_R;
+        double resid_sum;
+        std::vector<double> MAF_interval;
+        std::vector<std::array<double, 2> > TwoSubj_resid_list;
+        std::vector<std::vector<double> > TwoSubj_rho_list;
+        std::vector<std::vector<double> > ThreeSubj_standS_list;
+        std::vector<Eigen::MatrixXd> ThreeSubj_CLT_list;
+        double SPA_Cutoff;
+        double zeta;
+        double tol;
+    };
+
+    const std::shared_ptr<const SharedData> &sharedData() const {
+        return m_shared;
+    }
 
   private:
-    Eigen::VectorXd m_resid;
-    Eigen::VectorXd m_resid_unrelated_outliers;
-    double m_sum_unrelated_outliers2;
-    double m_sum_R_nonOutlier;
-    double m_R_GRM_R_nonOutlier;
-    double m_R_GRM_R_TwoSubjOutlier;
-    double m_R_GRM_R;
-    double m_resid_sum;    std::vector<double> m_MAF_interval;
-    std::vector<std::array<double, 2> > m_TwoSubj_resid_list;
-    std::vector<std::vector<double> > m_TwoSubj_rho_list;
-    std::vector<std::vector<double> > m_ThreeSubj_standS_list;
-    std::vector<Eigen::MatrixXd> m_ThreeSubj_CLT_list;
+    std::shared_ptr<const SharedData> m_shared;
 
-    double m_SPA_Cutoff;
-    double m_zeta;
-    double m_tol;
-
+    // Per-thread mutable scratch (rebuilt on copy).
     nsSPAGRM::MgfWorkspace m_workspace;
     std::vector<nsSPAGRM::UpdatedThreeSubj> m_threeSubj_scratch;
+
+    void rebuildScratch();
+
 };
 
 // ══════════════════════════════════════════════════════════════════════
@@ -229,21 +235,45 @@ class SPAGRMMethod : public MethodBase {
         result.push_back(z);
     }
 
-    void padToUnionSpace(
-        const uint32_t *unionToLocal,
-        uint32_t nUnion
+    // Batch analysis: fuse B dot products into one matrix-vector multiply.
+    // Score[b] = GBatch.col(b).dot(resid) - gMean[b] * resid_sum
+    // becomes: scores = GBatch^T * resid  (B×1, one Eigen matvec)
+    void getResultBatch(
+        const Eigen::Ref<const Eigen::MatrixXd> &GBatch,
+        const std::vector<double> &altFreqs,
+        std::vector<std::vector<double> > &results
     ) override {
-        m_spagrm.padToUnionSpace(unionToLocal, nUnion);
-        m_padded = true;
+        const int B = static_cast<int>(GBatch.cols());
+        results.resize(B);
+
+        // Fused: B dot products in one matrix-vector multiply.
+        // GBatch is N × B, resid is N × 1 → scores is B × 1
+        const Eigen::VectorXd &resid = m_spagrm.resid();
+        const double resid_sum = m_spagrm.residSum();
+
+        Eigen::VectorXd scores;
+        scores.noalias() = GBatch.transpose() * resid;
+
+        // gMeans (length B) and mean adjustment
+        const Eigen::VectorXd gMeans = GBatch.colwise().mean();
+        scores.array() -= gMeans.array() * resid_sum;
+
+        // Per-marker SPA (not batchable)
+        for (int b = 0; b < B; ++b) {
+            results[b].clear();
+            double z;
+            double p = m_spagrm.getMarkerPvalFromScore(scores[b], altFreqs[b], z);
+            results[b].push_back(p);
+            results[b].push_back(z);
+        }
     }
 
-    bool supportsImputeEngine() const override {
-        return m_padded;
+    int preferredBatchSize() const override {
+        return 8;
     }
 
   private:
     SPAGRMClass m_spagrm;
-    bool m_padded = false;
 };
 
 // ══════════════════════════════════════════════════════════════════════
@@ -268,7 +298,5 @@ void runSPAGRM(
     double minMacCutoff,
     double hweCutoff,
     const std::string &keepFile = {},
-    const std::string &removeFile = {},
-    const std::string &phenoMissing = "impute"
-
+    const std::string &removeFile = {}
 );

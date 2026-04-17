@@ -988,8 +988,7 @@ void runLEAF(
     double minMacCutoff,
     double hweCutoff,
     const std::string &keepFile,
-    const std::string &removeFile,
-    const std::string &phenoMissing
+    const std::string &removeFile
 ) {
     const int P = static_cast<int>(phenoSpecs.size());
     const int K = nClusters;

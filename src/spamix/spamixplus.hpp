@@ -160,7 +160,6 @@ void runSPAmixPlus(
     double minMacCutoff,
     double hweCutoff,
     const std::string &keepFile = {},
-    const std::string &removeFile = {},
-    const std::string &phenoMissing = "impute"
+    const std::string &removeFile = {}
 
 );

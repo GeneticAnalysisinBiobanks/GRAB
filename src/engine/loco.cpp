@@ -271,8 +271,7 @@ void locoEngine(
     double missingCutoff,
     double minMafCutoff,
     double minMacCutoff,
-    double hweCutoff,
-    bool imputeMode
+    double hweCutoff
 ) {
     const size_t K = phenoNames.size();
     const auto &allChunks = genoData.chunkIndices();
@@ -371,15 +370,6 @@ void locoEngine(
         if (chrIdx > 0)
             buildTasks(chr, tasks);
 
-        // In impute mode, pad each task's method to union space
-        if (imputeMode && K > 1) {
-            const uint32_t nUnion = genoData.nSubjUsed();
-            for (size_t p = 0; p < K; ++p) {
-                tasks[p].method->padToUnionSpace(tasks[p].unionToLocal.data(), nUnion);
-                tasks[p].nUsed = nUnion;
-            }
-        }
-
         // Build per-phenotype NA suffixes for this chromosome's methods
         std::vector<std::string> naSuffixes(K);
         for (size_t p = 0; p < K; ++p)
@@ -390,13 +380,8 @@ void locoEngine(
                 std::min(nthreads, static_cast<int>(nChrChunks)),
                 chrIdx + 1, activeChroms.size());
 
-        if (imputeMode && K > 1) {
-            imputeMultiPhenoEngineRange(genoData, tasks, naSuffixes, chunkStart, chunkEnd, writers,
-                                        nthreads, missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
-        } else {
-            multiPhenoEngineRange(genoData, tasks, naSuffixes, chunkStart, chunkEnd, writers,
-                                  nthreads, missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
-        }
+        multiPhenoEngineRange(genoData, tasks, naSuffixes, chunkStart, chunkEnd, writers,
+                              nthreads, missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
 
         infoMsg("LOCO: chromosome %s finished (%zu/%zu)",
                 chr.c_str(), chrIdx + 1, activeChroms.size());

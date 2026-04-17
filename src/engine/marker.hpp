@@ -47,19 +47,33 @@ class MethodBase {
         std::vector<double> &result
     ) = 0;
 
-    // Expand internal residuals from per-phenotype-dense (Np) to
-    // union-dense (nUnion) space, filling absent entries with 0.
-    // After this call, getResultVec() expects GVec of size nUnion.
-    virtual void padToUnionSpace(
-        const uint32_t * /*unionToLocal*/,
-        uint32_t                                                             /*nUnion*/
+    // Batch analysis: process B markers at once.  Default loops getResultVec().
+    //
+    //   GBatch    — imputed genotype matrix (N × B), one column per marker
+    //   altFreqs  — ALT allele frequencies, one per marker (length B)
+    //   results   — output: results[b] = method-specific result values for marker b
+    //
+    // Override in methods where the score computation is memory-bound and
+    // can be converted from GEMV to GEMM (e.g. SPAsqr, SPAGRM).
+    virtual void getResultBatch(
+        const Eigen::Ref<const Eigen::MatrixXd> &GBatch,
+        const std::vector<double> &altFreqs,
+        std::vector<std::vector<double> > &results
     ) {
+        const int B = static_cast<int>(GBatch.cols());
+        results.resize(B);
+        for (int b = 0; b < B; ++b) {
+            results[b].clear();
+            // const_cast safe: getResultVec doesn't modify GVec for most methods.
+            // For methods that do modify GVec, they must override getResultBatch.
+            Eigen::VectorXd col = GBatch.col(b);
+            getResultVec(col, altFreqs[b], b, results[b]);
+        }
     }
 
-    // Return true if this method supports the impute engine
-    // (i.e. padToUnionSpace has been implemented and called).
-    virtual bool supportsImputeEngine() const {
-        return false;
+    // Suggested marker batch size for this method (0 = use engine default).
+    virtual int preferredBatchSize() const {
+        return 0;
     }
 
 };
@@ -109,25 +123,7 @@ void multiPhenoEngineRange(
     double hweCutoff
 );
 
-// Impute-mode multi-phenotype engine: all phenotypes share one union GVec.
-//
-// Assumes every task's method has been padToUnionSpace'd so that residuals
-// are union-dense (missing subjects have residual 0).  Decodes genotypes
-// once, computes union-level stats once, and calls each method with the
-// same GVec.  Eliminates K per-phenotype GVec buffers and extraction loops.
-void imputeMultiPhenoEngineRange(
-    const GenoMeta &genoData,
-    std::vector<PhenoTask> &tasks,
-    const std::vector<std::string> &naSuffixes,
-    size_t chunkStart,
-    size_t chunkEnd,
-    std::vector<TextWriter> &writers,
-    int nthreads,
-    double missingCutoff,
-    double minMafCutoff,
-    double minMacCutoff,
-    double hweCutoff
-);
+
 
 // Per-phenotype independent GWAS engine.
 //
@@ -152,21 +148,7 @@ void multiPhenoEngine(
     double hweCutoff
 );
 
-// Impute-mode wrapper: pads tasks to union space, then delegates to
-// imputeMultiPhenoEngineRange.  Same interface as multiPhenoEngine.
-void imputeMultiPhenoEngine(
-    const GenoMeta &genoData,
-    std::vector<PhenoTask> &tasks,
-    const std::string &outPrefix,
-    const std::string &methodName,
-    const std::string &compression,
-    int compressionLevel,
-    int nthreads,
-    double missingCutoff,
-    double minMafCutoff,
-    double minMacCutoff,
-    double hweCutoff
-);
+
 
 // ======================================================================
 // MultiMethod — runs N inner methods in one pass, interleaves results
@@ -198,6 +180,14 @@ class MultiMethod : public MethodBase {
         int markerInChunkIdx,
         std::vector<double> &result
     ) override;
+
+    void getResultBatch(
+        const Eigen::Ref<const Eigen::MatrixXd> &GBatch,
+        const std::vector<double> &altFreqs,
+        std::vector<std::vector<double> > &results
+    ) override;
+
+    int preferredBatchSize() const override;
 
   private:
     std::vector<std::unique_ptr<MethodBase> > m_methods;

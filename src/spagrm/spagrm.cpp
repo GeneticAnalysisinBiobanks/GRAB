@@ -261,83 +261,47 @@ SPAGRMClass::SPAGRMClass(
     double zeta,
     double tol
 )
-    : m_resid(std::move(resid)),
-      m_resid_unrelated_outliers(std::move(fam.resid_unrelated_outliers)),
-      m_sum_unrelated_outliers2(m_resid_unrelated_outliers.squaredNorm()),
-      m_sum_R_nonOutlier(sum_R_nonOutlier),
-      m_R_GRM_R_nonOutlier(R_GRM_R_nonOutlier),
-      m_R_GRM_R_TwoSubjOutlier(R_GRM_R_TwoSubjOutlier),
-      m_R_GRM_R(R_GRM_R),
-      m_resid_sum(m_resid.sum()),
-      m_MAF_interval(std::move(MAF_interval)),
-      m_TwoSubj_resid_list(std::move(fam.twoSubj_resid)),
-      m_TwoSubj_rho_list(std::move(fam.twoSubj_rho)),
-      m_ThreeSubj_standS_list(std::move(fam.threeSubj_standS)),
-      m_ThreeSubj_CLT_list(std::move(fam.threeSubj_CLT)),
-      m_SPA_Cutoff(SPA_Cutoff),
-      m_zeta(zeta),
-      m_tol(tol)
 {
-    const auto n_unrel = m_resid_unrelated_outliers.size();
-    const auto mgfSz = static_cast<Eigen::Index>(
-        nsSPAGRM::mgfOutputSize(static_cast<size_t>(n_unrel), m_TwoSubj_rho_list, m_ThreeSubj_standS_list.size()));
-    m_workspace = nsSPAGRM::MgfWorkspace(mgfSz, n_unrel);
-
-    const int n3 = static_cast<int>(m_ThreeSubj_standS_list.size());
-    m_threeSubj_scratch.resize(n3);
-    for (int i = 0; i < n3; ++i) {
-        m_threeSubj_scratch[i].stand_S = m_ThreeSubj_standS_list[i];
-        m_threeSubj_scratch[i].arr_prob.resize(m_ThreeSubj_standS_list[i].size());
-    }
+    auto sd = std::make_shared<SharedData>();
+    sd->resid = std::move(resid);
+    sd->resid_unrelated_outliers = std::move(fam.resid_unrelated_outliers);
+    sd->sum_unrelated_outliers2 = sd->resid_unrelated_outliers.squaredNorm();
+    sd->sum_R_nonOutlier = sum_R_nonOutlier;
+    sd->R_GRM_R_nonOutlier = R_GRM_R_nonOutlier;
+    sd->R_GRM_R_TwoSubjOutlier = R_GRM_R_TwoSubjOutlier;
+    sd->R_GRM_R = R_GRM_R;
+    sd->resid_sum = sd->resid.sum();
+    sd->MAF_interval = std::move(MAF_interval);
+    sd->TwoSubj_resid_list = std::move(fam.twoSubj_resid);
+    sd->TwoSubj_rho_list = std::move(fam.twoSubj_rho);
+    sd->ThreeSubj_standS_list = std::move(fam.threeSubj_standS);
+    sd->ThreeSubj_CLT_list = std::move(fam.threeSubj_CLT);
+    sd->SPA_Cutoff = SPA_Cutoff;
+    sd->zeta = zeta;
+    sd->tol = tol;
+    m_shared = std::move(sd);
+    rebuildScratch();
 }
 
 SPAGRMClass::SPAGRMClass(const SPAGRMClass &o)
-    : m_resid(o.m_resid),
-      m_resid_unrelated_outliers(o.m_resid_unrelated_outliers),
-      m_sum_unrelated_outliers2(o.m_sum_unrelated_outliers2),
-      m_sum_R_nonOutlier(o.m_sum_R_nonOutlier),
-      m_R_GRM_R_nonOutlier(o.m_R_GRM_R_nonOutlier),
-      m_R_GRM_R_TwoSubjOutlier(o.m_R_GRM_R_TwoSubjOutlier),
-      m_R_GRM_R(o.m_R_GRM_R),
-      m_resid_sum(o.m_resid_sum),
-      m_MAF_interval(o.m_MAF_interval),
-      m_TwoSubj_resid_list(o.m_TwoSubj_resid_list),
-      m_TwoSubj_rho_list(o.m_TwoSubj_rho_list),
-      m_ThreeSubj_standS_list(o.m_ThreeSubj_standS_list),
-      m_ThreeSubj_CLT_list(o.m_ThreeSubj_CLT_list),
-      m_SPA_Cutoff(o.m_SPA_Cutoff),
-      m_zeta(o.m_zeta),
-      m_tol(o.m_tol)
+    : m_shared(o.m_shared)
 {
-    // Rebuild scratch for thread safety
-    const auto n_unrel = m_resid_unrelated_outliers.size();
-    const auto mgfSz = static_cast<Eigen::Index>(
-        nsSPAGRM::mgfOutputSize(static_cast<size_t>(n_unrel), m_TwoSubj_rho_list, m_ThreeSubj_standS_list.size()));
-    m_workspace = nsSPAGRM::MgfWorkspace(mgfSz, n_unrel);
-
-    const int n3 = static_cast<int>(m_ThreeSubj_standS_list.size());
-    m_threeSubj_scratch.resize(n3);
-    for (int i = 0; i < n3; ++i) {
-        m_threeSubj_scratch[i].stand_S = m_ThreeSubj_standS_list[i];
-        m_threeSubj_scratch[i].arr_prob.resize(m_ThreeSubj_standS_list[i].size());
-    }
+    rebuildScratch();
 }
 
-void SPAGRMClass::padToUnionSpace(
-    const uint32_t *unionToLocal,
-    uint32_t nUnion
-) {
-    // Expand m_resid from per-phenotype-dense (Np) to union-dense (nUnion).
-    // Absent subjects get 0, so score = resid · GVec naturally skips them.
-    // m_resid_sum and all variance/MGF tables are unchanged.
-    const Eigen::Index Np = m_resid.size();
-    Eigen::VectorXd padded = Eigen::VectorXd::Zero(nUnion);
-    for (uint32_t i = 0; i < nUnion; ++i) {
-        uint32_t li = unionToLocal[i];
-        if (li != UINT32_MAX && li < static_cast<uint32_t>(Np))
-            padded[i] = m_resid[li];
+void SPAGRMClass::rebuildScratch() {
+    const auto &s = *m_shared;
+    const auto n_unrel = s.resid_unrelated_outliers.size();
+    const auto mgfSz = static_cast<Eigen::Index>(
+        nsSPAGRM::mgfOutputSize(static_cast<size_t>(n_unrel), s.TwoSubj_rho_list, s.ThreeSubj_standS_list.size()));
+    m_workspace = nsSPAGRM::MgfWorkspace(mgfSz, n_unrel);
+
+    const int n3 = static_cast<int>(s.ThreeSubj_standS_list.size());
+    m_threeSubj_scratch.resize(n3);
+    for (int i = 0; i < n3; ++i) {
+        m_threeSubj_scratch[i].stand_S = s.ThreeSubj_standS_list[i];
+        m_threeSubj_scratch[i].arr_prob.resize(s.ThreeSubj_standS_list[i].size());
     }
-    m_resid = std::move(padded);
 }
 
 double SPAGRMClass::getMarkerPval(
@@ -346,12 +310,13 @@ double SPAGRMClass::getMarkerPval(
     double &zScore,
     double gMean
 ) {
+    const auto &s = *m_shared;
     const double MAF = std::min(altFreq, 1.0 - altFreq);
     if (std::isnan(gMean))
         gMean = GVec.mean();
-    const double Score = GVec.dot(m_resid) - gMean * m_resid_sum;
+    const double Score = GVec.dot(s.resid) - gMean * s.resid_sum;
     const double G_var = 2.0 * MAF * (1.0 - MAF);
-    const double Score_var = G_var * m_R_GRM_R;
+    const double Score_var = G_var * s.R_GRM_R;
 
     // Guard: monomorphic or degenerate marker — skip SPA entirely
     if (Score_var <= 0.0 || MAF <= 0.0) {
@@ -365,26 +330,26 @@ double SPAGRMClass::getMarkerPval(
         return std::numeric_limits<double>::quiet_NaN();
     }
 
-    if (std::abs(zScore) <= m_SPA_Cutoff) {
+    if (std::abs(zScore) <= s.SPA_Cutoff) {
         return 2.0 * math::pnorm(std::abs(zScore), 0.0, 1.0, /*lower_tail=*/ false);
     }
 
     int order2 =
-        static_cast<int>(std::lower_bound(m_MAF_interval.begin(), m_MAF_interval.end(), MAF) - m_MAF_interval.begin());
+        static_cast<int>(std::lower_bound(s.MAF_interval.begin(), s.MAF_interval.end(), MAF) - s.MAF_interval.begin());
     // Clamp to valid interpolation range
-    const int nBins = static_cast<int>(m_MAF_interval.size());
+    const int nBins = static_cast<int>(s.MAF_interval.size());
     if (order2 <= 0) order2 = 1;
     if (order2 >= nBins) order2 = nBins - 1;
     const int order1 = order2 - 1;
-    const double MAF_ratio = (m_MAF_interval[order2] - MAF) / (m_MAF_interval[order2] - m_MAF_interval[order1]);
+    const double MAF_ratio = (s.MAF_interval[order2] - MAF) / (s.MAF_interval[order2] - s.MAF_interval[order1]);
     const double one_minus_mr = 1.0 - MAF_ratio;
 
     // Update arr_prob in-place for three-subject families.
     double Var_ThreeOutlier = 0.0;
     const int n3 = static_cast<int>(m_threeSubj_scratch.size());
     for (int i = 0; i < n3; ++i) {
-        const double *c1 = m_ThreeSubj_CLT_list[i].col(order1).data();
-        const double *c2 = m_ThreeSubj_CLT_list[i].col(order2).data();
+        const double *c1 = s.ThreeSubj_CLT_list[i].col(order1).data();
+        const double *c2 = s.ThreeSubj_CLT_list[i].col(order2).data();
         const double *ss = m_threeSubj_scratch[i].stand_S.data();
         double *ap = m_threeSubj_scratch[i].arr_prob.data();
         const size_t sz = m_threeSubj_scratch[i].stand_S.size();
@@ -399,19 +364,19 @@ double SPAGRMClass::getMarkerPval(
     }
 
     const double EmpVar =
-        G_var * (m_R_GRM_R_nonOutlier + m_sum_unrelated_outliers2 + m_R_GRM_R_TwoSubjOutlier) + Var_ThreeOutlier;
+        G_var * (s.R_GRM_R_nonOutlier + s.sum_unrelated_outliers2 + s.R_GRM_R_TwoSubjOutlier) + Var_ThreeOutlier;
     const double Score_adj = Score * std::sqrt(EmpVar / Score_var);
 
     double zeta1 = std::abs(Score_adj) / Score_var;
     zeta1 = std::min(zeta1, 1.2);
-    const double zeta2 = -std::abs(m_zeta);
+    const double zeta2 = -std::abs(s.zeta);
 
-    const double pval1 = nsSPAGRM::getProbSpa(m_resid_unrelated_outliers, m_TwoSubj_resid_list, m_TwoSubj_rho_list,
-                                              m_threeSubj_scratch, m_sum_R_nonOutlier, m_R_GRM_R_nonOutlier,
+    const double pval1 = nsSPAGRM::getProbSpa(s.resid_unrelated_outliers, s.TwoSubj_resid_list, s.TwoSubj_rho_list,
+                                              m_threeSubj_scratch, s.sum_R_nonOutlier, s.R_GRM_R_nonOutlier,
                                               std::abs(Score_adj), MAF, false, zeta1, 1e-4, m_workspace);
-    const double pval2 = nsSPAGRM::getProbSpa(m_resid_unrelated_outliers, m_TwoSubj_resid_list, m_TwoSubj_rho_list,
-                                              m_threeSubj_scratch, m_sum_R_nonOutlier, m_R_GRM_R_nonOutlier,
-                                              -std::abs(Score_adj), MAF, true, zeta2, m_tol, m_workspace);
+    const double pval2 = nsSPAGRM::getProbSpa(s.resid_unrelated_outliers, s.TwoSubj_resid_list, s.TwoSubj_rho_list,
+                                              m_threeSubj_scratch, s.sum_R_nonOutlier, s.R_GRM_R_nonOutlier,
+                                              -std::abs(Score_adj), MAF, true, zeta2, s.tol, m_workspace);
     return pval1 + pval2;
 }
 
@@ -420,9 +385,10 @@ double SPAGRMClass::getMarkerPvalFromScore(
     double altFreq,
     double &zScore
 ) {
+    const auto &s = *m_shared;
     const double MAF = std::min(altFreq, 1.0 - altFreq);
     const double G_var = 2.0 * MAF * (1.0 - MAF);
-    const double Score_var = G_var * m_R_GRM_R;
+    const double Score_var = G_var * s.R_GRM_R;
 
     if (Score_var <= 0.0 || MAF <= 0.0) {
         zScore = 0.0;
@@ -435,24 +401,24 @@ double SPAGRMClass::getMarkerPvalFromScore(
         return std::numeric_limits<double>::quiet_NaN();
     }
 
-    if (std::abs(zScore) <= m_SPA_Cutoff) {
+    if (std::abs(zScore) <= s.SPA_Cutoff) {
         return 2.0 * math::pnorm(std::abs(zScore), 0.0, 1.0, /*lower_tail=*/ false);
     }
 
     int order2 =
-        static_cast<int>(std::lower_bound(m_MAF_interval.begin(), m_MAF_interval.end(), MAF) - m_MAF_interval.begin());
-    const int nBins = static_cast<int>(m_MAF_interval.size());
+        static_cast<int>(std::lower_bound(s.MAF_interval.begin(), s.MAF_interval.end(), MAF) - s.MAF_interval.begin());
+    const int nBins = static_cast<int>(s.MAF_interval.size());
     if (order2 <= 0) order2 = 1;
     if (order2 >= nBins) order2 = nBins - 1;
     const int order1 = order2 - 1;
-    const double MAF_ratio = (m_MAF_interval[order2] - MAF) / (m_MAF_interval[order2] - m_MAF_interval[order1]);
+    const double MAF_ratio = (s.MAF_interval[order2] - MAF) / (s.MAF_interval[order2] - s.MAF_interval[order1]);
     const double one_minus_mr = 1.0 - MAF_ratio;
 
     double Var_ThreeOutlier = 0.0;
     const int n3 = static_cast<int>(m_threeSubj_scratch.size());
     for (int i = 0; i < n3; ++i) {
-        const double *c1 = m_ThreeSubj_CLT_list[i].col(order1).data();
-        const double *c2 = m_ThreeSubj_CLT_list[i].col(order2).data();
+        const double *c1 = s.ThreeSubj_CLT_list[i].col(order1).data();
+        const double *c2 = s.ThreeSubj_CLT_list[i].col(order2).data();
         const double *ss = m_threeSubj_scratch[i].stand_S.data();
         double *ap = m_threeSubj_scratch[i].arr_prob.data();
         const size_t sz = m_threeSubj_scratch[i].stand_S.size();
@@ -467,19 +433,19 @@ double SPAGRMClass::getMarkerPvalFromScore(
     }
 
     const double EmpVar =
-        G_var * (m_R_GRM_R_nonOutlier + m_sum_unrelated_outliers2 + m_R_GRM_R_TwoSubjOutlier) + Var_ThreeOutlier;
+        G_var * (s.R_GRM_R_nonOutlier + s.sum_unrelated_outliers2 + s.R_GRM_R_TwoSubjOutlier) + Var_ThreeOutlier;
     const double Score_adj = Score * std::sqrt(EmpVar / Score_var);
 
     double zeta1 = std::abs(Score_adj) / Score_var;
     zeta1 = std::min(zeta1, 1.2);
-    const double zeta2 = -std::abs(m_zeta);
+    const double zeta2 = -std::abs(s.zeta);
 
-    const double pval1 = nsSPAGRM::getProbSpa(m_resid_unrelated_outliers, m_TwoSubj_resid_list, m_TwoSubj_rho_list,
-                                              m_threeSubj_scratch, m_sum_R_nonOutlier, m_R_GRM_R_nonOutlier,
+    const double pval1 = nsSPAGRM::getProbSpa(s.resid_unrelated_outliers, s.TwoSubj_resid_list, s.TwoSubj_rho_list,
+                                              m_threeSubj_scratch, s.sum_R_nonOutlier, s.R_GRM_R_nonOutlier,
                                               std::abs(Score_adj), MAF, false, zeta1, 1e-4, m_workspace);
-    const double pval2 = nsSPAGRM::getProbSpa(m_resid_unrelated_outliers, m_TwoSubj_resid_list, m_TwoSubj_rho_list,
-                                              m_threeSubj_scratch, m_sum_R_nonOutlier, m_R_GRM_R_nonOutlier,
-                                              -std::abs(Score_adj), MAF, true, zeta2, m_tol, m_workspace);
+    const double pval2 = nsSPAGRM::getProbSpa(s.resid_unrelated_outliers, s.TwoSubj_resid_list, s.TwoSubj_rho_list,
+                                              m_threeSubj_scratch, s.sum_R_nonOutlier, s.R_GRM_R_nonOutlier,
+                                              -std::abs(Score_adj), MAF, true, zeta2, s.tol, m_workspace);
     return pval1 + pval2;
 }
 
@@ -559,8 +525,7 @@ void runSPAGRM(
     double minMacCutoff,
     double hweCutoff,
     const std::string &keepFile,
-    const std::string &removeFile,
-    const std::string &phenoMissing
+    const std::string &removeFile
 ) {
     infoMsg("Loading pheno file: %s", phenoFile.c_str());
     auto famIIDs = parseGenoIIDs(geno);
@@ -653,11 +618,6 @@ void runSPAGRM(
     }
 
     infoMsg("Running SPAGRM marker tests (%d thread(s), %d phenotype(s))...", nthreads, K);
-    if (phenoMissing == "impute" && K > 1) {
-        imputeMultiPhenoEngine(*genoData, tasks, outPrefix, "SPAGRM", compression, compressionLevel, nthreads,
-                               missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
-    } else {
-        multiPhenoEngine(*genoData, tasks, outPrefix, "SPAGRM", compression, compressionLevel, nthreads,
-                         missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
-    }
+    multiPhenoEngine(*genoData, tasks, outPrefix, "SPAGRM", compression, compressionLevel, nthreads,
+                     missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
 }

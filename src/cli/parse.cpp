@@ -102,7 +102,6 @@ Args parseArgs(
         else if (arg == "--covar-name")a.covarName = next();
         else if (arg == "--pheno-name")a.phenoName = next();
         else if (arg == "--resid-name")a.residName = next();
-        else if (arg == "--pheno-missing"){ a.phenoMissing = next(); a.phenoMissingExplicit = true; }
         else if (arg == "--pc-cols")a.pcCols = next();
         else if (arg == "--spasqr-taus")a.spasqrTaus = next();
         else if (arg == "--spasqr-tol")a.spasqrTol = parseDouble(next(), arg);

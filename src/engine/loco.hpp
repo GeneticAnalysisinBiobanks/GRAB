@@ -81,6 +81,5 @@ void locoEngine(
     double missingCutoff,
     double minMafCutoff,
     double minMacCutoff,
-    double hweCutoff,
-    bool imputeMode = false
+    double hweCutoff
 );
