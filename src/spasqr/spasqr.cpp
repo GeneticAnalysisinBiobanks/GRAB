@@ -93,19 +93,120 @@ class SPAsqrMethod : public MethodBase {
         result.clear();
         result.reserve(2 * m_ntaus + 1);
 
-        std::vector<double> zScores(m_ntaus);
-        std::vector<double> pvals(m_ntaus);
-
-        // Fused: one pass over GVec computes mean + all ntaus dot products.
-        // Reads GVec once (~3.2MB) instead of ntaus+1 times.
         const double gMean = GVec.mean();
         Eigen::VectorXd scores = m_methodShared->residMat.transpose() * GVec;
         for (int i = 0; i < m_ntaus; ++i)
             scores[i] -= gMean * m_methodShared->residSums[i];
 
+        processOneMarker(scores.data(), altFreq, result);
+    }
+
+    // ── Batched analysis: B markers at once ────────────────────────────
+    void getResultBatch(
+        const Eigen::Ref<const Eigen::MatrixXd> &GBatch,
+        const std::vector<double> &altFreqs,
+        std::vector<std::vector<double> > &results
+    ) override {
+        const int B = static_cast<int>(GBatch.cols());
+        results.resize(B);
+
+        Eigen::MatrixXd scoreMatrix;
+        scoreMatrix.noalias() = m_methodShared->residMat.transpose() * GBatch;
+
+        const Eigen::VectorXd gMeans = GBatch.colwise().mean();
+        scoreMatrix.noalias() -= m_methodShared->residSums * gMeans.transpose();
+
+        for (int b = 0; b < B; ++b)
+            processOneMarker(scoreMatrix.col(b).data(), altFreqs[b], results[b]);
+    }
+
+    int preferredBatchSize() const override {
+        return std::min(std::max(4, 2 * m_ntaus), 16);
+    }
+
+    // ── Fused union-level GEMM interface ───────────────────────────────
+    bool supportsFusedGemm() const override {
+        return true;
+    }
+
+    int fusedGemmColumns() const override {
+        return m_ntaus;
+    }
+
+    void fillUnionResiduals(
+        Eigen::Ref<Eigen::MatrixXd> dest,
+        const std::vector<uint32_t> &unionToLocal
+    ) const override {
+        // dest is pre-zeroed, N_union × ntaus.
+        // Scatter N_p-level residMat rows into union-level rows.
+        const auto &residMat = m_methodShared->residMat;
+        const uint32_t nUnion = static_cast<uint32_t>(unionToLocal.size());
+        for (uint32_t i = 0; i < nUnion; ++i) {
+            const uint32_t li = unionToLocal[i];
+            if (li != UINT32_MAX)
+                dest.row(i) = residMat.row(li);
+        }
+    }
+
+    void fillResidualSums(double *dest) const override {
+        const auto &rs = m_methodShared->residSums;
+        std::copy(rs.data(), rs.data() + m_ntaus, dest);
+    }
+
+    void processScoreBatch(
+        const Eigen::Ref<const Eigen::MatrixXd> &scores,
+        const double *gSums,
+        uint32_t nUsed,
+        const std::vector<double> &altFreqs,
+        std::vector<std::vector<double> > &results
+    ) override {
+        const int B = static_cast<int>(scores.cols());
+        results.resize(B);
+
+        // Center: score[t][b] -= (gSums[b] / nUsed) * residSums[t]
+        // Create a temporary to apply centering.
+        Eigen::MatrixXd centered = scores;
+        const double invN = 1.0 / static_cast<double>(nUsed);
+        for (int b = 0; b < B; ++b) {
+            const double gMean = gSums[b] * invN;
+            for (int t = 0; t < m_ntaus; ++t)
+                centered(t, b) -= gMean * m_methodShared->residSums[t];
+        }
+
+        for (int b = 0; b < B; ++b)
+            processOneMarker(centered.col(b).data(), altFreqs[b], results[b]);
+    }
+
+  private:
+    int m_ntaus;
+    std::vector<SPAGRMClass> m_spagrm_vec;
+    std::vector<std::string> m_tauLabels;
+    bool m_hasLabels;
+
+    // Shared read-only data: residual matrix and sums for fused dot products.
+    struct SharedMethodData {
+        Eigen::MatrixXd residMat;   // N × ntaus
+        Eigen::VectorXd residSums;  // ntaus
+    };
+
+    std::shared_ptr<const SharedMethodData> m_methodShared;
+
+    // ── Internal: SPA + CCT for one marker given centered scores ──────
+    // centeredScores points to ntaus doubles (pre-centered by gMean×residSums).
+    void processOneMarker(
+        const double *centeredScores,
+        double altFreq,
+        std::vector<double> &result
+    ) {
+        result.clear();
+        result.reserve(2 * m_ntaus + 1);
+
+        std::vector<double> zScores(m_ntaus);
+        std::vector<double> pvals(m_ntaus);
+
         for (int i = 0; i < m_ntaus; ++i) {
             double z;
-            double p = m_spagrm_vec[i].getMarkerPvalFromScore(scores[i], altFreq, z);
+            double p = m_spagrm_vec[i].getMarkerPvalFromScore(centeredScores[i], altFreq, z);
             zScores[i] = z;
             pvals[i] = p;
         }
@@ -136,118 +237,12 @@ class SPAsqrMethod : public MethodBase {
             }
         }
 
-        if (m_hasLabels) {
-            // P_CCT first, then P_tau{val}..., then Z_tau{val}...
-            result.push_back(pCCT);
-            for (int i = 0; i < m_ntaus; ++i)
-                result.push_back(pvals[i]);
-            for (int i = 0; i < m_ntaus; ++i)
-                result.push_back(zScores[i]);
-        } else {
-            // Legacy: P_CCT  P_tau1..P_tauK  Z_tau1..Z_tauK
-            result.push_back(pCCT);
-            for (int i = 0; i < m_ntaus; ++i)
-                result.push_back(pvals[i]);
-            for (int i = 0; i < m_ntaus; ++i)
-                result.push_back(zScores[i]);
-        }
+        result.push_back(pCCT);
+        for (int i = 0; i < m_ntaus; ++i)
+            result.push_back(pvals[i]);
+        for (int i = 0; i < m_ntaus; ++i)
+            result.push_back(zScores[i]);
     }
-
-    // ── Batched analysis: B markers at once ────────────────────────────
-    // Converts per-marker residMat^T * GVec (GEMV) into a single
-    // residMat^T * GBatch (Eigen matrix multiply), so the N × ntaus
-    // residual matrix is loaded from DRAM once instead of B times.
-    void getResultBatch(
-        const Eigen::Ref<const Eigen::MatrixXd> &GBatch,
-        const std::vector<double> &altFreqs,
-        std::vector<std::vector<double> > &results
-    ) override {
-        const int B = static_cast<int>(GBatch.cols());
-        results.resize(B);
-
-        // ── Fused score computation: ntaus × B matrix in one multiply ──
-        // residMat is N × ntaus, GBatch is N × B
-        // scoreMatrix is ntaus × B
-        Eigen::MatrixXd scoreMatrix;
-        scoreMatrix.noalias() = m_methodShared->residMat.transpose() * GBatch;
-
-        // Column means of GBatch (length B)
-        const Eigen::VectorXd gMeans = GBatch.colwise().mean();
-
-        // Adjust scores: score[t][b] -= gMean[b] * residSums[t]
-        // residSums is ntaus × 1, gMeans is B × 1
-        // Outer product: ntaus × B
-        scoreMatrix.noalias() -= m_methodShared->residSums * gMeans.transpose();
-
-        // ── Per-marker SPA + CCT (not batchable) ──────────────────────
-        std::vector<double> zScores(m_ntaus);
-        std::vector<double> pvals(m_ntaus);
-        std::vector<double> valid_p;
-        valid_p.reserve(m_ntaus);
-
-        for (int b = 0; b < B; ++b) {
-            auto &result = results[b];
-            result.clear();
-            result.reserve(2 * m_ntaus + 1);
-
-            for (int i = 0; i < m_ntaus; ++i) {
-                double z;
-                double p = m_spagrm_vec[i].getMarkerPvalFromScore(scoreMatrix(i, b), altFreqs[b], z);
-                zScores[i] = z;
-                pvals[i] = p;
-            }
-
-            // CCT (Cauchy combination test) p-value
-            valid_p.clear();
-            for (int i = 0; i < m_ntaus; ++i)
-                if (!std::isnan(pvals[i])) valid_p.push_back(pvals[i]);
-
-            double pCCT = std::numeric_limits<double>::quiet_NaN();
-            if (!valid_p.empty()) {
-                bool hasZero = false;
-                double tStat = 0.0;
-                for (double p : valid_p) {
-                    if (p <= 0.0) {
-                        hasZero = true;
-                        break;
-                    }
-                    double pc = (p >= 1.0) ? 0.999 : p;
-                    tStat += std::tan((0.5 - pc) * M_PI);
-                }
-                if (hasZero) {
-                    pCCT = 0.0;
-                } else {
-                    tStat /= static_cast<double>(valid_p.size());
-                    pCCT = (tStat > 1e15) ? (1.0 / tStat) / M_PI : 0.5 - std::atan(tStat) / M_PI;
-                }
-            }
-
-            result.push_back(pCCT);
-            for (int i = 0; i < m_ntaus; ++i)
-                result.push_back(pvals[i]);
-            for (int i = 0; i < m_ntaus; ++i)
-                result.push_back(zScores[i]);
-        }
-    }
-
-    int preferredBatchSize() const override {
-        // ~4 × model columns, capped at 32. For τ=9: min(36, 32) = 32 → use 16.
-        return std::min(std::max(4, 2 * m_ntaus), 16);
-    }
-
-  private:
-    int m_ntaus;
-    std::vector<SPAGRMClass> m_spagrm_vec;
-    std::vector<std::string> m_tauLabels;
-    bool m_hasLabels;
-
-    // Shared read-only data: residual matrix and sums for fused dot products.
-    struct SharedMethodData {
-        Eigen::MatrixXd residMat;   // N × ntaus
-        Eigen::VectorXd residSums;  // ntaus
-    };
-
-    std::shared_ptr<const SharedMethodData> m_methodShared;
 
     void buildResidMat() {
         const Eigen::Index N = m_spagrm_vec[0].resid().size();

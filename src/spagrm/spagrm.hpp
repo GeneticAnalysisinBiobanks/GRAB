@@ -272,6 +272,56 @@ class SPAGRMMethod : public MethodBase {
         return 8;
     }
 
+    // ── Fused union-level GEMM interface ───────────────────────────────
+    bool supportsFusedGemm() const override {
+        return true;
+    }
+
+    int fusedGemmColumns() const override {
+        return 1;
+    }
+
+    void fillUnionResiduals(
+        Eigen::Ref<Eigen::MatrixXd> dest,
+        const std::vector<uint32_t> &unionToLocal
+    ) const override {
+        // dest is pre-zeroed, N_union × 1.
+        const Eigen::VectorXd &r = m_spagrm.resid();
+        const uint32_t nUnion = static_cast<uint32_t>(unionToLocal.size());
+        for (uint32_t i = 0; i < nUnion; ++i) {
+            const uint32_t li = unionToLocal[i];
+            if (li != UINT32_MAX)
+                dest(i, 0) = r[li];
+        }
+    }
+
+    void fillResidualSums(double *dest) const override {
+        dest[0] = m_spagrm.residSum();
+    }
+
+    void processScoreBatch(
+        const Eigen::Ref<const Eigen::MatrixXd> &scores,
+        const double *gSums,
+        uint32_t nUsed,
+        const std::vector<double> &altFreqs,
+        std::vector<std::vector<double> > &results
+    ) override {
+        const int B = static_cast<int>(scores.cols());
+        results.resize(B);
+        const double residSum = m_spagrm.residSum();
+        const double invN = 1.0 / static_cast<double>(nUsed);
+
+        for (int b = 0; b < B; ++b) {
+            const double gMean = gSums[b] * invN;
+            const double centeredScore = scores(0, b) - gMean * residSum;
+            results[b].clear();
+            double z;
+            double p = m_spagrm.getMarkerPvalFromScore(centeredScore, altFreqs[b], z);
+            results[b].push_back(p);
+            results[b].push_back(z);
+        }
+    }
+
   private:
     SPAGRMClass m_spagrm;
 };

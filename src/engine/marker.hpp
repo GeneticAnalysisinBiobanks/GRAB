@@ -76,6 +76,56 @@ class MethodBase {
         return 0;
     }
 
+    // ── Fused union-level GEMM interface ───────────────────────────────
+    // Methods that compute Score = resid^T × G (or residMat^T × G for
+    // multi-tau) can participate in a single fused GEMM across ALL
+    // phenotypes, eliminating per-phenotype extraction entirely.
+    //
+    // Flow: engine builds AugResid (N_union × totalCols) from all fuseable
+    // methods, does ONE GEMM per window → distributes score slices.
+
+    // True if this method can participate in the fused GEMM.
+    virtual bool supportsFusedGemm() const {
+        return false;
+    }
+
+    // Number of residual columns (ntaus for SPAsqr, 1 for SPAGRM).
+    virtual int fusedGemmColumns() const {
+        return 0;
+    }
+
+    // Scatter per-phenotype residuals into union-level columns of dest.
+    // dest is pre-zeroed (N_union × fusedGemmColumns()).
+    // unionToLocal[i] maps union index → phenotype index (UINT32_MAX = absent).
+    virtual void fillUnionResiduals(
+        Eigen::Ref<Eigen::MatrixXd> dest,
+        const std::vector<uint32_t> &unionToLocal
+    ) const {
+        (void)dest; (void)unionToLocal;
+    }
+
+    // Copy residual sums into dest (length = fusedGemmColumns()).
+    virtual void fillResidualSums(double *dest) const {
+        (void)dest;
+    }
+
+    // Process pre-computed raw scores (from the fused GEMM).
+    //   scores   — fusedGemmColumns() × B matrix of raw scores
+    //   gSums    — per-phenotype genotype sums, length B
+    //   nUsed    — this phenotype's sample count (for gMean = gSum / nUsed)
+    //   altFreqs — ALT allele frequencies, length B (pre-computed)
+    //   results  — output: results[b] = method-specific result values
+    virtual void processScoreBatch(
+        const Eigen::Ref<const Eigen::MatrixXd> &scores,
+        const double *gSums,
+        uint32_t nUsed,
+        const std::vector<double> &altFreqs,
+        std::vector<std::vector<double> > &results
+    ) {
+        (void)scores; (void)gSums; (void)nUsed;
+        (void)altFreqs; (void)results;
+    }
+
 };
 
 // ======================================================================

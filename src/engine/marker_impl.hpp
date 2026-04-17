@@ -7,11 +7,13 @@
 #include "engine/marker.hpp"
 #include "geno_factory/geno_data.hpp"
 #include "geno_factory/hwe.hpp"
+#include "util/simd_dispatch.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <immintrin.h>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -185,6 +187,50 @@ struct PhenoGenoStats {
     double altFreq, mac, missingRate, hweP;
 };
 
+// Compute per-phenotype genotype stats from union-level genotype vector
+// and a mask column (1.0 = present, 0.0 = absent).
+// Used by the fused GEMM path where per-phenotype extraction is skipped.
+inline PhenoGenoStats statsFromUnionVec(
+    const double *unionG,
+    const double *mask,
+    uint32_t nUnion,
+    uint32_t nUsed
+) {
+    uint32_t nHomRef = 0, nHet = 0, nHomAlt = 0, nMissing = 0;
+    for (uint32_t i = 0; i < nUnion; ++i) {
+        if (mask[i] == 0.0) continue;  // absent from this phenotype
+        const double v = unionG[i];
+        if (v == 0.0)
+            ++nHomRef;
+        else if (v == 1.0)
+            ++nHet;
+        else if (v == 2.0)
+            ++nHomAlt;
+        else
+            ++nMissing;  // NaN or dosage
+    }
+    PhenoGenoStats s;
+    uint32_t nonMissing = nHomRef + nHet + nHomAlt;
+    if (nonMissing == 0) {
+        // Dosage data: compute from gSum (not discrete genotypes).
+        // No HWE for dosages → set to 1.0, compute AF from gSum.
+        s.missingRate = 0.0;
+        s.hweP = 1.0;
+        // altFreq and mac will be overwritten by caller from gSum.
+        s.altFreq = 0.0;
+        s.mac = 0.0;
+        return s;
+    }
+    uint32_t altCounts = 2 * nHomAlt + nHet;
+    double n2 = 2.0 * nonMissing;
+    s.altFreq = altCounts / n2;
+    double maf = std::min(s.altFreq, 1.0 - s.altFreq);
+    s.mac = maf * n2;
+    s.missingRate = static_cast<double>(nMissing) / static_cast<double>(nUsed);
+    s.hweP = HweExact(nHet, nHomAlt, nHomRef);
+    return s;
+}
+
 inline PhenoGenoStats statsFromGVec(
     const double *g,
     uint32_t n,
@@ -237,6 +283,107 @@ inline void extractPhenoGVec(
     for (uint32_t i = 0; i < nUnion; ++i) {
         uint32_t li = unionToLocal[i];
         if (li != UINT32_MAX) phenoG[li] = unionG[i];
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Precomputed gather-index extraction: O(nUsed) instead of O(nUnion).
+//
+// presentIndices[j] = union position of the j-th present subject.
+// Because unionToLocal is monotonically increasing where != UINT32_MAX,
+// phenoG[j] = unionG[presentIndices[j]] — sequential write, gathered read.
+// ──────────────────────────────────────────────────────────────────────
+
+// Build the gather-index list from unionToLocal. Called once per MissBatch.
+inline std::vector<uint32_t> buildPresentIndices(
+    const uint32_t *unionToLocal,
+    uint32_t nUnion
+) {
+    std::vector<uint32_t> idx;
+    idx.reserve(nUnion / 2);
+    for (uint32_t i = 0; i < nUnion; ++i)
+        if (unionToLocal[i] != UINT32_MAX)
+            idx.push_back(i);
+    return idx;
+}
+
+// Check if unionToLocal is identity (nUsed == nUnion, no gaps).
+inline bool isIdentityMapping(
+    const uint32_t *unionToLocal,
+    uint32_t nUnion,
+    uint32_t nUsed
+) {
+    return nUsed == nUnion;
+}
+
+// Gather-index extraction: branchless, sequential output.
+inline void extractGather(
+    const double *unionG,
+    const uint32_t *presentIndices,
+    uint32_t nUsed,
+    double *phenoG
+) {
+    for (uint32_t j = 0; j < nUsed; ++j)
+        phenoG[j] = unionG[presentIndices[j]];
+}
+
+// AVX-512 compress-store extraction using precomputed bitmask.
+// presentMask is a packed bitmask: bit i set ↔ union subject i is present.
+// Processes 8 doubles per iteration using VCOMPRESSSTOREPD.
+__attribute__((target("avx512f,avx512vl")))
+inline void extractCompress_avx512(
+    const double *unionG,
+    const uint64_t *presentMask,
+    uint32_t nUnion,
+    double *phenoG
+) {
+    uint32_t outIdx = 0;
+    const uint32_t nUnion8 = nUnion & ~uint32_t(7);
+    for (uint32_t i = 0; i < nUnion8; i += 8) {
+        __m512d vals = _mm512_loadu_pd(&unionG[i]);
+        __mmask8 mask = static_cast<__mmask8>(
+            (presentMask[i >> 6] >> (i & 63)) & 0xFF);
+        _mm512_mask_compressstoreu_pd(&phenoG[outIdx], mask, vals);
+        outIdx += static_cast<uint32_t>(_mm_popcnt_u32(mask));
+    }
+    // Scalar tail
+    for (uint32_t i = nUnion8; i < nUnion; ++i) {
+        if ((presentMask[i >> 6] >> (i & 63)) & 1)
+            phenoG[outIdx++] = unionG[i];
+    }
+}
+
+// Build bitmask from unionToLocal. Called once per MissBatch.
+inline std::vector<uint64_t> buildPresentMask(
+    const uint32_t *unionToLocal,
+    uint32_t nUnion
+) {
+    const size_t nWords = (static_cast<size_t>(nUnion) + 63) / 64;
+    std::vector<uint64_t> mask(nWords, 0);
+    for (uint32_t i = 0; i < nUnion; ++i)
+        if (unionToLocal[i] != UINT32_MAX)
+            mask[i >> 6] |= uint64_t(1) << (i & 63);
+    return mask;
+}
+
+// Runtime-dispatched fast extraction.
+inline void extractPhenoFast(
+    const double *unionG,
+    uint32_t nUnion,
+    uint32_t nUsed,
+    bool identity,
+    const uint32_t *presentIndices,
+    const uint64_t *presentMask,
+    double *phenoG
+) {
+    if (identity) {
+        std::memcpy(phenoG, unionG, static_cast<size_t>(nUsed) * sizeof(double));
+        return;
+    }
+    if (simdLevel() >= SimdLevel::AVX512) {
+        extractCompress_avx512(unionG, presentMask, nUnion, phenoG);
+    } else {
+        extractGather(unionG, presentIndices, nUsed, phenoG);
     }
 }
 
