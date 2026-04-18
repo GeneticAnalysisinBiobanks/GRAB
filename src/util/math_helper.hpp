@@ -42,8 +42,8 @@ inline double pnorm(
         return log_p ? std::log(r + 1e-300) : r;
     }
     boost::math::normal_distribution<double> dist(mean, sd);
-    double result = boost::math::cdf(dist, x);
-    if (!lower_tail) result = 1.0 - result;
+    double result = lower_tail ? boost::math::cdf(dist, x)
+                               : boost::math::cdf(boost::math::complement(dist, x));
     if (log_p) result = std::log(result);
     return result;
 }

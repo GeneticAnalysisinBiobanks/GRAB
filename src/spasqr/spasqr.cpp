@@ -671,7 +671,8 @@ class SPAsqrMethod : public MethodBase {
                     double p = valid_p[vi];
                     if (p <= 0.0) { hasZero = true; break; }
                     double pc = (p >= 1.0) ? 0.999 : p;
-                    tStat += std::tan((0.5 - pc) * M_PI);
+                    tStat += (pc < 1e-15) ? (1.0 / (pc * M_PI))
+                                          : std::tan((0.5 - pc) * M_PI);
                 }
                 if (hasZero) {
                     pCCT = 0.0;
@@ -741,7 +742,8 @@ class SPAsqrMethod : public MethodBase {
                     break;
                 }
                 double pc = (p >= 1.0) ? 0.999 : p;
-                tStat += std::tan((0.5 - pc) * M_PI);
+                tStat += (pc < 1e-15) ? (1.0 / (pc * M_PI))
+                                      : std::tan((0.5 - pc) * M_PI);
             }
             if (hasZero) {
                 pCCT = 0.0;
