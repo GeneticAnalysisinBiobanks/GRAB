@@ -4,3 +4,4 @@ tmp/
 examples/
 example_1kg/
 *.R
+.DS_Store
