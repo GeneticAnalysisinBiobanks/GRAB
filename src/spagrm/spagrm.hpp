@@ -302,10 +302,12 @@ class SPAGRMMethod : public MethodBase {
     void processScoreBatch(
         const Eigen::Ref<const Eigen::MatrixXd> &scores,
         const double *gSums,
+        const double *gSumSqs,
         uint32_t nUsed,
         const std::vector<double> &altFreqs,
         std::vector<std::vector<double> > &results
     ) override {
+        (void)gSumSqs;   // SPAGRM uses theoretical 2p(1-p); empirical Σv² unused
         const int B = static_cast<int>(scores.cols());
         results.resize(B);
         const double residSum = m_spagrm.residSum();

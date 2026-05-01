@@ -370,15 +370,17 @@ struct SPAsqrSPAShared {
 };
 
 // ── Per-tau p-value (replaces SPAGRMClass::getMarkerPvalFromScore) ──
+// G_var = empirical Var(G) from the caller (post-imputation, per-pheno).
+// MAF kept for SPA CGF (binomial structural assumption); not used for variance.
 inline double scalarGetPvalFromScore(
     double Score,
     double altFreq,
+    double G_var,
     double &zScore,
     const SPAsqrPerTau &tau,
     const SPAsqrSPAShared &spa
 ) {
     const double MAF       = std::min(altFreq, 1.0 - altFreq);
-    const double G_var     = 2.0 * MAF * (1.0 - MAF);
     const double Score_var = G_var * tau.R_GRM_R;
 
     if (Score_var <= 0.0 || MAF <= 0.0) {
@@ -417,14 +419,16 @@ inline double scalarGetPvalFromScore(
 // Computes the SPA p-value for a marker that failed the normal-approx
 // cutoff.  Both tails share the MAF/variance setup and outlier data
 // pointer extraction; only the Newton root and saddlepoint differ.
+// G_var = empirical Var(G) from caller; ratio EmpVar/Score_var is invariant
+// to the choice of variance, so SPA tails behave the same as before.
 inline double fusedGetPvalSpa(
     double Score,
     double altFreq,
+    double G_var,
     const SPAsqrPerTau &tau,
     const SPAsqrSPAShared &spa
 ) {
     const double MAF       = std::min(altFreq, 1.0 - altFreq);
-    const double G_var     = 2.0 * MAF * (1.0 - MAF);
     const double Score_var = G_var * tau.R_GRM_R;
 
     const double EmpVar    = G_var * (tau.R_GRM_R_nonOutlier + tau.sum_unrelated_outliers2);
@@ -532,12 +536,17 @@ class SPAsqrMethod : public MethodBase {
         result.clear();
         result.reserve(2 * m_ntaus + 1);
 
-        const double gMean = GVec.mean();
+        const double n      = static_cast<double>(GVec.size());
+        const double gSum   = GVec.sum();
+        const double gSumSq = GVec.squaredNorm();
+        const double gMean  = gSum / n;
+        const double G_var  = (gSumSq - gSum * gSum / n) / (n - 1.0);
+
         Eigen::VectorXd scores = m_methodShared->residMat.transpose() * GVec;
         for (int i = 0; i < m_ntaus; ++i)
             scores[i] -= gMean * m_methodShared->residSums[i];
 
-        processOneMarker(scores.data(), altFreq, result);
+        processOneMarker(scores.data(), altFreq, G_var, result);
     }
 
     // ── Batched analysis: B markers at once ────────────────────────────
@@ -555,8 +564,14 @@ class SPAsqrMethod : public MethodBase {
         const Eigen::VectorXd gMeans = GBatch.colwise().mean();
         scoreMatrix.noalias() -= m_methodShared->residSums * gMeans.transpose();
 
-        for (int b = 0; b < B; ++b)
-            processOneMarker(scoreMatrix.col(b).data(), altFreqs[b], results[b]);
+        const double n  = static_cast<double>(GBatch.rows());
+        const double n1 = n - 1.0;
+        for (int b = 0; b < B; ++b) {
+            const double gSum   = GBatch.col(b).sum();
+            const double gSumSq = GBatch.col(b).squaredNorm();
+            const double G_var  = (gSumSq - gSum * gSum / n) / n1;
+            processOneMarker(scoreMatrix.col(b).data(), altFreqs[b], G_var, results[b]);
+        }
     }
 
     int preferredBatchSize() const override {
@@ -593,6 +608,7 @@ class SPAsqrMethod : public MethodBase {
     void processScoreBatch(
         const Eigen::Ref<const Eigen::MatrixXd> &scores,
         const double *gSums,
+        const double *gSumSqs,
         uint32_t nUsed,
         const std::vector<double> &altFreqs,
         std::vector<std::vector<double> > &results
@@ -602,7 +618,9 @@ class SPAsqrMethod : public MethodBase {
 
         // ── Center scores ──────────────────────────────────────────
         m_centeredBuf = scores;
-        const double invN = 1.0 / static_cast<double>(nUsed);
+        const double n    = static_cast<double>(nUsed);
+        const double n1   = n - 1.0;
+        const double invN = 1.0 / n;
         for (int b = 0; b < B; ++b) {
             const double gMean = gSums[b] * invN;
             for (int t = 0; t < m_ntaus; ++t)
@@ -624,7 +642,11 @@ class SPAsqrMethod : public MethodBase {
                 const double Score   = m_centeredBuf(t, b);
                 const double altFreq = altFreqs[b];
                 const double MAF     = std::min(altFreq, 1.0 - altFreq);
-                const double G_var   = 2.0 * MAF * (1.0 - MAF);
+                // Empirical Var(G) on the post-imputation, per-pheno column.
+                // gSums / gSumSqs come from the engine after Phase-1b imputation.
+                const double gSum    = gSums[b];
+                const double gSumSq  = gSumSqs[b];
+                const double G_var   = (gSumSq - gSum * gSum * invN) / n1;
                 const double Svar    = G_var * tau.R_GRM_R;
 
                 double z, p;
@@ -640,7 +662,7 @@ class SPAsqrMethod : public MethodBase {
                         p = 2.0 * math::pnorm(std::abs(z), 0.0, 1.0, false);
                     } else {
                         // Slow path: C3 fused upper+lower SPA
-                        p = fusedGetPvalSpa(Score, altFreq, tau, *m_spaShared);
+                        p = fusedGetPvalSpa(Score, altFreq, G_var, tau, *m_spaShared);
                     }
                 }
                 zBuf[b * m_ntaus + t] = z;
@@ -708,6 +730,7 @@ class SPAsqrMethod : public MethodBase {
     void processOneMarker(
         const double *centeredScores,
         double altFreq,
+        double G_var,
         std::vector<double> &result
     ) {
         result.clear();
@@ -719,7 +742,7 @@ class SPAsqrMethod : public MethodBase {
 
         for (int i = 0; i < m_ntaus; ++i) {
             double z;
-            double p = scalarGetPvalFromScore(centeredScores[i], altFreq, z,
+            double p = scalarGetPvalFromScore(centeredScores[i], altFreq, G_var, z,
                                               m_spaShared->perTau[i], *m_spaShared);
             zScores[i] = z;
             pvals[i] = p;
@@ -1108,8 +1131,18 @@ void runSPAsqr(
 
             try {
                 Eigen::VectorXd resid;
-                Eigen::VectorXd beta = conquer::smqrGauss(pw[k].X, pw[k].Y, taus[t], pw[k].h, &resid, spasqrTol);
+                conquer::ConquerStatus st;
+                Eigen::VectorXd beta = conquer::smqrGauss(pw[k].X, pw[k].Y, taus[t], pw[k].h, &resid, spasqrTol,
+                                                          5000, 100.0, &st);
                 infoMsg("[%s] tau=%.4f intercept=%.6f", phenoNames[k].c_str(), taus[t], beta(0));
+                if (!st.converged) {
+                    warnMsg("[%s] tau=%.4f conquer did not converge: huber=%d iters (||g||=%.3e, %s),"
+                            " gauss=%d iters (||g||=%.3e, %s); tol=%.3e",
+                            phenoNames[k].c_str(), taus[t],
+                            st.huberIter, st.huberFinalGradNorm, st.huberConverged ? "ok" : "FAIL",
+                            st.gaussIter, st.gaussFinalGradNorm, st.gaussConverged ? "ok" : "FAIL",
+                            spasqrTol);
+                }
 
                 const Eigen::Index Nk = static_cast<Eigen::Index>(pw[k].nk);
                 for (Eigen::Index i = 0; i < Nk; ++i)
@@ -1221,11 +1254,16 @@ void runSPAsqr(
 // ══════════════════════════════════════════════════════════════════════
 // runSPAsqrLoco — LOCO entry point
 //
-// Matches the serial workflow (2.serial_loco.sh):
-//   - conquer fits are chromosome-independent (same Y, same X)
-//   - per-phenotype bandwidth h
-//   - SPAsqrMethod built once per phenotype, cloned per chromosome
-//   - locoEngine iterates chromosomes, testing each chromosome's markers
+// Per-chromosome workflow:
+//   - For each chromosome, the buildTasks callback rebuilds the conquer fits
+//     based on that chromosome's LOCO PRS column.
+//   - Both modes feed conquer with X = pw[k].baseX (original covariates only,
+//     no LOCO augmentation) and y_adj computed per chromosome:
+//       offset    → y_adj = IRN(y_raw) - loco_chr     (β=1, α=0; IRN once before loop)
+//       covariate → y_adj = y_raw - α̂ - β̂·loco_chr   (per-chr OLS partial-out, raw y)
+//   - Per-chr bandwidth h_chr[k] = IQR(y_adj) / scale in BOTH modes (chr-specific).
+//   - locoEngine iterates chromosomes, testing each chromosome's markers via
+//     the multi-phenotype work-stealing engine.
 // ══════════════════════════════════════════════════════════════════════
 
 void runSPAsqrLoco(
@@ -1254,7 +1292,8 @@ void runSPAsqrLoco(
     double spasqrH,
     double spasqrHScale,
     const std::string &keepFile,
-    const std::string &removeFile
+    const std::string &removeFile,
+    const std::string &locoMode
 ) {
     const int K = static_cast<int>(phenoNames.size());
     const int ntaus = static_cast<int>(taus.size());
@@ -1263,6 +1302,7 @@ void runSPAsqrLoco(
     // Union = subjects with genotype ∩ GRM ∩ keep/remove.  Per-phenotype
     // NA filtering is deferred — each phenotype uses its own non-missing
     // subset of the union.
+    infoMsg("SPAsqr-LOCO mode: %s", locoMode.c_str());
     infoMsg("SPAsqr-LOCO: Loading phenotype and covariate data (%d phenotypes, %d taus)", K, ntaus);
     auto famIIDs = parseGenoIIDs(geno);
     SubjectData sd(std::move(famIIDs));
@@ -1317,6 +1357,14 @@ void runSPAsqrLoco(
             if (nCov > 0) pw[k].baseX.row(li) = unionX.row(i);
         }
 
+        // In offset mode, replace Y with its inverse-rank-normal
+        // transform (per-phenotype non-missing scope, Blom plotting position,
+        // average-rank ties).  All downstream math (bandwidth, conquer fit,
+        // y_adj per chromosome) operates on the IRN'd Y.
+        if (locoMode == "offset") {
+            pw[k].Y = math::inverseRankNormal(pw[k].Y);
+        }
+
         // Per-phenotype bandwidth
         if (spasqrH >= 0.0) {
             pw[k].h = spasqrH;
@@ -1340,17 +1388,23 @@ void runSPAsqrLoco(
     }
 
     // Log N/bandwidth table
+    // Both modes compute per-chr h_chr = IQR(y_adj)/scale inside the chr loop;
+    // the value shown here is the GLOBAL reference h derived from IQR(pw[k].Y)
+    // (= IQR(Y_irn) in offset, IQR(Y_raw) in covariate). Actual per-chr h is
+    // logged via "SPAsqr-LOCO chr%s [...]: per-chr h = ...".
     {
+        const char *bwLabel = "global_h(ref)";
         infoMsg("Sample size and smooth bandwidth per phenotype:");
         size_t nameW = 4;
         for (int k = 0; k < K; ++k)
             nameW = std::max(nameW, phenoNames[k].size());
         nameW += 2;
         char row[256];
-        std::snprintf(row, sizeof(row), "    %-*s %10s %12s\n", static_cast<int>(nameW), "", "N", "bandwidth");
+        std::snprintf(row, sizeof(row), "    %-*s %10s %14s\n",
+                      static_cast<int>(nameW), "", "N", bwLabel);
         fprintf(stderr, "%s", row);
         for (int k = 0; k < K; ++k) {
-            std::snprintf(row, sizeof(row), "    %-*s %10u %12.6f\n",
+            std::snprintf(row, sizeof(row), "    %-*s %10u %14.6f\n",
                           static_cast<int>(nameW), phenoNames[k].c_str(), pw[k].nk, pw[k].h);
             fprintf(stderr, "%s", row);
         }
@@ -1381,25 +1435,93 @@ void runSPAsqrLoco(
         phenoGrms[k] = reindexGrm(unionGrm, pw[k].unionToLocal, nUnion);
 
     // ── 7. Build LocoTaskBuilder callback ──────────────────────────
-    // For each chromosome, augment base covariates with the LOCO column
-    // (mapped to pheno-dense space), run K × ntaus conquer fits, and
-    // build K SPAsqrMethods.
+    // For each chromosome, build per-pheno y_adj (mode-dependent), run
+    // K × ntaus conquer fits with X = baseX, and build K SPAsqrMethods.
     auto buildTasks = [&](const std::string &chr, std::vector<PhenoTask> &tasks) {
         tasks.resize(K);
 
-        // Augment base covariates with LOCO column per phenotype (pheno-dense)
-        std::vector<Eigen::MatrixXd> X_augs(K);
+        // Both modes feed conquer with X = pw[k].baseX. Only y_adj differs:
+        //   offset    → y_adj = pw[k].Y(IRN'd) - loco_chr_pheno_dense        (β=1, α=0)
+        //   covariate → y_adj = pw[k].Y(raw)   - α̂ - β̂·loco_chr_pheno_dense  (per-chr OLS)
+        // Per-chr bandwidth h_chr[k] = IQR(y_adj) / scale in both modes.
+        std::vector<Eigen::VectorXd> y_adjs(K);
+        std::vector<double> h_chr(K, 0.0);
+
         for (int k = 0; k < K; ++k) {
             const Eigen::Index Nk = static_cast<Eigen::Index>(pw[k].nk);
-            X_augs[k].resize(Nk, nCov + 1);
-            X_augs[k].leftCols(nCov) = pw[k].baseX;
-            // Extract LOCO scores from union to pheno-dense space
+
+            // Map LOCO scores from union → pheno-dense (Nk-length) space.
             const auto &locoVec = loco.scores.at(phenoNames[k]).at(chr);
+            Eigen::VectorXd loco_dense(Nk);
             for (uint32_t i = 0; i < nUnion; ++i) {
                 uint32_t li = pw[k].unionToLocal[i];
                 if (li != UINT32_MAX)
-                    X_augs[k](li, nCov) = locoVec[i];
+                    loco_dense[li] = locoVec[i];
             }
+
+            // Compute y_adj per mode.
+            if (locoMode == "offset") {
+                // Raw subtraction of loco from IRN'd Y (pw[k].Y already IRN'd in §3).
+                y_adjs[k] = pw[k].Y - loco_dense;
+            } else { // covariate
+                // OLS y_raw ~ 1 + loco_dense  (pw[k].Y stays raw — IRN is offset-only).
+                const double y_mean = pw[k].Y.mean();
+                const double l_mean = loco_dense.mean();
+                const Eigen::ArrayXd y_dev = pw[k].Y.array() - y_mean;
+                const Eigen::ArrayXd l_dev = loco_dense.array() - l_mean;
+                const double l_var = l_dev.square().sum();
+                double beta_hat  = 0.0;
+                double alpha_hat = y_mean;
+                if (l_var > 0.0) {
+                    beta_hat  = (y_dev * l_dev).sum() / l_var;
+                    alpha_hat = y_mean - beta_hat * l_mean;
+                }
+                y_adjs[k] = pw[k].Y.array() - alpha_hat - beta_hat * loco_dense.array();
+                infoMsg("SPAsqr-LOCO chr%s [%s] covariate: OLS partial-out alpha=%.6f beta=%.6f",
+                        chr.c_str(), phenoNames[k].c_str(), alpha_hat, beta_hat);
+            }
+
+            // Diagnostic: corr(Y, loco_chr)^2 in pheno-dense space.
+            // Y here = pw[k].Y (IRN'd in offset mode, raw in covariate mode).
+            double r2_loco = 0.0;
+            {
+                const double mean_y = pw[k].Y.mean();
+                const double mean_l = loco_dense.mean();
+                const Eigen::ArrayXd dev_y = pw[k].Y.array() - mean_y;
+                const Eigen::ArrayXd dev_l = loco_dense.array() - mean_l;
+                const double cov_yl  = (dev_y * dev_l).sum();
+                const double var_y   = dev_y.square().sum();
+                const double var_l   = dev_l.square().sum();
+                if (var_y > 0.0 && var_l > 0.0)
+                    r2_loco = (cov_yl * cov_yl) / (var_y * var_l);
+            }
+
+            // Per-chromosome bandwidth from IQR(y_adj).  --spasqr-h overrides auto-IQR.
+            if (spasqrH >= 0.0) {
+                h_chr[k] = spasqrH;
+            } else {
+                std::vector<double> ysorted(static_cast<size_t>(Nk));
+                Eigen::VectorXd::Map(ysorted.data(), Nk) = y_adjs[k];
+                std::sort(ysorted.begin(), ysorted.end());
+                auto quant = [&](double prob) -> double {
+                    double idx = prob * (Nk - 1);
+                    Eigen::Index lo = static_cast<Eigen::Index>(std::floor(idx));
+                    Eigen::Index hi = std::min(lo + 1, Nk - 1);
+                    double frac = idx - lo;
+                    return ysorted[lo] * (1.0 - frac) + ysorted[hi] * frac;
+                };
+                double iqr = quant(0.75) - quant(0.25);
+                double scale = (spasqrHScale >= 0.0) ? spasqrHScale : 3.0;
+                h_chr[k] = iqr / scale;
+                if (h_chr[k] <= 0.0)
+                    h_chr[k] = std::max(std::pow((std::log(Nk) + nCov) / static_cast<double>(Nk), 0.4), 0.05);
+            }
+
+            const char *yLabel = (locoMode == "offset") ? "Y_irn" : "Y_raw";
+            infoMsg("SPAsqr-LOCO chr%s [%s][%s]: per-chr h = IQR(y_adj)/scale = %.6f (Nk=%u),"
+                    " corr(%s, loco)^2 = %.4f",
+                    chr.c_str(), phenoNames[k].c_str(), locoMode.c_str(),
+                    h_chr[k], pw[k].nk, yLabel, r2_loco);
         }
 
         // Parallel conquer fits: K × ntaus
@@ -1421,11 +1543,25 @@ void runSPAsqrLoco(
                 if (idx >= totalFits) break;
                 int k = idx / ntaus;
                 int t = idx % ntaus;
-                const double h1 = 1.0 / pw[k].h;
+                const double h_use = h_chr[k];
+                const double h1    = 1.0 / h_use;
 
                 try {
                     Eigen::VectorXd resid;
-                    conquer::smqrGauss(X_augs[k], pw[k].Y, taus[t], pw[k].h, &resid, spasqrTol);
+                    conquer::ConquerStatus st;
+                    // Both modes: SQR on (baseX, y_adjs[k]).
+                    //   offset    → y_adjs[k] = IRN(y) - loco_chr
+                    //   covariate → y_adjs[k] = y_raw - α̂ - β̂·loco_chr   (per-chr OLS partial-out)
+                    conquer::smqrGauss(pw[k].baseX, y_adjs[k], taus[t], h_use, &resid, spasqrTol,
+                                       5000, 100.0, &st);
+                    if (!st.converged) {
+                        warnMsg("[%s] chr%s tau=%.4f conquer did not converge: huber=%d iters (||g||=%.3e, %s),"
+                                " gauss=%d iters (||g||=%.3e, %s); tol=%.3e",
+                                phenoNames[k].c_str(), chr.c_str(), taus[t],
+                                st.huberIter, st.huberFinalGradNorm, st.huberConverged ? "ok" : "FAIL",
+                                st.gaussIter, st.gaussFinalGradNorm, st.gaussConverged ? "ok" : "FAIL",
+                                spasqrTol);
+                    }
 
                     const Eigen::Index Nk = static_cast<Eigen::Index>(pw[k].nk);
                     for (Eigen::Index i = 0; i < Nk; ++i)

@@ -286,4 +286,32 @@ OptimResult nelderMead(
     return {simplex[ilo], fvals[ilo], iter};
 }
 
+// § 5  Inverse rank normal transform (Blom, average-rank ties)
+
+Eigen::VectorXd inverseRankNormal(const Eigen::Ref<const Eigen::VectorXd> &y) {
+    const Eigen::Index N = y.size();
+    if (N == 0) throw std::runtime_error("inverseRankNormal: empty input");
+
+    std::vector<Eigen::Index> idx(static_cast<size_t>(N));
+    for (Eigen::Index i = 0; i < N; ++i) idx[static_cast<size_t>(i)] = i;
+    std::stable_sort(idx.begin(), idx.end(),
+                     [&](Eigen::Index a, Eigen::Index b) { return y[a] < y[b]; });
+
+    Eigen::VectorXd out(N);
+    const double denom = static_cast<double>(N) + 0.25;
+
+    Eigen::Index i = 0;
+    while (i < N) {
+        Eigen::Index j = i + 1;
+        while (j < N && y[idx[static_cast<size_t>(j)]] == y[idx[static_cast<size_t>(i)]]) ++j;
+        // 1-based ranks i+1 .. j ; midpoint = (i+1 + j) / 2.
+        const double avgRank = (static_cast<double>(i + 1) + static_cast<double>(j)) * 0.5;
+        const double p = (avgRank - 0.375) / denom;
+        const double z = qnorm(p);
+        for (Eigen::Index k = i; k < j; ++k) out[idx[static_cast<size_t>(k)]] = z;
+        i = j;
+    }
+    return out;
+}
+
 } // namespace math

@@ -15,6 +15,21 @@
 
 namespace conquer {
 
+// Per-fit convergence diagnostics for smqrGauss.
+//
+// `converged` is true iff BOTH the Huber init phase and the Gaussian
+// smoothed phase reached the gradient tolerance within their iteration
+// budgets.  The per-phase fields let callers diagnose which phase failed.
+struct ConquerStatus {
+    bool   converged          = false; // both phases met tol
+    int    huberIter          = 0;     // iterations used in Phase 1 (Huber init)
+    bool   huberConverged     = false;
+    double huberFinalGradNorm = 0.0;   // final ||grad||_∞ of Phase 1
+    int    gaussIter          = 0;     // iterations used in Phase 2 (Gaussian smoothed)
+    bool   gaussConverged     = false;
+    double gaussFinalGradNorm = 0.0;   // final ||grad||_∞ of Phase 2
+};
+
 // Run smoothed quantile regression for a single tau.
 //
 //   X  : n × p  design matrix (raw covariates, NOT including intercept)
@@ -24,6 +39,10 @@ namespace conquer {
 //
 // Returns (p+1) coefficient vector:  beta(0) = intercept,  beta(1..p) = slopes.
 // Also stores the final n-vector of residuals in `residOut` if non-null.
+//
+// If `statusOut` is non-null, populates it with per-phase convergence info.
+// The function never throws on non-convergence — callers must check
+// `statusOut->converged` and decide how to react.
 Eigen::VectorXd smqrGauss(
     const Eigen::MatrixXd &X,
     const Eigen::VectorXd &Y,
@@ -32,7 +51,8 @@ Eigen::VectorXd smqrGauss(
     Eigen::VectorXd *residOut = nullptr,
     double tol = 1e-7,
     int iteMax = 5000,
-    double stepMax = 100.0
+    double stepMax = 100.0,
+    ConquerStatus *statusOut = nullptr
 );
 
 } // namespace conquer

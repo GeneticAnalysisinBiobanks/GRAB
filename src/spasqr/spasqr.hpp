@@ -104,5 +104,6 @@ void runSPAsqrLoco(
     double spasqrH = -1.0,
     double spasqrHScale = -1.0,
     const std::string &keepFile = {},
-    const std::string &removeFile = {}
+    const std::string &removeFile = {},
+    const std::string &locoMode = "offset"
 );

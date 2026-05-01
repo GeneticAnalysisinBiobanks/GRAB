@@ -248,9 +248,24 @@ inline const FlagDef kRemove = {
 };
 
 inline const FlagDef kPredList = {
-    "--pred-list", "FILE", "Regenie step 1 pred.list file for LOCO analysis (phenoName locoPath per line)",
+    "--pred-list", "FILE", "pred.list file for LOCO analysis (phenoName locoPath per line; Regenie or LDAK-KVIK)",
     R"(Space-separated file with two columns: phenotype name and path to
-the corresponding .loco file from Regenie step 1.)"
+the corresponding .loco file. The .loco file format is auto-detected
+per phenotype: Regenie (header begins with FID_IID, chromosome-major
+rows) or LDAK-KVIK (header FID IID Chr1 Chr2 ... Chr22, subject-major
+rows).)"
+};
+
+inline const FlagDef kLocoMode = {
+    "--loco-mode", "MODE",
+    "How LOCO PRS enters SPAsqr-LOCO: offset (default) | covariate",
+    R"(Selects how the per-chromosome LOCO PRS is consumed:
+  offset    — inverse-rank-normal-transform Y per phenotype, then fit
+              conquer on (Y_irn - loco_chr) with the original covariates
+              only (LOCO subtracted from the response as an offset).
+  covariate — append the LOCO column to the conquer covariate matrix
+              and fit conquer on (Y, [X | loco_chr]).
+Only meaningful when --pred-list is provided.)"
 };
 
 inline const FlagDef kExtract = {
@@ -478,7 +493,7 @@ inline const FlagDef *const kSPAsqrOpt[] = {
     &kPhenoName,    &kSpasqrTaus, &kSpasqrTol,  &kSpasqrH,
     &kSpasqrHScale, &kOutlierIqr, &kOutlierAbs,
     &kSpaZThresh,   &kThreads,    &kChunkSize,  &kGeno, &kMaf,
-    &kMac,          &kHwe,        &kChr,        &kPredList,
+    &kMac,          &kHwe,        &kChr,        &kPredList,    &kLocoMode,
     nullptr
 };
 
