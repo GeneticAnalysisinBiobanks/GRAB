@@ -181,12 +181,17 @@ static void logArgsInEffect(const Args &args) {
             args.calAfCoef || args.method == "SPAmix" || args.method == "SPAmixPlus" || args.method == "LEAF";
         if (usesPcCols && !args.pcCols.empty()) std::fprintf(stderr, "  --pc-cols %s\n", args.pcCols.c_str());
     }
-    // spasqr-taus: relevant for SPAsqr pheno path
-    if (args.method == "SPAsqr" && !args.phenoName.empty() && !args.spasqrTaus.empty())std::fprintf(
-            stderr,
-            "  --spasqr-taus %s\n",
-            args.spasqrTaus.c_str()
-    );
+    // SPAsqr-specific knobs (relevant for SPAsqr pheno path)
+    if (args.method == "SPAsqr" && !args.phenoName.empty()) {
+        if (!args.spasqrTaus.empty())
+            std::fprintf(stderr, "  --spasqr-taus %s\n", args.spasqrTaus.c_str());
+        if (args.spasqrTol != 1e-7)
+            std::fprintf(stderr, "  --spasqr-tol %g\n", args.spasqrTol);
+        if (args.spasqrH >= 0.0)
+            std::fprintf(stderr, "  --spasqr-h %g\n", args.spasqrH);
+        if (args.spasqrHScale >= 0.0)
+            std::fprintf(stderr, "  --spasqr-h-scale %g\n", args.spasqrHScale);
+    }
     // other files
     if (!args.refAfFile.empty()) std::fprintf(stderr, "  --ref-af %s\n", args.refAfFile.c_str());
     if (!args.spGrmGrabFile.empty()) std::fprintf(stderr, "  --sp-grm-grab %s\n", args.spGrmGrabFile.c_str());
@@ -196,6 +201,11 @@ static void logArgsInEffect(const Args &args) {
     if (!args.extractFile.empty()) std::fprintf(stderr, "  --extract %s\n", args.extractFile.c_str());
     if (!args.excludeFile.empty()) std::fprintf(stderr, "  --exclude %s\n", args.excludeFile.c_str());
     if (!args.chrSpec.empty()) std::fprintf(stderr, "  --chr %s\n", args.chrSpec.c_str());
+    // LOCO (SPAsqr): only meaningful when --pred-list is given
+    if (!args.predListFile.empty()) {
+        std::fprintf(stderr, "  --pred-list %s\n", args.predListFile.c_str());
+        std::fprintf(stderr, "  --loco-mode %s\n", args.locoMode.c_str());
+    }
     if (!args.admixBfilePrefix.empty()) std::fprintf(stderr, "  --admix-bfile %s\n", args.admixBfilePrefix.c_str());
     if (!args.admixPhiFile.empty()) std::fprintf(stderr, "  --admix-phi %s\n", args.admixPhiFile.c_str());
     if (!args.mspFile.empty()) std::fprintf(stderr, "  --rfmix-msp %s\n", args.mspFile.c_str());
@@ -665,7 +675,11 @@ int run(
 
         // ── SPAsqr ─────────────────────────────────────────────────
         else if (args.method == "SPAsqr") {
-            checkSpGrm(args, /*required=*/ true, "SPAsqr");
+            checkSpGrm(args, /*required=*/ false, "SPAsqr");
+            if (args.spGrmGrabFile.empty() && args.spGrmPlink2File.empty()) {
+                warnMsg("SPAsqr: no --sp-grm-grab/--sp-grm-plink2 provided;"
+                        " falling back to identity GRM (assumes unrelated subjects)");
+            }
             if (args.phenoFile.empty() && args.covarFile.empty()) {
                 std::cerr << "Error: --pheno or --covar required for SPAsqr.\n";
                 return 1;
@@ -696,6 +710,11 @@ int run(
                 taus.push_back(t);
             }
             if (!args.predListFile.empty()) {
+                if (args.locoMode != "offset" && args.locoMode != "covariate") {
+                    std::cerr << "Error: --loco-mode must be 'offset' or 'covariate', got '"
+                              << args.locoMode << "'\n";
+                    return 1;
+                }
                 // Early validation: check all phenotypes have LOCO entries
                 {
                     std::ifstream pf(args.predListFile);
@@ -748,7 +767,8 @@ int run(
                     args.spasqrH,
                     args.spasqrHScale,
                     args.keepFile,
-                    args.removeFile
+                    args.removeFile,
+                    args.locoMode
                 );
             } else {
                 runSPAsqr(

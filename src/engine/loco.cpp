@@ -33,14 +33,31 @@ using namespace engine_impl;
 // LocoData — load Regenie step 1 LOCO predictions
 // ══════════════════════════════════════════════════════════════════════
 
-// Parse a .loco file directly into aligned vectors.
+// LOCO file format. Selected by header sniff in detectLocoFormat().
+enum class LocoFormat { Regenie, Ldak };
+
+// Detect format from the first whitespace-delimited token of the header.
+//   Regenie writes the literal joined token "FID_IID".
+//   LDAK-KVIK writes two separate tokens "FID" then "IID".
+static LocoFormat detectLocoFormat(const std::string &path) {
+    std::ifstream ifs(path);
+    if (!ifs.is_open())
+        throw std::runtime_error("Cannot open LOCO file for format detection: " + path);
+    std::string firstTok;
+    ifs >> firstTok;
+    if (firstTok.empty())
+        throw std::runtime_error("Empty LOCO file: " + path);
+    return (firstTok == "FID_IID") ? LocoFormat::Regenie : LocoFormat::Ldak;
+}
+
+// Parse a Regenie .loco file directly into aligned vectors.
 // Memory-maps the file and parses with strtod for zero-copy I/O —
 // avoids ifstream/getline overhead on multi-MB lines (400K columns).
 // Only autosomal chromosomes 1–22 are kept.
 //
 // Header: FID_IID  0_HG00096  0_HG00097  ...
 // Data:   1  0.0306  0.271  ...
-static std::unordered_map<std::string, Eigen::VectorXd>parseLocoFile(
+static std::unordered_map<std::string, Eigen::VectorXd>parseRegenieLocoFile(
     const std::string &path,
     const std::vector<std::string> &usedIIDs
 ) {
@@ -186,6 +203,160 @@ static std::unordered_map<std::string, Eigen::VectorXd>parseLocoFile(
     return result;
 }
 
+// Parse an LDAK-KVIK .loco file (transpose of Regenie layout).
+// Memory-mapped, zero-copy strtod, autosomes 1–22 only.
+//
+// Header: FID  IID  Chr1  Chr2  Chr3  ...  Chr22
+// Data:   U-2  U-2  0.6455  0.4759  ...  0.8893     (one row per subject)
+//
+// Chromosome labels are normalized: "Chr1" → "1", "Chr22" → "22"
+// so downstream chunk lookups match .bim/VCF/BGEN CHROM strings.
+static std::unordered_map<std::string, Eigen::VectorXd>parseLdakLocoFile(
+    const std::string &path,
+    const std::vector<std::string> &usedIIDs
+) {
+    int fd = ::open(path.c_str(), O_RDONLY);
+    if (fd < 0) throw std::runtime_error("Cannot open LOCO file: " + path);
+
+    struct stat st;
+    if (::fstat(fd, &st) != 0) {
+        ::close(fd);
+        throw std::runtime_error("Cannot stat LOCO file: " + path);
+    }
+    const size_t fileSize = static_cast<size_t>(st.st_size);
+    if (fileSize == 0) {
+        ::close(fd);
+        throw std::runtime_error("Empty LOCO file: " + path);
+    }
+
+    void *mapped = ::mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE | MAP_POPULATE, fd, 0);
+    ::close(fd);
+    if (mapped == MAP_FAILED)
+        throw std::runtime_error("Cannot mmap LOCO file: " + path);
+    ::madvise(mapped, fileSize, MADV_SEQUENTIAL);
+
+    struct Guard { void *p; size_t n; ~Guard()
+                   {
+                       ::munmap(p, n);
+                   }
+
+    } guard{mapped, fileSize};
+
+    const char *p = static_cast<const char *>(mapped);
+    const char *const fend = p + fileSize;
+    const auto nUsed = static_cast<Eigen::Index>(usedIIDs.size());
+
+    auto skipWS = [&]() {
+                      while (p < fend && (*p == ' ' || *p == '\t')) ++p;
+                  };
+
+    auto readToken = [&](std::string &out) {
+                         out.clear();
+                         skipWS();
+                         while (p < fend && *p != ' ' && *p != '\t' && *p != '\n' && *p != '\r')
+                             out.push_back(*p++);
+                     };
+
+    // ── Header: expect "FID IID Chr1 Chr2 ... Chr22" ────────────────
+    std::string tok;
+    tok.reserve(32);
+
+    readToken(tok);
+    if (tok != "FID")
+        throw std::runtime_error("LDAK LOCO " + path + ": expected first header token 'FID', got '" + tok + "'");
+    readToken(tok);
+    if (tok != "IID")
+        throw std::runtime_error("LDAK LOCO " + path + ": expected second header token 'IID', got '" + tok + "'");
+
+    // Collect chromosome columns. chrCols[c] = "1".."22" if autosomal, else empty (skip).
+    std::vector<std::string> chrCols;
+    chrCols.reserve(32);
+    while (p < fend && *p != '\n' && *p != '\r') {
+        readToken(tok);
+        if (tok.empty()) break;
+        // Strip "Chr"/"chr" prefix.
+        std::string label = tok;
+        if (label.size() > 3 && (label[0] == 'C' || label[0] == 'c') && (label[1] == 'h' || label[1] == 'H') &&
+            (label[2] == 'r' || label[2] == 'R'))
+            label = label.substr(3);
+
+        // Autosomal check: integer 1–22.
+        bool autosomal = false;
+        if (!label.empty() && label.size() <= 2) {
+            int chrNum = 0;
+            bool ok = true;
+            for (char c : label) {
+                if (c < '0' || c > '9') { ok = false; break; }
+                chrNum = chrNum * 10 + (c - '0');
+            }
+            autosomal = ok && chrNum >= 1 && chrNum <= 22;
+        }
+        chrCols.push_back(autosomal ? label : std::string{});
+    }
+    if (p < fend && *p == '\r') ++p;
+    if (p < fend && *p == '\n') ++p;
+
+    if (chrCols.empty())
+        throw std::runtime_error("LDAK LOCO " + path + ": header has no chromosome columns");
+
+    // ── Pre-allocate output vectors for each kept chromosome ─────────
+    std::unordered_map<std::string, Eigen::VectorXd> result;
+    for (const auto &c : chrCols)
+        if (!c.empty()) result[c] = Eigen::VectorXd::Zero(nUsed);
+
+    // ── Build IID → usedIIDs index ──────────────────────────────────
+    std::unordered_map<std::string, Eigen::Index> iidIdx;
+    iidIdx.reserve(usedIIDs.size());
+    for (size_t i = 0; i < usedIIDs.size(); ++i)
+        iidIdx[usedIIDs[i]] = static_cast<Eigen::Index>(i);
+
+    std::vector<bool> usedHit(usedIIDs.size(), false);
+    std::string fidTok, iidTok;
+    fidTok.reserve(64);
+    iidTok.reserve(64);
+
+    const size_t nCols = chrCols.size();
+
+    // ── Data rows: FID  IID  v1 v2 ... vN ───────────────────────────
+    while (p < fend) {
+        while (p < fend && (*p == '\n' || *p == '\r')) ++p;
+        if (p >= fend) break;
+
+        readToken(fidTok);
+        if (fidTok.empty()) break;
+        readToken(iidTok);
+        if (iidTok.empty())
+            throw std::runtime_error("LDAK LOCO " + path + ": missing IID token after FID '" + fidTok + "'");
+
+        Eigen::Index pos = -1;
+        auto it = iidIdx.find(iidTok);
+        if (it != iidIdx.end()) pos = it->second;
+
+        for (size_t c = 0; c < nCols; ++c) {
+            skipWS();
+            char *ep;
+            double val = std::strtod(p, &ep);
+            if (ep == p)
+                throw std::runtime_error("LDAK LOCO " + path + " IID '" + iidTok +
+                                         "': invalid value at column " + std::to_string(c + 1));
+            p = ep;
+            if (pos >= 0 && !chrCols[c].empty())
+                result[chrCols[c]][pos] = val;
+        }
+        if (pos >= 0) usedHit[static_cast<size_t>(pos)] = true;
+
+        while (p < fend && *p != '\n') ++p;
+        if (p < fend) ++p;
+    }
+
+    for (size_t i = 0; i < usedIIDs.size(); ++i) {
+        if (!usedHit[i])
+            throw std::runtime_error("Subject '" + usedIIDs[i] + "' not found in LDAK LOCO file: " + path);
+    }
+
+    return result;
+}
+
 LocoData LocoData::load(
     const std::string &predListFile,
     const std::vector<std::string> &phenoNames,
@@ -221,7 +392,13 @@ LocoData LocoData::load(
     for (const auto &pn : phenoNames) {
         const std::string &locoPath = predMap.at(pn);
 
-        result.scores[pn] = parseLocoFile(locoPath, usedIIDs);
+        const LocoFormat fmt = detectLocoFormat(locoPath);
+        infoMsg("LOCO[%s]: detected %s format", pn.c_str(),
+                fmt == LocoFormat::Regenie ? "regenie" : "ldak");
+
+        result.scores[pn] = (fmt == LocoFormat::Regenie)
+            ? parseRegenieLocoFile(locoPath, usedIIDs)
+            : parseLdakLocoFile(locoPath, usedIIDs);
 
         if (result.scores[pn].size() < 22)
             throw std::runtime_error("LOCO file for '" + pn + "' contains " +

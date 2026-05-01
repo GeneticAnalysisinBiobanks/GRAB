@@ -129,7 +129,9 @@ Eigen::VectorXd huberReg(
     double tol,
     double constTau,
     int iteMax,
-    double stepMax
+    double stepMax,
+    int *iterOut = nullptr,
+    double *finalGradNormOut = nullptr
 ) {
     double rob = constTau * eigMad(Y);
     updateHuber(Z, Y, tau, der, gradOld, n, rob, n1);
@@ -157,6 +159,8 @@ Eigen::VectorXd huberReg(
         gradDiff = gradNew - gradOld;
         ++ite;
     }
+    if (iterOut) *iterOut = ite;
+    if (finalGradNormOut) *finalGradNormOut = gradNew.lpNorm<Eigen::Infinity>();
     return beta;
 }
 
@@ -174,7 +178,8 @@ Eigen::VectorXd smqrGauss(
     Eigen::VectorXd *residOut,
     double tol,
     int iteMax,
-    double stepMax
+    double stepMax,
+    ConquerStatus *statusOut
 ) {
     const int n = static_cast<int>(X.rows());
     const int p = static_cast<int>(X.cols());
@@ -206,7 +211,10 @@ Eigen::VectorXd smqrGauss(
     Eigen::VectorXd der(n), gradOld(p + 1), gradNew(p + 1);
 
     // Phase 1: Huber initialization
-    Eigen::VectorXd beta = huberReg(Z, Yc, tau, der, gradOld, gradNew, n, p, n1, tol, constTau, iteMax, stepMax);
+    int huberIter = 0;
+    double huberFinalGradNorm = 0.0;
+    Eigen::VectorXd beta = huberReg(Z, Yc, tau, der, gradOld, gradNew, n, p, n1, tol, constTau, iteMax, stepMax,
+                                    &huberIter, &huberFinalGradNorm);
 
     // Quantile intercept adjustment
     Eigen::VectorXd resNoIntercept = Yc - Z.rightCols(p) * beta.tail(p);
@@ -239,11 +247,23 @@ Eigen::VectorXd smqrGauss(
         ++ite;
     }
 
+    const double gaussFinalGradNorm = gradNew.lpNorm<Eigen::Infinity>();
+
     // Un-standardize coefficients
     beta.tail(p).array() *= sx.array();
     beta(0) += my - (mx.array() * beta.tail(p).transpose().array()).sum();
 
     if (residOut) *residOut = res;
+
+    if (statusOut) {
+        statusOut->huberIter = huberIter;
+        statusOut->huberConverged = (huberFinalGradNorm <= tol) && (huberIter <= iteMax);
+        statusOut->huberFinalGradNorm = huberFinalGradNorm;
+        statusOut->gaussIter = ite;
+        statusOut->gaussConverged = (gaussFinalGradNorm <= tol) && (ite <= iteMax);
+        statusOut->gaussFinalGradNorm = gaussFinalGradNorm;
+        statusOut->converged = statusOut->huberConverged && statusOut->gaussConverged;
+    }
 
     return beta;
 }

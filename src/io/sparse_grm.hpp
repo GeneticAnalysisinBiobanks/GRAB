@@ -96,7 +96,9 @@ class SparseGRM {
     }
 
     // Cached diagonal of G (self-relatedness per subject).
-    // diagonal()[i] == G(i,i).  Default 0.0 if subject has no diagonal entry.
+    // diagonal()[i] == G(i,i).  Loader throws if any subject has no
+    // diagonal entry — every subject in subjectOrder must have an
+    // explicit (i, i, value) row in the input file.
     const std::vector<double> &diagonal() const {
         return m_diagonal;
     }
