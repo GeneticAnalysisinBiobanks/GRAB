@@ -24,6 +24,12 @@
 
 #include <fcntl.h>
 #include <sys/mman.h>
+
+// MAP_POPULATE is a Linux-specific flag that pre-faults pages on mmap.
+// macOS / BSD have no equivalent — fall back to plain MAP_PRIVATE.
+#ifndef MAP_POPULATE
+#  define MAP_POPULATE 0
+#endif
 #include <sys/stat.h>
 #include <unistd.h>
 

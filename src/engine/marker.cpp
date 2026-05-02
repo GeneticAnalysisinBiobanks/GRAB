@@ -625,14 +625,12 @@ void multiPhenoEngineRange(
             std::vector<std::vector<double> > winGSums;
             std::vector<double> passAltFreqs;
             std::vector<double> passGSums;
-            std::vector<double> passGSumSqs;
             std::vector<std::vector<double> > fusedResultsBuf;
 
             if (hasFused) {
                 winGSums.resize(nFuseable, std::vector<double>(B, 0.0));
                 passAltFreqs.reserve(B);
                 passGSums.reserve(B);
-                passGSumSqs.reserve(B);
             }
 
             // Pre-allocated passScores buffer (A2): reused across windows.
@@ -786,7 +784,6 @@ void multiPhenoEngineRange(
 
                             passAltFreqs.clear();
                             passGSums.clear();
-                            passGSumSqs.clear();
                             int passCount = 0;
 
                             for (size_t bi = 0; bi < wlen; ++bi) {
@@ -817,7 +814,6 @@ void multiPhenoEngineRange(
                                 if (wmQC[bi].pass) {
                                     passAltFreqs.push_back(gs.altFreq);
                                     passGSums.push_back(gSum);
-                                    passGSumSqs.push_back(gs.sumSq);
                                     ++passCount;
                                 }
                             }
@@ -842,7 +838,7 @@ void multiPhenoEngineRange(
 
                                     methods[p]->processScoreBatch(
                                         passScoresBuf.topLeftCorner(fp.nCols, passCount),
-                                        passGSums.data(), passGSumSqs.data(), fp.nUsed,
+                                        passGSums.data(), fp.nUsed,
                                         passAltFreqs, fusedResultsBuf);
                                 }
 

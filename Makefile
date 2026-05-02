@@ -38,14 +38,27 @@ else
   export TEMP := $(WIN_TMP)
 endif
 
-# ── AVX2 detection ────────────────────────────────────────────────────────────
-# Try to compile a small AVX2 test; if the compiler supports it, enable -mavx2.
-# Use a temp file as output target for portability (MSYS2/Windows lacks /dev/null for ld).
-AVX2_OK := $(shell TMP_AVX=$$(mktemp -u 2>/dev/null || echo __avx2_test__); \
-  echo 'int main(){return 0;}' | $(CXX) -x c++ -mavx2 - -o "$$TMP_AVX" 2>/dev/null \
-  && { rm -f "$$TMP_AVX"; echo 1; } || rm -f "$$TMP_AVX")
-ifeq ($(AVX2_OK),1)
-  SIMD_FLAGS := -mavx2 -mbmi -mbmi2 -mlzcnt -mfma
+# ── Architecture detection ────────────────────────────────────────────────────
+# IS_X86 = 1 on x86_64; otherwise 0 (covers arm64/aarch64 macOS M-series, etc.).
+UNAME_M := $(shell uname -m 2>/dev/null)
+ifeq ($(UNAME_M),x86_64)
+  IS_X86 := 1
+else
+  IS_X86 := 0
+endif
+
+# ── AVX2 detection (x86 only) ─────────────────────────────────────────────────
+# Apple clang on ARM warns "-mavx2 unused" instead of erroring, so the probe
+# would falsely succeed.  Restrict the probe to x86 outright.
+ifeq ($(IS_X86),1)
+  AVX2_OK := $(shell TMP_AVX=$$(mktemp -u 2>/dev/null || echo __avx2_test__); \
+    echo 'int main(){return 0;}' | $(CXX) -x c++ -mavx2 - -o "$$TMP_AVX" 2>/dev/null \
+    && { rm -f "$$TMP_AVX"; echo 1; } || rm -f "$$TMP_AVX")
+  ifeq ($(AVX2_OK),1)
+    SIMD_FLAGS := -mavx2 -mbmi -mbmi2 -mlzcnt -mfma
+  else
+    SIMD_FLAGS :=
+  endif
 else
   SIMD_FLAGS :=
 endif
@@ -56,12 +69,12 @@ endif
 # __builtin_cpu_supports().  The baseline march must NOT include AVX2 so
 # that the scalar codepaths remain runnable on older x86-64 hardware.
 # Third-party code (pgenlib, bgen, htslib, …) keeps compile-time SIMD_FLAGS.
-UNAME_M := $(shell uname -m 2>/dev/null)
-ifeq ($(UNAME_M),x86_64)
+ifeq ($(IS_X86),1)
   # Default: native arch for best SIMD (AVX-512 on Zen 5, etc.).
   # Override with GRAB_MARCH=-march=x86-64-v2 for portable binaries.
   GRAB_MARCH := -march=native
 else
+  # ARM (arm64 / aarch64): rely on default tuning + scalar fallbacks.
   GRAB_MARCH :=
 endif
 
@@ -78,10 +91,13 @@ GRAB_CXXFLAGS := -std=c++17 -O3 -DNDEBUG $(GRAB_MARCH) $(PLATFORM_FLAGS) \
             -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare \
             -Wno-maybe-uninitialized
 CFLAGS   := -O3 -DNDEBUG $(PLATFORM_FLAGS) -ffunction-sections -fdata-sections $(SIMD_FLAGS)
-STATIC_LIBS := -static-libstdc++ -static-libgcc
+# Static libgcc/libstdc++: GCC/MinGW supports it for portable Linux/Windows
+# binaries; Apple clang on macOS doesn't accept these flags.
 ifeq ($(PLATFORM),macos)
+  STATIC_LIBS :=
   LDFLAGS := -Wl,-dead_strip -lpthread $(PLATFORM_LDLIBS) $(STATIC_LIBS)
 else
+  STATIC_LIBS := -static-libstdc++ -static-libgcc
   LDFLAGS := -Wl,--gc-sections -lpthread $(PLATFORM_LDLIBS) $(STATIC_LIBS)
 endif
 

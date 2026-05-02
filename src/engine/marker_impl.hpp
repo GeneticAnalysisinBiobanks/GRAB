@@ -13,7 +13,9 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
-#include <immintrin.h>
+#if defined(__x86_64__) || defined(_M_X64)
+#  include <immintrin.h>
+#endif
 #include <string>
 #include <string_view>
 #include <vector>
@@ -185,7 +187,6 @@ static_assert(sizeof(PaddedFlag) == 64, "PaddedFlag must be 64 bytes");
 
 struct PhenoGenoStats {
     double altFreq, mac, missingRate, hweP;
-    double sumSq;   // post-imputation Σ G_i² over present subjects
 };
 
 // Compute per-phenotype genotype stats from union-level genotype vector
@@ -198,11 +199,9 @@ inline PhenoGenoStats statsFromUnionVec(
     uint32_t nUsed
 ) {
     uint32_t nHomRef = 0, nHet = 0, nHomAlt = 0, nMissing = 0;
-    double sumSq = 0.0;
     for (uint32_t i = 0; i < nUnion; ++i) {
         if (mask[i] == 0.0) continue;  // absent from this phenotype
         const double v = unionG[i];
-        sumSq += v * v;                // post-impute Σv² (universal: hard-call/dosage/imputed)
         if (v == 0.0)
             ++nHomRef;
         else if (v == 1.0)
@@ -213,7 +212,6 @@ inline PhenoGenoStats statsFromUnionVec(
             ++nMissing;  // NaN or dosage
     }
     PhenoGenoStats s;
-    s.sumSq = sumSq;
     uint32_t nonMissing = nHomRef + nHet + nHomAlt;
     if (nonMissing == 0) {
         // Dosage data: compute from gSum (not discrete genotypes).
@@ -242,14 +240,12 @@ inline PhenoGenoStats statsFromGVec(
 ) {
     indexForMissing.clear();
     uint32_t nHomRef = 0, nHet = 0, nHomAlt = 0;
-    double sumSq = 0.0;
     for (uint32_t i = 0; i < n; ++i) {
         const double v = g[i];
         if (std::isnan(v) || v < 0.0) {
             indexForMissing.push_back(i);
             continue;
         }
-        sumSq += v * v;
         if (v == 0.0)
             ++nHomRef;
         else if (v == 1.0)
@@ -260,7 +256,6 @@ inline PhenoGenoStats statsFromGVec(
             indexForMissing.push_back(i);
     }
     PhenoGenoStats s;
-    s.sumSq = sumSq;
     uint32_t nonMissing = nHomRef + nHet + nHomAlt;
     if (nonMissing == 0) {
         s.altFreq = NAN;
@@ -334,6 +329,7 @@ inline void extractGather(
         phenoG[j] = unionG[presentIndices[j]];
 }
 
+#if defined(__x86_64__) || defined(_M_X64)
 // AVX-512 compress-store extraction using precomputed bitmask.
 // presentMask is a packed bitmask: bit i set ↔ union subject i is present.
 // Processes 8 doubles per iteration using VCOMPRESSSTOREPD.
@@ -359,6 +355,7 @@ inline void extractCompress_avx512(
             phenoG[outIdx++] = unionG[i];
     }
 }
+#endif
 
 // Build bitmask from unionToLocal. Called once per MissBatch.
 inline std::vector<uint64_t> buildPresentMask(
@@ -387,11 +384,16 @@ inline void extractPhenoFast(
         std::memcpy(phenoG, unionG, static_cast<size_t>(nUsed) * sizeof(double));
         return;
     }
+#if defined(__x86_64__) || defined(_M_X64)
     if (simdLevel() >= SimdLevel::AVX512) {
         extractCompress_avx512(unionG, presentMask, nUnion, phenoG);
     } else {
         extractGather(unionG, presentIndices, nUsed, phenoG);
     }
+#else
+    (void)presentMask; (void)nUnion;
+    extractGather(unionG, presentIndices, nUsed, phenoG);
+#endif
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -454,7 +456,6 @@ inline void extractAndStatsBatched(
     for (size_t p = 0; p < K; ++p) {
         const uint32_t nonMissing = acc[p].nHomRef + acc[p].nHet + acc[p].nHomAlt;
         PhenoGenoStats &s = outStats[p];
-        s.sumSq = static_cast<double>(acc[p].nHet) + 4.0 * static_cast<double>(acc[p].nHomAlt);
         if (nonMissing == 0) {
             s.altFreq = NAN;
             s.mac = NAN;
@@ -520,7 +521,6 @@ inline PhenoGenoStats sparseExtractAndStats(
 
     // Compute stats from counts
     PhenoGenoStats s;
-    s.sumSq = static_cast<double>(counts[1]) + 4.0 * static_cast<double>(counts[2]);
     const uint32_t nonMissing = counts[0] + counts[1] + counts[2];
     if (nonMissing == 0) {
         s.altFreq = NAN;

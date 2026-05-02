@@ -27,7 +27,9 @@
 #include <vector>
 
 #include <Eigen/Dense>
-#include <immintrin.h>
+#if defined(__x86_64__) || defined(_M_X64)
+#  include <immintrin.h>
+#endif
 #include "util/simd_dispatch.hpp"
 #include "util/simd_math.hpp"
 
@@ -94,6 +96,8 @@ inline ScalarCgfResult scalarOutlierCgf(
 }
 
 // ── SIMD-vectorized outlier CGF (C1): processes outliers in SIMD lanes ──
+
+#if defined(__x86_64__) || defined(_M_X64)
 
 __attribute__((target("avx2,avx512f,avx512vl,fma")))
 static ScalarCgfResult simdOutlierCgf_avx512(
@@ -233,15 +237,20 @@ static ScalarCgfResult simdOutlierCgf_avx2(
     return {logMgf0Sum, tempSum, s1 - s2};
 }
 
+#endif  // x86_64 SIMD variants
+
 // ── Dispatch: pick fastest available CGF implementation ─────────────
 using OutlierCgfFn = ScalarCgfResult (*)(double, const double *, int, double);
 
 static OutlierCgfFn pickOutlierCgfFn() {
+#if defined(__x86_64__) || defined(_M_X64)
     switch (simdLevel()) {
     case SimdLevel::AVX512: return simdOutlierCgf_avx512;
     case SimdLevel::AVX2:   return simdOutlierCgf_avx2;
-    default:                return scalarOutlierCgf;
+    default: break;
     }
+#endif
+    return scalarOutlierCgf;
 }
 
 static const OutlierCgfFn outlierCgf = pickOutlierCgfFn();
@@ -370,8 +379,7 @@ struct SPAsqrSPAShared {
 };
 
 // ── Per-tau p-value (replaces SPAGRMClass::getMarkerPvalFromScore) ──
-// G_var = empirical Var(G) from the caller (post-imputation, per-pheno).
-// MAF kept for SPA CGF (binomial structural assumption); not used for variance.
+// G_var = theoretical HWE binomial variance 2·MAF·(1-MAF), passed in by caller.
 inline double scalarGetPvalFromScore(
     double Score,
     double altFreq,
@@ -419,8 +427,8 @@ inline double scalarGetPvalFromScore(
 // Computes the SPA p-value for a marker that failed the normal-approx
 // cutoff.  Both tails share the MAF/variance setup and outlier data
 // pointer extraction; only the Newton root and saddlepoint differ.
-// G_var = empirical Var(G) from caller; ratio EmpVar/Score_var is invariant
-// to the choice of variance, so SPA tails behave the same as before.
+// G_var = theoretical HWE binomial variance 2·MAF·(1-MAF) from caller.
+// Ratio EmpVar/Score_var is invariant to this choice, so SPA tails are stable.
 inline double fusedGetPvalSpa(
     double Score,
     double altFreq,
@@ -538,9 +546,9 @@ class SPAsqrMethod : public MethodBase {
 
         const double n      = static_cast<double>(GVec.size());
         const double gSum   = GVec.sum();
-        const double gSumSq = GVec.squaredNorm();
         const double gMean  = gSum / n;
-        const double G_var  = (gSumSq - gSum * gSum / n) / (n - 1.0);
+        const double maf    = std::min(altFreq, 1.0 - altFreq);
+        const double G_var  = 2.0 * maf * (1.0 - maf);   // theoretical HWE binomial variance
 
         Eigen::VectorXd scores = m_methodShared->residMat.transpose() * GVec;
         for (int i = 0; i < m_ntaus; ++i)
@@ -564,12 +572,9 @@ class SPAsqrMethod : public MethodBase {
         const Eigen::VectorXd gMeans = GBatch.colwise().mean();
         scoreMatrix.noalias() -= m_methodShared->residSums * gMeans.transpose();
 
-        const double n  = static_cast<double>(GBatch.rows());
-        const double n1 = n - 1.0;
         for (int b = 0; b < B; ++b) {
-            const double gSum   = GBatch.col(b).sum();
-            const double gSumSq = GBatch.col(b).squaredNorm();
-            const double G_var  = (gSumSq - gSum * gSum / n) / n1;
+            const double maf   = std::min(altFreqs[b], 1.0 - altFreqs[b]);
+            const double G_var = 2.0 * maf * (1.0 - maf);   // theoretical HWE binomial variance
             processOneMarker(scoreMatrix.col(b).data(), altFreqs[b], G_var, results[b]);
         }
     }
@@ -608,7 +613,6 @@ class SPAsqrMethod : public MethodBase {
     void processScoreBatch(
         const Eigen::Ref<const Eigen::MatrixXd> &scores,
         const double *gSums,
-        const double *gSumSqs,
         uint32_t nUsed,
         const std::vector<double> &altFreqs,
         std::vector<std::vector<double> > &results
@@ -618,9 +622,7 @@ class SPAsqrMethod : public MethodBase {
 
         // ── Center scores ──────────────────────────────────────────
         m_centeredBuf = scores;
-        const double n    = static_cast<double>(nUsed);
-        const double n1   = n - 1.0;
-        const double invN = 1.0 / n;
+        const double invN = 1.0 / static_cast<double>(nUsed);
         for (int b = 0; b < B; ++b) {
             const double gMean = gSums[b] * invN;
             for (int t = 0; t < m_ntaus; ++t)
@@ -642,11 +644,8 @@ class SPAsqrMethod : public MethodBase {
                 const double Score   = m_centeredBuf(t, b);
                 const double altFreq = altFreqs[b];
                 const double MAF     = std::min(altFreq, 1.0 - altFreq);
-                // Empirical Var(G) on the post-imputation, per-pheno column.
-                // gSums / gSumSqs come from the engine after Phase-1b imputation.
-                const double gSum    = gSums[b];
-                const double gSumSq  = gSumSqs[b];
-                const double G_var   = (gSumSq - gSum * gSum * invN) / n1;
+                // Theoretical HWE binomial variance: Var(g) = 2p(1-p).
+                const double G_var   = 2.0 * MAF * (1.0 - MAF);
                 const double Svar    = G_var * tau.R_GRM_R;
 
                 double z, p;

@@ -66,12 +66,16 @@ RprodSoA buildRprodSoA(
 // __builtin_cpu_supports() and caches the result; callers pay only a
 // predictable branch per invocation.
 
-#include <immintrin.h>
+#if defined(__x86_64__) || defined(_M_X64)
+#  include <immintrin.h>
+#endif
 #include "util/simd_dispatch.hpp"
 
 // ════════════════════════════════════════════════════════════════════════
 // computeVarOffSoA — single-marker off-diagonal variance
 // ════════════════════════════════════════════════════════════════════════
+
+#if defined(__x86_64__) || defined(_M_X64)
 
 // ── AVX-512: 8 phi entries per iteration ────────────────────────────
 
@@ -180,6 +184,8 @@ static double computeVarOffSoA_avx2(
     return varOff;
 }
 
+#endif  // x86_64 SIMD variants — single-marker
+
 // ── Scalar baseline ─────────────────────────────────────────────────
 
 static double computeVarOffSoA_scalar(
@@ -200,11 +206,14 @@ double computeVarOffSoA(
     const uint32_t *hInt,
     uint32_t                                                               /*nUsed*/
 ) {
+#if defined(__x86_64__) || defined(_M_X64)
     switch (simdLevel()) {
     case SimdLevel::AVX512: return computeVarOffSoA_avx512(rp, hInt);
     case SimdLevel::AVX2:   return computeVarOffSoA_avx2(rp, hInt);
-    default:                return computeVarOffSoA_scalar(rp, hInt);
+    default: break;
     }
+#endif
+    return computeVarOffSoA_scalar(rp, hInt);
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -213,6 +222,8 @@ double computeVarOffSoA(
 // Each phi entry reads PHI_BATCH consecutive uint32s (1–2 cache lines),
 // amortising DRAM bandwidth across all batch markers.
 // ════════════════════════════════════════════════════════════════════════
+
+#if defined(__x86_64__) || defined(_M_X64)
 
 // ── AVX-512: one __m512d accumulator covers all 8 batch items ───────
 
@@ -317,6 +328,8 @@ static void computeVarOffSoABatch_avx2(
         varOff[b] = tmp[b];
 }
 
+#endif  // x86_64 SIMD variants — batch
+
 // ── Scalar baseline ─────────────────────────────────────────────────
 
 static void computeVarOffSoABatch_scalar(
@@ -347,11 +360,14 @@ void computeVarOffSoABatch(
     int batchLen,
     double *varOff
 ) {
+#if defined(__x86_64__) || defined(_M_X64)
     switch (simdLevel()) {
-    case SimdLevel::AVX512: computeVarOffSoABatch_avx512(rp, hIntSM, batchLen, varOff); break;
-    case SimdLevel::AVX2:   computeVarOffSoABatch_avx2(rp, hIntSM, batchLen, varOff); break;
-    default:                computeVarOffSoABatch_scalar(rp, hIntSM, batchLen, varOff); break;
+    case SimdLevel::AVX512: computeVarOffSoABatch_avx512(rp, hIntSM, batchLen, varOff); return;
+    case SimdLevel::AVX2:   computeVarOffSoABatch_avx2(rp, hIntSM, batchLen, varOff); return;
+    default: break;
     }
+#endif
+    computeVarOffSoABatch_scalar(rp, hIntSM, batchLen, varOff);
 }
 
 // ======================================================================
