@@ -187,6 +187,9 @@ static_assert(sizeof(PaddedFlag) == 64, "PaddedFlag must be 64 bytes");
 
 struct PhenoGenoStats {
     double altFreq, mac, missingRate, hweP;
+    // Sum of squared post-impute genotypes over mask-included subjects.
+    // Used by SPAsqr to compute empirical Var(G) = (sumSq − sum²/n) / (n−1).
+    double sumSq;
 };
 
 // Compute per-phenotype genotype stats from union-level genotype vector
@@ -199,9 +202,11 @@ inline PhenoGenoStats statsFromUnionVec(
     uint32_t nUsed
 ) {
     uint32_t nHomRef = 0, nHet = 0, nHomAlt = 0, nMissing = 0;
+    double sumSq = 0.0;
     for (uint32_t i = 0; i < nUnion; ++i) {
         if (mask[i] == 0.0) continue;  // absent from this phenotype
         const double v = unionG[i];
+        sumSq += v * v;                // post-impute (caller has filled NaNs)
         if (v == 0.0)
             ++nHomRef;
         else if (v == 1.0)
@@ -209,9 +214,10 @@ inline PhenoGenoStats statsFromUnionVec(
         else if (v == 2.0)
             ++nHomAlt;
         else
-            ++nMissing;  // NaN or dosage
+            ++nMissing;  // imputed value or dosage
     }
     PhenoGenoStats s;
+    s.sumSq = sumSq;
     uint32_t nonMissing = nHomRef + nHet + nHomAlt;
     if (nonMissing == 0) {
         // Dosage data: compute from gSum (not discrete genotypes).

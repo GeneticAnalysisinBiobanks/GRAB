@@ -379,7 +379,7 @@ struct SPAsqrSPAShared {
 };
 
 // ── Per-tau p-value (replaces SPAGRMClass::getMarkerPvalFromScore) ──
-// G_var = theoretical HWE binomial variance 2·MAF·(1-MAF), passed in by caller.
+// G_var = empirical Var(G) over post-impute genotypes, passed in by caller.
 inline double scalarGetPvalFromScore(
     double Score,
     double altFreq,
@@ -427,7 +427,7 @@ inline double scalarGetPvalFromScore(
 // Computes the SPA p-value for a marker that failed the normal-approx
 // cutoff.  Both tails share the MAF/variance setup and outlier data
 // pointer extraction; only the Newton root and saddlepoint differ.
-// G_var = theoretical HWE binomial variance 2·MAF·(1-MAF) from caller.
+// G_var = empirical Var(G) over post-impute genotypes from caller.
 // Ratio EmpVar/Score_var is invariant to this choice, so SPA tails are stable.
 inline double fusedGetPvalSpa(
     double Score,
@@ -547,8 +547,11 @@ class SPAsqrMethod : public MethodBase {
         const double n      = static_cast<double>(GVec.size());
         const double gSum   = GVec.sum();
         const double gMean  = gSum / n;
-        const double maf    = std::min(altFreq, 1.0 - altFreq);
-        const double G_var  = 2.0 * maf * (1.0 - maf);   // theoretical HWE binomial variance
+        // Empirical Var(G) over post-impute genotypes: (Σg² − (Σg)²/n) / (n−1).
+        const double gSumSq = GVec.squaredNorm();
+        const double G_var  = (n > 1.0)
+            ? (gSumSq - gSum * gSum / n) / (n - 1.0)
+            : 0.0;
 
         Eigen::VectorXd scores = m_methodShared->residMat.transpose() * GVec;
         for (int i = 0; i < m_ntaus; ++i)
@@ -569,12 +572,16 @@ class SPAsqrMethod : public MethodBase {
         Eigen::MatrixXd scoreMatrix;
         scoreMatrix.noalias() = m_methodShared->residMat.transpose() * GBatch;
 
-        const Eigen::VectorXd gMeans = GBatch.colwise().mean();
+        const Eigen::VectorXd gMeans  = GBatch.colwise().mean();
+        const Eigen::VectorXd gSumSqs = GBatch.colwise().squaredNorm();
         scoreMatrix.noalias() -= m_methodShared->residSums * gMeans.transpose();
 
+        const double n = static_cast<double>(GBatch.rows());
         for (int b = 0; b < B; ++b) {
-            const double maf   = std::min(altFreqs[b], 1.0 - altFreqs[b]);
-            const double G_var = 2.0 * maf * (1.0 - maf);   // theoretical HWE binomial variance
+            // Empirical Var(G) over post-impute genotypes: (Σg² − n·ḡ²) / (n−1).
+            const double G_var = (n > 1.0)
+                ? (gSumSqs[b] - n * gMeans[b] * gMeans[b]) / (n - 1.0)
+                : 0.0;
             processOneMarker(scoreMatrix.col(b).data(), altFreqs[b], G_var, results[b]);
         }
     }
@@ -613,6 +620,7 @@ class SPAsqrMethod : public MethodBase {
     void processScoreBatch(
         const Eigen::Ref<const Eigen::MatrixXd> &scores,
         const double *gSums,
+        const double *gSumSqs,
         uint32_t nUsed,
         const std::vector<double> &altFreqs,
         std::vector<std::vector<double> > &results
@@ -622,7 +630,8 @@ class SPAsqrMethod : public MethodBase {
 
         // ── Center scores ──────────────────────────────────────────
         m_centeredBuf = scores;
-        const double invN = 1.0 / static_cast<double>(nUsed);
+        const double nUsedD = static_cast<double>(nUsed);
+        const double invN   = 1.0 / nUsedD;
         for (int b = 0; b < B; ++b) {
             const double gMean = gSums[b] * invN;
             for (int t = 0; t < m_ntaus; ++t)
@@ -644,8 +653,12 @@ class SPAsqrMethod : public MethodBase {
                 const double Score   = m_centeredBuf(t, b);
                 const double altFreq = altFreqs[b];
                 const double MAF     = std::min(altFreq, 1.0 - altFreq);
-                // Theoretical HWE binomial variance: Var(g) = 2p(1-p).
-                const double G_var   = 2.0 * MAF * (1.0 - MAF);
+                // Empirical Var(G) over post-impute genotypes:
+                //   Var(g) = (Σg² − (Σg)²/n) / (n−1)
+                const double gSum    = gSums[b];
+                const double G_var   = (nUsedD > 1.0)
+                    ? (gSumSqs[b] - gSum * gSum / nUsedD) / (nUsedD - 1.0)
+                    : 0.0;
                 const double Svar    = G_var * tau.R_GRM_R;
 
                 double z, p;
