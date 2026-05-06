@@ -34,10 +34,14 @@
 #include <vector>
 
 #include <Eigen/Dense>
-#include <immintrin.h>
+#if defined(__x86_64__) || defined(_M_X64)
+#  include <immintrin.h>
+#endif
 #include "util/simd_dispatch.hpp"
 
 // ── IBD pair accumulation — multi-versioned SIMD kernels ─────────────
+
+#if defined(__x86_64__) || defined(_M_X64)
 
 __attribute__((target("avx2,avx512f,avx512vl,fma")))
 static void ibdAccPairs_avx512(
@@ -131,6 +135,8 @@ static void ibdAccPairs_avx2(
     }
 }
 
+#endif  // x86_64 SIMD variants
+
 static void ibdAccPairs_scalar(
     const double *genoPtr,
     const int32_t *i1,
@@ -153,11 +159,14 @@ using IbdAccFn = void (*)(const double *, const int32_t *, const int32_t *,
                           double *, double *, double, double, size_t);
 
 static IbdAccFn pickIbdAccFn() {
+#if defined(__x86_64__) || defined(_M_X64)
     switch (simdLevel()) {
     case SimdLevel::AVX512: return ibdAccPairs_avx512;
     case SimdLevel::AVX2:   return ibdAccPairs_avx2;
-    default:                return ibdAccPairs_scalar;
+    default: break;
     }
+#endif
+    return ibdAccPairs_scalar;
 }
 
 static const IbdAccFn ibdAccPairs = pickIbdAccFn();

@@ -5,7 +5,9 @@
 #include "util/text_scanner.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
 #include <unordered_set>
 
@@ -95,13 +97,31 @@ std::vector<std::string> SparseGRM::readGctaIIDs(const std::string &spFile) {
     std::vector<std::string> iids;
     iids.reserve(65536);
     std::string line;
+    int iidCol = -1; // 0 = IID-only, 1 = FID+IID; auto-detected from first row
     while (std::getline(idStream, line)) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (line.empty()) continue;
+
         text::TokenScanner tok(line);
-        /*FID*/ tok.next();
-        std::string iid = tok.next();
-        if (iid.empty()) throw std::runtime_error(idFile + ": missing IID on line " + std::to_string(iids.size() + 1));
+        std::string tok1 = tok.next();
+        if (tok1.empty()) continue; // whitespace-only line
+        std::string tok2 = tok.next();
+
+        if (iidCol < 0) {
+            iidCol = tok2.empty() ? 0 : 1;
+            if (iidCol == 0)
+                infoMsg("%s: detected IID-only format (1 column)", idFile.c_str());
+            else
+                infoMsg("%s: detected FID+IID format; using IID column, ignoring FID", idFile.c_str());
+        } else if ((iidCol == 0 && !tok2.empty()) || (iidCol == 1 && tok2.empty())) {
+            throw std::runtime_error(idFile + ": inconsistent column count on line " +
+                                     std::to_string(iids.size() + 1) +
+                                     " (expected " + (iidCol == 0 ? "1" : "≥2") + " columns)");
+        }
+
+        std::string iid = (iidCol == 0) ? std::move(tok1) : std::move(tok2);
+        if (iid.empty())
+            throw std::runtime_error(idFile + ": missing IID on line " + std::to_string(iids.size() + 1));
         iids.push_back(std::move(iid));
     }
     return iids;
@@ -214,9 +234,17 @@ SparseGRM SparseGRM::fromGCTA(
 }
 
 void SparseGRM::buildDiagonal() {
-    m_diagonal.assign(m_nSubj, 0.0);
+    constexpr double kNoDiag = std::numeric_limits<double>::quiet_NaN();
+    m_diagonal.assign(m_nSubj, kNoDiag);
     for (const auto &e : m_entries) {
         if (e.row == e.col && e.row < m_nSubj) m_diagonal[e.row] = e.value;
+    }
+    uint32_t missing = 0;
+    for (double d : m_diagonal) if (std::isnan(d)) ++missing;
+    if (missing > 0) {
+        throw std::runtime_error("SparseGRM: " + std::to_string(missing) +
+                                 " of " + std::to_string(m_nSubj) +
+                                 " subjects have no diagonal entry");
     }
 }
 
@@ -284,6 +312,18 @@ SparseGRM SparseGRM::load(
     const std::vector<std::string> &subjectOrder,
     const std::vector<std::string> &famIIDs
 ) {
+    // No GRM provided → identity (diag = 1, no off-diag); assumes unrelated subjects.
+    if (grabFile.empty() && gctaFile.empty()) {
+        SparseGRM g;
+        g.m_nSubj = static_cast<uint32_t>(subjectOrder.size());
+        g.m_entries.reserve(g.m_nSubj);
+        for (uint32_t i = 0; i < g.m_nSubj; ++i)
+            g.m_entries.push_back({i, i, 1.0});
+        g.m_diagonal.assign(g.m_nSubj, 1.0);
+        infoMsg("Sparse GRM: no file provided, using identity GRM (diag=1.0, no off-diag) for %u subjects",
+                g.m_nSubj);
+        return g;
+    }
     if (!gctaFile.empty()) return fromGCTA(gctaFile, subjectOrder, famIIDs);
     return SparseGRM(grabFile, subjectOrder);
 }
@@ -309,6 +349,9 @@ std::unordered_set<std::string> SparseGRM::parseSubjectIDs(
     const std::vector<std::string> &famIIDs
 ) {
     std::unordered_set<std::string> ids;
+
+    // No GRM file: caller will use identity GRM downstream — no subject filtering.
+    if (grabFile.empty() && gctaFile.empty()) return ids;
 
     if (!gctaFile.empty()) {
         // ── GCTA format: read .grm.id ──────────────────────────────────

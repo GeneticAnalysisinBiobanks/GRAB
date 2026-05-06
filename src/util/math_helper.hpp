@@ -282,6 +282,12 @@ Eigen::VectorXd logisticRegression(
     const Eigen::Ref<const Eigen::VectorXd> &y
 );
 
+// Inverse rank normal transform with Blom plotting position.
+//   p_i = (rank_i - 3/8) / (N + 1/4),  Y_irn[i] = qnorm(p_i)
+// Tied values get the average of their ranks (R `ties.method="average"`).
+// Input is assumed to be NaN-free (caller filters); throws on N == 0.
+Eigen::VectorXd inverseRankNormal(const Eigen::Ref<const Eigen::VectorXd> &y);
+
 // ──────────────────────────────────────────────────────────────────────
 // § 6  Nelder-Mead simplex optimiser (n-dimensional, unconstrained)
 // ──────────────────────────────────────────────────────────────────────

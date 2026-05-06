@@ -111,18 +111,20 @@ class MethodBase {
 
     // Process pre-computed raw scores (from the fused GEMM).
     //   scores   — fusedGemmColumns() × B matrix of raw scores
-    //   gSums    — per-phenotype genotype sums, length B
+    //   gSums    — per-phenotype genotype sums, length B (post-impute Σ G)
+    //   gSumSqs  — per-phenotype genotype sum-of-squares, length B (post-impute Σ G²)
     //   nUsed    — this phenotype's sample count (for gMean = gSum / nUsed)
     //   altFreqs — ALT allele frequencies, length B (pre-computed)
     //   results  — output: results[b] = method-specific result values
     virtual void processScoreBatch(
         const Eigen::Ref<const Eigen::MatrixXd> &scores,
         const double *gSums,
+        const double *gSumSqs,
         uint32_t nUsed,
         const std::vector<double> &altFreqs,
         std::vector<std::vector<double> > &results
     ) {
-        (void)scores; (void)gSums; (void)nUsed;
+        (void)scores; (void)gSums; (void)gSumSqs; (void)nUsed;
         (void)altFreqs; (void)results;
     }
 

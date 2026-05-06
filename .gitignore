@@ -3,3 +3,12 @@ build_bak/
 tmp/
 examples/
 example_1kg/
+*.R
+.DS_Store
+
+# macOS
+.DS_Store
+
+# local notes/scripts
+CLAUDE.md
+submit_smoketest.sh

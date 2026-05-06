@@ -13,7 +13,9 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
-#include <immintrin.h>
+#if defined(__x86_64__) || defined(_M_X64)
+#  include <immintrin.h>
+#endif
 #include <string>
 #include <string_view>
 #include <vector>
@@ -185,6 +187,9 @@ static_assert(sizeof(PaddedFlag) == 64, "PaddedFlag must be 64 bytes");
 
 struct PhenoGenoStats {
     double altFreq, mac, missingRate, hweP;
+    // Sum of squared post-impute genotypes over mask-included subjects.
+    // Used by SPAsqr to compute empirical Var(G) = (sumSq − sum²/n) / (n−1).
+    double sumSq;
 };
 
 // Compute per-phenotype genotype stats from union-level genotype vector
@@ -197,9 +202,11 @@ inline PhenoGenoStats statsFromUnionVec(
     uint32_t nUsed
 ) {
     uint32_t nHomRef = 0, nHet = 0, nHomAlt = 0, nMissing = 0;
+    double sumSq = 0.0;
     for (uint32_t i = 0; i < nUnion; ++i) {
         if (mask[i] == 0.0) continue;  // absent from this phenotype
         const double v = unionG[i];
+        sumSq += v * v;                // post-impute (caller has filled NaNs)
         if (v == 0.0)
             ++nHomRef;
         else if (v == 1.0)
@@ -207,9 +214,10 @@ inline PhenoGenoStats statsFromUnionVec(
         else if (v == 2.0)
             ++nHomAlt;
         else
-            ++nMissing;  // NaN or dosage
+            ++nMissing;  // imputed value or dosage
     }
     PhenoGenoStats s;
+    s.sumSq = sumSq;
     uint32_t nonMissing = nHomRef + nHet + nHomAlt;
     if (nonMissing == 0) {
         // Dosage data: compute from gSum (not discrete genotypes).
@@ -327,6 +335,7 @@ inline void extractGather(
         phenoG[j] = unionG[presentIndices[j]];
 }
 
+#if defined(__x86_64__) || defined(_M_X64)
 // AVX-512 compress-store extraction using precomputed bitmask.
 // presentMask is a packed bitmask: bit i set ↔ union subject i is present.
 // Processes 8 doubles per iteration using VCOMPRESSSTOREPD.
@@ -352,6 +361,7 @@ inline void extractCompress_avx512(
             phenoG[outIdx++] = unionG[i];
     }
 }
+#endif
 
 // Build bitmask from unionToLocal. Called once per MissBatch.
 inline std::vector<uint64_t> buildPresentMask(
@@ -380,11 +390,16 @@ inline void extractPhenoFast(
         std::memcpy(phenoG, unionG, static_cast<size_t>(nUsed) * sizeof(double));
         return;
     }
+#if defined(__x86_64__) || defined(_M_X64)
     if (simdLevel() >= SimdLevel::AVX512) {
         extractCompress_avx512(unionG, presentMask, nUnion, phenoG);
     } else {
         extractGather(unionG, presentIndices, nUsed, phenoG);
     }
+#else
+    (void)presentMask; (void)nUnion;
+    extractGather(unionG, presentIndices, nUsed, phenoG);
+#endif
 }
 
 // ──────────────────────────────────────────────────────────────────────

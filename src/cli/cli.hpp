@@ -40,7 +40,8 @@ struct Args {
     std::string admixTextPrefix;  // --admix-text-prefix
     std::string keepFile;         // --keep (subject include list)
     std::string removeFile;       // --remove (subject exclude list)
-    std::string predListFile;     // --pred-list (Regenie step 1 pred.list for LOCO)
+    std::string predListFile;     // --pred-list (Regenie / LDAK-KVIK pred.list for LOCO)
+    std::string locoMode = "offset"; // --loco-mode {offset, covariate}
     bool calAfCoef = false;
     bool calPairwiseIBD = false;
     bool calPhi = false;

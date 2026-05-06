@@ -9,7 +9,9 @@ extern "C" {
 #include <htslib/bgzf.h>
 }
 
-#include <immintrin.h>
+#if defined(__x86_64__) || defined(_M_X64)
+#  include <immintrin.h>
+#endif
 #include "util/simd_dispatch.hpp"
 
 #include <algorithm>
@@ -272,6 +274,7 @@ const uint8_t *AdmixCursor::readTrackPtr(
     return m_rawBytes.data();
 }
 
+#if defined(__x86_64__) || defined(_M_X64)
 // ── AVX2 helper for no-missing 2-bit decode ─────────────────────────
 // Returns number of full bytes decoded (caller handles the scalar tail).
 __attribute__((target("avx2")))
@@ -295,6 +298,7 @@ static uint32_t decodeNoMissAVX2(
     }
     return b;
 }
+#endif
 
 void AdmixCursor::decodeTrack(
     const uint8_t *raw,
@@ -317,10 +321,12 @@ void AdmixCursor::decodeTrack(
             uint32_t di = 0;
             uint32_t b = 0;
 
+#if defined(__x86_64__) || defined(_M_X64)
             if (simdLevel() >= SimdLevel::AVX2) {
                 b = decodeNoMissAVX2(raw, p, fullBytes);
                 di = b * 4;
             }
+#endif
 
             // Scalar tail
             for (; b < fullBytes; ++b) {
@@ -471,6 +477,7 @@ void AbedWriter::writeTrack(
     if (bgzf_write(m_bgzf, data, nBytes) < 0) throw std::runtime_error("Failed to write ABED track");
 }
 
+#if defined(__x86_64__) || defined(_M_X64)
 // ── AVX2 helper for PLINK encode (32 int8 samples → 8 packed bytes) ─────────
 __attribute__((target("avx2")))
 static uint64_t encodeSamplesAVX2(
@@ -509,6 +516,7 @@ static uint64_t encodeSamplesAVX2(
     }
     return i;
 }
+#endif
 
 std::vector<uint8_t> AbedWriter::encode(const std::vector<int8_t> &values) {
     // PLINK encoding: 0→0b00, 1→0b10, 2→0b11, -1(missing)→0b01
@@ -518,8 +526,10 @@ std::vector<uint8_t> AbedWriter::encode(const std::vector<int8_t> &values) {
 
     uint64_t i = 0;
 
+#if defined(__x86_64__) || defined(_M_X64)
     if (simdLevel() >= SimdLevel::AVX2)
         i = encodeSamplesAVX2(values.data(), packed.data(), n);
+#endif
 
     // ── Scalar tail ───────────────────────────────────────────────
     for (; i < n; ++i) {

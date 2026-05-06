@@ -3,10 +3,15 @@
 // Cephes-style minimax polynomials with ~1 ULP accuracy over the full
 // double range.  No special NaN/Inf handling — SPA values are well-bounded.
 //
+// x86_64-only: on other architectures (e.g. arm64) this header expands
+// to nothing; callers must use scalar fallbacks.
+//
 // Usage:  #include "util/simd_math.hpp"
 //         __m256d y = avx2_exp_pd(x);
 //         __m512d y = avx512_exp_pd(x);
 #pragma once
+
+#if defined(__x86_64__) || defined(_M_X64)
 
 #include <immintrin.h>
 #include <cstdint>
@@ -273,3 +278,5 @@ inline __m512d avx512_log_pd(__m512d x)
 
     return _mm512_fmadd_pd(e_dbl, LN2, log_m);
 }
+
+#endif  // x86_64
