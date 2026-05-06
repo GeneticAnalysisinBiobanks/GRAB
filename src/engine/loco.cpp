@@ -308,7 +308,7 @@ static std::unordered_map<std::string, Eigen::VectorXd>parseLdakLocoFile(
     // ── Pre-allocate output vectors for each kept chromosome ─────────
     std::unordered_map<std::string, Eigen::VectorXd> result;
     for (const auto &c : chrCols)
-        if (!c.empty()) result[c] = Eigen::VectorXd::Zero(nUsed);
+        if (!c.empty()) result[c].setZero(nUsed);
 
     // ── Build IID → usedIIDs index ──────────────────────────────────
     std::unordered_map<std::string, Eigen::Index> iidIdx;
