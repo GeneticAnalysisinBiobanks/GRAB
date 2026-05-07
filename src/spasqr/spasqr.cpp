@@ -1145,7 +1145,7 @@ void runSPAsqr(
                 Eigen::VectorXd resid;
                 conquer::ConquerStatus st;
                 Eigen::VectorXd beta = conquer::smqrGauss(pw[k].X, pw[k].Y, taus[t], pw[k].h, &resid, spasqrTol,
-                                                          5000, 100.0, &st);
+                                                          50000, 100.0, &st);
                 infoMsg("[%s] tau=%.4f intercept=%.6f", phenoNames[k].c_str(), taus[t], beta(0));
                 if (!st.converged) {
                     warnMsg("[%s] tau=%.4f conquer did not converge: huber=%d iters (||g||=%.3e, %s),"
@@ -1565,7 +1565,7 @@ void runSPAsqrLoco(
                     //   offset    → y_adjs[k] = IRN(y) - loco_chr
                     //   covariate → y_adjs[k] = y_raw - α̂ - β̂·loco_chr   (per-chr OLS partial-out)
                     conquer::smqrGauss(pw[k].baseX, y_adjs[k], taus[t], h_use, &resid, spasqrTol,
-                                       5000, 100.0, &st);
+                                       50000, 100.0, &st);
                     if (!st.converged) {
                         warnMsg("[%s] chr%s tau=%.4f conquer did not converge: huber=%d iters (||g||=%.3e, %s),"
                                 " gauss=%d iters (||g||=%.3e, %s); tol=%.3e",
