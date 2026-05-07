@@ -734,11 +734,6 @@ int run(
                           << " was trained on raw Y; otherwise scales mismatch.\n";
             }
             if (!args.predListFile.empty()) {
-                if (args.locoMode != "offset" && args.locoMode != "covariate") {
-                    std::cerr << "Error: --loco-mode must be 'offset' or 'covariate', got '"
-                              << args.locoMode << "'\n";
-                    return 1;
-                }
                 // Early validation: check all phenotypes have LOCO entries
                 {
                     std::ifstream pf(args.predListFile);

@@ -1199,11 +1199,11 @@ void runSPAsqr(
                 Eigen::VectorXd beta;
                 if (useQmme) {
                     beta = qmmeSolvers[k]->solve(pw[k].Y, taus[t], &resid,
-                                                 qmmeTol, /*maxIter*/ 5000,
+                                                 qmmeTol, /*maxIter*/ 50000,
                                                  /*restartPeriod*/ 50, &st);
                 } else {
                     beta = conquer::smqrGauss(pw[k].X, pw[k].Y, taus[t], pw[k].h,
-                                              &resid, spasqrTol, 5000, 100.0, &st);
+                                              &resid, spasqrTol, 50000, 100.0, &st);
                 }
                 infoMsg("[%s] tau=%.4f intercept=%.6f", phenoNames[k].c_str(), taus[t], beta(0));
                 if (!st.converged) {
@@ -1617,11 +1617,11 @@ void runSPAsqrLoco(
                     // Y_transformed comes from §3 applyPhenoTransform (raw/irn/standardize).
                     if (useQmme) {
                         qmmeSolvers[k]->solve(y_adjs[k], taus[t], &resid,
-                                              qmmeTol, /*maxIter*/ 5000,
+                                              qmmeTol, /*maxIter*/ 50000,
                                               /*restartPeriod*/ 50, &st);
                     } else {
                         conquer::smqrGauss(pw[k].baseX, y_adjs[k], taus[t], h_use,
-                                           &resid, spasqrTol, 5000, 100.0, &st);
+                                           &resid, spasqrTol, 50000, 100.0, &st);
                     }
                     if (!st.converged) {
                         warnMsg("[%s] chr%s tau=%.4f %s did not converge: gauss=%d iters (||g||=%.3e, %s); tol=%.3e",
