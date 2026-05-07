@@ -174,17 +174,17 @@ Eigen::VectorXd SqrSolver::solve(
         Eigen::VectorXd r_new = Yc - m_Z * beta_new;
         const double f_new = smoothedQuantileLossAvg(r_new, tau, h);
 
-        // Restart when ascent or restart period hit
+        // Restart: reset momentum on ascent or after P steps. On ascent we
+        // additionally replace β^{k+1} with a plain MM step from β^k
+        // (β^{k+1} = β^k − H^{-1}∇f(β^k)), which is a guaranteed-descent
+        // quasi-Newton update. β^k itself is unchanged. This monotone variant
+        // preserves the auxiliary-sequence descent that drives convergence.
         const bool ascent = (f_new > f_curr);
         if (ascent || l >= restartPeriod) {
             l = 1;
         } else {
             ++l;
         }
-
-        // If pure ascent, prefer plain MM step (β = y_curr - H^{-1} ∇f(β_curr))
-        // — guaranteed to descend by majorization. Only do this when restarting
-        // due to ascent (not the periodic restart).
         if (ascent) {
             Eigen::VectorXd grad_curr(dim), der_curr(n);
             smoothedQrGradAvg(m_Z, r_curr, tau, h, der_curr, grad_curr);
