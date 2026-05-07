@@ -1,0 +1,5 @@
+# Enables 64-bit indexing in Armadillo
+PKG_CPPFLAGS = -DARMA_64BIT_WORD=1
+
+# Link against zlib, LAPACK, BLAS, and Fortran libraries
+PKG_LIBS = -lz $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)

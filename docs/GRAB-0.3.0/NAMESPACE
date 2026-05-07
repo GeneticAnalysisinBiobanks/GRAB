@@ -1,0 +1,20 @@
+useDynLib(GRAB, .registration=TRUE)
+importFrom(Rcpp, evalCpp)
+importFrom(RcppParallel, RcppParallelLibs)
+importFrom(dplyr, between, select, mutate, filter, arrange, count, as_tibble,
+           recode, group_by, ungroup, rename, bind_cols, desc, "%>%", n)
+importFrom(stats, as.formula, dbeta, model.extract, model.matrix, model.response, 
+           na.omit, na.pass, optim, pcauchy, pnorm, qcauchy, qchisq, qnorm, quantile, 
+           rbinom, residuals, rnorm, runif, rweibull, uniroot, weighted.mean, IQR)
+importFrom(utils, head, read.table, "getFromNamespace", sessionInfo, 
+           write.table, "capture.output", "str")
+exportPattern("^GRAB\\.")
+export(CCT)
+export(getPairwiseIBD)
+export(getSparseGRM)
+export(getTempFilesFullGRM)
+export(SPAGRM.NullModel)
+export(SAGELD.NullModel)
+export(SPAmixPlus.AF)
+export(SPAmixLocalPlus.EstimatePhi)
+export(SPAmixLocalPlus.Marker)
