@@ -73,7 +73,9 @@ void runSPAsqr(
     double spasqrH = -1.0,
     double spasqrHScale = -1.0,
     const std::string &keepFile = {},
-    const std::string &removeFile = {}
+    const std::string &removeFile = {},
+    const std::string &phenoTransform = "raw",
+    const std::string &spasqrSolver = "qmme"
 );
 
 // LOCO entry point: runs per-chromosome locoEngine with precomputed
@@ -105,5 +107,6 @@ void runSPAsqrLoco(
     double spasqrHScale = -1.0,
     const std::string &keepFile = {},
     const std::string &removeFile = {},
-    const std::string &locoMode = "offset"
+    const std::string &phenoTransform = "irn",
+    const std::string &spasqrSolver = "qmme"
 );

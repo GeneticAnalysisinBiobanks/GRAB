@@ -50,7 +50,7 @@ Eigen::VectorXd smqrGauss(
     double h,
     Eigen::VectorXd *residOut = nullptr,
     double tol = 1e-7,
-    int iteMax = 50000,
+    int iteMax = 5000,
     double stepMax = 100.0,
     ConquerStatus *statusOut = nullptr
 );

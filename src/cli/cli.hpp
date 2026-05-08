@@ -41,7 +41,11 @@ struct Args {
     std::string keepFile;         // --keep (subject include list)
     std::string removeFile;       // --remove (subject exclude list)
     std::string predListFile;     // --pred-list (Regenie / LDAK-KVIK pred.list for LOCO)
-    std::string locoMode = "offset"; // --loco-mode {offset, covariate}
+    // --pheno-transform {raw,irn,standardize}; empty sentinel = "use context default"
+    // (irn when --pred-list given, raw otherwise; resolved in dispatch).
+    std::string phenoTransform;
+    // --spasqr-solver {conquer, qmme}: null-model SQR solver. Default qmme.
+    std::string spasqrSolver = "qmme";
     bool calAfCoef = false;
     bool calPairwiseIBD = false;
     bool calPhi = false;

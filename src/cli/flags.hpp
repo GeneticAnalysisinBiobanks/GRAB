@@ -256,16 +256,35 @@ rows) or LDAK-KVIK (header FID IID Chr1 Chr2 ... Chr22, subject-major
 rows).)"
 };
 
-inline const FlagDef kLocoMode = {
-    "--loco-mode", "MODE",
-    "How LOCO PRS enters SPAsqr-LOCO: offset (default) | covariate",
-    R"(Selects how the per-chromosome LOCO PRS is consumed:
-  offset    — inverse-rank-normal-transform Y per phenotype, then fit
-              conquer on (Y_irn - loco_chr) with the original covariates
-              only (LOCO subtracted from the response as an offset).
-  covariate — append the LOCO column to the conquer covariate matrix
-              and fit conquer on (Y, [X | loco_chr]).
-Only meaningful when --pred-list is provided.)"
+inline const FlagDef kSpasqrSolver = {
+    "--spasqr-solver", "NAME",
+    "SPAsqr null-model solver: qmme (default) | conquer",
+    R"(Selects the smoothed quantile regression solver for the SPAsqr null model:
+  qmme    — Quadratic Majorization-Minimization with Extrapolation
+            (Heng & Wang, 2025). Caches Cholesky of the Hessian upper bound
+            once per phenotype × bandwidth and reuses it across all τ levels;
+            far more robust on ill-conditioned X. Default.
+  conquer — Convolution-type smoothed QR (He et al., 2021): Huber init
+            followed by BB gradient descent. Refits from scratch per τ.)"
+};
+
+inline const FlagDef kPhenoTransform = {
+    "--pheno-transform", "MODE",
+    "Phenotype pre-transform for SPAsqr: raw | irn | standardize "
+    "(default: irn when --pred-list given, raw otherwise)",
+    R"(Selects how Y is transformed before SQR fitting (and before LOCO offset
+subtraction when --pred-list is given):
+  raw         — no transform; SQR fits on Y as supplied (default for non-LOCO).
+  irn         — inverse-rank-normal transform (Blom, average-rank ties)
+                applied per phenotype on its non-missing scope. Default
+                when --pred-list is given, since LDAK/regenie LOCO PRS
+                are typically trained on IRN'd Y.
+  standardize — Y is centered and scaled to unit variance per phenotype.
+                Use only when the LOCO PRS was trained on standardized Y.
+
+When --pred-list is provided, the transformed Y has loco_chr subtracted as
+an offset (β=1, α=0). The LOCO PRS scale must match the chosen transform —
+mixing scales gives meaningless residuals.)"
 };
 
 inline const FlagDef kExtract = {
@@ -330,13 +349,14 @@ inline const FlagDef kSpasqrTaus = {
 
 inline const FlagDef kSpasqrTol = {
     "--spasqr-tol", "FLOAT",
-    "Convergence tolerance for conquer quantile regression (default: 1e-7)",
+    "Convergence tolerance for the SPAsqr null-model SQR solver (default: 1e-7). "
+    "QMME tightens this internally to min(--spasqr-tol, 1e-9).",
     nullptr
 };
 
 inline const FlagDef kSpasqrH = {
     "--spasqr-h", "FLOAT",
-    "Explicit bandwidth for conquer (mutually exclusive with --spasqr-h-scale)",
+    "Explicit bandwidth for the SQR null model (mutually exclusive with --spasqr-h-scale)",
     nullptr
 };
 
@@ -493,7 +513,8 @@ inline const FlagDef *const kSPAsqrOpt[] = {
     &kPhenoName,    &kSpasqrTaus, &kSpasqrTol,  &kSpasqrH,
     &kSpasqrHScale, &kOutlierIqr, &kOutlierAbs,
     &kSpaZThresh,   &kThreads,    &kChunkSize,  &kGeno, &kMaf,
-    &kMac,          &kHwe,        &kChr,        &kPredList,    &kLocoMode,
+    &kMac,          &kHwe,        &kChr,        &kPredList,    &kPhenoTransform,
+    &kSpasqrSolver,
     nullptr
 };
 

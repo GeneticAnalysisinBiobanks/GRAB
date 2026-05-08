@@ -202,10 +202,10 @@ static void logArgsInEffect(const Args &args) {
     if (!args.excludeFile.empty()) std::fprintf(stderr, "  --exclude %s\n", args.excludeFile.c_str());
     if (!args.chrSpec.empty()) std::fprintf(stderr, "  --chr %s\n", args.chrSpec.c_str());
     // LOCO (SPAsqr): only meaningful when --pred-list is given
-    if (!args.predListFile.empty()) {
+    if (!args.predListFile.empty())
         std::fprintf(stderr, "  --pred-list %s\n", args.predListFile.c_str());
-        std::fprintf(stderr, "  --loco-mode %s\n", args.locoMode.c_str());
-    }
+    if (!args.phenoTransform.empty())
+        std::fprintf(stderr, "  --pheno-transform %s\n", args.phenoTransform.c_str());
     if (!args.admixBfilePrefix.empty()) std::fprintf(stderr, "  --admix-bfile %s\n", args.admixBfilePrefix.c_str());
     if (!args.admixPhiFile.empty()) std::fprintf(stderr, "  --admix-phi %s\n", args.admixPhiFile.c_str());
     if (!args.mspFile.empty()) std::fprintf(stderr, "  --rfmix-msp %s\n", args.mspFile.c_str());
@@ -709,12 +709,31 @@ int run(
                 }
                 taus.push_back(t);
             }
+            // Validate --spasqr-solver
+            if (args.spasqrSolver != "qmme" && args.spasqrSolver != "conquer") {
+                std::cerr << "Error: --spasqr-solver must be 'qmme' or 'conquer', got '"
+                          << args.spasqrSolver << "'\n";
+                return 1;
+            }
+            // Resolve --pheno-transform default by context, then validate.
+            //   With --pred-list: default 'irn' (LDAK/regenie LOCO PRS are
+            //   typically trained on IRN'd Y, so subtraction is on that scale).
+            //   Without --pred-list: default 'raw' (no transform).
+            if (args.phenoTransform.empty()) {
+                args.phenoTransform = args.predListFile.empty() ? "raw" : "irn";
+            }
+            if (args.phenoTransform != "raw" &&
+                args.phenoTransform != "irn" &&
+                args.phenoTransform != "standardize") {
+                std::cerr << "Error: --pheno-transform must be 'raw', 'irn', or 'standardize', got '"
+                          << args.phenoTransform << "'\n";
+                return 1;
+            }
+            if (!args.predListFile.empty() && args.phenoTransform == "raw") {
+                std::cerr << "Warning: --pheno-transform raw with --pred-list — ensure your LOCO PRS"
+                          << " was trained on raw Y; otherwise scales mismatch.\n";
+            }
             if (!args.predListFile.empty()) {
-                if (args.locoMode != "offset" && args.locoMode != "covariate") {
-                    std::cerr << "Error: --loco-mode must be 'offset' or 'covariate', got '"
-                              << args.locoMode << "'\n";
-                    return 1;
-                }
                 // Early validation: check all phenotypes have LOCO entries
                 {
                     std::ifstream pf(args.predListFile);
@@ -768,7 +787,8 @@ int run(
                     args.spasqrHScale,
                     args.keepFile,
                     args.removeFile,
-                    args.locoMode
+                    args.phenoTransform,
+                    args.spasqrSolver
                 );
             } else {
                 runSPAsqr(
@@ -796,7 +816,9 @@ int run(
                     args.spasqrH,
                     args.spasqrHScale,
                     args.keepFile,
-                    args.removeFile
+                    args.removeFile,
+                    args.phenoTransform,
+                    args.spasqrSolver
                 );
             }
         }
