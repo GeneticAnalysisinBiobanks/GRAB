@@ -120,12 +120,14 @@ void markerEngine(
 
             Eigen::MatrixXd GBatch;
             std::vector<double> passAltFreqs;
+            std::vector<int> passChunkIdxs;
             std::vector<std::vector<double> > batchResults;
             std::vector<MarkerMeta> batchMeta;
 
             if (batchB > 1) {
                 GBatch.resize(gd.nSubjUsed(), batchB);
                 passAltFreqs.reserve(batchB);
+                passChunkIdxs.reserve(batchB);
                 batchMeta.resize(batchB);
             }
 
@@ -147,6 +149,7 @@ void markerEngine(
                         const size_t blen = std::min(B, gIdx.size() - bstart);
 
                         passAltFreqs.clear();
+                        passChunkIdxs.clear();
                         int passCount = 0;
 
                         for (size_t bi = 0; bi < blen; ++bi) {
@@ -179,12 +182,14 @@ void markerEngine(
                                     gPtr[j] = imputeG;
                                 GBatch.col(passCount) = GVec;
                                 passAltFreqs.push_back(altFreq);
+                                passChunkIdxs.push_back(static_cast<int>(i));
                                 ++passCount;
                             }
                         }
 
                         if (passCount > 0)
-                            meth.getResultBatch(GBatch.leftCols(passCount), passAltFreqs, batchResults);
+                            meth.getResultBatch(GBatch.leftCols(passCount), passAltFreqs,
+                                                passChunkIdxs, batchResults);
 
                         int ri = 0;
                         for (size_t bi = 0; bi < blen; ++bi) {
@@ -342,6 +347,7 @@ void MultiMethod::getResultVec(
 void MultiMethod::getResultBatch(
     const Eigen::Ref<const Eigen::MatrixXd> &GBatch,
     const std::vector<double> &altFreqs,
+    const std::vector<int> &chunkIdxs,
     std::vector<std::vector<double> > &results
 ) {
     const int B = static_cast<int>(GBatch.cols());
@@ -351,7 +357,7 @@ void MultiMethod::getResultBatch(
 
     std::vector<std::vector<double> > innerResults;
     for (auto &m : m_methods) {
-        m->getResultBatch(GBatch, altFreqs, innerResults);
+        m->getResultBatch(GBatch, altFreqs, chunkIdxs, innerResults);
         for (int b = 0; b < B; ++b)
             results[b].insert(results[b].end(), innerResults[b].begin(), innerResults[b].end());
     }
@@ -653,6 +659,7 @@ void multiPhenoEngineRange(
             std::vector<std::vector<uint32_t> > nfBatchMissings;
             Eigen::MatrixXd GBatch_pheno_nf;
             std::vector<double> nfPassAltFreqs;
+            std::vector<int> nfPassChunkIdxs;
             std::vector<std::vector<double> > nfBatchResultsBuf;
             std::vector<PhenoGenoStats> nfWinStats;
             std::vector<char> nfWinPassQC;
@@ -675,6 +682,7 @@ void multiPhenoEngineRange(
 
                 GBatch_pheno_nf.resize(maxNonFusedN, commonB);
                 nfPassAltFreqs.reserve(B);
+                nfPassChunkIdxs.reserve(B);
                 nfWinStats.resize(B);
                 nfWinPassQC.resize(B, 0);
             }
@@ -887,6 +895,7 @@ void multiPhenoEngineRange(
                             const uint64_t *pmask = ident ? nullptr : batch.presentMask.data();
 
                             nfPassAltFreqs.clear();
+                            nfPassChunkIdxs.clear();
                             int passCount = 0;
 
                             for (size_t bi = 0; bi < wlen; ++bi) {
@@ -916,6 +925,7 @@ void multiPhenoEngineRange(
                                     GBatch_pheno_nf.col(passCount).head(nP) =
                                         Eigen::Map<const Eigen::VectorXd>(phenoG, nP);
                                     nfPassAltFreqs.push_back(gs.altFreq);
+                                    nfPassChunkIdxs.push_back(static_cast<int>(wstart + bi));
                                     ++passCount;
                                 }
                             }
@@ -926,7 +936,8 @@ void multiPhenoEngineRange(
                                 if (passCount > 0)
                                     methods[p]->getResultBatch(
                                         GBatch_pheno_nf.topLeftCorner(nP, passCount),
-                                        nfPassAltFreqs, nfBatchResultsBuf);
+                                        nfPassAltFreqs, nfPassChunkIdxs,
+                                        nfBatchResultsBuf);
 
                                 int ri = 0;
                                 for (size_t bi = 0; bi < wlen; ++bi) {

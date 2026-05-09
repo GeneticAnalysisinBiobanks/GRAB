@@ -481,6 +481,7 @@ void runLEAFPheno(
     double refPrevalence,
     double cutoff,
     double spaCutoff,
+    double outlierRatio,
     int nthread,
     int nSnpPerChunk,
     double missingCutoff,
@@ -907,6 +908,7 @@ void runLEAFPheno(
                 clusterSD[c].weights(),
                 cutoff,
                 spaCutoff,
+                outlierRatio,
                 clRefMaps[c]
             )
         );
@@ -981,6 +983,7 @@ void runLEAF(
     double refPrevalence,
     double cutoff,
     double spaCutoff,
+    double outlierRatio,
     int nthreads,
     int nSnpPerChunk,
     double missingCutoff,
@@ -1493,7 +1496,7 @@ void runLEAF(
         for (int c = 0; c < K; ++c) {
             clMethods.push_back(std::make_unique<WtCoxGMethod>(
                                     clRWI[p][c].resid, clRWI[p][c].weight,
-                                    cutoff, spaCutoff, clRefMaps[p][c]));
+                                    cutoff, spaCutoff, outlierRatio, clRefMaps[p][c]));
         }
         auto method = std::make_unique<LEAFMethod>(std::move(clMethods), clusterIndices);
         tasks[p].phenoName = traitNames[p];
