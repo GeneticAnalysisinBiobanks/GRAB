@@ -1,31 +1,10 @@
-// common.hpp — Shared types and SPA helpers for SPAmix and SPAmixPlus
+// common.hpp — Shared SPA helpers for SPAmix and SPAmixPlus
 //
-// OutlierData:    IQR-based outlier detection for residuals
-// spa namespace:  Saddlepoint approximation tail probability
+// OutlierData / detectOutliers live in util/outlier.hpp and are reused here.
+// spa::getProbSpaG: Lugannani-Rice tail probability with outlier/non-outlier split.
 #pragma once
 
-#include <Eigen/Dense>
-#include <cstdint>
-#include <vector>
-
-// ======================================================================
-// Outlier data — precomputed from residuals
-// ======================================================================
-
-struct OutlierData {
-    std::vector<uint32_t> posOutlier;
-    std::vector<uint32_t> posNonOutlier;
-    Eigen::VectorXd residOutlier;     // resid[posOutlier]
-    Eigen::VectorXd residNonOutlier;  // resid[posNonOutlier]
-    Eigen::VectorXd resid2NonOutlier; // resid[posNonOutlier]^2
-};
-
-// Detect outlier residuals using IQR method.
-// outlierRatio shrinks by 0.8x until at least one outlier is found.
-OutlierData detectOutliers(
-    const Eigen::VectorXd &resid,
-    double outlierRatio
-);
+#include "util/outlier.hpp"
 
 // ======================================================================
 // SPA helpers — Lugannani-Rice tail probability with outlier/non-outlier split

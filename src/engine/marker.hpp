@@ -51,6 +51,12 @@ class MethodBase {
     //
     //   GBatch    — imputed genotype matrix (N × B), one column per marker
     //   altFreqs  — ALT allele frequencies, one per marker (length B)
+    //   chunkIdxs — chunk-relative 0-based marker index for each batch column
+    //               (length B). Required because the engine collects only
+    //               passing-QC markers into the batch, so column b does NOT
+    //               equal the marker's chunk position.  Methods that index
+    //               per-chunk per-marker state (e.g. m_chunkRefInfo built in
+    //               prepareChunk) MUST use chunkIdxs[b], never b.
     //   results   — output: results[b] = method-specific result values for marker b
     //
     // Override in methods where the score computation is memory-bound and
@@ -58,6 +64,7 @@ class MethodBase {
     virtual void getResultBatch(
         const Eigen::Ref<const Eigen::MatrixXd> &GBatch,
         const std::vector<double> &altFreqs,
+        const std::vector<int> &chunkIdxs,
         std::vector<std::vector<double> > &results
     ) {
         const int B = static_cast<int>(GBatch.cols());
@@ -67,7 +74,7 @@ class MethodBase {
             // const_cast safe: getResultVec doesn't modify GVec for most methods.
             // For methods that do modify GVec, they must override getResultBatch.
             Eigen::VectorXd col = GBatch.col(b);
-            getResultVec(col, altFreqs[b], b, results[b]);
+            getResultVec(col, altFreqs[b], chunkIdxs[b], results[b]);
         }
     }
 
@@ -236,6 +243,7 @@ class MultiMethod : public MethodBase {
     void getResultBatch(
         const Eigen::Ref<const Eigen::MatrixXd> &GBatch,
         const std::vector<double> &altFreqs,
+        const std::vector<int> &chunkIdxs,
         std::vector<std::vector<double> > &results
     ) override;
 

@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "engine/marker.hpp"
+#include "util/outlier.hpp"
 
 class GenoMeta;
 class SparseGRM;
@@ -44,16 +45,18 @@ struct WtCoxGRefInfo {
 class WtCoxGMethod : public MethodBase {
   public:
 // Construct from pre-computed null-model quantities.
-//   R:           martingale residuals (nSubj)
-//   w:           sampling weights     (nSubj)
-//   cutoff:      batch-effect p-value threshold (e.g. 0.05)
-//   SPA_Cutoff:  z-score threshold to switch from normal to SPA
-//   refMap:      genoIndex → WtCoxGRefInfo (from Phase 2)
+//   R:             martingale residuals (nSubj)
+//   w:             sampling weights     (nSubj)
+//   cutoff:        batch-effect p-value threshold (e.g. 0.05)
+//   SPA_Cutoff:    z-score threshold to switch from normal to SPA
+//   outlierRatio:  IQR multiplier for residual outlier split (e.g. 1.5)
+//   refMap:        genoIndex → WtCoxGRefInfo (from Phase 2)
     WtCoxGMethod(
         Eigen::VectorXd R,
         Eigen::VectorXd w,
         double cutoff,
         double SPA_Cutoff,
+        double outlierRatio,
         std::shared_ptr<const std::unordered_map<uint64_t, WtCoxGRefInfo> > refMap
     );
 
@@ -121,8 +124,16 @@ class WtCoxGMethod : public MethodBase {
     Eigen::VectorXd m_w1; // w / (2 * sum(w))
     double m_meanR;
     double m_sumR;
+    double m_sqSumR;             // sum(R²) — for O(1) per-variant variance reductions
+    double m_w1Sq;               // sum(w1²) — invariant of variant
+    double m_w1DotR;             // sum(w1·R) — invariant of variant
     double m_cutoff;
     double m_SPA_Cutoff;
+    double m_outlierRatio;
+    OutlierData m_outlier;       // 1.5×IQR split of m_R
+    int m_nNonOutlier;           // count of non-outlier subjects
+    double m_sumR_nonOutlier;    // sum_{nonOut} R[i]
+    double m_sumR2_nonOutlier;   // sum_{nonOut} R[i]^2
     std::shared_ptr<const std::unordered_map<uint64_t, WtCoxGRefInfo> > m_refMap;
 
 // Per-chunk scratch (rebuilt in prepareChunk)
@@ -238,6 +249,7 @@ void runWtCoxGPheno(
     double refPrevalence,
     double cutoff,
     double spaCutoff,
+    double outlierRatio,
     int nthread,
     int nSnpPerChunk,
     double missingCutoff,
@@ -268,6 +280,7 @@ void runWtCoxG(
     double refPrevalence,
     double cutoff,
     double spaCutoff,
+    double outlierRatio,
     int nthreads,
     int nSnpPerChunk,
     double missingCutoff,

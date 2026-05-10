@@ -6,6 +6,8 @@
 #include "io/subject_data.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
+#include "util/simd_dispatch.hpp"
+#include "util/simd_math.hpp"
 #include "util/text_scanner.hpp"
 
 #include <algorithm>
@@ -25,123 +27,305 @@
 using NaN = std::numeric_limits<double>;
 
 // ======================================================================
-// Anonymous-namespace helpers (SPA internals, ported from Reference)
+// Anonymous-namespace helpers — SPA with 1.5×IQR outlier split.
+//
+// Non-outlier residuals contribute via their 2nd-order Taylor expansion of
+// the binomial CGF (a Gaussian closed form), avoiding the O(N) inner loop
+// for every Newton-Raphson iteration.  Outlier residuals retain the full
+// empirical CGF.  Newton-Raphson reuses K2 for both the saddle-point step
+// and the Lugannani-Rice tail.
 // ======================================================================
 
 namespace {
 
-double hOrg(
-    double t,
-    const Eigen::VectorXd &R,
-    double MAF,
-    double obs_ct,
-    double N_all,
-    double sumR,
-    double var_mu_ext,
-    double /*g_var_est*/,
-    double meanR,
-    double b
-) {
-    double mu_adj = -2.0 * b * sumR * MAF;
-    double var_adj = 4.0 * b * b * sumR * sumR * var_mu_ext;
-    double result = 0.0;
-    const double bm = (1.0 - b) * meanR;
-    for (Eigen::Index i = 0; i < R.size(); ++i)
-        result += math::kG0(t * (R[i] - bm), MAF);
-    return result + mu_adj * t + var_adj * t * t / 2.0;
-}
+// ────────────────────────────────────────────────────────────────────
+// Outlier CGF kernel — single pass returning K0, K1, K2 reductions
+// over the centered residuals (r_i = R[i] − bm) at saddlepoint t.
+//
+//   For each i:  λ = exp(t·r),  α = (1−p) + p·λ,  α₁ = p·r·λ,  α₂ = r·α₁,
+//                m₀ = α²,  m₁ = 2·α·α₁,  m₂ = 2·(α₁² + α·α₂),
+//                K0_i = log(m₀),  K1_i = m₁/m₀,  K2_i = m₂/m₀ − (m₁/m₀)².
+//   Returns sums.
+//
+// Three variants compiled: scalar / AVX2 / AVX-512.  Resolved at first
+// call via simdLevel().  ARM falls through to scalar (NEON via
+// auto-vectorization of the inlined inner loop after std::exp).
+// ────────────────────────────────────────────────────────────────────
 
-double h1Adj(
+struct OutlierCgf3 {
+    double K0;
+    double K1;
+    double K2;
+};
+
+static OutlierCgf3 outlierCgf_scalar(
     double t,
-    const Eigen::VectorXd &R,
-    double s,
-    double MAF,
-    double obs_ct,
-    double N_all,
-    double sumR,
-    double var_mu_ext,
-    double /*g_var_est*/,
-    double meanR,
-    double b
+    const double *residCentered,
+    int n,
+    double MAF
 ) {
-    double mu_adj = -2.0 * b * sumR * MAF;
-    double var_adj = 4.0 * b * b * sumR * sumR * var_mu_ext;
-    double result = 0.0;
-    const double bm = (1.0 - b) * meanR;
-    for (Eigen::Index i = 0; i < R.size(); ++i) {
-        double R_adj = R[i] - bm;
-        result += R_adj * math::kG1(t * R_adj, MAF);
+    const double oneMmaf = 1.0 - MAF;
+    double K0 = 0.0, K1 = 0.0, K2 = 0.0;
+    for (int i = 0; i < n; ++i) {
+        const double r      = residCentered[i];
+        const double lambda = std::exp(t * r);
+        const double alpha  = oneMmaf + MAF * lambda;
+        const double alpha1 = MAF * r * lambda;
+        const double alpha2 = r * alpha1;
+        const double mgf0   = alpha * alpha;
+        const double mgf1   = 2.0 * alpha * alpha1;
+        const double mgf2   = 2.0 * (alpha1 * alpha1 + alpha * alpha2);
+        const double ratio  = mgf1 / mgf0;
+        K0 += std::log(mgf0);
+        K1 += ratio;
+        K2 += mgf2 / mgf0 - ratio * ratio;
     }
-    return result + mu_adj + var_adj * t - s;
+    return {K0, K1, K2};
 }
 
-double h2(
+#if defined(__x86_64__) || defined(_M_X64)
+
+__attribute__((target("avx2,avx512f,avx512vl,fma")))
+static OutlierCgf3 outlierCgf_avx512(
     double t,
-    const Eigen::VectorXd &R,
-    double MAF,
-    double obs_ct,
-    double N_all,
-    double sumR,
-    double var_mu_ext,
-    double /*g_var_est*/,
-    double meanR,
-    double b
+    const double *residCentered,
+    int n,
+    double MAF
 ) {
-    double var_adj = obs_ct * (sumR / N_all) * (sumR / N_all) * MAF * (1.0 - MAF);
-    double result = 0.0;
-    const double bm = (1.0 - b) * meanR;
-    for (Eigen::Index i = 0; i < R.size(); ++i) {
-        double R_adj = R[i] - bm;
-        result += R_adj * R_adj * math::kG2(t * R_adj, MAF);
+    const __m512d vt       = _mm512_set1_pd(t);
+    const __m512d vMAF     = _mm512_set1_pd(MAF);
+    const __m512d vOneMmaf = _mm512_set1_pd(1.0 - MAF);
+    const __m512d vTwo     = _mm512_set1_pd(2.0);
+
+    __m512d vK0 = _mm512_setzero_pd();
+    __m512d vK1 = _mm512_setzero_pd();
+    __m512d vK2 = _mm512_setzero_pd();
+
+    int i = 0;
+    const int n8 = n & ~7;
+    for (; i < n8; i += 8) {
+        const __m512d vr      = _mm512_loadu_pd(residCentered + i);
+        const __m512d vlambda = avx512_exp_pd(_mm512_mul_pd(vt, vr));
+        const __m512d valpha  = _mm512_fmadd_pd(vMAF, vlambda, vOneMmaf);
+        const __m512d valpha1 = _mm512_mul_pd(vMAF, _mm512_mul_pd(vr, vlambda));
+        const __m512d valpha2 = _mm512_mul_pd(vr, valpha1);
+
+        const __m512d vmgf0   = _mm512_mul_pd(valpha, valpha);
+        const __m512d vmgf1   = _mm512_mul_pd(vTwo, _mm512_mul_pd(valpha, valpha1));
+        const __m512d vmgf2   = _mm512_mul_pd(vTwo,
+                                              _mm512_fmadd_pd(valpha1, valpha1,
+                                                              _mm512_mul_pd(valpha, valpha2)));
+
+        vK0 = _mm512_add_pd(vK0, avx512_log_pd(vmgf0));
+        const __m512d vratio = _mm512_div_pd(vmgf1, vmgf0);
+        vK1 = _mm512_add_pd(vK1, vratio);
+        vK2 = _mm512_add_pd(vK2,
+                            _mm512_sub_pd(_mm512_div_pd(vmgf2, vmgf0),
+                                          _mm512_mul_pd(vratio, vratio)));
     }
-    return result + var_adj;
+
+    // Masked tail: r=0 for inactive lanes → α=1, α₁=α₂=0, m₀=1, log(1)=0,
+    // ratio=0 — all zero contributions.
+    if (i < n) {
+        const __mmask8 mask = static_cast<__mmask8>((1u << (n - i)) - 1u);
+        const __m512d vr      = _mm512_maskz_loadu_pd(mask, residCentered + i);
+        const __m512d vlambda = avx512_exp_pd(_mm512_mul_pd(vt, vr));
+        const __m512d valpha  = _mm512_fmadd_pd(vMAF, vlambda, vOneMmaf);
+        const __m512d valpha1 = _mm512_mul_pd(vMAF, _mm512_mul_pd(vr, vlambda));
+        const __m512d valpha2 = _mm512_mul_pd(vr, valpha1);
+
+        const __m512d vmgf0   = _mm512_mul_pd(valpha, valpha);
+        const __m512d vmgf1   = _mm512_mul_pd(vTwo, _mm512_mul_pd(valpha, valpha1));
+        const __m512d vmgf2   = _mm512_mul_pd(vTwo,
+                                              _mm512_fmadd_pd(valpha1, valpha1,
+                                                              _mm512_mul_pd(valpha, valpha2)));
+
+        vK0 = _mm512_add_pd(vK0, avx512_log_pd(vmgf0));
+        const __m512d vratio = _mm512_div_pd(vmgf1, vmgf0);
+        vK1 = _mm512_add_pd(vK1, vratio);
+        vK2 = _mm512_add_pd(vK2,
+                            _mm512_sub_pd(_mm512_div_pd(vmgf2, vmgf0),
+                                          _mm512_mul_pd(vratio, vratio)));
+    }
+
+    return {_mm512_reduce_add_pd(vK0),
+            _mm512_reduce_add_pd(vK1),
+            _mm512_reduce_add_pd(vK2)};
 }
 
-double getProbSpaG(
-    double MAF,
-    const Eigen::VectorXd &R,
-    double s,
-    double obs_ct,
-    double N_all,
-    double sumR,
-    double var_mu_ext,
-    double g_var_est,
-    double meanR,
-    double b,
-    bool lower_tail
+__attribute__((target("avx2,fma")))
+static OutlierCgf3 outlierCgf_avx2(
+    double t,
+    const double *residCentered,
+    int n,
+    double MAF
 ) {
-    auto h1_func = [&](double t) {
-        return h1Adj(t, R, s, MAF, obs_ct, N_all, sumR, var_mu_ext, g_var_est, meanR, b);
+    const __m256d vt       = _mm256_set1_pd(t);
+    const __m256d vMAF     = _mm256_set1_pd(MAF);
+    const __m256d vOneMmaf = _mm256_set1_pd(1.0 - MAF);
+    const __m256d vTwo     = _mm256_set1_pd(2.0);
+
+    __m256d vK0 = _mm256_setzero_pd();
+    __m256d vK1 = _mm256_setzero_pd();
+    __m256d vK2 = _mm256_setzero_pd();
+
+    int i = 0;
+    const int n4 = n & ~3;
+    for (; i < n4; i += 4) {
+        const __m256d vr      = _mm256_loadu_pd(residCentered + i);
+        const __m256d vlambda = avx2_exp_pd(_mm256_mul_pd(vt, vr));
+        const __m256d valpha  = _mm256_fmadd_pd(vMAF, vlambda, vOneMmaf);
+        const __m256d valpha1 = _mm256_mul_pd(vMAF, _mm256_mul_pd(vr, vlambda));
+        const __m256d valpha2 = _mm256_mul_pd(vr, valpha1);
+
+        const __m256d vmgf0   = _mm256_mul_pd(valpha, valpha);
+        const __m256d vmgf1   = _mm256_mul_pd(vTwo, _mm256_mul_pd(valpha, valpha1));
+        const __m256d vmgf2   = _mm256_mul_pd(vTwo,
+                                              _mm256_fmadd_pd(valpha1, valpha1,
+                                                              _mm256_mul_pd(valpha, valpha2)));
+
+        vK0 = _mm256_add_pd(vK0, avx2_log_pd(vmgf0));
+        const __m256d vratio = _mm256_div_pd(vmgf1, vmgf0);
+        vK1 = _mm256_add_pd(vK1, vratio);
+        vK2 = _mm256_add_pd(vK2,
+                            _mm256_sub_pd(_mm256_div_pd(vmgf2, vmgf0),
+                                          _mm256_mul_pd(vratio, vratio)));
+    }
+
+    auto hsum = [](__m256d v) -> double {
+        __m128d lo = _mm256_castpd256_pd128(v);
+        __m128d hi = _mm256_extractf128_pd(v, 1);
+        lo = _mm_add_pd(lo, hi);
+        return _mm_cvtsd_f64(lo) + _mm_cvtsd_f64(_mm_unpackhi_pd(lo, lo));
     };
-    double zeta;
-    try {
-        double a = -1.0, bb = 1.0;
-        double fa = h1_func(a), fb = h1_func(bb);
-        if (fa * fb > 0) {
-            double factor = 2.0;
-            for (int i = 0; i < 10; ++i) {
-                if (std::abs(fa) < std::abs(fb)) {
-                    a *= factor;
-                    fa = h1_func(a);
-                } else {
-                    bb *= factor;
-                    fb = h1_func(bb);
-                }
-                if (fa * fb <= 0) break;
-            }
-        }
-        zeta = math::findRootBrent(h1_func, a, bb, 1e-8);
-    } catch (...) {
-        return NaN::quiet_NaN();
-    }
+    double K0 = hsum(vK0);
+    double K1 = hsum(vK1);
+    double K2 = hsum(vK2);
 
-    double k1 = hOrg(zeta, R, MAF, obs_ct, N_all, sumR, var_mu_ext, g_var_est, meanR, b);
-    double k2 = h2(zeta, R, MAF, obs_ct, N_all, sumR, var_mu_ext, g_var_est, meanR, b);
-    double temp1 = zeta * s - k1;
-    if (!std::isfinite(zeta) || temp1 < 0.0 || k2 <= 0.0) return NaN::quiet_NaN();
+    // Scalar tail (1-3 remaining)
+    const double oneMmaf = 1.0 - MAF;
+    for (; i < n; ++i) {
+        const double r      = residCentered[i];
+        const double lambda = std::exp(t * r);
+        const double alpha  = oneMmaf + MAF * lambda;
+        const double alpha1 = MAF * r * lambda;
+        const double alpha2 = r * alpha1;
+        const double mgf0   = alpha * alpha;
+        const double mgf1   = 2.0 * alpha * alpha1;
+        const double mgf2   = 2.0 * (alpha1 * alpha1 + alpha * alpha2);
+        const double ratio  = mgf1 / mgf0;
+        K0 += std::log(mgf0);
+        K1 += ratio;
+        K2 += mgf2 / mgf0 - ratio * ratio;
+    }
+    return {K0, K1, K2};
+}
+
+#endif  // x86_64 SIMD variants
+
+// Dispatch: pick fastest available CGF kernel.  Resolved once at startup.
+using OutlierCgfFn = OutlierCgf3 (*)(double, const double *, int, double);
+
+static OutlierCgfFn pickOutlierCgfFn() {
+#if defined(__x86_64__) || defined(_M_X64)
+    switch (simdLevel()) {
+    case SimdLevel::AVX512: return outlierCgf_avx512;
+    case SimdLevel::AVX2:   return outlierCgf_avx2;
+    default: break;
+    }
+#endif
+    return outlierCgf_scalar;
+}
+
+static const OutlierCgfFn outlierCgf = pickOutlierCgfFn();
+
+// ────────────────────────────────────────────────────────────────────
+// SPA helpers — operate on already-centered residuals (r_i = R[i] − bm)
+// ────────────────────────────────────────────────────────────────────
+
+// Newton-Raphson: find ζ such that K1_total(ζ) = s.
+//   K1_total(ζ) = K1_outlier(ζ) + (mean_n + var_n_K01 · ζ)
+//   K2_total(ζ) = K2_outlier(ζ) + var_n_K2
+// var_n_K01 vs var_n_K2 differ in WtCoxG: var_n_K01 carries the batch-effect
+// Gaussian variance (4·b²·sumR²·var_mu_ext) while var_n_K2 carries the
+// finite-reference-panel correction (obs_ct·(sumR/N_all)²·MAF·(1-MAF)).
+struct RootResultWt {
+    double root;
+    double K2;
+    bool converge;
+};
+
+RootResultWt fastGetRootK1_wt(
+    double s,
+    const double *residCentered,
+    int nOut,
+    double MAF,
+    double mean_n,
+    double var_n_K01,
+    double var_n_K2
+) {
+    double x = 0.0, oldX;
+    double K1 = 0.0, K2 = 0.0, oldK1;
+    double diffX = std::numeric_limits<double>::infinity(), oldDiffX;
+    bool converge = true;
+    constexpr double tol = 1e-3;
+    constexpr int maxiter = 100;
+
+    for (int iter = 0; iter < maxiter; ++iter) {
+        oldX = x;
+        oldDiffX = diffX;
+        oldK1 = K1;
+
+        const OutlierCgf3 cgf = outlierCgf(x, residCentered, nOut, MAF);
+        K1 = cgf.K1 - s + mean_n + var_n_K01 * x;
+        K2 = cgf.K2 + var_n_K2;
+
+        diffX = -K1 / K2;
+
+        if (!std::isfinite(K1)) {
+            x = std::numeric_limits<double>::infinity();
+            K2 = 0.0;
+            break;
+        }
+
+        if (iter > 0 && ((K1 > 0) != (oldK1 > 0))) {
+            while (std::abs(diffX) > std::abs(oldDiffX) - tol)
+                diffX *= 0.5;
+        }
+
+        if (std::abs(diffX) < tol) break;
+        x = oldX + diffX;
+
+        if (iter == maxiter - 1) converge = false;
+    }
+    return {x, K2, converge};
+}
+
+// Lugannani-Rice tail probability with outlier/non-outlier split.
+double getProbSpaG_wt(
+    double s,
+    bool lower_tail,
+    const double *residCentered,
+    int nOut,
+    double MAF,
+    double mean_n,
+    double var_n_K01,
+    double var_n_K2
+) {
+    auto root = fastGetRootK1_wt(s, residCentered, nOut, MAF,
+                                 mean_n, var_n_K01, var_n_K2);
+    double zeta = root.root;
+    if (!std::isfinite(zeta)) return NaN::quiet_NaN();
+
+    const OutlierCgf3 cgf = outlierCgf(zeta, residCentered, nOut, MAF);
+    double k0_total = cgf.K0 + mean_n * zeta + 0.5 * var_n_K01 * zeta * zeta;
+    double k2_total = cgf.K2 + var_n_K2;
+
+    double temp1 = zeta * s - k0_total;
+    if (temp1 < 0.0 || k2_total <= 0.0) return NaN::quiet_NaN();
 
     double w = (zeta >= 0 ? 1.0 : -1.0) * std::sqrt(2.0 * temp1);
-    double v = zeta * std::sqrt(k2);
+    double v = zeta * std::sqrt(k2_total);
     if (w == 0.0 || v == 0.0 || (v / w) <= 0.0) return NaN::quiet_NaN();
 
     return math::pnorm(w + (1.0 / w) * std::log(v / w), 0.0, 1.0, lower_tail, false);
@@ -154,6 +338,13 @@ struct SpaResult {
 SpaResult spaGOneSnpHomo(
     const Eigen::Ref<const Eigen::VectorXd> &g,
     const Eigen::VectorXd &R,
+    const OutlierData &outlier,
+    int nNonOutlier,
+    double sumR_nonOutlier,
+    double sumR2_nonOutlier,
+    double meanR,
+    double sumR,
+    double sqSumR,
     double mu_ext,
     double obs_ct,
     double b,
@@ -170,18 +361,20 @@ SpaResult spaGOneSnpHomo(
     const double N = static_cast<double>(g.size());
     double mu_int = g.mean() / 2.0;
     double MAF = std::clamp((1.0 - b) * mu_int + b * mu_ext, 0.0, 1.0);
-    double sumR = R.sum();
     double N_all = N + obs_ct / 2.0;
-    double S = (R.array() * (g.array() - 2.0 * MAF)).sum();
+    // S = sum(R · (g − 2·MAF)) = R·g − 2·MAF·sumR  (one Eigen dot product, no temp)
+    double S = R.dot(g) - 2.0 * MAF * sumR;
     double S_raw = S;
     S /= var_ratio;
 
     double g_var_est = 2.0 * MAF * (1.0 - MAF);
     double var_mu_ext = (obs_ct == 0.0) ? 0.0 : (MAF * (1.0 - MAF) / obs_ct + sigma2);
 
-    double meanR = R.mean();
-    Eigen::ArrayXd R_adj = R.array() - (1.0 - b) * meanR;
-    double S_var = (R_adj * R_adj).sum() * g_var_est + 4.0 * b * b * sumR * sumR * var_mu_ext;
+    // S_var: closed form from cached R reductions, no per-variant temp array.
+    // sum((R - bm)²) = sqSumR − 2·bm·sumR + N·bm²,  bm = (1-b)·meanR
+    const double bm = (1.0 - b) * meanR;
+    const double R_adj_sq_sum = sqSumR - 2.0 * bm * sumR + N * bm * bm;
+    double S_var = R_adj_sq_sum * g_var_est + 4.0 * b * b * sumR * sumR * var_mu_ext;
 
     if (S_var <= 0.0) return {NaN::quiet_NaN(), NaN::quiet_NaN(), S_raw, NaN::quiet_NaN()};
 
@@ -191,8 +384,30 @@ SpaResult spaGOneSnpHomo(
         return {pval_norm, pval_norm, S_raw, z};
     }
 
-    double pval1 = getProbSpaG(MAF, R, std::abs(S), obs_ct, N_all, sumR, var_mu_ext, g_var_est, meanR, b, false);
-    double pval2 = getProbSpaG(MAF, R, -std::abs(S), obs_ct, N_all, sumR, var_mu_ext, g_var_est, meanR, b, true);
+    // Non-outlier Gaussian CGF terms (closed form, O(1) per variant).
+    const double n_non_d        = static_cast<double>(nNonOutlier);
+    const double shifted_sum    = sumR_nonOutlier - n_non_d * bm;
+    const double shifted_sumsq  = sumR2_nonOutlier
+                                - 2.0 * bm * sumR_nonOutlier
+                                + n_non_d * bm * bm;
+    const double mu_adj         = -2.0 * b * sumR * MAF;
+    const double var_adj_batch  = 4.0 * b * b * sumR * sumR * var_mu_ext;
+    const double var_adj_finite = obs_ct * (sumR / N_all) * (sumR / N_all) * MAF * (1.0 - MAF);
+    const double var_n_resid    = 2.0 * MAF * (1.0 - MAF) * shifted_sumsq;
+    const double mean_n     = 2.0 * MAF * shifted_sum + mu_adj;
+    const double var_n_K01  = var_n_resid + var_adj_batch;
+    const double var_n_K2   = var_n_resid + var_adj_finite;
+
+    // Centered outlier residuals — built once, reused by both tail calls and
+    // by every Newton-Raphson iteration inside.
+    const int nOut = static_cast<int>(outlier.posOutlier.size());
+    Eigen::ArrayXd residCentered = outlier.residOutlier.array() - bm;
+    const double *residCenteredPtr = residCentered.data();
+
+    double pval1 = getProbSpaG_wt(std::abs(S), false, residCenteredPtr, nOut, MAF,
+                                  mean_n, var_n_K01, var_n_K2);
+    double pval2 = getProbSpaG_wt(-std::abs(S), true, residCenteredPtr, nOut, MAF,
+                                  mean_n, var_n_K01, var_n_K2);
     double pval_spa = std::min(1.0, pval1 + pval2);
     return {pval_spa, std::min(1.0, 2.0 * math::pnorm(-std::abs(z))), S_raw, z};
 }
@@ -649,19 +864,25 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
                 double meanR_loc = R.mean();
                 double sumR_loc = R.sum();
 
-                // S = sum((R - (1-b)*meanR) * mu_i) - sumR * 2 * b * mu_pop
+                // Fused single pass over R: accumulate S, mu_local, var_int, and
+                // cov_val (shared between p0 and p1 branches) in one sweep.
+                const double bm_loc = (1.0 - b) * meanR_loc;
                 double S = 0.0;
+                double mu_local_acc = 0.0;
+                double var_int_acc = 0.0;
+                double cov_val_acc = 0.0;
                 for (Eigen::Index k = 0; k < R.size(); ++k) {
-                    double mu_i = (y[k] == 1.0) ? 2.0 * mu1_trial : 2.0 * mu0_val;
-                    S += (R[k] - (1.0 - b) * meanR_loc) * mu_i;
+                    const double mu_i  = (y[k] == 1.0) ? 2.0 * mu1_trial : 2.0 * mu0_val;
+                    const double r_adj = R[k] - bm_loc;
+                    S             += r_adj * mu_i;
+                    mu_local_acc  += mu_i;
+                    var_int_acc   += r_adj * r_adj;
+                    cov_val_acc   += w1[k] * r_adj;
                 }
                 S -= sumR_loc * 2.0 * b * mu_pop;
 
                 double w1sum2 = sum_w1_sq;                                       // already computed above
-                double mu_local = 0.0;
-                for (Eigen::Index k = 0; k < R.size(); ++k)
-                    mu_local += ((y[k] == 1.0) ? 2.0 * mu1_trial : 2.0 * mu0_val);
-                mu_local /= (2.0 * nS);
+                double mu_local = mu_local_acc / (2.0 * nS);
 
                 double var_mu_ext_loc = mu_local * (1.0 - mu_local) / obs_ct_ext;
                 double var_Sbat_loc = w1sum2 * 2.0 * mu_local * (1.0 - mu_local) +
@@ -690,20 +911,13 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
                                  (std::exp(c_val - d_val) - 1.0)) + (1.0 - TPR) *
                                 (1.0 - p_cut);
 
-                double var_int = 0.0;
-                for (Eigen::Index k = 0; k < R.size(); ++k) {
-                    double r_adj = R[k] - (1.0 - b) * meanR_loc;
-                    var_int += r_adj * r_adj;
-                }
-                var_int *= 2.0 * mu_local * (1.0 - mu_local);
+                const double mu_var_factor = 2.0 * mu_local * (1.0 - mu_local);
+                const double cov_resid     = cov_val_acc * mu_var_factor;
+                double var_int = var_int_acc * mu_var_factor;
                 double var_S = var_int + 4.0 * b * b * sumR_loc * sumR_loc *
                                var_mu_ext_loc;
 
-                double cov_val = 0.0;
-                for (Eigen::Index k = 0; k < R.size(); ++k)
-                    cov_val += w1[k] * (R[k] - (1.0 - b) * meanR_loc);
-                cov_val *= 2.0 * mu_local * (1.0 - mu_local);
-                cov_val += 2.0 * b * sumR_loc * var_mu_ext_loc;
+                double cov_val = cov_resid + 2.0 * b * sumR_loc * var_mu_ext_loc;
 
                 // p0 = P(S ≤ −|S|, lb ≤ S_bat ≤ ub) via bivariate normal
                 double negInf = -std::numeric_limits<double>::infinity();
@@ -718,14 +932,10 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
                 );
                 p0 = std::clamp(p0, 0.0, 1.0);
 
-                // p1 with sigma2
+                // p1 with sigma2 — reuse cov_resid accumulator from the fused loop.
                 double var_S1 = var_int + 4.0 * b * b * sumR_loc * sumR_loc *
                                 (var_mu_ext_loc + sigma2);
-                double cov_val1 = 0.0;
-                for (Eigen::Index k = 0; k < R.size(); ++k)
-                    cov_val1 += w1[k] * (R[k] - (1.0 - b) * meanR_loc);
-                cov_val1 *= 2.0 * mu_local * (1.0 - mu_local);
-                cov_val1 += 2.0 * b * sumR_loc * (var_mu_ext_loc + sigma2);
+                double cov_val1 = cov_resid + 2.0 * b * sumR_loc * (var_mu_ext_loc + sigma2);
                 double var_Sbat1 = var_Sbat_loc + sigma2;
 
                 double p1 = math::pmvnorm2d(
@@ -795,6 +1005,7 @@ WtCoxGMethod::WtCoxGMethod(
     Eigen::VectorXd w,
     double cutoff,
     double SPA_Cutoff,
+    double outlierRatio,
     std::shared_ptr<const std::unordered_map<uint64_t, WtCoxGRefInfo> > refMap
 )
     : m_R(std::move(R)),
@@ -802,14 +1013,22 @@ WtCoxGMethod::WtCoxGMethod(
       m_w1(m_w / (2.0 * m_w.sum())),
       m_meanR(m_R.mean()),
       m_sumR(m_R.sum()),
+      m_sqSumR(m_R.squaredNorm()),
+      m_w1Sq(m_w1.squaredNorm()),
+      m_w1DotR(m_w1.dot(m_R)),
       m_cutoff(cutoff),
       m_SPA_Cutoff(SPA_Cutoff),
+      m_outlierRatio(outlierRatio),
+      m_outlier(detectOutliers(m_R, outlierRatio)),
+      m_nNonOutlier(static_cast<int>(m_outlier.posNonOutlier.size())),
+      m_sumR_nonOutlier(m_outlier.residNonOutlier.sum()),
+      m_sumR2_nonOutlier(m_outlier.resid2NonOutlier.sum()),
       m_refMap(std::move(refMap))
 {
 }
 
 std::unique_ptr<MethodBase> WtCoxGMethod::clone() const {
-    auto p = std::make_unique<WtCoxGMethod>(m_R, m_w, m_cutoff, m_SPA_Cutoff, m_refMap);
+    auto p = std::make_unique<WtCoxGMethod>(m_R, m_w, m_cutoff, m_SPA_Cutoff, m_outlierRatio, m_refMap);
     return p;
 }
 
@@ -943,7 +1162,10 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTest(
     // No external info → delegate to SPA-only
     if (std::isnan(mu_ext)) {
         double vr = (std::isnan(TPR) && std::isnan(sigma2)) ? var_ratio_int : 1.0;
-        SpaResult spa = spaGOneSnpHomo(g_input, m_R, 0.0, 0.0, 0.0, 0.0, vr, m_SPA_Cutoff);
+        SpaResult spa = spaGOneSnpHomo(
+            g_input, m_R, m_outlier, m_nNonOutlier, m_sumR_nonOutlier, m_sumR2_nonOutlier,
+            m_meanR, m_sumR, m_sqSumR,
+            0.0, 0.0, 0.0, 0.0, vr, m_SPA_Cutoff);
         return {spa.pval, spa.score, spa.zscore};
     }
 
@@ -954,10 +1176,10 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTest(
 
     double mu_int = g_input.mean() / 2.0;
     double mu = (1.0 - b) * mu_int + b * mu_ext;
-    double S = (m_R.array() * (g_input.array() - 2.0 * mu)).sum();
+    double S = m_R.dot(g_input) - 2.0 * mu * m_sumR;
 
     double var_mu_ext = mu * (1.0 - mu) / obs_ct;
-    double var_Sbat = (m_w1.array().square()).sum() * 2.0 * mu * (1.0 - mu) + var_mu_ext;
+    double var_Sbat = m_w1Sq * 2.0 * mu * (1.0 - mu) + var_mu_ext;
 
     double qnorm_val = math::qnorm(1.0 - p_cut / 2.0);
     double lb = -qnorm_val * std::sqrt(var_Sbat) * std::sqrt(var_ratio_w0);
@@ -968,16 +1190,24 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTest(
     double p_deno = TPR * (std::exp(d_val) * (std::exp(c_val - d_val) - 1.0)) + (1.0 - TPR) * (1.0 - p_cut);
 
     // Internal SPA (no sigma2)
-    SpaResult spa_s0 = spaGOneSnpHomo(g_input, m_R, mu_ext, obs_ct, b, 0.0, var_ratio0, m_SPA_Cutoff);
+    SpaResult spa_s0 = spaGOneSnpHomo(
+        g_input, m_R, m_outlier, m_nNonOutlier, m_sumR_nonOutlier, m_sumR2_nonOutlier,
+        m_meanR, m_sumR, m_sqSumR,
+        mu_ext, obs_ct, b, 0.0, var_ratio0, m_SPA_Cutoff);
     double qchi = math::qchisq(spa_s0.pval, 1.0, false, false);
     double var_S = (qchi > 0.0) ? S * S / var_ratio0 / qchi : NaN::quiet_NaN();
 
-    // Covariance between S_bat and S
-    Eigen::ArrayXd R_adj = m_R.array() - (1.0 - b) * m_meanR;
-    double var_int_denom = (R_adj * R_adj).sum() * 2.0 * mu * (1.0 - mu) + 4.0 * b * b * m_sumR * m_sumR * var_mu_ext;
+    // Covariance between S_bat and S — closed form from cached scalars.
+    // sum((R - bm)²)  = sqSumR - 2·bm·sumR + N·bm²,  bm = (1-b)·meanR
+    // sum(w1·(R-bm)) = w1DotR - bm·sum(w1) = w1DotR - bm·0.5  (sum(w1) = 0.5 by construction)
+    const double bm = (1.0 - b) * m_meanR;
+    const double N_d = static_cast<double>(m_R.size());
+    const double R_adj_sq_sum = m_sqSumR - 2.0 * bm * m_sumR + N_d * bm * bm;
+    const double w1_dot_R_adj = m_w1DotR - 0.5 * bm;
+    double var_int_denom = R_adj_sq_sum * 2.0 * mu * (1.0 - mu) + 4.0 * b * b * m_sumR * m_sumR * var_mu_ext;
     if (var_int_denom <= 0.0) return {NaN::quiet_NaN(), NaN::quiet_NaN(), NaN::quiet_NaN()};
 
-    double cov_val = (m_w1.array() * R_adj).sum() * 2.0 * mu * (1.0 - mu) + 2.0 * b * m_sumR * var_mu_ext;
+    double cov_val = w1_dot_R_adj * 2.0 * mu * (1.0 - mu) + 2.0 * b * m_sumR * var_mu_ext;
     cov_val *= std::sqrt(var_S / var_int_denom);
     double z = S / std::sqrt(var_S);
 
@@ -994,9 +1224,12 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTest(
     p0 = std::clamp(p0, 0.0, 1.0);
 
     // External SPA (with sigma2)
-    SpaResult spa_s1 = spaGOneSnpHomo(g_input, m_R, mu_ext, obs_ct, b, sigma2, var_ratio1, m_SPA_Cutoff);
+    SpaResult spa_s1 = spaGOneSnpHomo(
+        g_input, m_R, m_outlier, m_nNonOutlier, m_sumR_nonOutlier, m_sumR2_nonOutlier,
+        m_meanR, m_sumR, m_sqSumR,
+        mu_ext, obs_ct, b, sigma2, var_ratio1, m_SPA_Cutoff);
     double var_S1 = S * S / var_ratio1 / math::qchisq(spa_s1.pval, 1.0, false, false);
-    double cov_val1 = (m_w1.array() * R_adj).sum() * 2.0 * mu * (1.0 - mu) + 2.0 * b * m_sumR * (var_mu_ext + sigma2);
+    double cov_val1 = w1_dot_R_adj * 2.0 * mu * (1.0 - mu) + 2.0 * b * m_sumR * (var_mu_ext + sigma2);
     cov_val1 *= std::sqrt(var_S1 / var_int_denom);
     double var_Sbat1 = var_Sbat + sigma2;
 
@@ -1036,6 +1269,7 @@ void runWtCoxGPheno(
     double refPrevalence,
     double cutoff,
     double spaCutoff,
+    double outlierRatio,
     int nthread,
     int nSnpPerChunk,
     double missingCutoff,
@@ -1162,7 +1396,7 @@ void runWtCoxGPheno(
 
     // ---- Marker-level SPA tests ----
     infoMsg("Running marker-level WtCoxG tests (%d thread(s))...", nthread);
-    auto method = std::make_unique<WtCoxGMethod>(sd.residuals(), sd.weights(), cutoff, spaCutoff, refInfoMap);
+    auto method = std::make_unique<WtCoxGMethod>(sd.residuals(), sd.weights(), cutoff, spaCutoff, outlierRatio, refInfoMap);
 
     // Build PhenoTask (single trait)
     std::string traitName = isSurv ? phenoNames[0] + "_" + phenoNames[1] : phenoNames[0];
@@ -1228,6 +1462,7 @@ void runWtCoxG(
     double refPrevalence,
     double cutoff,
     double spaCutoff,
+    double outlierRatio,
     int nthreads,
     int nSnpPerChunk,
     double missingCutoff,
@@ -1454,7 +1689,7 @@ void runWtCoxG(
     std::vector<PhenoTask> tasks(P);
     for (int p = 0; p < P; ++p) {
         auto method = std::make_unique<WtCoxGMethod>(
-            pd[p].residuals, pd[p].weights, cutoff, spaCutoff, refMaps[p]);
+            pd[p].residuals, pd[p].weights, cutoff, spaCutoff, outlierRatio, refMaps[p]);
         tasks[p].phenoName = pd[p].traitName;
         tasks[p].method    = std::move(method);
         tasks[p].unionToLocal.resize(genoData->nSubjUsed());

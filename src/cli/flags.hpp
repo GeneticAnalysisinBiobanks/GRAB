@@ -177,7 +177,7 @@ inline const FlagDef kSpaZThresh = {
 };
 
 inline const FlagDef kOutlierIqr = {
-    "--outlier-iqr-threshold", "FLOAT", "IQR outlier multiplier (default: 1.5)",
+    "--outlier-iqr-threshold", "FLOAT", "IQR outlier multiplier for SPAmix/SPAmixPlus/SPAmixLocalPlus/WtCoxG/LEAF (default: 1.5)",
     nullptr
 };
 
@@ -556,7 +556,7 @@ inline const FlagDef *const kWtCoxGReq[] = {
 inline const FlagDef *const kWtCoxGOpt[] = {
     &kPheno,      &kCovar,  &kCovarName, &kResidName,
     &kPhenoName,  &kSpGrm,  &kBatchPThresh,
-    &kSpaZThresh, &kThreads, &kChunkSize, &kGeno, &kMaf,
+    &kSpaZThresh, &kOutlierIqr, &kThreads, &kChunkSize, &kGeno, &kMaf,
     &kMac,        &kHwe,    &kChr,
     nullptr
 };
@@ -581,6 +581,7 @@ inline const FlagDef *const kLEAFReq[] = {
 inline const FlagDef *const kLEAFOpt[] = {
     &kPheno,     &kCovar,     &kCovarName, &kResidName, &kPhenoName,
     &kPcCols,    &kNClusters, &kSeed,      &kSpGrm,     &kBatchPThresh, &kSpaZThresh,
+    &kOutlierIqr,
     &kThreads,   &kChunkSize, &kGeno,      &kMaf,       &kMac,          &kHwe,        &kChr,
     nullptr
 };

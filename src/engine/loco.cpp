@@ -316,7 +316,6 @@ static std::unordered_map<std::string, Eigen::VectorXd>parseLdakLocoFile(
     for (size_t i = 0; i < usedIIDs.size(); ++i)
         iidIdx[usedIIDs[i]] = static_cast<Eigen::Index>(i);
 
-    std::vector<bool> usedHit(usedIIDs.size(), false);
     std::string fidTok, iidTok;
     fidTok.reserve(64);
     iidTok.reserve(64);
@@ -349,15 +348,9 @@ static std::unordered_map<std::string, Eigen::VectorXd>parseLdakLocoFile(
             if (pos >= 0 && !chrCols[c].empty())
                 result[chrCols[c]][pos] = val;
         }
-        if (pos >= 0) usedHit[static_cast<size_t>(pos)] = true;
 
         while (p < fend && *p != '\n') ++p;
         if (p < fend) ++p;
-    }
-
-    for (size_t i = 0; i < usedIIDs.size(); ++i) {
-        if (!usedHit[i])
-            throw std::runtime_error("Subject '" + usedIIDs[i] + "' not found in LDAK LOCO file: " + path);
     }
 
     return result;

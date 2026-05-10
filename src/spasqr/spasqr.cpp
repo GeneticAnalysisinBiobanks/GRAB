@@ -574,6 +574,7 @@ class SPAsqrMethod : public MethodBase {
     void getResultBatch(
         const Eigen::Ref<const Eigen::MatrixXd> &GBatch,
         const std::vector<double> &altFreqs,
+        const std::vector<int> & /*chunkIdxs*/,
         std::vector<std::vector<double> > &results
     ) override {
         const int B = static_cast<int>(GBatch.cols());
