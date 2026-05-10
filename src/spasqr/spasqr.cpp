@@ -1548,6 +1548,22 @@ void runSPAsqrLoco(
                     loco_dense[li] = locoVec[i];
             }
 
+            // LDAK PRS files are NaN-padded for subjects absent from the file
+            // (parseLdakLocoFile). In normal use LDAK runs per-trait on Y's
+            // non-missing scope, so NaN positions ⊆ Y NaN and unionToLocal
+            // already drops them. If a subject has non-missing Y but is
+            // missing from the LDAK file, NaN reaches loco_dense here and
+            // would silently poison the per-chr QMME fit (β → NaN → all
+            // markers on this chromosome NaN). Fail loudly instead.
+            if (!loco_dense.allFinite()) {
+                const Eigen::Index nBad = Nk - loco_dense.array().isFinite().count();
+                throw std::runtime_error(
+                    "SPAsqr-LOCO: LDAK PRS file for phenotype '" + phenoNames[k] +
+                    "' chr " + chr + " is missing " + std::to_string(nBad) +
+                    " subject(s) that have non-missing Y. Re-run LDAK Step 1 with "
+                    "--keep covering every subject used by this analysis.");
+            }
+
             y_adjs[k] = pw[k].Y - loco_dense;
 
             // Diagnostic: corr(Y_transformed, loco_chr)^2 in pheno-dense space.
