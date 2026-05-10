@@ -405,9 +405,15 @@ inline double scalarGetPvalFromScore(
     if (std::abs(zScore) <= spa.SPA_Cutoff)
         return 2.0 * math::pnorm(std::abs(zScore), 0.0, 1.0, false);
 
-    // EmpVar: SPAsqr has no TwoSubj/ThreeSubj, so simplifies to:
-    //   G_var * (R_GRM_R_nonOutlier + sum_unrelated_outliers2)
-    const double EmpVar    = G_var * (tau.R_GRM_R_nonOutlier + tau.sum_unrelated_outliers2);
+    // EmpVar = K''(0) of the SPA CGF, computed model-based using the
+    // per-individual Binomial(2,p) variance 2p(1-p) for both the non-outlier
+    // partial-Gaussian piece and the outlier Bernoulli factor. The rescaling
+    // Score_adj = Score · sqrt(K''(0) / Var(S)_observed) is the SAIGE-style
+    // variance ratio that brings the score onto the CGF's natural scale,
+    // dropping the implicit HWE assumption (G_var ≈ 2p(1-p)) that was used
+    // to make the ratio invariant to G_var in earlier code.
+    const double EmpVar    = 2.0 * MAF * (1.0 - MAF) *
+                              (tau.R_GRM_R_nonOutlier + tau.sum_unrelated_outliers2);
     const double Score_adj = Score * std::sqrt(EmpVar / Score_var);
 
     double zeta1 = std::abs(Score_adj) / Score_var;
@@ -428,8 +434,10 @@ inline double scalarGetPvalFromScore(
 // Computes the SPA p-value for a marker that failed the normal-approx
 // cutoff.  Both tails share the MAF/variance setup and outlier data
 // pointer extraction; only the Newton root and saddlepoint differ.
-// G_var = empirical Var(G) over post-impute genotypes from caller.
-// Ratio EmpVar/Score_var is invariant to this choice, so SPA tails are stable.
+// G_var = empirical Var(G) for the outer Score_var = G_var · R_GRM_R.
+// EmpVar = K''(0) uses the model-based 2p(1-p); the rescaling
+// Score_adj = Score · sqrt(K''(0) / Var(S)_observed) is the SAIGE-style
+// variance-ratio correction (no implicit G_var ≈ 2p(1-p) HWE assumption).
 inline double fusedGetPvalSpa(
     double Score,
     double altFreq,
@@ -440,7 +448,8 @@ inline double fusedGetPvalSpa(
     const double MAF       = std::min(altFreq, 1.0 - altFreq);
     const double Score_var = G_var * tau.R_GRM_R;
 
-    const double EmpVar    = G_var * (tau.R_GRM_R_nonOutlier + tau.sum_unrelated_outliers2);
+    const double EmpVar    = 2.0 * MAF * (1.0 - MAF) *
+                              (tau.R_GRM_R_nonOutlier + tau.sum_unrelated_outliers2);
     const double Score_adj = Score * std::sqrt(EmpVar / Score_var);
     const double absAdj    = std::abs(Score_adj);
 

@@ -78,6 +78,32 @@ void runSPAsqr(
     const std::string &spasqrSolver = "qmme"
 );
 
+// Wald-mode entry point: per-marker × per-τ full-model refit + M-estimation
+// sandwich variance.  Emits long-format summary stats:
+//   CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC HWE_P TAU BETA SE Z P
+// Response is Y_transformed (no LOCO) or Y_transformed - loco_chr (--pred-list).
+// No GRM is used — point-estimation, not score test.
+void runSPAsqrWald(
+    const std::string &phenoFile,
+    const std::string &covarFile,
+    const std::vector<std::string> &phenoNames,
+    const std::vector<std::string> &covarNames,
+    const std::vector<double> &taus,
+    const GenoSpec &geno,
+    const std::string &predListFile,        // empty → no LOCO
+    const std::string &outPrefix,
+    double spasqrTol,
+    double spasqrH,                         // -1 → IQR-based auto
+    double spasqrHScale,                    // -1 → 3
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile,
+    const std::string &removeFile,
+    const std::string &phenoTransform       // "standardize" by default upstream
+);
+
 // LOCO entry point: runs per-chromosome locoEngine with precomputed
 // conquer fits (O1 optimization).
 void runSPAsqrLoco(

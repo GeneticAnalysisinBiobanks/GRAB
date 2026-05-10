@@ -715,12 +715,11 @@ int run(
                           << args.spasqrSolver << "'\n";
                 return 1;
             }
-            // Resolve --pheno-transform default by context, then validate.
-            //   With --pred-list: default 'irn' (LDAK/regenie LOCO PRS are
-            //   typically trained on IRN'd Y, so subtraction is on that scale).
-            //   Without --pred-list: default 'raw' (no transform).
+            // Resolve --pheno-transform default. Default is 'standardize' in
+            // both contexts (with and without --pred-list); LOCO PRS should be
+            // trained on a standardised Y on the same scale.
             if (args.phenoTransform.empty()) {
-                args.phenoTransform = args.predListFile.empty() ? "raw" : "irn";
+                args.phenoTransform = "standardize";
             }
             if (args.phenoTransform != "raw" &&
                 args.phenoTransform != "irn" &&
@@ -732,6 +731,35 @@ int run(
             if (!args.predListFile.empty() && args.phenoTransform == "raw") {
                 std::cerr << "Warning: --pheno-transform raw with --pred-list — ensure your LOCO PRS"
                           << " was trained on raw Y; otherwise scales mismatch.\n";
+            }
+            // Validate --spasqr-mode
+            if (args.spasqrMode != "score" && args.spasqrMode != "wald") {
+                std::cerr << "Error: --spasqr-mode must be 'score' or 'wald', got '"
+                          << args.spasqrMode << "'\n";
+                return 1;
+            }
+            if (args.spasqrMode == "wald") {
+                runSPAsqrWald(
+                    args.phenoFile,
+                    effectiveCovarFile,
+                    phenoNames,
+                    covarNames,
+                    taus,
+                    geno,
+                    args.predListFile,
+                    args.outPrefix,
+                    args.spasqrTol,
+                    args.spasqrH,
+                    args.spasqrHScale,
+                    args.missingCutoff,
+                    args.minMafCutoff,
+                    args.minMacCutoff,
+                    args.hweCutoff,
+                    args.keepFile,
+                    args.removeFile,
+                    args.phenoTransform
+                );
+                return 0;
             }
             if (!args.predListFile.empty()) {
                 // Early validation: check all phenotypes have LOCO entries
