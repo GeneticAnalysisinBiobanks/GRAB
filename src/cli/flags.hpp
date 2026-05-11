@@ -268,19 +268,36 @@ inline const FlagDef kSpasqrSolver = {
             followed by BB gradient descent. Refits from scratch per τ.)"
 };
 
+inline const FlagDef kSpasqrMode = {
+    "--spasqr-mode", "MODE",
+    "SPAsqr inference mode: score (default) | wald",
+    R"(Selects the inference framework used by --method SPAsqr:
+  score — score test on null-model residuals (default).  One null QR fit per
+          phenotype × τ; markers are streamed and tested via the score
+          statistic S = Σ R_i G_i with M-estimation sandwich variance.
+          Output (per marker): CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC HWE_P
+          P_CCT P_tau{val}... Z_tau{val}...
+  wald  — full-model Wald test.  For every (marker, τ), the joint smoothed-QR
+          model with [X | G] is refit by QMME and β̂_G + SE are computed from
+          the (γ,γ) entry of the M-estimation sandwich V = A^{-1} B A^{-1}/n.
+          Slower per marker; suited for follow-up effect-size estimation on
+          a small SNP list (--extract).  Output is long-format summary stats:
+          CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC HWE_P TAU BETA SE Z P
+          (one row per (marker, τ); --pred-list gives y_resp = Y − loco_chr.))"
+};
+
 inline const FlagDef kPhenoTransform = {
     "--pheno-transform", "MODE",
     "Phenotype pre-transform for SPAsqr: raw | irn | standardize "
-    "(default: irn when --pred-list given, raw otherwise)",
+    "(default: irn)",
     R"(Selects how Y is transformed before SQR fitting (and before LOCO offset
 subtraction when --pred-list is given):
-  raw         — no transform; SQR fits on Y as supplied (default for non-LOCO).
+  raw         — no transform; SQR fits on Y as supplied.
   irn         — inverse-rank-normal transform (Blom, average-rank ties)
-                applied per phenotype on its non-missing scope. Default
-                when --pred-list is given, since LDAK/regenie LOCO PRS
-                are typically trained on IRN'd Y.
+                applied per phenotype on its non-missing scope.
+                Default in both contexts; LOCO PRS should be trained on
+                an IRN-transformed Y so the offset is on the same scale.
   standardize — Y is centered and scaled to unit variance per phenotype.
-                Use only when the LOCO PRS was trained on standardized Y.
 
 When --pred-list is provided, the transformed Y has loco_chr subtracted as
 an offset (β=1, α=0). The LOCO PRS scale must match the chosen transform —
@@ -362,7 +379,8 @@ inline const FlagDef kSpasqrH = {
 
 inline const FlagDef kSpasqrHScale = {
     "--spasqr-h-scale", "FLOAT",
-    "Divisor for IQR-based bandwidth: h = IQR(Y) / SCALE (default: 3; mutually exclusive with --spasqr-h)",
+    "Divisor for IQR-based bandwidth: h = IQR(Y) / SCALE  "
+    "(default: 3 in score mode, 10 in --spasqr-mode wald; mutually exclusive with --spasqr-h)",
     nullptr
 };
 
@@ -514,7 +532,7 @@ inline const FlagDef *const kSPAsqrOpt[] = {
     &kSpasqrHScale, &kOutlierIqr, &kOutlierAbs,
     &kSpaZThresh,   &kThreads,    &kChunkSize,  &kGeno, &kMaf,
     &kMac,          &kHwe,        &kChr,        &kPredList,    &kPhenoTransform,
-    &kSpasqrSolver,
+    &kSpasqrSolver, &kSpasqrMode, &kExtract,
     nullptr
 };
 

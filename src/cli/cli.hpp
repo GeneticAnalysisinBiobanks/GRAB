@@ -46,6 +46,9 @@ struct Args {
     std::string phenoTransform;
     // --spasqr-solver {conquer, qmme}: null-model SQR solver. Default qmme.
     std::string spasqrSolver = "qmme";
+    // --spasqr-mode {score, wald}: score test (default, multi-tau CCT) vs
+    // per-marker full-model Wald (β̂_G + SE per τ via M-estimation sandwich).
+    std::string spasqrMode = "score";
     bool calAfCoef = false;
     bool calPairwiseIBD = false;
     bool calPhi = false;
