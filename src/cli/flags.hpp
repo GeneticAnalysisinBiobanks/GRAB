@@ -289,15 +289,15 @@ inline const FlagDef kSpasqrMode = {
 inline const FlagDef kPhenoTransform = {
     "--pheno-transform", "MODE",
     "Phenotype pre-transform for SPAsqr: raw | irn | standardize "
-    "(default: irn)",
+    "(default: standardize)",
     R"(Selects how Y is transformed before SQR fitting (and before LOCO offset
 subtraction when --pred-list is given):
   raw         — no transform; SQR fits on Y as supplied.
   irn         — inverse-rank-normal transform (Blom, average-rank ties)
                 applied per phenotype on its non-missing scope.
-                Default in both contexts; LOCO PRS should be trained on
-                an IRN-transformed Y so the offset is on the same scale.
   standardize — Y is centered and scaled to unit variance per phenotype.
+                Default in both contexts; LOCO PRS should be trained on
+                a standardized Y so the offset is on the same scale.
 
 When --pred-list is provided, the transformed Y has loco_chr subtracted as
 an offset (β=1, α=0). The LOCO PRS scale must match the chosen transform —

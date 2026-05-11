@@ -715,11 +715,11 @@ int run(
                           << args.spasqrSolver << "'\n";
                 return 1;
             }
-            // Resolve --pheno-transform default. Default is 'irn' in both
-            // contexts (with and without --pred-list); LOCO PRS should be
-            // trained on an IRN-transformed Y on the same scale.
+            // Resolve --pheno-transform default. Default is 'standardize'
+            // in both contexts (with and without --pred-list); LOCO PRS
+            // should be trained on a Y on the same scale.
             if (args.phenoTransform.empty()) {
-                args.phenoTransform = "irn";
+                args.phenoTransform = "standardize";
             }
             if (args.phenoTransform != "raw" &&
                 args.phenoTransform != "irn" &&
