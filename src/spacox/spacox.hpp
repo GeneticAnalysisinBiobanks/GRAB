@@ -111,6 +111,21 @@ class SPACoxMethod : public MethodBase {
         std::vector<double> &result
     ) override;
 
+// Batched per-marker analysis.  Folds the per-marker dot product
+// S_b = GBatch.col(b)ᵀ · m_resid into a single Eigen GEMV across all
+// B markers in the batch (BLAS-2), then delegates to the same
+// scalar SPA core used by getResultVec for the per-marker work.
+    void getResultBatch(
+        const Eigen::Ref<const Eigen::MatrixXd> &GBatch,
+        const std::vector<double> &altFreqs,
+        const std::vector<int> &chunkIdxs,
+        std::vector<std::vector<double> > &results
+    ) override;
+
+    int preferredBatchSize() const override {
+        return 16;
+    }
+
   private:
 // ---- CGF interpolation (O(1) Cauchy-inverse index) ----
     int interpIdx(double v) const;
@@ -177,13 +192,22 @@ class SPACoxMethod : public MethodBase {
     ) const;
 
 // ---- Per-marker score test ----
-    double getMarkerPval(
-        const Eigen::Ref<Eigen::VectorXd> &GVec,
-        double MAF,
+//
+// `S` is the pre-computed inner product GVec · m_resid; passing it in
+// lets getResultBatch fold all B such dot products into a single GEMV
+// and avoids recomputing the per-marker dot inside the SPA core.
+    double getMarkerPvalCore(
+        const Eigen::Ref<const Eigen::VectorXd> &GVec,
+        double altFreq,
+        double S,
         double &zScore
     );
 
-// Read-only shared data (references are stable because the owner outlives all clones)
+// Read-only shared data (references are stable because the owner outlives all clones).
+// SPA scratch (adjGNorm / adjGVec / nzSet) is held in a translation-unit-local
+// thread_local struct inside spacox.cpp, so K phenotype-clones running in the
+// same worker thread share one scratch — the SPACoxMethod object itself only
+// stores references and small scalars and is therefore cheap to clone.
     const Eigen::VectorXd &m_resid;
     double m_varResid;
     const CumulantTable &m_cumul;
@@ -191,11 +215,6 @@ class SPACoxMethod : public MethodBase {
     int m_N;
     double m_pvalCovAdjCut;
     double m_spaCutoff;
-
-// Per-thread scratch (mutable, cloned)
-    Eigen::VectorXd m_adjGNorm;
-    Eigen::VectorXd m_adjGVec;
-    std::vector<uint32_t> m_nzSet;
 };
 
 // ======================================================================

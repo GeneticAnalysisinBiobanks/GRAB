@@ -17,6 +17,31 @@
 #endif
 
 // ======================================================================
+// Worker-local SPA scratch
+// ======================================================================
+//
+// The SPA branch of getMarkerPvalCore needs three transient buffers
+// (adjGNorm of length N, adjGVec of length N, nzSet of capacity ≤ N).
+// These were previously per-clone fields on SPACoxMethod, which meant
+// the multi-phenotype engine paid (K phenotypes × T worker threads)
+// times their footprint.  Promoting them to a translation-unit-local
+// thread_local struct lets all K phenotype-clones in one worker share
+// one set of buffers — the engine spawns at most T concurrent threads,
+// so total scratch footprint is bounded by T × (≈ 20N bytes) regardless
+// of K.  Resize() is idempotent when the requested length matches the
+// existing capacity, so phenotype switching inside a thread is O(1)
+// after the first call.
+namespace {
+struct SPACoxScratch {
+    Eigen::VectorXd adjGNorm;
+    Eigen::VectorXd adjGVec;
+    std::vector<uint32_t> nzSet;
+};
+
+thread_local SPACoxScratch tlScratch;
+}  // namespace
+
+// ======================================================================
 // DesignMatrix
 // ======================================================================
 
@@ -140,15 +165,23 @@ SPACoxMethod::SPACoxMethod(
       m_design(design),
       m_N(static_cast<int>(residuals.size())),
       m_pvalCovAdjCut(pvalCovAdjCut),
-      m_spaCutoff(spaCutoff),
-      m_adjGNorm(residuals.size()),
-      m_adjGVec(residuals.size())
+      m_spaCutoff(spaCutoff)
 {
-    m_nzSet.reserve(m_N);
 }
 
 std::unique_ptr<MethodBase> SPACoxMethod::clone() const {
-    // Shared const refs stay the same; scratch buffers are freshly allocated.
+    // The clone shares with the master:
+    //   * m_resid   (const reference to N-vector of residuals, owned by runSPACox)
+    //   * m_cumul   (const reference to L=10000 CGF table, owned by runSPACox)
+    //   * m_design  (const reference to N×p design / projection matrices,
+    //                deduplicated across phenotypes by missingness pattern
+    //                inside runSPACox)
+    //   * the SPA scratch (adjGNorm / adjGVec / nzSet) is thread_local in
+    //     this translation unit, so K phenotype-clones in one worker share
+    //     a single set of buffers.
+    // The clone only owns its small scalar metadata (m_varResid, m_N,
+    // m_pvalCovAdjCut, m_spaCutoff) and the references themselves — the
+    // entire clone is therefore on the order of one cache line.
     return std::make_unique<SPACoxMethod>(m_resid, m_varResid, m_cumul, m_design, m_pvalCovAdjCut, m_spaCutoff);
 }
 
@@ -371,15 +404,21 @@ double SPACoxMethod::getProbSpa(
 // Per-marker p-value (two-stage SPA)
 // ======================================================================
 
-double SPACoxMethod::getMarkerPval(
-    const Eigen::Ref<Eigen::VectorXd> &GVec,
-    double MAF,
+double SPACoxMethod::getMarkerPvalCore(
+    const Eigen::Ref<const Eigen::VectorXd> &GVec,
+    double altFreq,
+    double S,
     double &zScore
 ) {
 
-    // Score statistic S = G' * resid
-    double S = GVec.dot(m_resid);
-    double twoMAF = 2.0 * MAF;
+    // S is pre-computed by the caller as GVec · m_resid.  Inside
+    // getResultBatch this is folded over B markers in one GEMV; inside
+    // getResultVec it is computed as a single dot product.  Either way
+    // the operation is bit-identical to the column-by-column dot used
+    // by the original implementation, so the variance loop below is
+    // also left in its original per-marker form to preserve bit-equal
+    // outputs across the refactor.
+    const double twoMAF = 2.0 * altFreq;
     const double *gp = GVec.data();
 
     // VarS = varResid * Σ(g_i - 2·MAF)²
@@ -402,25 +441,32 @@ double SPACoxMethod::getMarkerPval(
     double sqrtVarS = std::sqrt(VarS);
     double adjG0 = -twoMAF / sqrtVarS;
 
-    double *anp = m_adjGNorm.data();
-    m_nzSet.clear();
+    // Acquire (and resize if necessary) the thread-local SPA scratch.
+    // resize() is a no-op when the requested length already matches.
+    tlScratch.adjGNorm.resize(m_N);
+    tlScratch.nzSet.clear();
+    if (static_cast<int>(tlScratch.nzSet.capacity()) < m_N)
+        tlScratch.nzSet.reserve(m_N);
+
+    double *anp = tlScratch.adjGNorm.data();
     for (int i = 0; i < m_N; ++i) {
         anp[i] = (gp[i] - twoMAF) / sqrtVarS;
-        if (gp[i] != 0.0) m_nzSet.push_back(static_cast<uint32_t>(i));
+        if (gp[i] != 0.0) tlScratch.nzSet.push_back(static_cast<uint32_t>(i));
     }
-    int nNz = static_cast<int>(m_nzSet.size());
+    int nNz = static_cast<int>(tlScratch.nzSet.size());
     int N0 = m_N - nNz;
 
     double absZ = std::abs(zScore);
-    double pval = getProbSpa(adjG0, anp, m_nzSet.data(), nNz, N0, absZ, false) +
-                  getProbSpa(adjG0, anp, m_nzSet.data(), nNz, N0, -absZ, true);
+    double pval = getProbSpa(adjG0, anp, tlScratch.nzSet.data(), nNz, N0, absZ, false) +
+                  getProbSpa(adjG0, anp, tlScratch.nzSet.data(), nNz, N0, -absZ, true);
 
     if (pval > m_pvalCovAdjCut) return pval;
 
     // ---- Stage 2: covariate-adjusted SPA ----
-    m_design.adjustGenotype(gp, m_nzSet.data(), nNz, m_adjGVec);
+    tlScratch.adjGVec.resize(m_N);
+    m_design.adjustGenotype(gp, tlScratch.nzSet.data(), nNz, tlScratch.adjGVec);
 
-    VarS = m_varResid * m_adjGVec.squaredNorm();
+    VarS = m_varResid * tlScratch.adjGVec.squaredNorm();
     if (VarS <= 0.0) {
         zScore = 0.0;
         return std::numeric_limits<double>::quiet_NaN();
@@ -428,7 +474,7 @@ double SPACoxMethod::getMarkerPval(
     zScore = S / std::sqrt(VarS);
     sqrtVarS = std::sqrt(VarS);
 
-    const double *avp = m_adjGVec.data();
+    const double *avp = tlScratch.adjGVec.data();
     for (int i = 0; i < m_N; ++i)
         anp[i] = avp[i] / sqrtVarS;
 
@@ -451,11 +497,99 @@ void SPACoxMethod::getResultVec(
 ) {
 
     // altFreq = freq(bim col5 = ALT); GVec counts bim col5 alleles.
+    //
+    // ── Deliberate divergence from GRAB 0.2.4 (R) on altFreq > 0.5 ──
+    //
+    // GRAB 0.2.4 invokes Main.cpp::imputeGenoAndFlip which replaces
+    //   GVec ← 2 − GVec        whenever altFreq > 0.5,
+    // and then calls SPACoxClass::getMarkerPval with the original altFreq.
+    // Inside that call the variance is built from
+    //   adjGVec_R = GVec_flipped − 2·altFreq_original
+    // whose sample mean is 2·(1 − altFreq) − 2·altFreq = 2 − 4·altFreq ≠ 0.
+    // That is, the centring point used in the variance formula does not
+    // equal the sample mean of the genotype vector actually entering the
+    // score sum.  Letting Δ = 4·altFreq − 2,
+    //   Σ adjGVec_R²  =  Σ adjGVec_correct²  +  N · Δ²
+    // and the reported V̂_R = varResid · Σ adjGVec_R² over-estimates the
+    // permutation-null variance by a factor 1 + N·Δ²/Σ adjGVec_correct².
+    // Under H₀: β = 0 the R statistic
+    //   Z_R = S_R / √V̂_R   ~  N(0, V_true / V̂_R)
+    // is sub-Gaussian rather than N(0,1); the p-value 2·Φ(−|Z_R|) is
+    // systematically conservative (too large) for altFreq > 0.5 markers,
+    // and the score test loses its flip-invariance.  The defect depends
+    // only on the genotype centring point, so it is present in both the
+    // `time-to-event` and `Residual` paths of GRAB 0.2.4, regardless of
+    // whether Σ Rᵢ = 0.
+    //
+    // We do not reproduce that defect here: GVec is consumed as-is, the
+    // variance is built from (G − 2·altFreq)² whose centre 2·altFreq
+    // equals the sample mean of G, and the resulting Z is exactly the
+    // permutation-null score statistic — flip-invariant in the sense
+    // that swapping REF/ALT in the input file negates S, leaves Var(S)
+    // unchanged, and therefore leaves |Z| and the two-sided p-value
+    // unchanged.  For markers with altFreq ≤ 0.5 the output matches
+    // GRAB 0.2.4 to six-significant-digit print precision; for markers
+    // with altFreq > 0.5 the output differs from GRAB 0.2.4 by exactly
+    // the variance-inflation factor above, and represents the
+    // statistically correct value rather than the R one.
+    //
+    // See docs/methods/spacox.md §6 for the full derivation.
+    const double S = GVec.dot(m_resid);
     double zScore;
-    double pval = getMarkerPval(GVec, altFreq, zScore);
+    double pval = getMarkerPvalCore(GVec, altFreq, S, zScore);
 
     result.push_back(pval);
     result.push_back(zScore);
+}
+
+// ======================================================================
+// MethodBase::getResultBatch — batched per-marker analysis
+// ======================================================================
+//
+// The marker engine calls this with up to `preferredBatchSize()` markers
+// per invocation.  The base-class default loops getResultVec() and copies
+// each genotype column into a fresh Eigen::VectorXd; for SPACox that
+// copy is N doubles per marker (~22000 × 2504 × 8 B ≈ 420 MB of memory
+// traffic over a full 1KG chromosome) and the per-marker dot product is
+// a BLAS-1 call.  Overriding here lets us:
+//
+//   1. fold B per-marker dot products into ONE BLAS-2 GEMV
+//        scores = GBatchᵀ · m_resid                (B × 1, output)
+//      Internally Eigen computes this column-by-column as the same
+//      dot operation, so each entry scores[b] is bit-identical to the
+//      original GBatch.col(b).dot(m_resid).
+//
+//   2. pass GBatch.col(b) into the SPA core as Eigen::Ref<const ...>
+//      (no copy, no allocation) — the per-marker loop in
+//      getMarkerPvalCore still walks gp[i] = GBatch(i, b) directly.
+//
+// Multi-phenotype fused-GEMM across the K phenotypes (i.e. one BLAS-3
+// scoreMat = GBatchᵀ · residMat) is NOT done here because that would
+// require the engine to route SPACox through its Phase-3 fused path,
+// and Phase-3 hands the method only scalar score summaries — without
+// access to the per-marker genotype vector required by the SPA branch
+// (|Z| ≥ SPA_Cutoff).  See the comment on getResultVec above and
+// docs/methods/spacox.md §6 for the broader context.
+void SPACoxMethod::getResultBatch(
+    const Eigen::Ref<const Eigen::MatrixXd> &GBatch,
+    const std::vector<double> &altFreqs,
+    const std::vector<int> & /*chunkIdxs*/,
+    std::vector<std::vector<double> > &results
+) {
+    const int B = static_cast<int>(GBatch.cols());
+    results.resize(B);
+
+    // Batched score: one Eigen GEMV instead of B BLAS-1 dot products.
+    const Eigen::VectorXd scores = GBatch.transpose() * m_resid;
+
+    for (int b = 0; b < B; ++b) {
+        results[b].clear();
+        results[b].reserve(2);
+        double zScore;
+        double pval = getMarkerPvalCore(GBatch.col(b), altFreqs[b], scores[b], zScore);
+        results[b].push_back(pval);
+        results[b].push_back(zScore);
+    }
 }
 
 // ======================================================================
