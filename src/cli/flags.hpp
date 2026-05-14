@@ -150,7 +150,7 @@ Rows in filtered-marker order (positional matching).)"
 
 inline const FlagDef kPairwiseIbd = {
     "--pairwise-ibd", "FILE", "Pairwise IBD file",
-    R"(Tab-separated: #ID1  ID2  pa  pb  pc
+    R"(Tab-separated: ID1  ID2  pa  pb  pc
 Produced by grab --cal-pairwise-ibd.)"
 };
 
@@ -177,13 +177,27 @@ inline const FlagDef kSpaZThresh = {
 };
 
 inline const FlagDef kOutlierIqr = {
-    "--outlier-iqr-threshold", "FLOAT", "IQR outlier multiplier for SPAmix/SPAmixPlus/SPAmixLocalPlus/WtCoxG/LEAF (default: 1.5)",
+    "--outlier-iqr-threshold", "FLOAT",
+    "IQR outlier multiplier for SPAmix/SPAmixPlus/SPAmixLocalPlus/WtCoxG/LEAF/SPAsqr/SPAGRM (default: 1.5)",
     nullptr
 };
 
 inline const FlagDef kOutlierAbs = {
-    "--outlier-abs-bound", "FLOAT", "Absolute outlier cutoff (default: 0.55)",
+    "--spasqr-outlier-abs-bound", "FLOAT",
+    "SPAsqr-only absolute outlier cutoff (default: 0.55)",
     nullptr
+};
+
+inline const FlagDef kSpagrmControlOutlier = {
+    "--spagrm-control-outlier", "on|off",
+    "Iteratively adjust the IQR ratio so the outlier share stays in (0, 5%] (SPAGRM, default: on)",
+    R"(Mirrors the ControlOutlier argument of SPAGRM.NullModel() in the R reference:
+  on  — if 0 outliers are detected, shrink the IQR ratio by 0.8 until at least
+        one outlier appears; if more than 5%% of subjects are outliers, increase
+        the ratio by 0.5 until the share is at most 5%%.  Default.
+  off — keep the IQR ratio at --outlier-iqr-threshold (default 1.5) without
+        any adjustment.  Use for higher accuracy when the residual distribution
+        is well behaved.)"
 };
 
 inline const FlagDef kThreads = {
@@ -416,7 +430,8 @@ inline const FlagDef *const kSPAGRMReq[] = {
     nullptr
 };
 inline const FlagDef *const kSPAGRMOpt[] = {
-    &kSpaZThresh, &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
+    &kSpaZThresh, &kOutlierIqr, &kSpagrmControlOutlier,
+    &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
     &kGeno,       &kMaf,     &kMac,       &kHwe,         &kChr,
     nullptr
 };
@@ -715,7 +730,7 @@ inline const MethodDef kCalPairwiseIbd = {
     kCalIbdOpt,
     nullptr,
     R"(Output: PREFIX.ibd[.gz|.zst]
-Tab-separated: #ID1  ID2  pa  pb  pc
+Tab-separated: ID1  ID2  pa  pb  pc
 Pass to --pairwise-ibd for SPAGRM.)",
     nullptr,
 };
@@ -758,6 +773,7 @@ inline const FlagDef *const kInputFlags[] = {
 
 inline const FlagDef *const kNumericFlags[] = {
     &kPrevalence, &kBatchPThresh, &kCovarPThresh,     &kSpaZThresh, &kOutlierIqr, &kOutlierAbs,
+    &kSpagrmControlOutlier,
     &kThreads,    &kChunkSize,    &kCompressionLevel, &kNClusters,  &kSeed,       &kGeno,
     &kMaf,        &kMac,          &kMinMafIbd,
     nullptr

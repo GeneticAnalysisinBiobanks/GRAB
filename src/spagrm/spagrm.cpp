@@ -518,6 +518,8 @@ void runSPAGRM(
     const std::string &compression,
     int compressionLevel,
     double spaCutoff,
+    double outlierIqrRatio,
+    bool controlOutlier,
     int nthreads,
     int nSnpPerChunk,
     double missingCutoff,
@@ -569,7 +571,8 @@ void runSPAGRM(
         infoMsg("Building null model for '%s'...", phenoInfos[0].name.c_str());
         SPAGRMClass sg = nsGRMNull::buildSPAGRMNullModel(sd.residuals(), N, topo.singletonSet, grmDiag, topo.families,
                                                          topo.familyEntries, allEntries, ibdEntries, ibdPairMap,
-                                                         spaCutoff, minMafCutoff, minMacCutoff, nthreads);
+                                                         spaCutoff, minMafCutoff, minMacCutoff,
+                                                         outlierIqrRatio, controlOutlier, nthreads);
         tasks[0].phenoName = phenoInfos[0].name;
         tasks[0].method = std::make_unique<SPAGRMMethod>(std::move(sg));
         tasks[0].unionToLocal = phenoInfos[0].unionToLocal;
@@ -607,7 +610,8 @@ void runSPAGRM(
             infoMsg("Building null model for '%s' (%u subjects)...", pi.name.c_str(), Np);
             SPAGRMClass sg = nsGRMNull::buildSPAGRMNullModel(phenoResid, Np, topo.singletonSet, pDiag, topo.families,
                                                              topo.familyEntries, pEntries, pIbd, pIbdMap, spaCutoff,
-                                                             minMafCutoff, minMacCutoff, nthreads);
+                                                             minMafCutoff, minMacCutoff,
+                                                             outlierIqrRatio, controlOutlier, nthreads);
 
             tasks[rc].phenoName = pi.name;
             tasks[rc].method = std::make_unique<SPAGRMMethod>(std::move(sg));

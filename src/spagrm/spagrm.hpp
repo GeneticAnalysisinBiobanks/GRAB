@@ -345,6 +345,8 @@ void runSPAGRM(
     const std::string &compression,
     int compressionLevel,
     double spaCutoff,
+    double outlierIqrRatio,
+    bool controlOutlier,
     int nthreads,
     int nSnpPerChunk,
     double missingCutoff,

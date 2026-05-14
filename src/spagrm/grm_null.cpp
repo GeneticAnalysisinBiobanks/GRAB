@@ -426,6 +426,8 @@ SPAGRMClass buildSPAGRMNullModel(
     double spaCutoff,
     double minMafCutoff,
     double minMacCutoff,
+    double outlierIqrRatio,
+    bool controlOutlier,
     int nthreads
 ) {
     // ── Build dynamic MAF grid from QC cutoffs ───────────────────────
@@ -447,7 +449,7 @@ SPAGRMClass buildSPAGRMNullModel(
     const double Q3 = quantile_r7(sortedResid, MAX_QUANTILE);
     const double IQR = Q3 - Q1;
 
-    double outlierRatio = INIT_OUTLIER_RATIO;
+    double outlierRatio = outlierIqrRatio;
     double cutLo = Q1 - outlierRatio * IQR;
     double cutHi = Q3 + outlierRatio * IQR;
 
@@ -465,7 +467,7 @@ SPAGRMClass buildSPAGRMNullModel(
 
     int nOutlier = recomputeOutliers();
 
-    if (CONTROL_OUTLIER) {
+    if (controlOutlier) {
         while (nOutlier == 0) {
             outlierRatio *= 0.8;
             nOutlier = recomputeOutliers();
@@ -476,7 +478,10 @@ SPAGRMClass buildSPAGRMNullModel(
         }
     }
 
-    infoMsg("  Outlier detection: %d outliers (%.1f%%) from %u subjects", nOutlier, 100.0 * nOutlier / N, N);
+    infoMsg(
+        "  Outlier detection: %d outliers (%.1f%%) from %u subjects (IQR ratio=%.3f, control=%s)",
+        nOutlier, 100.0 * nOutlier / N, N, outlierRatio, controlOutlier ? "on" : "off"
+    );
 
     // ── Accumulate global variance terms for singletons ──────────────
     double R_GRM_R = 0.0;
