@@ -85,3 +85,36 @@ with `GRAB_MARCH=-march=x86-64-v2` for portable distribution binaries.
 - `make clean` — removes `build/`.
 - The binary is the deliverable. There is no install step, no shared library,
   no headers exposed to users. Users download or build the binary and run it.
+
+## Shared engine code is validated — do not modify when debugging other methods
+
+SPAsqr is currently passing end-to-end tests. Because SPAsqr is the most
+demanding consumer of the shared engine infrastructure (it exercises the
+fused-GEMM path, the multi-phenotype engine, LOCO, and the SIMD-dispatch
+pattern), a working SPAsqr is a strong signal that **the common code below
+is correct**. When debugging any other method (SPAGRM / SPACox / POLMM /
+WtCoxG / SPAmix / LEAF), do not suspect or modify these files — the bug is
+almost certainly in the method-specific code, not the shared infrastructure:
+
+- `src/engine/marker.cpp`, `src/engine/marker.hpp`, `src/engine/marker_impl.hpp`
+  — `markerEngine`, `multiPhenoEngine`, `multiPhenoEngineRange`,
+  chunk-level work-stealing thread pool, fused union-level GEMM
+  (`AugResid^T × GBatch_union`), `FusedStatsGroup` QC sharing,
+  `MissBatch` extraction path for non-fuseable phenotypes.
+- `src/engine/loco.cpp`, `src/engine/loco.hpp` — `locoEngine`,
+  Regenie / LDAK-KVIK `.loco` parsers, per-chromosome task rebuild loop.
+- `src/util/simd_dispatch.hpp`, `src/util/simd_math.hpp` — runtime
+  AVX2 / AVX-512 dispatch and vectorized exp/log kernels.
+- `src/geno_factory/` — genotype decoding (plink / pgen / bgen / vcf):
+  SPAsqr drives all four readers through the same `GenoCursor` interface.
+- The `MethodBase` interface contract in `src/engine/marker.hpp`
+  (`clone`, `prepareChunk`, `getResultVec`, `getResultBatch`,
+  `supportsFusedGemm`, `fillUnionResiduals`, `fillResidualSums`,
+  `processScoreBatch`).
+
+If a non-SPAsqr method misbehaves, look first at its own per-method file
+(score centering, null-model fitting, residual construction, p-value
+computation, output formatting, QC thresholds it sets itself). Changing
+the shared engine to "fix" a method bug will break SPAsqr and is the wrong
+direction; if a shared-engine change is genuinely required, re-run SPAsqr
+regression tests before committing.

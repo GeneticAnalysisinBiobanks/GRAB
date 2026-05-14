@@ -59,6 +59,54 @@ RprodSoA buildRprodSoA(
     return rp;
 }
 
+// Build the multi-phenotype baked rprod table for one ancestry.
+//
+// rprod_packed[e * K_pheno + p] = mult · phi(i,j) · R[i,p] · R[j,p]
+//
+// Memory is allocated once and shared (const) across all worker threads.
+// Layout is row-major over entries (K_pheno consecutive doubles per entry)
+// so the hot scan loop reads K_pheno values sequentially — essential for
+// SIMD throughput.
+MultiPhenoRprodSoA buildMultiPhenoRprodSoA(
+    const PhiMatrices &phi,
+    const Eigen::Ref<const Eigen::MatrixXd> &R_mat
+) {
+    const size_t total = phi.A.size() + phi.B.size() + phi.C.size() + phi.D.size();
+    const int K_pheno = static_cast<int>(R_mat.cols());
+
+    MultiPhenoRprodSoA rp;
+    rp.K_pheno = K_pheno;
+    rp.idx_i.reserve(total);
+    rp.idx_j.reserve(total);
+    rp.target_hi.reserve(total);
+    rp.target_hj.reserve(total);
+    rp.rprod_packed.resize(total * static_cast<size_t>(K_pheno));
+
+    size_t cursor = 0;
+    auto append = [&](const std::vector<PhiEntry> &src,
+                      double mult,
+                      uint8_t th_i,
+                      uint8_t th_j) {
+        for (const auto &e : src) {
+            rp.idx_i.push_back(e.i);
+            rp.idx_j.push_back(e.j);
+            rp.target_hi.push_back(th_i);
+            rp.target_hj.push_back(th_j);
+            double base = mult * e.value;
+            for (int p = 0; p < K_pheno; ++p) {
+                rp.rprod_packed[cursor * K_pheno + p] =
+                    base * R_mat(e.i, p) * R_mat(e.j, p);
+            }
+            ++cursor;
+        }
+    };
+    append(phi.A, 4.0, 2, 2);
+    append(phi.B, 2.0, 2, 1);
+    append(phi.C, 2.0, 1, 2);
+    append(phi.D, 1.0, 1, 1);
+    return rp;
+}
+
 // ── Runtime SIMD dispatch — phi variance functions ──────────────────
 //
 // Three tiers: AVX-512 (8 doubles / 512 bits), AVX2 (4 doubles / 256 bits),
@@ -368,6 +416,206 @@ void computeVarOffSoABatch(
     }
 #endif
     computeVarOffSoABatch_scalar(rp, hIntSM, batchLen, varOff);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// computeVarOffMultiPhenoBatch — multi-phenotype fused phi scan.
+//
+// One pass over phi entries serves all K_pheno phenotypes.  The match mask
+// (hi == target_hi & hj == target_hj) depends only on (entry, batch lane);
+// it is computed once and reused.  rprod_packed[e * K_pheno + p] is read
+// sequentially (K_pheno consecutive doubles per entry), so the per-
+// phenotype cost is one cache-resident scalar load + broadcast + masked-
+// add.  This avoids the random R-matrix gather pattern that would result
+// from computing R[i,p] * R[j,p] inline.
+//
+// Output layout: varOff[b * K_pheno + p].
+// ════════════════════════════════════════════════════════════════════════
+
+// Scalar fallback (also used as the K_pheno > MAX_KP slow path).
+static void computeVarOffMultiPhenoBatch_scalar(
+    const MultiPhenoRprodSoA &rp,
+    const uint32_t *hIntSM,
+    int batchLen,
+    double *varOff
+) {
+    const size_t E = rp.nEntries();
+    const int K_pheno = rp.K_pheno;
+    std::fill(varOff, varOff + static_cast<size_t>(batchLen) * K_pheno, 0.0);
+    if (E == 0) return;
+
+    const double *__restrict pp = rp.rprod_packed.data();
+
+    for (size_t e = 0; e < E; ++e) {
+        uint32_t i = rp.idx_i[e];
+        uint32_t j = rp.idx_j[e];
+        uint32_t ti = rp.target_hi[e];
+        uint32_t tj = rp.target_hj[e];
+        const uint32_t *hi_ptr = hIntSM + static_cast<size_t>(i) * PHI_BATCH;
+        const uint32_t *hj_ptr = hIntSM + static_cast<size_t>(j) * PHI_BATCH;
+        const double *rp_e = pp + e * K_pheno;
+
+        for (int p = 0; p < K_pheno; ++p) {
+            double term = rp_e[p];
+            for (int b = 0; b < batchLen; ++b) {
+                int matched = (hi_ptr[b] == ti) & (hj_ptr[b] == tj);
+                varOff[static_cast<size_t>(b) * K_pheno + p] += matched * term;
+            }
+        }
+    }
+}
+
+#if defined(__x86_64__) || defined(_M_X64)
+
+// AVX-512 path — one 512-bit accumulator per phenotype covers all 8 batch
+// lanes.  Cap at 16 phenotypes for register-pressure safety.
+static constexpr int MULTI_PHENO_AVX512_MAX_KP = 16;
+
+__attribute__((target("avx2,avx512f,avx512vl,fma")))
+static void computeVarOffMultiPhenoBatch_avx512(
+    const MultiPhenoRprodSoA &rp,
+    const uint32_t *hIntSM,
+    int batchLen,
+    double *varOff
+) {
+    const int K_pheno = rp.K_pheno;
+    if (K_pheno > MULTI_PHENO_AVX512_MAX_KP) {
+        computeVarOffMultiPhenoBatch_scalar(rp, hIntSM, batchLen, varOff);
+        return;
+    }
+    const size_t E = rp.nEntries();
+    std::fill(varOff, varOff + static_cast<size_t>(batchLen) * K_pheno, 0.0);
+    if (E == 0) return;
+
+    const uint32_t *__restrict ii  = rp.idx_i.data();
+    const uint32_t *__restrict jj  = rp.idx_j.data();
+    const uint8_t  *__restrict thi = rp.target_hi.data();
+    const uint8_t  *__restrict thj = rp.target_hj.data();
+    const double   *__restrict pp  = rp.rprod_packed.data();
+
+    __m512d acc[MULTI_PHENO_AVX512_MAX_KP];
+    for (int p = 0; p < K_pheno; ++p) acc[p] = _mm512_setzero_pd();
+
+    for (size_t e = 0; e < E; ++e) {
+        uint32_t i = ii[e];
+        uint32_t j = jj[e];
+        const uint32_t *hi_ptr = hIntSM + static_cast<size_t>(i) * PHI_BATCH;
+        const uint32_t *hj_ptr = hIntSM + static_cast<size_t>(j) * PHI_BATCH;
+
+        __m256i hi8 = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(hi_ptr));
+        __m256i hj8 = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(hj_ptr));
+        __m256i vthi = _mm256_set1_epi32(static_cast<int>(thi[e]));
+        __m256i vthj = _mm256_set1_epi32(static_cast<int>(thj[e]));
+        __mmask8 mi = _mm256_cmpeq_epi32_mask(hi8, vthi);
+        __mmask8 mj = _mm256_cmpeq_epi32_mask(hj8, vthj);
+        __mmask8 mask = static_cast<__mmask8>(mi & mj);
+
+        const double *rp_e = pp + e * K_pheno;
+        for (int p = 0; p < K_pheno; ++p) {
+            __m512d sv = _mm512_set1_pd(rp_e[p]);
+            acc[p] = _mm512_mask_add_pd(acc[p], mask, acc[p], sv);
+        }
+    }
+
+    double tmp[8];
+    for (int p = 0; p < K_pheno; ++p) {
+        _mm512_storeu_pd(tmp, acc[p]);
+        for (int b = 0; b < batchLen; ++b)
+            varOff[static_cast<size_t>(b) * K_pheno + p] = tmp[b];
+    }
+}
+
+// AVX2 path: K_pheno × 2 accumulators of __m256d cover batch[0..3] and [4..7].
+// Cap at 8 phenotypes for YMM register pressure (16 YMMs available).
+static constexpr int MULTI_PHENO_AVX2_MAX_KP = 8;
+
+__attribute__((target("avx2,fma")))
+static void computeVarOffMultiPhenoBatch_avx2(
+    const MultiPhenoRprodSoA &rp,
+    const uint32_t *hIntSM,
+    int batchLen,
+    double *varOff
+) {
+    const int K_pheno = rp.K_pheno;
+    if (K_pheno > MULTI_PHENO_AVX2_MAX_KP) {
+        computeVarOffMultiPhenoBatch_scalar(rp, hIntSM, batchLen, varOff);
+        return;
+    }
+    const size_t E = rp.nEntries();
+    std::fill(varOff, varOff + static_cast<size_t>(batchLen) * K_pheno, 0.0);
+    if (E == 0) return;
+
+    const uint32_t *__restrict ii  = rp.idx_i.data();
+    const uint32_t *__restrict jj  = rp.idx_j.data();
+    const uint8_t  *__restrict thi = rp.target_hi.data();
+    const uint8_t  *__restrict thj = rp.target_hj.data();
+    const double   *__restrict pp  = rp.rprod_packed.data();
+
+    __m256d acc0[MULTI_PHENO_AVX2_MAX_KP];
+    __m256d acc1[MULTI_PHENO_AVX2_MAX_KP];
+    for (int p = 0; p < K_pheno; ++p) {
+        acc0[p] = _mm256_setzero_pd();
+        acc1[p] = _mm256_setzero_pd();
+    }
+
+    for (size_t e = 0; e < E; ++e) {
+        uint32_t i = ii[e];
+        uint32_t j = jj[e];
+        const uint32_t *hi_ptr = hIntSM + static_cast<size_t>(i) * PHI_BATCH;
+        const uint32_t *hj_ptr = hIntSM + static_cast<size_t>(j) * PHI_BATCH;
+
+        __m128i vthi = _mm_set1_epi32(static_cast<int>(thi[e]));
+        __m128i vthj = _mm_set1_epi32(static_cast<int>(thj[e]));
+
+        __m128i hi4a = _mm_loadu_si128(reinterpret_cast<const __m128i *>(hi_ptr));
+        __m128i hj4a = _mm_loadu_si128(reinterpret_cast<const __m128i *>(hj_ptr));
+        __m128i mask32a = _mm_and_si128(_mm_cmpeq_epi32(hi4a, vthi),
+                                        _mm_cmpeq_epi32(hj4a, vthj));
+        __m256d maskd_a = _mm256_castsi256_pd(_mm256_cvtepi32_epi64(mask32a));
+
+        __m128i hi4b = _mm_loadu_si128(reinterpret_cast<const __m128i *>(hi_ptr + 4));
+        __m128i hj4b = _mm_loadu_si128(reinterpret_cast<const __m128i *>(hj_ptr + 4));
+        __m128i mask32b = _mm_and_si128(_mm_cmpeq_epi32(hi4b, vthi),
+                                        _mm_cmpeq_epi32(hj4b, vthj));
+        __m256d maskd_b = _mm256_castsi256_pd(_mm256_cvtepi32_epi64(mask32b));
+
+        const double *rp_e = pp + e * K_pheno;
+        for (int p = 0; p < K_pheno; ++p) {
+            __m256d sv = _mm256_set1_pd(rp_e[p]);
+            acc0[p] = _mm256_add_pd(acc0[p], _mm256_and_pd(maskd_a, sv));
+            acc1[p] = _mm256_add_pd(acc1[p], _mm256_and_pd(maskd_b, sv));
+        }
+    }
+
+    double tmp[8];
+    for (int p = 0; p < K_pheno; ++p) {
+        _mm256_storeu_pd(tmp, acc0[p]);
+        _mm256_storeu_pd(tmp + 4, acc1[p]);
+        for (int b = 0; b < batchLen; ++b)
+            varOff[static_cast<size_t>(b) * K_pheno + p] = tmp[b];
+    }
+}
+
+#endif // x86_64 SIMD variants — multi-pheno batch
+
+void computeVarOffMultiPhenoBatch(
+    const MultiPhenoRprodSoA &rp,
+    const uint32_t *hIntSM,
+    int batchLen,
+    double *varOff
+) {
+#if defined(__x86_64__) || defined(_M_X64)
+    switch (simdLevel()) {
+    case SimdLevel::AVX512:
+        computeVarOffMultiPhenoBatch_avx512(rp, hIntSM, batchLen, varOff);
+        return;
+    case SimdLevel::AVX2:
+        computeVarOffMultiPhenoBatch_avx2(rp, hIntSM, batchLen, varOff);
+        return;
+    default: break;
+    }
+#endif
+    computeVarOffMultiPhenoBatch_scalar(rp, hIntSM, batchLen, varOff);
 }
 
 // ======================================================================
@@ -751,8 +999,8 @@ std::pair<double, double> spaLocalPval(
     double S,
     double sMean,
     double varDiag,
-    const Eigen::VectorXd &R,
-    const Eigen::VectorXd &hapcount,
+    const Eigen::Ref<const Eigen::VectorXd> &R,
+    const Eigen::Ref<const Eigen::VectorXd> &hapcount,
     double q,
     double varS,
     const OutlierData &outlier,
@@ -1022,28 +1270,73 @@ void runPhiEstimation(
 }
 
 // ======================================================================
-// Unified GWAS — process all K ancestries per marker, one output file
+// Unified GWAS — chunk-parallel × intra-chunk multi-phenotype loop.
+//
+// One pass over all admix chunks serves K_pheno phenotypes simultaneously.
+// Each chunk:
+//   - decoded ONCE per worker, shared across phenotypes
+//   - Phase 1: per-(b, k) anc-shared scalars (maf / mac / missRate, hInt fill),
+//              then three fused GEMMs (S, H·R, H·R^2) over (K_anc × K_pheno)
+//   - Phase 2: one K_pheno-fused phi scan per ancestry
+//              (kernel: computeVarOffMultiPhenoBatch)
+//   - Phase 3: per-(b, p, k) SPA branch + output formatting into K_pheno
+//              per-phenotype buffers
+//
+// Output: K_pheno files written in marker (chunk) order, byte-identical at
+// the "%.6g" level to running each phenotype through the single-phenotype
+// path.  Internal floating-point summation order in S / H·R / H·R^2 follows
+// Eigen GEMM (small ULP-level difference from a hand-rolled per-(b,k,p)
+// dot product); the phi base table is shared rather than R-baked, so the
+// off-diagonal variance hot path differs only in inner multiplication
+// order (mult·phi·R_p[i]·R_p[j] vs. (mult·phi·R[i]·R[j]) precomputed).
 // ======================================================================
 
 static void runUnifiedGWAS(
     const AdmixData &admixData,
-    const Eigen::VectorXd &resid,
-    const std::vector<PhiMatrices> &allPhi,
-    const OutlierData &outlier,
+    const std::vector<MultiPhenoRprodSoA> &rphi,
+    const Eigen::MatrixXd &R_mat,
+    const Eigen::MatrixXd &R2_mat,
+    const std::vector<OutlierData> &outliers,
+    const std::vector<std::string> &phenoNames,
+    const std::vector<std::string> &outFiles,
     double spaCutoff,
     double missingCutoff,
     double mafCutoff,
     double macCutoff,
-    const std::string &outputFile,
     const std::string &compression,
     int compressionLevel,
     int nthreads
 ) {
     const int K = admixData.nAncestries();
-    uint32_t nUsed = admixData.nSubjUsed();
+    const uint32_t nUsed = admixData.nSubjUsed();
+    const int K_pheno = static_cast<int>(outliers.size());
     const auto &markerInfo = admixData.markerInfo();
 
-    // Build header: CHROM POS ID REF ALT  anc0_... ancK_...
+    if (R_mat.rows() != static_cast<Eigen::Index>(nUsed) ||
+        R2_mat.rows() != static_cast<Eigen::Index>(nUsed) ||
+        R_mat.cols() != K_pheno || R2_mat.cols() != K_pheno) {
+        throw std::runtime_error("runUnifiedGWAS: R_mat/R2_mat dimensions inconsistent with nUsed / K_pheno");
+    }
+    if (static_cast<int>(phenoNames.size()) != K_pheno ||
+        static_cast<int>(outFiles.size()) != K_pheno) {
+        throw std::runtime_error("runUnifiedGWAS: phenoNames / outFiles length must match K_pheno");
+    }
+    if (static_cast<int>(rphi.size()) != K) {
+        throw std::runtime_error("runUnifiedGWAS: rphi size must equal nAncestries()");
+    }
+    for (int k = 0; k < K; ++k) {
+        if (rphi[k].K_pheno != K_pheno) {
+            throw std::runtime_error("runUnifiedGWAS: rphi[k].K_pheno must match phenotype count");
+        }
+    }
+
+    // ── Output writers, one per phenotype ─────────────────────────────
+    std::vector<TextWriter> writers;
+    writers.reserve(K_pheno);
+    for (int p = 0; p < K_pheno; ++p)
+        writers.emplace_back(outFiles[p], TextWriter::modeFromString(compression), compressionLevel);
+
+    // Header shared across phenotypes
     std::string header = "CHROM\tPOS\tID\tREF\tALT";
     for (int k = 0; k < K; ++k) {
         std::string pfx = "\tanc" + std::to_string(k) + "_";
@@ -1055,104 +1348,115 @@ static void runUnifiedGWAS(
         header += pfx + "BETA";
     }
     header += '\n';
+    for (int p = 0; p < K_pheno; ++p) writers[p].write(header);
 
-    TextWriter out(outputFile, TextWriter::modeFromString(compression), compressionLevel);
-    out.write(header);
-
-    // Parallel processing using chunks
+    // ── Chunk parallel state ──────────────────────────────────────────
     const auto &chunks = admixData.chunkIndices();
     std::atomic<size_t> nextChunk{0};
     std::atomic<size_t> chunksCompleted{0};
-    size_t nChunks = chunks.size();
-    uint32_t nMarkers = admixData.nMarkers();
-
-    // Pre-compute R^2 and rprod arrays (once per phenotype, not per marker).
-    // This bakes R[i]*R[j]*phi*multiplier into a flat double, eliminating
-    // random R[] lookups in the per-marker variance hot path.
-    // SoA layout: unified A/B/C/D with AVX2-friendly sequential access.
-    Eigen::ArrayXd R2 = resid.array().square();
-    std::vector<RprodSoA> rphi(K);
-    for (int k = 0; k < K; ++k)
-        rphi[k] = buildRprodSoA(allPhi[k], resid);
-
+    const size_t nChunks = chunks.size();
+    const uint32_t nMarkers = admixData.nMarkers();
     const bool noMissing = admixData.hasNoMissing();
 
     struct PaddedFlag {
         alignas(64) int ready = 0;
     };
 
-    std::vector<std::string> chunkOutput(nChunks);
+    // chunkOutputs[p][ci] = chunk ci's output buffer for phenotype p
+    std::vector<std::vector<std::string> > chunkOutputs(K_pheno);
+    for (int p = 0; p < K_pheno; ++p) chunkOutputs[p].resize(nChunks);
     std::vector<PaddedFlag> chunkReady(nChunks);
 
     std::mutex writeMutex;
     std::condition_variable writeCv;
     bool stopWriter = false;
 
-    // Writer thread
+    // Single writer thread: serializes emission per chunk in chunk order,
+    // and across phenotypes in stable phenotype-index order within each chunk.
     std::thread writer([&]() {
+        std::vector<std::string> mine(K_pheno);
         for (size_t ci = 0; ci < nChunks; ++ci) {
-            std::unique_lock<std::mutex> lk(writeMutex);
-            writeCv.wait(
-                lk,
-                [&] {
-                return chunkReady[ci].ready || stopWriter;
+            {
+                std::unique_lock<std::mutex> lk(writeMutex);
+                writeCv.wait(lk, [&] { return chunkReady[ci].ready || stopWriter; });
+                if (!chunkReady[ci].ready) continue;
+                for (int p = 0; p < K_pheno; ++p)
+                    mine[p] = std::move(chunkOutputs[p][ci]);
             }
-            );
-            if (chunkReady[ci].ready) out.write(chunkOutput[ci]);
+            for (int p = 0; p < K_pheno; ++p) {
+                writers[p].write(mine[p]);
+                mine[p].clear();
+                mine[p].shrink_to_fit();
+            }
         }
     });
 
-    // Worker function — mini-batched: decode PHI_BATCH markers, then
-    // scan phi entries ONCE for all of them (8× bandwidth reduction).
+
+    // ── Worker function ───────────────────────────────────────────────
     auto workerFn = [&]() {
         auto cursor = admixData.makeCursor();
         char fmtBuf[64];
 
-        // Per-batch storage: keep decoded genotypes for all batch markers
-        std::vector<Eigen::MatrixXd> bDos(PHI_BATCH, Eigen::MatrixXd(nUsed, K));
-        std::vector<Eigen::MatrixXd> bHap(PHI_BATCH, Eigen::MatrixXd(nUsed, K));
+        // Per-batch decoded genotype storage (shared across phenotypes).
+        // Allocated as ONE contiguous matrix per kind, with each batch slot
+        // occupying K consecutive columns.  This lets Phase 1B issue a
+        // single large GEMM per matrix (replacing PHI_BATCH×3 small GEMMs
+        // whose per-call dispatch overhead otherwise dominates wall time
+        // when K, K_pheno are small).
+        Eigen::MatrixXd bDosBig(nUsed, static_cast<Eigen::Index>(K) * PHI_BATCH);
+        Eigen::MatrixXd bHapBig(nUsed, static_cast<Eigen::Index>(K) * PHI_BATCH);
 
-        // Subject-major hInt for batched phi scan:
-        //   hIntSM[subj * PHI_BATCH + batchIdx]
-        // One per ancestry, reused across batches.
-        std::vector<std::vector<uint32_t> > hIntPerAnc(K,
-                                                       std::vector<uint32_t>(
-                                                           static_cast<size_t>(nUsed) * PHI_BATCH,
-                                                           0
-        ));
-        double varOffBuf[PHI_BATCH];                 // output from batch phi scan
+        // Subject-major hInt for batched phi scan: hIntSM[s * PHI_BATCH + b]
+        std::vector<std::vector<uint32_t> > hIntPerAnc(
+            K, std::vector<uint32_t>(static_cast<size_t>(nUsed) * PHI_BATCH, 0));
 
-        // Per-batch per-ancestry scalar results computed during Phase 1
+        // Per-batch per-ancestry shared scalar results (no S/sMean/diagVar —
+        // those are now phenotype-dependent and live in the GEMM result blocks)
         struct AncScalar {
-            double maf, missRate, dosSum, mac;
-            double S, sMean, diagVar, q;
+            double maf, missRate, dosSum, mac, q;
             bool pass;
         };
-
         std::vector<std::vector<AncScalar> > bAncS(PHI_BATCH, std::vector<AncScalar>(K));
+
+        // GEMM result blocks: one big result per kind, of shape
+        // (K * PHI_BATCH) × K_pheno.  Row index = b * K + k.
+        Eigen::MatrixXd S_all(static_cast<Eigen::Index>(K) * PHI_BATCH, K_pheno);
+        Eigen::MatrixXd HR_all(static_cast<Eigen::Index>(K) * PHI_BATCH, K_pheno);
+        Eigen::MatrixXd HR2_all(static_cast<Eigen::Index>(K) * PHI_BATCH, K_pheno);
+
+        // Phase 2 outputs: per-ancestry kernel buffer + 3-D accumulator
+        std::vector<double> varOffKbuf(static_cast<size_t>(PHI_BATCH) * K_pheno);
+        std::vector<double> varOffAll(static_cast<size_t>(PHI_BATCH) * K * K_pheno);
+
+        // Per-phenotype chunk-output buffers (worker-local, transferred to
+        // chunkOutputs[p][ci] under writeMutex at chunk completion).
+        std::vector<std::string> bufPerPheno(K_pheno);
 
         for (size_t ci = nextChunk.fetch_add(1); ci < nChunks; ci = nextChunk.fetch_add(1)) {
             const auto &gIndices = chunks[ci];
-            std::string buf;
-            buf.reserve(gIndices.size() * (80 + 90 * K));
+            for (int p = 0; p < K_pheno; ++p) {
+                bufPerPheno[p].clear();
+                bufPerPheno[p].reserve(gIndices.size() * (80 + 90 * K));
+            }
 
             cursor->beginSequentialBlock(gIndices.front());
 
-            // Process markers in mini-batches
+            // Process markers in mini-batches of PHI_BATCH
             for (size_t mi = 0; mi < gIndices.size(); mi += PHI_BATCH) {
                 int batchLen = static_cast<int>(std::min(
-                                                    static_cast<size_t>(PHI_BATCH),
-                                                    gIndices.size() - mi
-                ));
+                    static_cast<size_t>(PHI_BATCH),
+                    gIndices.size() - mi));
 
-                // ── Phase 1: Decode + compute per-marker scalars + fill hInt ──
+                // ── Phase 1A: decode + anc-shared scalars + hInt fill ──
                 for (int b = 0; b < batchLen; ++b) {
                     uint64_t localIdx = gIndices[mi + b];
-                    cursor->getAllAncestries(localIdx, bDos[b], bHap[b]);
+                    auto bDosView = bDosBig.middleCols(b * K, K);
+                    auto bHapView = bHapBig.middleCols(b * K, K);
+                    cursor->getAllAncestries(localIdx, bDosView, bHapView);
 
                     for (int k = 0; k < K; ++k) {
-                        auto dosCol = bDos[b].col(k);
-                        auto hapCol = bHap[b].col(k);
+                        auto dosCol = bDosView.col(k);
+                        auto hapCol = bHapView.col(k);
 
                         double hapSum = 0.0, dosSum = 0.0;
                         uint32_t nMissing = 0;
@@ -1179,22 +1483,20 @@ static void runUnifiedGWAS(
                         as.dosSum = dosSum;
 
                         if (as.missRate > missingCutoff || as.maf < mafCutoff ||
-                            as.maf > (1.0 - mafCutoff) ||
-                            as.mac < macCutoff) {
+                            as.maf > (1.0 - mafCutoff) || as.mac < macCutoff) {
                             as.pass = false;
+                            as.q = 0.0;
                             // Zero out hInt slot so it won't match any scenario
                             uint32_t *dst = hIntPerAnc[k].data() + static_cast<size_t>(b);
                             for (uint32_t s = 0; s < nUsed; ++s)
                                 dst[s * PHI_BATCH] = 0;
+                            // GEMM still produces S_blk[b](k, *) etc. for the failed
+                            // (b, k) column, but Phase 3 skips it via as.pass == false,
+                            // so no further sanitization is needed here.
                             continue;
                         }
                         as.pass = true;
                         as.q = as.maf;
-                        double qTerm = as.q * (1.0 - as.q);
-
-                        as.S = dosCol.dot(resid);
-                        as.sMean = as.q * hapCol.dot(resid);
-                        as.diagVar = qTerm * R2.matrix().dot(hapCol);
 
                         // Fill subject-major hInt for this batch slot
                         uint32_t *dst = hIntPerAnc[k].data() + static_cast<size_t>(b);
@@ -1209,7 +1511,7 @@ static void runUnifiedGWAS(
                         }
                     }
                 }
-                // Zero out unused batch slots (ensure no false matches)
+                // Zero out unused trailing batch slots (no false matches)
                 for (int b = batchLen; b < PHI_BATCH; ++b) {
                     for (int k = 0; k < K; ++k) {
                         uint32_t *dst = hIntPerAnc[k].data() + static_cast<size_t>(b);
@@ -1218,113 +1520,130 @@ static void runUnifiedGWAS(
                     }
                 }
 
-                // ── Phase 2: Batch phi scan — ONE pass per ancestry ──
-                // varOffAll[b][k] stores the off-diagonal variance for each marker/ancestry
-                double varOffAll[PHI_BATCH][16];                 // K ≤ 16 ancestries
+                // ── Phase 1B: three big fused GEMMs across (PHI_BATCH × K_anc × K_pheno) ──
+                // S_all   = bDosBig^T · R_mat    (K·PHI_BATCH × K_pheno)
+                // HR_all  = bHapBig^T · R_mat    (K·PHI_BATCH × K_pheno)
+                // HR2_all = bHapBig^T · R2_mat   (K·PHI_BATCH × K_pheno)
+                //
+                // The single large product replaces PHI_BATCH × 3 = 24 small
+                // 3×3 GEMM dispatches; with N=10k, K=3, K_pheno=3 the per-call
+                // dispatch overhead of the small variant dominates wall time,
+                // whereas the large GEMM benefits from Eigen's blocked kernel.
+                // Trailing batch slots (b ≥ batchLen) hold stale data; their
+                // GEMM output rows are never read in Phase 3.
+                S_all.noalias()   = bDosBig.transpose() * R_mat;
+                HR_all.noalias()  = bHapBig.transpose() * R_mat;
+                HR2_all.noalias() = bHapBig.transpose() * R2_mat;
+
+                // ── Phase 2: K_pheno-fused phi scan, one pass per ancestry ──
                 for (int k = 0; k < K; ++k) {
-                    computeVarOffSoABatch(rphi[k], hIntPerAnc[k].data(), nUsed, batchLen, varOffBuf);
-                    for (int b = 0; b < batchLen; ++b)
-                        varOffAll[b][k] = varOffBuf[b];
+                    computeVarOffMultiPhenoBatch(
+                        rphi[k], hIntPerAnc[k].data(),
+                        batchLen, varOffKbuf.data());
+                    for (int b = 0; b < batchLen; ++b) {
+                        for (int p = 0; p < K_pheno; ++p) {
+                            varOffAll[(static_cast<size_t>(b) * K + k) * K_pheno + p] =
+                                varOffKbuf[static_cast<size_t>(b) * K_pheno + p];
+                        }
+                    }
                 }
 
-                // ── Phase 3: SPA + output for each marker ──
+                // ── Phase 3: SPA branch + per-phenotype output formatting ──
                 for (int b = 0; b < batchLen; ++b) {
                     uint64_t localIdx = gIndices[mi + b];
                     const auto &mInfo = markerInfo[localIdx];
 
-                    buf += mInfo.chrom;
-                    buf += '\t';
-                    std::snprintf(fmtBuf, sizeof(fmtBuf), "%u", mInfo.pos);
-                    buf += fmtBuf;
-                    buf += '\t';
-                    buf += mInfo.id;
-                    buf += '\t';
-                    buf += mInfo.ref;
-                    buf += '\t';
-                    buf += mInfo.alt;
+                    // Compose marker meta once per (b)
+                    char metaBuf[128];
+                    int metaLen = std::snprintf(
+                        metaBuf, sizeof(metaBuf), "%s\t%u\t%s\t%s\t%s",
+                        mInfo.chrom.c_str(), mInfo.pos, mInfo.id.c_str(),
+                        mInfo.ref.c_str(), mInfo.alt.c_str());
 
-                    for (int k = 0; k < K; ++k) {
-                        const AncScalar &as = bAncS[b][k];
-                        // MISS_RATE
-                        buf += '\t';
-                        std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", as.missRate);
-                        buf += fmtBuf;
-                        // ALT_FREQ
-                        buf += '\t';
-                        std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", as.maf);
-                        buf += fmtBuf;
-                        // MAC
-                        buf += '\t';
-                        std::snprintf(fmtBuf, sizeof(fmtBuf), "%.0f", as.mac);
-                        buf += fmtBuf;
+                    for (int p = 0; p < K_pheno; ++p) {
+                        std::string &buf = bufPerPheno[p];
+                        buf.append(metaBuf, metaLen);
 
-                        if (!as.pass) {
-                            buf += "\tNA\tNA\tNA";
-                            continue;
-                        }
+                        for (int k = 0; k < K; ++k) {
+                            const AncScalar &as = bAncS[b][k];
 
-                        double qTerm = as.q * (1.0 - as.q);
-                        double varS = varOffAll[b][k] * qTerm + as.diagVar;
-
-                        double z = (varS > 0.0) ? (as.S - as.sMean) / std::sqrt(varS) : 0.0;
-                        auto hapCol = bHap[b].col(k);
-                        auto [pSpa, pNorm] =
-                            spaLocalPval(
-                                as.S,
-                                as.sMean,
-                                as.diagVar,
-                                resid,
-                                hapCol,
-                                as.q,
-                                varS,
-                                outlier,
-                                spaCutoff
-                            );
-                        double betaG =
-                            (varS >
-                             0.0) ? (as.S - as.sMean) / varS : std::numeric_limits<double>::quiet_NaN();
-
-                        // P
-                        buf += '\t';
-                        std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", pSpa);
-                        buf += fmtBuf;
-                        // Z
-                        buf += '\t';
-                        std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", z);
-                        buf += fmtBuf;
-                        // BETA
-                        buf += '\t';
-                        if (std::isfinite(betaG)) {
-                            std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", betaG);
+                            // MISS_RATE / ALT_FREQ / MAC (shared across phenotypes)
+                            buf += '\t';
+                            std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", as.missRate);
                             buf += fmtBuf;
-                        } else {
-                            buf += "NA";
-                        }
-                    }
-                    buf += '\n';
-                }
-            }                 // end mini-batch loop
+                            buf += '\t';
+                            std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", as.maf);
+                            buf += fmtBuf;
+                            buf += '\t';
+                            std::snprintf(fmtBuf, sizeof(fmtBuf), "%.0f", as.mac);
+                            buf += fmtBuf;
 
+                            if (!as.pass) {
+                                buf += "\tNA\tNA\tNA";
+                                continue;
+                            }
+
+                            double q     = as.q;
+                            double qTerm = q * (1.0 - q);
+                            Eigen::Index gemmRow = static_cast<Eigen::Index>(b) * K + k;
+                            double S       = S_all(gemmRow, p);
+                            double sMean   = q * HR_all(gemmRow, p);
+                            double diagVar = qTerm * HR2_all(gemmRow, p);
+                            // varOff kernel returns sum(mult · phi · R_p[i] · R_p[j]) for matching
+                            // entries; the q(1-q) factor is applied here, matching the single-
+                            // phenotype path (see git history of runUnifiedGWAS).
+                            double varOffRaw = varOffAll[(static_cast<size_t>(b) * K + k) * K_pheno + p];
+                            double varS      = varOffRaw * qTerm + diagVar;
+
+                            double z = (varS > 0.0) ? (S - sMean) / std::sqrt(varS) : 0.0;
+                            auto hapCol = bHapBig.col(b * K + k);
+                            auto [pSpa, pNorm] = spaLocalPval(
+                                S, sMean, diagVar,
+                                R_mat.col(p), hapCol,
+                                q, varS, outliers[p], spaCutoff);
+                            (void)pNorm;
+                            double betaG = (varS > 0.0) ? (S - sMean) / varS
+                                                         : std::numeric_limits<double>::quiet_NaN();
+
+                            buf += '\t';
+                            std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", pSpa);
+                            buf += fmtBuf;
+                            buf += '\t';
+                            std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", z);
+                            buf += fmtBuf;
+                            buf += '\t';
+                            if (std::isfinite(betaG)) {
+                                std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", betaG);
+                                buf += fmtBuf;
+                            } else {
+                                buf += "NA";
+                            }
+                        }
+                        buf += '\n';
+                    }
+                }
+            } // end mini-batch loop
+
+            // Commit per-phenotype chunk outputs to the shared queue
             {
                 std::lock_guard<std::mutex> lk(writeMutex);
-                chunkOutput[ci] = std::move(buf);
+                for (int p = 0; p < K_pheno; ++p)
+                    chunkOutputs[p][ci] = std::move(bufPerPheno[p]);
                 chunkReady[ci].ready = 1;
             }
             writeCv.notify_all();
 
-            // Progress logging: report at ~25%, 50%, 75%
+            // Progress logging at ~25 / 50 / 75 %
             size_t done = chunksCompleted.fetch_add(1) + 1;
             if (nChunks >= 20) {
                 size_t q1 = nChunks / 4, q2 = nChunks / 2, q3 = nChunks * 3 / 4;
                 if (done == q1 || done == q2 || done == q3) {
-                    uint32_t markersDone = static_cast<uint32_t>(static_cast<uint64_t>(done) *
-                                                                 nMarkers / nChunks);
+                    uint32_t markersDone = static_cast<uint32_t>(
+                        static_cast<uint64_t>(done) * nMarkers / nChunks);
                     infoMsg(
                         "    %u / %u markers (~%u%%)",
-                        markersDone,
-                        nMarkers,
-                        static_cast<unsigned>(done * 100 / nChunks)
-                    );
+                        markersDone, nMarkers,
+                        static_cast<unsigned>(done * 100 / nChunks));
                 }
             }
         }
@@ -1337,8 +1656,7 @@ static void runUnifiedGWAS(
     for (int t = 0; t < nWorkers; ++t)
         workers.emplace_back(workerFn);
 
-    for (auto &w : workers)
-        w.join();
+    for (auto &w : workers) w.join();
     {
         std::lock_guard<std::mutex> lk(writeMutex);
         stopWriter = true;
@@ -1346,7 +1664,9 @@ static void runUnifiedGWAS(
     writeCv.notify_all();
     writer.join();
 
-    infoMsg("  %u markers processed -> %s", admixData.nMarkers(), outputFile.c_str());
+    for (int p = 0; p < K_pheno; ++p)
+        infoMsg("  Phenotype '%s': %u markers processed -> %s",
+                phenoNames[p].c_str(), admixData.nMarkers(), outFiles[p].c_str());
 }
 
 // ======================================================================
@@ -1394,51 +1714,60 @@ void runSPAmixLocalPlus(
     // Load phi from wide file (all ancestries at once)
     auto allPhi = readPhiWide(admixPhiFile, K);
 
-    // Per-residual-column loop
+    // Phenotype set
     const int nRC = sd.residOneCols();
     if (nRC > 1) infoMsg("Multi-column residual file: %d phenotypes", nRC);
-
     auto phenoInfos = sd.buildPerColumnMasks();
 
-    for (int rc = 0; rc < nRC; ++rc) {
-        const auto &pi = phenoInfos[rc];
+    // R_mat (N × K_pheno) at union dimension, NaN→0 filled.
+    Eigen::MatrixXd R_mat;
+    if (nRC > 1) {
+        R_mat = sd.residMatrix();
+        for (Eigen::Index c = 0; c < R_mat.cols(); ++c)
+            for (Eigen::Index s = 0; s < R_mat.rows(); ++s)
+                if (std::isnan(R_mat(s, c))) R_mat(s, c) = 0.0;
+    } else {
+        R_mat.resize(sd.residuals().size(), 1);
+        R_mat.col(0) = sd.residuals();
+    }
+    Eigen::MatrixXd R2_mat = R_mat.array().square().matrix();
 
-        // Build union-dimension residual with 0 for missing subjects
-        Eigen::VectorXd colResid;
-        if (nRC > 1) {
-            colResid = sd.residMatrix().col(rc);
-            for (Eigen::Index s = 0; s < colResid.size(); ++s)
-                if (std::isnan(colResid[s])) colResid[s] = 0.0;
-        }
-        const Eigen::VectorXd &resid = (nRC > 1) ? colResid : sd.residuals();
+    // Build multi-phenotype rprod tables once per ancestry; shared (const)
+    // across all phenotypes and worker threads.  rprod_packed bakes
+    // `mult · phi · R[i,p] · R[j,p]` so the kernel hot loop reads K_pheno
+    // sequential doubles per entry — no random R gather.
+    std::vector<MultiPhenoRprodSoA> rphi(K);
+    for (int k = 0; k < K; ++k) rphi[k] = buildMultiPhenoRprodSoA(allPhi[k], R_mat);
 
-        std::string outFile = TextWriter::buildOutputPath(outPrefix, pi.name, "LocalP", compression);
-
+    // Per-phenotype outliers, names, output paths
+    std::vector<OutlierData>  outliers(nRC);
+    std::vector<std::string>  phenoNames(nRC);
+    std::vector<std::string>  outFiles(nRC);
+    for (int p = 0; p < nRC; ++p) {
+        const auto &pi = phenoInfos[p];
+        Eigen::VectorXd col = R_mat.col(p);
+        outliers[p]   = detectOutliers(col, outlierRatio);
+        phenoNames[p] = pi.name;
+        outFiles[p]   = TextWriter::buildOutputPath(outPrefix, pi.name, "LocalP", compression);
         infoMsg(
             "  Phenotype '%s': %u subjects, %u markers, %d ancestries -> %s",
-            pi.name.c_str(),
-            pi.nUsed,
-            admixData.nMarkers(),
-            K,
-            outFile.c_str()
-        );
-
-        // Detect outliers per residual column
-        OutlierData outlier = detectOutliers(resid, outlierRatio);
-
-        runUnifiedGWAS(
-            admixData,
-            resid,
-            allPhi,
-            outlier,
-            spaCutoff,
-            missingCutoff,
-            minMafCutoff,
-            minMacCutoff,
-            outFile,
-            compression,
-            compressionLevel,
-            nthread
-        );
+            pi.name.c_str(), pi.nUsed, admixData.nMarkers(), K, outFiles[p].c_str());
     }
+
+    runUnifiedGWAS(
+        admixData,
+        rphi,
+        R_mat,
+        R2_mat,
+        outliers,
+        phenoNames,
+        outFiles,
+        spaCutoff,
+        missingCutoff,
+        minMafCutoff,
+        minMacCutoff,
+        compression,
+        compressionLevel,
+        nthread
+    );
 }

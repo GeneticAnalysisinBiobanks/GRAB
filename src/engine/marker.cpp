@@ -632,6 +632,7 @@ void multiPhenoEngineRange(
             std::vector<double> passAltFreqs;
             std::vector<double> passGSums;
             std::vector<double> passGSumSqs;
+            std::vector<int> passChunkIdxs;
             std::vector<std::vector<double> > fusedResultsBuf;
 
             if (hasFused) {
@@ -639,6 +640,7 @@ void multiPhenoEngineRange(
                 passAltFreqs.reserve(B);
                 passGSums.reserve(B);
                 passGSumSqs.reserve(B);
+                passChunkIdxs.reserve(B);
             }
 
             // Pre-allocated passScores buffer (A2): reused across windows.
@@ -795,6 +797,7 @@ void multiPhenoEngineRange(
                             passAltFreqs.clear();
                             passGSums.clear();
                             passGSumSqs.clear();
+                            passChunkIdxs.clear();
                             int passCount = 0;
 
                             for (size_t bi = 0; bi < wlen; ++bi) {
@@ -820,12 +823,15 @@ void multiPhenoEngineRange(
 
                                 double maf = std::min(gs.altFreq, 1.0 - gs.altFreq);
                                 wmQC[bi].pass = !(maf < minMafCutoff ||
-                                                  gs.mac < minMacCutoff);
+                                                  gs.mac < minMacCutoff ||
+                                                  gs.missingRate > missingCutoff ||
+                                                  (hweCutoff > 0 && gs.hweP < hweCutoff));
 
                                 if (wmQC[bi].pass) {
                                     passAltFreqs.push_back(gs.altFreq);
                                     passGSums.push_back(gSum);
                                     passGSumSqs.push_back(gs.sumSq);
+                                    passChunkIdxs.push_back(static_cast<int>(wstart + bi));
                                     ++passCount;
                                 }
                             }
@@ -851,7 +857,7 @@ void multiPhenoEngineRange(
                                     methods[p]->processScoreBatch(
                                         passScoresBuf.topLeftCorner(fp.nCols, passCount),
                                         passGSums.data(), passGSumSqs.data(), fp.nUsed,
-                                        passAltFreqs, fusedResultsBuf);
+                                        passAltFreqs, passChunkIdxs, fusedResultsBuf);
                                 }
 
                                 // Format output lines.

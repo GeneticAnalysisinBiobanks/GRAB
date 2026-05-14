@@ -335,9 +335,14 @@ struct SpaResult {
     double pval, pval2, score, zscore;
 };
 
-SpaResult spaGOneSnpHomo(
-    const Eigen::Ref<const Eigen::VectorXd> &g,
-    const Eigen::VectorXd &R,
+// Scalar-input variant of spaGOneSnpHomo.  The only quantities derived
+// from g that the original routine uses are R.dot(g), g.sum(), and N;
+// supplying these directly lets a fused-GEMM caller skip materialising
+// the cluster-local g vector.
+SpaResult spaGOneSnpHomoFromScalars(
+    double R_dot_g,
+    double gSum,
+    int Nint,
     const OutlierData &outlier,
     int nNonOutlier,
     double sumR_nonOutlier,
@@ -358,12 +363,12 @@ SpaResult spaGOneSnpHomo(
         obs_ct = 0.0;
     }
 
-    const double N = static_cast<double>(g.size());
-    double mu_int = g.mean() / 2.0;
+    const double N = static_cast<double>(Nint);
+    double mu_int = (N > 0.0) ? (gSum / N) / 2.0 : 0.0;
     double MAF = std::clamp((1.0 - b) * mu_int + b * mu_ext, 0.0, 1.0);
     double N_all = N + obs_ct / 2.0;
-    // S = sum(R · (g − 2·MAF)) = R·g − 2·MAF·sumR  (one Eigen dot product, no temp)
-    double S = R.dot(g) - 2.0 * MAF * sumR;
+    // S = sum(R · (g − 2·MAF)) = R·g − 2·MAF·sumR  (provided by caller)
+    double S = R_dot_g - 2.0 * MAF * sumR;
     double S_raw = S;
     S /= var_ratio;
 
@@ -1008,28 +1013,39 @@ WtCoxGMethod::WtCoxGMethod(
     double outlierRatio,
     std::shared_ptr<const std::unordered_map<uint64_t, WtCoxGRefInfo> > refMap
 )
-    : m_R(std::move(R)),
-      m_w(std::move(w)),
-      m_w1(m_w / (2.0 * m_w.sum())),
-      m_meanR(m_R.mean()),
-      m_sumR(m_R.sum()),
-      m_sqSumR(m_R.squaredNorm()),
-      m_w1Sq(m_w1.squaredNorm()),
-      m_w1DotR(m_w1.dot(m_R)),
-      m_cutoff(cutoff),
-      m_SPA_Cutoff(SPA_Cutoff),
-      m_outlierRatio(outlierRatio),
-      m_outlier(detectOutliers(m_R, outlierRatio)),
-      m_nNonOutlier(static_cast<int>(m_outlier.posNonOutlier.size())),
-      m_sumR_nonOutlier(m_outlier.residNonOutlier.sum()),
-      m_sumR2_nonOutlier(m_outlier.resid2NonOutlier.sum()),
+    : m_refMap(std::move(refMap))
+{
+    auto sh = std::make_shared<WtCoxGShared>();
+    sh->R  = std::move(R);
+    sh->w  = std::move(w);
+    sh->w1 = sh->w / (2.0 * sh->w.sum());
+    sh->meanR  = sh->R.mean();
+    sh->sumR   = sh->R.sum();
+    sh->sqSumR = sh->R.squaredNorm();
+    sh->w1Sq   = sh->w1.squaredNorm();
+    sh->w1DotR = sh->w1.dot(sh->R);
+    sh->cutoff       = cutoff;
+    sh->SPA_Cutoff   = SPA_Cutoff;
+    sh->outlierRatio = outlierRatio;
+    sh->outlier = detectOutliers(sh->R, outlierRatio);
+    sh->nNonOutlier      = static_cast<int>(sh->outlier.posNonOutlier.size());
+    sh->sumR_nonOutlier  = sh->outlier.residNonOutlier.sum();
+    sh->sumR2_nonOutlier = sh->outlier.resid2NonOutlier.sum();
+    m_shared = std::move(sh);
+}
+
+WtCoxGMethod::WtCoxGMethod(
+    std::shared_ptr<const WtCoxGShared> shared,
+    std::shared_ptr<const std::unordered_map<uint64_t, WtCoxGRefInfo> > refMap
+)
+    : m_shared(std::move(shared)),
       m_refMap(std::move(refMap))
 {
 }
 
 std::unique_ptr<MethodBase> WtCoxGMethod::clone() const {
-    auto p = std::make_unique<WtCoxGMethod>(m_R, m_w, m_cutoff, m_SPA_Cutoff, m_outlierRatio, m_refMap);
-    return p;
+    // Share the null-model state and ref map between every worker clone.
+    return std::make_unique<WtCoxGMethod>(m_shared, m_refMap);
 }
 
 std::string WtCoxGMethod::getHeaderColumns() const {
@@ -1073,7 +1089,7 @@ void WtCoxGMethod::getResultVec(
             info.var_ratio_ext,
             info.AF_ref,
             info.obs_ct,
-            m_cutoff
+            m_shared->cutoff
         );
 
     // Without external reference
@@ -1090,7 +1106,7 @@ void WtCoxGMethod::getResultVec(
         1.0,
         NaN::quiet_NaN(),
         NaN::quiet_NaN(),
-        m_cutoff
+        m_shared->cutoff
     );
 
     result.push_back(res_ext.pval);
@@ -1104,12 +1120,23 @@ WtCoxGMethod::DualResult WtCoxGMethod::computeDual(
     Eigen::Ref<Eigen::VectorXd> GVec,
     int markerInChunkIdx
 ) {
+    return computeDualFromScalars(
+        m_shared->R.dot(GVec), GVec.sum(), static_cast<int>(GVec.size()),
+        markerInChunkIdx);
+}
+
+WtCoxGMethod::DualResult WtCoxGMethod::computeDualFromScalars(
+    double R_dot_g,
+    double gSum,
+    int N,
+    int markerInChunkIdx
+) {
 
     const auto &info = m_chunkRefInfo[markerInChunkIdx];
 
     WtResult res_ext =
-        wtCoxGTest(
-            GVec,
+        wtCoxGTestFromScalars(
+            R_dot_g, gSum, N,
             info.pvalue_bat,
             info.TPR,
             info.sigma2,
@@ -1121,11 +1148,11 @@ WtCoxGMethod::DualResult WtCoxGMethod::computeDual(
             info.var_ratio_ext,
             info.AF_ref,
             info.obs_ct,
-            m_cutoff
+            m_shared->cutoff
         );
 
-    WtResult res_noext = wtCoxGTest(
-        GVec,
+    WtResult res_noext = wtCoxGTestFromScalars(
+        R_dot_g, gSum, N,
         info.pvalue_bat,
         NaN::quiet_NaN(),
         NaN::quiet_NaN(),
@@ -1137,10 +1164,87 @@ WtCoxGMethod::DualResult WtCoxGMethod::computeDual(
         1.0,
         NaN::quiet_NaN(),
         NaN::quiet_NaN(),
-        m_cutoff
+        m_shared->cutoff
     );
 
     return {res_ext.pval, res_noext.pval, res_ext.score, res_noext.score};
+}
+
+// ── Fused-GEMM hooks ────────────────────────────────────────────────
+
+void WtCoxGMethod::fillUnionResiduals(
+    Eigen::Ref<Eigen::MatrixXd> dest,
+    const std::vector<uint32_t> &unionToLocal
+) const {
+    const uint32_t nUnion = static_cast<uint32_t>(unionToLocal.size());
+    for (uint32_t i = 0; i < nUnion; ++i) {
+        const uint32_t li = unionToLocal[i];
+        if (li != UINT32_MAX) dest(i, 0) = m_shared->R[li];
+    }
+}
+
+void WtCoxGMethod::fillResidualSums(double *dest) const {
+    dest[0] = m_shared->sumR;
+}
+
+void WtCoxGMethod::processScoreBatch(
+    const Eigen::Ref<const Eigen::MatrixXd> &scores,
+    const double *gSums,
+    const double *gSumSqs,
+    uint32_t nUsed,
+    const std::vector<double> &altFreqs,
+    const std::vector<int> &chunkIdxs,
+    std::vector<std::vector<double> > &results
+) {
+    (void)gSumSqs; (void)altFreqs;
+
+    const int B = static_cast<int>(scores.cols());
+    results.resize(B);
+
+    const int Nint = static_cast<int>(nUsed);
+
+    for (int b = 0; b < B; ++b) {
+        const double R_dot_g = scores(0, b);
+        const double gSum    = gSums[b];
+        const int chunkIdx   = chunkIdxs[b];
+        const auto &info     = m_chunkRefInfo[chunkIdx];
+
+        WtResult res_ext = wtCoxGTestFromScalars(
+            R_dot_g, gSum, Nint,
+            info.pvalue_bat,
+            info.TPR,
+            info.sigma2,
+            info.w_ext,
+            info.var_ratio_int,
+            info.var_ratio_w0,
+            info.var_ratio_w0,
+            info.var_ratio_ext,
+            info.var_ratio_ext,
+            info.AF_ref,
+            info.obs_ct,
+            m_shared->cutoff);
+
+        WtResult res_noext = wtCoxGTestFromScalars(
+            R_dot_g, gSum, Nint,
+            info.pvalue_bat,
+            NaN::quiet_NaN(),
+            NaN::quiet_NaN(),
+            0.0,
+            info.var_ratio_int,
+            1.0, 1.0, 1.0, 1.0,
+            NaN::quiet_NaN(),
+            NaN::quiet_NaN(),
+            m_shared->cutoff);
+
+        auto &r = results[b];
+        r.clear();
+        r.reserve(5);
+        r.push_back(res_ext.pval);
+        r.push_back(res_noext.pval);
+        r.push_back(res_ext.zscore);
+        r.push_back(res_noext.zscore);
+        r.push_back(info.pvalue_bat);
+    }
 }
 
 WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTest(
@@ -1158,28 +1262,55 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTest(
     double obs_ct,
     double p_cut
 ) const {
+    // Delegate to the scalar variant; g_input is only used via R.dot(g),
+    // g.sum(), and g.size() in the original implementation.
+    return wtCoxGTestFromScalars(
+        m_shared->R.dot(g_input), g_input.sum(), static_cast<int>(g_input.size()),
+        p_bat, TPR, sigma2, b, var_ratio_int, var_ratio_w0, var_ratio_w1,
+        var_ratio0, var_ratio1, mu_ext, obs_ct, p_cut);
+}
+
+WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
+    double R_dot_g,
+    double gSum,
+    int Nint,
+    double p_bat,
+    double TPR,
+    double sigma2,
+    double b,
+    double var_ratio_int,
+    double var_ratio_w0,
+    double var_ratio_w1,
+    double var_ratio0,
+    double var_ratio1,
+    double mu_ext,
+    double obs_ct,
+    double p_cut
+) const {
 
     // No external info → delegate to SPA-only
     if (std::isnan(mu_ext)) {
         double vr = (std::isnan(TPR) && std::isnan(sigma2)) ? var_ratio_int : 1.0;
-        SpaResult spa = spaGOneSnpHomo(
-            g_input, m_R, m_outlier, m_nNonOutlier, m_sumR_nonOutlier, m_sumR2_nonOutlier,
-            m_meanR, m_sumR, m_sqSumR,
-            0.0, 0.0, 0.0, 0.0, vr, m_SPA_Cutoff);
+        SpaResult spa = spaGOneSnpHomoFromScalars(
+            R_dot_g, gSum, Nint, m_shared->outlier, m_shared->nNonOutlier,
+            m_shared->sumR_nonOutlier, m_shared->sumR2_nonOutlier,
+            m_shared->meanR, m_shared->sumR, m_shared->sqSumR,
+            0.0, 0.0, 0.0, 0.0, vr, m_shared->SPA_Cutoff);
         return {spa.pval, spa.score, spa.zscore};
     }
 
-    double sum_g = g_input.sum();
-    double sum_2mg = (2.0 - g_input.array()).sum();
-    if (p_bat < p_cut || std::isnan(p_bat) || sum_g < 10 || sum_2mg < 10)return {NaN::quiet_NaN(), NaN::quiet_NaN(),
-                                                                                 NaN::quiet_NaN()};
+    const double sum_g = gSum;
+    const double sum_2mg = 2.0 * static_cast<double>(Nint) - gSum;
+    if (p_bat < p_cut || std::isnan(p_bat) || sum_g < 10 || sum_2mg < 10)
+        return {NaN::quiet_NaN(), NaN::quiet_NaN(), NaN::quiet_NaN()};
 
-    double mu_int = g_input.mean() / 2.0;
+    const double N_d = static_cast<double>(Nint);
+    double mu_int = (N_d > 0.0) ? (gSum / N_d) / 2.0 : 0.0;
     double mu = (1.0 - b) * mu_int + b * mu_ext;
-    double S = m_R.dot(g_input) - 2.0 * mu * m_sumR;
+    double S = R_dot_g - 2.0 * mu * m_shared->sumR;
 
     double var_mu_ext = mu * (1.0 - mu) / obs_ct;
-    double var_Sbat = m_w1Sq * 2.0 * mu * (1.0 - mu) + var_mu_ext;
+    double var_Sbat = m_shared->w1Sq * 2.0 * mu * (1.0 - mu) + var_mu_ext;
 
     double qnorm_val = math::qnorm(1.0 - p_cut / 2.0);
     double lb = -qnorm_val * std::sqrt(var_Sbat) * std::sqrt(var_ratio_w0);
@@ -1190,24 +1321,25 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTest(
     double p_deno = TPR * (std::exp(d_val) * (std::exp(c_val - d_val) - 1.0)) + (1.0 - TPR) * (1.0 - p_cut);
 
     // Internal SPA (no sigma2)
-    SpaResult spa_s0 = spaGOneSnpHomo(
-        g_input, m_R, m_outlier, m_nNonOutlier, m_sumR_nonOutlier, m_sumR2_nonOutlier,
-        m_meanR, m_sumR, m_sqSumR,
-        mu_ext, obs_ct, b, 0.0, var_ratio0, m_SPA_Cutoff);
+    SpaResult spa_s0 = spaGOneSnpHomoFromScalars(
+        R_dot_g, gSum, Nint, m_shared->outlier, m_shared->nNonOutlier,
+        m_shared->sumR_nonOutlier, m_shared->sumR2_nonOutlier,
+        m_shared->meanR, m_shared->sumR, m_shared->sqSumR,
+        mu_ext, obs_ct, b, 0.0, var_ratio0, m_shared->SPA_Cutoff);
     double qchi = math::qchisq(spa_s0.pval, 1.0, false, false);
     double var_S = (qchi > 0.0) ? S * S / var_ratio0 / qchi : NaN::quiet_NaN();
 
     // Covariance between S_bat and S — closed form from cached scalars.
     // sum((R - bm)²)  = sqSumR - 2·bm·sumR + N·bm²,  bm = (1-b)·meanR
     // sum(w1·(R-bm)) = w1DotR - bm·sum(w1) = w1DotR - bm·0.5  (sum(w1) = 0.5 by construction)
-    const double bm = (1.0 - b) * m_meanR;
-    const double N_d = static_cast<double>(m_R.size());
-    const double R_adj_sq_sum = m_sqSumR - 2.0 * bm * m_sumR + N_d * bm * bm;
-    const double w1_dot_R_adj = m_w1DotR - 0.5 * bm;
-    double var_int_denom = R_adj_sq_sum * 2.0 * mu * (1.0 - mu) + 4.0 * b * b * m_sumR * m_sumR * var_mu_ext;
+    const double bm = (1.0 - b) * m_shared->meanR;
+    const double N_R = static_cast<double>(m_shared->R.size());
+    const double R_adj_sq_sum = m_shared->sqSumR - 2.0 * bm * m_shared->sumR + N_R * bm * bm;
+    const double w1_dot_R_adj = m_shared->w1DotR - 0.5 * bm;
+    double var_int_denom = R_adj_sq_sum * 2.0 * mu * (1.0 - mu) + 4.0 * b * b * m_shared->sumR * m_shared->sumR * var_mu_ext;
     if (var_int_denom <= 0.0) return {NaN::quiet_NaN(), NaN::quiet_NaN(), NaN::quiet_NaN()};
 
-    double cov_val = w1_dot_R_adj * 2.0 * mu * (1.0 - mu) + 2.0 * b * m_sumR * var_mu_ext;
+    double cov_val = w1_dot_R_adj * 2.0 * mu * (1.0 - mu) + 2.0 * b * m_shared->sumR * var_mu_ext;
     cov_val *= std::sqrt(var_S / var_int_denom);
     double z = S / std::sqrt(var_S);
 
@@ -1224,12 +1356,13 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTest(
     p0 = std::clamp(p0, 0.0, 1.0);
 
     // External SPA (with sigma2)
-    SpaResult spa_s1 = spaGOneSnpHomo(
-        g_input, m_R, m_outlier, m_nNonOutlier, m_sumR_nonOutlier, m_sumR2_nonOutlier,
-        m_meanR, m_sumR, m_sqSumR,
-        mu_ext, obs_ct, b, sigma2, var_ratio1, m_SPA_Cutoff);
+    SpaResult spa_s1 = spaGOneSnpHomoFromScalars(
+        R_dot_g, gSum, Nint, m_shared->outlier, m_shared->nNonOutlier,
+        m_shared->sumR_nonOutlier, m_shared->sumR2_nonOutlier,
+        m_shared->meanR, m_shared->sumR, m_shared->sqSumR,
+        mu_ext, obs_ct, b, sigma2, var_ratio1, m_shared->SPA_Cutoff);
     double var_S1 = S * S / var_ratio1 / math::qchisq(spa_s1.pval, 1.0, false, false);
-    double cov_val1 = w1_dot_R_adj * 2.0 * mu * (1.0 - mu) + 2.0 * b * m_sumR * (var_mu_ext + sigma2);
+    double cov_val1 = w1_dot_R_adj * 2.0 * mu * (1.0 - mu) + 2.0 * b * m_shared->sumR * (var_mu_ext + sigma2);
     cov_val1 *= std::sqrt(var_S1 / var_int_denom);
     double var_Sbat1 = var_Sbat + sigma2;
 

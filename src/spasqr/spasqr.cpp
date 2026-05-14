@@ -634,6 +634,7 @@ class SPAsqrMethod : public MethodBase {
         const double *gSumSqs,
         uint32_t nUsed,
         const std::vector<double> &altFreqs,
+        const std::vector<int> & /*chunkIdxs*/,
         std::vector<std::vector<double> > &results
     ) override {
         const int B = static_cast<int>(scores.cols());

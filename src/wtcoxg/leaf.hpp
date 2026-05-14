@@ -103,11 +103,59 @@ class LEAFMethod : public MethodBase {
         std::vector<double> &result
     ) override;
 
+// ── Fused-GEMM hooks ─────────────────────────────────────────────
+// Each cluster contributes (R_c) and (cluster mask) as separate
+// residual columns: cols [0..K)  = zero-padded R_c on cluster c's
+// union positions, cols [K..2K)  = 1.0 on cluster c's union positions
+// (per-cluster gSum).  WtCoxG only needs (R.dot(g), g.sum(), N) per
+// cluster, so the fused GEMM avoids per-cluster gather in the
+// engine's per-marker loop.
+    bool supportsFusedGemm() const override {
+        return true;
+    }
+
+    int fusedGemmColumns() const override {
+        return 2 * m_nCluster;
+    }
+
+    void fillUnionResiduals(
+        Eigen::Ref<Eigen::MatrixXd> dest,
+        const std::vector<uint32_t> &unionToLocal
+    ) const override;
+
+    void fillResidualSums(double *dest) const override;
+
+    int preferredBatchSize() const override {
+        return 16;
+    }
+
+    void processScoreBatch(
+        const Eigen::Ref<const Eigen::MatrixXd> &scores,
+        const double *gSums,
+        const double *gSumSqs,
+        uint32_t nUsed,
+        const std::vector<double> &altFreqs,
+        const std::vector<int> &chunkIdxs,
+        std::vector<std::vector<double> > &results
+    ) override;
+
+// Clone-side constructor: shares the already-built cluster geometry.
+    struct ClusterGeometry {
+        int nCluster;
+        std::vector<std::vector<uint32_t> > clusterIndices;
+        std::vector<int> clusterN;
+    };
+
+    LEAFMethod(
+        std::vector<std::unique_ptr<WtCoxGMethod> > clusterMethods,
+        std::shared_ptr<const ClusterGeometry> geom
+    );
+
   private:
     int m_nCluster;
     std::vector<std::unique_ptr<WtCoxGMethod> > m_clusterMethods;
-    std::vector<std::vector<uint32_t> > m_clusterIndices;
-    std::vector<Eigen::VectorXd> m_clusterGVec; // pre-allocated buffers
+    std::shared_ptr<const ClusterGeometry> m_geom;
+    std::vector<Eigen::VectorXd> m_clusterGVec; // per-worker scratch (non-fused path)
 };
 
 // ======================================================================
