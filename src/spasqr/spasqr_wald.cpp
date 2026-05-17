@@ -296,6 +296,21 @@ void runSPAsqrWald(
                     const uint32_t li = pw[k].unionToLocal[i];
                     if (li != UINT32_MAX) loco_dense[li] = locoVec[i];
                 }
+                if (!loco_dense.allFinite()) {
+                    const Eigen::Index nBad = Nk - loco_dense.array().isFinite().count();
+                    throw std::runtime_error(
+                        "SPAsqr-LOCO (wald): LDAK PRS file for phenotype '" + phenoNames[k] +
+                        "' chr " + chr + " is missing " + std::to_string(nBad) +
+                        " subject(s) that have non-missing Y. This usually means "
+                        "the covariate file has NaN values for those subjects: "
+                        "LDAK drops them from training, while GRAB internally "
+                        "mean-imputes covariates and keeps them. Fix by pre-filtering "
+                        "samples with any missing covariate from BOTH the phenotype "
+                        "and covariate files, then re-run LDAK Step 1 + SPAsqr on "
+                        "the same filtered sample set (so neither side has to impute "
+                        "or drop). Alternatively, pass an identical --keep list to "
+                        "LDAK and to grab.");
+                }
                 Eigen::VectorXd yResp = pw[k].Y - loco_dense;
                 const double h = (spasqrH >= 0.0) ? spasqrH : iqrBandwidth(yResp, effHScale);
                 pw[k].hByChr[chr] = h;
