@@ -133,6 +133,6 @@ void runSPAsqrLoco(
     double spasqrHScale = -1.0,
     const std::string &keepFile = {},
     const std::string &removeFile = {},
-    const std::string &phenoTransform = "irn",
+    const std::string &phenoTransform = "int",
     const std::string &spasqrSolver = "qmme"
 );

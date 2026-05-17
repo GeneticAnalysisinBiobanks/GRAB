@@ -45,7 +45,7 @@ namespace {
 // Phenotype pre-transform (mirrors helper in spasqr.cpp; small enough to copy).
 void applyPhenoTransform(Eigen::VectorXd &Y, const std::string &mode) {
     if (mode == "raw") return;
-    if (mode == "irn") {
+    if (mode == "int") {
         Y = math::inverseRankNormal(Y);
         return;
     }

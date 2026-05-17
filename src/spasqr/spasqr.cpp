@@ -1005,7 +1005,7 @@ static std::vector<GRMEntry> reindexGrm(
 // ── Phenotype pre-transform helper ──────────────────────────────────
 // Applied per-phenotype on the non-missing scope.
 //   raw         — Y unchanged
-//   irn         — inverse-rank-normal (Blom, average-rank ties)
+//   int         — inverse normal transform (Blom, average-rank ties)
 //   standardize — (Y − mean) / sd  (sample sd, n−1 denom)
 // Caller is responsible for validating the mode string upstream
 // (dispatch.cpp); this function asserts on unknown modes.
@@ -1014,7 +1014,7 @@ static void applyPhenoTransform(
     const std::string &mode
 ) {
     if (mode == "raw") return;
-    if (mode == "irn") {
+    if (mode == "int") {
         Y = math::inverseRankNormal(Y);
         return;
     }
@@ -1131,7 +1131,7 @@ void runSPAsqr(
             if (nCov > 0) pw[k].X.row(li) = unionX.row(i);
         }
 
-        // Apply pheno transform (raw / irn / standardize) — per-phenotype non-missing scope.
+        // Apply pheno transform (raw / int / standardize) — per-phenotype non-missing scope.
         applyPhenoTransform(pw[k].Y, phenoTransform);
 
         // Per-phenotype bandwidth
@@ -1335,7 +1335,7 @@ void runSPAsqr(
 // runSPAsqrLoco — LOCO entry point
 //
 // Per-chromosome workflow:
-//   - Y is pre-transformed once via applyPhenoTransform (raw/irn/standardize).
+//   - Y is pre-transformed once via applyPhenoTransform (raw/int/standardize).
 //   - For each chromosome, the buildTasks callback rebuilds the conquer fits
 //     using y_adj = Y_transformed - loco_chr (β=1, α=0).
 //   - All modes feed conquer with X = pw[k].baseX (original covariates only,
@@ -1442,7 +1442,7 @@ void runSPAsqrLoco(
             if (nCov > 0) pw[k].baseX.row(li) = unionX.row(i);
         }
 
-        // Apply pheno transform (raw / irn / standardize) — per-phenotype non-missing scope.
+        // Apply pheno transform (raw / int / standardize) — per-phenotype non-missing scope.
         // All downstream math (bandwidth, conquer fit, y_adj per chromosome) operates
         // on the transformed Y. The LOCO PRS scale must match the chosen transform.
         applyPhenoTransform(pw[k].Y, phenoTransform);
@@ -1640,7 +1640,7 @@ void runSPAsqrLoco(
                     Eigen::VectorXd resid;
                     conquer::ConquerStatus st;
                     // SQR on (baseX, y_adjs[k]) with y_adjs[k] = Y_transformed - loco_chr.
-                    // Y_transformed comes from §3 applyPhenoTransform (raw/irn/standardize).
+                    // Y_transformed comes from §3 applyPhenoTransform (raw/int/standardize).
                     if (useQmme) {
                         qmmeSolvers[k]->solve(y_adjs[k], taus[t], &resid,
                                               qmmeTol, /*maxIter*/ 50000,

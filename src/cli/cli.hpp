@@ -41,8 +41,8 @@ struct Args {
     std::string keepFile;         // --keep (subject include list)
     std::string removeFile;       // --remove (subject exclude list)
     std::string predListFile;     // --pred-list (Regenie / LDAK-KVIK pred.list for LOCO)
-    // --pheno-transform {raw,irn,standardize}; empty sentinel = "use context default"
-    // (irn when --pred-list given, raw otherwise; resolved in dispatch).
+    // --pheno-transform {raw,int,standardize}; empty sentinel = "use context default"
+    // (int when --pred-list given, raw otherwise; resolved in dispatch).
     std::string phenoTransform;
     // --spasqr-solver {conquer, qmme}: null-model SQR solver. Default qmme.
     std::string spasqrSolver = "qmme";
@@ -53,6 +53,7 @@ struct Args {
     bool calPairwiseIBD = false;
     bool calPhi = false;
     bool makeAbed = false;
+    bool intPheno = false;
     double minMafIBD = 0.01;
     double refPrevalence = -1.0;
     double cutoff = 0.05;
