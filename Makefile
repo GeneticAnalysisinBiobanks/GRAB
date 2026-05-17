@@ -91,13 +91,16 @@ GRAB_CXXFLAGS := -std=c++17 -O3 -DNDEBUG $(GRAB_MARCH) $(PLATFORM_FLAGS) \
             -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare \
             -Wno-maybe-uninitialized
 CFLAGS   := -O3 -DNDEBUG $(PLATFORM_FLAGS) -ffunction-sections -fdata-sections $(SIMD_FLAGS)
-# Static libgcc/libstdc++: GCC/MinGW supports it for portable Linux/Windows
-# binaries; Apple clang on macOS doesn't accept these flags.
+# libstdc++/libgcc linkage: dynamic by default (works everywhere; requires the
+# system's libstdc++.so.6/libgcc_s.so.1 at runtime — both are part of any
+# Linux/Windows g++ install).  Override with STATIC_LIBS="-static-libstdc++
+# -static-libgcc" if you have the libstdc++-static archive installed and want
+# a binary portable to older systems.  Apple clang on macOS doesn't accept
+# these flags, so the override is Linux/Windows-only.
+STATIC_LIBS ?=
 ifeq ($(PLATFORM),macos)
-  STATIC_LIBS :=
   LDFLAGS := -Wl,-dead_strip -lpthread $(PLATFORM_LDLIBS) $(STATIC_LIBS)
 else
-  STATIC_LIBS := -static-libstdc++ -static-libgcc
   LDFLAGS := -Wl,--gc-sections -lpthread $(PLATFORM_LDLIBS) $(STATIC_LIBS)
 endif
 
