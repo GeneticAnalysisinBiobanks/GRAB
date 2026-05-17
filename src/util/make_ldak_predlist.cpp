@@ -10,6 +10,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace {
@@ -31,7 +32,10 @@ std::map<std::string, LdakHit> scanCwd() {
 
     std::error_code ec;
     auto it = fs::directory_iterator(fs::current_path(), ec);
-    if (ec) return hits;
+    if (ec)
+        throw std::runtime_error("Cannot scan current directory '" +
+                                 fs::current_path().string() +
+                                 "' for LDAK Step 1 output: " + ec.message());
 
     for (const auto &entry : it) {
         if (!entry.is_regular_file(ec)) continue;
@@ -96,6 +100,17 @@ void runMakeLdakPredlist(
     std::vector<std::string> phenoNames(header.begin() + firstYCol, header.end());
     if (phenoNames.empty())
         throw std::runtime_error("--pheno has no Y columns after IID: " + phenoFile);
+    // Duplicate Y names would silently collapse to one entry in the downstream
+    // pred-list parser (last-write-wins on predMap[name]), so reject them up
+    // front instead of producing a pred-list that maps two phenos to one PRS.
+    {
+        std::unordered_set<std::string> seen;
+        for (const auto &name : phenoNames) {
+            if (!seen.insert(name).second)
+                throw std::runtime_error("--pheno header has duplicate Y column "
+                                         "name: '" + name + "' in " + phenoFile);
+        }
+    }
     const std::size_t K = phenoNames.size();
     infoMsg("LDAK pred-list: %zu phenotype(s) in %s — %s",
             K, phenoFile.c_str(),
@@ -176,6 +191,15 @@ void runMakeLdakPredlist(
             prefix.c_str(), outPath.c_str());
     for (std::size_t i = 0; i < K; ++i) {
         const std::string abs = fs::absolute(paths[i]).string();
+        // The pred-list parser splits each line on whitespace, so a path with
+        // an embedded space/tab gets silently truncated at the first split.
+        // Refuse to write a broken file — surface the problem to the user.
+        if (abs.find_first_of(" \t") != std::string::npos)
+            throw std::runtime_error("LDAK pred-list: LOCO file path contains "
+                                     "whitespace, which the pred-list parser "
+                                     "would split: '" + abs + "'. Move the "
+                                     "LDAK output (or working directory) to a "
+                                     "path without spaces/tabs and re-run.");
         ofs << phenoNames[i] << '\t' << abs << '\n';
         infoMsg("  %s → %s", phenoNames[i].c_str(), abs.c_str());
     }
