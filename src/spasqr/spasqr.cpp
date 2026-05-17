@@ -1561,15 +1561,15 @@ void runSPAsqrLoco(
                 throw std::runtime_error(
                     "SPAsqr-LOCO: LDAK PRS file for phenotype '" + phenoNames[k] +
                     "' chr " + chr + " is missing " + std::to_string(nBad) +
-                    " subject(s) that have non-missing Y. This usually means "
-                    "the covariate file has NaN values for those subjects: "
-                    "LDAK drops them from training, while GRAB internally "
-                    "mean-imputes covariates and keeps them. Fix by pre-filtering "
-                    "samples with any missing covariate from BOTH the phenotype "
-                    "and covariate files, then re-run LDAK Step 1 + SPAsqr on "
-                    "the same filtered sample set (so neither side has to impute "
-                    "or drop). Alternatively, pass an identical --keep list to "
-                    "LDAK and to grab.");
+                    " subject(s) that have non-missing Y. This means the "
+                    "covariate file has NaN values for those subjects: LDAK "
+                    "drops them from training, while GRAB internally "
+                    "mean-imputes covariates and keeps them. Fix: impute the "
+                    "missing covariate values yourself in your covariate file "
+                    "(e.g., mean / median / model-based fill) BEFORE running "
+                    "LDAK Step 1, then re-run LDAK + SPAsqr on the same fully "
+                    "non-missing covariate file. Both tools will then see the "
+                    "complete sample set.");
             }
 
             y_adjs[k] = pw[k].Y - loco_dense;
