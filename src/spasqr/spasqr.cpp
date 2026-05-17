@@ -1549,27 +1549,20 @@ void runSPAsqrLoco(
                     loco_dense[li] = locoVec[i];
             }
 
-            // LDAK PRS files are NaN-padded for subjects absent from the file
-            // (parseLdakLocoFile). In normal use LDAK runs per-trait on Y's
-            // non-missing scope, so NaN positions ⊆ Y NaN and unionToLocal
-            // already drops them. If a subject has non-missing Y but is
-            // missing from the LDAK file, NaN reaches loco_dense here and
-            // would silently poison the per-chr QMME fit (β → NaN → all
-            // markers on this chromosome NaN). Fail loudly instead.
+            // LDAK Step 1 / Regenie Step 1 output should include a PGS for every
+            // subject in the analysis set. If any non-missing-Y subject is absent
+            // from the LOCO file, parseLdakLocoFile / parseRegenieLocoFile leaves
+            // NaN at that position. Hard-fail instead of silently corrupting the
+            // per-chr QMME fit (NaN propagates through the conquer solve).
             if (!loco_dense.allFinite()) {
                 const Eigen::Index nBad = Nk - loco_dense.array().isFinite().count();
                 throw std::runtime_error(
-                    "SPAsqr-LOCO: LDAK PRS file for phenotype '" + phenoNames[k] +
+                    "SPAsqr-LOCO: LOCO file for phenotype '" + phenoNames[k] +
                     "' chr " + chr + " is missing " + std::to_string(nBad) +
-                    " subject(s) that have non-missing Y. This means the "
-                    "covariate file has NaN values for those subjects: LDAK "
-                    "drops them from training, while GRAB internally "
-                    "mean-imputes covariates and keeps them. Fix: impute the "
-                    "missing covariate values yourself in your covariate file "
-                    "(e.g., mean / median / model-based fill) BEFORE running "
-                    "LDAK Step 1, then re-run LDAK + SPAsqr on the same fully "
-                    "non-missing covariate file. Both tools will then see the "
-                    "complete sample set.");
+                    " subject(s) that have non-missing Y. The LOCO PGS file must "
+                    "contain every subject in the --pheno analysis set. Re-run "
+                    "LDAK / Regenie Step 1 on the same sample set, or remove "
+                    "those subjects from --pheno.");
             }
 
             y_adjs[k] = pw[k].Y - loco_dense;

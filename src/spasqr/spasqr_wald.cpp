@@ -296,20 +296,19 @@ void runSPAsqrWald(
                     const uint32_t li = pw[k].unionToLocal[i];
                     if (li != UINT32_MAX) loco_dense[li] = locoVec[i];
                 }
+                // LDAK / Regenie Step 1 output should include a PGS for every
+                // subject in the analysis set. If any non-missing-Y subject is
+                // absent, the parser leaves NaN at that position. Hard-fail
+                // instead of silently corrupting the per-marker QMME refit.
                 if (!loco_dense.allFinite()) {
                     const Eigen::Index nBad = Nk - loco_dense.array().isFinite().count();
                     throw std::runtime_error(
-                        "SPAsqr-LOCO (wald): LDAK PRS file for phenotype '" + phenoNames[k] +
+                        "SPAsqr-LOCO (wald): LOCO file for phenotype '" + phenoNames[k] +
                         "' chr " + chr + " is missing " + std::to_string(nBad) +
-                        " subject(s) that have non-missing Y. This means the "
-                        "covariate file has NaN values for those subjects: LDAK "
-                        "drops them from training, while GRAB internally "
-                        "mean-imputes covariates and keeps them. Fix: impute the "
-                        "missing covariate values yourself in your covariate file "
-                        "(e.g., mean / median / model-based fill) BEFORE running "
-                        "LDAK Step 1, then re-run LDAK + SPAsqr on the same fully "
-                        "non-missing covariate file. Both tools will then see the "
-                        "complete sample set.");
+                        " subject(s) that have non-missing Y. The LOCO PGS file "
+                        "must contain every subject in the --pheno analysis set. "
+                        "Re-run LDAK / Regenie Step 1 on the same sample set, or "
+                        "remove those subjects from --pheno.");
                 }
                 Eigen::VectorXd yResp = pw[k].Y - loco_dense;
                 const double h = (spasqrH >= 0.0) ? spasqrH : iqrBandwidth(yResp, effHScale);
