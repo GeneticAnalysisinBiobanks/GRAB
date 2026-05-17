@@ -54,6 +54,7 @@ struct Args {
     bool calPhi = false;
     bool makeAbed = false;
     bool intPheno = false;
+    bool makeLdakPredlist = false;
     double minMafIBD = 0.01;
     double refPrevalence = -1.0;
     double cutoff = 0.05;
