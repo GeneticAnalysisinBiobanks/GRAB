@@ -360,14 +360,33 @@ Eigen::VectorXd summixEstimate(
 LEAFMethod::LEAFMethod(
     std::vector<std::unique_ptr<WtCoxGMethod> > clusterMethods,
     std::vector<std::vector<uint32_t> > clusterIndices
+) {
+    auto g = std::make_shared<ClusterGeometry>();
+    g->nCluster = static_cast<int>(clusterMethods.size());
+    g->clusterIndices = std::move(clusterIndices);
+    g->clusterN.resize(g->nCluster);
+    for (int c = 0; c < g->nCluster; ++c)
+        g->clusterN[c] = static_cast<int>(g->clusterIndices[c].size());
+
+    m_nCluster = g->nCluster;
+    m_clusterMethods = std::move(clusterMethods);
+    m_clusterGVec.resize(m_nCluster);
+    for (int c = 0; c < m_nCluster; ++c)
+        m_clusterGVec[c].resize(g->clusterIndices[c].size());
+    m_geom = std::move(g);
+}
+
+LEAFMethod::LEAFMethod(
+    std::vector<std::unique_ptr<WtCoxGMethod> > clusterMethods,
+    std::shared_ptr<const ClusterGeometry> geom
 )
-    : m_nCluster(static_cast<int>(clusterMethods.size())),
+    : m_nCluster(geom->nCluster),
       m_clusterMethods(std::move(clusterMethods)),
-      m_clusterIndices(std::move(clusterIndices))
+      m_geom(std::move(geom))
 {
     m_clusterGVec.resize(m_nCluster);
     for (int c = 0; c < m_nCluster; ++c)
-        m_clusterGVec[c].resize(m_clusterIndices[c].size());
+        m_clusterGVec[c].resize(m_geom->clusterIndices[c].size());
 }
 
 std::unique_ptr<MethodBase> LEAFMethod::clone() const {
@@ -377,7 +396,9 @@ std::unique_ptr<MethodBase> LEAFMethod::clone() const {
         auto p = m->clone(); // returns unique_ptr<MethodBase>
         cloned.push_back(std::unique_ptr<WtCoxGMethod>(static_cast<WtCoxGMethod *>(p.release())));
     }
-    return std::make_unique<LEAFMethod>(std::move(cloned), m_clusterIndices);
+    // Share the cluster geometry by shared_ptr copy — no per-worker
+    // duplication of clusterIndices / clusterN.
+    return std::make_unique<LEAFMethod>(std::move(cloned), m_geom);
 }
 
 int LEAFMethod::resultSize() const {
@@ -409,7 +430,7 @@ void LEAFMethod::getResultVec(
 
     for (int c = 0; c < m_nCluster; ++c) {
         // Gather cluster genotypes from full GVec
-        const auto &idx = m_clusterIndices[c];
+        const auto &idx = m_geom->clusterIndices[c];
         Eigen::VectorXd &gClu = m_clusterGVec[c];
         for (size_t k = 0; k < idx.size(); ++k)
             gClu[static_cast<Eigen::Index>(k)] = GVec[idx[k]];
@@ -445,6 +466,112 @@ void LEAFMethod::getResultVec(
         result.push_back(pExt[c]);
         result.push_back(pNoext[c]);
         result.push_back(m_clusterMethods[c]->chunkRefInfoAt(markerInChunkIdx).pvalue_bat);
+    }
+}
+
+// ── Fused-GEMM hooks ────────────────────────────────────────────────
+//
+// LEAFMethod is itself a phenotype (the engine sees one task per LEAF
+// trait), but internally each marker is tested K times — once per
+// cluster — and the K cluster results are then meta-analysed.  The
+// fused GEMM batches all K · B inner products into a single matmul:
+//   AugResid: union_N × (K residual + K mask) cols
+//   GEMM     : (2K × union_N) · (union_N × B)  →  (2K × B)
+// giving per-marker (R_c.dot(g_c), gSum_c) for every cluster c.
+
+void LEAFMethod::fillUnionResiduals(
+    Eigen::Ref<Eigen::MatrixXd> dest,
+    const std::vector<uint32_t> &unionToLocal
+) const {
+    // unionToLocal is the LEAF-level union mapping (= LEAF's pheno mask
+    // applied to the engine's union, which here is identical because
+    // there is exactly one LEAF task).  Each entry maps union index →
+    // LEAFMethod's pheno-local index (= union index for LEAF).
+    //
+    // m_geom->clusterIndices[c] holds union-level indices of cluster c's
+    // members.  Use those directly for the scatter.
+    const int K = m_nCluster;
+    for (int c = 0; c < K; ++c) {
+        const auto &idx = m_geom->clusterIndices[c];
+        const Eigen::VectorXd &R = m_clusterMethods[c]->residuals();
+        for (size_t k = 0; k < idx.size(); ++k) {
+            const uint32_t u = idx[k];
+            // dest is indexed by engine union; LEAF's union equals the
+            // engine union because LEAF is the only fuseable phenotype.
+            if (unionToLocal[u] != UINT32_MAX) {
+                dest(u, c)     = R[k];
+                dest(u, K + c) = 1.0;
+            }
+        }
+    }
+}
+
+void LEAFMethod::fillResidualSums(double *dest) const {
+    const int K = m_nCluster;
+    for (int c = 0; c < K; ++c) {
+        dest[c]     = m_clusterMethods[c]->residuals().sum();
+        dest[K + c] = static_cast<double>(m_geom->clusterN[c]);
+    }
+}
+
+void LEAFMethod::processScoreBatch(
+    const Eigen::Ref<const Eigen::MatrixXd> &scores,
+    const double *gSums,
+    const double *gSumSqs,
+    uint32_t nUsed,
+    const std::vector<double> &altFreqs,
+    const std::vector<int> &chunkIdxs,
+    std::vector<std::vector<double> > &results
+) {
+    (void)gSums; (void)gSumSqs; (void)nUsed; (void)altFreqs;
+
+    const int B = static_cast<int>(scores.cols());
+    const int K = m_nCluster;
+    results.resize(B);
+
+    std::vector<double> pExt(K), pNoext(K), sExt(K), sNoext(K);
+
+    auto metaP = [](const std::vector<double> &scoresArr, const std::vector<double> &pvals) -> double {
+        double sumScore = 0.0, sumVar = 0.0;
+        for (size_t c = 0; c < scoresArr.size(); ++c) {
+            if (std::isnan(scoresArr[c]) || std::isnan(pvals[c]) ||
+                pvals[c] <= 0.0 || pvals[c] >= 1.0) continue;
+            double chisq = math::qchisq(pvals[c], 1.0, false, false);
+            if (chisq < 1e-30) chisq = 1e-30;
+            double var = (scoresArr[c] * scoresArr[c]) / chisq;
+            if (std::isnan(var)) continue;
+            sumScore += scoresArr[c];
+            sumVar += var;
+        }
+        if (sumVar <= 0.0) return std::numeric_limits<double>::quiet_NaN();
+        double z = sumScore / std::sqrt(sumVar);
+        return std::erfc(std::fabs(z) / std::sqrt(2.0));
+    };
+
+    for (int b = 0; b < B; ++b) {
+        const int chunkIdx = chunkIdxs[b];
+
+        for (int c = 0; c < K; ++c) {
+            const double R_dot_g = scores(c, b);
+            const double gSum    = scores(K + c, b);
+            auto dr = m_clusterMethods[c]->computeDualFromScalars(
+                R_dot_g, gSum, m_geom->clusterN[c], chunkIdx);
+            pExt[c]   = dr.p_ext;
+            pNoext[c] = dr.p_noext;
+            sExt[c]   = dr.score_ext;
+            sNoext[c] = dr.score_noext;
+        }
+
+        auto &r = results[b];
+        r.clear();
+        r.reserve(2 + 3 * K);
+        r.push_back(metaP(sExt, pExt));
+        r.push_back(metaP(sNoext, pNoext));
+        for (int c = 0; c < K; ++c) {
+            r.push_back(pExt[c]);
+            r.push_back(pNoext[c]);
+            r.push_back(m_clusterMethods[c]->chunkRefInfoAt(chunkIdx).pvalue_bat);
+        }
     }
 }
 

@@ -17,6 +17,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include <zlib.h>
@@ -42,7 +43,8 @@ SPAmixPlusMethod::SPAmixPlusMethod(
     double spaCutoff,
     const SparseGRM &grm,
     const std::vector<AFModel> &afModels,
-    const std::vector<uint32_t> &genoToFlat
+    const std::vector<uint32_t> &genoToFlat,
+    int maskIdx
 )
     : m_resid(residuals),
       m_resid2(resid2),
@@ -53,14 +55,18 @@ SPAmixPlusMethod::SPAmixPlusMethod(
       m_grm(&grm),
       m_N(static_cast<int>(residuals.size())),
       m_nPC(static_cast<int>(onePlusPCs.cols()) - 1),
+      m_maskIdx(maskIdx),
+      m_residSum(residuals.sum()),
       m_afModels(&afModels),
       m_genoToFlat(&genoToFlat),
       m_XtX_inv_Xt(nullptr),
       m_sqrt_XtX_inv_diag(nullptr),
       m_AFVec(m_N),
+      m_WVec(m_N),
       m_R_new(m_N),
       m_mafOutlier(static_cast<int>(outlier.posOutlier.size())),
-      m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size()))
+      m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size())),
+      m_chunkGenoIndices(nullptr)
 {
 }
 
@@ -74,7 +80,8 @@ SPAmixPlusMethod::SPAmixPlusMethod(
     const SparseGRM &grm,
     const Eigen::MatrixXd &XtX_inv_Xt,
     const Eigen::VectorXd &sqrt_XtX_inv_diag,
-    int nPC
+    int nPC,
+    int maskIdx
 )
     : m_resid(residuals),
       m_resid2(resid2),
@@ -85,14 +92,18 @@ SPAmixPlusMethod::SPAmixPlusMethod(
       m_grm(&grm),
       m_N(static_cast<int>(residuals.size())),
       m_nPC(nPC),
+      m_maskIdx(maskIdx),
+      m_residSum(residuals.sum()),
       m_afModels(nullptr),
       m_genoToFlat(nullptr),
       m_XtX_inv_Xt(&XtX_inv_Xt),
       m_sqrt_XtX_inv_diag(&sqrt_XtX_inv_diag),
       m_AFVec(m_N),
+      m_WVec(m_N),
       m_R_new(m_N),
       m_mafOutlier(static_cast<int>(outlier.posOutlier.size())),
-      m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size()))
+      m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size())),
+      m_chunkGenoIndices(nullptr)
 {
 }
 
@@ -106,7 +117,8 @@ SPAmixPlusMethod::SPAmixPlusMethod(
     const OutlierData &outlier,
     double spaCutoff,
     const std::vector<AFModel> &afModels,
-    const std::vector<uint32_t> &genoToFlat
+    const std::vector<uint32_t> &genoToFlat,
+    int maskIdx
 )
     : m_resid(residuals),
       m_resid2(resid2),
@@ -117,14 +129,18 @@ SPAmixPlusMethod::SPAmixPlusMethod(
       m_grm(nullptr),
       m_N(static_cast<int>(residuals.size())),
       m_nPC(static_cast<int>(onePlusPCs.cols()) - 1),
+      m_maskIdx(maskIdx),
+      m_residSum(residuals.sum()),
       m_afModels(&afModels),
       m_genoToFlat(&genoToFlat),
       m_XtX_inv_Xt(nullptr),
       m_sqrt_XtX_inv_diag(nullptr),
       m_AFVec(m_N),
+      m_WVec(m_N),
       m_R_new(0),
       m_mafOutlier(static_cast<int>(outlier.posOutlier.size())),
-      m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size()))
+      m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size())),
+      m_chunkGenoIndices(nullptr)
 {
 }
 
@@ -137,7 +153,8 @@ SPAmixPlusMethod::SPAmixPlusMethod(
     double spaCutoff,
     const Eigen::MatrixXd &XtX_inv_Xt,
     const Eigen::VectorXd &sqrt_XtX_inv_diag,
-    int nPC
+    int nPC,
+    int maskIdx
 )
     : m_resid(residuals),
       m_resid2(resid2),
@@ -148,21 +165,26 @@ SPAmixPlusMethod::SPAmixPlusMethod(
       m_grm(nullptr),
       m_N(static_cast<int>(residuals.size())),
       m_nPC(nPC),
+      m_maskIdx(maskIdx),
+      m_residSum(residuals.sum()),
       m_afModels(nullptr),
       m_genoToFlat(nullptr),
       m_XtX_inv_Xt(&XtX_inv_Xt),
       m_sqrt_XtX_inv_diag(&sqrt_XtX_inv_diag),
       m_AFVec(m_N),
+      m_WVec(m_N),
       m_R_new(0),
       m_mafOutlier(static_cast<int>(outlier.posOutlier.size())),
-      m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size()))
+      m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size())),
+      m_chunkGenoIndices(nullptr)
 {
 }
 
 std::unique_ptr<MethodBase> SPAmixPlusMethod::clone() const {
+    std::unique_ptr<SPAmixPlusMethod> m;
     if (m_hasGRM) {
         if (m_XtX_inv_Xt) {
-            return std::make_unique<SPAmixPlusMethod>(
+            m = std::make_unique<SPAmixPlusMethod>(
                 m_resid,
                 m_resid2,
                 m_onePlusPCs,
@@ -171,23 +193,24 @@ std::unique_ptr<MethodBase> SPAmixPlusMethod::clone() const {
                 *m_grm,
                 *m_XtX_inv_Xt,
                 *m_sqrt_XtX_inv_diag,
-                m_nPC
+                m_nPC,
+                m_maskIdx
+            );
+        } else {
+            m = std::make_unique<SPAmixPlusMethod>(
+                m_resid,
+                m_resid2,
+                m_onePlusPCs,
+                m_outlier,
+                m_spaCutoff,
+                *m_grm,
+                *m_afModels,
+                *m_genoToFlat,
+                m_maskIdx
             );
         }
-        return std::make_unique<SPAmixPlusMethod>(
-            m_resid,
-            m_resid2,
-            m_onePlusPCs,
-            m_outlier,
-            m_spaCutoff,
-            *m_grm,
-            *m_afModels,
-            *m_genoToFlat
-        );
-    }
-    // No GRM
-    if (m_XtX_inv_Xt) {
-        return std::make_unique<SPAmixPlusMethod>(
+    } else if (m_XtX_inv_Xt) {
+        m = std::make_unique<SPAmixPlusMethod>(
             m_resid,
             m_resid2,
             m_onePlusPCs,
@@ -195,53 +218,97 @@ std::unique_ptr<MethodBase> SPAmixPlusMethod::clone() const {
             m_spaCutoff,
             *m_XtX_inv_Xt,
             *m_sqrt_XtX_inv_diag,
-            m_nPC
+            m_nPC,
+            m_maskIdx
+        );
+    } else {
+        m = std::make_unique<SPAmixPlusMethod>(
+            m_resid,
+            m_resid2,
+            m_onePlusPCs,
+            m_outlier,
+            m_spaCutoff,
+            *m_afModels,
+            *m_genoToFlat,
+            m_maskIdx
         );
     }
-    return std::make_unique<SPAmixPlusMethod>(
-        m_resid,
-        m_resid2,
-        m_onePlusPCs,
-        m_outlier,
-        m_spaCutoff,
-        *m_afModels,
-        *m_genoToFlat
-    );
+
+    // Bind a per-thread AFVec cache shared between SPAmix clones in the
+    // same dedup mask group.  clone() is invoked from the worker thread,
+    // so the thread_local map is per-worker; the shared_ptr's lifetime is
+    // bounded by the lifetime of that worker thread.
+    thread_local std::unordered_map<int, std::shared_ptr<SPAmixAFCache> > tlCacheMap;
+    auto &slot = tlCacheMap[m_maskIdx];
+    if (!slot) slot = std::make_shared<SPAmixAFCache>();
+    m->m_afCache = slot;
+
+    return m;
 }
 
 void SPAmixPlusMethod::prepareChunk(const std::vector<uint64_t> &gIndices) {
-    m_chunkGenoIndices = gIndices;
+    m_chunkGenoIndices = &gIndices;
+    // Invalidate any AFVec cache populated for an earlier chunk so the
+    // first processScoreBatch of the new chunk repopulates it.
+    if (m_afCache) m_afCache->lastChunkIdxs.clear();
 }
 
 // ======================================================================
-// getMarkerPval — score test with optional GRM variance + SPA
+// fillAFVecForMarker — populate per-individual AF for one marker
 // ======================================================================
 
-double SPAmixPlusMethod::getMarkerPval(
+void SPAmixPlusMethod::fillAFVecForMarker(
     const Eigen::Ref<const Eigen::VectorXd> &GVec,
     double altFreq,
+    int markerInChunkIdx,
+    Eigen::Ref<Eigen::VectorXd> outAF
+) {
+    if (m_XtX_inv_Xt) {
+        AFContext ctx{
+            m_onePlusPCs,
+            *m_XtX_inv_Xt,
+            *m_sqrt_XtX_inv_diag,
+            m_onePlusPCs.rightCols(m_nPC),
+            m_N,
+            m_nPC
+        };
+        computeAFVec(GVec, altFreq, ctx, outAF);
+    } else {
+        const uint64_t genoIdx = (*m_chunkGenoIndices)[markerInChunkIdx];
+        const uint32_t flatIdx = (*m_genoToFlat)[genoIdx];
+        const AFModel &model = (*m_afModels)[flatIdx];
+        getAFVecFromModel(model, altFreq, m_onePlusPCs, m_N, outAF);
+    }
+}
+
+// ======================================================================
+// markerPvalFromAF — score test with optional GRM variance + SPA
+//
+//   rawScore  = Σ_i G_i · resid_i  (raw, uncentered; from fused GEMM or GEMV)
+//   afVec     = per-individual ALT frequency
+//   wVec      = per-individual W = 2·AF·(1−AF)
+//
+// Centering and variance use afVec / wVec; SPA uses the outlier split.
+// ======================================================================
+
+double SPAmixPlusMethod::markerPvalFromAF(
+    const Eigen::Ref<const Eigen::VectorXd> &afVec,
+    const Eigen::Ref<const Eigen::VectorXd> &wVec,
+    double rawScore,
     double &zScore,
     double &outVarS
 ) {
+    // S_mean   = 2·Σ_i resid_i · AF_i
+    // S_var_d  = Σ_i resid2_i · W_i             (diagonal variance)
+    // When GRM is present, build R_new_i = resid_i · sqrt(W_i) and pass to
+    // SparseGRM::spaVariance to obtain the GRM-based variance.
+    double S_mean = 2.0 * m_resid.dot(afVec);
+    double S_var_diag = m_resid2.dot(wVec);
 
-    // m_AFVec is pre-filled by caller (on-the-fly or from stored model)
-
-    // Build score statistic S, mean, and diagonal variance in a single pass.
-    // When using GRM we also build R_new for the GRM-based variance.
-    double S = 0.0, S_mean = 0.0, S_var_diag = 0.0;
-    for (int i = 0; i < m_N; ++i) {
-        double af = m_AFVec[i];
-        double gvar = 2.0 * af * (1.0 - af);
-        S += GVec[i] * m_resid[i];
-        S_mean += m_resid[i] * af;
-        S_var_diag += m_resid2[i] * gvar;
-        if (m_hasGRM) m_R_new[i] = m_resid[i] * std::sqrt(gvar);
-    }
-    S_mean *= 2.0;
-
-    // Variance: GRM-based (SPAmixPlus) or diagonal (SPAmix)
     double VarS;
     if (m_hasGRM) {
+        // R_new = resid · sqrt(W).  Use Eigen array ops so SIMD kicks in.
+        m_R_new = m_resid.array() * wVec.array().sqrt();
         VarS = m_grm->spaVariance(m_R_new.data(), static_cast<uint32_t>(m_N));
     } else {
         VarS = S_var_diag;
@@ -253,37 +320,32 @@ double SPAmixPlusMethod::getMarkerPval(
         return 1.0;
     }
 
-    zScore = (S - S_mean) / std::sqrt(VarS);
-
-    // Normal approximation when |z| < cutoff
+    zScore = (rawScore - S_mean) / std::sqrt(VarS);
     outVarS = VarS;
-    if (std::abs(zScore) < m_spaCutoff) return 2.0 * math::pnorm(-std::abs(zScore));
+    if (std::abs(zScore) < m_spaCutoff) {
+        return 2.0 * math::pnorm(-std::abs(zScore));
+    }
 
-    // ---- SPA with outlier / non-outlier split ----
-
-    // When using GRM, apply variance-ratio correction to S so the SPA
-    // operates on the diagonal-variance scale (needed by getProbSpaG).
+    // ── SPA path with outlier / non-outlier split ──────────────────
     double S_spa, S_mean_spa;
     if (m_hasGRM) {
         double sqrt_ratio = std::sqrt(S_var_diag / VarS);
-        S_spa = S * sqrt_ratio;
+        S_spa = rawScore * sqrt_ratio;
         S_mean_spa = S_mean * sqrt_ratio;
     } else {
-        S_spa = S;
+        S_spa = rawScore;
         S_mean_spa = S_mean;
     }
 
     const int nOut = static_cast<int>(m_outlier.posOutlier.size());
     const int nNon = static_cast<int>(m_outlier.posNonOutlier.size());
 
-    // Gather outlier MAFs
     for (int i = 0; i < nOut; ++i)
-        m_mafOutlier[i] = m_AFVec[m_outlier.posOutlier[i]];
+        m_mafOutlier[i] = afVec[m_outlier.posOutlier[i]];
 
-    // Gather non-outlier MAFs and accumulate normal-approx terms in one pass
     double mean_nonOutlier = 0.0, var_nonOutlier = 0.0;
     for (int i = 0; i < nNon; ++i) {
-        const double af = m_AFVec[m_outlier.posNonOutlier[i]];
+        const double af = afVec[m_outlier.posNonOutlier[i]];
         m_mafNonOutlier[i] = af;
         mean_nonOutlier += m_outlier.residNonOutlier[i] * af;
         var_nonOutlier += m_outlier.resid2NonOutlier[i] * af * (1.0 - af);
@@ -317,7 +379,7 @@ double SPAmixPlusMethod::getMarkerPval(
 }
 
 // ======================================================================
-// getResultVec — MethodBase interface (handles flip internally)
+// getResultVec — MethodBase scalar interface (kept for compatibility)
 // ======================================================================
 
 void SPAmixPlusMethod::getResultVec(
@@ -326,29 +388,180 @@ void SPAmixPlusMethod::getResultVec(
     int markerInChunkIdx,
     std::vector<double> &result
 ) {
+    fillAFVecForMarker(GVec, altFreq, markerInChunkIdx, m_AFVec);
+    m_WVec = 2.0 * m_AFVec.array() * (1.0 - m_AFVec.array());
 
-    // GVec counts bim col5 (ALT) alleles; altFreq = freq(ALT).
-    // No flip needed — plink always returns ALT counts.
-    double maf = altFreq;
-
-    // Fill m_AFVec: on-the-fly from genotype, or from pre-computed model
-    if (m_XtX_inv_Xt) {
-        AFContext ctx{m_onePlusPCs, *m_XtX_inv_Xt, *m_sqrt_XtX_inv_diag, m_onePlusPCs.rightCols(m_nPC), m_N, m_nPC};
-        computeAFVec(GVec, maf, ctx, m_AFVec);
-    } else {
-        const uint64_t genoIdx = m_chunkGenoIndices[markerInChunkIdx];
-        const uint32_t flatIdx = (*m_genoToFlat)[genoIdx];
-        const AFModel &model = (*m_afModels)[flatIdx];
-        getAFVecFromModel(model, maf, m_onePlusPCs, m_N, m_AFVec);
-    }
+    double rawScore = GVec.dot(m_resid);
 
     double zScore, VarS;
-    double pval = getMarkerPval(GVec, maf, zScore, VarS);
+    double pval = markerPvalFromAF(m_AFVec, m_WVec, rawScore, zScore, VarS);
     double sqrtVarS = (VarS > 0.0) ? std::sqrt(VarS) : 0.0;
     double beta = (sqrtVarS > 0.0) ? zScore / sqrtVarS : 0.0;
     result.push_back(pval);
     result.push_back(zScore);
     result.push_back(beta);
+}
+
+// ======================================================================
+// ensureAFCacheFused — populate per-thread AFVec/W cache (pre-computed AF)
+//
+// The cache is shared by all clones with the same maskIdx on this thread.
+// First call in a group fills the cache; subsequent calls (other phenos
+// in the same group with identical chunkIdxs) reuse it for free.
+// ======================================================================
+
+void SPAmixPlusMethod::ensureAFCacheFused(
+    const std::vector<int> &chunkIdxs,
+    const std::vector<double> &altFreqs
+) {
+    auto &cache = *m_afCache;
+    if (cache.lastChunkIdxs == chunkIdxs) return; // hot path: cache hit
+
+    const int B = static_cast<int>(chunkIdxs.size());
+    if (cache.afBatch.rows() != m_N || cache.afBatch.cols() < B) {
+        cache.afBatch.resize(m_N, B);
+        cache.wBatch.resize(m_N, B);
+    }
+
+    // m_chunkGenoIndices is set in prepareChunk; engine guarantees
+    // chunkIdxs[b] falls within the current chunk.  Pre-computed AF mode
+    // only depends on (model, altFreq) — independent of phenotype.
+    for (int b = 0; b < B; ++b) {
+        Eigen::Ref<Eigen::VectorXd> col = cache.afBatch.col(b);
+        const uint64_t genoIdx = (*m_chunkGenoIndices)[chunkIdxs[b]];
+        const uint32_t flatIdx = (*m_genoToFlat)[genoIdx];
+        const AFModel &model = (*m_afModels)[flatIdx];
+        getAFVecFromModel(model, altFreqs[b], m_onePlusPCs, m_N, col);
+    }
+
+    cache.wBatch.leftCols(B).array() =
+        2.0 * cache.afBatch.leftCols(B).array() *
+        (1.0 - cache.afBatch.leftCols(B).array());
+
+    cache.lastChunkIdxs = chunkIdxs;
+}
+
+// ======================================================================
+// processScoreBatch — fused-GEMM consumer (pre-computed AF mode)
+// ======================================================================
+
+void SPAmixPlusMethod::processScoreBatch(
+    const Eigen::Ref<const Eigen::MatrixXd> &scores,
+    const double *gSums,
+    const double *gSumSqs,
+    uint32_t nUsed,
+    const std::vector<double> &altFreqs,
+    const std::vector<int> &chunkIdxs,
+    std::vector<std::vector<double> > &results
+) {
+    (void)gSums; (void)gSumSqs; (void)nUsed;
+
+    const int B = static_cast<int>(scores.cols());
+    results.resize(B);
+
+    // Populate / reuse the per-thread AFVec batch for this maskIdx.
+    ensureAFCacheFused(chunkIdxs, altFreqs);
+    auto &cache = *m_afCache;
+
+    for (int b = 0; b < B; ++b) {
+        auto afCol = cache.afBatch.col(b);
+        auto wCol  = cache.wBatch.col(b);
+
+        const double rawScore = scores(0, b);
+        double zScore, VarS;
+        double pval = markerPvalFromAF(afCol, wCol, rawScore, zScore, VarS);
+        double sqrtVarS = (VarS > 0.0) ? std::sqrt(VarS) : 0.0;
+        double beta = (sqrtVarS > 0.0) ? zScore / sqrtVarS : 0.0;
+
+        auto &r = results[b];
+        r.clear();
+        r.reserve(3);
+        r.push_back(pval);
+        r.push_back(zScore);
+        r.push_back(beta);
+    }
+}
+
+// ======================================================================
+// getResultBatch — non-fused batched path (on-the-fly AF mode)
+//
+// Used when supportsFusedGemm() = false (on-the-fly AF).  GBatch is the
+// phenotype-local genotype matrix.  We still share AFVec across clones
+// in the same maskIdx group via the per-thread cache, so the on-the-fly
+// OLS / logistic fit runs once per marker per group instead of once per
+// (marker × phenotype).
+// ======================================================================
+
+void SPAmixPlusMethod::getResultBatch(
+    const Eigen::Ref<const Eigen::MatrixXd> &GBatch,
+    const std::vector<double> &altFreqs,
+    const std::vector<int> &chunkIdxs,
+    std::vector<std::vector<double> > &results
+) {
+    const int B = static_cast<int>(GBatch.cols());
+    results.resize(B);
+
+    // On-the-fly AF: each marker's AFVec depends on its own G column, so
+    // we cannot piggy-back on the simple genoIdx-keyed fill used in
+    // ensureAFCache.  Instead, do an explicit per-marker fill into the
+    // shared cache, gated by the cache's chunkIdxs key.
+    auto &cache = *m_afCache;
+    const bool needFill = (cache.lastChunkIdxs != chunkIdxs);
+    if (needFill) {
+        if (cache.afBatch.rows() != m_N || cache.afBatch.cols() < B) {
+            cache.afBatch.resize(m_N, B);
+            cache.wBatch.resize(m_N, B);
+        }
+        for (int b = 0; b < B; ++b) {
+            // Eigen::Ref over the cached column lets fillAFVecForMarker
+            // (and computeAFVec/getAFVecFromModel) write in place.
+            Eigen::Ref<Eigen::VectorXd> afCol = cache.afBatch.col(b);
+            fillAFVecForMarker(GBatch.col(b), altFreqs[b], chunkIdxs[b], afCol);
+        }
+        cache.wBatch.leftCols(B).array() =
+            2.0 * cache.afBatch.leftCols(B).array() *
+            (1.0 - cache.afBatch.leftCols(B).array());
+        cache.lastChunkIdxs = chunkIdxs;
+    }
+
+    for (int b = 0; b < B; ++b) {
+        auto afCol = cache.afBatch.col(b);
+        auto wCol  = cache.wBatch.col(b);
+
+        // Raw score = resid · G.  Done per phenotype since residuals differ.
+        const double rawScore = GBatch.col(b).dot(m_resid);
+
+        double zScore, VarS;
+        double pval = markerPvalFromAF(afCol, wCol, rawScore, zScore, VarS);
+        double sqrtVarS = (VarS > 0.0) ? std::sqrt(VarS) : 0.0;
+        double beta = (sqrtVarS > 0.0) ? zScore / sqrtVarS : 0.0;
+
+        auto &r = results[b];
+        r.clear();
+        r.reserve(3);
+        r.push_back(pval);
+        r.push_back(zScore);
+        r.push_back(beta);
+    }
+}
+
+// ======================================================================
+// fillUnionResiduals / fillResidualSums — fused-GEMM hooks
+// ======================================================================
+
+void SPAmixPlusMethod::fillUnionResiduals(
+    Eigen::Ref<Eigen::MatrixXd> dest,
+    const std::vector<uint32_t> &unionToLocal
+) const {
+    const uint32_t nUnion = static_cast<uint32_t>(unionToLocal.size());
+    for (uint32_t i = 0; i < nUnion; ++i) {
+        const uint32_t li = unionToLocal[i];
+        if (li != UINT32_MAX) dest(i, 0) = m_resid[li];
+    }
+}
+
+void SPAmixPlusMethod::fillResidualSums(double *dest) const {
+    dest[0] = m_residSum;
 }
 
 // ======================================================================
@@ -519,27 +732,30 @@ void runSPAmixPlus(
 
         // Create method
         std::unique_ptr<SPAmixPlusMethod> m;
+        const int maskIdxArg = static_cast<int>(mIdx);
         if (hasGRM) {
             if (!afFile.empty()) {
                 m = std::make_unique<SPAmixPlusMethod>(
                     pResid[rc], pResid2[rc], curPCs, pOutlier[rc],
-                    spaCutoff, *grmPtr, afModels, genoToFlat);
+                    spaCutoff, *grmPtr, afModels, genoToFlat, maskIdxArg);
             } else {
                 m = std::make_unique<SPAmixPlusMethod>(
                     pResid[rc], pResid2[rc], curPCs, pOutlier[rc],
                     spaCutoff, *grmPtr,
-                    poolXtX_inv_Xt[mIdx], poolSqrt_XtX_inv_diag[mIdx], nPC);
+                    poolXtX_inv_Xt[mIdx], poolSqrt_XtX_inv_diag[mIdx], nPC,
+                    maskIdxArg);
             }
         } else {
             if (!afFile.empty()) {
                 m = std::make_unique<SPAmixPlusMethod>(
                     pResid[rc], pResid2[rc], curPCs, pOutlier[rc],
-                    spaCutoff, afModels, genoToFlat);
+                    spaCutoff, afModels, genoToFlat, maskIdxArg);
             } else {
                 m = std::make_unique<SPAmixPlusMethod>(
                     pResid[rc], pResid2[rc], curPCs, pOutlier[rc],
                     spaCutoff,
-                    poolXtX_inv_Xt[mIdx], poolSqrt_XtX_inv_diag[mIdx], nPC);
+                    poolXtX_inv_Xt[mIdx], poolSqrt_XtX_inv_diag[mIdx], nPC,
+                    maskIdxArg);
             }
         }
 

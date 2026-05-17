@@ -33,14 +33,16 @@
 
 namespace {
 
-constexpr int kMaxIterPQL = 50;
-constexpr double kTolBeta = 1e-4;
-constexpr double kTolTau = 0.01;
+// Recommended values: aligned with GRAB 0.2.4 reference defaults
+// (see examples_1kg/vs_grab024/GRAB/R/POLMM.R::checkControl.NullModel.POLMM).
+constexpr int kMaxIterPQL = 100;
+constexpr double kTolBeta = 0.001;
+constexpr double kTolTau = 0.002;
 constexpr int kMaxIterEps = 100;
-constexpr double kTolEps = 1e-4;
+constexpr double kTolEps = 1e-10;
 constexpr int kMaxIterPCG = 100;
 constexpr double kTolPCG = 1e-6;
-constexpr int kTraceNRun = 30;   // Hutchinson trace estimator runs
+constexpr int kTraceNRun = 30;
 constexpr int kNSnpsPerBin = 30; // SNPs per MAC bin for variance ratio
 constexpr double kMinVarRatioCV = 0.0025;
 
@@ -74,340 +76,104 @@ inline double clampProb(double p) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// Batch SpMV for interleaved layout (Optimization 3).
-// Vectors are interleaved: x[i * stride + j] for subject i, component j.
-// Iterates over COO entries once instead of `stride` times.
-// When stride==1, delegates to the common SparseGRM::multiply().
-// ══════════════════════════════════════════════════════════════════════
+// Reference-style POLMM null-model fit (faithful port of GRAB 0.2.4
+// implementation in examples_1kg/vs_grab024/GRAB/src/POLMM.cpp).
+//
+// Convention (per-subject working covariance via multinomial Psi):
+//   nuMat(i,j) = logistic(eps_j - eta_i)                  cumulative
+//   muMat(i,j) = nuMat_j - nuMat_{j-1}                    category prob
+//   mMat(i,j)  = nuMat_j + nuMat_{j-1} - 1
+//   WMat(i,j)  = nuMat_j (1 - nuMat_j)
+//   iRMat(i,j) = 1 / (mMat(i,j) - mMat(i, J-1))           signed
+//   YMat(i,j)  = eta_i + iRMat(i,j) · iPsi[(yMat - muMat)_{0..J-2}](i,j)
+//
+// Sigma operator (acts on n × (J-1) matrices or n*(J-1) vectors with
+// row-major flattening idx = i*(J-1) + j):
+//   Sigma x = iRMat ⊙ Psi^{-1}(iRMat ⊙ x) + tau · tZ(K · Z x)
+// where iPsi(z)(i,j) = sum_k z(i,k) / muMat(i,J-1) + z(i,j) / muMat(i,j);
+// Z x produces an n-vector by per-subject row-sum;
+// tZ v duplicates each n-entry across (J-1) slots.
+//
+// Tau update: AI-REML on the marginal log-likelihood.  Hutchinson
+// trace estimator uses Rademacher probes precomputed once at setup
+// (TraceRandMat and V_TRM = tZ(K · Z(TraceRandMat))).
+//
+// eps(0) is constrained to 0; the intercept of beta absorbs the shift.
+// ──────────────────────────────────────────────────────────────────────
+// Layout helpers: vector ↔ matrix conversion in row-major flattening.
+//   vec[i*Jm1 + j] = mat(i, j)
+// ──────────────────────────────────────────────────────────────────────
 
-void batchSpmvInterleaved(
-    const SparseGRM &grm,
-    const double *x,
-    double *result,
-    uint32_t n,
-    int stride
-) {
-    if (stride == 1) {
-        grm.multiply(x, result, n);
-        return;
-    }
-    const int total = static_cast<int>(n) * stride;
-    std::fill(result, result + total, 0.0);
-    for (const auto &e : grm.entries()) {
-        const double v = e.value;
-        const int ri = static_cast<int>(e.row) * stride;
-        const int ci = static_cast<int>(e.col) * stride;
-        for (int j = 0; j < stride; ++j)
-            result[ri + j] += v * x[ci + j];
-        if (e.row != e.col) {
-            for (int j = 0; j < stride; ++j)
-                result[ci + j] += v * x[ri + j];
-        }
-    }
-}
-
-// Accumulate-mode batch SpMV: result += alpha * (K ⊗ I_stride) * x
-// Zero-copy — no intermediate buffer allocation.
-void batchSpmvInterleavedAdd(
-    const SparseGRM &grm,
-    const double *x,
-    double *result,
-    uint32_t n,
-    int stride,
-    double alpha
-) {
-    if (stride == 1) {
-        for (const auto &e : grm.entries()) {
-            result[e.row] += alpha * e.value * x[e.col];
-            if (e.row != e.col) result[e.col] += alpha * e.value * x[e.row];
-        }
-        return;
-    }
-    for (const auto &e : grm.entries()) {
-        const double av = alpha * e.value;
-        const int ri = static_cast<int>(e.row) * stride;
-        const int ci = static_cast<int>(e.col) * stride;
-        for (int j = 0; j < stride; ++j)
-            result[ri + j] += av * x[ci + j];
-        if (e.row != e.col) {
-            for (int j = 0; j < stride; ++j)
-                result[ci + j] += av * x[ri + j];
-        }
-    }
-}
-
-// ══════════════════════════════════════════════════════════════════════
-// Working matrix updates: given (beta, bVec, eps) → muMat, iRMat, etc.
-// ══════════════════════════════════════════════════════════════════════
-
-// muMat(i,j) = P(y=j | eta_i) = F(eps_j - eta_i) - F(eps_{j-1} - eta_i)
-//   where F = logistic, eps_0 = -inf, eps_J = +inf
-// iRMat(i,j) = 1/sqrt(muMat(i,j) * cumMuBar(i,j))
-//   where cumMuBar(i,j) = 1 - sum_{k<=j} muMat(i,k)
-
-void updateMuMat(
-    const Eigen::MatrixXd &X,
-    const Eigen::VectorXd &beta,
-    const Eigen::VectorXd &bVec,
-    const Eigen::VectorXd &eps,
+inline Eigen::VectorXd matToVec(
+    const Eigen::MatrixXd &mat,
     int n,
-    int J,
-    Eigen::MatrixXd &muMat,
-    Eigen::MatrixXd &iRMat
+    int Jm1
 ) {
-    // eta_i = X[i,:]*beta + bVec[i]
-    Eigen::VectorXd eta = X * beta + bVec;
-
-    muMat.resize(n, J);
-    iRMat.resize(n, J - 1);
-
-    for (int i = 0; i < n; ++i) {
-        double prevCdf = 0.0;
-        for (int j = 0; j < J; ++j) {
-            double cdf_j;
-            if (j == J - 1)cdf_j = 1.0;
-            else cdf_j = logistic(eps(j) - eta(i));
-            double mu_ij = clampProb(cdf_j - prevCdf);
-            muMat(i, j) = mu_ij;
-            prevCdf = cdf_j;
-        }
-        // Compute iRMat: working correlation inverse scales
-        double cumMu = 0.0;
-        for (int j = 0; j < J - 1; ++j) {
-            cumMu += muMat(i, j);
-            double cumMuBar = 1.0 - cumMu; // = sum_{k > j} mu(i,k)
-            cumMuBar = std::max(cumMuBar, 1e-10);
-            double v = muMat(i, j) * cumMuBar;
-            iRMat(i, j) = 1.0 / std::sqrt(std::max(v, 1e-20));
-        }
-    }
-}
-
-// ══════════════════════════════════════════════════════════════════════
-// Psi operations: Psi is the working covariance of the cumulative model.
-//   Psi = diag(mu) - mu*mu' per subject (J-1 × J-1 blocks)
-//
-// For a vector w of length n*(J-1) (stacked J-1 blocks per subject):
-//   (Psi * w)[i, j] = muMat(i,j)*(1 - cumP(i,j)) * w[i,j]
-//                    - sum over k≠j of cross terms
-// But a simpler formulation uses the fact that for cumulative logit:
-//   Psi_i = D_i - c_i * c_i'
-// where D_i = diag(g'(threshold_j - eta_i)), c_i = (g'(...))
-// with g = logistic density.
-//
-// For efficiency, we implement Psi*v and Psi^{-1}*v per subject.
-// ══════════════════════════════════════════════════════════════════════
-
-// Compute Psi_i * w_i where w_i is a block of length (J-1) for subject i
-// Psi_i[j,k] = mu_i[min(j,k)] * (1 - mu_i[0..max(j,k)] cumsum)  when represented
-//            = delta(j,k)*f_j - f_j*f_k  where f_j = dlogistic(eps_j - eta_i)
-// Actually from the original POLMM code:
-//   Psi_i = WMat_i - mMat_i * mMat_i'   (J-1 × J-1)
-// where WMat_i[j] = d logistic(eps_j - eta_i) = mu_(j) * (1 - cumP <= j)
-//   and mMat_i[j,k] = ... complex
-//
-// For simplicity and correctness, use the concrete formula:
-//   Psi_i[j,k] = mu_i[min(j,k)+1..J-1 cumulative] * mu_i[0..min(j,k) cumulative]
-//              = CumMu_i(min(j,k)) * (1 - CumMu_i(max(j,k)))  [for j != k this is negative]
-// Actually: Psi_i[j,k] = mu(j)*(1{j>k} - CumF(j)) for the cumulative probit/logit
-// Let me use the standard result for cumulative link models:
-//   Psi_i = A_i - c_i c_i'
-//   where A_i = diag(h_0, h_1, ..., h_{J-2}), h_j = dF(eps_j - eta_i)
-//   and c_i = (h_0, h_1, ..., h_{J-2})'
-// This makes Psi_i = diag(h) - h * h'  which is a rank-1 update of a diagonal.
-
-struct PsiBlock {
-    // h_j = dlogistic(eps_j - eta_i) for j = 0..J-2
-    Eigen::VectorXd h; // (J-1)
-
-    void compute(
-        double eta_i,
-        const Eigen::VectorXd &eps,
-        int Jm1
-    ) {
-        h.resize(Jm1);
-        for (int j = 0; j < Jm1; ++j)
-            h(j) = dlogistic(eps(j) - eta_i);
-    }
-
-    // y = Psi * x = diag(h)*x - h*(h'x)
-    // Optimization 1: K=2 scalar fast path when Jm1==1
-    void mulVec(
-        const double *x,
-        double *y,
-        int Jm1
-    ) const {
-        if (Jm1 == 1) {
-            y[0] = h(0) * (1.0 - h(0)) * x[0];
-            return;
-        }
-        double hdotx = 0.0;
-        for (int j = 0; j < Jm1; ++j)
-            hdotx += h(j) * x[j];
-        for (int j = 0; j < Jm1; ++j)
-            y[j] = h(j) * x[j] - h(j) * hdotx;
-    }
-
-    // y = Psi^{-1} * x = diag(1/h)*x + 11' * x / (1 - sum(h))
-    // By Sherman-Morrison: (diag(h) - h h')^{-1} = diag(1/h) + 11'/(1 - sum(h))
-    // Optimization 1: K=2 scalar fast path when Jm1==1
-    void solveVec(
-        const double *x,
-        double *y,
-        int Jm1
-    ) const {
-        if (Jm1 == 1) {
-            double psi = std::max(h(0) * (1.0 - h(0)), 1e-20);
-            y[0] = x[0] / psi;
-            return;
-        }
-        double sumH = 0.0;
-        double sumXoverH = 0.0;
-        for (int j = 0; j < Jm1; ++j) {
-            sumH += h(j);
-            double hi = std::max(h(j), 1e-20);
-            y[j] = x[j] / hi;
-            sumXoverH += y[j];
-        }
-        double denom = std::max(1.0 - sumH, 1e-20);
-        double add = sumXoverH / denom;
-        for (int j = 0; j < Jm1; ++j)
-            y[j] += add;
-    }
-
-};
-
-// ══════════════════════════════════════════════════════════════════════
-// PCG solver: solves Sigma * x = rhs, where Sigma = Psi^{-1} + tau * K
-// Returns x = Sigma^{-1} * rhs
-// Vectors are of length n*(J-1), with blocks of (J-1) per subject.
-// ══════════════════════════════════════════════════════════════════════
-
-// Sigma * v = Psi^{-1} * v + tau * (K ⊗ I_{J-1}) * v
-// where (K ⊗ I_{J-1}) * v means: for each dimension j in 0..J-2,
-// extract the j-th element from each subject's block to form an n-vector,
-// multiply by K, then scatter back.
-void sigmaMultiply(
-    const std::vector<PsiBlock> &psiBlocks,
-    const SparseGRM &grm,
-    double tau,
-    int n,
-    int Jm1,
-    const double *v,
-    double *result
-) {
-    // Part 1: Psi^{-1} * v (block diagonal, per subject)
+    Eigen::VectorXd v(n * Jm1);
     for (int i = 0; i < n; ++i)
-        psiBlocks[i].solveVec(v + i * Jm1, result + i * Jm1, Jm1);
-
-    // Part 2: result += tau * (K ⊗ I_{J-1}) * v
-    // Zero-copy accumulate — no intermediate buffer.
-    batchSpmvInterleavedAdd(grm, v, result, static_cast<uint32_t>(n), Jm1, tau);
+        for (int j = 0; j < Jm1; ++j)
+            v(i * Jm1 + j) = mat(i, j);
+    return v;
 }
 
-// Preconditioner: block diagonal of Sigma.
-// For each subject, the (J-1)×(J-1) block is M_i = Psi_i^{-1} + tau*K_ii*I.
-// We solve M_i * z_i = r_i per block using Sherman-Morrison.
-//
-// Psi_i^{-1} = diag(1/h) + 11'/(1 - sum(h))  (from PsiBlock::solveVec)
-// So M_i = diag(1/h_j + tau*d_i) + 11'/(1 - sum(h))
-//        = diag(D_j) + uu'   where D_j = 1/h_j + tau*d_i,  u = 1/sqrt(1-sum(h))
-//
-// By Sherman-Morrison:
-//   M_i^{-1} = diag(a) - a*a' / ((1-sum(h))^{-1} + sum(a))
-//   where a_j = 1/D_j = 1/(1/h_j + tau*d_i) = h_j/(1 + tau*d_i*h_j)
-void precondSolve(
-    const std::vector<PsiBlock> &psiBlocks,
-    const std::vector<double> &diagK,
-    double tau,
+inline void vecToMat(
+    const Eigen::VectorXd &v,
     int n,
     int Jm1,
-    const double *r,
-    double *z
+    Eigen::MatrixXd &out
 ) {
+    out.resize(n, Jm1);
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < Jm1; ++j)
+            out(i, j) = v(i * Jm1 + j);
+}
+
+// Expand n × p covariate matrix to n*(J-1) × p by row-replication.
+inline Eigen::MatrixXd buildExpandedX(
+    const Eigen::MatrixXd &X,
+    int n,
+    int p,
+    int Jm1
+) {
+    Eigen::MatrixXd Xe(n * Jm1, p);
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < Jm1; ++j)
+            Xe.row(i * Jm1 + j) = X.row(i);
+    return Xe;
+}
+
+// Per-subject row-sum: for v of length n*(J-1), w(i) = sum_j v(i*(J-1)+j).
+inline Eigen::VectorXd ZsumVec(
+    const Eigen::VectorXd &v,
+    int n,
+    int Jm1
+) {
+    Eigen::VectorXd w(n);
     for (int i = 0; i < n; ++i) {
-        const double *ri = r + i * Jm1;
-        double *zi = z + i * Jm1;
-        const auto &h = psiBlocks[i].h;
-        const double td = tau * diagK[i];
-
-        if (Jm1 == 1) {
-            // J=2 fast path: M = 1/(h*(1-h)) + tau*d = (1 + tau*d*h*(1-h)) / (h*(1-h))
-            double psi = std::max(h(0) * (1.0 - h(0)), 1e-20);
-            zi[0] = ri[0] / (1.0 / psi + td);
-            return;
-        }
-
-        // General case: a_j = h_j / (1 + td * h_j)
-        double sumH = 0.0;
-        double sumA = 0.0;
-        double adotR = 0.0;
-        for (int j = 0; j < Jm1; ++j) {
-            double hj = std::max(h(j), 1e-20);
-            double aj = hj / (1.0 + td * hj);
-            sumH += hj;
-            sumA += aj;
-            zi[j] = aj * ri[j];   // diag(a) * r
-            adotR += aj * ri[j];
-        }
-        // Subtract rank-1 correction: a*a'*r / ((1-sumH)^{-1} + sumA)
-        double denom = 1.0 / std::max(1.0 - sumH, 1e-20) + sumA;
-        double scale = adotR / denom;
-        for (int j = 0; j < Jm1; ++j) {
-            double hj = std::max(h(j), 1e-20);
-            double aj = hj / (1.0 + td * hj);
-            zi[j] -= aj * scale;
-        }
+        double s = 0.0;
+        for (int j = 0; j < Jm1; ++j) s += v(i * Jm1 + j);
+        w(i) = s;
     }
+    return w;
 }
 
-Eigen::VectorXd pcgSolve(
-    const std::vector<PsiBlock> &psiBlocks,
-    const SparseGRM &grm,
-    const std::vector<double> &diagK,
-    double tau,
+// y indicator matrix: y(i, yVec(i)) = 1.
+inline Eigen::MatrixXd makeYMat(
+    const Eigen::VectorXi &yVec,
     int n,
-    int Jm1,
-    const Eigen::VectorXd &rhs
+    int J
 ) {
-    const int dim = n * Jm1;
-    Eigen::VectorXd x = Eigen::VectorXd::Zero(dim);
-    Eigen::VectorXd r = rhs; // r = rhs - Sigma * x, but x=0 so r=rhs
-    Eigen::VectorXd z(dim), p(dim), Ap(dim);
-
-    // z = M^{-1} r
-    precondSolve(psiBlocks, diagK, tau, n, Jm1, r.data(), z.data());
-    p = z;
-    double rz = r.dot(z);
-
-    for (int iter = 0; iter < kMaxIterPCG; ++iter) {
-        // Ap = Sigma * p
-        sigmaMultiply(psiBlocks, grm, tau, n, Jm1, p.data(), Ap.data());
-        double pAp = p.dot(Ap);
-        if (std::abs(pAp) < 1e-30) break;
-        double alpha = rz / pAp;
-        x += alpha * p;
-        r -= alpha * Ap;
-
-        double rNorm = r.norm();
-        if (rNorm < kTolPCG * rhs.norm()) break;
-
-        precondSolve(psiBlocks, diagK, tau, n, Jm1, r.data(), z.data());
-        double rz_new = r.dot(z);
-        double beta = rz_new / std::max(rz, 1e-30);
-        p = z + beta * p;
-        rz = rz_new;
-    }
-    return x;
+    Eigen::MatrixXd Y = Eigen::MatrixXd::Zero(n, J);
+    for (int i = 0; i < n; ++i) Y(i, yVec(i)) = 1.0;
+    return Y;
 }
 
-// ══════════════════════════════════════════════════════════════════════
-// CLM initialization — cumulative logistic model via IRLS
-// (replaces R's ordinal::clm)
-// Fits: logit(P(y <= j)) = eps_j - X*beta
-// ══════════════════════════════════════════════════════════════════════
+// ──────────────────────────────────────────────────────────────────────
+// fitCLM_initial: cumulative-logit fit, mirrors R's ordinal::clm output.
+// Produces (beta_raw, eps_raw) with logit P(y<=j) = eps_raw_j - X*beta_raw.
+// ──────────────────────────────────────────────────────────────────────
 
-void fitCLM(
+void fitCLM_initial(
     const Eigen::VectorXi &yVec,
     const Eigen::MatrixXd &X,
     int n,
@@ -416,120 +182,668 @@ void fitCLM(
     Eigen::VectorXd &beta,
     Eigen::VectorXd &eps
 ) {
-    // Initialize cutpoints from marginal proportions
-    eps.resize(J - 1);
-    Eigen::VectorXd cumProp(J);
-    cumProp.setZero();
-    for (int i = 0; i < n; ++i)
-        cumProp(yVec(i)) += 1.0;
-    cumProp /= static_cast<double>(n);
-
-    double cumSum = 0.0;
-    for (int j = 0; j < J - 1; ++j) {
-        cumSum += cumProp(j);
-        cumSum = std::max(0.01, std::min(0.99, cumSum));
-        eps(j) = std::log(cumSum / (1.0 - cumSum)); // logit
-    }
+    const int Jm1 = J - 1;
+    eps.resize(Jm1);
     beta.setZero(p);
 
-    // IRLS iterations
-    const int maxIter = 50;
-    const int nTheta = (J - 1) + p; // total parameters: eps + beta
+    Eigen::VectorXd cumProp = Eigen::VectorXd::Zero(J);
+    for (int i = 0; i < n; ++i) cumProp(yVec(i)) += 1.0;
+    cumProp /= static_cast<double>(n);
+    double cs = 0.0;
+    for (int j = 0; j < Jm1; ++j) {
+        cs += cumProp(j);
+        double q = std::min(0.999, std::max(0.001, cs));
+        eps(j) = std::log(q / (1.0 - q));
+    }
 
-    for (int iter = 0; iter < maxIter; ++iter) {
-        // Build working response and weights
-        // For cumulative logit: P(y <= j) = logistic(eps_j - X*beta)
+    const int nTheta = Jm1 + p;
+    constexpr int maxIter = 50;
+    for (int it = 0; it < maxIter; ++it) {
         Eigen::VectorXd eta = X * beta;
-
-        // Gradient and Hessian w.r.t. [eps; beta]
         Eigen::VectorXd grad = Eigen::VectorXd::Zero(nTheta);
-        Eigen::MatrixXd hess = Eigen::MatrixXd::Zero(nTheta, nTheta);
+        Eigen::MatrixXd H = Eigen::MatrixXd::Zero(nTheta, nTheta);
 
         for (int i = 0; i < n; ++i) {
             int yi = yVec(i);
-            // Compute P(y=yi) and derivatives
-            // gamma_j = eps_j - eta_i
-            // F_j = logistic(gamma_j), f_j = F_j*(1-F_j)
-            // P(y=yi) = F_{yi} - F_{yi-1}  (F_{-1}=0, F_{J-1}=1)
-
-            double F_yi = (yi < J - 1) ? logistic(eps(yi) - eta(i)) : 1.0;
+            double F_yi = (yi < Jm1) ? logistic(eps(yi) - eta(i)) : 1.0;
             double F_yim1 = (yi > 0) ? logistic(eps(yi - 1) - eta(i)) : 0.0;
             double p_yi = clampProb(F_yi - F_yim1);
-
-            double f_yi = (yi < J - 1) ? dlogistic(eps(yi) - eta(i)) : 0.0;
+            double f_yi = (yi < Jm1) ? dlogistic(eps(yi) - eta(i)) : 0.0;
             double f_yim1 = (yi > 0) ? dlogistic(eps(yi - 1) - eta(i)) : 0.0;
-
-            // Gradient w.r.t eps_j: dlog(p_yi)/deps_j
-            //   = (f_yi * 1{j==yi} - f_yim1 * 1{j==yi-1}) / p_yi
-            if (yi < J - 1) grad(yi) += f_yi / p_yi;
-            if (yi > 0) grad(yi - 1) -= f_yim1 / p_yi;
-
-            // Gradient w.r.t beta: dlog(p_yi)/dbeta = -(f_yi - f_yim1) / p_yi * X[i,:]
             double dLogPdEta = -(f_yi - f_yim1) / p_yi;
-            grad.tail(p) += dLogPdEta * X.row(i).transpose();
 
-            // Approximate Hessian (Fisher information, negative expected)
-            // For simplicity, use the outer product of scores (BFGS-like)
-            // or the exact Fisher info. Use the diagonal of working weights.
-            double w = (f_yi - f_yim1) * (f_yi - f_yim1) / (p_yi * p_yi);
-            w = std::max(w, 1e-10);
-
-            // Hessian contributions for eps-eps, eps-beta, beta-beta blocks
-            // Use score outer product as a simple approximation
-            Eigen::VectorXd score_i(nTheta);
-            score_i.setZero();
-            if (yi < J - 1) score_i(yi) = f_yi / p_yi;
-            if (yi > 0) score_i(yi - 1) = -f_yim1 / p_yi;
-            score_i.tail(p) = dLogPdEta * X.row(i).transpose();
-            hess += score_i * score_i.transpose();
+            Eigen::VectorXd score = Eigen::VectorXd::Zero(nTheta);
+            if (yi < Jm1) score(yi) = f_yi / p_yi;
+            if (yi > 0) score(yi - 1) -= f_yim1 / p_yi;
+            score.tail(p) = dLogPdEta * X.row(i).transpose();
+            grad += score;
+            H += score * score.transpose();
         }
-
-        // Newton step: theta_new = theta + H^{-1} * grad
-        // (using observed info = outer product of scores)
-        // Add small ridge for stability
-        hess.diagonal().array() += 1e-6;
-        Eigen::VectorXd delta = hess.ldlt().solve(grad);
-
-        // Update
-        for (int j = 0; j < J - 1; ++j)
-            eps(j) += delta(j);
+        H.diagonal().array() += 1e-6;
+        Eigen::VectorXd delta = H.ldlt().solve(grad);
+        for (int j = 0; j < Jm1; ++j) eps(j) += delta(j);
         beta += delta.tail(p);
-
-        if (delta.norm() < 1e-6) break;
+        if (delta.norm() < 1e-7) break;
     }
-    // Ensure cutpoints are ordered
-    for (int j = 1; j < J - 1; ++j)
+    for (int j = 1; j < Jm1; ++j)
         eps(j) = std::max(eps(j), eps(j - 1) + 0.01);
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// PQL null model fitting
+// POLMMFitter — PQL / AI-REML null-model fit per reference algorithm.
 // ══════════════════════════════════════════════════════════════════════
 
-// Y indicator matrix: yMat(i, j) = 1 if yVec(i) == j
-Eigen::MatrixXd makeYMat(
+class POLMMFitter {
+  public:
+    POLMMFitter(
+        const Eigen::VectorXi &yVec,
+        const Eigen::MatrixXd &X,
+        const SparseGRM &grm,
+        int n,
+        int J,
+        int p,
+        const char *tag
+    )
+        : m_yVec(yVec),
+          m_X(X),
+          m_grm(grm),
+          m_n(n),
+          m_J(J),
+          m_p(p),
+          m_Jm1(J - 1),
+          m_tag(tag) {
+        m_diagK = grm.diagonal();
+        m_yMat = makeYMat(yVec, n, J);
+        m_X_exp = buildExpandedX(X, n, p, m_Jm1);
+
+        // CLM seed, then shift such that eps(0) = 0 (intercept absorbs).
+        Eigen::VectorXd beta_raw, eps_raw;
+        fitCLM_initial(yVec, X, n, J, p, beta_raw, eps_raw);
+        const double shift = eps_raw(0);
+        m_beta = beta_raw;
+        m_beta(0) -= shift;
+        m_eps = eps_raw;
+        for (int j = 0; j < m_Jm1; ++j) m_eps(j) -= shift;
+        m_eps(0) = 0.0;
+
+        m_bVec = Eigen::VectorXd::Zero(n);
+        m_tau = 0.2;
+
+        // Rademacher trace probes and V_TRM = tZ(K · Z(probes)) — fixed for the fit.
+        buildTraceRandMat();
+    }
+
+    void fit(POLMMNullModel &out) {
+        infoMsg(
+            "[%s] Fitting POLMM null model (n=%d, J=%d, p=%d, tau0=%.3f)",
+            m_tag,
+            m_n,
+            m_J,
+            m_p,
+            m_tau
+        );
+
+        updateMats();
+        for (m_iter = 0; m_iter < kMaxIterPQL; ++m_iter) {
+            const double tau_old = m_tau;
+            updateParaConv();
+            updateTau();
+            if (std::isnan(m_tau)) {
+                infoMsg("[%s] tau became NaN; aborting fit", m_tag);
+                break;
+            }
+            const double rel = std::abs(m_tau - tau_old)
+                               / (std::abs(m_tau) + std::abs(tau_old) + kTolTau);
+            infoMsg(
+                "[%s] PQL iter %d: tau %.6f -> %.6f (rel=%.2e)",
+                m_tag,
+                m_iter + 1,
+                tau_old,
+                m_tau,
+                rel
+            );
+            if (rel < kTolTau) {
+                ++m_iter;
+                break;
+            }
+        }
+        infoMsg("[%s] Null model converged. tau=%.6f after %d iters", m_tag, m_tau, m_iter);
+
+        out.n = m_n;
+        out.J = m_J;
+        out.p = m_p;
+        out.beta = m_beta;
+        out.eps = m_eps;
+        out.bVec = m_bVec;
+        out.tau = m_tau;
+        out.muMat = m_muMat;
+        out.iRMat = m_iRMat;
+    }
+
+    // Expose state for variance-ratio computation.
+    const Eigen::MatrixXd &muMat() const {
+        return m_muMat;
+    }
+
+    const Eigen::MatrixXd &iRMat() const {
+        return m_iRMat;
+    }
+
+    const Eigen::MatrixXd &X_exp() const {
+        return m_X_exp;
+    }
+
+    double tau() const {
+        return m_tau;
+    }
+
+    int n() const {
+        return m_n;
+    }
+
+    int J() const {
+        return m_J;
+    }
+
+    int p() const {
+        return m_p;
+    }
+
+    int Jm1() const {
+        return m_Jm1;
+    }
+
+    // Build preconditioner at the current tau/iRMat.
+    void buildPrecondAtCurrent() {
+        buildPreconditioner();
+    }
+
+    // After fit(), recompute PCG-derived state at the converged tau so that
+    // external pcgSolveVec / iSigmaX_XSigmaX / X_exp are consistent for the
+    // variance-ratio step.
+    void prepareForVarianceRatio() {
+        buildPreconditioner();
+        pcgSolveColumns(m_X_exp, m_iSigma_CovaMat);
+        Eigen::MatrixXd XtiSX = m_X_exp.transpose() * m_iSigma_CovaMat;
+        XtiSX.diagonal().array() += 1e-12;
+        m_iSigmaX_XSigmaX = m_iSigma_CovaMat * XtiSX.inverse();
+    }
+
+    // PCG-solve Σ x = rhs (n × Jm1 form).  Requires preconditioner built.
+    void pcgSolveMat(
+        const Eigen::MatrixXd &rhs,
+        Eigen::MatrixXd &x
+    ) const {
+        pcgSolveMatInternal(rhs, x);
+    }
+
+    // PCG-solve Σ x = rhs (n*(J-1) vector form).  Requires preconditioner built.
+    Eigen::VectorXd pcgSolveVec(const Eigen::VectorXd &rhs_v) const {
+        Eigen::MatrixXd rhs, x;
+        vecToMat(rhs_v, m_n, m_Jm1, rhs);
+        pcgSolveMatInternal(rhs, x);
+        return matToVec(x, m_n, m_Jm1);
+    }
+
+    // Cached: (X' Σ^{-1} X)^{-1} and iSigmaX_XSigmaX = Σ^{-1}X · (X'Σ^{-1}X)^{-1}.
+    // Available after a successful updatePara/updateTau call.
+    const Eigen::MatrixXd &iSigmaX_XSigmaX() const {
+        return m_iSigmaX_XSigmaX;
+    }
+
+    const Eigen::MatrixXd &iSigma_CovaMat() const {
+        return m_iSigma_CovaMat;
+    }
+
+  private:
+    // Inputs (references, lifetime owned by caller).
+    const Eigen::VectorXi &m_yVec;
+    const Eigen::MatrixXd &m_X;
+    const SparseGRM &m_grm;
+    int m_n, m_J, m_p, m_Jm1;
+    const char *m_tag;
+
+    std::vector<double> m_diagK;
+    Eigen::MatrixXd m_yMat;  // n × J indicator
+    Eigen::MatrixXd m_X_exp; // n*(J-1) × p
+
+    // Random probes and their V-image (fixed for the fit).
+    Eigen::MatrixXd m_TraceRandMat; // n*(J-1) × tracenrun
+    Eigen::MatrixXd m_V_TRM;        // n*(J-1) × tracenrun
+
+    // Parameters.
+    Eigen::VectorXd m_beta; // p
+    Eigen::VectorXd m_eps;  // J-1
+    Eigen::VectorXd m_bVec; // n
+    double m_tau = 0.0;
+
+    // Working matrices.
+    Eigen::VectorXd m_eta; // n
+    Eigen::MatrixXd m_muMat, m_nuMat, m_mMat, m_WMat; // n × J
+    Eigen::MatrixXd m_iRMat; // n × (J-1)
+    Eigen::MatrixXd m_YMat;  // n × (J-1)
+
+    // Preconditioner (per-subject (J-1)×(J-1) inverse blocks).
+    std::vector<Eigen::MatrixXd> m_InvBlock;
+
+    // PCG-derived cached values.
+    Eigen::MatrixXd m_iSigma_CovaMat;  // n*(J-1) × p
+    Eigen::MatrixXd m_iSigmaX_XSigmaX; // n*(J-1) × p
+
+    int m_iter = 0;
+
+    // ── core math ─────────────────────────────────────────────────
+
+    void updateMats() {
+        const int Jm1 = m_Jm1, J = m_J, n = m_n;
+        m_eta = m_X * m_beta + m_bVec;
+        m_muMat.resize(n, J);
+        m_nuMat.resize(n, J);
+        m_mMat.resize(n, J);
+        m_WMat.resize(n, J);
+        m_iRMat.resize(n, Jm1);
+
+        for (int i = 0; i < n; ++i) {
+            double nu0 = 0.0;
+            for (int j = 0; j < Jm1; ++j) {
+                const double nu1 = logistic(m_eps(j) - m_eta(i));
+                m_muMat(i, j) = std::max(nu1 - nu0, 1e-20);
+                m_WMat(i, j) = nu1 * (1.0 - nu1);
+                m_mMat(i, j) = nu1 + nu0 - 1.0;
+                m_nuMat(i, j) = nu1;
+                nu0 = nu1;
+            }
+            const double nu1 = 1.0;
+            m_muMat(i, Jm1) = std::max(nu1 - nu0, 1e-20);
+            m_WMat(i, Jm1) = nu1 * (1.0 - nu1);
+            m_mMat(i, Jm1) = nu1 + nu0 - 1.0;
+            m_nuMat(i, Jm1) = nu1;
+        }
+
+        for (int i = 0; i < n; ++i) {
+            const double mJ = m_mMat(i, Jm1);
+            for (int j = 0; j < Jm1; ++j) {
+                double denom = m_mMat(i, j) - mJ;
+                if (std::abs(denom) < 1e-20) denom = std::copysign(1e-20, denom == 0.0 ? -1.0 : denom);
+                m_iRMat(i, j) = 1.0 / denom;
+            }
+        }
+
+        // YMat = eta + iRMat ⊙ iPsi[(yMat - muMat)_{0..J-2}]
+        const Eigen::MatrixXd xMat = m_yMat.leftCols(Jm1) - m_muMat.leftCols(Jm1);
+        Eigen::MatrixXd iPsi_xMat;
+        applyIPsi(xMat, iPsi_xMat);
+        m_YMat.resize(n, Jm1);
+        for (int i = 0; i < n; ++i)
+            for (int j = 0; j < Jm1; ++j)
+                m_YMat(i, j) = m_eta(i) + m_iRMat(i, j) * iPsi_xMat(i, j);
+    }
+
+    void applyIPsi(
+        const Eigen::MatrixXd &xMat,
+        Eigen::MatrixXd &out
+    ) const {
+        const int n = m_n, Jm1 = m_Jm1;
+        out.resize(n, Jm1);
+        for (int i = 0; i < n; ++i) {
+            const double inv_muJ = 1.0 / m_muMat(i, Jm1);
+            const double base = xMat.row(i).sum() * inv_muJ;
+            for (int j = 0; j < Jm1; ++j)
+                out(i, j) = base + xMat(i, j) / m_muMat(i, j);
+        }
+    }
+
+    void applySigma(
+        const Eigen::MatrixXd &xMat,
+        Eigen::MatrixXd &out
+    ) const {
+        // out = iRMat ⊙ iPsi(iRMat ⊙ x) + tau · broadcast(K · rowSum(x))
+        const Eigen::MatrixXd iR_x = m_iRMat.array() * xMat.array();
+        Eigen::MatrixXd iPsi_iR_x;
+        applyIPsi(iR_x, iPsi_iR_x);
+        out = m_iRMat.array() * iPsi_iR_x.array();
+        if (m_tau != 0.0) {
+            const Eigen::VectorXd tZ = xMat.rowwise().sum();
+            Eigen::VectorXd V_tZ(m_n);
+            m_grm.multiply(tZ.data(), V_tZ.data(), static_cast<uint32_t>(m_n));
+            for (int j = 0; j < m_Jm1; ++j) out.col(j) += m_tau * V_tZ;
+        }
+    }
+
+    void buildPreconditioner() {
+        const int n = m_n, Jm1 = m_Jm1;
+        m_InvBlock.assign(n, Eigen::MatrixXd());
+        if (Jm1 == 1) {
+            for (int i = 0; i < n; ++i) {
+                const double iR = m_iRMat(i, 0);
+                const double inv_muJ = 1.0 / m_muMat(i, 1);
+                const double inv_mu0 = 1.0 / m_muMat(i, 0);
+                const double M = iR * iR * inv_muJ + m_tau * m_diagK[i] + iR * iR * inv_mu0;
+                m_InvBlock[i].resize(1, 1);
+                m_InvBlock[i](0, 0) = 1.0 / (M > 1e-20 ? M : 1e-20);
+            }
+            return;
+        }
+        Eigen::MatrixXd M(Jm1, Jm1);
+        for (int i = 0; i < n; ++i) {
+            const double inv_muJ = 1.0 / m_muMat(i, Jm1);
+            const double td = m_tau * m_diagK[i];
+            for (int j2 = 0; j2 < Jm1; ++j2) {
+                for (int j1 = 0; j1 < Jm1; ++j1) {
+                    double v = m_iRMat(i, j2) * inv_muJ * m_iRMat(i, j1);
+                    if (j1 == j2) {
+                        v += m_iRMat(i, j2) * m_iRMat(i, j1) / m_muMat(i, j1);
+                        v += td;
+                    }
+                    M(j2, j1) = v;
+                }
+            }
+            m_InvBlock[i] = M.inverse();
+        }
+    }
+
+    void applyPrecond(
+        const Eigen::MatrixXd &xMat,
+        Eigen::MatrixXd &out
+    ) const {
+        const int n = m_n, Jm1 = m_Jm1;
+        out.resize(n, Jm1);
+        if (Jm1 == 1) {
+            for (int i = 0; i < n; ++i)
+                out(i, 0) = xMat(i, 0) * m_InvBlock[i](0, 0);
+            return;
+        }
+        for (int i = 0; i < n; ++i)
+            out.row(i) = xMat.row(i) * m_InvBlock[i];
+    }
+
+    void pcgSolveMatInternal(
+        const Eigen::MatrixXd &rhs,
+        Eigen::MatrixXd &x
+    ) const {
+        x.setZero(m_n, m_Jm1);
+        const double scale = static_cast<double>(m_n * m_Jm1);
+
+        Eigen::MatrixXd r2;
+        applySigma(x, r2);
+        r2 = rhs - r2;
+        double meanL2 = std::sqrt((r2.array() * r2.array()).sum() / scale);
+        if (meanL2 <= kTolPCG) return;
+
+        Eigen::MatrixXd z2;
+        applyPrecond(r2, z2);
+        Eigen::MatrixXd pMat = z2;
+        Eigen::MatrixXd ApMat;
+        applySigma(pMat, ApMat);
+
+        auto ip = [](const Eigen::MatrixXd &A, const Eigen::MatrixXd &B) {
+            return (A.array() * B.array()).sum();
+        };
+
+        double rz = ip(z2, r2);
+        double pAp = ip(pMat, ApMat);
+        if (std::abs(pAp) < 1e-30) return;
+        double alpha = rz / pAp;
+        x += alpha * pMat;
+        Eigen::MatrixXd r1 = r2;
+        Eigen::MatrixXd z1 = z2;
+        r2 = r1 - alpha * ApMat;
+        meanL2 = std::sqrt((r2.array() * r2.array()).sum() / scale);
+
+        int iter = 1;
+        while (meanL2 > kTolPCG && iter < kMaxIterPCG) {
+            ++iter;
+            applyPrecond(r2, z2);
+            const double rz_new = ip(z2, r2);
+            const double rz_old = ip(z1, r1);
+            const double beta1 = rz_new / (std::abs(rz_old) > 1e-30 ? rz_old : 1e-30);
+            pMat = z2 + beta1 * pMat;
+            applySigma(pMat, ApMat);
+            pAp = ip(pMat, ApMat);
+            if (std::abs(pAp) < 1e-30) break;
+            alpha = rz_new / pAp;
+            x += alpha * pMat;
+            r1 = r2;
+            z1 = z2;
+            r2 = r1 - alpha * ApMat;
+            meanL2 = std::sqrt((r2.array() * r2.array()).sum() / scale);
+        }
+    }
+
+    // PCG-solve every column of M individually.  Result has shape M.rows() × M.cols().
+    void pcgSolveColumns(
+        const Eigen::MatrixXd &M,
+        Eigen::MatrixXd &out
+    ) const {
+        const int dim = m_n * m_Jm1;
+        out.resize(dim, M.cols());
+        Eigen::MatrixXd rhsMat, xMat;
+        for (int c = 0; c < M.cols(); ++c) {
+            Eigen::VectorXd v = M.col(c);
+            vecToMat(v, m_n, m_Jm1, rhsMat);
+            pcgSolveMatInternal(rhsMat, xMat);
+            for (int i = 0; i < m_n; ++i)
+                for (int j = 0; j < m_Jm1; ++j)
+                    out(i * m_Jm1 + j, c) = xMat(i, j);
+        }
+    }
+
+    void buildTraceRandMat() {
+        const int dim = m_n * m_Jm1;
+        m_TraceRandMat.resize(dim, kTraceNRun);
+        std::mt19937 rng(12345);
+        std::uniform_int_distribution<int> coin(0, 1);
+        for (int t = 0; t < kTraceNRun; ++t)
+            for (int k = 0; k < dim; ++k)
+                m_TraceRandMat(k, t) = (coin(rng) == 0) ? -1.0 : 1.0;
+
+        m_V_TRM.resize(dim, kTraceNRun);
+        Eigen::VectorXd zCol(m_n), kzCol(m_n);
+        for (int t = 0; t < kTraceNRun; ++t) {
+            for (int i = 0; i < m_n; ++i) {
+                double s = 0.0;
+                for (int j = 0; j < m_Jm1; ++j) s += m_TraceRandMat(i * m_Jm1 + j, t);
+                zCol(i) = s;
+            }
+            m_grm.multiply(zCol.data(), kzCol.data(), static_cast<uint32_t>(m_n));
+            for (int i = 0; i < m_n; ++i) {
+                const double v = kzCol(i);
+                for (int j = 0; j < m_Jm1; ++j) m_V_TRM(i * m_Jm1 + j, t) = v;
+            }
+        }
+    }
+
+    // β, b update via the n*(J-1)-dimensional working LMM (reference updatePara).
+    void updatePara() {
+        buildPreconditioner();
+        pcgSolveColumns(m_X_exp, m_iSigma_CovaMat);
+        Eigen::VectorXd YVec = matToVec(m_YMat, m_n, m_Jm1);
+
+        // single-vector PCG
+        Eigen::MatrixXd yMat_rhs, yMat_sol;
+        vecToMat(YVec, m_n, m_Jm1, yMat_rhs);
+        pcgSolveMatInternal(yMat_rhs, yMat_sol);
+        Eigen::VectorXd iSigma_Y = matToVec(yMat_sol, m_n, m_Jm1);
+
+        Eigen::MatrixXd XtiSX = m_X_exp.transpose() * m_iSigma_CovaMat;
+        XtiSX.diagonal().array() += 1e-12;
+        const Eigen::MatrixXd XSX_inv = XtiSX.inverse();
+
+        const Eigen::VectorXd Xt_iSigma_Y = m_X_exp.transpose() * iSigma_Y;
+        m_beta = XSX_inv * Xt_iSigma_Y;
+
+        m_iSigmaX_XSigmaX = m_iSigma_CovaMat * XSX_inv;
+
+        const Eigen::VectorXd Z_iSY = ZsumVec(iSigma_Y, m_n, m_Jm1);
+        const Eigen::VectorXd iSXbeta = m_iSigma_CovaMat * m_beta;
+        const Eigen::VectorXd Z_iSXb = ZsumVec(iSXbeta, m_n, m_Jm1);
+        const Eigen::VectorXd tmp = Z_iSY - Z_iSXb;
+        Eigen::VectorXd Kt(m_n);
+        m_grm.multiply(tmp.data(), Kt.data(), static_cast<uint32_t>(m_n));
+        m_bVec = m_tau * Kt;
+    }
+
+    void updateEpsOneStep() {
+        const int Jm1 = m_Jm1;
+        const int Jm2 = Jm1 - 1;
+        if (Jm2 < 1) return;
+
+        Eigen::VectorXd d1 = Eigen::VectorXd::Zero(Jm2);
+        Eigen::MatrixXd d2 = Eigen::MatrixXd::Zero(Jm2, Jm2);
+
+        for (int k = 1; k < Jm1; ++k) {
+            for (int i = 0; i < m_n; ++i) {
+                const double mu_k = m_muMat(i, k);
+                const double mu_kp1 = m_muMat(i, k + 1);
+                if (mu_k < 1e-20 || mu_kp1 < 1e-20) continue;
+                const double yk = m_yMat(i, k);
+                const double ykp1 = m_yMat(i, k + 1);
+                const double t1 = yk / mu_k - ykp1 / mu_kp1;
+                const double t2 = -yk / (mu_k * mu_k) - ykp1 / (mu_kp1 * mu_kp1);
+                const double W = m_WMat(i, k);
+                d1(k - 1) += W * t1;
+                d2(k - 1, k - 1) += W * (1.0 - 2.0 * m_nuMat(i, k)) * t1 + W * W * t2;
+                if (k < Jm2) {
+                    const double t3 = W * m_WMat(i, k + 1) * ykp1 / (mu_kp1 * mu_kp1);
+                    d2(k - 1, k) += t3;
+                    d2(k, k - 1) += t3;
+                }
+            }
+        }
+        // deps = -inv(d2) · d1
+        const Eigen::VectorXd deps = -d2.fullPivLu().solve(d1);
+        for (int k = 1; k < Jm1; ++k) m_eps(k) += deps(k - 1);
+    }
+
+    void updateEps() {
+        for (int it = 0; it < kMaxIterEps; ++it) {
+            const Eigen::VectorXd eps0 = m_eps;
+            updateEpsOneStep();
+            updateMats();
+            double diff = 0.0;
+            for (int j = 0; j < m_Jm1; ++j) {
+                const double num = std::abs(m_eps(j) - eps0(j));
+                const double den = std::abs(m_eps(j)) + std::abs(eps0(j)) + kTolEps;
+                diff = std::max(diff, num / den);
+            }
+            if (diff < kTolEps) break;
+        }
+    }
+
+    void updateParaConv() {
+        for (int it = 0; it < kMaxIterPQL; ++it) {
+            const Eigen::VectorXd beta0 = m_beta;
+            updatePara();
+            updateMats();
+            updateEps();
+            updateMats();
+            double diff = 0.0;
+            for (int k = 0; k < m_p; ++k) {
+                const double num = std::abs(m_beta(k) - beta0(k));
+                const double den = std::abs(m_beta(k)) + std::abs(beta0(k)) + kTolBeta;
+                diff = std::max(diff, num / den);
+            }
+            if (diff < kTolBeta) break;
+        }
+    }
+
+    void updateTau() {
+        buildPreconditioner();
+        pcgSolveColumns(m_X_exp, m_iSigma_CovaMat);
+
+        Eigen::VectorXd YVec = matToVec(m_YMat, m_n, m_Jm1);
+        Eigen::MatrixXd yMat_rhs, yMat_sol;
+        vecToMat(YVec, m_n, m_Jm1, yMat_rhs);
+        pcgSolveMatInternal(yMat_rhs, yMat_sol);
+        Eigen::VectorXd iSigma_Y = matToVec(yMat_sol, m_n, m_Jm1);
+
+        Eigen::MatrixXd XtiSX = m_X_exp.transpose() * m_iSigma_CovaMat;
+        XtiSX.diagonal().array() += 1e-12;
+        const Eigen::MatrixXd XSX_inv = XtiSX.inverse();
+        m_iSigmaX_XSigmaX = m_iSigma_CovaMat * XSX_inv;
+
+        const Eigen::VectorXd Xt_iSigma_Y = m_X_exp.transpose() * iSigma_Y;
+        const Eigen::VectorXd PY = iSigma_Y - m_iSigmaX_XSigmaX * Xt_iSigma_Y;
+        const Eigen::VectorXd ZPY = ZsumVec(PY, m_n, m_Jm1);
+        Eigen::VectorXd K_ZPY(m_n);
+        m_grm.multiply(ZPY.data(), K_ZPY.data(), static_cast<uint32_t>(m_n));
+        Eigen::VectorXd VPY(m_n * m_Jm1);
+        for (int i = 0; i < m_n; ++i)
+            for (int j = 0; j < m_Jm1; ++j) VPY(i * m_Jm1 + j) = K_ZPY(i);
+
+        Eigen::MatrixXd vpy_rhs, vpy_sol;
+        vecToMat(VPY, m_n, m_Jm1, vpy_rhs);
+        pcgSolveMatInternal(vpy_rhs, vpy_sol);
+        Eigen::VectorXd iSigma_VPY = matToVec(vpy_sol, m_n, m_Jm1);
+
+        const Eigen::VectorXd Xt_iSigma_VPY = m_X_exp.transpose() * iSigma_VPY;
+        const Eigen::VectorXd PVPY = iSigma_VPY - m_iSigmaX_XSigmaX * Xt_iSigma_VPY;
+
+        const double YPVPY = YVec.dot(PVPY);
+        const double YPVPVPY = VPY.dot(PVPY);
+
+        // tr(P V): iSigma · V_TRM, project, dot with TraceRandMat.
+        Eigen::MatrixXd iSigma_VTRM;
+        pcgSolveColumns(m_V_TRM, iSigma_VTRM);
+        const Eigen::MatrixXd XtiSV = m_X_exp.transpose() * iSigma_VTRM;
+        const Eigen::MatrixXd P_VTRM = iSigma_VTRM - m_iSigmaX_XSigmaX * XtiSV;
+
+        double tracePV = 0.0;
+        for (int t = 0; t < kTraceNRun; ++t)
+            tracePV += m_TraceRandMat.col(t).dot(P_VTRM.col(t));
+        tracePV /= static_cast<double>(kTraceNRun);
+
+        const double score = 0.5 * YPVPY - 0.5 * tracePV;
+        const double AI = 0.5 * YPVPVPY;
+        if (!std::isfinite(score) || !std::isfinite(AI) || std::abs(AI) < 1e-12) {
+            infoMsg(
+                "[%s] AI-REML step skipped: score=%.3e, AI=%.3e",
+                m_tag,
+                score,
+                AI
+            );
+            return;
+        }
+        double dtau = score / AI;
+        const double tau0 = m_tau;
+        double tau_new = tau0 + dtau;
+        int halve_count = 0;
+        while (tau_new < 0.0 && halve_count < 40) {
+            dtau *= 0.5;
+            tau_new = tau0 + dtau;
+            ++halve_count;
+        }
+        if (tau_new < 1e-4) tau_new = 0.0;
+        m_tau = tau_new;
+    }
+};
+
+// ══════════════════════════════════════════════════════════════════════
+// Driver: build a POLMMNullModel via POLMMFitter.
+// ══════════════════════════════════════════════════════════════════════
+
+// Forward declarations for the combined driver.
+void computeTestMatrices(
     const Eigen::VectorXi &yVec,
-    int n,
-    int J
-) {
-    Eigen::MatrixXd yMat = Eigen::MatrixXd::Zero(n, J);
-    for (int i = 0; i < n; ++i)
-        yMat(i, yVec(i)) = 1.0;
-    return yMat;
-}
+    const Eigen::MatrixXd &X,
+    POLMMNullModel &null,
+    const char *tag
+);
+void fillRymuVec(const Eigen::VectorXi &yVec, POLMMNullModel &null);
+void estimateVarianceRatiosFromUnion(
+    POLMMFitter &fitter,
+    POLMMNullModel &null,
+    const Eigen::MatrixXd &X,
+    const Eigen::VectorXi &yVec,
+    const SparseGRM &grm,
+    GenoMeta &genoData,
+    const std::vector<uint32_t> &localToUnion,
+    const char *tag
+);
 
-// Construct the n*(J-1) working response vector Y_w for PQL
-// Y_w = Psi^{-1} * (yMat[:, 0..J-2] - muMat[:, 0..J-2])_stacked + eta_expanded
-// Actually in POLMM: WVec = Psi^{-1}*(y_tilde - mu_tilde) where
-// y_tilde_i = (1{y_i <= 0}, ..., 1{y_i <= J-2})' and mu_tilde_i = cumulative mu.
-// But for our formulation, the working variate for PQL is:
-//   Y_star_i = X*beta + b_i + Psi_i^{-1} * (y_tilde_i - cumMu_i)
-// and we solve the mixed model equations on that.
-//
-// Instead, let's follow the POLMM reference implementation more closely.
-// The PQL inner loop directly updates beta, bVec, and eps.
-
-void fitNullModel(
+// Combined driver: fits null model and estimates variance ratios sharing
+// one POLMMFitter instance (so PCG state from the converged fit is reused).
+void fitNullModelAndVarianceRatios(
     const Eigen::VectorXi &yVec,
     const Eigen::MatrixXd &X,
     const SparseGRM &grm,
@@ -537,394 +851,129 @@ void fitNullModel(
     int J,
     int p,
     POLMMNullModel &null,
-    const char *tag = "",
-    int nLocalThreads = 1
+    GenoMeta &genoData,
+    const std::vector<uint32_t> &localToUnion,
+    const char *tag = ""
 ) {
-    const int Jm1 = J - 1;
-
-    // Use cached GRM diagonal (self-relatedness per subject)
-    const auto &diagK = grm.diagonal();
-
-    // 1. CLM initialization
-    infoMsg("[%s] CLM initialization (J=%d levels, p=%d covariates)", tag, J, p);
-    Eigen::VectorXd beta, eps;
-    fitCLM(yVec, X, n, J, p, beta, eps);
-    infoMsg("[%s] CLM done. eps[0]=%.4f, eps[J-2]=%.4f", tag, eps(0), eps(Jm1 - 1));
-
-    Eigen::VectorXd bVec = Eigen::VectorXd::Zero(n);
-    double tau = 0.1; // initial variance component
-
-    Eigen::MatrixXd muMat, iRMat;
-    std::vector<PsiBlock> psiBlocks(n);
-
-    // Make indicator matrices
-    Eigen::MatrixXd yMat = makeYMat(yVec, n, J);
-
-    // 2. PQL iteration (outer loop over tau, inner loop over beta, b, eps)
-    infoMsg("[%s] Starting PQL iteration", tag);
-    for (int outerIter = 0; outerIter < kMaxIterPQL; ++outerIter) {
-        double tau_old = tau;
-
-        // Inner loop: update beta, bVec, eps with fixed tau
-        for (int innerIter = 0; innerIter < 10; ++innerIter) {
-            Eigen::VectorXd beta_old = beta;
-
-            // Update working matrices
-            updateMuMat(X, beta, bVec, eps, n, J, muMat, iRMat);
-
-            // Compute PsiBlocks
-            Eigen::VectorXd eta = X * beta + bVec;
-            for (int i = 0; i < n; ++i)
-                psiBlocks[i].compute(eta(i), eps, Jm1);
-
-            // Working response: Y_tilde = cumulative indicators - cumulative mu
-            // Y_tilde_i[j] = 1{y_i <= j} - F(eps_j - eta_i) for j = 0..J-2
-            // Then: working variate W = Psi^{-1} * Y_tilde
-            Eigen::VectorXd ytilde(n * Jm1);
-            for (int i = 0; i < n; ++i) {
-                double cumY = 0.0, cumMu = 0.0;
-                for (int j = 0; j < Jm1; ++j) {
-                    cumY += yMat(i, j);
-                    cumMu += muMat(i, j);
-                    ytilde(i * Jm1 + j) = cumY - cumMu;
-                }
-            }
-
-            // Working response in the mixed model:
-            // Y_star = X_exp * beta_exp + b_exp + Psi^{-1} * ytilde
-            // where X_exp is the expanded design matrix (n*Jm1 × (Jm1+p))
-            // and b_exp repeats b_i for each j block.
-            //
-            // The POLMM approach directly solves:
-            //   Sigma^{-1} * (Y_w - X_exp * beta - b_exp) = 0
-            // where Y_w = eta_exp + Psi^{-1} * ytilde
-            //
-            // For the beta update: solve normal equations
-            //   (X_exp' Sigma^{-1} X_exp) beta = X_exp' Sigma^{-1} Y_w
-            //
-            // To simplify, we work with n-vectors by contracting over the J-1 dimension.
-            // The score for beta is: sum_j X' * (something per j)
-            // Following POLMM: S_beta = X' * R * Psi * R * (y_tilde - mu_tilde)
-            // which reduces to an n-vector operation.
-
-            // Compute R * ytilde: R_i[j] = iRMat(i,j), multiply element-wise
-            // Then Psi * R * ytilde, then R * that → gives RPsiR * something
-
-            // Simpler approach: update beta via the score equation
-            // Score_beta = X' * W * (eta + W^{-1} * (y - mu) - X*beta - b)
-            // where W is diagonal working weights (collapsed to n-vector)
-            // This is the standard IRLS for the mean parameters.
-
-            // Collapse to n-vector: summing over J-1 thresholds
-            // Working weight per subject: w_i = sum_j h_i[j]^2 / p_ij - (sum h)^2
-            // This is RPsiR from the POLMM paper.
-            Eigen::VectorXd RPsiR(n);
-            for (int i = 0; i < n; ++i) {
-                double sumH = 0.0, sumH2 = 0.0;
-                for (int j = 0; j < Jm1; ++j) {
-                    double h = psiBlocks[i].h(j);
-                    sumH += h;
-                    sumH2 += h * h;
-                }
-                RPsiR(i) = std::max(sumH2 - sumH * sumH, 1e-10);
-                // Note: this is actually trace of the Psi block = sum of eigenvalues
-                // which equals sum(h_j) - sum(h_j)^2 for rank-1 update
-                // Actually for Psi = diag(h) - h*h':
-                //   sum diag = sum(h) - sum(h^2)   <- NO
-                //   trace(Psi) = sum(h_j) - sum(h_j^2)  <- NO
-                //   trace(Psi) = sum(h_j) - ||h||^2  <- that's sum(h) - sum(h^2)
-                // For RPsiR where R = I (no iR scaling at this point):
-                //   RPsiR_i = sum_j sum_k Psi_i[j,k] = sum_j (h_j - h_j * sum(h))
-                //           = sum(h) - sum(h) * sum(h) = sum(h) * (1 - sum(h))
-                RPsiR(i) = std::max(sumH * (1.0 - sumH), 1e-10);
-            }
-
-            // Score for beta: X' * RPsiR * (eta + RPsiR^{-1} * RymuVec - X*beta - bVec)
-            // RymuVec_i = sum_j f_j * (1{y<=j} - F(eps_j-eta_i))
-            Eigen::VectorXd RymuVec(n);
-            for (int i = 0; i < n; ++i) {
-                double val = 0.0;
-                double cumY = 0.0, cumMu = 0.0;
-                for (int j = 0; j < Jm1; ++j) {
-                    cumY += yMat(i, j);
-                    cumMu += muMat(i, j);
-                    val += psiBlocks[i].h(j) * (cumY - cumMu);
-                }
-                RymuVec(i) = val;
-            }
-
-            // IRLS for beta: beta_new = (X' W X)^{-1} X' W z
-            // where z_i = eta_i + RPsiR_i^{-1} * RymuVec_i - bVec_i
-            //       W_i = RPsiR_i
-            Eigen::VectorXd z(n);
-            for (int i = 0; i < n; ++i)
-                z(i) = eta(i) + RymuVec(i) / RPsiR(i) - bVec(i);
-
-            // (X' diag(RPsiR) X) beta = X' diag(RPsiR) z
-            Eigen::MatrixXd XtWX = X.transpose() * RPsiR.asDiagonal() * X;
-            XtWX.diagonal().array() += 1e-8; // regularize
-            Eigen::VectorXd XtWz = X.transpose() * (RPsiR.array() * z.array()).matrix();
-            beta = XtWX.ldlt().solve(XtWz);
-
-            // Update bVec via BLUP:
-            //   b = tau * K * Sigma^{-1} * (Y_w - X*beta)
-            // Using the collapsed formulation:
-            //   b = tau * K * RPsiR * r / (RPsiR + tau * diagK) approximately
-            // Or use PCG for the full n*(J-1) system, but that's expensive.
-            //
-            // Use the simpler diagonal approximation for the inner loop:
-            Eigen::VectorXd resid = z - X * beta;
-            Eigen::VectorXd rhs_b(n);
-            for (int i = 0; i < n; ++i)
-                rhs_b(i) = tau * RPsiR(i) * resid(i);
-            // b ≈ tau * K * diag(RPsiR / (RPsiR + tau*diagK)) * resid
-            // Direct GRM multiply
-            std::vector<double> tmp_in(n), tmp_out(n);
-            for (int i = 0; i < n; ++i)
-                tmp_in[i] = RPsiR(i) / (RPsiR(i) + tau * diagK[i]) * resid(i);
-            grm.multiply(tmp_in.data(), tmp_out.data(), static_cast<uint32_t>(n));
-            for (int i = 0; i < n; ++i)
-                bVec(i) = tau * tmp_out[i];
-
-            // Update eps via Newton-Raphson
-            eta = X * beta + bVec;
-            updateMuMat(X, beta, bVec, eps, n, J, muMat, iRMat);
-
-            for (int epsIter = 0; epsIter < kMaxIterEps; ++epsIter) {
-                Eigen::VectorXd epsGrad(Jm1);
-                Eigen::MatrixXd epsHess = Eigen::MatrixXd::Zero(Jm1, Jm1);
-                epsGrad.setZero();
-
-                for (int i = 0; i < n; ++i) {
-                    int yi = yVec(i);
-                    for (int j = 0; j < Jm1; ++j) {
-                        double f_j = dlogistic(eps(j) - eta(i));
-
-                        // P(y = j) contribution
-                        double p_j = clampProb(muMat(i, j));
-                        double p_jp1 = (j + 1 < J) ? clampProb(muMat(i, j + 1)) : 0.0;
-
-                        // Gradient: (1{yi==j}/p_j - 1{yi==j+1}/p_{j+1}) * f_j
-                        double g = 0.0;
-                        if (yi == j) g += f_j / p_j;
-                        if (yi == j + 1) g -= f_j / p_jp1;
-                        epsGrad(j) += g;
-
-                        // Hessian (diagonal approximation)
-                        epsHess(j, j) -= f_j * f_j / (p_j * p_jp1);
-                    }
-                }
-
-                // Regularize
-                epsHess.diagonal().array() -= 1e-6;
-                Eigen::VectorXd epsDelta = epsHess.ldlt().solve(epsGrad);
-                // Negate because we used -Hessian
-                eps -= epsDelta;
-
-                // Ensure ordering
-                for (int j = 1; j < Jm1; ++j)
-                    eps(j) = std::max(eps(j), eps(j - 1) + 1e-4);
-
-                updateMuMat(X, beta, bVec, eps, n, J, muMat, iRMat);
-
-                if (epsDelta.norm() < kTolEps) break;
-            }
-
-            // Check beta convergence
-            if ((beta - beta_old).cwiseAbs().maxCoeff() < kTolBeta) break;
-        }
-
-        // Outer loop: update tau
-        // tau = b' * b / (n - trace(tau * K * Sigma^{-1}))
-        // Use Hutchinson's trace estimator for trace(tau * K * Sigma^{-1})
-
-        // Simple tau estimate: tau = b'Kb / tr(K * something)
-        // Use REML-style: tau_new = (b' K^{-1}_reg b) / n_eff
-        // Simplified: tau = sum(b^2) / (n - p)  (like REML for LMM)
-        // A better estimate: use quadratic form
-        double btb = bVec.squaredNorm();
-
-        // Hutchinson trace: trace(tau * K * Sigma^{-1}) ≈ sum of random probes
-        // For now, use a simpler estimate:
-        //   tau_new = bKb / (n - p)
-        // This is a rough REML estimate.
-        // Actually: use the update from POLMM paper:
-        //   tau_new = (b' * Sigma^{-1} * K * Sigma^{-1} * b) / trace(K * Sigma^{-2})
-        // which is intractable. Use the simpler:
-        //   tau_new = tau * bKb / btb  (ratio scaling)
-
-        // Even simpler Brent-style: tau_new = bKb / n
-        // The proper REML uses trace estimation. Let's implement Hutchinson:
-        Eigen::VectorXd eta = X * beta + bVec;
-        for (int i = 0; i < n; ++i)
-            psiBlocks[i].compute(eta(i), eps, Jm1);
-
-        double traceEst = 0.0;
-        {
-            // Pre-generate all probe vectors for deterministic results
-            // regardless of thread count.
-            std::mt19937 rng(42 + outerIter);
-            std::normal_distribution<double> normal(0.0, 1.0);
-            const int dim = n * Jm1;
-            std::vector<Eigen::VectorXd> probeVecs(kTraceNRun);
-            for (int run = 0; run < kTraceNRun; ++run) {
-                probeVecs[run].resize(dim);
-                for (int k = 0; k < dim; ++k)
-                    probeVecs[run](k) = normal(rng);
-            }
-
-            const int probeThreads = std::min(nLocalThreads, kTraceNRun);
-            if (probeThreads <= 1) {
-                // Serial path
-                for (int run = 0; run < kTraceNRun; ++run) {
-                    Eigen::VectorXd SinvU = pcgSolve(psiBlocks, grm, diagK, tau, n, Jm1, probeVecs[run]);
-                    Eigen::VectorXd KSinvU(dim);
-                    batchSpmvInterleaved(grm, SinvU.data(), KSinvU.data(), static_cast<uint32_t>(n), Jm1);
-                    traceEst += probeVecs[run].dot(KSinvU);
-                }
-            } else {
-                // Parallel probes: each thread runs its share of PCG solves.
-                // pcgSolve is thread-safe (reads shared psiBlocks/grm/diagK,
-                // all mutable state is stack-local).
-                std::vector<double> probeTraces(kTraceNRun, 0.0);
-                std::atomic<int> nextProbe{0};
-
-                auto probeWork = [&]() {
-                    for (;;) {
-                        int run = nextProbe.fetch_add(1, std::memory_order_relaxed);
-                        if (run >= kTraceNRun) break;
-                        Eigen::VectorXd SinvU = pcgSolve(psiBlocks, grm, diagK, tau, n, Jm1, probeVecs[run]);
-                        Eigen::VectorXd KSinvU(dim);
-                        batchSpmvInterleaved(grm, SinvU.data(), KSinvU.data(), static_cast<uint32_t>(n), Jm1);
-                        probeTraces[run] = probeVecs[run].dot(KSinvU);
-                    }
-                };
-
-                std::vector<std::thread> threads;
-                threads.reserve(probeThreads - 1);
-                for (int t = 0; t < probeThreads - 1; ++t)
-                    threads.emplace_back(probeWork);
-                probeWork(); // caller participates
-                for (auto &th : threads)
-                    th.join();
-
-                for (int run = 0; run < kTraceNRun; ++run)
-                    traceEst += probeTraces[run];
-            }
-            traceEst *= tau / kTraceNRun;
-        }
-
-        // REML update: tau_new = b'b / (n - trace(tau*K*Sigma^{-1}))
-        double neff = std::max(static_cast<double>(n) - traceEst, 1.0);
-        double tau_new = btb / neff;
-        tau_new = std::max(tau_new, 1e-6);
-
-        infoMsg(
-            "[%s] PQL iter %d: tau=%.6f -> %.6f, |delta|=%.2e",
-            tag,
-            outerIter + 1,
-            tau_old,
-            tau_new,
-            std::abs(tau_new - tau_old) / std::max(tau_old, 1e-10)
-        );
-
-        tau = tau_new;
-
-        if (std::abs(tau - tau_old) / std::max(tau_old, 1e-10) < kTolTau) break;
-    }
-
-    infoMsg("[%s] Null model converged. tau=%.6f", tag, tau);
-
-    // Store results
-    null.n = n;
-    null.J = J;
-    null.p = p;
-    null.beta = beta;
-    null.eps = eps;
-    null.bVec = bVec;
-    null.tau = tau;
-    null.muMat = muMat;
-    null.iRMat = iRMat;
+    POLMMFitter fitter(yVec, X, grm, n, J, p, tag);
+    fitter.fit(null);
+    computeTestMatrices(yVec, X, null, tag);
+    fillRymuVec(yVec, null);
+    estimateVarianceRatiosFromUnion(fitter, null, X, yVec, grm, genoData, localToUnion, tag);
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// getobjP: precompute marker-test matrices
+// Test matrices for marker-level analysis (mirrors reference getobjP).
+//
+//   XR_Psi_R (p × n(J-1)):
+//     for each covariate column X_k expanded to n*(J-1), compute
+//       Psi · (X_exp_k / iRMat)  then divide by iRMat element-wise.
+//   HessP = XR_Psi_R · X_exp (p × p), and its inverse.
+//   XXR_Psi_RX_new (n × p) = X · HessP^{-1}
+//   XR_Psi_R_new  (p × n)  = per-subject row-sum of XR_Psi_R.
+//   RymuVec (n)     = per-subject row-sum of (y - mu)_{0..J-2} / iRMat.
+//   RPsiR  (n)      = quadratic form  sum_{j1,j2} (1/iR)·Psi·(1/iR)
+//                  = sum_j (mu_j/iR_j²) - (sum_j mu_j/iR_j)²
 // ══════════════════════════════════════════════════════════════════════
 
 void computeTestMatrices(
-    const Eigen::VectorXi &yVec,
+    const Eigen::VectorXi & /*yVec*/,
     const Eigen::MatrixXd &X,
     POLMMNullModel &null,
-    const char *tag =
-    ""
+    const char *tag = ""
 ) {
-    const int n = null.n;
-    const int J = null.J;
+    const int n = null.n, J = null.J, p = null.p;
     const int Jm1 = J - 1;
+    const Eigen::MatrixXd &muMat = null.muMat;
+    const Eigen::MatrixXd &iRMat = null.iRMat;
 
-    Eigen::VectorXd eta = X * null.beta + null.bVec;
+    // XR_Psi_R: p × n(J-1)
+    Eigen::MatrixXd XR_Psi_R(p, n * Jm1);
+    for (int k = 0; k < p; ++k) {
+        // x_over_iR(i,j) = X(i,k) / iRMat(i,j)
+        Eigen::MatrixXd x_over_iR(n, Jm1);
+        for (int i = 0; i < n; ++i)
+            for (int j = 0; j < Jm1; ++j)
+                x_over_iR(i, j) = X(i, k) / iRMat(i, j);
 
-    // RPsiR(i) = sum_j sum_k R_ij * Psi_i[j,k] * R_ik
-    //   where R_ij = 1 / iRMat(i,j)  (i.e., iRMat stores the inverse)
-    // With our Psi formulation (Psi = diag(h) - h*h'):
-    //   RPsiR_i = sum_j (R_ij^2 * h_j) - (sum_j R_ij * h_j)^2
-    // But R_ij = 1/iRMat(i,j) = sqrt(mu(i,j) * cumMuBar(i,j))
-    // So R_ij^2 * h_j = mu(i,j) * cumMuBar(i,j) * f(eps_j - eta_i)
-
-    // Simpler: in POLMM, RPsiR is defined as the per-subject diagonal weight
-    // of the collapsed working model. From getPsixMat and getRPsiR:
-    //   RPsiR_i = sum_{j=0}^{J-2} f_j^2 / mu(i,j) + f_j^2 / mu(i,j+1)
-    //           = sum_{j=0}^{J-2} f_j^2 * (1/mu(i,j) + 1/mu(i,j+1))
-    // Wait, let me use the approach from the actual paper/code:
-    //   getPsixMat does Psi * x for the n*(J-1) system
-    //   getRPsiR gives n-vector: RPsiR_i = sum_{j=0}^{J-2} h_j - (sum h_j)^2
-    //   where h_j = dF(eps_j - eta_i)
-    // From our PsiBlock: trace(Psi_i) = sum(h) - sum(h)^2 = sum(h)*(1-sum(h))
-    // But we need the quadratic form R' Psi R, not just trace.
-
-    // Actually from the POLMM reference:
-    //   RymuVec_i = sum_{j=0}^{J-2} (y_cum_j - F_j) * f_j       (simplified)
-    //   RPsiR_i = sum_{j=0}^{J-2} f_j - (sum f_j)^2              (simplified)
-    // Let me compute these from first principles.
-
-    Eigen::VectorXd RPsiR(n);
-    Eigen::VectorXd RymuVec(n);
-
-    for (int i = 0; i < n; ++i) {
-        double sumF = 0.0;
-        double rym = 0.0;
-        double cumY = 0.0;
-        for (int j = 0; j < Jm1; ++j) {
-            double f_j = dlogistic(null.eps(j) - eta(i));
-            sumF += f_j;
-            cumY += (yVec(i) == j) ? 1.0 : 0.0;
-            double cumMu_j = logistic(null.eps(j) - eta(i));
-            rym += f_j * (cumY - cumMu_j);
+        // Psi_x = mu ⊙ x - mu * (mu' x) per subject (multinomial-Psi)
+        Eigen::MatrixXd Psi_x(n, Jm1);
+        for (int i = 0; i < n; ++i) {
+            double smux = 0.0;
+            for (int j = 0; j < Jm1; ++j) smux += muMat(i, j) * x_over_iR(i, j);
+            for (int j = 0; j < Jm1; ++j)
+                Psi_x(i, j) = muMat(i, j) * x_over_iR(i, j) - muMat(i, j) * smux;
         }
-        RPsiR(i) = std::max(sumF * (1.0 - sumF), 1e-10);
-        RymuVec(i) = rym;
+
+        // out = Psi_x / iRMat, stored as XR_Psi_R(k, i*(J-1)+j)
+        for (int i = 0; i < n; ++i)
+            for (int j = 0; j < Jm1; ++j)
+                XR_Psi_R(k, i * Jm1 + j) = Psi_x(i, j) / iRMat(i, j);
     }
 
-    // XR_Psi_R_new (p × n): X' * diag(RPsiR)
-    Eigen::MatrixXd XR = X.transpose() * RPsiR.asDiagonal(); // p × n
+    // HessP = XR_Psi_R · X_exp  (p × p)
+    Eigen::MatrixXd X_exp = buildExpandedX(X, n, p, Jm1);
+    Eigen::MatrixXd HessP = XR_Psi_R * X_exp;
+    HessP.diagonal().array() += 1e-12;
+    const Eigen::MatrixXd HessP_inv = HessP.inverse();
 
-    // (X' diag(RPsiR) X)^{-1} * X' diag(RPsiR) = (XtWX)^{-1} * XR
-    Eigen::MatrixXd XtWX = XR * X; // p × p
-    XtWX.diagonal().array() += 1e-8;
-    Eigen::MatrixXd XtWX_inv = XtWX.inverse();
+    // XXR_Psi_RX_new = X · HessP^{-1}  (n × p)
+    null.XXR_Psi_RX_new = X * HessP_inv;
 
-    // XXR_Psi_RX_new (n × p) = X * (XtWX)^{-1}
-    Eigen::MatrixXd XXR = X * XtWX_inv; // n × p
+    // XR_Psi_R_new = per-subject row-sum  (p × n)
+    Eigen::MatrixXd XR_new = Eigen::MatrixXd::Zero(p, n);
+    for (int k = 0; k < p; ++k)
+        for (int i = 0; i < n; ++i)
+            for (int j = 0; j < Jm1; ++j)
+                XR_new(k, i) += XR_Psi_R(k, i * Jm1 + j);
+    null.XR_Psi_R_new = XR_new;
 
-    // XR_Psi_R_new (p × n) = XtWX_inv * XR
-    Eigen::MatrixXd XR_new = XtWX_inv * XR; // p × n
-
+    // RymuVec(i) = sum_j (y(i,j) - mu(i,j)) / iRMat(i,j)
+    Eigen::MatrixXd yIndic = Eigen::MatrixXd::Zero(n, J);
+    for (int i = 0; i < n; ++i) {
+        // Reconstruct yIndic from fitted muMat via known yVec inside fitter.
+        // We need yVec to rebuild yIndic — pass it in via the caller.
+    }
+    // The above placeholder requires yVec; we recompute it here from yMat is not
+    // available, so we expect caller to supply it.  Instead, store RymuVec / RPsiR
+    // directly using formulas that depend only on mu and iR:
+    //   RPsiR(i) = sum_j mu_j/iR_j² - (sum_j mu_j/iR_j)²
+    Eigen::VectorXd RPsiR(n);
+    for (int i = 0; i < n; ++i) {
+        double s_muR = 0.0;
+        double s_diag = 0.0;
+        for (int j = 0; j < Jm1; ++j) {
+            const double muR = muMat(i, j) / iRMat(i, j);
+            s_muR += muR;
+            s_diag += muR / iRMat(i, j);
+        }
+        RPsiR(i) = s_diag - s_muR * s_muR;
+    }
     null.RPsiR = RPsiR;
-    null.RymuVec = RymuVec;
-    null.XXR_Psi_RX_new = XXR;  // n × p
-    null.XR_Psi_R_new = XR_new; // p × n
+    null.RymuVec.resize(n);     // populated by caller via reconstructFromYVec below.
 
-    infoMsg("[%s] Test matrices computed. mean(RPsiR)=%.6f", tag, RPsiR.mean());
+    (void)tag;
+}
+
+// Helper: populate RymuVec from yVec after computeTestMatrices.
+void fillRymuVec(
+    const Eigen::VectorXi &yVec,
+    POLMMNullModel &null
+) {
+    const int n = null.n, J = null.J;
+    const int Jm1 = J - 1;
+    const Eigen::MatrixXd &muMat = null.muMat;
+    const Eigen::MatrixXd &iRMat = null.iRMat;
+    null.RymuVec.resize(n);
+    for (int i = 0; i < n; ++i) {
+        double s = 0.0;
+        const int yi = yVec(i);
+        for (int j = 0; j < Jm1; ++j) {
+            const double y_ij = (yi == j) ? 1.0 : 0.0;
+            s += (y_ij - muMat(i, j)) / iRMat(i, j);
+        }
+        null.RymuVec(i) = s;
+    }
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -957,17 +1006,22 @@ SparseGRM reindexGrm(
 // ══════════════════════════════════════════════════════════════════════
 
 void estimateVarianceRatiosFromUnion(
+    POLMMFitter &fitter,
     POLMMNullModel &null,
-    const Eigen::MatrixXd &X,
-    const Eigen::VectorXi &yVec,
-    const SparseGRM &grm,
+    const Eigen::MatrixXd & /*X*/,
+    const Eigen::VectorXi & /*yVec*/,
+    const SparseGRM & /*grm*/,
     GenoMeta &genoData,
     const std::vector<uint32_t> &localToUnion,
     const char *tag = ""
 ) {
     const int n = null.n;
-    const double tau = null.tau;
+    const int J = null.J;
+    const int Jm1 = J - 1;
     const int nBins = static_cast<int>(kMacBins.size());
+
+    // Ensure PCG cache is consistent with the converged tau.
+    fitter.prepareForVarianceRatio();
 
     infoMsg("[%s] Estimating MAC-binned variance ratios (%d bins, %d SNPs/bin)", tag, nBins, kNSnpsPerBin);
 
@@ -1025,8 +1079,20 @@ void estimateVarianceRatiosFromUnion(
         double VarW = (null.RPsiR.array() * adjG.array().square()).sum();
         if (VarW < 1e-10) continue;
 
-        double GKG = grm.quadForm(adjG.data(), static_cast<uint32_t>(n));
-        double VarP = VarW + tau * GKG;
+        // PCG-based VarP, matching reference getVarP():
+        //   adjGLong = tZ(adjG)         duplicate adjG across (J-1) slots
+        //   iSigmaG  = Σ^{-1} adjGLong
+        //   PadjG    = iSigmaG - iSigmaX_XSigmaX · (X_exp' iSigmaG)
+        //   VarP     = adjGLong' · PadjG
+        Eigen::VectorXd adjGLong(n * Jm1);
+        for (int i = 0; i < n; ++i)
+            for (int j = 0; j < Jm1; ++j)
+                adjGLong(i * Jm1 + j) = adjG(i);
+        Eigen::VectorXd iSigmaG = fitter.pcgSolveVec(adjGLong);
+        Eigen::VectorXd Xt_iSigmaG = fitter.X_exp().transpose() * iSigmaG;
+        Eigen::VectorXd PadjG = iSigmaG - fitter.iSigmaX_XSigmaX() * Xt_iSigmaG;
+        double VarP = adjGLong.dot(PadjG);
+        if (!std::isfinite(VarP) || VarP < 1e-10) continue;
         double ratio = VarP / VarW;
 
         binRatios[bin].push_back(ratio);
@@ -1161,11 +1227,12 @@ void POLMMMethod::getResultVec(
     double BETA = Stat / VarP;
     double SE = 1.0 / std::sqrt(VarP);
 
-    // Flip sign back if allele was flipped
-    if (flipped) {
-        Z = -Z;
-        BETA = -BETA;
-    }
+    // Reference convention (Main.cpp::mainMarkerInCPP): when the alt allele
+    // had freq > 0.5, GVec has been flipped to test the minor allele.  The
+    // output Beta is then negated so it refers to the original alt allele,
+    // but the Z-score is reported as-is (referring to the tested/minor
+    // allele direction).  See examples_1kg/vs_grab024/GRAB/src/Main.cpp:591.
+    if (flipped) BETA = -BETA;
 
     result[0] = pval;
     result[1] = Z;
@@ -1310,58 +1377,68 @@ double POLMMMethod::spaTest(
 
     double qNorm = Stat / sqrtVarW;
 
-    // Solve for both tails
-    auto solveTail = [&](double target) -> double {
-        // Newton-Raphson: find zeta such that K'(zeta) = target
-        double zeta = target;                  // initial guess
-        for (int iter = 0; iter < 100; ++iter) {
-            double k1 = K1(zeta, cMat.data(), muSub.data(), nSub, Jm1, Ratio0, m1);
-            double k2 = K2(zeta, cMat.data(), muSub.data(), nSub, Jm1, Ratio0);
-            if (std::abs(k2) < 1e-30) break;
-            double delta = (k1 - target) / k2;
-            zeta -= delta;
-            if (std::abs(delta) < 1e-6) break;
+    // Newton-Raphson on K'(zeta) = target, with sign-flip damping (mirrors
+    // reference fastgetroot_K1 in examples_1kg/vs_grab024/GRAB/src/POLMM.cpp).
+    auto solveTail = [&](double target, double init) -> std::pair<double, bool> {
+        constexpr double tol = 1e-4;
+        constexpr int maxiter = 100;
+        double x = init;
+        double diffX = std::numeric_limits<double>::infinity();
+        double oldK1 = 0.0;
+        bool converged = true;
+        for (int iter = 0; iter < maxiter; ++iter) {
+            double oldX = x;
+            double oldDiffX = diffX;
+            double k1 = K1(x, cMat.data(), muSub.data(), nSub, Jm1, Ratio0, m1) - target;
+            double k2 = K2(x, cMat.data(), muSub.data(), nSub, Jm1, Ratio0);
+            if (!std::isfinite(k1)) {
+                x = std::copysign(std::numeric_limits<double>::infinity(), target);
+                break;
+            }
+            diffX = -k1 / k2;
+            if (iter > 0 && ((k1 > 0.0) != (oldK1 > 0.0))) {
+                while (std::abs(diffX) > std::abs(oldDiffX) - tol)
+                    diffX *= 0.5;
+            }
+            oldK1 = k1;
+            if (std::abs(diffX) < tol) {
+                converged = true;
+                break;
+            }
+            x = oldX + diffX;
+            if (iter == maxiter - 1) converged = false;
         }
-        return zeta;
+        return {x, converged};
     };
 
-    auto tailProb = [&](double zeta, double target) -> double {
-        // Lugannani-Rice formula
+    // Barndorff-Nielsen saddlepoint tail probability (matches reference
+    // fastGet_Saddle_Prob).
+    //   lowerTail=false → P(S > target),  lowerTail=true → P(S < target).
+    auto tailProb = [&](double zeta, double target, bool lowerTail) -> double {
         double k0 = K0(zeta, cMat.data(), muSub.data(), nSub, Jm1, Ratio0, m1);
         double k2 = K2(zeta, cMat.data(), muSub.data(), nSub, Jm1, Ratio0);
-
+        if (!std::isfinite(k0) || !std::isfinite(k2)) return 0.0;
         double w2 = 2.0 * (zeta * target - k0);
-        if (w2 < 0.0) return std::numeric_limits<double>::quiet_NaN();
+        if (w2 < 0.0) return 0.0;
         double w = std::copysign(std::sqrt(w2), zeta);
         double v = zeta * std::sqrt(k2);
-
-        if (std::abs(w) < 1e-10 || std::abs(v) < 1e-10) return std::numeric_limits<double>::quiet_NaN();
-
-        // Lugannani-Rice: P ≈ Phi(-w) + phi(w)*(1/w - 1/v)
-        // where Phi = normal CDF, phi = normal PDF
-        double phi_w = std::exp(-0.5 * w * w) / std::sqrt(2.0 * M_PI);
-        double Phi_w = 0.5 * std::erfc(w / M_SQRT2);                 // Phi(-w) = 0.5*erfc(w/sqrt2)
-        // Wait: Phi_w should be the LOWER tail for the negative side
-        // For p_upper: P(Z > w) = 1 - Phi(w) = 0.5 * erfc(w/sqrt2)
-        // For p_lower: P(Z < -w) = 0.5 * erfc(w/sqrt2)  (same by symmetry)
-        double p_tail = Phi_w + phi_w * (1.0 / w - 1.0 / v);
-
-        return std::max(p_tail, 0.0);
+        if (std::abs(w) < 1e-14 || std::abs(v) < 1e-14) return 0.0;
+        double Z_BN = w + (1.0 / w) * std::log(v / w);
+        double sign = lowerTail ? 1.0 : -1.0;
+        return 0.5 * std::erfc(-sign * Z_BN / M_SQRT2);
     };
 
-    // Upper tail: target = qNorm
-    double zeta_upper = solveTail(qNorm);
-    double p_upper = tailProb(zeta_upper, qNorm);
+    const double absStat = std::abs(qNorm);
+    auto upper = solveTail(absStat, 3.0);
+    auto lower = solveTail(-absStat, -3.0);
 
-    // Lower tail: target = -qNorm
-    double zeta_lower = solveTail(-qNorm);
-    double p_lower = tailProb(zeta_lower, -qNorm);
+    if (!upper.second || !lower.second)
+        return std::numeric_limits<double>::quiet_NaN();
 
-    double pval = std::numeric_limits<double>::quiet_NaN();
-    if (!std::isnan(p_upper) && !std::isnan(p_lower))pval = p_upper + p_lower;
-    else if (!std::isnan(p_upper))pval = 2.0 * p_upper;
-    else if (!std::isnan(p_lower))pval = 2.0 * p_lower;
-
+    double p1 = tailProb(upper.first, absStat, false);
+    double p2 = tailProb(lower.first, -absStat, true);
+    double pval = p1 + p2;
+    if (!std::isfinite(pval) || pval <= 0.0) return std::numeric_limits<double>::quiet_NaN();
     return std::min(pval, 1.0);
 }
 
@@ -1438,49 +1515,63 @@ double POLMMMethod::spaTestBinary(
 
     double qNorm = Stat / sqrtVarW;
 
-    // Newton-Raphson to find saddlepoint
-    auto solveTail = [&](double target) -> double {
-        double zeta = target;
-        for (int iter = 0; iter < 100; ++iter) {
-            double k1 = K1bin(zeta);
-            double k2 = K2bin(zeta);
-            if (std::abs(k2) < 1e-30) break;
-            double delta = (k1 - target) / k2;
-            zeta -= delta;
-            if (std::abs(delta) < 1e-6) break;
+    auto solveTail = [&](double target, double init) -> std::pair<double, bool> {
+        constexpr double tol = 1e-4;
+        constexpr int maxiter = 100;
+        double x = init;
+        double diffX = std::numeric_limits<double>::infinity();
+        double oldK1 = 0.0;
+        bool converged = true;
+        for (int iter = 0; iter < maxiter; ++iter) {
+            double oldX = x;
+            double oldDiffX = diffX;
+            double k1 = K1bin(x) - target;
+            double k2 = K2bin(x);
+            if (!std::isfinite(k1)) {
+                x = std::copysign(std::numeric_limits<double>::infinity(), target);
+                break;
+            }
+            diffX = -k1 / k2;
+            if (iter > 0 && ((k1 > 0.0) != (oldK1 > 0.0))) {
+                while (std::abs(diffX) > std::abs(oldDiffX) - tol)
+                    diffX *= 0.5;
+            }
+            oldK1 = k1;
+            if (std::abs(diffX) < tol) {
+                converged = true;
+                break;
+            }
+            x = oldX + diffX;
+            if (iter == maxiter - 1) converged = false;
         }
-        return zeta;
+        return {x, converged};
     };
 
-    // Lugannani-Rice tail probability
-    auto tailProb = [&](double zeta, double target) -> double {
+    auto tailProb = [&](double zeta, double target, bool lowerTail) -> double {
         double k0 = K0bin(zeta);
         double k2 = K2bin(zeta);
-
+        if (!std::isfinite(k0) || !std::isfinite(k2)) return 0.0;
         double w2 = 2.0 * (zeta * target - k0);
-        if (w2 < 0.0) return std::numeric_limits<double>::quiet_NaN();
+        if (w2 < 0.0) return 0.0;
         double w = std::copysign(std::sqrt(w2), zeta);
         double v = zeta * std::sqrt(k2);
-
-        if (std::abs(w) < 1e-10 || std::abs(v) < 1e-10) return std::numeric_limits<double>::quiet_NaN();
-
-        double phi_w = std::exp(-0.5 * w * w) / std::sqrt(2.0 * M_PI);
-        double Phi_w = 0.5 * std::erfc(w / M_SQRT2);
-        double p_tail = Phi_w + phi_w * (1.0 / w - 1.0 / v);
-        return std::max(p_tail, 0.0);
+        if (std::abs(w) < 1e-14 || std::abs(v) < 1e-14) return 0.0;
+        double Z_BN = w + (1.0 / w) * std::log(v / w);
+        double sign = lowerTail ? 1.0 : -1.0;
+        return 0.5 * std::erfc(-sign * Z_BN / M_SQRT2);
     };
 
-    double zeta_upper = solveTail(qNorm);
-    double p_upper = tailProb(zeta_upper, qNorm);
+    const double absStat = std::abs(qNorm);
+    auto upper = solveTail(absStat, 3.0);
+    auto lower = solveTail(-absStat, -3.0);
 
-    double zeta_lower = solveTail(-qNorm);
-    double p_lower = tailProb(zeta_lower, -qNorm);
+    if (!upper.second || !lower.second)
+        return std::numeric_limits<double>::quiet_NaN();
 
-    double pval = std::numeric_limits<double>::quiet_NaN();
-    if (!std::isnan(p_upper) && !std::isnan(p_lower))pval = p_upper + p_lower;
-    else if (!std::isnan(p_upper))pval = 2.0 * p_upper;
-    else if (!std::isnan(p_lower))pval = 2.0 * p_lower;
-
+    double p_upper = tailProb(upper.first, absStat, false);
+    double p_lower = tailProb(lower.first, -absStat, true);
+    double pval = p_upper + p_lower;
+    if (!std::isfinite(pval) || pval <= 0.0) return std::numeric_limits<double>::quiet_NaN();
     return std::min(pval, 1.0);
 }
 
@@ -1633,13 +1724,15 @@ void runPOLMM(
                 SparseGRM phenoGrm = reindexGrm(unionGrm, phenoMap[k].unionToLocal, n_k);
                 infoMsg("[%s] Per-phenotype GRM: %zu entries", name.c_str(), phenoGrm.nnz());
 
-                // Fit null model
+                // Fit null model + variance ratios (one fitter instance, shared PCG state)
                 POLMMNullModel null;
-                fitNullModel(yVec, X, phenoGrm, static_cast<int>(n_k), J, p, null, name.c_str(), nLocalThreads);
-                computeTestMatrices(yVec, X, null, name.c_str());
-
-                // Estimate MAC-binned variance ratios (using union genotypes + extraction)
-                estimateVarianceRatiosFromUnion(null, X, yVec, phenoGrm, *genoData, localToUnion, name.c_str());
+                fitNullModelAndVarianceRatios(
+                    yVec, X, phenoGrm,
+                    static_cast<int>(n_k), J, p,
+                    null,
+                    *genoData, localToUnion,
+                    name.c_str()
+                );
 
                 // Build PhenoTask
                 tasks[k].phenoName = name;

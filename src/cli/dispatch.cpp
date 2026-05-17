@@ -220,7 +220,8 @@ static void logArgsInEffect(const Args &args) {
     if (args.nSnpPerChunk != 8192) std::fprintf(stderr, "  --chunk-size %d\n", args.nSnpPerChunk);
     if (args.spaCutoff != 2.0) std::fprintf(stderr, "  --spa-z-threshold %g\n", args.spaCutoff);
     if (args.outlierRatio != 1.5) std::fprintf(stderr, "  --outlier-iqr-threshold %g\n", args.outlierRatio);
-    if (args.outlierAbsBound != 0.55) std::fprintf(stderr, "  --outlier-abs-bound %g\n", args.outlierAbsBound);
+    if (args.outlierAbsBound != 0.55) std::fprintf(stderr, "  --spasqr-outlier-abs-bound %g\n", args.outlierAbsBound);
+    if (!args.spagrmControlOutlier) std::fprintf(stderr, "  --spagrm-control-outlier off\n");
     if (args.pvalCovAdjCut != 5e-5) std::fprintf(stderr, "  --covar-p-threshold %g\n", args.pvalCovAdjCut);
     if (args.cutoff != 0.05) std::fprintf(stderr, "  --batch-effect-p-threshold %g\n", args.cutoff);
     if (args.missingCutoff != 0.1) std::fprintf(stderr, "  --geno %g\n", args.missingCutoff);
@@ -601,6 +602,8 @@ int run(
                 args.compression,
                 args.compressionLevel,
                 args.spaCutoff,
+                args.outlierRatio,
+                args.spagrmControlOutlier,
                 args.nthread,
                 args.nSnpPerChunk,
                 args.missingCutoff,

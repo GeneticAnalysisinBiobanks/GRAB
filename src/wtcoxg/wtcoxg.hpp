@@ -39,12 +39,39 @@ struct WtCoxGRefInfo {
 };
 
 // ======================================================================
+// WtCoxGShared — read-only null-model state shared across all worker
+// clones via std::shared_ptr<const ...>.  Building this struct once on
+// the main thread (in the WtCoxGMethod constructor) and only copying a
+// shared_ptr inside clone() eliminates the per-worker duplication of
+// R / w / w1 / outlier / pre-computed scalars.
+// ======================================================================
+
+struct WtCoxGShared {
+    Eigen::VectorXd R;
+    Eigen::VectorXd w;
+    Eigen::VectorXd w1;          // w / (2 * sum(w))
+    double meanR;
+    double sumR;
+    double sqSumR;               // sum(R²)
+    double w1Sq;                 // sum(w1²)
+    double w1DotR;               // sum(w1·R)
+    double cutoff;               // batch-effect p-value threshold
+    double SPA_Cutoff;           // z-score threshold for normal vs SPA
+    double outlierRatio;
+    OutlierData outlier;         // 1.5×IQR split of R
+    int nNonOutlier;
+    double sumR_nonOutlier;
+    double sumR2_nonOutlier;
+};
+
+// ======================================================================
 // WtCoxGMethod — implements MethodBase for marker engine
 // ======================================================================
 
 class WtCoxGMethod : public MethodBase {
   public:
-// Construct from pre-computed null-model quantities.
+// Construct from pre-computed null-model quantities.  Builds the shared
+// state on the main thread; worker clones reuse it by shared_ptr copy.
 //   R:             martingale residuals (nSubj)
 //   w:             sampling weights     (nSubj)
 //   cutoff:        batch-effect p-value threshold (e.g. 0.05)
@@ -57,6 +84,12 @@ class WtCoxGMethod : public MethodBase {
         double cutoff,
         double SPA_Cutoff,
         double outlierRatio,
+        std::shared_ptr<const std::unordered_map<uint64_t, WtCoxGRefInfo> > refMap
+    );
+
+// Clone-side constructor: shares the already-built null-model state.
+    WtCoxGMethod(
+        std::shared_ptr<const WtCoxGShared> shared,
         std::shared_ptr<const std::unordered_map<uint64_t, WtCoxGRefInfo> > refMap
     );
 
@@ -89,9 +122,57 @@ class WtCoxGMethod : public MethodBase {
         int markerInChunkIdx
     );
 
+// Scalar-input variant of computeDual used by the fused-GEMM path.
+// Skips materialising the cluster-local g vector since spaGOneSnpHomo
+// only needs (R.dot(g), g.sum(), g.size()).
+    DualResult computeDualFromScalars(
+        double R_dot_g,
+        double gSum,
+        int N,
+        int markerInChunkIdx
+    );
+
+// ── Fused-GEMM hooks ─────────────────────────────────────────────
+// WtCoxG's only use of g is via R.dot(g), g.sum(), and g.size(); all
+// three are recoverable from the engine's fused GEMM (score + mask
+// column).  SPA's outlier-CGF path never touches g directly.
+    bool supportsFusedGemm() const override {
+        return true;
+    }
+
+    int fusedGemmColumns() const override {
+        return 1;
+    }
+
+    void fillUnionResiduals(
+        Eigen::Ref<Eigen::MatrixXd> dest,
+        const std::vector<uint32_t> &unionToLocal
+    ) const override;
+
+    void fillResidualSums(double *dest) const override;
+
+    int preferredBatchSize() const override {
+        return 16;
+    }
+
+    void processScoreBatch(
+        const Eigen::Ref<const Eigen::MatrixXd> &scores,
+        const double *gSums,
+        const double *gSumSqs,
+        uint32_t nUsed,
+        const std::vector<double> &altFreqs,
+        const std::vector<int> &chunkIdxs,
+        std::vector<std::vector<double> > &results
+    ) override;
+
 // Access per-chunk ref info (for LEAF meta-analysis).
     const WtCoxGRefInfo &chunkRefInfoAt(int idx) const {
         return m_chunkRefInfo[idx];
+    }
+
+// Expose R for LEAFMethod's fused-GEMM residual fill.
+    const Eigen::VectorXd &residuals() const {
+        return m_shared->R;
     }
 
   private:
@@ -118,28 +199,31 @@ class WtCoxGMethod : public MethodBase {
         double p_cut
     ) const;
 
-// Members (const after construction, except per-chunk scratch)
-    Eigen::VectorXd m_R;
-    Eigen::VectorXd m_w;
-    Eigen::VectorXd m_w1; // w / (2 * sum(w))
-    double m_meanR;
-    double m_sumR;
-    double m_sqSumR;             // sum(R²) — for O(1) per-variant variance reductions
-    double m_w1Sq;               // sum(w1²) — invariant of variant
-    double m_w1DotR;             // sum(w1·R) — invariant of variant
-    double m_cutoff;
-    double m_SPA_Cutoff;
-    double m_outlierRatio;
-    OutlierData m_outlier;       // 1.5×IQR split of m_R
-    int m_nNonOutlier;           // count of non-outlier subjects
-    double m_sumR_nonOutlier;    // sum_{nonOut} R[i]
-    double m_sumR2_nonOutlier;   // sum_{nonOut} R[i]^2
+// Scalar-input variant of wtCoxGTest used by the fused-GEMM path.
+    WtResult wtCoxGTestFromScalars(
+        double R_dot_g,
+        double gSum,
+        int N,
+        double p_bat,
+        double TPR,
+        double sigma2,
+        double b,
+        double var_ratio_int,
+        double var_ratio_w0,
+        double var_ratio_w1,
+        double var_ratio0,
+        double var_ratio1,
+        double mu_ext,
+        double obs_ct,
+        double p_cut
+    ) const;
+
+// Shared read-only null-model state (built once on the main thread).
+    std::shared_ptr<const WtCoxGShared> m_shared;
     std::shared_ptr<const std::unordered_map<uint64_t, WtCoxGRefInfo> > m_refMap;
 
-// Per-chunk scratch (rebuilt in prepareChunk)
+// Per-chunk scratch (rebuilt in prepareChunk; per-worker by design).
     std::vector<WtCoxGRefInfo> m_chunkRefInfo;
-    std::array<double, 2> m_scoreArr;
-    std::array<double, 2> m_zScoreArr;
 };
 
 // ======================================================================

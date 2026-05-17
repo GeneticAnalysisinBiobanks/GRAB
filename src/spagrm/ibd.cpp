@@ -218,7 +218,7 @@ void runPairwiseIBD(
 
     if (pairs.empty()) {
         TextWriter writer(outputFile);
-        writer.write("#ID1\tID2\tpa\tpb\tpc\n");
+        writer.write("ID1\tID2\tpa\tpb\tpc\n");
         infoMsg("No related pairs found — wrote empty output to %s", outputFile.c_str());
         return;
     }
@@ -388,7 +388,7 @@ void runPairwiseIBD(
 
     // ── 8. Write output (same pair order as the sparse GRM) ────────────
     TextWriter writer(outputFile);
-    writer.write("#ID1\tID2\tpa\tpb\tpc\n");
+    writer.write("ID1\tID2\tpa\tpb\tpc\n");
     char buf[128];
     for (const auto &r : results) {
         std::string line;

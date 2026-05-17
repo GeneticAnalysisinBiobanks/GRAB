@@ -149,6 +149,8 @@ SPAGRMClass buildSPAGRMNullModel(
     double spaCutoff,
     double minMafCutoff,
     double minMacCutoff,
+    double outlierIqrRatio = INIT_OUTLIER_RATIO,
+    bool controlOutlier = CONTROL_OUTLIER,
     int nthreads = 1
 );
 

@@ -2,6 +2,7 @@
 
 #include "cli/cli.hpp"
 
+#include <cctype>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
@@ -50,6 +51,20 @@ static int parseInt(
         std::cerr << "Error: " << flag << " value out of range: '" << val << "'\n";
         std::exit(1);
     }
+}
+
+// Accepts true/false, yes/no, on/off, 1/0 (case-insensitive).
+static bool parseBool(
+    const std::string &val,
+    const std::string &flag
+) {
+    std::string s;
+    s.reserve(val.size());
+    for (char c : val) s.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    if (s == "true" || s == "yes" || s == "on" || s == "1") return true;
+    if (s == "false" || s == "no" || s == "off" || s == "0") return false;
+    std::cerr << "Error: " << flag << " expects on|off (or true|false, yes|no, 1|0), got '" << val << "'\n";
+    std::exit(1);
 }
 
 static unsigned long long parseULL(
@@ -126,7 +141,8 @@ Args parseArgs(
         else if (arg == "--mac")a.minMacCutoff = parseDouble(next(), arg);
         else if (arg == "--hwe")a.hweCutoff = parseDouble(next(), arg);
         else if (arg == "--outlier-iqr-threshold")a.outlierRatio = parseDouble(next(), arg);
-        else if (arg == "--outlier-abs-bound")a.outlierAbsBound = parseDouble(next(), arg);
+        else if (arg == "--spasqr-outlier-abs-bound")a.outlierAbsBound = parseDouble(next(), arg);
+        else if (arg == "--spagrm-control-outlier")a.spagrmControlOutlier = parseBool(next(), arg);
         else if (arg == "--threads")a.nthread = parseInt(next(), arg);
         else if (arg == "--chunk-size")a.nSnpPerChunk = parseInt(next(), arg);
         else if (arg == "--leaf-nclusters")a.nClusters = parseInt(next(), arg);

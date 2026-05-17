@@ -287,3 +287,58 @@ Iterate (up to 100 iterations, convergence tolerance $\epsilon = 0.001$):
 **Computational cost**: $O(n)$ arithmetic operations per variant (vs. $O(n^2)$ without interpolation)
 
 **Speedup**: For $n = 10000$, interpolation provides $\approx 100$-$1000\times$ speedup in CGF evaluation.
+
+## 6. Residual Centering and Divergence from GRAB 0.2.4 (R)
+
+The SPACox framework treats residuals $R_i$ as fixed and genotypes $G_i$ as random under the empirical permutation null. Under this null, the score statistic $S = \sum_i G_i R_i$ has
+
+$$
+\mathbb{E}[S] = \left(\sum_i G_i\right) \bar{R} = 2N \cdot \text{altFreq} \cdot \bar{R}, \qquad
+\mathbb{V}(S) = \text{varResid} \cdot \sum_i (G_i - \bar{G})^2 \tag{26}
+$$
+
+Two requirements follow:
+
+1. **Unbiasedness of the score test.** The standardized statistic must use the centred score $S - \mathbb{E}[S]$ in the numerator, otherwise $|Z|$ inherits a bias proportional to $\bar{R}$ for every variant. The fastest way to enforce this is to replace $R$ by $R - \bar{R}$ once at the entry of the method; then $\bar{R} = 0$ and $\mathbb{E}[S] = 0$ automatically, so the convenient form $Z = S / \sqrt{\mathbb{V}(S)}$ used by the SPA path is exact.
+
+2. **Invariance under allele recoding.** With $\sum_i R_i = 0$, flipping the genotype to $G' = 2 - G$ yields $S' = 2\sum_i R_i - S = -S$ and $\sum_i (G'_i - \bar{G}')^2 = \sum_i (G_i - \bar{G})^2$, so $|Z|$ is independent of which allele is labelled "ALT". Without centring, $S' \neq -S$ in general, and the implementation must decide on a fixed allele convention before computing $Z$.
+
+### 6.1 Why martingale residuals are the canonical input
+
+If $R$ comes from `survival::coxph()` evaluated at the null (i.e. without the candidate variant), then by construction
+$$
+\sum_i R_i = 0, \qquad \tilde{\mathbf{X}}^\top \mathbf{R} = \mathbf{0}, \tag{27}
+$$
+so both requirements above are automatically satisfied and no centring is needed. This is the use case for which SPACox was originally derived (Bi et al. 2020) and is the only configuration in which the GRAB 0.2.4 R implementation is bit-for-bit correct.
+
+### 6.2 The `Residual` traitType path and its pitfalls
+
+GRAB also exposes `traitType = "Residual"`, in which the user supplies an arbitrary numeric vector $R$ and bypasses any null-model fit. In that path there is no guarantee that $\bar{R} = 0$. The GRAB 0.2.4 R implementation handles this path with two coupled choices that both violate the assumptions of (26):
+
+- **No centring of $R$.** `fitNullModel.SPACox()` sets `mresid <- response` for the `Residual` branch without subtracting $\bar{R}$.
+- **Genotype flip with unchanged `altFreq`.** `Main.cpp::imputeGenoAndFlip` replaces $G$ by $2 - G$ whenever `altFreq > 0.5`, but `SPACoxClass::getMarkerPval` then computes
+  $$
+  \text{adjGVec} = G_{\text{flipped}} - 2 \cdot \text{altFreq}_{\text{original}} \tag{28}
+  $$
+  whose sample mean is $2(1 - \text{altFreq}) - 2 \cdot \text{altFreq} = 2 - 4 \cdot \text{altFreq}$, not zero. The denominator $\sqrt{\sum (\text{adjGVec})^2 \cdot \text{varResid}}$ is therefore inflated by approximately $N \cdot (2 - 4\,\text{altFreq})^2 \cdot \text{varResid}$, and $|Z|$ is biased downward for variants with `altFreq` close to one.
+
+The two issues compound: variants near `altFreq` $= 1$ in the `Residual` path can show $|Z|$ shifts of several units between the flipped and un-flipped implementations of an otherwise identical test. Neither value coincides with the unbiased $Z$ of (26).
+
+### 6.3 This implementation's choice
+
+`src/spacox/spacox.cpp::runSPACox` centres the residual vector once, per phenotype, immediately after extraction:
+
+```cpp
+pResid[rc].array() -= pResid[rc].mean();
+```
+
+All downstream consumers — the empirical CGF table built by `buildCumulantTable()`, the score `S = GVec.dot(m_resid)` inside `SPACoxMethod::getMarkerPval`, and the SPA root-finder — see a residual vector with $\bar{R} = 0$. As a consequence:
+
+- The score test numerator is unbiased without requiring an explicit subtraction at each marker.
+- $|Z|$ is invariant under allele flipping, so no `if (altFreq > 0.5) GVec ← 2 − GVec` block is needed in `getResultVec`.
+- For the canonical `time-to-event` path, centring is a numerical no-op (martingale residuals already satisfy (27)), so this implementation produces output that is bit-for-bit identical to GRAB 0.2.4 at six-significant-digit print precision.
+- For the `Residual` path with un-centred input the two implementations diverge by exactly the amount of bias $\bar{R}$ introduces. The output of this implementation is the statistically defensible one; reproducing the GRAB 0.2.4 number on the same input would require running the R package directly, or removing the centring line and re-introducing the GVec flip described in (28).
+
+### 6.4 Practical guidance for `Residual` users
+
+If a user supplies residuals from a non-Cox null model (linear regression residuals, deviance residuals from a GLM, etc.), those residuals already satisfy $\sum_i R_i = 0$ by the corresponding orthogonality conditions and no further action is required. If the user supplies a raw phenotype vector (as a numerical convenience, not a model residual), the centring line in `runSPACox` reduces SPACox to a test based on the deviation $R - \bar{R}$; the resulting p-value remains a valid two-sided test under the empirical permutation null, but does not adjust for the original covariates. Users who require covariate adjustment should fit a null model first and pass its residuals to the `Residual` path, or use the `time-to-event` path directly.

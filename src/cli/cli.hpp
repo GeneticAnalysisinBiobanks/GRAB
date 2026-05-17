@@ -65,6 +65,7 @@ struct Args {
     double hweCutoff = 0.0;
     double outlierRatio = 1.5;
     double outlierAbsBound = 0.55;
+    bool spagrmControlOutlier = true; // --spagrm-control-outlier {on|off}: iterative SPAGRM outlier-ratio adjustment
     int nthread = 1;
     int nSnpPerChunk = 8192;
     int compressionLevel = 0; // --compression-level (0 = library default)

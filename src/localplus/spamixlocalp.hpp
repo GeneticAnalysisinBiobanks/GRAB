@@ -39,6 +39,42 @@ struct PhiMatrices {
     std::vector<PhiEntry> D; // (1,1) pairs
 };
 
+// Multi-phenotype rprod SoA — phi entries with `multiplier * phi_k(i, j) *
+// R_p[i] * R_p[j]` PRE-BAKED for every phenotype, packed contiguously per
+// entry: rprod[e * K_pheno + p].  Built once per ancestry on the main
+// thread; worker threads consume by const reference.
+//
+// Hot loop reads K_pheno consecutive doubles per entry sequentially, which
+// is essential for SIMD throughput.  An alternative "shared base table +
+// on-the-fly R[i]·R[j]" layout looks more compact but introduces random R
+// gathers in the inner loop and is several times slower in practice.
+//
+// Memory per ancestry: 10 + 8·K_pheno bytes per entry (10 for indices and
+// scenario tags, 8 per phenotype for the baked rprod).  K_pheno-fold
+// scaling is acceptable at typical N; only the extreme biobank case
+// (E ≳ 10^9) needs an alternative layout.
+struct MultiPhenoRprodSoA {
+    std::vector<uint32_t> idx_i;
+    std::vector<uint32_t> idx_j;
+    std::vector<uint8_t>  target_hi; // required hInt[i] (1 or 2)
+    std::vector<uint8_t>  target_hj; // required hInt[j] (1 or 2)
+    // rprod_packed[e * K_pheno + p] = mult · phi_k(i,j) · R[i,p] · R[j,p]
+    std::vector<double>   rprod_packed;
+    int                   K_pheno = 0;
+
+    // Number of phi entries
+    size_t nEntries() const {
+        return idx_i.size();
+    }
+};
+
+// Build the multi-phenotype baked rprod table for one ancestry.  R_mat
+// must be the union-dimension residual matrix (N × K_pheno), NaN→0 filled.
+MultiPhenoRprodSoA buildMultiPhenoRprodSoA(
+    const PhiMatrices &phi,
+    const Eigen::Ref<const Eigen::MatrixXd> &R_mat
+);
+
 // Pre-computed phi entries with R[i]*R[j]*phi*multiplier baked in.
 // Eliminates random R[] lookups in the per-marker variance hot path.
 //
@@ -112,6 +148,27 @@ void computeVarOffSoABatch(
     double *varOff
 );
 
+// Multi-phenotype fused off-diagonal variance.
+//
+// Scans phi entries ONCE for PHI_BATCH markers and K_pheno phenotypes
+// simultaneously.  The match condition (hIntSM[i*B+b] == target_hi &&
+// hIntSM[j*B+b] == target_hj) is evaluated once per (entry, batch lane)
+// and reused across all phenotypes; the per-phenotype cost is a sequential
+// broadcast + masked-add into a separate accumulator group.
+//
+// Inputs:
+//   rp:       multi-phenotype rprod table (idx, targets, rprod_packed)
+//   hIntSM:   subject-major uint32 hapcount [nUsed * PHI_BATCH]
+//   batchLen: actual marker count in this batch (≤ PHI_BATCH)
+//   varOff:   output array [batchLen * rp.K_pheno], indexed
+//             varOff[b * K_pheno + p]
+void computeVarOffMultiPhenoBatch(
+    const MultiPhenoRprodSoA &rp,
+    const uint32_t *hIntSM,
+    int batchLen,
+    double *varOff
+);
+
 // ======================================================================
 // Phi estimation
 // ======================================================================
@@ -169,8 +226,8 @@ std::pair<double, double> spaLocalPval(
     double S,
     double sMean,
     double varDiag,
-    const Eigen::VectorXd &R,
-    const Eigen::VectorXd &hapcount,
+    const Eigen::Ref<const Eigen::VectorXd> &R,
+    const Eigen::Ref<const Eigen::VectorXd> &hapcount,
     double q,
     double varS,
     const OutlierData &outlier,
