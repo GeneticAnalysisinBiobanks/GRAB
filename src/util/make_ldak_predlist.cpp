@@ -82,11 +82,20 @@ void runMakeLdakPredlist(
     if (!line.empty() && line.back() == '\r') line.pop_back();
 
     const std::vector<std::string> header = tokens(line);
-    if (header.size() < 3 || header[0] != "FID" || header[1] != "IID")
+    // Accept either grab-style "IID Y1 ..." or PLINK/REGENIE-style "FID IID Y1 ...".
+    std::size_t firstYCol = 0;
+    if (header.size() >= 2 && header[0] == "IID") {
+        firstYCol = 1;
+    } else if (header.size() >= 3 && header[0] == "FID" && header[1] == "IID") {
+        firstYCol = 2;
+    } else {
         throw std::runtime_error(
-            "--pheno file must start with header 'FID IID Y1 ...': " + phenoFile);
-
-    std::vector<std::string> phenoNames(header.begin() + 2, header.end());
+            "--pheno header must start with 'IID' or 'FID IID' followed by "
+            "Y columns; got: " + line);
+    }
+    std::vector<std::string> phenoNames(header.begin() + firstYCol, header.end());
+    if (phenoNames.empty())
+        throw std::runtime_error("--pheno has no Y columns after IID: " + phenoFile);
     const std::size_t K = phenoNames.size();
     infoMsg("LDAK pred-list: %zu phenotype(s) in %s — %s",
             K, phenoFile.c_str(),
