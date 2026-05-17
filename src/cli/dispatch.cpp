@@ -782,9 +782,11 @@ int run(
                           << args.phenoTransform << "'\n";
                 return 1;
             }
-            if (!args.predListFile.empty() && args.phenoTransform == "raw") {
-                std::cerr << "Warning: --pheno-transform raw with --pred-list — ensure your LOCO PRS"
-                          << " was trained on raw Y; otherwise scales mismatch.\n";
+            if (!args.predListFile.empty() &&
+                (args.phenoTransform == "raw" || args.phenoTransform == "standardize")) {
+                std::cerr << "Warning: --pheno-transform " << args.phenoTransform
+                          << " with --pred-list — ensure your LOCO PRS was trained"
+                          << " on the same transform; otherwise scales mismatch.\n";
             }
             // Validate --spasqr-mode
             if (args.spasqrMode != "score" && args.spasqrMode != "wald") {
