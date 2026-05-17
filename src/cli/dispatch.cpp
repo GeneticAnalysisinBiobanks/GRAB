@@ -446,7 +446,7 @@ int run(
         logArgsInEffect(args);
         const std::string predOutput = args.outPrefix + ".txt";
         try {
-            runMakeLdakPredlist(args.phenoFile, predOutput);
+            runMakeLdakPredlist(args.phenoFile, predOutput, args.ldakPredlistPrefix);
         } catch (const std::exception &e) {
             std::cerr << "[ERROR] " << e.what() << "\n";
             return 1;

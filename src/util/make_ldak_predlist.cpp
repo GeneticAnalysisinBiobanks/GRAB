@@ -22,8 +22,9 @@ struct LdakHit {
     std::map<int, fs::path> phenoPaths;  // 1-based idx → <prefix>.step1.phenoN.loco.prs
 };
 
-// Scan CWD and group LDAK Step 1 files by prefix.
-std::map<std::string, LdakHit> scanCwd() {
+// Scan CWD and group LDAK Step 1 files by prefix. If `prefixFilter` is non-
+// empty, only consider files whose captured prefix exactly matches it.
+std::map<std::string, LdakHit> scanCwd(const std::string &prefixFilter) {
     std::map<std::string, LdakHit> hits;
     static const std::regex multiPat(
         R"((.*)\.step1\.pheno([0-9]+)\.loco\.prs)");
@@ -43,9 +44,13 @@ std::map<std::string, LdakHit> scanCwd() {
 
         std::smatch m;
         if (std::regex_match(name, m, multiPat)) {
-            hits[m[1].str()].phenoPaths[std::stoi(m[2].str())] = entry.path();
+            const std::string prefix = m[1].str();
+            if (!prefixFilter.empty() && prefix != prefixFilter) continue;
+            hits[prefix].phenoPaths[std::stoi(m[2].str())] = entry.path();
         } else if (std::regex_match(name, m, singlePat)) {
-            hits[m[1].str()].singlePath = entry.path();
+            const std::string prefix = m[1].str();
+            if (!prefixFilter.empty() && prefix != prefixFilter) continue;
+            hits[prefix].singlePath = entry.path();
         }
     }
     return hits;
@@ -70,7 +75,8 @@ std::vector<std::string> tokens(const std::string &line) {
 
 void runMakeLdakPredlist(
     const std::string &phenoFile,
-    const std::string &outPath
+    const std::string &outPath,
+    const std::string &ldakPrefix
 ) {
     if (phenoFile.empty())
         throw std::runtime_error("runMakeLdakPredlist: --pheno is required");
@@ -124,11 +130,15 @@ void runMakeLdakPredlist(
             }().c_str());
 
     // ── Scan CWD ─────────────────────────────────────────────────────
-    auto hits = scanCwd();
-    if (hits.empty())
-        throw std::runtime_error(
-            "No LDAK Step 1 output (*.step1.loco.prs / *.step1.phenoN.loco.prs) "
-            "found in current directory: " + fs::current_path().string());
+    auto hits = scanCwd(ldakPrefix);
+    if (hits.empty()) {
+        std::string msg = "No LDAK Step 1 output (*.step1.loco.prs / "
+                          "*.step1.phenoN.loco.prs) found in current directory: "
+                        + fs::current_path().string();
+        if (!ldakPrefix.empty())
+            msg += "  (--prefix filter: '" + ldakPrefix + "')";
+        throw std::runtime_error(msg);
+    }
 
     // ── Match: prefix that covers all K phenoNames by count + position ──
     std::vector<std::pair<std::string, std::vector<fs::path>>> candidates;

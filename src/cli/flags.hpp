@@ -713,8 +713,14 @@ inline const MethodDef kMakeLdakPredlist = {
   <prefix>.step1.loco.prs           (single-pheno mode)
   <prefix>.step1.phenoN.loco.prs    (--mpheno ALL: positional pheno1, 2, …)
 Matches against every Y column (columns after FID, IID) in --pheno FILE by
-count + position, then writes PREFIX.txt in grab --pred-list format. Strict
-on ambiguity (multiple matching prefixes → error). After this, run
+count + position, then writes PREFIX.txt in grab --pred-list format.
+
+Optional --prefix LDAK_PREFIX:  restrict the scan to files whose name starts
+with LDAK_PREFIX (i.e. the value passed to LDAK's --kvik-step1). Use this to
+disambiguate when several LDAK runs share the working directory; without it,
+multiple matching prefixes are rejected as ambiguous.
+
+After this, run
   grab --method SPAsqr --pheno pheno.txt --pred-list PREFIX.txt ...)",
 };
 

@@ -10,10 +10,16 @@
 //   <phenoName_1>\t<abs_loco_path_1>
 //   <phenoName_2>\t<abs_loco_path_2>
 //   ...
-// to `outPath` (e.g. `<--out>.txt`). Throws on:
+// to `outPath` (e.g. `<--out>.txt`).
+//
+// `ldakPrefix` (optional): when non-empty, only consider LDAK outputs whose
+// filename starts with this exact prefix. Useful for disambiguating when
+// several LDAK Step 1 runs share the working directory.
+//
+// Throws on:
 //   - pheno file unreadable or missing FID/IID header
 //   - 0 matching LDAK prefixes in CWD
-//   - 2+ matching LDAK prefixes in CWD (ambiguous)
+//   - 2+ matching LDAK prefixes in CWD (ambiguous; pass --prefix to disambiguate)
 //   - matched prefix doesn't cover all requested pheno columns
 #pragma once
 
@@ -21,5 +27,6 @@
 
 void runMakeLdakPredlist(
     const std::string &phenoFile,
-    const std::string &outPath
+    const std::string &outPath,
+    const std::string &ldakPrefix = std::string()
 );
