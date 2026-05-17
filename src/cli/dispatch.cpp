@@ -7,6 +7,7 @@
 #include "cli/flags.hpp"
 #include "geno_factory/geno_data.hpp"
 #include "io/subject_data.hpp"
+#include "cli/pred_list_auto.hpp"
 #include "util/int_pheno.hpp"
 #include "util/logging.hpp"
 
@@ -756,6 +757,12 @@ int run(
                 std::cerr << "Error: --pheno-transform must be 'raw', 'int', or 'standardize', got '"
                           << args.phenoTransform << "'\n";
                 return 1;
+            }
+            // Auto-discover a LOCO pred-list in the CWD if the user omitted
+            // --pred-list. Falls back silently to no-LOCO on miss / ambiguity.
+            if (args.predListFile.empty()) {
+                std::string auto_pl = autoBuildPredList(phenoNames);
+                if (!auto_pl.empty()) args.predListFile = std::move(auto_pl);
             }
             if (!args.predListFile.empty() && args.phenoTransform == "raw") {
                 std::cerr << "Warning: --pheno-transform raw with --pred-list — ensure your LOCO PRS"
