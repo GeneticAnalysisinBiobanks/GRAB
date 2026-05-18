@@ -54,11 +54,6 @@ struct Args {
     bool calPhi = false;
     bool makeAbed = false;
     bool intPheno = false;
-    bool makeLdakPredlist = false;
-    // --prefix is only meaningful with --make-ldak-predlist. When set, scanCwd
-    // restricts the LDAK Step 1 output search to files whose name starts with
-    // this prefix; lets the user disambiguate when multiple LDAK runs share CWD.
-    std::string ldakPredlistPrefix;
     double minMafIBD = 0.01;
     double refPrevalence = -1.0;
     double cutoff = 0.05;

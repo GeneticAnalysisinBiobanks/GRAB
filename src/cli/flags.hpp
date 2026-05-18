@@ -692,38 +692,6 @@ inline const MethodDef kMakeAbed = {
 Pass PREFIX as --admix-bfile to SPAmixLocalPlus or --cal-phi.)",
 };
 
-// ── Utility mode: make-ldak-predlist ───────────────────────────────
-inline const FlagDef *const kMakeLdakPredlistReq[] = {
-    &kPheno, &kOut,
-    nullptr
-};
-
-inline const FlagDef *const kMakeLdakPredlistOpt[] = {
-    nullptr
-};
-
-inline const MethodDef kMakeLdakPredlist = {
-    "make-ldak-predlist",
-    "Build a --pred-list from LDAK Step 1 LOCO output discovered in CWD",
-    kMakeLdakPredlistReq,
-    kMakeLdakPredlistOpt,
-    nullptr,
-    "Output: PREFIX.txt  (phenoName<TAB>locoPath rows; one per --pheno Y column)",
-    R"(Scans the current directory for LDAK-KVIK Step 1 outputs:
-  <prefix>.step1.loco.prs           (single-pheno mode)
-  <prefix>.step1.phenoN.loco.prs    (--mpheno ALL: positional pheno1, 2, …)
-Matches against every Y column (columns after FID, IID) in --pheno FILE by
-count + position, then writes PREFIX.txt in grab --pred-list format.
-
-Optional --prefix LDAK_PREFIX:  restrict the scan to files whose name starts
-with LDAK_PREFIX (i.e. the value passed to LDAK's --kvik-step1). Use this to
-disambiguate when several LDAK runs share the working directory; without it,
-multiple matching prefixes are rejected as ambiguous.
-
-After this, run
-  grab --method SPAsqr --pheno pheno.txt --pred-list PREFIX.txt ...)",
-};
-
 // ── Utility mode: int-pheno ────────────────────────────────────────
 inline const FlagDef *const kIntPhenoReq[] = {
     &kPheno, &kOut,
@@ -806,9 +774,6 @@ inline const MethodDef *const kAllMethods[] = {
 
 inline const MethodDef *const kAllUtilModes[] = {
     &kCalAfCoef, &kCalPairwiseIbd, &kCalPhi, &kMakeAbed, &kIntPheno,
-    // kMakeLdakPredlist intentionally hidden from --help listings.
-    // The flag still parses and dispatches normally; it's just not
-    // advertised. Re-add to surface it as a documented utility mode.
     nullptr
 };
 

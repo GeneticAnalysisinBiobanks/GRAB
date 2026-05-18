@@ -9,7 +9,6 @@
 #include "io/subject_data.hpp"
 #include "util/int_pheno.hpp"
 #include "util/logging.hpp"
-#include "util/make_ldak_predlist.hpp"
 
 #include "localplus/abed_convert_msp.hpp"
 #include "localplus/abed_convert_txt.hpp"
@@ -167,7 +166,6 @@ static void logArgsInEffect(const Args &args) {
     if (args.calPhi) std::fprintf(stderr, "  --cal-phi\n");
     if (args.makeAbed) std::fprintf(stderr, "  --make-abed\n");
     if (args.intPheno) std::fprintf(stderr, "  --int-pheno\n");
-    if (args.makeLdakPredlist) std::fprintf(stderr, "  --make-ldak-predlist\n");
     if (!args.method.empty()) std::fprintf(stderr, "  --method %s\n", args.method.c_str());
     // input
     if (!args.bfilePrefix.empty()) std::fprintf(stderr, "  --bfile %s\n", args.bfilePrefix.c_str());
@@ -284,9 +282,9 @@ int run(
 
     // ── Mode: --cal-af-coef ────────────────────────────────────────────
     if (args.calAfCoef) {
-        if (!args.method.empty() || args.calPairwiseIBD || args.intPheno || args.makeLdakPredlist) {
+        if (!args.method.empty() || args.calPairwiseIBD || args.intPheno) {
             std::cerr << "Error: --cal-af-coef cannot be combined with"
-                " --method, --cal-pairwise-ibd, --int-pheno, or --make-ldak-predlist.\n";
+                " --method, --cal-pairwise-ibd, or --int-pheno.\n";
             return 1;
         }
         require(args.outPrefix, "--out", "--cal-af-coef");
@@ -332,10 +330,9 @@ int run(
     // ── Mode: --cal-phi ─────────────────────────────────────────────
     if (args.calPhi) {
         if (!args.method.empty() || args.calAfCoef || args.calPairwiseIBD ||
-            args.intPheno || args.makeLdakPredlist) {
+            args.intPheno) {
             std::cerr << "Error: --cal-phi cannot be combined with"
-                " --method, --cal-af-coef, --cal-pairwise-ibd, --int-pheno,"
-                " or --make-ldak-predlist.\n";
+                " --method, --cal-af-coef, --cal-pairwise-ibd, or --int-pheno.\n";
             return 1;
         }
         require(args.admixBfilePrefix, "--admix-bfile", "--cal-phi");
@@ -369,10 +366,10 @@ int run(
     // ── Mode: --make-abed ──────────────────────────────────────────
     if (args.makeAbed) {
         if (!args.method.empty() || args.calAfCoef || args.calPairwiseIBD ||
-            args.calPhi || args.intPheno || args.makeLdakPredlist) {
+            args.calPhi || args.intPheno) {
             std::cerr << "Error: --make-abed cannot be combined with"
                 " --method, --cal-af-coef, --cal-pairwise-ibd,"
-                " --cal-phi, --int-pheno, or --make-ldak-predlist.\n";
+                " --cal-phi, or --int-pheno.\n";
             return 1;
         }
         bool hasVcfMsp = !args.vcfFile.empty() && !args.mspFile.empty();
@@ -414,7 +411,7 @@ int run(
     // ── Mode: --int-pheno ──────────────────────────────────────────
     if (args.intPheno) {
         if (!args.method.empty() || args.calAfCoef || args.calPairwiseIBD ||
-            args.calPhi || args.makeAbed || args.makeLdakPredlist) {
+            args.calPhi || args.makeAbed) {
             std::cerr << "Error: --int-pheno cannot be combined with"
                 " --method or any other utility mode.\n";
             return 1;
@@ -433,33 +430,11 @@ int run(
         return 0;
     }
 
-    // ── Mode: --make-ldak-predlist ─────────────────────────────────
-    if (args.makeLdakPredlist) {
-        if (!args.method.empty() || args.calAfCoef || args.calPairwiseIBD ||
-            args.calPhi || args.makeAbed || args.intPheno) {
-            std::cerr << "Error: --make-ldak-predlist cannot be combined with"
-                " --method or any other utility mode.\n";
-            return 1;
-        }
-        require(args.phenoFile, "--pheno", "--make-ldak-predlist");
-        require(args.outPrefix, "--out",   "--make-ldak-predlist");
-        logArgsInEffect(args);
-        const std::string predOutput = args.outPrefix + ".txt";
-        try {
-            runMakeLdakPredlist(args.phenoFile, predOutput, args.ldakPredlistPrefix);
-        } catch (const std::exception &e) {
-            std::cerr << "[ERROR] " << e.what() << "\n";
-            return 1;
-        }
-        printTimer();
-        return 0;
-    }
-
     // ── Mode: --cal-pairwise-ibd ───────────────────────────────────
     if (args.calPairwiseIBD) {
-        if (!args.method.empty() || args.intPheno || args.makeLdakPredlist) {
+        if (!args.method.empty() || args.intPheno) {
             std::cerr << "Error: --cal-pairwise-ibd cannot be combined with"
-                " --method, --int-pheno, or --make-ldak-predlist.\n";
+                " --method or --int-pheno.\n";
             return 1;
         }
         require(args.outPrefix, "--out", "--cal-pairwise-ibd");
