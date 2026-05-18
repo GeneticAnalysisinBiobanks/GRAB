@@ -806,7 +806,9 @@ inline const MethodDef *const kAllMethods[] = {
 
 inline const MethodDef *const kAllUtilModes[] = {
     &kCalAfCoef, &kCalPairwiseIbd, &kCalPhi, &kMakeAbed, &kIntPheno,
-    &kMakeLdakPredlist,
+    // kMakeLdakPredlist intentionally hidden from --help listings.
+    // The flag still parses and dispatches normally; it's just not
+    // advertised. Re-add to surface it as a documented utility mode.
     nullptr
 };
 

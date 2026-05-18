@@ -101,7 +101,10 @@ STATIC_LIBS ?=
 ifeq ($(PLATFORM),macos)
   LDFLAGS := -Wl,-dead_strip -lpthread $(PLATFORM_LDLIBS) $(STATIC_LIBS)
 else
-  LDFLAGS := -Wl,--gc-sections -lpthread $(PLATFORM_LDLIBS) $(STATIC_LIBS)
+  # -lstdc++fs is required by libstdc++ before GCC 9 to resolve
+  # std::filesystem symbols. Newer toolchains expose an empty stub library
+  # so the flag is harmless there.
+  LDFLAGS := -Wl,--gc-sections -lpthread -lstdc++fs $(PLATFORM_LDLIBS) $(STATIC_LIBS)
 endif
 
 # ── Directories ───────────────────────────────────────────────────────────────
