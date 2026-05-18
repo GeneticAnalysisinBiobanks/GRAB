@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <exception>
 #include <fstream>
+#include <limits>
 #include <mutex>
 #include "util/text_scanner.hpp"
 #include <stdexcept>
@@ -188,7 +189,8 @@ static std::unordered_map<std::string, Eigen::VectorXd>parseRegenieLocoFile(
         }
 
         std::string chrStr(cs, clen);
-        Eigen::VectorXd vec = Eigen::VectorXd::Zero(nUsed);
+        Eigen::VectorXd vec = Eigen::VectorXd::Constant(
+            nUsed, std::numeric_limits<double>::quiet_NaN());
         for (size_t c = 0; c < nCols; ++c) {
             while (p < fend && (*p == ' ' || *p == '\t')) ++p;
             char *ep;
@@ -306,9 +308,13 @@ static std::unordered_map<std::string, Eigen::VectorXd>parseLdakLocoFile(
         throw std::runtime_error("LDAK LOCO " + path + ": header has no chromosome columns");
 
     // ── Pre-allocate output vectors for each kept chromosome ─────────
+    // NaN-init so subjects absent from the LDAK file remain NaN; the
+    // SPAsqr LOCO subtraction step (loco_dense.allFinite() guard) will
+    // throw if any usedIID has non-missing Y but is missing here.
     std::unordered_map<std::string, Eigen::VectorXd> result;
     for (const auto &c : chrCols)
-        if (!c.empty()) result[c] = Eigen::VectorXd::Zero(nUsed);
+        if (!c.empty()) result[c] = Eigen::VectorXd::Constant(
+                nUsed, std::numeric_limits<double>::quiet_NaN());
 
     // ── Build IID → usedIIDs index ──────────────────────────────────
     std::unordered_map<std::string, Eigen::Index> iidIdx;

@@ -7,6 +7,7 @@
 #include "cli/flags.hpp"
 #include "geno_factory/geno_data.hpp"
 #include "io/subject_data.hpp"
+#include "util/int_pheno.hpp"
 #include "util/logging.hpp"
 
 #include "localplus/abed_convert_msp.hpp"
@@ -164,6 +165,7 @@ static void logArgsInEffect(const Args &args) {
     if (args.calPairwiseIBD) std::fprintf(stderr, "  --cal-pairwise-ibd\n");
     if (args.calPhi) std::fprintf(stderr, "  --cal-phi\n");
     if (args.makeAbed) std::fprintf(stderr, "  --make-abed\n");
+    if (args.intPheno) std::fprintf(stderr, "  --int-pheno\n");
     if (!args.method.empty()) std::fprintf(stderr, "  --method %s\n", args.method.c_str());
     // input
     if (!args.bfilePrefix.empty()) std::fprintf(stderr, "  --bfile %s\n", args.bfilePrefix.c_str());
@@ -280,9 +282,9 @@ int run(
 
     // ── Mode: --cal-af-coef ────────────────────────────────────────────
     if (args.calAfCoef) {
-        if (!args.method.empty() || args.calPairwiseIBD) {
+        if (!args.method.empty() || args.calPairwiseIBD || args.intPheno) {
             std::cerr << "Error: --cal-af-coef cannot be combined with"
-                " --method or --cal-pairwise-ibd.\n";
+                " --method, --cal-pairwise-ibd, or --int-pheno.\n";
             return 1;
         }
         require(args.outPrefix, "--out", "--cal-af-coef");
@@ -327,9 +329,10 @@ int run(
 
     // ── Mode: --cal-phi ─────────────────────────────────────────────
     if (args.calPhi) {
-        if (!args.method.empty() || args.calAfCoef || args.calPairwiseIBD) {
+        if (!args.method.empty() || args.calAfCoef || args.calPairwiseIBD ||
+            args.intPheno) {
             std::cerr << "Error: --cal-phi cannot be combined with"
-                " --method, --cal-af-coef, or --cal-pairwise-ibd.\n";
+                " --method, --cal-af-coef, --cal-pairwise-ibd, or --int-pheno.\n";
             return 1;
         }
         require(args.admixBfilePrefix, "--admix-bfile", "--cal-phi");
@@ -362,10 +365,11 @@ int run(
 
     // ── Mode: --make-abed ──────────────────────────────────────────
     if (args.makeAbed) {
-        if (!args.method.empty() || args.calAfCoef || args.calPairwiseIBD || args.calPhi) {
+        if (!args.method.empty() || args.calAfCoef || args.calPairwiseIBD ||
+            args.calPhi || args.intPheno) {
             std::cerr << "Error: --make-abed cannot be combined with"
                 " --method, --cal-af-coef, --cal-pairwise-ibd,"
-                " or --cal-phi.\n";
+                " --cal-phi, or --int-pheno.\n";
             return 1;
         }
         bool hasVcfMsp = !args.vcfFile.empty() && !args.mspFile.empty();
@@ -404,11 +408,33 @@ int run(
         return 0;
     }
 
+    // ── Mode: --int-pheno ──────────────────────────────────────────
+    if (args.intPheno) {
+        if (!args.method.empty() || args.calAfCoef || args.calPairwiseIBD ||
+            args.calPhi || args.makeAbed) {
+            std::cerr << "Error: --int-pheno cannot be combined with"
+                " --method or any other utility mode.\n";
+            return 1;
+        }
+        require(args.phenoFile, "--pheno",  "--int-pheno");
+        require(args.outPrefix, "--out",    "--int-pheno");
+        logArgsInEffect(args);
+        const std::string intOutput = args.outPrefix + ".txt";
+        try {
+            runIntPheno(args.phenoFile, intOutput);
+        } catch (const std::exception &e) {
+            std::cerr << "[ERROR] " << e.what() << "\n";
+            return 1;
+        }
+        printTimer();
+        return 0;
+    }
+
     // ── Mode: --cal-pairwise-ibd ───────────────────────────────────
     if (args.calPairwiseIBD) {
-        if (!args.method.empty()) {
+        if (!args.method.empty() || args.intPheno) {
             std::cerr << "Error: --cal-pairwise-ibd cannot be combined with"
-                " --method.\n";
+                " --method or --int-pheno.\n";
             return 1;
         }
         require(args.outPrefix, "--out", "--cal-pairwise-ibd");
@@ -718,22 +744,24 @@ int run(
                           << args.spasqrSolver << "'\n";
                 return 1;
             }
-            // Resolve --pheno-transform default. Default is 'standardize'
+            // Resolve --pheno-transform default. Default is 'int'
             // in both contexts (with and without --pred-list); LOCO PRS
             // should be trained on a Y on the same scale.
             if (args.phenoTransform.empty()) {
-                args.phenoTransform = "standardize";
+                args.phenoTransform = "int";
             }
             if (args.phenoTransform != "raw" &&
-                args.phenoTransform != "irn" &&
+                args.phenoTransform != "int" &&
                 args.phenoTransform != "standardize") {
-                std::cerr << "Error: --pheno-transform must be 'raw', 'irn', or 'standardize', got '"
+                std::cerr << "Error: --pheno-transform must be 'raw', 'int', or 'standardize', got '"
                           << args.phenoTransform << "'\n";
                 return 1;
             }
-            if (!args.predListFile.empty() && args.phenoTransform == "raw") {
-                std::cerr << "Warning: --pheno-transform raw with --pred-list — ensure your LOCO PRS"
-                          << " was trained on raw Y; otherwise scales mismatch.\n";
+            if (!args.predListFile.empty() &&
+                (args.phenoTransform == "raw" || args.phenoTransform == "standardize")) {
+                std::cerr << "Warning: --pheno-transform " << args.phenoTransform
+                          << " with --pred-list — ensure your LOCO PRS was trained"
+                          << " on the same transform; otherwise scales mismatch.\n";
             }
             // Validate --spasqr-mode
             if (args.spasqrMode != "score" && args.spasqrMode != "wald") {

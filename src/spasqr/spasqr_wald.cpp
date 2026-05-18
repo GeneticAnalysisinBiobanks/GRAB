@@ -45,7 +45,7 @@ namespace {
 // Phenotype pre-transform (mirrors helper in spasqr.cpp; small enough to copy).
 void applyPhenoTransform(Eigen::VectorXd &Y, const std::string &mode) {
     if (mode == "raw") return;
-    if (mode == "irn") {
+    if (mode == "int") {
         Y = math::inverseRankNormal(Y);
         return;
     }
@@ -295,6 +295,20 @@ void runSPAsqrWald(
                 for (uint32_t i = 0; i < nUnion; ++i) {
                     const uint32_t li = pw[k].unionToLocal[i];
                     if (li != UINT32_MAX) loco_dense[li] = locoVec[i];
+                }
+                // LDAK / Regenie Step 1 output should include a PGS for every
+                // subject in the analysis set. If any non-missing-Y subject is
+                // absent, the parser leaves NaN at that position. Hard-fail
+                // instead of silently corrupting the per-marker QMME refit.
+                if (!loco_dense.allFinite()) {
+                    const Eigen::Index nBad = Nk - loco_dense.array().isFinite().count();
+                    throw std::runtime_error(
+                        "SPAsqr-LOCO (wald): LOCO file for phenotype '" + phenoNames[k] +
+                        "' chr " + chr + " is missing " + std::to_string(nBad) +
+                        " subject(s) that have non-missing Y. The LOCO PGS file "
+                        "must contain every subject in the --pheno analysis set. "
+                        "Re-run LDAK / Regenie Step 1 on the same sample set, or "
+                        "remove those subjects from --pheno.");
                 }
                 Eigen::VectorXd yResp = pw[k].Y - loco_dense;
                 const double h = (spasqrH >= 0.0) ? spasqrH : iqrBandwidth(yResp, effHScale);

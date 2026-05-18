@@ -167,6 +167,7 @@ Args parseArgs(
         else if (arg == "--cal-pairwise-ibd")a.calPairwiseIBD = true;
         else if (arg == "--cal-phi")a.calPhi = true;
         else if (arg == "--make-abed")a.makeAbed = true;
+        else if (arg == "--int-pheno")a.intPheno = true;
         else if (arg == "--min-maf-ibd")a.minMafIBD = parseDouble(next(), arg);
         else {
             std::cerr << "Error: unknown option: " << arg << "  (run 'grab --help' for usage)\n";

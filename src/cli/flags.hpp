@@ -302,13 +302,15 @@ inline const FlagDef kSpasqrMode = {
 
 inline const FlagDef kPhenoTransform = {
     "--pheno-transform", "MODE",
-    "Phenotype pre-transform for SPAsqr: raw | irn | standardize "
-    "(default: standardize)",
+    "Phenotype pre-transform for SPAsqr: raw | int | standardize "
+    "(default: int)",
     R"(Selects how Y is transformed before SQR fitting (and before LOCO offset
 subtraction when --pred-list is given):
   raw         — no transform; SQR fits on Y as supplied.
-  irn         — inverse-rank-normal transform (Blom, average-rank ties)
-                applied per phenotype on its non-missing scope.
+  int         — inverse normal transform (Blom plotting position, average-rank
+                ties) applied per phenotype on its non-missing scope. Default
+                in both contexts; LOCO PRS should be trained on INT Y so
+                the offset is on the same scale.
   standardize — Y is centered and scaled to unit variance per phenotype.
                 Default in both contexts; LOCO PRS should be trained on
                 a standardized Y so the offset is on the same scale.
@@ -690,6 +692,31 @@ inline const MethodDef kMakeAbed = {
 Pass PREFIX as --admix-bfile to SPAmixLocalPlus or --cal-phi.)",
 };
 
+// ── Utility mode: int-pheno ────────────────────────────────────────
+inline const FlagDef *const kIntPhenoReq[] = {
+    &kPheno, &kOut,
+    nullptr
+};
+
+inline const FlagDef *const kIntPhenoOpt[] = {
+    nullptr
+};
+
+inline const MethodDef kIntPheno = {
+    "int-pheno",
+    "Inverse-normal-transform every trait column in a phenotype file",
+    kIntPhenoReq,
+    kIntPhenoOpt,
+    nullptr,
+    "Output: PREFIX.txt  (FID  IID  Y1  Y2 ... ; missing entries → NA)",
+    R"(Reads --pheno FILE with header
+    FID  IID  Y1  Y2  ...
+and writes PREFIX.txt with the same columns and row order; each Y* column
+is independently INT-transformed (Blom plotting position, average-rank
+ties) on its non-missing scope. Missing entries (NA / "." / blank) stay
+missing in the output.)",
+};
+
 // ── Utility mode: cal-af-coef ──────────────────────────────────────
 inline const FlagDef *const kCalAfReq[] = {
     &kGeno_input, &kPcCols, &kOut,
@@ -746,7 +773,7 @@ inline const MethodDef *const kAllMethods[] = {
 };
 
 inline const MethodDef *const kAllUtilModes[] = {
-    &kCalAfCoef, &kCalPairwiseIbd, &kCalPhi, &kMakeAbed,
+    &kCalAfCoef, &kCalPairwiseIbd, &kCalPhi, &kMakeAbed, &kIntPheno,
     nullptr
 };
 

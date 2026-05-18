@@ -49,6 +49,7 @@ Usage:
     grab --cal-phi           --admix-bfile PREFIX  --sp-grm-* FILE  --out PREFIX
     grab --make-abed  --vcf FILE  --rfmix-msp FILE  --out PREFIX
     grab --make-abed  --admix-text-prefix PREFIX  --out PREFIX
+    grab --int-pheno  --pheno FILE  --out PREFIX
 
 )",
         stderr);
@@ -70,7 +71,8 @@ Usage:
 
 static void printMethodHelp(const MethodDef *m) {
     bool isUtil = (std::strcmp(m->name, "cal-af-coef") == 0 || std::strcmp(m->name, "cal-pairwise-ibd") == 0 ||
-                   std::strcmp(m->name, "cal-phi") == 0 || std::strcmp(m->name, "make-abed") == 0);
+                   std::strcmp(m->name, "cal-phi") == 0 || std::strcmp(m->name, "make-abed") == 0 ||
+                   std::strcmp(m->name, "int-pheno") == 0);
     if (isUtil)
         std::fprintf(stderr, "Mode: --%s -- %s\n", m->name, m->desc);
     else
