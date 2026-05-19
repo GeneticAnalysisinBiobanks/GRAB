@@ -20,11 +20,13 @@
 #include "util/text_scanner.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -346,30 +348,64 @@ void runSAGELD(
     const Eigen::VectorXd Resid_G = residMat.col(0);
     const double R_GRM_R_G = computeRGRMR(Resid_G, topo);
 
-    // 6. Per-env: compute lambda, build null model for combined residual
-    std::vector<SAGELDMethod::PerEnv> envData;
-    std::vector<std::string> envNames;
-    envData.reserve(nEnv);
-    envNames.reserve(nEnv);
-
-    for (const auto &es : envs_spec) {
-        infoMsg("Building null model for environment '%s'...", es.name.c_str());
-
-        const Eigen::VectorXd Resid_GxE = residMat.col(es.colGxE);
-
+    // 6. Per-env: compute combined residuals serially (deterministic log
+    //    order), then build the K_env null models in parallel.  The null-
+    //    model builders are independent — each writes only its own slot of
+    //    envData / envNames and reads only its own combined residual plus
+    //    the shared, read-only GRM topology.
+    std::vector<Eigen::VectorXd> envCombined(nEnv);
+    for (int i = 0; i < nEnv; ++i) {
+        const Eigen::VectorXd Resid_GxE = residMat.col(envs_spec[i].colGxE);
         // Genome-wide lambda: λ = (R_GxE · R_G) / (R_G · R_G)
         const double lambda = Resid_G.squaredNorm() > 0 ? Resid_GxE.dot(Resid_G) / Resid_G.squaredNorm() : 0.0;
-        infoMsg("  Genome-wide lambda = %.6f", lambda);
-
-        const Eigen::VectorXd Resid_combined = Resid_GxE - lambda * Resid_G;
-
-        SPAGRMClass spagrm_combined = nsGRMNull::buildSPAGRMNullModel(
-            Resid_combined, N, topo.singletonSet, topo.grmDiag, topo.families, topo.familyEntries, topo.allEntries,
-            topo.ibdEntries, topo.ibdPairMap, spaCutoff, minMafCutoff, minMacCutoff, nthreads);
-
-        envData.push_back({std::move(spagrm_combined)});
-        envNames.push_back(es.name);
+        infoMsg("Env '%s': genome-wide lambda = %.6f", envs_spec[i].name.c_str(), lambda);
+        envCombined[i] = Resid_GxE - lambda * Resid_G;
     }
+
+    // SPAGRMClass has no default constructor; hold per-env builds via
+    // unique_ptr slots so each parallel worker can write its own index.
+    std::vector<std::unique_ptr<SAGELDMethod::PerEnv> > envSlot(nEnv);
+    std::vector<std::string> envNames(nEnv);
+
+    const int nOuter = std::max(1, std::min(nthreads, nEnv));
+    const int innerThreads = std::max(1, nthreads / nOuter);
+    infoMsg("Building %d environment null models (%d outer x %d inner threads)...",
+            nEnv, nOuter, innerThreads);
+
+    auto buildEnv = [&](int i) {
+        SPAGRMClass spagrm_combined = nsGRMNull::buildSPAGRMNullModel(
+            envCombined[i], N, topo.singletonSet, topo.grmDiag, topo.families,
+            topo.familyEntries, topo.allEntries, topo.ibdEntries, topo.ibdPairMap,
+            spaCutoff, minMafCutoff, minMacCutoff,
+            nsGRMNull::INIT_OUTLIER_RATIO, nsGRMNull::CONTROL_OUTLIER, innerThreads);
+        envSlot[i] = std::unique_ptr<SAGELDMethod::PerEnv>(
+            new SAGELDMethod::PerEnv{std::move(spagrm_combined)});
+        envNames[i] = envs_spec[i].name;
+    };
+
+    if (nOuter == 1) {
+        for (int i = 0; i < nEnv; ++i) buildEnv(i);
+    } else {
+        std::atomic<int> nextEnv{0};
+        auto worker = [&]() {
+            while (true) {
+                int i = nextEnv.fetch_add(1, std::memory_order_relaxed);
+                if (i >= nEnv) break;
+                buildEnv(i);
+            }
+        };
+        std::vector<std::thread> workers;
+        workers.reserve(nOuter - 1);
+        for (int t = 1; t < nOuter; ++t)
+            workers.emplace_back(worker);
+        worker();
+        for (auto &w : workers) w.join();
+    }
+
+    std::vector<SAGELDMethod::PerEnv> envData;
+    envData.reserve(nEnv);
+    for (int i = 0; i < nEnv; ++i)
+        envData.push_back(std::move(*envSlot[i]));
 
     // 7. Build method and run single marker-engine pass
     SAGELDMethod method(Resid_G, R_GRM_R_G, std::move(envData), std::move(envNames));

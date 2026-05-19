@@ -119,7 +119,8 @@ Eigen::MatrixXd buildChowLiuTree(
     int N,
     const std::vector<IndexedIBD> &familyIBD,
     const std::vector<uint32_t> &famMembers,
-    const std::vector<double> &maf_interval
+    const std::vector<double> &maf_interval,
+    int nthreads = 1
 );
 
 // ══════════════════════════════════════════════════════════════════════

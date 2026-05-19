@@ -263,7 +263,8 @@ Eigen::MatrixXd buildChowLiuTree(
     int N,
     const std::vector<IndexedIBD> &familyIBD,
     const std::vector<uint32_t> &famMembers,
-    const std::vector<double> &maf_interval
+    const std::vector<double> &maf_interval,
+    int nthreads
 ) {
     std::unordered_map<uint32_t, int> globalToLocal;
     for (int i = 0; i < N; ++i)
@@ -283,9 +284,11 @@ Eigen::MatrixXd buildChowLiuTree(
     for (int i = 1; i < N; ++i)
         stride[i] = stride[i - 1] * 3;
 
-    std::vector<std::vector<double> > entropyMat(N, std::vector<double>(N, 0.0));
-
-    for (int mi = 0; mi < nMAF; ++mi) {
+    // Per-bin work is independent: each `mi` writes column mi of CLT and
+    // touches only its thread-local entropyMat / arr / mstEdges scratch.
+    // Inputs above (globalToLocal, stride, familyIBD, maf_interval) are
+    // read-only after the prelude.
+    auto runOneBin = [&](int mi, std::vector<std::vector<double> > &entropyMat) {
         const double mu = maf_interval[mi];
         const double omu = 1.0 - mu;
 
@@ -375,6 +378,31 @@ Eigen::MatrixXd buildChowLiuTree(
 
         for (int idx = 0; idx < arrSize; ++idx)
             CLT(idx, mi) = arr[idx];
+    };
+
+    const int nWorkers = std::max(1, std::min(nthreads, nMAF));
+
+    if (nWorkers == 1) {
+        std::vector<std::vector<double> > entropyMat(N, std::vector<double>(N, 0.0));
+        for (int mi = 0; mi < nMAF; ++mi)
+            runOneBin(mi, entropyMat);
+    } else {
+        std::atomic<int> nextBin{0};
+        auto worker = [&]() {
+            std::vector<std::vector<double> > entropyMat(N, std::vector<double>(N, 0.0));
+            while (true) {
+                int mi = nextBin.fetch_add(1, std::memory_order_relaxed);
+                if (mi >= nMAF) break;
+                runOneBin(mi, entropyMat);
+            }
+        };
+        std::vector<std::thread> threads;
+        threads.reserve(nWorkers - 1);
+        for (int t = 1; t < nWorkers; ++t)
+            threads.emplace_back(worker);
+        worker();
+        for (auto &t : threads)
+            t.join();
     }
 
     return CLT;
@@ -778,7 +806,7 @@ SPAGRMClass buildSPAGRMNullModel(
             }
         }
 
-        Eigen::MatrixXd CLT = buildChowLiuTree(n1, famIBD, fam, mafInterval);
+        Eigen::MatrixXd CLT = buildChowLiuTree(n1, famIBD, fam, mafInterval, nthreads);
         std::vector<double> standS = buildStandS(n1, famResid);
 
         threeSubj_standS_list.push_back(std::move(standS));
