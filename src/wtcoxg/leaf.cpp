@@ -588,6 +588,7 @@ void LEAFMethod::processScoreBatch(
 //   7. Build LEAFMethod → markerEngine
 // ======================================================================
 
+#include "util/regression.hpp"
 #include "wtcoxg/regression.hpp"
 
 void runLEAFPheno(

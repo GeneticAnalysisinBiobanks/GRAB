@@ -1385,6 +1385,7 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
 // Top-level orchestration
 // ======================================================================
 
+#include "util/regression.hpp"
 #include "wtcoxg/regression.hpp"
 
 void runWtCoxGPheno(
