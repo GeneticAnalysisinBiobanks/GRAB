@@ -10,6 +10,7 @@
 #include "io/subject_data.hpp"
 #include "io/subject_set.hpp"
 #include "util/logging.hpp"
+#include "util/null_model.hpp"
 #include "util/text_scanner.hpp"
 #include "util/text_stream.hpp"
 
@@ -1344,8 +1345,8 @@ static void runUnifiedGWAS(
         header += pfx + "ALT_FREQ";
         header += pfx + "MAC";
         header += pfx + "P";
-        header += pfx + "Z";
         header += pfx + "BETA";
+        header += pfx + "SE";
     }
     header += '\n';
     for (int p = 0; p < K_pheno; ++p) writers[p].write(header);
@@ -1595,7 +1596,6 @@ static void runUnifiedGWAS(
                             double varOffRaw = varOffAll[(static_cast<size_t>(b) * K + k) * K_pheno + p];
                             double varS      = varOffRaw * qTerm + diagVar;
 
-                            double z = (varS > 0.0) ? (S - sMean) / std::sqrt(varS) : 0.0;
                             auto hapCol = bHapBig.col(b * K + k);
                             auto [pSpa, pNorm] = spaLocalPval(
                                 S, sMean, diagVar,
@@ -1604,16 +1604,22 @@ static void runUnifiedGWAS(
                             (void)pNorm;
                             double betaG = (varS > 0.0) ? (S - sMean) / varS
                                                          : std::numeric_limits<double>::quiet_NaN();
+                            double seG   = (varS > 0.0) ? 1.0 / std::sqrt(varS)
+                                                         : std::numeric_limits<double>::quiet_NaN();
 
                             buf += '\t';
                             std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", pSpa);
                             buf += fmtBuf;
                             buf += '\t';
-                            std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", z);
-                            buf += fmtBuf;
-                            buf += '\t';
                             if (std::isfinite(betaG)) {
                                 std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", betaG);
+                                buf += fmtBuf;
+                            } else {
+                                buf += "NA";
+                            }
+                            buf += '\t';
+                            if (std::isfinite(seG)) {
+                                std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", seG);
                                 buf += fmtBuf;
                             } else {
                                 buf += "NA";
@@ -1692,19 +1698,86 @@ void runSPAmixLocalPlus(
     const std::string &keepFile,
     const std::string &removeFile,
     const std::string &extractFile,
-    const std::string &excludeFile
+    const std::string &excludeFile,
+    const std::string &covarFile,
+    const std::vector<std::string> &covarNames,
+    const std::string &traitTypeStr,
+    const std::string &phenoNameSpec,
+    bool saveResid
 ) {
     infoMsg("=== SPAmixLocalPlus GWAS ===");
+
+    // Fit-path detection: when --pheno-name is supplied, the null-model
+    // engine fits residuals from the phenotype columns + covariates;
+    // otherwise loadResidOne consumes pre-computed residuals via --resid-name.
+    const bool fitPath = !phenoNameSpec.empty();
+    nullmodel::TraitType traitT{};
+    std::vector<nullmodel::PhenoSpec> phenoSpecs;
+    if (fitPath) {
+        traitT = nullmodel::parseTraitType(traitTypeStr);
+        phenoSpecs = nullmodel::parsePhenoSpecList(traitT, phenoNameSpec);
+        infoMsg("SPAmixLocalPlus: fitting %s null model for %zu phenotype(s)",
+                nullmodel::traitTypeName(traitT), phenoSpecs.size());
+    }
 
     // Load subjects
     auto famIIDs = parseFamIIDs(admixPrefix + ".fam");
     SubjectData sd(famIIDs);
-    sd.loadResidOne(phenoFile, residNames);
+    if (fitPath) {
+        // Single-pass load: gather every column the null-model engine needs
+        // from the pheno file.  Covariates are read from the pheno file
+        // when --covar is absent.
+        std::vector<std::string> wanted;
+        auto add = [&](const std::string &name) {
+            if (name.empty()) return;
+            if (std::find(wanted.begin(), wanted.end(), name) == wanted.end())
+                wanted.push_back(name);
+        };
+        for (const auto &name : nullmodel::columnsNeeded(phenoSpecs)) add(name);
+        if (covarFile.empty())
+            for (const auto &name : covarNames) add(name);
+        sd.loadPhenoFile(phenoFile, wanted);
+    } else {
+        sd.loadResidOne(phenoFile, residNames);
+    }
+    if (!covarFile.empty()) sd.loadCovar(covarFile, covarNames);
     sd.setKeepRemove(keepFile, removeFile);
     sd.finalize();
 
     uint32_t nUsed = sd.nUsed();
     infoMsg("Subjects: %u in .fam, %u used", sd.nFam(), nUsed);
+
+    if (fitPath) {
+        Eigen::MatrixXd covarUnion;
+        if (!covarNames.empty()) {
+            covarUnion = sd.getColumns(covarNames);
+        } else {
+            covarUnion.resize(sd.nUsed(), 0);
+        }
+        nullmodel::EngineOptions eo;
+        eo.nthreads = nthread;
+        auto fits = nullmodel::fitAll(sd, phenoSpecs, traitT, covarUnion, eo);
+        std::vector<Eigen::VectorXd> rs;
+        std::vector<std::string> ns;
+        rs.reserve(fits.size());
+        ns.reserve(fits.size());
+        for (auto &f : fits) {
+            infoMsg("  Fitted '%s': %d subjects after NaN removal",
+                    f.name.c_str(), f.nUsedRows);
+            rs.push_back(std::move(f.residuals));
+            ns.push_back(f.name);
+        }
+        if (saveResid) {
+            std::vector<nullmodel::NullModelFit> dumpFits(rs.size());
+            for (size_t i = 0; i < rs.size(); ++i) {
+                dumpFits[i].name = ns[i];
+                dumpFits[i].residuals = rs[i];
+                dumpFits[i].nUsedRows = static_cast<int>(rs[i].size());
+            }
+            nullmodel::writeResidualsFile(outPrefix + ".null.resid", sd, dumpFits);
+        }
+        sd.setResidualsFromFit(std::move(rs), std::move(ns));
+    }
 
     // Load admix data
     AdmixData admixData(admixPrefix, sd.usedMask(), sd.nFam(), nUsed, extractFile, excludeFile, nSnpPerChunk);

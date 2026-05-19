@@ -105,7 +105,7 @@ class SPAmixPlusMethod : public MethodBase {
     }
 
     std::string getHeaderColumns() const override {
-        return "\tP\tZ\tBETA";
+        return "\tP\tBETA\tSE";
     }
 
     void prepareChunk(const std::vector<uint64_t> &gIndices) override;
@@ -244,6 +244,9 @@ void runSPAmixPlus(
     double minMacCutoff,
     double hweCutoff,
     const std::string &keepFile = {},
-    const std::string &removeFile = {}
-
+    const std::string &removeFile = {},
+    const std::string &traitTypeStr = {},
+    const std::string &phenoNameSpec = {},
+    const std::vector<std::string> &covarNames = {},
+    bool saveResid = false
 );

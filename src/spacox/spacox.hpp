@@ -97,11 +97,11 @@ class SPACoxMethod : public MethodBase {
     std::unique_ptr<MethodBase> clone() const override;
 
     int resultSize() const override {
-        return 2;
+        return 3;
     }
 
     std::string getHeaderColumns() const override {
-        return "\tP\tZ";
+        return "\tP\tBETA\tSE";
     }
 
     void getResultVec(
@@ -196,11 +196,20 @@ class SPACoxMethod : public MethodBase {
 // `S` is the pre-computed inner product GVec · m_resid; passing it in
 // lets getResultBatch fold all B such dot products into a single GEMV
 // and avoids recomputing the per-marker dot inside the SPA core.
+//
+// `outScoreVar` returns the score variance used to scale `S`: the
+// stage-1 value `varResid · Σ (G − 2·MAF)²` or, when the covariate-
+// adjusted SPA branch fires, the stage-2 value
+// `varResid · ‖adjGVec‖²`.  Reported BETA = S / Var(S),
+// SE = 1 / sqrt(Var(S)) consume this variance so that both stages
+// share the same nominal Fisher information.  Set to zero for
+// degenerate markers where Var(S) ≤ 0.
     double getMarkerPvalCore(
         const Eigen::Ref<const Eigen::VectorXd> &GVec,
         double altFreq,
         double S,
-        double &zScore
+        double &zScore,
+        double &outScoreVar
     );
 
 // Read-only shared data (references are stable because the owner outlives all clones).
@@ -239,5 +248,8 @@ void runSPACox(
     double minMacCutoff,
     double hweCutoff,
     const std::string &keepFile = {},
-    const std::string &removeFile = {}
+    const std::string &removeFile = {},
+    const std::string &traitTypeStr = {},                  // empty → residual-passthrough path
+    const std::string &phenoNameSpec = {},                 // raw --pheno-name string (Cox: TIME:EVENT,...)
+    bool saveResid = false
 );

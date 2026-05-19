@@ -342,3 +342,29 @@ All downstream consumers — the empirical CGF table built by `buildCumulantTabl
 ### 6.4 Practical guidance for `Residual` users
 
 If a user supplies residuals from a non-Cox null model (linear regression residuals, deviance residuals from a GLM, etc.), those residuals already satisfy $\sum_i R_i = 0$ by the corresponding orthogonality conditions and no further action is required. If the user supplies a raw phenotype vector (as a numerical convenience, not a model residual), the centring line in `runSPACox` reduces SPACox to a test based on the deviation $R - \bar{R}$; the resulting p-value remains a valid two-sided test under the empirical permutation null, but does not adjust for the original covariates. Users who require covariate adjustment should fit a null model first and pass its residuals to the `Residual` path, or use the `time-to-event` path directly.
+
+## 7. Output Columns
+
+For each marker, `SPACoxMethod::getResultVec` writes three method-specific
+columns appended to the standard meta block
+(`CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC HWE_P`):
+
+| Column | Definition                                                                                  |
+|--------|---------------------------------------------------------------------------------------------|
+| `P`    | Two-sided p-value: normal approximation (16) when the absolute z-statistic is below `spaCutoff`, otherwise the saddlepoint p-value from (16)–(17). |
+| `BETA` | Score-test effect estimate $\hat\beta = S / \widehat{\mathbb{V}}(S)$, with $S$ and $\widehat{\mathbb{V}}(S)$ from (26).      |
+| `SE`   | Standard error $\widehat{\mathrm{SE}}(\hat\beta) = 1 / \sqrt{\widehat{\mathbb{V}}(S)}$.                                       |
+
+Because Cox martingale residuals (and any residual vector centred via §6.3)
+satisfy $\sum_i R_i = 0$, the score is already mean-zero and the reported
+$\hat\beta$ is on the log-hazard-ratio scale of the null Cox model that
+produced the residuals. The score-test z-statistic remains exactly
+$Z = \hat\beta / \widehat{\mathrm{SE}}(\hat\beta)$ and is recoverable from
+the two columns. When the covariate-adjusted SPA branch (stage 2) fires,
+both `BETA` and `SE` are recomputed with the adjusted variance
+$\widehat{\mathbb{V}}_{\mathrm{adj}}(S) = \mathrm{varResid} \cdot
+\|\mathrm{adjGVec}\|^2$, so the two columns continue to encode the same
+$Z$ that the p-value uses. SPA only re-calibrates `P` in the tails; it
+does not alter `BETA` or `SE`. Markers with $\widehat{\mathbb{V}}(S) \le 0$
+(monomorphic, degenerate, or rejected by QC) report `NA` for `BETA` and
+`SE`.

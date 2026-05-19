@@ -256,12 +256,20 @@ void runPhiEstimation(
 );
 
 // Run per-ancestry GWAS with SPAmixLocalPlus.
-//   phenoFile:   phenotype file (columns selected by residNames)
-//   residNames:  column names to use as residuals from phenoFile
+//   phenoFile:   phenotype file
+//     - residual-path (default): supplies residual columns named by residNames
+//     - fit-path (phenoNameSpec non-empty): supplies phenotype columns
+//       (and optionally covariate columns when --covar is absent)
+//   residNames:  column names to use as residuals from phenoFile (residual-path)
 //   admixPrefix:  prefix for .abed/.bim/.fam
 //   admixPhiFile: pre-computed wide phi file
 //   outPrefix:   output prefix for per-phenotype GWAS results
 //   spaCutoff, outlierRatio, nthread, nSnpPerChunk: analysis params
+//   covarFile, covarNames, traitTypeStr, phenoNameSpec, saveResid:
+//     fit-path inputs.  phenoNameSpec non-empty switches the engine into
+//     fit-path mode; the null model is fitted internally (see
+//     util/null_model.hpp) and the resulting residuals feed the same
+//     downstream pipeline as the residual-path.
 void runSPAmixLocalPlus(
     const std::string &phenoFile,
     const std::vector<std::string> &residNames,
@@ -281,6 +289,10 @@ void runSPAmixLocalPlus(
     const std::string &keepFile = {},
     const std::string &removeFile = {},
     const std::string &extractFile = {},
-    const std::string &excludeFile = {}
-
+    const std::string &excludeFile = {},
+    const std::string &covarFile = {},
+    const std::vector<std::string> &covarNames = {},
+    const std::string &traitTypeStr = {},
+    const std::string &phenoNameSpec = {},
+    bool saveResid = false
 );

@@ -8,6 +8,7 @@
 #include "io/subject_data.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
+#include "util/null_model.hpp"
 #include "util/text_scanner.hpp"
 
 #include <algorithm>
@@ -308,7 +309,8 @@ double SPAGRMClass::getMarkerPval(
     const Eigen::VectorXd &GVec,
     double altFreq,
     double &zScore,
-    double gMean
+    double gMean,
+    double *outScoreVar
 ) {
     const auto &s = *m_shared;
     const double MAF = std::min(altFreq, 1.0 - altFreq);
@@ -317,6 +319,8 @@ double SPAGRMClass::getMarkerPval(
     const double Score = GVec.dot(s.resid) - gMean * s.resid_sum;
     const double G_var = 2.0 * MAF * (1.0 - MAF);
     const double Score_var = G_var * s.R_GRM_R;
+
+    if (outScoreVar) *outScoreVar = Score_var;
 
     // Guard: monomorphic or degenerate marker — skip SPA entirely
     if (Score_var <= 0.0 || MAF <= 0.0) {
@@ -383,12 +387,15 @@ double SPAGRMClass::getMarkerPval(
 double SPAGRMClass::getMarkerPvalFromScore(
     double Score,
     double altFreq,
-    double &zScore
+    double &zScore,
+    double *outScoreVar
 ) {
     const auto &s = *m_shared;
     const double MAF = std::min(altFreq, 1.0 - altFreq);
     const double G_var = 2.0 * MAF * (1.0 - MAF);
     const double Score_var = G_var * s.R_GRM_R;
+
+    if (outScoreVar) *outScoreVar = Score_var;
 
     if (Score_var <= 0.0 || MAF <= 0.0) {
         zScore = 0.0;
@@ -527,12 +534,32 @@ void runSPAGRM(
     double minMacCutoff,
     double hweCutoff,
     const std::string &keepFile,
-    const std::string &removeFile
+    const std::string &removeFile,
+    const std::string &traitTypeStr,
+    const std::string &phenoNameSpec,
+    const std::string &covarFile,
+    const std::vector<std::string> &covarNames,
+    bool saveResid
 ) {
+    const bool fitPath = !phenoNameSpec.empty();
+    nullmodel::TraitType traitT{};
+    std::vector<nullmodel::PhenoSpec> phenoSpecs;
+    if (fitPath) {
+        traitT = nullmodel::parseTraitType(traitTypeStr);
+        phenoSpecs = nullmodel::parsePhenoSpecList(traitT, phenoNameSpec);
+        infoMsg("SPAGRM: fitting %s null model for %zu phenotype(s)",
+                nullmodel::traitTypeName(traitT), phenoSpecs.size());
+    }
+
     infoMsg("Loading pheno file: %s", phenoFile.c_str());
     auto famIIDs = parseGenoIIDs(geno);
     SubjectData sd(std::move(famIIDs));
-    sd.loadResidOne(phenoFile, residNames);
+    if (fitPath) {
+        sd.loadPhenoFile(phenoFile, nullmodel::columnsNeeded(phenoSpecs));
+    } else {
+        sd.loadResidOne(phenoFile, residNames);
+    }
+    if (!covarFile.empty()) sd.loadCovar(covarFile, covarNames);
     sd.setKeepRemove(keepFile, removeFile);
     sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
     sd.setGenoLabel(geno.flagLabel());
@@ -540,6 +567,40 @@ void runSPAGRM(
     sd.finalize();
     const uint32_t N = sd.nUsed();
     infoMsg("  %u subjects in union mask", N);
+
+    if (fitPath) {
+        Eigen::MatrixXd covarUnion;
+        if (!covarNames.empty()) {
+            covarUnion = sd.getColumns(covarNames);
+        } else if (sd.hasCovar()) {
+            covarUnion = sd.covar();
+        } else {
+            covarUnion.resize(N, 0);
+        }
+        nullmodel::EngineOptions eo;
+        eo.nthreads = nthreads;
+        auto fits = nullmodel::fitAll(sd, phenoSpecs, traitT, covarUnion, eo);
+        std::vector<Eigen::VectorXd> rs;
+        std::vector<std::string> ns;
+        rs.reserve(fits.size());
+        ns.reserve(fits.size());
+        for (auto &f : fits) {
+            infoMsg("  Fitted '%s': %d subjects after NaN removal",
+                    f.name.c_str(), f.nUsedRows);
+            rs.push_back(std::move(f.residuals));
+            ns.push_back(f.name);
+        }
+        if (saveResid) {
+            std::vector<nullmodel::NullModelFit> dumpFits(rs.size());
+            for (size_t i = 0; i < rs.size(); ++i) {
+                dumpFits[i].name = ns[i];
+                dumpFits[i].residuals = rs[i];
+                dumpFits[i].nUsedRows = static_cast<int>(rs[i].size());
+            }
+            nullmodel::writeResidualsFile(outPrefix + ".null.resid", sd, dumpFits);
+        }
+        sd.setResidualsFromFit(std::move(rs), std::move(ns));
+    }
 
     auto subjIDs = sd.usedIIDs();
     auto subjIdMap = text::buildIIDMap(subjIDs);

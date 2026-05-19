@@ -1214,3 +1214,26 @@ This approach achieves computational efficiency (avoiding full $3^n$ enumeration
 - **Uncentered genotype MGFs** (Eq. 13-47): MGF derived for $G_i \sim \text{Binomial}(2,f)$
 - **Centered score matching** (Eq. 2, 65): Saddlepoint equation matches centered observed score
 - **Two-stage adjustment**: First centering (Eq. 2) for mean, then scaling (Eq. 64) for variance
+
+## Output Columns
+
+For each marker, `SPAGRMMethod` writes three method-specific columns
+appended to the standard meta block
+(`CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC HWE_P`):
+
+| Column | Definition |
+|--------|------------|
+| `P`    | Two-sided p-value: normal approximation when the absolute z-statistic is below `spaCutoff`, otherwise the SPA tail probability (§8). |
+| `BETA` | Score-test effect estimate $\hat\beta = S / \mathrm{Var}(S)$, with $S$ the centred score from (2) and $\mathrm{Var}(S) = 2\,\mathrm{MAF}\,(1-\mathrm{MAF})\,\mathbf{R}^\top\Phi\mathbf{R}$ the nominal score variance (§2). |
+| `SE`   | Standard error $\widehat{\mathrm{SE}}(\hat\beta) = 1 / \sqrt{\mathrm{Var}(S)}$. |
+
+The SPA variance-ratio correction (§7) rescales the score for the
+saddlepoint tail computation but does not enter `BETA` or `SE`; the two
+columns always reflect the nominal Fisher information at the null, so
+the score-test z-statistic $Z = \hat\beta / \widehat{\mathrm{SE}}(\hat\beta)$
+is recoverable from them. The scale of $\hat\beta$ is determined by the
+null model that produced the residuals $\mathbf{R}$: log-odds-ratio for a
+logistic null model, log-hazard-ratio for a Cox null model, and a linear
+regression coefficient for a linear null model. Markers with
+$\mathrm{Var}(S) \le 0$ (monomorphic or rejected by QC) report `NA` for
+`BETA` and `SE`.

@@ -6,6 +6,7 @@
 #include "io/subject_data.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
+#include "util/null_model.hpp"
 
 #include <cmath>
 #include <limits>
@@ -408,7 +409,8 @@ double SPACoxMethod::getMarkerPvalCore(
     const Eigen::Ref<const Eigen::VectorXd> &GVec,
     double altFreq,
     double S,
-    double &zScore
+    double &zScore,
+    double &outScoreVar
 ) {
 
     // S is pre-computed by the caller as GVec · m_resid.  Inside
@@ -428,6 +430,7 @@ double SPACoxMethod::getMarkerPvalCore(
         sumAdjG2 += adj * adj;
     }
     double VarS = m_varResid * sumAdjG2;
+    outScoreVar = VarS;
     if (VarS <= 0.0) {
         zScore = 0.0;
         return std::numeric_limits<double>::quiet_NaN();
@@ -467,6 +470,7 @@ double SPACoxMethod::getMarkerPvalCore(
     m_design.adjustGenotype(gp, tlScratch.nzSet.data(), nNz, tlScratch.adjGVec);
 
     VarS = m_varResid * tlScratch.adjGVec.squaredNorm();
+    outScoreVar = VarS;
     if (VarS <= 0.0) {
         zScore = 0.0;
         return std::numeric_limits<double>::quiet_NaN();
@@ -535,11 +539,17 @@ void SPACoxMethod::getResultVec(
     //
     // See docs/methods/spacox.md §6 for the full derivation.
     const double S = GVec.dot(m_resid);
-    double zScore;
-    double pval = getMarkerPvalCore(GVec, altFreq, S, zScore);
+    double zScore, scoreVar;
+    double pval = getMarkerPvalCore(GVec, altFreq, S, zScore, scoreVar);
 
     result.push_back(pval);
-    result.push_back(zScore);
+    if (scoreVar > 0.0) {
+        result.push_back(S / scoreVar);
+        result.push_back(1.0 / std::sqrt(scoreVar));
+    } else {
+        result.push_back(std::numeric_limits<double>::quiet_NaN());
+        result.push_back(std::numeric_limits<double>::quiet_NaN());
+    }
 }
 
 // ======================================================================
@@ -583,12 +593,20 @@ void SPACoxMethod::getResultBatch(
     const Eigen::VectorXd scores = GBatch.transpose() * m_resid;
 
     for (int b = 0; b < B; ++b) {
-        results[b].clear();
-        results[b].reserve(2);
-        double zScore;
-        double pval = getMarkerPvalCore(GBatch.col(b), altFreqs[b], scores[b], zScore);
-        results[b].push_back(pval);
-        results[b].push_back(zScore);
+        auto &r = results[b];
+        r.clear();
+        r.reserve(3);
+        double zScore, scoreVar;
+        double pval =
+            getMarkerPvalCore(GBatch.col(b), altFreqs[b], scores[b], zScore, scoreVar);
+        r.push_back(pval);
+        if (scoreVar > 0.0) {
+            r.push_back(scores[b] / scoreVar);
+            r.push_back(1.0 / std::sqrt(scoreVar));
+        } else {
+            r.push_back(std::numeric_limits<double>::quiet_NaN());
+            r.push_back(std::numeric_limits<double>::quiet_NaN());
+        }
     }
 }
 
@@ -614,20 +632,76 @@ void runSPACox(
     double minMacCutoff,
     double hweCutoff,
     const std::string &keepFile,
-    const std::string &removeFile
+    const std::string &removeFile,
+    const std::string &traitTypeStr,
+    const std::string &phenoNameSpec,
+    bool saveResid
 ) {
+    // ---- Decide path: residual passthrough vs in-process null-model fit ----
+    const bool fitPath = !phenoNameSpec.empty();
+    nullmodel::TraitType traitT{};
+    std::vector<nullmodel::PhenoSpec> phenoSpecs;
+    if (fitPath) {
+        traitT = nullmodel::parseTraitType(traitTypeStr);
+        phenoSpecs = nullmodel::parsePhenoSpecList(traitT, phenoNameSpec);
+        infoMsg("SPACox: fitting %s null model for %zu phenotype(s)",
+                nullmodel::traitTypeName(traitT), phenoSpecs.size());
+    }
 
-    // ---- Load resid file and covariate data ----
+    // ---- Load resid/pheno file and covariate data ----
     infoMsg("Loading pheno file: %s", phenoFile.c_str());
     auto famIIDs = parseGenoIIDs(geno);
     SubjectData sd(std::move(famIIDs));
-    sd.loadResidOne(phenoFile, residNames);
-    if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile);
+    if (fitPath) {
+        sd.loadPhenoFile(phenoFile, nullmodel::columnsNeeded(phenoSpecs));
+    } else {
+        sd.loadResidOne(phenoFile, residNames);
+        if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile);
+    }
     if (!covarFile.empty()) sd.loadCovar(covarFile, covarNames);
     sd.setKeepRemove(keepFile, removeFile);
     sd.setGenoLabel(geno.flagLabel());
     sd.finalize();
     infoMsg("  %u subjects in union mask", sd.nUsed());
+
+    // ---- If fit-path, run the null-model engine and inject residuals ----
+    if (fitPath) {
+        Eigen::MatrixXd covarUnion;
+        if (!covarNames.empty()) {
+            covarUnion = sd.getColumns(covarNames);
+        } else if (sd.hasCovar()) {
+            covarUnion = sd.covar();
+        } else {
+            covarUnion.resize(sd.nUsed(), 0);
+        }
+        nullmodel::EngineOptions eo;
+        eo.nthreads = nthread;
+        auto fits = nullmodel::fitAll(sd, phenoSpecs, traitT, covarUnion, eo);
+
+        std::vector<Eigen::VectorXd> rs;
+        std::vector<std::string> ns;
+        rs.reserve(fits.size());
+        ns.reserve(fits.size());
+        for (auto &f : fits) {
+            infoMsg("  Fitted '%s': %d subjects after NaN removal",
+                    f.name.c_str(), f.nUsedRows);
+            rs.push_back(std::move(f.residuals));
+            ns.push_back(f.name);
+        }
+        if (saveResid) {
+            // Rebuild fits vector with already-moved-from residuals for the writer:
+            // we cannot reuse fits[*].residuals (moved into rs).  Reconstruct
+            // NullModelFit views from rs/ns for writing.
+            std::vector<nullmodel::NullModelFit> dumpFits(rs.size());
+            for (size_t i = 0; i < rs.size(); ++i) {
+                dumpFits[i].name = ns[i];
+                dumpFits[i].residuals = rs[i];
+                dumpFits[i].nUsedRows = static_cast<int>(rs[i].size());
+            }
+            nullmodel::writeResidualsFile(outPrefix + ".null.resid", sd, dumpFits);
+        }
+        sd.setResidualsFromFit(std::move(rs), std::move(ns));
+    }
 
     // ---- Build design-matrix (intercept + covariates) at union dimension ----
     infoMsg("Building design matrix projection...");

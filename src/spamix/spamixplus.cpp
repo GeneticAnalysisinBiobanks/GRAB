@@ -6,6 +6,7 @@
 
 #include "spamix/spamixplus.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -27,6 +28,7 @@
 #include "io/subject_data.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
+#include "util/null_model.hpp"
 
 // ======================================================================
 // SPAmixPlusMethod — construction / clone
@@ -397,9 +399,10 @@ void SPAmixPlusMethod::getResultVec(
     double pval = markerPvalFromAF(m_AFVec, m_WVec, rawScore, zScore, VarS);
     double sqrtVarS = (VarS > 0.0) ? std::sqrt(VarS) : 0.0;
     double beta = (sqrtVarS > 0.0) ? zScore / sqrtVarS : 0.0;
+    double se   = (sqrtVarS > 0.0) ? 1.0 / sqrtVarS : 0.0;
     result.push_back(pval);
-    result.push_back(zScore);
     result.push_back(beta);
+    result.push_back(se);
 }
 
 // ======================================================================
@@ -472,13 +475,14 @@ void SPAmixPlusMethod::processScoreBatch(
         double pval = markerPvalFromAF(afCol, wCol, rawScore, zScore, VarS);
         double sqrtVarS = (VarS > 0.0) ? std::sqrt(VarS) : 0.0;
         double beta = (sqrtVarS > 0.0) ? zScore / sqrtVarS : 0.0;
+        double se   = (sqrtVarS > 0.0) ? 1.0 / sqrtVarS : 0.0;
 
         auto &r = results[b];
         r.clear();
         r.reserve(3);
         r.push_back(pval);
-        r.push_back(zScore);
         r.push_back(beta);
+        r.push_back(se);
     }
 }
 
@@ -535,13 +539,14 @@ void SPAmixPlusMethod::getResultBatch(
         double pval = markerPvalFromAF(afCol, wCol, rawScore, zScore, VarS);
         double sqrtVarS = (VarS > 0.0) ? std::sqrt(VarS) : 0.0;
         double beta = (sqrtVarS > 0.0) ? zScore / sqrtVarS : 0.0;
+        double se   = (sqrtVarS > 0.0) ? 1.0 / sqrtVarS : 0.0;
 
         auto &r = results[b];
         r.clear();
         r.reserve(3);
         r.push_back(pval);
-        r.push_back(zScore);
         r.push_back(beta);
+        r.push_back(se);
     }
 }
 
@@ -589,14 +594,45 @@ void runSPAmixPlus(
     double minMacCutoff,
     double hweCutoff,
     const std::string &keepFile,
-    const std::string &removeFile
+    const std::string &removeFile,
+    const std::string &traitTypeStr,
+    const std::string &phenoNameSpec,
+    const std::vector<std::string> &covarNames,
+    bool saveResid
 ) {
+    const bool fitPath = !phenoNameSpec.empty();
+    nullmodel::TraitType traitT{};
+    std::vector<nullmodel::PhenoSpec> phenoSpecs;
+    if (fitPath) {
+        traitT = nullmodel::parseTraitType(traitTypeStr);
+        phenoSpecs = nullmodel::parsePhenoSpecList(traitT, phenoNameSpec);
+        infoMsg("SPAmix: fitting %s null model for %zu phenotype(s)",
+                nullmodel::traitTypeName(traitT), phenoSpecs.size());
+    }
+
     // ---- Load residual file and PC data ----
     infoMsg("Loading pheno file: %s", phenoFile.c_str());
     auto famIIDs = parseGenoIIDs(geno);
     SubjectData sd(std::move(famIIDs));
-    sd.loadResidOne(phenoFile, residNames);
-    if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile);
+    if (fitPath) {
+        // Load PC columns + null-model phenotype columns + null-model
+        // covariates (when --covar is absent, --covar-name selects columns
+        // from --pheno) in a single pass.  loadPhenoFile rejects duplicate
+        // calls, so the column lists must be unioned here.
+        std::vector<std::string> wanted = pcColNames;
+        auto add = [&](const std::string &name) {
+            if (name.empty()) return;
+            if (std::find(wanted.begin(), wanted.end(), name) == wanted.end())
+                wanted.push_back(name);
+        };
+        for (const auto &name : nullmodel::columnsNeeded(phenoSpecs)) add(name);
+        if (covarFile.empty())
+            for (const auto &name : covarNames) add(name);
+        sd.loadPhenoFile(phenoFile, wanted);
+    } else {
+        sd.loadResidOne(phenoFile, residNames);
+        if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile);
+    }
     if (!covarFile.empty()) sd.loadCovar(covarFile, pcColNames);
     sd.setKeepRemove(keepFile, removeFile);
     if (!spgrmGrabFile.empty() || !spgrmGctaFile.empty())sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile,
@@ -609,6 +645,38 @@ void runSPAmixPlus(
     const int N = static_cast<int>(sd.nUsed());
     const int nPC = static_cast<int>(pcColNames.size());
     infoMsg("  %u subjects in union mask, %d PCs", sd.nUsed(), nPC);
+
+    if (fitPath) {
+        Eigen::MatrixXd covarUnion;
+        if (!covarNames.empty()) {
+            covarUnion = sd.getColumns(covarNames);
+        } else {
+            covarUnion.resize(sd.nUsed(), 0);
+        }
+        nullmodel::EngineOptions eo;
+        eo.nthreads = nthread;
+        auto fits = nullmodel::fitAll(sd, phenoSpecs, traitT, covarUnion, eo);
+        std::vector<Eigen::VectorXd> rs;
+        std::vector<std::string> ns;
+        rs.reserve(fits.size());
+        ns.reserve(fits.size());
+        for (auto &f : fits) {
+            infoMsg("  Fitted '%s': %d subjects after NaN removal",
+                    f.name.c_str(), f.nUsedRows);
+            rs.push_back(std::move(f.residuals));
+            ns.push_back(f.name);
+        }
+        if (saveResid) {
+            std::vector<nullmodel::NullModelFit> dumpFits(rs.size());
+            for (size_t i = 0; i < rs.size(); ++i) {
+                dumpFits[i].name = ns[i];
+                dumpFits[i].residuals = rs[i];
+                dumpFits[i].nUsedRows = static_cast<int>(rs[i].size());
+            }
+            nullmodel::writeResidualsFile(outPrefix + ".null.resid", sd, dumpFits);
+        }
+        sd.setResidualsFromFit(std::move(rs), std::move(ns));
+    }
 
     // ---- Design matrix: [1 | PCs] at union dimension ----
     Eigen::MatrixXd unionPCs = sd.getColumns(pcColNames);

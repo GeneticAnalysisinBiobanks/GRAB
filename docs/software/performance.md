@@ -337,7 +337,7 @@ Utility modes use `SubjectSet` directly (no phenotype loading).
 | Input | Single-column `--pheno --resid-name`, optional `--covar` |
 | GRM | Not required |
 | Engine | `multiPhenoEngine` |
-| MethodBase | `SPACoxMethod`, `resultSize() = 2` (P, Z) |
+| MethodBase | `SPACoxMethod`, `resultSize() = 3` (P, BETA, SE) |
 
 **Pre-marker setup:**
 
@@ -376,7 +376,7 @@ Utility modes use `SubjectSet` directly (no phenotype loading).
 | Input | Single-column `--pheno --resid-name` |
 | GRM | Required (`--sp-grm-*` + `--pairwise-ibd`) |
 | Engine | `multiPhenoEngine` |
-| MethodBase | `SPAGRMMethod`, `resultSize() = 2` (P, Z) |
+| MethodBase | `SPAGRMMethod`, `resultSize() = 3` (P, BETA, SE) |
 
 **Pre-marker setup:**
 
@@ -458,7 +458,7 @@ Output: `P_G, P_GxE1, P_GxE2, ..., Z_G, Z_GxE1, Z_GxE2, ...`.
 | Input | Multi-column `--pheno --resid-name` + `--pc-cols` |
 | GRM | Optional |
 | Engine | `multiPhenoEngine` |
-| MethodBase | `SPAmixPlusMethod`, `resultSize() = 3` (P, Z, BETA) |
+| MethodBase | `SPAmixPlusMethod`, `resultSize() = 3` (P, BETA, SE) |
 
 **Pre-marker setup:**
 
@@ -866,11 +866,11 @@ inline SimdLevel simdLevel();  // cached, thread-safe
 
 | Method | Input Type | GRM | Engine | MethodBase | Result Cols | SIMD |
 | ------ | ---------- | --- | ------ | ---------- | ----------- | ---- |
-| SPACox | 1-col resid | No | `multiPhenoEngine` | SPACoxMethod | 2 | — |
-| SPAGRM | 1-col resid | Yes | `multiPhenoEngine` | SPAGRMMethod | 2 | — |
+| SPACox | 1-col resid | No | `multiPhenoEngine` | SPACoxMethod | 3 (P, BETA, SE) | — |
+| SPAGRM | 1-col resid | Yes | `multiPhenoEngine` | SPAGRMMethod | 3 (P, BETA, SE) | — |
 | SAGELD | Multi-col G×E resid | Yes | `markerEngine` | SAGELDMethod | 2×nEnv | — |
-| SPAmixPlus | Multi-col resid + PCs | Optional | `multiPhenoEngine` | SPAmixPlusMethod | 3 | — |
-| SPAmixLocalPlus | Multi-col resid + .abed + .phi | Via phi | `runUnifiedGWAS` | Custom | 6×K | 512/2/— |
+| SPAmixPlus | Multi-col resid + PCs | Optional | `multiPhenoEngine` | SPAmixPlusMethod | 3 (P, BETA, SE) | — |
+| SPAmixLocalPlus | Multi-col resid + .abed + .phi | Via phi | `runUnifiedGWAS` | Custom | 6×K (per anc: MISS_RATE, ALT_FREQ, MAC, P, BETA, SE) | 512/2/— |
 | WtCoxG | Binary/surv pheno + ref AF | Optional | `multiPhenoEngine` | WtCoxGMethod | 5 | — |
 | LEAF | Binary/surv pheno + ref AF | Optional | `multiPhenoEngine` | LEAFMethod | 3+K | Built-ins |
 | SPAsqr | Quant pheno + taus | Yes | `multiPhenoEngine` or `locoEngine` | SPAsqrMethod | 3+ | — |

@@ -354,3 +354,22 @@ $$
 where $\widehat{\mathbb{V}}(S)$ is either $\widehat{\mathbb{V}}_{\text{diag}}(S)$ from (8) for SPAmix or $\widehat{\mathbb{V}}_{\text{GRM}}(S)$ from (9) for SPAmixPlus.
 
 This avoids numerical instability in the SPA for statistics close to the mean.
+
+## 6. Output Columns
+
+For each marker, `SPAmixPlusMethod` writes three method-specific columns
+appended to the standard meta block
+(`CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC HWE_P`):
+
+| Column | Definition |
+|--------|------------|
+| `P`    | Two-sided p-value: normal approximation (46) when the absolute z-statistic in (45) is below `spaCutoff`, otherwise the saddlepoint p-value from (43)–(44). |
+| `BETA` | Score-test effect estimate $\hat\beta = (S - \mathbb{E}[S]) / \widehat{\mathbb{V}}(S)$. |
+| `SE`   | Standard error $\widehat{\mathrm{SE}}(\hat\beta) = 1 / \sqrt{\widehat{\mathbb{V}}(S)}$. |
+
+The score-test z-statistic of (45) is not emitted as a separate column; it is
+recoverable as $Z = \hat\beta / \widehat{\mathrm{SE}}(\hat\beta)$. The
+saddlepoint adjustment re-calibrates only `P` in the tails; both `BETA`
+and `SE` consume the same nominal $\widehat{\mathbb{V}}(S)$ that the
+normal approximation uses. Markers with $\widehat{\mathbb{V}}(S) \le 0$
+(monomorphic or rejected by QC) report `NA` for `BETA` and `SE`.

@@ -141,11 +141,17 @@ class SPAGRMClass {
     SPAGRMClass(const SPAGRMClass &o);
     SPAGRMClass &operator=(const SPAGRMClass &) = delete;
 
+    // `outScoreVar`, when non-null, receives the nominal variance
+    // Var(S) = 2·MAF·(1−MAF)·Rᵀ Φ R that drives the normal-approximation
+    // z-score; callers reporting BETA / SE consume it to form
+    // BETA = S / Var(S) and SE = 1 / sqrt(Var(S)).  Set to zero for
+    // monomorphic or degenerate markers (Var(S) ≤ 0).
     double getMarkerPval(
         const Eigen::VectorXd &GVec,
         double altFreq,
         double &zScore,
-        double gMean = std::numeric_limits<double>::quiet_NaN()
+        double gMean = std::numeric_limits<double>::quiet_NaN(),
+        double *outScoreVar = nullptr
     );
 
     // Fast path: caller pre-computes Score = GVec.dot(m_resid) - gMean * m_resid_sum
@@ -153,7 +159,8 @@ class SPAGRMClass {
     double getMarkerPvalFromScore(
         double Score,
         double altFreq,
-        double &zScore
+        double &zScore,
+        double *outScoreVar = nullptr
     );
 
     const Eigen::VectorXd &resid() const {
@@ -215,11 +222,11 @@ class SPAGRMMethod : public MethodBase {
     }
 
     int resultSize() const override {
-        return 2;
+        return 3;
     }
 
     std::string getHeaderColumns() const override {
-        return "\tP\tZ";
+        return "\tP\tBETA\tSE";
     }
 
     void getResultVec(
@@ -229,10 +236,17 @@ class SPAGRMMethod : public MethodBase {
         std::vector<double> &result
     ) override {
         result.clear();
-        double z;
-        double p = m_spagrm.getMarkerPval(GVec, altFreq, z);
-        result.push_back(p);
-        result.push_back(z);
+
+        // Compute Score externally so the BETA = S / Var(S) reduction below
+        // has Score in hand; getMarkerPvalFromScore returns Var(S) via
+        // outScoreVar so the SPA-adjusted p-value and the score-test BETA
+        // share the same nominal variance.
+        const double gMean = GVec.mean();
+        const double Score =
+            GVec.dot(m_spagrm.resid()) - gMean * m_spagrm.residSum();
+        double z, scoreVar;
+        double p = m_spagrm.getMarkerPvalFromScore(Score, altFreq, z, &scoreVar);
+        pushPvalBetaSe(p, Score, scoreVar, result);
     }
 
     // Batch analysis: fuse B dot products into one matrix-vector multiply.
@@ -261,11 +275,10 @@ class SPAGRMMethod : public MethodBase {
 
         // Per-marker SPA (not batchable)
         for (int b = 0; b < B; ++b) {
-            results[b].clear();
-            double z;
-            double p = m_spagrm.getMarkerPvalFromScore(scores[b], altFreqs[b], z);
-            results[b].push_back(p);
-            results[b].push_back(z);
+            double z, scoreVar;
+            double p = m_spagrm.getMarkerPvalFromScore(
+                scores[b], altFreqs[b], z, &scoreVar);
+            pushPvalBetaSe(p, scores[b], scoreVar, results[b]);
         }
     }
 
@@ -318,11 +331,33 @@ class SPAGRMMethod : public MethodBase {
         for (int b = 0; b < B; ++b) {
             const double gMean = gSums[b] * invN;
             const double centeredScore = scores(0, b) - gMean * residSum;
-            results[b].clear();
-            double z;
-            double p = m_spagrm.getMarkerPvalFromScore(centeredScore, altFreqs[b], z);
-            results[b].push_back(p);
-            results[b].push_back(z);
+            double z, scoreVar;
+            double p = m_spagrm.getMarkerPvalFromScore(
+                centeredScore, altFreqs[b], z, &scoreVar);
+            pushPvalBetaSe(p, centeredScore, scoreVar, results[b]);
+        }
+    }
+
+  private:
+    // Emit (P, BETA, SE) using the SPAGRM score-test reduction
+    // BETA = Score / Var(S), SE = 1 / sqrt(Var(S)).  Var(S) ≤ 0 marks
+    // monomorphic / degenerate markers; both BETA and SE become NaN there
+    // so downstream code can recognise them as missing.
+    static void pushPvalBetaSe(
+        double p,
+        double score,
+        double scoreVar,
+        std::vector<double> &out
+    ) {
+        out.clear();
+        out.reserve(3);
+        out.push_back(p);
+        if (scoreVar > 0.0) {
+            out.push_back(score / scoreVar);
+            out.push_back(1.0 / std::sqrt(scoreVar));
+        } else {
+            out.push_back(std::numeric_limits<double>::quiet_NaN());
+            out.push_back(std::numeric_limits<double>::quiet_NaN());
         }
     }
 
@@ -354,5 +389,10 @@ void runSPAGRM(
     double minMacCutoff,
     double hweCutoff,
     const std::string &keepFile = {},
-    const std::string &removeFile = {}
+    const std::string &removeFile = {},
+    const std::string &traitTypeStr = {},
+    const std::string &phenoNameSpec = {},
+    const std::string &covarFile = {},
+    const std::vector<std::string> &covarNames = {},
+    bool saveResid = false
 );
