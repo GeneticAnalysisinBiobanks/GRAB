@@ -153,10 +153,16 @@ public:
     return pval;
   }
   
-  double getMarkerPval(arma::vec t_GVec, 
-                       double t_MAF,
+  double getMarkerPval(arma::vec t_GVec,
+                       double t_altFreq,
                        double& t_zScore)
   {
+    // Main.cpp::mainMarkerInCPP passes the un-flipped ALT allele frequency;
+    // imputeGenoAndFlip has already recoded t_GVec to the minor allele when
+    // t_altFreq > 0.5, so the sample mean of t_GVec is 2 * MAF, not
+    // 2 * t_altFreq.  Compute MAF here and use it for centring / SPA.
+    double t_MAF = std::min(t_altFreq, 1 - t_altFreq);
+
     double S = sum(t_GVec % m_mresid);
     arma::vec adjGVec = t_GVec - 2 * t_MAF;
     arma::vec adjGVec2 = pow(adjGVec, 2);

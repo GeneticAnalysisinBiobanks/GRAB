@@ -476,10 +476,17 @@ LEAF.fitWtGLM <- function(response, designMat, RefPrevalence) {
 
   weights <- calRegrWeight(response, RefPrevalence)
 
-  residuals <- glm.fit(
+  # glm.fit()$residuals returns the *working* residual
+  # (y - mu_hat) / [mu_hat * (1 - mu_hat)] for the canonical-link logistic.
+  # Downstream LEAF score machinery (Sum G_i * R_i, R_tilde = R - mean(R),
+  # var.ratio.* terms) requires the *response* residual y - mu_hat, the same
+  # convention used by the time-to-event branch (martingale residuals from
+  # coxph()).
+  fit <- glm.fit(
     designMat, response, weights = weights,
     family = binomial(), intercept = TRUE
-  )$residuals
+  )
+  residuals <- as.numeric(response) - fit$fitted.values
 
   return(list(
     weights= weights,
