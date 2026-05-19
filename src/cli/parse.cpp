@@ -7,6 +7,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 
 namespace cli {
 
@@ -79,6 +80,19 @@ Args parseArgs(
     char *argv[]
 ) {
     Args a;
+    std::unordered_set<std::string> seenFlags;
+
+    // Reject any flag that appears more than once.  Every scalar field in
+    // Args (string / double / bool) is overwritten by a later occurrence,
+    // so a duplicate flag silently shadows the earlier one.  We refuse to
+    // guess intent and require the user to fix the command line.
+    auto markSeen = [&seenFlags](const std::string &flag) {
+        if (!seenFlags.insert(flag).second) {
+            std::cerr << "Error: " << flag << " specified more than once.\n";
+            std::exit(1);
+        }
+    };
+
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
 
@@ -90,6 +104,7 @@ Args parseArgs(
         }
 
         auto next = [&]() -> std::string {
+            markSeen(arg);
             if (i + 1 >= argc) {
                 std::cerr << "Error: missing value for " << arg << "\n";
                 std::exit(1);
@@ -104,7 +119,7 @@ Args parseArgs(
         else if (arg == "--pheno-name")a.phenoName = next();
         else if (arg == "--resid-name")a.residName = next();
         else if (arg == "--trait-type")a.traitType = next();
-        else if (arg == "--save-resid")a.saveResid = true;
+        else if (arg == "--save-resid") { markSeen(arg); a.saveResid = true; }
         else if (arg == "--pc-cols")a.pcCols = next();
         else if (arg == "--spasqr-taus")a.spasqrTaus = next();
         else if (arg == "--spasqr-tol")a.spasqrTol = parseDouble(next(), arg);
@@ -130,7 +145,7 @@ Args parseArgs(
         else if (arg == "--hwe")a.hweCutoff = parseDouble(next(), arg);
         else if (arg == "--outlier-iqr-threshold")a.outlierRatio = parseDouble(next(), arg);
         else if (arg == "--spasqr-outlier-abs-bound")a.outlierAbsBound = parseDouble(next(), arg);
-        else if (arg == "--spagrm-control-outlier")a.spagrmControlOutlier = true;
+        else if (arg == "--spagrm-control-outlier") { markSeen(arg); a.spagrmControlOutlier = true; }
         else if (arg == "--threads")a.nthread = parseInt(next(), arg);
         else if (arg == "--chunk-size")a.nSnpPerChunk = parseInt(next(), arg);
         else if (arg == "--leaf-nclusters")a.nClusters = parseInt(next(), arg);
@@ -151,11 +166,11 @@ Args parseArgs(
         else if (arg == "--compression")a.compression = next();
         else if (arg == "--compression-level")a.compressionLevel = parseInt(next(), arg);
         // --phi-maf-cutoff removed: hardcoded to 0.01 inside estimatePhiOneAncestry
-        else if (arg == "--cal-af-coef")a.calAfCoef = true;
-        else if (arg == "--cal-pairwise-ibd")a.calPairwiseIBD = true;
-        else if (arg == "--cal-phi")a.calPhi = true;
-        else if (arg == "--make-abed")a.makeAbed = true;
-        else if (arg == "--int-pheno")a.intPheno = true;
+        else if (arg == "--cal-af-coef")        { markSeen(arg); a.calAfCoef = true; }
+        else if (arg == "--cal-pairwise-ibd")   { markSeen(arg); a.calPairwiseIBD = true; }
+        else if (arg == "--cal-phi")            { markSeen(arg); a.calPhi = true; }
+        else if (arg == "--make-abed")          { markSeen(arg); a.makeAbed = true; }
+        else if (arg == "--int-pheno")          { markSeen(arg); a.intPheno = true; }
         else if (arg == "--min-maf-ibd")a.minMafIBD = parseDouble(next(), arg);
         else {
             std::cerr << "Error: unknown option: " << arg << "  (run 'grab --help' for usage)\n";
