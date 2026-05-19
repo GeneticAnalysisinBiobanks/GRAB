@@ -18,8 +18,7 @@
 namespace {
 
 // ──────────────────────────────────────────────────────────────────────
-// Logistic helpers (copy of src/polmm/polmm.cpp:57-76; POLMM keeps its
-// own copy unchanged).  Numerically stable sigmoid and its derivative.
+// Logistic helpers — numerically stable sigmoid and its derivative.
 // ──────────────────────────────────────────────────────────────────────
 
 inline double logistic(double x) {
@@ -484,10 +483,6 @@ Eigen::VectorXd logisticResiduals(
 // § 4  Fixed-effects cumulative-logit fit (proportional-odds model)
 //
 // Newton / Fisher-scoring fit of   logit P(Y ≤ j | X) = εⱼ − Xβ.
-// The fitting kernel is a verbatim transcription of src/polmm/polmm.cpp
-// fitCLM_initial (POLMM's CLM seed used as the initial point of its PQL
-// loop); POLMM keeps its own copy unchanged.
-//
 // After convergence the function reconstructs μ̂ᵢⱼ and iR̂ᵢⱼ and aggregates
 // the per-subject working residual.  See header for the residual definition
 // and the mean-zero convention.
@@ -525,7 +520,7 @@ CumulativeLogitFitResult cumulativeLogitFit(
     const int J = yMax + 1;
     const int Jm1 = J - 1;
 
-    // ── Initial values  (faithful copy of polmm.cpp fitCLM_initial) ────
+    // ── Initial values  (empirical cumulative log-odds for ε; β = 0) ───
     Eigen::VectorXd beta = Eigen::VectorXd::Zero(p);
     Eigen::VectorXd eps(Jm1);
 
@@ -571,7 +566,7 @@ CumulativeLogitFitResult cumulativeLogitFit(
     for (int j = 1; j < Jm1; ++j)
         eps(j) = std::max(eps(j), eps(j - 1) + 0.01);
 
-    // ── Working residual reconstruction  (mirrors polmm.cpp:446-470) ───
+    // ── Working residual reconstruction ────────────────────────────────
     //   νᵢⱼ = logistic(εⱼ − ηᵢ),     ν_{i,-1} = 0,  ν_{i,J-1} = 1
     //   μᵢⱼ = νᵢⱼ − ν_{i,j-1}
     //   mᵢⱼ = νᵢⱼ + ν_{i,j-1} − 1
@@ -609,7 +604,8 @@ CumulativeLogitFitResult cumulativeLogitFit(
     }
 
     // Mean-zero centering: see header §4 commentary.  This restores
-    // Σᵢ rᵢ = 0 but is not equivalent to POLMM's working-space projection.
+    // Σᵢ rᵢ = 0 but is not equivalent to the working-space projection
+    // performed by a mixed-model proportional-odds fit.
     resid.array() -= resid.mean();
 
     CumulativeLogitFitResult out;

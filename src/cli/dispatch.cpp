@@ -13,7 +13,6 @@
 #include "localplus/abed_convert_msp.hpp"
 #include "localplus/abed_convert_txt.hpp"
 #include "localplus/spamixlocalp.hpp"
-#include "polmm/polmm.hpp"
 #include "spacox/spacox.hpp"
 #include "spagrm/ibd.hpp"
 #include "spagrm/sageld.hpp"
@@ -517,8 +516,7 @@ int run(
     {
         const bool hasPhenoName = !args.phenoName.empty();
         const bool hasResidName = !args.residName.empty();
-        if (args.method == "SPAsqr" || args.method == "POLMM" ||
-            args.method == "WtCoxG" || args.method == "LEAF") {
+        if (args.method == "SPAsqr" || args.method == "WtCoxG" || args.method == "LEAF") {
             // Auto-populate from pheno file header when --pheno-name is absent
             if (!hasPhenoName && !args.phenoFile.empty()) {
                 phenoNames = SubjectData::readColumnNames(args.phenoFile);
@@ -554,7 +552,7 @@ int run(
 
     logArgsInEffect(args);
 
-    // Build suffix-based output path for single-file methods (SAGELD, POLMM, SPAsqr, WtCoxG, LEAF)
+    // Build suffix-based output path for single-file methods (SAGELD, SPAsqr, WtCoxG, LEAF)
     auto buildOutputPath = [&](const std::string &suffix) -> std::string {
         std::string path = args.outPrefix + suffix;
         if (args.compression == "gz") path += ".gz";
@@ -665,32 +663,6 @@ int run(
                 args.compressionLevel,
                 args.spaCutoff,
                 args.outlierRatio,
-                args.nthread,
-                args.nSnpPerChunk,
-                args.missingCutoff,
-                args.minMafCutoff,
-                args.minMacCutoff,
-                args.hweCutoff,
-                args.keepFile,
-                args.removeFile
-            );
-        }
-
-        // ── POLMM ───────────────────────────────────────────────────
-        else if (args.method == "POLMM") {
-            checkSpGrm(args, /*required=*/ true, "POLMM");
-            runPOLMM(
-                args.phenoFile,
-                effectiveCovarFile,
-                phenoNames,
-                covarNames,
-                geno,
-                args.spGrmGrabFile,
-                args.spGrmPlink2File,
-                args.outPrefix,
-                args.compression,
-                args.compressionLevel,
-                args.spaCutoff,
                 args.nthread,
                 args.nSnpPerChunk,
                 args.missingCutoff,

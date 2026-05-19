@@ -183,7 +183,7 @@ bool passQC = !(
 │       d. Impute missing genotypes with mean (2 × alt_freq)       │
 │                                                                  │
 │       e. Pass imputed genotype vector to method                  │
-│          (SPACox, SPAGRM, SPAmix, WtCoxG, POLMM, etc.)          │
+│          (SPACox, SPAGRM, SPAmix, WtCoxG, etc.)                 │
 │                                                                  │
 │       f. Format output line                                      │
 │                                                                  │
@@ -204,7 +204,7 @@ CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  [method-specific colu
 ### Multi-phenotype extension
 
 When `--resid-name` selects multiple columns, or multiple phenotypes are
-analysed (POLMM, WtCoxG, LEAF, SPAsqr):
+analysed (WtCoxG, LEAF, SPAsqr):
 
 1. **Union mask**: subjects present in **any** phenotype column.
 2. Genotypes decoded once per marker using the union mask.

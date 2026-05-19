@@ -17,7 +17,6 @@ opportunities.
 | E | GRM non-zero entries | 2–5 × N |
 | C | Covariates / PCs | 5 – 20 |
 | P | Phenotypes | 1 – 20 |
-| J | Ordinal levels (POLMM) | 2 – 10 |
 | K_τ | Quantile levels (SPAsqr) | 5 – 9 |
 | K_env | Environments (SAGELD) | 1 – 5 |
 | K_anc | Ancestries (SPAmixLocalPlus) | 2 – 3 |
@@ -44,9 +43,6 @@ marker streaming begins.
 | | Per marker | Score + GRM variance | O(N + E) | Chunk ∥ | O(N) without GRM |
 | **SPAmixLocalP** | Pre | RprodSoA build | O(E·K_anc) | Serial | Per residual column |
 | | Per marker | Batch score + phi variance | O(N·K_anc + E) | Chunk ∥ + AVX2 | 8-marker mini-batch |
-| **POLMM** | Pre (1) | PQL null model (PCG) | O(5000·E·J) | min(T,P) ∥ + T/P probes | Atomic work-stealing; block-diagonal Σ preconditioner |
-| | Pre (2) | Variance ratio estimation | O(480·E) | Serial | 120 SNPs × 4 MAC bins |
-| | Per marker | Score + ordinal SPA | O(N·C + N·J) | Chunk ∥ | O(1) bin lookup |
 | **WtCoxG** | Phase A | Shared loading + ref-AF + GRM | O(M_ref + N·C²) | Serial | `runWtCoxG` multi-pheno entry |
 | | Phase B | P null models | O(P·N·C²) | min(T,P) ∥ | Parallel regression |
 | | Phase C | 1× geno scan (P indicators) | O(M_ref·N·P) | Serial | Replaces P×`computeMarkerStats` |
@@ -90,7 +86,6 @@ marker streaming begins.
    - [SAGELD](#sageld)
    - [SPAmixPlus](#spamixplus)
    - [SPAmixLocalPlus](#spamixlocalplus)
-   - [POLMM](#polmm)
    - [WtCoxG](#wtcoxg)
    - [LEAF](#leaf)
    - [SPAsqr](#spasqr)
@@ -148,7 +143,7 @@ Per-marker flow inside a worker:
 #### `multiPhenoEngine` — multi-phenotype engine
 
 Used by methods that produce one output file **per phenotype**
-(SPACox, SPAGRM, SPAmixPlus, POLMM, WtCoxG, LEAF, SPAsqr).
+(SPACox, SPAGRM, SPAmixPlus, WtCoxG, LEAF, SPAsqr).
 
 Differences from `markerEngine`:
 
@@ -497,85 +492,6 @@ The per-ancestry score computation is not yet vectorized.
 
 ---
 
-### POLMM
-
-**Source:** `src/polmm/polmm.cpp` — `runPOLMM()`
-
-| Property | Value |
-| -------- | ----- |
-| Input | Ordinal `--pheno` (0..J−1) + `--covar` |
-| GRM | Required |
-| Engine | `multiPhenoEngine` |
-| Multi-phenotype | **K ≥ 1** (one PhenoTask per `--pheno-name` column) |
-| MethodBase | `POLMMMethod`, `resultSize() = 4` (P, Z, BETA, SE) |
-
-**Multi-phenotype work sharing:**
-
-| Step | Shared / Per-phenotype | Detail |
-| ---- | ---------------------- | ------ |
-| Load phenotype file | Shared | `loadPhenoFile()` + `finalize()` on union of all subjects |
-| Build `GenoData` | Shared | One union mask for all traits |
-| Load sparse GRM | Shared | `unionGrm` loaded once in union ordering |
-| Build per-phenotype mapping | Per-phenotype | `unionToLocal` / `localToUnion` excluding per-phenotype NaN subjects |
-| Re-index GRM | Per-phenotype | `reindexGrm()` extracts sub-GRM via `unionToLocal` |
-| Fit null model | Per-phenotype | `fitNullModel()` — PQL iteration (expensive) |
-| Compute test matrices | Per-phenotype | `computeTestMatrices()` — RPsiR, RymuVec, projections |
-| Estimate variance ratios | Per-phenotype | ~120 SNPs sampled per MAC bin; reads union genotypes, extracts per-phenotype subsets |
-| Marker-level genotype I/O | Shared | Decoded once per chunk, extracted K times |
-
-**Pre-marker setup — most expensive of all methods:**
-
-1. **Null model fitting** (`fitNullModel`):
-   - Cumulative logit initialization (β, ε cutpoints).
-   - Penalized Quasi-Likelihood (PQL) iteration:
-     - Inner: update β, random effects b, cutpoints ε (Newton-Raphson).
-     - Outer: estimate τ (variance ratio) via REML.
-   - **Hutchinson trace estimator**: stochastic trace of (V⁻¹ − ...) using
-     PCG solves with random probe vectors.  Dominant cost.
-
-2. **Test matrix precomputation**:
-   - Per-subject weights `RPsiR_i`, response residuals `RymuVec_i`.
-   - `XXR_Psi_RX`, `XR_Psi_R` matrices.
-
-3. **Variance ratio estimation** (`estimateVarianceRatiosFromUnion`):
-   - 4 MAC bins: [20,50), [50,100), [100,500), [500,∞).
-   - Sample ~120 SNPs per bin from union genotypes; extract per-phenotype
-     subsets via `localToUnion` mapping.
-   - Involves repeated PQL-like calculations per sampled SNP.
-
-**Per-marker test:**
-- Covariate adjustment: `adjG = G − X(X'WX)⁻¹X'WG`.
-- Score: `adjG · RymuVec`.
-- MAC-binned variance ratio lookup.
-- Custom ordinal SPA (supports J > 2 outcome levels).
-
-**Performance:**
-- Pre-marker (null model): O(5000·E·J) per phenotype — ~50 PQL outer
-  iterations × ~(30 Hutchinson probes + 1) PCG solves per iteration ×
-  ~100 CG iterations × O(E·J) per CG step.  Parallelized across P
-  phenotypes with min(T,P) threads; intra-phenotype Hutchinson probes
-  also parallelized (see below).
-- Pre-marker (variance ratios): O(480·(N·P + E)) — 120 sampled SNPs
-  × 4 MAC bins, each requiring PQL-like calculation.  Serial.
-- Per-marker: O(N·P) covariate adjustment + O(N·J) ordinal SPA +
-  O(1) MAC-bin variance ratio lookup.
-- Marker phase wall time: O(M·N·J / T).
-
-**Parallelization (pre-marker):**
-- Null model fits run in parallel with `min(T, K)` threads via
-  `std::thread` + `std::atomic<int>` work-stealing.
-- Block-diagonal Σ preconditioner: Σ = (Ψ⁻¹ + τ·K_ii·I)⁻¹ via
-  Sherman-Morrison, reducing CG iterations ~2–3× at O(J) cost per
-  subject.
-- Intra-phenotype parallelism: when K < T, each worker gets
-  `nt = floor(T/K)` threads.  The 30 Hutchinson trace probes (each an
-  independent PCG solve — the dominant cost) are dispatched across `nt`
-  threads via atomic work-stealing, giving near-linear speedup on ~97%
-  of null-model wall time.  Probe vectors are pre-generated sequentially
-  for deterministic results regardless of thread count.
-
----
-
 ### WtCoxG
 
 **Source:** `src/wtcoxg/wtcoxg.cpp` — `runWtCoxG()` / `runWtCoxGPheno()`
@@ -897,7 +813,6 @@ inline SimdLevel simdLevel();  // cached, thread-safe
 | SAGELD | Multi-col G×E resid | Yes | `markerEngine` | SAGELDMethod | 2×nEnv | — |
 | SPAmixPlus | Multi-col resid + PCs | Optional | `multiPhenoEngine` | SPAmixPlusMethod | 3 | — |
 | SPAmixLocalPlus | Multi-col resid + .abed + .phi | Via phi | `runUnifiedGWAS` | Custom | 6×K | 512/2/— |
-| POLMM | Ordinal pheno | Yes | `multiPhenoEngine` | POLMMMethod | 4 | — |
 | WtCoxG | Binary/surv pheno + ref AF | Optional | `multiPhenoEngine` | WtCoxGMethod | 5 | — |
 | LEAF | Binary/surv pheno + ref AF | Optional | `multiPhenoEngine` | LEAFMethod | 3+K | Built-ins |
 | SPAsqr | Quant pheno + taus | Yes | `multiPhenoEngine` or `locoEngine` | SPAsqrMethod | 3+ | — |

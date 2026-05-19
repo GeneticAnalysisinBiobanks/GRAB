@@ -17,7 +17,7 @@ phenotype multiplexing, chromosome iteration, and residual missingness.
 | Task rebuild | never | never | never | per chromosome |
 | Chunk buffer scope | all chunks | all chunks | all chunks | one chromosome |
 | Writer architecture | dedicated thread | dedicated thread | dedicated thread | main thread (after join) |
-| Used by | SAGELD | SPACox, SPAGRM (drop), SPAmixPlus, POLMM, SPAsqr (drop), WtCoxG, LEAF | SPAGRM (impute, K>1), SPAsqr (impute, K>1) | SPAsqr-LOCO |
+| Used by | SAGELD | SPACox, SPAGRM (drop), SPAmixPlus, SPAsqr (drop), WtCoxG, LEAF | SPAGRM (impute, K>1), SPAsqr (impute, K>1) | SPAsqr-LOCO |
 
 ### `--pheno-missing` flag
 
@@ -47,7 +47,6 @@ effect and is silently ignored: the single-phenotype path is always used.
 | SPAsqr-LOCO | ✅ Yes | Via `locoEngine(…, imputeMode=true)` |
 | SPACox | ❌ | Loop bound `m_N`, const ref residuals, pre-computed `m_varResid` |
 | SPAmixPlus | ❌ | Outlier indices are per-phenotype, per-subject AF vector sized by `m_N`, GRM variance call uses `m_N` |
-| POLMM | ❌ | Internal `m_N` loops, ordinal model state not resizable |
 | WtCoxG | ❌ | Multi-phenotype dispatch is per-phenotype entry, internal size assumptions |
 | LEAF | ❌ | Same as WtCoxG (shared codebase) |
 | SAGELD | N/A | Single-phenotype only (`markerEngine`) |

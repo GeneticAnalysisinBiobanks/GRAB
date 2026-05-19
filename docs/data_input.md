@@ -75,7 +75,6 @@ The interpretation depends on the method:
 | Method          | Column(s)                                |
 | --------------- | ---------------------------------------- |
 | SPAsqr          | quantitative phenotype                   |
-| POLMM           | ordinal phenotype                        |
 | WtCoxG, LEAF    | binary *or* survival `TIME,EVENT`        |
 
 For WtCoxG/LEAF survival analysis, pass `TIME,EVENT` as two comma-separated
@@ -409,7 +408,6 @@ default.
 | SPAmix          | `--bfile/pfile/…` | `--resid-name`     | —                  | `--ind-af-coef`               |
 | SPAmixPlus      | `--bfile/pfile/…` | `--resid-name`     | `--sp-grm-*`       | `--ind-af-coef`               |
 | SPAmixLocalPlus | `--admix-bfile`   | `--resid-name`     | —                  | `--admix-phi`                 |
-| POLMM           | `--bfile/pfile/…` | `--pheno-name`     | `--sp-grm-*`       | —                             |
 | SPAsqr          | `--bfile/pfile/…` | `--pheno-name`     | `--sp-grm-*`       | `--pred-list` (LOCO)          |
 | WtCoxG          | `--bfile/pfile/…` | `--pheno-name`     | `--sp-grm-*`       | `--ref-af`                    |
 | LEAF            | `--bfile/pfile/…` | `--pheno-name`     | `--sp-grm-*`       | `--ref-af`                    |

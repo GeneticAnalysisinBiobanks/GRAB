@@ -20,14 +20,15 @@
 //                        weights are constant.
 //   coxResiduals       — Σ wᵢ rᵢ = 0 by construction of the Breslow baseline
 //                        hazard, independent of X.
-//   cumulativeLogitFit — the working residual is NOT automatically mean-zero
-//                        (POLMM normally absorbs the centering via an explicit
-//                        projection at marker-test time).  cumulativeLogitFit
-//                        therefore subtracts r.mean() before returning, so the
-//                        residual satisfies Σ rᵢ = 0 numerically.  This residual
-//                        is intended for the standalone fixed-effects path and
-//                        is NOT a substitute for POLMM's RymuVec in the mixed-
-//                        model path.
+//   cumulativeLogitFit — the working residual is NOT automatically mean-zero;
+//                        a mixed-model proportional-odds fit would absorb the
+//                        centering via an explicit covariate-space projection
+//                        at marker-test time.  cumulativeLogitFit therefore
+//                        subtracts r.mean() before returning, so the residual
+//                        satisfies Σ rᵢ = 0 numerically.  This residual is
+//                        intended for the standalone fixed-effects path and
+//                        is NOT a substitute for the working-space residual of
+//                        a mixed-model fit.
 //
 // All four functions accept a pre-formed design matrix and drop rows that
 // contain any NaN before fitting.  calRegrWeight (case-control sampling-
@@ -130,11 +131,12 @@ Eigen::VectorXd logisticResiduals(
 // by Fisher scoring with score-outer-product approximation to the Hessian
 // (mirrors R's MASS::polr(method = "logistic") / ordinal::clm(link = "logit")).
 //
-// This is the fixed-effects analogue of POLMM (the mixed-model version adds a
-// kinship-scaled random effect bᵢ to the linear predictor).  The fitted β̂ /
-// ε̂ are exposed in the raw parameterization (ε is NOT shifted to ε₀ = 0);
-// downstream consumers that need the POLMM identifiability convention should
-// apply the shift themselves.
+// This is the fixed-effects form of a proportional-odds model; a mixed-model
+// extension would add a kinship-scaled random effect bᵢ to the linear
+// predictor.  The fitted β̂ / ε̂ are exposed in the raw parameterization (ε
+// is NOT shifted to ε₀ = 0); downstream consumers that require an
+// identifiability convention (for example, ε₀ ≡ 0 with the intercept of β
+// absorbing the shift) should apply the shift themselves.
 //
 // Working residual returned in `residuals`:
 //
@@ -147,9 +149,9 @@ Eigen::VectorXd logisticResiduals(
 // The raw rᵢ is not guaranteed to satisfy Σᵢ rᵢ = 0, so
 // cumulativeLogitFit subtracts the algebraic mean before returning.  This
 // is suitable for the standalone fixed-effects null-model path consumed by
-// SPACox / SPAGRM / SPAmix; it is NOT equivalent to POLMM's RymuVec, which
-// is obtained from the mixed-model PQL fit with explicit covariate-space
-// projection at marker test time.
+// SPACox / SPAGRM / SPAmix; it is NOT equivalent to the working-space
+// residual of a mixed-model proportional-odds fit, which would carry an
+// explicit covariate-space projection at marker-test time.
 //
 // y:        (n) ordinal response, integer-coded in {0, 1, …, J−1} contiguously.
 //           J is inferred from y.maxCoeff() + 1.

@@ -36,8 +36,6 @@ Usage:
          --ref-af FILE  --prevalence FLOAT  --out PREFIX  [OPTIONS]
     grab --method SPAsqr  --bfile PREFIX  \
          --pheno FILE  --pheno-name COL  --sp-grm-* FILE  --out PREFIX  [OPTIONS]
-    grab --method POLMM   --bfile PREFIX  \
-         --pheno FILE  --pheno-name COL  --sp-grm-* FILE  --out PREFIX  [OPTIONS]
 
   Local-ancestry GWAS:
     grab --method SPAmixLocalPlus  --admix-bfile PREFIX  --admix-phi FILE  \

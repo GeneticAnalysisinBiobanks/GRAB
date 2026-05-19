@@ -96,7 +96,7 @@ An intercept is added automatically.)"
 inline const FlagDef kPhenoName = {
     "--pheno-name", "COL_IDS", "Comma-separated phenotype column names",
     R"(Selects columns from --pheno for analysis.
-Required by POLMM (ordinal), WtCoxG/LEAF (TIME:EVENT), SPAsqr (quantitative).)"
+Required by WtCoxG/LEAF (TIME:EVENT), SPAsqr (quantitative).)"
 };
 
 inline const FlagDef kResidName = {
@@ -513,30 +513,6 @@ inline const MethodDef kSPAmixPlus = {
     nullptr,
 };
 
-// ── POLMM ──────────────────────────────────────────────────────────
-inline const FlagDef *const kPOLMMReq[] = {
-    &kGeno_input, &kPheno, &kPhenoName, &kOut, &kSpGrm,
-    nullptr
-};
-
-inline const FlagDef *const kPOLMMOpt[] = {
-    &kCovar,   &kCovarName, &kSpaZThresh,
-    &kThreads, &kChunkSize, &kGeno,     &kMaf,
-    &kMac,     &kHwe,       &kChr,
-    nullptr
-};
-
-inline const MethodDef kPOLMM = {
-    "POLMM",
-    "Proportional Odds Logistic Mixed Model for ordinal categorical GWAS",
-    kPOLMMReq,
-    kPOLMMOpt,
-    nullptr,
-    "CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  POLMM_P  POLMM_Z  POLMM_BETA  POLMM_SE",
-    R"(Fits null model internally (all-in-one). Ordinal levels auto-detected.
-Uses sparse GRM for random effects via PCG solver.)",
-};
-
 // ── SPAsqr ─────────────────────────────────────────────────────────
 inline const FlagDef *const kSPAsqrReq[] = {
     &kGeno_input, &kOut, &kSpGrm,
@@ -768,7 +744,7 @@ Pass to --pairwise-ibd for SPAGRM.)",
 
 inline const MethodDef *const kAllMethods[] = {
     &kSPACox, &kSPAGRM, &kSAGELD, &kSPAmix, &kSPAmixPlus, &kSPAmixLocalPlus,
-    &kPOLMM,  &kSPAsqr, &kWtCoxG, &kLEAF,
+    &kSPAsqr, &kWtCoxG, &kLEAF,
     nullptr
 };
 

@@ -6,7 +6,7 @@
 // work-stealing parallelism with persistent per-phenotype writers.
 //
 // Applicable to any method that fits a null model from covariates:
-// SPAsqr, SPACox, POLMM, WtCoxG, etc.
+// SPAsqr, SPACox, WtCoxG, etc.
 #pragma once
 
 #include "engine/marker.hpp"

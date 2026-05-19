@@ -62,7 +62,7 @@ with `GRAB_MARCH=-march=x86-64-v2` for portable distribution binaries.
                    (uses `std::thread`, no external runtime).
 - `src/io/`      — sparse GRM, subject data, file readers.
 - `src/geno_factory/` — genotype format readers (plink, pgen, bgen, vcf).
-- `src/{spacox, spagrm, spamix, spasqr, polmm, wtcoxg, localplus}/` — methods.
+- `src/{spacox, spagrm, spamix, spasqr, wtcoxg, localplus}/` — methods.
 - `src/util/`    — math helpers, SIMD dispatch, vectorized exp/log,
                    logging, text scanners, IQR outlier detection
                    (`outlier.hpp` shared by spamix / wtcoxg).
@@ -92,7 +92,7 @@ SPAsqr is currently passing end-to-end tests. Because SPAsqr is the most
 demanding consumer of the shared engine infrastructure (it exercises the
 fused-GEMM path, the multi-phenotype engine, LOCO, and the SIMD-dispatch
 pattern), a working SPAsqr is a strong signal that **the common code below
-is correct**. When debugging any other method (SPAGRM / SPACox / POLMM /
+is correct**. When debugging any other method (SPAGRM / SPACox /
 WtCoxG / SPAmix / LEAF), do not suspect or modify these files — the bug is
 almost certainly in the method-specific code, not the shared infrastructure:
 
