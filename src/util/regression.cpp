@@ -248,10 +248,12 @@ Eigen::VectorXd coxResiduals(
 
     for (int iter = 0; iter < maxIter; ++iter) {
         eta.noalias() = Xs * beta;
-        for (Eigen::Index i = 0; i < n; ++i) {
-            eta[i] = std::clamp(eta[i], -500.0, 500.0);
-            theta[i] = std::exp(eta[i]);
-        }
+        // Eigen 3.4+ vectorises array().exp() to SIMD under -march=native,
+        // replacing the scalar libm call (~10-15 cycles/double) with Cephes
+        // polynomials (~4-6 cycles per 4 doubles on AVX2).  Clamp is fused
+        // into the same expression chain.
+        eta = eta.array().min(500.0).max(-500.0).matrix();
+        theta = eta.array().exp().matrix();
 
         // ── Forward cumulative sums (descending-time order) ──────────────
         S0[0] = ws[0] * theta[0];
@@ -347,10 +349,8 @@ Eigen::VectorXd coxResiduals(
     // (ascending time) to accumulate Λ̂_0.
 
     eta.noalias() = Xs * beta;
-    for (Eigen::Index i = 0; i < n; ++i) {
-        eta[i] = std::clamp(eta[i], -500.0, 500.0);
-        theta[i] = std::exp(eta[i]);
-    }
+    eta = eta.array().min(500.0).max(-500.0).matrix();
+    theta = eta.array().exp().matrix();
 
     // Recompute S0 for final beta.
     S0[0] = ws[0] * theta[0];

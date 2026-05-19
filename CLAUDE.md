@@ -1,5 +1,26 @@
 # CLAUDE.md — GRAB project conventions
 
+## Release status — pre-1.0, no backward compatibility constraint
+
+GRAB has not yet been publicly released; there are no external users and no
+deployed binaries in the field.  Therefore **do not** preserve backward
+compatibility when redesigning interfaces:
+
+- CLI flags, value enumerations, default behaviors, and file formats may be
+  renamed, restructured, or removed outright when a cleaner design is
+  available.
+- Do not add aliases, deprecation warnings, fallback parsers, or "legacy
+  mode" branches for flags or values that have been renamed.  Reject the old
+  spelling with an unambiguous error message that points to the new one.
+- Do not preserve old function signatures, struct layouts, or output column
+  orderings "in case downstream consumers depend on them" — there are none.
+- The only durability constraint is reproducibility within a single
+  release: a given GRAB binary, given the same inputs and flags, must
+  produce the same outputs across runs.
+
+Apply this principle when weighing design changes: choose the cleaner long-
+term interface and break the older one, rather than carrying parallel paths.
+
 ## Build & dependency model
 
 GRAB is a **pure C++17 application**. The repository is fully self-contained:

@@ -14,6 +14,8 @@ struct Args {
     std::string covarName;                          // comma-separated covariate column names
     std::string phenoName;                          // comma-separated phenotype column names
     std::string residName;                          // comma-separated residual column names
+    std::string traitType;                          // --trait-type: linear|logistic|cox|ordinal
+    bool saveResid = false;                         // --save-resid: write fitted residuals to PREFIX.null.resid
 
     std::string pcCols = "PC1,PC2,PC3,PC4";         // comma-separated PC column names (default: PC1,PC2,PC3,PC4)
     std::string spasqrTaus = "0.1,0.3,0.5,0.7,0.9"; // default tau levels (SPAsqr)

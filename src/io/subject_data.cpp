@@ -898,6 +898,45 @@ void SubjectData::setResidWeightIndicator(
 }
 
 // ══════════════════════════════════════════════════════════════════════
+// setResidualsFromFit — inject externally-fitted residuals into the
+// loadResidOne fields, so the downstream score-test pipeline can consume
+// them through residuals() / residMatrix() / residOneCols() /
+// buildPerColumnMasks() unchanged.
+// ══════════════════════════════════════════════════════════════════════
+
+void SubjectData::setResidualsFromFit(
+    std::vector<Eigen::VectorXd> resids,
+    std::vector<std::string> names
+) {
+    if (!m_finalized) throw std::runtime_error("setResidualsFromFit: finalize must be called first");
+    if (resids.empty()) throw std::runtime_error("setResidualsFromFit: no residual columns supplied");
+    if (resids.size() != names.size())
+        throw std::runtime_error("setResidualsFromFit: residual count (" +
+                                 std::to_string(resids.size()) + ") != name count (" +
+                                 std::to_string(names.size()) + ")");
+    const auto N = static_cast<Eigen::Index>(m_nUsed);
+    for (size_t k = 0; k < resids.size(); ++k) {
+        if (resids[k].size() != N)
+            throw std::runtime_error(
+                "setResidualsFromFit: residual length (" + std::to_string(resids[k].size()) +
+                ") does not match nUsed (" + std::to_string(m_nUsed) + ") for '" + names[k] + "'");
+    }
+    const int K = static_cast<int>(resids.size());
+    m_residType = ResidType::One;
+    m_nResidOneCols = K;
+    m_residColNames = std::move(names);
+    if (K == 1) {
+        m_residuals = std::move(resids[0]);
+        m_residMatrix.resize(0, 0);
+    } else {
+        m_residMatrix.resize(N, K);
+        for (int k = 0; k < K; ++k)
+            m_residMatrix.col(k) = resids[static_cast<size_t>(k)];
+        m_residuals = m_residMatrix.col(0);
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
 // initFromMask — direct initialization from pre-computed bitmask
 // ══════════════════════════════════════════════════════════════════════
 

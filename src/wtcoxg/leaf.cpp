@@ -588,6 +588,7 @@ void LEAFMethod::processScoreBatch(
 //   7. Build LEAFMethod → markerEngine
 // ======================================================================
 
+#include "util/null_model.hpp"
 #include "util/regression.hpp"
 #include "wtcoxg/regression.hpp"
 
@@ -1081,23 +1082,15 @@ void runLEAFPheno(
 //   E  Single multiPhenoEngine call    (T-thread chunk parallel)
 // ======================================================================
 
-static std::vector<std::string> parsePhenoSpecLEAF(const std::string &spec) {
-    std::vector<std::string> cols;
-    auto colon = spec.find(':');
-    if (colon != std::string::npos) {
-        cols.push_back(spec.substr(0, colon));
-        cols.push_back(spec.substr(colon + 1));
-    } else {
-        cols.push_back(spec);
-    }
-    return cols;
-}
+// PhenoSpec parsing delegated to nullmodel::parsePhenoSpecAuto.  Both
+// binary ("COL") and survival ("TIME:EVENT") forms are inferred per token,
+// matching the WtCoxG / SPACox / SPAGRM / SPAmix syntax.
 
 void runLEAF(
     const std::string &phenoFile,
     const std::string &covarFile,
     const std::vector<std::string> &covarNames,
-    const std::vector<std::string> &phenoSpecs,
+    const std::vector<nullmodel::PhenoSpec> &parsedSpecs,
     const std::vector<std::string> &pcColNames,
     int nClusters,
     uint64_t seed,
@@ -1121,17 +1114,19 @@ void runLEAF(
     const std::string &keepFile,
     const std::string &removeFile
 ) {
-    const int P = static_cast<int>(phenoSpecs.size());
+    const int P = static_cast<int>(parsedSpecs.size());
     const int K = nClusters;
     const int nPop = static_cast<int>(refAfFiles.size());
 
-    // ── Parse each spec into column names ───────────────────────────
-    std::vector<std::vector<std::string> > phenoCols(P);
+    // ── Collect the union of phenotype columns the regression will touch ──
     std::vector<std::string> allPhenoCols;
     for (int p = 0; p < P; ++p) {
-        phenoCols[p] = parsePhenoSpecLEAF(phenoSpecs[p]);
-        for (const auto &col : phenoCols[p])
-            allPhenoCols.push_back(col);
+        if (nullmodel::isCoxSpec(parsedSpecs[p])) {
+            allPhenoCols.push_back(parsedSpecs[p].timeColumn);
+            allPhenoCols.push_back(parsedSpecs[p].eventColumn);
+        } else {
+            allPhenoCols.push_back(parsedSpecs[p].yColumn);
+        }
     }
 
     // ── Phase A: shared data loading ────────────────────────────────
@@ -1335,11 +1330,47 @@ void runLEAF(
         std::atomic<int> nextTask{0};
         std::vector<std::string> regrErrors(totalTasks);
 
-        // Pre-compute traitNames (outside worker to avoid races).
+        // Pre-compute traitNames and per-phenotype indicator/time vectors with
+        // inference + recode applied once (instead of P × K times inside the
+        // worker).  This also keeps inference log lines unique per phenotype.
+        std::vector<Eigen::VectorXd> fullIndPre(P);
+        std::vector<Eigen::VectorXd> fullTimePre(P);
+        std::vector<char> isSurvPre(P);
+        const std::vector<std::string> unionIIDsForInfer = sdFull.usedIIDs();
         for (int p = 0; p < P; ++p) {
-            const auto &cols = phenoCols[p];
-            const bool isSurv = (cols.size() >= 2);
-            traitNames[p] = isSurv ? cols[0] + "_" + cols[1] : cols[0];
+            const auto &spec = parsedSpecs[p];
+            traitNames[p] = spec.name;
+            const bool isSurv = nullmodel::isCoxSpec(spec);
+            isSurvPre[p] = isSurv ? 1 : 0;
+            if (isSurv) {
+                fullTimePre[p] = sdFull.getColumn(spec.timeColumn);
+                fullIndPre[p] = sdFull.getColumn(spec.eventColumn);
+                nullmodel::inferTimeToEvent(
+                    fullTimePre[p], fullIndPre[p],
+                    spec.timeColumn, spec.eventColumn,
+                    unionIIDsForInfer);
+            } else {
+                fullIndPre[p] = sdFull.getColumn(spec.yColumn);
+                auto info = nullmodel::inferTraitFromColumn(
+                    fullIndPre[p], spec.yColumn, unionIIDsForInfer);
+                if (info.trait != nullmodel::TraitType::Binary)
+                    throw std::runtime_error(
+                        "LEAF requires a binary phenotype for '" +
+                        spec.yColumn + "' but inference returned " +
+                        nullmodel::traitTypeName(info.trait) +
+                        " (use --pheno-name TIME:EVENT for survival)");
+                if (info.needRecode) {
+                    double v0 = info.sortedDistinct[0];
+                    double v1 = info.sortedDistinct[1];
+                    for (Eigen::Index i = 0; i < fullIndPre[p].size(); ++i) {
+                        double v = fullIndPre[p][i];
+                        if (std::isnan(v)) continue;
+                        fullIndPre[p][i] = (v == v0) ? 0.0 : 1.0;
+                    }
+                    infoMsg("  Recoded binary column '%s': {%g, %g} -> {0, 1}",
+                            spec.yColumn.c_str(), v0, v1);
+                }
+            }
         }
 
         auto regrWorker = [&]() {
@@ -1349,26 +1380,9 @@ void runLEAF(
                 int p = t / K;
                 int c = t % K;
                 try {
-                    const auto &cols = phenoCols[p];
-                    const bool isSurv = (cols.size() >= 2);
-
-                    // Extract full indicator/survTime
-                    Eigen::VectorXd fullInd, fullTime;
-                    if (isSurv) {
-                        fullTime = sdFull.getColumn(cols[0]);
-                        fullInd = sdFull.getColumn(cols[1]);
-                    } else {
-                        fullInd = sdFull.getColumn(cols[0]);
-                        // Validate binary: all values must be 0 or 1
-                        for (Eigen::Index i = 0; i < fullInd.size(); ++i) {
-                            double v = fullInd[i];
-                            if (v != 0.0 && v != 1.0)
-                                throw std::runtime_error(
-                                          "Phenotype '" + cols[0] + "' is not binary"
-                                          " (found value " + std::to_string(v) + ")."
-                                          " For survival phenotypes use --pheno-name TIME:EVENT.");
-                        }
-                    }
+                    const bool isSurv = (isSurvPre[p] != 0);
+                    const Eigen::VectorXd &fullInd = fullIndPre[p];
+                    const Eigen::VectorXd &fullTime = fullTimePre[p];
 
                     const auto &members = clusterMemberIdx[c];
                     const Eigen::Index Nc = static_cast<Eigen::Index>(members.size());

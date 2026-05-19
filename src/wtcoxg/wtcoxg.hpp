@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "engine/marker.hpp"
+#include "util/null_model.hpp"
 #include "util/outlier.hpp"
 
 class GenoMeta;
@@ -348,12 +349,15 @@ void runWtCoxGPheno(
 // Multi-phenotype entry point: loads data/ref-AF/GRM once, parallelizes
 // P null-model fits and batch-effect tests with min(nthreads, P) workers,
 // then runs a single multiPhenoEngine call for all P phenotypes.
-// Each phenoSpec is "TIME:EVENT" (survival) or "COLNAME" (binary).
+// parsedSpecs[p] is a nullmodel::PhenoSpec carrying either a single binary
+// yColumn or a survival timeColumn+eventColumn pair.  Dispatch is expected
+// to produce these via nullmodel::parsePhenoSpecAuto (with TraitType::Auto)
+// so the WtCoxG / LEAF survival syntax matches the other GWAS methods.
 void runWtCoxG(
     const std::string &phenoFile,
     const std::string &covarFile,
     const std::vector<std::string> &covarNames,
-    const std::vector<std::string> &phenoSpecs,
+    const std::vector<nullmodel::PhenoSpec> &parsedSpecs,
     const GenoSpec &geno,
     const std::string &refAfFile,
     const std::string &spgrmGrabFile,

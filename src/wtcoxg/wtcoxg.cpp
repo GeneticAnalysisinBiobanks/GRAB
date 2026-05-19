@@ -1385,6 +1385,7 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
 // Top-level orchestration
 // ======================================================================
 
+#include "util/null_model.hpp"
 #include "util/regression.hpp"
 #include "wtcoxg/regression.hpp"
 
@@ -1568,24 +1569,16 @@ void runWtCoxGPheno(
 //   E  Single multiPhenoEngine call    (T-thread chunk parallel)
 // ======================================================================
 
-// Parse "TIME:EVENT" → {TIME, EVENT}  or  "COL" → {COL}.
-static std::vector<std::string> parsePhenoSpec(const std::string &spec) {
-    std::vector<std::string> cols;
-    auto colon = spec.find(':');
-    if (colon != std::string::npos) {
-        cols.push_back(spec.substr(0, colon));
-        cols.push_back(spec.substr(colon + 1));
-    } else {
-        cols.push_back(spec);
-    }
-    return cols;
-}
+// PhenoSpec parsing is centralised in nullmodel::parsePhenoSpecAuto; this
+// removes the previous WtCoxG-local parser and aligns survival syntax with
+// SPACox / SPAGRM / SPAmix.  Both binary ("COL") and survival ("TIME:EVENT")
+// forms are inferred per token.
 
 void runWtCoxG(
     const std::string &phenoFile,
     const std::string &covarFile,
     const std::vector<std::string> &covarNames,
-    const std::vector<std::string> &phenoSpecs,
+    const std::vector<nullmodel::PhenoSpec> &parsedSpecs,
     const GenoSpec &geno,
     const std::string &refAfFile,
     const std::string &spgrmGrabFile,
@@ -1606,15 +1599,17 @@ void runWtCoxG(
     const std::string &keepFile,
     const std::string &removeFile
 ) {
-    const int P = static_cast<int>(phenoSpecs.size());
+    const int P = static_cast<int>(parsedSpecs.size());
 
-    // ── Parse each spec into column names; collect all pheno columns ──
-    std::vector<std::vector<std::string> > phenoCols(P);
+    // ── Collect the union of phenotype columns the regression will touch ──
     std::vector<std::string> allPhenoCols;
     for (int p = 0; p < P; ++p) {
-        phenoCols[p] = parsePhenoSpec(phenoSpecs[p]);
-        for (const auto &c : phenoCols[p])
-            allPhenoCols.push_back(c);
+        if (nullmodel::isCoxSpec(parsedSpecs[p])) {
+            allPhenoCols.push_back(parsedSpecs[p].timeColumn);
+            allPhenoCols.push_back(parsedSpecs[p].eventColumn);
+        } else {
+            allPhenoCols.push_back(parsedSpecs[p].yColumn);
+        }
     }
 
     // ── Phase A: shared data loading ────────────────────────────────
@@ -1680,6 +1675,7 @@ void runWtCoxG(
 
     std::vector<PhenoData> pd(P);
 
+    const std::vector<std::string> unionIIDsForInfer = sd.usedIIDs();
     {
         const int nWorkers = std::min(nthreads, P);
         infoMsg("WtCoxG: Fitting %d null models with %d threads", P, nWorkers);
@@ -1690,25 +1686,42 @@ void runWtCoxG(
                 int p = nextPheno.fetch_add(1, std::memory_order_relaxed);
                 if (p >= P) break;
                 try {
-                    const auto &cols = phenoCols[p];
-                    pd[p].isSurv = (cols.size() >= 2);
-                    pd[p].traitName = pd[p].isSurv
-                        ? cols[0] + "_" + cols[1]
-                        : cols[0];
+                    const auto &spec = parsedSpecs[p];
+                    pd[p].isSurv = nullmodel::isCoxSpec(spec);
+                    pd[p].traitName = spec.name;
 
                     if (pd[p].isSurv) {
-                        pd[p].survTime = sd.getColumn(cols[0]);
-                        pd[p].indicator = sd.getColumn(cols[1]);
+                        pd[p].survTime = sd.getColumn(spec.timeColumn);
+                        pd[p].indicator = sd.getColumn(spec.eventColumn);
+                        // Strict {0,1} event + time > 0 check.
+                        nullmodel::inferTimeToEvent(
+                            pd[p].survTime, pd[p].indicator,
+                            spec.timeColumn, spec.eventColumn,
+                            unionIIDsForInfer);
                     } else {
-                        pd[p].indicator = sd.getColumn(cols[0]);
-                        // Validate binary: all values must be 0 or 1
-                        for (Eigen::Index i = 0; i < pd[p].indicator.size(); ++i) {
-                            double v = pd[p].indicator[i];
-                            if (v != 0.0 && v != 1.0)
-                                throw std::runtime_error(
-                                          "Phenotype '" + cols[0] + "' is not binary"
-                                          " (found value " + std::to_string(v) + ")."
-                                          " For survival phenotypes use --pheno-name TIME:EVENT.");
+                        pd[p].indicator = sd.getColumn(spec.yColumn);
+                        // WtCoxG only fits binary phenotypes for non-survival
+                        // specs; reject any column that infers to something
+                        // other than binary, and apply the lenient recode
+                        // ({v0, v1} -> {0, 1}) when the inputs are not 0/1.
+                        auto info = nullmodel::inferTraitFromColumn(
+                            pd[p].indicator, spec.yColumn, unionIIDsForInfer);
+                        if (info.trait != nullmodel::TraitType::Binary)
+                            throw std::runtime_error(
+                                "WtCoxG requires a binary phenotype for '" +
+                                spec.yColumn + "' but inference returned " +
+                                nullmodel::traitTypeName(info.trait) +
+                                " (use --pheno-name TIME:EVENT for survival)");
+                        if (info.needRecode) {
+                            double v0 = info.sortedDistinct[0];
+                            double v1 = info.sortedDistinct[1];
+                            for (Eigen::Index i = 0; i < pd[p].indicator.size(); ++i) {
+                                double v = pd[p].indicator[i];
+                                if (std::isnan(v)) continue;
+                                pd[p].indicator[i] = (v == v0) ? 0.0 : 1.0;
+                            }
+                            infoMsg("  Recoded binary column '%s': {%g, %g} -> {0, 1}",
+                                    spec.yColumn.c_str(), v0, v1);
                         }
                     }
 

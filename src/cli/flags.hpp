@@ -106,6 +106,28 @@ Required by SPACox, SPAGRM, SAGELD, SPAmix, SPAmixPlus, SPAmixLocalPlus.
 Default: all residual columns.)"
 };
 
+inline const FlagDef kTraitType = {
+    "--trait-type", "TYPE",
+    "Null-model trait type: linear | logistic | cox | ordinal",
+    R"(Used with --pheno-name to fit a null model in-process and feed the
+fitted residuals into the downstream score test (SPACox / SPAGRM /
+SPAmix / SPAmixPlus).  Mutually exclusive with --resid-name.
+  linear   — regression::linearResiduals (intercept added automatically)
+  logistic — regression::logisticResiduals (0/1 response; intercept added)
+  cox      — regression::coxResiduals; --pheno-name uses TIME:EVENT pairs
+             (e.g. SURVTIME1:STATUS1,SURVTIME2:STATUS2)
+  ordinal  — regression::cumulativeLogitFit (integer-coded levels 0..J−1))"
+};
+
+inline const FlagDef kSaveResid = {
+    "--save-resid", nullptr,
+    "Write fitted residuals to PREFIX.null.resid (re-loadable via --resid-name)",
+    R"(Only valid together with --pheno-name + --trait-type.  Writes a
+plain-text strict-format file: IID column followed by one column per
+fitted phenotype (NaN entries as 'NA').  The file can be reloaded in
+a later invocation via --pheno PREFIX.null.resid --resid-name ....)"
+};
+
 inline const FlagDef kPcCols = {
     "--pc-cols", "COL_IDS", "Comma-separated PC column names (default: PC1,PC2,PC3,PC4)",
     R"(Selects columns from --covar or --pheno as principal components.
@@ -411,7 +433,8 @@ inline const FlagDef *const kSPACoxReq[] = {
     nullptr
 };
 inline const FlagDef *const kSPACoxOpt[] = {
-    &kCovar,       &kCovarName,        &kResidName,    &kCovarPThresh, &kSpaZThresh, &kThreads, &kChunkSize,
+    &kCovar,       &kCovarName,        &kResidName,    &kPhenoName,   &kTraitType,  &kSaveResid,
+    &kCovarPThresh, &kSpaZThresh,      &kThreads,      &kChunkSize,
     &kCompression, &kCompressionLevel, &kGeno,         &kMaf,         &kMac,        &kHwe,     &kChr,
     nullptr
 };
@@ -432,6 +455,8 @@ inline const FlagDef *const kSPAGRMReq[] = {
     nullptr
 };
 inline const FlagDef *const kSPAGRMOpt[] = {
+    &kResidName,  &kPhenoName,  &kTraitType,           &kSaveResid,
+    &kCovar,      &kCovarName,
     &kSpaZThresh, &kOutlierIqr, &kSpagrmControlOutlier,
     &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
     &kGeno,       &kMaf,     &kMac,       &kHwe,         &kChr,
@@ -474,7 +499,8 @@ inline const FlagDef *const kSPAmixReq[] = {
     nullptr
 };
 inline const FlagDef *const kSPAmixOpt[] = {
-    &kPheno,      &kCovar,   &kIndAfCoef, &kSpGrm,       &kOutlierIqr,
+    &kPheno,      &kCovar,      &kCovarName,  &kResidName,    &kPhenoName,    &kTraitType, &kSaveResid,
+    &kIndAfCoef, &kSpGrm,       &kOutlierIqr,
     &kSpaZThresh, &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
     &kGeno,       &kMaf,     &kMac,       &kHwe,         &kChr,
     nullptr
@@ -497,7 +523,8 @@ inline const FlagDef *const kSPAmixPlusReq[] = {
     nullptr
 };
 inline const FlagDef *const kSPAmixPlusOpt[] = {
-    &kCovar,     &kIndAfCoef,        &kOutlierIqr, &kSpaZThresh, &kThreads,
+    &kCovar,      &kCovarName,  &kResidName,  &kPhenoName,    &kTraitType,    &kSaveResid,
+    &kIndAfCoef,        &kOutlierIqr, &kSpaZThresh, &kThreads,
     &kChunkSize, &kCompression, &kCompressionLevel, &kGeno,       &kMaf,        &kMac,
     &kHwe,       &kChr,
     nullptr

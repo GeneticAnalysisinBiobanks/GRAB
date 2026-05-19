@@ -227,6 +227,16 @@ class SubjectData {
         Eigen::VectorXd ind
     );
 
+// Replace the loadResidOne state with externally-fitted residuals
+// (post-finalize).  resids[k].size() must equal nUsed() for every k;
+// resids.size() == names.size() >= 1.  When K == 1 only m_residuals is
+// written (m_residMatrix stays empty), matching the single-column
+// loadResidOne layout consumed by buildPerColumnMasks().
+    void setResidualsFromFit(
+        std::vector<Eigen::VectorXd> resids,
+        std::vector<std::string> names
+    );
+
 // ── Direct initialization from a pre-computed bitmask ──────────────
 // Bypasses the normal load/finalize pipeline.  Sets the used-mask,
 // nUsed, and residuals/weights/indicator directly.  Useful when the

@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "engine/marker.hpp"
+#include "util/null_model.hpp"
 
 class WtCoxGMethod;
 struct WtCoxGRefInfo;
@@ -195,12 +196,13 @@ void runLEAFPheno(
 
 // Multi-phenotype entry point: shared K-means + geno scan + summix + GRM,
 // parallel per-phenotype regression and batch-effect testing,
-// single multiPhenoEngine call.
+// single multiPhenoEngine call.  parsedSpecs[p] is produced by dispatch via
+// nullmodel::parsePhenoSpecAuto (binary "COL" or survival "TIME:EVENT").
 void runLEAF(
     const std::string &phenoFile,
     const std::string &covarFile,
     const std::vector<std::string> &covarNames,
-    const std::vector<std::string> &phenoSpecs,               // "TIME:EVENT" or "COL"
+    const std::vector<nullmodel::PhenoSpec> &parsedSpecs,
     const std::vector<std::string> &pcColNames,
     int nClusters,
     uint64_t seed,
