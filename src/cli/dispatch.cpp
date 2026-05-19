@@ -10,6 +10,7 @@
 #include "util/int_pheno.hpp"
 #include "util/logging.hpp"
 #include "util/null_model.hpp"
+#include "util/text_stream.hpp"
 
 #include "localplus/abed_convert_msp.hpp"
 #include "localplus/abed_convert_txt.hpp"
@@ -268,7 +269,7 @@ static void logArgsInEffect(const Args &args) {
     if (args.spaCutoff != 2.0) std::fprintf(stderr, "  --spa-z-threshold %g\n", args.spaCutoff);
     if (args.outlierRatio != 1.5) std::fprintf(stderr, "  --outlier-iqr-threshold %g\n", args.outlierRatio);
     if (args.outlierAbsBound != 0.55) std::fprintf(stderr, "  --spasqr-outlier-abs-bound %g\n", args.outlierAbsBound);
-    if (!args.spagrmControlOutlier) std::fprintf(stderr, "  --spagrm-control-outlier off\n");
+    if (args.spagrmControlOutlier) std::fprintf(stderr, "  --spagrm-control-outlier\n");
     if (args.pvalCovAdjCut != 5e-5) std::fprintf(stderr, "  --covar-p-threshold %g\n", args.pvalCovAdjCut);
     if (args.cutoff != 0.05) std::fprintf(stderr, "  --batch-effect-p-threshold %g\n", args.cutoff);
     if (args.missingCutoff != 0.1) std::fprintf(stderr, "  --geno %g\n", args.missingCutoff);
@@ -351,6 +352,7 @@ int run(
         else if (args.compression == "zst")afcSuffix += ".zst";
         std::string afcOutput = args.outPrefix + afcSuffix;
         try {
+            TextWriter::assertWritable(afcOutput);
             runSPAmixAF(
                 pcColNames,
                 args.phenoFile,
@@ -391,6 +393,7 @@ int run(
         else if (args.compression == "zst")phiSuffix += ".zst";
         std::string phiOutput = args.outPrefix + phiSuffix;
         try {
+            TextWriter::assertWritable(phiOutput);
             runPhiEstimation(
                 args.admixBfilePrefix,
                 args.spGrmGrabFile,
@@ -438,6 +441,7 @@ int run(
                 "and window count."
         );
         try {
+            TextWriter::assertWritable(args.outPrefix + ".abed");
             if (hasVcfMsp)convertVcfMspToAbed(
                     args.vcfFile,
                     args.mspFile,
@@ -468,6 +472,7 @@ int run(
         logArgsInEffect(args);
         const std::string intOutput = args.outPrefix + ".txt";
         try {
+            TextWriter::assertWritable(intOutput);
             runIntPheno(args.phenoFile, intOutput);
         } catch (const std::exception &e) {
             std::cerr << "[ERROR] " << e.what() << "\n";
@@ -493,6 +498,7 @@ int run(
         else if (args.compression == "zst")ibdSuffix += ".zst";
         std::string ibdOutput = args.outPrefix + ibdSuffix;
         try {
+            TextWriter::assertWritable(ibdOutput);
             runPairwiseIBD(
                 args.spGrmGrabFile,
                 args.spGrmPlink2File,
@@ -679,6 +685,53 @@ int run(
         else if (args.compression == "zst") path += ".zst";
         return path;
     };
+
+    // Fail fast if the output prefix's parent directory is not writable.
+    // Per-phenotype output names are not known until the method runner
+    // parses --pheno-name, so we probe a sentinel path that shares the
+    // same parent directory.  This catches the common case of a missing
+    // output directory before any computation is launched.
+    try {
+        TextWriter::assertWritable(args.outPrefix + ".write_test");
+    } catch (const std::exception &e) {
+        std::cerr << "[ERROR] " << e.what() << "\n";
+        return 1;
+    }
+
+    // Fit-path safety net: warn when the null model will be fit with an
+    // intercept-only design.  The detection rule is method-specific:
+    //   - SPAmix / SPAmixPlus:  null model uses ONLY --covar-name; --pc-cols
+    //     feeds the per-individual AF model and is *not* added to the null-
+    //     model design.  Warn whenever --covar-name is empty.
+    //   - All other fit-capable methods (SPACox, SPAGRM, SAGELD, ...): the
+    //     null model uses --covar-name when given, otherwise falls back to
+    //     all columns of --covar.  Warn only when both are empty.
+    // Intercept-only fits are statistically valid but rarely the intended
+    // GWAS configuration; emit [WARN] rather than silently proceeding.
+    if (!args.phenoName.empty()) {
+        bool interceptOnly;
+        if (args.method == "SPAmix" || args.method == "SPAmixPlus") {
+            interceptOnly = covarNames.empty();
+        } else {
+            interceptOnly = args.covarFile.empty() && covarNames.empty();
+        }
+        if (interceptOnly) {
+            const char *extra =
+                (args.method == "SPAmix" || args.method == "SPAmixPlus")
+                    ? " For SPAmix / SPAmixPlus, --pc-cols is *not* added to"
+                      " the null model; list any PCs you want adjusted in"
+                      " --covar-name explicitly."
+                    : "";
+            warnMsg(
+                "Null model for '%s' will be fit with intercept only "
+                "(no --covar-name covariates).%s "
+                "If your data has population structure, ancestry PCs and "
+                "other adjustments are strongly recommended.",
+                args.phenoName.c_str(),
+                extra
+            );
+        }
+    }
 
     try {
         // ── SPACox ─────────────────────────────────────────────────

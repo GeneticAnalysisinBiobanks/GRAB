@@ -88,9 +88,11 @@ Use --resid-name to select pre-computed residual columns.)"
 
 inline const FlagDef kCovarName = {
     "--covar-name", "COL_IDS", "Comma-separated covariate column names",
-    R"(Selects columns from --covar as covariates.
+    R"(Selects columns from --covar as null-model covariates.
 When --covar is absent, selects from --pheno instead.
-An intercept is added automatically.)"
+An intercept is added automatically.
+For SPAmix / SPAmixPlus: --pc-cols is *not* automatically added to
+the null model; list any PCs you want adjusted in --covar-name too.)"
 };
 
 inline const FlagDef kPhenoName = {
@@ -131,7 +133,10 @@ a later invocation via --pheno PREFIX.null.resid --resid-name ....)"
 inline const FlagDef kPcCols = {
     "--pc-cols", "COL_IDS", "Comma-separated PC column names (default: PC1,PC2,PC3,PC4)",
     R"(Selects columns from --covar or --pheno as principal components.
-Used for K-means clustering in LEAF and AF estimation in SPAmix.)"
+Used for K-means clustering in LEAF and for the per-individual AF
+model in SPAmix / SPAmixPlus / --cal-af-coef.
+Does NOT enter the null-model design.  To adjust the null model
+for PCs as well, list them in --covar-name explicitly.)"
 };
 
 inline const FlagDef kRefAf = {
@@ -211,15 +216,17 @@ inline const FlagDef kOutlierAbs = {
 };
 
 inline const FlagDef kSpagrmControlOutlier = {
-    "--spagrm-control-outlier", "on|off",
-    "Iteratively adjust the IQR ratio so the outlier share stays in (0, 5%] (SPAGRM, default: on)",
-    R"(Mirrors the ControlOutlier argument of SPAGRM.NullModel() in the R reference:
-  on  — if 0 outliers are detected, shrink the IQR ratio by 0.8 until at least
-        one outlier appears; if more than 5%% of subjects are outliers, increase
-        the ratio by 0.5 until the share is at most 5%%.  Default.
-  off — keep the IQR ratio at --outlier-iqr-threshold (default 1.5) without
-        any adjustment.  Use for higher accuracy when the residual distribution
-        is well behaved.)"
+    "--spagrm-control-outlier", nullptr,
+    "Enable iterative IQR-ratio adjustment so the outlier share stays in (0, 5%] (SPAGRM, default: off)",
+    R"(Mirrors the ControlOutlier argument of SPAGRM.NullModel() in the R reference.
+Flag is parameterless: present  → enabled; absent → disabled (default).
+
+  Enabled  — if 0 outliers are detected, shrink the IQR ratio by 0.8 until at
+             least one outlier appears; if more than 5%% of subjects are
+             outliers, increase the ratio by 0.5 until the share is at most 5%%.
+  Disabled — keep the IQR ratio at --outlier-iqr-threshold (default 1.5)
+             without any adjustment.  Default; recommended when the residual
+             distribution is well behaved.)"
 };
 
 inline const FlagDef kThreads = {

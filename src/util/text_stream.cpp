@@ -48,6 +48,21 @@ std::string TextWriter::buildOutputPath(
     return path;
 }
 
+void TextWriter::assertWritable(const std::string &path) {
+    // Touch the path with fopen("w"): creates an empty file if writable,
+    // returns nullptr if the parent directory is missing or the path is
+    // not writable.  The probe file is removed immediately on success.
+    FILE *fp = std::fopen(path.c_str(), "w");
+    if (!fp) {
+        throw std::runtime_error(
+            "Cannot write to output path: " + path +
+            " (check that the parent directory exists and is writable)"
+        );
+    }
+    std::fclose(fp);
+    std::remove(path.c_str());
+}
+
 TextReader::Mode TextReader::inferMode(const std::string &path) {
     if (endsWith(path, ".gz")) return Mode::Gzip;
     if (endsWith(path, ".zst")) return Mode::Zstd;

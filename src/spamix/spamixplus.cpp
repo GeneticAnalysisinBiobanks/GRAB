@@ -633,7 +633,20 @@ void runSPAmixPlus(
         sd.loadResidOne(phenoFile, residNames);
         if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile);
     }
-    if (!covarFile.empty()) sd.loadCovar(covarFile, pcColNames);
+    if (!covarFile.empty()) {
+        // Load the union of --pc-cols (needed by the per-individual AF model)
+        // and --covar-name (needed by the null-model design).  Loading only
+        // pcColNames would silently drop any --covar-name columns that are
+        // present in the covar file but absent from --pc-cols, producing a
+        // "column not found" error at the null-model fit.
+        std::vector<std::string> covarLoadCols = pcColNames;
+        for (const auto &name : covarNames) {
+            if (std::find(covarLoadCols.begin(), covarLoadCols.end(), name) ==
+                covarLoadCols.end())
+                covarLoadCols.push_back(name);
+        }
+        sd.loadCovar(covarFile, covarLoadCols);
+    }
     sd.setKeepRemove(keepFile, removeFile);
     if (!spgrmGrabFile.empty() || !spgrmGctaFile.empty())sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile,
                                                                                                       spgrmGctaFile, sd.
@@ -647,12 +660,33 @@ void runSPAmixPlus(
     infoMsg("  %u subjects in union mask, %d PCs", sd.nUsed(), nPC);
 
     if (fitPath) {
+        // --pc-cols and --covar-name are kept strictly separate in SPAmix /
+        // SPAmixPlus:
+        //   --pc-cols    → per-individual AF model (this file, line ~705)
+        //                  and the AF model coefficients loaded/fit below.
+        //   --covar-name → null-model design only (this block).
+        // Users who want PCs adjusted in the null model must list them in
+        // --covar-name explicitly.  This makes the two roles auditable and
+        // prevents silent inclusion of PCs that the user only intended for
+        // AF estimation.
         Eigen::MatrixXd covarUnion;
-        if (!covarNames.empty()) {
-            covarUnion = sd.getColumns(covarNames);
-        } else {
+        if (covarNames.empty())
             covarUnion.resize(sd.nUsed(), 0);
-        }
+        else
+            covarUnion = sd.getColumns(covarNames);
+
+        if (covarUnion.cols() > 0)
+            infoMsg(
+                "  Null-model design: intercept + %zu --covar-name covariate(s); "
+                "--pc-cols is used only for the individual-AF model",
+                covarNames.size()
+            );
+        else
+            infoMsg(
+                "  Null-model design: intercept only (no --covar-name supplied; "
+                "--pc-cols is not used in the null model)"
+            );
+
         nullmodel::EngineOptions eo;
         eo.nthreads = nthread;
         auto fits = nullmodel::fitAll(sd, phenoSpecs, traitT, covarUnion, eo);

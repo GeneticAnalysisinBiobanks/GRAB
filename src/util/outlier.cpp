@@ -1,6 +1,7 @@
 // outlier.cpp — IQR-based residual outlier detection (shared by spamix / wtcoxg).
 
 #include "util/outlier.hpp"
+#include "util/logging.hpp"
 
 #include <algorithm>
 #include <vector>
@@ -45,9 +46,36 @@ OutlierData detectOutliers(
     };
 
     auto posOutlier = findOutliers(outlierRatio);
-    while (posOutlier.empty()) {
-        outlierRatio *= 0.8;
-        posOutlier = findOutliers(outlierRatio);
+    // For discrete-valued residuals (e.g. binary phenotypes whose logistic
+    // residuals take only two values around ±p), every shrink of the cutoff
+    // band still leaves the band strictly enclosing all observed residual
+    // values, so the loop would never terminate.  Two safeguards:
+    //   1. IQR <= 0 → cutoffs cannot adapt; bail out with an empty outlier
+    //      set and emit [WARN].
+    //   2. Otherwise cap the shrink loop at 200 iterations and warn if no
+    //      outlier was ever found.
+    constexpr int kMaxShrinkIter = 200;
+    if (iqr <= 0.0 && posOutlier.empty()) {
+        warnMsg(
+            "  detectOutliers: residual IQR is zero (degenerate distribution; "
+            "typically a binary phenotype with extreme imbalance); proceeding "
+            "with no outliers"
+        );
+    } else {
+        int shrinkIter = 0;
+        while (posOutlier.empty() && shrinkIter < kMaxShrinkIter) {
+            outlierRatio *= 0.8;
+            posOutlier = findOutliers(outlierRatio);
+            ++shrinkIter;
+        }
+        if (posOutlier.empty()) {
+            warnMsg(
+                "  detectOutliers: no outliers found after %d shrink iterations "
+                "(IQR ratio %.3g); residual distribution lacks tails "
+                "(e.g. binary phenotype); proceeding with no outliers",
+                shrinkIter, outlierRatio
+            );
+        }
     }
 
     std::vector<bool> isOutlier(N, false);

@@ -74,6 +74,13 @@ class TextWriter {
         const std::string &compression
     );
 
+    /// Fail fast if `path` is not writable.  Opens it for writing, writes
+    /// nothing, and removes the empty probe file.  Used by the CLI dispatch
+    /// to reject bad output paths before launching expensive computation
+    /// (e.g. --cal-pairwise-ibd, --cal-af-coef, per-method runners).  Throws
+    /// std::runtime_error on failure with a message that includes `path`.
+    static void assertWritable(const std::string &path);
+
   private:
     void cleanup() noexcept;
 

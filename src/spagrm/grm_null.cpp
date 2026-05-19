@@ -496,13 +496,52 @@ SPAGRMClass buildSPAGRMNullModel(
     int nOutlier = recomputeOutliers();
 
     if (controlOutlier) {
-        while (nOutlier == 0) {
-            outlierRatio *= 0.8;
-            nOutlier = recomputeOutliers();
-        }
-        while (static_cast<double>(nOutlier) / N > 0.05) {
-            outlierRatio += 0.5;
-            nOutlier = recomputeOutliers();
+        // For discrete-valued residuals (binary / ordinal phenotypes), the
+        // IQR-based cutoff may be intrinsically unable to adapt:
+        //   - IQR == 0 (Q1 == Q3): shrinking or widening the ratio leaves the
+        //     cutoffs unchanged, so both loops below would never make progress.
+        //   - IQR > 0 but residuals take only a handful of values strictly
+        //     inside [Q1 - r*IQR, Q3 + r*IQR] for every r > 0: the shrink loop
+        //     can never produce an outlier even as r -> 0.
+        // Bound each loop with an iteration cap and emit [WARN] rather than
+        // hang.  See CLAUDE.md release policy: no fallback "legacy" branches;
+        // we just clamp and warn.
+        constexpr int kMaxControlIter = 200;
+        if (IQR <= 0.0) {
+            warnMsg(
+                "  Residual IQR is zero (degenerate distribution; typically a "
+                "binary phenotype with extreme imbalance); skipping "
+                "--spagrm-control-outlier adjustment"
+            );
+        } else {
+            int shrinkIter = 0;
+            while (nOutlier == 0 && shrinkIter < kMaxControlIter) {
+                outlierRatio *= 0.8;
+                nOutlier = recomputeOutliers();
+                ++shrinkIter;
+            }
+            if (nOutlier == 0) {
+                warnMsg(
+                    "  --spagrm-control-outlier: no outliers found after %d "
+                    "shrink iterations (IQR ratio %.3g); residual distribution "
+                    "lacks tails (e.g. binary phenotype)",
+                    shrinkIter, outlierRatio
+                );
+            }
+            int growIter = 0;
+            while (static_cast<double>(nOutlier) / N > 0.05 && growIter < kMaxControlIter) {
+                outlierRatio += 0.5;
+                nOutlier = recomputeOutliers();
+                ++growIter;
+            }
+            if (static_cast<double>(nOutlier) / N > 0.05) {
+                warnMsg(
+                    "  --spagrm-control-outlier: unable to reduce outlier "
+                    "fraction below 5%% after %d grow iterations "
+                    "(now %.1f%% at IQR ratio %.3g)",
+                    growIter, 100.0 * nOutlier / N, outlierRatio
+                );
+            }
         }
     }
 
