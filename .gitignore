@@ -1,6 +1,7 @@
 build/
 build_bak/
 tmp/
+tmp_bench/
 examples_mini/
 examples_1kg/
 examples_spamix/

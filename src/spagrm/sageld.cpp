@@ -30,6 +30,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <fstream>
 #include <limits>
 #include <memory>
@@ -682,11 +683,25 @@ void runSAGELDPhenoMode(
             std::ofstream rf(residPath);
             if (!rf) throw std::runtime_error("Cannot write residual file: " + residPath);
             rf << "#IID\tR_G\tR_" << envNames[0] << "\tR_Gx" << envNames[0] << "\n";
-            rf.setf(std::ios::scientific);
-            rf.precision(15);
-            for (uint32_t i = 0; i < N; ++i)
-                rf << longData.uniqueIIDs[i] << "\t"
-                   << Resid_G[i] << "\t" << Resid_E[i] << "\t" << Resid_GxE[i] << "\n";
+            // %.17g preserves a double exactly across the round-trip
+            // (DBL_DECIMAL_DIG = 17); matches nullmodel::writeResidualsFile.
+            char buf[32];
+            auto writeVal = [&](double v) {
+                rf << '\t';
+                if (std::isnan(v)) {
+                    rf << "NA";
+                } else {
+                    std::snprintf(buf, sizeof(buf), "%.17g", v);
+                    rf << buf;
+                }
+            };
+            for (uint32_t i = 0; i < N; ++i) {
+                rf << longData.uniqueIIDs[i];
+                writeVal(Resid_G[i]);
+                writeVal(Resid_E[i]);
+                writeVal(Resid_GxE[i]);
+                rf << '\n';
+            }
             infoMsg("[%s] Saved residuals: %s (sigma2_E=%.6g, tau2_E=%.6g)",
                     phenoName.c_str(), residPath.c_str(),
                     fitE.sigma2, fitE.D(0, 0));
