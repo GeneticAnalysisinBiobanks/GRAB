@@ -598,7 +598,8 @@ void runSPAmixPlus(
     const std::string &traitTypeStr,
     const std::string &phenoNameSpec,
     const std::vector<std::string> &covarNames,
-    bool saveResid
+    bool saveResid,
+    uint64_t seed
 ) {
     const bool fitPath = !phenoNameSpec.empty();
     nullmodel::TraitType traitT{};
@@ -689,6 +690,7 @@ void runSPAmixPlus(
 
         nullmodel::EngineOptions eo;
         eo.nthreads = nthread;
+        eo.seed = seed;
         auto fits = nullmodel::fitAll(sd, phenoSpecs, traitT, covarUnion, eo);
         std::vector<Eigen::VectorXd> rs;
         std::vector<std::string> ns;

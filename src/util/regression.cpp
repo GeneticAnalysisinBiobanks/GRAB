@@ -11,6 +11,7 @@
 #include <initializer_list>
 #include <limits>
 #include <numeric>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -492,7 +493,8 @@ CumulativeLogitFitResult cumulativeLogitFit(
     const Eigen::Ref<const Eigen::VectorXi> &y,
     const Eigen::Ref<const Eigen::MatrixXd> &X,
     double tol,
-    int maxIter
+    int maxIter,
+    uint64_t seed
 ) {
 
     if (y.size() != X.rows())
@@ -566,46 +568,41 @@ CumulativeLogitFitResult cumulativeLogitFit(
     for (int j = 1; j < Jm1; ++j)
         eps(j) = std::max(eps(j), eps(j - 1) + 0.01);
 
-    // ── Working residual reconstruction ────────────────────────────────
+    // ── Surrogate residual sampling (Liu & Zheng, 2018, JASA §3) ───────
     //   νᵢⱼ = logistic(εⱼ − ηᵢ),     ν_{i,-1} = 0,  ν_{i,J-1} = 1
-    //   μᵢⱼ = νᵢⱼ − ν_{i,j-1}
-    //   mᵢⱼ = νᵢⱼ + ν_{i,j-1} − 1
-    //   iRᵢⱼ = 1 / (mᵢⱼ − m_{i,J-1})   for j = 0,…,J-2
-    //   rᵢ   = Σⱼ (1{Yᵢ = j} − μᵢⱼ) / iRᵢⱼ
+    //   F_low_i = ν_{i, Yᵢ − 1},     F_hi_i  = ν_{i, Yᵢ}
+    //   Uᵢ ~ Uniform(0, 1)
+    //   Fᵢ⋆ = F_low_i + Uᵢ · (F_hi_i − F_low_i)        ~ Uniform(F_low_i, F_hi_i)
+    //   rᵢ  = Fᵢ⋆ − 0.5
+    //
+    // Under H₀ (PO model is correctly specified, no genetic effect):
+    //   F(Y* | X) ~ Uniform(0, 1) by the probability integral transform,
+    //   so rᵢ ~ Uniform(−1/2, 1/2) marginally with rᵢ ⊥⊥ Xᵢ.  The
+    //   conditional draws above produce that marginal exactly via the
+    //   tower-of-expectations identity Σⱼ μⱼ (ν_j + ν_{j-1} − 1) = 0.
+    //
+    // RNG: a local std::mt19937 seeded from `seed`.  This makes the call
+    // thread-safe (no shared global RNG state) and reproducible for any
+    // fixed non-zero seed.  seed == 0 falls back to std::random_device.
+    std::mt19937 rng(seed != 0 ? static_cast<std::uint_fast32_t>(seed)
+                               : std::random_device{}());
+    std::uniform_real_distribution<double> U01(0.0, 1.0);
+
     Eigen::VectorXd eta = Xs * beta;
     Eigen::VectorXd resid(n);
     for (int i = 0; i < n; ++i) {
-        // Forward sweep over j = 0..Jm1-1 to build νⱼ and mⱼ; track m_{i,J-1}
-        // for the iR denominator.
-        double nu_prev = 0.0;
-        double m_top = 0.0;            // m_{i,J-1} = ν_{i,J-1} + ν_{i,J-2} − 1
-        double last_nu = 0.0;
-        std::vector<double> mu(Jm1), m(Jm1);
-        for (int j = 0; j < Jm1; ++j) {
-            const double nu = logistic(eps(j) - eta(i));
-            mu[j] = std::max(nu - nu_prev, 1e-20);
-            m[j] = nu + nu_prev - 1.0;
-            last_nu = nu;
-            nu_prev = nu;
-        }
-        // ν_{i,J-1} = 1
-        m_top = 1.0 + last_nu - 1.0; // = last_nu
-
-        double r_i = 0.0;
         const int yi = ys(i);
-        for (int j = 0; j < Jm1; ++j) {
-            double denom = m[j] - m_top;
-            if (std::abs(denom) < 1e-20) denom = std::copysign(1e-20, denom == 0.0 ? -1.0 : denom);
-            const double iR = 1.0 / denom;
-            const double y_ij = (yi == j) ? 1.0 : 0.0;
-            r_i += (y_ij - mu[j]) / iR;
-        }
-        resid(i) = r_i;
+        const double F_low = (yi > 0)   ? logistic(eps(yi - 1) - eta(i)) : 0.0;
+        const double F_hi  = (yi < Jm1) ? logistic(eps(yi)     - eta(i)) : 1.0;
+        const double u     = U01(rng);
+        const double Fstar = F_low + u * (F_hi - F_low);
+        resid(i) = Fstar - 0.5;
     }
 
-    // Mean-zero centering: see header §4 commentary.  This restores
-    // Σᵢ rᵢ = 0 but is not equivalent to the working-space projection
-    // performed by a mixed-model proportional-odds fit.
+    // Algebraic mean-zero centering — restores Σᵢ rᵢ = 0 in any finite
+    // sample.  The marginal expectation E[rᵢ | Xᵢ] is already zero under
+    // H₀ by the PIT identity, so this centering only absorbs finite-
+    // sample noise of order O(1/√n).
     resid.array() -= resid.mean();
 
     CumulativeLogitFitResult out;

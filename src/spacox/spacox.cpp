@@ -635,7 +635,8 @@ void runSPACox(
     const std::string &removeFile,
     const std::string &traitTypeStr,
     const std::string &phenoNameSpec,
-    bool saveResid
+    bool saveResid,
+    uint64_t seed
 ) {
     // ---- Decide path: residual passthrough vs in-process null-model fit ----
     const bool fitPath = !phenoNameSpec.empty();
@@ -676,6 +677,7 @@ void runSPACox(
         }
         nullmodel::EngineOptions eo;
         eo.nthreads = nthread;
+        eo.seed = seed;
         auto fits = nullmodel::fitAll(sd, phenoSpecs, traitT, covarUnion, eo);
 
         std::vector<Eigen::VectorXd> rs;

@@ -757,7 +757,8 @@ int run(
                 args.removeFile,
                 args.traitType,
                 args.phenoName,
-                args.saveResid
+                args.saveResid,
+                args.seed
             );
         }
 
@@ -790,7 +791,8 @@ int run(
                 args.phenoName,
                 effectiveCovarFile,
                 covarNames,
-                args.saveResid
+                args.saveResid,
+                args.seed
             );
         }
 
@@ -855,7 +857,8 @@ int run(
                 args.traitType,
                 args.phenoName,
                 covarNames,
-                args.saveResid
+                args.saveResid,
+                args.seed
             );
         }
 

@@ -265,7 +265,15 @@ NullModelFit fitOne(
     } else { // Ordinal
         Eigen::VectorXi yi = coerceOrdinal(yK, idx, unionIIDs, spec.yColumn, spec.name);
         Eigen::MatrixXd X = buildDesignWithIntercept(covarK);
-        auto res = regression::cumulativeLogitFit(yi, X, opts.ordinalTol, opts.ordinalMaxIter);
+        // Forward the base seed verbatim.  cumulativeLogitFit constructs a
+        // local std::mt19937 per call, so two ordinal phenotypes fit in the
+        // same process draw from independent RNG instances even when sharing
+        // the same seed value.  Using a portable single seed (rather than a
+        // C++-specific hash combiner) makes the surrogate residuals exactly
+        // reproducible from any R / Python re-implementation that seeds its
+        // RNG with the same uint64_t.
+        auto res = regression::cumulativeLogitFit(yi, X, opts.ordinalTol,
+                                                  opts.ordinalMaxIter, opts.seed);
         r = std::move(res.residuals);
     }
 

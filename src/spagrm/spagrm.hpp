@@ -394,5 +394,6 @@ void runSPAGRM(
     const std::string &phenoNameSpec = {},
     const std::string &covarFile = {},
     const std::vector<std::string> &covarNames = {},
-    bool saveResid = false
+    bool saveResid = false,
+    uint64_t seed = 0                                      // ordinal surrogate-residual RNG seed
 );

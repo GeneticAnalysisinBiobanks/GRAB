@@ -128,6 +128,9 @@ struct EngineOptions {
     int coxMaxIter = 40;
     double ordinalTol = 1e-7;
     int ordinalMaxIter = 50;
+    // RNG seed forwarded to cumulativeLogitFit for ordinal surrogate-residual
+    // sampling.  seed == 0 → std::random_device (non-reproducible across runs).
+    uint64_t seed = 0;
 };
 
 // Fit each PhenoSpec; up to opts.nthreads phenotypes in parallel.

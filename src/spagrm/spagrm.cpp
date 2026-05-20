@@ -539,7 +539,8 @@ void runSPAGRM(
     const std::string &phenoNameSpec,
     const std::string &covarFile,
     const std::vector<std::string> &covarNames,
-    bool saveResid
+    bool saveResid,
+    uint64_t seed
 ) {
     const bool fitPath = !phenoNameSpec.empty();
     nullmodel::TraitType traitT{};
@@ -579,6 +580,7 @@ void runSPAGRM(
         }
         nullmodel::EngineOptions eo;
         eo.nthreads = nthreads;
+        eo.seed = seed;
         auto fits = nullmodel::fitAll(sd, phenoSpecs, traitT, covarUnion, eo);
         std::vector<Eigen::VectorXd> rs;
         std::vector<std::string> ns;
