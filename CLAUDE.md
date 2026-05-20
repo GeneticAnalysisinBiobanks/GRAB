@@ -128,6 +128,20 @@ with `GRAB_MARCH=-march=x86-64-v2` for portable distribution binaries.
 - The binary is the deliverable. There is no install step, no shared library,
   no headers exposed to users. Users download or build the binary and run it.
 
+## Regression testing — `examples/run.sh`
+
+`examples/run.sh` invokes every method (SPACox, SPAmix, SPAGRM, SAGELD,
+SPAsqr, WtCoxG, LEAF) end-to-end against the `examples/1kg.*` fixtures and
+writes per-method outputs under `examples_output/`.  It is the canonical
+regression suite for the repository.
+
+After any refactor — shared engine, SIMD kernels, null-model fitting,
+genotype readers, output formatting, or per-method code — re-run
+`examples/run.sh` and confirm that the resulting `examples_output/*` files
+are byte-identical (or numerically identical up to documented tolerance)
+to the pre-refactor baseline.  A passing build is not sufficient evidence
+that a refactor preserved behavior; output equivalence is.
+
 ## Shared engine code is validated — do not modify when debugging other methods
 
 SPAsqr, SPAmix, SPACox, SPAGRM, and SAGELD are currently passing end-to-end
