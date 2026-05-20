@@ -144,12 +144,12 @@ static std::vector<std::string> splitComma(
 // Build the per-phenotype PhenoSpec list for WtCoxG / LEAF from the
 // dispatch-level phenoNames vector.  Each entry is parsed via Auto mode
 // (binary "COL" or survival "TIME:EVENT").  If the user supplied an
-// optional --trait-type override (cox | logistic), every spec is checked
-// for consistency; linear / ordinal are rejected — neither WtCoxG nor
-// LEAF supports them.
+// optional --regression-model override (logistic | cox), every spec is
+// checked for consistency; linear / ordinal are rejected — neither WtCoxG
+// nor LEAF supports them.
 static std::vector<nullmodel::PhenoSpec> buildPhenoSpecsForWtCoxGLEAF(
     const std::vector<std::string> &phenoNames,
-    const std::string &traitTypeStr,
+    const std::string &regressionModelStr,
     const char *methodLabel
 ) {
     std::vector<nullmodel::PhenoSpec> out;
@@ -157,28 +157,28 @@ static std::vector<nullmodel::PhenoSpec> buildPhenoSpecsForWtCoxGLEAF(
     for (const auto &tok : phenoNames)
         out.push_back(nullmodel::parsePhenoSpecAuto(tok));
 
-    if (traitTypeStr.empty()) return out;
+    if (regressionModelStr.empty()) return out;
 
-    auto tt = nullmodel::parseTraitType(traitTypeStr);
-    if (tt == nullmodel::TraitType::Quantitative || tt == nullmodel::TraitType::Ordinal) {
+    auto rm = nullmodel::parseRegressionModel(regressionModelStr);
+    if (rm == nullmodel::RegressionModel::Linear || rm == nullmodel::RegressionModel::Ordinal) {
         std::cerr << "Error: " << methodLabel
-                  << " supports --trait-type auto | binary | time-to-event only"
-                     " (got '" << traitTypeStr << "').\n";
+                  << " supports --regression-model auto | logistic | cox only"
+                     " (got '" << regressionModelStr << "').\n";
         std::exit(1);
     }
-    if (tt == nullmodel::TraitType::Auto) return out;
-    const bool requireSurv = (tt == nullmodel::TraitType::TimeToEvent);
+    if (rm == nullmodel::RegressionModel::Auto) return out;
+    const bool requireSurv = (rm == nullmodel::RegressionModel::Cox);
     for (const auto &spec : out) {
         const bool isCox = nullmodel::isCoxSpec(spec);
         if (requireSurv && !isCox) {
             std::cerr << "Error: " << methodLabel
-                      << " --trait-type time-to-event requires TIME:EVENT syntax;"
+                      << " --regression-model cox requires TIME:EVENT syntax;"
                          " got '" << spec.name << "'.\n";
             std::exit(1);
         }
         if (!requireSurv && isCox) {
             std::cerr << "Error: " << methodLabel
-                      << " --trait-type binary does not allow"
+                      << " --regression-model logistic does not allow"
                          " TIME:EVENT syntax; got '" << spec.name << "'.\n";
             std::exit(1);
         }
@@ -223,7 +223,7 @@ static void logArgsInEffect(const Args &args) {
     if (!args.covarName.empty()) std::fprintf(stderr, "  --covar-name %s\n", args.covarName.c_str());
     if (!args.phenoName.empty()) std::fprintf(stderr, "  --pheno-name %s\n", args.phenoName.c_str());
     if (!args.residName.empty()) std::fprintf(stderr, "  --resid-name %s\n", args.residName.c_str());
-    if (!args.traitType.empty()) std::fprintf(stderr, "  --trait-type %s\n", args.traitType.c_str());
+    if (!args.regressionModel.empty()) std::fprintf(stderr, "  --regression-model %s\n", args.regressionModel.c_str());
     if (args.saveResid) std::fprintf(stderr, "  --save-resid\n");
     // pc-cols: relevant for SPAmix/SPAmixPlus/LEAF and cal-af-coef
     {
@@ -592,26 +592,26 @@ int run(
         }
         // Residual-based methods: SPACox / SPAGRM / SPAmix / SPAmixPlus /
         // SPAmixLocalPlus additionally accept --pheno-name (mutually
-        // exclusive with --resid-name).  --trait-type is optional and
+        // exclusive with --resid-name).  --regression-model is optional and
         // defaults to 'auto' (per-spec inference inside the engine).
-        // SAGELD remains residual-only and rejects any non-auto --trait-type.
+        // SAGELD remains residual-only and rejects any non-auto --regression-model.
         const bool isFitCapableMethod =
             args.method == "SPACox" || args.method == "SPAGRM" ||
             args.method == "SPAmix" || args.method == "SPAmixPlus" ||
             args.method == "SPAmixLocalPlus";
-        const bool hasTraitType = !args.traitType.empty();
-        // Validate the trait-type value itself (rejects legacy names and
-        // unknown strings) before any method-specific whitelist check.
-        nullmodel::TraitType parsedTraitType = nullmodel::TraitType::Auto;
-        if (hasTraitType) {
+        const bool hasRegressionModel = !args.regressionModel.empty();
+        // Validate the regression-model value itself (rejects legacy names
+        // and unknown strings) before any method-specific whitelist check.
+        nullmodel::RegressionModel parsedRegressionModel = nullmodel::RegressionModel::Auto;
+        if (hasRegressionModel) {
             try {
-                parsedTraitType = nullmodel::parseTraitType(args.traitType);
+                parsedRegressionModel = nullmodel::parseRegressionModel(args.regressionModel);
             } catch (const std::exception &ex) {
                 std::cerr << "Error: " << ex.what() << "\n";
                 return 1;
             }
         }
-        const bool traitNonAuto = hasTraitType && parsedTraitType != nullmodel::TraitType::Auto;
+        const bool regModelNonAuto = hasRegressionModel && parsedRegressionModel != nullmodel::RegressionModel::Auto;
         if (isFitCapableMethod) {
             const bool isFitPath = hasPhenoName;
             if (isFitPath && hasResidName) {
@@ -625,9 +625,9 @@ int run(
                           << " requires either --resid-name or --pheno-name.\n";
                 return 1;
             }
-            if (!isFitPath && traitNonAuto) {
+            if (!isFitPath && regModelNonAuto) {
                 std::cerr << "Error: " << args.method
-                          << ": --trait-type other than 'auto' requires --pheno-name.\n";
+                          << ": --regression-model other than 'auto' requires --pheno-name.\n";
                 return 1;
             }
             if (args.saveResid && !isFitPath) {
@@ -664,8 +664,8 @@ int run(
                              " (must list every --sageld-x variable as a fixed-effect covariate).\n";
                 return 1;
             }
-            if (traitNonAuto) {
-                std::cerr << "Error: SAGELD does not support --trait-type (other than 'auto').\n";
+            if (regModelNonAuto) {
+                std::cerr << "Error: SAGELD does not support --regression-model (other than 'auto').\n";
                 return 1;
             }
             if (args.saveResid && !hasPhenoName) {
@@ -678,23 +678,24 @@ int run(
                 return 1;
             }
         } else if (args.method == "SPAsqr") {
-            // SPAsqr only accepts auto/quantitative.  It does not invoke the
-            // null-model engine; the trait-type value is purely declarative.
-            if (traitNonAuto && parsedTraitType != nullmodel::TraitType::Quantitative) {
-                std::cerr << "Error: SPAsqr supports --trait-type auto | quantitative only"
-                             " (got '" << args.traitType << "').\n";
+            // SPAsqr only accepts auto/linear.  It does not invoke the
+            // null-model engine; the regression-model value is purely
+            // declarative.
+            if (regModelNonAuto && parsedRegressionModel != nullmodel::RegressionModel::Linear) {
+                std::cerr << "Error: SPAsqr supports --regression-model auto | linear only"
+                             " (got '" << args.regressionModel << "').\n";
                 return 1;
             }
         } else if (args.method == "WtCoxG" || args.method == "LEAF") {
-            // WtCoxG / LEAF only accept auto / binary / time-to-event.
+            // WtCoxG / LEAF only accept auto / logistic / cox.
             // Detailed per-spec consistency is checked downstream in
             // buildPhenoSpecsForWtCoxGLEAF.
-            if (traitNonAuto &&
-                parsedTraitType != nullmodel::TraitType::Binary &&
-                parsedTraitType != nullmodel::TraitType::TimeToEvent) {
+            if (regModelNonAuto &&
+                parsedRegressionModel != nullmodel::RegressionModel::Logistic &&
+                parsedRegressionModel != nullmodel::RegressionModel::Cox) {
                 std::cerr << "Error: " << args.method
-                          << " supports --trait-type auto | binary | time-to-event only"
-                             " (got '" << args.traitType << "').\n";
+                          << " supports --regression-model auto | logistic | cox only"
+                             " (got '" << args.regressionModel << "').\n";
                 return 1;
             }
         }
@@ -776,7 +777,7 @@ int run(
                 args.hweCutoff,
                 args.keepFile,
                 args.removeFile,
-                args.traitType,
+                args.regressionModel,
                 args.phenoName,
                 args.saveResid,
                 args.seed
@@ -808,7 +809,7 @@ int run(
                 args.hweCutoff,
                 args.keepFile,
                 args.removeFile,
-                args.traitType,
+                args.regressionModel,
                 args.phenoName,
                 effectiveCovarFile,
                 covarNames,
@@ -883,7 +884,7 @@ int run(
                 args.hweCutoff,
                 args.keepFile,
                 args.removeFile,
-                args.traitType,
+                args.regressionModel,
                 args.phenoName,
                 covarNames,
                 args.saveResid,
@@ -1081,9 +1082,9 @@ int run(
             }
             checkSpGrm(args, /*required=*/ false, "WtCoxG");
             // Parse phenoNames as PhenoSpec (Auto mode); honour optional
-            // --trait-type override.
+            // --regression-model override.
             auto wtcoxgSpecs = buildPhenoSpecsForWtCoxGLEAF(
-                phenoNames, args.traitType, "WtCoxG");
+                phenoNames, args.regressionModel, "WtCoxG");
             // Multi-phenotype entry point: shared loading + parallel null models +
             // one matched-marker scan + parallel batch-effect + single engine.
             runWtCoxG(
@@ -1134,9 +1135,9 @@ int run(
                 return 1;
             }
             // Parse phenoNames as PhenoSpec (Auto mode); honour optional
-            // --trait-type override.
+            // --regression-model override.
             auto leafSpecs = buildPhenoSpecsForWtCoxGLEAF(
-                phenoNames, args.traitType, "LEAF");
+                phenoNames, args.regressionModel, "LEAF");
             // Multi-phenotype entry point: shared K-means + geno scan + summix + GRM,
             // parallel regression and batch-effect, single engine.
             runLEAF(
@@ -1196,7 +1197,7 @@ int run(
                 args.excludeFile,
                 args.covarFile,
                 covarNames,
-                args.traitType,
+                args.regressionModel,
                 args.phenoName,
                 args.saveResid
             );

@@ -10,8 +10,11 @@ compatibility when redesigning interfaces:
   renamed, restructured, or removed outright when a cleaner design is
   available.
 - Do not add aliases, deprecation warnings, fallback parsers, or "legacy
-  mode" branches for flags or values that have been renamed.  Reject the old
-  spelling with an unambiguous error message that points to the new one.
+  mode" branches for flags or values that have been renamed.  Let the old
+  spelling fall through to the dispatcher's generic "unknown option" error.
+  Do not add bespoke `--old-flag → --new-flag` redirect branches either:
+  pre-1.0 there are no external scripts to redirect, and the redirect
+  branches just turn into clutter the next time the flag is renamed.
 - Do not preserve old function signatures, struct layouts, or output column
   orderings "in case downstream consumers depend on them" — there are none.
 - The only durability constraint is reproducibility within a single
@@ -64,6 +67,24 @@ performance, parallelism, or new features:
   - Resolve via `simdLevel()` at first call.
   - x86 detection guarded by `#if defined(__x86_64__) || defined(_M_X64)`.
 
+**AVX2 fallback is mandatory for every AVX-512 kernel.** GRAB targets
+x86-64-v3 hardware as the supported deployment baseline; AVX-512 is a
+performance enhancement on top of that, not a deployment requirement.
+Therefore:
+
+- Every code path that contains an `_avx512` variant must also ship an
+  `_avx2` variant.  The runtime dispatcher in `simd_dispatch.hpp` picks
+  `_avx2` whenever `__builtin_cpu_supports("avx512...")` returns false,
+  which is the common case on consumer Intel chips and on many cloud
+  instances.
+- Do not write AVX-512-only kernels and rely on the scalar fallback as
+  the secondary path.  On hosts without AVX-512 that would silently lose
+  the SIMD speed-up that the AVX2 variant provides.
+- When you add a new SIMD kernel, the review checklist is: scalar +
+  `_avx2` + `_avx512` variants, plus a `simdLevel()` dispatch site.
+  Anything missing the AVX2 tier is a bug, not an optimization
+  opportunity for later.
+
 ## Architecture matrix the build supports
 
 | Platform | x86_64                      | arm64 (Apple Silicon, ARM Linux) |
@@ -109,13 +130,19 @@ with `GRAB_MARCH=-march=x86-64-v2` for portable distribution binaries.
 
 ## Shared engine code is validated — do not modify when debugging other methods
 
-SPAsqr is currently passing end-to-end tests. Because SPAsqr is the most
-demanding consumer of the shared engine infrastructure (it exercises the
-fused-GEMM path, the multi-phenotype engine, LOCO, and the SIMD-dispatch
-pattern), a working SPAsqr is a strong signal that **the common code below
-is correct**. When debugging any other method (SPAGRM / SPACox /
-WtCoxG / SPAmix / LEAF), do not suspect or modify these files — the bug is
-almost certainly in the method-specific code, not the shared infrastructure:
+SPAsqr, SPAmix, SPACox, SPAGRM, and SAGELD are currently passing end-to-end
+tests.  Together they exercise every facet of the shared engine
+infrastructure: the fused-GEMM path (SPAsqr, SPAGRM, SPAmix, SAGELD-pheno
+mode), the `MissBatch` non-fuseable path (SPACox), the single-phenotype
+engine (SAGELD residual mode), the LOCO engine (SPAsqr-LOCO), the
+multi-phenotype engine (SPAsqr, SPAGRM, SPAmix, SPACox), and the runtime
+SIMD-dispatch pattern.  Their collective success is a strong signal that
+**the common code below is correct**.
+
+The methods currently under active debugging are **WtCoxG**, **LEAF**, and
+**SPAmixLocalPlus**.  When debugging any of those, do not suspect or modify
+the shared infrastructure listed below — the bug is almost certainly in the
+method-specific code, not the shared engine:
 
 - `src/engine/marker.cpp`, `src/engine/marker.hpp`, `src/engine/marker_impl.hpp`
   — `markerEngine`, `multiPhenoEngine`, `multiPhenoEngineRange`,
@@ -126,16 +153,21 @@ almost certainly in the method-specific code, not the shared infrastructure:
   Regenie / LDAK-KVIK `.loco` parsers, per-chromosome task rebuild loop.
 - `src/util/simd_dispatch.hpp`, `src/util/simd_math.hpp` — runtime
   AVX2 / AVX-512 dispatch and vectorized exp/log kernels.
+- `src/util/null_model.{hpp,cpp}` — `parseRegressionModel`, the unified
+  null-model fitting engine driving the `--pheno-name + --regression-model`
+  path for the five validated methods.
 - `src/geno_factory/` — genotype decoding (plink / pgen / bgen / vcf):
-  SPAsqr drives all four readers through the same `GenoCursor` interface.
+  SPAsqr and SPAmix exercise all four readers through the same
+  `GenoCursor` interface.
 - The `MethodBase` interface contract in `src/engine/marker.hpp`
   (`clone`, `prepareChunk`, `getResultVec`, `getResultBatch`,
   `supportsFusedGemm`, `fillUnionResiduals`, `fillResidualSums`,
   `processScoreBatch`).
 
-If a non-SPAsqr method misbehaves, look first at its own per-method file
+If a method under debug misbehaves, look first at its own per-method file
 (score centering, null-model fitting, residual construction, p-value
-computation, output formatting, QC thresholds it sets itself). Changing
-the shared engine to "fix" a method bug will break SPAsqr and is the wrong
-direction; if a shared-engine change is genuinely required, re-run SPAsqr
-regression tests before committing.
+computation, output formatting, QC thresholds it sets itself).  Changing
+the shared engine to "fix" a method bug will break the five validated
+methods and is the wrong direction; if a shared-engine change is genuinely
+required, re-run the regression tests for SPAsqr, SPAmix, SPACox, SPAGRM,
+and SAGELD before committing.

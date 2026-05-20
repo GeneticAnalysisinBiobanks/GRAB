@@ -8,6 +8,7 @@ examples_spamix/
 examples_leaf/
 examples_output/
 .claude/
+.vscode/
 
 *.R
 .DS_Store

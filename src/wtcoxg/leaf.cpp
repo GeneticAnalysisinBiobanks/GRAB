@@ -1345,19 +1345,19 @@ void runLEAF(
             if (isSurv) {
                 fullTimePre[p] = sdFull.getColumn(spec.timeColumn);
                 fullIndPre[p] = sdFull.getColumn(spec.eventColumn);
-                nullmodel::inferTimeToEvent(
+                nullmodel::inferCoxSurvival(
                     fullTimePre[p], fullIndPre[p],
                     spec.timeColumn, spec.eventColumn,
                     unionIIDsForInfer);
             } else {
                 fullIndPre[p] = sdFull.getColumn(spec.yColumn);
-                auto info = nullmodel::inferTraitFromColumn(
+                auto info = nullmodel::inferModelFromColumn(
                     fullIndPre[p], spec.yColumn, unionIIDsForInfer);
-                if (info.trait != nullmodel::TraitType::Binary)
+                if (info.model != nullmodel::RegressionModel::Logistic)
                     throw std::runtime_error(
                         "LEAF requires a binary phenotype for '" +
                         spec.yColumn + "' but inference returned " +
-                        nullmodel::traitTypeName(info.trait) +
+                        nullmodel::regressionModelName(info.model) +
                         " (use --pheno-name TIME:EVENT for survival)");
                 if (info.needRecode) {
                     double v0 = info.sortedDistinct[0];

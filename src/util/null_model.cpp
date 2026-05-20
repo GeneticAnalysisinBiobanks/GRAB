@@ -159,13 +159,13 @@ void applyOrdinalShift(Eigen::VectorXd &y, double base) {
         if (!std::isnan(y[i])) y[i] -= base;
 }
 
-// Fit one PhenoSpec.  When `tHint == Auto`, the trait is inferred per spec
-// (via inferTraitFromColumn / inferTimeToEvent).  Otherwise the spec is
-// validated against the explicit `tHint` and (for Binary / Ordinal) a recode
-// is still applied if the data uses non-{0,1} or non-0-based encoding.
+// Fit one PhenoSpec.  When `mHint == Auto`, the regression model is inferred
+// per spec (via inferModelFromColumn / inferCoxSurvival).  Otherwise the spec
+// is validated against the explicit `mHint` and (for Logistic / Ordinal) a
+// recode is still applied if the data uses non-{0,1} or non-0-based encoding.
 NullModelFit fitOne(
     const PhenoSpec &spec,
-    TraitType tHint,
+    RegressionModel mHint,
     const SubjectData &sd,
     const Eigen::MatrixXd &covarUnion,
     const EngineOptions &opts,
@@ -177,20 +177,20 @@ NullModelFit fitOne(
     fit.residuals.setConstant(nUnion,
                               std::numeric_limits<double>::quiet_NaN());
 
-    // ── TimeToEvent path (spec contains TIME:EVENT) ──────────────────────
+    // ── Cox path (spec contains TIME:EVENT) ──────────────────────────────
     if (isCoxSpec(spec)) {
-        if (tHint != TraitType::Auto && tHint != TraitType::TimeToEvent)
+        if (mHint != RegressionModel::Auto && mHint != RegressionModel::Cox)
             throw std::runtime_error(
-                "--trait-type " + std::string(traitTypeName(tHint)) +
+                "--regression-model " + std::string(regressionModelName(mHint)) +
                 " specified but '" + spec.name +
-                "' uses TIME:EVENT syntax (which requires time-to-event)");
+                "' uses TIME:EVENT syntax (which requires cox)");
 
         Eigen::VectorXd time = sd.getColumn(spec.timeColumn);
         Eigen::VectorXd event = sd.getColumn(spec.eventColumn);
-        inferTimeToEvent(time, event, spec.timeColumn, spec.eventColumn, unionIIDs);
+        inferCoxSurvival(time, event, spec.timeColumn, spec.eventColumn, unionIIDs);
 
-        if (tHint == TraitType::Auto)
-            infoMsg("  Auto-detected trait for '%s': time-to-event", spec.name.c_str());
+        if (mHint == RegressionModel::Auto)
+            infoMsg("  Auto-detected regression model for '%s': cox", spec.name.c_str());
 
         auto idx = buildKeepIndices({time, event}, covarUnion);
         if (idx.empty())
@@ -209,36 +209,36 @@ NullModelFit fitOne(
         return fit;
     }
 
-    // ── Non-Cox path: trait is Quantitative / Binary / Ordinal ───────────
-    if (tHint == TraitType::TimeToEvent)
+    // ── Non-Cox path: model is Linear / Logistic / Ordinal ───────────────
+    if (mHint == RegressionModel::Cox)
         throw std::runtime_error(
-            "--trait-type time-to-event requires TIME:EVENT syntax;"
+            "--regression-model cox requires TIME:EVENT syntax;"
             " '" + spec.name + "' is a single-column spec");
 
     Eigen::VectorXd y = sd.getColumn(spec.yColumn);
 
-    InferredCol info = inferTraitFromColumn(y, spec.yColumn, unionIIDs);
-    TraitType t;
-    if (tHint == TraitType::Auto) {
-        t = info.trait;
-        infoMsg("  Auto-detected trait for '%s': %s",
-                spec.name.c_str(), traitTypeName(t));
+    InferredCol info = inferModelFromColumn(y, spec.yColumn, unionIIDs);
+    RegressionModel m;
+    if (mHint == RegressionModel::Auto) {
+        m = info.model;
+        infoMsg("  Auto-detected regression model for '%s': %s",
+                spec.name.c_str(), regressionModelName(m));
     } else {
-        if (info.trait != tHint)
+        if (info.model != mHint)
             throw std::runtime_error(
-                "--trait-type " + std::string(traitTypeName(tHint)) +
+                "--regression-model " + std::string(regressionModelName(mHint)) +
                 " specified for '" + spec.yColumn +
-                "' but inference returned " + traitTypeName(info.trait));
-        t = tHint;
+                "' but inference returned " + regressionModelName(info.model));
+        m = mHint;
     }
 
     if (info.needRecode) {
-        if (t == TraitType::Binary) {
+        if (m == RegressionModel::Logistic) {
             double v0 = info.sortedDistinct[0], v1 = info.sortedDistinct[1];
             applyBinaryRecode(y, v0, v1);
-            infoMsg("  Recoded binary column '%s': {%g, %g} -> {0, 1}",
+            infoMsg("  Recoded logistic column '%s': {%g, %g} -> {0, 1}",
                     spec.yColumn.c_str(), v0, v1);
-        } else if (t == TraitType::Ordinal) {
+        } else if (m == RegressionModel::Ordinal) {
             double base = info.sortedDistinct.front();
             applyOrdinalShift(y, base);
             infoMsg("  Recoded ordinal column '%s': shift by -%g",
@@ -256,10 +256,10 @@ NullModelFit fitOne(
     Eigen::VectorXd w = Eigen::VectorXd::Ones(static_cast<Eigen::Index>(idx.size()));
 
     Eigen::VectorXd r;
-    if (t == TraitType::Quantitative) {
+    if (m == RegressionModel::Linear) {
         Eigen::MatrixXd X = buildDesignWithIntercept(covarK);
         r = regression::linearResiduals(yK, X, w, opts.linearTol, opts.linearMaxIter);
-    } else if (t == TraitType::Binary) {
+    } else if (m == RegressionModel::Logistic) {
         Eigen::MatrixXd X = buildDesignWithIntercept(covarK);
         r = regression::logisticResiduals(yK, X, w, opts.logisticTol, opts.logisticMaxIter);
     } else { // Ordinal
@@ -295,42 +295,42 @@ NullModelFit fitOne(
 // Public API
 // ══════════════════════════════════════════════════════════════════════
 
-TraitType parseTraitType(const std::string &s) {
+RegressionModel parseRegressionModel(const std::string &s) {
     std::string k = toLower(trim(s));
-    if (k.empty()) return TraitType::Auto;  // empty string ↔ default 'auto'
-    if (k == "auto") return TraitType::Auto;
-    if (k == "quantitative") return TraitType::Quantitative;
-    if (k == "binary") return TraitType::Binary;
-    if (k == "time-to-event") return TraitType::TimeToEvent;
-    if (k == "ordinal") return TraitType::Ordinal;
-    // Legacy aliases removed in this release; provide a migration hint
-    // rather than silently accepting them.
-    if (k == "linear")
+    if (k.empty()) return RegressionModel::Auto;  // empty string ↔ default 'auto'
+    if (k == "auto") return RegressionModel::Auto;
+    if (k == "linear") return RegressionModel::Linear;
+    if (k == "logistic") return RegressionModel::Logistic;
+    if (k == "cox") return RegressionModel::Cox;
+    if (k == "ordinal") return RegressionModel::Ordinal;
+    // Earlier spellings rejected with a migration hint pointing to the
+    // canonical regression-family names.
+    if (k == "quantitative")
         throw std::runtime_error(
-            "--trait-type 'linear' was renamed to 'quantitative'.");
-    if (k == "logistic")
+            "--regression-model 'quantitative' was renamed to 'linear'.");
+    if (k == "binary")
         throw std::runtime_error(
-            "--trait-type 'logistic' was renamed to 'binary'.");
-    if (k == "cox")
+            "--regression-model 'binary' was renamed to 'logistic'.");
+    if (k == "time-to-event")
         throw std::runtime_error(
-            "--trait-type 'cox' was renamed to 'time-to-event'.");
+            "--regression-model 'time-to-event' was renamed to 'cox'.");
     throw std::runtime_error(
-        "Unknown --trait-type '" + s +
-        "'; expected one of: auto, quantitative, binary, time-to-event, ordinal");
+        "Unknown --regression-model '" + s +
+        "'; expected one of: auto, linear, logistic, cox, ordinal");
 }
 
-const char *traitTypeName(TraitType t) {
-    switch (t) {
-    case TraitType::Auto:         return "auto";
-    case TraitType::Quantitative: return "quantitative";
-    case TraitType::Binary:       return "binary";
-    case TraitType::TimeToEvent:  return "time-to-event";
-    case TraitType::Ordinal:      return "ordinal";
+const char *regressionModelName(RegressionModel m) {
+    switch (m) {
+    case RegressionModel::Auto:     return "auto";
+    case RegressionModel::Linear:   return "linear";
+    case RegressionModel::Logistic: return "logistic";
+    case RegressionModel::Cox:      return "cox";
+    case RegressionModel::Ordinal:  return "ordinal";
     }
     return "unknown";
 }
 
-InferredCol inferTraitFromColumn(
+InferredCol inferModelFromColumn(
     const Eigen::VectorXd &y,
     const std::string &colName,
     const std::vector<std::string> &unionIIDs,
@@ -365,7 +365,7 @@ InferredCol inferTraitFromColumn(
 
     // 3. Two distinct → Binary (lenient recode to {0, 1})
     if (distinct.size() == 2) {
-        info.trait = TraitType::Binary;
+        info.model = RegressionModel::Logistic;
         info.needRecode = !(distinct[0] == 0.0 && distinct[1] == 1.0);
         return info;
     }
@@ -385,24 +385,24 @@ InferredCol inferTraitFromColumn(
         double top = distinct.back();
         bool contiguous = (top - base + 1.0 == static_cast<double>(distinct.size()));
         if (contiguous) {
-            info.trait = TraitType::Ordinal;
+            info.model = RegressionModel::Ordinal;
             info.needRecode = (base != 0.0);
             return info;
         }
         // Non-contiguous integer codes (e.g. {0, 2, 5}) are not ordinal-
-        // shaped, so treat them as Quantitative.  Explicit --trait-type
+        // shaped, so treat them as Quantitative.  Explicit --regression-model
         // ordinal will still be rejected downstream because inference
         // returns Quantitative here.
         (void)unionIIDs; // currently unused; reserved for per-IID error hints
     }
 
     // 6. Otherwise → Quantitative (no recode)
-    info.trait = TraitType::Quantitative;
+    info.model = RegressionModel::Linear;
     info.needRecode = false;
     return info;
 }
 
-InferredSurv inferTimeToEvent(
+InferredSurv inferCoxSurvival(
     const Eigen::VectorXd &time,
     const Eigen::VectorXd &event,
     const std::string &timeName,
@@ -411,7 +411,7 @@ InferredSurv inferTimeToEvent(
 ) {
     if (time.size() != event.size())
         throw std::runtime_error(
-            "inferTimeToEvent: time and event columns differ in length");
+            "inferCoxSurvival: time and event columns differ in length");
 
     auto iidAt = [&](Eigen::Index i) -> std::string {
         if (i >= 0 && static_cast<size_t>(i) < unionIIDs.size())
@@ -454,7 +454,7 @@ InferredSurv inferTimeToEvent(
     // sawOne && !sawZero is the all-events case; valid for Cox.
 
     InferredSurv s;
-    s.trait = TraitType::TimeToEvent;
+    s.model = RegressionModel::Cox;
     return s;
 }
 
@@ -487,13 +487,13 @@ PhenoSpec parsePhenoSpecAuto(const std::string &token) {
 }
 
 std::vector<PhenoSpec> parsePhenoSpecList(
-    TraitType t, const std::string &commaList
+    RegressionModel m, const std::string &commaList
 ) {
     auto tokens = splitCommaRaw(commaList);
     if (tokens.empty())
         throw std::runtime_error("--pheno-name is empty");
 
-    if (t == TraitType::Auto) {
+    if (m == RegressionModel::Auto) {
         std::vector<PhenoSpec> out;
         out.reserve(tokens.size());
         for (const auto &tok : tokens)
@@ -505,10 +505,10 @@ std::vector<PhenoSpec> parsePhenoSpecList(
     out.reserve(tokens.size());
     for (const auto &tok : tokens) {
         size_t colonCount = std::count(tok.begin(), tok.end(), ':');
-        if (t == TraitType::TimeToEvent) {
+        if (m == RegressionModel::Cox) {
             if (colonCount != 1)
                 throw std::runtime_error(
-                    "time-to-event phenotype '" + tok +
+                    "cox phenotype '" + tok +
                     "' must be specified as TIME:EVENT (got " +
                     std::to_string(colonCount) + " ':' separator(s))");
             size_t pos = tok.find(':');
@@ -529,7 +529,7 @@ std::vector<PhenoSpec> parsePhenoSpecList(
         } else {
             if (colonCount != 0)
                 throw std::runtime_error(
-                    "Trait type '" + std::string(traitTypeName(t)) +
+                    "Regression model '" + std::string(regressionModelName(m)) +
                     "' does not use TIME:EVENT syntax; got '" + tok + "'");
             PhenoSpec p;
             p.name = tok;
@@ -558,7 +558,7 @@ std::vector<std::string> columnsNeeded(const std::vector<PhenoSpec> &specs) {
 std::vector<NullModelFit> fitAll(
     const SubjectData &sd,
     const std::vector<PhenoSpec> &specs,
-    TraitType t,
+    RegressionModel m,
     const Eigen::MatrixXd &covarUnion,
     const EngineOptions &opts
 ) {
@@ -584,7 +584,7 @@ std::vector<NullModelFit> fitAll(
             size_t i = next.fetch_add(1, std::memory_order_relaxed);
             if (i >= K) return;
             try {
-                out[i] = fitOne(specs[i], t, sd, covarUnion, opts, unionIIDs);
+                out[i] = fitOne(specs[i], m, sd, covarUnion, opts, unionIIDs);
             } catch (...) {
                 errs[i] = std::current_exception();
             }

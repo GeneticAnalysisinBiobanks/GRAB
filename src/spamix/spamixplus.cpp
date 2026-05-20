@@ -604,20 +604,20 @@ void runSPAmixPlus(
     double hweCutoff,
     const std::string &keepFile,
     const std::string &removeFile,
-    const std::string &traitTypeStr,
+    const std::string &regressionModelStr,
     const std::string &phenoNameSpec,
     const std::vector<std::string> &covarNames,
     bool saveResid,
     uint64_t seed
 ) {
     const bool fitPath = !phenoNameSpec.empty();
-    nullmodel::TraitType traitT{};
+    nullmodel::RegressionModel regModel{};
     std::vector<nullmodel::PhenoSpec> phenoSpecs;
     if (fitPath) {
-        traitT = nullmodel::parseTraitType(traitTypeStr);
-        phenoSpecs = nullmodel::parsePhenoSpecList(traitT, phenoNameSpec);
+        regModel = nullmodel::parseRegressionModel(regressionModelStr);
+        phenoSpecs = nullmodel::parsePhenoSpecList(regModel, phenoNameSpec);
         infoMsg("SPAmix: fitting %s null model for %zu phenotype(s)",
-                nullmodel::traitTypeName(traitT), phenoSpecs.size());
+                nullmodel::regressionModelName(regModel), phenoSpecs.size());
     }
 
     // ---- Load residual file and PC data ----
@@ -700,7 +700,7 @@ void runSPAmixPlus(
         nullmodel::EngineOptions eo;
         eo.nthreads = nthread;
         eo.seed = seed;
-        auto fits = nullmodel::fitAll(sd, phenoSpecs, traitT, covarUnion, eo);
+        auto fits = nullmodel::fitAll(sd, phenoSpecs, regModel, covarUnion, eo);
         std::vector<Eigen::VectorXd> rs;
         std::vector<std::string> ns;
         rs.reserve(fits.size());

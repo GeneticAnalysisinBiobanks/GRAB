@@ -249,7 +249,7 @@ void runSPACox(
     double hweCutoff,
     const std::string &keepFile = {},
     const std::string &removeFile = {},
-    const std::string &traitTypeStr = {},                  // empty → residual-passthrough path
+    const std::string &regressionModelStr = {},            // empty → residual-passthrough path
     const std::string &phenoNameSpec = {},                 // raw --pheno-name string (Cox: TIME:EVENT,...)
     bool saveResid = false,
     uint64_t seed = 0                                      // ordinal surrogate-residual RNG seed

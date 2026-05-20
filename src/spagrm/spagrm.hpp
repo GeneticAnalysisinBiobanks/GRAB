@@ -397,7 +397,7 @@ void runSPAGRM(
     double hweCutoff,
     const std::string &keepFile = {},
     const std::string &removeFile = {},
-    const std::string &traitTypeStr = {},
+    const std::string &regressionModelStr = {},
     const std::string &phenoNameSpec = {},
     const std::string &covarFile = {},
     const std::vector<std::string> &covarNames = {},

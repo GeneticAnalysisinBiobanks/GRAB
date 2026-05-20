@@ -351,7 +351,7 @@ void runWtCoxGPheno(
 // then runs a single multiPhenoEngine call for all P phenotypes.
 // parsedSpecs[p] is a nullmodel::PhenoSpec carrying either a single binary
 // yColumn or a survival timeColumn+eventColumn pair.  Dispatch is expected
-// to produce these via nullmodel::parsePhenoSpecAuto (with TraitType::Auto)
+// to produce these via nullmodel::parsePhenoSpecAuto (with RegressionModel::Auto)
 // so the WtCoxG / LEAF survival syntax matches the other GWAS methods.
 void runWtCoxG(
     const std::string &phenoFile,

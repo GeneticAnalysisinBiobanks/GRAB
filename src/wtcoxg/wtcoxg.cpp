@@ -1694,7 +1694,7 @@ void runWtCoxG(
                         pd[p].survTime = sd.getColumn(spec.timeColumn);
                         pd[p].indicator = sd.getColumn(spec.eventColumn);
                         // Strict {0,1} event + time > 0 check.
-                        nullmodel::inferTimeToEvent(
+                        nullmodel::inferCoxSurvival(
                             pd[p].survTime, pd[p].indicator,
                             spec.timeColumn, spec.eventColumn,
                             unionIIDsForInfer);
@@ -1702,15 +1702,15 @@ void runWtCoxG(
                         pd[p].indicator = sd.getColumn(spec.yColumn);
                         // WtCoxG only fits binary phenotypes for non-survival
                         // specs; reject any column that infers to something
-                        // other than binary, and apply the lenient recode
+                        // other than logistic, and apply the lenient recode
                         // ({v0, v1} -> {0, 1}) when the inputs are not 0/1.
-                        auto info = nullmodel::inferTraitFromColumn(
+                        auto info = nullmodel::inferModelFromColumn(
                             pd[p].indicator, spec.yColumn, unionIIDsForInfer);
-                        if (info.trait != nullmodel::TraitType::Binary)
+                        if (info.model != nullmodel::RegressionModel::Logistic)
                             throw std::runtime_error(
                                 "WtCoxG requires a binary phenotype for '" +
                                 spec.yColumn + "' but inference returned " +
-                                nullmodel::traitTypeName(info.trait) +
+                                nullmodel::regressionModelName(info.model) +
                                 " (use --pheno-name TIME:EVENT for survival)");
                         if (info.needRecode) {
                             double v0 = info.sortedDistinct[0];

@@ -118,7 +118,7 @@ Args parseArgs(
         else if (arg == "--covar-name")a.covarName = next();
         else if (arg == "--pheno-name")a.phenoName = next();
         else if (arg == "--resid-name")a.residName = next();
-        else if (arg == "--trait-type")a.traitType = next();
+        else if (arg == "--regression-model")a.regressionModel = next();
         else if (arg == "--save-resid") { markSeen(arg); a.saveResid = true; }
         else if (arg == "--pc-cols")a.pcCols = next();
         else if (arg == "--spasqr-taus")a.spasqrTaus = next();

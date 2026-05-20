@@ -108,12 +108,13 @@ Required by SPACox, SPAGRM, SAGELD, SPAmix, SPAmixPlus, SPAmixLocalPlus.
 Default: all residual columns.)"
 };
 
-inline const FlagDef kTraitType = {
-    "--trait-type", "TYPE",
-    "Null-model trait type: linear | logistic | cox | ordinal",
+inline const FlagDef kRegressionModel = {
+    "--regression-model", "MODEL",
+    "Null-model regression family: auto | linear | logistic | cox | ordinal",
     R"(Used with --pheno-name to fit a null model in-process and feed the
 fitted residuals into the downstream score test (SPACox / SPAGRM /
 SPAmix / SPAmixPlus).  Mutually exclusive with --resid-name.
+  auto     — per-token inference from column values + colon syntax (default)
   linear   — regression::linearResiduals (intercept added automatically)
   logistic — regression::logisticResiduals (0/1 response; intercept added)
   cox      — regression::coxResiduals; --pheno-name uses TIME:EVENT pairs
@@ -124,7 +125,7 @@ SPAmix / SPAmixPlus).  Mutually exclusive with --resid-name.
 inline const FlagDef kSaveResid = {
     "--save-resid", nullptr,
     "Write fitted residuals to PREFIX.null.resid (re-loadable via --resid-name)",
-    R"(Only valid together with --pheno-name + --trait-type.  Writes a
+    R"(Only valid together with --pheno-name + --regression-model.  Writes a
 plain-text strict-format file: IID column followed by one column per
 fitted phenotype (NaN entries as 'NA').  The file can be reloaded in
 a later invocation via --pheno PREFIX.null.resid --resid-name ....)"
@@ -230,8 +231,14 @@ Flag is parameterless: present  → enabled; absent → disabled (default).
 };
 
 inline const FlagDef kThreads = {
-    "--threads", "INT", "Worker threads (default: 1)",
-    nullptr
+    "--threads", "INT", "Number of worker threads (default: 1)",
+    R"(--threads N requests N worker threads for the chunk-level marker
+engine and for the pre-marker work-stealing pools (null-model fits,
+Chow-Liu MAF bins, K-means restarts, etc.).
+The main thread is *not* counted in N: it dispatches chunks, drains
+output, and stays mostly idle, but does briefly occupy one CPU during
+load, finalize, and synchronization steps.  Plan for N + 1 logical
+cores when sizing a job to physical cores.)"
 };
 
 inline const FlagDef kChunkSize = {
@@ -453,7 +460,7 @@ inline const FlagDef *const kSPACoxReq[] = {
     nullptr
 };
 inline const FlagDef *const kSPACoxOpt[] = {
-    &kCovar,       &kCovarName,        &kResidName,    &kPhenoName,   &kTraitType,  &kSaveResid,
+    &kCovar,       &kCovarName,        &kResidName,    &kPhenoName,   &kRegressionModel,  &kSaveResid,
     &kCovarPThresh, &kSpaZThresh,      &kThreads,      &kChunkSize,
     &kCompression, &kCompressionLevel, &kGeno,         &kMaf,         &kMac,        &kHwe,     &kChr,
     nullptr
@@ -475,7 +482,7 @@ inline const FlagDef *const kSPAGRMReq[] = {
     nullptr
 };
 inline const FlagDef *const kSPAGRMOpt[] = {
-    &kResidName,  &kPhenoName,  &kTraitType,           &kSaveResid,
+    &kResidName,  &kPhenoName,  &kRegressionModel,           &kSaveResid,
     &kCovar,      &kCovarName,
     &kSpaZThresh, &kOutlierIqr, &kSpagrmControlOutlier,
     &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
@@ -532,7 +539,7 @@ inline const FlagDef *const kSPAmixReq[] = {
     nullptr
 };
 inline const FlagDef *const kSPAmixOpt[] = {
-    &kPheno,      &kCovar,      &kCovarName,  &kResidName,    &kPhenoName,    &kTraitType, &kSaveResid,
+    &kPheno,      &kCovar,      &kCovarName,  &kResidName,    &kPhenoName,    &kRegressionModel, &kSaveResid,
     &kIndAfCoef, &kSpGrm,       &kOutlierIqr,
     &kSpaZThresh, &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
     &kGeno,       &kMaf,     &kMac,       &kHwe,         &kChr,
@@ -556,7 +563,7 @@ inline const FlagDef *const kSPAmixPlusReq[] = {
     nullptr
 };
 inline const FlagDef *const kSPAmixPlusOpt[] = {
-    &kCovar,      &kCovarName,  &kResidName,  &kPhenoName,    &kTraitType,    &kSaveResid,
+    &kCovar,      &kCovarName,  &kResidName,  &kPhenoName,    &kRegressionModel,    &kSaveResid,
     &kIndAfCoef,        &kOutlierIqr, &kSpaZThresh, &kThreads,
     &kChunkSize, &kCompression, &kCompressionLevel, &kGeno,       &kMaf,        &kMac,
     &kHwe,       &kChr,
