@@ -22,8 +22,28 @@ namespace {
 
 // ──────────────────────────────────────────────────────────────────────────────
 // DosageSetter — callback that bgen's read_and_parse_genotype_data_block uses
-// to deliver per-sample genotype probabilities.  We convert on the fly to
-// ALT dosage, applying the usedMask.
+// to deliver per-sample genotype probabilities.  We convert on the fly to a
+// per-subject dosage, applying the usedMask.
+//
+// Supports both BGEN-1.2 unphased and phased layouts:
+//
+//   Unphased biallelic diploid (Z=3, ePerUnorderedGenotype):
+//     idx 0 = P(AA)  [hom first allele]
+//     idx 1 = P(AB)  [het]
+//     idx 2 = P(BB)  [hom second allele]
+//     dosage of second allele = idx_1 + 2*idx_2
+//
+//   Phased biallelic diploid (Z=4, ePerPhasedHaplotypePerAllele):
+//     idx 0 = P(hap0 = first allele)
+//     idx 1 = P(hap0 = second allele)
+//     idx 2 = P(hap1 = first allele)
+//     idx 3 = P(hap1 = second allele)
+//     dosage of second allele = idx_1 + idx_3
+//
+// `countFirstAllele = false` (default) → dosage of second allele (alleles[1]).
+// `countFirstAllele = true`            → dosage of first allele  (alleles[0]),
+//   used by --bgen-alt-first to compensate for plink2's default export which
+//   writes ALT as the first allele.
 // ──────────────────────────────────────────────────────────────────────────────
 
 struct DosageSetter {
@@ -35,13 +55,18 @@ struct DosageSetter {
     const std::vector<uint64_t> *usedMask = nullptr;
     uint32_t nSamplesInFile = 0;
     bool allUsed = true;
+    bool countFirstAllele = false; // true ⇒ count alleles[0], else count alleles[1]
 
     // Per-sample state
     uint32_t outIdx = 0;
     uint32_t currentSample = 0;
     bool currentUsed = true;
+    bool phasedCurrent = false;
+    uint32_t expectedEntries = 0;
     uint32_t probIdx = 0;
-    double probSum = 0.0; // P(AB) + 2*P(BB)
+    double probSum = 0.0;       // running dosage of the "counted" allele
+    bool sampleMissing = false; // any MissingValue seen for this sample
+    bool sampleFinalized = false;
 
     // Counts
     uint32_t nHomRef = 0;
@@ -62,55 +87,72 @@ struct DosageSetter {
         currentUsed = allUsed || (((*usedMask)[currentSample / 64] >> (currentSample % 64)) & 1);
         probIdx = 0;
         probSum = 0.0;
+        sampleMissing = false;
+        sampleFinalized = false;
         return true; // always receive data to advance correctly
     }
 
     void set_number_of_entries(
         std::size_t /*ploidy*/,
-        std::size_t /*Z*/,
-        genfile::OrderType /*order*/,
+        std::size_t Z,
+        genfile::OrderType order,
         genfile::ValueType                        /*valueType*/
     ) {
+        phasedCurrent = (order == genfile::ePerPhasedHaplotypePerAllele);
+        expectedEntries = static_cast<uint32_t>(Z);
+    }
+
+    void finalizeSample() {
+        if (sampleFinalized) return;
+        sampleFinalized = true;
+        if (!currentUsed) return;
+        if (sampleMissing) {
+            out[outIdx] = std::numeric_limits<double>::quiet_NaN();
+            if (missingIdx) missingIdx->push_back(outIdx);
+            ++nMissing;
+        } else {
+            double dosage = countFirstAllele ? (2.0 - probSum) : probSum;
+            // Clamp to [0, 2] in case of small numerical drift in phased branch.
+            if (dosage < 0.0) dosage = 0.0;
+            else if (dosage > 2.0) dosage = 2.0;
+            out[outIdx] = dosage;
+            if (dosage < 0.5)
+                ++nHomRef;
+            else if (dosage > 1.5)
+                ++nHomAlt;
+            else
+                ++nHet;
+        }
+        ++outIdx;
     }
 
     void set_value(
         uint32_t idx,
         double value
     ) {
-        if (!currentUsed) return;
-        // For biallelic diploid: idx 0 = P(RR), idx 1 = P(RA), idx 2 = P(AA)
-        if (idx == 1)
-            probSum += value;
-        else if (idx == 2)
-            probSum += 2.0 * value;
-        ++probIdx;
-
-        if (idx == 2) {
-            // Final probability for this sample
-            out[outIdx] = probSum;
-            if (probSum < 0.5)
-                ++nHomRef;
-            else if (probSum > 1.5)
-                ++nHomAlt;
-            else
-                ++nHet;
-            ++outIdx;
+        if (currentUsed && !sampleMissing) {
+            if (phasedCurrent) {
+                // Z=4 phased: idx 1 = P(hap0=allele1), idx 3 = P(hap1=allele1).
+                if (idx == 1 || idx == 3) probSum += value;
+            } else {
+                // Z=3 unphased: idx 1 = P(het), idx 2 = P(hom allele1).
+                if (idx == 1)
+                    probSum += value;
+                else if (idx == 2)
+                    probSum += 2.0 * value;
+            }
         }
+        ++probIdx;
+        if (probIdx >= expectedEntries) finalizeSample();
     }
 
     void set_value(
         uint32_t /*idx*/,
         genfile::MissingValue
     ) {
-        if (!currentUsed) return;
+        sampleMissing = true;
         ++probIdx;
-        // Mark missing at last index
-        if (probIdx >= 3) {
-            out[outIdx] = std::numeric_limits<double>::quiet_NaN();
-            if (missingIdx) missingIdx->push_back(outIdx);
-            ++nMissing;
-            ++outIdx;
-        }
+        if (probIdx >= expectedEntries) finalizeSample();
     }
 
     void finalise() {
@@ -130,12 +172,14 @@ BgenData::BgenData(
     uint32_t nSamplesInFile,
     uint32_t nUsed,
     std::unordered_set<std::string> chrFilter,
-    int nMarkersEachChunk
+    int nMarkersEachChunk,
+    bool altFirst
 )
     : m_bgenFile(std::move(bgenFile)),
       m_nSubjInFile(nSamplesInFile),
       m_nSubjUsed(nUsed),
-      m_usedMask(usedMask)
+      m_usedMask(usedMask),
+      m_altFirst(altFirst)
 {
     m_allUsed = (nUsed == nSamplesInFile);
 
@@ -189,11 +233,18 @@ BgenData::BgenData(
         m_pos.push_back(position);
         // Use RSID as marker ID; fall back to SNPID
         m_markerId.push_back(RSID.empty() ? SNPID : RSID);
-        // BGEN convention: allele[0] = first allele (typically REF), allele[1] = ALT
-        m_ref.push_back(alleles[0]);
-        m_alt.push_back(alleles[1]);
+        // BGEN itself only encodes "first allele" / "second allele".  The
+        // mapping to REF/ALT depends on the producer.  By default we follow
+        // the IMPUTE / qctool / UK Biobank convention (alleles[0] = REF).
+        // With --bgen-alt-first the user signals a plink2-style export where
+        // alleles[0] = ALT.
+        const std::string &refAllele = m_altFirst ? alleles[1] : alleles[0];
+        const std::string &altAllele = m_altFirst ? alleles[0] : alleles[1];
+        m_ref.push_back(refAllele);
+        m_alt.push_back(altAllele);
         if (chrFilter.empty() || chrFilter.count(chromosome))
-            m_markerInfo.push_back({chromosome, position, RSID.empty() ? SNPID : RSID, alleles[0], alleles[1],
+            m_markerInfo.push_back({chromosome, position, RSID.empty() ? SNPID : RSID,
+                                    refAllele, altAllele,
                                     variantIdx});
         ++variantIdx;
 
@@ -251,6 +302,7 @@ struct BgenCursor::Impl {
     uint32_t nSamplesInFile = 0;
     uint32_t nUsed = 0;
     bool allUsed = true;
+    bool altFirst = false;
 
     // Sequential reading state
     uint64_t currentBiallelicIdx = 0; // index among biallelic variants seen so far
@@ -295,6 +347,7 @@ BgenCursor::BgenCursor(const BgenData &parent)
     impl.nUsed = parent.nSubjUsed();
     impl.allUsed = parent.allUsed();
     impl.usedMask = &parent.usedMask();
+    impl.altFirst = parent.altFirst();
 
     // Open file and read header to build context
     impl.stream.open(parent.bgenFile(), std::ios::binary);
@@ -359,11 +412,17 @@ void BgenCursor::getGenotypes(
     setter.usedMask = impl.usedMask;
     setter.nSamplesInFile = impl.nSamplesInFile;
     setter.allUsed = impl.allUsed;
+    setter.countFirstAllele = impl.altFirst;
 
     genfile::bgen::read_and_parse_genotype_data_block(impl.stream, impl.context, setter, &impl.buffer1, &impl.buffer2);
 
     const uint32_t nUsed = impl.nUsed;
-    GenoStats gs = statsFromCounts(setter.nHomRef, setter.nHet, setter.nHomAlt, setter.nMissing, nUsed);
+    // statsFromCounts treats its first count argument as "hom of the ALT
+    // allele" and returns altCounts = 2*nHomAlt + nHet.  Our DosageSetter
+    // already classified the per-sample dosage of the ALT allele
+    // (alleles[1] by default, or alleles[0] when --bgen-alt-first), so
+    // setter.nHomAlt is the count of subjects with dosage ≈ 2 (hom ALT).
+    GenoStats gs = statsFromCounts(setter.nHomAlt, setter.nHet, setter.nHomRef, setter.nMissing, nUsed);
     altFreq = gs.altFreq;
     altCounts = gs.altCounts;
     missingRate = gs.missingRate;
@@ -389,6 +448,7 @@ void BgenCursor::getGenotypesSimple(
     setter.usedMask = impl.usedMask;
     setter.nSamplesInFile = impl.nSamplesInFile;
     setter.allUsed = impl.allUsed;
+    setter.countFirstAllele = impl.altFirst;
 
     genfile::bgen::read_and_parse_genotype_data_block(impl.stream, impl.context, setter, &impl.buffer1, &impl.buffer2);
 

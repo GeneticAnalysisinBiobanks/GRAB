@@ -130,6 +130,7 @@ Args parseArgs(
         else if (arg == "--pfile")a.pfilePrefix = next();
         else if (arg == "--vcf")a.vcfFile = next();
         else if (arg == "--bgen")a.bgenFile = next();
+        else if (arg == "--bgen-alt-first")a.bgenAltFirst = true;
         else if (arg == "--ref-af")a.refAfFile = next();
         else if (arg == "--sp-grm-grab")a.spGrmGrabFile = next();
         else if (arg == "--sp-grm-plink2")a.spGrmPlink2File = next();

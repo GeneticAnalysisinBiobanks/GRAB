@@ -120,6 +120,7 @@ static GenoSpec resolveGenoSpec(
     } else {
         spec.format = GenoFormat::Bgen;
         spec.path = a.bgenFile;
+        spec.bgenAltFirst = a.bgenAltFirst;
     }
     return spec;
 }
@@ -218,6 +219,7 @@ static void logArgsInEffect(const Args &args) {
     if (!args.pfilePrefix.empty()) std::fprintf(stderr, "  --pfile %s\n", args.pfilePrefix.c_str());
     if (!args.vcfFile.empty()) std::fprintf(stderr, "  --vcf %s\n", args.vcfFile.c_str());
     if (!args.bgenFile.empty()) std::fprintf(stderr, "  --bgen %s\n", args.bgenFile.c_str());
+    if (args.bgenAltFirst) std::fprintf(stderr, "  --bgen-alt-first\n");
     if (!args.phenoFile.empty()) std::fprintf(stderr, "  --pheno %s\n", args.phenoFile.c_str());
     if (!args.covarFile.empty()) std::fprintf(stderr, "  --covar %s\n", args.covarFile.c_str());
     if (!args.covarName.empty()) std::fprintf(stderr, "  --covar-name %s\n", args.covarName.c_str());

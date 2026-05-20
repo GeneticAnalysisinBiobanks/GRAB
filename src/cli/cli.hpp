@@ -27,6 +27,7 @@ struct Args {
     std::string pfilePrefix; // --pfile (pgen/pvar/psam)
     std::string vcfFile;     // --vcf (vcf/bcf)
     std::string bgenFile;    // --bgen
+    bool bgenAltFirst = false; // --bgen-alt-first (plink2 default export: alleles[0]=ALT)
     std::string refAfFile;
     std::string spGrmGrabFile;   // --sp-grm-grab
     std::string spGrmPlink2File; // --sp-grm-plink2 (.grm.sp file)

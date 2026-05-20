@@ -57,6 +57,16 @@ inline const FlagDef kBgen = {
     nullptr
 };
 
+inline const FlagDef kBgenAltFirst = {
+    "--bgen-alt-first", nullptr,
+    "Treat the first BGEN allele as ALT (plink2 default --export bgen-1.x)",
+    R"(BGEN files do not record which of the two listed alleles is REF.
+GRAB defaults to alleles[0] = REF (IMPUTE / qctool / UK Biobank convention).
+Use --bgen-alt-first when the BGEN was produced by plink2 with default flags,
+which writes ALT as alleles[0].  Equivalently, re-export from plink2 with
+'--export bgen-1.x ref-first' and omit this flag.)"
+};
+
 // Combined display entry for genotype input (exactly one required)
 inline const FlagDef kGeno_input = {
     "--bfile PREFIX | --pfile PREFIX | --vcf FILE | --bgen FILE", nullptr,
@@ -830,7 +840,7 @@ inline const FlagDef *const kFileFlags[] = {
 // All flags grouped for --help options
 inline const FlagDef *const kInputFlags[] = {
     &kBfile,       &kPfile,       &kVcf,
-    &kBgen,        &kAdmixBfile,
+    &kBgen,        &kBgenAltFirst, &kAdmixBfile,
     &kOut,         &kCompression, &kCompressionLevel,
     &kPheno,       &kCovar,       &kCovarName,
     &kPhenoName,   &kResidName,

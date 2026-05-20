@@ -29,7 +29,8 @@ class BgenData : public GenoMeta {
         uint32_t nSamplesInFile,
         uint32_t nUsed,
         std::unordered_set<std::string> chrFilter = {},
-        int nMarkersEachChunk = 1024
+        int nMarkersEachChunk = 1024,
+        bool altFirst = false
     );
 
     ~BgenData() override;
@@ -99,6 +100,14 @@ class BgenData : public GenoMeta {
         return m_bgenFlags;
     }
 
+    // True ⇒ BGEN file lists ALT first (alleles[0]=ALT, alleles[1]=REF).
+    // This is the default convention of plink2 --export bgen-1.x.
+    // When false (default), alleles[0] is interpreted as REF and alleles[1]
+    // as ALT, matching IMPUTE / UK Biobank / qctool output.
+    bool altFirst() const {
+        return m_altFirst;
+    }
+
   private:
     static std::vector<std::vector<uint64_t> > buildChunks(
         const std::vector<MarkerInfo> &markers,
@@ -123,6 +132,7 @@ class BgenData : public GenoMeta {
 
     std::streampos m_dataOffset = 0;
     uint32_t m_bgenFlags = 0;
+    bool m_altFirst = false;
 };
 
 class BgenCursor : public GenoCursor {

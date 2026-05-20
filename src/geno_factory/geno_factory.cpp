@@ -188,9 +188,10 @@ std::unique_ptr<GenoMeta> makeGenoData(
         return std::make_unique<VcfData>(spec.path, usedMask, nSamplesInFile, nUsed, spec.chrFilter,
                                          nMarkersEachChunk);
     case GenoFormat::Bgen:
-        infoMsg("Loading BGEN data: %s", spec.path.c_str());
+        infoMsg("Loading BGEN data: %s%s", spec.path.c_str(),
+                spec.bgenAltFirst ? " (alleles[0] = ALT)" : " (alleles[0] = REF)");
         return std::make_unique<BgenData>(spec.path, usedMask, nSamplesInFile, nUsed, spec.chrFilter,
-                                          nMarkersEachChunk);
+                                          nMarkersEachChunk, spec.bgenAltFirst);
     }
     throw std::runtime_error("Unknown genotype format");
 }
