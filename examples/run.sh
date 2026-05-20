@@ -1,3 +1,5 @@
+set -e
+
 ## SPACox
 
 build/grab --threads 2 \

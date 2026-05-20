@@ -7,12 +7,12 @@
 #include "io/sparse_grm.hpp"
 #include "util/logging.hpp"
 #include "util/text_scanner.hpp"
+#include "util/text_stream.hpp"
 
 #include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
-#include <fstream>
 #include <limits>
 #include <numeric>
 #include <string>
@@ -72,15 +72,13 @@ std::vector<IndexedIBD> loadIndexedIBD(
     const std::string &filename,
     const std::unordered_map<std::string, uint32_t> &idMap
 ) {
-    std::ifstream ifs(filename);
-    if (!ifs) throw std::runtime_error("Cannot open IBD file: " + filename);
+    TextReader reader(filename);
     std::vector<IndexedIBD> out;
     std::string line;
     // Validate required header: first non-comment line must start with ID1 or #ID1
     bool headerFound = false;
-    while (std::getline(ifs, line)) {
+    while (reader.getline(line)) {
         if (text::skipLine(line)) continue;
-        // Check header prefix
         if ((line.size() >= 3 && line[0] == 'I' && line[1] == 'D' && line[2] == '1') ||
             (line.size() >= 4 && line[0] == '#' && line[1] == 'I' && line[2] == 'D' && line[3] == '1')) {
             headerFound = true;
@@ -89,7 +87,7 @@ std::vector<IndexedIBD> loadIndexedIBD(
         throw std::runtime_error(filename + ": first line must be a header starting with ID1 or #ID1");
     }
     if (!headerFound) throw std::runtime_error(filename + ": empty IBD file (no header)");
-    while (std::getline(ifs, line)) {
+    while (reader.getline(line)) {
         if (text::skipLine(line)) continue;
         text::TokenScanner tok(line);
         std::string id1 = tok.next();
