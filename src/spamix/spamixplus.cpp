@@ -397,10 +397,13 @@ void SPAmixPlusMethod::getResultVec(
 
     double zScore, VarS;
     double pval = markerPvalFromAF(m_AFVec, m_WVec, rawScore, zScore, VarS);
-    double sqrtVarS = (VarS > 0.0) ? std::sqrt(VarS) : 0.0;
-    double beta = (sqrtVarS > 0.0) ? zScore / sqrtVarS : 0.0;
-    double se   = (sqrtVarS > 0.0) ? 1.0 / sqrtVarS : 0.0;
+    const double sqrtVarS = (VarS > 0.0) ? std::sqrt(VarS) : 0.0;
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double zOut  = (sqrtVarS > 0.0) ? zScore             : nan;       // Z = Score / sqrt(Var)
+    const double beta  = (sqrtVarS > 0.0) ? zScore / sqrtVarS  : nan;       // BETA = Score / Var
+    const double se    = (sqrtVarS > 0.0) ? 1.0    / sqrtVarS  : nan;       // SE   = 1 / sqrt(Var)
     result.push_back(pval);
+    result.push_back(zOut);
     result.push_back(beta);
     result.push_back(se);
 }
@@ -473,14 +476,17 @@ void SPAmixPlusMethod::processScoreBatch(
         const double rawScore = scores(0, b);
         double zScore, VarS;
         double pval = markerPvalFromAF(afCol, wCol, rawScore, zScore, VarS);
-        double sqrtVarS = (VarS > 0.0) ? std::sqrt(VarS) : 0.0;
-        double beta = (sqrtVarS > 0.0) ? zScore / sqrtVarS : 0.0;
-        double se   = (sqrtVarS > 0.0) ? 1.0 / sqrtVarS : 0.0;
+        const double sqrtVarS = (VarS > 0.0) ? std::sqrt(VarS) : 0.0;
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        const double zOut  = (sqrtVarS > 0.0) ? zScore             : nan;
+        const double beta  = (sqrtVarS > 0.0) ? zScore / sqrtVarS  : nan;
+        const double se    = (sqrtVarS > 0.0) ? 1.0    / sqrtVarS  : nan;
 
         auto &r = results[b];
         r.clear();
-        r.reserve(3);
+        r.reserve(4);
         r.push_back(pval);
+        r.push_back(zOut);
         r.push_back(beta);
         r.push_back(se);
     }
@@ -537,14 +543,17 @@ void SPAmixPlusMethod::getResultBatch(
 
         double zScore, VarS;
         double pval = markerPvalFromAF(afCol, wCol, rawScore, zScore, VarS);
-        double sqrtVarS = (VarS > 0.0) ? std::sqrt(VarS) : 0.0;
-        double beta = (sqrtVarS > 0.0) ? zScore / sqrtVarS : 0.0;
-        double se   = (sqrtVarS > 0.0) ? 1.0 / sqrtVarS : 0.0;
+        const double sqrtVarS = (VarS > 0.0) ? std::sqrt(VarS) : 0.0;
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        const double zOut  = (sqrtVarS > 0.0) ? zScore             : nan;
+        const double beta  = (sqrtVarS > 0.0) ? zScore / sqrtVarS  : nan;
+        const double se    = (sqrtVarS > 0.0) ? 1.0    / sqrtVarS  : nan;
 
         auto &r = results[b];
         r.clear();
-        r.reserve(3);
+        r.reserve(4);
         r.push_back(pval);
+        r.push_back(zOut);
         r.push_back(beta);
         r.push_back(se);
     }

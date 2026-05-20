@@ -122,6 +122,7 @@ Args parseArgs(
         else if (arg == "--save-resid") { markSeen(arg); a.saveResid = true; }
         else if (arg == "--pc-cols")a.pcCols = next();
         else if (arg == "--spasqr-taus")a.spasqrTaus = next();
+        else if (arg == "--sageld-x")a.sageldX = next();
         else if (arg == "--spasqr-tol")a.spasqrTol = parseDouble(next(), arg);
         else if (arg == "--spasqr-h")a.spasqrH = parseDouble(next(), arg);
         else if (arg == "--spasqr-h-scale")a.spasqrHScale = parseDouble(next(), arg);

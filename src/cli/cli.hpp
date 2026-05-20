@@ -19,6 +19,7 @@ struct Args {
 
     std::string pcCols = "PC1,PC2,PC3,PC4";         // comma-separated PC column names (default: PC1,PC2,PC3,PC4)
     std::string spasqrTaus = "0.1,0.3,0.5,0.7,0.9"; // default tau levels (SPAsqr)
+    std::string sageldX;                            // --sageld-x: comma-separated env names for SAGELD pheno mode
     double spasqrTol = 1e-7;                          // --spasqr-tol (conquer convergence tolerance)
     double spasqrH = -1.0;                            // --spasqr-h (explicit bandwidth; -1 = auto)
     double spasqrHScale = -1.0;                       // --spasqr-h-scale (IQR divisor; -1 = auto → 3)

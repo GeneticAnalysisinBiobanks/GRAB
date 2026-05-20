@@ -5,6 +5,7 @@ examples_mini/
 examples_1kg/
 examples_spamix/
 examples_leaf/
+examples_output/
 .claude/
 
 *.R

@@ -97,11 +97,11 @@ class SPACoxMethod : public MethodBase {
     std::unique_ptr<MethodBase> clone() const override;
 
     int resultSize() const override {
-        return 3;
+        return 4;
     }
 
     std::string getHeaderColumns() const override {
-        return "\tP\tBETA\tSE";
+        return "\tP\tZ\tBETA\tSE";
     }
 
     void getResultVec(

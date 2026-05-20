@@ -409,6 +409,19 @@ inline const FlagDef kSpasqrTaus = {
     nullptr
 };
 
+inline const FlagDef kSageldX = {
+    "--sageld-x", "COL_IDS",
+    "Comma-separated environment column name(s) for SAGELD G x E (pheno-input mode)",
+    R"(Required for SAGELD's pheno-input mode together with --pheno-name and
+--covar-name.  Each name must match a numeric column of --pheno; the env
+column also has to be listed in --covar-name so it enters the fixed-effect
+design.  For every (phenotype, env) pair the null model
+    Y ~ X + (E | IID)            (random intercept + random slope on E)
+is fit by EM-ML internally, and the BLUP residuals are aggregated to per-
+IID (R_G, R_<E>, R_Gx<E>) before the marker-level G and G x E score tests
+run.  Multiple envs trigger a separate model per env.)"
+};
+
 inline const FlagDef kSpasqrTol = {
     "--spasqr-tol", "FLOAT",
     "Convergence tolerance for the SPAsqr null-model SQR solver (default: 1e-7). "
@@ -486,7 +499,9 @@ inline const FlagDef *const kSAGELDReq[] = {
     nullptr
 };
 inline const FlagDef *const kSAGELDOpt[] = {
-    &kSpaZThresh, &kThreads, &kChunkSize, &kGeno, &kMaf, &kMac, &kHwe, &kChr,
+    &kResidName, &kPhenoName, &kCovarName, &kSageldX,
+    &kSpaZThresh, &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
+    &kGeno, &kMaf, &kMac, &kHwe, &kChr,
     nullptr
 };
 inline const MethodDef kSAGELD = {
@@ -494,10 +509,21 @@ inline const MethodDef kSAGELD = {
     "G x E interaction analysis for longitudinal data with GRM correction",
     kSAGELDReq,
     kSAGELDOpt,
-    "#IID  R_G  R_<E1>  R_Gx<E1>  [R_<E2>  R_Gx<E2>  ...] (from --pheno)",
-    R"(CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+    "Residual mode: --pheno FILE --resid-name R_G,R_<E1>,R_Gx<E1>[,...] "
+    "(file format: #IID  R_G  R_<E1>  R_Gx<E1>  [R_<E2>  R_Gx<E2>  ...]).  "
+    "Pheno mode: --pheno LONG_FILE --pheno-name Y1,Y2,... --covar-name X1,X2,... --sageld-x E1[,E2,...]",
+    R"(Residual mode (single file): PREFIX.SAGELD
+Pheno mode (per phenotype):  PREFIX.<phenoName>.SAGELD
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
   P_G  P_Gx<E1>  [...]  Z_G  Z_Gx<E1>  [...])",
-    "Residuals from lme4::lmer(); generate IBD with: grab --cal-pairwise-ibd",
+    R"(Two input modes (mutually exclusive):
+  Residual mode — supply lme4::lmer() residuals directly via --resid-name.
+                  Column layout: R_G followed by (R_<E>, R_Gx<E>) pairs.
+  Pheno mode    — supply long-format Y, X, E and fit  Y ~ X + (E | IID)
+                  internally via EM-ML.  --covar-name must include every
+                  variable in --sageld-x.
+
+Generate the IBD file once with: grab --cal-pairwise-ibd)",
 };
 
 // ── SPAmix ─────────────────────────────────────────────────────────

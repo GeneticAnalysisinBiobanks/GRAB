@@ -222,11 +222,11 @@ class SPAGRMMethod : public MethodBase {
     }
 
     int resultSize() const override {
-        return 3;
+        return 4;
     }
 
     std::string getHeaderColumns() const override {
-        return "\tP\tBETA\tSE";
+        return "\tP\tZ\tBETA\tSE";
     }
 
     void getResultVec(
@@ -246,7 +246,7 @@ class SPAGRMMethod : public MethodBase {
             GVec.dot(m_spagrm.resid()) - gMean * m_spagrm.residSum();
         double z, scoreVar;
         double p = m_spagrm.getMarkerPvalFromScore(Score, altFreq, z, &scoreVar);
-        pushPvalBetaSe(p, Score, scoreVar, result);
+        pushPvalZBetaSe(p, Score, scoreVar, result);
     }
 
     // Batch analysis: fuse B dot products into one matrix-vector multiply.
@@ -278,7 +278,7 @@ class SPAGRMMethod : public MethodBase {
             double z, scoreVar;
             double p = m_spagrm.getMarkerPvalFromScore(
                 scores[b], altFreqs[b], z, &scoreVar);
-            pushPvalBetaSe(p, scores[b], scoreVar, results[b]);
+            pushPvalZBetaSe(p, scores[b], scoreVar, results[b]);
         }
     }
 
@@ -334,30 +334,37 @@ class SPAGRMMethod : public MethodBase {
             double z, scoreVar;
             double p = m_spagrm.getMarkerPvalFromScore(
                 centeredScore, altFreqs[b], z, &scoreVar);
-            pushPvalBetaSe(p, centeredScore, scoreVar, results[b]);
+            pushPvalZBetaSe(p, centeredScore, scoreVar, results[b]);
         }
     }
 
   private:
-    // Emit (P, BETA, SE) using the SPAGRM score-test reduction
-    // BETA = Score / Var(S), SE = 1 / sqrt(Var(S)).  Var(S) ≤ 0 marks
-    // monomorphic / degenerate markers; both BETA and SE become NaN there
-    // so downstream code can recognise them as missing.
-    static void pushPvalBetaSe(
+    // Emit (P, Z, BETA, SE) using the SPAGRM score-test reduction
+    //   Z    = Score / sqrt(Var(S))
+    //   BETA = Score / Var(S)
+    //   SE   = 1 / sqrt(Var(S))
+    // (so Z = BETA × SE).  Var(S) ≤ 0 marks monomorphic / degenerate markers;
+    // Z, BETA and SE become NaN there so downstream code recognises them as
+    // missing.
+    static void pushPvalZBetaSe(
         double p,
         double score,
         double scoreVar,
         std::vector<double> &out
     ) {
         out.clear();
-        out.reserve(3);
+        out.reserve(4);
         out.push_back(p);
         if (scoreVar > 0.0) {
-            out.push_back(score / scoreVar);
-            out.push_back(1.0 / std::sqrt(scoreVar));
+            const double sd = std::sqrt(scoreVar);
+            out.push_back(score / sd);          // Z
+            out.push_back(score / scoreVar);    // BETA
+            out.push_back(1.0 / sd);            // SE
         } else {
-            out.push_back(std::numeric_limits<double>::quiet_NaN());
-            out.push_back(std::numeric_limits<double>::quiet_NaN());
+            const double nan = std::numeric_limits<double>::quiet_NaN();
+            out.push_back(nan);
+            out.push_back(nan);
+            out.push_back(nan);
         }
     }
 

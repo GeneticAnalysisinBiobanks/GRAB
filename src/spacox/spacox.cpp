@@ -544,11 +544,15 @@ void SPACoxMethod::getResultVec(
 
     result.push_back(pval);
     if (scoreVar > 0.0) {
-        result.push_back(S / scoreVar);
-        result.push_back(1.0 / std::sqrt(scoreVar));
+        const double sd = std::sqrt(scoreVar);
+        result.push_back(S / sd);              // Z
+        result.push_back(S / scoreVar);        // BETA
+        result.push_back(1.0 / sd);            // SE
     } else {
-        result.push_back(std::numeric_limits<double>::quiet_NaN());
-        result.push_back(std::numeric_limits<double>::quiet_NaN());
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        result.push_back(nan);                  // Z
+        result.push_back(nan);                  // BETA
+        result.push_back(nan);                  // SE
     }
 }
 
@@ -595,17 +599,19 @@ void SPACoxMethod::getResultBatch(
     for (int b = 0; b < B; ++b) {
         auto &r = results[b];
         r.clear();
-        r.reserve(3);
+        r.reserve(4);
         double zScore, scoreVar;
         double pval =
             getMarkerPvalCore(GBatch.col(b), altFreqs[b], scores[b], zScore, scoreVar);
         r.push_back(pval);
         if (scoreVar > 0.0) {
-            r.push_back(scores[b] / scoreVar);
-            r.push_back(1.0 / std::sqrt(scoreVar));
+            const double sd = std::sqrt(scoreVar);
+            r.push_back(scores[b] / sd);          // Z
+            r.push_back(scores[b] / scoreVar);    // BETA
+            r.push_back(1.0 / sd);                // SE
         } else {
-            r.push_back(std::numeric_limits<double>::quiet_NaN());
-            r.push_back(std::numeric_limits<double>::quiet_NaN());
+            const double nan = std::numeric_limits<double>::quiet_NaN();
+            r.push_back(nan); r.push_back(nan); r.push_back(nan);
         }
     }
 }

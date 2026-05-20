@@ -231,6 +231,8 @@ static void logArgsInEffect(const Args &args) {
             args.calAfCoef || args.method == "SPAmix" || args.method == "SPAmixPlus" || args.method == "LEAF";
         if (usesPcCols && !args.pcCols.empty()) std::fprintf(stderr, "  --pc-cols %s\n", args.pcCols.c_str());
     }
+    if (args.method == "SAGELD" && !args.sageldX.empty())
+        std::fprintf(stderr, "  --sageld-x %s\n", args.sageldX.c_str());
     // SPAsqr-specific knobs (relevant for SPAsqr pheno path)
     if (args.method == "SPAsqr" && !args.phenoName.empty()) {
         if (!args.spasqrTaus.empty())
@@ -638,14 +640,41 @@ int run(
                 return 1;
             }
         } else if (args.method == "SAGELD") {
-            if (!hasResidName) {
-                std::cerr << "Error: " << args.method << " requires --resid-name.\n";
+            const bool hasSageldX = !args.sageldX.empty();
+            if (hasPhenoName && hasResidName) {
+                std::cerr << "Error: SAGELD: --pheno-name and --resid-name are mutually exclusive.\n";
                 return 1;
             }
-            if (traitNonAuto || args.saveResid) {
-                std::cerr << "Error: " << args.method
-                          << " does not support --trait-type (other than 'auto')"
-                             " or --save-resid (residual-only method).\n";
+            if (!hasPhenoName && !hasResidName) {
+                std::cerr << "Error: SAGELD requires either --resid-name (residual mode)"
+                             " or --pheno-name + --covar-name + --sageld-x (pheno mode).\n";
+                return 1;
+            }
+            if (hasResidName && hasSageldX) {
+                std::cerr << "Error: SAGELD: --sageld-x is incompatible with --resid-name"
+                             " (residual mode reads env layout from the file header).\n";
+                return 1;
+            }
+            if (hasPhenoName && !hasSageldX) {
+                std::cerr << "Error: SAGELD pheno mode requires --sageld-x (env column name).\n";
+                return 1;
+            }
+            if (hasPhenoName && covarNames.empty()) {
+                std::cerr << "Error: SAGELD pheno mode requires --covar-name"
+                             " (must list every --sageld-x variable as a fixed-effect covariate).\n";
+                return 1;
+            }
+            if (traitNonAuto) {
+                std::cerr << "Error: SAGELD does not support --trait-type (other than 'auto').\n";
+                return 1;
+            }
+            if (args.saveResid && !hasPhenoName) {
+                std::cerr << "Error: SAGELD --save-resid requires --pheno-name"
+                             " (residual-input mode has no null model to save).\n";
+                return 1;
+            }
+            if (args.saveResid && args.outPrefix.empty()) {
+                std::cerr << "Error: --save-resid requires --out.\n";
                 return 1;
             }
         } else if (args.method == "SPAsqr") {
@@ -677,14 +706,6 @@ int run(
     }
 
     logArgsInEffect(args);
-
-    // Build suffix-based output path for single-file methods (SAGELD, SPAsqr, WtCoxG, LEAF)
-    auto buildOutputPath = [&](const std::string &suffix) -> std::string {
-        std::string path = args.outPrefix + suffix;
-        if (args.compression == "gz") path += ".gz";
-        else if (args.compression == "zst") path += ".zst";
-        return path;
-    };
 
     // Fail fast if the output prefix's parent directory is not writable.
     // Per-phenotype output names are not known until the method runner
@@ -800,14 +821,21 @@ int run(
         else if (args.method == "SAGELD") {
             checkSpGrm(args, /*required=*/ true, "SAGELD");
             require(args.pairwiseIBDFile, "--pairwise-ibd", "SAGELD");
+            auto sageldXNames =
+                args.sageldX.empty() ? std::vector<std::string>{} : splitComma(args.sageldX, "--sageld-x", 1);
             runSAGELD(
                 args.phenoFile,
                 residNames,
+                phenoNames,
+                covarNames,
+                sageldXNames,
                 args.spGrmGrabFile,
                 args.spGrmPlink2File,
                 args.pairwiseIBDFile,
                 geno,
-                buildOutputPath(".SAGELD"),
+                args.outPrefix,
+                args.compression,
+                args.compressionLevel,
                 args.spaCutoff,
                 args.nthread,
                 args.nSnpPerChunk,
@@ -815,6 +843,7 @@ int run(
                 args.minMafCutoff,
                 args.minMacCutoff,
                 args.hweCutoff,
+                args.saveResid,
                 args.keepFile,
                 args.removeFile
             );
