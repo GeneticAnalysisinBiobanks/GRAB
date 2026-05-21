@@ -95,6 +95,36 @@ std::vector<PopMatchedAF> loadAndMatchRefAf(
 }
 
 // ======================================================================
+// writeKmeansClusterTsv — emit cluster labels for downstream inspection
+//
+// Writes <outPrefix>.KmeansCluster.tsv with header "#IID\tcluster".
+// Rows follow the order of usedIIDs (= the order of clusterLabels).
+// ======================================================================
+
+static void writeKmeansClusterTsv(
+    const std::string &outPrefix,
+    const std::vector<std::string> &iids,
+    const Eigen::VectorXi &clusterLabels
+) {
+    if (static_cast<Eigen::Index>(iids.size()) != clusterLabels.size())
+        throw std::runtime_error(
+            "writeKmeansClusterTsv: iids/clusterLabels size mismatch (" +
+            std::to_string(iids.size()) + " vs " +
+            std::to_string(clusterLabels.size()) + ")"
+        );
+    const std::string path = outPrefix + ".KmeansCluster.tsv";
+    std::ofstream ofs(path);
+    if (!ofs)
+        throw std::runtime_error("writeKmeansClusterTsv: cannot open " + path);
+    ofs << "#IID\tcluster\n";
+    for (Eigen::Index i = 0; i < clusterLabels.size(); ++i)
+        ofs << iids[static_cast<size_t>(i)] << '\t' << clusterLabels[i] << '\n';
+    if (!ofs)
+        throw std::runtime_error("writeKmeansClusterTsv: write failed for " + path);
+    infoMsg("  Wrote cluster labels: %s", path.c_str());
+}
+
+// ======================================================================
 // parseLeafClusterFile — read pre-computed cluster labels
 //
 // File layout (header required):
@@ -871,6 +901,7 @@ void runLEAFPheno(
     infoMsg("  %d PCs for K-means clustering", static_cast<int>(PCs.cols()));
     infoMsg("K-means clustering into %d clusters...", nCluster);
     Eigen::VectorXi clusterLabels = kmeansCluster(PCs, nCluster, /*nstart=*/ 25, seed, nthread);
+    writeKmeansClusterTsv(outPrefix, sdFull.usedIIDs(), clusterLabels);
 
     // ---- 3. Per-cluster regression → resid/weight/indicator ----
     //
@@ -1346,6 +1377,7 @@ void runLEAF(
         infoMsg("  %d PCs for K-means clustering", static_cast<int>(PCs.cols()));
         infoMsg("K-means clustering into %d clusters...", K);
         clusterLabels = kmeansCluster(PCs, K, /*nstart=*/ 25, seed, nthreads);
+        writeKmeansClusterTsv(outPrefix, sdFull.usedIIDs(), clusterLabels);
     }
 
     // Cluster member indices (into full used-subject array)

@@ -143,6 +143,7 @@ build/grab --threads 2 \
   --method LEAF \
   --seed 2026 \
   --leaf-nclusters 3 \
+  --remove examples/leaf_kmeans_remove \
   --pheno examples/1kg.pheno \
   --pheno-name Time:Event,Binary \
   --covar-name MALE,PC1,PC2,PC3,PC4 \

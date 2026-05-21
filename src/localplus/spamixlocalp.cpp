@@ -35,6 +35,14 @@
 #include <Eigen/Dense>
 #include <boost/math/distributions/normal.hpp>
 
+// Forward-declare plink2's fast 6-sig-fig double-to-string (the same routine
+// the marker engine uses via engine_impl::numToChars in marker_impl.hpp).
+// Linked from pgenlib; ~5-10× faster than snprintf("%.6g") and produces
+// byte-identical output across Linux / macOS / Windows.
+namespace plink2 {
+char *dtoa_g(double dxx, char *start);
+} // namespace plink2
+
 static constexpr double MIN_P_VALUE = std::numeric_limits<double>::min();
 
 // ======================================================================
@@ -1398,6 +1406,17 @@ static void runUnifiedGWAS(
         auto cursor = admixData.makeCursor();
         char fmtBuf[64];
 
+        // Mirror engine_impl::numToChars: NaN → "NA", ±Inf → "Inf"/"-Inf",
+        // otherwise 6-sig-fig formatting via plink2::dtoa_g.  Keeps this
+        // method's per-variant output byte-identical to the marker engine
+        // path used by SPACox / SPAmix / SPAGRM / SAGELD / WtCoxG / LEAF.
+        auto writeNum = [](std::string &buf, char *tmp, double v) {
+            if (std::isnan(v)) { buf += "NA"; return; }
+            if (std::isinf(v)) { buf += (v > 0) ? "Inf" : "-Inf"; return; }
+            char *end = plink2::dtoa_g(v, tmp);
+            buf.append(tmp, static_cast<size_t>(end - tmp));
+        };
+
         // Per-batch decoded genotype storage (shared across phenotypes).
         // Allocated as ONE contiguous matrix per kind, with each batch slot
         // occupying K consecutive columns.  This lets Phase 1B issue a
@@ -1570,11 +1589,9 @@ static void runUnifiedGWAS(
 
                             // MISS_RATE / ALT_FREQ / MAC (shared across phenotypes)
                             buf += '\t';
-                            std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", as.missRate);
-                            buf += fmtBuf;
+                            writeNum(buf, fmtBuf, as.missRate);
                             buf += '\t';
-                            std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", as.maf);
-                            buf += fmtBuf;
+                            writeNum(buf, fmtBuf, as.maf);
                             buf += '\t';
                             std::snprintf(fmtBuf, sizeof(fmtBuf), "%.0f", as.mac);
                             buf += fmtBuf;
@@ -1608,22 +1625,11 @@ static void runUnifiedGWAS(
                                                          : std::numeric_limits<double>::quiet_NaN();
 
                             buf += '\t';
-                            std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", pSpa);
-                            buf += fmtBuf;
+                            writeNum(buf, fmtBuf, pSpa);
                             buf += '\t';
-                            if (std::isfinite(betaG)) {
-                                std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", betaG);
-                                buf += fmtBuf;
-                            } else {
-                                buf += "NA";
-                            }
+                            writeNum(buf, fmtBuf, betaG);
                             buf += '\t';
-                            if (std::isfinite(seG)) {
-                                std::snprintf(fmtBuf, sizeof(fmtBuf), "%.6g", seG);
-                                buf += fmtBuf;
-                            } else {
-                                buf += "NA";
-                            }
+                            writeNum(buf, fmtBuf, seG);
                         }
                         buf += '\n';
                     }
