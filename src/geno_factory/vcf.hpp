@@ -1,6 +1,9 @@
-// vcf.hpp — VCF/BCF genotype reader via htslib
+// vcf.hpp — VCF / BCF genotype reader via htslib
 //
-// VcfData:   GenoMeta implementation for .vcf/.vcf.gz/.bcf
+// VcfData:   GenoMeta implementation backing both --vcf (VCF text or
+//            BGZF-compressed .vcf.gz) and --bcf (BCF2).  The expectBcf flag
+//            asserts that the file content matches the user-chosen flag and
+//            rejects the mismatch with plink2's wording.
 // VcfCursor: per-thread GenoCursor backed by independent htsFile handles
 //
 // Reads all biallelic variants into memory at construction time (variant
@@ -21,10 +24,16 @@
 
 class VcfData : public GenoMeta {
   public:
-    // vcfFile: path to .vcf / .vcf.gz / .bcf
+    // vcfFile:    when expectBcf=false: VCF text or BGZF-compressed VCF
+    //             (.vcf or .vcf.gz produced by bgzip).  Plain gzip is
+    //             tolerated; .vcf.zst is not supported on this path.
+    //             when expectBcf=true:  BCF2 binary file.
+    // expectBcf:  true when the user typed --bcf; a non-BCF2 file is rejected.
+    //             false when the user typed --vcf; a BCF2 file is rejected.
     // usedMask, nSamplesInFile, nUsed: from SubjectData
     VcfData(
         std::string vcfFile,
+        bool expectBcf,
         const std::vector<uint64_t> &usedMask,
         uint32_t nSamplesInFile,
         uint32_t nUsed,

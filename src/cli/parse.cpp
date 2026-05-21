@@ -129,6 +129,7 @@ Args parseArgs(
         else if (arg == "--bfile")a.bfilePrefix = next();
         else if (arg == "--pfile")a.pfilePrefix = next();
         else if (arg == "--vcf")a.vcfFile = next();
+        else if (arg == "--bcf")a.bcfFile = next();
         else if (arg == "--bgen") {
             // plink2-compatible syntax: --bgen <filename> <REF/ALT mode>.
             // BGEN itself does not encode REF/ALT; the user must declare the

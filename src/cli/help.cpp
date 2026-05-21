@@ -46,6 +46,7 @@ Usage:
     grab --cal-pairwise-ibd  --bfile PREFIX  --sp-grm-* FILE  --out PREFIX
     grab --cal-phi           --admix-bfile PREFIX  --sp-grm-* FILE  --out PREFIX
     grab --make-abed  --vcf FILE  --rfmix-msp FILE  --out PREFIX
+    grab --make-abed  --bcf FILE  --rfmix-msp FILE  --out PREFIX
     grab --make-abed  --admix-text-prefix PREFIX  --out PREFIX
     grab --int-pheno  --pheno FILE  --out PREFIX
 

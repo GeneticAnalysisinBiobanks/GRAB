@@ -25,7 +25,11 @@ struct Args {
     double spasqrHScale = -1.0;                       // --spasqr-h-scale (IQR divisor; -1 = auto → 3)
     std::string bfilePrefix;
     std::string pfilePrefix; // --pfile (pgen/pvar/psam)
-    std::string vcfFile;     // --vcf (vcf/bcf)
+    std::string vcfFile;     // --vcf (VCF text, or BGZF-compressed .vcf.gz)
+    std::string bcfFile;     // --bcf (BCF2 binary).  Mutually exclusive with --vcf;
+                             // both flags route to the same htslib backend, but
+                             // content is verified against the chosen flag to
+                             // match plink2's --vcf / --bcf separation.
     std::string bgenFile;    // --bgen <filename>
     // --bgen <REF/ALT mode>: ref-first | ref-last | ref-unknown
     // (matches plink2 --bgen syntax; mandatory whenever --bgen is given).

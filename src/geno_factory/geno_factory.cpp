@@ -59,9 +59,26 @@ static std::vector<std::string> parsePsamIIDs(const std::string &psamFile) {
 }
 
 // ── parseVcfSampleIDs ────────────────────────────────────────────────
-static std::vector<std::string> parseVcfSampleIDs(const std::string &vcfFile) {
+//
+// expectBcf == false ⇒ user typed --vcf: a BCF2 file is rejected.
+// expectBcf == true  ⇒ user typed --bcf: a VCF text file is rejected.
+// The wording mirrors plink2's --vcf / --bcf cross-redirect message.
+static std::vector<std::string> parseVcfSampleIDs(
+    const std::string &vcfFile,
+    bool expectBcf
+) {
     htsFile *fp = hts_open(vcfFile.c_str(), "r");
     if (!fp) throw std::runtime_error("Cannot open " + vcfFile);
+    const htsFormat *fmt = hts_get_format(fp);
+    const enum htsExactFormat detected = fmt ? fmt->format : unknown_format;
+    if (!expectBcf && detected == bcf) {
+        hts_close(fp);
+        throw std::runtime_error(vcfFile + " appears to be a BCF2 file. Try --bcf instead of --vcf.");
+    }
+    if (expectBcf && detected != bcf) {
+        hts_close(fp);
+        throw std::runtime_error(vcfFile + " does not appear to be a BCF2 file. Try --vcf instead of --bcf.");
+    }
     bcf_hdr_t *hdr = bcf_hdr_read(fp);
     if (!hdr) {
         hts_close(fp);
@@ -157,7 +174,9 @@ std::vector<std::string> parseGenoIIDs(const GenoSpec &spec) {
     case GenoFormat::Pgen:
         return parsePsamIIDs(spec.path + ".psam");
     case GenoFormat::Vcf:
-        return parseVcfSampleIDs(spec.path);
+        return parseVcfSampleIDs(spec.path, /*expectBcf=*/false);
+    case GenoFormat::Bcf:
+        return parseVcfSampleIDs(spec.path, /*expectBcf=*/true);
     case GenoFormat::Bgen:
         return parseBgenSampleIDs(spec.path);
     }
@@ -184,9 +203,13 @@ std::unique_ptr<GenoMeta> makeGenoData(
         return std::make_unique<PgenData>(spec.path + ".pgen", spec.path + ".pvar", usedMask, nSamplesInFile, nUsed,
                                           spec.chrFilter, nMarkersEachChunk);
     case GenoFormat::Vcf:
-        infoMsg("Loading VCF/BCF data: %s", spec.path.c_str());
-        return std::make_unique<VcfData>(spec.path, usedMask, nSamplesInFile, nUsed, spec.chrFilter,
-                                         nMarkersEachChunk);
+        infoMsg("Loading VCF data: %s", spec.path.c_str());
+        return std::make_unique<VcfData>(spec.path, /*expectBcf=*/false, usedMask, nSamplesInFile,
+                                         nUsed, spec.chrFilter, nMarkersEachChunk);
+    case GenoFormat::Bcf:
+        infoMsg("Loading BCF data: %s", spec.path.c_str());
+        return std::make_unique<VcfData>(spec.path, /*expectBcf=*/true, usedMask, nSamplesInFile,
+                                         nUsed, spec.chrFilter, nMarkersEachChunk);
     case GenoFormat::Bgen:
         infoMsg("Loading BGEN data: %s (%s; alleles[0] = %s)",
                 spec.path.c_str(),

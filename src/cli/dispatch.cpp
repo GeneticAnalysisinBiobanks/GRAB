@@ -87,20 +87,21 @@ static void require(
 }
 
 // Resolve which genotype format was specified.
-// Exactly one of --bfile / --pfile / --vcf / --bgen must be given.
+// Exactly one of --bfile / --pfile / --vcf / --bcf / --bgen must be given.
 static GenoSpec resolveGenoSpec(
     const Args &a,
     const char *ctx
 ) {
-    int count = !a.bfilePrefix.empty() + !a.pfilePrefix.empty() + !a.vcfFile.empty() + !a.bgenFile.empty();
+    int count = !a.bfilePrefix.empty() + !a.pfilePrefix.empty() + !a.vcfFile.empty() +
+                !a.bcfFile.empty() + !a.bgenFile.empty();
     if (count == 0) {
-        std::cerr << "Error: a genotype input (--bfile, --pfile, --vcf, or --bgen)"
+        std::cerr << "Error: a genotype input (--bfile, --pfile, --vcf, --bcf, or --bgen)"
             " is required for "
                   << ctx << ".\n";
         std::exit(1);
     }
     if (count > 1) {
-        std::cerr << "Error: --bfile, --pfile, --vcf, and --bgen are mutually"
+        std::cerr << "Error: --bfile, --pfile, --vcf, --bcf, and --bgen are mutually"
             " exclusive.\n";
         std::exit(1);
     }
@@ -117,6 +118,9 @@ static GenoSpec resolveGenoSpec(
     } else if (!a.vcfFile.empty()) {
         spec.format = GenoFormat::Vcf;
         spec.path = a.vcfFile;
+    } else if (!a.bcfFile.empty()) {
+        spec.format = GenoFormat::Bcf;
+        spec.path = a.bcfFile;
     } else {
         spec.format = GenoFormat::Bgen;
         spec.path = a.bgenFile;
@@ -229,6 +233,7 @@ static void logArgsInEffect(const Args &args) {
     if (!args.bfilePrefix.empty()) std::fprintf(stderr, "  --bfile %s\n", args.bfilePrefix.c_str());
     if (!args.pfilePrefix.empty()) std::fprintf(stderr, "  --pfile %s\n", args.pfilePrefix.c_str());
     if (!args.vcfFile.empty()) std::fprintf(stderr, "  --vcf %s\n", args.vcfFile.c_str());
+    if (!args.bcfFile.empty()) std::fprintf(stderr, "  --bcf %s\n", args.bcfFile.c_str());
     if (!args.bgenFile.empty())
         std::fprintf(stderr, "  --bgen %s %s\n",
                      args.bgenFile.c_str(), args.bgenRefMode.c_str());
@@ -438,34 +443,49 @@ int run(
                 " --cal-phi, or --int-pheno.\n";
             return 1;
         }
-        bool hasVcfMsp = !args.vcfFile.empty() && !args.mspFile.empty();
-        bool hasTextPre = !args.admixTextPrefix.empty();
-        if (hasVcfMsp && hasTextPre) {
-            std::cerr << "Error: --make-abed requires either (--vcf + --rfmix-msp) or"
+        // --vcf and --bcf both feed convertVcfMspToAbed; mutual exclusion is
+        // enforced here (only one of them may be combined with --rfmix-msp at
+        // a time), and content-validation happens inside the converter.
+        if (!args.vcfFile.empty() && !args.bcfFile.empty()) {
+            std::cerr << "Error: --vcf and --bcf are mutually exclusive.\n";
+            return 1;
+        }
+        const bool hasVcfMsp = !args.vcfFile.empty() && !args.mspFile.empty();
+        const bool hasBcfMsp = !args.bcfFile.empty() && !args.mspFile.empty();
+        const bool hasGenoMsp = hasVcfMsp || hasBcfMsp;
+        const bool hasTextPre = !args.admixTextPrefix.empty();
+        if (hasGenoMsp && hasTextPre) {
+            std::cerr << "Error: --make-abed requires either (--vcf/--bcf + --rfmix-msp) or"
                 " --admix-text-prefix, not both.\n";
             return 1;
         }
-        if (!hasVcfMsp && !hasTextPre) {
-            std::cerr << "Error: --make-abed requires either (--vcf FILE --rfmix-msp FILE)"
+        if (!hasGenoMsp && !hasTextPre) {
+            std::cerr << "Error: --make-abed requires either"
+                " (--vcf FILE --rfmix-msp FILE),"
+                " (--bcf FILE --rfmix-msp FILE),"
                 " or (--admix-text-prefix PREFIX).\n";
             return 1;
         }
         require(args.outPrefix, "--out", "--make-abed");
         logArgsInEffect(args);
-        if (hasVcfMsp)infoMsg(
+        if (hasGenoMsp)infoMsg(
                 "Parsing MSP file into memory; this may take several minutes and memory scales with sample count "
                 "and window count."
         );
         try {
             TextWriter::assertWritable(args.outPrefix + ".abed");
-            if (hasVcfMsp)convertVcfMspToAbed(
-                    args.vcfFile,
+            if (hasGenoMsp) {
+                const std::string &genoPath = hasBcfMsp ? args.bcfFile : args.vcfFile;
+                convertVcfMspToAbed(
+                    genoPath,
+                    /*expectBcf=*/ hasBcfMsp,
                     args.mspFile,
                     args.outPrefix,
                     args.keepFile,
                     args.removeFile,
                     args.nthread
-            );
+                );
+            }
             else convertTextToAbed(args.admixTextPrefix, args.outPrefix, args.keepFile, args.removeFile, args.nthread);
         } catch (const std::exception &e) {
             std::cerr << "[ERROR] " << e.what() << "\n";

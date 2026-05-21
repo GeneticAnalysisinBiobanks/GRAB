@@ -22,11 +22,16 @@ class GenoCursor;
 // GenoSpec — lightweight descriptor for the genotype data source
 // ======================================================================
 
-enum class GenoFormat { Plink, Pgen, Vcf, Bgen };
+// Vcf and Bcf share the same htslib-based backend but are kept as distinct
+// values so that error messages, help output, and "Options in effect"
+// logging echo the flag the user actually typed.  Content-based validation
+// in VcfData enforces that --vcf rejects BCF2 input and --bcf rejects VCF
+// text, matching plink2's --vcf / --bcf behaviour.
+enum class GenoFormat { Plink, Pgen, Vcf, Bcf, Bgen };
 
 struct GenoSpec {
     GenoFormat format;
-    std::string path;        // bfilePrefix for Plink/Pgen, full file for Vcf/Bgen
+    std::string path;        // bfilePrefix for Plink/Pgen, full file for Vcf/Bcf/Bgen
     std::string extractFile; // --extract: SNP include list
     std::string excludeFile; // --exclude: SNP exclude list
     std::unordered_set<std::string> chrFilter; // --chr: chromosome include set
@@ -41,6 +46,7 @@ struct GenoSpec {
         case GenoFormat::Plink: flag = "--bfile"; break;
         case GenoFormat::Pgen:  flag = "--pfile"; break;
         case GenoFormat::Vcf:   flag = "--vcf";   break;
+        case GenoFormat::Bcf:   flag = "--bcf";   break;
         case GenoFormat::Bgen:  flag = "--bgen";  break;
         }
         return std::string(flag) + " " + path;

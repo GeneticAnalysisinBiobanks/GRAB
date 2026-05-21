@@ -26,6 +26,7 @@ extern "C" {
 
 VcfData::VcfData(
     std::string vcfFile,
+    bool expectBcf,
     const std::vector<uint64_t> &usedMask,
     uint32_t nSamplesInFile,
     uint32_t nUsed,
@@ -39,14 +40,30 @@ VcfData::VcfData(
 {
     m_allUsed = (nUsed == nSamplesInFile);
 
+    const char *kindLabel = expectBcf ? "BCF" : "VCF";
+
     // ---- First pass: read all variant metadata ----
     htsFile *fp = hts_open(m_vcfFile.c_str(), "r");
-    if (!fp) throw std::runtime_error("Cannot open VCF/BCF file: " + m_vcfFile);
+    if (!fp) throw std::runtime_error(std::string("Cannot open ") + kindLabel + " file: " + m_vcfFile);
+
+    // Content-based validation mirrors plink2's --vcf / --bcf separation:
+    // refuse a BCF2 file under --vcf, and refuse a non-BCF2 file under --bcf,
+    // with messages that point the user at the correct flag.
+    const htsFormat *fmt = hts_get_format(fp);
+    const enum htsExactFormat detected = fmt ? fmt->format : unknown_format;
+    if (!expectBcf && detected == bcf) {
+        hts_close(fp);
+        throw std::runtime_error(m_vcfFile + " appears to be a BCF2 file. Try --bcf instead of --vcf.");
+    }
+    if (expectBcf && detected != bcf) {
+        hts_close(fp);
+        throw std::runtime_error(m_vcfFile + " does not appear to be a BCF2 file. Try --vcf instead of --bcf.");
+    }
 
     bcf_hdr_t *hdr = bcf_hdr_read(fp);
     if (!hdr) {
         hts_close(fp);
-        throw std::runtime_error("Cannot read VCF/BCF header: " + m_vcfFile);
+        throw std::runtime_error(std::string("Cannot read ") + kindLabel + " header: " + m_vcfFile);
     }
 
     // Verify sample count
@@ -54,7 +71,8 @@ VcfData::VcfData(
     if (static_cast<uint32_t>(nSamplesHeader) != m_nSubjInFile) {
         bcf_hdr_destroy(hdr);
         hts_close(fp);
-        throw std::runtime_error("VCF sample count (" + std::to_string(nSamplesHeader) + ") does not match expected (" +
+        throw std::runtime_error(std::string(kindLabel) + " sample count (" +
+                                 std::to_string(nSamplesHeader) + ") does not match expected (" +
                                  std::to_string(m_nSubjInFile) + ")");
     }
 
@@ -91,7 +109,7 @@ VcfData::VcfData(
     m_nMarkers = static_cast<uint32_t>(m_markerInfo.size());
     m_chunkIndices = buildChunks(m_markerInfo, nMarkersEachChunk);
 
-    infoMsg("  VCF: read %u biallelic variants from %s", m_nMarkers, m_vcfFile.c_str());
+    infoMsg("  %s: read %u biallelic variants from %s", kindLabel, m_nMarkers, m_vcfFile.c_str());
 }
 
 VcfData::~VcfData() = default;

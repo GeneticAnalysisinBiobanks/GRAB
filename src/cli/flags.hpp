@@ -48,8 +48,21 @@ inline const FlagDef kPfile = {
 };
 
 inline const FlagDef kVcf = {
-    "--vcf", "FILE", "VCF or BCF genotype file",
-    nullptr
+    "--vcf", "FILE", "VCF genotype file (.vcf or BGZF-compressed .vcf.gz)",
+    R"(Specifies a VCF (Variant Call Format) input file, either as plain text
+or BGZF-compressed (typically produced by `bgzip` and conventionally named
+`.vcf.gz`).  BGZF is the VCF specification's standard compression format;
+plain gzip is also tolerated by the htslib backend but is not part of the
+VCF standard.  zstd-compressed VCF is not supported on this path.
+Matches plink2's --vcf flag: a BCF2 file passed here is rejected with a
+message redirecting to --bcf.  Mutually exclusive with --bcf.)"
+};
+
+inline const FlagDef kBcf = {
+    "--bcf", "FILE", "BCF2 genotype file",
+    R"(Specifies a BCF2 (binary VCF) input file.  Matches plink2's --bcf flag:
+a VCF text file passed here is rejected with a message redirecting to --vcf.
+Mutually exclusive with --vcf.)"
 };
 
 inline const FlagDef kBgen = {
@@ -68,7 +81,7 @@ a REF/ALT mode must follow the filename.  Syntax follows plink2 --bgen:
 
 // Combined display entry for genotype input (exactly one required)
 inline const FlagDef kGeno_input = {
-    "--bfile PREFIX | --pfile PREFIX | --vcf FILE | --bgen FILE <REF/ALT mode>",
+    "--bfile PREFIX | --pfile PREFIX | --vcf FILE | --bcf FILE | --bgen FILE <REF/ALT mode>",
     nullptr,
     "Genotype input (exactly one)",
     nullptr
@@ -405,7 +418,7 @@ inline const FlagDef kMsp = {
   Line 1: #Subpopulation order/codes: 0=POP0\t1=POP1\t...  (K inferred)
   Line 2: #chm\tspos\tepos\tsgpos\tegpos\tn snps\tIID0.0\tIID0.1\t...
   Data:   chrom\tspos(0-based)\tepos(excl)\t...\tancestry_calls...
-Used with --vcf to produce admixed .abed ancestry tracks.)"
+Used with --vcf or --bcf to produce admixed .abed ancestry tracks.)"
 };
 
 inline const FlagDef kAdmixTextPrefix = {
@@ -727,7 +740,7 @@ inline const FlagDef *const kMakeAbedReq[] = {
 };
 
 inline const FlagDef *const kMakeAbedOpt[] = {
-    &kVcf, &kMsp, &kAdmixTextPrefix,
+    &kVcf, &kBcf, &kMsp, &kAdmixTextPrefix,
     nullptr
 };
 
@@ -739,8 +752,9 @@ inline const MethodDef kMakeAbed = {
     nullptr,
     "{prefix}.abed  {prefix}.bim  {prefix}.fam",
     R"(Two modes (mutually exclusive):
-  --vcf FILE --rfmix-msp FILE  phased VCF/BCF + rfmix2 MSP  ->  .abed
-  --admix-text-prefix PREFIX   extract_tracts text output   ->  .abed
+  --vcf FILE --rfmix-msp FILE  phased VCF + rfmix2 MSP            ->  .abed
+  --bcf FILE --rfmix-msp FILE  phased BCF2 + rfmix2 MSP           ->  .abed
+  --admix-text-prefix PREFIX   extract_tracts text output         ->  .abed
 --out PREFIX writes PREFIX.abed, PREFIX.bim, PREFIX.fam.
 Pass PREFIX as --admix-bfile to SPAmixLocalPlus or --cal-phi.)",
 };
@@ -839,7 +853,7 @@ inline const FlagDef *const kFileFlags[] = {
 
 // All flags grouped for --help options
 inline const FlagDef *const kInputFlags[] = {
-    &kBfile,       &kPfile,       &kVcf,
+    &kBfile,       &kPfile,       &kVcf,         &kBcf,
     &kBgen,         &kAdmixBfile,
     &kOut,         &kCompression, &kCompressionLevel,
     &kPheno,       &kCovar,       &kCovarName,

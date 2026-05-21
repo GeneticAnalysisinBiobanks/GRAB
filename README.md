@@ -11,21 +11,19 @@ see the [GRAB 2.0 manual page](https://wenjianbi.github.io/grab.github.io/).
 
 ## Methods provided
 
-Selected with `--method <name>`.
-
 | Method | Supported trait types | Notes                                                                     |
 |--------|-----------------------|---------------------------------------------------------------------------|
-| SPACox | any [1]               | Baseline residual-based score test using saddlepoint approximation (SPA)  |
-| SPAmix | any [1]               | Extends SPACox to admixed population                                      |
-| SPAGRM | any [1]               | Extends SPACox to account for sample relatedness                          |
-| SAGELD | longitudinal          | Dedicated for testing longitudinal gene–environment interactions          |
-| SPAsqr | quantitative          | Smoothed quantile regression with LOCO PRS to improve statistical power   |
-| WtCoxG | time-to-event, binary | Leverages allele frequencies from an external reference population to improve statistical power |
-| LEAF   | time-to-event, binary | Extends WtCoxG to multiple reference panels and heterogeneous cohorts     |
+| **SPACox** | any [1]               | Baseline residual-based score test using saddlepoint approximation (SPA)  |
+| **SPAmix** | any [1]               | Extends SPACox to admixed population                                      |
+| **SPAGRM** | any [1]               | Extends SPACox to account for sample relatedness                          |
+| **SAGELD** | longitudinal          | Dedicated for testing longitudinal gene–environment interactions          |
+| **SPAsqr** | quantitative          | Smoothed quantile regression with LOCO PRS to improve statistical power   |
+| **WtCoxG** | time-to-event, binary | Leverages allele frequencies from an external reference population to improve statistical power |
+| **LEAF**   | time-to-event, binary | Extends WtCoxG to multiple reference panels and heterogeneous cohorts     |
 
 **Notes:**
 
-- **[1]** For SPACox, SPAmix, and SPAGRM, the phenotype may be supplied
+- [1] For SPACox, SPAmix, and SPAGRM, the phenotype may be supplied
   in either of two ways: as a **raw phenotype column** via
   `--pheno-name`, in which case GRAB's built-in null-model fitter
   accepts quantitative, binary, time-to-event, and ordinal traits; or
@@ -41,7 +39,7 @@ Selected with `--method <name>`.
 
 GRAB is a self-contained C++17 application.  All third-party libraries
 are bundled in the source tree, so the only things you need on your
-machine are a recent C++ compiler and GNU `make` — no extra installs.
+machine are a recent C++ compiler and GNU `make`.
 
 ```bash
 git clone --depth=1 https://github.com/GeneticAnalysisinBiobanks/GRAB.git
@@ -49,10 +47,10 @@ cd GRAB
 make -j
 ```
 
-This produces a single binary at `build/grab`, tuned for the CPU you built on.
+This produces a single binary `build/grab`, tuned for the CPU you built on.
 Copy it anywhere on `PATH` and you are done.
 
-To produce a binary that can be shared across any AVX2-capable machine, which is useful when the build host differs from the run host and the run host is older:
+To produce a binary that can be shared across any AVX2-capable machine, which is useful when the run host is older than the build host:
 
 ```bash
 make -j GRAB_MARCH=-march=x86-64-v2
@@ -65,12 +63,13 @@ GRAB consumes genotype files in the same formats as PLINK 2:
 - PLINK 2 `--pfile <prefix>` triples (`*.pgen` + `*.pvar` + `*.psam`).
 - PLINK 1 `--bfile <prefix>` triples (`*.bed` + `*.bim` + `*.fam`).
 - BGEN 1.1 / 1.2 / 1.3 (`--bgen <filename> <REF/ALT mode>`).
-- VCF / BCF (`--vcf <filename>`).
+- VCF, optionally BGZF-compressed (`--vcf <filename>`).
+- BCF2 binary (`--bcf <filename>`).
 
 The example below runs the **SPAsqr** method on two quantitative
 phenotypes (`Quantitative` and `Time`) jointly.  The options `--pheno`,
 `--pheno-name`, `--covar-name`, and `--out` are compatible
-with the PLINK 2 phenotype and covariate input conventions.
+with the PLINK 2 input and output conventions.
 `--sp-grm-plink2` consumes the output of `plink2 --make-grm-sparse`.
 
 `--pred-list` points at a text file with one row per phenotype, each
@@ -92,12 +91,6 @@ build/grab \
 ```
 
 The companion script `examples/run.sh` exercises every method end-to-end using the files under `examples/`.
-
-## Documentation
-
-Per-method documentation, including the statistical model, the input file
-specification, and the output column reference, lives under
-[`docs/methods/`](docs/methods/) and [`docs/software/`](docs/software/).
 
 ## Licence
 

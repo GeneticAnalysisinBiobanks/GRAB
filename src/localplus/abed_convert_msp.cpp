@@ -245,6 +245,7 @@ struct WindowCursor {
 // nthreads: number of compute threads (>=2 enables batch parallel encoding)
 static uint32_t processVcf(
     const std::string &vcfFile,
+    bool expectBcf,
     const MspData &msp,
     AbedWriter &writer,
     std::ofstream &bimOut,
@@ -252,8 +253,24 @@ static uint32_t processVcf(
     uint64_t *nMissingOut = nullptr,
     int nthreads = 1
 ) {
+    const char *kindLabel = expectBcf ? "BCF" : "VCF";
+
     htsFile *fp = hts_open(vcfFile.c_str(), "r");
-    if (!fp) throw std::runtime_error("Cannot open VCF: " + vcfFile);
+    if (!fp) throw std::runtime_error(std::string("Cannot open ") + kindLabel + ": " + vcfFile);
+
+    // Match plink2's --vcf / --bcf cross-redirect for content/flag mismatches.
+    {
+        const htsFormat *fmt = hts_get_format(fp);
+        const enum htsExactFormat detected = fmt ? fmt->format : unknown_format;
+        if (!expectBcf && detected == bcf) {
+            hts_close(fp);
+            throw std::runtime_error(vcfFile + " appears to be a BCF2 file. Try --bcf instead of --vcf.");
+        }
+        if (expectBcf && detected != bcf) {
+            hts_close(fp);
+            throw std::runtime_error(vcfFile + " does not appear to be a BCF2 file. Try --vcf instead of --bcf.");
+        }
+    }
 
     if (nthreads > 1) {
         int nDecompressThreads = std::min(nthreads, 4);
@@ -263,7 +280,7 @@ static uint32_t processVcf(
     bcf_hdr_t *hdr = bcf_hdr_read(fp);
     if (!hdr) {
         hts_close(fp);
-        throw std::runtime_error("Cannot read VCF header: " + vcfFile);
+        throw std::runtime_error(std::string("Cannot read ") + kindLabel + " header: " + vcfFile);
     }
 
     bcf1_t *rec = bcf_init();
@@ -495,6 +512,7 @@ static uint32_t processVcf(
 
 void convertVcfMspToAbed(
     const std::string &vcfFile,
+    bool expectBcf,
     const std::string &mspFile,
     const std::string &outPrefix,
     const std::string &keepFile,
@@ -539,14 +557,17 @@ void convertVcfMspToAbed(
     if (!bimOut) throw std::runtime_error("Cannot create " + outPrefix + ".bim");
 
     uint64_t nMissing = 0;
-    uint32_t nMarkers = processVcf(vcfFile, msp, writer, bimOut, keptIndices, &nMissing, nthreads);
+    uint32_t nMarkers = processVcf(vcfFile, expectBcf, msp, writer, bimOut, keptIndices, &nMissing, nthreads);
 
     writer.close();
     bimOut.close();
 
-    if (nMarkers == 0)
-        throw std::runtime_error("No VCF variants fell inside MSP windows. "
+    if (nMarkers == 0) {
+        const char *kindLabel = expectBcf ? "BCF" : "VCF";
+        throw std::runtime_error(std::string("No ") + kindLabel +
+                                 " variants fell inside MSP windows. "
                                  "Check chromosome naming and coordinate systems.");
+    }
 
     if (nMissing > 0)
         infoMsg("[INFO] --make-abfile: %llu missing genotypes encountered (imputed to ref)",
