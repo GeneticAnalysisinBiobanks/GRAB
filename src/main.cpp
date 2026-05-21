@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
 // main.cpp — GRAB CLI entry point
 //
 // Canonical main.cpp: stays at src/ root, contains only the entry point.

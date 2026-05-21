@@ -4,6 +4,7 @@ set -e
 
 build/grab --threads 2 \
   --method SPACox \
+  --seed 2026 \
   --pheno examples/1kg.pheno \
   --pheno-name Quantitative,Time:Event,Binary,Ordinal \
   --covar-name MALE,PC1,PC2,PC3,PC4 \
@@ -32,6 +33,7 @@ build/grab \
 
 build/grab --threads 2 \
   --method SPAmix \
+  --seed 2026 \
   --pheno examples/1kg.pheno \
   --pheno-name Quantitative,Time:Event,Binary,Ordinal \
   --covar-name MALE,PC1,PC2,PC3,PC4 \
@@ -63,6 +65,7 @@ build/grab \
 
 build/grab --threads 2 \
   --method SPAGRM \
+  --seed 2026 \
   --pheno examples/1kg.pheno \
   --pheno-name Quantitative,Time:Event,Binary,Ordinal \
   --covar-name MALE,PC1,PC2,PC3,PC4 \
@@ -138,6 +141,7 @@ build/grab --threads 2 \
 
 build/grab --threads 2 \
   --method LEAF \
+  --seed 2026 \
   --leaf-nclusters 3 \
   --pheno examples/1kg.pheno \
   --pheno-name Time:Event,Binary \
