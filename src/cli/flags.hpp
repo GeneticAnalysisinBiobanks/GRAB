@@ -53,23 +53,23 @@ inline const FlagDef kVcf = {
 };
 
 inline const FlagDef kBgen = {
-    "--bgen", "FILE", "BGEN genotype file",
-    nullptr
-};
-
-inline const FlagDef kBgenAltFirst = {
-    "--bgen-alt-first", nullptr,
-    "Treat the first BGEN allele as ALT (plink2 default --export bgen-1.x)",
-    R"(BGEN files do not record which of the two listed alleles is REF.
-GRAB defaults to alleles[0] = REF (IMPUTE / qctool / UK Biobank convention).
-Use --bgen-alt-first when the BGEN was produced by plink2 with default flags,
-which writes ALT as alleles[0].  Equivalently, re-export from plink2 with
-'--export bgen-1.x ref-first' and omit this flag.)"
+    "--bgen", "FILE <REF/ALT mode>",
+    "BGEN genotype file (REF/ALT mode required, matches plink2 --bgen)",
+    R"(BGEN itself does not encode which of the two listed alleles is REF, so
+a REF/ALT mode must follow the filename.  Syntax follows plink2 --bgen:
+  ref-first    The first allele for each variant is REF
+               (raw UK Biobank / IMPUTE / qctool convention).
+  ref-last     The last allele for each variant is REF
+               (default for plink2-exported .bgen files; alleles[0] is ALT).
+  ref-unknown  The last allele is treated as provisional-REF.  GRAB has no
+               provisional-REF output column, so it behaves identically to
+               ref-last and emits a [WARN] noting that REF is provisional.)"
 };
 
 // Combined display entry for genotype input (exactly one required)
 inline const FlagDef kGeno_input = {
-    "--bfile PREFIX | --pfile PREFIX | --vcf FILE | --bgen FILE", nullptr,
+    "--bfile PREFIX | --pfile PREFIX | --vcf FILE | --bgen FILE <REF/ALT mode>",
+    nullptr,
     "Genotype input (exactly one)",
     nullptr
 };
@@ -840,7 +840,7 @@ inline const FlagDef *const kFileFlags[] = {
 // All flags grouped for --help options
 inline const FlagDef *const kInputFlags[] = {
     &kBfile,       &kPfile,       &kVcf,
-    &kBgen,        &kBgenAltFirst, &kAdmixBfile,
+    &kBgen,         &kAdmixBfile,
     &kOut,         &kCompression, &kCompressionLevel,
     &kPheno,       &kCovar,       &kCovarName,
     &kPhenoName,   &kResidName,

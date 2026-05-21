@@ -129,8 +129,27 @@ Args parseArgs(
         else if (arg == "--bfile")a.bfilePrefix = next();
         else if (arg == "--pfile")a.pfilePrefix = next();
         else if (arg == "--vcf")a.vcfFile = next();
-        else if (arg == "--bgen")a.bgenFile = next();
-        else if (arg == "--bgen-alt-first")a.bgenAltFirst = true;
+        else if (arg == "--bgen") {
+            // plink2-compatible syntax: --bgen <filename> <REF/ALT mode>.
+            // BGEN itself does not encode REF/ALT; the user must declare the
+            // convention explicitly.  Error wording mirrors plink2 --bgen.
+            a.bgenFile = next();
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --bgen requires a REF/ALT mode ('ref-first',"
+                             " 'ref-last', or 'ref-unknown').  As of this writing,"
+                             " raw UK Biobank files are ref-first, while older and"
+                             " PLINK-exported BGEN files are more likely to be"
+                             " ref-last.\n";
+                std::exit(1);
+            }
+            std::string mode = argv[i + 1];
+            if (mode != "ref-first" && mode != "ref-last" && mode != "ref-unknown") {
+                std::cerr << "Error: Invalid --bgen argument '" << mode << "'.\n";
+                std::exit(1);
+            }
+            ++i;
+            a.bgenRefMode = mode;
+        }
         else if (arg == "--ref-af")a.refAfFile = next();
         else if (arg == "--sp-grm-grab")a.spGrmGrabFile = next();
         else if (arg == "--sp-grm-plink2")a.spGrmPlink2File = next();

@@ -15,19 +15,32 @@ Lines beginning with `##` are skipped as comments.
 Exactly one of the following flags is required for every GWAS method
 except SPAmixLocalPlus (which consumes `--admix-bfile` instead):
 
-| Flag             | Format                              | Subject ID source                                     |
-| ---------------- | ----------------------------------- | ----------------------------------------------------- |
-| `--bfile PREFIX` | PLINK 1 (`.bed/.bim/.fam`)          | `.fam` column 2 (IID)                                 |
-| `--pfile PREFIX` | PLINK 2 (`.pgen/.pvar/.psam`)       | `.psam` IID column                                    |
-| `--vcf FILE`     | VCF / BCF (`.vcf`, `.vcf.gz`, `.bcf`) | VCF header sample IDs                               |
-| `--bgen FILE`    | BGEN v1.2 (`.bgen`, `.sample`)      | Embedded sample-identifier block or companion `.sample` file |
+| Flag             | Format                                       | Subject ID source                                            |
+| ---------------- | -------------------------------------------- | ------------------------------------------------------------ |
+| `--bfile PREFIX` | PLINK 1 (`.bed/.bim/.fam`)                   | `.fam` column 2 (IID)                                        |
+| `--pfile PREFIX` | PLINK 2 (`.pgen/.pvar/.psam`)                | `.psam` IID column                                           |
+| `--vcf FILE`     | VCF / BCF (`.vcf`, `.vcf.gz`, `.bcf`)        | VCF header sample IDs                                        |
+| `--bgen FILE {ref-first\|ref-last\|ref-unknown}` | BGEN v1.1 / v1.2 / v1.3 (`.bgen`, `.sample`) | Embedded sample-identifier block or companion `.sample` file |
 
 `--bfile`, `--pfile`, `--vcf`, and `--bgen` are mutually exclusive; the
 dispatcher rejects any combination that specifies more than one.
 
-For `--bgen`: when the BGEN file contains an embedded sample-identifier
-block, those IDs are used.  Otherwise GRAB looks for a companion `.sample`
-file (Oxford format: header `ID_1 ID_2 missing`, type row `0 0 0`, then
+For `--bgen`: BGEN does not encode which of the two listed alleles is
+REF, so a REF/ALT mode token is mandatory and follows the plink2
+`--bgen` syntax:
+
+- `ref-first` — `alleles[0]` is REF, `alleles[1]` is ALT.  Use for
+  IMPUTE / qctool / UK Biobank exports.
+- `ref-last`  — `alleles[0]` is ALT, `alleles[1]` is REF.  Use for
+  `.bgen` files produced by plink2 default `--export bgen-1.x`.
+- `ref-unknown` — REF status unknown.  Accepted for plink2
+  compatibility; GRAB treats it identically to `ref-last` and emits a
+  "REF is provisional" warning because the output table has no PR
+  marker column.
+
+When the BGEN file contains an embedded sample-identifier block, those
+IDs are used.  Otherwise GRAB looks for a companion `.sample` file
+(Oxford format: header `ID_1 ID_2 missing`, type row `0 0 0`, then
 `FID IID ...` data lines).  If neither source is available, numeric IDs
 (`"0"`, `"1"`, ...) are generated and a warning is emitted.
 

@@ -188,8 +188,10 @@ std::unique_ptr<GenoMeta> makeGenoData(
         return std::make_unique<VcfData>(spec.path, usedMask, nSamplesInFile, nUsed, spec.chrFilter,
                                          nMarkersEachChunk);
     case GenoFormat::Bgen:
-        infoMsg("Loading BGEN data: %s%s", spec.path.c_str(),
-                spec.bgenAltFirst ? " (alleles[0] = ALT)" : " (alleles[0] = REF)");
+        infoMsg("Loading BGEN data: %s (%s; alleles[0] = %s)",
+                spec.path.c_str(),
+                spec.bgenAltFirst ? "ref-last/ref-unknown" : "ref-first",
+                spec.bgenAltFirst ? "ALT" : "REF");
         return std::make_unique<BgenData>(spec.path, usedMask, nSamplesInFile, nUsed, spec.chrFilter,
                                           nMarkersEachChunk, spec.bgenAltFirst);
     }

@@ -101,9 +101,10 @@ class BgenData : public GenoMeta {
     }
 
     // True ⇒ BGEN file lists ALT first (alleles[0]=ALT, alleles[1]=REF).
-    // This is the default convention of plink2 --export bgen-1.x.
-    // When false (default), alleles[0] is interpreted as REF and alleles[1]
-    // as ALT, matching IMPUTE / UK Biobank / qctool output.
+    // This is the default convention of plink2 --export bgen-1.x and is
+    // selected at the CLI via --bgen FILE ref-last (or ref-unknown).
+    // When false, alleles[0] is interpreted as REF and alleles[1] as ALT
+    // (CLI: --bgen FILE ref-first), matching IMPUTE / UK Biobank / qctool.
     bool altFirst() const {
         return m_altFirst;
     }

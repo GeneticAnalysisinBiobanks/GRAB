@@ -26,8 +26,15 @@ struct Args {
     std::string bfilePrefix;
     std::string pfilePrefix; // --pfile (pgen/pvar/psam)
     std::string vcfFile;     // --vcf (vcf/bcf)
-    std::string bgenFile;    // --bgen
-    bool bgenAltFirst = false; // --bgen-alt-first (plink2 default export: alleles[0]=ALT)
+    std::string bgenFile;    // --bgen <filename>
+    // --bgen <REF/ALT mode>: ref-first | ref-last | ref-unknown
+    // (matches plink2 --bgen syntax; mandatory whenever --bgen is given).
+    // ref-first   → alleles[0] is REF (IMPUTE / UK Biobank convention)
+    // ref-last    → alleles[0] is ALT (plink2 default --export bgen-1.x)
+    // ref-unknown → REF status unknown; alleles are kept in BGEN order with a
+    //               "REF is provisional" warning (treated identically to
+    //               ref-last for downstream computation).
+    std::string bgenRefMode;
     std::string refAfFile;
     std::string spGrmGrabFile;   // --sp-grm-grab
     std::string spGrmPlink2File; // --sp-grm-plink2 (.grm.sp file)

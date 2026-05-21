@@ -120,7 +120,18 @@ static GenoSpec resolveGenoSpec(
     } else {
         spec.format = GenoFormat::Bgen;
         spec.path = a.bgenFile;
-        spec.bgenAltFirst = a.bgenAltFirst;
+        // The CLI parser guarantees bgenRefMode ∈ {ref-first, ref-last, ref-unknown}
+        // whenever --bgen is given.  Translate to the internal binary flag:
+        // ref-last and ref-unknown both place ALT at alleles[0]; ref-unknown
+        // additionally triggers a "REF is provisional" warning because GRAB
+        // has no provisional-REF output column to propagate.
+        spec.bgenAltFirst =
+            (a.bgenRefMode == "ref-last" || a.bgenRefMode == "ref-unknown");
+        if (a.bgenRefMode == "ref-unknown")
+            warnMsg("--bgen ref-unknown: REF allele is provisional;"
+                    " GRAB treats this as ref-last (alleles[0]=ALT) for the"
+                    " score test and does not emit a provisional-REF marker"
+                    " in the output.");
     }
     return spec;
 }
@@ -218,8 +229,9 @@ static void logArgsInEffect(const Args &args) {
     if (!args.bfilePrefix.empty()) std::fprintf(stderr, "  --bfile %s\n", args.bfilePrefix.c_str());
     if (!args.pfilePrefix.empty()) std::fprintf(stderr, "  --pfile %s\n", args.pfilePrefix.c_str());
     if (!args.vcfFile.empty()) std::fprintf(stderr, "  --vcf %s\n", args.vcfFile.c_str());
-    if (!args.bgenFile.empty()) std::fprintf(stderr, "  --bgen %s\n", args.bgenFile.c_str());
-    if (args.bgenAltFirst) std::fprintf(stderr, "  --bgen-alt-first\n");
+    if (!args.bgenFile.empty())
+        std::fprintf(stderr, "  --bgen %s %s\n",
+                     args.bgenFile.c_str(), args.bgenRefMode.c_str());
     if (!args.phenoFile.empty()) std::fprintf(stderr, "  --pheno %s\n", args.phenoFile.c_str());
     if (!args.covarFile.empty()) std::fprintf(stderr, "  --covar %s\n", args.covarFile.c_str());
     if (!args.covarName.empty()) std::fprintf(stderr, "  --covar-name %s\n", args.covarName.c_str());

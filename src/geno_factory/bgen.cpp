@@ -42,8 +42,8 @@ namespace {
 //
 // `countFirstAllele = false` (default) → dosage of second allele (alleles[1]).
 // `countFirstAllele = true`            → dosage of first allele  (alleles[0]),
-//   used by --bgen-alt-first to compensate for plink2's default export which
-//   writes ALT as the first allele.
+//   used by --bgen FILE ref-last (or ref-unknown) to compensate for plink2's
+//   default BGEN export which writes ALT as the first allele.
 // ──────────────────────────────────────────────────────────────────────────────
 
 struct DosageSetter {
@@ -234,10 +234,13 @@ BgenData::BgenData(
         // Use RSID as marker ID; fall back to SNPID
         m_markerId.push_back(RSID.empty() ? SNPID : RSID);
         // BGEN itself only encodes "first allele" / "second allele".  The
-        // mapping to REF/ALT depends on the producer.  By default we follow
-        // the IMPUTE / qctool / UK Biobank convention (alleles[0] = REF).
-        // With --bgen-alt-first the user signals a plink2-style export where
-        // alleles[0] = ALT.
+        // user declares the REF/ALT convention at the CLI via
+        // --bgen FILE {ref-first|ref-last|ref-unknown}:
+        //   ref-first   → alleles[0] = REF (m_altFirst = false; default of
+        //                 IMPUTE / qctool / UK Biobank)
+        //   ref-last    → alleles[0] = ALT (m_altFirst = true; default of
+        //                 plink2 --export bgen-1.x)
+        //   ref-unknown → treated as ref-last with a CLI-level warning.
         const std::string &refAllele = m_altFirst ? alleles[1] : alleles[0];
         const std::string &altAllele = m_altFirst ? alleles[0] : alleles[1];
         m_ref.push_back(refAllele);
@@ -420,8 +423,9 @@ void BgenCursor::getGenotypes(
     // statsFromCounts treats its first count argument as "hom of the ALT
     // allele" and returns altCounts = 2*nHomAlt + nHet.  Our DosageSetter
     // already classified the per-sample dosage of the ALT allele
-    // (alleles[1] by default, or alleles[0] when --bgen-alt-first), so
-    // setter.nHomAlt is the count of subjects with dosage ≈ 2 (hom ALT).
+    // (alleles[1] under --bgen FILE ref-first, alleles[0] under ref-last
+    // or ref-unknown), so setter.nHomAlt is the count of subjects with
+    // dosage ≈ 2 (hom ALT).
     GenoStats gs = statsFromCounts(setter.nHomAlt, setter.nHet, setter.nHomRef, setter.nMissing, nUsed);
     altFreq = gs.altFreq;
     altCounts = gs.altCounts;

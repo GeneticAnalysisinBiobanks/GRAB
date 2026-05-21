@@ -30,7 +30,9 @@ struct GenoSpec {
     std::string extractFile; // --extract: SNP include list
     std::string excludeFile; // --exclude: SNP exclude list
     std::unordered_set<std::string> chrFilter; // --chr: chromosome include set
-    bool bgenAltFirst = false; // BGEN-only: alleles[0]=ALT (plink2 default export)
+    // BGEN-only: alleles[0]=ALT (set by --bgen FILE ref-last or ref-unknown;
+    // false ⇒ --bgen FILE ref-first).
+    bool bgenAltFirst = false;
 
     // Return a descriptive flag label, e.g. "--bfile d_bed".
     std::string flagLabel() const {
