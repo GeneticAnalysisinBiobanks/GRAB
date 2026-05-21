@@ -71,7 +71,7 @@ struct Args {
     bool intPheno = false;
     double minMafIBD = 0.01;
     double refPrevalence = -1.0;
-    double cutoff = 0.05;
+    double cutoff = 0.1;
     double spaCutoff = 2.0;
     double pvalCovAdjCut = 5e-5;
     double missingCutoff = 0.1;
@@ -86,6 +86,10 @@ struct Args {
     int compressionLevel = 0; // --compression-level (0 = library default)
     int nClusters = 0;        // 0 = auto (from --ref-af count)
     uint64_t seed = 0;        // 0 = use std::random_device
+    std::string leafClusterFile; // --leaf-cluster-file: pre-computed cluster
+                                 // labels (two columns: IID, cluster).  When
+                                 // set, LEAF skips K-means and uses these
+                                 // labels verbatim.
 };
 
 // Entry point: parse argv, print help or dispatch the selected method.

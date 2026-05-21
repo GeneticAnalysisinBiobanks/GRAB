@@ -363,6 +363,24 @@ SpaResult spaGOneSnpHomoFromScalars(
         obs_ct = 0.0;
     }
 
+    // Cluster MAC < 10 guard, mirroring R's SPA_G.one.SNP_homo line 448
+    //   (`sum(g) < min.mac | sum(2-g) < min.mac` with min.mac = 10).
+    // Without this guard the noext path would output SPA p-values on SNPs
+    // whose per-cluster allele count is too low for the saddle-point
+    // approximation to be reliable; the ext path is already guarded by
+    // the outer check in wtCoxGTestFromScalars, so this is effectively a
+    // no-op there.  Missing-rate (>0.15) guard from the same R block is
+    // omitted because per-cluster missing info is not plumbed to this
+    // scalar entry; for low-missing inputs the MAC guard catches the same
+    // cases in practice.
+    const double sum_g_chk   = gSum;
+    const double sum_2mg_chk = 2.0 * static_cast<double>(Nint) - gSum;
+    if (sum_g_chk < 10.0 || sum_2mg_chk < 10.0) {
+        return {NaN::quiet_NaN(), NaN::quiet_NaN(),
+                R_dot_g - 2.0 * (gSum / std::max(1.0, static_cast<double>(Nint)) / 2.0) * sumR,
+                NaN::quiet_NaN()};
+    }
+
     const double N = static_cast<double>(Nint);
     double mu_int = (N > 0.0) ? (gSum / N) / 2.0 : 0.0;
     double MAF = std::clamp((1.0 - b) * mu_int + b * mu_ext, 0.0, 1.0);
@@ -704,26 +722,45 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
     const Eigen::VectorXd &indicator,
     const SparseGRM *grm,
     double refPrevalence,
-    double cutoff
+    double cutoff,
+    double globalSumWeight
 ) {
 
     const Eigen::Index nSubj = residuals.size();
 
-    // Precompute w1 and R_tilde
-    double sumW = weights.sum();
-    Eigen::VectorXd w1 = weights / (2.0 * sumW);
+    // Precompute w1 and R_tilde.  LEAF.R mixes two normalisations for w1:
+    //   - GLOBAL (w / (2 · sum_over_full_pheno(weight))) — used for
+    //     var.ratio.w0 and for the var_Sbat that feeds the TPR / σ²
+    //     estimator (Summix-level quantities computed outside the inner
+    //     optim).
+    //   - LOCAL  (w / (2 · sum_within_cluster(weight))) — re-derived
+    //     inside fun.optimalWeight (and inside WtCoxG.test) on the cluster
+    //     slice.  Mixing the two scales is what the R script does; we
+    //     mirror it exactly.
+    // Single-cluster WtCoxG runs (default globalSumWeight = -1) collapse
+    // both to the local sum, leaving non-LEAF behaviour unchanged.
+    const double sumW_local = weights.sum();
+    const double sumW       = (globalSumWeight > 0.0) ? globalSumWeight : sumW_local;
+    Eigen::VectorXd w1       = weights / (2.0 * sumW);        // GLOBAL (or local fallback)
+    Eigen::VectorXd w1_local = weights / (2.0 * sumW_local);  // always cluster-local
     double meanR = residuals.mean();
     Eigen::VectorXd R_tilde = residuals.array() - meanR;
 
     // --- Variance ratios from sparse GRM ---
-    double grm_sum_cov_w = 0.0; // sum(GRM_ij * w1_i * w1_j)
-    double grm_sum_cov_R = 0.0; // sum(GRM_ij * R_tilde_i * R_tilde_j)
+    // LEAF.R sums over the file's stored entries WITHOUT doubling
+    // off-diagonals (half-storage convention).  Use halfStorageSum to
+    // reproduce that exactly; quadForm would double the off-diagonal
+    // mass and inflate the ratio when intra-cluster relatedness is dense
+    // (observed as a 24% var.ratio.int discrepancy in cl3 vs LEAF.R).
+    double grm_sum_cov_w = 0.0; // Σ_{e stored} GRM_ij * w1_i * w1_j
+    double grm_sum_cov_R = 0.0; // Σ_{e stored} GRM_ij * R_tilde_i * R_tilde_j
     bool hasGRM = (grm != nullptr);
     if (hasGRM) {
-        grm_sum_cov_w = grm->quadForm(w1.data(), static_cast<uint32_t>(nSubj));
-        grm_sum_cov_R = grm->quadForm(R_tilde.data(), static_cast<uint32_t>(nSubj));
+        grm_sum_cov_w = grm->halfStorageSum(w1.data(), static_cast<uint32_t>(nSubj));
+        grm_sum_cov_R = grm->halfStorageSum(R_tilde.data(), static_cast<uint32_t>(nSubj));
     }
-    double sum_w1_sq = w1.array().square().sum();
+    double sum_w1_sq       = w1.array().square().sum();        // GLOBAL — TPR / σ² fit
+    double sum_w1_sq_local = w1_local.array().square().sum();  // LOCAL — fun.optimalWeight
     double sum_Rtilde_sq = R_tilde.array().square().sum();
     double var_ratio_int = hasGRM ? (grm_sum_cov_R / sum_Rtilde_sq) : 1.0;
 
@@ -755,8 +792,14 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
         bd.n1 = m.n1;
         bd.mu_int = m.mu_int;
 
-        // var_ratio_w0 per marker (depends on obs_ct)
-        bd.var_ratio_w0 = hasGRM ? (grm_sum_cov_w + 1.0 / m.obs_ct) / (sum_w1_sq + 1.0 / m.obs_ct) : 1.0;
+        // var_ratio_w0 per marker (depends on obs_ct).  LEAF.R writes
+        //   (grm_cov + 1/(2*AN_ref)) / (sum(w1^2) + 1/(2*AN_ref))
+        // where AN_ref is the allele count (= obs_ct in plink2 terms).
+        // The factor of two on the offset matches var_mu_ext = mu(1-mu)/(2*n_ext)
+        // with n_ext = AN_ref/2; omitting it inflates the offset 2× and pulls
+        // the ratio toward 1.
+        const double offset = 1.0 / (2.0 * m.obs_ct);
+        bd.var_ratio_w0 = hasGRM ? (grm_sum_cov_w + offset) / (sum_w1_sq + offset) : 1.0;
 
         // Batch effect p-value (Batcheffect.TestOneMarker)
         double er = m.n1 / (m.n1 + m.n0);
@@ -780,8 +823,13 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
     for (auto &bd : batchData)
         max_mu_int = std::max(max_mu_int, bd.mu_int);
 
+    // Match LEAF.R: `maf.group = c(seq(-0.00001, 0.4, 0.05), max(mu.int))`.
+    // The leading -1e-5 (not -1e-4) makes mu_int == 0 fall into the first
+    // group via the (lo, hi] half-open interval, and the absolute values of
+    // each break match R to ~1e-12 so border markers (mu_int near 0.05·k)
+    // land in the same group in both pipelines.
     std::vector<double> mafBreaks;
-    for (double x = -1e-4; x <= 0.40 + 1e-9; x += 0.05)
+    for (double x = -1e-5; x <= 0.40 + 1e-9; x += 0.05)
         mafBreaks.push_back(x);
     mafBreaks.push_back(max_mu_int + 1e-6);
 
@@ -824,8 +872,15 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
             vec_p_deno[j] = static_cast<double>(cnt) / static_cast<double>(vec_p_bat.size());
         }
 
-        // Nelder-Mead to estimate [TPR, sigma2]
+        // Nelder-Mead to estimate [TPR, sigma2] with box constraints
+        // [0, 1] × [0, 1] enforced as soft penalty walls.  The σ² ≤ 1
+        // upper bound matches LEAF.R (/home/miaolin/share/LEAF.R), which
+        // does default optim() (unconstrained Nelder-Mead) and then post-
+        // hoc clamps the result with `min(1, max(0, par[i]))`.  The wall
+        // here approximates the same clamp in a way that the simplex can
+        // honour during convergence rather than after the fact.
         auto opti_fun = [&](const std::vector<double> &par) -> double {
+            if (par[0] < 0.0 || par[0] > 1.0 || par[1] < 0.0 || par[1] > 1.0) return 1e30;
             double diff = 0.0;
             for (int j = 0; j < nCut; ++j) {
                 double p_cut = vec_cutoff[j];
@@ -833,13 +888,9 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
                 double lb = -q * std::sqrt(var_Sbat);
                 double ub = q * std::sqrt(var_Sbat);
                 double var_Sbat_par2 = var_Sbat + par[1];
-                double c_val, d_val;
-                if (var_Sbat_par2 >= 0) {
-                    c_val = math::pnorm(ub, 0.0, std::sqrt(var_Sbat_par2), true, true);
-                    d_val = math::pnorm(lb, 0.0, std::sqrt(var_Sbat_par2), true, true);
-                } else {
-                    return 1e30;
-                }
+                if (var_Sbat_par2 <= 0.0) return 1e30;
+                double c_val = math::pnorm(ub, 0.0, std::sqrt(var_Sbat_par2), true, true);
+                double d_val = math::pnorm(lb, 0.0, std::sqrt(var_Sbat_par2), true, true);
                 double pro_cut =
                     par[0] * (std::exp(d_val) * (std::exp(c_val - d_val) - 1.0)) + (1.0 - par[0]) *
                     (1.0 - p_cut);
@@ -850,8 +901,12 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
         };
 
         auto optResult = math::nelderMead(opti_fun, {0.01, 0.01});
-        double TPR = std::clamp(optResult.par[0], 0.0, 1.0);
-        double sigma2 = std::clamp(optResult.par[1], 0.0, 1.0);
+        // Post-hoc clamp to [0, 1]², mirroring LEAF.R's `min(1, max(0, ·))`.
+        // With the penalty wall above this should be a no-op, but the
+        // simplex centroid can drift slightly past the wall, so the clamp
+        // closes the gap.
+        double TPR    = std::min(1.0, std::max(0.0, optResult.par[0]));
+        double sigma2 = std::min(1.0, std::max(0.0, optResult.par[1]));
 
         // Optimal external weight via 1-D Brent minimisation
         // The R code does a complex nested optimisation (optim + uniroot + pmvnorm).
@@ -882,11 +937,11 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
                     S             += r_adj * mu_i;
                     mu_local_acc  += mu_i;
                     var_int_acc   += r_adj * r_adj;
-                    cov_val_acc   += w1[k] * r_adj;
+                    cov_val_acc   += w1_local[k] * r_adj;  // LOCAL — matches LEAF.R fun.optimalWeight
                 }
                 S -= sumR_loc * 2.0 * b * mu_pop;
 
-                double w1sum2 = sum_w1_sq;                                       // already computed above
+                double w1sum2 = sum_w1_sq_local;                                 // LOCAL — matches LEAF.R fun.optimalWeight
                 double mu_local = mu_local_acc / (2.0 * nS);
 
                 double var_mu_ext_loc = mu_local * (1.0 - mu_local) / obs_ct_ext;
@@ -971,11 +1026,13 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
 
         double w_ext = math::brentMin(fun_optimalWeight, 0.0, 1.0, 1e-6, 200);
 
-        // Compute var_ratio_ext from GRM (if available)
+        // Compute var_ratio_ext from GRM (if available).  LEAF.R sums file
+        // entries without doubling off-diagonals (half-storage convention);
+        // use halfStorageSum to match.
         double var_ratio_ext = 1.0;
         if (hasGRM) {
             Eigen::VectorXd R_tilde_w = residuals.array() - meanR * w_ext;
-            double grm_cov_Rext = grm->quadForm(R_tilde_w.data(), static_cast<uint32_t>(nSubj));
+            double grm_cov_Rext = grm->halfStorageSum(R_tilde_w.data(), static_cast<uint32_t>(nSubj));
             double sumR_sq_over_n = w_ext * w_ext * residuals.sum() * residuals.sum() * 2.0 / obs_ct_ext;
             double num = grm_cov_Rext + sumR_sq_over_n;
             double den = R_tilde_w.array().square().sum() + sumR_sq_over_n;
@@ -1301,10 +1358,98 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
 
     const double sum_g = gSum;
     const double sum_2mg = 2.0 * static_cast<double>(Nint) - gSum;
-    if (p_bat < p_cut || std::isnan(p_bat) || sum_g < 10 || sum_2mg < 10)
+    if (std::isnan(p_bat) || sum_g < 10 || sum_2mg < 10)
         return {NaN::quiet_NaN(), NaN::quiet_NaN(), NaN::quiet_NaN()};
 
     const double N_d = static_cast<double>(Nint);
+
+    // ────────────────────────────────────────────────────────────────────
+    // Branch A — p_bat < p_cut: batch effect detected.  Drop the external
+    // MAF, score with internal MAF only, and integrate the conditional
+    // p-value over the complement region {|S_bat| > threshold}.  This
+    // mirrors LEAF.R's `else if (p_bat < p_cut)` branch after its
+    // var.ratio-sqrt fix.
+    // ────────────────────────────────────────────────────────────────────
+    if (p_bat < p_cut) {
+        if (std::isnan(TPR) || std::isnan(sigma2)) {
+            // No batch parameters: fall back to plain internal SPA.
+            SpaResult spa = spaGOneSnpHomoFromScalars(
+                R_dot_g, gSum, Nint, m_shared->outlier, m_shared->nNonOutlier,
+                m_shared->sumR_nonOutlier, m_shared->sumR2_nonOutlier,
+                m_shared->meanR, m_shared->sumR, m_shared->sqSumR,
+                NaN::quiet_NaN(), 0.0, 0.0, 0.0, var_ratio_int, m_shared->SPA_Cutoff);
+            return {spa.pval, spa.score, spa.zscore};
+        }
+
+        const double mu_loc = (N_d > 0.0) ? (gSum / N_d) / 2.0 : 0.0;
+        const double S_loc  = R_dot_g - 2.0 * mu_loc * m_shared->sumR;
+        const double var_mu_ext_loc = (obs_ct > 0.0) ? mu_loc * (1.0 - mu_loc) / obs_ct : 0.0;
+        const double var_Sbat = m_shared->w1Sq * 2.0 * mu_loc * (1.0 - mu_loc) + var_mu_ext_loc;
+        if (var_Sbat <= 0.0) return {NaN::quiet_NaN(), NaN::quiet_NaN(), NaN::quiet_NaN()};
+
+        const double qnorm_val = math::qnorm(1.0 - p_cut / 2.0);
+        const double lb = -qnorm_val * std::sqrt(var_Sbat) * std::sqrt(var_ratio_w0);
+        const double ub = -lb;
+
+        const double c_val = math::pnorm(lb / std::sqrt(var_ratio_w1), 0.0,
+                                         std::sqrt(var_Sbat + sigma2), true, true);
+        const double p_deno = TPR * 2.0 * std::exp(c_val) + (1.0 - TPR) * p_cut;
+
+        SpaResult spa_s0 = spaGOneSnpHomoFromScalars(
+            R_dot_g, gSum, Nint, m_shared->outlier, m_shared->nNonOutlier,
+            m_shared->sumR_nonOutlier, m_shared->sumR2_nonOutlier,
+            m_shared->meanR, m_shared->sumR, m_shared->sqSumR,
+            NaN::quiet_NaN(), 0.0, 0.0, 0.0, var_ratio0, m_shared->SPA_Cutoff);
+        const double qchi0 = math::qchisq(spa_s0.pval, 1.0, false, false);
+        const double var_S = (qchi0 > 0.0)
+            ? S_loc * S_loc / var_ratio0 / qchi0
+            : std::numeric_limits<double>::quiet_NaN();
+        if (!std::isfinite(var_S) || var_S <= 0.0)
+            return {NaN::quiet_NaN(), NaN::quiet_NaN(), NaN::quiet_NaN()};
+
+        // Closed-form var.int / cov from cached scalars (b = 0 ⇒ bm = meanR).
+        const double bm_loc = m_shared->meanR;
+        const double N_R = static_cast<double>(m_shared->R.size());
+        const double R_adj_sq_sum = m_shared->sqSumR
+            - 2.0 * bm_loc * m_shared->sumR
+            + N_R * bm_loc * bm_loc;
+        const double w1_dot_R_adj = m_shared->w1DotR - 0.5 * bm_loc;
+        const double var_int_loc = R_adj_sq_sum * 2.0 * mu_loc * (1.0 - mu_loc);
+        if (var_int_loc <= 0.0) return {NaN::quiet_NaN(), NaN::quiet_NaN(), NaN::quiet_NaN()};
+
+        double cov_val = w1_dot_R_adj * 2.0 * mu_loc * (1.0 - mu_loc);
+        cov_val *= std::sqrt(var_S / var_int_loc);
+
+        const double z_loc = S_loc / std::sqrt(var_S);
+        const double negInf = -std::numeric_limits<double>::infinity();
+        const double posInf =  std::numeric_limits<double>::infinity();
+
+        // sigma² = 0: integrate over {S' ≤ -|s|} × ({S_bat ≤ lb_r0} ∪ {S_bat ≥ ub_r0}).
+        const double s_bound  = -std::abs(S_loc / std::sqrt(var_ratio0));
+        const double sb_lo    = lb / std::sqrt(var_ratio_w0);
+        const double sb_hi    = ub / std::sqrt(var_ratio_w0);
+        double p0 = math::pmvnorm2d(negInf, s_bound, negInf, sb_lo, var_S, cov_val, var_Sbat)
+                  + math::pmvnorm2d(negInf, s_bound, sb_hi, posInf, var_S, cov_val, var_Sbat);
+        p0 = std::clamp(p0, 0.0, 1.0);
+
+        // sigma² ≠ 0: inflate batch-test variance only; var_S and cov_val unchanged
+        // (R LEAF.R branch 1 reuses var_S1 = var_S, cov_Sbat_S1 = cov_Sbat_S).
+        const double var_Sbat1 = var_Sbat + sigma2;
+        const double s_bound1  = -std::abs(S_loc / std::sqrt(var_ratio1));
+        const double sb_lo1    = lb / std::sqrt(var_ratio_w1);
+        const double sb_hi1    = ub / std::sqrt(var_ratio_w1);
+        double p1 = math::pmvnorm2d(negInf, s_bound1, negInf, sb_lo1, var_S, cov_val, var_Sbat1)
+                  + math::pmvnorm2d(negInf, s_bound1, sb_hi1, posInf, var_S, cov_val, var_Sbat1);
+        p1 = std::clamp(p1, 0.0, 1.0);
+
+        const double p_con = 2.0 * (TPR * p1 + (1.0 - TPR) * p0) / p_deno;
+        return {p_con, S_loc, z_loc};
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // Branch B — p_bat ≥ p_cut: external MAF retained; conditional p-value
+    // integrates over {|S_bat| ≤ threshold}.
+    // ────────────────────────────────────────────────────────────────────
     double mu_int = (N_d > 0.0) ? (gSum / N_d) / 2.0 : 0.0;
     double mu = (1.0 - b) * mu_int + b * mu_ext;
     double S = R_dot_g - 2.0 * mu * m_shared->sumR;

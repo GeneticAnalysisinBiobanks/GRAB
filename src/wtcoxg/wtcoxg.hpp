@@ -311,7 +311,15 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
     const Eigen::VectorXd &indicator,
     const SparseGRM *grm,
     double refPrevalence,
-    double cutoff
+    double cutoff,
+// Optional override for the divisor used to compute w1 = weight /
+// (2 · divisor).  When ≤ 0 (default), `weights.sum()` is used — the
+// correct choice for a single-cluster WtCoxG run.  LEAF supplies the
+// global weight sum across all clusters so that w1 retains the
+// LEAF.R definition `weight1 = weight / (2 * sum(pheno$weight))`,
+// which keeps GRM quadratic-form contributions commensurate with
+// the cluster-shared external-reference variance term 1/obs_ct.
+    double globalSumWeight = -1.0
 );
 
 // ======================================================================

@@ -310,6 +310,16 @@ inline const FlagDef kNClusters = {
     nullptr
 };
 
+inline const FlagDef kLeafClusterFile = {
+    "--leaf-cluster-file", "FILE",
+    R"(Pre-computed cluster labels for LEAF (skip K-means).
+Header line required.  Reads two columns by name: IID (or #IID) and cluster.
+All other columns in the file are ignored.  Cluster values must be integers
+in {1, …, K}; K is inferred as max(cluster) and cross-checked against
+--leaf-nclusters when both are provided.)",
+    nullptr
+};
+
 inline const FlagDef kKeep = {
     "--keep", "FILE", "Restrict analysis to subjects listed in file (FID IID per line)",
     nullptr
@@ -663,7 +673,8 @@ inline const FlagDef *const kLEAFReq[] = {
 
 inline const FlagDef *const kLEAFOpt[] = {
     &kPheno,     &kCovar,     &kCovarName, &kResidName, &kPhenoName,
-    &kPcCols,    &kNClusters, &kSeed,      &kSpGrm,     &kBatchPThresh, &kSpaZThresh,
+    &kPcCols,    &kNClusters, &kLeafClusterFile,
+    &kSeed,      &kSpGrm,     &kBatchPThresh, &kSpaZThresh,
     &kOutlierIqr,
     &kThreads,   &kChunkSize, &kGeno,      &kMaf,       &kMac,          &kHwe,        &kChr,
     nullptr

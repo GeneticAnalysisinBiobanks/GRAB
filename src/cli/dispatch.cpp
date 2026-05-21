@@ -292,13 +292,15 @@ static void logArgsInEffect(const Args &args) {
     if (args.outlierAbsBound != 0.55) std::fprintf(stderr, "  --spasqr-outlier-abs-bound %g\n", args.outlierAbsBound);
     if (args.spagrmControlOutlier) std::fprintf(stderr, "  --spagrm-control-outlier\n");
     if (args.pvalCovAdjCut != 5e-5) std::fprintf(stderr, "  --covar-p-threshold %g\n", args.pvalCovAdjCut);
-    if (args.cutoff != 0.05) std::fprintf(stderr, "  --batch-effect-p-threshold %g\n", args.cutoff);
+    if (args.cutoff != 0.1) std::fprintf(stderr, "  --batch-effect-p-threshold %g\n", args.cutoff);
     if (args.missingCutoff != 0.1) std::fprintf(stderr, "  --geno %g\n", args.missingCutoff);
     if (args.minMafCutoff != 1e-5) std::fprintf(stderr, "  --maf %g\n", args.minMafCutoff);
     if (args.minMacCutoff != 10.0) std::fprintf(stderr, "  --mac %g\n", args.minMacCutoff);
     if (args.hweCutoff != 0.0) std::fprintf(stderr, "  --hwe %g\n", args.hweCutoff);
     if (args.seed != 0) std::fprintf(stderr, "  --seed %llu\n", (unsigned long long)args.seed);
     if (args.nClusters != 0) std::fprintf(stderr, "  --leaf-nclusters %d\n", args.nClusters);
+    if (!args.leafClusterFile.empty())
+        std::fprintf(stderr, "  --leaf-cluster-file %s\n", args.leafClusterFile.c_str());
     if (args.compressionLevel != 0) std::fprintf(stderr, "  --compression-level %d\n", args.compressionLevel);
     if (args.minMafIBD != 0.01) std::fprintf(stderr, "  --min-maf-ibd %g\n", args.minMafIBD);
 }
@@ -1156,14 +1158,21 @@ int run(
                     " and must be positive.\n";
                 return 1;
             }
-            if (pcColNames.empty()) {
-                std::cerr << "Error: --pc-cols is required for LEAF.\n";
+            if (pcColNames.empty() && args.leafClusterFile.empty()) {
+                std::cerr << "Error: --pc-cols is required for LEAF"
+                    " (unless --leaf-cluster-file is given).\n";
                 return 1;
             }
             checkSpGrm(args, /*required=*/ false, "LEAF");
             auto refAfFiles = splitComma(args.refAfFile, "--ref-af", 1);
-            int nClusters = args.nClusters > 0 ? args.nClusters : static_cast<int>(refAfFiles.size());
-            if (nClusters < 2) {
+            // Cluster count: file > --leaf-nclusters > #refAfFiles.
+            // When --leaf-cluster-file is given, K is inferred there; the
+            // dispatcher passes a hint (0 = infer) and cross-checks inside
+            // runLEAF.
+            int nClusters = args.nClusters;
+            if (nClusters == 0 && args.leafClusterFile.empty())
+                nClusters = static_cast<int>(refAfFiles.size());
+            if (args.leafClusterFile.empty() && nClusters < 2) {
                 std::cerr << "Error: LEAF needs at least"
                     " 2 clusters (--leaf-nclusters or 2+ --ref-af).\n";
                 return 1;
@@ -1200,7 +1209,8 @@ int run(
                 args.minMacCutoff,
                 args.hweCutoff,
                 args.keepFile,
-                args.removeFile
+                args.removeFile,
+                args.leafClusterFile
             );
         }
 

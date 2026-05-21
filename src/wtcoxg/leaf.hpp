@@ -224,5 +224,21 @@ void runLEAF(
     double minMacCutoff,
     double hweCutoff,
     const std::string &keepFile = {},
-    const std::string &removeFile = {}
+    const std::string &removeFile = {},
+    const std::string &clusterFile = {}
+);
+
+// Parse a --leaf-cluster-file (two named columns: IID + cluster).
+// The file must have a header line.  The IID column is matched by name
+// against {`#IID`, `IID`} (first match wins); the cluster column by name
+// against {`cluster`, `Cluster`, `CLUSTER`}.  All other columns are
+// ignored.  Cluster values must be integers in {1, …, K}.
+//
+// Returns a length-N vector of labels in {1, …, K}, aligned to `usedIIDs`.
+// Throws on missing subjects, duplicate IIDs, non-integer cluster values,
+// or cluster values outside [1, K].
+Eigen::VectorXi parseLeafClusterFile(
+    const std::string &path,
+    const std::vector<std::string> &usedIIDs,
+    int &K_inout
 );

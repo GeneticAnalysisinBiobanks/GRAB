@@ -95,6 +95,133 @@ std::vector<PopMatchedAF> loadAndMatchRefAf(
 }
 
 // ======================================================================
+// parseLeafClusterFile — read pre-computed cluster labels
+//
+// File layout (header required):
+//   <IID-col>   <cluster-col>   [other columns ignored]
+// The IID column is detected by name (`#IID`, `IID`, case-sensitive in
+// that order); the cluster column by name (`cluster`, `Cluster`,
+// `CLUSTER`).  Cluster values must be integers; the inferred K is
+// max(cluster).  If `K_inout > 0`, the inferred K must match.
+// ======================================================================
+
+Eigen::VectorXi parseLeafClusterFile(
+    const std::string &path,
+    const std::vector<std::string> &usedIIDs,
+    int &K_inout
+) {
+    std::ifstream ifs(path);
+    if (!ifs)
+        throw std::runtime_error("parseLeafClusterFile: cannot open " + path);
+
+    std::string line;
+    if (!std::getline(ifs, line))
+        throw std::runtime_error("parseLeafClusterFile: empty file " + path);
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+
+    // Split header on whitespace
+    auto splitWS = [](const std::string &s) {
+        std::vector<std::string> out;
+        std::istringstream iss(s);
+        std::string tok;
+        while (iss >> tok) out.push_back(tok);
+        return out;
+    };
+    std::vector<std::string> header = splitWS(line);
+    int iidCol = -1, clusterCol = -1;
+    for (int i = 0; i < (int)header.size(); ++i) {
+        const std::string &h = header[i];
+        if (iidCol < 0 && (h == "#IID" || h == "IID")) iidCol = i;
+        if (clusterCol < 0 && (h == "cluster" || h == "Cluster" || h == "CLUSTER"))
+            clusterCol = i;
+    }
+    if (iidCol < 0)
+        throw std::runtime_error("parseLeafClusterFile: header must contain"
+                                 " an IID column (`#IID` or `IID`) in " + path);
+    if (clusterCol < 0)
+        throw std::runtime_error("parseLeafClusterFile: header must contain"
+                                 " a cluster column (`cluster`, `Cluster`,"
+                                 " or `CLUSTER`) in " + path);
+
+    std::unordered_map<std::string, int> iidToCluster;
+    iidToCluster.reserve(usedIIDs.size() * 2);
+    int observedMax = 0;
+    size_t lineno = 1;
+    while (std::getline(ifs, line)) {
+        ++lineno;
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty()) continue;
+        std::vector<std::string> cols = splitWS(line);
+        if ((int)cols.size() <= std::max(iidCol, clusterCol)) {
+            throw std::runtime_error("parseLeafClusterFile: " + path +
+                                     " line " + std::to_string(lineno) +
+                                     " has too few columns");
+        }
+        const std::string &iid = cols[iidCol];
+        const std::string &cStr = cols[clusterCol];
+        if (iid.empty() || cStr.empty()) continue;
+        // Parse as integer; reject non-integer values (e.g. "1.5")
+        char *endp = nullptr;
+        long c = std::strtol(cStr.c_str(), &endp, 10);
+        if (endp == cStr.c_str() || (endp && *endp != '\0')) {
+            throw std::runtime_error("parseLeafClusterFile: " + path +
+                                     " line " + std::to_string(lineno) +
+                                     ": cluster value '" + cStr +
+                                     "' is not an integer");
+        }
+        if (c < 1) {
+            throw std::runtime_error("parseLeafClusterFile: " + path +
+                                     " line " + std::to_string(lineno) +
+                                     ": cluster value " + std::to_string(c) +
+                                     " is < 1");
+        }
+        auto [it, inserted] = iidToCluster.emplace(iid, (int)c);
+        if (!inserted) {
+            throw std::runtime_error("parseLeafClusterFile: " + path +
+                                     " line " + std::to_string(lineno) +
+                                     ": duplicate IID '" + iid + "'");
+        }
+        if ((int)c > observedMax) observedMax = (int)c;
+    }
+    if (observedMax < 2)
+        throw std::runtime_error("parseLeafClusterFile: " + path +
+                                 " produced fewer than 2 distinct clusters");
+
+    // Cross-check inferred K against caller's hint
+    const int K_inferred = observedMax;
+    if (K_inout > 0 && K_inout != K_inferred) {
+        throw std::runtime_error("parseLeafClusterFile: --leaf-nclusters=" +
+                                 std::to_string(K_inout) +
+                                 " but the cluster file has max(cluster)=" +
+                                 std::to_string(K_inferred));
+    }
+    K_inout = K_inferred;
+
+    // Build the dense N-vector aligned to usedIIDs
+    Eigen::VectorXi labels(usedIIDs.size());
+    std::vector<std::string> missing;
+    for (size_t i = 0; i < usedIIDs.size(); ++i) {
+        auto it = iidToCluster.find(usedIIDs[i]);
+        if (it == iidToCluster.end()) {
+            if (missing.size() < 5) missing.push_back(usedIIDs[i]);
+            else if (missing.size() == 5) missing.push_back("…");
+            labels[i] = 0; // sentinel; will throw below
+        } else {
+            labels[i] = it->second;
+        }
+    }
+    if (!missing.empty()) {
+        std::string ex = missing.front();
+        for (size_t i = 1; i < missing.size(); ++i) ex += ", " + missing[i];
+        throw std::runtime_error("parseLeafClusterFile: " + path +
+                                 " is missing entries for " +
+                                 std::to_string(missing.size()) +
+                                 "+ subjects in the analysis set: " + ex);
+    }
+    return labels;
+}
+
+// ======================================================================
 // kmeansCluster — K-means with K-means++ init and nstart restarts
 //
 // Distance computation uses the identity
@@ -248,6 +375,79 @@ Eigen::VectorXi kmeansCluster(
 // Keep the solution with all p_S ≥ 0 and lowest objective.
 // ======================================================================
 
+// Inner solver: constrained LS  min ‖D_active · p − o‖²
+//   s.t. p ≥ 0, Σ p = 1, with the active reference set restricted to the
+//   `allowed` columns of refAF.  Returns a length-K vector with 0 in the
+//   non-allowed positions.  This is the body of Summix's `summix_calc`
+//   step; the caller (`summixEstimate`) wraps it for the 1% drop pass.
+static Eigen::VectorXd summixCalcConstrainedLS(
+    const Eigen::MatrixXd &DtD_full,
+    const Eigen::VectorXd &Dto_full,
+    double oTo,
+    int K,
+    const std::vector<int> &allowed
+) {
+    const int Ka = static_cast<int>(allowed.size());
+    Eigen::VectorXd bestP = Eigen::VectorXd::Zero(K);
+    if (Ka == 0) return bestP;
+
+    double bestObj = std::numeric_limits<double>::infinity();
+    bool foundFeasible = false;
+
+    const int nSubsets = (1 << Ka);
+    for (int mask = 1; mask < nSubsets; ++mask) {
+        int s = 0;
+        int idx[8];
+        for (int j = 0; j < Ka; ++j)
+            if (mask & (1 << j)) idx[s++] = allowed[j];
+
+        const int dim = s + 1;
+        Eigen::MatrixXd KKT = Eigen::MatrixXd::Zero(dim, dim);
+        Eigen::VectorXd rhs = Eigen::VectorXd::Zero(dim);
+        for (int i = 0; i < s; ++i) {
+            for (int j = 0; j < s; ++j)
+                KKT(i, j) = 2.0 * DtD_full(idx[i], idx[j]);
+            KKT(i, s) = 1.0;
+            KKT(s, i) = 1.0;
+            rhs[i] = 2.0 * Dto_full[idx[i]];
+        }
+        rhs[s] = 1.0;
+
+        Eigen::VectorXd sol = KKT.partialPivLu().solve(rhs);
+
+        bool feasible = true;
+        for (int i = 0; i < s; ++i)
+            if (sol[i] < -1e-12) { feasible = false; break; }
+        if (!feasible) continue;
+
+        for (int i = 0; i < s; ++i)
+            if (sol[i] < 0.0) sol[i] = 0.0;
+
+        Eigen::VectorXd pS = sol.head(s);
+        double obj = 0.0;
+        for (int i = 0; i < s; ++i)
+            for (int j = 0; j < s; ++j)
+                obj += pS[i] * DtD_full(idx[i], idx[j]) * pS[j];
+        for (int i = 0; i < s; ++i)
+            obj -= 2.0 * Dto_full[idx[i]] * pS[i];
+        obj += oTo;
+
+        if (obj < bestObj) {
+            bestObj = obj;
+            foundFeasible = true;
+            bestP.setZero();
+            for (int i = 0; i < s; ++i)
+                bestP[idx[i]] = pS[i];
+        }
+    }
+
+    if (!foundFeasible) {
+        // Degenerate: fall back to uniform over the allowed set.
+        for (int k : allowed) bestP[k] = 1.0 / static_cast<double>(Ka);
+    }
+    return bestP;
+}
+
 Eigen::VectorXd summixEstimate(
     const Eigen::VectorXd &observedAF,
     const Eigen::MatrixXd &refAF
@@ -281,76 +481,30 @@ Eigen::VectorXd summixEstimate(
         D.row(i) = refAF.row(validRows[i]);
     }
 
-    // Precompute full D'D and D'o
-    Eigen::MatrixXd DtD = D.transpose() * D;   // K×K
-    Eigen::VectorXd Dto = D.transpose() * obs; // K
+    Eigen::MatrixXd DtD = D.transpose() * D;
+    Eigen::VectorXd Dto = D.transpose() * obs;
     double oTo = obs.squaredNorm();
 
-    Eigen::VectorXd bestP = Eigen::VectorXd::Constant(K, 1.0 / K);
-    double bestObj = std::numeric_limits<double>::infinity();
+    // Pass 1: solve the constrained LS over all K references.  Matches
+    // Summix's first `summix_calc` call inside `summix()`.
+    std::vector<int> allAllowed(K);
+    std::iota(allAllowed.begin(), allAllowed.end(), 0);
+    Eigen::VectorXd pPass1 = summixCalcConstrainedLS(DtD, Dto, oTo, K, allAllowed);
 
-    // Enumerate all non-empty subsets of {0..K-1}
-    const int nSubsets = (1 << K);
-    for (int mask = 1; mask < nSubsets; ++mask) {
-        // Count and collect active indices
-        int s = 0;
-        int idx[8];
-        for (int j = 0; j < K; ++j)
-            if (mask & (1 << j)) idx[s++] = j;
+    // Pass 2: Summix's `<1%` reference-removal step.  Drop any reference
+    // whose pass-1 proportion is below 0.01 and refit on the remainder.
+    // (Summix.R lines 317-329: `if(sum(globTest[1,5:ncol(globTest)] < 0.01) > 0)
+    //  ... reference <- reference[-toremove] ; sum_res <- summix_calc(...)`).
+    std::vector<int> kept;
+    kept.reserve(K);
+    for (int k = 0; k < K; ++k)
+        if (pPass1[k] >= 0.01) kept.push_back(k);
 
-        // Build the (s+1) × (s+1) KKT system
-        // [2*A   e] [p_S  ]   [2*b]
-        // [e'   0] [lambda] = [1  ]
-        // where A = D_S'D_S (s×s), b = D_S'o (s), e = ones(s)
-        const int dim = s + 1;
-        Eigen::MatrixXd KKT = Eigen::MatrixXd::Zero(dim, dim);
-        Eigen::VectorXd rhs = Eigen::VectorXd::Zero(dim);
-
-        for (int i = 0; i < s; ++i) {
-            for (int j = 0; j < s; ++j)
-                KKT(i, j) = 2.0 * DtD(idx[i], idx[j]);
-            KKT(i, s) = 1.0; // e column
-            KKT(s, i) = 1.0; // e' row
-            rhs[i] = 2.0 * Dto[idx[i]];
-        }
-        rhs[s] = 1.0; // sum constraint
-
-        // Solve
-        Eigen::VectorXd sol = KKT.partialPivLu().solve(rhs);
-
-        // Check all p_S >= 0
-        bool feasible = true;
-        for (int i = 0; i < s; ++i) {
-            if (sol[i] < -1e-12) {
-                feasible = false;
-                break;
-            }
-        }
-        if (!feasible) continue;
-
-        // Clamp tiny negatives to 0
-        for (int i = 0; i < s; ++i)
-            if (sol[i] < 0.0) sol[i] = 0.0;
-
-        // Compute objective: ||D_S p_S - o||²  = p_S' A p_S - 2 b' p_S + o'o
-        Eigen::VectorXd pS = sol.head(s);
-        double obj = 0.0;
-        for (int i = 0; i < s; ++i)
-            for (int j = 0; j < s; ++j)
-                obj += pS[i] * DtD(idx[i], idx[j]) * pS[j];
-        for (int i = 0; i < s; ++i)
-            obj -= 2.0 * Dto[idx[i]] * pS[i];
-        obj += oTo;
-
-        if (obj < bestObj) {
-            bestObj = obj;
-            bestP.setZero();
-            for (int i = 0; i < s; ++i)
-                bestP[idx[i]] = pS[i];
-        }
+    if (kept.empty() || static_cast<int>(kept.size()) == K) {
+        // No reference fell below 1% — or all did (degenerate).  Use pass-1.
+        return pPass1;
     }
-
-    return bestP;
+    return summixCalcConstrainedLS(DtD, Dto, oTo, K, kept);
 }
 
 // ======================================================================
@@ -592,6 +746,23 @@ void LEAFMethod::processScoreBatch(
 #include "util/regression.hpp"
 #include "wtcoxg/regression.hpp"
 
+// LEAF.R's weight definition:  weight = ifelse(Event==1, 1, (1-prev)/prev)
+// — a fixed (1-prev)/prev for every control, regardless of sample
+// case/control ratio.  This differs from regression::calRegrWeight()
+// (used by other methods), which divides the sample case/control ratio
+// by the population ratio.  Use LEAF.R's form so that residuals and w1
+// downstream of testBatchEffects match the reference R pipeline exactly.
+static Eigen::VectorXd leafRegrWeight(
+    double prevalence,
+    const Eigen::Ref<const Eigen::VectorXd> &indicator
+) {
+    const double wCtrl = (1.0 - prevalence) / prevalence;
+    Eigen::VectorXd w(indicator.size());
+    for (Eigen::Index i = 0; i < indicator.size(); ++i)
+        w[i] = (indicator[i] > 0.5) ? 1.0 : wCtrl;
+    return w;
+}
+
 void runLEAFPheno(
     const std::string &phenoFile,
     const std::string &covarFile,
@@ -725,39 +896,33 @@ void runLEAFPheno(
 
     std::vector<ClusterRWI> clusterRWI(nCluster);
 
-    infoMsg("Per-cluster regression (%d clusters)...", nCluster);
+    // Fit ONE global null model on all subjects (matching LEAF.R, where
+    //   obj.wglm = glm(Event ~ SEX+AGE+PC1..4, weight = weight, family = binomial)
+    // is computed on the full pheno table; per-cluster residuals are then
+    // a slice of obj.wglm$y - obj.wglm$fitted.values).  This shares the
+    // covariate coefficients across clusters, in contrast to a per-cluster
+    // refit which would absorb ancestry effects into each cluster's local
+    // baseline.
+    infoMsg("Fitting global null model on %lld subjects...", static_cast<long long>(N));
+    Eigen::VectorXd fullWeight = leafRegrWeight(refPrevalence, indicator);
+    Eigen::VectorXd fullResid;
+    if (isSurv) {
+        fullResid = regression::coxResiduals(survTime, indicator, covarMat, fullWeight);
+    } else {
+        fullResid = regression::logisticResiduals(indicator, logisticDesign, fullWeight);
+    }
+
     for (int c = 0; c < nCluster; ++c) {
         const auto &members = clusterMemberIdx[c];
         const Eigen::Index Nc = static_cast<Eigen::Index>(members.size());
-
-        // Subset cluster data
-        Eigen::VectorXd cInd(Nc), cTime(Nc);
+        Eigen::VectorXd cResid(Nc), cWeight(Nc), cInd(Nc);
         for (Eigen::Index j = 0; j < Nc; ++j) {
-            auto i = members[j];
+            const auto i = members[j];
+            cResid[j] = fullResid[i];
+            cWeight[j] = fullWeight[i];
             cInd[j] = indicator[i];
-            if (isSurv) cTime[j] = survTime[i];
         }
-
-        // calRegrWeight per cluster (R: weight_i <- calRegrWeight(Indicator_i, ...))
-        Eigen::VectorXd cWeight = regression::calRegrWeight(refPrevalence, cInd);
-
-        // Subset design matrix and fit regression per cluster
-        Eigen::VectorXd cResid;
-        if (isSurv) {
-            // Cox PH: no intercept
-            Eigen::MatrixXd cDesign(Nc, covarMat.cols());
-            for (Eigen::Index j = 0; j < Nc; ++j)
-                cDesign.row(j) = covarMat.row(members[j]);
-            cResid = regression::coxResiduals(cTime, cInd, cDesign, cWeight);
-        } else {
-            // Logistic: with intercept
-            Eigen::MatrixXd cDesign(Nc, logisticDesign.cols());
-            for (Eigen::Index j = 0; j < Nc; ++j)
-                cDesign.row(j) = logisticDesign.row(members[j]);
-            cResid = regression::logisticResiduals(cInd, cDesign, cWeight);
-        }
-        infoMsg("  Cluster %d: %d subjects, resid computed", c + 1, static_cast<int>(Nc));
-
+        infoMsg("  Cluster %d: %d subjects (global residuals subset)", c + 1, static_cast<int>(Nc));
         clusterRWI[c] = {std::move(cResid), std::move(cWeight), std::move(cInd)};
     }
 
@@ -997,10 +1162,14 @@ void runLEAFPheno(
         }
     }
 
-    // Per-cluster batch-effect testing
+    // Per-cluster batch-effect testing.  Pass the GLOBAL weight sum (across
+    // all clusters) as the w1 normaliser so that var_ratio_w0 mirrors
+    // LEAF.R's `weight1 = weight/(2*sum(pheno$weight))` semantics.
     infoMsg("Per-cluster batch-effect testing...");
 
     std::vector<std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> > > clRefMaps(nCluster);
+
+    const double globalSumWeight = fullWeight.sum();
 
     for (int c = 0; c < nCluster; ++c) {
         infoMsg("  Cluster %d: batch-effect testing (%zu markers)...", c + 1, clMatchedInfo[c].size());
@@ -1020,7 +1189,8 @@ void runLEAFPheno(
             clusterSD[c].indicator(),
             grm.get(),
             refPrevalence,
-            cutoff
+            cutoff,
+            globalSumWeight
         );
         infoMsg("    %zu markers retained", clRefMaps[c]->size());
     }
@@ -1112,11 +1282,12 @@ void runLEAF(
     double minMacCutoff,
     double hweCutoff,
     const std::string &keepFile,
-    const std::string &removeFile
+    const std::string &removeFile,
+    const std::string &clusterFile
 ) {
     const int P = static_cast<int>(parsedSpecs.size());
-    const int K = nClusters;
     const int nPop = static_cast<int>(refAfFiles.size());
+    int K = nClusters; // may be 0 when --leaf-cluster-file infers it
 
     // ── Collect the union of phenotype columns the regression will touch ──
     std::vector<std::string> allPhenoCols;
@@ -1130,7 +1301,8 @@ void runLEAF(
     }
 
     // ── Phase A: shared data loading ────────────────────────────────
-    infoMsg("LEAF: Loading data (%d phenotypes, %d clusters)", P, K);
+    if (K > 0) infoMsg("LEAF: Loading data (%d phenotypes, %d clusters)", P, K);
+    else       infoMsg("LEAF: Loading data (%d phenotypes, K inferred from --leaf-cluster-file)", P);
     auto famIIDs = parseGenoIIDs(geno);
     const uint32_t nFamTotal = static_cast<uint32_t>(famIIDs.size());
     SubjectData sdFull(famIIDs); // copy — need famIIDs later
@@ -1162,11 +1334,19 @@ void runLEAF(
     Eigen::MatrixXd logisticDesign;
     // Will be built per-cluster, not globally
 
-    // K-means clustering on PCs (phenotype-independent)
-    Eigen::MatrixXd PCs = sdFull.getColumns(pcColNames);
-    infoMsg("  %d PCs for K-means clustering", static_cast<int>(PCs.cols()));
-    infoMsg("K-means clustering into %d clusters...", K);
-    Eigen::VectorXi clusterLabels = kmeansCluster(PCs, K, /*nstart=*/ 25, seed, nthreads);
+    // Cluster labels: either read from --leaf-cluster-file or run K-means on PCs.
+    Eigen::VectorXi clusterLabels;
+    if (!clusterFile.empty()) {
+        infoMsg("LEAF: Reading cluster labels from %s", clusterFile.c_str());
+        clusterLabels = parseLeafClusterFile(clusterFile, sdFull.usedIIDs(), K);
+        infoMsg("  %d clusters, %lld subjects assigned", K,
+                static_cast<long long>(clusterLabels.size()));
+    } else {
+        Eigen::MatrixXd PCs = sdFull.getColumns(pcColNames);
+        infoMsg("  %d PCs for K-means clustering", static_cast<int>(PCs.cols()));
+        infoMsg("K-means clustering into %d clusters...", K);
+        clusterLabels = kmeansCluster(PCs, K, /*nstart=*/ 25, seed, nthreads);
+    }
 
     // Cluster member indices (into full used-subject array)
     std::vector<std::vector<uint32_t> > clusterMemberIdx(K);
@@ -1322,6 +1502,9 @@ void runLEAF(
     // clRWI[p][c]
     std::vector<std::vector<ClusterRWI> > clRWI(P, std::vector<ClusterRWI>(K));
     std::vector<std::string> traitNames(P);
+// Per-phenotype global weight sum (filled inside Phase B; consumed by
+// Phase D as the w1 normaliser, matching LEAF.R's global `weight1`).
+    std::vector<double> globalSumWeightPerPheno(P, 0.0);
 
     {
         const int totalTasks = P * K;
@@ -1373,76 +1556,100 @@ void runLEAF(
             }
         }
 
-        auto regrWorker = [&]() {
+        // LEAF.R fits a SINGLE global glm/coxph per phenotype on all
+        // 42 640 subjects, then takes per-cluster slices of the resulting
+        // residual vector.  Parallelise across phenotypes (P tasks); the
+        // K cluster subsets are then a cheap pointer-scatter inside each
+        // worker.  This matches LEAF.R and replaces the prior per-cluster
+        // refit (which absorbed ancestry into each cluster's local baseline).
+        std::vector<Eigen::VectorXd> fullResidPre(P);
+        std::vector<Eigen::VectorXd> fullWeightPre(P);
+        Eigen::MatrixXd logisticDesignFull;
+        {
+            const bool anyLogistic = std::any_of(
+                isSurvPre.begin(), isSurvPre.end(),
+                [](char s) { return s == 0; });
+            if (anyLogistic) {
+                logisticDesignFull.resize(N, 1 + nCov);
+                logisticDesignFull.col(0).setOnes();
+                if (nCov > 0) logisticDesignFull.rightCols(nCov) = covarMat;
+            }
+        }
+
+        const int nGlobalWorkers = std::min(nthreads, P);
+        infoMsg("LEAF: Fitting %d global null model(s) with %d threads", P, nGlobalWorkers);
+        std::atomic<int> nextGlobal{0};
+        std::vector<std::string> globalErrors(P);
+        auto globalWorker = [&]() {
             for (;;) {
-                int t = nextTask.fetch_add(1, std::memory_order_relaxed);
-                if (t >= totalTasks) break;
-                int p = t / K;
-                int c = t % K;
+                int p = nextGlobal.fetch_add(1, std::memory_order_relaxed);
+                if (p >= P) break;
                 try {
                     const bool isSurv = (isSurvPre[p] != 0);
-                    const Eigen::VectorXd &fullInd = fullIndPre[p];
-                    const Eigen::VectorXd &fullTime = fullTimePre[p];
-
-                    const auto &members = clusterMemberIdx[c];
-                    const Eigen::Index Nc = static_cast<Eigen::Index>(members.size());
-
-                    // Subset for cluster
-                    Eigen::VectorXd cInd(Nc), cTime(Nc);
-                    for (Eigen::Index j = 0; j < Nc; ++j) {
-                        cInd[j] = fullInd[members[j]];
-                        if (isSurv) cTime[j] = fullTime[members[j]];
-                    }
-
-                    Eigen::VectorXd cWeight = regression::calRegrWeight(refPrevalence, cInd);
-
-                    Eigen::VectorXd cResid;
+                    fullWeightPre[p] = leafRegrWeight(refPrevalence, fullIndPre[p]);
                     if (isSurv) {
-                        Eigen::MatrixXd cCov(Nc, covarMat.cols());
-                        for (Eigen::Index j = 0; j < Nc; ++j)
-                            cCov.row(j) = covarMat.row(members[j]);
-                        cResid = regression::coxResiduals(cTime, cInd, cCov, cWeight);
+                        fullResidPre[p] = regression::coxResiduals(
+                            fullTimePre[p], fullIndPre[p], covarMat, fullWeightPre[p]);
                     } else {
-                        Eigen::MatrixXd cDesign(Nc, 1 + nCov);
-                        cDesign.col(0).setOnes();
-                        if (nCov > 0) {
-                            for (Eigen::Index j = 0; j < Nc; ++j)
-                                cDesign.row(j).tail(nCov) = covarMat.row(members[j]);
-                        }
-                        cResid = regression::logisticResiduals(cInd, cDesign, cWeight);
+                        fullResidPre[p] = regression::logisticResiduals(
+                            fullIndPre[p], logisticDesignFull, fullWeightPre[p]);
                     }
-                    clRWI[p][c] = {std::move(cResid), std::move(cWeight), std::move(cInd)};
-                    infoMsg("  [%s cl%d] null model done", traitNames[p].c_str(), c + 1);
+                    infoMsg("  [%s] global null model done", traitNames[p].c_str());
                 } catch (const std::exception &ex) {
-                    regrErrors[t] = ex.what();
+                    globalErrors[p] = ex.what();
                 }
             }
         };
-
-        std::vector<std::thread> threads;
-        threads.reserve(nWorkers - 1);
-        for (int t = 0; t < nWorkers - 1; ++t)
-            threads.emplace_back(regrWorker);
-        regrWorker();
-        for (auto &th : threads) th.join();
-
-        for (int t = 0; t < totalTasks; ++t)
-            if (!regrErrors[t].empty()) {
-                int p = t / K, c = t % K;
+        {
+            std::vector<std::thread> ths;
+            ths.reserve(nGlobalWorkers - 1);
+            for (int t = 0; t < nGlobalWorkers - 1; ++t)
+                ths.emplace_back(globalWorker);
+            globalWorker();
+            for (auto &th : ths) th.join();
+        }
+        for (int p = 0; p < P; ++p)
+            if (!globalErrors[p].empty())
                 throw std::runtime_error(
-                          "LEAF null model failed for '" + traitNames[p] +
-                          "' cluster " + std::to_string(c + 1) + ": " + regrErrors[t]);
+                          "LEAF global null model failed for '" + traitNames[p] +
+                          "': " + globalErrors[p]);
+
+        // Slice per-cluster residuals/weights/indicator from the global fit.
+        for (int p = 0; p < P; ++p) {
+            const Eigen::VectorXd &fullResid = fullResidPre[p];
+            const Eigen::VectorXd &fullWeight = fullWeightPre[p];
+            const Eigen::VectorXd &fullInd = fullIndPre[p];
+            globalSumWeightPerPheno[p] = fullWeight.sum();
+            for (int c = 0; c < K; ++c) {
+                const auto &members = clusterMemberIdx[c];
+                const Eigen::Index Nc = static_cast<Eigen::Index>(members.size());
+                Eigen::VectorXd cResid(Nc), cWeight(Nc), cInd(Nc);
+                for (Eigen::Index j = 0; j < Nc; ++j) {
+                    const auto i = members[j];
+                    cResid[j]  = fullResid[i];
+                    cWeight[j] = fullWeight[i];
+                    cInd[j]    = fullInd[i];
+                }
+                clRWI[p][c] = {std::move(cResid), std::move(cWeight), std::move(cInd)};
             }
+        }
+        // Silence unused-variable warnings from the prior worker scaffolding.
+        (void)regrErrors;
+        (void)totalTasks;
+        (void)nWorkers;
+        (void)nextTask;
     }
 
-    // ── Phase C: shared genotype scan + summix + AF synthesis ───────
-    // One I/O pass: compute intAF (shared) + per-phenotype mu0/mu1
+    // ── Phase C: per-phenotype × per-cluster scan + summix + AF synthesis ─
+    // One I/O pass computes per-(p,c) mu0/mu1/n0/n1.  Summix observed AF is
+    // the equal-blend `0.5*(mu0+mu1)` (matches LEAF.R `mu.target`); the
+    // folded form is stored as `mu_int` for MAF-group binning (matches
+    // LEAF.R `mu.int = ifelse(mu.target>0.5, 1-mu.target, mu.target)`).
+    // Because the half-blend depends on the phenotype's case/control split,
+    // summix proportions and the synthesised AF_ref / obs_ct are per (p,c).
     infoMsg("LEAF: Scanning %zu matched markers for %d clusters × %d phenotypes",
             nMatched, K, P);
 
-    // intAF: [K][nMatched] — phenotype-independent
-    std::vector<std::vector<double> > clIntAF(K, std::vector<double>(nMatched));
-    // Per-phenotype per-cluster scan: mu0/mu1/n0/n1/mu_int
     struct MarkerPhStat {
         double mu0, mu1, n0, n1, mu_int;
     };
@@ -1465,16 +1672,11 @@ void runLEAF(
                 const auto &idx = clusterIndices[c];
                 const size_t Nc = idx.size();
 
-                // One pass over cluster members: compute phenotype-independent total
-                // and per-phenotype case/control sums
-                double totalSum = 0, totalCnt = 0;
                 std::vector<double> sum0(P, 0), sum1(P, 0), cnt0(P, 0), cnt1(P, 0);
 
                 for (size_t k = 0; k < Nc; ++k) {
                     double g = fullGVec[idx[k]];
                     if (std::isnan(g)) continue;
-                    totalSum += g;
-                    totalCnt += 1.0;
                     for (int p = 0; p < P; ++p) {
                         if (clRWI[p][c].ind[static_cast<Eigen::Index>(k)] == 1.0) {
                             sum1[p] += g;
@@ -1486,31 +1688,34 @@ void runLEAF(
                     }
                 }
 
-                clIntAF[c][m] = (totalCnt > 0)
-                    ? (totalSum) / (2.0 * totalCnt)
-                    : std::numeric_limits<double>::quiet_NaN();
-
                 for (int p = 0; p < P; ++p) {
                     auto &st = phClStats[p][c][m];
                     st.mu0 = (cnt0[p] > 0) ? sum0[p] / (2.0 * cnt0[p]) : 0.0;
                     st.mu1 = (cnt1[p] > 0) ? sum1[p] / (2.0 * cnt1[p]) : 0.0;
                     st.n0 = cnt0[p];
                     st.n1 = cnt1[p];
-                    st.mu_int = clIntAF[c][m];
+                    if (cnt0[p] > 0 && cnt1[p] > 0) {
+                        double mu_target = 0.5 * (st.mu0 + st.mu1);
+                        st.mu_int = (mu_target > 0.5) ? (1.0 - mu_target) : mu_target;
+                    } else {
+                        st.mu_int = std::numeric_limits<double>::quiet_NaN();
+                    }
                 }
             }
         }
     }
 
-    // Per-cluster summix (phenotype-independent — uses only intAF)
-    // K calls are independent; parallelize with min(T, K) workers.
-    std::vector<Eigen::VectorXd> clProportions(K);
+    // Per-phenotype × per-cluster summix.  P*K tasks parallelised with min(T, P*K).
+    std::vector<std::vector<Eigen::VectorXd> > clProportions(
+        P, std::vector<Eigen::VectorXd>(K));
     {
-        const int nWorkers = std::min(nthreads, K);
-        infoMsg("LEAF: Running summix for %d clusters with %d threads", K, nWorkers);
-        std::atomic<int> nextCl{0};
+        const int totalTasks = P * K;
+        const int nWorkers = std::min(nthreads, totalTasks);
+        infoMsg("LEAF: Running summix for %d phenotypes × %d clusters with %d threads",
+                P, K, nWorkers);
+        std::atomic<int> nextTask{0};
 
-        // Build refMat once (shared read-only across clusters).
+        // Shared refMat (nMatched × nPop)
         Eigen::MatrixXd refMat(nMatched, nPop);
         for (size_t m = 0; m < nMatched; ++m)
             for (int r = 0; r < nPop; ++r)
@@ -1518,14 +1723,20 @@ void runLEAF(
 
         auto summixWorker = [&]() {
             for (;;) {
-                int c = nextCl.fetch_add(1, std::memory_order_relaxed);
-                if (c >= K) break;
+                int t = nextTask.fetch_add(1, std::memory_order_relaxed);
+                if (t >= totalTasks) break;
+                int p = t / K;
+                int c = t % K;
                 Eigen::VectorXd obsAF(nMatched);
-                for (size_t m = 0; m < nMatched; ++m)
-                    obsAF[m] = clIntAF[c][m];
-                clProportions[c] = summixEstimate(obsAF, refMat);
-                for (int r = 0; r < nPop; ++r)
-                    infoMsg("  Cluster %d pop%d: %.4f", c + 1, r + 1, clProportions[c][r]);
+                for (size_t m = 0; m < nMatched; ++m) {
+                    const auto &st = phClStats[p][c][m];
+                    // Markers with no cases or no controls in the cluster
+                    // get NaN; summixEstimate filters them out.
+                    obsAF[m] = (st.n0 > 0 && st.n1 > 0)
+                        ? 0.5 * (st.mu0 + st.mu1)
+                        : std::numeric_limits<double>::quiet_NaN();
+                }
+                clProportions[p][c] = summixEstimate(obsAF, refMat);
             }
         };
 
@@ -1535,52 +1746,52 @@ void runLEAF(
             threads.emplace_back(summixWorker);
         summixWorker();
         for (auto &th : threads) th.join();
+
+        for (int p = 0; p < P; ++p)
+            for (int c = 0; c < K; ++c)
+                for (int r = 0; r < nPop; ++r)
+                    infoMsg("  [%s cl%d] pop%d: %.4f",
+                            traitNames[p].c_str(), c + 1, r + 1,
+                            clProportions[p][c][r]);
     }
 
-    // Per-cluster AF_ref and obs_ct synthesis (shared across phenotypes)
-    // Then per-phenotype × per-cluster: build MatchedMarkerInfo with phenotype-specific mu0/mu1
-    // clMatchedInfo[p][c] — vector of MatchedMarkerInfo
+    // Per-(p,c) AF_ref and obs_ct synthesis from per-(p,c) proportions.
     std::vector<std::vector<std::vector<MatchedMarkerInfo> > > clMatchedInfo(
         P, std::vector<std::vector<MatchedMarkerInfo> >(K));
-
-    for (int c = 0; c < K; ++c) {
-        // Synthesize shared AF_ref and obs_ct for cluster c
-        std::vector<double> sharedAFRef(nMatched);
-        std::vector<double> sharedObsCt(nMatched);
-        for (size_t m = 0; m < nMatched; ++m) {
-            double af_ref = 0.0;
-            for (int r = 0; r < nPop; ++r)
-                af_ref += clProportions[c][r] * matchedMulti[m].popAF[r];
-            sharedAFRef[m] = af_ref;
-
-            double denom = 0.0;
-            for (int r = 0; r < nPop; ++r) {
-                double oc = matchedMulti[m].popObsCt[r];
-                if (oc > 0 && clProportions[c][r] > 0)
-                    denom += (clProportions[c][r] * clProportions[c][r]) / oc;
-            }
-            sharedObsCt[m] = (denom > 0) ? 1.0 / denom : 0.0;
-        }
-
-        for (int p = 0; p < P; ++p) {
+    for (int p = 0; p < P; ++p) {
+        for (int c = 0; c < K; ++c) {
             clMatchedInfo[p][c].resize(nMatched);
+            const auto &props = clProportions[p][c];
             for (size_t m = 0; m < nMatched; ++m) {
+                double af_ref = 0.0;
+                for (int r = 0; r < nPop; ++r)
+                    af_ref += props[r] * matchedMulti[m].popAF[r];
+
+                double denom = 0.0;
+                for (int r = 0; r < nPop; ++r) {
+                    double oc = matchedMulti[m].popObsCt[r];
+                    if (oc > 0 && props[r] > 0)
+                        denom += (props[r] * props[r]) / oc;
+                }
+                double obs_ct_loc = (denom > 0) ? 1.0 / denom : 0.0;
+
                 auto &mi = clMatchedInfo[p][c][m];
                 mi.genoIndex = matchedMulti[m].genoIndex;
-                mi.AF_ref = sharedAFRef[m];
-                mi.obs_ct = sharedObsCt[m];
-                mi.mu0 = phClStats[p][c][m].mu0;
-                mi.mu1 = phClStats[p][c][m].mu1;
-                mi.n0 = phClStats[p][c][m].n0;
-                mi.n1 = phClStats[p][c][m].n1;
-                mi.mu_int = phClStats[p][c][m].mu_int;
+                mi.AF_ref    = af_ref;
+                mi.obs_ct    = obs_ct_loc;
+                mi.mu0       = phClStats[p][c][m].mu0;
+                mi.mu1       = phClStats[p][c][m].mu1;
+                mi.n0        = phClStats[p][c][m].n0;
+                mi.n1        = phClStats[p][c][m].n1;
+                mi.mu_int    = phClStats[p][c][m].mu_int;
             }
         }
     }
 
     // ── Phase D: parallel batch-effect testing ──────────────────────
-    // P × K tasks, parallelized with min(T, P*K) workers
-    // clRefMaps[p][c]
+    // P × K tasks, parallelized with min(T, P*K) workers.  Pass each
+    // phenotype's global weight sum so that w1 = weight / (2 · globalSum)
+    // matches LEAF.R's `weight1` (defined on the full pheno table).
     std::vector<std::vector<std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> > > > clRefMaps(
         P, std::vector<std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> > >(K));
     {
@@ -1605,7 +1816,8 @@ void runLEAF(
                         clRWI[p][c].ind,
                         clGRMs[c].get(),
                         refPrevalence,
-                        cutoff);
+                        cutoff,
+                        globalSumWeightPerPheno[p]);
                     infoMsg("  [%s cl%d] %zu markers retained",
                             traitNames[p].c_str(), c + 1, clRefMaps[p][c]->size());
                 } catch (const std::exception &ex) {
