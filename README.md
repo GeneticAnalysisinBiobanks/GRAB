@@ -3,23 +3,26 @@
 **GRAB** (Genome-wide Robust Analysis for Biobank data) is a free,
 open-source toolkit of GWAS methods designed for biobank-scale data.  Up
 to version 0.2.4, GRAB was distributed as an R package
-([CRAN](https://CRAN.R-project.org/package=GRAB)).  The code has since
+([CRAN](https://CRAN.R-project.org/package=GRAB)). The code has since
 been re-implemented from scratch in pure C++17; the new line is
 numbered from **2.0** onwards and is referred to as **GRAB2** when
-disambiguation is needed. For detailed instructions,
-see the [GRAB 2.0 manual page](https://wenjianbi.github.io/grab.github.io/).
+disambiguation is needed.
+
+Note that GRAB2 does not include POLMM or POLMM-GENE. Users who wish to use these methods should continue using the original R package. For general marker-level analyses (including ordinal traits), we recommend SPACox, SPAMIX, or SPAGRM.
+
+For detailed instructions, see the [GRAB 2.0 manual page](https://wenjianbi.github.io/grab.github.io/).
 
 ## Methods provided
 
-| Method | Supported trait types | Notes                                                                     |
-|--------|-----------------------|---------------------------------------------------------------------------|
-| **SPACox** | any [1]               | Baseline residual-based score test using saddlepoint approximation (SPA)  |
-| **SPAmix** | any [1]               | Extends SPACox to admixed population                                      |
-| **SPAGRM** | any [1]               | Extends SPACox to account for sample relatedness                          |
-| **SAGELD** | longitudinal          | Dedicated for testing longitudinal gene–environment interactions          |
-| **SPAsqr** | quantitative          | Smoothed quantile regression with LOCO PRS to improve statistical power   |
-| **WtCoxG** | time-to-event, binary | Leverages allele frequencies from an external reference population to improve statistical power |
-| **LEAF**   | time-to-event, binary | Extends WtCoxG to multiple reference panels and heterogeneous cohorts     |
+| Method     | Supported trait types | Notes                                                                        |
+|------------|-----------------------|------------------------------------------------------------------------------|
+| **SPACox** | any [1]               | Baseline residual-based score test using saddlepoint approximation (SPA)     |
+| **SPAmix** | any [1]               | Extends SPACox to admixed population                                         |
+| **SPAGRM** | any [1]               | Extends SPACox to account for sample relatedness                             |
+| **SAGELD** | longitudinal          | Dedicated for testing longitudinal gene–environment interactions             |
+| **SPAsqr** | quantitative          | Smoothed quantile regression with LOCO PRS to improve statistical power      |
+| **WtCoxG** | time-to-event, binary | Leverages external reference allele frequencies to improve statistical power |
+| **LEAF**   | time-to-event, binary | Extends WtCoxG to multiple reference panels and heterogeneous cohorts        |
 
 **Notes:**
 
@@ -97,29 +100,18 @@ The companion script `examples/run.sh` exercises every method end-to-end using t
 ![Licence](https://img.shields.io/badge/licence-GPL--3.0+-blue)
 
 GRAB 2.0 is released under the **GNU General Public License, version 3
-or later**. The distribution comprises both the full source tree and precompiled
-binaries built from it; the same licence applies to both.
+or later**.
 
-The third-party libraries vendored under
-[`third_party/`](third_party/) are shipped as source and statically
-linked into the precompiled binaries.  Each retains its own upstream
-licence:
+Vendored libraries under `third_party/` retain their upstream licences:
 
-| Library            | Purpose                        | Licence                                          |
-|--------------------|--------------------------------|--------------------------------------------------|
-| **pgenlib**        | PLINK 2 file-format reader     | LGPL-3-or-later                                  |
-| **Eigen**          | dense linear algebra           | MPL-2.0                                          |
-| **htslib**         | VCF / BCF reader               | MIT                                              |
-| **libdeflate**     | fast BGZF (pgenlib, htslib)    | MIT                                              |
-| **zlib**           | gzip I/O (GRAB, bgen, htslib)  | zlib License                                     |
-| **zstd**           | Zstandard compression          | BSD-3-Clause (BSD branch of zstd's dual licence) |
-| **Boost** (subset) | Boost.Math distributions       | Boost Software License 1.0                       |
-| **bgen**           | BGEN file-format reader        | Boost Software License 1.0                       |
-
-Verbatim copies of each upstream licence are preserved under the
-corresponding subdirectory of `third_party/`.  Any redistribution of a
-GRAB binary — whether one shipped from this repository or one rebuilt
-from this source tree — must carry all of these licences alongside it.
+| Library                       | Licence                    |
+|-------------------------------|----------------------------|
+| **pgenlib**                   | LGPL-3-or-later            |
+| **Eigen**                     | MPL-2.0                    |
+| **htslib**, **libdeflate**    | MIT                        |
+| **zlib**                      | zlib License               |
+| **zstd**                      | BSD-3-Clause               |
+| **Boost** (subset), **bgen**  | Boost Software License 1.0 |
 
 ## Citation
 
