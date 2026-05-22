@@ -275,17 +275,6 @@ double SparseGRM::quadForm(
     return sum;
 }
 
-double SparseGRM::halfStorageSum(
-    const double *x,
-    uint32_t n
-) const {
-    if (n != m_nSubj) throw std::runtime_error("SparseGRM::halfStorageSum: size mismatch");
-    double sum = 0.0;
-    for (const auto &e : m_entries)
-        sum += e.value * x[e.row] * x[e.col];
-    return sum;
-}
-
 double SparseGRM::bilinearForm(
     const double *x,
     const double *y,

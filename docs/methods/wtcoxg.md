@@ -27,49 +27,20 @@ Notation:
 - $\mathbf{w} = (w_1, \ldots, w_n)^\top$: the same sampling weights, also
   reused by the batch-effect screen.
 - $\boldsymbol{\Phi}$: optional sparse GRM, $n \times n$, symmetric.
-  When supplied, WtCoxG computes three variance-ratio corrections from
-  its file-stored entries. Let $\mathcal{S}(\boldsymbol{\Phi})$ denote
-  the set of index pairs $(i, j)$ at which $\boldsymbol{\Phi}$ is
-  stored: by convention each diagonal entry $(i, i)$ is stored once and
-  each off-diagonal pair $\{(i, j), (j, i)\}$ is stored only on one
-  side (the lower-triangular file representation). Define the
-  half-storage bilinear form
+  When supplied, WtCoxG computes three variance-ratio corrections via
+  the symmetric quadratic form
   $$
-  H_{\boldsymbol{\Phi}}(\mathbf{x}, \mathbf{y})
-  := \sum_{(i, j) \in \mathcal{S}(\boldsymbol{\Phi})} \Phi_{ij}\, x_i\, y_j
-   = \sum_{i} \Phi_{ii} x_i y_i
-   + \sum_{\substack{i > j \\ (i, j) \in \mathcal{S}(\boldsymbol{\Phi})}}
-     \Phi_{ij} x_i y_j,
+  \mathbf{x}^\top \boldsymbol{\Phi} \mathbf{x}
+  = \sum_{i} \Phi_{ii}\, x_i^2
+  + 2 \sum_{i > j} \Phi_{ij}\, x_i\, x_j,
   $$
-  which is what `SparseGRM::halfStorageSum`
-  ([src/io/sparse_grm.hpp](../../src/io/sparse_grm.hpp)) returns. The
-  off-diagonal entries are counted **once**, not twice, so
-  $H_{\boldsymbol{\Phi}}(\mathbf{x}, \mathbf{x})$ is **not** the
-  symmetric quadratic form $\mathbf{x}^\top \boldsymbol{\Phi}
-  \mathbf{x}$; the two differ by a factor of two on every off-diagonal
-  contribution. WtCoxG and LEAF use $H_{\boldsymbol{\Phi}}$ for the
-  variance-ratio numerators in order to reproduce the LEAF.R reference
-  exactly. *Departure from the published derivation.* The methods
-  section of Li et al. (2025, Nat. Comput. Sci. 5: 1064-1079) writes
-  every variance-ratio numerator as the symmetric quadratic form
-  $\mathbf{x}^\top \boldsymbol{\Phi} \mathbf{x}$ in its equations
-  (9), (10), (21), and (31), in which each off-diagonal kinship
-  entry contributes twice by symmetry. The implementation in this
-  repository instead computes $H_{\boldsymbol{\Phi}}(\mathbf{x},
-  \mathbf{x})$, in which each off-diagonal entry contributes once.
-  The two conventions coincide on diagonal contributions and on
-  isolated kinship pairs but differ by a factor approaching two on
-  every off-diagonal whenever intra-cluster relatedness is dense; a
-  24 % relative discrepancy in $\rho_{\mathrm{int}}$ between the two
-  conventions has been observed in one LEAF cluster
-  (see [src/wtcoxg/wtcoxg.cpp](../../src/wtcoxg/wtcoxg.cpp), inline
-  comment in `testBatchEffects`). The half-storage convention is
-  retained here so that the WtCoxG and LEAF outputs reproduce the
-  LEAF.R reference bit-for-bit; reproducing the closed-form
-  expressions of Li et al. (2025) would require replacing every
-  occurrence of $H_{\boldsymbol{\Phi}}$ in Sections 2 and 3.3 below
-  with the symmetric quadratic form
-  $\mathbf{x}^\top \boldsymbol{\Phi} \mathbf{x}$.
+  evaluated by `SparseGRM::quadForm`
+  ([src/io/sparse_grm.hpp](../../src/io/sparse_grm.hpp)). The file
+  stores the lower triangle and diagonal of $\boldsymbol{\Phi}$ once;
+  the routine internally applies the factor of two on every
+  off-diagonal entry to recover the symmetric form. This matches the
+  variance-ratio derivation of Li et al. (2025, Nat. Comput. Sci. 5:
+  1064-1079, equations (9), (10), (21), and (31)) exactly.
 - $\hat f_0, \hat f_1$: control and case mean genotypes divided by two,
   computed from the internal cohort on non-missing entries only.
 - $n_0, n_1$: non-missing control and case counts at the marker.
@@ -174,7 +145,7 @@ The correction is
 
 $$
 \rho_{w0}
-= \frac{H_{\boldsymbol{\Phi}}(\widetilde{\mathbf{w}}, \widetilde{\mathbf{w}})
+= \frac{\widetilde{\mathbf{w}}^\top \boldsymbol{\Phi} \widetilde{\mathbf{w}}
         + 1/(2\,\mathrm{obs\_ct})}
        {\sum_{i=1}^n \widetilde w_i^2
         + 1/(2\,\mathrm{obs\_ct})},
@@ -182,14 +153,15 @@ $$
 \widetilde w_i = \frac{w_i}{2\sum_{j=1}^n w_j}. \tag{7}
 $$
 
-The numerator uses the half-storage bilinear form
-$H_{\boldsymbol{\Phi}}$ defined in the notation above (each off-diagonal
-GRM entry contributes once, not twice). The denominator is the plain
-element-wise sum of squares $\sum_i \widetilde w_i^2$, which does not
-depend on $\boldsymbol{\Phi}$. Both quantities are evaluated by
-`SparseGRM::halfStorageSum` and `w1.array().square().sum()` respectively
-in [src/wtcoxg/wtcoxg.cpp](../../src/wtcoxg/wtcoxg.cpp), matching the
-LEAF.R reference. If no GRM is supplied, $\rho_{w0} = 1$.
+The numerator is the symmetric quadratic form
+$\widetilde{\mathbf{w}}^\top \boldsymbol{\Phi} \widetilde{\mathbf{w}}$
+defined in the notation above (each off-diagonal GRM entry contributes
+twice by symmetry). The denominator is the plain element-wise sum of
+squares $\sum_i \widetilde w_i^2$, which does not depend on
+$\boldsymbol{\Phi}$. Both quantities are evaluated by
+`SparseGRM::quadForm` and `w1.array().square().sum()` respectively
+in [src/wtcoxg/wtcoxg.cpp](../../src/wtcoxg/wtcoxg.cpp). If no GRM is
+supplied, $\rho_{w0} = 1$.
 
 A marker passes the batch-effect screen when
 $p_{\mathrm{bat}} \ge p_{\mathrm{cut}}$, and the external reference is
@@ -301,18 +273,18 @@ significance in the bin.
 When a sparse GRM is supplied, three variance ratios are formed once per
 MAF bin (or once per marker for $\rho_{w0}$). With
 $\widetilde R_i^{(\mathrm{int})} = R_i - \bar R$ and
-$\widetilde R_i^{(\mathrm{ext})}(b) = R_i - b\,\bar R$, the half-storage
-bilinear forms
+$\widetilde R_i^{(\mathrm{ext})}(b) = R_i - b\,\bar R$, the symmetric
+quadratic forms
 
 $$
-Q_w = H_{\boldsymbol{\Phi}}(\widetilde{\mathbf{w}}, \widetilde{\mathbf{w}}),
+Q_w = \widetilde{\mathbf{w}}^\top \boldsymbol{\Phi} \widetilde{\mathbf{w}},
 \quad
-Q_R = H_{\boldsymbol{\Phi}}(\widetilde{\mathbf{R}}^{(\mathrm{int})},
-                            \widetilde{\mathbf{R}}^{(\mathrm{int})}),
+Q_R = (\widetilde{\mathbf{R}}^{(\mathrm{int})})^\top \boldsymbol{\Phi}
+       \widetilde{\mathbf{R}}^{(\mathrm{int})},
 \quad
 Q_R^{\mathrm{ext}}(b)
-= H_{\boldsymbol{\Phi}}(\widetilde{\mathbf{R}}^{(\mathrm{ext})}(b),
-                         \widetilde{\mathbf{R}}^{(\mathrm{ext})}(b)) \tag{15}
+= (\widetilde{\mathbf{R}}^{(\mathrm{ext})}(b))^\top \boldsymbol{\Phi}
+   \widetilde{\mathbf{R}}^{(\mathrm{ext})}(b) \tag{15}
 $$
 
 yield
@@ -327,11 +299,11 @@ $$
         + 2\hat b^2 (\sum_i R_i)^2 / \mathrm{obs\_ct}}, \tag{16}
 $$
 
-with $\rho_{w0}$ as in (7). Each numerator uses the half-storage
-bilinear form $H_{\boldsymbol{\Phi}}$ (off-diagonal entries counted
-once); the denominators are plain element-wise sums of squares of the
-centred residuals and do not involve $\boldsymbol{\Phi}$. When no GRM
-is supplied, all three ratios are set to $1$.
+with $\rho_{w0}$ as in (7). Each numerator uses the symmetric quadratic
+form $\mathbf{x}^\top \boldsymbol{\Phi} \mathbf{x}$ (off-diagonal entries
+counted twice by symmetry); the denominators are plain element-wise sums
+of squares of the centred residuals and do not involve $\boldsymbol{\Phi}$.
+When no GRM is supplied, all three ratios are set to $1$.
 
 ## 4. Score statistic and conditional p-value
 

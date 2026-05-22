@@ -750,22 +750,21 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
     Eigen::VectorXd R_tilde = residuals.array() - meanR;
 
     // --- Variance ratios from sparse GRM ---
-    // LEAF.R sums over the file's stored entries WITHOUT doubling
-    // off-diagonals (half-storage convention).  Use halfStorageSum to
-    // reproduce that exactly; quadForm would double the off-diagonal
-    // mass and inflate the ratio when intra-cluster relatedness is dense
-    // (observed as a 24% var.ratio.int discrepancy in cl3 vs LEAF.R).
-    double grm_sum_cov_w = 0.0; // Σ_{e stored} GRM_ij * w1_i * w1_j
-    double grm_sum_cov_R = 0.0; // Σ_{e stored} GRM_ij * R_tilde_i * R_tilde_j
+    // Use the symmetric quadratic form  x^T Φ x  = Σ_i Φ_ii x_i² +
+    // 2 · Σ_{i>j stored} Φ_ij x_i x_j.  This is the derivation in
+    // Li et al. (2025) and the form that matches the LEAF.R reference
+    // after its companion update to count each off-diagonal entry twice.
+    double grm_quad_w = 0.0; // w̃ᵀ Φ w̃
+    double grm_quad_R = 0.0; // R̃ᵀ Φ R̃
     bool hasGRM = (grm != nullptr);
     if (hasGRM) {
-        grm_sum_cov_w = grm->halfStorageSum(w1.data(), static_cast<uint32_t>(nSubj));
-        grm_sum_cov_R = grm->halfStorageSum(R_tilde.data(), static_cast<uint32_t>(nSubj));
+        grm_quad_w = grm->quadForm(w1.data(), static_cast<uint32_t>(nSubj));
+        grm_quad_R = grm->quadForm(R_tilde.data(), static_cast<uint32_t>(nSubj));
     }
     double sum_w1_sq       = w1.array().square().sum();        // GLOBAL — TPR / σ² fit
     double sum_w1_sq_local = w1_local.array().square().sum();  // LOCAL — fun.optimalWeight
     double sum_Rtilde_sq = R_tilde.array().square().sum();
-    double var_ratio_int = hasGRM ? (grm_sum_cov_R / sum_Rtilde_sq) : 1.0;
+    double var_ratio_int = hasGRM ? (grm_quad_R / sum_Rtilde_sq) : 1.0;
 
     // --- Per-marker batch p-value ---
     const size_t nMarkers = matched.size();
@@ -796,13 +795,13 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
         bd.mu_int = m.mu_int;
 
         // var_ratio_w0 per marker (depends on obs_ct).  LEAF.R writes
-        //   (grm_cov + 1/(2*AN_ref)) / (sum(w1^2) + 1/(2*AN_ref))
+        //   (w̃ᵀ Φ w̃ + 1/(2·AN_ref)) / (Σ w̃ᵢ² + 1/(2·AN_ref))
         // where AN_ref is the allele count (= obs_ct in plink2 terms).
-        // The factor of two on the offset matches var_mu_ext = mu(1-mu)/(2*n_ext)
+        // The factor of two on the offset matches var_mu_ext = mu(1-mu)/(2·n_ext)
         // with n_ext = AN_ref/2; omitting it inflates the offset 2× and pulls
         // the ratio toward 1.
         const double offset = 1.0 / (2.0 * m.obs_ct);
-        bd.var_ratio_w0 = hasGRM ? (grm_sum_cov_w + offset) / (sum_w1_sq + offset) : 1.0;
+        bd.var_ratio_w0 = hasGRM ? (grm_quad_w + offset) / (sum_w1_sq + offset) : 1.0;
 
         // Batch effect p-value (Batcheffect.TestOneMarker)
         double er = m.n1 / (m.n1 + m.n0);
@@ -1029,15 +1028,15 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
 
         double w_ext = math::brentMin(fun_optimalWeight, 0.0, 1.0, 1e-6, 200);
 
-        // Compute var_ratio_ext from GRM (if available).  LEAF.R sums file
-        // entries without doubling off-diagonals (half-storage convention);
-        // use halfStorageSum to match.
+        // Compute var_ratio_ext from GRM (if available).  Symmetric
+        // quadratic form  R̃_w^T Φ R̃_w; matches the form used elsewhere
+        // and the updated LEAF.R reference.
         double var_ratio_ext = 1.0;
         if (hasGRM) {
             Eigen::VectorXd R_tilde_w = residuals.array() - meanR * w_ext;
-            double grm_cov_Rext = grm->halfStorageSum(R_tilde_w.data(), static_cast<uint32_t>(nSubj));
+            double grm_quad_Rext = grm->quadForm(R_tilde_w.data(), static_cast<uint32_t>(nSubj));
             double sumR_sq_over_n = w_ext * w_ext * residuals.sum() * residuals.sum() * 2.0 / obs_ct_ext;
-            double num = grm_cov_Rext + sumR_sq_over_n;
+            double num = grm_quad_Rext + sumR_sq_over_n;
             double den = R_tilde_w.array().square().sum() + sumR_sq_over_n;
             var_ratio_ext = (den > 0.0) ? num / den : 1.0;
         }

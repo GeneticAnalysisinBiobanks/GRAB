@@ -76,18 +76,6 @@ class SparseGRM {
         uint32_t n
     ) const;
 
-    // Sum over stored entries:  Σ_e value * x[row] * x[col]
-    //   = sum_diag(value * x[i]²) + sum_offdiag(value * x[i] * x[j]).
-    // NOT the symmetric quadratic form — each off-diagonal pair is counted
-    // ONCE (no 2× symmetry doubling).  LEAF / WtCoxG variance ratios mirror
-    // an R-side reference (LEAF.R) that uses exactly this half-storage
-    // convention; using quadForm() would double the off-diagonal mass and
-    // give a different ratio when intra-cluster relatedness is dense.
-    double halfStorageSum(
-        const double *x,
-        uint32_t n
-    ) const;
-
     // Matrix-vector multiply:  result = G * x
     // Handles lower-tri symmetry internally (result is size n).
     void multiply(

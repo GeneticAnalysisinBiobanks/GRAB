@@ -273,10 +273,9 @@ $\widetilde w_i = w_i / (2 \sum_j w_j)$ of equation (7) in
 $S_w^{(p)} = \sum_{i=1}^n w_i^{(p)}$ for the **outer** quantities
 $\widetilde{\mathbf{w}}$ that feed the variance-ratio correction
 $\rho_{w0}$ and the per-MAF-group $V_{\mathrm{Sbat}}$ used by the
-$(\tau, \sigma^2)$ estimator, so that the GRM half-storage bilinear form
-$H_{\boldsymbol{\Phi}}(\widetilde{\mathbf{w}}, \widetilde{\mathbf{w}})$
-(defined in [wtcoxg.md](wtcoxg.md); off-diagonal entries of
-$\boldsymbol{\Phi}$ counted once) remains commensurate with the
+$(\tau, \sigma^2)$ estimator, so that the GRM quadratic form
+$\widetilde{\mathbf{w}}^\top \boldsymbol{\Phi}_c \widetilde{\mathbf{w}}$
+(defined in [wtcoxg.md](wtcoxg.md)) remains commensurate with the
 cluster-shared external-reference variance term $1 / \mathrm{obs\_ct}$.
 The **inner** quantities used inside the $b$-estimator's
 `fun.optimalWeight` retain the cluster-local normalisation
@@ -284,16 +283,15 @@ $\widetilde w_i^{\mathrm{loc}} = w_i / (2 \sum_{j \in \mathcal C_c} w_j)$,
 mirroring the LEAF.R reference. The two scales coincide when there is
 exactly one cluster, in which case LEAF reduces exactly to WtCoxG.
 
-The departure from the symmetric quadratic-form derivation of
-Li et al. (2025) described in the notation section of
-[wtcoxg.md](wtcoxg.md) propagates to LEAF directly: the per-cluster
-$\rho_{w0}$, $\rho_{\mathrm{int}}$, and $\rho_{\mathrm{ext}}$ are
-evaluated with the half-storage bilinear form $H_{\boldsymbol{\Phi}}$
-on the cluster slice, not with the symmetric quadratic form
-$\mathbf{x}^\top \boldsymbol{\Phi}_c \mathbf{x}$. The magnitude of
-the resulting numerical discrepancy is larger in LEAF than in
-single-cluster WtCoxG because intra-cluster relatedness is, by
-construction, denser than relatedness in the union cohort.
+Each per-cluster $\rho_{w0}$, $\rho_{\mathrm{int}}$, and
+$\rho_{\mathrm{ext}}$ is evaluated as a symmetric quadratic form
+$\mathbf{x}^\top \boldsymbol{\Phi}_c \mathbf{x}$ on the cluster slice
+(via `SparseGRM::quadForm` in
+[src/io/sparse_grm.hpp](../../src/io/sparse_grm.hpp)), matching the
+variance-ratio derivation of Li et al. (2025). Off-diagonal entries
+of the GRM contribute twice by symmetry, and the closed-form
+expressions in [wtcoxg.md](wtcoxg.md) Sections 2 and 3.3 apply
+unchanged on the cluster slice.
 
 ### 4.2 Per-cluster outputs
 
