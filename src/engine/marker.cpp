@@ -196,11 +196,11 @@ void markerEngine(
                             const auto &mi = batchMeta[bi];
                             if (!mi.passQC) {
                                 formatLineNA(out, fmtBuf, mi.chr, mi.pos, mi.marker,
-                                             mi.alt, mi.ref, mi.missingRate, mi.altFreq,
+                                             mi.ref, mi.alt, mi.missingRate, mi.altFreq,
                                              mi.mac, mi.hweP, naSuffix);
                             } else {
                                 formatLine(out, fmtBuf, mi.chr, mi.pos, mi.marker,
-                                           mi.alt, mi.ref, mi.missingRate, mi.altFreq,
+                                           mi.ref, mi.alt, mi.missingRate, mi.altFreq,
                                            mi.mac, mi.hweP, batchResults[ri++]);
                             }
                         }
@@ -226,7 +226,7 @@ void markerEngine(
                                               mac < minMacCutoff || (hweCutoff > 0 && hweP < hweCutoff));
 
                         if (!passQC) {
-                            formatLineNA(out, fmtBuf, chr, pos, marker, alt /*REF=bim6*/, ref /*ALT=bim5*/,
+                            formatLineNA(out, fmtBuf, chr, pos, marker, ref, alt,
                                          missingRate, altFreq, mac, hweP, naSuffix);
                             continue;
                         }
@@ -240,7 +240,7 @@ void markerEngine(
                         rv.clear();
                         meth.getResultVec(GVec, altFreq, static_cast<int>(i), rv);
 
-                        formatLine(out, fmtBuf, chr, pos, marker, alt /*REF=bim6*/, ref /*ALT=bim5*/,
+                        formatLine(out, fmtBuf, chr, pos, marker, ref, alt,
                                    missingRate, altFreq, mac, hweP, rv);
                     }
                 }
@@ -866,7 +866,7 @@ void multiPhenoEngineRange(
                                     const auto &wm = winMarkers[bi];
                                     if (wmQC[bi].pass) {
                                         formatLine(phenoOut[p], fmtBuf, wm.chr, wm.pos,
-                                                   wm.marker, wm.alt, wm.ref,
+                                                   wm.marker, wm.ref, wm.alt,
                                                    wmQC[bi].missingRate,
                                                    wmQC[bi].altFreq,
                                                    wmQC[bi].mac,
@@ -874,7 +874,7 @@ void multiPhenoEngineRange(
                                                    fusedResultsBuf[ri++]);
                                     } else {
                                         formatLineNA(phenoOut[p], fmtBuf, wm.chr, wm.pos,
-                                                     wm.marker, wm.alt, wm.ref,
+                                                     wm.marker, wm.ref, wm.alt,
                                                      wmQC[bi].missingRate,
                                                      wmQC[bi].altFreq,
                                                      wmQC[bi].mac,
@@ -950,7 +950,7 @@ void multiPhenoEngineRange(
                                     const auto &wm = winMarkers[bi];
                                     if (nfWinPassQC[bi]) {
                                         formatLine(phenoOut[p], fmtBuf, wm.chr, wm.pos,
-                                                   wm.marker, wm.alt, wm.ref,
+                                                   wm.marker, wm.ref, wm.alt,
                                                    nfWinStats[bi].missingRate,
                                                    nfWinStats[bi].altFreq,
                                                    nfWinStats[bi].mac,
@@ -958,7 +958,7 @@ void multiPhenoEngineRange(
                                                    nfBatchResultsBuf[ri++]);
                                     } else {
                                         formatLineNA(phenoOut[p], fmtBuf, wm.chr, wm.pos,
-                                                     wm.marker, wm.alt, wm.ref,
+                                                     wm.marker, wm.ref, wm.alt,
                                                      nfWinStats[bi].missingRate,
                                                      nfWinStats[bi].altFreq,
                                                      nfWinStats[bi].mac,

@@ -615,8 +615,8 @@ std::vector<MatchedMarkerInfo> matchMarkers(
         refMap.emplace(makeKey(refAf[i].chrom, refAf[i].id), i);
 
     // Match each bim marker against reference by (CHROM, ID),
-    // then check allele orientation.
-    // With ref-first allele order: mi.ref = bim col5, mi.alt = bim col6.
+    // then check allele orientation.  Across all genotype readers,
+    // mi.ref = REF and mi.alt = ALT (the allele counted by GVec).
     std::vector<MatchedMarkerInfo> matched;
     matched.reserve(plinkData.markerInfo().size());
     for (const auto &mi : plinkData.markerInfo()) {
@@ -628,13 +628,16 @@ std::vector<MatchedMarkerInfo> matchMarkers(
         MatchedMarkerInfo m;
         m.genoIndex = mi.genoIndex;
 
-        //  Case 1: afreq ALT == bim col5 AND afreq REF == bim col6
-        //          → same orientation, AF_ref = ALT_FREQS
-        //  Case 2: afreq REF == bim col5 AND afreq ALT == bim col6
-        //          → flipped, AF_ref = 1 - ALT_FREQS
-        if (ref.alt_allele == mi.ref && ref.ref_allele == mi.alt) {
+        // GVec doses count mi.alt (= file ALT across plink / pgen / bgen
+        // / vcf readers).  AF_ref must therefore be the frequency of
+        // mi.alt in the population panel.
+        //   Case 1: pop ALT == mi.alt AND pop REF == mi.ref
+        //           → same orientation, AF_ref = ALT_FREQS
+        //   Case 2: pop ALT == mi.ref AND pop REF == mi.alt
+        //           → flipped, AF_ref = 1 - ALT_FREQS
+        if (ref.alt_allele == mi.alt && ref.ref_allele == mi.ref) {
             m.AF_ref = ref.alt_freq;
-        } else if (ref.ref_allele == mi.ref && ref.alt_allele == mi.alt) {
+        } else if (ref.alt_allele == mi.ref && ref.ref_allele == mi.alt) {
             m.AF_ref = 1.0 - ref.alt_freq;
         } else {
             continue; // alleles don't match → drop

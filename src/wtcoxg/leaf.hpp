@@ -29,7 +29,7 @@ struct WtCoxGRefInfo;
 
 struct PopMatchedAF {
     uint64_t genoIndex;
-    double af;     // allele frequency aligned to .bim col5 orientation
+    double af;     // population frequency of mi.alt (ALT-aligned)
     double obs_ct; // total allele number
 };
 

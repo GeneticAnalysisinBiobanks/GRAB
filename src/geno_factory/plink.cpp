@@ -78,9 +78,11 @@ bool markerInRanges(
     return false;
 }
 
-// BED 2-bit genotype → count of bim col5 (A1 = ALT in output)
+// BED 2-bit genotype → count of bim col5 (A1).  Under the plink2
+// convention adopted throughout GRAB, A1 = ALT, A2 = REF, so the
+// resulting dose is "count of ALT" and matches pgen / bgen / vcf.
 // BED codes: 0 = hom A1, 1 = missing, 2 = het, 3 = hom A2
-static constexpr int GENO_BIM5[4] = {2, -1, 1, 0}; // count A1 (bim col5 = ALT)
+static constexpr int GENO_ALT[4] = {2, -1, 1, 0}; // count A1 = ALT
 
 // ──────────────────────────────────────────────────────────────────────
 // BED-code-to-double lookup table for plink2's GenoarrLookup16x8bx2.
@@ -160,8 +162,9 @@ PlinkData::PlinkData(
             std::string a1 = tokens[4], a2 = tokens[5];
             std::transform(a1.begin(), a1.end(), a1.begin(), ::toupper);
             std::transform(a2.begin(), a2.end(), a2.begin(), ::toupper);
-            m_ref.push_back(std::move(a1)); // bim col5 = A1 = REF in plink
-            m_alt.push_back(std::move(a2)); // bim col6 = A2
+            // plink2 .bim convention: A1 = ALT (col5), A2 = REF (col6).
+            m_ref.push_back(std::move(a2)); // bim col6 = A2 = REF
+            m_alt.push_back(std::move(a1)); // bim col5 = A1 = ALT (counted by cursor)
         }
         m_nMarkers = static_cast<uint32_t>(m_chr.size());
     }
@@ -460,7 +463,7 @@ void PlinkCursor::getGenotypesMasked(
                                      m_nSubjInFile, m_nUsed, bedCounts);
 
     // Scatter decode: write only used subjects into dense output.
-    const int *genoMap = GENO_BIM5;
+    const int *genoMap = GENO_ALT;
     uint32_t denseIdx = 0;
     const uint32_t nWords = (m_nSubjInFile + 63) / 64;
     for (uint32_t w = 0; w < nWords; ++w) {
@@ -527,7 +530,7 @@ void PlinkCursor::getGenotypesSimple(
         std::memcpy(m_alignedBed.data(), raw, m_bytesPerMarker);
         plink2::GenoarrLookup16x8bx2(m_alignedBed.data(), kBedDoublePairs, m_nSubjInFile, out.data());
     } else {
-        decodeMaskedSimple(raw, m_usedMask.data(), m_nSubjInFile, GENO_BIM5, out.data());
+        decodeMaskedSimple(raw, m_usedMask.data(), m_nSubjInFile, GENO_ALT, out.data());
     }
 }
 

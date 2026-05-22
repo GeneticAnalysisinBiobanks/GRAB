@@ -81,9 +81,12 @@ std::vector<PopMatchedAF> loadAndMatchRefAf(
         PopMatchedAF pm;
         pm.genoIndex = mi.genoIndex;
 
-        if (rec.alt_allele == mi.ref && rec.ref_allele == mi.alt) {
+        // GVec doses count mi.alt (= file ALT for all four genotype
+        // readers).  Return AF in the same orientation: frequency of
+        // mi.alt in the population panel.
+        if (rec.alt_allele == mi.alt && rec.ref_allele == mi.ref) {
             pm.af = rec.alt_freq;
-        } else if (rec.ref_allele == mi.ref && rec.alt_allele == mi.alt) {
+        } else if (rec.alt_allele == mi.ref && rec.ref_allele == mi.alt) {
             pm.af = 1.0 - rec.alt_freq;
         } else {
             continue;
