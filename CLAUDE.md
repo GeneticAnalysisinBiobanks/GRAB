@@ -144,19 +144,20 @@ that a refactor preserved behavior; output equivalence is.
 
 ## Shared engine code is validated — do not modify when debugging other methods
 
-SPAsqr, SPAmix, SPACox, SPAGRM, and SAGELD are currently passing end-to-end
-tests.  Together they exercise every facet of the shared engine
-infrastructure: the fused-GEMM path (SPAsqr, SPAGRM, SPAmix, SAGELD-pheno
-mode), the `MissBatch` non-fuseable path (SPACox), the single-phenotype
-engine (SAGELD residual mode), the LOCO engine (SPAsqr-LOCO), the
-multi-phenotype engine (SPAsqr, SPAGRM, SPAmix, SPACox), and the runtime
+SPAsqr, SPAmix, SPACox, SPAGRM, SAGELD, WtCoxG, and LEAF are currently
+passing end-to-end tests.  Together they exercise every facet of the shared
+engine infrastructure: the fused-GEMM path (SPAsqr, SPAGRM, SPAmix,
+SAGELD-pheno mode, WtCoxG, LEAF), the `MissBatch` non-fuseable path
+(SPACox), the single-phenotype engine (SAGELD residual mode), the LOCO
+engine (SPAsqr-LOCO), the multi-phenotype engine (SPAsqr, SPAGRM, SPAmix,
+SPACox), the per-cluster sub-method pattern (LEAF), and the runtime
 SIMD-dispatch pattern.  Their collective success is a strong signal that
 **the common code below is correct**.
 
-The methods currently under active debugging are **WtCoxG**, **LEAF**, and
-**SPAmixLocalPlus**.  When debugging any of those, do not suspect or modify
-the shared infrastructure listed below — the bug is almost certainly in the
-method-specific code, not the shared engine:
+The only method currently under active debugging is **SPAmixLocalPlus**.
+When debugging it, do not suspect or modify the shared infrastructure
+listed below — the bug is almost certainly in the method-specific code,
+not the shared engine:
 
 - `src/engine/marker.cpp`, `src/engine/marker.hpp`, `src/engine/marker_impl.hpp`
   — `markerEngine`, `multiPhenoEngine`, `multiPhenoEngineRange`,
@@ -169,7 +170,7 @@ method-specific code, not the shared engine:
   AVX2 / AVX-512 dispatch and vectorized exp/log kernels.
 - `src/util/null_model.{hpp,cpp}` — `parseRegressionModel`, the unified
   null-model fitting engine driving the `--pheno-name + --regression-model`
-  path for the five validated methods.
+  path for the seven validated methods.
 - `src/geno_factory/` — genotype decoding (plink / pgen / bgen / vcf):
   SPAsqr and SPAmix exercise all four readers through the same
   `GenoCursor` interface.
@@ -181,7 +182,7 @@ method-specific code, not the shared engine:
 If a method under debug misbehaves, look first at its own per-method file
 (score centering, null-model fitting, residual construction, p-value
 computation, output formatting, QC thresholds it sets itself).  Changing
-the shared engine to "fix" a method bug will break the five validated
+the shared engine to "fix" a method bug will break the seven validated
 methods and is the wrong direction; if a shared-engine change is genuinely
 required, re-run the regression tests for SPAsqr, SPAmix, SPACox, SPAGRM,
-and SAGELD before committing.
+SAGELD, WtCoxG, and LEAF before committing.

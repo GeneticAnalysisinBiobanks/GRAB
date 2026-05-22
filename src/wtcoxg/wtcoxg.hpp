@@ -124,6 +124,8 @@ class WtCoxGMethod : public MethodBase {
     struct DualResult {
         double p_ext, p_noext;
         double score_ext, score_noext;
+        double gSum;     // ALT-allele count within this cluster's subjects
+        int    N;        // number of subjects in this cluster
     };
 
     DualResult computeDual(

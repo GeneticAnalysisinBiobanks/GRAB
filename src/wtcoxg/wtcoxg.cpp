@@ -1296,7 +1296,7 @@ std::unique_ptr<MethodBase> WtCoxGMethod::clone() const {
 }
 
 std::string WtCoxGMethod::getHeaderColumns() const {
-    return "\tp_ext\tp_noext\tz_ext\tz_noext\tp_batch\trho\tsigma2";
+    return "\tP_EXT\tP_NOEXT\tZ_EXT\tZ_NOEXT\tP_BAT\tPI_BAT\tVAR_BAT";
 }
 
 void WtCoxGMethod::prepareChunk(const std::vector<uint64_t> &gIndices) {
@@ -1423,7 +1423,7 @@ WtCoxGMethod::DualResult WtCoxGMethod::computeDualFromScalars(
         m_shared->cutoff
     );
 
-    return {res_ext.pval, res_noext.pval, res_ext.score, res_noext.score};
+    return {res_ext.pval, res_noext.pval, res_ext.score, res_noext.score, gSum, N};
 }
 
 // ── Fused-GEMM hooks ────────────────────────────────────────────────

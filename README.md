@@ -40,9 +40,10 @@ For detailed instructions, see the [GRAB 2.0 manual page](https://wenjianbi.gith
 ![macOS](https://img.shields.io/badge/macOS-000?logo=apple&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-0078D6?logo=windows&logoColor=white)
 
-GRAB is a self-contained C++17 application.  All third-party libraries
-are bundled in the source tree, so the only things you need on your
-machine are a recent C++ compiler and GNU `make`.
+GRAB is self-contained: all third-party libraries are bundled in the
+source tree. To build it, you only need a standard compiler toolchain
+with C++17 support (a recent `gcc`/`g++` on Linux or MSYS2/MinGW, or
+the Xcode Command Line Tools on macOS) and GNU `make`.
 
 ```bash
 git clone --depth=1 https://github.com/GeneticAnalysisinBiobanks/GRAB.git
@@ -73,7 +74,11 @@ The example below runs the **SPAsqr** method on two quantitative
 phenotypes (`Quantitative` and `Time`) jointly.  The options `--pheno`,
 `--pheno-name`, `--covar-name`, and `--out` are compatible
 with the PLINK 2 input and output conventions.
-`--sp-grm-plink2` consumes the output of `plink2 --make-grm-sparse`.
+`--sp-grm-plink2` consumes the output of `plink2 --make-grm-sparse`, for example:
+
+```bash
+plink2 --pfile examples/1kg --make-grm-sparse 0.125 --out examples_output/1kg
+```
 
 `--pred-list` points at a text file with one row per phenotype, each
 row giving a phenotype name and the path to an LOCO PRS file for that
@@ -118,21 +123,13 @@ Vendored libraries under `third_party/` retain their upstream licences:
 If GRAB contributes to a publication, please cite the method-specific
 paper(s) listed below:
 
-- **SPACox** — Bi *et al*. (2020).  Fast and accurate method for
-  genome-wide time-to-event data analysis and its application to UK
-  Biobank.  *Am. J. Hum. Genet.*
+- **SPACox** — Bi *et al*. (2020). A Fast and Accurate Method for Genome-Wide Time-to-Event Data Analysis and Its Application to UK Biobank. *Am. J. Hum. Genet.*
   [doi:10.1016/j.ajhg.2020.06.003](https://doi.org/10.1016/j.ajhg.2020.06.003)
-- **SPAmix** — Ma *et al*. (2025).  Sparse estimation of high-dimensional
-  genetic correlation and its application to global biobank
-  meta-analysis.  *Genome Biol.*
+- **SPAmix** — Ma *et al*. (2025). SPAmix: a scalable, accurate, and universal analysis framework for large-scale genetic association studies in admixed populations. *Genome Biol.*
   [doi:10.1186/s13059-025-03827-9](https://doi.org/10.1186/s13059-025-03827-9)
-- **SPAGRM** — Xu *et al*. (2025).  Scalable and accurate variance
-  component analysis with large sample relatedness.
-  *Nat. Commun.*
+- **SPAGRM** — Xu *et al*. (2025). SPA(GRM): effectively controlling for sample relatedness in large-scale genome-wide association studies of longitudinal traits *Nat. Commun.*
   [doi:10.1038/s41467-025-56669-1](https://doi.org/10.1038/s41467-025-56669-1)
-- **WtCoxG** — Li *et al*. (2025).  High-powered, robust, and versatile
-  survival analysis via weighted Cox regression.
-  *Nat. Comput. Sci.*
+- **WtCoxG** — Li *et al*. (2025). Applying weighted Cox regression to genome-wide association studies of time-to-event phenotypes *Nat. Comput. Sci.*
   [doi:10.1038/s43588-025-00864-z](https://doi.org/10.1038/s43588-025-00864-z)
 - **SAGELD** — Xu *et al*. (in preparation)
 - **SPAsqr** — Heng *et al*. (in preparation)

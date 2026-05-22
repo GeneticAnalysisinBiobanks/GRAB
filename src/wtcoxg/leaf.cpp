@@ -6,12 +6,14 @@
 #include "io/subject_data.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
+#include "util/simd_dispatch.hpp"
 #include "wtcoxg/wtcoxg.hpp"
 
 #include <algorithm>
 #include <atomic>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <fstream>
 #include <limits>
 #include <numeric>
@@ -23,6 +25,206 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+#if defined(__x86_64__) || defined(_M_X64)
+#include <immintrin.h>
+#endif
+
+// ======================================================================
+// phasec_kernel — inner reduction of Phase C per-cluster AF scan
+//
+// For one (cluster c, phenotype p) pair, given the per-marker full union
+// dose vector gFull and the cluster's subject-index list idx[0..Nc),
+// accumulates {sum0, sum1, cnt0, cnt1} over k = 0..Nc-1:
+//
+//   g = gFull[idx[k]]
+//   skip if NaN
+//   if ind[k] == 1.0: sum1 += g; cnt1 += 1
+//   else:             sum0 += g; cnt0 += 1
+//
+// The runtime dispatcher pickPhaseCFn() resolves the function pointer once
+// at process start; the kernel is called K · P times per marker in the
+// scan, so per-call dispatch cost is amortised across ~M markers.  The
+// AVX-512 / AVX2 variants gather doses through `idx[]` via the indexed
+// gather intrinsics; the scalar fallback compiles on every architecture
+// (used on arm64 and on x86 hosts without AVX2).
+// ======================================================================
+
+namespace {
+
+struct PhaseCAcc {
+    double sum0;
+    double sum1;
+    double cnt0;
+    double cnt1;
+};
+
+PhaseCAcc phasec_kernel_scalar(
+    const double *gFull,
+    const std::uint32_t *idx,
+    const double *ind,
+    int Nc
+) {
+    double sum0 = 0.0, sum1 = 0.0, cnt0 = 0.0, cnt1 = 0.0;
+    for (int k = 0; k < Nc; ++k) {
+        const double g = gFull[idx[k]];
+        if (std::isnan(g)) continue;
+        if (ind[k] == 1.0) {
+            sum1 += g;
+            cnt1 += 1.0;
+        } else {
+            sum0 += g;
+            cnt0 += 1.0;
+        }
+    }
+    return {sum0, sum1, cnt0, cnt1};
+}
+
+#if defined(__x86_64__) || defined(_M_X64)
+
+__attribute__((target("avx2,avx512f,avx512vl,fma")))
+PhaseCAcc phasec_kernel_avx512(
+    const double *gFull,
+    const std::uint32_t *idx,
+    const double *ind,
+    int Nc
+) {
+    const __m512d vone = _mm512_set1_pd(1.0);
+    __m512d vSum0 = _mm512_setzero_pd();
+    __m512d vSum1 = _mm512_setzero_pd();
+    __m512d vCnt0 = _mm512_setzero_pd();
+    __m512d vCnt1 = _mm512_setzero_pd();
+
+    int i = 0;
+    const int n8 = Nc & ~7;
+    for (; i < n8; i += 8) {
+        const __m256i vidx = _mm256_loadu_si256(
+            reinterpret_cast<const __m256i *>(idx + i));
+        const __m512d vg   = _mm512_i32gather_pd(vidx, gFull, 8);
+        const __m512d vind = _mm512_loadu_pd(ind + i);
+
+        const __mmask8 nan_k  = _mm512_cmp_pd_mask(vg, vg, _CMP_UNORD_Q);
+        const __mmask8 case_k = _mm512_cmp_pd_mask(vind, vone, _CMP_EQ_OQ);
+        const __mmask8 valid  = static_cast<__mmask8>(~nan_k);
+        const __mmask8 vcase  = static_cast<__mmask8>(valid & case_k);
+        const __mmask8 vctrl  = static_cast<__mmask8>(valid & ~case_k);
+
+        vSum1 = _mm512_mask_add_pd(vSum1, vcase, vSum1, vg);
+        vSum0 = _mm512_mask_add_pd(vSum0, vctrl, vSum0, vg);
+        vCnt1 = _mm512_mask_add_pd(vCnt1, vcase, vCnt1, vone);
+        vCnt0 = _mm512_mask_add_pd(vCnt0, vctrl, vCnt0, vone);
+    }
+
+    if (i < Nc) {
+        const __mmask8 tail = static_cast<__mmask8>((1u << (Nc - i)) - 1u);
+        const __m256i vidx = _mm256_maskz_loadu_epi32(
+            tail, reinterpret_cast<const __m256i *>(idx + i));
+        // Inactive lanes: src = 0 → gathered vg = 0 (not NaN, not == 1.0),
+        // contributes to ctrl branch by default.  We restrict via `tail`
+        // below so inactive lanes are skipped.
+        const __m512d vg   = _mm512_mask_i32gather_pd(
+            _mm512_setzero_pd(), tail, vidx, gFull, 8);
+        const __m512d vind = _mm512_maskz_loadu_pd(tail, ind + i);
+
+        const __mmask8 nan_k  = _mm512_cmp_pd_mask(vg, vg, _CMP_UNORD_Q);
+        const __mmask8 case_k = _mm512_cmp_pd_mask(vind, vone, _CMP_EQ_OQ);
+        const __mmask8 valid  = static_cast<__mmask8>(tail & ~nan_k);
+        const __mmask8 vcase  = static_cast<__mmask8>(valid & case_k);
+        const __mmask8 vctrl  = static_cast<__mmask8>(valid & ~case_k);
+
+        vSum1 = _mm512_mask_add_pd(vSum1, vcase, vSum1, vg);
+        vSum0 = _mm512_mask_add_pd(vSum0, vctrl, vSum0, vg);
+        vCnt1 = _mm512_mask_add_pd(vCnt1, vcase, vCnt1, vone);
+        vCnt0 = _mm512_mask_add_pd(vCnt0, vctrl, vCnt0, vone);
+    }
+
+    return {
+        _mm512_reduce_add_pd(vSum0),
+        _mm512_reduce_add_pd(vSum1),
+        _mm512_reduce_add_pd(vCnt0),
+        _mm512_reduce_add_pd(vCnt1)
+    };
+}
+
+__attribute__((target("avx2,fma")))
+PhaseCAcc phasec_kernel_avx2(
+    const double *gFull,
+    const std::uint32_t *idx,
+    const double *ind,
+    int Nc
+) {
+    const __m256d vone = _mm256_set1_pd(1.0);
+    __m256d vSum0 = _mm256_setzero_pd();
+    __m256d vSum1 = _mm256_setzero_pd();
+    __m256d vCnt0 = _mm256_setzero_pd();
+    __m256d vCnt1 = _mm256_setzero_pd();
+
+    int i = 0;
+    const int n4 = Nc & ~3;
+    for (; i < n4; i += 4) {
+        const __m128i vidx = _mm_loadu_si128(
+            reinterpret_cast<const __m128i *>(idx + i));
+        const __m256d vg   = _mm256_i32gather_pd(gFull, vidx, 8);
+        const __m256d vind = _mm256_loadu_pd(ind + i);
+
+        // Ordered compare returns all-1s when both operands are non-NaN.
+        const __m256d notnan = _mm256_cmp_pd(vg, vg, _CMP_ORD_Q);
+        const __m256d case_m = _mm256_cmp_pd(vind, vone, _CMP_EQ_OQ);
+        const __m256d valid_case = _mm256_and_pd(notnan, case_m);
+        const __m256d valid_ctrl = _mm256_andnot_pd(case_m, notnan);
+
+        vSum1 = _mm256_add_pd(vSum1, _mm256_and_pd(valid_case, vg));
+        vSum0 = _mm256_add_pd(vSum0, _mm256_and_pd(valid_ctrl, vg));
+        vCnt1 = _mm256_add_pd(vCnt1, _mm256_and_pd(valid_case, vone));
+        vCnt0 = _mm256_add_pd(vCnt0, _mm256_and_pd(valid_ctrl, vone));
+    }
+
+    auto hsum = [](__m256d v) -> double {
+        __m128d lo = _mm256_castpd256_pd128(v);
+        __m128d hi = _mm256_extractf128_pd(v, 1);
+        lo = _mm_add_pd(lo, hi);
+        return _mm_cvtsd_f64(lo) + _mm_cvtsd_f64(_mm_unpackhi_pd(lo, lo));
+    };
+    PhaseCAcc out{
+        hsum(vSum0),
+        hsum(vSum1),
+        hsum(vCnt0),
+        hsum(vCnt1)
+    };
+
+    for (; i < Nc; ++i) {
+        const double g = gFull[idx[i]];
+        if (std::isnan(g)) continue;
+        if (ind[i] == 1.0) {
+            out.sum1 += g;
+            out.cnt1 += 1.0;
+        } else {
+            out.sum0 += g;
+            out.cnt0 += 1.0;
+        }
+    }
+    return out;
+}
+
+#endif  // x86_64 SIMD variants
+
+using PhaseCFn = PhaseCAcc (*)(const double *, const std::uint32_t *,
+                               const double *, int);
+
+PhaseCFn pickPhaseCFn() {
+#if defined(__x86_64__) || defined(_M_X64)
+    switch (simdLevel()) {
+    case SimdLevel::AVX512: return phasec_kernel_avx512;
+    case SimdLevel::AVX2:   return phasec_kernel_avx2;
+    default: break;
+    }
+#endif
+    return phasec_kernel_scalar;
+}
+
+const PhaseCFn phasec_kernel = pickPhaseCFn();
+
+}  // namespace
 
 // ======================================================================
 // loadAndMatchRefAf — load one plink2 .afreq and match vs PlinkData
@@ -589,15 +791,16 @@ std::unique_ptr<MethodBase> LEAFMethod::clone() const {
 }
 
 int LEAFMethod::resultSize() const {
-    return 2 + 5 * m_nCluster;
+    return 2 + 6 * m_nCluster;
 }
 
 std::string LEAFMethod::getHeaderColumns() const {
     std::ostringstream oss;
-    oss << "\tmeta.p_ext\tmeta.p_noext";
+    oss << "\tmeta_P_EXT\tmeta_P_NOEXT";
     for (int i = 1; i <= m_nCluster; ++i)
-        oss << "\tcl" << i << ".p_ext\tcl" << i << ".p_noext\tcl" << i << ".p_batch"
-            << "\tcl" << i << ".rho\tcl" << i << ".sigma2";
+        oss << "\tcl" << i << "_MAC"
+            << "\tcl" << i << "_P_EXT\tcl" << i << "_P_NOEXT\tcl" << i << "_P_BAT"
+            << "\tcl" << i << "_PI_BAT\tcl" << i << "_VAR_BAT";
     return oss.str();
 }
 
@@ -615,6 +818,7 @@ void LEAFMethod::getResultVec(
 
     std::vector<double> pExt(m_nCluster), pNoext(m_nCluster);
     std::vector<double> sExt(m_nCluster), sNoext(m_nCluster);
+    std::vector<double> mac(m_nCluster);
 
     for (int c = 0; c < m_nCluster; ++c) {
         // Gather cluster genotypes from full GVec
@@ -628,6 +832,7 @@ void LEAFMethod::getResultVec(
         pNoext[c] = dr.p_noext;
         sExt[c] = dr.score_ext;
         sNoext[c] = dr.score_noext;
+        mac[c] = std::min(dr.gSum, 2.0 * static_cast<double>(dr.N) - dr.gSum);
     }
 
     // Fixed-effects meta-analysis: pool scores across clusters
@@ -652,6 +857,7 @@ void LEAFMethod::getResultVec(
     result.push_back(metaP(sNoext, pNoext));
     for (int c = 0; c < m_nCluster; ++c) {
         const auto &ri = m_clusterMethods[c]->chunkRefInfoAt(markerInChunkIdx);
+        result.push_back(mac[c]);
         result.push_back(pExt[c]);
         result.push_back(pNoext[c]);
         result.push_back(ri.pvalue_bat);
@@ -720,7 +926,7 @@ void LEAFMethod::processScoreBatch(
     const int K = m_nCluster;
     results.resize(B);
 
-    std::vector<double> pExt(K), pNoext(K), sExt(K), sNoext(K);
+    std::vector<double> pExt(K), pNoext(K), sExt(K), sNoext(K), mac(K);
 
     auto metaP = [](const std::vector<double> &scoresArr, const std::vector<double> &pvals) -> double {
         double sumScore = 0.0, sumVar = 0.0;
@@ -745,21 +951,24 @@ void LEAFMethod::processScoreBatch(
         for (int c = 0; c < K; ++c) {
             const double R_dot_g = scores(c, b);
             const double gSum    = scores(K + c, b);
+            const int    Nc      = m_geom->clusterN[c];
             auto dr = m_clusterMethods[c]->computeDualFromScalars(
-                R_dot_g, gSum, m_geom->clusterN[c], chunkIdx);
+                R_dot_g, gSum, Nc, chunkIdx);
             pExt[c]   = dr.p_ext;
             pNoext[c] = dr.p_noext;
             sExt[c]   = dr.score_ext;
             sNoext[c] = dr.score_noext;
+            mac[c]    = std::min(gSum, 2.0 * static_cast<double>(Nc) - gSum);
         }
 
         auto &r = results[b];
         r.clear();
-        r.reserve(2 + 5 * K);
+        r.reserve(2 + 6 * K);
         r.push_back(metaP(sExt, pExt));
         r.push_back(metaP(sNoext, pNoext));
         for (int c = 0; c < K; ++c) {
             const auto &ri = m_clusterMethods[c]->chunkRefInfoAt(chunkIdx);
+            r.push_back(mac[c]);
             r.push_back(pExt[c]);
             r.push_back(pNoext[c]);
             r.push_back(ri.pvalue_bat);
@@ -1125,12 +1334,7 @@ void runLEAFPheno(
     // Per-cluster summix + AF synthesis (scan genotypes for per-cluster AF)
     infoMsg("Per-cluster ancestry estimation and AF synthesis...");
 
-    auto cursor = genoData->makeCursor();
-
     const uint32_t nFull = genoData->nSubjUsed();
-    Eigen::VectorXd fullGVec(nFull);
-
-    if (!matchedMulti.empty()) cursor->beginSequentialBlock(matchedMulti.front().genoIndex);
 
     struct ClMarkerStat {
         double intAF;
@@ -1139,34 +1343,56 @@ void runLEAFPheno(
 
     std::vector<std::vector<ClMarkerStat> > clStats(nCluster, std::vector<ClMarkerStat>(nMatched));
 
-    infoMsg("  Scanning %zu matched markers for per-cluster allele frequencies...", nMatched);
-    for (size_t m = 0; m < nMatched; ++m) {
-        cursor->getGenotypesSimple(matchedMulti[m].genoIndex, fullGVec);
+    {
+        const int nScanWorkers = std::max(
+            1, std::min(nthread, static_cast<int>(nMatched)));
+        infoMsg("  Scanning %zu matched markers for per-cluster allele frequencies (%d threads)...",
+                nMatched, nScanWorkers);
 
-        for (int c = 0; c < nCluster; ++c) {
-            const auto &idx = clusterIndices[c];
-            const auto &ind = clusterSD[c].indicator();
-            double sum0 = 0, sum1 = 0, cnt0 = 0, cnt1 = 0;
-            for (size_t k = 0; k < idx.size(); ++k) {
-                double g = fullGVec[idx[k]];
-                if (std::isnan(g)) continue;
-                if (ind[static_cast<Eigen::Index>(k)] == 1.0) {
-                    sum1 += g;
-                    cnt1 += 1.0;
-                } else {
-                    sum0 += g;
-                    cnt0 += 1.0;
+        auto scanWorker = [&](size_t startM, size_t endM) {
+            if (startM >= endM) return;
+            auto localCursor = genoData->makeCursor();
+            Eigen::VectorXd fullGVec(nFull);
+            localCursor->beginSequentialBlock(matchedMulti[startM].genoIndex);
+
+            for (size_t m = startM; m < endM; ++m) {
+                localCursor->getGenotypesSimple(matchedMulti[m].genoIndex, fullGVec);
+                const double *gFull = fullGVec.data();
+
+                for (int c = 0; c < nCluster; ++c) {
+                    const auto &idx = clusterIndices[c];
+                    const auto &ind = clusterSD[c].indicator();
+                    const PhaseCAcc acc = phasec_kernel(
+                        gFull,
+                        idx.data(),
+                        ind.data(),
+                        static_cast<int>(idx.size()));
+                    double total = acc.cnt0 + acc.cnt1;
+                    auto &st = clStats[c][m];
+                    st.intAF = (total > 0) ? (acc.sum0 + acc.sum1) / (2.0 * total) : std::numeric_limits<double>::quiet_NaN();
+                    st.mu0 = (acc.cnt0 > 0) ? acc.sum0 / (2.0 * acc.cnt0) : 0.0;
+                    st.mu1 = (acc.cnt1 > 0) ? acc.sum1 / (2.0 * acc.cnt1) : 0.0;
+                    st.n0 = acc.cnt0;
+                    st.n1 = acc.cnt1;
+                    st.mu_int = st.intAF;
                 }
             }
-            double total = cnt0 + cnt1;
-            auto &st = clStats[c][m];
-            st.intAF = (total > 0) ? (sum0 + sum1) / (2.0 * total) : std::numeric_limits<double>::quiet_NaN();
-            st.mu0 = (cnt0 > 0) ? sum0 / (2.0 * cnt0) : 0.0;
-            st.mu1 = (cnt1 > 0) ? sum1 / (2.0 * cnt1) : 0.0;
-            st.n0 = cnt0;
-            st.n1 = cnt1;
-            st.mu_int = st.intAF;
+        };
+
+        const size_t chunkSize = (nMatched + nScanWorkers - 1) / nScanWorkers;
+        std::vector<std::thread> threads;
+        threads.reserve(nScanWorkers - 1);
+        for (int t = 0; t < nScanWorkers - 1; ++t) {
+            const size_t startM = static_cast<size_t>(t) * chunkSize;
+            const size_t endM = std::min(startM + chunkSize, nMatched);
+            threads.emplace_back(scanWorker, startM, endM);
         }
+        {
+            const size_t startM = static_cast<size_t>(nScanWorkers - 1) * chunkSize;
+            const size_t endM = std::min(startM + chunkSize, nMatched);
+            scanWorker(startM, endM);
+        }
+        for (auto &th : threads) th.join();
     }
 
     // Per cluster: summix → AF_ref, obs_ct → MatchedMarkerInfo
@@ -1778,49 +2004,61 @@ void runLEAF(
 
     {
         const uint32_t nFull = genoData->nSubjUsed();
-        auto cursor = genoData->makeCursor();
-        if (!matchedMulti.empty())
-            cursor->beginSequentialBlock(matchedMulti.front().genoIndex);
-        Eigen::VectorXd fullGVec(nFull);
+        const int nScanWorkers = std::max(
+            1, std::min(nthreads, static_cast<int>(nMatched)));
+        infoMsg("LEAF: Phase C scan over %zu markers with %d threads",
+                nMatched, nScanWorkers);
 
-        for (size_t m = 0; m < nMatched; ++m) {
-            cursor->getGenotypesSimple(matchedMulti[m].genoIndex, fullGVec);
+        auto scanWorker = [&](size_t startM, size_t endM) {
+            if (startM >= endM) return;
+            auto cursor = genoData->makeCursor();
+            Eigen::VectorXd fullGVec(nFull);
+            cursor->beginSequentialBlock(matchedMulti[startM].genoIndex);
 
-            for (int c = 0; c < K; ++c) {
-                const auto &idx = clusterIndices[c];
-                const size_t Nc = idx.size();
+            for (size_t m = startM; m < endM; ++m) {
+                cursor->getGenotypesSimple(matchedMulti[m].genoIndex, fullGVec);
+                const double *gFull = fullGVec.data();
 
-                std::vector<double> sum0(P, 0), sum1(P, 0), cnt0(P, 0), cnt1(P, 0);
+                for (int c = 0; c < K; ++c) {
+                    const auto &idx = clusterIndices[c];
+                    const int Nc = static_cast<int>(idx.size());
 
-                for (size_t k = 0; k < Nc; ++k) {
-                    double g = fullGVec[idx[k]];
-                    if (std::isnan(g)) continue;
                     for (int p = 0; p < P; ++p) {
-                        if (clRWI[p][c].ind[static_cast<Eigen::Index>(k)] == 1.0) {
-                            sum1[p] += g;
-                            cnt1[p] += 1.0;
+                        const PhaseCAcc acc = phasec_kernel(
+                            gFull,
+                            idx.data(),
+                            clRWI[p][c].ind.data(),
+                            Nc);
+                        auto &st = phClStats[p][c][m];
+                        st.mu0 = (acc.cnt0 > 0) ? acc.sum0 / (2.0 * acc.cnt0) : 0.0;
+                        st.mu1 = (acc.cnt1 > 0) ? acc.sum1 / (2.0 * acc.cnt1) : 0.0;
+                        st.n0 = acc.cnt0;
+                        st.n1 = acc.cnt1;
+                        if (acc.cnt0 > 0 && acc.cnt1 > 0) {
+                            double mu_target = 0.5 * (st.mu0 + st.mu1);
+                            st.mu_int = (mu_target > 0.5) ? (1.0 - mu_target) : mu_target;
                         } else {
-                            sum0[p] += g;
-                            cnt0[p] += 1.0;
+                            st.mu_int = std::numeric_limits<double>::quiet_NaN();
                         }
                     }
                 }
-
-                for (int p = 0; p < P; ++p) {
-                    auto &st = phClStats[p][c][m];
-                    st.mu0 = (cnt0[p] > 0) ? sum0[p] / (2.0 * cnt0[p]) : 0.0;
-                    st.mu1 = (cnt1[p] > 0) ? sum1[p] / (2.0 * cnt1[p]) : 0.0;
-                    st.n0 = cnt0[p];
-                    st.n1 = cnt1[p];
-                    if (cnt0[p] > 0 && cnt1[p] > 0) {
-                        double mu_target = 0.5 * (st.mu0 + st.mu1);
-                        st.mu_int = (mu_target > 0.5) ? (1.0 - mu_target) : mu_target;
-                    } else {
-                        st.mu_int = std::numeric_limits<double>::quiet_NaN();
-                    }
-                }
             }
+        };
+
+        const size_t chunkSize = (nMatched + nScanWorkers - 1) / nScanWorkers;
+        std::vector<std::thread> threads;
+        threads.reserve(nScanWorkers - 1);
+        for (int t = 0; t < nScanWorkers - 1; ++t) {
+            const size_t startM = static_cast<size_t>(t) * chunkSize;
+            const size_t endM = std::min(startM + chunkSize, nMatched);
+            threads.emplace_back(scanWorker, startM, endM);
         }
+        {
+            const size_t startM = static_cast<size_t>(nScanWorkers - 1) * chunkSize;
+            const size_t endM = std::min(startM + chunkSize, nMatched);
+            scanWorker(startM, endM);
+        }
+        for (auto &th : threads) th.join();
     }
 
     // Per-phenotype × per-cluster summix.  P*K tasks parallelised with min(T, P*K).
