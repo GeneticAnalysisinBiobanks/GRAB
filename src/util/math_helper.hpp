@@ -2,7 +2,7 @@
 //
 // Provides:
 //   § 1  Distribution wrappers    pnorm, qnorm, qchisq, pt (Boost)
-//   § 2  Bivariate normal CDF     bvnCdf, pmvnorm2d (Genz quadrature)
+//   § 2  Bivariate normal probability  pmvnorm2dHalfRect (20-point Gauss-Legendre)
 //   § 3  Brent root-finding       findRootBrent
 //   § 4  Diploid genotype MGF     mG0/mG1/mG2, kG0/kG1/kG2 (scalar)
 //   § 5  Logistic regression      logisticRegressionBeta, logisticRegression (IRLS, Eigen)
@@ -89,22 +89,27 @@ inline double pt(
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// § 2  Bivariate normal CDF  (Genz 2004, 6-point quadrature)
+// § 2  Bivariate normal probability over a half-infinite rectangle
 // ──────────────────────────────────────────────────────────────────────
-
-// P(X ≤ dh, Y ≤ dk) where (X,Y) ~ BVN(0, 0, 1, 1, r).
-double bvnCdf(
-    double dh,
-    double dk,
-    double r
-);
-
-// P(lo1 < X ≤ hi1, lo2 < Y ≤ hi2) where (X,Y) ~ BVN(0, [var1, cov12; cov12, var2]).
-double pmvnorm2d(
-    double lo1,
-    double hi1,
-    double lo2,
-    double hi2,
+//
+// Compute  P(X ≤ s_hi,  sb_lo ≤ Y ≤ sb_hi)
+// where (X, Y) ~ BVN(0, [var1, cov12; cov12, var2]).
+// Either or both Y bounds may be ±∞.
+//
+// Implementation strategy (avoids the subtractive cancellation of the
+// 4-corner inclusion-exclusion formula):
+//   - both Y bounds infinite  →  marginal Φ(s_hi / √var1)
+//   - one Y bound infinite    →  single bivariate-normal CDF evaluation
+//                                (Genz 2004, 6-point quadrature)
+//   - both Y bounds finite    →  direct 1-D integration of the conditional
+//                                tail probability via 20-point Gauss-
+//                                Legendre quadrature on [sb_lo, sb_hi]
+//                                (no subtraction; ≈ 10⁻¹³ relative error
+//                                for |ρ| < 0.925)
+double pmvnorm2dHalfRect(
+    double s_hi,
+    double sb_lo,
+    double sb_hi,
     double var1,
     double cov12,
     double var2
@@ -308,6 +313,24 @@ OptimResult nelderMead(
     const std::vector<double> &init,
     double tol = 1e-8,
     int maxIter = 500
+);
+
+// Minimise f(x) starting from `init` using BFGS quasi-Newton with a
+// central-difference numerical gradient and Armijo backtracking line
+// search.  Designed for smooth, unconstrained problems in low dimension.
+//
+// Convergence test: |Δf| ≤ reltol · (|f| + reltol)   (same form as R's
+// optim(method="BFGS")).
+//
+// f:       objective  R^n → R
+// init:    starting point  (length n)
+// reltol:  relative-function convergence tolerance
+// maxIter: iteration cap
+OptimResult bfgs(
+    std::function<double(const std::vector<double> &)> f,
+    const std::vector<double> &init,
+    double reltol = 1e-10,
+    int maxIter = 200
 );
 
 // ──────────────────────────────────────────────────────────────────────

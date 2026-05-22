@@ -98,7 +98,7 @@ class WtCoxGMethod : public MethodBase {
     std::unique_ptr<MethodBase> clone() const override;
 
     int resultSize() const override {
-        return 5;
+        return 7;
     }
 
     std::string getHeaderColumns() const override;

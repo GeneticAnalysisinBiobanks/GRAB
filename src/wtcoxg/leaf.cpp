@@ -589,14 +589,15 @@ std::unique_ptr<MethodBase> LEAFMethod::clone() const {
 }
 
 int LEAFMethod::resultSize() const {
-    return 2 + 3 * m_nCluster;
+    return 2 + 5 * m_nCluster;
 }
 
 std::string LEAFMethod::getHeaderColumns() const {
     std::ostringstream oss;
     oss << "\tmeta.p_ext\tmeta.p_noext";
     for (int i = 1; i <= m_nCluster; ++i)
-        oss << "\tcl" << i << ".p_ext\tcl" << i << ".p_noext\tcl" << i << ".p_batch";
+        oss << "\tcl" << i << ".p_ext\tcl" << i << ".p_noext\tcl" << i << ".p_batch"
+            << "\tcl" << i << ".rho\tcl" << i << ".sigma2";
     return oss.str();
 }
 
@@ -650,9 +651,12 @@ void LEAFMethod::getResultVec(
     result.push_back(metaP(sExt, pExt));
     result.push_back(metaP(sNoext, pNoext));
     for (int c = 0; c < m_nCluster; ++c) {
+        const auto &ri = m_clusterMethods[c]->chunkRefInfoAt(markerInChunkIdx);
         result.push_back(pExt[c]);
         result.push_back(pNoext[c]);
-        result.push_back(m_clusterMethods[c]->chunkRefInfoAt(markerInChunkIdx).pvalue_bat);
+        result.push_back(ri.pvalue_bat);
+        result.push_back(ri.TPR);
+        result.push_back(ri.sigma2);
     }
 }
 
@@ -751,13 +755,16 @@ void LEAFMethod::processScoreBatch(
 
         auto &r = results[b];
         r.clear();
-        r.reserve(2 + 3 * K);
+        r.reserve(2 + 5 * K);
         r.push_back(metaP(sExt, pExt));
         r.push_back(metaP(sNoext, pNoext));
         for (int c = 0; c < K; ++c) {
+            const auto &ri = m_clusterMethods[c]->chunkRefInfoAt(chunkIdx);
             r.push_back(pExt[c]);
             r.push_back(pNoext[c]);
-            r.push_back(m_clusterMethods[c]->chunkRefInfoAt(chunkIdx).pvalue_bat);
+            r.push_back(ri.pvalue_bat);
+            r.push_back(ri.TPR);
+            r.push_back(ri.sigma2);
         }
     }
 }

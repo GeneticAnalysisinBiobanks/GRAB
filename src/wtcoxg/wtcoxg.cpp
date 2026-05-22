@@ -874,27 +874,26 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
             vec_p_deno[j] = static_cast<double>(cnt) / static_cast<double>(vec_p_bat.size());
         }
 
-        // Nelder-Mead to estimate [TPR, sigma2] with box constraints
-        // [0, 1] × [0, 1] enforced as soft penalty walls.  The σ² ≤ 1
-        // upper bound matches LEAF.R (/home/miaolin/share/LEAF.R), which
-        // does default optim() (unconstrained Nelder-Mead) and then post-
-        // hoc clamps the result with `min(1, max(0, par[i]))`.  The wall
-        // here approximates the same clamp in a way that the simplex can
-        // honour during convergence rather than after the fact.
-        auto opti_fun = [&](const std::vector<double> &par) -> double {
-            if (par[0] < 0.0 || par[0] > 1.0 || par[1] < 0.0 || par[1] > 1.0) return 1e30;
+        // BFGS in reparameterized (η_T, η_S) ∈ R² space.
+        //   TPR    = 1 / (1 + exp(−η_T))   ∈ (0, 1)
+        //   sigma2 = exp(η_S)              ∈ (0, ∞)
+        // Mirrors LEAF.R's updated fun.est.param: unconstrained search,
+        // no σ² upper bound, no post-hoc clamp.
+        auto opti_fun_eta = [&](const std::vector<double> &eta) -> double {
+            const double TPR    = 1.0 / (1.0 + std::exp(-eta[0]));
+            const double sigma2 = std::exp(eta[1]);
             double diff = 0.0;
             for (int j = 0; j < nCut; ++j) {
                 double p_cut = vec_cutoff[j];
                 double q = math::qnorm(1.0 - p_cut / 2.0);
                 double lb = -q * std::sqrt(var_Sbat);
                 double ub = q * std::sqrt(var_Sbat);
-                double var_Sbat_par2 = var_Sbat + par[1];
+                double var_Sbat_par2 = var_Sbat + sigma2;
                 if (var_Sbat_par2 <= 0.0) return 1e30;
                 double c_val = math::pnorm(ub, 0.0, std::sqrt(var_Sbat_par2), true, true);
                 double d_val = math::pnorm(lb, 0.0, std::sqrt(var_Sbat_par2), true, true);
                 double pro_cut =
-                    par[0] * (std::exp(d_val) * (std::exp(c_val - d_val) - 1.0)) + (1.0 - par[0]) *
+                    TPR * (std::exp(d_val) * (std::exp(c_val - d_val) - 1.0)) + (1.0 - TPR) *
                     (1.0 - p_cut);
                 double ratio = (vec_p_deno[j] - pro_cut) / (vec_p_deno[j] + 1e-300);
                 diff += ratio * ratio;
@@ -902,13 +901,13 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
             return diff;
         };
 
-        auto optResult = math::nelderMead(opti_fun, {0.01, 0.01});
-        // Post-hoc clamp to [0, 1]², mirroring LEAF.R's `min(1, max(0, ·))`.
-        // With the penalty wall above this should be a no-op, but the
-        // simplex centroid can drift slightly past the wall, so the clamp
-        // closes the gap.
-        double TPR    = std::min(1.0, std::max(0.0, optResult.par[0]));
-        double sigma2 = std::min(1.0, std::max(0.0, optResult.par[1]));
+        // Nelder-Mead in η-space.  Avoids BFGS's drift-to-infinity in
+        // the degenerate regime where TPR is near 1 and σ² becomes
+        // asymptotically unidentifiable.
+        auto optResult = math::nelderMead(opti_fun_eta, {0.0, std::log(0.01)},
+                                          1e-10, 500);
+        const double TPR    = 1.0 / (1.0 + std::exp(-optResult.par[0]));
+        const double sigma2 = std::exp(optResult.par[1]);
 
         // Optimal external weight via 1-D Brent minimisation
         // The R code does a complex nested optimisation (optim + uniroot + pmvnorm).
@@ -982,9 +981,7 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
                 double cov_val = cov_resid + 2.0 * b * sumR_loc * var_mu_ext_loc;
 
                 // p0 = P(S ≤ −|S|, lb ≤ S_bat ≤ ub) via bivariate normal
-                double negInf = -std::numeric_limits<double>::infinity();
-                double p0 = math::pmvnorm2d(
-                    negInf,
+                double p0 = math::pmvnorm2dHalfRect(
                     -std::abs(S),
                     lb,
                     ub,
@@ -992,7 +989,6 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
                     cov_val,
                     var_Sbat_loc
                 );
-                p0 = std::clamp(p0, 0.0, 1.0);
 
                 // p1 with sigma2 — reuse cov_resid accumulator from the fused loop.
                 double var_S1 = var_int + 4.0 * b * b * sumR_loc * sumR_loc *
@@ -1000,8 +996,7 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
                 double cov_val1 = cov_resid + 2.0 * b * sumR_loc * (var_mu_ext_loc + sigma2);
                 double var_Sbat1 = var_Sbat_loc + sigma2;
 
-                double p1 = math::pmvnorm2d(
-                    negInf,
+                double p1 = math::pmvnorm2dHalfRect(
                     -std::abs(S),
                     lb,
                     ub,
@@ -1009,7 +1004,6 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
                     cov_val1,
                     var_Sbat1
                 );
-                p1 = std::clamp(p1, 0.0, 1.0);
 
                 double p_con = 2.0 * (TPR * p1 + (1.0 - TPR) * p0) /
                                (p_deno + 1e-300);
@@ -1108,7 +1102,7 @@ std::unique_ptr<MethodBase> WtCoxGMethod::clone() const {
 }
 
 std::string WtCoxGMethod::getHeaderColumns() const {
-    return "\tp_ext\tp_noext\tz_ext\tz_noext\tp_batch";
+    return "\tp_ext\tp_noext\tz_ext\tz_noext\tp_batch\trho\tsigma2";
 }
 
 void WtCoxGMethod::prepareChunk(const std::vector<uint64_t> &gIndices) {
@@ -1173,6 +1167,8 @@ void WtCoxGMethod::getResultVec(
     result.push_back(res_ext.zscore);
     result.push_back(res_noext.zscore);
     result.push_back(info.pvalue_bat);
+    result.push_back(info.TPR);
+    result.push_back(info.sigma2);
 }
 
 WtCoxGMethod::DualResult WtCoxGMethod::computeDual(
@@ -1297,12 +1293,14 @@ void WtCoxGMethod::processScoreBatch(
 
         auto &r = results[b];
         r.clear();
-        r.reserve(5);
+        r.reserve(7);
         r.push_back(res_ext.pval);
         r.push_back(res_noext.pval);
         r.push_back(res_ext.zscore);
         r.push_back(res_noext.zscore);
         r.push_back(info.pvalue_bat);
+        r.push_back(info.TPR);
+        r.push_back(info.sigma2);
     }
 }
 
@@ -1430,9 +1428,8 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
         const double s_bound  = -std::abs(S_loc / std::sqrt(var_ratio0));
         const double sb_lo    = lb / std::sqrt(var_ratio_w0);
         const double sb_hi    = ub / std::sqrt(var_ratio_w0);
-        double p0 = math::pmvnorm2d(negInf, s_bound, negInf, sb_lo, var_S, cov_val, var_Sbat)
-                  + math::pmvnorm2d(negInf, s_bound, sb_hi, posInf, var_S, cov_val, var_Sbat);
-        p0 = std::clamp(p0, 0.0, 1.0);
+        const double p0 = math::pmvnorm2dHalfRect(s_bound, negInf, sb_lo, var_S, cov_val, var_Sbat)
+                       + math::pmvnorm2dHalfRect(s_bound, sb_hi, posInf, var_S, cov_val, var_Sbat);
 
         // sigma² ≠ 0: inflate batch-test variance only; var_S and cov_val unchanged
         // (R LEAF.R branch 1 reuses var_S1 = var_S, cov_Sbat_S1 = cov_Sbat_S).
@@ -1440,9 +1437,8 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
         const double s_bound1  = -std::abs(S_loc / std::sqrt(var_ratio1));
         const double sb_lo1    = lb / std::sqrt(var_ratio_w1);
         const double sb_hi1    = ub / std::sqrt(var_ratio_w1);
-        double p1 = math::pmvnorm2d(negInf, s_bound1, negInf, sb_lo1, var_S, cov_val, var_Sbat1)
-                  + math::pmvnorm2d(negInf, s_bound1, sb_hi1, posInf, var_S, cov_val, var_Sbat1);
-        p1 = std::clamp(p1, 0.0, 1.0);
+        const double p1 = math::pmvnorm2dHalfRect(s_bound1, negInf, sb_lo1, var_S, cov_val, var_Sbat1)
+                       + math::pmvnorm2dHalfRect(s_bound1, sb_hi1, posInf, var_S, cov_val, var_Sbat1);
 
         const double p_con = 2.0 * (TPR * p1 + (1.0 - TPR) * p0) / p_deno;
         return {p_con, S_loc, z_loc};
@@ -1490,9 +1486,7 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
     cov_val *= std::sqrt(var_S / var_int_denom);
     double z = S / std::sqrt(var_S);
 
-    double negInf = -std::numeric_limits<double>::infinity();
-    double p0 = math::pmvnorm2d(
-        negInf,
+    double p0 = math::pmvnorm2dHalfRect(
         -std::abs(S / std::sqrt(var_ratio0)),
         lb / std::sqrt(var_ratio_w0),
         ub / std::sqrt(var_ratio_w0),
@@ -1500,7 +1494,6 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
         cov_val,
         var_Sbat
     );
-    p0 = std::clamp(p0, 0.0, 1.0);
 
     // External SPA (with sigma2)
     SpaResult spa_s1 = spaGOneSnpHomoFromScalars(
@@ -1513,8 +1506,7 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
     cov_val1 *= std::sqrt(var_S1 / var_int_denom);
     double var_Sbat1 = var_Sbat + sigma2;
 
-    double p1 = math::pmvnorm2d(
-        negInf,
+    double p1 = math::pmvnorm2dHalfRect(
         -std::abs(S / std::sqrt(var_ratio1)),
         lb / std::sqrt(var_ratio_w1),
         ub / std::sqrt(var_ratio_w1),
@@ -1522,7 +1514,6 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
         cov_val1,
         var_Sbat1
     );
-    p1 = std::clamp(p1, 0.0, 1.0);
 
     double p_con = 2.0 * (TPR * p1 + (1.0 - TPR) * p0) / p_deno;
     return {p_con, S, z};
