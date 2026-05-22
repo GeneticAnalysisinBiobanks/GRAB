@@ -240,6 +240,190 @@ static OutlierCgfFn pickOutlierCgfFn() {
 static const OutlierCgfFn outlierCgf = pickOutlierCgfFn();
 
 // ────────────────────────────────────────────────────────────────────
+// fow_kernel — N-length inner loop of fun_optimalWeight (Brent root
+// finder inside Brent min over b, inside Nelder-Mead over (η_T, η_S)).
+//
+// For each subject k the loop accumulates:
+//   mu_i  = 2·mu1_trial if y[k] == 1, else 2·mu0_val
+//   r_adj = R[k] − bm_loc
+//   S            += r_adj · mu_i
+//   mu_local_acc += mu_i
+//   var_int_acc  += r_adj²
+//   cov_val_acc  += w1_local[k] · r_adj
+//
+// Three variants are compiled (scalar / AVX2 / AVX-512); the runtime
+// dispatcher (pickFowFn) resolves the function pointer once.  The kernel
+// is called O(P · K · 10⁵) times per testBatchEffects call inside a deeply
+// nested numerical optimiser, so the per-call dispatch cost is amortised.
+// ────────────────────────────────────────────────────────────────────
+
+struct FOWAccum {
+    double S;
+    double mu_local_acc;
+    double var_int_acc;
+    double cov_val_acc;
+};
+
+static FOWAccum fow_kernel_scalar(
+    const double *R,
+    const double *y,
+    const double *w1l,
+    int n,
+    double mu1_trial2,    // pre-multiplied: 2·mu1_trial
+    double mu0_val2,      // pre-multiplied: 2·mu0_val
+    double bm_loc
+) {
+    double S = 0.0, mu_local_acc = 0.0, var_int_acc = 0.0, cov_val_acc = 0.0;
+    for (int k = 0; k < n; ++k) {
+        const double mu_i  = (y[k] == 1.0) ? mu1_trial2 : mu0_val2;
+        const double r_adj = R[k] - bm_loc;
+        S             += r_adj * mu_i;
+        mu_local_acc  += mu_i;
+        var_int_acc   += r_adj * r_adj;
+        cov_val_acc   += w1l[k] * r_adj;
+    }
+    return {S, mu_local_acc, var_int_acc, cov_val_acc};
+}
+
+#if defined(__x86_64__) || defined(_M_X64)
+
+__attribute__((target("avx2,avx512f,avx512vl,fma")))
+static FOWAccum fow_kernel_avx512(
+    const double *R,
+    const double *y,
+    const double *w1l,
+    int n,
+    double mu1_trial2,
+    double mu0_val2,
+    double bm_loc
+) {
+    const __m512d vmu1_2 = _mm512_set1_pd(mu1_trial2);
+    const __m512d vmu0_2 = _mm512_set1_pd(mu0_val2);
+    const __m512d vbm    = _mm512_set1_pd(bm_loc);
+    const __m512d vone   = _mm512_set1_pd(1.0);
+
+    __m512d vS   = _mm512_setzero_pd();
+    __m512d vMu  = _mm512_setzero_pd();
+    __m512d vVar = _mm512_setzero_pd();
+    __m512d vCov = _mm512_setzero_pd();
+
+    int i = 0;
+    const int n8 = n & ~7;
+    for (; i < n8; i += 8) {
+        const __m512d vR   = _mm512_loadu_pd(R + i);
+        const __m512d vy   = _mm512_loadu_pd(y + i);
+        const __m512d vw   = _mm512_loadu_pd(w1l + i);
+        const __mmask8 m   = _mm512_cmp_pd_mask(vy, vone, _CMP_EQ_OQ);
+        const __m512d vmu  = _mm512_mask_blend_pd(m, vmu0_2, vmu1_2);
+        const __m512d vradj = _mm512_sub_pd(vR, vbm);
+        vS   = _mm512_fmadd_pd(vradj, vmu, vS);
+        vMu  = _mm512_add_pd(vMu, vmu);
+        vVar = _mm512_fmadd_pd(vradj, vradj, vVar);
+        vCov = _mm512_fmadd_pd(vw, vradj, vCov);
+    }
+
+    if (i < n) {
+        const __mmask8 tail = static_cast<__mmask8>((1u << (n - i)) - 1u);
+        const __m512d vR    = _mm512_maskz_loadu_pd(tail, R + i);
+        const __m512d vy    = _mm512_maskz_loadu_pd(tail, y + i);
+        const __m512d vw    = _mm512_maskz_loadu_pd(tail, w1l + i);
+        const __mmask8 m    = _mm512_cmp_pd_mask(vy, vone, _CMP_EQ_OQ);
+        const __m512d vmu   = _mm512_mask_blend_pd(m, vmu0_2, vmu1_2);
+        const __m512d vradj = _mm512_sub_pd(vR, vbm);
+        // Use mask3-FMA so inactive lanes carry the accumulator (4th arg)
+        // unchanged.  `_mm512_mask_fmadd_pd(a,k,b,c)` writes `a` on k=0
+        // (wrong here); `_mm512_mask3_fmadd_pd(a,b,c,k)` writes `c` on k=0
+        // (what we want).  Same trick for the accumulator-preserving add.
+        vS   = _mm512_mask3_fmadd_pd(vradj, vmu, vS, tail);
+        vMu  = _mm512_mask_add_pd(vMu, tail, vMu, vmu);
+        vVar = _mm512_mask3_fmadd_pd(vradj, vradj, vVar, tail);
+        vCov = _mm512_mask3_fmadd_pd(vw, vradj, vCov, tail);
+    }
+
+    return {_mm512_reduce_add_pd(vS),
+            _mm512_reduce_add_pd(vMu),
+            _mm512_reduce_add_pd(vVar),
+            _mm512_reduce_add_pd(vCov)};
+}
+
+__attribute__((target("avx2,fma")))
+static FOWAccum fow_kernel_avx2(
+    const double *R,
+    const double *y,
+    const double *w1l,
+    int n,
+    double mu1_trial2,
+    double mu0_val2,
+    double bm_loc
+) {
+    const __m256d vmu1_2 = _mm256_set1_pd(mu1_trial2);
+    const __m256d vmu0_2 = _mm256_set1_pd(mu0_val2);
+    const __m256d vbm    = _mm256_set1_pd(bm_loc);
+    const __m256d vone   = _mm256_set1_pd(1.0);
+
+    __m256d vS   = _mm256_setzero_pd();
+    __m256d vMu  = _mm256_setzero_pd();
+    __m256d vVar = _mm256_setzero_pd();
+    __m256d vCov = _mm256_setzero_pd();
+
+    int i = 0;
+    const int n4 = n & ~3;
+    for (; i < n4; i += 4) {
+        const __m256d vR    = _mm256_loadu_pd(R + i);
+        const __m256d vy    = _mm256_loadu_pd(y + i);
+        const __m256d vw    = _mm256_loadu_pd(w1l + i);
+        const __m256d mask  = _mm256_cmp_pd(vy, vone, _CMP_EQ_OQ);
+        // blendv_pd selects second operand when mask MSB is set; cmp_pd
+        // returns all-1s on equality, MSB=1, so mask → vmu1_2.
+        const __m256d vmu   = _mm256_blendv_pd(vmu0_2, vmu1_2, mask);
+        const __m256d vradj = _mm256_sub_pd(vR, vbm);
+        vS   = _mm256_fmadd_pd(vradj, vmu, vS);
+        vMu  = _mm256_add_pd(vMu, vmu);
+        vVar = _mm256_fmadd_pd(vradj, vradj, vVar);
+        vCov = _mm256_fmadd_pd(vw, vradj, vCov);
+    }
+
+    auto hsum = [](__m256d v) -> double {
+        __m128d lo = _mm256_castpd256_pd128(v);
+        __m128d hi = _mm256_extractf128_pd(v, 1);
+        lo = _mm_add_pd(lo, hi);
+        return _mm_cvtsd_f64(lo) + _mm_cvtsd_f64(_mm_unpackhi_pd(lo, lo));
+    };
+    double S            = hsum(vS);
+    double mu_local_acc = hsum(vMu);
+    double var_int_acc  = hsum(vVar);
+    double cov_val_acc  = hsum(vCov);
+
+    for (; i < n; ++i) {
+        const double mu_i  = (y[i] == 1.0) ? mu1_trial2 : mu0_val2;
+        const double r_adj = R[i] - bm_loc;
+        S             += r_adj * mu_i;
+        mu_local_acc  += mu_i;
+        var_int_acc   += r_adj * r_adj;
+        cov_val_acc   += w1l[i] * r_adj;
+    }
+    return {S, mu_local_acc, var_int_acc, cov_val_acc};
+}
+
+#endif  // x86_64 SIMD variants
+
+using FOWFn = FOWAccum (*)(const double *, const double *, const double *,
+                           int, double, double, double);
+
+static FOWFn pickFowFn() {
+#if defined(__x86_64__) || defined(_M_X64)
+    switch (simdLevel()) {
+    case SimdLevel::AVX512: return fow_kernel_avx512;
+    case SimdLevel::AVX2:   return fow_kernel_avx2;
+    default: break;
+    }
+#endif
+    return fow_kernel_scalar;
+}
+
+static const FOWFn fow_kernel = pickFowFn();
+
+// ────────────────────────────────────────────────────────────────────
 // SPA helpers — operate on already-centered residuals (r_i = R[i] − bm)
 // ────────────────────────────────────────────────────────────────────
 
@@ -718,7 +902,7 @@ void computeMarkerStats(
 // Phase 2 — Batch-effect testing
 // ======================================================================
 
-std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
+std::shared_ptr<WtCoxGRefVec> testBatchEffects(
     const std::vector<MatchedMarkerInfo> &matched,
     const Eigen::VectorXd &residuals,
     const Eigen::VectorXd &weights,
@@ -768,7 +952,7 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
 
     // --- Per-marker batch p-value ---
     const size_t nMarkers = matched.size();
-    auto refInfoMap = std::make_shared<std::unordered_map<uint64_t, WtCoxGRefInfo> >();
+    auto refInfoMap = std::make_shared<WtCoxGRefVec>();
     refInfoMap->reserve(nMarkers);
 
     // Temporary per-marker storage
@@ -926,20 +1110,22 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
                 double sumR_loc = R.sum();
 
                 // Fused single pass over R: accumulate S, mu_local, var_int, and
-                // cov_val (shared between p0 and p1 branches) in one sweep.
+                // cov_val (shared between p0 and p1 branches).  Dispatched to
+                // AVX-512 / AVX2 / scalar via fow_kernel.  Pre-multiplying mu0
+                // and mu1 by 2 here saves a multiply per SIMD lane inside the
+                // kernel.  Note: SIMD lane reductions reorder additions relative
+                // to scalar — see CLAUDE.md (the fun_optimalWeight result feeds
+                // an iterative optimiser whose tolerance is 1e-6, well above
+                // FMA reordering noise).
                 const double bm_loc = (1.0 - b) * meanR_loc;
-                double S = 0.0;
-                double mu_local_acc = 0.0;
-                double var_int_acc = 0.0;
-                double cov_val_acc = 0.0;
-                for (Eigen::Index k = 0; k < R.size(); ++k) {
-                    const double mu_i  = (y[k] == 1.0) ? 2.0 * mu1_trial : 2.0 * mu0_val;
-                    const double r_adj = R[k] - bm_loc;
-                    S             += r_adj * mu_i;
-                    mu_local_acc  += mu_i;
-                    var_int_acc   += r_adj * r_adj;
-                    cov_val_acc   += w1_local[k] * r_adj;  // LOCAL — matches LEAF.R fun.optimalWeight
-                }
+                const FOWAccum acc = fow_kernel(
+                    R.data(), y.data(), w1_local.data(),
+                    static_cast<int>(R.size()),
+                    2.0 * mu1_trial, 2.0 * mu0_val, bm_loc);
+                double S            = acc.S;
+                double mu_local_acc = acc.mu_local_acc;
+                double var_int_acc  = acc.var_int_acc;
+                double cov_val_acc  = acc.cov_val_acc;
                 S -= sumR_loc * 2.0 * b * mu_pop;
 
                 double w1sum2 = sum_w1_sq_local;                                 // LOCAL — matches LEAF.R fun.optimalWeight
@@ -1047,10 +1233,18 @@ std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
             ri.var_ratio_w0 = batchData[i].var_ratio_w0;
             ri.var_ratio_int = var_ratio_int;
             ri.var_ratio_ext = var_ratio_ext;
-            refInfoMap->emplace(batchData[i].genoIndex, ri);
+            refInfoMap->emplace_back(batchData[i].genoIndex, ri);
         }
     }
 
+    // MAF groups are traversed in ascending mu_int, not genoIndex, so the
+    // per-group emplace_back leaves the vector unsorted.  Sort once before
+    // returning so downstream prepareChunk() can use std::lower_bound.
+    std::sort(refInfoMap->begin(), refInfoMap->end(),
+              [](const std::pair<uint64_t, WtCoxGRefInfo> &a,
+                 const std::pair<uint64_t, WtCoxGRefInfo> &b) {
+                  return a.first < b.first;
+              });
     return refInfoMap;
 }
 
@@ -1064,7 +1258,7 @@ WtCoxGMethod::WtCoxGMethod(
     double cutoff,
     double SPA_Cutoff,
     double outlierRatio,
-    std::shared_ptr<const std::unordered_map<uint64_t, WtCoxGRefInfo> > refMap
+    std::shared_ptr<const WtCoxGRefVec> refMap
 )
     : m_refMap(std::move(refMap))
 {
@@ -1089,7 +1283,7 @@ WtCoxGMethod::WtCoxGMethod(
 
 WtCoxGMethod::WtCoxGMethod(
     std::shared_ptr<const WtCoxGShared> shared,
-    std::shared_ptr<const std::unordered_map<uint64_t, WtCoxGRefInfo> > refMap
+    std::shared_ptr<const WtCoxGRefVec> refMap
 )
     : m_shared(std::move(shared)),
       m_refMap(std::move(refMap))
@@ -1108,13 +1302,20 @@ std::string WtCoxGMethod::getHeaderColumns() const {
 void WtCoxGMethod::prepareChunk(const std::vector<uint64_t> &gIndices) {
     size_t n = gIndices.size();
     m_chunkRefInfo.resize(n);
+    if (!m_refMap || m_refMap->empty()) {
+        for (size_t i = 0; i < n; ++i) m_chunkRefInfo[i] = WtCoxGRefInfo();
+        return;
+    }
+    const auto begin = m_refMap->begin();
+    const auto end   = m_refMap->end();
+    auto cmp = [](const std::pair<uint64_t, WtCoxGRefInfo> &p, uint64_t k) {
+        return p.first < k;
+    };
     for (size_t i = 0; i < n; ++i) {
-        WtCoxGRefInfo ri; // defaults to NaN
-        if (m_refMap) {
-            auto it = m_refMap->find(gIndices[i]);
-            if (it != m_refMap->end()) ri = it->second;
-        }
-        m_chunkRefInfo[i] = ri;
+        const uint64_t key = gIndices[i];
+        auto it = std::lower_bound(begin, end, key, cmp);
+        if (it != end && it->first == key) m_chunkRefInfo[i] = it->second;
+        else m_chunkRefInfo[i] = WtCoxGRefInfo();
     }
 }
 
@@ -1933,7 +2134,7 @@ void runWtCoxG(
     }
 
     // ── Phase D: parallel batch-effect testing ──────────────────────
-    std::vector<std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> > > refMaps(P);
+    std::vector<std::shared_ptr<WtCoxGRefVec> > refMaps(P);
     {
         const int nWorkers = std::min(nthreads, P);
         infoMsg("WtCoxG: Batch-effect testing for %d phenotypes with %d threads",

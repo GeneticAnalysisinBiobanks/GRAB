@@ -1113,6 +1113,15 @@ void runLEAFPheno(
     const size_t nMatched = matchedMulti.size();
     infoMsg("  %zu markers present in all %d populations", nMatched, nPop);
 
+    // popMatched[] is consumed only when constructing allPopMap and
+    // matchedMulti above; no later phase reads it.  Release here so that
+    // its nPop × M_match × 24 B footprint is not carried through the
+    // engine call.
+    {
+        std::vector<std::vector<PopMatchedAF> > empty;
+        popMatched.swap(empty);
+    }
+
     // Per-cluster summix + AF synthesis (scan genotypes for per-cluster AF)
     infoMsg("Per-cluster ancestry estimation and AF synthesis...");
 
@@ -1203,37 +1212,92 @@ void runLEAFPheno(
         }
     }
 
+    // clStats is fully copied into clMatchedInfo above and is not read by
+    // any subsequent phase.  Release its K × M_match × 48 B before
+    // launching testBatchEffects so the engine never sees this buffer.
+    {
+        std::vector<std::vector<ClMarkerStat> > empty;
+        clStats.swap(empty);
+    }
+
     // Per-cluster batch-effect testing.  Pass the GLOBAL weight sum (across
     // all clusters) as the w1 normaliser so that var_ratio_w0 mirrors
     // LEAF.R's `weight1 = weight/(2*sum(pheno$weight))` semantics.
-    infoMsg("Per-cluster batch-effect testing...");
+    //
+    // GRM loading is sequential (disk-bound) and hoisted out of the
+    // worker loop; the K testBatchEffects calls are independent and run
+    // in parallel — mirroring runLEAF's Phase D pattern.
+    std::vector<std::unique_ptr<SparseGRM> > clGRMs(nCluster);
+    if (!spgrmGctaFile.empty() || !spgrmGrabFile.empty()) {
+        infoMsg("Loading %d per-cluster sparse GRMs...", nCluster);
+        for (int c = 0; c < nCluster; ++c) {
+            clGRMs[c] = std::make_unique<SparseGRM>(
+                SparseGRM::load(spgrmGrabFile, spgrmGctaFile,
+                                clusterSD[c].usedIIDs(), clusterSD[c].famIIDs())
+            );
+            infoMsg("  Cluster %d: %u subjects, %zu non-zeros",
+                    c + 1, clGRMs[c]->nSubjects(), clGRMs[c]->nnz());
+        }
+    }
 
-    std::vector<std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> > > clRefMaps(nCluster);
+    std::vector<std::shared_ptr<WtCoxGRefVec> > clRefMaps(nCluster);
 
     const double globalSumWeight = fullWeight.sum();
 
-    for (int c = 0; c < nCluster; ++c) {
-        infoMsg("  Cluster %d: batch-effect testing (%zu markers)...", c + 1, clMatchedInfo[c].size());
+    {
+        const int nWorkers = std::max(1, std::min(nthread, nCluster));
+        infoMsg("Per-cluster batch-effect testing (%d clusters, %d threads)...",
+                nCluster, nWorkers);
+        std::atomic<int> nextCluster{0};
+        std::vector<std::string> batchErrors(nCluster);
 
-        std::unique_ptr<SparseGRM> grm;
-        if (!spgrmGctaFile.empty() || !spgrmGrabFile.empty()) {
-            grm = std::make_unique<SparseGRM>(
-                SparseGRM::load(spgrmGrabFile, spgrmGctaFile, clusterSD[c].usedIIDs(), clusterSD[c].famIIDs())
-            );
-            infoMsg("    Sparse GRM: %u subjects, %zu non-zeros", grm->nSubjects(), grm->nnz());
-        }
+        auto batchWorker = [&]() {
+            for (;;) {
+                int c = nextCluster.fetch_add(1, std::memory_order_relaxed);
+                if (c >= nCluster) break;
+                try {
+                    auto refMap = testBatchEffects(
+                        clMatchedInfo[c],
+                        clusterSD[c].residuals(),
+                        clusterSD[c].weights(),
+                        clusterSD[c].indicator(),
+                        clGRMs[c].get(),
+                        refPrevalence,
+                        cutoff,
+                        globalSumWeight
+                    );
+                    const size_t retained = refMap->size();
+                    clRefMaps[c] = std::move(refMap);
+                    infoMsg("  Cluster %d: %zu markers retained", c + 1, retained);
+                } catch (const std::exception &ex) {
+                    batchErrors[c] = ex.what();
+                }
+            }
+        };
 
-        clRefMaps[c] = testBatchEffects(
-            clMatchedInfo[c],
-            clusterSD[c].residuals(),
-            clusterSD[c].weights(),
-            clusterSD[c].indicator(),
-            grm.get(),
-            refPrevalence,
-            cutoff,
-            globalSumWeight
-        );
-        infoMsg("    %zu markers retained", clRefMaps[c]->size());
+        std::vector<std::thread> threads;
+        threads.reserve(nWorkers - 1);
+        for (int t = 0; t < nWorkers - 1; ++t)
+            threads.emplace_back(batchWorker);
+        batchWorker();
+        for (auto &th : threads) th.join();
+
+        for (int c = 0; c < nCluster; ++c)
+            if (!batchErrors[c].empty())
+                throw std::runtime_error(
+                          "LEAF batch-effect failed for cluster " +
+                          std::to_string(c + 1) + ": " + batchErrors[c]);
+    }
+
+    // After all clusters have completed batch-effect testing, the only
+    // per-marker state still needed by the engine is `clRefMaps`.  Release
+    // matchedMulti (~136 B × M_match) and clMatchedInfo (~64 B × K × M_match)
+    // so the engine scan does not carry their footprint.
+    {
+        std::vector<MatchedMultiPop> emptyMM;
+        matchedMulti.swap(emptyMM);
+        std::vector<std::vector<MatchedMarkerInfo> > emptyCMI;
+        clMatchedInfo.swap(emptyCMI);
     }
 
     // ---- 7. Build LEAFMethod and run marker engine ----
@@ -1517,6 +1581,14 @@ void runLEAF(
     });
     const size_t nMatched = matchedMulti.size();
     infoMsg("  %zu markers present in all %d populations", nMatched, nPop);
+
+    // popMatched[] is consumed by allPopMap / matchedMulti construction only;
+    // no later phase reads it.  Release nPop × M_match × 24 B before the
+    // marker-scan and engine call.
+    {
+        std::vector<std::vector<PopMatchedAF> > empty;
+        popMatched.swap(empty);
+    }
 
     // Build per-cluster usedIIDs for GRM loading (phenotype-independent)
     std::vector<std::vector<std::string> > clusterUsedIIDs(K);
@@ -1834,12 +1906,20 @@ void runLEAF(
         }
     }
 
+    // phClStats is fully drained into clMatchedInfo above and is not used
+    // by Phase D or the engine.  Release P × K × M_match × 40 B before
+    // launching batch-effect testing.
+    {
+        std::vector<std::vector<std::vector<MarkerPhStat> > > empty;
+        phClStats.swap(empty);
+    }
+
     // ── Phase D: parallel batch-effect testing ──────────────────────
     // P × K tasks, parallelized with min(T, P*K) workers.  Pass each
     // phenotype's global weight sum so that w1 = weight / (2 · globalSum)
     // matches LEAF.R's `weight1` (defined on the full pheno table).
-    std::vector<std::vector<std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> > > > clRefMaps(
-        P, std::vector<std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> > >(K));
+    std::vector<std::vector<std::shared_ptr<WtCoxGRefVec> > > clRefMaps(
+        P, std::vector<std::shared_ptr<WtCoxGRefVec> >(K));
     {
         const int totalTasks = P * K;
         const int nWorkers = std::min(nthreads, totalTasks);
@@ -1886,6 +1966,16 @@ void runLEAF(
                           "LEAF batch-effect failed for '" + traitNames[p] +
                           "' cluster " + std::to_string(c + 1) + ": " + batchErrors[t]);
             }
+    }
+
+    // After Phase D, only clRefMaps is needed by the engine.  Release
+    // matchedMulti (~136 B × M_match) and clMatchedInfo (~64 B × P × K × M_match)
+    // so the engine scan does not carry these footprints.
+    {
+        std::vector<MatchedMultiPop> emptyMM;
+        matchedMulti.swap(emptyMM);
+        std::vector<std::vector<std::vector<MatchedMarkerInfo> > > emptyCMI;
+        clMatchedInfo.swap(emptyCMI);
     }
 
     // ── Phase E: multi-phenotype marker engine ──────────────────────

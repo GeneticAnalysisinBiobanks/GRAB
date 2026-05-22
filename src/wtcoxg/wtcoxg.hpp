@@ -13,7 +13,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
-#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "engine/marker.hpp"
@@ -38,6 +38,14 @@ struct WtCoxGRefInfo {
     double var_ratio_int = 1.0;
     double var_ratio_ext = 1.0;
 };
+
+// Sorted-by-genoIndex sequence of (genoIndex, WtCoxGRefInfo).  Replaces the
+// previous std::unordered_map representation: the lookup pattern (one
+// lower_bound per marker per chunk) costs O(log M) which is negligible
+// compared to the per-chunk GEMM cost, and the contiguous storage saves
+// ≈ 30 % memory per entry on libstdc++ vs the node-based hash table.
+// Required invariant: entries are ascending in `.first` (genoIndex).
+using WtCoxGRefVec = std::vector<std::pair<uint64_t, WtCoxGRefInfo> >;
 
 // ======================================================================
 // WtCoxGShared — read-only null-model state shared across all worker
@@ -78,20 +86,20 @@ class WtCoxGMethod : public MethodBase {
 //   cutoff:        batch-effect p-value threshold (e.g. 0.05)
 //   SPA_Cutoff:    z-score threshold to switch from normal to SPA
 //   outlierRatio:  IQR multiplier for residual outlier split (e.g. 1.5)
-//   refMap:        genoIndex → WtCoxGRefInfo (from Phase 2)
+//   refMap:        sorted vector of (genoIndex, WtCoxGRefInfo) from Phase 2
     WtCoxGMethod(
         Eigen::VectorXd R,
         Eigen::VectorXd w,
         double cutoff,
         double SPA_Cutoff,
         double outlierRatio,
-        std::shared_ptr<const std::unordered_map<uint64_t, WtCoxGRefInfo> > refMap
+        std::shared_ptr<const WtCoxGRefVec> refMap
     );
 
 // Clone-side constructor: shares the already-built null-model state.
     WtCoxGMethod(
         std::shared_ptr<const WtCoxGShared> shared,
-        std::shared_ptr<const std::unordered_map<uint64_t, WtCoxGRefInfo> > refMap
+        std::shared_ptr<const WtCoxGRefVec> refMap
     );
 
 // ---- MethodBase interface ----
@@ -221,7 +229,7 @@ class WtCoxGMethod : public MethodBase {
 
 // Shared read-only null-model state (built once on the main thread).
     std::shared_ptr<const WtCoxGShared> m_shared;
-    std::shared_ptr<const std::unordered_map<uint64_t, WtCoxGRefInfo> > m_refMap;
+    std::shared_ptr<const WtCoxGRefVec> m_refMap;
 
 // Per-chunk scratch (rebuilt in prepareChunk; per-worker by design).
     std::vector<WtCoxGRefInfo> m_chunkRefInfo;
@@ -303,8 +311,9 @@ void computeMarkerStats(
 //   4. Compute optimal w.ext per MAF group (Brent 1D)
 //   5. Compute var_ratio_ext per MAF group from sparse GRM (if provided)
 //
-// Populates refInfo for each matched marker and returns a shared map.
-std::shared_ptr<std::unordered_map<uint64_t, WtCoxGRefInfo> >testBatchEffects(
+// Populates refInfo for each matched marker and returns a shared vector
+// (sorted ascending by genoIndex, suitable for std::lower_bound lookup).
+std::shared_ptr<WtCoxGRefVec> testBatchEffects(
     const std::vector<MatchedMarkerInfo> &matched,
     const Eigen::VectorXd &residuals,
     const Eigen::VectorXd &weights,
