@@ -301,6 +301,8 @@ static void logArgsInEffect(const Args &args) {
     if (args.nClusters != 0) std::fprintf(stderr, "  --leaf-nclusters %d\n", args.nClusters);
     if (!args.leafClusterFile.empty())
         std::fprintf(stderr, "  --leaf-cluster-file %s\n", args.leafClusterFile.c_str());
+    if (args.leafKmeansNstart != 25)
+        std::fprintf(stderr, "  --leaf-kmeans-nstart %d\n", args.leafKmeansNstart);
     if (args.compressionLevel != 0) std::fprintf(stderr, "  --compression-level %d\n", args.compressionLevel);
     if (args.minMafIBD != 0.01) std::fprintf(stderr, "  --min-maf-ibd %g\n", args.minMafIBD);
 }
@@ -1210,7 +1212,8 @@ int run(
                 args.hweCutoff,
                 args.keepFile,
                 args.removeFile,
-                args.leafClusterFile
+                args.leafClusterFile,
+                args.leafKmeansNstart
             );
         }
 

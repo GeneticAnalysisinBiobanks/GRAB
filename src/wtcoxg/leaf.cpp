@@ -1317,8 +1317,12 @@ void runLEAF(
     double hweCutoff,
     const std::string &keepFile,
     const std::string &removeFile,
-    const std::string &clusterFile
+    const std::string &clusterFile,
+    int kmeansNstart
 ) {
+    if (kmeansNstart < 1)
+        throw std::runtime_error("runLEAF: --leaf-kmeans-nstart must be >= 1 (got " +
+                                 std::to_string(kmeansNstart) + ")");
     const int P = static_cast<int>(parsedSpecs.size());
     const int nPop = static_cast<int>(refAfFiles.size());
     int K = nClusters; // may be 0 when --leaf-cluster-file infers it
@@ -1378,8 +1382,8 @@ void runLEAF(
     } else {
         Eigen::MatrixXd PCs = sdFull.getColumns(pcColNames);
         infoMsg("  %d PCs for K-means clustering", static_cast<int>(PCs.cols()));
-        infoMsg("K-means clustering into %d clusters...", K);
-        clusterLabels = kmeansCluster(PCs, K, /*nstart=*/ 25, seed, nthreads);
+        infoMsg("K-means clustering into %d clusters (nstart=%d)...", K, kmeansNstart);
+        clusterLabels = kmeansCluster(PCs, K, kmeansNstart, seed, nthreads);
         writeKmeansClusterTsv(outPrefix, sdFull.usedIIDs(), clusterLabels);
     }
 

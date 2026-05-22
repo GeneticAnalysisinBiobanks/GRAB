@@ -85,6 +85,7 @@ struct Args {
     int nSnpPerChunk = 8192;
     int compressionLevel = 0; // --compression-level (0 = library default)
     int nClusters = 0;        // 0 = auto (from --ref-af count)
+    int leafKmeansNstart = 25; // --leaf-kmeans-nstart: K-means++ restarts
     uint64_t seed = 0;        // 0 = use std::random_device
     std::string leafClusterFile; // --leaf-cluster-file: pre-computed cluster
                                  // labels (two columns: IID, cluster).  When

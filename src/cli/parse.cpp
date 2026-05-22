@@ -172,6 +172,7 @@ Args parseArgs(
         else if (arg == "--chunk-size")a.nSnpPerChunk = parseInt(next(), arg);
         else if (arg == "--leaf-nclusters")a.nClusters = parseInt(next(), arg);
         else if (arg == "--leaf-cluster-file")a.leafClusterFile = next();
+        else if (arg == "--leaf-kmeans-nstart")a.leafKmeansNstart = parseInt(next(), arg);
         else if (arg == "--seed")a.seed = parseULL(next(), arg);
         else if (arg == "--extract")a.extractFile = next();
         else if (arg == "--exclude")a.excludeFile = next();

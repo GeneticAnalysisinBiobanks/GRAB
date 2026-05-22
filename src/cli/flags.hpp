@@ -320,6 +320,13 @@ in {1, …, K}; K is inferred as max(cluster) and cross-checked against
     nullptr
 };
 
+inline const FlagDef kLeafKmeansNstart = {
+    "--leaf-kmeans-nstart", "INT",
+    "Number of K-means++ random restarts for LEAF (default: 25). "
+    "Ignored when --leaf-cluster-file is supplied.",
+    nullptr
+};
+
 inline const FlagDef kKeep = {
     "--keep", "FILE", "Restrict analysis to subjects listed in file (FID IID per line)",
     nullptr
@@ -673,7 +680,7 @@ inline const FlagDef *const kLEAFReq[] = {
 
 inline const FlagDef *const kLEAFOpt[] = {
     &kPheno,     &kCovar,     &kCovarName, &kResidName, &kPhenoName,
-    &kPcCols,    &kNClusters, &kLeafClusterFile,
+    &kPcCols,    &kNClusters, &kLeafClusterFile, &kLeafKmeansNstart,
     &kSeed,      &kSpGrm,     &kBatchPThresh, &kSpaZThresh,
     &kOutlierIqr,
     &kThreads,   &kChunkSize, &kGeno,      &kMaf,       &kMac,          &kHwe,        &kChr,

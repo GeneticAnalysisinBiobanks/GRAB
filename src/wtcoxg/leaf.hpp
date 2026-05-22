@@ -225,7 +225,8 @@ void runLEAF(
     double hweCutoff,
     const std::string &keepFile = {},
     const std::string &removeFile = {},
-    const std::string &clusterFile = {}
+    const std::string &clusterFile = {},
+    int kmeansNstart = 25
 );
 
 // Parse a --leaf-cluster-file (two named columns: IID + cluster).

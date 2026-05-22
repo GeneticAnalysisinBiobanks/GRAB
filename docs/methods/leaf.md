@@ -56,8 +56,9 @@ ways.
 **K-means on principal components.** When `--pc-cols` supplies the
 column names of $d$ principal components $\mathbf{X} \in
 \mathbb{R}^{n \times d}$, LEAF runs $K$-means with $K$-means++
-initialisation and `nstart = 25` random restarts
-(`kmeansCluster` in
+initialisation and `--leaf-kmeans-nstart` independent random restarts
+(default $25$;
+`kmeansCluster` in
 [src/wtcoxg/leaf.cpp](../../src/wtcoxg/leaf.cpp)). The objective is
 
 $$
@@ -74,7 +75,11 @@ $\|\mathbf{x}_i - \mathbf{c}_j\|^2 = \|\mathbf{x}_i\|^2 - 2\mathbf{x}_i^\top
 \mathbf{c}_j + \|\mathbf{c}_j\|^2$ so that the $n \times K$ distance
 matrix is computed by a single Eigen / BLAS `dgemm`. The restart with the
 lowest inertia is kept and the labels are renumbered to
-$\{1, \ldots, K\}$ to match the R convention.
+$\{1, \ldots, K\}$ to match the R convention. The restarts are
+parallelised over $\min(\texttt{nthreads}, \texttt{nstart})$ workers via
+an atomic restart-index counter; restart $r$ uses a deterministic RNG
+seed $\texttt{baseSeed} + r$, so the final clustering is independent of
+$\texttt{--threads}$.
 
 **Pre-computed cluster file.** When `--leaf-cluster-file` is supplied,
 `parseLeafClusterFile` in
@@ -421,7 +426,10 @@ file via `--leaf-cluster-file`. The optional flag `--leaf-nclusters`
 overrides the default cluster count
 $K = $ number of `.afreq` files when K-means is run; it is
 cross-checked against the maximum cluster value in
-`--leaf-cluster-file` when both are provided. The remaining flags
+`--leaf-cluster-file` when both are provided. The optional flag
+`--leaf-kmeans-nstart` (default $25$) controls the number of
+K-means++ random restarts; it is ignored when `--leaf-cluster-file` is
+supplied. The remaining flags
 (`--batch-effect-p-threshold`, `--spa-z-threshold`,
 `--outlier-iqr-threshold`, `--threads`, `--chunk-size`, `--geno`,
 `--maf`, `--mac`, `--hwe`) behave identically to the WtCoxG
