@@ -22,79 +22,16 @@
 #      pre-refactor baseline.  A passing build is not sufficient
 #      evidence that a refactor preserved behavior; output equivalence
 #      is.
-#
-# Notes on defaults shown below:
-#
-#   --chr 1-2,3              The bundled 1kg fixture contains markers only
-#                            on chromosomes 1, 2, 3; the syntax "1-2,3"
-#                            combines a range and a singleton and resolves
-#                            to the set {1, 2, 3}.
-#   --compression {gz,zst}   Output compression codec.  Methods are split
-#                            across all three settings so the script
-#                            exercises plain text (SPACox), gzip (LEAF,
-#                            WtCoxG), and zstd (everything else).  For
-#                            SPACox the --compression / --compression-level
-#                            flags are deliberately omitted from the
-#                            optional block to leave the output as plain
-#                            text.
-#   --compression-level INT  zstd default is 3; gzip default is 6.  The
-#                            script passes each level explicitly so that
-#                            the "Options in effect" log matches the
-#                            value actually applied.
-#   --save-resid             Parameterless switch that writes fitted
-#                            residuals.  Per-method suffix avoids
-#                            collisions across invocations and the
-#                            residual-mode block of the same method
-#                            reloads the file, exercising the fit →
-#                            save → reload round trip:
-#                              SPACox  → ${OUT}.null.resid
-#                                        (one column per phenotype;
-#                                        re-read by the SPACox
-#                                        residual-mode block via
-#                                        --pheno + --resid-name.)
-#                              SAGELD  → ${OUT}.<pheno>.SAGELD.resid
-#                                        (per-phenotype triplet R_G /
-#                                        R_<E> / R_Gx<E>; the
-#                                        residual-mode SAGELD block
-#                                        consumes the Long1 file.)
-#                            SPAmix / SPAGRM / SPAmixPlus /
-#                            SPAmixLocalPlus also share the SPACox
-#                            null.resid suffix; including --save-resid
-#                            in their fit-mode blocks would overwrite
-#                            the SPACox file, so the flag is omitted
-#                            there.
-#
-# Two categories of flags are intentionally omitted because they have no
-# default value and require an external companion file:
-#
-#   --keep FILE         --remove FILE
-#   --extract FILE      --exclude FILE
-#
-# Add them by hand when a real subject or SNP subset restriction is
-# required.
-#
-# Mutually exclusive flag groups are resolved by choosing one canonical
-# default:
-#   - Genotype input             --pfile
-#   - Sparse GRM input           --sp-grm-plink2
-#   - --pheno-name vs --resid-name: only SPACox and SAGELD are run in
-#     both modes (the residual-mode block reloads the .resid file
-#     produced by the fit-mode block above it).  SPAmix and SPAGRM
-#     run only in fit-mode; their residual-mode invocations would
-#     duplicate coverage already provided by SPACox.
-#   - SPAsqr bandwidth           --spasqr-h-scale 3  (the score-mode default;
-#                                --spasqr-h is unset)
 
 set -e
 
-OUT=examples_output/fit          # output prefix for fit-mode blocks
-RESID_OUT=examples_output/resid  # output prefix for residual-mode blocks (SPACox, SAGELD)
-
-mkdir -p examples_output
+OUT_DIR=examples_output
+mkdir -p ${OUT_DIR}
+OUT=${OUT_DIR}/fit          # output prefix for fit-mode runs
+RESID_OUT=${OUT_DIR}/resid  # output prefix for residual-mode runs (SPACox, SAGELD)
 
 ## ── Utility: cal-af-coef ──────────────────────────────────────────────
-# Produces ${OUT}.afc.zst, consumed by SPAmix / SPAmixPlus via
-# --ind-af-coef.
+# Produces ${OUT}.afc.zst, consumed by SPAmix via --ind-af-coef.
 
 build/grab2 \
   --cal-af-coef \
@@ -114,8 +51,7 @@ build/grab2 \
   --compression-level 3
 
 ## ── Utility: cal-pairwise-ibd ─────────────────────────────────────────
-# Produces ${OUT}.ibd.zst, consumed by SPAGRM / SAGELD via
-# --pairwise-ibd.
+# Produces ${OUT}.ibd.zst, consumed by SPAGRM / SAGELD via --pairwise-ibd.
 
 build/grab2 \
   --cal-pairwise-ibd \
@@ -130,11 +66,6 @@ build/grab2 \
   --compression-level 3
 
 ## ── SPACox (fit mode, --pheno-name) ───────────────────────────────────
-# Default --regression-model is 'auto': per-token inference from values
-# and from the TIME:EVENT colon syntax.  Output left uncompressed
-# (--compression omitted) to exercise the plain-text writer path.  This
-# is the one block that keeps --save-resid: it writes ${OUT}.null.resid
-# and no later block overwrites it.
 
 build/grab2 \
   --method SPACox \
@@ -159,12 +90,6 @@ build/grab2 \
 
 ## ── SPACox (residual mode, --resid-name) ──────────────────────────────
 # Consumes the combined residual file produced by the SPACox fit-mode
-# block above (--save-resid → ${OUT}.null.resid).  The file's data
-# columns share the phenotype names from --pheno-name; covariates for
-# the SPA adjustment are loaded separately from the original phenotype
-# file via --covar.  Output is written under ${RESID_OUT} so the
-# reloaded-residual outputs can be diffed against the fit-mode
-# outputs under ${OUT}.
 
 build/grab2 \
   --method SPACox \
@@ -213,8 +138,6 @@ build/grab2 \
   --compression-level 3
 
 ## ── SPAGRM (fit mode, --pheno-name) ───────────────────────────────────
-# Add --spagrm-control-outlier (parameterless) to enable iterative
-# IQR-ratio adjustment that keeps the outlier share in (0, 5%].
 
 build/grab2 \
   --method SPAGRM \
@@ -240,8 +163,7 @@ build/grab2 \
   --compression zst \
   --compression-level 3
 
-## ── SAGELD (pheno mode: --pheno-name + --sageld-x) ────────────────────
-# SAGELD does not accept --regression-model (auto is implicit).
+## ── SAGELD (fit mode: --pheno-name + --sageld-x) ────────────────────
 
 build/grab2 \
   --method SAGELD \
@@ -267,12 +189,7 @@ build/grab2 \
   --compression-level 3
 
 ## ── SAGELD (residual mode, --resid-name) ──────────────────────────────
-# Consumes the per-phenotype residual file produced by the SAGELD
-# pheno-mode block above (--save-resid → ${OUT}.Long1.SAGELD.resid);
-# the column layout (R_G, R_TIME, R_GxTIME) is exactly what
-# --resid-name expects in residual-input mode.  Output is written
-# under ${RESID_OUT} so the reloaded-residual SAGELD output can be
-# diffed against the pheno-mode Long1.SAGELD.zst output under ${OUT}.
+# Consumes the residual file produced by the SAGELD fit mode
 
 build/grab2 \
   --method SAGELD \
@@ -296,26 +213,20 @@ build/grab2 \
 
 ## ── Utility: int-pheno ────────────────────────────────────────────────
 # Produces ${OUT}.int.txt, a phenotype file containing the
-# INT-transformed Quantitative and Time columns only.  The downstream
-# SPAsqr block consumes this file via --pheno and loads the remaining
-# covariates from the original phenotype file via --covar.
+# INT-transformed Quantitative and Time columns only.
 
 build/grab2 \
   --int-pheno \
   --pheno examples/1kg.pheno \
   --pheno-name Quantitative,Time \
-  --out ${OUT}.int
+  --out ${OUT_DIR}/int_pheno
 
 ## ── SPAsqr (score mode, fit path) ─────────────────────────────────────
-# Bandwidth: pick --spasqr-h-scale (the IQR divisor, default 3 in score
-# mode).  --spasqr-h is left unset; the two flags are mutually
-# exclusive.  SPAsqr does not consume --save-resid.  The phenotype file
-# is the int-pheno output (Quantitative, Time only); MALE / PC1..PC4 are
-# loaded from the original phenotype file via --covar.
+# Consumes the INT-transformed phenotype file produced above.
 
 build/grab2 \
   --method SPAsqr \
-  --pheno examples_output/1kg.int.txt \
+  --pheno ${OUT_DIR}/int_pheno.txt \
   --pheno-name Quantitative,Time \
   --covar examples/1kg.pheno \
   --covar-name MALE,PC1,PC2,PC3,PC4 \
@@ -344,8 +255,6 @@ build/grab2 \
   --compression-level 3
 
 ## ── WtCoxG ────────────────────────────────────────────────────────────
-# WtCoxG does not consume --save-resid.  Output compressed with gzip to
-# exercise the zlib writer path.
 
 build/grab2 \
   --method WtCoxG \
@@ -373,10 +282,6 @@ build/grab2 \
   --compression-level 6
 
 ## ── LEAF ──────────────────────────────────────────────────────────────
-# --leaf-cluster-file is mutually exclusive with K-means restarts.
-# This block uses internal K-means; supply --leaf-cluster-file FILE to
-# skip K-means and read pre-computed cluster labels instead.  LEAF does
-# not consume --save-resid.  Output compressed with gzip.
 
 build/grab2 \
   --method LEAF \

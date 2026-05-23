@@ -118,15 +118,15 @@ double HweExact(
 }
 
 GenoStats statsFromCounts(
-    uint32_t nHom1,
+    uint32_t nHomAlt,
     uint32_t nHet,
-    uint32_t nHom2,
+    uint32_t nHomRef,
     uint32_t nMissing,
     uint32_t nSamples
 ) {
     const uint32_t nonMissing = nSamples - nMissing;
     GenoStats gs;
-    gs.altCounts = 2 * nHom1 + nHet; // count A1 (ALT)
+    gs.altCounts = 2 * nHomAlt + nHet; // count of ALT allele
     gs.missingRate = static_cast<double>(nMissing) / nSamples;
 
     if (nonMissing == 0) {
@@ -140,6 +140,6 @@ GenoStats statsFromCounts(
     gs.altFreq = static_cast<double>(gs.altCounts) / (2.0 * nonMissing);
     gs.maf = std::min(gs.altFreq, 1.0 - gs.altFreq);
     gs.mac = std::min(gs.altCounts, 2 * nonMissing - gs.altCounts);
-    gs.hweP = HweExact(nHet, nHom1, nHom2);
+    gs.hweP = HweExact(nHet, nHomAlt, nHomRef);
     return gs;
 }

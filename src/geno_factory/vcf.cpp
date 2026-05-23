@@ -282,7 +282,10 @@ void VcfCursor::getGenotypes(
             }
             ++outIdx;
         }
-        GenoStats gs = statsFromCounts(nHomRef, nHet, nHomAlt, nMissing, nUsed);
+        // statsFromCounts expects nHomAlt as its first argument so that
+        // altCounts = 2*nHomAlt + nHet is the count of the ALT allele
+        // listed in the VCF/BCF ALT field.
+        GenoStats gs = statsFromCounts(nHomAlt, nHet, nHomRef, nMissing, nUsed);
         altFreq = gs.altFreq;
         altCounts = gs.altCounts;
         missingRate = gs.missingRate;
@@ -336,7 +339,10 @@ void VcfCursor::getGenotypes(
         ++outIdx;
     }
 
-    GenoStats gs = statsFromCounts(nHomRef, nHet, nHomAlt, nMissing, nUsed);
+    // statsFromCounts expects nHomAlt as its first argument so that
+    // altCounts = 2*nHomAlt + nHet is the count of the ALT allele
+    // listed in the VCF/BCF ALT field.
+    GenoStats gs = statsFromCounts(nHomAlt, nHet, nHomRef, nMissing, nUsed);
     altFreq = gs.altFreq;
     altCounts = gs.altCounts;
     missingRate = gs.missingRate;

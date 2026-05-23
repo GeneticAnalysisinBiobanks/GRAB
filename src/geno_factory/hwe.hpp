@@ -29,12 +29,17 @@ double HweExact(
     uint32_t obs_hom2
 );
 
-// Compute QC stats from genotype class counts.
-// Always uses the exact test (plink2 default).
+// Compute QC stats from genotype class counts.  Always uses the exact
+// HWE test (plink2 default).  The first argument is the count of
+// subjects homozygous for the ALT allele (the second allele in
+// .pvar/.bim/.bgen/.vcf); altCounts is computed as 2*nHomAlt + nHet so
+// that altFreq is the ALT allele frequency, not the REF allele
+// frequency.  Callers must classify per-subject dosage 0/1/2 into
+// nHomRef/nHet/nHomAlt before invoking this function.
 GenoStats statsFromCounts(
-    uint32_t nHom1,
+    uint32_t nHomAlt,
     uint32_t nHet,
-    uint32_t nHom2,
+    uint32_t nHomRef,
     uint32_t nMissing,
     uint32_t nSamples
 );

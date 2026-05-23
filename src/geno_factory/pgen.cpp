@@ -464,8 +464,10 @@ void PgenCursor::getGenotypes(
         }
     }
 
-    // Compute QC stats
-    GenoStats gs = statsFromCounts(nHomRef, nHet, nHomAlt, nMissing, sampleCt);
+    // Compute QC stats.  statsFromCounts expects nHom-of-ALT as its first
+    // argument so that altCounts = 2*nHomAlt + nHet is the count of the
+    // ALT allele listed in .pvar column 5.
+    GenoStats gs = statsFromCounts(nHomAlt, nHet, nHomRef, nMissing, sampleCt);
     altFreq = gs.altFreq;
     altCounts = gs.altCounts;
     missingRate = gs.missingRate;
