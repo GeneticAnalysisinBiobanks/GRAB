@@ -57,10 +57,12 @@ inline double qnorm(
     bool log_p = false
 ) {
     if (log_p) p = std::exp(p);
-    if (!lower_tail) p = 1.0 - p;
     p = std::clamp(p, 1e-300, 1.0 - 1e-15);
     boost::math::normal_distribution<double> dist(mean, sd);
-    return boost::math::quantile(dist, p);
+    // Use Boost's complement for the upper tail so very small p (e.g.
+    // 1e-300) does not collapse to 1.0 via subtractive cancellation.
+    if (lower_tail) return boost::math::quantile(dist, p);
+    return boost::math::quantile(boost::math::complement(dist, p));
 }
 
 // Chi-squared quantile.
@@ -71,10 +73,12 @@ inline double qchisq(
     bool log_p = false
 ) {
     if (log_p) p = std::exp(p);
-    if (!lower_tail) p = 1.0 - p;
     p = std::clamp(p, 1e-300, 1.0 - 1e-15);
     boost::math::chi_squared_distribution<double> dist(df);
-    return boost::math::quantile(dist, p);
+    // Use Boost's complement for the upper tail so very small p (e.g.
+    // 1e-300) does not collapse to 1.0 via subtractive cancellation.
+    if (lower_tail) return boost::math::quantile(dist, p);
+    return boost::math::quantile(boost::math::complement(dist, p));
 }
 
 // Student-t CDF (two-tailed p-value helper).

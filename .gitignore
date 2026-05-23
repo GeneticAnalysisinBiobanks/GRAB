@@ -10,7 +10,6 @@ examples_output/
 .claude/
 .vscode/
 
-*.R
 .DS_Store
 
 # macOS

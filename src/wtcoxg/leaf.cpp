@@ -6,6 +6,7 @@
 #include "io/subject_data.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
+#include "util/meta_pvalue.hpp"
 #include "util/simd_dispatch.hpp"
 #include "wtcoxg/wtcoxg.hpp"
 
@@ -835,26 +836,10 @@ void LEAFMethod::getResultVec(
         mac[c] = std::min(dr.gSum, 2.0 * static_cast<double>(dr.N) - dr.gSum);
     }
 
-    // Fixed-effects meta-analysis: pool scores across clusters
-    auto metaP = [](const std::vector<double> &scores, const std::vector<double> &pvals) -> double {
-        double sumScore = 0.0, sumVar = 0.0;
-        for (size_t c = 0; c < scores.size(); ++c) {
-            if (std::isnan(scores[c]) || std::isnan(pvals[c]) || pvals[c] <= 0.0 ||
-                pvals[c] >= 1.0) continue;
-            double chisq = math::qchisq(pvals[c], 1.0, false, false);
-            if (chisq < 1e-30) chisq = 1e-30;
-            double var = (scores[c] * scores[c]) / chisq;
-            if (std::isnan(var)) continue;
-            sumScore += scores[c];
-            sumVar += var;
-        }
-        if (sumVar <= 0.0) return std::numeric_limits<double>::quiet_NaN();
-        double z = sumScore / std::sqrt(sumVar);
-        return std::erfc(std::fabs(z) / std::sqrt(2.0));              // two-sided p-value
-    };
-
-    result.push_back(metaP(sExt, pExt));
-    result.push_back(metaP(sNoext, pNoext));
+    // Fixed-effects meta-analysis: pool scores across clusters.
+    // See src/util/meta_pvalue.hpp for the symmetric p-value clamp.
+    result.push_back(math::metaPvalueScorePool(sExt,   pExt));
+    result.push_back(math::metaPvalueScorePool(sNoext, pNoext));
     for (int c = 0; c < m_nCluster; ++c) {
         const auto &ri = m_clusterMethods[c]->chunkRefInfoAt(markerInChunkIdx);
         result.push_back(mac[c]);
@@ -928,23 +913,6 @@ void LEAFMethod::processScoreBatch(
 
     std::vector<double> pExt(K), pNoext(K), sExt(K), sNoext(K), mac(K);
 
-    auto metaP = [](const std::vector<double> &scoresArr, const std::vector<double> &pvals) -> double {
-        double sumScore = 0.0, sumVar = 0.0;
-        for (size_t c = 0; c < scoresArr.size(); ++c) {
-            if (std::isnan(scoresArr[c]) || std::isnan(pvals[c]) ||
-                pvals[c] <= 0.0 || pvals[c] >= 1.0) continue;
-            double chisq = math::qchisq(pvals[c], 1.0, false, false);
-            if (chisq < 1e-30) chisq = 1e-30;
-            double var = (scoresArr[c] * scoresArr[c]) / chisq;
-            if (std::isnan(var)) continue;
-            sumScore += scoresArr[c];
-            sumVar += var;
-        }
-        if (sumVar <= 0.0) return std::numeric_limits<double>::quiet_NaN();
-        double z = sumScore / std::sqrt(sumVar);
-        return std::erfc(std::fabs(z) / std::sqrt(2.0));
-    };
-
     for (int b = 0; b < B; ++b) {
         const int chunkIdx = chunkIdxs[b];
 
@@ -964,8 +932,8 @@ void LEAFMethod::processScoreBatch(
         auto &r = results[b];
         r.clear();
         r.reserve(2 + 6 * K);
-        r.push_back(metaP(sExt, pExt));
-        r.push_back(metaP(sNoext, pNoext));
+        r.push_back(math::metaPvalueScorePool(sExt,   pExt));
+        r.push_back(math::metaPvalueScorePool(sNoext, pNoext));
         for (int c = 0; c < K; ++c) {
             const auto &ri = m_clusterMethods[c]->chunkRefInfoAt(chunkIdx);
             r.push_back(mac[c]);

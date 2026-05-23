@@ -479,7 +479,7 @@ same time as all `N` workers.
 | -------------------------------- | ------- | --------------------------------------------- |
 | `--spa-z-threshold FLOAT`        | 2.0     | All SPA methods                               |
 | `--covar-p-threshold FLOAT`      | 5e-5    | SPACox (covariate-adjusted refit gate)        |
-| `--outlier-iqr-threshold FLOAT`  | 1.5     | SPAGRM, SAGELD, SPAmix, SPAmixPlus,           |
+| `--outlier-iqr-multiplier FLOAT` | 1.5     | SPAGRM, SAGELD, SPAmix, SPAmixPlus,           |
 |                                  |         | SPAmixLocalPlus, WtCoxG, LEAF, SPAsqr         |
 | `--spagrm-control-outlier`       | off     | SPAGRM (iterative IQR-ratio adjustment)       |
 | `--spasqr-outlier-abs-bound FLOAT` | 0.55  | SPAsqr (absolute outlier cutoff)              |

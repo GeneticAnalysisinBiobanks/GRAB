@@ -123,14 +123,14 @@ Vendored libraries under `third_party/` retain their upstream licences:
 If GRAB contributes to a publication, please cite the method-specific
 paper(s) listed below:
 
-- **SPACox** — Bi *et al*. (2020). A Fast and Accurate Method for Genome-Wide Time-to-Event Data Analysis and Its Application to UK Biobank. *Am. J. Hum. Genet.*
+- **SPACox** — Bi *et al*. (2020) A Fast and Accurate Method for Genome-Wide Time-to-Event Data Analysis and Its Application to UK Biobank. *Am. J. Hum. Genet.*
   [doi:10.1016/j.ajhg.2020.06.003](https://doi.org/10.1016/j.ajhg.2020.06.003)
-- **SPAmix** — Ma *et al*. (2025). SPAmix: a scalable, accurate, and universal analysis framework for large-scale genetic association studies in admixed populations. *Genome Biol.*
+- **SPAmix** — Ma *et al*. (2025) SPAmix: a scalable, accurate, and universal analysis framework for large-scale genetic association studies in admixed populations. *Genome Biol.*
   [doi:10.1186/s13059-025-03827-9](https://doi.org/10.1186/s13059-025-03827-9)
-- **SPAGRM** — Xu *et al*. (2025). SPA(GRM): effectively controlling for sample relatedness in large-scale genome-wide association studies of longitudinal traits *Nat. Commun.*
+- **SPAGRM** — Xu *et al*. (2025) SPA(GRM): effectively controlling for sample relatedness in large-scale genome-wide association studies of longitudinal traits *Nat. Commun.*
   [doi:10.1038/s41467-025-56669-1](https://doi.org/10.1038/s41467-025-56669-1)
-- **WtCoxG** — Li *et al*. (2025). Applying weighted Cox regression to genome-wide association studies of time-to-event phenotypes *Nat. Comput. Sci.*
+- **WtCoxG** — Li *et al*. (2025) Applying weighted Cox regression to genome-wide association studies of time-to-event phenotypes *Nat. Comput. Sci.*
   [doi:10.1038/s43588-025-00864-z](https://doi.org/10.1038/s43588-025-00864-z)
-- **SAGELD** — Xu *et al*. (in preparation)
-- **SPAsqr** — Heng *et al*. (in preparation)
-- **LEAF** — Li *et al*. (in preparation)
+- **SAGELD** — Xu *et al*. (in prep) Leveraging longitudinal data to boost statistical power for gene-environment interaction analysis.
+- **SPAsqr** — Heng *et al*. (in prep)
+- **LEAF** — Li *et al*. (in prep) Leveraging external allele frequency to boost powers of genome-wide association studies.

@@ -165,7 +165,7 @@ Args parseArgs(
         else if (arg == "--maf")a.minMafCutoff = parseDouble(next(), arg);
         else if (arg == "--mac")a.minMacCutoff = parseDouble(next(), arg);
         else if (arg == "--hwe")a.hweCutoff = parseDouble(next(), arg);
-        else if (arg == "--outlier-iqr-threshold")a.outlierRatio = parseDouble(next(), arg);
+        else if (arg == "--outlier-iqr-multiplier")a.outlierRatio = parseDouble(next(), arg);
         else if (arg == "--spasqr-outlier-abs-bound")a.outlierAbsBound = parseDouble(next(), arg);
         else if (arg == "--spagrm-control-outlier") { markSeen(arg); a.spagrmControlOutlier = true; }
         else if (arg == "--threads")a.nthread = parseInt(next(), arg);

@@ -431,7 +431,7 @@ cross-checked against the maximum cluster value in
 K-means++ random restarts; it is ignored when `--leaf-cluster-file` is
 supplied. The remaining flags
 (`--batch-effect-p-threshold`, `--spa-z-threshold`,
-`--outlier-iqr-threshold`, `--threads`, `--chunk-size`, `--geno`,
+`--outlier-iqr-multiplier`, `--threads`, `--chunk-size`, `--geno`,
 `--maf`, `--mac`, `--hwe`) behave identically to the WtCoxG
 documentation; see [wtcoxg.md](wtcoxg.md) Section 6 and
 [src/cli/flags.hpp](../../src/cli/flags.hpp).

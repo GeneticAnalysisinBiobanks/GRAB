@@ -107,13 +107,22 @@ static void printFlagHelp(const char *topic) {
         return;
     }
 
-    // Match "--X" flag names to topic "X"
-    for (const FlagDef *const *p = kFileFlags; *p; ++p) {
-        const char *fName = (*p)->flag + 2; // skip "--"
-        if (std::strcmp(topic, fName) == 0) {
-            std::fprintf(stderr, "%s %s\n  %s\n", (*p)->flag, (*p)->metavar ? (*p)->metavar : "", (*p)->brief);
-            if ((*p)->fileInfo) std::fprintf(stderr, "\n%s\n", (*p)->fileInfo);
-            return;
+    // Match "--X" flag names to topic "X" across all flag groups.  The
+    // extended-help field (`fileInfo`) was originally introduced for file
+    // flags but is now also used by numeric flags (e.g. --outlier-iqr-
+    // threshold) that need a paragraph of context beyond the one-line
+    // brief.
+    const FlagDef *const *flagGroups[] = { kFileFlags, kInputFlags,
+                                           kNumericFlags, nullptr };
+    for (const FlagDef *const *const *g = flagGroups; *g; ++g) {
+        for (const FlagDef *const *p = *g; *p; ++p) {
+            const char *fName = (*p)->flag + 2; // skip "--"
+            if (std::strcmp(topic, fName) == 0) {
+                std::fprintf(stderr, "%s %s\n  %s\n", (*p)->flag,
+                             (*p)->metavar ? (*p)->metavar : "", (*p)->brief);
+                if ((*p)->fileInfo) std::fprintf(stderr, "\n%s\n", (*p)->fileInfo);
+                return;
+            }
         }
     }
 

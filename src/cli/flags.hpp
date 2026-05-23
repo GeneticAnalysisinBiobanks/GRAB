@@ -228,9 +228,23 @@ inline const FlagDef kSpaZThresh = {
 };
 
 inline const FlagDef kOutlierIqr = {
-    "--outlier-iqr-threshold", "FLOAT",
+    "--outlier-iqr-multiplier", "FLOAT",
     "IQR outlier multiplier for SPAmix/SPAmixPlus/SPAmixLocalPlus/WtCoxG/LEAF/SPAsqr/SPAGRM (default: 1.5)",
-    nullptr
+    R"(Tukey rule: a residual is an outlier iff r < q25 − k·IQR or r > q75 + k·IQR,
+where k is the value of this flag.  Larger k → wider band → fewer outliers;
+smaller k → narrower band → more outliers.  Outlier residuals enter the SPA
+through their exact CGF; non-outlier residuals are folded into a second-
+order Taylor (Gaussian) approximation.
+
+  k = 1.5   (default)  ≈ 1 % outliers under a Gaussian residual distribution
+  k = 1.0              ≈ 4 %
+  k = 0                ≈ 50 % (band collapses to [q25, q75])
+  k ≤ −0.5             100 % outliers (band collapses to a point at k = −0.5
+                       and inverts for k < −0.5); equivalent to "all residuals
+                       go through the exact CGF, no Taylor approximation".
+                       This matches the R reference WtCoxG/LEAF implementation
+                       byte-for-byte at the algorithmic level.
+)"
 };
 
 inline const FlagDef kOutlierAbs = {
@@ -248,7 +262,7 @@ Flag is parameterless: present  → enabled; absent → disabled (default).
   Enabled  — if 0 outliers are detected, shrink the IQR ratio by 0.8 until at
              least one outlier appears; if more than 5%% of subjects are
              outliers, increase the ratio by 0.5 until the share is at most 5%%.
-  Disabled — keep the IQR ratio at --outlier-iqr-threshold (default 1.5)
+  Disabled — keep the IQR ratio at --outlier-iqr-multiplier (default 1.5)
              without any adjustment.  Default; recommended when the residual
              distribution is well behaved.)"
 };
