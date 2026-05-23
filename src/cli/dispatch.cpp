@@ -303,7 +303,8 @@ static void logArgsInEffect(const Args &args) {
         std::fprintf(stderr, "  --leaf-cluster-file %s\n", args.leafClusterFile.c_str());
     if (args.leafKmeansNstart != 25)
         std::fprintf(stderr, "  --leaf-kmeans-nstart %d\n", args.leafKmeansNstart);
-    if (args.compressionLevel != 0) std::fprintf(stderr, "  --compression-level %d\n", args.compressionLevel);
+    if (args.compressionLevelExplicit)
+        std::fprintf(stderr, "  --compression-level %d\n", args.compressionLevel);
     if (args.minMafIBD != 0.01) std::fprintf(stderr, "  --min-maf-ibd %g\n", args.minMafIBD);
 }
 
@@ -322,6 +323,31 @@ int run(
     const std::clock_t cpuStart = std::clock();
 
     Args args = parseArgs(argc, argv);
+
+    // Resolve --compression-level default per codec.  The runtime library
+    // applies its built-in default (zlib 6, zstd 3) when the value is left
+    // at 0; we materialize the same value into args so that "Options in
+    // effect" logging, downstream messages, and any caller inspecting
+    // args.compressionLevel see the explicit level that will be used.
+    if (!args.compressionLevelExplicit) {
+        if (args.compression == "zst") args.compressionLevel = 3;
+        else if (args.compression == "gz") args.compressionLevel = 6;
+    } else {
+        if (args.compression == "gz" && (args.compressionLevel < 1 || args.compressionLevel > 9)) {
+            std::cerr << "Error: --compression-level for gz must be in 1..9, got "
+                      << args.compressionLevel << "\n";
+            return 1;
+        }
+        if (args.compression == "zst" && (args.compressionLevel < 1 || args.compressionLevel > 22)) {
+            std::cerr << "Error: --compression-level for zst must be in 1..22, got "
+                      << args.compressionLevel << "\n";
+            return 1;
+        }
+        if (args.compression.empty()) {
+            std::cerr << "Error: --compression-level requires --compression gz|zst.\n";
+            return 1;
+        }
+    }
 
     auto printTimer = [&]() {
         const double wallSec = std::chrono::duration<double>(
@@ -511,9 +537,12 @@ int run(
         require(args.outPrefix, "--out",    "--int-pheno");
         logArgsInEffect(args);
         const std::string intOutput = args.outPrefix + ".txt";
+        auto traitNames =
+            args.phenoName.empty() ? std::vector<std::string>{}
+                                   : splitComma(args.phenoName, "--pheno-name", 1);
         try {
             TextWriter::assertWritable(intOutput);
-            runIntPheno(args.phenoFile, intOutput);
+            runIntPheno(args.phenoFile, intOutput, traitNames);
         } catch (const std::exception &e) {
             std::cerr << "[ERROR] " << e.what() << "\n";
             return 1;
@@ -586,7 +615,7 @@ int run(
             std::cerr << "Error: --method is required (or use"
                 " --cal-af-coef / --cal-pairwise-ibd / --cal-phi"
                 " / --make-abed).\n";
-        else std::cerr << "Error: unknown method '" << args.method << "'.  Run 'grab --help' for supported methods.\n";
+        else std::cerr << "Error: unknown method '" << args.method << "'.  Run 'grab2 --help' for supported methods.\n";
         return 1;
     }
 

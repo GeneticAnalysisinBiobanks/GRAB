@@ -118,7 +118,7 @@ BGEN_DIR     := third_party/bgen-1.2.0
 HTSLIB_DIR   := third_party/htslib-1.23.1
 
 # ── Output binary ─────────────────────────────────────────────────────────────
-BIN := $(BUILD_DIR)/grab$(EXE)
+BIN := $(BUILD_DIR)/grab2$(EXE)
 
 # ── Include paths ─────────────────────────────────────────────────────────────
 # Boost.Math and Eigen are header-only — no -l flags required.

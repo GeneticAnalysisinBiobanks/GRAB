@@ -679,7 +679,7 @@ void runSAGELDPhenoMode(
         if (saveResid) {
             auto fitE = nsSAGELDFit::fitRandomInterceptML(longData, longData.E);
             Eigen::VectorXd Resid_E = nsSAGELDFit::aggregatePerIID(longData, fitE.residPerRow);
-            const std::string residPath = outPrefix + "." + phenoName + ".SAGELD.resid.tsv";
+            const std::string residPath = outPrefix + "." + phenoName + ".SAGELD.resid";
             std::ofstream rf(residPath);
             if (!rf) throw std::runtime_error("Cannot write residual file: " + residPath);
             rf << "#IID\tR_G\tR_" << envNames[0] << "\tR_Gx" << envNames[0] << "\n";

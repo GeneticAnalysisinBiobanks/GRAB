@@ -188,7 +188,10 @@ Args parseArgs(
         else if (arg == "--rfmix-msp")a.mspFile = next();
         else if (arg == "--admix-text-prefix")a.admixTextPrefix = next();
         else if (arg == "--compression")a.compression = next();
-        else if (arg == "--compression-level")a.compressionLevel = parseInt(next(), arg);
+        else if (arg == "--compression-level") {
+            a.compressionLevel = parseInt(next(), arg);
+            a.compressionLevelExplicit = true;
+        }
         // --phi-maf-cutoff removed: hardcoded to 0.01 inside estimatePhiOneAncestry
         else if (arg == "--cal-af-coef")        { markSeen(arg); a.calAfCoef = true; }
         else if (arg == "--cal-pairwise-ibd")   { markSeen(arg); a.calPairwiseIBD = true; }
@@ -197,7 +200,7 @@ Args parseArgs(
         else if (arg == "--int-pheno")          { markSeen(arg); a.intPheno = true; }
         else if (arg == "--min-maf-ibd")a.minMafIBD = parseDouble(next(), arg);
         else {
-            std::cerr << "Error: unknown option: " << arg << "  (run 'grab --help' for usage)\n";
+            std::cerr << "Error: unknown option: " << arg << "  (run 'grab2 --help' for usage)\n";
             std::exit(1);
         }
     }

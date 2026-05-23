@@ -7,7 +7,7 @@
 #   2. Statically links libstdc++ and libgcc, so the binary does not depend
 #      on the target host's libstdc++.so.6 / libgcc_s.so.1 versions.
 #
-# Output: build/grab
+# Output: build/grab2
 #
 # Linux/Windows g++ only.  Apple clang on macOS does not accept
 # -static-libstdc++, so this script refuses to run there.
@@ -59,9 +59,9 @@ make -j"${JOBS}" \
     GRAB_MARCH="-march=x86-64-v3" \
     STATIC_LIBS="-static-libstdc++ -static-libgcc"
 
-BIN="build/grab"
+BIN="build/grab2"
 if [[ ! -x "${BIN}" ]]; then
-    echo "Error: build/grab was not produced." >&2
+    echo "Error: build/grab2 was not produced." >&2
     exit 1
 fi
 

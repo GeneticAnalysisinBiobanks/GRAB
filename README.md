@@ -10,7 +10,13 @@ disambiguation is needed.
 
 Note that GRAB2 does not include POLMM or POLMM-GENE. Users who wish to use these methods should continue using the original R package. For general marker-level analyses (including ordinal traits), we recommend SPACox, SPAMIX, or SPAGRM.
 
-For detailed instructions, see the [GRAB 2.0 manual page](https://wenjianbi.github.io/grab.github.io/).
+## Highlights
+
+- **Single-thread performance.** GRAB2 is reimplemented in pure C++17 and runs approximately 10× to 1000× faster than the original R package on a single thread, with the precise factor depending on the method.
+- **Near-linear parallel speedup.** Marker-level analysis is parallelized via SNP-chunk-based work stealing and scales nearly linearly with the number of threads.
+- **Joint multi-phenotype analysis.** Multiple phenotypes may be specified in a single invocation and analyzed jointly, amortizing genotype I/O and null-model fitting across phenotypes.
+- **Automatic LOCO handling.** Leave-one-chromosome-out (LOCO) predictions are routed to the corresponding chromosome automatically; no per-chromosome scripting is required.
+- **Reduced memory footprint.** The engine streams genotype data in chunks and applies SIMD-vectorized kernels in place, keeping peak resident-set size substantially below that of the R package.
 
 ## Methods provided
 
@@ -51,7 +57,7 @@ cd GRAB
 make -j
 ```
 
-This produces a single binary `build/grab`, tuned for the CPU you built on.
+This produces a single binary `build/grab2`, tuned for the CPU you built on.
 Copy it anywhere on `PATH` and you are done.
 
 To produce a binary that can be shared across any AVX2-capable machine, which is useful when the run host is older than the build host:
@@ -87,7 +93,7 @@ produced by `regenie --step 1`) and **LDAK-KVIK** (subject-major,
 produced by `ldak6 --kvik-step1`).
 
 ```bash
-build/grab \
+build/grab2 \
   --method SPAsqr \
   --pheno examples/1kg.pheno \
   --pheno-name Quantitative,Time \
@@ -123,14 +129,14 @@ Vendored libraries under `third_party/` retain their upstream licences:
 If GRAB contributes to a publication, please cite the method-specific
 paper(s) listed below:
 
-- **SPACox** — Bi *et al*. (2020) A Fast and Accurate Method for Genome-Wide Time-to-Event Data Analysis and Its Application to UK Biobank. *Am. J. Hum. Genet.*
+- **SPACox** — Bi *et al* (2020). A Fast and Accurate Method for Genome-Wide Time-to-Event Data Analysis and Its Application to UK Biobank. *Am. J. Hum. Genet.*
   [doi:10.1016/j.ajhg.2020.06.003](https://doi.org/10.1016/j.ajhg.2020.06.003)
-- **SPAmix** — Ma *et al*. (2025) SPAmix: a scalable, accurate, and universal analysis framework for large-scale genetic association studies in admixed populations. *Genome Biol.*
+- **SPAmix** — Ma *et al* (2025). SPAmix: a scalable, accurate, and universal analysis framework for large-scale genetic association studies in admixed populations. *Genome Biol.*
   [doi:10.1186/s13059-025-03827-9](https://doi.org/10.1186/s13059-025-03827-9)
-- **SPAGRM** — Xu *et al*. (2025) SPA(GRM): effectively controlling for sample relatedness in large-scale genome-wide association studies of longitudinal traits *Nat. Commun.*
+- **SPAGRM** — Xu *et al* (2025). SPA(GRM): effectively controlling for sample relatedness in large-scale genome-wide association studies of longitudinal traits *Nat. Commun.*
   [doi:10.1038/s41467-025-56669-1](https://doi.org/10.1038/s41467-025-56669-1)
-- **WtCoxG** — Li *et al*. (2025) Applying weighted Cox regression to genome-wide association studies of time-to-event phenotypes *Nat. Comput. Sci.*
+- **WtCoxG** — Li *et al* (2025). Applying weighted Cox regression to genome-wide association studies of time-to-event phenotypes *Nat. Comput. Sci.*
   [doi:10.1038/s43588-025-00864-z](https://doi.org/10.1038/s43588-025-00864-z)
-- **SAGELD** — Xu *et al*. (in prep) Leveraging longitudinal data to boost statistical power for gene-environment interaction analysis.
-- **SPAsqr** — Heng *et al*. (in prep)
-- **LEAF** — Li *et al*. (in prep) Leveraging external allele frequency to boost powers of genome-wide association studies.
+- **SAGELD** — Xu *et al* (in prep). Leveraging longitudinal data to boost statistical power for gene-environment interaction analysis.
+- **SPAsqr** — Heng *et al* (in prep). Discovering and Dissecting Heterogeneous Genetic Associations with Genome-wide Smoothed Quantile Regression
+- **LEAF** — Li *et al* (in prep). Leveraging external allele frequency to boost powers of genome-wide association studies.

@@ -83,7 +83,14 @@ struct Args {
     bool spagrmControlOutlier = false; // --spagrm-control-outlier (flag, no argument): enable iterative SPAGRM outlier-ratio adjustment (default off)
     int nthread = 1;
     int nSnpPerChunk = 8192;
-    int compressionLevel = 0; // --compression-level (0 = library default)
+    // --compression-level: sentinel 0 means "resolve from --compression after
+    // parsing".  Dispatch sets it to 3 for zst (ZSTD_CLEVEL_DEFAULT) or 6 for
+    // gz (Z_DEFAULT_COMPRESSION) when the user did not override it.  Plain-
+    // text output ignores the level entirely.
+    int compressionLevel = 0;
+    // True iff --compression-level was supplied on the command line; used by
+    // logArgsInEffect to distinguish user input from the resolved default.
+    bool compressionLevelExplicit = false;
     int nClusters = 0;        // 0 = auto (from --ref-af count)
     int leafKmeansNstart = 25; // --leaf-kmeans-nstart: K-means++ restarts
     uint64_t seed = 0;        // 0 = use std::random_device

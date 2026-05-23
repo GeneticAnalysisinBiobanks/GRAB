@@ -201,7 +201,7 @@ std::vector<AFModel>loadAFModels(
 // The eigenvector file provides both subject IDs (first column) and PCs.
 //
 // Command:
-//   build/grab --method SPAmixAF --eigen-vecs <PCs> --bfile <prefix>
+//   build/grab2 --method SPAmixAF --eigen-vecs <PCs> --bfile <prefix>
 //              --out <out[.bin|.gz|.txt]>
 // ======================================================================
 

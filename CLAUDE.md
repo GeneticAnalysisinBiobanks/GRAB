@@ -33,7 +33,7 @@ GRAB is a **pure C++17 application**. The repository is fully self-contained:
 - The build pulls **nothing** from the system: no `apt-get`, no `brew install`,
   no `vcpkg`, no Conan. The only requirements are a C++17 compiler (g++ /
   clang++ / MinGW g++) and `make`.
-- `Makefile` produces a single statically-linked binary (`build/grab`) that runs
+- `Makefile` produces a single statically-linked binary (`build/grab2`) that runs
   on **Linux, macOS, and Windows (MSYS2/MinGW)** with no shared-library
   dependencies. Distribution = copy the binary.
 
@@ -123,24 +123,52 @@ with `GRAB_MARCH=-march=x86-64-v2` for portable distribution binaries.
 
 ## Building, testing, packaging
 
-- `make -j$(nproc)` — builds `build/grab`.
+- `make -j$(nproc)` — builds `build/grab2`.
 - `make clean` — removes `build/`.
 - The binary is the deliverable. There is no install step, no shared library,
   no headers exposed to users. Users download or build the binary and run it.
 
 ## Regression testing — `examples/run.sh`
 
-`examples/run.sh` invokes every method (SPACox, SPAmix, SPAGRM, SAGELD,
-SPAsqr, WtCoxG, LEAF) end-to-end against the `examples/1kg.*` fixtures and
-writes per-method outputs under `examples_output/`.  It is the canonical
-regression suite for the repository.
+`examples/run.sh` is the single end-to-end regression script for the
+repository.  It exercises every utility mode (`--cal-af-coef`,
+`--cal-pairwise-ibd`, `--int-pheno`) and every analysis method (SPACox,
+SPAmix, SPAGRM, SAGELD, SPAsqr, WtCoxG, LEAF) against the bundled
+`examples/1kg.*` fixtures, writing all artifacts under
+`examples_output/` with the common prefix `examples_output/1kg`.
 
-After any refactor — shared engine, SIMD kernels, null-model fitting,
-genotype readers, output formatting, or per-method code — re-run
-`examples/run.sh` and confirm that the resulting `examples_output/*` files
-are byte-identical (or numerically identical up to documented tolerance)
-to the pre-refactor baseline.  A passing build is not sufficient evidence
-that a refactor preserved behavior; output equivalence is.
+The script has two purposes that must both be preserved when it is
+edited:
+
+1. **Documentary.**  Every command spells out every command-line flag
+   that the method accepts, with each numeric or categorical knob set to
+   its built-in default value.  Reading the script tells a new
+   contributor exactly which flags are available and what each one
+   defaults to when omitted.  When a new flag is added to a method or
+   utility, the corresponding block in `examples/run.sh` must gain a
+   line listing the flag at its default value; when a flag is removed
+   or renamed, the line must be updated accordingly.
+
+2. **Regression baseline.**  After any refactor — shared engine, SIMD
+   kernels, null-model fitting, genotype readers, output formatting, or
+   per-method code — re-run `examples/run.sh` and confirm that the
+   resulting `examples_output/*` artifacts are byte-identical (or
+   numerically identical up to documented tolerance) to the
+   pre-refactor baseline.  A passing build is not sufficient evidence
+   that a refactor preserved behavior; output equivalence is.
+
+The compression codec varies across blocks by design, so that a single
+pass through the script exercises all three output-writer paths:
+plain text (SPACox), gzip (WtCoxG, LEAF), and zstd (everything else).
+Do not collapse the codec to a single setting when editing the script.
+
+The `--int-pheno` block sits between SAGELD and SPAsqr: it produces
+`examples_output/1kg.int.txt`, an inverse-normal-transformed phenotype
+file containing only the `Quantitative` and `Time` columns.  SPAsqr
+consumes this file via `--pheno` and pulls the remaining covariates
+(`MALE`, `PC1..PC4`) from the original phenotype file via `--covar`;
+this exercises the disjoint-pheno/covar loading path in
+`SubjectData`.
 
 ## Shared engine code is validated — do not modify when debugging other methods
 

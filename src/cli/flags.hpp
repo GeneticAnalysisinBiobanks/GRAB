@@ -164,11 +164,22 @@ for PCs as well, list them in --covar-name explicitly.)"
 };
 
 inline const FlagDef kRefAf = {
-    "--ref-af", "FILE", "Reference allele frequency (plink2 .afreq or numeric)",
-    R"(Formats: (A) plink2 .afreq: #CHROM  ID  REF  ALT  ALT_FREQS  OBS_CT
-           Matched to .bim by (CHROM, ID) with allele flip detection.
-         (B) Two-column numeric: ALT_FREQS  OBS_CT (rows in .bim order).
-For LEAF: comma-separated, one file per reference population.)"
+    "--ref-af", "FILE", "Reference allele frequency (plink2 .afreq or two-column numeric)",
+    R"(Two accepted file formats:
+
+(A) plink2 --freq output (.afreq).  Header line starts with '#' and lists
+    the columns CHROM, ID, REF, ALT (or ALT1), ALT_FREQS (or ALT1_FREQ),
+    OBS_CT in any order; column positions are inferred from the header.
+    Records are matched to .bim by (CHROM, ID).  When the afreq REF/ALT
+    pair is reversed relative to the .bim record, the loader flips the
+    frequency to 1 − ALT_FREQS automatically.
+
+(B) Two-column numeric fallback: ALT_FREQS  OBS_CT, one row per .bim
+    record in .bim order, with no header.  The number of rows must equal
+    the .bim marker count.
+
+For --method LEAF: pass a comma-separated list of files, one per
+reference population (e.g. --ref-af pop1.afreq,pop2.afreq).)"
 };
 
 inline const FlagDef kSpGrmGrab = {
@@ -181,28 +192,40 @@ Mutually exclusive with --sp-grm-plink2.)"
 
 inline const FlagDef kSpGrmPlink2 = {
     "--sp-grm-plink2", "FILE", "Sparse GRM, plink2 .grm.sp format",
-    R"(Companion .grm.id (FID  IID) auto-detected from file path.
-If .grm.id is absent, 0-based indices assumed to match .fam order.
+    R"(plink2-style sparse GRM.  The file lists one related pair per line as
+'ID1  ID2  VALUE', where VALUE is the kinship coefficient.  The companion
+.grm.id file ('FID  IID' per subject) is auto-detected from the file path;
+if .grm.id is absent, the loader assumes 0-based indices that match .fam
+order.  Subjects not present in the genotype .fam are silently dropped.
 Mutually exclusive with --sp-grm-grab.)"
 };
 
-// Combined display entry used in method required/optional arrays
+// Combined display entry used in method required/optional arrays.
+// --sp-grm-grab is also accepted by the parser but intentionally not
+// advertised in --help; per-method usage prints only --sp-grm-plink2.
 inline const FlagDef kSpGrm = {
-    "--sp-grm-grab FILE | --sp-grm-plink2 FILE", nullptr, "Sparse GRM (exactly one)",
+    "--sp-grm-plink2", "FILE", "Sparse GRM (plink2 .grm.sp format)",
     nullptr
 };
 
 inline const FlagDef kIndAfCoef = {
     "--ind-af-coef", "FILE", "Pre-computed individual AF model",
-    R"(Produced by --cal-ind-af-coef.
-Text/gz: #STATUS  BETA0  BETA1 ...
-Rows in filtered-marker order (positional matching).)"
+    R"(Per-marker individual-ancestry allele-frequency model produced by
+'grab2 --cal-af-coef'.  Plain text or gzip/zstd compressed; the loader
+infers the codec from the file suffix (.gz, .zst).  Header line begins
+with '#STATUS' and is followed by one BETA column per principal
+component: '#STATUS  BETA0  BETA1  BETA2  ...'.  Rows are stored in
+filtered-marker order (the order produced by --cal-af-coef on the same
+genotype file with the same QC thresholds) and are matched
+positionally — no marker ID is stored in the file, so the AF model
+must be regenerated whenever the input genotype set or its QC filters
+change.)"
 };
 
 inline const FlagDef kPairwiseIbd = {
     "--pairwise-ibd", "FILE", "Pairwise IBD file",
     R"(Tab-separated: ID1  ID2  pa  pb  pc
-Produced by grab --cal-pairwise-ibd.)"
+Produced by grab2 --cal-pairwise-ibd.)"
 };
 
 // ── Scalar options ─────────────────────────────────────────────────
@@ -289,7 +312,8 @@ inline const FlagDef kCompression = {
 };
 
 inline const FlagDef kCompressionLevel = {
-    "--compression-level", "INT", "Compression level (gz: 1-9, zst: 1-22; default: 0 = library default)",
+    "--compression-level", "INT",
+    "Compression level (gz: 1-9, default 6; zst: 1-22, default 3)",
     nullptr
 };
 
@@ -326,12 +350,11 @@ inline const FlagDef kNClusters = {
 
 inline const FlagDef kLeafClusterFile = {
     "--leaf-cluster-file", "FILE",
-    R"(Pre-computed cluster labels for LEAF (skip K-means).
-Header line required.  Reads two columns by name: IID (or #IID) and cluster.
+    "Pre-computed cluster labels for LEAF (skip K-means)",
+    R"(Header line required.  Reads two columns by name: IID (or #IID) and cluster.
 All other columns in the file are ignored.  Cluster values must be integers
 in {1, …, K}; K is inferred as max(cluster) and cross-checked against
---leaf-nclusters when both are provided.)",
-    nullptr
+--leaf-nclusters when both are provided.)"
 };
 
 inline const FlagDef kLeafKmeansNstart = {
@@ -515,8 +538,11 @@ inline const FlagDef *const kSPACoxReq[] = {
 };
 inline const FlagDef *const kSPACoxOpt[] = {
     &kCovar,       &kCovarName,        &kResidName,    &kPhenoName,   &kRegressionModel,  &kSaveResid,
-    &kCovarPThresh, &kSpaZThresh,      &kThreads,      &kChunkSize,
-    &kCompression, &kCompressionLevel, &kGeno,         &kMaf,         &kMac,        &kHwe,     &kChr,
+    &kCovarPThresh, &kSpaZThresh,      &kSeed,
+    &kThreads,      &kChunkSize,
+    &kCompression, &kCompressionLevel,
+    &kKeep,         &kRemove,           &kExtract,      &kExclude,
+    &kGeno,         &kMaf,         &kMac,        &kHwe,     &kChr,
     nullptr
 };
 inline const MethodDef kSPACox = {
@@ -538,8 +564,9 @@ inline const FlagDef *const kSPAGRMReq[] = {
 inline const FlagDef *const kSPAGRMOpt[] = {
     &kResidName,  &kPhenoName,  &kRegressionModel,           &kSaveResid,
     &kCovar,      &kCovarName,
-    &kSpaZThresh, &kOutlierIqr, &kSpagrmControlOutlier,
+    &kSpaZThresh, &kOutlierIqr, &kSpagrmControlOutlier,      &kSeed,
     &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
+    &kKeep,       &kRemove,  &kExtract,    &kExclude,
     &kGeno,       &kMaf,     &kMac,       &kHwe,         &kChr,
     nullptr
 };
@@ -551,7 +578,7 @@ inline const MethodDef kSPAGRM = {
     "#IID  RESID  [RESID2  ...] (from --pheno, selected by --resid-name)",
     R"(Per residual column: PREFIX.PHENO.SPAGRM[.gz|.zst]
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  P  Z)",
-    "Generate pairwise IBD file with: grab --cal-pairwise-ibd",
+    "Generate pairwise IBD file with: grab2 --cal-pairwise-ibd",
 };
 
 // ── SAGELD ─────────────────────────────────────────────────────────
@@ -560,8 +587,9 @@ inline const FlagDef *const kSAGELDReq[] = {
     nullptr
 };
 inline const FlagDef *const kSAGELDOpt[] = {
-    &kResidName, &kPhenoName, &kCovarName, &kSageldX,
+    &kResidName, &kPhenoName, &kCovarName, &kSageldX,    &kSaveResid,
     &kSpaZThresh, &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
+    &kKeep,       &kRemove,  &kExtract,   &kExclude,
     &kGeno, &kMaf, &kMac, &kHwe, &kChr,
     nullptr
 };
@@ -584,7 +612,7 @@ Pheno mode (per phenotype):  PREFIX.<phenoName>.SAGELD
                   internally via EM-ML.  --covar-name must include every
                   variable in --sageld-x.
 
-Generate the IBD file once with: grab --cal-pairwise-ibd)",
+Generate the IBD file once with: grab2 --cal-pairwise-ibd)",
 };
 
 // ── SPAmix ─────────────────────────────────────────────────────────
@@ -593,9 +621,11 @@ inline const FlagDef *const kSPAmixReq[] = {
     nullptr
 };
 inline const FlagDef *const kSPAmixOpt[] = {
-    &kPheno,      &kCovar,      &kCovarName,  &kResidName,    &kPhenoName,    &kRegressionModel, &kSaveResid,
+    &kCovar,      &kCovarName,  &kResidName,    &kPhenoName,    &kRegressionModel, &kSaveResid,
     &kIndAfCoef, &kSpGrm,       &kOutlierIqr,
-    &kSpaZThresh, &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
+    &kSpaZThresh, &kSeed,
+    &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
+    &kKeep,       &kRemove,  &kExtract,   &kExclude,
     &kGeno,       &kMaf,     &kMac,       &kHwe,         &kChr,
     nullptr
 };
@@ -607,8 +637,9 @@ inline const MethodDef kSPAmix = {
     "#IID  RESID  [RESID2  ...] (from --pheno, selected by --resid-name)",
     R"(Per residual column: PREFIX.PHENO.SPAmix[.gz|.zst]
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  P  Z  BETA  SE)",
-    R"(Pre-compute AF model for speed: grab --cal-af-coef
-Optional --sp-grm-grab / --sp-grm-plink2 enables GRM-based variance (same as SPAmixPlus).)",
+    R"(Pre-compute the AF model for speed: grab2 --cal-af-coef
+Optional --sp-grm-plink2 enables GRM-based variance correction (residual mode
+absorbs the GRM via the variance ratio).)",
 };
 
 // ── SPAmixPlus ─────────────────────────────────────────────────────
@@ -618,8 +649,10 @@ inline const FlagDef *const kSPAmixPlusReq[] = {
 };
 inline const FlagDef *const kSPAmixPlusOpt[] = {
     &kCovar,      &kCovarName,  &kResidName,  &kPhenoName,    &kRegressionModel,    &kSaveResid,
-    &kIndAfCoef,        &kOutlierIqr, &kSpaZThresh, &kThreads,
-    &kChunkSize, &kCompression, &kCompressionLevel, &kGeno,       &kMaf,        &kMac,
+    &kIndAfCoef,        &kOutlierIqr, &kSpaZThresh, &kSeed,    &kThreads,
+    &kChunkSize, &kCompression, &kCompressionLevel,
+    &kKeep,       &kRemove,    &kExtract,    &kExclude,
+    &kGeno,       &kMaf,        &kMac,
     &kHwe,       &kChr,
     nullptr
 };
@@ -644,9 +677,12 @@ inline const FlagDef *const kSPAsqrOpt[] = {
     &kPheno,        &kCovar,      &kCovarName,  &kResidName,
     &kPhenoName,    &kSpasqrTaus, &kSpasqrTol,  &kSpasqrH,
     &kSpasqrHScale, &kOutlierIqr, &kOutlierAbs,
-    &kSpaZThresh,   &kThreads,    &kChunkSize,  &kGeno, &kMaf,
+    &kSpaZThresh,   &kThreads,    &kChunkSize,
+    &kCompression,  &kCompressionLevel,
+    &kKeep,         &kRemove,     &kExtract,    &kExclude,
+    &kGeno, &kMaf,
     &kMac,          &kHwe,        &kChr,        &kPredList,    &kPhenoTransform,
-    &kSpasqrSolver, &kSpasqrMode, &kExtract,
+    &kSpasqrSolver, &kSpasqrMode,
     nullptr
 };
 
@@ -669,8 +705,11 @@ inline const FlagDef *const kWtCoxGReq[] = {
 
 inline const FlagDef *const kWtCoxGOpt[] = {
     &kPheno,      &kCovar,  &kCovarName, &kResidName,
-    &kPhenoName,  &kSpGrm,  &kBatchPThresh,
-    &kSpaZThresh, &kOutlierIqr, &kThreads, &kChunkSize, &kGeno, &kMaf,
+    &kPhenoName,  &kRegressionModel,    &kSpGrm,  &kBatchPThresh,
+    &kSpaZThresh, &kOutlierIqr, &kThreads, &kChunkSize,
+    &kCompression, &kCompressionLevel,
+    &kKeep,       &kRemove, &kExtract,   &kExclude,
+    &kGeno, &kMaf,
     &kMac,        &kHwe,    &kChr,
     nullptr
 };
@@ -694,10 +733,14 @@ inline const FlagDef *const kLEAFReq[] = {
 
 inline const FlagDef *const kLEAFOpt[] = {
     &kPheno,     &kCovar,     &kCovarName, &kResidName, &kPhenoName,
+    &kRegressionModel,
     &kPcCols,    &kNClusters, &kLeafClusterFile, &kLeafKmeansNstart,
     &kSeed,      &kSpGrm,     &kBatchPThresh, &kSpaZThresh,
     &kOutlierIqr,
-    &kThreads,   &kChunkSize, &kGeno,      &kMaf,       &kMac,          &kHwe,        &kChr,
+    &kThreads,   &kChunkSize,
+    &kCompression, &kCompressionLevel,
+    &kKeep,      &kRemove,    &kExtract,   &kExclude,
+    &kGeno,      &kMaf,       &kMac,          &kHwe,        &kChr,
     nullptr
 };
 
@@ -721,8 +764,8 @@ inline const FlagDef *const kCalPhiReq[] = {
 };
 
 inline const FlagDef *const kCalPhiOpt[] = {
-    &kKeep,        &kRemove,           &kExtract, &kExclude, &kChr,
-    &kCompression, &kCompressionLevel,
+    &kKeep,        &kRemove,           &kExtract, &kExclude,
+    &kThreads,     &kCompression,      &kCompressionLevel,
     nullptr
 };
 
@@ -745,8 +788,11 @@ inline const FlagDef *const kSPAmixLocalPlusReq[] = {
 };
 
 inline const FlagDef *const kSPAmixLocalPlusOpt[] = {
-    &kExtract,          &kExclude, &kOutlierIqr, &kSpaZThresh, &kThreads, &kChunkSize, &kCompression,
-    &kCompressionLevel, &kGeno,    &kMaf,        &kMac,        &kHwe,     &kChr,
+    &kCovar,            &kCovarName,        &kResidName,  &kPhenoName,  &kRegressionModel, &kSaveResid,
+    &kKeep,             &kRemove,           &kExtract,    &kExclude,
+    &kOutlierIqr,       &kSpaZThresh,       &kThreads,    &kChunkSize,
+    &kCompression,      &kCompressionLevel,
+    &kGeno,             &kMaf,              &kMac,        &kHwe,        &kChr,
     nullptr
 };
 
@@ -773,6 +819,7 @@ inline const FlagDef *const kMakeAbedReq[] = {
 
 inline const FlagDef *const kMakeAbedOpt[] = {
     &kVcf, &kBcf, &kMsp, &kAdmixTextPrefix,
+    &kKeep, &kRemove, &kThreads,
     nullptr
 };
 
@@ -798,22 +845,27 @@ inline const FlagDef *const kIntPhenoReq[] = {
 };
 
 inline const FlagDef *const kIntPhenoOpt[] = {
+    &kPhenoName,
     nullptr
 };
 
 inline const MethodDef kIntPheno = {
     "int-pheno",
-    "Inverse-normal-transform every trait column in a phenotype file",
+    "Inverse-normal-transform selected trait columns in a phenotype file",
     kIntPhenoReq,
     kIntPhenoOpt,
     nullptr,
-    "Output: PREFIX.txt  (FID  IID  Y1  Y2 ... ; missing entries → NA)",
-    R"(Reads --pheno FILE with header
-    FID  IID  Y1  Y2  ...
-and writes PREFIX.txt with the same columns and row order; each Y* column
-is independently INT-transformed (Blom plotting position, average-rank
-ties) on its non-missing scope. Missing entries (NA / "." / blank) stay
-missing in the output.)",
+    "Output: PREFIX.txt  (ID columns + selected Y columns; missing entries → NA)",
+    R"(Reads --pheno FILE under GRAB's standard header conventions
+    #IID col...        IID col...
+    #FID IID col...    FID IID col...
+and writes PREFIX.txt preserving the input ID-column layout.  When
+--pheno-name is supplied, only the listed trait columns are
+INT-transformed and emitted; when omitted, every trait column in the
+input is transformed.  Each retained column is independently
+INT-transformed (Blom plotting position, average-rank ties) on its own
+non-missing scope; missing entries (NA / "." / blank) stay missing in
+the output.)",
 };
 
 // ── Utility mode: cal-af-coef ──────────────────────────────────────
@@ -823,7 +875,9 @@ inline const FlagDef *const kCalAfReq[] = {
 };
 
 inline const FlagDef *const kCalAfOpt[] = {
-    &kPheno,   &kCovar,     &kKeep, &kRemove, &kCompression, &kCompressionLevel,
+    &kPheno,   &kCovar,     &kKeep, &kRemove,
+    &kExtract, &kExclude,
+    &kCompression, &kCompressionLevel,
     &kThreads, &kChunkSize, &kGeno, &kMaf,    &kMac,         &kHwe,             &kChr,
     nullptr
 };
@@ -845,7 +899,10 @@ inline const FlagDef *const kCalIbdReq[] = {
 };
 
 inline const FlagDef *const kCalIbdOpt[] = {
-    &kKeep, &kRemove, &kMinMafIbd, &kCompression, &kCompressionLevel,
+    &kKeep,     &kRemove,
+    &kExtract,  &kExclude,  &kChr,
+    &kMinMafIbd,
+    &kThreads,  &kCompression, &kCompressionLevel,
     nullptr
 };
 
@@ -865,6 +922,13 @@ Pass to --pairwise-ibd for SPAGRM.)",
 //  Lookup tables (null-terminated)
 // ════════════════════════════════════════════════════════════════════
 
+// kAllMethods / kAllUtilModes drive method-name canonicalization inside the
+// dispatcher and must therefore continue to list every method GRAB knows
+// how to run, including the ones that are intentionally hidden from
+// --help (SPAmixLocalPlus, --make-abed, --cal-phi).  Help generation uses
+// the kVisible* arrays below, which omit the hidden entries; running
+// `grab --help SPAmixLocalPlus|make-abed|cal-phi` therefore reports
+// "Unknown help topic" while the methods themselves remain functional.
 inline const MethodDef *const kAllMethods[] = {
     &kSPACox, &kSPAGRM, &kSAGELD, &kSPAmix, &kSPAmixPlus, &kSPAmixLocalPlus,
     &kSPAsqr, &kWtCoxG, &kLEAF,
@@ -876,23 +940,47 @@ inline const MethodDef *const kAllUtilModes[] = {
     nullptr
 };
 
-// File-accepting flags (for --help <flag-topic>)
-inline const FlagDef *const kFileFlags[] = {
-    &kPheno,        &kCovar,       &kRefAf,    &kSpGrmGrab,
-    &kSpGrmPlink2, &kIndAfCoef, &kPairwiseIbd, &kAdmixPhi,
+// Visible methods exclude SPAmixPlus and SPAmixLocalPlus.  Both remain
+// callable via --method but are hidden from --help to keep the surface
+// area focussed on the seven core GWAS methods.
+inline const MethodDef *const kVisibleMethods[] = {
+    &kSPACox, &kSPAGRM, &kSAGELD, &kSPAmix,
+    &kSPAsqr, &kWtCoxG, &kLEAF,
     nullptr
 };
 
-// All flags grouped for --help options
+inline const MethodDef *const kVisibleUtilModes[] = {
+    &kCalAfCoef, &kCalPairwiseIbd, &kIntPheno,
+    nullptr
+};
+
+// File-accepting flags (for --help <flag-topic>).  Admix-* topics and
+// --sp-grm-grab are omitted because the methods that consume them
+// (SPAmixLocalPlus, --cal-phi, --make-abed) and the legacy GRAB sparse
+// GRM format are hidden from --help; the flags themselves remain
+// accepted by the parser.
+inline const FlagDef *const kFileFlags[] = {
+    &kPheno,       &kCovar,     &kRefAf,
+    &kSpGrmPlink2, &kIndAfCoef, &kPairwiseIbd,
+    nullptr
+};
+
+// Flags shown by `--help options`.  Admix-mode flags (--admix-bfile,
+// --admix-phi, --rfmix-msp, --admix-text-prefix) and --sp-grm-grab are
+// excluded because the methods that consume them (SPAmixLocalPlus,
+// --cal-phi, --make-abed) and the legacy GRAB sparse-GRM format are
+// hidden from --help.
 inline const FlagDef *const kInputFlags[] = {
     &kBfile,       &kPfile,       &kVcf,         &kBcf,
-    &kBgen,         &kAdmixBfile,
+    &kBgen,
     &kOut,         &kCompression, &kCompressionLevel,
     &kPheno,       &kCovar,       &kCovarName,
-    &kPhenoName,   &kResidName,
-    &kPcCols,      &kRefAf,       &kSpGrmGrab,
+    &kPhenoName,   &kResidName,   &kRegressionModel, &kSaveResid,
+    &kPcCols,      &kRefAf,
     &kSpGrmPlink2, &kIndAfCoef,   &kPairwiseIbd,
-    &kAdmixPhi,    &kMsp,         &kAdmixTextPrefix,
+    &kPredList,    &kPhenoTransform,
+    &kLeafClusterFile,
+    &kKeep,        &kRemove,
     &kExtract,     &kExclude,     &kChr,
     nullptr
 };
@@ -900,8 +988,13 @@ inline const FlagDef *const kInputFlags[] = {
 inline const FlagDef *const kNumericFlags[] = {
     &kPrevalence, &kBatchPThresh, &kCovarPThresh,     &kSpaZThresh, &kOutlierIqr, &kOutlierAbs,
     &kSpagrmControlOutlier,
-    &kThreads,    &kChunkSize,    &kCompressionLevel, &kNClusters,  &kSeed,       &kGeno,
-    &kMaf,        &kMac,          &kMinMafIbd,
+    &kThreads,    &kChunkSize,    &kCompressionLevel, &kNClusters,
+    &kLeafKmeansNstart,
+    &kSeed,       &kGeno,
+    &kMaf,        &kMac,          &kHwe,              &kMinMafIbd,
+    &kSpasqrTaus, &kSpasqrTol,    &kSpasqrH,          &kSpasqrHScale,
+    &kSpasqrSolver, &kSpasqrMode,
+    &kSageldX,
     nullptr
 };
 
