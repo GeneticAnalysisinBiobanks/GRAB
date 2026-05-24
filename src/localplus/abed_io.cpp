@@ -1,6 +1,7 @@
 // abed_io.cpp — Admixed ancestry binary genotype reader/writer (.abed format)
 
 #include "localplus/abed_io.hpp"
+#include "geno_factory/variant_filter.hpp"
 #include "io/subject_data.hpp" // parseFamIIDs, parseBimLines
 #include "util/logging.hpp"
 #include "util/text_scanner.hpp"
@@ -122,30 +123,9 @@ std::vector<GenoMeta::MarkerInfo> AdmixData::filterMarkers(
     const std::string &extractFile,
     const std::string &excludeFile
 ) {
-    std::unordered_set<std::string> includeSet, excludeSet;
-
-    auto readIDFile = [](const std::string &path, std::unordered_set<std::string> &out) {
-        std::ifstream ifs(path);
-        if (!ifs) throw std::runtime_error("Cannot open SNP list file: " + path);
-        std::string id;
-        while (ifs >> id) {
-            if (!id.empty() && id[0] != '#') out.insert(std::move(id));
-        }
-    };
-
-    if (!extractFile.empty()) readIDFile(extractFile, includeSet);
-    if (!excludeFile.empty()) readIDFile(excludeFile, excludeSet);
-
-    if (includeSet.empty() && excludeSet.empty()) return all;
-
-    std::vector<MarkerInfo> filtered;
-    filtered.reserve(all.size());
-    for (const auto &m : all) {
-        if (!includeSet.empty() && includeSet.find(m.id) == includeSet.end()) continue;
-        if (!excludeSet.empty() && excludeSet.find(m.id) != excludeSet.end()) continue;
-        filtered.push_back(m);
-    }
-    return filtered;
+    std::vector<MarkerInfo> result = all;
+    geno_factory::filterMarkersByIds(result, extractFile, excludeFile);
+    return result;
 }
 
 std::vector<std::vector<uint64_t> > AdmixData::buildChunks(

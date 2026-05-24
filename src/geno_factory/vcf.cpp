@@ -5,6 +5,7 @@
 
 #include "geno_factory/vcf.hpp"
 #include "geno_factory/hwe.hpp"
+#include "geno_factory/variant_filter.hpp"
 #include "util/logging.hpp"
 
 #include <algorithm>
@@ -31,6 +32,8 @@ VcfData::VcfData(
     uint32_t nSamplesInFile,
     uint32_t nUsed,
     std::unordered_set<std::string> chrFilter,
+    std::string extractFile,
+    std::string excludeFile,
     int nMarkersEachChunk
 )
     : m_vcfFile(std::move(vcfFile)),
@@ -105,6 +108,9 @@ VcfData::VcfData(
     bcf_destroy(rec);
     bcf_hdr_destroy(hdr);
     hts_close(fp);
+
+    // ---- Apply --extract / --exclude filter ----
+    geno_factory::filterMarkersByIds(m_markerInfo, extractFile, excludeFile);
 
     m_nMarkers = static_cast<uint32_t>(m_markerInfo.size());
     m_chunkIndices = buildChunks(m_markerInfo, nMarkersEachChunk);

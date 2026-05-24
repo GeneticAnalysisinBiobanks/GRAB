@@ -361,6 +361,12 @@ echo "════════════════════════�
 # then run SPAGRM on each input format with a distinct --out prefix and
 # verify that the per-phenotype output tables agree byte-for-byte across
 # all four genotype readers in src/geno_factory/.
+#
+# This block also exercises --extract / --exclude / --keep / --remove
+# uniformly across all four readers.  Because every run consumes the
+# same four filter lists, the md5 cross-check at the bottom of this
+# block verifies that variant-ID filtering and sample-IID filtering
+# produce identical output across pgen, bed, bcf, and bgen.
 
 CONV_DIR=${OUT_DIR}/converted
 mkdir -p ${CONV_DIR}
@@ -368,6 +374,18 @@ mkdir -p ${CONV_DIR}
 plink2 --pfile examples/1kg --make-bed                       --out ${CONV_DIR}/1kg
 plink2 --pfile examples/1kg --export bcf                     --out ${CONV_DIR}/1kg
 plink2 --pfile examples/1kg --export bgen-1.2 bits=8         --out ${CONV_DIR}/1kg
+
+# ── Filter lists for --extract / --exclude / --keep / --remove ──
+# Variant lists: every 3rd .pvar variant goes into extract; the first
+# ten IDs of the .pvar are also in exclude, so extract∩exclude is a
+# proper subset and tests "exclude wins over extract".
+awk 'NR>1 && $1 !~ /^#/ && (NR-1)%3==0 {print $3}' examples/1kg.pvar > ${OUT_DIR}/1kg.extract.txt
+awk 'NR>1 && $1 !~ /^#/ && (NR-1)<=10        {print $3}' examples/1kg.pvar > ${OUT_DIR}/1kg.exclude.txt
+
+# Subject lists: keep the first 2000 .psam IIDs (PLINK2-compatible
+# FID+IID two-column format) and then remove the last 100 of those.
+awk 'NR>1 && $1 !~ /^#/ {print $1"\t"$1}' examples/1kg.psam | head -2000 > ${OUT_DIR}/1kg.keep.txt
+awk 'NR>1 && $1 !~ /^#/ {print $1"\t"$1}' examples/1kg.psam | sed -n '1901,2000p' > ${OUT_DIR}/1kg.remove.txt
 
 # Shared SPAGRM invocation; only --pfile/--bfile/--bcf/--bgen and --out
 # vary between the four runs below.
@@ -378,6 +396,10 @@ SPAGRM_COMMON=(
   --covar-name MALE,PC1,PC2,PC3,PC4
   --sp-grm-plink2 examples/1kg.grm.sp
   --pairwise-ibd ${OUT}.ibd.zst
+  --extract ${OUT_DIR}/1kg.extract.txt
+  --exclude ${OUT_DIR}/1kg.exclude.txt
+  --keep    ${OUT_DIR}/1kg.keep.txt
+  --remove  ${OUT_DIR}/1kg.remove.txt
   --regression-model auto
   --chr 1-2,3
   --spa-z-threshold 2.0

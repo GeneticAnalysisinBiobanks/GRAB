@@ -5,6 +5,7 @@
 
 #include "geno_factory/pgen.hpp"
 #include "geno_factory/hwe.hpp"
+#include "geno_factory/variant_filter.hpp"
 #include "util/logging.hpp"
 
 #include "util/text_scanner.hpp"
@@ -155,6 +156,8 @@ PgenData::PgenData(
     uint32_t nSamplesInFile,
     uint32_t nUsed,
     std::unordered_set<std::string> chrFilter,
+    std::string extractFile,
+    std::string excludeFile,
     int nMarkersEachChunk
 )
     : m_pgenFile(std::move(pgenFile)),
@@ -196,6 +199,9 @@ PgenData::PgenData(
             if (chrFilter.count(m.chrom)) filtered.push_back(m);
         m_markerInfo = std::move(filtered);
     }
+
+    // ---- Apply --extract / --exclude filter ----
+    geno_factory::filterMarkersByIds(m_markerInfo, extractFile, excludeFile);
 
     m_chunkIndices = buildChunks(m_markerInfo, nMarkersEachChunk);
 

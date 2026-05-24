@@ -2,6 +2,7 @@
 
 #include "geno_factory/plink.hpp"
 #include "geno_factory/hwe.hpp"
+#include "geno_factory/variant_filter.hpp"
 
 // plink2 SIMD primitives for BED decode + counting
 #include "pgenlib_misc.h"
@@ -34,48 +35,6 @@ std::vector<std::string> splitWhitespace(const std::string &line) {
         tokens.emplace_back(sv);
     }
     return tokens;
-}
-
-std::vector<std::string> readSingleColumnFile(const std::string &path) {
-    std::ifstream in(path);
-    if (!in.is_open()) throw std::runtime_error("Cannot open filter file: " + path);
-    std::vector<std::string> values;
-    std::string line;
-    while (std::getline(in, line)) {
-        auto tokens = splitWhitespace(line);
-        if (!tokens.empty()) values.push_back(std::move(tokens[0]));
-    }
-    return values;
-}
-
-struct RangeFilter {
-    std::string chrom;
-    uint32_t start;
-    uint32_t end;
-};
-
-std::vector<RangeFilter> readRangeFile(const std::string &path) {
-    std::ifstream in(path);
-    if (!in.is_open()) throw std::runtime_error("Cannot open range filter file: " + path);
-    std::vector<RangeFilter> ranges;
-    std::string line;
-    while (std::getline(in, line)) {
-        auto tokens = splitWhitespace(line);
-        if (tokens.empty()) continue;
-        if (tokens.size() != 3) throw std::runtime_error("Range filter file needs exactly 3 columns: " + path);
-        ranges.push_back(
-            {tokens[0], static_cast<uint32_t>(std::stoul(tokens[1])), static_cast<uint32_t>(std::stoul(tokens[2]))});
-    }
-    return ranges;
-}
-
-bool markerInRanges(
-    const PlinkData::MarkerInfo &m,
-    const std::vector<RangeFilter> &ranges
-) {
-    for (const auto &r : ranges)
-        if (m.chrom == r.chrom && m.pos >= r.start && m.pos <= r.end) return true;
-    return false;
 }
 
 // BED 2-bit genotype → count of bim col5 (A1).  Under the plink2
@@ -134,10 +93,8 @@ PlinkData::PlinkData(
     const std::vector<uint64_t> &usedMask,
     uint32_t nFam,
     uint32_t nUsed,
-    std::string IDsToIncludeFile,
-    std::string RangesToIncludeFile,
-    std::string IDsToExcludeFile,
-    std::string RangesToExcludeFile,
+    std::string extractFile,
+    std::string excludeFile,
     std::unordered_set<std::string> chrFilter,
     int nMarkersEachChunk
 )
@@ -194,63 +151,27 @@ PlinkData::PlinkData(
             throw std::runtime_error("Invalid or unsupported PLINK bed file format");
     }
 
-    // ---- Filter markers and build chunks ----
-    m_markerInfo = getFilteredMarkers(m_chr, m_pos, m_markerId, m_ref, m_alt, IDsToIncludeFile, RangesToIncludeFile,
-                                      IDsToExcludeFile, RangesToExcludeFile, chrFilter);
-    if (m_markerInfo.empty()) throw std::runtime_error("No markers remain after PLINK marker filtering.");
+    // ---- Build full marker list ----
+    m_markerInfo.reserve(m_nMarkers);
+    for (uint32_t i = 0; i < m_nMarkers; ++i)
+        m_markerInfo.push_back({m_chr[i], m_pos[i], m_markerId[i], m_ref[i], m_alt[i],
+                                static_cast<uint64_t>(i)});
+
+    // ---- Apply --chr filter ----
+    if (!chrFilter.empty()) {
+        std::vector<MarkerInfo> filtered;
+        filtered.reserve(m_markerInfo.size());
+        for (const auto &m : m_markerInfo)
+            if (chrFilter.count(m.chrom)) filtered.push_back(m);
+        m_markerInfo = std::move(filtered);
+    }
+
+    // ---- Apply --extract / --exclude filter ----
+    geno_factory::filterMarkersByIds(m_markerInfo, extractFile, excludeFile);
+
+    if (m_markerInfo.empty())
+        throw std::runtime_error("No markers remain after PLINK marker filtering.");
     m_chunkIndices = buildChunks(m_markerInfo, nMarkersEachChunk);
-}
-
-std::vector<PlinkData::MarkerInfo> PlinkData::getFilteredMarkers(
-    const std::vector<std::string> &chr,
-    const std::vector<uint32_t> &pos,
-    const std::vector<std::string> &markerId,
-    const std::vector<std::string> &ref,
-    const std::vector<std::string> &alt,
-    const std::string &IDsToIncludeFile,
-    const std::string &RangesToIncludeFile,
-    const std::string &IDsToExcludeFile,
-    const std::string &RangesToExcludeFile,
-    const std::unordered_set<std::string> &chrFilter
-) {
-    const uint32_t nMarkers = static_cast<uint32_t>(chr.size());
-    std::vector<PlinkData::MarkerInfo> all;
-    all.reserve(nMarkers);
-    for (uint32_t i = 0; i < nMarkers; ++i) {
-        all.push_back({chr[i], pos[i], markerId[i], ref[i], alt[i], static_cast<uint64_t>(i)});
-    }
-
-    std::unordered_set<std::string> includeIds, excludeIds;
-    std::vector<RangeFilter> includeRanges, excludeRanges;
-
-    if (!IDsToIncludeFile.empty()) {
-        auto ids = readSingleColumnFile(IDsToIncludeFile);
-        includeIds.insert(ids.begin(), ids.end());
-    }
-    if (!RangesToIncludeFile.empty()) includeRanges = readRangeFile(RangesToIncludeFile);
-    if (!IDsToExcludeFile.empty()) {
-        auto ids = readSingleColumnFile(IDsToExcludeFile);
-        excludeIds.insert(ids.begin(), ids.end());
-    }
-    if (!RangesToExcludeFile.empty()) excludeRanges = readRangeFile(RangesToExcludeFile);
-
-    const bool anyChr     = !chrFilter.empty();
-    const bool anyInclude = !includeIds.empty() || !includeRanges.empty();
-    const bool anyExclude = !excludeIds.empty() || !excludeRanges.empty();
-    if (!anyChr && !anyInclude && !anyExclude) return all;
-
-    std::vector<PlinkData::MarkerInfo> filtered;
-    filtered.reserve(all.size());
-    for (const auto &m : all) {
-        if (anyChr && chrFilter.count(m.chrom) == 0) continue;
-        bool inc = !anyInclude;
-        if (anyInclude) inc = (includeIds.count(m.id) > 0) || markerInRanges(m, includeRanges);
-        if (!inc) continue;
-        bool exc = false;
-        if (anyExclude) exc = (excludeIds.count(m.id) > 0) || markerInRanges(m, excludeRanges);
-        if (!exc) filtered.push_back(m);
-    }
-    return filtered;
 }
 
 std::vector<std::vector<uint64_t> > PlinkData::buildChunks(

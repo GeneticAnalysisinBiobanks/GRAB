@@ -26,6 +26,12 @@ class PlinkData : public GenoMeta {
   public:
     // `usedMask` has ceil(nFam/64) words; bit i set ↔ .fam subject i is used.
     // `nFam` = total .fam lines.  `nUsed` = popcount(usedMask).
+    //
+    // Variant filtering is uniform across all GenoMeta backends:
+    //   chrFilter   — --chr include set (empty ⇒ keep all chromosomes)
+    //   extractFile — --extract ID list  (empty ⇒ no include filter)
+    //   excludeFile — --exclude ID list  (empty ⇒ no exclude filter)
+    // Applied via geno_factory::filterMarkersByIds (see variant_filter.hpp).
     PlinkData(
         std::string bedFile,
         std::string bimFile,
@@ -33,10 +39,8 @@ class PlinkData : public GenoMeta {
         const std::vector<uint64_t> &usedMask,
         uint32_t nFam,
         uint32_t nUsed,
-        std::string IDsToIncludeFile = {},
-        std::string RangesToIncludeFile = {},
-        std::string IDsToExcludeFile = {},
-        std::string RangesToExcludeFile = {},
+        std::string extractFile = {},
+        std::string excludeFile = {},
         std::unordered_set<std::string> chrFilter = {},
         int nMarkersEachChunk = 1024
     );
@@ -108,19 +112,6 @@ class PlinkData : public GenoMeta {
     }
 
   private:
-    static std::vector<MarkerInfo> getFilteredMarkers(
-        const std::vector<std::string> &chr,
-        const std::vector<uint32_t> &pos,
-        const std::vector<std::string> &markerId,
-        const std::vector<std::string> &ref,
-        const std::vector<std::string> &alt,
-        const std::string &IDsToIncludeFile,
-        const std::string &RangesToIncludeFile,
-        const std::string &IDsToExcludeFile,
-        const std::string &RangesToExcludeFile,
-        const std::unordered_set<std::string> &chrFilter
-    );
-
     static std::vector<std::vector<uint64_t> > buildChunks(
         const std::vector<MarkerInfo> &markers,
         int chunkSize

@@ -29,6 +29,8 @@ class BgenData : public GenoMeta {
         uint32_t nSamplesInFile,
         uint32_t nUsed,
         std::unordered_set<std::string> chrFilter = {},
+        std::string extractFile = {},
+        std::string excludeFile = {},
         int nMarkersEachChunk = 1024,
         bool altFirst = false
     );

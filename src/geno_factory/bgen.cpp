@@ -5,6 +5,7 @@
 
 #include "geno_factory/bgen.hpp"
 #include "geno_factory/hwe.hpp"
+#include "geno_factory/variant_filter.hpp"
 #include "util/logging.hpp"
 
 #include <algorithm>
@@ -172,6 +173,8 @@ BgenData::BgenData(
     uint32_t nSamplesInFile,
     uint32_t nUsed,
     std::unordered_set<std::string> chrFilter,
+    std::string extractFile,
+    std::string excludeFile,
     int nMarkersEachChunk,
     bool altFirst
 )
@@ -253,6 +256,9 @@ BgenData::BgenData(
 
         genfile::bgen::ignore_genotype_data_block(stream, context);
     }
+
+    // ---- Apply --extract / --exclude filter ----
+    geno_factory::filterMarkersByIds(m_markerInfo, extractFile, excludeFile);
 
     m_nMarkers = static_cast<uint32_t>(m_markerInfo.size());
     m_chunkIndices = buildChunks(m_markerInfo, nMarkersEachChunk);

@@ -435,14 +435,20 @@ mixing scales gives meaningless residuals.)"
 
 inline const FlagDef kExtract = {
     "--extract", "FILE", "Restrict analysis to SNPs listed in file (one ID per line)",
-    R"(Single-column file of SNP IDs (matching .bim column 2).
-Applied to both --bfile and --admix-bfile inputs.)"
+    R"(Single-column file of SNP IDs.  Comparison is by marker ID
+(.bim column 2, .pvar ID column, BGEN RSID/SNPID, VCF/BCF ID field).
+Applied uniformly to all genotype inputs: --bfile, --pfile, --vcf,
+--bcf, --bgen, and --admix-bfile.  IDs listed in the file that do not
+match any marker are silently ignored.)"
 };
 
 inline const FlagDef kExclude = {
     "--exclude", "FILE", "Exclude SNPs listed in file from analysis (one ID per line)",
-    R"(Single-column file of SNP IDs (matching .bim column 2).
-Applied to both --bfile and --admix-bfile inputs.)"
+    R"(Single-column file of SNP IDs.  Comparison is by marker ID
+(.bim column 2, .pvar ID column, BGEN RSID/SNPID, VCF/BCF ID field).
+Applied uniformly to all genotype inputs: --bfile, --pfile, --vcf,
+--bcf, --bgen, and --admix-bfile.  IDs listed in the file that do not
+match any marker are silently ignored.)"
 };
 
 inline const FlagDef kChr = {
