@@ -104,7 +104,7 @@ build/grab2 \
   --out examples_output/1kg
 ```
 
-The companion script `examples/run.sh` exercises every method end-to-end using the files under `examples/`.
+Two companion scripts under `examples/` exercise the bundled fixtures end-to-end: `tutorial.sh` is a minimal walkthrough of each method with only the mandatory flags, while `baseline.sh` is the exhaustive regression baseline that spells out every flag at its default value and asserts byte-identity across all four reader formats.
 
 ## Licence
 

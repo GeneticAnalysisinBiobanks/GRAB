@@ -52,9 +52,9 @@ Usage:
 For more help, run 'grab2 --help TOPIC':
   Methods:       spacox  spagrm  sageld  spamix  spasqr  wtcoxg  leaf
   Utilities:     cal-af-coef  cal-pairwise-ibd  int-pheno
-  Inputs:        geno  pheno  covar
-  Other files:   ref-af  sp-grm  pairwise-ibd  ind-af-coef
-  All options:   options
+  Main inputs:   geno  pheno  covar
+  Other inputs:  sp-grm  pairwise-ibd  ind-af-coef  ref-af
+  List options:  options
 )",
         stderr);
 }

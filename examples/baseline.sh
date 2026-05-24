@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# examples/run.sh — canonical regression script for the GRAB repository.
+# examples/baseline.sh — exhaustive regression script for the GRAB repository.
 #
-# This is the single end-to-end script that exercises every utility mode
-# (cal-af-coef, cal-pairwise-ibd, int-pheno) and every analysis method
-# (SPACox, SPAmix, SPAGRM, SAGELD, SPAsqr, WtCoxG, LEAF) against the
-# bundled examples/1kg.* fixtures.  It serves two purposes:
+# This script exercises every utility mode (cal-af-coef, cal-pairwise-ibd,
+# int-pheno) and every analysis method (SPACox, SPAmix, SPAGRM, SAGELD,
+# SPAsqr score + wald, WtCoxG, LEAF) against the bundled examples/1kg.*
+# fixtures.  It serves two purposes:
 #
 #   1. Documentary.  Every command spells out every command-line flag the
 #      method accepts.  Mandatory flags appear first; optional flags
 #      follow a "# Optional flags below:" comment with each numeric or
-#      categorical knob set to its built-in default value.  A first-time
-#      user can copy the lines above the comment to get a working
-#      invocation, and refer to the lines below for every available
-#      tuning knob.
+#      categorical knob set to its built-in default value.  Every CLI
+#      flag should appear somewhere in this script; when a new flag is
+#      added, the corresponding block must gain a line listing it at
+#      its default value.
 #
 #   2. Regression baseline.  After any refactor (shared engine, SIMD
 #      kernels, null-model fitting, genotype readers, output formatting,
@@ -22,6 +22,10 @@
 #      pre-refactor baseline.  A passing build is not sufficient
 #      evidence that a refactor preserved behavior; output equivalence
 #      is.
+#
+# For a minimal, user-facing walkthrough of each method with only the
+# mandatory flags (no defaults spelled out, no regression cross-checks),
+# see examples/tutorial.sh.
 
 set -e
 
@@ -259,6 +263,43 @@ build/grab2 \
   --hwe 0 \
   --compression zst \
   --compression-level 3
+
+## ── SPAsqr (wald mode, follow-up effect-size estimation) ──────────────
+# Wald mode refits the joint smoothed-QR model with [X | G] per marker,
+# emitting β̂_G + SE.  It is appreciably slower per marker than score
+# mode (one QR fit per marker × τ), so this block restricts to the 100
+# variant IDs in examples/spasqr_wald_extract.  Uses a distinct --out
+# prefix so the per-phenotype .SPAsqr files do not collide with the
+# score-mode artifacts produced above.
+
+build/grab2 \
+  --method SPAsqr \
+  --pheno ${OUT_DIR}/int_pheno.txt \
+  --pheno-name Quantitative,Time \
+  --covar examples/1kg.pheno \
+  --covar-name MALE,PC1,PC2,PC3,PC4 \
+  --sp-grm-plink2 examples/1kg.grm.sp \
+  --pred-list examples/loco_prs.list \
+  --extract examples/spasqr_wald_extract \
+  --pfile examples/1kg \
+  --out ${OUT_DIR}/wald \
+  `# Optional flags below (set to built-in defaults):` \
+  --chr 1-2,3 \
+  --spasqr-taus 0.1,0.3,0.5,0.7,0.9 \
+  --spasqr-tol 1e-7 \
+  --spasqr-h-scale 10 \
+  --spasqr-solver qmme \
+  --spasqr-mode wald \
+  --pheno-transform int \
+  --outlier-iqr-multiplier 1.5 \
+  --spasqr-outlier-abs-bound 0.55 \
+  --spa-z-threshold 2.0 \
+  --threads 2 \
+  --chunk-size 8192 \
+  --geno 0.1 \
+  --maf 1e-5 \
+  --mac 10 \
+  --hwe 0
 
 ## ── WtCoxG ────────────────────────────────────────────────────────────
 

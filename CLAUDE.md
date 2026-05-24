@@ -128,14 +128,28 @@ with `GRAB_MARCH=-march=x86-64-v2` for portable distribution binaries.
 - The binary is the deliverable. There is no install step, no shared library,
   no headers exposed to users. Users download or build the binary and run it.
 
-## Regression testing — `examples/run.sh`
+## Example scripts — `examples/tutorial.sh` and `examples/baseline.sh`
 
-`examples/run.sh` is the single end-to-end regression script for the
-repository.  It exercises every utility mode (`--cal-af-coef`,
-`--cal-pairwise-ibd`, `--int-pheno`) and every analysis method (SPACox,
-SPAmix, SPAGRM, SAGELD, SPAsqr, WtCoxG, LEAF) against the bundled
-`examples/1kg.*` fixtures, writing all artifacts under
-`examples_output/` with the common prefix `examples_output/1kg`.
+The repository ships two end-to-end example scripts with distinct
+audiences and obligations.
+
+### `examples/tutorial.sh` — user-facing walkthrough
+
+`tutorial.sh` is a minimal, copy-pasteable demonstration of each
+analysis method.  Every command lists only the mandatory inputs plus a
+phenotype list and an output prefix; all other knobs fall back to
+`grab2`'s built-in defaults.  Two phenotypes are exercised per method
+to keep the output tables small while still covering both quantitative
+and survival code paths.  This script is **not** a regression baseline;
+its output is not pinned to a hash.
+
+### `examples/baseline.sh` — exhaustive regression script
+
+`baseline.sh` exercises every utility mode (`--cal-af-coef`,
+`--cal-pairwise-ibd`, `--int-pheno`) and every analysis method
+(SPACox, SPAmix, SPAGRM, SAGELD, SPAsqr in both **score** and **wald**
+modes, WtCoxG, LEAF) against the bundled `examples/1kg.*` fixtures,
+writing all artifacts under `examples_output/`.
 
 The script has two purposes that must both be preserved when it is
 edited:
@@ -145,13 +159,13 @@ edited:
    its built-in default value.  Reading the script tells a new
    contributor exactly which flags are available and what each one
    defaults to when omitted.  When a new flag is added to a method or
-   utility, the corresponding block in `examples/run.sh` must gain a
-   line listing the flag at its default value; when a flag is removed
+   utility, the corresponding block in `examples/baseline.sh` must gain
+   a line listing the flag at its default value; when a flag is removed
    or renamed, the line must be updated accordingly.
 
 2. **Regression baseline.**  After any refactor — shared engine, SIMD
    kernels, null-model fitting, genotype readers, output formatting, or
-   per-method code — re-run `examples/run.sh` and confirm that the
+   per-method code — re-run `examples/baseline.sh` and confirm that the
    resulting `examples_output/*` artifacts are byte-identical (or
    numerically identical up to documented tolerance) to the
    pre-refactor baseline.  A passing build is not sufficient evidence
@@ -159,16 +173,31 @@ edited:
 
 The compression codec varies across blocks by design, so that a single
 pass through the script exercises all three output-writer paths:
-plain text (SPACox), gzip (WtCoxG, LEAF), and zstd (everything else).
-Do not collapse the codec to a single setting when editing the script.
+plain text (SPACox, SPAsqr-wald), gzip (WtCoxG, LEAF), and zstd
+(everything else).  Do not collapse the codec to a single setting when
+editing the script.
 
 The `--int-pheno` block sits between SAGELD and SPAsqr: it produces
 `examples_output/1kg.int.txt`, an inverse-normal-transformed phenotype
 file containing only the `Quantitative` and `Time` columns.  SPAsqr
 consumes this file via `--pheno` and pulls the remaining covariates
 (`MALE`, `PC1..PC4`) from the original phenotype file via `--covar`;
-this exercises the disjoint-pheno/covar loading path in
-`SubjectData`.
+this exercises the disjoint-pheno/covar loading path in `SubjectData`.
+
+The SPAsqr **wald** block restricts to 100 variants via
+`--extract examples/spasqr_wald_extract`, because the per-marker QR
+refit is appreciably slower than score mode.  The 100-line ID file is
+checked into the repository under `examples/` to keep the regression
+result reproducible.
+
+The cross-format SPAGRM block at the bottom of the script converts the
+bundled `.pgen` fixture to BED, BCF, and BGEN with `plink2 --make-bed
+/ --export bcf / --export bgen-1.2` and runs SPAGRM on each input with
+the same `--extract` / `--exclude` / `--keep` / `--remove` filter
+lists, then asserts byte-identity across the four readers in
+`src/geno_factory/`.  This serves as both the cross-reader regression
+and the regression for the shared `geno_factory::filterMarkersByIds`
+ID-filter helper.
 
 ## Shared engine code is validated — do not modify when debugging other methods
 
