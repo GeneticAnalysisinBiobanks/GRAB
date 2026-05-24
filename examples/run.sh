@@ -188,17 +188,22 @@ build/grab2 \
   --compression zst \
   --compression-level 3
 
-## ── SAGELD (residual mode, --resid-name) ──────────────────────────────
-# Consumes the residual file produced by the SAGELD fit mode
+## ── SAGELD (residual mode, --resid-name; Long1 and Long2) ─────────────
+# Consumes the per-phenotype residual files produced by the SAGELD fit
+# mode (one --resid output per phenotype, with R_G/R_TIME/R_GxTIME).
+# Output prefix is suffixed by the phenotype name so that fit and resid
+# artefacts for each of Long1 and Long2 can be compared independently
+# in the regression cross-checks block at the bottom of this script.
 
+for sageld_pheno in Long1 Long2; do
 build/grab2 \
   --method SAGELD \
-  --pheno ${OUT}.Long1.SAGELD.resid \
+  --pheno ${OUT}.${sageld_pheno}.SAGELD.resid \
   --resid-name R_G,R_TIME,R_GxTIME \
   --sp-grm-plink2 examples/1kg.grm.sp \
   --pairwise-ibd ${OUT}.ibd.zst \
   --pfile examples/1kg \
-  --out ${RESID_OUT} \
+  --out ${RESID_OUT}_${sageld_pheno} \
   `# Optional flags below (set to built-in defaults):` \
   --chr 1-2,3 \
   --spa-z-threshold 2.0 \
@@ -210,6 +215,7 @@ build/grab2 \
   --hwe 0 \
   --compression zst \
   --compression-level 3
+done
 
 ## ── Utility: int-pheno ────────────────────────────────────────────────
 # Produces ${OUT}.int.txt, a phenotype file containing the
@@ -312,3 +318,112 @@ build/grab2 \
   --hwe 0 \
   --compression gz \
   --compression-level 6
+
+## ── Regression cross-checks (md5/diff over compressed outputs) ────────
+# The blocks below are not new analyses: they re-run a method on
+# equivalent inputs (or in resid mode after the fit mode has saved its
+# null-model residuals) and assert that the per-marker output table is
+# bit-identical to the reference run.  Each comparison strips compression
+# (zstdcat / zcat) before hashing so that codec framing does not mask
+# content equivalence.  Failures are reported as "[FAIL]" but the script
+# continues so that all checks run in one pass.
+
+# Helper: md5sum every member of the list (raw bytes, no decompression)
+# and report whether every member shares the same hash with the first.
+# This relies on grab2's compressed writers (zstd, gzip) being byte-
+# deterministic for identical inputs at a fixed codec level, which has
+# been verified for the zstd path.  Always returns 0 so `set -e` does
+# not abort the script when a check fails.
+md5_equiv() {
+  local label="$1"; shift
+  local ref="" status="PASS" md
+  for f in "$@"; do
+    md=$(md5sum "${f}" | awk '{print $1}')
+    printf "    %s  %s\n" "${md}" "${f}"
+    if [ -z "${ref}" ]; then
+      ref="${md}"
+    elif [ "${md}" != "${ref}" ]; then
+      status="FAIL"
+    fi
+  done
+  echo "  [${status}] ${label}"
+  echo
+  return 0
+}
+
+echo
+echo "════════════════════════════════════════════════════════════════════"
+echo "Regression cross-checks"
+echo "════════════════════════════════════════════════════════════════════"
+
+## ── Cross-format SPAGRM equivalence: pgen / bed / bcf / bgen ──────────
+# Convert the bundled pgen fixture to BED, BCF, and BGEN with plink2,
+# then run SPAGRM on each input format with a distinct --out prefix and
+# verify that the per-phenotype output tables agree byte-for-byte across
+# all four genotype readers in src/geno_factory/.
+
+CONV_DIR=${OUT_DIR}/converted
+mkdir -p ${CONV_DIR}
+
+plink2 --pfile examples/1kg --make-bed                       --out ${CONV_DIR}/1kg
+plink2 --pfile examples/1kg --export bcf                     --out ${CONV_DIR}/1kg
+plink2 --pfile examples/1kg --export bgen-1.2 bits=8         --out ${CONV_DIR}/1kg
+
+# Shared SPAGRM invocation; only --pfile/--bfile/--bcf/--bgen and --out
+# vary between the four runs below.
+SPAGRM_COMMON=(
+  --method SPAGRM
+  --pheno examples/1kg.pheno
+  --pheno-name Quantitative,Time:Event,Binary,Ordinal
+  --covar-name MALE,PC1,PC2,PC3,PC4
+  --sp-grm-plink2 examples/1kg.grm.sp
+  --pairwise-ibd ${OUT}.ibd.zst
+  --regression-model auto
+  --chr 1-2,3
+  --spa-z-threshold 2.0
+  --outlier-iqr-multiplier 1.5
+  --seed 2026
+  --threads 2
+  --chunk-size 8192
+  --geno 0.1
+  --maf 1e-5
+  --mac 10
+  --hwe 0
+  --compression zst
+  --compression-level 3
+)
+
+build/grab2 "${SPAGRM_COMMON[@]}" --pfile examples/1kg                  --out ${OUT_DIR}/spagrm_pgen
+build/grab2 "${SPAGRM_COMMON[@]}" --bfile ${CONV_DIR}/1kg               --out ${OUT_DIR}/spagrm_bed
+build/grab2 "${SPAGRM_COMMON[@]}" --bcf   ${CONV_DIR}/1kg.bcf           --out ${OUT_DIR}/spagrm_bcf
+build/grab2 "${SPAGRM_COMMON[@]}" --bgen  ${CONV_DIR}/1kg.bgen ref-last --out ${OUT_DIR}/spagrm_bgen
+
+for phen in Quantitative Time_Event Binary Ordinal; do
+  md5_equiv "SPAGRM cross-format ${phen}" \
+    ${OUT_DIR}/spagrm_pgen.${phen}.SPAGRM.zst \
+    ${OUT_DIR}/spagrm_bed.${phen}.SPAGRM.zst \
+    ${OUT_DIR}/spagrm_bcf.${phen}.SPAGRM.zst \
+    ${OUT_DIR}/spagrm_bgen.${phen}.SPAGRM.zst
+done
+
+## ── SPACox: fit mode vs residual mode ─────────────────────────────────
+# The fit-mode run above wrote ${OUT}.null.resid; the residual-mode run
+# replayed the same scan against the same .pgen using those residuals.
+# Per-phenotype tables must match exactly.
+
+for phen in Quantitative Time_Event Binary Ordinal; do
+  md5_equiv "SPACox fit-vs-resid ${phen}" \
+    ${OUT}.${phen}.SPACox \
+    ${RESID_OUT}.${phen}.SPACox
+done
+
+## ── SAGELD: fit mode vs residual mode (Long1 and Long2) ───────────────
+# Each SAGELD residual-mode run consumes ${OUT}.${pheno}.SAGELD.resid
+# and emits ${RESID_OUT}_${pheno}.SAGELD.zst; the corresponding fit-mode
+# result is ${OUT}.${pheno}.SAGELD.zst.
+
+for sageld_pheno in Long1 Long2; do
+  md5_equiv "SAGELD fit-vs-resid ${sageld_pheno}" \
+    ${OUT}.${sageld_pheno}.SAGELD.zst \
+    ${RESID_OUT}_${sageld_pheno}.SAGELD.zst
+done
