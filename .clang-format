@@ -1,4 +1,0 @@
-ColumnLimit: 120
-IndentWidth: 4
-AllowShortIfStatementsOnASingleLine: true
-BinPackParameters: false
