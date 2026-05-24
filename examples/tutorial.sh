@@ -105,6 +105,7 @@ build/grab2 \
   --covar examples/1kg.pheno \
   --covar-name MALE,PC1,PC2,PC3,PC4 \
   --sp-grm-plink2 examples/1kg.grm.sp \
+  --pred-list examples/loco_prs.list \
   --pfile examples/1kg \
   --out ${OUT_DIR}/spasqr
 
@@ -114,6 +115,7 @@ build/grab2 \
 # the 10 variant IDs in examples/spasqr_wald_extract for a quick demo.
 
 build/grab2 \
+  --threads 4 \
   --method SPAsqr \
   --spasqr-mode wald \
   --pheno ${OUT_DIR}/int_pheno.txt \
@@ -121,6 +123,7 @@ build/grab2 \
   --covar examples/1kg.pheno \
   --covar-name MALE,PC1,PC2,PC3,PC4 \
   --sp-grm-plink2 examples/1kg.grm.sp \
+  --pred-list examples/loco_prs.list \
   --extract examples/spasqr_wald_extract \
   --pfile examples/1kg \
   --out ${OUT_DIR}/spasqr_wald

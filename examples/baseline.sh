@@ -29,7 +29,7 @@
 
 set -e
 
-OUT_DIR=examples_output
+OUT_DIR=examples_output/baseline
 mkdir -p ${OUT_DIR}
 OUT=${OUT_DIR}/fit          # output prefix for fit-mode runs
 RESID_OUT=${OUT_DIR}/resid  # output prefix for residual-mode runs (SPACox, SAGELD)
@@ -266,11 +266,16 @@ build/grab2 \
 
 ## ── SPAsqr (wald mode, follow-up effect-size estimation) ──────────────
 # Wald mode refits the joint smoothed-QR model with [X | G] per marker,
-# emitting β̂_G + SE.  It is appreciably slower per marker than score
-# mode (one QR fit per marker × τ), so this block restricts to the 100
-# variant IDs in examples/spasqr_wald_extract.  Uses a distinct --out
-# prefix so the per-phenotype .SPAsqr files do not collide with the
-# score-mode artifacts produced above.
+# emitting β̂_G + SE.  Per-marker QR refit is appreciably slower than
+# score mode, so this block restricts to the 100 variant IDs in
+# examples/spasqr_wald_extract.  Per-marker work runs on the shared
+# marker-engine thread pool; chunk size auto-shrinks when --chunk-size
+# is left at its 8192 sentinel so the worker pool stays fed even on
+# small --extract subsets.  Output is plink2-style one-marker-per-line
+# wide format (P_CCT + P_tau* + Z_tau* + BETA_tau* + SE_tau* columns),
+# written through TextWriter honoring --compression.  A distinct --out
+# prefix keeps the per-phenotype .SPAsqr.zst files from colliding with
+# the score-mode artifacts produced above.
 
 build/grab2 \
   --method SPAsqr \
@@ -299,7 +304,9 @@ build/grab2 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
-  --hwe 0
+  --hwe 0 \
+  --compression zst \
+  --compression-level 3
 
 ## ── WtCoxG ────────────────────────────────────────────────────────────
 

@@ -303,7 +303,26 @@ cores when sizing a job to physical cores.)"
 
 inline const FlagDef kChunkSize = {
     "--chunk-size", "INT", "Markers per chunk (default: 8192, min: 256)",
-    nullptr
+    R"(Controls the granularity of the chunk-level work-stealing thread pool.
+Each chunk is processed end-to-end by a single worker, then handed to a
+single writer thread that emits chunks in genomic order.  Smaller chunks
+improve load balancing on heterogeneous workloads at the cost of more
+synchronization and per-chunk overhead; larger chunks reduce overhead
+but may starve workers when the total marker count is small.
+
+The default of 8192 suits whole-genome scans where each chunk amortises
+the worker's startup cost over thousands of markers.  On a CLI-supplied
+value, the engine honors it verbatim (subject to the min: 256 floor).
+
+Exception — SPAsqr --spasqr-mode wald: per-marker QR refit is far slower
+than score-mode batched GEMM, and wald runs are typically restricted to
+a curated SNP list via --extract.  When --chunk-size is left at the
+8192 default sentinel, wald auto-shrinks the chunk size to
+  ceil( nMarkers / (4 * nthreads) )
+so the chunk count is at least 4 * nthreads, keeping the worker pool
+saturated even for very small marker sets (e.g. nMarkers = 10,
+nthreads = 4 → chunk = 1, one marker per chunk).  An explicit
+--chunk-size on the command line suppresses the auto-shrink.)"
 };
 
 inline const FlagDef kCompression = {
@@ -408,9 +427,14 @@ inline const FlagDef kSpasqrMode = {
           model with [X | G] is refit by QMME and β̂_G + SE are computed from
           the (γ,γ) entry of the M-estimation sandwich V = A^{-1} B A^{-1}/n.
           Slower per marker; suited for follow-up effect-size estimation on
-          a small SNP list (--extract).  Output is long-format summary stats:
-          CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC HWE_P TAU BETA SE Z P
-          (one row per (marker, τ); --pred-list gives y_resp = Y − loco_chr.))"
+          a small SNP list (--extract).  Per-marker QR refit runs on the
+          shared marker-engine thread pool (--threads), and --chunk-size
+          auto-shrinks at its 8192 default so the pool stays fed even on
+          small marker sets — see --chunk-size for details.  Output is
+          plink2-style one-marker-per-line wide format:
+          CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC HWE_P
+          P_CCT P_tau{val}... Z_tau{val}... BETA_tau{val}... SE_tau{val}...
+          (--pred-list gives y_resp = Y − loco_chr; --compression honored.))"
 };
 
 inline const FlagDef kPhenoTransform = {

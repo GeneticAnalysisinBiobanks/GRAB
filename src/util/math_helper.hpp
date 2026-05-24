@@ -338,6 +338,49 @@ OptimResult bfgs(
 );
 
 // ──────────────────────────────────────────────────────────────────────
+// § 7b  Cauchy combination test (CCT)
+//
+// Combines n independent or dependent p-values into a single p-value via
+//   T = (1/n) Σ tan( (0.5 − pᵢ) · π )
+// and returns the upper-tail probability of the standard Cauchy at T.
+// NaN entries in pvals[] are skipped; if all entries are NaN the result
+// is NaN.  Any pᵢ ≤ 0 short-circuits the combined p-value to 0; pᵢ ≥ 1
+// is clamped to 0.999.  The tail formulas use 1/(πT) for |T| > 1e15 and
+// 1/(πpᵢ) for pᵢ < 1e−15 to avoid overflow in tan().
+//
+// Reference: Liu & Xie (2020), "Cauchy combination test: a powerful test
+// with analytic p-value calculation under arbitrary dependency
+// structures", J. Amer. Statist. Assoc. 115 (529), 393–402.
+// ──────────────────────────────────────────────────────────────────────
+
+inline double cauchyCombine(
+    const double *pvals,
+    int n
+) {
+    if (n <= 0) return std::numeric_limits<double>::quiet_NaN();
+
+    int nValid = 0;
+    bool hasZero = false;
+    double tStat = 0.0;
+    for (int i = 0; i < n; ++i) {
+        const double p = pvals[i];
+        if (std::isnan(p)) continue;
+        ++nValid;
+        if (p <= 0.0) { hasZero = true; break; }
+        const double pc = (p >= 1.0) ? 0.999 : p;
+        tStat += (pc < 1e-15) ? (1.0 / (pc * M_PI))
+                              : std::tan((0.5 - pc) * M_PI);
+    }
+
+    if (nValid == 0) return std::numeric_limits<double>::quiet_NaN();
+    if (hasZero) return 0.0;
+
+    tStat /= static_cast<double>(nValid);
+    return (tStat > 1e15) ? (1.0 / tStat) / M_PI
+                          : 0.5 - std::atan(tStat) / M_PI;
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // § 7  Bounded 1-D minimiser  (Brent's method for minima)
 // ──────────────────────────────────────────────────────────────────────
 

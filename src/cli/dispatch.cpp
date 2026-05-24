@@ -254,6 +254,13 @@ static void logArgsInEffect(const Args &args) {
         std::fprintf(stderr, "  --sageld-x %s\n", args.sageldX.c_str());
     // SPAsqr-specific knobs (relevant for SPAsqr pheno path)
     if (args.method == "SPAsqr" && !args.phenoName.empty()) {
+        // --spasqr-mode and --spasqr-solver are always logged because the
+        // two modes (score vs wald) and two solvers (qmme vs conquer)
+        // have substantially different code paths, output formats, and
+        // runtime behavior; surfacing them in the run header makes it
+        // unambiguous which path was exercised.
+        std::fprintf(stderr, "  --spasqr-mode %s\n", args.spasqrMode.c_str());
+        std::fprintf(stderr, "  --spasqr-solver %s\n", args.spasqrSolver.c_str());
         if (!args.spasqrTaus.empty())
             std::fprintf(stderr, "  --spasqr-taus %s\n", args.spasqrTaus.c_str());
         if (args.spasqrTol != 1e-7)
@@ -1045,8 +1052,13 @@ int run(
                     args.hweCutoff,
                     args.keepFile,
                     args.removeFile,
-                    args.phenoTransform
+                    args.phenoTransform,
+                    args.nthread,
+                    args.nSnpPerChunk,
+                    args.compression,
+                    args.compressionLevel
                 );
+                printTimer();
                 return 0;
             }
             if (!args.predListFile.empty()) {

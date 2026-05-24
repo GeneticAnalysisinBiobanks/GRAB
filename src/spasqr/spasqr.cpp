@@ -703,31 +703,7 @@ class SPAsqrMethod : public MethodBase {
             const double *pvals   = pBuf + b * m_ntaus;
             const double *zScores = zBuf + b * m_ntaus;
 
-            // CCT (Cauchy combination test)
-            double valid_p[20];
-            int nValid = 0;
-            for (int i = 0; i < m_ntaus; ++i)
-                if (!std::isnan(pvals[i])) valid_p[nValid++] = pvals[i];
-
-            double pCCT = std::numeric_limits<double>::quiet_NaN();
-            if (nValid > 0) {
-                bool hasZero = false;
-                double tStat = 0.0;
-                for (int vi = 0; vi < nValid; ++vi) {
-                    double p = valid_p[vi];
-                    if (p <= 0.0) { hasZero = true; break; }
-                    double pc = (p >= 1.0) ? 0.999 : p;
-                    tStat += (pc < 1e-15) ? (1.0 / (pc * M_PI))
-                                          : std::tan((0.5 - pc) * M_PI);
-                }
-                if (hasZero) {
-                    pCCT = 0.0;
-                } else {
-                    tStat /= static_cast<double>(nValid);
-                    pCCT = (tStat > 1e15) ? (1.0 / tStat) / M_PI
-                                           : 0.5 - std::atan(tStat) / M_PI;
-                }
-            }
+            const double pCCT = math::cauchyCombine(pvals, m_ntaus);
 
             result.push_back(pCCT);
             for (int i = 0; i < m_ntaus; ++i)
@@ -773,32 +749,7 @@ class SPAsqrMethod : public MethodBase {
         }
 
         // CCT (Cauchy combination test) p-value
-        double valid_p[20];
-        int nValid = 0;
-        for (int i = 0; i < m_ntaus; ++i)
-            if (!std::isnan(pvals[i])) valid_p[nValid++] = pvals[i];
-
-        double pCCT = std::numeric_limits<double>::quiet_NaN();
-        if (nValid > 0) {
-            bool hasZero = false;
-            double tStat = 0.0;
-            for (int vi = 0; vi < nValid; ++vi) {
-                double p = valid_p[vi];
-                if (p <= 0.0) {
-                    hasZero = true;
-                    break;
-                }
-                double pc = (p >= 1.0) ? 0.999 : p;
-                tStat += (pc < 1e-15) ? (1.0 / (pc * M_PI))
-                                      : std::tan((0.5 - pc) * M_PI);
-            }
-            if (hasZero) {
-                pCCT = 0.0;
-            } else {
-                tStat /= static_cast<double>(nValid);
-                pCCT = (tStat > 1e15) ? (1.0 / tStat) / M_PI : 0.5 - std::atan(tStat) / M_PI;
-            }
-        }
+        const double pCCT = math::cauchyCombine(pvals, m_ntaus);
 
         result.push_back(pCCT);
         for (int i = 0; i < m_ntaus; ++i)
