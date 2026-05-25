@@ -1,0 +1,13 @@
+# .gitattributes — controls what `git archive` produces, which is also
+# the source tarball GitHub auto-attaches to each release page.
+#
+# Untracked working directories (build/, tmp/, examples_output/,
+# build_bak/, examples_1kg/, examples_leaf/, examples_mini/,
+# examples_spamix/) are excluded automatically by git and need no entry
+# here.  The rules below cover tracked content that ships in the
+# repository for developer convenience but adds no value to the source
+# distribution downloaded by end users.
+
+dev-notes/  export-ignore
+CLAUDE.md   export-ignore
+.gitignore  export-ignore

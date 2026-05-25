@@ -1,0 +1,246 @@
+# .github/workflows/release.yml — tag-triggered multi-platform release.
+#
+# Fires when a tag matching `v*` (e.g. v2.0.0a1) is pushed.  Builds
+# GRAB2 on five platforms, packages each binary into a self-contained
+# archive, and publishes the archives to a GitHub Release page named
+# after the tag.
+#
+# Design notes:
+#  - Linux builds run inside `quay.io/pypa/manylinux2014_{x86_64,aarch64}`,
+#    yielding a glibc 2.17 baseline (RHEL 7 / CentOS 7 / Ubuntu 18.04
+#    era).  libstdc++ / libgcc are statically linked into the binary so
+#    the only runtime dependency is system glibc.
+#  - macOS sets MACOSX_DEPLOYMENT_TARGET to expand the supported OS range
+#    back to macOS 10.15 (Catalina, 2019) on Intel and macOS 11 (Big Sur,
+#    2020) on Apple Silicon.  Apple clang does not accept
+#    -static-libstdc++; libc++ is provided by every macOS install.
+#  - Windows builds use MSYS2 / MinGW to drive the existing Makefile
+#    unchanged; -static-libstdc++ avoids shipping the MinGW runtime DLLs
+#    alongside grab2.exe.
+#  - The x86_64 baseline is `-march=x86-64-v3` (Haswell 2013+ — AVX2/FMA/
+#    BMI2).  Runtime SIMD dispatch in src/util/simd_dispatch.hpp still
+#    promotes the SPAsqr / SPAmix / SPAGRM hand-written kernels to
+#    AVX-512 on capable hosts via __attribute__((target(...))).
+#  - aarch64 / arm64 leaves GRAB_MARCH / SIMD_FLAGS empty; Eigen's NEON
+#    intrinsics activate by default.
+#  - Each job produces one artifact named after the target triple; the
+#    `release` job downloads all artifacts and uploads them to the tag's
+#    Release page with a SHA256SUMS.txt manifest.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write  # required by softprops/action-gh-release to create / edit releases
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64
+            runner: ubuntu-22.04
+            docker_image: quay.io/pypa/manylinux2014_x86_64
+            march: -march=x86-64-v3
+            simd_flags: -mavx2 -mbmi -mbmi2 -mlzcnt -mfma
+            static_libs: -static-libstdc++ -static-libgcc
+            archive_ext: tar.gz
+          - target: linux-aarch64
+            runner: ubuntu-22.04-arm
+            docker_image: quay.io/pypa/manylinux2014_aarch64
+            march: ""
+            simd_flags: ""
+            static_libs: -static-libstdc++ -static-libgcc
+            archive_ext: tar.gz
+          - target: macos-x86_64
+            runner: macos-13
+            march: -march=x86-64-v3
+            simd_flags: -mavx2 -mbmi -mbmi2 -mlzcnt -mfma
+            static_libs: ""
+            deployment_target: "10.15"
+            archive_ext: tar.gz
+          - target: macos-arm64
+            runner: macos-14
+            march: ""
+            simd_flags: ""
+            static_libs: ""
+            deployment_target: "11.0"
+            archive_ext: tar.gz
+          - target: windows-x86_64
+            runner: windows-2022
+            march: -march=x86-64-v3
+            simd_flags: -mavx2 -mbmi -mbmi2 -mlzcnt -mfma
+            # `-static` on MinGW forces full static linking, pulling
+            # libstdc++-6.dll, libgcc_s_seh-1.dll, AND libwinpthread-1.dll
+            # into the executable.  Without this the .exe would fail to
+            # start on a clean Windows install because none of these
+            # MinGW runtime DLLs ship with Windows.  We use the broad
+            # `-static` here (instead of Linux's selective `-static-
+            # libstdc++ -static-libgcc`) because, unlike glibc on Linux,
+            # there is no Windows system C library we want to keep
+            # dynamic — full static is both safe and correct on MinGW.
+            static_libs: -static
+            archive_ext: zip
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      # ── Linux: build inside manylinux2014 container ──────────────────
+      # The container ships GCC 10 (devtoolset-10) on its PATH by
+      # default; that satisfies C++17 including <filesystem>.
+      - name: Build (Linux, manylinux2014)
+        if: startsWith(matrix.target, 'linux')
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE":/work -w /work \
+            "${{ matrix.docker_image }}" \
+            bash -lc '
+              make -j"$(nproc)" \
+                GRAB_MARCH="${{ matrix.march }}" \
+                SIMD_FLAGS="${{ matrix.simd_flags }}" \
+                STATIC_LIBS="${{ matrix.static_libs }}" && \
+              build/grab2 --version && \
+              build/grab2 --help > /dev/null
+            '
+
+      # ── macOS: native build with deployment target ──────────────────
+      - name: Build (macOS)
+        if: startsWith(matrix.target, 'macos')
+        env:
+          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.deployment_target }}
+        run: |
+          set -euo pipefail
+          make -j"$(sysctl -n hw.ncpu)" \
+            GRAB_MARCH="${{ matrix.march }}" \
+            SIMD_FLAGS="${{ matrix.simd_flags }}"
+          build/grab2 --version
+          build/grab2 --help > /dev/null
+
+      # ── Windows: MSYS2 + MinGW ──────────────────────────────────────
+      - name: Set up MSYS2 (Windows)
+        if: startsWith(matrix.target, 'windows')
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            mingw-w64-x86_64-toolchain
+            make
+            zip
+
+      - name: Build (Windows)
+        if: startsWith(matrix.target, 'windows')
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          make -j"$(nproc)" \
+            GRAB_MARCH="${{ matrix.march }}" \
+            SIMD_FLAGS="${{ matrix.simd_flags }}" \
+            STATIC_LIBS="${{ matrix.static_libs }}"
+          build/grab2.exe --version
+          build/grab2.exe --help > /dev/null
+
+      # ── Package: assemble {grab2[.exe], README, LICENSE, VERSION} ────
+      # Linux strip runs inside the same manylinux container so the
+      # strip binary's ABI matches the produced binary; macOS / Windows
+      # strip on the runner is sufficient because the build is native.
+      - name: Package (Linux)
+        if: startsWith(matrix.target, 'linux')
+        run: |
+          set -euo pipefail
+          VERSION=$(cat VERSION)
+          PKG="grab2-${VERSION}-${{ matrix.target }}"
+          mkdir -p "dist/${PKG}"
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE":/work -w /work \
+            "${{ matrix.docker_image }}" \
+            bash -lc "strip build/grab2"
+          cp build/grab2 "dist/${PKG}/"
+          cp README.md LICENSE VERSION "dist/${PKG}/"
+          tar -C dist -czf "dist/${PKG}.tar.gz" "${PKG}"
+          echo "ASSET=dist/${PKG}.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Package (macOS)
+        if: startsWith(matrix.target, 'macos')
+        run: |
+          set -euo pipefail
+          VERSION=$(cat VERSION)
+          PKG="grab2-${VERSION}-${{ matrix.target }}"
+          mkdir -p "dist/${PKG}"
+          strip build/grab2 || true
+          cp build/grab2 "dist/${PKG}/"
+          cp README.md LICENSE VERSION "dist/${PKG}/"
+          tar -C dist -czf "dist/${PKG}.tar.gz" "${PKG}"
+          echo "ASSET=dist/${PKG}.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Package (Windows)
+        if: startsWith(matrix.target, 'windows')
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          VERSION=$(cat VERSION)
+          PKG="grab2-${VERSION}-${{ matrix.target }}"
+          mkdir -p "dist/${PKG}"
+          strip build/grab2.exe || true
+          cp build/grab2.exe "dist/${PKG}/"
+          cp README.md LICENSE VERSION "dist/${PKG}/"
+          (cd dist && zip -r "${PKG}.zip" "${PKG}")
+          echo "ASSET=dist/${PKG}.zip" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: ${{ env.ASSET }}
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out source (for release notes commit range)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifact tree and compute checksums
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' \) \
+            -exec cp {} release/ \;
+          cd release
+          sha256sum * > SHA256SUMS.txt
+          echo "── Release contents ──"
+          ls -lh
+          echo "── SHA256SUMS.txt ──"
+          cat SHA256SUMS.txt
+
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # Tag is the one that triggered the workflow.
+          files: |
+            release/*.tar.gz
+            release/*.zip
+            release/SHA256SUMS.txt
+          generate_release_notes: true
+          fail_on_unmatched_files: true

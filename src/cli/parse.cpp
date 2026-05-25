@@ -1,0 +1,217 @@
+// parse.cpp — Command-line argument parsing
+
+#include "cli/cli.hpp"
+
+#include <cctype>
+#include <cstdlib>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+#include <unordered_set>
+
+namespace cli {
+
+// Safe numeric parsers — print a clear error and exit instead of throwing.
+static double parseDouble(
+    const std::string &val,
+    const std::string &flag
+) {
+    try {
+        size_t pos = 0;
+        double v = std::stod(val, &pos);
+        if (pos != val.size()) {
+            std::cerr << "Error: " << flag << " requires a numeric value, got '" << val << "'\n";
+            std::exit(1);
+        }
+        return v;
+    } catch (const std::invalid_argument &) {
+        std::cerr << "Error: " << flag << " requires a numeric value, got '" << val << "'\n";
+        std::exit(1);
+    } catch (const std::out_of_range &) {
+        std::cerr << "Error: " << flag << " value out of range: '" << val << "'\n";
+        std::exit(1);
+    }
+}
+
+static int parseInt(
+    const std::string &val,
+    const std::string &flag
+) {
+    try {
+        size_t pos = 0;
+        int v = std::stoi(val, &pos);
+        if (pos != val.size()) {
+            std::cerr << "Error: " << flag << " requires an integer value, got '" << val << "'\n";
+            std::exit(1);
+        }
+        return v;
+    } catch (const std::invalid_argument &) {
+        std::cerr << "Error: " << flag << " requires an integer value, got '" << val << "'\n";
+        std::exit(1);
+    } catch (const std::out_of_range &) {
+        std::cerr << "Error: " << flag << " value out of range: '" << val << "'\n";
+        std::exit(1);
+    }
+}
+
+static unsigned long long parseULL(
+    const std::string &val,
+    const std::string &flag
+) {
+    try {
+        size_t pos = 0;
+        unsigned long long v = std::stoull(val, &pos);
+        if (pos != val.size()) {
+            std::cerr << "Error: " << flag << " requires an integer value, got '" << val << "'\n";
+            std::exit(1);
+        }
+        return v;
+    } catch (const std::invalid_argument &) {
+        std::cerr << "Error: " << flag << " requires an integer value, got '" << val << "'\n";
+        std::exit(1);
+    } catch (const std::out_of_range &) {
+        std::cerr << "Error: " << flag << " value out of range: '" << val << "'\n";
+        std::exit(1);
+    }
+}
+
+Args parseArgs(
+    int argc,
+    char *argv[]
+) {
+    Args a;
+    std::unordered_set<std::string> seenFlags;
+
+    // Reject any flag that appears more than once.  Every scalar field in
+    // Args (string / double / bool) is overwritten by a later occurrence,
+    // so a duplicate flag silently shadows the earlier one.  We refuse to
+    // guess intent and require the user to fix the command line.
+    auto markSeen = [&seenFlags](const std::string &flag) {
+        if (!seenFlags.insert(flag).second) {
+            std::cerr << "Error: " << flag << " specified more than once.\n";
+            std::exit(1);
+        }
+    };
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+
+        // --help [topic]
+        if (arg == "--help" || arg == "-h") {
+            if (i + 1 < argc && argv[i + 1][0] != '-')a.helpTopic = argv[++i];
+            else a.helpTopic = "__short__";
+            return a; // skip further parsing
+        }
+
+        // --version / -V: short-circuit; the dispatcher will emit the
+        // version string and exit without parsing the remaining flags.
+        if (arg == "--version" || arg == "-V") {
+            a.showVersion = true;
+            return a;
+        }
+
+        auto next = [&]() -> std::string {
+            markSeen(arg);
+            if (i + 1 >= argc) {
+                std::cerr << "Error: missing value for " << arg << "\n";
+                std::exit(1);
+            }
+            return argv[++i];
+        };
+
+        if (arg == "--method")a.method = next();
+        else if (arg == "--pheno")a.phenoFile = next();
+        else if (arg == "--covar")a.covarFile = next();
+        else if (arg == "--covar-name")a.covarName = next();
+        else if (arg == "--pheno-name")a.phenoName = next();
+        else if (arg == "--resid-name")a.residName = next();
+        else if (arg == "--regression-model")a.regressionModel = next();
+        else if (arg == "--save-resid") { markSeen(arg); a.saveResid = true; }
+        else if (arg == "--pc-cols")a.pcCols = next();
+        else if (arg == "--spasqr-taus")a.spasqrTaus = next();
+        else if (arg == "--sageld-x")a.sageldX = next();
+        else if (arg == "--spasqr-tol")a.spasqrTol = parseDouble(next(), arg);
+        else if (arg == "--spasqr-h")a.spasqrH = parseDouble(next(), arg);
+        else if (arg == "--spasqr-h-scale")a.spasqrHScale = parseDouble(next(), arg);
+        else if (arg == "--bfile")a.bfilePrefix = next();
+        else if (arg == "--pfile")a.pfilePrefix = next();
+        else if (arg == "--vcf")a.vcfFile = next();
+        else if (arg == "--bcf")a.bcfFile = next();
+        else if (arg == "--bgen") {
+            // plink2-compatible syntax: --bgen <filename> <REF/ALT mode>.
+            // BGEN itself does not encode REF/ALT; the user must declare the
+            // convention explicitly.  Error wording mirrors plink2 --bgen.
+            a.bgenFile = next();
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --bgen requires a REF/ALT mode ('ref-first',"
+                             " 'ref-last', or 'ref-unknown').  As of this writing,"
+                             " raw UK Biobank files are ref-first, while older and"
+                             " PLINK-exported BGEN files are more likely to be"
+                             " ref-last.\n";
+                std::exit(1);
+            }
+            std::string mode = argv[i + 1];
+            if (mode != "ref-first" && mode != "ref-last" && mode != "ref-unknown") {
+                std::cerr << "Error: Invalid --bgen argument '" << mode << "'.\n";
+                std::exit(1);
+            }
+            ++i;
+            a.bgenRefMode = mode;
+        }
+        else if (arg == "--ref-af")a.refAfFile = next();
+        else if (arg == "--sp-grm-grab")a.spGrmGrabFile = next();
+        else if (arg == "--sp-grm-plink2")a.spGrmPlink2File = next();
+        else if (arg == "--ind-af-coef")a.indAfFile = next();
+        else if (arg == "--pairwise-ibd")a.pairwiseIBDFile = next();
+        else if (arg == "--out")a.outPrefix = next();
+        else if (arg == "--prevalence")a.refPrevalence = parseDouble(next(), arg);
+        else if (arg == "--batch-effect-p-threshold")a.cutoff = parseDouble(next(), arg);
+        else if (arg == "--spa-z-threshold")a.spaCutoff = parseDouble(next(), arg);
+        else if (arg == "--covar-p-threshold")a.pvalCovAdjCut = parseDouble(next(), arg);
+        else if (arg == "--geno")a.missingCutoff = parseDouble(next(), arg);
+        else if (arg == "--maf")a.minMafCutoff = parseDouble(next(), arg);
+        else if (arg == "--mac")a.minMacCutoff = parseDouble(next(), arg);
+        else if (arg == "--hwe")a.hweCutoff = parseDouble(next(), arg);
+        else if (arg == "--outlier-iqr-multiplier")a.outlierRatio = parseDouble(next(), arg);
+        else if (arg == "--spasqr-outlier-abs-bound")a.outlierAbsBound = parseDouble(next(), arg);
+        else if (arg == "--spagrm-control-outlier") { markSeen(arg); a.spagrmControlOutlier = true; }
+        else if (arg == "--threads")a.nthread = parseInt(next(), arg);
+        else if (arg == "--chunk-size")a.nSnpPerChunk = parseInt(next(), arg);
+        else if (arg == "--leaf-nclusters")a.nClusters = parseInt(next(), arg);
+        else if (arg == "--leaf-cluster-file")a.leafClusterFile = next();
+        else if (arg == "--leaf-kmeans-nstart")a.leafKmeansNstart = parseInt(next(), arg);
+        else if (arg == "--seed")a.seed = parseULL(next(), arg);
+        else if (arg == "--extract")a.extractFile = next();
+        else if (arg == "--exclude")a.excludeFile = next();
+        else if (arg == "--chr")a.chrSpec = next();
+        else if (arg == "--keep")a.keepFile = next();
+        else if (arg == "--remove")a.removeFile = next();
+        else if (arg == "--pred-list")a.predListFile = next();
+        else if (arg == "--pheno-transform")a.phenoTransform = next();
+        else if (arg == "--spasqr-solver")a.spasqrSolver = next();
+        else if (arg == "--spasqr-mode")a.spasqrMode = next();
+        else if (arg == "--admix-bfile")a.admixBfilePrefix = next();
+        else if (arg == "--admix-phi")a.admixPhiFile = next();
+        else if (arg == "--rfmix-msp")a.mspFile = next();
+        else if (arg == "--admix-text-prefix")a.admixTextPrefix = next();
+        else if (arg == "--compression")a.compression = next();
+        else if (arg == "--compression-level") {
+            a.compressionLevel = parseInt(next(), arg);
+            a.compressionLevelExplicit = true;
+        }
+        // --phi-maf-cutoff removed: hardcoded to 0.01 inside estimatePhiOneAncestry
+        else if (arg == "--cal-af-coef")        { markSeen(arg); a.calAfCoef = true; }
+        else if (arg == "--cal-pairwise-ibd")   { markSeen(arg); a.calPairwiseIBD = true; }
+        else if (arg == "--cal-phi")            { markSeen(arg); a.calPhi = true; }
+        else if (arg == "--make-abed")          { markSeen(arg); a.makeAbed = true; }
+        else if (arg == "--int-pheno")          { markSeen(arg); a.intPheno = true; }
+        else if (arg == "--min-maf-ibd")a.minMafIBD = parseDouble(next(), arg);
+        else {
+            std::cerr << "Error: unknown option: " << arg << "  (run 'grab2 --help' for usage)\n";
+            std::exit(1);
+        }
+    }
+    return a;
+}
+
+} // namespace cli

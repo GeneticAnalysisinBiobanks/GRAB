@@ -1,0 +1,92 @@
+# .github/workflows/ci.yml — per-push build verification.
+#
+# Mirrors the platform matrix of release.yml but with two differences:
+#
+#  1. No artifacts are produced or uploaded — the goal is only to catch
+#     compilation regressions early.
+#  2. Build flags use the source-compile defaults (`-march=native`) on
+#     the runner, not the portable release baseline; this is faster
+#     (less SIMD codegen) and exercises the same code path that
+#     ordinary contributors use locally.
+#
+# Triggered on push to main and on any pull request.  Avoid running on
+# every feature-branch push to keep CI cost bounded.
+
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64
+            runner: ubuntu-22.04
+          - target: linux-aarch64
+            runner: ubuntu-22.04-arm
+          - target: macos-x86_64
+            runner: macos-13
+          - target: macos-arm64
+            runner: macos-14
+          - target: windows-x86_64
+            runner: windows-2022
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      # Windows: install MSYS2 + MinGW + GNU make.
+      - name: Set up MSYS2 (Windows)
+        if: startsWith(matrix.target, 'windows')
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            mingw-w64-x86_64-toolchain
+            make
+
+      # ── Build ───────────────────────────────────────────────────────
+      - name: Build (Unix)
+        if: ${{ !startsWith(matrix.target, 'windows') }}
+        run: |
+          set -euo pipefail
+          if command -v nproc >/dev/null 2>&1; then
+            J=$(nproc)
+          else
+            J=$(sysctl -n hw.ncpu)
+          fi
+          make -j"$J"
+
+      - name: Build (Windows)
+        if: startsWith(matrix.target, 'windows')
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          make -j"$(nproc)"
+
+      # ── Smoke test ──────────────────────────────────────────────────
+      - name: Smoke test (Unix)
+        if: ${{ !startsWith(matrix.target, 'windows') }}
+        run: |
+          set -euo pipefail
+          build/grab2 --version
+          build/grab2 --help > /dev/null
+
+      - name: Smoke test (Windows)
+        if: startsWith(matrix.target, 'windows')
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          build/grab2.exe --version
+          build/grab2.exe --help > /dev/null

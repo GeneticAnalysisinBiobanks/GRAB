@@ -1,39 +1,21 @@
-# R Project Files
-.Rproj.user/
-*.Rproj
-
-# R Session Files
-.Rhistory
-.Rdata
-.RData
-.Renviron
-
-# IDE Files
-GRAB.Rproj
+build/
+build_bak/
+dist/
+tmp/
+tmp_bench/
+examples_mini/
+examples_1kg/
+examples_spamix/
+examples_leaf/
+examples_output/
+.claude/
 .vscode/
-.index
 
-# Lintr config
-.lintr
-
-# Compiled Object Files
-src/*.o
-src/*.so
-src/*.dll
-
-# Package Build Files
-*.tar.gz
-*.zip
-
-# Temporary Files
-*~
 .DS_Store
-Thumbs.db
-GRAB.Rcheck/
 
-# File history
-.lh/
+# macOS
+.DS_Store
 
-#SPAmixPlus/
-example_meta/
-compare_spamix/
+# local notes/scripts
+CLAUDE.md
+submit_smoketest.sh
