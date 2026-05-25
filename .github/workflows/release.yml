@@ -128,6 +128,13 @@ jobs:
           build/grab2 --help > /dev/null
 
       # ── Windows: MSYS2 + MinGW ──────────────────────────────────────
+      # Fully-static MinGW link for htslib's POSIX regex needs the
+      # transitive chain libregex.a → libtre.a → libintl.a →
+      # libiconv.a (the latter two are MSYS2's gettext + libiconv
+      # static archives).  libregex itself comes with the toolchain;
+      # libtre and gettext must be requested explicitly.  libiconv is
+      # pulled in transitively by the toolchain group, so we do not
+      # name it separately.
       - name: Set up MSYS2 (Windows)
         if: startsWith(matrix.target, 'windows')
         uses: msys2/setup-msys2@v2
@@ -136,37 +143,10 @@ jobs:
           update: false
           install: >-
             mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-libtre
+            mingw-w64-x86_64-gettext
             make
             zip
-
-      # Discover and install libtre.a.  htslib's hts_expr.c links
-      # against POSIX regex; MSYS2's libregex.a in turn references
-      # tre_regcomp / tre_regexec / tre_regfree / tre_regerror, so a
-      # fully-static link needs libtre.a present too.  MSYS2 has
-      # repackaged tre several times; rather than guess a name, list
-      # all packages whose name contains "tre" so the build log shows
-      # the available candidates, then install the first match that
-      # resolves.
-      - name: Install libtre (Windows)
-        if: startsWith(matrix.target, 'windows')
-        shell: msys2 {0}
-        run: |
-          set -euo pipefail
-          echo "── pacman -Ss tre (available candidates) ──"
-          pacman -Ss tre | grep -E "^mingw64/" || true
-          echo "── attempt install ──"
-          for pkg in mingw-w64-x86_64-tre-git \
-                     mingw-w64-x86_64-libtre-git \
-                     mingw-w64-x86_64-libtre \
-                     mingw-w64-x86_64-tre \
-                     mingw-w64-x86_64-libsystre; do
-            if pacman -S --noconfirm --needed "$pkg" 2>/dev/null; then
-              echo "INSTALLED: $pkg"
-              exit 0
-            fi
-          done
-          echo "ERROR: no libtre candidate found"
-          exit 1
 
       - name: Build (Windows)
         if: startsWith(matrix.target, 'windows')

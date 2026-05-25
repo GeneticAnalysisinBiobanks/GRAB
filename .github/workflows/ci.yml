@@ -1,16 +1,26 @@
 # .github/workflows/ci.yml — per-push build verification.
 #
-# Mirrors the platform matrix of release.yml but with two differences:
+# Two job blocks share the same four-platform matrix
+# (linux-x86_64, linux-aarch64, macos-arm64, windows-x86_64) but
+# exercise distinct toolchain configurations:
 #
-#  1. No artifacts are produced or uploaded — the goal is only to catch
-#     compilation regressions early.
-#  2. Build flags use the source-compile defaults (`-march=native`) on
-#     the runner, not the portable release baseline; this is faster
-#     (less SIMD codegen) and exercises the same code path that
-#     ordinary contributors use locally.
+#  1. `build-native` reproduces what an ordinary contributor sees on
+#     their own machine: the source-compile default (-march=native on
+#     the runner) with no static linking and no extra MSYS2 packages.
+#     It is fast (~1-2 min per platform) and catches the kinds of
+#     regressions that show up under everyday development.
 #
-# Triggered on push to main and on any pull request.  Avoid running on
-# every feature-branch push to keep CI cost bounded.
+#  2. `build-release` mirrors .github/workflows/release.yml's build
+#     environment exactly — manylinux2014 container on Linux,
+#     MACOSX_DEPLOYMENT_TARGET on macOS, MSYS2 + libtre + gettext on
+#     Windows, GRAB_MARCH=-march=haswell + SIMD_FLAGS + STATIC_LIBS
+#     on x86_64 — but stops at the smoke test (no strip, no
+#     packaging, no upload).  This catches the toolchain-specific
+#     and static-link failures that previously only surfaced after a
+#     tag was pushed.  Without it the tag-push experience for
+#     a release becomes the discovery loop for compile bugs.
+#
+# Triggered on push to main and on any pull request.
 
 name: CI
 
@@ -23,8 +33,8 @@ on:
       - main
 
 jobs:
-  build:
-    name: Build ${{ matrix.target }}
+  build-native:
+    name: Build native ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -86,5 +96,104 @@ jobs:
         shell: msys2 {0}
         run: |
           set -euo pipefail
+          build/grab2.exe --version
+          build/grab2.exe --help > /dev/null
+
+  # ─────────────────────────────────────────────────────────────────
+  # Release dry-run: mirrors .github/workflows/release.yml's compile
+  # environment so portability regressions are caught at PR time
+  # instead of at tag-push time.  The matrix entries here MUST be
+  # kept in lockstep with release.yml's matrix; anything that
+  # diverges defeats the purpose.  The two known divergences are
+  # intentional:
+  #   - This job does NOT run strip / package / upload steps.
+  #   - This job does NOT need `permissions: contents: write`.
+  build-release:
+    name: Build release-flags ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64
+            runner: ubuntu-22.04
+            docker_image: quay.io/pypa/manylinux2014_x86_64
+            march: -march=haswell
+            simd_flags: -mavx2 -mbmi -mbmi2 -mlzcnt -mfma
+            static_libs: -static-libstdc++ -static-libgcc
+          - target: linux-aarch64
+            runner: ubuntu-22.04-arm
+            docker_image: quay.io/pypa/manylinux2014_aarch64
+            march: ""
+            simd_flags: ""
+            static_libs: -static-libstdc++ -static-libgcc
+          - target: macos-arm64
+            runner: macos-14
+            march: ""
+            simd_flags: ""
+            static_libs: ""
+            deployment_target: "11.0"
+          - target: windows-x86_64
+            runner: windows-2022
+            march: -march=haswell
+            simd_flags: -mavx2 -mbmi -mbmi2 -mlzcnt -mfma
+            static_libs: -static
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      # ── Linux: build inside manylinux2014 container ──────────────
+      - name: Build (Linux, manylinux2014)
+        if: startsWith(matrix.target, 'linux')
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE":/work -w /work \
+            "${{ matrix.docker_image }}" \
+            bash -lc '
+              make -j"$(nproc)" \
+                GRAB_MARCH="${{ matrix.march }}" \
+                SIMD_FLAGS="${{ matrix.simd_flags }}" \
+                STATIC_LIBS="${{ matrix.static_libs }}" && \
+              build/grab2 --version && \
+              build/grab2 --help > /dev/null
+            '
+
+      # ── macOS: native build with deployment target ───────────────
+      - name: Build (macOS)
+        if: startsWith(matrix.target, 'macos')
+        env:
+          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.deployment_target }}
+        run: |
+          set -euo pipefail
+          make -j"$(sysctl -n hw.ncpu)" \
+            GRAB_MARCH="${{ matrix.march }}" \
+            SIMD_FLAGS="${{ matrix.simd_flags }}"
+          build/grab2 --version
+          build/grab2 --help > /dev/null
+
+      # ── Windows: MSYS2 + MinGW + static-link toolchain ───────────
+      - name: Set up MSYS2 (Windows)
+        if: startsWith(matrix.target, 'windows')
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-libtre
+            mingw-w64-x86_64-gettext
+            make
+
+      - name: Build (Windows)
+        if: startsWith(matrix.target, 'windows')
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          make -j"$(nproc)" \
+            GRAB_MARCH="${{ matrix.march }}" \
+            SIMD_FLAGS="${{ matrix.simd_flags }}" \
+            STATIC_LIBS="${{ matrix.static_libs }}"
           build/grab2.exe --version
           build/grab2.exe --help > /dev/null
