@@ -1,20 +1,18 @@
 # CLAUDE.md — GRAB project conventions
 
-## Release status — pre-1.0, no backward compatibility constraint
+## Release status — alpha, no backward compatibility constraint
 
-GRAB has not yet been publicly released; there are no external users and no
-deployed binaries in the field.  Therefore **do not** preserve backward
-compatibility when redesigning interfaces:
+GRAB is approaching its 2.0-alpha release.  There are no production
+deployments and no external scripts depending on the current interface, so
+**do not** add back-compat scaffolding when redesigning user-visible
+surfaces:
 
 - CLI flags, value enumerations, default behaviors, and file formats may be
-  renamed, restructured, or removed outright when a cleaner design is
-  available.
-- Do not add aliases, deprecation warnings, fallback parsers, or "legacy
-  mode" branches for flags or values that have been renamed.  Let the old
-  spelling fall through to the dispatcher's generic "unknown option" error.
-  Do not add bespoke `--old-flag → --new-flag` redirect branches either:
-  pre-1.0 there are no external scripts to redirect, and the redirect
-  branches just turn into clutter the next time the flag is renamed.
+  renamed, restructured, or removed outright when a cleaner design emerges.
+- Do not add aliases, deprecation warnings, fallback parsers, or per-flag
+  redirect branches.  Let the old spelling fall through to the dispatcher's
+  generic "unknown option" error — redirects just turn into clutter the
+  next time the flag is renamed.
 - Do not preserve old function signatures, struct layouts, or output column
   orderings "in case downstream consumers depend on them" — there are none.
 - The only durability constraint is reproducibility within a single
@@ -67,23 +65,15 @@ performance, parallelism, or new features:
   - Resolve via `simdLevel()` at first call.
   - x86 detection guarded by `#if defined(__x86_64__) || defined(_M_X64)`.
 
-**AVX2 fallback is mandatory for every AVX-512 kernel.** GRAB targets
-x86-64-v3 hardware as the supported deployment baseline; AVX-512 is a
-performance enhancement on top of that, not a deployment requirement.
-Therefore:
-
-- Every code path that contains an `_avx512` variant must also ship an
-  `_avx2` variant.  The runtime dispatcher in `simd_dispatch.hpp` picks
-  `_avx2` whenever `__builtin_cpu_supports("avx512...")` returns false,
-  which is the common case on consumer Intel chips and on many cloud
-  instances.
-- Do not write AVX-512-only kernels and rely on the scalar fallback as
-  the secondary path.  On hosts without AVX-512 that would silently lose
-  the SIMD speed-up that the AVX2 variant provides.
-- When you add a new SIMD kernel, the review checklist is: scalar +
-  `_avx2` + `_avx512` variants, plus a `simdLevel()` dispatch site.
-  Anything missing the AVX2 tier is a bug, not an optimization
-  opportunity for later.
+**AVX2 fallback is mandatory for every AVX-512 kernel.** GRAB's supported
+deployment baseline is x86-64-v3; AVX-512 is a performance enhancement on
+top of that, not a deployment requirement.  The runtime dispatcher in
+`simd_dispatch.hpp` picks `_avx2` whenever AVX-512 is unavailable (the
+common case on consumer Intel chips and many cloud instances), so an
+AVX-512-only kernel with a scalar fallback silently loses the SIMD speed-
+up on those hosts.  Every new SIMD kernel must ship the full scalar +
+`_avx2` + `_avx512` triple plus a `simdLevel()` dispatch site; anything
+missing the AVX2 tier is a bug, not a follow-up.
 
 ## Architecture matrix the build supports
 
@@ -135,69 +125,58 @@ audiences and obligations.
 
 ### `examples/tutorial.sh` — user-facing walkthrough
 
-`tutorial.sh` is a minimal, copy-pasteable demonstration of each
-analysis method.  Every command lists only the mandatory inputs plus a
-phenotype list and an output prefix; all other knobs fall back to
-`grab2`'s built-in defaults.  Two phenotypes are exercised per method
-to keep the output tables small while still covering both quantitative
-and survival code paths.  This script is **not** a regression baseline;
-its output is not pinned to a hash.
+A minimal, copy-pasteable demonstration of each analysis method.  Every
+command lists only the mandatory inputs, a phenotype list, and an output
+prefix; all other knobs fall back to defaults.  Two phenotypes per method
+keep tables small while covering both quantitative and survival code
+paths.  Output is **not** pinned to a hash.
 
 ### `examples/baseline.sh` — exhaustive regression script
 
-`baseline.sh` exercises every utility mode (`--cal-af-coef`,
-`--cal-pairwise-ibd`, `--int-pheno`) and every analysis method
-(SPACox, SPAmix, SPAGRM, SAGELD, SPAsqr in both **score** and **wald**
-modes, WtCoxG, LEAF) against the bundled `examples/1kg.*` fixtures,
-writing all artifacts under `examples_output/`.
+Exercises every utility mode (`--cal-af-coef`, `--cal-pairwise-ibd`,
+`--int-pheno`) and every validated analysis method (SPACox, SPAmix,
+SPAGRM, SAGELD, SPAsqr in both **score** and **wald** modes, WtCoxG,
+LEAF) against the bundled `examples/1kg.*` fixtures, writing all
+artifacts under `examples_output/`.  Two purposes must be preserved
+when editing it:
 
-The script has two purposes that must both be preserved when it is
-edited:
-
-1. **Documentary.**  Every command spells out every command-line flag
-   that the method accepts, with each numeric or categorical knob set to
-   its built-in default value.  Reading the script tells a new
-   contributor exactly which flags are available and what each one
-   defaults to when omitted.  When a new flag is added to a method or
-   utility, the corresponding block in `examples/baseline.sh` must gain
-   a line listing the flag at its default value; when a flag is removed
-   or renamed, the line must be updated accordingly.
+1. **Documentary.**  Every command spells out every flag the method
+   accepts, with each numeric or categorical knob set to its built-in
+   default.  When a flag is added, the corresponding block must gain a
+   line listing it at its default; when a flag is renamed or removed,
+   the line must be updated.
 
 2. **Regression baseline.**  After any refactor — shared engine, SIMD
    kernels, null-model fitting, genotype readers, output formatting, or
-   per-method code — re-run `examples/baseline.sh` and confirm that the
-   resulting `examples_output/*` artifacts are byte-identical (or
-   numerically identical up to documented tolerance) to the
-   pre-refactor baseline.  A passing build is not sufficient evidence
-   that a refactor preserved behavior; output equivalence is.
+   per-method code — re-run the script and confirm that
+   `examples_output/*` is byte-identical (or numerically identical up
+   to documented tolerance) to the pre-refactor baseline.  A passing
+   build alone is not sufficient evidence that behavior was preserved.
 
-The compression codec varies across blocks by design, so that a single
-pass through the script exercises all three output-writer paths:
-plain text (SPACox, SPAsqr-wald), gzip (WtCoxG, LEAF), and zstd
-(everything else).  Do not collapse the codec to a single setting when
-editing the script.
+The compression codec varies across blocks by design, so a single pass
+exercises all three output-writer paths: plain text (SPACox, SPAsqr-
+wald), gzip (WtCoxG, LEAF), and zstd (everything else).  Do not collapse
+the codec to a single setting.
 
-The `--int-pheno` block sits between SAGELD and SPAsqr: it produces
-`examples_output/1kg.int.txt`, an inverse-normal-transformed phenotype
-file containing only the `Quantitative` and `Time` columns.  SPAsqr
-consumes this file via `--pheno` and pulls the remaining covariates
-(`MALE`, `PC1..PC4`) from the original phenotype file via `--covar`;
-this exercises the disjoint-pheno/covar loading path in `SubjectData`.
+Three blocks deserve specific attention when editing:
 
-The SPAsqr **wald** block restricts to 100 variants via
-`--extract examples/spasqr_wald_extract`, because the per-marker QR
-refit is appreciably slower than score mode.  The 100-line ID file is
-checked into the repository under `examples/` to keep the regression
-result reproducible.
-
-The cross-format SPAGRM block at the bottom of the script converts the
-bundled `.pgen` fixture to BED, BCF, and BGEN with `plink2 --make-bed
-/ --export bcf / --export bgen-1.2` and runs SPAGRM on each input with
-the same `--extract` / `--exclude` / `--keep` / `--remove` filter
-lists, then asserts byte-identity across the four readers in
-`src/geno_factory/`.  This serves as both the cross-reader regression
-and the regression for the shared `geno_factory::filterMarkersByIds`
-ID-filter helper.
+- **`--int-pheno` → SPAsqr.**  The `--int-pheno` block produces
+  `examples_output/1kg.int.txt` (an inverse-normal-transformed file
+  with only `Quantitative` and `Time` columns).  SPAsqr then consumes
+  it via `--pheno` while pulling the remaining covariates (`MALE`,
+  `PC1..PC4`) from the original phenotype file via `--covar`, which
+  exercises the disjoint-pheno/covar loading path in `SubjectData`.
+- **SPAsqr wald.**  Restricted to 100 variants via
+  `--extract examples/spasqr_wald_extract`, since the per-marker QR
+  refit is appreciably slower than score mode.  The 100-line ID file
+  is checked in to keep the regression reproducible.
+- **Cross-format SPAGRM.**  The trailing block converts the bundled
+  `.pgen` fixture to BED, BCF, and BGEN (via `plink2 --make-bed /
+  --export bcf / --export bgen-1.2`), runs SPAGRM on each input with
+  identical `--extract` / `--exclude` / `--keep` / `--remove` filters,
+  and asserts byte-identity across the four readers in
+  `src/geno_factory/`.  This regresses both the readers and the shared
+  `geno_factory::filterMarkersByIds` helper.
 
 ## Shared engine code is validated — do not modify when debugging other methods
 
@@ -211,10 +190,13 @@ SPACox), the per-cluster sub-method pattern (LEAF), and the runtime
 SIMD-dispatch pattern.  Their collective success is a strong signal that
 **the common code below is correct**.
 
-The only method currently under active debugging is **SPAmixLocalPlus**.
-When debugging it, do not suspect or modify the shared infrastructure
-listed below — the bug is almost certainly in the method-specific code,
-not the shared engine:
+The methods currently under active development are **SPAmixPlus** and
+**SPAmixLocalPlus**.  Both remain callable via `--method spamixplus` /
+`--method spamixlocalplus` but are hidden from `grab2 --help`; neither
+appears in `examples/baseline.sh`, and their outputs are not pinned.
+When debugging either of them, do not suspect or modify the shared
+infrastructure listed below — the bug is almost certainly in the
+method-specific code, not the shared engine:
 
 - `src/engine/marker.cpp`, `src/engine/marker.hpp`, `src/engine/marker_impl.hpp`
   — `markerEngine`, `multiPhenoEngine`, `multiPhenoEngineRange`,
