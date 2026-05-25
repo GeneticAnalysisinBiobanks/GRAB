@@ -253,5 +253,11 @@ jobs:
             release/*.tar.gz
             release/*.zip
             release/SHA256SUMS.txt
-          generate_release_notes: true
+          # generate_release_notes intentionally omitted (defaults to
+          # false).  The auto-generated "What's Changed" / "New
+          # Contributors" / "Full Changelog" sections inflate the
+          # Release page with content already available via `git
+          # log`; we want the page to show Assets only.  If a future
+          # release needs a body, set `body:` / `body_path:`
+          # explicitly with curated text.
           fail_on_unmatched_files: true
