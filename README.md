@@ -129,7 +129,7 @@ Vendored libraries under `third_party/` retain their upstream licences:
 If GRAB contributes to a publication, please cite the method-specific
 paper(s) listed below:
 
-- **SPACox** — Bi *et al* (2020). A Fast and Accurate Method for Genome-Wide Time-to-Event Data Analysis and Its Application to UK Biobank. *Am. J. Hum. Genet.*
+- **SPACox** — Bi *et al* (2020). A fast and accurate method for genome-Wide time-to-event data analysis and its application to UK Biobank. *Am. J. Hum. Genet.*
   [doi:10.1016/j.ajhg.2020.06.003](https://doi.org/10.1016/j.ajhg.2020.06.003)
 - **SPAmix** — Ma *et al* (2025). SPAmix: a scalable, accurate, and universal analysis framework for large-scale genetic association studies in admixed populations. *Genome Biol.*
   [doi:10.1186/s13059-025-03827-9](https://doi.org/10.1186/s13059-025-03827-9)
@@ -138,5 +138,5 @@ paper(s) listed below:
 - **WtCoxG** — Li *et al* (2025). Applying weighted Cox regression to genome-wide association studies of time-to-event phenotypes *Nat. Comput. Sci.*
   [doi:10.1038/s43588-025-00864-z](https://doi.org/10.1038/s43588-025-00864-z)
 - **SAGELD** — Xu *et al* (in prep). Leveraging longitudinal data to boost statistical power for gene-environment interaction analysis.
-- **SPAsqr** — Heng *et al* (in prep). Discovering and Dissecting Heterogeneous Genetic Associations with Genome-wide Smoothed Quantile Regression
+- **SPAsqr** — Heng *et al* (in prep). Discovering and dissecting heterogeneous genetic associations with genome-wide smoothed quantile regression
 - **LEAF** — Li *et al* (in prep). Leveraging external allele frequency to boost powers of genome-wide association studies.
