@@ -4,6 +4,7 @@
 #include "engine/marker_impl.hpp"
 #include "geno_factory/geno_data.hpp"
 #include "util/logging.hpp"
+#include "util/mmap_ro.hpp"
 #include "util/text_stream.hpp"
 
 #include <algorithm>
@@ -22,17 +23,6 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-
-#include <fcntl.h>
-#include <sys/mman.h>
-
-// MAP_POPULATE is a Linux-specific flag that pre-faults pages on mmap.
-// macOS / BSD have no equivalent — fall back to plain MAP_PRIVATE.
-#ifndef MAP_POPULATE
-#  define MAP_POPULATE 0
-#endif
-#include <sys/stat.h>
-#include <unistd.h>
 
 using namespace engine_impl;
 
@@ -69,37 +59,9 @@ static std::unordered_map<std::string, Eigen::VectorXd>parseRegenieLocoFile(
     const std::vector<std::string> &usedIIDs
 ) {
     // ── Memory-map the file for zero-copy I/O ───────────────────────
-    int fd = ::open(path.c_str(), O_RDONLY);
-    if (fd < 0)
-        throw std::runtime_error("Cannot open LOCO file: " + path);
-
-    struct stat st;
-    if (::fstat(fd, &st) != 0) {
-        ::close(fd);
-        throw std::runtime_error("Cannot stat LOCO file: " + path);
-    }
-    const size_t fileSize = static_cast<size_t>(st.st_size);
-    if (fileSize == 0) {
-        ::close(fd);
-        throw std::runtime_error("Empty LOCO file: " + path);
-    }
-
-    void *mapped = ::mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE | MAP_POPULATE, fd, 0);
-    ::close(fd);
-    if (mapped == MAP_FAILED)
-        throw std::runtime_error("Cannot mmap LOCO file: " + path);
-    ::madvise(mapped, fileSize, MADV_SEQUENTIAL);
-
-    // RAII guard: munmap on any exit path
-    struct Guard { void *p; size_t n; ~Guard()
-                   {
-                       ::munmap(p, n);
-                   }
-
-    } guard{mapped, fileSize};
-
-    const char *p   = static_cast<const char *>(mapped);
-    const char *const fend = p + fileSize;
+    util::MmapReadOnly mm(path);
+    const char *p   = mm.data();
+    const char *const fend = p + mm.size();
     const auto nUsed = static_cast<Eigen::Index>(usedIIDs.size());
 
     // ── Build IID → position index ──────────────────────────────────
@@ -223,35 +185,9 @@ static std::unordered_map<std::string, Eigen::VectorXd>parseLdakLocoFile(
     const std::string &path,
     const std::vector<std::string> &usedIIDs
 ) {
-    int fd = ::open(path.c_str(), O_RDONLY);
-    if (fd < 0) throw std::runtime_error("Cannot open LOCO file: " + path);
-
-    struct stat st;
-    if (::fstat(fd, &st) != 0) {
-        ::close(fd);
-        throw std::runtime_error("Cannot stat LOCO file: " + path);
-    }
-    const size_t fileSize = static_cast<size_t>(st.st_size);
-    if (fileSize == 0) {
-        ::close(fd);
-        throw std::runtime_error("Empty LOCO file: " + path);
-    }
-
-    void *mapped = ::mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE | MAP_POPULATE, fd, 0);
-    ::close(fd);
-    if (mapped == MAP_FAILED)
-        throw std::runtime_error("Cannot mmap LOCO file: " + path);
-    ::madvise(mapped, fileSize, MADV_SEQUENTIAL);
-
-    struct Guard { void *p; size_t n; ~Guard()
-                   {
-                       ::munmap(p, n);
-                   }
-
-    } guard{mapped, fileSize};
-
-    const char *p = static_cast<const char *>(mapped);
-    const char *const fend = p + fileSize;
+    util::MmapReadOnly mm(path);
+    const char *p = mm.data();
+    const char *const fend = p + mm.size();
     const auto nUsed = static_cast<Eigen::Index>(usedIIDs.size());
 
     auto skipWS = [&]() {
