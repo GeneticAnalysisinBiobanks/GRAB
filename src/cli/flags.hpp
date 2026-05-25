@@ -26,7 +26,8 @@ struct MethodDef {
     const char *desc;               // one-line description
     const FlagDef *const *required; // null-terminated
     const FlagDef *const *optional; // null-terminated
-    const char *residNote;          // per-method residual columns, or nullptr
+    const char *phenoNote;          // per-method phenotype-input synopsis (residual columns,
+                                    // --pheno-name path, both, ...), or nullptr
     const char *outputCols;         // output column description
     const char *extra;              // additional notes, or nullptr
 };
@@ -93,20 +94,13 @@ inline const FlagDef kOut = {
 };
 
 inline const FlagDef kCovar = {
-    "--covar", "FILE", "Covariate file (strict format, columns selected by --covar-name)",
-    R"(Strict format: mandatory header line, first column = subject ID.
-  All column names must match [0-9A-Za-z_\-.]+.
-Use --covar-name to select specific columns as covariates.
-If --covar-name is omitted, all data columns are used.
-When --covar is absent, --covar-name selects columns from --pheno instead.)"
+    "--covar", "FILE", "Covariate file (header required; IID or #FID/IID layout; see --help phenotype)",
+    nullptr
 };
 
 inline const FlagDef kPheno = {
-    "--pheno", "FILE", "Phenotype file (strict format, first column = subject ID)",
-    R"(Strict format: mandatory header line, first column = subject ID.
-  All column names must match [0-9A-Za-z_\-.]+.
-Use --pheno-name to select specific phenotype columns.
-Use --resid-name to select pre-computed residual columns.)"
+    "--pheno", "FILE", "Phenotype file (header required; IID or #FID/IID layout; see --help phenotype)",
+    nullptr
 };
 
 inline const FlagDef kCovarName = {
@@ -573,6 +567,19 @@ inline const FlagDef kSpasqrHScale = {
 //  Method definitions
 // ════════════════════════════════════════════════════════════════════
 
+// Shared phenotype-input synopsis for the fit-capable residual-based
+// methods (SPACox, SPAGRM, SPAmix, SPAmixPlus, SPAmixLocalPlus).  Each
+// of them accepts either a column of pre-computed residuals via
+// --resid-name or a phenotype column via --pheno-name, in which case the
+// dispatcher fits the null model in-process through --regression-model
+// before invoking the score test.
+inline constexpr const char *kPhenoNoteResidOrFit =
+    "    Residual mode: --resid-name COL_IDS    pre-computed residual columns\n"
+    "    Pheno mode:    --pheno-name COL_IDS    phenotype columns; null model fit in-process\n"
+    "                   --regression-model MODEL\n"
+    "                          auto | linear | logistic | cox | ordinal (default: auto)\n"
+    "                   --save-resid            write fitted residuals to PREFIX.null.resid";
+
 // ── SPACox ─────────────────────────────────────────────────────────
 inline const FlagDef *const kSPACoxReq[] = {
     &kGeno_input, &kPheno, &kOut,
@@ -592,8 +599,8 @@ inline const MethodDef kSPACox = {
     "Saddlepoint Approximation for Cox proportional hazards",
     kSPACoxReq,
     kSPACoxOpt,
-    "#IID  RESID  [RESID2  ...] (from --pheno, selected by --resid-name)",
-    R"(Per residual column: PREFIX.PHENO.SPACox[.gz|.zst]
+    kPhenoNoteResidOrFit,
+    R"(PREFIX.<COL>.SPACox[.gz|.zst]   one file per --resid-name / --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  P  Z)",
     nullptr,
 };
@@ -617,8 +624,8 @@ inline const MethodDef kSPAGRM = {
     "SPA with sparse GRM relatedness correction",
     kSPAGRMReq,
     kSPAGRMOpt,
-    "#IID  RESID  [RESID2  ...] (from --pheno, selected by --resid-name)",
-    R"(Per residual column: PREFIX.PHENO.SPAGRM[.gz|.zst]
+    kPhenoNoteResidOrFit,
+    R"(PREFIX.<COL>.SPAGRM[.gz|.zst]   one file per --resid-name / --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  P  Z)",
     "Generate pairwise IBD file with: grab2 --cal-pairwise-ibd",
 };
@@ -640,11 +647,13 @@ inline const MethodDef kSAGELD = {
     "G x E interaction analysis for longitudinal data with GRM correction",
     kSAGELDReq,
     kSAGELDOpt,
-    "Residual mode: --pheno FILE --resid-name R_G,R_<E1>,R_Gx<E1>[,...] "
-    "(file format: #IID  R_G  R_<E1>  R_Gx<E1>  [R_<E2>  R_Gx<E2>  ...]).  "
-    "Pheno mode: --pheno LONG_FILE --pheno-name Y1,Y2,... --covar-name X1,X2,... --sageld-x E1[,E2,...]",
-    R"(Residual mode (single file): PREFIX.SAGELD
-Pheno mode (per phenotype):  PREFIX.<phenoName>.SAGELD
+    "    Residual mode: --resid-name R_G,R_<E1>,R_Gx<E1>[,...]\n"
+    "                   pre-computed lmer residuals; layout: R_G + (R_<E>, R_Gx<E>) pairs\n"
+    "    Pheno mode:    --pheno-name Y1,Y2,... --covar-name X1,X2,... --sageld-x E1[,E2,...]\n"
+    "                   long-format Y, X, E; --covar-name must include every --sageld-x var\n"
+    "                   --save-resid           write fitted (R_G, R_E, R_GxE) to PREFIX.null.resid",
+    R"(Residual mode: PREFIX.SAGELD[.gz|.zst]   single file
+  Pheno mode:    PREFIX.<COL>.SAGELD[.gz|.zst]   one file per --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
   P_G  P_Gx<E1>  [...]  Z_G  Z_Gx<E1>  [...])",
     R"(Two input modes (mutually exclusive):
@@ -676,8 +685,8 @@ inline const MethodDef kSPAmix = {
     "SPA with individual ancestry-based allele frequencies",
     kSPAmixReq,
     kSPAmixOpt,
-    "#IID  RESID  [RESID2  ...] (from --pheno, selected by --resid-name)",
-    R"(Per residual column: PREFIX.PHENO.SPAmix[.gz|.zst]
+    kPhenoNoteResidOrFit,
+    R"(PREFIX.<COL>.SPAmix[.gz|.zst]   one file per --resid-name / --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  P  Z  BETA  SE)",
     R"(Pre-compute the AF model for speed: grab2 --cal-af-coef.
 
@@ -710,8 +719,8 @@ inline const MethodDef kSPAmixPlus = {
     "SPAmix with additional sparse GRM relatedness correction",
     kSPAmixPlusReq,
     kSPAmixPlusOpt,
-    "#IID  RESID  [RESID2  ...] (from --pheno, selected by --resid-name)",
-    R"(Per residual column: PREFIX.PHENO.SPAmixP[.gz|.zst]
+    kPhenoNoteResidOrFit,
+    R"(PREFIX.<COL>.SPAmixP[.gz|.zst]   one file per --resid-name / --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  P  Z  BETA  SE)",
     R"(AF coefficient scope.  With --ind-af-coef, every phenotype in this
 run shares the single pre-computed AF model per marker (fit at
@@ -725,13 +734,14 @@ per-marker output for that phenotype.)",
 
 // ── SPAsqr ─────────────────────────────────────────────────────────
 inline const FlagDef *const kSPAsqrReq[] = {
-    &kGeno_input, &kOut, &kSpGrm,
+    &kGeno_input, &kPheno, &kOut,
     nullptr
 };
 
 inline const FlagDef *const kSPAsqrOpt[] = {
-    &kPheno,        &kCovar,      &kCovarName,  &kResidName,
-    &kPhenoName,    &kSpasqrTaus, &kSpasqrTol,  &kSpasqrH,
+    &kSpGrm,        &kCovar,      &kCovarName,
+    &kPhenoName,    &kRegressionModel,
+    &kSpasqrTaus, &kSpasqrTol,  &kSpasqrH,
     &kSpasqrHScale, &kOutlierIqr, &kOutlierAbs,
     &kSpaZThresh,   &kThreads,    &kChunkSize,
     &kCompression,  &kCompressionLevel,
@@ -747,20 +757,23 @@ inline const MethodDef kSPAsqr = {
     "SPA for quantile regression residuals (multiple tau levels)",
     kSPAsqrReq,
     kSPAsqrOpt,
-    "--pheno + --pheno-name + --spasqr-taus for built-in quantile regression",
-    R"(CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+    "    --pheno-name COL_IDS                  quantitative phenotype column(s)\n"
+    "    --regression-model MODEL              auto | linear (default: auto; declarative only)\n"
+    "                                          (SPAsqr fits smoothed QR per --spasqr-taus internally)",
+    R"(PREFIX.<COL>.SPAsqr[.gz|.zst]   one file per --pheno-name column
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
   P_CCT  P_tau{val}... Z_tau{val}...)",
     nullptr,
 };
 
 // ── WtCoxG ─────────────────────────────────────────────────────────
 inline const FlagDef *const kWtCoxGReq[] = {
-    &kGeno_input, &kOut, &kRefAf, &kPrevalence,
+    &kGeno_input, &kPheno, &kOut, &kRefAf, &kPrevalence,
     nullptr
 };
 
 inline const FlagDef *const kWtCoxGOpt[] = {
-    &kPheno,      &kCovar,  &kCovarName, &kResidName,
+    &kCovar,  &kCovarName,
     &kPhenoName,  &kRegressionModel,    &kSpGrm,  &kBatchPThresh,
     &kSpaZThresh, &kOutlierIqr, &kThreads, &kChunkSize,
     &kCompression, &kCompressionLevel,
@@ -775,20 +788,22 @@ inline const MethodDef kWtCoxG = {
     "Weighted Cox regression for time-to-event GWAS",
     kWtCoxGReq,
     kWtCoxGOpt,
-    "--pheno + --pheno-name (TIME:EVENT pair or binary)",
-    R"(CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
-  p_ext  p_noext  z_ext  z_noext  p_batch)",
+    "    --pheno-name COL_IDS                  TIME:EVENT pair (Cox) or binary trait (logistic)\n"
+    "    --regression-model MODEL              auto | logistic | cox (default: auto)",
+    R"(PREFIX.<COL>.WtCoxG[.gz|.zst]   one file per --pheno-name column
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+  P_EXT  P_NOEXT  Z_EXT  Z_NOEXT  P_BAT  PI_BAT  VAR_BAT)",
     nullptr,
 };
 
 // ── LEAF ───────────────────────────────────────────────────────────
 inline const FlagDef *const kLEAFReq[] = {
-    &kGeno_input, &kOut, &kRefAf, &kPrevalence,
+    &kGeno_input, &kPheno, &kOut, &kRefAf, &kPrevalence,
     nullptr
 };
 
 inline const FlagDef *const kLEAFOpt[] = {
-    &kPheno,     &kCovar,     &kCovarName, &kResidName, &kPhenoName,
+    &kCovar,     &kCovarName, &kPhenoName,
     &kRegressionModel,
     &kPcCols,    &kNClusters, &kLeafClusterFile, &kLeafKmeansNstart,
     &kSeed,      &kSpGrm,     &kBatchPThresh, &kSpaZThresh,
@@ -805,9 +820,13 @@ inline const MethodDef kLEAF = {
     "Local Ethnicity-Aware GWAS, WtCoxG per ancestry cluster",
     kLEAFReq,
     kLEAFOpt,
-    "--pheno + --pheno-name + --pc-cols for auto K-means clustering",
-    R"(CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
-  meta.p_ext  meta.p_noext  cl1.p_ext  cl1.p_noext  cl1.p_batch  [cl2 ...])",
+    "    --pheno-name COL_IDS                  TIME:EVENT pair (Cox) or binary trait (logistic)\n"
+    "    --regression-model MODEL              auto | logistic | cox (default: auto)\n"
+    "                                          (--pc-cols drives the per-cluster K-means assignment)",
+    R"(PREFIX.<COL>.LEAF[.gz|.zst]   one file per --pheno-name column
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+  meta_P_EXT  meta_P_NOEXT
+  cl1_MAC  cl1_P_EXT  cl1_P_NOEXT  cl1_P_BAT  cl1_PI_BAT  cl1_VAR_BAT  [cl2_... cl3_... ...])",
     R"(--pheno path: auto K-means on --pc-cols.
 The number of clusters and reference populations are independent.
 Summix estimates per-cluster ancestry proportions from the reference populations.)",
@@ -857,14 +876,14 @@ inline const MethodDef kSPAmixLocalPlus = {
     "Local-ancestry-specific GWAS with SPA + phi-based variance correction",
     kSPAmixLocalPlusReq,
     kSPAmixLocalPlusOpt,
-    "IID  RESID [RESID2 ...] (from --pheno, selected by --resid-name)",
-    R"(CHROM  POS  ID  REF  ALT  P_CCT
+    kPhenoNoteResidOrFit,
+    R"(PREFIX.<COL>.LocalP[.gz|.zst]   one file per --resid-name / --pheno-name column
+  CHROM  POS  ID  REF  ALT  P_CCT
   anc0_AltFreq  anc0_MissingRate  anc0_P  anc0_Pnorm  anc0_Stat  anc0_Var  anc0_zScore  anc0_AltCounts  anc0_BetaG
   anc1_AltFreq  ...  (repeated for each ancestry k))",
     R"(Two-phase workflow:
   1. grab --cal-phi --admix-bfile PREFIX --sp-grm-plink2 FILE --out OUTPUT_PREFIX
-  2. grab --method SPAmixLocalPlus --admix-bfile PREFIX --admix-phi OUTPUT_PREFIX.phi --pheno FILE --out PREFIX
-Output: PREFIX.PHENO.LocalP[.gz|.zst] per residual column)",
+  2. grab --method SPAmixLocalPlus --admix-bfile PREFIX --admix-phi OUTPUT_PREFIX.phi --pheno FILE --out PREFIX)",
 };
 
 // ── Utility mode: make-abed ────────────────────────────────────────
@@ -911,7 +930,7 @@ inline const MethodDef kIntPheno = {
     kIntPhenoReq,
     kIntPhenoOpt,
     nullptr,
-    "Output: PREFIX.txt  (ID columns + selected Y columns; missing entries → NA)",
+    "PREFIX.txt   (ID columns + selected Y columns; missing entries written as NA)",
     R"(Reads --pheno FILE under GRAB's standard header conventions
     #IID col...        IID col...
     #FID IID col...    FID IID col...
@@ -944,7 +963,7 @@ inline const MethodDef kCalAfCoef = {
     kCalAfReq,
     kCalAfOpt,
     nullptr,
-    "Output: PREFIX.afc[.gz|.zst] (pass to --ind-af-coef for SPAmix/SPAmixPlus)",
+    "PREFIX.afc[.gz|.zst]   (pass to --ind-af-coef for SPAmix/SPAmixPlus)",
     R"(One AF model per marker, fit on the subject set defined by
 --bfile / --pfile / --bgen / --vcf intersected with --keep / --remove
 and the marker QC thresholds (--geno / --maf / --mac / --hwe / --chr).
@@ -984,9 +1003,9 @@ inline const MethodDef kCalPairwiseIbd = {
     kCalIbdReq,
     kCalIbdOpt,
     nullptr,
-    R"(Output: PREFIX.ibd[.gz|.zst]
-Tab-separated: ID1  ID2  pa  pb  pc
-Pass to --pairwise-ibd for SPAGRM.)",
+    R"(PREFIX.ibd[.gz|.zst]
+  Tab-separated: ID1  ID2  pa  pb  pc
+  Pass to --pairwise-ibd for SPAGRM.)",
     nullptr,
 };
 

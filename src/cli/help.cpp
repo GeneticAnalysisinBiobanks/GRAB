@@ -65,9 +65,14 @@ static void printShortHelp() {
 For more help, run 'grab2 --help TOPIC':
   Methods:       spacox  spagrm  sageld  spamix  spasqr  wtcoxg  leaf
   Utilities:     cal-af-coef  cal-pairwise-ibd  int-pheno
-  Main inputs:   geno  pheno  covar
+  Main inputs:   genotype  phenotype
   Other inputs:  sp-grm  pairwise-ibd  ind-af-coef  ref-af
   List options:  options
+
+For per-flag details, run 'grab2 --help OPTION' with the flag name
+stripped of leading dashes, e.g.
+  grab2 --help threads          grab2 --help ref-af
+  grab2 --help spasqr-mode      grab2 --help outlier-iqr-multiplier
 )",
         stderr);
 }
@@ -78,11 +83,10 @@ static void printMethodHelp(const MethodDef *m) {
     bool isUtil = (std::strcmp(m->name, "cal-af-coef") == 0 || std::strcmp(m->name, "cal-pairwise-ibd") == 0 ||
                    std::strcmp(m->name, "cal-phi") == 0 || std::strcmp(m->name, "make-abed") == 0 ||
                    std::strcmp(m->name, "int-pheno") == 0);
-    const std::string nameLc = toLower(m->name);
     if (isUtil)
-        std::fprintf(stderr, "Mode: --%s -- %s\n", nameLc.c_str(), m->desc);
+        std::fprintf(stderr, "Mode: --%s\n", m->name);
     else
-        std::fprintf(stderr, "Method: %s -- %s\n", nameLc.c_str(), m->desc);
+        std::fprintf(stderr, "Method: %s\n", m->name);
 
     std::fprintf(stderr, "\nRequired:\n");
     for (const FlagDef *const *p = m->required; *p; ++p)
@@ -119,8 +123,8 @@ static void printFlagHelp(const char *topic) {
         return;
     }
 
-    // Special case: "geno" describes the genotype-input alternatives.
-    if (std::strcmp(topic, "geno") == 0) {
+    // Special case: "genotype" describes the genotype-input alternatives.
+    if (std::strcmp(topic, "genotype") == 0) {
         std::fputs(
             R"(Genotype input -- provide exactly one of:
 
@@ -139,6 +143,91 @@ Per-format details follow.
         if (kBcf.fileInfo) std::fprintf(stderr, "\n%s\n", kBcf.fileInfo);
         std::fprintf(stderr, "\n%s\n  %s\n", kBgen.flag, kBgen.brief);
         if (kBgen.fileInfo) std::fprintf(stderr, "\n%s\n", kBgen.fileInfo);
+        return;
+    }
+
+    // Special case: "phenotype" describes the unified phenotype / covariate
+    // file format shared by --pheno and --covar.  GRAB's loader accepts the
+    // plink2-style FID+IID header layout in addition to the bare IID layout,
+    // so plink2 sample / phenotype files can be reused without conversion.
+    if (std::strcmp(topic, "phenotype") == 0) {
+        std::fputs(
+            R"(Phenotype and covariate file inputs (--pheno, --covar)
+=======================================================
+
+File format (shared by --pheno and --covar)
+-------------------------------------------
+Whitespace-delimited (one or more spaces or tabs).  A header line is
+mandatory.  Two header layouts are auto-detected:
+
+  (A) IID + data columns      IID   Y1    Y2    COV1
+                              S001  3.10  1.50  0.20
+                              ...
+
+  (B) plink2-style FID + IID  #FID  IID   Y1    Y2    COV1
+                              F01   S001  3.10  1.50  0.20
+                              ...
+      The leading '#' is optional; 'FID  IID  ...' is also accepted.
+      The FID column is silently ignored; subjects are matched by IID
+      across --pheno, --covar, --keep, --remove, and the genotype input.
+
+Header names (other than #FID, FID, IID) must match the regex
+[0-9A-Za-z_\-.]+ .  Data cells are parsed as floating point; missing
+values are denoted by "NA", "na", "NaN", "nan", ".", or "-".  Any other
+non-numeric token in a selected data column raises a parse error.
+
+plink2 compatibility
+--------------------
+plink2 sample / phenotype files (`.psam`, `plink2 --pheno` output) follow
+layout (B) and are accepted verbatim.  Non-numeric .psam metadata columns
+(PAT, MAT, string-coded SEX, etc.) must be excluded from the analysis by
+naming the data columns explicitly via --pheno-name / --covar-name.
+
+Column-selection flags
+----------------------
+  --pheno-name COL_IDS    Columns of --pheno used as phenotypes Y.  The
+                          dispatcher fits a null model in-process via
+                          --regression-model (auto | linear | logistic |
+                          cox | ordinal) and feeds the fitted residuals
+                          into the downstream score test.  For Cox
+                          phenotypes the column tokens take the form
+                          TIME:EVENT (e.g. SURVTIME:STATUS).
+  --resid-name COL_IDS    Columns of --pheno that already hold residuals
+                          (one residual per subject per column).  Used
+                          by SPACox / SPAGRM / SPAmix / SPAmixPlus /
+                          SPAmixLocalPlus / SAGELD.  Mutually exclusive
+                          with --pheno-name in a single invocation.
+  --covar-name COL_IDS    Columns used as null-model covariates.  When
+                          --covar is supplied, names resolve against
+                          --covar; otherwise they resolve against
+                          --pheno.  An intercept is added automatically;
+                          do not include an intercept column.
+
+--pheno / --covar interaction
+-----------------------------
+--pheno is required by every method that fits a null model.  --covar is
+optional and follows these rules:
+
+  * --covar supplied, --covar-name supplied
+      The listed columns of --covar enter the null model as covariates.
+  * --covar supplied, --covar-name omitted
+      Every non-ID column of --covar enters the null model as a
+      covariate.
+  * --covar absent, --covar-name supplied
+      Names resolve against --pheno; the listed columns of --pheno
+      enter the null model as covariates.  This is the common
+      single-file workflow.
+  * --covar absent, --covar-name absent
+      Null model is intercept-only.  A [WARN] is emitted at run time
+      because intercept-only fits rarely match the intended GWAS
+      configuration.
+
+Note for --method SPAmix / SPAmixPlus / SPAmixLocalPlus: --pc-cols feeds
+the per-individual allele-frequency model but is *not* added to the
+null-model design.  To adjust the null model for ancestry PCs as well,
+list them in --covar-name explicitly.
+)",
+            stderr);
         return;
     }
 
