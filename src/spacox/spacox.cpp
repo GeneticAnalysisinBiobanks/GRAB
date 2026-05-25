@@ -8,6 +8,7 @@
 #include "util/math_helper.hpp"
 #include "util/null_model.hpp"
 
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -712,7 +713,7 @@ void runSPACox(
     }
 
     // ---- Build design-matrix (intercept + covariates) at union dimension ----
-    infoMsg("Building design matrix projection...");
+    infoMsg("Assembling union-level design matrix X = [intercept | covariates]");
     Eigen::MatrixXd unionX;
     if (!covarNames.empty()) {
         auto cov = sd.getColumns(covarNames);
@@ -735,7 +736,10 @@ void runSPACox(
     // ---- Build per-phenotype tasks ----
     auto phenoInfos = sd.buildPerColumnMasks();
     const int K = sd.residOneCols();
-    if (K > 1) infoMsg("Multi-column residual file: %d phenotypes", K);
+    if (K > 1)
+        infoMsg("Pre-computing per-phenotype design matrix X(X'X)^{-1} and SPA cumulant table (%d phenotypes, sequential):", K);
+    else
+        infoMsg("Pre-computing design matrix X(X'X)^{-1} and SPA cumulant table:");
 
     // Per-phenotype data (must outlive tasks — SPACoxMethod stores references)
     std::vector<Eigen::VectorXd> pResid(K);
@@ -747,6 +751,7 @@ void runSPACox(
     std::vector<PhenoTask> tasks(K);
     for (int rc = 0; rc < K; ++rc) {
         const auto &pi = phenoInfos[rc];
+        const auto rcStart = std::chrono::steady_clock::now();
 
         // Extract per-phenotype residuals (always per-phenotype — residuals differ)
         pResid[rc] = (K > 1) ? extractPhenoVec(sd.residMatrix().col(rc), pi) : sd.residuals();
@@ -755,12 +760,12 @@ void runSPACox(
         // Phenotypes sharing the same valid-subject set produce identical
         // covariate matrices, so we deduplicate the expensive (X'X)^{-1}.
         size_t dIdx = pDesign.size(); // default: build new
+        std::string reusedFrom;
         if (K > 1) {
             for (int j = 0; j < rc; ++j) {
                 if (phenoInfos[j].unionToLocal == pi.unionToLocal) {
                     dIdx = designIdx[j];
-                    infoMsg("  Phenotype '%s': reusing design matrix from '%s'",
-                            pi.name.c_str(), phenoInfos[j].name.c_str());
+                    reusedFrom = phenoInfos[j].name;
                     break;
                 }
             }
@@ -783,7 +788,15 @@ void runSPACox(
             pResid[rc], varResid, pCumul[rc], pDesign[designIdx[rc]], pvalCovAdjCut, spaCutoff);
         tasks[rc].unionToLocal = pi.unionToLocal;
         tasks[rc].nUsed = pi.nUsed;
-        infoMsg("  Phenotype '%s': %u subjects", pi.name.c_str(), pi.nUsed);
+
+        const double rcSec = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - rcStart).count();
+        if (!reusedFrom.empty())
+            infoMsg("  '%s': cumulant table built (%.1fs); reuses design matrix from '%s'",
+                    pi.name.c_str(), rcSec, reusedFrom.c_str());
+        else
+            infoMsg("  '%s': design matrix + cumulant table built (%.1fs)",
+                    pi.name.c_str(), rcSec);
     }
     if (K > 1)
         infoMsg("  %zu unique design matrix(es) for %d phenotypes", pDesign.size(), K);
