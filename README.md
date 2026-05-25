@@ -53,9 +53,13 @@ successor to the original **GRAB** R package
 
 ### From prebuilt binaries
 
-Each GRAB2 release ships precompiled binaries for the five common
-platforms. Download the archive matching your operating system and CPU architecture from the
+Each GRAB2 release ships precompiled binaries for four platforms:
+`linux-x86_64`, `linux-aarch64`, `macos-arm64`, and `windows-x86_64`.
+Download the archive matching your operating system and CPU
+architecture from the
 [GitHub Releases page](https://github.com/GeneticAnalysisinBiobanks/GRAB/releases/latest).
+Intel-Mac users run the `macos-arm64` binary transparently through
+Rosetta 2 (macOS 11+), or build from source as described below.
 
 ### From source (recommended HPC tuning)
 
