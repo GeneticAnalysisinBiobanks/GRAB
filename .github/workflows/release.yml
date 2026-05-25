@@ -134,20 +134,39 @@ jobs:
         with:
           msystem: MINGW64
           update: false
-          # mingw-w64-x86_64-libtre-git provides libtre.a, which
-          # libregex.a references (tre_regcomp / tre_regexec / ...) —
-          # required for the static link to resolve POSIX-regex
-          # symbols pulled in by htslib's hts_expr.c.  The `-git`
-          # suffix is the canonical MSYS2 package name (tre upstream
-          # stopped doing tagged releases years ago and every distro
-          # now tracks the git head).  Default CI builds use the
-          # libregex DLL (which embeds tre internally) and do not
-          # need this dependency.
           install: >-
             mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-libtre-git
             make
             zip
+
+      # Discover and install libtre.a.  htslib's hts_expr.c links
+      # against POSIX regex; MSYS2's libregex.a in turn references
+      # tre_regcomp / tre_regexec / tre_regfree / tre_regerror, so a
+      # fully-static link needs libtre.a present too.  MSYS2 has
+      # repackaged tre several times; rather than guess a name, list
+      # all packages whose name contains "tre" so the build log shows
+      # the available candidates, then install the first match that
+      # resolves.
+      - name: Install libtre (Windows)
+        if: startsWith(matrix.target, 'windows')
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          echo "── pacman -Ss tre (available candidates) ──"
+          pacman -Ss tre | grep -E "^mingw64/" || true
+          echo "── attempt install ──"
+          for pkg in mingw-w64-x86_64-tre-git \
+                     mingw-w64-x86_64-libtre-git \
+                     mingw-w64-x86_64-libtre \
+                     mingw-w64-x86_64-tre \
+                     mingw-w64-x86_64-libsystre; do
+            if pacman -S --noconfirm --needed "$pkg" 2>/dev/null; then
+              echo "INSTALLED: $pkg"
+              exit 0
+            fi
+          done
+          echo "ERROR: no libtre candidate found"
+          exit 1
 
       - name: Build (Windows)
         if: startsWith(matrix.target, 'windows')
