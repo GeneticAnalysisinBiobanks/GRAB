@@ -28,7 +28,7 @@
 //                        arithmetic mean Σᵢ rᵢ / n is O(1/√n) but not exactly
 //                        zero; cumulativeLogitFit subtracts the algebraic mean
 //                        before returning, restoring Σᵢ rᵢ = 0.  See §4 of
-//                        docs/methods/residuals.md.
+//                        dev-notes/methods/residuals.md.
 //
 // All four functions accept a pre-formed design matrix and drop rows that
 // contain any NaN before fitting.  calRegrWeight (case-control sampling-

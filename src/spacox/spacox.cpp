@@ -538,7 +538,7 @@ void SPACoxMethod::getResultVec(
     // the variance-inflation factor above, and represents the
     // statistically correct value rather than the R one.
     //
-    // See docs/methods/spacox.md §6 for the full derivation.
+    // See dev-notes/methods/spacox.md §6 for the full derivation.
     const double S = GVec.dot(m_resid);
     double zScore, scoreVar;
     double pval = getMarkerPvalCore(GVec, altFreq, S, zScore, scoreVar);
@@ -584,7 +584,7 @@ void SPACoxMethod::getResultVec(
 // and Phase-3 hands the method only scalar score summaries — without
 // access to the per-marker genotype vector required by the SPA branch
 // (|Z| ≥ SPA_Cutoff).  See the comment on getResultVec above and
-// docs/methods/spacox.md §6 for the broader context.
+// dev-notes/methods/spacox.md §6 for the broader context.
 void SPACoxMethod::getResultBatch(
     const Eigen::Ref<const Eigen::MatrixXd> &GBatch,
     const std::vector<double> &altFreqs,

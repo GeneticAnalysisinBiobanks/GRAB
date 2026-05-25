@@ -106,6 +106,26 @@ build/grab2 \
 
 Two companion scripts under `examples/` exercise the bundled fixtures end-to-end: `tutorial.sh` is a minimal walkthrough of each method with only the mandatory flags, while `baseline.sh` is the exhaustive regression baseline that spells out every flag at its default value and asserts byte-identity across all four reader formats.
 
+## Documentation
+
+For detailed usage, run the binary's built-in help.  The short form lists every method and utility:
+
+```bash
+grab2 --help
+```
+
+Per-topic help is available for each method, each utility, each input file, and each flag — for example:
+
+```bash
+grab2 --help spacox      # method-specific options for SPACox
+grab2 --help sp-grm      # sparse GRM input formats
+grab2 --help options     # full flag reference
+```
+
+The companion documentation website at [https://wenjianbi.github.io/grab.github.io/](https://wenjianbi.github.io/grab.github.io/)
+currently describes the legacy GRAB R package; GRAB2
+coverage is planned for a subsequent release.
+
 ## Licence
 
 ![Licence](https://img.shields.io/badge/licence-GPL--3.0+-blue)
