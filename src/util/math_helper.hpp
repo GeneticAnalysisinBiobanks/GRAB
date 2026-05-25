@@ -8,6 +8,13 @@
 //   § 5  Logistic regression      logisticRegressionBeta, logisticRegression (IRLS, Eigen)
 #pragma once
 
+// Some standard library headers transitively pull in <cmath> before we
+// reach the line below.  On MinGW, M_PI is only exposed when
+// _USE_MATH_DEFINES is set *before* <cmath> is first processed; once
+// <cmath>'s include guard fires, defining the macro later has no
+// effect.  Therefore we both set the opt-in AND fall back to a
+// hand-rolled definition after <cmath>, so any include order leaves
+// M_PI defined.
 #ifndef _USE_MATH_DEFINES
 #define _USE_MATH_DEFINES
 #endif
@@ -21,6 +28,10 @@
 #include <functional>
 #include <limits>
 #include <stdexcept>
+
+#ifndef M_PI
+#  define M_PI 3.14159265358979323846
+#endif
 
 namespace math {
 

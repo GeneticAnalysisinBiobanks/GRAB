@@ -17,11 +17,6 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
