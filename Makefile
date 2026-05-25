@@ -1,6 +1,19 @@
 # ── Toolchain ─────────────────────────────────────────────────────────────────
-CXX      := g++
-CC       := gcc
+# Use ?= so external build environments (the GitHub Actions release workflow,
+# manylinux2014 containers, CI-injected sysroot-aware compilers) can override
+# the source-compile defaults.
+CXX      ?= g++
+CC       ?= gcc
+
+# ── Version ───────────────────────────────────────────────────────────────────
+# Single source of truth for the GRAB version string.  The file `VERSION` at
+# the repo root is read once and the value is injected as the C++ macro
+# GRAB_VERSION during compilation of src/.  When releasing, update VERSION,
+# commit, and tag (e.g. `git tag v$(cat VERSION)`); the GitHub Actions
+# release workflow consumes the same file via this Makefile, so the binary's
+# `--version` output, the README, and the release artifact filenames stay
+# aligned.
+GRAB_VERSION ?= $(strip $(shell cat VERSION 2>/dev/null || echo 0.0.0+unknown))
 
 # ── Platform detection ────────────────────────────────────────────────────────
 # UNAME_S is empty on plain Windows cmd; MSYS2/MinGW sets it to MINGW* or MSYS*.
@@ -70,27 +83,51 @@ endif
 # that the scalar codepaths remain runnable on older x86-64 hardware.
 # Third-party code (pgenlib, bgen, htslib, …) keeps compile-time SIMD_FLAGS.
 ifeq ($(IS_X86),1)
-  # Default: native arch for best SIMD (AVX-512 on Zen 5, etc.).
-  # Override with GRAB_MARCH=-march=x86-64-v2 for portable binaries.
-  GRAB_MARCH := -march=native
+  # Default: native arch for best SIMD on the build host (AVX-512 on Zen 5,
+  # Intel Sapphire Rapids, etc.).  This is the right choice for users who
+  # compile GRAB on the same machine that will run it.
+  #
+  # For portable binary distribution (GitHub Actions release artifacts,
+  # docker images, shared cluster software trees) override with:
+  #     make GRAB_MARCH=-march=x86-64-v3
+  # which pins the baseline ISA at AVX2/FMA/BMI2 (Haswell, 2013+).  GRAB's
+  # own hand-written SPAsqr-style kernels keep their AVX-512 variants via
+  # __attribute__((target(...))), so the runtime dispatcher in
+  # simd_dispatch.hpp still picks the AVX-512 path on capable hosts; only
+  # Eigen-expressed and compiler-auto-vectorized code is capped at AVX2.
+  GRAB_MARCH ?= -march=native
 else
   # ARM (arm64 / aarch64): rely on default tuning + scalar fallbacks.
-  GRAB_MARCH :=
+  GRAB_MARCH ?=
 endif
 
 # ── Compiler & linker flags ───────────────────────────────────────────────────
-# CXXFLAGS: used for third-party C++ (pgenlib, bgen) — includes SIMD_FLAGS.
-CXXFLAGS := -std=c++17 -O3 -DNDEBUG $(PLATFORM_FLAGS) \
+# Naming convention:
+#   TP_CXXFLAGS / TP_CFLAGS  : internal defaults for third-party (zlib, zstd,
+#                              libdeflate, pgenlib, bgen, htslib).  Include
+#                              SIMD_FLAGS so the C/C++ deps get AVX2 codegen.
+#   GRAB_CXXFLAGS            : internal defaults for src/*.cpp — no compile-
+#                              time SIMD ISA selected; the runtime dispatcher
+#                              in simd_dispatch.hpp resolves AVX2/AVX-512
+#                              variants via __attribute__((target(...))).
+#   LINK_FLAGS               : internal defaults for the final link step.
+#
+# The standard $(CPPFLAGS) / $(CXXFLAGS) / $(CFLAGS) / $(LDFLAGS) names are
+# left for the build environment (external sysroots, hardening flags such
+# as -fstack-protector-strong / -D_FORTIFY_SOURCE=2 / -fdebug-prefix-map=…,
+# and rpath/link-search additions) to fill in.  They are appended after the
+# internal flag sets so external overrides win for any conflicting option.
+TP_CXXFLAGS := -std=c++17 -O3 -DNDEBUG $(PLATFORM_FLAGS) \
             -ffunction-sections -fdata-sections \
             -funroll-loops $(SIMD_FLAGS) \
             -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare
-# GRAB_CXXFLAGS: used for src/*.cpp — no compile-time SIMD; uses target attrs.
 GRAB_CXXFLAGS := -std=c++17 -O3 -DNDEBUG $(GRAB_MARCH) $(PLATFORM_FLAGS) \
             -ffunction-sections -fdata-sections \
             -funroll-loops \
+            -DGRAB_VERSION=\"$(GRAB_VERSION)\" \
             -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare \
             -Wno-maybe-uninitialized
-CFLAGS   := -O3 -DNDEBUG $(PLATFORM_FLAGS) -ffunction-sections -fdata-sections $(SIMD_FLAGS)
+TP_CFLAGS   := -O3 -DNDEBUG $(PLATFORM_FLAGS) -ffunction-sections -fdata-sections $(SIMD_FLAGS)
 # libstdc++/libgcc linkage: dynamic by default (works everywhere; requires the
 # system's libstdc++.so.6/libgcc_s.so.1 at runtime — both are part of any
 # Linux/Windows g++ install).  Override with STATIC_LIBS="-static-libstdc++
@@ -99,12 +136,12 @@ CFLAGS   := -O3 -DNDEBUG $(PLATFORM_FLAGS) -ffunction-sections -fdata-sections $
 # these flags, so the override is Linux/Windows-only.
 STATIC_LIBS ?=
 ifeq ($(PLATFORM),macos)
-  LDFLAGS := -Wl,-dead_strip -lpthread $(PLATFORM_LDLIBS) $(STATIC_LIBS)
+  LINK_FLAGS := -Wl,-dead_strip -lpthread $(PLATFORM_LDLIBS) $(STATIC_LIBS)
 else
   # -lstdc++fs is required by libstdc++ before GCC 9 to resolve
   # std::filesystem symbols. Newer toolchains expose an empty stub library
   # so the flag is harmless there.
-  LDFLAGS := -Wl,--gc-sections -lpthread -lstdc++fs $(PLATFORM_LDLIBS) $(STATIC_LIBS)
+  LINK_FLAGS := -Wl,--gc-sections -lpthread -lstdc++fs $(PLATFORM_LDLIBS) $(STATIC_LIBS)
 endif
 
 # ── Directories ───────────────────────────────────────────────────────────────
@@ -195,7 +232,7 @@ all: $(BIN)
 
 # ── Link ──────────────────────────────────────────────────────────────────────
 $(BIN): $(ALL_OBJS) | $(BUILD_DIR) tmp
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+	$(CXX) $(TP_CXXFLAGS) $(CPPFLAGS) $(CXXFLAGS) $(LDFLAGS) $^ -o $@ $(LINK_FLAGS) $(LDLIBS)
 
 # ── Directory creation ────────────────────────────────────────────────────────
 $(BUILD_DIR) tmp:
@@ -204,61 +241,100 @@ $(BUILD_DIR) tmp:
 # ── Compile GRAB (C++) ────────────────────────────────────────────────────────
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | tmp
 	@mkdir -p $(@D)
-	$(CXX) $(GRAB_CXXFLAGS) -MMD -MP $(INCLUDES) -c $< -o $@
+	$(CXX) $(GRAB_CXXFLAGS) $(CPPFLAGS) $(CXXFLAGS) -MMD -MP $(INCLUDES) -c $< -o $@
 
 -include $(DEPS)
 
 # ── Compile zlib (C) ──────────────────────────────────────────────────────────
 $(BUILD_DIR)/zlib/%.o: $(ZLIB_DIR)/%.c | tmp
 	@mkdir -p $(@D)
-	$(CC) $(CFLAGS) -I$(ZLIB_DIR) -c $< -o $@
+	$(CC) $(TP_CFLAGS) $(CPPFLAGS) $(CFLAGS) -I$(ZLIB_DIR) -c $< -o $@
 
 # ── Compile zstd (C) ──────────────────────────────────────────────────────────
 $(BUILD_DIR)/zstd/%.o: $(ZSTD_DIR)/%.c | tmp
 	@mkdir -p $(@D)
-	$(CC) $(CFLAGS) -DZSTD_DISABLE_ASM -I$(ZSTD_DIR) -I$(ZSTD_DIR)/common -c $< -o $@
+	$(CC) $(TP_CFLAGS) $(CPPFLAGS) $(CFLAGS) -DZSTD_DISABLE_ASM -I$(ZSTD_DIR) -I$(ZSTD_DIR)/common -c $< -o $@
 
 # ── Compile libdeflate (C) ────────────────────────────────────────────────────
 $(BUILD_DIR)/libdeflate/%.o: $(DEFLATE_DIR)/lib/%.c | tmp
 	@mkdir -p $(@D)
-	$(CC) $(CFLAGS) -I$(DEFLATE_DIR) -c $< -o $@
+	$(CC) $(TP_CFLAGS) $(CPPFLAGS) $(CFLAGS) -I$(DEFLATE_DIR) -c $< -o $@
 
 # ── Compile pgenlib (.cc → C++) ───────────────────────────────────────────────
 #  IGNORE_BUNDLED_ZSTD: use our vendored zstd via -I instead of ../zstd/ path.
-PGEN_CXXFLAGS := $(CXXFLAGS) -DIGNORE_BUNDLED_ZSTD \
+PGEN_CXXFLAGS := $(TP_CXXFLAGS) -DIGNORE_BUNDLED_ZSTD \
     -Wno-sign-compare -Wno-unused-function -Wno-missing-field-initializers \
     -Wno-maybe-uninitialized
 
 $(BUILD_DIR)/pgenlib/%.o: $(PGENLIB_DIR)/include/%.cc | tmp
 	@mkdir -p $(@D)
-	$(CXX) $(PGEN_CXXFLAGS) -I$(PGENLIB_DIR)/include -I$(ZSTD_DIR) \
+	$(CXX) $(PGEN_CXXFLAGS) $(CPPFLAGS) $(CXXFLAGS) -I$(PGENLIB_DIR)/include -I$(ZSTD_DIR) \
 	    -I$(DEFLATE_DIR) -c $< -o $@
 
 # SFMT.c is plain C
 $(BUILD_DIR)/pgenlib/SFMT.o: $(PGENLIB_DIR)/include/SFMT.c | tmp
 	@mkdir -p $(@D)
-	$(CC) $(CFLAGS) -I$(PGENLIB_DIR)/include -c $< -o $@
+	$(CC) $(TP_CFLAGS) $(CPPFLAGS) $(CFLAGS) -I$(PGENLIB_DIR)/include -c $< -o $@
 
 # ── Compile bgen (C++) ────────────────────────────────────────────────────────
-BGEN_CXXFLAGS := $(CXXFLAGS) -Wno-sign-compare -Wno-unused-variable
+BGEN_CXXFLAGS := $(TP_CXXFLAGS) -Wno-sign-compare -Wno-unused-variable
 
 $(BUILD_DIR)/bgen/%.o: $(BGEN_DIR)/src/%.cpp | tmp
 	@mkdir -p $(@D)
-	$(CXX) $(BGEN_CXXFLAGS) -I$(BGEN_DIR)/genfile/include \
+	$(CXX) $(BGEN_CXXFLAGS) $(CPPFLAGS) $(CXXFLAGS) -I$(BGEN_DIR)/genfile/include \
 	    -I$(ZSTD_DIR) -I$(ZLIB_DIR) -c $< -o $@
 
 # ── Compile htslib (C) ────────────────────────────────────────────────────────
-HTSLIB_CFLAGS := $(CFLAGS) -DHAVE_CONFIG_H \
+HTSLIB_CFLAGS := $(TP_CFLAGS) -DHAVE_CONFIG_H \
     -I$(HTSLIB_DIR) -I$(HTSLIB_DIR)/htscodecs -I$(ZLIB_DIR) \
     -Wno-sign-compare
 
 $(BUILD_DIR)/htslib/%.o: $(HTSLIB_DIR)/%.c | tmp
 	@mkdir -p $(@D)
-	$(CC) $(HTSLIB_CFLAGS) -c $< -o $@
+	$(CC) $(HTSLIB_CFLAGS) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/htslib/htscodecs/%.o: $(HTSLIB_DIR)/htscodecs/htscodecs/%.c | tmp
 	@mkdir -p $(@D)
-	$(CC) $(HTSLIB_CFLAGS) -c $< -o $@
+	$(CC) $(HTSLIB_CFLAGS) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+# ── Install ───────────────────────────────────────────────────────────────────
+# Standard PREFIX / DESTDIR semantics so the GitHub Actions release workflow
+# and ad-hoc local installations (`make install PREFIX=$HOME/.local`) can
+# stage the binary into a chroot via DESTDIR while keeping the runtime path
+# under PREFIX.  Both `install -d` and `install -m` are supported by GNU
+# coreutils and BSD `install` (macOS), avoiding the GNU-only `-D` shortcut.
+PREFIX  ?= /usr/local
+DESTDIR ?=
+
+.PHONY: install
+install: $(BIN)
+	install -d $(DESTDIR)$(PREFIX)/bin
+	install -m 0755 $(BIN) $(DESTDIR)$(PREFIX)/bin/grab2$(EXE)
+
+# ── Dist (release packaging) ──────────────────────────────────────────────────
+# Produces dist/grab2-$(GRAB_VERSION)-$(PLATFORM)-$(UNAME_M).tar.gz, a
+# self-contained archive holding the stripped binary alongside README.md,
+# LICENSE, and VERSION.  Intended for ad-hoc local testing of the same
+# packaging recipe that .github/workflows/release.yml runs in CI; the
+# GitHub Actions workflow performs the equivalent steps explicitly so
+# it can handle the Windows .zip vs Unix .tar.gz difference.
+#
+# `strip` removes debug / symbol-table sections to shrink the binary by
+# roughly 3-4x.  STRIP is overridable so cross-compile / sysroot setups
+# can substitute the target-matched tool (e.g. aarch64-linux-gnu-strip).
+STRIP   ?= strip
+DIST_DIR := dist
+DIST_PKG := grab2-$(GRAB_VERSION)-$(PLATFORM)-$(UNAME_M)
+
+.PHONY: dist
+dist: $(BIN)
+	@rm -rf $(DIST_DIR)/$(DIST_PKG) $(DIST_DIR)/$(DIST_PKG).tar.gz
+	@mkdir -p $(DIST_DIR)/$(DIST_PKG)
+	cp $(BIN) $(DIST_DIR)/$(DIST_PKG)/
+	$(STRIP) $(DIST_DIR)/$(DIST_PKG)/grab2$(EXE) || true
+	cp README.md LICENSE VERSION $(DIST_DIR)/$(DIST_PKG)/
+	cd $(DIST_DIR) && tar czf $(DIST_PKG).tar.gz $(DIST_PKG)
+	@echo "Created $(DIST_DIR)/$(DIST_PKG).tar.gz"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 .PHONY: run
@@ -267,4 +343,4 @@ run: all
 
 # ── Clean ─────────────────────────────────────────────────────────────────────
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD_DIR) $(DIST_DIR)

@@ -103,6 +103,13 @@ Args parseArgs(
             return a; // skip further parsing
         }
 
+        // --version / -V: short-circuit; the dispatcher will emit the
+        // version string and exit without parsing the remaining flags.
+        if (arg == "--version" || arg == "-V") {
+            a.showVersion = true;
+            return a;
+        }
+
         auto next = [&]() -> std::string {
             markSeen(arg);
             if (i + 1 >= argc) {

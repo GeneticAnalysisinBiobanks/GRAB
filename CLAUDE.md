@@ -75,6 +75,61 @@ up on those hosts.  Every new SIMD kernel must ship the full scalar +
 `_avx2` + `_avx512` triple plus a `simdLevel()` dispatch site; anything
 missing the AVX2 tier is a bug, not a follow-up.
 
+## Two distribution paths share one Makefile
+
+A single `Makefile` serves both source-compile users and the GitHub
+Actions release-build workflow.  The two paths differ only in a small
+number of variable values; do not introduce a second Makefile.
+
+- **Source-compile users (`make -j`).**  Default `GRAB_MARCH := -march=native`
+  tunes the resulting binary to the build host's CPU, enabling Eigen's
+  and the compiler's AVX-512 auto-vectorization on capable hardware in
+  addition to the runtime-dispatched SPAsqr/SPAmix/SPAGRM kernels.  This
+  is the optimal path for users who run GRAB on the same machine they
+  build it on.
+- **GitHub Actions release builds
+  (`make -j GRAB_MARCH=-march=x86-64-v3`).**  Pins the baseline ISA at
+  AVX2/FMA/BMI2 so the published binary runs on any x86-64 machine with
+  a 2013-or-newer CPU.  The runtime SIMD dispatcher in
+  `simd_dispatch.hpp` still picks the AVX-512 variants of hand-written
+  kernels on capable hosts (because `__attribute__((target(...)))` emits
+  all variants regardless of `-march`); only auto-vectorized code is
+  capped at AVX2.
+
+Both `CXX`/`CC` and the standard `CPPFLAGS`/`CXXFLAGS`/`CFLAGS`/`LDFLAGS`
+are honored via `?=` and trailing-append patterns, so an external build
+environment can inject sysroot-aware compilers and hardening flags
+(`-fstack-protector-strong`, `-D_FORTIFY_SOURCE=2`,
+`-fdebug-prefix-map=…`, rpath additions, etc.) without further
+intervention.  A representative release-build invocation, as used by
+[.github/workflows/release.yml](.github/workflows/release.yml):
+
+```bash
+make -j$(nproc) \
+    GRAB_MARCH="-march=x86-64-v3" \
+    SIMD_FLAGS="-mavx2 -mbmi -mbmi2 -mlzcnt -mfma" \
+    STATIC_LIBS="-static-libstdc++ -static-libgcc"
+make install PREFIX="${PREFIX}"
+```
+
+The Linux release build runs inside the `quay.io/pypa/manylinux2014_*`
+container so that the resulting binary's glibc baseline is 2.17 (RHEL 7
+era), maximizing HPC-cluster compatibility.  `STATIC_LIBS` is set
+exactly because the manylinux container ships a newer libstdc++ than
+the target hosts; static-linking libstdc++/libgcc cuts the runtime
+dependency back to glibc only.
+
+For `linux-aarch64` and `osx-arm64`, omit `SIMD_FLAGS` and let
+`GRAB_MARCH` default to empty — Eigen's NEON path is selected
+automatically and the scalar fallback covers everything else.  For
+`macos-*`, omit `STATIC_LIBS` because Apple clang does not accept
+`-static-libstdc++` (libc++ is provided by the system).
+
+When renaming or removing a Makefile variable, audit both paths: keep
+the source-compile default produce-the-fastest behavior intact, and
+keep the release workflow minimal (no per-platform branches inside the
+workflow that the Makefile could absorb).
+
 ## Architecture matrix the build supports
 
 | Platform | x86_64                      | arm64 (Apple Silicon, ARM Linux) |

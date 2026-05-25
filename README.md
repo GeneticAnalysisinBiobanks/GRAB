@@ -1,14 +1,21 @@
-# GRAB 2.0 alpha
+# GRAB2
 
-**GRAB** (Genome-wide Robust Analysis for Biobank data) is a free,
-open-source toolkit of GWAS methods designed for biobank-scale data.  Up
-to version 0.2.4, GRAB was distributed as an R package
-([CRAN](https://CRAN.R-project.org/package=GRAB)). The code has since
-been re-implemented from scratch in pure C++17; the new line is
-numbered from **2.0** onwards and is referred to as **GRAB2** when
-disambiguation is needed.
+**GRAB2** (Genome-wide Robust Analysis for Biobank data, version 2) is
+a free, open-source toolkit of GWAS methods for biobank-scale data.
+The CLI binary is named `grab2`.
 
-Note that GRAB2 does not include POLMM or POLMM-GENE. Users who wish to use these methods should continue using the original R package. For general marker-level analyses (including ordinal traits), we recommend SPACox, SPAMIX, or SPAGRM.
+GRAB2 is a complete reimplementation in pure C++17.  It is the
+successor to the original **GRAB** R package
+([CRAN](https://CRAN.R-project.org/package=GRAB)).
+
+- **Use GRAB2** for any current biobank-scale analysis.  It supersedes
+  the legacy R package for SPACox, SPAmix, and SPAGRM, and
+  adds new methods (SAGELD, SPAsqr, and LEAF).
+- **Use the legacy R package** only when you specifically require
+  **POLMM** or **POLMM-GENE**, neither of which has been ported to
+  GRAB2.  For general marker-level analyses (including ordinal
+  traits), GRAB2 provides SPACox, SPAmix, or SPAGRM as faster
+  alternatives.
 
 ## Highlights
 
@@ -46,25 +53,26 @@ Note that GRAB2 does not include POLMM or POLMM-GENE. Users who wish to use thes
 ![macOS](https://img.shields.io/badge/macOS-000?logo=apple&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-0078D6?logo=windows&logoColor=white)
 
-GRAB is self-contained: all third-party libraries are bundled in the
+### From prebuilt binaries
+
+Each GRAB2 release ships precompiled binaries for the five common
+platforms. Download the archive matching your operating system and CPU architecture from the
+[GitHub Releases page](https://github.com/GeneticAnalysisinBiobanks/GRAB/releases/latest).
+
+### From source (recommended HPC tuning)
+
+GRAB2 is self-contained: all third-party libraries are bundled in the
 source tree. To build it, you only need a standard compiler toolchain
-with C++17 support (a recent `gcc`/`g++` on Linux or MSYS2/MinGW, or
-the Xcode Command Line Tools on macOS) and GNU `make`.
+with C++17 support and GNU `make`.
 
 ```bash
 git clone --depth=1 https://github.com/GeneticAnalysisinBiobanks/GRAB.git
 cd GRAB
 make -j
+build/grab2 --version
 ```
 
 This produces a single binary `build/grab2`, tuned for the CPU you built on.
-Copy it anywhere on `PATH` and you are done.
-
-To produce a binary that can be shared across any AVX2-capable machine, which is useful when the run host is older than the build host:
-
-```bash
-make -j GRAB_MARCH=-march=x86-64-v2
-```
 
 ## Quick start
 
@@ -130,7 +138,7 @@ coverage is planned for a subsequent release.
 
 ![Licence](https://img.shields.io/badge/licence-GPL--3.0+-blue)
 
-GRAB 2.0 is released under the **GNU General Public License, version 3
+GRAB2 is released under the **GNU General Public License, version 3
 or later**.
 
 Vendored libraries under `third_party/` retain their upstream licences:

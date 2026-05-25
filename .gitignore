@@ -1,5 +1,6 @@
 build/
 build_bak/
+dist/
 tmp/
 tmp_bench/
 examples_mini/

@@ -8,7 +8,19 @@
 #include <cstring>
 #include <string>
 
+// GRAB_VERSION is injected by the Makefile via -DGRAB_VERSION=\"$(VERSION)\".
+// The fallback below applies only when the file is compiled outside the
+// project Makefile (e.g. during ad-hoc IDE indexing) and is never expected
+// in a real binary.
+#ifndef GRAB_VERSION
+#define GRAB_VERSION "0.0.0+unknown"
+#endif
+
 namespace cli {
+
+void printVersion() {
+    std::fprintf(stdout, "GRAB %s\n", GRAB_VERSION);
+}
 
 // Lowercase a string for display.  Method names are stored mixed-case in
 // MethodDef::name (e.g. "SPACox", "WtCoxG") for downstream string-equality
@@ -37,10 +49,11 @@ static void printFlag(const FlagDef *f) {
 // ── Short help (no topic) ──────────────────────────────────────────
 
 static void printShortHelp() {
+    std::fprintf(stderr,
+        "GRAB %s -- Genome-Wide Robust Analysis for Biobank Data\n\n",
+        GRAB_VERSION);
     std::fputs(
-        R"(GRAB 2.0-alpha -- Genome-Wide Robust Analysis for Biobank Data
-
-Usage:
+        R"(Usage:
   grab2 --method spacox|spagrm|spamix|sageld|spasqr|wtcoxg|leaf \
         --bfile PREFIX --pheno FILE \
         --pheno-name COL_IDS \
@@ -75,7 +88,7 @@ static void printMethodHelp(const MethodDef *m) {
     for (const FlagDef *const *p = m->required; *p; ++p)
         printFlag(*p);
 
-    if (m->residNote) std::fprintf(stderr, "\n  Residual columns (via --pheno): %s\n", m->residNote);
+    if (m->phenoNote) std::fprintf(stderr, "\n  Phenotype input (via --pheno):\n%s\n", m->phenoNote);
 
     if (m->optional && m->optional[0]) {
         std::fprintf(stderr, "\nOptional:\n");

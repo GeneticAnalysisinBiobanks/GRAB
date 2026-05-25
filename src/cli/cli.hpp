@@ -9,6 +9,8 @@ namespace cli {
 struct Args {
     std::string method;
     std::string helpTopic; // set when --help <topic> is used
+    bool showVersion = false; // set when --version or -V is used; short-circuits
+                              // dispatch and emits the GRAB_VERSION string
     std::string phenoFile;
     std::string covarFile;
     std::string covarName;                          // comma-separated covariate column names
@@ -114,5 +116,9 @@ Args parseArgs(
 );
 
 void printHelp(const std::string &topic);
+
+// Emit the GRAB version (machine-parseable, single line, to stdout) and
+// return.  Used by the --version / -V CLI short-circuit.
+void printVersion();
 
 } // namespace cli

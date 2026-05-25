@@ -331,6 +331,16 @@ int run(
 
     Args args = parseArgs(argc, argv);
 
+    // ── Version short-circuit ──────────────────────────────────────
+    // Honor --version / -V before any other validation so the call is
+    // always cheap and free of side effects, even when accompanied by
+    // ill-formed flags.  Stdout output (single-line "GRAB <version>")
+    // is intended for grep / awk consumption in CI scripts.
+    if (args.showVersion) {
+        printVersion();
+        return 0;
+    }
+
     // Resolve --compression-level default per codec.  The runtime library
     // applies its built-in default (zlib 6, zstd 3) when the value is left
     // at 0; we materialize the same value into args so that "Options in
