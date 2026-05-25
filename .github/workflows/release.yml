@@ -261,10 +261,3 @@ jobs:
           # release needs a body, set `body:` / `body_path:`
           # explicitly with curated text.
           fail_on_unmatched_files: true
-          # Auto-detect PEP 440 prerelease suffixes in the tag name
-          # so alpha / beta / rc / dev releases are flagged as
-          # `Pre-release` on the GitHub UI and not labelled as
-          # "Latest release".  Final tags like `v2.0.0` and
-          # post-release tags like `v2.0.0.post1` contain none of
-          # these tokens and remain marked as stable.
-          prerelease: ${{ contains(github.ref_name, 'a') || contains(github.ref_name, 'b') || contains(github.ref_name, 'rc') || contains(github.ref_name, 'dev') }}
