@@ -31,6 +31,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <limits>
 #include <memory>
@@ -412,11 +413,14 @@ std::unique_ptr<SAGELDMethod> buildSAGELDArtifacts(
     double minMafCutoff,
     double minMacCutoff,
     int innerThreads,
-    const std::string &phenoLabel = {}
+    const std::string &phenoLabel = {},
+    const std::vector<double> &lambdaOverride = {}
 ) {
     const int nEnv = static_cast<int>(envNames.size());
     if (static_cast<int>(Resid_GxE_list.size()) != nEnv)
         throw std::runtime_error("buildSAGELDArtifacts: envNames / Resid_GxE_list size mismatch");
+    if (!lambdaOverride.empty() && static_cast<int>(lambdaOverride.size()) != nEnv)
+        throw std::runtime_error("buildSAGELDArtifacts: lambdaOverride size mismatch");
 
     const double R_GRM_R_G = computeRGRMR(Resid_G, topo);
 
@@ -427,13 +431,19 @@ std::unique_ptr<SAGELDMethod> buildSAGELDArtifacts(
 
     for (int i = 0; i < nEnv; ++i) {
         const auto &Resid_GxE = Resid_GxE_list[i];
-        const double lambda = Resid_G.squaredNorm() > 0
-                                  ? Resid_GxE.dot(Resid_G) / Resid_G.squaredNorm()
-                                  : 0.0;
+        // Closed-form OLS λ is the residual-mode fallback (no genotype access).
+        // In pheno mode, lambdaOverride supplies the per-marker variance-ratio
+        // mean computed via the develop-R GALLOP cache; see
+        // estimateLambdaPerMarker() and R/SAGELD.R:347-369.
+        const double lambdaFallback =
+            Resid_G.squaredNorm() > 0
+                ? Resid_GxE.dot(Resid_G) / Resid_G.squaredNorm()
+                : 0.0;
+        const double lambda = lambdaOverride.empty() ? lambdaFallback : lambdaOverride[i];
         if (phenoLabel.empty())
-            infoMsg("Env '%s': genome-wide lambda = %.6f", envNames[i].c_str(), lambda);
+            infoMsg("Env '%s': lambda = %.6f", envNames[i].c_str(), lambda);
         else
-            infoMsg("[%s] Env '%s': genome-wide lambda = %.6f",
+            infoMsg("[%s] Env '%s': lambda = %.6f",
                     phenoLabel.c_str(), envNames[i].c_str(), lambda);
         Eigen::VectorXd envCombined = Resid_GxE - lambda * Resid_G;
         SPAGRMClass spagrm_combined = nsGRMNull::buildSPAGRMNullModel(
@@ -447,6 +457,123 @@ std::unique_ptr<SAGELDMethod> buildSAGELDArtifacts(
 
     return std::make_unique<SAGELDMethod>(
         Resid_G, R_GRM_R_G, std::move(envData), std::move(envNamesOut));
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// estimateLambdaPerMarker — develop-R parity λ estimator.
+//
+// Replicates R/SAGELD.R:347-369:
+//   • Sample up to maxMarkers markers (stride-based deterministic sample).
+//   • For each marker:
+//        mu       = altFreq
+//        zScoreE  = R_E · g  /  sqrt(2 mu (1-mu) R_GRM_R_E)
+//        accept iff 0.05 < mu < 0.95  and  |zScoreE| < zScoreECutoff
+//   • λ_i = V[1,2] / V[1,1] via the GallopCache.
+//   • λ̂ = mean(λ_i) over accepted markers; require ≥ 100 accepted.
+//
+// Returns NaN if fewer than 100 markers passed screening.  Caller falls
+// back to the closed-form OLS λ in that case.
+// ══════════════════════════════════════════════════════════════════════
+double estimateLambdaPerMarker(
+    const GenoMeta &genoData,
+    uint32_t N,
+    const Eigen::VectorXd &Resid_E,
+    double R_GRM_R_E,
+    double zScoreECutoff,
+    const nsSAGELDFit::GallopCache &cache,
+    int maxMarkers,
+    const std::string &phenoLabel = {}
+) {
+    if (!(R_GRM_R_E > 0.0))
+        return std::numeric_limits<double>::quiet_NaN();
+
+    const uint64_t total = static_cast<uint64_t>(genoData.nMarkers());
+    if (total == 0) return std::numeric_limits<double>::quiet_NaN();
+
+    const uint64_t target = std::min(static_cast<uint64_t>(maxMarkers), total);
+    // Stride deterministically across the marker list so the sample spans
+    // the genome rather than clustering near chromosome 1.
+    const uint64_t stride = std::max<uint64_t>(1, total / target);
+
+    auto cursor = genoData.makeCursor();
+    Eigen::VectorXd geno(N);
+    std::vector<uint32_t> missingIdx;
+
+    std::vector<double> lambdaObs;
+    lambdaObs.reserve(static_cast<size_t>(target));
+
+    cursor->beginSequentialBlock(0);
+    for (uint64_t k = 0; k < target; ++k) {
+        const uint64_t markerIdx = k * stride;
+        if (markerIdx >= total) break;
+        double altFreq = 0.0, altCounts = 0.0, missingRate = 0.0;
+        double hweP = 0.0, maf = 0.0, mac = 0.0;
+        cursor->getGenotypes(markerIdx, geno, altFreq, altCounts, missingRate,
+                             hweP, maf, mac, missingIdx);
+
+        // Mean impute missing entries to 2·AF (matches develop-R imputeMethod="mean")
+        const double meanGeno = 2.0 * altFreq;
+        for (auto idx : missingIdx) geno[idx] = meanGeno;
+
+        // Screening: common variant (MAF > 0.05) and small marginal G-E z-score
+        const double mu = altFreq;
+        if (!(mu > 0.05 && mu < 0.95)) continue;
+        const double denom = std::sqrt(2.0 * mu * (1.0 - mu) * R_GRM_R_E);
+        if (!(denom > 0.0)) continue;
+        const double zScoreE = Resid_E.dot(geno) / denom;
+        if (!(std::abs(zScoreE) < zScoreECutoff)) continue;
+
+        const double lambda = nsSAGELDFit::markerLambda(geno, cache);
+        if (std::isfinite(lambda)) lambdaObs.push_back(lambda);
+    }
+
+    if (lambdaObs.size() < 100) {
+        const char *prefix = phenoLabel.empty() ? "" : phenoLabel.c_str();
+        if (phenoLabel.empty())
+            infoMsg("WARNING: only %zu markers passed λ screening (< 100); "
+                    "falling back to closed-form OLS λ",
+                    lambdaObs.size());
+        else
+            infoMsg("[%s] WARNING: only %zu markers passed λ screening (< 100); "
+                    "falling back to closed-form OLS λ",
+                    prefix, lambdaObs.size());
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+
+    double sum = 0.0;
+    for (double v : lambdaObs) sum += v;
+    const double lambdaMean = sum / static_cast<double>(lambdaObs.size());
+    if (phenoLabel.empty())
+        infoMsg("λ estimate from %zu markers (per-marker mean): %.6f",
+                lambdaObs.size(), lambdaMean);
+    else
+        infoMsg("[%s] λ estimate from %zu markers (per-marker mean): %.6f",
+                phenoLabel.c_str(), lambdaObs.size(), lambdaMean);
+    return lambdaMean;
+}
+
+// Scan an IID-format residual file for a `##sageld-lambda=<value>` metadata
+// comment.  Returns NaN if absent or malformed.  Stops at the first
+// non-comment line (typically the data header `#IID`).
+double readLambdaFromResidFile(const std::string &filename) {
+    std::ifstream ifs(filename);
+    if (!ifs) return std::numeric_limits<double>::quiet_NaN();
+    std::string line;
+    while (std::getline(ifs, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty()) continue;
+        if (line.size() < 2 || line[0] != '#' || line[1] != '#') break;
+        constexpr const char *kKey = "##sageld-lambda=";
+        const size_t kKeyLen = std::strlen(kKey);
+        if (line.size() > kKeyLen && line.compare(0, kKeyLen, kKey) == 0) {
+            const char *p = line.c_str() + kKeyLen;
+            char *ep = nullptr;
+            const double v = std::strtod(p, &ep);
+            if (ep != p && std::isfinite(v)) return v;
+            return std::numeric_limits<double>::quiet_NaN();
+        }
+    }
+    return std::numeric_limits<double>::quiet_NaN();
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -466,11 +593,13 @@ void runSAGELDCoreSingle(
     double missingCutoff,
     double minMafCutoff,
     double minMacCutoff,
-    double hweCutoff
+    double hweCutoff,
+    const std::vector<double> &lambdaOverride = {}
 ) {
     auto method = buildSAGELDArtifacts(Resid_G, envNames, Resid_GxE_list,
                                        topo, N, spaCutoff, minMafCutoff, minMacCutoff,
-                                       /*innerThreads=*/nthreads);
+                                       /*innerThreads=*/nthreads, /*phenoLabel=*/{},
+                                       lambdaOverride);
     infoMsg("Running SAGELD marker-level association on '%s'...", outputFile.c_str());
     markerEngine(genoData, *method, outputFile, nthreads,
                  missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
@@ -529,9 +658,22 @@ void runSAGELDResidualMode(
         Resid_GxE_list[i] = residMat.col(envs_spec[i].colGxE);
     }
 
+    // Inherit per-marker λ from fit-mode if the residual file carries one
+    // (written by --save-resid as a `##sageld-lambda=<value>` header).  If
+    // the user-supplied residual file lacks this comment, the closed-form
+    // OLS λ is used as fallback (legacy behaviour).
+    const double lambdaFromFile = readLambdaFromResidFile(phenoFile);
+    std::vector<double> lambdaOverride;
+    if (std::isfinite(lambdaFromFile)) {
+        lambdaOverride.assign(nEnv, lambdaFromFile);
+        infoMsg("Residual file supplies λ = %.6f via ##sageld-lambda metadata",
+                lambdaFromFile);
+    }
+
     runSAGELDCoreSingle(Resid_G, envNames, Resid_GxE_list, topo, N, *genoData,
                         outputFile, spaCutoff, nthreads,
-                        missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
+                        missingCutoff, minMafCutoff, minMacCutoff, hweCutoff,
+                        lambdaOverride);
 }
 
 // ── Helper: load --keep / --remove file into a string set ──────────────
@@ -656,12 +798,20 @@ void runSAGELDPhenoMode(
 
     std::vector<PhenoTask> tasks(nPheno);
 
+    // develop-R parity λ estimation parameters (R/SAGELD.R:103,301-305,371-376):
+    //   PvalueCutoff = 0.001  →  zScoreECutoff = qnorm(0.0005, lower.tail=FALSE)
+    //   marker sample size cap = 2000; require ≥ 100 to pass screening
+    constexpr int kLambdaSampleSize = 2000;
+    constexpr double kLambdaPvalueCutoff = 0.001;
+    const double zScoreECutoff = math::qnorm(
+        kLambdaPvalueCutoff / 2.0, 0.0, 1.0, /*lower_tail=*/false);
+
     auto buildOne = [&](int p) {
         const std::string &phenoName = phenoNames[p];
 
         Eigen::VectorXd y = longData.Y.col(p);
         auto fitMain = nsSAGELDFit::fitRandomSlopeML(longData, y);
-        infoMsg("[%s] Y ~ X + (E | IID) converged in %d NM iters: "
+        infoMsg("[%s] Y ~ X + (E | IID) converged in %d iters: "
                 "sigma2=%.6g, D=[%.6g, %.6g; %.6g, %.6g]",
                 phenoName.c_str(), fitMain.iterations, fitMain.sigma2,
                 fitMain.D(0, 0), fitMain.D(0, 1), fitMain.D(1, 0), fitMain.D(1, 1));
@@ -670,18 +820,36 @@ void runSAGELDPhenoMode(
         Eigen::VectorXd Resid_GxE = nsSAGELDFit::aggregateWeightedPerIID(
             longData, fitMain.residPerRow, longData.E);
 
-        // ── --save-resid: write per-pheno residual file ─────────────────
-        // Format matches src/spagrm/sageld.cpp::parseEnvSpecs (residual-input
-        // mode):  #IID  R_G  R_<E>  R_Gx<E>.  R_<E> is the BLUP residual of
-        // E ~ 1 + (1|IID), computed only when --save-resid is set (the C++
-        // closed-form lambda does not consume R_<E>; we fit only to produce
-        // a file compatible with the lme4 reference convention).
+        // E ~ 1 + (1|IID) is needed for the marginal G–E screen used by
+        // estimateLambdaPerMarker; the same residuals are also written
+        // when --save-resid is set.  Develop-R fits this with lme4::lmer;
+        // we use the 1-D Brent path of fitRandomInterceptML (matches lme4
+        // to machine precision).
+        auto fitE = nsSAGELDFit::fitRandomInterceptML(longData, longData.E);
+        Eigen::VectorXd Resid_E = nsSAGELDFit::aggregatePerIID(longData, fitE.residPerRow);
+
+        // Per-marker λ via the GALLOP cache (develop-R parity).  When fewer
+        // than 100 markers pass the screen, lambdaMean is NaN and the
+        // downstream buildSAGELDArtifacts falls back to the closed-form OLS λ.
+        const double R_GRM_R_E = computeRGRMR(Resid_E, topo);
+        auto gallopCache = nsSAGELDFit::buildGallopCache(longData, fitMain.D, fitMain.sigma2);
+        const double lambdaMean = estimateLambdaPerMarker(
+            *genoData, N, Resid_E, R_GRM_R_E, zScoreECutoff,
+            gallopCache, kLambdaSampleSize, phenoName);
+
         if (saveResid) {
-            auto fitE = nsSAGELDFit::fitRandomInterceptML(longData, longData.E);
-            Eigen::VectorXd Resid_E = nsSAGELDFit::aggregatePerIID(longData, fitE.residPerRow);
             const std::string residPath = outPrefix + "." + phenoName + ".SAGELD.resid";
             std::ofstream rf(residPath);
             if (!rf) throw std::runtime_error("Cannot write residual file: " + residPath);
+            // VCF-style metadata comment lines.  parseIIDFile skips `##`
+            // lines transparently; SAGELD residual-mode parses the λ value
+            // back so that fit-mode → residual-mode produces byte-identical
+            // marker outputs even when fit-mode used per-marker λ.
+            if (std::isfinite(lambdaMean)) {
+                char lbuf[64];
+                std::snprintf(lbuf, sizeof(lbuf), "%.17g", lambdaMean);
+                rf << "##sageld-lambda=" << lbuf << "\n";
+            }
             rf << "#IID\tR_G\tR_" << envNames[0] << "\tR_Gx" << envNames[0] << "\n";
             // %.17g preserves a double exactly across the round-trip
             // (DBL_DECIMAL_DIG = 17); matches nullmodel::writeResidualsFile.
@@ -711,10 +879,13 @@ void runSAGELDPhenoMode(
         std::vector<Eigen::VectorXd> Resid_GxE_list;
         Resid_GxE_list.push_back(std::move(Resid_GxE));
         std::vector<std::string> singleEnvName{envNames[0]};
+        std::vector<double> lambdaOverride;
+        if (std::isfinite(lambdaMean)) lambdaOverride.push_back(lambdaMean);
 
         auto method = buildSAGELDArtifacts(
             Resid_G, singleEnvName, Resid_GxE_list, topo, N,
-            spaCutoff, minMafCutoff, minMacCutoff, innerThreads, phenoName);
+            spaCutoff, minMafCutoff, minMacCutoff, innerThreads, phenoName,
+            lambdaOverride);
 
         tasks[p].phenoName = phenoName;
         tasks[p].method = std::move(method);

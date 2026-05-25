@@ -126,10 +126,17 @@ SubjectData::RawFile SubjectData::parseIIDFile(
     uint32_t lineNo = 0;
 
     // ── Read header line (required) ────────────────────────────────────
+    // Skip blank lines and `##`-prefixed comment lines (VCF-style; used
+    // by SAGELD fit-mode --save-resid to embed metadata such as the
+    // genome-wide λ estimate).  A single leading `#` is allowed on the
+    // header itself (e.g., `#IID`) and is therefore not treated as a
+    // comment line.
     while (std::getline(ifs, line)) {
         ++lineNo;
         if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (!line.empty()) break;
+        if (line.empty()) continue;
+        if (line.size() >= 2 && line[0] == '#' && line[1] == '#') continue;
+        break;
     }
     if (line.empty()) throw std::runtime_error(filename + ": empty file, header line required");
 

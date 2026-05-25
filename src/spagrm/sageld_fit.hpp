@@ -105,4 +105,38 @@ Eigen::VectorXd aggregateWeightedPerIID(
     const Eigen::VectorXd &residPerRow,
     const Eigen::VectorXd &weightPerRow);
 
+// GallopCache — per-marker variance-ratio λ estimation machinery.
+//
+// Replicates the precomputed objects in R/SAGELD.R:175-228:
+//   • per-subject Si = TT_i' TT_i, StS_i = SS_i' SS_i  (TT = [1, E])
+//   • XTs[i,] = vec(X_i' TT_i)                  (flattened to row, length 2·nx)
+//   • AtS[i,] = vec(A21_i' SS_i)                (flattened to row, length 2·nx)
+//   • Q = X'X − Σ_i A21_i' A21_i                (nx × nx, LDLT-factored)
+// where Rot_i = sqrt(1/sv.d) sv.u for sv = svd(Si + P), SS_i = Rot_i Si,
+// A21_i = Rot_i TT_i' X_i, and P = σ̂² · D̂⁻¹ (D̂ from fitRandomSlopeML).
+//
+// markerLambda(si, cache) → V[1,2] / V[1,1] for a single marker.
+struct GallopCache {
+    int nx = 0;        // ncol(X)
+    int nSubj = 0;
+    std::vector<Eigen::Matrix2d> Si;     // nSubj entries
+    std::vector<Eigen::Matrix2d> StS;    // nSubj entries: SS_i' SS_i
+    Eigen::MatrixXd XTs;                 // nSubj × (2·nx)
+    Eigen::MatrixXd AtS;                 // nSubj × (2·nx)
+    Eigen::MatrixXd Q;                   // nx × nx
+    Eigen::LDLT<Eigen::MatrixXd> Qsolver;
+};
+
+GallopCache buildGallopCache(
+    const LongPhenoData &data,
+    const Eigen::MatrixXd &D,            // 2×2 random-effects covariance from fitMain
+    double sigma2                        // residual variance from fitMain
+);
+
+// Returns NaN if V[1,1] is non-positive (degenerate marker).
+double markerLambda(
+    const Eigen::Ref<const Eigen::VectorXd> &si,
+    const GallopCache &cache
+);
+
 } // namespace nsSAGELDFit

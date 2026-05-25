@@ -280,8 +280,12 @@ LongPhenoData parseLongPheno(
 // REML profile loss (σ² profiled out):
 //      −2 ℓ_REML(τ) = (N − p) log(PSS(τ)) + Σᵢ log|I + τ Zᵢ'Zᵢ| + log|X' V⁻¹ X|.
 // Each subject contributes a 2×2 inverse Mᵢ = τ⁻¹ + Zᵢ'Zᵢ; the cost per
-// loss evaluation matches one EM iteration.  Nelder-Mead typically
-// converges in 50–200 evaluations, vs 5000+ for the previous EM-ML loop.
+// loss evaluation matches one EM iteration.  Nelder-Mead with tol = 1e-9
+// reaches the REML optimum tightly enough that the residual gap to
+// lme4::lmer is dominated by per-subject Cholesky / SVD precision rather
+// than optimiser slack (an experimental BFGS warm-start refinement
+// produced no further descent — central-difference gradient is sub-
+// precision near singular optima — and was therefore removed).
 //
 // Boundary behaviour: when the optimised Cholesky factor satisfies
 // ‖L‖_F < 1e-6, D is forced to zero and the fit collapses to OLS.
@@ -679,6 +683,156 @@ Eigen::VectorXd aggregateWeightedPerIID(
                      .sum();
     }
     return out;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// buildGallopCache / markerLambda — per-marker variance-ratio estimation
+//
+// Algebraic identity (developed from R/SAGELD.R:347-369):
+//   H1   = Σ_i si · (X_i' TT_i)             ∈ ℝ^{nx × 2}
+//   AtH  = Σ_i si · (A21_i' SS_i)           ∈ ℝ^{nx × 2}
+//   R    = H1 − AtH                                      (= H1 − AtH)
+//   Cfix = Q^{-1} R                          ∈ ℝ^{nx × 2}
+//   H2'·Cran (avoiding the (2N × 2) intermediate) collapses to
+//          Σ_i si²·(SS_i' SS_i)  −  AtH'·Cfix.
+//   GtG  = Σ_i si²·(TT_i' TT_i)             ∈ ℝ^{2 × 2}
+//   V    = GtG − H1'·Cfix − H2'·Cran
+//        = GtG − Σ_i si²·StS_i − R'·Cfix.
+// All per-subject blocks are precached.
+// ════════════════════════════════════════════════════════════════════════
+
+GallopCache buildGallopCache(
+    const LongPhenoData &data,
+    const Eigen::MatrixXd &D,
+    double sigma2
+) {
+    const int nSubj = static_cast<int>(data.uniqueIIDs.size());
+    const int nx = static_cast<int>(data.X.cols());
+
+    if (D.rows() != 2 || D.cols() != 2)
+        throw std::runtime_error("buildGallopCache: D must be 2×2");
+    if (!(sigma2 > 0.0))
+        throw std::runtime_error("buildGallopCache: sigma2 must be positive");
+
+    // P = σ̂² · D̂⁻¹  (mirrors develop-R `solve(G / sig^2)`).  When D is
+    // singular (collapse-to-OLS), fall back to a large precision so the
+    // random-effects whitening reduces to no-shrinkage projection.
+    Eigen::Matrix2d Pmat;
+    {
+        Eigen::Matrix2d Dscaled = D / sigma2;
+        Eigen::Matrix2d Dinv;
+        double det = 0.0;
+        bool invertible = false;
+        Dscaled.computeInverseAndDetWithCheck(Dinv, det, invertible, 1e-30);
+        Pmat = invertible ? Dinv : (Eigen::Matrix2d::Identity() * 1e12);
+    }
+
+    GallopCache cache;
+    cache.nx = nx;
+    cache.nSubj = nSubj;
+    cache.Si.resize(nSubj);
+    cache.StS.resize(nSubj);
+    cache.XTs.setZero(nSubj, 2 * nx);
+    cache.AtS.setZero(nSubj, 2 * nx);
+
+    Eigen::MatrixXd AAt = Eigen::MatrixXd::Zero(nx, nx); // Σ_i A21_i' A21_i
+
+    for (int i = 0; i < nSubj; ++i) {
+        const uint32_t r0 = data.subjStart[i];
+        const uint32_t r1 = data.subjStart[i + 1];
+        const int n_i = static_cast<int>(r1 - r0);
+
+        const auto Ei = data.E.segment(r0, n_i);
+        const auto X_i = data.X.middleRows(r0, n_i);
+
+        // TT_i = [1_{n_i}, E_i] (n_i × 2)
+        Eigen::MatrixXd TT_i(n_i, 2);
+        TT_i.col(0).setOnes();
+        TT_i.col(1) = Ei;
+
+        const Eigen::Matrix2d Si_block = TT_i.transpose() * TT_i;
+        cache.Si[i] = Si_block;
+
+        // Rot_i = diag(1/sqrt(d)) U^T  for (Si + P) = U diag(d) U^T
+        Eigen::SelfAdjointEigenSolver<Eigen::Matrix2d> es(Si_block + Pmat);
+        if (es.info() != Eigen::Success)
+            throw std::runtime_error("buildGallopCache: eigendecomposition failed");
+        const Eigen::Vector2d dvec = es.eigenvalues();
+        if (dvec.minCoeff() <= 0.0)
+            throw std::runtime_error("buildGallopCache: non-positive eigenvalue in Si + P");
+        const Eigen::Matrix2d Uev = es.eigenvectors();
+        Eigen::Matrix2d Rot;
+        Rot.row(0) = Uev.col(0).transpose() / std::sqrt(dvec(0));
+        Rot.row(1) = Uev.col(1).transpose() / std::sqrt(dvec(1));
+
+        const Eigen::Matrix2d SS_i = Rot * Si_block;             // 2 × 2
+        cache.StS[i] = SS_i.transpose() * SS_i;
+
+        const Eigen::MatrixXd A21_i = (Rot * TT_i.transpose()) * X_i; // 2 × nx
+        AAt.noalias() += A21_i.transpose() * A21_i;
+
+        // XTs flat layout: row i contains vec(X_i' TT_i) column-major
+        //   col(0..nx-1)   ← X_i' · 1_{n_i}      (TT column 0)
+        //   col(nx..2nx-1) ← X_i' · E_i           (TT column 1)
+        const Eigen::MatrixXd XtTT = X_i.transpose() * TT_i;     // nx × 2
+        cache.XTs.row(i).head(nx)  = XtTT.col(0).transpose();
+        cache.XTs.row(i).tail(nx)  = XtTT.col(1).transpose();
+
+        // AtS flat layout: row i contains vec(A21_i' SS_i) column-major
+        const Eigen::MatrixXd AtS_i = A21_i.transpose() * SS_i;  // nx × 2
+        cache.AtS.row(i).head(nx)  = AtS_i.col(0).transpose();
+        cache.AtS.row(i).tail(nx)  = AtS_i.col(1).transpose();
+    }
+
+    const Eigen::MatrixXd A11 = data.X.transpose() * data.X;
+    cache.Q = A11 - AAt;
+    cache.Qsolver.compute(cache.Q);
+    if (cache.Qsolver.info() != Eigen::Success)
+        throw std::runtime_error("buildGallopCache: LDLT(Q) failed");
+    return cache;
+}
+
+double markerLambda(
+    const Eigen::Ref<const Eigen::VectorXd> &si,
+    const GallopCache &cache
+) {
+    const int nx = cache.nx;
+    const int nSubj = cache.nSubj;
+    if (si.size() != nSubj)
+        throw std::runtime_error("markerLambda: genotype size mismatch");
+
+    const Eigen::VectorXd si2 = si.array().square();
+
+    // crossprod(si, XTs)  →  (1 × 2nx).  Reshape into nx × 2 column-major.
+    Eigen::RowVectorXd sigXTs = si.transpose() * cache.XTs;      // 1 × 2nx
+    Eigen::RowVectorXd sigAtS = si.transpose() * cache.AtS;      // 1 × 2nx
+
+    Eigen::MatrixXd H1(nx, 2);
+    H1.col(0) = sigXTs.head(nx).transpose();
+    H1.col(1) = sigXTs.tail(nx).transpose();
+    Eigen::MatrixXd AtH(nx, 2);
+    AtH.col(0) = sigAtS.head(nx).transpose();
+    AtH.col(1) = sigAtS.tail(nx).transpose();
+
+    const Eigen::MatrixXd R = H1 - AtH;                          // nx × 2
+    const Eigen::MatrixXd Cfix = cache.Qsolver.solve(R);          // nx × 2
+
+    // GtG and Σ si²·StS via single accumulation pass.
+    Eigen::Matrix2d GtG = Eigen::Matrix2d::Zero();
+    Eigen::Matrix2d sumStS = Eigen::Matrix2d::Zero();
+    for (int i = 0; i < nSubj; ++i) {
+        const double w = si2[i];
+        if (w == 0.0) continue;
+        GtG.noalias() += w * cache.Si[i];
+        sumStS.noalias() += w * cache.StS[i];
+    }
+
+    const Eigen::MatrixXd RtCfix = R.transpose() * Cfix;          // 2 × 2
+    const Eigen::Matrix2d V = GtG - sumStS - RtCfix;
+
+    const double V11 = V(0, 0);
+    if (!(V11 > 0.0)) return std::numeric_limits<double>::quiet_NaN();
+    return V(0, 1) / V11;
 }
 
 } // namespace nsSAGELDFit
