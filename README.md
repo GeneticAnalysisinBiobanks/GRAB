@@ -13,9 +13,7 @@ successor to the original **GRAB** R package
   adds new methods (SAGELD, SPAsqr, and LEAF).
 - **Use the legacy R package** only when you specifically require
   **POLMM** or **POLMM-GENE**, neither of which has been ported to
-  GRAB2.  For general marker-level analyses (including ordinal
-  traits), GRAB2 provides SPACox, SPAmix, or SPAGRM as faster
-  alternatives.
+  GRAB2. Ordinal-trait support in GRAB2 remains under active development.
 
 ## Highlights
 

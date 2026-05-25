@@ -30,22 +30,22 @@ build/grab2 \
 build/grab2 \
   --method SPAGRM \
   --pheno examples/1kg.pheno \
-  --pheno-name Binary,Ordinal \
+  --pheno-name Binary,Time:Event \
   --covar-name MALE,PC1,PC2,PC3,PC4 \
   --sp-grm-plink2 examples/1kg.grm.sp \
   --pairwise-ibd ${OUT_DIR}/ibd.ibd \
-  --seed 2026 \
   --pfile examples/1kg \
   --out ${OUT_DIR}/spagrm
 
 ## ── SPAmix ────────────────────────────────────────────────────────────
+# Ordinal regression is randomly seeded.
 build/grab2 \
+  --seed 2026 \
   --method SPAmix \
   --pheno examples/1kg.pheno \
   --pheno-name Binary,Ordinal \
   --covar-name MALE,PC1,PC2,PC3,PC4 \
   --pc-cols PC1,PC2,PC3,PC4 \
-  --seed 2026 \
   --pfile examples/1kg \
   --out ${OUT_DIR}/spamix
 
@@ -108,7 +108,9 @@ build/grab2 \
   --out ${OUT_DIR}/wtcoxg
 
 ## ── LEAF: Multi-ancestry extension of WtCoxG ──────────────────────────
+# Kmeans clustering is randomly seeded.
 build/grab2 \
+  --seed 2026 \
   --method LEAF \
   --pheno examples/1kg.pheno \
   --pheno-name Time:Event,Binary \
