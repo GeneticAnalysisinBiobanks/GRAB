@@ -41,8 +41,15 @@ else
   PLATFORM  := windows
   EXE       := .exe
   # ws2_32: Winsock2 (htslib hfile.c socket I/O)
-  # regex:  POSIX regex  (htslib hts_expr.c)
-  PLATFORM_LDLIBS := -lws2_32 -lregex
+  # regex:  POSIX regex (htslib hts_expr.c).  MSYS2's libregex.a
+  # references tre_regcomp/tre_regexec/etc., which are provided by
+  # the separate libtre package.  In dynamic links the libregex DLL
+  # has tre baked in, so the explicit -ltre is a no-op; in static
+  # links it is required to satisfy the unresolved tre_* symbols.
+  # Wrapping -ltre in -Bstatic/-Bdynamic forces it to be picked up
+  # from libtre.a regardless of the surrounding global link mode,
+  # which keeps the resulting .exe self-contained.
+  PLATFORM_LDLIBS := -lws2_32 -lregex -Wl,-Bstatic -ltre -Wl,-Bdynamic
   PLATFORM_FLAGS  := -pipe
   SHELL     := /usr/bin/bash
   # Redirect linker temp dir to project-local tmp/ (Windows path format).

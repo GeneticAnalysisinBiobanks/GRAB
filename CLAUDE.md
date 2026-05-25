@@ -88,13 +88,16 @@ number of variable values; do not introduce a second Makefile.
   is the optimal path for users who run GRAB on the same machine they
   build it on.
 - **GitHub Actions release builds
-  (`make -j GRAB_MARCH=-march=x86-64-v3`).**  Pins the baseline ISA at
+  (`make -j GRAB_MARCH=-march=haswell`).**  Pins the baseline ISA at
   AVX2/FMA/BMI2 so the published binary runs on any x86-64 machine with
-  a 2013-or-newer CPU.  The runtime SIMD dispatcher in
-  `simd_dispatch.hpp` still picks the AVX-512 variants of hand-written
-  kernels on capable hosts (because `__attribute__((target(...)))` emits
-  all variants regardless of `-march`); only auto-vectorized code is
-  capped at AVX2.
+  a 2013-or-newer CPU.  `haswell` is used in place of the PSABI-level
+  name `x86-64-v3` because the manylinux2014 container ships GCC 10,
+  which predates `x86-64-v3` (introduced in GCC 11); the two flags
+  target the same ISA so codegen is equivalent.  The runtime SIMD
+  dispatcher in `simd_dispatch.hpp` still picks the AVX-512 variants
+  of hand-written kernels on capable hosts (because
+  `__attribute__((target(...)))` emits all variants regardless of
+  `-march`); only auto-vectorized code is capped at AVX2.
 
 Both `CXX`/`CC` and the standard `CPPFLAGS`/`CXXFLAGS`/`CFLAGS`/`LDFLAGS`
 are honored via `?=` and trailing-append patterns, so an external build
@@ -106,7 +109,7 @@ intervention.  A representative release-build invocation, as used by
 
 ```bash
 make -j$(nproc) \
-    GRAB_MARCH="-march=x86-64-v3" \
+    GRAB_MARCH="-march=haswell" \
     SIMD_FLAGS="-mavx2 -mbmi -mbmi2 -mlzcnt -mfma" \
     STATIC_LIBS="-static-libstdc++ -static-libgcc"
 make install PREFIX="${PREFIX}"

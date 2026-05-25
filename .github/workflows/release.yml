@@ -51,7 +51,13 @@ jobs:
           - target: linux-x86_64
             runner: ubuntu-22.04
             docker_image: quay.io/pypa/manylinux2014_x86_64
-            march: -march=x86-64-v3
+            # manylinux2014 ships GCC 10, which does not recognize the
+            # `x86-64-v3` PSABI level name (added in GCC 11).  We pin
+            # to `-march=haswell` — the same Haswell-era ISA target
+            # (AVX2 / FMA / BMI / BMI2 / LZCNT) — which GCC 10
+            # accepts and which produces equivalent codegen for our
+            # workloads.
+            march: -march=haswell
             simd_flags: -mavx2 -mbmi -mbmi2 -mlzcnt -mfma
             static_libs: -static-libstdc++ -static-libgcc
             archive_ext: tar.gz
@@ -71,7 +77,7 @@ jobs:
             archive_ext: tar.gz
           - target: windows-x86_64
             runner: windows-2022
-            march: -march=x86-64-v3
+            march: -march=haswell
             simd_flags: -mavx2 -mbmi -mbmi2 -mlzcnt -mfma
             # `-static` on MinGW forces full static linking, pulling
             # libstdc++-6.dll, libgcc_s_seh-1.dll, AND libwinpthread-1.dll
@@ -128,8 +134,15 @@ jobs:
         with:
           msystem: MINGW64
           update: false
+          # mingw-w64-x86_64-tre provides libtre.a, which libregex.a
+          # references (tre_regcomp / tre_regexec / ...) — required
+          # for the static link to resolve POSIX-regex symbols pulled
+          # in by htslib's hts_expr.c.  The default CI builds use the
+          # libregex DLL (which embeds tre internally) and do not
+          # need this dependency.
           install: >-
             mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-tre
             make
             zip
 
