@@ -638,10 +638,18 @@ SPAGRMClass buildSPAGRMNullModel(
                 double value, cov;
             };
 
+            // SparseGRM stores lower-triangular entries with col <= row
+            // (see io/sparse_grm.hpp).  Therefore off-diagonal entries
+            // satisfy e.row > e.col, and we keep that one direction per
+            // pair.  An earlier filter wrote `e.row < e.col`, which was
+            // never true for off-diagonal entries and left famEdges empty,
+            // causing the splitter to emit one singleton sub-family per
+            // family member (outlier sub-families ended up size 1, so
+            // outliers in large families were misclassified as unrelated).
             std::vector<OffDiagEntry> famEdges;
             for (const auto &e : familyEntries[fi]) {
                 if (e.row == e.col) continue;
-                if (e.row < e.col) famEdges.push_back(
+                if (e.row > e.col) famEdges.push_back(
                         {g2l[e.row], g2l[e.col], e.value,
                          std::abs(e.value * Resid[e.row] * Resid[e.col])}
                 );
