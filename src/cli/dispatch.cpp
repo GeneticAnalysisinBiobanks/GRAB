@@ -934,8 +934,17 @@ int run(
                 std::cerr << "Error: --pheno or --covar required for " << args.method << " (provides PC columns).\n";
                 return 1;
             }
-            if (args.method == "SPAmixPlus")checkSpGrm(args, /*required=*/ true, "SPAmixPlus");
-            else checkSpGrm(args, /*required=*/ false, "SPAmix");
+            if (args.method == "SPAmixPlus") {
+                checkSpGrm(args, /*required=*/ true, "SPAmixPlus");
+            } else {
+                // SPAmix does not consume a sparse GRM.  Reject any attempt
+                // to attach one rather than silently dispatching elsewhere.
+                if (!args.spGrmGrabFile.empty() || !args.spGrmPlink2File.empty()) {
+                    std::cerr << "Error: SPAmix does not accept"
+                                 " --sp-grm-grab or --sp-grm-plink2.\n";
+                    return 1;
+                }
+            }
             runSPAmixPlus(
                 residNames,
                 pcColNames,

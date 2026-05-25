@@ -664,7 +664,7 @@ inline const FlagDef *const kSPAmixReq[] = {
 };
 inline const FlagDef *const kSPAmixOpt[] = {
     &kCovar,      &kCovarName,  &kResidName,    &kPhenoName,    &kRegressionModel, &kSaveResid,
-    &kIndAfCoef, &kSpGrm,       &kOutlierIqr,
+    &kIndAfCoef,  &kOutlierIqr,
     &kSpaZThresh, &kSeed,
     &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
     &kKeep,       &kRemove,  &kExtract,   &kExclude,
@@ -680,8 +680,6 @@ inline const MethodDef kSPAmix = {
     R"(Per residual column: PREFIX.PHENO.SPAmix[.gz|.zst]
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  P  Z  BETA  SE)",
     R"(Pre-compute the AF model for speed: grab2 --cal-af-coef.
-Optional --sp-grm-plink2 enables GRM-based variance correction (residual mode
-absorbs the GRM via the variance ratio).
 
 AF coefficient scope.  With --ind-af-coef, every phenotype in this run
 shares the single pre-computed AF model per marker (fit at --cal-af-coef
