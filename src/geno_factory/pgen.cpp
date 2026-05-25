@@ -12,11 +12,18 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <limits>
 #include <stdexcept>
 #include <string>
+
+// Windows / MinGW: _aligned_malloc / _aligned_free live in <malloc.h>.
+// POSIX: posix_memalign is declared in <stdlib.h>.
+#if defined(_WIN32)
+#  include <malloc.h>
+#endif
 
 // ── pgenlib headers (C++ mode, plink2 namespace) ─────────────────────────────
 #include "pgenlib_ffi_support.h"
@@ -121,14 +128,31 @@ std::vector<PvarRecord> parsePvarFile(const std::string &path) {
 } // anonymous namespace
 
 // Allocate zero-initialized memory with 32-byte alignment (required by pgenlib AVX2).
+// POSIX: posix_memalign + std::free.  Windows/MinGW: _aligned_malloc + _aligned_free.
+// The two allocators are not interchangeable, so every buffer obtained here must
+// be released via freeAligned() below — never plain free().
 static uintptr_t* allocAligned(size_t nWords) {
     if (nWords == 0) return nullptr;
     const size_t nBytes = nWords * sizeof(uintptr_t);
     void* ptr = nullptr;
+#if defined(_WIN32)
+    ptr = ::_aligned_malloc(nBytes, 32);
+    if (!ptr) throw std::bad_alloc();
+#else
     if (posix_memalign(&ptr, 32, nBytes) != 0)
         throw std::bad_alloc();
+#endif
     std::memset(ptr, 0, nBytes);
     return static_cast<uintptr_t*>(ptr);
+}
+
+static void freeAligned(void* p) noexcept {
+    if (!p) return;
+#if defined(_WIN32)
+    ::_aligned_free(p);
+#else
+    std::free(p);
+#endif
 }
 
 // Free a buffer allocated by plink2::cachealigned_malloc / aligned_malloc.
@@ -326,10 +350,10 @@ struct PgenCursor::Impl {
     {
         plink2::PglErr reterr = plink2::kPglRetSuccess;
         plink2::CleanupPgr(&pgr, &reterr);
-        free(genovec);
-        free(dosagePresent);
-        free(diffRaregeno);
-        free(sampleInclude);
+        freeAligned(genovec);
+        freeAligned(dosagePresent);
+        freeAligned(diffRaregeno);
+        freeAligned(sampleInclude);
     }
 
 };
