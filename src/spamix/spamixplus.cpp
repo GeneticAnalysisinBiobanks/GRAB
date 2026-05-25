@@ -244,6 +244,7 @@ std::unique_ptr<MethodBase> SPAmixPlusMethod::clone() const {
     auto &slot = tlCacheMap[m_maskIdx];
     if (!slot) slot = std::make_shared<SPAmixAFCache>();
     m->m_afCache = slot;
+    m->m_useAFCacheBatch = m_useAFCacheBatch;
 
     return m;
 }
@@ -511,40 +512,70 @@ void SPAmixPlusMethod::getResultBatch(
     const int B = static_cast<int>(GBatch.cols());
     results.resize(B);
 
-    // On-the-fly AF: each marker's AFVec depends on its own G column, so
-    // we cannot piggy-back on the simple genoIdx-keyed fill used in
-    // ensureAFCache.  Instead, do an explicit per-marker fill into the
-    // shared cache, gated by the cache's chunkIdxs key.
-    auto &cache = *m_afCache;
-    const bool needFill = (cache.lastChunkIdxs != chunkIdxs);
-    if (needFill) {
-        if (cache.afBatch.rows() != m_N || cache.afBatch.cols() < B) {
-            cache.afBatch.resize(m_N, B);
-            cache.wBatch.resize(m_N, B);
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+
+    if (m_useAFCacheBatch) {
+        // On-the-fly AF: each marker's AFVec depends on its own G column, so
+        // we cannot piggy-back on the simple genoIdx-keyed fill used in
+        // ensureAFCache.  Instead, do an explicit per-marker fill into the
+        // shared cache, gated by the cache's chunkIdxs key.
+        auto &cache = *m_afCache;
+        const bool needFill = (cache.lastChunkIdxs != chunkIdxs);
+        if (needFill) {
+            if (cache.afBatch.rows() != m_N || cache.afBatch.cols() < B) {
+                cache.afBatch.resize(m_N, B);
+                cache.wBatch.resize(m_N, B);
+            }
+            for (int b = 0; b < B; ++b) {
+                // Eigen::Ref over the cached column lets fillAFVecForMarker
+                // (and computeAFVec/getAFVecFromModel) write in place.
+                Eigen::Ref<Eigen::VectorXd> afCol = cache.afBatch.col(b);
+                fillAFVecForMarker(GBatch.col(b), altFreqs[b], chunkIdxs[b], afCol);
+            }
+            cache.wBatch.leftCols(B).array() =
+                2.0 * cache.afBatch.leftCols(B).array() *
+                (1.0 - cache.afBatch.leftCols(B).array());
+            cache.lastChunkIdxs = chunkIdxs;
         }
+
         for (int b = 0; b < B; ++b) {
-            // Eigen::Ref over the cached column lets fillAFVecForMarker
-            // (and computeAFVec/getAFVecFromModel) write in place.
-            Eigen::Ref<Eigen::VectorXd> afCol = cache.afBatch.col(b);
-            fillAFVecForMarker(GBatch.col(b), altFreqs[b], chunkIdxs[b], afCol);
+            auto afCol = cache.afBatch.col(b);
+            auto wCol  = cache.wBatch.col(b);
+
+            // Raw score = resid · G.  Done per phenotype since residuals differ.
+            const double rawScore = GBatch.col(b).dot(m_resid);
+
+            double zScore, VarS;
+            double pval = markerPvalFromAF(afCol, wCol, rawScore, zScore, VarS);
+            const double sqrtVarS = (VarS > 0.0) ? std::sqrt(VarS) : 0.0;
+            const double zOut  = (sqrtVarS > 0.0) ? zScore             : nan;
+            const double beta  = (sqrtVarS > 0.0) ? zScore / sqrtVarS  : nan;
+            const double se    = (sqrtVarS > 0.0) ? 1.0    / sqrtVarS  : nan;
+
+            auto &r = results[b];
+            r.clear();
+            r.reserve(4);
+            r.push_back(pval);
+            r.push_back(zOut);
+            r.push_back(beta);
+            r.push_back(se);
         }
-        cache.wBatch.leftCols(B).array() =
-            2.0 * cache.afBatch.leftCols(B).array() *
-            (1.0 - cache.afBatch.leftCols(B).array());
-        cache.lastChunkIdxs = chunkIdxs;
+        return;
     }
 
+    // Marker-by-marker path: no N × B cache.  Used when this phenotype is
+    // the sole occupant of its maskIdx, so the cache would never deliver a
+    // cross-call hit anyway.  Reuses the per-clone scratch m_AFVec / m_WVec
+    // already sized to m_N at construction.
     for (int b = 0; b < B; ++b) {
-        auto afCol = cache.afBatch.col(b);
-        auto wCol  = cache.wBatch.col(b);
+        fillAFVecForMarker(GBatch.col(b), altFreqs[b], chunkIdxs[b], m_AFVec);
+        m_WVec.array() = 2.0 * m_AFVec.array() * (1.0 - m_AFVec.array());
 
-        // Raw score = resid · G.  Done per phenotype since residuals differ.
         const double rawScore = GBatch.col(b).dot(m_resid);
 
         double zScore, VarS;
-        double pval = markerPvalFromAF(afCol, wCol, rawScore, zScore, VarS);
+        double pval = markerPvalFromAF(m_AFVec, m_WVec, rawScore, zScore, VarS);
         const double sqrtVarS = (VarS > 0.0) ? std::sqrt(VarS) : 0.0;
-        const double nan = std::numeric_limits<double>::quiet_NaN();
         const double zOut  = (sqrtVarS > 0.0) ? zScore             : nan;
         const double beta  = (sqrtVarS > 0.0) ? zScore / sqrtVarS  : nan;
         const double se    = (sqrtVarS > 0.0) ? 1.0    / sqrtVarS  : nan;
@@ -775,10 +806,26 @@ void runSPAmixPlus(
     // Deduped pools keyed by non-missingness pattern (unionToLocal).
     // Phenotypes sharing the same valid-subject set produce identical
     // PC matrices, OLS matrices, and GRM sub-matrices.
+    //
+    // CRITICAL: reserve(K) upfront so subsequent push_back calls cannot
+    // reallocate the underlying buffer.  Each SPAmixPlusMethod stores a
+    // raw reference / pointer into these pools at construction time
+    // (m_resid, m_onePlusPCs, m_XtX_inv_Xt, m_sqrt_XtX_inv_diag, m_grm);
+    // a single reallocation would invalidate all references handed to
+    // previously-constructed methods, producing dangling reads inside
+    // markerPvalFromAF (m_grm->m_nSubj returning garbage → spaVariance
+    // size mismatch or SIGSEGV) or computeAFVec (m_XtX_inv_Xt deref into
+    // freed memory).  K is an upper bound on the pool length, so a
+    // single reserve(K) makes the buffers stable for the lifetime of
+    // the tasks.
     std::vector<Eigen::MatrixXd> poolOnePlusPCs;
     std::vector<Eigen::MatrixXd> poolXtX_inv_Xt;
     std::vector<Eigen::VectorXd> poolSqrt_XtX_inv_diag;
     std::vector<SparseGRM> poolGrm;
+    poolOnePlusPCs.reserve(static_cast<size_t>(K));
+    poolXtX_inv_Xt.reserve(static_cast<size_t>(K));
+    poolSqrt_XtX_inv_diag.reserve(static_cast<size_t>(K));
+    poolGrm.reserve(static_cast<size_t>(K));
     std::vector<size_t> maskIdx(K);   // phenotype rc -> index into pools
 
     std::vector<PhenoTask> tasks(K);
@@ -880,6 +927,20 @@ void runSPAmixPlus(
     }
     if (K > 1)
         infoMsg("  %zu unique subject mask(s) for %d phenotypes", poolOnePlusPCs.size(), K);
+
+    // Configure the on-the-fly AF cache per phenotype.  The N × B cache
+    // amortizes AFVec computation across phenotypes that share a maskIdx
+    // and therefore co-occupy a MissBatch.  When a maskIdx is occupied by
+    // a single phenotype the cache delivers no cross-call reuse and only
+    // inflates per-thread memory by ~2 · N · B · 8 bytes per (thread,
+    // maskIdx).  We pass the share-count down so each method can skip the
+    // cache when it would never be hit.
+    std::vector<int> maskGroupSize(poolOnePlusPCs.size(), 0);
+    for (int rc = 0; rc < K; ++rc) ++maskGroupSize[maskIdx[rc]];
+    for (int rc = 0; rc < K; ++rc) {
+        auto *spam = dynamic_cast<SPAmixPlusMethod *>(tasks[rc].method.get());
+        if (spam) spam->setUseAFCacheBatch(maskGroupSize[maskIdx[rc]] >= 2);
+    }
 
     infoMsg("Running %s marker tests (%d thread(s), %d phenotype(s))...", methodLabel, nthread, K);
     multiPhenoEngine(

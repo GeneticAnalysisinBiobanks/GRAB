@@ -141,6 +141,38 @@ build/grab2 \
   --compression zst \
   --compression-level 3
 
+## ── SPAmix on-the-fly AF (omit --ind-af-coef) ─────────────────────────
+# Same SPAmix invocation as above, but with --ind-af-coef removed: the
+# per-individual AF model is refit per marker from --pc-cols at run time
+# instead of being read from the pre-computed ${OUT}.afc.zst file.  In a
+# dataset with no missing genotypes the two paths fit the same logistic
+# AF model on the same N subjects and therefore must produce identical
+# AFVec, identical scores, and byte-identical output tables.  The
+# cross-check below asserts md5 equivalence per phenotype.
+
+build/grab2 \
+  --method SPAmix \
+  --pheno examples/1kg.pheno \
+  --pheno-name Quantitative,Time:Event,Binary,Ordinal \
+  --covar-name MALE,PC1,PC2,PC3,PC4 \
+  --pc-cols PC1,PC2,PC3,PC4 \
+  --pfile examples/1kg \
+  --out ${OUT_DIR}/spamix_otf \
+  `# Optional flags below (set to built-in defaults):` \
+  --regression-model auto \
+  --chr 1-2,3 \
+  --outlier-iqr-multiplier 1.5 \
+  --spa-z-threshold 2.0 \
+  --seed 2026 \
+  --threads 2 \
+  --chunk-size 8192 \
+  --geno 0.1 \
+  --maf 1e-5 \
+  --mac 10 \
+  --hwe 0 \
+  --compression zst \
+  --compression-level 3
+
 ## ── SPAGRM (fit mode, --pheno-name) ───────────────────────────────────
 
 build/grab2 \
@@ -474,6 +506,18 @@ for phen in Quantitative Time_Event Binary Ordinal; do
     ${OUT_DIR}/spagrm_bed.${phen}.SPAGRM.zst \
     ${OUT_DIR}/spagrm_bcf.${phen}.SPAGRM.zst \
     ${OUT_DIR}/spagrm_bgen.${phen}.SPAGRM.zst
+done
+
+## ── SPAmix: pre-computed AF vs on-the-fly AF ──────────────────────────
+# The pre-computed-AF run (--ind-af-coef ${OUT}.afc.zst) and the
+# on-the-fly run (no --ind-af-coef) refit the same logistic AF model on
+# the same N subjects when the dataset has no missing genotypes, so
+# their per-phenotype output tables must be byte-identical.
+
+for phen in Quantitative Time_Event Binary Ordinal; do
+  md5_equiv "SPAmix precomputed-vs-onthefly ${phen}" \
+    ${OUT}.${phen}.SPAmix.zst \
+    ${OUT_DIR}/spamix_otf.${phen}.SPAmix.zst
 done
 
 ## ── SPACox: fit mode vs residual mode ─────────────────────────────────

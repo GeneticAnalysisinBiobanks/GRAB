@@ -128,6 +128,16 @@ class SPAmixPlusMethod : public MethodBase {
         return 16;
     }
 
+// Enable / disable the N × B AFVec cache used by getResultBatch (the
+// non-fused on-the-fly AF path).  The cache only pays off when ≥2
+// phenotypes share this maskIdx and therefore co-occupy a single
+// MissBatch; with one phenotype per maskIdx it merely consumes
+// ~2 · N · B · 8 bytes per (thread, maskIdx) without any reuse.
+// Orchestration sets this to (maskGroupSize ≥ 2) for each method.
+    void setUseAFCacheBatch(bool b) {
+        m_useAFCacheBatch = b;
+    }
+
 // ── Fused-GEMM interface ──────────────────────────────────────
 // Enabled only in pre-computed AF mode.  On-the-fly AF needs a
 // phenotype-local genotype vector to fit the AF model, which the
@@ -213,6 +223,13 @@ class SPAmixPlusMethod : public MethodBase {
 // Per-thread AFVec cache, shared between clones with the same maskIdx.
 // Populated lazily by clone() through a thread_local registry.
     std::shared_ptr<SPAmixAFCache> m_afCache;
+
+// When false, getResultBatch (the non-fused on-the-fly AF path) bypasses
+// the N × B cache and computes AFVec / WVec marker-by-marker into the
+// per-clone scratch m_AFVec / m_WVec.  Set by orchestration based on
+// maskGroupSize.  Default true preserves the original behavior for any
+// caller that constructs an SPAmixPlusMethod directly.
+    bool m_useAFCacheBatch = true;
 
 // Chunk state.  Pointer into the engine-owned vector (alive for the chunk).
     const std::vector<uint64_t> *m_chunkGenoIndices;

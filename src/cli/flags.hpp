@@ -219,7 +219,19 @@ filtered-marker order (the order produced by --cal-af-coef on the same
 genotype file with the same QC thresholds) and are matched
 positionally — no marker ID is stored in the file, so the AF model
 must be regenerated whenever the input genotype set or its QC filters
-change.)"
+change.
+
+AF coefficient scope.  The file stores a single AF model per marker,
+fit on the subject set used during --cal-af-coef.  When passed to
+SPAmix / SPAmixPlus with multiple phenotypes, every phenotype reuses
+that one model regardless of its own missingness mask; this is the
+intended cost of pre-computation.  By contrast, on-the-fly AF (no
+--ind-af-coef) re-fits the AF model from each unique missingness
+pattern present among the phenotypes in that run, so the model used
+for a given phenotype depends only on that phenotype's non-missing
+subjects.  In both modes, running a single phenotype alone and
+running it jointly with other phenotypes produces byte-identical
+per-marker results for that phenotype.)"
 };
 
 inline const FlagDef kPairwiseIbd = {
@@ -667,9 +679,18 @@ inline const MethodDef kSPAmix = {
     "#IID  RESID  [RESID2  ...] (from --pheno, selected by --resid-name)",
     R"(Per residual column: PREFIX.PHENO.SPAmix[.gz|.zst]
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  P  Z  BETA  SE)",
-    R"(Pre-compute the AF model for speed: grab2 --cal-af-coef
+    R"(Pre-compute the AF model for speed: grab2 --cal-af-coef.
 Optional --sp-grm-plink2 enables GRM-based variance correction (residual mode
-absorbs the GRM via the variance ratio).)",
+absorbs the GRM via the variance ratio).
+
+AF coefficient scope.  With --ind-af-coef, every phenotype in this run
+shares the single pre-computed AF model per marker (fit at --cal-af-coef
+time on its full subject set).  Without --ind-af-coef, the AF model
+is re-fit on the fly for each unique missingness pattern present
+among the phenotypes, so each phenotype's AF is computed only from
+its own non-missing subjects.  Either way, running one phenotype
+alone and running it together with other phenotypes yields the same
+per-marker output for that phenotype.)",
 };
 
 // ── SPAmixPlus ─────────────────────────────────────────────────────
@@ -694,7 +715,14 @@ inline const MethodDef kSPAmixPlus = {
     "#IID  RESID  [RESID2  ...] (from --pheno, selected by --resid-name)",
     R"(Per residual column: PREFIX.PHENO.SPAmixP[.gz|.zst]
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  P  Z  BETA  SE)",
-    nullptr,
+    R"(AF coefficient scope.  With --ind-af-coef, every phenotype in this
+run shares the single pre-computed AF model per marker (fit at
+--cal-af-coef time on its full subject set).  Without --ind-af-coef,
+the AF model is re-fit on the fly for each unique missingness pattern
+present among the phenotypes, so each phenotype's AF is computed only
+from its own non-missing subjects.  Either way, running one phenotype
+alone and running it together with other phenotypes yields the same
+per-marker output for that phenotype.)",
 };
 
 // ── SPAsqr ─────────────────────────────────────────────────────────
@@ -919,7 +947,23 @@ inline const MethodDef kCalAfCoef = {
     kCalAfOpt,
     nullptr,
     "Output: PREFIX.afc[.gz|.zst] (pass to --ind-af-coef for SPAmix/SPAmixPlus)",
-    nullptr,
+    R"(One AF model per marker, fit on the subject set defined by
+--bfile / --pfile / --bgen / --vcf intersected with --keep / --remove
+and the marker QC thresholds (--geno / --maf / --mac / --hwe / --chr).
+The file is independent of any later phenotype: every phenotype that
+consumes it via --ind-af-coef shares the same per-marker model.
+
+Use this mode when (i) the same genotype + subject set will be reused
+across many phenotypes / runs and the AF re-fit cost is significant,
+and (ii) it is acceptable to compute each marker's AF on the full
+--cal-af-coef subject set rather than on each phenotype's
+non-missing subset.  When phenotype-specific missingness should
+drive the AF model (e.g. some phenotypes drop a substantial fraction
+of subjects), omit --ind-af-coef and let SPAmix / SPAmixPlus re-fit
+the AF on the fly per unique missingness pattern; in that mode each
+phenotype's AF is computed only from its own non-missing subjects.
+In both modes the per-phenotype output is invariant to whether the
+phenotype is run alone or jointly with other phenotypes.)",
 };
 
 // ── Utility mode: cal-pairwise-ibd ────────────────────────────────
