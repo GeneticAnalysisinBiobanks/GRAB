@@ -134,15 +134,18 @@ jobs:
         with:
           msystem: MINGW64
           update: false
-          # mingw-w64-x86_64-tre provides libtre.a, which libregex.a
-          # references (tre_regcomp / tre_regexec / ...) — required
-          # for the static link to resolve POSIX-regex symbols pulled
-          # in by htslib's hts_expr.c.  The default CI builds use the
+          # mingw-w64-x86_64-libtre-git provides libtre.a, which
+          # libregex.a references (tre_regcomp / tre_regexec / ...) —
+          # required for the static link to resolve POSIX-regex
+          # symbols pulled in by htslib's hts_expr.c.  The `-git`
+          # suffix is the canonical MSYS2 package name (tre upstream
+          # stopped doing tagged releases years ago and every distro
+          # now tracks the git head).  Default CI builds use the
           # libregex DLL (which embeds tre internally) and do not
           # need this dependency.
           install: >-
             mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-tre
+            mingw-w64-x86_64-libtre-git
             make
             zip
 
