@@ -8,7 +8,6 @@
 #include "engine/loco.hpp"
 #include "engine/marker.hpp"
 #include "geno_factory/geno_data.hpp"
-#include "spasqr/conquer.hpp"
 #include "spasqr/qmme.hpp"
 #include "io/sparse_grm.hpp"
 #include "io/subject_data.hpp"
@@ -815,13 +814,11 @@ OutlierInfo detectOutliers(
         cutHi = std::min(cutHi, outlierAbsBound);
 
         info.isOutlier[col].resize(N, false);
-        int nOutlier = 0;
         for (Eigen::Index i = 0; i < N; ++i) {
             const double v = ResidMat(i, col);
             if (v < cutLo || v > cutHi) {
                 info.isOutlier[col][i] = true;
                 info.outlierIdx[col].push_back(static_cast<int>(i));
-                ++nOutlier;
             }
         }
     }
@@ -983,7 +980,7 @@ static void applyPhenoTransform(
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// runSPAsqr — multi-phenotype entry point with parallel conquer fits
+// runSPAsqr — multi-phenotype entry point with parallel QMME fits
 // ══════════════════════════════════════════════════════════════════════
 
 void runSPAsqr(
@@ -1012,8 +1009,7 @@ void runSPAsqr(
     double spasqrHScale,
     const std::string &keepFile,
     const std::string &removeFile,
-    const std::string &phenoTransform,
-    const std::string &spasqrSolver
+    const std::string &phenoTransform
 ) {
     const int K = static_cast<int>(phenoNames.size());
     const int ntaus = static_cast<int>(taus.size());
@@ -1022,10 +1018,9 @@ void runSPAsqr(
     // Union = subjects with genotype ∩ GRM ∩ keep/remove.  Per-phenotype
     // NA filtering is deferred — each phenotype uses its own non-missing
     // subset of the union.
-    infoMsg("SPAsqr: pheno-transform = %s, solver = %s",
-            phenoTransform.c_str(), spasqrSolver.c_str());
+    infoMsg("SPAsqr: pheno-transform = %s, solver = qmme",
+            phenoTransform.c_str());
     infoMsg("SPAsqr: Loading phenotype and covariate data (%d phenotypes, %d taus)", K, ntaus);
-    const bool useQmme = (spasqrSolver == "qmme");
     // QMME is more accurate per-iteration; tighten its convergence floor
     // by an extra factor without changing the user's --spasqr-tol meaning.
     const double qmmeTol = std::min(spasqrTol, 1e-9);
@@ -1055,7 +1050,7 @@ void runSPAsqr(
         Eigen::VectorXd Y;                  // nk
         Eigen::MatrixXd X;                  // nk × nCov
         double h;                           // bandwidth
-        Eigen::MatrixXd ResidMat;           // nk × ntaus (filled by conquer)
+        Eigen::MatrixXd ResidMat;           // nk × ntaus (filled by QMME)
     };
 
     std::vector<PhenoWork> pw(K);
@@ -1127,22 +1122,19 @@ void runSPAsqr(
         }
     }
 
-    // ── 4. Parallel conquer/QMME fits: K × ntaus ────────────────────
-    // QMME path: pre-construct one solver per phenotype (X^T X / n cached)
-    // and prepare Cholesky for that phenotype's bandwidth. Solver is then
+    // ── 4. Parallel QMME fits: K × ntaus ────────────────────────────
+    // Pre-construct one QMME solver per phenotype (X^T X / n cached) and
+    // prepare Cholesky for that phenotype's bandwidth. Solver is then
     // shared read-only across worker threads — solve() only reads m_chol.
     std::vector<std::unique_ptr<qmme::SqrSolver> > qmmeSolvers(K);
-    if (useQmme) {
-        for (int k = 0; k < K; ++k) {
-            qmmeSolvers[k] = std::make_unique<qmme::SqrSolver>(pw[k].X, /*delta*/ 1e-6);
-            qmmeSolvers[k]->prepareBandwidth(pw[k].h);
-        }
+    for (int k = 0; k < K; ++k) {
+        qmmeSolvers[k] = std::make_unique<qmme::SqrSolver>(pw[k].X, /*delta*/ 1e-6);
+        qmmeSolvers[k]->prepareBandwidth(pw[k].h);
     }
 
     const int totalFits = K * ntaus;
     const int nWorkers = std::min(nthreads, totalFits);
-    infoMsg("SPAsqr: Running %d %s fits with %d threads",
-            totalFits, useQmme ? "QMME" : "conquer", nWorkers);
+    infoMsg("SPAsqr: Running %d QMME fits with %d threads", totalFits, nWorkers);
 
     std::atomic<int> nextFit{0};
     std::vector<std::string> fitErrors(totalFits);
@@ -1157,23 +1149,16 @@ void runSPAsqr(
 
             try {
                 Eigen::VectorXd resid;
-                conquer::ConquerStatus st;
-                Eigen::VectorXd beta;
-                if (useQmme) {
-                    beta = qmmeSolvers[k]->solve(pw[k].Y, taus[t], &resid,
-                                                 qmmeTol, /*maxIter*/ 50000,
-                                                 /*restartPeriod*/ 50, &st);
-                } else {
-                    beta = conquer::smqrGauss(pw[k].X, pw[k].Y, taus[t], pw[k].h,
-                                              &resid, spasqrTol, 50000, 100.0, &st);
-                }
+                qmme::SolverStatus st;
+                Eigen::VectorXd beta = qmmeSolvers[k]->solve(
+                    pw[k].Y, taus[t], &resid,
+                    qmmeTol, /*maxIter*/ 50000,
+                    /*restartPeriod*/ 50, &st);
                 infoMsg("[%s] tau=%.4f intercept=%.6f", phenoNames[k].c_str(), taus[t], beta(0));
                 if (!st.converged) {
-                    warnMsg("[%s] tau=%.4f %s did not converge: gauss=%d iters (||g||=%.3e, %s); tol=%.3e",
+                    warnMsg("[%s] tau=%.4f qmme did not converge: %d iters (||g||=%.3e); tol=%.3e",
                             phenoNames[k].c_str(), taus[t],
-                            useQmme ? "qmme" : "conquer",
-                            st.gaussIter, st.gaussFinalGradNorm, st.gaussConverged ? "ok" : "FAIL",
-                            useQmme ? qmmeTol : spasqrTol);
+                            st.iter, st.finalGradNorm, qmmeTol);
                 }
 
                 const Eigen::Index Nk = static_cast<Eigen::Index>(pw[k].nk);
@@ -1199,7 +1184,7 @@ void runSPAsqr(
         if (!fitErrors[idx].empty()) {
             int k = idx / ntaus;
             int t = idx % ntaus;
-            throw std::runtime_error("SPAsqr: conquer failed for phenotype '" +
+            throw std::runtime_error("SPAsqr: QMME failed for phenotype '" +
                                      phenoNames[k] + "' tau=" + std::to_string(taus[t]) + ": " + fitErrors[idx]);
         }
     }
@@ -1326,8 +1311,7 @@ void runSPAsqrLoco(
     double spasqrHScale,
     const std::string &keepFile,
     const std::string &removeFile,
-    const std::string &phenoTransform,
-    const std::string &spasqrSolver
+    const std::string &phenoTransform
 ) {
     const int K = static_cast<int>(phenoNames.size());
     const int ntaus = static_cast<int>(taus.size());
@@ -1336,10 +1320,9 @@ void runSPAsqrLoco(
     // Union = subjects with genotype ∩ GRM ∩ keep/remove.  Per-phenotype
     // NA filtering is deferred — each phenotype uses its own non-missing
     // subset of the union.
-    infoMsg("SPAsqr-LOCO pheno-transform: %s, solver: %s",
-            phenoTransform.c_str(), spasqrSolver.c_str());
+    infoMsg("SPAsqr-LOCO pheno-transform: %s, solver: qmme",
+            phenoTransform.c_str());
     infoMsg("SPAsqr-LOCO: Loading phenotype and covariate data (%d phenotypes, %d taus)", K, ntaus);
-    const bool useQmme = (spasqrSolver == "qmme");
     const double qmmeTol = std::min(spasqrTol, 1e-9);
     auto famIIDs = parseGenoIIDs(geno);
     SubjectData sd(std::move(famIIDs));
@@ -1395,7 +1378,7 @@ void runSPAsqrLoco(
         }
 
         // Apply pheno transform (raw / int / standardize) — per-phenotype non-missing scope.
-        // All downstream math (bandwidth, conquer fit, y_adj per chromosome) operates
+        // All downstream math (bandwidth, QMME fit, y_adj per chromosome) operates
         // on the transformed Y. The LOCO PRS scale must match the chosen transform.
         applyPhenoTransform(pw[k].Y, phenoTransform);
 
@@ -1425,10 +1408,8 @@ void runSPAsqrLoco(
     // rebuilt inside buildTasks below. Read-only on solve() so worker
     // threads can share the same instance per phenotype.
     std::vector<std::unique_ptr<qmme::SqrSolver> > qmmeSolvers(K);
-    if (useQmme) {
-        for (int k = 0; k < K; ++k)
-            qmmeSolvers[k] = std::make_unique<qmme::SqrSolver>(pw[k].baseX, /*delta*/ 1e-6);
-    }
+    for (int k = 0; k < K; ++k)
+        qmmeSolvers[k] = std::make_unique<qmme::SqrSolver>(pw[k].baseX, /*delta*/ 1e-6);
 
     // Log N/bandwidth table
     // Per-chr h_chr = IQR(y_adj)/scale is computed inside the chr loop; the value
@@ -1478,7 +1459,7 @@ void runSPAsqrLoco(
 
     // ── 7. Build LocoTaskBuilder callback ──────────────────────────
     // For each chromosome, build per-pheno y_adj (mode-dependent), run
-    // K × ntaus conquer fits with X = baseX, and build K SPAsqrMethods.
+    // K × ntaus QMME fits with X = baseX, and build K SPAsqrMethods.
     auto buildTasks = [&](const std::string &chr, std::vector<PhenoTask> &tasks) {
         tasks.resize(K);
 
@@ -1504,7 +1485,7 @@ void runSPAsqrLoco(
             // subject in the analysis set. If any non-missing-Y subject is absent
             // from the LOCO file, parseLdakLocoFile / parseRegenieLocoFile leaves
             // NaN at that position. Hard-fail instead of silently corrupting the
-            // per-chr QMME fit (NaN propagates through the conquer solve).
+            // per-chr QMME fit (NaN propagates through the QMME solve).
             if (!loco_dense.allFinite()) {
                 const Eigen::Index nBad = Nk - loco_dense.array().isFinite().count();
                 throw std::runtime_error(
@@ -1559,22 +1540,20 @@ void runSPAsqrLoco(
                     h_chr[k], pw[k].nk, r2_loco);
         }
 
-        // QMME: rebuild Cholesky for each phenotype's per-chr bandwidth.
+        // Rebuild Cholesky for each phenotype's per-chr bandwidth.
         // Single-threaded; subsequent solve() calls are read-only.
-        if (useQmme) {
-            for (int k = 0; k < K; ++k)
-                qmmeSolvers[k]->prepareBandwidth(h_chr[k]);
-        }
+        for (int k = 0; k < K; ++k)
+            qmmeSolvers[k]->prepareBandwidth(h_chr[k]);
 
-        // Parallel conquer/QMME fits: K × ntaus
+        // Parallel QMME fits: K × ntaus
         std::vector<Eigen::MatrixXd> ResidMats(K);
         for (int k = 0; k < K; ++k)
             ResidMats[k].resize(static_cast<Eigen::Index>(pw[k].nk), ntaus);
 
         const int totalFits = K * ntaus;
         const int nWorkers = std::min(nthreads, totalFits);
-        infoMsg("SPAsqr-LOCO chr%s: Running %d %s fits with %d threads",
-                chr.c_str(), totalFits, useQmme ? "QMME" : "conquer", nWorkers);
+        infoMsg("SPAsqr-LOCO chr%s: Running %d QMME fits with %d threads",
+                chr.c_str(), totalFits, nWorkers);
 
         std::atomic<int> nextFit{0};
         std::vector<std::string> fitErrors(totalFits);
@@ -1590,23 +1569,16 @@ void runSPAsqrLoco(
 
                 try {
                     Eigen::VectorXd resid;
-                    conquer::ConquerStatus st;
+                    qmme::SolverStatus st;
                     // SQR on (baseX, y_adjs[k]) with y_adjs[k] = Y_transformed - loco_chr.
                     // Y_transformed comes from §3 applyPhenoTransform (raw/int/standardize).
-                    if (useQmme) {
-                        qmmeSolvers[k]->solve(y_adjs[k], taus[t], &resid,
-                                              qmmeTol, /*maxIter*/ 50000,
-                                              /*restartPeriod*/ 50, &st);
-                    } else {
-                        conquer::smqrGauss(pw[k].baseX, y_adjs[k], taus[t], h_use,
-                                           &resid, spasqrTol, 50000, 100.0, &st);
-                    }
+                    qmmeSolvers[k]->solve(y_adjs[k], taus[t], &resid,
+                                          qmmeTol, /*maxIter*/ 50000,
+                                          /*restartPeriod*/ 50, &st);
                     if (!st.converged) {
-                        warnMsg("[%s] chr%s tau=%.4f %s did not converge: gauss=%d iters (||g||=%.3e, %s); tol=%.3e",
+                        warnMsg("[%s] chr%s tau=%.4f qmme did not converge: %d iters (||g||=%.3e); tol=%.3e",
                                 phenoNames[k].c_str(), chr.c_str(), taus[t],
-                                useQmme ? "qmme" : "conquer",
-                                st.gaussIter, st.gaussFinalGradNorm, st.gaussConverged ? "ok" : "FAIL",
-                                useQmme ? qmmeTol : spasqrTol);
+                                st.iter, st.finalGradNorm, qmmeTol);
                     }
 
                     const Eigen::Index Nk = static_cast<Eigen::Index>(pw[k].nk);
@@ -1632,7 +1604,7 @@ void runSPAsqrLoco(
             if (!fitErrors[idx].empty()) {
                 int k = idx / ntaus;
                 int t = idx % ntaus;
-                throw std::runtime_error("SPAsqr-LOCO chr" + chr + ": conquer failed for phenotype '" +
+                throw std::runtime_error("SPAsqr-LOCO chr" + chr + ": QMME failed for phenotype '" +
                                          phenoNames[k] + "' tau=" + std::to_string(taus[t]) + ": " + fitErrors[idx]);
             }
         }

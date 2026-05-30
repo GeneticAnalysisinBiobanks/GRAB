@@ -3,7 +3,7 @@
 // Pure C++17 / Eigen / Boost port of ref_code/src/mtSPAsqr.h + SPAsqr.R.
 //
 // Workflow (--pheno + --pheno-quantitative + --spasqr-taus):
-//   1. Load phenotype/covariates, run conquer quantile regression per tau
+//   1. Load phenotype/covariates, run QMME quantile regression per tau
 //   2. Build smoothed residual matrix: R(i,t) = tau - Phi(-resid(i)/h)
 //   3. Detect outliers per column (IQR-based, configurable)
 //   4. Load sparse GRM and compute variance terms per column
@@ -47,7 +47,7 @@ std::unique_ptr<MethodBase> buildSPAsqrMethod(
 );
 
 // Multi-phenotype entry point: loads data/GRM once, parallelizes
-// ntraits × ntaus conquer fits with min(nthreads, ntraits × ntaus) workers.
+// ntraits × ntaus QMME fits with min(nthreads, ntraits × ntaus) workers.
 void runSPAsqr(
     const std::string &phenoFile,
     const std::string &covarFile,
@@ -74,8 +74,7 @@ void runSPAsqr(
     double spasqrHScale = -1.0,
     const std::string &keepFile = {},
     const std::string &removeFile = {},
-    const std::string &phenoTransform = "raw",
-    const std::string &spasqrSolver = "qmme"
+    const std::string &phenoTransform = "raw"
 );
 
 // Wald-mode entry point: per-marker × per-τ full-model refit + M-estimation
@@ -112,7 +111,7 @@ void runSPAsqrWald(
 );
 
 // LOCO entry point: runs per-chromosome locoEngine with precomputed
-// conquer fits (O1 optimization).
+// QMME fits (O1 optimization).
 void runSPAsqrLoco(
     const std::string &phenoFile,
     const std::string &covarFile,
@@ -140,6 +139,5 @@ void runSPAsqrLoco(
     double spasqrHScale = -1.0,
     const std::string &keepFile = {},
     const std::string &removeFile = {},
-    const std::string &phenoTransform = "int",
-    const std::string &spasqrSolver = "qmme"
+    const std::string &phenoTransform = "int"
 );

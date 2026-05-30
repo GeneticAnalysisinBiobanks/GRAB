@@ -22,9 +22,9 @@ struct Args {
     std::string pcCols = "PC1,PC2,PC3,PC4";         // comma-separated PC column names (default: PC1,PC2,PC3,PC4)
     std::string spasqrTaus = "0.1,0.3,0.5,0.7,0.9"; // default tau levels (SPAsqr)
     std::string sageldX;                            // --sageld-x: comma-separated env names for SAGELD pheno mode
-    double spasqrTol = 1e-7;                          // --spasqr-tol (conquer convergence tolerance)
+    double spasqrTol = 1e-7;                          // --spasqr-tol (QMME convergence tolerance)
     double spasqrH = -1.0;                            // --spasqr-h (explicit bandwidth; -1 = auto)
-    double spasqrHScale = -1.0;                       // --spasqr-h-scale (IQR divisor; -1 = auto → 3)
+    double spasqrHScale = -1.0;                       // --spasqr-h-scale (IQR divisor; -1 = auto: score=3, wald=10)
     std::string bfilePrefix;
     std::string pfilePrefix; // --pfile (pgen/pvar/psam)
     std::string vcfFile;     // --vcf (VCF text, or BGZF-compressed .vcf.gz)
@@ -61,8 +61,6 @@ struct Args {
     // --pheno-transform {raw,int,standardize}; empty sentinel = "use context default"
     // (int when --pred-list given, raw otherwise; resolved in dispatch).
     std::string phenoTransform;
-    // --spasqr-solver {conquer, qmme}: null-model SQR solver. Default qmme.
-    std::string spasqrSolver = "qmme";
     // --spasqr-mode {score, wald}: score test (default, multi-tau CCT) vs
     // per-marker full-model Wald (β̂_G + SE per τ via M-estimation sandwich).
     std::string spasqrMode = "score";
