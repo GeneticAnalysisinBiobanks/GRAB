@@ -408,18 +408,6 @@ rows) or LDAK-KVIK (header FID IID Chr1 Chr2 ... Chr22, subject-major
 rows).)"
 };
 
-inline const FlagDef kSpasqrSolver = {
-    "--spasqr-solver", "NAME",
-    "SPAsqr null-model solver: qmme (default) | conquer",
-    R"(Selects the smoothed quantile regression solver for the SPAsqr null model:
-  qmme    — Quadratic Majorization-Minimization with Extrapolation
-            (Heng & Wang, 2025). Caches Cholesky of the Hessian upper bound
-            once per phenotype × bandwidth and reuses it across all τ levels;
-            far more robust on ill-conditioned X. Default.
-  conquer — Convolution-type smoothed QR (He et al., 2021): Huber init
-            followed by BB gradient descent. Refits from scratch per τ.)"
-};
-
 inline const FlagDef kSpasqrMode = {
     "--spasqr-mode", "MODE",
     "SPAsqr inference mode: score (default) | wald",
@@ -748,7 +736,7 @@ inline const FlagDef *const kSPAsqrOpt[] = {
     &kKeep,         &kRemove,     &kExtract,    &kExclude,
     &kGeno, &kMaf,
     &kMac,          &kHwe,        &kChr,        &kPredList,    &kPhenoTransform,
-    &kSpasqrSolver, &kSpasqrMode,
+    &kSpasqrMode,
     nullptr
 };
 
@@ -1084,7 +1072,7 @@ inline const FlagDef *const kNumericFlags[] = {
     &kSeed,       &kGeno,
     &kMaf,        &kMac,          &kHwe,              &kMinMafIbd,
     &kSpasqrTaus, &kSpasqrTol,    &kSpasqrH,          &kSpasqrHScale,
-    &kSpasqrSolver, &kSpasqrMode,
+    &kSpasqrMode,
     &kSageldX,
     nullptr
 };
