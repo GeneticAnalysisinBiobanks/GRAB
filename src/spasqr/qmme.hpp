@@ -1,17 +1,21 @@
 // qmme.hpp — Smoothed quantile regression via Quadratic Majorization
 // Minimization with Extrapolation (Heng & Wang, 2025).
 //
-// Drop-in replacement for conquer::smqrGauss with cached Cholesky:
 //   H = (1 / (n √(2π) h)) Z^T Z + δI
 // where Z = [1 | standardized X]. Phenotype-level construction caches
 // Z^T Z / n once. Per-bandwidth Cholesky is rebuilt by prepareBandwidth().
 #pragma once
 
-#include "spasqr/conquer.hpp"  // reuse ConquerStatus
-
 #include <Eigen/Dense>
 
 namespace qmme {
+
+// Per-fit convergence diagnostics for SqrSolver::solve.
+struct SolverStatus {
+    int    iter          = 0;     // QMME iterations executed
+    bool   converged     = false; // true iff final ||grad||_∞ ≤ tol
+    double finalGradNorm = 0.0;   // final ||grad||_∞
+};
 
 class SqrSolver {
   public:
@@ -29,8 +33,15 @@ class SqrSolver {
     // Solve smoothed QR with the cached Cholesky.  Returns (p+1)
     // coefficients in the ORIGINAL (un-standardized) space. residOut
     // (if non-null) gets the final residual vector y - X·beta_orig.
-    // statusOut.gaussIter / .gaussFinalGradNorm / .gaussConverged are
-    // populated; Huber fields are left at default (QMME has no Huber phase).
+    // statusOut (if non-null) is populated with iteration count,
+    // convergence flag, and final gradient norm.
+    //
+    // initBetaOrig (optional): warm-start coefficients in ORIGINAL space
+    // (size = p+1; layout = [intercept, β_X_1, ..., β_X_p]).  When non-null,
+    // converted to standardized space and used as the QMME iterate start
+    // instead of the cold-start (β = 0 with intercept = empirical τ-quantile
+    // of centered Y).  Used by wald-mode τ-chaining to recycle β̂(τ_{k-1})
+    // as init for τ_k.
     Eigen::VectorXd solve(
         const Eigen::VectorXd &Y,
         double tau,
@@ -38,7 +49,8 @@ class SqrSolver {
         double tol = 1e-7,
         int maxIter = 5000,
         int restartPeriod = 50,
-        conquer::ConquerStatus *statusOut = nullptr
+        SolverStatus *statusOut = nullptr,
+        const Eigen::VectorXd *initBetaOrig = nullptr
     );
 
     // Diagnostic: number of QMME iterations executed in the most recent
