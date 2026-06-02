@@ -281,7 +281,6 @@ build/grab2 \
   --spasqr-taus 0.1,0.3,0.5,0.7,0.9 \
   --spasqr-tol 1e-7 \
   --spasqr-h-scale 3 \
-  --spasqr-solver qmme \
   --spasqr-mode score \
   --pheno-transform int \
   --outlier-iqr-multiplier 1.5 \
@@ -325,7 +324,6 @@ build/grab2 \
   --spasqr-taus 0.1,0.3,0.5,0.7,0.9 \
   --spasqr-tol 1e-7 \
   --spasqr-h-scale 10 \
-  --spasqr-solver qmme \
   --spasqr-mode wald \
   --pheno-transform int \
   --outlier-iqr-multiplier 1.5 \

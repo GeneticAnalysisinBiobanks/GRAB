@@ -254,13 +254,11 @@ static void logArgsInEffect(const Args &args) {
         std::fprintf(stderr, "  --sageld-x %s\n", args.sageldX.c_str());
     // SPAsqr-specific knobs (relevant for SPAsqr pheno path)
     if (args.method == "SPAsqr" && !args.phenoName.empty()) {
-        // --spasqr-mode and --spasqr-solver are always logged because the
-        // two modes (score vs wald) and two solvers (qmme vs conquer)
-        // have substantially different code paths, output formats, and
-        // runtime behavior; surfacing them in the run header makes it
+        // --spasqr-mode is always logged because the two modes (score vs
+        // wald) have substantially different code paths, output formats,
+        // and runtime behavior; surfacing it in the run header makes it
         // unambiguous which path was exercised.
         std::fprintf(stderr, "  --spasqr-mode %s\n", args.spasqrMode.c_str());
-        std::fprintf(stderr, "  --spasqr-solver %s\n", args.spasqrSolver.c_str());
         if (!args.spasqrTaus.empty())
             std::fprintf(stderr, "  --spasqr-taus %s\n", args.spasqrTaus.c_str());
         if (args.spasqrTol != 1e-7)
@@ -1021,12 +1019,6 @@ int run(
                 }
                 taus.push_back(t);
             }
-            // Validate --spasqr-solver
-            if (args.spasqrSolver != "qmme" && args.spasqrSolver != "conquer") {
-                std::cerr << "Error: --spasqr-solver must be 'qmme' or 'conquer', got '"
-                          << args.spasqrSolver << "'\n";
-                return 1;
-            }
             // Resolve --pheno-transform default. Default is 'int'
             // in both contexts (with and without --pred-list); LOCO PRS
             // should be trained on a Y on the same scale.
@@ -1134,8 +1126,7 @@ int run(
                     args.spasqrHScale,
                     args.keepFile,
                     args.removeFile,
-                    args.phenoTransform,
-                    args.spasqrSolver
+                    args.phenoTransform
                 );
             } else {
                 runSPAsqr(
@@ -1164,8 +1155,7 @@ int run(
                     args.spasqrHScale,
                     args.keepFile,
                     args.removeFile,
-                    args.phenoTransform,
-                    args.spasqrSolver
+                    args.phenoTransform
                 );
             }
         }

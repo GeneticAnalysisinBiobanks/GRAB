@@ -188,7 +188,6 @@ Args parseArgs(
         else if (arg == "--remove")a.removeFile = next();
         else if (arg == "--pred-list")a.predListFile = next();
         else if (arg == "--pheno-transform")a.phenoTransform = next();
-        else if (arg == "--spasqr-solver")a.spasqrSolver = next();
         else if (arg == "--spasqr-mode")a.spasqrMode = next();
         else if (arg == "--admix-bfile")a.admixBfilePrefix = next();
         else if (arg == "--admix-phi")a.admixPhiFile = next();

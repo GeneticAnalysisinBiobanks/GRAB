@@ -341,10 +341,9 @@ LocoData LocoData::load(
             ? parseRegenieLocoFile(locoPath, usedIIDs)
             : parseLdakLocoFile(locoPath, usedIIDs);
 
-        if (result.scores[pn].size() < 22)
-            throw std::runtime_error("LOCO file for '" + pn + "' contains " +
-                                     std::to_string(result.scores[pn].size()) +
-                                     " autosomal chromosomes (need at least 22): " + locoPath);
+        if (result.scores[pn].empty())
+            throw std::runtime_error("LOCO file for '" + pn +
+                                     "' contains no autosomal chromosomes: " + locoPath);
     }
 
     return result;

@@ -5,15 +5,15 @@
 //   β^{k+1} = y^k − H^{-1} ∇f(y^k)
 // with restart when f(β^{k+1}) > f(β^k) or l == P.
 //
-// Loss / gradient (averaged form, conquer convention):
+// Loss / gradient (averaged form):
 //   ℓ_{h,τ}(u) = (h/√(2π)) e^{−u²/(2h²)} + (u/2)[1 − 2Φ(−u/h)] + (τ−½) u
 //   ℓ'_{h,τ}(u) = τ − Φ(−u/h)
 //   ∇f(β) = −(1/n) Z^T ψ = (1/n) Z^T [Φ(−r/h) − τ]   with r = Y − Zβ
 //   H upper bound: (1/(n√(2π)h)) Z^T Z + δI
 //
-// Internal coordinate system follows conquer: standardize X to z-scores
-// per column, prepend an all-ones intercept column, center Y. Solve in
-// (Z, Yc) space, un-standardize at the end.
+// Internal coordinate system: standardize X to z-scores per column,
+// prepend an all-ones intercept column, center Y. Solve in (Z, Yc)
+// space, un-standardize at the end.
 
 #include "spasqr/qmme.hpp"
 #include "util/math_helper.hpp"
@@ -122,7 +122,8 @@ Eigen::VectorXd SqrSolver::solve(
     double tol,
     int maxIter,
     int restartPeriod,
-    conquer::ConquerStatus *statusOut
+    SolverStatus *statusOut,
+    const Eigen::VectorXd *initBetaOrig
 ) {
     if (m_currentH <= 0.0)
         throw std::runtime_error("qmme::SqrSolver::solve: bandwidth not prepared");
@@ -136,9 +137,25 @@ Eigen::VectorXd SqrSolver::solve(
     Eigen::VectorXd Yc = Y.array() - my;
 
     // Initialize beta in standardized space.
-    // Intercept = empirical τ-quantile of Yc; slopes = 0.
-    Eigen::VectorXd beta_curr = Eigen::VectorXd::Zero(dim);
-    beta_curr(0) = empiricalQuantile(Yc, tau);
+    Eigen::VectorXd beta_curr(dim);
+    if (initBetaOrig && initBetaOrig->size() == dim) {
+        // Warm-start the SLOPES from β̂(τ_prev) — under the null this is
+        // ≈ 0 (no help, no harm), and under real covariate effects this is
+        // close to β̂(τ_new) for adjacent τ.
+        //
+        // The INTERCEPT is always reset to the empirical τ-quantile of
+        // centered Y.  β̂_0(τ) tracks F_Y^{-1}(τ) — under H_0 with iid Y
+        // this is ≈ Φ^{-1}(τ), which moves by ≈ 0.76 between τ=0.1 and
+        // τ=0.3.  Carrying over β̂_0(τ_prev) would force QMME to spend
+        // iterations re-finding the intercept; resetting it here is free
+        // and avoids that.
+        beta_curr.tail(m_p) = initBetaOrig->tail(m_p).array() / m_sx.array();
+        beta_curr(0) = empiricalQuantile(Yc, tau);
+    } else {
+        // Cold start: intercept = empirical τ-quantile of Yc; slopes = 0.
+        beta_curr.setZero();
+        beta_curr(0) = empiricalQuantile(Yc, tau);
+    }
     Eigen::VectorXd beta_prev = beta_curr;
 
     Eigen::VectorXd y(dim), beta_new(dim), grad(dim), step(dim), der(n);
@@ -213,13 +230,9 @@ Eigen::VectorXd SqrSolver::solve(
     if (residOut)
         *residOut = r_curr;
     if (statusOut) {
-        statusOut->huberIter = 0;
-        statusOut->huberConverged = true;
-        statusOut->huberFinalGradNorm = 0.0;
-        statusOut->gaussIter = iter;
-        statusOut->gaussConverged = (gradNorm <= tol) && (iter <= maxIter);
-        statusOut->gaussFinalGradNorm = gradNorm;
-        statusOut->converged = statusOut->gaussConverged;
+        statusOut->iter = iter;
+        statusOut->converged = (gradNorm <= tol) && (iter <= maxIter);
+        statusOut->finalGradNorm = gradNorm;
     }
     m_lastIters = iter;
     return beta_orig;

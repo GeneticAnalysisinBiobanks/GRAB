@@ -78,90 +78,103 @@ double iqrBandwidth(const Eigen::VectorXd &Y, double scale) {
     return std::max(std::pow(std::log(static_cast<double>(n)) / static_cast<double>(n), 0.4), 0.05);
 }
 
-// ── Per-(marker, τ) Wald refit + sandwich variance. ─────────────────
+// ── Per-marker Wald refit (all τ) + sandwich variance. ──────────────
 //
 // y, X, G are all pheno-dense.  X has no intercept (QMME prepends one).
 // G must be NaN-free (engine imputes before invocation).
+//
+// Recycling across τ (matches the paper's Algorithm 1 reuse design):
+//   • SqrSolver([X | G]) constructed ONCE per marker — caches Z^T Z / n.
+//   • prepareBandwidth(h) called ONCE — caches Cholesky of H.  h is
+//     fixed across τ within a (pheno, chr).
+//   • τ-chain warm start: β̂(τ_t) feeds initBetaOrig of solve() at τ_{t+1}.
+//     First τ uses the cold-start (β = 0 + intercept = empirical quantile),
+//     which the QMME solver does internally when initBetaOrig is null.
 struct WaldResult {
     bool sandwichOk;     // SE is finite and positive
     double beta;
     double se;
 };
 
-WaldResult fitWaldOne(
-    const Eigen::VectorXd &y,           // pheno-dense response (n)
-    const Eigen::MatrixXd &X,           // pheno-dense covariates (n × p), no intercept
-    const Eigen::VectorXd &G,           // pheno-dense genotype (n), no NaN
-    double tau,
+std::vector<WaldResult> fitWaldAllTaus(
+    const Eigen::VectorXd &y,                // pheno-dense response (n)
+    const Eigen::MatrixXd &X,                // pheno-dense covariates (n × p), no intercept
+    const Eigen::VectorXd &G,                // pheno-dense genotype (n), no NaN
+    const std::vector<double> &taus,
     double h,
     double tol,
     int maxIter
 ) {
     const Eigen::Index n = y.size();
     const int p = static_cast<int>(X.cols());
-    const int dim = p + 2;  // intercept + p covars + G
+    const int dim = p + 2;                   // intercept + p covars + G
+    const int ntaus = static_cast<int>(taus.size());
 
     // Build the joint design (no intercept; QMME prepends one).
     Eigen::MatrixXd XG(n, p + 1);
     if (p > 0) XG.leftCols(p) = X;
     XG.col(p) = G;
 
+    // One SqrSolver per marker — Z^T Z + Cholesky reused across all τ.
     qmme::SqrSolver solver(XG, /*delta*/ 1e-6);
     solver.prepareBandwidth(h);
 
-    Eigen::VectorXd resid;
-    conquer::ConquerStatus st;
-    Eigen::VectorXd theta = solver.solve(y, tau, &resid, tol, maxIter, /*restart*/ 50, &st);
-
-    WaldResult out{};
-    out.beta = theta(dim - 1);   // last entry: γ̂
-    out.se   = std::numeric_limits<double>::quiet_NaN();
-    out.sandwichOk = false;
-    // Sandwich is computed regardless of QMME's strict gradient-norm
-    // convergence flag.  At extreme τ, QMME often stops short of its
-    // gradient cutoff but the residual vector is accurate enough for the
-    // M-estimation variance.
-
-    // Build Z_full = [1 | X | G] in original space, n × dim.
+    // Original-space Z = [1 | X | G] for the sandwich (independent of τ).
     Eigen::MatrixXd Z(n, dim);
     Z.col(0).setOnes();
     if (p > 0) Z.middleCols(1, p) = X;
     Z.col(dim - 1) = G;
 
-    // Per-i kernel weight K_h(-e_i) = 1/(h√(2π)) · exp(-(e_i)²/(2h²)).
     const double inv_sqrt2pi_h = 1.0 / (h * std::sqrt(2.0 * M_PI));
     const double inv_2h2 = 1.0 / (2.0 * h * h);
+    const double inv_n = 1.0 / static_cast<double>(n);
+
+    std::vector<WaldResult> out(ntaus);
+    Eigen::VectorXd theta_prev;              // β̂(τ_{t-1}) in original space; size = dim
+    bool have_prev = false;
+
     Eigen::ArrayXd K(n);
     Eigen::ArrayXd R(n);
-    for (Eigen::Index i = 0; i < n; ++i) {
-        const double ei = resid(i);
-        K(i) = inv_sqrt2pi_h * std::exp(-ei * ei * inv_2h2);
-        R(i) = tau - math::pnorm(-ei / h);
-    }
 
-    // A = (1/n) Z^T diag(K) Z; B = (1/n) Z^T diag(R²) Z.
-    const double inv_n = 1.0 / static_cast<double>(n);
-    Eigen::MatrixXd ZtKZ(dim, dim);
-    Eigen::MatrixXd ZtR2Z(dim, dim);
-    {
+    for (int t = 0; t < ntaus; ++t) {
+        const double tau = taus[t];
+
+        Eigen::VectorXd resid;
+        qmme::SolverStatus st;
+        Eigen::VectorXd theta = solver.solve(
+            y, tau, &resid, tol, maxIter, /*restart*/ 50, &st,
+            have_prev ? &theta_prev : nullptr
+        );
+
+        WaldResult row{false, theta(dim - 1), std::numeric_limits<double>::quiet_NaN()};
+
+        // Sandwich variance uses the residual; valid even at loose QMME conv.
+        for (Eigen::Index i = 0; i < n; ++i) {
+            const double ei = resid(i);
+            K(i) = inv_sqrt2pi_h * std::exp(-ei * ei * inv_2h2);
+            R(i) = tau - math::pnorm(-ei / h);
+        }
         Eigen::MatrixXd ZK = Z.array().colwise() * K;
         Eigen::MatrixXd ZR = Z.array().colwise() * (R * R);
-        ZtKZ.noalias() = ZK.transpose() * Z * inv_n;
-        ZtR2Z.noalias() = ZR.transpose() * Z * inv_n;
+        Eigen::MatrixXd ZtKZ  = ZK.transpose() * Z * inv_n;
+        Eigen::MatrixXd ZtR2Z = ZR.transpose() * Z * inv_n;
+
+        Eigen::LDLT<Eigen::MatrixXd> ldlt(ZtKZ);
+        if (ldlt.info() == Eigen::Success) {
+            Eigen::MatrixXd M = ldlt.solve(ZtR2Z);
+            Eigen::MatrixXd V = ldlt.solve(M.transpose()) * inv_n;
+            const double v_gg = V(dim - 1, dim - 1);
+            if (v_gg > 0.0) {
+                row.se = std::sqrt(v_gg);
+                row.sandwichOk = true;
+            }
+        }
+
+        out[t] = row;
+        theta_prev = theta;
+        have_prev = true;
     }
 
-    // V = A^{-1} B A^{-1} / n.   A and B are symmetric, but A^{-1} B is NOT
-    // (in general).  So solve in two stages: M = A^{-1} B, then V = A^{-1} M^T.
-    Eigen::LDLT<Eigen::MatrixXd> ldlt(ZtKZ);
-    if (ldlt.info() != Eigen::Success) return out;     // sandwichOk stays false
-    Eigen::MatrixXd M = ldlt.solve(ZtR2Z);
-    Eigen::MatrixXd V = ldlt.solve(M.transpose()) * inv_n;
-    const double v_gg = V(dim - 1, dim - 1);
-
-    if (v_gg > 0.0) {
-        out.se = std::sqrt(v_gg);
-        out.sandwichOk = true;
-    }
     return out;
 }
 
@@ -227,14 +240,16 @@ class SPAsqrWaldMethod : public MethodBase {
         // GVec is pheno-dense, NaN-imputed by the engine.
         const Eigen::VectorXd G = GVec;
 
+        std::vector<WaldResult> rows;
+        try {
+            rows = fitWaldAllTaus(sh.Y_resp, sh.X, G, sh.taus, sh.h,
+                                  sh.qmmeTol, sh.maxIter);
+        } catch (const std::exception &) {
+            rows.assign(ntaus, WaldResult{false, std::nan(""), std::nan("")});
+        }
+
         for (int t = 0; t < ntaus; ++t) {
-            WaldResult wr;
-            try {
-                wr = fitWaldOne(sh.Y_resp, sh.X, G, sh.taus[t], sh.h,
-                                sh.qmmeTol, sh.maxIter);
-            } catch (const std::exception &) {
-                wr = WaldResult{false, std::nan(""), std::nan("")};
-            }
+            const auto &wr = rows[t];
             if (wr.sandwichOk && std::isfinite(wr.beta) && wr.se > 0.0) {
                 const double z = wr.beta / wr.se;
                 betas[t] = wr.beta;
