@@ -73,6 +73,8 @@ For per-flag details, run 'grab2 --help OPTION' with the flag name
 stripped of leading dashes, e.g.
   grab2 --help threads          grab2 --help ref-af
   grab2 --help spasqr-mode      grab2 --help outlier-iqr-multiplier
+
+Note: ordinal-trait support remains under active development.
 )",
         stderr);
 }

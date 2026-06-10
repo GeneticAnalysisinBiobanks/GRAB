@@ -81,12 +81,19 @@ VcfData::VcfData(
 
     bcf1_t *rec = bcf_init();
     uint64_t variantIdx = 0;
+    uint32_t nSkippedMultiallelic = 0;
 
     while (bcf_read(fp, hdr, rec) == 0) {
         bcf_unpack(rec, BCF_UN_STR); // unpack chrom/pos/id/alleles only
 
-        // Skip non-biallelic
-        if (rec->n_allele != 2) continue;
+        // Skip non-biallelic: the cursor only decodes the first two alleles,
+        // so retaining a multi-allelic record would silently mis-report
+        // carriers of ALT2/ALT3/... .  Count the skips and surface them
+        // in a warning after the metadata pass completes.
+        if (rec->n_allele != 2) {
+            ++nSkippedMultiallelic;
+            continue;
+        }
 
         const char *chromName = bcf_hdr_id2name(hdr, rec->rid);
         std::string chrom = chromName ? chromName : ".";
@@ -116,6 +123,15 @@ VcfData::VcfData(
     m_chunkIndices = buildChunks(m_markerInfo, nMarkersEachChunk);
 
     infoMsg("  %s: read %u biallelic variants from %s", kindLabel, m_nMarkers, m_vcfFile.c_str());
+
+    if (nSkippedMultiallelic > 0) {
+        warnMsg("%s: skipped %u multi-allelic variant(s) in %s; "
+                "the %s reader handles only biallelic records. "
+                "Split them with `bcftools norm -m -any` (or plink2 --make-pgen "
+                "'multiallelics-already-joined=split' followed by --export vcf bgz) "
+                "to retain them as separate biallelic records.",
+                kindLabel, nSkippedMultiallelic, m_vcfFile.c_str(), kindLabel);
+    }
 }
 
 VcfData::~VcfData() = default;

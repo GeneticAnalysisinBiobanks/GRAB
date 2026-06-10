@@ -244,6 +244,7 @@ static void logArgsInEffect(const Args &args) {
     if (!args.residName.empty()) std::fprintf(stderr, "  --resid-name %s\n", args.residName.c_str());
     if (!args.regressionModel.empty()) std::fprintf(stderr, "  --regression-model %s\n", args.regressionModel.c_str());
     if (args.saveResid) std::fprintf(stderr, "  --save-resid\n");
+    if (args.longitudinal) std::fprintf(stderr, "  --longitudinal\n");
     // pc-cols: relevant for SPAmix/SPAmixPlus/LEAF and cal-af-coef
     {
         bool usesPcCols =
@@ -252,6 +253,8 @@ static void logArgsInEffect(const Args &args) {
     }
     if (args.method == "SAGELD" && !args.sageldX.empty())
         std::fprintf(stderr, "  --sageld-x %s\n", args.sageldX.c_str());
+    if (args.method == "SAGELD" && args.sageldMethod != "sageld")
+        std::fprintf(stderr, "  --sageld-method %s\n", args.sageldMethod.c_str());
     // SPAsqr-specific knobs (relevant for SPAsqr pheno path)
     if (args.method == "SPAsqr" && !args.phenoName.empty()) {
         // --spasqr-mode is always logged because the two modes (score vs
@@ -694,7 +697,71 @@ int run(
             }
         }
         const bool regModelNonAuto = hasRegressionModel && parsedRegressionModel != nullmodel::RegressionModel::Auto;
-        if (isFitCapableMethod) {
+        if (args.longitudinal) {
+            // --longitudinal: SPACox / SPAmix / SPAGRM fit a random-intercept
+            // LMM  Y ~ X + (1 | IID)  on a long-format phenotype and test the
+            // marginal main genetic effect via the per-IID residual R_G.  It
+            // replaces the GLM null-model fit, so the fit-path checks below do
+            // not apply.
+            if (args.method != "SPACox" && args.method != "SPAmix" &&
+                args.method != "SPAGRM") {
+                std::cerr << "Error: --longitudinal is only supported for"
+                             " SPACox, SPAmix, and SPAGRM (got method '"
+                          << args.method << "').\n";
+                return 1;
+            }
+            if (!hasPhenoName) {
+                std::cerr << "Error: --longitudinal requires --pheno-name"
+                             " (the long-format outcome column[s]).\n";
+                return 1;
+            }
+            if (covarNames.empty()) {
+                std::cerr << "Error: --longitudinal requires --covar-name"
+                             " (fixed-effect covariates of the Y ~ X + (1|IID) model).\n";
+                return 1;
+            }
+            if (hasResidName) {
+                std::cerr << "Error: --longitudinal is incompatible with --resid-name.\n";
+                return 1;
+            }
+            if (!args.sageldX.empty()) {
+                std::cerr << "Error: --longitudinal is incompatible with --sageld-x"
+                             " (longitudinal mode tests the main effect only; there is"
+                             " no environment / G x E term).\n";
+                return 1;
+            }
+            if (args.saveResid) {
+                std::cerr << "Error: --longitudinal does not support --save-resid.\n";
+                return 1;
+            }
+            // --regression-model and --covar are inert in longitudinal mode.
+            // Warn rather than reject: the random-intercept LMM replaces the GLM
+            // null model, and covariates are read by name from the long --pheno
+            // file via --covar-name, not from a separate --covar file.
+            if (hasRegressionModel)
+                warnMsg("--longitudinal: --regression-model is ignored "
+                        "(the random-intercept LMM Y ~ X + (1|IID) replaces the "
+                        "GLM null model).");
+            if (!args.covarFile.empty())
+                warnMsg("--longitudinal: --covar file is ignored; covariates are "
+                        "read from the --covar-name columns of the long-format "
+                        "--pheno file.");
+            if (args.method == "SPAmix") {
+                // PCs for the per-individual AF model are sourced from the
+                // long-format design, so every --pc-cols column must be a
+                // fixed-effect covariate.  Check before the LMM fit.
+                for (const auto &pc : pcColNames) {
+                    if (std::find(covarNames.begin(), covarNames.end(), pc) ==
+                        covarNames.end()) {
+                        std::cerr << "Error: --longitudinal SPAmix requires every"
+                                     " --pc-cols column to also appear in --covar-name"
+                                     " (got '" << pc << "'); PCs are sourced from the"
+                                     " long-format design.\n";
+                        return 1;
+                    }
+                }
+            }
+        } else if (isFitCapableMethod) {
             const bool isFitPath = hasPhenoName;
             if (isFitPath && hasResidName) {
                 std::cerr << "Error: " << args.method
@@ -723,6 +790,23 @@ int run(
             }
         } else if (args.method == "SAGELD") {
             const bool hasSageldX = !args.sageldX.empty();
+            if (args.sageldMethod != "sageld" && args.sageldMethod != "gallop") {
+                std::cerr << "Error: --sageld-method must be 'sageld' or 'gallop' (got '"
+                          << args.sageldMethod << "').\n";
+                return 1;
+            }
+            const bool gallop = args.sageldMethod == "gallop";
+            if (gallop && hasResidName) {
+                std::cerr << "Error: --sageld-method gallop requires --pheno-name; it cannot"
+                             " consume a residual file (--resid-name) because GALLOP needs the"
+                             " in-memory null-model projection cache.\n";
+                return 1;
+            }
+            if (gallop && args.saveResid) {
+                std::cerr << "Error: --sageld-method gallop is incompatible with --save-resid"
+                             " (GALLOP produces no residual vector).\n";
+                return 1;
+            }
             if (hasPhenoName && hasResidName) {
                 std::cerr << "Error: SAGELD: --pheno-name and --resid-name are mutually exclusive.\n";
                 return 1;
@@ -862,7 +946,8 @@ int run(
                 args.regressionModel,
                 args.phenoName,
                 args.saveResid,
-                args.seed
+                args.seed,
+                args.longitudinal
             );
         }
 
@@ -896,14 +981,25 @@ int run(
                 effectiveCovarFile,
                 covarNames,
                 args.saveResid,
-                args.seed
+                args.seed,
+                args.longitudinal
             );
         }
 
         // ── SAGELD ───────────────────────────────────────────────
         else if (args.method == "SAGELD") {
-            checkSpGrm(args, /*required=*/ true, "SAGELD");
-            require(args.pairwiseIBDFile, "--pairwise-ibd", "SAGELD");
+            const bool gallop = args.sageldMethod == "gallop";
+            if (gallop) {
+                // GALLOP captures relatedness via the random intercept/slope and
+                // never reads the sparse GRM or PairwiseIBD; warn if supplied.
+                if (!args.spGrmGrabFile.empty() || !args.spGrmPlink2File.empty())
+                    std::fprintf(stderr, "Warning: --sageld-method gallop ignores --sp-grm.\n");
+                if (!args.pairwiseIBDFile.empty())
+                    std::fprintf(stderr, "Warning: --sageld-method gallop ignores --pairwise-ibd.\n");
+            } else {
+                checkSpGrm(args, /*required=*/ true, "SAGELD");
+                require(args.pairwiseIBDFile, "--pairwise-ibd", "SAGELD");
+            }
             auto sageldXNames =
                 args.sageldX.empty() ? std::vector<std::string>{} : splitComma(args.sageldX, "--sageld-x", 1);
             runSAGELD(
@@ -927,6 +1023,7 @@ int run(
                 args.minMacCutoff,
                 args.hweCutoff,
                 args.saveResid,
+                gallop,
                 args.keepFile,
                 args.removeFile
             );
@@ -979,7 +1076,8 @@ int run(
                 args.phenoName,
                 covarNames,
                 args.saveResid,
-                args.seed
+                args.seed,
+                args.longitudinal
             );
         }
 

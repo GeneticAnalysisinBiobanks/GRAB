@@ -25,7 +25,9 @@
 
 #include "geno_factory/geno_data.hpp"
 #include "spamix/indiv_af.hpp"
+#include "io/sparse_grm.hpp"
 #include "io/subject_data.hpp"
+#include "spagrm/longitudinal_resid.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
 #include "util/null_model.hpp"
@@ -639,9 +641,12 @@ void runSPAmixPlus(
     const std::string &phenoNameSpec,
     const std::vector<std::string> &covarNames,
     bool saveResid,
-    uint64_t seed
+    uint64_t seed,
+    bool longitudinal
 ) {
-    const bool fitPath = !phenoNameSpec.empty();
+    // --longitudinal injects R_G (random-intercept residual) post-finalize, so
+    // the GLM fit-path must not engage.
+    const bool fitPath = !longitudinal && !phenoNameSpec.empty();
     nullmodel::RegressionModel regModel{};
     std::vector<nullmodel::PhenoSpec> phenoSpecs;
     if (fitPath) {
@@ -654,8 +659,29 @@ void runSPAmixPlus(
     // ---- Load residual file and PC data ----
     infoMsg("Loading pheno file: %s", phenoFile.c_str());
     auto famIIDs = parseGenoIIDs(geno);
+
+    // --longitudinal: fit Y ~ X + (1|IID) on the long-format pheno file and
+    // obtain R_G + the per-subject design before SubjectData is built.  Plain
+    // SPAmix has no GRM (SPAmixPlus + --longitudinal is rejected at dispatch),
+    // so grmIDs is normally empty.
+    nsLongitudinal::LongResidResult Lr;
+    if (longitudinal) {
+        std::unordered_set<std::string> grmIDs;
+        if (!spgrmGrabFile.empty() || !spgrmGctaFile.empty())
+            grmIDs = SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, famIIDs);
+        const auto outcomeNames = nsLongitudinal::splitOutcomeNames(phenoNameSpec);
+        const auto kept = nsLongitudinal::buildKeptSet(keepFile, removeFile, famIIDs, grmIDs);
+        infoMsg("SPAmix: fitting longitudinal Y ~ X + (1|IID) for %zu outcome(s)",
+                outcomeNames.size());
+        Lr = nsLongitudinal::computeLongitudinalResid(
+            phenoFile, outcomeNames, covarNames, famIIDs, kept);
+    }
+
     SubjectData sd(std::move(famIIDs));
-    if (fitPath) {
+    if (longitudinal) {
+        sd.setKeepSubjects(
+            std::unordered_set<std::string>(Lr.usedIIDs.begin(), Lr.usedIIDs.end()));
+    } else if (fitPath) {
         // Load PC columns + null-model phenotype columns + null-model
         // covariates (when --covar is absent, --covar-name selects columns
         // from --pheno) in a single pass.  loadPhenoFile rejects duplicate
@@ -674,7 +700,7 @@ void runSPAmixPlus(
         sd.loadResidOne(phenoFile, residNames);
         if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile);
     }
-    if (!covarFile.empty()) {
+    if (!covarFile.empty() && !longitudinal) {
         // Load the union of --pc-cols (needed by the per-individual AF model)
         // and --covar-name (needed by the null-model design).  Loading only
         // pcColNames would silently drop any --covar-name columns that are
@@ -699,6 +725,38 @@ void runSPAmixPlus(
     const int N = static_cast<int>(sd.nUsed());
     const int nPC = static_cast<int>(pcColNames.size());
     infoMsg("  %u subjects in union mask, %d PCs", sd.nUsed(), nPC);
+
+    // ---- Inject longitudinal R_G + extract per-subject PCs ----
+    // In longitudinal mode the PCs feeding the per-individual AF model come
+    // from the long file's per-subject design (first row per IID).  --pc-cols
+    // must be a subset of --covar-name (enforced at dispatch) so every PC is a
+    // column of perSubjectX.
+    Eigen::MatrixXd longPCs;
+    if (longitudinal) {
+        const auto used = sd.usedIIDs();
+        std::vector<Eigen::VectorXd> rs;
+        std::vector<std::string> ns;
+        rs.reserve(Lr.R_G.size());
+        ns.reserve(Lr.R_G.size());
+        for (size_t k = 0; k < Lr.R_G.size(); ++k) {
+            rs.push_back(nsLongitudinal::alignToUsed(Lr.usedIIDs, Lr.R_G[k], used));
+            ns.push_back(Lr.names[k]);
+        }
+        sd.setResidualsFromFit(std::move(rs), std::move(ns));
+
+        const Eigen::MatrixXd alignedX =
+            nsLongitudinal::alignRowsToUsed(Lr.usedIIDs, Lr.perSubjectX, used);
+        longPCs.resize(N, nPC);
+        for (int j = 0; j < nPC; ++j) {
+            auto it = std::find(Lr.xColNames.begin(), Lr.xColNames.end(), pcColNames[j]);
+            if (it == Lr.xColNames.end())
+                throw std::runtime_error(
+                    "--longitudinal SPAmix: --pc-cols column '" + pcColNames[j] +
+                    "' must also appear in --covar-name (PCs are sourced from the "
+                    "long-format design)");
+            longPCs.col(j) = alignedX.col(it - Lr.xColNames.begin());
+        }
+    }
 
     if (fitPath) {
         // --pc-cols and --covar-name are kept strictly separate in SPAmix /
@@ -755,7 +813,7 @@ void runSPAmixPlus(
     }
 
     // ---- Design matrix: [1 | PCs] at union dimension ----
-    Eigen::MatrixXd unionPCs = sd.getColumns(pcColNames);
+    Eigen::MatrixXd unionPCs = longitudinal ? longPCs : sd.getColumns(pcColNames);
     Eigen::MatrixXd unionOnePlusPCs(N, 1 + nPC);
     unionOnePlusPCs.col(0).setOnes();
     unionOnePlusPCs.rightCols(nPC) = unionPCs;

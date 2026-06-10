@@ -217,6 +217,7 @@ BgenData::BgenData(
     genfile::bgen::uint32_t position;
     std::vector<std::string> alleles;
     uint64_t variantIdx = 0;
+    uint32_t nSkippedMultiallelic = 0;
 
     while (genfile::bgen::read_snp_identifying_data(
                stream, context, &SNPID, &RSID, &chromosome, &position, [&](std::size_t n) {
@@ -226,8 +227,12 @@ BgenData::BgenData(
         alleles[i] = a;
     })) {
 
-        // Skip non-biallelic
+        // Skip non-biallelic: the BGEN cursor decodes only the first two
+        // alleles, so retaining a multi-allelic record would silently
+        // mis-report carriers of ALT2/ALT3/... .  Count the skips and
+        // surface them in a warning after the first pass completes.
         if (alleles.size() != 2) {
+            ++nSkippedMultiallelic;
             genfile::bgen::ignore_genotype_data_block(stream, context);
             continue;
         }
@@ -264,6 +269,14 @@ BgenData::BgenData(
     m_chunkIndices = buildChunks(m_markerInfo, nMarkersEachChunk);
 
     infoMsg("  BGEN: read %u biallelic variants from %s", m_nMarkers, m_bgenFile.c_str());
+
+    if (nSkippedMultiallelic > 0) {
+        warnMsg("BGEN: skipped %u multi-allelic variant(s) in %s; "
+                "the BGEN reader handles only biallelic records. "
+                "Split them with plink2 --export bgen-1.x 'multiallelics-already-joined=split' "
+                "(or an equivalent qctool pipeline) to retain them as separate biallelic records.",
+                nSkippedMultiallelic, m_bgenFile.c_str());
+    }
 }
 
 BgenData::~BgenData() = default;

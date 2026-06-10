@@ -4,6 +4,7 @@
 #include "engine/marker.hpp"
 #include "geno_factory/geno_data.hpp"
 #include "spagrm/grm_null.hpp"
+#include "spagrm/longitudinal_resid.hpp"
 #include "io/sparse_grm.hpp"
 #include "io/subject_data.hpp"
 #include "util/logging.hpp"
@@ -540,9 +541,12 @@ void runSPAGRM(
     const std::string &covarFile,
     const std::vector<std::string> &covarNames,
     bool saveResid,
-    uint64_t seed
+    uint64_t seed,
+    bool longitudinal
 ) {
-    const bool fitPath = !phenoNameSpec.empty();
+    // --longitudinal injects R_G (random-intercept residual) post-finalize, so
+    // the GLM fit-path must not engage.
+    const bool fitPath = !longitudinal && !phenoNameSpec.empty();
     nullmodel::RegressionModel regModel{};
     std::vector<nullmodel::PhenoSpec> phenoSpecs;
     if (fitPath) {
@@ -554,20 +558,56 @@ void runSPAGRM(
 
     infoMsg("Loading pheno file: %s", phenoFile.c_str());
     auto famIIDs = parseGenoIIDs(geno);
+
+    // --longitudinal: fit Y ~ X + (1|IID) on the long-format pheno file and
+    // obtain R_G before SubjectData is built.  The kept set is GRM ∩ keep −
+    // remove, matching SAGELD pheno-mode.
+    nsLongitudinal::LongResidResult Lr;
+    std::unordered_set<std::string> grmIDs;
+    if (longitudinal) {
+        grmIDs = SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, famIIDs);
+        const auto outcomeNames = nsLongitudinal::splitOutcomeNames(phenoNameSpec);
+        const auto kept = nsLongitudinal::buildKeptSet(keepFile, removeFile, famIIDs, grmIDs);
+        infoMsg("SPAGRM: fitting longitudinal Y ~ X + (1|IID) for %zu outcome(s)",
+                outcomeNames.size());
+        Lr = nsLongitudinal::computeLongitudinalResid(
+            phenoFile, outcomeNames, covarNames, famIIDs, kept);
+    }
+
     SubjectData sd(std::move(famIIDs));
-    if (fitPath) {
+    if (longitudinal) {
+        sd.setKeepSubjects(
+            std::unordered_set<std::string>(Lr.usedIIDs.begin(), Lr.usedIIDs.end()));
+    } else if (fitPath) {
         sd.loadPhenoFile(phenoFile, nullmodel::columnsNeeded(phenoSpecs));
     } else {
         sd.loadResidOne(phenoFile, residNames);
     }
-    if (!covarFile.empty()) sd.loadCovar(covarFile, covarNames);
+    if (!covarFile.empty() && !longitudinal) sd.loadCovar(covarFile, covarNames);
     sd.setKeepRemove(keepFile, removeFile);
-    sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
+    if (longitudinal)
+        sd.setGrmSubjects(std::move(grmIDs));
+    else
+        sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
     sd.setGenoLabel(geno.flagLabel());
     sd.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
     sd.finalize();
     const uint32_t N = sd.nUsed();
     infoMsg("  %u subjects in union mask", N);
+
+    // ---- Inject the longitudinal residual R_G as the per-subject residual ----
+    if (longitudinal) {
+        const auto used = sd.usedIIDs();
+        std::vector<Eigen::VectorXd> rs;
+        std::vector<std::string> ns;
+        rs.reserve(Lr.R_G.size());
+        ns.reserve(Lr.R_G.size());
+        for (size_t k = 0; k < Lr.R_G.size(); ++k) {
+            rs.push_back(nsLongitudinal::alignToUsed(Lr.usedIIDs, Lr.R_G[k], used));
+            ns.push_back(Lr.names[k]);
+        }
+        sd.setResidualsFromFit(std::move(rs), std::move(ns));
+    }
 
     if (fitPath) {
         Eigen::MatrixXd covarUnion;

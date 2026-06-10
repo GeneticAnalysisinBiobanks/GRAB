@@ -64,7 +64,11 @@ LongPhenoData parseLongPheno(
     const std::unordered_set<std::string> &keptSubjects
 ) {
     if (phenoNames.empty()) throw std::runtime_error("SAGELD: --pheno-name required for direct-phenotype mode");
-    if (envName.empty()) throw std::runtime_error("SAGELD: --sageld-x required for direct-phenotype mode");
+    // envName may be empty: the longitudinal random-intercept path (no
+    // --sageld-x) fits Y ~ X + (1 | IID) with no environment / random-slope
+    // column.  SAGELD always supplies a non-empty env, so its behaviour is
+    // unchanged; every env-specific branch below is guarded on hasEnv.
+    const bool hasEnv = !envName.empty();
 
     std::ifstream ifs(filename, std::ios::in | std::ios::binary);
     if (!ifs) throw std::runtime_error("Cannot open file: " + filename);
@@ -114,7 +118,7 @@ LongPhenoData parseLongPheno(
         return it->second;
     };
 
-    const int envColIdx = resolve(envName, "--sageld-x");
+    const int envColIdx = hasEnv ? resolve(envName, "--sageld-x") : -1;
     std::vector<int> phenoColIdx;
     phenoColIdx.reserve(phenoNames.size());
     for (const auto &pn : phenoNames) phenoColIdx.push_back(resolve(pn, "--pheno-name"));
@@ -202,7 +206,7 @@ LongPhenoData parseLongPheno(
         // Materialize this row's RowBuf — only if E, all phenos, all covars non-NaN
         RowBuf rb;
         rb.famIdx = famIt->second;
-        rb.E = tokVals[envColIdx];
+        rb.E = hasEnv ? tokVals[envColIdx] : 0.0;
         rb.Y.resize(phenoColIdx.size());
         for (size_t k = 0; k < phenoColIdx.size(); ++k) rb.Y[k] = tokVals[phenoColIdx[k]];
         rb.X.resize(1 + covarColIdx.size());
@@ -210,7 +214,7 @@ LongPhenoData parseLongPheno(
         for (size_t k = 0; k < covarColIdx.size(); ++k) rb.X[1 + k] = tokVals[covarColIdx[k]];
 
         // Drop row if any required entry is NaN
-        bool hasNa = std::isnan(rb.E);
+        bool hasNa = hasEnv && std::isnan(rb.E);
         for (size_t k = 0; k < rb.X.size() && !hasNa; ++k) if (std::isnan(rb.X[k])) hasNa = true;
         for (size_t k = 0; k < rb.Y.size() && !hasNa; ++k) if (std::isnan(rb.Y[k])) hasNa = true;
         if (hasNa) { ++droppedNA; continue; }
@@ -239,7 +243,7 @@ LongPhenoData parseLongPheno(
     const int q = static_cast<int>(rows[0].Y.size());
     data.X.resize(N, p);
     data.Y.resize(N, q);
-    data.E.resize(N);
+    data.E.resize(hasEnv ? N : 0);
 
     data.subjStart.push_back(0);
     uint32_t curFam = rows[0].famIdx;
@@ -253,7 +257,7 @@ LongPhenoData parseLongPheno(
             data.famSubjIdx.push_back(curFam);
             data.uniqueIIDs.push_back(famIIDs[curFam]);
         }
-        data.E[r] = rows[r].E;
+        if (hasEnv) data.E[r] = rows[r].E;
         for (int k = 0; k < p; ++k) data.X(r, k) = rows[r].X[k];
         for (int k = 0; k < q; ++k) data.Y(r, k) = rows[r].Y[k];
     }
@@ -650,6 +654,133 @@ LMMFit fitRandomInterceptML(
 }
 
 // ════════════════════════════════════════════════════════════════════════
+// fitRandomInterceptWithCovar — y ~ X + (1 | IID) via 1-D REML profile
+//                               likelihood + Brent minimiser.  Generalises
+//                               fitRandomInterceptML from an intercept-only
+//                               design to the full fixed-effects design X
+//                               (data.X, with the intercept in column 0).
+//
+// Used by the --longitudinal input mode of SPACox / SPAmix / SPAGRM, which
+// test the marginal *main* genetic effect on a repeated-measures phenotype
+// (no environment / random-slope term, hence no --sageld-x).  The per-IID
+// aggregated BLUP residual  R_G_i = Σ_j r_ij  (via aggregatePerIID) is the
+// residual handed to each method's marker-level score test.
+//
+// Parameterise τ = D₁₁/σ² = exp(2θ), θ ∈ ℝ.  For subject i with n_i rows,
+// the Woodbury form of the marginal covariance gives, with
+// w_i = τ / (1 + n_i τ):
+//   GLS information   A(τ) = X'X − Σ_i w_i (X_i'1)(1'X_i)        (p × p)
+//   GLS rhs           b(τ) = X'y − Σ_i w_i (X_i'1)·(1'y_i)       (p)
+//   β̂(τ) = A⁻¹ b,    sr_i = 1'r_i = sumy_i − (X_i'1)·β̂
+//   PSS(τ) = (y'y − 2β̂'X'y + β̂'X'X β̂) − Σ_i w_i sr_i²
+//   −2 ℓ_REML(τ) = (N − p) log PSS + Σ_i log(1 + n_i τ) + log|A|
+// BLUP b̂_i = τ̂ sr_i / (1 + n_i τ̂);  resid_ij = y_ij − X_ij β̂ − b̂_i.
+// The p = 1 (intercept-only) case reproduces fitRandomInterceptML.
+// ════════════════════════════════════════════════════════════════════════
+LMMFit fitRandomInterceptWithCovar(
+    const LongPhenoData &data,
+    const Eigen::VectorXd &y,
+    int maxIter,
+    double tol
+) {
+    const int N = static_cast<int>(y.size());
+    const int nSubj = static_cast<int>(data.uniqueIIDs.size());
+    const int p = static_cast<int>(data.X.cols());
+
+    if (N != static_cast<int>(data.X.rows()))
+        throw std::runtime_error("fitRandomInterceptWithCovar: y size mismatch with X");
+    if (N <= p) throw std::runtime_error("fitRandomInterceptWithCovar: need N > p rows");
+
+    // ── Global and per-subject sufficient statistics (one pass). ──────────
+    const Eigen::MatrixXd XtX = data.X.transpose() * data.X;   // p × p
+    const Eigen::VectorXd Xty = data.X.transpose() * y;        // p
+    const double yty = y.squaredNorm();
+
+    std::vector<int> n_i(nSubj);
+    Eigen::VectorXd sumy(nSubj);                 // Σ_j y_ij
+    Eigen::MatrixXd colsumX(p, nSubj);           // X_i'1  (p × nSubj)
+    for (int i = 0; i < nSubj; ++i) {
+        const uint32_t r0 = data.subjStart[i];
+        const uint32_t r1 = data.subjStart[i + 1];
+        n_i[i] = static_cast<int>(r1 - r0);
+        sumy(i) = y.segment(r0, n_i[i]).sum();
+        colsumX.col(i) = data.X.middleRows(r0, n_i[i]).colwise().sum().transpose();
+    }
+
+    // ── REML profile loss as a function of θ where τ = exp(2θ). ───────────
+    // Returns a +∞-ish sentinel on infeasible (A not SPD, PSS ≤ 0) so Brent
+    // recovers gracefully without throwing.
+    auto evalLoss = [&](double theta, Eigen::VectorXd *outBeta = nullptr,
+                        double *outPSS = nullptr, double *outTau = nullptr) -> double {
+        const double tClamped = std::clamp(theta, -25.0, 25.0);
+        const double tau = std::exp(2.0 * tClamped);
+
+        Eigen::MatrixXd A = XtX;
+        Eigen::VectorXd b = Xty;
+        double sumLog = 0.0;                       // Σ_i log(1 + n_i τ)
+        for (int i = 0; i < nSubj; ++i) {
+            const double n = static_cast<double>(n_i[i]);
+            const double w = tau / (1.0 + n * tau);
+            A.noalias() -= w * (colsumX.col(i) * colsumX.col(i).transpose());
+            b.noalias() -= (w * sumy(i)) * colsumX.col(i);
+            sumLog += std::log(1.0 + n * tau);
+        }
+
+        Eigen::LDLT<Eigen::MatrixXd> ldlt(A);
+        if (ldlt.info() != Eigen::Success) return 1e30;
+        const Eigen::VectorXd d = ldlt.vectorD();
+        if ((d.array() <= 0.0).any()) return 1e30;        // A not SPD → infeasible
+        const double logDetA = d.array().log().sum();
+
+        const Eigen::VectorXd beta = ldlt.solve(b);
+        if (outBeta) *outBeta = beta;
+
+        // PSS = (y'y − 2β'X'y + β'X'X β) − Σ_i w_i sr_i²
+        double PSS = yty - 2.0 * beta.dot(Xty) + beta.dot(XtX * beta);
+        for (int i = 0; i < nSubj; ++i) {
+            const double n = static_cast<double>(n_i[i]);
+            const double w = tau / (1.0 + n * tau);
+            const double sr = sumy(i) - colsumX.col(i).dot(beta);   // Σ_j r_ij
+            PSS -= w * sr * sr;
+        }
+        if (!(PSS > 0.0)) return 1e30;
+        if (outPSS) *outPSS = PSS;
+        if (outTau) *outTau = tau;
+
+        return static_cast<double>(N - p) * std::log(PSS) + sumLog + logDetA;
+    };
+
+    // ── Brent search on θ ∈ [-25, 25]. ────────────────────────────────────
+    const double thetaHat = math::brentMin(evalLoss, -25.0, 25.0, tol, maxIter);
+    Eigen::VectorXd betaHat;
+    double PSS = 0.0, tauHat = 0.0;
+    evalLoss(thetaHat, &betaHat, &PSS, &tauHat);
+    const double sigma2Hat = std::max(kMinSigma2, PSS / static_cast<double>(N - p));
+
+    // ── Final pass: BLUP residuals at (β̂, τ̂). ───────────────────────────
+    Eigen::VectorXd resid(N);
+    for (int i = 0; i < nSubj; ++i) {
+        const uint32_t r0 = data.subjStart[i];
+        const int n = n_i[i];
+        const double sr = sumy(i) - colsumX.col(i).dot(betaHat);
+        const double bHat = tauHat * sr / (1.0 + static_cast<double>(n) * tauHat);
+        resid.segment(r0, n) = y.segment(r0, n)
+                             - data.X.middleRows(r0, n) * betaHat
+                             - Eigen::VectorXd::Constant(n, bHat);
+    }
+
+    LMMFit fit;
+    fit.beta = std::move(betaHat);
+    fit.D.resize(1, 1);
+    fit.D(0, 0) = sigma2Hat * tauHat;       // D₁₁ in original (variance) scale
+    fit.sigma2 = sigma2Hat;
+    fit.residPerRow = std::move(resid);
+    fit.iterations = 0;                      // Brent doesn't expose iter count
+    fit.logLik = 0.0;
+    return fit;
+}
+
+// ════════════════════════════════════════════════════════════════════════
 // aggregatePerIID / aggregateWeightedPerIID
 // ════════════════════════════════════════════════════════════════════════
 Eigen::VectorXd aggregatePerIID(
@@ -704,7 +835,8 @@ Eigen::VectorXd aggregateWeightedPerIID(
 GallopCache buildGallopCache(
     const LongPhenoData &data,
     const Eigen::MatrixXd &D,
-    double sigma2
+    double sigma2,
+    const Eigen::VectorXd &residPerRow
 ) {
     const int nSubj = static_cast<int>(data.uniqueIIDs.size());
     const int nx = static_cast<int>(data.X.cols());
@@ -713,6 +845,8 @@ GallopCache buildGallopCache(
         throw std::runtime_error("buildGallopCache: D must be 2×2");
     if (!(sigma2 > 0.0))
         throw std::runtime_error("buildGallopCache: sigma2 must be positive");
+    if (residPerRow.size() != data.E.size())
+        throw std::runtime_error("buildGallopCache: residPerRow size mismatch");
 
     // P = σ̂² · D̂⁻¹  (mirrors develop-R `solve(G / sig^2)`).  When D is
     // singular (collapse-to-OLS), fall back to a large precision so the
@@ -730,10 +864,12 @@ GallopCache buildGallopCache(
     GallopCache cache;
     cache.nx = nx;
     cache.nSubj = nSubj;
+    cache.sig = std::sqrt(sigma2);
     cache.Si.resize(nSubj);
     cache.StS.resize(nSubj);
     cache.XTs.setZero(nSubj, 2 * nx);
     cache.AtS.setZero(nSubj, 2 * nx);
+    cache.Tr0.setZero(nSubj, 2);
 
     Eigen::MatrixXd AAt = Eigen::MatrixXd::Zero(nx, nx); // Σ_i A21_i' A21_i
 
@@ -782,6 +918,10 @@ GallopCache buildGallopCache(
         const Eigen::MatrixXd AtS_i = A21_i.transpose() * SS_i;  // nx × 2
         cache.AtS.row(i).head(nx)  = AtS_i.col(0).transpose();
         cache.AtS.row(i).tail(nx)  = AtS_i.col(1).transpose();
+
+        // GALLOP Wald numerator: Tr0_i = TT_i' r0_i  (= [Σ_j r0_ij, Σ_j E_ij r0_ij])
+        const auto r0_i = residPerRow.segment(r0, n_i);
+        cache.Tr0.row(i) = (TT_i.transpose() * r0_i).transpose();
     }
 
     const Eigen::MatrixXd A11 = data.X.transpose() * data.X;
@@ -792,14 +932,18 @@ GallopCache buildGallopCache(
     return cache;
 }
 
-double markerLambda(
+// computeV — the 2×2 reduced information V = GtG − Σ si²·StS − R'Cfix shared by
+// markerLambda (λ = V[1,2]/V[1,1]) and markerGallop (Wald solve).  The arithmetic
+// is unchanged from the original markerLambda body, so the SAGELD λ path stays
+// byte-identical.
+static Eigen::Matrix2d computeV(
     const Eigen::Ref<const Eigen::VectorXd> &si,
     const GallopCache &cache
 ) {
     const int nx = cache.nx;
     const int nSubj = cache.nSubj;
     if (si.size() != nSubj)
-        throw std::runtime_error("markerLambda: genotype size mismatch");
+        throw std::runtime_error("computeV: genotype size mismatch");
 
     const Eigen::VectorXd si2 = si.array().square();
 
@@ -828,11 +972,40 @@ double markerLambda(
     }
 
     const Eigen::MatrixXd RtCfix = R.transpose() * Cfix;          // 2 × 2
-    const Eigen::Matrix2d V = GtG - sumStS - RtCfix;
+    return GtG - sumStS - RtCfix;
+}
 
+double markerLambda(
+    const Eigen::Ref<const Eigen::VectorXd> &si,
+    const GallopCache &cache
+) {
+    const Eigen::Matrix2d V = computeV(si, cache);
     const double V11 = V(0, 0);
     if (!(V11 > 0.0)) return std::numeric_limits<double>::quiet_NaN();
     return V(0, 1) / V11;
+}
+
+GallopMarker markerGallop(
+    const Eigen::Ref<const Eigen::VectorXd> &si,
+    const GallopCache &cache
+) {
+    GallopMarker out;
+    const Eigen::Matrix2d V = computeV(si, cache);
+
+    // V = σ²·I_γ is SPD for a non-degenerate marker; bail out otherwise.
+    const double det = V(0, 0) * V(1, 1) - V(0, 1) * V(1, 0);
+    if (!(V(0, 0) > 0.0) || !(det > 0.0)) {
+        out.ok = false;
+        return out;
+    }
+
+    // Numerator ũ = (si' Tr0)ᵀ; β̂ = V⁻¹ũ (σ² cancels); Cov = σ²·V⁻¹.
+    const Eigen::Vector2d u = (si.transpose() * cache.Tr0).transpose();
+    const Eigen::Matrix2d Vinv = V.inverse();
+    out.beta = Vinv * u;
+    out.se = cache.sig * Vinv.diagonal().cwiseSqrt();
+    out.ok = true;
+    return out;
 }
 
 } // namespace nsSAGELDFit

@@ -253,6 +253,120 @@ build/grab2 \
   --compression-level 3
 done
 
+## ── SAGELD GALLOP variant (--sageld-method gallop) ───────────────────
+# The exact Sikorska et al. (2013) two-step Wald test (develop-R
+# SAGELD.NullModel UsedMethod="GALLOP").  Same random-slope null model
+# Y ~ X + (TIME | IID) as the SAGELD fit block above, but the per-marker
+# test re-fits the genetic main effect (G) and the G x TIME interaction
+# exactly, emitting BETA / SE / Pvalue per effect.  GALLOP captures
+# relatedness through the random intercept/slope, so it takes NEITHER
+# --sp-grm NOR --pairwise-ibd; supplying them only triggers a warning.
+# Output: ${OUT}.<pheno>.GALLOP.gz (gzip path through multiPhenoEngine).
+
+build/grab2 \
+  --method SAGELD \
+  --sageld-method gallop \
+  --pheno examples/long_pheno \
+  --pheno-name Long1,Long2 \
+  --covar-name MALE,TIME,PC1,PC2 \
+  --sageld-x TIME \
+  --pfile examples/1kg \
+  --out ${OUT} \
+  `# Optional flags below (set to built-in defaults):` \
+  --chr 1-2,3 \
+  --threads 2 \
+  --chunk-size 8192 \
+  --geno 0.1 \
+  --maf 1e-5 \
+  --mac 10 \
+  --hwe 0 \
+  --compression gz \
+  --compression-level 3
+
+## ── Longitudinal input (--longitudinal): SPACox / SPAmix / SPAGRM ─────
+# These three single-residual methods accept a long-format (repeated-
+# measures) phenotype directly.  For each --pheno-name outcome a random-
+# intercept null model  Y ~ X + (1 | IID)  is fit (X = intercept +
+# --covar-name covariates), and the per-IID aggregated residual
+# R_G = sum_j r_ij is fed to the marker test (marginal MAIN genetic
+# effect; no --sageld-x and no G x E).  Reuses the SAGELD long-format
+# fixture examples/long_pheno (#IID MALE PC1 PC2 TIME Long1 Long2).
+
+## ── SPACox longitudinal (plain-text output) ───────────────────────────
+
+build/grab2 \
+  --method SPACox \
+  --pheno examples/long_pheno \
+  --pheno-name Long1,Long2 \
+  --longitudinal \
+  --covar-name MALE,PC1,PC2 \
+  --pfile examples/1kg \
+  --out ${OUT_DIR}/long_spacox \
+  `# Optional flags below (set to built-in defaults):` \
+  --chr 1-2,3 \
+  --covar-p-threshold 5e-5 \
+  --spa-z-threshold 2.0 \
+  --seed 2026 \
+  --threads 2 \
+  --chunk-size 8192 \
+  --geno 0.1 \
+  --maf 1e-5 \
+  --mac 10 \
+  --hwe 0
+
+## ── SPAmix longitudinal (zstd; on-the-fly AF) ─────────────────────────
+# --pc-cols must be a subset of --covar-name in longitudinal mode, because
+# the per-individual AF model sources its PCs from the long-format design.
+
+build/grab2 \
+  --method SPAmix \
+  --pheno examples/long_pheno \
+  --pheno-name Long1,Long2 \
+  --longitudinal \
+  --covar-name MALE,PC1,PC2 \
+  --pc-cols PC1,PC2 \
+  --pfile examples/1kg \
+  --out ${OUT_DIR}/long_spamix \
+  `# Optional flags below (set to built-in defaults):` \
+  --chr 1-2,3 \
+  --outlier-iqr-multiplier 1.5 \
+  --spa-z-threshold 2.0 \
+  --seed 2026 \
+  --threads 2 \
+  --chunk-size 8192 \
+  --geno 0.1 \
+  --maf 1e-5 \
+  --mac 10 \
+  --hwe 0 \
+  --compression zst \
+  --compression-level 3
+
+## ── SPAGRM longitudinal (zstd) ────────────────────────────────────────
+
+build/grab2 \
+  --method SPAGRM \
+  --pheno examples/long_pheno \
+  --pheno-name Long1,Long2 \
+  --longitudinal \
+  --covar-name MALE,PC1,PC2 \
+  --sp-grm-plink2 examples/1kg.grm.sp \
+  --pairwise-ibd ${OUT}.ibd.zst \
+  --pfile examples/1kg \
+  --out ${OUT_DIR}/long_spagrm \
+  `# Optional flags below (set to built-in defaults):` \
+  --chr 1-2,3 \
+  --spa-z-threshold 2.0 \
+  --outlier-iqr-multiplier 1.5 \
+  --seed 2026 \
+  --threads 2 \
+  --chunk-size 8192 \
+  --geno 0.1 \
+  --maf 1e-5 \
+  --mac 10 \
+  --hwe 0 \
+  --compression zst \
+  --compression-level 3
+
 ## ── Utility: int-pheno ────────────────────────────────────────────────
 # Produces ${OUT}.int.txt, a phenotype file containing the
 # INT-transformed Quantitative and Time columns only.

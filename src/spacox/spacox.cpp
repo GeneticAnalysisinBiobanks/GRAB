@@ -4,6 +4,7 @@
 #include "engine/marker.hpp"
 #include "geno_factory/geno_data.hpp"
 #include "io/subject_data.hpp"
+#include "spagrm/longitudinal_resid.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
 #include "util/null_model.hpp"
@@ -639,10 +640,14 @@ void runSPACox(
     const std::string &regressionModelStr,
     const std::string &phenoNameSpec,
     bool saveResid,
-    uint64_t seed
+    uint64_t seed,
+    bool longitudinal
 ) {
     // ---- Decide path: residual passthrough vs in-process null-model fit ----
-    const bool fitPath = !phenoNameSpec.empty();
+    // --longitudinal pre-empts both: the per-subject residual R_G is computed
+    // from a random-intercept LMM on the long-format pheno file and injected
+    // after finalize (see below), so the GLM fit-path must not engage.
+    const bool fitPath = !longitudinal && !phenoNameSpec.empty();
     nullmodel::RegressionModel regModel{};
     std::vector<nullmodel::PhenoSpec> phenoSpecs;
     if (fitPath) {
@@ -655,18 +660,50 @@ void runSPACox(
     // ---- Load resid/pheno file and covariate data ----
     infoMsg("Loading pheno file: %s", phenoFile.c_str());
     auto famIIDs = parseGenoIIDs(geno);
+
+    // --longitudinal: fit Y ~ X + (1|IID) on the long-format pheno file and
+    // obtain the per-subject main-effect residual R_G before SubjectData is
+    // built (parseLongPheno needs the .fam IID list).  SPACox has no GRM, so
+    // the kept set is just (keep − remove).
+    nsLongitudinal::LongResidResult Lr;
+    if (longitudinal) {
+        const auto outcomeNames = nsLongitudinal::splitOutcomeNames(phenoNameSpec);
+        const auto kept = nsLongitudinal::buildKeptSet(keepFile, removeFile, famIIDs, {});
+        infoMsg("SPACox: fitting longitudinal Y ~ X + (1|IID) for %zu outcome(s)",
+                outcomeNames.size());
+        Lr = nsLongitudinal::computeLongitudinalResid(
+            phenoFile, outcomeNames, covarNames, famIIDs, kept);
+    }
+
     SubjectData sd(std::move(famIIDs));
-    if (fitPath) {
+    if (longitudinal) {
+        sd.setKeepSubjects(
+            std::unordered_set<std::string>(Lr.usedIIDs.begin(), Lr.usedIIDs.end()));
+    } else if (fitPath) {
         sd.loadPhenoFile(phenoFile, nullmodel::columnsNeeded(phenoSpecs));
     } else {
         sd.loadResidOne(phenoFile, residNames);
         if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile);
     }
-    if (!covarFile.empty()) sd.loadCovar(covarFile, covarNames);
+    if (!covarFile.empty() && !longitudinal) sd.loadCovar(covarFile, covarNames);
     sd.setKeepRemove(keepFile, removeFile);
     sd.setGenoLabel(geno.flagLabel());
     sd.finalize();
     infoMsg("  %u subjects in union mask", sd.nUsed());
+
+    // ---- Inject the longitudinal residual R_G as the per-subject residual ----
+    if (longitudinal) {
+        const auto used = sd.usedIIDs();
+        std::vector<Eigen::VectorXd> rs;
+        std::vector<std::string> ns;
+        rs.reserve(Lr.R_G.size());
+        ns.reserve(Lr.R_G.size());
+        for (size_t k = 0; k < Lr.R_G.size(); ++k) {
+            rs.push_back(nsLongitudinal::alignToUsed(Lr.usedIIDs, Lr.R_G[k], used));
+            ns.push_back(Lr.names[k]);
+        }
+        sd.setResidualsFromFit(std::move(rs), std::move(ns));
+    }
 
     // ---- If fit-path, run the null-model engine and inject residuals ----
     if (fitPath) {
@@ -711,7 +748,12 @@ void runSPACox(
     // ---- Build design-matrix (intercept + covariates) at union dimension ----
     infoMsg("Assembling union-level design matrix X = [intercept | covariates]");
     Eigen::MatrixXd unionX;
-    if (!covarNames.empty()) {
+    if (longitudinal) {
+        // The covariate-adjustment design matches the LMM fixed effects X
+        // (intercept + --covar-name covariates absorbed into R_G); residualising
+        // the genotype on the same X is the standard two-stage SPA procedure.
+        unionX = nsLongitudinal::alignRowsToUsed(Lr.usedIIDs, Lr.perSubjectX, sd.usedIIDs());
+    } else if (!covarNames.empty()) {
         auto cov = sd.getColumns(covarNames);
         unionX.resize(sd.nUsed(), cov.cols() + 1);
         unionX.col(0).setOnes();

@@ -105,6 +105,13 @@ class SubjectData {
 // Call before finalize().  Empty set → skip GRM intersection.
     void setGrmSubjects(std::unordered_set<std::string> grmIDs);
 
+// Restrict the used set to an explicit IID list (in-memory keep filter).
+// Call before finalize().  Used by the --longitudinal mode, where the
+// per-subject residual is injected post-finalize via setResidualsFromFit()
+// and no pheno/resid/covar file is loaded; the keep set is the long-format
+// fit sample so the union mask equals the fit subjects.  Empty set → no-op.
+    void setKeepSubjects(std::unordered_set<std::string> keepIDs);
+
 // Set descriptive labels for the subject pipeline log.
     void setGenoLabel(const std::string &label) {
         m_subjectSet.setGenoLabel(label);
@@ -317,4 +324,8 @@ class SubjectData {
 
 // Covariate column means (stored by loadCovar for finalize mean-fill)
     std::vector<double> m_covarColMeans;
+
+// In-memory keep filter set by setKeepSubjects (--longitudinal mode).
+    std::unordered_set<std::string> m_keepSubjects;
+    bool m_hasKeepSubjects = false;
 };

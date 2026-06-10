@@ -398,6 +398,77 @@ class SAGELDMethod : public MethodBase {
 };
 
 // ══════════════════════════════════════════════════════════════════════
+// GALLOPMethod — MethodBase adapter for the exact GALLOP Wald test
+//   (develop-R SAGELD.NullModel UsedMethod="GALLOP").
+//
+// Pheno-mode only.  Per marker it solves the 2×2 system from the precomputed
+// null-model projection cache (nsSAGELDFit::GallopCache) to obtain exact effect
+// estimates and standard errors for the genetic main effect (G) and the G×E
+// interaction; no fixed residual, no λ, no SPA, no sparse-GRM correction.
+//
+// The cache is shared (shared_ptr<const>) so per-thread clone() does not copy
+// the nSubj×2nx matrices or the LDLT.  The per-subject genotype the engine
+// passes to getResultVec is already mean-imputed (matches develop-R
+// imputeMethod="mean"); the intercept column in X absorbs the genotype mean.
+//
+// Output reuses the SAGELD (P, Z, BETA, SE) quadruple schema, with Z = β/SE
+// the Wald z and P = 2·Φ(−|z|).  Single env per object (--sageld-x is one column).
+// ══════════════════════════════════════════════════════════════════════
+class GALLOPMethod : public MethodBase {
+  public:
+    GALLOPMethod(
+        std::shared_ptr<const nsSAGELDFit::GallopCache> cache,
+        std::string envName
+    )
+        : m_cache(std::move(cache)), m_envName(std::move(envName))
+    {
+    }
+
+    std::unique_ptr<MethodBase> clone() const override {
+        return std::make_unique<GALLOPMethod>(*this);
+    }
+
+    int resultSize() const override { return 8; }
+
+    // col 0..3 : P_G  Z_G  BETA_G  SE_G
+    // col 4..7 : P_Gx<E>  Z_Gx<E>  BETA_Gx<E>  SE_Gx<E>
+    std::string getHeaderColumns() const override {
+        return "\tP_G\tZ_G\tBETA_G\tSE_G"
+               "\tP_Gx" + m_envName + "\tZ_Gx" + m_envName +
+               "\tBETA_Gx" + m_envName + "\tSE_Gx" + m_envName;
+    }
+
+    void getResultVec(
+        Eigen::Ref<Eigen::VectorXd> GVec,
+        double /*altFreq*/,
+        int,
+        std::vector<double> &result
+    ) override {
+        result.assign(8, std::numeric_limits<double>::quiet_NaN());
+        const auto g = nsSAGELDFit::markerGallop(GVec, *m_cache);
+        if (!g.ok) return;
+        writeWald(result, 0, g.beta(0), g.se(0));   // G main effect
+        writeWald(result, 4, g.beta(1), g.se(1));   // G×E interaction
+    }
+
+  private:
+    // Wald (P, Z, BETA, SE) from an effect estimate and its standard error.
+    static void writeWald(std::vector<double> &out, size_t off,
+                          double beta, double se) {
+        out[off + 2] = beta;
+        out[off + 3] = se;
+        if (se > 0.0) {
+            const double z = beta / se;
+            out[off + 1] = z;
+            out[off + 0] = 2.0 * math::pnorm(std::abs(z), 0.0, 1.0, false);
+        }
+    }
+
+    std::shared_ptr<const nsSAGELDFit::GallopCache> m_cache;
+    std::string m_envName;
+};
+
+// ══════════════════════════════════════════════════════════════════════
 // buildSAGELDArtifacts — given per-IID R_G + per-env R_GxE plus shared
 //   topology, build a SAGELDMethod (no engine call).  Multiple environments
 //   are built sequentially within one call; parallelism across phenotypes
@@ -491,9 +562,6 @@ double estimateLambdaPerMarker(
     if (total == 0) return std::numeric_limits<double>::quiet_NaN();
 
     const uint64_t target = std::min(static_cast<uint64_t>(maxMarkers), total);
-    // Stride deterministically across the marker list so the sample spans
-    // the genome rather than clustering near chromosome 1.
-    const uint64_t stride = std::max<uint64_t>(1, total / target);
 
     auto cursor = genoData.makeCursor();
     Eigen::VectorXd geno(N);
@@ -504,8 +572,15 @@ double estimateLambdaPerMarker(
 
     cursor->beginSequentialBlock(0);
     for (uint64_t k = 0; k < target; ++k) {
-        const uint64_t markerIdx = k * stride;
-        if (markerIdx >= total) break;
+        // Even, genome-spanning systematic sample: markerIdx = floor(k·total/target).
+        // Exact integer arithmetic (k < target ≤ 2000, so k·total stays well
+        // within uint64) keeps it deterministic and platform-independent.
+        // Unlike an integer stride = total/target, this does not collapse to the
+        // first `target` markers when target < total < 2·target (e.g. 2000 <
+        // total < 4000): floor(k·total/target) yields `target` distinct indices
+        // spread across the whole [0, total) range for any total ≥ target, since
+        // k ≤ target−1 ⇒ markerIdx = floor(k·total/target) < total.
+        const uint64_t markerIdx = (k * total) / target;
         double altFreq = 0.0, altCounts = 0.0, missingRate = 0.0;
         double hweP = 0.0, maf = 0.0, mac = 0.0;
         cursor->getGenotypes(markerIdx, geno, altFreq, altCounts, missingRate,
@@ -737,6 +812,7 @@ void runSAGELDPhenoMode(
     double minMacCutoff,
     double hweCutoff,
     bool saveResid,
+    bool gallop,
     const std::string &keepFile,
     const std::string &removeFile
 ) {
@@ -749,8 +825,11 @@ void runSAGELDPhenoMode(
 
     auto famIIDs = parseGenoIIDs(geno);
 
-    // Build the kept-subject filter: GRM ∩ (keep) − (remove)
-    auto grmIDs = SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, famIIDs);
+    // Build the kept-subject filter: GRM ∩ (keep) − (remove).  GALLOP ignores
+    // the sparse GRM entirely (relatedness is captured by the random effects),
+    // so the GRM intersection is dropped: kept = (keep) − (remove).
+    auto grmIDs = gallop ? std::unordered_set<std::string>{}
+                         : SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, famIIDs);
     auto keepSet = loadIIDsFromFile(keepFile);
     auto removeSet = loadIIDsFromFile(removeFile);
 
@@ -763,7 +842,9 @@ void runSAGELDPhenoMode(
         kept.insert(iid);
     }
     if (kept.empty())
-        throw std::runtime_error("SAGELD pheno mode: no subjects survive --keep / --remove / GRM intersection");
+        throw std::runtime_error(
+            gallop ? "GALLOP: no subjects survive --keep / --remove intersection"
+                   : "SAGELD pheno mode: no subjects survive --keep / --remove / GRM intersection");
 
     auto longData = nsSAGELDFit::parseLongPheno(
         phenoFile, phenoNames, covarNames, envNames[0], famIIDs, kept);
@@ -779,8 +860,11 @@ void runSAGELDPhenoMode(
         usedMask[fi / 64] |= (1ULL << (fi % 64));
     }
 
-    auto topo = loadGRMTopology(spgrmGrabFile, spgrmGctaFile, pairwiseIBDFile,
-                                longData.uniqueIIDs, famIIDs, N);
+    // GALLOP needs no sparse-GRM topology (no relatedness quadratic forms).
+    GRMTopology topo;
+    if (!gallop)
+        topo = loadGRMTopology(spgrmGrabFile, spgrmGctaFile, pairwiseIBDFile,
+                               longData.uniqueIIDs, famIIDs, N);
     auto genoData = makeGenoData(geno, usedMask, nFam, N, nSnpPerChunk);
 
     const int nPheno = static_cast<int>(phenoNames.size());
@@ -816,6 +900,20 @@ void runSAGELDPhenoMode(
                 phenoName.c_str(), fitMain.iterations, fitMain.sigma2,
                 fitMain.D(0, 0), fitMain.D(0, 1), fitMain.D(1, 0), fitMain.D(1, 1));
 
+        // ── GALLOP (exact Wald) branch ─────────────────────────────────
+        // No residual aggregation, no λ, no E-fit, no GRM quadratic forms:
+        // the per-marker Wald solve reads only the projection cache.
+        if (gallop) {
+            auto cache = std::make_shared<const nsSAGELDFit::GallopCache>(
+                nsSAGELDFit::buildGallopCache(
+                    longData, fitMain.D, fitMain.sigma2, fitMain.residPerRow));
+            tasks[p].phenoName = phenoName;
+            tasks[p].method = std::make_unique<GALLOPMethod>(std::move(cache), envNames[0]);
+            tasks[p].unionToLocal = identityMap;
+            tasks[p].nUsed = N;
+            return;
+        }
+
         Eigen::VectorXd Resid_G = nsSAGELDFit::aggregatePerIID(longData, fitMain.residPerRow);
         Eigen::VectorXd Resid_GxE = nsSAGELDFit::aggregateWeightedPerIID(
             longData, fitMain.residPerRow, longData.E);
@@ -832,7 +930,8 @@ void runSAGELDPhenoMode(
         // than 100 markers pass the screen, lambdaMean is NaN and the
         // downstream buildSAGELDArtifacts falls back to the closed-form OLS λ.
         const double R_GRM_R_E = computeRGRMR(Resid_E, topo);
-        auto gallopCache = nsSAGELDFit::buildGallopCache(longData, fitMain.D, fitMain.sigma2);
+        auto gallopCache = nsSAGELDFit::buildGallopCache(
+            longData, fitMain.D, fitMain.sigma2, fitMain.residPerRow);
         const double lambdaMean = estimateLambdaPerMarker(
             *genoData, N, Resid_E, R_GRM_R_E, zScoreECutoff,
             gallopCache, kLambdaSampleSize, phenoName);
@@ -919,9 +1018,10 @@ void runSAGELDPhenoMode(
         if (workerErr) std::rethrow_exception(workerErr);
     }
 
-    infoMsg("Running SAGELD marker tests via multiPhenoEngine (%d phenotype(s), %d threads)...",
-            nPheno, nthreads);
-    multiPhenoEngine(*genoData, tasks, outPrefix, "SAGELD",
+    const char *methodLabel = gallop ? "GALLOP" : "SAGELD";
+    infoMsg("Running %s marker tests via multiPhenoEngine (%d phenotype(s), %d threads)...",
+            methodLabel, nPheno, nthreads);
+    multiPhenoEngine(*genoData, tasks, outPrefix, methodLabel,
                      compression, compressionLevel, nthreads,
                      missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
 }
@@ -952,6 +1052,7 @@ void runSAGELD(
     double minMacCutoff,
     double hweCutoff,
     bool saveResid,
+    bool gallop,
     const std::string &keepFile,
     const std::string &removeFile
 ) {
@@ -964,6 +1065,8 @@ void runSAGELD(
         throw std::runtime_error("SAGELD: need either --resid-name (residual mode) or --pheno-name + --sageld-x (pheno mode)");
 
     if (isResidMode) {
+        if (gallop)
+            throw std::runtime_error("SAGELD: --sageld-method gallop requires --pheno-name (GALLOP needs the in-memory null-model projection cache and cannot consume a residual file)");
         if (saveResid)
             throw std::runtime_error("SAGELD: --save-resid requires --pheno-name (residual-input mode has no null model to save)");
         std::string resOut = outPrefix + ".SAGELD";
@@ -982,10 +1085,12 @@ void runSAGELD(
         throw std::runtime_error("SAGELD pheno mode: --sageld-x is required");
     if (covarNames.empty())
         throw std::runtime_error("SAGELD pheno mode: --covar-name is required (must include every --sageld-x variable)");
+    if (gallop && saveResid)
+        throw std::runtime_error("SAGELD: --save-resid is incompatible with --sageld-method gallop (GALLOP produces no residual vector)");
     runSAGELDPhenoMode(phenoFile, phenoNames, covarNames, envNames,
                        spgrmGrabFile, spgrmGctaFile, pairwiseIBDFile, geno,
                        outPrefix, compression, compressionLevel,
                        spaCutoff, nthreads, nSnpPerChunk,
                        missingCutoff, minMafCutoff, minMacCutoff, hweCutoff,
-                       saveResid, keepFile, removeFile);
+                       saveResid, gallop, keepFile, removeFile);
 }

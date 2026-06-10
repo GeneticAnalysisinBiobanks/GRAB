@@ -266,5 +266,6 @@ void runSPAmixPlus(
     const std::string &phenoNameSpec = {},
     const std::vector<std::string> &covarNames = {},
     bool saveResid = false,
-    uint64_t seed = 0                                      // ordinal surrogate-residual RNG seed
+    uint64_t seed = 0,                                     // ordinal surrogate-residual RNG seed
+    bool longitudinal = false                             // --longitudinal: fit Y ~ X + (1|IID), use R_G
 );

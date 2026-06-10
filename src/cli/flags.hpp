@@ -148,6 +148,22 @@ fitted phenotype (NaN entries as 'NA').  The file can be reloaded in
 a later invocation via --pheno PREFIX.null.resid --resid-name ....)"
 };
 
+inline const FlagDef kLongitudinal = {
+    "--longitudinal", nullptr,
+    "Treat --pheno as a long-format (repeated-measures) phenotype",
+    R"(SPACox / SPAmix / SPAGRM only.  --pheno must be a long-format file with
+one row per measurement (>= 1 row per IID), like the SAGELD pheno-mode
+input.  For each --pheno-name outcome a random-intercept linear mixed
+null model  Y ~ X + (1 | IID)  is fit (X = intercept + --covar-name
+covariates), and the per-IID aggregated residual  R_G = sum_j r_ij  is
+used as the per-subject residual for the marker test (the marginal MAIN
+genetic effect).  There is no environment / random-slope term, so
+--sageld-x and G x E are not involved.  Incompatible with --resid-name,
+--regression-model, and --sageld-x.  For SPAmix, every --pc-cols column
+must also appear in --covar-name (PCs are sourced from the long-format
+design).)"
+};
+
 inline const FlagDef kPcCols = {
     "--pc-cols", "COL_IDS", "Comma-separated PC column names (default: PC1,PC2,PC3,PC4)",
     R"(Selects columns from --covar or --pheno as principal components.
@@ -519,7 +535,7 @@ inline const FlagDef kSpasqrTaus = {
 
 inline const FlagDef kSageldX = {
     "--sageld-x", "COL_IDS",
-    "Comma-separated environment column name(s) for SAGELD G x E (pheno-input mode)",
+    "Environment column name(s) for SAGELD G x E; REQUIRED in pheno mode (with --pheno-name)",
     R"(Required for SAGELD's pheno-input mode together with --pheno-name and
 --covar-name.  Each name must match a numeric column of --pheno; the env
 column also has to be listed in --covar-name so it enters the fixed-effect
@@ -528,6 +544,24 @@ design.  For every (phenotype, env) pair the null model
 is fit by EM-ML internally, and the BLUP residuals are aggregated to per-
 IID (R_G, R_<E>, R_Gx<E>) before the marker-level G and G x E score tests
 run.  Multiple envs trigger a separate model per env.)"
+};
+
+inline const FlagDef kSageldMethod = {
+    "--sageld-method", "NAME",
+    "Variant for SAGELD pheno mode: 'sageld' (score test, default) or 'gallop' (exact Wald)",
+    R"(Selects the per-marker test for SAGELD's pheno-input mode (mirrors the
+develop-R SAGELD.NullModel UsedMethod argument).  Only meaningful with
+--pheno-name; ignored by residual mode (--resid-name).
+  sageld  (default)  score test on the per-IID combined residual
+                     R_GxE - lambda * R_G, with saddlepoint approximation
+                     and sparse-GRM relatedness correction.  Requires
+                     --sp-grm and --pairwise-ibd.
+  gallop             exact Sikorska et al. (2013) two-step Wald test for the
+                     genetic main effect (G) and the G x E interaction; emits
+                     BETA / SE / Pvalue per effect.  The sparse GRM and
+                     --pairwise-ibd are NOT used (relatedness is captured by
+                     the random intercept/slope).  Incompatible with
+                     --resid-name and --save-resid.)"
 };
 
 inline const FlagDef kSpasqrTol = {
@@ -562,11 +596,14 @@ inline const FlagDef kSpasqrHScale = {
 // dispatcher fits the null model in-process through --regression-model
 // before invoking the score test.
 inline constexpr const char *kPhenoNoteResidOrFit =
-    "    Residual mode: --resid-name COL_IDS    pre-computed residual columns\n"
-    "    Pheno mode:    --pheno-name COL_IDS    phenotype columns; null model fit in-process\n"
-    "                   --regression-model MODEL\n"
-    "                          auto | linear | logistic | cox | ordinal (default: auto)\n"
-    "                   --save-resid            write fitted residuals to PREFIX.null.resid";
+    "    Residual mode:     --resid-name COL_IDS    pre-computed residual columns\n"
+    "    Pheno mode:        --pheno-name COL_IDS    phenotype columns; null model fit in-process\n"
+    "                       --regression-model MODEL\n"
+    "                              auto | linear | logistic | cox | ordinal (default: auto)\n"
+    "                       --save-resid            write fitted residuals to PREFIX.null.resid\n"
+    "    Longitudinal mode: --pheno-name COL_IDS  --longitudinal  --covar-name COL_IDS\n"
+    "                       long-format --pheno (>= 1 row/IID); fits Y ~ X + (1 | IID) and uses\n"
+    "                       the per-IID residual R_G (marginal main effect; no --sageld-x / G x E)";
 
 // ── SPACox ─────────────────────────────────────────────────────────
 inline const FlagDef *const kSPACoxReq[] = {
@@ -575,6 +612,7 @@ inline const FlagDef *const kSPACoxReq[] = {
 };
 inline const FlagDef *const kSPACoxOpt[] = {
     &kCovar,       &kCovarName,        &kResidName,    &kPhenoName,   &kRegressionModel,  &kSaveResid,
+    &kLongitudinal,
     &kCovarPThresh, &kSpaZThresh,      &kSeed,
     &kThreads,      &kChunkSize,
     &kCompression, &kCompressionLevel,
@@ -600,6 +638,7 @@ inline const FlagDef *const kSPAGRMReq[] = {
 };
 inline const FlagDef *const kSPAGRMOpt[] = {
     &kResidName,  &kPhenoName,  &kRegressionModel,           &kSaveResid,
+    &kLongitudinal,
     &kCovar,      &kCovarName,
     &kSpaZThresh, &kOutlierIqr, &kSpagrmControlOutlier,      &kSeed,
     &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
@@ -624,7 +663,7 @@ inline const FlagDef *const kSAGELDReq[] = {
     nullptr
 };
 inline const FlagDef *const kSAGELDOpt[] = {
-    &kResidName, &kPhenoName, &kCovarName, &kSageldX,    &kSaveResid,
+    &kResidName, &kPhenoName, &kCovarName, &kSageldX,    &kSageldMethod, &kSaveResid,
     &kSpaZThresh, &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
     &kKeep,       &kRemove,  &kExtract,   &kExclude,
     &kGeno, &kMaf, &kMac, &kHwe, &kChr,
@@ -661,6 +700,7 @@ inline const FlagDef *const kSPAmixReq[] = {
 };
 inline const FlagDef *const kSPAmixOpt[] = {
     &kCovar,      &kCovarName,  &kResidName,    &kPhenoName,    &kRegressionModel, &kSaveResid,
+    &kLongitudinal,
     &kIndAfCoef,  &kOutlierIqr,
     &kSpaZThresh, &kSeed,
     &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
@@ -1054,7 +1094,7 @@ inline const FlagDef *const kInputFlags[] = {
     &kBgen,
     &kOut,         &kCompression, &kCompressionLevel,
     &kPheno,       &kCovar,       &kCovarName,
-    &kPhenoName,   &kResidName,   &kRegressionModel, &kSaveResid,
+    &kPhenoName,   &kResidName,   &kRegressionModel, &kSaveResid,    &kLongitudinal,
     &kPcCols,      &kRefAf,
     &kSpGrmPlink2, &kIndAfCoef,   &kPairwiseIbd,
     &kPredList,    &kPhenoTransform,
@@ -1074,6 +1114,7 @@ inline const FlagDef *const kNumericFlags[] = {
     &kSpasqrTaus, &kSpasqrTol,    &kSpasqrH,          &kSpasqrHScale,
     &kSpasqrMode,
     &kSageldX,
+    &kSageldMethod,
     nullptr
 };
 

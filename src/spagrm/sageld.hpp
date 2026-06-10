@@ -48,5 +48,6 @@ void runSAGELD(
     double minMacCutoff,
     double hweCutoff,
     bool saveResid = false,
+    bool gallop = false,
     const std::string &keepFile = {},
     const std::string &removeFile = {});

@@ -93,6 +93,18 @@ LMMFit fitRandomInterceptML(
     int maxIter = 10000,
     double tol = 1e-9);
 
+// Fit  y ~ X + (1 | IID)  with the full fixed-effects design X = data.X
+// (intercept in column 0) and a single subject random intercept.  Returns
+// per-row BLUP residuals r_ij = y_ij − X_ij β̂ − b̂_i; aggregatePerIID then
+// yields R_G_i = Σ_j r_ij.  Drives the --longitudinal main-effect input mode
+// of SPACox / SPAmix / SPAGRM.  The p = 1 case reproduces
+// fitRandomInterceptML.
+LMMFit fitRandomInterceptWithCovar(
+    const LongPhenoData &data,
+    const Eigen::VectorXd &y,
+    int maxIter = 10000,
+    double tol = 1e-9);
+
 // Σ_j r_ij — per-subject sum of per-row residuals.
 // Output length = data.uniqueIIDs.size().
 Eigen::VectorXd aggregatePerIID(
@@ -116,6 +128,15 @@ Eigen::VectorXd aggregateWeightedPerIID(
 // A21_i = Rot_i TT_i' X_i, and P = σ̂² · D̂⁻¹ (D̂ from fitRandomSlopeML).
 //
 // markerLambda(si, cache) → V[1,2] / V[1,1] for a single marker.
+//
+// The same cache also drives the exact GALLOP (Sikorska et al. 2013) per-marker
+// Wald test via markerGallop().  V (the 2×2 reduced information computed for λ)
+// equals σ²·I_γ, where I_γ = T_G' P T_G is the GALLOP information for the two
+// genotype effects T_G = [G, G·E].  The Wald solve needs only the numerator
+// ũ = (si' Tr0)ᵀ, where Tr0_i = TT_i' r0_i and r0 is the random-slope BLUP
+// residual y − Xβ̂ − Zb̂ (LMMFit::residPerRow); then  β̂ = V⁻¹ũ  (the σ² cancels)
+// and  SE_k = sig · √(V⁻¹)_kk  with sig = √σ².  See sageld_fit.cpp for the
+// per-subject Woodbury derivation.
 struct GallopCache {
     int nx = 0;        // ncol(X)
     int nSubj = 0;
@@ -125,16 +146,33 @@ struct GallopCache {
     Eigen::MatrixXd AtS;                 // nSubj × (2·nx)
     Eigen::MatrixXd Q;                   // nx × nx
     Eigen::LDLT<Eigen::MatrixXd> Qsolver;
+    Eigen::MatrixXd Tr0;                 // nSubj × 2: per-subject TT_i' r0_i (GALLOP numerator)
+    double sig = 0.0;                    // residual SD = √σ² (GALLOP SE scale)
 };
 
 GallopCache buildGallopCache(
     const LongPhenoData &data,
     const Eigen::MatrixXd &D,            // 2×2 random-effects covariance from fitMain
-    double sigma2                        // residual variance from fitMain
+    double sigma2,                       // residual variance from fitMain
+    const Eigen::VectorXd &residPerRow   // BLUP residual y − Xβ̂ − Zb̂ (LMMFit::residPerRow)
 );
 
 // Returns NaN if V[1,1] is non-positive (degenerate marker).
 double markerLambda(
+    const Eigen::Ref<const Eigen::VectorXd> &si,
+    const GallopCache &cache
+);
+
+// Per-marker exact GALLOP Wald estimate for the two genotype effects
+// [G (main), G×E (interaction)].  ok=false when V is not invertible (degenerate
+// marker) — caller NaN-fills.
+struct GallopMarker {
+    Eigen::Vector2d beta;   // (β_G, β_GxE)
+    Eigen::Vector2d se;     // (SE_G, SE_GxE)
+    bool ok = false;
+};
+
+GallopMarker markerGallop(
     const Eigen::Ref<const Eigen::VectorXd> &si,
     const GallopCache &cache
 );

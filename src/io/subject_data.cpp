@@ -510,13 +510,19 @@ void SubjectData::setGrmSubjects(std::unordered_set<std::string> grmIDs) {
     m_subjectSet.setGrmSubjects(std::move(grmIDs));
 }
 
+void SubjectData::setKeepSubjects(std::unordered_set<std::string> keepIDs) {
+    if (m_finalized) throw std::runtime_error("SubjectData::setKeepSubjects called after finalize");
+    m_keepSubjects = std::move(keepIDs);
+    m_hasKeepSubjects = true;
+}
+
 // finalize — intersect, build bitmask, reorder
 // ══════════════════════════════════════════════════════════════════════
 
 void SubjectData::finalize() {
     if (m_finalized) throw std::runtime_error("SubjectData::finalize already called");
-    if (!m_hasRawResid && !m_hasRawCovar &&
-        !m_hasRawPheno) throw std::runtime_error("SubjectData: no data files loaded before finalize");
+    if (!m_hasRawResid && !m_hasRawCovar && !m_hasRawPheno && !m_hasKeepSubjects)
+        throw std::runtime_error("SubjectData: no data files loaded before finalize");
 
     // ── Run the genotype→GRM→keep→remove pipeline via SubjectSet ──────
     m_subjectSet.finalize();
@@ -579,6 +585,11 @@ void SubjectData::finalize() {
             }
         }
         if (m_hasRawPheno && phenoMap.find(iid) == phenoMap.end()) {
+            m_usedMask[f / 64] &= ~(1ULL << (f % 64));
+            continue;
+        }
+        // ── In-memory keep filter (--longitudinal) ───────────────────
+        if (m_hasKeepSubjects && !m_keepSubjects.count(iid)) {
             m_usedMask[f / 64] &= ~(1ULL << (f % 64));
             continue;
         }

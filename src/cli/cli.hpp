@@ -18,10 +18,12 @@ struct Args {
     std::string residName;                          // comma-separated residual column names
     std::string regressionModel;                    // --regression-model: auto|linear|logistic|cox|ordinal
     bool saveResid = false;                         // --save-resid: write fitted residuals to PREFIX.null.resid
+    bool longitudinal = false;                       // --longitudinal: SPACox/SPAmix/SPAGRM fit Y ~ X + (1|IID), use R_G
 
     std::string pcCols = "PC1,PC2,PC3,PC4";         // comma-separated PC column names (default: PC1,PC2,PC3,PC4)
     std::string spasqrTaus = "0.1,0.3,0.5,0.7,0.9"; // default tau levels (SPAsqr)
     std::string sageldX;                            // --sageld-x: comma-separated env names for SAGELD pheno mode
+    std::string sageldMethod = "sageld";            // --sageld-method: 'sageld' (score, default) or 'gallop' (Wald)
     double spasqrTol = 1e-7;                          // --spasqr-tol (QMME convergence tolerance)
     double spasqrH = -1.0;                            // --spasqr-h (explicit bandwidth; -1 = auto)
     double spasqrHScale = -1.0;                       // --spasqr-h-scale (IQR divisor; -1 = auto: score=3, wald=10)

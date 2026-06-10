@@ -114,9 +114,8 @@ std::vector<PvarRecord> parsePvarFile(const std::string &path) {
         r.id = std::string(tokViews[colId]);
         r.ref = std::string(tokViews[colRef]);
         r.alt = std::string(tokViews[colAlt]);
-        // For multiallelic with comma-separated ALT, take only the first
-        auto comma = r.alt.find(',');
-        if (comma != std::string::npos) r.alt.resize(comma);
+        // ALT is preserved verbatim — multi-allelic records (comma-separated
+        // ALT) are detected and skipped by the PgenData constructor.
         records.push_back(std::move(r));
     }
 
@@ -202,17 +201,50 @@ PgenData::PgenData(
     m_alt.reserve(m_nMarkers);
     m_markerInfo.reserve(m_nMarkers);
 
+    // pgenlib's PgrGet*/PgrGetD/PgrGetDifflistOrGenovec functions collapse
+    // every non-REF allele into a single "ALT" category, so genotype calls
+    // carrying ALT2/ALT3/... are indistinguishable from ALT1.  Rather than
+    // silently report a misleading REF-vs-(any-non-REF) test under an ALT
+    // label that only names ALT1, multi-allelic variants are skipped here
+    // (matching the VCF and BGEN readers, which also drop n_allele != 2).
+    //
+    // The parallel arrays m_chr/m_pos/m_markerId/m_ref/m_alt are indexed by
+    // the original .pvar row number — which equals pgenlib's vidx and
+    // MarkerInfo::genoIndex — and must stay sized to m_nMarkers so that
+    // chr(genoIndex)/alt(genoIndex)/... remain valid for every retained
+    // variant.  Multi-allelic slots are populated with the first-listed ALT
+    // for safety; those slots are never reached by any chunk because the
+    // corresponding MarkerInfo entry is suppressed.
+    uint32_t nSkippedMultiallelic = 0;
     for (uint32_t i = 0; i < m_nMarkers; ++i) {
         auto &r = pvarRecords[i];
+        const auto commaPos = r.alt.find(',');
+        const bool isMultiallelic = (commaPos != std::string::npos);
+        std::string altCanon = isMultiallelic ? r.alt.substr(0, commaPos) : r.alt;
+
         m_chr.push_back(r.chrom);
         m_pos.push_back(r.pos);
         m_markerId.push_back(r.id);
         m_ref.push_back(r.ref);
-        m_alt.push_back(r.alt);
+        m_alt.push_back(altCanon);
+
+        if (isMultiallelic) {
+            ++nSkippedMultiallelic;
+            continue;
+        }
         // For pgen: REF = pvar REF, ALT = pvar ALT.
         // Genotype coding: 0 = hom_ref (0 alt), 1 = het (1 alt), 2 = hom_alt (2 alt).
         // This matches our convention: always count ALT.
-        m_markerInfo.push_back({r.chrom, r.pos, r.id, r.ref, r.alt, i});
+        m_markerInfo.push_back({r.chrom, r.pos, r.id, r.ref, std::move(altCanon), i});
+    }
+
+    if (nSkippedMultiallelic > 0) {
+        warnMsg("pgen: skipped %u multi-allelic variant(s) listed in %s; "
+                "pgenlib's biallelic reader collapses all non-REF alleles, "
+                "producing a misleading single-ALT label. "
+                "Split them with plink2 --make-pgen 'multiallelics-already-joined=split' "
+                "to retain them as separate biallelic records.",
+                nSkippedMultiallelic, pvarFile.c_str());
     }
 
     // ---- Apply --chr filter ----

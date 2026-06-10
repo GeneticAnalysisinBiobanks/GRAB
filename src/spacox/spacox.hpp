@@ -252,5 +252,6 @@ void runSPACox(
     const std::string &regressionModelStr = {},            // empty → residual-passthrough path
     const std::string &phenoNameSpec = {},                 // raw --pheno-name string (Cox: TIME:EVENT,...)
     bool saveResid = false,
-    uint64_t seed = 0                                      // ordinal surrogate-residual RNG seed
+    uint64_t seed = 0,                                     // ordinal surrogate-residual RNG seed
+    bool longitudinal = false                             // --longitudinal: fit Y ~ X + (1|IID), use R_G
 );
