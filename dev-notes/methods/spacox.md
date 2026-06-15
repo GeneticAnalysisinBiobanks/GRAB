@@ -345,26 +345,27 @@ If a user supplies residuals from a non-Cox null model (linear regression residu
 
 ## 7. Output Columns
 
-For each marker, `SPACoxMethod::getResultVec` writes three method-specific
+For each marker, `SPACoxMethod::getResultVec` writes five method-specific
 columns appended to the standard meta block
 (`CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC HWE_P`):
 
-| Column | Definition                                                                                  |
-|--------|---------------------------------------------------------------------------------------------|
-| `P`    | Two-sided p-value: normal approximation (16) when the absolute z-statistic is below `spaCutoff`, otherwise the saddlepoint p-value from (16)–(17). |
-| `BETA` | Score-test effect estimate $\hat\beta = S / \widehat{\mathbb{V}}(S)$, with $S$ and $\widehat{\mathbb{V}}(S)$ from (26).      |
-| `SE`   | Standard error $\widehat{\mathrm{SE}}(\hat\beta) = 1 / \sqrt{\widehat{\mathbb{V}}(S)}$.                                       |
+| Column   | Definition                                                                                  |
+|----------|---------------------------------------------------------------------------------------------|
+| `P`      | Two-sided p-value: normal approximation (16) when the absolute z-statistic is at or below `spaCutoff`, otherwise the saddlepoint p-value from (16)–(17). |
+| `Z`      | Z-score consistent with `P`: $Z = \operatorname{sign}(Z_{\mathrm{Norm}})\,\Phi^{-1}(1 - P/2)$, so $2\Phi(-\lvert Z\rvert) = P$ holds even after SPA re-calibrates `P` in the tails. Equal to `Z_Norm` in the normal-approximation regime. |
+| `Z_Norm` | Raw normal-approximation score z-statistic $Z_{\mathrm{Norm}} = S / \sqrt{\widehat{\mathbb{V}}(S)}$ (the value previously emitted as `Z`); not altered by SPA. |
+| `BETA`   | Score-test effect estimate $\hat\beta = S / \widehat{\mathbb{V}}(S)$, with $S$ and $\widehat{\mathbb{V}}(S)$ from (26).      |
+| `SE`     | Standard error $\widehat{\mathrm{SE}}(\hat\beta) = 1 / \sqrt{\widehat{\mathbb{V}}(S)}$.                                       |
 
 Because Cox martingale residuals (and any residual vector centred via §6.3)
 satisfy $\sum_i R_i = 0$, the score is already mean-zero and the reported
 $\hat\beta$ is on the log-hazard-ratio scale of the null Cox model that
-produced the residuals. The score-test z-statistic remains exactly
-$Z = \hat\beta / \widehat{\mathrm{SE}}(\hat\beta)$ and is recoverable from
-the two columns. When the covariate-adjusted SPA branch (stage 2) fires,
-both `BETA` and `SE` are recomputed with the adjusted variance
+produced the residuals. `Z_Norm` $= \hat\beta / \widehat{\mathrm{SE}}(\hat\beta)$
+is the raw score-test z; `Z` is the SPA-calibrated z that reproduces the
+reported `P`. When the covariate-adjusted SPA branch (stage 2) fires, both
+`BETA` and `SE` are recomputed with the adjusted variance
 $\widehat{\mathbb{V}}_{\mathrm{adj}}(S) = \mathrm{varResid} \cdot
-\|\mathrm{adjGVec}\|^2$, so the two columns continue to encode the same
-$Z$ that the p-value uses. SPA only re-calibrates `P` in the tails; it
-does not alter `BETA` or `SE`. Markers with $\widehat{\mathbb{V}}(S) \le 0$
-(monomorphic, degenerate, or rejected by QC) report `NA` for `BETA` and
-`SE`.
+\|\mathrm{adjGVec}\|^2$. SPA only re-calibrates `P` and the derived `Z` in the
+tails; it does not alter `Z_Norm`, `BETA`, or `SE`. Markers with
+$\widehat{\mathbb{V}}(S) \le 0$ (monomorphic, degenerate, or rejected by QC)
+report `NA` for `Z`, `Z_Norm`, `BETA`, and `SE`.

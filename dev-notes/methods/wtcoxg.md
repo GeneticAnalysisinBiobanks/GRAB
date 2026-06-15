@@ -604,17 +604,21 @@ engine; see [src/engine/marker.hpp](../../src/engine/marker.hpp).
 
 ## 7. Output columns
 
-For each marker, `WtCoxGMethod::getResultVec` appends five
+For each marker, `WtCoxGMethod::getResultVec` appends nine
 method-specific columns after the standard meta block
 (`CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC HWE_P`):
 
-| Column     | Definition                                                                                            |
-|------------|-------------------------------------------------------------------------------------------------------|
-| `p_ext`    | Conditional p-value using the external reference: $p_{\mathrm{con}}^{\mathrm{B}}$ from (23) when the marker passes the screen, $p_{\mathrm{con}}^{\mathrm{A}}$ from (20) when it does not. Reported as `NA` if the external branch is skipped (missing $p_{\mathrm{bat}}$, MAC below the threshold of Section 6, or $\hat V(S) \le 0$). |
-| `p_noext`  | Internal-only p-value: marginal SPA p-value $p_{\mathrm{SPA}}$ from (38) computed at $b = 0$ with $\widehat{\mathbb{V}}(\hat f_{\mathrm{ext}}) = 0$ and $\rho_\bullet = \rho_{\mathrm{int}}$. |
-| `z_ext`    | Score-axis z-score $Z = S / \sqrt{\widehat{\mathbb{V}}_1(S)}$ associated with `p_ext` (computed at the combined $\hat f$). |
-| `z_noext`  | Score-axis z-score $Z = S / \sqrt{V_{\mathrm{int},0}}$ associated with `p_noext`. |
-| `p_batch`  | Per-marker batch-effect p-value $p_{\mathrm{bat}}$ from (6).                                          |
+| Column         | Definition                                                                                            |
+|----------------|-------------------------------------------------------------------------------------------------------|
+| `P_EXT`        | Conditional p-value using the external reference: $p_{\mathrm{con}}^{\mathrm{B}}$ from (23) when the marker passes the screen, $p_{\mathrm{con}}^{\mathrm{A}}$ from (20) when it does not. Reported as `NA` if the external branch is skipped (missing $p_{\mathrm{bat}}$, MAC below the threshold of Section 6, or $\hat V(S) \le 0$). |
+| `P_NOEXT`      | Internal-only p-value: marginal SPA p-value $p_{\mathrm{SPA}}$ from (38) computed at $b = 0$ with $\widehat{\mathbb{V}}(\hat f_{\mathrm{ext}}) = 0$ and $\rho_\bullet = \rho_{\mathrm{int}}$. |
+| `Z_EXT`        | Z-score consistent with `P_EXT`: $\operatorname{sign}(Z_{\mathrm{Norm,EXT}})\,\Phi^{-1}(1 - P_{\mathrm{EXT}}/2)$, so $2\Phi(-\lvert Z_{\mathrm{EXT}}\rvert) = P_{\mathrm{EXT}}$. Because the external-reference weighting re-weights the score variance, this differs from the raw score z `Z_Norm_EXT` even outside the SPA tail. |
+| `Z_Norm_EXT`   | Raw score-axis z $S / \sqrt{\widehat{\mathbb{V}}_1(S)}$ at the combined $\hat f$ (the value previously emitted as `z_ext`); not altered by SPA. |
+| `Z_NOEXT`      | Z-score consistent with `P_NOEXT` (same construction as `Z_EXT`). |
+| `Z_Norm_NOEXT` | Raw score-axis z $S / \sqrt{V_{\mathrm{int},0}}$ associated with `P_NOEXT` (the value previously emitted as `z_noext`). |
+| `P_BAT`        | Per-marker batch-effect p-value $p_{\mathrm{bat}}$ from (6).                                          |
+| `PI_BAT`       | Batch-effect screen mixing weight (true-positive rate) carried from the per-batch null fit. |
+| `VAR_BAT`      | Batch-effect variance estimate $\hat\sigma^2$ carried from the per-batch null fit. |
 
 The dispatcher entry points are `runWtCoxGPheno` (single phenotype) and
 `runWtCoxG` (multi-phenotype) in

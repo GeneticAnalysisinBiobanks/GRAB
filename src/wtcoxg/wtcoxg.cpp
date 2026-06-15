@@ -586,7 +586,7 @@ SpaResult spaGOneSnpHomoFromScalars(
     if (S_var <= 0.0) return {NaN::quiet_NaN(), NaN::quiet_NaN(), S_raw, NaN::quiet_NaN()};
 
     double z = S / std::sqrt(S_var);
-    if (std::abs(z) < SPA_Cutoff) {
+    if (std::abs(z) <= SPA_Cutoff) {
         double pval_norm = std::min(1.0, 2.0 * math::pnorm(-std::abs(z)));
         return {pval_norm, pval_norm, S_raw, z};
     }
@@ -1296,7 +1296,7 @@ std::unique_ptr<MethodBase> WtCoxGMethod::clone() const {
 }
 
 std::string WtCoxGMethod::getHeaderColumns() const {
-    return "\tP_EXT\tP_NOEXT\tZ_EXT\tZ_NOEXT\tP_BAT\tPI_BAT\tVAR_BAT";
+    return "\tP_EXT\tP_NOEXT\tZ_EXT\tZ_Norm_EXT\tZ_NOEXT\tZ_Norm_NOEXT\tP_BAT\tPI_BAT\tVAR_BAT";
 }
 
 void WtCoxGMethod::prepareChunk(const std::vector<uint64_t> &gIndices) {
@@ -1365,8 +1365,10 @@ void WtCoxGMethod::getResultVec(
 
     result.push_back(res_ext.pval);
     result.push_back(res_noext.pval);
-    result.push_back(res_ext.zscore);
-    result.push_back(res_noext.zscore);
+    result.push_back(math::zFromPval(res_ext.pval, res_ext.zscore));     // Z_EXT (p-consistent)
+    result.push_back(res_ext.zscore);                                    // Z_Norm_EXT
+    result.push_back(math::zFromPval(res_noext.pval, res_noext.zscore)); // Z_NOEXT (p-consistent)
+    result.push_back(res_noext.zscore);                                  // Z_Norm_NOEXT
     result.push_back(info.pvalue_bat);
     result.push_back(info.TPR);
     result.push_back(info.sigma2);
@@ -1494,11 +1496,13 @@ void WtCoxGMethod::processScoreBatch(
 
         auto &r = results[b];
         r.clear();
-        r.reserve(7);
+        r.reserve(9);
         r.push_back(res_ext.pval);
         r.push_back(res_noext.pval);
-        r.push_back(res_ext.zscore);
-        r.push_back(res_noext.zscore);
+        r.push_back(math::zFromPval(res_ext.pval, res_ext.zscore));     // Z_EXT (p-consistent)
+        r.push_back(res_ext.zscore);                                    // Z_Norm_EXT
+        r.push_back(math::zFromPval(res_noext.pval, res_noext.zscore)); // Z_NOEXT (p-consistent)
+        r.push_back(res_noext.zscore);                                  // Z_Norm_NOEXT
         r.push_back(info.pvalue_bat);
         r.push_back(info.TPR);
         r.push_back(info.sigma2);

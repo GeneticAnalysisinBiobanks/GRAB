@@ -221,20 +221,23 @@ class SAGELDMethod : public MethodBase {
     }
 
     int resultSize() const override {
-        return 4 + 4 * static_cast<int>(m_envs.size());
+        return 4 + 5 * static_cast<int>(m_envs.size());
     }
 
-    // Paired schema, one (P, Z, BETA, SE) quadruple per test (G main effect
-    // followed by each env's G×E test):
+    // Schema: a 4-wide G main-effect block (normal-approx only, so its Z is
+    // already p-consistent and needs no Z_Norm) followed by a 5-wide block per
+    // env G×E test (SPA score test, so the p-consistent Z and the raw-score
+    // Z_Norm diverge in the tails):
     //   col 0..3      :  P_G  Z_G  BETA_G  SE_G
-    //   col 4 + 4·e+0 :  P_Gx<Ee>
-    //   col 4 + 4·e+1 :  Z_Gx<Ee>
-    //   col 4 + 4·e+2 :  BETA_Gx<Ee>
-    //   col 4 + 4·e+3 :  SE_Gx<Ee>
+    //   col 4 + 5·e+0 :  P_Gx<Ee>
+    //   col 4 + 5·e+1 :  Z_Gx<Ee>        (p-consistent: 2·pnorm(−|Z|)=P)
+    //   col 4 + 5·e+2 :  Z_Norm_Gx<Ee>   (raw Score/√Var)
+    //   col 4 + 5·e+3 :  BETA_Gx<Ee>
+    //   col 4 + 5·e+4 :  SE_Gx<Ee>
     std::string getHeaderColumns() const override {
         std::string h = "\tP_G\tZ_G\tBETA_G\tSE_G";
         for (const auto &n : m_envNames)
-            h += "\tP_Gx" + n + "\tZ_Gx" + n + "\tBETA_Gx" + n + "\tSE_Gx" + n;
+            h += "\tP_Gx" + n + "\tZ_Gx" + n + "\tZ_Norm_Gx" + n + "\tBETA_Gx" + n + "\tSE_Gx" + n;
         return h;
     }
 
@@ -245,7 +248,7 @@ class SAGELDMethod : public MethodBase {
         std::vector<double> &result
     ) override {
         const int nE = static_cast<int>(m_envs.size());
-        result.assign(4 + 4 * nE, std::numeric_limits<double>::quiet_NaN());
+        result.assign(4 + 5 * nE, std::numeric_limits<double>::quiet_NaN());
 
         const double MAF = std::min(altFreq, 1.0 - altFreq);
         const double G_var = 2.0 * MAF * (1.0 - MAF);
@@ -268,9 +271,10 @@ class SAGELDMethod : public MethodBase {
                                     .getMarkerPvalFromScore(centeredScore, altFreq, zGxE, &scoreVar);
             if (scoreVar > 0.0) {
                 const double sdE = std::sqrt(scoreVar);
-                writePZBetaSe(result, 4 + 4 * i, pGxE, zGxE, centeredScore / scoreVar, 1.0 / sdE);
+                writePZZnormBetaSe(result, 4 + 5 * i, pGxE, math::zFromPval(pGxE, zGxE), zGxE,
+                                   centeredScore / scoreVar, 1.0 / sdE);
             } else {
-                result[4 + 4 * i + 0] = pGxE; // P even when var=0 (SPA may still return finite p)
+                result[4 + 5 * i + 0] = pGxE; // P even when var=0 (SPA may still return finite p)
             }
         }
     }
@@ -338,7 +342,7 @@ class SAGELDMethod : public MethodBase {
 
         for (int b = 0; b < B; ++b) {
             auto &out = results[b];
-            out.assign(4 + 4 * nE, std::numeric_limits<double>::quiet_NaN());
+            out.assign(4 + 5 * nE, std::numeric_limits<double>::quiet_NaN());
 
             const double altFreq = altFreqs[b];
             const double MAF = std::min(altFreq, 1.0 - altFreq);
@@ -367,9 +371,10 @@ class SAGELDMethod : public MethodBase {
                                         .getMarkerPvalFromScore(centeredScore, altFreq, zGxE, &scoreVar);
                 if (scoreVar > 0.0) {
                     const double sdE = std::sqrt(scoreVar);
-                    writePZBetaSe(out, 4 + 4 * e, pGxE, zGxE, centeredScore / scoreVar, 1.0 / sdE);
+                    writePZZnormBetaSe(out, 4 + 5 * e, pGxE, math::zFromPval(pGxE, zGxE), zGxE,
+                                       centeredScore / scoreVar, 1.0 / sdE);
                 } else {
-                    out[4 + 4 * e + 0] = pGxE;
+                    out[4 + 5 * e + 0] = pGxE;
                 }
             }
         }
@@ -389,6 +394,21 @@ class SAGELDMethod : public MethodBase {
         out[offset + 1] = z;
         out[offset + 2] = beta;
         out[offset + 3] = se;
+    }
+
+    // Write (P, Z, Z_Norm, BETA, SE) into out at offset, for the SPA G×E
+    // blocks.  zP is the p-consistent z (2·pnorm(−|zP|)=P after SPA); zNorm
+    // is the raw score z (Score/√Var).
+    static void writePZZnormBetaSe(
+        std::vector<double> &out,
+        size_t offset,
+        double p, double zP, double zNorm, double beta, double se
+    ) {
+        out[offset + 0] = p;
+        out[offset + 1] = zP;
+        out[offset + 2] = zNorm;
+        out[offset + 3] = beta;
+        out[offset + 4] = se;
     }
 
     Eigen::VectorXd m_resid_G;

@@ -16,6 +16,7 @@
 
 #include "engine/marker.hpp"          // MethodBase
 #include "geno_factory/geno_data.hpp" // GenoSpec
+#include "util/math_helper.hpp"       // math::zFromPval
 
 namespace nsSPAGRM {
 
@@ -222,11 +223,11 @@ class SPAGRMMethod : public MethodBase {
     }
 
     int resultSize() const override {
-        return 4;
+        return 5;
     }
 
     std::string getHeaderColumns() const override {
-        return "\tP\tZ\tBETA\tSE";
+        return "\tP\tZ\tZ_Norm\tBETA\tSE";
     }
 
     void getResultVec(
@@ -339,13 +340,15 @@ class SPAGRMMethod : public MethodBase {
     }
 
   private:
-    // Emit (P, Z, BETA, SE) using the SPAGRM score-test reduction
-    //   Z    = Score / sqrt(Var(S))
-    //   BETA = Score / Var(S)
-    //   SE   = 1 / sqrt(Var(S))
-    // (so Z = BETA × SE).  Var(S) ≤ 0 marks monomorphic / degenerate markers;
-    // Z, BETA and SE become NaN there so downstream code recognises them as
-    // missing.
+    // Emit (P, Z, Z_Norm, BETA, SE) using the SPAGRM score-test reduction
+    //   Z_Norm = Score / sqrt(Var(S))           (raw normal-approx score z)
+    //   Z      = sign(Z_Norm) · Phi^{-1}(1−p/2)  (z consistent with p, so
+    //            2·pnorm(−|Z|) == p even after SPA recalibrates p)
+    //   BETA   = Score / Var(S)
+    //   SE     = 1 / sqrt(Var(S))
+    // (so Z_Norm = BETA × SE).  Var(S) ≤ 0 marks monomorphic / degenerate
+    // markers; Z, Z_Norm, BETA and SE become NaN there so downstream code
+    // recognises them as missing.
     static void pushPvalZBetaSe(
         double p,
         double score,
@@ -353,18 +356,21 @@ class SPAGRMMethod : public MethodBase {
         std::vector<double> &out
     ) {
         out.clear();
-        out.reserve(4);
+        out.reserve(5);
         out.push_back(p);
         if (scoreVar > 0.0) {
             const double sd = std::sqrt(scoreVar);
-            out.push_back(score / sd);          // Z
-            out.push_back(score / scoreVar);    // BETA
-            out.push_back(1.0 / sd);            // SE
+            const double zNorm = score / sd;
+            out.push_back(math::zFromPval(p, zNorm)); // Z (p-consistent)
+            out.push_back(zNorm);                     // Z_Norm (raw score z)
+            out.push_back(score / scoreVar);          // BETA
+            out.push_back(1.0 / sd);                  // SE
         } else {
             const double nan = std::numeric_limits<double>::quiet_NaN();
-            out.push_back(nan);
-            out.push_back(nan);
-            out.push_back(nan);
+            out.push_back(nan); // Z
+            out.push_back(nan); // Z_Norm
+            out.push_back(nan); // BETA
+            out.push_back(nan); // SE
         }
     }
 

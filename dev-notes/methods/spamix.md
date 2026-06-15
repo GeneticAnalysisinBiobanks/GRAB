@@ -357,19 +357,22 @@ This avoids numerical instability in the SPA for statistics close to the mean.
 
 ## 6. Output Columns
 
-For each marker, `SPAmixPlusMethod` writes three method-specific columns
+For each marker, `SPAmixPlusMethod` writes five method-specific columns
 appended to the standard meta block
 (`CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC HWE_P`):
 
-| Column | Definition |
-|--------|------------|
-| `P`    | Two-sided p-value: normal approximation (46) when the absolute z-statistic in (45) is below `spaCutoff`, otherwise the saddlepoint p-value from (43)–(44). |
-| `BETA` | Score-test effect estimate $\hat\beta = (S - \mathbb{E}[S]) / \widehat{\mathbb{V}}(S)$. |
-| `SE`   | Standard error $\widehat{\mathrm{SE}}(\hat\beta) = 1 / \sqrt{\widehat{\mathbb{V}}(S)}$. |
+| Column   | Definition |
+|----------|------------|
+| `P`      | Two-sided p-value: normal approximation (46) when the absolute z-statistic in (45) is at or below `spaCutoff`, otherwise the saddlepoint p-value from (43)–(44). |
+| `Z`      | Z-score consistent with `P`: $Z = \operatorname{sign}(Z_{\mathrm{Norm}})\,\Phi^{-1}(1 - P/2)$, so $2\Phi(-\lvert Z\rvert) = P$ holds even after SPA. Equal to `Z_Norm` in the normal-approximation regime. |
+| `Z_Norm` | Raw normal-approximation z-statistic of (45), $Z_{\mathrm{Norm}} = (S - \mathbb{E}[S]) / \sqrt{\widehat{\mathbb{V}}(S)}$ (the value previously emitted as `Z`); not altered by SPA. |
+| `BETA`   | Score-test effect estimate $\hat\beta = (S - \mathbb{E}[S]) / \widehat{\mathbb{V}}(S)$. |
+| `SE`     | Standard error $\widehat{\mathrm{SE}}(\hat\beta) = 1 / \sqrt{\widehat{\mathbb{V}}(S)}$. |
 
-The score-test z-statistic of (45) is not emitted as a separate column; it is
-recoverable as $Z = \hat\beta / \widehat{\mathrm{SE}}(\hat\beta)$. The
-saddlepoint adjustment re-calibrates only `P` in the tails; both `BETA`
-and `SE` consume the same nominal $\widehat{\mathbb{V}}(S)$ that the
-normal approximation uses. Markers with $\widehat{\mathbb{V}}(S) \le 0$
-(monomorphic or rejected by QC) report `NA` for `BETA` and `SE`.
+`Z_Norm` $= \hat\beta / \widehat{\mathrm{SE}}(\hat\beta)$ is the raw score-test
+z; `Z` is the SPA-calibrated z that reproduces the reported `P`. The
+saddlepoint adjustment re-calibrates only `P` and the derived `Z` in the
+tails; `Z_Norm`, `BETA`, and `SE` consume the same nominal
+$\widehat{\mathbb{V}}(S)$ that the normal approximation uses. Markers with
+$\widehat{\mathbb{V}}(S) \le 0$ (monomorphic or rejected by QC) report `NA`
+for `Z`, `Z_Norm`, `BETA`, and `SE`.

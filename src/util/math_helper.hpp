@@ -76,6 +76,19 @@ inline double qnorm(
     return boost::math::quantile(boost::math::complement(dist, p));
 }
 
+// Two-sided p-value → signed z such that 2*pnorm(-|z|) == p, with the sign
+// taken from zNormForSign.  Used to emit the "Z" column that is consistent
+// with the (possibly SPA-recalibrated) p-value, alongside the raw normal
+// score z "Z_Norm".  qnorm(p/2, lower_tail=false) routes through Boost's
+// complement, so a tiny p (e.g. 1e-300) keeps full precision instead of
+// collapsing via 1 - p/2.  Degenerate markers propagate NaN from either arg.
+inline double zFromPval(double p, double zNormForSign) {
+    if (std::isnan(p) || std::isnan(zNormForSign))
+        return std::numeric_limits<double>::quiet_NaN();
+    const double sign = (zNormForSign >= 0.0) ? 1.0 : -1.0;
+    return sign * qnorm(0.5 * p, 0.0, 1.0, /*lower_tail=*/false);
+}
+
 // Chi-squared quantile.
 inline double qchisq(
     double p,

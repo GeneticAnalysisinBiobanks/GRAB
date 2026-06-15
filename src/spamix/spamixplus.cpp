@@ -327,7 +327,7 @@ double SPAmixPlusMethod::markerPvalFromAF(
 
     zScore = (rawScore - S_mean) / std::sqrt(VarS);
     outVarS = VarS;
-    if (std::abs(zScore) < m_spaCutoff) {
+    if (std::abs(zScore) <= m_spaCutoff) {
         return 2.0 * math::pnorm(-std::abs(zScore));
     }
 
@@ -406,7 +406,8 @@ void SPAmixPlusMethod::getResultVec(
     const double beta  = (sqrtVarS > 0.0) ? zScore / sqrtVarS  : nan;       // BETA = Score / Var
     const double se    = (sqrtVarS > 0.0) ? 1.0    / sqrtVarS  : nan;       // SE   = 1 / sqrt(Var)
     result.push_back(pval);
-    result.push_back(zOut);
+    result.push_back(math::zFromPval(pval, zOut)); // Z (p-consistent)
+    result.push_back(zOut);                        // Z_Norm (raw score z)
     result.push_back(beta);
     result.push_back(se);
 }
@@ -487,9 +488,10 @@ void SPAmixPlusMethod::processScoreBatch(
 
         auto &r = results[b];
         r.clear();
-        r.reserve(4);
+        r.reserve(5);
         r.push_back(pval);
-        r.push_back(zOut);
+        r.push_back(math::zFromPval(pval, zOut)); // Z (p-consistent)
+        r.push_back(zOut);                        // Z_Norm (raw score z)
         r.push_back(beta);
         r.push_back(se);
     }
@@ -556,9 +558,10 @@ void SPAmixPlusMethod::getResultBatch(
 
             auto &r = results[b];
             r.clear();
-            r.reserve(4);
+            r.reserve(5);
             r.push_back(pval);
-            r.push_back(zOut);
+            r.push_back(math::zFromPval(pval, zOut)); // Z (p-consistent)
+            r.push_back(zOut);                        // Z_Norm (raw score z)
             r.push_back(beta);
             r.push_back(se);
         }
@@ -584,9 +587,10 @@ void SPAmixPlusMethod::getResultBatch(
 
         auto &r = results[b];
         r.clear();
-        r.reserve(4);
+        r.reserve(5);
         r.push_back(pval);
-        r.push_back(zOut);
+        r.push_back(math::zFromPval(pval, zOut)); // Z (p-consistent)
+        r.push_back(zOut);                        // Z_Norm (raw score z)
         r.push_back(beta);
         r.push_back(se);
     }

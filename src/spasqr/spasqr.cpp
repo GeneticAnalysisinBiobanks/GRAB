@@ -523,7 +523,7 @@ class SPAsqrMethod : public MethodBase {
     }
 
     int resultSize() const override {
-        return 2 * m_ntaus + 1;
+        return 3 * m_ntaus + 1;
     }
 
     std::string getHeaderColumns() const override {
@@ -534,12 +534,16 @@ class SPAsqrMethod : public MethodBase {
                 oss << "\tP_" << m_tauLabels[i];
             for (int i = 0; i < m_ntaus; ++i)
                 oss << "\tZ_" << m_tauLabels[i];
+            for (int i = 0; i < m_ntaus; ++i)
+                oss << "\tZ_Norm_" << m_tauLabels[i];
         } else {
             oss << "\tP_CCT";
             for (int i = 1; i <= m_ntaus; ++i)
                 oss << "\tP_tau" << i;
             for (int i = 1; i <= m_ntaus; ++i)
                 oss << "\tZ_tau" << i;
+            for (int i = 1; i <= m_ntaus; ++i)
+                oss << "\tZ_Norm_tau" << i;
         }
         return oss.str();
     }
@@ -697,7 +701,7 @@ class SPAsqrMethod : public MethodBase {
         for (int b = 0; b < B; ++b) {
             auto &result = results[b];
             result.clear();
-            result.reserve(2 * m_ntaus + 1);
+            result.reserve(3 * m_ntaus + 1);
 
             const double *pvals   = pBuf + b * m_ntaus;
             const double *zScores = zBuf + b * m_ntaus;
@@ -708,7 +712,9 @@ class SPAsqrMethod : public MethodBase {
             for (int i = 0; i < m_ntaus; ++i)
                 result.push_back(pvals[i]);
             for (int i = 0; i < m_ntaus; ++i)
-                result.push_back(zScores[i]);
+                result.push_back(math::zFromPval(pvals[i], zScores[i])); // Z_τ (p-consistent)
+            for (int i = 0; i < m_ntaus; ++i)
+                result.push_back(zScores[i]);                            // Z_Norm_τ (raw)
         }
     }
 
@@ -733,7 +739,7 @@ class SPAsqrMethod : public MethodBase {
         std::vector<double> &result
     ) {
         result.clear();
-        result.reserve(2 * m_ntaus + 1);
+        result.reserve(3 * m_ntaus + 1);
 
         // Stack arrays — ntaus is always small (≤20).
         double zScores[20];
@@ -754,7 +760,9 @@ class SPAsqrMethod : public MethodBase {
         for (int i = 0; i < m_ntaus; ++i)
             result.push_back(pvals[i]);
         for (int i = 0; i < m_ntaus; ++i)
-            result.push_back(zScores[i]);
+            result.push_back(math::zFromPval(pvals[i], zScores[i])); // Z_τ (p-consistent)
+        for (int i = 0; i < m_ntaus; ++i)
+            result.push_back(zScores[i]);                            // Z_Norm_τ (raw)
     }
 
 };

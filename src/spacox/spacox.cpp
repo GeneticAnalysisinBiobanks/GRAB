@@ -436,7 +436,7 @@ double SPACoxMethod::getMarkerPvalCore(
     zScore = S / std::sqrt(VarS);
 
     // Normal approximation if |z| below SPA cutoff
-    if (std::abs(zScore) < m_spaCutoff) return 2.0 * math::pnorm(-std::abs(zScore));
+    if (std::abs(zScore) <= m_spaCutoff) return 2.0 * math::pnorm(-std::abs(zScore));
 
     // ---- Stage 1: unadjusted SPA with non-zero index optimisation ----
     double sqrtVarS = std::sqrt(VarS);
@@ -543,12 +543,15 @@ void SPACoxMethod::getResultVec(
     result.push_back(pval);
     if (scoreVar > 0.0) {
         const double sd = std::sqrt(scoreVar);
-        result.push_back(S / sd);              // Z
-        result.push_back(S / scoreVar);        // BETA
-        result.push_back(1.0 / sd);            // SE
+        const double zNorm = S / sd;
+        result.push_back(math::zFromPval(pval, zNorm)); // Z (p-consistent)
+        result.push_back(zNorm);                        // Z_Norm (raw score z)
+        result.push_back(S / scoreVar);                 // BETA
+        result.push_back(1.0 / sd);                     // SE
     } else {
         const double nan = std::numeric_limits<double>::quiet_NaN();
         result.push_back(nan);                  // Z
+        result.push_back(nan);                  // Z_Norm
         result.push_back(nan);                  // BETA
         result.push_back(nan);                  // SE
     }
@@ -597,19 +600,21 @@ void SPACoxMethod::getResultBatch(
     for (int b = 0; b < B; ++b) {
         auto &r = results[b];
         r.clear();
-        r.reserve(4);
+        r.reserve(5);
         double zScore, scoreVar;
         double pval =
             getMarkerPvalCore(GBatch.col(b), altFreqs[b], scores[b], zScore, scoreVar);
         r.push_back(pval);
         if (scoreVar > 0.0) {
             const double sd = std::sqrt(scoreVar);
-            r.push_back(scores[b] / sd);          // Z
-            r.push_back(scores[b] / scoreVar);    // BETA
-            r.push_back(1.0 / sd);                // SE
+            const double zNorm = scores[b] / sd;
+            r.push_back(math::zFromPval(pval, zNorm)); // Z (p-consistent)
+            r.push_back(zNorm);                        // Z_Norm (raw score z)
+            r.push_back(scores[b] / scoreVar);         // BETA
+            r.push_back(1.0 / sd);                     // SE
         } else {
             const double nan = std::numeric_limits<double>::quiet_NaN();
-            r.push_back(nan); r.push_back(nan); r.push_back(nan);
+            r.push_back(nan); r.push_back(nan); r.push_back(nan); r.push_back(nan);
         }
     }
 }

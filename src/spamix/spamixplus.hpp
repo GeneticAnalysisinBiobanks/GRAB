@@ -101,11 +101,11 @@ class SPAmixPlusMethod : public MethodBase {
     std::unique_ptr<MethodBase> clone() const override;
 
     int resultSize() const override {
-        return 4;
+        return 5;
     }
 
     std::string getHeaderColumns() const override {
-        return "\tP\tZ\tBETA\tSE";
+        return "\tP\tZ\tZ_Norm\tBETA\tSE";
     }
 
     void prepareChunk(const std::vector<uint64_t> &gIndices) override;

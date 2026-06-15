@@ -1015,7 +1015,7 @@ std::pair<double, double> spaLocalPval(
     double pNorm = 2.0 * boost::math::cdf(boost::math::complement(norm, std::abs(z)));
     if (pNorm <= 0.0) pNorm = MIN_P_VALUE;
 
-    if (std::abs(z) < spaCutoff || outlier.posOutlier.empty()) {
+    if (std::abs(z) <= spaCutoff || outlier.posOutlier.empty()) {
         return {pNorm, pNorm};
     }
 

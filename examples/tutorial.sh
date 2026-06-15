@@ -61,6 +61,19 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${OUT_DIR}/sageld
 
+## ── SAGELD (GALLOP mode): exact two-step Wald test (G and GxTIME) ──────
+# GALLOP captures relatedness through the random intercept/slope, so it
+# takes neither --sp-grm nor --pairwise-ibd.
+build/grab2 \
+  --method SAGELD \
+  --sageld-method gallop \
+  --pheno examples/long_pheno \
+  --pheno-name Long1,Long2 \
+  --covar-name MALE,TIME,PC1,PC2 \
+  --sageld-x TIME \
+  --pfile examples/1kg \
+  --out ${OUT_DIR}/sageld_gallop
+
 ## ── Utility: int-pheno (inverse-normal transform; input to SPAsqr) ────
 build/grab2 \
   --int-pheno \
