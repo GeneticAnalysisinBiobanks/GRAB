@@ -170,3 +170,10 @@ paper(s) listed below:
 - **SAGELD** — Xu *et al* (in prep). Leveraging longitudinal data to boost statistical power for gene-environment interaction analysis.
 - **SPAsqr** — Heng *et al* (in prep). Discovering and dissecting heterogeneous genetic associations with genome-wide smoothed quantile regression
 - **LEAF** — Li *et al* (in prep). Leveraging external allele frequency to boost powers of genome-wide association studies.
+
+## Contact
+
+Correspondence regarding GRAB2 — including bug reports, feature
+requests, and questions about method usage — may be directed to
+<miaolin@pku.edu.cn> or filed on the
+[GitHub issue tracker](https://github.com/GeneticAnalysisinBiobanks/GRAB/issues).

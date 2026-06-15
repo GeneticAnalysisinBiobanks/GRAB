@@ -19,3 +19,4 @@ examples_output/
 # local notes/scripts
 CLAUDE.md
 submit_smoketest.sh
+dev-notes/

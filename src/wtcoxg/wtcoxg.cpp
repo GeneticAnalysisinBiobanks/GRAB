@@ -1296,7 +1296,7 @@ std::unique_ptr<MethodBase> WtCoxGMethod::clone() const {
 }
 
 std::string WtCoxGMethod::getHeaderColumns() const {
-    return "\tP_EXT\tP_NOEXT\tZ_EXT\tZ_Norm_EXT\tZ_NOEXT\tZ_Norm_NOEXT\tP_BAT\tPI_BAT\tVAR_BAT";
+    return "\tP_EXT\tP_NOEXT\tZ_EXT\tZ_NOEXT\tZ_Norm_EXT\tZ_Norm_NOEXT\tP_BAT\tPI_BAT\tVAR_BAT";
 }
 
 void WtCoxGMethod::prepareChunk(const std::vector<uint64_t> &gIndices) {
@@ -1366,8 +1366,8 @@ void WtCoxGMethod::getResultVec(
     result.push_back(res_ext.pval);
     result.push_back(res_noext.pval);
     result.push_back(math::zFromPval(res_ext.pval, res_ext.zscore));     // Z_EXT (p-consistent)
-    result.push_back(res_ext.zscore);                                    // Z_Norm_EXT
     result.push_back(math::zFromPval(res_noext.pval, res_noext.zscore)); // Z_NOEXT (p-consistent)
+    result.push_back(res_ext.zscore);                                    // Z_Norm_EXT
     result.push_back(res_noext.zscore);                                  // Z_Norm_NOEXT
     result.push_back(info.pvalue_bat);
     result.push_back(info.TPR);
@@ -1500,8 +1500,8 @@ void WtCoxGMethod::processScoreBatch(
         r.push_back(res_ext.pval);
         r.push_back(res_noext.pval);
         r.push_back(math::zFromPval(res_ext.pval, res_ext.zscore));     // Z_EXT (p-consistent)
-        r.push_back(res_ext.zscore);                                    // Z_Norm_EXT
         r.push_back(math::zFromPval(res_noext.pval, res_noext.zscore)); // Z_NOEXT (p-consistent)
+        r.push_back(res_ext.zscore);                                    // Z_Norm_EXT
         r.push_back(res_noext.zscore);                                  // Z_Norm_NOEXT
         r.push_back(info.pvalue_bat);
         r.push_back(info.TPR);
