@@ -21,6 +21,7 @@
 #include "spagrm/spagrm.hpp"
 #include "spamix/indiv_af.hpp"
 #include "spamix/spamixplus.hpp"
+#include "sadge/sadge.hpp"
 #include "spasqr/spasqr.hpp"
 #include "wtcoxg/leaf.hpp"
 #include "wtcoxg/wtcoxg.hpp"
@@ -683,7 +684,7 @@ int run(
         const bool isFitCapableMethod =
             args.method == "SPACox" || args.method == "SPAGRM" ||
             args.method == "SPAmix" || args.method == "SPAmixPlus" ||
-            args.method == "SPAmixLocalPlus";
+            args.method == "SPAmixLocalPlus" || args.method == "SADGE";
         const bool hasRegressionModel = !args.regressionModel.empty();
         // Validate the regression-model value itself (rejects legacy names
         // and unknown strings) before any method-specific whitelist check.
@@ -983,6 +984,34 @@ int run(
                 args.saveResid,
                 args.seed,
                 args.longitudinal
+            );
+        }
+
+        // ── SADGE ────────────────────────────────────────────────
+        else if (args.method == "SADGE") {
+            require(args.sadgeFamFile, "--sadge-fam", "SADGE");
+            runSADGE(
+                args.phenoFile,
+                residNames,
+                args.sadgeFamFile,
+                geno,
+                args.outPrefix,
+                args.compression,
+                args.compressionLevel,
+                args.nthread,
+                args.nSnpPerChunk,
+                args.missingCutoff,
+                args.minMafCutoff,
+                args.minMacCutoff,
+                args.hweCutoff,
+                args.keepFile,
+                args.removeFile,
+                args.regressionModel,
+                args.phenoName,
+                effectiveCovarFile,
+                covarNames,
+                args.saveResid,
+                args.seed
             );
         }
 

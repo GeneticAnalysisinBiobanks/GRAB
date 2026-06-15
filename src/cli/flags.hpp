@@ -250,6 +250,15 @@ inline const FlagDef kPairwiseIbd = {
 Produced by grab2 --cal-pairwise-ibd.)"
 };
 
+inline const FlagDef kSadgeFam = {
+    "--sadge-fam", "FILE", "PLINK .fam pedigree for SADGE family structure",
+    R"(Whitespace-separated PLINK .fam: FID  IID  FatherID  MotherID  [...].
+Index individuals (the .fam rows) are the tested siblings; FatherID/MotherID
+reference the parents (0 = missing).  Families with 1 or 2 genotyped siblings
+are used; parents present in the genotype file supply the parental genotype
+that SADGE imputes per sibling.)"
+};
+
 // ── Scalar options ─────────────────────────────────────────────────
 
 inline const FlagDef kPrevalence = {
@@ -657,6 +666,31 @@ inline const MethodDef kSPAGRM = {
     "Generate pairwise IBD file with: grab2 --cal-pairwise-ibd",
 };
 
+// ── SADGE ──────────────────────────────────────────────────────────
+inline const FlagDef *const kSADGEReq[] = {
+    &kGeno_input, &kPheno, &kOut, &kSadgeFam,
+    nullptr
+};
+inline const FlagDef *const kSADGEOpt[] = {
+    &kResidName,  &kPhenoName,  &kRegressionModel, &kSaveResid,
+    &kCovar,      &kCovarName,  &kSeed,
+    &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
+    &kKeep,       &kRemove,  &kExtract,    &kExclude,
+    &kGeno,       &kMaf,     &kMac,       &kHwe,         &kChr,
+    nullptr
+};
+inline const MethodDef kSADGE = {
+    "SADGE",
+    "Sibling/parent family-based direct & indirect (nurture) genetic-effect score test",
+    kSADGEReq,
+    kSADGEOpt,
+    kPhenoNoteResidOrFit,
+    R"(PREFIX.<COL>.SADGE[.gz|.zst]   one file per --resid-name / --pheno-name column
+  CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC HWE_P
+  G_I.Z G_I.P G_I.S G_I.VarS  G_D.Z G_D.P G_D.S G_D.VarS  G.Z G.P G.S G.VarS  SADGE_MAF)",
+    "Provide the family pedigree via --sadge-fam (PLINK .fam: FID IID FatherID MotherID)",
+};
+
 // ── SAGELD ─────────────────────────────────────────────────────────
 inline const FlagDef *const kSAGELDReq[] = {
     &kGeno_input, &kPheno, &kOut, &kSpGrm, &kPairwiseIbd,
@@ -1050,7 +1084,7 @@ inline const MethodDef kCalPairwiseIbd = {
 // "Unknown help topic" while the methods themselves remain functional.
 inline const MethodDef *const kAllMethods[] = {
     &kSPACox, &kSPAGRM, &kSAGELD, &kSPAmix, &kSPAmixPlus, &kSPAmixLocalPlus,
-    &kSPAsqr, &kWtCoxG, &kLEAF,
+    &kSPAsqr, &kWtCoxG, &kLEAF, &kSADGE,
     nullptr
 };
 
@@ -1064,7 +1098,7 @@ inline const MethodDef *const kAllUtilModes[] = {
 // area focussed on the seven core GWAS methods.
 inline const MethodDef *const kVisibleMethods[] = {
     &kSPACox, &kSPAGRM, &kSAGELD, &kSPAmix,
-    &kSPAsqr, &kWtCoxG, &kLEAF,
+    &kSPAsqr, &kWtCoxG, &kLEAF, &kSADGE,
     nullptr
 };
 
@@ -1080,7 +1114,7 @@ inline const MethodDef *const kVisibleUtilModes[] = {
 // accepted by the parser.
 inline const FlagDef *const kFileFlags[] = {
     &kPheno,       &kCovar,     &kRefAf,
-    &kSpGrmPlink2, &kIndAfCoef, &kPairwiseIbd,
+    &kSpGrmPlink2, &kIndAfCoef, &kPairwiseIbd, &kSadgeFam,
     nullptr
 };
 
@@ -1096,7 +1130,7 @@ inline const FlagDef *const kInputFlags[] = {
     &kPheno,       &kCovar,       &kCovarName,
     &kPhenoName,   &kResidName,   &kRegressionModel, &kSaveResid,    &kLongitudinal,
     &kPcCols,      &kRefAf,
-    &kSpGrmPlink2, &kIndAfCoef,   &kPairwiseIbd,
+    &kSpGrmPlink2, &kIndAfCoef,   &kPairwiseIbd,  &kSadgeFam,
     &kPredList,    &kPhenoTransform,
     &kLeafClusterFile,
     &kKeep,        &kRemove,

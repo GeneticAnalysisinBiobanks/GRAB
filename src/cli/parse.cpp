@@ -165,6 +165,7 @@ Args parseArgs(
         else if (arg == "--sp-grm-plink2")a.spGrmPlink2File = next();
         else if (arg == "--ind-af-coef")a.indAfFile = next();
         else if (arg == "--pairwise-ibd")a.pairwiseIBDFile = next();
+        else if (arg == "--sadge-fam")a.sadgeFamFile = next();
         else if (arg == "--out")a.outPrefix = next();
         else if (arg == "--prevalence")a.refPrevalence = parseDouble(next(), arg);
         else if (arg == "--batch-effect-p-threshold")a.cutoff = parseDouble(next(), arg);

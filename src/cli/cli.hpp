@@ -48,6 +48,7 @@ struct Args {
     std::string spGrmPlink2File; // --sp-grm-plink2 (.grm.sp file)
     std::string indAfFile;       // --ind-af-coef
     std::string pairwiseIBDFile;
+    std::string sadgeFamFile;    // --sadge-fam (PLINK .fam pedigree for SADGE)
     std::string outPrefix;        // --out PREFIX (always a prefix)
     std::string compression;      // --compression (gz|zst, default: empty = plain text)
     std::string extractFile;      // --extract (SNP include list)
