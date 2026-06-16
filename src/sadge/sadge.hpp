@@ -3,10 +3,13 @@
 // SADGE decomposes a SNP's association into a direct genetic effect (G_D), an
 // indirect / parental-nurture effect (G_I), and a standard total effect (G),
 // using sibling + parent family structure.  It is implemented as a fused
-// MethodBase that rides on multiPhenoEngine: the shared fused GEMM supplies
-// S_G = Gᵀ·R (column 0) and the singleton partial Σ_singleton G·R (column 1),
-// while SADGE imputes the parental genotype G_par via its OWN genotype cursor
-// over the pedigree (siblings+parents) subject set and computes S_par itself.
+// MethodBase that rides on multiPhenoEngine over the PEDIGREE-set (siblings +
+// parents) subject union, decoding the genotype file exactly once: the shared
+// fused GEMM supplies S_G = Gᵀ·R (column 0) and the singleton partial
+// Σ_singleton G·R (column 1) — parents and non-phenotyped siblings carry zero
+// residual/mask, so these are unchanged — while the same imputed genotype
+// window is handed back via the MethodBase onFusedGenoWindow hook, from which
+// SADGE imputes the parental genotype G_par and computes S_par itself.
 //
 // Two stages of the R reference are fused with no intermediate file:
 //   stage 1 (impute G_par)  — example_sadge_zouyu/impute_func.R
@@ -37,9 +40,7 @@ struct NonSingKernel {
 
 // Read-only data shared by every method clone across all threads.
 struct SADGEShared {
-    std::shared_ptr<const GenoMeta> parGeno; // SADGE's own pedigree-set meta
-    uint32_t nUnion = 0;
-    uint32_t nPedUsed = 0;
+    uint32_t nUnion = 0;                      // engine union = pedigree-set rows (= nPed)
     std::vector<NonSingKernel> nonSing;      // fs1-non-singleton union siblings
 };
 
@@ -51,14 +52,14 @@ struct MarkerCache {
 };
 
 // Per-thread mutable state shared by the K phenotype-clones running on that
-// worker thread (so the chunk is decoded/imputed once, not K times).
+// worker thread (so the chunk is imputed once from the shared genotype window,
+// not K times).
 struct SADGEWorkerCtx {
-    std::unique_ptr<GenoCursor> cursor;
     std::vector<uint64_t> chunkGIdx;          // current chunk's marker indices
-    int decodedUpTo = -1;                     // highest chunk-relative idx decoded
+    int decodedUpTo = -1;                     // highest chunk-relative idx imputed
+    int imputedWindowStart = -1;              // start of the window most recently
+                                              // imputed (dedup across K clones)
     std::unordered_map<int, MarkerCache> cache; // key = chunk-relative idx
-    Eigen::VectorXd Gp;                        // pedigree decode scratch (nPedUsed)
-    std::vector<uint32_t> missScratch;
 };
 
 class SADGEMethod : public MethodBase {
@@ -88,6 +89,14 @@ class SADGEMethod : public MethodBase {
         return true;
     }
 
+    bool wantsFusedGeno() const override {
+        return true;
+    }
+
+    void onFusedGenoWindow(
+        const Eigen::Ref<const Eigen::MatrixXd> &Gwin,
+        int windowStart) override;
+
     int fusedGemmColumns() const override {
         return 2; // col 0 = residUnion (S_G), col 1 = residSing (singleton Σ G·R)
     }
@@ -109,7 +118,8 @@ class SADGEMethod : public MethodBase {
 
   private:
     SADGEWorkerCtx &workerCtx();
-    const MarkerCache &ensureMarker(SADGEWorkerCtx &c, int chunkRel);
+    // Impute one marker's parental genotype from the union genotype column.
+    void imputeMarker(MarkerCache &mc, const Eigen::Ref<const Eigen::VectorXd> &gCol) const;
 
     std::shared_ptr<const SADGEShared> m_shared;
     std::shared_ptr<const PerPhenoData> m_pheno;

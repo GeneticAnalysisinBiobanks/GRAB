@@ -96,6 +96,29 @@ class MethodBase {
         return false;
     }
 
+    // ── Opt-in: raw decoded genotype window (default off) ──────────────
+    // A fused method that also needs the raw (imputed) union-level genotype
+    // matrix — not just the GEMM score scalars — opts in here.  Used by SADGE
+    // to impute parental genotypes from the same single decode, instead of
+    // re-reading the genotype file through its own cursor.  Default is a no-op,
+    // so every other method's code path and performance are unchanged (one
+    // virtual-flag check per window, off the per-sample path).
+    virtual bool wantsFusedGeno() const {
+        return false;
+    }
+
+    // Receive the fully-imputed union-level genotype window (nUnion × wlen),
+    // before the per-marker scores are processed.  Column bi corresponds to
+    // chunk-relative marker index windowStart+bi (matching the chunkIdxs values
+    // later passed to processScoreBatch).  The matrix is a transient engine
+    // buffer reused across windows; the method must consume it within the call.
+    virtual void onFusedGenoWindow(
+        const Eigen::Ref<const Eigen::MatrixXd> &Gwin,
+        int windowStart
+    ) {
+        (void)Gwin; (void)windowStart;
+    }
+
     // Number of residual columns (ntaus for SPAsqr, 1 for SPAGRM).
     virtual int fusedGemmColumns() const {
         return 0;

@@ -789,6 +789,17 @@ void multiPhenoEngineRange(
                         allScoresAndSums.leftCols(wlenI).noalias() =
                             AugResid.transpose() * GBatch_union.leftCols(wlenI);
 
+                        // Phase 2b: Hand the fully-imputed union genotype window
+                        // to methods that opt in (default off → skipped for all
+                        // others).  SADGE uses it to impute parental genotypes
+                        // from this single decode.  Gwin column bi maps to
+                        // chunk-relative marker index wstart+bi.
+                        for (size_t p = 0; p < K; ++p)
+                            if (methods[p]->wantsFusedGeno())
+                                methods[p]->onFusedGenoWindow(
+                                    GBatch_union.leftCols(wlenI),
+                                    static_cast<int>(wstart));
+
                         // Phase 3: Per fuseable-phenotype group — shared QC + processScoreBatch.
                         // D1: Phenotypes with identical subjects share statsFromUnionVec results.
                         struct FusedMarkerQC {

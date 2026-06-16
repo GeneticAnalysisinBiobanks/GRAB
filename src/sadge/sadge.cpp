@@ -58,18 +58,15 @@ std::string SADGEMethod::getHeaderColumns() const {
 SADGEWorkerCtx &SADGEMethod::workerCtx() {
     // One context per worker thread, shared by the K phenotype-clones running
     // on that thread (keyed by the shared object so concurrent SADGE runs do
-    // not collide).  G_par is phenotype-independent, so the chunk is decoded
-    // and imputed once per thread, not once per phenotype.
+    // not collide).  G_par is phenotype-independent, so each window is imputed
+    // once per thread (from the engine's shared genotype window), not once per
+    // phenotype.
     static thread_local std::unordered_map<const SADGEShared *,
                                            std::shared_ptr<SADGEWorkerCtx> >
         tls;
     auto &slot = tls[m_shared.get()];
-    if (!slot) {
+    if (!slot)
         slot = std::make_shared<SADGEWorkerCtx>();
-        slot->cursor = m_shared->parGeno->makeCursor();
-        slot->Gp.resize(m_shared->nPedUsed);
-        slot->missScratch.reserve(m_shared->nPedUsed / 8 + 1);
-    }
     return *slot;
 }
 
@@ -84,47 +81,52 @@ void SADGEMethod::prepareChunk(const std::vector<uint64_t> &gIdx) {
     ctx.chunkGIdx = gIdx;
     ctx.cache.clear();
     ctx.decodedUpTo = -1;
-    ctx.cursor->beginSequentialBlock(gIdx.front()); // resets to file data start
+    ctx.imputedWindowStart = -1;
 }
 
-const MarkerCache &SADGEMethod::ensureMarker(SADGEWorkerCtx &ctx, int chunkRel) {
-    // Decode ascending up to chunkRel (the BGEN cursor only advances forward;
-    // contiguous ascending decode keeps the cursor in sync and lets later,
-    // possibly out-of-order per-phenotype passing subsets hit the cache).
-    while (ctx.decodedUpTo < chunkRel) {
-        const int c = ++ctx.decodedUpTo;
-        const uint64_t g = ctx.chunkGIdx[static_cast<size_t>(c)];
-        double altFreq, altCounts, missingRate, hweP, maf, mac;
-        ctx.cursor->getGenotypes(g, ctx.Gp, altFreq, altCounts, missingRate,
-                                 hweP, maf, mac, ctx.missScratch);
-        // Mean-impute any missing dosages (none for imputed BGEN dosages).
-        for (uint32_t idx : ctx.missScratch)
-            ctx.Gp[idx] = 2.0 * altFreq;
+void SADGEMethod::imputeMarker(
+    MarkerCache &mc, const Eigen::Ref<const Eigen::VectorXd> &gCol) const {
+    // The engine has already mean-imputed missing dosages to the pedigree-set
+    // mean (2·AF_ped) before the GEMM, so the column mean / 2 is the pedigree
+    // allele frequency (matches the R reference's mu).
+    const double mu = gCol.sum() / (2.0 * static_cast<double>(m_shared->nUnion));
+    PerMarkerCoeffs co;
+    precomputeCoeffs(mu, co);
 
-        const double mu = altFreq; // pedigree-set allele frequency (matches R)
-        PerMarkerCoeffs co;
-        precomputeCoeffs(mu, co);
-
-        MarkerCache mc;
-        mc.mu = mu;
-        mc.H = co.H;
-        mc.I = co.I;
-        mc.J = co.J;
-        const auto &NS = m_shared->nonSing;
-        mc.gImp.resize(static_cast<Eigen::Index>(NS.size()));
-        const double *Gp = ctx.Gp.data();
-        for (size_t j = 0; j < NS.size(); ++j) {
-            const NonSingKernel &k = NS[j];
-            const double gSelf = Gp[k.pedSelf];
-            const double gCo = (k.pedCoSib >= 0) ? Gp[k.pedCoSib] : 0.0;
-            const double gP1 = (k.pedPar1 >= 0) ? Gp[k.pedPar1] : 0.0;
-            const double gP2 = (k.pedPar2 >= 0) ? Gp[k.pedPar2] : 0.0;
-            mc.gImp[static_cast<Eigen::Index>(j)] =
-                imputeGpar(k.fs1, gSelf, gCo, gP1, gP2, co);
-        }
-        ctx.cache.emplace(c, std::move(mc));
+    mc.mu = mu;
+    mc.H = co.H;
+    mc.I = co.I;
+    mc.J = co.J;
+    const auto &NS = m_shared->nonSing;
+    mc.gImp.resize(static_cast<Eigen::Index>(NS.size()));
+    const double *Gp = gCol.data();
+    for (size_t j = 0; j < NS.size(); ++j) {
+        const NonSingKernel &k = NS[j];
+        const double gSelf = Gp[k.pedSelf];
+        const double gCo = (k.pedCoSib >= 0) ? Gp[k.pedCoSib] : 0.0;
+        const double gP1 = (k.pedPar1 >= 0) ? Gp[k.pedPar1] : 0.0;
+        const double gP2 = (k.pedPar2 >= 0) ? Gp[k.pedPar2] : 0.0;
+        mc.gImp[static_cast<Eigen::Index>(j)] =
+            imputeGpar(k.fs1, gSelf, gCo, gP1, gP2, co);
     }
-    return ctx.cache.at(chunkRel);
+}
+
+void SADGEMethod::onFusedGenoWindow(
+    const Eigen::Ref<const Eigen::MatrixXd> &Gwin, int windowStart) {
+    SADGEWorkerCtx &ctx = workerCtx();
+    // The K phenotype-clones on this thread all receive the identical window;
+    // impute it only once (G_par is phenotype-independent).
+    if (ctx.imputedWindowStart == windowStart) return;
+    ctx.imputedWindowStart = windowStart;
+
+    const int wlen = static_cast<int>(Gwin.cols());
+    for (int bi = 0; bi < wlen; ++bi) {
+        const int chunkRel = windowStart + bi;
+        MarkerCache mc;
+        imputeMarker(mc, Gwin.col(bi));
+        ctx.cache[chunkRel] = std::move(mc);
+        if (chunkRel > ctx.decodedUpTo) ctx.decodedUpTo = chunkRel;
+    }
 }
 
 void SADGEMethod::getResultVec(
@@ -167,9 +169,8 @@ void SADGEMethod::processScoreBatch(
     if (B == 0) return;
 
     SADGEWorkerCtx &ctx = workerCtx();
-    // Decode (ascending) every marker up to the largest needed index; passing
-    // subsets are ascending so chunkIdxs.back() is the maximum.
-    ensureMarker(ctx, chunkIdxs.back());
+    // The genotype window for these markers has already been imputed by
+    // onFusedGenoWindow (Phase 2b) before this call, so the cache is populated.
     // Bound the cache to a few windows' worth of markers (the current window's
     // markers are all >= decodedUpTo - windowSpan, so this never evicts a
     // marker still needed by another phenotype of the same window).
@@ -353,7 +354,14 @@ void runSADGE(
         sd.setResidualsFromFit(std::move(rs), std::move(ns));
     }
 
-    // ── SADGE's own pedigree-set genotype meta (siblings + parents) ───────
+    // ── Engine genotype meta = the pedigree set (siblings + parents) ──────
+    // SADGE decodes the genotype file ONCE, over the pedigree superset.  The
+    // fused GEMM rides on these rows: parents (and non-phenotyped siblings)
+    // carry zero residual and zero mask, so S_G / the singleton partial are
+    // unchanged, while the same decoded window feeds the parental-genotype
+    // imputation via onFusedGenoWindow.  Engine row order == pedigree-decode
+    // order == genotype-file order, so si.pedRowByIID rows (pedSelf, ...) are
+    // valid engine-union rows with no remapping.
     const auto &genoIIDsRef = sd.famIIDs();
     const uint32_t nFam = sd.nFam();
     std::vector<uint64_t> pedMask((nFam + 63) / 64, 0);
@@ -368,78 +376,91 @@ void runSADGE(
             }
         }
     }
-    auto parGenoU = makeGenoData(geno, pedMask, nFam, nPed, nSnpPerChunk);
-    auto engineGeno = makeGenoData(geno, sd.usedMask(), nFam, N, nSnpPerChunk);
-    if (parGenoU->nMarkers() != engineGeno->nMarkers())
-        throw std::runtime_error(
-            "SADGE: pedigree and analysis genotype metas disagree on marker count");
-    infoMsg("SADGE: %u markers, %u sibling + %u pedigree subjects",
+    auto engineGeno = makeGenoData(geno, pedMask, nFam, nPed, nSnpPerChunk);
+    infoMsg("SADGE: %u markers, %u sibling (union) + %u pedigree subjects",
             engineGeno->nMarkers(), N, nPed);
 
     // ── Shared read-only state ────────────────────────────────────────────
     auto shared = std::make_shared<sadge::SADGEShared>();
-    shared->parGeno = std::shared_ptr<const GenoMeta>(std::move(parGenoU));
-    shared->nUnion = N;
-    shared->nPedUsed = nPed;
+    shared->nUnion = nPed; // engine union = pedigree-set rows
 
+    // Build the fs1-non-singleton kernels and family grouping over the
+    // phenotyped union siblings (as before), but in PEDIGREE-row coordinates
+    // (s.pedSelf), so they index directly into the engine union / GBatch_union.
     const auto usedIIDs = sd.usedIIDs();
-    std::vector<int> unionToNonSing(N, -1);
-    for (uint32_t u = 0; u < N; ++u) {
-        auto it = si.sibIndexByIID.find(usedIIDs[u]);
-        if (it == si.sibIndexByIID.end())
-            throw std::runtime_error(
-                "SADGE: union subject not found among siblings: " + usedIIDs[u]);
-        const sadge::SibInfo &s = si.siblings[it->second];
-        if (s.fs1 != sadge::FamStruct::s0par1sib) {
-            unionToNonSing[u] = static_cast<int>(shared->nonSing.size());
-            shared->nonSing.push_back(
-                {u, s.fs1, s.pedSelf, s.pedCoSib, s.pedPar1, s.pedPar2});
-        }
-    }
-    const int nNonSing = static_cast<int>(shared->nonSing.size());
-
-    // ── Family grouping over the union (for per-phenotype precond) ─────────
+    std::vector<int> unionRowToPed(N);          // union sibling row → pedigree row
+    std::vector<int> unionToNonSing(nPed, -1);  // pedigree row → compact non-sing idx
     std::vector<sadge::FamilyGroup> familyGroups;
     {
         std::unordered_map<long, int> famIdxOf;
         for (uint32_t u = 0; u < N; ++u) {
-            const sadge::SibInfo &s = si.siblings[si.sibIndexByIID.at(usedIIDs[u])];
-            auto it = famIdxOf.find(s.fid);
-            if (it == famIdxOf.end()) {
+            auto it = si.sibIndexByIID.find(usedIIDs[u]);
+            if (it == si.sibIndexByIID.end())
+                throw std::runtime_error(
+                    "SADGE: union subject not found among siblings: " + usedIIDs[u]);
+            const sadge::SibInfo &s = si.siblings[it->second];
+            const int row = s.pedSelf; // engine union row of this sibling
+            unionRowToPed[u] = row;
+
+            if (s.fs1 != sadge::FamStruct::s0par1sib) {
+                unionToNonSing[row] = static_cast<int>(shared->nonSing.size());
+                shared->nonSing.push_back(
+                    {static_cast<uint32_t>(row), s.fs1,
+                     s.pedSelf, s.pedCoSib, s.pedPar1, s.pedPar2});
+            }
+
+            auto fit = famIdxOf.find(s.fid);
+            if (fit == famIdxOf.end()) {
                 famIdxOf.emplace(s.fid, static_cast<int>(familyGroups.size()));
                 sadge::FamilyGroup g;
                 g.genoNPar = s.genoNPar;
                 g.n = 1;
-                g.u = {static_cast<int>(u), -1};
+                g.u = {row, -1};
                 familyGroups.push_back(g);
             } else {
-                sadge::FamilyGroup &g = familyGroups[it->second];
-                if (g.n < 2) g.u[g.n] = static_cast<int>(u);
+                sadge::FamilyGroup &g = familyGroups[fit->second];
+                if (g.n < 2) g.u[g.n] = row;
                 ++g.n;
             }
         }
     }
+    const int nNonSing = static_cast<int>(shared->nonSing.size());
 
     // ── Per-phenotype tasks ───────────────────────────────────────────────
-    auto phenoInfos = sd.buildPerColumnMasks();
+    auto phenoInfos = sd.buildPerColumnMasks(); // used for phenotype names
     const int K = sd.residOneCols();
     if (K > 1) infoMsg("SADGE: %d phenotypes", K);
 
+    const double kNaNd = std::numeric_limits<double>::quiet_NaN();
     std::vector<PhenoTask> tasks(K);
     for (int rc = 0; rc < K; ++rc) {
-        const auto &pi = phenoInfos[rc];
-        Eigen::VectorXd residRaw;
-        if (K == 1)
-            residRaw = sd.residuals();
-        else
-            residRaw = sd.residMatrix().col(rc);
+        // Sibling-union residuals (NaN where this phenotype is absent).
+        const Eigen::VectorXd residSib =
+            (K == 1) ? sd.residuals() : Eigen::VectorXd(sd.residMatrix().col(rc));
+
+        // Scatter into pedigree-row coordinates; NaN at parents and at
+        // siblings absent from this phenotype (→ mask 0, residual 0).
+        Eigen::VectorXd residRaw = Eigen::VectorXd::Constant(nPed, kNaNd);
+        for (uint32_t u = 0; u < N; ++u)
+            residRaw[unionRowToPed[u]] = residSib[u];
+
         auto ph = std::make_shared<sadge::PerPhenoData>(
-            sadge::buildPerPhenoData(residRaw, familyGroups, N, unionToNonSing, nNonSing));
-        tasks[rc].phenoName = pi.name;
+            sadge::buildPerPhenoData(residRaw, familyGroups, nPed, unionToNonSing, nNonSing));
+
+        // unionToLocal: mark phenotype-present rows (non-NaN residual).  SADGE
+        // is fused-only, so only the present/absent distinction (the AugResid
+        // mask) and nUsed (the altFreq denominator) matter; the local values
+        // are never gathered.
+        std::vector<uint32_t> u2l(nPed, UINT32_MAX);
+        uint32_t loc = 0;
+        for (uint32_t r = 0; r < nPed; ++r)
+            if (!std::isnan(residRaw[r])) u2l[r] = loc++;
+
+        tasks[rc].phenoName = phenoInfos[rc].name;
         tasks[rc].method = std::make_unique<sadge::SADGEMethod>(shared, std::move(ph));
-        tasks[rc].unionToLocal = pi.unionToLocal;
-        tasks[rc].nUsed = pi.nUsed;
-        infoMsg("  Phenotype '%s': %u subjects", pi.name.c_str(), pi.nUsed);
+        tasks[rc].unionToLocal = std::move(u2l);
+        tasks[rc].nUsed = loc;
+        infoMsg("  Phenotype '%s': %u subjects", phenoInfos[rc].name.c_str(), loc);
     }
 
     infoMsg("SADGE: running marker tests (%d thread(s), %d phenotype(s))...", nthreads, K);
