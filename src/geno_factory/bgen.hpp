@@ -93,6 +93,14 @@ class BgenData : public GenoMeta {
         return m_usedMask;
     }
 
+    // Ascending list of used file-sample indices (size nSubjUsed); empty when
+    // all samples are used.  Built once in the constructor so the cursor can
+    // decode all samples then gather the used ones, avoiding a per-sample
+    // used-mask branch in the hot parse loop.
+    const std::vector<uint32_t> &usedIndices() const {
+        return m_usedIndices;
+    }
+
     // File byte offset of the first variant data (after header + sample block).
     std::streampos dataOffset() const {
         return m_dataOffset;
@@ -111,10 +119,39 @@ class BgenData : public GenoMeta {
         return m_altFirst;
     }
 
+    // Absolute byte offset (start of the variant's identifying-data block) for
+    // the biallelic variant with ordinal i (= MarkerInfo::genoIndex).  The
+    // cursor seeks here directly instead of scanning forward.  Populated by the
+    // metadata first pass (captured tellg) or by the .bgi index.
+    uint64_t fileOffset(uint64_t i) const {
+        return m_fileOffset[i];
+    }
+
+    // Whole-record byte size (identifying-data block + genotype block) for the
+    // biallelic variant with ordinal i, parallel to m_fileOffset.  The cursor
+    // reads exactly this many bytes in one read, then skips the identifying-data
+    // block in memory instead of re-parsing it from the stream.  Populated from
+    // the .bgi size_in_bytes column or from the scan's tellg delta.
+    uint64_t recordSize(uint64_t i) const {
+        return m_recordSize[i];
+    }
+
   private:
     static std::vector<std::vector<uint64_t> > buildChunks(
         const std::vector<MarkerInfo> &markers,
         int chunkSize
+    );
+
+    // Populate the marker metadata (m_chr/m_pos/m_markerId/m_ref/m_alt/
+    // m_fileOffset for every biallelic variant in file order, plus the
+    // chr-filtered m_markerInfo) from the bgenix .bgi SQLite index, avoiding a
+    // whole-file scan.  Returns false (leaving members untouched) if the index
+    // is missing, unreadable, schema-incompatible, or stale relative to the
+    // .bgen, so the caller falls back to the linear scan.
+    bool loadFromIndex(
+        const std::string &bgiPath,
+        const std::unordered_set<std::string> &chrFilter,
+        uint32_t &nSkippedMultiallelic
     );
 
     std::string m_bgenFile;
@@ -124,12 +161,15 @@ class BgenData : public GenoMeta {
     uint32_t m_nMarkers;
 
     std::vector<uint64_t> m_usedMask;
+    std::vector<uint32_t> m_usedIndices; // ascending used file-sample indices (⑤)
 
     std::vector<std::string> m_chr;
     std::vector<std::string> m_markerId;
     std::vector<uint32_t> m_pos;
     std::vector<std::string> m_ref;
     std::vector<std::string> m_alt;
+    std::vector<uint64_t> m_fileOffset; // parallel to m_chr; byte offset per ordinal
+    std::vector<uint64_t> m_recordSize; // parallel to m_fileOffset; whole-record byte size (③)
     std::vector<MarkerInfo> m_markerInfo;
     std::vector<std::vector<uint64_t> > m_chunkIndices;
 

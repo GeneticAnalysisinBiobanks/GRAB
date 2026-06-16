@@ -163,6 +163,7 @@ PGENLIB_DIR  := third_party/plink2-a.6.33
 DEFLATE_DIR  := $(PGENLIB_DIR)/libdeflate
 BGEN_DIR     := third_party/bgen-1.2.0
 HTSLIB_DIR   := third_party/htslib-1.23.1
+SQLITE_DIR   := third_party/sqlite-3.9.2
 
 # ── Output binary ─────────────────────────────────────────────────────────────
 BIN := $(BUILD_DIR)/grab2$(EXE)
@@ -178,7 +179,9 @@ INCLUDES := \
     -I$(PGENLIB_DIR)/include \
     -I$(BGEN_DIR)/genfile/include \
     -I$(HTSLIB_DIR) \
-    -I$(HTSLIB_DIR)/htscodecs
+    -I$(HTSLIB_DIR)/htscodecs \
+    -I$(SQLITE_DIR) \
+    -I$(DEFLATE_DIR)
 
 # ── Source discovery ──────────────────────────────────────────────────────────
 # Pure-Make recursive wildcard: avoids calling the shell 'find' command,
@@ -222,6 +225,10 @@ BGEN_SRCS := $(BGEN_DIR)/src/bgen.cpp \
              $(BGEN_DIR)/src/MissingValue.cpp
 BGEN_OBJS := $(patsubst $(BGEN_DIR)/src/%.cpp, $(BUILD_DIR)/bgen/%.o, $(BGEN_SRCS))
 
+# ── sqlite (C) — read-only .bgi (bgenix) index access for BGEN ─────────────────
+SQLITE_SRCS := $(SQLITE_DIR)/sqlite3.c
+SQLITE_OBJS := $(BUILD_DIR)/sqlite/sqlite3.o
+
 # ── htslib (C) ────────────────────────────────────────────────────────────────
 HTSLIB_SRCS    := $(wildcard $(HTSLIB_DIR)/*.c)
 HTSCODEC_SRCS  := $(wildcard $(HTSLIB_DIR)/htscodecs/htscodecs/*.c)
@@ -233,7 +240,7 @@ HTSCODEC_OBJS  := $(patsubst $(HTSLIB_DIR)/htscodecs/htscodecs/%.c, \
 # ── All objects ───────────────────────────────────────────────────────────────
 ALL_OBJS := $(OBJS) $(ZLIB_OBJS) $(ZSTD_OBJS) $(DEFLATE_OBJS) \
             $(PGEN_OBJS) $(BGEN_OBJS) \
-            $(HTSLIB_OBJS) $(HTSCODEC_OBJS)
+            $(HTSLIB_OBJS) $(HTSCODEC_OBJS) $(SQLITE_OBJS)
 
 # ── Default target ────────────────────────────────────────────────────────────
 .PHONY: all clean run
@@ -293,6 +300,18 @@ $(BUILD_DIR)/bgen/%.o: $(BGEN_DIR)/src/%.cpp | tmp
 	@mkdir -p $(@D)
 	$(CXX) $(BGEN_CXXFLAGS) $(CPPFLAGS) $(CXXFLAGS) -I$(BGEN_DIR)/genfile/include \
 	    -I$(ZSTD_DIR) -I$(ZLIB_DIR) -c $< -o $@
+
+# ── Compile sqlite (C) — read-only .bgi index; lean, no extension loading ─────
+# SQLITE_OMIT_LOAD_EXTENSION avoids a libdl dependency; THREADSAFE=1 keeps the
+# one-shot index read (main thread, BgenData construction) safe in the otherwise
+# multi-threaded process.  No -march=native (uses third-party SIMD_FLAGS only).
+SQLITE_CFLAGS := $(TP_CFLAGS) \
+    -DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_THREADSAFE=1 \
+    -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED
+
+$(BUILD_DIR)/sqlite/%.o: $(SQLITE_DIR)/%.c | tmp
+	@mkdir -p $(@D)
+	$(CC) $(SQLITE_CFLAGS) $(CPPFLAGS) $(CFLAGS) -I$(SQLITE_DIR) -c $< -o $@
 
 # ── Compile htslib (C) ────────────────────────────────────────────────────────
 HTSLIB_CFLAGS := $(TP_CFLAGS) -DHAVE_CONFIG_H \
