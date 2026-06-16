@@ -74,6 +74,7 @@ struct DosageSetter {
     uint32_t nHet = 0;
     uint32_t nHomAlt = 0;
     uint32_t nMissing = 0;
+    double dosageSum = 0.0;  // Σ dosage over non-missing used samples (for dosage AF)
 
     void initialise(
         std::size_t /*nsamples*/,
@@ -81,6 +82,7 @@ struct DosageSetter {
     ) {
         outIdx = 0;
         nHomRef = nHet = nHomAlt = nMissing = 0;
+        dosageSum = 0.0;
     }
 
     bool set_sample(std::size_t i) {
@@ -117,6 +119,7 @@ struct DosageSetter {
             if (dosage < 0.0) dosage = 0.0;
             else if (dosage > 2.0) dosage = 2.0;
             out[outIdx] = dosage;
+            dosageSum += dosage;
             if (dosage < 0.5)
                 ++nHomRef;
             else if (dosage > 1.5)
@@ -452,6 +455,21 @@ void BgenCursor::getGenotypes(
     hweP = gs.hweP;
     maf = gs.maf;
     mac = gs.mac;
+
+    // Dosage-aware AF: compute the allele frequency from the dosage sum rather
+    // than the 0.5/1.5-binned hard-call counts.  For hard calls the dosage sum
+    // equals 2*nHomAlt + nHet exactly, so altFreq/altCounts/mac are unchanged;
+    // for true dosages this is the correct (un-binned) frequency.  hweP and
+    // missingRate retain the count-based values (HWE is not defined on dosages,
+    // but hard calls reproduce the same hweP).
+    const uint32_t nNonMissing = nUsed - setter.nMissing;
+    if (nNonMissing > 0) {
+        const double n2 = 2.0 * static_cast<double>(nNonMissing);
+        altCounts = setter.dosageSum;
+        altFreq = setter.dosageSum / n2;
+        maf = std::min(altFreq, 1.0 - altFreq);
+        mac = maf * n2;
+    }
 
     ++impl.currentBiallelicIdx;
 }

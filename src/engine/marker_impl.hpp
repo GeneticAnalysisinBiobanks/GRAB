@@ -190,6 +190,9 @@ struct PhenoGenoStats {
     // Sum of squared post-impute genotypes over mask-included subjects.
     // Used by SPAsqr to compute empirical Var(G) = (sumSq − sum²/n) / (n−1).
     double sumSq;
+    // True ⇒ this is a dosage marker: altFreq/mac were left as sentinels and
+    // the caller must recompute them from the GEMM gSum (see statsFromUnionVec).
+    bool fromDosage;
 };
 
 // Compute per-phenotype genotype stats from union-level genotype vector
@@ -199,7 +202,8 @@ inline PhenoGenoStats statsFromUnionVec(
     const double *unionG,
     const double *mask,
     uint32_t nUnion,
-    uint32_t nUsed
+    uint32_t nUsed,
+    bool isDosage
 ) {
     uint32_t nHomRef = 0, nHet = 0, nHomAlt = 0, nMissing = 0;
     double sumSq = 0.0;
@@ -219,14 +223,18 @@ inline PhenoGenoStats statsFromUnionVec(
     PhenoGenoStats s;
     s.sumSq = sumSq;
     uint32_t nonMissing = nHomRef + nHet + nHomAlt;
-    if (nonMissing == 0) {
-        // Dosage data: compute from gSum (not discrete genotypes).
-        // No HWE for dosages → set to 1.0, compute AF from gSum.
+    // Dosage marker (detected pre-impute by the caller) or all-dosage column:
+    // the discrete-count classification is meaningless, so compute AF/MAC from
+    // the GEMM gSum in the caller.  Missing dosages are mean-imputed before the
+    // GEMM (real-NaN rate ≈ 0 for imputed data), so report missingRate = 0 and
+    // skip HWE — matching the pre-existing all-dosage handling.
+    if (nonMissing == 0 || isDosage) {
         s.missingRate = 0.0;
         s.hweP = 1.0;
         // altFreq and mac will be overwritten by caller from gSum.
         s.altFreq = 0.0;
         s.mac = 0.0;
+        s.fromDosage = true;
         return s;
     }
     uint32_t altCounts = 2 * nHomAlt + nHet;
@@ -236,6 +244,7 @@ inline PhenoGenoStats statsFromUnionVec(
     s.mac = maf * n2;
     s.missingRate = static_cast<double>(nMissing) / static_cast<double>(nUsed);
     s.hweP = HweExact(nHet, nHomAlt, nHomRef);
+    s.fromDosage = false;
     return s;
 }
 
@@ -245,13 +254,17 @@ inline PhenoGenoStats statsFromGVec(
     std::vector<uint32_t> &indexForMissing
 ) {
     indexForMissing.clear();
-    uint32_t nHomRef = 0, nHet = 0, nHomAlt = 0;
+    uint32_t nHomRef = 0, nHet = 0, nHomAlt = 0, nNonMissing = 0;
+    double dosageSum = 0.0;
+    bool isDosage = false;
     for (uint32_t i = 0; i < n; ++i) {
         const double v = g[i];
         if (std::isnan(v) || v < 0.0) {
             indexForMissing.push_back(i);
             continue;
         }
+        dosageSum += v;
+        ++nNonMissing;
         if (v == 0.0)
             ++nHomRef;
         else if (v == 1.0)
@@ -259,19 +272,29 @@ inline PhenoGenoStats statsFromGVec(
         else if (v == 2.0)
             ++nHomAlt;
         else
-            indexForMissing.push_back(i);
+            isDosage = true;  // fractional dosage — a valid value, not missing
     }
     PhenoGenoStats s;
-    uint32_t nonMissing = nHomRef + nHet + nHomAlt;
-    if (nonMissing == 0) {
+    s.sumSq = 0.0;  // unused on the non-fused path
+    s.fromDosage = isDosage;
+    if (nNonMissing == 0) {
         s.altFreq = NAN;
         s.mac = NAN;
         s.missingRate = 1.0;
         s.hweP = NAN;
         return s;
     }
+    double n2 = 2.0 * nNonMissing;
+    if (isDosage) {
+        // Dosage marker: AF from the dosage sum; missing = real NaN only; no HWE.
+        s.altFreq = dosageSum / n2;
+        double maf = std::min(s.altFreq, 1.0 - s.altFreq);
+        s.mac = maf * n2;
+        s.missingRate = static_cast<double>(indexForMissing.size()) / n;
+        s.hweP = NAN;
+        return s;
+    }
     uint32_t altCounts = 2 * nHomAlt + nHet;
-    double n2 = 2.0 * nonMissing;
     s.altFreq = altCounts / n2;
     double maf = std::min(s.altFreq, 1.0 - s.altFreq);
     s.mac = maf * n2;

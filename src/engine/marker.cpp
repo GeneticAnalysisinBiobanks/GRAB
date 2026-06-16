@@ -743,6 +743,11 @@ void multiPhenoEngineRange(
                         }
                     }
 
+                    // Per-marker dosage flag (filled in Phase 1b, read in Phase 3):
+                    // true ⇒ at least one decoded value is a fractional dosage,
+                    // so QC must come from the dosage sum, not exact 0/1/2 counts.
+                    bool winIsDosage[64] = {false};  // B ≤ 64
+
                     // Phase 1b: Impute NaN genotypes to 2*AF in GBatch_union.
                     // This prevents NaN from propagating through the fused GEMM.
                     // For imputed data (dosages) there are no NaNs → this is a no-op.
@@ -753,13 +758,17 @@ void multiPhenoEngineRange(
                             auto col = GBatch_union.col(static_cast<Eigen::Index>(bi));
                             double gSum = 0.0;
                             uint32_t nValid = 0;
+                            bool isDosage = false;
                             for (Eigen::Index r = 0; r < static_cast<Eigen::Index>(nUnion); ++r) {
                                 const double v = col[r];
                                 if (!std::isnan(v)) {
                                     gSum += v;
                                     ++nValid;
+                                    if (v != 0.0 && v != 1.0 && v != 2.0)
+                                        isDosage = true;  // fractional → dosage marker
                                 }
                             }
+                            winIsDosage[bi] = isDosage;
                             if (nValid > 0 && nValid < nUnion) {
                                 const double impVal = gSum / static_cast<double>(nValid);
                                 for (Eigen::Index r = 0; r < static_cast<Eigen::Index>(nUnion); ++r) {
@@ -805,12 +814,13 @@ void multiPhenoEngineRange(
                                     static_cast<Eigen::Index>(bi)).data();
 
                                 PhenoGenoStats gs = statsFromUnionVec(
-                                    unionCol, maskCol, nUnion, repFp.nUsed);
+                                    unionCol, maskCol, nUnion, repFp.nUsed,
+                                    winIsDosage[bi]);
 
                                 const double gSum = allScoresAndSums(
                                     repFp.maskCol, static_cast<Eigen::Index>(bi));
                                 const double twoN = 2.0 * static_cast<double>(repFp.nUsed);
-                                if (gs.altFreq == 0.0 && gs.hweP == 1.0) {
+                                if (gs.fromDosage) {
                                     gs.altFreq = gSum / twoN;
                                     double maf = std::min(gs.altFreq, 1.0 - gs.altFreq);
                                     gs.mac = maf * twoN;
