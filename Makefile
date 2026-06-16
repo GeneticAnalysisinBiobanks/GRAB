@@ -206,9 +206,16 @@ ZSTD_OBJS := $(patsubst $(ZSTD_DIR)/%.c, $(BUILD_DIR)/zstd/%.o, $(ZSTD_SRCS))
 
 # ── libdeflate (C) — used by pgenlib ──────────────────────────────────────────
 DEFLATE_SRCS := $(wildcard $(DEFLATE_DIR)/lib/*.c)
-# x86 CPU feature detection (only on x86/x86_64)
+# Per-architecture CPU-feature detection.  Each *_cpu_features.c is guarded
+# internally by arch #ifdefs, so compiling both on any target is harmless (the
+# non-matching one becomes an empty translation unit); the matching one supplies
+# the runtime-dispatch symbols (libdeflate_{x86,arm}_cpu_features) referenced by
+# adler32.c / crc32.c.  Omitting the ARM file breaks the aarch64 link.
 ifneq ($(wildcard $(DEFLATE_DIR)/lib/x86/x86_cpu_features.c),)
   DEFLATE_SRCS += $(DEFLATE_DIR)/lib/x86/x86_cpu_features.c
+endif
+ifneq ($(wildcard $(DEFLATE_DIR)/lib/arm/arm_cpu_features.c),)
+  DEFLATE_SRCS += $(DEFLATE_DIR)/lib/arm/arm_cpu_features.c
 endif
 DEFLATE_OBJS := $(patsubst $(DEFLATE_DIR)/lib/%.c, $(BUILD_DIR)/libdeflate/%.o, $(DEFLATE_SRCS))
 
