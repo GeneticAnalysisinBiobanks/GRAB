@@ -284,6 +284,7 @@ void VcfCursor::getGenotypes(
     if (nds > 0) {
         uint32_t outIdx = 0;
         uint32_t nHomRef = 0, nHet = 0, nHomAlt = 0, nMissing = 0;
+        double dosageSum = 0.0;
         for (uint32_t i = 0; i < impl.nSamplesInFile; ++i) {
             bool used = impl.allUsed || (((*impl.usedMask)[i / 64] >> (i % 64)) & 1);
             if (!used) continue;
@@ -294,6 +295,7 @@ void VcfCursor::getGenotypes(
                 ++nMissing;
             } else {
                 out[outIdx] = static_cast<double>(ds);
+                dosageSum += static_cast<double>(ds);
                 // Classify for HWE
                 if (ds < 0.5)
                     ++nHomRef;
@@ -314,6 +316,16 @@ void VcfCursor::getGenotypes(
         hweP = gs.hweP;
         maf = gs.maf;
         mac = gs.mac;
+        // Dosage-aware AF from the DS sum (un-binned).  Hard-call DS reproduces
+        // the count-based values exactly; hweP/missingRate keep count semantics.
+        const uint32_t nNonMissing = nUsed - nMissing;
+        if (nNonMissing > 0) {
+            const double n2 = 2.0 * static_cast<double>(nNonMissing);
+            altCounts = dosageSum;
+            altFreq = dosageSum / n2;
+            maf = std::min(altFreq, 1.0 - altFreq);
+            mac = maf * n2;
+        }
         ++impl.currentRecordIdx;
         return;
     }
@@ -325,6 +337,7 @@ void VcfCursor::getGenotypes(
     const int maxPloidy = ngt / static_cast<int>(impl.nSamplesInFile);
     uint32_t outIdx = 0;
     uint32_t nHomRef = 0, nHet = 0, nHomAlt = 0, nMissing = 0;
+    double dosageSum = 0.0;
 
     for (uint32_t i = 0; i < impl.nSamplesInFile; ++i) {
         bool used = impl.allUsed || (((*impl.usedMask)[i / 64] >> (i % 64)) & 1);
@@ -351,6 +364,7 @@ void VcfCursor::getGenotypes(
             ++nMissing;
         } else {
             out[outIdx] = static_cast<double>(dosage);
+            dosageSum += static_cast<double>(dosage);
             if (dosage == 0)
                 ++nHomRef;
             else if (dosage == 2)
@@ -371,6 +385,16 @@ void VcfCursor::getGenotypes(
     hweP = gs.hweP;
     maf = gs.maf;
     mac = gs.mac;
+    // GT dosages are integral (0/1/2), so this reproduces the count-based AF
+    // exactly; kept uniform with the DS branch.
+    const uint32_t nNonMissing = nUsed - nMissing;
+    if (nNonMissing > 0) {
+        const double n2 = 2.0 * static_cast<double>(nNonMissing);
+        altCounts = dosageSum;
+        altFreq = dosageSum / n2;
+        maf = std::min(altFreq, 1.0 - altFreq);
+        mac = maf * n2;
+    }
     ++impl.currentRecordIdx;
 }
 

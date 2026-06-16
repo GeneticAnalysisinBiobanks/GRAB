@@ -307,6 +307,11 @@ PgenData::PgenData(
 
     m_pgrAllocCachelineCt = pgr_alloc_cacheline_ct;
 
+    // Record whether this .pgen carries a dosage track.  Hard-call files keep
+    // the difflist fast path; dosage files route through PgrGetD so the engine
+    // sees true dosages (PgenGlobalFlags / kfPgenGlobalDosagePresent).
+    m_fileHasDosage = static_cast<bool>(pgfi_raw->gflags & kfPgenGlobalDosagePresent);
+
     // Close the shared file handle so that each PgenCursor (PgrInit) opens
     // its own independent FILE*.  Without this, the very first PgrInit call
     // steals shared_ff, and concurrent PgrInit calls from worker threads
@@ -372,6 +377,7 @@ struct PgenCursor::Impl {
     uint32_t sampleCt;
     uint32_t rawSampleCt;
     bool allUsed;
+    bool fileHasDosage = false;
 
     Impl()
         : pgrAlloc(nullptr, freeCacheAligned)
@@ -400,6 +406,7 @@ PgenCursor::PgenCursor(const PgenData &parent)
     impl.rawSampleCt = parent.nSubjInFile();
     impl.sampleCt = parent.nSubjUsed();
     impl.allUsed = parent.allUsed();
+    impl.fileHasDosage = parent.fileHasDosage();
 
     // Allocate genovec buffer: rounded up to VecW boundary for AVX2 safety
     const uint32_t rawSampleCtl2 = plink2::NypCtToVecCt(impl.rawSampleCt) * plink2::kWordsPerVec;
@@ -457,6 +464,46 @@ void PgenCursor::beginSequentialBlock(uint64_t /*firstMarker*/) {
     // pgenlib handles seeking internally; nothing to do.
 }
 
+uint32_t PgenCursor::decodeDosageVec(
+    uint64_t gIndex,
+    Eigen::Ref<Eigen::VectorXd> out
+) {
+    using namespace plink2;
+    auto &impl = *m_impl;
+    const uint32_t sampleCt = impl.sampleCt;
+
+    // Read genotypes with dosage.
+    uint32_t dosage_ct = 0;
+    PglErr err =
+        PgrGetD(impl.allUsed ? nullptr : impl.sampleInclude, impl.pssi, sampleCt, static_cast<uint32_t>(gIndex),
+                &impl.pgr, impl.genovec, impl.dosagePresent, impl.dosageMain.data(), &dosage_ct);
+    if (err != kPglRetSuccess) throw std::runtime_error("pgen: PgrGetD failed at variant " + std::to_string(gIndex));
+
+    // pgen 2-bit hard-call codes: 0=hom_ref, 1=het, 2=hom_alt, 3=missing → NaN.
+    const uintptr_t *gv = impl.genovec;
+    for (uint32_t i = 0; i < sampleCt; ++i) {
+        const uint32_t code = (gv[i / kBitsPerWordD2] >> (2 * (i % kBitsPerWordD2))) & 3;
+        out[i] = (code < 3) ? static_cast<double>(code)
+                            : std::numeric_limits<double>::quiet_NaN();
+    }
+
+    // Overlay dosage values where present (dosage_main 0..32768 → 0.0..2.0).
+    if (dosage_ct > 0) {
+        const uintptr_t *dp = impl.dosagePresent;
+        const uint16_t *dm = impl.dosageMain.data();
+        uint32_t dIdx = 0;
+        for (uint32_t i = 0; i < sampleCt && dIdx < dosage_ct; ++i) {
+            const uint32_t word_idx = i / kBitsPerWord;
+            const uint32_t bit_idx = i % kBitsPerWord;
+            if ((dp[word_idx] >> bit_idx) & 1) {
+                out[i] = static_cast<double>(dm[dIdx]) / 16384.0;
+                ++dIdx;
+            }
+        }
+    }
+    return dosage_ct;
+}
+
 void PgenCursor::getGenotypes(
     uint64_t gIndex,
     Eigen::Ref<Eigen::VectorXd> out,
@@ -468,74 +515,66 @@ void PgenCursor::getGenotypes(
     double &mac,
     std::vector<uint32_t> &indexForMissing
 ) {
-    using namespace plink2;
-    auto &impl = *m_impl;
-    const uint32_t sampleCt = impl.sampleCt;
+    const uint32_t sampleCt = m_impl->sampleCt;
     indexForMissing.clear();
 
-    // Read genotypes with dosage
-    uint32_t dosage_ct = 0;
-    PglErr err =
-        PgrGetD(impl.allUsed ? nullptr : impl.sampleInclude, impl.pssi, sampleCt, static_cast<uint32_t>(gIndex),
-                &impl.pgr, impl.genovec, impl.dosagePresent, impl.dosageMain.data(), &dosage_ct);
+    const uint32_t dosage_ct = decodeDosageVec(gIndex, out);
 
-    if (err != kPglRetSuccess) throw std::runtime_error("pgen: PgrGetD failed at variant " + std::to_string(gIndex));
-
-    // Decode genotypes to doubles and collect counts
-    // pgen 2-bit codes: 0=hom_ref, 1=het, 2=hom_alt, 3=missing
-    // We want ALT allele dosage: 0, 1, 2, NaN
-    uint32_t nHomRef = 0, nHet = 0, nHomAlt = 0, nMissing = 0;
-    const uintptr_t *gv = impl.genovec;
-
-    for (uint32_t i = 0; i < sampleCt; ++i) {
-        const uint32_t code = (gv[i / kBitsPerWordD2] >> (2 * (i % kBitsPerWordD2))) & 3;
-        switch (code) {
-        case 0:
-            out[i] = 0.0;
-            ++nHomRef;
-            break;
-        case 1:
-            out[i] = 1.0;
-            ++nHet;
-            break;
-        case 2:
-            out[i] = 2.0;
-            ++nHomAlt;
-            break;
-        default:
-            out[i] = std::numeric_limits<double>::quiet_NaN();
-            indexForMissing.push_back(i);
-            ++nMissing;
-            break;
-        }
-    }
-
-    // Overlay dosage values where present
-    if (dosage_ct > 0) {
-        const uintptr_t *dp = impl.dosagePresent;
-        const uint16_t *dm = impl.dosageMain.data();
-        uint32_t dIdx = 0;
-        for (uint32_t i = 0; i < sampleCt && dIdx < dosage_ct; ++i) {
-            const uint32_t word_idx = i / kBitsPerWord;
-            const uint32_t bit_idx = i % kBitsPerWord;
-            if ((dp[word_idx] >> bit_idx) & 1) {
-                // dosage_main values: 0..32768 maps to 0.0..2.0
-                out[i] = static_cast<double>(dm[dIdx]) / 16384.0;
-                ++dIdx;
+    if (dosage_ct == 0) {
+        // Hard-call QC: count from out[] (0/1/2/NaN).  Byte-identical to the
+        // previous count-during-decode path.  statsFromCounts expects
+        // nHom-of-ALT first so altCounts = 2*nHomAlt + nHet (ALT in .pvar col 5).
+        uint32_t nHomRef = 0, nHet = 0, nHomAlt = 0, nMissing = 0;
+        for (uint32_t i = 0; i < sampleCt; ++i) {
+            const double v = out[i];
+            if (std::isnan(v)) {
+                indexForMissing.push_back(i);
+                ++nMissing;
+            } else if (v == 0.0) {
+                ++nHomRef;
+            } else if (v == 1.0) {
+                ++nHet;
+            } else {
+                ++nHomAlt;  // v == 2.0
             }
         }
+        GenoStats gs = statsFromCounts(nHomAlt, nHet, nHomRef, nMissing, sampleCt);
+        altFreq = gs.altFreq;
+        altCounts = gs.altCounts;
+        missingRate = gs.missingRate;
+        hweP = gs.hweP;
+        maf = gs.maf;
+        mac = gs.mac;
+        return;
     }
 
-    // Compute QC stats.  statsFromCounts expects nHom-of-ALT as its first
-    // argument so that altCounts = 2*nHomAlt + nHet is the count of the
-    // ALT allele listed in .pvar column 5.
-    GenoStats gs = statsFromCounts(nHomAlt, nHet, nHomRef, nMissing, sampleCt);
-    altFreq = gs.altFreq;
-    altCounts = gs.altCounts;
-    missingRate = gs.missingRate;
-    hweP = gs.hweP;
-    maf = gs.maf;
-    mac = gs.mac;
+    // Dosage QC: AF from the dosage sum; missing = real NaN only (a sample with
+    // a dosage is not missing even if its hard call was absent); HWE undefined.
+    double dosageSum = 0.0;
+    uint32_t nNonMissing = 0;
+    for (uint32_t i = 0; i < sampleCt; ++i) {
+        const double v = out[i];
+        if (std::isnan(v)) {
+            indexForMissing.push_back(i);
+        } else {
+            dosageSum += v;
+            ++nNonMissing;
+        }
+    }
+    missingRate = static_cast<double>(sampleCt - nNonMissing) / sampleCt;
+    hweP = std::numeric_limits<double>::quiet_NaN();
+    if (nNonMissing > 0) {
+        const double n2 = 2.0 * static_cast<double>(nNonMissing);
+        altCounts = dosageSum;
+        altFreq = dosageSum / n2;
+        maf = std::min(altFreq, 1.0 - altFreq);
+        mac = maf * n2;
+    } else {
+        altCounts = 0.0;
+        altFreq = std::numeric_limits<double>::quiet_NaN();
+        maf = std::numeric_limits<double>::quiet_NaN();
+        mac = 0.0;
+    }
 }
 
 void PgenCursor::getGenotypesSimple(
@@ -544,6 +583,13 @@ void PgenCursor::getGenotypesSimple(
 ) {
     using namespace plink2;
     auto &impl = *m_impl;
+
+    // Dosage files: decode true dosages so the engine sees them.
+    if (impl.fileHasDosage) {
+        decodeDosageVec(gIndex, out);
+        return;
+    }
+
     const uint32_t sampleCt = impl.sampleCt;
 
     PglErr err = PgrGet(impl.allUsed ? nullptr : impl.sampleInclude, impl.pssi, sampleCt,
@@ -581,6 +627,16 @@ uint32_t PgenCursor::getGenotypesMaybeSparse(
 ) {
     using namespace plink2;
     auto &impl = *m_impl;
+
+    // Dosage files: there is no difflist representation for a dosage track, so
+    // decode densely (returns UINT32_MAX) and let the engine's dosage-aware QC
+    // (statsFromUnionVec/statsFromGVec) handle the fractional values.
+    if (impl.fileHasDosage) {
+        decodeDosageVec(gIndex, out);
+        diffLen = 0;
+        return UINT32_MAX;
+    }
+
     const uint32_t sampleCt = impl.sampleCt;
 
     // Cap maxLen at our pre-allocated buffer size (sampleCt / 8)

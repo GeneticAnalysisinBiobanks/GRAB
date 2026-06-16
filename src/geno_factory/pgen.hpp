@@ -97,6 +97,12 @@ class PgenData : public GenoMeta {
         return m_allUsed;
     }
 
+    // True ⇒ the .pgen carries a dosage track (kfPgenGlobalDosagePresent).
+    // Hard-call files keep the difflist fast path in the cursor.
+    bool fileHasDosage() const {
+        return m_fileHasDosage;
+    }
+
     const std::vector<uint64_t> &usedMask() const {
         return m_usedMask;
     }
@@ -124,6 +130,7 @@ class PgenData : public GenoMeta {
 
     std::string m_pgenFile;
     bool m_allUsed;
+    bool m_fileHasDosage = false;
     uint32_t m_nSubjInFile;
     uint32_t m_nSubjUsed;
     uint32_t m_nMarkers;
@@ -187,6 +194,10 @@ class PgenCursor : public GenoCursor {
     ) override;
 
   private:
+    // Decode one variant into out[] (dosage where present, else hard call,
+    // NaN for missing) via the pgenlib dosage API.  Returns the dosage count.
+    uint32_t decodeDosageVec(uint64_t gIndex, Eigen::Ref<Eigen::VectorXd> out);
+
     const PgenData &m_parent;
 
     // Per-thread pgenlib state (opaque, allocated in .cpp)
