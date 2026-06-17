@@ -399,17 +399,18 @@ void multiPhenoEngineRange(
     // does ONE GEMM per window for ALL fuseable phenotypes, eliminating
     // per-phenotype extraction entirely.
     //
-    // AugResid layout (N_union × totalFusedCols + nFuseable):
-    //   [residCols_0 | ... | residCols_{K-1} | mask_0 | ... | mask_{K-1}]
+    // AugResid layout (N_union × totalFusedCols):
+    //   [residCols_0 | ... | residCols_{K-1}]
     //
-    // The last nFuseable columns are 0/1 mask vectors for computing
-    // per-phenotype genotype sums (gSum = mask^T × G).
+    // Per-phenotype genotype sums (gSum = Σ mask·G) are NOT computed by the
+    // GEMM.  Each fused QC group carries a 1-bit subject bitset (groupMaskBits)
+    // and gSum is accumulated inside statsFromUnionVec's per-marker scan, so
+    // AugResid holds only residual columns (no fp64 mask columns).
 
     struct FusedPhenoInfo {
         size_t taskIdx;        // index into tasks[]
         int colOffset;         // start column in AugResid (residual columns)
         int nCols;             // fusedGemmColumns() for this phenotype
-        int maskCol;           // column index for this phenotype's mask in AugResid
         uint32_t nUsed;        // this phenotype's sample count
     };
 
@@ -424,7 +425,6 @@ void multiPhenoEngineRange(
             fi.colOffset = totalFusedCols;
             fi.nCols = tasks[p].method->fusedGemmColumns();
             fi.nUsed = tasks[p].nUsed;
-            fi.maskCol = 0;  // set below
             totalFusedCols += fi.nCols;
             fusedPhenos.push_back(fi);
         } else {
@@ -433,11 +433,12 @@ void multiPhenoEngineRange(
     }
 
     const size_t nFuseable = fusedPhenos.size();
-    const int augCols = totalFusedCols + static_cast<int>(nFuseable);
-
-    // Set mask column indices.
-    for (size_t fi = 0; fi < nFuseable; ++fi)
-        fusedPhenos[fi].maskCol = totalFusedCols + static_cast<int>(fi);
+    // Mask columns are no longer stored in AugResid.  The per-phenotype genotype
+    // sum (gSum = Σ mask·G) is folded into the per-marker statsFromUnionVec scan
+    // via a 1-bit subject bitset (groupMaskBits, built below), so AugResid holds
+    // only the residual columns — halving the streamed left operand for c=1
+    // methods (e.g. SPAGRM: 2K → K columns).
+    const int augCols = totalFusedCols;
 
     // Build shared AugResid matrix (read-only, shared across all threads).
     // Also store per-fuseable residual sums.
@@ -461,16 +462,11 @@ void multiPhenoEngineRange(
 
             // Fill residual sums.
             tasks[p].method->fillResidualSums(allResidSums.data() + fp.colOffset);
-
-            // Fill mask column (1.0 for present, 0.0 for absent).
-            for (uint32_t i = 0; i < nUnion; ++i)
-                if (tasks[p].unionToLocal[i] != UINT32_MAX)
-                    AugResid(i, fp.maskCol) = 1.0;
         }
 
-        infoMsg("Fused GEMM: %zu fuseable phenotypes (%d residual cols + %zu mask cols = %d augmented cols), "
+        infoMsg("Fused GEMM: %zu fuseable phenotypes (%d residual cols), "
                 "%zu non-fuseable phenotypes",
-                nFuseable, totalFusedCols, nFuseable, augCols, nonFusedPhenos.size());
+                nFuseable, totalFusedCols, nonFusedPhenos.size());
     }
 
     // ── Group fuseable phenotypes by identical subject sets (D1) ───────
@@ -506,6 +502,25 @@ void multiPhenoEngineRange(
             infoMsg("Fused QC groups: %zu groups for %zu fuseable phenotypes (%.0f%% QC savings)",
                     fusedGroups.size(), nFuseable,
                     100.0 * (1.0 - static_cast<double>(fusedGroups.size()) / static_cast<double>(nFuseable)));
+    }
+
+    // ── Per-group 1-bit subject masks ─────────────────────────────────
+    // Each group's representative defines the shared subject set.  Storing
+    // the mask as a bitset (1 bit/subject) instead of an fp64 AugResid column
+    // (64 bits/subject) removes nFuseable columns from the streamed GEMM left
+    // operand; gSum = Σ mask·G is recovered inside statsFromUnionVec's
+    // existing per-marker scan (no extra memory pass).
+    const size_t maskWords = (static_cast<size_t>(nUnion) + 63) / 64;
+    std::vector<std::vector<uint64_t> > groupMaskBits(fusedGroups.size());
+    if (hasFused) {
+        for (size_t gi = 0; gi < fusedGroups.size(); ++gi) {
+            groupMaskBits[gi].assign(maskWords, 0ULL);
+            const auto &rep = fusedPhenos[fusedGroups[gi].repFi];
+            const auto &u2l = tasks[rep.taskIdx].unionToLocal;
+            for (uint32_t i = 0; i < nUnion; ++i)
+                if (u2l[i] != UINT32_MAX)
+                    groupMaskBits[gi][i >> 6] |= (1ULL << (i & 63));
+        }
     }
 
     // ── Missingness-pattern batching (non-fuseable phenotypes only) ────
@@ -809,10 +824,11 @@ void multiPhenoEngineRange(
 
                         FusedMarkerQC wmQC[64];  // B ≤ 64
 
-                        for (const auto &group : fusedGroups) {
+                        for (size_t gi = 0; gi < fusedGroups.size(); ++gi) {
+                            const auto &group = fusedGroups[gi];
                             // ── Compute QC once using the representative phenotype ──
                             const auto &repFp = fusedPhenos[group.repFi];
-                            const double *maskCol = AugResid.col(repFp.maskCol).data();
+                            const uint64_t *maskBits = groupMaskBits[gi].data();
 
                             passAltFreqs.clear();
                             passGSums.clear();
@@ -825,11 +841,10 @@ void multiPhenoEngineRange(
                                     static_cast<Eigen::Index>(bi)).data();
 
                                 PhenoGenoStats gs = statsFromUnionVec(
-                                    unionCol, maskCol, nUnion, repFp.nUsed,
+                                    unionCol, maskBits, nUnion, repFp.nUsed,
                                     winIsDosage[bi]);
 
-                                const double gSum = allScoresAndSums(
-                                    repFp.maskCol, static_cast<Eigen::Index>(bi));
+                                const double gSum = gs.gSum;
                                 const double twoN = 2.0 * static_cast<double>(repFp.nUsed);
                                 if (gs.fromDosage) {
                                     gs.altFreq = gSum / twoN;

@@ -190,6 +190,10 @@ struct PhenoGenoStats {
     // Sum of squared post-impute genotypes over mask-included subjects.
     // Used by SPAsqr to compute empirical Var(G) = (sumSq − sum²/n) / (n−1).
     double sumSq;
+    // Sum of post-impute genotypes over mask-included subjects (= mask^T·G).
+    // Replaces the GEMM mask column on the fused path; consumed as the per-
+    // phenotype genotype sum and (for dosage markers) to recompute altFreq/mac.
+    double gSum;
     // True ⇒ this is a dosage marker: altFreq/mac were left as sentinels and
     // the caller must recompute them from the GEMM gSum (see statsFromUnionVec).
     bool fromDosage;
@@ -200,17 +204,20 @@ struct PhenoGenoStats {
 // Used by the fused GEMM path where per-phenotype extraction is skipped.
 inline PhenoGenoStats statsFromUnionVec(
     const double *unionG,
-    const double *mask,
+    const uint64_t *maskBits,
     uint32_t nUnion,
     uint32_t nUsed,
     bool isDosage
 ) {
     uint32_t nHomRef = 0, nHet = 0, nHomAlt = 0, nMissing = 0;
     double sumSq = 0.0;
+    double gSum = 0.0;             // Σ mask·G (replaces the GEMM mask column)
     for (uint32_t i = 0; i < nUnion; ++i) {
-        if (mask[i] == 0.0) continue;  // absent from this phenotype
+        if (((maskBits[i >> 6] >> (i & 63)) & 1ULL) == 0)
+            continue;                  // absent from this phenotype
         const double v = unionG[i];
         sumSq += v * v;                // post-impute (caller has filled NaNs)
+        gSum += v;
         if (v == 0.0)
             ++nHomRef;
         else if (v == 1.0)
@@ -222,6 +229,7 @@ inline PhenoGenoStats statsFromUnionVec(
     }
     PhenoGenoStats s;
     s.sumSq = sumSq;
+    s.gSum = gSum;
     uint32_t nonMissing = nHomRef + nHet + nHomAlt;
     // Dosage marker (detected pre-impute by the caller) or all-dosage column:
     // the discrete-count classification is meaningless, so compute AF/MAC from
@@ -276,6 +284,7 @@ inline PhenoGenoStats statsFromGVec(
     }
     PhenoGenoStats s;
     s.sumSq = 0.0;  // unused on the non-fused path
+    s.gSum = 0.0;   // unused on the non-fused path (kept initialized)
     s.fromDosage = isDosage;
     if (nNonMissing == 0) {
         s.altFreq = NAN;
