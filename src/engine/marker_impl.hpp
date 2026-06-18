@@ -256,6 +256,110 @@ inline PhenoGenoStats statsFromUnionVec(
     return s;
 }
 
+// Single-pass multi-group QC.  The fused path previously called
+// statsFromUnionVec once per (QC group × marker), so the same N_union-length
+// genotype column was re-streamed and the per-subject 0/1/2 classification was
+// re-run for every group (typically dozens at biobank scale).  That re-scan
+// dominated the non-GEMM runtime: it scaled genotype DRAM / dTLB traffic and
+// the mispredicted classification branch by a factor of nGroups.
+//
+// This routine reads each column ONCE and classifies each subject ONCE, then
+// fans the contribution into every group's accumulators through that group's
+// 1-bit subject mask.  Genotype memory traffic and classification branches
+// drop by a factor of nGroups; the per-subject inner loop touches only the
+// small L1-resident accumulator arrays and the compact per-group mask words.
+//
+// Byte-identical to nGroups× statsFromUnionVec (no tolerance):
+//   - gSum and sumSq are accumulated per group in increasing subject index i
+//     (i is the outer loop), matching the original per-group scan order.  For
+//     excluded subjects the branchless mask multiply adds v·0 = +0.0; post-
+//     impute genotypes are non-negative, so each group's running sum is ≥ 0
+//     and "x + 0.0 == x" holds bit-exactly — the masked partial sums are thus
+//     identical to skipping the excluded subjects outright.
+//   - the integer class counts (and HweExact, which depends only on them) are
+//     order-independent.
+//
+// out[g * outStride] receives group g's stats; isDosage is the per-marker flag
+// (identical for all groups of one marker).  accGSum/accSumSq (length nGroups)
+// and accCnt (length nGroups*4: class counts 0..3) are caller-owned scratch,
+// reused across markers; this routine zeroes them on entry.
+inline void statsFromUnionVecMultiGroup(
+    const double *unionG,
+    const uint64_t *const *groupMaskBits,
+    const uint32_t *groupNUsed,
+    uint32_t nGroups,
+    uint32_t nUnion,
+    bool isDosage,
+    double *accGSum,
+    double *accSumSq,
+    uint32_t *accCnt,
+    PhenoGenoStats *out,
+    size_t outStride
+) {
+    for (uint32_t g = 0; g < nGroups; ++g) {
+        accGSum[g] = 0.0;
+        accSumSq[g] = 0.0;
+        accCnt[g * 4 + 0] = 0;
+        accCnt[g * 4 + 1] = 0;
+        accCnt[g * 4 + 2] = 0;
+        accCnt[g * 4 + 3] = 0;
+    }
+
+    for (uint32_t i = 0; i < nUnion; ++i) {
+        const double v = unionG[i];
+        const double vv = v * v;
+        // Classify once per subject (mask-independent); matches the 0/1/2/other
+        // ladder in statsFromUnionVec exactly.  cls indexes accCnt: 0 hom-ref,
+        // 1 het, 2 hom-alt, 3 imputed value or dosage (the "missing" class).
+        uint32_t cls;
+        if (v == 0.0)
+            cls = 0;
+        else if (v == 1.0)
+            cls = 1;
+        else if (v == 2.0)
+            cls = 2;
+        else
+            cls = 3;
+        const uint32_t w = i >> 6;
+        const uint32_t b = i & 63;
+        for (uint32_t g = 0; g < nGroups; ++g) {
+            const uint64_t m = (groupMaskBits[g][w] >> b) & 1ULL;
+            const double md = static_cast<double>(m);
+            accGSum[g] += v * md;       // += v when masked-in, += +0.0 otherwise
+            accSumSq[g] += vv * md;
+            accCnt[g * 4 + cls] += static_cast<uint32_t>(m);
+        }
+    }
+
+    for (uint32_t g = 0; g < nGroups; ++g) {
+        const uint32_t nHomRef = accCnt[g * 4 + 0];
+        const uint32_t nHet = accCnt[g * 4 + 1];
+        const uint32_t nHomAlt = accCnt[g * 4 + 2];
+        const uint32_t nMissing = accCnt[g * 4 + 3];
+        PhenoGenoStats &s = out[g * outStride];
+        s.sumSq = accSumSq[g];
+        s.gSum = accGSum[g];
+        const uint32_t nonMissing = nHomRef + nHet + nHomAlt;
+        if (nonMissing == 0 || isDosage) {
+            s.missingRate = 0.0;
+            s.hweP = 1.0;
+            s.altFreq = 0.0;
+            s.mac = 0.0;
+            s.fromDosage = true;
+            continue;
+        }
+        const uint32_t altCounts = 2 * nHomAlt + nHet;
+        const double n2 = 2.0 * nonMissing;
+        s.altFreq = altCounts / n2;
+        const double maf = std::min(s.altFreq, 1.0 - s.altFreq);
+        s.mac = maf * n2;
+        s.missingRate =
+            static_cast<double>(nMissing) / static_cast<double>(groupNUsed[g]);
+        s.hweP = HweExact(nHet, nHomAlt, nHomRef);
+        s.fromDosage = false;
+    }
+}
+
 inline PhenoGenoStats statsFromGVec(
     const double *g,
     uint32_t n,

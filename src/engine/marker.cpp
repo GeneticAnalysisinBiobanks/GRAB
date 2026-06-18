@@ -523,6 +523,20 @@ void multiPhenoEngineRange(
         }
     }
 
+    // Flat views over the per-group masks and sample counts, shared read-only
+    // across worker threads, for the single-pass multi-group QC scan
+    // (statsFromUnionVecMultiGroup): one mask-word pointer and one nUsed per
+    // group, indexed by group position.
+    std::vector<const uint64_t *> groupMaskPtrs(fusedGroups.size());
+    std::vector<uint32_t> groupNUsedArr(fusedGroups.size());
+    if (hasFused) {
+        for (size_t gi = 0; gi < fusedGroups.size(); ++gi) {
+            groupMaskPtrs[gi] = groupMaskBits[gi].data();
+            groupNUsedArr[gi] = fusedPhenos[fusedGroups[gi].repFi].nUsed;
+        }
+    }
+    const uint32_t nFusedGroups = static_cast<uint32_t>(fusedGroups.size());
+
     // ── Missingness-pattern batching (non-fuseable phenotypes only) ────
     struct MissBatch {
         size_t rep;
@@ -718,6 +732,21 @@ void multiPhenoEngineRange(
             std::vector<char> winIsDosage(B);    // per-marker dosage flag
             std::vector<FusedMarkerQC> wmQC(B);  // per-marker QC (fused path)
 
+            // ── Single-pass multi-group QC scratch ─────────────────────
+            // gStatsWin[gi*B + bi] holds group gi's QC stats for window marker
+            // bi (contiguous in bi for the per-group consume loop below).
+            // accGSum/accSumSq/accCnt are the per-marker fan-out accumulators,
+            // reused across markers (statsFromUnionVecMultiGroup zeroes them).
+            std::vector<PhenoGenoStats> gStatsWin;
+            std::vector<double> accGSum, accSumSq;
+            std::vector<uint32_t> accCnt;
+            if (hasFused) {
+                gStatsWin.resize(static_cast<size_t>(nFusedGroups) * B);
+                accGSum.resize(nFusedGroups);
+                accSumSq.resize(nFusedGroups);
+                accCnt.resize(static_cast<size_t>(nFusedGroups) * 4);
+            }
+
             while (!stopFlag.load(std::memory_order_relaxed)) {
                 const size_t localIdx = nextChunk.fetch_add(1);
                 if (localIdx >= nChunks) break;
@@ -826,15 +855,32 @@ void multiPhenoEngineRange(
                                     GBatch_union.leftCols(wlenI),
                                     static_cast<int>(wstart));
 
-                        // Phase 3: Per fuseable-phenotype group — shared QC + processScoreBatch.
+                        // Phase 3a: Single-pass multi-group QC.  Read each union
+                        // genotype column ONCE and fan its per-subject
+                        // contribution into all QC groups' accumulators, instead
+                        // of re-streaming the column once per group.  Fills
+                        // gStatsWin[gi*B + bi] for every group gi and window
+                        // marker bi (byte-identical to per-group statsFromUnionVec
+                        // — see statsFromUnionVecMultiGroup).
+                        for (size_t bi = 0; bi < wlen; ++bi) {
+                            const double *unionCol = GBatch_union.col(
+                                static_cast<Eigen::Index>(bi)).data();
+                            statsFromUnionVecMultiGroup(
+                                unionCol, groupMaskPtrs.data(),
+                                groupNUsedArr.data(), nFusedGroups, nUnion,
+                                winIsDosage[bi] != 0, accGSum.data(),
+                                accSumSq.data(), accCnt.data(),
+                                &gStatsWin[bi], B);
+                        }
+
+                        // Phase 3b: Per fuseable-phenotype group — shared QC + processScoreBatch.
                         // D1: Phenotypes with identical subjects share statsFromUnionVec results.
                         // (wmQC[] and winIsDosage[] are per-thread buffers sized B, declared above.)
 
                         for (size_t gi = 0; gi < fusedGroups.size(); ++gi) {
                             const auto &group = fusedGroups[gi];
-                            // ── Compute QC once using the representative phenotype ──
+                            // ── QC already computed in Phase 3a (gStatsWin) ──
                             const auto &repFp = fusedPhenos[group.repFi];
-                            const uint64_t *maskBits = groupMaskBits[gi].data();
 
                             passAltFreqs.clear();
                             passGSums.clear();
@@ -843,12 +889,8 @@ void multiPhenoEngineRange(
                             int passCount = 0;
 
                             for (size_t bi = 0; bi < wlen; ++bi) {
-                                const double *unionCol = GBatch_union.col(
-                                    static_cast<Eigen::Index>(bi)).data();
-
-                                PhenoGenoStats gs = statsFromUnionVec(
-                                    unionCol, maskBits, nUnion, repFp.nUsed,
-                                    winIsDosage[bi]);
+                                PhenoGenoStats gs =
+                                    gStatsWin[gi * B + bi];
 
                                 const double gSum = gs.gSum;
                                 const double twoN = 2.0 * static_cast<double>(repFp.nUsed);
