@@ -101,6 +101,17 @@ class SADGEMethod : public MethodBase {
         return 2; // col 0 = residUnion (S_G), col 1 = residSing (singleton Σ G·R)
     }
 
+    int preferredBatchSize() const override {
+        // Widen the fused GEMM window.  SADGE's per-window cost is dominated by
+        // Eigen re-packing the AugResid left operand (gemm_pack_lhs ≈ 30% of
+        // runtime at B=16), so amortizing that pack across more markers per GEMM
+        // call nearly doubles IPC.  Measured sweet spot on a 50-phenotype chr22
+        // run is B=128 (1.08 → 2.01 insn/cycle, engine wall −35%, byte-identical;
+        // B=256 adds only ~1% for 2× the per-thread GBatch_union memory, which is
+        // N_union × B doubles).
+        return 128;
+    }
+
     void fillUnionResiduals(
         Eigen::Ref<Eigen::MatrixXd> dest,
         const std::vector<uint32_t> &unionToLocal) const override;
