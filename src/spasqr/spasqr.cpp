@@ -656,9 +656,13 @@ class SPAsqrMethod : public MethodBase {
         // ── C2: Tau-first SPA computation ──────────────────────────
         // Process all B markers for one tau before moving to the next.
         // This keeps the tau's outlierResid data hot in cache.
-        // Layout: pBuf[b * ntaus + t], zBuf[b * ntaus + t]
-        double zBuf[20 * 16];   // B(≤16) × ntaus(≤20)
-        double pBuf[20 * 16];
+        // Layout: pBuf[b * ntaus + t], zBuf[b * ntaus + t].
+        // Heap-backed per-thread buffers (was a [20*16] stack array) so the
+        // fused GEMM window B is not capped at 16/B·ntaus ≤ 320.
+        m_zBuf.resize(static_cast<size_t>(B) * m_ntaus);
+        m_pBuf.resize(static_cast<size_t>(B) * m_ntaus);
+        double *zBuf = m_zBuf.data();
+        double *pBuf = m_pBuf.data();
 
         for (int t = 0; t < m_ntaus; ++t) {
             const SPAsqrPerTau &tau = m_spaShared->perTau[t];
@@ -731,6 +735,8 @@ class SPAsqrMethod : public MethodBase {
 
     std::shared_ptr<const SharedMethodData> m_methodShared;
     Eigen::MatrixXd m_centeredBuf;  // reused across processScoreBatch calls
+    std::vector<double> m_zBuf;     // B × ntaus, reused across processScoreBatch
+    std::vector<double> m_pBuf;     // B × ntaus, reused across processScoreBatch
 
     void processOneMarker(
         const double *centeredScores,

@@ -163,7 +163,7 @@ PGENLIB_DIR  := third_party/plink2-a.6.33
 DEFLATE_DIR  := $(PGENLIB_DIR)/libdeflate
 BGEN_DIR     := third_party/bgen-1.2.0
 HTSLIB_DIR   := third_party/htslib-1.23.1
-SQLITE_DIR   := third_party/sqlite-3.9.2
+SQLITE_DIR   := third_party/sqlite-3.53.2
 
 # ── Output binary ─────────────────────────────────────────────────────────────
 BIN := $(BUILD_DIR)/grab2$(EXE)
@@ -312,9 +312,13 @@ $(BUILD_DIR)/bgen/%.o: $(BGEN_DIR)/src/%.cpp | tmp
 # SQLITE_OMIT_LOAD_EXTENSION avoids a libdl dependency; THREADSAFE=1 keeps the
 # one-shot index read (main thread, BgenData construction) safe in the otherwise
 # multi-threaded process.  No -march=native (uses third-party SIMD_FLAGS only).
+# -Wno-stringop-overread silences a GCC false positive in sqlite3ColumnSetColl
+# (the inlined sqlite3Strlen30 -> strlen call): GCC cannot prove the collation-
+# name pointer is non-null at that site and warns about a "region of size 0".
 SQLITE_CFLAGS := $(TP_CFLAGS) \
     -DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_THREADSAFE=1 \
-    -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED
+    -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_DEPRECATED \
+    -Wno-stringop-overread
 
 $(BUILD_DIR)/sqlite/%.o: $(SQLITE_DIR)/%.c | tmp
 	@mkdir -p $(@D)

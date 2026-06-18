@@ -676,8 +676,10 @@ int run(
             }
         }
         // Residual-based methods: SPACox / SPAGRM / SPAmix / SPAmixPlus /
-        // SPAmixLocalPlus additionally accept --pheno-name (mutually
-        // exclusive with --resid-name).  --regression-model is optional and
+        // SPAmixLocalPlus accept --pheno-name (mutually exclusive with
+        // --resid-name); when neither is given they fall back to fitting a
+        // null model for every column of the --pheno file (see the
+        // auto-populate block below).  --regression-model is optional and
         // defaults to 'auto' (per-spec inference inside the engine).
         // SAGELD remains residual-only and rejects any non-auto --regression-model.
         const bool isFitCapableMethod =
@@ -762,7 +764,27 @@ int run(
                 }
             }
         } else if (isFitCapableMethod) {
-            const bool isFitPath = hasPhenoName;
+            // When NEITHER --pheno-name nor --resid-name is given, fall back
+            // to fitting a null model for every column of the --pheno file
+            // (FID/IID stripped).  This mirrors the SPAsqr / WtCoxG / LEAF
+            // "analyze all --pheno columns" default; here each column's
+            // regression family is inferred per column by the null-model
+            // engine in --regression-model auto mode (the default).  The fit
+            // path keys on args.phenoName downstream, so the auto-populated
+            // column list is written back into it.
+            if (!hasPhenoName && !hasResidName && !args.phenoFile.empty()) {
+                phenoNames = SubjectData::readColumnNames(args.phenoFile);
+                std::string joined;
+                for (size_t i = 0; i < phenoNames.size(); ++i) {
+                    if (i) joined += ',';
+                    joined += phenoNames[i];
+                }
+                args.phenoName = std::move(joined);
+                infoMsg("--pheno-name not specified; fitting a null model for"
+                        " all %zu --pheno columns (family inferred per column)",
+                        phenoNames.size());
+            }
+            const bool isFitPath = !args.phenoName.empty();
             if (isFitPath && hasResidName) {
                 std::cerr << "Error: " << args.method
                           << ": --pheno-name and --resid-name are"
@@ -771,7 +793,8 @@ int run(
             }
             if (!isFitPath && !hasResidName) {
                 std::cerr << "Error: " << args.method
-                          << " requires either --resid-name or --pheno-name.\n";
+                          << " requires --resid-name, --pheno-name, or a"
+                             " --pheno file with named columns.\n";
                 return 1;
             }
             if (!isFitPath && regModelNonAuto) {

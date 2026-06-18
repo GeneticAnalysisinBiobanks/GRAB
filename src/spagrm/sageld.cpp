@@ -450,6 +450,10 @@ class GALLOPMethod : public MethodBase {
 
     int resultSize() const override { return 8; }
 
+    int preferredBatchSize() const override {
+        return 1;   // per-marker Wald; non-fused, so do not widen the window.
+    }
+
     // col 0..3 : P_G  Z_G  BETA_G  SE_G
     // col 4..7 : P_Gx<E>  Z_Gx<E>  BETA_Gx<E>  SE_Gx<E>
     std::string getHeaderColumns() const override {

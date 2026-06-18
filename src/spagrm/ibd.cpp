@@ -189,10 +189,18 @@ void runPairwiseIBD(
     std::vector<std::string> allIIDs = parseGenoIIDs(geno);
     infoMsg("Read %u subjects from genotype file", static_cast<uint32_t>(allIIDs.size()));
 
-    // Build filtered subject set via SubjectSet
+    // Build filtered subject set via SubjectSet.  Intersect the genotype
+    // .fam IIDs with the GRM subjects first: the IBD analysis only concerns
+    // related pairs drawn from the GRM, and the subsequent
+    // SparseGRM::load(... filteredIIDs ...) builds its diagonal over exactly
+    // filteredIIDs.  Without this intersection every genotype subject absent
+    // from the GRM would lack a diagonal entry and trigger the
+    // "N of M subjects have no diagonal entry" error in buildDiagonal().
     SubjectSet ss(std::move(allIIDs));
+    ss.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, ss.famIIDs()));
     ss.setKeepRemove(keepFile, removeFile);
     ss.setGenoLabel(geno.flagLabel());
+    ss.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
     ss.finalize();
 
     const uint32_t nFam = ss.nFam();

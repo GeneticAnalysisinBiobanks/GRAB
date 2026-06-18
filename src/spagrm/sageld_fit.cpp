@@ -80,9 +80,14 @@ LongPhenoData parseLongPheno(
     }
     if (line.empty()) throw std::runtime_error(filename + ": empty file, header required");
 
+    // Auto-detect the field delimiter from the header line (tab → `.tsv` whose
+    // fields may contain spaces; otherwise whitespace-delimited), then apply the
+    // same mode to every data row.
+    const text::Delim delim = text::detectDelim(line);
+
     std::vector<std::string> headers;
     {
-        text::TokenScanner ts(line);
+        text::TokenScanner ts(line, delim);
         while (!ts.atEnd()) {
             auto sv = ts.nextView();
             if (sv.empty()) break;
@@ -153,7 +158,7 @@ LongPhenoData parseLongPheno(
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (line.empty()) continue;
 
-        text::TokenScanner ts(line);
+        text::TokenScanner ts(line, delim);
         std::string iid;
         int tokIdx = 0;
         for (int c = 0; c <= iidCol; ++c) {

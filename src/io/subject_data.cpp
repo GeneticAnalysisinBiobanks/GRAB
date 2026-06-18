@@ -140,9 +140,15 @@ SubjectData::RawFile SubjectData::parseIIDFile(
     }
     if (line.empty()) throw std::runtime_error(filename + ": empty file, header line required");
 
+    // Auto-detect the field delimiter from the header line: a tab anywhere on
+    // the header marks a `.tsv` (fields may contain spaces, e.g. free-text
+    // medication columns); otherwise fields are whitespace-delimited.  The same
+    // mode is then applied to every data row.
+    const text::Delim delim = text::detectDelim(line);
+
     std::vector<std::string> headers;
     {
-        text::TokenScanner ts(line);
+        text::TokenScanner ts(line, delim);
         while (!ts.atEnd()) {
             auto sv = ts.nextView();
             if (sv.empty()) break;
@@ -212,7 +218,7 @@ SubjectData::RawFile SubjectData::parseIIDFile(
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (line.empty()) continue;
 
-        text::TokenScanner ts(line);
+        text::TokenScanner ts(line, delim);
         int tokIdx = 0;
 
         // Skip/extract IID — columns before dataStart

@@ -193,7 +193,10 @@ Column-selection flags
                           cox | ordinal) and feeds the fitted residuals
                           into the downstream score test.  For Cox
                           phenotypes the column tokens take the form
-                          TIME:EVENT (e.g. SURVTIME:STATUS).
+                          TIME:EVENT (e.g. SURVTIME:STATUS).  When neither
+                          --pheno-name nor --resid-name is given, every
+                          column of --pheno (FID/IID stripped) is analyzed
+                          as a phenotype.
   --resid-name COL_IDS    Columns of --pheno that already hold residuals
                           (one residual per subject per column).  Used
                           by SPACox / SPAGRM / SPAmix / SPAmixPlus /

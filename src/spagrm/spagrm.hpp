@@ -284,7 +284,9 @@ class SPAGRMMethod : public MethodBase {
     }
 
     int preferredBatchSize() const override {
-        return 8;
+        // Saddlepoint-dominated (fused GEMM ~0.8% of runtime); 16 is the engine
+        // floor and B>16 gives no measured gain, so request the floor exactly.
+        return 16;
     }
 
     // ── Fused union-level GEMM interface ───────────────────────────────

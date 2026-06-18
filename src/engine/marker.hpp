@@ -78,9 +78,29 @@ class MethodBase {
         }
     }
 
-    // Suggested marker batch size for this method (0 = use engine default).
+    // Suggested marker batch size for this method — the width of the fused
+    // union-level GEMM window (and of the single-method batched path), floored
+    // at 16 by the engine.  The default is the conservative floor (16), because
+    // every fused method currently in the engine is dominated by per-marker
+    // work, not by the GEMM: saddlepoint methods (SPAGRM, SPAmix/SPAmixPlus,
+    // SPACox, WtCoxG), the multi-tau QMME of SPAsqr, and the per-cluster LEAF.
+    // For such methods widening the window yields no throughput gain — it only
+    // pays the N_union x B GBatch memory, which at UK-Biobank scale
+    // (N ~ 4e5, 100 threads) can exhaust RAM (SPAmixPlus was OOM-killed at
+    // B=128).  Measured directly: SPAGRM (fused GEMM ~0.8% of runtime; B=16 vs
+    // 256 within noise) and SPAsqr (370 residual cols; B=16 119s vs B=128 114s
+    // engine wall, byte-identical) show no benefit from B>16.
+    //
+    // A method that is genuinely GEMM-bound — a cheap score test with no
+    // per-marker saddlepoint, where Eigen's per-window gemm_pack_lhs re-pack of
+    // the AugResid left operand dominates (e.g. SADGE: GEMM ~42%, B=16->128
+    // nearly doubles IPC) — should override this UPWARD explicitly.  Opting up
+    // consciously is safer than a wide default that silently OOMs the common
+    // saddlepoint case.  Such an opt-up is safe at any B: the per-window scratch
+    // (winIsDosage/wmQC in multiPhenoEngineRange, m_zBuf/m_pBuf in SPAsqr) is
+    // per-thread heap sized to the actual window, with no fixed B cap.
     virtual int preferredBatchSize() const {
-        return 0;
+        return 16;
     }
 
     // ── Fused union-level GEMM interface ───────────────────────────────
