@@ -708,6 +708,16 @@ void multiPhenoEngineRange(
             std::vector<double> rv;
             rv.reserve(16);
 
+            // ── Per-window scratch, sized to B ─────────────────────────
+            // Heap-allocated once per thread (was a [64] stack array), so the
+            // fused GEMM window B is no longer capped at 64.
+            struct FusedMarkerQC {
+                double missingRate, altFreq, mac, hweP;
+                bool pass;
+            };
+            std::vector<char> winIsDosage(B);    // per-marker dosage flag
+            std::vector<FusedMarkerQC> wmQC(B);  // per-marker QC (fused path)
+
             while (!stopFlag.load(std::memory_order_relaxed)) {
                 const size_t localIdx = nextChunk.fetch_add(1);
                 if (localIdx >= nChunks) break;
@@ -758,10 +768,10 @@ void multiPhenoEngineRange(
                         }
                     }
 
-                    // Per-marker dosage flag (filled in Phase 1b, read in Phase 3):
-                    // true ⇒ at least one decoded value is a fractional dosage,
-                    // so QC must come from the dosage sum, not exact 0/1/2 counts.
-                    bool winIsDosage[64] = {false};  // B ≤ 64
+                    // Per-marker dosage flag winIsDosage[bi] (declared above,
+                    // sized B): set for every bi in [0,wlen) in Phase 1b — true
+                    // ⇒ a fractional dosage was seen, so QC must come from the
+                    // dosage sum, not exact 0/1/2 counts.
 
                     // Phase 1b: Impute NaN genotypes to 2*AF in GBatch_union.
                     // This prevents NaN from propagating through the fused GEMM.
@@ -799,8 +809,9 @@ void multiPhenoEngineRange(
                         const auto wlenI = static_cast<Eigen::Index>(wlen);
 
                         // ONE GEMM: AugResid^T × GBatch_union → (augCols × wlen)
-                        // Rows 0..totalFusedCols-1 = raw scores
-                        // Rows totalFusedCols..augCols-1 = gSums (mask^T × G)
+                        // All augCols rows are raw scores (augCols == totalFusedCols;
+                        // gSums are no longer GEMM rows — see groupMaskBits /
+                        // statsFromUnionVec).
                         allScoresAndSums.leftCols(wlenI).noalias() =
                             AugResid.transpose() * GBatch_union.leftCols(wlenI);
 
@@ -817,12 +828,7 @@ void multiPhenoEngineRange(
 
                         // Phase 3: Per fuseable-phenotype group — shared QC + processScoreBatch.
                         // D1: Phenotypes with identical subjects share statsFromUnionVec results.
-                        struct FusedMarkerQC {
-                            double missingRate, altFreq, mac, hweP;
-                            bool pass;
-                        };
-
-                        FusedMarkerQC wmQC[64];  // B ≤ 64
+                        // (wmQC[] and winIsDosage[] are per-thread buffers sized B, declared above.)
 
                         for (size_t gi = 0; gi < fusedGroups.size(); ++gi) {
                             const auto &group = fusedGroups[gi];
