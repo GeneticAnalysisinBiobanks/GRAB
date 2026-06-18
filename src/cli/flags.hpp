@@ -218,6 +218,19 @@ inline const FlagDef kSpGrm = {
     nullptr
 };
 
+// "Exactly one" display entry advertising both accepted spellings of the
+// sparse-GRM input.  Used by modes where the GRM is a dedicated, first-class
+// required input and both formats are equally primary — notably
+// --cal-pairwise-ibd, whose .ibd output feeds SPAGRM and which is routinely
+// driven from a GRAB-format GRM.  Mirrors kGeno_input's alternative-list
+// rendering ("A | B").
+inline const FlagDef kSpGrmEither = {
+    "--sp-grm-grab FILE | --sp-grm-plink2 FILE",
+    nullptr,
+    "Sparse GRM (exactly one; GRAB or plink2 .grm.sp format)",
+    nullptr
+};
+
 inline const FlagDef kIndAfCoef = {
     "--ind-af-coef", "FILE", "Pre-computed individual AF model",
     R"(Per-marker individual-ancestry allele-frequency model produced by
@@ -1047,7 +1060,7 @@ phenotype is run alone or jointly with other phenotypes.)",
 
 // ── Utility mode: cal-pairwise-ibd ────────────────────────────────
 inline const FlagDef *const kCalIbdReq[] = {
-    &kGeno_input, &kOut, &kSpGrm,
+    &kGeno_input, &kOut, &kSpGrmEither,
     nullptr
 };
 
