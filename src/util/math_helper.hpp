@@ -23,6 +23,7 @@
 #include <boost/math/distributions/chi_squared.hpp>
 #include <boost/math/distributions/normal.hpp>
 #include <boost/math/distributions/students_t.hpp>
+#include <boost/math/policies/policy.hpp>
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -34,6 +35,25 @@
 #endif
 
 namespace math {
+
+// Boost's default policy promotes `double` arguments to `long double`
+// internally on x86-64 (BOOST_MATH_PROMOTE_DOUBLE_POLICY resolves to true
+// wherever the long-double libm functions exist), so the normal CDF and
+// quantile are evaluated in 80-bit x87 arithmetic.  The additional
+// precision is discarded at the double-precision return type; the only
+// observable effect is roughly a fourfold slowdown on the scalar x87 FPU
+// relative to the SSE2 double path.  The policy below disables that
+// promotion, so pnorm/qnorm compute directly in double.  The results
+// agree with the promoted path to within a few ULP.  Across
+// examples/baseline.sh this is byte-identical for SPACox, SPAmix, SPAGRM,
+// SAGELD, and most SPAsqr columns; for the heaviest consumers (WtCoxG and
+// the SPAsqr fit-time residual transform) the few-ULP difference can shift
+// the sixth significant figure of a printed p-value, and it can permute
+// LEAF's kmeans cluster labels (the combined meta_P result stays
+// byte-identical).  Every such difference is numerically identical up to
+// GRAB's output precision.
+using NoPromote = boost::math::policies::policy<
+    boost::math::policies::promote_double<false> >;
 
 // ──────────────────────────────────────────────────────────────────────
 // § 1  Distribution wrappers
@@ -52,7 +72,7 @@ inline double pnorm(
         double r = ((x > 0) == lower_tail) ? 1.0 : 0.0;
         return log_p ? std::log(r + 1e-300) : r;
     }
-    boost::math::normal_distribution<double> dist(mean, sd);
+    boost::math::normal_distribution<double, NoPromote> dist(mean, sd);
     double result = lower_tail ? boost::math::cdf(dist, x)
                                : boost::math::cdf(boost::math::complement(dist, x));
     if (log_p) result = std::log(result);
@@ -69,7 +89,7 @@ inline double qnorm(
 ) {
     if (log_p) p = std::exp(p);
     p = std::clamp(p, 1e-300, 1.0 - 1e-15);
-    boost::math::normal_distribution<double> dist(mean, sd);
+    boost::math::normal_distribution<double, NoPromote> dist(mean, sd);
     // Use Boost's complement for the upper tail so very small p (e.g.
     // 1e-300) does not collapse to 1.0 via subtractive cancellation.
     if (lower_tail) return boost::math::quantile(dist, p);

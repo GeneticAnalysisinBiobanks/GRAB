@@ -595,6 +595,50 @@ Eigen::VectorXi kmeansCluster(
             bestIdx = t;
 
     Eigen::VectorXi bestLabels = std::move(threadState[bestIdx].bestLabels);
+
+    // ── Relabel clusters by ascending member count ────────────────────
+    // The internal label numbering produced by Lloyd's algorithm depends
+    // on the order in which K-means++ seeds the centroids and on which
+    // equal-inertia restart wins the parallel reduction, neither of which
+    // is fixed across runs.  Consequently the same partition can be
+    // emitted under a permuted labelling (see leaf-kmeans-ulp-relabel).
+    // Reassigning the final labels by cluster size — the smallest cluster
+    // receives label 1 and the largest receives label k — makes the
+    // emitted numbering a deterministic function of the partition alone.
+    // Ties in member count are broken by the cluster centroid in
+    // lexicographic order, which is likewise determined by the partition
+    // and not by the internal label.
+    {
+        std::vector<Eigen::Index> count(k, 0);
+        for (Eigen::Index i = 0; i < n; ++i)
+            ++count[bestLabels[i]];
+
+        // Per-label centroid: the tie-break key, determined by the
+        // partition (the set of members), not by the internal label.
+        Eigen::MatrixXd centroid = Eigen::MatrixXd::Zero(k, p);
+        for (Eigen::Index i = 0; i < n; ++i)
+            centroid.row(bestLabels[i]) += X.row(i);
+        for (int c = 0; c < k; ++c)
+            if (count[c] > 0) centroid.row(c) /= static_cast<double>(count[c]);
+
+        std::vector<int> order(k);
+        for (int c = 0; c < k; ++c) order[c] = c;
+        std::sort(order.begin(), order.end(), [&](int a, int b) {
+            if (count[a] != count[b]) return count[a] < count[b];
+            for (Eigen::Index d = 0; d < p; ++d)
+                if (centroid(a, d) != centroid(b, d))
+                    return centroid(a, d) < centroid(b, d);
+            return a < b;
+        });
+
+        // order[newLabel0] = oldLabel  ⇒  invert to map oldLabel → newLabel0.
+        std::vector<int> remap(k);
+        for (int newLabel0 = 0; newLabel0 < k; ++newLabel0)
+            remap[order[newLabel0]] = newLabel0;
+        for (Eigen::Index i = 0; i < n; ++i)
+            bestLabels[i] = remap[bestLabels[i]];
+    }
+
     bestLabels.array() += 1; // 0-based → 1-based (R convention)
     return bestLabels;
 }
