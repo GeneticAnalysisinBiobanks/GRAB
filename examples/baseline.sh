@@ -393,7 +393,7 @@ build/grab2 \
   `# Optional flags below (set to built-in defaults):` \
   --chr 1-2,3 \
   --spasqr-taus 0.1,0.3,0.5,0.7,0.9 \
-  --spasqr-tol 1e-7 \
+  --spasqr-tol 1e-6 \
   --spasqr-h-scale 3 \
   --spasqr-mode score \
   --pheno-transform int \
@@ -436,8 +436,8 @@ build/grab2 \
   `# Optional flags below (set to built-in defaults):` \
   --chr 1-2,3 \
   --spasqr-taus 0.1,0.3,0.5,0.7,0.9 \
-  --spasqr-tol 1e-7 \
-  --spasqr-h-scale 10 \
+  --spasqr-tol 1e-6 \
+  --spasqr-h-scale 5 \
   --spasqr-mode wald \
   --pheno-transform int \
   --outlier-iqr-multiplier 1.5 \

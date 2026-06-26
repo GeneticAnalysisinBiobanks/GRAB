@@ -196,7 +196,7 @@ class SPAsqrWaldMethod : public MethodBase {
         std::vector<double> taus;
         std::vector<std::string> tauLabels;
         double h        = 0.0;
-        double qmmeTol  = 1e-7;
+        double qmmeTol  = 1e-6;
         int    maxIter  = 5000;
     };
 
@@ -329,14 +329,14 @@ void runSPAsqrWald(
     const int K = static_cast<int>(phenoNames.size());
     const int ntaus = static_cast<int>(taus.size());
     const bool useLoco = !predListFile.empty();
-    // Wald defaults to h-scale=10 (vs score-mode's 3): per-marker QMME refits
+    // Wald defaults to h-scale=5 (vs score-mode's 3): per-marker QMME refits
     // with G in the design benefit from a smaller bandwidth so the kernel
     // weight K_h(-e) better resolves the score density f(0) and the
     // sandwich-derived SE matches the Gaussian asymptotic limit.
-    const double effHScale = (spasqrHScale >= 0.0) ? spasqrHScale : 10.0;
+    const double effHScale = (spasqrHScale >= 0.0) ? spasqrHScale : 5.0;
     // Wald refits per (marker, τ) — keep iter cap modest. The ε_grad tolerance
-    // tracks the user's --spasqr-tol directly (not floored to 1e-9 like score
-    // mode, which fits once and reuses) so a single bad fit can't hang the run.
+    // tracks the user's --spasqr-tol directly so a single bad fit can't hang the
+    // run; score mode applies the same tolerance to its one-time null fit.
     const double qmmeTol = spasqrTol;
     const int maxIter = 5000;
 

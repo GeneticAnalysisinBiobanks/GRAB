@@ -264,7 +264,7 @@ static void logArgsInEffect(const Args &args) {
         std::fprintf(stderr, "  --spasqr-mode %s\n", args.spasqrMode.c_str());
         if (!args.spasqrTaus.empty())
             std::fprintf(stderr, "  --spasqr-taus %s\n", args.spasqrTaus.c_str());
-        if (args.spasqrTol != 1e-7)
+        if (args.spasqrTol != 1e-6)
             std::fprintf(stderr, "  --spasqr-tol %g\n", args.spasqrTol);
         if (args.spasqrH >= 0.0)
             std::fprintf(stderr, "  --spasqr-h %g\n", args.spasqrH);

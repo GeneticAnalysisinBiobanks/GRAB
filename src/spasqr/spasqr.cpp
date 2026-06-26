@@ -1057,9 +1057,9 @@ void runSPAsqr(
     infoMsg("SPAsqr: pheno-transform = %s, solver = qmme",
             phenoTransform.c_str());
     infoMsg("SPAsqr: Loading phenotype and covariate data (%d phenotypes, %d taus)", K, ntaus);
-    // QMME is more accurate per-iteration; tighten its convergence floor
-    // by an extra factor without changing the user's --spasqr-tol meaning.
-    const double qmmeTol = std::min(spasqrTol, 1e-9);
+    // Score mode fits the null model once and reuses it for every marker, so
+    // --spasqr-tol (default 1e-6) is tight enough; apply it directly.
+    const double qmmeTol = spasqrTol;
     auto famIIDs = parseGenoIIDs(geno);
     SubjectData sd(std::move(famIIDs));
     if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile, phenoNames);
@@ -1359,7 +1359,7 @@ void runSPAsqrLoco(
     infoMsg("SPAsqr-LOCO pheno-transform: %s, solver: qmme",
             phenoTransform.c_str());
     infoMsg("SPAsqr-LOCO: Loading phenotype and covariate data (%d phenotypes, %d taus)", K, ntaus);
-    const double qmmeTol = std::min(spasqrTol, 1e-9);
+    const double qmmeTol = spasqrTol;
     auto famIIDs = parseGenoIIDs(geno);
     SubjectData sd(std::move(famIIDs));
     if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile, phenoNames);

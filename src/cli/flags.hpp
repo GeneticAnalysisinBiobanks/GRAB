@@ -579,8 +579,9 @@ develop-R SAGELD.NullModel UsedMethod argument).  Only meaningful with
 
 inline const FlagDef kSpasqrTol = {
     "--spasqr-tol", "FLOAT",
-    "Convergence tolerance for the SPAsqr null-model SQR solver (default: 1e-7). "
-    "QMME tightens this internally to min(--spasqr-tol, 1e-9).",
+    "Convergence tolerance for the SPAsqr null-model SQR solver (default: 1e-6). "
+    "Applied directly as the QMME ||grad||_inf convergence threshold in both "
+    "score and wald modes.",
     nullptr
 };
 
