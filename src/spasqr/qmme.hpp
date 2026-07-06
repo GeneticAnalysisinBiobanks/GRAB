@@ -46,7 +46,7 @@ class SqrSolver {
         const Eigen::VectorXd &Y,
         double tau,
         Eigen::VectorXd *residOut = nullptr,
-        double tol = 1e-7,
+        double tol = 1e-6,
         int maxIter = 5000,
         int restartPeriod = 50,
         SolverStatus *statusOut = nullptr,

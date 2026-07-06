@@ -23,6 +23,7 @@
 
 #include <zlib.h>
 
+#include "engine/loco.hpp"
 #include "geno_factory/geno_data.hpp"
 #include "spamix/indiv_af.hpp"
 #include "io/sparse_grm.hpp"
@@ -645,7 +646,6 @@ void runSPAmixPlus(
     const std::string &phenoNameSpec,
     const std::vector<std::string> &covarNames,
     bool saveResid,
-    uint64_t seed,
     bool longitudinal
 ) {
     // --longitudinal injects R_G (random-intercept residual) post-finalize, so
@@ -792,7 +792,6 @@ void runSPAmixPlus(
 
         nullmodel::EngineOptions eo;
         eo.nthreads = nthread;
-        eo.seed = seed;
         auto fits = nullmodel::fitAll(sd, phenoSpecs, regModel, covarUnion, eo);
         std::vector<Eigen::VectorXd> rs;
         std::vector<std::string> ns;
@@ -811,7 +810,8 @@ void runSPAmixPlus(
                 dumpFits[i].residuals = rs[i];
                 dumpFits[i].nUsedRows = static_cast<int>(rs[i].size());
             }
-            nullmodel::writeResidualsFile(outPrefix + ".null.resid", sd, dumpFits);
+            nullmodel::writeResidualsFile(outPrefix + ".null.resid", sd, dumpFits,
+                                          compression, compressionLevel);
         }
         sd.setResidualsFromFit(std::move(rs), std::move(ns));
     }
@@ -1018,4 +1018,294 @@ void runSPAmixPlus(
         minMacCutoff,
         hweCutoff
     );
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// runSPAmixPlusLoco — LOCO orchestration
+// ══════════════════════════════════════════════════════════════════════
+//
+// The per-individual AF design (--pc-cols), the deduped OLS/GRM pools, and the
+// AF-model cache are residual-independent and are built once.  Per chromosome
+// the null model is refit with that chromosome's LOCO PGS appended as a
+// covariate column, only the residual pools change, and each SPAmixPlusMethod is
+// reconstructed.  Because SPAmixPlusMethod stores const references into the
+// residual pools, the previous chromosome's methods are destroyed before the
+// residual pools are overwritten.
+
+void runSPAmixPlusLoco(
+    const std::vector<std::string> &pcColNames,
+    const std::string &phenoFile,
+    const std::string &covarFile,
+    const GenoSpec &geno,
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const std::string &afFile,
+    const std::string &predListFile,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double spaCutoff,
+    double outlierRatio,
+    int nthread,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile,
+    const std::string &removeFile,
+    const std::string &regressionModelStr,
+    const std::string &phenoNameSpec,
+    const std::vector<std::string> &covarNames
+) {
+    if (phenoNameSpec.empty())
+        throw std::runtime_error(
+            "SPAmix-LOCO requires --pheno-name (an in-process null-model fit); "
+            "precomputed residuals cannot be refit per chromosome");
+
+    nullmodel::RegressionModel regModel =
+        nullmodel::parseRegressionModel(regressionModelStr);
+    std::vector<nullmodel::PhenoSpec> phenoSpecs =
+        nullmodel::parsePhenoSpecList(regModel, phenoNameSpec);
+    const int K = static_cast<int>(phenoSpecs.size());
+    std::vector<std::string> specNames(K);
+    for (int k = 0; k < K; ++k) specNames[k] = phenoSpecs[k].name;
+
+    const bool hasGRM = !spgrmGrabFile.empty() || !spgrmGctaFile.empty();
+    const char *methodLabel = hasGRM ? "SPAmixP" : "SPAmix";
+    infoMsg("%s-LOCO: fitting %s null model for %d phenotype(s), "
+            "per-chromosome LOCO PGS as covariate",
+            methodLabel, nullmodel::regressionModelName(regModel), K);
+
+    validatePredListPhenos(predListFile, specNames);
+
+    // ---- Load pheno/PC/covar data (fit path only) ----
+    infoMsg("Loading pheno file: %s", phenoFile.c_str());
+    auto famIIDs = parseGenoIIDs(geno);
+    SubjectData sd(std::move(famIIDs));
+    {
+        std::vector<std::string> wanted = pcColNames;
+        auto add = [&](const std::string &name) {
+            if (name.empty()) return;
+            if (std::find(wanted.begin(), wanted.end(), name) == wanted.end())
+                wanted.push_back(name);
+        };
+        for (const auto &name : nullmodel::columnsNeeded(phenoSpecs)) add(name);
+        if (covarFile.empty())
+            for (const auto &name : covarNames) add(name);
+        sd.loadPhenoFile(phenoFile, wanted);
+    }
+    if (!covarFile.empty()) {
+        std::vector<std::string> covarLoadCols = pcColNames;
+        for (const auto &name : covarNames)
+            if (std::find(covarLoadCols.begin(), covarLoadCols.end(), name) ==
+                covarLoadCols.end())
+                covarLoadCols.push_back(name);
+        sd.loadCovar(covarFile, covarLoadCols);
+    }
+    sd.setKeepRemove(keepFile, removeFile);
+    if (hasGRM)
+        sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
+    sd.setGenoLabel(geno.flagLabel());
+    sd.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
+    sd.finalize();
+
+    const int N = static_cast<int>(sd.nUsed());
+    const int nPC = static_cast<int>(pcColNames.size());
+    infoMsg("  %u subjects in union mask, %d PCs", sd.nUsed(), nPC);
+
+    // ---- Base covariate matrix (--covar-name only, no PGS) ----
+    Eigen::MatrixXd baseCovar;
+    if (covarNames.empty()) baseCovar.resize(N, 0);
+    else baseCovar = sd.getColumns(covarNames);
+
+    // ---- One base fit to establish per-phenotype masks ----
+    {
+        nullmodel::EngineOptions eo;
+        eo.nthreads = nthread;
+        auto fits = nullmodel::fitAll(sd, phenoSpecs, regModel, baseCovar, eo);
+        std::vector<Eigen::VectorXd> rs;
+        std::vector<std::string> ns;
+        rs.reserve(fits.size());
+        ns.reserve(fits.size());
+        for (auto &f : fits) {
+            infoMsg("  Fitted '%s': %d subjects after NaN removal",
+                    f.name.c_str(), f.nUsedRows);
+            rs.push_back(std::move(f.residuals));
+            ns.push_back(f.name);
+        }
+        sd.setResidualsFromFit(std::move(rs), std::move(ns));
+    }
+    auto phenoInfos = sd.buildPerColumnMasks();
+
+    // Resolve each spec to a concrete model once (chromosome-invariant).
+    std::vector<nullmodel::RegressionModel> specModel(K);
+    for (int k = 0; k < K; ++k) {
+        if (regModel != nullmodel::RegressionModel::Auto)
+            specModel[k] = regModel;
+        else if (nullmodel::isCoxSpec(phenoSpecs[k]))
+            specModel[k] = nullmodel::RegressionModel::Cox;
+        else
+            specModel[k] = nullmodel::inferModelFromColumn(
+                sd.getColumn(phenoSpecs[k].yColumn), phenoSpecs[k].yColumn,
+                sd.usedIIDs()).model;
+    }
+
+    // ---- Individual-AF design [1 | PCs] (residual-independent) ----
+    Eigen::MatrixXd unionPCs = sd.getColumns(pcColNames);
+    Eigen::MatrixXd unionOnePlusPCs(N, 1 + nPC);
+    unionOnePlusPCs.col(0).setOnes();
+    unionOnePlusPCs.rightCols(nPC) = unionPCs;
+
+    // ---- GRM / genotype / AF models (once) ----
+    std::unique_ptr<SparseGRM> unionGrm;
+    if (hasGRM) {
+        infoMsg("Loading sparse GRM (raw)...");
+        unionGrm = std::make_unique<SparseGRM>(
+            SparseGRM::load(spgrmGrabFile, spgrmGctaFile, sd.usedIIDs(), sd.famIIDs()));
+        infoMsg("  %u subjects, %zu entries", unionGrm->nSubjects(), unionGrm->nnz());
+    }
+    auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(), nSnpPerChunk);
+    const auto &markerInfo = genoData->markerInfo();
+    const uint32_t nMarkers = static_cast<uint32_t>(markerInfo.size());
+    std::vector<uint32_t> genoToFlat(genoData->nMarkers(), UINT32_MAX);
+    std::vector<uint64_t> genoIndices(nMarkers);
+    for (uint32_t fi = 0; fi < nMarkers; ++fi) {
+        genoToFlat[markerInfo[fi].genoIndex] = fi;
+        genoIndices[fi] = markerInfo[fi].genoIndex;
+    }
+    std::vector<AFModel> afModels;
+    if (!afFile.empty()) {
+        infoMsg("Loading pre-computed AF models: %s", afFile.c_str());
+        afModels = loadAFModels(afFile, nPC, nMarkers, genoIndices);
+        infoMsg("  %zu AF models loaded", afModels.size());
+    }
+
+    // ---- Deduped PC/OLS/GRM pools (residual-independent, built ONCE) ----
+    std::vector<Eigen::MatrixXd> poolOnePlusPCs;
+    std::vector<Eigen::MatrixXd> poolXtX_inv_Xt;
+    std::vector<Eigen::VectorXd> poolSqrt_XtX_inv_diag;
+    std::vector<SparseGRM> poolGrm;
+    poolOnePlusPCs.reserve(static_cast<size_t>(K));
+    poolXtX_inv_Xt.reserve(static_cast<size_t>(K));
+    poolSqrt_XtX_inv_diag.reserve(static_cast<size_t>(K));
+    poolGrm.reserve(static_cast<size_t>(K));
+    std::vector<size_t> maskIdx(K);
+    for (int rc = 0; rc < K; ++rc) {
+        const auto &pi = phenoInfos[rc];
+        size_t mIdx = poolOnePlusPCs.size();
+        if (K > 1) {
+            for (int j = 0; j < rc; ++j) {
+                if (phenoInfos[j].unionToLocal == pi.unionToLocal) {
+                    mIdx = maskIdx[j];
+                    break;
+                }
+            }
+        }
+        if (mIdx == poolOnePlusPCs.size()) {
+            if (K > 1) poolOnePlusPCs.push_back(extractPhenoMat(unionOnePlusPCs, pi));
+            else poolOnePlusPCs.push_back(unionOnePlusPCs);
+            const auto &curPCs = poolOnePlusPCs.back();
+            if (afFile.empty()) {
+                Eigen::MatrixXd XtX = curPCs.transpose() * curPCs;
+                Eigen::MatrixXd XtX_inv =
+                    XtX.ldlt().solve(Eigen::MatrixXd::Identity(1 + nPC, 1 + nPC));
+                poolXtX_inv_Xt.push_back(XtX_inv * curPCs.transpose());
+                poolSqrt_XtX_inv_diag.push_back(XtX_inv.diagonal().cwiseSqrt());
+            }
+            if (hasGRM && K > 1) {
+                const auto &u2l = pi.unionToLocal;
+                std::vector<SparseGRM::Entry> pEntries;
+                for (const auto &e : unionGrm->entries()) {
+                    uint32_t li = u2l[e.row], lj = u2l[e.col];
+                    if (li != UINT32_MAX && lj != UINT32_MAX)
+                        pEntries.push_back({li, lj, e.value});
+                }
+                poolGrm.push_back(SparseGRM::fromEntries(pi.nUsed, std::move(pEntries)));
+            }
+        }
+        maskIdx[rc] = mIdx;
+    }
+    std::vector<int> maskGroupSize(poolOnePlusPCs.size(), 0);
+    for (int rc = 0; rc < K; ++rc) ++maskGroupSize[maskIdx[rc]];
+
+    // ---- Per-phenotype residual pools (overwritten per chromosome; methods
+    //      hold const references into these) ----
+    std::vector<Eigen::VectorXd> pResid(K), pResid2(K);
+    std::vector<OutlierData> pOutlier(K);
+
+    // ---- Non-missing masks + LOCO predictions ----
+    std::vector<std::vector<bool> > nonMissing(K, std::vector<bool>(N, false));
+    for (int k = 0; k < K; ++k)
+        for (int i = 0; i < N; ++i)
+            nonMissing[k][static_cast<size_t>(i)] =
+                (phenoInfos[k].unionToLocal[static_cast<size_t>(i)] != UINT32_MAX);
+
+    LocoData loco = LocoData::load(predListFile, specNames, sd.usedIIDs(), sd.famIIDs());
+    auto locoChroms = loco.availableChromosomes();
+    infoMsg("LOCO: %zu chromosomes available across all phenotypes", locoChroms.size());
+
+    nullmodel::EngineOptions eo1;
+    eo1.nthreads = 1;
+
+    auto buildTasks = [&](const std::string &chr, std::vector<PhenoTask> &tasks) {
+        tasks.resize(K);
+        // Destroy previous chromosome's methods before overwriting the residual
+        // pools they reference (lifetime discipline).
+        for (auto &t : tasks) t.method.reset();
+
+        for (int rc = 0; rc < K; ++rc) {
+            const auto &pi = phenoInfos[rc];
+            Eigen::MatrixXd covarUnion_k = appendLocoCovariate(
+                loco, specNames[rc], chr, baseCovar, nonMissing[rc], "SPAmix-LOCO");
+            auto fits1 = nullmodel::fitAll(
+                sd, {phenoSpecs[rc]}, specModel[rc], covarUnion_k, eo1);
+            pResid[rc] = extractPhenoVec(fits1[0].residuals, pi);
+            pResid2[rc] = pResid[rc].array().square();
+            pOutlier[rc] = detectOutliers(pResid[rc], outlierRatio);
+
+            const size_t mIdx = maskIdx[rc];
+            const auto &curPCs = poolOnePlusPCs[mIdx];
+            SparseGRM *grmPtr = nullptr;
+            if (hasGRM) grmPtr = (K > 1) ? &poolGrm[mIdx] : unionGrm.get();
+
+            std::unique_ptr<SPAmixPlusMethod> m;
+            const int maskIdxArg = static_cast<int>(mIdx);
+            if (hasGRM) {
+                if (!afFile.empty())
+                    m = std::make_unique<SPAmixPlusMethod>(
+                        pResid[rc], pResid2[rc], curPCs, pOutlier[rc],
+                        spaCutoff, *grmPtr, afModels, genoToFlat, maskIdxArg);
+                else
+                    m = std::make_unique<SPAmixPlusMethod>(
+                        pResid[rc], pResid2[rc], curPCs, pOutlier[rc],
+                        spaCutoff, *grmPtr,
+                        poolXtX_inv_Xt[mIdx], poolSqrt_XtX_inv_diag[mIdx], nPC,
+                        maskIdxArg);
+            } else {
+                if (!afFile.empty())
+                    m = std::make_unique<SPAmixPlusMethod>(
+                        pResid[rc], pResid2[rc], curPCs, pOutlier[rc],
+                        spaCutoff, afModels, genoToFlat, maskIdxArg);
+                else
+                    m = std::make_unique<SPAmixPlusMethod>(
+                        pResid[rc], pResid2[rc], curPCs, pOutlier[rc],
+                        spaCutoff,
+                        poolXtX_inv_Xt[mIdx], poolSqrt_XtX_inv_diag[mIdx], nPC,
+                        maskIdxArg);
+            }
+            m->setUseAFCacheBatch(maskGroupSize[mIdx] >= 2);
+            tasks[rc].phenoName = pi.name;
+            tasks[rc].method = std::move(m);
+            tasks[rc].unionToLocal = pi.unionToLocal;
+            tasks[rc].nUsed = pi.nUsed;
+        }
+    };
+
+    infoMsg("%s-LOCO: starting LOCO association (%d phenotype(s), %zu chroms, %d threads)",
+            methodLabel, K, locoChroms.size(), nthread);
+    locoEngine(
+        *genoData, locoChroms, specNames, buildTasks, outPrefix, methodLabel,
+        compression, compressionLevel, nthread,
+        missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
 }

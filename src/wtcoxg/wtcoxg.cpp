@@ -1728,6 +1728,7 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
 // Top-level orchestration
 // ======================================================================
 
+#include "engine/loco.hpp"
 #include "util/null_model.hpp"
 #include "util/regression.hpp"
 #include "wtcoxg/regression.hpp"
@@ -2202,4 +2203,224 @@ void runWtCoxG(
         minMacCutoff,
         hweCutoff
     );
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// runWtCoxGLoco — LOCO orchestration
+// ══════════════════════════════════════════════════════════════════════
+//
+// WtCoxG fits its null model directly via regression::coxResiduals /
+// logisticResiduals (not nullmodel::fitAll), so the LOCO PGS is appended to the
+// covariate design.  The per-phenotype indicator / survival / weights columns
+// (Phase B inputs) and the matched-marker mu0/mu1 scan (Phase C) are residual-
+// independent and are computed once.  Per chromosome only the residuals and the
+// batch-effect map (Phase D) are recomputed.  WtCoxGMethod copies the residuals
+// into a shared snapshot, so no reference-lifetime discipline is required.
+
+void runWtCoxGLoco(
+    const std::string &phenoFile,
+    const std::string &covarFile,
+    const std::vector<std::string> &covarNames,
+    const std::vector<nullmodel::PhenoSpec> &parsedSpecs,
+    const GenoSpec &geno,
+    const std::string &refAfFile,
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const std::string &predListFile,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double refPrevalence,
+    double cutoff,
+    double spaCutoff,
+    double outlierRatio,
+    int nthreads,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile,
+    const std::string &removeFile
+) {
+    const int P = static_cast<int>(parsedSpecs.size());
+    std::vector<std::string> specNames(P);
+    for (int p = 0; p < P; ++p) specNames[p] = parsedSpecs[p].name;
+
+    infoMsg("WtCoxG-LOCO: %d phenotype(s), per-chromosome LOCO PGS as covariate", P);
+    validatePredListPhenos(predListFile, specNames);
+
+    std::vector<std::string> allPhenoCols;
+    for (int p = 0; p < P; ++p) {
+        if (nullmodel::isCoxSpec(parsedSpecs[p])) {
+            allPhenoCols.push_back(parsedSpecs[p].timeColumn);
+            allPhenoCols.push_back(parsedSpecs[p].eventColumn);
+        } else {
+            allPhenoCols.push_back(parsedSpecs[p].yColumn);
+        }
+    }
+
+    // ── Phase A: shared data loading (residual-independent) ──────────
+    infoMsg("WtCoxG: Loading data (%d phenotypes)", P);
+    auto famIIDs = parseGenoIIDs(geno);
+    SubjectData sd(std::move(famIIDs));
+    sd.loadPhenoFile(phenoFile);
+    if (!covarFile.empty()) sd.loadCovar(covarFile, covarNames);
+    sd.setKeepRemove(keepFile, removeFile);
+    if (!spgrmGrabFile.empty() || !spgrmGctaFile.empty())
+        sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
+    sd.setGenoLabel(geno.flagLabel());
+    sd.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
+    sd.finalize();
+    sd.dropNaInColumns(allPhenoCols);
+
+    const Eigen::Index N = static_cast<Eigen::Index>(sd.nUsed());
+    infoMsg("  %lld subjects after intersection", static_cast<long long>(N));
+
+    Eigen::MatrixXd covarMat;
+    if (!covarNames.empty()) covarMat = sd.getColumns(covarNames);
+    else if (sd.hasCovar()) covarMat = sd.covar();
+
+    infoMsg("Loading ref-af file: %s", refAfFile.c_str());
+    bool refAfNumeric = false;
+    auto refAf = loadRefAfFile(refAfFile, &refAfNumeric);
+    infoMsg("  %zu reference records loaded", refAf.size());
+
+    auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(), nSnpPerChunk);
+    infoMsg("  %u subjects, %u markers", genoData->nSubjUsed(), genoData->nMarkers());
+
+    auto matchedBase = refAfNumeric
+        ? matchMarkersNumeric(*genoData, refAf)
+        : matchMarkers(*genoData, refAf);
+    infoMsg("  %zu markers matched", matchedBase.size());
+
+    std::unique_ptr<SparseGRM> grm;
+    if (!spgrmGctaFile.empty() || !spgrmGrabFile.empty()) {
+        grm = std::make_unique<SparseGRM>(
+            SparseGRM::load(spgrmGrabFile, spgrmGctaFile, sd.usedIIDs(), sd.famIIDs()));
+        infoMsg("  Sparse GRM: %u subjects, %zu non-zeros", grm->nSubjects(), grm->nnz());
+    }
+
+    // ── Phase B (residual-independent part): indicator / survival / weights ──
+    struct PhenoBase {
+        Eigen::VectorXd indicator, survTime, weights;
+        bool isSurv = false;
+        std::string traitName;
+    };
+    std::vector<PhenoBase> pb(P);
+    const std::vector<std::string> unionIIDsForInfer = sd.usedIIDs();
+    for (int p = 0; p < P; ++p) {
+        const auto &spec = parsedSpecs[p];
+        pb[p].isSurv = nullmodel::isCoxSpec(spec);
+        pb[p].traitName = spec.name;
+        if (pb[p].isSurv) {
+            pb[p].survTime = sd.getColumn(spec.timeColumn);
+            pb[p].indicator = sd.getColumn(spec.eventColumn);
+            nullmodel::inferCoxSurvival(pb[p].survTime, pb[p].indicator,
+                                        spec.timeColumn, spec.eventColumn,
+                                        unionIIDsForInfer);
+        } else {
+            pb[p].indicator = sd.getColumn(spec.yColumn);
+            auto info = nullmodel::inferModelFromColumn(
+                pb[p].indicator, spec.yColumn, unionIIDsForInfer);
+            if (info.model != nullmodel::RegressionModel::Logistic)
+                throw std::runtime_error(
+                    "WtCoxG requires a binary phenotype for '" + spec.yColumn +
+                    "' but inference returned " +
+                    nullmodel::regressionModelName(info.model) +
+                    " (use --pheno-name TIME:EVENT for survival)");
+            if (info.needRecode) {
+                double v0 = info.sortedDistinct[0];
+                double v1 = info.sortedDistinct[1];
+                for (Eigen::Index i = 0; i < pb[p].indicator.size(); ++i) {
+                    double v = pb[p].indicator[i];
+                    if (std::isnan(v)) continue;
+                    pb[p].indicator[i] = (v == v0) ? 0.0 : 1.0;
+                }
+                infoMsg("  Recoded binary column '%s': {%g, %g} -> {0, 1}",
+                        spec.yColumn.c_str(), v0, v1);
+            }
+        }
+        pb[p].weights = regression::calRegrWeight(refPrevalence, pb[p].indicator);
+    }
+
+    // ── Phase C: shared matched-marker scan (residual-independent) ───
+    infoMsg("WtCoxG: Scanning %zu matched markers for %d phenotypes",
+            matchedBase.size(), P);
+    std::vector<std::vector<MatchedMarkerInfo> > phenoMatched(P);
+    for (int p = 0; p < P; ++p) phenoMatched[p] = matchedBase;
+    {
+        const uint32_t n = genoData->nSubjUsed();
+        auto cursor = genoData->makeCursor();
+        if (!matchedBase.empty())
+            cursor->beginSequentialBlock(matchedBase.front().genoIndex);
+        Eigen::VectorXd gvec(n);
+        for (size_t mi = 0; mi < matchedBase.size(); ++mi) {
+            cursor->getGenotypesSimple(matchedBase[mi].genoIndex, gvec);
+            for (int p = 0; p < P; ++p) {
+                const auto &ind = pb[p].indicator;
+                double sum0 = 0, sum1 = 0, cnt0 = 0, cnt1 = 0;
+                for (uint32_t i = 0; i < n; ++i) {
+                    if (std::isnan(gvec[i])) continue;
+                    if (ind[i] == 1.0) { sum1 += gvec[i]; cnt1 += 1.0; }
+                    else               { sum0 += gvec[i]; cnt0 += 1.0; }
+                }
+                auto &m = phenoMatched[p][mi];
+                m.mu0   = (cnt0 > 0) ? sum0 / cnt0 / 2.0 : 0.0;
+                m.mu1   = (cnt1 > 0) ? sum1 / cnt1 / 2.0 : 0.0;
+                m.n0    = cnt0;
+                m.n1    = cnt1;
+                m.mu_int = (cnt0 + cnt1 > 0)
+                    ? (sum0 + sum1) / (2.0 * (cnt0 + cnt1))
+                    : 0.0;
+            }
+        }
+    }
+
+    // ── LOCO predictions ────────────────────────────────────────────
+    // All N subjects are complete after dropNaInColumns, so every subject must
+    // have a finite PGS.
+    std::vector<bool> nonMissingAll(static_cast<size_t>(N), true);
+    LocoData loco = LocoData::load(predListFile, specNames, sd.usedIIDs(), sd.famIIDs());
+    auto locoChroms = loco.availableChromosomes();
+    infoMsg("LOCO: %zu chromosomes available across all phenotypes", locoChroms.size());
+
+    std::vector<Eigen::VectorXd> pResid(P);
+    std::vector<std::shared_ptr<WtCoxGRefVec> > refMaps(P);
+
+    auto buildTasks = [&](const std::string &chr, std::vector<PhenoTask> &tasks) {
+        tasks.resize(P);
+        for (int p = 0; p < P; ++p) {
+            Eigen::MatrixXd covarMat_p = appendLocoCovariate(
+                loco, specNames[p], chr, covarMat, nonMissingAll, "WtCoxG-LOCO");
+            if (pb[p].isSurv) {
+                pResid[p] = regression::coxResiduals(
+                    pb[p].survTime, pb[p].indicator, covarMat_p, pb[p].weights);
+            } else {
+                const int nc = static_cast<int>(covarMat_p.cols());
+                Eigen::MatrixXd designMat(N, 1 + nc);
+                designMat.col(0).setOnes();
+                if (nc > 0) designMat.rightCols(nc) = covarMat_p;
+                pResid[p] = regression::logisticResiduals(
+                    pb[p].indicator, designMat, pb[p].weights);
+            }
+            refMaps[p] = testBatchEffects(
+                phenoMatched[p], pResid[p], pb[p].weights, pb[p].indicator,
+                grm.get(), refPrevalence, cutoff);
+            auto method = std::make_unique<WtCoxGMethod>(
+                pResid[p], pb[p].weights, cutoff, spaCutoff, outlierRatio, refMaps[p]);
+            tasks[p].phenoName = pb[p].traitName;
+            tasks[p].method    = std::move(method);
+            tasks[p].unionToLocal.resize(genoData->nSubjUsed());
+            std::iota(tasks[p].unionToLocal.begin(), tasks[p].unionToLocal.end(), 0u);
+            tasks[p].nUsed = genoData->nSubjUsed();
+        }
+    };
+
+    infoMsg("WtCoxG-LOCO: starting LOCO association (%d phenotype(s), %zu chroms, %d threads)",
+            P, locoChroms.size(), nthreads);
+    locoEngine(
+        *genoData, locoChroms, specNames, buildTasks, outPrefix, "WtCoxG",
+        compression, compressionLevel, nthreads,
+        missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
 }

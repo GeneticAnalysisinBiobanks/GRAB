@@ -266,6 +266,42 @@ void runSPAmixPlus(
     const std::string &phenoNameSpec = {},
     const std::vector<std::string> &covarNames = {},
     bool saveResid = false,
-    uint64_t seed = 0,                                     // ordinal surrogate-residual RNG seed
     bool longitudinal = false                             // --longitudinal: fit Y ~ X + (1|IID), use R_G
+);
+
+// LOCO variant of runSPAmixPlus (serves both --method SPAmix and SPAmixPlus).
+// For each chromosome the null model is refit with that chromosome's LOCO PGS
+// appended as one estimated covariate column, and each SPAmixPlusMethod is
+// reconstructed with the refreshed residuals.  The per-individual AF model
+// (--pc-cols), the OLS/GRM pools, and the AF-model cache are residual-
+// independent and are built once.  Requires the in-process fit path
+// (--pheno-name); precomputed residuals and --longitudinal are rejected in
+// dispatch.  Because SPAmixPlusMethod stores const references into the residual
+// pools, the previous chromosome's methods are destroyed before the residual
+// pools are overwritten.
+void runSPAmixPlusLoco(
+    const std::vector<std::string> &pcColNames,
+    const std::string &phenoFile,
+    const std::string &covarFile,
+    const GenoSpec &geno,
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const std::string &afFile,
+    const std::string &predListFile,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double spaCutoff,
+    double outlierRatio,
+    int nthread,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile,
+    const std::string &removeFile,
+    const std::string &regressionModelStr,
+    const std::string &phenoNameSpec,
+    const std::vector<std::string> &covarNames
 );

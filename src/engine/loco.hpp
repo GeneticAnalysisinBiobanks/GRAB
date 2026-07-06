@@ -46,6 +46,43 @@ struct LocoData {
 };
 
 // ======================================================================
+// Shared LOCO covariate-injection helpers
+// ======================================================================
+
+// Append the LOCO PGS for (phenoName, chr) as one extra covariate column to a
+// union-space covariate matrix, returning the augmented matrix.  This is the
+// "PGS as an estimated covariate column" injection: the downstream null-model
+// regression (nullmodel::fitAll / regression::coxResiduals / …) estimates its
+// coefficient, so no offset mechanism is required.
+//
+//   covarUnion       — nUnion × p, NO intercept (matches fitAll's contract).
+//   nonMissingMask   — length nUnion; true iff subject i has a non-missing
+//                      phenotype for this pheno.  The finiteness guard is
+//                      applied ONLY to these subjects (a NaN PGS at an already-
+//                      missing row is harmless because fitAll drops that row).
+//   methodTag        — prefix for the error message, e.g. "SPACox-LOCO".
+//
+// Throws std::runtime_error (mirroring the SPAsqr guard) if any subject with a
+// non-missing phenotype lacks a finite PGS value.
+Eigen::MatrixXd appendLocoCovariate(
+    const LocoData &loco,
+    const std::string &phenoName,
+    const std::string &chr,
+    const Eigen::MatrixXd &covarUnion,
+    const std::vector<bool> &nonMissingMask,
+    const char *methodTag
+);
+
+// Early validation (before loading genotypes/GRM): confirm every requested
+// phenotype name has an entry in the pred.list file.  Throws on a missing
+// phenotype or an unreadable file.  Factors out the inline check duplicated by
+// each method's LOCO dispatch branch.
+void validatePredListPhenos(
+    const std::string &predListFile,
+    const std::vector<std::string> &phenoNames
+);
+
+// ======================================================================
 // LocoTaskBuilder — per-chromosome callback to rebuild PhenoTasks
 // ======================================================================
 

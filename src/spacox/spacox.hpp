@@ -252,6 +252,35 @@ void runSPACox(
     const std::string &regressionModelStr = {},            // empty → residual-passthrough path
     const std::string &phenoNameSpec = {},                 // raw --pheno-name string (Cox: TIME:EVENT,...)
     bool saveResid = false,
-    uint64_t seed = 0,                                     // ordinal surrogate-residual RNG seed
     bool longitudinal = false                             // --longitudinal: fit Y ~ X + (1|IID), use R_G
+);
+
+// LOCO variant of runSPACox.  For each chromosome, the null model is refit with
+// that chromosome's LOCO PGS appended as one estimated covariate column (the
+// regression estimates its coefficient — no offset mechanism), then SPACox
+// score tests run on that chromosome's markers via the generic locoEngine.
+// Requires the in-process fit path (--pheno-name); precomputed residuals and
+// --longitudinal are rejected upstream in dispatch.  The pred.list is keyed on
+// the canonical phenotype/spec name (e.g. "Time_Event" for a TIME:EVENT spec).
+void runSPACoxLoco(
+    const std::vector<std::string> &covarNames,
+    const std::string &phenoFile,
+    const std::string &covarFile,
+    const GenoSpec &geno,
+    const std::string &predListFile,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double pvalCovAdjCut,
+    double spaCutoff,
+    int nthread,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile,
+    const std::string &removeFile,
+    const std::string &regressionModelStr,
+    const std::string &phenoNameSpec
 );

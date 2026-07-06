@@ -6,6 +6,7 @@
 #include "io/subject_data.hpp"
 #include "util/logging.hpp"
 #include "util/regression.hpp"
+#include "util/text_stream.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -264,16 +265,11 @@ NullModelFit fitOne(
         r = regression::logisticResiduals(yK, X, w, opts.logisticTol, opts.logisticMaxIter);
     } else { // Ordinal
         Eigen::VectorXi yi = coerceOrdinal(yK, idx, unionIIDs, spec.yColumn, spec.name);
-        Eigen::MatrixXd X = buildDesignWithIntercept(covarK);
-        // Forward the base seed verbatim.  cumulativeLogitFit constructs a
-        // local std::mt19937 per call, so two ordinal phenotypes fit in the
-        // same process draw from independent RNG instances even when sharing
-        // the same seed value.  Using a portable single seed (rather than a
-        // C++-specific hash combiner) makes the surrogate residuals exactly
-        // reproducible from any R / Python re-implementation that seeds its
-        // RNG with the same uint64_t.
-        auto res = regression::cumulativeLogitFit(yi, X, opts.ordinalTol,
-                                                  opts.ordinalMaxIter, opts.seed);
+        // No intercept column: the proportional-odds thresholds ε act as the
+        // per-category intercepts, so the design is the covariates alone.  The
+        // analytic score residual is deterministic, so no RNG seed is needed.
+        auto res = regression::cumulativeLogitFit(yi, covarK, opts.ordinalTol,
+                                                  opts.ordinalMaxIter);
         r = std::move(res.residuals);
     }
 
@@ -609,7 +605,9 @@ std::vector<NullModelFit> fitAll(
 void writeResidualsFile(
     const std::string &outPath,
     const SubjectData &sd,
-    const std::vector<NullModelFit> &fits
+    const std::vector<NullModelFit> &fits,
+    const std::string &compression,
+    int compressionLevel
 ) {
     if (fits.empty())
         throw std::runtime_error("writeResidualsFile: no fits to write");
@@ -623,10 +621,12 @@ void writeResidualsFile(
                 std::to_string(N) + ") for '" + f.name + "'");
     }
 
-    std::ofstream ofs(outPath);
-    if (!ofs)
-        throw std::runtime_error("writeResidualsFile: cannot open '" + outPath + "' for writing");
+    // Append the codec extension so residual mode's TextReader auto-detects it.
+    std::string finalPath = outPath;
+    if (compression == "gz") finalPath += ".gz";
+    else if (compression == "zst") finalPath += ".zst";
 
+    std::ostringstream ofs;
     ofs << "IID";
     for (const auto &f : fits) ofs << '\t' << f.name;
     ofs << '\n';
@@ -651,10 +651,13 @@ void writeResidualsFile(
         }
         ofs << '\n';
     }
-    if (!ofs)
-        throw std::runtime_error("writeResidualsFile: write failed on '" + outPath + "'");
+
+    TextWriter tw(finalPath, TextWriter::modeFromString(compression), compressionLevel);
+    const std::string body = ofs.str();
+    tw.write(body);
+    tw.close();
     infoMsg("Wrote fitted residuals to %s (%lld subjects, %zu phenotype(s))",
-            outPath.c_str(), static_cast<long long>(N), fits.size());
+            finalPath.c_str(), static_cast<long long>(N), fits.size());
 }
 
 } // namespace nullmodel

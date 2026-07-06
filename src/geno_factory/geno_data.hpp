@@ -39,6 +39,10 @@ struct GenoSpec {
     // false ⇒ --bgen FILE ref-first).
     bool bgenAltFirst = false;
 
+    // plink2 --hard-call-threshold: dosage→hard-call cutoff for HWE counts
+    // (default 0.1).  Propagated into the GenoMeta and read by the cursors.
+    double hardCallThreshold = 0.1;
+
     // Return a descriptive flag label, e.g. "--bfile d_bed".
     std::string flagLabel() const {
         const char *flag = nullptr;
@@ -83,6 +87,11 @@ std::unique_ptr<class GenoMeta> makeGenoData(
 
 class GenoMeta {
   public:
+    // plink2 --hard-call-threshold, propagated from GenoSpec by makeGenoData.
+    // Read by the per-format cursors when classifying dosages into hard-calls
+    // for the HWE genotype counts (default 0.1).
+    double hardCallThreshold = 0.1;
+
     struct MarkerInfo {
         std::string chrom;
         uint32_t pos;

@@ -372,6 +372,79 @@ std::unordered_set<std::string> LocoData::availableChromosomes() const {
 }
 
 // ══════════════════════════════════════════════════════════════════════
+// Shared LOCO covariate-injection helpers
+// ══════════════════════════════════════════════════════════════════════
+
+Eigen::MatrixXd appendLocoCovariate(
+    const LocoData &loco,
+    const std::string &phenoName,
+    const std::string &chr,
+    const Eigen::MatrixXd &covarUnion,
+    const std::vector<bool> &nonMissingMask,
+    const char *methodTag
+) {
+    // Union-space PGS vector for this (pheno, chr); already in usedIIDs order.
+    const Eigen::VectorXd &locoVec = loco.scores.at(phenoName).at(chr);
+
+    const Eigen::Index nUnion = covarUnion.rows();
+    if (locoVec.size() != nUnion)
+        throw std::runtime_error(
+            std::string(methodTag) + ": LOCO vector length (" +
+            std::to_string(locoVec.size()) + ") does not match subject count (" +
+            std::to_string(nUnion) + ") for phenotype '" + phenoName +
+            "' chr " + chr);
+    if (static_cast<Eigen::Index>(nonMissingMask.size()) != nUnion)
+        throw std::runtime_error(
+            std::string(methodTag) + ": non-missing mask length mismatch for "
+            "phenotype '" + phenoName + "'");
+
+    // Finiteness guard: only subjects with a non-missing phenotype must have a
+    // finite PGS (missing-Y rows are dropped by fitAll regardless).
+    Eigen::Index nBad = 0;
+    for (Eigen::Index i = 0; i < nUnion; ++i)
+        if (nonMissingMask[static_cast<size_t>(i)] && !std::isfinite(locoVec[i]))
+            ++nBad;
+    if (nBad > 0)
+        throw std::runtime_error(
+            std::string(methodTag) + ": LOCO file for phenotype '" + phenoName +
+            "' chr " + chr + " is missing a finite PGS for " +
+            std::to_string(nBad) + " subject(s) that have non-missing "
+            "phenotype. The LOCO PGS file must cover every analysed subject.");
+
+    // Append the PGS as one extra column.
+    Eigen::MatrixXd out(nUnion, covarUnion.cols() + 1);
+    if (covarUnion.cols() > 0)
+        out.leftCols(covarUnion.cols()) = covarUnion;
+    out.col(covarUnion.cols()) = locoVec;
+    return out;
+}
+
+void validatePredListPhenos(
+    const std::string &predListFile,
+    const std::vector<std::string> &phenoNames
+) {
+    std::ifstream ifs(predListFile);
+    if (!ifs.is_open())
+        throw std::runtime_error("Cannot open --pred-list file: " + predListFile);
+
+    std::unordered_set<std::string> predPhenos;
+    std::string line;
+    while (std::getline(ifs, line)) {
+        if (line.empty()) continue;
+        text::TokenScanner lts(line);
+        std::string pheno = lts.next();
+        if (!pheno.empty()) predPhenos.insert(pheno);
+    }
+
+    for (const auto &pn : phenoNames) {
+        if (predPhenos.find(pn) == predPhenos.end())
+            throw std::runtime_error(
+                "Phenotype '" + pn + "' not found in --pred-list file: " +
+                predListFile);
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
 // locoEngine — generic LOCO engine
 // ══════════════════════════════════════════════════════════════════════
 

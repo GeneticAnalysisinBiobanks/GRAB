@@ -4,6 +4,7 @@
 #include "io/subject_filter.hpp"
 #include "util/logging.hpp"
 #include "util/text_scanner.hpp"
+#include "util/text_stream.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -114,8 +115,10 @@ SubjectData::RawFile SubjectData::parseIIDFile(
     int expectCols,
     const std::vector<std::string> &neededCols
 ) {
-    std::ifstream ifs(filename, std::ios::in | std::ios::binary);
-    if (!ifs) throw std::runtime_error("Cannot open file: " + filename);
+    // TextReader auto-detects .gz/.zst by extension (plain otherwise), so a
+    // compressed residual file written by --save-resid --compression is read
+    // back transparently.  Throws with a clear message on open failure.
+    TextReader ifs(filename);
 
     RawFile rf;
     rf.nCols = 0;
@@ -131,7 +134,7 @@ SubjectData::RawFile SubjectData::parseIIDFile(
     // genome-wide λ estimate).  A single leading `#` is allowed on the
     // header itself (e.g., `#IID`) and is therefore not treated as a
     // comment line.
-    while (std::getline(ifs, line)) {
+    while (ifs.getline(line)) {
         ++lineNo;
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (line.empty()) continue;
@@ -213,7 +216,7 @@ SubjectData::RawFile SubjectData::parseIIDFile(
     const int nExpectedToks = static_cast<int>(headers.size());
 
     // ── Parse data lines ───────────────────────────────────────────────
-    while (std::getline(ifs, line)) {
+    while (ifs.getline(line)) {
         ++lineNo;
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (line.empty()) continue;

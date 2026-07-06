@@ -740,11 +740,17 @@ void multiPhenoEngineRange(
             std::vector<PhenoGenoStats> gStatsWin;
             std::vector<double> accGSum, accSumSq;
             std::vector<uint32_t> accCnt;
+            // Per-window-column originally-missing (pre-impute NaN) mask, so the
+            // fused multi-group QC computes HWE from the raw genotype pattern
+            // rather than the mean-imputed values (plink2 never imputes for HWE).
+            const size_t nUnionWords = (static_cast<size_t>(nUnion) + 63) / 64;
+            std::vector<uint64_t> origMissBits;
             if (hasFused) {
                 gStatsWin.resize(static_cast<size_t>(nFusedGroups) * B);
                 accGSum.resize(nFusedGroups);
                 accSumSq.resize(nFusedGroups);
                 accCnt.resize(static_cast<size_t>(nFusedGroups) * 4);
+                origMissBits.assign(nUnionWords * B, 0);
             }
 
             while (!stopFlag.load(std::memory_order_relaxed)) {
@@ -810,6 +816,8 @@ void multiPhenoEngineRange(
                     if (hasFused) {
                         for (size_t bi = 0; bi < wlen; ++bi) {
                             auto col = GBatch_union.col(static_cast<Eigen::Index>(bi));
+                            uint64_t *missCol = &origMissBits[bi * nUnionWords];
+                            for (size_t w = 0; w < nUnionWords; ++w) missCol[w] = 0;
                             double gSum = 0.0;
                             uint32_t nValid = 0;
                             bool isDosage = false;
@@ -820,6 +828,11 @@ void multiPhenoEngineRange(
                                     ++nValid;
                                     if (v != 0.0 && v != 1.0 && v != 2.0)
                                         isDosage = true;  // fractional → dosage marker
+                                } else {
+                                    // Record the raw NaN so the fused QC excludes
+                                    // it from HWE even after mean-imputation below.
+                                    missCol[static_cast<size_t>(r) >> 6] |=
+                                        (uint64_t(1) << (static_cast<size_t>(r) & 63));
                                 }
                             }
                             winIsDosage[bi] = isDosage;
@@ -857,7 +870,8 @@ void multiPhenoEngineRange(
                             statsFromUnionVecMultiGroup(
                                 unionCol, groupMaskPtrs.data(),
                                 groupNUsedArr.data(), nFusedGroups, nUnion,
-                                winIsDosage[bi] != 0, accGSum.data(),
+                                winIsDosage[bi] != 0, genoData.hardCallThreshold,
+                                &origMissBits[bi * nUnionWords], accGSum.data(),
                                 accSumSq.data(), accCnt.data(),
                                 &gStatsWin[bi], B);
                         }
@@ -987,6 +1001,7 @@ void multiPhenoEngineRange(
 
                                 nfBatchMissings[repNfIdx].clear();
                                 PhenoGenoStats gs = statsFromGVec(phenoG, nP,
+                                                                  genoData.hardCallThreshold,
                                                                   nfBatchMissings[repNfIdx]);
                                 nfWinStats[bi] = gs;
 

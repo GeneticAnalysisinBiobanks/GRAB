@@ -454,10 +454,17 @@ SPAGRMClass buildSPAGRMNullModel(
     double minMacCutoff,
     double outlierIqrRatio,
     bool controlOutlier,
-    int nthreads
+    int nthreads,
+    SPAGRMPartition *outPartition
 ) {
+    // When recording, the residual-driven partition structure is captured
+    // alongside the (unchanged) ledger accumulation.  The `rec` guard keeps
+    // the recording cost off the seven validated methods (outPartition==null).
+    const bool rec = (outPartition != nullptr);
+
     // ── Build dynamic MAF grid from QC cutoffs ───────────────────────
     const std::vector<double> mafInterval = buildMafInterval(minMafCutoff, minMacCutoff, N);
+    if (rec) outPartition->mafInterval = mafInterval;
     infoMsg(
         "  MAF interval grid (%zu bins): [%.2g .. %.2g]",
         mafInterval.size(),
@@ -561,11 +568,15 @@ SPAGRMClass buildSPAGRMNullModel(
     }
     for (uint32_t idx : singletonSet) {
         if (!isOutlier[idx]) sum_R_nonOutlier += Resid[idx];
+        if (rec && !isOutlier[idx]) outPartition->nonOutlierSingletons.push_back(idx);
     }
 
     std::vector<double> unrelatedOutlierResids;
     for (uint32_t idx : singletonSet) {
-        if (isOutlier[idx]) unrelatedOutlierResids.push_back(Resid[idx]);
+        if (isOutlier[idx]) {
+            unrelatedOutlierResids.push_back(Resid[idx]);
+            if (rec) outPartition->unrelatedOutliers.push_back(idx);
+        }
     }
 
     double R_GRM_R_TwoSubjOutlier = 0.0;
@@ -582,6 +593,9 @@ SPAGRMClass buildSPAGRMNullModel(
         double r_grm_r_no = 0.0;
         size_t nSplit = 0;
         std::vector<std::vector<uint32_t> > outlierFams;
+        // Partition recording (populated only when rec):
+        std::vector<uint32_t> nonOutlierMembers;
+        std::vector<SparseGRM::Entry> nonOutlierEntries;
     };
 
     const int nWorkers = std::max(1, std::min(nthreads, static_cast<int>(families.size())));
@@ -617,6 +631,11 @@ SPAGRMClass buildSPAGRMNullModel(
                     famSum += Resid[idx];
                 acc.sum_r_no += famSum;
                 acc.r_grm_r_no += famQuad;
+                if (rec) {
+                    acc.nonOutlierMembers.insert(acc.nonOutlierMembers.end(), fam.begin(), fam.end());
+                    acc.nonOutlierEntries.insert(acc.nonOutlierEntries.end(),
+                                                 familyEntries[fi].begin(), familyEntries[fi].end());
+                }
                 continue;
             }
 
@@ -715,12 +734,14 @@ SPAGRMClass buildSPAGRMNullModel(
 
                 // Compute all sub-family quad forms in one pass — O(E) total
                 std::unordered_map<uint32_t, double> compQuad;
+                std::unordered_map<uint32_t, std::vector<SparseGRM::Entry> > compEntries; // only when rec
                 for (const auto &e : familyEntries[fi]) {
                     uint32_t lr = g2l[e.row], lc = g2l[e.col];
                     uint32_t rr = uf.find(lr), rc = uf.find(lc);
                     if (rr != rc) continue;                     // cross-component edge, removed
                     double factor = (e.row == e.col) ? 1.0 : 2.0;
                     compQuad[rr] += factor * e.value * Resid[e.row] * Resid[e.col];
+                    if (rec) compEntries[rr].push_back(e);
                 }
 
                 std::unordered_map<uint32_t, std::vector<uint32_t> > compMap;
@@ -746,6 +767,14 @@ SPAGRMClass buildSPAGRMNullModel(
                             subSum += Resid[idx];
                         acc.sum_r_no += subSum;
                         acc.r_grm_r_no += compQuad[root];
+                        if (rec) {
+                            acc.nonOutlierMembers.insert(acc.nonOutlierMembers.end(),
+                                                         subFam.begin(), subFam.end());
+                            auto it = compEntries.find(root);
+                            if (it != compEntries.end())
+                                acc.nonOutlierEntries.insert(acc.nonOutlierEntries.end(),
+                                                             it->second.begin(), it->second.end());
+                        }
                     } else {
                         acc.outlierFams.push_back(std::move(subFam));
                     }
@@ -773,6 +802,14 @@ SPAGRMClass buildSPAGRMNullModel(
         nSplitFamilies += acc.nSplit;
         for (auto &fam : acc.outlierFams)
             outlierFamilies.push_back(std::move(fam));
+        if (rec) {
+            outPartition->nonOutlierFamilyMembers.insert(
+                outPartition->nonOutlierFamilyMembers.end(),
+                acc.nonOutlierMembers.begin(), acc.nonOutlierMembers.end());
+            outPartition->nonOutlierFamilyEntries.insert(
+                outPartition->nonOutlierFamilyEntries.end(),
+                acc.nonOutlierEntries.begin(), acc.nonOutlierEntries.end());
+        }
     }
 
     infoMsg(
@@ -801,6 +838,7 @@ SPAGRMClass buildSPAGRMNullModel(
 
         if (n1 == 1) {
             unrelatedOutlierResids.push_back(Resid[fam[0]]);
+            if (rec) outPartition->unrelatedOutliers.push_back(fam[0]);
             continue;
         }
 
@@ -830,6 +868,17 @@ SPAGRMClass buildSPAGRMNullModel(
 
             twoSubj_resid_list.push_back({R1, R2});
             twoSubj_rho_list.push_back({Rho + midterm, Rho - midterm});
+            if (rec) {
+                SPAGRMPartition::TwoSubjGroup g;
+                g.a = fam[0];
+                g.b = fam[1];
+                g.diagA = grmDiag[fam[0]];
+                g.diagB = grmDiag[fam[1]];
+                g.offDiag = offDiag;
+                g.rho[0] = Rho + midterm;
+                g.rho[1] = Rho - midterm;
+                outPartition->twoSubjFamilies.push_back(std::move(g));
+            }
             continue;
         }
 
@@ -854,6 +903,12 @@ SPAGRMClass buildSPAGRMNullModel(
         Eigen::MatrixXd CLT = buildChowLiuTree(n1, famIBD, fam, mafInterval, nthreads);
         std::vector<double> standS = buildStandS(n1, famResid);
 
+        if (rec) {
+            SPAGRMPartition::ThreeSubjGroup g;
+            g.members = fam;
+            g.CLT = CLT; // copy before CLT is moved into threeSubj_CLT_list
+            outPartition->threeSubjFamilies.push_back(std::move(g));
+        }
         threeSubj_standS_list.push_back(std::move(standS));
         threeSubj_CLT_list.push_back(std::move(CLT));
     }

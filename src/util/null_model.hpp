@@ -129,9 +129,6 @@ struct EngineOptions {
     int coxMaxIter = 40;
     double ordinalTol = 1e-7;
     int ordinalMaxIter = 50;
-    // RNG seed forwarded to cumulativeLogitFit for ordinal surrogate-residual
-    // sampling.  seed == 0 → std::random_device (non-reproducible across runs).
-    uint64_t seed = 0;
 };
 
 // Fit each PhenoSpec; up to opts.nthreads phenotypes in parallel.
@@ -153,9 +150,14 @@ std::vector<NullModelFit> fitAll(
 // SubjectData::loadResidOne via --pheno PREFIX.null.resid --resid-name ....
 //   Header: IID<TAB>name1<TAB>name2...
 //   Rows:   sd.usedIIDs() order; NaN entries written as "NA".
+// When `compression` is "gz" or "zst" the file is written with that codec and
+// the matching extension is appended to `outPath` (so residual mode's
+// TextReader auto-detects it); empty `compression` keeps a plain-text file.
 void writeResidualsFile(
     const std::string &outPath,
     const SubjectData &sd,
-    const std::vector<NullModelFit> &fits);
+    const std::vector<NullModelFit> &fits,
+    const std::string &compression = "",
+    int compressionLevel = 0);
 
 } // namespace nullmodel

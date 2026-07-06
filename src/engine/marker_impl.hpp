@@ -195,66 +195,10 @@ struct PhenoGenoStats {
     // phenotype genotype sum and (for dosage markers) to recompute altFreq/mac.
     double gSum;
     // True ⇒ this is a dosage marker: altFreq/mac were left as sentinels and
-    // the caller must recompute them from the GEMM gSum (see statsFromUnionVec).
+    // the caller must recompute them from the GEMM gSum (see
+    // statsFromUnionVecMultiGroup).
     bool fromDosage;
 };
-
-// Compute per-phenotype genotype stats from union-level genotype vector
-// and a mask column (1.0 = present, 0.0 = absent).
-// Used by the fused GEMM path where per-phenotype extraction is skipped.
-inline PhenoGenoStats statsFromUnionVec(
-    const double *unionG,
-    const uint64_t *maskBits,
-    uint32_t nUnion,
-    uint32_t nUsed,
-    bool isDosage
-) {
-    uint32_t nHomRef = 0, nHet = 0, nHomAlt = 0, nMissing = 0;
-    double sumSq = 0.0;
-    double gSum = 0.0;             // Σ mask·G (replaces the GEMM mask column)
-    for (uint32_t i = 0; i < nUnion; ++i) {
-        if (((maskBits[i >> 6] >> (i & 63)) & 1ULL) == 0)
-            continue;                  // absent from this phenotype
-        const double v = unionG[i];
-        sumSq += v * v;                // post-impute (caller has filled NaNs)
-        gSum += v;
-        if (v == 0.0)
-            ++nHomRef;
-        else if (v == 1.0)
-            ++nHet;
-        else if (v == 2.0)
-            ++nHomAlt;
-        else
-            ++nMissing;  // imputed value or dosage
-    }
-    PhenoGenoStats s;
-    s.sumSq = sumSq;
-    s.gSum = gSum;
-    uint32_t nonMissing = nHomRef + nHet + nHomAlt;
-    // Dosage marker (detected pre-impute by the caller) or all-dosage column:
-    // the discrete-count classification is meaningless, so compute AF/MAC from
-    // the GEMM gSum in the caller.  Missing dosages are mean-imputed before the
-    // GEMM (real-NaN rate ≈ 0 for imputed data), so report missingRate = 0 and
-    // skip HWE — matching the pre-existing all-dosage handling.
-    if (nonMissing == 0 || isDosage) {
-        s.missingRate = 0.0;
-        s.hweP = 1.0;
-        // altFreq and mac will be overwritten by caller from gSum.
-        s.altFreq = 0.0;
-        s.mac = 0.0;
-        s.fromDosage = true;
-        return s;
-    }
-    uint32_t altCounts = 2 * nHomAlt + nHet;
-    double n2 = 2.0 * nonMissing;
-    s.altFreq = altCounts / n2;
-    double maf = std::min(s.altFreq, 1.0 - s.altFreq);
-    s.mac = maf * n2;
-    s.missingRate = static_cast<double>(nMissing) / static_cast<double>(nUsed);
-    s.hweP = HweExact(nHet, nHomAlt, nHomRef);
-    s.fromDosage = false;
-    return s;
-}
 
 // Single-pass multi-group QC.  The fused path previously called
 // statsFromUnionVec once per (QC group × marker), so the same N_union-length
@@ -269,7 +213,9 @@ inline PhenoGenoStats statsFromUnionVec(
 // drop by a factor of nGroups; the per-subject inner loop touches only the
 // small L1-resident accumulator arrays and the compact per-group mask words.
 //
-// Byte-identical to nGroups× statsFromUnionVec (no tolerance):
+// For hard-call data with no missingness this is byte-identical to the prior
+// per-group scan (no tolerance); dosage and genuine-missing subjects now follow
+// the plink2 hard-call threshold (see the classification below).  Ordering:
 //   - gSum and sumSq are accumulated per group in increasing subject index i
 //     (i is the outer loop), matching the original per-group scan order.  For
 //     excluded subjects the branchless mask multiply adds v·0 = +0.0; post-
@@ -290,6 +236,8 @@ inline void statsFromUnionVecMultiGroup(
     uint32_t nGroups,
     uint32_t nUnion,
     bool isDosage,
+    double thr,
+    const uint64_t *origMissBits,
     double *accGSum,
     double *accSumSq,
     uint32_t *accCnt,
@@ -308,18 +256,25 @@ inline void statsFromUnionVecMultiGroup(
     for (uint32_t i = 0; i < nUnion; ++i) {
         const double v = unionG[i];
         const double vv = v * v;
-        // Classify once per subject (mask-independent); matches the 0/1/2/other
-        // ladder in statsFromUnionVec exactly.  cls indexes accCnt: 0 hom-ref,
-        // 1 het, 2 hom-alt, 3 imputed value or dosage (the "missing" class).
+        // Classify once per subject (mask-independent) for the HWE counts.
+        // origMissBits records subjects that were NaN before the caller's mean-
+        // imputation: these are genuine-missing (cls 3 — excluded from hom/het,
+        // counted for missingRate).  Non-missing subjects use the plink2 hard-
+        // call threshold: within thr of an integer → that hard-call (cls 0/1/2),
+        // otherwise HWE-uncertain (cls 4 — kept in gSum/sumSq for AF but excluded
+        // from hom/het and from missingRate; not stored in accCnt).  For pure
+        // hard-calls with no missing, cls == v exactly, reproducing the previous
+        // 0/1/2 counting bit-for-bit.  cls indexes accCnt: 0 hom-ref, 1 het,
+        // 2 hom-alt, 3 genuine-missing.
         uint32_t cls;
-        if (v == 0.0)
-            cls = 0;
-        else if (v == 1.0)
-            cls = 1;
-        else if (v == 2.0)
-            cls = 2;
-        else
+        const bool origMiss = origMissBits &&
+            ((origMissBits[i >> 6] >> (i & 63)) & 1ULL);
+        if (origMiss) {
             cls = 3;
+        } else {
+            const int hc = dosageHardcall(v, thr);
+            cls = (hc < 0) ? 4u : static_cast<uint32_t>(hc);
+        }
         const uint32_t w = i >> 6;
         const uint32_t b = i & 63;
         for (uint32_t g = 0; g < nGroups; ++g) {
@@ -327,7 +282,7 @@ inline void statsFromUnionVecMultiGroup(
             const double md = static_cast<double>(m);
             accGSum[g] += v * md;       // += v when masked-in, += +0.0 otherwise
             accSumSq[g] += vv * md;
-            accCnt[g * 4 + cls] += static_cast<uint32_t>(m);
+            if (cls < 4) accCnt[g * 4 + cls] += static_cast<uint32_t>(m);
         }
     }
 
@@ -335,12 +290,14 @@ inline void statsFromUnionVecMultiGroup(
         const uint32_t nHomRef = accCnt[g * 4 + 0];
         const uint32_t nHet = accCnt[g * 4 + 1];
         const uint32_t nHomAlt = accCnt[g * 4 + 2];
-        const uint32_t nMissing = accCnt[g * 4 + 3];
+        const uint32_t nMissing = accCnt[g * 4 + 3];  // genuine-missing only
         PhenoGenoStats &s = out[g * outStride];
         s.sumSq = accSumSq[g];
         s.gSum = accGSum[g];
         const uint32_t nonMissing = nHomRef + nHet + nHomAlt;
-        if (nonMissing == 0 || isDosage) {
+        if (nonMissing == 0) {
+            // No hard-called subjects (all missing/uncertain): keep the prior
+            // all-missing sentinel; the caller recomputes AF from gSum (= 0).
             s.missingRate = 0.0;
             s.hweP = 1.0;
             s.altFreq = 0.0;
@@ -348,21 +305,34 @@ inline void statsFromUnionVecMultiGroup(
             s.fromDosage = true;
             continue;
         }
-        const uint32_t altCounts = 2 * nHomAlt + nHet;
-        const double n2 = 2.0 * nonMissing;
-        s.altFreq = altCounts / n2;
-        const double maf = std::min(s.altFreq, 1.0 - s.altFreq);
-        s.mac = maf * n2;
+        // HWE from the thresholded hard-call counts (plink2 --hardy); this is
+        // computed for dosage markers too.  missingRate counts genuine-missing
+        // only — HWE-uncertain dosages are excluded from it (they remain in the
+        // dosage sum used for AF).
+        s.hweP = HweExact(nHet, nHomAlt, nHomRef);
         s.missingRate =
             static_cast<double>(nMissing) / static_cast<double>(groupNUsed[g]);
-        s.hweP = HweExact(nHet, nHomAlt, nHomRef);
-        s.fromDosage = false;
+        if (isDosage) {
+            // AF/MAC recomputed from the GEMM gSum by the caller (the un-binned
+            // dosage frequency, not the hard-call count ratio).
+            s.altFreq = 0.0;
+            s.mac = 0.0;
+            s.fromDosage = true;
+        } else {
+            const uint32_t altCounts = 2 * nHomAlt + nHet;
+            const double n2 = 2.0 * nonMissing;
+            s.altFreq = altCounts / n2;
+            const double maf = std::min(s.altFreq, 1.0 - s.altFreq);
+            s.mac = maf * n2;
+            s.fromDosage = false;
+        }
     }
 }
 
 inline PhenoGenoStats statsFromGVec(
     const double *g,
     uint32_t n,
+    double thr,
     std::vector<uint32_t> &indexForMissing
 ) {
     indexForMissing.clear();
@@ -377,14 +347,17 @@ inline PhenoGenoStats statsFromGVec(
         }
         dosageSum += v;
         ++nNonMissing;
-        if (v == 0.0)
-            ++nHomRef;
-        else if (v == 1.0)
-            ++nHet;
-        else if (v == 2.0)
-            ++nHomAlt;
-        else
-            isDosage = true;  // fractional dosage — a valid value, not missing
+        // AF track: any fractional value marks a dosage marker (AF then comes
+        // from the dosage sum, not the hard-call counts).  Unchanged detection.
+        if (v != 0.0 && v != 1.0 && v != 2.0)
+            isDosage = true;
+        // HWE track: classify via the plink2 hard-call threshold.  Exact 0/1/2
+        // always pass (|v-round| == 0); dosages farther than thr from an integer
+        // are HWE-uncertain and excluded from hom/het (still in the dosage sum).
+        const int hc = dosageHardcall(v, thr);
+        if (hc == 0) ++nHomRef;
+        else if (hc == 1) ++nHet;
+        else if (hc == 2) ++nHomAlt;
     }
     PhenoGenoStats s;
     s.sumSq = 0.0;  // unused on the non-fused path
@@ -398,21 +371,22 @@ inline PhenoGenoStats statsFromGVec(
         return s;
     }
     double n2 = 2.0 * nNonMissing;
+    // HWE from the thresholded hard-call counts (plink2 --hardy); genuine-missing
+    // (NaN) is already excluded, and HWE-uncertain dosages were excluded above.
+    // Computed for dosage markers too (previously skipped as NaN).
+    s.hweP = HweExact(nHet, nHomAlt, nHomRef);
+    s.missingRate = static_cast<double>(indexForMissing.size()) / n;
     if (isDosage) {
-        // Dosage marker: AF from the dosage sum; missing = real NaN only; no HWE.
+        // Dosage marker: AF/MAC from the un-binned dosage sum.
         s.altFreq = dosageSum / n2;
         double maf = std::min(s.altFreq, 1.0 - s.altFreq);
         s.mac = maf * n2;
-        s.missingRate = static_cast<double>(indexForMissing.size()) / n;
-        s.hweP = NAN;
-        return s;
+    } else {
+        uint32_t altCounts = 2 * nHomAlt + nHet;
+        s.altFreq = altCounts / n2;
+        double maf = std::min(s.altFreq, 1.0 - s.altFreq);
+        s.mac = maf * n2;
     }
-    uint32_t altCounts = 2 * nHomAlt + nHet;
-    s.altFreq = altCounts / n2;
-    double maf = std::min(s.altFreq, 1.0 - s.altFreq);
-    s.mac = maf * n2;
-    s.missingRate = static_cast<double>(indexForMissing.size()) / n;
-    s.hweP = HweExact(nHet, nHomAlt, nHomRef);
     return s;
 }
 

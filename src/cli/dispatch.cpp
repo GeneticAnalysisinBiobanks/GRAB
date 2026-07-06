@@ -108,6 +108,7 @@ static GenoSpec resolveGenoSpec(
     GenoSpec spec;
     spec.extractFile = a.extractFile;
     spec.excludeFile = a.excludeFile;
+    spec.hardCallThreshold = a.hardCallThreshold;
     if (!a.chrSpec.empty()) spec.chrFilter = parseChrSpec(a.chrSpec);
     if (!a.bfilePrefix.empty()) {
         spec.format = GenoFormat::Plink;
@@ -264,7 +265,7 @@ static void logArgsInEffect(const Args &args) {
         std::fprintf(stderr, "  --spasqr-mode %s\n", args.spasqrMode.c_str());
         if (!args.spasqrTaus.empty())
             std::fprintf(stderr, "  --spasqr-taus %s\n", args.spasqrTaus.c_str());
-        if (args.spasqrTol != 1e-7)
+        if (args.spasqrTol != 1e-6)
             std::fprintf(stderr, "  --spasqr-tol %g\n", args.spasqrTol);
         if (args.spasqrH >= 0.0)
             std::fprintf(stderr, "  --spasqr-h %g\n", args.spasqrH);
@@ -305,6 +306,7 @@ static void logArgsInEffect(const Args &args) {
     if (args.minMafCutoff != 1e-5) std::fprintf(stderr, "  --maf %g\n", args.minMafCutoff);
     if (args.minMacCutoff != 10.0) std::fprintf(stderr, "  --mac %g\n", args.minMacCutoff);
     if (args.hweCutoff != 0.0) std::fprintf(stderr, "  --hwe %g\n", args.hweCutoff);
+    if (args.hardCallThreshold != 0.1) std::fprintf(stderr, "  --hard-call-threshold %g\n", args.hardCallThreshold);
     if (args.seed != 0) std::fprintf(stderr, "  --seed %llu\n", (unsigned long long)args.seed);
     if (args.nClusters != 0) std::fprintf(stderr, "  --leaf-nclusters %d\n", args.nClusters);
     if (!args.leafClusterFile.empty())
@@ -657,6 +659,51 @@ int run(
     {
         const bool hasPhenoName = !args.phenoName.empty();
         const bool hasResidName = !args.residName.empty();
+
+        // ── LOCO (--pred-list) applicability guard ──────────────────────
+        // LOCO refits the null model per chromosome with the chromosome's PGS
+        // as a covariate, so it is only defined for methods that fit the null
+        // model in-process.  Reject unsupported methods and incompatible input
+        // paths here rather than silently ignoring --pred-list downstream.
+        if (!args.predListFile.empty()) {
+            const bool locoSupported =
+                args.method == "SPAsqr"  || args.method == "SPACox" ||
+                args.method == "SPAGRM"  || args.method == "SPAmix" ||
+                args.method == "SPAmixPlus" || args.method == "WtCoxG";
+            if (!locoSupported) {
+                std::cerr << "Error: --pred-list (LOCO) is not supported for method '"
+                          << args.method << "'.";
+                if (args.method == "SAGELD")
+                    std::cerr << " SAGELD's GALLOP null model already models the"
+                                 " polygenic background as a random effect, and its"
+                                 " residual / longitudinal paths consume precomputed"
+                                 " residuals.";
+                else if (args.method == "LEAF")
+                    std::cerr << " LOCO for LEAF is not yet implemented.";
+                std::cerr << "\n";
+                return 1;
+            }
+            // SPAsqr has its own transform-based LOCO path; the remaining methods
+            // require an in-process null-model fit that can be refit per chromosome.
+            if (args.method != "SPAsqr") {
+                if (hasResidName) {
+                    std::cerr << "Error: " << args.method
+                              << ": --pred-list (LOCO) requires an in-process"
+                                 " null-model fit; combine it with --pheno-name, not"
+                                 " --resid-name (precomputed residuals cannot be refit"
+                                 " per chromosome).\n";
+                    return 1;
+                }
+                if (args.longitudinal) {
+                    std::cerr << "Error: " << args.method
+                              << ": --pred-list (LOCO) is incompatible with"
+                                 " --longitudinal (the random-intercept LMM already"
+                                 " captures polygenic structure).\n";
+                    return 1;
+                }
+            }
+        }
+
         if (args.method == "SPAsqr" || args.method == "WtCoxG" || args.method == "LEAF") {
             // Auto-populate from pheno file header when --pheno-name is absent
             if (!hasPhenoName && !args.phenoFile.empty()) {
@@ -947,37 +994,89 @@ int run(
     try {
         // ── SPACox ─────────────────────────────────────────────────
         if (args.method == "SPACox") {
-            runSPACox(
-                residNames,
-                covarNames,
-                args.phenoFile,
-                effectiveCovarFile,
-                geno,
-                args.outPrefix,
-                args.compression,
-                args.compressionLevel,
-                args.pvalCovAdjCut,
-                args.spaCutoff,
-                args.nthread,
-                args.nSnpPerChunk,
-                args.missingCutoff,
-                args.minMafCutoff,
-                args.minMacCutoff,
-                args.hweCutoff,
-                args.keepFile,
-                args.removeFile,
-                args.regressionModel,
-                args.phenoName,
-                args.saveResid,
-                args.seed,
-                args.longitudinal
-            );
+            if (!args.predListFile.empty()) {
+                runSPACoxLoco(
+                    covarNames,
+                    args.phenoFile,
+                    effectiveCovarFile,
+                    geno,
+                    args.predListFile,
+                    args.outPrefix,
+                    args.compression,
+                    args.compressionLevel,
+                    args.pvalCovAdjCut,
+                    args.spaCutoff,
+                    args.nthread,
+                    args.nSnpPerChunk,
+                    args.missingCutoff,
+                    args.minMafCutoff,
+                    args.minMacCutoff,
+                    args.hweCutoff,
+                    args.keepFile,
+                    args.removeFile,
+                    args.regressionModel,
+                    args.phenoName
+                );
+            } else {
+                runSPACox(
+                    residNames,
+                    covarNames,
+                    args.phenoFile,
+                    effectiveCovarFile,
+                    geno,
+                    args.outPrefix,
+                    args.compression,
+                    args.compressionLevel,
+                    args.pvalCovAdjCut,
+                    args.spaCutoff,
+                    args.nthread,
+                    args.nSnpPerChunk,
+                    args.missingCutoff,
+                    args.minMafCutoff,
+                    args.minMacCutoff,
+                    args.hweCutoff,
+                    args.keepFile,
+                    args.removeFile,
+                    args.regressionModel,
+                    args.phenoName,
+                    args.saveResid,
+                    args.longitudinal
+                );
+            }
         }
 
         // ── SPAGRM ────────────────────────────────────────────────
         else if (args.method == "SPAGRM") {
             checkSpGrm(args, /*required=*/ true, "SPAGRM");
             require(args.pairwiseIBDFile, "--pairwise-ibd", "SPAGRM");
+            if (!args.predListFile.empty()) {
+                runSPAGRMLoco(
+                    args.phenoFile,
+                    args.spGrmGrabFile,
+                    args.spGrmPlink2File,
+                    args.pairwiseIBDFile,
+                    geno,
+                    args.predListFile,
+                    args.outPrefix,
+                    args.compression,
+                    args.compressionLevel,
+                    args.spaCutoff,
+                    args.outlierRatio,
+                    args.spagrmControlOutlier,
+                    args.nthread,
+                    args.nSnpPerChunk,
+                    args.missingCutoff,
+                    args.minMafCutoff,
+                    args.minMacCutoff,
+                    args.hweCutoff,
+                    args.keepFile,
+                    args.removeFile,
+                    args.regressionModel,
+                    args.phenoName,
+                    effectiveCovarFile,
+                    covarNames
+                );
+            } else {
             runSPAGRM(
                 args.phenoFile,
                 residNames,
@@ -1004,9 +1103,9 @@ int run(
                 effectiveCovarFile,
                 covarNames,
                 args.saveResid,
-                args.seed,
                 args.longitudinal
             );
+            }
         }
 
         // ── SAGELD ───────────────────────────────────────────────
@@ -1073,6 +1172,34 @@ int run(
                     return 1;
                 }
             }
+            if (!args.predListFile.empty()) {
+                runSPAmixPlusLoco(
+                    pcColNames,
+                    args.phenoFile,
+                    args.covarFile,
+                    geno,
+                    args.spGrmGrabFile,
+                    args.spGrmPlink2File,
+                    args.indAfFile,
+                    args.predListFile,
+                    args.outPrefix,
+                    args.compression,
+                    args.compressionLevel,
+                    args.spaCutoff,
+                    args.outlierRatio,
+                    args.nthread,
+                    args.nSnpPerChunk,
+                    args.missingCutoff,
+                    args.minMafCutoff,
+                    args.minMacCutoff,
+                    args.hweCutoff,
+                    args.keepFile,
+                    args.removeFile,
+                    args.regressionModel,
+                    args.phenoName,
+                    covarNames
+                );
+            } else {
             runSPAmixPlus(
                 residNames,
                 pcColNames,
@@ -1099,9 +1226,9 @@ int run(
                 args.phenoName,
                 covarNames,
                 args.saveResid,
-                args.seed,
                 args.longitudinal
             );
+            }
         }
 
         // ── SPAsqr ─────────────────────────────────────────────────
@@ -1296,6 +1423,34 @@ int run(
                 phenoNames, args.regressionModel, "WtCoxG");
             // Multi-phenotype entry point: shared loading + parallel null models +
             // one matched-marker scan + parallel batch-effect + single engine.
+            if (!args.predListFile.empty()) {
+                runWtCoxGLoco(
+                    args.phenoFile,
+                    effectiveCovarFile,
+                    covarNames,
+                    wtcoxgSpecs,
+                    geno,
+                    args.refAfFile,
+                    args.spGrmGrabFile,
+                    args.spGrmPlink2File,
+                    args.predListFile,
+                    args.outPrefix,
+                    args.compression,
+                    args.compressionLevel,
+                    args.refPrevalence,
+                    args.cutoff,
+                    args.spaCutoff,
+                    args.outlierRatio,
+                    args.nthread,
+                    args.nSnpPerChunk,
+                    args.missingCutoff,
+                    args.minMafCutoff,
+                    args.minMacCutoff,
+                    args.hweCutoff,
+                    args.keepFile,
+                    args.removeFile
+                );
+            } else {
             runWtCoxG(
                 args.phenoFile,
                 effectiveCovarFile,
@@ -1321,6 +1476,7 @@ int run(
                 args.keepFile,
                 args.removeFile
             );
+            }
         }
 
         // ── LEAF ───────────────────────────────────────────────────

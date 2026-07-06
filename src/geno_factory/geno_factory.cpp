@@ -192,34 +192,43 @@ std::unique_ptr<GenoMeta> makeGenoData(
     uint32_t nUsed,
     int nMarkersEachChunk
 ) {
+    std::unique_ptr<GenoMeta> meta;
     switch (spec.format) {
     case GenoFormat::Plink:
         infoMsg("Loading PLINK data: %s", spec.path.c_str());
-        return std::make_unique<PlinkData>(spec.path + ".bed", spec.path + ".bim", spec.path + ".fam", usedMask,
+        meta = std::make_unique<PlinkData>(spec.path + ".bed", spec.path + ".bim", spec.path + ".fam", usedMask,
                                            nSamplesInFile, nUsed, spec.extractFile, spec.excludeFile,
                                            spec.chrFilter, nMarkersEachChunk);
+        break;
     case GenoFormat::Pgen:
         infoMsg("Loading PGEN data: %s", spec.path.c_str());
-        return std::make_unique<PgenData>(spec.path + ".pgen", spec.path + ".pvar", usedMask, nSamplesInFile, nUsed,
+        meta = std::make_unique<PgenData>(spec.path + ".pgen", spec.path + ".pvar", usedMask, nSamplesInFile, nUsed,
                                           spec.chrFilter, spec.extractFile, spec.excludeFile, nMarkersEachChunk);
+        break;
     case GenoFormat::Vcf:
         infoMsg("Loading VCF data: %s", spec.path.c_str());
-        return std::make_unique<VcfData>(spec.path, /*expectBcf=*/false, usedMask, nSamplesInFile,
+        meta = std::make_unique<VcfData>(spec.path, /*expectBcf=*/false, usedMask, nSamplesInFile,
                                          nUsed, spec.chrFilter, spec.extractFile, spec.excludeFile,
                                          nMarkersEachChunk);
+        break;
     case GenoFormat::Bcf:
         infoMsg("Loading BCF data: %s", spec.path.c_str());
-        return std::make_unique<VcfData>(spec.path, /*expectBcf=*/true, usedMask, nSamplesInFile,
+        meta = std::make_unique<VcfData>(spec.path, /*expectBcf=*/true, usedMask, nSamplesInFile,
                                          nUsed, spec.chrFilter, spec.extractFile, spec.excludeFile,
                                          nMarkersEachChunk);
+        break;
     case GenoFormat::Bgen:
         infoMsg("Loading BGEN data: %s (%s; alleles[0] = %s)",
                 spec.path.c_str(),
                 spec.bgenAltFirst ? "ref-last/ref-unknown" : "ref-first",
                 spec.bgenAltFirst ? "ALT" : "REF");
-        return std::make_unique<BgenData>(spec.path, usedMask, nSamplesInFile, nUsed, spec.chrFilter,
+        meta = std::make_unique<BgenData>(spec.path, usedMask, nSamplesInFile, nUsed, spec.chrFilter,
                                           spec.extractFile, spec.excludeFile, nMarkersEachChunk,
                                           spec.bgenAltFirst);
+        break;
     }
-    throw std::runtime_error("Unknown genotype format");
+    if (!meta) throw std::runtime_error("Unknown genotype format");
+    // Propagate the plink2 hard-call threshold to the cursors (HWE counts).
+    meta->hardCallThreshold = spec.hardCallThreshold;
+    return meta;
 }

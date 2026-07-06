@@ -397,3 +397,37 @@ void runWtCoxG(
     const std::string &keepFile = {},
     const std::string &removeFile = {}
 );
+
+// LOCO variant of runWtCoxG.  For each chromosome the null-model residuals are
+// recomputed with that chromosome's LOCO PGS appended as one estimated covariate
+// column, the batch-effect test (Phase D) is re-run from the refreshed
+// residuals, and each WtCoxGMethod is rebuilt.  The shared data (Phase A), the
+// per-phenotype indicator / weights / survival columns, and the matched-marker
+// mu0/mu1 scan (Phase C) are residual-independent and are computed once.  The
+// pred.list is keyed on the canonical phenotype/spec name (e.g. "Time_Event").
+void runWtCoxGLoco(
+    const std::string &phenoFile,
+    const std::string &covarFile,
+    const std::vector<std::string> &covarNames,
+    const std::vector<nullmodel::PhenoSpec> &parsedSpecs,
+    const GenoSpec &geno,
+    const std::string &refAfFile,
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const std::string &predListFile,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double refPrevalence,
+    double cutoff,
+    double spaCutoff,
+    double outlierRatio,
+    int nthreads,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile,
+    const std::string &removeFile
+);

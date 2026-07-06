@@ -33,6 +33,7 @@ OUT_DIR=examples_output/baseline
 mkdir -p ${OUT_DIR}
 OUT=${OUT_DIR}/fit          # output prefix for fit-mode runs
 RESID_OUT=${OUT_DIR}/resid  # output prefix for residual-mode runs (SPACox, SAGELD)
+LOCO=${OUT_DIR}/loco        # output prefix for LOCO runs (SPACox/SPAmix/SPAGRM/WtCoxG)
 
 ## ── Utility: cal-af-coef ──────────────────────────────────────────────
 # Produces ${OUT}.afc.zst, consumed by SPAmix via --ind-af-coef.
@@ -51,6 +52,7 @@ build/grab2 \
   --maf 1e-5 \
   --mac 10 \
   --hwe 0 \
+  --hard-call-threshold 0.1 \
   --compression zst \
   --compression-level 3
 
@@ -84,13 +86,13 @@ build/grab2 \
   --chr 1-2,3 \
   --covar-p-threshold 5e-5 \
   --spa-z-threshold 2.0 \
-  --seed 2026 \
   --threads 2 \
   --chunk-size 8192 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
-  --hwe 0
+  --hwe 0 \
+  --hard-call-threshold 0.1
 
 ## ── SPACox (residual mode, --resid-name) ──────────────────────────────
 # Consumes the combined residual file produced by the SPACox fit-mode
@@ -107,13 +109,13 @@ build/grab2 \
   --chr 1-2,3 \
   --covar-p-threshold 5e-5 \
   --spa-z-threshold 2.0 \
-  --seed 2026 \
   --threads 2 \
   --chunk-size 8192 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
-  --hwe 0
+  --hwe 0 \
+  --hard-call-threshold 0.1
 
 ## ── SPAmix (fit mode, --pheno-name) ───────────────────────────────────
 
@@ -131,13 +133,13 @@ build/grab2 \
   --chr 1-2,3 \
   --outlier-iqr-multiplier 1.5 \
   --spa-z-threshold 2.0 \
-  --seed 2026 \
   --threads 2 \
   --chunk-size 8192 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
   --hwe 0 \
+  --hard-call-threshold 0.1 \
   --compression zst \
   --compression-level 3
 
@@ -163,13 +165,13 @@ build/grab2 \
   --chr 1-2,3 \
   --outlier-iqr-multiplier 1.5 \
   --spa-z-threshold 2.0 \
-  --seed 2026 \
   --threads 2 \
   --chunk-size 8192 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
   --hwe 0 \
+  --hard-call-threshold 0.1 \
   --compression zst \
   --compression-level 3
 
@@ -189,13 +191,13 @@ build/grab2 \
   --chr 1-2,3 \
   --spa-z-threshold 2.0 \
   --outlier-iqr-multiplier 1.5 \
-  --seed 2026 \
   --threads 2 \
   --chunk-size 8192 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
   --hwe 0 \
+  --hard-call-threshold 0.1 \
   --compression zst \
   --compression-level 3
 
@@ -221,6 +223,7 @@ build/grab2 \
   --maf 1e-5 \
   --mac 10 \
   --hwe 0 \
+  --hard-call-threshold 0.1 \
   --compression zst \
   --compression-level 3
 
@@ -234,7 +237,9 @@ build/grab2 \
 for sageld_pheno in Long1 Long2; do
 build/grab2 \
   --method SAGELD \
-  --pheno ${OUT}.${sageld_pheno}.SAGELD.resid \
+  `# Fit mode wrote this with --compression zst, so the residual carries a` \
+  `# .zst suffix; residual mode's TextReader auto-detects and decompresses it.` \
+  --pheno ${OUT}.${sageld_pheno}.SAGELD.resid.zst \
   --resid-name R_G,R_TIME,R_GxTIME \
   --sp-grm-plink2 examples/1kg.grm.sp \
   --pairwise-ibd ${OUT}.ibd.zst \
@@ -249,6 +254,7 @@ build/grab2 \
   --maf 1e-5 \
   --mac 10 \
   --hwe 0 \
+  --hard-call-threshold 0.1 \
   --compression zst \
   --compression-level 3
 done
@@ -280,6 +286,7 @@ build/grab2 \
   --maf 1e-5 \
   --mac 10 \
   --hwe 0 \
+  --hard-call-threshold 0.1 \
   --compression gz \
   --compression-level 3
 
@@ -306,13 +313,13 @@ build/grab2 \
   --chr 1-2,3 \
   --covar-p-threshold 5e-5 \
   --spa-z-threshold 2.0 \
-  --seed 2026 \
   --threads 2 \
   --chunk-size 8192 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
-  --hwe 0
+  --hwe 0 \
+  --hard-call-threshold 0.1
 
 ## ── SPAmix longitudinal (zstd; on-the-fly AF) ─────────────────────────
 # --pc-cols must be a subset of --covar-name in longitudinal mode, because
@@ -331,13 +338,13 @@ build/grab2 \
   --chr 1-2,3 \
   --outlier-iqr-multiplier 1.5 \
   --spa-z-threshold 2.0 \
-  --seed 2026 \
   --threads 2 \
   --chunk-size 8192 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
   --hwe 0 \
+  --hard-call-threshold 0.1 \
   --compression zst \
   --compression-level 3
 
@@ -357,13 +364,13 @@ build/grab2 \
   --chr 1-2,3 \
   --spa-z-threshold 2.0 \
   --outlier-iqr-multiplier 1.5 \
-  --seed 2026 \
   --threads 2 \
   --chunk-size 8192 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
   --hwe 0 \
+  --hard-call-threshold 0.1 \
   --compression zst \
   --compression-level 3
 
@@ -393,7 +400,7 @@ build/grab2 \
   `# Optional flags below (set to built-in defaults):` \
   --chr 1-2,3 \
   --spasqr-taus 0.1,0.3,0.5,0.7,0.9 \
-  --spasqr-tol 1e-7 \
+  --spasqr-tol 1e-6 \
   --spasqr-h-scale 3 \
   --spasqr-mode score \
   --pheno-transform int \
@@ -406,8 +413,126 @@ build/grab2 \
   --maf 1e-5 \
   --mac 10 \
   --hwe 0 \
+  --hard-call-threshold 0.1 \
   --compression zst \
   --compression-level 3
+
+## ── SPACox LOCO (fit path + per-chromosome LOCO PGS) ──────────────────
+# For each chromosome the Cox null model is refit with that chromosome's
+# LOCO PGS appended as an estimated covariate column; the augmented design
+# also feeds the stage-2 covariate projection.  The pred.list is keyed on
+# the canonical spec name (Cox: "Time_Event").  Output is plain text.
+
+build/grab2 \
+  --method SPACox \
+  --pheno examples/1kg.pheno \
+  --pheno-name Quantitative,Binary \
+  --covar-name MALE,PC1,PC2,PC3,PC4 \
+  --pred-list examples/loco_prs.list2 \
+  --pfile examples/1kg \
+  --out ${LOCO} \
+  `# Optional flags below (set to built-in defaults):` \
+  --regression-model auto \
+  --chr 1-2,3 \
+  --covar-p-threshold 5e-5 \
+  --spa-z-threshold 2.0 \
+  --threads 2 \
+  --chunk-size 8192 \
+  --geno 0.1 \
+  --maf 1e-5 \
+  --mac 10 \
+  --hwe 0 \
+  --hard-call-threshold 0.1
+
+## ── SPAmix LOCO (fit path + per-chromosome LOCO PGS) ──────────────────
+# On-the-fly individual-AF model (no --ind-af-coef).  Only the residuals
+# change per chromosome; the PC/OLS pools are built once.
+
+build/grab2 \
+  --method SPAmix \
+  --pheno examples/1kg.pheno \
+  --pheno-name Quantitative,Binary \
+  --covar-name MALE,PC1,PC2,PC3,PC4 \
+  --pc-cols PC1,PC2,PC3,PC4 \
+  --pred-list examples/loco_prs.list2 \
+  --pfile examples/1kg \
+  --out ${LOCO} \
+  `# Optional flags below (set to built-in defaults):` \
+  --regression-model auto \
+  --chr 1-2,3 \
+  --outlier-iqr-multiplier 1.5 \
+  --spa-z-threshold 2.0 \
+  --threads 2 \
+  --chunk-size 8192 \
+  --geno 0.1 \
+  --maf 1e-5 \
+  --mac 10 \
+  --hwe 0 \
+  --hard-call-threshold 0.1 \
+  --compression zst \
+  --compression-level 3
+
+## ── SPAGRM LOCO (fit path + per-chromosome LOCO PGS) ──────────────────
+# The retrospective GRM variance (R^T Phi R) is compatible with LOCO: the
+# GRM topology / IBD are built once, and buildSPAGRMNullModel is re-run per
+# chromosome from the refreshed residuals.
+
+build/grab2 \
+  --method SPAGRM \
+  --pheno examples/1kg.pheno \
+  --pheno-name Quantitative,Binary \
+  --covar-name MALE,PC1,PC2,PC3,PC4 \
+  --sp-grm-plink2 examples/1kg.grm.sp \
+  --pairwise-ibd ${OUT}.ibd.zst \
+  --pred-list examples/loco_prs.list2 \
+  --pfile examples/1kg \
+  --out ${LOCO} \
+  `# Optional flags below (set to built-in defaults):` \
+  --regression-model auto \
+  --chr 1-2,3 \
+  --spa-z-threshold 2.0 \
+  --outlier-iqr-multiplier 1.5 \
+  --threads 2 \
+  --chunk-size 8192 \
+  --geno 0.1 \
+  --maf 1e-5 \
+  --mac 10 \
+  --hwe 0 \
+  --hard-call-threshold 0.1 \
+  --compression zst \
+  --compression-level 3
+
+## ── WtCoxG LOCO (fit path + per-chromosome LOCO PGS) ──────────────────
+# Cox phenotype only (Binary has no bundled LOCO PGS).  Per chromosome the
+# residuals and the batch-effect map (Phase D) are recomputed; the matched-
+# marker scan (Phase C) is built once.
+
+build/grab2 \
+  --method WtCoxG \
+  --pheno examples/1kg.pheno \
+  --pheno-name Binary \
+  --covar-name MALE,PC1,PC2,PC3,PC4 \
+  --ref-af examples/ref_pop1.afreq \
+  --sp-grm-plink2 examples/1kg.grm.sp \
+  --prevalence 0.1 \
+  --pred-list examples/loco_prs.list2 \
+  --pfile examples/1kg \
+  --out ${LOCO} \
+  `# Optional flags below (set to built-in defaults):` \
+  --regression-model auto \
+  --chr 1-2,3 \
+  --batch-effect-p-threshold 0.05 \
+  --spa-z-threshold 2.0 \
+  --outlier-iqr-multiplier 1.5 \
+  --threads 2 \
+  --chunk-size 8192 \
+  --geno 0.1 \
+  --maf 1e-5 \
+  --mac 10 \
+  --hwe 0 \
+  --hard-call-threshold 0.1 \
+  --compression gz \
+  --compression-level 6
 
 ## ── SPAsqr (wald mode, follow-up effect-size estimation) ──────────────
 # Wald mode refits the joint smoothed-QR model with [X | G] per marker,
@@ -436,8 +561,8 @@ build/grab2 \
   `# Optional flags below (set to built-in defaults):` \
   --chr 1-2,3 \
   --spasqr-taus 0.1,0.3,0.5,0.7,0.9 \
-  --spasqr-tol 1e-7 \
-  --spasqr-h-scale 10 \
+  --spasqr-tol 1e-6 \
+  --spasqr-h-scale 5 \
   --spasqr-mode wald \
   --pheno-transform int \
   --outlier-iqr-multiplier 1.5 \
@@ -449,6 +574,7 @@ build/grab2 \
   --maf 1e-5 \
   --mac 10 \
   --hwe 0 \
+  --hard-call-threshold 0.1 \
   --compression zst \
   --compression-level 3
 
@@ -476,6 +602,7 @@ build/grab2 \
   --maf 1e-5 \
   --mac 10 \
   --hwe 0 \
+  --hard-call-threshold 0.1 \
   --compression gz \
   --compression-level 6
 
@@ -508,6 +635,7 @@ build/grab2 \
   --maf 1e-5 \
   --mac 10 \
   --hwe 0 \
+  --hard-call-threshold 0.1 \
   --compression gz \
   --compression-level 6
 
@@ -596,13 +724,13 @@ SPAGRM_COMMON=(
   --chr 1-2,3
   --spa-z-threshold 2.0
   --outlier-iqr-multiplier 1.5
-  --seed 2026
   --threads 2
   --chunk-size 8192
   --geno 0.1
   --maf 1e-5
   --mac 10
-  --hwe 0
+  --hwe 0 \
+  --hard-call-threshold 0.1
   --compression zst
   --compression-level 3
 )
@@ -644,9 +772,10 @@ for phen in Quantitative Time_Event Binary Ordinal; do
 done
 
 ## ── SAGELD: fit mode vs residual mode (Long1 and Long2) ───────────────
-# Each SAGELD residual-mode run consumes ${OUT}.${pheno}.SAGELD.resid
-# and emits ${RESID_OUT}_${pheno}.SAGELD.zst; the corresponding fit-mode
-# result is ${OUT}.${pheno}.SAGELD.zst.
+# Each SAGELD residual-mode run consumes ${OUT}.${pheno}.SAGELD.resid.zst
+# (fit mode compressed it because --compression zst was set) and emits
+# ${RESID_OUT}_${pheno}.SAGELD.zst; the corresponding fit-mode result is
+# ${OUT}.${pheno}.SAGELD.zst.
 
 for sageld_pheno in Long1 Long2; do
   md5_equiv "SAGELD fit-vs-resid ${sageld_pheno}" \
