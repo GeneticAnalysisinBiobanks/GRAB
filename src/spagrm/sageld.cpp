@@ -31,11 +31,13 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -194,13 +196,211 @@ double computeRGRMR(
 }
 
 // ══════════════════════════════════════════════════════════════════════
+// SAGELDSplitLedgers — the _G / _GxE / _G_GxE decomposition of every
+//   non-partition-fixed SPAGRM ledger, built ONCE over the fixed partition
+//   (the mean-λ combined residual's partition).  A marker-specific λ_i then
+//   recombines them:
+//     linear   X_i = X_GxE − λ·X_G
+//     bilinear X_i = X_GxE + λ²·X_G − λ·X_G_GxE       (X_G_GxE folds the 2)
+//   so the exact getMarkerPvalFromScore SPA can run per marker without
+//   re-detecting outliers or rebuilding families.  See sageldMarkerLambdaPval.
+// ══════════════════════════════════════════════════════════════════════
+struct SAGELDSplitLedgers {
+    // Full residual vectors — for the centered Score_i and the ctor's resid.
+    Eigen::VectorXd resid_G, resid_GxE;
+
+    // Unrelated-outlier residual sub-vectors (linear).
+    Eigen::VectorXd ruo_G, ruo_GxE;
+
+    // sum_R_nonOutlier (linear).
+    double sumRnon_G = 0.0, sumRnon_GxE = 0.0;
+    // R_GRM_R total (bilinear) — the Score-variance denominator.
+    double RGRMR_G = 0.0, RGRMR_GxE = 0.0, RGRMR_G_GxE = 0.0;
+    // R_GRM_R_nonOutlier (bilinear).
+    double RGRMRnon_G = 0.0, RGRMRnon_GxE = 0.0, RGRMRnon_G_GxE = 0.0;
+    // R_GRM_R_TwoSubjOutlier (bilinear).
+    double RGRMRtwo_G = 0.0, RGRMRtwo_GxE = 0.0, RGRMRtwo_G_GxE = 0.0;
+
+    // Two-subject residual pairs (linear), aligned with TwoSubj_rho_list.
+    std::vector<std::array<double, 2> > two_G, two_GxE;
+    // Three-subject standS vectors (linear), aligned with ThreeSubj_CLT_list.
+    std::vector<std::vector<double> > three_G, three_GxE;
+
+    // Partition-fixed data copied verbatim.
+    std::vector<double> MAF_interval;
+    std::vector<std::vector<double> > TwoSubj_rho_list;
+    std::vector<Eigen::MatrixXd> ThreeSubj_CLT_list;
+    double SPA_Cutoff = 0.0, zeta = 0.0, tol = 0.0;
+};
+
+// Build the split ledgers over a fixed partition (from buildSPAGRMNullModel's
+// outPartition on the mean-λ combined residual).
+SAGELDSplitLedgers buildSAGELDSplitLedgers(
+    const nsGRMNull::SPAGRMPartition &part,
+    const Eigen::VectorXd &Resid_G,
+    const Eigen::VectorXd &Resid_GxE,
+    const GRMTopology &topo,
+    double spaCutoff
+) {
+    SAGELDSplitLedgers L;
+    L.resid_G = Resid_G;
+    L.resid_GxE = Resid_GxE;
+
+    // Bilinear quad accumulator over an entry list into (G, GxE, cross).
+    auto addQuad = [&](const SparseGRM::Entry &e, double &qG, double &qGxE, double &qX) {
+        const double a = ((e.row == e.col) ? 1.0 : 2.0) * e.value;
+        const double rgR = Resid_G[e.row], rgC = Resid_G[e.col];
+        const double reR = Resid_GxE[e.row], reC = Resid_GxE[e.col];
+        qG   += a * rgR * rgC;
+        qGxE += a * reR * reC;
+        qX   += a * (reR * rgC + rgR * reC);
+    };
+
+    // ── R_GRM_R total over the full block-diagonal GRM ──
+    for (const auto &e : topo.allEntries)
+        addQuad(e, L.RGRMR_G, L.RGRMR_GxE, L.RGRMR_G_GxE);
+
+    // ── Non-outlier singletons: diagonal quad + linear sum ──
+    for (uint32_t idx : part.nonOutlierSingletons) {
+        const double d = topo.grmDiag[idx];
+        const double rg = Resid_G[idx], re = Resid_GxE[idx];
+        L.RGRMRnon_G     += d * rg * rg;
+        L.RGRMRnon_GxE   += d * re * re;
+        L.RGRMRnon_G_GxE += d * 2.0 * re * rg;
+        L.sumRnon_G   += rg;
+        L.sumRnon_GxE += re;
+    }
+    // ── Non-outlier family/sub-family members: linear sum ──
+    for (uint32_t idx : part.nonOutlierFamilyMembers) {
+        L.sumRnon_G   += Resid_G[idx];
+        L.sumRnon_GxE += Resid_GxE[idx];
+    }
+    // ── Non-outlier kept entries: quad ──
+    for (const auto &e : part.nonOutlierFamilyEntries)
+        addQuad(e, L.RGRMRnon_G, L.RGRMRnon_GxE, L.RGRMRnon_G_GxE);
+
+    // ── Unrelated outliers (ordered) ──
+    const int nuo = static_cast<int>(part.unrelatedOutliers.size());
+    L.ruo_G.resize(nuo);
+    L.ruo_GxE.resize(nuo);
+    for (int k = 0; k < nuo; ++k) {
+        const uint32_t idx = part.unrelatedOutliers[k];
+        L.ruo_G[k]   = Resid_G[idx];
+        L.ruo_GxE[k] = Resid_GxE[idx];
+    }
+
+    // ── Two-subject outlier families ──
+    L.two_G.reserve(part.twoSubjFamilies.size());
+    L.two_GxE.reserve(part.twoSubjFamilies.size());
+    L.TwoSubj_rho_list.reserve(part.twoSubjFamilies.size());
+    for (const auto &g : part.twoSubjFamilies) {
+        const double r1g = Resid_G[g.a], r2g = Resid_G[g.b];
+        const double r1e = Resid_GxE[g.a], r2e = Resid_GxE[g.b];
+        L.RGRMRtwo_G   += g.diagA * r1g * r1g + g.diagB * r2g * r2g + 2.0 * g.offDiag * r1g * r2g;
+        L.RGRMRtwo_GxE += g.diagA * r1e * r1e + g.diagB * r2e * r2e + 2.0 * g.offDiag * r1e * r2e;
+        L.RGRMRtwo_G_GxE += g.diagA * 2.0 * r1e * r1g + g.diagB * 2.0 * r2e * r2g +
+                            2.0 * g.offDiag * (r1e * r2g + r1g * r2e);
+        L.two_G.push_back({r1g, r2g});
+        L.two_GxE.push_back({r1e, r2e});
+        L.TwoSubj_rho_list.push_back({g.rho[0], g.rho[1]});
+    }
+
+    // ── Three-or-more-subject outlier families ──
+    L.three_G.reserve(part.threeSubjFamilies.size());
+    L.three_GxE.reserve(part.threeSubjFamilies.size());
+    L.ThreeSubj_CLT_list.reserve(part.threeSubjFamilies.size());
+    for (const auto &g : part.threeSubjFamilies) {
+        const int n1 = static_cast<int>(g.members.size());
+        std::vector<double> rg(n1), re(n1);
+        for (int i = 0; i < n1; ++i) {
+            rg[i] = Resid_G[g.members[i]];
+            re[i] = Resid_GxE[g.members[i]];
+        }
+        L.three_G.push_back(nsGRMNull::buildStandS(n1, rg));
+        L.three_GxE.push_back(nsGRMNull::buildStandS(n1, re));
+        L.ThreeSubj_CLT_list.push_back(g.CLT);
+    }
+
+    L.MAF_interval = part.mafInterval;
+    L.SPA_Cutoff = spaCutoff;
+    L.zeta = nsGRMNull::ZETA_DEFAULT;
+    L.tol = nsGRMNull::TOL_DEFAULT;
+    return L;
+}
+
+// Marker-specific λ p-value: recombine the split ledgers at λ_i, build a
+// per-marker SPAGRMClass, and run the validated getMarkerPvalFromScore.  The
+// score keeps GRAB2's genotype-mean centering (SG-1 unchanged); outScore
+// returns the centered score so the caller forms BETA = Score / Var(S).
+double sageldMarkerLambdaPval(
+    const SAGELDSplitLedgers &L,
+    double lambda_i,
+    const Eigen::Ref<const Eigen::VectorXd> &GVec,
+    double altFreq,
+    double &zScore,
+    double &outScore,
+    double *outScoreVar
+) {
+    const double lam = lambda_i;
+    const double lam2 = lam * lam;
+
+    const double R_GRM_R_i         = L.RGRMR_GxE    + lam2 * L.RGRMR_G    - lam * L.RGRMR_G_GxE;
+    const double R_GRM_R_nonOut_i  = L.RGRMRnon_GxE + lam2 * L.RGRMRnon_G - lam * L.RGRMRnon_G_GxE;
+    const double R_GRM_R_TwoSubj_i = L.RGRMRtwo_GxE + lam2 * L.RGRMRtwo_G - lam * L.RGRMRtwo_G_GxE;
+    const double sum_R_nonOut_i    = L.sumRnon_GxE  - lam * L.sumRnon_G;
+
+    nsSPAGRM::FamilyData fd;
+    fd.resid_unrelated_outliers = L.ruo_GxE - lam * L.ruo_G;
+    const size_t n2 = L.two_G.size();
+    fd.twoSubj_resid.resize(n2);
+    for (size_t k = 0; k < n2; ++k) {
+        fd.twoSubj_resid[k][0] = L.two_GxE[k][0] - lam * L.two_G[k][0];
+        fd.twoSubj_resid[k][1] = L.two_GxE[k][1] - lam * L.two_G[k][1];
+    }
+    fd.twoSubj_rho = L.TwoSubj_rho_list;
+    const size_t n3 = L.three_G.size();
+    fd.threeSubj_standS.resize(n3);
+    for (size_t j = 0; j < n3; ++j) {
+        const size_t sz = L.three_G[j].size();
+        fd.threeSubj_standS[j].resize(sz);
+        for (size_t k = 0; k < sz; ++k)
+            fd.threeSubj_standS[j][k] = L.three_GxE[j][k] - lam * L.three_G[j][k];
+    }
+    fd.threeSubj_CLT = L.ThreeSubj_CLT_list;
+
+    Eigen::VectorXd resid_i = L.resid_GxE - lam * L.resid_G;
+    const double gMean = GVec.mean();
+    const double resid_i_sum = L.resid_GxE.sum() - lam * L.resid_G.sum();
+    const double Score_i = GVec.dot(resid_i) - gMean * resid_i_sum;
+    outScore = Score_i;
+
+    SPAGRMClass sg(std::move(resid_i), sum_R_nonOut_i, R_GRM_R_nonOut_i,
+                   R_GRM_R_TwoSubj_i, R_GRM_R_i, L.MAF_interval, std::move(fd),
+                   L.SPA_Cutoff, L.zeta, L.tol);
+    return sg.getMarkerPvalFromScore(Score_i, altFreq, zScore, outScoreVar);
+}
+
+// ══════════════════════════════════════════════════════════════════════
 // SAGELDMethod — MethodBase adapter
 // ══════════════════════════════════════════════════════════════════════
 
 class SAGELDMethod : public MethodBase {
   public:
     struct PerEnv {
+        explicit PerEnv(SPAGRMClass sg) : spagrm_combined(std::move(sg)) {}
+
         SPAGRMClass spagrm_combined;
+
+        // ── SG-3 marker-specific λ branch (empty/null when disabled) ──
+        Eigen::VectorXd Resid_E;                                 // zScoreE numerator
+        double R_GRM_R_E = 0.0;                                  // zScoreE denominator
+        double cutoff = 0.0;                                     // qnorm(PvalueCutoff/2, upper)
+        std::shared_ptr<const nsSAGELDFit::GallopCache> cache;   // markerLambda(GVec, *cache)
+        std::shared_ptr<const SAGELDSplitLedgers> splitLedgers;  // recombination ledgers
+
+        bool markerLambdaEnabled() const {
+            return cache != nullptr && splitLedgers != nullptr && R_GRM_R_E > 0.0;
+        }
     };
 
     SAGELDMethod(
@@ -252,7 +452,10 @@ class SAGELDMethod : public MethodBase {
 
         const double MAF = std::min(altFreq, 1.0 - altFreq);
         const double G_var = 2.0 * MAF * (1.0 - MAF);
-        const double Score_G = GVec.dot(m_resid_G) - GVec.mean() * m_resid_G.sum();
+        const double gMean = GVec.mean();
+
+        // ── G main effect (normal approximation; SG-1 centering unchanged) ──
+        const double Score_G = GVec.dot(m_resid_G) - gMean * m_resid_G.sum();
         const double Var_G = G_var * m_R_GRM_R_G;
         if (Var_G > 0.0 && MAF > 0.0) {
             const double sdG = std::sqrt(Var_G);
@@ -262,122 +465,65 @@ class SAGELDMethod : public MethodBase {
         }
 
         for (int i = 0; i < nE; ++i) {
+            auto &env = m_envs[i];
             double zGxE = 0.0;
             double scoreVar = 0.0;
-            const double centeredScore =
-                GVec.dot(m_envs[i].spagrm_combined.resid()) -
-                GVec.mean() * m_envs[i].spagrm_combined.residSum();
-            const double pGxE = m_envs[i].spagrm_combined
-                                    .getMarkerPvalFromScore(centeredScore, altFreq, zGxE, &scoreVar);
+            double score = 0.0;
+            double pGxE = std::numeric_limits<double>::quiet_NaN();
+
+            // ── SG-3 screen: per-marker environment z-score ──
+            // zScoreE = (Resid_E · G) / sqrt(2·MAF·(1−MAF)·R_GRM_R_E), matching
+            // estimateLambdaPerMarker; |zScoreE| ≥ cutoff triggers a marker-
+            // specific λ_i (only when the GALLOP cache + split ledgers exist).
+            bool useMarkerLambda = false;
+            if (env.markerLambdaEnabled()) {
+                const double denomE = std::sqrt(G_var * env.R_GRM_R_E);
+                if (denomE > 0.0) {
+                    const double zScoreE = GVec.dot(env.Resid_E) / denomE;
+                    useMarkerLambda = (std::abs(zScoreE) >= env.cutoff);
+                }
+            }
+
+            if (useMarkerLambda) {
+                const double lambda_i = nsSAGELDFit::markerLambda(GVec, *env.cache);
+                if (std::isfinite(lambda_i)) {
+                    pGxE = sageldMarkerLambdaPval(*env.splitLedgers, lambda_i, GVec,
+                                                  altFreq, zGxE, score, &scoreVar);
+                } else {
+                    useMarkerLambda = false; // degenerate V → mean-λ fallback
+                }
+            }
+            if (!useMarkerLambda) {
+                // Mean-λ path (SG-1 centering unchanged).
+                score = GVec.dot(env.spagrm_combined.resid()) -
+                        gMean * env.spagrm_combined.residSum();
+                pGxE = env.spagrm_combined.getMarkerPvalFromScore(score, altFreq, zGxE, &scoreVar);
+            }
+
             if (scoreVar > 0.0) {
                 const double sdE = std::sqrt(scoreVar);
                 writePZZnormBetaSe(result, 4 + 5 * i, pGxE, math::zFromPval(pGxE, zGxE), zGxE,
-                                   centeredScore / scoreVar, 1.0 / sdE);
+                                   score / scoreVar, 1.0 / sdE);
             } else {
                 result[4 + 5 * i + 0] = pGxE; // P even when var=0 (SPA may still return finite p)
             }
         }
     }
 
-    // ── Fused union-level GEMM interface ───────────────────────────────
-    // Column layout for the augmented residual matrix:
-    //   col 0           : R_G                    (main genetic effect)
-    //   col 1 + e (e<E) : combined residual per env (= R_Gx<E> − λ_e · R_G)
-    // For B markers per chunk, multiPhenoEngine produces a (1+E) × B
-    // score matrix via one fused GEMM; processScoreBatch then converts the
-    // raw scores into per-marker (P_G, P_GxE_e, Z_G, Z_GxE_e) via the same
-    // normal-approx (G) and SPA (GxE) reductions as getResultVec.
-
+    // SAGELD does NOT participate in the fused union-level GEMM.  The SG-3
+    // marker-specific λ branch needs the raw per-marker genotype vector — for
+    // markerLambda() and the zScoreE screen — which the fused score-only path
+    // does not expose, so every marker routes through getResultVec.  The score
+    // dot-product is ≈1% of runtime (the method is saddlepoint-dominated), so
+    // dropping the fused GEMM is negligible; supportsFusedGemm() therefore
+    // returns false and the fillUnionResiduals / fillResidualSums /
+    // processScoreBatch hooks inherit the no-op base defaults.
     int preferredBatchSize() const override {
         return 16;
     }
 
     bool supportsFusedGemm() const override {
-        return true;
-    }
-
-    int fusedGemmColumns() const override {
-        return 1 + static_cast<int>(m_envs.size());
-    }
-
-    void fillUnionResiduals(
-        Eigen::Ref<Eigen::MatrixXd> dest,
-        const std::vector<uint32_t> &unionToLocal
-    ) const override {
-        // dest is pre-zeroed, N_union × (1 + nEnv).
-        const uint32_t nUnion = static_cast<uint32_t>(unionToLocal.size());
-        const int nE = static_cast<int>(m_envs.size());
-        for (uint32_t i = 0; i < nUnion; ++i) {
-            const uint32_t li = unionToLocal[i];
-            if (li == UINT32_MAX) continue;
-            dest(i, 0) = m_resid_G[li];
-            for (int e = 0; e < nE; ++e)
-                dest(i, 1 + e) = m_envs[e].spagrm_combined.resid()[li];
-        }
-    }
-
-    void fillResidualSums(double *dest) const override {
-        dest[0] = m_resid_G.sum();
-        const int nE = static_cast<int>(m_envs.size());
-        for (int e = 0; e < nE; ++e)
-            dest[1 + e] = m_envs[e].spagrm_combined.residSum();
-    }
-
-    void processScoreBatch(
-        const Eigen::Ref<const Eigen::MatrixXd> &scores,
-        const double *gSums,
-        const double *gSumSqs,
-        uint32_t nUsed,
-        const std::vector<double> &altFreqs,
-        const std::vector<int> & /*chunkIdxs*/,
-        std::vector<std::vector<double> > &results
-    ) override {
-        (void)gSumSqs;
-        const int B = static_cast<int>(scores.cols());
-        const int nE = static_cast<int>(m_envs.size());
-        results.resize(B);
-
-        const double residG_sum = m_resid_G.sum();
-        const double invN = 1.0 / static_cast<double>(nUsed);
-
-        for (int b = 0; b < B; ++b) {
-            auto &out = results[b];
-            out.assign(4 + 5 * nE, std::numeric_limits<double>::quiet_NaN());
-
-            const double altFreq = altFreqs[b];
-            const double MAF = std::min(altFreq, 1.0 - altFreq);
-            const double gMean = gSums[b] * invN;
-
-            // P_G via the normal approximation, sharing the SPAGRM-style
-            // score centering: Score_G = scores(0,b) - gMean · Σ R_G.
-            const double Score_G = scores(0, b) - gMean * residG_sum;
-            const double G_var = 2.0 * MAF * (1.0 - MAF);
-            const double Var_G = G_var * m_R_GRM_R_G;
-            if (Var_G > 0.0 && MAF > 0.0) {
-                const double sdG = std::sqrt(Var_G);
-                const double zG = Score_G / sdG;
-                const double pG = 2.0 * math::pnorm(std::abs(zG), 0.0, 1.0, false);
-                writePZBetaSe(out, 0, pG, zG, Score_G / Var_G, 1.0 / sdG);
-            }
-
-            // P_GxE per env via SPAGRMClass::getMarkerPvalFromScore on the
-            // centred combined-residual score; scoreVar captured for BETA/SE.
-            for (int e = 0; e < nE; ++e) {
-                const double envResidSum = m_envs[e].spagrm_combined.residSum();
-                const double centeredScore = scores(1 + e, b) - gMean * envResidSum;
-                double zGxE = 0.0;
-                double scoreVar = 0.0;
-                const double pGxE = m_envs[e].spagrm_combined
-                                        .getMarkerPvalFromScore(centeredScore, altFreq, zGxE, &scoreVar);
-                if (scoreVar > 0.0) {
-                    const double sdE = std::sqrt(scoreVar);
-                    writePZZnormBetaSe(out, 4 + 5 * e, pGxE, math::zFromPval(pGxE, zGxE), zGxE,
-                                       centeredScore / scoreVar, 1.0 / sdE);
-                } else {
-                    out[4 + 5 * e + 0] = pGxE;
-                }
-            }
-        }
+        return false;
     }
 
   private:
@@ -450,6 +596,10 @@ class GALLOPMethod : public MethodBase {
 
     int resultSize() const override { return 8; }
 
+    int preferredBatchSize() const override {
+        return 1;   // per-marker Wald; non-fused, so do not widen the window.
+    }
+
     // col 0..3 : P_G  Z_G  BETA_G  SE_G
     // col 4..7 : P_Gx<E>  Z_Gx<E>  BETA_Gx<E>  SE_Gx<E>
     std::string getHeaderColumns() const override {
@@ -505,7 +655,12 @@ std::unique_ptr<SAGELDMethod> buildSAGELDArtifacts(
     double minMacCutoff,
     int innerThreads,
     const std::string &phenoLabel = {},
-    const std::vector<double> &lambdaOverride = {}
+    const std::vector<double> &lambdaOverride = {},
+    // SG-3 marker-specific λ inputs (marker-λ enabled per env only when a
+    // GallopCache is supplied and the matching Resid_E has full length N):
+    const std::vector<Eigen::VectorXd> &Resid_E_list = {},
+    double markerLambdaCutoff = 0.0,
+    std::shared_ptr<const nsSAGELDFit::GallopCache> cache = nullptr
 ) {
     const int nEnv = static_cast<int>(envNames.size());
     if (static_cast<int>(Resid_GxE_list.size()) != nEnv)
@@ -537,12 +692,36 @@ std::unique_ptr<SAGELDMethod> buildSAGELDArtifacts(
             infoMsg("[%s] Env '%s': lambda = %.6f",
                     phenoLabel.c_str(), envNames[i].c_str(), lambda);
         Eigen::VectorXd envCombined = Resid_GxE - lambda * Resid_G;
+
+        // Marker-specific λ is available only when a GALLOP projection cache
+        // is supplied (pheno mode, or residual mode with a serialized cache)
+        // and this env carries a full-length Resid_E for the zScoreE screen.
+        const bool wantMarkerLambda =
+            (cache != nullptr) &&
+            (i < static_cast<int>(Resid_E_list.size())) &&
+            (Resid_E_list[i].size() == static_cast<Eigen::Index>(N));
+
+        // The partition (outlier detection + family splits + Chow-Liu trees)
+        // is driven by the mean-λ combined residual, so the marker-λ split
+        // ledgers share exactly the combined model's partition.
+        nsGRMNull::SPAGRMPartition part;
         SPAGRMClass spagrm_combined = nsGRMNull::buildSPAGRMNullModel(
             envCombined, N, topo.singletonSet, topo.grmDiag, topo.families,
             topo.familyEntries, topo.allEntries, topo.ibdEntries, topo.ibdPairMap,
             spaCutoff, minMafCutoff, minMacCutoff,
-            nsGRMNull::INIT_OUTLIER_RATIO, nsGRMNull::CONTROL_OUTLIER, innerThreads);
-        envData.push_back(SAGELDMethod::PerEnv{std::move(spagrm_combined)});
+            nsGRMNull::INIT_OUTLIER_RATIO, nsGRMNull::CONTROL_OUTLIER, innerThreads,
+            wantMarkerLambda ? &part : nullptr);
+
+        SAGELDMethod::PerEnv pe{std::move(spagrm_combined)};
+        if (wantMarkerLambda) {
+            pe.Resid_E = Resid_E_list[i];
+            pe.R_GRM_R_E = computeRGRMR(Resid_E_list[i], topo);
+            pe.cutoff = markerLambdaCutoff;
+            pe.cache = cache;
+            pe.splitLedgers = std::make_shared<const SAGELDSplitLedgers>(
+                buildSAGELDSplitLedgers(part, Resid_G, Resid_GxE, topo, spaCutoff));
+        }
+        envData.push_back(std::move(pe));
         envNamesOut.push_back(envNames[i]);
     }
 
@@ -651,24 +830,208 @@ double estimateLambdaPerMarker(
 // comment.  Returns NaN if absent or malformed.  Stops at the first
 // non-comment line (typically the data header `#IID`).
 double readLambdaFromResidFile(const std::string &filename) {
-    std::ifstream ifs(filename);
-    if (!ifs) return std::numeric_limits<double>::quiet_NaN();
     std::string line;
-    while (std::getline(ifs, line)) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (line.empty()) continue;
-        if (line.size() < 2 || line[0] != '#' || line[1] != '#') break;
-        constexpr const char *kKey = "##sageld-lambda=";
-        const size_t kKeyLen = std::strlen(kKey);
-        if (line.size() > kKeyLen && line.compare(0, kKeyLen, kKey) == 0) {
-            const char *p = line.c_str() + kKeyLen;
-            char *ep = nullptr;
-            const double v = std::strtod(p, &ep);
-            if (ep != p && std::isfinite(v)) return v;
-            return std::numeric_limits<double>::quiet_NaN();
+    try {
+        TextReader ifs(filename); // auto-detects .gz/.zst by extension
+        while (ifs.getline(line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            if (line.empty()) continue;
+            if (line.size() < 2 || line[0] != '#' || line[1] != '#') break;
+            constexpr const char *kKey = "##sageld-lambda=";
+            const size_t kKeyLen = std::strlen(kKey);
+            if (line.size() > kKeyLen && line.compare(0, kKeyLen, kKey) == 0) {
+                const char *p = line.c_str() + kKeyLen;
+                char *ep = nullptr;
+                const double v = std::strtod(p, &ep);
+                if (ep != p && std::isfinite(v)) return v;
+                return std::numeric_limits<double>::quiet_NaN();
+            }
         }
+    } catch (const std::exception &) {
+        // Unreadable file → no λ metadata; fall through to NaN.
     }
     return std::numeric_limits<double>::quiet_NaN();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// loadSAGELDCacheFromResid — reconstruct the GALLOP projection cache that
+//   --save-resid serialized into the residual file, so residual-input mode
+//   can also run the marker-specific λ branch.  The per-subject cache rows
+//   are keyed by IID and re-aligned to `usedIIDs` (the residual-mode subject
+//   order, matching the engine's genotype decode order).
+//
+// Returns a null cache (→ mean-λ only) when the file lacks the cache block,
+// or when the residual-mode used set does not exactly match the cache's
+// subject set (a --keep/--remove/GRM subset would make the cached Q and the
+// per-subject sums inconsistent).  `cutoff` is the zScoreE screen threshold
+// recovered from ##sageld-pvalue-cutoff (default 0.001).
+// ══════════════════════════════════════════════════════════════════════
+struct ResidCacheResult {
+    std::shared_ptr<const nsSAGELDFit::GallopCache> cache; // null if unavailable
+    double cutoff = 0.0;
+    bool sawCacheBlock = false; // true once a ##sageld-cache-* / Si_00.. column block
+                                // is found, even if later rejected for a subject-set
+                                // mismatch — lets the caller warn only when the block
+                                // is genuinely absent (legacy / hand-made residual file)
+};
+
+ResidCacheResult loadSAGELDCacheFromResid(
+    const std::string &filename,
+    const std::vector<std::string> &usedIIDs
+) {
+    ResidCacheResult res;
+    double pcut = 0.001; // PvalueCutoff default; header may override
+
+    std::vector<std::string> lines;
+    try {
+        TextReader ifs(filename); // auto-detects .gz/.zst by extension
+        std::string ln;
+        while (ifs.getline(ln)) {
+            if (!ln.empty() && ln.back() == '\r') ln.pop_back();
+            lines.push_back(ln);
+        }
+    } catch (const std::exception &) {
+        res.cutoff = math::qnorm(pcut / 2.0, 0.0, 1.0, false);
+        return res;
+    }
+
+    double sig = 0.0;
+    int nx = -1, nsubj = -1, colHdrLine = -1;
+    std::vector<double> qflat;
+
+    for (size_t li = 0; li < lines.size(); ++li) {
+        const std::string &ln = lines[li];
+        if (ln.empty()) continue;
+        if (ln.size() >= 2 && ln[0] == '#' && ln[1] == '#') {
+            auto after = [&](const char *k) -> const char * {
+                const size_t kl = std::strlen(k);
+                return (ln.size() > kl && ln.compare(0, kl, k) == 0) ? ln.c_str() + kl : nullptr;
+            };
+            if (const char *p = after("##sageld-cache-sig=")) sig = std::strtod(p, nullptr);
+            else if (const char *p = after("##sageld-cache-nx=")) nx = std::atoi(p);
+            else if (const char *p = after("##sageld-cache-nsubj=")) nsubj = std::atoi(p);
+            else if (const char *p = after("##sageld-pvalue-cutoff=")) pcut = std::strtod(p, nullptr);
+            else if (const char *p = after("##sageld-cache-Q=")) {
+                const char *s = p;
+                char *e = nullptr;
+                while (true) {
+                    const double v = std::strtod(s, &e);
+                    if (e == s) break;
+                    qflat.push_back(v);
+                    s = e;
+                }
+            }
+            continue;
+        }
+        if (ln[0] == '#') { colHdrLine = static_cast<int>(li); break; } // #IID column header
+        break; // a data line before any header → malformed
+    }
+    res.cutoff = math::qnorm(pcut / 2.0, 0.0, 1.0, false);
+
+    // No cache block → mean-λ only (not an error; legacy/hand-made file).
+    if (colHdrLine < 0 || nx <= 0 || nsubj <= 0 ||
+        static_cast<int>(qflat.size()) != nx * nx)
+        return res;
+
+    // Locate the cache columns by name in the column header.
+    std::vector<std::string> colHeaders;
+    {
+        text::TokenScanner ts(lines[colHdrLine]);
+        while (!ts.atEnd()) {
+            auto sv = ts.nextView();
+            if (sv.empty()) break;
+            colHeaders.emplace_back(sv);
+        }
+    }
+    std::unordered_map<std::string, int> colIdx;
+    for (int c = 0; c < static_cast<int>(colHeaders.size()); ++c) colIdx[colHeaders[c]] = c;
+    auto findCol = [&](const std::string &name) -> int {
+        auto it = colIdx.find(name);
+        return it == colIdx.end() ? -1 : it->second;
+    };
+
+    const int si00 = findCol("Si_00"), si01 = findCol("Si_01"), si11 = findCol("Si_11");
+    const int st00 = findCol("StS_00"), st01 = findCol("StS_01"), st11 = findCol("StS_11");
+    if (si00 < 0 || si01 < 0 || si11 < 0 || st00 < 0 || st01 < 0 || st11 < 0)
+        return res; // no cache block
+    std::vector<int> xtsIdx(2 * nx), atsIdx(2 * nx);
+    int maxIdx = std::max({si00, si01, si11, st00, st01, st11});
+    for (int j = 0; j < 2 * nx; ++j) {
+        xtsIdx[j] = findCol("XTs_" + std::to_string(j));
+        atsIdx[j] = findCol("AtS_" + std::to_string(j));
+        if (xtsIdx[j] < 0 || atsIdx[j] < 0) return res;
+        maxIdx = std::max({maxIdx, xtsIdx[j], atsIdx[j]});
+    }
+
+    // A genuine cache column block is present; any failure past this point is a
+    // subject-set mismatch (warned individually below), not an absent block.
+    res.sawCacheBlock = true;
+
+    // Index data rows by IID.
+    std::unordered_map<std::string, std::vector<std::string> > rowByIID;
+    rowByIID.reserve(lines.size());
+    for (size_t li = static_cast<size_t>(colHdrLine) + 1; li < lines.size(); ++li) {
+        const std::string &ln = lines[li];
+        if (ln.empty() || ln[0] == '#') continue;
+        std::vector<std::string> toks;
+        text::TokenScanner ts(ln);
+        while (!ts.atEnd()) {
+            auto sv = ts.nextView();
+            if (sv.empty()) break;
+            toks.emplace_back(sv);
+        }
+        if (!toks.empty()) rowByIID.emplace(toks[0], std::move(toks));
+    }
+
+    const int N = static_cast<int>(usedIIDs.size());
+    if (N != nsubj) {
+        warnMsg("SAGELD residual mode: GALLOP cache nsubj=%d != used subjects=%d "
+                "(--keep/--remove/GRM subset); marker-specific λ disabled",
+                nsubj, N);
+        return res;
+    }
+
+    auto cache = std::make_shared<nsSAGELDFit::GallopCache>();
+    cache->nx = nx;
+    cache->nSubj = N;
+    cache->sig = sig;
+    cache->Q.resize(nx, nx);
+    for (int r = 0; r < nx; ++r)
+        for (int c = 0; c < nx; ++c)
+            cache->Q(r, c) = qflat[static_cast<size_t>(r) * nx + c];
+    cache->Qsolver.compute(cache->Q);
+    cache->Si.resize(N);
+    cache->StS.resize(N);
+    cache->XTs.resize(N, 2 * nx);
+    cache->AtS.resize(N, 2 * nx);
+    // Tr0 / sig drive only the GALLOP Wald path (markerGallop), not markerLambda,
+    // so Tr0 is left empty here.
+
+    for (int i = 0; i < N; ++i) {
+        auto it = rowByIID.find(usedIIDs[i]);
+        if (it == rowByIID.end() || static_cast<int>(it->second.size()) <= maxIdx) {
+            warnMsg("SAGELD residual mode: IID '%s' missing/short GALLOP cache row; "
+                    "marker-specific λ disabled",
+                    usedIIDs[i].c_str());
+            res.cache = nullptr;
+            return res;
+        }
+        const auto &t = it->second;
+        auto val = [&](int c) -> double { return std::strtod(t[c].c_str(), nullptr); };
+        Eigen::Matrix2d Si;
+        Si << val(si00), val(si01), val(si01), val(si11);
+        Eigen::Matrix2d StS;
+        StS << val(st00), val(st01), val(st01), val(st11);
+        cache->Si[i] = Si;
+        cache->StS[i] = StS;
+        for (int j = 0; j < 2 * nx; ++j) {
+            cache->XTs(i, j) = val(xtsIdx[j]);
+            cache->AtS(i, j) = val(atsIdx[j]);
+        }
+    }
+
+    res.cache = std::move(cache);
+    return res;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -689,12 +1052,15 @@ void runSAGELDCoreSingle(
     double minMafCutoff,
     double minMacCutoff,
     double hweCutoff,
-    const std::vector<double> &lambdaOverride = {}
+    const std::vector<double> &lambdaOverride = {},
+    const std::vector<Eigen::VectorXd> &Resid_E_list = {},
+    double markerLambdaCutoff = 0.0,
+    std::shared_ptr<const nsSAGELDFit::GallopCache> cache = nullptr
 ) {
     auto method = buildSAGELDArtifacts(Resid_G, envNames, Resid_GxE_list,
                                        topo, N, spaCutoff, minMafCutoff, minMacCutoff,
                                        /*innerThreads=*/nthreads, /*phenoLabel=*/{},
-                                       lambdaOverride);
+                                       lambdaOverride, Resid_E_list, markerLambdaCutoff, cache);
     infoMsg("Running SAGELD marker-level association on '%s'...", outputFile.c_str());
     markerEngine(genoData, *method, outputFile, nthreads,
                  missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
@@ -748,9 +1114,11 @@ void runSAGELDResidualMode(
 
     std::vector<std::string> envNames(nEnv);
     std::vector<Eigen::VectorXd> Resid_GxE_list(nEnv);
+    std::vector<Eigen::VectorXd> Resid_E_list(nEnv);
     for (int i = 0; i < nEnv; ++i) {
         envNames[i] = envs_spec[i].name;
         Resid_GxE_list[i] = residMat.col(envs_spec[i].colGxE);
+        Resid_E_list[i] = residMat.col(envs_spec[i].colE); // R_<E> for the zScoreE screen
     }
 
     // Inherit per-marker λ from fit-mode if the residual file carries one
@@ -765,10 +1133,38 @@ void runSAGELDResidualMode(
                 lambdaFromFile);
     }
 
+    // SG-3: reconstruct the GALLOP cache serialized by --save-resid so the
+    // marker-specific λ branch runs in residual mode too.  When absent (or the
+    // used subject set does not match the cache), cache is null → mean-λ only.
+    // The cache is applied only when nEnv == 1 (it is tied to the fitted env).
+    ResidCacheResult rc = loadSAGELDCacheFromResid(phenoFile, sd.usedIIDs());
+    std::vector<Eigen::VectorXd> markerLambdaResidE;
+    std::shared_ptr<const nsSAGELDFit::GallopCache> markerLambdaCache;
+    if (rc.cache && nEnv == 1) {
+        markerLambdaResidE = Resid_E_list;
+        markerLambdaCache = rc.cache;
+        infoMsg("Residual file supplies a GALLOP cache (nx=%d); marker-specific "
+                "λ branch enabled",
+                rc.cache->nx);
+    } else if (rc.cache && nEnv != 1) {
+        infoMsg("SAGELD residual mode: %d envs but a single-env GALLOP cache; "
+                "marker-specific λ disabled",
+                nEnv);
+    } else if (!rc.sawCacheBlock) {
+        // Legacy / hand-made residual file with no serialized GALLOP cache: the
+        // marker-specific λ branch cannot run, so fall back to genome-wide mean λ.
+        // (A cache block that WAS present but rejected for a subject-set mismatch
+        // is already reported by loadSAGELDCacheFromResid, so it is not re-warned.)
+        warnMsg("SAGELD residual mode: residual file carries no GALLOP cache block "
+                "(##sageld-cache-*); running genome-wide mean λ only. Regenerate the "
+                "residual file with pheno-mode --save-resid to enable the "
+                "marker-specific λ branch.");
+    }
+
     runSAGELDCoreSingle(Resid_G, envNames, Resid_GxE_list, topo, N, *genoData,
                         outputFile, spaCutoff, nthreads,
                         missingCutoff, minMafCutoff, minMacCutoff, hweCutoff,
-                        lambdaOverride);
+                        lambdaOverride, markerLambdaResidE, rc.cutoff, markerLambdaCache);
 }
 
 // ── Helper: load --keep / --remove file into a string set ──────────────
@@ -950,30 +1346,28 @@ void runSAGELDPhenoMode(
         // than 100 markers pass the screen, lambdaMean is NaN and the
         // downstream buildSAGELDArtifacts falls back to the closed-form OLS λ.
         const double R_GRM_R_E = computeRGRMR(Resid_E, topo);
-        auto gallopCache = nsSAGELDFit::buildGallopCache(
-            longData, fitMain.D, fitMain.sigma2, fitMain.residPerRow);
+        auto gallopCache = std::make_shared<const nsSAGELDFit::GallopCache>(
+            nsSAGELDFit::buildGallopCache(
+                longData, fitMain.D, fitMain.sigma2, fitMain.residPerRow));
         const double lambdaMean = estimateLambdaPerMarker(
             *genoData, N, Resid_E, R_GRM_R_E, zScoreECutoff,
-            gallopCache, kLambdaSampleSize, phenoName);
+            *gallopCache, kLambdaSampleSize, phenoName);
 
         if (saveResid) {
-            const std::string residPath = outPrefix + "." + phenoName + ".SAGELD.resid";
-            std::ofstream rf(residPath);
-            if (!rf) throw std::runtime_error("Cannot write residual file: " + residPath);
-            // VCF-style metadata comment lines.  parseIIDFile skips `##`
-            // lines transparently; SAGELD residual-mode parses the λ value
-            // back so that fit-mode → residual-mode produces byte-identical
-            // marker outputs even when fit-mode used per-marker λ.
-            if (std::isfinite(lambdaMean)) {
-                char lbuf[64];
-                std::snprintf(lbuf, sizeof(lbuf), "%.17g", lambdaMean);
-                rf << "##sageld-lambda=" << lbuf << "\n";
-            }
-            rf << "#IID\tR_G\tR_" << envNames[0] << "\tR_Gx" << envNames[0] << "\n";
+            // When --compression is set, append the codec extension so residual
+            // mode's TextReader auto-detects it; otherwise keep a plain .resid.
+            std::string residPath = outPrefix + "." + phenoName + ".SAGELD.resid";
+            if (compression == "gz") residPath += ".gz";
+            else if (compression == "zst") residPath += ".zst";
+            std::ostringstream rf;
             // %.17g preserves a double exactly across the round-trip
             // (DBL_DECIMAL_DIG = 17); matches nullmodel::writeResidualsFile.
             char buf[32];
-            auto writeVal = [&](double v) {
+            auto put = [&](double v) { // header value, no leading tab
+                std::snprintf(buf, sizeof(buf), "%.17g", v);
+                rf << buf;
+            };
+            auto writeVal = [&](double v) { // data cell, leading tab, NA-aware
                 rf << '\t';
                 if (std::isnan(v)) {
                     rf << "NA";
@@ -982,15 +1376,71 @@ void runSAGELDPhenoMode(
                     rf << buf;
                 }
             };
+
+            // VCF-style metadata comment lines.  parseIIDFile skips `##`
+            // lines transparently; SAGELD residual-mode parses the λ value
+            // back so that fit-mode → residual-mode produces byte-identical
+            // marker outputs on the mean-λ markers even when fit-mode used
+            // per-marker λ.
+            if (std::isfinite(lambdaMean)) {
+                rf << "##sageld-lambda=";
+                put(lambdaMean);
+                rf << "\n";
+            }
+
+            // ── SG-3 GALLOP cache block ──
+            // Serialize the per-subject projection cache so residual-mode can
+            // ALSO run the marker-specific λ branch (markerLambda consumes only
+            // nx / nSubj / Q / Si / StS / XTs / AtS — Tr0 and sig are GALLOP-Wald
+            // only and are omitted; sig is kept in the header for documentation).
+            const nsSAGELDFit::GallopCache &gc = *gallopCache;
+            const int nx = gc.nx;
+            rf << "##sageld-cache-sig=";
+            put(gc.sig);
+            rf << "\n##sageld-cache-nx=" << nx << "\n";
+            rf << "##sageld-cache-nsubj=" << gc.nSubj << "\n";
+            rf << "##sageld-pvalue-cutoff=";
+            put(kLambdaPvalueCutoff);
+            rf << "\n##sageld-cache-Q=";
+            for (int r = 0; r < nx; ++r)
+                for (int c = 0; c < nx; ++c) {
+                    if (r != 0 || c != 0) rf << ' ';
+                    put(gc.Q(r, c));
+                }
+            rf << "\n";
+
+            // Column header: residuals, then the per-subject cache columns
+            // (Si/StS symmetric → 3 each; XTs/AtS → 2·nx each).
+            rf << "#IID\tR_G\tR_" << envNames[0] << "\tR_Gx" << envNames[0];
+            rf << "\tSi_00\tSi_01\tSi_11\tStS_00\tStS_01\tStS_11";
+            for (int j = 0; j < 2 * nx; ++j) rf << "\tXTs_" << j;
+            for (int j = 0; j < 2 * nx; ++j) rf << "\tAtS_" << j;
+            rf << "\n";
+
             for (uint32_t i = 0; i < N; ++i) {
                 rf << longData.uniqueIIDs[i];
                 writeVal(Resid_G[i]);
                 writeVal(Resid_E[i]);
                 writeVal(Resid_GxE[i]);
+                writeVal(gc.Si[i](0, 0));
+                writeVal(gc.Si[i](0, 1));
+                writeVal(gc.Si[i](1, 1));
+                writeVal(gc.StS[i](0, 0));
+                writeVal(gc.StS[i](0, 1));
+                writeVal(gc.StS[i](1, 1));
+                for (int j = 0; j < 2 * nx; ++j) writeVal(gc.XTs(i, j));
+                for (int j = 0; j < 2 * nx; ++j) writeVal(gc.AtS(i, j));
                 rf << '\n';
             }
-            infoMsg("[%s] Saved residuals: %s (sigma2_E=%.6g, tau2_E=%.6g)",
-                    phenoName.c_str(), residPath.c_str(),
+            {
+                TextWriter tw(residPath, TextWriter::modeFromString(compression),
+                              compressionLevel);
+                const std::string body = rf.str();
+                tw.write(body);
+                tw.close();
+            }
+            infoMsg("[%s] Saved residuals + GALLOP cache: %s (nx=%d, sigma2_E=%.6g, tau2_E=%.6g)",
+                    phenoName.c_str(), residPath.c_str(), nx,
                     fitE.sigma2, fitE.D(0, 0));
         }
 
@@ -1001,10 +1451,14 @@ void runSAGELDPhenoMode(
         std::vector<double> lambdaOverride;
         if (std::isfinite(lambdaMean)) lambdaOverride.push_back(lambdaMean);
 
+        // SG-3: pass the E-residual, screen cutoff, and GALLOP cache so the
+        // marker-specific λ branch is available at test time.
+        std::vector<Eigen::VectorXd> residEList{Resid_E};
+
         auto method = buildSAGELDArtifacts(
             Resid_G, singleEnvName, Resid_GxE_list, topo, N,
             spaCutoff, minMafCutoff, minMacCutoff, innerThreads, phenoName,
-            lambdaOverride);
+            lambdaOverride, residEList, zScoreECutoff, gallopCache);
 
         tasks[p].phenoName = phenoName;
         tasks[p].method = std::move(method);

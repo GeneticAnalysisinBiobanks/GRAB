@@ -1775,7 +1775,8 @@ void runSPAmixLocalPlus(
                 dumpFits[i].residuals = rs[i];
                 dumpFits[i].nUsedRows = static_cast<int>(rs[i].size());
             }
-            nullmodel::writeResidualsFile(outPrefix + ".null.resid", sd, dumpFits);
+            nullmodel::writeResidualsFile(outPrefix + ".null.resid", sd, dumpFits,
+                                          compression, compressionLevel);
         }
         sd.setResidualsFromFit(std::move(rs), std::move(ns));
     }

@@ -101,6 +101,10 @@ struct DosageSetter {
     uint32_t nHomAlt = 0;
     uint32_t nMissing = 0;
     double dosageSum = 0.0;  // Σ dosage over non-missing used samples (for dosage AF)
+    // plink2 hard-call threshold: a non-missing dosage counts toward the HWE
+    // hom/het buckets only when |dosage - round| <= hardCallThr; otherwise it
+    // is HWE-uncertain and excluded (still summed into dosageSum for AF).
+    double hardCallThr = kHardCallThreshold;
 
     void initialise(
         std::size_t /*nsamples*/,
@@ -146,12 +150,11 @@ struct DosageSetter {
             else if (dosage > 2.0) dosage = 2.0;
             out[outIdx] = dosage;
             dosageSum += dosage;
-            if (dosage < 0.5)
-                ++nHomRef;
-            else if (dosage > 1.5)
-                ++nHomAlt;
-            else
-                ++nHet;
+            const int hc = dosageHardcall(dosage, hardCallThr);
+            if (hc == 0) ++nHomRef;
+            else if (hc == 1) ++nHet;
+            else if (hc == 2) ++nHomAlt;
+            // else: HWE-uncertain — excluded from hom/het (still in dosageSum).
         }
         ++outIdx;
     }
@@ -530,9 +533,11 @@ inline bool fastParseV12DiploidBiallelic(
                     continue;
                 }
                 dosageSum += d;
-                if (d < 0.5) ++nHomRef;
-                else if (d > 1.5) ++nHomAlt;
-                else ++nHet;
+                const int hc = dosageHardcall(d, setter.hardCallThr);
+                if (hc == 0) ++nHomRef;
+                else if (hc == 1) ++nHet;
+                else if (hc == 2) ++nHomAlt;
+                // else: HWE-uncertain — excluded (still summed for AF).
             }
         }
     } else {
@@ -548,9 +553,11 @@ inline bool fastParseV12DiploidBiallelic(
                     continue;
                 }
                 dosageSum += d;
-                if (d < 0.5) ++nHomRef;
-                else if (d > 1.5) ++nHomAlt;
-                else ++nHet;
+                const int hc = dosageHardcall(d, setter.hardCallThr);
+                if (hc == 0) ++nHomRef;
+                else if (hc == 1) ++nHet;
+                else if (hc == 2) ++nHomAlt;
+                // else: HWE-uncertain — excluded (still summed for AF).
             }
         } else {
             for (uint32_t k = 0; k < nU; ++k) out[k] = dst[ui[k]];
@@ -1173,6 +1180,7 @@ void BgenCursor::getGenotypes(
     setter.scratchAll = impl.scratchAll.empty() ? nullptr : impl.scratchAll.data();
     setter.nUsed = impl.nUsed;
     setter.needStats = true; // QC stats required
+    setter.hardCallThr = m_parent.hardCallThreshold;
 
     impl.readDecompressParse(setter, m_parent.fileOffset(gIndex),
                              m_parent.recordSize(gIndex));
@@ -1193,11 +1201,12 @@ void BgenCursor::getGenotypes(
     mac = gs.mac;
 
     // Dosage-aware AF: compute the allele frequency from the dosage sum rather
-    // than the 0.5/1.5-binned hard-call counts.  For hard calls the dosage sum
+    // than the thresholded hard-call counts.  For hard calls the dosage sum
     // equals 2*nHomAlt + nHet exactly, so altFreq/altCounts/mac are unchanged;
-    // for true dosages this is the correct (un-binned) frequency.  hweP and
-    // missingRate retain the count-based values (HWE is not defined on dosages,
-    // but hard calls reproduce the same hweP).
+    // for true dosages this is the correct (un-binned) frequency.  hweP retains
+    // the count-based value from statsFromCounts, where the counts are the
+    // plink2 hard-call-threshold classification (dosageHardcall) — matching
+    // plink2 --hardy; missingRate stays NaN-only.
     const uint32_t nNonMissing = nUsed - setter.nMissing;
     if (nNonMissing > 0) {
         const double n2 = 2.0 * static_cast<double>(nNonMissing);

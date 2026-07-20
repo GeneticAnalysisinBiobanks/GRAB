@@ -69,7 +69,7 @@ void runSPAsqr(
     double minMafCutoff,
     double minMacCutoff,
     double hweCutoff,
-    double spasqrTol = 1e-7,
+    double spasqrTol = 1e-6,
     double spasqrH = -1.0,
     double spasqrHScale = -1.0,
     const std::string &keepFile = {},
@@ -96,7 +96,7 @@ void runSPAsqrWald(
     const std::string &outPrefix,
     double spasqrTol,
     double spasqrH,                         // -1 → IQR-based auto
-    double spasqrHScale,                    // -1 → 10
+    double spasqrHScale,                    // -1 → 5
     double missingCutoff,
     double minMafCutoff,
     double minMacCutoff,
@@ -134,7 +134,7 @@ void runSPAsqrLoco(
     double minMafCutoff,
     double minMacCutoff,
     double hweCutoff,
-    double spasqrTol = 1e-7,
+    double spasqrTol = 1e-6,
     double spasqrH = -1.0,
     double spasqrHScale = -1.0,
     const std::string &keepFile = {},

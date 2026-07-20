@@ -175,6 +175,14 @@ Args parseArgs(
         else if (arg == "--maf")a.minMafCutoff = parseDouble(next(), arg);
         else if (arg == "--mac")a.minMacCutoff = parseDouble(next(), arg);
         else if (arg == "--hwe")a.hweCutoff = parseDouble(next(), arg);
+        else if (arg == "--hard-call-threshold") {
+            a.hardCallThreshold = parseDouble(next(), arg);
+            if (!(a.hardCallThreshold >= 0.0 && a.hardCallThreshold < 0.5)) {
+                std::cerr << "Error: --hard-call-threshold must be in [0, 0.5), got '"
+                          << a.hardCallThreshold << "'\n";
+                std::exit(1);
+            }
+        }
         else if (arg == "--outlier-iqr-multiplier")a.outlierRatio = parseDouble(next(), arg);
         else if (arg == "--spasqr-outlier-abs-bound")a.outlierAbsBound = parseDouble(next(), arg);
         else if (arg == "--spagrm-control-outlier") { markSeen(arg); a.spagrmControlOutlier = true; }

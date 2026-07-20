@@ -143,9 +143,11 @@ inline const FlagDef kSaveResid = {
     "--save-resid", nullptr,
     "Write fitted residuals to PREFIX.null.resid (re-loadable via --resid-name)",
     R"(Only valid together with --pheno-name + --regression-model.  Writes a
-plain-text strict-format file: IID column followed by one column per
-fitted phenotype (NaN entries as 'NA').  The file can be reloaded in
-a later invocation via --pheno PREFIX.null.resid --resid-name ....)"
+strict-format file: IID column followed by one column per fitted phenotype
+(NaN entries as 'NA').  Plain text by default; when --compression gz|zst is
+set the residual file is written with that codec and gains a .gz/.zst suffix
+(residual mode auto-detects and decompresses it).  The file can be reloaded
+in a later invocation via --pheno PREFIX.null.resid[.gz|.zst] --resid-name ....)"
 };
 
 inline const FlagDef kLongitudinal = {
@@ -400,6 +402,13 @@ inline const FlagDef kHwe = {
     nullptr
 };
 
+inline const FlagDef kHardCallThreshold = {
+    "--hard-call-threshold", "FLOAT",
+    "Dosage->hard-call cutoff for HWE counts: |dosage-round| <= FLOAT is called,"
+    " else HWE-missing (default: 0.1, plink2 default; range [0, 0.5))",
+    nullptr
+};
+
 inline const FlagDef kMinMafIbd = {
     "--min-maf-ibd", "FLOAT", "Min MAF for IBD calculation (default: 0.01)",
     nullptr
@@ -588,8 +597,9 @@ develop-R SAGELD.NullModel UsedMethod argument).  Only meaningful with
 
 inline const FlagDef kSpasqrTol = {
     "--spasqr-tol", "FLOAT",
-    "Convergence tolerance for the SPAsqr null-model SQR solver (default: 1e-7). "
-    "QMME tightens this internally to min(--spasqr-tol, 1e-9).",
+    "Convergence tolerance for the SPAsqr null-model SQR solver (default: 1e-6). "
+    "Applied directly as the QMME ||grad||_inf convergence threshold in both "
+    "score and wald modes.",
     nullptr
 };
 
@@ -639,7 +649,7 @@ inline const FlagDef *const kSPACoxOpt[] = {
     &kThreads,      &kChunkSize,
     &kCompression, &kCompressionLevel,
     &kKeep,         &kRemove,           &kExtract,      &kExclude,
-    &kGeno,         &kMaf,         &kMac,        &kHwe,     &kChr,
+    &kGeno,         &kMaf,         &kMac,        &kHwe, &kHardCallThreshold,     &kChr,
     nullptr
 };
 inline const MethodDef kSPACox = {
@@ -665,7 +675,7 @@ inline const FlagDef *const kSPAGRMOpt[] = {
     &kSpaZThresh, &kOutlierIqr, &kSpagrmControlOutlier,      &kSeed,
     &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
     &kKeep,       &kRemove,  &kExtract,    &kExclude,
-    &kGeno,       &kMaf,     &kMac,       &kHwe,         &kChr,
+    &kGeno,       &kMaf,     &kMac,       &kHwe, &kHardCallThreshold,         &kChr,
     nullptr
 };
 inline const MethodDef kSPAGRM = {
@@ -713,7 +723,7 @@ inline const FlagDef *const kSAGELDOpt[] = {
     &kResidName, &kPhenoName, &kCovarName, &kSageldX,    &kSageldMethod, &kSaveResid,
     &kSpaZThresh, &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
     &kKeep,       &kRemove,  &kExtract,   &kExclude,
-    &kGeno, &kMaf, &kMac, &kHwe, &kChr,
+    &kGeno, &kMaf, &kMac, &kHwe, &kHardCallThreshold, &kChr,
     nullptr
 };
 inline const MethodDef kSAGELD = {
@@ -752,7 +762,7 @@ inline const FlagDef *const kSPAmixOpt[] = {
     &kSpaZThresh, &kSeed,
     &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
     &kKeep,       &kRemove,  &kExtract,   &kExclude,
-    &kGeno,       &kMaf,     &kMac,       &kHwe,         &kChr,
+    &kGeno,       &kMaf,     &kMac,       &kHwe, &kHardCallThreshold,         &kChr,
     nullptr
 };
 inline const MethodDef kSPAmix = {
@@ -786,7 +796,7 @@ inline const FlagDef *const kSPAmixPlusOpt[] = {
     &kChunkSize, &kCompression, &kCompressionLevel,
     &kKeep,       &kRemove,    &kExtract,    &kExclude,
     &kGeno,       &kMaf,        &kMac,
-    &kHwe,       &kChr,
+    &kHwe, &kHardCallThreshold,       &kChr,
     nullptr
 };
 inline const MethodDef kSPAmixPlus = {
@@ -822,7 +832,7 @@ inline const FlagDef *const kSPAsqrOpt[] = {
     &kCompression,  &kCompressionLevel,
     &kKeep,         &kRemove,     &kExtract,    &kExclude,
     &kGeno, &kMaf,
-    &kMac,          &kHwe,        &kChr,        &kPredList,    &kPhenoTransform,
+    &kMac,          &kHwe, &kHardCallThreshold,        &kChr,        &kPredList,    &kPhenoTransform,
     &kSpasqrMode,
     nullptr
 };
@@ -854,7 +864,7 @@ inline const FlagDef *const kWtCoxGOpt[] = {
     &kCompression, &kCompressionLevel,
     &kKeep,       &kRemove, &kExtract,   &kExclude,
     &kGeno, &kMaf,
-    &kMac,        &kHwe,    &kChr,
+    &kMac,        &kHwe, &kHardCallThreshold,    &kChr,
     nullptr
 };
 
@@ -886,7 +896,7 @@ inline const FlagDef *const kLEAFOpt[] = {
     &kThreads,   &kChunkSize,
     &kCompression, &kCompressionLevel,
     &kKeep,      &kRemove,    &kExtract,   &kExclude,
-    &kGeno,      &kMaf,       &kMac,          &kHwe,        &kChr,
+    &kGeno,      &kMaf,       &kMac,          &kHwe, &kHardCallThreshold,        &kChr,
     nullptr
 };
 
@@ -942,7 +952,7 @@ inline const FlagDef *const kSPAmixLocalPlusOpt[] = {
     &kKeep,             &kRemove,           &kExtract,    &kExclude,
     &kOutlierIqr,       &kSpaZThresh,       &kThreads,    &kChunkSize,
     &kCompression,      &kCompressionLevel,
-    &kGeno,             &kMaf,              &kMac,        &kHwe,        &kChr,
+    &kGeno,             &kMaf,              &kMac,        &kHwe, &kHardCallThreshold,        &kChr,
     nullptr
 };
 
@@ -1028,7 +1038,7 @@ inline const FlagDef *const kCalAfOpt[] = {
     &kPheno,   &kCovar,     &kKeep, &kRemove,
     &kExtract, &kExclude,
     &kCompression, &kCompressionLevel,
-    &kThreads, &kChunkSize, &kGeno, &kMaf,    &kMac,         &kHwe,             &kChr,
+    &kThreads, &kChunkSize, &kGeno, &kMaf,    &kMac,         &kHwe, &kHardCallThreshold,             &kChr,
     nullptr
 };
 
@@ -1157,7 +1167,7 @@ inline const FlagDef *const kNumericFlags[] = {
     &kThreads,    &kChunkSize,    &kCompressionLevel, &kNClusters,
     &kLeafKmeansNstart,
     &kSeed,       &kGeno,
-    &kMaf,        &kMac,          &kHwe,              &kMinMafIbd,
+    &kMaf,        &kMac,          &kHwe, &kHardCallThreshold,              &kMinMafIbd,
     &kSpasqrTaus, &kSpasqrTol,    &kSpasqrH,          &kSpasqrHScale,
     &kSpasqrMode,
     &kSageldX,

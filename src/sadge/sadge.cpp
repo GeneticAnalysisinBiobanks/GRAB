@@ -278,8 +278,7 @@ void runSADGE(
     const std::string &phenoNameSpec,
     const std::string &covarFile,
     const std::vector<std::string> &covarNames,
-    bool saveResid,
-    uint64_t seed
+    bool saveResid
 ) {
     const bool fitPath = !phenoNameSpec.empty();
     nullmodel::RegressionModel regModel{};
@@ -330,7 +329,6 @@ void runSADGE(
         }
         nullmodel::EngineOptions eo;
         eo.nthreads = nthreads;
-        eo.seed = seed;
         auto fits = nullmodel::fitAll(sd, phenoSpecs, regModel, covarUnion, eo);
         std::vector<Eigen::VectorXd> rs;
         std::vector<std::string> ns;

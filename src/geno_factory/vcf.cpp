@@ -296,13 +296,13 @@ void VcfCursor::getGenotypes(
             } else {
                 out[outIdx] = static_cast<double>(ds);
                 dosageSum += static_cast<double>(ds);
-                // Classify for HWE
-                if (ds < 0.5)
-                    ++nHomRef;
-                else if (ds > 1.5)
-                    ++nHomAlt;
-                else
-                    ++nHet;
+                // Classify for HWE via the plink2 hard-call threshold: a DS
+                // within hardCallThreshold of an integer is that hard-call,
+                // otherwise HWE-uncertain and excluded (still in dosageSum).
+                const int hc = dosageHardcall(static_cast<double>(ds), m_parent.hardCallThreshold);
+                if (hc == 0) ++nHomRef;
+                else if (hc == 1) ++nHet;
+                else if (hc == 2) ++nHomAlt;
             }
             ++outIdx;
         }
@@ -317,7 +317,8 @@ void VcfCursor::getGenotypes(
         maf = gs.maf;
         mac = gs.mac;
         // Dosage-aware AF from the DS sum (un-binned).  Hard-call DS reproduces
-        // the count-based values exactly; hweP/missingRate keep count semantics.
+        // the count-based values exactly; hweP comes from statsFromCounts on the
+        // plink2 hard-call-threshold classification, missingRate stays NaN-only.
         const uint32_t nNonMissing = nUsed - nMissing;
         if (nNonMissing > 0) {
             const double n2 = 2.0 * static_cast<double>(nNonMissing);

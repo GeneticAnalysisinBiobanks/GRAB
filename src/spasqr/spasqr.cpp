@@ -715,8 +715,21 @@ class SPAsqrMethod : public MethodBase {
             result.push_back(pCCT);
             for (int i = 0; i < m_ntaus; ++i)
                 result.push_back(pvals[i]);
-            for (int i = 0; i < m_ntaus; ++i)
-                result.push_back(math::zFromPval(pvals[i], zScores[i])); // Z_τ (p-consistent)
+            for (int i = 0; i < m_ntaus; ++i) {
+                const double zr = zScores[i];
+                // D3: on the fast path (|z| ≤ SPA_Cutoff) the p-value is
+                // exactly 2·Φ(−|z|), so zFromPval inverts back to the raw z;
+                // emit it directly and skip the long-double qnorm round-trip
+                // (also removes the spurious round-trip ULP gap that made
+                // Z_τ differ from Z_Norm_τ on fast-path entries).  NaN p
+                // (degenerate marker) propagates as NaN, matching zFromPval.
+                if (std::isnan(pvals[i]))
+                    result.push_back(std::numeric_limits<double>::quiet_NaN());
+                else if (std::abs(zr) <= m_spaShared->SPA_Cutoff)
+                    result.push_back(zr);                                 // Z_τ == Z_Norm_τ
+                else
+                    result.push_back(math::zFromPval(pvals[i], zr));      // SPA-recalibrated
+            }
             for (int i = 0; i < m_ntaus; ++i)
                 result.push_back(zScores[i]);                            // Z_Norm_τ (raw)
         }
@@ -765,8 +778,17 @@ class SPAsqrMethod : public MethodBase {
         result.push_back(pCCT);
         for (int i = 0; i < m_ntaus; ++i)
             result.push_back(pvals[i]);
-        for (int i = 0; i < m_ntaus; ++i)
-            result.push_back(math::zFromPval(pvals[i], zScores[i])); // Z_τ (p-consistent)
+        for (int i = 0; i < m_ntaus; ++i) {
+            const double zr = zScores[i];
+            // D3: see processScoreBatch — fast-path Z_τ == raw z exactly, so
+            // skip the long-double qnorm round-trip; NaN p propagates as NaN.
+            if (std::isnan(pvals[i]))
+                result.push_back(std::numeric_limits<double>::quiet_NaN());
+            else if (std::abs(zr) <= m_spaShared->SPA_Cutoff)
+                result.push_back(zr);                                // Z_τ == Z_Norm_τ
+            else
+                result.push_back(math::zFromPval(pvals[i], zr));     // SPA-recalibrated
+        }
         for (int i = 0; i < m_ntaus; ++i)
             result.push_back(zScores[i]);                            // Z_Norm_τ (raw)
     }
@@ -1035,9 +1057,9 @@ void runSPAsqr(
     infoMsg("SPAsqr: pheno-transform = %s, solver = qmme",
             phenoTransform.c_str());
     infoMsg("SPAsqr: Loading phenotype and covariate data (%d phenotypes, %d taus)", K, ntaus);
-    // QMME is more accurate per-iteration; tighten its convergence floor
-    // by an extra factor without changing the user's --spasqr-tol meaning.
-    const double qmmeTol = std::min(spasqrTol, 1e-9);
+    // Score mode fits the null model once and reuses it for every marker, so
+    // --spasqr-tol (default 1e-6) is tight enough; apply it directly.
+    const double qmmeTol = spasqrTol;
     auto famIIDs = parseGenoIIDs(geno);
     SubjectData sd(std::move(famIIDs));
     if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile, phenoNames);
@@ -1337,7 +1359,7 @@ void runSPAsqrLoco(
     infoMsg("SPAsqr-LOCO pheno-transform: %s, solver: qmme",
             phenoTransform.c_str());
     infoMsg("SPAsqr-LOCO: Loading phenotype and covariate data (%d phenotypes, %d taus)", K, ntaus);
-    const double qmmeTol = std::min(spasqrTol, 1e-9);
+    const double qmmeTol = spasqrTol;
     auto famIIDs = parseGenoIIDs(geno);
     SubjectData sd(std::move(famIIDs));
     if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile, phenoNames);

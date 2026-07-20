@@ -1,6 +1,7 @@
 // spagrm.cpp — nsSPAGRM free functions, SPAGRMClass, and runSPAGRM
 
 #include "spagrm/spagrm.hpp"
+#include "engine/loco.hpp"
 #include "engine/marker.hpp"
 #include "geno_factory/geno_data.hpp"
 #include "spagrm/grm_null.hpp"
@@ -541,7 +542,6 @@ void runSPAGRM(
     const std::string &covarFile,
     const std::vector<std::string> &covarNames,
     bool saveResid,
-    uint64_t seed,
     bool longitudinal
 ) {
     // --longitudinal injects R_G (random-intercept residual) post-finalize, so
@@ -620,7 +620,6 @@ void runSPAGRM(
         }
         nullmodel::EngineOptions eo;
         eo.nthreads = nthreads;
-        eo.seed = seed;
         auto fits = nullmodel::fitAll(sd, phenoSpecs, regModel, covarUnion, eo);
         std::vector<Eigen::VectorXd> rs;
         std::vector<std::string> ns;
@@ -639,7 +638,8 @@ void runSPAGRM(
                 dumpFits[i].residuals = rs[i];
                 dumpFits[i].nUsedRows = static_cast<int>(rs[i].size());
             }
-            nullmodel::writeResidualsFile(outPrefix + ".null.resid", sd, dumpFits);
+            nullmodel::writeResidualsFile(outPrefix + ".null.resid", sd, dumpFits,
+                                          compression, compressionLevel);
         }
         sd.setResidualsFromFit(std::move(rs), std::move(ns));
     }
@@ -727,4 +727,218 @@ void runSPAGRM(
     infoMsg("Running SPAGRM marker tests (%d thread(s), %d phenotype(s))...", nthreads, K);
     multiPhenoEngine(*genoData, tasks, outPrefix, "SPAGRM", compression, compressionLevel, nthreads,
                      missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// runSPAGRMLoco — LOCO orchestration
+// ══════════════════════════════════════════════════════════════════════
+//
+// The sparse-GRM topology (families / singletons / re-indexed entries) and the
+// IBD structures are residual-independent, so they are built ONCE.  Per
+// chromosome the null model is refit with that chromosome's LOCO PGS appended as
+// a covariate column, and buildSPAGRMNullModel is re-run to rebuild R_GRM_R and
+// the outlier / family / Chow-Liu tables from the refreshed residuals.
+// SPAGRMMethod owns its data (constructed by move), so there is no reference-
+// lifetime discipline to observe here.
+
+void runSPAGRMLoco(
+    const std::string &phenoFile,
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const std::string &pairwiseIBDFile,
+    const GenoSpec &geno,
+    const std::string &predListFile,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double spaCutoff,
+    double outlierIqrRatio,
+    bool controlOutlier,
+    int nthreads,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile,
+    const std::string &removeFile,
+    const std::string &regressionModelStr,
+    const std::string &phenoNameSpec,
+    const std::string &covarFile,
+    const std::vector<std::string> &covarNames
+) {
+    if (phenoNameSpec.empty())
+        throw std::runtime_error(
+            "SPAGRM-LOCO requires --pheno-name (an in-process null-model fit); "
+            "precomputed residuals cannot be refit per chromosome");
+
+    nullmodel::RegressionModel regModel =
+        nullmodel::parseRegressionModel(regressionModelStr);
+    std::vector<nullmodel::PhenoSpec> phenoSpecs =
+        nullmodel::parsePhenoSpecList(regModel, phenoNameSpec);
+    const int K = static_cast<int>(phenoSpecs.size());
+    std::vector<std::string> specNames(K);
+    for (int k = 0; k < K; ++k) specNames[k] = phenoSpecs[k].name;
+
+    infoMsg("SPAGRM-LOCO: fitting %s null model for %d phenotype(s), "
+            "per-chromosome LOCO PGS as covariate",
+            nullmodel::regressionModelName(regModel), K);
+
+    validatePredListPhenos(predListFile, specNames);
+
+    // ---- Load pheno/covar/GRM data ----
+    infoMsg("Loading pheno file: %s", phenoFile.c_str());
+    auto famIIDs = parseGenoIIDs(geno);
+    SubjectData sd(std::move(famIIDs));
+    sd.loadPhenoFile(phenoFile, nullmodel::columnsNeeded(phenoSpecs));
+    if (!covarFile.empty()) sd.loadCovar(covarFile, covarNames);
+    sd.setKeepRemove(keepFile, removeFile);
+    sd.setGrmSubjects(SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
+    sd.setGenoLabel(geno.flagLabel());
+    sd.setGrmLabel(grmFlagLabel(spgrmGrabFile, spgrmGctaFile));
+    sd.finalize();
+    const uint32_t N = sd.nUsed();
+    infoMsg("  %u subjects in union mask", N);
+
+    // ---- Base covariate matrix (no PGS) ----
+    Eigen::MatrixXd baseCovar;
+    if (!covarNames.empty()) baseCovar = sd.getColumns(covarNames);
+    else if (sd.hasCovar()) baseCovar = sd.covar();
+    else baseCovar.resize(N, 0);
+
+    // ---- One base fit to establish per-phenotype masks ----
+    {
+        nullmodel::EngineOptions eo;
+        eo.nthreads = nthreads;
+        auto fits = nullmodel::fitAll(sd, phenoSpecs, regModel, baseCovar, eo);
+        std::vector<Eigen::VectorXd> rs;
+        std::vector<std::string> ns;
+        rs.reserve(fits.size());
+        ns.reserve(fits.size());
+        for (auto &f : fits) {
+            infoMsg("  Fitted '%s': %d subjects after NaN removal",
+                    f.name.c_str(), f.nUsedRows);
+            rs.push_back(std::move(f.residuals));
+            ns.push_back(f.name);
+        }
+        sd.setResidualsFromFit(std::move(rs), std::move(ns));
+    }
+    auto phenoInfos = sd.buildPerColumnMasks();
+
+    // Resolve each spec to a concrete model once (chromosome-invariant).
+    std::vector<nullmodel::RegressionModel> specModel(K);
+    for (int k = 0; k < K; ++k) {
+        if (regModel != nullmodel::RegressionModel::Auto) {
+            specModel[k] = regModel;
+        } else if (nullmodel::isCoxSpec(phenoSpecs[k])) {
+            specModel[k] = nullmodel::RegressionModel::Cox;
+        } else {
+            auto info = nullmodel::inferModelFromColumn(
+                sd.getColumn(phenoSpecs[k].yColumn), phenoSpecs[k].yColumn,
+                sd.usedIIDs());
+            specModel[k] = info.model;
+        }
+    }
+
+    // ---- Load GRM, IBD, genotype data ----
+    auto subjIDs = sd.usedIIDs();
+    auto subjIdMap = text::buildIIDMap(subjIDs);
+    SparseGRM grm = SparseGRM::load(spgrmGrabFile, spgrmGctaFile, subjIDs, sd.famIIDs());
+    infoMsg("Sparse GRM: %zu entries (diagonal + off-diag)", grm.nnz());
+    infoMsg("Loading pairwise IBD: %s", pairwiseIBDFile.c_str());
+    auto ibdEntries = nsGRMNull::loadIndexedIBD(pairwiseIBDFile, subjIdMap);
+    infoMsg("Loaded %zu IBD records", ibdEntries.size());
+    const auto &allEntries = grm.entries();
+    const auto &grmDiag = grm.diagonal();
+    auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(), nSnpPerChunk);
+
+    // ---- Per-phenotype residual-independent GRM/IBD structures (built once) ----
+    struct PhenoNull {
+        uint32_t Np = 0;
+        GRMTopology topo;
+        std::vector<double> diag;
+        std::vector<SparseGRM::Entry> entries;
+        std::vector<nsGRMNull::IndexedIBD> ibd;
+        std::unordered_map<uint64_t, uint32_t> ibdMap;
+    };
+    std::vector<PhenoNull> pn(K);
+    for (int rc = 0; rc < K; ++rc) {
+        const auto &pi = phenoInfos[rc];
+        if (K == 1) {
+            pn[rc].Np = N;
+            pn[rc].entries = allEntries;
+            pn[rc].diag = grmDiag;
+            pn[rc].topo = buildTopology(N, allEntries);
+            pn[rc].ibd = ibdEntries;
+            pn[rc].ibdMap = nsGRMNull::buildIBDPairMap(ibdEntries);
+        } else {
+            const auto &u2l = pi.unionToLocal;
+            const uint32_t Np = pi.nUsed;
+            std::vector<SparseGRM::Entry> pEntries;
+            std::vector<double> pDiag(Np, 1.0);
+            for (const auto &e : allEntries) {
+                uint32_t li = u2l[e.row], lj = u2l[e.col];
+                if (li != UINT32_MAX && lj != UINT32_MAX) {
+                    pEntries.push_back({li, lj, e.value});
+                    if (li == lj) pDiag[li] = e.value;
+                }
+            }
+            std::vector<nsGRMNull::IndexedIBD> pIbd;
+            for (const auto &ibd : ibdEntries) {
+                uint32_t li = u2l[ibd.idx1], lj = u2l[ibd.idx2];
+                if (li != UINT32_MAX && lj != UINT32_MAX)
+                    pIbd.push_back({li, lj, ibd.pa, ibd.pb, ibd.pc});
+            }
+            pn[rc].Np = Np;
+            pn[rc].topo = buildTopology(Np, pEntries);
+            pn[rc].entries = std::move(pEntries);
+            pn[rc].diag = std::move(pDiag);
+            pn[rc].ibdMap = nsGRMNull::buildIBDPairMap(pIbd);
+            pn[rc].ibd = std::move(pIbd);
+        }
+    }
+
+    // ---- Per-phenotype non-missing masks (union space, chromosome-invariant) ----
+    std::vector<std::vector<bool> > nonMissing(K, std::vector<bool>(N, false));
+    for (int k = 0; k < K; ++k)
+        for (uint32_t i = 0; i < N; ++i)
+            nonMissing[k][i] = (phenoInfos[k].unionToLocal[i] != UINT32_MAX);
+
+    // ---- Load LOCO predictions ----
+    LocoData loco = LocoData::load(predListFile, specNames, sd.usedIIDs(), sd.famIIDs());
+    auto locoChroms = loco.availableChromosomes();
+    infoMsg("LOCO: %zu chromosomes available across all phenotypes", locoChroms.size());
+
+    nullmodel::EngineOptions eo1;
+    eo1.nthreads = 1;
+
+    auto buildTasks = [&](const std::string &chr, std::vector<PhenoTask> &tasks) {
+        tasks.resize(K);
+        for (int rc = 0; rc < K; ++rc) {
+            Eigen::MatrixXd covarUnion_k = appendLocoCovariate(
+                loco, specNames[rc], chr, baseCovar, nonMissing[rc], "SPAGRM-LOCO");
+            auto fits1 = nullmodel::fitAll(
+                sd, {phenoSpecs[rc]}, specModel[rc], covarUnion_k, eo1);
+            Eigen::VectorXd phenoResid =
+                extractPhenoVec(fits1[0].residuals, phenoInfos[rc]);
+
+            SPAGRMClass sg = nsGRMNull::buildSPAGRMNullModel(
+                phenoResid, pn[rc].Np, pn[rc].topo.singletonSet, pn[rc].diag,
+                pn[rc].topo.families, pn[rc].topo.familyEntries, pn[rc].entries,
+                pn[rc].ibd, pn[rc].ibdMap, spaCutoff, minMafCutoff, minMacCutoff,
+                outlierIqrRatio, controlOutlier, nthreads);
+
+            tasks[rc].phenoName = phenoInfos[rc].name;
+            tasks[rc].method = std::make_unique<SPAGRMMethod>(std::move(sg));
+            tasks[rc].unionToLocal = phenoInfos[rc].unionToLocal;
+            tasks[rc].nUsed = phenoInfos[rc].nUsed;
+        }
+    };
+
+    infoMsg("SPAGRM-LOCO: starting LOCO association (%d phenotype(s), %zu chroms, %d threads)",
+            K, locoChroms.size(), nthreads);
+    locoEngine(
+        *genoData, locoChroms, specNames, buildTasks, outPrefix, "SPAGRM",
+        compression, compressionLevel, nthreads,
+        missingCutoff, minMafCutoff, minMacCutoff, hweCutoff);
 }

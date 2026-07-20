@@ -1,6 +1,7 @@
 // spacox.cpp — SPACox full implementation
 
 #include "spacox/spacox.hpp"
+#include "engine/loco.hpp"
 #include "engine/marker.hpp"
 #include "geno_factory/geno_data.hpp"
 #include "io/subject_data.hpp"
@@ -645,7 +646,6 @@ void runSPACox(
     const std::string &regressionModelStr,
     const std::string &phenoNameSpec,
     bool saveResid,
-    uint64_t seed,
     bool longitudinal
 ) {
     // ---- Decide path: residual passthrough vs in-process null-model fit ----
@@ -722,7 +722,6 @@ void runSPACox(
         }
         nullmodel::EngineOptions eo;
         eo.nthreads = nthread;
-        eo.seed = seed;
         auto fits = nullmodel::fitAll(sd, phenoSpecs, regModel, covarUnion, eo);
 
         std::vector<Eigen::VectorXd> rs;
@@ -745,7 +744,8 @@ void runSPACox(
                 dumpFits[i].residuals = rs[i];
                 dumpFits[i].nUsedRows = static_cast<int>(rs[i].size());
             }
-            nullmodel::writeResidualsFile(outPrefix + ".null.resid", sd, dumpFits);
+            nullmodel::writeResidualsFile(outPrefix + ".null.resid", sd, dumpFits,
+                                          compression, compressionLevel);
         }
         sd.setResidualsFromFit(std::move(rs), std::move(ns));
     }
@@ -848,6 +848,199 @@ void runSPACox(
     multiPhenoEngine(
         *genoData,
         tasks,
+        outPrefix,
+        "SPACox",
+        compression,
+        compressionLevel,
+        nthread,
+        missingCutoff,
+        minMafCutoff,
+        minMacCutoff,
+        hweCutoff
+    );
+}
+
+// ======================================================================
+// runSPACoxLoco — LOCO orchestration
+// ======================================================================
+//
+// For each chromosome the null model is refit with that chromosome's LOCO PGS
+// appended as one estimated covariate column, and both the residuals AND the
+// stage-2 covariate-projection DesignMatrix are rebuilt so the PGS is projected
+// out of the genotype consistently.  Because each phenotype has its own PGS
+// column, the refit is per-phenotype (fitAll with a single spec).
+
+void runSPACoxLoco(
+    const std::vector<std::string> &covarNames,
+    const std::string &phenoFile,
+    const std::string &covarFile,
+    const GenoSpec &geno,
+    const std::string &predListFile,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double pvalCovAdjCut,
+    double spaCutoff,
+    int nthread,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile,
+    const std::string &removeFile,
+    const std::string &regressionModelStr,
+    const std::string &phenoNameSpec
+) {
+    if (phenoNameSpec.empty())
+        throw std::runtime_error(
+            "SPACox-LOCO requires --pheno-name (an in-process null-model fit); "
+            "precomputed residuals cannot be refit per chromosome");
+
+    nullmodel::RegressionModel regModel =
+        nullmodel::parseRegressionModel(regressionModelStr);
+    std::vector<nullmodel::PhenoSpec> phenoSpecs =
+        nullmodel::parsePhenoSpecList(regModel, phenoNameSpec);
+    const int K = static_cast<int>(phenoSpecs.size());
+    std::vector<std::string> specNames(K);
+    for (int k = 0; k < K; ++k) specNames[k] = phenoSpecs[k].name;
+
+    infoMsg("SPACox-LOCO: fitting %s null model for %d phenotype(s), "
+            "per-chromosome LOCO PGS as covariate",
+            nullmodel::regressionModelName(regModel), K);
+
+    // Early validation: every phenotype must have an entry in the pred.list.
+    validatePredListPhenos(predListFile, specNames);
+
+    // ---- Load pheno/covar data ----
+    infoMsg("Loading pheno file: %s", phenoFile.c_str());
+    auto famIIDs = parseGenoIIDs(geno);
+    SubjectData sd(std::move(famIIDs));
+    sd.loadPhenoFile(phenoFile, nullmodel::columnsNeeded(phenoSpecs));
+    if (!covarFile.empty()) sd.loadCovar(covarFile, covarNames);
+    sd.setKeepRemove(keepFile, removeFile);
+    sd.setGenoLabel(geno.flagLabel());
+    sd.finalize();
+    infoMsg("  %u subjects in union mask", sd.nUsed());
+
+    // ---- Base covariate matrix (no PGS), used as the augmentation base ----
+    Eigen::MatrixXd baseCovar;
+    if (!covarNames.empty()) baseCovar = sd.getColumns(covarNames);
+    else if (sd.hasCovar()) baseCovar = sd.covar();
+    else baseCovar.resize(sd.nUsed(), 0);
+
+    // ---- One base fit to establish per-phenotype masks (residual values are
+    //      discarded — they are recomputed per chromosome). ----
+    {
+        nullmodel::EngineOptions eo;
+        eo.nthreads = nthread;
+        auto fits = nullmodel::fitAll(sd, phenoSpecs, regModel, baseCovar, eo);
+        std::vector<Eigen::VectorXd> rs;
+        std::vector<std::string> ns;
+        rs.reserve(fits.size());
+        ns.reserve(fits.size());
+        for (auto &f : fits) {
+            infoMsg("  Fitted '%s': %d subjects after NaN removal",
+                    f.name.c_str(), f.nUsedRows);
+            rs.push_back(std::move(f.residuals));
+            ns.push_back(f.name);
+        }
+        sd.setResidualsFromFit(std::move(rs), std::move(ns));
+    }
+    auto phenoInfos = sd.buildPerColumnMasks();
+
+    // Resolve each spec to a concrete model once (inference is from the
+    // chromosome-invariant phenotype column), so the per-chromosome refits do
+    // not re-emit an "Auto-detected" log line for every chromosome.
+    std::vector<nullmodel::RegressionModel> specModel(K);
+    for (int k = 0; k < K; ++k) {
+        if (regModel != nullmodel::RegressionModel::Auto) {
+            specModel[k] = regModel;
+        } else if (nullmodel::isCoxSpec(phenoSpecs[k])) {
+            specModel[k] = nullmodel::RegressionModel::Cox;
+        } else {
+            auto info = nullmodel::inferModelFromColumn(
+                sd.getColumn(phenoSpecs[k].yColumn), phenoSpecs[k].yColumn,
+                sd.usedIIDs());
+            specModel[k] = info.model;
+        }
+    }
+
+    // ---- Union-level design base [intercept | covariates] (PGS appended per chr) ----
+    const Eigen::Index nUnion = sd.nUsed();
+    Eigen::MatrixXd unionXBase(nUnion, baseCovar.cols() + 1);
+    unionXBase.col(0).setOnes();
+    if (baseCovar.cols() > 0) unionXBase.rightCols(baseCovar.cols()) = baseCovar;
+
+    // ---- Per-phenotype non-missing masks (union space, chromosome-invariant) ----
+    std::vector<std::vector<bool> > nonMissing(K, std::vector<bool>(nUnion, false));
+    for (int k = 0; k < K; ++k)
+        for (Eigen::Index i = 0; i < nUnion; ++i)
+            nonMissing[k][static_cast<size_t>(i)] =
+                (phenoInfos[k].unionToLocal[static_cast<size_t>(i)] != UINT32_MAX);
+
+    // ---- Load genotype data + LOCO predictions ----
+    auto genoData = makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(), nSnpPerChunk);
+    LocoData loco = LocoData::load(predListFile, specNames, sd.usedIIDs(), sd.famIIDs());
+    auto locoChroms = loco.availableChromosomes();
+    infoMsg("LOCO: %zu chromosomes available across all phenotypes", locoChroms.size());
+
+    // ---- Persistent per-phenotype storage (must outlive tasks — SPACoxMethod
+    //      stores const references into these).  reserve(K) keeps addresses
+    //      stable across clear()/emplace_back cycles. ----
+    std::vector<Eigen::VectorXd> pResid(K);
+    std::vector<CumulantTable> pCumul(K);
+    std::vector<DesignMatrix> pDesign;
+    pDesign.reserve(K);
+
+    nullmodel::EngineOptions eo1;
+    eo1.nthreads = 1;
+
+    auto buildTasks = [&](const std::string &chr, std::vector<PhenoTask> &tasks) {
+        tasks.resize(K);
+        // Destroy the previous chromosome's methods BEFORE overwriting the pools
+        // they reference (lifetime discipline).
+        for (auto &t : tasks) t.method.reset();
+        pDesign.clear();
+
+        for (int k = 0; k < K; ++k) {
+            Eigen::MatrixXd covarUnion_k = appendLocoCovariate(
+                loco, specNames[k], chr, baseCovar, nonMissing[k], "SPACox-LOCO");
+
+            auto fits1 = nullmodel::fitAll(
+                sd, {phenoSpecs[k]}, specModel[k], covarUnion_k, eo1);
+            pResid[k] = extractPhenoVec(fits1[0].residuals, phenoInfos[k]);
+
+            // Augmented design [intercept | covariates | PGS_chr]; the PGS is the
+            // last column of covarUnion_k.
+            Eigen::MatrixXd unionX_k(nUnion, unionXBase.cols() + 1);
+            unionX_k.leftCols(unionXBase.cols()) = unionXBase;
+            unionX_k.col(unionXBase.cols()) =
+                covarUnion_k.col(covarUnion_k.cols() - 1);
+            Eigen::MatrixXd phenoX = extractPhenoMat(unionX_k, phenoInfos[k]);
+            pDesign.emplace_back(phenoX);
+
+            pCumul[k] = buildCumulantTable(pResid[k]);
+            double meanR = pResid[k].mean();
+            double varR = (pResid[k].array() - meanR).square().mean();
+            double N = static_cast<double>(pResid[k].size());
+            double varResid = varR * N / (N - 1.0);
+
+            tasks[k].phenoName = phenoInfos[k].name;
+            tasks[k].method = std::make_unique<SPACoxMethod>(
+                pResid[k], varResid, pCumul[k], pDesign[k], pvalCovAdjCut, spaCutoff);
+            tasks[k].unionToLocal = phenoInfos[k].unionToLocal;
+            tasks[k].nUsed = phenoInfos[k].nUsed;
+        }
+    };
+
+    infoMsg("SPACox-LOCO: starting LOCO association (%d phenotype(s), %zu chroms, %d threads)",
+            K, locoChroms.size(), nthread);
+    locoEngine(
+        *genoData,
+        locoChroms,
+        specNames,
+        buildTasks,
         outPrefix,
         "SPACox",
         compression,

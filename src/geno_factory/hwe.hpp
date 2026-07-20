@@ -7,6 +7,7 @@
 // Wigginton JE, Cutler DJ, Abecasis GR (2005). Am J Hum Genet 76:887-893.
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 #include <limits>
 
@@ -19,6 +20,23 @@ struct GenoStats {
     double maf;
     uint32_t mac;
 };
+
+// plink2 --hard-call-threshold default.  A dosage is called to the nearest
+// hard-call (0/1/2) when it lies within `thr` of that integer, and is
+// otherwise treated as missing for HWE only.  This mirrors plink2, which
+// derives every pgen's hard-call track from dosages once, at import time,
+// via ApplyHardCallThresh, and then counts that hard-call track for --hardy.
+inline constexpr double kHardCallThreshold = 0.1;
+
+// Classify a dosage into a hard-call genotype for HWE.  Returns 0/1/2 when
+// |d - round(d)| <= thr, or -1 (HWE-missing) otherwise.  NaN / out-of-range
+// dosages return -1.  Exact integers 0.0/1.0/2.0 always pass (|d-r| == 0),
+// so pure hard-call input reproduces the prior counting bit-for-bit.
+inline int dosageHardcall(double d, double thr) {
+    if (!(d >= 0.0 && d <= 2.0)) return -1;
+    const double r = (d < 0.5) ? 0.0 : (d < 1.5 ? 1.0 : 2.0);
+    return (std::fabs(d - r) <= thr) ? static_cast<int>(r) : -1;
+}
 
 // Exact HWE test (SNPHWE2).  O(het_count) time, O(1) auxiliary memory.
 // This is the plink2 --hardy default method.

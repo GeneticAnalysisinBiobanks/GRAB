@@ -549,9 +549,15 @@ void PgenCursor::getGenotypes(
     }
 
     // Dosage QC: AF from the dosage sum; missing = real NaN only (a sample with
-    // a dosage is not missing even if its hard call was absent); HWE undefined.
+    // a dosage is not missing even if its hard call was absent).  HWE comes from
+    // the plink2 hard-call-threshold classification of the overlaid dosages,
+    // which reproduces plink2's stored genovec hard-call track for a default-
+    // threshold import (both apply the same rule to the same 1/16384-unit
+    // dosages), so hweP matches plink2 --hardy.
     double dosageSum = 0.0;
     uint32_t nNonMissing = 0;
+    uint32_t nHomRef = 0, nHet = 0, nHomAlt = 0;
+    const double thr = m_parent.hardCallThreshold;
     for (uint32_t i = 0; i < sampleCt; ++i) {
         const double v = out[i];
         if (std::isnan(v)) {
@@ -559,10 +565,15 @@ void PgenCursor::getGenotypes(
         } else {
             dosageSum += v;
             ++nNonMissing;
+            const int hc = dosageHardcall(v, thr);
+            if (hc == 0) ++nHomRef;
+            else if (hc == 1) ++nHet;
+            else if (hc == 2) ++nHomAlt;
+            // else: HWE-uncertain — excluded (still in dosageSum for AF).
         }
     }
     missingRate = static_cast<double>(sampleCt - nNonMissing) / sampleCt;
-    hweP = std::numeric_limits<double>::quiet_NaN();
+    hweP = HweExact(nHet, nHomAlt, nHomRef);
     if (nNonMissing > 0) {
         const double n2 = 2.0 * static_cast<double>(nNonMissing);
         altCounts = dosageSum;

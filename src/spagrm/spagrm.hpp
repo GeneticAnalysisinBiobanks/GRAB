@@ -284,7 +284,9 @@ class SPAGRMMethod : public MethodBase {
     }
 
     int preferredBatchSize() const override {
-        return 8;
+        // Saddlepoint-dominated (fused GEMM ~0.8% of runtime); 16 is the engine
+        // floor and B>16 gives no measured gain, so request the floor exactly.
+        return 16;
     }
 
     // ── Fused union-level GEMM interface ───────────────────────────────
@@ -408,6 +410,40 @@ void runSPAGRM(
     const std::string &covarFile = {},
     const std::vector<std::string> &covarNames = {},
     bool saveResid = false,
-    uint64_t seed = 0,                                     // ordinal surrogate-residual RNG seed
     bool longitudinal = false                             // --longitudinal: fit Y ~ X + (1|IID), use R_G
+);
+
+// LOCO variant of runSPAGRM.  For each chromosome, the null model is refit with
+// that chromosome's LOCO PGS appended as one estimated covariate column, and
+// the SPAGRM null model (R_GRM_R, outlier/family/Chow-Liu structures) is rebuilt
+// from the refreshed residuals.  The sparse-GRM topology and IBD are residual-
+// independent and are computed once.  Requires the in-process fit path
+// (--pheno-name); precomputed residuals and --longitudinal are rejected in
+// dispatch.  The retrospective GRM variance (R^T Phi R) is compatible with LOCO
+// (the GRM models genotype covariance among relatives; LOCO adjusts the mean).
+void runSPAGRMLoco(
+    const std::string &phenoFile,
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const std::string &pairwiseIBDFile,
+    const GenoSpec &geno,
+    const std::string &predListFile,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double spaCutoff,
+    double outlierIqrRatio,
+    bool controlOutlier,
+    int nthreads,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile,
+    const std::string &removeFile,
+    const std::string &regressionModelStr,
+    const std::string &phenoNameSpec,
+    const std::string &covarFile,
+    const std::vector<std::string> &covarNames
 );

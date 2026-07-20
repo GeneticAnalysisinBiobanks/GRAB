@@ -8,6 +8,7 @@
 #include "spagrm/spagrm.hpp"
 #include "io/sparse_grm.hpp"
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -132,10 +133,60 @@ std::vector<double> buildStandS(
 );
 
 // ══════════════════════════════════════════════════════════════════════
+// SPAGRMPartition — the residual-driven outlier partition, recorded so that
+// SAGELD's marker-specific λ branch can rebuild the SPAGRM ledgers over a
+// FIXED partition (the one computed from the genome-wide mean-λ combined
+// residual).  All fields describe the structure of the partition; the
+// residual-dependent ledger VALUES are recomputed separately per marker λ.
+//
+// The lists are flat rather than per-family because the two ledgers SAGELD
+// must recombine are, respectively, LINEAR in the residual
+// (sum_R_nonOutlier — a flat member list suffices) and a quadratic form over
+// the KEPT non-outlier entries (R_GRM_R_nonOutlier — a flat entry list
+// suffices; the greedy family split drops cross-component edges, which are
+// simply absent from this list).
+//
+// Populated only when buildSPAGRMNullModel is given a non-null outPartition;
+// the seven validated methods pass nullptr and pay nothing.
+// ══════════════════════════════════════════════════════════════════════
+struct SPAGRMPartition {
+    std::vector<double> mafInterval;                 // partition-fixed MAF grid
+
+    // Non-outlier contributions.
+    std::vector<uint32_t> nonOutlierSingletons;      // grmDiag·R² (quad) + R (sum)
+    std::vector<uint32_t> nonOutlierFamilyMembers;   // R (sum) — whole-fam + subfam members
+    std::vector<SparseGRM::Entry> nonOutlierFamilyEntries; // quad — kept within-component entries
+
+    // Unrelated outliers (ordered: singleton outliers, then size-1 outlier
+    // sub-families — matching the resid_unrelated_outliers build order).
+    std::vector<uint32_t> unrelatedOutliers;
+
+    // Two-subject outlier families.
+    struct TwoSubjGroup {
+        uint32_t a, b;
+        double diagA, diagB, offDiag;                // pairQuad = dA·R1² + dB·R2² + 2·off·R1·R2
+        std::array<double, 2> rho;                   // partition-fixed (from IBD)
+    };
+    std::vector<TwoSubjGroup> twoSubjFamilies;
+
+    // Three-or-more-subject outlier families.
+    struct ThreeSubjGroup {
+        std::vector<uint32_t> members;               // standS enumeration order
+        Eigen::MatrixXd CLT;                         // partition-fixed Chow-Liu tree
+    };
+    std::vector<ThreeSubjGroup> threeSubjFamilies;
+};
+
+// ══════════════════════════════════════════════════════════════════════
 // buildSPAGRMNullModel — per-column null model construction
 //
 // Shared by SPAGRM and SAGELD.  Takes a residual vector and everything
 // loaded by the run* entry point, returns a ready-to-use SPAGRMClass.
+//
+// When outPartition is non-null, the residual-driven partition is recorded
+// into it alongside the (unchanged) SPAGRMClass computation — used by SAGELD
+// to build split ledgers for the marker-specific λ branch.  The returned
+// SPAGRMClass is bit-for-bit identical whether or not outPartition is given.
 // ══════════════════════════════════════════════════════════════════════
 SPAGRMClass buildSPAGRMNullModel(
     const Eigen::VectorXd &Resid,
@@ -152,7 +203,8 @@ SPAGRMClass buildSPAGRMNullModel(
     double minMacCutoff,
     double outlierIqrRatio = INIT_OUTLIER_RATIO,
     bool controlOutlier = CONTROL_OUTLIER,
-    int nthreads = 1
+    int nthreads = 1,
+    SPAGRMPartition *outPartition = nullptr
 );
 
 } // namespace nsGRMNull

@@ -26,6 +26,22 @@ build/grab2 \
   --pfile examples/1kg \
   --out ${OUT_DIR}/spacox
 
+## ── SPACox (LOCO): per-chromosome polygenic-score covariate ───────────
+# --pred-list refits the null model for each chromosome with that
+# chromosome's leave-one-chromosome-out PGS added as a covariate, then
+# runs the score test on that chromosome's markers.  Also accepted by
+# SPAGRM, SPAmix, and WtCoxG.  The pred.list maps each phenotype to its
+# .loco file and is keyed on the phenotype/spec name — a Cox TIME:EVENT
+# spec is named "TIME_EVENT" (e.g. "Time_Event").
+build/grab2 \
+  --method SPACox \
+  --pheno examples/1kg.pheno \
+  --pheno-name Quantitative,Binary \
+  --covar-name MALE,PC1,PC2,PC3,PC4 \
+  --pred-list examples/loco_prs.list2 \
+  --pfile examples/1kg \
+  --out ${OUT_DIR}/spacox_loco
+
 ## ── SPAGRM ────────────────────────────────────────────────────────────
 build/grab2 \
   --method SPAGRM \
@@ -38,9 +54,7 @@ build/grab2 \
   --out ${OUT_DIR}/spagrm
 
 ## ── SPAmix ────────────────────────────────────────────────────────────
-# Ordinal regression is randomly seeded.
 build/grab2 \
-  --seed 2026 \
   --method SPAmix \
   --pheno examples/1kg.pheno \
   --pheno-name Binary,Ordinal \
