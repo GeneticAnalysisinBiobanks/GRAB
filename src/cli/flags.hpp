@@ -749,7 +749,7 @@ inline const FlagDef *const kSPAGxEReq[] = {
 inline const FlagDef *const kSPAGxEOpt[] = {
     &kCovar,      &kCovarName,   &kResidName,   &kPhenoName,   &kRegressionModel, &kSaveResid,
     &kSpagxeMarginalCutoff,
-    &kSpGrm,      &kPairwiseIbd,
+    &kSpGrm,
     &kSpaZThresh, &kOutlierIqr,  &kSeed,
     &kThreads,    &kChunkSize,   &kCompression, &kCompressionLevel,
     &kKeep,       &kRemove,      &kExtract,     &kExclude,
@@ -768,8 +768,9 @@ inline const MethodDef kSPAGxE = {
   P_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>  BETA_Gx<E1>  SE_Gx<E1>  [... per env])",
     R"(Every --envir-name column must also appear in --covar-name (it enters the
 genotype-independent null model  trait ~ X + E).  Passing an optional sparse
-GRM (--sp-grm-grab / --sp-grm-plink2, with --pairwise-ibd) engages the SPAGxE+
-relatedness-corrected variant; absent, the base unrelated test runs.)",
+GRM (--sp-grm-grab / --sp-grm-plink2) engages the SPAGxE+ relatedness-corrected
+score variance (a retrospective GRM quadratic form; no --pairwise-ibd needed);
+absent, the base unrelated test runs.)",
 };
 
 // ── SPAmix ─────────────────────────────────────────────────────────

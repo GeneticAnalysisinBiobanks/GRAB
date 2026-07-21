@@ -1,26 +1,27 @@
 // spagxe.cpp — SPAGxE_CCT G×E test implementation.
 //
-// Phase 1: base SPAGxE, SPA-only, unrelated population.  Per phenotype a single
+// Base (unrelated) and SPAGxE+ (sparse-GRM) share one code path: the GRM Φ
+// enters only through the retrospective score variance as a quadratic form
+// xᵀΦx = SparseGRM::spaVariance(x) = 2·Σstored − Σx², and the base path is the
+// Φ = identity special case (spaVariance → Σx²).  Per phenotype a single
 // genotype-independent residual R is fit once (trait ~ X + E).  Per variant:
-//   1. marginal genetic screen  S_G = Σ G_i R_i ,  Var = 2q(1−q) Σ R_i²
-//      (always the normal approximation; routes Branch A vs Branch B).
-//   2a. Branch A  (p_marg > ε, the common case): the λ-orthogonalised G×E score
-//       S_GxE = Σ G_i w_i ,  w_i = (E_i − λ) R_i ,  λ = Σ E_i R_i² / Σ R_i² ,
-//       tested by the SPA / normal hybrid.  w and its outlier partition are
-//       marker-independent → precomputed once.
-//   2b. Branch B  (p_marg ≤ ε, rare): project the marginal effect out of the
-//       residual, R̃ = R − [1,G]([1,G]ᵀ[1,G])⁻¹[1,G]ᵀ R, and test
-//       Ŝ_GxE = Σ G_i E_i R̃_i by SPA on the per-marker weight E∘R̃.
-//
-// The SPA (spa::getProbSpaG) uses the IQR outlier / Gaussian non-outlier split
-// (util/outlier.hpp), so it deliberately differs from the reference R package's
-// full-sum SPA and its p=0-on-nonconvergence; a degenerate saddlepoint yields
-// NaN here, never 0 (GRAB2 convention).  Reference math:
-// tmp/SPAGxECCT/.../R/SPAGxECCT.R  (SPAGxE_CCT_one_SNP, SPA_G_one_SNP_homo_new).
+//   1. marginal screen  S_G = Σ G_i R_i ,  Var = 2q(1−q)·RᵀΦR  (always normal;
+//      routes Branch A vs Branch B on p_marg vs ε).
+//   2a. Branch A (p_marg > ε): λ_GRM = RᵀΦR_E / RᵀΦR, w = (E − λ_GRM)R,
+//       S_GxE = Σ G_i w_i, Var = 2q(1−q)·wᵀΦw, SPA / normal hybrid.
+//   2b. Branch B (p_marg ≤ ε): R̃ = R − [1,G]([1,G]ᵀ[1,G])⁻¹[1,G]ᵀR (unweighted
+//       even for +), Ŝ_GxE = Σ G_i E_i R̃_i, Var = 2q(1−q)·(E∘R̃)ᵀΦ(E∘R̃).
+// The tail SPA rescales the statistic by √(indepVar/grmVar) (SAIGE variance
+// ratio, the paper's non-mix convention) and applies the independence-CGF SPA
+// via spa::getProbSpaG with the IQR outlier / Gaussian non-outlier split.  A
+// degenerate saddlepoint yields NaN, never 0 (GRAB2 convention).  Reference:
+// tmp/SPAGxECCT/.../R  (SPAGxE_CCT_one_SNP, SPA_G_one_SNP_homo_new,
+// SPAGxE_Plus_one_SNP, SPAGxE_Plus_Nullmodel).
 
 #include "spagxe/spagxe.hpp"
 
 #include "geno_factory/geno_data.hpp" // parseGenoIIDs, makeGenoData, GenoMeta
+#include "io/sparse_grm.hpp"          // SparseGRM
 #include "io/subject_data.hpp"        // SubjectData, extractPhenoVec, PerPhenoInfo
 #include "spamix/common.hpp"          // spa::getProbSpaG
 #include "util/logging.hpp"           // infoMsg, warnMsg
@@ -38,13 +39,16 @@ namespace {
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 
 // Two-sided SPA p-value for the genotype score  S = Σ G_i w_i  under the
-// homogeneous binomial law  G_i ~ Bin(2, q), reusing spa::getProbSpaG with a
-// precomputed outlier / non-outlier partition of the weight vector w.  Mirrors
-// the reference SPA_G_one_SNP_homo_new: the normal approximation when
-// |z| ≤ spaCutoff, otherwise the reflection-about-mean two-sided saddlepoint.
+// homogeneous binomial law  G_i ~ Bin(2, q).  The GRM enters only through
+// grmQuad = wᵀΦw (== wSq = Σw² in the base / unrelated case), which sets the
+// score variance and — in the tail — a SAIGE-style variance-ratio rescaling of
+// the statistic before the independence-CGF SPA (spa::getProbSpaG with the IQR
+// outlier / Gaussian non-outlier split).  Mirrors SPA_G_one_SNP_homo_new /
+// SPAGxE_Plus_one_SNP: normal approximation when |z| ≤ spaCutoff, otherwise the
+// reflection-about-mean two-sided saddlepoint.
 //   part     — IQR partition of w  (residOutlier = w[outlier],
 //              resid2NonOutlier = w²[nonOutlier])
-//   wSum     — Σ w  (over all i)          wSq — Σ w²  (over all i)
+//   wSum     — Σ w      wSq — Σ w²      grmQuad — wᵀΦw   (all over every i)
 //   rawScore — Σ G_i w_i
 // Sets zScore (raw score z) and outVar = Var(S); returns the p-value (NaN when
 // the variance is non-positive or the saddlepoint fails to converge).
@@ -52,36 +56,40 @@ double spaScorePval(
     const OutlierData &part,
     double wSum,
     double wSq,
+    double grmQuad,
     double rawScore,
     double q,
     double spaCutoff,
     double &zScore,
     double &outVar
 ) {
-    const double var = 2.0 * q * (1.0 - q) * wSq;
-    if (!(var > 0.0)) { // monomorphic / degenerate weight
+    const double f = 2.0 * q * (1.0 - q);
+    const double scoreVar = f * grmQuad; // GRM variance (== f·wSq in the base case)
+    if (!(scoreVar > 0.0)) {             // monomorphic / degenerate weight
         zScore = 0.0;
         outVar = 0.0;
         return kNaN;
     }
     const double sMean = 2.0 * q * wSum; // retrospective mean E[S] = 2q·Σw
-    zScore = (rawScore - sMean) / std::sqrt(var);
-    outVar = var;
+    zScore = (rawScore - sMean) / std::sqrt(scoreVar);
+    outVar = scoreVar;
     if (std::abs(zScore) <= spaCutoff)
         return 2.0 * math::pnorm(-std::abs(zScore));
 
-    // ── Saddlepoint tail with outlier / non-outlier split ──────────────
+    // ── Saddlepoint tail: variance-ratio rescale + outlier / non-outlier split.
+    // sqrtRatio = √(indepVar / grmVar) = √(wSq / grmQuad) (the 2q(1−q) cancels);
+    // == 1 in the base case, so this reduces to the plain independence SPA.
+    const double sqrtRatio = (grmQuad > 0.0) ? std::sqrt(wSq / grmQuad) : 1.0;
+    const double absDev = std::abs(rawScore - sMean) * sqrtRatio;
     const int nOut = static_cast<int>(part.posOutlier.size());
     const double meanNon = 2.0 * q * part.residNonOutlier.sum();
-    const double varNon = 2.0 * q * (1.0 - q) * part.resid2NonOutlier.sum();
+    const double varNon = f * part.resid2NonOutlier.sum();
     std::vector<double> mafOut(static_cast<size_t>(nOut), q);
-    const double absS = std::abs(rawScore - sMean);
-    // Reflect about the fitted mean: upper = max(S, 2·sMean−S),
-    // lower = min(S, 2·sMean−S)  (== sMean ± absS).
+    // Reflect about the fitted mean: upper = sMean + |Δ|, lower = sMean − |Δ|.
     const double pUpper = spa::getProbSpaG(mafOut.data(), part.residOutlier.data(),
-                                           nOut, sMean + absS, false, meanNon, varNon);
+                                           nOut, sMean + absDev, false, meanNon, varNon);
     const double pLower = spa::getProbSpaG(mafOut.data(), part.residOutlier.data(),
-                                           nOut, sMean - absS, true, meanNon, varNon);
+                                           nOut, sMean - absDev, true, meanNon, varNon);
     return pUpper + pLower;
 }
 
@@ -91,23 +99,31 @@ double spaScorePval(
 // SPAGxEMethod
 // ══════════════════════════════════════════════════════════════════════
 
+double SPAGxEMethod::phiQuad(const Eigen::VectorXd &x) const {
+    if (m_grm)
+        return m_grm->spaVariance(x.data(), static_cast<uint32_t>(x.size()));
+    return x.squaredNorm();
+}
+
 SPAGxEMethod::SPAGxEMethod(
     Eigen::VectorXd resid,
     std::vector<std::string> envNames,
     std::vector<Eigen::VectorXd> envVecs,
+    std::shared_ptr<const SparseGRM> grm,
     double marginalCutoff,
     double spaCutoff,
     double outlierRatio
 )
     : m_resid(std::move(resid)),
       m_envNames(std::move(envNames)),
+      m_grm(std::move(grm)),
       m_marginalCutoff(marginalCutoff),
       m_spaCutoff(spaCutoff),
       m_outlierRatio(outlierRatio)
 {
     const Eigen::Index N = m_resid.size();
     m_residSum = m_resid.sum();
-    m_residSq = m_resid.squaredNorm();
+    m_R_phiQuad = phiQuad(m_resid); // RᵀΦR (= ΣR² in the base case)
     const int nEnv = static_cast<int>(m_envNames.size());
 
     // m_W = [ R | w_1 | … | w_nEnv ]; one GEMM against a genotype batch then
@@ -115,19 +131,28 @@ SPAGxEMethod::SPAGxEMethod(
     m_W.resize(N, 1 + nEnv);
     m_W.col(0) = m_resid;
 
-    const Eigen::ArrayXd r2 = m_resid.array().square();
     m_envs.reserve(nEnv);
     for (int e = 0; e < nEnv; ++e) {
         EnvData ed;
         ed.name = m_envNames[e];
         ed.E = std::move(envVecs[e]);
-        // λ = Σ E R² / Σ R²  (variance-weighted regression of E on the constant).
-        ed.lambda = (m_residSq > 0.0)
-                        ? (ed.E.array() * r2).sum() / m_residSq
-                        : 0.0;
+
+        // λ = RᵀΦR_E / RᵀΦR, R_E = R∘E.  RᵀΦR_E is the bilinear Φ-form obtained
+        // by polarization (== Σ E R² in the base case; kept as the direct sum
+        // there so the base numbers match the pure-Σ path exactly).
+        double R_GRM_RE;
+        if (m_grm) {
+            const Eigen::VectorXd RE = (m_resid.array() * ed.E.array()).matrix();
+            const Eigen::VectorXd RpRE = m_resid + RE;
+            R_GRM_RE = 0.5 * (phiQuad(RpRE) - m_R_phiQuad - phiQuad(RE));
+        } else {
+            R_GRM_RE = (m_resid.array().square() * ed.E.array()).sum();
+        }
+        ed.lambda = (m_R_phiQuad > 0.0) ? R_GRM_RE / m_R_phiQuad : 0.0;
         ed.w = (ed.E.array() - ed.lambda) * m_resid.array();
         ed.wSum = ed.w.sum();
         ed.wSq = ed.w.squaredNorm();
+        ed.wPhiQuad = phiQuad(ed.w); // wᵀΦw (= Σw² in the base case)
         ed.wOutlier = detectOutliers(ed.w, m_outlierRatio);
         m_W.col(1 + e) = ed.w;
         m_envs.push_back(std::move(ed));
@@ -162,8 +187,9 @@ void SPAGxEMethod::evalMarker(
     const double q = altFreq;
 
     // ── Marginal genetic block (always the normal approximation) ────────
-    // S_G = Σ G_i R_i (uncentered, matching the reference S1; E[S_G]=2q·ΣR≈0).
-    const double varSG = m_residSq * 2.0 * q * (1.0 - q);
+    // S_G = Σ G_i R_i (uncentered, matching the reference S1; E[S_G]=2q·ΣR≈0),
+    // variance 2q(1−q)·RᵀΦR.
+    const double varSG = m_R_phiQuad * 2.0 * q * (1.0 - q);
     double pMarg = 1.0; // degenerate variance ⇒ take Branch A (no projection)
     if (varSG > 0.0) {
         const double sG = rawScores[0];
@@ -180,7 +206,8 @@ void SPAGxEMethod::evalMarker(
 
     // Branch B: genotype-adjusted residual R̃ = R − α − β·G, projecting the
     // marginal genetic effect out.  [α, β]ᵀ = ([1,G]ᵀ[1,G])⁻¹ [1,G]ᵀ R.
-    // R̃ is env-independent, so it is formed once per marker.
+    // R̃ is env-independent, so it is formed once per marker.  (Unweighted even
+    // for +; the GRM re-enters only through the variance — paper eq. 3.)
     Eigen::VectorXd R0;
     if (branchB) {
         const double n = static_cast<double>(m_resid.size());
@@ -201,19 +228,19 @@ void SPAGxEMethod::evalMarker(
         const int base = 4 + 5 * e;
         double z = 0.0, var = 0.0, p, score;
         if (!branchB) {
-            // Branch A: precomputed λ-orthogonalised weight.
+            // Branch A: precomputed λ-orthogonalised weight and its Φ-form.
             const EnvData &ed = m_envs[e];
             score = rawScores[1 + e]; // Σ G_i w_{e,i}
-            p = spaScorePval(ed.wOutlier, ed.wSum, ed.wSq, score, q, m_spaCutoff,
-                             z, var);
+            p = spaScorePval(ed.wOutlier, ed.wSum, ed.wSq, ed.wPhiQuad, score, q,
+                             m_spaCutoff, z, var);
         } else {
             if (R0.size() == 0) continue; // degenerate G ⇒ leave NaN
             // Branch B per-marker weight u = E ∘ R̃; Ŝ_GxE = Σ G_i u_i.
             const Eigen::VectorXd u = m_envs[e].E.array() * R0.array();
             score = GVec.dot(u);
             const OutlierData ub = detectOutliers(u, m_outlierRatio);
-            p = spaScorePval(ub, u.sum(), u.squaredNorm(), score, q, m_spaCutoff,
-                             z, var);
+            p = spaScorePval(ub, u.sum(), u.squaredNorm(), phiQuad(u), score, q,
+                             m_spaCutoff, z, var);
         }
         if (var > 0.0) {
             out[base + 0] = p;                       // P_Gx<E>
@@ -254,7 +281,7 @@ void SPAGxEMethod::getResultBatch(
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// runSPAGxE — full workflow (mirrors runSPAGRM, no sparse GRM in Phase 1)
+// runSPAGxE — full workflow (mirrors runSPAGRM)
 // ══════════════════════════════════════════════════════════════════════
 
 void runSPAGxE(
@@ -263,7 +290,6 @@ void runSPAGxE(
     const std::vector<std::string> &envNames,
     const std::string &spgrmGrabFile,
     const std::string &spgrmGctaFile,
-    const std::string &pairwiseIBDFile,
     const GenoSpec &geno,
     const std::string &outPrefix,
     const std::string &compression,
@@ -285,12 +311,7 @@ void runSPAGxE(
     const std::vector<std::string> &covarNames,
     bool saveResid
 ) {
-    // Phase 1 is the base (unrelated) test; the sparse-GRM (+) variant is
-    // wired in Phase 2.  Accept but ignore a supplied GRM for now.
-    if (!spgrmGrabFile.empty() || !spgrmGctaFile.empty())
-        warnMsg("SPAGxE: the sparse-GRM (+) variant is not yet enabled in this "
-                "build; running the base unrelated test (GRM ignored).");
-    (void)pairwiseIBDFile;
+    const bool hasGrm = !spgrmGrabFile.empty() || !spgrmGctaFile.empty();
 
     const bool fitPath = !phenoNameSpec.empty();
     nullmodel::RegressionModel regModel{};
@@ -298,8 +319,9 @@ void runSPAGxE(
     if (fitPath) {
         regModel = nullmodel::parseRegressionModel(regressionModelStr);
         phenoSpecs = nullmodel::parsePhenoSpecList(regModel, phenoNameSpec);
-        infoMsg("SPAGxE: fitting %s null model for %zu phenotype(s)",
-                nullmodel::regressionModelName(regModel), phenoSpecs.size());
+        infoMsg("SPAGxE%s: fitting %s null model for %zu phenotype(s)",
+                hasGrm ? "+" : "", nullmodel::regressionModelName(regModel),
+                phenoSpecs.size());
     }
 
     infoMsg("Loading pheno file: %s", phenoFile.c_str());
@@ -313,6 +335,11 @@ void runSPAGxE(
     }
     if (!covarFile.empty()) sd.loadCovar(covarFile, covarNames);
     sd.setKeepRemove(keepFile, removeFile);
+    // (+) variant: restrict to subjects present in the sparse GRM (the GRM
+    // supplies the retrospective genotype covariance among relatives).
+    if (hasGrm)
+        sd.setGrmSubjects(
+            SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
     sd.setGenoLabel(geno.flagLabel());
     sd.finalize();
 
@@ -369,6 +396,16 @@ void runSPAGxE(
     for (const auto &en : envNames)
         envUnion.push_back(sd.getColumn(en));
 
+    // (+) variant: load the union-level sparse GRM once; re-index per phenotype.
+    std::shared_ptr<const SparseGRM> unionGrm;
+    if (hasGrm) {
+        auto subjIDs = sd.usedIIDs();
+        unionGrm = std::make_shared<const SparseGRM>(
+            SparseGRM::load(spgrmGrabFile, spgrmGctaFile, subjIDs, sd.famIIDs()));
+        infoMsg("Sparse GRM: %zu entries (SPAGxE+ variance correction)",
+                unionGrm->nnz());
+    }
+
     auto genoData =
         makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(), nSnpPerChunk);
     infoMsg("Genotype data: %u markers, %u subjects", genoData->nMarkers(),
@@ -388,17 +425,37 @@ void runSPAGxE(
         for (const auto &eu : envUnion)
             envVecs.push_back((K > 1) ? extractPhenoVec(eu, pi) : eu);
 
+        // Per-phenotype GRM: for a single phenotype the union GRM is used
+        // directly; for K > 1 the union entries are re-indexed to the
+        // phenotype's dense subject order (as runSPAGRM does).
+        std::shared_ptr<const SparseGRM> phenoGrm;
+        if (hasGrm) {
+            if (K == 1) {
+                phenoGrm = unionGrm;
+            } else {
+                const auto &u2l = pi.unionToLocal;
+                std::vector<SparseGRM::Entry> pEntries;
+                for (const auto &en : unionGrm->entries()) {
+                    const uint32_t li = u2l[en.row], lj = u2l[en.col];
+                    if (li != UINT32_MAX && lj != UINT32_MAX)
+                        pEntries.push_back({li, lj, en.value});
+                }
+                phenoGrm = std::make_shared<const SparseGRM>(
+                    SparseGRM::fromEntries(pi.nUsed, std::move(pEntries)));
+            }
+        }
+
         tasks[rc].phenoName = pi.name;
         tasks[rc].method = std::make_unique<SPAGxEMethod>(
-            std::move(phenoResid), envNames, std::move(envVecs), marginalCutoff,
-            spaCutoff, outlierIqrRatio);
+            std::move(phenoResid), envNames, std::move(envVecs), phenoGrm,
+            marginalCutoff, spaCutoff, outlierIqrRatio);
         tasks[rc].unionToLocal = pi.unionToLocal;
         tasks[rc].nUsed = pi.nUsed;
         infoMsg("  Phenotype '%s': %u subjects", pi.name.c_str(), pi.nUsed);
     }
 
-    infoMsg("Running SPAGxE marker tests (%d thread(s), %d phenotype(s))...",
-            nthreads, K);
+    infoMsg("Running SPAGxE%s marker tests (%d thread(s), %d phenotype(s))...",
+            hasGrm ? "+" : "", nthreads, K);
     multiPhenoEngine(*genoData, tasks, outPrefix, "SPAGxE", compression,
                      compressionLevel, nthreads, missingCutoff, minMafCutoff,
                      minMacCutoff, hweCutoff);

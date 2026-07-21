@@ -1159,15 +1159,10 @@ int run(
         // ── SPAGxE ─────────────────────────────────────────────────
         else if (args.method == "SPAGxE") {
             require(args.envName, "--envir-name", "SPAGxE");
-            // Sparse GRM is OPTIONAL: present → SPAGxE+ (relatedness-corrected);
-            // absent → base unrelated test.  When a GRM is supplied it needs the
-            // pairwise-IBD topology, exactly as SPAGRM / SAGELD score mode.
+            // Sparse GRM is OPTIONAL: present → SPAGxE+ (relatedness-corrected
+            // score variance); absent → base unrelated test.  The variance is a
+            // retrospective GRM quadratic form (no IBD topology needed).
             checkSpGrm(args, /*required=*/ false, "SPAGxE");
-            const bool hasGrm =
-                !args.spGrmGrabFile.empty() || !args.spGrmPlink2File.empty();
-            if (hasGrm)
-                require(args.pairwiseIBDFile, "--pairwise-ibd",
-                        "SPAGxE with --sp-grm (the + variant)");
             auto envNames = splitComma(args.envName, "--envir-name", 1);
             runSPAGxE(
                 args.phenoFile,
@@ -1175,7 +1170,6 @@ int run(
                 envNames,
                 args.spGrmGrabFile,
                 args.spGrmPlink2File,
-                args.pairwiseIBDFile,
                 geno,
                 args.outPrefix,
                 args.compression,

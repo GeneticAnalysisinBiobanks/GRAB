@@ -5,27 +5,38 @@
 // null model is fit once (trait ~ X + E); per variant the marginal genetic
 // effect is screened and the G×E interaction is tested by a retrospective SPA.
 //
-//   --method spagxe   base SPAGxE (unrelated)  +  SPAGxE+ (via --sp-grm-*)
-//                     +  SPAGxE_CCT (Wald + CCT, added in a later phase).
+//   --method spagxe   base SPAGxE (unrelated)  +  SPAGxE+ (via --sp-grm-*).
+//                     SPAGxE_CCT (Wald + CCT) is a later phase.
 //
 // Design references (git-ignored, in the feat/sadge tree):
 //   dev-notes/methods/SPAGxE_claude            model + equations + R conflicts
 //   dev-notes/methods/SPAGxE_claude_plan       GRAB2 reuse / design map
 //   dev-notes/methods/SPAGxE_claude_impl_plan  phase-by-phase build plan
 //
-// Phase 1: base SPAGxE, SPA-only, unrelated.  Branch A (λ-orthogonalised G×E
-// score) and Branch B (genotype-adjusted residual) both go through the SPA /
-// normal hybrid; no Wald / CCT yet (that is Phase 3), and no sparse-GRM
-// variance (Phase 2).
+// Base vs +: a sparse GRM Φ enters only through the score variance, as a
+// retrospective quadratic form  xᵀΦx  evaluated by SparseGRM::spaVariance
+// (2·Σstored − Σx²).  The base (unrelated) path is exactly the Φ = identity
+// special case (spaVariance → Σx²), so a single code path serves both:
+//   marginal   Var(S_G)      = 2q(1−q)·RᵀΦR
+//   Branch A   λ_GRM         = RᵀΦR_E / RᵀΦR ,  w = (E − λ_GRM)R
+//              Var(S_GxE)     = 2q(1−q)·wᵀΦw
+//   Branch B   Var(Ŝ_GxE)    = 2q(1−q)·(E∘R̃)ᵀΦ(E∘R̃)   (per marker)
+// The SPA is applied to the independence CGF with a SAIGE-style variance ratio
+// √(indepVar / grmVar) rescaling the statistic (paper eq. 14–17; the non-mix
+// convention, reflecting about the fitted mean).  In the significant-marginal
+// Branch B the paper's SPAGxE+ runs no Wald test.
 #pragma once
 
 #include <Eigen/Dense>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "engine/marker.hpp"          // MethodBase
 #include "geno_factory/geno_data.hpp" // GenoSpec
 #include "util/outlier.hpp"           // OutlierData
+
+class SparseGRM; // held by shared_ptr; full type only needed in the .cpp
 
 // ══════════════════════════════════════════════════════════════════════
 // SPAGxEMethod — MethodBase adapter (one clone per worker thread)
@@ -42,9 +53,10 @@
 // resultSize() = 4 + 5·nEnv.
 class SPAGxEMethod : public MethodBase {
   public:
-    // resid    — the null-model residual R (union-dense per phenotype, length N).
+    // resid    — the null-model residual R (per-phenotype dense, length N).
     // envNames — environment column names, one 5-wide output block each.
     // envVecs  — the environment vectors E_e (aligned to resid), one per env.
+    // grm      — per-phenotype sparse GRM for the (+) variant; null → base.
     // marginalCutoff — ε, the Branch A / Branch B routing threshold.
     // spaCutoff      — r (--spa-z-threshold), the |z| normal↔SPA switch.
     // outlierRatio   — IQR multiplier for the SPA outlier partition.
@@ -52,6 +64,7 @@ class SPAGxEMethod : public MethodBase {
         Eigen::VectorXd resid,
         std::vector<std::string> envNames,
         std::vector<Eigen::VectorXd> envVecs,
+        std::shared_ptr<const SparseGRM> grm,
         double marginalCutoff,
         double spaCutoff,
         double outlierRatio
@@ -83,15 +96,20 @@ class SPAGxEMethod : public MethodBase {
     ) override;
 
   private:
+    // Retrospective quadratic form  xᵀΦx: SparseGRM::spaVariance when a GRM is
+    // present (2·Σstored − Σx²), Σx² otherwise (Φ = identity → base path).
+    double phiQuad(const Eigen::VectorXd &x) const;
+
     // Per-environment precomputed Branch-A machinery (marker-independent).
     struct EnvData {
         std::string name;
         Eigen::VectorXd E;         // environment vector (Branch B needs it raw)
-        double lambda;             // λ = Σ E R² / Σ R²
+        double lambda;             // λ = RᵀΦR_E / RᵀΦR
         Eigen::VectorXd w;         // Branch-A weight (E − λ)∘R
         OutlierData wOutlier;      // IQR partition of w (SPA outlier split)
         double wSum;               // Σ w  (≈ 0 by residual orthogonality)
-        double wSq;                // Σ w²
+        double wSq;                // Σ w²         (independence quadratic form)
+        double wPhiQuad;           // wᵀΦw         (GRM quadratic form; == wSq base)
     };
 
     // Evaluate one marker given the pre-multiplied raw scores
@@ -104,15 +122,16 @@ class SPAGxEMethod : public MethodBase {
         std::vector<double> &out
     );
 
-    Eigen::VectorXd m_resid;               // R (null-model residual)
-    double m_residSum;                     // Σ R
-    double m_residSq;                      // Σ R²
-    Eigen::MatrixXd m_W;                   // N × (1 + nEnv): [R | w_1 | … | w_nEnv]
-    std::vector<std::string> m_envNames;   // env column names (header order)
-    std::vector<EnvData> m_envs;           // per-env Branch-A state
-    double m_marginalCutoff;               // ε
-    double m_spaCutoff;                    // r
-    double m_outlierRatio;                 // IQR multiplier (Branch B re-partition)
+    Eigen::VectorXd m_resid;                    // R (null-model residual)
+    double m_residSum;                          // Σ R
+    double m_R_phiQuad;                         // RᵀΦR (marginal variance factor)
+    Eigen::MatrixXd m_W;                        // N × (1+nEnv): [R | w_1 | … ]
+    std::vector<std::string> m_envNames;        // env column names (header order)
+    std::vector<EnvData> m_envs;                // per-env Branch-A state
+    std::shared_ptr<const SparseGRM> m_grm;     // (+) variant; null → base
+    double m_marginalCutoff;                    // ε
+    double m_spaCutoff;                         // r
+    double m_outlierRatio;                      // IQR multiplier (Branch B repart.)
 };
 
 // ══════════════════════════════════════════════════════════════════════
@@ -122,15 +141,14 @@ class SPAGxEMethod : public MethodBase {
 // Mirrors runSPAGRM (src/spagrm/spagrm.cpp): load SubjectData, fit or load the
 // genotype-independent residual, extract each --envir-name column, build one
 // PhenoTask per phenotype, and drive multiPhenoEngine.  When a sparse GRM is
-// supplied (--sp-grm-*, optional) the (+) variance correction engages (Phase 2);
-// absent, the base unrelated path runs.
+// supplied (--sp-grm-*, optional) the (+) variance correction engages; absent,
+// the base unrelated path runs.
 void runSPAGxE(
     const std::string &phenoFile,
     const std::vector<std::string> &residNames,
     const std::vector<std::string> &envNames,
     const std::string &spgrmGrabFile,
     const std::string &spgrmGctaFile,
-    const std::string &pairwiseIBDFile,
     const GenoSpec &geno,
     const std::string &outPrefix,
     const std::string &compression,
