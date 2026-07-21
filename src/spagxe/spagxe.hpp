@@ -13,9 +13,10 @@
 //   dev-notes/methods/SPAGxE_claude_plan       GRAB2 reuse / design map
 //   dev-notes/methods/SPAGxE_claude_impl_plan  phase-by-phase build plan
 //
-// Phase 0 scaffold: CLI registration + MethodBase interface only.  The base
-// SPA-only marker logic (Branch A / Branch B) lands in Phase 1; the sparse-GRM
-// (+) variant in Phase 2.
+// Phase 1: base SPAGxE, SPA-only, unrelated.  Branch A (λ-orthogonalised G×E
+// score) and Branch B (genotype-adjusted residual) both go through the SPA /
+// normal hybrid; no Wald / CCT yet (that is Phase 3), and no sparse-GRM
+// variance (Phase 2).
 #pragma once
 
 #include <Eigen/Dense>
@@ -24,6 +25,7 @@
 
 #include "engine/marker.hpp"          // MethodBase
 #include "geno_factory/geno_data.hpp" // GenoSpec
+#include "util/outlier.hpp"           // OutlierData
 
 // ══════════════════════════════════════════════════════════════════════
 // SPAGxEMethod — MethodBase adapter (one clone per worker thread)
@@ -40,15 +42,19 @@
 // resultSize() = 4 + 5·nEnv.
 class SPAGxEMethod : public MethodBase {
   public:
-    // resid    — the null-model residual R (union-dense, length N).
+    // resid    — the null-model residual R (union-dense per phenotype, length N).
     // envNames — environment column names, one 5-wide output block each.
+    // envVecs  — the environment vectors E_e (aligned to resid), one per env.
     // marginalCutoff — ε, the Branch A / Branch B routing threshold.
     // spaCutoff      — r (--spa-z-threshold), the |z| normal↔SPA switch.
+    // outlierRatio   — IQR multiplier for the SPA outlier partition.
     SPAGxEMethod(
         Eigen::VectorXd resid,
         std::vector<std::string> envNames,
+        std::vector<Eigen::VectorXd> envVecs,
         double marginalCutoff,
-        double spaCutoff
+        double spaCutoff,
+        double outlierRatio
     );
 
     std::unique_ptr<MethodBase> clone() const override;
@@ -66,11 +72,47 @@ class SPAGxEMethod : public MethodBase {
         std::vector<double> &result
     ) override;
 
+    // Batched: one GEMM  scores = GBatchᵀ · [R | w_1 | … | w_nEnv]  supplies the
+    // marginal and every Branch-A G×E score; per-marker Branch B (rare) uses the
+    // genotype column directly.
+    void getResultBatch(
+        const Eigen::Ref<const Eigen::MatrixXd> &GBatch,
+        const std::vector<double> &altFreqs,
+        const std::vector<int> &chunkIdxs,
+        std::vector<std::vector<double> > &results
+    ) override;
+
   private:
+    // Per-environment precomputed Branch-A machinery (marker-independent).
+    struct EnvData {
+        std::string name;
+        Eigen::VectorXd E;         // environment vector (Branch B needs it raw)
+        double lambda;             // λ = Σ E R² / Σ R²
+        Eigen::VectorXd w;         // Branch-A weight (E − λ)∘R
+        OutlierData wOutlier;      // IQR partition of w (SPA outlier split)
+        double wSum;               // Σ w  (≈ 0 by residual orthogonality)
+        double wSq;                // Σ w²
+    };
+
+    // Evaluate one marker given the pre-multiplied raw scores
+    //   rawScores[0]      = Σ G_i R_i             (marginal)
+    //   rawScores[1 + e]  = Σ G_i w_{e,i}         (Branch-A G×E, env e)
+    void evalMarker(
+        const Eigen::Ref<const Eigen::VectorXd> &GVec,
+        double altFreq,
+        const Eigen::VectorXd &rawScores,
+        std::vector<double> &out
+    );
+
     Eigen::VectorXd m_resid;               // R (null-model residual)
-    std::vector<std::string> m_envNames;   // environment column names
+    double m_residSum;                     // Σ R
+    double m_residSq;                      // Σ R²
+    Eigen::MatrixXd m_W;                   // N × (1 + nEnv): [R | w_1 | … | w_nEnv]
+    std::vector<std::string> m_envNames;   // env column names (header order)
+    std::vector<EnvData> m_envs;           // per-env Branch-A state
     double m_marginalCutoff;               // ε
     double m_spaCutoff;                    // r
+    double m_outlierRatio;                 // IQR multiplier (Branch B re-partition)
 };
 
 // ══════════════════════════════════════════════════════════════════════
@@ -80,8 +122,8 @@ class SPAGxEMethod : public MethodBase {
 // Mirrors runSPAGRM (src/spagrm/spagrm.cpp): load SubjectData, fit or load the
 // genotype-independent residual, extract each --envir-name column, build one
 // PhenoTask per phenotype, and drive multiPhenoEngine.  When a sparse GRM is
-// supplied (--sp-grm-*, optional) the (+) variance correction engages; absent,
-// the base unrelated path runs.
+// supplied (--sp-grm-*, optional) the (+) variance correction engages (Phase 2);
+// absent, the base unrelated path runs.
 void runSPAGxE(
     const std::string &phenoFile,
     const std::vector<std::string> &residNames,
