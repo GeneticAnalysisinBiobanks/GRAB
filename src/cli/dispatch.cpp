@@ -19,6 +19,7 @@
 #include "spagrm/ibd.hpp"
 #include "spagrm/sageld.hpp"
 #include "spagrm/spagrm.hpp"
+#include "spagxe/spagxe.hpp"
 #include "spamix/indiv_af.hpp"
 #include "spamix/spamixplus.hpp"
 #include "spasqr/spasqr.hpp"
@@ -249,13 +250,16 @@ static void logArgsInEffect(const Args &args) {
     // pc-cols: relevant for SPAmix/SPAmixPlus/LEAF and cal-af-coef
     {
         bool usesPcCols =
-            args.calAfCoef || args.method == "SPAmix" || args.method == "SPAmixPlus" || args.method == "LEAF";
+            args.calAfCoef || args.method == "SPAmix" || args.method == "SPAmixPlus" ||
+            args.method == "LEAF" || args.method == "SPAGxEmix";
         if (usesPcCols && !args.pcCols.empty()) std::fprintf(stderr, "  --pc-cols %s\n", args.pcCols.c_str());
     }
     if (args.method == "SAGELD" && !args.sageldX.empty())
         std::fprintf(stderr, "  --sageld-x %s\n", args.sageldX.c_str());
     if (args.method == "SAGELD" && args.sageldMethod != "sageld")
         std::fprintf(stderr, "  --sageld-method %s\n", args.sageldMethod.c_str());
+    if ((args.method == "SPAGxE" || args.method == "SPAGxEmix") && !args.envName.empty())
+        std::fprintf(stderr, "  --envir-name %s\n", args.envName.c_str());
     // SPAsqr-specific knobs (relevant for SPAsqr pheno path)
     if (args.method == "SPAsqr" && !args.phenoName.empty()) {
         // --spasqr-mode is always logged because the two modes (score vs
@@ -297,6 +301,8 @@ static void logArgsInEffect(const Args &args) {
     if (args.nthread != 1) std::fprintf(stderr, "  --threads %d\n", args.nthread);
     if (args.nSnpPerChunk != 8192) std::fprintf(stderr, "  --chunk-size %d\n", args.nSnpPerChunk);
     if (args.spaCutoff != 2.0) std::fprintf(stderr, "  --spa-z-threshold %g\n", args.spaCutoff);
+    if ((args.method == "SPAGxE" || args.method == "SPAGxEmix") && args.spagxeMarginalCutoff != 0.001)
+        std::fprintf(stderr, "  --spagxe-marginal-cutoff %g\n", args.spagxeMarginalCutoff);
     if (args.outlierRatio != 1.5) std::fprintf(stderr, "  --outlier-iqr-multiplier %g\n", args.outlierRatio);
     if (args.outlierAbsBound != 0.55) std::fprintf(stderr, "  --spasqr-outlier-abs-bound %g\n", args.outlierAbsBound);
     if (args.spagrmControlOutlier) std::fprintf(stderr, "  --spagrm-control-outlier\n");
@@ -732,7 +738,8 @@ int run(
         const bool isFitCapableMethod =
             args.method == "SPACox" || args.method == "SPAGRM" ||
             args.method == "SPAmix" || args.method == "SPAmixPlus" ||
-            args.method == "SPAmixLocalPlus";
+            args.method == "SPAmixLocalPlus" || args.method == "SPAGxE" ||
+            args.method == "SPAGxEmix";
         const bool hasRegressionModel = !args.regressionModel.empty();
         // Validate the regression-model value itself (rejects legacy names
         // and unknown strings) before any method-specific whitelist check.
@@ -1148,6 +1155,86 @@ int run(
                 gallop,
                 args.keepFile,
                 args.removeFile
+            );
+        }
+
+        // ── SPAGxE ─────────────────────────────────────────────────
+        else if (args.method == "SPAGxE") {
+            require(args.envName, "--envir-name", "SPAGxE");
+            // Sparse GRM is OPTIONAL: present → SPAGxE+ (relatedness-corrected
+            // score variance); absent → base unrelated test.  The variance is a
+            // retrospective GRM quadratic form (no IBD topology needed).
+            checkSpGrm(args, /*required=*/ false, "SPAGxE");
+            auto envNames = splitComma(args.envName, "--envir-name", 1);
+            runSPAGxE(
+                args.phenoFile,
+                residNames,
+                envNames,
+                args.spGrmGrabFile,
+                args.spGrmPlink2File,
+                geno,
+                args.outPrefix,
+                args.compression,
+                args.compressionLevel,
+                args.spagxeMarginalCutoff,
+                args.spaCutoff,
+                args.outlierRatio,
+                args.nthread,
+                args.nSnpPerChunk,
+                args.missingCutoff,
+                args.minMafCutoff,
+                args.minMacCutoff,
+                args.hweCutoff,
+                args.keepFile,
+                args.removeFile,
+                args.regressionModel,
+                args.phenoName,
+                effectiveCovarFile,
+                covarNames,
+                args.saveResid
+            );
+        }
+
+        // ── SPAGxEmix (per-individual allele frequency) ─────────────
+        else if (args.method == "SPAGxEmix") {
+            require(args.envName, "--envir-name", "SPAGxEmix");
+            if (pcColNames.empty()) {
+                std::cerr << "Error: --pc-cols is required for SPAGxEmix"
+                             " (the per-individual allele-frequency PCs).\n";
+                return 1;
+            }
+            // SPAGxEmix has no sparse-GRM path (SPAGxEmix+ is out of scope).
+            if (!args.spGrmGrabFile.empty() || !args.spGrmPlink2File.empty()) {
+                std::cerr << "Error: SPAGxEmix does not accept --sp-grm-grab or"
+                             " --sp-grm-plink2 (SPAGxEmix+ is not implemented).\n";
+                return 1;
+            }
+            auto envNames = splitComma(args.envName, "--envir-name", 1);
+            runSPAGxEmix(
+                args.phenoFile,
+                residNames,
+                envNames,
+                pcColNames,
+                geno,
+                args.outPrefix,
+                args.compression,
+                args.compressionLevel,
+                args.spagxeMarginalCutoff,
+                args.spaCutoff,
+                args.outlierRatio,
+                args.nthread,
+                args.nSnpPerChunk,
+                args.missingCutoff,
+                args.minMafCutoff,
+                args.minMacCutoff,
+                args.hweCutoff,
+                args.keepFile,
+                args.removeFile,
+                args.regressionModel,
+                args.phenoName,
+                effectiveCovarFile,
+                covarNames,
+                args.saveResid
             );
         }
 

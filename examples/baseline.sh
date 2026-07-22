@@ -3,8 +3,8 @@
 #
 # This script exercises every utility mode (cal-af-coef, cal-pairwise-ibd,
 # int-pheno) and every analysis method (SPACox, SPAmix, SPAGRM, SAGELD,
-# SPAsqr score + wald, WtCoxG, LEAF) against the bundled examples/1kg.*
-# fixtures.  It serves two purposes:
+# SPAsqr score + wald, WtCoxG, LEAF, SPAGxE base + sparse-GRM, SPAGxEmix)
+# against the bundled examples/1kg.* fixtures.  It serves two purposes:
 #
 #   1. Documentary.  Every command spells out every command-line flag the
 #      method accepts.  Mandatory flags appear first; optional flags
@@ -638,6 +638,102 @@ build/grab2 \
   --hard-call-threshold 0.1 \
   --compression gz \
   --compression-level 6
+
+## ── SPAGxE (base, gene x environment interaction; env = MALE) ──────────
+# Binary environment MALE (the paper's genetic-sex analyses) x three trait
+# types (quantitative / survival / binary).  Every --envir-name column must
+# also appear in --covar-name (it enters the genotype-independent null model
+# trait ~ X + E).  Plain-text output exercises the uncompressed writer path.
+# A distinct --out prefix keeps the fitted residual and per-marker tables from
+# colliding with the SPACox/SAGELD ${OUT}.* artifacts.
+
+build/grab2 \
+  --method SPAGxE \
+  --pheno examples/1kg.pheno \
+  --pheno-name Quantitative,Time:Event,Binary \
+  --covar-name MALE,PC1,PC2,PC3,PC4 \
+  --envir-name MALE \
+  --pfile examples/1kg \
+  --out ${OUT_DIR}/spagxe \
+  `# Optional flags below (set to built-in defaults):` \
+  --regression-model auto \
+  --save-resid \
+  --spagxe-marginal-cutoff 0.001 \
+  --chr 1-2,3 \
+  --spa-z-threshold 2.0 \
+  --outlier-iqr-multiplier 1.5 \
+  --threads 2 \
+  --chunk-size 8192 \
+  --geno 0.1 \
+  --maf 1e-5 \
+  --mac 10 \
+  --hwe 0 \
+  --hard-call-threshold 0.1
+
+## ── SPAGxE+ (sparse-GRM relatedness correction; --sp-grm-plink2) ───────
+# Passing an optional sparse GRM engages the SPAGxE+ variance correction (a
+# retrospective GRM quadratic form; no --pairwise-ibd needed).  The GRM path
+# keeps no Branch-B Wald leg (paper), so P_Wald_Gx<E> is NA throughout.  gzip
+# output exercises the gz writer path.
+
+build/grab2 \
+  --method SPAGxE \
+  --pheno examples/1kg.pheno \
+  --pheno-name Quantitative,Time:Event,Binary \
+  --covar-name MALE,PC1,PC2,PC3,PC4 \
+  --envir-name MALE \
+  --sp-grm-plink2 examples/1kg.grm.sp \
+  --pfile examples/1kg \
+  --out ${OUT_DIR}/spagxe_plus \
+  `# Optional flags below (set to built-in defaults):` \
+  --regression-model auto \
+  --spagxe-marginal-cutoff 0.001 \
+  --chr 1-2,3 \
+  --spa-z-threshold 2.0 \
+  --outlier-iqr-multiplier 1.5 \
+  --threads 2 \
+  --chunk-size 8192 \
+  --geno 0.1 \
+  --maf 1e-5 \
+  --mac 10 \
+  --hwe 0 \
+  --hard-call-threshold 0.1 \
+  --compression gz \
+  --compression-level 6
+
+## ── SPAGxEmix (per-individual allele frequency; --pc-cols) ─────────────
+# SPAGxEmix estimates a per-individual ALT frequency q_i from the --pc-cols
+# principal components (the SPAmix cascade), so the retrospective genotype law
+# is Binomial(2, q_i).  The --pc-cols columns must also appear in --covar-name
+# (they adjust the null model), as must every --envir-name column.  A sparse
+# GRM is not accepted (SPAGxEmix+ is out of scope).  zstd output exercises the
+# zst writer path, completing the plain / gz / zst rotation across the three
+# G x E blocks.
+
+build/grab2 \
+  --method SPAGxEmix \
+  --pheno examples/1kg.pheno \
+  --pheno-name Quantitative,Time:Event,Binary \
+  --covar-name MALE,PC1,PC2,PC3,PC4 \
+  --envir-name MALE \
+  --pc-cols PC1,PC2,PC3,PC4 \
+  --pfile examples/1kg \
+  --out ${OUT_DIR}/spagxemix \
+  `# Optional flags below (set to built-in defaults):` \
+  --regression-model auto \
+  --spagxe-marginal-cutoff 0.001 \
+  --chr 1-2,3 \
+  --spa-z-threshold 2.0 \
+  --outlier-iqr-multiplier 1.5 \
+  --threads 2 \
+  --chunk-size 8192 \
+  --geno 0.1 \
+  --maf 1e-5 \
+  --mac 10 \
+  --hwe 0 \
+  --hard-call-threshold 0.1 \
+  --compression zst \
+  --compression-level 3
 
 ## ── Regression cross-checks (md5/diff over compressed outputs) ────────
 # The blocks below are not new analyses: they re-run a method on

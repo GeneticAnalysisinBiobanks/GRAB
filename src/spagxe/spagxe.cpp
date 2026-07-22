@@ -1,0 +1,912 @@
+// spagxe.cpp — SPAGxE_CCT G×E test implementation.
+//
+// Base (unrelated) and SPAGxE+ (sparse-GRM) share one code path: the GRM Φ
+// enters only through the retrospective score variance as a quadratic form
+// xᵀΦx = SparseGRM::spaVariance(x) = 2·Σstored − Σx², and the base path is the
+// Φ = identity special case (spaVariance → Σx²).  Per phenotype a single
+// genotype-independent residual R is fit once (trait ~ X + E).  Per variant:
+//   1. marginal screen  S_G = Σ G_i R_i ,  Var = 2q(1−q)·RᵀΦR  (always normal;
+//      routes Branch A vs Branch B on p_marg vs ε).
+//   2a. Branch A (p_marg > ε): λ_GRM = RᵀΦR_E / RᵀΦR, w = (E − λ_GRM)R,
+//       S_GxE = Σ G_i w_i, Var = 2q(1−q)·wᵀΦw, SPA / normal hybrid.
+//   2b. Branch B (p_marg ≤ ε): R̃ = R − [1,G]([1,G]ᵀ[1,G])⁻¹[1,G]ᵀR (unweighted
+//       even for +), Ŝ_GxE = Σ G_i E_i R̃_i, Var = 2q(1−q)·(E∘R̃)ᵀΦ(E∘R̃).
+// The tail SPA rescales the statistic by √(indepVar/grmVar) (SAIGE variance
+// ratio, the paper's non-mix convention) and applies the independence-CGF SPA
+// via spa::getProbSpaG with the IQR outlier / Gaussian non-outlier split.  A
+// degenerate saddlepoint yields NaN, never 0 (GRAB2 convention).  Reference:
+// tmp/SPAGxECCT/.../R  (SPAGxE_CCT_one_SNP, SPA_G_one_SNP_homo_new,
+// SPAGxE_Plus_one_SNP, SPAGxE_Plus_Nullmodel).
+
+#include "spagxe/spagxe.hpp"
+
+#include "geno_factory/geno_data.hpp" // parseGenoIIDs, makeGenoData, GenoMeta
+#include "io/sparse_grm.hpp"          // SparseGRM
+#include "io/subject_data.hpp"        // SubjectData, extractPhenoVec/Mat, PerPhenoInfo
+#include "spagxe/spagxe_wald.hpp"     // spagxe_wald::{WaldData, waldInteractionPval}
+#include "spamix/common.hpp"          // spa::getProbSpaG
+#include "spamix/indiv_af.hpp"        // AFContext, computeAFVec (SPAGxEmix)
+#include "util/logging.hpp"           // infoMsg, warnMsg
+#include "util/math_helper.hpp"       // math::pnorm, zFromPval, cauchyCombine
+#include "util/null_model.hpp"        // nullmodel::fitAll and friends
+
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <stdexcept>
+#include <utility>
+
+namespace {
+
+constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
+
+// Two-sided SPA p-value for the genotype score  S = Σ G_i w_i  under the
+// homogeneous binomial law  G_i ~ Bin(2, q).  The GRM enters only through
+// grmQuad = wᵀΦw (== wSq = Σw² in the base / unrelated case), which sets the
+// score variance and — in the tail — a SAIGE-style variance-ratio rescaling of
+// the statistic before the independence-CGF SPA (spa::getProbSpaG with the IQR
+// outlier / Gaussian non-outlier split).  Mirrors SPA_G_one_SNP_homo_new /
+// SPAGxE_Plus_one_SNP: normal approximation when |z| ≤ spaCutoff, otherwise the
+// reflection-about-mean two-sided saddlepoint.
+//   part     — IQR partition of w  (residOutlier = w[outlier],
+//              resid2NonOutlier = w²[nonOutlier])
+//   wSum     — Σ w      wSq — Σ w²      grmQuad — wᵀΦw   (all over every i)
+//   rawScore — Σ G_i w_i
+// Sets zScore (raw score z) and outVar = Var(S); returns the p-value (NaN when
+// the variance is non-positive or the saddlepoint fails to converge).
+double spaScorePval(
+    const OutlierData &part,
+    double wSum,
+    double wSq,
+    double grmQuad,
+    double rawScore,
+    double q,
+    double spaCutoff,
+    double &zScore,
+    double &outVar
+) {
+    const double f = 2.0 * q * (1.0 - q);
+    const double scoreVar = f * grmQuad; // GRM variance (== f·wSq in the base case)
+    if (!(scoreVar > 0.0)) {             // monomorphic / degenerate weight
+        zScore = 0.0;
+        outVar = 0.0;
+        return kNaN;
+    }
+    const double sMean = 2.0 * q * wSum; // retrospective mean E[S] = 2q·Σw
+    zScore = (rawScore - sMean) / std::sqrt(scoreVar);
+    outVar = scoreVar;
+    if (std::abs(zScore) <= spaCutoff)
+        return 2.0 * math::pnorm(-std::abs(zScore));
+
+    // ── Saddlepoint tail: variance-ratio rescale + outlier / non-outlier split.
+    // sqrtRatio = √(indepVar / grmVar) = √(wSq / grmQuad) (the 2q(1−q) cancels);
+    // == 1 in the base case, so this reduces to the plain independence SPA.
+    const double sqrtRatio = (grmQuad > 0.0) ? std::sqrt(wSq / grmQuad) : 1.0;
+    const double absDev = std::abs(rawScore - sMean) * sqrtRatio;
+    const int nOut = static_cast<int>(part.posOutlier.size());
+    const double meanNon = 2.0 * q * part.residNonOutlier.sum();
+    const double varNon = f * part.resid2NonOutlier.sum();
+    std::vector<double> mafOut(static_cast<size_t>(nOut), q);
+    // Reflect about the fitted mean: upper = sMean + |Δ|, lower = sMean − |Δ|.
+    const double pUpper = spa::getProbSpaG(mafOut.data(), part.residOutlier.data(),
+                                           nOut, sMean + absDev, false, meanNon, varNon);
+    const double pLower = spa::getProbSpaG(mafOut.data(), part.residOutlier.data(),
+                                           nOut, sMean - absDev, true, meanNon, varNon);
+    return pUpper + pLower;
+}
+
+// Two-sided SPA p-value for the genotype score  S = Σ G_i w_i  under the
+// per-individual binomial law  G_i ~ Bin(2, q̂_i) (SPAGxEmix).  This is the
+// SPAmix / SPAmixPlus kernel (src/spamix/spamixplus.cpp::markerPvalFromAF, the
+// no-GRM path) restated for an arbitrary weight vector w:
+//   mean  = 2·Σ w_i q̂_i          var = Σ w_i²·2q̂_i(1−q̂_i)
+// and, in the tail, the reflection-about-mean two-sided saddlepoint over the
+// IQR outlier partition of w, with a Gaussian block for the non-outliers.
+// There is NO GRM and hence no variance-ratio rescaling (mix stays diagonal).
+//   part   — IQR partition of w  (residOutlier = w[outlier])
+//   w      — the full weight vector (length N)
+//   afVec  — per-individual q̂_i    wVec — 2 q̂_i(1−q̂_i)
+//   s      — the observed score Σ G_i w_i
+// Sets zScore (raw score z) and outVar = Var(S); returns NaN on non-positive
+// variance (GRAB2 convention: never 0).
+double spaScorePvalMix(
+    const OutlierData &part,
+    const Eigen::VectorXd &w,
+    const Eigen::VectorXd &afVec,
+    const Eigen::VectorXd &wVec,
+    double s,
+    double spaCutoff,
+    double &zScore,
+    double &outVar
+) {
+    const double sMean = 2.0 * w.dot(afVec);
+    const double scoreVar = (w.array().square() * wVec.array()).sum();
+    if (!(scoreVar > 0.0)) {
+        zScore = 0.0;
+        outVar = 0.0;
+        return kNaN;
+    }
+    zScore = (s - sMean) / std::sqrt(scoreVar);
+    outVar = scoreVar;
+    if (std::abs(zScore) <= spaCutoff)
+        return 2.0 * math::pnorm(-std::abs(zScore));
+
+    const int nOut = static_cast<int>(part.posOutlier.size());
+    std::vector<double> mafOut(static_cast<size_t>(nOut));
+    for (int i = 0; i < nOut; ++i)
+        mafOut[static_cast<size_t>(i)] = afVec[part.posOutlier[i]];
+
+    // Gaussian non-outlier block with per-individual q̂_i.
+    double meanNon = 0.0, varNon = 0.0;
+    const int nNon = static_cast<int>(part.posNonOutlier.size());
+    for (int i = 0; i < nNon; ++i) {
+        const double af = afVec[part.posNonOutlier[i]];
+        meanNon += part.residNonOutlier[i] * af;
+        varNon += part.resid2NonOutlier[i] * af * (1.0 - af);
+    }
+    meanNon *= 2.0;
+    varNon *= 2.0;
+
+    // Reflect about the fitted mean: upper = sMean + |Δ|, lower = sMean − |Δ|.
+    const double absDev = std::abs(s - sMean);
+    const double pUpper = spa::getProbSpaG(mafOut.data(), part.residOutlier.data(),
+                                           nOut, sMean + absDev, false, meanNon, varNon);
+    const double pLower = spa::getProbSpaG(mafOut.data(), part.residOutlier.data(),
+                                           nOut, sMean - absDev, true, meanNon, varNon);
+    return pUpper + pLower;
+}
+
+// Resolve the trait family of one phenotype, matching nullmodel::fitAll's own
+// dispatch: a Cox spec (TIME:EVENT) → Cox; otherwise the explicit
+// --regression-model, or per-column inference in Auto mode.  Drives the
+// Branch-B Wald refit; `None` disables it.
+spagxe_wald::TraitType resolveTraitType(
+    const SubjectData &sd,
+    const nullmodel::PhenoSpec &spec,
+    nullmodel::RegressionModel regModel
+) {
+    using TT = spagxe_wald::TraitType;
+    using RM = nullmodel::RegressionModel;
+    if (nullmodel::isCoxSpec(spec)) return TT::Cox;
+    RM m = regModel;
+    if (m == RM::Auto)
+        m = nullmodel::inferModelFromColumn(sd.getColumn(spec.yColumn), spec.yColumn,
+                                            sd.usedIIDs())
+                .model;
+    switch (m) {
+    case RM::Linear:   return TT::Linear;
+    case RM::Logistic: return TT::Logistic;
+    case RM::Cox:      return TT::Cox;
+    case RM::Ordinal:  return TT::Ordinal;
+    default:           return TT::None;
+    }
+}
+
+// Recode a raw phenotype column into the form the Wald fitter expects.  The two-
+// sided interaction Wald p is invariant to the recode direction, so only the
+// family matters: Logistic → {0,1} (below the midpoint → 0), Ordinal → {0..J−1}
+// (shift by the minimum), Linear/Cox → unchanged (OLS is affine-invariant; the
+// Cox response is time/event, handled separately).  NaN entries are preserved
+// (the fitter drops those rows).
+Eigen::VectorXd recodeResponse(const Eigen::VectorXd &col, spagxe_wald::TraitType t) {
+    using TT = spagxe_wald::TraitType;
+    if (t == TT::Logistic) {
+        double lo = std::numeric_limits<double>::infinity();
+        double hi = -std::numeric_limits<double>::infinity();
+        for (Eigen::Index i = 0; i < col.size(); ++i)
+            if (std::isfinite(col[i])) { lo = std::min(lo, col[i]); hi = std::max(hi, col[i]); }
+        const double mid = 0.5 * (lo + hi);
+        Eigen::VectorXd out(col.size());
+        for (Eigen::Index i = 0; i < col.size(); ++i)
+            out[i] = std::isnan(col[i]) ? col[i] : (col[i] > mid ? 1.0 : 0.0);
+        return out;
+    }
+    if (t == TT::Ordinal) {
+        double lo = std::numeric_limits<double>::infinity();
+        for (Eigen::Index i = 0; i < col.size(); ++i)
+            if (std::isfinite(col[i])) lo = std::min(lo, col[i]);
+        Eigen::VectorXd out(col.size());
+        for (Eigen::Index i = 0; i < col.size(); ++i)
+            out[i] = std::isnan(col[i]) ? col[i] : std::round(col[i] - lo);
+        return out;
+    }
+    return col; // Linear (affine-invariant); Cox uses time/event, not y
+}
+
+} // namespace
+
+// ══════════════════════════════════════════════════════════════════════
+// SPAGxEMethod
+// ══════════════════════════════════════════════════════════════════════
+
+double SPAGxEMethod::phiQuad(const Eigen::VectorXd &x) const {
+    if (m_grm)
+        return m_grm->spaVariance(x.data(), static_cast<uint32_t>(x.size()));
+    return x.squaredNorm();
+}
+
+SPAGxEMethod::SPAGxEMethod(
+    Eigen::VectorXd resid,
+    std::vector<std::string> envNames,
+    std::vector<Eigen::VectorXd> envVecs,
+    std::shared_ptr<const SparseGRM> grm,
+    std::shared_ptr<const spagxe_wald::WaldData> wald,
+    double marginalCutoff,
+    double spaCutoff,
+    double outlierRatio,
+    std::shared_ptr<const AFData> afData
+)
+    : m_resid(std::move(resid)),
+      m_envNames(std::move(envNames)),
+      m_grm(std::move(grm)),
+      m_wald(std::move(wald)),
+      m_afData(std::move(afData)),
+      m_marginalCutoff(marginalCutoff),
+      m_spaCutoff(spaCutoff),
+      m_outlierRatio(outlierRatio)
+{
+    const Eigen::Index N = m_resid.size();
+    m_resid2 = m_resid.array().square();
+    m_residSum = m_resid.sum();
+    m_R_phiQuad = phiQuad(m_resid); // RᵀΦR (= ΣR² in the base case)
+    const int nEnv = static_cast<int>(m_envNames.size());
+    const bool mix = static_cast<bool>(m_afData);
+
+    if (mix) {
+        m_afVec.resize(N);
+        m_wVec.resize(N);
+        m_wScratch.resize(N);
+    }
+
+    // m_W is the GEMM/GEMV operand: one product against a genotype batch yields
+    // the marginal score (col 0) and every per-env score column at once.
+    //   base:  m_W = [ R | w_1 | … | w_nEnv ],  w_e = (E_e − λ_e)∘R  (λ_e fixed)
+    //   mix:   m_W = [ R | E_1∘R | … ],         λ_e is per-marker so only the
+    //          naive weight E_e∘R is precomputable (S_GxE formed per marker).
+    m_W.resize(N, 1 + nEnv);
+    m_W.col(0) = m_resid;
+
+    m_envs.reserve(nEnv);
+    for (int e = 0; e < nEnv; ++e) {
+        EnvData ed;
+        ed.name = m_envNames[e];
+        ed.E = std::move(envVecs[e]);
+
+        if (mix) {
+            // Per-individual AF: λ is variance-weighted and per-marker, so the
+            // Branch-A weight cannot be precomputed.  Only the marker-independent
+            // naive weight E∘R feeds the GEMV (rawScores[1+e] = Σ G_i E_i R_i).
+            ed.lambda = 0.0;
+            ed.wSum = ed.wSq = ed.wPhiQuad = 0.0;
+            m_W.col(1 + e) = (ed.E.array() * m_resid.array()).matrix();
+            m_envs.push_back(std::move(ed));
+            continue;
+        }
+
+        // λ = RᵀΦR_E / RᵀΦR, R_E = R∘E.  RᵀΦR_E is the bilinear Φ-form obtained
+        // by polarization (== Σ E R² in the base case; kept as the direct sum
+        // there so the base numbers match the pure-Σ path exactly).
+        double R_GRM_RE;
+        if (m_grm) {
+            const Eigen::VectorXd RE = (m_resid.array() * ed.E.array()).matrix();
+            const Eigen::VectorXd RpRE = m_resid + RE;
+            R_GRM_RE = 0.5 * (phiQuad(RpRE) - m_R_phiQuad - phiQuad(RE));
+        } else {
+            R_GRM_RE = (m_resid.array().square() * ed.E.array()).sum();
+        }
+        ed.lambda = (m_R_phiQuad > 0.0) ? R_GRM_RE / m_R_phiQuad : 0.0;
+        ed.w = (ed.E.array() - ed.lambda) * m_resid.array();
+        ed.wSum = ed.w.sum();
+        ed.wSq = ed.w.squaredNorm();
+        ed.wPhiQuad = phiQuad(ed.w); // wᵀΦw (= Σw² in the base case)
+        ed.wOutlier = detectOutliers(ed.w, m_outlierRatio);
+        m_W.col(1 + e) = ed.w;
+        m_envs.push_back(std::move(ed));
+    }
+}
+
+std::unique_ptr<MethodBase> SPAGxEMethod::clone() const {
+    return std::make_unique<SPAGxEMethod>(*this);
+}
+
+std::string SPAGxEMethod::getHeaderColumns() const {
+    // Leading marginal block P_G Z_G BETA_G SE_G (normal-approx, so its Z is
+    // already p-consistent and needs no Z_Norm), then a 6-wide G×E block per
+    // environment: the final p P_Gx (CCT in Branch B, SPA otherwise); the
+    // Branch-B Wald p P_Wald_Gx (NaN when no Wald ran); the p-consistent Z and
+    // the raw-score Z_Norm (which differ in the tails); and BETA/SE.
+    std::string h = "\tP_G\tZ_G\tBETA_G\tSE_G";
+    for (const auto &n : m_envNames)
+        h += "\tP_Gx" + n + "\tP_Wald_Gx" + n + "\tZ_Gx" + n + "\tZ_Norm_Gx" + n +
+             "\tBETA_Gx" + n + "\tSE_Gx" + n;
+    return h;
+}
+
+void SPAGxEMethod::evalMarker(
+    const Eigen::Ref<const Eigen::VectorXd> &GVec,
+    double altFreq,
+    const Eigen::VectorXd &rawScores,
+    std::vector<double> &out
+) {
+    const int nEnv = static_cast<int>(m_envNames.size());
+    out.assign(static_cast<size_t>(4 + 6 * nEnv), kNaN);
+
+    const double q = altFreq;
+
+    // ── Marginal genetic block (always the normal approximation) ────────
+    // S_G = Σ G_i R_i (uncentered, matching the reference S1; E[S_G]=2q·ΣR≈0),
+    // variance 2q(1−q)·RᵀΦR.
+    const double varSG = m_R_phiQuad * 2.0 * q * (1.0 - q);
+    double pMarg = 1.0; // degenerate variance ⇒ take Branch A (no projection)
+    if (varSG > 0.0) {
+        const double sG = rawScores[0];
+        const double sdG = std::sqrt(varSG);
+        const double zG = sG / sdG;
+        pMarg = 2.0 * math::pnorm(-std::abs(zG));
+        out[0] = pMarg;       // P_G
+        out[1] = zG;          // Z_G (normal ⇒ p-consistent)
+        out[2] = sG / varSG;  // BETA_G
+        out[3] = 1.0 / sdG;   // SE_G
+    }
+
+    const bool branchB = (pMarg <= m_marginalCutoff);
+
+    // Branch B: genotype-adjusted residual R̃ = R − α − β·G, projecting the
+    // marginal genetic effect out.  [α, β]ᵀ = ([1,G]ᵀ[1,G])⁻¹ [1,G]ᵀ R.
+    // R̃ is env-independent, so it is formed once per marker.  (Unweighted even
+    // for +; the GRM re-enters only through the variance — paper eq. 3.)
+    Eigen::VectorXd R0;
+    if (branchB) {
+        const double n = static_cast<double>(m_resid.size());
+        const double sg = GVec.sum();
+        const double sgg = GVec.squaredNorm();
+        const double det = n * sgg - sg * sg;
+        if (det > 0.0) {
+            const double sr = m_residSum;
+            const double sgr = rawScores[0];
+            const double alpha = (sgg * sr - sg * sgr) / det;
+            const double beta = (n * sgr - sg * sr) / det;
+            R0 = m_resid.array() - alpha - beta * GVec.array();
+        }
+        // det ≤ 0 (monomorphic G): leave R0 empty ⇒ per-env NaN below.
+    }
+
+    // Branch B fires the prospective Wald leg only on the base (non-GRM) path
+    // (SPAGxE+ keeps no Wald — paper) and only when raw phenotype data is
+    // present (fit mode; residual mode leaves m_wald null → SPA-only).
+    const bool waldEnabled = branchB && m_wald && !m_grm &&
+                             m_wald->trait != spagxe_wald::TraitType::None;
+
+    for (int e = 0; e < nEnv; ++e) {
+        const int base = 4 + 6 * e;
+        double z = 0.0, var = 0.0, pSpa, score;
+        double pWald = kNaN;
+        if (!branchB) {
+            // Branch A: precomputed λ-orthogonalised weight and its Φ-form.
+            const EnvData &ed = m_envs[e];
+            score = rawScores[1 + e]; // Σ G_i w_{e,i}
+            pSpa = spaScorePval(ed.wOutlier, ed.wSum, ed.wSq, ed.wPhiQuad, score, q,
+                                m_spaCutoff, z, var);
+        } else {
+            if (R0.size() == 0) continue; // degenerate G ⇒ leave NaN
+            // Branch B per-marker weight u = E ∘ R̃; Ŝ_GxE = Σ G_i u_i.
+            const Eigen::VectorXd u = m_envs[e].E.array() * R0.array();
+            score = GVec.dot(u);
+            const OutlierData ub = detectOutliers(u, m_outlierRatio);
+            pSpa = spaScorePval(ub, u.sum(), u.squaredNorm(), phiQuad(u), score, q,
+                                m_spaCutoff, z, var);
+            // Prospective Wald p of the G:E coefficient in trait ~ X+E+g+g:E,
+            // over the same environment used for the score weight.
+            if (waldEnabled)
+                pWald = spagxe_wald::waldInteractionPval(*m_wald, GVec, m_envs[e].E);
+        }
+        if (var > 0.0) {
+            // Branch B, base path: P = CCT(p_spa, p_wald).  cauchyCombine skips
+            // a NaN Wald p, so a failed refit degrades to the SPA p (never 0).
+            double finalP = pSpa;
+            if (waldEnabled) {
+                const double ps[2] = {pSpa, pWald};
+                finalP = math::cauchyCombine(ps, 2);
+            }
+            out[base + 0] = finalP;                      // P_Gx<E> (final)
+            out[base + 1] = pWald;                       // P_Wald_Gx<E> (NaN if none)
+            out[base + 2] = math::zFromPval(finalP, z);  // Z_Gx<E> (p-consistent)
+            out[base + 3] = z;                           // Z_Norm_Gx<E> (raw score z)
+            out[base + 4] = score / var;                 // BETA_Gx<E>
+            out[base + 5] = 1.0 / std::sqrt(var);        // SE_Gx<E>
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// evalMarkerMix — SPAGxEmix per-individual-AF marker evaluation
+// ══════════════════════════════════════════════════════════════════════
+//
+// Mirrors evalMarker but with the per-individual genotype law G_i ~ Bin(2, q̂_i)
+// (Ma et al. 2025, SPAGxEmix_CCT_one_SNP).  q̂_i is estimated per marker via the
+// SPAmix AF cascade (computeAFVec); the marginal screen is re-centred by
+// 2·Σ R_i q̂_i, λ is variance-weighted and recomputed per marker, and every SPA
+// uses the per-individual afVec (spaScorePvalMix).  Branch B reuses the exact
+// same genotype-adjusted-residual projection and the Phase-3 Wald + CCT leg.
+void SPAGxEMethod::evalMarkerMix(
+    const Eigen::Ref<const Eigen::VectorXd> &GVec,
+    double altFreq,
+    const Eigen::VectorXd &rawScores,
+    std::vector<double> &out
+) {
+    const int nEnv = static_cast<int>(m_envNames.size());
+    out.assign(static_cast<size_t>(4 + 6 * nEnv), kNaN);
+
+    const double q = altFreq;
+
+    // ── Per-individual ALT frequency q̂_i (SPAmix cascade) ──────────────
+    // [1|PCs] design + OLS matrices from m_afData; identical to SPAmix.
+    AFContext ctx{
+        m_afData->onePlusPCs,
+        m_afData->XtX_inv_Xt,
+        m_afData->sqrt_XtX_inv_diag,
+        m_afData->onePlusPCs.rightCols(m_afData->nPC),
+        static_cast<int>(m_resid.size()),
+        m_afData->nPC
+    };
+    computeAFVec(GVec, q, ctx, m_afVec);                       // q̂_i  → m_afVec
+    m_wVec = 2.0 * m_afVec.array() * (1.0 - m_afVec.array());  // 2q̂(1−q̂) → m_wVec
+
+    // ── Marginal genetic block (always the normal approximation) ────────
+    // S_G = Σ G_i R_i, re-centred: E[S_G] = 2·Σ R_i q̂_i, Var = Σ R_i²·2q̂(1−q̂).
+    const double sG = rawScores[0];
+    const double meanSG = 2.0 * m_resid.dot(m_afVec);
+    const double varSG = m_resid2.dot(m_wVec);
+    double pMarg = 1.0; // degenerate variance ⇒ take Branch A (no projection)
+    if (varSG > 0.0) {
+        const double sdG = std::sqrt(varSG);
+        const double zG = (sG - meanSG) / sdG;
+        pMarg = 2.0 * math::pnorm(-std::abs(zG));
+        out[0] = pMarg;                 // P_G
+        out[1] = zG;                    // Z_G (normal ⇒ p-consistent)
+        out[2] = (sG - meanSG) / varSG; // BETA_G
+        out[3] = 1.0 / sdG;             // SE_G
+    }
+
+    const bool branchB = (pMarg <= m_marginalCutoff);
+
+    // Branch B: genotype-adjusted residual R̃ = R − α − β·G (env-independent).
+    Eigen::VectorXd R0;
+    if (branchB) {
+        const double n = static_cast<double>(m_resid.size());
+        const double sg = GVec.sum();
+        const double sgg = GVec.squaredNorm();
+        const double det = n * sgg - sg * sg;
+        if (det > 0.0) {
+            const double sr = m_residSum;
+            const double sgr = sG;
+            const double alpha = (sgg * sr - sg * sgr) / det;
+            const double beta = (n * sgr - sg * sr) / det;
+            R0 = m_resid.array() - alpha - beta * GVec.array();
+        }
+    }
+
+    // Mix has no GRM (m_grm is null); the Wald leg fires on the same fit-mode
+    // base condition as evalMarker.
+    const bool waldEnabled = branchB && m_wald && !m_grm &&
+                             m_wald->trait != spagxe_wald::TraitType::None;
+
+    for (int e = 0; e < nEnv; ++e) {
+        const int base = 4 + 6 * e;
+        const EnvData &ed = m_envs[e];
+        double z = 0.0, var = 0.0, pSpa, score;
+        double pWald = kNaN;
+        if (!branchB) {
+            // Branch A: variance-weighted λ (per marker) on the per-individual q̂.
+            //   λ = Σ 2q̂(1−q̂) E R² / Σ 2q̂(1−q̂) R²
+            const double denom = (m_wVec.array() * m_resid2.array()).sum();
+            const double numer = (m_wVec.array() * ed.E.array() * m_resid2.array()).sum();
+            const double lambda = (denom > 0.0) ? numer / denom : 0.0;
+            // S_GxE = S2 − λ·S_G  (S2 = Σ G_i E_i R_i from the GEMV col 1+e).
+            score = rawScores[1 + e] - lambda * sG;
+            m_wScratch = (ed.E.array() - lambda) * m_resid.array(); // weight (E−λ)∘R
+            const OutlierData part = detectOutliers(m_wScratch, m_outlierRatio);
+            pSpa = spaScorePvalMix(part, m_wScratch, m_afVec, m_wVec, score,
+                                   m_spaCutoff, z, var);
+        } else {
+            if (R0.size() == 0) continue; // degenerate G ⇒ leave NaN
+            // Branch B per-marker weight u = E ∘ R̃; Ŝ_GxE = Σ G_i u_i.
+            const Eigen::VectorXd u = ed.E.array() * R0.array();
+            score = GVec.dot(u);
+            const OutlierData part = detectOutliers(u, m_outlierRatio);
+            pSpa = spaScorePvalMix(part, u, m_afVec, m_wVec, score, m_spaCutoff, z, var);
+            if (waldEnabled)
+                pWald = spagxe_wald::waldInteractionPval(*m_wald, GVec, ed.E);
+        }
+        if (var > 0.0) {
+            double finalP = pSpa;
+            if (waldEnabled) {
+                const double ps[2] = {pSpa, pWald};
+                finalP = math::cauchyCombine(ps, 2);
+            }
+            out[base + 0] = finalP;                      // P_Gx<E> (final)
+            out[base + 1] = pWald;                       // P_Wald_Gx<E> (NaN if none)
+            out[base + 2] = math::zFromPval(finalP, z);  // Z_Gx<E> (p-consistent)
+            out[base + 3] = z;                           // Z_Norm_Gx<E> (raw score z)
+            out[base + 4] = score / var;                 // BETA_Gx<E>
+            out[base + 5] = 1.0 / std::sqrt(var);        // SE_Gx<E>
+        }
+    }
+}
+
+void SPAGxEMethod::getResultVec(
+    Eigen::Ref<Eigen::VectorXd> GVec,
+    double altFreq,
+    int /*markerInChunkIdx*/,
+    std::vector<double> &result
+) {
+    const Eigen::VectorXd rawScores = m_W.transpose() * GVec;
+    if (m_afData)
+        evalMarkerMix(GVec, altFreq, rawScores, result);
+    else
+        evalMarker(GVec, altFreq, rawScores, result);
+}
+
+void SPAGxEMethod::getResultBatch(
+    const Eigen::Ref<const Eigen::MatrixXd> &GBatch,
+    const std::vector<double> &altFreqs,
+    const std::vector<int> & /*chunkIdxs*/,
+    std::vector<std::vector<double> > &results
+) {
+    const int B = static_cast<int>(GBatch.cols());
+    results.resize(B);
+    // One GEMM supplies the marginal (col 0) and every per-env score column.
+    //   base:  scores(b, 1+e) = Σ G_b·w_e         (Branch-A λ-orthogonalised)
+    //   mix:   scores(b, 1+e) = Σ G_b·(E_e∘R)     (naive S2; λ applied per marker)
+    const Eigen::MatrixXd scores = GBatch.transpose() * m_W; // B × (1+nEnv)
+    const bool mix = static_cast<bool>(m_afData);
+    for (int b = 0; b < B; ++b) {
+        const Eigen::VectorXd rs = scores.row(b).transpose();
+        if (mix)
+            evalMarkerMix(GBatch.col(b), altFreqs[b], rs, results[b]);
+        else
+            evalMarker(GBatch.col(b), altFreqs[b], rs, results[b]);
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// runSPAGxEImpl — full workflow (mirrors runSPAGRM); serves both
+//   --method spagxe    (base / SPAGxE+; pcColNames empty)
+//   --method spagxemix (per-individual AF; pcColNames = the --pc-cols columns)
+// ══════════════════════════════════════════════════════════════════════
+
+namespace {
+
+void runSPAGxEImpl(
+    const std::string &phenoFile,
+    const std::vector<std::string> &residNames,
+    const std::vector<std::string> &envNames,
+    const std::vector<std::string> &pcColNames, // empty → base/+, non-empty → mix
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const GenoSpec &geno,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double marginalCutoff,
+    double spaCutoff,
+    double outlierIqrRatio,
+    int nthreads,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile,
+    const std::string &removeFile,
+    const std::string &regressionModelStr,
+    const std::string &phenoNameSpec,
+    const std::string &covarFile,
+    const std::vector<std::string> &covarNames,
+    bool saveResid
+) {
+    const bool mix = !pcColNames.empty();
+    const bool hasGrm = !spgrmGrabFile.empty() || !spgrmGctaFile.empty();
+    // Display label (messages) and output-file suffix.  Base and SPAGxE+ share
+    // the "SPAGxE" file suffix; the "+" is display only.  Mix writes ".SPAGxEmix".
+    const std::string dispLabel = mix ? "SPAGxEmix" : (hasGrm ? "SPAGxE+" : "SPAGxE");
+    const char *fileSuffix = mix ? "SPAGxEmix" : "SPAGxE";
+    const int nPC = static_cast<int>(pcColNames.size());
+
+    const bool fitPath = !phenoNameSpec.empty();
+    nullmodel::RegressionModel regModel{};
+    std::vector<nullmodel::PhenoSpec> phenoSpecs;
+    if (fitPath) {
+        regModel = nullmodel::parseRegressionModel(regressionModelStr);
+        phenoSpecs = nullmodel::parsePhenoSpecList(regModel, phenoNameSpec);
+        infoMsg("%s: fitting %s null model for %zu phenotype(s)",
+                dispLabel.c_str(), nullmodel::regressionModelName(regModel),
+                phenoSpecs.size());
+    }
+
+    infoMsg("Loading pheno file: %s", phenoFile.c_str());
+    auto famIIDs = parseGenoIIDs(geno);
+    SubjectData sd(std::move(famIIDs));
+    if (fitPath) {
+        sd.loadPhenoFile(phenoFile, nullmodel::columnsNeeded(phenoSpecs));
+    } else {
+        sd.loadResidOne(phenoFile, residNames);
+        if (!phenoFile.empty()) sd.loadPhenoFile(phenoFile);
+    }
+    if (!covarFile.empty()) sd.loadCovar(covarFile, covarNames);
+    sd.setKeepRemove(keepFile, removeFile);
+    // (+) variant: restrict to subjects present in the sparse GRM (the GRM
+    // supplies the retrospective genotype covariance among relatives).
+    if (hasGrm)
+        sd.setGrmSubjects(
+            SparseGRM::parseSubjectIDs(spgrmGrabFile, spgrmGctaFile, sd.famIIDs()));
+    sd.setGenoLabel(geno.flagLabel());
+    sd.finalize();
+
+    // Environment columns must enter the null model in fit mode (so R ⟂ E),
+    // exactly as SAGELD requires --sageld-x ⊆ --covar-name.
+    if (fitPath) {
+        for (const auto &en : envNames)
+            if (std::find(covarNames.begin(), covarNames.end(), en) == covarNames.end())
+                throw std::runtime_error(
+                    dispLabel + ": environment '" + en +
+                    "' must also appear in --covar-name (it enters the "
+                    "genotype-independent null model).");
+        // SPAGxEmix: the PC columns feeding the per-individual AF model must
+        // also adjust the null model (matching SPAGxEmix_CCT's topPCs ⊆ Cova).
+        if (mix)
+            for (const auto &pc : pcColNames)
+                if (std::find(covarNames.begin(), covarNames.end(), pc) == covarNames.end())
+                    throw std::runtime_error(
+                        dispLabel + ": PC column '" + pc +
+                        "' must also appear in --covar-name (the per-individual "
+                        "allele-frequency PCs adjust the null model).");
+    }
+    // Drop subjects with a missing environment value (a no-op in fit mode,
+    // where E is a covariate; necessary in residual mode, where E is only
+    // used to form λ and is not otherwise NA-filtered).
+    sd.dropNaInColumns(envNames);
+    if (mix) sd.dropNaInColumns(pcColNames); // AF design must be complete
+    const uint32_t N = sd.nUsed();
+    infoMsg("  %u subjects in union mask", N);
+
+    // Covariate union (PCs + env main effects).  In fit mode it is both the
+    // null-model design and — reused per marker — the Branch-B Wald design; the
+    // per-phenotype trait family (below) selects the Wald fitter.
+    Eigen::MatrixXd covarUnion;
+    std::vector<spagxe_wald::TraitType> traitTypes;
+    if (fitPath) {
+        if (!covarNames.empty()) covarUnion = sd.getColumns(covarNames);
+        else covarUnion.resize(N, 0);
+        traitTypes.reserve(phenoSpecs.size());
+        for (const auto &spec : phenoSpecs)
+            traitTypes.push_back(resolveTraitType(sd, spec, regModel));
+    }
+
+    // SPAGxEmix: union-level [1 | PCs] design for the per-individual AF cascade.
+    Eigen::MatrixXd unionOnePlusPCs;
+    if (mix) {
+        unionOnePlusPCs.resize(N, 1 + nPC);
+        unionOnePlusPCs.col(0).setOnes();
+        unionOnePlusPCs.rightCols(nPC) = sd.getColumns(pcColNames);
+        infoMsg("SPAGxEmix: per-individual AF from %d PC(s)", nPC);
+    }
+
+    if (fitPath) {
+        nullmodel::EngineOptions eo;
+        eo.nthreads = nthreads;
+        auto fits = nullmodel::fitAll(sd, phenoSpecs, regModel, covarUnion, eo);
+        std::vector<Eigen::VectorXd> rs;
+        std::vector<std::string> ns;
+        rs.reserve(fits.size());
+        ns.reserve(fits.size());
+        for (auto &f : fits) {
+            infoMsg("  Fitted '%s': %d subjects after NaN removal", f.name.c_str(),
+                    f.nUsedRows);
+            rs.push_back(std::move(f.residuals));
+            ns.push_back(f.name);
+        }
+        if (saveResid) {
+            std::vector<nullmodel::NullModelFit> dumpFits(rs.size());
+            for (size_t i = 0; i < rs.size(); ++i) {
+                dumpFits[i].name = ns[i];
+                dumpFits[i].residuals = rs[i];
+                dumpFits[i].nUsedRows = static_cast<int>(rs[i].size());
+            }
+            nullmodel::writeResidualsFile(outPrefix + ".null.resid", sd, dumpFits,
+                                          compression, compressionLevel);
+        }
+        sd.setResidualsFromFit(std::move(rs), std::move(ns));
+    }
+
+    // Environment vectors in union-dense order (aligned to the residuals).
+    std::vector<Eigen::VectorXd> envUnion;
+    envUnion.reserve(envNames.size());
+    for (const auto &en : envNames)
+        envUnion.push_back(sd.getColumn(en));
+
+    // (+) variant: load the union-level sparse GRM once; re-index per phenotype.
+    std::shared_ptr<const SparseGRM> unionGrm;
+    if (hasGrm) {
+        auto subjIDs = sd.usedIIDs();
+        unionGrm = std::make_shared<const SparseGRM>(
+            SparseGRM::load(spgrmGrabFile, spgrmGctaFile, subjIDs, sd.famIIDs()));
+        infoMsg("Sparse GRM: %zu entries (SPAGxE+ variance correction)",
+                unionGrm->nnz());
+    }
+
+    auto genoData =
+        makeGenoData(geno, sd.usedMask(), sd.nFam(), sd.nUsed(), nSnpPerChunk);
+    infoMsg("Genotype data: %u markers, %u subjects", genoData->nMarkers(),
+            genoData->nSubjUsed());
+
+    auto phenoInfos = sd.buildPerColumnMasks();
+    const int K = sd.residOneCols();
+    if (K > 1) infoMsg("Multi-column residual file: %d phenotypes", K);
+
+    std::vector<PhenoTask> tasks(K);
+    for (int rc = 0; rc < K; ++rc) {
+        const auto &pi = phenoInfos[rc];
+        Eigen::VectorXd phenoResid =
+            (K > 1) ? extractPhenoVec(sd.residMatrix().col(rc), pi) : sd.residuals();
+        std::vector<Eigen::VectorXd> envVecs;
+        envVecs.reserve(envUnion.size());
+        for (const auto &eu : envUnion)
+            envVecs.push_back((K > 1) ? extractPhenoVec(eu, pi) : eu);
+
+        // Per-phenotype GRM: for a single phenotype the union GRM is used
+        // directly; for K > 1 the union entries are re-indexed to the
+        // phenotype's dense subject order (as runSPAGRM does).
+        std::shared_ptr<const SparseGRM> phenoGrm;
+        if (hasGrm) {
+            if (K == 1) {
+                phenoGrm = unionGrm;
+            } else {
+                const auto &u2l = pi.unionToLocal;
+                std::vector<SparseGRM::Entry> pEntries;
+                for (const auto &en : unionGrm->entries()) {
+                    const uint32_t li = u2l[en.row], lj = u2l[en.col];
+                    if (li != UINT32_MAX && lj != UINT32_MAX)
+                        pEntries.push_back({li, lj, en.value});
+                }
+                phenoGrm = std::make_shared<const SparseGRM>(
+                    SparseGRM::fromEntries(pi.nUsed, std::move(pEntries)));
+            }
+        }
+
+        // Per-phenotype Branch-B Wald data: only in fit mode on the base (non-
+        // GRM) path — SPAGxE+ keeps no Wald, residual mode has no raw phenotype.
+        // Extract the raw phenotype / covariate design into the same dense
+        // subject order as phenoResid (identical (K>1)?extract:union pattern),
+        // so the Wald design aligns with the engine's per-phenotype genotype.
+        std::shared_ptr<const spagxe_wald::WaldData> phenoWald;
+        if (fitPath && !hasGrm) {
+            const spagxe_wald::TraitType tt = traitTypes[rc];
+            if (tt != spagxe_wald::TraitType::None) {
+                auto wd = std::make_shared<spagxe_wald::WaldData>();
+                wd->trait = tt;
+                wd->covar = (K > 1) ? extractPhenoMat(covarUnion, pi) : covarUnion;
+                const auto &spec = phenoSpecs[rc];
+                if (tt == spagxe_wald::TraitType::Cox) {
+                    Eigen::VectorXd tU = sd.getColumn(spec.timeColumn);
+                    Eigen::VectorXd eU = sd.getColumn(spec.eventColumn);
+                    wd->time = (K > 1) ? extractPhenoVec(tU, pi) : tU;
+                    wd->event = (K > 1) ? extractPhenoVec(eU, pi) : eU;
+                } else {
+                    Eigen::VectorXd yU = recodeResponse(sd.getColumn(spec.yColumn), tt);
+                    wd->y = (K > 1) ? extractPhenoVec(yU, pi) : yU;
+                }
+                phenoWald = std::move(wd);
+            }
+        }
+
+        // SPAGxEmix: per-phenotype [1|PCs] design + OLS matrices for computeAFVec.
+        // Extracted into the phenotype's dense subject order (as covarUnion is),
+        // so the AF cascade aligns with the residual / environment / genotype.
+        std::shared_ptr<const AFData> phenoAF;
+        if (mix) {
+            auto af = std::make_shared<AFData>();
+            af->nPC = nPC;
+            af->onePlusPCs =
+                (K > 1) ? extractPhenoMat(unionOnePlusPCs, pi) : unionOnePlusPCs;
+            const Eigen::MatrixXd &X = af->onePlusPCs;
+            const Eigen::MatrixXd XtX = X.transpose() * X;
+            const Eigen::MatrixXd XtX_inv =
+                XtX.ldlt().solve(Eigen::MatrixXd::Identity(1 + nPC, 1 + nPC));
+            af->XtX_inv_Xt = XtX_inv * X.transpose();
+            af->sqrt_XtX_inv_diag = XtX_inv.diagonal().cwiseSqrt();
+            phenoAF = std::move(af);
+        }
+
+        tasks[rc].phenoName = pi.name;
+        tasks[rc].method = std::make_unique<SPAGxEMethod>(
+            std::move(phenoResid), envNames, std::move(envVecs), phenoGrm,
+            std::move(phenoWald), marginalCutoff, spaCutoff, outlierIqrRatio,
+            std::move(phenoAF));
+        tasks[rc].unionToLocal = pi.unionToLocal;
+        tasks[rc].nUsed = pi.nUsed;
+        infoMsg("  Phenotype '%s': %u subjects", pi.name.c_str(), pi.nUsed);
+    }
+
+    infoMsg("Running %s marker tests (%d thread(s), %d phenotype(s))...",
+            dispLabel.c_str(), nthreads, K);
+    multiPhenoEngine(*genoData, tasks, outPrefix, fileSuffix, compression,
+                     compressionLevel, nthreads, missingCutoff, minMafCutoff,
+                     minMacCutoff, hweCutoff);
+}
+
+} // namespace
+
+// ══════════════════════════════════════════════════════════════════════
+// runSPAGxE / runSPAGxEmix — thin public entry points over runSPAGxEImpl
+// ══════════════════════════════════════════════════════════════════════
+
+void runSPAGxE(
+    const std::string &phenoFile,
+    const std::vector<std::string> &residNames,
+    const std::vector<std::string> &envNames,
+    const std::string &spgrmGrabFile,
+    const std::string &spgrmGctaFile,
+    const GenoSpec &geno,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double marginalCutoff,
+    double spaCutoff,
+    double outlierIqrRatio,
+    int nthreads,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile,
+    const std::string &removeFile,
+    const std::string &regressionModelStr,
+    const std::string &phenoNameSpec,
+    const std::string &covarFile,
+    const std::vector<std::string> &covarNames,
+    bool saveResid
+) {
+    runSPAGxEImpl(phenoFile, residNames, envNames, /*pcColNames=*/{}, spgrmGrabFile,
+                  spgrmGctaFile, geno, outPrefix, compression, compressionLevel,
+                  marginalCutoff, spaCutoff, outlierIqrRatio, nthreads, nSnpPerChunk,
+                  missingCutoff, minMafCutoff, minMacCutoff, hweCutoff, keepFile,
+                  removeFile, regressionModelStr, phenoNameSpec, covarFile, covarNames,
+                  saveResid);
+}
+
+void runSPAGxEmix(
+    const std::string &phenoFile,
+    const std::vector<std::string> &residNames,
+    const std::vector<std::string> &envNames,
+    const std::vector<std::string> &pcColNames,
+    const GenoSpec &geno,
+    const std::string &outPrefix,
+    const std::string &compression,
+    int compressionLevel,
+    double marginalCutoff,
+    double spaCutoff,
+    double outlierIqrRatio,
+    int nthreads,
+    int nSnpPerChunk,
+    double missingCutoff,
+    double minMafCutoff,
+    double minMacCutoff,
+    double hweCutoff,
+    const std::string &keepFile,
+    const std::string &removeFile,
+    const std::string &regressionModelStr,
+    const std::string &phenoNameSpec,
+    const std::string &covarFile,
+    const std::vector<std::string> &covarNames,
+    bool saveResid
+) {
+    // SPAGxEmix has no sparse-GRM path (SPAGxEmix+ is out of scope).
+    runSPAGxEImpl(phenoFile, residNames, envNames, pcColNames, /*spgrmGrabFile=*/{},
+                  /*spgrmGctaFile=*/{}, geno, outPrefix, compression, compressionLevel,
+                  marginalCutoff, spaCutoff, outlierIqrRatio, nthreads, nSnpPerChunk,
+                  missingCutoff, minMafCutoff, minMacCutoff, hweCutoff, keepFile,
+                  removeFile, regressionModelStr, phenoNameSpec, covarFile, covarNames,
+                  saveResid);
+}

@@ -291,12 +291,13 @@ Eigen::VectorXd coxResiduals(
                 continue;
             }
 
-            // Tie group: events sharing the same time.
-            Eigen::Index j = i;
-            while (j + 1 < n && ts[j + 1] == ts[i] && ds[j + 1] != 0.0)
-                ++j;
-            // Extend to include censored subjects at the same time.
-            Eigen::Index k = j;
+            // Tie group: all observations sharing this death time form [i..k];
+            // the risk set is the prefix 0..k.  The death loop must range over
+            // the WHOLE group and skip censored rows (via ds[m]==0), because a
+            // censored observation can sit BETWEEN two tied events in the stable
+            // sort — bounding the loop by the consecutive-event prefix would drop
+            // the later event from the Breslow score, Hessian, and death count.
+            Eigen::Index k = i;
             while (k + 1 < n && ts[k + 1] == ts[i])
                 ++k;
 
@@ -308,8 +309,8 @@ Eigen::VectorXd coxResiduals(
             Eigen::MatrixXd S2_k = S2_cum.selfadjointView<Eigen::Lower>();
 
             double wdSum = 0.0;
-            for (Eigen::Index m = i; m <= j; ++m) {
-                if (ds[m] == 0.0) continue;
+            for (Eigen::Index m = i; m <= k; ++m) {
+                if (ds[m] == 0.0) continue; // censored: in the risk set, not a death
                 wdSum += ws[m];
                 // Log-likelihood contribution: w_m * (η_m − log S0)
                 loglik += ws[m] * (eta[m] - logS0);

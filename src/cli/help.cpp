@@ -54,7 +54,7 @@ static void printShortHelp() {
         GRAB_VERSION);
     std::fputs(
         R"(Usage:
-  grab2 --method spacox|spagrm|spamix|sageld|spasqr|wtcoxg|leaf \
+  grab2 --method spacox|spagrm|sageld|spagxe|spamix|spasqr|wtcoxg|leaf \
         --bfile PREFIX --pheno FILE \
         --pheno-name COL_IDS \
         --covar-name COL_IDS \
@@ -63,7 +63,7 @@ static void printShortHelp() {
         --out PREFIX
 
 For more help, run 'grab2 --help TOPIC':
-  Methods:       spacox  spagrm  sageld  spamix  spasqr  wtcoxg  leaf
+  Methods:       spacox  spagrm  sageld  spagxe  spagxemix  spamix  spasqr  wtcoxg  leaf
   Utilities:     cal-af-coef  cal-pairwise-ibd  int-pheno
   Main inputs:   genotype  phenotype
   Other inputs:  sp-grm  pairwise-ibd  ind-af-coef  ref-af

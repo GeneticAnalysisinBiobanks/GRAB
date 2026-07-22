@@ -608,6 +608,31 @@ inline const FlagDef kSpasqrHScale = {
 };
 
 
+// ── SPAGxE ─────────────────────────────────────────────────────────
+
+inline const FlagDef kEnvirName = {
+    "--envir-name", "COL_IDS",
+    "Environment column name(s) for SPAGxE G×E (comma-separated, multi-env)",
+    R"(Selects the environment column(s) E for the gene–environment interaction
+test.  Multiple envs are comma-separated and each produces its own 5-wide
+output block (P_Gx<E> Z_Gx<E> Z_Norm_Gx<E> BETA_Gx<E> SE_Gx<E>).  Every env
+must also appear in --covar-name so that it enters the genotype-independent
+null model  trait ~ X + E  and the residual is orthogonal to it.  The null
+model is fit once and reused across all envs (only lambda differs per env).)"
+};
+
+inline const FlagDef kSpagxeMarginalCutoff = {
+    "--spagxe-marginal-cutoff", "FLOAT",
+    "SPAGxE Branch A/B routing threshold epsilon (default: 0.001)",
+    R"(The marginal-genetic-effect significance cutoff that routes each variant
+between Branch A and Branch B.  When the two-sided normal-approximation
+marginal p-value p_marg > epsilon the variant takes Branch A (lambda-
+orthogonalised G×E score, the common case); otherwise Branch B (the marginal
+effect is projected out of the residual).  Distinct from --spa-z-threshold,
+which is the |z| switch between the normal approximation and the saddlepoint
+inside a single p-value computation.)"
+};
+
 // ════════════════════════════════════════════════════════════════════
 //  Method definitions
 // ════════════════════════════════════════════════════════════════════
@@ -714,6 +739,71 @@ inline const MethodDef kSAGELD = {
                   variable in --sageld-x.
 
 Generate the IBD file once with: grab2 --cal-pairwise-ibd)",
+};
+
+// ── SPAGxE ─────────────────────────────────────────────────────────
+inline const FlagDef *const kSPAGxEReq[] = {
+    &kGeno_input, &kPheno, &kOut, &kEnvirName,
+    nullptr
+};
+inline const FlagDef *const kSPAGxEOpt[] = {
+    &kCovar,      &kCovarName,   &kResidName,   &kPhenoName,   &kRegressionModel, &kSaveResid,
+    &kSpagxeMarginalCutoff,
+    &kSpGrm,
+    &kSpaZThresh, &kOutlierIqr,  &kSeed,
+    &kThreads,    &kChunkSize,   &kCompression, &kCompressionLevel,
+    &kKeep,       &kRemove,      &kExtract,     &kExclude,
+    &kGeno,       &kMaf,         &kMac,         &kHwe, &kHardCallThreshold, &kChr,
+    nullptr
+};
+inline const MethodDef kSPAGxE = {
+    "SPAGxE",
+    "Retrospective saddlepoint gene-environment (G x E) interaction test",
+    kSPAGxEReq,
+    kSPAGxEOpt,
+    kPhenoNoteResidOrFit,
+    R"(PREFIX.<COL>.SPAGxE[.gz|.zst]   one file per --resid-name / --pheno-name column
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+  P_G  Z_G  BETA_G  SE_G
+  P_Gx<E1>  P_Wald_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>  BETA_Gx<E1>  SE_Gx<E1>  [... per env])",
+    R"(Every --envir-name column must also appear in --covar-name (it enters the
+genotype-independent null model  trait ~ X + E).  Passing an optional sparse
+GRM (--sp-grm-grab / --sp-grm-plink2) engages the SPAGxE+ relatedness-corrected
+score variance (a retrospective GRM quadratic form; no --pairwise-ibd needed);
+absent, the base unrelated test runs.)",
+};
+
+// ── SPAGxEmix ───────────────────────────────────────────────────────
+inline const FlagDef *const kSPAGxEmixReq[] = {
+    &kGeno_input, &kPheno, &kOut, &kEnvirName, &kPcCols,
+    nullptr
+};
+inline const FlagDef *const kSPAGxEmixOpt[] = {
+    &kCovar,      &kCovarName,   &kResidName,   &kPhenoName,   &kRegressionModel, &kSaveResid,
+    &kSpagxeMarginalCutoff,
+    &kSpaZThresh, &kOutlierIqr,  &kSeed,
+    &kThreads,    &kChunkSize,   &kCompression, &kCompressionLevel,
+    &kKeep,       &kRemove,      &kExtract,     &kExclude,
+    &kGeno,       &kMaf,         &kMac,         &kHwe, &kHardCallThreshold, &kChr,
+    nullptr
+};
+inline const MethodDef kSPAGxEmix = {
+    "SPAGxEmix",
+    "SPAGxE G x E test with per-individual allele frequency (admixture)",
+    kSPAGxEmixReq,
+    kSPAGxEmixOpt,
+    kPhenoNoteResidOrFit,
+    R"(PREFIX.<COL>.SPAGxEmix[.gz|.zst]   one file per --resid-name / --pheno-name column
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+  P_G  Z_G  BETA_G  SE_G
+  P_Gx<E1>  P_Wald_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>  BETA_Gx<E1>  SE_Gx<E1>  [... per env])",
+    R"(SPAGxEmix accounts for admixture by estimating a per-individual allele
+frequency q_i from the --pc-cols principal components (the same cascade as
+SPAmix), so the retrospective genotype law is Binomial(2, q_i).  The --pc-cols
+columns must also appear in --covar-name (they adjust the null model).  Every
+--envir-name column must likewise appear in --covar-name.  A sparse GRM is NOT
+accepted (SPAGxEmix+ is out of scope); the Branch-B Wald + CCT leg is applied
+exactly as in --method spagxe.)",
 };
 
 // ── SPAmix ─────────────────────────────────────────────────────────
@@ -1072,7 +1162,8 @@ inline const MethodDef kCalPairwiseIbd = {
 // `grab --help SPAmixLocalPlus|make-abed|cal-phi` therefore reports
 // "Unknown help topic" while the methods themselves remain functional.
 inline const MethodDef *const kAllMethods[] = {
-    &kSPACox, &kSPAGRM, &kSAGELD, &kSPAmix, &kSPAmixPlus, &kSPAmixLocalPlus,
+    &kSPACox, &kSPAGRM, &kSAGELD, &kSPAGxE, &kSPAGxEmix, &kSPAmix, &kSPAmixPlus,
+    &kSPAmixLocalPlus,
     &kSPAsqr, &kWtCoxG, &kLEAF,
     nullptr
 };
@@ -1086,7 +1177,7 @@ inline const MethodDef *const kAllUtilModes[] = {
 // callable via --method but are hidden from --help to keep the surface
 // area focussed on the seven core GWAS methods.
 inline const MethodDef *const kVisibleMethods[] = {
-    &kSPACox, &kSPAGRM, &kSAGELD, &kSPAmix,
+    &kSPACox, &kSPAGRM, &kSAGELD, &kSPAGxE, &kSPAGxEmix, &kSPAmix,
     &kSPAsqr, &kWtCoxG, &kLEAF,
     nullptr
 };
@@ -1118,6 +1209,7 @@ inline const FlagDef *const kInputFlags[] = {
     &kOut,         &kCompression, &kCompressionLevel,
     &kPheno,       &kCovar,       &kCovarName,
     &kPhenoName,   &kResidName,   &kRegressionModel, &kSaveResid,    &kLongitudinal,
+    &kEnvirName,
     &kPcCols,      &kRefAf,
     &kSpGrmPlink2, &kIndAfCoef,   &kPairwiseIbd,
     &kPredList,    &kPhenoTransform,
@@ -1138,6 +1230,7 @@ inline const FlagDef *const kNumericFlags[] = {
     &kSpasqrMode,
     &kSageldX,
     &kSageldMethod,
+    &kSpagxeMarginalCutoff,
     nullptr
 };
 
