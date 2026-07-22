@@ -5,6 +5,11 @@
 #include "util/logging.hpp"
 #include "util/text_scanner.hpp"
 
+#if defined(__x86_64__) || defined(_M_X64)
+#  include <immintrin.h>
+#endif
+#include "util/simd_dispatch.hpp"
+
 #include <zstd.h>
 
 #include <algorithm>
@@ -101,6 +106,214 @@ std::vector<GenoMeta::MarkerInfo> parseBimFile(const std::string &bimFile) {
 }
 
 } // namespace
+
+// ======================================================================
+// SIMD plane-unpack kernels — scalar + AVX2 + AVX-512, runtime-dispatched.
+//
+// Each variant is byte-identical to the scalar reference for arbitrary n:
+// a SIMD body over whole lanes followed by a scalar remainder tail.  The
+// AVX-512 tier includes an AVX2 cleanup so it never falls back to more
+// scalar work than the AVX2 tier.  Dispatch is resolved once at first use
+// via a static function pointer selected by simdLevel() (SPAsqr pattern).
+// ======================================================================
+
+namespace lanc_simd {
+
+// ── Kernel 1: nibble unpack — scalar reference ─────────────────────────
+void unpackNibbles_scalar(const uint8_t *in, int n, uint8_t *lo, uint8_t *hi) {
+    for (int i = 0; i < n; ++i) {
+        lo[i] = static_cast<uint8_t>(in[i] & 0x0F);
+        hi[i] = static_cast<uint8_t>(in[i] >> 4);
+    }
+}
+
+// ── Kernel 2: 2-bit unpack — scalar reference ──────────────────────────
+// Individual i lives in byte i/4 at bit positions [2*(i%4), 2*(i%4)+1].
+// The final byte may hold fewer than 4 individuals; the loop bound (i < n)
+// covers partial trailing bytes.
+void unpack2bit_scalar(const uint8_t *in, int n, uint8_t *bit0, uint8_t *bit1) {
+    for (int i = 0; i < n; ++i) {
+        const uint8_t byte = in[i >> 2];
+        const int shift = (i & 3) * 2;
+        bit0[i] = static_cast<uint8_t>((byte >> shift) & 1);
+        bit1[i] = static_cast<uint8_t>((byte >> (shift + 1)) & 1);
+    }
+}
+
+#if defined(__x86_64__) || defined(_M_X64)
+
+// ── Kernel 1: nibble unpack — AVX2 (32 bytes/iter) ─────────────────────
+// Per-byte low nibble = v & 0x0F; per-byte high nibble = (v >> 4) & 0x0F.
+// A 16-bit/32-bit-granular shift borrows bits across the byte boundary, but
+// the subsequent per-byte AND 0x0F discards them, so an epi32 shift is exact.
+__attribute__((target("avx2")))
+void unpackNibbles_avx2(const uint8_t *in, int n, uint8_t *lo, uint8_t *hi) {
+    const __m256i mask = _mm256_set1_epi8(0x0F);
+    int i = 0;
+    for (; i + 32 <= n; i += 32) {
+        const __m256i v = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(in + i));
+        const __m256i vlo = _mm256_and_si256(v, mask);
+        const __m256i vhi = _mm256_and_si256(_mm256_srli_epi32(v, 4), mask);
+        _mm256_storeu_si256(reinterpret_cast<__m256i *>(lo + i), vlo);
+        _mm256_storeu_si256(reinterpret_cast<__m256i *>(hi + i), vhi);
+    }
+    for (; i < n; ++i) {
+        lo[i] = static_cast<uint8_t>(in[i] & 0x0F);
+        hi[i] = static_cast<uint8_t>(in[i] >> 4);
+    }
+}
+
+// ── Kernel 1: nibble unpack — AVX-512 (64 bytes/iter) ──────────────────
+__attribute__((target("avx2,avx512f,avx512vl")))
+void unpackNibbles_avx512(const uint8_t *in, int n, uint8_t *lo, uint8_t *hi) {
+    const __m512i mask512 = _mm512_set1_epi32(0x0F0F0F0F);
+    int i = 0;
+    for (; i + 64 <= n; i += 64) {
+        const __m512i v = _mm512_loadu_si512(reinterpret_cast<const void *>(in + i));
+        const __m512i vlo = _mm512_and_si512(v, mask512);
+        const __m512i vhi = _mm512_and_si512(_mm512_srli_epi32(v, 4), mask512);
+        _mm512_storeu_si512(reinterpret_cast<void *>(lo + i), vlo);
+        _mm512_storeu_si512(reinterpret_cast<void *>(hi + i), vhi);
+    }
+    // AVX2 cleanup for the 32..63 remainder.
+    const __m256i mask256 = _mm256_set1_epi8(0x0F);
+    for (; i + 32 <= n; i += 32) {
+        const __m256i v = _mm256_loadu_si256(reinterpret_cast<const __m256i *>(in + i));
+        _mm256_storeu_si256(reinterpret_cast<__m256i *>(lo + i), _mm256_and_si256(v, mask256));
+        _mm256_storeu_si256(reinterpret_cast<__m256i *>(hi + i),
+                            _mm256_and_si256(_mm256_srli_epi32(v, 4), mask256));
+    }
+    for (; i < n; ++i) {
+        lo[i] = static_cast<uint8_t>(in[i] & 0x0F);
+        hi[i] = static_cast<uint8_t>(in[i] >> 4);
+    }
+}
+
+// ── Kernel 2: 2-bit unpack — AVX2 (32 individuals/iter) ────────────────
+// For a 32-individual block (i%4==0) the 8 covering input bytes are broadcast
+// and byte-replicated 4x via pshufb, so lane t holds in[base + t/4].  Each
+// lane is then AND-tested against a per-lane single-bit mask:
+//   bit0 tests bit 2*(t%4)  -> masks {0x01,0x04,0x10,0x40}
+//   bit1 tests bit 2*(t%4)+1-> masks {0x02,0x08,0x20,0x80}
+// cmpeq(masked, mask) yields 0xFF when the bit is set, then AND 1 -> {0,1}.
+__attribute__((target("avx2")))
+void unpack2bit_avx2(const uint8_t *in, int n, uint8_t *bit0, uint8_t *bit1) {
+    const __m256i mask0 = _mm256_set1_epi32(0x40100401);              // bytes {1,4,16,64}
+    const __m256i mask1 = _mm256_set1_epi32(static_cast<int>(0x80200802u)); // bytes {2,8,32,128}
+    const __m256i one   = _mm256_set1_epi8(1);
+    const __m256i ctrl  = _mm256_set_epi8(
+        7, 7, 7, 7, 6, 6, 6, 6, 5, 5, 5, 5, 4, 4, 4, 4,
+        3, 3, 3, 3, 2, 2, 2, 2, 1, 1, 1, 1, 0, 0, 0, 0);
+    int i = 0;
+    for (; i + 32 <= n; i += 32) {
+        const __m128i x     = _mm_loadl_epi64(reinterpret_cast<const __m128i *>(in + (i >> 2)));
+        const __m256i bcast = _mm256_broadcastsi128_si256(x);
+        const __m256i rep   = _mm256_shuffle_epi8(bcast, ctrl);
+        const __m256i b0 =
+            _mm256_and_si256(_mm256_cmpeq_epi8(_mm256_and_si256(rep, mask0), mask0), one);
+        const __m256i b1 =
+            _mm256_and_si256(_mm256_cmpeq_epi8(_mm256_and_si256(rep, mask1), mask1), one);
+        _mm256_storeu_si256(reinterpret_cast<__m256i *>(bit0 + i), b0);
+        _mm256_storeu_si256(reinterpret_cast<__m256i *>(bit1 + i), b1);
+    }
+    for (; i < n; ++i) {
+        const uint8_t byte = in[i >> 2];
+        const int shift = (i & 3) * 2;
+        bit0[i] = static_cast<uint8_t>((byte >> shift) & 1);
+        bit1[i] = static_cast<uint8_t>((byte >> (shift + 1)) & 1);
+    }
+}
+
+// ── Kernel 2: 2-bit unpack — AVX-512 (16 individuals/lane group) ───────
+// For a 16-individual group (i%4==0) the 4 covering input bytes form a 32-bit
+// word W broadcast to 16 lanes.  For lane t the wanted bit sits at W-bit 2*t
+// (bit0) or 2*t+1 (bit1), because 8*(t/4)+2*(t%4) == 2*t.  A per-lane variable
+// shift (VPSRLVD) followed by AND 1 extracts it; VPMOVDB narrows the 16 dword
+// results to 16 bytes.  The 64/iter loop unrolls this over four groups.
+__attribute__((target("avx2,avx512f,avx512vl")))
+void unpack2bit_avx512(const uint8_t *in, int n, uint8_t *bit0, uint8_t *bit1) {
+    const __m512i sh0 = _mm512_set_epi32(30, 28, 26, 24, 22, 20, 18, 16,
+                                         14, 12, 10, 8, 6, 4, 2, 0);
+    const __m512i sh1 = _mm512_set_epi32(31, 29, 27, 25, 23, 21, 19, 17,
+                                         15, 13, 11, 9, 7, 5, 3, 1);
+    const __m512i one = _mm512_set1_epi32(1);
+    int i = 0;
+    for (; i + 64 <= n; i += 64) {
+        for (int g = 0; g < 4; ++g) {
+            uint32_t W;
+            std::memcpy(&W, in + (i >> 2) + g * 4, 4);
+            const __m512i vW = _mm512_set1_epi32(static_cast<int>(W));
+            const __m512i v0 = _mm512_and_si512(_mm512_srlv_epi32(vW, sh0), one);
+            const __m512i v1 = _mm512_and_si512(_mm512_srlv_epi32(vW, sh1), one);
+            _mm_storeu_si128(reinterpret_cast<__m128i *>(bit0 + i + g * 16), _mm512_cvtepi32_epi8(v0));
+            _mm_storeu_si128(reinterpret_cast<__m128i *>(bit1 + i + g * 16), _mm512_cvtepi32_epi8(v1));
+        }
+    }
+    // 16-individual cleanup for the 16..63 remainder.
+    for (; i + 16 <= n; i += 16) {
+        uint32_t W;
+        std::memcpy(&W, in + (i >> 2), 4);
+        const __m512i vW = _mm512_set1_epi32(static_cast<int>(W));
+        const __m512i v0 = _mm512_and_si512(_mm512_srlv_epi32(vW, sh0), one);
+        const __m512i v1 = _mm512_and_si512(_mm512_srlv_epi32(vW, sh1), one);
+        _mm_storeu_si128(reinterpret_cast<__m128i *>(bit0 + i), _mm512_cvtepi32_epi8(v0));
+        _mm_storeu_si128(reinterpret_cast<__m128i *>(bit1 + i), _mm512_cvtepi32_epi8(v1));
+    }
+    for (; i < n; ++i) {
+        const uint8_t byte = in[i >> 2];
+        const int shift = (i & 3) * 2;
+        bit0[i] = static_cast<uint8_t>((byte >> shift) & 1);
+        bit1[i] = static_cast<uint8_t>((byte >> (shift + 1)) & 1);
+    }
+}
+
+#endif // x86_64 SIMD variants
+
+// ── Runtime dispatch: resolve the widest supported variant once ────────
+namespace {
+
+using UnpackFn = void (*)(const uint8_t *, int, uint8_t *, uint8_t *);
+
+UnpackFn pickUnpackNibbles() {
+#if defined(__x86_64__) || defined(_M_X64)
+    switch (simdLevel()) {
+    case SimdLevel::AVX512: return unpackNibbles_avx512;
+    case SimdLevel::AVX2:   return unpackNibbles_avx2;
+    default: break;
+    }
+#endif
+    return unpackNibbles_scalar;
+}
+
+UnpackFn pickUnpack2bit() {
+#if defined(__x86_64__) || defined(_M_X64)
+    switch (simdLevel()) {
+    case SimdLevel::AVX512: return unpack2bit_avx512;
+    case SimdLevel::AVX2:   return unpack2bit_avx2;
+    default: break;
+    }
+#endif
+    return unpack2bit_scalar;
+}
+
+const UnpackFn g_unpackNibbles = pickUnpackNibbles();
+const UnpackFn g_unpack2bit    = pickUnpack2bit();
+
+} // namespace
+
+void unpackNibbles(const uint8_t *in, int n, uint8_t *lo, uint8_t *hi) {
+    g_unpackNibbles(in, n, lo, hi);
+}
+
+void unpack2bit(const uint8_t *in, int n, uint8_t *bit0, uint8_t *bit1) {
+    g_unpack2bit(in, n, bit0, bit1);
+}
+
+int simdLevelValue() {
+    return static_cast<int>(simdLevel());
+}
+
+} // namespace lanc_simd
 
 // ======================================================================
 // LancWriter
@@ -522,6 +735,16 @@ LancCursor::LancCursor(const LancData &data)
       m_nUsed(data.nSubjUsed()),
       m_allUsed(data.allUsed())
 {
+    // Preallocate the SIMD unpack scratch (one byte per in-file individual per
+    // plane lane) so the per-marker decode never allocates.
+    m_lo.resize(m_nSamples);
+    m_hi.resize(m_nSamples);
+    m_bit0.resize(m_nSamples);
+    m_bit1.resize(m_nSamples);
+    if (!m_data.hasNoMissing()) {
+        m_mbit0.resize(m_nSamples);
+        m_mbit1.resize(m_nSamples);
+    }
 }
 
 LancCursor::~LancCursor()
@@ -640,23 +863,26 @@ void LancCursor::getAllAncestries(
     bool noMissing = true;
     const uint8_t *ancByte = loadMarkerPlanes(markerLocalIdx, alleleBase, missBase, noMissing);
 
+    const int N = static_cast<int>(m_nSamples);
     const int K = static_cast<int>(m_K);
     const double NaN = std::numeric_limits<double>::quiet_NaN();
 
+    // Unpack each packed plane into flat per-individual lanes once; the
+    // compare-scatter below then reads the plain uint8 arrays (Plan A §2.1).
+    lanc_simd::unpackNibbles(ancByte, N, m_lo.data(), m_hi.data());
+    lanc_simd::unpack2bit(alleleBase, N, m_bit0.data(), m_bit1.data());
+    if (!noMissing)
+        lanc_simd::unpack2bit(missBase, N, m_mbit0.data(), m_mbit1.data());
+
     auto decode = [&](uint32_t s, uint32_t row) {
-        const uint8_t ab = ancByte[s];
-        const int c0 = ab & 0x0F;
-        const int c1 = ab >> 4;
-        const uint32_t byteIdx = s >> 2;
-        const uint32_t shift = (s & 3) * 2;
-        const uint8_t al = static_cast<uint8_t>((alleleBase[byteIdx] >> shift) & 0x3);
-        const uint8_t a0 = al & 1;
-        const uint8_t a1 = (al >> 1) & 1;
+        const int c0 = m_lo[s];
+        const int c1 = m_hi[s];
+        const uint8_t a0 = m_bit0[s];
+        const uint8_t a1 = m_bit1[s];
         uint8_t m0 = 0, m1 = 0;
         if (!noMissing) {
-            const uint8_t mm = static_cast<uint8_t>((missBase[byteIdx] >> shift) & 0x3);
-            m0 = mm & 1;
-            m1 = (mm >> 1) & 1;
+            m0 = m_mbit0[s];
+            m1 = m_mbit1[s];
         }
         for (int k = 0; k < K; ++k) {
             dosageMatrix(row, k) = 0.0;
@@ -699,22 +925,23 @@ double LancCursor::getAdmixGenotypes(
     bool noMissing = true;
     const uint8_t *ancByte = loadMarkerPlanes(markerLocalIdx, alleleBase, missBase, noMissing);
 
+    const int N = static_cast<int>(m_nSamples);
     const double NaN = std::numeric_limits<double>::quiet_NaN();
 
+    lanc_simd::unpackNibbles(ancByte, N, m_lo.data(), m_hi.data());
+    lanc_simd::unpack2bit(alleleBase, N, m_bit0.data(), m_bit1.data());
+    if (!noMissing)
+        lanc_simd::unpack2bit(missBase, N, m_mbit0.data(), m_mbit1.data());
+
     auto decode = [&](uint32_t s, uint32_t row) {
-        const uint8_t ab = ancByte[s];
-        const int c0 = ab & 0x0F;
-        const int c1 = ab >> 4;
-        const uint32_t byteIdx = s >> 2;
-        const uint32_t shift = (s & 3) * 2;
-        const uint8_t al = static_cast<uint8_t>((alleleBase[byteIdx] >> shift) & 0x3);
-        const uint8_t a0 = al & 1;
-        const uint8_t a1 = (al >> 1) & 1;
+        const int c0 = m_lo[s];
+        const int c1 = m_hi[s];
+        const uint8_t a0 = m_bit0[s];
+        const uint8_t a1 = m_bit1[s];
         uint8_t m0 = 0, m1 = 0;
         if (!noMissing) {
-            const uint8_t mm = static_cast<uint8_t>((missBase[byteIdx] >> shift) & 0x3);
-            m0 = mm & 1;
-            m1 = (mm >> 1) & 1;
+            m0 = m_mbit0[s];
+            m1 = m_mbit1[s];
         }
         double d = 0.0, h = 0.0;
         if (c0 == ancIdx) {

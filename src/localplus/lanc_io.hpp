@@ -46,6 +46,45 @@ static constexpr uint8_t  LANC_ANC_UNASSIGNED = 0x0F;  // reserved nibble
 static constexpr uint16_t LANC_DEFAULT_BLOCKLEN = 512;
 static constexpr int      LANC_DEFAULT_ZSTD_LEVEL = 3;
 
+// ── SIMD plane-unpack kernels (runtime-dispatched) ─────────────────────
+//
+// The decode path (LancCursor) expands each packed plane into flat per-
+// individual uint8 lanes before the compare-scatter over ancestries:
+//
+//   unpackNibbles(in, n, lo, hi) : lo[i] = in[i] & 0x0F  (hap0 ancestry),
+//                                  hi[i] = in[i] >> 4     (hap1 ancestry).
+//   unpack2bit(in, n, bit0, bit1): 2-bits/individual stream ->
+//                                  bit0[i] = low bit (hap0), bit1[i] = high
+//                                  bit (hap1); output bytes are 0/1.  Serves
+//                                  BOTH the allele plane and the missing plane.
+//
+// The dispatched entry points resolve the widest supported variant once via
+// simdLevel() (the SPAsqr pattern).  The scalar variant compiles on every
+// architecture and is the ARM/NEON path.  The per-level variants are exposed
+// so the equality test (tests/lanc_simd_test.cpp) can assert byte-identity of
+// each SIMD tier against the scalar reference.
+namespace lanc_simd {
+
+// Dispatched entry points (resolve to the widest supported variant).
+void unpackNibbles(const uint8_t *in, int n, uint8_t *lo, uint8_t *hi);
+void unpack2bit(const uint8_t *in, int n, uint8_t *bit0, uint8_t *bit1);
+
+// Scalar variants (always available; also the ARM path).
+void unpackNibbles_scalar(const uint8_t *in, int n, uint8_t *lo, uint8_t *hi);
+void unpack2bit_scalar(const uint8_t *in, int n, uint8_t *bit0, uint8_t *bit1);
+
+#if defined(__x86_64__) || defined(_M_X64)
+void unpackNibbles_avx2(const uint8_t *in, int n, uint8_t *lo, uint8_t *hi);
+void unpackNibbles_avx512(const uint8_t *in, int n, uint8_t *lo, uint8_t *hi);
+void unpack2bit_avx2(const uint8_t *in, int n, uint8_t *bit0, uint8_t *bit1);
+void unpack2bit_avx512(const uint8_t *in, int n, uint8_t *bit0, uint8_t *bit1);
+#endif
+
+// Testing helper: current runtime SIMD tier (0 = scalar, 1 = AVX2, 2 = AVX512).
+int simdLevelValue();
+
+} // namespace lanc_simd
+
 // ======================================================================
 // LancWriter — framed-zstd .lanc writer (single-threaded, deterministic)
 // ======================================================================
@@ -323,4 +362,12 @@ class LancCursor {
 
     RegionCache m_cA, m_cB, m_cM;
     std::vector<uint8_t> m_compBuf; // scratch for compressed frame reads
+
+    // Preallocated per-cursor unpack scratch (length nSamplesInFile) so the hot
+    // decode loop performs no allocation.  Filled by the dispatched SIMD kernels
+    // once per marker, then read by the compare-scatter over ancestries.
+    // m_mbit0/m_mbit1 are used only for files that carry a missing plane.
+    std::vector<uint8_t> m_lo, m_hi;       // ancestry nibbles: hap0 (c0), hap1 (c1)
+    std::vector<uint8_t> m_bit0, m_bit1;   // allele plane:  hap0 ALT, hap1 ALT
+    std::vector<uint8_t> m_mbit0, m_mbit1; // missing plane: hap0 miss, hap1 miss
 };
