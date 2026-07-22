@@ -1,11 +1,11 @@
 // lanc_convert_rfmix.cpp — RFMix .msp.tsv + phased query BCF/VCF -> .lanc
 //
-// Multi-chromosome refactor of abed_convert_msp.cpp's convertVcfMspToAbed.
-// The MSP parser, chromosome comparator, and window cursor are copied
-// unmodified from that file (per dev-notes/methods/recode_rfmix/
-// 01_lanc_format_and_recoding.md section 6); the per-ancestry `for k`
-// collapse loop is deleted outright and replaced with direct per-haplotype
-// plane emission via LancWriter::addMarker.
+// Multi-chromosome refactor of the single-file .abed converter that this
+// module supersedes (see dev-notes/methods/recode_rfmix/
+// 01_lanc_format_and_recoding.md section 6).  The MSP parser, chromosome
+// comparator, and window cursor are copied unmodified from that converter;
+// the per-ancestry `for k` collapse loop is deleted outright and replaced
+// with direct per-haplotype plane emission via LancWriter::addMarker.
 //
 // Control flow:
 //   1. Glob {mspPrefix}*.msp.tsv; parse each (K, sample IDs, windows);
@@ -49,7 +49,7 @@ extern "C" {
 
 namespace {
 
-// ── simple line reader for gzFile (copied from abed_convert_msp.cpp) ────
+// ── simple line reader for gzFile (copied from the old .abed converter) ────
 
 bool mspReadLine(
     gzFile gz,
@@ -84,7 +84,7 @@ std::vector<std::string> mspSplitTabs(const std::string &s) {
     return t;
 }
 
-// ── MSP data structures (copied from abed_convert_msp.cpp) ──────────────
+// ── MSP data structures (copied from the old .abed converter) ──────────────
 
 struct MspWindow {
     std::string chrom;
@@ -100,7 +100,7 @@ struct MspData {
     std::vector<MspWindow> windows;
 };
 
-// ── Parse MSP file (copied from abed_convert_msp.cpp) ───────────────────
+// ── Parse MSP file (copied from the old .abed converter) ───────────────────
 
 MspData parseMsp(const std::string &mspFile) {
     gzFile gz = gzopen(mspFile.c_str(), "rb");
@@ -192,7 +192,7 @@ MspData parseMsp(const std::string &mspFile) {
 }
 
 // ── Chromosome token / comparison helpers ────────────────────────────────
-// stripChrPrefix / chromLessThan are copied from abed_convert_msp.cpp (and
+// stripChrPrefix / chromLessThan are copied from the old .abed converter (and
 // match the identical helper in lanc_io.cpp, which is file-local there) so
 // the output filenames are discoverable by LancData's {prefix}.chr*.lanc
 // glob and sort in the same numeric-aware order the reader expects.
@@ -217,7 +217,7 @@ bool chromLessThan(
     return sa < sb;
 }
 
-// ── Window lookup cursor (copied from abed_convert_msp.cpp) ─────────────
+// ── Window lookup cursor (copied from the old .abed converter) ─────────────
 
 struct WindowCursor {
     const std::vector<MspWindow> &windows;
@@ -271,7 +271,7 @@ std::vector<std::string> globFiles(
     return out;
 }
 
-// ── Format cross-check, matching abed_convert_msp.cpp's processVcf ──────
+// ── Format cross-check, matching the old .abed converter's processVcf ──────
 
 void checkGenoFormat(
     htsFile *fp,
@@ -324,7 +324,7 @@ std::string detectGenoChrom(
 }
 
 // ── Per-chromosome stream: MSP windows + genotypes -> LancWriter planes ──
-// Direct refactor of abed_convert_msp.cpp's processVcf (nthreads<=1 branch).
+// Direct refactor of the old .abed converter's processVcf (nthreads<=1 branch).
 // The per-ancestry `for k` dosage/hapcount collapse loop is deleted; each
 // marker instead emits one per-haplotype ancestry/allele/missing triple per
 // kept sample straight into LancWriter::addMarker.

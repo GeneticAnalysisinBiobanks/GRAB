@@ -1,8 +1,8 @@
 // lanc_convert_rfmix.hpp — RFMix .msp.tsv + phased query BCF/VCF -> .lanc
 //
-// Multi-chromosome converter: replaces the single-file convertVcfMspToAbed
-// (abed_convert_msp.{hpp,cpp}) with a per-chromosome, plane-output writer
-// driven by the .lanc format (see dev-notes/methods/recode_rfmix/
+// Multi-chromosome converter: replaces the single-file .abed converter it
+// supersedes with a per-chromosome, plane-output writer driven by the
+// .lanc format (see dev-notes/methods/recode_rfmix/
 // 01_lanc_format_and_recoding.md, section 6).
 #pragma once
 
@@ -17,7 +17,7 @@
 //   expectBcf:   true  => genoPrefix files must be BCF2 (--bcf)
 //                false => genoPrefix files must not be BCF2 (--vcf)
 //                Mismatches are rejected with plink2-style wording, exactly
-//                as the old converter (abed_convert_msp.cpp) does.
+//                as the old (now-removed) .abed converter did.
 //   mspPrefix:   --rfmix-msp prefix; per-chromosome RFMix output is
 //                discovered by globbing {mspPrefix}*.msp.tsv.
 //   outPrefix:   output prefix; writes {outPrefix}.chr{TOKEN}.lanc and

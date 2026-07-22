@@ -12,8 +12,6 @@
 #include "util/null_model.hpp"
 #include "util/text_stream.hpp"
 
-#include "localplus/abed_convert_msp.hpp"
-#include "localplus/abed_convert_txt.hpp"
 #include "localplus/lanc_convert_rfmix.hpp"
 #include "localplus/spamixlocalp.hpp"
 #include "spacox/spacox.hpp"
@@ -229,7 +227,6 @@ static void logArgsInEffect(const Args &args) {
     if (args.calAfCoef) std::fprintf(stderr, "  --cal-af-coef\n");
     if (args.calPairwiseIBD) std::fprintf(stderr, "  --cal-pairwise-ibd\n");
     if (args.calPhi) std::fprintf(stderr, "  --cal-phi\n");
-    if (args.makeAbed) std::fprintf(stderr, "  --make-abed\n");
     if (args.makeLanc) std::fprintf(stderr, "  --make-lanc\n");
     if (args.intPheno) std::fprintf(stderr, "  --int-pheno\n");
     if (!args.method.empty()) std::fprintf(stderr, "  --method %s\n", args.method.c_str());
@@ -292,11 +289,9 @@ static void logArgsInEffect(const Args &args) {
         std::fprintf(stderr, "  --pred-list %s\n", args.predListFile.c_str());
     if (!args.phenoTransform.empty())
         std::fprintf(stderr, "  --pheno-transform %s\n", args.phenoTransform.c_str());
-    if (!args.admixBfilePrefix.empty()) std::fprintf(stderr, "  --admix-bfile %s\n", args.admixBfilePrefix.c_str());
     if (!args.lancPrefix.empty()) std::fprintf(stderr, "  --lanc %s\n", args.lancPrefix.c_str());
     if (!args.admixPhiFile.empty()) std::fprintf(stderr, "  --admix-phi %s\n", args.admixPhiFile.c_str());
     if (!args.mspFile.empty()) std::fprintf(stderr, "  --rfmix-msp %s\n", args.mspFile.c_str());
-    if (!args.admixTextPrefix.empty()) std::fprintf(stderr, "  --admix-text-prefix %s\n", args.admixTextPrefix.c_str());
     if (!args.outPrefix.empty()) std::fprintf(stderr, "  --out %s\n", args.outPrefix.c_str());
     if (!args.compression.empty()) std::fprintf(stderr, "  --compression %s\n", args.compression.c_str());
     // numeric: log only when non-default
@@ -493,79 +488,17 @@ int run(
         return 0;
     }
 
-    // ── Mode: --make-abed ──────────────────────────────────────────
-    if (args.makeAbed) {
-        if (!args.method.empty() || args.calAfCoef || args.calPairwiseIBD ||
-            args.calPhi || args.intPheno || args.makeLanc) {
-            std::cerr << "Error: --make-abed cannot be combined with"
-                " --method, --cal-af-coef, --cal-pairwise-ibd,"
-                " --cal-phi, --make-lanc, or --int-pheno.\n";
-            return 1;
-        }
-        // --vcf and --bcf both feed convertVcfMspToAbed; mutual exclusion is
-        // enforced here (only one of them may be combined with --rfmix-msp at
-        // a time), and content-validation happens inside the converter.
-        if (!args.vcfFile.empty() && !args.bcfFile.empty()) {
-            std::cerr << "Error: --vcf and --bcf are mutually exclusive.\n";
-            return 1;
-        }
-        const bool hasVcfMsp = !args.vcfFile.empty() && !args.mspFile.empty();
-        const bool hasBcfMsp = !args.bcfFile.empty() && !args.mspFile.empty();
-        const bool hasGenoMsp = hasVcfMsp || hasBcfMsp;
-        const bool hasTextPre = !args.admixTextPrefix.empty();
-        if (hasGenoMsp && hasTextPre) {
-            std::cerr << "Error: --make-abed requires either (--vcf/--bcf + --rfmix-msp) or"
-                " --admix-text-prefix, not both.\n";
-            return 1;
-        }
-        if (!hasGenoMsp && !hasTextPre) {
-            std::cerr << "Error: --make-abed requires either"
-                " (--vcf FILE --rfmix-msp FILE),"
-                " (--bcf FILE --rfmix-msp FILE),"
-                " or (--admix-text-prefix PREFIX).\n";
-            return 1;
-        }
-        require(args.outPrefix, "--out", "--make-abed");
-        logArgsInEffect(args);
-        if (hasGenoMsp)infoMsg(
-                "Parsing MSP file into memory; this may take several minutes and memory scales with sample count "
-                "and window count."
-        );
-        try {
-            TextWriter::assertWritable(args.outPrefix + ".abed");
-            if (hasGenoMsp) {
-                const std::string &genoPath = hasBcfMsp ? args.bcfFile : args.vcfFile;
-                convertVcfMspToAbed(
-                    genoPath,
-                    /*expectBcf=*/ hasBcfMsp,
-                    args.mspFile,
-                    args.outPrefix,
-                    args.keepFile,
-                    args.removeFile,
-                    args.nthread
-                );
-            }
-            else convertTextToAbed(args.admixTextPrefix, args.outPrefix, args.keepFile, args.removeFile, args.nthread);
-        } catch (const std::exception &e) {
-            std::cerr << "[ERROR] " << e.what() << "\n";
-            return 1;
-        }
-        printTimer();
-        return 0;
-    }
-
     // ── Mode: --make-lanc ───────────────────────────────────────────
     if (args.makeLanc) {
         if (!args.method.empty() || args.calAfCoef || args.calPairwiseIBD ||
-            args.calPhi || args.makeAbed || args.intPheno) {
+            args.calPhi || args.intPheno) {
             std::cerr << "Error: --make-lanc cannot be combined with"
                 " --method, --cal-af-coef, --cal-pairwise-ibd,"
-                " --cal-phi, --make-abed, or --int-pheno.\n";
+                " --cal-phi, or --int-pheno.\n";
             return 1;
         }
         // --vcf and --bcf both feed convertRfmixToLanc; exactly one, paired
-        // with --rfmix-msp, is required (mirrors --make-abed's VCF/BCF
-        // exclusivity wording).
+        // with --rfmix-msp, is required.
         if (!args.vcfFile.empty() && !args.bcfFile.empty()) {
             std::cerr << "Error: --vcf and --bcf are mutually exclusive.\n";
             return 1;
@@ -589,8 +522,7 @@ int run(
             // The .lanc output is per-chromosome (chromosome tokens are only
             // known after the MSP prefix is parsed); probe the one filename
             // that is deterministic up front, the shared .fam, as the
-            // writability sentinel (mirrors --make-abed's assertWritable on
-            // its single .abed output).
+            // writability sentinel.
             TextWriter::assertWritable(args.outPrefix + ".fam");
             convertRfmixToLanc(
                 genoPrefix,
@@ -613,7 +545,7 @@ int run(
     // ── Mode: --int-pheno ──────────────────────────────────────────
     if (args.intPheno) {
         if (!args.method.empty() || args.calAfCoef || args.calPairwiseIBD ||
-            args.calPhi || args.makeAbed || args.makeLanc) {
+            args.calPhi || args.makeLanc) {
             std::cerr << "Error: --int-pheno cannot be combined with"
                 " --method or any other utility mode.\n";
             return 1;
@@ -698,8 +630,7 @@ int run(
     if (!methodOk) {
         if (args.method.empty())
             std::cerr << "Error: --method is required (or use"
-                " --cal-af-coef / --cal-pairwise-ibd / --cal-phi"
-                " / --make-abed).\n";
+                " --cal-af-coef / --cal-pairwise-ibd / --cal-phi).\n";
         else std::cerr << "Error: unknown method '" << args.method << "'.  Run 'grab2 --help' for supported methods.\n";
         return 1;
     }

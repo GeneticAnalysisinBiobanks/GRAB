@@ -20,7 +20,8 @@
 // (standard PLINK BIM), single shared {prefix}.fam.
 //
 // The public decode contract (getAllAncestries / getAdmixGenotypes) mirrors the
-// .abed AdmixCursor so downstream (spamixlocalp) rewiring is mechanical.
+// old (now-removed) .abed reader's cursor contract, so the spamixlocalp
+// rewiring onto LancData/LancCursor was mechanical.
 #pragma once
 
 #include "geno_factory/geno_data.hpp"
