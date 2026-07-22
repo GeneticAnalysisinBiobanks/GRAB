@@ -4,7 +4,7 @@
 
 #include "localplus/spamixlocalp.hpp"
 #include "engine/marker.hpp"
-#include "localplus/abed_io.hpp"
+#include "localplus/lanc_io.hpp"
 #include "spamix/common.hpp"
 #include "io/sparse_grm.hpp"
 #include "io/subject_data.hpp"
@@ -623,13 +623,13 @@ void computeVarOffMultiPhenoBatch(
 }
 
 // ======================================================================
-// Phi estimation — streaming through .abed, no full-matrix materialization
+// Phi estimation — streaming through .lanc, no full-matrix materialization
 // ======================================================================
 
 static constexpr double PHI_MAF_CUTOFF = 0.01;
 
 PhiMatrices estimatePhiOneAncestry(
-    const AdmixData &admixData,
+    const LancData &admixData,
     const SparseGRM &grm,
     int ancIdx,
     int nthreads
@@ -1256,7 +1256,7 @@ void runPhiEstimation(
     infoMsg("GRM loaded: %u subjects (dimension), %zu entries", grm.nSubjects(), grm.nnz());
 
     // Load admix data using intersection mask
-    AdmixData admixData(admixPrefix, usedMask, nFam, nUsed, extractFile, excludeFile);
+    LancData admixData(admixPrefix, usedMask, nFam, nUsed, extractFile, excludeFile);
     int K = admixData.nAncestries();
     infoMsg("Ancestries: %d, Markers: %u, Subjects: %u", K, admixData.nMarkers(), admixData.nSubjUsed());
 
@@ -1296,7 +1296,7 @@ void runPhiEstimation(
 // ======================================================================
 
 static void runUnifiedGWAS(
-    const AdmixData &admixData,
+    const LancData &admixData,
     const std::vector<MultiPhenoRprodSoA> &rphi,
     const Eigen::MatrixXd &R_mat,
     const Eigen::MatrixXd &R2_mat,
@@ -1782,7 +1782,7 @@ void runSPAmixLocalPlus(
     }
 
     // Load admix data
-    AdmixData admixData(admixPrefix, sd.usedMask(), sd.nFam(), nUsed, extractFile, excludeFile, nSnpPerChunk);
+    LancData admixData(admixPrefix, sd.usedMask(), sd.nFam(), nUsed, extractFile, excludeFile, nSnpPerChunk);
     int K = admixData.nAncestries();
     infoMsg("Ancestries: %d, Markers: %u", K, admixData.nMarkers());
 

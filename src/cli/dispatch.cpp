@@ -14,6 +14,7 @@
 
 #include "localplus/abed_convert_msp.hpp"
 #include "localplus/abed_convert_txt.hpp"
+#include "localplus/lanc_convert_rfmix.hpp"
 #include "localplus/spamixlocalp.hpp"
 #include "spacox/spacox.hpp"
 #include "spagrm/ibd.hpp"
@@ -229,6 +230,7 @@ static void logArgsInEffect(const Args &args) {
     if (args.calPairwiseIBD) std::fprintf(stderr, "  --cal-pairwise-ibd\n");
     if (args.calPhi) std::fprintf(stderr, "  --cal-phi\n");
     if (args.makeAbed) std::fprintf(stderr, "  --make-abed\n");
+    if (args.makeLanc) std::fprintf(stderr, "  --make-lanc\n");
     if (args.intPheno) std::fprintf(stderr, "  --int-pheno\n");
     if (!args.method.empty()) std::fprintf(stderr, "  --method %s\n", args.method.c_str());
     // input
@@ -291,6 +293,7 @@ static void logArgsInEffect(const Args &args) {
     if (!args.phenoTransform.empty())
         std::fprintf(stderr, "  --pheno-transform %s\n", args.phenoTransform.c_str());
     if (!args.admixBfilePrefix.empty()) std::fprintf(stderr, "  --admix-bfile %s\n", args.admixBfilePrefix.c_str());
+    if (!args.lancPrefix.empty()) std::fprintf(stderr, "  --lanc %s\n", args.lancPrefix.c_str());
     if (!args.admixPhiFile.empty()) std::fprintf(stderr, "  --admix-phi %s\n", args.admixPhiFile.c_str());
     if (!args.mspFile.empty()) std::fprintf(stderr, "  --rfmix-msp %s\n", args.mspFile.c_str());
     if (!args.admixTextPrefix.empty()) std::fprintf(stderr, "  --admix-text-prefix %s\n", args.admixTextPrefix.c_str());
@@ -461,7 +464,7 @@ int run(
                 " --method, --cal-af-coef, --cal-pairwise-ibd, or --int-pheno.\n";
             return 1;
         }
-        require(args.admixBfilePrefix, "--admix-bfile", "--cal-phi");
+        require(args.lancPrefix, "--lanc", "--cal-phi");
         require(args.outPrefix, "--out", "--cal-phi");
         checkSpGrm(args, /*required=*/ true, "--cal-phi");
         logArgsInEffect(args);
@@ -472,7 +475,7 @@ int run(
         try {
             TextWriter::assertWritable(phiOutput);
             runPhiEstimation(
-                args.admixBfilePrefix,
+                args.lancPrefix,
                 args.spGrmGrabFile,
                 args.spGrmPlink2File,
                 phiOutput,
@@ -493,10 +496,10 @@ int run(
     // ── Mode: --make-abed ──────────────────────────────────────────
     if (args.makeAbed) {
         if (!args.method.empty() || args.calAfCoef || args.calPairwiseIBD ||
-            args.calPhi || args.intPheno) {
+            args.calPhi || args.intPheno || args.makeLanc) {
             std::cerr << "Error: --make-abed cannot be combined with"
                 " --method, --cal-af-coef, --cal-pairwise-ibd,"
-                " --cal-phi, or --int-pheno.\n";
+                " --cal-phi, --make-lanc, or --int-pheno.\n";
             return 1;
         }
         // --vcf and --bcf both feed convertVcfMspToAbed; mutual exclusion is
@@ -551,10 +554,66 @@ int run(
         return 0;
     }
 
+    // ── Mode: --make-lanc ───────────────────────────────────────────
+    if (args.makeLanc) {
+        if (!args.method.empty() || args.calAfCoef || args.calPairwiseIBD ||
+            args.calPhi || args.makeAbed || args.intPheno) {
+            std::cerr << "Error: --make-lanc cannot be combined with"
+                " --method, --cal-af-coef, --cal-pairwise-ibd,"
+                " --cal-phi, --make-abed, or --int-pheno.\n";
+            return 1;
+        }
+        // --vcf and --bcf both feed convertRfmixToLanc; exactly one, paired
+        // with --rfmix-msp, is required (mirrors --make-abed's VCF/BCF
+        // exclusivity wording).
+        if (!args.vcfFile.empty() && !args.bcfFile.empty()) {
+            std::cerr << "Error: --vcf and --bcf are mutually exclusive.\n";
+            return 1;
+        }
+        if (args.vcfFile.empty() && args.bcfFile.empty()) {
+            std::cerr << "Error: --make-lanc requires --vcf PREFIX or --bcf PREFIX"
+                " (phased per-chromosome query genotypes).\n";
+            return 1;
+        }
+        require(args.mspFile, "--rfmix-msp", "--make-lanc");
+        require(args.outPrefix, "--out", "--make-lanc");
+        logArgsInEffect(args);
+        infoMsg(
+            "Parsing per-chromosome MSP files into memory; this may take several "
+            "minutes and memory scales with sample count and window count."
+        );
+        const bool expectBcf = !args.bcfFile.empty();
+        const std::string &genoPrefix = expectBcf ? args.bcfFile : args.vcfFile;
+        const int lancLevel = args.compressionLevelExplicit ? args.compressionLevel : 3;
+        try {
+            // The .lanc output is per-chromosome (chromosome tokens are only
+            // known after the MSP prefix is parsed); probe the one filename
+            // that is deterministic up front, the shared .fam, as the
+            // writability sentinel (mirrors --make-abed's assertWritable on
+            // its single .abed output).
+            TextWriter::assertWritable(args.outPrefix + ".fam");
+            convertRfmixToLanc(
+                genoPrefix,
+                expectBcf,
+                args.mspFile,
+                args.outPrefix,
+                lancLevel,
+                args.keepFile,
+                args.removeFile,
+                args.nthread
+            );
+        } catch (const std::exception &e) {
+            std::cerr << "[ERROR] " << e.what() << "\n";
+            return 1;
+        }
+        printTimer();
+        return 0;
+    }
+
     // ── Mode: --int-pheno ──────────────────────────────────────────
     if (args.intPheno) {
         if (!args.method.empty() || args.calAfCoef || args.calPairwiseIBD ||
-            args.calPhi || args.makeAbed) {
+            args.calPhi || args.makeAbed || args.makeLanc) {
             std::cerr << "Error: --int-pheno cannot be combined with"
                 " --method or any other utility mode.\n";
             return 1;
@@ -613,8 +672,8 @@ int run(
     }
 
     // Guard: admix GWAS flags present but --method omitted
-    if (args.method.empty() && (!args.admixBfilePrefix.empty() || !args.admixPhiFile.empty())) {
-        std::cerr << "Error: --admix-bfile and --admix-phi require"
+    if (args.method.empty() && (!args.lancPrefix.empty() || !args.admixPhiFile.empty())) {
+        std::cerr << "Error: --lanc and --admix-phi require"
             " --method SPAmixLocalPlus.\n";
         return 1;
     }
@@ -654,11 +713,11 @@ int run(
         return 1;
     }
 
-    // SPAmixLocalPlus uses --admix-bfile instead of standard geno input
+    // SPAmixLocalPlus uses --lanc instead of standard geno input
     GenoSpec geno{};
     if (args.method != "SPAmixLocalPlus") geno = resolveGenoSpec(args, args.method.c_str());
 
-    // All GWAS methods require --pheno (except SPAmixLocalPlus which uses --admix-bfile)
+    // All GWAS methods require --pheno (except SPAmixLocalPlus which uses --lanc)
     if (args.method != "SPAmixLocalPlus")require(args.phenoFile, "--pheno", args.method.c_str());
 
     // Method-specific phenotype flag validation
@@ -1633,13 +1692,13 @@ int run(
 
         // ── SPAmixLocalPlus ────────────────────────────────────────
         else if (args.method == "SPAmixLocalPlus") {
-            require(args.admixBfilePrefix, "--admix-bfile", "SPAmixLocalPlus");
+            require(args.lancPrefix, "--lanc", "SPAmixLocalPlus");
             require(args.admixPhiFile, "--admix-phi", "SPAmixLocalPlus");
             require(args.phenoFile, "--pheno", "SPAmixLocalPlus");
             runSPAmixLocalPlus(
                 args.phenoFile,
                 residNames,
-                args.admixBfilePrefix,
+                args.lancPrefix,
                 args.admixPhiFile,
                 args.outPrefix,
                 args.compression,
