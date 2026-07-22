@@ -765,12 +765,45 @@ inline const MethodDef kSPAGxE = {
     R"(PREFIX.<COL>.SPAGxE[.gz|.zst]   one file per --resid-name / --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
   P_G  Z_G  BETA_G  SE_G
-  P_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>  BETA_Gx<E1>  SE_Gx<E1>  [... per env])",
+  P_Gx<E1>  P_Wald_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>  BETA_Gx<E1>  SE_Gx<E1>  [... per env])",
     R"(Every --envir-name column must also appear in --covar-name (it enters the
 genotype-independent null model  trait ~ X + E).  Passing an optional sparse
 GRM (--sp-grm-grab / --sp-grm-plink2) engages the SPAGxE+ relatedness-corrected
 score variance (a retrospective GRM quadratic form; no --pairwise-ibd needed);
 absent, the base unrelated test runs.)",
+};
+
+// ── SPAGxEmix ───────────────────────────────────────────────────────
+inline const FlagDef *const kSPAGxEmixReq[] = {
+    &kGeno_input, &kPheno, &kOut, &kEnvirName, &kPcCols,
+    nullptr
+};
+inline const FlagDef *const kSPAGxEmixOpt[] = {
+    &kCovar,      &kCovarName,   &kResidName,   &kPhenoName,   &kRegressionModel, &kSaveResid,
+    &kSpagxeMarginalCutoff,
+    &kSpaZThresh, &kOutlierIqr,  &kSeed,
+    &kThreads,    &kChunkSize,   &kCompression, &kCompressionLevel,
+    &kKeep,       &kRemove,      &kExtract,     &kExclude,
+    &kGeno,       &kMaf,         &kMac,         &kHwe, &kHardCallThreshold, &kChr,
+    nullptr
+};
+inline const MethodDef kSPAGxEmix = {
+    "SPAGxEmix",
+    "SPAGxE G x E test with per-individual allele frequency (admixture)",
+    kSPAGxEmixReq,
+    kSPAGxEmixOpt,
+    kPhenoNoteResidOrFit,
+    R"(PREFIX.<COL>.SPAGxEmix[.gz|.zst]   one file per --resid-name / --pheno-name column
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+  P_G  Z_G  BETA_G  SE_G
+  P_Gx<E1>  P_Wald_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>  BETA_Gx<E1>  SE_Gx<E1>  [... per env])",
+    R"(SPAGxEmix accounts for admixture by estimating a per-individual allele
+frequency q_i from the --pc-cols principal components (the same cascade as
+SPAmix), so the retrospective genotype law is Binomial(2, q_i).  The --pc-cols
+columns must also appear in --covar-name (they adjust the null model).  Every
+--envir-name column must likewise appear in --covar-name.  A sparse GRM is NOT
+accepted (SPAGxEmix+ is out of scope); the Branch-B Wald + CCT leg is applied
+exactly as in --method spagxe.)",
 };
 
 // ── SPAmix ─────────────────────────────────────────────────────────
@@ -1129,7 +1162,8 @@ inline const MethodDef kCalPairwiseIbd = {
 // `grab --help SPAmixLocalPlus|make-abed|cal-phi` therefore reports
 // "Unknown help topic" while the methods themselves remain functional.
 inline const MethodDef *const kAllMethods[] = {
-    &kSPACox, &kSPAGRM, &kSAGELD, &kSPAGxE, &kSPAmix, &kSPAmixPlus, &kSPAmixLocalPlus,
+    &kSPACox, &kSPAGRM, &kSAGELD, &kSPAGxE, &kSPAGxEmix, &kSPAmix, &kSPAmixPlus,
+    &kSPAmixLocalPlus,
     &kSPAsqr, &kWtCoxG, &kLEAF,
     nullptr
 };
@@ -1143,7 +1177,7 @@ inline const MethodDef *const kAllUtilModes[] = {
 // callable via --method but are hidden from --help to keep the surface
 // area focussed on the seven core GWAS methods.
 inline const MethodDef *const kVisibleMethods[] = {
-    &kSPACox, &kSPAGRM, &kSAGELD, &kSPAGxE, &kSPAmix,
+    &kSPACox, &kSPAGRM, &kSAGELD, &kSPAGxE, &kSPAGxEmix, &kSPAmix,
     &kSPAsqr, &kWtCoxG, &kLEAF,
     nullptr
 };

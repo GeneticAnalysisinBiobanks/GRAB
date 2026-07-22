@@ -63,7 +63,7 @@ static void printShortHelp() {
         --out PREFIX
 
 For more help, run 'grab2 --help TOPIC':
-  Methods:       spacox  spagrm  sageld  spagxe  spamix  spasqr  wtcoxg  leaf
+  Methods:       spacox  spagrm  sageld  spagxe  spagxemix  spamix  spasqr  wtcoxg  leaf
   Utilities:     cal-af-coef  cal-pairwise-ibd  int-pheno
   Main inputs:   genotype  phenotype
   Other inputs:  sp-grm  pairwise-ibd  ind-af-coef  ref-af
