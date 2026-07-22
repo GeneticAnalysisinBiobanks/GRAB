@@ -14,15 +14,13 @@
 //   Cox         coxph, summary(...)$coefficients["E:g","Pr(>|z|)"]  (normal)
 //   Ordinal     clm , summary(...)$coefficients["E:g","Pr(>|z|)"]   (normal)
 //
-// Two documented deviations from R (tolerance parity, not byte-exact — plan
-// rule 5):
+// Ordinal uses the observed information (analytic −∂²ℓ/∂θ∂θᵀ at the MLE) by
+// default, matching R's ordinal::clm; the BHHH outer-product information is
+// retained as an option (OrdinalInfo::BHHH) for diagnostics.  One documented
+// deviation from R remains (tolerance parity, not byte-exact — plan rule 5):
 //   • Cox ties: this fitter uses the Breslow partial likelihood (as
 //     regression::coxResiduals does), whereas R coxph defaults to Efron; the two
 //     differ only when event times tie.
-//   • Ordinal: the interaction SE is taken from the BHHH (outer-product-of-
-//     gradients) information — the matrix the deterministic proportional-odds
-//     fit already forms — rather than clm's observed Hessian.  At the MLE the two
-//     are asymptotically equal; they differ in finite samples.
 //
 // A singular information matrix, non-convergence, or a degenerate design returns
 // NaN, which the caller folds into the Cauchy combination as a fall-back to the
@@ -233,11 +231,14 @@ double waldCox(
     return 2.0 * math::pnorm(-std::abs(zstat));
 }
 
-// ── Ordinal: proportional-odds Fisher scoring, BHHH information, normal ref ──
+// ── Ordinal: proportional-odds Fisher scoring, normal reference ─────────────
 // X has no intercept (thresholds are the intercepts); interaction is X's last
 // column.  y is integer-coded 0..J−1.  Parameter order θ = [ε(J−1) | β(p)], so
-// the interaction coefficient is the final θ element.
-double waldOrdinal(const Eigen::VectorXi &y, const Eigen::MatrixXd &X) {
+// the interaction coefficient is the final θ element.  The covariance uses the
+// observed information (analytic −∂²ℓ/∂θ∂θᵀ at the MLE, matching clm) by default,
+// or the BHHH outer-product information when `info == OrdinalInfo::BHHH`.
+double waldOrdinal(const Eigen::VectorXi &y, const Eigen::MatrixXd &X,
+                   OrdinalInfo info) {
     const Eigen::Index n = X.rows(), p = X.cols();
     if (n <= p) return kNaN;
     const int yMin = y.minCoeff();
@@ -283,18 +284,108 @@ double waldOrdinal(const Eigen::VectorXi &y, const Eigen::MatrixXd &X) {
         }
     };
 
+    // Observed information −∂²ℓ/∂θ∂θᵀ at the current (ε, β), the analytic Hessian
+    // that clm uses.  Per subject the log-likelihood is log μ, μ = F(a) − F(b),
+    // upper cut a = ε_{yi} − η (F(a)=1 at yi=J−1), lower cut b = ε_{yi−1} − η
+    // (F(b)=0 at yi=0); F = logistic, f = F(1−F), f′ = f(1−2F).  The blocks below
+    // are the negated second derivatives of that log-likelihood (direct
+    // differentiation of the score assembled in `accumulate`).
+    auto observedInfo = [&]() -> Eigen::MatrixXd {
+        const Eigen::VectorXd eta = X * beta;
+        Eigen::MatrixXd H = Eigen::MatrixXd::Zero(nTheta, nTheta);
+        for (Eigen::Index i = 0; i < n; ++i) {
+            const int yi = y(i);
+            const bool hasHi = (yi < Jm1); // upper threshold ε_{yi} present
+            const bool hasLo = (yi > 0);   // lower threshold ε_{yi−1} present
+            const double Fa = hasHi ? logistic(eps(yi) - eta(i)) : 1.0;
+            const double Fb = hasLo ? logistic(eps(yi - 1) - eta(i)) : 0.0;
+            const double fa = hasHi ? Fa * (1.0 - Fa) : 0.0;
+            const double fb = hasLo ? Fb * (1.0 - Fb) : 0.0;
+            const double fpa = hasHi ? fa * (1.0 - 2.0 * Fa) : 0.0; // f′(a)
+            const double fpb = hasLo ? fb * (1.0 - 2.0 * Fb) : 0.0; // f′(b)
+            const double mu = clampProb(Fa - Fb);
+            const double mu2 = mu * mu;
+            const double D = fa - fb;
+            const int t1 = yi;     // index of ε_{yi}    (valid iff hasHi)
+            const int t0 = yi - 1; // index of ε_{yi−1}  (valid iff hasLo)
+            if (hasHi) H(t1, t1) += (fa * fa - fpa * mu) / mu2;
+            if (hasLo) H(t0, t0) += (fb * fb + fpb * mu) / mu2;
+            if (hasHi && hasLo) {
+                const double v = -(fa * fb) / mu2;
+                H(t1, t0) += v;
+                H(t0, t1) += v;
+            }
+            if (hasHi) { // ε_{yi} × β block (and its transpose)
+                const double c = (fpa * mu - fa * D) / mu2;
+                H.row(t1).segment(Jm1, p) += c * X.row(i);
+                H.col(t1).segment(Jm1, p) += c * X.row(i).transpose();
+            }
+            if (hasLo) { // ε_{yi−1} × β block (and its transpose)
+                const double c = (-fpb * mu + fb * D) / mu2;
+                H.row(t0).segment(Jm1, p) += c * X.row(i);
+                H.col(t0).segment(Jm1, p) += c * X.row(i).transpose();
+            }
+            const double cbb = (D * D - (fpa - fpb) * mu) / mu2; // β × β block
+            H.block(Jm1, Jm1, p, p) += cbb * (X.row(i).transpose() * X.row(i));
+        }
+        return H;
+    };
+
+    // Total log-likelihood at the current (ε, β) — drives the line search.
+    auto logLik = [&]() {
+        const Eigen::VectorXd eta = X * beta;
+        double ll = 0.0;
+        for (Eigen::Index i = 0; i < n; ++i) {
+            const int yi = y(i);
+            const double Fhi = (yi < Jm1) ? logistic(eps(yi) - eta(i)) : 1.0;
+            const double Flo = (yi > 0) ? logistic(eps(yi - 1) - eta(i)) : 0.0;
+            ll += std::log(clampProb(Fhi - Flo));
+        }
+        return ll;
+    };
+
+    // Newton-Raphson on the observed Hessian, with backtracking line search and
+    // gradient-based convergence — reaches the same MLE as clm.  A BHHH-only step
+    // (Fisher-scoring) can stall on an ill-conditioned marker and stop short of
+    // the optimum, so the step matrix is the observed information (with a BHHH
+    // fall-back when it is not positive definite).  If the fit fails to converge,
+    // return NaN so the CCT degrades to the SPA p rather than emitting a wrong p.
     Eigen::VectorXd grad;
-    Eigen::MatrixXd H;
-    for (int it = 0; it < 50; ++it) {
-        accumulate(grad, H);
-        const Eigen::VectorXd delta = H.ldlt().solve(grad);
+    Eigen::MatrixXd Hbhhh;
+    double ll = logLik();
+    bool converged = false;
+    for (int it = 0; it < 100; ++it) {
+        accumulate(grad, Hbhhh);
+        if (grad.norm() < 1e-9) { converged = true; break; }
+        const Eigen::MatrixXd Hobs = observedInfo();
+        Eigen::LLT<Eigen::MatrixXd> llt(Hobs);
+        Eigen::VectorXd delta;
+        if (llt.info() == Eigen::Success)
+            delta = llt.solve(grad);       // Newton step (observed Hessian)
+        else
+            delta = Hbhhh.ldlt().solve(grad); // BHHH fall-back when Hobs not PD
         if (!delta.allFinite()) return kNaN;
-        for (int j = 0; j < Jm1; ++j) eps(j) += delta(j);
-        beta += delta.tail(p);
-        if (delta.norm() < 1e-7) break;
+        const Eigen::VectorXd eps0 = eps, beta0 = beta;
+        double step = 1.0;
+        for (int h = 0; h < 40; ++h) { // backtrack until the log-lik increases
+            eps = eps0 + step * delta.head(Jm1);
+            beta = beta0 + step * delta.tail(p);
+            const double llNew = logLik();
+            if (std::isfinite(llNew) && llNew >= ll - 1e-12) { ll = llNew; break; }
+            step *= 0.5;
+        }
     }
-    accumulate(grad, H); // BHHH information at the MLE
-    const double invLast = invDiagLast(H);
+    if (!converged) {
+        accumulate(grad, Hbhhh);
+        if (grad.norm() > 1e-6) return kNaN; // did not reach the MLE → SPA fall-back
+    }
+    // Covariance from the requested information matrix at the MLE.
+    Eigen::MatrixXd infoMat;
+    if (info == OrdinalInfo::BHHH)
+        accumulate(grad, infoMat);      // Σ score·scoreᵀ
+    else
+        infoMat = observedInfo();       // −∂²ℓ/∂θ∂θᵀ (clm-matching, default)
+    const double invLast = invDiagLast(infoMat);
     if (!(invLast > 0.0)) return kNaN;
     const double se = std::sqrt(invLast);
     if (!(se > 0.0) || !std::isfinite(se)) return kNaN;
@@ -311,7 +402,8 @@ double waldOrdinal(const Eigen::VectorXi &y, const Eigen::MatrixXd &X) {
 double waldInteractionPval(
     const WaldData &wd,
     const Eigen::Ref<const Eigen::VectorXd> &g,
-    const Eigen::Ref<const Eigen::VectorXd> &E
+    const Eigen::Ref<const Eigen::VectorXd> &E,
+    OrdinalInfo ordInfo
 ) {
     if (wd.trait == TraitType::None) return kNaN;
     const Eigen::Index n = wd.covar.rows();
@@ -369,7 +461,7 @@ double waldInteractionPval(
         Eigen::VectorXi yf(m);
         for (Eigen::Index i = 0; i < m; ++i)
             yf[i] = static_cast<int>(std::lround(wd.y[keep[i]]));
-        return waldOrdinal(yf, Mf);
+        return waldOrdinal(yf, Mf, ordInfo);
     }
     default:
         return kNaN;

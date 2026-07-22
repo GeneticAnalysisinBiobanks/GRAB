@@ -29,6 +29,14 @@ namespace spagxe_wald {
 // `None` disables the Wald leg (residual mode, or the SPAGxE+ GRM path).
 enum class TraitType { None, Linear, Logistic, Cox, Ordinal };
 
+// Covariance estimator for the ordinal (proportional-odds) Wald leg.
+//   Observed — the observed information −∂²ℓ/∂θ∂θᵀ at the MLE (analytic Hessian),
+//              matching R's ordinal::clm; the default and the more accurate
+//              finite-sample estimator (Efron & Hinkley, 1978).
+//   BHHH     — the outer-product-of-gradients information Σ sᵢsᵢᵀ; asymptotically
+//              equivalent but noisier in finite samples.  Retained as an option.
+enum class OrdinalInfo { Observed, BHHH };
+
 // Per-phenotype raw data for the full-interaction-model refit.  All
 // vectors/matrices are in the phenotype's dense subject order (aligned to the
 // method's residual, environment, and genotype vectors).  `covar` already
@@ -53,9 +61,12 @@ struct WaldData {
 // singular information matrix, non-convergence, or a degenerate design; the
 // caller then falls back to the SPA p through the NaN-skipping Cauchy
 // combination.  `trait == None` also returns NaN.
+// `ordInfo` selects the ordinal covariance estimator (default: observed
+// information, matching clm); it is ignored for the other trait types.
 double waldInteractionPval(
     const WaldData &wd,
     const Eigen::Ref<const Eigen::VectorXd> &g,
-    const Eigen::Ref<const Eigen::VectorXd> &E);
+    const Eigen::Ref<const Eigen::VectorXd> &E,
+    OrdinalInfo ordInfo = OrdinalInfo::Observed);
 
 }  // namespace spagxe_wald
