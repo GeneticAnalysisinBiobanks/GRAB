@@ -22,10 +22,11 @@
 
 #include "geno_factory/geno_data.hpp" // parseGenoIIDs, makeGenoData, GenoMeta
 #include "io/sparse_grm.hpp"          // SparseGRM
-#include "io/subject_data.hpp"        // SubjectData, extractPhenoVec, PerPhenoInfo
+#include "io/subject_data.hpp"        // SubjectData, extractPhenoVec/Mat, PerPhenoInfo
+#include "spagxe/spagxe_wald.hpp"     // spagxe_wald::{WaldData, waldInteractionPval}
 #include "spamix/common.hpp"          // spa::getProbSpaG
 #include "util/logging.hpp"           // infoMsg, warnMsg
-#include "util/math_helper.hpp"       // math::pnorm, math::zFromPval
+#include "util/math_helper.hpp"       // math::pnorm, zFromPval, cauchyCombine
 #include "util/null_model.hpp"        // nullmodel::fitAll and friends
 
 #include <algorithm>
@@ -93,6 +94,63 @@ double spaScorePval(
     return pUpper + pLower;
 }
 
+// Resolve the trait family of one phenotype, matching nullmodel::fitAll's own
+// dispatch: a Cox spec (TIME:EVENT) → Cox; otherwise the explicit
+// --regression-model, or per-column inference in Auto mode.  Drives the
+// Branch-B Wald refit; `None` disables it.
+spagxe_wald::TraitType resolveTraitType(
+    const SubjectData &sd,
+    const nullmodel::PhenoSpec &spec,
+    nullmodel::RegressionModel regModel
+) {
+    using TT = spagxe_wald::TraitType;
+    using RM = nullmodel::RegressionModel;
+    if (nullmodel::isCoxSpec(spec)) return TT::Cox;
+    RM m = regModel;
+    if (m == RM::Auto)
+        m = nullmodel::inferModelFromColumn(sd.getColumn(spec.yColumn), spec.yColumn,
+                                            sd.usedIIDs())
+                .model;
+    switch (m) {
+    case RM::Linear:   return TT::Linear;
+    case RM::Logistic: return TT::Logistic;
+    case RM::Cox:      return TT::Cox;
+    case RM::Ordinal:  return TT::Ordinal;
+    default:           return TT::None;
+    }
+}
+
+// Recode a raw phenotype column into the form the Wald fitter expects.  The two-
+// sided interaction Wald p is invariant to the recode direction, so only the
+// family matters: Logistic → {0,1} (below the midpoint → 0), Ordinal → {0..J−1}
+// (shift by the minimum), Linear/Cox → unchanged (OLS is affine-invariant; the
+// Cox response is time/event, handled separately).  NaN entries are preserved
+// (the fitter drops those rows).
+Eigen::VectorXd recodeResponse(const Eigen::VectorXd &col, spagxe_wald::TraitType t) {
+    using TT = spagxe_wald::TraitType;
+    if (t == TT::Logistic) {
+        double lo = std::numeric_limits<double>::infinity();
+        double hi = -std::numeric_limits<double>::infinity();
+        for (Eigen::Index i = 0; i < col.size(); ++i)
+            if (std::isfinite(col[i])) { lo = std::min(lo, col[i]); hi = std::max(hi, col[i]); }
+        const double mid = 0.5 * (lo + hi);
+        Eigen::VectorXd out(col.size());
+        for (Eigen::Index i = 0; i < col.size(); ++i)
+            out[i] = std::isnan(col[i]) ? col[i] : (col[i] > mid ? 1.0 : 0.0);
+        return out;
+    }
+    if (t == TT::Ordinal) {
+        double lo = std::numeric_limits<double>::infinity();
+        for (Eigen::Index i = 0; i < col.size(); ++i)
+            if (std::isfinite(col[i])) lo = std::min(lo, col[i]);
+        Eigen::VectorXd out(col.size());
+        for (Eigen::Index i = 0; i < col.size(); ++i)
+            out[i] = std::isnan(col[i]) ? col[i] : std::round(col[i] - lo);
+        return out;
+    }
+    return col; // Linear (affine-invariant); Cox uses time/event, not y
+}
+
 } // namespace
 
 // ══════════════════════════════════════════════════════════════════════
@@ -110,6 +168,7 @@ SPAGxEMethod::SPAGxEMethod(
     std::vector<std::string> envNames,
     std::vector<Eigen::VectorXd> envVecs,
     std::shared_ptr<const SparseGRM> grm,
+    std::shared_ptr<const spagxe_wald::WaldData> wald,
     double marginalCutoff,
     double spaCutoff,
     double outlierRatio
@@ -117,6 +176,7 @@ SPAGxEMethod::SPAGxEMethod(
     : m_resid(std::move(resid)),
       m_envNames(std::move(envNames)),
       m_grm(std::move(grm)),
+      m_wald(std::move(wald)),
       m_marginalCutoff(marginalCutoff),
       m_spaCutoff(spaCutoff),
       m_outlierRatio(outlierRatio)
@@ -165,13 +225,14 @@ std::unique_ptr<MethodBase> SPAGxEMethod::clone() const {
 
 std::string SPAGxEMethod::getHeaderColumns() const {
     // Leading marginal block P_G Z_G BETA_G SE_G (normal-approx, so its Z is
-    // already p-consistent and needs no Z_Norm), then a 5-wide G×E block per
-    // environment (SPA score test → p-consistent Z and raw-score Z_Norm differ
-    // in the tails).
+    // already p-consistent and needs no Z_Norm), then a 6-wide G×E block per
+    // environment: the final p P_Gx (CCT in Branch B, SPA otherwise); the
+    // Branch-B Wald p P_Wald_Gx (NaN when no Wald ran); the p-consistent Z and
+    // the raw-score Z_Norm (which differ in the tails); and BETA/SE.
     std::string h = "\tP_G\tZ_G\tBETA_G\tSE_G";
     for (const auto &n : m_envNames)
-        h += "\tP_Gx" + n + "\tZ_Gx" + n + "\tZ_Norm_Gx" + n + "\tBETA_Gx" + n +
-             "\tSE_Gx" + n;
+        h += "\tP_Gx" + n + "\tP_Wald_Gx" + n + "\tZ_Gx" + n + "\tZ_Norm_Gx" + n +
+             "\tBETA_Gx" + n + "\tSE_Gx" + n;
     return h;
 }
 
@@ -182,7 +243,7 @@ void SPAGxEMethod::evalMarker(
     std::vector<double> &out
 ) {
     const int nEnv = static_cast<int>(m_envNames.size());
-    out.assign(static_cast<size_t>(4 + 5 * nEnv), kNaN);
+    out.assign(static_cast<size_t>(4 + 6 * nEnv), kNaN);
 
     const double q = altFreq;
 
@@ -224,30 +285,49 @@ void SPAGxEMethod::evalMarker(
         // det ≤ 0 (monomorphic G): leave R0 empty ⇒ per-env NaN below.
     }
 
+    // Branch B fires the prospective Wald leg only on the base (non-GRM) path
+    // (SPAGxE+ keeps no Wald — paper) and only when raw phenotype data is
+    // present (fit mode; residual mode leaves m_wald null → SPA-only).
+    const bool waldEnabled = branchB && m_wald && !m_grm &&
+                             m_wald->trait != spagxe_wald::TraitType::None;
+
     for (int e = 0; e < nEnv; ++e) {
-        const int base = 4 + 5 * e;
-        double z = 0.0, var = 0.0, p, score;
+        const int base = 4 + 6 * e;
+        double z = 0.0, var = 0.0, pSpa, score;
+        double pWald = kNaN;
         if (!branchB) {
             // Branch A: precomputed λ-orthogonalised weight and its Φ-form.
             const EnvData &ed = m_envs[e];
             score = rawScores[1 + e]; // Σ G_i w_{e,i}
-            p = spaScorePval(ed.wOutlier, ed.wSum, ed.wSq, ed.wPhiQuad, score, q,
-                             m_spaCutoff, z, var);
+            pSpa = spaScorePval(ed.wOutlier, ed.wSum, ed.wSq, ed.wPhiQuad, score, q,
+                                m_spaCutoff, z, var);
         } else {
             if (R0.size() == 0) continue; // degenerate G ⇒ leave NaN
             // Branch B per-marker weight u = E ∘ R̃; Ŝ_GxE = Σ G_i u_i.
             const Eigen::VectorXd u = m_envs[e].E.array() * R0.array();
             score = GVec.dot(u);
             const OutlierData ub = detectOutliers(u, m_outlierRatio);
-            p = spaScorePval(ub, u.sum(), u.squaredNorm(), phiQuad(u), score, q,
-                             m_spaCutoff, z, var);
+            pSpa = spaScorePval(ub, u.sum(), u.squaredNorm(), phiQuad(u), score, q,
+                                m_spaCutoff, z, var);
+            // Prospective Wald p of the G:E coefficient in trait ~ X+E+g+g:E,
+            // over the same environment used for the score weight.
+            if (waldEnabled)
+                pWald = spagxe_wald::waldInteractionPval(*m_wald, GVec, m_envs[e].E);
         }
         if (var > 0.0) {
-            out[base + 0] = p;                       // P_Gx<E>
-            out[base + 1] = math::zFromPval(p, z);   // Z_Gx<E> (p-consistent)
-            out[base + 2] = z;                       // Z_Norm_Gx<E> (raw score z)
-            out[base + 3] = score / var;             // BETA_Gx<E>
-            out[base + 4] = 1.0 / std::sqrt(var);    // SE_Gx<E>
+            // Branch B, base path: P = CCT(p_spa, p_wald).  cauchyCombine skips
+            // a NaN Wald p, so a failed refit degrades to the SPA p (never 0).
+            double finalP = pSpa;
+            if (waldEnabled) {
+                const double ps[2] = {pSpa, pWald};
+                finalP = math::cauchyCombine(ps, 2);
+            }
+            out[base + 0] = finalP;                      // P_Gx<E> (final)
+            out[base + 1] = pWald;                       // P_Wald_Gx<E> (NaN if none)
+            out[base + 2] = math::zFromPval(finalP, z);  // Z_Gx<E> (p-consistent)
+            out[base + 3] = z;                           // Z_Norm_Gx<E> (raw score z)
+            out[base + 4] = score / var;                 // BETA_Gx<E>
+            out[base + 5] = 1.0 / std::sqrt(var);        // SE_Gx<E>
         }
     }
 }
@@ -360,10 +440,20 @@ void runSPAGxE(
     const uint32_t N = sd.nUsed();
     infoMsg("  %u subjects in union mask", N);
 
+    // Covariate union (PCs + env main effects).  In fit mode it is both the
+    // null-model design and — reused per marker — the Branch-B Wald design; the
+    // per-phenotype trait family (below) selects the Wald fitter.
+    Eigen::MatrixXd covarUnion;
+    std::vector<spagxe_wald::TraitType> traitTypes;
     if (fitPath) {
-        Eigen::MatrixXd covarUnion;
         if (!covarNames.empty()) covarUnion = sd.getColumns(covarNames);
         else covarUnion.resize(N, 0);
+        traitTypes.reserve(phenoSpecs.size());
+        for (const auto &spec : phenoSpecs)
+            traitTypes.push_back(resolveTraitType(sd, spec, regModel));
+    }
+
+    if (fitPath) {
         nullmodel::EngineOptions eo;
         eo.nthreads = nthreads;
         auto fits = nullmodel::fitAll(sd, phenoSpecs, regModel, covarUnion, eo);
@@ -445,10 +535,36 @@ void runSPAGxE(
             }
         }
 
+        // Per-phenotype Branch-B Wald data: only in fit mode on the base (non-
+        // GRM) path — SPAGxE+ keeps no Wald, residual mode has no raw phenotype.
+        // Extract the raw phenotype / covariate design into the same dense
+        // subject order as phenoResid (identical (K>1)?extract:union pattern),
+        // so the Wald design aligns with the engine's per-phenotype genotype.
+        std::shared_ptr<const spagxe_wald::WaldData> phenoWald;
+        if (fitPath && !hasGrm) {
+            const spagxe_wald::TraitType tt = traitTypes[rc];
+            if (tt != spagxe_wald::TraitType::None) {
+                auto wd = std::make_shared<spagxe_wald::WaldData>();
+                wd->trait = tt;
+                wd->covar = (K > 1) ? extractPhenoMat(covarUnion, pi) : covarUnion;
+                const auto &spec = phenoSpecs[rc];
+                if (tt == spagxe_wald::TraitType::Cox) {
+                    Eigen::VectorXd tU = sd.getColumn(spec.timeColumn);
+                    Eigen::VectorXd eU = sd.getColumn(spec.eventColumn);
+                    wd->time = (K > 1) ? extractPhenoVec(tU, pi) : tU;
+                    wd->event = (K > 1) ? extractPhenoVec(eU, pi) : eU;
+                } else {
+                    Eigen::VectorXd yU = recodeResponse(sd.getColumn(spec.yColumn), tt);
+                    wd->y = (K > 1) ? extractPhenoVec(yU, pi) : yU;
+                }
+                phenoWald = std::move(wd);
+            }
+        }
+
         tasks[rc].phenoName = pi.name;
         tasks[rc].method = std::make_unique<SPAGxEMethod>(
             std::move(phenoResid), envNames, std::move(envVecs), phenoGrm,
-            marginalCutoff, spaCutoff, outlierIqrRatio);
+            std::move(phenoWald), marginalCutoff, spaCutoff, outlierIqrRatio);
         tasks[rc].unionToLocal = pi.unionToLocal;
         tasks[rc].nUsed = pi.nUsed;
         infoMsg("  Phenotype '%s': %u subjects", pi.name.c_str(), pi.nUsed);

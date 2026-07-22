@@ -5,8 +5,8 @@
 // null model is fit once (trait ~ X + E); per variant the marginal genetic
 // effect is screened and the G×E interaction is tested by a retrospective SPA.
 //
-//   --method spagxe   base SPAGxE (unrelated)  +  SPAGxE+ (via --sp-grm-*).
-//                     SPAGxE_CCT (Wald + CCT) is a later phase.
+//   --method spagxe   base SPAGxE (unrelated)  +  SPAGxE+ (via --sp-grm-*)
+//                     +  SPAGxE_CCT (Branch-B Wald + Cauchy combination).
 //
 // Design references (git-ignored, in the feat/sadge tree):
 //   dev-notes/methods/SPAGxE_claude            model + equations + R conflicts
@@ -34,6 +34,7 @@
 
 #include "engine/marker.hpp"          // MethodBase
 #include "geno_factory/geno_data.hpp" // GenoSpec
+#include "spagxe/spagxe_wald.hpp"     // spagxe_wald::WaldData (Branch-B Wald leg)
 #include "util/outlier.hpp"           // OutlierData
 
 class SparseGRM; // held by shared_ptr; full type only needed in the .cpp
@@ -45,18 +46,27 @@ class SparseGRM; // held by shared_ptr; full type only needed in the .cpp
 // Output schema (mirrors SAGELD's multi-env layout, src/spagrm/sageld.cpp):
 //   col 0..3        :  P_G  Z_G  BETA_G  SE_G        marginal genetic block
 //                                                    (always normal-approx)
-//   col 4 + 5·e+0   :  P_Gx<Ee>       G×E p-value (SPA/normal; CCT in Phase 3)
-//   col 4 + 5·e+1   :  Z_Gx<Ee>       p-consistent z:  2·pnorm(−|Z|) == P
-//   col 4 + 5·e+2   :  Z_Norm_Gx<Ee>  raw score z (Score/√Var, SPA-uncalibrated)
-//   col 4 + 5·e+3   :  BETA_Gx<Ee>
-//   col 4 + 5·e+4   :  SE_Gx<Ee>
-// resultSize() = 4 + 5·nEnv.
+//   col 4 + 6·e+0   :  P_Gx<Ee>       final G×E p-value.  Branch A (and the
+//                                     SPAGxE+ GRM / residual-mode paths): the
+//                                     SPA/normal score p.  Branch B, base path:
+//                                     CCT(p_spa, p_wald).
+//   col 4 + 6·e+1   :  P_Wald_Gx<Ee>  Branch-B Wald p of the G:E coefficient
+//                                     (NaN in Branch A, the GRM path, and
+//                                     residual mode — no Wald there).
+//   col 4 + 6·e+2   :  Z_Gx<Ee>       p-consistent z of P_Gx<Ee>: 2·pnorm(−|Z|)==P
+//   col 4 + 6·e+3   :  Z_Norm_Gx<Ee>  raw score z (Score/√Var, SPA-uncalibrated)
+//   col 4 + 6·e+4   :  BETA_Gx<Ee>    score-derived interaction effect
+//   col 4 + 6·e+5   :  SE_Gx<Ee>      score-derived interaction SE
+// resultSize() = 4 + 6·nEnv.
 class SPAGxEMethod : public MethodBase {
   public:
     // resid    — the null-model residual R (per-phenotype dense, length N).
     // envNames — environment column names, one 5-wide output block each.
     // envVecs  — the environment vectors E_e (aligned to resid), one per env.
     // grm      — per-phenotype sparse GRM for the (+) variant; null → base.
+    // wald     — per-phenotype Branch-B Wald data (raw phenotype + covariates).
+    //            null, or trait==None, or a non-null grm ⇒ no Wald leg (the
+    //            SPAGxE+ GRM path and residual mode stay SPA-only).
     // marginalCutoff — ε, the Branch A / Branch B routing threshold.
     // spaCutoff      — r (--spa-z-threshold), the |z| normal↔SPA switch.
     // outlierRatio   — IQR multiplier for the SPA outlier partition.
@@ -65,6 +75,7 @@ class SPAGxEMethod : public MethodBase {
         std::vector<std::string> envNames,
         std::vector<Eigen::VectorXd> envVecs,
         std::shared_ptr<const SparseGRM> grm,
+        std::shared_ptr<const spagxe_wald::WaldData> wald,
         double marginalCutoff,
         double spaCutoff,
         double outlierRatio
@@ -73,7 +84,7 @@ class SPAGxEMethod : public MethodBase {
     std::unique_ptr<MethodBase> clone() const override;
 
     int resultSize() const override {
-        return 4 + 5 * static_cast<int>(m_envNames.size());
+        return 4 + 6 * static_cast<int>(m_envNames.size());
     }
 
     std::string getHeaderColumns() const override;
@@ -129,6 +140,7 @@ class SPAGxEMethod : public MethodBase {
     std::vector<std::string> m_envNames;        // env column names (header order)
     std::vector<EnvData> m_envs;                // per-env Branch-A state
     std::shared_ptr<const SparseGRM> m_grm;     // (+) variant; null → base
+    std::shared_ptr<const spagxe_wald::WaldData> m_wald; // Branch-B Wald; null → SPA-only
     double m_marginalCutoff;                    // ε
     double m_spaCutoff;                         // r
     double m_outlierRatio;                      // IQR multiplier (Branch B repart.)
