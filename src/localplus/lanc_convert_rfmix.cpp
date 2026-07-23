@@ -88,8 +88,8 @@ std::vector<std::string> mspSplitTabs(const std::string &s) {
 
 struct MspWindow {
     std::string chrom;
-    int32_t spos;              // 0-based, inclusive
-    int32_t epos;              // 0-based, exclusive
+    int32_t spos;              // 0-based, inclusive (RFMix 1-based spos, minus 1)
+    int32_t epos;              // 0-based, exclusive (RFMix 1-based epos, minus 1)
     std::vector<int8_t> calls; // length 2*nSamples; each is ancestry 0..K-1, or -1
 };
 
@@ -173,8 +173,15 @@ MspData parseMsp(const std::string &mspFile) {
         }
         MspWindow w;
         w.chrom = cols[0];
-        w.spos = std::stoi(cols[1]);
-        w.epos = std::stoi(cols[2]);
+        // RFMix emits 1-based spos/epos that tile contiguously half-open
+        // (epos_i == spos_{i+1}).  Store them 0-based so the membership test
+        // (w.spos <= pos0 && pos0 < w.epos) operates in htslib's 0-based
+        // rec->pos space.  Without the -1 the first window's start SNP is
+        // dropped and every window-boundary SNP is mis-assigned to the
+        // previous window (see dev-notes/methods/recode_rfmix/
+        // 03_merged_and_fixes.md item #4).
+        w.spos = std::stoi(cols[1]) - 1;
+        w.epos = std::stoi(cols[2]) - 1;
         w.calls.resize(2 * msp.nSamples);
         for (uint32_t h = 0; h < 2 * msp.nSamples; ++h) {
             int call = std::stoi(cols[6 + h]);

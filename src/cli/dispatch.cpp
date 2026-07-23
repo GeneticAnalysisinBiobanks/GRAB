@@ -13,6 +13,7 @@
 #include "util/text_stream.hpp"
 
 #include "localplus/lanc_convert_rfmix.hpp"
+#include "localplus/lanc_io.hpp" // LANC_DEFAULT_BLOCKLEN (chunk-size guard)
 #include "localplus/spamixlocalp.hpp"
 #include "spacox/spacox.hpp"
 #include "spagrm/ibd.hpp"
@@ -367,7 +368,12 @@ int run(
                       << args.compressionLevel << "\n";
             return 1;
         }
-        if (args.compression.empty()) {
+        // --make-lanc uses --compression-level for its zstd frames only and
+        // ignores --compression (the text-result codec), so this "requires
+        // --compression" guard does not apply to it (its level is resolved as
+        // compressionLevelExplicit ? compressionLevel : 3 in the make-lanc
+        // branch below).
+        if (!args.makeLanc && args.compression.empty()) {
             std::cerr << "Error: --compression-level requires --compression gz|zst.\n";
             return 1;
         }
@@ -462,6 +468,18 @@ int run(
         require(args.lancPrefix, "--lanc", "--cal-phi");
         require(args.outPrefix, "--out", "--cal-phi");
         checkSpGrm(args, /*required=*/ true, "--cal-phi");
+        // --cal-phi reads .lanc; a work-stealing chunk must start on a zstd
+        // frame boundary, so --chunk-size must be a positive multiple of the
+        // .lanc block length.  (This branch returns before the generic
+        // --chunk-size >= 256 check further down, so enforce it here.)
+        if (args.nSnpPerChunk < LANC_DEFAULT_BLOCKLEN ||
+            args.nSnpPerChunk % LANC_DEFAULT_BLOCKLEN != 0) {
+            std::cerr << "Error: --chunk-size must be a positive multiple of "
+                      << LANC_DEFAULT_BLOCKLEN
+                      << " (the .lanc block length) for --cal-phi; got "
+                      << args.nSnpPerChunk << "\n";
+            return 1;
+        }
         logArgsInEffect(args);
         std::string phiSuffix = ".phi";
         if (args.compression == "gz")phiSuffix += ".gz";
@@ -936,6 +954,20 @@ int run(
 
     if (args.nSnpPerChunk < 256) {
         std::cerr << "Error: --chunk-size must be >= 256 (got " << args.nSnpPerChunk << ")\n";
+        return 1;
+    }
+
+    // SPAmixLocalPlus reads .lanc; a work-stealing chunk must start on a zstd
+    // frame boundary, so --chunk-size must be a positive multiple of the .lanc
+    // block length.  Do NOT tighten --chunk-size for the seven validated
+    // (non-.lanc) methods, which stream from geno_factory readers.
+    if (args.method == "SPAmixLocalPlus" &&
+        (args.nSnpPerChunk < LANC_DEFAULT_BLOCKLEN ||
+         args.nSnpPerChunk % LANC_DEFAULT_BLOCKLEN != 0)) {
+        std::cerr << "Error: --chunk-size must be a positive multiple of "
+                  << LANC_DEFAULT_BLOCKLEN
+                  << " (the .lanc block length) for SPAmixLocalPlus; got "
+                  << args.nSnpPerChunk << "\n";
         return 1;
     }
 
