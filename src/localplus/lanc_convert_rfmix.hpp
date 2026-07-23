@@ -1,15 +1,16 @@
 // lanc_convert_rfmix.hpp — RFMix .msp.tsv + phased query BCF/VCF -> .lanc
 //
 // Multi-chromosome converter: replaces the single-file .abed converter it
-// supersedes with a per-chromosome, plane-output writer driven by the
-// .lanc format (see dev-notes/methods/recode_rfmix/
-// 01_lanc_format_and_recoding.md, section 6).
+// supersedes with a plane-output writer driven by the merged .lanc format
+// (see dev-notes/methods/recode_rfmix/03_merged_and_fixes.md).  All
+// chromosomes are emitted as ordered segments of ONE {outPrefix}.lanc.
 #pragma once
 
 #include <string>
 
 // Convert per-chromosome RFMix .msp.tsv files + matching phased query
-// BCF/VCF files to a per-chromosome .lanc/.bim set plus one shared .fam.
+// BCF/VCF files to ONE merged {outPrefix}.lanc + {outPrefix}.bim plus one
+// shared {outPrefix}.fam.
 //
 //   genoPrefix:  --bcf or --vcf prefix; per-chromosome genotype files are
 //                discovered by globbing {genoPrefix}*.bcf (expectBcf) or
@@ -20,11 +21,11 @@
 //                as the old (now-removed) .abed converter did.
 //   mspPrefix:   --rfmix-msp prefix; per-chromosome RFMix output is
 //                discovered by globbing {mspPrefix}*.msp.tsv.
-//   outPrefix:   output prefix; writes {outPrefix}.chr{TOKEN}.lanc and
-//                {outPrefix}.chr{TOKEN}.bim per chromosome (TOKEN = the
-//                chromosome string with any leading "chr"/"CHR" stripped —
-//                this is exactly the token LancData's {prefix}.chr*.lanc
-//                glob expects) plus one shared {outPrefix}.fam.
+//   outPrefix:   output prefix; writes ONE merged {outPrefix}.lanc (one
+//                chromosome segment per matched chromosome, in numeric-aware
+//                sorted order) and the companion merged {outPrefix}.bim (all
+//                markers in that same chromosome order) plus one shared
+//                {outPrefix}.fam.
 //   compressionLevel: zstd level forwarded to LancWriter (default 3).
 //   keepFile / removeFile: PLINK2-style --keep/--remove sample ID files;
 //                applied once (the query cohort is shared across

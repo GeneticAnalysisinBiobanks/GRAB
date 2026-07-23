@@ -1,8 +1,12 @@
-// lanc_roundtrip_test.cpp — self-contained P1 gate for the .lanc v1 format.
+// lanc_roundtrip_test.cpp — self-contained gate for the merged .lanc format.
 //
 // Exercises LancWriter / LancData / LancCursor over two synthetic configurations
-// (NO_MISSING and WITH-missing), multiple chromosomes, N=300, M spanning several
-// blocks (blockLen=512), K=4 with unassigned (0xF) nibbles and missing bits.
+// (NO_MISSING and WITH-missing), each a SINGLE merged {prefix}.lanc built by one
+// LancWriter with beginChromosome() per chromosome.  N=300, K=4 with unassigned
+// (0xF) nibbles and missing bits, blockLen=512, TWO chromosome segments where at
+// least one segment's marker count (chr "2": 1000) is NOT a multiple of blockLen,
+// so it ends on a partial frame at the chromosome boundary — exercising the
+// chr-boundary block flush and the partial-frame span math.
 //
 // Checks:
 //   1. Deterministic PRNG-generated per-(marker,individual,hap) source arrays.
@@ -11,8 +15,10 @@
 //   3. getAdmixGenotypes(marker,k) == column k of getAllAncestries; altFreq ==
 //      sum(dos)/sum(hap) (guarded).
 //   4. Subject filtering (every other subject) yields the correct N_used rows.
-//   5. Multi-chr prefix stream == chr1 markers followed by chr2 markers.
-//   6. Determinism: encoding twice yields byte-identical .lanc files.
+//   5. Merged marker stream == segment0 (chr1) markers then segment1 (chr2).
+//   6. A chunk that starts at a segment boundary begins on a frame boundary
+//      (localIdx % blockLen == 0 at each segment's first global marker index).
+//   7. Determinism: encoding twice yields a byte-identical single .lanc file.
 //
 // Build (example):
 //   g++ -std=c++17 -O2 -Isrc -Ithird_party/eigen-5.0.0 -Ithird_party/zstd-1.5.7/lib
@@ -133,26 +139,29 @@ static void writeFam(const std::string &path, uint32_t N) {
         f << "F" << i << " IND" << i << " 0 0 0 -9\n";
 }
 
-static void writeBim(const std::string &path, const ChrArrays &ca) {
-    std::ofstream f(path);
+static void appendBim(std::ofstream &f, const ChrArrays &ca) {
     for (uint32_t m = 0; m < ca.M; ++m)
         f << ca.chrom << " snp_" << ca.chrom << "_" << m << " 0 " << (m + 1) << " A G\n";
 }
 
+// Write ONE merged {prefix}.lanc via a single LancWriter, calling
+// beginChromosome() before each chromosome segment, plus one merged {prefix}.bim
+// (segment0 rows then segment1 rows) and one shared {prefix}.fam.
 static void writeDataset(const std::string &prefix, const Dataset &ds) {
+    LancWriter w(prefix + ".lanc", static_cast<uint8_t>(ds.K), ds.N, ds.blockLen, 3);
+    std::ofstream bim(prefix + ".bim");
     for (const auto &ca : ds.chrs) {
-        std::string lancPath = prefix + ".chr" + ca.chrom + ".lanc";
-        std::string bimPath = prefix + ".chr" + ca.chrom + ".bim";
-        LancWriter w(lancPath, static_cast<uint8_t>(ds.K), ds.N, ds.blockLen, 3);
+        w.beginChromosome();
         for (uint32_t m = 0; m < ca.M; ++m) {
             const size_t off = static_cast<size_t>(m) * ds.N;
             const uint8_t *miss0 = ds.withMissing ? &ca.miss0[off] : nullptr;
             const uint8_t *miss1 = ds.withMissing ? &ca.miss1[off] : nullptr;
             w.addMarker(&ca.anc0[off], &ca.anc1[off], &ca.alt0[off], &ca.alt1[off], miss0, miss1);
         }
-        w.close();
-        writeBim(bimPath, ca);
+        appendBim(bim, ca);
     }
+    w.close();
+    bim.close();
     writeFam(prefix + ".fam", ds.N);
 }
 
@@ -329,6 +338,31 @@ static void verifyDataset(const std::string &prefix, const Dataset &ds, const st
             check(ok, label + ": subset decode matches selected rows (g=" + std::to_string(g) + ")");
         }
     }
+
+    // (6) Every work-stealing chunk starts on a frame boundary and stays within a
+    //     single segment.  Segment starts (global marker index) are 0 and
+    //     ds.chrs[0].M; the boundary at ds.chrs[0].M coincides with chr1's final
+    //     PARTIAL frame (1300 markers = 2*512 + 276), so this asserts the chunk
+    //     split at the chromosome boundary lands on a frame boundary.
+    {
+        const uint32_t seg1Start = ds.chrs[0].M;
+        const uint32_t blockLen = ds.blockLen;
+        const auto &markers = data.markerInfo();
+        bool ok = true;
+        size_t seenChunks = 0;
+        for (const auto &chunk : data.chunkIndices()) {
+            if (chunk.empty()) { ok = false; continue; }
+            ++seenChunks;
+            const uint32_t gFirst = static_cast<uint32_t>(markers[chunk.front()].genoIndex);
+            const uint32_t gLast = static_cast<uint32_t>(markers[chunk.back()].genoIndex);
+            const uint32_t segStartFirst = (gFirst < seg1Start) ? 0u : seg1Start;
+            const uint32_t segStartLast = (gLast < seg1Start) ? 0u : seg1Start;
+            if (segStartFirst != segStartLast) ok = false; // no chunk straddles the boundary
+            if ((gFirst - segStartFirst) % blockLen != 0) ok = false; // starts on a frame boundary
+        }
+        check(ok && seenChunks >= 3,
+              label + ": every chunk starts on a frame boundary and stays within one segment");
+    }
 }
 
 int main(int argc, char **argv) {
@@ -353,13 +387,9 @@ int main(int argc, char **argv) {
         writeDataset(prefixA, ds);
         writeDataset(prefixB, ds);
 
-        // (6) determinism: A vs B byte-identical per chromosome file.
-        for (const auto &ca : ds.chrs) {
-            std::string fa = prefixA + ".chr" + ca.chrom + ".lanc";
-            std::string fb = prefixB + ".chr" + ca.chrom + ".lanc";
-            check(filesIdentical(fa, fb),
-                  std::string(cfg.name) + ": determinism chr" + ca.chrom + " byte-identical");
-        }
+        // (7) determinism: A vs B byte-identical single merged .lanc file.
+        check(filesIdentical(prefixA + ".lanc", prefixB + ".lanc"),
+              std::string(cfg.name) + ": determinism single merged .lanc byte-identical");
 
         verifyDataset(prefixA, ds, cfg.name);
     }

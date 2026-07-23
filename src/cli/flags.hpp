@@ -515,14 +515,14 @@ Examples: --chr 5   --chr 2,3   --chr 1-4,6-8,22)"
 
 inline const FlagDef kLanc = {
     "--lanc", "PREFIX",
-    "Local-ancestry binary prefix (.lanc/.bim per chromosome + shared .fam)",
-    R"(Per-chromosome plane-separated local-ancestry binary produced by
---make-lanc: {PREFIX}.chr{N}.lanc (framed-zstd ancestry / allele /
-missing bit-planes under block-framed zstd) with a companion
-{PREFIX}.chr{N}.bim (standard PLINK BIM), plus one shared {PREFIX}.fam
-listing the query samples.  The reader globs {PREFIX}.chr*.lanc, sorts
-by chromosome, and builds a single global marker list across files.
-Consumed by --cal-phi and --method SPAmixLocalPlus.)"
+    "Local-ancestry binary prefix (merged .lanc + .bim + shared .fam)",
+    R"(Merged plane-separated local-ancestry binary produced by --make-lanc:
+a single {PREFIX}.lanc (framed-zstd ancestry / allele / missing bit-
+planes, one chromosome segment per contig in chromosome order) with a
+companion merged {PREFIX}.bim (standard PLINK BIM, all markers in that
+same order) plus one shared {PREFIX}.fam listing the query samples.  The
+reader opens the single file and builds one global marker list across
+segments.  Consumed by --cal-phi and --method SPAmixLocalPlus.)"
 };
 
 inline const FlagDef kAdmixPhi = {
@@ -1040,17 +1040,18 @@ inline const FlagDef *const kMakeLancOpt[] = {
 
 inline const MethodDef kMakeLanc = {
     "make-lanc",
-    "Build per-chromosome .lanc plane-separated local-ancestry binary from phased VCF/BCF + rfmix2 MSP",
+    "Build merged .lanc plane-separated local-ancestry binary from phased VCF/BCF + rfmix2 MSP",
     kMakeLancReq,
     kMakeLancOpt,
     nullptr,
-    "{prefix}.chr{N}.lanc  {prefix}.chr{N}.bim  (per chromosome)   +   {prefix}.fam  (shared)",
+    "{prefix}.lanc  {prefix}.bim  (one merged file, chromosome segments)   +   {prefix}.fam  (shared)",
     R"(--vcf PREFIX --rfmix-msp PREFIX   phased per-chr VCF/.vcf.gz + rfmix2 per-chr MSP  ->  .lanc
 --bcf PREFIX --rfmix-msp PREFIX   phased per-chr BCF2 + rfmix2 per-chr MSP            ->  .lanc
 Both flags are treated as PREFIXES: per-chromosome inputs are discovered
 by globbing {PREFIX}*.bcf / {PREFIX}*.vcf[.gz|.zst] and {PREFIX}*.msp.tsv
-respectively, matched by chromosome token.  --out PREFIX writes PREFIX.chr{N}.lanc and
-PREFIX.chr{N}.bim per chromosome plus one shared PREFIX.fam.
+respectively, matched by chromosome token.  --out PREFIX writes ONE merged
+PREFIX.lanc (a chromosome segment per contig, in chromosome order) and the
+companion merged PREFIX.bim plus one shared PREFIX.fam.
 --compression-level sets the zstd level for the .lanc frames (default 3).
 Pass PREFIX as --lanc to SPAmixLocalPlus or --cal-phi.)",
 };

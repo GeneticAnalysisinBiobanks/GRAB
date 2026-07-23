@@ -69,6 +69,29 @@ static void writeFile(const std::string &path, const std::string &content) {
     f << content;
 }
 
+// Count, within `dir`, the files that belong to output basename `base`:
+// exactly `base`.lanc (nLanc), `base`.bim (nBim), and any `base`.chr*.lanc
+// (nChrLanc, which must be 0 for the merged single-file layout).
+static void countOutputs(
+    const std::string &dir,
+    const std::string &base,
+    int &nLanc,
+    int &nBim,
+    int &nChrLanc
+) {
+    nLanc = nBim = nChrLanc = 0;
+    const std::string dot = base + ".";
+    for (const auto &entry : fs::directory_iterator(dir)) {
+        const std::string fn = entry.path().filename().string();
+        if (fn.size() < dot.size() || fn.compare(0, dot.size(), dot) != 0) continue;
+        if (fn == base + ".lanc") ++nLanc;
+        if (fn == base + ".bim") ++nBim;
+        const std::string rest = fn.substr(dot.size());
+        if (rest.rfind("chr", 0) == 0 && fn.size() >= 5 && fn.compare(fn.size() - 5, 5, ".lanc") == 0)
+            ++nChrLanc;
+    }
+}
+
 // ── Ground truth: K=3, N=5 samples (S1..S5), chr20, two windows ─────────
 //
 // RFMix .msp spos/epos are 1-based; convertRfmixToLanc stores them 0-based
@@ -208,7 +231,9 @@ static void runBoundaryCase(const std::string &baseDir) {
     // (a) No SNV dropped: .bim has all 9 rows, and the FIRST row is POS==1
     //     (spos0 of the first window) — the first-window first SNP is kept.
     {
-        std::ifstream bim(outPrefix + ".chr21.bim");
+        check(fs::exists(outPrefix + ".lanc") && !fs::exists(outPrefix + ".chr21.lanc"),
+              "boundary: single merged out.lanc (no per-chromosome file)");
+        std::ifstream bim(outPrefix + ".bim");
         std::vector<std::string> lines;
         std::string line;
         while (std::getline(bim, line))
@@ -300,13 +325,23 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    check(fs::exists(outPrefix + ".chr20.lanc"), "out.chr20.lanc exists (token stripped from 'chr20' -> '20')");
-    check(fs::exists(outPrefix + ".chr20.bim"), "out.chr20.bim exists");
+    // ── Single merged output: exactly one out.lanc + one out.bim, no per-chr ──
+    check(fs::exists(outPrefix + ".lanc"), "single merged out.lanc exists");
+    check(fs::exists(outPrefix + ".bim"), "single merged out.bim exists");
     check(fs::exists(outPrefix + ".fam"), "out.fam exists");
+    check(!fs::exists(outPrefix + ".chr20.lanc"), "no per-chromosome out.chr20.lanc produced");
+    check(!fs::exists(outPrefix + ".chr20.bim"), "no per-chromosome out.chr20.bim produced");
+    {
+        int nLanc = 0, nBim = 0, nChrLanc = 0;
+        countOutputs(baseDir, "out", nLanc, nBim, nChrLanc);
+        check(nLanc == 1, "exactly one out.lanc file");
+        check(nBim == 1, "exactly one out.bim file");
+        check(nChrLanc == 0, "no out.chr*.lanc files");
+    }
 
     // ── .bim: 4 kept markers (multiallelic vMulti skipped), correct columns ──
     {
-        std::ifstream bim(outPrefix + ".chr20.bim");
+        std::ifstream bim(outPrefix + ".bim");
         std::vector<std::string> lines;
         std::string line;
         while (std::getline(bim, line))

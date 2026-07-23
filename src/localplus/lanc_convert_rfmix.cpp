@@ -19,10 +19,13 @@
 //      match to an msp entry by token.
 //   4. Error if any chromosome has an msp file without a matching geno
 //      file, or vice versa. Process matched chromosomes in sorted order.
-//   5. Per chromosome: stream biallelic SNVs; for each variant whose 0-based
-//      POS falls in an msp window (monotone WindowCursor), build per-kept-
-//      sample per-haplotype ancestry/allele/missing arrays and call
-//      LancWriter::addMarker. Emit a matching .bim line.
+//   5. One LancWriter emits the merged {out}.lanc for all chromosomes; a
+//      beginChromosome() call precedes each chromosome's segment.  Per
+//      chromosome: stream biallelic SNVs; for each variant whose 0-based POS
+//      falls in an msp window (monotone WindowCursor), build per-kept-sample
+//      per-haplotype ancestry/allele/missing arrays and call
+//      LancWriter::addMarker, appending a matching row to the single merged
+//      {out}.bim.
 //   6. Write one shared .fam after all chromosomes (filtered query samples,
 //      original BCF/msp order).
 #include "localplus/lanc_convert_rfmix.hpp"
@@ -199,10 +202,10 @@ MspData parseMsp(const std::string &mspFile) {
 }
 
 // ── Chromosome token / comparison helpers ────────────────────────────────
-// stripChrPrefix / chromLessThan are copied from the old .abed converter (and
-// match the identical helper in lanc_io.cpp, which is file-local there) so
-// the output filenames are discoverable by LancData's {prefix}.chr*.lanc
-// glob and sort in the same numeric-aware order the reader expects.
+// stripChrPrefix / chromLessThan are copied from the old .abed converter.  They
+// sort the matched chromosomes into the numeric-aware order in which their
+// segments are laid out in the merged {out}.lanc and their markers appended to
+// the merged {out}.bim, so segment order coincides with .bim chromosome order.
 
 std::string stripChrPrefix(const std::string &s) {
     if (s.size() >= 3 && (s[0] == 'c' || s[0] == 'C') && (s[1] == 'h' || s[1] == 'H') &&
@@ -610,29 +613,32 @@ void convertRfmixToLanc(
         }
     }
 
-    // ── 7. Per chromosome: stream genotypes + msp windows -> .lanc/.bim ──
+    // ── 7. Stream every chromosome into ONE merged {out}.lanc + {out}.bim ──
+    //   One LancWriter emits all segments; beginChromosome() before each
+    //   chromosome flushes the pending zstd block so a frame never straddles a
+    //   chromosome boundary.  One .bim accumulates all markers in the same
+    //   sorted chromosome order (segment order in the .lanc).
     infoMsg("convertRfmixToLanc: %zu chromosome(s), K=%d, %u subjects (%u kept)", entries.size(), K,
             static_cast<uint32_t>(sampleIDs0.size()), nKept);
+
+    const std::string lancPath = outPrefix + ".lanc";
+    const std::string bimPath = outPrefix + ".bim";
+
+    LancWriter writer(lancPath, static_cast<uint8_t>(K), nKept, LANC_DEFAULT_BLOCKLEN, compressionLevel);
+    std::ofstream bimOut(bimPath);
+    if (!bimOut) throw std::runtime_error("Cannot create " + bimPath);
 
     uint64_t totalMissing = 0;
     uint64_t totalMarkers = 0;
     for (const auto &e : entries) {
-        const std::string lancPath = outPrefix + ".chr" + e.token + ".lanc";
-        const std::string bimPath = outPrefix + ".chr" + e.token + ".bim";
+        infoMsg("Chromosome %s: msp=%s geno=%s -> segment in %s", e.token.c_str(), e.mspPath.c_str(),
+                e.genoPath.c_str(), lancPath.c_str());
 
-        infoMsg("Chromosome %s: msp=%s geno=%s -> %s", e.token.c_str(), e.mspPath.c_str(), e.genoPath.c_str(),
-                lancPath.c_str());
-
-        LancWriter writer(lancPath, static_cast<uint8_t>(K), nKept, LANC_DEFAULT_BLOCKLEN, compressionLevel);
-        std::ofstream bimOut(bimPath);
-        if (!bimOut) throw std::runtime_error("Cannot create " + bimPath);
+        writer.beginChromosome();
 
         uint64_t nMissing = 0;
         const uint32_t nMatch =
             processChrToLanc(e.genoPath, expectBcf, e.msp, writer, bimOut, keptIndices, nMissing, nthreads);
-
-        writer.close();
-        bimOut.close();
 
         if (nMatch == 0)
             throw std::runtime_error("convertRfmixToLanc: no " + std::string(expectBcf ? "BCF" : "VCF") +
@@ -643,10 +649,13 @@ void convertRfmixToLanc(
         totalMarkers += nMatch;
     }
 
+    writer.close();
+    bimOut.close();
+
     if (totalMissing > 0)
         infoMsg("[INFO] convertRfmixToLanc: %llu missing genotypes encountered across all chromosomes",
                 static_cast<unsigned long long>(totalMissing));
 
-    infoMsg("Conversion complete: %s.chr*.lanc (%llu markers total x %u subjects x %d ancestries, %zu chromosomes)",
-            outPrefix.c_str(), static_cast<unsigned long long>(totalMarkers), nKept, K, entries.size());
+    infoMsg("Conversion complete: %s (%llu markers total x %u subjects x %d ancestries, %zu segments)",
+            lancPath.c_str(), static_cast<unsigned long long>(totalMarkers), nKept, K, entries.size());
 }
