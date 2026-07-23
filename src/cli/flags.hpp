@@ -339,7 +339,7 @@ cores when sizing a job to physical cores.)"
 };
 
 inline const FlagDef kChunkSize = {
-    "--chunk-size", "INT", "Markers per chunk (default: 8192, min: 256)",
+    "--chunk-size", "INT", "Markers per chunk (default: 8192; a positive multiple of 512)",
     R"(Controls the granularity of the chunk-level work-stealing thread pool.
 Each chunk is processed end-to-end by a single worker, then handed to a
 single writer thread that emits chunks in genomic order.  Smaller chunks
@@ -348,8 +348,10 @@ synchronization and per-chunk overhead; larger chunks reduce overhead
 but may starve workers when the total marker count is small.
 
 The default of 8192 suits whole-genome scans where each chunk amortises
-the worker's startup cost over thousands of markers.  On a CLI-supplied
-value, the engine honors it verbatim (subject to the min: 256 floor).
+the worker's startup cost over thousands of markers.  A CLI-supplied
+value must be a positive multiple of 512 (the .lanc block length), so
+every work-stealing chunk starts on a .lanc zstd frame boundary; the
+engine then honors it verbatim.
 
 Exception — SPAsqr --spasqr-mode wald: per-marker QR refit is far slower
 than score-mode batched GEMM, and wald runs are typically restricted to

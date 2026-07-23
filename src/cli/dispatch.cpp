@@ -394,6 +394,19 @@ int run(
         return 0;
     }
 
+    // ── Universal --chunk-size constraint ──────────────────────────
+    // A work-stealing chunk must start on a .lanc zstd frame boundary, so
+    // --chunk-size must be a positive multiple of the .lanc block length
+    // (LANC_DEFAULT_BLOCKLEN = 512).  This constraint is universal across ALL
+    // modes, including the seven validated methods; the default 8192 = 16
+    // frames satisfies it.
+    if (args.nSnpPerChunk < LANC_DEFAULT_BLOCKLEN ||
+        args.nSnpPerChunk % LANC_DEFAULT_BLOCKLEN != 0) {
+        std::cerr << "Error: --chunk-size must be a positive multiple of "
+                  << LANC_DEFAULT_BLOCKLEN << " (got " << args.nSnpPerChunk << ")\n";
+        return 1;
+    }
+
     // ── Convenience: parse comma-separated column name lists ───────
     auto pcColNames = args.pcCols.empty() ? std::vector<std::string>{} : splitComma(args.pcCols, "--pc-cols", 1);
     auto covarNames =
@@ -468,18 +481,6 @@ int run(
         require(args.lancPrefix, "--lanc", "--cal-phi");
         require(args.outPrefix, "--out", "--cal-phi");
         checkSpGrm(args, /*required=*/ true, "--cal-phi");
-        // --cal-phi reads .lanc; a work-stealing chunk must start on a zstd
-        // frame boundary, so --chunk-size must be a positive multiple of the
-        // .lanc block length.  (This branch returns before the generic
-        // --chunk-size >= 256 check further down, so enforce it here.)
-        if (args.nSnpPerChunk < LANC_DEFAULT_BLOCKLEN ||
-            args.nSnpPerChunk % LANC_DEFAULT_BLOCKLEN != 0) {
-            std::cerr << "Error: --chunk-size must be a positive multiple of "
-                      << LANC_DEFAULT_BLOCKLEN
-                      << " (the .lanc block length) for --cal-phi; got "
-                      << args.nSnpPerChunk << "\n";
-            return 1;
-        }
         logArgsInEffect(args);
         std::string phiSuffix = ".phi";
         if (args.compression == "gz")phiSuffix += ".gz";
@@ -950,25 +951,6 @@ int run(
                 return 1;
             }
         }
-    }
-
-    if (args.nSnpPerChunk < 256) {
-        std::cerr << "Error: --chunk-size must be >= 256 (got " << args.nSnpPerChunk << ")\n";
-        return 1;
-    }
-
-    // SPAmixLocalPlus reads .lanc; a work-stealing chunk must start on a zstd
-    // frame boundary, so --chunk-size must be a positive multiple of the .lanc
-    // block length.  Do NOT tighten --chunk-size for the seven validated
-    // (non-.lanc) methods, which stream from geno_factory readers.
-    if (args.method == "SPAmixLocalPlus" &&
-        (args.nSnpPerChunk < LANC_DEFAULT_BLOCKLEN ||
-         args.nSnpPerChunk % LANC_DEFAULT_BLOCKLEN != 0)) {
-        std::cerr << "Error: --chunk-size must be a positive multiple of "
-                  << LANC_DEFAULT_BLOCKLEN
-                  << " (the .lanc block length) for SPAmixLocalPlus; got "
-                  << args.nSnpPerChunk << "\n";
-        return 1;
     }
 
     logArgsInEffect(args);
