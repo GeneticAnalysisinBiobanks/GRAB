@@ -164,29 +164,37 @@ static void writeMspFixture(const std::string &path) {
 
 // ── Focused boundary case (regresses the 0-based [spos, epos) fix) ─────────
 //
-// K=3, N=2 (T1,T2), chr21.  Three contiguous windows tiling half-open in
-// 1-based RFMix coordinates (epos_i == spos_{i+1}); each sets a distinct
-// constant ancestry so the decoded ancestry identifies the window:
-//   W_a: 1-based [1,11)  -> 0-based [0,10)   n snps = 3   ancestry 0
-//   W_b: 1-based [11,21) -> 0-based [10,20)  n snps = 2   ancestry 1
-//   W_c: 1-based [21,31) -> 0-based [20,30)  n snps = 4   ancestry 2
+// K=3, N=2 (T1,T2), chr21.  Three contiguous windows; INTERNAL windows tile
+// half-open in 1-based RFMix coordinates (epos_i == spos_{i+1}), but the LAST
+// window follows RFMix's real convention where epos = the last SNP's 1-based
+// position (INCLUSIVE).  Each window sets a distinct constant ancestry so the
+// decoded ancestry identifies the window:
+//   W_a: 1-based [1,11)  -> 0-based [0,10)         n snps = 3   ancestry 0
+//   W_b: 1-based [11,21) -> 0-based [10,20)        n snps = 2   ancestry 1
+//   W_c: 1-based [21,27] -> 0-based [20,26] incl.  n snps = 4   ancestry 2
+// W_c's epos (27) equals the LAST query SNV's POS (27), exactly as RFMix emits
+// it.  This regresses the last-window-inclusive fix in parseMsp: without the
+// `windows.back().epos += 1` bump the half-open test drops the SNV at POS==epos,
+// leaving W_c with 3 (and the .bim with 8 rows) instead of 4 (and 9).
 static void writeBoundaryMspFixture(const std::string &path) {
     std::string s;
     s += "#Subpopulation order/codes: 0=A0\t1=A1\t2=A2\n";
     s += "#chm\tspos\tepos\tsgpos\tegpos\tn snps\tT1.0\tT1.1\tT2.0\tT2.1\n";
     s += "chr21\t1\t11\t0.00\t0.10\t3\t0\t0\t0\t0\n";
     s += "chr21\t11\t21\t0.10\t0.20\t2\t1\t1\t1\t1\n";
-    s += "chr21\t21\t31\t0.20\t0.30\t4\t2\t2\t2\t2\n";
+    s += "chr21\t21\t27\t0.20\t0.30\t4\t2\t2\t2\t2\n";
     writeFile(path, s);
 }
 
 // 9 biallelic SNVs.  1-based POS (pos0 = POS-1) placed so each window's
-// assigned SNV count equals its synthetic `n snps`, with three SNVs sitting
-// EXACTLY on window spos boundaries: POS=1 is spos0 of the first window,
-// POS=11 is spos1, POS=21 is spos2.
+// assigned SNV count equals its synthetic `n snps`.  Three SNVs sit EXACTLY on
+// window spos boundaries (POS=1 is spos0 of the first window, POS=11 is spos1,
+// POS=21 is spos2) and the last SNV (POS=27) sits EXACTLY on W_c's inclusive
+// epos — exercising both the first-site-kept and last-site-kept halves of the
+// item-#4 fix.
 //   POS  1, 3, 5    (pos0  0, 2, 4)              -> W_a (anc0), 3 sites
 //   POS 11,15       (pos0 10,14)                 -> W_b (anc1), 2 sites
-//   POS 21,23,25,27 (pos0 20,22,24,26)           -> W_c (anc2), 4 sites
+//   POS 21,23,25,27 (pos0 20,22,24,26)           -> W_c (anc2), 4 sites (27==epos)
 static void writeBoundaryVcfFixture(const std::string &path) {
     std::string s;
     s += "##fileformat=VCFv4.2\n";

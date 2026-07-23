@@ -1,9 +1,22 @@
 # `examples/hgdp_lanc.*` — provenance
 
 Tiny RFMix → `.lanc` fixture built per
-`dev-notes/methods/recode_rfmix/02_tiny_example.md` (Plan B). It exercises the
-full RFMix → `--make-lanc` pipeline and is the verification ground truth for
-`dev-notes/methods/recode_rfmix/01_lanc_format_and_recoding.md` §8.
+`dev-notes/methods/recode_rfmix/02_tiny_example.md` (Plan B) and regenerated for
+the merged single-file `.lanc` format per
+`dev-notes/methods/recode_rfmix/03_merged_and_fixes.md` (items #1 and #4). It
+exercises the full RFMix → `--make-lanc` pipeline and is the verification ground
+truth for `dev-notes/methods/recode_rfmix/01_lanc_format_and_recoding.md` §8.
+
+## Files shipped under `examples/`
+
+- **`hgdp_lanc.lanc`** — ONE merged plane-separated `.lanc` (all chromosomes as
+  contiguous segments, in chromosome order; 32-byte header, per-segment footer
+  directory). No per-chromosome `.lanc`/`.bim` files.
+- **`hgdp_lanc.bim`** — one merged PLINK BIM, all 3000 markers in chromosome
+  order (chr20, chr21, chr22).
+- **`hgdp_lanc.fam`** — shared query-sample list (N = 925).
+- **`rfmix.chr{20,21,22}.msp.tsv`** — the RFMix output, kept as verification
+  ground truth.
 
 ## Source data
 
@@ -38,8 +51,8 @@ ancestries.
 
 ## Markers
 
-- Chromosomes: chr20, chr21, chr22.
-- Per chromosome: **1000 markers** in the `.lanc`; **total M = 3000**.
+- Chromosomes: chr20, chr21, chr22 → **3 segments** in the merged `.lanc`.
+- Per chromosome: **exactly 1000 markers**; **total M = 3000**.
 - Marker class: biallelic SNVs, MAF ≥ 0.05 (MAF computed over all 4091 BCF
   samples via `bcftools +fill-tags -t MAF`), restricted to positions hosting
   exactly one biallelic SNV in the BCF (so every extracted site is unambiguous),
@@ -50,70 +63,71 @@ ancestries.
 1000 SNVs spread across a whole chromosome are too sparse for RFMix. Sites were
 therefore drawn from a dense **20–40 Mb sub-region** on each chromosome (well
 inside the genetic-map-covered range: chr20 81 kb–64.3 Mb, chr21 10.3–46.7 Mb,
-chr22 15.3–50.8 Mb). Genetic span of the 20–40 Mb region: chr20 ≈ 10.9 cM,
-chr21 ≈ 31.9 cM, chr22 ≈ 39.0 cM — sufficient for multiple RFMix windows per
-chromosome.
+chr22 15.3–50.8 Mb). The 1000 selected sites span, per chromosome:
 
-### Sacrificial first site (exact-1000 accounting)
+| Chromosome | First POS | Last POS | Windows |
+|---|---|---|---|
+| chr20 | 20,001,903 | 39,620,640 | 33 |
+| chr21 | 20,001,213 | 39,863,737 | 62 |
+| chr22 | 20,000,241 | 39,524,652 | 77 |
 
-The converter's window cursor requires `window.spos <= pos0` where `pos0` is the
-htslib 0-based POS, while RFMix writes each window's `spos` as the 1-based POS of
-its first SNP. Consequently the very first SNP of each chromosome (the one at the
-first window's `spos`) fails the test and is dropped — exactly one marker per
-chromosome. To land exactly 1000 markers per chromosome, **1001 sites** were
-supplied to RFMix per chromosome; the converter drops the first, leaving 1000.
-The dropped (sacrificial) positions were chr20:20001903, chr21:20001213,
-chr22:20000241.
+### Window coordinate convention (item #4 fixed — NO sacrificial first site)
+
+RFMix writes each window's `spos`/`epos` as **1-based** VCF positions. Internal
+windows tile half-open (`epos_i == spos_{i+1}`); the **last window of each
+chromosome reports `epos` = the last SNP's position (INCLUSIVE)**. The converter
+now stores windows 0-based (subtracting 1) and treats each chromosome's last
+window as inclusive, so the membership test operates in htslib's 0-based
+`rec->pos` space for every site. Consequently **all 1000 selected sites per
+chromosome map into a window** — the first-window first SNP (`POS == spos0`) is
+kept, window-boundary SNPs land in the correct later window, and each
+chromosome's final SNP (`POS == last-window epos`) is kept. There is **no
+sacrificial first site**; exactly 1000 sites are supplied and 1000 are stored.
 
 ## RFMix
 
 - Version: **RFMix v2.03-r0**.
 - Command (per chromosome), all long options in `--opt=value` form (RFMix's
-  long-option parser calls `atoi(optarg)` and segfaults on the space-separated
+  long-option parser calls `atoi(optarg)` and mishandles the space-separated
   form):
 
   ```
   rfmix -f query.chrN.vcf.gz -r ref.chrN.vcf.gz -m ref.map -g genmap.chrN.tsv \
-        -o rfmix.chrN --chromosome=chrN --n-threads=100 --random-seed=20240722
+        -o rfmix.chrN --chromosome=chrN --n-threads=32 --random-seed=20240722
   ```
 
-- No `-s` / `-c` / `-G` / `-n` overrides — RFMix defaults were used.
+- No `-s` / `-c` / `-G` / `-e` overrides — RFMix defaults were used.
 - Genetic map supplied to RFMix in `chrom  physical_position  cM` order with
   `chr`-prefixed contig names.
-- Reference and query VCFs extracted at the **same** 1001 positions per
+- Reference and query VCFs extracted at the **same** 1000 positions per
   chromosome (so RFMix's site intersection is exact) and fed unchanged to both
   RFMix and the converter (sample order preserved).
-
 - K = 4 (`#Subpopulation order/codes: AFR=0  CSA=1  EAS=2  EUR=3`).
-- RFMix windows (msp data rows) per chromosome:
-
-  | Chromosome | Windows |
-  |---|---|
-  | chr20 | 29 |
-  | chr21 | 66 |
-  | chr22 | 74 |
 
 ## Converter
 
 ```
 grab2 --make-lanc --rfmix-msp <WORK>/rfmix --vcf <WORK>/query \
-      --out examples/hgdp_lanc --compression zst --compression-level 3 --threads 100
+      --out examples/hgdp_lanc --compression-level 3 --threads 100
 ```
 
-Deviation from the Plan B recipe: the recipe lists `--compression-level 3`
-alone, but this binary's generic validation requires `--compression gz|zst`
-whenever `--compression-level` is explicit. `--compression zst` is inert for
-`--make-lanc` (the branch ignores it; the `.lanc` is always internally
-zstd-framed and the level is the frame level), so `--compression zst
---compression-level 3` produces exactly the intended level-3 `.lanc`. Omitting
-`--compression-level` would yield a byte-identical file (default frame level 3).
+`--make-lanc` uses `--compression-level` for its internal zstd frames (default 3)
+and ignores `--compression`, so no `--compression` flag is required (CLI item #5).
+The `.lanc` output is byte-reproducible for a fixed GRAB binary.
 
-## Result and self-check
+## Verification (Plan A §8 / item #4 anchors — all pass)
 
-- `.lanc` dimensions (confirmed by the reader via `--cal-phi`):
-  **4 ancestries × 3000 markers × 925 samples**, 3 chromosome files.
-- Round-trip determinism: running `--make-lanc` twice yields byte-identical
+- **(a)** `LancData("examples/hgdp_lanc")` opens: N = 925, K = 4, nSeg = 3, one
+  `.lanc` file, total 3000 markers.
+- **(b)** Per-window assigned SNV count **== RFMix `n snps`** for every window,
+  per-window and summed: chr20 1000/1000, chr21 1000/1000, chr22 1000/1000
+  (total 3000/3000). This is the independent anchor of the item-#4 fix (does not
+  depend on the converter's own convention).
+- **(c)** Decode invariant Σ_k Σ_i hapcount = 2N (= 1850) for every marker; max
+  deviation 0; 0 unassigned (0xF) cells.
+- **(d)** Determinism: `--make-lanc` run twice yields byte-identical
   `.lanc` / `.bim` / `.fam`.
-- Files shipped under `examples/`:
-  `hgdp_lanc.chr{20,21,22}.lanc`, `hgdp_lanc.chr{20,21,22}.bim`,
-  `hgdp_lanc.fam`, and the ground-truth `rfmix.chr{20,21,22}.msp.tsv`.
+- **(e)** Ground-truth reconstruction from `query.chr*.vcf.gz` + `rfmix.chr*.msp.tsv`
+  (0-based `[spos, epos)` with last-window-inclusive semantics) vs the `.lanc`
+  decode via `getAllAncestries`: **max absolute difference 0** over all
+  (marker, sample, ancestry) cells.

@@ -197,6 +197,19 @@ MspData parseMsp(const std::string &mspFile) {
 
     if (msp.windows.empty()) throw std::runtime_error("MSP file has no data rows: " + mspFile);
 
+    // RFMix's INTERNAL windows tile half-open (epos_i == spos_{i+1}), but the
+    // LAST window of each chromosome reports epos = the last SNP's 1-based
+    // position (INCLUSIVE), not one past it.  parseMsp handles one file, and the
+    // caller (convertRfmixToLanc) requires each --rfmix-msp file to be
+    // single-chromosome, so windows.back() is this chromosome's last window.
+    // After the -1 above, its 0-based epos equals (last SNP pos0), which the
+    // half-open test (pos0 < epos) would EXCLUDE, dropping the chromosome's
+    // final SNP.  Bump it by 1 so the last window is half-open up to and
+    // including that SNP; then per-window assigned counts equal RFMix's
+    // "n snps" for every window, including the last (see
+    // dev-notes/methods/recode_rfmix/03_merged_and_fixes.md item #4).
+    msp.windows.back().epos += 1;
+
     infoMsg("MSP %s: K=%d, %u subjects, %zu windows", mspFile.c_str(), msp.K, msp.nSamples, msp.windows.size());
     return msp;
 }
