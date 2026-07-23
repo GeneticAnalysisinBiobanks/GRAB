@@ -644,7 +644,7 @@ void runSPAGxEImpl(
     sd.finalize();
 
     // Environment columns must enter the null model in fit mode (so R ⟂ E),
-    // exactly as SAGELD requires --sageld-x ⊆ --covar-name.
+    // exactly as SAGELD requires --envir-name ⊆ --covar-name.
     if (fitPath) {
         for (const auto &en : envNames)
             if (std::find(covarNames.begin(), covarNames.end(), en) == covarNames.end())

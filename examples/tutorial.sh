@@ -69,7 +69,7 @@ build/grab2 \
   --pheno examples/long_pheno \
   --pheno-name Long1,Long2 \
   --covar-name MALE,TIME,PC1,PC2 \
-  --sageld-x TIME \
+  --envir-name TIME \
   --sp-grm-plink2 examples/1kg.grm.sp \
   --pairwise-ibd ${OUT_DIR}/ibd.ibd \
   --pfile examples/1kg \
@@ -84,7 +84,7 @@ build/grab2 \
   --pheno examples/long_pheno \
   --pheno-name Long1,Long2 \
   --covar-name MALE,TIME,PC1,PC2 \
-  --sageld-x TIME \
+  --envir-name TIME \
   --pfile examples/1kg \
   --out ${OUT_DIR}/sageld_gallop
 

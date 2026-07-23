@@ -10,16 +10,20 @@
 // and reports  P = CCT(p_spa, p_wald)  (Cauchy combination; math::cauchyCombine).
 //
 // No GRAB2 residual fitter exposes coefficient covariance, so the per-marker
-// Wald refit is net-new for every trait type.  This header declares a
-// self-contained fitter (implemented in spagxe_wald.cpp) that mirrors the
-// numeric patterns of src/util/regression.cpp but returns the Wald p-value of
-// the G:E coefficient instead of a residual.  The shared residual fitters are
-// left untouched (guard rails: do not modify shared/validated code).
+// Wald refit is net-new for every trait type.  The standard-model fitters that
+// return the Wald p-value of the last coefficient live in src/util/wald.hpp
+// (namespace wald), shared so that any method needing a per-marker Wald refit
+// can use them without depending on SPAGxE.  This header keeps only the G×E
+// dispatcher: it assembles the full-interaction design, filters to complete
+// cases, and calls the appropriate wald:: fitter.  The shared residual fitters
+// in src/util/regression.cpp are unrelated and left untouched.
 //
 // Scope: fires only for the base (non-GRM) path.  SPAGxE+ (sparse GRM) keeps no
 // Wald test (paper: per-marker mixed-model refit is too expensive), and residual
 // mode (--resid-name) has no raw phenotype, so both leave the trait as `None`.
 #pragma once
+
+#include "util/wald.hpp" // wald::OrdinalInfo and the standard-model Wald fitters
 
 #include <Eigen/Dense>
 
@@ -28,14 +32,6 @@ namespace spagxe_wald {
 // Trait family of the null model, resolved per phenotype in runSPAGxE.
 // `None` disables the Wald leg (residual mode, or the SPAGxE+ GRM path).
 enum class TraitType { None, Linear, Logistic, Cox, Ordinal };
-
-// Covariance estimator for the ordinal (proportional-odds) Wald leg.
-//   Observed — the observed information −∂²ℓ/∂θ∂θᵀ at the MLE (analytic Hessian),
-//              matching R's ordinal::clm; the default and the more accurate
-//              finite-sample estimator (Efron & Hinkley, 1978).
-//   BHHH     — the outer-product-of-gradients information Σ sᵢsᵢᵀ; asymptotically
-//              equivalent but noisier in finite samples.  Retained as an option.
-enum class OrdinalInfo { Observed, BHHH };
 
 // Per-phenotype raw data for the full-interaction-model refit.  All
 // vectors/matrices are in the phenotype's dense subject order (aligned to the
@@ -67,6 +63,6 @@ double waldInteractionPval(
     const WaldData &wd,
     const Eigen::Ref<const Eigen::VectorXd> &g,
     const Eigen::Ref<const Eigen::VectorXd> &E,
-    OrdinalInfo ordInfo = OrdinalInfo::Observed);
+    wald::OrdinalInfo ordInfo = wald::OrdinalInfo::Observed);
 
 }  // namespace spagxe_wald

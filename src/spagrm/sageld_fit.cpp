@@ -65,7 +65,7 @@ LongPhenoData parseLongPheno(
 ) {
     if (phenoNames.empty()) throw std::runtime_error("SAGELD: --pheno-name required for direct-phenotype mode");
     // envName may be empty: the longitudinal random-intercept path (no
-    // --sageld-x) fits Y ~ X + (1 | IID) with no environment / random-slope
+    // --envir-name) fits Y ~ X + (1 | IID) with no environment / random-slope
     // column.  SAGELD always supplies a non-empty env, so its behaviour is
     // unchanged; every env-specific branch below is guarded on hasEnv.
     const bool hasEnv = !envName.empty();
@@ -123,7 +123,7 @@ LongPhenoData parseLongPheno(
         return it->second;
     };
 
-    const int envColIdx = hasEnv ? resolve(envName, "--sageld-x") : -1;
+    const int envColIdx = hasEnv ? resolve(envName, "--envir-name") : -1;
     std::vector<int> phenoColIdx;
     phenoColIdx.reserve(phenoNames.size());
     for (const auto &pn : phenoNames) phenoColIdx.push_back(resolve(pn, "--pheno-name"));
@@ -667,7 +667,7 @@ LMMFit fitRandomInterceptML(
 //
 // Used by the --longitudinal input mode of SPACox / SPAmix / SPAGRM, which
 // test the marginal *main* genetic effect on a repeated-measures phenotype
-// (no environment / random-slope term, hence no --sageld-x).  The per-IID
+// (no environment / random-slope term, hence no --envir-name).  The per-IID
 // aggregated BLUP residual  R_G_i = Σ_j r_ij  (via aggregatePerIID) is the
 // residual handed to each method's marker-level score test.
 //

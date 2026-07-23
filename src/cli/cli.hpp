@@ -22,9 +22,8 @@ struct Args {
 
     std::string pcCols = "PC1,PC2,PC3,PC4";         // comma-separated PC column names (default: PC1,PC2,PC3,PC4)
     std::string spasqrTaus = "0.1,0.3,0.5,0.7,0.9"; // default tau levels (SPAsqr)
-    std::string sageldX;                            // --sageld-x: comma-separated env names for SAGELD pheno mode
     std::string sageldMethod = "sageld";            // --sageld-method: 'sageld' (score, default) or 'gallop' (Wald)
-    std::string envName;                            // --envir-name: comma-separated environment column names for SPAGxE G×E
+    std::string envName;                            // --envir-name: comma-separated environment column names (SAGELD / SPAGxE / SPAGxEmix G×E)
     double spagxeMarginalCutoff = 0.001;            // --spagxe-marginal-cutoff: ε, Branch A/B routing threshold (default 0.001)
     double spasqrTol = 1e-6;                          // --spasqr-tol (QMME convergence tolerance)
     double spasqrH = -1.0;                            // --spasqr-h (explicit bandwidth; -1 = auto)
@@ -92,7 +91,7 @@ struct Args {
     double outlierAbsBound = 0.55;
     bool spagrmControlOutlier = false; // --spagrm-control-outlier (flag, no argument): enable iterative SPAGRM outlier-ratio adjustment (default off)
     int nthread = 1;
-    int nSnpPerChunk = 8192;
+    int nSnpPerChunk = 8192; // --chunk-ksnp: chunk size in SNPs (ksnp × 1024); default 8 ksnp = 8192
     // --compression-level: sentinel 0 means "resolve from --compression after
     // parsing".  Dispatch sets it to 3 for zst (ZSTD_CLEVEL_DEFAULT) or 6 for
     // gz (Z_DEFAULT_COMPRESSION) when the user did not override it.  Plain-

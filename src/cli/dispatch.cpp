@@ -13,7 +13,7 @@
 #include "util/text_stream.hpp"
 
 #include "localplus/lanc_convert_rfmix.hpp"
-#include "localplus/lanc_io.hpp" // LANC_DEFAULT_BLOCKLEN (chunk-size guard)
+#include "localplus/lanc_io.hpp" // LANC_DEFAULT_BLOCKLEN (--chunk-ksnp guard)
 #include "localplus/spamixlocalp.hpp"
 #include "spacox/spacox.hpp"
 #include "spagrm/ibd.hpp"
@@ -254,8 +254,8 @@ static void logArgsInEffect(const Args &args) {
             args.method == "LEAF" || args.method == "SPAGxEmix";
         if (usesPcCols && !args.pcCols.empty()) std::fprintf(stderr, "  --pc-cols %s\n", args.pcCols.c_str());
     }
-    if (args.method == "SAGELD" && !args.sageldX.empty())
-        std::fprintf(stderr, "  --sageld-x %s\n", args.sageldX.c_str());
+    if (args.method == "SAGELD" && !args.envName.empty())
+        std::fprintf(stderr, "  --envir-name %s\n", args.envName.c_str());
     if (args.method == "SAGELD" && args.sageldMethod != "sageld")
         std::fprintf(stderr, "  --sageld-method %s\n", args.sageldMethod.c_str());
     if ((args.method == "SPAGxE" || args.method == "SPAGxEmix") && !args.envName.empty())
@@ -298,7 +298,7 @@ static void logArgsInEffect(const Args &args) {
     // numeric: log only when non-default
     if (args.refPrevalence > 0.0) std::fprintf(stderr, "  --prevalence %g\n", args.refPrevalence);
     if (args.nthread != 1) std::fprintf(stderr, "  --threads %d\n", args.nthread);
-    if (args.nSnpPerChunk != 8192) std::fprintf(stderr, "  --chunk-size %d\n", args.nSnpPerChunk);
+    if (args.nSnpPerChunk != 8192) std::fprintf(stderr, "  --chunk-ksnp %g\n", args.nSnpPerChunk / 1024.0);
     if (args.spaCutoff != 2.0) std::fprintf(stderr, "  --spa-z-threshold %g\n", args.spaCutoff);
     if ((args.method == "SPAGxE" || args.method == "SPAGxEmix") && args.spagxeMarginalCutoff != 0.001)
         std::fprintf(stderr, "  --spagxe-marginal-cutoff %g\n", args.spagxeMarginalCutoff);
@@ -394,16 +394,19 @@ int run(
         return 0;
     }
 
-    // ── Universal --chunk-size constraint ──────────────────────────
-    // A work-stealing chunk must start on a .lanc zstd frame boundary, so
-    // --chunk-size must be a positive multiple of the .lanc block length
-    // (LANC_DEFAULT_BLOCKLEN = 512).  This constraint is universal across ALL
-    // modes, including the seven validated methods; the default 8192 = 16
-    // frames satisfies it.
+    // ── Universal chunk-size invariant (from --chunk-ksnp) ─────────
+    // A work-stealing chunk must start on a .lanc zstd frame boundary, so the
+    // resolved chunk size (nSnpPerChunk = --chunk-ksnp × 1024) must be a
+    // positive multiple of the .lanc block length (LANC_DEFAULT_BLOCKLEN =
+    // 512).  --chunk-ksnp enforces this at parse time (its accepted values are
+    // positive multiples of 0.5); this check is the belt-and-suspenders
+    // invariant for every mode, including the seven validated methods.  The
+    // default 8192 = 16 frames satisfies it.
     if (args.nSnpPerChunk < LANC_DEFAULT_BLOCKLEN ||
         args.nSnpPerChunk % LANC_DEFAULT_BLOCKLEN != 0) {
-        std::cerr << "Error: --chunk-size must be a positive multiple of "
-                  << LANC_DEFAULT_BLOCKLEN << " (got " << args.nSnpPerChunk << ")\n";
+        std::cerr << "Error: --chunk-ksnp must be a positive multiple of 0.5"
+                     " (0.5 ksnp = " << LANC_DEFAULT_BLOCKLEN
+                  << " SNPs, the .lanc frame length)\n";
         return 1;
     }
 
@@ -789,8 +792,8 @@ int run(
                 std::cerr << "Error: --longitudinal is incompatible with --resid-name.\n";
                 return 1;
             }
-            if (!args.sageldX.empty()) {
-                std::cerr << "Error: --longitudinal is incompatible with --sageld-x"
+            if (!args.envName.empty()) {
+                std::cerr << "Error: --longitudinal is incompatible with --envir-name"
                              " (longitudinal mode tests the main effect only; there is"
                              " no environment / G x E term).\n";
                 return 1;
@@ -875,7 +878,7 @@ int run(
                 return 1;
             }
         } else if (args.method == "SAGELD") {
-            const bool hasSageldX = !args.sageldX.empty();
+            const bool hasEnvName = !args.envName.empty();
             if (args.sageldMethod != "sageld" && args.sageldMethod != "gallop") {
                 std::cerr << "Error: --sageld-method must be 'sageld' or 'gallop' (got '"
                           << args.sageldMethod << "').\n";
@@ -899,21 +902,21 @@ int run(
             }
             if (!hasPhenoName && !hasResidName) {
                 std::cerr << "Error: SAGELD requires either --resid-name (residual mode)"
-                             " or --pheno-name + --covar-name + --sageld-x (pheno mode).\n";
+                             " or --pheno-name + --covar-name + --envir-name (pheno mode).\n";
                 return 1;
             }
-            if (hasResidName && hasSageldX) {
-                std::cerr << "Error: SAGELD: --sageld-x is incompatible with --resid-name"
+            if (hasResidName && hasEnvName) {
+                std::cerr << "Error: SAGELD: --envir-name is incompatible with --resid-name"
                              " (residual mode reads env layout from the file header).\n";
                 return 1;
             }
-            if (hasPhenoName && !hasSageldX) {
-                std::cerr << "Error: SAGELD pheno mode requires --sageld-x (env column name).\n";
+            if (hasPhenoName && !hasEnvName) {
+                std::cerr << "Error: SAGELD pheno mode requires --envir-name (env column name).\n";
                 return 1;
             }
             if (hasPhenoName && covarNames.empty()) {
                 std::cerr << "Error: SAGELD pheno mode requires --covar-name"
-                             " (must list every --sageld-x variable as a fixed-effect covariate).\n";
+                             " (must list the --envir-name variable as a fixed-effect covariate).\n";
                 return 1;
             }
             if (regModelNonAuto) {
@@ -1133,14 +1136,14 @@ int run(
                 checkSpGrm(args, /*required=*/ true, "SAGELD");
                 require(args.pairwiseIBDFile, "--pairwise-ibd", "SAGELD");
             }
-            auto sageldXNames =
-                args.sageldX.empty() ? std::vector<std::string>{} : splitComma(args.sageldX, "--sageld-x", 1);
+            auto sageldEnvNames =
+                args.envName.empty() ? std::vector<std::string>{} : splitComma(args.envName, "--envir-name", 1);
             runSAGELD(
                 args.phenoFile,
                 residNames,
                 phenoNames,
                 covarNames,
-                sageldXNames,
+                sageldEnvNames,
                 args.spGrmGrabFile,
                 args.spGrmPlink2File,
                 args.pairwiseIBDFile,

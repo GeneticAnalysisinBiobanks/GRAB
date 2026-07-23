@@ -160,8 +160,8 @@ null model  Y ~ X + (1 | IID)  is fit (X = intercept + --covar-name
 covariates), and the per-IID aggregated residual  R_G = sum_j r_ij  is
 used as the per-subject residual for the marker test (the marginal MAIN
 genetic effect).  There is no environment / random-slope term, so
---sageld-x and G x E are not involved.  Incompatible with --resid-name,
---regression-model, and --sageld-x.  For SPAmix, every --pc-cols column
+--envir-name and G x E are not involved.  Incompatible with --resid-name,
+--regression-model, and --envir-name.  For SPAmix, every --pc-cols column
 must also appear in --covar-name (PCs are sourced from the long-format
 design).)"
 };
@@ -338,8 +338,9 @@ load, finalize, and synchronization steps.  Plan for N + 1 logical
 cores when sizing a job to physical cores.)"
 };
 
-inline const FlagDef kChunkSize = {
-    "--chunk-size", "INT", "Markers per chunk (default: 8192; a positive multiple of 512)",
+inline const FlagDef kChunkKsnp = {
+    "--chunk-ksnp", "KSNP",
+    "Chunk size in units of 1024 SNPs (default: 8 = 8192 SNPs; positive multiple of 0.5)",
     R"(Controls the granularity of the chunk-level work-stealing thread pool.
 Each chunk is processed end-to-end by a single worker, then handed to a
 single writer thread that emits chunks in genomic order.  Smaller chunks
@@ -347,21 +348,22 @@ improve load balancing on heterogeneous workloads at the cost of more
 synchronization and per-chunk overhead; larger chunks reduce overhead
 but may starve workers when the total marker count is small.
 
-The default of 8192 suits whole-genome scans where each chunk amortises
-the worker's startup cost over thousands of markers.  A CLI-supplied
-value must be a positive multiple of 512 (the .lanc block length), so
-every work-stealing chunk starts on a .lanc zstd frame boundary; the
-engine then honors it verbatim.
+The size is given in units of 1024 SNPs (1 ksnp = 1024 SNPs) and must be a
+positive multiple of 0.5, so the resulting SNP count is a positive multiple
+of 512 (the .lanc block length) and every work-stealing chunk starts on a
+.lanc zstd frame boundary.  The minimum is 0.5 ksnp = 512 SNPs (one frame);
+the default of 8 ksnp = 8192 SNPs suits whole-genome scans where each chunk
+amortises the worker's startup cost over thousands of markers.
 
 Exception — SPAsqr --spasqr-mode wald: per-marker QR refit is far slower
 than score-mode batched GEMM, and wald runs are typically restricted to
-a curated SNP list via --extract.  When --chunk-size is left at the
-8192 default sentinel, wald auto-shrinks the chunk size to
+a curated SNP list via --extract.  When --chunk-ksnp is left at the
+8-ksnp default sentinel (8192 SNPs), wald auto-shrinks the chunk size to
   ceil( nMarkers / (4 * nthreads) )
 so the chunk count is at least 4 * nthreads, keeping the worker pool
 saturated even for very small marker sets (e.g. nMarkers = 10,
 nthreads = 4 → chunk = 1, one marker per chunk).  An explicit
---chunk-size on the command line suppresses the auto-shrink.)"
+--chunk-ksnp on the command line suppresses the auto-shrink.)"
 };
 
 inline const FlagDef kCompression = {
@@ -462,9 +464,9 @@ inline const FlagDef kSpasqrMode = {
           the (γ,γ) entry of the M-estimation sandwich V = A^{-1} B A^{-1}/n.
           Slower per marker; suited for follow-up effect-size estimation on
           a small SNP list (--extract).  Per-marker QR refit runs on the
-          shared marker-engine thread pool (--threads), and --chunk-size
-          auto-shrinks at its 8192 default so the pool stays fed even on
-          small marker sets — see --chunk-size for details.  Output is
+          shared marker-engine thread pool (--threads), and --chunk-ksnp
+          auto-shrinks at its 8-ksnp default so the pool stays fed even on
+          small marker sets — see --chunk-ksnp for details.  Output is
           plink2-style one-marker-per-line wide format:
           CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC HWE_P
           P_CCT P_tau{val}... Z_tau{val}... BETA_tau{val}... SE_tau{val}...
@@ -556,19 +558,6 @@ inline const FlagDef kSpasqrTaus = {
     nullptr
 };
 
-inline const FlagDef kSageldX = {
-    "--sageld-x", "COL_IDS",
-    "Environment column name(s) for SAGELD G x E; REQUIRED in pheno mode (with --pheno-name)",
-    R"(Required for SAGELD's pheno-input mode together with --pheno-name and
---covar-name.  Each name must match a numeric column of --pheno; the env
-column also has to be listed in --covar-name so it enters the fixed-effect
-design.  For every (phenotype, env) pair the null model
-    Y ~ X + (E | IID)            (random intercept + random slope on E)
-is fit by EM-ML internally, and the BLUP residuals are aggregated to per-
-IID (R_G, R_<E>, R_Gx<E>) before the marker-level G and G x E score tests
-run.  Multiple envs trigger a separate model per env.)"
-};
-
 inline const FlagDef kSageldMethod = {
     "--sageld-method", "NAME",
     "Variant for SAGELD pheno mode: 'sageld' (score test, default) or 'gallop' (exact Wald)",
@@ -613,13 +602,19 @@ inline const FlagDef kSpasqrHScale = {
 
 inline const FlagDef kEnvirName = {
     "--envir-name", "COL_IDS",
-    "Environment column name(s) for SPAGxE G×E (comma-separated, multi-env)",
-    R"(Selects the environment column(s) E for the gene–environment interaction
-test.  Multiple envs are comma-separated and each produces its own 5-wide
-output block (P_Gx<E> Z_Gx<E> Z_Norm_Gx<E> BETA_Gx<E> SE_Gx<E>).  Every env
-must also appear in --covar-name so that it enters the genotype-independent
-null model  trait ~ X + E  and the residual is orthogonal to it.  The null
-model is fit once and reused across all envs (only lambda differs per env).)"
+    "Environment column name(s) for G×E (SAGELD / SPAGxE / SPAGxEmix; comma-separated)",
+    R"(Selects the environment column(s) E for the gene-environment interaction
+test.  Each name must match a numeric column of --pheno and must also appear
+in --covar-name.  Usage differs by method:
+  SPAGxE / SPAGxEmix — multiple envs are comma-separated; each produces its
+    own 5-wide output block (P_Gx<E> Z_Gx<E> Z_Norm_Gx<E> BETA_Gx<E> SE_Gx<E>).
+    E enters the genotype-independent null model  trait ~ X + E  (fixed
+    effect); the model is fit once and reused across envs (only lambda differs).
+  SAGELD (pheno mode) — a single env column, REQUIRED together with
+    --pheno-name and --covar-name.  E enters the random-effects design
+    Y ~ X + (E | IID)  (random intercept + random slope on E), and the BLUP
+    residuals are aggregated to per-IID (R_G, R_<E>, R_Gx<E>) before the
+    marker-level G and G x E score tests run.)"
 };
 
 inline const FlagDef kSpagxeMarginalCutoff = {
@@ -652,7 +647,7 @@ inline constexpr const char *kPhenoNoteResidOrFit =
     "                       --save-resid            write fitted residuals to PREFIX.null.resid\n"
     "    Longitudinal mode: --pheno-name COL_IDS  --longitudinal  --covar-name COL_IDS\n"
     "                       long-format --pheno (>= 1 row/IID); fits Y ~ X + (1 | IID) and uses\n"
-    "                       the per-IID residual R_G (marginal main effect; no --sageld-x / G x E)";
+    "                       the per-IID residual R_G (marginal main effect; no --envir-name / G x E)";
 
 // ── SPACox ─────────────────────────────────────────────────────────
 inline const FlagDef *const kSPACoxReq[] = {
@@ -663,7 +658,7 @@ inline const FlagDef *const kSPACoxOpt[] = {
     &kCovar,       &kCovarName,        &kResidName,    &kPhenoName,   &kRegressionModel,  &kSaveResid,
     &kLongitudinal,
     &kCovarPThresh, &kSpaZThresh,      &kSeed,
-    &kThreads,      &kChunkSize,
+    &kThreads,      &kChunkKsnp,
     &kCompression, &kCompressionLevel,
     &kKeep,         &kRemove,           &kExtract,      &kExclude,
     &kGeno,         &kMaf,         &kMac,        &kHwe, &kHardCallThreshold,     &kChr,
@@ -690,7 +685,7 @@ inline const FlagDef *const kSPAGRMOpt[] = {
     &kLongitudinal,
     &kCovar,      &kCovarName,
     &kSpaZThresh, &kOutlierIqr, &kSpagrmControlOutlier,      &kSeed,
-    &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
+    &kThreads, &kChunkKsnp, &kCompression, &kCompressionLevel,
     &kKeep,       &kRemove,  &kExtract,    &kExclude,
     &kGeno,       &kMaf,     &kMac,       &kHwe, &kHardCallThreshold,         &kChr,
     nullptr
@@ -712,8 +707,8 @@ inline const FlagDef *const kSAGELDReq[] = {
     nullptr
 };
 inline const FlagDef *const kSAGELDOpt[] = {
-    &kResidName, &kPhenoName, &kCovarName, &kSageldX,    &kSageldMethod, &kSaveResid,
-    &kSpaZThresh, &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
+    &kResidName, &kPhenoName, &kCovarName, &kEnvirName,  &kSageldMethod, &kSaveResid,
+    &kSpaZThresh, &kThreads, &kChunkKsnp, &kCompression, &kCompressionLevel,
     &kKeep,       &kRemove,  &kExtract,   &kExclude,
     &kGeno, &kMaf, &kMac, &kHwe, &kHardCallThreshold, &kChr,
     nullptr
@@ -725,8 +720,8 @@ inline const MethodDef kSAGELD = {
     kSAGELDOpt,
     "    Residual mode: --resid-name R_G,R_<E1>,R_Gx<E1>[,...]\n"
     "                   pre-computed lmer residuals; layout: R_G + (R_<E>, R_Gx<E>) pairs\n"
-    "    Pheno mode:    --pheno-name Y1,Y2,... --covar-name X1,X2,... --sageld-x E1[,E2,...]\n"
-    "                   long-format Y, X, E; --covar-name must include every --sageld-x var\n"
+    "    Pheno mode:    --pheno-name Y1,Y2,... --covar-name X1,X2,... --envir-name E\n"
+    "                   long-format Y, X, E; --covar-name must include the --envir-name var\n"
     "                   --save-resid           write fitted (R_G, R_E, R_GxE) to PREFIX.null.resid",
     R"(Residual mode: PREFIX.SAGELD[.gz|.zst]   single file
   Pheno mode:    PREFIX.<COL>.SAGELD[.gz|.zst]   one file per --pheno-name column
@@ -736,8 +731,8 @@ inline const MethodDef kSAGELD = {
   Residual mode — supply lme4::lmer() residuals directly via --resid-name.
                   Column layout: R_G followed by (R_<E>, R_Gx<E>) pairs.
   Pheno mode    — supply long-format Y, X, E and fit  Y ~ X + (E | IID)
-                  internally via EM-ML.  --covar-name must include every
-                  variable in --sageld-x.
+                  internally via EM-ML.  --covar-name must include the
+                  --envir-name variable.
 
 Generate the IBD file once with: grab2 --cal-pairwise-ibd)",
 };
@@ -752,7 +747,7 @@ inline const FlagDef *const kSPAGxEOpt[] = {
     &kSpagxeMarginalCutoff,
     &kSpGrm,
     &kSpaZThresh, &kOutlierIqr,  &kSeed,
-    &kThreads,    &kChunkSize,   &kCompression, &kCompressionLevel,
+    &kThreads,    &kChunkKsnp,   &kCompression, &kCompressionLevel,
     &kKeep,       &kRemove,      &kExtract,     &kExclude,
     &kGeno,       &kMaf,         &kMac,         &kHwe, &kHardCallThreshold, &kChr,
     nullptr
@@ -783,7 +778,7 @@ inline const FlagDef *const kSPAGxEmixOpt[] = {
     &kCovar,      &kCovarName,   &kResidName,   &kPhenoName,   &kRegressionModel, &kSaveResid,
     &kSpagxeMarginalCutoff,
     &kSpaZThresh, &kOutlierIqr,  &kSeed,
-    &kThreads,    &kChunkSize,   &kCompression, &kCompressionLevel,
+    &kThreads,    &kChunkKsnp,   &kCompression, &kCompressionLevel,
     &kKeep,       &kRemove,      &kExtract,     &kExclude,
     &kGeno,       &kMaf,         &kMac,         &kHwe, &kHardCallThreshold, &kChr,
     nullptr
@@ -817,7 +812,7 @@ inline const FlagDef *const kSPAmixOpt[] = {
     &kLongitudinal,
     &kIndAfCoef,  &kOutlierIqr,
     &kSpaZThresh, &kSeed,
-    &kThreads, &kChunkSize, &kCompression, &kCompressionLevel,
+    &kThreads, &kChunkKsnp, &kCompression, &kCompressionLevel,
     &kKeep,       &kRemove,  &kExtract,   &kExclude,
     &kGeno,       &kMaf,     &kMac,       &kHwe, &kHardCallThreshold,         &kChr,
     nullptr
@@ -850,7 +845,7 @@ inline const FlagDef *const kSPAmixPlusReq[] = {
 inline const FlagDef *const kSPAmixPlusOpt[] = {
     &kCovar,      &kCovarName,  &kResidName,  &kPhenoName,    &kRegressionModel,    &kSaveResid,
     &kIndAfCoef,        &kOutlierIqr, &kSpaZThresh, &kSeed,    &kThreads,
-    &kChunkSize, &kCompression, &kCompressionLevel,
+    &kChunkKsnp, &kCompression, &kCompressionLevel,
     &kKeep,       &kRemove,    &kExtract,    &kExclude,
     &kGeno,       &kMaf,        &kMac,
     &kHwe, &kHardCallThreshold,       &kChr,
@@ -885,7 +880,7 @@ inline const FlagDef *const kSPAsqrOpt[] = {
     &kPhenoName,    &kRegressionModel,
     &kSpasqrTaus, &kSpasqrTol,  &kSpasqrH,
     &kSpasqrHScale, &kOutlierIqr, &kOutlierAbs,
-    &kSpaZThresh,   &kThreads,    &kChunkSize,
+    &kSpaZThresh,   &kThreads,    &kChunkKsnp,
     &kCompression,  &kCompressionLevel,
     &kKeep,         &kRemove,     &kExtract,    &kExclude,
     &kGeno, &kMaf,
@@ -917,7 +912,7 @@ inline const FlagDef *const kWtCoxGReq[] = {
 inline const FlagDef *const kWtCoxGOpt[] = {
     &kCovar,  &kCovarName,
     &kPhenoName,  &kRegressionModel,    &kSpGrm,  &kBatchPThresh,
-    &kSpaZThresh, &kOutlierIqr, &kThreads, &kChunkSize,
+    &kSpaZThresh, &kOutlierIqr, &kThreads, &kChunkKsnp,
     &kCompression, &kCompressionLevel,
     &kKeep,       &kRemove, &kExtract,   &kExclude,
     &kGeno, &kMaf,
@@ -950,7 +945,7 @@ inline const FlagDef *const kLEAFOpt[] = {
     &kPcCols,    &kNClusters, &kLeafClusterFile, &kLeafKmeansNstart,
     &kSeed,      &kSpGrm,     &kBatchPThresh, &kSpaZThresh,
     &kOutlierIqr,
-    &kThreads,   &kChunkSize,
+    &kThreads,   &kChunkKsnp,
     &kCompression, &kCompressionLevel,
     &kKeep,      &kRemove,    &kExtract,   &kExclude,
     &kGeno,      &kMaf,       &kMac,          &kHwe, &kHardCallThreshold,        &kChr,
@@ -1007,7 +1002,7 @@ inline const FlagDef *const kSPAmixLocalPlusReq[] = {
 inline const FlagDef *const kSPAmixLocalPlusOpt[] = {
     &kCovar,            &kCovarName,        &kResidName,  &kPhenoName,  &kRegressionModel, &kSaveResid,
     &kKeep,             &kRemove,           &kExtract,    &kExclude,
-    &kOutlierIqr,       &kSpaZThresh,       &kThreads,    &kChunkSize,
+    &kOutlierIqr,       &kSpaZThresh,       &kThreads,    &kChunkKsnp,
     &kCompression,      &kCompressionLevel,
     &kGeno,             &kMaf,              &kMac,        &kHwe, &kHardCallThreshold,        &kChr,
     nullptr
@@ -1098,7 +1093,7 @@ inline const FlagDef *const kCalAfOpt[] = {
     &kPheno,   &kCovar,     &kKeep, &kRemove,
     &kExtract, &kExclude,
     &kCompression, &kCompressionLevel,
-    &kThreads, &kChunkSize, &kGeno, &kMaf,    &kMac,         &kHwe, &kHardCallThreshold,             &kChr,
+    &kThreads, &kChunkKsnp, &kGeno, &kMaf,    &kMac,         &kHwe, &kHardCallThreshold,             &kChr,
     nullptr
 };
 
@@ -1234,13 +1229,12 @@ inline const FlagDef *const kInputFlags[] = {
 inline const FlagDef *const kNumericFlags[] = {
     &kPrevalence, &kBatchPThresh, &kCovarPThresh,     &kSpaZThresh, &kOutlierIqr, &kOutlierAbs,
     &kSpagrmControlOutlier,
-    &kThreads,    &kChunkSize,    &kCompressionLevel, &kNClusters,
+    &kThreads,    &kChunkKsnp,    &kCompressionLevel, &kNClusters,
     &kLeafKmeansNstart,
     &kSeed,       &kGeno,
     &kMaf,        &kMac,          &kHwe, &kHardCallThreshold,              &kMinMafIbd,
     &kSpasqrTaus, &kSpasqrTol,    &kSpasqrH,          &kSpasqrHScale,
     &kSpasqrMode,
-    &kSageldX,
     &kSageldMethod,
     &kSpagxeMarginalCutoff,
     nullptr

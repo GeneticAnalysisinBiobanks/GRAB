@@ -47,7 +47,7 @@ build/grab2 \
   `# Optional flags below (set to built-in defaults):` \
   --chr 1-2,3 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -87,7 +87,7 @@ build/grab2 \
   --covar-p-threshold 5e-5 \
   --spa-z-threshold 2.0 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -110,7 +110,7 @@ build/grab2 \
   --covar-p-threshold 5e-5 \
   --spa-z-threshold 2.0 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -134,7 +134,7 @@ build/grab2 \
   --outlier-iqr-multiplier 1.5 \
   --spa-z-threshold 2.0 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -166,7 +166,7 @@ build/grab2 \
   --outlier-iqr-multiplier 1.5 \
   --spa-z-threshold 2.0 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -192,7 +192,7 @@ build/grab2 \
   --spa-z-threshold 2.0 \
   --outlier-iqr-multiplier 1.5 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -201,14 +201,14 @@ build/grab2 \
   --compression zst \
   --compression-level 3
 
-## ── SAGELD (fit mode: --pheno-name + --sageld-x) ────────────────────
+## ── SAGELD (fit mode: --pheno-name + --envir-name) ────────────────────
 
 build/grab2 \
   --method SAGELD \
   --pheno examples/long_pheno \
   --pheno-name Long1,Long2 \
   --covar-name MALE,TIME,PC1,PC2 \
-  --sageld-x TIME \
+  --envir-name TIME \
   --sp-grm-plink2 examples/1kg.grm.sp \
   --pairwise-ibd ${OUT}.ibd.zst \
   --pfile examples/1kg \
@@ -218,7 +218,7 @@ build/grab2 \
   --chr 1-2,3 \
   --spa-z-threshold 2.0 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -249,7 +249,7 @@ build/grab2 \
   --chr 1-2,3 \
   --spa-z-threshold 2.0 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -275,13 +275,13 @@ build/grab2 \
   --pheno examples/long_pheno \
   --pheno-name Long1,Long2 \
   --covar-name MALE,TIME,PC1,PC2 \
-  --sageld-x TIME \
+  --envir-name TIME \
   --pfile examples/1kg \
   --out ${OUT} \
   `# Optional flags below (set to built-in defaults):` \
   --chr 1-2,3 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -296,7 +296,7 @@ build/grab2 \
 # intercept null model  Y ~ X + (1 | IID)  is fit (X = intercept +
 # --covar-name covariates), and the per-IID aggregated residual
 # R_G = sum_j r_ij is fed to the marker test (marginal MAIN genetic
-# effect; no --sageld-x and no G x E).  Reuses the SAGELD long-format
+# effect; no --envir-name and no G x E).  Reuses the SAGELD long-format
 # fixture examples/long_pheno (#IID MALE PC1 PC2 TIME Long1 Long2).
 
 ## ── SPACox longitudinal (plain-text output) ───────────────────────────
@@ -314,7 +314,7 @@ build/grab2 \
   --covar-p-threshold 5e-5 \
   --spa-z-threshold 2.0 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -339,7 +339,7 @@ build/grab2 \
   --outlier-iqr-multiplier 1.5 \
   --spa-z-threshold 2.0 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -365,7 +365,7 @@ build/grab2 \
   --spa-z-threshold 2.0 \
   --outlier-iqr-multiplier 1.5 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -408,7 +408,7 @@ build/grab2 \
   --spasqr-outlier-abs-bound 0.55 \
   --spa-z-threshold 2.0 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -437,7 +437,7 @@ build/grab2 \
   --covar-p-threshold 5e-5 \
   --spa-z-threshold 2.0 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -463,7 +463,7 @@ build/grab2 \
   --outlier-iqr-multiplier 1.5 \
   --spa-z-threshold 2.0 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -493,7 +493,7 @@ build/grab2 \
   --spa-z-threshold 2.0 \
   --outlier-iqr-multiplier 1.5 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -525,7 +525,7 @@ build/grab2 \
   --spa-z-threshold 2.0 \
   --outlier-iqr-multiplier 1.5 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -539,8 +539,8 @@ build/grab2 \
 # emitting β̂_G + SE.  Per-marker QR refit is appreciably slower than
 # score mode, so this block restricts to the 100 variant IDs in
 # examples/spasqr_wald_extract.  Per-marker work runs on the shared
-# marker-engine thread pool; chunk size auto-shrinks when --chunk-size
-# is left at its 8192 sentinel so the worker pool stays fed even on
+# marker-engine thread pool; chunk size auto-shrinks when --chunk-ksnp
+# is left at its 8-ksnp default (8192 SNPs) so the worker pool stays fed even on
 # small --extract subsets.  Output is plink2-style one-marker-per-line
 # wide format (P_CCT + P_tau* + Z_tau* + BETA_tau* + SE_tau* columns),
 # written through TextWriter honoring --compression.  A distinct --out
@@ -569,7 +569,7 @@ build/grab2 \
   --spasqr-outlier-abs-bound 0.55 \
   --spa-z-threshold 2.0 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -597,7 +597,7 @@ build/grab2 \
   --spa-z-threshold 2.0 \
   --outlier-iqr-multiplier 1.5 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -630,7 +630,7 @@ build/grab2 \
   --spa-z-threshold 2.0 \
   --outlier-iqr-multiplier 1.5 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -663,7 +663,7 @@ build/grab2 \
   --spa-z-threshold 2.0 \
   --outlier-iqr-multiplier 1.5 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -692,7 +692,7 @@ build/grab2 \
   --spa-z-threshold 2.0 \
   --outlier-iqr-multiplier 1.5 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -726,7 +726,7 @@ build/grab2 \
   --spa-z-threshold 2.0 \
   --outlier-iqr-multiplier 1.5 \
   --threads 2 \
-  --chunk-size 8192 \
+  --chunk-ksnp 8 \
   --geno 0.1 \
   --maf 1e-5 \
   --mac 10 \
@@ -821,7 +821,7 @@ SPAGRM_COMMON=(
   --spa-z-threshold 2.0
   --outlier-iqr-multiplier 1.5
   --threads 2
-  --chunk-size 8192
+  --chunk-ksnp 8
   --geno 0.1
   --maf 1e-5
   --mac 10

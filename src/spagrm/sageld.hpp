@@ -14,7 +14,7 @@
 //                   appear under --covar-name as well so it enters X.
 //     --pheno-name: list of outcome columns; one null model is fit per
 //                   (outcome, env) pair via fitRandomSlopeML.
-//     --sageld-x  : list of env column names; the random-effects design is
+//     --envir-name: env column name; the random-effects design is
 //                   Z_i = [1, E_i] within each subject.
 //     Output      : <outPrefix>.<phenoName>.SAGELD   (per phenotype)
 //

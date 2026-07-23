@@ -578,7 +578,7 @@ class SAGELDMethod : public MethodBase {
 // imputeMethod="mean"); the intercept column in X absorbs the genotype mean.
 //
 // Output reuses the SAGELD (P, Z, BETA, SE) quadruple schema, with Z = β/SE
-// the Wald z and P = 2·Φ(−|z|).  Single env per object (--sageld-x is one column).
+// the Wald z and P = 2·Φ(−|z|).  Single env per object (--envir-name is one column).
 // ══════════════════════════════════════════════════════════════════════
 class GALLOPMethod : public MethodBase {
   public:
@@ -1233,7 +1233,7 @@ void runSAGELDPhenoMode(
     const std::string &removeFile
 ) {
     if (envNames.size() != 1)
-        throw std::runtime_error("SAGELD pheno mode: --sageld-x currently accepts a single env column");
+        throw std::runtime_error("SAGELD pheno mode: --envir-name currently accepts a single env column");
     for (const auto &en : envNames)
         if (std::find(covarNames.begin(), covarNames.end(), en) == covarNames.end())
             throw std::runtime_error("SAGELD pheno mode: env '" + en +
@@ -1536,7 +1536,7 @@ void runSAGELD(
     if (isResidMode && isPhenoMode)
         throw std::runtime_error("SAGELD: --resid-name and --pheno-name are mutually exclusive");
     if (!isResidMode && !isPhenoMode)
-        throw std::runtime_error("SAGELD: need either --resid-name (residual mode) or --pheno-name + --sageld-x (pheno mode)");
+        throw std::runtime_error("SAGELD: need either --resid-name (residual mode) or --pheno-name + --envir-name (pheno mode)");
 
     if (isResidMode) {
         if (gallop)
@@ -1556,9 +1556,9 @@ void runSAGELD(
 
     // Pheno mode
     if (envNames.empty())
-        throw std::runtime_error("SAGELD pheno mode: --sageld-x is required");
+        throw std::runtime_error("SAGELD pheno mode: --envir-name is required");
     if (covarNames.empty())
-        throw std::runtime_error("SAGELD pheno mode: --covar-name is required (must include every --sageld-x variable)");
+        throw std::runtime_error("SAGELD pheno mode: --covar-name is required (must include the --envir-name variable)");
     if (gallop && saveResid)
         throw std::runtime_error("SAGELD: --save-resid is incompatible with --sageld-method gallop (GALLOP produces no residual vector)");
     runSAGELDPhenoMode(phenoFile, phenoNames, covarNames, envNames,

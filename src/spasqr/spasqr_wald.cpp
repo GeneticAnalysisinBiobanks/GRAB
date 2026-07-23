@@ -411,9 +411,9 @@ void runSPAsqrWald(
     const std::vector<std::string> tauLabels = makeTauLabels(taus);
 
     // ── 6. Build genotype meta with auto-shrunk chunk size ──────────────
-    // When the user has not overridden --chunk-size (default 8192), shrink
-    // it so chunk count ≥ 4·nthreads.  This keeps the work-stealing thread
-    // pool fed even when wald is invoked against a small --extract subset.
+    // When the user has not overridden --chunk-ksnp (default 8 ksnp = 8192),
+    // shrink it so chunk count ≥ 4·nthreads.  This keeps the work-stealing
+    // thread pool fed even when wald is invoked against a small --extract subset.
     int effChunk = nSnpPerChunk;
     {
         // Probe the marker count cheaply via a first GenoMeta build.  Pre-1.0

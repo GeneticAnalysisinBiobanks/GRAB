@@ -3,6 +3,7 @@
 #include "cli/cli.hpp"
 
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
@@ -130,7 +131,6 @@ Args parseArgs(
         else if (arg == "--longitudinal") { markSeen(arg); a.longitudinal = true; }
         else if (arg == "--pc-cols")a.pcCols = next();
         else if (arg == "--spasqr-taus")a.spasqrTaus = next();
-        else if (arg == "--sageld-x")a.sageldX = next();
         else if (arg == "--sageld-method")a.sageldMethod = next();
         else if (arg == "--envir-name")a.envName = next();
         else if (arg == "--spagxe-marginal-cutoff")a.spagxeMarginalCutoff = parseDouble(next(), arg);
@@ -188,7 +188,25 @@ Args parseArgs(
         else if (arg == "--spasqr-outlier-abs-bound")a.outlierAbsBound = parseDouble(next(), arg);
         else if (arg == "--spagrm-control-outlier") { markSeen(arg); a.spagrmControlOutlier = true; }
         else if (arg == "--threads")a.nthread = parseInt(next(), arg);
-        else if (arg == "--chunk-size")a.nSnpPerChunk = parseInt(next(), arg);
+        else if (arg == "--chunk-ksnp") {
+            // Chunk size in units of 1024 SNPs (1 ksnp = 1024 SNPs).  Accepted
+            // values are positive multiples of 0.5, so nSnpPerChunk is a
+            // positive multiple of 512 — the .lanc zstd frame length — and
+            // every work-stealing chunk starts on a frame boundary.  The
+            // minimum is 0.5 ksnp = 512 SNPs (one frame); the default is
+            // 8 ksnp = 8192 SNPs.
+            const std::string raw = next();
+            const double ksnp = parseDouble(raw, arg);
+            const double halves = ksnp * 2.0; // count of 512-SNP frames
+            const long long k = std::llround(halves);
+            if (k < 1 || std::fabs(halves - static_cast<double>(k)) > 1e-9) {
+                std::cerr << "Error: --chunk-ksnp must be a positive multiple of 0.5"
+                             " (0.5 ksnp = 512 SNPs, the .lanc frame length), got '"
+                          << raw << "'\n";
+                std::exit(1);
+            }
+            a.nSnpPerChunk = static_cast<int>(k * 512);
+        }
         else if (arg == "--leaf-nclusters")a.nClusters = parseInt(next(), arg);
         else if (arg == "--leaf-cluster-file")a.leafClusterFile = next();
         else if (arg == "--leaf-kmeans-nstart")a.leafKmeansNstart = parseInt(next(), arg);
