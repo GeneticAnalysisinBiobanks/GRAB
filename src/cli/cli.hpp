@@ -55,10 +55,10 @@ struct Args {
     std::string extractFile;      // --extract (SNP include list)
     std::string excludeFile;      // --exclude (SNP exclude list)
     std::string chrSpec;          // --chr (chromosome filter, e.g. "1-4,6,22")
-    std::string admixBfilePrefix; // --admix-bfile
     std::string admixPhiFile;     // --admix-phi
-    std::string mspFile;          // --rfmix-msp
-    std::string admixTextPrefix;  // --admix-text-prefix
+    std::string mspFile;          // --rfmix-msp (glob prefix for --make-lanc)
+    std::string lancPrefix;       // --lanc (LancData reader prefix for --cal-phi /
+                                  // --method SPAmixLocalPlus)
     std::string keepFile;         // --keep (subject include list)
     std::string removeFile;       // --remove (subject exclude list)
     std::string predListFile;     // --pred-list (Regenie / LDAK-KVIK pred.list for LOCO)
@@ -71,7 +71,7 @@ struct Args {
     bool calAfCoef = false;
     bool calPairwiseIBD = false;
     bool calPhi = false;
-    bool makeAbed = false;
+    bool makeLanc = false;
     bool intPheno = false;
     double minMafIBD = 0.01;
     double refPrevalence = -1.0;

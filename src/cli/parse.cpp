@@ -201,10 +201,9 @@ Args parseArgs(
         else if (arg == "--pred-list")a.predListFile = next();
         else if (arg == "--pheno-transform")a.phenoTransform = next();
         else if (arg == "--spasqr-mode")a.spasqrMode = next();
-        else if (arg == "--admix-bfile")a.admixBfilePrefix = next();
         else if (arg == "--admix-phi")a.admixPhiFile = next();
         else if (arg == "--rfmix-msp")a.mspFile = next();
-        else if (arg == "--admix-text-prefix")a.admixTextPrefix = next();
+        else if (arg == "--lanc")a.lancPrefix = next();
         else if (arg == "--compression")a.compression = next();
         else if (arg == "--compression-level") {
             a.compressionLevel = parseInt(next(), arg);
@@ -214,7 +213,7 @@ Args parseArgs(
         else if (arg == "--cal-af-coef")        { markSeen(arg); a.calAfCoef = true; }
         else if (arg == "--cal-pairwise-ibd")   { markSeen(arg); a.calPairwiseIBD = true; }
         else if (arg == "--cal-phi")            { markSeen(arg); a.calPhi = true; }
-        else if (arg == "--make-abed")          { markSeen(arg); a.makeAbed = true; }
+        else if (arg == "--make-lanc")          { markSeen(arg); a.makeLanc = true; }
         else if (arg == "--int-pheno")          { markSeen(arg); a.intPheno = true; }
         else if (arg == "--min-maf-ibd")a.minMafIBD = parseDouble(next(), arg);
         else {

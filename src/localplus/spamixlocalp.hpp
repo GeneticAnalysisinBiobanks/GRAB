@@ -1,13 +1,13 @@
 // spamixlocalp.hpp — SPAmixLocalPlus: local-ancestry-specific GWAS
 //
-// Phase 1: Phi estimation — streaming ancestry-specific kinship from admix .abed
+// Phase 1: Phi estimation — streaming ancestry-specific kinship from admix .lanc
 // Phase 2: Per-ancestry GWAS — score test with SPA tail, CCT meta-analysis
 //
-// Uses .abed binary format for local ancestry dosage/hapcount data,
-// and SparseGRM for related-pair structure.
+// Uses .lanc plane-separated binary format for local ancestry
+// dosage/hapcount data, and SparseGRM for related-pair structure.
 #pragma once
 
-#include "localplus/abed_io.hpp"
+#include "localplus/lanc_io.hpp"
 #include "spamix/common.hpp"
 #include "io/sparse_grm.hpp"
 
@@ -184,7 +184,7 @@ void computeVarOffMultiPhenoBatch(
 //   ancIdx:     which ancestry to estimate (0-based)
 //   MAF cutoff is hardcoded to 0.01.
 PhiMatrices estimatePhiOneAncestry(
-    const AdmixData &admixData,
+    const LancData &admixData,
     const SparseGRM &grm,
     int ancIdx,
     int nthreads = 1
@@ -239,7 +239,8 @@ std::pair<double, double> spaLocalPval(
 // ======================================================================
 
 // Estimate phi matrices for all ancestries and write single wide file.
-//   admixPrefix:  prefix for .abed/.bim/.fam
+//   admixPrefix:  prefix for .lanc/.bim/.fam (per-chromosome .lanc/.bim,
+//                 shared .fam; see lanc_io.hpp)
 //   grmGrabFile / grmGctaFile: sparse GRM (exactly one non-empty)
 //   phiOutputFile: output path for wide phi file
 //   extractFile / excludeFile: for marker filtering
@@ -261,7 +262,8 @@ void runPhiEstimation(
 //     - fit-path (phenoNameSpec non-empty): supplies phenotype columns
 //       (and optionally covariate columns when --covar is absent)
 //   residNames:  column names to use as residuals from phenoFile (residual-path)
-//   admixPrefix:  prefix for .abed/.bim/.fam
+//   admixPrefix:  prefix for .lanc/.bim/.fam (per-chromosome .lanc/.bim,
+//                 shared .fam; see lanc_io.hpp)
 //   admixPhiFile: pre-computed wide phi file
 //   outPrefix:   output prefix for per-phenotype GWAS results
 //   spaCutoff, outlierRatio, nthread, nSnpPerChunk: analysis params

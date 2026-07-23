@@ -339,7 +339,7 @@ cores when sizing a job to physical cores.)"
 };
 
 inline const FlagDef kChunkSize = {
-    "--chunk-size", "INT", "Markers per chunk (default: 8192, min: 256)",
+    "--chunk-size", "INT", "Markers per chunk (default: 8192; a positive multiple of 512)",
     R"(Controls the granularity of the chunk-level work-stealing thread pool.
 Each chunk is processed end-to-end by a single worker, then handed to a
 single writer thread that emits chunks in genomic order.  Smaller chunks
@@ -348,8 +348,10 @@ synchronization and per-chunk overhead; larger chunks reduce overhead
 but may starve workers when the total marker count is small.
 
 The default of 8192 suits whole-genome scans where each chunk amortises
-the worker's startup cost over thousands of markers.  On a CLI-supplied
-value, the engine honors it verbatim (subject to the min: 256 floor).
+the worker's startup cost over thousands of markers.  A CLI-supplied
+value must be a positive multiple of 512 (the .lanc block length), so
+every work-stealing chunk starts on a .lanc zstd frame boundary; the
+engine then honors it verbatim.
 
 Exception — SPAsqr --spasqr-mode wald: per-marker QR refit is far slower
 than score-mode batched GEMM, and wald runs are typically restricted to
@@ -494,7 +496,7 @@ inline const FlagDef kExtract = {
     R"(Single-column file of SNP IDs.  Comparison is by marker ID
 (.bim column 2, .pvar ID column, BGEN RSID/SNPID, VCF/BCF ID field).
 Applied uniformly to all genotype inputs: --bfile, --pfile, --vcf,
---bcf, --bgen, and --admix-bfile.  IDs listed in the file that do not
+--bcf, --bgen, and --lanc.  IDs listed in the file that do not
 match any marker are silently ignored.)"
 };
 
@@ -503,7 +505,7 @@ inline const FlagDef kExclude = {
     R"(Single-column file of SNP IDs.  Comparison is by marker ID
 (.bim column 2, .pvar ID column, BGEN RSID/SNPID, VCF/BCF ID field).
 Applied uniformly to all genotype inputs: --bfile, --pfile, --vcf,
---bcf, --bgen, and --admix-bfile.  IDs listed in the file that do not
+--bcf, --bgen, and --lanc.  IDs listed in the file that do not
 match any marker are silently ignored.)"
 };
 
@@ -513,13 +515,16 @@ inline const FlagDef kChr = {
 Examples: --chr 5   --chr 2,3   --chr 1-4,6-8,22)"
 };
 
-inline const FlagDef kAdmixBfile = {
-    "--admix-bfile", "PREFIX",
-    "Admixed ancestry binary genotype prefix (.abed/.bim/.fam)",
-    R"(Binary format storing 2K tracks (dosage + hapcount per ancestry).
-Shares standard PLINK .fam and .bim files.
-The .abed file has a 16-byte header with magic 0xAD4D, version,
-number of ancestries K, number of subjects N, and markers M.)"
+inline const FlagDef kLanc = {
+    "--lanc", "PREFIX",
+    "Local-ancestry binary prefix (merged .lanc + .bim + shared .fam)",
+    R"(Merged plane-separated local-ancestry binary produced by --make-lanc:
+a single {PREFIX}.lanc (framed-zstd ancestry / allele / missing bit-
+planes, one chromosome segment per contig in chromosome order) with a
+companion merged {PREFIX}.bim (standard PLINK BIM, all markers in that
+same order) plus one shared {PREFIX}.fam listing the query samples.  The
+reader opens the single file and builds one global marker list across
+segments.  Consumed by --cal-phi and --method SPAmixLocalPlus.)"
 };
 
 inline const FlagDef kAdmixPhi = {
@@ -529,20 +534,16 @@ Indices are 0-based into .fam row order. One row per related pair.)"
 };
 
 inline const FlagDef kMsp = {
-    "--rfmix-msp", "FILE", "MSP local-ancestry file from rfmix2 (for --make-abed)",
+    "--rfmix-msp", "PREFIX",
+    "MSP local-ancestry prefix from rfmix2 (for --make-lanc)",
     R"(rfmix2 output format:
   Line 1: #Subpopulation order/codes: 0=POP0\t1=POP1\t...  (K inferred)
   Line 2: #chm\tspos\tepos\tsgpos\tegpos\tn snps\tIID0.0\tIID0.1\t...
   Data:   chrom\tspos(0-based)\tepos(excl)\t...\tancestry_calls...
-Used with --vcf or --bcf to produce admixed .abed ancestry tracks.)"
+--make-lanc: a PREFIX; per-chromosome RFMix output is discovered by
+  globbing {PREFIX}*.msp.tsv and matched by chromosome token against the
+  --vcf/--bcf per-chromosome inputs, producing per-chr .lanc/.bim files.)"
 };
-
-inline const FlagDef kAdmixTextPrefix = {
-    "--admix-text-prefix", "PREFIX", "extract_tracts text output prefix (for --make-abed)",
-    R"({PREFIX}.anc{k}.dosage[.gz]   and   {PREFIX}.anc{k}.hapcount[.gz]  (k=0,1,...)
-Header: CHROM  POS  ID  REF  ALT  SAMPLE1  SAMPLE2  ...
-Values: integer 0-2 per subject; K auto-detected from file presence.)"};
-;
 
 inline const FlagDef kSeed = {
     "--seed", "INT", "Random seed for reproducibility (default: 0 = use random device)",
@@ -975,7 +976,7 @@ Summix estimates per-cluster ancestry proportions from the reference populations
 
 // ── Utility mode: cal-phi ───────────────────────────────────────────
 inline const FlagDef *const kCalPhiReq[] = {
-    &kAdmixBfile, &kSpGrm, &kOut,
+    &kLanc, &kSpGrm, &kOut,
     nullptr
 };
 
@@ -996,10 +997,10 @@ Output: PREFIX.phi[.gz|.zst])",
     "Pass output to --admix-phi for SPAmixLocalPlus GWAS.",
 };
 
-// ── SPAmixLocalPlus (── --pheno + --admix-bfile + --admix-phi) ──
+// ── SPAmixLocalPlus (── --pheno + --lanc + --admix-phi) ──
 // Not in kAllMethods—dispatched automatically when the three flags are present.
 inline const FlagDef *const kSPAmixLocalPlusReq[] = {
-    &kAdmixBfile, &kPheno, &kAdmixPhi, &kOut,
+    &kLanc, &kPheno, &kAdmixPhi, &kOut,
     nullptr
 };
 
@@ -1023,35 +1024,38 @@ inline const MethodDef kSPAmixLocalPlus = {
   anc0_AltFreq  anc0_MissingRate  anc0_P  anc0_Pnorm  anc0_Stat  anc0_Var  anc0_zScore  anc0_AltCounts  anc0_BetaG
   anc1_AltFreq  ...  (repeated for each ancestry k))",
     R"(Two-phase workflow:
-  1. grab --cal-phi --admix-bfile PREFIX --sp-grm-plink2 FILE --out OUTPUT_PREFIX
-  2. grab --method SPAmixLocalPlus --admix-bfile PREFIX --admix-phi OUTPUT_PREFIX.phi --pheno FILE --out PREFIX)",
+  1. grab --cal-phi --lanc PREFIX --sp-grm-plink2 FILE --out OUTPUT_PREFIX
+  2. grab --method SPAmixLocalPlus --lanc PREFIX --admix-phi OUTPUT_PREFIX.phi --pheno FILE --out PREFIX)",
 };
 
-// ── Utility mode: make-abed ────────────────────────────────────────
-inline const FlagDef *const kMakeAbedReq[] = {
+// ── Utility mode: make-lanc ────────────────────────────────────────
+inline const FlagDef *const kMakeLancReq[] = {
     &kOut,
     nullptr
 };
 
-inline const FlagDef *const kMakeAbedOpt[] = {
-    &kVcf, &kBcf, &kMsp, &kAdmixTextPrefix,
+inline const FlagDef *const kMakeLancOpt[] = {
+    &kVcf, &kBcf, &kMsp, &kCompressionLevel,
     &kKeep, &kRemove, &kThreads,
     nullptr
 };
 
-inline const MethodDef kMakeAbed = {
-    "make-abed",
-    "Build .abed admixed ancestry binary from VCF+MSP or extract_tracts output",
-    kMakeAbedReq,
-    kMakeAbedOpt,
+inline const MethodDef kMakeLanc = {
+    "make-lanc",
+    "Build merged .lanc plane-separated local-ancestry binary from phased VCF/BCF + rfmix2 MSP",
+    kMakeLancReq,
+    kMakeLancOpt,
     nullptr,
-    "{prefix}.abed  {prefix}.bim  {prefix}.fam",
-    R"(Two modes (mutually exclusive):
-  --vcf FILE --rfmix-msp FILE  phased VCF + rfmix2 MSP            ->  .abed
-  --bcf FILE --rfmix-msp FILE  phased BCF2 + rfmix2 MSP           ->  .abed
-  --admix-text-prefix PREFIX   extract_tracts text output         ->  .abed
---out PREFIX writes PREFIX.abed, PREFIX.bim, PREFIX.fam.
-Pass PREFIX as --admix-bfile to SPAmixLocalPlus or --cal-phi.)",
+    "{prefix}.lanc  {prefix}.bim  (one merged file, chromosome segments)   +   {prefix}.fam  (shared)",
+    R"(--vcf PREFIX --rfmix-msp PREFIX   phased per-chr VCF/.vcf.gz + rfmix2 per-chr MSP  ->  .lanc
+--bcf PREFIX --rfmix-msp PREFIX   phased per-chr BCF2 + rfmix2 per-chr MSP            ->  .lanc
+Both flags are treated as PREFIXES: per-chromosome inputs are discovered
+by globbing {PREFIX}*.bcf / {PREFIX}*.vcf[.gz|.zst] and {PREFIX}*.msp.tsv
+respectively, matched by chromosome token.  --out PREFIX writes ONE merged
+PREFIX.lanc (a chromosome segment per contig, in chromosome order) and the
+companion merged PREFIX.bim plus one shared PREFIX.fam.
+--compression-level sets the zstd level for the .lanc frames (default 3).
+Pass PREFIX as --lanc to SPAmixLocalPlus or --cal-phi.)",
 };
 
 // ── Utility mode: int-pheno ────────────────────────────────────────
@@ -1157,9 +1161,9 @@ inline const MethodDef kCalPairwiseIbd = {
 // kAllMethods / kAllUtilModes drive method-name canonicalization inside the
 // dispatcher and must therefore continue to list every method GRAB knows
 // how to run, including the ones that are intentionally hidden from
-// --help (SPAmixLocalPlus, --make-abed, --cal-phi).  Help generation uses
+// --help (SPAmixLocalPlus, --cal-phi).  Help generation uses
 // the kVisible* arrays below, which omit the hidden entries; running
-// `grab --help SPAmixLocalPlus|make-abed|cal-phi` therefore reports
+// `grab --help SPAmixLocalPlus|cal-phi` therefore reports
 // "Unknown help topic" while the methods themselves remain functional.
 inline const MethodDef *const kAllMethods[] = {
     &kSPACox, &kSPAGRM, &kSAGELD, &kSPAGxE, &kSPAGxEmix, &kSPAmix, &kSPAmixPlus,
@@ -1169,7 +1173,7 @@ inline const MethodDef *const kAllMethods[] = {
 };
 
 inline const MethodDef *const kAllUtilModes[] = {
-    &kCalAfCoef, &kCalPairwiseIbd, &kCalPhi, &kMakeAbed, &kIntPheno,
+    &kCalAfCoef, &kCalPairwiseIbd, &kCalPhi, &kMakeLanc, &kIntPheno,
     nullptr
 };
 
@@ -1182,14 +1186,19 @@ inline const MethodDef *const kVisibleMethods[] = {
     nullptr
 };
 
+// --make-lanc (unlike --cal-phi / SPAmixLocalPlus) is
+// discoverable via --help: it is the standalone converter feeding the
+// still-under-development local-ancestry pipeline, and has no dependency
+// on the hidden admix reader internals, so it is listed here even while
+// --cal-phi / SPAmixLocalPlus stay hidden.
 inline const MethodDef *const kVisibleUtilModes[] = {
-    &kCalAfCoef, &kCalPairwiseIbd, &kIntPheno,
+    &kCalAfCoef, &kCalPairwiseIbd, &kIntPheno, &kMakeLanc,
     nullptr
 };
 
 // File-accepting flags (for --help <flag-topic>).  Admix-* topics and
 // --sp-grm-grab are omitted because the methods that consume them
-// (SPAmixLocalPlus, --cal-phi, --make-abed) and the legacy GRAB sparse
+// (SPAmixLocalPlus, --cal-phi) and the legacy GRAB sparse
 // GRM format are hidden from --help; the flags themselves remain
 // accepted by the parser.
 inline const FlagDef *const kFileFlags[] = {
@@ -1198,11 +1207,13 @@ inline const FlagDef *const kFileFlags[] = {
     nullptr
 };
 
-// Flags shown by `--help options`.  Admix-mode flags (--admix-bfile,
-// --admix-phi, --rfmix-msp, --admix-text-prefix) and --sp-grm-grab are
-// excluded because the methods that consume them (SPAmixLocalPlus,
-// --cal-phi, --make-abed) and the legacy GRAB sparse-GRM format are
-// hidden from --help.
+// Flags shown by `--help options`.  Admix-mode flags (--admix-phi) and
+// --sp-grm-grab are excluded because the methods that consume them
+// (SPAmixLocalPlus, --cal-phi) and the legacy GRAB sparse-GRM format are
+// hidden from --help.  --lanc is the exception: it is the reader input
+// for the same hidden methods, but is kept discoverable here because
+// --make-lanc (the converter that produces it) is itself a visible
+// utility mode.
 inline const FlagDef *const kInputFlags[] = {
     &kBfile,       &kPfile,       &kVcf,         &kBcf,
     &kBgen,
@@ -1214,6 +1225,7 @@ inline const FlagDef *const kInputFlags[] = {
     &kSpGrmPlink2, &kIndAfCoef,   &kPairwiseIbd,
     &kPredList,    &kPhenoTransform,
     &kLeafClusterFile,
+    &kLanc,
     &kKeep,        &kRemove,
     &kExtract,     &kExclude,     &kChr,
     nullptr
