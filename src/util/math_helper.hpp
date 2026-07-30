@@ -148,12 +148,13 @@ inline double pt(
 // 4-corner inclusion-exclusion formula):
 //   - both Y bounds infinite  →  marginal Φ(s_hi / √var1)
 //   - one Y bound infinite    →  single bivariate-normal CDF evaluation
-//                                (Genz 2004, 6-point quadrature)
+//                                (Genz 2004)
 //   - both Y bounds finite    →  direct 1-D integration of the conditional
 //                                tail probability via 20-point Gauss-
 //                                Legendre quadrature on [sb_lo, sb_hi]
 //                                (no subtraction; ≈ 10⁻¹³ relative error
-//                                for |ρ| < 0.925)
+//                                for |ρ| < 0.925), with the |ρ| → 1
+//                                degeneracy handed back to bvnCdf
 double pmvnorm2dHalfRect(
     double s_hi,
     double sb_lo,
@@ -162,6 +163,18 @@ double pmvnorm2dHalfRect(
     double cov12,
     double var2
 );
+
+// Standard bivariate normal CDF, Φ₂(dh, dk; r) = P(X ≤ dh, Y ≤ dk) for
+// (X, Y) ~ BVN(0, 0, 1, 1, r).  Genz (2004): Plackett's identity under a
+// 6-point Gauss rule for |r| < 0.925, and the asymptotic expansion about the
+// degenerate line under a 20-point rule for |r| ≥ 0.925.  Exact at |r| = 1.
+//
+// Declared here rather than kept file-local so that tests/wtcoxg_cgf_test.cpp
+// can pin it against an independent quadrature: the |r| ≥ 0.925 branch was
+// mis-transcribed and returned probabilities outside [0, 1] (see the comment
+// on the definition in math_helper.cpp), and a defect of that kind must stay
+// under test rather than under review.
+double bvnCdf(double dh, double dk, double r);
 
 // ──────────────────────────────────────────────────────────────────────
 // § 3  Brent root-finding

@@ -274,7 +274,7 @@ inline const FlagDef kPrevalence = {
 
 inline const FlagDef kBatchPThresh = {
     "--batch-effect-p-threshold", "FLOAT",
-    "Batch-effect p-value cutoff (default: 0.05)",
+    "Batch-effect p-value cutoff (default: 0.1)",
     nullptr
 };
 

@@ -19,6 +19,7 @@
 #include "engine/marker.hpp"
 #include "util/null_model.hpp"
 #include "util/outlier.hpp"
+#include "util/spa.hpp"
 
 class GenoMeta;
 class SparseGRM;
@@ -71,6 +72,36 @@ struct WtCoxGShared {
     int nNonOutlier;
     double sumR_nonOutlier;
     double sumR2_nonOutlier;
+
+    // ── P7: the centred outlier residuals, precomputed per weight b ──
+    //
+    // The saddlepoint CGF is built from r_i = R_i − bm with bm = (1−b)·meanR.
+    // Neither `outlier.residOutlier` nor `meanR` depends on the marker, so
+    // `residCentered` is a pure function of (cluster, b) — yet it was rebuilt
+    // as an Eigen::ArrayXd of length nOutlier on every SPA-branch entry, once
+    // per EXT/NOEXT variant per marker, and twice more inside Branch B
+    // (01_findings.md P7).
+    //
+    // b takes only a handful of distinct values: 0 (every NOEXT call, the
+    // no-external fallback and the whole of Branch A) plus the per-MAF-group
+    // `w_ext` weights fitted in Phase 2, of which there is one per MAF group.
+    // They are all known once the reference map exists, i.e. in the
+    // WtCoxGMethod constructor, so the table is built there, on the main
+    // thread, and shared by every worker clone through the enclosing
+    // shared_ptr<const WtCoxGShared>.  Ascending in `first`.
+    //
+    // LEAF gets the per-cluster half for free: it owns one WtCoxGMethod, and
+    // therefore one WtCoxGShared, per k-means cluster.
+    std::vector<std::pair<double, Eigen::ArrayXd> > residCenteredByB;
+
+    // Centred outlier residuals for weight `b`.  Returns nullptr when `b` is
+    // absent from the table, which the caller must then handle by computing
+    // into its own scratch; in practice every reachable b is present.
+    const double *residCenteredFor(double b) const {
+        for (const auto &e : residCenteredByB)
+            if (e.first == b) return e.second.data();
+        return nullptr;
+    }
 };
 
 // ======================================================================
@@ -105,8 +136,36 @@ class WtCoxGMethod : public MethodBase {
 // ---- MethodBase interface ----
     std::unique_ptr<MethodBase> clone() const override;
 
+// P_EXT LOG10P_EXT P_NOEXT LOG10P_NOEXT Z_EXT Z_NOEXT Z_Norm_EXT
+// Z_Norm_NOEXT P_BAT PI_BAT VAR_BAT SPA_STATUS_EXT SPA_STATUS_NOEXT.
+//
+// LOG10P_* is −log10 of the p-value in the adjacent column, computed through
+// spa::bnTailLog / spa::combineTailsLog so that it stays meaningful past the
+// point where the linear-scale tail underflows (Φ(−38.5) flushes to zero,
+// i.e. p ~ 1e-316).  On the two conditional branches, where the reported
+// quantity is a bivariate-normal integral rather than a saddlepoint tail, it
+// is −log10 of that integral.
+//
+// SPA_STATUS_* carries the spa::Status of the saddlepoint underlying that
+// p-value, as the integer enumerator rather than the token spa::statusName
+// spells: MethodBase hands the engine a std::vector<double> and every result
+// cell is formatted by numToChars, so a string column would require a new hook
+// in the MethodBase contract, which dev-notes/methods/spa_unify/02_design.md
+// places out of scope for the per-method migration stages.  The mapping is
+// spa::Status's own, and is the encoding Stages 3-5 gave the other six
+// methods:
+//
+//     0 OK (converged)     3 GUARD_CURV     6 NORMAL (|Z| <= --spa-z-threshold,
+//     1 MAXITER            4 GUARD_W          saddlepoint never attempted)
+//     2 GUARD_TEMP         5 NONFINITE
+//
+// P and LOG10P are NA for every status other than 0 and 6.  NONFINITE covers
+// both a saddlepoint that left the reals and a marker for which no test
+// exists at all (per-cluster MAC below 10, a non-positive score variance, an
+// unmatched batch-effect p-value): spa::Status has no "no test" enumerator,
+// and adding one would renumber a code already in five other methods' output.
     int resultSize() const override {
-        return 9;
+        return 13;
     }
 
     std::string getHeaderColumns() const override;
@@ -123,9 +182,11 @@ class WtCoxGMethod : public MethodBase {
 // For LEAF: compute ext/noext results with raw scores for meta-analysis.
     struct DualResult {
         double p_ext, p_noext;
+        double log10p_ext, log10p_noext;   // −log10 of the two above
         double score_ext, score_noext;
         double gSum;     // ALT-allele count within this cluster's subjects
         int    N;        // number of subjects in this cluster
+        spa::Status status_ext, status_noext;
     };
 
     DualResult computeDual(
@@ -189,9 +250,22 @@ class WtCoxGMethod : public MethodBase {
   private:
     struct WtResult {
         double pval;
+        double negLog10p;
         double score;
         double zscore;
+        spa::Status status;
     };
+
+// The all-NA result of a marker for which no test exists.
+    static WtResult wtDegenerate();
+
+// Push the 13 result cells in header order.
+    static void pushResult(
+        std::vector<double> &out,
+        const WtResult &ext,
+        const WtResult &noext,
+        const WtCoxGRefInfo &info
+    );
 
 // Core SPA test for one marker with external adjustment.
     WtResult wtCoxGTest(

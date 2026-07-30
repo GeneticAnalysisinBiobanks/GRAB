@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "util/math_helper.hpp"
+#include "util/spa.hpp"
 
 namespace math {
 
@@ -48,11 +49,32 @@ namespace math {
 constexpr double META_P_FLOOR = 1e-300;
 constexpr double META_P_CEIL  = 1.0 - 1e-15;
 
-inline double metaPvalueScorePool(
+// Pooled result: the p-value, its −log10, and the status of the POOLING.
+//
+// spa_unify Stage 6 (L3) adds the log-domain magnitude, so a pooled p below
+// the linear underflow floor is still reported; and the status, which is the
+// worst spa::Status among the clusters that actually contributed.  Contributing
+// requires a finite score and a finite p, and a cluster whose saddlepoint
+// failed now has a NaN p (D2) and is skipped — so a contributing cluster
+// always carries Converged or NormalBranch, and the pooled status is 0 or 6
+// whenever `p` is a number, NonFinite when it is NA.  That is the same
+// "P is NA for every status other than 0 and 6" invariant the six migrated
+// methods carry.
+struct MetaPooled {
+    double p;
+    double negLog10p;
+    spa::Status status;
+};
+
+inline MetaPooled metaPvalueScorePool(
     const std::vector<double> &scores,
-    const std::vector<double> &pvals
+    const std::vector<double> &pvals,
+    const std::vector<spa::Status> &statuses
 ) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
     double sumScore = 0.0, sumVar = 0.0;
+    spa::Status st = spa::Status::NonFinite;
+    bool any = false;
     const std::size_t K = scores.size();
     for (std::size_t c = 0; c < K; ++c) {
         if (std::isnan(scores[c]) || std::isnan(pvals[c])) continue;
@@ -63,10 +85,17 @@ inline double metaPvalueScorePool(
         const double var   = (scores[c] * scores[c]) / chisq;
         sumScore += scores[c];
         sumVar   += var;
+        st  = any ? spa::worseStatus(st, statuses[c]) : statuses[c];
+        any = true;
     }
-    if (sumVar <= 0.0) return std::numeric_limits<double>::quiet_NaN();
+    if (sumVar <= 0.0) return MetaPooled{nan, nan, spa::Status::NonFinite};
     const double z = sumScore / std::sqrt(sumVar);
-    return std::erfc(std::fabs(z) / std::sqrt(2.0));
+    // The linear-scale p is left exactly as it was — erfc(|z|/sqrt(2)), not
+    // 2*pnorm(-|z|) — so that meta_P does not move by a ULP under a change
+    // whose purpose is to add a column.  The magnitude comes from the log
+    // domain, where erfc has already underflowed for |z| beyond ~38.
+    return MetaPooled{std::erfc(std::fabs(z) / std::sqrt(2.0)),
+                      spa::normalBranch(z).negLog10p, st};
 }
 
 }  // namespace math

@@ -419,6 +419,11 @@ TESTOBJS_bench_spa_cgf := $(BUILD_DIR)/util/spa_cgf.o
 TESTOBJS_spagrm_cgf_test := $(BUILD_DIR)/util/spa_cgf.o
 # spamix_cgf.hpp is likewise header-only over the dispatched binomial kernels.
 TESTOBJS_spamix_cgf_test := $(BUILD_DIR)/util/spa_cgf.o
+# wtcoxg_cgf.hpp is header-only over the same kernels; its bivariate-normal
+# tests additionally need math_helper.o for pmvnorm2dHalfRect / bvnCdf.
+TESTOBJS_wtcoxg_cgf_test := \
+    $(BUILD_DIR)/util/spa_cgf.o \
+    $(BUILD_DIR)/util/math_helper.o
 
 TESTOBJS_lanc_simd_test := \
     $(BUILD_DIR)/localplus/lanc_io.o \

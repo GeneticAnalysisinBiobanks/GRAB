@@ -561,6 +561,9 @@ build/grab2 \
   `# Optional flags below (set to built-in defaults):` \
   --regression-model auto \
   --chr 1-2,3 \
+  `# NOT the built-in default, which is 0.1 (src/cli/cli.hpp).  0.05 is pinned` \
+  `# here because it decides which batch-effect branch each marker takes, so` \
+  `# changing it re-baselines every WtCoxG and LEAF output at once.` \
   --batch-effect-p-threshold 0.05 \
   --spa-z-threshold 2.0 \
   --outlier-iqr-multiplier 1.5 \
@@ -619,6 +622,25 @@ build/grab2 \
   --compression-level 3
 
 ## ── WtCoxG ────────────────────────────────────────────────────────────
+#
+# Output columns (spa_unify Stage 6): the nine meta columns, then
+#   P_EXT  LOG10P_EXT  P_NOEXT  LOG10P_NOEXT
+#   Z_EXT  Z_NOEXT  Z_Norm_EXT  Z_Norm_NOEXT
+#   P_BAT  PI_BAT  VAR_BAT  SPA_STATUS_EXT  SPA_STATUS_NOEXT
+# LOG10P_* is -log10 of the p-value in the preceding column, computed in the
+# log domain so it stays meaningful past the linear-scale underflow.
+# SPA_STATUS_* is the spa::Status enumerator of the saddlepoint that produced
+# that p-value, as an integer: 0 OK, 1 MAXITER, 2 GUARD_TEMP, 3 GUARD_CURV,
+# 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|Z| <= --spa-z-threshold, saddlepoint not
+# attempted).  P and LOG10P are NA for every status other than 0 and 6.
+#
+# On the two batch-effect branches the reported P is a conditional probability
+# assembled from a bivariate-normal integral rather than a saddlepoint tail,
+# and the saddlepoint enters only through the variance recovered by inverting
+# it; SPA_STATUS then describes that saddlepoint, and status 5 additionally
+# covers a marker whose conditional integral does not exist because the
+# assembled 2x2 covariance is not positive semi-definite (177 markers of
+# Time_Event on this fixture, all in Branch B with sigma^2 >> var_Sbat).
 
 build/grab2 \
   --method WtCoxG \
@@ -633,6 +655,9 @@ build/grab2 \
   `# Optional flags below (set to built-in defaults):` \
   --regression-model auto \
   --chr 1-2,3 \
+  `# NOT the built-in default, which is 0.1 (src/cli/cli.hpp).  0.05 is pinned` \
+  `# here because it decides which batch-effect branch each marker takes, so` \
+  `# changing it re-baselines every WtCoxG and LEAF output at once.` \
   --batch-effect-p-threshold 0.05 \
   --spa-z-threshold 2.0 \
   --outlier-iqr-multiplier 1.5 \
@@ -647,6 +672,21 @@ build/grab2 \
   --compression-level 6
 
 ## ── LEAF ──────────────────────────────────────────────────────────────
+#
+# Output columns (spa_unify Stage 6): the nine meta columns, then
+#   meta_P_EXT  meta_LOG10P_EXT  meta_P_NOEXT  meta_LOG10P_NOEXT
+#   meta_SPA_STATUS_EXT  meta_SPA_STATUS_NOEXT
+# and, per k-means cluster N,
+#   clN_MAC  clN_P_EXT  clN_LOG10P_EXT  clN_P_NOEXT  clN_LOG10P_NOEXT
+#   clN_P_BAT  clN_PI_BAT  clN_VAR_BAT  clN_SPA_STATUS_EXT  clN_SPA_STATUS_NOEXT
+# The per-cluster columns are the WtCoxG block above, evaluated within that
+# cluster; the encoding of SPA_STATUS is the same.  The META status describes
+# the POOLING rather than the clusters: it is the worst status among the
+# clusters that contributed to the fixed-effects pool, hence 0 or 6 whenever
+# meta_P is a number and 5 when no cluster contributed and meta_P is NA.  A
+# cluster with no informative subjects for a marker has no test, reports NA
+# with status 5, and is simply left out of the pool -- that is the common case
+# rather than the exception (2036 of 3000 markers for cluster 1 here).
 
 build/grab2 \
   --method LEAF \
@@ -666,6 +706,9 @@ build/grab2 \
   --leaf-kmeans-nstart 25 \
   --seed 2026 \
   --chr 1-2,3 \
+  `# NOT the built-in default, which is 0.1 (src/cli/cli.hpp).  0.05 is pinned` \
+  `# here because it decides which batch-effect branch each marker takes, so` \
+  `# changing it re-baselines every WtCoxG and LEAF output at once.` \
   --batch-effect-p-threshold 0.05 \
   --spa-z-threshold 2.0 \
   --outlier-iqr-multiplier 1.5 \

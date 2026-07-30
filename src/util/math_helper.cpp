@@ -3,14 +3,75 @@
 
 namespace math {
 
-namespace {
-
-// § 2  Bivariate normal CDF  (Genz 2004, 6-point quadrature)
+// § 2  Bivariate normal CDF  (Genz 2004)
 //
 // Internal helper.  Returns Φ₂(dh, dk; r) = P(X ≤ dh, Y ≤ dk) for
 // (X, Y) ~ BVN(0, 0, 1, 1, r).  Used by pmvnorm2dHalfRect when one Y
 // bound is infinite (the half-infinite case reduces to a single Φ₂
-// evaluation with no inclusion-exclusion).
+// evaluation with no inclusion-exclusion), and when |ρ| has been clamped
+// to ±1 in the finite-rectangle case.
+//
+// ══════════════════════════════════════════════════════════════════════
+// The |r| ≥ 0.925 branch was wrong.  What was wrong, and how it showed.
+// ══════════════════════════════════════════════════════════════════════
+//
+// Genz's routine is written for the UPPER tail,
+//     BVNU(H, K, r) = P(X > H, Y > K),
+// and the CDF is recovered as Φ₂(dh, dk; r) = BVNU(−dh, −dk, r).  The
+// |r| < 0.925 branch below implements Plackett's identity directly and
+// is correct; the |r| ≥ 0.925 branch is Genz's asymptotic expansion about
+// the degenerate line, and its previous transcription departed from the
+// published algorithm in three places:
+//
+//   1. The quadrature term read
+//          exp(−HK(1−r) / (2(1 + (±xᵢ+1)·(a/2)²/AS))) − 1 − C·XS·(1 + D·XS)
+//      where Genz has
+//          exp(−HK·XS / (2(1+RS)²)) / RS − (1 + C·XS·(1 + D·XS)),
+//      with XS = (a/2·(±xᵢ+1))² and RS = √(1 − XS).  Both the exponent and
+//      the missing 1/RS matter: the series then does not converge to the
+//      expansion it is truncating and the result is unbounded.  Measured
+//      against an independent Simpson reduction of
+//      ∫_{−∞}^{h} φ(x)·Φ((k − r x)/√(1−r²)) dx over a 784-point grid, the
+//      previous code was in error by up to 9.9e-01 in absolute probability
+//      and returned a value outside [0, 1] at 56 of those 784 points.
+//
+//   1b. The Mills-ratio term read `PHI(+B/A)` where Genz has `PHI(−B/A)`.
+//      B = √BS ≥ 0 and A > 0, so the transcribed factor is at least ½ where
+//      the correct one is at most ½; at (h, k, r) = (−4, −0.392, 0.925) that
+//      alone moved the answer by 1.0 in absolute probability.
+//
+//   2. The r > 0 terminal read `bvn += Φ(h) + Φ(k) − 1 + min(Φ(h), Φ(k))`.
+//      Genz's line is `BVN = BVN + PHI(−max(H, K))`, which under the
+//      substitution H = −dh, K = −dk is `bvn += min(Φ(dh), Φ(dk))`.  The
+//      extra `Φ(h) + Φ(k) − 1` was spurious.
+//
+//   3. The r < 0 terminal negated the series twice: it computed
+//      `bvn = −bvn` and then `bvn = Φ(h) − Φ(kk) − bvn`, i.e.
+//      +series + (Φ(h) − Φ(kk)), where Genz has −series + max(0, ·).
+//
+//   4. The quadrature used the 6-point rule at every |r|.  Genz selects
+//      6 / 12 / 20 points for |r| < 0.3 / < 0.75 / else; the |r| ≥ 0.925
+//      branch is always in the last bin.
+//
+// Observable consequence in GRAB.  `pmvnorm2dHalfRect` clamps ρ into
+// [−1, 1] and routes |ρ| ≥ 1 − 1e-12 through this function; WtCoxG's
+// Branch B builds ρ from a variance recovered by inverting an SPA p-value
+// through qchisq, which is not constrained to keep the 2×2 covariance
+// positive semi-definite, so ρ > 1 does occur (max 1.073 on the bundled
+// fixture).  With defect (2), Φ₂(h, b; 1) − Φ₂(h, a; 1) came back as
+// 0.4557 where the exact degenerate answer is 0.1505 — larger than the
+// S_bat marginal 0.3052 that bounds it — and the conditional p-value
+// 2·(TPR·p₁ + (1−TPR)·p₀)/p_deno exceeded 1, reaching 2.9866.  That is the
+// origin of the 166 markers with P_EXT > 1 in the pinned baseline.
+//
+// The |r| < 0.925 branch is left byte-for-byte as it was: it is correct
+// (agreeing with the Simpson reference to ~1e-7, the accuracy of the
+// 6-point rule Genz specifies for that regime), and every call in the
+// bundled fixture that is not clamped to |ρ| = 1 lands there, so keeping it
+// untouched confines the numeric change to the calls that were wrong.
+//
+// After the repair the same 784-point grid gives a worst absolute error of
+// 6.5e-13 and no return outside [0, 1].  See tests/wtcoxg_cgf_test.cpp.
 double bvnCdf(
     double dh,
     double dk,
@@ -37,6 +98,28 @@ double bvnCdf(
         bvn *= asr / (4.0 * M_PI);
         bvn += 0.5 * std::erfc(-h / std::sqrt(2.0)) * 0.5 * std::erfc(-k / std::sqrt(2.0));
     } else {
+        // Genz's asymptotic branch.  It is written in terms of BS = (H − K)²
+        // and HK = H·K only, and both are invariant under the joint sign flip
+        // H = −dh, K = −dk that turns the upper tail into the CDF, so the
+        // series may be evaluated with (dh, dk) directly.  Only the terminal
+        // needs the substitution spelled out.
+        //
+        // Genz specifies 20 points (his NG = 3 table) for every |r| in this
+        // branch; the same nodes and weights already serve the Gauss-Legendre
+        // rectangle integration in pmvnorm2dHalfRect below.
+        static constexpr double w20[10] = {
+            0.1527533871307258, 0.1491729864726037, 0.1420961093183820,
+            0.1316886384491766, 0.1181945319615184, 0.1019301198172404,
+            0.0832767415767048, 0.0626720483341091, 0.0406014298003869,
+            0.0176140071391521
+        };
+        static constexpr double x20[10] = {
+            -0.0765265211334973, -0.2277858511416451, -0.3737060887154195,
+            -0.5108670019508271, -0.6360536807265150, -0.7463319064601508,
+            -0.8391169718222188, -0.9122344282513259, -0.9639719272779138,
+            -0.9931285991850949
+        };
+
         double kk = k;
         double hkk = hk;
         if (r < 0.0) {
@@ -46,7 +129,7 @@ double bvnCdf(
 
         if (std::abs(r) < 1.0) {
             const double as_ = (1.0 - r) * (1.0 + r);
-            const double a = std::sqrt(as_);
+            double a = std::sqrt(as_);
             const double bs = (h - kk) * (h - kk);
             const double c = (4.0 - hkk) / 8.0;
             const double d = (12.0 - hkk) / 16.0;
@@ -54,46 +137,56 @@ double bvnCdf(
             if (asr > -100.0)
                 bvn = a * std::exp(asr) * (1.0 - c * (bs - as_) * (1.0 - d * bs / 5.0) / 3.0 + c * d * as_ * as_ / 5.0);
             if (-hkk < 100.0) {
+                // Genz: BVN -= exp(-HK/2)*sqrt(2*pi)*PHI(-B/A)*B*(...).
+                // The argument of PHI is NEGATIVE B/A.  The previous
+                // transcription wrote 0.5*erfc(-b/(sqrt(2)*a)), which is
+                // Phi(+b/a); since b = sqrt(bs) >= 0 and a > 0 that is >= 1/2
+                // where the correct factor is <= 1/2, so the subtracted term
+                // was too large by up to a factor of the Mills ratio.
                 const double b = std::sqrt(bs);
-                bvn -= std::exp(-hkk / 2.0) * std::sqrt(2.0 * M_PI) * 0.5 * std::erfc(-b / (std::sqrt(2.0) * a)) * b *
+                const double phiNegBA = 0.5 * std::erfc(b / (std::sqrt(2.0) * a));
+                bvn -= std::exp(-hkk / 2.0) * std::sqrt(2.0 * M_PI) * phiNegBA * b *
                        (1.0 - c * bs * (1.0 - d * bs / 5.0) / 3.0);
             }
-            const double a2 = a / 2.0;
-            for (int i = 0; i < 3; ++i) {
+            a /= 2.0;
+            for (int i = 0; i < 10; ++i) {
                 for (int is = -1; is <= 1; is += 2) {
-                    double xs = a2 * (is * x6[i] + 1.0);
-                    xs *= xs;
+                    const double t = a * (is * x20[i] + 1.0);
+                    const double xs = t * t;
+                    const double rs = std::sqrt(1.0 - xs);
                     const double asr2 = -(bs / xs + hkk) / 2.0;
                     if (asr2 > -100.0)
-                        bvn += a2 * w6[i] * std::exp(asr2) *
-                               (std::exp(-hkk * (1.0 - r) / (2.0 * (1.0 + (is * x6[i] + 1.0) * a2 * a2 / as_))) - 1.0 -
-                                c * xs * (1.0 + d * xs));
+                        bvn += a * w20[i] * std::exp(asr2) *
+                               (std::exp(-hkk * xs / (2.0 * (1.0 + rs) * (1.0 + rs))) / rs -
+                                (1.0 + c * xs * (1.0 + d * xs)));
                 }
             }
             bvn = -bvn / (2.0 * M_PI);
         }
 
-        if (r > 0.0) {
-            double phih = 0.5 * std::erfc(-h / std::sqrt(2.0));
-            double phik = 0.5 * std::erfc(-kk / std::sqrt(2.0));
-            bvn += phih + phik - 1.0 + std::min(phih, phik);
-            if (bvn < 0.0) bvn = 0.0;
-        } else {
-            bvn = -bvn;
-            double phih = 0.5 * std::erfc(-h / std::sqrt(2.0));
-            double phik = 0.5 * std::erfc(-kk / std::sqrt(2.0));
-            if (phih - phik >= 0.0) {
-                bvn = phih - phik - bvn;
-                if (bvn < 0.0) bvn = 0.0;
-            } else {
-                bvn = 0.0;
-            }
-        }
+        // Terminal, with H = −dh and (after the r < 0 flip) K = −kk:
+        //   r > 0 :  BVN += PHI(−max(H, K)) = PHI(min(dh, dk))
+        //                                   = min(Φ(dh), Φ(dk))
+        //   r < 0 :  BVN  = −BVN + max(0, PHI(−H) − PHI(−K))
+        //                 = −BVN + max(0, Φ(dh) − Φ(kk))
+        // At |r| = 1 the series above is skipped and these are the exact
+        // degenerate answers, min(Φ(h), Φ(k)) and max(0, Φ(h) + Φ(k) − 1).
+        const double phih  = 0.5 * std::erfc(-h / std::sqrt(2.0));
+        const double phikk = 0.5 * std::erfc(-kk / std::sqrt(2.0));
+        if (r > 0.0) bvn += std::min(phih, phikk);
+        else         bvn = -bvn + std::max(0.0, phih - phikk);
+
     }
+    // A probability, on both branches.  Plackett's identity under a 6-point
+    // rule (the |r| < 0.925 arm) is accurate to about 1e-7 and can return a
+    // value a few times 1e-8 below zero where the true probability is zero;
+    // every call site already wrapped the result in std::clamp for exactly
+    // that reason, so hoisting the clamp here changes no caller's answer and
+    // makes the function's own contract true.
+    if (!(bvn > 0.0)) bvn = std::isnan(bvn) ? bvn : 0.0;
+    if (bvn > 1.0) bvn = 1.0;
     return bvn;
 }
-
-} // namespace (internal)
 
 double pmvnorm2dHalfRect(
     double s_hi,
@@ -108,7 +201,52 @@ double pmvnorm2dHalfRect(
     const double sd1 = std::sqrt(var1);
     const double sd2 = std::sqrt(var2);
     double rho = cov12 / (sd1 * sd2);
-    // Numerical guard: cov12 may marginally exceed sd1·sd2 due to round-off.
+
+    // ── |ρ| > 1 means there is no such bivariate normal ──────────────
+    //
+    // The guard here used to be a bare clamp with the comment "cov12 may
+    // marginally exceed sd1·sd2 due to round-off".  That is a correct thing to
+    // absorb — the three arguments arrive from separate accumulations, so a
+    // few ULP either way is expected — but it is not what was happening.
+    //
+    // Measured over every WtCoxG and LEAF invocation of examples/baseline.sh
+    // (22 776 calls): |ρ| reached or exceeded 1 in 177 of them, and in all 177
+    // it exceeded 1 by between 0.14 % and 172 % (median 7.3 %).  The largest
+    // |ρ| anywhere below the threshold was 0.9956, so the two populations do
+    // not even touch.  These are not rounding artefacts.
+    //
+    // They come from WtCoxG's Branch B, where the covariance and the second
+    // variance are built with different σ² dependence:
+    //     cov  = w1·(R−bm)·2μ(1−μ) + 2·b·sumR·(var_mu_ext + σ²)
+    //     var2 = w1Sq·2μ(1−μ) + var_mu_ext + σ²
+    // so as σ² grows the covariance grows like σ² while sd2 grows like σ, and
+    // ρ grows without bound.  On the fixture ρ > 1 occurs exactly where
+    // σ²/var_Sbat is large (median 24, against 8 elsewhere) — the degenerate,
+    // weakly identified regime.  Note that ρ does not depend on var1 at all:
+    // the sqrt(var_S/var_int) rescaling the caller applies to cov12 cancels
+    // against sd1 exactly, so this is a property of WtCoxG's model, not of the
+    // variance it recovers by inverting the saddlepoint p-value.
+    //
+    // Clamping |ρ| to 1 does not rescue such a marker, it replaces it: at
+    // ρ = 1 the two coordinates are the same random variable, so the joint
+    // event {X ≤ h} ∩ {a ≤ Y ≤ b} is either the whole rectangle or empty.
+    // Three markers of the bundled fixture land on the empty side, and the
+    // conditional p-value 2·(TPR·p₁+(1−TPR)·p₀)/p_deno then collapses to
+    // 2·(1−TPR)·p₀/p_deno ≈ 8e-14 — a fabricated genome-wide-significant hit
+    // manufactured out of TPR differing from 1 in the fourteenth digit.  The
+    // previous code reported the same three markers as p ≈ 2, which is not a
+    // probability either.  Neither number should be produced.
+    //
+    // So: round-off is still absorbed, and a genuinely indefinite covariance
+    // is reported.  NaN propagates through the caller's assembly to an NA
+    // p-value with SPA_STATUS = NONFINITE, which is the honest answer — the
+    // integral being asked for does not exist.  Whether WtCoxG's Branch B
+    // should build a positive semi-definite pair in the first place is a
+    // modelling decision for whoever owns that formula, and is deliberately
+    // NOT taken here (compare D4, which this file also declines to "fix").
+    constexpr double kRhoRoundoff = 1e-8;
+    if (!(std::abs(rho) <= 1.0 + kRhoRoundoff))
+        return std::numeric_limits<double>::quiet_NaN();
     if (rho > 1.0) rho = 1.0;
     if (rho < -1.0) rho = -1.0;
 
