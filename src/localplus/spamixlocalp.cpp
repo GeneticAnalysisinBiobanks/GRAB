@@ -5,6 +5,7 @@
 #include "localplus/spamixlocalp.hpp"
 #include "engine/marker.hpp"
 #include "localplus/lanc_io.hpp"
+#include "localplus/spamixlocalp_cgf.hpp"
 #include "util/outlier.hpp"
 #include "io/sparse_grm.hpp"
 #include "io/subject_data.hpp"
@@ -28,7 +29,6 @@
 #include <vector>
 
 #include <Eigen/Dense>
-#include <boost/math/distributions/normal.hpp>
 
 // Forward-declare plink2's fast 6-sig-fig double-to-string (the same routine
 // the marker engine uses via engine_impl::numToChars in marker_impl.hpp).
@@ -37,8 +37,6 @@
 namespace plink2 {
 char *dtoa_g(double dxx, char *start);
 } // namespace plink2
-
-static constexpr double MIN_P_VALUE = std::numeric_limits<double>::min();
 
 // ======================================================================
 // Precomputed phi products — SoA layout for AVX2-friendly hot loop
@@ -866,140 +864,18 @@ double computePhiVariance(
 }
 
 // ======================================================================
-// SPA p-value with outlier split (adapted from reference implementation)
+// SPA p-value with outlier split
+//
+// The saddlepoint itself lives in localplus/spamixlocalp_cgf.hpp (tier 3 of
+// the split described in util/spa.hpp): the CGF of the outlier block is the
+// shared `spa_cgf::binomHapcount` kernel, the root finder and the
+// Barndorff-Nielsen tail are `spa::solveSaddlepoint` and `spa::bnTail`, and
+// the two-sided assembly and the SPA_STATUS enumeration are `spa::`.  What
+// remains here is what touches subjects: the outlier gather, the Gaussian
+// block over the non-outliers, and the normal short-circuit.
 // ======================================================================
 
-namespace {
-
-// Fused CGF derivatives — single exp() per call instead of 3 separate calls.
-// K0 = h * log((1-p) + p*e^t),  K1 = h * p*e^t / base,  K2 = h * p*e^t*(1-p) / base^2
-inline void kG012Local(
-    double t,
-    double maf,
-    double h,
-    double &K0out,
-    double &K1out,
-    double &K2out
-) {
-    double et = std::exp(std::clamp(t, -700.0, 700.0));
-    double base = (1.0 - maf) + maf * et;
-    if (base > 1e-15) {
-        double pe = maf * et;     // p * e^t
-        double q1p = (1.0 - maf); // (1-p)
-        double bsq = base * base;
-        K0out = h * std::log(base);
-        K1out = h * pe / base;
-        K2out = h * pe * q1p / bsq;
-    } else {
-        K0out = -std::numeric_limits<double>::infinity();
-        K1out = 0.0;
-        K2out = 0.0;
-    }
-}
-
-// Newton-Raphson root finding for K'(t) = s
-struct RootResult {
-    double root;
-    bool converged;
-};
-
-RootResult findRoot(
-    double s,
-    const double *rOut,
-    const double *hOut,
-    int nOut,
-    double q,
-    double meanNorm,
-    double
-    varNorm
-) {
-    static constexpr double tol = 0.001;
-    static constexpr int maxIter = 100;
-    double initVals[] = {0.0, -1.0, 1.0, -2.0, 2.0};
-
-    for (double init : initVals) {
-        double t = init;
-        bool conv = false;
-        for (int iter = 0; iter < maxIter; ++iter) {
-            double K1 = 0.0, K2 = 0.0;
-            for (int i = 0; i < nOut; ++i) {
-                double tR = std::clamp(t * rOut[i], -700.0, 700.0);
-                double k0i, k1i, k2i;
-                kG012Local(tR, q, hOut[i], k0i, k1i, k2i);
-                K1 += rOut[i] * k1i;
-                K2 += rOut[i] * rOut[i] * k2i;
-            }
-            double K1total = K1 + meanNorm + varNorm * t - s;
-            double K2total = K2 + varNorm;
-
-            if (std::abs(K1total) < tol) {
-                conv = true;
-                break;
-            }
-            if (K2total <= 1e-10) break;
-
-            double dt = std::clamp(-K1total / K2total, -2.0, 2.0);
-            t = std::clamp(t + dt, -20.0, 20.0);
-            if (std::abs(dt) < tol) {
-                conv = true;
-                break;
-            }
-        }
-        if (conv) return {t, true};
-    }
-    return {0.0, false};
-}
-
-// Lugannani-Rice tail probability
-double lugannamiRicePval(
-    double zeta,
-    double s,
-    double q,
-    const double *rOut,
-    const double *hOut,
-    int nOut,
-    double meanNorm,
-    double varNorm,
-    bool upperTail
-) {
-    double K0 = 0.0, K2 = 0.0;
-    for (int i = 0; i < nOut; ++i) {
-        double tR = std::clamp(zeta * rOut[i], -700.0, 700.0);
-        double k0i, k1i, k2i;
-        kG012Local(tR, q, hOut[i], k0i, k1i, k2i);
-        K0 += k0i;
-        K2 += rOut[i] * rOut[i] * k2i;
-    }
-    K0 += meanNorm * zeta + 0.5 * varNorm * zeta * zeta;
-    K2 += varNorm;
-
-    double temp = zeta * s - K0;
-    if (temp <= 0 || K2 <= 0) {
-        // Fallback to normal
-        double z = std::abs(s) / std::sqrt(K2 > 0 ? K2 : 1.0);
-        boost::math::normal_distribution<> norm;
-        return boost::math::cdf(boost::math::complement(norm, z));
-    }
-
-    double w = std::copysign(std::sqrt(2.0 * temp), zeta);
-    double v = zeta * std::sqrt(K2);
-
-    if (std::abs(w) < 1e-12 || std::abs(v) < 1e-12 || !std::isfinite(w) || !std::isfinite(v)) return MIN_P_VALUE;
-
-    double lr_arg = w + (1.0 / w) * std::log(v / w);
-    if (!std::isfinite(lr_arg)) return MIN_P_VALUE;
-
-    boost::math::normal_distribution<> norm;
-    if (upperTail) {
-        return boost::math::cdf(boost::math::complement(norm, lr_arg));
-    } else {
-        return boost::math::cdf(norm, lr_arg);
-    }
-}
-
-} // anonymous namespace
-
-std::pair<double, double> spaLocalPval(
+spa::TwoSided spaLocalPval(
     double S,
     double sMean,
     double varDiag,
@@ -1008,59 +884,72 @@ std::pair<double, double> spaLocalPval(
     double q,
     double varS,
     const OutlierData &outlier,
+    LocalSpaScratch &scratch,
     double spaCutoff
 ) {
-    double z = (varS > 0.0) ? (S - sMean) / std::sqrt(varS) : 0.0;
-    boost::math::normal_distribution<> norm;
-    double pNorm = 2.0 * boost::math::cdf(boost::math::complement(norm, std::abs(z)));
-    if (pNorm <= 0.0) pNorm = MIN_P_VALUE;
+    // A non-positive or non-finite variance leaves the test undefined.  The
+    // predecessor mapped it to z = 0 and reported p = 1, which reads as a
+    // perfectly null marker; BETA and SE were already NaN in the same case, so
+    // the row was internally inconsistent.  Report it as a failure instead.
+    if (!(varS > 0.0) || !std::isfinite(varS) || !std::isfinite(S) ||
+        !std::isfinite(sMean)) {
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        return spa::TwoSided{nan, nan, spa::Status::NonFinite};
+    }
+
+    const double z = (S - sMean) / std::sqrt(varS);
 
     if (std::abs(z) <= spaCutoff || outlier.posOutlier.empty()) {
-        return {pNorm, pNorm};
+        // The normal branch.  `spa::normalBranch` routes through math::pnorm's
+        // complement, which does not floor at zero the way 1 - Phi(|z|) does,
+        // and supplies LOG10P in the log domain.
+        return spa::normalBranch(z);
     }
 
-    // varDiag already computed by caller
-    double varRatio = (varS > 0.0) ? varDiag / varS : 1.0;
-    double sNew = S * std::sqrt(varRatio);
-    double sMeanNew = sMean * std::sqrt(varRatio);
+    // ── Rescale the score to the independence variance the CGF describes ──
+    const double varRatio = varDiag / varS;
+    const double scale = std::sqrt(varRatio);
+    const double sNew = S * scale;
+    const double sMeanNew = sMean * scale;
+    const double absDev = std::abs(sNew - sMeanNew);
 
-    // Extract outlier data
-    int nOut = static_cast<int>(outlier.posOutlier.size());
-    std::vector<double> rOut(nOut), hOut(nOut);
-    double meanNorm = 0.0, varNorm = 0.0;
+    // ── Outlier gather, and the Gaussian block by subtraction (P4) ────────
+    //
+    // meanNorm = q * sum_non h_i R_i     = sMean   - q * sum_out h_i R_i
+    // varNorm  = q(1-q) * sum_non h_i R_i^2
+    //                                    = varDiag - q(1-q) * sum_out h_i R_i^2
+    //
+    // The all-subject totals arrive as sMean and varDiag, computed for every
+    // (marker, ancestry, phenotype) at once by the fused GEMMs in
+    // runUnifiedGWAS, so the non-outlier totals cost nothing beyond the gather
+    // loop that has to run anyway.  `detectOutliers` partitions the cohort, so
+    // the subtraction is exact up to rounding.
+    const int nOut = static_cast<int>(outlier.posOutlier.size());
+    scratch.rOut.resize(static_cast<size_t>(nOut));
+    scratch.hOut.resize(static_cast<size_t>(nOut));
 
+    double sumHR = 0.0, sumHR2 = 0.0;
     for (int i = 0; i < nOut; ++i) {
-        uint32_t idx = outlier.posOutlier[i];
-        rOut[i] = R[idx];
-        hOut[i] = hapcount[idx];
-    }
-    for (uint32_t idx : outlier.posNonOutlier) {
-        meanNorm += R[idx] * q * hapcount[idx];
-        varNorm += R[idx] * R[idx] * q * (1.0 - q) * hapcount[idx];
-    }
-
-    double sUpper = std::max(sNew, 2.0 * sMeanNew - sNew);
-    double sLower = std::min(sNew, 2.0 * sMeanNew - sNew);
-
-    auto rootUpper = findRoot(sUpper, rOut.data(), hOut.data(), nOut, q, meanNorm, varNorm);
-    auto rootLower = findRoot(sLower, rOut.data(), hOut.data(), nOut, q, meanNorm, varNorm);
-
-    double pval = 0.0;
-    if (rootUpper.converged) {
-        pval += lugannamiRicePval(rootUpper.root, sUpper, q, rOut.data(), hOut.data(), nOut, meanNorm, varNorm, true);
-    }
-    if (rootLower.converged) {
-        pval += lugannamiRicePval(rootLower.root, sLower, q, rOut.data(), hOut.data(), nOut, meanNorm, varNorm, false);
+        const uint32_t idx = outlier.posOutlier[static_cast<size_t>(i)];
+        const double r = R[idx];
+        const double h = hapcount[idx];
+        scratch.rOut[static_cast<size_t>(i)] = r;
+        scratch.hOut[static_cast<size_t>(i)] = h;
+        sumHR += h * r;
+        sumHR2 += h * r * r;
     }
 
-    if (!rootUpper.converged && !rootLower.converged) pval = std::numeric_limits<double>::quiet_NaN();
+    spamixlocalp_cgf::Context ctx;
+    ctx.resid = scratch.rOut.data();
+    ctx.hap = scratch.hOut.data();
+    ctx.nOutlier = nOut;
+    ctx.q = q;
+    ctx.mean = sMean - q * sumHR;
+    ctx.var = varDiag - q * (1.0 - q) * sumHR2;
+    // A variance, non-negative exactly; only the cancellation can undershoot.
+    if (!(ctx.var > 0.0)) ctx.var = 0.0;
 
-    if (std::isfinite(pval)) {
-        if (pval <= 0.0) pval = MIN_P_VALUE;
-        if (pval > 1.0) pval = 1.0;
-    }
-
-    return {pval, pNorm};
+    return spamixlocalp_cgf::twoSidedSpa(ctx, sMeanNew, absDev, varDiag);
 }
 
 // ======================================================================
@@ -1340,7 +1229,17 @@ static void runUnifiedGWAS(
     for (int p = 0; p < K_pheno; ++p)
         writers.emplace_back(outFiles[p], TextWriter::modeFromString(compression), compressionLevel);
 
-    // Header shared across phenotypes
+    // Header shared across phenotypes.
+    //
+    // LOG10P and SPA_STATUS are the two columns Stage 7 of the saddlepoint
+    // rework adds, in the encoding every other SPA method in GRAB now uses:
+    // LOG10P is -log10(P) computed in the log domain, so it stays meaningful
+    // below the point where P itself underflows to zero, and SPA_STATUS is the
+    // numeric spa::Status — 0 OK, 1 MAXITER, 2 GUARD_TEMP, 3 GUARD_CURV,
+    // 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|z| within --spa-z-threshold, so the
+    // saddlepoint was never attempted).  P and LOG10P are NA for every status
+    // other than 0 and 6, and every column of an ancestry that fails the
+    // MISS_RATE / MAF / MAC filters is NA.
     std::string header = "CHROM\tPOS\tID\tREF\tALT";
     for (int k = 0; k < K; ++k) {
         std::string pfx = "\tanc" + std::to_string(k) + "_";
@@ -1348,8 +1247,10 @@ static void runUnifiedGWAS(
         header += pfx + "ALT_FREQ";
         header += pfx + "MAC";
         header += pfx + "P";
+        header += pfx + "LOG10P";
         header += pfx + "BETA";
         header += pfx + "SE";
+        header += pfx + "SPA_STATUS";
     }
     header += '\n';
     for (int p = 0; p < K_pheno; ++p) writers[p].write(header);
@@ -1447,11 +1348,15 @@ static void runUnifiedGWAS(
         // chunkOutputs[p][ci] under writeMutex at chunk completion).
         std::vector<std::string> bufPerPheno(K_pheno);
 
+        // Outlier gather buffers, one set per worker rather than one pair of
+        // heap allocations per SPA-branch entry (01_findings.md P4).
+        LocalSpaScratch spaScratch;
+
         for (size_t ci = nextChunk.fetch_add(1); ci < nChunks; ci = nextChunk.fetch_add(1)) {
             const auto &gIndices = chunks[ci];
             for (int p = 0; p < K_pheno; ++p) {
                 bufPerPheno[p].clear();
-                bufPerPheno[p].reserve(gIndices.size() * (80 + 90 * K));
+                bufPerPheno[p].reserve(gIndices.size() * (80 + 120 * K));
             }
 
             cursor->beginSequentialBlock(gIndices.front());
@@ -1592,7 +1497,7 @@ static void runUnifiedGWAS(
                             buf += fmtBuf;
 
                             if (!as.pass) {
-                                buf += "\tNA\tNA\tNA";
+                                buf += "\tNA\tNA\tNA\tNA\tNA";
                                 continue;
                             }
 
@@ -1609,22 +1514,26 @@ static void runUnifiedGWAS(
                             double varS      = varOffRaw * qTerm + diagVar;
 
                             auto hapCol = bHapBig.col(b * K + k);
-                            auto [pSpa, pNorm] = spaLocalPval(
+                            const spa::TwoSided res = spaLocalPval(
                                 S, sMean, diagVar,
                                 R_mat.col(p), hapCol,
-                                q, varS, outliers[p], spaCutoff);
-                            (void)pNorm;
+                                q, varS, outliers[p], spaScratch, spaCutoff);
                             double betaG = (varS > 0.0) ? (S - sMean) / varS
                                                          : std::numeric_limits<double>::quiet_NaN();
                             double seG   = (varS > 0.0) ? 1.0 / std::sqrt(varS)
                                                          : std::numeric_limits<double>::quiet_NaN();
 
                             buf += '\t';
-                            writeNum(buf, fmtBuf, pSpa);
+                            writeNum(buf, fmtBuf, res.p);
+                            buf += '\t';
+                            writeNum(buf, fmtBuf, res.negLog10p);
                             buf += '\t';
                             writeNum(buf, fmtBuf, betaG);
                             buf += '\t';
                             writeNum(buf, fmtBuf, seG);
+                            buf += '\t';
+                            writeNum(buf, fmtBuf,
+                                     spamixlocalp_cgf::statusCode(res.status));
                         }
                         buf += '\n';
                     }

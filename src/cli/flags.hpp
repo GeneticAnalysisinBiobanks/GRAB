@@ -1072,9 +1072,18 @@ inline const MethodDef kSPAmixLocalPlus = {
     kSPAmixLocalPlusOpt,
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.LocalP[.gz|.zst]   one file per --resid-name / --pheno-name column
-  CHROM  POS  ID  REF  ALT  P_CCT
-  anc0_AltFreq  anc0_MissingRate  anc0_P  anc0_Pnorm  anc0_Stat  anc0_Var  anc0_zScore  anc0_AltCounts  anc0_BetaG
-  anc1_AltFreq  ...  (repeated for each ancestry k))",
+  CHROM  POS  ID  REF  ALT
+  anc0_MISS_RATE  anc0_ALT_FREQ  anc0_MAC
+  anc0_P  anc0_LOG10P  anc0_BETA  anc0_SE  anc0_SPA_STATUS
+  anc1_MISS_RATE  ...  (the eight columns repeat for each ancestry k)
+    LOG10P      -log10(P), computed in the log domain so it survives past the
+                point where P itself underflows to zero.
+    SPA_STATUS  saddlepoint outcome: 0 OK, 1 MAXITER, 2 GUARD_TEMP,
+                3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|z| within
+                --spa-z-threshold, saddlepoint not attempted).  P and LOG10P
+                are NA for every value other than 0 and 6.
+  An ancestry failing the --geno / --maf / --mac filters is NA in all five
+  statistic columns.)",
     R"(Two-phase workflow:
   1. grab --cal-phi --lanc PREFIX --sp-grm-plink2 FILE --out OUTPUT_PREFIX
   2. grab --method SPAmixLocalPlus --lanc PREFIX --admix-phi OUTPUT_PREFIX.phi --pheno FILE --out PREFIX)",
