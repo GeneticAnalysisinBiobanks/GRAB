@@ -5,9 +5,13 @@
 // Workflow:
 //   1. Pre-compute empirical CGF interpolation tables from residuals
 //   2. Per-marker: score test → normal approx or SPA tail probability
-//      Stage 1: unadjusted genotype
+//      Stage 1: unadjusted genotype (bucketed weights, see spacox_cgf.hpp)
 //      Stage 2: covariate-adjusted if p < pVal_covaAdj_cutoff
-//   3. Output: [Pvalue, zScore]
+//   3. Output: [P, LOG10P, Z, Z_Norm, BETA, SE, SPA_STATUS]
+//
+// The saddlepoint root finder and the Barndorff-Nielsen tail are the shared
+// ones in util/spa.hpp; the empirical CGF is SPACox's own and lives in
+// spacox_cgf.hpp.  See dev-notes/methods/spa_unify/02_design.md.
 #pragma once
 
 #include <Eigen/Dense>
@@ -16,6 +20,8 @@
 
 #include "engine/marker.hpp"
 #include "geno_factory/geno_data.hpp"
+#include "spacox/spacox_cgf.hpp"
+#include "util/spa.hpp"
 
 // ======================================================================
 // DesignMatrix — covariate projection (spacox-only)
@@ -59,24 +65,6 @@ class DesignMatrix {
 };
 
 // ======================================================================
-// Empirical CGF interpolation table
-// ======================================================================
-
-struct CumulantTable {
-    Eigen::VectorXd xGrid; // length L, strictly increasing
-    int nGrid;
-    double invScale; // 1/scale for O(1) bin lookup
-    double Lp1;      // L + 1
-    Eigen::VectorXd yK0, slopeK0;
-    Eigen::VectorXd yK1, slopeK1;
-    Eigen::VectorXd yK2, slopeK2;
-};
-
-// Build the CGF table from residuals using Cauchy-quantile spacing.
-// Hardcoded: range = [-100, 100], length = 10000.
-CumulantTable buildCumulantTable(const Eigen::VectorXd &residuals);
-
-// ======================================================================
 // SPACoxMethod — MethodBase implementation
 // ======================================================================
 
@@ -97,11 +85,30 @@ class SPACoxMethod : public MethodBase {
     std::unique_ptr<MethodBase> clone() const override;
 
     int resultSize() const override {
-        return 5;
+        return 7;
     }
 
+// P, LOG10P, Z, Z_Norm, BETA, SE, SPA_STATUS.
+//
+// LOG10P is -log10(P), computed through spa::bnTailLog / spa::combineTailsLog
+// so that it stays meaningful past the point where the linear-scale tail
+// underflows (Phi(-38.5) flushes to zero, i.e. p ~ 1e-316).
+//
+// SPA_STATUS carries the spa::Status of the saddlepoint that produced P.  It
+// is emitted as the integer enumerator rather than the token spelled by
+// spa::statusName because MethodBase hands the engine a std::vector<double>
+// and every result cell is formatted by numToChars; a string column would
+// require a new hook in the MethodBase contract, which
+// dev-notes/methods/spa_unify/02_design.md places out of scope for the
+// per-method migration stages.  The mapping is spa::Status's own:
+//
+//     0 OK (converged)     3 GUARD_CURV     6 NORMAL (|Z| <= --spa-z-threshold,
+//     1 MAXITER            4 GUARD_W          saddlepoint never attempted)
+//     2 GUARD_TEMP         5 NONFINITE
+//
+// P and LOG10P are NA for every status other than 0 and 6.
     std::string getHeaderColumns() const override {
-        return "\tP\tZ\tZ_Norm\tBETA\tSE";
+        return "\tP\tLOG10P\tZ\tZ_Norm\tBETA\tSE\tSPA_STATUS";
     }
 
     void getResultVec(
@@ -127,68 +134,24 @@ class SPACoxMethod : public MethodBase {
     }
 
   private:
-// ---- CGF interpolation (O(1) Cauchy-inverse index) ----
-    int interpIdx(double v) const;
-
-    double interp(
-        const double *yp,
-        const double *sp,
-        int lo,
-        double v
+// ---- Two-sided saddlepoint p-value ----
+//
+// Both tails are solved with spa::solveSaddlepoint and evaluated with
+// spa::bnTail / spa::bnTailLog, then assembled by spa::combineTails.  The
+// only SPACox-specific part is the CGF callable, which is why these take one.
+//
+// `getProbSpaBucketed` is stage 1 (weights collapsed into buckets, P1);
+// `getProbSpaDense` is stage 2 (covariate-adjusted weights, no bucket
+// structure).  Both return P, -log10(P) and the status of the worse tail.
+    spa::TwoSided getProbSpaBucketed(
+        const spacox_cgf::GenoWeights &gw,
+        double absZ
     ) const;
 
-    double interpK0(double v) const;
-
-    double interpK1(double v) const;
-
-    double interpK2(double v) const;
-
-// ---- Cumulant evaluation (scalar loops, no heap alloc) ----
-    double evalK0(
-        double t,
-        int N0,
-        double adjG0,
-        const double *adjG,
-        const uint32_t *idx,
-        int n
-    ) const;
-
-// Fused K1+K2 evaluation — single loop, one interp lookup per element
-    std::pair<double, double>evalK1K2(
-        double t,
-        int N0,
-        double adjG0,
-        const double *adjG,
-        const uint32_t *idx,
+    spa::TwoSided getProbSpaDense(
+        const double *w,
         int n,
-        double q2
-    ) const;
-
-// ---- SPA root-finding & tail probability ----
-    struct RootResult {
-        double root;
-        bool converge;
-        double K2;
-    };
-
-    RootResult fastGetRootK1(
-        double initX,
-        int N0,
-        double adjG0,
-        const double *adjG,
-        const uint32_t *idx,
-        int n,
-        double q2
-    ) const;
-
-    double getProbSpa(
-        double adjG0,
-        const double *adjG,
-        const uint32_t *idx,
-        int n,
-        int N0,
-        double q2,
-        bool lowerTail
+        double absZ
     ) const;
 
 // ---- Per-marker score test ----
@@ -204,12 +167,20 @@ class SPACoxMethod : public MethodBase {
 // SE = 1 / sqrt(Var(S)) consume this variance so that both stages
 // share the same nominal Fisher information.  Set to zero for
 // degenerate markers where Var(S) ≤ 0.
-    double getMarkerPvalCore(
+    spa::TwoSided getMarkerPvalCore(
         const Eigen::Ref<const Eigen::VectorXd> &GVec,
         double altFreq,
         double S,
         double &zScore,
         double &outScoreVar
+    );
+
+// Push P, LOG10P, Z, Z_Norm, BETA, SE, SPA_STATUS in header order.
+    static void pushResult(
+        std::vector<double> &out,
+        const spa::TwoSided &ts,
+        double S,
+        double scoreVar
     );
 
 // Read-only shared data (references are stable because the owner outlives all clones).

@@ -12,18 +12,17 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <stdexcept>
-#include <utility>
 
 // ======================================================================
 // Worker-local SPA scratch
 // ======================================================================
 //
-// The SPA branch of getMarkerPvalCore needs three transient buffers
-// (adjGNorm of length N, adjGVec of length N, nzSet of capacity ≤ N).
-// These were previously per-clone fields on SPACoxMethod, which meant
-// the multi-phenotype engine paid (K phenotypes × T worker threads)
+// The SPA branch of getMarkerPvalCore needs a handful of transient
+// buffers.  These were previously per-clone fields on SPACoxMethod, which
+// meant the multi-phenotype engine paid (K phenotypes × T worker threads)
 // times their footprint.  Promoting them to a translation-unit-local
 // thread_local struct lets all K phenotype-clones in one worker share
 // one set of buffers — the engine spawns at most T concurrent threads,
@@ -31,8 +30,17 @@
 // of K.  Resize() is idempotent when the requested length matches the
 // existing capacity, so phenotype switching inside a thread is O(1)
 // after the first call.
+//
+// `weights` (P1) replaces the former length-N adjGNorm array on the
+// stage-1 path: for hard-called input it holds at most four (weight,
+// multiplicity) pairs, so the stage-1 CGF no longer materializes a
+// per-subject vector at all.  `adjGNorm` survives for stage 2, whose
+// covariate-adjusted weights are a projection and genuinely per-subject,
+// and `nzSet` survives for the projection itself, where it is rebuilt on
+// entry to stage 2 rather than on every marker.
 namespace {
 struct SPACoxScratch {
+    spacox_cgf::GenoWeights weights;
     Eigen::VectorXd adjGNorm;
     Eigen::VectorXd adjGVec;
     std::vector<uint32_t> nzSet;
@@ -76,78 +84,6 @@ void DesignMatrix::adjustGenotype(
 }
 
 // ======================================================================
-// Build empirical CGF interpolation table
-// ======================================================================
-
-CumulantTable buildCumulantTable(const Eigen::VectorXd &residuals) {
-    constexpr double rangeMax = 100.0;
-    constexpr int L = 10000;
-
-    // Cauchy-quantile spacing: idx0 = tan(pi*(k/(L+1) - 0.5))
-    // then rescale so max(idx1) = rangeMax.
-    Eigen::VectorXd xGrid(L);
-    double gridScale;
-    {
-        double maxAbs = 0.0;
-        for (int k = 0; k < L; ++k) {
-            double p = static_cast<double>(k + 1) / static_cast<double>(L + 1);
-            xGrid[k] = std::tan(M_PI * (p - 0.5));
-            double a = std::fabs(xGrid[k]);
-            if (a > maxAbs) maxAbs = a;
-        }
-        gridScale = rangeMax / maxAbs;
-        xGrid *= gridScale;
-    }
-
-    const int N = static_cast<int>(residuals.size());
-    const double *rp = residuals.data();
-
-    Eigen::VectorXd yK0(L), yK1(L), yK2(L);
-
-    for (int i = 0; i < L; ++i) {
-        double t = xGrid[i];
-        double M0 = 0.0, M1 = 0.0, M2 = 0.0;
-        for (int j = 0; j < N; ++j) {
-            double r = rp[j];
-            double e = std::exp(r * t);
-            M0 += e;
-            double re = r * e;
-            M1 += re;
-            M2 += r * re;
-        }
-        double invN = 1.0 / static_cast<double>(N);
-        M0 *= invN;
-        M1 *= invN;
-        M2 *= invN;
-        yK0[i] = std::log(M0);
-        yK1[i] = M1 / M0;
-        yK2[i] = (M0 * M2 - M1 * M1) / (M0 * M0);
-    }
-
-    // Pre-compute slopes for piecewise-linear interpolation.
-    auto computeSlopes = [](const Eigen::VectorXd &x, const Eigen::VectorXd &y) -> Eigen::VectorXd {
-        const int n = static_cast<int>(x.size());
-        Eigen::VectorXd s(n - 1);
-        for (int i = 0; i < n - 1; ++i)
-            s[i] = (y[i + 1] - y[i]) / (x[i + 1] - x[i]);
-        return s;
-    };
-
-    CumulantTable ct;
-    ct.xGrid = std::move(xGrid);
-    ct.nGrid = L;
-    ct.invScale = 1.0 / gridScale;
-    ct.Lp1 = static_cast<double>(L + 1);
-    ct.yK0 = std::move(yK0);
-    ct.slopeK0 = computeSlopes(ct.xGrid, ct.yK0);
-    ct.yK1 = std::move(yK1);
-    ct.slopeK1 = computeSlopes(ct.xGrid, ct.yK1);
-    ct.yK2 = std::move(yK2);
-    ct.slopeK2 = computeSlopes(ct.xGrid, ct.yK2);
-    return ct;
-}
-
-// ======================================================================
 // SPACoxMethod — construction & clone
 // ======================================================================
 
@@ -176,9 +112,9 @@ std::unique_ptr<MethodBase> SPACoxMethod::clone() const {
     //   * m_design  (const reference to N×p design / projection matrices,
     //                deduplicated across phenotypes by missingness pattern
     //                inside runSPACox)
-    //   * the SPA scratch (adjGNorm / adjGVec / nzSet) is thread_local in
-    //     this translation unit, so K phenotype-clones in one worker share
-    //     a single set of buffers.
+    //   * the SPA scratch (weights / adjGNorm / adjGVec / nzSet) is
+    //     thread_local in this translation unit, so K phenotype-clones in one
+    //     worker share a single set of buffers.
     // The clone only owns its small scalar metadata (m_varResid, m_N,
     // m_pvalCovAdjCut, m_spaCutoff) and the references themselves — the
     // entire clone is therefore on the order of one cache line.
@@ -186,231 +122,126 @@ std::unique_ptr<MethodBase> SPACoxMethod::clone() const {
 }
 
 // ======================================================================
-// CGF interpolation — O(1) Cauchy-inverse index lookup
+// Two-sided saddlepoint p-value — on the shared solver and tail kernel
 // ======================================================================
+//
+// spa_unify Stage 3.  What used to live here was a private Family-A Newton
+// iteration (fastGetRootK1) plus a private copy of the Barndorff-Nielsen
+// modified signed root.  Both are gone; the root finder is
+// spa::solveSaddlepoint and the tail is spa::bnTail / spa::bnTailLog.  What
+// stays is the CGF, which is SPACox's own (tier 3, see spacox_cgf.hpp).
+//
+// Four behavioural consequences, in decreasing order of importance:
+//
+//   D5.  The old finder computed a `converge` flag, returned it, and no
+//        caller ever read it — `grep -n converge src/spacox/*` found the
+//        field written and never consulted.  A saddlepoint that exhausted
+//        its 100 iterations therefore produced an ordinary-looking finite
+//        p-value with no NaN, no flag and no warning.  spa::Saddle carries a
+//        Status that is part of the return value and cannot be dropped, and
+//        it now reaches the user in the SPA_STATUS column with P set to NA.
+//
+//   The stale-K'' pairing.  The old code evaluated K at the returned root
+//        but reused `rr.K2` from the finder's last completed iteration.  On
+//        the converged path those coincide, because Family A breaks on
+//        |diffX| < tol *before* applying the step; on the maxiter-exhausted
+//        path they do not, so the guard `k2val <= 0.0` was testing curvature
+//        at a different abscissa than the K it was paired with.  The solver
+//        evaluates the terminal cumulants at the root it returns, so the
+//        mismatch cannot recur.  (This was never an independent defect —
+//        it was only reachable on the same path D5 was silent about.)
+//
+//   Tolerance.  The old break test was |K'/K''| < 1e-3, absolute and
+//        applied to the *step*, so the returned abscissa carried an unapplied
+//        correction of up to 1e-3.  The solver's test is relative and applied
+//        to the residual after the step: |K'(t) - s| <= 1e-6 * sqrt(K''(t)).
+//        Since w is stationary at the root and only v = zeta*sqrt(K'') carries
+//        first-order sensitivity, the p-value effect is ~4e-4 in -log10 p, but
+//        it is a real change and is the dominant source of the Stage 3 diff.
+//
+//   Bracketing.  The old finder had no bracket and its damping heuristic
+//        could stall; the solver expands a bracket until the residual changes
+//        sign and bisects whenever Newton misbehaves, so non-convergence is
+//        now reported rather than silently converged-to-something.
+//
+// The initial abscissa is s itself.  SPACox standardizes the weights so that
+// sum a_i^2 = 1/varResid and hence K''(0) ~ 1, which makes the first-order
+// saddlepoint estimate zeta ~ s/K''(0) = s.  The sign constraint
+// sgn(zeta) == sgn(s) is passed as well: K'(0) is the (near-zero) mean of the
+// tilted score, so the root lies on the same side as s, and restricting the
+// search to that half-line is the one safeguard the original Family B finders
+// had that was worth keeping.
 
-int SPACoxMethod::interpIdx(double v) const {
-    // Inverse of Cauchy-quantile grid: idx = (atan(v/scale)/π + 0.5)*(L+1) - 1
-    double fIdx = (std::atan(v * m_cumul.invScale) * (1.0 / M_PI) + 0.5) * m_cumul.Lp1 - 1.0;
-    int lo = static_cast<int>(fIdx);
-    if (lo < 0) lo = 0;
-    if (lo >= m_cumul.nGrid - 1) lo = m_cumul.nGrid - 2;
-    return lo;
-}
+namespace {
 
-double SPACoxMethod::interp(
-    const double *yp,
-    const double *sp,
-    int lo,
-    double v
-) const {
-    return yp[lo] + (v - m_cumul.xGrid.data()[lo]) * sp[lo];
-}
+// Two-sided assembly shared by both stages.  `cgf(t, s)` must return
+// spa::K012{K(t), K'(t) - s, K''(t)}.
+template <class Cgf>
+spa::TwoSided spaTwoSided(const Cgf &cgf, double absZ) {
+    double p[2], logp[2];
+    spa::Status st[2];
 
-double SPACoxMethod::interpK0(double v) const {
-    const int n = m_cumul.nGrid;
-    if (v <= m_cumul.xGrid.data()[0]) return m_cumul.yK0.data()[0];
-    if (v >= m_cumul.xGrid.data()[n - 1]) return m_cumul.yK0.data()[n - 1];
-    int lo = interpIdx(v);
-    return interp(m_cumul.yK0.data(), m_cumul.slopeK0.data(), lo, v);
-}
+    for (int k = 0; k < 2; ++k) {
+        const bool lowerTail = (k == 1);
+        const double s = lowerTail ? -absZ : absZ;
 
-double SPACoxMethod::interpK1(double v) const {
-    const int n = m_cumul.nGrid;
-    if (v <= m_cumul.xGrid.data()[0]) return m_cumul.yK1.data()[0];
-    if (v >= m_cumul.xGrid.data()[n - 1]) return m_cumul.yK1.data()[n - 1];
-    int lo = interpIdx(v);
-    return interp(m_cumul.yK1.data(), m_cumul.slopeK1.data(), lo, v);
-}
+        spa::SolveOpts opt;
+        opt.init = s;
+        opt.scoreSign = s;   // only the sign is read
 
-double SPACoxMethod::interpK2(double v) const {
-    const int n = m_cumul.nGrid;
-    if (v <= m_cumul.xGrid.data()[0]) return m_cumul.yK2.data()[0];
-    if (v >= m_cumul.xGrid.data()[n - 1]) return m_cumul.yK2.data()[n - 1];
-    int lo = interpIdx(v);
-    return interp(m_cumul.yK2.data(), m_cumul.slopeK2.data(), lo, v);
-}
+        const spa::Saddle sd = spa::solveSaddlepoint(
+            s, [&](double t) { return cgf(t, s); }, opt);
 
-// ======================================================================
-// Cumulant evaluation — fused K1+K2 for Newton-Raphson
-// ======================================================================
-
-double SPACoxMethod::evalK0(
-    double t,
-    int N0,
-    double adjG0,
-    const double *adjG,
-    const uint32_t *idx,
-    int n
-) const {
-    double sum = N0 * interpK0(t * adjG0);
-    if (idx) {
-        for (int k = 0; k < n; ++k)
-            sum += interpK0(t * adjG[idx[k]]);
-    } else {
-        for (int k = 0; k < n; ++k)
-            sum += interpK0(t * adjG[k]);
+        spa::Status stLin = spa::Status::Converged;
+        spa::Status stLog = spa::Status::Converged;
+        p[k]    = spa::bnTail(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLin);
+        logp[k] = spa::bnTailLog(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLog);
+        st[k] = spa::worseStatus(sd.status, spa::worseStatus(stLin, stLog));
     }
-    return sum;
+
+    // P from the linear-scale assembly (a sum of two positive quantities, as
+    // before); -log10(P) from the log-domain assembly, which survives past
+    // the point where the linear tails underflow to zero.
+    const spa::TwoSided lin = spa::combineTails(p[0], p[1], st[0], st[1]);
+    const spa::TwoSided lg  = spa::combineTailsLog(logp[0], logp[1], st[0], st[1]);
+    return spa::TwoSided{lin.p, lg.negLog10p, lin.status};
 }
 
-std::pair<double, double> SPACoxMethod::evalK1K2(
-    double t,
-    int N0,
-    double adjG0,
-    const double *adjG,
-    const uint32_t *idx,
+}  // namespace
+
+spa::TwoSided SPACoxMethod::getProbSpaBucketed(
+    const spacox_cgf::GenoWeights &gw,
+    double absZ
+) const {
+    const spacox_cgf::TableView tv(m_cumul);
+    return spaTwoSided(
+        [&](double t, double s) { return spacox_cgf::evalBucketed(tv, t, gw, s); },
+        absZ);
+}
+
+spa::TwoSided SPACoxMethod::getProbSpaDense(
+    const double *w,
     int n,
-    double q2
+    double absZ
 ) const {
-
-    const double *xp = m_cumul.xGrid.data();
-    const double *y1 = m_cumul.yK1.data();
-    const double *s1 = m_cumul.slopeK1.data();
-    const double *y2 = m_cumul.yK2.data();
-    const double *s2 = m_cumul.slopeK2.data();
-    const int nG = m_cumul.nGrid;
-    const double invS = m_cumul.invScale;
-    const double Lp1 = m_cumul.Lp1;
-    const double invPi = 1.0 / M_PI;
-
-    // Inline interpolation: compute bin once, read K1 and K2 from same bin
-    auto interpBoth = [&](double v) -> std::pair<double, double> {
-        if (v <= xp[0]) return {y1[0], y2[0]};
-        if (v >= xp[nG - 1]) return {y1[nG - 1], y2[nG - 1]};
-        double fIdx = (std::atan(v * invS) * invPi + 0.5) * Lp1 - 1.0;
-        int lo = static_cast<int>(fIdx);
-        if (lo < 0) lo = 0;
-        if (lo >= nG - 1) lo = nG - 2;
-        double dx = v - xp[lo];
-        return {y1[lo] + dx * s1[lo], y2[lo] + dx * s2[lo]};
-    };
-
-    double sumK1 = 0.0, sumK2 = 0.0;
-
-    // Contribution from N0 zero-genotype subjects
-    {
-        double v0 = t * adjG0;
-        auto [k1, k2] = interpBoth(v0);
-        sumK1 = N0 * adjG0 * k1;
-        sumK2 = N0 * adjG0 * adjG0 * k2;
-    }
-
-    if (idx) {
-        for (int k = 0; k < n; ++k) {
-            double a = adjG[idx[k]];
-            auto [k1, k2] = interpBoth(t * a);
-            sumK1 += a * k1;
-            sumK2 += a * a * k2;
-        }
-    } else {
-        for (int k = 0; k < n; ++k) {
-            double a = adjG[k];
-            auto [k1, k2] = interpBoth(t * a);
-            sumK1 += a * k1;
-            sumK2 += a * a * k2;
-        }
-    }
-
-    return {sumK1 - q2, sumK2};
-}
-
-// ======================================================================
-// Newton-Raphson root-finding on K1(t) - q2 = 0
-// ======================================================================
-
-SPACoxMethod::RootResult SPACoxMethod::fastGetRootK1(
-    double initX,
-    int N0,
-    double adjG0,
-    const double *adjG,
-    const uint32_t *idx,
-    int n,
-    double q2
-) const {
-
-    double x = initX, oldX;
-    double K1val = 0.0, K2val = 0.0, oldK1;
-    double diffX = std::numeric_limits<double>::infinity(), oldDiffX;
-    bool converge = true;
-    constexpr double tol = 0.001;
-    constexpr int maxiter = 100;
-
-    for (int iter = 0; iter < maxiter; ++iter) {
-        oldX = x;
-        oldDiffX = diffX;
-        oldK1 = K1val;
-
-        auto [k1, k2] = evalK1K2(x, N0, adjG0, adjG, idx, n, q2);
-        K1val = k1;
-        K2val = k2;
-
-        diffX = -K1val / K2val;
-
-        if (!std::isfinite(K1val)) {
-            x = std::numeric_limits<double>::infinity();
-            K2val = 0.0;
-            break;
-        }
-
-        if ((K1val > 0) != (oldK1 > 0)) {
-            while (std::abs(diffX) > std::abs(oldDiffX) - tol)
-                diffX *= 0.5;
-        }
-
-        if (std::abs(diffX) < tol) break;
-        x = oldX + diffX;
-
-        if (iter == maxiter - 1) converge = false;
-    }
-    return {x, converge, K2val};
-}
-
-// ======================================================================
-// SPA tail probability (Lugannani-Rice)
-// ======================================================================
-
-double SPACoxMethod::getProbSpa(
-    double adjG0,
-    const double *adjG,
-    const uint32_t *idx,
-    int n,
-    int N0,
-    double q2,
-    bool lowerTail
-) const {
-
-    double initX = (q2 > 0) ? 3.0 : -3.0;
-
-    RootResult rr = fastGetRootK1(initX, N0, adjG0, adjG, idx, n, q2);
-    double zeta = rr.root;
-
-    double k0val = evalK0(zeta, N0, adjG0, adjG, idx, n);
-    double k2val = rr.K2; // already computed at converged root
-    double temp1 = zeta * q2 - k0val;
-
-    if (!std::isfinite(zeta) || temp1 < 0.0 || k2val <= 0.0) return std::numeric_limits<double>::quiet_NaN();
-
-    double w = std::copysign(std::sqrt(2.0 * temp1), zeta);
-    double v = zeta * std::sqrt(k2val);
-
-    if (w == 0.0 || v == 0.0 || (v / w) <= 0.0) return std::numeric_limits<double>::quiet_NaN();
-
-    double sign = lowerTail ? 1.0 : -1.0;
-    return math::pnorm(sign * (w + (1.0 / w) * std::log(v / w)));
+    const spacox_cgf::TableView tv(m_cumul);
+    return spaTwoSided(
+        [&](double t, double s) { return spacox_cgf::evalDense(tv, t, w, n, s); },
+        absZ);
 }
 
 // ======================================================================
 // Per-marker p-value (two-stage SPA)
 // ======================================================================
 
-double SPACoxMethod::getMarkerPvalCore(
+spa::TwoSided SPACoxMethod::getMarkerPvalCore(
     const Eigen::Ref<const Eigen::VectorXd> &GVec,
     double altFreq,
     double S,
     double &zScore,
     double &outScoreVar
 ) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
 
     // S is pre-computed by the caller as GVec · m_resid.  Inside
     // getResultBatch this is folded over B markers in one GEMV; inside
@@ -423,6 +254,15 @@ double SPACoxMethod::getMarkerPvalCore(
     const double *gp = GVec.data();
 
     // VarS = varResid * Σ(g_i - 2·MAF)²
+    //
+    // Left as a per-subject reduction on purpose.  The bucket counts P1
+    // introduces below could produce Σ(g_i - 2·MAF)² in O(1) as
+    // n0·d0² + n1·d1² + n2·d2², but this loop runs for *every* marker while
+    // the bucket build runs only inside the SPA branch, and replacing it
+    // would perturb Var(S) — hence Z — for all markers including the ~95 %
+    // that never reach the saddlepoint.  The loop is a single vectorizable
+    // FMA reduction; there is nothing to win here and a whole-output
+    // perturbation to lose.
     double sumAdjG2 = 0.0;
     for (int i = 0; i < m_N; ++i) {
         double adj = gp[i] - twoMAF;
@@ -432,39 +272,49 @@ double SPACoxMethod::getMarkerPvalCore(
     outScoreVar = VarS;
     if (VarS <= 0.0) {
         zScore = 0.0;
-        return std::numeric_limits<double>::quiet_NaN();
+        return spa::TwoSided{nan, nan, spa::Status::NonFinite};
     }
     zScore = S / std::sqrt(VarS);
 
-    // Normal approximation if |z| below SPA cutoff
-    if (std::abs(zScore) <= m_spaCutoff) return 2.0 * math::pnorm(-std::abs(zScore));
+    // Normal approximation if |z| below SPA cutoff.  spa::normalBranch routes
+    // the tail through Boost's complement, which is the same double the old
+    // `2 * pnorm(-|z|)` produced, and adds the log-domain -log10(p).
+    if (std::abs(zScore) <= m_spaCutoff) return spa::normalBranch(zScore);
 
-    // ---- Stage 1: unadjusted SPA with non-zero index optimisation ----
+    // ---- Stage 1: unadjusted SPA over the distinct genotype weights ----
+    //
+    // P1.  a_i = (g_i - 2·MAF)/sqrt(Var S) is a function of g_i alone, so for
+    // hard-called input it takes at most four values.  buildGenoWeights
+    // collapses them and keeps a leftover list for genuine dosages, which
+    // makes each Newton iteration O(4) instead of O(nNonZero) — the previous
+    // code already exploited this for g == 0 (the N0 term) and then walked
+    // every non-zero subject individually, one std::atan each.
     double sqrtVarS = std::sqrt(VarS);
-    double adjG0 = -twoMAF / sqrtVarS;
+    spacox_cgf::buildGenoWeights(gp, m_N, twoMAF, sqrtVarS, tlScratch.weights);
 
-    // Acquire (and resize if necessary) the thread-local SPA scratch.
-    // resize() is a no-op when the requested length already matches.
-    tlScratch.adjGNorm.resize(m_N);
+    const double absZ1 = std::abs(zScore);
+    spa::TwoSided ts = getProbSpaBucketed(tlScratch.weights, absZ1);
+
+    // A stage-1 failure (P is NaN) falls through to stage 2 exactly as it did
+    // before, when `NaN > m_pvalCovAdjCut` evaluated false: the
+    // covariate-adjusted statistic is the better one, so it is worth trying.
+    if (ts.p > m_pvalCovAdjCut) return ts;
+
+    // ---- Stage 2: covariate-adjusted SPA ----
+    //
+    // adjG is the genotype projected onto the orthogonal complement of the
+    // design matrix, so it carries no bucket structure and every subject must
+    // be visited.  This runs only for markers whose stage-1 p is at or below
+    // --covar-p-threshold (5e-5), so the dense path costs almost nothing over
+    // a full scan.  nzSet is rebuilt here rather than on every marker, since
+    // the projection is its only consumer.
     tlScratch.nzSet.clear();
     if (static_cast<int>(tlScratch.nzSet.capacity()) < m_N)
         tlScratch.nzSet.reserve(m_N);
-
-    double *anp = tlScratch.adjGNorm.data();
-    for (int i = 0; i < m_N; ++i) {
-        anp[i] = (gp[i] - twoMAF) / sqrtVarS;
+    for (int i = 0; i < m_N; ++i)
         if (gp[i] != 0.0) tlScratch.nzSet.push_back(static_cast<uint32_t>(i));
-    }
-    int nNz = static_cast<int>(tlScratch.nzSet.size());
-    int N0 = m_N - nNz;
+    const int nNz = static_cast<int>(tlScratch.nzSet.size());
 
-    double absZ = std::abs(zScore);
-    double pval = getProbSpa(adjG0, anp, tlScratch.nzSet.data(), nNz, N0, absZ, false) +
-                  getProbSpa(adjG0, anp, tlScratch.nzSet.data(), nNz, N0, -absZ, true);
-
-    if (pval > m_pvalCovAdjCut) return pval;
-
-    // ---- Stage 2: covariate-adjusted SPA ----
     tlScratch.adjGVec.resize(m_N);
     m_design.adjustGenotype(gp, tlScratch.nzSet.data(), nNz, tlScratch.adjGVec);
 
@@ -472,20 +322,47 @@ double SPACoxMethod::getMarkerPvalCore(
     outScoreVar = VarS;
     if (VarS <= 0.0) {
         zScore = 0.0;
-        return std::numeric_limits<double>::quiet_NaN();
+        return spa::TwoSided{nan, nan, spa::Status::NonFinite};
     }
     zScore = S / std::sqrt(VarS);
     sqrtVarS = std::sqrt(VarS);
 
+    tlScratch.adjGNorm.resize(m_N);
+    double *anp = tlScratch.adjGNorm.data();
     const double *avp = tlScratch.adjGVec.data();
     for (int i = 0; i < m_N; ++i)
         anp[i] = avp[i] / sqrtVarS;
 
-    // Full-vector SPA (no sparsity shortcut after adjustment)
-    absZ = std::abs(zScore);
-    pval = getProbSpa(0.0, anp, nullptr, m_N, 0, absZ, false) + getProbSpa(0.0, anp, nullptr, m_N, 0, -absZ, true);
+    return getProbSpaDense(anp, m_N, std::abs(zScore));
+}
 
-    return pval;
+// ======================================================================
+// Result assembly
+// ======================================================================
+
+void SPACoxMethod::pushResult(
+    std::vector<double> &out,
+    const spa::TwoSided &ts,
+    double S,
+    double scoreVar
+) {
+    out.push_back(ts.p);          // P
+    out.push_back(ts.negLog10p);  // LOG10P
+    if (scoreVar > 0.0) {
+        const double sd = std::sqrt(scoreVar);
+        const double zNorm = S / sd;
+        out.push_back(math::zFromPval(ts.p, zNorm)); // Z (p-consistent)
+        out.push_back(zNorm);                        // Z_Norm (raw score z)
+        out.push_back(S / scoreVar);                 // BETA
+        out.push_back(1.0 / sd);                     // SE
+    } else {
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        out.push_back(nan);  // Z
+        out.push_back(nan);  // Z_Norm
+        out.push_back(nan);  // BETA
+        out.push_back(nan);  // SE
+    }
+    out.push_back(static_cast<double>(static_cast<uint8_t>(ts.status)));
 }
 
 // ======================================================================
@@ -539,23 +416,8 @@ void SPACoxMethod::getResultVec(
     // See dev-notes/methods/spacox.md §6 for the full derivation.
     const double S = GVec.dot(m_resid);
     double zScore, scoreVar;
-    double pval = getMarkerPvalCore(GVec, altFreq, S, zScore, scoreVar);
-
-    result.push_back(pval);
-    if (scoreVar > 0.0) {
-        const double sd = std::sqrt(scoreVar);
-        const double zNorm = S / sd;
-        result.push_back(math::zFromPval(pval, zNorm)); // Z (p-consistent)
-        result.push_back(zNorm);                        // Z_Norm (raw score z)
-        result.push_back(S / scoreVar);                 // BETA
-        result.push_back(1.0 / sd);                     // SE
-    } else {
-        const double nan = std::numeric_limits<double>::quiet_NaN();
-        result.push_back(nan);                  // Z
-        result.push_back(nan);                  // Z_Norm
-        result.push_back(nan);                  // BETA
-        result.push_back(nan);                  // SE
-    }
+    const spa::TwoSided ts = getMarkerPvalCore(GVec, altFreq, S, zScore, scoreVar);
+    pushResult(result, ts, S, scoreVar);
 }
 
 // ======================================================================
@@ -601,22 +463,11 @@ void SPACoxMethod::getResultBatch(
     for (int b = 0; b < B; ++b) {
         auto &r = results[b];
         r.clear();
-        r.reserve(5);
+        r.reserve(7);
         double zScore, scoreVar;
-        double pval =
+        const spa::TwoSided ts =
             getMarkerPvalCore(GBatch.col(b), altFreqs[b], scores[b], zScore, scoreVar);
-        r.push_back(pval);
-        if (scoreVar > 0.0) {
-            const double sd = std::sqrt(scoreVar);
-            const double zNorm = scores[b] / sd;
-            r.push_back(math::zFromPval(pval, zNorm)); // Z (p-consistent)
-            r.push_back(zNorm);                        // Z_Norm (raw score z)
-            r.push_back(scores[b] / scoreVar);         // BETA
-            r.push_back(1.0 / sd);                     // SE
-        } else {
-            const double nan = std::numeric_limits<double>::quiet_NaN();
-            r.push_back(nan); r.push_back(nan); r.push_back(nan); r.push_back(nan);
-        }
+        pushResult(r, ts, scores[b], scoreVar);
     }
 }
 
@@ -819,8 +670,11 @@ void runSPACox(
         }
         designIdx[rc] = dIdx;
 
-        // Build cumulant table from per-phenotype residuals (not cacheable)
-        pCumul[rc] = buildCumulantTable(pResid[rc]);
+        // Build cumulant table from per-phenotype residuals (not cacheable).
+        // The 10 000 grid points are independent, so the build itself is
+        // threaded (P5); the per-phenotype loop stays sequential because each
+        // table is already wide enough to saturate the pool.
+        pCumul[rc] = spacox_cgf::buildCumulantTable(pResid[rc], nthread);
         double meanR = pResid[rc].mean();
         double varR = (pResid[rc].array() - meanR).square().mean();
         double N = static_cast<double>(pResid[rc].size());
@@ -1020,7 +874,7 @@ void runSPACoxLoco(
             Eigen::MatrixXd phenoX = extractPhenoMat(unionX_k, phenoInfos[k]);
             pDesign.emplace_back(phenoX);
 
-            pCumul[k] = buildCumulantTable(pResid[k]);
+            pCumul[k] = spacox_cgf::buildCumulantTable(pResid[k], nthread);
             double meanR = pResid[k].mean();
             double varR = (pResid[k].array() - meanR).square().mean();
             double N = static_cast<double>(pResid[k].size());

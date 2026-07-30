@@ -72,6 +72,16 @@ build/grab2 \
   --compression-level 3
 
 ## ── SPACox (fit mode, --pheno-name) ───────────────────────────────────
+#
+# Output columns (spa_unify Stage 3): the nine meta columns, then
+#   P  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
+# LOG10P is -log10(P) computed in the log domain, so it stays meaningful
+# past the point where the linear-scale normal tail underflows.  SPA_STATUS
+# is the spa::Status enumerator of the saddlepoint that produced P, as an
+# integer: 0 OK, 1 MAXITER, 2 GUARD_TEMP, 3 GUARD_CURV, 4 GUARD_W,
+# 5 NONFINITE, 6 NORMAL (|Z| <= --spa-z-threshold, saddlepoint not
+# attempted).  P and LOG10P are NA for every status other than 0 and 6, so
+# a saddlepoint failure is reported rather than silently substituted.
 
 build/grab2 \
   --method SPACox \

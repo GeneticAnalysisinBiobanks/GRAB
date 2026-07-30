@@ -671,7 +671,14 @@ inline const MethodDef kSPACox = {
     kSPACoxOpt,
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.SPACox[.gz|.zst]   one file per --resid-name / --pheno-name column
-  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  P  Z)",
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+  P  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
+    LOG10P      -log10(P), computed in the log domain so it survives past the
+                point where the linear-scale tail underflows (p ~ 1e-316)
+    SPA_STATUS  saddlepoint outcome: 0 OK, 1 MAXITER, 2 GUARD_TEMP,
+                3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|Z| below
+                --spa-z-threshold, saddlepoint not attempted).  P and LOG10P
+                are NA for every value other than 0 and 6.)",
     nullptr,
 };
 
