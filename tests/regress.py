@@ -122,7 +122,9 @@ def is_pvalue_column(name):
 
 class ColumnStat:
     __slots__ = ("name", "max_abs", "max_rel", "max_dlog10p", "n_missing_change",
-                 "n_sign_change", "n_numeric", "worst_row", "worst_pair")
+                 "n_na_gained", "n_na_lost", "n_sign_change", "n_numeric",
+                 "n_text_change", "text_trans", "n_zero_base", "n_zero_new",
+                 "worst_row", "worst_pair", "worst_dlog_row", "worst_dlog_pair")
 
     def __init__(self, name):
         self.name = name
@@ -130,14 +132,38 @@ class ColumnStat:
         self.max_rel = 0.0
         self.max_dlog10p = 0.0
         self.n_missing_change = 0
+        self.n_na_gained = 0        # a number in base, NA in new
+        self.n_na_lost = 0          # NA in base, a number in new
         self.n_sign_change = 0
         self.n_numeric = 0
+        self.n_text_change = 0
+        self.text_trans = {}        # "old -> new" -> count
+        self.n_zero_base = 0
+        self.n_zero_new = 0
         self.worst_row = -1
         self.worst_pair = (None, None)
+        self.worst_dlog_row = -1
+        self.worst_dlog_pair = (None, None)
+
+    def interesting(self):
+        # A column that carries an exactly-zero p-value in BOTH trees has not
+        # changed; only a change in that count is a signal.  (HWE_P legitimately
+        # holds a zero in several fixtures.)
+        return (self.max_rel > 0 or self.n_missing_change or self.n_sign_change
+                or self.n_text_change or self.n_zero_base != self.n_zero_new)
 
 
 def compare_file(base_path, new_path, rtol):
-    """Return (structural_errors, [ColumnStat]) for one pair of files."""
+    """Return (structural_errors, [ColumnStat]) for one pair of files.
+
+    A differing header is reported as a structural difference AND the columns the
+    two trees share are still compared.  The saddlepoint rework adds LOG10P and
+    SPA_STATUS to every SPA method one stage at a time, and each of those stages
+    is graded on a maximum change in -log10(P); returning no statistics the
+    moment a column is added would withhold exactly the number the acceptance
+    gate is stated in.  Nothing is relaxed by this: an added or removed column is
+    still structural and still fails.
+    """
     errs = []
     mb_, hb, rb = read_table(base_path)
     mn_, hn, rn = read_table(new_path)
@@ -150,41 +176,79 @@ def compare_file(base_path, new_path, rtol):
             errs.append("metadata line count differs: base %d, new %d"
                         % (len(mb_), len(mn_)))
         return errs, []
+
     if hb != hn:
-        errs.append("header differs:\n    base: %s\n    new:  %s"
-                    % (" ".join(hb), " ".join(hn)))
-        return errs, []
+        added = [c for c in hn if c not in hb]
+        removed = [c for c in hb if c not in hn]
+        shared_b = [c for c in hb if c in hn]
+        shared_n = [c for c in hn if c in hb]
+        if added:
+            errs.append("columns added: %s" % ", ".join(added))
+        if removed:
+            errs.append("columns removed: %s" % ", ".join(removed))
+        if shared_b != shared_n:
+            errs.append("shared columns reordered:\n    base: %s\n    new:  %s"
+                        % (" ".join(shared_b), " ".join(shared_n)))
+        if not added and not removed and shared_b == shared_n:
+            errs.append("header differs:\n    base: %s\n    new:  %s"
+                        % (" ".join(hb), " ".join(hn)))
+        if not shared_b:
+            return errs, []
+        pairs = [(c, hb.index(c), hn.index(c)) for c in shared_b]
+    else:
+        pairs = [(c, j, j) for j, c in enumerate(hb)]
+
     if len(rb) != len(rn):
         errs.append("row count differs: base %d, new %d" % (len(rb), len(rn)))
         return errs, []
 
-    stats = [ColumnStat(name) for name in hb]
-    ncol = len(hb)
+    stats = [ColumnStat(name) for name, _jb, _jn in pairs]
 
     for i, (row_b, row_n) in enumerate(zip(rb, rn)):
         # A row narrower or wider than the header is a property of the writer,
         # not a difference between the two trees; only a mismatch BETWEEN the
-        # trees is structural.  Compare over the fields the two rows share.
-        if len(row_b) != len(row_n):
+        # trees is structural.  Skip that check when the headers differ, since
+        # the row widths legitimately differ then.
+        if len(row_b) != len(row_n) and hb == hn:
             errs.append("row %d field count differs: base %d, new %d"
                         % (i + 2, len(row_b), len(row_n)))
             continue
-        for j in range(min(ncol, len(row_b))):
-            tb, tn = row_b[j], row_n[j]
-            if tb == tn:
+        for k, (name, jb, jn) in enumerate(pairs):
+            if jb >= len(row_b) or jn >= len(row_n):
                 continue
+            tb, tn = row_b[jb], row_n[jn]
+            st = stats[k]
+
             mb, vb = as_float(tb)
             mn, vn = as_float(tn)
 
-            # Non-numeric column with differing text: structural.
-            if mb is None or mn is None:
-                errs.append("row %d column %s: non-numeric value differs "
-                            "(%r vs %r)" % (i + 2, hb[j], tb, tn))
+            # Count exact-zero p-values whether or not the cell changed.  An
+            # emitted p of exactly 0.0 is a defect in its own right and log10
+            # cannot report it, so it is invisible in max dlog10P.
+            if is_pvalue_column(name):
+                if mb is False and vb == 0.0:
+                    st.n_zero_base += 1
+                if mn is False and vn == 0.0:
+                    st.n_zero_new += 1
+
+            if tb == tn:
                 continue
 
-            st = stats[j]
+            # Non-numeric column with differing text: structural, aggregated
+            # into a transition histogram rather than one error line per row, so
+            # that a column such as SPA_STATUS can actually be enumerated.
+            if mb is None or mn is None:
+                st.n_text_change += 1
+                key = "%s -> %s" % (tb, tn)
+                st.text_trans[key] = st.text_trans.get(key, 0) + 1
+                continue
+
             if mb != mn:
                 st.n_missing_change += 1
+                if mn:
+                    st.n_na_gained += 1
+                else:
+                    st.n_na_lost += 1
                 continue
             if mb and mn:
                 continue           # both missing
@@ -201,10 +265,12 @@ def compare_file(base_path, new_path, rtol):
                 st.worst_pair = (vb, vn)
             if (vb > 0) != (vn > 0) and vb != 0 and vn != 0:
                 st.n_sign_change += 1
-            if is_pvalue_column(hb[j]) and vb > 0 and vn > 0:
+            if is_pvalue_column(name) and vb > 0 and vn > 0:
                 dl = abs(math.log10(vb) - math.log10(vn))
                 if dl > st.max_dlog10p:
                     st.max_dlog10p = dl
+                    st.worst_dlog_row = i + 2
+                    st.worst_dlog_pair = (vb, vn)
 
     return errs, stats
 
@@ -278,39 +344,53 @@ def main():
             print("%-44s SKIP (%s)" % (name, e))
             continue
 
-        interesting = [s for s in stats
-                       if s.max_rel > 0 or s.n_missing_change or s.n_sign_change]
+        interesting = [s for s in stats if s.interesting()]
 
         if errs:
             failed = True
-            print("\n=== %s ===" % name)
-            for e in errs[:10]:
-                print("  STRUCTURAL: %s" % e)
-            if len(errs) > 10:
-                print("  ... and %d more structural differences" % (len(errs) - 10))
-            continue
-
-        if not interesting:
+        if not errs and not interesting:
             n_identical += 1
             if not args.quiet:
                 print("%-44s identical" % name)
             continue
 
         over = [s for s in interesting if s.max_rel > args.rtol]
-        if over:
+        if over or any(s.n_text_change for s in interesting):
             failed = True
 
         print("\n=== %s ===" % name)
-        print("  %-16s %12s %12s %12s %8s %8s"
-              % ("column", "max|abs|", "max rel", "max dlog10P", "NA chg", "sgn chg"))
-        for s in interesting:
-            flag = "  <-- over rtol" if s.max_rel > args.rtol else ""
-            print("  %-16s %12.4e %12.4e %12.4e %8d %8d%s"
-                  % (s.name, s.max_abs, s.max_rel, s.max_dlog10p,
-                     s.n_missing_change, s.n_sign_change, flag))
-            if s.max_rel > args.rtol and s.worst_row > 0:
-                print("      worst at row %d: %.17g -> %.17g"
-                      % (s.worst_row, s.worst_pair[0], s.worst_pair[1]))
+        for e in errs[:10]:
+            print("  STRUCTURAL: %s" % e)
+        if len(errs) > 10:
+            print("  ... and %d more structural differences" % (len(errs) - 10))
+
+        if interesting:
+            print("  %-16s %12s %12s %12s %9s %8s %8s"
+                  % ("column", "max|abs|", "max rel", "max dlog10P",
+                     "NA gained", "NA lost", "sgn chg"))
+            for s in interesting:
+                flag = "  <-- over rtol" if s.max_rel > args.rtol else ""
+                print("  %-16s %12.4e %12.4e %12.4e %9d %8d %8d%s"
+                      % (s.name, s.max_abs, s.max_rel, s.max_dlog10p,
+                         s.n_na_gained, s.n_na_lost, s.n_sign_change, flag))
+                if s.max_rel > args.rtol and s.worst_row > 0:
+                    print("      worst rel at row %d: %.17g -> %.17g"
+                          % (s.worst_row, s.worst_pair[0], s.worst_pair[1]))
+                if s.max_dlog10p > 0 and s.worst_dlog_row > 0:
+                    print("      worst dlog10P at row %d: %.6g -> %.6g"
+                          % (s.worst_dlog_row, s.worst_dlog_pair[0],
+                             s.worst_dlog_pair[1]))
+                if s.n_zero_base or s.n_zero_new:
+                    print("      p == 0 exactly: base %d, new %d"
+                          % (s.n_zero_base, s.n_zero_new))
+                if s.n_text_change:
+                    trans = sorted(s.text_trans.items(), key=lambda kv: -kv[1])
+                    print("      TEXT CHANGED in %d row(s): %s"
+                          % (s.n_text_change,
+                             "; ".join("%s (x%d)" % (k, v) for k, v in trans[:8])))
+                    if len(trans) > 8:
+                        print("      ... and %d more distinct transitions"
+                              % (len(trans) - 8))
 
     print("\n%d file(s) identical, rtol = %g" % (n_identical, args.rtol))
     print("RESULT: %s" % ("DIFFERENCES EXCEED TOLERANCE OR STRUCTURE CHANGED"
