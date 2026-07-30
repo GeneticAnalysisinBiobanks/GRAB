@@ -53,6 +53,10 @@
 #include "spa_reference.hpp"
 
 #include "util/spa_cgf.hpp"
+// For the terminal-K argument: w and the Barndorff-Nielsen tail are what K is
+// consumed through, so the test that justifies the cheaper spelling has to
+// evaluate them rather than reason about them.
+#include "util/spa.hpp"
 
 #include <cfloat>
 #include <cstdio>
@@ -468,6 +472,44 @@ std::vector<Tier<HapcountFn>> hapcountTiers() {
     return v;
 }
 
+// The same enumeration for the terminal-K reductions.  These return the bare
+// sum: sum_i log(alpha_i) for the two diploid variants, with the common factor
+// h == 2 left to the caller, and sum_i hap_i*log(alpha_i) for binomHapcount.
+using UniformK0Fn  = double (*)(double, const double *, int, double) noexcept;
+using IndivK0Fn    = double (*)(double, const double *, const double *, int) noexcept;
+using HapcountK0Fn = double (*)(
+    double, const double *, const double *, int, double) noexcept;
+
+std::vector<Tier<UniformK0Fn>> uniformK0Tiers() {
+    std::vector<Tier<UniformK0Fn>> v;
+    v.push_back({"scalar", spa_cgf::tier::binomUniformK0_scalar});
+#if defined(__x86_64__) || defined(_M_X64)
+    if (kLevel >= 1) v.push_back({"avx2", spa_cgf::tier::binomUniformK0_avx2});
+    if (kLevel >= 2) v.push_back({"avx512", spa_cgf::tier::binomUniformK0_avx512});
+#endif
+    return v;
+}
+
+std::vector<Tier<IndivK0Fn>> indivK0Tiers() {
+    std::vector<Tier<IndivK0Fn>> v;
+    v.push_back({"scalar", spa_cgf::tier::binomIndivK0_scalar});
+#if defined(__x86_64__) || defined(_M_X64)
+    if (kLevel >= 1) v.push_back({"avx2", spa_cgf::tier::binomIndivK0_avx2});
+    if (kLevel >= 2) v.push_back({"avx512", spa_cgf::tier::binomIndivK0_avx512});
+#endif
+    return v;
+}
+
+std::vector<Tier<HapcountK0Fn>> hapcountK0Tiers() {
+    std::vector<Tier<HapcountK0Fn>> v;
+    v.push_back({"scalar", spa_cgf::tier::binomHapcountK0_scalar});
+#if defined(__x86_64__) || defined(_M_X64)
+    if (kLevel >= 1) v.push_back({"avx2", spa_cgf::tier::binomHapcountK0_avx2});
+    if (kLevel >= 2) v.push_back({"avx512", spa_cgf::tier::binomHapcountK0_avx512});
+#endif
+    return v;
+}
+
 // ══════════════════════════════════════════════════════════════════════
 // The ULP budgets, and where each number comes from
 // ══════════════════════════════════════════════════════════════════════
@@ -536,6 +578,36 @@ constexpr double kAlgebraUlp   = 4.0;
 constexpr double kVectorUlp    = 64.0;
 constexpr double kCrossTierUlp = 64.0;
 
+// ── The budget for the PRODUCTION terminal K, and why it is not relative ──
+//
+// The production kFull forms K as sum_i h_i*log(u + p_i*e^{t*r_i}) with a
+// vectorized logarithm, rather than sum_i h_i*log1p(p_i*expm1(t*r_i)).  The two
+// spellings differ in RELATIVE accuracy near t = 0, where alpha = 1 + delta and
+// rounding alpha discards delta's low bits, but K is consumed only through
+// w = sgn(zeta)*sqrt(2*(zeta*s - K)) at abscissae where zeta*s - K is bounded
+// away from zero by the |z| > spaCutoff entry gate, so what propagates is the
+// ABSOLUTE error.  See the terminal-K section of src/util/spa_cgf.hpp for the
+// measurement, and `production_K_absolute_error_does_not_degrade_w` below for the
+// assertion that carries it.
+//
+// The right scale for that absolute error is therefore NOT |K| but
+//
+//     sum_i h_i * max(1, |log alpha_i|)
+//
+// one unit of binomial weight per subject, floored at one.  The floor is the
+// point: alpha is within rounding distance of 1 near t = 0, so forming it costs
+// an absolute eps whatever log(alpha) itself happens to be, and dividing that by
+// a vanishing |K| would be measuring the conditioning of the problem rather than
+// the quality of the kernel.  Above |log alpha| = 1 the scale becomes the
+// ordinary L1 scale and the criterion degenerates to the relative one.
+//
+// Measured worst deviation on that scale, reported by the tests below.  The
+// budget is 512 ULP because the vendored `avx512_exp_pd` was measured at up to
+// 38.9 ULP and its error enters alpha multiplied by p*lambda/alpha, which the
+// grid drives to 1; 512 leaves room for the reduction on top of that and is
+// still eleven orders of magnitude tighter than an algebra error.
+constexpr double kK0ProdUlp = 512.0;
+
 // A ULP budget expressed as a relative tolerance, for CHECK_REL / CHECK_CLOSE.
 constexpr double relTol(double ulp) { return ulp * DBL_EPSILON; }
 
@@ -569,6 +641,25 @@ L1 l1Scale(
         s2 += std::fabs(c.K2);
     }
     return L1{s0, s1, s2};
+}
+
+// The scale for K's ABSOLUTE error: one unit of binomial weight per subject,
+// floored at one.  See kK0ProdUlp for the motivation.
+double k0Scale(
+    double t,
+    const std::vector<double> &r,
+    const std::vector<double> &p,
+    const std::vector<double> &h
+) {
+    double s = 0.0;
+    for (size_t i = 0; i < r.size(); ++i)
+        s += h[i] * std::fmax(1.0, std::fabs(spa_cgf::logAlpha(t * r[i], p[i])));
+    return s;
+}
+
+double k0Scale1(double t, double r, double p, double h) {
+    return k0Scale(t, std::vector<double>{r}, std::vector<double>{p},
+                   std::vector<double>{h});
 }
 
 // Difference of a and b expressed in ULP of `scale`.  Exact equality is 0;
@@ -693,19 +784,29 @@ TEST(real_binom_uniform_matches_long_double_reference) {
                 }
 
                 // kFull must reuse k12's derivatives verbatim: they come from
-                // the same dispatched kernel, so any difference is a bug.
+                // the same dispatched kernel, so any difference is a bug.  Both
+                // terminal entry points are checked, since both are documented
+                // to differ from k12 in K alone.
                 const spa_cgf::Cgf12  d = spa_cgf::binomUniformK12(t, rv, 1, p);
                 const spa_cgf::Cgf012 f = spa_cgf::binomUniformKFull(t, rv, 1, p);
+                const spa_cgf::Cgf012 x =
+                    spa_cgf::binomUniformKFullExact(t, rv, 1, p);
                 CHECK_MSG(f.K1 == d.K1, "kFull K' differs from k12 K'");
                 CHECK_MSG(f.K2 == d.K2, "kFull K'' differs from k12 K''");
+                CHECK_MSG(x.K1 == d.K1, "kFullExact K' differs from k12 K'");
+                CHECK_MSG(x.K2 == d.K2, "kFullExact K'' differs from k12 K''");
 
-                // K is accumulated scalar in every tier, so it carries the
-                // algebra budget regardless of the dispatched tier.  It passes
-                // through zero at t = 0, where only a mixed criterion is
-                // satisfiable.
                 const double R0 = static_cast<double>(ref.K0);
-                CHECK_CLOSE(f.K0, R0, relTol(kAlgebraUlp), 1e-300);
-                if (R0 != 0.0) worstK0 = std::fmax(worstK0, tinytest::relDiff(f.K0, R0));
+                // The exact entry point keeps N1's relative accuracy in K.  It
+                // is scalar in every tier, so it carries the algebra budget
+                // regardless of the dispatched tier, and it passes through zero
+                // at t = 0 where only a mixed criterion is satisfiable.
+                CHECK_CLOSE(x.K0, R0, relTol(kAlgebraUlp), 1e-300);
+                // The production entry point is held to the absolute criterion
+                // K is actually consumed under.
+                CHECK_MSG(ulpDiff(f.K0, R0, k0Scale1(t, r, p, 2.0)) <= kK0ProdUlp,
+                          "production K off the absolute scale");
+                if (R0 != 0.0) worstK0 = std::fmax(worstK0, tinytest::relDiff(x.K0, R0));
             }
         }
     }
@@ -747,12 +848,18 @@ TEST(real_binom_indiv_matches_long_double_reference) {
 
                 const spa_cgf::Cgf12  d = spa_cgf::binomIndivK12(t, rv, pv, 1);
                 const spa_cgf::Cgf012 f = spa_cgf::binomIndivKFull(t, rv, pv, 1);
+                const spa_cgf::Cgf012 x =
+                    spa_cgf::binomIndivKFullExact(t, rv, pv, 1);
                 CHECK_MSG(f.K1 == d.K1, "kFull K' differs from k12 K'");
                 CHECK_MSG(f.K2 == d.K2, "kFull K'' differs from k12 K''");
+                CHECK_MSG(x.K1 == d.K1, "kFullExact K' differs from k12 K'");
+                CHECK_MSG(x.K2 == d.K2, "kFullExact K'' differs from k12 K''");
 
                 const double R0 = static_cast<double>(ref.K0);
-                CHECK_CLOSE(f.K0, R0, relTol(kAlgebraUlp), 1e-300);
-                if (R0 != 0.0) worstK0 = std::fmax(worstK0, tinytest::relDiff(f.K0, R0));
+                CHECK_CLOSE(x.K0, R0, relTol(kAlgebraUlp), 1e-300);
+                CHECK_MSG(ulpDiff(f.K0, R0, k0Scale1(t, r, p, 2.0)) <= kK0ProdUlp,
+                          "production K off the absolute scale");
+                if (R0 != 0.0) worstK0 = std::fmax(worstK0, tinytest::relDiff(x.K0, R0));
             }
         }
     }
@@ -803,16 +910,23 @@ TEST(real_binom_hapcount_matches_long_double_reference) {
 
                     const spa_cgf::Cgf12  d = spa_cgf::binomHapcountK12(t, rv, hv, 1, q);
                     const spa_cgf::Cgf012 f = spa_cgf::binomHapcountKFull(t, rv, hv, 1, q);
+                    const spa_cgf::Cgf012 x =
+                        spa_cgf::binomHapcountKFullExact(t, rv, hv, 1, q);
                     CHECK_MSG(f.K1 == d.K1, "kFull K' differs from k12 K'");
                     CHECK_MSG(f.K2 == d.K2, "kFull K'' differs from k12 K''");
+                    CHECK_MSG(x.K1 == d.K1, "kFullExact K' differs from k12 K'");
+                    CHECK_MSG(x.K2 == d.K2, "kFullExact K'' differs from k12 K''");
 
                     if (h == 0.0) {
                         CHECK_MSG(f.K0 == 0.0, "h = 0 must give exactly zero K");
+                        CHECK_MSG(x.K0 == 0.0, "h = 0 must give exactly zero K");
                         continue;
                     }
-                    CHECK_CLOSE(f.K0, R0, relTol(kAlgebraUlp), 1e-300);
+                    CHECK_CLOSE(x.K0, R0, relTol(kAlgebraUlp), 1e-300);
+                    CHECK_MSG(ulpDiff(f.K0, R0, k0Scale1(t, r, q, h)) <= kK0ProdUlp,
+                              "production K off the absolute scale");
                     if (R0 != 0.0)
-                        worstK0 = std::fmax(worstK0, tinytest::relDiff(f.K0, R0));
+                        worstK0 = std::fmax(worstK0, tinytest::relDiff(x.K0, R0));
                 }
             }
         }
@@ -1032,6 +1146,258 @@ TEST(cross_tier_equality_binom_hapcount) {
                  nComparisons, tiers.size(), worst, kCrossTierUlp);
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// II.d'  Cross-tier equality of the terminal K
+// ──────────────────────────────────────────────────────────────────────
+//
+// CLAUDE.md requires the full scalar + AVX2 + AVX-512 triple for every SIMD
+// kernel; the terminal K is now one, so it gets the same cross-tier treatment
+// the k12 kernels get.  The scale is the absolute one (k0Scale) rather than the
+// L1 one, for the reason set out at kK0ProdUlp: near t = 0 the L1 scale vanishes
+// while the per-lane error does not.
+TEST(cross_tier_equality_terminal_K) {
+    double worst = 0.0;
+    int nComparisons = 0;
+
+    const auto uT = uniformK0Tiers();
+    const auto iT = indivK0Tiers();
+    const auto hT = hapcountK0Tiers();
+
+    for (int n : kNGrid) {
+        const Subjects s = makeSubjects(n);
+        const std::vector<double> twos(static_cast<size_t>(n), 2.0);
+
+        for (double t : {-3.0, -0.7, -0.05, 0.0, 0.05, 0.7, 3.0}) {
+            // ── binomUniform ──
+            for (double p : {1e-4, 0.05, 0.23, 0.5, 0.97}) {
+                const std::vector<double> pv(static_cast<size_t>(n), p);
+                const double ref =
+                    spa_cgf::tier::binomUniformK0_scalar(t, s.r.data(), n, p);
+                const double sc = k0Scale(t, s.r, pv, twos);
+                for (const auto &tt : uT) {
+                    const double got = tt.fn(t, s.r.data(), n, p);
+                    const double u = ulpDiff(2.0 * got, 2.0 * ref, sc);
+                    worst = std::fmax(worst, u);
+                    ++nComparisons;
+                    CHECK_MSG(u <= kCrossTierUlp,
+                              std::string("binomUniform K tier ") + tt.name);
+                }
+            }
+
+            // ── binomIndiv ──
+            {
+                const double ref = spa_cgf::tier::binomIndivK0_scalar(
+                    t, s.r.data(), s.af.data(), n);
+                const double sc = k0Scale(t, s.r, s.af, twos);
+                for (const auto &tt : iT) {
+                    const double got = tt.fn(t, s.r.data(), s.af.data(), n);
+                    const double u = ulpDiff(2.0 * got, 2.0 * ref, sc);
+                    worst = std::fmax(worst, u);
+                    ++nComparisons;
+                    CHECK_MSG(u <= kCrossTierUlp,
+                              std::string("binomIndiv K tier ") + tt.name);
+                }
+            }
+
+            // ── binomHapcount ──
+            for (double q : {1e-4, 0.41, 0.97}) {
+                const std::vector<double> qv(static_cast<size_t>(n), q);
+                const double ref = spa_cgf::tier::binomHapcountK0_scalar(
+                    t, s.r.data(), s.hap.data(), n, q);
+                const double sc = k0Scale(t, s.r, qv, s.hap);
+                for (const auto &tt : hT) {
+                    const double got = tt.fn(t, s.r.data(), s.hap.data(), n, q);
+                    const double u = ulpDiff(got, ref, sc);
+                    worst = std::fmax(worst, u);
+                    ++nComparisons;
+                    CHECK_MSG(u <= kCrossTierUlp,
+                              std::string("binomHapcount K tier ") + tt.name);
+                }
+            }
+        }
+    }
+
+    // The triple must actually have been exercised on this host.
+    CHECK_MSG(uT.size() == static_cast<size_t>(kLevel) + 1,
+              "expected one K tier per supported ISA level");
+    std::fprintf(stderr,
+                 "      terminal K: %d comparisons over %zu tiers, worst %.2f ULP "
+                 "of the absolute scale (budget %.0f)\n",
+                 nComparisons, uT.size(), worst, kCrossTierUlp);
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// II.d''  The numerical argument for the cheaper terminal K
+// ──────────────────────────────────────────────────────────────────────
+//
+// Stage 4 replaced sum_i h*log1p(p*expm1(t*r_i)) with sum_i h*log(u + p*e^{t*r_i})
+// and vectorized it, on the argument that K is consumed only through
+// w = sgn(zeta)*sqrt(2*(zeta*s - K)) at abscissae where the |z| > spaCutoff entry
+// gate keeps zeta*s - K bounded away from zero, so the ABSOLUTE error in K is
+// what propagates and the two spellings are equivalent on that metric.
+//
+// This test is that argument, executed.  For each population it locates the
+// saddlepoint in long double, evaluates K there both ways and in long double,
+// and compares the absolute error in K, the error in w, and the error in
+// -log10(p) through the Barndorff-Nielsen tail.  The claim is not that the
+// production spelling is as good relatively — it is not, and
+// `real_kernel_K_accuracy_near_zero` tabulates by how much — but that the
+// difference does not reach w.
+TEST(production_K_absolute_error_does_not_degrade_w) {
+    if (!sparef::longDoubleIsWider()) {
+        std::fprintf(stderr, "      SKIP: no wider reference type on this platform.\n");
+        return;
+    }
+
+    std::mt19937_64 rng(20260731u);
+    std::normal_distribution<double> nd(0.0, 1.0);
+
+    double maxAbsExact = 0.0, maxAbsProd = 0.0;
+    double maxWExact = 0.0, maxWProd = 0.0;
+    double maxGExact = 0.0, maxGProd = 0.0;
+    double minAbsW = std::numeric_limits<double>::infinity();
+    int nCases = 0;
+
+    for (double p : {5e-4, 0.01, 0.1, 0.5}) {
+        for (double rsc : {0.5, 2.0, 6.0}) {
+            for (double z : {2.0, 3.0, 6.0, 10.0}) {
+                for (int sgn = -1; sgn <= 1; sgn += 2) {
+                    const int n = 240;
+                    std::vector<double> r(static_cast<size_t>(n));
+                    double sumR2 = 0.0;
+                    for (int i = 0; i < n; ++i) {
+                        r[i] = nd(rng) * rsc;
+                        sumR2 += r[i] * r[i];
+                    }
+                    // The analytic non-outlier Gaussian block every production
+                    // site adds, three times the outlier block's own variance.
+                    const double var = 2.0 * p * (1.0 - p) * sumR2 * 3.0;
+
+                    // K'(t) and K''(t) of the whole CGF, in long double.
+                    auto k12L = [&](long double t, long double &K1, long double &K2) {
+                        K1 = static_cast<long double>(var) * t;
+                        K2 = static_cast<long double>(var);
+                        const long double pl = p, ul = 1.0L - pl;
+                        for (int i = 0; i < n; ++i) {
+                            const long double ri = r[i];
+                            const long double e = pl * std::expl(t * ri);
+                            const long double a = ul + e;
+                            K1 += 2.0L * ri * e / a;
+                            K2 += 2.0L * ri * ri * e * ul / (a * a);
+                        }
+                    };
+
+                    long double K1, K2;
+                    k12L(0.0L, K1, K2);
+                    const double s =
+                        static_cast<double>(K1 + static_cast<long double>(sgn) *
+                                                     static_cast<long double>(z) *
+                                                     std::sqrtl(K2));
+
+                    // Bisect for the root of K'(t) = s in long double.
+                    long double lo = -600.0L, hi = 600.0L;
+                    for (int it = 0; it < 200; ++it) {
+                        const long double mid = 0.5L * (lo + hi);
+                        k12L(mid, K1, K2);
+                        if (K1 - static_cast<long double>(s) < 0.0L) lo = mid;
+                        else hi = mid;
+                    }
+                    const long double zetaL = 0.5L * (lo + hi);
+                    const double zeta = static_cast<double>(zetaL);
+                    k12L(zetaL, K1, K2);
+                    const double K2d = static_cast<double>(K2);
+                    if (!(K2d > 0.0)) continue;
+
+                    // K at the root: long-double reference, and both entry points.
+                    long double KrefOut = static_cast<long double>(var) * zetaL *
+                                          zetaL * 0.5L;
+                    for (int i = 0; i < n; ++i)
+                        KrefOut += 2.0L * std::log1pl(
+                            static_cast<long double>(p) *
+                            std::expm1l(zetaL * static_cast<long double>(r[i])));
+                    const double gaussK = static_cast<double>(
+                        static_cast<long double>(var) * zetaL * zetaL * 0.5L);
+
+                    const double kProd =
+                        spa_cgf::binomUniformKFull(zeta, r.data(), n, p).K0 + gaussK;
+                    const double kExact =
+                        spa_cgf::binomUniformKFullExact(zeta, r.data(), n, p).K0 +
+                        gaussK;
+
+                    const long double tempRef =
+                        zetaL * static_cast<long double>(s) - KrefOut;
+                    if (!(tempRef > 0.0L)) continue;
+                    ++nCases;
+
+                    const double wRef = static_cast<double>(
+                        (zetaL > 0 ? 1.0L : -1.0L) * std::sqrtl(2.0L * tempRef));
+                    minAbsW = std::fmin(minAbsW, std::fabs(wRef));
+
+                    auto wOf = [&](double K0) {
+                        const double tmp = zeta * s - K0;
+                        return spa::signOf(zeta) * std::sqrt(2.0 * tmp);
+                    };
+                    auto gOf = [&](double K0) {
+                        spa::Status st;
+                        return -spa::bnTailLog(zeta, s, K0, K2d, sgn < 0, st) /
+                               2.30258509299404568402;
+                    };
+                    const double gRef = gOf(static_cast<double>(KrefOut));
+
+                    maxAbsExact = std::fmax(
+                        maxAbsExact,
+                        std::fabs(static_cast<double>(static_cast<long double>(kExact) -
+                                                      KrefOut)));
+                    maxAbsProd = std::fmax(
+                        maxAbsProd,
+                        std::fabs(static_cast<double>(static_cast<long double>(kProd) -
+                                                      KrefOut)));
+                    maxWExact = std::fmax(maxWExact, std::fabs(wOf(kExact) - wRef));
+                    maxWProd  = std::fmax(maxWProd,  std::fabs(wOf(kProd)  - wRef));
+                    maxGExact = std::fmax(maxGExact, std::fabs(gOf(kExact) - gRef));
+                    maxGProd  = std::fmax(maxGProd,  std::fabs(gOf(kProd)  - gRef));
+                }
+            }
+        }
+    }
+
+    CHECK_MSG(nCases >= 90, "only " + std::to_string(nCases) + " usable cases");
+
+    std::fprintf(stderr,
+                 "\n      terminal K at the saddlepoint, n = 240, %d cases; "
+                 "min |w| reached %.3f\n"
+                 "      %-24s %12s %12s %14s\n"
+                 "      %-24s %12.3e %12.3e %14.3e\n"
+                 "      %-24s %12.3e %12.3e %14.3e\n\n",
+                 nCases, minAbsW,
+                 "spelling", "max |dK|", "max |dw|", "max |dLOG10P|",
+                 "log1p(p*expm1(x))", maxAbsExact, maxWExact, maxGExact,
+                 "log(u + p*e^x), vector", maxAbsProd, maxWProd, maxGProd);
+
+    // (a) the entry gate really does keep w away from zero, which is the
+    //     premise the whole argument rests on.
+    CHECK_MSG(minAbsW > 1.5, "min |w| " + std::to_string(minAbsW));
+
+    // (b) the production spelling's absolute error in K is within a small
+    //     constant factor of the exact spelling's.  Measured worst ratio on this
+    //     grid is 9.0 (1.48e-13 against 1.64e-14); the bound is 20.  Compare the
+    //     factor separating their RELATIVE errors, which reaches 1/p ~ 2e3 at
+    //     p = 5e-4: it is precisely because the two metrics disagree by two
+    //     orders of magnitude that the absolute one has to be the one asserted.
+    char buf[256];
+    std::snprintf(buf, sizeof(buf), "production |dK| %.4g vs exact %.4g",
+                  maxAbsProd, maxAbsExact);
+    CHECK_MSG(maxAbsProd <= 20.0 * maxAbsExact + 1e-15, std::string(buf));
+
+    // (c) what actually matters: the error reaching -log10(p) is negligible on
+    //     any scale a GWAS result is read at.  The stage budget was 1e-3, and
+    //     the measured worst is 6.8e-14.
+    std::snprintf(buf, sizeof(buf), "production |dLOG10P| %.4g, |dw| %.4g",
+                  maxGProd, maxWProd);
+    CHECK_MSG(maxGProd <= 1e-9, std::string(buf));
+    CHECK_MSG(maxWProd <= 1e-9, std::string(buf));
+}
+
 // The domain clamp exists so the tiers agree past the point where a scalar
 // std::exp returns +inf while the vectorized kernels clamp internally.  Without
 // it the scalar tier yields h*r*inf*0 = NaN and the vector tiers a finite value.
@@ -1246,6 +1612,13 @@ TEST(real_kernel_K2_accuracy_across_large_tr) {
 // N1: K near t = 0.  Every form that materializes alpha = 1 + delta before
 // taking the logarithm loses relative precision here, and K enters
 // w = sgn(zeta)*sqrt(2*(zeta*s - K)) directly.
+//
+// The strict relative assertion is made on `binomUniformKFullExact`, the entry
+// point that promises it.  The production entry point's relative error is
+// tabulated alongside for the record — it is intermediate between the frozen
+// production form and the exact one, and Stage 4's rework accepts it because the
+// absolute error, which is what w consumes, is unchanged; see
+// `production_K_absolute_error_does_not_degrade_w`.
 TEST(real_kernel_K_accuracy_near_zero) {
     if (!sparef::longDoubleIsWider()) {
         std::fprintf(stderr, "      SKIP: no wider reference type on this platform.\n");
@@ -1255,7 +1628,7 @@ TEST(real_kernel_K_accuracy_near_zero) {
     const double p = 0.3;
     const double r = 1.0;
 
-    struct Row { double tr, before, after; };
+    struct Row { double tr, before, exact, prod, absProd; };
     std::vector<Row> table;
 
     for (double tr : {1e-8, 1e-6, 1e-4, 1e-2, 1.0}) {
@@ -1263,28 +1636,38 @@ TEST(real_kernel_K_accuracy_near_zero) {
         const double refK0 = static_cast<double>(ref.K0);
 
         const double rv[1] = {r};
-        const spa_cgf::Cgf012 got = spa_cgf::binomUniformKFull(tr, rv, 1, p);
-        // The shipped production K is log(MGF0) = log(alpha^2), per
+        const spa_cgf::Cgf012 exact = spa_cgf::binomUniformKFullExact(tr, rv, 1, p);
+        const spa_cgf::Cgf012 prod  = spa_cgf::binomUniformKFull(tr, rv, 1, p);
+        // The shipped pre-rework production K is log(MGF0) = log(alpha^2), per
         // math_helper.hpp's kG012; cgfDiffForm is its frozen copy.
         const Cgf old = sparef::cgfDiffForm(tr, r, p);
 
-        const double eBefore = tinytest::relDiff(old.K0, refK0);
-        const double eAfter  = tinytest::relDiff(got.K0, refK0);
-        table.push_back(Row{tr, eBefore, eAfter});
+        table.push_back(Row{tr,
+                            tinytest::relDiff(old.K0, refK0),
+                            tinytest::relDiff(exact.K0, refK0),
+                            tinytest::relDiff(prod.K0, refK0),
+                            std::fabs(prod.K0 - refK0)});
 
-        CHECK_REL(got.K0, refK0, relTol(kAlgebraUlp));
+        CHECK_REL(exact.K0, refK0, relTol(kAlgebraUlp));
+        CHECK_MSG(ulpDiff(prod.K0, refK0, k0Scale1(tr, r, p, 2.0)) <= kK0ProdUlp,
+                  "production K off the absolute scale");
     }
 
     std::fprintf(stderr,
-                 "\n      K relative error vs long-double reference (MAF 0.3, r 1)\n");
-    std::fprintf(stderr, "      %10s  %16s  %16s\n", "t*r", "before (prod)", "after (Stage 2)");
+                 "\n      K error vs long-double reference (MAF 0.3, r 1)\n");
+    std::fprintf(stderr, "      %10s  %14s  %14s  %14s  %14s\n", "t*r",
+                 "rel: frozen", "rel: exact", "rel: prod", "abs: prod");
     for (const Row &row : table)
-        std::fprintf(stderr, "      %10.0e  %16.3e  %16.3e\n",
-                     row.tr, row.before, row.after);
+        std::fprintf(stderr, "      %10.0e  %14.3e  %14.3e  %14.3e  %14.3e\n",
+                     row.tr, row.before, row.exact, row.prod, row.absProd);
     std::fprintf(stderr, "\n");
 
     CHECK_MSG(table[0].before > 1e-10,
               "expected the frozen production form to have lost >=6 digits at t*r=1e-8");
+    // The exact entry point must be strictly better than the production one
+    // somewhere, or it is not earning its place in the interface.
+    CHECK_MSG(table[0].exact < table[0].prod,
+              "kFullExact is no more accurate in K than kFull at t*r = 1e-8");
 }
 
 // The log1p form must hold up on the positive side of zero too.  This is why
@@ -1297,7 +1680,7 @@ TEST(real_kernel_K_accuracy_is_symmetric_about_zero) {
         return;
     }
 
-    double worst = 0.0;
+    double worst = 0.0, worstProd = 0.0;
     for (double p : kMafs) {
         for (double mag : {1e-9, 1e-7, 1e-5, 1e-3, 1e-1, 1.0, 10.0}) {
             for (double sgn : {-1.0, 1.0}) {
@@ -1306,16 +1689,28 @@ TEST(real_kernel_K_accuracy_is_symmetric_about_zero) {
                 const double refK0 =
                     static_cast<double>(sparef::cgfReference(tr, 1.0, p).K0);
                 const spa_cgf::Cgf012 got =
-                    spa_cgf::binomUniformKFull(tr, rv, 1, p);
+                    spa_cgf::binomUniformKFullExact(tr, rv, 1, p);
                 const double e = tinytest::relDiff(got.K0, refK0);
                 worst = std::fmax(worst, e);
                 CHECK_MSG(e <= relTol(kAlgebraUlp),
                           "K left rounding level on one side of zero");
+
+                // The production spelling has no reflection branch at all — it
+                // is log(u + p*e^x) throughout — so its absolute error must be
+                // symmetric in the sign of x too.
+                const spa_cgf::Cgf012 pr =
+                    spa_cgf::binomUniformKFull(tr, rv, 1, p);
+                const double u = ulpDiff(pr.K0, refK0, k0Scale1(tr, 1.0, p, 2.0));
+                worstProd = std::fmax(worstProd, u);
+                CHECK_MSG(u <= kK0ProdUlp,
+                          "production K off the absolute scale on one side of zero");
             }
         }
     }
     std::fprintf(stderr,
-                 "      worst K relative error over both signs of t*r: %.3e\n", worst);
+                 "      worst K relative error over both signs of t*r: exact %.3e; "
+                 "production, in ULP of the absolute scale: %.1f (budget %.0f)\n",
+                 worst, worstProd, kK0ProdUlp);
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -1382,17 +1777,20 @@ TEST(hapcount_degenerate_cases) {
     // (4) h = 0 for some subjects: those must contribute exactly nothing, so the
     //     reduction must agree with the reduction over the surviving subset.
     //
-    //     K is bit-identical, and must be: it is accumulated by a sequential
-    //     scalar loop, and inserting an exact zero addend into a sequential sum
-    //     cannot change it.
-    //
-    //     K' and K'' are NOT bit-identical, and requiring that would be a wrong
+    //     None of the three is bit-identical, and requiring that would be a wrong
     //     assertion rather than a stronger one.  Each h = 0 lane does contribute
     //     exactly 0.0, but dropping the zero lanes changes n, which changes how
     //     many surviving terms land in the vector body versus the tail and how
     //     _mm512_reduce_add_pd pairs them.  The surviving addends are therefore
     //     summed in a different ORDER, and floating-point addition is not
     //     associative.  The correct criterion is the reduction-order budget.
+    //
+    //     STAGE 4.  K was previously asserted bit-identical here, and correctly
+    //     so at the time: it was accumulated by a sequential scalar loop, into
+    //     which inserting an exact zero addend cannot change anything.  Now that
+    //     it too is a vector reduction it falls under the same reduction-order
+    //     argument as K' and K''.  `binomHapcountKFullExact` is still the
+    //     sequential scalar loop, so the bit-identity is asserted on it.
     {
         std::vector<double> hMixed = {0.0, 1.0, 0.0, 2.0, 1.0, 0.0, 2.0, 0.0};
         std::vector<double> rSub, hSub;
@@ -1408,7 +1806,15 @@ TEST(hapcount_degenerate_cases) {
                     t, rSub.data(), hSub.data(), static_cast<int>(rSub.size()), q);
                 const L1 sc = l1Scale(t, r, qv, hMixed);
 
-                CHECK_MSG(a.K0 == b.K0, "h = 0 subjects perturbed K");
+                const spa_cgf::Cgf012 ax = spa_cgf::binomHapcountKFullExact(
+                    t, r.data(), hMixed.data(), n, q);
+                const spa_cgf::Cgf012 bx = spa_cgf::binomHapcountKFullExact(
+                    t, rSub.data(), hSub.data(), static_cast<int>(rSub.size()), q);
+                CHECK_MSG(ax.K0 == bx.K0,
+                          "h = 0 subjects perturbed the sequential K");
+                CHECK_MSG(ulpDiff(a.K0, b.K0, k0Scale(t, r, qv, hMixed))
+                              <= kCrossTierUlp,
+                          "h = 0 subjects moved K beyond the reduction-order budget");
                 CHECK_MSG(ulpDiff(a.K1, b.K1, sc.K1) <= kCrossTierUlp,
                           "h = 0 subjects moved K' beyond the reduction-order budget");
                 CHECK_MSG(ulpDiff(a.K2, b.K2, sc.K2) <= kCrossTierUlp,

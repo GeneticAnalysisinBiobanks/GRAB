@@ -238,6 +238,13 @@ struct Saddle {
     double hi;        //   `bracketed` is true
     int    iters;     // safeguarded-Newton iterations executed
     int    nEval;     // cheap-callable evaluations (bracketing + loop)
+    int    nEvalBracket;   // of those, the ones spent locating the bracket,
+                           //   counting the evaluation at `init`.  Reported
+                           //   separately because the two phases answer
+                           //   different questions: nEvalBracket measures the
+                           //   quality of the caller's initial guess, and
+                           //   nEval - nEvalBracket the quality of the Newton
+                           //   schedule.  The terminal evalFull is in neither.
     bool   bracketed; // a sign change in the residual was located
     bool   reusedTerminal;  // terminal abscissa equalled the loop's last one
     Status status;
@@ -273,9 +280,19 @@ struct SolveOpts {
     // genuinely useful safeguard the original Family B finders had.
     double scoreSign = 0.0;
 
-    // Bracket expansion: the first outward probe is
-    //     max(bracketStep * max(1, |init|), |Newton step at init|)
-    // and each subsequent probe is bracketGrow times the previous one.
+    // Bracket expansion.  The first outward probe is the Newton step at
+    // `init`, |K'(init) - s| / K''(init), which for a residual that is convex
+    // on the side being searched lands beyond the root and brackets it in one
+    // evaluation, with a bracket only as wide as the first-order estimate.
+    //
+    // `bracketStep` is the fallback distance, used when K''(init) is not
+    // usable, and the distance the schedule jumps to on the first probe that
+    // lands on the same side of the root: the probe distance becomes
+    //     max(bracketGrow * previous, bracketStep * max(1, |init|))
+    // once, and grows by bracketGrow thereafter.  Falling back to a coarse
+    // constant rather than doubling a possibly-tiny Newton step is what bounds
+    // the worst-case expansion cost at one evaluation more than a schedule that
+    // started coarse in the first place.
     double bracketStep = 1.0;
     double bracketGrow = 2.0;
     int    maxExpand   = 64;
@@ -343,11 +360,13 @@ struct SplitFull {
 //   * a bracket [lo, hi] expanded outward from `init` until the residual
 //     changes sign.  None of the three original families maintained one;
 //     Family A's "bisection" only damped the step and never established a
-//     sign change, so it could not guarantee convergence.
+//     sign change, so it could not guarantee convergence.  The first probe is
+//     placed at the Newton point rather than a constant distance away, so the
+//     bracket is as tight as the caller's first-order guess allows.
 //   * bisection whenever the Newton step leaves the bracket, produces a
 //     non-finite residual, or fails to reduce |residual|; plus a forced
-//     bisection whenever the bracket itself has stopped halving, which the
-//     design table does not list but which is what actually bounds the
+//     bisection whenever the Newton step itself has stopped contracting, which
+//     the design table does not list but which is what actually bounds the
 //     iteration count (see the comment at the safeguard).
 //   * optional enforcement of sgn(zeta) == sgn(Score), implemented as a
 //     restriction of the search interval to a closed half-line rather than
@@ -377,6 +396,7 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
     out.hi = nan;
     out.iters = 0;
     out.nEval = 0;
+    out.nEvalBracket = 0;
     out.bracketed = false;
     out.reusedTerminal = false;
     out.status = Status::MaxIter;
@@ -429,14 +449,53 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
         // only the sign of the residual, so it survives a K'' that is noisy
         // or wrongly signed.
         const double dir = (e.k1 < 0.0) ? 1.0 : -1.0;
-        double a = t, fa = e.k1;
+        // `a` is the near endpoint of the probe interval and `ea` its
+        // cumulants, retained so that the bracketing exit can choose the
+        // better of the two endpoints to start the Newton loop from.
+        double a = t;
+        K12 ea = e;
 
-        double step = opt.bracketStep * std::fmax(1.0, std::fabs(t));
+        // ── Sizing the first probe ──
+        //
+        // The first probe is placed at the Newton point, |K'(t) - s| / K''(t)
+        // away from `init`.  For a residual that is convex on the side being
+        // searched the tangent line lies below it, so the Newton point falls
+        // beyond the root and ONE probe brackets it — with a bracket only as
+        // wide as the first-order estimate, rather than as wide as an arbitrary
+        // constant.
+        //
+        // This is where the excess evaluations were.  The previous schedule took
+        // the LARGER of `bracketStep * max(1, |init|)` (1.0 by default) and the
+        // Newton step, so for the roots the SPA branch actually visits — zeta of
+        // order 1e-3 to 1, initialized from the caller's s/K''(0) estimate — the
+        // first probe landed a full unit away, bracketed on the first try, and
+        // handed the Newton loop a bracket three orders of magnitude wider than
+        // the distance to the root.  The loop then spent its budget bisecting
+        // that width.  Measured on the 50000 x 20000 synthetic cohort: SPAsqr
+        // 14.71 cheap evaluations per tail, of which 12.71 were loop iterations
+        // and 7.47 of those were bisections.
+        //
+        // `bracketStep` is retained as the fallback for an unusable K'' and as
+        // the SECOND probe distance: if the Newton point does not bracket, the
+        // schedule falls back to the coarse constant immediately, so the
+        // worst-case expansion cost is one evaluation more than before rather
+        // than a long geometric walk up from a tiny first step.
+        double step = 0.0;
         if (e.k2 > 0.0 && std::isfinite(e.k2)) {
             const double newton = std::fabs(e.k1 / e.k2);
-            if (std::isfinite(newton) && newton > step) step = newton;
+            if (std::isfinite(newton) && newton > 0.0) step = newton;
         }
+        const double coarse =
+            std::fmax(opt.bracketStep * std::fmax(1.0, std::fabs(t)), step);
+        if (!(step > 0.0)) step = coarse;
         if (!(step > 0.0)) step = opt.bracketStep;
+        // Consumed by the first probe that lands on the same side of the root:
+        // see the `step` update at the bottom of the expansion loop.  It counts
+        // usable probes only, not probes that fell in a non-finite region — the
+        // step-halving retreat those trigger must not be mistaken for progress,
+        // or the schedule creeps up to the edge of the non-finite region and
+        // never steps over it.
+        bool coarseUnused = true;
 
         for (int k = 0; k < opt.maxExpand; ++k) {
             double b = a + dir * step;
@@ -467,20 +526,40 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
                 break;
             }
 
-            if ((eb.k1 > 0.0) != (fa > 0.0)) {
+            if ((eb.k1 > 0.0) != (ea.k1 > 0.0)) {
                 if (dir > 0.0) { lo = a; hi = b; }
                 else           { lo = b; hi = a; }
-                t = b;
-                e = eb;
+                // Enter the loop at whichever endpoint has the smaller
+                // |residual|.  Both are already evaluated, so the choice is
+                // free, and starting from the better iterate is what lets
+                // Newton converge without a safeguard step: the probe point b
+                // overshoots the root by construction, so when the overshoot is
+                // the larger error the correct starting point is a.
+                if (std::fabs(ea.k1) < std::fabs(eb.k1)) {
+                    t = a;
+                    e = ea;
+                } else {
+                    t = b;
+                    e = eb;
+                }
                 out.bracketed = true;
                 break;
             }
 
             a = b;
-            fa = eb.k1;
+            ea = eb;
             t = b;
             e = eb;
+            // First usable probe that failed to bracket: jump straight to the
+            // coarse constant rather than doubling a possibly-tiny Newton step.
+            // Afterwards, grow geometrically as before.  This is what keeps the
+            // worst case at one evaluation more than the predecessor's rather
+            // than a long geometric walk up from a tiny first step.
             step *= opt.bracketGrow;
+            if (coarseUnused) {
+                coarseUnused = false;
+                if (coarse > step) step = coarse;
+            }
         }
 
         if (!out.bracketed) {
@@ -495,13 +574,17 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
         }
     }
 
+    out.nEvalBracket = out.nEval;
+
     // ── Safeguarded Newton inside the bracket ──
     if (out.bracketed && out.status != Status::Converged) {
         Status st = Status::MaxIter;
-        // Progress reference for the forced-bisection safeguard below.  The
-        // factor of two makes the first iteration unconditionally eligible
-        // for a Newton step, so an easy problem pays nothing.
-        double widthRef = 2.0 * (hi - lo);
+
+        // Progress reference for the step-stall safeguard below.  Seeded with
+        // the full bracket width so the first iteration is unconditionally
+        // eligible for a Newton step, and thereafter carrying the length of the
+        // last step taken.
+        double prevStep = hi - lo;
 
         for (int iter = 0; iter < opt.maxIter; ++iter) {
             ++out.iters;
@@ -509,38 +592,53 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
 
             if (lo == hi) { st = Status::Converged; break; }
 
-            // Forced bisection when the bracket has not at least halved since
-            // the last reference.  Without this, Newton on a CGF whose K' is
-            // exponential creeps toward the root by a fixed decrement per
-            // step — t_{n+1} = t_n - 1 + s e^{-t_n} for the Poisson CGF —
-            // while dutifully reducing |residual| every time, so neither of
-            // the two bisection triggers in the design table ever fires and
-            // the iteration budget is exhausted hundreds of steps short of
-            // the root.  Alternating a forced bisection in bounds the
-            // iteration count at O(log2(width / tol)) regardless of the
-            // Newton path, which is what "guarantees convergence rather than
-            // hoping for it" requires.
-            const double width = hi - lo;
-            bool forceBisect = false;
-            if (width <= 0.5 * widthRef) {
-                widthRef = width;
-            } else {
-                forceBisect = true;
-                widthRef = width;
-            }
-
-            // Propose a step: Newton when K'' is usable and the result stays
-            // strictly inside the bracket, bisection otherwise.
+            // ── The step-stall safeguard ──
+            //
+            // A Newton step is accepted only when it is at most half the length
+            // of the previous step.  This is the classical safeguard (Press et
+            // al., `rtsafe`), and it is what bounds the iteration count: either
+            // the steps contract geometrically by a factor of two or better — in
+            // which case the iterate reaches the root in O(log2(width / tol))
+            // steps on its own — or a bisection is forced and the BRACKET
+            // contracts by two, giving the same bound.  Newton on a convex CGF
+            // converges quadratically, so its steps contract far faster than
+            // required and the safeguard costs nothing on ordinary input.  On
+            // the Poisson CGF, where Newton creeps toward the root by a fixed
+            // decrement of one per step (t_{n+1} = t_n - 1 + s e^{-t_n}) while
+            // reducing |residual| every time, the steps do not contract at all
+            // and the safeguard fires — which is the case Stage 1 introduced a
+            // safeguard for.
+            //
+            // STAGE 4 REWORK.  The predecessor tested the BRACKET width instead:
+            // it forced a bisection whenever the bracket had not halved since the
+            // previous iteration.  That trigger is far too eager, because Newton
+            // from a bracketed start approaches the root monotonically from one
+            // side, so it moves only ONE endpoint and the width shrinks slowly
+            // even while the iterate converges quadratically.  A root at 0.5 in
+            // [0, 1] reached by the Newton sequence 0.9, 0.7, 0.55, 0.501 gives
+            // width ratios 0.78, 0.79, 0.91 — never 0.5 — so a bisection was
+            // forced on essentially every other iteration and the solver
+            // converged linearly on problems where Newton alone converges
+            // quadratically.  Measured on the 50000 x 20000 synthetic cohort:
+            // 6.23 of SPAsqr's 12.71 loop iterations per tail were forced
+            // bisections.
             bool bisected = true;
             double tn = 0.0;
-            if (!forceBisect && e.k2 > 0.0 && std::isfinite(e.k2)) {
+            if (e.k2 > 0.0 && std::isfinite(e.k2)) {
                 const double cand = t - e.k1 / e.k2;
-                if (std::isfinite(cand) && cand > lo && cand < hi) {
+                const double len = std::fabs(cand - t);
+                if (std::isfinite(cand) && cand > lo && cand < hi &&
+                    len <= 0.5 * prevStep) {
                     tn = cand;
                     bisected = false;
+                    prevStep = len;
                 }
             }
-            if (bisected) tn = lo + 0.5 * (hi - lo);
+            if (bisected) {
+                const double half = 0.5 * (hi - lo);
+                tn = lo + half;
+                prevStep = half;
+            }
             if (!(tn > lo && tn < hi)) {
                 // The midpoint itself is not strictly interior: the bracket
                 // is down to adjacent representable doubles.
@@ -553,7 +651,9 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
 
             if (!std::isfinite(en.k1)) {
                 if (!bisected) {
-                    tn = lo + 0.5 * (hi - lo);
+                    const double half = 0.5 * (hi - lo);
+                    tn = lo + half;
+                    prevStep = half;
                     en = ev.cheap(tn);
                     ++out.nEval;
                     bisected = true;
@@ -571,13 +671,15 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
                 // tightens the bracket, so fold it in and then bisect the
                 // smaller interval.
                 if (en.k1 > 0.0) hi = tn; else lo = tn;
-                const double tb = lo + 0.5 * (hi - lo);
+                const double half = 0.5 * (hi - lo);
+                const double tb = lo + half;
                 if (tb > lo && tb < hi) {
                     const K12 eb = ev.cheap(tb);
                     ++out.nEval;
                     if (std::isfinite(eb.k1)) {
                         tn = tb;
                         en = eb;
+                        prevStep = half;
                     }
                 }
             }

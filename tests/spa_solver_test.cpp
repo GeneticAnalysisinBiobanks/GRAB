@@ -787,6 +787,127 @@ TEST(forced_bisection_bounds_the_iteration_count) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
+// § 4a  The evaluation budget
+// ══════════════════════════════════════════════════════════════════════
+//
+// The CGF evaluation is the entire cost of the saddlepoint branch: one call is
+// an O(nOutlier) SIMD reduction, and the solver makes several per tail per
+// marker per phenotype.  A schedule change that keeps every guarantee and every
+// answer while doubling the number of evaluations is therefore a serious
+// regression that no other test in this file would notice — the roots, the
+// statuses and the brackets would all still be right.
+//
+// The counts below are pinned against the population the SPA branch actually
+// runs on, and they are pinned as MEANS with a ceiling rather than exactly,
+// because the individual counts depend on the last bits of the residual.  The
+// two phases are separated: `nEvalBracket` measures how many evaluations went
+// into locating the bracket from the caller's initial guess, and
+// `nEval - nEvalBracket` how many the safeguarded-Newton loop needed.  The
+// terminal `evalFull` is in neither, being one call per solve by construction.
+//
+// Recorded history, so a future change can see which direction it moved.  The
+// production rows were measured by instrumenting the solver and running the two
+// migrated methods over the 50000-subject x 20000-marker synthetic cohort; this
+// test's own population is deliberately broader (nOutlier 1 to 60, MAF 0.005 to
+// 0.5, the Gaussian block scaled over two orders of magnitude), so its loop
+// count is higher than production's and the two are not directly comparable.
+//
+//     schedule                       population    bracket   loop   total
+//     ---------------------------    -----------   -------   ----   -----
+//     Stage 1: first probe at        SPAsqr           2.00  12.71   14.71
+//     max(bracketStep, Newton),      SPAGRM           2.00   9.98   11.98
+//     forced bisection when the
+//     BRACKET stopped halving
+//
+//     Stage 4 rework: first probe    SPAsqr           2.78   0.88    3.66
+//     at Newton, forced bisection    SPAGRM           2.91   1.03    3.94
+//     when the STEP stopped          this test        2.88   1.77    4.65
+//     contracting
+//
+// The ceilings below are set about 25 % above this test's measured means: loose
+// enough not to fire on an arithmetic reordering, tight enough that a return to
+// the Stage 1 schedule fails loudly, since that schedule spends ten or more loop
+// evaluations against a ceiling of two.
+TEST(evaluation_budget_per_tail_is_pinned) {
+    std::mt19937_64 rng(20260731ULL);
+    std::uniform_real_distribution<double> umaf(0.005, 0.5);
+    std::uniform_real_distribution<double> uresid(-3.0, 3.0);
+    std::uniform_int_distribution<int> unout(1, 60);
+    std::uniform_real_distribution<double> udil(1.0, 200.0);
+    std::uniform_real_distribution<double> uz(2.0, 8.0);
+
+    long long totEval = 0, totBrk = 0, totIter = 0;
+    int nSolve = 0, worstEval = 0;
+
+    for (int trial = 0; trial < 600; ++trial) {
+        MixedCgf c;
+        const int nOut = unout(rng);
+        c.resid.resize(nOut);
+        c.maf.resize(nOut);
+        double sumR2 = 0.0;
+        for (int i = 0; i < nOut; ++i) {
+            c.resid[i] = uresid(rng);
+            c.maf[i] = umaf(rng);
+            sumR2 += c.resid[i] * c.resid[i];
+        }
+        // The analytic non-outlier Gaussian block every production site adds.
+        c.var = 2.0 * 0.25 * sumR2 * udil(rng);
+
+        const spa::K012 at0 = c.kFull(0.0);
+        const double sd = std::sqrt(at0.k2);
+
+        for (int side = 0; side < 2; ++side) {
+            const double sign = side ? -1.0 : 1.0;
+            MixedCgf cc = c;
+            cc.s = at0.k1 + sign * uz(rng) * sd;
+
+            // Exactly what SPAsqr and SPAGRM pass: the first-order saddlepoint
+            // estimate s/K''(0), capped at 1.2, signed to match the score, and
+            // the sign constraint asserted.
+            spa::SolveOpts opt;
+            opt.init = sign * std::fmin(std::fabs(cc.s - at0.k1) / at0.k2, 1.2);
+            opt.scoreSign = sign;
+
+            const spa::Saddle r = spa::solveSaddlepoint(
+                cc.s, [&](double t) { return cc.k12(t); },
+                [&](double t) { return cc.kFull(t); }, opt);
+
+            CHECK_MSG(r.status == spa::Status::Converged,
+                      statusStr(r.status) + " trial " + std::to_string(trial));
+            if (r.status != spa::Status::Converged) continue;
+
+            // The split is a partition of nEval, and the bracket phase always
+            // costs at least the one evaluation at `init`.
+            CHECK(r.nEvalBracket >= 1);
+            CHECK(r.nEvalBracket <= r.nEval);
+
+            ++nSolve;
+            totEval += r.nEval;
+            totBrk  += r.nEvalBracket;
+            totIter += r.iters;
+            if (r.nEval > worstEval) worstEval = r.nEval;
+        }
+    }
+
+    CHECK(nSolve == 1200);
+    const double mEval = static_cast<double>(totEval) / nSolve;
+    const double mBrk  = static_cast<double>(totBrk) / nSolve;
+    const double mLoop = mEval - mBrk;
+
+    std::fprintf(stderr,
+                 "\n      evaluations per tail over %d solves: bracket %.3f, "
+                 "loop %.3f, total %.3f (worst single solve %d)\n"
+                 "      terminal evalFull: 1 per solve by construction\n\n",
+                 nSolve, mBrk, mLoop, mEval, worstEval);
+
+    CHECK_MSG(mBrk <= 3.4, "bracket evaluations per tail " + std::to_string(mBrk));
+    CHECK_MSG(mLoop <= 2.0, "loop evaluations per tail " + std::to_string(mLoop));
+    CHECK_MSG(mEval <= 5.0, "total evaluations per tail " + std::to_string(mEval));
+    // No single solve may blow up: the safeguard bounds the iteration count.
+    CHECK_MSG(worstEval <= 40, "worst single solve " + std::to_string(worstEval));
+}
+
+// ══════════════════════════════════════════════════════════════════════
 // § 5  bnTail and bnTailLog
 // ══════════════════════════════════════════════════════════════════════
 

@@ -87,10 +87,82 @@
 //   k12    1 exp, 1 reciprocal, no logarithm.       Newton loop.
 //   kFull  k12 + K.                                 Terminal evaluation only.
 //
-// `expm1` and `log1p` appear ONLY in the K branch, i.e. only in kFull.  This is
-// deliberate and load-bearing; see the N1 note on `logAlpha` below.  The SIMD
-// layer therefore needs no vectorized expm1/log1p and
-// `src/util/simd_math.hpp` is not modified by this stage.
+// ══════════════════════════════════════════════════════════════════════
+// The terminal K: why it is vectorized, and what that costs numerically
+// ══════════════════════════════════════════════════════════════════════
+//
+// Stage 2 accumulated K in a scalar loop calling `logAlpha` once per subject —
+// one `expm1` plus one `log1p` each — on the argument that kFull runs twice per
+// marker rather than twice per Newton iteration and so "is not on the hot path".
+// Stage 4 measured that argument to be wrong.  At n = 651 outliers on AVX-512:
+//
+//     k12,   dispatched                    0.75 ns/subject      490 ns/call
+//     kFull, scalar expm1/log1p pass       9.19 ns/subject     6033 ns/call
+//
+// One kFull cost 12x one k12 and 4.7x an entire old hand-written kernel
+// evaluation.  Against a Newton schedule of three to four k12 calls per tail,
+// the two kFull calls per marker were the LARGER half of all CGF time, not a
+// rounding error.  The terminal K is therefore vectorized too, through the
+// existing `avx2_log_pd` / `avx512_log_pd`, and `logAlphaFast` below replaces
+// the log1p/expm1 spelling in the production path.
+//
+// ── The numerical argument, and its measurement ──────────────────────
+//
+// N1 is framed as a RELATIVE error in K, and on that metric
+// `log1p(p*expm1(x))` is far better than `log(u + p*e^x)`: near x = 0 the latter
+// materializes alpha = 1 + delta and rounding alpha discards delta's low bits.
+// But K is consumed ONLY through
+//
+//     w = sgn(zeta) * sqrt(2 * (zeta*s - K))
+//
+// and every SPA site gates entry on |z| > spaCutoff (default 2.0), so
+// zeta*s - K is bounded away from zero and w is of order 2 or more.  What
+// propagates into w is therefore the ABSOLUTE error in K:
+// dw = -dK/w, so |dw| <= |dK|/2.  For small delta, log(alpha) ~ delta and
+// rounding alpha = 1 + delta to a double costs an absolute error of order eps —
+// the same order as the log1p spelling costs.  The expensive spelling buys
+// relative accuracy in a quantity nothing consumes relatively.
+//
+// Measured against a long-double reference over the domain the solver visits
+// (MAF 5e-4 to 0.5, residual scale 0.2 to 8, |z| 2 to 12, both tails, the
+// analytic Gaussian block scaled over six orders of magnitude so that |zeta|
+// ranges from 1e-5 to 50, and both mixed-sign and one-sign residual sets):
+//
+//     spelling of K                    |dK|abs    |dK|rel    |dw|     |dLOG10P|
+//     ------------------------------   --------   --------   ------   ---------
+//     n = 651
+//     log1p(p*expm1(x))   [Stage 2]    2.41e-13   1.62e-14   2.6e-14   1.07e-13
+//     log(u + p*e^x)      scalar       2.70e-13   8.61e-14   4.3e-14   1.07e-13
+//     log(u + p*e^x)      avx512       4.23e-13   8.79e-14   4.3e-14   1.99e-13
+//     log(u + p*e^x)      avx2         4.25e-13   8.85e-14   4.2e-14   1.85e-13
+//     n = 5000
+//     log1p(p*expm1(x))   [Stage 2]    1.96e-12   4.06e-13   2.4e-13   8.88e-13
+//     log(u + p*e^x)      avx512       7.35e-13   3.36e-11   2.9e-13   3.27e-13
+//
+// The absolute error and the error in w are the same order for every spelling —
+// within a factor of two, and at n = 5000 the vectorized spelling is the more
+// accurate of the two in absolute terms, because there the error of the
+// REDUCTION dominates the error of any individual term.  The induced error in
+// -log10(p) never exceeds 1e-12, ten orders of magnitude below the tightest
+// budget any stage of this rework was held to.  The relative-error column is the
+// one place the log1p spelling remains clearly better, by two orders of
+// magnitude at n = 5000; `binom*KFullExact` below keeps that spelling available.
+//
+// ── What `simd_math.hpp` costs here, and what it does not ────────────
+//
+// `avx512_log_pd` and `avx2_log_pd` were characterized for this change at
+// 1.48 ULP worst case over alpha in [1e-16, 3e307], and 3.7e-16 absolute over
+// alpha in [0.05, 20] — so the header's "~1 ULP" claim holds for `log`.  It does
+// NOT hold for `exp`, which Stage 4 measured at up to 38.9 ULP, and that is the
+// real limit on the vectorized K's relative accuracy near t = 0: delta must be
+// recovered as p*(lambda - 1), whose relative error is eps*lambda/(lambda - 1)
+// however accurate lambda itself is.  Restoring N1's relative accuracy in a
+// vectorized kernel would need a vectorized `expm1`, which would have to live in
+// `simd_math.hpp` — validated shared infrastructure this stage may not modify.
+// The consequence is recorded rather than worked around: the production kernels
+// are relatively accurate in K to the level the vendored vector exp allows, and
+// `binom*KFullExact` is the entry point that is relatively accurate in K
+// unconditionally.
 //
 // ══════════════════════════════════════════════════════════════════════
 // Interface shape
@@ -111,17 +183,28 @@
 // SIMD
 // ══════════════════════════════════════════════════════════════════════
 //
-// Each of the three k12 reductions ships the mandated scalar + AVX2 + AVX-512
-// triple with a `simdLevel()` dispatch site, following
-// `src/spasqr/spasqr.cpp`.  The AVX-512 variants use a masked tail; the AVX2
-// variants a scalar tail.  Inactive AVX-512 tail lanes load r = 0, and both K'
-// and K'' carry a factor r, so masked lanes contribute exactly zero.
+// Each of the three k12 reductions, and each of the three K reductions, ships
+// the mandated scalar + AVX2 + AVX-512 triple with a `simdLevel()` dispatch
+// site, following `src/spasqr/spasqr.cpp`.  The AVX-512 variants use a masked
+// tail; the AVX2 variants a scalar tail.
 //
-// The kFull reductions dispatch their (K', K'') half through the same three-tier
-// k12 kernels and accumulate K in a scalar pass.  K cannot be vectorized without
-// a vectorized expm1/log1p, which this stage is forbidden to add and, per N1,
-// does not need: kFull runs twice per marker rather than twice per Newton
-// iteration, so its scalar half is not on the hot path.
+// Masked lanes contribute exactly zero in both halves, but for different
+// reasons, and both are load-bearing:
+//
+//   * k12 — inactive lanes load r = 0, and both K' and K'' carry a factor r.
+//   * K   — inactive lanes load r = 0 and, where they are vectors, af = 0 and
+//           hap = 0.  With r = 0 the argument is t*r = 0, alpha = u + p = 1
+//           EXACTLY for every double p in (0, 1) (the rounding error of
+//           fl(1 - p) is at most 2^-54, and 1 + eta rounds to 1.0 for
+//           |eta| <= 2^-54), and log(1) = 0 exactly in all three tiers.  For
+//           binomHapcount the factor hap = 0 zeroes the lane a second time.
+//
+// The kFull reductions dispatch their (K', K'') half through the same k12
+// kernels rather than recomputing them, so kFull's K' and K'' are bit-identical
+// to k12's at the same abscissa.  That identity is asserted by
+// tests/spa_cgf_test.cpp and matters to the solver: the terminal K'' is the one
+// the tail kernel divides by, and it must be the same number the Newton loop
+// converged against.
 
 #pragma once
 
@@ -268,6 +351,53 @@ inline double logAlpha(double x, double p) noexcept {
 }
 
 // ══════════════════════════════════════════════════════════════════════
+// log(alpha), the vectorizable spelling — the production path
+// ══════════════════════════════════════════════════════════════════════
+//
+// Returns log(alpha) = log((1-p) + p·e^x) formed the way the SIMD tiers form it,
+// so the scalar tier differs from them only by the vendored vector exp and log
+// and not by the algebra.  See the terminal-K section at the top of this header
+// for the measurement that justifies preferring this to `logAlpha`, and
+// `binom*KFullExact` for the entry point that keeps `logAlpha`.
+//
+// Three properties are relied on and are not obvious:
+//
+//   1. THE CLAMP IS UNDONE FOR K.  `alpha` is built from the clamped argument,
+//      because that is what k12 does and what keeps every intermediate normal.
+//      Past the clamp the derivatives saturate deliberately (see kTrClamp) but K
+//      does not: log(u + p·e^x) -> x + log(p) as x -> +inf, i.e. K keeps growing
+//      linearly.  Adding back `x - clamp(x)` recovers that exactly:
+//      log(alpha_clamped) + (x - 708) = 708 + log(p + u·e^-708) + x - 708, which
+//      differs from the true x + log(p + u·e^-x) by under 1e-307.
+//
+//   2. THE CORRECTION IS DIRECTIONAL, AND VANISHES AT p == 0.  For x < -708 with
+//      u > 0 the true value is log(u + p·e^x) -> log(u), which
+//      log(alpha_clamped) already gives to full precision since
+//      p·e^-708 <= 3.3e-308 is negligible beside u >= 2^-53.  Adding the deficit
+//      there would be wrong.  When u == 0 exactly (p == 1) the true value is x
+//      itself, and then the deficit is exactly what recovers it.  And at p == 0
+//      alpha is identically 1 and log(alpha) is identically 0, so NO correction
+//      applies however large x is.  Hence: the full excess when u == 0, its
+//      positive part when 0 < p < 1, and nothing at all when p == 0.
+//
+//   3. alpha IS NEVER ZERO AND NEVER SUBNORMAL.  alpha = u + p·e^{clamp(x)} with
+//      u >= 0 and, for p > 0, p·e^{clamp(x)} >= p·3.3e-308.  u == 0 forces p == 1
+//      (for any double p < 1, Sterbenz gives 1 - p >= 2^-53), and then
+//      alpha = e^{clamp(x)} >= 3.3e-308, which is normal.  This matters because
+//      `avx512_log_pd` decomposes its argument by masking the exponent field and
+//      would return a wrong answer, not an infinity, on a subnormal.
+inline double logAlphaFast(double x, double p) noexcept {
+    const double u  = 1.0 - p;
+    const double xc = clampTr(x);
+    const double a  = u + p * std::exp(xc);
+    const double excess = x - xc;              // 0 strictly inside the clamp
+    double add = 0.0;                          // see property 2 above
+    if (u == 0.0)                    add = excess;
+    else if (p > 0.0 && excess > 0.0) add = excess;
+    return std::log(a) + add;
+}
+
+// ══════════════════════════════════════════════════════════════════════
 // Per-subject scalar cores
 // ══════════════════════════════════════════════════════════════════════
 //
@@ -349,6 +479,27 @@ Cgf012 binomHapcountKFull(
     double t, const double *resid, const double *hap, int n, double q) noexcept;
 
 // ══════════════════════════════════════════════════════════════════════
+// The exact-relative-accuracy terminal entry points
+// ══════════════════════════════════════════════════════════════════════
+//
+// Identical to `binom*KFull` in K' and K'' — the same dispatched k12 kernels —
+// but accumulating K through `logAlpha`, i.e. N1's log1p(p*expm1(x)) spelling,
+// in a scalar loop.  Relatively accurate in K unconditionally, and about six
+// times slower.
+//
+// Production uses `binom*KFull`.  These exist because the relative-accuracy
+// property is worth keeping proved and reachable: `tests/spa_cgf_test.cpp` pins
+// N1 on them, and any future consumer that needs K itself rather than
+// zeta*s - K (a moment-generating-function evaluation, say, or a diagnostic that
+// reports K directly) has an entry point that delivers it.
+Cgf012 binomUniformKFullExact(
+    double t, const double *resid, int n, double p) noexcept;
+Cgf012 binomIndivKFullExact(
+    double t, const double *resid, const double *af, int n) noexcept;
+Cgf012 binomHapcountKFullExact(
+    double t, const double *resid, const double *hap, int n, double q) noexcept;
+
+// ══════════════════════════════════════════════════════════════════════
 // Tier-specific variants — exposed for cross-tier equality testing
 // ══════════════════════════════════════════════════════════════════════
 //
@@ -375,6 +526,32 @@ Cgf12 binomIndivK12_avx512(
 Cgf12 binomHapcountK12_avx2(
     double t, const double *resid, const double *hap, int n, double q) noexcept;
 Cgf12 binomHapcountK12_avx512(
+    double t, const double *resid, const double *hap, int n, double q) noexcept;
+#endif
+
+// The K half of kFull, as a bare reduction.  binomUniform and binomIndiv return
+// sum_i log(alpha_i) with the common factor h == 2 left to the caller, which is
+// bit-identical to folding it in because multiplication by two is exact;
+// binomHapcount returns sum_i hap_i * log(alpha_i), h varying per subject.
+//
+// Preconditions match the k12 kernels: binomUniform and binomHapcount require
+// 0 < p < 1, their endpoints being resolved by the public entry point.
+double binomUniformK0_scalar(double t, const double *resid, int n, double p) noexcept;
+double binomIndivK0_scalar(
+    double t, const double *resid, const double *af, int n) noexcept;
+double binomHapcountK0_scalar(
+    double t, const double *resid, const double *hap, int n, double q) noexcept;
+
+#if defined(__x86_64__) || defined(_M_X64)
+double binomUniformK0_avx2(double t, const double *resid, int n, double p) noexcept;
+double binomUniformK0_avx512(double t, const double *resid, int n, double p) noexcept;
+double binomIndivK0_avx2(
+    double t, const double *resid, const double *af, int n) noexcept;
+double binomIndivK0_avx512(
+    double t, const double *resid, const double *af, int n) noexcept;
+double binomHapcountK0_avx2(
+    double t, const double *resid, const double *hap, int n, double q) noexcept;
+double binomHapcountK0_avx512(
     double t, const double *resid, const double *hap, int n, double q) noexcept;
 #endif
 

@@ -47,6 +47,7 @@
 //      used to reach `std::log` with a non-positive argument silently; it must
 //      now produce a non-finite K, which spa::bnTail reports as NONFINITE.
 
+#include <cfloat>
 #include <cmath>
 #include <cstdio>
 #include <random>
@@ -296,13 +297,34 @@ TEST(class1_is_the_shared_binomial_cgf) {
     f.outlier = {0.8, -1.2, 0.35, 2.1, -0.05};
     const double MAF = 0.17;
     Context c = f.ctx(MAF);
+
+    // K carries an ABSOLUTE tolerance as well as a relative one, and needs it.
+    //
+    // Class 1 forwards to spa_cgf::binomUniformKFull, whose K is
+    // sum_i 2*log(u + MAF*e^{t*r_i}) evaluated with a vectorized logarithm rather
+    // than sum_i 2*log1p(MAF*expm1(t*r_i)).  Forming alpha = 1 + delta costs an
+    // absolute eps per subject whatever delta is, so the reduction carries an
+    // absolute error of order n*h*eps = 5*2*eps = 2.2e-15 — regardless of how
+    // small |K| happens to be.  At t = -0.02 the five log(alpha_i) have mixed
+    // signs and |K| falls to 0.0132, so that absolute error is 4.6e-14 in
+    // relative terms and no purely relative criterion at the rounding level is
+    // satisfiable.
+    //
+    // The absolute floor below is 8 * n * h * eps = 1.8e-14, thirty times the
+    // worst observed 6.0e-16.  K is consumed only through
+    // w = sgn(zeta)*sqrt(2*(zeta*s - K)) where zeta*s - K is of order 2 or more,
+    // so an absolute 6e-16 in K is an absolute 3e-16 in w; see
+    // src/util/spa_cgf.hpp's terminal-K section and
+    // tests/spa_cgf_test.cpp's `production_K_absolute_error_does_not_degrade_w`.
+    const double kK0Abs = 8.0 * 5.0 * 2.0 * DBL_EPSILON;
+
     for (double t : {-4.0, -0.02, 0.02, 1.5, 6.0}) {
         const Ref r = refClass1(t, f.outlier, MAF);
         const spa::K12 d = spagrm_cgf::k12(t, c, 0.0);
         const spa::K012 F = spagrm_cgf::kFull(t, c, 0.0);
         CHECK_REL(d.k1, static_cast<double>(r.K1), 1e-14);
         CHECK_REL(d.k2, static_cast<double>(r.K2), 1e-14);
-        CHECK_REL(F.k0, static_cast<double>(r.K0), 1e-14);
+        CHECK_CLOSE(F.k0, static_cast<double>(r.K0), 1e-14, kK0Abs);
     }
 }
 

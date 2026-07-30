@@ -28,10 +28,21 @@
 // the recorded "before" numbers and must keep measuring the same thing.
 //
 // PART II times the REAL kernels in src/util/spa_cgf.{hpp,cpp}: three variants
-// x two entry points x every SIMD tier the host supports.  These are whole-array
+// x four entry points x every SIMD tier the host supports.  These are whole-array
 // reductions behind a non-inlinable function boundary, which is how the future
 // consumers will call them, so the comparison against PART I is conservative
 // rather than flattering: PART I's lambda is fully inlined into its loop.
+//
+// The four entry points:
+//
+//   k12     the Newton-loop payload, {K'-s, K''}.
+//   K0      the terminal K alone, per tier.  Stage 4 vectorized it; the Stage 2
+//           version was a scalar expm1/log1p pass.
+//   kFull   the dispatched terminal evaluation, {K, K'-s, K''}: one k12 call plus
+//           one K0 call.
+//   kFullX  `binom*KFullExact`, which keeps Stage 2's scalar log1p(p*expm1(x))
+//           spelling.  This is the row the vectorized K is measured against, and
+//           the row that shows what the terminal evaluation used to cost.
 //
 // The stated Stage 2 target is >= 2x on the k12 payload relative to the Stage 0
 // scalar production K,K',K'' figure, which is the row PART II's "vs prod"
@@ -250,9 +261,30 @@ int main(int argc, char **argv) {
                 timeReduction(N, repeats, [&](double t) {
                     return spa_cgf::tier::binomUniformK12_avx512(t, R, N, maf).K2; })});
 #endif
+        // kFull's K half, per tier.  Stage 4 vectorized it; before that it was a
+        // scalar expm1/log1p pass costing 12x the whole k12 kernel, which made
+        // the two terminal evaluations per marker the larger half of all CGF
+        // time.  `kFullExact` keeps the scalar log1p/expm1 spelling and is the
+        // row the vectorized ones are measured against.
+        rows2.push_back({"binomUniform", "K0", "scalar",
+            timeReduction(N, repeats, [&](double t) {
+                return spa_cgf::tier::binomUniformK0_scalar(t, R, N, maf); })});
+#if defined(__x86_64__) || defined(_M_X64)
+        if (level >= 1)
+            rows2.push_back({"binomUniform", "K0", "avx2",
+                timeReduction(N, repeats, [&](double t) {
+                    return spa_cgf::tier::binomUniformK0_avx2(t, R, N, maf); })});
+        if (level >= 2)
+            rows2.push_back({"binomUniform", "K0", "avx512",
+                timeReduction(N, repeats, [&](double t) {
+                    return spa_cgf::tier::binomUniformK0_avx512(t, R, N, maf); })});
+#endif
         rows2.push_back({"binomUniform", "kFull", "dispatch",
             timeReduction(N, repeats, [&](double t) {
                 return spa_cgf::binomUniformKFull(t, R, N, maf).K0; })});
+        rows2.push_back({"binomUniform", "kFullX", "scalar",
+            timeReduction(N, repeats, [&](double t) {
+                return spa_cgf::binomUniformKFullExact(t, R, N, maf).K0; })});
 
         // ── binomIndiv (af per subject; maf unused) ──
         rows2.push_back({"binomIndiv", "k12", "scalar",
@@ -268,9 +300,25 @@ int main(int argc, char **argv) {
                 timeReduction(N, repeats, [&](double t) {
                     return spa_cgf::tier::binomIndivK12_avx512(t, R, A, N).K2; })});
 #endif
+        rows2.push_back({"binomIndiv", "K0", "scalar",
+            timeReduction(N, repeats, [&](double t) {
+                return spa_cgf::tier::binomIndivK0_scalar(t, R, A, N); })});
+#if defined(__x86_64__) || defined(_M_X64)
+        if (level >= 1)
+            rows2.push_back({"binomIndiv", "K0", "avx2",
+                timeReduction(N, repeats, [&](double t) {
+                    return spa_cgf::tier::binomIndivK0_avx2(t, R, A, N); })});
+        if (level >= 2)
+            rows2.push_back({"binomIndiv", "K0", "avx512",
+                timeReduction(N, repeats, [&](double t) {
+                    return spa_cgf::tier::binomIndivK0_avx512(t, R, A, N); })});
+#endif
         rows2.push_back({"binomIndiv", "kFull", "dispatch",
             timeReduction(N, repeats, [&](double t) {
                 return spa_cgf::binomIndivKFull(t, R, A, N).K0; })});
+        rows2.push_back({"binomIndiv", "kFullX", "scalar",
+            timeReduction(N, repeats, [&](double t) {
+                return spa_cgf::binomIndivKFullExact(t, R, A, N).K0; })});
 
         // ── binomHapcount ──
         rows2.push_back({"binomHapcount", "k12", "scalar",
@@ -286,12 +334,28 @@ int main(int argc, char **argv) {
                 timeReduction(N, repeats, [&](double t) {
                     return spa_cgf::tier::binomHapcountK12_avx512(t, R, H, N, maf).K2; })});
 #endif
+        rows2.push_back({"binomHapcount", "K0", "scalar",
+            timeReduction(N, repeats, [&](double t) {
+                return spa_cgf::tier::binomHapcountK0_scalar(t, R, H, N, maf); })});
+#if defined(__x86_64__) || defined(_M_X64)
+        if (level >= 1)
+            rows2.push_back({"binomHapcount", "K0", "avx2",
+                timeReduction(N, repeats, [&](double t) {
+                    return spa_cgf::tier::binomHapcountK0_avx2(t, R, H, N, maf); })});
+        if (level >= 2)
+            rows2.push_back({"binomHapcount", "K0", "avx512",
+                timeReduction(N, repeats, [&](double t) {
+                    return spa_cgf::tier::binomHapcountK0_avx512(t, R, H, N, maf); })});
+#endif
         rows2.push_back({"binomHapcount", "kFull", "dispatch",
             timeReduction(N, repeats, [&](double t) {
                 return spa_cgf::binomHapcountKFull(t, R, H, N, maf).K0; })});
+        rows2.push_back({"binomHapcount", "kFullX", "scalar",
+            timeReduction(N, repeats, [&](double t) {
+                return spa_cgf::binomHapcountKFullExact(t, R, H, N, maf).K0; })});
 
         // Emit this MAF's block, then move on.
-        std::printf("\nPART II — real kernels (Stage 2), whole-array reductions, "
+        std::printf("\nPART II — real kernels, whole-array reductions, "
                     "MAF/q %.2f\n", maf);
         std::printf("  denominator: PART I production K,K',K'' = %.3f ns/subject\n\n",
                     prod);
