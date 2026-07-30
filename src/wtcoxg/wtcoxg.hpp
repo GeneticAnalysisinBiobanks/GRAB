@@ -159,7 +159,7 @@ class WtCoxGMethod : public MethodBase {
 //     1 MAXITER            4 GUARD_W          saddlepoint never attempted)
 //     2 GUARD_TEMP         5 NONFINITE
 //
-// P and LOG10P are NA for every status other than 0 and 6.  NONFINITE covers
+// P and LOG10P are NA for every status other than 0, 4 and 6.  NONFINITE covers
 // both a saddlepoint that left the reals and a marker for which no test
 // exists at all (per-cluster MAC below 10, a non-positive score variance, an
 // unmatched batch-effect p-value): spa::Status has no "no test" enumerator,

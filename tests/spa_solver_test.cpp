@@ -50,6 +50,7 @@ const double kInf = std::numeric_limits<double>::infinity();
 const double kNaN = std::numeric_limits<double>::quiet_NaN();
 constexpr double kEps = std::numeric_limits<double>::epsilon();
 constexpr double kLn10 = 2.30258509299404568402;
+constexpr double kLn2  = 0.69314718055994530942;
 
 std::string statusStr(spa::Status s) { return std::string(spa::statusName(s)); }
 
@@ -573,8 +574,26 @@ TEST(status_names_and_classification) {
     CHECK(spa::statusIsFailure(spa::Status::MaxIter));
     CHECK(spa::statusIsFailure(spa::Status::GuardTemp));
     CHECK(spa::statusIsFailure(spa::Status::GuardCurv));
-    CHECK(spa::statusIsFailure(spa::Status::GuardW));
     CHECK(spa::statusIsFailure(spa::Status::NonFinite));
+
+    // GuardW is the one status that is a DEGRADED SUCCESS: below
+    // kWSingularity the r* correction is not computable, the tail is evaluated
+    // as Phi(+/-w), and P is a number rather than NA (spa_unify N3).
+    CHECK(!spa::statusIsFailure(spa::Status::GuardW));
+
+    // Every failure must outrank every success, so a tail that merely degraded
+    // can never mask a tail that failed.
+    for (spa::Status f : {spa::Status::MaxIter, spa::Status::GuardTemp,
+                          spa::Status::GuardCurv, spa::Status::NonFinite}) {
+        CHECK(spa::statusSeverity(f) > spa::statusSeverity(spa::Status::GuardW));
+        CHECK(spa::worseStatus(spa::Status::GuardW, f) == f);
+        CHECK(spa::worseStatus(f, spa::Status::GuardW) == f);
+    }
+    // ...but it outranks a plain success, so it is what gets reported.
+    CHECK(spa::worseStatus(spa::Status::Converged, spa::Status::GuardW) ==
+          spa::Status::GuardW);
+    CHECK(spa::worseStatus(spa::Status::NormalBranch, spa::Status::GuardW) ==
+          spa::Status::GuardW);
 }
 
 TEST(status_converged) {
@@ -733,32 +752,155 @@ TEST(status_guardtemp) {
 }
 
 TEST(status_guardw) {
-    // Stage 1's threshold is exactly zero, so GuardW fires on w == 0.  That
-    // happens two ways: temp == 0 exactly with zeta != 0, and zeta == 0.
-    //
-    // The first is spa_unify D6's surviving statement.  In SPAGRM and SPAsqr
-    // it was unguarded, giving v/w = +/-inf, r* = +/-inf and an emitted
-    // p-value of exactly 0.0 or 1.0 depending on the tail.
-    //
-    // STAGE 8 raises kWSingularity to ~1e-4 and returns Phi(+/-w) instead of
-    // NaN.  This assertion is the reminder that the constant moves.
-    CHECK(spa::kWSingularity == 0.0);
+    // The threshold is pinned here so that moving it is a deliberate act.  See
+    // the derivation at spa::kWSingularity: it sits above the abscissa at which
+    // the terminal K's absolute error makes r* catastrophic (2.8e-4 at
+    // n = 2e5, 4.7e-4 at n = 1e6) and a decade below the |w| ~ 1e-2 that the
+    // CLI-enforced minimum spaCutoff of 0.01 makes reachable.
+    CHECK(spa::kWSingularity == 1e-3);
 
+    // GuardW is a degraded SUCCESS: the tail is Phi(+/-w), not NaN.  w == 0
+    // happens two ways -- temp == 0 exactly with zeta != 0, which is
+    // spa_unify D6's surviving statement, and zeta == 0.  In SPAGRM and SPAsqr
+    // the first was unguarded, giving v/w = +/-inf, r* = +/-inf and an emitted
+    // p-value of exactly 0.0 or 1.0 depending on the tail.  Phi(0) = 0.5 in
+    // both tails is the right answer: the statistic sits at the mean.
     spa::Status st = spa::Status::Converged;
-    CHECK(std::isnan(spa::bnTail(2.0, 1.5, 3.0, 1.0, false, st)));  // 2*1.5-3 == 0
+    CHECK(spa::bnTail(2.0, 1.5, 3.0, 1.0, false, st) == 0.5);  // 2*1.5-3 == 0
     CHECK(st == spa::Status::GuardW);
 
     st = spa::Status::Converged;
-    CHECK(std::isnan(spa::bnTail(0.0, 1.0, 0.0, 1.0, false, st)));  // zeta == 0
+    CHECK(spa::bnTail(0.0, 1.0, 0.0, 1.0, false, st) == 0.5);   // zeta == 0
     CHECK(st == spa::Status::GuardW);
 
     st = spa::Status::Converged;
-    CHECK(std::isnan(spa::bnTail(-0.0, 1.0, 0.0, 1.0, true, st)));  // zeta == -0
+    CHECK(spa::bnTail(-0.0, 1.0, 0.0, 1.0, true, st) == 0.5);   // zeta == -0
     CHECK(st == spa::Status::GuardW);
 
     st = spa::Status::Converged;
-    CHECK(std::isnan(spa::bnTailLog(2.0, 1.5, 3.0, 1.0, true, st)));
+    CHECK_REL(spa::bnTailLog(2.0, 1.5, 3.0, 1.0, true, st), -kLn2, 1e-15);
     CHECK(st == spa::Status::GuardW);
+
+    // Two-sided, that is a p of exactly 1 with a status that says why.
+    spa::Status su = spa::Status::Converged, sl = spa::Status::Converged;
+    const double pu = spa::bnTail(0.0, 1.0, 0.0, 1.0, false, su);
+    const double pl = spa::bnTail(0.0, 1.0, 0.0, 1.0, true, sl);
+    const spa::TwoSided ts = spa::combineTails(pu, pl, su, sl);
+    CHECK(ts.status == spa::Status::GuardW);
+    CHECK(!spa::statusIsFailure(ts.status));
+    CHECK(ts.p == 1.0);
+    CHECK(ts.negLog10p == 0.0);
+
+    // Inside the band the returned probability is Phi(+/-w) — the same phiTail
+    // call serves both branches, so the only difference from an exact match is
+    // whether the compiler contracts `zeta*s - K0` into an FMA in one
+    // translation unit and not the other.
+    const double zeta = 0.5 * spa::kWSingularity;   // Gaussian CGF, sigma == 1
+    const double s = zeta, K0 = 0.5 * zeta * zeta, K2 = 1.0;
+    const double w = std::sqrt(2.0 * (zeta * s - K0));
+    CHECK(w < spa::kWSingularity);
+    for (bool lower : {false, true}) {
+        st = spa::Status::Converged;
+        CHECK_REL(spa::bnTail(zeta, s, K0, K2, lower, st),
+                  math::pnorm(w, 0.0, 1.0, lower), 1e-14);
+        CHECK(st == spa::Status::GuardW);
+    }
+
+    // Immediately outside it the modified root is formed again.
+    const double zOut = 2.0 * spa::kWSingularity;
+    st = spa::Status::MaxIter;
+    (void)spa::bnTail(zOut, zOut, 0.5 * zOut * zOut, 1.0, false, st);
+    CHECK(st == spa::Status::Converged);
+}
+
+// The property the guard exists for, stated as a sensitivity measurement.
+//
+// A guard applied to r* AFTER computing it would be useless: dr*/dK ~ 1/w^3,
+// so an absolute perturbation of K far below every budget the CGF kernels
+// defend is already an O(1) perturbation of r* at the threshold, and no
+// post-hoc inspection of the result can tell that apart from a real root.  The
+// only defence is not to form r* at all, and the observable consequence is that
+// inside the band the answer responds to dK like w does (dK/|w|) rather than
+// like r* does (dK/|w|^3).
+TEST(guardw_fires_before_r_star_is_formed) {
+    // Gaussian CGF with sigma == 1: s = zeta, K0 = zeta^2/2, K2 = 1, so
+    // w = zeta exactly and v/w = 1, i.e. the removable singularity itself.
+    const double K2 = 1.0;
+    const double dK = 1e-11;   // the terminal K's absolute error at n ~ 1e6
+
+    auto rStarTailAsWritten = [&](double zeta, double s, double k0, bool lower) {
+        const double w = spa::signOf(zeta) * std::sqrt(2.0 * (zeta * s - k0));
+        const double v = zeta * std::sqrt(K2);
+        return math::pnorm(w + std::log(v / w) / w, 0.0, 1.0, lower);
+    };
+
+    {   // Inside the band.
+        const double zeta = 0.5 * spa::kWSingularity;   // w = 5e-4
+        const double s = zeta, K0 = 0.5 * zeta * zeta;
+
+        spa::Status s0 = spa::Status::Converged, s1 = spa::Status::Converged;
+        const double p0 = spa::bnTail(zeta, s, K0, K2, false, s0);
+        const double p1 = spa::bnTail(zeta, s, K0 + dK, K2, false, s1);
+        CHECK(s0 == spa::Status::GuardW);
+        CHECK(s1 == spa::Status::GuardW);
+
+        // Through w alone: |dp| ~ phi(0)*dK/|w| = 0.4*1e-11/5e-4 = 8e-9.
+        const double moved = std::fabs(p1 - p0);
+        CHECK_MSG(moved < 1e-7, "guarded path moved " + std::to_string(moved));
+
+        // What r* would have done with the identical perturbation:
+        // dr* = dK/|w|^3 = 1e-11/1.25e-10 = 0.08, so |dp| ~ 0.03.
+        const double q0 = rStarTailAsWritten(zeta, s, K0, false);
+        const double q1 = rStarTailAsWritten(zeta, s, K0 + dK, false);
+        const double wouldMove = std::fabs(q1 - q0);
+        CHECK_MSG(wouldMove > 1e-3,
+                  "r* path moved only " + std::to_string(wouldMove));
+        // Five orders of magnitude between the two responses is the whole
+        // content of the guard.
+        CHECK(wouldMove > 1e4 * moved);
+    }
+
+    {   // Outside the band, where r* IS formed: the residual sensitivity is
+        // real but bounded, and this records how much of it survives.
+        const double zeta = 4.0 * spa::kWSingularity;   // w = 4e-3
+        const double s = zeta, K0 = 0.5 * zeta * zeta;
+        spa::Status s0 = spa::Status::MaxIter, s1 = spa::Status::MaxIter;
+        const double p0 = spa::bnTail(zeta, s, K0, K2, false, s0);
+        const double p1 = spa::bnTail(zeta, s, K0 + dK, K2, false, s1);
+        CHECK(s0 == spa::Status::Converged);
+        CHECK(s1 == spa::Status::Converged);
+        // dK/|w|^3 = 1e-11/6.4e-8 = 1.6e-4, so |dp| ~ 6e-5, and the two-sided
+        // p here is 1 to within 1e-2, hence |dlog10 P| ~ 3e-5.
+        CHECK(std::fabs(p1 - p0) < 1e-3);
+    }
+}
+
+// 01_findings.md N3 states that at small |w| "the dropped term is O(zeta)".
+// It is not: expanding about the mean gives r* -> w + rho3/6 with
+// rho3 = K'''(0)/K''(0)^(3/2), a non-zero constant.  Poisson(lambda) has
+// rho3 = 1/sqrt(lambda) and is the cleanest witness.  The distinction matters
+// because it is what bounds the cost of the Phi(+/-w) degradation: O(rho3),
+// not O(zeta), and therefore not something that vanishes at the threshold.
+TEST(dropped_correction_tends_to_the_skewness_constant_not_to_zero) {
+    for (double lambda : {0.5, 1.0, 4.0, 100.0}) {
+        const double want = 1.0 / (6.0 * std::sqrt(lambda));
+        double last = 0.0;
+        for (double zeta : {1e-2, 1e-3, 1e-4}) {
+            // Poisson CGF: K = lambda*(e^t - 1), K' = K'' = lambda*e^t.
+            const double s = lambda * std::exp(zeta);
+            const double K0 = lambda * std::expm1(zeta);
+            const double K2 = s;
+            const double w = std::sqrt(2.0 * (zeta * s - K0));
+            const double v = zeta * std::sqrt(K2);
+            last = std::log(v / w) / w;
+        }
+        // Converged to rho3/6 rather than to zero.  The residual at
+        // zeta = 1e-4 is O(zeta) and measures 0.5% of the limit.
+        CHECK_MSG(std::fabs(last - want) < 0.02 * want,
+                  "lambda=" + std::to_string(lambda) + " limit=" +
+                      std::to_string(last) + " want=" + std::to_string(want));
+        CHECK(std::fabs(last) > 0.5 * want);   // emphatically not O(zeta)
+    }
 }
 
 TEST(status_nonfinite_from_tail) {
@@ -1275,11 +1417,13 @@ TEST(bntail_matches_the_production_kernel_on_random_inputs) {
         if (temp1 <= 0.0) continue;
         const double w = ((zeta >= 0) ? 1.0 : -1.0) * std::sqrt(2.0 * temp1);
         const double v = zeta * std::sqrt(K2);
-        if (w == 0.0 || v == 0.0 || (v / w) <= 0.0) continue;
+        // Skip the band in which bnTail deliberately does NOT form r*.
+        if (std::fabs(w) <= spa::kWSingularity || v == 0.0 || (v / w) <= 0.0)
+            continue;
 
         for (bool lower : {false, true}) {
             const double want = math::pnorm(w + (1.0 / w) * std::log(v / w), 0.0,
-                                            1.0, lower, false);
+                                            1.0, lower);
             spa::Status st = spa::Status::MaxIter;
             const double got = spa::bnTail(zeta, s, K0, K2, lower, st);
             CHECK(st == spa::Status::Converged);
@@ -1321,9 +1465,12 @@ TEST(combine_tails_never_reports_half_a_p_value) {
     // converged and produced NaN only when both failed, so a marker with one
     // good tail was reported at approximately half its correct p-value, with
     // no diagnostic.
+    // GuardW is deliberately absent: it is a degraded success that always
+    // returns a probability, so the (GuardW, NaN) pair below is not a state
+    // bnTail can produce.  Its own behaviour is asserted after the loop.
     const spa::Status failures[] = {
         spa::Status::MaxIter, spa::Status::GuardTemp, spa::Status::GuardCurv,
-        spa::Status::GuardW,  spa::Status::NonFinite,
+        spa::Status::NonFinite,
     };
     for (spa::Status f : failures) {
         const spa::TwoSided a =
@@ -1342,6 +1489,20 @@ TEST(combine_tails_never_reports_half_a_p_value) {
         CHECK(std::isnan(c.p));
         CHECK(c.status == f);
     }
+
+    // One degraded tail and one ordinary tail: a real p, and a status that
+    // says the modified root was dropped on one side.
+    const spa::TwoSided g = spa::combineTails(
+        1e-8, 0.5, spa::Status::Converged, spa::Status::GuardW);
+    CHECK(g.status == spa::Status::GuardW);
+    CHECK(!spa::statusIsFailure(g.status));
+    CHECK_REL(g.p, 0.50000001, 1e-15);
+
+    // ...but a genuine failure on the other side still wins.
+    const spa::TwoSided h = spa::combineTails(
+        kNaN, 0.5, spa::Status::MaxIter, spa::Status::GuardW);
+    CHECK(std::isnan(h.p));
+    CHECK(h.status == spa::Status::MaxIter);
 }
 
 TEST(combine_tails_never_turns_nan_into_one) {
@@ -1419,6 +1580,156 @@ TEST(combine_tails_log_is_log_sum_exp) {
     CHECK(over.p == 1.0);
     CHECK(over.negLog10p == 0.0);
     CHECK(!std::signbit(over.negLog10p));
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// § 7b  math::pnormLog and the log domain end to end  (spa_unify N2)
+// ══════════════════════════════════════════════════════════════════════
+
+// Property 1 of the Stage 8 gate: pnormLog matches log(pnorm) to 1e-13
+// wherever the latter is representable, in both tails and with a non-unit
+// scale.  Above the -37 asymptote the two are the same computation, so what
+// this really pins is that the standardization, the tail selection and the
+// branch point are all right; below it, the next test takes over.
+TEST(pnormlog_matches_log_pnorm_where_pnorm_is_representable) {
+    int nChecked = 0;
+    for (double x = -37.0; x <= 8.0; x += 0.03125) {
+        for (bool lower : {true, false}) {
+            const double p = math::pnorm(x, 0.0, 1.0, lower);
+            if (!(p > 0.0) || !std::isfinite(std::log(p))) continue;
+            const double lp = math::pnormLog(x, 0.0, 1.0, lower);
+            CHECK_MSG(std::fabs(lp - std::log(p)) <=
+                          1e-13 * std::fmax(1.0, std::fabs(std::log(p))),
+                      "x=" + std::to_string(x) + " lower=" +
+                          std::to_string(lower) + " lp=" + std::to_string(lp));
+            ++nChecked;
+        }
+    }
+    CHECK(nChecked > 2000);
+
+    // Non-unit mean and scale, which is how WtCoxG calls it.
+    for (double sd : {0.03, 1.0, 17.0}) {
+        for (double mu : {-2.0, 0.0, 5.0}) {
+            for (double x : {-4.0, -0.5, 0.0, 1.25, 6.0}) {
+                const double xs = mu + sd * x;
+                for (bool lower : {true, false}) {
+                    const double p = math::pnorm(xs, mu, sd, lower);
+                    const double lp = math::pnormLog(xs, mu, sd, lower);
+                    CHECK_NEAR(lp, std::log(p),
+                               1e-13 * std::fmax(1.0, std::fabs(std::log(p))));
+                }
+            }
+        }
+    }
+
+    // Edges.  An infinite abscissa in the vanishing tail is -inf, not the
+    // log(0 + 1e-300) = -690.8 that the removed `log_p` flag substituted:
+    // a manufactured floor is exactly what decision L3 forbids.
+    const double inf = std::numeric_limits<double>::infinity();
+    CHECK(math::pnormLog(-inf, 0.0, 1.0, true) == -inf);
+    CHECK(math::pnormLog(inf, 0.0, 1.0, false) == -inf);
+    CHECK(math::pnormLog(inf, 0.0, 1.0, true) == 0.0);
+    CHECK(math::pnormLog(-inf, 0.0, 1.0, false) == 0.0);
+    CHECK(std::isnan(math::pnormLog(kNaN)));
+}
+
+// The half of pnormLog that has no linear-scale counterpart, checked against
+// the expansion evaluated in long double.  The sweep straddles -37 so the two
+// branches are pinned against one reference and the join is therefore pinned
+// too, and it continues to -700 where Phi is 1e-106000 and no double could
+// hold it.
+TEST(pnormlog_is_accurate_far_past_the_linear_underflow) {
+    for (double x = -30.0; x >= -700.0; x -= 0.5) {
+        const long double t = static_cast<long double>(x);
+        const long double y = 1.0L / (t * t);
+        const long double series =
+            y * (-1.0L + y * (3.0L + y * (-15.0L + y * (105.0L +
+                 y * (-945.0L + y * 10395.0L)))));
+        const long double ref = -0.5L * t * t - std::log(-t) -
+                                0.9189385332046727417803297364056L +
+                                std::log1p(series);
+        const double lp = math::pnormLog(x, 0.0, 1.0, true);
+        CHECK_MSG(std::isfinite(lp), "non-finite at x=" + std::to_string(x));
+        CHECK_MSG(std::fabs(lp - static_cast<double>(ref)) <=
+                      1e-13 * std::fabs(static_cast<double>(ref)),
+                  "x=" + std::to_string(x) + " lp=" + std::to_string(lp));
+        // The upper tail is the mirror image, exactly.
+        CHECK(math::pnormLog(-x, 0.0, 1.0, false) == lp);
+    }
+    // Where the linear scale has nothing left at all.
+    CHECK(math::pnorm(-40.0, 0.0, 1.0, true) == 0.0);
+    CHECK(std::isfinite(math::pnormLog(-40.0, 0.0, 1.0, true)));
+}
+
+// Property 2 of the gate, stated on the output surface rather than on bnTail:
+// a two-sided p of 1e-400 survives into the LOG10P column, and P reports the
+// honest 0 rather than a fabricated floor.
+TEST(a_p_of_1e_minus_400_is_recovered_in_log10p) {
+    // Two-sided, so each tail carries p/2.
+    const double logHalfTarget = -400.0 * kLn10 - kLn2;
+    double blo = 1.0, bhi = 200.0;
+    for (int i = 0; i < 200; ++i) {
+        const double mid = 0.5 * (blo + bhi);
+        if (math::pnormLog(-mid, 0.0, 1.0, true) > logHalfTarget) blo = mid;
+        else bhi = mid;
+    }
+    const double w = 0.5 * (blo + bhi);
+    const double lTail = math::pnormLog(-w, 0.0, 1.0, true);
+
+    const spa::TwoSided lg = spa::combineTailsLog(
+        lTail, lTail, spa::Status::Converged, spa::Status::Converged);
+    CHECK(lg.status == spa::Status::Converged);
+    CHECK_CLOSE(lg.negLog10p, 400.0, 1e-12, 0.0);
+    CHECK(lg.p == 0.0);           // honest zero, not DBL_MIN
+
+    // The linear assembly of the same two tails has nothing left: both tails
+    // underflowed, so it reports p = 0 with negLog10p = +inf.  That is the
+    // defect L3 exists to route around, and the reason LOG10P is a column.
+    const spa::TwoSided lin = spa::combineTails(
+        std::exp(lTail), std::exp(lTail), spa::Status::Converged,
+        spa::Status::Converged);
+    CHECK(lin.p == 0.0);
+    CHECK(std::isinf(lin.negLog10p));
+
+    // log-sum-exp, not a naive sum of exponentials: the two tails are equal,
+    // so their combination must be exactly one ln 2 above either of them.
+    CHECK_NEAR(lg.negLog10p * -kLn10, lTail + kLn2, 1e-11);
+}
+
+// Property 3 of the gate: LOG10P and -log10(P) agree to 1e-9 wherever
+// P > 1e-300.  This is checked at FULL double precision here because it cannot
+// be checked end to end on the fixture -- LOG10P is printed to six significant
+// figures, so a file-level comparison resolves no better than ~1e-6 relative.
+TEST(log10p_agrees_with_minus_log10_p_at_full_precision) {
+    double worst = 0.0, worstAt = 0.0;
+    int nChecked = 0;
+    for (double w = 0.05; w <= 26.0; w += 0.005) {
+        // Two independent tails, deliberately unequal so the assembly is a
+        // genuine sum rather than a doubling.
+        const double lu = math::pnormLog(-w, 0.0, 1.0, true);
+        const double ll = math::pnormLog(-1.37 * w - 0.2, 0.0, 1.0, true);
+        const double pu = math::pnorm(-w, 0.0, 1.0, true);
+        const double pl = math::pnorm(-1.37 * w - 0.2, 0.0, 1.0, true);
+
+        const spa::TwoSided lin = spa::combineTails(
+            pu, pl, spa::Status::Converged, spa::Status::Converged);
+        const spa::TwoSided lg = spa::combineTailsLog(
+            lu, ll, spa::Status::Converged, spa::Status::Converged);
+        if (!(lin.p > 1e-300)) continue;
+
+        const double d = std::fabs(lg.negLog10p - lin.negLog10p) /
+                         std::fmax(1.0, lin.negLog10p);
+        if (d > worst) { worst = d; worstAt = w; }
+        CHECK_MSG(d <= 1e-9, "w=" + std::to_string(w) + " rel diff " +
+                                 std::to_string(d));
+        // The two assemblies must also agree on p itself while it is
+        // representable.
+        CHECK_REL(lg.p, lin.p, 1e-12);
+        ++nChecked;
+    }
+    CHECK(nChecked > 5000);
+    CHECK_MSG(worst < 1e-9, "worst " + std::to_string(worst) + " at w=" +
+                                std::to_string(worstAt));
 }
 
 TEST(status_severity_ordering_is_total_and_deterministic) {

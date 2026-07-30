@@ -1238,7 +1238,7 @@ static void runUnifiedGWAS(
     // numeric spa::Status — 0 OK, 1 MAXITER, 2 GUARD_TEMP, 3 GUARD_CURV,
     // 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|z| within --spa-z-threshold, so the
     // saddlepoint was never attempted).  P and LOG10P are NA for every status
-    // other than 0 and 6, and every column of an ancestry that fails the
+    // other than 0, 4 and 6, and every column of an ancestry that fails the
     // MISS_RATE / MAF / MAC filters is NA.
     std::string header = "CHROM\tPOS\tID\tREF\tALT";
     for (int k = 0; k < K; ++k) {

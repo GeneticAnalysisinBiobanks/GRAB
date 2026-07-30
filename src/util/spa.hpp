@@ -76,7 +76,12 @@ enum class Status : uint8_t {
     MaxIter,         // iteration or bracket-expansion budget exhausted
     GuardTemp,       // zeta*s - K(zeta) < 0, so w is not real
     GuardCurv,       // K''(zeta) <= 0, so v is not real
-    GuardW,          // |w| at or below the removable-singularity threshold
+    GuardW,          // |w| at or below the removable-singularity threshold:
+                     //   a DEGRADED SUCCESS, not a failure.  The tail was
+                     //   evaluated as Phi(+/-w) because the r* correction is
+                     //   not computable there (see kWSingularity); P is a
+                     //   number, and the status says the correction was
+                     //   dropped.
     NonFinite,       // zeta, a cumulant, or r* left the reals
     NormalBranch,    // |z| <= spaCutoff; the saddlepoint was never attempted
 };
@@ -96,20 +101,30 @@ inline const char *statusName(Status s) noexcept {
 }
 
 // True when the status means "no usable probability was produced", i.e. the
-// method must report NA.  Converged and NormalBranch are the two successes.
+// method must report NA.
+//
+// Three statuses are successes.  Converged and NormalBranch are the plain ones.
+// GuardW is the third and is a DEGRADED success: below kWSingularity the
+// modified root's correction term is not computable, so the tail is evaluated
+// as Phi(+/-w) — the correct limit — and the status records that the correction
+// was dropped rather than that the marker failed.  Reporting NA there would
+// throw away a p-value that is accurate to O(rho3) in a region where p is one.
 inline bool statusIsFailure(Status s) noexcept {
-    return s != Status::Converged && s != Status::NormalBranch;
+    return s != Status::Converged && s != Status::NormalBranch &&
+           s != Status::GuardW;
 }
 
-// Ranking used when two tails disagree.  A specific guard outranks a bare
-// non-convergence because it names the quantity that went wrong; NonFinite
+// Ranking used when two tails disagree.  Every failure outranks every success,
+// so a tail that degraded to Phi(+/-w) can never mask a tail that failed
+// outright; within the failures a specific guard outranks a bare
+// non-convergence because it names the quantity that went wrong, and NonFinite
 // outranks everything because it is the least diagnosable.
 inline int statusSeverity(Status s) noexcept {
     switch (s) {
         case Status::Converged:    return 0;
         case Status::NormalBranch: return 0;
-        case Status::MaxIter:      return 1;
-        case Status::GuardW:       return 2;
+        case Status::GuardW:       return 1;   // success, but a degraded one
+        case Status::MaxIter:      return 2;
         case Status::GuardTemp:    return 3;
         case Status::GuardCurv:    return 4;
         case Status::NonFinite:    return 5;
@@ -146,51 +161,20 @@ namespace detail {
 
 constexpr double kLn10      = 2.30258509299404568402;
 constexpr double kLn2       = 0.69314718055994530942;
-constexpr double kLogSqrt2Pi = 0.91893853320467274178;  // log(sqrt(2*pi))
-
-// Below this abscissa the linear-scale normal CDF has lost all relative
-// accuracy (Phi(-38) is denormal, Phi(-38.5) flushes to zero), so log Phi is
-// taken from the asymptotic expansion instead.  -37 leaves Phi(-37) ~ 5.7e-300
-// comfortably normal, so the two branches overlap in a regime where both are
-// accurate.
-constexpr double kLogPhiAsymptote = -37.0;
 
 inline double quietNaN() noexcept {
     return std::numeric_limits<double>::quiet_NaN();
 }
 
-// log Phi(x).
+// log Phi(x), in the log domain throughout.
 //
-// For x > kLogPhiAsymptote this is log(Phi(x)) evaluated through math::pnorm,
-// which is accurate because Phi(x) is a normal double there and its relative
-// error of a few ULP becomes an absolute error of a few ULP in the logarithm.
-//
-// For x <= kLogPhiAsymptote the linear scale has underflowed, and the Mills
-// ratio asymptotic expansion is used instead:
-//
-//     Phi(x) = phi(x)/(-x) * (1 - 1/x^2 + 3/x^4 - 15/x^6 + 105/x^8 - ...)
-//     log Phi(x) = -x^2/2 - log(-x) - log(sqrt(2*pi))
-//                  + log1p(-1/x^2 + 3/x^4 - 15/x^6 + ...)
-//
-// At |x| = 37 the six retained terms leave a truncation error of order 1e-15
-// in the log1p argument, hence 1e-15 absolute in a logarithm whose magnitude
-// is ~690 — a relative accuracy of 1e-18.  The series is asymptotic, not
-// convergent, which is exactly why it is used only far out in the tail.
-//
-// STAGE 8 (spa_unify N2).  This helper is the local stand-in for
-// math::pnormLog.  When that lands in util/math_helper.hpp — where WtCoxG's
-// two existing log_p=true consumers also need it — this body becomes a
-// forward to it and the expansion is deleted from here.
+// Stage 1 carried the Mills-ratio asymptotic expansion here because it could
+// not meet its own gate without one and `math::pnorm`'s `log_p` flag was not a
+// log-domain path (spa_unify N2).  Stage 8 moved that implementation to
+// `math::pnormLog`, where WtCoxG's existing log-tail consumers also need it,
+// and this is now a forward.  There is exactly one expansion in the tree.
 inline double logPhi(double x) noexcept {
-    if (std::isnan(x)) return quietNaN();
-    if (x > kLogPhiAsymptote)
-        return math::pnorm(x, 0.0, 1.0, /*lower_tail=*/true, /*log_p=*/true);
-    if (x == -std::numeric_limits<double>::infinity())
-        return -std::numeric_limits<double>::infinity();
-    const double y = 1.0 / (x * x);
-    const double series =
-        y * (-1.0 + y * (3.0 + y * (-15.0 + y * (105.0 + y * (-945.0 + y * 10395.0)))));
-    return -0.5 * x * x - std::log(-x) - kLogSqrt2Pi + std::log1p(series);
+    return math::pnormLog(x, 0.0, 1.0, /*lower_tail=*/true);
 }
 
 // The single site at which the tail probability meets the normal CDF.  Both
@@ -890,43 +874,93 @@ Saddle solveSaddlepoint(double s, EvalFull &&evalFull, const SolveOpts &opt) {
 
 // The removable singularity of r* = w + log(v/w)/w at w -> 0.
 //
-// Writing rho = v/w - 1, both v and w carry ~1 ULP relative error, so rho
-// carries an *absolute* error of ~2 eps and rho/w an absolute error of
-// ~2 eps/|w|.  Below |w| ~ 1e-5 the correction term is noise rather than a
-// correction, and the correct degradation is Phi(+/-w): the dropped term is
-// O(zeta) there whereas the computed term is O(eps/zeta) noise.
+// At or below this |w| the correction term log(v/w)/w is not computed, and the
+// tail degrades to Phi(+/-w) — the leading, unmodified signed root.  The status
+// is Status::GuardW, which is a DEGRADED SUCCESS and not a failure: a
+// probability is produced, it is named in SPA_STATUS, and P is not NA.
 //
-// STAGE 1 sets the threshold to zero, reproducing the `w == 0.0` guard that
-// spamix, spacox and wtcoxg already carried and supplying it to spagrm and
-// spasqr, which had none.  STAGE 8 (spa_unify N3) raises it to ~1e-4 and adds
-// the Phi(+/-w) fallback in place of the NaN.  Keeping it as a named constant
-// is what makes that a local change.
+// ── Why the correction cannot be computed here ────────────────────────
 //
-// WARNING TO STAGE 8 — raising this constant is not numerically neutral above
-// the threshold, and the interaction is easy to miss because it lives in a
-// different file.  util/spa_cgf.hpp's terminal-K section justifies the cheap,
-// vectorized spelling of K on the grounds that only the ABSOLUTE error in K
-// propagates, since dw = -dK/w and the |z| > spaCutoff entry gate keeps |w| of
-// order 2 or more (min |w| measured at 1.779 over the production grid).  That
-// argument is scale-dependent.  Perturbing K alone moves r* by
+// Perturbing K alone moves w by dK/w, since w^2 = 2*(zeta*s - K), and moves r*
+// by
 //
 //     dr*/dK = -(1/w) * d/dw [ w + log(v/w)/w ]
 //            = -(1/w) * [ 1 - (1 + log(v/w))/w^2 ]  ~  1/w^3   as w -> 0,
 //
-// because log(v/w) -> 0 at the removable singularity.  Immediately above a
-// threshold of 1e-4 that is an amplification of 1e12: an absolute error of 1e-11
-// in K, comfortably inside every budget spa_cgf defends, becomes an error of
-// order 10 in r*, and 1e-10 becomes order 100.  So the region 1e-4 < |w| < ~1e-2
-// is not a region in which r* may simply be evaluated as written.  Stage 8 must
-// choose the threshold and the width of the Phi(+/-w) degradation band together,
-// with dK/w^3 in view, rather than treating the guard as a pure NaN-avoidance
-// device.  This constant is 0.0 today, so nothing here is presently exposed.
-constexpr double kWSingularity = 0.0;
+// because log(v/w) -> 0 at the removable singularity.  The relevant dK is an
+// ABSOLUTE error, and near t = 0 the terminal K has no relative accuracy at all
+// to convert it into a small one: each per-subject term is log(1 + delta) with
+// delta -> 0, so rounding costs ~eps per subject however small delta becomes,
+// while K itself tends to zero.  The floor is therefore proportional to n and
+// independent of how close to the origin the solver sits.  Measured against a
+// long-double reference on the production kernel (`binomUniformKFull`, MAF
+// 0.30, s = K'(t) so that t is the exact saddlepoint), |dK| is flat in t:
+//
+//     n           |dK| abs     |w| at which dK/|w|^3 = 1   (catastrophe onset)
+//     651         7.0e-14      4.1e-05
+//     5 000       5.3e-13      8.1e-05
+//     200 000     2.1e-11      2.8e-04
+//     10^6        ~1.0e-10     ~4.7e-04
+//
+// An r* error of order one is catastrophic rather than merely inaccurate: it
+// moves Phi by O(0.1) and, a little further in, produces the fabricated
+// genome-wide-significant hit that spa_unify D3 documents.
+//
+// ── Why 1e-3 and not the 1e-4 the plan proposed ───────────────────────
+//
+// Two constraints, and only one decade satisfies both.
+//
+//   Below.  The threshold must sit ABOVE the catastrophe onset dK^(1/3) for
+//   every cohort size that can be run.  The table gives 2.8e-4 at n = 2e5 and
+//   4.7e-4 at n = 1e6, so 1e-4 is not above it — the plan's value would leave
+//   the catastrophic region PARTLY UNGUARDED on any large cohort, which is
+//   precisely the interaction util/spa_cgf.hpp's terminal-K section warns
+//   about.  1e-3 clears the onset up to n ~ 1e7.
+//
+//   Above.  The threshold must sit BELOW the region the entry gate admits, so
+//   that it never fires on a legitimate marker.  Every method gates on
+//   |z| > spaCutoff and src/cli/parse.cpp enforces spaCutoff >= 0.01, and
+//   w ~ z near the gate, so the reachable region is |w| >~ 1e-2.  1e-3 leaves a
+//   decade of margin; 1e-2 would fire on ordinary markers at the minimum
+//   cutoff.
+//
+// Just above 1e-3 the residual amplification is dK/|w|^3 <= 2.1e-2 at n = 2e5,
+// but that abscissa is not reachable through the entry gate; at the reachable
+// minimum |w| = 1e-2 it is 2.1e-5, and the induced |dlog10 P| is 3.7e-6, since
+// p ~ 1 in this whole region and d(-log10 p) ~ phi(0)*dr*/(p*ln 10).
+//
+// ── What the degradation costs ────────────────────────────────────────
+//
+// The dropped term tends to a NON-ZERO constant, not to zero: expanding about
+// the mean gives r* -> w + rho3/6 with rho3 = K'''(0)/K''(0)^(3/2) the
+// standardized skewness, so Phi(+/-w) is wrong by ~phi(0)*rho3/6 in p.  (The
+// claim in 01_findings.md N3 that "the dropped term is O(zeta)" is not correct;
+// the probe above measures log(v/w)/w flattening at -7.3e-4 for n = 651 and
+// -7.0e-7 for n = 200 000 as t -> 0, and tests/spa_solver_test.cpp pins the
+// Poisson closed form rho3/6 = 1/(6*sqrt(lambda)) exactly.)  That is bounded by
+// ~5e-3 over the measured grid and applies only where p ~ 1, so it can move
+// -log10 p by at most ~1e-3 and can never manufacture significance: Phi(+/-w)
+// at |w| <= 1e-3 is 0.5 to four digits, i.e. a two-sided p of 1.
+//
+// The trade is therefore an unconditional win at this threshold: a bounded,
+// conservative O(rho3) bias in a region where p is one, in place of an
+// unbounded error that can drive the reported p to zero.
+constexpr double kWSingularity = 1e-3;
 
 namespace detail {
 
-// Guards and r*, shared by the linear and log tails so the two cannot drift.
-// Returns r*, or NaN with `st` naming the guard that fired.
+// Guards and the abscissa Phi is evaluated at, shared by the linear and log
+// tails so the two cannot drift.  Returns r* when the correction term is
+// trustworthy, w itself when it is not (Status::GuardW, a degraded success),
+// and NaN with `st` naming the guard on every genuine failure.
+//
+// THE ORDER OF THE LAST TWO STEPS IS LOAD-BEARING.  The |w| test is made, and
+// w returned, BEFORE v, v/w, log(v/w) or r* is formed.  A guard applied after
+// r* would be useless: dr*/dK ~ 1/w^3, so at |w| = 1e-4 an absolute error of
+// 1e-11 in K is already an error of order 10 in r*, and inspecting the result
+// afterwards cannot distinguish that from a real root.  The only defence is not
+// to compute it.  See kWSingularity above and util/spa_cgf.hpp's terminal-K
+// section.
 //
 // K0 and K2 are treated as opaque scalars.  In particular this routine never
 // assumes K2 is the second derivative of K0: WtCoxG legitimately supplies an
@@ -935,7 +969,7 @@ namespace detail {
 // finite-reference-panel correction), documented as intentional at
 // wtcoxg.cpp:430-435 — and a kernel that silently "corrected" that would
 // change WtCoxG's statistic rather than compute it.
-inline double modifiedSignedRoot(
+inline double tailAbscissa(
     double zeta,
     double s,
     double K0,
@@ -960,8 +994,13 @@ inline double modifiedSignedRoot(
 
     const double w = signOf(zeta) * std::sqrt(2.0 * temp);
     if (!(std::fabs(w) > kWSingularity)) {
+        // Degrade to Phi(+/-w).  Nothing downstream of this point is formed:
+        // the correction would be noise of size dK/|w|^3, and w itself is
+        // accurate to dK/|w|, which at the threshold is 1e-10 at worst.
+        // w may be +/-0.0, and Phi(0) = 0.5 is the right answer there — the
+        // statistic sits at the mean of its own distribution.
         st = Status::GuardW;
-        return quietNaN();
+        return w;
     }
 
     const double v = zeta * std::sqrt(K2);
@@ -996,7 +1035,10 @@ inline double modifiedSignedRoot(
 // register-only.  A 32-byte struct by value is classified MEMORY and spills.
 //
 // Returns NaN and sets `st` on every degenerate input; sets
-// Status::Converged (statusName "OK") when no guard fired.
+// Status::Converged (statusName "OK") when no guard fired.  Status::GuardW is
+// the one status that returns a usable probability rather than NaN: below
+// kWSingularity the tail degrades to Phi(+/-w), which is the correct limit,
+// and the status records that the modified root was not applied.
 inline double bnTail(
     double zeta,
     double s,
@@ -1005,9 +1047,9 @@ inline double bnTail(
     bool lowerTail,
     Status &st
 ) noexcept {
-    const double rStar = detail::modifiedSignedRoot(zeta, s, K0, K2, st);
-    if (!std::isfinite(rStar)) return detail::quietNaN();
-    return detail::phiTail(rStar, lowerTail);
+    const double x = detail::tailAbscissa(zeta, s, K0, K2, st);
+    if (!std::isfinite(x)) return detail::quietNaN();
+    return detail::phiTail(x, lowerTail);
 }
 
 // Natural logarithm of the same tail probability.
@@ -1024,9 +1066,9 @@ inline double bnTailLog(
     bool lowerTail,
     Status &st
 ) noexcept {
-    const double rStar = detail::modifiedSignedRoot(zeta, s, K0, K2, st);
-    if (!std::isfinite(rStar)) return detail::quietNaN();
-    return detail::phiTailLog(rStar, lowerTail);
+    const double x = detail::tailAbscissa(zeta, s, K0, K2, st);
+    if (!std::isfinite(x)) return detail::quietNaN();
+    return detail::phiTailLog(x, lowerTail);
 }
 
 // ──────────────────────────────────────────────────────────────────────

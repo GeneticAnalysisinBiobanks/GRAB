@@ -106,7 +106,7 @@ class SPACoxMethod : public MethodBase {
 //     1 MAXITER            4 GUARD_W          saddlepoint never attempted)
 //     2 GUARD_TEMP         5 NONFINITE
 //
-// P and LOG10P are NA for every status other than 0 and 6.
+// P and LOG10P are NA for every status other than 0, 4 and 6.
     std::string getHeaderColumns() const override {
         return "\tP\tLOG10P\tZ\tZ_Norm\tBETA\tSE\tSPA_STATUS";
     }

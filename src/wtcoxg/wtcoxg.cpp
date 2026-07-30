@@ -261,7 +261,7 @@ struct SpaResult {
 // five migrated methods and its numeric encoding is now in their output —
 // so they take NonFinite, which is the convention Stage 5 established for the
 // same situation in SPAGxE (spagxe.cpp) and which preserves the invariant that
-// P is NA for every status other than 0 and 6.
+// P is NA for every status other than 0, 4 and 6.
 inline SpaResult spaDegenerate(double score) {
     const double nan = NaN::quiet_NaN();
     return {nan, nan, nan, score, nan, spa::Status::NonFinite};
@@ -841,8 +841,8 @@ std::shared_ptr<WtCoxGRefVec> testBatchEffects(
                 double ub = q * std::sqrt(var_Sbat);
                 double var_Sbat_par2 = var_Sbat + sigma2;
                 if (var_Sbat_par2 <= 0.0) return 1e30;
-                double c_val = math::pnorm(ub, 0.0, std::sqrt(var_Sbat_par2), true, true);
-                double d_val = math::pnorm(lb, 0.0, std::sqrt(var_Sbat_par2), true, true);
+                double c_val = math::pnormLog(ub, 0.0, std::sqrt(var_Sbat_par2), true);
+                double d_val = math::pnormLog(lb, 0.0, std::sqrt(var_Sbat_par2), true);
                 double pro_cut =
                     TPR * (std::exp(d_val) * (std::exp(c_val - d_val) - 1.0)) + (1.0 - TPR) *
                     (1.0 - p_cut);
@@ -906,18 +906,16 @@ std::shared_ptr<WtCoxGRefVec> testBatchEffects(
                 double q = math::qnorm(1.0 - p_cut / 2.0);
                 double lb = -q * std::sqrt(var_Sbat_loc);
                 double ub = q * std::sqrt(var_Sbat_loc);
-                double c_val = math::pnorm(
+                double c_val = math::pnormLog(
                     ub,
                     0.0,
                     std::sqrt(var_Sbat_loc + sigma2),
-                    true,
                     true
                 );
-                double d_val = math::pnorm(
+                double d_val = math::pnormLog(
                     lb,
                     0.0,
                     std::sqrt(var_Sbat_loc + sigma2),
-                    true,
                     true
                 );
                 double p_deno = TPR *
@@ -1468,8 +1466,8 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
         const double lb = -qnorm_val * std::sqrt(var_Sbat) * std::sqrt(var_ratio_w0);
         const double ub = -lb;
 
-        const double c_val = math::pnorm(lb / std::sqrt(var_ratio_w1), 0.0,
-                                         std::sqrt(var_Sbat + sigma2), true, true);
+        const double c_val = math::pnormLog(lb / std::sqrt(var_ratio_w1), 0.0,
+                                            std::sqrt(var_Sbat + sigma2), true);
         const double p_deno = TPR * 2.0 * std::exp(c_val) + (1.0 - TPR) * p_cut;
 
         SpaResult spa_s0 = spaGOneSnpHomoFromScalars(
@@ -1543,8 +1541,8 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
     double lb = -qnorm_val * std::sqrt(var_Sbat) * std::sqrt(var_ratio_w0);
     double ub = qnorm_val * std::sqrt(var_Sbat) * std::sqrt(var_ratio_w0);
 
-    double c_val = math::pnorm(ub / std::sqrt(var_ratio_w1), 0.0, std::sqrt(var_Sbat + sigma2), true, true);
-    double d_val = math::pnorm(lb / std::sqrt(var_ratio_w1), 0.0, std::sqrt(var_Sbat + sigma2), true, true);
+    double c_val = math::pnormLog(ub / std::sqrt(var_ratio_w1), 0.0, std::sqrt(var_Sbat + sigma2), true);
+    double d_val = math::pnormLog(lb / std::sqrt(var_ratio_w1), 0.0, std::sqrt(var_Sbat + sigma2), true);
     double p_deno = TPR * (std::exp(d_val) * (std::exp(c_val - d_val) - 1.0)) + (1.0 - TPR) * (1.0 - p_cut);
 
     // Internal SPA (no sigma2)

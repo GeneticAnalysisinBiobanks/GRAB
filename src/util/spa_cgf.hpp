@@ -123,21 +123,22 @@
 // the same order as the log1p spelling costs.  The expensive spelling buys
 // relative accuracy in a quantity nothing consumes relatively.
 //
-// WARNING TO STAGE 8 — the premise above is "w is of order 2 or more", and
-// Stage 8 is the stage that stops it being true.  It raises
-// `spa::kWSingularity` from 0 to ~1e-4 and adds a Phi(+/-w) degradation below
-// that, which by itself is fine; what is not fine is any consumer that still
-// evaluates r* = w + log(v/w)/w just ABOVE the new threshold.  Perturbing K
-// alone moves w by dK/w and r* by roughly dK/w^3, since d/dw[log(v/w)/w] is
+// The scope of that argument, and how Stage 8 kept it true.  The premise is "w
+// is of order 2 or more", which the |z| > spaCutoff entry gate delivers — the
+// measurement above records min |w| = 1.779 over the production grid — and the
+// absolute-error argument for the cheap K holds only while it does.  Perturbing
+// K alone moves w by dK/w and r* by roughly dK/w^3, since d/dw[log(v/w)/w] is
 // -(1 + log(v/w))/w^2 and log(v/w) -> 0 as w -> 0.  At |w| = 1e-4 that turns an
 // absolute error of 1e-11 in K — well inside the budget this section defends —
-// into an error of order 10 in r*, and 1e-10 into order 100.  The absolute-error
-// argument for the cheap K therefore holds only where |w| stays O(1); it is the
-// |z| > spaCutoff entry gate that delivers that, and the measurement above
-// records min |w| = 1.779 over the production grid.  Stage 8 must either keep
-// the threshold well clear of the region where dK/w^3 is not negligible or
-// widen the degradation band, and must not read this section as licence to
-// evaluate r* at small |w|.  See the kWSingularity comment in util/spa.hpp.
+// into an error of order 10 in r*.  Stage 8 therefore did NOT set
+// `spa::kWSingularity` to the 1e-4 the plan proposed: at n = 2e5 the measured
+// |dK| of 2.1e-11 puts the abscissa where dK/|w|^3 reaches one at 2.8e-4, ABOVE
+// that threshold, so 1e-4 would have left the catastrophic region partly
+// unguarded.  The constant is 1e-3, chosen to sit above the catastrophe onset
+// for cohorts up to n ~ 1e7 and a decade below the |w| ~ 1e-2 that the
+// CLI-enforced minimum spaCutoff of 0.01 makes reachable, and below it the tail
+// degrades to Phi(+/-w) with r* never formed.  Nothing in this file is licence
+// to evaluate r* at small |w|.  See the kWSingularity comment in util/spa.hpp.
 //
 // Measured against a long-double reference over the domain the solver visits
 // (MAF 5e-4 to 0.5, residual scale 0.2 to 8, |z| 2 to 12, both tails, the

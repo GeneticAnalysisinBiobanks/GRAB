@@ -56,10 +56,10 @@ constexpr double META_P_CEIL  = 1.0 - 1e-15;
 // worst spa::Status among the clusters that actually contributed.  Contributing
 // requires a finite score and a finite p, and a cluster whose saddlepoint
 // failed now has a NaN p (D2) and is skipped — so a contributing cluster
-// always carries Converged or NormalBranch, and the pooled status is 0 or 6
-// whenever `p` is a number, NonFinite when it is NA.  That is the same
-// "P is NA for every status other than 0 and 6" invariant the six migrated
-// methods carry.
+// always carries one of the three non-failure statuses (Converged, GuardW or
+// NormalBranch), and the pooled status is 0, 4 or 6 whenever `p` is a number,
+// NonFinite when it is NA.  That is the same "P is NA for every status other
+// than 0, 4 and 6" invariant the six migrated methods carry.
 struct MetaPooled {
     double p;
     double negLog10p;

@@ -678,7 +678,10 @@ inline const MethodDef kSPACox = {
     SPA_STATUS  saddlepoint outcome: 0 OK, 1 MAXITER, 2 GUARD_TEMP,
                 3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|Z| below
                 --spa-z-threshold, saddlepoint not attempted).  P and LOG10P
-                are NA for every value other than 0 and 6.)",
+                are NA for every value other than 0, 4 and 6.  Status 4 is a
+                degraded success rather than a failure: the modified root's
+                correction was dropped as uncomputable and the tail fell back
+                to its leading term, which is accurate where it fires.)",
     nullptr,
 };
 
@@ -711,7 +714,10 @@ inline const MethodDef kSPAGRM = {
     SPA_STATUS  saddlepoint outcome: 0 OK, 1 MAXITER, 2 GUARD_TEMP,
                 3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|Z| below
                 --spa-z-threshold, saddlepoint not attempted).  P and LOG10P
-                are NA for every value other than 0 and 6.)",
+                are NA for every value other than 0, 4 and 6.  Status 4 is a
+                degraded success rather than a failure: the modified root's
+                correction was dropped as uncomputable and the tail fell back
+                to its leading term, which is accurate where it fires.)",
     "Generate pairwise IBD file with: grab2 --cal-pairwise-ibd",
 };
 
@@ -869,7 +875,10 @@ inline const MethodDef kSPAmix = {
     SPA_STATUS  saddlepoint outcome: 0 OK, 1 MAXITER, 2 GUARD_TEMP,
                 3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|Z| below
                 --spa-z-threshold, saddlepoint not attempted).  P and LOG10P
-                are NA for every value other than 0 and 6.)",
+                are NA for every value other than 0, 4 and 6.  Status 4 is a
+                degraded success rather than a failure: the modified root's
+                correction was dropped as uncomputable and the tail fell back
+                to its leading term, which is accurate where it fires.)",
     R"(Pre-compute the AF model for speed: grab2 --cal-af-coef.
 
 AF coefficient scope.  With --ind-af-coef, every phenotype in this run
@@ -953,8 +962,11 @@ inline const MethodDef kSPAsqr = {
     SPA_STATUS_*  per-tau saddlepoint outcome: 0 OK, 1 MAXITER, 2 GUARD_TEMP,
                   3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|Z| below
                   --spa-z-threshold, saddlepoint not attempted).  P_tau and
-                  LOG10P_tau are NA for every value other than 0 and 6, and a
-                  NA tau drops out of the P_CCT Cauchy combination.
+                  LOG10P_tau are NA for every value other than 0, 4 and 6, and a
+                  NA tau drops out of the P_CCT Cauchy combination.  Status 4
+                  is a degraded success rather than a failure: the modified
+                  root's correction was dropped as uncomputable and the tail
+                  fell back to its leading term.
   No LOG10P_CCT: math::cauchyCombine has no log-domain form, so it could only
   be -log10 of the linear P_CCT.)",
     nullptr,
@@ -1081,7 +1093,10 @@ inline const MethodDef kSPAmixLocalPlus = {
     SPA_STATUS  saddlepoint outcome: 0 OK, 1 MAXITER, 2 GUARD_TEMP,
                 3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|z| within
                 --spa-z-threshold, saddlepoint not attempted).  P and LOG10P
-                are NA for every value other than 0 and 6.
+                are NA for every value other than 0, 4 and 6.  Status 4 is a
+                degraded success rather than a failure: the modified root's
+                correction was dropped as uncomputable and the tail fell back
+                to its leading term, which is accurate where it fires.
   An ancestry failing the --geno / --maf / --mac filters is NA in all five
   statistic columns.)",
     R"(Two-phase workflow:

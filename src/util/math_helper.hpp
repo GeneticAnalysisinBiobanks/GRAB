@@ -1,7 +1,7 @@
 // math_helper.hpp — Shared math/statistics utilities (pure C++17 / Eigen / Boost)
 //
 // Provides:
-//   § 1  Distribution wrappers    pnorm, qnorm, qchisq, pt (Boost)
+//   § 1  Distribution wrappers    pnorm, pnormLog, qnorm, qchisq, pt (Boost)
 //   § 2  Bivariate normal probability  pmvnorm2dHalfRect (20-point Gauss-Legendre)
 //   § 3  Brent root-finding       findRootBrent
 //   § 4  Diploid genotype MGF     mG0/mG1/mG2, kG0/kG1/kG2 (scalar)
@@ -59,24 +59,81 @@ using NoPromote = boost::math::policies::policy<
 // § 1  Distribution wrappers
 // ──────────────────────────────────────────────────────────────────────
 
-// Normal CDF: P(X ≤ x) or complementary tail, optionally on log scale.
+// Normal CDF: P(X ≤ x) or the complementary tail.
+//
+// There is deliberately no `log_p` flag.  The only way to serve one from this
+// body is to evaluate the CDF on the linear scale and take its logarithm, and
+// that inherits the linear scale's underflow: Φ(−x) becomes denormal at
+// x ≈ 38.0 and flushes to zero at x ≈ 38.5, so the flag would return −∞ for
+// everything below p ≈ 1e-316 while advertising log-domain accuracy
+// (spa_unify N2).  Callers that want the logarithm call `pnormLog` below,
+// which is a genuine log-domain evaluation.
 inline double pnorm(
     double x,
     double mean = 0.0,
     double sd = 1.0,
-    bool lower_tail = true,
-    bool log_p = false
+    bool lower_tail = true
 ) {
     if (std::isnan(x)) return std::numeric_limits<double>::quiet_NaN();
-    if (!std::isfinite(x)) {
-        double r = ((x > 0) == lower_tail) ? 1.0 : 0.0;
-        return log_p ? std::log(r + 1e-300) : r;
-    }
+    if (!std::isfinite(x)) return ((x > 0) == lower_tail) ? 1.0 : 0.0;
     boost::math::normal_distribution<double, NoPromote> dist(mean, sd);
-    double result = lower_tail ? boost::math::cdf(dist, x)
-                               : boost::math::cdf(boost::math::complement(dist, x));
-    if (log_p) result = std::log(result);
-    return result;
+    return lower_tail ? boost::math::cdf(dist, x)
+                      : boost::math::cdf(boost::math::complement(dist, x));
+}
+
+// log(√(2π)), the normalizing constant of the Mills-ratio expansion below.
+inline constexpr double kLogSqrt2Pi = 0.91893853320467274178;
+
+// Standardized abscissa below which the linear-scale normal CDF has lost all
+// relative accuracy, so the asymptotic expansion is used instead.  Φ(−37) is
+// 5.7e-300 — comfortably normal — so the two branches overlap in a regime
+// where both are accurate, and the join is continuous to full double
+// precision rather than to whatever the denormal range can still express.
+inline constexpr double kPnormLogAsymptote = -37.0;
+
+// log Φ((x − mean)/sd), or log of the complementary tail.  A genuine
+// log-domain evaluation: the result stays finite and accurate far past the
+// point where the probability itself underflows to zero (spa_unify N2, L3).
+//
+// Above the asymptote the linear CDF is a normal double whose few-ULP
+// RELATIVE error becomes a few-ULP ABSOLUTE error in the logarithm, so
+// deferring to `pnorm` there is both accurate and exactly what the removed
+// `log_p` flag produced — the change is confined to the region where the old
+// spelling was returning log(0).
+//
+// Below the asymptote the Mills-ratio asymptotic expansion is used:
+//
+//     Φ(x) = φ(x)/(−x) · (1 − 1/x² + 3/x⁴ − 15/x⁶ + 105/x⁸ − …)
+//     log Φ(x) = −x²/2 − log(−x) − log(√(2π))
+//                + log1p(−1/x² + 3/x⁴ − 15/x⁶ + …)
+//
+// At |x| = 37 the six retained terms leave a truncation error of order 1e-17
+// in the log1p argument, hence 1e-17 absolute in a logarithm whose magnitude
+// is ≈ 690 — a relative accuracy near 1e-20.  The series is asymptotic rather
+// than convergent, which is exactly why it is used only far out in the tail.
+inline double pnormLog(
+    double x,
+    double mean = 0.0,
+    double sd = 1.0,
+    bool lower_tail = true
+) {
+    if (std::isnan(x) || std::isnan(mean) || std::isnan(sd))
+        return std::numeric_limits<double>::quiet_NaN();
+    if (!std::isfinite(x))
+        return ((x > 0) == lower_tail)
+                   ? 0.0
+                   : -std::numeric_limits<double>::infinity();
+
+    // Standardized abscissa of the tail being asked for: in every case the
+    // answer is log Φ(t), so there is one branch rather than two.
+    const double t = lower_tail ? (x - mean) / sd : (mean - x) / sd;
+    if (std::isnan(t)) return std::numeric_limits<double>::quiet_NaN();
+    if (!(t <= kPnormLogAsymptote)) return std::log(pnorm(x, mean, sd, lower_tail));
+
+    const double y = 1.0 / (t * t);
+    const double series =
+        y * (-1.0 + y * (3.0 + y * (-15.0 + y * (105.0 + y * (-945.0 + y * 10395.0)))));
+    return -0.5 * t * t - std::log(-t) - kLogSqrt2Pi + std::log1p(series);
 }
 
 // Normal quantile (inverse CDF).

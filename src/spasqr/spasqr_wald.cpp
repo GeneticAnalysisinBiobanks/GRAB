@@ -255,7 +255,9 @@ class SPAsqrWaldMethod : public MethodBase {
                 betas[t] = wr.beta;
                 ses[t]   = wr.se;
                 zs[t]    = z;
-                ps[t]    = 2.0 * (1.0 - math::pnorm(std::fabs(z)));
+                // Through Boost's complement, not 1 - Phi(|z|), which floors
+                // at zero for |z| > 8.3 (spa_unify 01_findings.md).
+                ps[t]    = 2.0 * math::pnorm(std::fabs(z), 0.0, 1.0, false);
             }
         }
 
