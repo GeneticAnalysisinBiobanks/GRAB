@@ -8,7 +8,7 @@
 #pragma once
 
 #include "localplus/lanc_io.hpp"
-#include "spamix/common.hpp"
+#include "util/outlier.hpp"
 #include "io/sparse_grm.hpp"
 
 #include <Eigen/Dense>

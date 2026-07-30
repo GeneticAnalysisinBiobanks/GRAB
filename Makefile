@@ -417,6 +417,8 @@ TESTOBJS_bench_spa_cgf := $(BUILD_DIR)/util/spa_cgf.o
 # spagrm_cgf.hpp is header-only but delegates its class-1 term to the dispatched
 # binomial kernels, so it needs the same object.
 TESTOBJS_spagrm_cgf_test := $(BUILD_DIR)/util/spa_cgf.o
+# spamix_cgf.hpp is likewise header-only over the dispatched binomial kernels.
+TESTOBJS_spamix_cgf_test := $(BUILD_DIR)/util/spa_cgf.o
 
 TESTOBJS_lanc_simd_test := \
     $(BUILD_DIR)/localplus/lanc_io.o \

@@ -775,7 +775,25 @@ inline const MethodDef kSPAGxE = {
     R"(PREFIX.<COL>.SPAGxE[.gz|.zst]   one file per --resid-name / --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
   P_G  Z_G  BETA_G  SE_G
-  P_Gx<E1>  P_Wald_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>  BETA_Gx<E1>  SE_Gx<E1>  [... per env])",
+  P_Gx<E1>  LOG10P_Gx<E1>  P_Wald_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>
+            BETA_Gx<E1>  SE_Gx<E1>  SPA_STATUS_Gx<E1>   [... per env]
+    LOG10P_*      -log10(P_Gx).  Computed in the log domain wherever the
+                  reported p IS the saddlepoint p, so it survives past the
+                  point where the linear-scale tail underflows (p ~ 1e-316).
+                  In Branch B with a Wald leg the reported p is the Cauchy
+                  combination CCT(p_spa, p_wald) and math::cauchyCombine has
+                  no log-domain form, so there it is only -log10 of the
+                  linear combination.
+    SPA_STATUS_*  per-environment saddlepoint outcome: 0 OK, 1 MAXITER,
+                  2 GUARD_TEMP, 3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE,
+                  6 NORMAL (|Z| below --spa-z-threshold, saddlepoint not
+                  attempted).  It always describes the SADDLEPOINT leg: in
+                  Branch B a failed saddlepoint whose Wald refit succeeded
+                  still yields a finite P_Gx, and the status is the only
+                  record that the SPA leg dropped out of the combination.
+  The marginal block P_G Z_G BETA_G SE_G is always the normal approximation,
+  never a saddlepoint, so it carries neither column; -log10(P_G) is recoverable
+  from the exact Z_G.)",
     R"(Every --envir-name column must also appear in --covar-name (it enters the
 genotype-independent null model  trait ~ X + E).  Passing an optional sparse
 GRM (--sp-grm-grab / --sp-grm-plink2) engages the SPAGxE+ relatedness-corrected
@@ -806,7 +824,13 @@ inline const MethodDef kSPAGxEmix = {
     R"(PREFIX.<COL>.SPAGxEmix[.gz|.zst]   one file per --resid-name / --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
   P_G  Z_G  BETA_G  SE_G
-  P_Gx<E1>  P_Wald_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>  BETA_Gx<E1>  SE_Gx<E1>  [... per env])",
+  P_Gx<E1>  LOG10P_Gx<E1>  P_Wald_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>
+            BETA_Gx<E1>  SE_Gx<E1>  SPA_STATUS_Gx<E1>   [... per env]
+    LOG10P_* and SPA_STATUS_* are as documented under --method spagxe.
+  A marker whose per-individual allele frequencies all saturate at 0 or 1
+  has Var(S_G) = 0 and no statistic at all: the whole row is NA with
+  SPA_STATUS 5 (NONFINITE).  Three of the 3000 markers in the bundled
+  examples/1kg fixture are of that kind, all with ALT_FREQ > 0.99.)",
     R"(SPAGxEmix accounts for admixture by estimating a per-individual allele
 frequency q_i from the --pc-cols principal components (the same cascade as
 SPAmix), so the retrospective genotype law is Binomial(2, q_i).  The --pc-cols
@@ -838,7 +862,14 @@ inline const MethodDef kSPAmix = {
     kSPAmixOpt,
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.SPAmix[.gz|.zst]   one file per --resid-name / --pheno-name column
-  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  P  Z  BETA  SE)",
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+  P  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
+    LOG10P      -log10(P), computed in the log domain so it survives past the
+                point where the linear-scale tail underflows (p ~ 1e-316)
+    SPA_STATUS  saddlepoint outcome: 0 OK, 1 MAXITER, 2 GUARD_TEMP,
+                3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|Z| below
+                --spa-z-threshold, saddlepoint not attempted).  P and LOG10P
+                are NA for every value other than 0 and 6.)",
     R"(Pre-compute the AF model for speed: grab2 --cal-af-coef.
 
 AF coefficient scope.  With --ind-af-coef, every phenotype in this run
@@ -872,7 +903,9 @@ inline const MethodDef kSPAmixPlus = {
     kSPAmixPlusOpt,
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.SPAmixP[.gz|.zst]   one file per --resid-name / --pheno-name column
-  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  P  Z  BETA  SE)",
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+  P  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
+    LOG10P and SPA_STATUS are as documented under --method spamix.)",
     R"(AF coefficient scope.  With --ind-af-coef, every phenotype in this
 run shares the single pre-computed AF model per marker (fit at
 --cal-af-coef time on its full subject set).  Without --ind-af-coef,

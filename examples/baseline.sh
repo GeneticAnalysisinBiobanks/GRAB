@@ -128,6 +128,17 @@ build/grab2 \
   --hard-call-threshold 0.1
 
 ## ── SPAmix (fit mode, --pheno-name) ───────────────────────────────────
+#
+# Output columns (spa_unify Stage 5): the nine meta columns, then
+#   P  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
+# with the same meaning and the same integer SPA_STATUS encoding as the
+# SPACox and SPAGRM blocks above (0 OK, 1 MAXITER, 2 GUARD_TEMP,
+# 3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE, 6 NORMAL).  Stage 5 also stopped
+# SPAmix returning P = 1 for a marker with a non-positive score variance:
+# three markers of this fixture, all with ALT_FREQ > 0.99, have every
+# per-individual q_i saturated at 1 by the AF model and therefore have no
+# statistic at all.  They now report NA with SPA_STATUS 5 rather than a
+# fabricated perfectly-null p-value alongside NA in Z, BETA and SE.
 
 build/grab2 \
   --method SPAmix \
@@ -673,6 +684,20 @@ build/grab2 \
 # types (quantitative / survival / binary).  Every --envir-name column must
 # also appear in --covar-name (it enters the genotype-independent null model
 # trait ~ X + E).  Plain-text output exercises the uncompressed writer path.
+#
+# Output columns (spa_unify Stage 5): the nine meta columns, the marginal
+# block P_G Z_G BETA_G SE_G, then an eight-wide block per environment
+#   P_Gx<E>  LOG10P_Gx<E>  P_Wald_Gx<E>  Z_Gx<E>  Z_Norm_Gx<E>
+#   BETA_Gx<E>  SE_Gx<E>  SPA_STATUS_Gx<E>
+# SPA_STATUS_Gx uses the same integer encoding as the SPACox and SPAGRM
+# blocks above and always describes the saddlepoint leg, so a Branch-B
+# marker whose SPA failed but whose Wald refit succeeded still shows a
+# finite P_Gx together with the status that says the SPA dropped out of the
+# Cauchy combination.  LOG10P_Gx is log-domain wherever the reported p is
+# the saddlepoint p; in Branch B with a Wald leg it is -log10 of the linear
+# CCT, math::cauchyCombine having no log-domain form.  The marginal block
+# is always the normal approximation and gains neither column.
+#
 # A distinct --out prefix keeps the fitted residual and per-marker tables from
 # colliding with the SPACox/SAGELD ${OUT}.* artifacts.
 
@@ -737,7 +762,18 @@ build/grab2 \
 # (they adjust the null model), as must every --envir-name column.  A sparse
 # GRM is not accepted (SPAGxEmix+ is out of scope).  zstd output exercises the
 # zst writer path, completing the plain / gz / zst rotation across the three
-# G x E blocks.
+# G x E blocks.  Output columns are those of the SPAGxE block above.
+#
+# Three of the 3000 markers here (rs3131973, rs300788, rs9310509; ALT_FREQ
+# 0.992-0.996) are NA from P_G onward, and have been since before the
+# saddlepoint rework.  The cause is upstream of the saddlepoint: their AF
+# model takes the logistic branch, the binarised genotype is one for
+# essentially every subject, IRLS runs to its cap under complete separation,
+# and sigmoid of the resulting linear predictor rounds to exactly 1, so
+# every q_i is 1, every 2q_i(1-q_i) is 0 and Var(S_G) vanishes.  Stage 5
+# preserves the values and reports SPA_STATUS_GxMALE = 5 (NONFINITE) so the
+# row states why.  The same three markers are ordinary under the uniform-q
+# SPAGxE block above, which does not use the AF model.
 
 build/grab2 \
   --method SPAGxEmix \

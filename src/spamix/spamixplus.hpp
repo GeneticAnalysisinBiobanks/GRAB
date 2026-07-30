@@ -15,9 +15,10 @@
 #include <vector>
 
 #include "engine/marker.hpp"
-#include "spamix/common.hpp"
+#include "spamix/spamix_cgf.hpp"
 #include "spamix/indiv_af.hpp"
 #include "io/sparse_grm.hpp"
+#include "util/outlier.hpp"
 
 // ======================================================================
 // SPAmixAFCache — per-thread shared cache of per-marker AFVec / W
@@ -101,11 +102,16 @@ class SPAmixPlusMethod : public MethodBase {
     std::unique_ptr<MethodBase> clone() const override;
 
     int resultSize() const override {
-        return 5;
+        return 7;
     }
 
+    // spa_unify L2 and L3.  LOG10P is -log10(P) carried through the log-domain
+    // tail assembly, so it stays meaningful past the point where the linear
+    // sum of the two tails underflows to zero; SPA_STATUS is
+    // static_cast<uint8_t>(spa::Status), the encoding Stages 3 and 4 gave
+    // SPACox, SPAGRM and SPAsqr.  Column order matches those three exactly.
     std::string getHeaderColumns() const override {
-        return "\tP\tZ\tZ_Norm\tBETA\tSE";
+        return "\tP\tLOG10P\tZ\tZ_Norm\tBETA\tSE\tSPA_STATUS";
     }
 
     void prepareChunk(const std::vector<uint64_t> &gIndices) override;
@@ -170,12 +176,22 @@ class SPAmixPlusMethod : public MethodBase {
     ) override;
 
   private:
-    double markerPvalFromAF(
+    spa::TwoSided markerPvalFromAF(
         const Eigen::Ref<const Eigen::VectorXd> &afVec,
         const Eigen::Ref<const Eigen::VectorXd> &wVec,
         double rawScore,
         double &zScore,
         double &outVarS
+    );
+
+    // The seven result cells, from the two-sided saddlepoint result and the
+    // score-level quantities.  One definition rather than four copies: the
+    // scalar, fused and both batched paths assemble the identical row.
+    static void pushResult(
+        std::vector<double> &r,
+        const spa::TwoSided &ts,
+        double zScore,
+        double varS
     );
 
     void fillAFVecForMarker(
@@ -218,7 +234,6 @@ class SPAmixPlusMethod : public MethodBase {
     Eigen::VectorXd m_WVec;  // W = 2 AF (1 - AF) scratch for batched path
     Eigen::VectorXd m_R_new; // only used when m_hasGRM
     Eigen::VectorXd m_mafOutlier;
-    Eigen::VectorXd m_mafNonOutlier;
 
 // Per-thread AFVec cache, shared between clones with the same maskIdx.
 // Populated lazily by clone() through a thread_local registry.

@@ -72,18 +72,35 @@ struct AFData {
 // Output schema (mirrors SAGELD's multi-env layout, src/spagrm/sageld.cpp):
 //   col 0..3        :  P_G  Z_G  BETA_G  SE_G        marginal genetic block
 //                                                    (always normal-approx)
-//   col 4 + 6·e+0   :  P_Gx<Ee>       final G×E p-value.  Branch A (and the
+//   col 4 + 8·e+0   :  P_Gx<Ee>       final G×E p-value.  Branch A (and the
 //                                     SPAGxE+ GRM / residual-mode paths): the
 //                                     SPA/normal score p.  Branch B, base path:
 //                                     CCT(p_spa, p_wald).
-//   col 4 + 6·e+1   :  P_Wald_Gx<Ee>  Branch-B Wald p of the G:E coefficient
+//   col 4 + 8·e+1   :  LOG10P_Gx<Ee>  −log10(P_Gx<Ee>)
+//   col 4 + 8·e+2   :  P_Wald_Gx<Ee>  Branch-B Wald p of the G:E coefficient
 //                                     (NaN in Branch A, the GRM path, and
 //                                     residual mode — no Wald there).
-//   col 4 + 6·e+2   :  Z_Gx<Ee>       p-consistent z of P_Gx<Ee>: 2·pnorm(−|Z|)==P
-//   col 4 + 6·e+3   :  Z_Norm_Gx<Ee>  raw score z (Score/√Var, SPA-uncalibrated)
-//   col 4 + 6·e+4   :  BETA_Gx<Ee>    score-derived interaction effect
-//   col 4 + 6·e+5   :  SE_Gx<Ee>      score-derived interaction SE
-// resultSize() = 4 + 6·nEnv.
+//   col 4 + 8·e+3   :  Z_Gx<Ee>       p-consistent z of P_Gx<Ee>: 2·pnorm(−|Z|)==P
+//   col 4 + 8·e+4   :  Z_Norm_Gx<Ee>  raw score z (Score/√Var, SPA-uncalibrated)
+//   col 4 + 8·e+5   :  BETA_Gx<Ee>    score-derived interaction effect
+//   col 4 + 8·e+6   :  SE_Gx<Ee>      score-derived interaction SE
+//   col 4 + 8·e+7   :  SPA_STATUS_Gx<Ee>  saddlepoint outcome, as
+//                                     static_cast<uint8_t>(spa::Status)
+// resultSize() = 4 + 8·nEnv.
+//
+// spa_unify L2 / L3 (Stage 5).  LOG10P_Gx comes from the log-domain tail
+// assembly wherever the reported p IS the saddlepoint p, so it survives past
+// the point at which the linear-scale sum of the two tails underflows to zero.
+// In Branch B with a Wald leg the reported p is CCT(p_spa, p_wald) and
+// math::cauchyCombine has no log-domain form, so there LOG10P_Gx is only
+// −log10 of the linear combination — the same limitation SPAsqr records for
+// its P_CCT column.
+//
+// The marginal block deliberately gains neither column.  It is always the
+// normal approximation, never a saddlepoint, so SPA_STATUS_G would be a
+// constant; and Z_G is exact, so −log10(P_G) is recoverable from it to full
+// precision without a stored column, which is not true of the G×E block (Z_Gx
+// is derived FROM P_Gx through math::zFromPval).
 class SPAGxEMethod : public MethodBase {
   public:
     // resid    — the null-model residual R (per-phenotype dense, length N).
@@ -115,7 +132,7 @@ class SPAGxEMethod : public MethodBase {
     std::unique_ptr<MethodBase> clone() const override;
 
     int resultSize() const override {
-        return 4 + 6 * static_cast<int>(m_envNames.size());
+        return 4 + 8 * static_cast<int>(m_envNames.size());
     }
 
     std::string getHeaderColumns() const override;
@@ -197,6 +214,10 @@ class SPAGxEMethod : public MethodBase {
     Eigen::VectorXd m_afVec;
     Eigen::VectorXd m_wVec;
     Eigen::VectorXd m_wScratch; // per-marker Branch-A weight (E_e − λ_e)∘R
+    // Outlier-position gather of m_afVec, handed to spa_cgf::binomIndiv.  A
+    // per-clone buffer rather than a per-marker std::vector: the predecessor
+    // allocated one per marker per environment inside spaScorePvalMix.
+    std::vector<double> m_afOutlier;
 };
 
 // ══════════════════════════════════════════════════════════════════════

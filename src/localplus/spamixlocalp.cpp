@@ -5,7 +5,7 @@
 #include "localplus/spamixlocalp.hpp"
 #include "engine/marker.hpp"
 #include "localplus/lanc_io.hpp"
-#include "spamix/common.hpp"
+#include "util/outlier.hpp"
 #include "io/sparse_grm.hpp"
 #include "io/subject_data.hpp"
 #include "io/subject_set.hpp"

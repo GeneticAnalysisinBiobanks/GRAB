@@ -70,7 +70,6 @@ SPAmixPlusMethod::SPAmixPlusMethod(
       m_WVec(m_N),
       m_R_new(m_N),
       m_mafOutlier(static_cast<int>(outlier.posOutlier.size())),
-      m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size())),
       m_chunkGenoIndices(nullptr)
 {
 }
@@ -107,7 +106,6 @@ SPAmixPlusMethod::SPAmixPlusMethod(
       m_WVec(m_N),
       m_R_new(m_N),
       m_mafOutlier(static_cast<int>(outlier.posOutlier.size())),
-      m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size())),
       m_chunkGenoIndices(nullptr)
 {
 }
@@ -144,7 +142,6 @@ SPAmixPlusMethod::SPAmixPlusMethod(
       m_WVec(m_N),
       m_R_new(0),
       m_mafOutlier(static_cast<int>(outlier.posOutlier.size())),
-      m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size())),
       m_chunkGenoIndices(nullptr)
 {
 }
@@ -180,7 +177,6 @@ SPAmixPlusMethod::SPAmixPlusMethod(
       m_WVec(m_N),
       m_R_new(0),
       m_mafOutlier(static_cast<int>(outlier.posOutlier.size())),
-      m_mafNonOutlier(static_cast<int>(outlier.posNonOutlier.size())),
       m_chunkGenoIndices(nullptr)
 {
 }
@@ -295,9 +291,38 @@ void SPAmixPlusMethod::fillAFVecForMarker(
 //   wVec      = per-individual W = 2·AF·(1−AF)
 //
 // Centering and variance use afVec / wVec; SPA uses the outlier split.
+//
+// spa_unify Stage 5.  The tail is now spamix_cgf::twoSidedSpa — the shared
+// bracketed solver, the SIMD-dispatched spa_cgf::binomIndiv kernel and
+// spa::bnTail's full guard set — in place of the two hand-written
+// `spa::getProbSpaG` calls whose sum was returned unguarded.  Three
+// behavioural consequences:
+//
+//   D5.  `fastGetRootK1` computed a convergence flag and returned it in
+//        `RootResult::converge`; the caller read only `.root`
+//        (common.cpp:100, :103, :123), so a saddlepoint that exhausted its
+//        100-iteration budget produced an ordinary-looking finite p-value.
+//        Worse, the non-finite exit at common.cpp:86-90 broke out with
+//        `converge` still true, so the one genuinely divergent path was the
+//        one reported as converged.  spa::Status is part of the return value
+//        and reaches the user in SPA_STATUS.
+//
+//   D7.  The tolerance was a hard-coded `constexpr double tol = 0.001` tested
+//        on the Newton STEP in zeta units (common.cpp:71, :97) — a thousand
+//        times looser than the 1e-6 SPAGRM and SPAsqr use, with no CLI
+//        exposure and no scaling.  It is now the solver's relative criterion
+//        |K'(t) - s| <= rtol * sqrt(K''(t)) at rtol = 1e-6.  This is a real
+//        numeric change and is the point of the stage.
+//
+//   Degenerate variance.  `VarS <= 0` returned p = 1.0 — a fabricated
+//        perfectly-null p-value on a row whose Z, BETA and SE were all NaN.
+//        L2 forbids substituting anything silently, so the row now reports
+//        NA with SPA_STATUS = NONFINITE, matching the convention Stage 4 gave
+//        SPAGRM for a monomorphic marker.  No marker in examples/baseline.sh
+//        reaches it.
 // ======================================================================
 
-double SPAmixPlusMethod::markerPvalFromAF(
+spa::TwoSided SPAmixPlusMethod::markerPvalFromAF(
     const Eigen::Ref<const Eigen::VectorXd> &afVec,
     const Eigen::Ref<const Eigen::VectorXd> &wVec,
     double rawScore,
@@ -323,14 +348,22 @@ double SPAmixPlusMethod::markerPvalFromAF(
     if (VarS <= 0.0) {
         zScore = 0.0;
         outVarS = 0.0;
-        return 1.0;
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        return spa::TwoSided{nan, nan, spa::Status::NonFinite};
     }
 
     zScore = (rawScore - S_mean) / std::sqrt(VarS);
     outVarS = VarS;
-    if (std::abs(zScore) <= m_spaCutoff) {
-        return 2.0 * math::pnorm(-std::abs(zScore));
+    if (!std::isfinite(zScore)) {
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        return spa::TwoSided{nan, nan, spa::Status::NonFinite};
     }
+    // spa::normalTwoSided routes through Boost's complement; for the standard
+    // normal that is bit-for-bit `2 * pnorm(-|z|)`, since both reduce to
+    // erfc(|z|/sqrt(2))/2 on the identical argument.  The branch therefore
+    // reproduces the predecessor exactly and only gains LOG10P and the
+    // NORMAL status.
+    if (std::abs(zScore) <= m_spaCutoff) return spa::normalBranch(zScore);
 
     // ── SPA path with outlier / non-outlier split ──────────────────
     double S_spa, S_mean_spa;
@@ -343,45 +376,96 @@ double SPAmixPlusMethod::markerPvalFromAF(
         S_mean_spa = S_mean;
     }
 
+    // ── The Gaussian non-outlier block, by complement ──────────────
+    //
+    // The predecessor walked the NON-outlier set here — an indexed gather over
+    // ~99 % of the cohort, per marker, inside the saddlepoint branch:
+    //
+    //     for (i < nNon) { af = afVec[posNonOutlier[i]];
+    //                      mean += residNonOutlier[i]*af;
+    //                      var  += resid2NonOutlier[i]*af*(1-af); }
+    //
+    // That loop is O(N) while everything else in the branch is O(nOutlier), and
+    // on a 50000-subject synthetic cohort it measured at roughly twenty times
+    // the cost of the entire CGF it was preparing — which is why replacing the
+    // scalar CGF with the SIMD kernels moved the end-to-end saddlepoint time not
+    // at all until this went with it.  01_findings.md does not record it.
+    //
+    // The two sums it produced are the complements of quantities already
+    // computed above, over the whole cohort, by vectorized Eigen reductions:
+    //
+    //     S_mean     = 2 * Sum_all r_i * af_i
+    //     S_var_diag =     Sum_all r_i^2 * w_i        w_i = 2 af_i (1 - af_i)
+    //
+    // so the non-outlier block is the total minus an O(nOutlier) sum, folded
+    // into the gather that has to run anyway.  The outlier terms are formed from
+    // `wVec[pos]` rather than from `2*af*(1-af)` recomputed, so that they are
+    // bit-identical to the terms S_var_diag was accumulated from.
+    //
+    // Cancellation is bounded and mild.  Both subtractions take the total minus
+    // the outliers' share f of it, so the relative error is amplified by
+    // 1/(1-f); f is the IQR-outlier share of the variance, a few per cent in
+    // practice, and even f = 0.9 leaves the error at 1e-13.  The variance is
+    // clamped at zero because a negative one is not representable in the CGF and
+    // could only arise when the true value is already below the noise floor of
+    // the reduction, i.e. when the Gaussian block is contributing nothing.
     const int nOut = static_cast<int>(m_outlier.posOutlier.size());
-    const int nNon = static_cast<int>(m_outlier.posNonOutlier.size());
 
-    for (int i = 0; i < nOut; ++i)
-        m_mafOutlier[i] = afVec[m_outlier.posOutlier[i]];
-
-    double mean_nonOutlier = 0.0, var_nonOutlier = 0.0;
-    for (int i = 0; i < nNon; ++i) {
-        const double af = afVec[m_outlier.posNonOutlier[i]];
-        m_mafNonOutlier[i] = af;
-        mean_nonOutlier += m_outlier.residNonOutlier[i] * af;
-        var_nonOutlier += m_outlier.resid2NonOutlier[i] * af * (1.0 - af);
+    double outMean = 0.0, outVar = 0.0;
+    for (int i = 0; i < nOut; ++i) {
+        const uint32_t pos = m_outlier.posOutlier[i];
+        const double af = afVec[pos];
+        const double r = m_outlier.residOutlier[i];
+        m_mafOutlier[i] = af;
+        outMean += r * af;
+        outVar += r * r * wVec[pos];
     }
-    mean_nonOutlier *= 2.0;
-    var_nonOutlier *= 2.0;
 
-    double absS = std::abs(S_spa - S_mean_spa);
+    const double mean_nonOutlier = S_mean - 2.0 * outMean;
+    double var_nonOutlier = S_var_diag - outVar;
+    if (!(var_nonOutlier > 0.0)) var_nonOutlier = 0.0;
 
-    double pval1 = spa::getProbSpaG(
-        m_mafOutlier.data(),
-        m_outlier.residOutlier.data(),
-        nOut,
-        absS + S_mean_spa,
-        false,
-        mean_nonOutlier,
-        var_nonOutlier
-    );
+    const double absS = std::abs(S_spa - S_mean_spa);
 
-    double pval2 = spa::getProbSpaG(
-        m_mafOutlier.data(),
-        m_outlier.residOutlier.data(),
-        nOut,
-        -absS + S_mean_spa,
-        true,
-        mean_nonOutlier,
-        var_nonOutlier
-    );
+    spamix_cgf::Context cgf;
+    cgf.resid = m_outlier.residOutlier.data();
+    cgf.af = m_mafOutlier.data();     // per-individual AF: binomIndiv
+    cgf.nOutlier = nOut;
+    cgf.mean = mean_nonOutlier;
+    cgf.var = var_nonOutlier;
 
-    return pval1 + pval2;
+    // S_var_diag is the independence K''(0) and only sizes the initial
+    // abscissa; the reflection point stays S_mean_spa, as before.
+    return spamix_cgf::twoSidedSpa(cgf, S_mean_spa, absS, S_var_diag);
+}
+
+// ======================================================================
+// pushResult — the seven output cells
+// ======================================================================
+//
+// P LOG10P Z Z_Norm BETA SE SPA_STATUS.  Z is the p-consistent z (the normal
+// quantile of P carrying Z_Norm's sign) and Z_Norm the raw score z; they differ
+// in the tails, which is exactly where the saddlepoint does its work.
+
+void SPAmixPlusMethod::pushResult(
+    std::vector<double> &r,
+    const spa::TwoSided &ts,
+    double zScore,
+    double varS
+) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double sqrtVarS = (varS > 0.0) ? std::sqrt(varS) : 0.0;
+    const double zOut = (sqrtVarS > 0.0) ? zScore : nan;
+    const double beta = (sqrtVarS > 0.0) ? zScore / sqrtVarS : nan;
+    const double se   = (sqrtVarS > 0.0) ? 1.0 / sqrtVarS : nan;
+
+    r.push_back(ts.p);
+    r.push_back(ts.negLog10p);
+    r.push_back(math::zFromPval(ts.p, zOut));
+    r.push_back(zOut);
+    r.push_back(beta);
+    r.push_back(se);
+    r.push_back(spamix_cgf::statusCode(ts.status));
 }
 
 // ======================================================================
@@ -400,17 +484,8 @@ void SPAmixPlusMethod::getResultVec(
     double rawScore = GVec.dot(m_resid);
 
     double zScore, VarS;
-    double pval = markerPvalFromAF(m_AFVec, m_WVec, rawScore, zScore, VarS);
-    const double sqrtVarS = (VarS > 0.0) ? std::sqrt(VarS) : 0.0;
-    const double nan = std::numeric_limits<double>::quiet_NaN();
-    const double zOut  = (sqrtVarS > 0.0) ? zScore             : nan;       // Z = Score / sqrt(Var)
-    const double beta  = (sqrtVarS > 0.0) ? zScore / sqrtVarS  : nan;       // BETA = Score / Var
-    const double se    = (sqrtVarS > 0.0) ? 1.0    / sqrtVarS  : nan;       // SE   = 1 / sqrt(Var)
-    result.push_back(pval);
-    result.push_back(math::zFromPval(pval, zOut)); // Z (p-consistent)
-    result.push_back(zOut);                        // Z_Norm (raw score z)
-    result.push_back(beta);
-    result.push_back(se);
+    const spa::TwoSided ts = markerPvalFromAF(m_AFVec, m_WVec, rawScore, zScore, VarS);
+    pushResult(result, ts, zScore, VarS);
 }
 
 // ======================================================================
@@ -480,21 +555,12 @@ void SPAmixPlusMethod::processScoreBatch(
 
         const double rawScore = scores(0, b);
         double zScore, VarS;
-        double pval = markerPvalFromAF(afCol, wCol, rawScore, zScore, VarS);
-        const double sqrtVarS = (VarS > 0.0) ? std::sqrt(VarS) : 0.0;
-        const double nan = std::numeric_limits<double>::quiet_NaN();
-        const double zOut  = (sqrtVarS > 0.0) ? zScore             : nan;
-        const double beta  = (sqrtVarS > 0.0) ? zScore / sqrtVarS  : nan;
-        const double se    = (sqrtVarS > 0.0) ? 1.0    / sqrtVarS  : nan;
+        const spa::TwoSided ts = markerPvalFromAF(afCol, wCol, rawScore, zScore, VarS);
 
         auto &r = results[b];
         r.clear();
-        r.reserve(5);
-        r.push_back(pval);
-        r.push_back(math::zFromPval(pval, zOut)); // Z (p-consistent)
-        r.push_back(zOut);                        // Z_Norm (raw score z)
-        r.push_back(beta);
-        r.push_back(se);
+        r.reserve(7);
+        pushResult(r, ts, zScore, VarS);
     }
 }
 
@@ -516,8 +582,6 @@ void SPAmixPlusMethod::getResultBatch(
 ) {
     const int B = static_cast<int>(GBatch.cols());
     results.resize(B);
-
-    const double nan = std::numeric_limits<double>::quiet_NaN();
 
     if (m_useAFCacheBatch) {
         // On-the-fly AF: each marker's AFVec depends on its own G column, so
@@ -551,20 +615,13 @@ void SPAmixPlusMethod::getResultBatch(
             const double rawScore = GBatch.col(b).dot(m_resid);
 
             double zScore, VarS;
-            double pval = markerPvalFromAF(afCol, wCol, rawScore, zScore, VarS);
-            const double sqrtVarS = (VarS > 0.0) ? std::sqrt(VarS) : 0.0;
-            const double zOut  = (sqrtVarS > 0.0) ? zScore             : nan;
-            const double beta  = (sqrtVarS > 0.0) ? zScore / sqrtVarS  : nan;
-            const double se    = (sqrtVarS > 0.0) ? 1.0    / sqrtVarS  : nan;
+            const spa::TwoSided ts =
+                markerPvalFromAF(afCol, wCol, rawScore, zScore, VarS);
 
             auto &r = results[b];
             r.clear();
-            r.reserve(5);
-            r.push_back(pval);
-            r.push_back(math::zFromPval(pval, zOut)); // Z (p-consistent)
-            r.push_back(zOut);                        // Z_Norm (raw score z)
-            r.push_back(beta);
-            r.push_back(se);
+            r.reserve(7);
+            pushResult(r, ts, zScore, VarS);
         }
         return;
     }
@@ -580,20 +637,13 @@ void SPAmixPlusMethod::getResultBatch(
         const double rawScore = GBatch.col(b).dot(m_resid);
 
         double zScore, VarS;
-        double pval = markerPvalFromAF(m_AFVec, m_WVec, rawScore, zScore, VarS);
-        const double sqrtVarS = (VarS > 0.0) ? std::sqrt(VarS) : 0.0;
-        const double zOut  = (sqrtVarS > 0.0) ? zScore             : nan;
-        const double beta  = (sqrtVarS > 0.0) ? zScore / sqrtVarS  : nan;
-        const double se    = (sqrtVarS > 0.0) ? 1.0    / sqrtVarS  : nan;
+        const spa::TwoSided ts =
+            markerPvalFromAF(m_AFVec, m_WVec, rawScore, zScore, VarS);
 
         auto &r = results[b];
         r.clear();
-        r.reserve(5);
-        r.push_back(pval);
-        r.push_back(math::zFromPval(pval, zOut)); // Z (p-consistent)
-        r.push_back(zOut);                        // Z_Norm (raw score z)
-        r.push_back(beta);
-        r.push_back(se);
+        r.reserve(7);
+        pushResult(r, ts, zScore, VarS);
     }
 }
 
