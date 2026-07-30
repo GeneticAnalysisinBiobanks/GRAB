@@ -230,7 +230,7 @@ struct SAGELDSplitLedgers {
     std::vector<double> MAF_interval;
     std::vector<std::vector<double> > TwoSubj_rho_list;
     std::vector<Eigen::MatrixXd> ThreeSubj_CLT_list;
-    double SPA_Cutoff = 0.0, zeta = 0.0, tol = 0.0;
+    double SPA_Cutoff = 0.0, tol = 0.0;
 };
 
 // Build the split ledgers over a fixed partition (from buildSPAGRMNullModel's
@@ -323,7 +323,6 @@ SAGELDSplitLedgers buildSAGELDSplitLedgers(
 
     L.MAF_interval = part.mafInterval;
     L.SPA_Cutoff = spaCutoff;
-    L.zeta = nsGRMNull::ZETA_DEFAULT;
     L.tol = nsGRMNull::TOL_DEFAULT;
     return L;
 }
@@ -376,8 +375,13 @@ double sageldMarkerLambdaPval(
 
     SPAGRMClass sg(std::move(resid_i), sum_R_nonOut_i, R_GRM_R_nonOut_i,
                    R_GRM_R_TwoSubj_i, R_GRM_R_i, L.MAF_interval, std::move(fd),
-                   L.SPA_Cutoff, L.zeta, L.tol);
-    return sg.getMarkerPvalFromScore(Score_i, altFreq, zScore, outScoreVar);
+                   L.SPA_Cutoff, L.tol);
+    // spa_unify Stage 4: getMarkerPvalFromScore now returns P, -log10(P) and
+    // the saddlepoint Status.  SAGELD's output surface is unchanged by this
+    // stage (it gains no LOG10P / SPA_STATUS columns of its own), so only P is
+    // consumed here; a saddlepoint failure still reports NA in P, now for a
+    // reason the SPAGRM output would name.
+    return sg.getMarkerPvalFromScore(Score_i, altFreq, zScore, outScoreVar).p;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -497,7 +501,7 @@ class SAGELDMethod : public MethodBase {
                 // Mean-λ path (SG-1 centering unchanged).
                 score = GVec.dot(env.spagrm_combined.resid()) -
                         gMean * env.spagrm_combined.residSum();
-                pGxE = env.spagrm_combined.getMarkerPvalFromScore(score, altFreq, zGxE, &scoreVar);
+                pGxE = env.spagrm_combined.getMarkerPvalFromScore(score, altFreq, zGxE, &scoreVar).p;
             }
 
             if (scoreVar > 0.0) {

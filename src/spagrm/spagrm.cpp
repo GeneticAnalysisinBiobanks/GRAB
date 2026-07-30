@@ -23,227 +23,133 @@
 
 namespace nsSPAGRM {
 
-// ──────────────────────────────────────────────────────────────────────
-// MGF and its first two derivatives
-// ──────────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════
+// Two-sided saddlepoint p-value — on the shared solver and tail kernel
+// ══════════════════════════════════════════════════════════════════════
+//
+// spa_unify Stage 4.  What used to live here was `mgf` (three MGF vectors plus
+// a quotient temporary), a private Family-B Newton iteration `fastGetRoot`, and
+// `getProbSpa`, a private and completely unguarded copy of the
+// Barndorff-Nielsen modified signed root.  All three are gone.  The root finder
+// is spa::solveSaddlepoint and the tail is spa::bnTail / spa::bnTailLog; what
+// stays is the CGF, which is SPAGRM's own (tier 3, spagrm_cgf.hpp).
+//
+// Six behavioural consequences, in decreasing order of importance:
+//
+//   D6 + D1 jointly.  The old kernel computed
+//
+//       w = sgn(zeta)·sqrt(2·(zeta·Score − CGF0))
+//       v = zeta·sqrt(CGF2)
+//       u = w + log(v/w)/w
+//
+//       with NO isfinite(zeta) check, no zeta·Score − CGF0 ≥ 0 check, no
+//       CGF2 > 0 check, no w ≠ 0 check and no v/w > 0 check.  01_findings.md
+//       describes D1's observable failure as the guard `k2_total <= 0` firing,
+//       but that guard belongs to WtCoxG: grep confirms the ONLY test of CGF2
+//       anywhere in this file was `std::isinf(CGF2)` inside the root finder.  A
+//       non-positive CGF2 therefore reached `std::sqrt` bare and produced NaN,
+//       which math::pnorm forwards silently (math_helper.hpp:70).  D1 and D6
+//       are one defect jointly here, not two independent ones, and the joint
+//       repair is the shared guard set in spa::bnTail plus the mean-centred
+//       K'' in spagrm_cgf.hpp.
+//
+//       Nor is the damage merely "a conservative p = 2.0" as D6 states.  With
+//       CGF2 == 0 exactly, v = 0, log(v/w) = −inf and u = ∓inf, math::pnorm's
+//       non-finite branch returns 1.0 on BOTH tails, and the sum 2.0 reached
+//       the P column unclamped.  math::zFromPval(2.0, ·) then clamps inside
+//       qnorm and reports |Z| ≈ 8.2, so the row was internally inconsistent —
+//       P = 2 alongside a genome-wide-significant Z — rather than conservative.
+//       spa::combineTails clamps into [0, 1] and, more to the point, reports NA
+//       with a named status instead.
+//
+//   D5.  Neither `fastGetRoot` nor `getProbSpa` had a convergence flag at all
+//       (their signatures return a bare double), so exhausting the 49-iteration
+//       budget was indistinguishable from converging.  spa::Saddle carries a
+//       Status that is part of the return value and cannot be dropped, and it
+//       reaches the user in the SPA_STATUS column with P set to NA.
+//
+//   D7.  The upper tail was called with a bare literal 1e-4 and the lower tail
+//       with the configured `s.tol` (1e-6), so the two probabilities being
+//       summed were not computed to the same accuracy and `--spagrm-tol` did
+//       not do what its name implies.  Both tails now use `s.tol`, and the
+//       criterion is relative (|K'(t) − s| ≤ tol·sqrt(K''(t))) rather than an
+//       absolute test on the pending step.  This is a real numeric change and
+//       is the point of the stage.
+//
+//   P6.  The CGF is now evaluated in ONE pass per term class.  `getProbSpa`
+//       walked the workspace three times per tail and `fastGetRoot` four times
+//       per Newton iteration; MgfWorkspace's MGF0 / MGF1 / MGF2 / temp vectors
+//       (8 × nOutlier doubles per clone) are deleted outright.
+//
+//   Bracketing and the terminal cumulants.  The old finder maintained no
+//       bracket — its two "bisection" loops only halved the step — and
+//       evaluated the terminal K'' at the post-step abscissa only because it
+//       re-ran `mgf` after the loop.  The solver expands a bracket until the
+//       residual changes sign, bisects whenever Newton misbehaves, and
+//       evaluates the terminal cumulants at the root it returns.
+//
+// ── The lower-tail initial abscissa ──────────────────────────────────
+//
+// The two Family-B implementations did not agree here, which neither the audit
+// nor its cross-check flagged: SPAsqr used `zeta2 = -zeta1`, minus the
+// data-dependent upper-tail guess, while SPAGRM used
+// `zeta2 = -std::abs(s.zeta)`, i.e. minus the fixed configured constant 0.01.
+// Unification has to choose one.  This stage takes SPAsqr's convention,
+// `init_lower = -init_upper = -min(|Score_adj|/Score_var, 1.2)`, for two
+// reasons:
+//
+//   * It is an estimate of the quantity it initializes.  The first-order
+//     saddlepoint is zeta ≈ s/K''(0), and Score_var is the nominal K''(0), so
+//     |Score_adj|/Score_var IS that estimate; 0.01 estimates nothing.  The
+//     lower-tail problem is the upper-tail problem at s → −s, so its
+//     first-order root is the negation.
+//   * It makes the two tails cost the same.  Starting the lower tail at −0.01
+//     when the root is near −1 forced the bracket expansion to walk outward
+//     from almost the origin every time.
+//
+// With a bracketing solver the choice cannot change the converged root, only
+// the work needed to reach it, so this is an efficiency and symmetry decision
+// rather than a numeric one.  SPAGRMClass::SharedData::zeta and the
+// `zeta` constructor parameter are deleted with it; nsGRMNull::ZETA_DEFAULT is
+// no longer referenced.
 
-void mgf(
-    double t,
-    const Eigen::VectorXd &resid_unrelated_outliers,
-    const std::vector<std::array<double, 2> > &TwoSubj_resid,
-    const std::vector<std::vector<double> > &TwoSubj_rho,
-    const std::vector<UpdatedThreeSubj> &threeSubj,
-    double MAF,
-    MgfWorkspace &ws
+spa::TwoSided twoSidedSpa(
+    const spagrm_cgf::Context &cgf,
+    double absScore,
+    double initZeta,
+    double tol
 ) {
-    Eigen::Index w = 0;
-    const Eigen::Index nu = resid_unrelated_outliers.size();
+    double p[2], logp[2];
+    spa::Status st[2];
 
-    // ── Unrelated outliers ─────────────────────────────────────────────
-    if (nu > 0) {
-        ws.ul_lambda = (t * resid_unrelated_outliers).array().exp().matrix();
-        ws.ul_alpha = (Eigen::VectorXd::Constant(nu, 1.0 - MAF) + MAF * ws.ul_lambda);
-        ws.ul_alpha_1 = MAF * resid_unrelated_outliers.cwiseProduct(ws.ul_lambda);
-        ws.ul_alpha_2 = resid_unrelated_outliers.cwiseProduct(ws.ul_alpha_1);
+    for (int k = 0; k < 2; ++k) {
+        const bool lowerTail = (k == 1);
+        const double s = lowerTail ? -absScore : absScore;
 
-        ws.MGF0.segment(0, nu) = ws.ul_alpha.cwiseProduct(ws.ul_alpha);
-        ws.MGF1.segment(0, nu) = 2.0 * ws.ul_alpha.cwiseProduct(ws.ul_alpha_1);
-        ws.MGF2.segment(0, nu) =
-            2.0 * (ws.ul_alpha_1.cwiseProduct(ws.ul_alpha_1) + ws.ul_alpha.cwiseProduct(ws.ul_alpha_2));
-        w += nu;
+        spa::SolveOpts opt;
+        opt.init = lowerTail ? -initZeta : initZeta;
+        opt.scoreSign = s;   // only the sign is read
+        opt.rtol = tol;      // D7: the configured tolerance reaches both tails
+
+        const spa::Saddle sd = spa::solveSaddlepoint(
+            s,
+            [&](double t) { return spagrm_cgf::k12(t, cgf, s); },
+            [&](double t) { return spagrm_cgf::kFull(t, cgf, s); },
+            opt);
+
+        spa::Status stLin = spa::Status::Converged;
+        spa::Status stLog = spa::Status::Converged;
+        p[k]    = spa::bnTail(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLin);
+        logp[k] = spa::bnTailLog(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLog);
+        st[k] = spa::worseStatus(sd.status, spa::worseStatus(stLin, stLog));
     }
 
-    // ── Two-subject families ───────────────────────────────────────────
-    {
-        double *g0 = ws.MGF0.data();
-        double *g1 = ws.MGF1.data();
-        double *g2 = ws.MGF2.data();
-        const double maf01 = MAF * (1.0 - MAF);
-        const double one_minus_MAF = 1.0 - MAF;
-
-        const int n1 = static_cast<int>(TwoSubj_resid.size());
-        for (int i = 0; i < n1; ++i) {
-            const double *rho = TwoSubj_rho[i].data();
-            const size_t ki = TwoSubj_rho[i].size();
-            const double R1 = TwoSubj_resid[i][0];
-            const double R2 = TwoSubj_resid[i][1];
-            const double etR1 = std::exp(t * R1);
-            const double etR2 = std::exp(t * R2);
-            const double Rsum = R1 + R2;
-            const double R1sq = R1 * R1;
-            const double R2sq = R2 * R2;
-            const double Rssq = Rsum * Rsum;
-            const double etR12 = etR1 * etR2;
-
-            for (size_t j = 0; j < ki; ++j) {
-                const double tj = (1.0 - rho[j]) * maf01;
-                const double m1j = etR1 * tj;
-                const double m2j = etR2 * tj;
-                const double m3j = etR12 * (MAF - tj);
-                const size_t idx = static_cast<size_t>(w) + j;
-                g0[idx] = m1j + m2j + m3j - tj + one_minus_MAF;
-                g1[idx] = R1 * m1j + R2 * m2j + Rsum * m3j;
-                g2[idx] = R1sq * m1j + R2sq * m2j + Rssq * m3j;
-            }
-            w += static_cast<Eigen::Index>(ki);
-        }
-    }
-
-    // ── Three-subject families ─────────────────────────────────────────
-    const int n2 = static_cast<int>(threeSubj.size());
-    for (int i = 0; i < n2; ++i) {
-        const double *ss = threeSubj[i].stand_S.data();
-        const double *ap = threeSubj[i].arr_prob.data();
-        const size_t ns = threeSubj[i].stand_S.size();
-        double s0 = 0.0, s1 = 0.0, s2 = 0.0;
-        for (size_t j = 0; j < ns; ++j) {
-            const double m0j = std::exp(t * ss[j]) * ap[j];
-            const double m1j = ss[j] * m0j;
-            s0 += m0j;
-            s1 += m1j;
-            s2 += ss[j] * m1j;
-        }
-        ws.MGF0[w] = s0;
-        ws.MGF1[w] = s1;
-        ws.MGF2[w] = s2;
-        ++w;
-    }
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// Newton-Raphson root finder
-// ──────────────────────────────────────────────────────────────────────
-
-static inline double signOf(double x) {
-    return (x > 0.0) ? 1.0 : ((x < 0.0) ? -1.0 : 0.0);
-}
-
-double fastGetRoot(
-    const Eigen::VectorXd &resid_unrelated_outliers,
-    const std::vector<std::array<double, 2> > &TwoSubj_resid,
-    const std::vector<std::vector<double> > &TwoSubj_rho,
-    const std::vector<UpdatedThreeSubj> &threeSubj,
-    double sum_R_nonOutlier,
-    double R_GRM_R_nonOutlier,
-    double Score,
-    double MAF,
-    double init_t,
-    double tol,
-    MgfWorkspace &ws,
-    int maxiter
-) {
-    double t = init_t;
-    double CGF1 = 0.0, CGF2 = 0.0;
-    double diff_t = std::numeric_limits<double>::infinity();
-
-    const double mean = 2.0 * MAF * sum_R_nonOutlier;
-    const double var = 2.0 * MAF * (1.0 - MAF) * R_GRM_R_nonOutlier;
-
-    for (int iter = 1; iter < maxiter; ++iter) {
-        const double old_t = t;
-        const double old_diff_t = diff_t;
-        const double old_CGF1 = CGF1;
-
-        mgf(t, resid_unrelated_outliers, TwoSubj_resid, TwoSubj_rho, threeSubj, MAF, ws);
-
-        // temp = MGF1 ./ MGF0
-        const Eigen::Index sz = ws.MGF0.size();
-        for (Eigen::Index k = 0; k < sz; ++k)
-            ws.temp[k] = ws.MGF1[k] / ws.MGF0[k];
-
-        CGF1 = ws.temp.sum() + mean + var * t - Score;
-        // CGF2 = sum(MGF2/MGF0) - sum(temp^2) + var
-        double s1 = 0.0, s2 = 0.0;
-        for (Eigen::Index k = 0; k < sz; ++k) {
-            s1 += ws.MGF2[k] / ws.MGF0[k];
-            s2 += ws.temp[k] * ws.temp[k];
-        }
-        CGF2 = s1 - s2 + var;
-
-        diff_t = -CGF1 / CGF2;
-
-        if (std::isnan(diff_t) || std::isinf(CGF2)) {
-            t = t / 2.0;
-            diff_t = std::min(std::abs(t), 1.0) * signOf(Score);
-            continue;
-        }
-
-        if (std::isnan(old_CGF1) || (signOf(old_CGF1) != 0 && signOf(CGF1) != signOf(old_CGF1))) {
-            if (std::abs(diff_t) < tol) {
-                t = old_t + diff_t;
-                break;
-            } else {
-                for (int bisect = 0; bisect < 200 && std::abs(old_diff_t) > tol &&
-                     std::abs(diff_t) > std::abs(old_diff_t) - tol; ++bisect)
-                    diff_t /= 2.0;
-                t = old_t + diff_t;
-                continue;
-            }
-        }
-
-        if (signOf(Score) != signOf(old_t + diff_t) && (signOf(old_CGF1) == 0 || signOf(CGF1) == signOf(old_CGF1))) {
-            for (int bisect = 0; bisect < 200 && signOf(Score) != signOf(old_t + diff_t); ++bisect)
-                diff_t /= 2.0;
-            t = old_t + diff_t;
-            continue;
-        }
-
-        t = old_t + diff_t;
-        if (std::abs(diff_t) < tol) break;
-    }
-
-    // Final mgf evaluation at convergence.
-    mgf(t, resid_unrelated_outliers, TwoSubj_resid, TwoSubj_rho, threeSubj, MAF, ws);
-    return t;
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// Saddlepoint approximation tail probability
-// ──────────────────────────────────────────────────────────────────────
-
-double getProbSpa(
-    const Eigen::VectorXd &resid_unrelated_outliers,
-    const std::vector<std::array<double, 2> > &TwoSubj_resid,
-    const std::vector<std::vector<double> > &TwoSubj_rho,
-    const std::vector<UpdatedThreeSubj> &threeSubj,
-    double sum_R_nonOutlier,
-    double R_GRM_R_nonOutlier,
-    double Score,
-    double MAF,
-    bool lower_tail,
-    double zeta,
-    double tol,
-    MgfWorkspace &ws
-) {
-    zeta = fastGetRoot(resid_unrelated_outliers, TwoSubj_resid, TwoSubj_rho, threeSubj, sum_R_nonOutlier,
-                       R_GRM_R_nonOutlier, Score, MAF, zeta, tol, ws);
-
-    const double mean = 2.0 * MAF * sum_R_nonOutlier;
-    const double var = 2.0 * MAF * (1.0 - MAF) * R_GRM_R_nonOutlier;
-
-    const Eigen::Index sz = ws.MGF0.size();
-    for (Eigen::Index k = 0; k < sz; ++k)
-        ws.temp[k] = ws.MGF1[k] / ws.MGF0[k];
-
-    // CGF0 = sum(log(MGF0)) + mean*zeta + 0.5*var*zeta^2
-    double logSum = 0.0;
-    for (Eigen::Index k = 0; k < sz; ++k)
-        logSum += std::log(ws.MGF0[k]);
-    const double CGF0 = logSum + mean * zeta + 0.5 * var * zeta * zeta;
-
-    // CGF2 = sum(MGF2/MGF0) - sum(temp^2) + var
-    double s1 = 0.0, s2 = 0.0;
-    for (Eigen::Index k = 0; k < sz; ++k) {
-        s1 += ws.MGF2[k] / ws.MGF0[k];
-        s2 += ws.temp[k] * ws.temp[k];
-    }
-    const double CGF2_val = s1 - s2 + var;
-
-    const double w_val = signOf(zeta) * std::sqrt(2.0 * (zeta * Score - CGF0));
-    const double v_val = zeta * std::sqrt(CGF2_val);
-    const double u = w_val + (1.0 / w_val) * std::log(v_val / w_val);
-
-    return math::pnorm(u, 0.0, 1.0, lower_tail);
+    // P from the linear-scale assembly (a sum of two positive quantities, as
+    // before); -log10(P) from the log-domain assembly, which survives past the
+    // point where the linear tails underflow to zero.
+    const spa::TwoSided lin = spa::combineTails(p[0], p[1], st[0], st[1]);
+    const spa::TwoSided lg  = spa::combineTailsLog(logp[0], logp[1], st[0], st[1]);
+    return spa::TwoSided{lin.p, lg.negLog10p, lin.status};
 }
 
 } // namespace nsSPAGRM
@@ -261,7 +167,6 @@ SPAGRMClass::SPAGRMClass(
     std::vector<double> MAF_interval,
     nsSPAGRM::FamilyData fam,
     double SPA_Cutoff,
-    double zeta,
     double tol
 )
 {
@@ -280,7 +185,6 @@ SPAGRMClass::SPAGRMClass(
     sd->ThreeSubj_standS_list = std::move(fam.threeSubj_standS);
     sd->ThreeSubj_CLT_list = std::move(fam.threeSubj_CLT);
     sd->SPA_Cutoff = SPA_Cutoff;
-    sd->zeta = zeta;
     sd->tol = tol;
     m_shared = std::move(sd);
     rebuildScratch();
@@ -294,125 +198,61 @@ SPAGRMClass::SPAGRMClass(const SPAGRMClass &o)
 
 void SPAGRMClass::rebuildScratch() {
     const auto &s = *m_shared;
-    const auto n_unrel = s.resid_unrelated_outliers.size();
-    const auto mgfSz = static_cast<Eigen::Index>(
-        nsSPAGRM::mgfOutputSize(static_cast<size_t>(n_unrel), s.TwoSubj_rho_list, s.ThreeSubj_standS_list.size()));
-    m_workspace = nsSPAGRM::MgfWorkspace(mgfSz, n_unrel);
-
     const int n3 = static_cast<int>(s.ThreeSubj_standS_list.size());
     m_threeSubj_scratch.resize(n3);
+    size_t widest = 0;
     for (int i = 0; i < n3; ++i) {
         m_threeSubj_scratch[i].stand_S = s.ThreeSubj_standS_list[i];
         m_threeSubj_scratch[i].arr_prob.resize(s.ThreeSubj_standS_list[i].size());
+        widest = std::max(widest, s.ThreeSubj_standS_list[i].size());
     }
+    // One class-3 family's tilted weights, so the mean-centred K'' needs no
+    // second exponential pass.  At most 3^MAX_NUM_IN_FAM = 243 doubles.
+    m_cgfScratch.assign(widest, 0.0);
 }
 
-double SPAGRMClass::getMarkerPval(
-    const Eigen::VectorXd &GVec,
-    double altFreq,
-    double &zScore,
-    double gMean,
-    double *outScoreVar
-) {
-    const auto &s = *m_shared;
-    const double MAF = std::min(altFreq, 1.0 - altFreq);
-    if (std::isnan(gMean))
-        gMean = GVec.mean();
-    const double Score = GVec.dot(s.resid) - gMean * s.resid_sum;
-    const double G_var = 2.0 * MAF * (1.0 - MAF);
-    const double Score_var = G_var * s.R_GRM_R;
+// ══════════════════════════════════════════════════════════════════════
+// Per-marker two-sided p-value
+// ══════════════════════════════════════════════════════════════════════
+//
+// The GVec-taking overload `SPAGRMClass::getMarkerPval` is deleted.  It was a
+// ~70-line near-verbatim copy of this function differing only in computing
+// `Score` itself, and grep over src/ and tests/ found no call site: the three
+// SPAGRMMethod entry points and both SAGELD entry points all go through
+// getMarkerPvalFromScore.  It also carried its own copies of the D6 and D7
+// defects, so keeping it would have left two of the seven copies of D1's
+// cancelling block alive in a function nothing calls.
 
-    if (outScoreVar) *outScoreVar = Score_var;
-
-    // Guard: monomorphic or degenerate marker — skip SPA entirely
-    if (Score_var <= 0.0 || MAF <= 0.0) {
-        zScore = 0.0;
-        return std::numeric_limits<double>::quiet_NaN();
-    }
-
-    zScore = Score / std::sqrt(Score_var);
-
-    if (!std::isfinite(zScore)) {
-        return std::numeric_limits<double>::quiet_NaN();
-    }
-
-    if (std::abs(zScore) <= s.SPA_Cutoff) {
-        return 2.0 * math::pnorm(std::abs(zScore), 0.0, 1.0, /*lower_tail=*/ false);
-    }
-
-    int order2 =
-        static_cast<int>(std::lower_bound(s.MAF_interval.begin(), s.MAF_interval.end(), MAF) - s.MAF_interval.begin());
-    // Clamp to valid interpolation range
-    const int nBins = static_cast<int>(s.MAF_interval.size());
-    if (order2 <= 0) order2 = 1;
-    if (order2 >= nBins) order2 = nBins - 1;
-    const int order1 = order2 - 1;
-    const double MAF_ratio = (s.MAF_interval[order2] - MAF) / (s.MAF_interval[order2] - s.MAF_interval[order1]);
-    const double one_minus_mr = 1.0 - MAF_ratio;
-
-    // Update arr_prob in-place for three-subject families.
-    double Var_ThreeOutlier = 0.0;
-    const int n3 = static_cast<int>(m_threeSubj_scratch.size());
-    for (int i = 0; i < n3; ++i) {
-        const double *c1 = s.ThreeSubj_CLT_list[i].col(order1).data();
-        const double *c2 = s.ThreeSubj_CLT_list[i].col(order2).data();
-        const double *ss = m_threeSubj_scratch[i].stand_S.data();
-        double *ap = m_threeSubj_scratch[i].arr_prob.data();
-        const size_t sz = m_threeSubj_scratch[i].stand_S.size();
-        double s1 = 0.0, s2 = 0.0;
-        for (size_t k = 0; k < sz; ++k) {
-            ap[k] = MAF_ratio * c1[k] + one_minus_mr * c2[k];
-            const double tmp = ss[k] * ap[k];
-            s1 += tmp;
-            s2 += ss[k] * tmp;
-        }
-        Var_ThreeOutlier += s2 - s1 * s1;
-    }
-
-    const double EmpVar =
-        G_var * (s.R_GRM_R_nonOutlier + s.sum_unrelated_outliers2 + s.R_GRM_R_TwoSubjOutlier) + Var_ThreeOutlier;
-    const double Score_adj = Score * std::sqrt(EmpVar / Score_var);
-
-    double zeta1 = std::abs(Score_adj) / Score_var;
-    zeta1 = std::min(zeta1, 1.2);
-    const double zeta2 = -std::abs(s.zeta);
-
-    const double pval1 = nsSPAGRM::getProbSpa(s.resid_unrelated_outliers, s.TwoSubj_resid_list, s.TwoSubj_rho_list,
-                                              m_threeSubj_scratch, s.sum_R_nonOutlier, s.R_GRM_R_nonOutlier,
-                                              std::abs(Score_adj), MAF, false, zeta1, 1e-4, m_workspace);
-    const double pval2 = nsSPAGRM::getProbSpa(s.resid_unrelated_outliers, s.TwoSubj_resid_list, s.TwoSubj_rho_list,
-                                              m_threeSubj_scratch, s.sum_R_nonOutlier, s.R_GRM_R_nonOutlier,
-                                              -std::abs(Score_adj), MAF, true, zeta2, s.tol, m_workspace);
-    return pval1 + pval2;
-}
-
-double SPAGRMClass::getMarkerPvalFromScore(
+spa::TwoSided SPAGRMClass::getMarkerPvalFromScore(
     double Score,
     double altFreq,
     double &zScore,
     double *outScoreVar
 ) {
     const auto &s = *m_shared;
+    const double nan = std::numeric_limits<double>::quiet_NaN();
     const double MAF = std::min(altFreq, 1.0 - altFreq);
     const double G_var = 2.0 * MAF * (1.0 - MAF);
     const double Score_var = G_var * s.R_GRM_R;
 
     if (outScoreVar) *outScoreVar = Score_var;
 
+    // Monomorphic or degenerate marker — no statistic exists, so there is no
+    // saddlepoint to attempt and nothing to report but the reason.
     if (Score_var <= 0.0 || MAF <= 0.0) {
         zScore = 0.0;
-        return std::numeric_limits<double>::quiet_NaN();
+        return spa::TwoSided{nan, nan, spa::Status::NonFinite};
     }
 
     zScore = Score / std::sqrt(Score_var);
 
-    if (!std::isfinite(zScore)) {
-        return std::numeric_limits<double>::quiet_NaN();
-    }
+    if (!std::isfinite(zScore))
+        return spa::TwoSided{nan, nan, spa::Status::NonFinite};
 
-    if (std::abs(zScore) <= s.SPA_Cutoff) {
-        return 2.0 * math::pnorm(std::abs(zScore), 0.0, 1.0, /*lower_tail=*/ false);
-    }
+    // Normal approximation below the SPA cutoff.  spa::normalBranch routes the
+    // tail through Boost's complement, which is the same double the old
+    // `2 * pnorm(|z|, upper)` produced, and adds the log-domain -log10(p).
+    if (std::abs(zScore) <= s.SPA_Cutoff) return spa::normalBranch(zScore);
 
     int order2 =
         static_cast<int>(std::lower_bound(s.MAF_interval.begin(), s.MAF_interval.end(), MAF) - s.MAF_interval.begin());
@@ -423,6 +263,9 @@ double SPAGRMClass::getMarkerPvalFromScore(
     const double MAF_ratio = (s.MAF_interval[order2] - MAF) / (s.MAF_interval[order2] - s.MAF_interval[order1]);
     const double one_minus_mr = 1.0 - MAF_ratio;
 
+    // Refresh each class-3 family's probability table at this marker's MAF, and
+    // accumulate its untilted variance for the EmpVar rescaling below.  This is
+    // the one part of the CGF input that is per-marker rather than per-tail.
     double Var_ThreeOutlier = 0.0;
     const int n3 = static_cast<int>(m_threeSubj_scratch.size());
     for (int i = 0; i < n3; ++i) {
@@ -443,19 +286,31 @@ double SPAGRMClass::getMarkerPvalFromScore(
 
     const double EmpVar =
         G_var * (s.R_GRM_R_nonOutlier + s.sum_unrelated_outliers2 + s.R_GRM_R_TwoSubjOutlier) + Var_ThreeOutlier;
+    // EmpVar is a quadratic form over a thresholded sparse GRM plus a tabulated
+    // variance and is NOT guaranteed non-negative; a negative EmpVar makes
+    // Score_adj NaN.  That is not silently absorbed: the solver's first
+    // evaluation is non-finite, so it returns Status::NonFinite and the row
+    // reports NA with a reason rather than an unexplained NaN.
     const double Score_adj = Score * std::sqrt(EmpVar / Score_var);
 
-    double zeta1 = std::abs(Score_adj) / Score_var;
-    zeta1 = std::min(zeta1, 1.2);
-    const double zeta2 = -std::abs(s.zeta);
+    // First-order saddlepoint estimate zeta ≈ s/K''(0), capped; the lower tail
+    // starts at its negation (see the convention note above twoSidedSpa).
+    const double initZeta = std::min(std::abs(Score_adj) / Score_var, 1.2);
 
-    const double pval1 = nsSPAGRM::getProbSpa(s.resid_unrelated_outliers, s.TwoSubj_resid_list, s.TwoSubj_rho_list,
-                                              m_threeSubj_scratch, s.sum_R_nonOutlier, s.R_GRM_R_nonOutlier,
-                                              std::abs(Score_adj), MAF, false, zeta1, 1e-4, m_workspace);
-    const double pval2 = nsSPAGRM::getProbSpa(s.resid_unrelated_outliers, s.TwoSubj_resid_list, s.TwoSubj_rho_list,
-                                              m_threeSubj_scratch, s.sum_R_nonOutlier, s.R_GRM_R_nonOutlier,
-                                              -std::abs(Score_adj), MAF, true, zeta2, s.tol, m_workspace);
-    return pval1 + pval2;
+    spagrm_cgf::Context cgf;
+    cgf.outlierResid = s.resid_unrelated_outliers.data();
+    cgf.nOutlier = static_cast<int>(s.resid_unrelated_outliers.size());
+    cgf.twoResid = s.TwoSubj_resid_list.data();
+    cgf.twoRho = s.TwoSubj_rho_list.data();
+    cgf.nTwo = static_cast<int>(s.TwoSubj_resid_list.size());
+    cgf.three = m_threeSubj_scratch.data();
+    cgf.nThree = n3;
+    cgf.scratch = m_cgfScratch.data();
+    cgf.MAF = MAF;
+    cgf.mean = 2.0 * MAF * s.sum_R_nonOutlier;
+    cgf.var = 2.0 * MAF * (1.0 - MAF) * s.R_GRM_R_nonOutlier;
+
+    return nsSPAGRM::twoSidedSpa(cgf, std::abs(Score_adj), initZeta, s.tol);
 }
 
 // ══════════════════════════════════════════════════════════════════════

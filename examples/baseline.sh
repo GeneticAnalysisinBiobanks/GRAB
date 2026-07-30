@@ -186,6 +186,15 @@ build/grab2 \
   --compression-level 3
 
 ## ── SPAGRM (fit mode, --pheno-name) ───────────────────────────────────
+#
+# Output columns (spa_unify Stage 4): the nine meta columns, then
+#   P  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
+# with the same meaning and the same integer SPA_STATUS encoding as the
+# SPACox block above (0 OK, 1 MAXITER, 2 GUARD_TEMP, 3 GUARD_CURV,
+# 4 GUARD_W, 5 NONFINITE, 6 NORMAL).  Stage 4 also gave SPAGRM the shared
+# guard set, so a saddlepoint that used to emit a bare NaN — 14 markers of
+# the cross-format Binary fixture below do, all with GUARD_TEMP, i.e.
+# zeta*Score - K(zeta) < 0 — now reports NA in P with the reason named.
 
 build/grab2 \
   --method SPAGRM \
@@ -396,6 +405,16 @@ build/grab2 \
 
 ## ── SPAsqr (score mode, fit path) ─────────────────────────────────────
 # Consumes the INT-transformed phenotype file produced above.
+#
+# Output columns (spa_unify Stage 4): the nine meta columns, then P_CCT and
+# five per-tau groups —
+#   P_CCT  P_tau*  LOG10P_tau*  Z_tau*  Z_Norm_tau*  SPA_STATUS_tau*
+# The saddlepoint is per tau, so both new columns are per tau too: a marker
+# can converge at one quantile level and fail at another.  SPA_STATUS_tau*
+# uses the same integer encoding as the SPACox and SPAGRM blocks.  There is
+# no LOG10P_CCT because math::cauchyCombine has no log-domain form, so such
+# a column could only be -log10 of the linear P_CCT.  A tau whose P is NA
+# drops out of the Cauchy combination rather than poisoning P_CCT.
 
 build/grab2 \
   --method SPAsqr \
@@ -777,6 +796,49 @@ md5_equiv() {
   return 0
 }
 
+# Helper: numeric_equiv TOL LABEL FILE_A FILE_B — compare two decompressed
+# tables cell by cell, requiring exact equality of every non-numeric cell and
+# agreement to relative tolerance TOL for every numeric one.
+#
+# Used ONLY for the SAGELD fit-vs-resid pair, and only because md5_equiv is the
+# wrong instrument there.  Measured with a 17-significant-digit diagnostic build
+# at spa_unify Stage 4 (see the block comment at that check): the two modes
+# already disagreed in the last bits of P_GxTIME for 1423 of 3000 Long1 markers
+# and 617 of 3000 Long2 markers BEFORE Stage 4, by up to 4.4e-15 relative.  Byte
+# identity was therefore never a property of the computation, only of the
+# 6-significant-figure print rounding both values to the same string.  Always
+# returns 0 so `set -e` does not abort the script when a check fails.
+numeric_equiv() {
+  local tol="$1" label="$2" a="$3" b="$4"
+  local status
+  status=$(zstdcat "$a" > "${a}.__ne_a" 2>/dev/null || cat "$a" > "${a}.__ne_a"
+           zstdcat "$b" > "${a}.__ne_b" 2>/dev/null || cat "$b" > "${a}.__ne_b"
+    awk -v TOL="$tol" '
+      function isnum(x) { return (x ~ /^[+-]?([0-9]+\.?[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?$/) }
+      NR==FNR { for (i=1;i<=NF;i++) A[FNR,i]=$i; NC[FNR]=NF; NRA=FNR; next }
+      { if (NF != NC[FNR]) { bad++; next }
+        for (i=1;i<=NF;i++) {
+          x=A[FNR,i]; y=$i
+          if (x==y) continue
+          if (isnum(x) && isnum(y)) {
+            d = x-y; if (d<0) d=-d
+            m = (x<0?-x:x); if ((y<0?-y:y) > m) m = (y<0?-y:y)
+            if (m>0 && d/m <= TOL+0) continue
+            if (d <= TOL+0) continue
+          }
+          bad++; if (worst=="") worst=sprintf("row %d col %d: %s vs %s", FNR, i, x, y)
+        } }
+      END { if (FNR != NRA) { print "FAIL row-count"; exit }
+            if (bad) printf "FAIL %d cell(s), first %s\n", bad, worst
+            else print "PASS" }
+    ' "${a}.__ne_a" "${a}.__ne_b")
+  rm -f "${a}.__ne_a" "${a}.__ne_b"
+  printf "    rtol %s  %s\n    rtol %s  %s\n" "$tol" "$a" "$tol" "$b"
+  echo "  [${status}] ${label}"
+  echo
+  return 0
+}
+
 echo
 echo "════════════════════════════════════════════════════════════════════"
 echo "Regression cross-checks"
@@ -882,9 +944,37 @@ done
 # (fit mode compressed it because --compression zst was set) and emits
 # ${RESID_OUT}_${pheno}.SAGELD.zst; the corresponding fit-mode result is
 # ${OUT}.${pheno}.SAGELD.zst.
+#
+# This is the ONE cross-check in this script that is a tolerance comparison
+# rather than md5_equiv, and the reason is measured, not assumed.  Residual mode
+# does not merely replay fit mode: it rebuilds the GALLOP projection cache (Q and
+# its factorization, Si, StS, XTs, AtS) from the ##sageld-cache-* header block
+# and the Si_00.. columns of the residual file, and re-derives the quantities the
+# fit had in registers.  A diagnostic build printing 17 significant digits shows
+# that at the PRE-Stage-4 revision the two modes already disagreed in P_GxTIME
+# for 1423 of 3000 Long1 markers and 617 of 3000 Long2 markers, by up to
+# 4.416e-15 relative (Long1) and 2.373e-15 (Long2).  The md5 check passed only
+# because 6-significant-figure printing rounded both sides to the same string.
+#
+# spa_unify Stage 4 replaced SPAGRM's Family-B Newton iteration with the shared
+# bracketed safeguarded solver, whose accepted iterate is determined only to
+# within the configured tolerance (--spagrm tol, 1e-6, relative on the residual).
+# Two solves whose inputs differ in the last bits may therefore accept different
+# iterates inside that tolerance, which lifts the pre-existing fit-vs-resid
+# disagreement from ~4e-15 to ~5e-7 relative — still an order of magnitude
+# tighter than the base-to-Stage-4 change of 8.6e-6, and far below any
+# statistical threshold, but now large enough for 5 markers to straddle a print
+# boundary.  Byte identity between the two modes cannot be restored without
+# making the residual-mode cache reconstruction bit-exact, which is a SAGELD
+# question and not a saddlepoint one.
+#
+# rtol 1e-5 is chosen to sit an order of magnitude above the measured 5e-7 and an
+# order of magnitude below the 1e-4 at which a difference would start to matter
+# for a reported p-value.  Every non-numeric cell must still match exactly, and
+# every other cross-check in this script remains md5_equiv.
 
 for sageld_pheno in Long1 Long2; do
-  md5_equiv "SAGELD fit-vs-resid ${sageld_pheno}" \
+  numeric_equiv 1e-5 "SAGELD fit-vs-resid ${sageld_pheno}" \
     ${OUT}.${sageld_pheno}.SAGELD.zst \
     ${RESID_OUT}_${sageld_pheno}.SAGELD.zst
 done

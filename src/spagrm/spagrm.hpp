@@ -1,8 +1,17 @@
 // spagrm.hpp — Saddlepoint approximation with GRM (pure C++17 / Eigen / Boost)
 //
 // Translated from mtSPAGRM.h / mtSPAGRM.cpp (RcppArmadillo) to Eigen.
-// Provides the nsSPAGRM namespace (mgf, fastGetRoot, getProbSpa) and
-// the SPAGRMClass marker-level evaluator used by SPAsqr and SPAGRM.
+// Provides the nsSPAGRM namespace and the SPAGRMClass marker-level evaluator
+// used by SPAGRM and SAGELD.
+//
+// spa_unify Stage 4.  The root finder is the shared, dynamically bracketed
+// safeguarded Newton in util/spa.hpp and the tail is spa::bnTail /
+// spa::bnTailLog; SPAGRM's own three-term-class CGF is tier 3 and lives in
+// spagrm_cgf.hpp.  The private Family-B Newton iteration (nsSPAGRM::fastGetRoot),
+// the private copy of the Barndorff-Nielsen root (nsSPAGRM::getProbSpa), the
+// MGF0/MGF1/MGF2/temp workspace (nsSPAGRM::mgf, MgfWorkspace) and the dead
+// SPAGRMClass::getMarkerPval are all gone.  See
+// dev-notes/methods/spa_unify/02_design.md.
 #pragma once
 
 #include <Eigen/Dense>
@@ -16,15 +25,15 @@
 
 #include "engine/marker.hpp"          // MethodBase
 #include "geno_factory/geno_data.hpp" // GenoSpec
+#include "spagrm/spagrm_cgf.hpp"      // tier-3 CGF + ThreeSubjTable
 #include "util/math_helper.hpp"       // math::zFromPval
+#include "util/spa.hpp"               // spa::TwoSided, spa::Status
 
 namespace nsSPAGRM {
 
-// Per-marker updated data for three-or-more-subject families.
-struct UpdatedThreeSubj {
-    std::vector<double> stand_S;
-    std::vector<double> arr_prob;
-};
+// Per-marker updated data for three-or-more-subject families.  The type now
+// belongs to the CGF that consumes it; the name is retained.
+using UpdatedThreeSubj = spagrm_cgf::ThreeSubjTable;
 
 // Family data for one tau (or one residual column).
 struct FamilyData {
@@ -35,86 +44,20 @@ struct FamilyData {
     std::vector<Eigen::MatrixXd> threeSubj_CLT;
 };
 
-// Total number of elements in the mgf output vectors.
-inline size_t mgfOutputSize(
-    size_t n_unrelated,
-    const std::vector<std::vector<double> > &TwoSubj_rho,
-    size_t nThreeSubj
-)
-{
-    size_t sz = n_unrelated;
-    for (const auto &r : TwoSubj_rho)
-        sz += r.size();
-    sz += nThreeSubj;
-    return sz;
-}
-
-// Pre-allocated scratch workspace (one per SPAGRMClass instance).
-struct MgfWorkspace {
-    Eigen::VectorXd MGF0, MGF1, MGF2;
-    Eigen::VectorXd temp;
-    // Unrelated-outlier intermediates
-    Eigen::VectorXd ul_lambda, ul_alpha, ul_alpha_1, ul_alpha_2;
-
-    MgfWorkspace() = default;
-    MgfWorkspace(
-        Eigen::Index mgfSz,
-        Eigen::Index n_unrelated
-    )
-        : MGF0(mgfSz),
-          MGF1(mgfSz),
-          MGF2(mgfSz),
-          temp(mgfSz),
-          ul_lambda(n_unrelated),
-          ul_alpha(n_unrelated),
-          ul_alpha_1(n_unrelated),
-          ul_alpha_2(n_unrelated)
-    {
-    }
-
-};
-
-// MGF and its first two derivatives → ws.MGF0/MGF1/MGF2.
-void mgf(
-    double t,
-    const Eigen::VectorXd &resid_unrelated_outliers,
-    const std::vector<std::array<double, 2> > &TwoSubj_resid,
-    const std::vector<std::vector<double> > &TwoSubj_rho,
-    const std::vector<UpdatedThreeSubj> &threeSubj,
-    double MAF,
-    MgfWorkspace &ws
-);
-
-// Newton-Raphson root finder for the CGF equation.
-double fastGetRoot(
-    const Eigen::VectorXd &resid_unrelated_outliers,
-    const std::vector<std::array<double, 2> > &TwoSubj_resid,
-    const std::vector<std::vector<double> > &TwoSubj_rho,
-    const std::vector<UpdatedThreeSubj> &threeSubj,
-    double sum_R_nonOutlier,
-    double R_GRM_R_nonOutlier,
-    double Score,
-    double MAF,
-    double init_t,
-    double tol,
-    MgfWorkspace &ws,
-    int maxiter = 50
-);
-
-// Saddlepoint approximation tail probability.
-double getProbSpa(
-    const Eigen::VectorXd &resid_unrelated_outliers,
-    const std::vector<std::array<double, 2> > &TwoSubj_resid,
-    const std::vector<std::vector<double> > &TwoSubj_rho,
-    const std::vector<UpdatedThreeSubj> &threeSubj,
-    double sum_R_nonOutlier,
-    double R_GRM_R_nonOutlier,
-    double Score,
-    double MAF,
-    bool lower_tail,
-    double zeta,
-    double tol,
-    MgfWorkspace &ws
+// Two-sided saddlepoint p-value for one marker.
+//
+// `absScore` is |Score_adj|, the variance-ratio-rescaled score; both tails are
+// solved (upper at +absScore, lower at -absScore) with spa::solveSaddlepoint
+// over the tier-3 CGF, evaluated with spa::bnTail / spa::bnTailLog, and
+// assembled by spa::combineTails.  `initZeta` is the upper-tail initial
+// abscissa; the lower tail starts at -initZeta (see the convention note in
+// spagrm.cpp).  `tol` is the relative residual tolerance and reaches BOTH
+// tails, which is the D7 repair.
+spa::TwoSided twoSidedSpa(
+    const spagrm_cgf::Context &cgf,
+    double absScore,
+    double initZeta,
+    double tol
 );
 
 } // namespace nsSPAGRM
@@ -134,7 +77,6 @@ class SPAGRMClass {
         std::vector<double> MAF_interval,
         nsSPAGRM::FamilyData fam,
         double SPA_Cutoff,
-        double zeta,
         double tol
     );
 
@@ -142,22 +84,20 @@ class SPAGRMClass {
     SPAGRMClass(const SPAGRMClass &o);
     SPAGRMClass &operator=(const SPAGRMClass &) = delete;
 
+    // Caller pre-computes Score = GVec.dot(m_resid) - gMean * m_resid_sum, via
+    // a fused multi-phenotype matrix multiply where one is available.
+    //
     // `outScoreVar`, when non-null, receives the nominal variance
     // Var(S) = 2·MAF·(1−MAF)·Rᵀ Φ R that drives the normal-approximation
     // z-score; callers reporting BETA / SE consume it to form
     // BETA = S / Var(S) and SE = 1 / sqrt(Var(S)).  Set to zero for
     // monomorphic or degenerate markers (Var(S) ≤ 0).
-    double getMarkerPval(
-        const Eigen::VectorXd &GVec,
-        double altFreq,
-        double &zScore,
-        double gMean = std::numeric_limits<double>::quiet_NaN(),
-        double *outScoreVar = nullptr
-    );
-
-    // Fast path: caller pre-computes Score = GVec.dot(m_resid) - gMean * m_resid_sum
-    // via a fused multi-tau matrix multiply, avoiding redundant GVec reads.
-    double getMarkerPvalFromScore(
+    //
+    // Returns P, −log10(P) and the spa::Status of the worse of the two tails.
+    // P is NaN on every status other than Converged and NormalBranch, so a
+    // saddlepoint failure reports NA plus a named reason rather than an
+    // ordinary-looking finite number (spa_unify L2, D5, D6).
+    spa::TwoSided getMarkerPvalFromScore(
         double Score,
         double altFreq,
         double &zScore,
@@ -188,7 +128,6 @@ class SPAGRMClass {
         std::vector<std::vector<double> > ThreeSubj_standS_list;
         std::vector<Eigen::MatrixXd> ThreeSubj_CLT_list;
         double SPA_Cutoff;
-        double zeta;
         double tol;
     };
 
@@ -199,9 +138,13 @@ class SPAGRMClass {
   private:
     std::shared_ptr<const SharedData> m_shared;
 
-    // Per-thread mutable scratch (rebuilt on copy).
-    nsSPAGRM::MgfWorkspace m_workspace;
+    // Per-thread mutable scratch (rebuilt on copy).  arr_prob is refreshed per
+    // marker; m_cgfScratch holds one class-3 family's tilted weights so the
+    // mean-centred K'' needs no second exponential pass.  The MGF0 / MGF1 /
+    // MGF2 / temp vectors that used to live here — 8 × nOutlier doubles per
+    // clone — are gone with the fused CGF (spa_unify P6).
     std::vector<nsSPAGRM::UpdatedThreeSubj> m_threeSubj_scratch;
+    std::vector<double> m_cgfScratch;
 
     void rebuildScratch();
 
@@ -223,11 +166,31 @@ class SPAGRMMethod : public MethodBase {
     }
 
     int resultSize() const override {
-        return 5;
+        return 7;
     }
 
+// P, LOG10P, Z, Z_Norm, BETA, SE, SPA_STATUS.
+//
+// LOG10P is −log10(P), computed through spa::bnTailLog / spa::combineTailsLog
+// so that it stays meaningful past the point where the linear-scale tail
+// underflows (Φ(−38.5) flushes to zero, i.e. p ≈ 1e-316).
+//
+// SPA_STATUS carries the spa::Status of the saddlepoint that produced P.  It is
+// emitted as the integer enumerator rather than the token spelled by
+// spa::statusName because MethodBase hands the engine a std::vector<double> and
+// every result cell is formatted by numToChars; a string column would require a
+// new hook in the MethodBase contract, which dev-notes/methods/spa_unify/
+// 02_design.md places out of scope for the per-method migration stages.  The
+// encoding is static_cast<uint8_t>(spa::Status), the same one Stage 3
+// established for SPACox:
+//
+//     0 OK (converged)     3 GUARD_CURV     6 NORMAL (|Z| ≤ --spa-z-threshold,
+//     1 MAXITER            4 GUARD_W          saddlepoint never attempted)
+//     2 GUARD_TEMP         5 NONFINITE
+//
+// P and LOG10P are NA for every status other than 0 and 6.
     std::string getHeaderColumns() const override {
-        return "\tP\tZ\tZ_Norm\tBETA\tSE";
+        return "\tP\tLOG10P\tZ\tZ_Norm\tBETA\tSE\tSPA_STATUS";
     }
 
     void getResultVec(
@@ -246,8 +209,9 @@ class SPAGRMMethod : public MethodBase {
         const double Score =
             GVec.dot(m_spagrm.resid()) - gMean * m_spagrm.residSum();
         double z, scoreVar;
-        double p = m_spagrm.getMarkerPvalFromScore(Score, altFreq, z, &scoreVar);
-        pushPvalZBetaSe(p, Score, scoreVar, result);
+        const spa::TwoSided ts =
+            m_spagrm.getMarkerPvalFromScore(Score, altFreq, z, &scoreVar);
+        pushResult(ts, Score, scoreVar, result);
     }
 
     // Batch analysis: fuse B dot products into one matrix-vector multiply.
@@ -277,9 +241,9 @@ class SPAGRMMethod : public MethodBase {
         // Per-marker SPA (not batchable)
         for (int b = 0; b < B; ++b) {
             double z, scoreVar;
-            double p = m_spagrm.getMarkerPvalFromScore(
+            const spa::TwoSided ts = m_spagrm.getMarkerPvalFromScore(
                 scores[b], altFreqs[b], z, &scoreVar);
-            pushPvalZBetaSe(p, scores[b], scoreVar, results[b]);
+            pushResult(ts, scores[b], scoreVar, results[b]);
         }
     }
 
@@ -335,14 +299,15 @@ class SPAGRMMethod : public MethodBase {
             const double gMean = gSums[b] * invN;
             const double centeredScore = scores(0, b) - gMean * residSum;
             double z, scoreVar;
-            double p = m_spagrm.getMarkerPvalFromScore(
+            const spa::TwoSided ts = m_spagrm.getMarkerPvalFromScore(
                 centeredScore, altFreqs[b], z, &scoreVar);
-            pushPvalZBetaSe(p, centeredScore, scoreVar, results[b]);
+            pushResult(ts, centeredScore, scoreVar, results[b]);
         }
     }
 
   private:
-    // Emit (P, Z, Z_Norm, BETA, SE) using the SPAGRM score-test reduction
+    // Emit (P, LOG10P, Z, Z_Norm, BETA, SE, SPA_STATUS) using the SPAGRM
+    // score-test reduction
     //   Z_Norm = Score / sqrt(Var(S))           (raw normal-approx score z)
     //   Z      = sign(Z_Norm) · Phi^{-1}(1−p/2)  (z consistent with p, so
     //            2·pnorm(−|Z|) == p even after SPA recalibrates p)
@@ -351,22 +316,23 @@ class SPAGRMMethod : public MethodBase {
     // (so Z_Norm = BETA × SE).  Var(S) ≤ 0 marks monomorphic / degenerate
     // markers; Z, Z_Norm, BETA and SE become NaN there so downstream code
     // recognises them as missing.
-    static void pushPvalZBetaSe(
-        double p,
+    static void pushResult(
+        const spa::TwoSided &ts,
         double score,
         double scoreVar,
         std::vector<double> &out
     ) {
         out.clear();
-        out.reserve(5);
-        out.push_back(p);
+        out.reserve(7);
+        out.push_back(ts.p);          // P
+        out.push_back(ts.negLog10p);  // LOG10P
         if (scoreVar > 0.0) {
             const double sd = std::sqrt(scoreVar);
             const double zNorm = score / sd;
-            out.push_back(math::zFromPval(p, zNorm)); // Z (p-consistent)
-            out.push_back(zNorm);                     // Z_Norm (raw score z)
-            out.push_back(score / scoreVar);          // BETA
-            out.push_back(1.0 / sd);                  // SE
+            out.push_back(math::zFromPval(ts.p, zNorm)); // Z (p-consistent)
+            out.push_back(zNorm);                        // Z_Norm (raw score z)
+            out.push_back(score / scoreVar);             // BETA
+            out.push_back(1.0 / sd);                     // SE
         } else {
             const double nan = std::numeric_limits<double>::quiet_NaN();
             out.push_back(nan); // Z
@@ -374,6 +340,7 @@ class SPAGRMMethod : public MethodBase {
             out.push_back(nan); // BETA
             out.push_back(nan); // SE
         }
+        out.push_back(static_cast<double>(static_cast<uint8_t>(ts.status)));
     }
 
   private:

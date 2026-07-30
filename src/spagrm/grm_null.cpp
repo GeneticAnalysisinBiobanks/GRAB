@@ -943,7 +943,6 @@ SPAGRMClass buildSPAGRMNullModel(
         mafInterval,
         std::move(fd),
         spaCutoff,
-        ZETA_DEFAULT,
         TOL_DEFAULT
     );
 }

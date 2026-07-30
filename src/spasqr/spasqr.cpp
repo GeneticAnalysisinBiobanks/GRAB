@@ -13,10 +13,13 @@
 #include "io/subject_data.hpp"
 #include "util/logging.hpp"
 #include "util/math_helper.hpp"
+#include "util/spa.hpp"
+#include "util/spa_cgf.hpp"
 
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstdint>
 #include <iomanip>
 #include <limits>
 #include <memory>
@@ -27,341 +30,80 @@
 #include <vector>
 
 #include <Eigen/Dense>
-#if defined(__x86_64__) || defined(_M_X64)
-#  include <immintrin.h>
-#endif
-#include "util/simd_dispatch.hpp"
-#include "util/simd_math.hpp"
+
+// No <immintrin.h>, util/simd_dispatch.hpp or util/simd_math.hpp any more: the
+// five hand-written CGF copies that needed them are gone, and the scalar / AVX2
+// / AVX-512 triple now lives once in util/spa_cgf.cpp with its own dispatch
+// site.  See the block comment below.
 
 // ══════════════════════════════════════════════════════════════════════
-// SPAsqr-specific scalar SPA functions
-//
-// SPAsqr always uses empty FamilyData (no TwoSubj/ThreeSubj), so the
-// MGF computation reduces to a loop over unrelated outlier residuals
-// only.  We replace the vector-based MgfWorkspace (8 × nOutlier doubles
-// per clone) with scalar accumulators (O(1) extra memory per clone),
-// eliminating the dominant per-clone memory cost.
+// SPAsqr's saddlepoint — on the shared solver, tail kernel and CGF
 // ══════════════════════════════════════════════════════════════════════
+//
+// spa_unify Stage 4.  What used to live here was, in order:
+//
+//   * `scalarOutlierCgf` plus `simdOutlierCgf_avx512` and
+//     `simdOutlierCgf_avx2` with their masked / scalar tails and a
+//     `pickOutlierCgfFn` dispatch — FIVE copies of the same binomial CGF, each
+//     forming K'' as the cancelling difference MGF2/MGF0 - (MGF1/MGF0)^2 with
+//     the two sums accumulated GLOBALLY and differenced once at the end
+//     (01_findings.md D1, measured 36 % relative error at t*r = 35);
+//   * `scalarFastGetRoot`, a private Family-B Newton iteration with no
+//     convergence flag (D5) and no check on the K'' it divided by;
+//   * `scalarGetProbSpa` and, inlined twice inside `fusedGetPvalSpa`, THREE
+//     copies of the Barndorff-Nielsen modified signed root, all three with no
+//     isfinite(zeta) check, no zeta*s - K >= 0 check, no K'' > 0 check, no
+//     w != 0 check and no v/w > 0 check (D6);
+//   * `scalarGetPvalFromScore`, a near-duplicate of `fusedGetPvalSpa`.
+//
+// All of it is deleted.  The CGF is spa_cgf::binomUniform — SPAsqr's outlier
+// block IS the shared uniform-MAF binomial CGF with h = 2 — which supplies
+// D1's exact cancellation-free K'' = 2 r^2 e u / alpha^2, N1's
+// K = 2 log1p(p expm1(t r)), and the same scalar + AVX2 + AVX-512 triple this
+// file used to carry by hand.  The root finder is spa::solveSaddlepoint and the
+// tail is spa::bnTail / spa::bnTailLog.  Five CGF copies plus three tail copies
+// plus two p-value copies collapse to ONE p-value routine, `tauPvalue`, which
+// all three MethodBase entry points call.
+//
+// ── On deleting rather than migrating the "scalar tier" ───────────────
+//
+// `scalarGetProbSpa`, `scalarGetPvalFromScore` and the D6/D7 copies they
+// carried were UNREACHABLE in any GRAB run: SPAsqrMethod::supportsFusedGemm()
+// returns true, both entry points route through multiPhenoEngine or locoEngine
+// (which delegates to multiPhenoEngineRange), and in marker.cpp a fuseable
+// phenotype is dispatched exclusively through processScoreBatch while
+// getResultBatch is called only for the nonFusedPhenos set.  A repair confined
+// to those copies would therefore have changed no output and would have been
+// undetectable by examples/baseline.sh.  Rather than migrate dead code, the
+// duplicates are removed and the three MethodBase overrides — which the
+// contract requires SPAsqr to implement whether or not the engine calls them —
+// are pointed at the single live implementation.  CLAUDE.md's alpha-release
+// policy is explicit that removing a dead surface beats maintaining it.
+//
+// ── D7 ───────────────────────────────────────────────────────────────
+//
+// The upper tail was called with a bare literal 1e-4 and the lower tail with
+// the configured `spa.tol` (1e-6), so the two probabilities being summed were
+// not computed to the same accuracy and --spasqr-tol did not do what its name
+// implies.  Both tails now use `spa.tol`, and the criterion is relative
+// (|K'(t) - s| <= tol*sqrt(K''(t))) rather than an absolute test on the pending
+// step.  This is a real numeric change and is the point of the stage.
+//
+// ── D6, and why SPAsqr is exposed to it exactly as SPAGRM is ─────────
+//
+// The first-pass audit note claimed "EmpVar is non-negative by construction, so
+// SPAsqr is not exposed".  That is wrong.  EmpVar is built from
+// tau.R_GRM_R_nonOutlier, accumulated as
+// `e.factor * e.value * ResidMat(e.row, col) * ResidMat(e.col, col)` over a
+// thresholded sparse GRM read from a file, and such a matrix is not guaranteed
+// positive semidefinite.  A negative EmpVar makes Score_adj NaN, and a negative
+// `var` term makes the CGF's K'' negative — the most reachable route to
+// std::sqrt of a negative number in the old tail.  Both now surface as a named
+// spa::Status with P = NA.
 
 namespace {
 
-// ── Scalar CGF result from outlier loop ────────────────────────────
-struct ScalarCgfResult {
-    double logMgf0Sum;    // Σ log(MGF0_i)  — for CGF0
-    double cgf1Outlier;   // Σ (MGF1_i / MGF0_i)  — for CGF1
-    double cgf2Outlier;   // Σ (MGF2_i / MGF0_i) - Σ (MGF1_i/MGF0_i)^2  — for CGF2
-};
-
-// Single-pass scalar computation of CGF contributions from unrelated
-// outliers.  Equivalent to nsSPAGRM::mgf() for the outlier-only case,
-// but uses O(1) memory instead of O(nOutlier).
-//
-// Per-outlier MGF for diploid genotype model (same as spagrm.cpp):
-//   alpha_i = (1-MAF) + MAF * exp(t * r_i)
-//   MGF0_i  = alpha_i^2
-//   MGF1_i  = 2 * alpha_i * alpha1_i     where alpha1_i = MAF * r_i * exp(t*r_i)
-//   MGF2_i  = 2 * (alpha1_i^2 + alpha_i * alpha2_i)  where alpha2_i = r_i * alpha1_i
-inline ScalarCgfResult scalarOutlierCgf(
-    double t,
-    const double *outlierResid,
-    int nOutlier,
-    double MAF
-) {
-    double logMgf0Sum = 0.0;
-    double tempSum    = 0.0;   // Σ MGF1_i / MGF0_i
-    double s1         = 0.0;   // Σ MGF2_i / MGF0_i
-    double s2         = 0.0;   // Σ (MGF1_i / MGF0_i)^2
-    const double oneMmaf = 1.0 - MAF;
-
-    for (int i = 0; i < nOutlier; ++i) {
-        const double r      = outlierResid[i];
-        const double lambda = std::exp(t * r);
-        const double alpha  = oneMmaf + MAF * lambda;
-        const double alpha1 = MAF * r * lambda;
-        const double alpha2 = r * alpha1;
-
-        // MGF0 = alpha^2,  MGF1 = 2*alpha*alpha1,  MGF2 = 2*(alpha1^2 + alpha*alpha2)
-        const double mgf0   = alpha * alpha;
-        const double mgf1   = 2.0 * alpha * alpha1;
-        const double mgf2   = 2.0 * (alpha1 * alpha1 + alpha * alpha2);
-
-        logMgf0Sum += std::log(mgf0);
-        const double ratio  = mgf1 / mgf0;   // MGF1/MGF0
-        tempSum += ratio;
-        s1      += mgf2 / mgf0;              // MGF2/MGF0
-        s2      += ratio * ratio;             // (MGF1/MGF0)^2
-    }
-
-    return {logMgf0Sum, tempSum, s1 - s2};
-}
-
-// ── SIMD-vectorized outlier CGF (C1): processes outliers in SIMD lanes ──
-
-#if defined(__x86_64__) || defined(_M_X64)
-
-__attribute__((target("avx2,avx512f,avx512vl,fma")))
-static ScalarCgfResult simdOutlierCgf_avx512(
-    double t,
-    const double *outlierResid,
-    int nOutlier,
-    double MAF
-) {
-    const __m512d vt       = _mm512_set1_pd(t);
-    const __m512d vMAF     = _mm512_set1_pd(MAF);
-    const __m512d vOneMmaf = _mm512_set1_pd(1.0 - MAF);
-    const __m512d vTwo     = _mm512_set1_pd(2.0);
-
-    __m512d vLogMgf0 = _mm512_setzero_pd();
-    __m512d vTempSum = _mm512_setzero_pd();
-    __m512d vS1      = _mm512_setzero_pd();
-    __m512d vS2      = _mm512_setzero_pd();
-
-    int i = 0;
-    const int n8 = nOutlier & ~7;
-    for (; i < n8; i += 8) {
-        const __m512d vr      = _mm512_loadu_pd(outlierResid + i);
-        const __m512d vlambda = avx512_exp_pd(_mm512_mul_pd(vt, vr));
-        const __m512d valpha  = _mm512_fmadd_pd(vMAF, vlambda, vOneMmaf);
-        const __m512d valpha1 = _mm512_mul_pd(vMAF, _mm512_mul_pd(vr, vlambda));
-        const __m512d valpha2 = _mm512_mul_pd(vr, valpha1);
-
-        const __m512d vmgf0 = _mm512_mul_pd(valpha, valpha);
-        const __m512d vmgf1 = _mm512_mul_pd(vTwo, _mm512_mul_pd(valpha, valpha1));
-        const __m512d vmgf2 = _mm512_mul_pd(vTwo,
-                                            _mm512_fmadd_pd(valpha1, valpha1, _mm512_mul_pd(valpha, valpha2)));
-
-        vLogMgf0 = _mm512_add_pd(vLogMgf0, avx512_log_pd(vmgf0));
-        const __m512d vratio = _mm512_div_pd(vmgf1, vmgf0);
-        vTempSum = _mm512_add_pd(vTempSum, vratio);
-        vS1      = _mm512_add_pd(vS1, _mm512_div_pd(vmgf2, vmgf0));
-        vS2      = _mm512_fmadd_pd(vratio, vratio, vS2);
-    }
-
-    // Masked tail: r=0 for inactive lanes → lambda=1, alpha=1, mgf0=1,
-    // log(1)=0, mgf1=0, ratio=0 — all zero contributions.
-    if (i < nOutlier) {
-        const __mmask8 mask = static_cast<__mmask8>((1u << (nOutlier - i)) - 1u);
-        const __m512d vr      = _mm512_maskz_loadu_pd(mask, outlierResid + i);
-        const __m512d vlambda = avx512_exp_pd(_mm512_mul_pd(vt, vr));
-        const __m512d valpha  = _mm512_fmadd_pd(vMAF, vlambda, vOneMmaf);
-        const __m512d valpha1 = _mm512_mul_pd(vMAF, _mm512_mul_pd(vr, vlambda));
-        const __m512d valpha2 = _mm512_mul_pd(vr, valpha1);
-
-        const __m512d vmgf0 = _mm512_mul_pd(valpha, valpha);
-        const __m512d vmgf1 = _mm512_mul_pd(vTwo, _mm512_mul_pd(valpha, valpha1));
-        const __m512d vmgf2 = _mm512_mul_pd(vTwo,
-                                            _mm512_fmadd_pd(valpha1, valpha1, _mm512_mul_pd(valpha, valpha2)));
-
-        vLogMgf0 = _mm512_add_pd(vLogMgf0, avx512_log_pd(vmgf0));
-        const __m512d vratio = _mm512_div_pd(vmgf1, vmgf0);
-        vTempSum = _mm512_add_pd(vTempSum, vratio);
-        vS1      = _mm512_add_pd(vS1, _mm512_div_pd(vmgf2, vmgf0));
-        vS2      = _mm512_fmadd_pd(vratio, vratio, vS2);
-    }
-
-    return {_mm512_reduce_add_pd(vLogMgf0),
-            _mm512_reduce_add_pd(vTempSum),
-            _mm512_reduce_add_pd(vS1) - _mm512_reduce_add_pd(vS2)};
-}
-
-__attribute__((target("avx2,fma")))
-static ScalarCgfResult simdOutlierCgf_avx2(
-    double t,
-    const double *outlierResid,
-    int nOutlier,
-    double MAF
-) {
-    const __m256d vt       = _mm256_set1_pd(t);
-    const __m256d vMAF     = _mm256_set1_pd(MAF);
-    const __m256d vOneMmaf = _mm256_set1_pd(1.0 - MAF);
-    const __m256d vTwo     = _mm256_set1_pd(2.0);
-
-    __m256d vLogMgf0 = _mm256_setzero_pd();
-    __m256d vTempSum = _mm256_setzero_pd();
-    __m256d vS1      = _mm256_setzero_pd();
-    __m256d vS2      = _mm256_setzero_pd();
-
-    int i = 0;
-    const int n4 = nOutlier & ~3;
-    for (; i < n4; i += 4) {
-        const __m256d vr      = _mm256_loadu_pd(outlierResid + i);
-        const __m256d vlambda = avx2_exp_pd(_mm256_mul_pd(vt, vr));
-        const __m256d valpha  = _mm256_fmadd_pd(vMAF, vlambda, vOneMmaf);
-        const __m256d valpha1 = _mm256_mul_pd(vMAF, _mm256_mul_pd(vr, vlambda));
-        const __m256d valpha2 = _mm256_mul_pd(vr, valpha1);
-
-        const __m256d vmgf0 = _mm256_mul_pd(valpha, valpha);
-        const __m256d vmgf1 = _mm256_mul_pd(vTwo, _mm256_mul_pd(valpha, valpha1));
-        const __m256d vmgf2 = _mm256_mul_pd(vTwo,
-                                            _mm256_fmadd_pd(valpha1, valpha1, _mm256_mul_pd(valpha, valpha2)));
-
-        vLogMgf0 = _mm256_add_pd(vLogMgf0, avx2_log_pd(vmgf0));
-        const __m256d vratio = _mm256_div_pd(vmgf1, vmgf0);
-        vTempSum = _mm256_add_pd(vTempSum, vratio);
-        vS1      = _mm256_add_pd(vS1, _mm256_div_pd(vmgf2, vmgf0));
-        vS2      = _mm256_fmadd_pd(vratio, vratio, vS2);
-    }
-
-    // Horizontal reduction of AVX2 accumulators
-    auto hsum = [](__m256d v) -> double {
-        __m128d lo = _mm256_castpd256_pd128(v);
-        __m128d hi = _mm256_extractf128_pd(v, 1);
-        lo = _mm_add_pd(lo, hi);
-        return _mm_cvtsd_f64(lo) + _mm_cvtsd_f64(_mm_unpackhi_pd(lo, lo));
-    };
-    double logMgf0Sum = hsum(vLogMgf0);
-    double tempSum    = hsum(vTempSum);
-    double s1         = hsum(vS1);
-    double s2         = hsum(vS2);
-
-    // Scalar tail (1-3 remaining outliers)
-    const double oneMmaf = 1.0 - MAF;
-    for (; i < nOutlier; ++i) {
-        const double r      = outlierResid[i];
-        const double lambda = std::exp(t * r);
-        const double alpha  = oneMmaf + MAF * lambda;
-        const double alpha1 = MAF * r * lambda;
-        const double alpha2 = r * alpha1;
-
-        const double mgf0   = alpha * alpha;
-        const double mgf1   = 2.0 * alpha * alpha1;
-        const double mgf2   = 2.0 * (alpha1 * alpha1 + alpha * alpha2);
-
-        logMgf0Sum += std::log(mgf0);
-        const double ratio  = mgf1 / mgf0;
-        tempSum += ratio;
-        s1      += mgf2 / mgf0;
-        s2      += ratio * ratio;
-    }
-
-    return {logMgf0Sum, tempSum, s1 - s2};
-}
-
-#endif  // x86_64 SIMD variants
-
-// ── Dispatch: pick fastest available CGF implementation ─────────────
-using OutlierCgfFn = ScalarCgfResult (*)(double, const double *, int, double);
-
-static OutlierCgfFn pickOutlierCgfFn() {
-#if defined(__x86_64__) || defined(_M_X64)
-    switch (simdLevel()) {
-    case SimdLevel::AVX512: return simdOutlierCgf_avx512;
-    case SimdLevel::AVX2:   return simdOutlierCgf_avx2;
-    default: break;
-    }
-#endif
-    return scalarOutlierCgf;
-}
-
-static const OutlierCgfFn outlierCgf = pickOutlierCgfFn();
-
-inline double signOf(double x) {
-    return (x > 0.0) ? 1.0 : ((x < 0.0) ? -1.0 : 0.0);
-}
-
-// Scalar Newton-Raphson root finder (equivalent to nsSPAGRM::fastGetRoot
-// for outlier-only case).  Returns converged t; writes final CGF result.
-inline double scalarFastGetRoot(
-    const double *outlierResid,
-    int nOutlier,
-    double sum_R_nonOutlier,
-    double R_GRM_R_nonOutlier,
-    double Score,
-    double MAF,
-    double init_t,
-    double tol,
-    ScalarCgfResult &finalCgf,
-    int maxiter = 50
-) {
-    double t = init_t;
-    double CGF1 = 0.0, CGF2 = 0.0;
-    double diff_t = std::numeric_limits<double>::infinity();
-
-    const double mean = 2.0 * MAF * sum_R_nonOutlier;
-    const double var  = 2.0 * MAF * (1.0 - MAF) * R_GRM_R_nonOutlier;
-
-    ScalarCgfResult cgf{};
-
-    for (int iter = 1; iter < maxiter; ++iter) {
-        const double old_t      = t;
-        const double old_diff_t = diff_t;
-        const double old_CGF1   = CGF1;
-
-        cgf = outlierCgf(t, outlierResid, nOutlier, MAF);
-
-        CGF1 = cgf.cgf1Outlier + mean + var * t - Score;
-        CGF2 = cgf.cgf2Outlier + var;
-
-        diff_t = -CGF1 / CGF2;
-
-        if (std::isnan(diff_t) || std::isinf(CGF2)) {
-            t = t / 2.0;
-            diff_t = std::min(std::abs(t), 1.0) * signOf(Score);
-            continue;
-        }
-
-        if (std::isnan(old_CGF1) || (signOf(old_CGF1) != 0 && signOf(CGF1) != signOf(old_CGF1))) {
-            if (std::abs(diff_t) < tol) {
-                t = old_t + diff_t;
-                break;
-            } else {
-                for (int bisect = 0; bisect < 200 && std::abs(old_diff_t) > tol &&
-                     std::abs(diff_t) > std::abs(old_diff_t) - tol; ++bisect)
-                    diff_t /= 2.0;
-                t = old_t + diff_t;
-                continue;
-            }
-        }
-
-        if (signOf(Score) != signOf(old_t + diff_t) && (signOf(old_CGF1) == 0 || signOf(CGF1) == signOf(old_CGF1))) {
-            for (int bisect = 0; bisect < 200 && signOf(Score) != signOf(old_t + diff_t); ++bisect)
-                diff_t /= 2.0;
-            t = old_t + diff_t;
-            continue;
-        }
-
-        t = old_t + diff_t;
-        if (std::abs(diff_t) < tol) break;
-    }
-
-    // Final evaluation at converged t.
-    finalCgf = outlierCgf(t, outlierResid, nOutlier, MAF);
-    return t;
-}
-
-// Scalar SPA tail probability (equivalent to nsSPAGRM::getProbSpa for
-// outlier-only case).
-inline double scalarGetProbSpa(
-    const double *outlierResid,
-    int nOutlier,
-    double sum_R_nonOutlier,
-    double R_GRM_R_nonOutlier,
-    double Score,
-    double MAF,
-    bool lower_tail,
-    double zeta,
-    double tol
-) {
-    ScalarCgfResult cgf{};
-    zeta = scalarFastGetRoot(outlierResid, nOutlier, sum_R_nonOutlier, R_GRM_R_nonOutlier,
-                             Score, MAF, zeta, tol, cgf);
-
-    const double mean = 2.0 * MAF * sum_R_nonOutlier;
-    const double var  = 2.0 * MAF * (1.0 - MAF) * R_GRM_R_nonOutlier;
-
-    const double CGF0 = cgf.logMgf0Sum + mean * zeta + 0.5 * var * zeta * zeta;
-    const double CGF2 = cgf.cgf2Outlier + var;
-
-    const double w_val = signOf(zeta) * std::sqrt(2.0 * (zeta * Score - CGF0));
-    const double v_val = zeta * std::sqrt(CGF2);
-    const double u     = w_val + (1.0 / w_val) * std::log(v_val / w_val);
-
-    return math::pnorm(u, 0.0, 1.0, lower_tail);
-}
-
-// ══════════════════════════════════════════════════════════════════════
-// Per-tau SPA data for SPAsqr (shared across clones via shared_ptr)
-// ══════════════════════════════════════════════════════════════════════
+// ── Per-tau SPA data for SPAsqr (shared across clones via shared_ptr) ──
 
 struct SPAsqrPerTau {
     Eigen::VectorXd outlierResid;        // residuals of outlier subjects
@@ -371,130 +113,131 @@ struct SPAsqrPerTau {
     double R_GRM_R;                      // full variance term (all subjects)
 };
 
+// `zeta` is gone: it was assigned 0.01 in buildSPAsqrMethod and never read,
+// because both tails derived their initial abscissa from
+// min(|Score_adj|/Score_var, 1.2) instead.  See 01_findings.md D7's companion
+// note and the lower-tail convention comment in spagrm.cpp.
 struct SPAsqrSPAShared {
     std::vector<SPAsqrPerTau> perTau;    // one per tau
     double SPA_Cutoff;
-    double zeta;                         // initial guess for Newton-Raphson
     double tol;
 };
 
-// ── Per-tau p-value (replaces SPAGRMClass::getMarkerPvalFromScore) ──
-// G_var = empirical Var(G) over post-impute genotypes, passed in by caller.
-inline double scalarGetPvalFromScore(
+// ── The two-sided saddlepoint, once ────────────────────────────────────
+//
+// Both tails share the MAF / variance setup; only the sign of s, the initial
+// abscissa and the tail direction differ.  The CGF is the outlier block through
+// spa_cgf::binomUniform plus SPAsqr's analytic non-outlier Gaussian block,
+// whose mean and variance enter K as mean*t + var*t^2/2 — exactly as before,
+// and in the same association order.
+
+inline spa::TwoSided spaTwoSided(
+    const double *oResid,
+    int nOutlier,
+    double MAF,
+    double mean,
+    double var,
+    double absAdj,
+    double initZeta,
+    double tol
+) {
+    double p[2], logp[2];
+    spa::Status st[2];
+
+    for (int k = 0; k < 2; ++k) {
+        const bool lowerTail = (k == 1);
+        const double s = lowerTail ? -absAdj : absAdj;
+
+        spa::SolveOpts opt;
+        opt.init = lowerTail ? -initZeta : initZeta;
+        opt.scoreSign = s;   // only the sign is read
+        opt.rtol = tol;      // D7: the configured tolerance reaches both tails
+
+        const spa::Saddle sd = spa::solveSaddlepoint(
+            s,
+            [&](double t) {
+                const spa_cgf::Cgf12 d =
+                    spa_cgf::binomUniformK12(t, oResid, nOutlier, MAF);
+                return spa::K12{d.K1 + mean + var * t - s, d.K2 + var};
+            },
+            [&](double t) {
+                const spa_cgf::Cgf012 d =
+                    spa_cgf::binomUniformKFull(t, oResid, nOutlier, MAF);
+                return spa::K012{d.K0 + mean * t + 0.5 * var * t * t,
+                                 d.K1 + mean + var * t - s,
+                                 d.K2 + var};
+            },
+            opt);
+
+        spa::Status stLin = spa::Status::Converged;
+        spa::Status stLog = spa::Status::Converged;
+        p[k]    = spa::bnTail(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLin);
+        logp[k] = spa::bnTailLog(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLog);
+        st[k] = spa::worseStatus(sd.status, spa::worseStatus(stLin, stLog));
+    }
+
+    const spa::TwoSided lin = spa::combineTails(p[0], p[1], st[0], st[1]);
+    const spa::TwoSided lg  = spa::combineTailsLog(logp[0], logp[1], st[0], st[1]);
+    return spa::TwoSided{lin.p, lg.negLog10p, lin.status};
+}
+
+// ── Per-tau p-value — the single live implementation ───────────────────
+//
+// G_var = empirical Var(G) over post-impute genotypes, passed in by the caller,
+// drives the outer Score_var = G_var * R_GRM_R.  EmpVar = K''(0) uses the
+// model-based 2p(1-p) for both the non-outlier partial-Gaussian piece and the
+// outlier Bernoulli factor; the rescaling
+// Score_adj = Score * sqrt(K''(0) / Var(S)_observed) is the SAIGE-style
+// variance ratio that brings the score onto the CGF's natural scale, dropping
+// the implicit HWE assumption (G_var ~ 2p(1-p)) earlier code relied on.
+
+inline spa::TwoSided tauPvalue(
     double Score,
     double altFreq,
     double G_var,
     double &zScore,
     const SPAsqrPerTau &tau,
-    const SPAsqrSPAShared &spa
+    const SPAsqrSPAShared &spa_
 ) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
     const double MAF       = std::min(altFreq, 1.0 - altFreq);
     const double Score_var = G_var * tau.R_GRM_R;
 
     if (Score_var <= 0.0 || MAF <= 0.0) {
         zScore = 0.0;
-        return std::numeric_limits<double>::quiet_NaN();
+        return spa::TwoSided{nan, nan, spa::Status::NonFinite};
     }
 
     zScore = Score / std::sqrt(Score_var);
 
     if (!std::isfinite(zScore))
-        return std::numeric_limits<double>::quiet_NaN();
+        return spa::TwoSided{nan, nan, spa::Status::NonFinite};
 
-    if (std::abs(zScore) <= spa.SPA_Cutoff)
-        return 2.0 * math::pnorm(std::abs(zScore), 0.0, 1.0, false);
-
-    // EmpVar = K''(0) of the SPA CGF, computed model-based using the
-    // per-individual Binomial(2,p) variance 2p(1-p) for both the non-outlier
-    // partial-Gaussian piece and the outlier Bernoulli factor. The rescaling
-    // Score_adj = Score · sqrt(K''(0) / Var(S)_observed) is the SAIGE-style
-    // variance ratio that brings the score onto the CGF's natural scale,
-    // dropping the implicit HWE assumption (G_var ≈ 2p(1-p)) that was used
-    // to make the ratio invariant to G_var in earlier code.
-    const double EmpVar    = 2.0 * MAF * (1.0 - MAF) *
-                              (tau.R_GRM_R_nonOutlier + tau.sum_unrelated_outliers2);
-    const double Score_adj = Score * std::sqrt(EmpVar / Score_var);
-
-    double zeta1 = std::abs(Score_adj) / Score_var;
-    zeta1 = std::min(zeta1, 1.2);
-    const double zeta2 = -zeta1;
-
-    const double *oResid  = tau.outlierResid.data();
-    const int nOutlier = static_cast<int>(tau.outlierResid.size());
-
-    const double pval1 = scalarGetProbSpa(oResid, nOutlier, tau.sum_R_nonOutlier, tau.R_GRM_R_nonOutlier,
-                                          std::abs(Score_adj), MAF, false, zeta1, 1e-4);
-    const double pval2 = scalarGetProbSpa(oResid, nOutlier, tau.sum_R_nonOutlier, tau.R_GRM_R_nonOutlier,
-                                          -std::abs(Score_adj), MAF, true, zeta2, spa.tol);
-    return pval1 + pval2;
-}
-
-// ── C3: Fused upper+lower SPA — shared setup, two Newtons ──────────
-// Computes the SPA p-value for a marker that failed the normal-approx
-// cutoff.  Both tails share the MAF/variance setup and outlier data
-// pointer extraction; only the Newton root and saddlepoint differ.
-// G_var = empirical Var(G) for the outer Score_var = G_var · R_GRM_R.
-// EmpVar = K''(0) uses the model-based 2p(1-p); the rescaling
-// Score_adj = Score · sqrt(K''(0) / Var(S)_observed) is the SAIGE-style
-// variance-ratio correction (no implicit G_var ≈ 2p(1-p) HWE assumption).
-inline double fusedGetPvalSpa(
-    double Score,
-    double altFreq,
-    double G_var,
-    const SPAsqrPerTau &tau,
-    const SPAsqrSPAShared &spa
-) {
-    const double MAF       = std::min(altFreq, 1.0 - altFreq);
-    const double Score_var = G_var * tau.R_GRM_R;
+    if (std::abs(zScore) <= spa_.SPA_Cutoff) return spa::normalBranch(zScore);
 
     const double EmpVar    = 2.0 * MAF * (1.0 - MAF) *
                               (tau.R_GRM_R_nonOutlier + tau.sum_unrelated_outliers2);
     const double Score_adj = Score * std::sqrt(EmpVar / Score_var);
     const double absAdj    = std::abs(Score_adj);
 
-    double zeta1 = std::min(absAdj / Score_var, 1.2);
-    const double zeta2 = -zeta1;
+    // First-order saddlepoint estimate zeta ~ s/K''(0), capped; the lower tail
+    // starts at its negation.
+    const double initZeta = std::min(absAdj / Score_var, 1.2);
 
-    const double *oResid   = tau.outlierResid.data();
-    const int nOutlier = static_cast<int>(tau.outlierResid.size());
-    const double sumNO    = tau.sum_R_nonOutlier;
-    const double rgrNO    = tau.R_GRM_R_nonOutlier;
-
-    // Mean and variance of non-outlier contribution (shared)
-    const double mean = 2.0 * MAF * sumNO;
-    const double var  = 2.0 * MAF * (1.0 - MAF) * rgrNO;
-
-    // ── Upper tail Newton ──────────────────────────────────────────
-    ScalarCgfResult cgfU{};
-    const double tU = scalarFastGetRoot(oResid, nOutlier, sumNO, rgrNO,
-                                        absAdj, MAF, zeta1, 1e-4, cgfU);
-    const double CGF0_U = cgfU.logMgf0Sum + mean * tU + 0.5 * var * tU * tU;
-    const double CGF2_U = cgfU.cgf2Outlier + var;
-    const double wU = signOf(tU) * std::sqrt(2.0 * (tU * absAdj - CGF0_U));
-    const double vU = tU * std::sqrt(CGF2_U);
-    const double uU = wU + (1.0 / wU) * std::log(vU / wU);
-    const double pval1 = math::pnorm(uU, 0.0, 1.0, false);
-
-    // ── Lower tail Newton ──────────────────────────────────────────
-    ScalarCgfResult cgfL{};
-    const double ScoreL = -absAdj;
-    const double tL = scalarFastGetRoot(oResid, nOutlier, sumNO, rgrNO,
-                                        ScoreL, MAF, zeta2, spa.tol, cgfL);
-    const double CGF0_L = cgfL.logMgf0Sum + mean * tL + 0.5 * var * tL * tL;
-    const double CGF2_L = cgfL.cgf2Outlier + var;
-    const double wL = signOf(tL) * std::sqrt(2.0 * (tL * ScoreL - CGF0_L));
-    const double vL = tL * std::sqrt(CGF2_L);
-    const double uL = wL + (1.0 / wL) * std::log(vL / wL);
-    const double pval2 = math::pnorm(uL, 0.0, 1.0, true);
-
-    return pval1 + pval2;
+    return spaTwoSided(tau.outlierResid.data(),
+                       static_cast<int>(tau.outlierResid.size()),
+                       MAF,
+                       2.0 * MAF * tau.sum_R_nonOutlier,
+                       2.0 * MAF * (1.0 - MAF) * tau.R_GRM_R_nonOutlier,
+                       absAdj, initZeta, spa_.tol);
 }
 
 // ══════════════════════════════════════════════════════════════════════
 // SPAsqrMethod — MethodBase adapter with zero per-clone heap allocation
 //
-// All per-tau SPA data is shared via shared_ptr (read-only).
-// Cloning copies two shared_ptr's — no MgfWorkspace vectors allocated.
+// All per-tau SPA data is shared via shared_ptr (read-only).  Cloning copies two
+// shared_ptr's; the only per-clone storage is the four B x ntaus result buffers,
+// which processScoreBatch resizes once and reuses.
 // ══════════════════════════════════════════════════════════════════════
 
 class SPAsqrMethod : public MethodBase {
@@ -523,27 +266,45 @@ class SPAsqrMethod : public MethodBase {
     }
 
     int resultSize() const override {
-        return 3 * m_ntaus + 1;
+        return 5 * m_ntaus + 1;
     }
 
+// P_CCT, then five per-tau groups: P, LOG10P, Z, Z_Norm, SPA_STATUS.
+//
+// The saddlepoint is per tau, so both new columns are per tau as well: a marker
+// can converge at one quantile level and fail at another, and a single
+// aggregated status would hide which.  The LOG10P group is inserted directly
+// after the P group and the SPA_STATUS group appended last, so the relative
+// order of the pre-existing columns is unchanged and tests/regress.py reports
+// exactly one structural line per file.
+//
+// There is deliberately no LOG10P_CCT.  P_CCT comes from math::cauchyCombine,
+// which has no log-domain form — its statistic is a mean of tan((0.5-p)*pi)
+// evaluated on the linear scale — so a LOG10P_CCT column could only ever be
+// -log10 of the linear P_CCT and would carry no information the P_CCT column
+// does not already carry.  Giving CCT a genuine log-domain path is a separate
+// change to math_helper.hpp, not part of this migration.
+//
+// SPA_STATUS is static_cast<uint8_t>(spa::Status): 0 OK, 1 MAXITER,
+// 2 GUARD_TEMP, 3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|Z| below
+// --spa-z-threshold, saddlepoint never attempted).  Integer rather than the
+// spa::statusName token because MethodBase hands the engine a
+// std::vector<double> and marker_impl.hpp formats every cell through
+// numToChars; a token column would need a new hook in the MethodBase contract,
+// which dev-notes/methods/spa_unify/02_design.md places out of scope for the
+// per-method migration stages.  This is the encoding Stage 3 established for
+// SPACox, kept identical so all methods agree.
     std::string getHeaderColumns() const override {
         std::ostringstream oss;
-        if (m_hasLabels) {
-            oss << "\tP_CCT";
-            for (int i = 0; i < m_ntaus; ++i)
-                oss << "\tP_" << m_tauLabels[i];
-            for (int i = 0; i < m_ntaus; ++i)
-                oss << "\tZ_" << m_tauLabels[i];
-            for (int i = 0; i < m_ntaus; ++i)
-                oss << "\tZ_Norm_" << m_tauLabels[i];
-        } else {
-            oss << "\tP_CCT";
-            for (int i = 1; i <= m_ntaus; ++i)
-                oss << "\tP_tau" << i;
-            for (int i = 1; i <= m_ntaus; ++i)
-                oss << "\tZ_tau" << i;
-            for (int i = 1; i <= m_ntaus; ++i)
-                oss << "\tZ_Norm_tau" << i;
+        oss << "\tP_CCT";
+        static const char *const kGroups[] = {"P_", "LOG10P_", "Z_", "Z_Norm_",
+                                              "SPA_STATUS_"};
+        for (const char *g : kGroups) {
+            for (int i = 0; i < m_ntaus; ++i) {
+                oss << '\t' << g;
+                if (m_hasLabels) oss << m_tauLabels[i];
+                else             oss << "tau" << (i + 1);
+            }
         }
         return oss.str();
     }
@@ -555,7 +316,6 @@ class SPAsqrMethod : public MethodBase {
         std::vector<double> &result
     ) override {
         result.clear();
-        result.reserve(2 * m_ntaus + 1);
 
         const double n      = static_cast<double>(GVec.size());
         const double gSum   = GVec.sum();
@@ -656,82 +416,41 @@ class SPAsqrMethod : public MethodBase {
         // ── C2: Tau-first SPA computation ──────────────────────────
         // Process all B markers for one tau before moving to the next.
         // This keeps the tau's outlierResid data hot in cache.
-        // Layout: pBuf[b * ntaus + t], zBuf[b * ntaus + t].
+        // Layout: buf[b * ntaus + t].
         // Heap-backed per-thread buffers (was a [20*16] stack array) so the
         // fused GEMM window B is not capped at 16/B·ntaus ≤ 320.
-        m_zBuf.resize(static_cast<size_t>(B) * m_ntaus);
-        m_pBuf.resize(static_cast<size_t>(B) * m_ntaus);
-        double *zBuf = m_zBuf.data();
-        double *pBuf = m_pBuf.data();
+        const size_t nCell = static_cast<size_t>(B) * m_ntaus;
+        m_zBuf.resize(nCell);
+        m_pBuf.resize(nCell);
+        m_lpBuf.resize(nCell);
+        m_stBuf.resize(nCell);
 
         for (int t = 0; t < m_ntaus; ++t) {
             const SPAsqrPerTau &tau = m_spaShared->perTau[t];
-            const double cutoff = m_spaShared->SPA_Cutoff;
 
             for (int b = 0; b < B; ++b) {
-                const double Score   = m_centeredBuf(t, b);
-                const double altFreq = altFreqs[b];
-                const double MAF     = std::min(altFreq, 1.0 - altFreq);
                 // Empirical Var(G) over post-impute genotypes:
                 //   Var(g) = (Σg² − (Σg)²/n) / (n−1)
-                const double gSum    = gSums[b];
-                const double G_var   = (nUsedD > 1.0)
+                const double gSum  = gSums[b];
+                const double G_var = (nUsedD > 1.0)
                     ? (gSumSqs[b] - gSum * gSum / nUsedD) / (nUsedD - 1.0)
                     : 0.0;
-                const double Svar    = G_var * tau.R_GRM_R;
 
-                double z, p;
-                if (Svar <= 0.0 || MAF <= 0.0) {
-                    z = 0.0;
-                    p = std::numeric_limits<double>::quiet_NaN();
-                } else {
-                    z = Score / std::sqrt(Svar);
-                    if (!std::isfinite(z)) {
-                        p = std::numeric_limits<double>::quiet_NaN();
-                    } else if (std::abs(z) <= cutoff) {
-                        // Fast path: normal approximation
-                        p = 2.0 * math::pnorm(std::abs(z), 0.0, 1.0, false);
-                    } else {
-                        // Slow path: C3 fused upper+lower SPA
-                        p = fusedGetPvalSpa(Score, altFreq, G_var, tau, *m_spaShared);
-                    }
-                }
-                zBuf[b * m_ntaus + t] = z;
-                pBuf[b * m_ntaus + t] = p;
+                double z;
+                const spa::TwoSided ts = tauPvalue(m_centeredBuf(t, b), altFreqs[b],
+                                                   G_var, z, tau, *m_spaShared);
+                const size_t k = static_cast<size_t>(b) * m_ntaus + t;
+                m_zBuf[k]  = z;
+                m_pBuf[k]  = ts.p;
+                m_lpBuf[k] = ts.negLog10p;
+                m_stBuf[k] = static_cast<double>(static_cast<uint8_t>(ts.status));
             }
         }
 
-        // ── Assemble results with CCT ──────────────────────────────
         for (int b = 0; b < B; ++b) {
-            auto &result = results[b];
-            result.clear();
-            result.reserve(3 * m_ntaus + 1);
-
-            const double *pvals   = pBuf + b * m_ntaus;
-            const double *zScores = zBuf + b * m_ntaus;
-
-            const double pCCT = math::cauchyCombine(pvals, m_ntaus);
-
-            result.push_back(pCCT);
-            for (int i = 0; i < m_ntaus; ++i)
-                result.push_back(pvals[i]);
-            for (int i = 0; i < m_ntaus; ++i) {
-                const double zr = zScores[i];
-                // D3: on the fast path (|z| ≤ SPA_Cutoff) the p-value is
-                // exactly 2·Φ(−|z|), so zFromPval inverts back to the raw z;
-                // emit it directly and skip the long-double qnorm round-trip
-                // (also removes the spurious round-trip ULP gap that made
-                // Z_τ differ from Z_Norm_τ on fast-path entries).  NaN p
-                // (degenerate marker) propagates as NaN, matching zFromPval.
-                if (std::isnan(pvals[i]))
-                    result.push_back(std::numeric_limits<double>::quiet_NaN());
-                else if (std::abs(zr) <= m_spaShared->SPA_Cutoff)
-                    result.push_back(zr);                                 // Z_τ == Z_Norm_τ
-                else
-                    result.push_back(math::zFromPval(pvals[i], zr));      // SPA-recalibrated
-            }
-            for (int i = 0; i < m_ntaus; ++i)
-                result.push_back(zScores[i]);                            // Z_Norm_τ (raw)
+            const size_t off = static_cast<size_t>(b) * m_ntaus;
+            assemble(m_pBuf.data() + off, m_lpBuf.data() + off,
+                     m_zBuf.data() + off, m_stBuf.data() + off, results[b]);
         }
     }
 
@@ -748,8 +467,46 @@ class SPAsqrMethod : public MethodBase {
 
     std::shared_ptr<const SharedMethodData> m_methodShared;
     Eigen::MatrixXd m_centeredBuf;  // reused across processScoreBatch calls
-    std::vector<double> m_zBuf;     // B × ntaus, reused across processScoreBatch
-    std::vector<double> m_pBuf;     // B × ntaus, reused across processScoreBatch
+    // B × ntaus each, reused across processScoreBatch calls.
+    std::vector<double> m_zBuf, m_pBuf, m_lpBuf, m_stBuf;
+
+    // Column assembly, shared by all three entry points so the header and the
+    // row can only ever be built by the same code.
+    void assemble(
+        const double *pvals,
+        const double *lgs,
+        const double *zScores,
+        const double *stats,
+        std::vector<double> &result
+    ) const {
+        result.clear();
+        result.reserve(5 * m_ntaus + 1);
+
+        // math::cauchyCombine skips NaN entries, so a tau whose saddlepoint
+        // failed drops out of the combination rather than poisoning it; that
+        // behaviour is unchanged by this stage.
+        result.push_back(math::cauchyCombine(pvals, m_ntaus));
+
+        for (int i = 0; i < m_ntaus; ++i) result.push_back(pvals[i]);
+        for (int i = 0; i < m_ntaus; ++i) result.push_back(lgs[i]);
+        for (int i = 0; i < m_ntaus; ++i) {
+            const double zr = zScores[i];
+            // D3: on the fast path (|z| ≤ SPA_Cutoff) the p-value is exactly
+            // 2·Φ(−|z|), so zFromPval inverts back to the raw z; emit it
+            // directly and skip the long-double qnorm round-trip (which also
+            // removes the spurious round-trip ULP gap that made Z_τ differ from
+            // Z_Norm_τ on fast-path entries).  NaN p (degenerate marker or a
+            // saddlepoint failure) propagates as NaN, matching zFromPval.
+            if (std::isnan(pvals[i]))
+                result.push_back(std::numeric_limits<double>::quiet_NaN());
+            else if (std::abs(zr) <= m_spaShared->SPA_Cutoff)
+                result.push_back(zr);                                 // Z_τ == Z_Norm_τ
+            else
+                result.push_back(math::zFromPval(pvals[i], zr));      // SPA-recalibrated
+        }
+        for (int i = 0; i < m_ntaus; ++i) result.push_back(zScores[i]);  // Z_Norm_τ
+        for (int i = 0; i < m_ntaus; ++i) result.push_back(stats[i]);    // SPA_STATUS
+    }
 
     void processOneMarker(
         const double *centeredScores,
@@ -757,40 +514,20 @@ class SPAsqrMethod : public MethodBase {
         double G_var,
         std::vector<double> &result
     ) {
-        result.clear();
-        result.reserve(3 * m_ntaus + 1);
-
         // Stack arrays — ntaus is always small (≤20).
-        double zScores[20];
-        double pvals[20];
+        double zScores[20], pvals[20], lgs[20], stats[20];
 
         for (int i = 0; i < m_ntaus; ++i) {
             double z;
-            double p = scalarGetPvalFromScore(centeredScores[i], altFreq, G_var, z,
-                                              m_spaShared->perTau[i], *m_spaShared);
+            const spa::TwoSided ts = tauPvalue(centeredScores[i], altFreq, G_var, z,
+                                               m_spaShared->perTau[i], *m_spaShared);
             zScores[i] = z;
-            pvals[i] = p;
+            pvals[i]   = ts.p;
+            lgs[i]     = ts.negLog10p;
+            stats[i]   = static_cast<double>(static_cast<uint8_t>(ts.status));
         }
 
-        // CCT (Cauchy combination test) p-value
-        const double pCCT = math::cauchyCombine(pvals, m_ntaus);
-
-        result.push_back(pCCT);
-        for (int i = 0; i < m_ntaus; ++i)
-            result.push_back(pvals[i]);
-        for (int i = 0; i < m_ntaus; ++i) {
-            const double zr = zScores[i];
-            // D3: see processScoreBatch — fast-path Z_τ == raw z exactly, so
-            // skip the long-double qnorm round-trip; NaN p propagates as NaN.
-            if (std::isnan(pvals[i]))
-                result.push_back(std::numeric_limits<double>::quiet_NaN());
-            else if (std::abs(zr) <= m_spaShared->SPA_Cutoff)
-                result.push_back(zr);                                // Z_τ == Z_Norm_τ
-            else
-                result.push_back(math::zFromPval(pvals[i], zr));     // SPA-recalibrated
-        }
-        for (int i = 0; i < m_ntaus; ++i)
-            result.push_back(zScores[i]);                            // Z_Norm_τ (raw)
+        assemble(pvals, lgs, zScores, stats, result);
     }
 
 };
@@ -917,7 +654,6 @@ std::unique_ptr<MethodBase> buildSPAsqrMethod(
     auto spaShared = std::make_shared<SPAsqrSPAShared>();
     spaShared->perTau.resize(ntaus);
     spaShared->SPA_Cutoff = spaCutoff;
-    spaShared->zeta       = 0.01;
     spaShared->tol        = 1e-6;
 
     for (int col = 0; col < ntaus; ++col) {

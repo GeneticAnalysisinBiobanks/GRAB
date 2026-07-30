@@ -704,7 +704,14 @@ inline const MethodDef kSPAGRM = {
     kSPAGRMOpt,
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.SPAGRM[.gz|.zst]   one file per --resid-name / --pheno-name column
-  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P  P  Z)",
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+  P  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
+    LOG10P      -log10(P), computed in the log domain so it survives past the
+                point where the linear-scale tail underflows (p ~ 1e-316)
+    SPA_STATUS  saddlepoint outcome: 0 OK, 1 MAXITER, 2 GUARD_TEMP,
+                3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|Z| below
+                --spa-z-threshold, saddlepoint not attempted).  P and LOG10P
+                are NA for every value other than 0 and 6.)",
     "Generate pairwise IBD file with: grab2 --cal-pairwise-ibd",
 };
 
@@ -906,7 +913,17 @@ inline const MethodDef kSPAsqr = {
     "                                          (SPAsqr fits smoothed QR per --spasqr-taus internally)",
     R"(PREFIX.<COL>.SPAsqr[.gz|.zst]   one file per --pheno-name column
   CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
-  P_CCT  P_tau{val}... Z_tau{val}...)",
+  P_CCT  P_tau{val}...  LOG10P_tau{val}...  Z_tau{val}...
+         Z_Norm_tau{val}...  SPA_STATUS_tau{val}...
+    LOG10P_*      -log10(P_tau), computed in the log domain so it survives past
+                  the point where the linear-scale tail underflows (p ~ 1e-316)
+    SPA_STATUS_*  per-tau saddlepoint outcome: 0 OK, 1 MAXITER, 2 GUARD_TEMP,
+                  3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|Z| below
+                  --spa-z-threshold, saddlepoint not attempted).  P_tau and
+                  LOG10P_tau are NA for every value other than 0 and 6, and a
+                  NA tau drops out of the P_CCT Cauchy combination.
+  No LOG10P_CCT: math::cauchyCombine has no log-domain form, so it could only
+  be -log10 of the linear P_CCT.)",
     nullptr,
 };
 
