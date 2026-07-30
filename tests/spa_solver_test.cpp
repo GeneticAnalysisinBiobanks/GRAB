@@ -240,19 +240,194 @@ TEST(binomial_single_subject_closed_form_root) {
 
 // The initial guess must not change the answer, only the work done.  Every
 // production site supplies a per-marker guess of its own devising.
+//
+// The guess list deliberately includes the ROOT ITSELF, and the root the solver
+// returned on a previous call.  Until the bracket-expansion repair those two
+// entries failed, and they failed *because* they were good: the first outward
+// probe is sized at the bare Newton step |K'(init) - s| / K''(init), so a guess
+// already within half an ulp of the root produced a probe that rounded back onto
+// `init`, the expansion loop broke on its first pass with no bracket, and the
+// solve returned MaxIter — i.e. NA at the caller — while holding the exact root.
+// A solver whose failure probability rises with the quality of its initial guess
+// is not usable by any warm start or cache, so the property is pinned here.
 TEST(root_independent_of_initial_guess) {
-    const PoissonCgf c{3.0, 30.0};
-    const double inits[] = {-20.0, -1.0, 0.0, 0.5, 2.0, 5.0, 50.0};
-    double first = kNaN;
-    for (double init : inits) {
-        const spa::Saddle r = spa::solveSaddlepoint(
+    // s = 3 (ratio 1) is excluded: the root is then zero and every guess is
+    // trivially good.  s = 3000 and s = 0.003 are the two entries that failed
+    // before the repair; whether a given problem falls inside the half-ulp
+    // window depends on where fl(log(s/lambda)) lands relative to the true root,
+    // so the sweep carries several ratios rather than one.
+    for (double s : {0.003, 0.3, 6.0, 30.0, 300.0, 3000.0}) {
+        const PoissonCgf c{3.0, s};
+
+        // A cold solve first, so its returned root can be fed back in below.
+        const spa::Saddle cold = spa::solveSaddlepoint(
             c.s, [&](double t) { return c.k12(t); },
-            [&](double t) { return c.kFull(t); }, tightOpts(init));
-        CHECK_MSG(r.status == spa::Status::Converged, statusStr(r.status));
-        CHECK_CLOSE(r.zeta, c.root(), 1e-14, 1e-14);
-        if (std::isnan(first)) first = r.zeta;
-        else CHECK_CLOSE(r.zeta, first, 1e-14, 1e-14);
+            [&](double t) { return c.kFull(t); }, tightOpts(0.0));
+        CHECK_MSG(cold.status == spa::Status::Converged, statusStr(cold.status));
+
+        const double inits[] = {-20.0, -1.0, 0.0, 0.5, 2.0, 5.0, 50.0,
+                                c.root(),      // the exact root
+                                cold.zeta};    // a previously returned root
+        double first = kNaN;
+        for (double init : inits) {
+            const spa::Saddle r = spa::solveSaddlepoint(
+                c.s, [&](double t) { return c.k12(t); },
+                [&](double t) { return c.kFull(t); }, tightOpts(init));
+            CHECK_MSG(r.status == spa::Status::Converged,
+                      statusStr(r.status) + " s=" + std::to_string(s) +
+                          " init=" + std::to_string(init));
+            CHECK_CLOSE(r.zeta, c.root(), 1e-14, 1e-14);
+            if (std::isnan(first)) first = r.zeta;
+            else CHECK_CLOSE(r.zeta, first, 1e-14, 1e-14);
+        }
     }
+}
+
+// The same property, swept rather than sampled: for every closed-form problem
+// in this file's grids, re-solving with `init` set to the analytic root and with
+// `init` set to the root the solver just returned must converge and return that
+// root.  Compiled against the pre-repair util/spa.hpp this case records 177
+// assertion failures — 29 of the 197 problems below return MAXITER while holding
+// the exact root — and against the repaired header, none.
+TEST(solving_from_the_root_itself_converges) {
+    int nCases = 0;
+
+    // Both entry points must agree that `init` is already the answer.
+    auto check = [&](const spa::Saddle &r, double root, const std::string &tag) {
+        CHECK_MSG(r.status == spa::Status::Converged, statusStr(r.status) + " " + tag);
+        CHECK_MSG(std::fabs(r.zeta - root) <=
+                      1e-13 * std::fmax(1.0, std::fabs(root)),
+                  "root moved, " + tag);
+        // A degenerate bracket is still a bracket: the root is pinned to a
+        // single representable double and nothing narrower exists.
+        CHECK_MSG(r.bracketed, "not bracketed, " + tag);
+        CHECK_MSG(r.zeta >= r.lo && r.zeta <= r.hi, "outside bracket, " + tag);
+        // The terminal cumulants must be the ones at the returned root, on this
+        // path as on every other.
+        CHECK_MSG(r.K2 > 0.0, "K2 not positive, " + tag);
+        ++nCases;
+    };
+
+    // ── Poisson: 16 of these 24 collapsed before the repair ──
+    for (double lam : {0.5, 1.0, 3.0, 7.0, 1000.0})
+        for (double ratio : {1e-3, 0.1, 0.5, 2.0, 10.0, 1e3}) {
+            const PoissonCgf c{lam, lam * ratio};
+            const spa::Saddle cold = spa::solveSaddlepoint(
+                c.s, [&](double t) { return c.k12(t); },
+                [&](double t) { return c.kFull(t); }, tightOpts(0.0));
+            CHECK(cold.status == spa::Status::Converged);
+            for (double init : {c.root(), cold.zeta}) {
+                const spa::Saddle r = spa::solveSaddlepoint(
+                    c.s, [&](double t) { return c.k12(t); },
+                    [&](double t) { return c.kFull(t); }, tightOpts(init));
+                check(r, c.root(),
+                      "poisson lam=" + std::to_string(lam) + " ratio=" +
+                          std::to_string(ratio));
+            }
+        }
+
+    // ── Single-subject binomial: 13 of these 125 collapsed before ──
+    for (double p : {0.01, 0.1, 0.3, 0.5, 0.9})
+        for (double r0 : {0.25, 1.0, 3.0, -1.0, -2.5})
+            for (double f : {0.05, 0.25, 0.5, 0.75, 0.95}) {
+                const BinomOneCgf c{p, r0, f * 2.0 * r0};
+                const spa::Saddle cold = spa::solveSaddlepoint(
+                    c.s, [&](double t) { return c.k12(t); },
+                    [&](double t) { return c.kFull(t); }, tightOpts(0.0));
+                CHECK(cold.status == spa::Status::Converged);
+                for (double init : {c.root(), cold.zeta}) {
+                    const spa::Saddle r = spa::solveSaddlepoint(
+                        c.s, [&](double t) { return c.k12(t); },
+                        [&](double t) { return c.kFull(t); }, tightOpts(init));
+                    check(r, c.root(),
+                          "binom p=" + std::to_string(p) + " r=" +
+                              std::to_string(r0) + " f=" + std::to_string(f));
+                }
+            }
+
+    // ── Gaussian, including the two doubles adjacent to the exact root ──
+    // The root is representable exactly here, so `init = root` takes the
+    // zero-residual fast path; its neighbours are what probe the ulp-scale
+    // regime on a CGF whose K'' is constant.
+    for (double var : {1.0, 2.0, 0.25, 1e4})
+        for (double s : {1.5, -1.5, 40.0, -0.75}) {
+            const GaussianCgf c{0.3, var, s};
+            for (int d = -1; d <= 1; ++d) {
+                const double init =
+                    (d == 0) ? c.root() : std::nextafter(c.root(), d * kInf);
+                const spa::Saddle r = spa::solveSaddlepoint(
+                    c.s, [&](double t) { return c.k12(t); },
+                    [&](double t) { return c.kFull(t); }, tightOpts(init));
+                check(r, c.root(),
+                      "gauss var=" + std::to_string(var) + " s=" +
+                          std::to_string(s) + " d=" + std::to_string(d));
+            }
+        }
+
+    CHECK(nCases == 2 * 30 + 2 * 125 + 48);
+}
+
+// The warm start on the shape production actually has: solve, then re-solve
+// from the returned root.  This is the reachability argument for the repair —
+// the collapse is unreachable from the initializers the six methods ship today
+// (0 occurrences in the 8288 solves examples/baseline.sh performs), but any
+// per-marker cache or LOCO-style reuse turns it on immediately: against the
+// pre-repair header this case reports 85 failures out of 991 re-solves.
+TEST(warm_start_from_the_returned_root_never_fails) {
+    std::mt19937_64 rng(20260731ULL);
+    std::uniform_real_distribution<double> umaf(5e-4, 0.5);
+    std::uniform_real_distribution<double> uresid(-3.0, 3.0);
+    std::uniform_int_distribution<int> unout(1, 60);
+    std::uniform_real_distribution<double> uvarScale(-3.0, 3.0);
+    std::uniform_real_distribution<double> uz(2.0, 12.0);
+
+    const spa::SolveOpts base;   // stated defaults, as production uses
+    int nWarm = 0, nWarmFail = 0, nDrift = 0;
+
+    for (int trial = 0; trial < 500; ++trial) {
+        MixedCgf c;
+        const int nOut = unout(rng);
+        c.resid.resize(nOut);
+        c.maf.resize(nOut);
+        double sumR2 = 0.0;
+        for (int i = 0; i < nOut; ++i) {
+            c.resid[i] = uresid(rng);
+            c.maf[i] = umaf(rng);
+            sumR2 += c.resid[i] * c.resid[i];
+        }
+        c.var = std::pow(10.0, uvarScale(rng)) * sumR2;
+
+        const spa::K012 at0 = c.kFull(0.0);
+        const double sd = std::sqrt(at0.k2);
+
+        for (int sgn = -1; sgn <= 1; sgn += 2) {
+            c.s = at0.k1 + sgn * uz(rng) * sd;
+
+            const spa::Saddle cold = spa::solveSaddlepoint(
+                c.s, [&](double t) { return c.k12(t); },
+                [&](double t) { return c.kFull(t); }, base);
+            if (cold.status != spa::Status::Converged) continue;
+
+            spa::SolveOpts w = base;
+            w.init = cold.zeta;
+            const spa::Saddle warm = spa::solveSaddlepoint(
+                c.s, [&](double t) { return c.k12(t); },
+                [&](double t) { return c.kFull(t); }, w);
+            ++nWarm;
+            if (spa::statusIsFailure(warm.status)) ++nWarmFail;
+            else if (!(std::fabs(warm.zeta - cold.zeta) <=
+                       1e-6 * std::fmax(1.0, std::fabs(cold.zeta))))
+                ++nDrift;
+        }
+    }
+
+    CHECK(nWarm > 900);
+    CHECK_MSG(nWarmFail == 0,
+              "warm start failed on " + std::to_string(nWarmFail) + " of " +
+                  std::to_string(nWarm) + " re-solves");
+    CHECK_MSG(nDrift == 0,
+              "warm start moved the root on " + std::to_string(nDrift) + " of " +
+                  std::to_string(nWarm));
 }
 
 // ══════════════════════════════════════════════════════════════════════

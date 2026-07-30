@@ -497,12 +497,78 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
         // never steps over it.
         bool coarseUnused = true;
 
-        for (int k = 0; k < opt.maxExpand; ++k) {
+        // ── The first probe must land on a different double ──
+        //
+        // The bare Newton step, unlike the coarse constant it replaced, can be
+        // arbitrarily small.  When it falls below half an ulp of `init` the
+        // probe `init + dir*step` rounds straight back onto `init`, the loop
+        // below breaks on its first pass with `bracketed` still false, and the
+        // solve returns MaxIter after a single evaluation — while `zeta` holds
+        // the correct root to the last bit.  Since statusIsFailure(MaxIter) is
+        // true, the caller then reports NA for a marker whose saddlepoint was
+        // solved exactly.  The trigger is |K'(init) - s| / K''(init) <
+        // ulp(init)/2, i.e. "init already lies within half an ulp of the root",
+        // so the failure probability would be monotone INCREASING in the quality
+        // of the caller's initial guess.  That is the opposite of what a
+        // bracketing solver must offer, and it is exactly the shape any warm
+        // start or per-marker cache would take: re-solving each converged
+        // problem with init set to the root it just returned failed on 8641 of
+        // 79859 production-shaped problems (10.8 %) before this guard and on
+        // none of them after.  `warm_start_from_the_returned_root_never_fails`
+        // in tests/spa_solver_test.cpp is that experiment, at test scale.
+        //
+        // Two situations hide under that one condition, and they get different
+        // answers:
+        //
+        //   * The residual at `init` already meets the convergence criterion.
+        //     Then `init` is an answer by the solver's own stated contract, and
+        //     under a locally accurate K'' the root lies within half an ulp of
+        //     it, so no bracket narrower than the degenerate [init, init] is
+        //     representable.  Report Converged with that bracket — the same
+        //     statement the `e.k1 == 0.0` fast path above already makes, with
+        //     the tolerance in place of exact zero.
+        //   * The residual is still above tolerance.  That needs
+        //     sqrt(K''(init)) * |init| * eps > rtol, so it takes an
+        //     astronomically ill-scaled problem, but `init` is then genuinely
+        //     not an answer and the expansion must proceed.  Fall back to the
+        //     coarse distance, which is at least max(1, |init|) and therefore
+        //     always moves.
+        //
+        // Gating BOTH branches on "the probe would not move", rather than
+        // testing the tolerance unconditionally on entry, is deliberate and is
+        // NOT merely conservatism.  Measured over examples/baseline.sh, 830 of
+        // 8288 production solves (10.0 %, all of them SPAGRM) already satisfy
+        // the convergence criterion at `init`; an unconditional early return
+        // would take every one of those out of the Newton loop and move its
+        // p-value in the last bits.  The collapse condition is reached 0 times
+        // in the same 8288, so gating on it makes this repair provably inert on
+        // every input the regression suite covers and a repair only where the
+        // predecessor manufactured an NA.
+        if (t + dir * step == t) {
+            const double tol0 = std::fmax(
+                (e.k2 > 0.0 && std::isfinite(e.k2)) ? opt.rtol * std::sqrt(e.k2)
+                                                    : 0.0,
+                noiseFloor);
+            if (std::fabs(e.k1) <= tol0) {
+                lo = hi = t;
+                out.bracketed = true;
+                out.status = Status::Converged;
+            } else {
+                step = coarse;
+            }
+        }
+
+        for (int k = 0; k < opt.maxExpand && !out.bracketed; ++k) {
             double b = a + dir * step;
             if (!std::isfinite(b)) break;
             if (b < L) b = L;
             if (b > U) b = U;
-            if (b == a) break;  // the allowed half-line is exhausted
+            // Either the sign constraint's endpoint has been reached, or the
+            // non-finite retreat below has halved `step` down past the local
+            // ulp.  Both mean the admissible half-line is exhausted.  The first
+            // probe cannot arrive here: the guard above floors it at a distance
+            // that moves.
+            if (b == a) break;
 
             const K12 eb = ev.cheap(b);
             ++out.nEval;
@@ -835,6 +901,26 @@ Saddle solveSaddlepoint(double s, EvalFull &&evalFull, const SolveOpts &opt) {
 // spasqr, which had none.  STAGE 8 (spa_unify N3) raises it to ~1e-4 and adds
 // the Phi(+/-w) fallback in place of the NaN.  Keeping it as a named constant
 // is what makes that a local change.
+//
+// WARNING TO STAGE 8 — raising this constant is not numerically neutral above
+// the threshold, and the interaction is easy to miss because it lives in a
+// different file.  util/spa_cgf.hpp's terminal-K section justifies the cheap,
+// vectorized spelling of K on the grounds that only the ABSOLUTE error in K
+// propagates, since dw = -dK/w and the |z| > spaCutoff entry gate keeps |w| of
+// order 2 or more (min |w| measured at 1.779 over the production grid).  That
+// argument is scale-dependent.  Perturbing K alone moves r* by
+//
+//     dr*/dK = -(1/w) * d/dw [ w + log(v/w)/w ]
+//            = -(1/w) * [ 1 - (1 + log(v/w))/w^2 ]  ~  1/w^3   as w -> 0,
+//
+// because log(v/w) -> 0 at the removable singularity.  Immediately above a
+// threshold of 1e-4 that is an amplification of 1e12: an absolute error of 1e-11
+// in K, comfortably inside every budget spa_cgf defends, becomes an error of
+// order 10 in r*, and 1e-10 becomes order 100.  So the region 1e-4 < |w| < ~1e-2
+// is not a region in which r* may simply be evaluated as written.  Stage 8 must
+// choose the threshold and the width of the Phi(+/-w) degradation band together,
+// with dK/w^3 in view, rather than treating the guard as a pure NaN-avoidance
+// device.  This constant is 0.0 today, so nothing here is presently exposed.
 constexpr double kWSingularity = 0.0;
 
 namespace detail {

@@ -318,6 +318,37 @@ TEST(class1_is_the_shared_binomial_cgf) {
     // tests/spa_cgf_test.cpp's `production_K_absolute_error_does_not_degrade_w`.
     const double kK0Abs = 8.0 * 5.0 * 2.0 * DBL_EPSILON;
 
+    // ── The compensating bound ──
+    //
+    // Loosening the relative criterion on K to a mixed relative/absolute one
+    // removes the only assertion in this file that bounded class-1 K, precisely
+    // at the abscissae where it was binding: at t = -0.02 the absolute floor is
+    // 1.8e-14 against a |K| of 0.0132, so the assertion above passes for any
+    // implementation whose K is right to 0.1 % there.  Something must still pin
+    // it, and the defensible metric is the one the p-value actually consumes.
+    //
+    // Two bounds are asserted per abscissa:
+    //
+    //   (a) the ABSOLUTE error in K, in ULP of sum_i h_i*max(1, |log alpha_i|) —
+    //       the same scale and the same 64-ULP budget as `kK0ProdUlp` in
+    //       tests/spa_cgf_test.cpp, which is the right comparison because class 1
+    //       forwards to the identical `spa_cgf::binomUniformKFull` kernel;
+    //   (b) the error that absolute error INDUCES in
+    //       w = sgn(zeta)*sqrt(2*(zeta*s - K)).  Each abscissa is made its own
+    //       exact saddlepoint by taking s = K'(t), so zeta = t by construction
+    //       and zeta*s - K is the Legendre transform, non-negative for any CGF.
+    //       K' is held at its long-double reference value so that what is
+    //       measured is the propagation of dK alone, which is dw = -dK/w to
+    //       first order.  The assertion is that no more than that appears.
+    //
+    // (b) is also the place this file records the 1/w amplification: at
+    // t = +/-0.02 the transform is 3.7e-4 and |w| only 0.027, so an absolute
+    // 6e-16 in K is already 2e-14 in w.  That is harmless at |w| = 0.027 and is
+    // the reason `spa::kWSingularity` must not be raised without accounting for
+    // it; see the Stage 8 warning at that constant.
+    const double kK0AbsUlp = 64.0;   // == tests/spa_cgf_test.cpp's kK0ProdUlp
+    double worstK0Ulp = 0.0, worstDw = 0.0;
+
     for (double t : {-4.0, -0.02, 0.02, 1.5, 6.0}) {
         const Ref r = refClass1(t, f.outlier, MAF);
         const spa::K12 d = spagrm_cgf::k12(t, c, 0.0);
@@ -325,7 +356,46 @@ TEST(class1_is_the_shared_binomial_cgf) {
         CHECK_REL(d.k1, static_cast<double>(r.K1), 1e-14);
         CHECK_REL(d.k2, static_cast<double>(r.K2), 1e-14);
         CHECK_CLOSE(F.k0, static_cast<double>(r.K0), 1e-14, kK0Abs);
+
+        // (a) absolute error in K on the scale that governs it.
+        double scale = 0.0;
+        for (double ri : f.outlier)
+            scale += 2.0 * std::fmax(1.0, std::fabs(spa_cgf::logAlpha(t * ri, MAF)));
+        const double dK = std::fabs(F.k0 - static_cast<double>(r.K0));
+        const double ulp = dK / (DBL_EPSILON * scale);
+        worstK0Ulp = std::fmax(worstK0Ulp, ulp);
+        CHECK_MSG(ulp <= kK0AbsUlp,
+                  "class-1 K off the absolute scale at t = " + std::to_string(t) +
+                      ": " + std::to_string(ulp) + " ULP");
+
+        // (b) the induced error in w, with s = K'(t) so that zeta = t exactly.
+        const ld sL = r.K1;
+        const ld tempRef = ld(t) * sL - r.K0;
+        CHECK_MSG(tempRef > 0.0L, "Legendre transform not positive at t = " +
+                                      std::to_string(t));
+        const double sgn = (t > 0.0) ? 1.0 : -1.0;
+        const double wRef =
+            sgn * static_cast<double>(std::sqrt(2.0L * tempRef));
+        const double tempGot =
+            static_cast<double>(ld(t) * sL) - F.k0;   // only K0 from the kernel
+        const double wGot = sgn * std::sqrt(2.0 * tempGot);
+        const double dw = std::fabs(wGot - wRef);
+        worstDw = std::fmax(worstDw, dw);
+        // First-order propagation plus the square root's own rounding.  The 1.5
+        // absorbs the second-order term; anything materially above this would
+        // mean w is losing accuracy somewhere other than in K.
+        const double dwBound = 1.5 * dK / std::fabs(wRef) +
+                               8.0 * DBL_EPSILON * std::fabs(wRef);
+        CHECK_MSG(dw <= dwBound,
+                  "w lost more than dK/w at t = " + std::to_string(t) + ": dw " +
+                      std::to_string(dw) + " bound " + std::to_string(dwBound));
     }
+
+    std::fprintf(stderr,
+                 "      class-1 K: worst ABSOLUTE error %.2f ULP of "
+                 "sum h*max(1,|log alpha|) (budget %.0f); worst induced |dw| "
+                 "%.3e\n",
+                 worstK0Ulp, kK0AbsUlp, worstDw);
 }
 
 // ══════════════════════════════════════════════════════════════════════

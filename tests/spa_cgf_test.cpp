@@ -601,12 +601,39 @@ constexpr double kCrossTierUlp = 64.0;
 // the quality of the kernel.  Above |log alpha| = 1 the scale becomes the
 // ordinary L1 scale and the criterion degenerates to the relative one.
 //
-// Measured worst deviation on that scale, reported by the tests below.  The
-// budget is 512 ULP because the vendored `avx512_exp_pd` was measured at up to
-// 38.9 ULP and its error enters alpha multiplied by p*lambda/alpha, which the
-// grid drives to 1; 512 leaves room for the reduction on top of that and is
-// still eleven orders of magnitude tighter than an algebra error.
-constexpr double kK0ProdUlp = 512.0;
+// ── Where the number 64 comes from, and why it is not 512 ──
+//
+// This budget was 512, on the reasoning that the vendored `avx512_exp_pd` was
+// measured at up to 38.9 ULP, that its error enters alpha multiplied by
+// p*lambda/alpha which the grid drives to 1, and that 512 "leaves room for the
+// reduction on top of that".  Two things are wrong with that as a justification.
+//
+// First, the reduction is not on top of it.  Every assertion that uses this
+// budget is an n = 1 assertion — the II.b per-subject grids, the near-zero grid
+// and the symmetric grid.  The multi-subject reductions are asserted against
+// kCrossTierUlp, not against this constant.  There is no reduction for the
+// headroom to accommodate.
+//
+// Second, the 38.9 ULP figure does not survive the scale.  The exp's worst case
+// is at x = 349, and there alpha ~ p*e^x so |log alpha| ~ 349, which is exactly
+// the regime in which k0Scale stops being the floor of 1 and becomes the L1
+// scale.  A relative error of 39 ULP in e^x is 39*eps absolute in log(alpha),
+// which is 39/|log alpha| ULP of the scale — under one ULP where the exp is at
+// its worst.  Near t = 0, where the scale is at its floor and 39 ULP would cost
+// 39 ULP of it, the exp is at its most accurate.  The two ends do not coincide,
+// which is why the measured worst over EVERY site in this file is 3.50 ULP
+// (reported by `terminal_K_budget_headroom` at the end of the file).
+//
+// 512 was therefore a 146x headroom in a file whose stated convention is 2x to
+// 4.6x, justified by a mechanism no assertion exercises.  The budget is now 64,
+// which is `kVectorUlp` — deliberately the same number, because this quantity
+// touches exactly the same vendored vector exp that kVectorUlp was set for, and
+// two budgets bounding one error source should not be two numbers.  Against the
+// measured 3.50 that is 18x, still above the convention; against the a-priori
+// per-subject bound of 38.9 ULP that the vendored exp could in principle deliver
+// if a future grid point put the worst case and the scale floor together, it is
+// 1.6x, and that is the constraint the budget genuinely has to cover.
+constexpr double kK0ProdUlp = 64.0;
 
 // A ULP budget expressed as a relative tolerance, for CHECK_REL / CHECK_CLOSE.
 constexpr double relTol(double ulp) { return ulp * DBL_EPSILON; }
@@ -662,6 +689,13 @@ double k0Scale1(double t, double r, double p, double h) {
                    std::vector<double>{h});
 }
 
+// Worst deviation seen at ANY kK0ProdUlp assertion site in this file, fed by
+// `k0ProdUlp` below and reported by `terminal_K_budget_headroom` at the end.
+// A budget whose headroom is not printed is a budget nobody can tighten, and
+// this one was carrying 146x when the file's stated convention is 2x to 4.6x.
+double gWorstK0Prod = 0.0;
+const char *gWorstK0ProdWhere = "(none)";
+
 // Difference of a and b expressed in ULP of `scale`.  Exact equality is 0;
 // a zero scale with unequal values is infinite, which fails any finite budget.
 double ulpDiff(double a, double b, double scale) {
@@ -670,6 +704,15 @@ double ulpDiff(double a, double b, double scale) {
         return std::numeric_limits<double>::infinity();
     if (!(scale > 0.0)) return std::numeric_limits<double>::infinity();
     return std::fabs(a - b) / (DBL_EPSILON * scale);
+}
+
+// The same quantity, recorded against the file-wide worst so the headroom on
+// kK0ProdUlp is measured rather than assumed.  Every production-K absolute
+// assertion in this file goes through here.
+double k0ProdUlp(double got, double ref, double scale, const char *where) {
+    const double u = ulpDiff(got, ref, scale);
+    if (u > gWorstK0Prod) { gWorstK0Prod = u; gWorstK0ProdWhere = where; }
+    return u;
 }
 
 // Deterministic subject sets.  A fixed seed is required: the suite must be
@@ -731,25 +774,83 @@ TEST(hapcount_reference_generalizes_the_diploid_reference) {
 // II.b  Per-subject accuracy of the real kernels vs the long-double reference
 // ──────────────────────────────────────────────────────────────────────
 //
-// Driven through the production reduction entry points with n = 1 rather than
-// through the inline scalar core, so what is measured is the shipped code path.
+// K' and K'' are driven through the production reduction entry points with
+// n = 1 rather than through the inline scalar core, so for those two the shipped
+// code path is what is measured.
+//
+// K is NOT one number and must not be reported as one.  Two entry points produce
+// it, only one of them ships, and they are held to two different criteria:
+//
+//   * `binom*KFull` — the production terminal K, dispatched, log(u + p*e^x)
+//     through the vendored vector logarithm.  It is called by every SPA site.
+//     The criterion it is held to is the ABSOLUTE error, expressed in ULP of
+//     sum_i h_i*max(1, |log alpha_i|), because K reaches the p-value only
+//     through w = sgn(zeta)*sqrt(2*(zeta*s - K)) with dw = -dK/w.  See
+//     kK0ProdUlp above for the scale and `production_K_absolute_error_does_not_
+//     degrade_w` for the argument executed end to end.
+//   * `binom*KFullExact` — the N1 spelling, log1p(p*expm1(x)), scalar
+//     throughout.  It has NO production caller anywhere in src/; it exists so
+//     that relative accuracy in K stays reachable and pinned.  The criterion it
+//     is held to is the RELATIVE error.
+//
+// A previous revision of this file printed a single line labelled "K (any) ...
+// 1.0" beneath the heading "worst error in ULP", under a section comment
+// claiming the shipped path was what was measured.  The 1.0 was `KFullExact`'s
+// relative error.  The shipped path's worst RELATIVE error is 3.95e-08 on this
+// grid — 1.8e+08 ULP, eight orders away from the printed figure — and 1.1e-01 on
+// the finer grid of `real_kernel_K_accuracy_is_symmetric_about_zero`, which
+// reaches t*r = 1e-9 where K itself is ~1e-13 and an absolute eps swamps it
+// entirely.  The shipped terminal K has, near t = 0, no relative accuracy at
+// all; that is the whole content of finding N1 and it is precisely why the
+// absolute criterion is the one this file asserts on.  The old number was not
+// wrong for what it measured, but the label was wrong for what it claimed, and a
+// reader of `make test` output would have taken the shipped terminal K to be
+// correctly rounded.  Both entry points are therefore reported below, each
+// against its own criterion, with the production path's relative error printed
+// alongside and marked as a record rather than a bound.
 
 // Accumulates, per tier, the worst relative error seen against the reference.
+// K' and K'' only: kFull reuses k12's derivatives bit-for-bit, which the tests
+// below assert separately, so one set of tier numbers covers both entry points.
 struct TierErr { double k1 = 0.0, k2 = 0.0; };
+
+// The terminal K, worst over the grid.  Three numbers because there are three
+// distinct claims, and collapsing them is what produced the misleading report.
+struct K0Err {
+    double prodAbsUlp = 0.0;  // production kFull, ULP of the absolute k0Scale
+    double prodRel    = 0.0;  // production kFull, relative — recorded, not a bound
+    double exactRel   = 0.0;  // kFullExact, relative — the N1 criterion
+};
 
 void reportTierErrs(
     const char *variant,
     const std::vector<std::string> &names,
     const std::vector<TierErr> &errs,
-    double worstK0
+    const K0Err &k0
 ) {
-    std::fprintf(stderr, "      %s vs long-double reference, worst error in ULP:\n",
+    std::fprintf(stderr,
+                 "      %s: K' and K'' vs long-double reference, worst RELATIVE "
+                 "error in ULP\n",
                  variant);
     for (size_t i = 0; i < names.size(); ++i)
         std::fprintf(stderr, "        %-9s K' %6.1f   K'' %6.1f\n",
                      names[i].c_str(), errs[i].k1 / DBL_EPSILON,
                      errs[i].k2 / DBL_EPSILON);
-    std::fprintf(stderr, "        %-9s K  %6.1f\n", "K (any)", worstK0 / DBL_EPSILON);
+    std::fprintf(stderr,
+                 "      %s: terminal K vs long-double reference, worst error\n",
+                 variant);
+    std::fprintf(stderr,
+                 "        kFull      SHIPPED, dispatched   ABSOLUTE %8.1f ULP of "
+                 "sum h*max(1,|log alpha|)   (budget %.0f)\n",
+                 k0.prodAbsUlp, kK0ProdUlp);
+    std::fprintf(stderr,
+                 "        kFull      SHIPPED, dispatched   relative %8.2e "
+                 "= %8.2e ULP   (recorded, not a criterion)\n",
+                 k0.prodRel, k0.prodRel / DBL_EPSILON);
+    std::fprintf(stderr,
+                 "        kFullExact no production caller  relative %8.1f ULP"
+                 "                             (budget %.0f)\n",
+                 k0.exactRel / DBL_EPSILON, kAlgebraUlp);
 }
 
 TEST(real_binom_uniform_matches_long_double_reference) {
@@ -762,7 +863,7 @@ TEST(real_binom_uniform_matches_long_double_reference) {
     std::vector<TierErr> errs(tiers.size());
     std::vector<std::string> names;
     for (const auto &tt : tiers) names.push_back(tt.name);
-    double worstK0 = 0.0;
+    K0Err k0;
 
     for (double p : kMafs) {
         for (double r : kResidsP2) {
@@ -804,14 +905,19 @@ TEST(real_binom_uniform_matches_long_double_reference) {
                 CHECK_CLOSE(x.K0, R0, relTol(kAlgebraUlp), 1e-300);
                 // The production entry point is held to the absolute criterion
                 // K is actually consumed under.
-                CHECK_MSG(ulpDiff(f.K0, R0, k0Scale1(t, r, p, 2.0)) <= kK0ProdUlp,
-                          "production K off the absolute scale");
-                if (R0 != 0.0) worstK0 = std::fmax(worstK0, tinytest::relDiff(x.K0, R0));
+                const double uProd =
+                    k0ProdUlp(f.K0, R0, k0Scale1(t, r, p, 2.0), "binomUniform n=1");
+                CHECK_MSG(uProd <= kK0ProdUlp, "production K off the absolute scale");
+                k0.prodAbsUlp = std::fmax(k0.prodAbsUlp, uProd);
+                if (R0 != 0.0) {
+                    k0.exactRel = std::fmax(k0.exactRel, tinytest::relDiff(x.K0, R0));
+                    k0.prodRel  = std::fmax(k0.prodRel,  tinytest::relDiff(f.K0, R0));
+                }
             }
         }
     }
 
-    reportTierErrs("binomUniform", names, errs, worstK0);
+    reportTierErrs("binomUniform", names, errs, k0);
 }
 
 TEST(real_binom_indiv_matches_long_double_reference) {
@@ -824,7 +930,7 @@ TEST(real_binom_indiv_matches_long_double_reference) {
     std::vector<TierErr> errs(tiers.size());
     std::vector<std::string> names;
     for (const auto &tt : tiers) names.push_back(tt.name);
-    double worstK0 = 0.0;
+    K0Err k0;
 
     for (double p : kMafs) {
         for (double r : kResidsP2) {
@@ -857,14 +963,19 @@ TEST(real_binom_indiv_matches_long_double_reference) {
 
                 const double R0 = static_cast<double>(ref.K0);
                 CHECK_CLOSE(x.K0, R0, relTol(kAlgebraUlp), 1e-300);
-                CHECK_MSG(ulpDiff(f.K0, R0, k0Scale1(t, r, p, 2.0)) <= kK0ProdUlp,
-                          "production K off the absolute scale");
-                if (R0 != 0.0) worstK0 = std::fmax(worstK0, tinytest::relDiff(x.K0, R0));
+                const double uProd =
+                    k0ProdUlp(f.K0, R0, k0Scale1(t, r, p, 2.0), "binomIndiv n=1");
+                CHECK_MSG(uProd <= kK0ProdUlp, "production K off the absolute scale");
+                k0.prodAbsUlp = std::fmax(k0.prodAbsUlp, uProd);
+                if (R0 != 0.0) {
+                    k0.exactRel = std::fmax(k0.exactRel, tinytest::relDiff(x.K0, R0));
+                    k0.prodRel  = std::fmax(k0.prodRel,  tinytest::relDiff(f.K0, R0));
+                }
             }
         }
     }
 
-    reportTierErrs("binomIndiv", names, errs, worstK0);
+    reportTierErrs("binomIndiv", names, errs, k0);
 }
 
 TEST(real_binom_hapcount_matches_long_double_reference) {
@@ -877,7 +988,7 @@ TEST(real_binom_hapcount_matches_long_double_reference) {
     std::vector<TierErr> errs(tiers.size());
     std::vector<std::string> names;
     for (const auto &tt : tiers) names.push_back(tt.name);
-    double worstK0 = 0.0;
+    K0Err k0;
 
     for (double q : kMafs) {
         for (double r : kResidsP2) {
@@ -923,16 +1034,23 @@ TEST(real_binom_hapcount_matches_long_double_reference) {
                         continue;
                     }
                     CHECK_CLOSE(x.K0, R0, relTol(kAlgebraUlp), 1e-300);
-                    CHECK_MSG(ulpDiff(f.K0, R0, k0Scale1(t, r, q, h)) <= kK0ProdUlp,
+                    const double uProd =
+                        k0ProdUlp(f.K0, R0, k0Scale1(t, r, q, h), "binomHapcount n=1");
+                    CHECK_MSG(uProd <= kK0ProdUlp,
                               "production K off the absolute scale");
-                    if (R0 != 0.0)
-                        worstK0 = std::fmax(worstK0, tinytest::relDiff(x.K0, R0));
+                    k0.prodAbsUlp = std::fmax(k0.prodAbsUlp, uProd);
+                    if (R0 != 0.0) {
+                        k0.exactRel =
+                            std::fmax(k0.exactRel, tinytest::relDiff(x.K0, R0));
+                        k0.prodRel =
+                            std::fmax(k0.prodRel, tinytest::relDiff(f.K0, R0));
+                    }
                 }
             }
         }
     }
 
-    reportTierErrs("binomHapcount", names, errs, worstK0);
+    reportTierErrs("binomHapcount", names, errs, k0);
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -1649,7 +1767,8 @@ TEST(real_kernel_K_accuracy_near_zero) {
                             std::fabs(prod.K0 - refK0)});
 
         CHECK_REL(exact.K0, refK0, relTol(kAlgebraUlp));
-        CHECK_MSG(ulpDiff(prod.K0, refK0, k0Scale1(tr, r, p, 2.0)) <= kK0ProdUlp,
+        CHECK_MSG(k0ProdUlp(prod.K0, refK0, k0Scale1(tr, r, p, 2.0),
+                            "near-zero grid") <= kK0ProdUlp,
                   "production K off the absolute scale");
     }
 
@@ -1680,7 +1799,7 @@ TEST(real_kernel_K_accuracy_is_symmetric_about_zero) {
         return;
     }
 
-    double worst = 0.0, worstProd = 0.0;
+    double worst = 0.0, worstProd = 0.0, worstProdRel = 0.0;
     for (double p : kMafs) {
         for (double mag : {1e-9, 1e-7, 1e-5, 1e-3, 1e-1, 1.0, 10.0}) {
             for (double sgn : {-1.0, 1.0}) {
@@ -1700,17 +1819,27 @@ TEST(real_kernel_K_accuracy_is_symmetric_about_zero) {
                 // symmetric in the sign of x too.
                 const spa_cgf::Cgf012 pr =
                     spa_cgf::binomUniformKFull(tr, rv, 1, p);
-                const double u = ulpDiff(pr.K0, refK0, k0Scale1(tr, 1.0, p, 2.0));
+                const double u = k0ProdUlp(pr.K0, refK0, k0Scale1(tr, 1.0, p, 2.0),
+                                           "symmetric grid");
                 worstProd = std::fmax(worstProd, u);
                 CHECK_MSG(u <= kK0ProdUlp,
                           "production K off the absolute scale on one side of zero");
+                // Recorded, not asserted: the shipped spelling's RELATIVE error
+                // near t = 0 is the quantity N1 objects to, and printing it
+                // beside the absolute one is what keeps the two claims apart.
+                if (refK0 != 0.0)
+                    worstProdRel =
+                        std::fmax(worstProdRel, tinytest::relDiff(pr.K0, refK0));
             }
         }
     }
     std::fprintf(stderr,
-                 "      worst K relative error over both signs of t*r: exact %.3e; "
-                 "production, in ULP of the absolute scale: %.1f (budget %.0f)\n",
-                 worst, worstProd, kK0ProdUlp);
+                 "      worst K over both signs of t*r:\n"
+                 "        kFullExact  relative %.3e   (budget %.3e)\n"
+                 "        kFull       ABSOLUTE %.1f ULP of the k0Scale "
+                 "(budget %.0f)\n"
+                 "        kFull       relative %.3e   (recorded, not a criterion)\n",
+                 worst, relTol(kAlgebraUlp), worstProd, kK0ProdUlp, worstProdRel);
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -2005,6 +2134,39 @@ TEST(report_simd_tier) {
     std::fprintf(stderr,
                  "      dispatch verified bit-identical to the %s tier for all three "
                  "variants\n", name);
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// III  The budgets, reported rather than asserted in silence
+// ──────────────────────────────────────────────────────────────────────
+//
+// Registration order is definition order within a translation unit, so this
+// case runs after every other and sees the file-wide worst.  It exists because
+// kK0ProdUlp sat at 512 against a worst observed 3.5 — a 146x headroom in a
+// file whose stated convention is 2x to 4.6x — and nothing in `make test`
+// output made that visible.  The budget has since been brought to 64; this
+// test is what will make the next drift visible, in BOTH directions:
+// a headroom that grows past 40x means the budget has stopped bounding
+// anything, and one that falls below 2x means it is about to start failing on
+// an unrelated host.
+TEST(terminal_K_budget_headroom) {
+    if (!sparef::longDoubleIsWider()) {
+        std::fprintf(stderr, "      SKIP: no wider reference type on this platform.\n");
+        return;
+    }
+    const double headroom =
+        (gWorstK0Prod > 0.0) ? kK0ProdUlp / gWorstK0Prod
+                             : std::numeric_limits<double>::infinity();
+    std::fprintf(stderr,
+                 "      kK0ProdUlp %.0f, worst observed %.2f ULP at [%s], "
+                 "headroom %.1fx\n",
+                 kK0ProdUlp, gWorstK0Prod, gWorstK0ProdWhere, headroom);
+    CHECK_MSG(gWorstK0Prod > 0.0,
+              "no production-K assertion ran; the accumulator is not wired up");
+    CHECK_MSG(gWorstK0Prod <= kK0ProdUlp, "budget exceeded");
+    CHECK_MSG(headroom <= 40.0,
+              "kK0ProdUlp headroom is " + std::to_string(headroom) +
+                  "x; the budget has stopped bounding anything, tighten it");
 }
 
 TINYTEST_MAIN

@@ -170,7 +170,30 @@ Args parseArgs(
         else if (arg == "--out")a.outPrefix = next();
         else if (arg == "--prevalence")a.refPrevalence = parseDouble(next(), arg);
         else if (arg == "--batch-effect-p-threshold")a.cutoff = parseDouble(next(), arg);
-        else if (arg == "--spa-z-threshold")a.spaCutoff = parseDouble(next(), arg);
+        else if (arg == "--spa-z-threshold") {
+            // The saddlepoint branch is entered only for |Z| above this value,
+            // and that gate is load-bearing, not merely a cost control.  Every
+            // absolute-error argument in the shared tier rests on it: K reaches
+            // the p-value through w = sgn(zeta)*sqrt(2*(zeta*s - K)), so an
+            // absolute error dK moves w by dK/w and r* = w + log(v/w)/w by about
+            // dK/w^3.  With |w| ~ |Z| near the gate, a threshold of 2 leaves
+            // |w| >= 1.78 (measured) and both quantities at rounding level; a
+            // threshold near zero puts the solver in the region where the
+            // terminal K's absolute error of ~1e-13 is amplified without bound,
+            // and at |Z| ~ 1e-7 it is enough to drive zeta*s - K negative and
+            // turn every marker into GUARD_TEMP.  See the terminal-K section of
+            // src/util/spa_cgf.hpp and `spa::kWSingularity` in src/util/spa.hpp.
+            //
+            // 0.01 is where dK/w^3 is still below 1e-6 for dK ~ 1e-12; below it
+            // the reported p-value stops being a function of the data alone.
+            a.spaCutoff = parseDouble(next(), arg);
+            if (!(a.spaCutoff >= 0.01) || !std::isfinite(a.spaCutoff)) {
+                std::cerr << "Error: --spa-z-threshold must be a finite value "
+                             "of at least 0.01, got '"
+                          << a.spaCutoff << "'\n";
+                std::exit(1);
+            }
+        }
         else if (arg == "--covar-p-threshold")a.pvalCovAdjCut = parseDouble(next(), arg);
         else if (arg == "--geno")a.missingCutoff = parseDouble(next(), arg);
         else if (arg == "--maf")a.minMafCutoff = parseDouble(next(), arg);
