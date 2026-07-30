@@ -160,6 +160,25 @@ with `GRAB_MARCH=-march=x86-64-v2` for portable distribution binaries.
     safeguarded root solver, the Barndorff-Nielsen tail kernel (linear and
     log domain), the two-sided assembly, and the `Status`/`SPA_STATUS`
     encoding (see "Saddlepoint output columns" below).
+
+    **Every threshold in the solver is dimensionally sound, and this is a
+    pinned property, not a stylistic preference.** Multiplying a phenotype —
+    or a `--resid-name` residual vector — by a constant `c` is a pure change
+    of units: the statistic becomes `c*S`, the saddlepoint root becomes
+    `zeta/c`, and `w`, `v`, `r*` and the p-value are all exactly invariant.
+    Residual tolerances are therefore built only from quantities carrying the
+    units of `s` (`sqrt(K'')`, `\|s\|`, `K''*\|t\|`) and abscissa distances only
+    from quantities carrying the units of `t` (`\|t\|`, `\|K'/K''\|`). An
+    absolute constant in either place makes the reported p-value depend on
+    the units the phenotype happens to be recorded in; the predecessor's
+    `stepTol * max(1, \|t\|)` bracket tolerance and `bracketStep * max(1,
+    \|init\|)` coarse probe were exactly that, and moved 44 % of SPA-branch
+    p-values under a `x1e8` rescaling of a heavy-tailed phenotype.
+    `scale_equivariance_*` in `tests/spa_solver_test.cpp` pins the property
+    as **bit-identity** of `P`, `LOG10P` and `SPA_STATUS` under a
+    power-of-two rescaling, which is exact in binary floating point. Do not
+    introduce a new absolute constant into the solver without checking it
+    against that test.
   - `src/util/spa_cgf.{hpp,cpp}` — the three shared binomial CGF variants
     (`binomUniform`, `binomIndiv`, `binomHapcount`), each with the mandated
     scalar + AVX2 + AVX-512 triple and a `simdLevel()` dispatch site.
@@ -183,8 +202,8 @@ emits two columns alongside each p-value it reports:
 
   | Value | Token | Meaning |
   | ----- | ----- | ------- |
-  | 0 | `OK` | Converged: step and residual both within tolerance, no guard fired. |
-  | 1 | `MAXITER` | Iteration or bracket-expansion budget exhausted. |
+  | 0 | `OK` | Converged: the residual `\|K'(zeta) - s\|` met the solver's stated criterion at the returned root, re-verified there against the terminal cumulants; no guard fired. |
+  | 1 | `MAXITER` | The solver stopped without meeting that criterion — the iteration or bracket-expansion budget ran out, or the bracket closed to the last representable digits of its own endpoints with the residual still above tolerance. Both mean no root was located to the requested accuracy. |
   | 2 | `GUARD_TEMP` | `zeta*s - K(zeta) < 0`, so `w` is not real. |
   | 3 | `GUARD_CURV` | `K''(zeta) <= 0`, so `v` is not real. |
   | 4 | `GUARD_W` | `\|w\|` at or below the removable-singularity threshold (`spa::kWSingularity`, `1e-3`) — a **degraded success**: `Phi(+/-w)` is returned in place of the `r*` correction, and `P` is a number. |

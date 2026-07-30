@@ -72,8 +72,14 @@ namespace spa {
 // ──────────────────────────────────────────────────────────────────────
 
 enum class Status : uint8_t {
-    Converged = 0,   // step and residual both within tolerance; no guard fired
-    MaxIter,         // iteration or bracket-expansion budget exhausted
+    Converged = 0,   // the residual criterion of § 4 was met at the returned
+                     //   root, verified there; no guard fired
+    MaxIter,         // the solver stopped without meeting that criterion: the
+                     //   iteration or bracket-expansion budget ran out, or the
+                     //   bracket closed to the last representable digits of its
+                     //   own endpoints with the residual still above tolerance.
+                     //   Both mean "no root was located to the requested
+                     //   accuracy", and both report NA.
     GuardTemp,       // zeta*s - K(zeta) < 0, so w is not real
     GuardCurv,       // K''(zeta) <= 0, so v is not real
     GuardW,          // |w| at or below the removable-singularity threshold:
@@ -217,7 +223,11 @@ struct Saddle {
     double zeta;      // the returned root
     double K0;        // K(zeta)   — always evaluated AT zeta, never at a
     double K2;        // K''(zeta)   stale abscissa
-    double residual;  // K'(zeta) - s, as achieved
+    double residual;  // K'(zeta) - s, as achieved AT the returned root.  This
+                      //   is the quantity `status == Converged` is a statement
+                      //   about: the solver re-tests it here, at the terminal
+                      //   evaluation, and demotes the status to MaxIter when it
+                      //   fails.  No caller has to read it to be safe.
     double lo;        // final bracket, containing the true root whenever
     double hi;        //   `bracketed` is true
     int    iters;     // safeguarded-Newton iterations executed
@@ -240,22 +250,68 @@ struct SolveOpts {
     // because K'(0) is the CGF mean and is finite for every CGF in GRAB.
     double init = 0.0;
 
-    // Relative residual tolerance.  Convergence is
-    //     |K'(t) - s| <= max(rtol * sqrt(K''(t)), 4 * eps * |s|).
-    // Scaling by sqrt(K'') makes the criterion dimensionless: K' carries the
-    // units of s and K'' the units of s^2.  Every tolerance in the original
-    // six sites was absolute and unscaled, so the same numeric value meant
-    // different things at different sample sizes (spa_unify D7).  The second
-    // term is the representation-error floor of the difference K'(t) - s; it
-    // is inactive by roughly nine orders of magnitude in the regime the SPA
-    // branch is entered in, and exists only so that a pathological problem
-    // stops instead of burning the whole iteration budget below the noise.
+    // Relative residual tolerance.  THE definition of convergence, and the
+    // only one: the solve has converged when
+    //
+    //     |K'(t) - s| <= max( rtol * sqrt(K''(t)),        (A)
+    //                         4 * eps * |s|,              (B)
+    //                         4 * eps * K''(t) * |t| )    (C)
+    //
+    // and it has not converged otherwise, whatever else may have stopped the
+    // loop.  Every one of the three terms carries the units of s, which is what
+    // makes the criterion invariant under a change of units in the statistic;
+    // see the scale-equivariance note in § 4.
+    //
+    //   (A) is the stated tolerance.  Scaling by sqrt(K'') makes it
+    //       dimensionless: K' carries the units of s and K'' the units of s^2.
+    //       Every tolerance in the original six sites was absolute and
+    //       unscaled, so the same numeric value meant different things at
+    //       different sample sizes (spa_unify D7).
+    //   (B) is the representation-error floor of the difference K'(t) - s.
+    //   (C) is the representation-error floor of the abscissa: t is
+    //       representable only to within ulp(t) ~ eps*|t|, and moving t by one
+    //       ulp moves K'(t) by K''(t)*ulp(t), so no iterate can promise a
+    //       smaller residual than that.  It is what lets a caller ask for
+    //       rtol = 0 and still be told the answer converged when the arithmetic
+    //       has nothing further to give.
+    //
+    // (B) and (C) are inactive by roughly nine orders of magnitude in the
+    // regime the SPA branch is entered in: (C)/(A) is eps*|t|*sqrt(K'')/rtol,
+    // and |t|*sqrt(K'') is the standardized abscissa, of order |z|.  They exist
+    // so that a pathological problem stops instead of burning the whole
+    // iteration budget below the noise, not to widen the tolerance.
     double rtol = 1e-6;
 
-    // Bracket-collapse tolerance.  When hi - lo falls to
-    // stepTol * max(1, |t|) the root is pinned to that width and no further
-    // refinement is possible, so the result is accepted.
-    double stepTol = 1e-8;
+    // Bracket-collapse width, RELATIVE to the bracket's own endpoints: the
+    // loop stops refining once
+    //
+    //     hi - lo <= bracketRtol * max(|lo|, |hi|).
+    //
+    // Reaching it does NOT by itself mean the solve converged — the residual
+    // criterion above decides that, and a bracket that closes with the residual
+    // still outside tolerance yields Status::MaxIter.
+    //
+    // THE PREDECESSOR'S ABSOLUTE FORM WAS THE DEFECT THIS SOLVER WAS REWRITTEN
+    // FOR.  It read `hi - lo <= stepTol * max(1, |t|)` with stepTol = 1e-8 and
+    // accepted the loop's current iterate as Converged with no residual test at
+    // all.  The saddlepoint root is zeta ~ z / sqrt(Var(S)), so it SHRINKS as
+    // the residual scale grows while the threshold stayed a flat 1e-8 for every
+    // |t| < 1: multiply a phenotype by 1e8 — a pure change of units, under
+    // which the null model, Z and the whole statistic are exactly equivariant —
+    // and |zeta| falls to ~1e-9, the "collapsed" bracket becomes ten times
+    // wider than the root it is supposed to pin, and the solver reports OK on
+    // an abscissa it never located.  Measured on a 5000-subject null cohort
+    // with a heavy-tailed phenotype: 46 % of SPA-branch markers moved in P
+    // under the rescaling, the worst inflation turning a true P = 7.2e-4 into
+    // 7.0e-7 with SPA_STATUS = 0.  Any unstandardized phenotype in the tens of
+    // thousands, or any residual vector supplied through --resid-name, reaches
+    // it; SPAsqr (bounded quantile-regression residuals) and SPACox (weights
+    // divided by sqrt(Var S), so K''(0) = 1) do not.
+    //
+    // The default is the representable limit, four ulps of the endpoints: the
+    // loop refines until double precision has nothing left, which is the only
+    // width at which "no further refinement is possible" is a true statement.
+    double bracketRtol = 4.0 * std::numeric_limits<double>::epsilon();
 
     int maxIter = 100;
 
@@ -269,17 +325,34 @@ struct SolveOpts {
     // on the side being searched lands beyond the root and brackets it in one
     // evaluation, with a bracket only as wide as the first-order estimate.
     //
-    // `bracketStep` is the fallback distance, used when K''(init) is not
-    // usable, and the distance the schedule jumps to on the first probe that
-    // lands on the same side of the root: the probe distance becomes
-    //     max(bracketGrow * previous, bracketStep * max(1, |init|))
-    // once, and grows by bracketGrow thereafter.  Falling back to a coarse
-    // constant rather than doubling a possibly-tiny Newton step is what bounds
-    // the worst-case expansion cost at one evaluation more than a schedule that
-    // started coarse in the first place.
-    double bracketStep = 1.0;
-    double bracketGrow = 2.0;
-    int    maxExpand   = 64;
+    // `bracketCoarse` is the DIMENSIONLESS multiple of the problem's own length
+    // scale that the schedule jumps to on the first probe that lands on the
+    // same side of the root, and the fallback when K''(init) is unusable.  The
+    // coarse distance is
+    //
+    //     bracketCoarse * max( |t|, |Newton step at t| ),
+    //
+    // and the probe distance becomes max(bracketGrow * previous, that) once,
+    // growing by bracketGrow thereafter.  Jumping coarsely rather than doubling
+    // a possibly-tiny Newton step is what bounds the worst-case expansion cost
+    // at one evaluation more than a schedule that started coarse in the first
+    // place.
+    //
+    // BOTH TERMS OF THE MAXIMUM ARE LENGTHS IN t, which is the point.  The
+    // predecessor used `bracketStep * max(1, |init|)` — an absolute constant of
+    // 1.0 in an abscissa whose units are 1/s — and so carried the same
+    // non-equivariance as the old absolute bracket tolerance above: under a
+    // rescaling of the statistic by 1e8 the first coarse probe overshot the
+    // root by nine orders of magnitude and handed the Newton loop a bracket
+    // that wide.  |t| and the Newton step both scale as 1/s, so the schedule is
+    // now identical at every scale.  Wherever |init| >= 1 the two formulas
+    // agree exactly, max(1, |t|) being |t| there — which covers every SPACox
+    // solve at any --spa-z-threshold of 1 or above (the default is 2), since
+    // SPACox divides its weights by sqrt(Var S) and so passes the standardized
+    // score itself as `init`.
+    double bracketCoarse = 1.0;
+    double bracketGrow   = 2.0;
+    int    maxExpand     = 64;
 };
 
 // Instrumentation hook.  An empty struct with an inline no-op call operator
@@ -361,10 +434,35 @@ struct SplitFull {
 //   * K'' > 0 checked before every division by it.  Five of the six original
 //     finders divided by K'' unchecked.
 //   * relative convergence on the residual, scaled by sqrt(K'').
-//   * terminal cumulants evaluated at the returned root.
+//   * terminal cumulants evaluated at the returned root, and the residual there
+//     re-tested before the solve is allowed to call itself Converged.
 //
 // The returned root is the last accepted iterate, which is always an endpoint
 // of the final bracket and therefore always inside it.
+//
+// ── SCALE EQUIVARIANCE ────────────────────────────────────────────────
+//
+// Multiplying the statistic by a positive constant c — which is what
+// multiplying every residual by c does, and is a pure change of units under
+// which the null model, Z and the reported p-value are all exactly equivariant
+// — sends s to c*s, K(t) to K(c*t), K'(t) to c*K'(c*t), K''(t) to c^2*K''(c*t)
+// and therefore the root zeta to zeta/c.  Every quantity the modified signed
+// root is built from (w^2 = 2*(zeta*s - K), v = zeta*sqrt(K''), r*) is
+// invariant, so the p-value must be too.
+//
+// The solver honours that identity by construction: every threshold it tests is
+// formed from quantities carrying the units of the thing it is compared with.
+// Residual tolerances are built from sqrt(K''), |s| and K''*|t| (units of s);
+// abscissa distances are built from |t| and |K'/K''| (units of t).  There is
+// exactly ONE dimensional constant left, `coarse`'s last-resort value of 1.0
+// below, and it is reachable only when K''(init) is unusable — which no CGF in
+// GRAB, all strictly convex with a finite K''(0), can produce.
+//
+// The practical consequence is stronger than "agrees to within tolerance": when
+// c is a power of two the rescaling is exact in binary floating point, so every
+// comparison the solver makes has the same outcome at both scales and the
+// returned p-value is bit-identical.  `scale_equivariance_*` in
+// tests/spa_solver_test.cpp asserts exactly that.
 // ──────────────────────────────────────────────────────────────────
 template <class Evaluator, class Trace>
 Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
@@ -387,8 +485,27 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
 
     // The residual noise floor: below 4 eps |s| the difference K'(t) - s is
     // dominated by the rounding error of its own subtraction.
-    const double noiseFloor =
-        4.0 * std::numeric_limits<double>::epsilon() * std::fabs(s);
+    const double kEps = std::numeric_limits<double>::epsilon();
+    const double noiseFloor = 4.0 * kEps * std::fabs(s);
+
+    // The residual tolerance at an abscissa, and the sole definition of
+    // convergence — see SolveOpts::rtol for the three terms and why each is
+    // dimensionally the units of s.  Every acceptance site below calls this
+    // one function, so no exit path can invent a laxer rule for itself; that
+    // is precisely what the bracket-collapse exit used to do.
+    const auto residTol = [&](double t, double k2) -> double {
+        double tol = noiseFloor;
+        if (k2 > 0.0 && std::isfinite(k2)) {
+            const double stated = opt.rtol * std::sqrt(k2);
+            if (stated > tol) tol = stated;
+            const double ulpFloor = 4.0 * kEps * k2 * std::fabs(t);
+            if (ulpFloor > tol) tol = ulpFloor;
+        }
+        return tol;
+    };
+    const auto converged = [&](double t, double k1, double k2) -> bool {
+        return std::fabs(k1) <= residTol(t, k2);
+    };
 
     // Half-line implied by the sign constraint.
     double L = -inf, U = inf;
@@ -459,20 +576,32 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
         // 14.71 cheap evaluations per tail, of which 12.71 were loop iterations
         // and 7.47 of those were bisections.
         //
-        // `bracketStep` is retained as the fallback for an unusable K'' and as
-        // the SECOND probe distance: if the Newton point does not bracket, the
-        // schedule falls back to the coarse constant immediately, so the
-        // worst-case expansion cost is one evaluation more than before rather
-        // than a long geometric walk up from a tiny first step.
+        // `bracketCoarse` is retained as the SECOND probe distance: if the
+        // Newton point does not bracket, the schedule jumps coarsely at once, so
+        // the worst-case expansion cost is one evaluation more than before
+        // rather than a long geometric walk up from a tiny first step.  What it
+        // multiplies is now max(|t|, Newton step) rather than max(1, |t|), so
+        // the jump is measured in the problem's own abscissa units instead of an
+        // absolute constant — see SolveOpts::bracketCoarse.  Measured over the
+        // fixture and the 50000 x 20000 cohort the change costs nothing: SPAsqr
+        // 2.781 bracket evaluations per tail before and after, SPAGRM 2.910 to
+        // 2.911, SPAmix 2.935 both, SPACox 2.768 both — the last identically,
+        // since max(1, |t|) is |t| at every abscissa SPACox starts from.
         double step = 0.0;
         if (e.k2 > 0.0 && std::isfinite(e.k2)) {
             const double newton = std::fabs(e.k1 / e.k2);
             if (std::isfinite(newton) && newton > 0.0) step = newton;
         }
-        const double coarse =
-            std::fmax(opt.bracketStep * std::fmax(1.0, std::fabs(t)), step);
+        double coarse = opt.bracketCoarse * std::fmax(std::fabs(t), step);
+        if (!(coarse > 0.0) || !std::isfinite(coarse)) {
+            // t is exactly zero AND the Newton step is unusable, so the problem
+            // has offered no length in t at all.  This is the solver's one
+            // dimensional constant and its only non-equivariant decision; it is
+            // unreachable for every CGF in GRAB, each of which is strictly
+            // convex with a finite, positive K''(0).
+            coarse = 1.0;
+        }
         if (!(step > 0.0)) step = coarse;
-        if (!(step > 0.0)) step = opt.bracketStep;
         // Consumed by the first probe that lands on the same side of the root:
         // see the `step` update at the bottom of the expansion loop.  It counts
         // usable probes only, not probes that fell in a non-finite region — the
@@ -483,8 +612,9 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
 
         // ── The first probe must land on a different double ──
         //
-        // The bare Newton step, unlike the coarse constant it replaced, can be
-        // arbitrarily small.  When it falls below half an ulp of `init` the
+        // The bare Newton step, unlike the coarse distance, can be
+        // arbitrarily small relative to `init`.  When it falls below half an ulp
+        // of `init` the
         // probe `init + dir*step` rounds straight back onto `init`, the loop
         // below breaks on its first pass with `bracketed` still false, and the
         // solve returns MaxIter after a single evaluation — while `zeta` holds
@@ -515,8 +645,10 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
         //     sqrt(K''(init)) * |init| * eps > rtol, so it takes an
         //     astronomically ill-scaled problem, but `init` is then genuinely
         //     not an answer and the expansion must proceed.  Fall back to the
-        //     coarse distance, which is at least max(1, |init|) and therefore
-        //     always moves.
+        //     coarse distance, which is at least |init| (bracketCoarse >= 1)
+        //     and therefore always moves — a stronger guarantee than the
+        //     predecessor's max(1, |init|), which only moved because it was
+        //     absolute, and one that survives a rescaling of the statistic.
         //
         // Gating BOTH branches on "the probe would not move", rather than
         // testing the tolerance unconditionally on entry, is deliberate and is
@@ -529,11 +661,7 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
         // every input the regression suite covers and a repair only where the
         // predecessor manufactured an NA.
         if (t + dir * step == t) {
-            const double tol0 = std::fmax(
-                (e.k2 > 0.0 && std::isfinite(e.k2)) ? opt.rtol * std::sqrt(e.k2)
-                                                    : 0.0,
-                noiseFloor);
-            if (std::fabs(e.k1) <= tol0) {
+            if (converged(t, e.k1, e.k2)) {
                 lo = hi = t;
                 out.bracketed = true;
                 out.status = Status::Converged;
@@ -640,7 +768,14 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
             ++out.iters;
             trace(iter, t, e.k1, e.k2, lo, hi);
 
-            if (lo == hi) { st = Status::Converged; break; }
+            // A degenerate bracket can only have been produced by an exactly
+            // zero residual, which satisfies every tolerance; the test is made
+            // anyway so that no exit from this loop bypasses it.
+            if (lo == hi) {
+                st = converged(t, e.k1, e.k2) ? Status::Converged
+                                              : Status::MaxIter;
+                break;
+            }
 
             // ── The step-stall safeguard ──
             //
@@ -691,8 +826,12 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
             }
             if (!(tn > lo && tn < hi)) {
                 // The midpoint itself is not strictly interior: the bracket
-                // is down to adjacent representable doubles.
-                st = Status::Converged;
+                // is down to adjacent representable doubles.  There is no
+                // narrower bracket and no further iterate, so the loop stops —
+                // but stopping is not converging.  Whether the answer is one is
+                // decided by the residual, exactly as at every other exit.
+                st = converged(t, e.k1, e.k2) ? Status::Converged
+                                              : Status::MaxIter;
                 break;
             }
 
@@ -743,12 +882,19 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
             e = en;
 
             // Test after applying the step, never before.
-            const double tol = std::fmax(
-                (e.k2 > 0.0 && std::isfinite(e.k2)) ? opt.rtol * std::sqrt(e.k2) : 0.0,
-                noiseFloor);
-            if (std::fabs(e.k1) <= tol) { st = Status::Converged; break; }
-            if (hi - lo <= opt.stepTol * std::fmax(1.0, std::fabs(t))) {
-                st = Status::Converged;
+            if (converged(t, e.k1, e.k2)) { st = Status::Converged; break; }
+
+            // The bracket has closed to the last representable digits of its
+            // own endpoints: no narrower bracket exists, so refining further is
+            // impossible and the loop stops.  The residual test above has just
+            // failed, so this exit is a NON-convergence and says so.  The
+            // predecessor tested `hi - lo <= stepTol * max(1, |t|)` here — an
+            // absolute width against a root that shrinks with the residual
+            // scale — and reported Converged with no residual test at all,
+            // which is the defect SolveOpts::bracketRtol documents.
+            if (hi - lo <= opt.bracketRtol *
+                               std::fmax(std::fabs(lo), std::fabs(hi))) {
+                st = Status::MaxIter;
                 break;
             }
         }
@@ -777,12 +923,24 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
     // sign change that does not exist will find K'' = 0 there, and reporting
     // GUARD_CURV would name the symptom instead of the cause.  Either way the
     // caller reports NA, so nothing is lost by preferring the cause.
+    //
+    // The last of the three is the residual test itself, re-applied HERE, at the
+    // terminal evaluation and at the returned root.  Until it was added, the
+    // solve's own verdict rested on the cheap callable's last value at an
+    // abscissa the loop had since moved away from in some paths, and
+    // `Saddle::residual` — computed at the root, one line above — was read by
+    // nothing in the tree.  A quantity no one reads cannot be a check.  Testing
+    // it here means `Converged` is a statement about the value the caller is
+    // handed, not about an intermediate the caller cannot see, and it costs one
+    // comparison per tail because the terminal evaluation already happened.
     if (out.status == Status::Converged) {
         if (!std::isfinite(t) || !std::isfinite(term.k0) ||
             !std::isfinite(term.k1) || !std::isfinite(term.k2)) {
             out.status = Status::NonFinite;
         } else if (!(term.k2 > 0.0)) {
             out.status = Status::GuardCurv;
+        } else if (!converged(t, term.k1, term.k2)) {
+            out.status = Status::MaxIter;
         }
     }
 

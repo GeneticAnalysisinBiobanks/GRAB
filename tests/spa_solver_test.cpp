@@ -39,6 +39,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <limits>
 #include <random>
 #include <string>
@@ -56,13 +57,17 @@ std::string statusStr(spa::Status s) { return std::string(spa::statusName(s)); }
 
 // Solver options that demand the tightest root the arithmetic allows: no
 // relative slack, no bracket-collapse slack, so the loop runs until the
-// residual reaches the representation-error floor of K'(t) - s or the bracket
-// is down to adjacent doubles.
+// residual reaches the representation-error floor of K'(t) - s and of the
+// abscissa itself, or the bracket is down to adjacent doubles.  With rtol = 0
+// the only surviving terms of the convergence criterion are 4*eps*|s| and
+// 4*eps*K''(t)*|t|, which is exactly what "as tight as double precision
+// allows" means; `Converged` is still a statement about the residual, so these
+// options ask for the most it can be.
 spa::SolveOpts tightOpts(double init = 0.0) {
     spa::SolveOpts o;
     o.init = init;
     o.rtol = 0.0;
-    o.stepTol = 0.0;
+    o.bracketRtol = 0.0;
     o.maxIter = 300;
     return o;
 }
@@ -443,7 +448,7 @@ TEST(property_residual_meets_stated_relative_tolerance) {
     std::uniform_real_distribution<double> uvar(1.0, 50.0);
     std::uniform_real_distribution<double> uz(2.0, 6.0);
 
-    const spa::SolveOpts opt;  // stated defaults: rtol 1e-6, stepTol 1e-8
+    const spa::SolveOpts opt;  // stated defaults: rtol 1e-6, bracketRtol 4 eps
     int nConverged = 0;
 
     for (int trial = 0; trial < 400; ++trial) {
@@ -505,6 +510,199 @@ TEST(property_residual_meets_stated_relative_tolerance) {
         CHECK(r.K2 > 0.0);
     }
     CHECK(nConverged == 400);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// § 2a  Scale equivariance
+// ══════════════════════════════════════════════════════════════════════
+//
+// Multiplying every residual by a positive constant c is a pure change of
+// units.  The statistic becomes c*S, so s becomes c*s, K(t) becomes K(c*t),
+// K'(t) becomes c*K'(c*t) and K''(t) becomes c^2*K''(c*t); the saddlepoint
+// equation K'(zeta) = s is solved by zeta/c; and
+//
+//     w^2 = 2*(zeta*s - K(zeta)),   v = zeta*sqrt(K''(zeta)),   r* = w + log(v/w)/w
+//
+// are each invariant.  The reported p-value therefore MUST NOT MOVE.  Nothing
+// about this is approximate: it is an identity, and a solver that violates it
+// is reading a threshold in the wrong units.
+//
+// This is the property the pre-repair header failed.  Its bracket-collapse test
+// was `hi - lo <= stepTol * max(1, |t|)` with stepTol = 1e-8 absolute, and it
+// reported Converged there with no residual test; since |zeta| ~ |z|/sqrt(Var S)
+// shrinks as the residual scale grows, a large enough c drove the root below the
+// tolerance and the solver accepted an abscissa it had never located.  The
+// coarse bracket probe carried the same absolute `max(1, |init|)` floor.
+// Measured on this population before the repair: 179 of 2000 problems moved P at
+// c = 2^10, 121 of 2000 changed SPA_STATUS at c = 2^30, and the worst |dlog10 P|
+// was 0.298 at c = 2^20 and infinite (a p-value replaced by NA) at c = 2^30.
+//
+// The check is BIT-IDENTITY, not closeness, and it is legitimate to demand it:
+// for c a power of two the rescaling is exact in binary floating point — every
+// product, quotient, sum and square root above scales exactly — so every
+// comparison the solver makes has the same outcome at both scales and the whole
+// computation is the same computation.  Anything less than bit-identity would
+// mean some decision was still being made in the wrong units.
+namespace {
+
+struct ScaleOutcome {
+    double p, negLog10p, zetaTimesScale;
+    spa::Status status;
+};
+
+// The two-sided saddlepoint every method assembles, at a chosen residual scale.
+ScaleOutcome twoSidedAtScale(const MixedCgf &base, double z, double scale) {
+    MixedCgf c = base;
+    for (double &r : c.resid) r *= scale;
+    c.mean *= scale;
+    c.var *= scale * scale;
+
+    const spa::K012 at0 = c.kFull(0.0);
+    const double sd = std::sqrt(at0.k2);
+
+    double p[2], logp[2];
+    spa::Status st[2];
+    double zetaUpper = 0.0;
+
+    for (int k = 0; k < 2; ++k) {
+        const bool lowerTail = (k == 1);
+        const double sign = lowerTail ? -1.0 : 1.0;
+        c.s = at0.k1 + sign * z * sd;
+
+        spa::SolveOpts opt;
+        // The uncapped first-order saddlepoint |Score| / Var.  Every method in
+        // the tree passes this capped at 1.2; the cap is a tier-3 constant in
+        // the abscissa and is therefore not equivariant itself, so it is left
+        // off here — what is under test is the solver, not the initializer.
+        opt.init = sign * std::fabs(c.s - at0.k1) / at0.k2;
+
+        const spa::Saddle r = spa::solveSaddlepoint(
+            c.s, [&](double t) { return c.k12(t); },
+            [&](double t) { return c.kFull(t); }, opt);
+        if (k == 0) zetaUpper = r.zeta * scale;
+
+        spa::Status stLin = spa::Status::Converged;
+        spa::Status stLog = spa::Status::Converged;
+        p[k] = spa::bnTail(r.zeta, c.s, r.K0, r.K2, lowerTail, stLin);
+        logp[k] = spa::bnTailLog(r.zeta, c.s, r.K0, r.K2, lowerTail, stLog);
+        st[k] = spa::worseStatus(r.status, spa::worseStatus(stLin, stLog));
+    }
+
+    const spa::TwoSided lin = spa::combineTails(p[0], p[1], st[0], st[1]);
+    const spa::TwoSided lg = spa::combineTailsLog(logp[0], logp[1], st[0], st[1]);
+    return ScaleOutcome{lin.p, lg.negLog10p, zetaUpper, lin.status};
+}
+
+bool bitIdentical(double a, double b) {
+    if (std::isnan(a) && std::isnan(b)) return true;
+    return std::memcmp(&a, &b, sizeof(double)) == 0;
+}
+
+// The production-shaped population used by § 2 and § 4a: a handful of binomial
+// outlier terms plus the analytic Gaussian block for the non-outliers.
+MixedCgf drawProductionShapedCgf(std::mt19937_64 &rng, double &zOut) {
+    std::uniform_real_distribution<double> umaf(0.005, 0.5);
+    std::uniform_real_distribution<double> uresid(-3.0, 3.0);
+    std::uniform_int_distribution<int> unout(1, 60);
+    std::uniform_real_distribution<double> udil(1.0, 200.0);
+    std::uniform_real_distribution<double> uz(2.0, 8.0);
+
+    MixedCgf c;
+    const int nOut = unout(rng);
+    c.resid.resize(nOut);
+    c.maf.resize(nOut);
+    double sumR2 = 0.0;
+    for (int i = 0; i < nOut; ++i) {
+        c.resid[i] = uresid(rng);
+        c.maf[i] = umaf(rng);
+        sumR2 += c.resid[i] * c.resid[i];
+    }
+    c.var = 2.0 * 0.25 * sumR2 * udil(rng);
+    zOut = uz(rng);
+    return c;
+}
+
+} // namespace
+
+TEST(scale_equivariance_is_exact_under_a_power_of_two_rescaling) {
+    // 2^40 is about 1.1e12, well past the residual scale any unstandardized
+    // phenotype or --resid-name vector reaches, and short of the exponent range
+    // where K'' itself would overflow.
+    const double scales[] = {1024.0, 1048576.0, 1073741824.0, 1099511627776.0};
+    const char *names[] = {"2^10", "2^20", "2^30", "2^40"};
+
+    std::mt19937_64 rng(20260731ULL);
+    int nCase = 0, nP = 0, nLog = 0, nZeta = 0, nStatus = 0;
+
+    for (int trial = 0; trial < 600; ++trial) {
+        double z = 0.0;
+        const MixedCgf c = drawProductionShapedCgf(rng, z);
+        const ScaleOutcome ref = twoSidedAtScale(c, z, 1.0);
+
+        for (int k = 0; k < 4; ++k) {
+            const ScaleOutcome got = twoSidedAtScale(c, z, scales[k]);
+            ++nCase;
+            if (!bitIdentical(got.p, ref.p)) {
+                if (nP == 0)
+                    CHECK_MSG(false, std::string("P moved at ") + names[k] +
+                                         ": " + std::to_string(ref.p) + " -> " +
+                                         std::to_string(got.p));
+                ++nP;
+            }
+            if (!bitIdentical(got.negLog10p, ref.negLog10p)) ++nLog;
+            if (!bitIdentical(got.zetaTimesScale, ref.zetaTimesScale)) ++nZeta;
+            if (got.status != ref.status) ++nStatus;
+        }
+    }
+
+    CHECK(nCase == 2400);
+    CHECK_MSG(nP == 0, "P moved on " + std::to_string(nP) + " of " +
+                           std::to_string(nCase) + " rescalings");
+    CHECK_MSG(nLog == 0, "LOG10P moved on " + std::to_string(nLog) + " of " +
+                             std::to_string(nCase));
+    CHECK_MSG(nZeta == 0, "zeta*scale moved on " + std::to_string(nZeta) +
+                              " of " + std::to_string(nCase));
+    CHECK_MSG(nStatus == 0, "SPA_STATUS moved on " + std::to_string(nStatus) +
+                                " of " + std::to_string(nCase));
+}
+
+// A decimal rescaling is not exact in binary, so the inputs themselves differ in
+// their last bits and bit-identity is not available.  What must hold is the
+// weaker but still binding statement: the answer agrees to within the tolerance
+// the solver states.  rtol = 1e-6 on the residual pins zeta to ~rtol/|z| in
+// relative terms, and -log10 P is stationary in zeta at the root (d(w^2)/dzeta =
+// 2*(s - K'(zeta)) = 0 there), so the induced movement is far smaller again.
+TEST(scale_equivariance_holds_under_a_decimal_rescaling) {
+    const double scales[] = {1e3, 1e6, 1e8, 1e9};
+
+    std::mt19937_64 rng(20260731ULL);
+    double worst = 0.0;
+    int nStatus = 0, nCase = 0;
+
+    for (int trial = 0; trial < 600; ++trial) {
+        double z = 0.0;
+        const MixedCgf c = drawProductionShapedCgf(rng, z);
+        const ScaleOutcome ref = twoSidedAtScale(c, z, 1.0);
+
+        for (double sc : scales) {
+            const ScaleOutcome got = twoSidedAtScale(c, z, sc);
+            ++nCase;
+            if (got.status != ref.status) ++nStatus;
+            CHECK(std::isfinite(got.negLog10p) == std::isfinite(ref.negLog10p));
+            if (std::isfinite(got.negLog10p) && std::isfinite(ref.negLog10p)) {
+                const double d = std::fabs(got.negLog10p - ref.negLog10p);
+                if (d > worst) worst = d;
+            }
+        }
+    }
+
+    std::fprintf(stderr,
+                 "\n      decimal rescaling over %d cases: worst |dlog10P| "
+                 "%.4g, status changes %d\n\n", nCase, worst, nStatus);
+    CHECK_MSG(nStatus == 0,
+              "SPA_STATUS moved on " + std::to_string(nStatus) + " cases");
+    // Before the repair this reached 0.245 at 1e6 on the same population.
+    CHECK_MSG(worst <= 1e-5, "worst |dlog10P| " + std::to_string(worst));
 }
 
 // The same population, solved through the single-callable overload, must give
@@ -944,8 +1142,21 @@ TEST(status_nonfinite_from_solver_everywhere) {
 TEST(status_nonfinite_from_solver_interior) {
     // Finite and monotone at the bracket endpoints, non-finite in the middle,
     // where both the Newton step and the bisection retry land.
+    //
+    // The width of the non-finite interval is chosen so that the expansion
+    // schedule brackets around it: from init = 0 the Newton probe at 0.5 is
+    // non-finite, the halving retreat lands at 0.25, and the coarse jump of
+    // max(|t|, |Newton step|) = 0.5 from there reaches 0.75, giving the bracket
+    // [0.25, 0.75] with the hole strictly inside it.  A hole WIDER than the
+    // coarse distance cannot be stepped over at all — the halving retreat
+    // creeps up to its edge, as the comment at that retreat says — and the
+    // solver then reports MaxIter for want of a sign change rather than
+    // NonFinite.  That is a property of the expansion, not of this status, and
+    // no CGF in GRAB can produce it: spa_cgf clamps t*r, so its cumulants are
+    // finite at every finite abscissa and the non-finite region, where one
+    // exists at all, is a half-line rather than an interval.
     auto res = [](double t) {
-        if (t > 0.2 && t < 0.8) return kNaN;
+        if (t > 0.3 && t < 0.7) return kNaN;
         return t - 0.5;
     };
     auto k12 = [&](double t) { return spa::K12{res(t), 1.0}; };
@@ -1132,7 +1343,7 @@ TEST(forced_bisection_bounds_the_iteration_count) {
 //     schedule                       population    bracket   loop   total
 //     ---------------------------    -----------   -------   ----   -----
 //     Stage 1: first probe at        SPAsqr           2.00  12.71   14.71
-//     max(bracketStep, Newton),      SPAGRM           2.00   9.98   11.98
+//     max(coarse, Newton),           SPAGRM           2.00   9.98   11.98
 //     forced bisection when the
 //     BRACKET stopped halving
 //
