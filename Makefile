@@ -408,6 +408,13 @@ TEST_CXXFLAGS := $(filter-out -DNDEBUG,$(GRAB_CXXFLAGS))
 # declares nothing.  The lists below replace the hand-written g++ command lines
 # previously carried in each test's header comment, so `make test` is now the
 # single source of truth for how a test links.
+# The SPA CGF kernels live in a .cpp rather than a header: the
+# __attribute__((target(...))) SIMD variants and the static const dispatch
+# pointers must have exactly one definition.  Both the test and the benchmark
+# therefore link the object rather than including the implementation.
+TESTOBJS_spa_cgf_test  := $(BUILD_DIR)/util/spa_cgf.o
+TESTOBJS_bench_spa_cgf := $(BUILD_DIR)/util/spa_cgf.o
+
 TESTOBJS_lanc_simd_test := \
     $(BUILD_DIR)/localplus/lanc_io.o \
     $(BUILD_DIR)/geno_factory/variant_filter.o \
