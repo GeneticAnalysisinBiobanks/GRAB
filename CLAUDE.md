@@ -156,6 +156,50 @@ with `GRAB_MARCH=-march=x86-64-v2` for portable distribution binaries.
 - `src/util/`    — math helpers, SIMD dispatch, vectorized exp/log,
                    logging, text scanners, IQR outlier detection
                    (`outlier.hpp` shared by spamix / wtcoxg).
+  - `src/util/spa.hpp` — the shared saddlepoint tier: the bracketed and
+    safeguarded root solver, the Barndorff-Nielsen tail kernel (linear and
+    log domain), the two-sided assembly, and the `Status`/`SPA_STATUS`
+    encoding (see "Saddlepoint output columns" below).
+  - `src/util/spa_cgf.{hpp,cpp}` — the three shared binomial CGF variants
+    (`binomUniform`, `binomIndiv`, `binomHapcount`), each with the mandated
+    scalar + AVX2 + AVX-512 triple and a `simdLevel()` dispatch site.
+  - Five per-method tier-3 adapters sit on top of `spa_cgf`:
+    `src/{spacox,spagrm,spamix,wtcoxg}/*_cgf.hpp` and
+    `src/localplus/spamixlocalp_cgf.hpp`. SPAsqr consumes
+    `spa_cgf::binomUniform` directly, with no adapter file of its own.
+
+## Saddlepoint output columns — `LOG10P` and `SPA_STATUS`
+
+Every method built on the shared saddlepoint tier (SPACox, SPAGRM, SPAsqr,
+SPAmix, SPAGxE/SPAGxEmix, WtCoxG, LEAF, and the unpinned SPAmixLocalPlus)
+emits two columns alongside each p-value it reports:
+
+- `LOG10P` — `-log10(P)`, carried through the tail assembly in the log
+  domain (`spa::bnTailLog` + `spa::combineTailsLog`, via `math::pnormLog`)
+  so it stays meaningful past the point where the linear-scale tail
+  underflows to exactly zero.
+- `SPA_STATUS` — `static_cast<uint8_t>(spa::Status)` (`src/util/spa.hpp`),
+  naming the outcome of the saddlepoint that produced the row:
+
+  | Value | Token | Meaning |
+  | ----- | ----- | ------- |
+  | 0 | `OK` | Converged: step and residual both within tolerance, no guard fired. |
+  | 1 | `MAXITER` | Iteration or bracket-expansion budget exhausted. |
+  | 2 | `GUARD_TEMP` | `zeta*s - K(zeta) < 0`, so `w` is not real. |
+  | 3 | `GUARD_CURV` | `K''(zeta) <= 0`, so `v` is not real. |
+  | 4 | `GUARD_W` | `\|w\|` at or below the removable-singularity threshold (`spa::kWSingularity`, `1e-3`) — a **degraded success**: `Phi(+/-w)` is returned in place of the `r*` correction, and `P` is a number. |
+  | 5 | `NONFINITE` | `zeta`, a cumulant, or `r*` left the reals. |
+  | 6 | `NORMAL` | `\|Z\| <= --spa-z-threshold`; the saddlepoint was never attempted and `P` is the plain normal-approximation tail. |
+
+  `P` and `LOG10P` are `NA` for every status other than 0, 4 and 6 — a
+  saddlepoint failure is reported as a named reason rather than silently
+  substituted with a fabricated p-value. `SPA_STATUS` is emitted as this
+  integer code rather than the string token `spa::statusName` produces,
+  because `MethodBase` hands the marker engine a `std::vector<double>` per
+  row (`src/engine/marker_impl.hpp`'s `numToChars` formats every result
+  cell) and no method in the tree emits a non-numeric result column;
+  introducing one would require an `src/engine/` change, off limits per the
+  next section without a maintainer decision.
 
 ## Conventions for new code
 
@@ -175,6 +219,26 @@ with `GRAB_MARCH=-march=x86-64-v2` for portable distribution binaries.
 - `make clean` — removes `build/`.
 - The binary is the deliverable. There is no install step, no shared library,
   no headers exposed to users. Users download or build the binary and run it.
+- `make test` and `make bench` are the developer targets. `make test` builds
+  and runs every `tests/*_test.cpp` binary in turn, stopping at the first
+  failure; `make bench` builds and runs every `tests/bench_*.cpp` binary.
+  Both are `.PHONY`: `tests/` sits outside the source tree that feeds
+  `build/grab2`, so nothing under it is linked into the shipped binary and
+  the "binary is the deliverable" property above is unaffected. There is no
+  third-party test framework — `tests/tinytest.hpp` is a ~180-line assertion
+  header — and tests build with the same `GRAB_CXXFLAGS` (`-march`, SIMD
+  flags, optimization level) as `src/`, with `-DNDEBUG` filtered back out so
+  assertions fire. As of the saddlepoint unification, `make test` runs ten
+  binaries: seven SPA suites (`spa_solver_test`, `spa_cgf_test`,
+  `spacox_cgf_test`, `spagrm_cgf_test`, `spamix_cgf_test`,
+  `wtcoxg_cgf_test`, `spamixlocalp_cgf_test`) plus the three `.lanc` suites
+  (`lanc_simd_test`, `lanc_roundtrip_test`, `lanc_convert_rfmix_smoke_test`).
+- `tests/make_synthetic.py` and `tests/make_lanc_null.py` generate the
+  synthetic null cohorts the calibration gates use — pure-null-by-construction
+  genotype/phenotype/GRM fixtures at a scale (up to 5000 subjects x
+  1,000,000 markers) the bundled `examples/1kg.*` fixture is too small to
+  resolve kernel-level or calibration-level change on. They are invoked
+  directly when reproducing a calibration; they are not part of `make test`.
 
 ## Example scripts — `examples/tutorial.sh` and `examples/baseline.sh`
 
@@ -210,6 +274,25 @@ when editing it:
    `examples_output/*` is byte-identical (or numerically identical up
    to documented tolerance) to the pre-refactor baseline.  A passing
    build alone is not sufficient evidence that behavior was preserved.
+
+`tests/regress.sh examples_output.base examples_output` (backed by
+`tests/regress.py`) is the instrument that operationalizes "byte-identical
+or numerically identical up to documented tolerance": for every artifact
+that differs it reports added/removed/reordered columns, the per-column
+maximum absolute and relative difference, the maximum change in
+-log10(P) ("max dlog10P"), and NA/exactly-zero/sign-change counts by
+direction, rather than merely flagging that two files disagree.  Plain
+`cmp` is no longer the right tool for this repository: the saddlepoint
+unification (`src/util/spa.hpp`, `src/util/spa_cgf.{hpp,cpp}`, see below)
+deliberately changes p-values in their last few digits by design — a
+stricter convergence tolerance, a cancellation-free cumulant algebra, or a
+repaired guard can each move a p-value below `cmp`'s bit-for-bit bar while
+remaining well inside a documented `max dlog10P` budget.  Judge a refactor
+against `tests/regress.sh`'s report and the tolerance the change was
+supposed to stay within, not against raw byte equality.
+`baseline/converted/1kg.log` is discounted at every gate: it is plink2's own
+log, embedding a wall-clock timestamp and a memory estimate, and is not
+reproducible run to run even on an unmodified tree.
 
 The compression codec varies across blocks by design, so a single pass
 exercises all three output-writer paths: plain text (SPACox, SPAsqr-
@@ -248,6 +331,17 @@ SPACox), the per-cluster sub-method pattern (LEAF), and the runtime
 SIMD-dispatch pattern.  Their collective success is a strong signal that
 **the common code below is correct**.
 
+The same seven methods also share a second piece of validated
+infrastructure, the saddlepoint tier added by the saddlepoint unification
+(`spa:` commits on `feat/spa-unify`): `src/util/spa.hpp` and
+`src/util/spa_cgf.{hpp,cpp}`, listed in the shared-infrastructure bullets
+below alongside the engine.  A method-specific saddlepoint bug is almost
+certainly in that method's own tier-3 CGF adapter, not in the shared
+solver, tail kernel, or CGF variants — the same reasoning as for the engine
+above, and for the same reason: seven methods now depend on this code, so a
+change made while debugging one of them is very likely to break the other
+six.
+
 The methods currently under active development are **SPAmixPlus** and
 **SPAmixLocalPlus**.  Both remain callable via `--method spamixplus` /
 `--method spamixlocalplus` but are hidden from `grab2 --help`; neither
@@ -265,6 +359,14 @@ method-specific code, not the shared engine:
   Regenie / LDAK-KVIK `.loco` parsers, per-chromosome task rebuild loop.
 - `src/util/simd_dispatch.hpp`, `src/util/simd_math.hpp` — runtime
   AVX2 / AVX-512 dispatch and vectorized exp/log kernels.
+- `src/util/spa.hpp` — the shared saddlepoint tier: `solveSaddlepoint` (the
+  bracketed-and-safeguarded Newton solver), `bnTail`/`bnTailLog` (the
+  Barndorff-Nielsen modified-signed-root tail, linear and log domain),
+  `combineTails`/`combineTailsLog` (the two-sided assembly), and the
+  `Status`/`SPA_STATUS` encoding described above.
+- `src/util/spa_cgf.{hpp,cpp}` — the three shared binomial CGF variants
+  (`binomUniform`, `binomIndiv`, `binomHapcount`), each with the mandated
+  scalar + AVX2 + AVX-512 triple and a `simdLevel()` dispatch site.
 - `src/util/null_model.{hpp,cpp}` — `parseRegressionModel`, the unified
   null-model fitting engine driving the `--pheno-name + --regression-model`
   path for the seven validated methods.
