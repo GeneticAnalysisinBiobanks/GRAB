@@ -50,13 +50,25 @@
 //      reports rather than clamps a covariance matrix that is not positive
 //      semi-definite.  The second half is what stops WtCoxG's conditional
 //      p-value from exceeding 1 or collapsing to a fabricated 1e-13.
+//
+//   9. THE IMMATERIAL-LEG RULE IS EXACTLY WHAT IT CLAIMS TO BE.  Item 8 makes
+//      a mixture leg unavailable whenever sigma2 drives |rho| past 1, which on
+//      a degenerate batch fit is most markers.  wtcoxg_cond::conditionalP
+//      keeps such a marker only when the interval that leg's unknown
+//      contribution spans is narrower than kImmaterialLeg times the reported
+//      value; the tests pin the arithmetic of that interval, both sides of the
+//      threshold, that the surviving leg's status is what gets reported, and
+//      that a leg which does matter still produces NaN rather than the 1.0
+//      that `std::min(1.0, ...)` used to manufacture.
 
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <vector>
 
 #include "tinytest.hpp"
 #include "util/math_helper.hpp"
+#include "wtcoxg/conditional_p.hpp"
 #include "wtcoxg/wtcoxg_cgf.hpp"
 
 namespace {
@@ -421,6 +433,182 @@ TEST(pmvnorm_reports_a_covariance_matrix_that_is_not_psd) {
                                                  0.39 * sd2, var1, cov, var2);
         CHECK(std::isnan(p));
     }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// 9  The immaterial-leg rule
+// ──────────────────────────────────────────────────────────────────────
+
+using wtcoxg_cond::ConditionalP;
+using wtcoxg_cond::conditionalP;
+using wtcoxg_cond::kImmaterialLeg;
+using spa::Status;
+
+// Both legs present: the assembly is the original ratio, unchanged.
+TEST(conditionalp_keeps_the_two_leg_formula_when_both_legs_are_present) {
+    const double w1 = 0.3, m1 = 0.42, p1 = 0.11;
+    const double w0 = 0.7, m0 = 0.9,  p0 = 0.25;
+    const double pd = w1 * m1 + w0 * m0;
+    const ConditionalP c = conditionalP(w1, m1, p1, Status::Converged,
+                                        w0, m0, p0, Status::NormalBranch, pd);
+    CHECK_NEAR(c.p, 2.0 * (w1 * p1 + w0 * p0) / pd, 0.0);
+    CHECK_NEAR(c.negLog10p, -std::log10(c.p), 0.0);
+    // Converged outranks NormalBranch at equal severity, per spa::worseStatus.
+    CHECK(c.status == Status::Converged);
+}
+
+// The configuration that motivated the rule, taken from the cohort: the
+// sigma2 > 0 leg is weighted by TPR = 1.87e-26 and, because sigma2 = 4.02e+16
+// spreads S_bat 1e10 times wider than the acceptance interval, its
+// conditioning mass m1 is a further 5.5e-12.  The leg's whole contribution is
+// bounded by 1.1e-37 of the answer; the marker must survive, and the reported
+// value must be the mixture with that leg's joint probability set to zero.
+TEST(conditionalp_keeps_a_marker_whose_missing_leg_cannot_move_the_answer) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double w1 = 1.8724e-26, m1 = 5.456e-12;
+    const double w0 = 1.0 - w1,   m0 = 0.9, p0 = 0.25;
+    const double pd = w1 * m1 + w0 * m0;
+
+    const ConditionalP c = conditionalP(w1, m1, nan, Status::NormalBranch,
+                                        w0, m0, p0, Status::Converged, pd);
+    CHECK(std::isfinite(c.p));
+    CHECK_NEAR(c.p, 2.0 * w0 * p0 / pd, 0.0);
+    // The status reported is the SURVIVING leg's, so the invariant that P is a
+    // number exactly for statuses 0, 4 and 6 is preserved.
+    CHECK(c.status == Status::Converged);
+    CHECK(!spa::statusIsFailure(c.status));
+
+    // And the interval really is below the printed resolution: six significant
+    // digits cannot separate the two ends.
+    const double width = w1 * m1 / pd;
+    CHECK(width / c.p < 1e-30);
+}
+
+// The same rule must refuse a leg that does carry weight.  These numbers are
+// the other population measured on the same cohort: TPR = 8.55e-4 against a
+// sigma2 of 3.95e-4, so the leg holds 4.4e-4 of the conditioning mass — three
+// orders of magnitude above the printed resolution.
+TEST(conditionalp_reports_na_when_the_missing_leg_does_move_the_answer) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double w1 = 8.54726e-4, m1 = 0.4636;
+    const double w0 = 1.0 - w1,   m0 = 0.9, p0 = 0.25;
+    const double pd = w1 * m1 + w0 * m0;
+
+    const ConditionalP c = conditionalP(w1, m1, nan, Status::NormalBranch,
+                                        w0, m0, p0, Status::Converged, pd);
+    CHECK(std::isnan(c.p));
+    CHECK(std::isnan(c.negLog10p));
+    // D2: the answer is NaN, never the 1.0 that std::min(1.0, NaN) returned.
+    CHECK(c.p != 1.0);
+    // The leg's own saddlepoint succeeded (NORMAL), so the loss happened in
+    // the bivariate integral; spa::Status has no enumerator for that and
+    // NonFinite covers it.  Reporting NORMAL here would advertise a usable P.
+    CHECK(c.status == Status::NonFinite);
+    CHECK(spa::statusIsFailure(c.status));
+}
+
+// The threshold is on the RELATIVE width, so the same missing leg is
+// immaterial against a p-value of one half and material against a p-value in
+// the tail.  This is the property that stops the rule from quietly flattening
+// a genuine association down to the leg's mass.
+TEST(conditionalp_threshold_is_relative_not_absolute) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double w1 = 1e-12, m1 = 1.0;
+    const double w0 = 1.0,   m0 = 1.0;
+    const double pd = w1 * m1 + w0 * m0;
+
+    // p = 0.5: an interval of width 1e-12 is 2e-12 of it, well inside 1e-8.
+    const ConditionalP big = conditionalP(w1, m1, nan, Status::Converged,
+                                          w0, m0, 0.25, Status::Converged, pd);
+    CHECK(std::isfinite(big.p));
+    CHECK(w1 * m1 / pd <= kImmaterialLeg * big.p);
+
+    // p = 2e-8: the same 1e-12 interval is now 5e-5 of the answer, and moves
+    // -log10(P) in its fifth decimal.  The marker has no determined value.
+    const ConditionalP tail = conditionalP(w1, m1, nan, Status::Converged,
+                                           w0, m0, 1e-8, Status::Converged, pd);
+    CHECK(std::isnan(tail.p));
+}
+
+// Straddle the threshold from both sides with everything else held fixed.
+TEST(conditionalp_threshold_fires_where_it_says_it_does) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    // w0 = m0 = 1 and p0 = 1/2 give p_deno = 1 + eps, p = 1/(1+eps) and a
+    // relative interval width of exactly eps.
+    for (double eps : {0.9 * kImmaterialLeg, 1.1 * kImmaterialLeg}) {
+        const double pd = eps + 1.0;
+        const ConditionalP c = conditionalP(eps, 1.0, nan, Status::Converged,
+                                            1.0, 1.0, 0.5, Status::Converged, pd);
+        const bool immaterial = eps < kImmaterialLeg;
+        CHECK(std::isfinite(c.p) == immaterial);
+        if (immaterial) CHECK_NEAR(c.p, 1.0 / pd, 1e-15);
+    }
+}
+
+// A leg of weight exactly zero contributes exactly zero: no threshold is
+// consulted, and the marker is reported from the other leg alone.
+TEST(conditionalp_drops_a_zero_weight_leg_without_a_test) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const ConditionalP c = conditionalP(0.0, 0.5, nan, Status::NonFinite,
+                                        1.0, 0.9, 0.25, Status::Converged, 0.9);
+    CHECK(std::isfinite(c.p));
+    CHECK_NEAR(c.p, 2.0 * 0.25 / 0.9, 0.0);
+    CHECK(c.status == Status::Converged);
+}
+
+// Neither leg available: there is nothing to report, and a failure status must
+// come out even when both legs' saddlepoints had succeeded.
+TEST(conditionalp_reports_na_when_neither_leg_is_available) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const ConditionalP c = conditionalP(0.3, 0.5, nan, Status::NormalBranch,
+                                        0.7, 0.9, nan, Status::Converged, 0.78);
+    CHECK(std::isnan(c.p));
+    CHECK(c.status == Status::NonFinite);
+
+    const ConditionalP g = conditionalP(0.3, 0.5, nan, Status::GuardCurv,
+                                        0.7, 0.9, nan, Status::Converged, 0.78);
+    CHECK(std::isnan(g.p));
+    CHECK(g.status == Status::GuardCurv);   // a named reason survives
+}
+
+// D2 sweep.  A NaN leg must leave either a NaN or a value the immaterial-leg
+// rule certified — never the 1.0 that `std::min(1.0, pval1 + pval2)` returned.
+// q0 is the surviving leg's CONDITIONAL tail, which the mixture bounds by 1/2;
+// it is kept strictly below 1/2 here so that the honest answer is strictly
+// below 1 and a returned 1.0 could only have been manufactured.
+TEST(conditionalp_never_manufactures_one_from_a_nan_leg) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    int finite = 0, na = 0;
+    for (double w1 : {0.0, 1e-30, 1e-12, 1e-6, 1e-3, 0.5, 1.0}) {
+        for (double m1 : {1e-20, 1e-6, 0.1, 0.9, 1.0}) {
+            for (double q0 : {1e-12, 1e-6, 0.05, 0.3, 0.499}) {
+                const double w0 = 1.0 - w1, m0 = 0.9, p0 = q0 * m0;
+                const double pd = w1 * m1 + w0 * m0;
+                if (!(pd > 0.0)) continue;
+                const ConditionalP c =
+                    conditionalP(w1, m1, nan, Status::NormalBranch,
+                                 w0, m0, p0, Status::Converged, pd);
+                CHECK(c.p != 1.0);
+                if (std::isnan(c.p)) {
+                    ++na;
+                    CHECK(spa::statusIsFailure(c.status));
+                } else {
+                    ++finite;
+                    // The reported value is the mixture with the missing leg's
+                    // joint probability set to zero, exactly.
+                    CHECK_NEAR(c.p, 2.0 * w0 * p0 / pd, 0.0);
+                    // Certified: the dropped leg's whole interval is below the
+                    // reported value times the threshold.
+                    CHECK(w1 * m1 / pd <= kImmaterialLeg * c.p);
+                    CHECK(!spa::statusIsFailure(c.status));
+                    CHECK(c.p >= 0.0 && c.p <= 1.0);
+                }
+            }
+        }
+    }
+    std::printf("    %d certified-immaterial, %d NA, 0 fabricated 1.0\n", finite, na);
+    CHECK(finite > 0);
+    CHECK(na > 0);
 }
 
 }  // namespace

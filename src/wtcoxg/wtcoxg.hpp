@@ -160,10 +160,22 @@ class WtCoxGMethod : public MethodBase {
 //     2 GUARD_TEMP         5 NONFINITE
 //
 // P and LOG10P are NA for every status other than 0, 4 and 6.  NONFINITE covers
-// both a saddlepoint that left the reals and a marker for which no test
-// exists at all (per-cluster MAC below 10, a non-positive score variance, an
-// unmatched batch-effect p-value): spa::Status has no "no test" enumerator,
-// and adding one would renumber a code already in five other methods' output.
+// a saddlepoint that left the reals, a marker for which no test exists at all
+// (per-cluster MAC below 10, a non-positive score variance, an unmatched
+// batch-effect p-value), and a conditional branch whose bivariate-normal
+// integral was handed a covariance pair that is not positive semi-definite:
+// spa::Status has no enumerator for any of the three, and adding one would
+// renumber a code already in five other methods' output.
+//
+// On the two conditional branches the reported p-value is a two-component
+// mixture, and the two components have separate saddlepoints.  When one
+// component cannot be evaluated but the interval its unknown contribution
+// spans is provably narrower than the precision the answer is printed to,
+// wtcoxg_cond::conditionalP (src/wtcoxg/conditional_p.hpp) drops it and
+// reports the SURVIVING component's status — which is the status of the
+// saddlepoint that actually produced the number in the P column, and which
+// keeps the invariant above intact.  A component whose loss can move the
+// answer still takes the marker to NA with a failure status.
     int resultSize() const override {
         return 13;
     }

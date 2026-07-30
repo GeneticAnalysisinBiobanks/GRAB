@@ -10,6 +10,7 @@
 #include "util/simd_math.hpp"
 #include "util/spa.hpp"
 #include "util/text_scanner.hpp"
+#include "wtcoxg/conditional_p.hpp"
 #include "wtcoxg/wtcoxg_cgf.hpp"
 
 #include <algorithm>
@@ -1327,59 +1328,11 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtDegenerate() {
     return {nan, nan, nan, nan, spa::Status::NonFinite};
 }
 
-namespace {
-
-// ── The conditional p-value of the two batch-effect branches ─────────
-//
-//     p_con = 2 * (TPR*p1 + (1-TPR)*p0) / p_deno
-//
-// where p0 and p1 are joint probabilities P(S' <= -|s|, S_bat in B) under
-// sigma2 = 0 and sigma2 > 0 and p_deno is the matching mixture of the S_bat
-// marginals P(S_bat in B).  Every numerator term is bounded by its
-// denominator term, and the conditioning event B is symmetric under
-// (S', S_bat) -> (-S', -S_bat) while the joint law is centred, so the
-// conditional tail is at most one half and p_con is at most 1 — in exact
-// arithmetic.
-//
-// It was NOT at most 1 in practice: 166 of the 3000 markers of the bundled
-// fixture reported P_EXT above 1, up to 2.98664, which is not a probability
-// and is the only column anywhere in examples_output outside [0, 1].  The
-// cause was not this expression but math::bvnCdf, whose |rho| >= 0.925 branch
-// was mis-transcribed from Genz (2004) and returned a joint probability
-// larger than the marginal that bounds it; see the comment on its definition
-// in util/math_helper.cpp.  With that repaired the excess is gone.
-//
-// The clamp below therefore guards rounding, not a defect: 20-point
-// Gauss-Legendre on the rectangle and the asymptotic expansion at |rho| = 1
-// are each good to ~1e-13, and a ratio of two such quantities can still land a
-// few ULP above 1 when the true value is 1.  It is written as an explicit
-// two-sided clamp rather than std::min(1.0, p_con) precisely because
-// std::min(1.0, NaN) returns 1.0 — the D2 idiom this stage removes — so a NaN
-// must be tested for, not minimised against.
-struct ConditionalP {
-    double p;
-    double negLog10p;
-    spa::Status status;
-};
-
-ConditionalP conditionalP(
-    double TPR,
-    double p0,
-    double p1,
-    double p_deno,
-    spa::Status spaStatus
-) {
-    const double nan = NaN::quiet_NaN();
-    double p = 2.0 * (TPR * p1 + (1.0 - TPR) * p0) / p_deno;
-    if (!std::isfinite(p)) return {nan, nan, spa::Status::NonFinite};
-    if (p > 1.0) p = 1.0;
-    if (p < 0.0) p = 0.0;
-    double neg = -std::log10(p);
-    if (neg == 0.0) neg = 0.0;   // -log10(1) is -0.0; normalise the sign
-    return {p, neg, spaStatus};
-}
-
-}  // namespace
+// The two conditional branches below assemble their p-value through
+// wtcoxg_cond::conditionalP (src/wtcoxg/conditional_p.hpp), which also owns
+// the rule for a mixture leg whose joint probability could not be computed.
+using wtcoxg_cond::ConditionalP;
+using wtcoxg_cond::conditionalP;
 
 WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTest(
     const Eigen::Ref<const Eigen::VectorXd> &g_input,
@@ -1466,8 +1419,20 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
         const double lb = -qnorm_val * std::sqrt(var_Sbat) * std::sqrt(var_ratio_w0);
         const double ub = -lb;
 
+        // m1 / m0: the conditioning mass P(|S_bat| > threshold | component)
+        // that each mixture component carries.  Branch A conditions on the
+        // COMPLEMENT of the acceptance interval, so m0 is p_cut exactly, by
+        // construction of lb and ub, and m1 is the same complement's mass
+        // under the sigma2-inflated law.  Their TPR-mixture is p_deno.
         const double c_val = math::pnormLog(lb / std::sqrt(var_ratio_w1), 0.0,
                                             std::sqrt(var_Sbat + sigma2), true);
+        // p_deno keeps its original spelling to the letter: `TPR * 2.0 * e`
+        // associates as `(TPR * 2.0) * e`, which is not bit-identical to
+        // `TPR * (2.0 * e)`, and this quantity divides every reported
+        // Branch-A p-value.  m1_loc feeds only the materiality threshold,
+        // where a one-ULP difference cannot matter.
+        const double m1_loc = 2.0 * std::exp(c_val);
+        const double m0_loc = p_cut;
         const double p_deno = TPR * 2.0 * std::exp(c_val) + (1.0 - TPR) * p_cut;
 
         SpaResult spa_s0 = spaGOneSnpHomoFromScalars(
@@ -1522,7 +1487,14 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
         const double p1 = math::pmvnorm2dHalfRect(s_bound1, negInf, sb_lo1, var_S, cov_val, var_Sbat1)
                        + math::pmvnorm2dHalfRect(s_bound1, sb_hi1, posInf, var_S, cov_val, var_Sbat1);
 
-        const ConditionalP con = conditionalP(TPR, p0, p1, p_deno, spa_s0.status);
+        // Both legs of Branch A are built from the same var_S and cov_val, so
+        // spa_s0 failing takes both (intercepted above) and the immaterial-leg
+        // rule can only ever fire here for a leg that math::pmvnorm2dHalfRect
+        // itself declined to integrate.
+        const ConditionalP con = conditionalP(
+            TPR, m1_loc, p1, spa_s0.status,
+            1.0 - TPR, m0_loc, p0, spa_s0.status,
+            p_deno);
         return {con.p, con.negLog10p, S_loc, z_loc, con.status};
     }
 
@@ -1543,6 +1515,16 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
 
     double c_val = math::pnormLog(ub / std::sqrt(var_ratio_w1), 0.0, std::sqrt(var_Sbat + sigma2), true);
     double d_val = math::pnormLog(lb / std::sqrt(var_ratio_w1), 0.0, std::sqrt(var_Sbat + sigma2), true);
+    // m1 / m0: the conditioning mass P(S_bat in [lb, ub] | component) each
+    // mixture component carries.  m0 is 1 - p_cut exactly, because lb and ub
+    // ARE the +/-(1 - p_cut/2) quantiles of the sigma2 = 0 batch law; m1 is
+    // the same interval under the sigma2-inflated law, which the two pnormLog
+    // calls above already deliver.  p_deno is their TPR-mixture and keeps the
+    // original spelling to the letter — it divides every reported Branch-B
+    // p-value, so it must not be re-associated.  m1 feeds only the
+    // materiality threshold, where a one-ULP difference cannot matter.
+    const double m1 = std::exp(d_val) * (std::exp(c_val - d_val) - 1.0);
+    const double m0 = 1.0 - p_cut;
     double p_deno = TPR * (std::exp(d_val) * (std::exp(c_val - d_val) - 1.0)) + (1.0 - TPR) * (1.0 - p_cut);
 
     // Internal SPA (no sigma2)
@@ -1550,11 +1532,18 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
         R_dot_g, gSum, Nint, *m_shared,
         m_shared->meanR, m_shared->sumR, m_shared->sqSumR,
         mu_ext, obs_ct, b, 0.0, var_ratio0, m_shared->SPA_Cutoff);
-    // D2, as in Branch A: intercept a failed saddlepoint before qchisq.
-    if (!std::isfinite(spa_s0.pval))
-        return {NaN::quiet_NaN(), NaN::quiet_NaN(), S, NaN::quiet_NaN(), spa_s0.status};
-    double qchi = math::qchisq(spa_s0.pval, 1.0, false, false);
-    double var_S = (qchi > 0.0) ? S * S / var_ratio0 / qchi : NaN::quiet_NaN();
+    // D2, as in Branch A: the conditional branches recover a variance by
+    // inverting the SPA p-value, math::qchisq has no NaN guard and builds its
+    // Boost distribution under the default throw_on_error policy, so a failed
+    // saddlepoint must be intercepted before qchisq sees it.  Unlike Branch A
+    // it does not abort the marker: leaving var_S non-finite makes this leg's
+    // joint probability non-finite, and conditionalP decides from the interval
+    // that leg spans whether the marker still has an answer.
+    double var_S = NaN::quiet_NaN();
+    if (std::isfinite(spa_s0.pval)) {
+        const double qchi = math::qchisq(spa_s0.pval, 1.0, false, false);
+        if (qchi > 0.0) var_S = S * S / var_ratio0 / qchi;
+    }
 
     // Covariance between S_bat and S — closed form from cached scalars.
     // sum((R - bm)²)  = sqSumR - 2·bm·sumR + N·bm²,  bm = (1-b)·meanR
@@ -1584,13 +1573,21 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
         R_dot_g, gSum, Nint, *m_shared,
         m_shared->meanR, m_shared->sumR, m_shared->sqSumR,
         mu_ext, obs_ct, b, sigma2, var_ratio1, m_shared->SPA_Cutoff);
-    if (!std::isfinite(spa_s1.pval))
-        return {NaN::quiet_NaN(), NaN::quiet_NaN(), S, NaN::quiet_NaN(), spa_s1.status};
-    double var_S1 = S * S / var_ratio1 / math::qchisq(spa_s1.pval, 1.0, false, false);
+    // As for spa_s0: a failed saddlepoint leaves var_S1 non-finite rather than
+    // aborting the marker.
+    double var_S1 = NaN::quiet_NaN();
+    if (std::isfinite(spa_s1.pval))
+        var_S1 = S * S / var_ratio1 / math::qchisq(spa_s1.pval, 1.0, false, false);
     double cov_val1 = w1_dot_R_adj * 2.0 * mu * (1.0 - mu) + 2.0 * b * m_shared->sumR * (var_mu_ext + sigma2);
     cov_val1 *= std::sqrt(var_S1 / var_int_denom);
     double var_Sbat1 = var_Sbat + sigma2;
 
+    // This is the call that loses the sigma2 > 0 leg on a degenerate batch
+    // fit.  cov_val1 carries sigma2 linearly while sd(S_bat1) carries it as a
+    // square root, so rho1 grows like sigma and passes 1: the triple is not a
+    // covariance matrix, math::pmvnorm2dHalfRect returns NaN, and the leg has
+    // no joint probability — with the saddlepoint that produced var_S1 having
+    // converged perfectly well.  See the note on kImmaterialLeg.
     double p1 = math::pmvnorm2dHalfRect(
         -std::abs(S / std::sqrt(var_ratio1)),
         lb / std::sqrt(var_ratio_w1),
@@ -1601,7 +1598,12 @@ WtCoxGMethod::WtResult WtCoxGMethod::wtCoxGTestFromScalars(
     );
 
     const ConditionalP con = conditionalP(
-        TPR, p0, p1, p_deno, spa::worseStatus(spa_s0.status, spa_s1.status));
+        TPR, m1, p1, spa_s1.status,
+        1.0 - TPR, m0, p0, spa_s0.status,
+        p_deno);
+    // z is the plain normal statistic S/sd(S); it is not a saddlepoint output
+    // and is reported whether or not the conditional assembly succeeded, as
+    // the predecessor did.
     return {con.p, con.negLog10p, S, z, con.status};
 }
 
