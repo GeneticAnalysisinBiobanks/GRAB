@@ -160,6 +160,37 @@ class MethodBase {
         (void)altFreqs; (void)chunkIdxs; (void)results;
     }
 
+    // ── Optional: per-subject genotypes inside the fused path ──────────
+    //
+    // The fused GEMM exists precisely so that a method never has to look at
+    // the genotype matrix, and every method but one is happy with that.
+    // SPAsqr's low-MAC branch evaluates an empirical CGF of the form
+    // Σ_i K0(t·(G_i − Ḡ)), which needs the column itself.
+    //
+    // A method that returns true here gets setUnionGenotypes() called
+    // immediately before each processScoreBatch(); everyone else keeps the
+    // default no-ops and is completely unaffected.
+    virtual bool needsUnionGenotypes() const {
+        return false;
+    }
+
+    // GUnion      — the window's union-space genotype matrix, already
+    //               mean-imputed (engine Phase 1b), so it matches the scores
+    //               and gSums handed to processScoreBatch.
+    // unionCols   — unionCols[k] is the GUnion column holding the k-th
+    //               QC-passing marker, i.e. batch column k of processScoreBatch.
+    // macs        — macs[k], the k-th passing marker's minor-allele count.
+    //
+    // Valid only for the duration of the processScoreBatch() call that
+    // follows; the callee must not retain the references.
+    virtual void setUnionGenotypes(
+        const Eigen::Ref<const Eigen::MatrixXd> &GUnion,
+        const std::vector<uint32_t> &unionCols,
+        const double *macs
+    ) {
+        (void)GUnion; (void)unionCols; (void)macs;
+    }
+
 };
 
 // ======================================================================

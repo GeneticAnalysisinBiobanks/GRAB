@@ -661,6 +661,8 @@ void multiPhenoEngineRange(
             // (from mask column dot product).
             std::vector<std::vector<double> > winGSums;
             std::vector<double> passAltFreqs;
+            std::vector<uint32_t> passUnionCols;   // GBatch_union column per passing marker
+            std::vector<double> passMacs;          // MAC per passing marker
             std::vector<double> passGSums;
             std::vector<double> passGSumSqs;
             std::vector<int> passChunkIdxs;
@@ -669,6 +671,8 @@ void multiPhenoEngineRange(
             if (hasFused) {
                 winGSums.resize(nFuseable, std::vector<double>(B, 0.0));
                 passAltFreqs.reserve(B);
+                passUnionCols.reserve(B);
+                passMacs.reserve(B);
                 passGSums.reserve(B);
                 passGSumSqs.reserve(B);
                 passChunkIdxs.reserve(B);
@@ -888,6 +892,8 @@ void multiPhenoEngineRange(
                             const auto &repFp = fusedPhenos[group.repFi];
 
                             passAltFreqs.clear();
+                            passUnionCols.clear();
+                            passMacs.clear();
                             passGSums.clear();
                             passGSumSqs.clear();
                             passChunkIdxs.clear();
@@ -918,6 +924,8 @@ void multiPhenoEngineRange(
 
                                 if (wmQC[bi].pass) {
                                     passAltFreqs.push_back(gs.altFreq);
+                                    passUnionCols.push_back(static_cast<uint32_t>(bi));
+                                    passMacs.push_back(gs.mac);
                                     passGSums.push_back(gSum);
                                     passGSumSqs.push_back(gs.sumSq);
                                     passChunkIdxs.push_back(static_cast<int>(wstart + bi));
@@ -942,6 +950,10 @@ void multiPhenoEngineRange(
                                             ++pi;
                                         }
                                     }
+
+                                    if (methods[p]->needsUnionGenotypes())
+                                        methods[p]->setUnionGenotypes(
+                                            GBatch_union, passUnionCols, passMacs.data());
 
                                     methods[p]->processScoreBatch(
                                         passScoresBuf.topLeftCorner(fp.nCols, passCount),
