@@ -14,9 +14,9 @@
 //   dev-notes/methods/SPAGxE_claude_impl_plan  phase-by-phase build plan
 //
 // Base vs +: a sparse GRM Φ enters only through the score variance, as a
-// retrospective quadratic form  xᵀΦx  evaluated by SparseGRM::spaVariance
-// (2·Σstored − Σx²).  The base (unrelated) path is exactly the Φ = identity
-// special case (spaVariance → Σx²), so a single code path serves both:
+// retrospective quadratic form  xᵀΦx  evaluated by SparseGRM::quadForm.
+// The base (unrelated) path is exactly the Φ = identity
+// special case (phiQuad → Σx²), so a single code path serves both:
 //   marginal   Var(S_G)      = 2q(1−q)·RᵀΦR
 //   Branch A   λ_GRM         = RᵀΦR_E / RᵀΦR ,  w = (E − λ_GRM)R
 //              Var(S_GxE)     = 2q(1−q)·wᵀΦw
@@ -155,8 +155,8 @@ class SPAGxEMethod : public MethodBase {
     ) override;
 
   private:
-    // Retrospective quadratic form  xᵀΦx: SparseGRM::spaVariance when a GRM is
-    // present (2·Σstored − Σx²), Σx² otherwise (Φ = identity → base path).
+    // Retrospective quadratic form  xᵀΦx: SparseGRM::quadForm when a GRM is
+    // present, Σx² otherwise (Φ = identity → base path).
     double phiQuad(const Eigen::VectorXd &x) const;
 
     // Per-environment precomputed Branch-A machinery.  In the base / SPAGxE+

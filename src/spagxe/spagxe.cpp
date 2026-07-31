@@ -2,8 +2,8 @@
 //
 // Base (unrelated) and SPAGxE+ (sparse-GRM) share one code path: the GRM Φ
 // enters only through the retrospective score variance as a quadratic form
-// xᵀΦx = SparseGRM::spaVariance(x) = 2·Σstored − Σx², and the base path is the
-// Φ = identity special case (spaVariance → Σx²).  Per phenotype a single
+// xᵀΦx = SparseGRM::quadForm(x), and the base path is the
+// Φ = identity special case (phiQuad → Σx²).  Per phenotype a single
 // genotype-independent residual R is fit once (trait ~ X + E).  Per variant:
 //   1. marginal screen  S_G = Σ G_i R_i ,  Var = 2q(1−q)·RᵀΦR  (always normal;
 //      routes Branch A vs Branch B on p_marg vs ε).
@@ -264,7 +264,7 @@ Eigen::VectorXd recodeResponse(const Eigen::VectorXd &col, spagxe_wald::TraitTyp
 
 double SPAGxEMethod::phiQuad(const Eigen::VectorXd &x) const {
     if (m_grm)
-        return m_grm->spaVariance(x.data(), static_cast<uint32_t>(x.size()));
+        return m_grm->quadForm(x.data(), static_cast<uint32_t>(x.size()));
     return x.squaredNorm();
 }
 

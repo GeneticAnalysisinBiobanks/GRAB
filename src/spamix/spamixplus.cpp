@@ -332,7 +332,7 @@ spa::TwoSided SPAmixPlusMethod::markerPvalFromAF(
     // S_mean   = 2·Σ_i resid_i · AF_i
     // S_var_d  = Σ_i resid2_i · W_i             (diagonal variance)
     // When GRM is present, build R_new_i = resid_i · sqrt(W_i) and pass to
-    // SparseGRM::spaVariance to obtain the GRM-based variance.
+    // SparseGRM::quadForm to obtain the GRM-based variance R_new' G R_new.
     double S_mean = 2.0 * m_resid.dot(afVec);
     double S_var_diag = m_resid2.dot(wVec);
 
@@ -340,7 +340,7 @@ spa::TwoSided SPAmixPlusMethod::markerPvalFromAF(
     if (m_hasGRM) {
         // R_new = resid · sqrt(W).  Use Eigen array ops so SIMD kicks in.
         m_R_new = m_resid.array() * wVec.array().sqrt();
-        VarS = m_grm->spaVariance(m_R_new.data(), static_cast<uint32_t>(m_N));
+        VarS = m_grm->quadForm(m_R_new.data(), static_cast<uint32_t>(m_N));
     } else {
         VarS = S_var_diag;
     }
