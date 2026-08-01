@@ -133,8 +133,9 @@ std::vector<IndexedIBD> loadIndexedIBD(
     //                        two populations do not overlap.
     constexpr double kExact = 1e-9;
     constexpr double kRound = 5e-4;
-    size_t nRenormalized = 0;
-    double maxDev = 0.0;
+    constexpr double kDiscTol = 1e-12;
+    size_t nRenormalized = 0, nProjected = 0;
+    double maxDev = 0.0, maxShortfall = 0.0;
     size_t dataLine = 0;
     while (reader.getline(line)) {
         if (text::skipLine(line)) continue;
@@ -184,23 +185,6 @@ std::vector<IndexedIBD> loadIndexedIBD(
             why = "has a negative component";
         else if (dev > kRound)
             why = "does not sum to 1";
-        // Condition (ii) of the admissibility set (see ibd.hpp): the pair's
-        // IBD vector must be decomposable into two independent per-allele
-        // sharing indicators, i.e. x^2 - 2*(pa + pb/2)*x + pa must have real
-        // roots.  With pa+pb+pc = 1 that discriminant condition is exactly
-        // delta1^2 >= 4*delta0*delta2.  Non-negativity and unit sum do NOT
-        // imply it.  A triple that violates it is silently projected by
-        // buildSPAGRMNullModel's std::max(Rho*Rho - pa, 0.0) onto a DIFFERENT
-        // distribution — same kinship, different pa — with no diagnostic, so
-        // a material violation is rejected here instead.  The tolerance
-        // absorbs printed-precision round-off: at four decimals the
-        // components carry up to 5e-5, which moves pb^2 - 4*pa*pc by at most
-        // ~3e-4, while a genuine violation is of order 0.01 or larger.  The
-        // textbook boundary cases sit exactly on it — full sibs give
-        // 0.5^2 = 4*0.25*0.25 — so the inequality must not be strict.
-        else if (pb * pb < 4.0 * pa * pc - 1e-3)
-            why = "is not decomposable into two independent allele-sharing "
-                  "indicators (pb^2 < 4*pa*pc)";
         if (why) {
             char detail[192];
             std::snprintf(detail, sizeof(detail),
@@ -250,6 +234,50 @@ std::vector<IndexedIBD> loadIndexedIBD(
             maxDev = std::max(maxDev, std::max(dev, clampedDev));
         }
 
+        // Condition (ii) of the admissible set (see ibd.hpp): the pair must be
+        // decomposable into two independent per-allele sharing indicators,
+        // i.e. x^2 - 2*Rho*x + pa with Rho = pa + pb/2 must have real roots.
+        // With pa+pb+pc = 1 that is exactly pb^2 >= 4*pa*pc, and it is NOT
+        // implied by non-negativity and unit sum: (0.5, 0, 0.5) satisfies both
+        // and violates it.
+        //
+        // buildSPAGRMNullModel already projects such a triple, through
+        // std::max(Rho*Rho - pa, 0.0) — the two roots collapse to Rho and the
+        // pair is modelled as Binomial(2, Rho), preserving the kinship, which
+        // is the quantity the GRM independently measures, and moving pc to
+        // (1-Rho)^2.  The projection is principled; what was missing is that
+        // it happened silently, in a different translation unit, with no count
+        // and no diagnostic.  It is performed and reported here instead.
+        //
+        // It is NOT an error.  The boundary pb^2 = 4*pa*pc is where the
+        // textbook relationships sit — full sibs give 0.5^2 = 4*0.25*0.25
+        // exactly — and the quantity is first order in the estimation noise:
+        // perturbing (0.25, 0.5, 0.25) by e in pa and d in pc moves
+        // pb^2 - 4*pa*pc by -2(e+d).  With a per-component SD of 0.01, half of
+        // all full-sib pairs land below the curve with a median shortfall of
+        // 0.019.  Rejecting on this condition would abort the run on almost
+        // any third-party IBD table containing siblings, which is precisely
+        // the input the two-tier precision policy above exists to support.
+        //
+        // The threshold separates a violation from round-off ON the boundary.
+        // ibd::deriveIBD's upper clamp puts the discriminant at exactly zero,
+        // and 15 880 of the bundled fixture's 39 799 rows land there, where
+        // the %.17g round trip leaves 4*pa*pc - pb^2 at up to 5.8e-16.  Those
+        // are not violations and the downstream std::max(disc, 0.0) already
+        // handles them; counting them would report 40 % of a correct file as
+        // repaired.  A genuine violation is of order 1e-2, ten orders above.
+        {
+            const double rho = pa + 0.5 * pb;
+            const double shortfall = 4.0 * (pa * pc) - pb * pb;   // = -4*disc
+            if (shortfall > kDiscTol) {
+                pa = rho * rho;
+                pb = 2.0 * rho * (1.0 - rho);
+                pc = (1.0 - rho) * (1.0 - rho);
+                ++nProjected;
+                maxShortfall = std::max(maxShortfall, shortfall);
+            }
+        }
+
         out.push_back({it1->second, it2->second, pa, pb, pc});
     }
     if (nRenormalized > 0) {
@@ -260,6 +288,15 @@ std::vector<IndexedIBD> loadIndexedIBD(
             "--cal-pairwise-ibd it should be exact, and a residual this large "
             "means something else wrote it.",
             filename.c_str(), nRenormalized, out.size(), kExact, maxDev
+        );
+    }
+    if (nProjected > 0) {
+        warnMsg(
+            "  %s: %zu of %zu IBD triples were not decomposable into two "
+            "independent allele-sharing indicators (worst 4*pa*pc - pb^2 = "
+            "%.3e) and were projected onto Binomial(2, pa + pb/2), which "
+            "preserves the kinship.",
+            filename.c_str(), nProjected, out.size(), maxShortfall
         );
     }
     return out;

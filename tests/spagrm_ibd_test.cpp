@@ -349,23 +349,80 @@ TEST(load_indexed_ibd_rejects_non_finite_values) {
 }
 
 // Condition (ii) of the admissible set.  Non-negativity and unit sum do NOT
-// imply it, so a triple can pass every other check and still be
-// undecomposable into two independent allele-sharing indicators.  Without
-// this check buildSPAGRMNullModel's std::max(Rho*Rho - pa, 0.0) silently
-// projects it onto a different distribution — same kinship, different pa.
-TEST(load_indexed_ibd_rejects_an_undecomposable_triple) {
-    // pb^2 = 0.01 against 4*pa*pc = 4*0.45*0.45 = 0.81.  Non-negative, sums
-    // to one, and inadmissible: no (rho+, rho-) in [0,1]^2 produces it.
+// imply it, so a triple can pass every other check and still not decompose
+// into two independent allele-sharing indicators.  buildSPAGRMNullModel
+// projects such a triple through std::max(Rho*Rho - pa, 0.0); the loader
+// performs the same projection where it can be counted and reported.
+//
+// It must PROJECT, not reject.  The boundary pb^2 = 4*pa*pc is exactly where
+// the textbook relationships sit, and the quantity is first order in the
+// estimation noise: with a per-component SD of 0.01, half of all full-sib
+// pairs land below the curve with a median shortfall of 0.019.  A hard
+// rejection would abort on almost any third-party table containing siblings.
+TEST(load_indexed_ibd_projects_an_undecomposable_triple) {
+    // pb^2 = 0.01 against 4*pa*pc = 0.81.  Non-negative, sums to one, and
+    // not decomposable: no (rho+, rho-) in [0,1]^2 produces it.
     const std::string path = writeTempFile(
         "spagrm_ibd_undecomposable.txt",
         "ID1\tID2\tpa\tpb\tpc\n"
         "A\tB\t0.45\t0.10\t0.45\n");
     REQUIRE(!path.empty());
-    CHECK(loadThrows(path));
+    CHECK(!loadThrows(path));
+    const auto rows = nsGRMNull::loadIndexedIBD(path, twoSubjectIdMap());
+    REQUIRE(rows.size() == 1);
+
+    // Projected onto Binomial(2, Rho) with Rho = 0.45 + 0.05 = 0.5, which
+    // preserves the kinship the GRM independently measures.
+    CHECK_NEAR(rows[0].pa, 0.25, 1e-12);
+    CHECK_NEAR(rows[0].pb, 0.50, 1e-12);
+    CHECK_NEAR(rows[0].pc, 0.25, 1e-12);
+    CHECK_NEAR(rows[0].pa + 0.5 * rows[0].pb, 0.5, 1e-12);   // Rho preserved
+    CHECK_NEAR(rows[0].pa + rows[0].pb + rows[0].pc, 1.0, 1e-15);
+    // And the result is now decomposable, which is the point.
+    CHECK(rows[0].pb * rows[0].pb >= 4.0 * rows[0].pa * rows[0].pc - 1e-15);
 }
 
-// The textbook relationships sit ON the boundary pb^2 = 4*pa*pc, so the
-// inequality must not be strict and the tolerance must not reject them.
+// A full-sib row perturbed by ordinary estimation noise must survive.  This
+// is the case a rejection would have broken.
+TEST(load_indexed_ibd_survives_noisy_full_sibs) {
+    // (0.25, 0.5, 0.25) displaced below the curve by 0.02 in the discriminant
+    // — the median displacement at a per-component SD of 0.01.
+    const std::string path = writeTempFile(
+        "spagrm_ibd_noisy_sibs.txt",
+        "ID1\tID2\tpa\tpb\tpc\n"
+        "A\tB\t0.255\t0.49\t0.255\n");
+    REQUIRE(!path.empty());
+    CHECK(!loadThrows(path));
+    const auto rows = nsGRMNull::loadIndexedIBD(path, twoSubjectIdMap());
+    REQUIRE(rows.size() == 1);
+    CHECK_NEAR(rows[0].pa + rows[0].pb + rows[0].pc, 1.0, 1e-15);
+    // The projection moves it by round-off, not by a relationship: Rho stays
+    // at 0.5 and the triple stays within 5e-3 of full sibs.
+    CHECK_NEAR(rows[0].pa + 0.5 * rows[0].pb, 0.5, 1e-12);
+    CHECK(std::abs(rows[0].pa - 0.25) < 5e-3);
+    CHECK(std::abs(rows[0].pb - 0.50) < 5e-3);
+}
+
+// A row sitting ON the boundary, displaced only by the %.17g round trip, must
+// pass through untouched.  ibd::deriveIBD's upper clamp puts 15 880 of the
+// bundled fixture's 39 799 rows exactly there, with 4*pa*pc - pb^2 up to
+// 5.8e-16; projecting those would report 40 % of a correct file as repaired.
+TEST(load_indexed_ibd_does_not_project_boundary_round_off) {
+    // A full-sib triple perturbed by one ulp, below the curve by ~1e-16.
+    const std::string path = writeTempFile(
+        "spagrm_ibd_boundary_ulp.txt",
+        "ID1\tID2\tpa\tpb\tpc\n"
+        "A\tB\t0.25000000000000006\t0.49999999999999989\t0.25000000000000006\n");
+    REQUIRE(!path.empty());
+    const auto rows = nsGRMNull::loadIndexedIBD(path, twoSubjectIdMap());
+    REQUIRE(rows.size() == 1);
+    CHECK(4.0 * rows[0].pa * rows[0].pc - rows[0].pb * rows[0].pb < 1e-12);
+    // Unprojected: the values are the ones written, not Binomial(2, 0.5).
+    CHECK(rows[0].pa != 0.25);
+}
+
+// The textbook relationships sit ON the boundary pb^2 = 4*pa*pc, so they must
+// pass through untouched rather than being projected.
 TEST(load_indexed_ibd_accepts_the_boundary_relationships) {
     struct Case { const char *name, *row; };
     const Case cases[] = {
