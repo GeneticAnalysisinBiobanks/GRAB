@@ -1,7 +1,208 @@
 // math_helper.cpp — Out-of-line implementations for math_helper.hpp
 #include "math_helper.hpp"
 
+#include <boost/math/special_functions/beta.hpp>
+
 namespace math {
+
+namespace {
+
+constexpr double kLn2      = 0.69314718055994530942;  // ln 2
+constexpr double kLnPi     = 1.14472988584940017414;  // ln π
+constexpr double kLn2OverPi = kLn2 - kLnPi;           // ln(2/π)
+
+// 20-point Gauss-Legendre nodes / weights on [-1, 1] (positive half; each
+// value is shared by ±x).  Source: standard tables, e.g. Abramowitz & Stegun
+// 25.4.30.  One copy for the whole file: `pmvnorm2dHalfRect` and
+// `pmvnorm2dHalfRectLog` must use the same rule, since the claim that the
+// log-domain routine is the same quadrature carried through a log-sum-exp
+// rests on it.  (`bvnCdf` above keeps its own table, whose entries are the
+// negatives of these; it consumes them as `is * x20[i]` over is = ±1, so the
+// set of abscissae is identical but the summation ORDER is not, and changing
+// it would move that function's last bit for no benefit.)
+constexpr double kGl20Node[10] = {
+    0.0765265211334973, 0.2277858511416451, 0.3737060887154195,
+    0.5108670019508271, 0.6360536807265150, 0.7463319064601508,
+    0.8391169718222188, 0.9122344282513259, 0.9639719272779138,
+    0.9931285991850949
+};
+constexpr double kGl20Weight[10] = {
+    0.1527533871307258, 0.1491729864726037, 0.1420961093183820,
+    0.1316886384491766, 0.1181945319615184, 0.1019301198172404,
+    0.0832767415767048, 0.0626720483341091, 0.0406014298003869,
+    0.0176140071391521
+};
+
+} // namespace
+
+// ──────────────────────────────────────────────────────────────────────
+// § 1b  Log-domain p-value inversion and evaluation
+// ──────────────────────────────────────────────────────────────────────
+
+namespace {
+
+// Below this L the linear argument 0.5·10^(−L) is an ordinary double and
+// Boost's quantile is used; above it the Newton iteration on ln P runs.  The
+// seam is continuous to a few ULP (measured: |Δz|/z ≤ 3e-16 over
+// L ∈ [0.9, 1.1]), because both sides are accurate there — the same
+// overlap-in-a-regime-where-both-are-right argument that fixes pnormLog's own
+// branch at |t| = 37.
+constexpr double kZNewtonMinL = 1.0;
+constexpr int    kZMaxIter    = 64;
+
+} // namespace
+
+double zFromNegLog10P(
+    double negLog10p,
+    double zNormForSign
+) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    if (std::isnan(negLog10p) || std::isnan(zNormForSign)) return nan;
+    const double sign = (zNormForSign >= 0.0) ? 1.0 : -1.0;
+
+    // P ≥ 1 gives z = 0 and P = 0 gives z = ∞; both are exact and both lie
+    // outside the iteration's domain.
+    if (!(negLog10p > 0.0)) return sign * 0.0;
+    if (std::isinf(negLog10p)) return sign * negLog10p;
+    if (negLog10p < kZNewtonMinL)
+        return sign * qnorm(0.5 * std::pow(10.0, -negLog10p), 0.0, 1.0,
+                            /*lower_tail=*/false);
+
+    const double target = -negLog10p * kLn10;          // ln P
+    const double A      = 2.0 * negLog10p * kLn10;
+    // Analytic inversion of the Mills asymptote ln P = ln 2 − z²/2 − ln z
+    // − ln√(2π), with ln z ≈ ½ ln A on the right-hand side.
+    double z = std::sqrt(std::fmax(A - std::log(A) + kLn2OverPi, 1.0));
+
+    // Relative criterion, no absolute constant: see the header comment and
+    // 04_validation.md §2 invariant 3.
+    const double tol = 4.0 * std::numeric_limits<double>::epsilon() * std::fabs(target);
+    for (int it = 0; it < kZMaxIter; ++it) {
+        const double lnPhi = pnormLog(-z, 0.0, 1.0, /*lower_tail=*/true);
+        const double f     = kLn2 + lnPhi - target;
+        if (std::fabs(f) <= tol) break;
+        // d/dz ln(2Φ(−z)) = −φ(z)/Φ(−z), formed in the log domain so that
+        // neither φ nor Φ underflows on its own.
+        const double deriv = -std::exp((-0.5 * z * z - kLogSqrt2Pi) - lnPhi);
+        if (!(deriv < 0.0)) break;
+        double zNext = z - f / deriv;
+        if (!(zNext > 0.0)) zNext = 0.5 * z;
+        if (!std::isfinite(zNext) || zNext == z) break;
+        z = zNext;
+    }
+    return sign * z;
+}
+
+double ptLog(
+    double t,
+    double df
+) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    if (std::isnan(t) || std::isnan(df) || !(df > 0.0)) return nan;
+
+    const double at = std::fabs(t);
+    if (!(at > 0.0)) return 0.0;      // P(|T| > 0) = 1
+    if (std::isinf(at)) return -inf;
+
+    const double a     = 0.5 * df;
+    const double b     = 0.5;
+    const double denom = df + at * at;
+    const double x     = df / denom;
+    // ln x and ln(1−x) built from the closed forms rather than from x, so
+    // that neither loses digits as x → 1 (small t, large df).
+    const double lnx   = std::log(df) - std::log(denom);
+    const double ln1mx = 2.0 * std::log(at) - std::log(denom);
+    const double lnBeta = std::lgamma(a) + std::lgamma(b) - std::lgamma(a + b);
+    // ln of the leading factor x^a (1−x)^b / (a·B(a,b)) of DLMF 8.17.7.  The
+    // ₂F₁ that multiplies it is ≥ 1, so this is a lower bound on ln I_x and
+    // decides whether Boost's ibeta can represent the answer at all.
+    const double lnLead = a * lnx + b * ln1mx - std::log(a) - lnBeta;
+
+    if (lnLead >= -690.0) {
+        const double ib = boost::math::ibeta(a, b, x);
+        if (ib > 0.0) return std::log(ib);
+    }
+
+    // ₂F₁(a+b, 1; a+1; x) = Σ_{n≥0} [(a+b)_n/(a+1)_n]·xⁿ, all terms positive.
+    // The ratio of successive terms tends to x, so the term count is data
+    // dependent (about 300 at df = 10 000) and the stopping rule has to be
+    // relative rather than a fixed truncation.
+    constexpr long kMaxTerms = 100000;
+    double term = 1.0, series = 1.0;
+    for (long n = 0; n < kMaxTerms; ++n) {
+        const double k = static_cast<double>(n);
+        term *= x * (a + b + k) / (a + 1.0 + k);
+        series += term;
+        if (term < 1e-18 * series) break;
+    }
+    return lnLead + std::log(series);
+}
+
+double cauchyCombineLog10(
+    const double *negLog10p,
+    int n
+) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    if (n <= 0) return nan;
+
+    // The p ≥ 1 → 0.999 clamp of `cauchyCombine`, expressed on the L scale.
+    const double clampL = -std::log10(0.999);
+
+    int nValid = 0;
+    double maxL = -inf;
+    for (int i = 0; i < n; ++i) {
+        if (std::isnan(negLog10p[i])) continue;
+        ++nValid;
+        const double Li = std::fmax(negLog10p[i], clampL);
+        if (Li > maxL) maxL = Li;
+    }
+    if (nValid == 0) return nan;
+    if (std::isinf(maxL)) return inf;   // some p is 0; so is the combination
+
+    // T = 10^maxL · A, never formed.  Terms with pᵢ ≤ 1e-15 use
+    // cot(π p) = 1/(π p) − π p/3 − …, whose dropped correction is 1e-29
+    // relative to the retained one.
+    const double scale = std::pow(10.0, -maxL);
+    double A = 0.0;
+    for (int i = 0; i < n; ++i) {
+        if (std::isnan(negLog10p[i])) continue;
+        const double Li = std::fmax(negLog10p[i], clampL);
+        if (Li >= 15.0) {
+            A += std::pow(10.0, Li - maxL) / M_PI;
+        } else {
+            const double p = std::pow(10.0, -Li);
+            A += (std::cos(M_PI * p) / std::sin(M_PI * p)) * scale;
+        }
+    }
+    A /= static_cast<double>(nValid);
+
+    // Upper tail of the standard Cauchy at T, returned as −log10.
+    if (!(A > 0.0)) {
+        // T ≤ 0, and |T| is bounded by cot(π·0.999) = 318.3 because a single
+        // Lᵢ ≥ 15 would already have made A positive.  Written through log1p
+        // on the tail's distance from 1 so that L keeps full RELATIVE accuracy
+        // as p → 1 (the direct −log10(0.5 − atan T/π) loses it there).
+        const double negT = -(A * std::pow(10.0, maxL));
+        if (!(negT > 0.0)) return kLn2 / kLn10;                 // T = 0 → p = ½
+        return -std::log1p(-std::atan(1.0 / negT) / M_PI) / kLn10;
+    }
+
+    const double lnT = maxL * kLn10 + std::log(A);
+    if (lnT <= 1.0)
+        return -std::log10(0.5 - std::atan(std::exp(lnT)) / M_PI);
+    if (lnT < 350.0) {
+        // p = atan(1/T)/π.  The direct form is accurate over the whole of
+        // this interval; the truncated log(atan u)/u series an earlier draft
+        // used is wrong by 3.5e-5 at lnT = 1 and only reaches double
+        // precision at lnT ≥ 5 (01_numerics §2.2).
+        return -(std::log(std::atan(std::exp(-lnT))) - kLnPi) / kLn10;
+    }
+    // exp(−lnT) underflows past lnT = 708; atan(u) = u to well within double
+    // precision once lnT > 20, so the asymptote is exact here.
+    return (lnT + kLnPi) / kLn10;
+}
 
 // § 2  Bivariate normal CDF  (Genz 2004)
 //
@@ -290,21 +491,11 @@ double pmvnorm2dHalfRect(
         return std::clamp(p, 0.0, 1.0);
     }
 
-    // 20-point Gauss-Legendre nodes / weights on [-1, 1] (positive half;
-    // each value is shared by ±x).  Source: standard tables, e.g.
-    // Abramowitz & Stegun 25.4.30.
-    static constexpr double x20[10] = {
-        0.0765265211334973, 0.2277858511416451, 0.3737060887154195,
-        0.5108670019508271, 0.6360536807265150, 0.7463319064601508,
-        0.8391169718222188, 0.9122344282513259, 0.9639719272779138,
-        0.9931285991850949
-    };
-    static constexpr double w20[10] = {
-        0.1527533871307258, 0.1491729864726037, 0.1420961093183820,
-        0.1316886384491766, 0.1181945319615184, 0.1019301198172404,
-        0.0832767415767048, 0.0626720483341091, 0.0406014298003869,
-        0.0176140071391521
-    };
+    // 20-point Gauss-Legendre rule; the nodes and weights are the file-scope
+    // kGl20Node / kGl20Weight so that this routine and pmvnorm2dHalfRectLog
+    // demonstrably share one quadrature.
+    const double *const x20 = kGl20Node;
+    const double *const w20 = kGl20Weight;
 
     const double half_len      = 0.5 * (b - a);
     const double mid           = 0.5 * (a + b);
@@ -325,6 +516,222 @@ double pmvnorm2dHalfRect(
     }
     const double p = half_len * sum;
     return std::clamp(p, 0.0, 1.0);
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// § 2b  The same probability in the log domain
+// ──────────────────────────────────────────────────────────────────────
+
+namespace {
+
+// Truncation depth: the integration range is cut where the integrand has
+// fallen this far below its peak in the LOG.  The integrand is log-concave
+// with second derivative ≤ −1 everywhere (see below), so the omitted mass is
+// at most e^(−kLnDropTrunc)/√(2·kLnDropTrunc) times the peak height, against
+// a total that is at least a fixed fraction of it: at 64 that bound is 4e-28,
+// twelve orders below the last bit of the answer.  01_numerics §3.4(b)
+// suggests 750, which is the depth at which the LINEAR integrand would
+// underflow; in the log domain that depth is unreachable long before it is
+// useful, and paying for it would multiply the node count by six for no
+// change in any digit.
+constexpr double kLnDropTrunc = 64.0;
+
+// Target log-variation of the integrand across one panel.  The 20-point rule
+// integrates a factor of e^(kLnPanelVar/2) of variation over a half-panel to
+// well below double precision.
+constexpr double kLnPanelVar = 8.0;
+
+// Ceiling on the panel width in units of the standardized variable, so that a
+// flat integrand still gets several panels across its support.
+constexpr double kPanelWidthMax = 2.0;
+
+// Ceiling on how far the Φ argument may move within one panel while it is
+// near zero, and on how far it may move toward zero from far away.  Without
+// it a panel chosen from the local gradient and curvature can step clean over
+// the transition of Φ, which for |ρ| → 1 is a cliff of width 1/(c|ρ|) that
+// neither the gradient nor the curvature at the panel's near edge can see.
+constexpr double kPhiArgStep = 4.0;
+
+// Hard cap on panels per side.  Never approached in practice (the measured
+// maximum over a 2400-point (h, ρ, bound) sweep is 41 panels for both sides
+// together); it exists so that a pathological argument cannot spin.
+constexpr int kMaxPanels = 4096;
+
+// ln ∫_lo^hi φ(u)·Φ(c·(h − ρu)) du, with c = 1/√(1−ρ²).  `lo` may be −∞.
+//
+// The integrand is positive, so the quadrature sum is a sum of positive
+// terms and its logarithm is a log-sum-exp: normalizing by the value at the
+// peak keeps every exponential argument ≤ 0, so nothing overflows and the
+// terms that underflow are exactly the ones that do not matter.
+//
+// Two structural facts are used and both are exact:
+//   * ln of the integrand is strictly concave, so the peak is unique and a
+//     bisection on its derivative locates it unconditionally;
+//   * its second derivative is −1 + ρ²c²·H′(c(h−ρu)) where H = φ/Φ is the
+//     reverse hazard and H′ < 0 everywhere, hence ≤ −1.  The truncation
+//     bound above rests on that constant.
+double lnCondTailIntegral(
+    double h,
+    double rho,
+    double lo,
+    double hi
+) {
+    const double inf = std::numeric_limits<double>::infinity();
+    if (!(hi > lo)) return -inf;
+
+    const double c   = 1.0 / std::sqrt((1.0 - rho) * (1.0 + rho));
+    const double rc  = rho * c;
+    const double rc2 = rc * rc;
+    const double xRate = std::fabs(rc);          // |dx/du| for x = c(h − ρu)
+
+    const auto lnF = [&](double u) {
+        return -0.5 * u * u - kLogSqrt2Pi + pnormLog(c * (h - rho * u), 0.0, 1.0, true);
+    };
+
+    // Everything the panel walk needs at a point, sharing the one pnormLog the
+    // three quantities have in common.  `curv` is |d²/du² ln F| =
+    // 1 + (ρc)²·(xH + H²) with H = φ/Φ the reverse hazard, which is 1 where
+    // Φ ≈ 1 and 1 + (ρc)² deep in Φ's tail; using the local value rather than
+    // the global bound is what keeps the panel count finite as |ρ| → 1.
+    struct Local { double ln, d1, curv; };
+    const auto localAt = [&](double u) {
+        const double x     = c * (h - rho * u);
+        const double lnPhi = pnormLog(x, 0.0, 1.0, /*lower_tail=*/true);
+        // H is formed in the log domain: for x → −∞ both φ and Φ underflow
+        // separately while their ratio tends to −x.
+        const double H     = std::exp((-0.5 * x * x - kLogSqrt2Pi) - lnPhi);
+        double q = x * H + H * H;
+        if (!(q > 0.0)) q = 0.0;
+        return Local{-0.5 * u * u - kLogSqrt2Pi + lnPhi, -u - rc * H, 1.0 + rc2 * q};
+    };
+
+    // Unconstrained peak, by bracket expansion plus bisection on d/du ln F,
+    // which is strictly decreasing.
+    double uStar = 0.0;
+    {
+        const double g0 = localAt(0.0).d1;
+        double a = 0.0, b = 0.0;
+        if (g0 > 0.0) {
+            a = 0.0; b = 1.0;
+            for (int i = 0; i < 200 && localAt(b).d1 > 0.0; ++i) { a = b; b *= 2.0; }
+        } else if (g0 < 0.0) {
+            b = 0.0; a = -1.0;
+            for (int i = 0; i < 200 && localAt(a).d1 < 0.0; ++i) { b = a; a *= 2.0; }
+        }
+        for (int i = 0; i < 100 && b > a; ++i) {
+            const double mid = 0.5 * (a + b);
+            if (mid == a || mid == b) break;
+            if (localAt(mid).d1 > 0.0) a = mid; else b = mid;
+        }
+        uStar = 0.5 * (a + b);
+    }
+    const double uPeak  = std::fmin(std::fmax(uStar, lo), hi);
+    const Local  atPeak = localAt(uPeak);
+    const double lnPeak = atPeak.ln;
+    if (!std::isfinite(lnPeak)) return -inf;
+
+    const auto panelWidth = [&](double u, const Local &st) {
+        const double g = std::fabs(st.d1);
+        // Largest w with g·w + curv·w²/2 ≤ kLnPanelVar, written so that no
+        // cancellation occurs when g dominates.
+        double w = 2.0 * kLnPanelVar / (g + std::sqrt(g * g + 2.0 * st.curv * kLnPanelVar));
+        if (w > kPanelWidthMax) w = kPanelWidthMax;
+        if (xRate > 0.0) {
+            const double x  = c * (h - rho * u);
+            const double wx = std::fmax(kPhiArgStep, 0.5 * std::fabs(x)) / xRate;
+            if (wx < w) w = wx;
+        }
+        return w;
+    };
+
+    double total = 0.0;
+    for (int dir = -1; dir <= 1; dir += 2) {
+        const double bound = (dir < 0) ? lo : hi;
+        double u = uPeak;
+        Local st = atPeak;
+        for (int panel = 0; panel < kMaxPanels; ++panel) {
+            if (dir < 0 ? !(u > bound) : !(u < bound)) break;
+            const double w = panelWidth(u, st);
+            double next = u + dir * w;
+            if (dir < 0 ? next < bound : next > bound) next = bound;
+            if (next == u) break;
+            const double halfLen = 0.5 * std::fabs(next - u);
+            const double mid     = 0.5 * (u + next);
+            double sum = 0.0;
+            for (int i = 0; i < 10; ++i) {
+                const double d = halfLen * kGl20Node[i];
+                sum += kGl20Weight[i] * (std::exp(lnF(mid + d) - lnPeak) +
+                                         std::exp(lnF(mid - d) - lnPeak));
+            }
+            total += halfLen * sum;
+            u  = next;
+            st = localAt(u);
+            if (st.ln < lnPeak - kLnDropTrunc) break;
+        }
+    }
+    if (!(total > 0.0)) return -inf;
+    return lnPeak + std::log(total);
+}
+
+// log of a linear probability, with an underflowed or empty probability
+// reported as −∞ rather than as NaN or +∞.
+double lnOfLinearProbability(double p) {
+    if (std::isnan(p)) return p;
+    if (!(p > 0.0)) return -std::numeric_limits<double>::infinity();
+    return std::log(p > 1.0 ? 1.0 : p);
+}
+
+} // namespace
+
+double pmvnorm2dHalfRectLog(
+    double s_hi,
+    double sb_lo,
+    double sb_hi,
+    double var1,
+    double cov12,
+    double var2
+) {
+    const double inf = std::numeric_limits<double>::infinity();
+    if (var1 <= 0.0 || var2 <= 0.0) return -inf;
+
+    const double sd1 = std::sqrt(var1);
+    const double sd2 = std::sqrt(var2);
+    double rho = cov12 / (sd1 * sd2);
+
+    // Same contract as the linear routine: round-off in ρ is absorbed, an
+    // indefinite covariance is reported as NaN rather than clamped into a
+    // different problem.  See the long comment on pmvnorm2dHalfRect.
+    constexpr double kRhoRoundoff = 1e-8;
+    if (!(std::fabs(rho) <= 1.0 + kRhoRoundoff))
+        return std::numeric_limits<double>::quiet_NaN();
+    if (rho > 1.0) rho = 1.0;
+    if (rho < -1.0) rho = -1.0;
+
+    const double h      = s_hi / sd1;
+    const bool   lo_inf = std::isinf(sb_lo) && sb_lo < 0.0;
+    const bool   hi_inf = std::isinf(sb_hi) && sb_hi > 0.0;
+
+    if (lo_inf && hi_inf) return pnormLog(h, 0.0, 1.0, /*lower_tail=*/true);
+
+    const double a = lo_inf ? -inf : sb_lo / sd2;
+    const double b = hi_inf ?  inf : sb_hi / sd2;
+    if (!(b > a)) return -inf;
+
+    // |ρ| → 1: the conditional CDF degenerates to a step and the quadrature
+    // has nothing smooth to resolve.  This is the one branch that stays on
+    // the linear scale, exactly as 01_numerics §3.4(c) leaves it; what it may
+    // NOT do is report +∞ upward, so an underflow becomes −∞ here and NA at
+    // the caller.
+    if (std::fabs(rho) >= 1.0 - 1e-12) {
+        if (lo_inf) return lnOfLinearProbability(bvnCdf(h, b, rho));
+        if (hi_inf) return lnOfLinearProbability(bvnCdf(h, -a, -rho));
+        return lnOfLinearProbability(bvnCdf(h, b, rho) - bvnCdf(h, a, rho));
+    }
+
+    // P(X ≤ s_hi, Y ≥ sb_lo) becomes P(X ≤ s_hi, Y′ ≤ −sb_lo) with Y′ = −Y
+    // and correlation −ρ, so all three surviving cases are the one integral.
+    if (hi_inf) return lnCondTailIntegral(h, -rho, -inf, -a);
+    return lnCondTailIntegral(h, rho, a, b);
 }
 
 // § 5  Logistic regression (IRLS)

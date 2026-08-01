@@ -2,10 +2,12 @@
 //
 // Provides:
 //   § 1  Distribution wrappers    pnorm, pnormLog, qnorm, qchisq, pt (Boost)
-//   § 2  Bivariate normal probability  pmvnorm2dHalfRect (20-point Gauss-Legendre)
+//   § 1b Log-domain inversions    zFromNegLog10P, chisq1FromNegLog10P, ptLog
+//   § 2  Bivariate normal probability  pmvnorm2dHalfRect / pmvnorm2dHalfRectLog
 //   § 3  Brent root-finding       findRootBrent
 //   § 4  Diploid genotype MGF     mG0/mG1/mG2, kG0/kG1/kG2 (scalar)
 //   § 5  Logistic regression      logisticRegressionBeta, logisticRegression (IRLS, Eigen)
+//   § 7b Cauchy combination       cauchyCombine / cauchyCombineLog10
 #pragma once
 
 // Some standard library headers transitively pull in <cmath> before we
@@ -194,6 +196,93 @@ inline double pt(
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// § 1b  Log-domain p-value inversion and evaluation
+//
+// The log10p_unify project (dev-notes/methods/log10p_unify/) makes
+// L = −log10(P) the sole p-value representation.  Every quantity that used
+// to be derived from a linear P — the Z column, the df = 1 chi-squared
+// weight of a meta-analysis, the Cauchy combination, the Wald leg's
+// Student-t tail — is derived from L here instead, so that it keeps
+// meaning past P ≈ 1e-308 where the linear representation stops existing.
+//
+// These functions are ADDED by Stage 1 and are not yet called; the linear
+// spellings above (qnorm, qchisq, pt, cauchyCombine) remain in place until
+// Stages 4, 5 and 7 switch their call sites over.
+// ──────────────────────────────────────────────────────────────────────
+
+// ln 10.  One spelling for the tier.  (spa::detail::kLn10 in src/util/spa.hpp
+// carries the same value; the saddlepoint tier should forward to this one when
+// it is next edited — see 02_inventory.md §2.2.)
+inline constexpr double kLn10 = 2.30258509299404568402;
+
+// Two-sided p-value → signed z, taking the p-value as L = −log10(P).
+//
+// This is the log-domain inverse of `2·Φ(−|z|)`, i.e. it solves
+//
+//     ln 2 + ln Φ(−z) = −L · ln 10        for z ≥ 0,
+//
+// and applies the sign of `zNormForSign`.  It replaces the composition
+// `qnorm(0.5·P, upper)` used by `zFromPval`, whose argument is clamped at
+// 1e-300 and which therefore SATURATES: every marker with
+// L ≥ −log10(2e-300) = 299.698970 came back as |Z| = 37.0470962993612 while
+// the adjacent LOG10P column kept rising.  L = 300 is already inside that
+// clamp, so the saturation is not an exotic corner (01_numerics §3.1).
+//
+// Method.  For L below `kZNewtonMinL` the linear argument 0.5·10^(−L) is a
+// perfectly ordinary double and Boost's quantile is used unchanged — there is
+// no underflow to avoid there, and the Newton criterion below degenerates as
+// L → 0 because it is relative to L.  Above it, Newton is run on the
+// LOGARITHM of the tail, whose derivative is available in closed form and
+// free of underflow:
+//
+//     f(z)  = ln 2 + ln Φ(−z) + L·ln 10
+//     f'(z) = −φ(z)/Φ(−z) = −exp( ln φ(z) − ln Φ(−z) )
+//
+// started from the analytic inversion of the Mills-ratio asymptote,
+// z₀ = √(A − ln A + ln(2/π)) with A = 2·L·ln 10, which is accurate enough
+// that two to three iterations converge.  The convergence criterion is
+// RELATIVE, |f| ≤ 4·ε·|L·ln 10|, and deliberately contains no absolute
+// constant: the same dimensional-soundness requirement the saddlepoint solver
+// is held to (CLAUDE.md, src/util/spa.hpp; 04_validation.md §2 invariant 3).
+//
+// L ≤ 0 (P ≥ 1) returns ±0; L = +∞ returns ±∞; a NaN in either argument
+// propagates.
+double zFromNegLog10P(double negLog10p, double zNormForSign);
+
+// Upper-tail quantile of the χ²₁ distribution, taking the p-value as
+// L = −log10(P).
+//
+// Analytic, not a numerical inversion: the df = 1 chi-squared upper tail IS
+// the two-sided normal tail, P(χ²₁ > q) = 2Φ(−√q), so the quantile is the
+// square of the two-sided normal quantile.  This removes the 1e-300 clamp
+// inside `qchisq`, which saturated at q = 1373.87 and thereby bounded both
+// the per-cluster weight in `metaPvalueScorePool` and the variance WtCoxG
+// recovers by inverting a saddlepoint p-value (01_numerics §3.2).
+inline double chisq1FromNegLog10P(double negLog10p) {
+    const double z = zFromNegLog10P(negLog10p, 1.0);
+    return z * z;
+}
+
+// Natural logarithm of the TWO-SIDED Student-t tail, P(|T_df| > |t|).
+//
+// Equal to ln I_x(df/2, 1/2) with x = df/(df + t²).  Boost's regularized
+// incomplete beta is used wherever it returns a normal double; below that the
+// same quantity is evaluated from the hypergeometric representation
+// DLMF 8.17.7,
+//
+//     I_x(a,b) = x^a (1−x)^b / (a·B(a,b)) · ₂F₁(a+b, 1; a+1; x),
+//
+// whose series Σ_n [(a+b)_n/(a+1)_n]·xⁿ has all-positive terms and a one
+// multiply-divide recurrence.  Note that the Euler form
+// I_x(a,b) = x^a/(a·B(a,b))·₂F₁(a, 1−b; a+1; x) is equally correct but has NO
+// (1−x)^b factor; combining that ₂F₁ with this prefactor is wrong by exactly
+// that factor and only becomes visible at large df, where x → 1
+// (01_numerics §3.3).  The stopping rule is relative and the term cap is
+// large, because the series ratio tends to x and needs a few hundred terms
+// when df is in the thousands.
+double ptLog(double t, double df);
+
+// ──────────────────────────────────────────────────────────────────────
 // § 2  Bivariate normal probability over a half-infinite rectangle
 // ──────────────────────────────────────────────────────────────────────
 //
@@ -213,6 +302,48 @@ inline double pt(
 //                                for |ρ| < 0.925), with the |ρ| → 1
 //                                degeneracy handed back to bvnCdf
 double pmvnorm2dHalfRect(
+    double s_hi,
+    double sb_lo,
+    double sb_hi,
+    double var1,
+    double cov12,
+    double var2
+);
+
+// Natural logarithm of the same probability.
+//
+// Same arguments, same conventions, same |ρ| > 1 rejection (NaN).  What
+// changes is that the answer survives past the point where the probability
+// itself underflows: WtCoxG's conditional branch takes −log10 of a ratio of
+// two such probabilities, and when the numerator flushes to zero the present
+// linear route reports LOG10P_EXT = +Inf rather than a magnitude
+// (CLAUDE.md "known gaps"; 01_numerics §3.4).
+//
+// Both the finite-rectangle case and the half-infinite case are reduced to
+// ONE integral, the conditional tail
+//
+//     P(X ≤ s_hi, a ≤ Y ≤ b) = ∫_a^b φ(u)·Φ((h − ρu)/√(1−ρ²)) du,
+//
+// whose integrand is positive, so its logarithm is a log-sum-exp over the
+// quadrature nodes with no subtraction anywhere.  The half-infinite case is
+// the same integral with a = −∞; it is NOT routed through `bvnCdf`, whose
+// |r| < 0.925 branch carries an asin(r) factor that is negative for r < 0 and
+// therefore is not a positive sum a log-sum-exp could be taken over.
+//
+// The quadrature is the same 20-point Gauss-Legendre rule the linear routine
+// uses, applied on adaptively sized panels rather than once over the whole
+// interval, and truncated where the integrand has fallen `kLnDropTrunc`
+// below its peak.  Both the panel rule and the truncation act on a LOG
+// PROBABILITY and are therefore dimensionless, as invariant 3 of
+// 04_validation.md §2 requires.  The panels matter: with a single panel the
+// answer is wrong by a factor of e^0.27 as soon as the peak sits on the
+// boundary of the integration range with a steep gradient, which is the
+// normal situation in the deep tail.
+//
+// Returns −∞, never +∞, when the probability is genuinely zero or when the
+// degenerate |ρ| ≥ 1 − 1e-12 branch underflows; the caller reports that as
+// NA with the status code that names it, never as a +Inf LOG10P.
+double pmvnorm2dHalfRectLog(
     double s_hi,
     double sb_lo,
     double sb_hi,
@@ -493,6 +624,36 @@ inline double cauchyCombine(
     return (tStat > 1e15) ? (1.0 / tStat) / M_PI
                           : 0.5 - std::atan(tStat) / M_PI;
 }
+
+// The same test carried entirely on the −log10 scale: the inputs are
+// Lᵢ = −log10(pᵢ) and the result is L_CCT = −log10(p_CCT).
+//
+// This is not a cosmetic change of units.  The Cauchy statistic's own terms
+// are cot(π pᵢ) → 1/(π pᵢ) = 10^Lᵢ/π, so the STATISTIC overflows as soon as
+// any pᵢ falls below about 1e-308 — `cauchyCombine` above returns exactly 0
+// from `tStat = +Inf` for an input of 1e-320, and 0 is not a p-value.  The
+// statistic is therefore never formed: it is carried as T = 10^M·A with
+// M = max_i Lᵢ, and the upper tail is inverted from ln T
+// (01_numerics §2.2).
+//
+// Structure worth stating, because it is easy to get backwards: in the tail
+//
+//     L_CCT ≈ log10( Σ wᵢ · 10^(Lᵢ) )
+//
+// — a log-sum-exp acting on the Lᵢ and dominated by the LARGEST Lᵢ, which
+// for equal weights is the Bonferroni form L_max − log10(n).  It is NOT
+// −log10(Σ wᵢ·10^(−Lᵢ)), which is the log of the mean p and is dominated by
+// the largest p (01_numerics §2.4).
+//
+// Semantics carried over from `cauchyCombine` unchanged: NaN entries are
+// skipped and n is the count of the survivors; all-NaN returns NaN; a
+// non-positive p (here L = +∞) short-circuits to L_CCT = +∞.  The clamp
+// p ≥ 1 → 0.999 becomes Lᵢ ← max(Lᵢ, −log10(0.999)), which additionally
+// regularizes p ∈ (0.999, 1) where cot(π p) diverges.
+double cauchyCombineLog10(
+    const double *negLog10p,
+    int n
+);
 
 // ──────────────────────────────────────────────────────────────────────
 // § 7  Bounded 1-D minimiser  (Brent's method for minima)
