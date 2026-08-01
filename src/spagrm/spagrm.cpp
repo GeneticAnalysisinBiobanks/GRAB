@@ -117,7 +117,8 @@ spa::TwoSided twoSidedSpa(
     const spagrm_cgf::Context &cgf,
     double absScore,
     double initZeta,
-    double tol
+    double tol,
+    double zNorm
 ) {
     double p[2], logp[2];
     spa::Status st[2];
@@ -137,19 +138,18 @@ spa::TwoSided twoSidedSpa(
             [&](double t) { return spagrm_cgf::kFull(t, cgf, s); },
             opt);
 
-        spa::Status stLin = spa::Status::Converged;
-        spa::Status stLog = spa::Status::Converged;
+        spa::Status stLin = spa::Status::SpaOk;
+        spa::Status stLog = spa::Status::SpaOk;
         p[k]    = spa::bnTail(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLin);
         logp[k] = spa::bnTailLog(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLog);
         st[k] = spa::worseStatus(sd.status, spa::worseStatus(stLin, stLog));
     }
 
-    // P from the linear-scale assembly (a sum of two positive quantities, as
-    // before); -log10(P) from the log-domain assembly, which survives past the
-    // point where the linear tails underflow to zero.
-    const spa::TwoSided lin = spa::combineTails(p[0], p[1], st[0], st[1]);
-    const spa::TwoSided lg  = spa::combineTailsLog(logp[0], logp[1], st[0], st[1]);
-    return spa::TwoSided{lin.p, lg.negLog10p, lin.status};
+    // spa::assemble owns the splice and the D5 fallback rule: P from the
+    // linear assembly, -log10(P) from the log-domain one, and on a saddlepoint
+    // failure in either tail both replaced by the two-sided normal tail at
+    // zNorm under a status naming the substitution.
+    return spa::assemble(p[0], p[1], logp[0], logp[1], st[0], st[1], zNorm);
 }
 
 } // namespace nsSPAGRM
@@ -241,13 +241,13 @@ spa::TwoSided SPAGRMClass::getMarkerPvalFromScore(
     // saddlepoint to attempt and nothing to report but the reason.
     if (Score_var <= 0.0 || MAF <= 0.0) {
         zScore = 0.0;
-        return spa::TwoSided{nan, nan, spa::Status::NonFinite};
+        return spa::TwoSided{nan, nan, spa::Status::NaNoTest};
     }
 
     zScore = Score / std::sqrt(Score_var);
 
     if (!std::isfinite(zScore))
-        return spa::TwoSided{nan, nan, spa::Status::NonFinite};
+        return spa::TwoSided{nan, nan, spa::Status::NaNoTest};
 
     // Normal approximation below the SPA cutoff.  spa::normalBranch routes the
     // tail through Boost's complement, which is the same double the old
@@ -289,7 +289,7 @@ spa::TwoSided SPAGRMClass::getMarkerPvalFromScore(
     // EmpVar is a quadratic form over a thresholded sparse GRM plus a tabulated
     // variance and is NOT guaranteed non-negative; a negative EmpVar makes
     // Score_adj NaN.  That is not silently absorbed: the solver's first
-    // evaluation is non-finite, so it returns Status::NonFinite and the row
+    // evaluation is non-finite, so it returns Status::NaNoTest and the row
     // reports NA with a reason rather than an unexplained NaN.
     const double Score_adj = Score * std::sqrt(EmpVar / Score_var);
 
@@ -310,7 +310,7 @@ spa::TwoSided SPAGRMClass::getMarkerPvalFromScore(
     cgf.mean = 2.0 * MAF * s.sum_R_nonOutlier;
     cgf.var = 2.0 * MAF * (1.0 - MAF) * s.R_GRM_R_nonOutlier;
 
-    return nsSPAGRM::twoSidedSpa(cgf, std::abs(Score_adj), initZeta, s.tol);
+    return nsSPAGRM::twoSidedSpa(cgf, std::abs(Score_adj), initZeta, s.tol, zScore);
 }
 
 // ══════════════════════════════════════════════════════════════════════

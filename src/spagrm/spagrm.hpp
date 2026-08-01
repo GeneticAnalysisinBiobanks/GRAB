@@ -49,15 +49,18 @@ struct FamilyData {
 // `absScore` is |Score_adj|, the variance-ratio-rescaled score; both tails are
 // solved (upper at +absScore, lower at -absScore) with spa::solveSaddlepoint
 // over the tier-3 CGF, evaluated with spa::bnTail / spa::bnTailLog, and
-// assembled by spa::combineTails.  `initZeta` is the upper-tail initial
+// assembled by spa::assemble.  `initZeta` is the upper-tail initial
 // abscissa; the lower tail starts at -initZeta (see the convention note in
 // spagrm.cpp).  `tol` is the relative residual tolerance and reaches BOTH
-// tails, which is the D7 repair.
+// tails, which is the D7 repair.  `zNorm` is the raw score z, which
+// spa::assemble reports the normal tail of — under a status naming the
+// substitution — when the saddlepoint fails (decision D5).
 spa::TwoSided twoSidedSpa(
     const spagrm_cgf::Context &cgf,
     double absScore,
     double initZeta,
-    double tol
+    double tol,
+    double zNorm
 );
 
 } // namespace nsSPAGRM
@@ -94,9 +97,10 @@ class SPAGRMClass {
     // monomorphic or degenerate markers (Var(S) ≤ 0).
     //
     // Returns P, −log10(P) and the spa::Status of the worse of the two tails.
-    // P is NaN on every status other than Converged and NormalBranch, so a
-    // saddlepoint failure reports NA plus a named reason rather than an
-    // ordinary-looking finite number (spa_unify L2, D5, D6).
+    // P is NaN exactly when the status is NA_POST_FAIL or NA_NO_TEST; a
+    // saddlepoint failure reports the substituted normal tail under a
+    // FALLBACK_* code, so the substitution is named rather than silent
+    // (spa_unify L2, D5, D6; log10p_unify D4, D5).
     spa::TwoSided getMarkerPvalFromScore(
         double Score,
         double altFreq,
@@ -184,11 +188,16 @@ class SPAGRMMethod : public MethodBase {
 // encoding is static_cast<uint8_t>(spa::Status), the same one Stage 3
 // established for SPACox:
 //
-//     0 OK (converged)     3 GUARD_CURV     6 NORMAL (|Z| ≤ --spa-z-threshold,
-//     1 MAXITER            4 GUARD_W          saddlepoint never attempted)
-//     2 GUARD_TEMP         5 NONFINITE
+//     0 SPA_OK               3 FALLBACK_MAXITER      7 NA_POST_FAIL
+//     1 NORMAL               4 FALLBACK_GUARD_TEMP   8 NA_NO_TEST
+//     2 SPA_W_SINGULAR       5 FALLBACK_GUARD_CURV
+//                            6 FALLBACK_NONFINITE
 //
-// P and LOG10P are NA for every status other than 0, 4 and 6.
+// The order is a contract (log10p_unify decision D4): SPA_STATUS <= 2 means
+// LOG10P is trustworthy, 3..6 that the saddlepoint failed and LOG10P is the
+// substituted two-sided normal tail -log10(2*Phi(-|Z_Norm|)) -- which is
+// anti-conservative at low MAC, so filter with SPA_STATUS <= 2 before judging
+// significance -- and >= 7 that LOG10P is NA.
     std::string getHeaderColumns() const override {
         return "\tP\tLOG10P\tZ\tZ_Norm\tBETA\tSE\tSPA_STATUS";
     }

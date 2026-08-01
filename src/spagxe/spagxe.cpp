@@ -81,13 +81,13 @@ spa::TwoSided spaScorePval(
     if (!(scoreVar > 0.0)) {             // monomorphic / degenerate weight
         zScore = 0.0;
         outVar = 0.0;
-        return spa::TwoSided{kNaN, kNaN, spa::Status::NonFinite};
+        return spa::TwoSided{kNaN, kNaN, spa::Status::NaNoTest};
     }
     const double sMean = 2.0 * q * wSum; // retrospective mean E[S] = 2q·Σw
     zScore = (rawScore - sMean) / std::sqrt(scoreVar);
     outVar = scoreVar;
     if (!std::isfinite(zScore))
-        return spa::TwoSided{kNaN, kNaN, spa::Status::NonFinite};
+        return spa::TwoSided{kNaN, kNaN, spa::Status::NaNoTest};
     // spa::normalTwoSided is bit-for-bit `2 * pnorm(-|z|)` for the standard
     // normal — both reduce to erfc(|z|/√2)/2 on the identical argument — so the
     // normal branch is unchanged and only gains LOG10P and the NORMAL status.
@@ -118,7 +118,7 @@ spa::TwoSided spaScorePval(
     if (!(cgf.var > 0.0)) cgf.var = 0.0;
 
     // f·wSq is the independence K''(0) and only sizes the initial abscissa.
-    return spamix_cgf::twoSidedSpa(cgf, sMean, absDev, f * wSq);
+    return spamix_cgf::twoSidedSpa(cgf, sMean, absDev, f * wSq, zScore);
 }
 
 // Two-sided SPA p-value for the genotype score  S = Σ G_i w_i  under the
@@ -157,12 +157,12 @@ spa::TwoSided spaScorePvalMix(
     if (!(scoreVar > 0.0)) {
         zScore = 0.0;
         outVar = 0.0;
-        return spa::TwoSided{kNaN, kNaN, spa::Status::NonFinite};
+        return spa::TwoSided{kNaN, kNaN, spa::Status::NaNoTest};
     }
     zScore = (s - sMean) / std::sqrt(scoreVar);
     outVar = scoreVar;
     if (!std::isfinite(zScore))
-        return spa::TwoSided{kNaN, kNaN, spa::Status::NonFinite};
+        return spa::TwoSided{kNaN, kNaN, spa::Status::NaNoTest};
     if (std::abs(zScore) <= spaCutoff) return spa::normalBranch(zScore);
 
     // Gaussian non-outlier block with per-individual q̂_i, by complement:
@@ -196,7 +196,7 @@ spa::TwoSided spaScorePvalMix(
 
     // Reflect about the fitted mean: upper = sMean + |Δ|, lower = sMean − |Δ|.
     // There is no GRM here, so scoreVar IS the independence K''(0).
-    return spamix_cgf::twoSidedSpa(cgf, sMean, std::abs(s - sMean), scoreVar);
+    return spamix_cgf::twoSidedSpa(cgf, sMean, std::abs(s - sMean), scoreVar, zScore);
 }
 
 // Resolve the trait family of one phenotype, matching nullmodel::fitAll's own
@@ -473,11 +473,11 @@ void SPAGxEMethod::evalMarker(
         // A marker that never reaches the score test still gets a status: a
         // bare row of NA says nothing about why, and this family's NA are not
         // hypothetical (see the SPAGxEmix note in evalMarkerMix).
-        out[base + 7] = spamix_cgf::statusCode(spa::Status::NonFinite);
+        out[base + 7] = spamix_cgf::statusCode(spa::Status::NaNoTest);
 
         double z = 0.0, var = 0.0, score;
         double pWald = kNaN;
-        spa::TwoSided ts{kNaN, kNaN, spa::Status::NonFinite};
+        spa::TwoSided ts{kNaN, kNaN, spa::Status::NaNoTest};
         if (!branchB) {
             // Branch A: precomputed λ-orthogonalised weight and its Φ-form.
             const EnvData &ed = m_envs[e];
@@ -553,7 +553,7 @@ void SPAGxEMethod::evalMarkerMix(
     // That is a modelling defect in the AF cascade, not a saddlepoint one — the
     // saddlepoint is never reached on these markers — so this stage preserves
     // the values exactly and only makes the failure legible: SPA_STATUS_Gx is
-    // NONFINITE rather than a bare unexplained NA.  Repairing it (a
+    // 8 NA_NO_TEST rather than a bare unexplained NA.  Repairing it (a
     // separation-aware AF fit, or a Firth penalty) changes the statistic for
     // every high-frequency marker and belongs to whoever owns indiv_af.cpp.
     const double sG = rawScores[0];
@@ -595,12 +595,12 @@ void SPAGxEMethod::evalMarkerMix(
 
     for (int e = 0; e < nEnv; ++e) {
         const int base = 4 + 8 * e;
-        out[base + 7] = spamix_cgf::statusCode(spa::Status::NonFinite);
+        out[base + 7] = spamix_cgf::statusCode(spa::Status::NaNoTest);
 
         const EnvData &ed = m_envs[e];
         double z = 0.0, var = 0.0, score;
         double pWald = kNaN;
-        spa::TwoSided ts{kNaN, kNaN, spa::Status::NonFinite};
+        spa::TwoSided ts{kNaN, kNaN, spa::Status::NaNoTest};
         if (!branchB) {
             // Branch A: variance-weighted λ (per marker) on the per-individual q̂.
             //   λ = Σ 2q̂(1−q̂) E R² / Σ 2q̂(1−q̂) R²

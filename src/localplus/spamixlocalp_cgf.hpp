@@ -74,7 +74,7 @@
 // |w| ~ 0 means zeta ~ 0 means s is at the CGF mean — and 2.2e-308 is a hit at
 // any genome-wide threshold ever proposed.  It is the only anti-conservative
 // guard in the repository; everything else fails toward 1 or toward NaN.  The
-// replacement is `spa::Status::GuardW` with P reported as NA (L2), and the
+// replacement is `spa::Status::SpaWSingular` with P reported as NA (L2), and the
 // clamps at :1016 and :1059 are gone with it: `spa::combineTails` clamps into
 // [0, 1] and does not floor at DBL_MIN, and a p that genuinely underflows is
 // reported as 0 in P while LOG10P keeps its magnitude (L3).
@@ -249,13 +249,16 @@ inline spa::K012 kFull(double t, const Context &c, double s) noexcept {
 // `sMean` is the reflection point and `absDev` the (non-negative) deviation
 // from it; `indepVar` is K''(0), used only to size the initial abscissa.
 //
-// Failure semantics are `spa::combineTails`': a failure in EITHER tail yields
-// NaN in P and a named status.  That is D3(b)'s repair.
+// Failure semantics are `spa::assemble`'s: a failure in EITHER tail discards
+// the saddlepoint for both, and the row reports the two-sided normal tail at
+// `zNorm` under a status naming the substitution (decision D5).  That is
+// D3(b)'s repair, now with a named estimator behind it instead of NA.
 inline spa::TwoSided twoSidedSpa(
     const Context &c,
     double sMean,
     double absDev,
     double indepVar,
+    double zNorm,
     double rtol = 1e-6
 ) noexcept {
     double zeta0 = 0.0;
@@ -282,22 +285,20 @@ inline spa::TwoSided twoSidedSpa(
             [&](double t) { return kFull(t, c, s); },
             opt);
 
-        spa::Status stLin = spa::Status::Converged;
-        spa::Status stLog = spa::Status::Converged;
+        spa::Status stLin = spa::Status::SpaOk;
+        spa::Status stLog = spa::Status::SpaOk;
         p[k]    = spa::bnTail(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLin);
         logp[k] = spa::bnTailLog(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLog);
         st[k] = spa::worseStatus(sd.status, spa::worseStatus(stLin, stLog));
     }
 
-    // P from the linear-scale assembly; -log10(P) from the log-domain one,
-    // which stays meaningful past the point where both linear tails underflow.
-    const spa::TwoSided lin = spa::combineTails(p[0], p[1], st[0], st[1]);
-    const spa::TwoSided lg  = spa::combineTailsLog(logp[0], logp[1], st[0], st[1]);
-    return spa::TwoSided{lin.p, lg.negLog10p, lin.status};
+    // P from the linear-scale assembly, -log10(P) from the log-domain one,
+    // and the D5 fallback when either tail failed — one call, in spa.hpp.
+    return spa::assemble(p[0], p[1], logp[0], logp[1], st[0], st[1], zNorm);
 }
 
-// The SPA_STATUS output column: 0 OK, 1 MAXITER, 2 GUARD_TEMP, 3 GUARD_CURV,
-// 4 GUARD_W, 5 NONFINITE, 6 NORMAL.  SPAmixLocalPlus formats its own output
+// The SPA_STATUS output column: 0 SPA_OK, 1 NORMAL, 2 SPA_W_SINGULAR,
+// 3..6 the FALLBACK_* codes, 7 NA_POST_FAIL, 8 NA_NO_TEST.  SPAmixLocalPlus formats its own output
 // rather than going through the marker engine, so it COULD emit the token
 // `spa::statusName` returns; it emits the numeric enumerator instead so that
 // the column means the same thing in every method's output, which is the

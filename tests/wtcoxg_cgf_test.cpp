@@ -209,12 +209,12 @@ TEST(d4_the_mismatched_variance_pair_is_carried_through_unchanged) {
     // other.  s is taken at the saddlepoint, s = K'(zeta), so that
     // zeta*s - K(zeta) >= 0 by convexity and no guard fires.
     const double sAtRoot = got.k1;   // kFull was called with s = 0
-    spa::Status stA = spa::Status::Converged, stB = spa::Status::Converged;
+    spa::Status stA = spa::Status::SpaOk, stB = spa::Status::SpaOk;
     const double pA = spa::bnTail(0.4, sAtRoot, got.k0, got.k2, false, stA);
     const double pB = spa::bnTail(0.4, sAtRoot, got.k0,
                                   static_cast<double>(withV01.K2), false, stB);
-    CHECK(stA == spa::Status::Converged);
-    CHECK(stB == spa::Status::Converged);
+    CHECK(stA == spa::Status::SpaOk);
+    CHECK(stB == spa::Status::SpaOk);
     CHECK(pA != pB);
 }
 
@@ -275,9 +275,9 @@ TEST(gaussian_cgf_reproduces_the_closed_form_two_sided_p) {
     c.varK2 = 4.0;
     const double sd = 2.0;
     for (double dev : {1.0, 3.0, 7.0, 15.0, 40.0}) {
-        const spa::TwoSided ts = wtcoxg_cgf::twoSidedSpa(c, dev, c.varK01);
+        const spa::TwoSided ts = wtcoxg_cgf::twoSidedSpa(c, dev, c.varK01, dev / sd);
         const double want = 2.0 * Phi(-dev / sd);
-        CHECK(ts.status == spa::Status::Converged);
+        CHECK(ts.status == spa::Status::SpaOk);
         if (want > 0.0) {
             const double rel = std::fabs(ts.p - want) / want;
             std::printf("    dev=%5.1f  p=%.12e  closed form=%.12e  rel=%.2e\n",
@@ -296,34 +296,49 @@ TEST(gaussian_cgf_reproduces_the_closed_form_two_sided_p) {
 // 6  D2 — a failure is NaN with a status, never a masked 1.0
 // ──────────────────────────────────────────────────────────────────────
 
-TEST(d2_a_degenerate_saddlepoint_is_na_with_a_status_not_one) {
+TEST(d2_a_degenerate_saddlepoint_is_named_never_a_masked_one) {
     // p == 1 makes the genotype deterministic: alpha == p*lambda, K'' vanishes
     // identically, and no saddlepoint exists.  The predecessor's
     // `std::min(1.0, pval1 + pval2)` returned 1.0 here, i.e. a perfectly null
     // marker, because std::min(1.0, NaN) is 1.0.
+    //
+    // Under decision D5 the row is neither 1.0 nor NA: it is the two-sided
+    // normal tail at the caller's z, under a FALLBACK_* status that names the
+    // guard.  What is forbidden is the SILENT substitution, and the status
+    // column is what makes this one loud.
     Context c = makeCtx(1.0, 0.0, 0.0, 0.0);
-    const spa::TwoSided ts = wtcoxg_cgf::twoSidedSpa(c, 3.0, 0.0);
-    CHECK(std::isnan(ts.p));
-    CHECK(std::isnan(ts.negLog10p));
-    CHECK(spa::statusIsFailure(ts.status));
+    const double zBad = 3.0;
+    const spa::TwoSided ts = wtcoxg_cgf::twoSidedSpa(c, 3.0, 0.0, zBad);
+    CHECK(spa::statusIsFallback(ts.status));
+    CHECK(ts.p == spa::normalTwoSided(zBad));
+    CHECK(ts.negLog10p == -spa::normalTwoSidedLog(zBad) / std::log(10.0));
     std::printf("    deterministic genotype: p=%g status=%s\n",
                 ts.p, spa::statusName(ts.status));
+
+    // With no z either, there is nothing to fall back to and the row is NA.
+    const spa::TwoSided tsNa = wtcoxg_cgf::twoSidedSpa(
+        c, 3.0, 0.0, std::numeric_limits<double>::quiet_NaN());
+    CHECK(std::isnan(tsNa.p));
+    CHECK(std::isnan(tsNa.negLog10p));
+    CHECK(tsNa.status == spa::Status::NaNoTest);
 
     // And the idiom itself: this is what the old code did.
     const double nan = std::numeric_limits<double>::quiet_NaN();
     CHECK(std::min(1.0, nan) == 1.0);              // the defect, demonstrated
-    CHECK(std::isnan(spa::combineTails(0.5, nan, spa::Status::Converged,
-                                       spa::Status::Converged).p));  // the repair
+    CHECK(std::isnan(spa::combineTails(0.5, nan, spa::Status::SpaOk,
+                                       spa::Status::SpaOk).p));  // the repair
 }
 
 TEST(status_code_matches_the_documented_integer_encoding) {
-    CHECK(wtcoxg_cgf::statusCode(spa::Status::Converged) == 0.0);
-    CHECK(wtcoxg_cgf::statusCode(spa::Status::MaxIter) == 1.0);
-    CHECK(wtcoxg_cgf::statusCode(spa::Status::GuardTemp) == 2.0);
-    CHECK(wtcoxg_cgf::statusCode(spa::Status::GuardCurv) == 3.0);
-    CHECK(wtcoxg_cgf::statusCode(spa::Status::GuardW) == 4.0);
-    CHECK(wtcoxg_cgf::statusCode(spa::Status::NonFinite) == 5.0);
-    CHECK(wtcoxg_cgf::statusCode(spa::Status::NormalBranch) == 6.0);
+    CHECK(wtcoxg_cgf::statusCode(spa::Status::SpaOk) == 0.0);
+    CHECK(wtcoxg_cgf::statusCode(spa::Status::Normal) == 1.0);
+    CHECK(wtcoxg_cgf::statusCode(spa::Status::SpaWSingular) == 2.0);
+    CHECK(wtcoxg_cgf::statusCode(spa::Status::FallbackMaxIter) == 3.0);
+    CHECK(wtcoxg_cgf::statusCode(spa::Status::FallbackGuardTemp) == 4.0);
+    CHECK(wtcoxg_cgf::statusCode(spa::Status::FallbackGuardCurv) == 5.0);
+    CHECK(wtcoxg_cgf::statusCode(spa::Status::FallbackNonFinite) == 6.0);
+    CHECK(wtcoxg_cgf::statusCode(spa::Status::NaPostFail) == 7.0);
+    CHECK(wtcoxg_cgf::statusCode(spa::Status::NaNoTest) == 8.0);
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -449,12 +464,12 @@ TEST(conditionalp_keeps_the_two_leg_formula_when_both_legs_are_present) {
     const double w1 = 0.3, m1 = 0.42, p1 = 0.11;
     const double w0 = 0.7, m0 = 0.9,  p0 = 0.25;
     const double pd = w1 * m1 + w0 * m0;
-    const ConditionalP c = conditionalP(w1, m1, p1, Status::Converged,
-                                        w0, m0, p0, Status::NormalBranch, pd);
+    const ConditionalP c = conditionalP(w1, m1, p1, Status::SpaOk,
+                                        w0, m0, p0, Status::Normal, pd);
     CHECK_NEAR(c.p, 2.0 * (w1 * p1 + w0 * p0) / pd, 0.0);
     CHECK_NEAR(c.negLog10p, -std::log10(c.p), 0.0);
     // Converged outranks NormalBranch at equal severity, per spa::worseStatus.
-    CHECK(c.status == Status::Converged);
+    CHECK(c.status == Status::SpaOk);
 }
 
 // The configuration that motivated the rule, taken from the cohort: the
@@ -469,14 +484,14 @@ TEST(conditionalp_keeps_a_marker_whose_missing_leg_cannot_move_the_answer) {
     const double w0 = 1.0 - w1,   m0 = 0.9, p0 = 0.25;
     const double pd = w1 * m1 + w0 * m0;
 
-    const ConditionalP c = conditionalP(w1, m1, nan, Status::NormalBranch,
-                                        w0, m0, p0, Status::Converged, pd);
+    const ConditionalP c = conditionalP(w1, m1, nan, Status::Normal,
+                                        w0, m0, p0, Status::SpaOk, pd);
     CHECK(std::isfinite(c.p));
     CHECK_NEAR(c.p, 2.0 * w0 * p0 / pd, 0.0);
     // The status reported is the SURVIVING leg's, so the invariant that P is a
     // number exactly for statuses 0, 4 and 6 is preserved.
-    CHECK(c.status == Status::Converged);
-    CHECK(!spa::statusIsFailure(c.status));
+    CHECK(c.status == Status::SpaOk);
+    CHECK(spa::statusIsUsable(c.status));
 
     // And the interval really is below the printed resolution: six significant
     // digits cannot separate the two ends.
@@ -494,17 +509,19 @@ TEST(conditionalp_reports_na_when_the_missing_leg_does_move_the_answer) {
     const double w0 = 1.0 - w1,   m0 = 0.9, p0 = 0.25;
     const double pd = w1 * m1 + w0 * m0;
 
-    const ConditionalP c = conditionalP(w1, m1, nan, Status::NormalBranch,
-                                        w0, m0, p0, Status::Converged, pd);
+    const ConditionalP c = conditionalP(w1, m1, nan, Status::Normal,
+                                        w0, m0, p0, Status::SpaOk, pd);
     CHECK(std::isnan(c.p));
     CHECK(std::isnan(c.negLog10p));
     // D2: the answer is NaN, never the 1.0 that std::min(1.0, NaN) returned.
     CHECK(c.p != 1.0);
     // The leg's own saddlepoint succeeded (NORMAL), so the loss happened in
-    // the bivariate integral; spa::Status has no enumerator for that and
-    // NonFinite covers it.  Reporting NORMAL here would advertise a usable P.
-    CHECK(c.status == Status::NonFinite);
-    CHECK(spa::statusIsFailure(c.status));
+    // the bivariate integral — downstream of the saddlepoint.  That is
+    // NA_POST_FAIL: the substituted normal tail would answer a question about
+    // a quantity that never failed.  Reporting NORMAL here would advertise a
+    // usable LOG10P.
+    CHECK(c.status == Status::NaPostFail);
+    CHECK(!spa::statusIsUsable(c.status));
 }
 
 // The threshold is on the RELATIVE width, so the same missing leg is
@@ -518,15 +535,15 @@ TEST(conditionalp_threshold_is_relative_not_absolute) {
     const double pd = w1 * m1 + w0 * m0;
 
     // p = 0.5: an interval of width 1e-12 is 2e-12 of it, well inside 1e-8.
-    const ConditionalP big = conditionalP(w1, m1, nan, Status::Converged,
-                                          w0, m0, 0.25, Status::Converged, pd);
+    const ConditionalP big = conditionalP(w1, m1, nan, Status::SpaOk,
+                                          w0, m0, 0.25, Status::SpaOk, pd);
     CHECK(std::isfinite(big.p));
     CHECK(w1 * m1 / pd <= kImmaterialLeg * big.p);
 
     // p = 2e-8: the same 1e-12 interval is now 5e-5 of the answer, and moves
     // -log10(P) in its fifth decimal.  The marker has no determined value.
-    const ConditionalP tail = conditionalP(w1, m1, nan, Status::Converged,
-                                           w0, m0, 1e-8, Status::Converged, pd);
+    const ConditionalP tail = conditionalP(w1, m1, nan, Status::SpaOk,
+                                           w0, m0, 1e-8, Status::SpaOk, pd);
     CHECK(std::isnan(tail.p));
 }
 
@@ -537,8 +554,8 @@ TEST(conditionalp_threshold_fires_where_it_says_it_does) {
     // relative interval width of exactly eps.
     for (double eps : {0.9 * kImmaterialLeg, 1.1 * kImmaterialLeg}) {
         const double pd = eps + 1.0;
-        const ConditionalP c = conditionalP(eps, 1.0, nan, Status::Converged,
-                                            1.0, 1.0, 0.5, Status::Converged, pd);
+        const ConditionalP c = conditionalP(eps, 1.0, nan, Status::SpaOk,
+                                            1.0, 1.0, 0.5, Status::SpaOk, pd);
         const bool immaterial = eps < kImmaterialLeg;
         CHECK(std::isfinite(c.p) == immaterial);
         if (immaterial) CHECK_NEAR(c.p, 1.0 / pd, 1e-15);
@@ -549,26 +566,29 @@ TEST(conditionalp_threshold_fires_where_it_says_it_does) {
 // consulted, and the marker is reported from the other leg alone.
 TEST(conditionalp_drops_a_zero_weight_leg_without_a_test) {
     const double nan = std::numeric_limits<double>::quiet_NaN();
-    const ConditionalP c = conditionalP(0.0, 0.5, nan, Status::NonFinite,
-                                        1.0, 0.9, 0.25, Status::Converged, 0.9);
+    const ConditionalP c = conditionalP(0.0, 0.5, nan, Status::FallbackNonFinite,
+                                        1.0, 0.9, 0.25, Status::SpaOk, 0.9);
     CHECK(std::isfinite(c.p));
     CHECK_NEAR(c.p, 2.0 * 0.25 / 0.9, 0.0);
-    CHECK(c.status == Status::Converged);
+    CHECK(c.status == Status::SpaOk);
 }
 
 // Neither leg available: there is nothing to report, and a failure status must
 // come out even when both legs' saddlepoints had succeeded.
 TEST(conditionalp_reports_na_when_neither_leg_is_available) {
     const double nan = std::numeric_limits<double>::quiet_NaN();
-    const ConditionalP c = conditionalP(0.3, 0.5, nan, Status::NormalBranch,
-                                        0.7, 0.9, nan, Status::Converged, 0.78);
+    const ConditionalP c = conditionalP(0.3, 0.5, nan, Status::Normal,
+                                        0.7, 0.9, nan, Status::SpaOk, 0.78);
     CHECK(std::isnan(c.p));
-    CHECK(c.status == Status::NonFinite);
+    CHECK(c.status == Status::NaPostFail);
 
-    const ConditionalP g = conditionalP(0.3, 0.5, nan, Status::GuardCurv,
-                                        0.7, 0.9, nan, Status::Converged, 0.78);
+    // A leg whose OWN saddlepoint had already left it without an answer keeps
+    // that reason.  A fallback code does not: the saddlepoint there produced a
+    // number, so the loss is downstream and NA_POST_FAIL is the accurate one.
+    const ConditionalP g = conditionalP(0.3, 0.5, nan, Status::NaNoTest,
+                                        0.7, 0.9, nan, Status::SpaOk, 0.78);
     CHECK(std::isnan(g.p));
-    CHECK(g.status == Status::GuardCurv);   // a named reason survives
+    CHECK(g.status == Status::NaNoTest);            // a named reason survives
 }
 
 // D2 sweep.  A NaN leg must leave either a NaN or a value the immaterial-leg
@@ -586,12 +606,12 @@ TEST(conditionalp_never_manufactures_one_from_a_nan_leg) {
                 const double pd = w1 * m1 + w0 * m0;
                 if (!(pd > 0.0)) continue;
                 const ConditionalP c =
-                    conditionalP(w1, m1, nan, Status::NormalBranch,
-                                 w0, m0, p0, Status::Converged, pd);
+                    conditionalP(w1, m1, nan, Status::Normal,
+                                 w0, m0, p0, Status::SpaOk, pd);
                 CHECK(c.p != 1.0);
                 if (std::isnan(c.p)) {
                     ++na;
-                    CHECK(spa::statusIsFailure(c.status));
+                    CHECK(!spa::statusIsUsable(c.status));
                 } else {
                     ++finite;
                     // The reported value is the mixture with the missing leg's
@@ -600,7 +620,7 @@ TEST(conditionalp_never_manufactures_one_from_a_nan_leg) {
                     // Certified: the dropped leg's whole interval is below the
                     // reported value times the threshold.
                     CHECK(w1 * m1 / pd <= kImmaterialLeg * c.p);
-                    CHECK(!spa::statusIsFailure(c.status));
+                    CHECK(spa::statusIsUsable(c.status));
                     CHECK(c.p >= 0.0 && c.p <= 1.0);
                 }
             }

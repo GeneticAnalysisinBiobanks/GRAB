@@ -108,7 +108,7 @@
 //     interpolation, which nothing in the code establishes, and the bound that
 //     keeps delta away from -1 for class 2 has no analogue here.  g0 is
 //     instead guarded: a non-positive or non-finite g0 propagates a non-finite
-//     K, which spa::bnTail reports as NONFINITE rather than handing
+//     K, which spa::bnTail reports as FALLBACK_NONFINITE rather than handing
 //     `std::log` a non-positive argument as the predecessor did.
 //
 // ══════════════════════════════════════════════════════════════════════
@@ -132,14 +132,15 @@
 // evaluation — it halves the probe step during bracket expansion, falls back to
 // bisection inside the Newton loop, and retreats toward the origin from a bad
 // initial abscissa — so a non-finite region far out is walked around, and if no
-// usable abscissa exists at all the result is Status::NonFinite with P = NA.  A
+// usable abscissa exists at all the result is Status::FallbackNonFinite: the
+// saddlepoint is discarded and the normal tail reported under that code.  A
 // refusal is the correct behaviour there; a distorted finite value is not.
 //
 // The regime is in any case unreachable in a converged solve: the initial
 // abscissa is capped at 1.2, K' is monotone, and the analytic non-outlier block
 // contributes var·t, so the root for any representable score lies far inside
 // |t·r| < 700.  Over the 37 512 marker tests of examples/baseline.sh no SPAGRM
-// solve reports MAXITER or NONFINITE.
+// solve reports FALLBACK_MAXITER or FALLBACK_NONFINITE.
 //
 // ══════════════════════════════════════════════════════════════════════
 // Cost structure
@@ -377,7 +378,7 @@ inline spa::K012 kFull(double t, const Context &c, double s) noexcept {
         K2 += v * inv;
         // The guard 01_findings.md P6 asks for at spagrm.cpp:231.  A
         // non-positive or non-finite g0 yields a non-finite K, which
-        // spa::bnTail turns into NaN plus Status::NonFinite; the predecessor
+        // spa::bnTail turns into NaN plus Status::FallbackNonFinite; the predecessor
         // handed std::log a non-positive argument with no diagnostic.
         K0 += (g0 > 0.0) ? std::log(g0)
                          : -std::numeric_limits<double>::infinity();

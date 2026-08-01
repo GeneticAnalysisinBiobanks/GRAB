@@ -191,7 +191,7 @@ TEST(gaussian_closed_form_root) {
                 const spa::Saddle r = spa::solveSaddlepoint(
                     s, [&](double t) { return c.k12(t); },
                     [&](double t) { return c.kFull(t); }, tightOpts());
-                CHECK_MSG(r.status == spa::Status::Converged, statusStr(r.status));
+                CHECK_MSG(r.status == spa::Status::SpaOk, statusStr(r.status));
                 CHECK_CLOSE(r.zeta, c.root(), 1e-14, 1e-300);
                 // Cumulants at the root, in closed form.
                 CHECK_REL(r.K2, var, 0.0);
@@ -213,7 +213,7 @@ TEST(poisson_closed_form_root) {
             const spa::Saddle r = spa::solveSaddlepoint(
                 s, [&](double t) { return c.k12(t); },
                 [&](double t) { return c.kFull(t); }, tightOpts());
-            CHECK_MSG(r.status == spa::Status::Converged, statusStr(r.status));
+            CHECK_MSG(r.status == spa::Status::SpaOk, statusStr(r.status));
             CHECK_CLOSE(r.zeta, c.root(), 1e-14, 1e-14);
             // K'(zeta) = lambda*e^zeta = s at the root, and K'' equals K'.
             CHECK_CLOSE(r.K2, s, 1e-13, 0.0);
@@ -235,7 +235,7 @@ TEST(binomial_single_subject_closed_form_root) {
                 const spa::Saddle r = spa::solveSaddlepoint(
                     s, [&](double t) { return c.k12(t); },
                     [&](double t) { return c.kFull(t); }, tightOpts());
-                CHECK_MSG(r.status == spa::Status::Converged,
+                CHECK_MSG(r.status == spa::Status::SpaOk,
                           statusStr(r.status) + " p=" + std::to_string(p) +
                               " r=" + std::to_string(r0) + " f=" + std::to_string(f));
                 CHECK_CLOSE(r.zeta, c.root(), 1e-13, 1e-13);
@@ -269,7 +269,7 @@ TEST(root_independent_of_initial_guess) {
         const spa::Saddle cold = spa::solveSaddlepoint(
             c.s, [&](double t) { return c.k12(t); },
             [&](double t) { return c.kFull(t); }, tightOpts(0.0));
-        CHECK_MSG(cold.status == spa::Status::Converged, statusStr(cold.status));
+        CHECK_MSG(cold.status == spa::Status::SpaOk, statusStr(cold.status));
 
         const double inits[] = {-20.0, -1.0, 0.0, 0.5, 2.0, 5.0, 50.0,
                                 c.root(),      // the exact root
@@ -279,7 +279,7 @@ TEST(root_independent_of_initial_guess) {
             const spa::Saddle r = spa::solveSaddlepoint(
                 c.s, [&](double t) { return c.k12(t); },
                 [&](double t) { return c.kFull(t); }, tightOpts(init));
-            CHECK_MSG(r.status == spa::Status::Converged,
+            CHECK_MSG(r.status == spa::Status::SpaOk,
                       statusStr(r.status) + " s=" + std::to_string(s) +
                           " init=" + std::to_string(init));
             CHECK_CLOSE(r.zeta, c.root(), 1e-14, 1e-14);
@@ -300,7 +300,7 @@ TEST(solving_from_the_root_itself_converges) {
 
     // Both entry points must agree that `init` is already the answer.
     auto check = [&](const spa::Saddle &r, double root, const std::string &tag) {
-        CHECK_MSG(r.status == spa::Status::Converged, statusStr(r.status) + " " + tag);
+        CHECK_MSG(r.status == spa::Status::SpaOk, statusStr(r.status) + " " + tag);
         CHECK_MSG(std::fabs(r.zeta - root) <=
                       1e-13 * std::fmax(1.0, std::fabs(root)),
                   "root moved, " + tag);
@@ -321,7 +321,7 @@ TEST(solving_from_the_root_itself_converges) {
             const spa::Saddle cold = spa::solveSaddlepoint(
                 c.s, [&](double t) { return c.k12(t); },
                 [&](double t) { return c.kFull(t); }, tightOpts(0.0));
-            CHECK(cold.status == spa::Status::Converged);
+            CHECK(cold.status == spa::Status::SpaOk);
             for (double init : {c.root(), cold.zeta}) {
                 const spa::Saddle r = spa::solveSaddlepoint(
                     c.s, [&](double t) { return c.k12(t); },
@@ -340,7 +340,7 @@ TEST(solving_from_the_root_itself_converges) {
                 const spa::Saddle cold = spa::solveSaddlepoint(
                     c.s, [&](double t) { return c.k12(t); },
                     [&](double t) { return c.kFull(t); }, tightOpts(0.0));
-                CHECK(cold.status == spa::Status::Converged);
+                CHECK(cold.status == spa::Status::SpaOk);
                 for (double init : {c.root(), cold.zeta}) {
                     const spa::Saddle r = spa::solveSaddlepoint(
                         c.s, [&](double t) { return c.k12(t); },
@@ -412,7 +412,7 @@ TEST(warm_start_from_the_returned_root_never_fails) {
             const spa::Saddle cold = spa::solveSaddlepoint(
                 c.s, [&](double t) { return c.k12(t); },
                 [&](double t) { return c.kFull(t); }, base);
-            if (cold.status != spa::Status::Converged) continue;
+            if (cold.status != spa::Status::SpaOk) continue;
 
             spa::SolveOpts w = base;
             w.init = cold.zeta;
@@ -420,7 +420,7 @@ TEST(warm_start_from_the_returned_root_never_fails) {
                 c.s, [&](double t) { return c.k12(t); },
                 [&](double t) { return c.kFull(t); }, w);
             ++nWarm;
-            if (spa::statusIsFailure(warm.status)) ++nWarmFail;
+            if (!spa::statusIsUsable(warm.status)) ++nWarmFail;
             else if (!(std::fabs(warm.zeta - cold.zeta) <=
                        1e-6 * std::fmax(1.0, std::fabs(cold.zeta))))
                 ++nDrift;
@@ -475,9 +475,9 @@ TEST(property_residual_meets_stated_relative_tolerance) {
             c.s, [&](double t) { return c.k12(t); },
             [&](double t) { return c.kFull(t); }, opt);
 
-        CHECK_MSG(r.status == spa::Status::Converged,
+        CHECK_MSG(r.status == spa::Status::SpaOk,
                   statusStr(r.status) + " trial " + std::to_string(trial));
-        if (r.status != spa::Status::Converged) continue;
+        if (r.status != spa::Status::SpaOk) continue;
         ++nConverged;
 
         // (a) the achieved residual meets the criterion the solver documents.
@@ -581,8 +581,8 @@ ScaleOutcome twoSidedAtScale(const MixedCgf &base, double z, double scale) {
             [&](double t) { return c.kFull(t); }, opt);
         if (k == 0) zetaUpper = r.zeta * scale;
 
-        spa::Status stLin = spa::Status::Converged;
-        spa::Status stLog = spa::Status::Converged;
+        spa::Status stLin = spa::Status::SpaOk;
+        spa::Status stLog = spa::Status::SpaOk;
         p[k] = spa::bnTail(r.zeta, c.s, r.K0, r.K2, lowerTail, stLin);
         logp[k] = spa::bnTailLog(r.zeta, c.s, r.K0, r.K2, lowerTail, stLog);
         st[k] = spa::worseStatus(r.status, spa::worseStatus(stLin, stLog));
@@ -740,7 +740,7 @@ TEST(single_callable_overload_agrees_and_reuses_terminal) {
         // produced K0, so the terminal pass is unavoidable.
         CHECK(!a.reusedTerminal);
 
-        if (b.status != spa::Status::Converged) continue;
+        if (b.status != spa::Status::SpaOk) continue;
         ++nTrials;
         if (b.reusedTerminal) ++nReused;
     }
@@ -759,39 +759,126 @@ TEST(single_callable_overload_agrees_and_reuses_terminal) {
 // ══════════════════════════════════════════════════════════════════════
 
 TEST(status_names_and_classification) {
-    CHECK(statusStr(spa::Status::Converged) == "OK");
-    CHECK(statusStr(spa::Status::MaxIter) == "MAXITER");
-    CHECK(statusStr(spa::Status::GuardTemp) == "GUARD_TEMP");
-    CHECK(statusStr(spa::Status::GuardCurv) == "GUARD_CURV");
-    CHECK(statusStr(spa::Status::GuardW) == "GUARD_W");
-    CHECK(statusStr(spa::Status::NonFinite) == "NONFINITE");
-    CHECK(statusStr(spa::Status::NormalBranch) == "NORMAL");
+    CHECK(statusStr(spa::Status::SpaOk) == "SPA_OK");
+    CHECK(statusStr(spa::Status::Normal) == "NORMAL");
+    CHECK(statusStr(spa::Status::SpaWSingular) == "SPA_W_SINGULAR");
+    CHECK(statusStr(spa::Status::FallbackMaxIter) == "FALLBACK_MAXITER");
+    CHECK(statusStr(spa::Status::FallbackGuardTemp) == "FALLBACK_GUARD_TEMP");
+    CHECK(statusStr(spa::Status::FallbackGuardCurv) == "FALLBACK_GUARD_CURV");
+    CHECK(statusStr(spa::Status::FallbackNonFinite) == "FALLBACK_NONFINITE");
+    CHECK(statusStr(spa::Status::NaPostFail) == "NA_POST_FAIL");
+    CHECK(statusStr(spa::Status::NaNoTest) == "NA_NO_TEST");
 
-    CHECK(!spa::statusIsFailure(spa::Status::Converged));
-    CHECK(!spa::statusIsFailure(spa::Status::NormalBranch));
-    CHECK(spa::statusIsFailure(spa::Status::MaxIter));
-    CHECK(spa::statusIsFailure(spa::Status::GuardTemp));
-    CHECK(spa::statusIsFailure(spa::Status::GuardCurv));
-    CHECK(spa::statusIsFailure(spa::Status::NonFinite));
+    // The numeric encoding is the output column and is a contract, not an
+    // implementation detail: SPA_STATUS <= 2 means LOG10P is trustworthy,
+    // 3..6 that it is the substituted normal tail, >= 7 that it is NA.
+    CHECK(static_cast<int>(spa::Status::SpaOk) == 0);
+    CHECK(static_cast<int>(spa::Status::Normal) == 1);
+    CHECK(static_cast<int>(spa::Status::SpaWSingular) == 2);
+    CHECK(static_cast<int>(spa::Status::FallbackMaxIter) == 3);
+    CHECK(static_cast<int>(spa::Status::FallbackGuardTemp) == 4);
+    CHECK(static_cast<int>(spa::Status::FallbackGuardCurv) == 5);
+    CHECK(static_cast<int>(spa::Status::FallbackNonFinite) == 6);
+    CHECK(static_cast<int>(spa::Status::NaPostFail) == 7);
+    CHECK(static_cast<int>(spa::Status::NaNoTest) == 8);
 
-    // GuardW is the one status that is a DEGRADED SUCCESS: below
-    // kWSingularity the r* correction is not computable, the tail is evaluated
-    // as Phi(+/-w), and P is a number rather than NA (spa_unify N3).
-    CHECK(!spa::statusIsFailure(spa::Status::GuardW));
+    const spa::Status all[9] = {
+        spa::Status::SpaOk, spa::Status::Normal, spa::Status::SpaWSingular,
+        spa::Status::FallbackMaxIter, spa::Status::FallbackGuardTemp,
+        spa::Status::FallbackGuardCurv, spa::Status::FallbackNonFinite,
+        spa::Status::NaPostFail, spa::Status::NaNoTest};
 
-    // Every failure must outrank every success, so a tail that merely degraded
-    // can never mask a tail that failed.
-    for (spa::Status f : {spa::Status::MaxIter, spa::Status::GuardTemp,
-                          spa::Status::GuardCurv, spa::Status::NonFinite}) {
-        CHECK(spa::statusSeverity(f) > spa::statusSeverity(spa::Status::GuardW));
-        CHECK(spa::worseStatus(spa::Status::GuardW, f) == f);
-        CHECK(spa::worseStatus(f, spa::Status::GuardW) == f);
+    // The three predicates partition the enumeration and agree with the
+    // numeric blocks.  Exactly one of them holds for every value.
+    for (int i = 0; i < 9; ++i) {
+        const int u = spa::statusIsUsable(all[i]) ? 1 : 0;
+        const int f = spa::statusIsFallback(all[i]) ? 1 : 0;
+        const int n = spa::statusIsNA(all[i]) ? 1 : 0;
+        CHECK(u + f + n == 1);
+        CHECK(u == (i <= 2 ? 1 : 0));
+        CHECK(f == (i >= 3 && i <= 6 ? 1 : 0));
+        CHECK(n == (i >= 7 ? 1 : 0));
+    }
+
+    // SpaWSingular is a DEGRADED SUCCESS: below kWSingularity the r*
+    // correction is not computable, the tail is evaluated as Phi(+/-w), and
+    // LOG10P is a number rather than NA (spa_unify N3).
+    CHECK(spa::statusIsUsable(spa::Status::SpaWSingular));
+
+    // Severity is monotone in the encoding, with SpaOk and Normal tied so
+    // that a genuine saddlepoint tail is not displaced by a normal label.
+    CHECK(spa::statusSeverity(spa::Status::SpaOk) ==
+          spa::statusSeverity(spa::Status::Normal));
+    for (int i = 1; i < 9; ++i)
+        CHECK(spa::statusSeverity(all[i]) >= spa::statusSeverity(all[i - 1]));
+    for (int i = 2; i < 9; ++i)
+        CHECK(spa::statusSeverity(all[i]) > spa::statusSeverity(all[i - 1]));
+
+    // Every fallback and every NA outranks every usable value, so a tail that
+    // merely degraded can never mask a tail that failed.
+    for (int i = 3; i < 9; ++i) {
+        CHECK(spa::statusSeverity(all[i]) >
+              spa::statusSeverity(spa::Status::SpaWSingular));
+        CHECK(spa::worseStatus(spa::Status::SpaWSingular, all[i]) == all[i]);
+        CHECK(spa::worseStatus(all[i], spa::Status::SpaWSingular) == all[i]);
     }
     // ...but it outranks a plain success, so it is what gets reported.
-    CHECK(spa::worseStatus(spa::Status::Converged, spa::Status::GuardW) ==
-          spa::Status::GuardW);
-    CHECK(spa::worseStatus(spa::Status::NormalBranch, spa::Status::GuardW) ==
-          spa::Status::GuardW);
+    CHECK(spa::worseStatus(spa::Status::SpaOk, spa::Status::SpaWSingular) ==
+          spa::Status::SpaWSingular);
+    CHECK(spa::worseStatus(spa::Status::Normal, spa::Status::SpaWSingular) ==
+          spa::Status::SpaWSingular);
+}
+
+// The D5 fallback rule, stated on spa::assemble itself.
+TEST(assemble_fallback_and_na_blocks) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double z = 4.25;
+    const double pNorm = spa::normalTwoSided(z);
+    const double lNorm = -spa::normalTwoSidedLog(z) / std::log(10.0);
+
+    // Both tails usable: the saddlepoint result passes through untouched.
+    {
+        const double lu = std::log(0.03), ll = std::log(0.02);
+        const spa::TwoSided r = spa::assemble(0.03, 0.02, lu, ll,
+                                              spa::Status::SpaOk,
+                                              spa::Status::SpaOk, z);
+        CHECK(r.status == spa::Status::SpaOk);
+        CHECK(std::fabs(r.p - 0.05) < 1e-15);
+        CHECK(std::fabs(r.negLog10p - (-std::log10(0.05))) < 1e-12);
+    }
+
+    // One failed tail falls the WHOLE two-sided p back, and to the normal
+    // tail exactly — bit-for-bit 2*Phi(-|z|), not a mixture of the two.
+    for (spa::Status f : {spa::Status::FallbackMaxIter,
+                          spa::Status::FallbackGuardTemp,
+                          spa::Status::FallbackGuardCurv,
+                          spa::Status::FallbackNonFinite}) {
+        const spa::TwoSided r = spa::assemble(0.03, nan, std::log(0.03), nan,
+                                              spa::Status::SpaOk, f, z);
+        CHECK(r.status == f);
+        CHECK(r.p == pNorm);
+        CHECK(std::fabs(r.negLog10p - lNorm) <= 0.0);
+    }
+
+    // The NA block never falls back, whatever z is.
+    for (spa::Status n : {spa::Status::NaPostFail, spa::Status::NaNoTest}) {
+        const spa::TwoSided r = spa::assemble(0.03, nan, std::log(0.03), nan,
+                                              spa::Status::SpaOk, n, z);
+        CHECK(r.status == n);
+        CHECK(std::isnan(r.p));
+        CHECK(std::isnan(r.negLog10p));
+    }
+
+    // A non-finite z is "no test exists", not a saddlepoint failure, and it
+    // outranks a fallback status: there is nothing to fall back to.
+    {
+        const spa::TwoSided r = spa::assemble(0.03, nan, std::log(0.03), nan,
+                                              spa::Status::SpaOk,
+                                              spa::Status::FallbackGuardCurv, nan);
+        CHECK(r.status == spa::Status::NaNoTest);
+        CHECK(std::isnan(r.p));
+        CHECK(std::isnan(r.negLog10p));
+    }
 }
 
 TEST(status_converged) {
@@ -799,11 +886,11 @@ TEST(status_converged) {
     const spa::Saddle r = spa::solveSaddlepoint(
         c.s, [&](double t) { return c.k12(t); },
         [&](double t) { return c.kFull(t); }, spa::SolveOpts{});
-    CHECK(r.status == spa::Status::Converged);
-    CHECK(statusStr(r.status) == "OK");
+    CHECK(r.status == spa::Status::SpaOk);
+    CHECK(statusStr(r.status) == "SPA_OK");
 }
 
-// Three independent routes to MaxIter, because they mean different things.
+// Three independent routes to FallbackMaxIter, because they mean different things.
 TEST(status_maxiter_budget_exhausted) {
     // Poisson with the root 13.8 away from the origin: the exponential K'
     // means Newton cannot arrive in two iterations however well safeguarded.
@@ -813,7 +900,7 @@ TEST(status_maxiter_budget_exhausted) {
     const spa::Saddle r = spa::solveSaddlepoint(
         c.s, [&](double t) { return c.k12(t); },
         [&](double t) { return c.kFull(t); }, o);
-    CHECK(r.status == spa::Status::MaxIter);
+    CHECK(r.status == spa::Status::FallbackMaxIter);
     CHECK(r.bracketed);
     CHECK(r.iters == 2);
     // Even on the failure path the cumulants belong to the returned abscissa.
@@ -830,7 +917,7 @@ TEST(status_maxiter_budget_exhausted) {
     const spa::Saddle ok = spa::solveSaddlepoint(
         c.s, [&](double t) { return c.k12(t); },
         [&](double t) { return c.kFull(t); }, spa::SolveOpts{});
-    CHECK_MSG(ok.status == spa::Status::Converged,
+    CHECK_MSG(ok.status == spa::Status::SpaOk,
               statusStr(ok.status) + " iters " + std::to_string(ok.iters));
     CHECK_CLOSE(ok.zeta, c.root(), 1e-6, 1e-6);
 }
@@ -857,7 +944,7 @@ TEST(status_maxiter_no_bracket_exists) {
         return spa::K012{logCosh(t), th - s, 1.0 - th * th};
     };
     const spa::Saddle r = spa::solveSaddlepoint(s, k12, kFull, spa::SolveOpts{});
-    CHECK_MSG(r.status == spa::Status::MaxIter, statusStr(r.status));
+    CHECK_MSG(r.status == spa::Status::FallbackMaxIter, statusStr(r.status));
     CHECK(!r.bracketed);
 }
 
@@ -871,7 +958,7 @@ TEST(status_maxiter_sign_constraint_excludes_the_root) {
     const spa::Saddle r = spa::solveSaddlepoint(
         c.s, [&](double t) { return c.k12(t); },
         [&](double t) { return c.kFull(t); }, o);
-    CHECK_MSG(r.status == spa::Status::MaxIter, statusStr(r.status));
+    CHECK_MSG(r.status == spa::Status::FallbackMaxIter, statusStr(r.status));
     CHECK(!r.bracketed);
     CHECK(r.zeta <= 0.0);
 }
@@ -883,7 +970,7 @@ TEST(sign_constraint_confines_the_root_when_it_is_satisfiable) {
     const spa::Saddle r = spa::solveSaddlepoint(
         pos.s, [&](double t) { return pos.k12(t); },
         [&](double t) { return pos.kFull(t); }, o);
-    CHECK(r.status == spa::Status::Converged);
+    CHECK(r.status == spa::Status::SpaOk);
     CHECK(r.zeta > 0.0);
     CHECK_CLOSE(r.zeta, 3.0, 1e-6, 1e-6);
     CHECK(r.lo >= 0.0);
@@ -893,7 +980,7 @@ TEST(sign_constraint_confines_the_root_when_it_is_satisfiable) {
     const spa::Saddle r2 = spa::solveSaddlepoint(
         neg.s, [&](double t) { return neg.k12(t); },
         [&](double t) { return neg.kFull(t); }, o);
-    CHECK(r2.status == spa::Status::Converged);
+    CHECK(r2.status == spa::Status::SpaOk);
     CHECK(r2.zeta < 0.0);
     CHECK_CLOSE(r2.zeta, -3.0, 1e-6, 1e-6);
     // The bracket never left the admissible half-line.
@@ -912,7 +999,7 @@ TEST(status_guardcurv_from_solver) {
         return spa::K012{0.5 * t * t - 0.5 * t, t - 0.5, -1.0};
     };
     const spa::Saddle r = spa::solveSaddlepoint(0.0, k12, kFull, spa::SolveOpts{});
-    CHECK_MSG(r.status == spa::Status::GuardCurv, statusStr(r.status));
+    CHECK_MSG(r.status == spa::Status::FallbackGuardCurv, statusStr(r.status));
     CHECK(r.bracketed);
     CHECK(r.K2 == -1.0);
     // Bisection still located the root despite Newton being disabled.
@@ -920,33 +1007,33 @@ TEST(status_guardcurv_from_solver) {
 }
 
 TEST(status_guardcurv_from_tail) {
-    spa::Status st = spa::Status::Converged;
+    spa::Status st = spa::Status::SpaOk;
     CHECK(std::isnan(spa::bnTail(1.0, 1.0, 0.0, -1.0, false, st)));
-    CHECK(st == spa::Status::GuardCurv);
+    CHECK(st == spa::Status::FallbackGuardCurv);
 
-    st = spa::Status::Converged;
+    st = spa::Status::SpaOk;
     CHECK(std::isnan(spa::bnTail(1.0, 1.0, 0.0, 0.0, false, st)));
-    CHECK(st == spa::Status::GuardCurv);
+    CHECK(st == spa::Status::FallbackGuardCurv);
 
-    st = spa::Status::Converged;
+    st = spa::Status::SpaOk;
     CHECK(std::isnan(spa::bnTailLog(1.0, 1.0, 0.0, -1.0, false, st)));
-    CHECK(st == spa::Status::GuardCurv);
+    CHECK(st == spa::Status::FallbackGuardCurv);
 }
 
 TEST(status_guardtemp) {
     // zeta*s - K0 = 1*1 - 2 = -1 < 0, so w is not real.
-    spa::Status st = spa::Status::Converged;
+    spa::Status st = spa::Status::SpaOk;
     CHECK(std::isnan(spa::bnTail(1.0, 1.0, 2.0, 1.0, false, st)));
-    CHECK(st == spa::Status::GuardTemp);
+    CHECK(st == spa::Status::FallbackGuardTemp);
 
-    st = spa::Status::Converged;
+    st = spa::Status::SpaOk;
     CHECK(std::isnan(spa::bnTailLog(1.0, 1.0, 2.0, 1.0, true, st)));
-    CHECK(st == spa::Status::GuardTemp);
+    CHECK(st == spa::Status::FallbackGuardTemp);
 
     // Also reached when zeta*s overflows negative.
-    st = spa::Status::Converged;
+    st = spa::Status::SpaOk;
     CHECK(std::isnan(spa::bnTail(-1e300, 1e300, 0.0, 1.0, false, st)));
-    CHECK(st == spa::Status::GuardTemp);
+    CHECK(st == spa::Status::FallbackGuardTemp);
 }
 
 TEST(status_guardw) {
@@ -963,29 +1050,29 @@ TEST(status_guardw) {
     // the first was unguarded, giving v/w = +/-inf, r* = +/-inf and an emitted
     // p-value of exactly 0.0 or 1.0 depending on the tail.  Phi(0) = 0.5 in
     // both tails is the right answer: the statistic sits at the mean.
-    spa::Status st = spa::Status::Converged;
+    spa::Status st = spa::Status::SpaOk;
     CHECK(spa::bnTail(2.0, 1.5, 3.0, 1.0, false, st) == 0.5);  // 2*1.5-3 == 0
-    CHECK(st == spa::Status::GuardW);
+    CHECK(st == spa::Status::SpaWSingular);
 
-    st = spa::Status::Converged;
+    st = spa::Status::SpaOk;
     CHECK(spa::bnTail(0.0, 1.0, 0.0, 1.0, false, st) == 0.5);   // zeta == 0
-    CHECK(st == spa::Status::GuardW);
+    CHECK(st == spa::Status::SpaWSingular);
 
-    st = spa::Status::Converged;
+    st = spa::Status::SpaOk;
     CHECK(spa::bnTail(-0.0, 1.0, 0.0, 1.0, true, st) == 0.5);   // zeta == -0
-    CHECK(st == spa::Status::GuardW);
+    CHECK(st == spa::Status::SpaWSingular);
 
-    st = spa::Status::Converged;
+    st = spa::Status::SpaOk;
     CHECK_REL(spa::bnTailLog(2.0, 1.5, 3.0, 1.0, true, st), -kLn2, 1e-15);
-    CHECK(st == spa::Status::GuardW);
+    CHECK(st == spa::Status::SpaWSingular);
 
     // Two-sided, that is a p of exactly 1 with a status that says why.
-    spa::Status su = spa::Status::Converged, sl = spa::Status::Converged;
+    spa::Status su = spa::Status::SpaOk, sl = spa::Status::SpaOk;
     const double pu = spa::bnTail(0.0, 1.0, 0.0, 1.0, false, su);
     const double pl = spa::bnTail(0.0, 1.0, 0.0, 1.0, true, sl);
     const spa::TwoSided ts = spa::combineTails(pu, pl, su, sl);
-    CHECK(ts.status == spa::Status::GuardW);
-    CHECK(!spa::statusIsFailure(ts.status));
+    CHECK(ts.status == spa::Status::SpaWSingular);
+    CHECK(spa::statusIsUsable(ts.status));
     CHECK(ts.p == 1.0);
     CHECK(ts.negLog10p == 0.0);
 
@@ -998,17 +1085,17 @@ TEST(status_guardw) {
     const double w = std::sqrt(2.0 * (zeta * s - K0));
     CHECK(w < spa::kWSingularity);
     for (bool lower : {false, true}) {
-        st = spa::Status::Converged;
+        st = spa::Status::SpaOk;
         CHECK_REL(spa::bnTail(zeta, s, K0, K2, lower, st),
                   math::pnorm(w, 0.0, 1.0, lower), 1e-14);
-        CHECK(st == spa::Status::GuardW);
+        CHECK(st == spa::Status::SpaWSingular);
     }
 
     // Immediately outside it the modified root is formed again.
     const double zOut = 2.0 * spa::kWSingularity;
-    st = spa::Status::MaxIter;
+    st = spa::Status::FallbackMaxIter;
     (void)spa::bnTail(zOut, zOut, 0.5 * zOut * zOut, 1.0, false, st);
-    CHECK(st == spa::Status::Converged);
+    CHECK(st == spa::Status::SpaOk);
 }
 
 // The property the guard exists for, stated as a sensitivity measurement.
@@ -1036,11 +1123,11 @@ TEST(guardw_fires_before_r_star_is_formed) {
         const double zeta = 0.5 * spa::kWSingularity;   // w = 5e-4
         const double s = zeta, K0 = 0.5 * zeta * zeta;
 
-        spa::Status s0 = spa::Status::Converged, s1 = spa::Status::Converged;
+        spa::Status s0 = spa::Status::SpaOk, s1 = spa::Status::SpaOk;
         const double p0 = spa::bnTail(zeta, s, K0, K2, false, s0);
         const double p1 = spa::bnTail(zeta, s, K0 + dK, K2, false, s1);
-        CHECK(s0 == spa::Status::GuardW);
-        CHECK(s1 == spa::Status::GuardW);
+        CHECK(s0 == spa::Status::SpaWSingular);
+        CHECK(s1 == spa::Status::SpaWSingular);
 
         // Through w alone: |dp| ~ phi(0)*dK/|w| = 0.4*1e-11/5e-4 = 8e-9.
         const double moved = std::fabs(p1 - p0);
@@ -1062,11 +1149,11 @@ TEST(guardw_fires_before_r_star_is_formed) {
         // real but bounded, and this records how much of it survives.
         const double zeta = 4.0 * spa::kWSingularity;   // w = 4e-3
         const double s = zeta, K0 = 0.5 * zeta * zeta;
-        spa::Status s0 = spa::Status::MaxIter, s1 = spa::Status::MaxIter;
+        spa::Status s0 = spa::Status::FallbackMaxIter, s1 = spa::Status::FallbackMaxIter;
         const double p0 = spa::bnTail(zeta, s, K0, K2, false, s0);
         const double p1 = spa::bnTail(zeta, s, K0 + dK, K2, false, s1);
-        CHECK(s0 == spa::Status::Converged);
-        CHECK(s1 == spa::Status::Converged);
+        CHECK(s0 == spa::Status::SpaOk);
+        CHECK(s1 == spa::Status::SpaOk);
         // dK/|w|^3 = 1e-11/6.4e-8 = 1.6e-4, so |dp| ~ 6e-5, and the two-sided
         // p here is 1 to within 1e-2, hence |dlog10 P| ~ 3e-5.
         CHECK(std::fabs(p1 - p0) < 1e-3);
@@ -1104,25 +1191,25 @@ TEST(dropped_correction_tends_to_the_skewness_constant_not_to_zero) {
 TEST(status_nonfinite_from_tail) {
     const double bad[] = {kNaN, kInf, -kInf};
     for (double b : bad) {
-        spa::Status st = spa::Status::Converged;
+        spa::Status st = spa::Status::SpaOk;
         CHECK(std::isnan(spa::bnTail(b, 1.0, 0.0, 1.0, false, st)));
-        CHECK(st == spa::Status::NonFinite);
+        CHECK(st == spa::Status::FallbackNonFinite);
 
-        st = spa::Status::Converged;
+        st = spa::Status::SpaOk;
         CHECK(std::isnan(spa::bnTail(1.0, b, 0.0, 1.0, false, st)));
-        CHECK(st == spa::Status::NonFinite);
+        CHECK(st == spa::Status::FallbackNonFinite);
 
-        st = spa::Status::Converged;
+        st = spa::Status::SpaOk;
         CHECK(std::isnan(spa::bnTail(1.0, 1.0, b, 1.0, false, st)));
-        CHECK(st == spa::Status::NonFinite);
+        CHECK(st == spa::Status::FallbackNonFinite);
 
-        st = spa::Status::Converged;
+        st = spa::Status::SpaOk;
         CHECK(std::isnan(spa::bnTail(1.0, 1.0, 0.0, b, false, st)));
-        CHECK(st == spa::Status::NonFinite);
+        CHECK(st == spa::Status::FallbackNonFinite);
 
-        st = spa::Status::Converged;
+        st = spa::Status::SpaOk;
         CHECK(std::isnan(spa::bnTailLog(b, 1.0, 0.0, 1.0, false, st)));
-        CHECK(st == spa::Status::NonFinite);
+        CHECK(st == spa::Status::FallbackNonFinite);
     }
 }
 
@@ -1134,7 +1221,7 @@ TEST(status_nonfinite_from_solver_everywhere) {
     spa::SolveOpts o;
     o.init = 1.0;
     const spa::Saddle r = spa::solveSaddlepoint(0.0, k12, kFull, o);
-    CHECK_MSG(r.status == spa::Status::NonFinite, statusStr(r.status));
+    CHECK_MSG(r.status == spa::Status::FallbackNonFinite, statusStr(r.status));
     CHECK(!r.bracketed);
     CHECK(std::isnan(r.K2));
 }
@@ -1164,26 +1251,26 @@ TEST(status_nonfinite_from_solver_interior) {
         return spa::K012{0.5 * t * t - 0.5 * t, res(t), 1.0};
     };
     const spa::Saddle r = spa::solveSaddlepoint(0.0, k12, kFull, spa::SolveOpts{});
-    CHECK_MSG(r.status == spa::Status::NonFinite, statusStr(r.status));
+    CHECK_MSG(r.status == spa::Status::FallbackNonFinite, statusStr(r.status));
     CHECK(r.bracketed);
 }
 
 TEST(status_normalbranch) {
     const spa::TwoSided b = spa::normalBranch(1.5);
-    CHECK(b.status == spa::Status::NormalBranch);
+    CHECK(b.status == spa::Status::Normal);
     CHECK(statusStr(b.status) == "NORMAL");
-    CHECK(!spa::statusIsFailure(b.status));
+    CHECK(spa::statusIsUsable(b.status));
 
     // It survives the two-sided assembly, so a method that took the normal
     // branch on both sides still reports NORMAL rather than OK.
     const spa::TwoSided both =
-        spa::combineTails(0.05, 0.05, spa::Status::NormalBranch,
-                          spa::Status::NormalBranch);
-    CHECK(both.status == spa::Status::NormalBranch);
+        spa::combineTails(0.05, 0.05, spa::Status::Normal,
+                          spa::Status::Normal);
+    CHECK(both.status == spa::Status::Normal);
     const spa::TwoSided bothLog =
-        spa::combineTailsLog(-3.0, -3.0, spa::Status::NormalBranch,
-                             spa::Status::NormalBranch);
-    CHECK(bothLog.status == spa::Status::NormalBranch);
+        spa::combineTailsLog(-3.0, -3.0, spa::Status::Normal,
+                             spa::Status::Normal);
+    CHECK(bothLog.status == spa::Status::Normal);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1230,7 +1317,7 @@ TEST(bracket_invariant_holds_at_every_iteration) {
                 [&](double t) { return bn.kFull(t); }, tightOpts(), rec);
         }
 
-        CHECK_MSG(r.status == spa::Status::Converged,
+        CHECK_MSG(r.status == spa::Status::SpaOk,
                   std::string(cs.name) + ": " + statusStr(r.status));
         // The trace fires once per loop iteration, so the recorded count is
         // the reported count.
@@ -1289,7 +1376,7 @@ TEST(bisection_recovers_when_newton_is_sabotaged) {
     Recorder rec;
     const spa::Saddle r =
         spa::solveSaddlepointTraced(0.0, k12, kFull, tightOpts(), rec);
-    CHECK_MSG(r.status == spa::Status::Converged, statusStr(r.status));
+    CHECK_MSG(r.status == spa::Status::SpaOk, statusStr(r.status));
     CHECK_CLOSE(r.zeta, 0.375, 1e-14, 1e-15);
     CHECK(rec.rows.size() > 20);  // it really did bisect its way there
     for (const Recorder::Row &row : rec.rows) {
@@ -1308,7 +1395,7 @@ TEST(forced_bisection_bounds_the_iteration_count) {
     const spa::Saddle r = spa::solveSaddlepoint(
         c.s, [&](double t) { return c.k12(t); },
         [&](double t) { return c.kFull(t); }, spa::SolveOpts{});
-    CHECK_MSG(r.status == spa::Status::Converged,
+    CHECK_MSG(r.status == spa::Status::SpaOk,
               statusStr(r.status) + " iters " + std::to_string(r.iters));
     CHECK_MSG(r.iters < 60, "iters " + std::to_string(r.iters));
     CHECK_CLOSE(r.zeta, c.root(), 1e-6, 1e-6);
@@ -1400,9 +1487,9 @@ TEST(evaluation_budget_per_tail_is_pinned) {
                 cc.s, [&](double t) { return cc.k12(t); },
                 [&](double t) { return cc.kFull(t); }, opt);
 
-            CHECK_MSG(r.status == spa::Status::Converged,
+            CHECK_MSG(r.status == spa::Status::SpaOk,
                       statusStr(r.status) + " trial " + std::to_string(trial));
-            if (r.status != spa::Status::Converged) continue;
+            if (r.status != spa::Status::SpaOk) continue;
 
             // The split is a partition of nEval, and the bracket phase always
             // costs at least the one evaluation at `init`.
@@ -1459,7 +1546,7 @@ static GaussTailPoint gaussTailPoint(double w, double var) {
 TEST(bntail_gaussian_case_reduces_to_phi) {
     for (double w = 0.25; w <= 10.0; w += 0.25) {
         const GaussTailPoint g = gaussTailPoint(w, 2.5);
-        spa::Status st = spa::Status::MaxIter;
+        spa::Status st = spa::Status::FallbackMaxIter;
 
         // temp and v are two algebraically-equal but numerically distinct
         // routes to the same quantity, so v/w differs from 1 by a few ULP and
@@ -1469,12 +1556,12 @@ TEST(bntail_gaussian_case_reduces_to_phi) {
         const double tol = 1e-15 * (1.0 + w * w);
 
         const double up = spa::bnTail(g.zeta, g.s, g.K0, g.K2, false, st);
-        CHECK(st == spa::Status::Converged);
+        CHECK(st == spa::Status::SpaOk);
         CHECK_REL(up, math::pnorm(w, 0.0, 1.0, false), tol);
 
         const GaussTailPoint gn = gaussTailPoint(-w, 2.5);
         const double lo = spa::bnTail(gn.zeta, gn.s, gn.K0, gn.K2, true, st);
-        CHECK(st == spa::Status::Converged);
+        CHECK(st == spa::Status::SpaOk);
         CHECK_REL(lo, math::pnorm(-w, 0.0, 1.0, true), tol);
 
         // The upper tail at +w and the lower tail at -w are the same number.
@@ -1486,11 +1573,11 @@ TEST(bntaillog_agrees_with_log_bntail) {
     int nCompared = 0;
     for (double w = 0.5; w <= 37.0; w += 0.125) {
         const GaussTailPoint g = gaussTailPoint(w, 1.75);
-        spa::Status stL = spa::Status::MaxIter, stP = spa::Status::MaxIter;
+        spa::Status stL = spa::Status::FallbackMaxIter, stP = spa::Status::FallbackMaxIter;
         const double p = spa::bnTail(g.zeta, g.s, g.K0, g.K2, false, stP);
         const double lp = spa::bnTailLog(g.zeta, g.s, g.K0, g.K2, false, stL);
-        CHECK(stP == spa::Status::Converged);
-        CHECK(stL == spa::Status::Converged);
+        CHECK(stP == spa::Status::SpaOk);
+        CHECK(stL == spa::Status::SpaOk);
         if (p > 0.0 && std::isfinite(std::log(p))) {
             CHECK_MSG(std::fabs(lp - std::log(p)) <=
                           1e-13 * std::fmax(1.0, std::fabs(std::log(p))),
@@ -1515,10 +1602,10 @@ TEST(bntaillog_survives_past_linear_underflow) {
     bool sawLinearZero = false;
     for (double w = 36.0; w <= 200.0; w += 2.0) {
         const GaussTailPoint g = gaussTailPoint(w, 1.0);
-        spa::Status st = spa::Status::MaxIter;
+        spa::Status st = spa::Status::FallbackMaxIter;
         const double p = spa::bnTail(g.zeta, g.s, g.K0, g.K2, false, st);
         const double lp = spa::bnTailLog(g.zeta, g.s, g.K0, g.K2, false, st);
-        CHECK(st == spa::Status::Converged);
+        CHECK(st == spa::Status::SpaOk);
         CHECK_MSG(std::isfinite(lp), "bnTailLog non-finite at w=" + std::to_string(w));
         // log Phi(-w) = -w^2/2 - log(w*sqrt(2*pi)) + O(1/w^2); check that the
         // leading term is present and that nothing else dominates it.
@@ -1561,7 +1648,7 @@ TEST(bntaillog_matches_an_independent_higher_precision_reference) {
         const GaussTailPoint g = gaussTailPoint(w, 1.0);
         spa::Status st;
         const double lp = spa::bnTailLog(g.zeta, g.s, g.K0, g.K2, false, st);
-        CHECK(st == spa::Status::Converged);
+        CHECK(st == spa::Status::SpaOk);
 
         const long double x = static_cast<long double>(w);
         const long double y = 1.0L / (x * x);
@@ -1593,9 +1680,9 @@ TEST(bntail_does_not_reconcile_an_inconsistent_k0_k2_pair) {
     // change WtCoxG's statistic rather than compute it.
     const double zeta = 0.8, s = 4.0, K0 = 1.2;
     for (double K2 : {0.5, 1.0, 2.0, 7.5, 1e4}) {
-        spa::Status st = spa::Status::MaxIter;
+        spa::Status st = spa::Status::FallbackMaxIter;
         const double got = spa::bnTail(zeta, s, K0, K2, false, st);
-        CHECK(st == spa::Status::Converged);
+        CHECK(st == spa::Status::SpaOk);
         const double temp = zeta * s - K0;
         const double w = std::sqrt(2.0 * temp);   // zeta > 0
         const double v = zeta * std::sqrt(K2);
@@ -1635,9 +1722,9 @@ TEST(bntail_matches_the_production_kernel_on_random_inputs) {
         for (bool lower : {false, true}) {
             const double want = math::pnorm(w + (1.0 / w) * std::log(v / w), 0.0,
                                             1.0, lower);
-            spa::Status st = spa::Status::MaxIter;
+            spa::Status st = spa::Status::FallbackMaxIter;
             const double got = spa::bnTail(zeta, s, K0, K2, lower, st);
-            CHECK(st == spa::Status::Converged);
+            CHECK(st == spa::Status::SpaOk);
             // Not bit-identical, and deliberately so: the production sites
             // write (1/w)*log(v/w), which rounds twice, while bnTail writes
             // log(v/w)/w, which rounds once and is the more accurate of the
@@ -1656,16 +1743,16 @@ TEST(bntail_matches_the_production_kernel_on_random_inputs) {
 // ══════════════════════════════════════════════════════════════════════
 
 TEST(combine_tails_sums_and_reports_negative_log10) {
-    const spa::TwoSided r = spa::combineTails(1e-8, 3e-9, spa::Status::Converged,
-                                              spa::Status::Converged);
-    CHECK(r.status == spa::Status::Converged);
+    const spa::TwoSided r = spa::combineTails(1e-8, 3e-9, spa::Status::SpaOk,
+                                              spa::Status::SpaOk);
+    CHECK(r.status == spa::Status::SpaOk);
     CHECK_REL(r.p, 1.3e-8, 1e-15);
     CHECK_REL(r.negLog10p, -std::log10(1.3e-8), 0.0);
     CHECK(r.negLog10p > 0.0);
 
     // p == 1 gives +0, not -0.
-    const spa::TwoSided one = spa::combineTails(0.5, 0.5, spa::Status::Converged,
-                                                spa::Status::Converged);
+    const spa::TwoSided one = spa::combineTails(0.5, 0.5, spa::Status::SpaOk,
+                                                spa::Status::SpaOk);
     CHECK(one.p == 1.0);
     CHECK(one.negLog10p == 0.0);
     CHECK(!std::signbit(one.negLog10p));
@@ -1680,23 +1767,23 @@ TEST(combine_tails_never_reports_half_a_p_value) {
     // returns a probability, so the (GuardW, NaN) pair below is not a state
     // bnTail can produce.  Its own behaviour is asserted after the loop.
     const spa::Status failures[] = {
-        spa::Status::MaxIter, spa::Status::GuardTemp, spa::Status::GuardCurv,
-        spa::Status::NonFinite,
+        spa::Status::FallbackMaxIter, spa::Status::FallbackGuardTemp, spa::Status::FallbackGuardCurv,
+        spa::Status::FallbackNonFinite,
     };
     for (spa::Status f : failures) {
         const spa::TwoSided a =
-            spa::combineTails(1e-8, kNaN, spa::Status::Converged, f);
+            spa::combineTails(1e-8, kNaN, spa::Status::SpaOk, f);
         CHECK(std::isnan(a.p));
         CHECK(std::isnan(a.negLog10p));
         CHECK(a.status == f);
 
         const spa::TwoSided b =
-            spa::combineTails(kNaN, 1e-8, f, spa::Status::Converged);
+            spa::combineTails(kNaN, 1e-8, f, spa::Status::SpaOk);
         CHECK(std::isnan(b.p));
         CHECK(b.status == f);
 
         const spa::TwoSided c =
-            spa::combineTailsLog(-18.4, kNaN, spa::Status::Converged, f);
+            spa::combineTailsLog(-18.4, kNaN, spa::Status::SpaOk, f);
         CHECK(std::isnan(c.p));
         CHECK(c.status == f);
     }
@@ -1704,16 +1791,16 @@ TEST(combine_tails_never_reports_half_a_p_value) {
     // One degraded tail and one ordinary tail: a real p, and a status that
     // says the modified root was dropped on one side.
     const spa::TwoSided g = spa::combineTails(
-        1e-8, 0.5, spa::Status::Converged, spa::Status::GuardW);
-    CHECK(g.status == spa::Status::GuardW);
-    CHECK(!spa::statusIsFailure(g.status));
+        1e-8, 0.5, spa::Status::SpaOk, spa::Status::SpaWSingular);
+    CHECK(g.status == spa::Status::SpaWSingular);
+    CHECK(spa::statusIsUsable(g.status));
     CHECK_REL(g.p, 0.50000001, 1e-15);
 
     // ...but a genuine failure on the other side still wins.
     const spa::TwoSided h = spa::combineTails(
-        kNaN, 0.5, spa::Status::MaxIter, spa::Status::GuardW);
+        kNaN, 0.5, spa::Status::FallbackMaxIter, spa::Status::SpaWSingular);
     CHECK(std::isnan(h.p));
-    CHECK(h.status == spa::Status::MaxIter);
+    CHECK(h.status == spa::Status::FallbackMaxIter);
 }
 
 TEST(combine_tails_never_turns_nan_into_one) {
@@ -1724,33 +1811,33 @@ TEST(combine_tails_never_turns_nan_into_one) {
     CHECK(std::min(1.0, kNaN) == 1.0);  // the behavior being fixed
 
     const spa::TwoSided r =
-        spa::combineTails(kNaN, 0.25, spa::Status::Converged, spa::Status::Converged);
+        spa::combineTails(kNaN, 0.25, spa::Status::SpaOk, spa::Status::SpaOk);
     CHECK(std::isnan(r.p));
-    CHECK(r.status == spa::Status::NonFinite);
+    CHECK(r.status == spa::Status::FallbackNonFinite);
 
     const spa::TwoSided r2 =
-        spa::combineTails(0.25, kInf, spa::Status::Converged, spa::Status::Converged);
+        spa::combineTails(0.25, kInf, spa::Status::SpaOk, spa::Status::SpaOk);
     CHECK(std::isnan(r2.p));
-    CHECK(r2.status == spa::Status::NonFinite);
+    CHECK(r2.status == spa::Status::FallbackNonFinite);
 }
 
 TEST(combine_tails_clamps_into_the_unit_interval_without_flooring_at_dbl_min) {
     // Over-unity sums are clamped down...
-    const spa::TwoSided hi = spa::combineTails(0.9, 0.9, spa::Status::Converged,
-                                               spa::Status::Converged);
+    const spa::TwoSided hi = spa::combineTails(0.9, 0.9, spa::Status::SpaOk,
+                                               spa::Status::SpaOk);
     CHECK(hi.p == 1.0);
-    CHECK(hi.status == spa::Status::Converged);
+    CHECK(hi.status == spa::Status::SpaOk);
     CHECK(hi.negLog10p == 0.0);
 
     // ...but a p that underflowed to zero is reported as zero.  Substituting
     // DBL_MIN, as spamixlocalp.cpp:987 does, manufactures a
     // genome-wide-significant hit out of a numerical failure.
-    const spa::TwoSided lo = spa::combineTails(0.0, 0.0, spa::Status::Converged,
-                                               spa::Status::Converged);
+    const spa::TwoSided lo = spa::combineTails(0.0, 0.0, spa::Status::SpaOk,
+                                               spa::Status::SpaOk);
     CHECK(lo.p == 0.0);
     CHECK(lo.p != std::numeric_limits<double>::min());
     CHECK(lo.negLog10p == kInf);
-    CHECK(lo.status == spa::Status::Converged);
+    CHECK(lo.status == spa::Status::SpaOk);
 }
 
 TEST(combine_tails_log_is_log_sum_exp) {
@@ -1758,17 +1845,17 @@ TEST(combine_tails_log_is_log_sum_exp) {
     for (double e1 = -1.0; e1 >= -900.0; e1 -= 37.0)
         for (double e2 = -1.0; e2 >= -900.0; e2 -= 53.0) {
             const spa::TwoSided lg = spa::combineTailsLog(
-                e1, e2, spa::Status::Converged, spa::Status::Converged);
+                e1, e2, spa::Status::SpaOk, spa::Status::SpaOk);
             const double m = std::fmax(e1, e2);
             const double want =
                 -(m + std::log1p(std::exp(std::fmin(e1, e2) - m))) / kLn10;
             CHECK_REL(lg.negLog10p, want, 1e-14);
-            CHECK(lg.status == spa::Status::Converged);
+            CHECK(lg.status == spa::Status::SpaOk);
         }
 
     // Two tails that both underflow on the linear scale still combine.
     const spa::TwoSided deep = spa::combineTailsLog(
-        -920.0, -921.0, spa::Status::Converged, spa::Status::Converged);
+        -920.0, -921.0, spa::Status::SpaOk, spa::Status::SpaOk);
     CHECK(deep.p == 0.0);
     CHECK(std::isfinite(deep.negLog10p));
     CHECK_REL(deep.negLog10p,
@@ -1776,18 +1863,18 @@ TEST(combine_tails_log_is_log_sum_exp) {
 
     // Equal tails: log(2*e^x) = x + log 2.
     const spa::TwoSided eq = spa::combineTailsLog(
-        -1000.0, -1000.0, spa::Status::Converged, spa::Status::Converged);
+        -1000.0, -1000.0, spa::Status::SpaOk, spa::Status::SpaOk);
     CHECK_REL(eq.negLog10p, (1000.0 - 0.69314718055994530942) / kLn10, 1e-14);
 
     // Both tails exactly zero probability.
     const spa::TwoSided zero = spa::combineTailsLog(
-        -kInf, -kInf, spa::Status::Converged, spa::Status::Converged);
+        -kInf, -kInf, spa::Status::SpaOk, spa::Status::SpaOk);
     CHECK(zero.p == 0.0);
     CHECK(zero.negLog10p == kInf);
 
     // Over-unity is clamped the same way the linear form clamps it.
     const spa::TwoSided over = spa::combineTailsLog(
-        -0.1, -0.1, spa::Status::Converged, spa::Status::Converged);
+        -0.1, -0.1, spa::Status::SpaOk, spa::Status::SpaOk);
     CHECK(over.p == 1.0);
     CHECK(over.negLog10p == 0.0);
     CHECK(!std::signbit(over.negLog10p));
@@ -1888,8 +1975,8 @@ TEST(a_p_of_1e_minus_400_is_recovered_in_log10p) {
     const double lTail = math::pnormLog(-w, 0.0, 1.0, true);
 
     const spa::TwoSided lg = spa::combineTailsLog(
-        lTail, lTail, spa::Status::Converged, spa::Status::Converged);
-    CHECK(lg.status == spa::Status::Converged);
+        lTail, lTail, spa::Status::SpaOk, spa::Status::SpaOk);
+    CHECK(lg.status == spa::Status::SpaOk);
     CHECK_CLOSE(lg.negLog10p, 400.0, 1e-12, 0.0);
     CHECK(lg.p == 0.0);           // honest zero, not DBL_MIN
 
@@ -1897,8 +1984,8 @@ TEST(a_p_of_1e_minus_400_is_recovered_in_log10p) {
     // underflowed, so it reports p = 0 with negLog10p = +inf.  That is the
     // defect L3 exists to route around, and the reason LOG10P is a column.
     const spa::TwoSided lin = spa::combineTails(
-        std::exp(lTail), std::exp(lTail), spa::Status::Converged,
-        spa::Status::Converged);
+        std::exp(lTail), std::exp(lTail), spa::Status::SpaOk,
+        spa::Status::SpaOk);
     CHECK(lin.p == 0.0);
     CHECK(std::isinf(lin.negLog10p));
 
@@ -1923,9 +2010,9 @@ TEST(log10p_agrees_with_minus_log10_p_at_full_precision) {
         const double pl = math::pnorm(-1.37 * w - 0.2, 0.0, 1.0, true);
 
         const spa::TwoSided lin = spa::combineTails(
-            pu, pl, spa::Status::Converged, spa::Status::Converged);
+            pu, pl, spa::Status::SpaOk, spa::Status::SpaOk);
         const spa::TwoSided lg = spa::combineTailsLog(
-            lu, ll, spa::Status::Converged, spa::Status::Converged);
+            lu, ll, spa::Status::SpaOk, spa::Status::SpaOk);
         if (!(lin.p > 1e-300)) continue;
 
         const double d = std::fabs(lg.negLog10p - lin.negLog10p) /
@@ -1945,9 +2032,10 @@ TEST(log10p_agrees_with_minus_log10_p_at_full_precision) {
 
 TEST(status_severity_ordering_is_total_and_deterministic) {
     const spa::Status all[] = {
-        spa::Status::Converged, spa::Status::NormalBranch, spa::Status::MaxIter,
-        spa::Status::GuardW,    spa::Status::GuardTemp,    spa::Status::GuardCurv,
-        spa::Status::NonFinite,
+        spa::Status::SpaOk, spa::Status::Normal, spa::Status::FallbackMaxIter,
+        spa::Status::SpaWSingular, spa::Status::FallbackGuardTemp,
+        spa::Status::FallbackGuardCurv, spa::Status::FallbackNonFinite,
+        spa::Status::NaPostFail, spa::Status::NaNoTest,
     };
     for (spa::Status a : all)
         for (spa::Status b : all) {
@@ -1958,8 +2046,8 @@ TEST(status_severity_ordering_is_total_and_deterministic) {
             CHECK(spa::statusSeverity(w) ==
                   std::max(spa::statusSeverity(a), spa::statusSeverity(b)));
             // A failure on either side always wins over a success.
-            if (spa::statusIsFailure(a) || spa::statusIsFailure(b))
-                CHECK(spa::statusIsFailure(w));
+            if (!spa::statusIsUsable(a) || !spa::statusIsUsable(b))
+                CHECK(!spa::statusIsUsable(w));
         }
 }
 
@@ -1991,13 +2079,13 @@ TEST(normal_two_sided_and_its_log) {
 
     CHECK(std::isnan(spa::normalTwoSidedLog(kNaN)));
     CHECK(std::isnan(spa::normalBranch(kNaN).p));
-    CHECK(spa::normalBranch(kNaN).status == spa::Status::NonFinite);
+    CHECK(spa::normalBranch(kNaN).status == spa::Status::NaNoTest);
 }
 
 TEST(normal_branch_bundle_is_self_consistent) {
     for (double z : {0.0, 0.5, 2.0, 6.0, 25.0}) {
         const spa::TwoSided b = spa::normalBranch(z);
-        CHECK(b.status == spa::Status::NormalBranch);
+        CHECK(b.status == spa::Status::Normal);
         CHECK_REL(b.p, spa::normalTwoSided(z), 0.0);
         if (b.p > 0.0)
             CHECK_MSG(std::fabs(b.negLog10p + std::log10(b.p)) <=
@@ -2069,9 +2157,9 @@ TEST(end_to_end_two_sided_spa_p_value) {
             sLower, [&](double t) { return cl.k12(t); },
             [&](double t) { return cl.kFull(t); }, ol);
 
-        CHECK_MSG(ru.status == spa::Status::Converged, "upper " + statusStr(ru.status));
-        CHECK_MSG(rl.status == spa::Status::Converged, "lower " + statusStr(rl.status));
-        if (ru.status != spa::Status::Converged || rl.status != spa::Status::Converged)
+        CHECK_MSG(ru.status == spa::Status::SpaOk, "upper " + statusStr(ru.status));
+        CHECK_MSG(rl.status == spa::Status::SpaOk, "lower " + statusStr(rl.status));
+        if (ru.status != spa::Status::SpaOk || rl.status != spa::Status::SpaOk)
             continue;
         CHECK(ru.zeta > 0.0);
         CHECK(rl.zeta < 0.0);
@@ -2082,14 +2170,14 @@ TEST(end_to_end_two_sided_spa_p_value) {
         const double lu = spa::bnTailLog(ru.zeta, sUpper, ru.K0, ru.K2, false, su);
         const double ll = spa::bnTailLog(rl.zeta, sLower, rl.K0, rl.K2, true, sl);
 
-        CHECK_MSG(su == spa::Status::Converged, "tail upper " + statusStr(su));
-        CHECK_MSG(sl == spa::Status::Converged, "tail lower " + statusStr(sl));
-        if (su != spa::Status::Converged || sl != spa::Status::Converged) continue;
+        CHECK_MSG(su == spa::Status::SpaOk, "tail upper " + statusStr(su));
+        CHECK_MSG(sl == spa::Status::SpaOk, "tail lower " + statusStr(sl));
+        if (su != spa::Status::SpaOk || sl != spa::Status::SpaOk) continue;
 
         const spa::TwoSided lin = spa::combineTails(pu, pl, su, sl);
         const spa::TwoSided lg = spa::combineTailsLog(lu, ll, su, sl);
 
-        CHECK(lin.status == spa::Status::Converged);
+        CHECK(lin.status == spa::Status::SpaOk);
         CHECK(lin.p > 0.0 && lin.p <= 1.0);
         CHECK_REL(lg.p, lin.p, 1e-13);
         CHECK_NEAR(lg.negLog10p, lin.negLog10p, 1e-11);

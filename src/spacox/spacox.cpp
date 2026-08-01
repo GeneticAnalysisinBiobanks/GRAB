@@ -177,7 +177,7 @@ namespace {
 // Two-sided assembly shared by both stages.  `cgf(t, s)` must return
 // spa::K012{K(t), K'(t) - s, K''(t)}.
 template <class Cgf>
-spa::TwoSided spaTwoSided(const Cgf &cgf, double absZ) {
+spa::TwoSided spaTwoSided(const Cgf &cgf, double absZ, double zNorm) {
     double p[2], logp[2];
     spa::Status st[2];
 
@@ -192,42 +192,43 @@ spa::TwoSided spaTwoSided(const Cgf &cgf, double absZ) {
         const spa::Saddle sd = spa::solveSaddlepoint(
             s, [&](double t) { return cgf(t, s); }, opt);
 
-        spa::Status stLin = spa::Status::Converged;
-        spa::Status stLog = spa::Status::Converged;
+        spa::Status stLin = spa::Status::SpaOk;
+        spa::Status stLog = spa::Status::SpaOk;
         p[k]    = spa::bnTail(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLin);
         logp[k] = spa::bnTailLog(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLog);
         st[k] = spa::worseStatus(sd.status, spa::worseStatus(stLin, stLog));
     }
 
-    // P from the linear-scale assembly (a sum of two positive quantities, as
-    // before); -log10(P) from the log-domain assembly, which survives past
-    // the point where the linear tails underflow to zero.
-    const spa::TwoSided lin = spa::combineTails(p[0], p[1], st[0], st[1]);
-    const spa::TwoSided lg  = spa::combineTailsLog(logp[0], logp[1], st[0], st[1]);
-    return spa::TwoSided{lin.p, lg.negLog10p, lin.status};
+    // spa::assemble owns the splice and the D5 fallback rule: P from the
+    // linear assembly, -log10(P) from the log-domain one, and on a
+    // saddlepoint failure in either tail both replaced by the two-sided
+    // normal tail at zNorm under a status naming the substitution.
+    return spa::assemble(p[0], p[1], logp[0], logp[1], st[0], st[1], zNorm);
 }
 
 }  // namespace
 
 spa::TwoSided SPACoxMethod::getProbSpaBucketed(
     const spacox_cgf::GenoWeights &gw,
-    double absZ
+    double absZ,
+    double zNorm
 ) const {
     const spacox_cgf::TableView tv(m_cumul);
     return spaTwoSided(
         [&](double t, double s) { return spacox_cgf::evalBucketed(tv, t, gw, s); },
-        absZ);
+        absZ, zNorm);
 }
 
 spa::TwoSided SPACoxMethod::getProbSpaDense(
     const double *w,
     int n,
-    double absZ
+    double absZ,
+    double zNorm
 ) const {
     const spacox_cgf::TableView tv(m_cumul);
     return spaTwoSided(
         [&](double t, double s) { return spacox_cgf::evalDense(tv, t, w, n, s); },
-        absZ);
+        absZ, zNorm);
 }
 
 // ======================================================================
@@ -272,7 +273,7 @@ spa::TwoSided SPACoxMethod::getMarkerPvalCore(
     outScoreVar = VarS;
     if (VarS <= 0.0) {
         zScore = 0.0;
-        return spa::TwoSided{nan, nan, spa::Status::NonFinite};
+        return spa::TwoSided{nan, nan, spa::Status::NaNoTest};
     }
     zScore = S / std::sqrt(VarS);
 
@@ -293,7 +294,7 @@ spa::TwoSided SPACoxMethod::getMarkerPvalCore(
     spacox_cgf::buildGenoWeights(gp, m_N, twoMAF, sqrtVarS, tlScratch.weights);
 
     const double absZ1 = std::abs(zScore);
-    spa::TwoSided ts = getProbSpaBucketed(tlScratch.weights, absZ1);
+    spa::TwoSided ts = getProbSpaBucketed(tlScratch.weights, absZ1, zScore);
 
     // A stage-1 failure (P is NaN) falls through to stage 2 exactly as it did
     // before, when `NaN > m_pvalCovAdjCut` evaluated false: the
@@ -322,7 +323,7 @@ spa::TwoSided SPACoxMethod::getMarkerPvalCore(
     outScoreVar = VarS;
     if (VarS <= 0.0) {
         zScore = 0.0;
-        return spa::TwoSided{nan, nan, spa::Status::NonFinite};
+        return spa::TwoSided{nan, nan, spa::Status::NaNoTest};
     }
     zScore = S / std::sqrt(VarS);
     sqrtVarS = std::sqrt(VarS);
@@ -333,7 +334,7 @@ spa::TwoSided SPACoxMethod::getMarkerPvalCore(
     for (int i = 0; i < m_N; ++i)
         anp[i] = avp[i] / sqrtVarS;
 
-    return getProbSpaDense(anp, m_N, std::abs(zScore));
+    return getProbSpaDense(anp, m_N, std::abs(zScore), zScore);
 }
 
 // ======================================================================

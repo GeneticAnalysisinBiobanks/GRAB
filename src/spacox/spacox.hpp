@@ -102,11 +102,16 @@ class SPACoxMethod : public MethodBase {
 // dev-notes/methods/spa_unify/02_design.md places out of scope for the
 // per-method migration stages.  The mapping is spa::Status's own:
 //
-//     0 OK (converged)     3 GUARD_CURV     6 NORMAL (|Z| <= --spa-z-threshold,
-//     1 MAXITER            4 GUARD_W          saddlepoint never attempted)
-//     2 GUARD_TEMP         5 NONFINITE
+//     0 SPA_OK               3 FALLBACK_MAXITER      7 NA_POST_FAIL
+//     1 NORMAL               4 FALLBACK_GUARD_TEMP   8 NA_NO_TEST
+//     2 SPA_W_SINGULAR       5 FALLBACK_GUARD_CURV
+//                            6 FALLBACK_NONFINITE
 //
-// P and LOG10P are NA for every status other than 0, 4 and 6.
+// The order is a contract (log10p_unify decision D4): SPA_STATUS <= 2 means
+// LOG10P is trustworthy, 3..6 that the saddlepoint failed and LOG10P is the
+// substituted two-sided normal tail -log10(2*Phi(-|Z_Norm|)) -- which is
+// anti-conservative at low MAC, so filter with SPA_STATUS <= 2 before judging
+// significance -- and >= 7 that LOG10P is NA.
     std::string getHeaderColumns() const override {
         return "\tP\tLOG10P\tZ\tZ_Norm\tBETA\tSE\tSPA_STATUS";
     }
@@ -137,21 +142,28 @@ class SPACoxMethod : public MethodBase {
 // ---- Two-sided saddlepoint p-value ----
 //
 // Both tails are solved with spa::solveSaddlepoint and evaluated with
-// spa::bnTail / spa::bnTailLog, then assembled by spa::combineTails.  The
+// spa::bnTail / spa::bnTailLog, then assembled by spa::assemble.  The
 // only SPACox-specific part is the CGF callable, which is why these take one.
 //
 // `getProbSpaBucketed` is stage 1 (weights collapsed into buckets, P1);
 // `getProbSpaDense` is stage 2 (covariate-adjusted weights, no bucket
 // structure).  Both return P, -log10(P) and the status of the worse tail.
+// `zNorm` is the raw score z; spa::assemble reports its normal tail, under a
+// status naming the substitution, when the saddlepoint fails (decision D5).
+// SPACox standardizes its weights, so |zNorm| equals `absZ` — the two are
+// still passed separately so the call site, not a comment, is what has to
+// hold.
     spa::TwoSided getProbSpaBucketed(
         const spacox_cgf::GenoWeights &gw,
-        double absZ
+        double absZ,
+        double zNorm
     ) const;
 
     spa::TwoSided getProbSpaDense(
         const double *w,
         int n,
-        double absZ
+        double absZ,
+        double zNorm
     ) const;
 
 // ---- Per-marker score test ----

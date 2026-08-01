@@ -54,12 +54,15 @@ constexpr double META_P_CEIL  = 1.0 - 1e-15;
 // spa_unify Stage 6 (L3) adds the log-domain magnitude, so a pooled p below
 // the linear underflow floor is still reported; and the status, which is the
 // worst spa::Status among the clusters that actually contributed.  Contributing
-// requires a finite score and a finite p, and a cluster whose saddlepoint
-// failed now has a NaN p (D2) and is skipped — so a contributing cluster
-// always carries one of the three non-failure statuses (Converged, GuardW or
-// NormalBranch), and the pooled status is 0, 4 or 6 whenever `p` is a number,
-// NonFinite when it is NA.  That is the same "P is NA for every status other
-// than 0, 4 and 6" invariant the six migrated methods carry.
+// requires a finite score and a finite p.  Under log10p_unify decision D5 a
+// cluster whose saddlepoint failed has a finite p again — the substituted
+// normal tail — so it contributes, and the pooled status carries its 3..6
+// code up to the meta row.  That is the intended behaviour: the substitution
+// stays visible in `meta_SPA_STATUS` rather than being laundered by pooling.
+// A cluster with no test at all still has a NaN p and is still skipped.
+//
+// When nothing contributed there is no pooled statistic, so the status is
+// NA_NO_TEST, not a saddlepoint failure: no root was ever sought.
 struct MetaPooled {
     double p;
     double negLog10p;
@@ -73,7 +76,7 @@ inline MetaPooled metaPvalueScorePool(
 ) {
     const double nan = std::numeric_limits<double>::quiet_NaN();
     double sumScore = 0.0, sumVar = 0.0;
-    spa::Status st = spa::Status::NonFinite;
+    spa::Status st = spa::Status::NaNoTest;
     bool any = false;
     const std::size_t K = scores.size();
     for (std::size_t c = 0; c < K; ++c) {
@@ -88,7 +91,7 @@ inline MetaPooled metaPvalueScorePool(
         st  = any ? spa::worseStatus(st, statuses[c]) : statuses[c];
         any = true;
     }
-    if (sumVar <= 0.0) return MetaPooled{nan, nan, spa::Status::NonFinite};
+    if (sumVar <= 0.0) return MetaPooled{nan, nan, spa::Status::NaNoTest};
     const double z = sumScore / std::sqrt(sumVar);
     // The linear-scale p is left exactly as it was — erfc(|z|/sqrt(2)), not
     // 2*pnorm(-|z|) — so that meta_P does not move by a ULP under a change

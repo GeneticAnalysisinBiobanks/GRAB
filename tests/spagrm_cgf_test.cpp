@@ -473,7 +473,7 @@ TEST(raw_moment_difference_returns_a_wrong_finite_number_where_the_new_form_refu
     // and return a finite value wrong in a way nothing downstream could detect,
     // whereas a non-finite K' makes spa::solveSaddlepoint retreat toward a usable
     // abscissa (the isfinite tests in its bracket expansion and Newton loop) and,
-    // failing that, report Status::NonFinite with P = NA.
+    // failing that, report Status::NaNoTest with P = NA.
     CHECK(!std::isfinite(spagrm_cgf::k12(400.0, c, 0.0).k2));
     {
         const OldTwo o = oldTwoSubj(400.0, R1, R2, MAF, rho);
@@ -617,10 +617,10 @@ TEST(degenerate_class3_table_yields_a_non_finite_k_not_a_silent_log_of_zero) {
 
     // And spa::bnTail turns that into NaN plus a named status rather than
     // forwarding it into math::pnorm.
-    spa::Status st = spa::Status::Converged;
+    spa::Status st = spa::Status::SpaOk;
     const double p = spa::bnTail(0.5, 1.0, F.k0, 1.0, /*lowerTail=*/false, st);
     CHECK(std::isnan(p));
-    CHECK(spa::statusIsFailure(st));
+    CHECK(!spa::statusIsUsable(st));
 }
 
 TINYTEST_MAIN

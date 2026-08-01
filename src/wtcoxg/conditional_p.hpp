@@ -119,14 +119,18 @@ struct ConditionalP {
 };
 
 // The status to attribute to a leg that produced no usable joint probability.
-// If its saddlepoint already named a reason, keep it.  Otherwise the leg was
-// lost downstream of the saddlepoint — math::pmvnorm2dHalfRect returns NaN
-// when the (var_S, cov, var_Sbat) triple it is handed is not a covariance
-// matrix, which is what happens when sigma2 drives |rho| past 1 — and
-// spa::Status has no enumerator for that, so NonFinite covers it, as it covers
-// every other "no test exists" case in WtCoxG.
+//
+// If the leg's own saddlepoint already left it with no answer, keep that
+// reason.  Otherwise the leg was lost DOWNSTREAM of the saddlepoint:
+// math::pmvnorm2dHalfRect returns NaN when the (var_S, cov, var_Sbat) triple
+// it is handed is not a covariance matrix, which is what happens when sigma2
+// drives |rho| past 1.  That is NA_POST_FAIL, and separating it from the
+// saddlepoint's own failures is the point of the re-partition: on the bundled
+// fixture all 177 such rows have |Z_Norm_EXT| far below the SPA cutoff, so the
+// saddlepoint was never attempted and the normal tail at that Z would answer a
+// question nobody asked.  Those rows stay NA (decision D5).
 inline spa::Status legFailureStatus(spa::Status st) {
-    return spa::statusIsFailure(st) ? st : spa::Status::NonFinite;
+    return spa::statusIsNA(st) ? st : spa::Status::NaPostFail;
 }
 
 // w1/m1/p1 describe the sigma2 > 0 component, w0/m0/p0 the sigma2 = 0 one:
@@ -171,8 +175,10 @@ inline ConditionalP conditionalP(
         return {nan, nan, legFailureStatus(spa::worseStatus(st0, st1))};
     }
 
+    // An unusable denominator is a failure of the conditional assembly, not
+    // of any saddlepoint: NA_POST_FAIL, never a normal tail.
     double p = 2.0 * numer / p_deno;
-    if (!std::isfinite(p)) return {nan, nan, spa::Status::NonFinite};
+    if (!std::isfinite(p)) return {nan, nan, spa::Status::NaPostFail};
 
     // The immaterial-leg rule.  `width` is the whole interval the missing leg
     // spans.  Both comparisons are written negated so that a NaN takes the

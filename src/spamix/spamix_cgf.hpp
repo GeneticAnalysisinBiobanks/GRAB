@@ -199,15 +199,23 @@ inline spa::K012 kFull(double t, const Context &c, double s) noexcept {
 // GRM quadratic form — and is used only to size the initial abscissa.  Pass 0
 // to start at the origin.
 //
-// Failure semantics are spa::combineTails': a failure in either tail yields NaN
-// in p and a named status, never a half-sized p-value.  The predecessor summed
-// the two tails unconditionally, so a NaN in one of them propagated to the sum
-// with no diagnostic; that is D5 and D6 as they appear in this family.
+// Failure semantics are spa::assemble's: a failure in EITHER tail discards the
+// saddlepoint for both, and the row reports the normal tail at `zNorm` under a
+// status naming the substitution (decision D5).  Never a half-sized p-value:
+// the predecessor summed the two tails unconditionally, so a NaN in one of
+// them propagated to the sum with no diagnostic; that is D5 and D6 as they
+// appear in this family.
+//
+// `zNorm` is the caller's raw score z = (S - E[S]) / sqrt(Var S).  It is a
+// parameter rather than something recovered from sMean and absDev because
+// three of the four callers rescale the statistic to the independence variance
+// before reaching here, so absDev/sqrt(indepVar) is NOT the reported z.
 inline spa::TwoSided twoSidedSpa(
     const Context &c,
     double sMean,
     double absDev,
     double indepVar,
+    double zNorm,
     double rtol = 1e-6
 ) noexcept {
     double zeta0 = 0.0;
@@ -234,27 +242,25 @@ inline spa::TwoSided twoSidedSpa(
             [&](double t) { return kFull(t, c, s); },
             opt);
 
-        spa::Status stLin = spa::Status::Converged;
-        spa::Status stLog = spa::Status::Converged;
+        spa::Status stLin = spa::Status::SpaOk;
+        spa::Status stLog = spa::Status::SpaOk;
         p[k]    = spa::bnTail(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLin);
         logp[k] = spa::bnTailLog(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLog);
         st[k] = spa::worseStatus(sd.status, spa::worseStatus(stLin, stLog));
     }
 
-    // P from the linear-scale assembly (the sum of two positive tails, as
-    // before); -log10(P) from the log-domain assembly, which stays meaningful
-    // past the point where both linear tails underflow to zero.
-    const spa::TwoSided lin = spa::combineTails(p[0], p[1], st[0], st[1]);
-    const spa::TwoSided lg  = spa::combineTailsLog(logp[0], logp[1], st[0], st[1]);
-    return spa::TwoSided{lin.p, lg.negLog10p, lin.status};
+    // P from the linear-scale assembly, -log10(P) from the log-domain one,
+    // and the D5 fallback when either tail failed — one call, in spa.hpp.
+    return spa::assemble(p[0], p[1], logp[0], logp[1], st[0], st[1], zNorm);
 }
 
 // The SPA_STATUS output column.  MethodBase hands the engine a
 // std::vector<double> and marker_impl.hpp formats every cell through
 // `numToChars`, so the column is the numeric enumerator rather than the token
-// `spa::statusName` returns: 0 OK, 1 MAXITER, 2 GUARD_TEMP, 3 GUARD_CURV,
-// 4 GUARD_W, 5 NONFINITE, 6 NORMAL.  This is the encoding Stages 3 and 4
-// established for SPACox, SPAGRM and SPAsqr.
+// `spa::statusName` returns: 0 SPA_OK, 1 NORMAL, 2 SPA_W_SINGULAR,
+// 3..6 the FALLBACK_* codes, 7 NA_POST_FAIL, 8 NA_NO_TEST.  The order is a
+// contract: <= 2 means LOG10P is trustworthy, 3..6 that it is the substituted
+// normal tail, >= 7 that it is NA.  See the Status note in util/spa.hpp.
 inline double statusCode(spa::Status s) noexcept {
     return static_cast<double>(static_cast<uint8_t>(s));
 }

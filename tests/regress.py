@@ -247,9 +247,11 @@ def paired_name(name, spec):
 #            p-value (3-6 being the named normal-approximation fallback);
 #            7 (NA_POST_FAIL) and 8 (NA_NO_TEST) are NA.
 #
-# The default is 'legacy7' because that is what the tree actually emits until
-# Stage 2 lands; Stage 2 changes the default to 'nine'.  Defaulting the check
-# off instead would make it check nothing during Stages 0 and 1.
+# The default is 'nine', which is what the tree has emitted since log10p_unify
+# Stage 2 re-partitioned spa::Status.  'legacy7' is kept only so that an
+# examples_output tree produced by a pre-Stage-2 binary can still be checked;
+# reading a Stage-2 tree under 'legacy7' reports every correctly substituted
+# fallback row (SPA_STATUS 3-6 with a numeric LOG10P) as a C3 violation.
 
 STATUS_SEMANTICS = {
     # name: (set of statuses that must carry a finite non-negative LOG10P,
@@ -591,10 +593,11 @@ def main():
                          "with LOG10P_EXT and cl3_P_BAT with cl3_LOG10P_BAT). "
                          "May be given more than once.")
     ap.add_argument("--spa-status-semantics", choices=sorted(STATUS_SEMANTICS),
-                    default="legacy7",
+                    default="nine",
                     help="which SPA_STATUS partition the C3 invariant is "
-                         "checked against (default: legacy7, the seven-value "
-                         "enumeration in force before log10p_unify Stage 2)")
+                         "checked against (default: nine, the partition in "
+                         "force since log10p_unify Stage 2; legacy7 is the "
+                         "seven-value enumeration that preceded it)")
     args = ap.parse_args()
 
     def walk(root):

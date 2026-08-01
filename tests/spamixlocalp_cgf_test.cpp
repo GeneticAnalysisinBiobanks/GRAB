@@ -288,11 +288,14 @@ TEST(a_nan_residual_propagates_rather_than_becoming_minus_infinity) {
     CHECK(k.k0 != -std::numeric_limits<double>::infinity());
 
     // Which is the property that actually matters: the tail must report the
-    // condition rather than turning it into a probability.
-    const spa::TwoSided ts = spamixlocalp_cgf::twoSidedSpa(c, 0.0, 1.0, 1.0);
+    // condition rather than turning it into a probability.  With no z to fall
+    // back to (decision D5 does not manufacture one) the row is NA; with a z
+    // it would be the named normal substitution, never the saddlepoint value.
+    const spa::TwoSided ts = spamixlocalp_cgf::twoSidedSpa(
+        c, 0.0, 1.0, 1.0, std::numeric_limits<double>::quiet_NaN());
     CHECK(std::isnan(ts.p));
     CHECK(std::isnan(ts.negLog10p));
-    CHECK(spa::statusIsFailure(ts.status));
+    CHECK(ts.status == spa::Status::NaNoTest);
     std::printf("    NaN residual: K'' = %s, K = %.6g, status = %s\n",
                 std::isnan(k.k2) ? "nan" : "finite", k.k0,
                 spa::statusName(ts.status));
@@ -377,8 +380,8 @@ TEST(twosided_reproduces_the_normal_tail_when_there_are_no_outliers) {
     for (double z : {2.5, 3.0, 5.0, 8.0, 12.0, 20.0}) {
         const double absDev = z * sigma;
         const spa::TwoSided ts =
-            spamixlocalp_cgf::twoSidedSpa(c, c.mean, absDev, c.var);
-        CHECK(ts.status == spa::Status::Converged);
+            spamixlocalp_cgf::twoSidedSpa(c, c.mean, absDev, c.var, z);
+        CHECK(ts.status == spa::Status::SpaOk);
         const double want = spa::normalTwoSided(z);
         worstP = std::fmax(worstP, std::fabs(ts.p - want) / want);
         const double wantL = -spa::normalTwoSidedLog(z) / std::log(10.0);
@@ -422,17 +425,21 @@ TEST(a_one_sided_failure_is_na_and_not_half_a_pvalue) {
     CHECK(centre + absDev > sup);
     CHECK(centre - absDev > 0.0 && centre - absDev < sup);
 
+    // One tail fails.  The whole two-sided p falls back — it is NOT the
+    // surviving tail, and it is not a sum of one saddlepoint tail and one
+    // normal tail either, which would be neither quantity.
+    const double zBad = 2.5;
     const spa::TwoSided ts =
-        spamixlocalp_cgf::twoSidedSpa(c, centre, absDev, 1.0);
-    CHECK(std::isnan(ts.p));
-    CHECK(std::isnan(ts.negLog10p));
-    CHECK(spa::statusIsFailure(ts.status));
+        spamixlocalp_cgf::twoSidedSpa(c, centre, absDev, 1.0, zBad);
+    CHECK(spa::statusIsFallback(ts.status));
+    CHECK(ts.p == spa::normalTwoSided(zBad));
+    CHECK(ts.negLog10p == -spa::normalTwoSidedLog(zBad) / std::log(10.0));
 
     // The predecessor would have returned the lower tail alone, a number
     // between 0 and 1 with nothing to mark it as half an answer.  Confirm that
     // the surviving tail really is a plausible-looking probability, so that the
     // test is about the reporting and not about an unreachable branch.
-    spa::Status stLower = spa::Status::Converged;
+    spa::Status stLower = spa::Status::SpaOk;
     const double sLower = centre - absDev;
     const spa::Saddle sd = spa::solveSaddlepoint(
         sLower,
@@ -440,10 +447,10 @@ TEST(a_one_sided_failure_is_na_and_not_half_a_pvalue) {
         [&](double t) { return spamixlocalp_cgf::kFull(t, c, sLower); },
         spa::SolveOpts{});
     const double pLower = spa::bnTail(sd.zeta, sLower, sd.K0, sd.K2, true, stLower);
-    CHECK(sd.status == spa::Status::Converged);
-    CHECK(stLower == spa::Status::Converged);
+    CHECK(sd.status == spa::Status::SpaOk);
+    CHECK(stLower == spa::Status::SpaOk);
     CHECK(pLower > 0.0 && pLower < 1.0);
-    std::printf("    one-sided failure: combined = NA (%s); "
+    std::printf("    one-sided failure: combined = normal fallback (%s); "
                 "the tail the predecessor would have reported alone = %.6g\n",
                 spa::statusName(ts.status), pLower);
 }
@@ -473,10 +480,12 @@ TEST(saturated_and_vanishing_allele_frequency_are_exact) {
         CHECK(k.k2 == 0.0);
         CHECK_REL(k.k0, t * sumHR, 1e-15);
     }
-    // Zero curvature everywhere: no root, no test, so NaN with a status.
-    const spa::TwoSided tsOne = spamixlocalp_cgf::twoSidedSpa(c, sumHR, 1.0, 0.0);
+    // Zero curvature everywhere: no root.  With no z supplied there is
+    // nothing to substitute, so the row is NA with NA_NO_TEST.
+    const spa::TwoSided tsOne = spamixlocalp_cgf::twoSidedSpa(
+        c, sumHR, 1.0, 0.0, std::numeric_limits<double>::quiet_NaN());
     CHECK(std::isnan(tsOne.p));
-    CHECK(spa::statusIsFailure(tsOne.status));
+    CHECK(tsOne.status == spa::Status::NaNoTest);
 
     // q == 0: G_i == 0 almost surely, every cumulant exactly zero.
     c.q = 0.0;
@@ -489,13 +498,15 @@ TEST(saturated_and_vanishing_allele_frequency_are_exact) {
 }
 
 TEST(status_code_matches_the_documented_integer_encoding) {
-    CHECK(spamixlocalp_cgf::statusCode(spa::Status::Converged) == 0.0);
-    CHECK(spamixlocalp_cgf::statusCode(spa::Status::MaxIter) == 1.0);
-    CHECK(spamixlocalp_cgf::statusCode(spa::Status::GuardTemp) == 2.0);
-    CHECK(spamixlocalp_cgf::statusCode(spa::Status::GuardCurv) == 3.0);
-    CHECK(spamixlocalp_cgf::statusCode(spa::Status::GuardW) == 4.0);
-    CHECK(spamixlocalp_cgf::statusCode(spa::Status::NonFinite) == 5.0);
-    CHECK(spamixlocalp_cgf::statusCode(spa::Status::NormalBranch) == 6.0);
+    CHECK(spamixlocalp_cgf::statusCode(spa::Status::SpaOk) == 0.0);
+    CHECK(spamixlocalp_cgf::statusCode(spa::Status::Normal) == 1.0);
+    CHECK(spamixlocalp_cgf::statusCode(spa::Status::SpaWSingular) == 2.0);
+    CHECK(spamixlocalp_cgf::statusCode(spa::Status::FallbackMaxIter) == 3.0);
+    CHECK(spamixlocalp_cgf::statusCode(spa::Status::FallbackGuardTemp) == 4.0);
+    CHECK(spamixlocalp_cgf::statusCode(spa::Status::FallbackGuardCurv) == 5.0);
+    CHECK(spamixlocalp_cgf::statusCode(spa::Status::FallbackNonFinite) == 6.0);
+    CHECK(spamixlocalp_cgf::statusCode(spa::Status::NaPostFail) == 7.0);
+    CHECK(spamixlocalp_cgf::statusCode(spa::Status::NaNoTest) == 8.0);
 }
 
 }  // namespace

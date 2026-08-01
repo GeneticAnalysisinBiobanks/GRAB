@@ -848,8 +848,8 @@ int LEAFMethod::resultSize() const {
 // The per-cluster SPA_STATUS is the WtCoxG status of that cluster's test; see
 // wtcoxg.hpp for the encoding.  The META status is about the POOLING, not
 // about the clusters: it is the worst status among the clusters that actually
-// contributed to the pool, so it is 0 or 6 whenever meta_P is a number and 5
-// (NONFINITE) when no cluster contributed and meta_P is NA.  A cluster that
+// contributed to the pool, so it is <= 6 whenever meta_P is a number and 8
+// (NA_NO_TEST) when no cluster contributed and meta_P is NA.  A cluster that
 // failed contributes nothing and is visible in its own clN_SPA_STATUS column,
 // which is where a per-cluster failure belongs — folding it into the meta
 // status would mark almost every marker, since a cluster with no informative
@@ -894,6 +894,14 @@ void LEAFMethod::getResultVec(
         for (size_t k = 0; k < idx.size(); ++k)
             gClu[static_cast<Eigen::Index>(k)] = GVec[idx[k]];
 
+        // A cluster in which this marker has no informative subject — the
+        // common case, not the exception — comes back with status 8
+        // NA_NO_TEST and NA p-values.  That status is set by NAME inside
+        // WtCoxGMethod (wtcoxg.cpp's spaDegenerate / wtDegenerate, on the
+        // shared `MAC < 10 or Var(S) <= 0` guard), not inferred here from a
+        // NaN, and there is deliberately no second copy of that threshold in
+        // LEAF: one guard, one place.  metaPvalueScorePool then leaves the
+        // cluster out of the pool because its p is NA.
         auto dr = m_clusterMethods[c]->computeDual(gClu, markerInChunkIdx);
         pExt[c] = dr.p_ext;
         pNoext[c] = dr.p_noext;
@@ -1021,6 +1029,9 @@ void LEAFMethod::processScoreBatch(
             const double R_dot_g = scores(c, b);
             const double gSum    = scores(K + c, b);
             const int    Nc      = m_geom->clusterN[c];
+            // Same contract as the scalar path above: a cluster with no
+            // informative subject for this marker returns 8 NA_NO_TEST by
+            // name from WtCoxGMethod's own MAC / Var(S) guard.
             auto dr = m_clusterMethods[c]->computeDualFromScalars(
                 R_dot_g, gSum, Nc, chunkIdx);
             pExt[c]   = dr.p_ext;

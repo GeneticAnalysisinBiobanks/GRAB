@@ -155,17 +155,24 @@ class WtCoxGMethod : public MethodBase {
 // spa::Status's own, and is the encoding Stages 3-5 gave the other six
 // methods:
 //
-//     0 OK (converged)     3 GUARD_CURV     6 NORMAL (|Z| <= --spa-z-threshold,
-//     1 MAXITER            4 GUARD_W          saddlepoint never attempted)
-//     2 GUARD_TEMP         5 NONFINITE
+//     0 SPA_OK               3 FALLBACK_MAXITER      7 NA_POST_FAIL
+//     1 NORMAL               4 FALLBACK_GUARD_TEMP   8 NA_NO_TEST
+//     2 SPA_W_SINGULAR       5 FALLBACK_GUARD_CURV
+//                            6 FALLBACK_NONFINITE
 //
-// P and LOG10P are NA for every status other than 0, 4 and 6.  NONFINITE covers
-// a saddlepoint that left the reals, a marker for which no test exists at all
-// (per-cluster MAC below 10, a non-positive score variance, an unmatched
-// batch-effect p-value), and a conditional branch whose bivariate-normal
-// integral was handed a covariance pair that is not positive semi-definite:
-// spa::Status has no enumerator for any of the three, and adding one would
-// renumber a code already in five other methods' output.
+// The order is a contract (log10p_unify decision D4): SPA_STATUS <= 2 means
+// LOG10P is trustworthy, 3..6 that the saddlepoint failed and LOG10P is the
+// substituted two-sided normal tail -log10(2*Phi(-|Z_Norm|)) -- which is
+// anti-conservative at low MAC, so filter with SPA_STATUS <= 2 before judging
+// significance -- and >= 7 that LOG10P is NA.
+//
+// log10p_unify Stage 2 split what used to be one NONFINITE code into the three
+// different events WtCoxG produced under it: a saddlepoint that left the reals
+// (6 FALLBACK_NONFINITE), a marker for which no test exists at all -- MAC below
+// 10, a non-positive score variance, an unmatched batch-effect p-value
+// (8 NA_NO_TEST), and a conditional branch whose bivariate-normal integral was
+// handed a covariance pair that is not positive semi-definite (7 NA_POST_FAIL,
+// 177 markers of the bundled Time_Event fixture).
 //
 // On the two conditional branches the reported p-value is a two-component
 // mixture, and the two components have separate saddlepoints.  When one

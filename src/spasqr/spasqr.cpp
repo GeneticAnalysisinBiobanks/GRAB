@@ -139,7 +139,8 @@ inline spa::TwoSided spaTwoSided(
     double var,
     double absAdj,
     double initZeta,
-    double tol
+    double tol,
+    double zNorm
 ) {
     double p[2], logp[2];
     spa::Status st[2];
@@ -169,16 +170,18 @@ inline spa::TwoSided spaTwoSided(
             },
             opt);
 
-        spa::Status stLin = spa::Status::Converged;
-        spa::Status stLog = spa::Status::Converged;
+        spa::Status stLin = spa::Status::SpaOk;
+        spa::Status stLog = spa::Status::SpaOk;
         p[k]    = spa::bnTail(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLin);
         logp[k] = spa::bnTailLog(sd.zeta, s, sd.K0, sd.K2, lowerTail, stLog);
         st[k] = spa::worseStatus(sd.status, spa::worseStatus(stLin, stLog));
     }
 
-    const spa::TwoSided lin = spa::combineTails(p[0], p[1], st[0], st[1]);
-    const spa::TwoSided lg  = spa::combineTailsLog(logp[0], logp[1], st[0], st[1]);
-    return spa::TwoSided{lin.p, lg.negLog10p, lin.status};
+    // P from the linear-scale assembly, -log10(P) from the log-domain one,
+    // and the D5 fallback when either tail failed — one call, in spa.hpp.
+    // `zNorm` is the raw score z, not absAdj/sqrt(Var): the statistic has
+    // already been rescaled to the CGF's natural variance by this point.
+    return spa::assemble(p[0], p[1], logp[0], logp[1], st[0], st[1], zNorm);
 }
 
 // ── Per-tau p-value — the single live implementation ───────────────────
@@ -205,13 +208,13 @@ inline spa::TwoSided tauPvalue(
 
     if (Score_var <= 0.0 || MAF <= 0.0) {
         zScore = 0.0;
-        return spa::TwoSided{nan, nan, spa::Status::NonFinite};
+        return spa::TwoSided{nan, nan, spa::Status::NaNoTest};
     }
 
     zScore = Score / std::sqrt(Score_var);
 
     if (!std::isfinite(zScore))
-        return spa::TwoSided{nan, nan, spa::Status::NonFinite};
+        return spa::TwoSided{nan, nan, spa::Status::NaNoTest};
 
     if (std::abs(zScore) <= spa_.SPA_Cutoff) return spa::normalBranch(zScore);
 
@@ -229,7 +232,7 @@ inline spa::TwoSided tauPvalue(
                        MAF,
                        2.0 * MAF * tau.sum_R_nonOutlier,
                        2.0 * MAF * (1.0 - MAF) * tau.R_GRM_R_nonOutlier,
-                       absAdj, initZeta, spa_.tol);
+                       absAdj, initZeta, spa_.tol, zScore);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -285,9 +288,11 @@ class SPAsqrMethod : public MethodBase {
 // does not already carry.  Giving CCT a genuine log-domain path is a separate
 // change to math_helper.hpp, not part of this migration.
 //
-// SPA_STATUS is static_cast<uint8_t>(spa::Status): 0 OK, 1 MAXITER,
-// 2 GUARD_TEMP, 3 GUARD_CURV, 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|Z| below
-// --spa-z-threshold, saddlepoint never attempted).  Integer rather than the
+// SPA_STATUS is static_cast<uint8_t>(spa::Status): 0 SPA_OK, 1 NORMAL,
+// 2 SPA_W_SINGULAR, 3..6 the FALLBACK_* codes, 7 NA_POST_FAIL, 8 NA_NO_TEST.
+// The order is a contract (log10p_unify D4): <= 2 means LOG10P is
+// trustworthy, 3..6 that it is the substituted normal tail, >= 7 that it is
+// NA.  Integer rather than the
 // spa::statusName token because MethodBase hands the engine a
 // std::vector<double> and marker_impl.hpp formats every cell through
 // numToChars; a token column would need a new hook in the MethodBase contract,

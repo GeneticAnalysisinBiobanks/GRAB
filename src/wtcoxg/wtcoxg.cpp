@@ -250,22 +250,26 @@ struct SpaResult {
     double pval2;       // the plain normal two-sided p, always
     double score;       // S_raw, before the variance-ratio division
     double zscore;
-    spa::Status status; // 0 OK / 6 NORMAL when pval is usable; the guard
-                        // that fired otherwise, with pval NaN
+    spa::Status status; // the nine-value spa::Status: <= 2 when pval is the
+                        // saddlepoint or designed normal value, 3..6 when it
+                        // is the substituted normal tail, >= 7 when NA
 };
 
 // Every early return of the routine below reports a degenerate INPUT rather
 // than a saddlepoint failure: too few minor alleles for the approximation to
 // mean anything, or a score variance that is not positive.  There is no test
-// in those cases, and no root was ever sought.  spa::Status has no "no test"
-// enumerator and this stage does not add one — the enumeration is shared with
-// five migrated methods and its numeric encoding is now in their output —
-// so they take NonFinite, which is the convention Stage 5 established for the
-// same situation in SPAGxE (spagxe.cpp) and which preserves the invariant that
-// P is NA for every status other than 0, 4 and 6.
+// in those cases, and no root was ever sought, so the status is NA_NO_TEST and
+// the row is NA.  It is NOT eligible for the D5 normal fallback: there is
+// nothing to fall back to.
+//
+// This is the single site that produces LEAF's per-cluster "no informative
+// subject" rows.  A cluster in which the marker is monomorphic, or carries
+// fewer than ten minor alleles, arrives here through the MAC guard below and
+// leaves with NA_NO_TEST by name — not by letting a NaN propagate downstream
+// and be classified after the fact.
 inline SpaResult spaDegenerate(double score) {
     const double nan = NaN::quiet_NaN();
-    return {nan, nan, nan, score, nan, spa::Status::NonFinite};
+    return {nan, nan, nan, score, nan, spa::Status::NaNoTest};
 }
 
 // Scalar-input variant of spaGOneSnpHomo.  The only quantities derived
@@ -347,7 +351,7 @@ SpaResult spaGOneSnpHomoFromScalars(
         // the expression the predecessor used, so this branch is unchanged to
         // the last bit.
         const spa::TwoSided nb = spa::normalBranch(z);
-        return {pval_norm, nb.negLog10p, pval_norm, S_raw, z, spa::Status::NormalBranch};
+        return {pval_norm, nb.negLog10p, pval_norm, S_raw, z, spa::Status::Normal};
     }
 
     // Non-outlier Gaussian CGF terms (closed form, O(1) per variant).
@@ -383,7 +387,7 @@ SpaResult spaGOneSnpHomoFromScalars(
         ctx.resid = scratch.data();
     }
 
-    const spa::TwoSided ts = wtcoxg_cgf::twoSidedSpa(ctx, std::abs(S), S_var);
+    const spa::TwoSided ts = wtcoxg_cgf::twoSidedSpa(ctx, std::abs(S), S_var, z);
     return {ts.p, ts.negLog10p, pval_norm, S_raw, z, ts.status};
 }
 
@@ -1321,11 +1325,11 @@ void WtCoxGMethod::processScoreBatch(
 }
 
 // A marker for which no test exists: MAC below 10, a non-positive variance, an
-// unmatched batch-effect p-value.  See the SPA_STATUS note in wtcoxg.hpp for
-// why this is NONFINITE rather than a dedicated enumerator.
+// unmatched batch-effect p-value.  NA_NO_TEST names exactly that, and is
+// outside the D5 fallback block because there is no statistic to approximate.
 WtCoxGMethod::WtResult WtCoxGMethod::wtDegenerate() {
     const double nan = NaN::quiet_NaN();
-    return {nan, nan, nan, nan, spa::Status::NonFinite};
+    return {nan, nan, nan, nan, spa::Status::NaNoTest};
 }
 
 // The two conditional branches below assemble their p-value through

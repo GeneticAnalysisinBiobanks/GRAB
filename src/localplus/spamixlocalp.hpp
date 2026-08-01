@@ -237,9 +237,10 @@ struct LocalSpaScratch {
 //   spaCutoff: |z| above which the saddlepoint is attempted
 //
 // Returns {P, -log10(P), SPA_STATUS}.  P and -log10(P) are NaN — reported as
-// NA — for every status other than Converged (0, "OK") and NormalBranch
-// (6, "NORMAL"); see spamixlocalp_cgf.hpp for what each status means and for
-// the D3 defects this replaced.
+// NA — exactly when SPA_STATUS >= 7 (NA_POST_FAIL / NA_NO_TEST); a status of
+// 3..6 means the saddlepoint failed and the substituted two-sided normal tail
+// is reported instead (log10p_unify D5).  See spamixlocalp_cgf.hpp for what
+// each status means and for the D3 defects this replaced.
 spa::TwoSided spaLocalPval(
     double S,
     double sMean,

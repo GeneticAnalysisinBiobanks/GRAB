@@ -57,6 +57,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <random>
 #include <vector>
 
@@ -308,8 +309,8 @@ TEST(twosided_reproduces_the_normal_tail_when_there_are_no_outliers) {
     double worstP = 0.0, worstL = 0.0;
     for (double z : {2.5, 3.0, 5.0, 8.0, 12.0, 20.0}) {
         const double absDev = z * sigma;
-        const spa::TwoSided ts = spamix_cgf::twoSidedSpa(c, c.mean, absDev, c.var);
-        CHECK(ts.status == spa::Status::Converged);
+        const spa::TwoSided ts = spamix_cgf::twoSidedSpa(c, c.mean, absDev, c.var, z);
+        CHECK(ts.status == spa::Status::SpaOk);
         const double want = spa::normalTwoSided(z);
         worstP = std::fmax(worstP, std::fabs(ts.p - want) / want);
         const double wantL = -spa::normalTwoSidedLog(z) / std::log(10.0);
@@ -333,8 +334,8 @@ TEST(twosided_agrees_with_the_normal_tail_when_the_outlier_block_is_negligible) 
     c.nOutlier = 1;
     c.mean = 0.0;
     c.var = 4.0;
-    const spa::TwoSided ts = spamix_cgf::twoSidedSpa(c, 0.0, 3.0 * 2.0, c.var);
-    CHECK(ts.status == spa::Status::Converged);
+    const spa::TwoSided ts = spamix_cgf::twoSidedSpa(c, 0.0, 3.0 * 2.0, c.var, 3.0);
+    CHECK(ts.status == spa::Status::SpaOk);
     CHECK_REL(ts.p, spa::normalTwoSided(3.0), 1e-5);
 }
 
@@ -358,22 +359,36 @@ TEST(saturated_allele_frequency_yields_zero_curvature_not_a_wrong_number) {
     CHECK(k.k2 == 0.0);
     CHECK(std::fabs(k.k0 - 2.0 * 0.05 * sumR) < 1e-12);
 
-    // With zero curvature everywhere there is no root and no test: the result
-    // must be NaN with a status, never a finite p.
-    const spa::TwoSided ts = spamix_cgf::twoSidedSpa(c, 2.0 * sumR, 1.0, 0.0);
-    CHECK(std::isnan(ts.p));
-    CHECK(spa::statusIsFailure(ts.status));
+    // With zero curvature everywhere there is no root, so the saddlepoint
+    // fails.  Under decision D5 the row is not silently numbered and not
+    // discarded either: it reports the two-sided normal tail at the caller's
+    // own z, under a FALLBACK_* status naming which guard fired.  The
+    // saddlepoint value itself never reaches the output.
+    const double zBad = 4.0;
+    const spa::TwoSided ts = spamix_cgf::twoSidedSpa(c, 2.0 * sumR, 1.0, 0.0, zBad);
+    CHECK(spa::statusIsFallback(ts.status));
+    CHECK(ts.p == spa::normalTwoSided(zBad));
+    CHECK(ts.negLog10p == -spa::normalTwoSidedLog(zBad) / std::log(10.0));
     std::printf("    saturated af: status = %s\n", spa::statusName(ts.status));
+
+    // ...and when the caller has no z either, there is nothing to fall back
+    // to and the row stays NA.
+    const spa::TwoSided tsNa = spamix_cgf::twoSidedSpa(
+        c, 2.0 * sumR, 1.0, 0.0, std::numeric_limits<double>::quiet_NaN());
+    CHECK(std::isnan(tsNa.p));
+    CHECK(tsNa.status == spa::Status::NaNoTest);
 }
 
 TEST(status_code_matches_the_documented_integer_encoding) {
-    CHECK(spamix_cgf::statusCode(spa::Status::Converged) == 0.0);
-    CHECK(spamix_cgf::statusCode(spa::Status::MaxIter) == 1.0);
-    CHECK(spamix_cgf::statusCode(spa::Status::GuardTemp) == 2.0);
-    CHECK(spamix_cgf::statusCode(spa::Status::GuardCurv) == 3.0);
-    CHECK(spamix_cgf::statusCode(spa::Status::GuardW) == 4.0);
-    CHECK(spamix_cgf::statusCode(spa::Status::NonFinite) == 5.0);
-    CHECK(spamix_cgf::statusCode(spa::Status::NormalBranch) == 6.0);
+    CHECK(spamix_cgf::statusCode(spa::Status::SpaOk) == 0.0);
+    CHECK(spamix_cgf::statusCode(spa::Status::Normal) == 1.0);
+    CHECK(spamix_cgf::statusCode(spa::Status::SpaWSingular) == 2.0);
+    CHECK(spamix_cgf::statusCode(spa::Status::FallbackMaxIter) == 3.0);
+    CHECK(spamix_cgf::statusCode(spa::Status::FallbackGuardTemp) == 4.0);
+    CHECK(spamix_cgf::statusCode(spa::Status::FallbackGuardCurv) == 5.0);
+    CHECK(spamix_cgf::statusCode(spa::Status::FallbackNonFinite) == 6.0);
+    CHECK(spamix_cgf::statusCode(spa::Status::NaPostFail) == 7.0);
+    CHECK(spamix_cgf::statusCode(spa::Status::NaNoTest) == 8.0);
 }
 
 }  // namespace

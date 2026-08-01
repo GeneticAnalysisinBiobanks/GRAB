@@ -440,7 +440,7 @@ double pmvnorm2dHalfRect(
     //
     // So: round-off is still absorbed, and a genuinely indefinite covariance
     // is reported.  NaN propagates through the caller's assembly to an NA
-    // p-value with SPA_STATUS = NONFINITE, which is the honest answer — the
+    // p-value with SPA_STATUS = 7 NA_POST_FAIL, which is the honest answer — the
     // integral being asked for does not exist.  Whether WtCoxG's Branch B
     // should build a positive semi-definite pair in the first place is a
     // modelling decision for whoever owns that formula, and is deliberately

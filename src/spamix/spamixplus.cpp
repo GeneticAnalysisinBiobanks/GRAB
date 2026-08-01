@@ -316,10 +316,11 @@ void SPAmixPlusMethod::fillAFVecForMarker(
 //
 //   Degenerate variance.  `VarS <= 0` returned p = 1.0 — a fabricated
 //        perfectly-null p-value on a row whose Z, BETA and SE were all NaN.
-//        L2 forbids substituting anything silently, so the row now reports
-//        NA with SPA_STATUS = NONFINITE, matching the convention Stage 4 gave
-//        SPAGRM for a monomorphic marker.  No marker in examples/baseline.sh
-//        reaches it.
+//        L2 forbids substituting anything silently, so the row reports NA
+//        with SPA_STATUS = 8 NA_NO_TEST: there is no statistic, hence nothing
+//        for the D5 normal fallback to approximate.  Three markers of
+//        examples/1kg reach it, all with ALT_FREQ > 0.99 and every
+//        per-individual q̂ saturated at 1 by the AF model.
 // ======================================================================
 
 spa::TwoSided SPAmixPlusMethod::markerPvalFromAF(
@@ -349,14 +350,14 @@ spa::TwoSided SPAmixPlusMethod::markerPvalFromAF(
         zScore = 0.0;
         outVarS = 0.0;
         const double nan = std::numeric_limits<double>::quiet_NaN();
-        return spa::TwoSided{nan, nan, spa::Status::NonFinite};
+        return spa::TwoSided{nan, nan, spa::Status::NaNoTest};
     }
 
     zScore = (rawScore - S_mean) / std::sqrt(VarS);
     outVarS = VarS;
     if (!std::isfinite(zScore)) {
         const double nan = std::numeric_limits<double>::quiet_NaN();
-        return spa::TwoSided{nan, nan, spa::Status::NonFinite};
+        return spa::TwoSided{nan, nan, spa::Status::NaNoTest};
     }
     // spa::normalTwoSided routes through Boost's complement; for the standard
     // normal that is bit-for-bit `2 * pnorm(-|z|)`, since both reduce to
@@ -436,7 +437,7 @@ spa::TwoSided SPAmixPlusMethod::markerPvalFromAF(
 
     // S_var_diag is the independence K''(0) and only sizes the initial
     // abscissa; the reflection point stays S_mean_spa, as before.
-    return spamix_cgf::twoSidedSpa(cgf, S_mean_spa, absS, S_var_diag);
+    return spamix_cgf::twoSidedSpa(cgf, S_mean_spa, absS, S_var_diag, zScore);
 }
 
 // ======================================================================

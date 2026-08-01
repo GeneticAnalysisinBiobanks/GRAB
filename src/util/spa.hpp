@@ -71,71 +71,131 @@ namespace spa {
 // § 1  Status
 // ──────────────────────────────────────────────────────────────────────
 
+// The nine values of the SPA_STATUS output column (log10p_unify decision D4).
+//
+// THE NUMERIC ORDER IS A DESIGN PROPERTY, NOT AN ACCIDENT.  It partitions the
+// enumeration into three contiguous blocks by what LOG10P contains, so that a
+// user filters with a single integer comparison and a reader of a result table
+// never has to consult a lookup table to know whether a number is trustworthy:
+//
+//     SPA_STATUS <= 2        LOG10P is trustworthy
+//                            (0 and 2 are saddlepoint values, 1 is the
+//                             normal approximation by design)
+//     3 <= SPA_STATUS <= 6   LOG10P is the FALLBACK normal approximation,
+//                            reported because the saddlepoint failed; the code
+//                            names which way it failed.  Anti-conservative at
+//                            low MAC, which is exactly where it fires — filter
+//                            with SPA_STATUS <= 2 before judging significance.
+//     SPA_STATUS >= 7        LOG10P is NA; no probability was produced.
+//
+// Any re-encoding that breaks that monotonicity is wrong.  `statusIsUsable`,
+// `statusIsFallback` and `statusIsNA` below are the in-tree spelling of the
+// three blocks and are the only predicates code should test.
 enum class Status : uint8_t {
-    Converged = 0,   // the residual criterion of § 4 was met at the returned
-                     //   root, verified there; no guard fired
-    MaxIter,         // the solver stopped without meeting that criterion: the
-                     //   iteration or bracket-expansion budget ran out, or the
-                     //   bracket closed to the last representable digits of its
-                     //   own endpoints with the residual still above tolerance.
-                     //   Both mean "no root was located to the requested
-                     //   accuracy", and both report NA.
-    GuardTemp,       // zeta*s - K(zeta) < 0, so w is not real
-    GuardCurv,       // K''(zeta) <= 0, so v is not real
-    GuardW,          // |w| at or below the removable-singularity threshold:
-                     //   a DEGRADED SUCCESS, not a failure.  The tail was
-                     //   evaluated as Phi(+/-w) because the r* correction is
-                     //   not computable there (see kWSingularity); P is a
-                     //   number, and the status says the correction was
-                     //   dropped.
-    NonFinite,       // zeta, a cumulant, or r* left the reals
-    NormalBranch,    // |z| <= spaCutoff; the saddlepoint was never attempted
+    SpaOk = 0,          // both tails converged: the residual criterion of § 4
+                        //   was met at the returned root, verified there
+                        //   against the terminal cumulants; no guard fired.
+    Normal = 1,         // LOG10P is the normal approximation and that is the
+                        //   DESIGNED behaviour, not a failure.  Two ways in:
+                        //   |z| <= --spa-z-threshold, so the saddlepoint was
+                        //   never attempted; or the test does not use a
+                        //   saddlepoint at all (Wald legs, GALLOP).
+    SpaWSingular = 2,   // |w| at or below the removable-singularity threshold
+                        //   (kWSingularity) in at least one tail: a DEGRADED
+                        //   SUCCESS.  Phi(+/-w) replaces the r* correction —
+                        //   the correct limit — and LOG10P is a number.
+    FallbackMaxIter = 3,    // the solver stopped without meeting its residual
+                        //   criterion: the iteration or bracket-expansion
+                        //   budget ran out, or the bracket closed to the last
+                        //   representable digits of its own endpoints with the
+                        //   residual still above tolerance.  No root was
+                        //   located to the requested accuracy.
+    FallbackGuardTemp = 4,  // zeta*s - K(zeta) < 0, so w is not real
+    FallbackGuardCurv = 5,  // K''(zeta) <= 0, so v is not real
+    FallbackNonFinite = 6,  // zeta, a cumulant, or r* left the reals
+    NaPostFail = 7,     // a step DOWNSTREAM of the saddlepoint failed:
+                        //   math::pmvnorm2dHalfRect handed a (var_S, cov,
+                        //   var_Sbat) triple that is not a covariance matrix,
+                        //   a conditional denominator that is not usable, a
+                        //   mixture leg that is missing and not immaterial.
+                        //   The saddlepoint may never have been attempted, so
+                        //   Z says nothing about the quantity that failed and
+                        //   must not be used to manufacture a p-value.
+    NaNoTest = 8,       // no statistic exists for this marker in this stratum:
+                        //   no informative subject, a monomorphic stratum,
+                        //   Var(S) <= 0, a non-finite Z.  There is nothing to
+                        //   fall back TO.
 };
 
-// Token emitted in the SPA_STATUS output column.
+// Token emitted in log messages and tests.  The output column carries the
+// integer, not this string (see the SPA_STATUS note in CLAUDE.md).
 inline const char *statusName(Status s) noexcept {
     switch (s) {
-        case Status::Converged:    return "OK";
-        case Status::MaxIter:      return "MAXITER";
-        case Status::GuardTemp:    return "GUARD_TEMP";
-        case Status::GuardCurv:    return "GUARD_CURV";
-        case Status::GuardW:       return "GUARD_W";
-        case Status::NonFinite:    return "NONFINITE";
-        case Status::NormalBranch: return "NORMAL";
+        case Status::SpaOk:             return "SPA_OK";
+        case Status::Normal:            return "NORMAL";
+        case Status::SpaWSingular:      return "SPA_W_SINGULAR";
+        case Status::FallbackMaxIter:   return "FALLBACK_MAXITER";
+        case Status::FallbackGuardTemp: return "FALLBACK_GUARD_TEMP";
+        case Status::FallbackGuardCurv: return "FALLBACK_GUARD_CURV";
+        case Status::FallbackNonFinite: return "FALLBACK_NONFINITE";
+        case Status::NaPostFail:        return "NA_POST_FAIL";
+        case Status::NaNoTest:          return "NA_NO_TEST";
     }
-    return "NONFINITE";
+    return "NA_NO_TEST";
 }
 
-// True when the status means "no usable probability was produced", i.e. the
-// method must report NA.
+// Block 1: LOG10P is trustworthy.  SpaOk and Normal are the plain cases;
+// SpaWSingular is a DEGRADED success — below kWSingularity the modified root's
+// correction term is not computable, so the tail is evaluated as Phi(+/-w),
+// which is the correct limit, and the status records that the correction was
+// dropped rather than that the marker failed.  Reporting NA there would throw
+// away a p-value accurate to O(rho3) in a region where p is one.
+inline bool statusIsUsable(Status s) noexcept {
+    return static_cast<uint8_t>(s) <= 2;
+}
+
+// Block 2: the saddlepoint failed and LOG10P carries the substituted
+// normal-approximation tail instead, with the code naming the failure.  This
+// is a named substitution, not a fabrication: there is a genuine estimator
+// behind it and a status value that identifies it.  It is anti-conservative in
+// exactly the regime that produces it, which is why it is a separate block.
+inline bool statusIsFallback(Status s) noexcept {
+    const uint8_t v = static_cast<uint8_t>(s);
+    return v >= 3 && v <= 6;
+}
+
+// Block 3: LOG10P is NA.  Either the quantity that failed is unrelated to Z
+// (NaPostFail) or no statistic exists at all (NaNoTest); in both cases a
+// normal tail built from Z would be a number the reader would mistake for a
+// measurement.
+inline bool statusIsNA(Status s) noexcept {
+    return static_cast<uint8_t>(s) >= 7;
+}
+
+// Ranking used when two tails, two mixture legs or several clusters disagree.
+// It is the block order refined within each block: every NA outranks every
+// fallback, every fallback outranks every usable value, a degraded success
+// outranks a plain one, a specific guard outranks a bare non-convergence
+// because it names the quantity that went wrong, FallbackNonFinite outranks
+// the guards because it is the least diagnosable, and NaNoTest outranks
+// NaPostFail because "there was never a test" is the stronger statement.
 //
-// Three statuses are successes.  Converged and NormalBranch are the plain ones.
-// GuardW is the third and is a DEGRADED success: below kWSingularity the
-// modified root's correction term is not computable, so the tail is evaluated
-// as Phi(+/-w) — the correct limit — and the status records that the correction
-// was dropped rather than that the marker failed.  Reporting NA there would
-// throw away a p-value that is accurate to O(rho3) in a region where p is one.
-inline bool statusIsFailure(Status s) noexcept {
-    return s != Status::Converged && s != Status::NormalBranch &&
-           s != Status::GuardW;
-}
-
-// Ranking used when two tails disagree.  Every failure outranks every success,
-// so a tail that degraded to Phi(+/-w) can never mask a tail that failed
-// outright; within the failures a specific guard outranks a bare
-// non-convergence because it names the quantity that went wrong, and NonFinite
-// outranks everything because it is the least diagnosable.
+// This is the enumerator's own numeric order with one exception: SpaOk and
+// Normal are tied, so that a genuine saddlepoint tail is not displaced by a
+// normal-branch label of equal standing.
 inline int statusSeverity(Status s) noexcept {
     switch (s) {
-        case Status::Converged:    return 0;
-        case Status::NormalBranch: return 0;
-        case Status::GuardW:       return 1;   // success, but a degraded one
-        case Status::MaxIter:      return 2;
-        case Status::GuardTemp:    return 3;
-        case Status::GuardCurv:    return 4;
-        case Status::NonFinite:    return 5;
+        case Status::SpaOk:             return 0;
+        case Status::Normal:            return 0;
+        case Status::SpaWSingular:      return 1;   // success, but degraded
+        case Status::FallbackMaxIter:   return 2;
+        case Status::FallbackGuardTemp: return 3;
+        case Status::FallbackGuardCurv: return 4;
+        case Status::FallbackNonFinite: return 5;
+        case Status::NaPostFail:        return 6;
+        case Status::NaNoTest:          return 7;
     }
-    return 5;
+    return 7;
 }
 
 // The status a two-sided result inherits from its two tails.
@@ -143,10 +203,10 @@ inline Status worseStatus(Status a, Status b) noexcept {
     const int sa = statusSeverity(a), sb = statusSeverity(b);
     if (sa != sb) return (sa > sb) ? a : b;
     if (a == b) return a;
-    // Equal severity but different value: the only such pair is
-    // Converged / NormalBranch.  A genuine saddlepoint tail dominates a
-    // normal-branch label, since the result did go through the SPA.
-    return Status::Converged;
+    // Equal severity but different value: the only such pair is SpaOk /
+    // Normal.  A genuine saddlepoint tail dominates a normal-branch label,
+    // since the result did go through the SPA.
+    return Status::SpaOk;
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -289,7 +349,7 @@ struct SolveOpts {
     //
     // Reaching it does NOT by itself mean the solve converged — the residual
     // criterion above decides that, and a bracket that closes with the residual
-    // still outside tolerance yields Status::MaxIter.
+    // still outside tolerance yields Status::FallbackMaxIter.
     //
     // THE PREDECESSOR'S ABSOLUTE FORM WAS THE DEFECT THIS SOLVER WAS REWRITTEN
     // FOR.  It read `hi - lo <= stepTol * max(1, |t|)` with stepTol = 1e-8 and
@@ -481,7 +541,7 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
     out.nEvalBracket = 0;
     out.bracketed = false;
     out.reusedTerminal = false;
-    out.status = Status::MaxIter;
+    out.status = Status::FallbackMaxIter;
 
     // The residual noise floor: below 4 eps |s| the difference K'(t) - s is
     // dominated by the rounding error of its own subtraction.
@@ -537,11 +597,11 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
 
     if (!std::isfinite(e.k1)) {
         // Nothing usable anywhere along the retreat path.
-        out.status = Status::NonFinite;
+        out.status = Status::FallbackNonFinite;
     } else if (e.k1 == 0.0) {
         lo = hi = t;
         out.bracketed = true;
-        out.status = Status::Converged;
+        out.status = Status::SpaOk;
     } else {
         // ── Bracket expansion ──
         // K' is non-decreasing (K'' >= 0 for any CGF), so the residual
@@ -617,10 +677,10 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
         // of `init` the
         // probe `init + dir*step` rounds straight back onto `init`, the loop
         // below breaks on its first pass with `bracketed` still false, and the
-        // solve returns MaxIter after a single evaluation — while `zeta` holds
-        // the correct root to the last bit.  Since statusIsFailure(MaxIter) is
-        // true, the caller then reports NA for a marker whose saddlepoint was
-        // solved exactly.  The trigger is |K'(init) - s| / K''(init) <
+        // solve returns FallbackMaxIter after a single evaluation — while
+        // `zeta` holds the correct root to the last bit.  The caller would then
+        // discard an exactly-solved saddlepoint in favour of the fallback
+        // normal tail.  The trigger is |K'(init) - s| / K''(init) <
         // ulp(init)/2, i.e. "init already lies within half an ulp of the root",
         // so the failure probability would be monotone INCREASING in the quality
         // of the caller's initial guess.  That is the opposite of what a
@@ -664,7 +724,7 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
             if (converged(t, e.k1, e.k2)) {
                 lo = hi = t;
                 out.bracketed = true;
-                out.status = Status::Converged;
+                out.status = Status::SpaOk;
             } else {
                 step = coarse;
             }
@@ -700,7 +760,7 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
                 e = eb;
                 lo = hi = b;
                 out.bracketed = true;
-                out.status = Status::Converged;
+                out.status = Status::SpaOk;
                 break;
             }
 
@@ -747,7 +807,7 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
             // genuinely unreachable) or the sign constraint excluded it.
             // Both are reported as a budget exhaustion: no probability is
             // produced either way.
-            out.status = Status::MaxIter;
+            out.status = Status::FallbackMaxIter;
             t = bestT;
         }
     }
@@ -755,8 +815,8 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
     out.nEvalBracket = out.nEval;
 
     // ── Safeguarded Newton inside the bracket ──
-    if (out.bracketed && out.status != Status::Converged) {
-        Status st = Status::MaxIter;
+    if (out.bracketed && out.status != Status::SpaOk) {
+        Status st = Status::FallbackMaxIter;
 
         // Progress reference for the step-stall safeguard below.  Seeded with
         // the full bracket width so the first iteration is unconditionally
@@ -772,8 +832,8 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
             // zero residual, which satisfies every tolerance; the test is made
             // anyway so that no exit from this loop bypasses it.
             if (lo == hi) {
-                st = converged(t, e.k1, e.k2) ? Status::Converged
-                                              : Status::MaxIter;
+                st = converged(t, e.k1, e.k2) ? Status::SpaOk
+                                              : Status::FallbackMaxIter;
                 break;
             }
 
@@ -830,8 +890,8 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
                 // narrower bracket and no further iterate, so the loop stops —
                 // but stopping is not converging.  Whether the answer is one is
                 // decided by the residual, exactly as at every other exit.
-                st = converged(t, e.k1, e.k2) ? Status::Converged
-                                              : Status::MaxIter;
+                st = converged(t, e.k1, e.k2) ? Status::SpaOk
+                                              : Status::FallbackMaxIter;
                 break;
             }
 
@@ -850,7 +910,7 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
                 if (!std::isfinite(en.k1)) {
                     t = tn;
                     e = en;
-                    st = Status::NonFinite;
+                    st = Status::FallbackNonFinite;
                     break;
                 }
             }
@@ -882,7 +942,7 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
             e = en;
 
             // Test after applying the step, never before.
-            if (converged(t, e.k1, e.k2)) { st = Status::Converged; break; }
+            if (converged(t, e.k1, e.k2)) { st = Status::SpaOk; break; }
 
             // The bracket has closed to the last representable digits of its
             // own endpoints: no narrower bracket exists, so refining further is
@@ -894,7 +954,7 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
             // which is the defect SolveOpts::bracketRtol documents.
             if (hi - lo <= opt.bracketRtol *
                                std::fmax(std::fabs(lo), std::fabs(hi))) {
-                st = Status::MaxIter;
+                st = Status::FallbackMaxIter;
                 break;
             }
         }
@@ -933,14 +993,14 @@ Saddle solveCore(double s, Evaluator &ev, const SolveOpts &opt, Trace &trace) {
     // it here means `Converged` is a statement about the value the caller is
     // handed, not about an intermediate the caller cannot see, and it costs one
     // comparison per tail because the terminal evaluation already happened.
-    if (out.status == Status::Converged) {
+    if (out.status == Status::SpaOk) {
         if (!std::isfinite(t) || !std::isfinite(term.k0) ||
             !std::isfinite(term.k1) || !std::isfinite(term.k2)) {
-            out.status = Status::NonFinite;
+            out.status = Status::FallbackNonFinite;
         } else if (!(term.k2 > 0.0)) {
-            out.status = Status::GuardCurv;
+            out.status = Status::FallbackGuardCurv;
         } else if (!converged(t, term.k1, term.k2)) {
-            out.status = Status::MaxIter;
+            out.status = Status::FallbackMaxIter;
         }
     }
 
@@ -1034,7 +1094,7 @@ Saddle solveSaddlepoint(double s, EvalFull &&evalFull, const SolveOpts &opt) {
 //
 // At or below this |w| the correction term log(v/w)/w is not computed, and the
 // tail degrades to Phi(+/-w) — the leading, unmodified signed root.  The status
-// is Status::GuardW, which is a DEGRADED SUCCESS and not a failure: a
+// is Status::SpaWSingular, which is a DEGRADED SUCCESS and not a failure: a
 // probability is produced, it is named in SPA_STATUS, and P is not NA.
 //
 // ── Why the correction cannot be computed here ────────────────────────
@@ -1109,7 +1169,7 @@ namespace detail {
 
 // Guards and the abscissa Phi is evaluated at, shared by the linear and log
 // tails so the two cannot drift.  Returns r* when the correction term is
-// trustworthy, w itself when it is not (Status::GuardW, a degraded success),
+// trustworthy, w itself when it is not (Status::SpaWSingular, a degraded success),
 // and NaN with `st` naming the guard on every genuine failure.
 //
 // THE ORDER OF THE LAST TWO STEPS IS LOAD-BEARING.  The |w| test is made, and
@@ -1136,17 +1196,17 @@ inline double tailAbscissa(
 ) noexcept {
     if (!std::isfinite(zeta) || !std::isfinite(s) || !std::isfinite(K0) ||
         !std::isfinite(K2)) {
-        st = Status::NonFinite;
+        st = Status::FallbackNonFinite;
         return quietNaN();
     }
     if (!(K2 > 0.0)) {
-        st = Status::GuardCurv;
+        st = Status::FallbackGuardCurv;
         return quietNaN();
     }
 
     const double temp = zeta * s - K0;
     if (!(temp >= 0.0)) {
-        st = Status::GuardTemp;
+        st = Status::FallbackGuardTemp;
         return quietNaN();
     }
 
@@ -1157,7 +1217,7 @@ inline double tailAbscissa(
         // accurate to dK/|w|, which at the threshold is 1e-10 at worst.
         // w may be +/-0.0, and Phi(0) = 0.5 is the right answer there — the
         // statistic sits at the mean of its own distribution.
-        st = Status::GuardW;
+        st = Status::SpaWSingular;
         return w;
     }
 
@@ -1168,17 +1228,17 @@ inline double tailAbscissa(
         // so their ratio is positive whenever K2 > 0 and temp > 0.  Retained
         // as a belt: the ratio is the one place an inconsistent (K0, K2) pair
         // could in principle misbehave.
-        st = Status::NonFinite;
+        st = Status::FallbackNonFinite;
         return quietNaN();
     }
 
     const double rStar = w + std::log(vOverW) / w;
     if (!std::isfinite(rStar)) {
-        st = Status::NonFinite;
+        st = Status::FallbackNonFinite;
         return quietNaN();
     }
 
-    st = Status::Converged;
+    st = Status::SpaOk;
     return rStar;
 }
 
@@ -1193,7 +1253,7 @@ inline double tailAbscissa(
 // register-only.  A 32-byte struct by value is classified MEMORY and spills.
 //
 // Returns NaN and sets `st` on every degenerate input; sets
-// Status::Converged (statusName "OK") when no guard fired.  Status::GuardW is
+// Status::SpaOk (statusName "SPA_OK") when no guard fired.  Status::SpaWSingular is
 // the one status that returns a usable probability rather than NaN: below
 // kWSingularity the tail degrades to Phi(+/-w), which is the correct limit,
 // and the status records that the modified root was not applied.
@@ -1258,6 +1318,11 @@ struct TwoSided {
 //   * NaN never becomes 1.0.  WtCoxG wrote std::min(1.0, pval1 + pval2),
 //     and std::min(1.0, NaN) returns 1.0, so every SPA failure surfaced as a
 //     perfectly null marker.
+//
+// Since the SPA_STATUS re-partition this is reached only from `assemble`, and
+// only on the branch where both tails are usable; the NaN and non-usable exits
+// below are belts, not paths.  `assemble` — not this function — owns the
+// decision of what to report when a tail fails.
 inline TwoSided combineTails(
     double pUpper,
     double pLower,
@@ -1266,9 +1331,9 @@ inline TwoSided combineTails(
 ) noexcept {
     const double nan = detail::quietNaN();
     const Status st = worseStatus(sUpper, sLower);
-    if (statusIsFailure(st)) return TwoSided{nan, nan, st};
+    if (!statusIsUsable(st)) return TwoSided{nan, nan, st};
     if (!std::isfinite(pUpper) || !std::isfinite(pLower))
-        return TwoSided{nan, nan, Status::NonFinite};
+        return TwoSided{nan, nan, Status::FallbackNonFinite};
 
     double p = pUpper + pLower;
     if (p > 1.0) p = 1.0;
@@ -1291,9 +1356,9 @@ inline TwoSided combineTailsLog(
     const double nan = detail::quietNaN();
     const double inf = std::numeric_limits<double>::infinity();
     const Status st = worseStatus(sUpper, sLower);
-    if (statusIsFailure(st)) return TwoSided{nan, nan, st};
+    if (!statusIsUsable(st)) return TwoSided{nan, nan, st};
     if (std::isnan(logPUpper) || std::isnan(logPLower))
-        return TwoSided{nan, nan, Status::NonFinite};
+        return TwoSided{nan, nan, Status::FallbackNonFinite};
 
     const double hi = std::fmax(logPUpper, logPLower);
     const double lo = std::fmin(logPUpper, logPLower);
@@ -1329,16 +1394,89 @@ inline double normalTwoSidedLog(double z) noexcept {
 
 // The complete normal-branch result, so that a method emitting P, LOG10P and
 // SPA_STATUS has one call for the non-SPA path.
+//
+// A non-finite z is NOT a saddlepoint failure and never was: it means Var(S)
+// was not positive or the score itself left the reals, i.e. the statistic does
+// not exist.  There is nothing to fall back to, so it is NaNoTest.
 inline TwoSided normalBranch(double z) noexcept {
     const double nan = detail::quietNaN();
-    if (std::isnan(z)) return TwoSided{nan, nan, Status::NonFinite};
+    if (!std::isfinite(z)) return TwoSided{nan, nan, Status::NaNoTest};
     double p = normalTwoSided(z);
     if (p > 1.0) p = 1.0;
     if (p < 0.0) p = 0.0;
     const double lg = normalTwoSidedLog(z);
     double neg = -lg / detail::kLn10;
     if (neg == 0.0) neg = 0.0;
-    return TwoSided{p, neg, Status::NormalBranch};
+    return TwoSided{p, neg, Status::Normal};
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// § 8  assemble — the one entry point every method's tails go through
+// ──────────────────────────────────────────────────────────────────────
+//
+// Every tier-3 adapter used to call combineTails and combineTailsLog in turn
+// and splice the two results by hand — six copies of the same three lines,
+// each of which had to be trusted to pick `lin.p`, `lg.negLog10p` and
+// `lin.status` in that combination.  This is that splice, once, plus the
+// fallback rule (decision D5) that the copies had nowhere to live.
+//
+// The rule:
+//
+//   * A status in the NA block is reported as it stands, with no p-value.
+//   * A non-finite zNorm means no statistic exists, whatever the tails did:
+//     NA with NaNoTest.  It cannot be repaired by a normal approximation
+//     because there is no z to build one from.
+//   * A status in the fallback block reports the two-sided normal tail
+//     -log10(2*Phi(-|zNorm|)), KEEPING the fallback code so the substitution
+//     is named.  The saddlepoint result is discarded entirely.
+//   * Otherwise both tails are usable and the two-sided p is their sum, in
+//     the log domain for the magnitude and on the linear scale for P.
+//
+// ONE FAILED TAIL FALLS THE WHOLE TWO-SIDED P BACK.  Adding a converged
+// saddlepoint tail to a normal one would produce a quantity that is neither a
+// saddlepoint result nor a normal one, and no status value could describe it.
+//
+// TRANSITIONAL SIGNATURE.  `pUpper`/`pLower` are the linear-scale tails from
+// `bnTail`, carried only so that the P column does not move while the linear
+// tail assembly still exists.  log10p_unify Stage 3 deletes `bnTail`,
+// `combineTails` and those two parameters, leaving
+// assemble(logPUpper, logPLower, sUpper, sLower, zNorm).
+inline TwoSided assemble(
+    double pUpper,
+    double pLower,
+    double logPUpper,
+    double logPLower,
+    Status sUpper,
+    Status sLower,
+    double zNorm
+) noexcept {
+    const double nan = detail::quietNaN();
+    Status st = worseStatus(sUpper, sLower);
+
+    if (statusIsNA(st)) return TwoSided{nan, nan, st};
+
+    // A tail that produced NaN while reporting a usable status is a defect in
+    // the producer, not a state the caller can be asked to distinguish.
+    // tailAbscissa names every failure it can return, so this is unreachable;
+    // it is kept so that an unnamed NaN can never reach the output as a
+    // number, and it routes to the fallback block rather than to NA because
+    // the failure is a saddlepoint failure.
+    if (statusIsUsable(st) &&
+        (!std::isfinite(pUpper) || !std::isfinite(pLower) ||
+         std::isnan(logPUpper) || std::isnan(logPLower)))
+        st = Status::FallbackNonFinite;
+
+    if (!std::isfinite(zNorm)) return TwoSided{nan, nan, Status::NaNoTest};
+
+    if (statusIsFallback(st)) {
+        TwoSided out = normalBranch(zNorm);
+        out.status = st;               // name the substitution, not the branch
+        return out;
+    }
+
+    const TwoSided lin = combineTails(pUpper, pLower, sUpper, sLower);
+    const TwoSided lg  = combineTailsLog(logPUpper, logPLower, sUpper, sLower);
+    return TwoSided{lin.p, lg.negLog10p, st};
 }
 
 } // namespace spa

@@ -894,7 +894,7 @@ spa::TwoSided spaLocalPval(
     if (!(varS > 0.0) || !std::isfinite(varS) || !std::isfinite(S) ||
         !std::isfinite(sMean)) {
         const double nan = std::numeric_limits<double>::quiet_NaN();
-        return spa::TwoSided{nan, nan, spa::Status::NonFinite};
+        return spa::TwoSided{nan, nan, spa::Status::NaNoTest};
     }
 
     const double z = (S - sMean) / std::sqrt(varS);
@@ -949,7 +949,7 @@ spa::TwoSided spaLocalPval(
     // A variance, non-negative exactly; only the cancellation can undershoot.
     if (!(ctx.var > 0.0)) ctx.var = 0.0;
 
-    return spamixlocalp_cgf::twoSidedSpa(ctx, sMeanNew, absDev, varDiag);
+    return spamixlocalp_cgf::twoSidedSpa(ctx, sMeanNew, absDev, varDiag, z);
 }
 
 // ======================================================================
@@ -1235,11 +1235,12 @@ static void runUnifiedGWAS(
     // rework adds, in the encoding every other SPA method in GRAB now uses:
     // LOG10P is -log10(P) computed in the log domain, so it stays meaningful
     // below the point where P itself underflows to zero, and SPA_STATUS is the
-    // numeric spa::Status — 0 OK, 1 MAXITER, 2 GUARD_TEMP, 3 GUARD_CURV,
-    // 4 GUARD_W, 5 NONFINITE, 6 NORMAL (|z| within --spa-z-threshold, so the
-    // saddlepoint was never attempted).  P and LOG10P are NA for every status
-    // other than 0, 4 and 6, and every column of an ancestry that fails the
-    // MISS_RATE / MAF / MAC filters is NA.
+    // numeric spa::Status — 0 SPA_OK, 1 NORMAL, 2 SPA_W_SINGULAR, 3..6 the
+    // FALLBACK_* codes, 7 NA_POST_FAIL, 8 NA_NO_TEST.  The order is a
+    // contract (log10p_unify D4): SPA_STATUS <= 2 means LOG10P is
+    // trustworthy, 3..6 that the saddlepoint failed and LOG10P is the
+    // substituted normal tail, >= 7 that LOG10P is NA.  Every column of an
+    // ancestry that fails the MISS_RATE / MAF / MAC filters is NA.
     std::string header = "CHROM\tPOS\tID\tREF\tALT";
     for (int k = 0; k < K; ++k) {
         std::string pfx = "\tanc" + std::to_string(k) + "_";
