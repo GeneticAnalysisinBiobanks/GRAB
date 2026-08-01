@@ -79,7 +79,7 @@ void runSPAsqr(
 
 // Wald-mode entry point: per-marker × per-τ full-model refit + M-estimation
 // sandwich variance.  Emits one-marker-per-line wide-format summary stats:
-//   CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC HWE_P
+//   CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC LOG10P_HWE
 //   P_CCT P_tau{val}... Z_tau{val}... BETA_tau{val}... SE_tau{val}...
 // Response is Y_transformed (no LOCO) or Y_transformed - loco_chr (--pred-list).
 // No GRM is used — point-estimation, not score test.

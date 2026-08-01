@@ -713,7 +713,288 @@ TEST(pmvnorm2dHalfRectLog_failure_modes) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
-// Stage 9 appends its HweLnP section here.
+// Stage 9 — LOG10P_HWE (decision D7)
 // ══════════════════════════════════════════════════════════════════════
+//
+// This section is self-contained and appended after the Stage 1 material on
+// purpose: it shares no helper with the rest of the file and carries its own
+// includes, so that the two stages, written in parallel, merge mechanically.
+//
+// What is under test is geno_factory's hweNegLog10P, the single call into
+// plink2::HweLnP that replaces GRAB's own linear-domain exact HWE test.  Three
+// properties are pinned:
+//
+//   * the two implementations agree wherever the linear one is representable,
+//     to well within the six significant figures the column is printed with;
+//   * where the linear one underflows to exactly 0 — that is, wherever the
+//     column would have read "0" and a reader would have taken it for a
+//     measurement of perfect Hardy-Weinberg agreement, the exact opposite of
+//     the truth — the new one returns the correct magnitude, verified against
+//     an independent long-double enumeration;
+//   * the result is never negative and never a negative zero, which is
+//     invariant C2 of 04_validation.md §2 applied to a LOG10P-family column.
+
+#include "geno_factory/hwe.hpp"
+
+#include <algorithm>
+#include <cstdint>
+#include <vector>
+
+namespace hwe_stage9 {
+
+// ── Reference 1: the linear-domain implementation deleted from
+// src/geno_factory/hwe.cpp by this stage (SNPHWE2, Wigginton et al. 2005),
+// transcribed verbatim.  It is the "before" side of the comparison, and it is
+// kept here rather than in the tree because nothing but this test needs it.
+inline double hweExactLinear(uint32_t obs_hets, uint32_t obs_hom1, uint32_t obs_hom2) {
+    const int64_t obs_homc = std::max(obs_hom1, obs_hom2);
+    const int64_t obs_homr = std::min(obs_hom1, obs_hom2);
+    const int64_t rare = 2 * obs_homr + static_cast<int64_t>(obs_hets);
+    const int64_t n = static_cast<int64_t>(obs_hets) + obs_homc + obs_homr;
+    const int64_t obs = static_cast<int64_t>(obs_hets);
+    if (n == 0) return 1.0;
+    int64_t mid = (rare * (2 * n - rare)) / (2 * n);
+    if ((rare & 1) ^ (mid & 1)) ++mid;
+    {
+        int64_t hr = (rare - mid) / 2;
+        int64_t hc = n - mid - hr;
+        if (mid + 2 <= rare && hr > 0 && 4.0 * hr * hc > (mid + 2.0) * (mid + 1.0)) {
+            mid += 2;
+        } else if (mid >= 2) {
+            if (static_cast<double>(mid) * (mid - 1) > 4.0 * (hr + 1.0) * (hc + 1.0)) mid -= 2;
+        }
+    }
+    const int64_t mid_homr = (rare - mid) / 2;
+    const int64_t mid_homc = n - mid - mid_homr;
+    double sum = 1.0, p = 0.0, thresh;
+    if (obs <= mid) {
+        {
+            double prob = 1.0;
+            int64_t cr = mid_homr, cc = mid_homc;
+            for (int64_t h = mid; h > obs; h -= 2) {
+                prob *= h * (h - 1.0) / (4.0 * (cr + 1.0) * (cc + 1.0));
+                sum += prob; ++cr; ++cc;
+            }
+            thresh = prob; p = thresh;
+            for (int64_t h = obs; h >= 2; h -= 2) {
+                prob *= h * (h - 1.0) / (4.0 * (cr + 1.0) * (cc + 1.0));
+                sum += prob; p += prob; ++cr; ++cc;
+            }
+        }
+        {
+            double prob = 1.0;
+            int64_t cr = mid_homr, cc = mid_homc;
+            for (int64_t h = mid; h <= rare - 2; h += 2) {
+                prob *= 4.0 * cr * cc / ((h + 2.0) * (h + 1.0));
+                sum += prob;
+                if (prob <= thresh) p += prob;
+                --cr; --cc;
+            }
+        }
+    } else {
+        {
+            double prob = 1.0;
+            int64_t cr = mid_homr, cc = mid_homc;
+            for (int64_t h = mid; h < obs; h += 2) {
+                prob *= 4.0 * cr * cc / ((h + 2.0) * (h + 1.0));
+                sum += prob; --cr; --cc;
+            }
+            thresh = prob; p = thresh;
+            for (int64_t h = obs; h <= rare - 2; h += 2) {
+                prob *= 4.0 * cr * cc / ((h + 2.0) * (h + 1.0));
+                sum += prob; p += prob; --cr; --cc;
+            }
+        }
+        {
+            double prob = 1.0;
+            int64_t cr = mid_homr, cc = mid_homc;
+            for (int64_t h = mid; h >= 2; h -= 2) {
+                prob *= h * (h - 1.0) / (4.0 * (cr + 1.0) * (cc + 1.0));
+                sum += prob;
+                if (prob <= thresh) p += prob;
+                ++cr; ++cc;
+            }
+        }
+    }
+    return std::min(p / sum, 1.0);
+}
+
+// ── Reference 2: an independent long-double enumeration, written for clarity
+// rather than speed.  Under H0 the conditional distribution of the
+// heterozygote count given N and the rare-allele count n_A is
+//
+//   ln P(N_AB = h) = h ln2 + ln N! + ln n_A! + ln n_B! - ln n_AA! - ln n_AB!
+//                    - ln n_BB! - ln (2N)!
+//
+// (Wigginton et al. 2005 eq. 2).  The exact-test p is the total probability of
+// the outcomes no more likely than the observed one, accumulated here by
+// logsumexp so that the reference itself never underflows.  It shares no code
+// path with either implementation under test.
+inline long double refLnProb(long double h, long double n, long double rare) {
+    const long double homr = (rare - h) / 2.0L;
+    const long double homc = n - h - homr;
+    return h * std::log(2.0L) + std::lgamma(n + 1) + std::lgamma(rare + 1) +
+           std::lgamma(2 * n - rare + 1) - std::lgamma(homr + 1) -
+           std::lgamma(h + 1) - std::lgamma(homc + 1) - std::lgamma(2 * n + 1);
+}
+
+inline long double refNegLog10P(uint32_t obs_hets, uint32_t obs_hom1, uint32_t obs_hom2) {
+    const long double homr = std::min(obs_hom1, obs_hom2);
+    const long double n = static_cast<long double>(obs_hets) + obs_hom1 + obs_hom2;
+    const long double rare = 2 * homr + obs_hets;
+    if (rare < 2) return 0.0L;                    // no test; p = 1
+    const long double lnObs = refLnProb(obs_hets, n, rare);
+    const long double hmax = std::min(rare, 2 * n - rare);
+    std::vector<long double> terms;
+    long double mx = -std::numeric_limits<long double>::infinity();
+    for (long double h = std::fmod(rare, 2.0L); h <= hmax; h += 2.0L) {
+        const long double lp = refLnProb(h, n, rare);
+        // Slack admits exact ties, which the exact test counts.
+        if (lp <= lnObs + 1e-14L * std::fabs(lnObs) + 1e-14L) {
+            terms.push_back(lp);
+            if (lp > mx) mx = lp;
+        }
+    }
+    if (terms.empty()) return 0.0L;
+    std::sort(terms.begin(), terms.end());        // summation order fixed
+    long double s = 0.0L;
+    for (long double lp : terms) s += std::exp(lp - mx);
+    const long double lnp = mx + std::log(s);
+    return (lnp >= 0.0L) ? 0.0L : -lnp / std::log(10.0L);
+}
+
+struct Counts { uint32_t het, homr, homc; };
+
+// A panel spanning the whole reported range: exact agreement, mild departure,
+// the moderate tail, and departures far past the point where a linear p
+// underflows.  n is kept at or below 100 000 so the long-double enumeration
+// stays cheap enough for `make test`.
+inline std::vector<Counts> panel() {
+    return {
+        // -log10 p at or near 0 (at or near exact HWE proportions)
+        {500, 250, 250}, {4000, 2000, 2000}, {180, 10, 810}, {2, 0, 998},
+        {1800, 100, 8100}, {18000, 1000, 81000},
+        // mild to moderate departure
+        {400, 0, 9600}, {18, 1, 9981}, {162, 19, 819}, {3136, 432, 6432},
+        {196, 2, 99802}, {600, 300, 9100}, {150, 5, 845},
+        // strong departure, still representable on the linear scale
+        {0, 10, 990}, {0, 50, 950}, {10, 100, 890}, {200, 400, 400},
+        {0, 100, 900}, {0, 250, 750}, {40, 300, 660},
+        // past the linear underflow boundary
+        {0, 500, 500}, {2, 499, 499}, {0, 800, 1200}, {0, 1500, 1500},
+        {0, 5000, 5000}, {100, 9950, 9950},
+    };
+}
+
+} // namespace hwe_stage9
+
+// hweNegLog10P agrees with the deleted linear implementation wherever the
+// latter is representable, to far inside the printed resolution of the column.
+//
+// The bound that matters is the relative one: LOG10P_HWE is printed with six
+// significant figures, so a relative discrepancy below 5e-7 cannot change a
+// printed digit.  The absolute bound is stated as well because it is what
+// 01_numerics §5.2 tabulates.
+TEST(hwe_log10p_agrees_with_deleted_linear_implementation) {
+    using namespace hwe_stage9;
+    double maxAbs = 0.0, maxRel = 0.0;
+    int nCompared = 0;
+    for (const Counts &c : panel()) {
+        const double pOld = hweExactLinear(c.het, c.homr, c.homc);
+        if (!(pOld > 1e-290)) continue;          // linear side underflowed
+        const double lNew = hweNegLog10P(c.het, c.homr, c.homc);
+        const double lOld = -std::log10(pOld);
+        const double d = std::fabs(lNew - lOld);
+        maxAbs = std::max(maxAbs, d);
+        if (lOld > 0.0) maxRel = std::max(maxRel, d / lOld);
+        ++nCompared;
+    }
+    CHECK(nCompared >= 15);
+    CHECK(maxAbs <= 1e-6);
+    CHECK(maxRel <= 5e-7);
+}
+
+// Both implementations are checked against the independent enumeration.  In
+// the region where the linear one is representable it is in fact the more
+// accurate of the two — plink2's complement branch, ln(1 - centre mass), costs
+// a few times 1e-10 absolute in ln p — but that is three orders of magnitude
+// below the printed resolution, and it is the price of a formulation that also
+// works where the linear one has no answer at all.
+// The criterion is mixed rather than purely relative because -log10 p is a
+// quantity whose zero is meaningful: at a marker in near-exact Hardy-Weinberg
+// proportions the reference is a few times 1e-15 and HweLnP takes its
+// documented p = 1 fast path and returns exactly 0.  A relative comparison
+// there measures nothing.  The absolute floor is set at 1e-12, two orders
+// above the largest such reference value in the panel.
+TEST(hwe_log10p_matches_long_double_enumeration) {
+    using namespace hwe_stage9;
+    for (const Counts &c : panel()) {
+        const long double ref = refNegLog10P(c.het, c.homr, c.homc);
+        const double lNew = hweNegLog10P(c.het, c.homr, c.homc);
+        const long double tol = std::max(1e-12L, 5e-7L * ref);
+        CHECK(std::fabs(ref - static_cast<long double>(lNew)) <= tol);
+    }
+}
+
+// The defect this stage removes.  Every one of these count triples has a
+// p-value below the smallest representable double, so the linear
+// implementation returned exactly 0 and the column read "0" — the spelling a
+// reader would take for perfect agreement with Hardy-Weinberg proportions,
+// when the marker is in fact as far from it as the panel contains.  The
+// log-domain evaluation returns the magnitude, and it is the correct one.
+TEST(hwe_log10p_survives_where_the_linear_test_underflowed) {
+    using namespace hwe_stage9;
+    int nUnderflowed = 0;
+    for (const Counts &c : panel()) {
+        const double pOld = hweExactLinear(c.het, c.homr, c.homc);
+        if (pOld != 0.0) continue;
+        ++nUnderflowed;
+        const double lNew = hweNegLog10P(c.het, c.homr, c.homc);
+        const long double ref = refNegLog10P(c.het, c.homr, c.homc);
+        CHECK(std::isfinite(lNew));
+        CHECK(lNew > 300.0);
+        CHECK(std::fabs(ref - static_cast<long double>(lNew)) / ref <= 1e-12L);
+    }
+    CHECK(nUnderflowed >= 3);
+}
+
+// Boundary semantics.  Fewer than two rare alleles means there is no test to
+// perform; HweLnP reports ln p = 0 there, which is the same p = 1 the deleted
+// implementation reported for n == 0, so LOG10P_HWE reads 0.  The value must
+// be +0.0 and not -0.0: the negation in hweNegLog10P would otherwise put a
+// "-0" in the output column.
+TEST(hwe_log10p_boundary_cases_are_positive_zero) {
+    CHECK_NEAR(hweNegLog10P(0, 0, 0), 0.0, 0.0);
+    CHECK(!std::signbit(hweNegLog10P(0, 0, 0)));
+    CHECK_NEAR(hweNegLog10P(1, 0, 0), 0.0, 0.0);     // rare_ct == 1
+    CHECK(!std::signbit(hweNegLog10P(1, 0, 0)));
+    CHECK_NEAR(hweNegLog10P(0, 1, 0), 0.0, 0.0);     // rare_ct == 2 by homozygote
+    CHECK(!std::signbit(hweNegLog10P(0, 1, 0)));
+    CHECK_NEAR(hweNegLog10P(0, 0, 5000), 0.0, 0.0);  // monomorphic
+    CHECK(!std::signbit(hweNegLog10P(0, 0, 5000)));
+}
+
+// Invariant C2 for the LOG10P_HWE column, checked exhaustively over every
+// genotype-count triple with at most 40 subjects, which is where a p-value
+// numerically slightly above 1 would show up if HweLnP could produce one.
+// A clamp here would be forbidden by invariant 4 — a negative value must be
+// allowed to surface as a failure, not be laundered into a zero — so the
+// assertion is on the returned values rather than on any guard.
+TEST(hwe_log10p_is_never_negative) {
+    int nChecked = 0;
+    for (uint32_t het = 0; het <= 40; ++het)
+        for (uint32_t hr = 0; hr + het <= 40; ++hr)
+            for (uint32_t hc = 0; hc + hr + het <= 40; ++hc) {
+                const double L = hweNegLog10P(het, hr, hc);
+                ++nChecked;
+                if (L < 0.0 || std::signbit(L) || !std::isfinite(L)) {
+                    CHECK(L >= 0.0);
+                    CHECK(!std::signbit(L));
+                    CHECK(std::isfinite(L));
+                    return;      // one report is enough
+                }
+            }
+    CHECK(nChecked > 10000);
+}
 
 TINYTEST_MAIN

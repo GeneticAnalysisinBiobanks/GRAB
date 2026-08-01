@@ -414,6 +414,13 @@ TEST_CXXFLAGS := $(filter-out -DNDEBUG,$(GRAB_CXXFLAGS))
 # therefore link the object rather than including the implementation.
 TESTOBJS_spa_cgf_test  := $(BUILD_DIR)/util/spa_cgf.o
 TESTOBJS_bench_spa_cgf := $(BUILD_DIR)/util/spa_cgf.o
+# bench_hwe times the deleted linear HWE test against plink2's HweLnP, which
+# reaches it through the geno_factory wrapper.
+TESTOBJS_bench_hwe := \
+    $(BUILD_DIR)/geno_factory/hwe.o \
+    $(BUILD_DIR)/pgenlib/plink2_stats.o \
+    $(BUILD_DIR)/pgenlib/plink2_base.o \
+    $(BUILD_DIR)/pgenlib/SFMT.o
 # spagrm_cgf.hpp is header-only but delegates its class-1 term to the dispatched
 # binomial kernels, so it needs the same object.
 TESTOBJS_spagrm_cgf_test := $(BUILD_DIR)/util/spa_cgf.o
@@ -431,7 +438,14 @@ TESTOBJS_wtcoxg_cgf_test := \
 # pmvnorm2dHalfRectLog), all of which live in math_helper.cpp.  The object is
 # listed from Stage 0, when the suite is still a skeleton, so that Stage 1 adds
 # assertions to a suite that already links rather than changing both at once.
-TESTOBJS_log10p_test := $(BUILD_DIR)/util/math_helper.o
+# Stage 9 additionally cross-checks LOG10P_HWE, so the suite links the HWE
+# wrapper and plink2's statistics object that supplies HweLnP behind it.
+TESTOBJS_log10p_test := \
+    $(BUILD_DIR)/util/math_helper.o \
+    $(BUILD_DIR)/geno_factory/hwe.o \
+    $(BUILD_DIR)/pgenlib/plink2_stats.o \
+    $(BUILD_DIR)/pgenlib/plink2_base.o \
+    $(BUILD_DIR)/pgenlib/SFMT.o
 
 TESTOBJS_lanc_simd_test := \
     $(BUILD_DIR)/localplus/lanc_io.o \

@@ -78,7 +78,7 @@ inline int numToChars(
     return static_cast<int>(end - buf);
 }
 
-// Append 9 meta columns: CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC HWE_P
+// Append 9 meta columns: CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC LOG10P_HWE
 inline void appendMeta(
     std::string &out,
     char *buf,
@@ -90,7 +90,7 @@ inline void appendMeta(
     double missRate,
     double altFreq,
     double mac,
-    double hweP
+    double log10pHwe
 ) {
     int n;
     out += chrom;
@@ -113,7 +113,7 @@ inline void appendMeta(
     n = numToChars(buf, mac);
     out.append(buf, n);
     out += '\t';
-    n = numToChars(buf, hweP);
+    n = numToChars(buf, log10pHwe);
     out.append(buf, n);
 }
 
@@ -129,10 +129,10 @@ inline void formatLine(
     double missRate,
     double altFreq,
     double mac,
-    double hweP,
+    double log10pHwe,
     const std::vector<double> &vals
 ) {
-    appendMeta(out, buf, chrom, pos, id, ref, alt, missRate, altFreq, mac, hweP);
+    appendMeta(out, buf, chrom, pos, id, ref, alt, missRate, altFreq, mac, log10pHwe);
     for (double v : vals) {
         out += '\t';
         int n = numToChars(buf, v);
@@ -153,10 +153,10 @@ inline void formatLineNA(
     double missRate,
     double altFreq,
     double mac,
-    double hweP,
+    double log10pHwe,
     const std::string &naSuffix
 ) {
-    appendMeta(out, buf, chrom, pos, id, ref, alt, missRate, altFreq, mac, hweP);
+    appendMeta(out, buf, chrom, pos, id, ref, alt, missRate, altFreq, mac, log10pHwe);
     out += naSuffix;
     out += '\n';
 }
@@ -165,7 +165,12 @@ inline void formatLineNA(
 // Output header
 // ──────────────────────────────────────────────────────────────────────
 
-constexpr const char *META_HEADER = "CHROM\tPOS\tID\tREF\tALT\tMISS_RATE\tALT_FREQ\tMAC\tHWE_P";
+// LOG10P_HWE is -log10 of the exact HWE p-value (decision D7 of
+// dev-notes/methods/log10p_unify/00_decisions.md): 0 means p = 1, larger means
+// stronger departure from Hardy-Weinberg proportions, and the column stays a
+// magnitude rather than saturating at 0 the way the former linear HWE_P did
+// below p ~ 1e-300.  NA when no subject has a hard call.
+constexpr const char *META_HEADER = "CHROM\tPOS\tID\tREF\tALT\tMISS_RATE\tALT_FREQ\tMAC\tLOG10P_HWE";
 
 inline std::string buildHeader(const MethodBase &method) {
     return std::string(META_HEADER) + method.getHeaderColumns();
@@ -185,8 +190,20 @@ static_assert(sizeof(PaddedFlag) == 64, "PaddedFlag must be 64 bytes");
 // Per-phenotype genotype stats and extraction
 // ──────────────────────────────────────────────────────────────────────
 
+// --hwe is an *input* threshold and stays on the linear p scale (decision D8
+// of dev-notes/methods/log10p_unify/00_decisions.md): 1e-6 is the habitual
+// spelling and 6 is not.  The QC statistic is now -log10(p), so the comparison
+// is carried out against -log10(cutoff) and its direction is reversed:
+// "p below the cutoff" becomes "-log10(p) above -log10(cutoff)".  A marker
+// with no hard-called subject has log10pHwe = NaN, and NaN fails both the old
+// and the new comparison, so such a marker is still not rejected on HWE.
+// Returns 0 when the filter is disabled (cutoff <= 0), which no caller reads.
+inline double hweLog10CutoffOf(double hweCutoff) {
+    return (hweCutoff > 0.0) ? -std::log10(hweCutoff) : 0.0;
+}
+
 struct PhenoGenoStats {
-    double altFreq, mac, missingRate, hweP;
+    double altFreq, mac, missingRate, log10pHwe;
     // Sum of squared post-impute genotypes over mask-included subjects.
     // Used by SPAsqr to compute empirical Var(G) = (sumSq − sum²/n) / (n−1).
     double sumSq;
@@ -222,7 +239,7 @@ struct PhenoGenoStats {
 //     impute genotypes are non-negative, so each group's running sum is ≥ 0
 //     and "x + 0.0 == x" holds bit-exactly — the masked partial sums are thus
 //     identical to skipping the excluded subjects outright.
-//   - the integer class counts (and HweExact, which depends only on them) are
+//   - the integer class counts (and hweNegLog10P, which depends only on them) are
 //     order-independent.
 //
 // out[g * outStride] receives group g's stats; isDosage is the per-marker flag
@@ -299,7 +316,7 @@ inline void statsFromUnionVecMultiGroup(
             // No hard-called subjects (all missing/uncertain): keep the prior
             // all-missing sentinel; the caller recomputes AF from gSum (= 0).
             s.missingRate = 0.0;
-            s.hweP = 1.0;
+            s.log10pHwe = 0.0;   // -log10(1): the prior all-missing sentinel
             s.altFreq = 0.0;
             s.mac = 0.0;
             s.fromDosage = true;
@@ -309,7 +326,7 @@ inline void statsFromUnionVecMultiGroup(
         // computed for dosage markers too.  missingRate counts genuine-missing
         // only — HWE-uncertain dosages are excluded from it (they remain in the
         // dosage sum used for AF).
-        s.hweP = HweExact(nHet, nHomAlt, nHomRef);
+        s.log10pHwe = hweNegLog10P(nHet, nHomAlt, nHomRef);
         s.missingRate =
             static_cast<double>(nMissing) / static_cast<double>(groupNUsed[g]);
         if (isDosage) {
@@ -367,14 +384,14 @@ inline PhenoGenoStats statsFromGVec(
         s.altFreq = NAN;
         s.mac = NAN;
         s.missingRate = 1.0;
-        s.hweP = NAN;
+        s.log10pHwe = NAN;
         return s;
     }
     double n2 = 2.0 * nNonMissing;
     // HWE from the thresholded hard-call counts (plink2 --hardy); genuine-missing
     // (NaN) is already excluded, and HWE-uncertain dosages were excluded above.
     // Computed for dosage markers too (previously skipped as NaN).
-    s.hweP = HweExact(nHet, nHomAlt, nHomRef);
+    s.log10pHwe = hweNegLog10P(nHet, nHomAlt, nHomRef);
     s.missingRate = static_cast<double>(indexForMissing.size()) / n;
     if (isDosage) {
         // Dosage marker: AF/MAC from the un-binned dosage sum.
@@ -576,7 +593,7 @@ inline void extractAndStatsBatched(
             s.altFreq = NAN;
             s.mac = NAN;
             s.missingRate = 1.0;
-            s.hweP = NAN;
+            s.log10pHwe = NAN;
         } else {
             const uint32_t nP = nPhenoArr[p];
             const uint32_t altCounts = 2 * acc[p].nHomAlt + acc[p].nHet;
@@ -585,7 +602,7 @@ inline void extractAndStatsBatched(
             const double maf = std::min(s.altFreq, 1.0 - s.altFreq);
             s.mac = maf * n2;
             s.missingRate = static_cast<double>(outMissings[p].size()) / nP;
-            s.hweP = HweExact(acc[p].nHet, acc[p].nHomAlt, acc[p].nHomRef);
+            s.log10pHwe = hweNegLog10P(acc[p].nHet, acc[p].nHomAlt, acc[p].nHomRef);
         }
     }
 
@@ -642,7 +659,7 @@ inline PhenoGenoStats sparseExtractAndStats(
         s.altFreq = NAN;
         s.mac = NAN;
         s.missingRate = 1.0;
-        s.hweP = NAN;
+        s.log10pHwe = NAN;
         return s;
     }
     const uint32_t altCounts = 2 * counts[2] + counts[1];
@@ -651,7 +668,7 @@ inline PhenoGenoStats sparseExtractAndStats(
     const double maf = std::min(s.altFreq, 1.0 - s.altFreq);
     s.mac = maf * n2;
     s.missingRate = static_cast<double>(counts[3]) / nPheno;
-    s.hweP = HweExact(counts[1], counts[2], counts[0]);
+    s.log10pHwe = hweNegLog10P(counts[1], counts[2], counts[0]);
     return s;
 }
 

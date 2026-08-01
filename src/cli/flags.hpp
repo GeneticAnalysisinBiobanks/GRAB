@@ -394,7 +394,11 @@ inline const FlagDef kMac = {
 
 inline const FlagDef kHwe = {
     "--hwe", "FLOAT", "Exclude markers with HWE p < threshold (default: 0, disabled)",
-    nullptr
+    R"(The threshold is a linear p-value (e.g. 1e-6), not a -log10 value, even
+though the reported column LOG10P_HWE is -log10(p).  A marker is excluded
+when its exact-test p falls below the threshold, i.e. when
+LOG10P_HWE > -log10(threshold).  Markers with no hard-called subject have
+LOG10P_HWE = NA and are never excluded by this filter.)"
 };
 
 inline const FlagDef kHardCallThreshold = {
@@ -457,7 +461,7 @@ inline const FlagDef kSpasqrMode = {
   score — score test on null-model residuals (default).  One null QR fit per
           phenotype × τ; markers are streamed and tested via the score
           statistic S = Σ R_i G_i with M-estimation sandwich variance.
-          Output (per marker): CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC HWE_P
+          Output (per marker): CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC LOG10P_HWE
           P_CCT P_tau{val}... Z_tau{val}...
   wald  — full-model Wald test.  For every (marker, τ), the joint smoothed-QR
           model with [X | G] is refit by QMME and β̂_G + SE are computed from
@@ -468,7 +472,7 @@ inline const FlagDef kSpasqrMode = {
           auto-shrinks at its 8-ksnp default so the pool stays fed even on
           small marker sets — see --chunk-ksnp for details.  Output is
           plink2-style one-marker-per-line wide format:
-          CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC HWE_P
+          CHROM POS ID REF ALT MISS_RATE ALT_FREQ MAC LOG10P_HWE
           P_CCT P_tau{val}... Z_tau{val}... BETA_tau{val}... SE_tau{val}...
           (--pred-list gives y_resp = Y − loco_chr; --compression honored.))"
 };
@@ -671,7 +675,7 @@ inline const MethodDef kSPACox = {
     kSPACoxOpt,
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.SPACox[.gz|.zst]   one file per --resid-name / --pheno-name column
-  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
   P  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
     LOG10P      -log10(P), computed in the log domain so it survives past the
                 point where the linear-scale tail underflows (p ~ 1e-316)
@@ -707,7 +711,7 @@ inline const MethodDef kSPAGRM = {
     kSPAGRMOpt,
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.SPAGRM[.gz|.zst]   one file per --resid-name / --pheno-name column
-  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
   P  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
     LOG10P      -log10(P), computed in the log domain so it survives past the
                 point where the linear-scale tail underflows (p ~ 1e-316)
@@ -745,7 +749,7 @@ inline const MethodDef kSAGELD = {
     "                   --save-resid           write fitted (R_G, R_E, R_GxE) to PREFIX.null.resid",
     R"(Residual mode: PREFIX.SAGELD[.gz|.zst]   single file
   Pheno mode:    PREFIX.<COL>.SAGELD[.gz|.zst]   one file per --pheno-name column
-  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
   P_G  P_Gx<E1>  [...]  Z_G  Z_Gx<E1>  [...])",
     R"(Two input modes (mutually exclusive):
   Residual mode — supply lme4::lmer() residuals directly via --resid-name.
@@ -779,7 +783,7 @@ inline const MethodDef kSPAGxE = {
     kSPAGxEOpt,
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.SPAGxE[.gz|.zst]   one file per --resid-name / --pheno-name column
-  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
   P_G  Z_G  BETA_G  SE_G
   P_Gx<E1>  LOG10P_Gx<E1>  P_Wald_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>
             BETA_Gx<E1>  SE_Gx<E1>  SPA_STATUS_Gx<E1>   [... per env]
@@ -828,7 +832,7 @@ inline const MethodDef kSPAGxEmix = {
     kSPAGxEmixOpt,
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.SPAGxEmix[.gz|.zst]   one file per --resid-name / --pheno-name column
-  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
   P_G  Z_G  BETA_G  SE_G
   P_Gx<E1>  LOG10P_Gx<E1>  P_Wald_Gx<E1>  Z_Gx<E1>  Z_Norm_Gx<E1>
             BETA_Gx<E1>  SE_Gx<E1>  SPA_STATUS_Gx<E1>   [... per env]
@@ -868,7 +872,7 @@ inline const MethodDef kSPAmix = {
     kSPAmixOpt,
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.SPAmix[.gz|.zst]   one file per --resid-name / --pheno-name column
-  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
   P  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
     LOG10P      -log10(P), computed in the log domain so it survives past the
                 point where the linear-scale tail underflows (p ~ 1e-316)
@@ -912,7 +916,7 @@ inline const MethodDef kSPAmixPlus = {
     kSPAmixPlusOpt,
     kPhenoNoteResidOrFit,
     R"(PREFIX.<COL>.SPAmixP[.gz|.zst]   one file per --resid-name / --pheno-name column
-  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
   P  LOG10P  Z  Z_Norm  BETA  SE  SPA_STATUS
     LOG10P and SPA_STATUS are as documented under --method spamix.)",
     R"(AF coefficient scope.  With --ind-af-coef, every phenotype in this
@@ -954,7 +958,7 @@ inline const MethodDef kSPAsqr = {
     "    --regression-model MODEL              auto | linear (default: auto; declarative only)\n"
     "                                          (SPAsqr fits smoothed QR per --spasqr-taus internally)",
     R"(PREFIX.<COL>.SPAsqr[.gz|.zst]   one file per --pheno-name column
-  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
   P_CCT  P_tau{val}...  LOG10P_tau{val}...  Z_tau{val}...
          Z_Norm_tau{val}...  SPA_STATUS_tau{val}...
     LOG10P_*      -log10(P_tau), computed in the log domain so it survives past
@@ -997,7 +1001,7 @@ inline const MethodDef kWtCoxG = {
     "    --pheno-name COL_IDS                  TIME:EVENT pair (Cox) or binary trait (logistic)\n"
     "    --regression-model MODEL              auto | logistic | cox (default: auto)",
     R"(PREFIX.<COL>.WtCoxG[.gz|.zst]   one file per --pheno-name column
-  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
   P_EXT  P_NOEXT  Z_EXT  Z_NOEXT  P_BAT  PI_BAT  VAR_BAT)",
     nullptr,
 };
@@ -1030,7 +1034,7 @@ inline const MethodDef kLEAF = {
     "    --regression-model MODEL              auto | logistic | cox (default: auto)\n"
     "                                          (--pc-cols drives the per-cluster K-means assignment)",
     R"(PREFIX.<COL>.LEAF[.gz|.zst]   one file per --pheno-name column
-  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  HWE_P
+  CHROM  POS  ID  REF  ALT  MISS_RATE  ALT_FREQ  MAC  LOG10P_HWE
   meta_P_EXT  meta_P_NOEXT
   cl1_MAC  cl1_P_EXT  cl1_P_NOEXT  cl1_P_BAT  cl1_PI_BAT  cl1_VAR_BAT  [cl2_... cl3_... ...])",
     R"(--pheno path: auto K-means on --pc-cols.
