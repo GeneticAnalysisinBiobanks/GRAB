@@ -15,15 +15,34 @@
 #   * the number of cells whose sign differs,
 #   * for any column whose name looks like a p-value, the largest change in
 #     -log10(p), which is the scale on which a GWAS result is actually read.
+#     Both representations are understood: a linear P column is converted,
+#     a LOG10P column is differenced as it stands.
 #
 # Non-numeric columns (IDs, alleles, chromosome labels) are compared exactly;
 # any difference there is a structural change and is reported as such.
 #
+# It also runs the C1-C3 invariant checks of
+# dev-notes/methods/log10p_unify/04_validation.md §2 over the NEW tree — no
+# infinity and no negative value in a LOG10P column, and agreement between
+# SPA_STATUS and its LOG10P about whether a p-value exists — and fails on a
+# violation.  Those are properties of one tree, so they fire whether or not
+# anything changed between the two.
+#
 # Usage:
 #     tests/regress.sh BASE_DIR NEW_DIR [--rtol 1e-9] [--quiet]
+#                      [--pair BASE_COL:NEW_COL]...
+#                      [--spa-status-semantics legacy7|nine]
 #
-# Exit status is 0 when every difference is within tolerance and no structural
-# change was found, 1 otherwise.  The intended workflow between stages is:
+# --pair restores comparability across a column rename: '--pair P:LOG10P'
+# compares the base tree's P against the new tree's LOG10P and reports the
+# change on the -log10(p) scale, and being a rule over underscore-separated
+# name segments it covers P_EXT/LOG10P_EXT, cl3_P_BAT/cl3_LOG10P_BAT and the
+# rest without per-column enumeration.  It does not suppress the structural
+# finding that a column was removed.
+#
+# Exit status is 0 when every difference is within tolerance, no structural
+# change was found, and no invariant was violated; 1 otherwise.  The intended
+# workflow between stages is:
 #
 #     make -j && bash examples/baseline.sh && mv examples_output examples_output.base
 #     # ... make a change ...
@@ -36,13 +55,17 @@ BASE=""
 NEW=""
 RTOL="1e-9"
 QUIET=0
+EXTRA=()
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --rtol)  RTOL="$2"; shift 2 ;;
         --quiet) QUIET=1; shift ;;
+        --pair)  EXTRA+=(--pair "$2"); shift 2 ;;
+        --spa-status-semantics)
+                 EXTRA+=(--spa-status-semantics "$2"); shift 2 ;;
         -h|--help)
-            sed -n '2,32p' "$0"; exit 0 ;;
+            sed -n '2,48p' "$0"; exit 0 ;;
         *)
             if   [ -z "$BASE" ]; then BASE="$1"
             elif [ -z "$NEW"  ]; then NEW="$1"
@@ -53,7 +76,8 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$BASE" ] || [ -z "$NEW" ]; then
-    echo "usage: $0 BASE_DIR NEW_DIR [--rtol RTOL] [--quiet]" >&2
+    echo "usage: $0 BASE_DIR NEW_DIR [--rtol RTOL] [--quiet]" \
+         "[--pair BASE_COL:NEW_COL]... [--spa-status-semantics legacy7|nine]" >&2
     exit 2
 fi
 if [ ! -d "$BASE" ] || [ ! -d "$NEW" ]; then
@@ -70,4 +94,4 @@ if ! command -v "$PY" >/dev/null 2>&1; then
 fi
 
 exec "$PY" "$(dirname "$0")/regress.py" "$BASE" "$NEW" --rtol "$RTOL" \
-    $([ "$QUIET" -eq 1 ] && echo --quiet)
+    $([ "$QUIET" -eq 1 ] && echo --quiet) ${EXTRA[@]+"${EXTRA[@]}"}

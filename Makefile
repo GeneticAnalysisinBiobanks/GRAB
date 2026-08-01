@@ -426,6 +426,12 @@ TESTOBJS_spamixlocalp_cgf_test := $(BUILD_DIR)/util/spa_cgf.o
 TESTOBJS_wtcoxg_cgf_test := \
     $(BUILD_DIR)/util/spa_cgf.o \
     $(BUILD_DIR)/util/math_helper.o
+# log10p_test covers the log-domain distribution tier of the log10p_unify
+# project (zFromNegLog10P, chisq1FromNegLog10P, cauchyCombineLog10, ptLog,
+# pmvnorm2dHalfRectLog), all of which live in math_helper.cpp.  The object is
+# listed from Stage 0, when the suite is still a skeleton, so that Stage 1 adds
+# assertions to a suite that already links rather than changing both at once.
+TESTOBJS_log10p_test := $(BUILD_DIR)/util/math_helper.o
 
 TESTOBJS_lanc_simd_test := \
     $(BUILD_DIR)/localplus/lanc_io.o \
